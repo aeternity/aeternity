@@ -1,0 +1,57 @@
+save_build_cache:
+  parameters:
+    otp:
+      type: string
+  steps:
+    - save_cache:
+        key: build-cache-<< parameters.otp >>-cache-<< pipeline.parameters.build_cache_version >>-{{ .Revision }}
+        paths:
+          - "_build"
+
+save_rebar_cache:
+  steps:
+    - save_cache:
+        key: << pipeline.parameters.rebar_cache_key >>
+        paths:
+          - .cache/rebar3
+
+restore_rebar_cache:
+  steps:
+    - restore_cache:
+        key: << pipeline.parameters.rebar_cache_key >>
+
+restore_build_cache:
+  parameters:
+    otp:
+      type: string
+  steps:
+    - restore_cache:
+        key: build-cache-<< parameters.otp >>-cache-<< pipeline.parameters.build_cache_version >>-{{ .Revision }}
+
+save_build_nix_cache:
+  steps:
+    - save_cache:
+        key: << pipeline.parameters.build_nix_cache_key >>
+        paths:
+          - "_build"
+
+restore_build_nix_cache:
+  steps:
+    - restore_cache:
+        key: << pipeline.parameters.build_nix_cache_key >>
+
+restore_machine_build_cache:
+  steps:
+    - restore_cache:
+        keys:
+          - << pipeline.parameters.machine_build_cache_key >>
+          - machine-build-cache-v20-{{ .Branch }}-
+          - machine-build-cache-v20-
+
+save_machine_build_cache:
+  steps:
+    - save_cache:
+        key: << pipeline.parameters.machine_build_cache_key >>
+        paths:
+          - "_build"
+          - ".contracts_test_cache"

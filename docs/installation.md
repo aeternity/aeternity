@@ -3,13 +3,8 @@
 This document describes how to install an Aeternity node using a release binary either by:
 
 * [Quick install](#quick-install);
-* Manual install.
-
-In order to install an Aeternity node manually, you need to:
-
-* [Retrieve the release binary](#retrieve-release-binary) corresponding to your platform;
-* [Install the required dependencies](#install-dependencies);
-* [Deploy the node](#deploy-node).
+* [Install from a package manager](#package-install);
+* [Install from a tarball](#tarball-install).
 
 ## Quick install
 
@@ -19,30 +14,63 @@ Run below command to install latest version of aeternity node and follow the ins
 bash <(curl -s https://install.aeternity.io/install.sh)
 ```
 
-## Retrieve release binary
+While this method is the easiest one it is not recomended for production systems.
+
+## Package Install
+
+Installing from a package manager is the recommended way of installing the aeternity node,
+as it also automatically installs the additional requirements and makes the updates much more simple.
+
+### Ubuntu
+
+The only supported version so far is 18.04 Bionic (x86-64).
+
+```bash
+sudo apt-get install software-properties-common
+sudo apt-key adv --keyserver keyserver.ubuntu.com --recv-keys D18ABB45C5AF91A0D835367E2106A773A40AFAEB
+sudo apt-add-repository 'deb https://apt.aeternity.io bionic main'
+sudo apt-get install aeternity-node
+sudo service aeternity-node start
+```
+
+### macOS
+
+Minimum required version is macOS Mojave 10.14 (x86-64).
+
+```bash
+brew tap aeternity/aeternity
+brew install aeternity-node
+```
+
+## Tarball Install
+
+In order to install an Aeternity node from a tarball, you need to:
+
+* [Retrieve the release tarball](#retrieve-release-tarball) corresponding to your platform;
+* [Install the required dependencies](#install-dependencies);
+* [Deploy the node](#deploy-node).
+
+### Retrieve release tarball
 
 The release binaries are published on [GitHub][releases] and are tested on the following platforms:
 
-* Ubuntu 16.04.3 LTS (x86-64);
 * Ubuntu 18.04 LTS (x86-64);
 * macOS Mojave 10.14 (x86-64).
-* Windows 10 (x86-64)
 
 [releases]: https://github.com/aeternity/aeternity/releases
 
-## Install dependencies
+### Install dependencies
 
 Package dependencies are:
 
 * [Libsodium](https://download.libsodium.org/doc/) v1.0.16
 * [Openssl](https://www.openssl.org)
 
-### Ubuntu package
+#### Ubuntu dependencies
+
+Supported Ubuntu version is 18.04.
 
 The package requires a libsodium v1.0.16 as `libsodium.so.23` shared object/library.
-
-#### Ubuntu 18.04
-
 Ubuntu 18.04 ships with libsodium 1.0.16, thus it can be installed with `apt` package manager:
 
 ```bash
@@ -55,26 +83,10 @@ The Ubuntu release binaries are built with `libssl1.0.0` (default Ubuntu 18.04 v
 sudo apt-get install libssl1.0.0
 ```
 
-#### Ubuntu 16.04
-
-As Ubuntu 16.04 ships with older libsodium version than required, it must be installed from source.
-A C compiler and related tools must be installed beforehand by running:
-
-```bash
-sudo apt-get install build-essential
-```
-
-then the library:
-
-```bash
-curl -O https://download.libsodium.org/libsodium/releases/libsodium-1.0.16.tar.gz
-tar -xf libsodium-1.0.16.tar.gz && cd libsodium-1.0.16
-./configure && make && sudo make install && sudo ldconfig
-```
-
-### macOS package
+#### macOS dependencies
 
 Easiest way to install dependencies is using [Homebrew](https://brew.sh/):
+
 ```bash
 brew update
 brew install openssl libsodium
@@ -92,11 +104,11 @@ ln -s "$(brew --prefix openssl)"/lib/libcrypto.1.1.dylib /usr/local/opt/openssl/
 ln -s "$(brew --prefix libsodium)"/lib/libsodium.23.dylib /usr/local/opt/libsodium/lib/libsodium.23.dylib
 ```
 
-## Deploy node
+### Deploy node
 
 In the instructions below, the node is deployed in directory `~/aeternity/node`: you may prefer to deploy the node in an alternative location by amending the instructions accordingly.
 
-It is recommended that the partition where the node directory is has at least 40 GB free: this is needed for the chain and the log files.
+It is recommended that the partition where the node directory is has at least 100 GB free: this is needed for the chain and the log files.
 
 Open a Terminal window or get to the command line.
 Create a directory and unpack the downloaded package (you need to amend the directory and/or file name of the package):
@@ -105,33 +117,3 @@ mkdir -p ~/aeternity/node
 cd ~/aeternity/node
 tar xf ~/Downloads/aeternity-<package_version>-macos-x86_64.tar.gz
 ```
-
-## Windows - experimental
-
-Windows support is currently experimental, some inconsistencies and limitations may apply. 
-
-You can choose between the following ways of running a node:
- * [Win32 (Native)](#win32-native) - CUDA, No CLI
- * [WSL (Windows Subsystem for Linux)](#wsl-windows-subsystem-for-linux) - CLI, No CUDA
-
-### Win32 (Native)
-
-Win32 binaries run as native Windows applications and support CUDA mining. CLI control of the node is not yet supported.
-
-Installation:
-
- 1. Download and extract the `.zip` file from the [Github releases][releases] in a desired folder.
- 2. Create `aeternity.yaml` following the [configuration instructions](configuration.md).
- 3. Run `<installation_path>\aeternity.exe`.
- 4. Safely close the MSYS2 console popup console that appears.
-
-You will have to click 'Allow' in the firewall notifications that may popup on the first run.
-
-Node configuration is similar to [Linux CUDA miners](cuda-miner.md). The corresponding
-`node/aeternity/lib` directory referred in the other docs is located in `<installation_path>\usr\lib\aeternity\lib`.
-
-### WSL (Windows Subsystem for Linux)
-WSL allows running the Linux binaries in Windows as well as controlling the node from the cli.
-Unfortunately it has limitations that prevent using CUDA miners. This is expected to change in the future.
-
-For installation under WSL, follow the [the dedicated document](installation-windows.md)

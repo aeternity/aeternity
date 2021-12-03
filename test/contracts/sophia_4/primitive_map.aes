@@ -1,0 +1,57 @@
+
+contract MapServer =
+
+  entrypoint insert : (string, string, map(string, string)) => map(string, string)
+  entrypoint delete : (string, map(string, string)) => map(string, string)
+
+contract PrimitiveMaps =
+
+  record state = { remote : MapServer,
+                   map    : map(string, string),
+                   map2   : map(string, string) }
+
+  entrypoint init(r) =
+    let m = {}
+    { remote = r, map = m, map2 = m }
+
+  entrypoint set_remote(r) = put(state{ remote = r })
+
+  entrypoint insert(k, v, m) : map(string, string) = m{ [k] = v }
+  entrypoint delete(k, m) : map(string, string) = Map.delete(k, m)
+
+  entrypoint remote_insert(k, v, m) =
+    state.remote.insert(k, v, m)
+
+  entrypoint remote_delete(k, m) =
+    state.remote.delete(k, m)
+
+  entrypoint get_state_map()  = state.map
+  entrypoint set_state_map(m) = put(state{ map = m })
+
+  entrypoint clone_state() = put(state{ map2 = state.map })
+
+  entrypoint insert_state(k, v) = put(state{ map @ m = m { [k] = v } })
+  entrypoint delete_state(k)    = put(state{ map @ m = Map.delete(k, m) })
+  entrypoint lookup_state(k)    = Map.lookup(k, state.map)
+
+  entrypoint double_insert_state(k, v1, v2) =
+    put(state{ map  @ m = m { [k] = v1 },
+               map2 @ m = m { [k] = v2 } })
+
+  entrypoint test() =
+    let m  = {} : map(string, string)
+    let m1 = m { ["foo"] = "value_of_foo",
+                 ["bla"] = "value_of_bla" }
+    let m2 = Map.delete("foo", m1)
+    let m3 = m2 { ["bla"] = "new_value_of_bla" }
+    [Map.lookup("foo", m),  Map.lookup("bla", m),
+     Map.lookup("foo", m1), Map.lookup("bla", m1),
+     Map.lookup("foo", m2), Map.lookup("bla", m2),
+     Map.lookup("foo", m3), Map.lookup("bla", m3)]
+
+  entrypoint return_map() =
+    Map.delete("goo", {["foo"] = "bar", ["goo"] = "gaa"})
+
+  entrypoint argument_map(m : map(string, string)) =
+    m["foo"]
+

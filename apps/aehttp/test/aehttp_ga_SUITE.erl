@@ -35,6 +35,7 @@
         , meta_fail/1
         , meta_fail_auth/1
         , meta_spend/1
+        , meta_oracle_register/1
         , meta_meta_fail_auth/1
         , meta_meta_fail/1
         , meta_meta_spend/1
@@ -60,14 +61,15 @@
     end).
 
 all() ->
-    [{group, aevm},
-     {group, fate}
+    [{group, swagger2},
+     {group, oas3}
     ].
 
 groups() ->
-    [{aevm, [sequence], [{group, ga_txs}, {group, ga_info}, {group, ga_mempool}]},
+    [{swagger2, [sequence], [{group, aevm}, {group, fate}]},
+     {oas3, [sequence], [{group, aevm}, {group, fate}]},
+     {aevm, [sequence], [{group, ga_txs}, {group, ga_info}, {group, ga_mempool}]},
      {fate, [sequence], [{group, ga_txs}, {group, ga_info}, {group, ga_mempool}]},
-
      {ga_txs, [sequence],
       [ attach_fail
       , attach
@@ -76,6 +78,7 @@ groups() ->
       , meta_fail_auth
       , meta_fail
       , meta_spend
+      , meta_oracle_register
       , meta_meta_fail_auth
       , meta_meta_fail
       , meta_meta_spend
@@ -107,6 +110,9 @@ init_per_suite(Config0) ->
     DefCfg = #{<<"chain">> =>
                    #{<<"persist">> => false,
                      <<"hard_forks">> => Forks},
+               <<"mempool">> => #{<<"tx_ttl">> => 100,
+                                  <<"tx_failures">> => #{ <<"enabled">> => false}
+                                  },
               <<"http">> =>
                    #{<<"cache">> => #{<<"enabled">> => false}}},
     Config1 = [{instant_mining, true}, {symlink_name, "latest.http_ga"}, {test_module, ?MODULE}] ++ Config0,
@@ -120,6 +126,9 @@ end_per_suite(Config) ->
     aecore_suite_utils:stop_node(?NODE, Config),
     ok.
 
+init_per_group(SwaggerVsn, Config) when SwaggerVsn =:= swagger2;
+                                        SwaggerVsn =:= oas3 ->
+    [{swagger_version, SwaggerVsn} | Config];
 init_per_group(VMGroup, Config) when VMGroup == aevm; VMGroup == fate ->
     case aect_test_utils:latest_protocol_version() of
         ?ROMA_PROTOCOL_VSN    -> {skip, generalized_accounts_not_in_roma};
@@ -148,6 +157,8 @@ end_per_group(_VMGroup, _Config) ->
     ok.
 
 init_per_testcase(_Case, Config) ->
+    SwaggerVsn = proplists:get_value(swagger_version, Config),
+    aecore_suite_utils:use_swagger(SwaggerVsn),
     put('$vm_version',     ?config(vm_version,     Config)),
     put('$abi_version',    ?config(abi_version,    Config)),
     put('$sophia_version', ?config(sophia_version, Config)),
@@ -193,6 +204,11 @@ attach_account(Pub, Priv, _Config) ->
 
     {ok, 200, Account1} = account_by_pubkey(Addr),
     Bal1 = maps:get(<<"balance">>, Account1),
+
+    %% nonce is 0 from now on
+    AccId = aeser_api_encoder:encode(account_pubkey, Pub),
+    {ok, 200, #{<<"next_nonce">> := 0}} = aehttp_integration_SUITE:get_accounts_next_nonce_sut(AccId),
+
 
     %% test that we can return GAAttachTx via http interface
     {ok, 200, #{<<"tx">> := #{<<"type">> := <<"GAAttachTx">>}}} = get_tx(AttachTx),
@@ -243,7 +259,7 @@ dry_run_fail(Config) ->
     %% Ensure we cant dry-run a Meta transaction...
     MGP = aec_test_utils:min_gas_price(),
     SpendTx = spend_tx(APub, APriv, 0, XPub, 1234, 20000 * MGP),
-    SMetaTx = ga_spend_tx(["1"], APub, APriv, SpendTx, 100000 * MGP, 10000),
+    SMetaTx = ga_meta_tx(["1"], APub, APriv, SpendTx, 100000 * MGP, 10000),
     _MetaTx = aetx_sign:tx(SMetaTx),
 
     do_dry_run(SMetaTx, error),
@@ -320,6 +336,21 @@ meta_spend(Config) ->
     ct:pal("Cost1: ~p", [ABal0 - ABal1]),
     ExpBal = ABal0 - (MetaFee + Gas * 1000 * MGP + 20000 * MGP + 10000),
     ?assertEqual(ExpBal, ABal1),
+    ok.
+
+meta_oracle_register(Config) ->
+    %% Get account information.
+    #{acc_a := #{pub_key := APub, priv_key := APriv}} = proplists:get_value(accounts, Config),
+    MGP = aec_test_utils:min_gas_price(),
+
+    InnerTx = aeo_test_utils:register_tx(APub, #{}),
+    MetaTx = ga_meta_tx(["1"], APub, APriv, InnerTx, 100000 * MGP, 10000),
+    #{tx_hash := MetaTxHash} = post_aetx(MetaTx),
+
+    ?MINE_TXS([MetaTxHash]),
+
+    {ok, 200, #{<<"tx">> := #{<<"type">> := <<"GAMetaTx">>}}} = get_tx(MetaTxHash),
+
     ok.
 
 meta_meta_fail_auth(Config) ->
@@ -584,6 +615,7 @@ make_attach_tx_map(AccPK) ->
     AccId = aeser_api_encoder:encode(account_pubkey, AccPK),
     {ok, 200, #{<<"nonce">> := Nonce0}} = account_by_pubkey(AccId),
     Nonce = Nonce0 + 1,
+    {ok, 200, #{<<"next_nonce">> := Nonce}} = aehttp_integration_SUITE:get_accounts_next_nonce_sut(AccId),
 
     {ok, #{bytecode := Code, src := Src, map := #{type_info := TI}}} =
         aega_test_utils:get_contract("basic_auth"),
@@ -595,7 +627,7 @@ make_attach_tx_map(AccPK) ->
     #{ nonce => Nonce, code => Code, auth_fun => AuthFun, call_data => CallData }.
 
 %% GA spend
-spend_tx (AccPK, _AccSK, Nonce, Recipient, Amount, Fee) ->
+spend_tx(AccPK, _AccSK, Nonce, Recipient, Amount, Fee) ->
     SpendTxMap = #{ sender_id => aeser_id:create(account, AccPK)
                   , recipient_id => aeser_id:create(account, Recipient)
                   , amount => Amount
@@ -609,12 +641,12 @@ post_ga_spend_tx(AccPK, AccSK, Nonces, Recipient, Amount, Fee, MetaFee) ->
 
 post_ga_spend_tx(AccPK, AccSK, Nonces, Recipient, Amount, Fee, MetaFee, AuthGas) ->
     InnerTx = spend_tx(AccPK, AccSK, 0, Recipient, Amount, Fee),
-    SMetaTx = ga_spend_tx(lists:reverse(Nonces), AccPK, AccSK, InnerTx, MetaFee, AuthGas),
+    SMetaTx = ga_meta_tx(lists:reverse(Nonces), AccPK, AccSK, InnerTx, MetaFee, AuthGas),
     post_aetx(SMetaTx).
 
-ga_spend_tx([], _AccPK, _AccSK, InnerTx, _MetaFee, _AuthGas) ->
+ga_meta_tx([], _AccPK, _AccSK, InnerTx, _MetaFee, _AuthGas) ->
     aetx_sign:new(InnerTx, []);
-ga_spend_tx([Nonce|Nonces], AccPK, AccSK, InnerTx, MetaFee, AuthGas) ->
+ga_meta_tx([Nonce|Nonces], AccPK, AccSK, InnerTx, MetaFee, AuthGas) ->
     TxHash    = aec_hash:hash(tx, aec_governance:add_network_id(aetx:serialize_to_binary(InnerTx))),
     Signature = aega_test_utils:basic_auth_sign(list_to_integer(Nonce), TxHash, AccSK),
     AuthData  = aega_test_utils:make_calldata("basic_auth", "authorize",
@@ -622,7 +654,7 @@ ga_spend_tx([Nonce|Nonces], AccPK, AccSK, InnerTx, MetaFee, AuthGas) ->
     MetaTx    = aega_test_utils:ga_meta_tx(AccPK,
                     #{ gas => AuthGas, auth_data => AuthData,
                        tx => aetx_sign:new(InnerTx, []), fee => MetaFee }),
-    ga_spend_tx(Nonces, AccPK, AccSK, MetaTx, MetaFee, AuthGas).
+    ga_meta_tx(Nonces, AccPK, AccSK, MetaTx, MetaFee, AuthGas).
 
 sc_create_tx(APK, BPK) ->
     Delegates =
@@ -715,17 +747,17 @@ create_spend_tx(SenderId, RecipientId, Amount, Fee, Payload) ->
 
 account_by_pubkey(Id) ->
     Host = aecore_suite_utils:external_address(),
-    http_request(Host, get, "accounts/" ++ http_uri:encode(Id), []).
+    http_request(Host, get, "accounts/" ++ aeu_uri:encode(Id), []).
 
 get_account_by_pubkey_and_height(Id, Height) ->
     Host = aecore_suite_utils:external_address(),
-    IdS = binary_to_list(http_uri:encode(Id)),
+    IdS = binary_to_list(aeu_uri:encode(Id)),
     HeightS = integer_to_list(Height),
     http_request(Host, get, "accounts/" ++ IdS ++ "/height/" ++ HeightS, []).
 
 get_account_by_pubkey_and_hash(Id, Hash) ->
     Host = aecore_suite_utils:external_address(),
-    IdS = binary_to_list(http_uri:encode(Id)),
+    IdS = binary_to_list(aeu_uri:encode(Id)),
     http_request(Host, get, "accounts/" ++ IdS ++ "/hash/" ++ Hash, []).
 
 post_tx(TxSerialized) ->

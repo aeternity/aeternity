@@ -84,17 +84,21 @@ int_create_with_txs(Block, KeyBlock, Txs) ->
 -spec create_with_state(aec_blocks:block(), aec_blocks:block(),
     list(aetx_sign:signed_tx()), aec_trees:trees()) ->
     {aec_blocks:block(), aec_trees:trees()}.
+%% This function is only used in tests
 create_with_state(Block, KeyBlock, Txs, Trees) ->
-    {ok, BlockHash} = aec_blocks:hash_internal_representation(Block),
+    MBEnv = create_micro_block_env(Block, KeyBlock),
+    TxEnv = create_tx_env(MBEnv),
     {ok, NewBlock, #{ trees := NewTrees}} =
-        int_create_block(BlockHash, Block, KeyBlock, Trees, Txs),
+        int_create_block(MBEnv, TxEnv, Txs, Trees),
     {NewBlock, NewTrees}.
 
 -spec apply_block_txs(list(aetx_sign:signed_tx()), aec_trees:trees(),
                       aetx_env:env()) ->
         {ok, list(aetx_sign:signed_tx()), aec_trees:trees(), aetx_env:events()}.
 apply_block_txs(Txs, Trees, Env) ->
-    int_apply_block_txs(Txs, Trees, Env, false).
+    {ok, Txs1, _InvalidTxs, Trees1, Events} = int_apply_block_txs(Txs, Trees, Env, false),
+    {ok, Txs1, Trees1, Events}.
+
 
 -spec apply_block_txs_strict(list(aetx_sign:signed_tx()), aec_trees:trees(),
                              aetx_env:env()) ->
@@ -124,56 +128,81 @@ update(Block, Txs, BlockInfo) ->
 
 %% -- Internal functions -----------------------------------------------------
 
-int_create(Block, KeyBlock) ->
-    {ok, BlockHash} = aec_blocks:hash_internal_representation(Block),
-    case aec_chain:get_block_state(BlockHash) of
+int_create(PrevBlock, KeyBlock) ->
+    MBEnv = #{prev_hash := PrevBlockHash} = create_micro_block_env(PrevBlock, KeyBlock),
+    case aec_chain:get_block_state(PrevBlockHash) of
         {ok, Trees} ->
-            int_create(BlockHash, Block, KeyBlock, Trees);
+            TxEnv = create_tx_env(MBEnv),
+            MaxGas = aec_governance:block_gas_limit(),
+            int_pack_block(MaxGas, [], [], MBEnv, TxEnv, Trees, []);
         error ->
             {error, block_state_not_found}
     end.
 
-int_create(BlockHash, Block, KeyBlock, Trees) ->
-    MaxGas = aec_governance:block_gas_limit(),
-    {ok, Txs} = aec_tx_pool:get_candidate(MaxGas, BlockHash),
-    int_create_block(BlockHash, Block, KeyBlock, Trees, Txs).
+create_micro_block_env(PrevBlock, PrevBlock) ->
+    {ok, PrevBlockHash} = aec_blocks:hash_internal_representation(PrevBlock),
+    KeyBlockHeader = aec_blocks:to_header(PrevBlock),
+    #{prev_block => PrevBlock, prev_hash => PrevBlockHash,
+      key_block => PrevBlock, key_hash => PrevBlockHash, key_header => KeyBlockHeader};
+create_micro_block_env(PrevBlock, KeyBlock) ->
+    {ok, PrevBlockHash} = aec_blocks:hash_internal_representation(PrevBlock),
+    {ok, KeyBlockHash} = aec_blocks:hash_internal_representation(KeyBlock),
+    KeyBlockHeader = aec_blocks:to_header(KeyBlock),
+    #{prev_block => PrevBlock, prev_hash => PrevBlockHash,
+      key_block => KeyBlock, key_hash => KeyBlockHash, key_header => KeyBlockHeader}.
 
-int_create_block(PrevBlockHash, PrevBlock, KeyBlock, Trees, Txs) ->
-    %% Micro block always has the same protocol version as the last key block.
+create_tx_env(#{prev_block := PrevBlock, prev_hash := PrevBlockHash,
+                key_hash := KeyBlockHash, key_header := KeyHeader}) ->
+    Time = determine_new_time(PrevBlock),
+    aetx_env:tx_env_from_key_header(KeyHeader, KeyBlockHash, Time, PrevBlockHash).
+
+int_pack_block(GasAvailable, TxHashes, Txs, MBEnv, TxEnv, Trees, Events) ->
+    #{prev_hash := PrevBlockHash, key_block := KeyBlock} = MBEnv,
+    case aec_tx_pool:get_candidate(GasAvailable, TxHashes, PrevBlockHash) of
+        {ok, []} ->
+            int_create_block(MBEnv, TxEnv, Txs, Trees, Events);
+        {ok, Txs0} ->
+            {ok, Txs1, FailedTxs1, Trees1, Events1} = int_apply_block_txs(Txs0, Trees, TxEnv, false),
+            report_failed_txs(FailedTxs1),
+            TxHashes1 = [ aetx_sign:hash(Tx) || Tx <- Txs0 ],
+            int_pack_block(GasAvailable - used_gas(KeyBlock, Txs1), TxHashes ++ TxHashes1,
+                           Txs ++ Txs1, MBEnv, TxEnv, Trees1, Events ++ Events1)
+    end.
+
+int_create_block(MBEnv, TxEnv, Txs, Trees) ->
+    {ok, Txs1, InvalidTxs, Trees1, Events1} = int_apply_block_txs(Txs, Trees, TxEnv, false),
+    report_failed_txs(InvalidTxs),
+    int_create_block(MBEnv, TxEnv, Txs1, Trees1, Events1).
+
+int_create_block(MBEnv, TxEnv, Txs, Trees, Events) ->
+    #{key_block := KeyBlock, key_hash := KeyBlockHash,
+      prev_block := PrevBlock, prev_hash := PrevBlockHash} = MBEnv,
+    Time = aetx_env:time_in_msecs(TxEnv),
     Protocol = aec_blocks:version(KeyBlock),
     Consensus = aec_blocks:consensus_module(KeyBlock),
-
-    PrevKeyHash = case aec_blocks:type(PrevBlock) of
-                      micro -> aec_blocks:prev_key_hash(PrevBlock);
-                      key   -> PrevBlockHash
-                  end,
     Height = aec_blocks:height(KeyBlock),
 
-    Time = determine_new_time(PrevBlock),
-    KeyHeader = aec_blocks:to_header(KeyBlock),
-    Env = aetx_env:tx_env_from_key_header(KeyHeader, PrevKeyHash,
-                                          Time, PrevBlockHash),
+    %% FIXME - HC branch added this transaformation. No idea how to apply it to new code:
+% +    FakeBlock = aec_blocks:new_micro(Height, PrevBlockHash, PrevKeyHash,
+% +                                    <<0:32/unit:8>>, <<0:32/unit:8>>, [],
+% +                                    Time, no_fraud, Protocol),
+% +    FakeNode = aec_chain_state:wrap_block(FakeBlock),
+% +    Trees1 = Consensus:state_pre_transform_micro_node(FakeNode, Trees),
+% +    {ok, Txs1, Trees2, Events} = int_apply_block_txs(Txs, Trees1, Env, false),
 
-    FakeBlock = aec_blocks:new_micro(Height, PrevBlockHash, PrevKeyHash,
-                                    <<0:32/unit:8>>, <<0:32/unit:8>>, [],
-                                    Time, no_fraud, Protocol),
-    FakeNode = aec_chain_state:wrap_block(FakeBlock),
-    PrevNode = aec_chain_state:wrap_block(PrevBlock),
-    PrevKeyNode = aec_chain_state:wrap_block(KeyBlock),
-    Trees1 = Consensus:state_pre_transform_micro_node(FakeNode, PrevNode, PrevKeyNode, Trees),
-    {ok, Txs1, Trees2, Events} = int_apply_block_txs(Txs, Trees1, Env, false),
 
-    TxsTree = aec_txs_trees:from_txs(Txs1),
+    TxsTree = aec_txs_trees:from_txs(Txs),
     TxsRootHash = aec_txs_trees:pad_empty(aec_txs_trees:root_hash(TxsTree)),
 
     PoF = get_pof(KeyBlock, PrevBlockHash, PrevBlock),
 
-    NewBlock = aec_blocks:new_micro(Height, PrevBlockHash, PrevKeyHash,
-                                    aec_trees:hash(Trees2), TxsRootHash, Txs1,
+    NewBlock = aec_blocks:new_micro(Height, PrevBlockHash, KeyBlockHash,
+                                    aec_trees:hash(Trees), TxsRootHash, Txs,
                                     Time, PoF, Protocol),
-    Env1 = aetx_env:set_events(Env, Events),
-    BlockInfo = #{ trees => Trees2, txs_tree => TxsTree, tx_env => Env1},
+    TxEnv1 = aetx_env:set_events(TxEnv, Events),
+    BlockInfo = #{ trees => Trees, txs_tree => TxsTree, tx_env => TxEnv1},
     {ok, NewBlock, BlockInfo}.
+
 
 determine_new_time(PrevBlock) ->
     LastTime = aec_blocks:time_in_msecs(PrevBlock),
@@ -212,9 +241,8 @@ get_pof(KeyBlock, PrevBlockHash, PrevBlock) ->
 
 %% Non-strict
 int_apply_block_txs(Txs, Trees, Env, false) ->
-    {ok, Txs1, _InvalidTxs, Trees1, Events} =
-        aec_trees:apply_txs_on_state_trees(Txs, Trees, Env),
-    {ok, Txs1, Trees1, Events};
+    {ok, _Txs1, _InvalidTxs, _Trees1, _Events} =
+        aec_trees:apply_txs_on_state_trees(Txs, Trees, Env);
 %% strict
 int_apply_block_txs(Txs, Trees, Env, true) ->
     case aec_trees:apply_txs_on_state_trees_strict(Txs, Trees, Env) of
@@ -263,6 +291,14 @@ add_txs_to_trees(MaxGas, Trees, [Tx | Txs], Acc, Env) ->
         false ->
             {lists:reverse(Acc), Trees, Env}
     end.
+
+report_failed_txs([])  -> ok;
+report_failed_txs(Txs) -> aec_tx_pool:failed_txs(Txs).
+
+used_gas(Block, Txs) ->
+    Version = aec_blocks:version(Block),
+    Height = aec_blocks:height(Block),
+    lists:foldl(fun(Tx, Acc) -> aetx:gas_limit(aetx_sign:tx(Tx), Height, Version) + Acc end, 0, Txs).
 
 %% Respect nonces order
 sort_txs(Txs) ->

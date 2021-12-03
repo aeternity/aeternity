@@ -317,15 +317,23 @@ consensus_from_network_id(<<"ae_mainnet">>) ->
     [{0, {aec_consensus_bitcoin_ng, #{}}}];
 consensus_from_network_id(<<"ae_uat">>) ->
     [{0, {aec_consensus_bitcoin_ng, #{}}}];
+consensus_from_network_id(<<"ae_dev">>) ->
+    consensus_config_or_default([{0, {aec_consensus_on_demand, #{}}}]);
 consensus_from_network_id(_) ->
+    consensus_config_or_default([{0, {aec_consensus_bitcoin_ng, #{}}}]).
+
+consensus_config_or_default(Default) ->
     case aeu_env:env_or_user_map([<<"chain">>, <<"consensus">>], aecore, consensus, undefined) of
         undefined ->
-            [{0, {aec_consensus_bitcoin_ng, #{}}}];
+            Default;
         M when is_map(M) ->
-            Conf = maps:fold(fun(H, #{<<"name">> := ConsensusName} = V, Acc) ->
-                              ConsensusConfig = maps:get(<<"config">>, V, #{}),
-                              Acc#{binary_to_integer(H) => {consensus_module_from_name(ConsensusName), ConsensusConfig}}
-                      end, #{}, M),
+            Conf = maps:fold(
+                     fun(H, #{<<"name">> := ConsensusName} = V, Acc) ->
+                             ConsensusConfig = maps:get(<<"config">>, V, #{}),
+                             Acc#{binary_to_integer(H) =>
+                                      {consensus_module_from_name(ConsensusName),
+                                       ConsensusConfig}}
+                     end, #{}, M),
             maps:to_list(Conf)
     end.
 
@@ -335,6 +343,7 @@ consensus_from_network_id(_) ->
 -ifdef(TEST).
 consensus_module_from_name(<<"pow_cuckoo">>) -> aec_consensus_bitcoin_ng;
 consensus_module_from_name(<<"hyperchains">>) -> aehc_consensus_hyperchains;
+consensus_module_from_name(<<"on_demand">>) -> aec_consensus_on_demand;
 consensus_module_from_name(<<"ct_tests">>) -> aec_consensus_common_tests;
 consensus_module_from_name(<<"eunit_one">>) -> module_eunit_one;
 consensus_module_from_name(<<"eunit_two">>) -> module_eunit_two;
@@ -343,6 +352,7 @@ consensus_module_from_name(_) -> undefined.
 -else.
 consensus_module_from_name(<<"pow_cuckoo">>) -> aec_consensus_bitcoin_ng;
 consensus_module_from_name(<<"hyperchains">>) -> aehc_consensus_hyperchains;
+consensus_module_from_name(<<"on_demand">>) -> aec_consensus_on_demand;
 consensus_module_from_name(_) -> undefined.
 -endif.
 

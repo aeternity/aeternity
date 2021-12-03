@@ -2,7 +2,6 @@
 
 This document describes how to build an Aeternity node from source on:
 
-- Ubuntu 16.04.4 LTS
 - Ubuntu 18.04 LTS
 - Ubuntu 20.04 LTS
 - MacOS (latest)
@@ -11,7 +10,6 @@ This document describes how to build an Aeternity node from source on:
 
 While the package should build on most linux distributions that's not verified (in CI) for each release on other than the below platforms:
 
-- Ubuntu 16.04.4 LTS
 - Ubuntu 18.04 LTS
 - MacOS (latest)
 
@@ -19,7 +17,7 @@ The commands below assume you are logged in with `sudo` user.
 
 The node have couple of main dependencies that have to be installed to build it from source:
 
-- [Erlang/OTP](http://erlang.org/doc/installation_guide/INSTALL.html)
+- [Erlang/OTP 22.3.4.9](http://erlang.org/doc/installation_guide/INSTALL.html)
 - [Libsodium](https://download.libsodium.org/doc/installation/)
 - [Libgmp](https://gmplib.org)
 
@@ -35,43 +33,6 @@ sudo apt-get -qq update \
 && sudo apt-get -qq -y install git autoconf build-essential cmake erlang libsodium-dev libgmp-dev
 ```
 
-### Ubuntu 16.04
-
-Update package database, packages and install the common tools and libraries:
-
-```bash
-sudo apt-get -qq update \
-&& sudo apt-get -y upgrade \
-&& sudo apt-get -qq -y install git curl autoconf build-essential ncurses-dev libssl-dev libgmp-dev
-```
-
-As Ubuntu 16.04 ships with outdated erlang and libsodium versions, they have to be installed from source:
-
-```bash
-OTP_VERSION="20.2.3"
-OTP_DOWNLOAD_URL="https://github.com/erlang/otp/archive/OTP-${OTP_VERSION}.tar.gz"
-curl -fsSL -o otp-src.tar.gz "$OTP_DOWNLOAD_URL" \
-&& mkdir otp-src \
-&& tar -zxf otp-src.tar.gz -C otp-src --strip-components=1 \
-&& cd otp-src \
-&& export ERL_TOP=`pwd` \
-&& ./otp_build autoconf && ./configure && make -j$(nproc) && sudo make install \
-&& cd ..
-```
-
-```bash
-LIBSODIUM_VERSION="1.0.16"
-LIBSODIUM_DOWNLOAD_URL="https://github.com/jedisct1/libsodium/releases/download/${LIBSODIUM_VERSION}/libsodium-${LIBSODIUM_VERSION}.tar.gz"
-curl -fsSL -o libsodium-src.tar.gz "$LIBSODIUM_DOWNLOAD_URL" \
-&& mkdir libsodium-src \
-&& tar -zxf libsodium-src.tar.gz -C libsodium-src --strip-components=1 \
-&& cd libsodium-src \
-&& ./configure && make -j$(nproc) \
-&& sudo make install \
-&& sudo ldconfig \
-&& cd ..
-```
-
 ### MacOS
 
 The easiest way to install package on MacOS is Homebrew, it can be installed by running:
@@ -83,7 +44,7 @@ The easiest way to install package on MacOS is Homebrew, it can be installed by 
 Then install the build dependencies using the `brew` command:
 ```
 brew update
-brew install erlang@21 openssl libsodium autoconf gmp
+brew install erlang@22 openssl libsodium autoconf gmp
 ```
 
 ### Archlinux

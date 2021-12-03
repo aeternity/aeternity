@@ -23,6 +23,7 @@
         , final_trees/1
         , gas_limit/1
         , gas_price/1
+        , fee/1
         , generation/1
         , origin/1
         , creator/2
@@ -67,8 +68,8 @@
              ]).
 
 -include_lib("aebytecode/include/aeb_fate_data.hrl").
--include("../../aecontract/include/aecontract.hrl").
--include("../../aecore/include/blocks.hrl").
+-include_lib("aecontract/include/aecontract.hrl").
+-include_lib("aecore/include/blocks.hrl").
 
 %%%-------------------------------------------------------------------
 %%% NOTE: We accept that this module causes havoc in the dependency
@@ -78,6 +79,7 @@
 
 -record(state, { primop_state :: aeprimop_state:state()
                , gas_price    :: non_neg_integer()
+               , fee    :: non_neg_integer()
                , onchain_primop_state :: {onchain, aeprimop_state:state()} | none
                , origin       :: binary()
                }).
@@ -96,12 +98,14 @@
 
 -spec new(map()) -> state().
 new(#{ gas_price := GasPrice
+     , fee := Fee
      , origin := Origin
      , trees  := Trees
      , tx_env := TxEnv
      } = Env) ->
     State = #state{ primop_state         = aeprimop_state:new(Trees, TxEnv)
                   , gas_price            = GasPrice
+                  , fee                  = Fee
                   , origin               = Origin
                   , onchain_primop_state = none
                   },
@@ -135,6 +139,10 @@ origin(#state{origin = Origin}) ->
 -spec gas_price(state()) -> aeb_fate_data:fate_integer().
 gas_price(#state{gas_price = GasPrice}) ->
     aeb_fate_data:make_integer(GasPrice).
+
+-spec fee(state()) -> aeb_fate_data:fate_integer().
+fee(#state{fee = Fee}) ->
+    aeb_fate_data:make_integer(Fee).
 
 -spec beneficiary(state()) -> aeb_fate_data:fate_address().
 beneficiary(#state{} = S) ->
@@ -357,8 +365,8 @@ check_delegation_signature(Pubkey, Binary, Signature,
                 basic ->
                     BinaryForNetwork = aec_governance:add_network_id(Binary),
                     case enacl:sign_verify_detached(Signature, BinaryForNetwork, Pubkey) of
-                        {ok, _}    -> {ok, State#state{primop_state = PState1}};
-                        {error, _} -> error
+                        true  -> {ok, State#state{primop_state = PState1}};
+                        false -> error
                     end
             end;
         none ->

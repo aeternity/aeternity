@@ -372,14 +372,8 @@ sub_files(From) ->
     {ok, SubFiles} = file:list_dir(From),
     [filename:join(From, SubFile) || SubFile <- SubFiles].
 
--ifdef(rand_module).
 random_uniform() ->
     rand:uniform().
--else.
-random_uniform() ->
-    random:seed(os:timestamp()),
-    random:uniform().
--endif.
 
 %%%===================================================================
 %%% Test Functions

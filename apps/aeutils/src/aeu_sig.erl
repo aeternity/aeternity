@@ -17,6 +17,6 @@ verify(Header, MinerPubKey) ->
     Signature = aec_headers:signature(Header),
     Bin = aec_headers:serialize_to_signature_binary(Header),
     case enacl:sign_verify_detached(Signature, Bin, MinerPubKey) of
-        {ok, _}    -> ok;
-        {error, _} -> {error, signature_verification_failed}
+        true  -> ok;
+        false -> {error, signature_verification_failed}
     end.

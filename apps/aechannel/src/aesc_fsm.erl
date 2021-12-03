@@ -119,7 +119,6 @@
         ]).
 
 -include_lib("aecontract/include/hard_forks.hrl").
--include_lib("aeutils/include/aeu_stacktrace.hrl").
 -include("aesc_codec.hrl").
 -include("aechannel.hrl").
 -include("aesc_fsm.hrl").
@@ -685,7 +684,7 @@ awaiting_reestablish(cast, {?CH_REESTABL, Msg}, #data{ role = responder
                          lager:debug("Already running - don't re-register", []),
                          D2
                  end,
-            next_state(open, send_reestablish_ack_msg(D3));
+            next_state(open, force_update_report(send_reestablish_ack_msg(D3)));
         {error, _} = Error ->
             close(Error, D)
     end;
@@ -1717,12 +1716,12 @@ new_onchain_tx(channel_deposit_tx, #{acct := FromId,
     Updates = [ aesc_offchain_update:op_deposit(aeser_id:create(account, FromId), Amount)
               | meta_updates(Opts) ],
     ActiveProtocol = aetx_env:consensus_version(OnChainEnv),
-    UpdatedStateTx = aesc_offchain_state:make_update_tx(Updates, State,
-                                                        ChanId,
-                                                        ActiveProtocol,
-                                                        OnChainTrees,
-                                                        OnChainEnv,
-                                                        channel_reserve(ChannelOpts)),
+    {UpdatedStateTx, _} = aesc_offchain_state:make_update_tx(Updates, State,
+                                                             ChanId,
+                                                             ActiveProtocol,
+                                                             OnChainTrees,
+                                                             OnChainEnv,
+                                                             channel_reserve(ChannelOpts)),
     {channel_offchain_tx, UpdatedOffchainTx} = aetx:specialize_type(UpdatedStateTx),
     StateHash = aesc_offchain_tx:state_hash(UpdatedOffchainTx),
 
@@ -1743,12 +1742,12 @@ new_onchain_tx(channel_withdraw_tx, #{acct := ToId,
     Updates = [ aesc_offchain_update:op_withdraw(aeser_id:create(account, ToId), Amount)
               | meta_updates(Opts) ],
     ActiveProtocol = aetx_env:consensus_version(OnChainEnv),
-    UpdatedStateTx = aesc_offchain_state:make_update_tx(Updates, State,
-                                                        ChanId,
-                                                        ActiveProtocol,
-                                                        OnChainTrees,
-                                                        OnChainEnv,
-                                                        channel_reserve(ChannelOpts)),
+    {UpdatedStateTx, _} = aesc_offchain_state:make_update_tx(Updates, State,
+                                                             ChanId,
+                                                             ActiveProtocol,
+                                                             OnChainTrees,
+                                                             OnChainEnv,
+                                                             channel_reserve(ChannelOpts)),
     {channel_offchain_tx, UpdatedOffchainTx} = aetx:specialize_type(UpdatedStateTx),
     StateHash = aesc_offchain_tx:state_hash(UpdatedOffchainTx),
 
@@ -2191,9 +2190,9 @@ new_contract_tx_for_signing(Opts, From, #data{ state = State
     {BlockHash, OnChainEnv, OnChainTrees} = pick_onchain_env(Opts, D),
     ActiveProtocol = aetx_env:consensus_version(OnChainEnv),
     try
-        Tx1 = aesc_offchain_state:make_update_tx(Updates, State, ChannelId, ActiveProtocol,
-                                                 OnChainTrees, OnChainEnv,
-                                                 channel_reserve(ChannelOpts)),
+        {Tx1, _} = aesc_offchain_state:make_update_tx(Updates, State, ChannelId, ActiveProtocol,
+                                                      OnChainTrees, OnChainEnv,
+                                                      channel_reserve(ChannelOpts)),
         case request_signing(?UPDATE, Tx1, Updates, BlockHash, D, defer) of
             {ok, Send, D1, Actions} ->
                 %% reply before sending sig request
@@ -2747,9 +2746,9 @@ handle_upd_transfer(FromPub, ToPub, Amount, From, UOpts, #data{ state = State
         Updates = [aesc_offchain_update:op_transfer(aeser_id:create(account, FromPub),
                                                     aeser_id:create(account, ToPub), Amount)
                    | meta_updates(UOpts)],
-        Tx1 = aesc_offchain_state:make_update_tx(Updates, State, ChannelId, ActiveProtocol,
-                                                 OnChainTrees, OnChainEnv,
-                                                 channel_reserve(Opts)),
+        {Tx1,_} = aesc_offchain_state:make_update_tx(Updates, State, ChannelId, ActiveProtocol,
+                                                     OnChainTrees, OnChainEnv,
+                                                     channel_reserve(Opts)),
         case request_signing(?UPDATE, Tx1, Updates, BlockHash, D, defer) of
             {ok, Send, D1, Actions} ->
                 %% reply before sending sig request
@@ -3194,6 +3193,7 @@ watcher_request(Type, SignedTx, Updates, #data{ op = Op
     #{ minimum_depth := MinDepthFactor
      , minimum_depth_strategy := MinDepthStrategy } = Opts,
     MinDepth = min_depth(MinDepthStrategy, MinDepthFactor, SignedTx),
+    lager:debug("Calculated min_depth: ~p", [MinDepth]),
     BlockHash = block_hash_from_op(Op),
     {Mod, Tx} = aetx:specialize_callback(aetx_sign:innermost_tx(SignedTx)),
     TxHash = aetx_sign:hash(SignedTx),
@@ -3319,6 +3319,9 @@ handle_change_config(log_keep, Keep, #data{log = L} = D)
     {ok, D#data{log = aesc_window:change_keep(Keep, L)}};
 handle_change_config(_, _, _) ->
     {error, invalid_config}.
+
+force_update_report(D) ->
+    D#data{last_reported_update = undefined}.
 
 report_update(#data{state = State, last_reported_update = Last} = D) ->
     case aesc_offchain_state:get_latest_signed_tx(State) of
@@ -3802,7 +3805,11 @@ callback_mode() ->
 init(#{opts := Opts} = Arg) ->
     case check_limits(Opts) of
         ok ->
-            init_(Arg);
+            try init_(Arg)
+            catch
+                throw:{invalid, _} = Invalid ->
+                    {stop, Invalid}
+            end;
         {error, Reason} ->
             {stop, Reason}
     end.
@@ -4002,6 +4009,8 @@ check_change_config(_, _) ->
 %% the nth root of the transaction fee divided by the minimum gas, where n is
 %% the given minimum_depth factor.
 -spec min_depth(minimum_depth_strategy(), minimum_depth_factor(), aetx_sign:signed_tx()) -> non_neg_integer().
+min_depth(plain, MinDepth, _) ->
+    MinDepth;
 min_depth(txfee, MinDepthFactor, SignedTx) when
       MinDepthFactor =/= undefined ->
     Tx = aetx_sign:tx(SignedTx),
@@ -4019,19 +4028,41 @@ min_depth(txfee, MinDepthFactor, SignedTx) when
                 [MinDepth, FeeCoefficient, MinDepthFactor, TxFee, MinGas]),
     MinDepth.
 
-%% @doc Set default minimum depth parameters. If the role is initiator, no
-%% change is made because the responder might provide these defaults when the
-%% channel is accepted.
+%% @doc Set default minimum depth parameters.
 -spec check_minimum_depth_opt(opts()) -> opts().
-check_minimum_depth_opt(#{role := initiator} = Opts) ->
-    Opts;
-check_minimum_depth_opt(Opts) ->
-    MinDepthStrategy = maps:get(minimum_depth_strategy, Opts, ?DEFAULT_MINIMUM_DEPTH_STRATEGY),
-    MinDepthFactor = maps:get(minimum_depth, Opts, default_minimum_depth(MinDepthStrategy)),
-    lager:debug("Final minimum_depth parameters for responder: ~p / ~p",
-                [MinDepthStrategy, MinDepthFactor]),
-    Opts#{ minimum_depth          => MinDepthFactor
-         , minimum_depth_strategy => MinDepthStrategy }.
+check_minimum_depth_opt(#{role := Role} = Opts) ->
+    case {maps:find(minimum_depth_strategy, Opts), maps:find(minimum_depth, Opts)} of
+        {error, error} ->
+            case Role of
+                initiator ->
+                    lager:debug("No minimum_depth preference set for initiator", []),
+                    Opts;
+                responder ->
+                    S = ?DEFAULT_MINIMUM_DEPTH_STRATEGY,
+                    Opts#{ minimum_depth => default_minimum_depth(S)
+                         , minimum_depth_strategy => S }
+            end;
+        {error, {ok, D}} ->
+            assert_valid_minimum_depth(D),
+            Opts#{minimum_depth_strategy => ?DEFAULT_MINIMUM_DEPTH_STRATEGY};
+        {{ok,S}, error} ->
+            assert_valid_minimum_depth_strategy(S),
+            Opts#{minimum_depth => default_minimum_depth(S)};
+        {{ok,S}, {ok,D}} ->
+            assert_valid_minimum_depth_strategy(S),
+            assert_valid_minimum_depth(D),
+            Opts
+    end.
+
+assert_valid_minimum_depth(D) ->
+    assert(is_valid_minimum_depth({ok,D}), {minimum_depth, D}).
+
+assert_valid_minimum_depth_strategy(S) ->
+    assert(is_valid_minimum_depth_strategy({ok,S}), {minimum_depth_strategy, S}).
+
+assert(true, _) -> ok;
+assert(false, What) ->
+    invalid(What).
 
 check_timeout_opt(#{timeouts := TOs} = Opts) ->
     TOs1 = maps:merge(?DEFAULT_TIMEOUTS, TOs),
@@ -4104,6 +4135,9 @@ check_opts([], Opts) ->
     Opts;
 check_opts([H|T], Opts) ->
     check_opts(T, H(Opts)).
+
+invalid(What) ->
+    throw({invalid, What}).
 
 prepare_for_reestablish(#data{ opts = Opts
                              , on_chain_id = ChanId } = D) ->
@@ -4617,11 +4651,12 @@ handle_call_(open, {upd_call_contract, Opts, ExecType}, From,
     Updates = [Update | meta_updates(Opts)],
     {BlockHash, OnChainEnv, OnChainTrees} = pick_onchain_env(Opts, D),
     ActiveProtocol = aetx_env:consensus_version(OnChainEnv),
-    try  Tx1 = aesc_offchain_state:make_update_tx(Updates, State,
-                                                  ChannelId,
-                                                  ActiveProtocol,
-                                                  OnChainTrees, OnChainEnv,
-                                                  channel_reserve(ChannelOpts)),
+    try  {Tx1, [CallResult|_]} =
+             aesc_offchain_state:make_update_tx(Updates, State,
+                                                ChannelId,
+                                                ActiveProtocol,
+                                                OnChainTrees, OnChainEnv,
+                                                channel_reserve(ChannelOpts)),
          case ExecType of
             dry_run ->
                 UpdState = aesc_offchain_state:set_signed_tx(
@@ -4638,7 +4673,8 @@ handle_call_(open, {upd_call_contract, Opts, ExecType}, From,
                 case request_signing(?UPDATE, Tx1, Updates, BlockHash, D, defer) of
                     {ok, Send, D1, Actions} ->
                         %% reply before sending sig request
-                        gen_statem:reply(From, ok),
+                        Reply = upd_call_ok_reply(CallResult, Opts),
+                        gen_statem:reply(From, Reply),
                         Send(),
                         next_state(awaiting_signature, set_ongoing(D1), Actions);
                     {error, _} = Error ->
@@ -5094,6 +5130,21 @@ handle_common_event_(cast, {?CHANNEL_CLOSED = OpTag, #{ tx_hash := TxHash
     D1 = D#data{last_channel_change = TxHash},
     D2 = safe_watched_action_report(SignedTx, Msg, D1, [], undefined, ?WATCH_CLOSED, OpTag, msg_type(Msg)),
     next_state(channel_closed, D2);
+handle_common_event_(cast, {ErrTag, #{ channel_id := ChanId, error_code := ?ERR_CONFLICT}} = Msg,
+                     _St, _,
+                     #data{ on_chain_id = ChanId } = D) when ErrTag == ?UPDATE_ERR;
+                                                              ErrTag == ?DEP_ERR;
+                                                              ErrTag == ?WDRAW_ERR ->
+    %% When a conflict (race) occurs, one or both of the FSMs may detect it.
+    %% When the FSM detects it, it notifies its client AND the peer FSM, then rolls back
+    %% to the 'open' state. If the peer also detected the race, an ?ERR_CONFLICT message
+    %% may be received, and should be discarded. If a new update has been initiated, the
+    %% conflict notice may arrive in almost any state. When we catch it here, it hasn't
+    %% matched the patters looking out for a conflict in the ongoing exchange, so we
+    %% discard it.
+    lager:debug("Straggler conflict notification (discard): ~p", [Msg]),
+    %% Should we log it in the history? As what?
+    keep_state(D);
 handle_common_event_({call, From}, Req, St, Mode, D) ->
     case Mode of
         error_all ->
@@ -5241,6 +5292,7 @@ maybe_use_minimum_depth_params(Msg, Opts) ->
     end.
 
 is_valid_minimum_depth_strategy({ok, txfee}) -> true;
+is_valid_minimum_depth_strategy({ok, plain}) -> true;
 is_valid_minimum_depth_strategy(_)           -> false.
 
 is_valid_minimum_depth({ok, Value}) when is_integer(Value) -> Value >= 0;
@@ -5251,8 +5303,8 @@ default_minimum_depth() ->
 
 default_minimum_depth(Strategy) ->
     case Strategy of
-        txfee ->
-            10;
+        txfee -> 10;
+        plain ->  3;
         _ ->
             error(unknown_minimum_depth_strategy)
     end.
@@ -5437,11 +5489,11 @@ mk_force_progress_tx(Opts, #data{state = State, opts = ChannelOpts,
     Updates = [Update],
     {OnChainEnv, OnChainTrees} = aetx_env:tx_env_and_trees_from_top(aetx_contract),
     ActiveProtocol = aetx_env:consensus_version(OnChainEnv),
-    OffchainTx = aesc_offchain_state:make_update_tx(Updates, State,
-                                                    ChannelPubkey,
-                                                    ActiveProtocol,
-                                                    OnChainTrees, OnChainEnv,
-                                                    channel_reserve(ChannelOpts)),
+    {OffchainTx, _} = aesc_offchain_state:make_update_tx(Updates, State,
+                                                         ChannelPubkey,
+                                                         ActiveProtocol,
+                                                         OnChainTrees, OnChainEnv,
+                                                         channel_reserve(ChannelOpts)),
     {OffChainRound, SignedTx} = aesc_offchain_state:get_latest_signed_tx(State),
     {ok, Channel} = aec_chain:get_channel(ChannelPubkey),
     OnChainRound = aesc_channels:round(Channel),
@@ -5632,7 +5684,13 @@ does_force_progress_interrupt(FSMState) ->
             false
     end.
 
+upd_call_ok_reply(Result, #{return_result := true}) ->
+    {ok, call_result(Result)};
+upd_call_ok_reply(_, _) ->
+    ok.
 
+call_result({Type, Call}) when Type==ok; Type==error; Type==revert ->
+    {Type, aect_call:return_value(Call)}.
 
 check_chain_before_reestablish(#{state := State0} = _StateRecovery,
                                #data{ role = Role

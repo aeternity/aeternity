@@ -1,2231 +1,1735 @@
-version: 2.1
-
-orbs:
-  win: circleci/windows@1.0.0
-
-executors:
-  infrastructure_container_unstable:
-    docker:
-      - image: aeternity/infrastructure:latest
-  infrastructure_container_stable:
-    docker:
-      - image: aeternity/infrastructure:stable
-  builder_container_otp21:
-    docker:
-      - image: aeternity/builder:otp21
-        user: builder
-    working_directory: ~/aeternity
-    environment:
-      OTP_VERSION: 21.3.8.17
-      ERLANG_ROCKSDB_BUILDOPTS: "-j2"
-      ERLANG_ROCKSDB_OPTS: "-DWITH_SYSTEM_ROCKSDB=ON -DWITH_SNAPPY=ON -DWITH_LZ4=ON -DWITH_BZ2=ON -DWITH_ZSTD=ON"
-  builder_container_otp22:
-    docker:
-      - image: aeternity/builder:otp22
-        user: builder
-    working_directory: ~/aeternity
-    environment:
-      OTP_VERSION: 22.3.4.9
-      ERLANG_ROCKSDB_BUILDOPTS: "-j2"
-      ERLANG_ROCKSDB_OPTS: "-DWITH_SYSTEM_ROCKSDB=ON -DWITH_SNAPPY=ON -DWITH_LZ4=ON -DWITH_BZ2=ON -DWITH_ZSTD=ON"
-  builder_container_otp23:
-    docker:
-      - image: aeternity/builder:otp23
-        user: builder
-    working_directory: ~/aeternity
-    environment:
-      OTP_VERSION: 23.0.3
-      ERLANG_ROCKSDB_BUILDOPTS: "-j2"
-      ERLANG_ROCKSDB_OPTS: "-DWITH_SYSTEM_ROCKSDB=ON -DWITH_SNAPPY=ON -DWITH_LZ4=ON -DWITH_BZ2=ON -DWITH_ZSTD=ON"
-  builder_container_nix_alpine:
-    docker:
-      - image: nixorg/nix:circleci
-    working_directory: ~/aeternity
-    environment:
-      ERLANG_ROCKSDB_BUILDOPTS: "-j2"
-  builder_container_1804:
-    docker:
-      - image: aeternity/builder:1804
-        user: builder
-    working_directory: ~/aeternity
-  buildpack:
-    docker:
-      - image: circleci/buildpack-deps:xenial
-    environment:
-      DOCKERHUB_REPO: aeternity/aeternity
-  machine_1604:
-    resource_class: large
-    machine:
-      image: ubuntu-1604:201903-01
-      docker_layer_caching: true
-    working_directory: ~/aeternity
-    environment:
-      DOCKERHUB_REPO: aeternity/aeternity
-      OTP_VERSION: 21.3.8.17
-      LIBSODIUM_VERSION: "1.0.16"
-
-references:
-  container_otp21_plt: &container_otp21_plt _build/default/rebar3_21.3.8.17_plt
-  container_otp22_plt: &container_otp22_plt _build/default/rebar3_22.3.4.9_plt
-  container_otp23_plt: &container_otp23_plt _build/default/rebar3_23.0.3_plt
-
-  infrastructure_config_environment: &infrastructure_config_environment
-    DOCKERHUB_REPO: aeternity/aeternity
-    S3_BUILDS_BUCKET: aeternity-node-builds
-    S3_RELEASES_BUCKET: aeternity-node-releases
-
-  infrastructure_config: &infrastructure_config
-    resource_class: large
-    working_directory: ~/aeternity
-    environment:
-      <<: *infrastructure_config_environment
-
-  setup_remote_docker: &setup_remote_docker
-    setup_remote_docker:
-      docker_layer_caching: true
-      version: "17.09.0-ce"
-
-  prepare_ubuntu_user: &prepare_ubuntu_user
-    run:
-      name: Prepare ubuntu user (1000:1000) to run docker commands
-      command: |
-        sudo usermod -aG docker ubuntu
-        sudo chown -R ubuntu:ubuntu ~/aeternity
-
-  install_os_deps: &install_os_deps
-    run:
-      name: Install OS dependancies
-      command: |
-        sudo apt-get update
-        sudo apt-get -qq -y install git curl \
-          autoconf build-essential ncurses-dev libssl-dev libgmp-dev
-
-  install_otp: &install_otp
-    run:
-      name: Install OTP
-      command: |
-        # Install OTP package deps
-        sudo apt-get update && sudo apt-get install libwxbase3.0-dev libwxgtk3.0-dev libsctp1
-        # Install OTP binary package
-        PACKAGE_NAME=esl-erlang_${OTP_VERSION}-1~ubuntu~xenial_amd64.deb
-        OTP_DOWNLOAD_URL=https://packages.erlang-solutions.com/erlang/debian/pool/${PACKAGE_NAME}
-        curl -fsSL -o ${PACKAGE_NAME} "$OTP_DOWNLOAD_URL"
-        sudo dpkg -i ${PACKAGE_NAME}
-
-  install_libsodium: &install_libsodium
-    run:
-      name: Install libsodium
-      # source: https://github.com/aeternity/docker-builder/blob/master/Dockerfile#L23
-      command: |
-        LIBSODIUM_DOWNLOAD_URL="https://github.com/jedisct1/libsodium/releases/download/${LIBSODIUM_VERSION}/libsodium-${LIBSODIUM_VERSION}.tar.gz" \
-          && curl -fsSL -o libsodium-src.tar.gz "$LIBSODIUM_DOWNLOAD_URL" \
-          && mkdir libsodium-src \
-          && tar -zxf libsodium-src.tar.gz -C libsodium-src --strip-components=1 \
-          && cd libsodium-src \
-          && ./configure && make -j$(nproc) && sudo make install && sudo ldconfig
-
-  tag_regex: &tag_regex /^v.*$/
-  master_branch: &master_branch master
-
-  rebar_cache_key: &rebar_cache_key rebar-cache-{{ checksum "rebar.lock" }}-{{ checksum "rebar.config" }}
-  restore_rebar_cache: &restore_rebar_cache
-    restore_cache:
-      key: *rebar_cache_key
-
-  build_otp21_cache_key: &build_otp21_cache_key build-otp21-cache-v6-{{ .Revision }}
-  restore_build_otp21_cache: &restore_build_otp21_cache
-    restore_cache:
-      key: *build_otp21_cache_key
-
-  build_otp22_cache_key: &build_otp22_cache_key build-otp22-cache-v3-{{ .Revision }}
-  restore_build_otp22_cache: &restore_build_otp22_cache
-    restore_cache:
-      key: *build_otp22_cache_key
-
-  build_otp23_cache_key: &build_otp23_cache_key build-otp23-cache-v2-{{ .Revision }}
-  restore_build_otp23_cache: &restore_build_otp23_cache
-    restore_cache:
-      key: *build_otp23_cache_key
-
-  build_nix_cache_key: &build_nix_cache_key build-nix-cache-v2-{{ .Revision }}
-  restore_build_nix_cache: &restore_build_nix_cache
-    restore_cache:
-      key: *build_nix_cache_key
-
-  machine_build_cache_key: &machine_build_cache_key machine-build-cache-v14-{{ .Branch }}-{{ .Revision }}
-  restore_machine_build_cache: &restore_machine_build_cache
-    restore_cache:
-      keys:
-        - *machine_build_cache_key
-        - machine-build-cache-v14-{{ .Branch }}-
-        - machine-build-cache-v14-
-
-  save_machine_build_cache: &save_machine_build_cache
-    save_cache:
-      key: *machine_build_cache_key
-      paths:
-        - "_build"
-        - ".contracts_test_cache"
-
-  macos_package_cache_key: &macos_package_cache_key macos-package-cache-v4
-  restore_macos_package_cache: &restore_macos_package_cache
-    restore_cache:
-      key: *macos_package_cache_key
-
-  save_macos_package_cache: &save_macos_package_cache
-    save_cache:
-      key: *macos_package_cache_key
-      paths:
-        - "/usr/local/Homebrew"
-        - "/usr/local/opt"
-        - "/usr/local/Cellar"
-
-  packages_workspace: &packages_workspace /tmp/packages
-  set_package_path: &set_package_path
-    run:
-      name: Set package path
-      environment:
-        PACKAGES_DIR: *packages_workspace
-      # construct and export PACKAGE_TARBALL environment variable available to all jobs
-      command: .circleci/set_package_path.sh
-
-  build_package: &build_package
-    run:
-      name: Build Package Tarball
-      environment:
-        PACKAGES_DIR: *packages_workspace
-        ERLANG_ROCKSDB_OPTS: "-DWITH_BUNDLE_LZ4=ON -DWITH_BUNDLE_SNAPPY=ON"
-      command: |
-        # Ensure rocksdb gets build statically
-        rm -rf _build/default/lib/rocksdb/
-        rm -rf _build/default/lib/mnesia_rocksdb
-        # Build the package
-        make prod-package
-        mkdir ${PACKAGES_DIR:?}
-        mv _build/prod/rel/aeternity/aeternity-$(cat VERSION).tar.gz ${PACKAGE_TARBALL:?}
-
-  build_ubuntu_package: &build_ubuntu_package
-    run:
-      name: Build Ubuntu package (*.deb)
-      environment:
-        PACKAGES_DIR: *packages_workspace
-        # The *clean commands are for work-around in CircleCI
-        # Debian/Ubuntu package building (clean issues; fakeroot and
-        # rebar3).
-        #
-        # The debian/rules file has conditional *clean targets based on
-        # DEB_SKIP_DH_AUTO_CLEAN.
-        #
-        # This prevents the presence of broken/dummy debian/rules file without
-        # clean targets. For example when running debuild directly without
-        # `make prod-deb-package`.
-        DEB_SKIP_DH_AUTO_CLEAN: "true"
-        ERLANG_ROCKSDB_BUILDOPTS: "-j2"
-        ERLANG_ROCKSDB_OPTS: "-DWITH_BUNDLE_LZ4=ON -DWITH_BUNDLE_SNAPPY=ON"
-      command: |
-        make distclean
-        make prod-deb-package
-        mkdir ${PACKAGES_DIR:?}
-        mv _build/../../*aeternity-node_*.deb ${PACKAGES_DIR:?}
-
-  test_arch_os_dependencies: &test_arch_os_dependencies
-    run:
-      name: Test architecture or OS specific functions
-      command: |
-        make test-arch-os-dependencies
-
-  store_package_artifacts: &store_package_artifacts
-    store_artifacts:
-      path: *packages_workspace
-      destination: /
-
-  store_rebar3_crashdump: &store_rebar3_crashdump
-    store_artifacts:
-      path: rebar3.crashdump
-
-  deploy_steps: &deploy_steps
-    - fixed_checkout
-    - *set_package_path
-    - attach_workspace:
-        at: *packages_workspace
-    - run:
-        name: Deploy
-        environment:
-          PACKAGES_DIR: *packages_workspace
-        command: |
-          export PACKAGE=${PACKAGE_TARBALL:?}
-          export DEPLOY_DB_VERSION=$(cat deployment/DB_VERSION)
-          cd /infrastructure && make deploy
-
-  fail_notification: &fail_notification
-    run:
-      name: Send failure notification
-      environment:
-        NOTIFY_BRANCH: *master_branch
-        HOOK_TEMPLATE: |
-          {
-            "text": "CircleCI job **%s** failed on branch **%s** by @%s",
-            "attachments": [
-              {
-                "title": "Build Link",
-                "title_link": "%s",
-                "color": "#FAD6D6"
-              }
-            ]
-          }
-      command: |
-        if [ -n "$CIRCLE_BRANCH" ]; then
-          if [ "$CIRCLE_BRANCH" = "${NOTIFY_BRANCH:?}" ]; then
-            HOOK_DATA=$(printf "$HOOK_TEMPLATE" "${CIRCLE_JOB:?}" "${CIRCLE_BRANCH:?}" "${CIRCLE_USERNAME:-unknown}" "${CIRCLE_BUILD_URL:?}")
-            curl -X POST -H 'Content-Type: application/json' ${ROCKET_HOOK_URL:?} --data "${HOOK_DATA:?}"
-          fi
-        fi
-      when: on_fail
-
-  fail_notification_nix: &fail_notification_nix
-    run:
-      name: Send failure notification
-      environment:
-        NOTIFY_BRANCH: *master_branch
-        HOOK_TEMPLATE: |
-          {
-            "text": "CircleCI job **%s** failed on branch **%s** by @%s",
-            "attachments": [
-              {
-                "title": "Build Link",
-                "title_link": "%s",
-                "color": "#FAD6D6"
-              }
-            ]
-          }
-      command: |
-        if [ -n "$CIRCLE_BRANCH" ]; then
-          if [ "$CIRCLE_BRANCH" = "${NOTIFY_BRANCH:?}" ]; then
-            HOOK_DATA=$(printf "$HOOK_TEMPLATE" "${CIRCLE_JOB:?}" "${CIRCLE_BRANCH:?}" "${CIRCLE_USERNAME:-unknown}" "${CIRCLE_BUILD_URL:?}")
-            nix-shell webhook.nix -j auto --run "curl -X POST -H 'Content-Type: application/json' ${ROCKET_HOOK_URL:?} --data \"${HOOK_DATA:?}\""
-          fi
-        fi
-      when: on_fail
-
-  fail_notification_system_test: &fail_notification_system_test
-    run:
-      name: Send failure notification on system test
-      environment:
-        NOTIFY_BRANCH: *master_branch
-        HOOK_TEMPLATE: |
-          {
-            "text": "CircleCI job **%s** failed on branch **%s** by @%s",
-            "attachments": [
-              {
-                "title": "Build Link",
-                "title_link": "%s",
-                "color": "#FAD6D6"
-              }
-            ]
-          }
-      command: |
-        if [ -n "$CIRCLE_BRANCH" ]; then
-          if [ "$CIRCLE_BRANCH" = "${NOTIFY_BRANCH:?}" ]; then
-            HOOK_DATA=$(printf "$HOOK_TEMPLATE" "${CIRCLE_JOB:?}" "${CIRCLE_BRANCH:?}" "${CIRCLE_USERNAME:-unknown}" "${CIRCLE_BUILD_URL:?}")
-            curl -X POST -H 'Content-Type: application/json' ${ROCKET_HOOK_URL_SYSTEM_TEST:?} --data "${HOOK_DATA:?}"
-          fi
-        fi
-      when: on_fail
-
-  install_system_test_deps: &install_system_test_deps
-    run:
-      name: Install deps for system tests
-      command: |
-        make system-test-deps
-
-  install_system_smoke_test_deps: &install_system_smoke_test_deps
-    run:
-      name: Install deps for system smoke tests
-      command: |
-        make system-smoke-test-deps
-
-  system_test_logs: &system_test_logs system_test/logs
-
-  print_system_test_host_info: &print_system_test_host_info
-    run:
-      name: Print system test host information
-      command: |
-        uname -a
-        free -t -m
-
-  system_test_host_logs: &system_test_host_logs /tmp/system_test_host
-  collect_system_test_host_logs: &collect_system_test_host_logs
-    run:
-      name: Collect system test host logs
-      environment:
-        SYSTEM_TEST_HOST_LOGS_DIR: *system_test_host_logs
-      command: |
-        mkdir ${SYSTEM_TEST_HOST_LOGS_DIR:?}
-        dmesg > ${SYSTEM_TEST_HOST_LOGS_DIR:?}/dmesg.log
-      when: always
-
-  trim_test_artifacts: &trim_test_artifacts
-      run:
-        name: trim down artifacts
-        command: |
-          find _build/test/logs -iname bin | xargs rm -rf
-          find _build/test/logs -iname data | xargs rm -rf
-          find _build/test/logs -iname releases | xargs rm -rf
-          find _build/test/logs -iname extensions | xargs rm -rf
-          find _build/test/logs -iname hooks | xargs rm -rf
-
-  test_steps_otp21: &test_steps_otp21
-    - fixed_checkout
-    - *restore_rebar_cache
-    - *restore_build_otp21_cache
-    - run:
-        name: Test
-        command: |
-          epmd -daemon
-          make ${MAKE_TARGET:?} CT_TEST_FLAGS="--suite=$(.circleci/split_suites.sh)"
-    # Isolates the junit.xml report because additional files in _build/test/logs
-    # are somehow causing issue with xunit report upload, parsing and merging
-    - run:
-        name: move test report
-        command: |
-          mkdir _build/test/reports
-          mv _build/test/logs/junit.xml _build/test/reports/
-    - store_test_results:
-        path: _build/test/reports
-    - *trim_test_artifacts
-    - store_artifacts:
-        path: _build/test/logs
-    - *store_rebar3_crashdump
-    - *fail_notification
-
-  test_steps_otp22: &test_steps_otp22
-    - fixed_checkout
-    - *restore_rebar_cache
-    - *restore_build_otp22_cache
-    - run:
-        name: Test
-        command: |
-          epmd -daemon
-          make ${MAKE_TARGET:?} CT_TEST_FLAGS="--suite=$(.circleci/split_suites.sh)"
-    # Isolates the junit.xml report because additional files in _build/test/logs
-    # are somehow causing issue with xunit report upload, parsing and merging
-    - run:
-        name: move test report
-        command: |
-          mkdir _build/test/reports
-          mv _build/test/logs/junit.xml _build/test/reports/
-    - store_test_results:
-        path: _build/test/reports
-    - *trim_test_artifacts
-    - store_artifacts:
-        path: _build/test/logs
-    - *store_rebar3_crashdump
-    - *fail_notification
-
-  test_steps_otp23: &test_steps_otp23
-    - fixed_checkout
-    - *restore_rebar_cache
-    - *restore_build_otp23_cache
-    - run:
-        name: Test
-        command: |
-          epmd -daemon
-          make ${MAKE_TARGET:?} CT_TEST_FLAGS="--suite=$(.circleci/split_suites.sh)"
-    # Isolates the junit.xml report because additional files in _build/test/logs
-    # are somehow causing issue with xunit report upload, parsing and merging
-    - run:
-        name: move test report
-        command: |
-          mkdir _build/test/reports
-          mv _build/test/logs/junit.xml _build/test/reports/
-    - store_test_results:
-        path: _build/test/reports
-    - *trim_test_artifacts
-    - store_artifacts:
-        path: _build/test/logs
-    - *store_rebar3_crashdump
-    - *fail_notification
-
-  eunit_steps_otp21: &eunit_steps_otp21
-    - fixed_checkout
-    - *restore_rebar_cache
-    - *restore_build_otp21_cache
-    - run:
-        name: Test
-        command: |
-          epmd -daemon
-          make ${MAKE_TARGET:?}
-    - store_test_results:
-        path: eunit_report
-    - *store_rebar3_crashdump
-    - *fail_notification
-
-  eunit_steps_otp22: &eunit_steps_otp22
-    - fixed_checkout
-    - *restore_rebar_cache
-    - *restore_build_otp22_cache
-    - run:
-        name: Test
-        command: |
-          epmd -daemon
-          make ${MAKE_TARGET:?}
-    - store_test_results:
-        path: eunit_report
-    - *store_rebar3_crashdump
-    - *fail_notification
-
-  # Windows
-  windows_cache_version: &windows_cache_version "v1"
-  windows_artifacts: &windows_artifacts C:\Users\circleci\project\packages
-  windows_working_directory: &windows_working_directory C:\Users\circleci\project
-
-  windows_env: &windows_env
-    OTP_VERSION: << parameters.otp_version >>
-    WIN_OTP_PATH: << parameters.otp_install_path >>
-    WIN_MSYS2_ROOT: << parameters.msys_install_path >>
-    MSYSCON: defterm
-    ANSICON: true
-    MSVC_VERSION: 14.22.27905
-    VCVARSALL: C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\VC\Auxiliary\Build\vcvarsall
-
-  windows_container: &windows_container
-    executor:
-      name: win/vs2019
-      shell: cmd.exe
-    parameters:
-      msys_install_path:
-        default: C:\tools\msys64
-        type: string
-      otp_install_path:
-        default: C:\tools\erl
-        type: string
-      otp_version:
-        default: "21.3"
-        type: string
-      artifacts_path:
-        default: *windows_artifacts
-        type: string
-    working_directory: *windows_working_directory
-    environment: *windows_env
-
 commands:
-  fixed_checkout:
-    steps:
-      - checkout
-      - run:
-          name: Reset to proper SHA1
-          command: |
-            if [ -n "$CIRCLE_TAG" ]; then
-              git reset --hard $(git rev-parse "$CIRCLE_TAG")
-            fi
+    aeplugin_install_devmode:
+        steps:
+            - run:
+                command: |
+                    export PLUGIN_VERSION=<< pipeline.parameters.aeplugin_devmode_version >>
+                    curl -fsSLOJ https://github.com/aeternity/aeplugin_dev_mode/releases/download/v$PLUGIN_VERSION/aeplugin_dev_mode.tar.gz
+                    tar -zxf aeplugin_dev_mode.tar.gz -C plugins/
+                name: Download devmode plugin
+    build_deb:
+        parameters:
+            output:
+                type: string
+        steps:
+            - run:
+                command: |
+                    make distclean
+                    make prod-deb-package
+                    mkdir << parameters.output>>
+                    mv _build/../../*aeternity-node_*.deb << parameters.output>>
+                environment:
+                    DEB_SKIP_DH_AUTO_CLEAN: "true"
+                    ERLANG_ROCKSDB_BUILDOPTS: -j2
+                    ERLANG_ROCKSDB_OPTS: -DWITH_BUNDLE_LZ4=ON -DWITH_BUNDLE_SNAPPY=ON
+                name: Build Ubuntu package (*.deb)
+    build_tarball:
+        parameters:
+            output:
+                type: string
+        steps:
+            - run:
+                command: |
+                    # Ensure rocksdb gets build statically
+                    rm -rf _build/default/lib/rocksdb/
+                    rm -rf _build/default/lib/mnesia_rocksdb
+                    # Build the package
+                    make prod-package
+                    mkdir $(dirname << parameters.output>>)
+                    cp _build/prod/rel/aeternity/aeternity-$(cat VERSION).tar.gz << parameters.output >>
+                environment:
+                    ERLANG_ROCKSDB_OPTS: -DWITH_BUNDLE_LZ4=ON -DWITH_BUNDLE_SNAPPY=ON
+                name: Build Package Tarball
+    common_tests:
+        parameters:
+            otp:
+                type: string
+            target:
+                type: string
+        steps:
+            - fixed_checkout
+            - restore_rebar_cache
+            - restore_build_cache:
+                otp: << parameters.otp >>
+            - run:
+                command: |
+                    epmd -daemon
+                    make << parameters.target >> CT_TEST_FLAGS="--suite=$(.circleci/scripts/split_suites.sh)"
+                name: Test
+            - run:
+                command: |
+                    mkdir _build/test/reports
+                    mv _build/test/logs/junit.xml _build/test/reports/
+                name: move test report
+            - store_test_results:
+                path: _build/test/reports
+            - run:
+                command: |
+                    find _build/test/logs -iname bin | xargs rm -rf
+                    find _build/test/logs -iname data | xargs rm -rf
+                    find _build/test/logs -iname releases | xargs rm -rf
+                    find _build/test/logs -iname extensions | xargs rm -rf
+                    find _build/test/logs -iname hooks | xargs rm -rf
+                name: trim down artifacts
+            - store_artifacts:
+                path: _build/test/logs
+            - store_rebar3_crashdump
+            - fail_notification
+    deploy_env:
+        parameters:
+            color:
+                default: ""
+                type: string
+            downtime:
+                default: 0
+                type: integer
+            env:
+                type: string
+            package_path:
+                type: string
+        steps:
+            - run:
+                command: |
+                    export DEPLOY_ENV=<< parameters.env >>
+                    export DEPLOY_COLOR=<< parameters.color >>
+                    export DEPLOY_DOWNTIME=<< parameters.downtime >>
+                    export PACKAGE=<< parameters.package_path >>
+                    export DEPLOY_DB_VERSION=$(cat deployment/DB_VERSION)
 
-  setup_secrets:
-    steps:
-      - run:
-          name: Setup environment secrets
-          command: cd /infrastructure && make secrets SECRETS_OUTPUT_DIR=/secrets
-
-  docker_login:
-    steps:
-      - setup_secrets
-      - run:
-          name: Login to Docker Hub
-          command: |
-            docker login -u $(</secrets/DOCKER_USER) -p $(</secrets/DOCKER_PASS)
-
-  docker_build_branch:
-    steps:
-      - run:
-          name: Build branch docker image
-          command: |
-            docker pull aeternity/builder:otp21
-            docker build -t ${DOCKERHUB_REPO:?}:${CIRCLE_BRANCH/\//_} .
-      - run:
-          name: Start branch docker image
-          command: |
-            docker run -d -e AE__CHAIN__PERSIST -e AE__FORK_MANAGEMENT__NETWORK_ID --name ae_${CIRCLE_SHA1:?} ${DOCKERHUB_REPO:?}:${CIRCLE_BRANCH/\//_} bin/aeternity console -noinput -network_id ae_test
-      - run:
-          name: Display logs from branch docker image
-          command: |
-            docker logs -f ae_${CIRCLE_SHA1:?}
-          background: true
-      - run:
-          name: Wait for container to be ready
-          command: |
-            docker exec -it ae_${CIRCLE_SHA1:?} curl -4 --retry-connrefused --max-time 60 --retry 6 --connect-timeout 10 http://localhost:3013/v2/status
-      - run:
-          name: Health check
-          command: |
-            until [ "`docker inspect -f {{.State.Health.Status}} ae_${CIRCLE_SHA1:?}`"=="healthy" ]; do
-                sleep 1;
-            done;
-
-  restore_windows_package_cache:
-    parameters:
-      windows_cache_version:
-        default: *windows_cache_version
-        type: string
-    steps:
-     - restore_cache:
-        keys:
-          - windows-package-cache-<< parameters.windows_cache_version >>-{{ .Branch }}-
-          - windows-package-cache-<< parameters.windows_cache_version >>-master-
-          - windows-package-cache-<< parameters.windows_cache_version >>-
-
-  save_windows_package_cache:
-    parameters:
-      windows_cache_version:
-        type: string
-        default: *windows_cache_version
-      install_path:
-        type: string
-    steps:
-      - save_cache:
-          key: windows-package-cache-<< parameters.windows_cache_version >>-{{ .Branch }}-
-          paths:
-            - << parameters.install_path >>
-
-  install_win_msys2:
-    parameters:
-      install_path:
-        default: C:\tools\msys64
-        type: string
-    steps:
-      - restore_windows_package_cache
-      - run:
-          name: Install MSYS2
-          command: .circleci\windows\msys2_prepare
-      - save_windows_package_cache:
-          install_path: << parameters.install_path >>
-
-  restore_windows_erl_cache:
-    parameters:
-      windows_cache_version:
-        default: *windows_cache_version
-        type: string
-      otp_version:
-        type: string
-    steps:
-      - restore_cache:
-          keys:
-            - windows-erl<< parameters.otp_version >>-cache-<< parameters.windows_cache_version >>-{{ .Branch }}-
-            - windows-erl<< parameters.otp_version >>-cache-<< parameters.windows_cache_version >>-master-
-            - windows-erl<< parameters.otp_version >>-cache-<< parameters.windows_cache_version >>-
-
-  save_windows_erl_cache:
-    parameters:
-      windows_cache_version:
-        default: *windows_cache_version
-        type: string
-      install_path:
-        type: string
-      otp_version:
-        type: string
-    steps:
-      - save_cache:
-          key: windows-erl<< parameters.otp_version >>-cache-<< parameters.windows_cache_version >>-{{ .Branch }}-
-          paths:
-            - << parameters.install_path >>
-
-  install_win_otp:
-    parameters:
-      install_path:
-        type: string
-      otp_version:
-        type: string
-    steps:
-      - restore_windows_erl_cache:
-          otp_version: << parameters.otp_version >>
-      - run:
-          name: Install Erlang/OTP << parameters.otp_version >>
-          command: scripts\windows\install_erlang << parameters.otp_version >> << parameters.install_path >>
-      - save_windows_erl_cache:
-          otp_version: << parameters.otp_version >>
-          install_path: << parameters.install_path >>
-
-  windows_install_deps:
-    parameters:
-      msys_install_path:
-        type: string
-      otp_install_path:
-        type: string
-      otp_version:
-        type: string
-    steps:
-      - fixed_checkout
-      - install_win_otp:
-          install_path: << parameters.otp_install_path >>
-          otp_version: << parameters.otp_version >>
-      - install_win_msys2:
-          install_path: << parameters.msys_install_path >>
-
-  upload_aws_build_artifacts:
-    steps:
-      - run:
-          name: Upload build artifacts to central repository (AWS)
-          command: |
-            if [ -z "$CIRCLE_PR_NUMBER" ]; then
-              envdir /secrets aws s3 cp --acl public-read ${PACKAGE_TARBALL:?} s3://${S3_BUILDS_BUCKET:?}/
-              if [ -n "$CIRCLE_BRANCH" -a "$CIRCLE_BRANCH" = "master" ]; then
-                envdir /secrets aws s3 cp --acl public-read ${PACKAGE_TARBALL:?} s3://${S3_BUILDS_BUCKET:?}/aeternity-latest-${PKG_SUFFIX:?}${PKG_EXT:-".tar.gz"}
-              fi
-            fi
-
-  upload_aws_release_artifacts:
-    steps:
-      - run:
-          name: Upload release artifacts to central repository (AWS)
-          command: |
-            envdir /secrets aws s3 cp --acl public-read ${PACKAGE_TARBALL:?} s3://${S3_RELEASES_BUCKET:?}/
-
-  upload_aws_latest_artifacts:
-    steps:
-      - run:
-          name: Upload latest release artifacts to central repository (AWS)
-          command: |
-            envdir /secrets aws s3 cp --acl public-read ${PACKAGE_TARBALL:?} s3://${S3_RELEASES_BUCKET:?}/aeternity-latest-${PKG_SUFFIX:?}${PKG_EXT:-".tar.gz"}
-
-  upload_github_release_artifacts:
-    steps:
-      - run:
-          name: Upload GitHub Release Asset
-          command: |
-            envdir /secrets /infrastructure/scripts/upload-github-release-assets.sh github_api_token=${GITHUB_API_TOKEN:?} \
-              owner=${CIRCLE_PROJECT_USERNAME} repo=${CIRCLE_PROJECT_REPONAME} \
-              tag=${CIRCLE_TAG} ASSETS=${PACKAGES_DIR:?}/*
-
-  publish_ubuntu_package:
-    parameters:
-      packages_dir:
-        type: string
-      component:
-        type: string
-    steps:
-      - run:
-          name: Checkout APT repository
-          command: |
-            git clone git@github.com:aeternity/apt-repo.git --branch inbox --single-branch ~/apt-repo
-      - run:
-          name: Add deb packages
-          command: |
-            cp << parameters.packages_dir >>/aeternity-node*.deb ~/apt-repo/inbox/aeternity-node/<< parameters.component >>/
-      - run:
-          name: Setup git
-          command: |
-            git config --global push.default simple
-            git config --global user.email "35604848+aeternity-bot@users.noreply.github.com"
-            git config --global user.name "Aeternity node CI"
-      - run:
-          name: Commit and push
-          command: |
-            cd ~/apt-repo
-            git add -A
-            git commit -m "Add aeternity node package to << parameters.component >>" || true
-            git push
-
-  publish_osx_package:
-    parameters:
-      packages_dir:
-        type: string
-      branch:
-        type: string
-    steps:
-      - run:
-          name: Checkout Homebrew repository
-          command: |
-            git clone git@github.com:aeternity/homebrew-aeternity.git --branch << parameters.branch >> --single-branch ~/homebrew-aeternity
-      - run:
-          name: Update the Homebrew formula
-          command: |
-            make VERSION
-            VERSION=$(cat VERSION)
-            PACKAGE_URL=https://github.com/aeternity/aeternity/releases/download/v$VERSION/aeternity-$VERSION-macos-x86_64.tar.gz
-            SHA256=$(sha256sum << parameters.packages_dir >>/aeternity-*-macos-x86_64.tar.gz | head -1 | cut -f 1 -d " ")
-            cd ~/homebrew-aeternity/
-            sed -i "s|^  url .*|  url \"$PACKAGE_URL\"|g" Formula/aeternity-node.rb
-            sed -i "s|^  version .*|  version \"$VERSION\"|g" Formula/aeternity-node.rb
-            sed -i "s|^  sha256 .*|  sha256 \"$SHA256\"|g" Formula/aeternity-node.rb
-      - run:
-          name: Setup git
-          command: |
-            git config --global push.default simple
-            git config --global user.email "35604848+aeternity-bot@users.noreply.github.com"
-            git config --global user.name "Aeternity node CI"
-      - run:
-          name: Commit and push
-          command: |
-            make VERSION
-            VERSION=$(cat VERSION)
-            cd ~/homebrew-aeternity/
-            git add Formula/aeternity-node.rb
-            git diff --staged
-            git commit -m "Update aeternity-node formula to $VERSION"
-            git push
-
-  upload_build_artifacts:
-    steps:
-      - fixed_checkout
-      - *set_package_path
-      - setup_secrets
-      - attach_workspace:
-          at: *packages_workspace
-      - upload_aws_build_artifacts
-      - *fail_notification
-
-  upload_release_artifacts:
-    steps:
-      - fixed_checkout
-      - *set_package_path
-      - setup_secrets
-      - attach_workspace:
-          at: *packages_workspace
-      - upload_github_release_artifacts
-      - upload_aws_release_artifacts
-
-  upload_latest_artifacts:
-    steps:
-      - fixed_checkout
-      - *set_package_path
-      - setup_secrets
-      - attach_workspace:
-          at: *packages_workspace
-      - upload_aws_latest_artifacts
-      - *fail_notification
-
-
+                    cd /infrastructure && make deploy
+                name: Deploy
+    docker_build:
+        parameters:
+            tag:
+                type: string
+        steps:
+            - run:
+                command: |
+                    docker pull aeternity/builder:bionic-otp22
+                    docker build -t << pipeline.parameters.docker_repo >>:<< parameters.tag >> .
+                name: Build docker image
+            - run:
+                command: |
+                    docker run -d -e AE__CHAIN__PERSIST -e AE__FORK_MANAGEMENT__NETWORK_ID \
+                      --name ae_<< pipeline.git.revision >> \
+                      << pipeline.parameters.docker_repo >>:<< parameters.tag >> \
+                      bin/aeternity console -noinput -network_id ae_test
+                name: Start docker image
+            - run:
+                background: true
+                command: |
+                    docker logs -f ae_<< pipeline.git.revision >>
+                name: Display logs from docker image
+            - run:
+                command: |
+                    docker exec -it ae_<< pipeline.git.revision >> curl -4 --retry-connrefused --max-time 60 --retry 6 --connect-timeout 10 http://localhost:3013/v2/status
+                name: Wait for container to be ready
+            - run:
+                command: |
+                    until [ "`docker inspect -f {{.State.Health.Status}} ae_<< pipeline.git.revision >>`"=="healthy" ]; do
+                        sleep 1;
+                    done;
+                name: Health check
+    docker_image:
+        parameters:
+            tag:
+                type: string
+            tag_only:
+                default: false
+                type: boolean
+        steps:
+            - when:
+                condition:
+                    not: << parameters.tag_only >>
+                steps:
+                    - docker_build:
+                        tag: << parameters.tag >>
+            - when:
+                condition: << parameters.tag_only >>
+                steps:
+                    - docker_tag:
+                        tag: << parameters.tag >>
+            - docker_push:
+                tag: << parameters.tag >>
+    docker_login:
+        steps:
+            - setup_secrets
+            - run:
+                command: |
+                    docker login -u $(</secrets/DOCKER_USER) -p $(</secrets/DOCKER_PASS)
+                name: Login to Docker Hub
+    docker_push:
+        parameters:
+            tag:
+                type: string
+        steps:
+            - docker_login
+            - run:
+                command: |
+                    docker push << pipeline.parameters.docker_repo >>:<< parameters.tag >>
+                name: Push Docker image
+    docker_system_test:
+        parameters:
+            smoke:
+                type: boolean
+            system_test_host_logs:
+                default: /tmp/system_test_host
+                type: string
+            system_test_logs:
+                default: system_test/logs
+                type: string
+        steps:
+            - run:
+                command: |
+                    uname -a
+                    free -t -m
+                name: Print system test host information
+            - fixed_checkout
+            - install_os_deps
+            - install_otp
+            - install_libsodium
+            - restore_rebar_cache
+            - restore_machine_build_cache
+            - run:
+                command: |
+                    sudo usermod -aG docker ubuntu
+                    sudo chown -R ubuntu:ubuntu ~/aeternity
+                name: Prepare ubuntu user (1000:1000) to run docker commands
+            - when:
+                condition:
+                    not: << parameters.smoke >>
+                steps:
+                    - run_docker_system_test
+            - when:
+                condition: << parameters.smoke >>
+                steps:
+                    - run_docker_system_smoke_test
+            - run:
+                command: |
+                    mkdir << parameters.system_test_host_logs >>
+                    dmesg > << parameters.system_test_host_logs >>/dmesg.log
+                name: Collect system test host logs
+                when: always
+            - fail_notification_system_test
+            - save_machine_build_cache
+            - store_test_results:
+                path: << parameters.system_test_logs >>
+            - store_artifacts:
+                path: << parameters.system_test_logs >>
+            - store_artifacts:
+                path: << parameters.system_test_host_logs >>
+    docker_tag:
+        parameters:
+            src:
+                default: << pipeline.git.tag >>
+                type: string
+            tag:
+                type: string
+        steps:
+            - docker_login
+            - run:
+                command: |
+                    docker pull << pipeline.parameters.docker_repo >>:<< parameters.src >>
+                    docker tag << pipeline.parameters.docker_repo >>:<< parameters.src >> << pipeline.parameters.docker_repo >>:<< parameters.tag >>
+                name: Tag docker image
+    eunit:
+        parameters:
+            otp:
+                type: string
+            target:
+                type: string
+        steps:
+            - fixed_checkout
+            - restore_rebar_cache
+            - restore_build_cache:
+                otp: << parameters.otp >>
+            - run:
+                command: |
+                    epmd -daemon
+                    make eunit-<< parameters.target >>
+                name: Test
+            - store_test_results:
+                path: eunit_report
+            - store_rebar3_crashdump
+            - fail_notification
+    fail_notification:
+        steps:
+            - run:
+                command: |
+                    if [ -n "$CIRCLE_BRANCH" ]; then
+                      if [ "$CIRCLE_BRANCH" = "${NOTIFY_BRANCH:?}" ]; then
+                        HOOK_DATA=$(printf "$HOOK_TEMPLATE" "${CIRCLE_JOB:?}" "${CIRCLE_BRANCH:?}" "${CIRCLE_USERNAME:-unknown}" "${CIRCLE_BUILD_URL:?}")
+                        curl -X POST -H 'Content-Type: application/json' ${ROCKET_HOOK_URL:?} --data "${HOOK_DATA:?}"
+                      fi
+                    fi
+                environment:
+                    HOOK_TEMPLATE: |
+                        {
+                          "text": "CircleCI job **%s** failed on branch **%s** by @%s",
+                          "attachments": [
+                            {
+                              "title": "Build Link",
+                              "title_link": "%s",
+                              "color": "#FAD6D6"
+                            }
+                          ]
+                        }
+                    NOTIFY_BRANCH: << pipeline.parameters.master_branch >>
+                name: Send failure notification
+                when: on_fail
+    fail_notification_nix:
+        steps:
+            - run:
+                command: |
+                    if [ -n "$CIRCLE_BRANCH" ]; then
+                      if [ "$CIRCLE_BRANCH" = "${NOTIFY_BRANCH:?}" ]; then
+                        HOOK_DATA=$(printf "$HOOK_TEMPLATE" "${CIRCLE_JOB:?}" "${CIRCLE_BRANCH:?}" "${CIRCLE_USERNAME:-unknown}" "${CIRCLE_BUILD_URL:?}")
+                        nix-shell webhook.nix -j auto --run "curl -X POST -H 'Content-Type: application/json' ${ROCKET_HOOK_URL:?} --data \"${HOOK_DATA:?}\""
+                      fi
+                    fi
+                environment:
+                    HOOK_TEMPLATE: |
+                        {
+                          "text": "CircleCI job **%s** failed on branch **%s** by @%s",
+                          "attachments": [
+                            {
+                              "title": "Build Link",
+                              "title_link": "%s",
+                              "color": "#FAD6D6"
+                            }
+                          ]
+                        }
+                    NOTIFY_BRANCH: << pipeline.parameters.master_branch >>
+                name: Send failure notification
+                when: on_fail
+    fail_notification_system_test:
+        steps:
+            - run:
+                command: |
+                    if [ -n "$CIRCLE_BRANCH" ]; then
+                      if [ "$CIRCLE_BRANCH" = "${NOTIFY_BRANCH:?}" ]; then
+                        HOOK_DATA=$(printf "$HOOK_TEMPLATE" "${CIRCLE_JOB:?}" "${CIRCLE_BRANCH:?}" "${CIRCLE_USERNAME:-unknown}" "${CIRCLE_BUILD_URL:?}")
+                        curl -X POST -H 'Content-Type: application/json' ${ROCKET_HOOK_URL_SYSTEM_TEST:?} --data "${HOOK_DATA:?}"
+                      fi
+                    fi
+                environment:
+                    HOOK_TEMPLATE: |
+                        {
+                          "text": "CircleCI job **%s** failed on branch **%s** by @%s",
+                          "attachments": [
+                            {
+                              "title": "Build Link",
+                              "title_link": "%s",
+                              "color": "#FAD6D6"
+                            }
+                          ]
+                        }
+                    NOTIFY_BRANCH: << pipeline.parameters.master_branch >>
+                name: Send failure notification on system test
+                when: on_fail
+    fixed_checkout:
+        steps:
+            - checkout
+            - run:
+                command: |
+                    if [ -n "$CIRCLE_TAG" ]; then
+                      git reset --hard $(git rev-parse "$CIRCLE_TAG")
+                    fi
+                name: Reset to proper SHA1
+    install_libsodium:
+        steps:
+            - run:
+                command: |
+                    LIBSODIUM_DOWNLOAD_URL="https://github.com/jedisct1/libsodium/releases/download/${LIBSODIUM_VERSION}/libsodium-${LIBSODIUM_VERSION}.tar.gz" \
+                      && curl -fsSL -o libsodium-src.tar.gz "$LIBSODIUM_DOWNLOAD_URL" \
+                      && mkdir libsodium-src \
+                      && tar -zxf libsodium-src.tar.gz -C libsodium-src --strip-components=1 \
+                      && cd libsodium-src \
+                      && ./configure && make -j$(nproc) && sudo make install && sudo ldconfig
+                name: Install libsodium
+    install_os_deps:
+        steps:
+            - run:
+                command: |
+                    sudo apt-get update
+                    sudo apt-get -qq -y install git curl \
+                      autoconf build-essential ncurses-dev libssl-dev libgmp-dev
+                name: Install OS dependancies
+    install_otp:
+        steps:
+            - run:
+                command: |
+                    # Install OTP package deps
+                    sudo apt-get update && sudo apt-get install libncurses5 libwxbase3.0-dev libwxgtk3.0-gtk3-dev libsctp1
+                    # Install OTP binary package
+                    PACKAGE_NAME=esl-erlang_${OTP_VERSION}-1~ubuntu~focal_amd64.deb
+                    OTP_DOWNLOAD_URL=https://packages.erlang-solutions.com/erlang/debian/pool/${PACKAGE_NAME}
+                    curl -fsSL -o ${PACKAGE_NAME} "$OTP_DOWNLOAD_URL"
+                    sudo dpkg -i ${PACKAGE_NAME}
+                name: Install OTP
+    promote_latest_artifact_s3:
+        parameters:
+            uri:
+                type: string
+        steps:
+            - attach_workspace:
+                at: << pipeline.parameters.packages_workspace >>
+            - run:
+                command: |
+                    BUCKET=$(dirname << parameters.uri >>)
+                    DST=$(basename << parameters.uri >> | sed -e 's/\(aeternity\)-.*-\(.*\)-\(.*\).tar.gz/\1-latest-\2-\3.tar.gz/g')
+                    envdir /secrets aws s3 cp --acl public-read << parameters.uri >> $BUCKET/$DST
+                name: Upload artifacts to s3
+    restore_build_cache:
+        parameters:
+            otp:
+                type: string
+        steps:
+            - restore_cache:
+                key: build-cache-<< parameters.otp >>-cache-<< pipeline.parameters.build_cache_version >>-{{ .Revision }}
+    restore_build_nix_cache:
+        steps:
+            - restore_cache:
+                key: << pipeline.parameters.build_nix_cache_key >>
+    restore_machine_build_cache:
+        steps:
+            - restore_cache:
+                keys:
+                    - << pipeline.parameters.machine_build_cache_key >>
+                    - machine-build-cache-v20-{{ .Branch }}-
+                    - machine-build-cache-v20-
+    restore_rebar_cache:
+        steps:
+            - restore_cache:
+                key: << pipeline.parameters.rebar_cache_key >>
+    run_docker_system_smoke_test:
+        steps:
+            - run:
+                command: |
+                    make system-smoke-test-deps
+                name: Install deps for system smoke tests
+            - run:
+                command: |
+                    sudo -u ubuntu -E -H make smoke-test-run
+                name: System Smoke Tests
+                no_output_timeout: 1h
+    run_docker_system_test:
+        steps:
+            - run:
+                command: |
+                    make system-test-deps
+                name: Install deps for system tests
+            - run:
+                command: |
+                    sudo -u ubuntu -E -H make system-test
+                name: System Tests
+                no_output_timeout: 2h
+    save_build_cache:
+        parameters:
+            otp:
+                type: string
+        steps:
+            - save_cache:
+                key: build-cache-<< parameters.otp >>-cache-<< pipeline.parameters.build_cache_version >>-{{ .Revision }}
+                paths:
+                    - _build
+    save_build_nix_cache:
+        steps:
+            - save_cache:
+                key: << pipeline.parameters.build_nix_cache_key >>
+                paths:
+                    - _build
+    save_machine_build_cache:
+        steps:
+            - save_cache:
+                key: << pipeline.parameters.machine_build_cache_key >>
+                paths:
+                    - _build
+                    - .contracts_test_cache
+    save_rebar_cache:
+        steps:
+            - save_cache:
+                key: << pipeline.parameters.rebar_cache_key >>
+                paths:
+                    - .cache/rebar3
+    setup_docker:
+        steps:
+            - setup_remote_docker:
+                docker_layer_caching: true
+                version: 17.09.0-ce
+    setup_secrets:
+        steps:
+            - run:
+                command: cd /infrastructure && make secrets SECRETS_OUTPUT_DIR=/secrets
+                name: Setup environment secrets
+    store_package_artifacts:
+        steps:
+            - store_artifacts:
+                destination: /
+                path: << pipeline.parameters.packages_workspace >>
+    store_rebar3_crashdump:
+        steps:
+            - store_artifacts:
+                path: rebar3.crashdump
+    test_arch_os_dependencies:
+        steps:
+            - run:
+                command: |
+                    make test-arch-os-dependencies
+                name: Test architecture or OS specific functions
+    upload_artifacts_apt:
+        parameters:
+            component:
+                type: string
+            packages_dir:
+                type: string
+        steps:
+            - run:
+                command: |
+                    git clone git@github.com:aeternity/apt-repo.git --branch inbox --single-branch ~/apt-repo
+                name: Checkout APT repository
+            - run:
+                command: |
+                    cp << parameters.packages_dir >>/aeternity-node*.deb ~/apt-repo/inbox/aeternity-node/<< parameters.component >>/
+                name: Add deb packages
+            - run:
+                command: |
+                    git config --global push.default simple
+                    git config --global user.email "35604848+aeternity-bot@users.noreply.github.com"
+                    git config --global user.name "Aeternity node CI"
+                name: Setup git
+            - run:
+                command: |
+                    cd ~/apt-repo
+                    git add -A
+                    git commit -m "Add aeternity node package to << parameters.component >>" || true
+                    git push
+                name: Commit and push
+    upload_artifacts_brew:
+        parameters:
+            branch:
+                type: string
+            packages_dir:
+                type: string
+        steps:
+            - run:
+                command: |
+                    git clone git@github.com:aeternity/homebrew-aeternity.git --branch << parameters.branch >> --single-branch ~/homebrew-aeternity
+                name: Checkout Homebrew repository
+            - run:
+                command: |
+                    make VERSION
+                    VERSION=$(cat VERSION)
+                    PACKAGE_URL=https://github.com/aeternity/aeternity/releases/download/v$VERSION/aeternity-$VERSION-macos-x86_64.tar.gz
+                    SHA256=$(sha256sum << parameters.packages_dir >>/aeternity-*-macos-x86_64.tar.gz | head -1 | cut -f 1 -d " ")
+                    cd ~/homebrew-aeternity/
+                    sed -i "s|^  url .*|  url \"$PACKAGE_URL\"|g" Formula/aeternity-node.rb
+                    sed -i "s|^  version .*|  version \"$VERSION\"|g" Formula/aeternity-node.rb
+                    sed -i "s|^  sha256 .*|  sha256 \"$SHA256\"|g" Formula/aeternity-node.rb
+                name: Update the Homebrew formula
+            - run:
+                command: |
+                    git config --global push.default simple
+                    git config --global user.email "35604848+aeternity-bot@users.noreply.github.com"
+                    git config --global user.name "Aeternity node CI"
+                name: Setup git
+            - run:
+                command: |
+                    make VERSION
+                    VERSION=$(cat VERSION)
+                    cd ~/homebrew-aeternity/
+                    git add Formula/aeternity-node.rb
+                    git diff --staged
+                    git commit -m "Update aeternity-node formula to $VERSION"
+                    git push
+                name: Commit and push
+    upload_artifacts_github:
+        steps:
+            - attach_workspace:
+                at: << pipeline.parameters.packages_workspace >>
+            - run:
+                command: |
+                    envdir /secrets /infrastructure/scripts/upload-github-release-assets.sh \
+                      github_api_token=${GITHUB_API_TOKEN:?} \
+                      owner=${CIRCLE_PROJECT_USERNAME} \
+                      repo=${CIRCLE_PROJECT_REPONAME} \
+                      tag=${CIRCLE_TAG} \
+                      ASSETS=<< pipeline.parameters.packages_workspace >>/*
+                name: Upload GitHub Release Asset
+    upload_artifacts_s3:
+        parameters:
+            bucket:
+                type: string
+        steps:
+            - attach_workspace:
+                at: << pipeline.parameters.packages_workspace >>
+            - run:
+                command: |
+                    envdir /secrets aws s3 sync --acl public-read << pipeline.parameters.packages_workspace >> s3://<< parameters.bucket >>/
+                name: Upload artifacts to s3
+executors:
+    builder_container_1804:
+        docker:
+            - image: aeternity/builder:1804
+              user: builder
+        working_directory: /home/builder/aeternity
+    builder_container_nix_alpine:
+        docker:
+            - image: nixorg/nix:circleci
+        environment:
+            ERLANG_ROCKSDB_BUILDOPTS: -j2
+        working_directory: /home/circleci/aeternity
+    builder_container_otp22:
+        docker:
+            - image: aeternity/builder:bionic-otp22
+              user: builder
+        environment:
+            ERLANG_ROCKSDB_BUILDOPTS: -j2
+            ERLANG_ROCKSDB_OPTS: -DWITH_SYSTEM_ROCKSDB=ON -DWITH_SNAPPY=ON -DWITH_LZ4=ON -DWITH_BZ2=ON -DWITH_ZSTD=ON
+            OTP_VERSION: 22.3.4.9
+        working_directory: /home/builder/aeternity
+    builder_container_otp23:
+        docker:
+            - image: aeternity/builder:bionic-otp23
+              user: builder
+        environment:
+            ERLANG_ROCKSDB_BUILDOPTS: -j2
+            ERLANG_ROCKSDB_OPTS: -DWITH_SYSTEM_ROCKSDB=ON -DWITH_SNAPPY=ON -DWITH_LZ4=ON -DWITH_BZ2=ON -DWITH_ZSTD=ON
+            OTP_VERSION: 23.3.4.5
+        working_directory: /home/builder/aeternity
+    builder_container_otp24:
+        docker:
+            - image: aeternity/builder:bionic-otp24
+              user: builder
+        environment:
+            ERLANG_ROCKSDB_BUILDOPTS: -j2
+            ERLANG_ROCKSDB_OPTS: -DWITH_SYSTEM_ROCKSDB=ON -DWITH_SNAPPY=ON -DWITH_LZ4=ON -DWITH_BZ2=ON -DWITH_ZSTD=ON
+            OTP_VERSION: 24.1.3
+        working_directory: /home/builder/aeternity
+    buildpack:
+        docker:
+            - image: circleci/buildpack-deps:xenial
+        working_directory: /home/circleci/aeternity
+    infrastructure_container_stable:
+        docker:
+            - image: aeternity/infrastructure:stable
+        resource_class: large
+    infrastructure_container_unstable:
+        docker:
+            - image: aeternity/infrastructure:latest
+        resource_class: large
+    machine_2004:
+        environment:
+            LIBSODIUM_VERSION: 1.0.16
+            OTP_VERSION: 22.3.4.9
+        machine:
+            docker_layer_caching: true
+            image: ubuntu-2004:202111-01
+        resource_class: large
+        working_directory: /home/circleci/aeternity
 jobs:
-  build:
-    executor: builder_container_otp22
-    steps:
-      - fixed_checkout
-      - *restore_rebar_cache
-      - run:
-          name: Build
-          command: make test-build
-      - save_cache:
-          key: *build_otp22_cache_key
-          paths:
-            - "_build"
-      - save_cache:
-          key: *rebar_cache_key
-          paths:
-            - .cache/rebar3
-      - *store_rebar3_crashdump
-      - *fail_notification
-
-  build_otp21:
-    executor: builder_container_otp21
-    steps:
-      - fixed_checkout
-      - *restore_rebar_cache
-      - run:
-          name: Build
-          command: make test-build
-      - save_cache:
-          key: *build_otp21_cache_key
-          paths:
-            - "_build"
-      - save_cache:
-          key: *rebar_cache_key
-          paths:
-            - .cache/rebar3
-      - *store_rebar3_crashdump
-      - *fail_notification
-
-  build_otp23:
-    executor: builder_container_otp23
-    steps:
-      - fixed_checkout
-      - *restore_rebar_cache
-      - run:
-          name: Build
-          command: make test-build
-      - save_cache:
-          key: *build_otp23_cache_key
-          paths:
-            - "_build"
-      - save_cache:
-          key: *rebar_cache_key
-          paths:
-            - .cache/rebar3
-      - *store_rebar3_crashdump
-      - *fail_notification
-
-  build_nix:
-    executor: builder_container_nix_alpine
-    steps:
-      - fixed_checkout
-      - *restore_rebar_cache
-      - *restore_build_nix_cache
-      - run:
-          name: Build
-          command: nix-shell -j auto --run "make KIND=test"
-      - save_cache:
-          key: *build_nix_cache_key
-          paths:
-            - "_build"
-      - save_cache:
-          key: *rebar_cache_key
-          paths:
-            - .cache/rebar3
-      - *store_rebar3_crashdump
-      - *fail_notification_nix
-
-  test_roma:
-    executor: builder_container_otp22
-    parallelism: 3
-    environment:
-      - MAKE_TARGET: ct-roma
-    steps: *test_steps_otp22
-
-  test_minerva:
-    executor: builder_container_otp22
-    parallelism: 3
-    environment:
-      - MAKE_TARGET: ct-minerva
-    steps: *test_steps_otp22
-
-  test_fortuna:
-    executor: builder_container_otp22
-    parallelism: 3
-    environment:
-      - MAKE_TARGET: ct-fortuna
-    steps: *test_steps_otp22
-
-  test_lima:
-    executor: builder_container_otp22
-    parallelism: 3
-    environment:
-      - MAKE_TARGET: ct-lima
-    steps: *test_steps_otp22
-
-  test_latest:
-    executor: builder_container_otp22
-    parallelism: 3
-    environment:
-      - MAKE_TARGET: ct-latest
-    steps: *test_steps_otp22
-
-  # Sanity check whether the latest aesophia compiler works
-  test_latest_with_aesophia_compiler:
-    executor: builder_container_otp22
-    parallelism: 1
-    environment:
-      - MAKE_TARGET: ct-latest-no-aci
-    steps: *test_steps_otp22
-
-  test_latest_otp21:
-    executor: builder_container_otp21
-    parallelism: 3
-    environment:
-      - MAKE_TARGET: ct-latest
-    steps: *test_steps_otp21
-
-  test_latest_otp23:
-    executor: builder_container_otp23
-    parallelism: 3
-    environment:
-      - MAKE_TARGET: ct-latest
-    steps: *test_steps_otp23
-
-  test_mnesia_leveled:
-    executor: builder_container_otp22
-    parallelism: 3
-    environment:
-      - MAKE_TARGET: ct-mnesia-leveled
-    steps: *test_steps_otp22
-
-  test_mnesia_rocksdb:
-    executor: builder_container_otp22
-    parallelism: 3
-    environment:
-      - MAKE_TARGET: ct-mnesia-rocksdb
-    steps: *test_steps_otp22
-
-  eunit_roma:
-    executor: builder_container_otp22
-    environment:
-      - MAKE_TARGET: eunit-roma
-    steps: *eunit_steps_otp22
-
-  eunit_minerva:
-    executor: builder_container_otp22
-    environment:
-      - MAKE_TARGET: eunit-minerva
-    steps: *eunit_steps_otp22
-
-  eunit_fortuna:
-    executor: builder_container_otp22
-    environment:
-      - MAKE_TARGET: eunit-fortuna
-    steps: *eunit_steps_otp22
-
-  eunit_lima:
-    executor: builder_container_otp22
-    environment:
-      - MAKE_TARGET: eunit-lima
-    steps: *eunit_steps_otp22
-
-  eunit_latest:
-    executor: builder_container_otp22
-    environment:
-      - MAKE_TARGET: eunit-latest
-    steps: *eunit_steps_otp22
-
-  aevm_tests:
-    executor: builder_container_otp22
-    steps:
-      - fixed_checkout
-      - *restore_rebar_cache
-      - *restore_build_otp22_cache
-      - run:
-          name: AEVM Tests
-          command: |
-            make aevm-test
-      - *store_rebar3_crashdump
-      - *fail_notification
-
-  static_analysis:
-    executor: builder_container_otp22
-    steps:
-      - fixed_checkout
-      - run: make dockerignore-check
-      - *restore_rebar_cache
-      - *restore_build_otp22_cache
-      - run: make edoc
-      - restore_cache:
-          keys:
-            - dialyzer-otp22-cache-v5-{{ .Branch }}-{{ .Revision }}
-            - dialyzer-otp22-cache-v5-{{ .Branch }}-
-            - dialyzer-otp22-cache-v5-
-      - run:
-          name: Update dialyzer PLT
-          command: make dialyzer-install
-      - save_cache:
-          key: dialyzer-otp22-cache-v5-{{ .Branch }}-{{ .Revision }}
-          paths:
-            - *container_otp22_plt
-      - run:
-          name: Run dialyzer
-          no_output_timeout: 20m
-          command: make dialyzer
-      - run:
-          name: Check OTP version (for effective CI caching)
-          # How to retrieve OTP version in installed OTP development system: http://erlang.org/doc/system_principles/versions.html
-          command: test "${OTP_VERSION:?}" = $(cat $(erl -noinput -eval 'io:format("~s", [filename:join([code:root_dir(), "releases", erlang:system_info(otp_release), "OTP_VERSION"])]), init:stop().'))
-      - *store_rebar3_crashdump
-      - *fail_notification
-
-  static_analysis_otp21:
-    executor: builder_container_otp21
-    steps:
-      - fixed_checkout
-      - *restore_rebar_cache
-      - *restore_build_otp21_cache
-      - restore_cache:
-          keys:
-            - dialyzer-otp21-cache-v2-{{ .Branch }}-{{ .Revision }}
-            - dialyzer-otp21-cache-v2-{{ .Branch }}-
-            - dialyzer-otp21-cache-v2-
-      - run:
-          name: Update dialyzer PLT
-          command: make dialyzer-install
-      - save_cache:
-          key: dialyzer-otp21-cache-v2-{{ .Branch }}-{{ .Revision }}
-          paths:
-            - *container_otp21_plt
-      - run:
-          name: Run dialyzer
-          no_output_timeout: 20m
-          command: make dialyzer
-      - run:
-          name: Check OTP version (for effective CI caching)
-          # How to retrieve OTP version in installed OTP development system: http://erlang.org/doc/system_principles/versions.html
-          command: test "${OTP_VERSION:?}" = $(cat $(erl -noinput -eval 'io:format("~s", [filename:join([code:root_dir(), "releases", erlang:system_info(otp_release), "OTP_VERSION"])]), init:stop().'))
-      - *store_rebar3_crashdump
-      - *fail_notification
-
-  static_analysis_otp23:
-    executor: builder_container_otp23
-    steps:
-      - fixed_checkout
-      - *restore_rebar_cache
-      - *restore_build_otp23_cache
-      - restore_cache:
-          keys:
-            - dialyzer-otp23-cache-v1-{{ .Branch }}-{{ .Revision }}
-            - dialyzer-otp23-cache-v1-{{ .Branch }}-
-            - dialyzer-otp23-cache-v1-
-      - run:
-          name: Update dialyzer PLT
-          command: make dialyzer-install
-      - save_cache:
-          key: dialyzer-otp23-cache-v1-{{ .Branch }}-{{ .Revision }}
-          paths:
-            - *container_otp23_plt
-      - run:
-          name: Run dialyzer
-          no_output_timeout: 20m
-          command: make dialyzer
-      - run:
-          name: Check OTP version (for effective CI caching)
-          # How to retrieve OTP version in installed OTP development system: http://erlang.org/doc/system_principles/versions.html
-          command: test "${OTP_VERSION:?}" = $(cat $(erl -noinput -eval 'io:format("~s", [filename:join([code:root_dir(), "releases", erlang:system_info(otp_release), "OTP_VERSION"])]), init:stop().'))
-      - *store_rebar3_crashdump
-      - *fail_notification
-
-  rebar_lock_check:
-    executor: builder_container_otp22
-    steps:
-      - fixed_checkout
-      - run:
-          name: Ensure lock file is up-to-date
-          command: |
-            ./rebar3 upgrade
-            git diff --quiet -- rebar.lock || (echo "rebar.lock is not up-to-date" && exit 1)
-      - *store_rebar3_crashdump
-      - *fail_notification
-
-  linux_package:
-    executor: builder_container_otp22
-    steps:
-      - fixed_checkout
-      - *set_package_path
-      - *test_arch_os_dependencies
-      - *build_package
-      - store_artifacts:
-          path: /tmp/package_tests/node1/log
-      - store_artifacts:
-          path: /tmp/package_tests/node2/log
-      - store_artifacts:
-          path: /tmp/package_tests/node3/log
-      - *store_package_artifacts
-      - *store_rebar3_crashdump
-      - persist_to_workspace:
-          root: *packages_workspace
-          paths:
-            - "*.tar.gz"
-      - *fail_notification
-
-  ubuntu_package:
-    executor: builder_container_1804
-    working_directory: ~/aeternity_deb
-    steps:
-      - fixed_checkout
-      - *build_ubuntu_package
-      - *store_package_artifacts
-      - persist_to_workspace:
-          root: *packages_workspace
-          paths:
-            - "*.deb"
-      - *fail_notification
-
-  osx_package:
-    macos:
-      xcode: "11.1.0" # 11.1.0 is macOS 10.14.4
-    working_directory: ~/aeternity
-    steps:
-      - fixed_checkout
-      - *restore_macos_package_cache
-      - run:
-          name: Install required tools
-          # libsodium headers cannot be found without explicit brew link
-          command: |
-            git -C "/usr/local/Homebrew/Library/Taps/homebrew/homebrew-core" fetch --unshallow
-            git -C "/usr/local/Homebrew/Library/Taps/homebrew/homebrew-cask" fetch --unshallow
-            brew update
-            brew rm python@2
-            brew install gmp libsodium erlang@21 cmake
-            brew link gmp
-            brew link libsodium
-            brew link --force erlang@21
-            brew link cmake
-      - *save_macos_package_cache
-      - *set_package_path
-      - *test_arch_os_dependencies
-      - *build_package
-      - store_artifacts:
-          path: /tmp/package_tests/node1/log
-      - store_artifacts:
-          path: /tmp/package_tests/node2/log
-      - store_artifacts:
-          path: /tmp/package_tests/node3/log
-      - *store_package_artifacts
-      - persist_to_workspace:
-          root: *packages_workspace
-          paths:
-            - "*.tar.gz"
-      - *fail_notification
-
-  docker_smoke_tests:
-    executor: buildpack
-    steps:
-      - fixed_checkout
-      - *setup_remote_docker
-      - docker_build_branch
-
-  docker_js_sdk_smoke_test:
-    executor: buildpack
-    environment:
-      - AE__CHAIN__PERSIST: false
-      - AE__FORK_MANAGEMENT__NETWORK_ID: local_iris_testnet
-    steps:
-      - fixed_checkout
-      - *setup_remote_docker
-      - docker_build_branch
-      - run:
-          name: Start NodeJS
-          command: docker run -d --network container:ae_${CIRCLE_SHA1:?} --name nodejs circleci/node:15.0.0-buster sleep 1337
-      - run:
-          name: Copy tests
-          command: docker cp ./sdk_smoke_test/aepp-sdk-js nodejs:/tests
-      - run:
-          name: Run JS SDK smoke test
-          command: docker exec -it nodejs sh -c "cd /tests && npm ci && npm test"
-
-  docker_db_smoke_test:
-    docker:
-      - image: circleci/buildpack-deps:bionic
-    environment:
-      - DOCKERHUB_REPO: aeternity/aeternity
-      - AE__CHAIN__PERSIST: true
-    steps:
-      - fixed_checkout
-      - *setup_remote_docker
-      - run:
-          name: Install OS Deps
-          command: sudo apt-get update && sudo apt-get install -y libsodium23 libtinfo5 libssl1.0
-      - run:
-          name: Download latest release package
-          command: wget https://releases.aeternity.io/aeternity-latest-ubuntu-x86_64.tar.gz
-      - run:
-          name: Unzip stable node
-          command: mkdir node_stable && tar -xvf aeternity-latest-ubuntu-x86_64.tar.gz -C ./node_stable
-      - run:
-          name: Generate an old DB
-          command: |
-            ./node_stable/bin/aeternity start
-            sleep 60 # Let it sync a bit
-            ./node_stable/bin/aeternity stop
-      - run:
-          name: Build branch docker image
-          command: |
-            docker pull aeternity/builder:otp21
-            docker build -t ${DOCKERHUB_REPO:?}:${CIRCLE_BRANCH/\//_} .
-      - run:
-          name: Start container
-          command: |
-            docker run -d --name ae_${CIRCLE_SHA1:?} ${DOCKERHUB_REPO:?}:${CIRCLE_BRANCH/\//_} sleep 1337
-      - run:
-          name: Copy the old DB into the container
-          command: |
-            docker exec -u root -it ae_${CIRCLE_SHA1:?} mkdir /old_db
-            docker cp ./node_stable/data/mnesia ae_${CIRCLE_SHA1:?}:/old_db/mnesia
-            docker exec -u root -it ae_${CIRCLE_SHA1:?} chown -R aeternity:aeternity /old_db/mnesia
-      - run:
-          name: Exec the node
-          command: |
-            export AE__CHAIN__DB_PATH=/old_db
-            docker exec -it -e AE__CHAIN__DB_PATH -e AE__CHAIN__PERSIST -e AE__FORK_MANAGEMENT__NETWORK_ID ae_${CIRCLE_SHA1:?} bin/aeternity console -noinput
-          background: true
-      - run:
-          name: Wait for the node to be ready
-          command: |
-            docker exec -it ae_${CIRCLE_SHA1:?} curl -4 --retry-connrefused --max-time 60 --retry 6 --connect-timeout 10 http://localhost:3013/v2/status
-      - run:
-          name: Health check
-          command: |
-            until [ "`docker inspect -f {{.State.Health.Status}} ae_${CIRCLE_SHA1:?}`"=="healthy" ]; do
-                sleep 1;
-            done;
-
-  docker_test_push_branch:
-    executor: buildpack
-    steps:
-      - fixed_checkout
-      - *setup_remote_docker
-      - docker_build_branch
-      - run:
-          name: Push Docker image to DockerHub
-          command: |
-            docker login -u $DOCKER_USER -p $DOCKER_PASS
-            docker push ${DOCKERHUB_REPO:?}:${CIRCLE_BRANCH/\//_}
-      - *fail_notification
-
-  docker_push_latest:
-    executor: infrastructure_container_stable
-    <<: *infrastructure_config
-    steps:
-      - fixed_checkout
-      - *setup_remote_docker
-      - docker_login
-      - run:
-          name: Build and push Docker image to DockerHub
-          command: |
-            docker pull ${DOCKERHUB_REPO:?}:${CIRCLE_TAG:?}
-            docker tag ${DOCKERHUB_REPO:?}:${CIRCLE_TAG:?} ${DOCKERHUB_REPO:?}:latest
-            docker push ${DOCKERHUB_REPO:?}:latest
-
-  docker_push_tag:
-    executor: infrastructure_container_stable
-    <<: *infrastructure_config
-    steps:
-      - fixed_checkout
-      - *setup_remote_docker
-      - docker_login
-      - run:
-          name: Build and push Docker image to DockerHub
-          command: |
-            docker build -t ${DOCKERHUB_REPO:?}:${CIRCLE_TAG:?} .
-            docker push ${DOCKERHUB_REPO:?}:${CIRCLE_TAG:?}
-
-  docker_system_tests:
-    executor: machine_1604
-    steps:
-      - *print_system_test_host_info
-      - fixed_checkout
-      - *install_os_deps
-      - *install_otp
-      - *install_libsodium
-      - *restore_rebar_cache
-      - *restore_machine_build_cache
-      - *prepare_ubuntu_user
-      - *install_system_test_deps
-      - run:
-          name: System Tests
-          no_output_timeout: 2h
-          command: |
-            sudo -u ubuntu -E -H make system-test
-      - *collect_system_test_host_logs
-      - *fail_notification_system_test
-      - *save_machine_build_cache
-      - store_test_results:
-          path: *system_test_logs
-      - store_artifacts:
-          path: *system_test_logs
-      - store_artifacts:
-          path: *system_test_host_logs
-
-  docker_system_smoke_tests:
-    executor: machine_1604
-    steps:
-      - *print_system_test_host_info
-      - fixed_checkout
-      - *install_os_deps
-      - *install_otp
-      - *install_libsodium
-      - *restore_machine_build_cache
-      # keep user preparation step after cache restore because of perms
-      - *prepare_ubuntu_user
-      - *install_system_smoke_test_deps
-      - run:
-          name: System Smoke Tests
-          no_output_timeout: 1h
-          command: |
-            sudo -u ubuntu -E -H make smoke-test-run
-      - *collect_system_test_host_logs
-      - *fail_notification_system_test
-      - *save_machine_build_cache
-      - store_test_results:
-          path: *system_test_logs
-      - store_artifacts:
-          path: *system_test_logs
-      - store_artifacts:
-          path: *system_test_host_logs
-
-  js_sdk_smoke_test:
-    docker:
-      - image: circleci/buildpack-deps:bionic
-    environment:
-      - AE__CHAIN__PERSIST: false
-      - AE__FORK_MANAGEMENT__NETWORK_ID: local_iris_testnet
-      - PACKAGES_DIR: *packages_workspace
-    steps:
-      - fixed_checkout
-      - run:
-          name: Install OS Deps
-          command: |
-            curl -fsSL https://deb.nodesource.com/setup_15.x | sudo -E bash -
-            sudo apt-get update && sudo apt-get install -y nodejs libsodium23 libtinfo5 libssl1.0
-      - *set_package_path
-      - attach_workspace:
-          at: *packages_workspace
-      - run:
-          name: Install JS SDK
-          command: cd ./sdk_smoke_test/aepp-sdk-js && npm ci
-      - run:
-          name: Unzip built node
-          command: mkdir node && tar -xvf ${PACKAGE_TARBALL:?} -C ./node
-      - run:
-          name: Start node
-          command: ./node/bin/aeternity start
-      - run:
-          name: Wait for the node api to boot
-          command: curl -4 --retry-connrefused --max-time 60 --retry 6 --connect-timeout 10 http://localhost:3013/v2/status
-      - run:
-          name: Run js sdk smoke test
-          command: cd ./sdk_smoke_test/aepp-sdk-js && npm test
-      - run:
-          name: Stop node
-          command: ./node/bin/aeternity stop
-      - *fail_notification
-
-  db_smoke_test:
-    docker:
-      - image: circleci/buildpack-deps:bionic
-    environment:
-      - AE__CHAIN__PERSIST: true
-      - PACKAGES_DIR: *packages_workspace
-    steps:
-      - fixed_checkout
-      - run:
-          name: Install OS Deps
-          command: sudo apt-get update && sudo apt-get install -y libsodium23 libtinfo5 libssl1.0
-      - *set_package_path
-      - attach_workspace:
-          at: *packages_workspace
-      - run:
-          name: Unzip built node
-          command: mkdir node_new && tar -xvf ${PACKAGE_TARBALL:?} -C ./node_new
-      - run:
-          name: Download latest release package
-          command: wget https://releases.aeternity.io/aeternity-latest-ubuntu-x86_64.tar.gz
-      - run:
-          name: Unzip stable node
-          command: mkdir node_stable && tar -xvf aeternity-latest-ubuntu-x86_64.tar.gz -C ./node_stable
-      - run:
-          name: Generate an old DB
-          command: |
-            ./node_stable/bin/aeternity start
-            sleep 60 # Let it sync a bit
-            curl http://localhost:3013/v2/status
-            ./node_stable/bin/aeternity stop
-      - run:
-          name: Test DB compatibility
-          command: |
-            cp -r ./node_stable/data/mnesia ./node_new/data/
-            ./node_new/bin/aeternity start
-            sleep 30
-            curl http://localhost:3013/v2/status
-            ./node_new/bin/aeternity stop
-
-  deploy_integration:
-    executor: infrastructure_container_unstable
-    <<: *infrastructure_config
-    environment:
-      - DEPLOY_ENV: integration
-      - DEPLOY_DOWNTIME: 900 #15M
-    steps: *deploy_steps
-
-  deploy_next:
-    executor: infrastructure_container_unstable
-    <<: *infrastructure_config
-    environment:
-      - DEPLOY_ENV: next
-      - DEPLOY_DOWNTIME: 900 #15M
-    steps: *deploy_steps
-
-  deploy_dev1:
-    executor: infrastructure_container_unstable
-    <<: *infrastructure_config
-    environment:
-      - DEPLOY_ENV: dev1
-    steps: *deploy_steps
-
-  deploy_dev2:
-    executor: infrastructure_container_unstable
-    <<: *infrastructure_config
-    environment:
-      - DEPLOY_ENV: dev2
-    steps: *deploy_steps
-
-  deploy_uat_blue:
-    executor: infrastructure_container_stable
-    <<: *infrastructure_config
-    environment:
-      - DEPLOY_ENV: uat
-      - DEPLOY_COLOR: blue
-      - DEPLOY_DOWNTIME: 1800 #30M
-    steps: *deploy_steps
-
-  deploy_uat_green:
-    executor: infrastructure_container_stable
-    <<: *infrastructure_config
-    environment:
-      - DEPLOY_ENV: uat
-      - DEPLOY_COLOR: green
-      - DEPLOY_DOWNTIME: 1800 #30M
-    steps: *deploy_steps
-
-  # Upload artifacts
-  upload_build_artifacts:
-    executor: infrastructure_container_stable
-    <<: *infrastructure_config
-    environment:
-      <<: *infrastructure_config_environment
-      PACKAGES_DIR: *packages_workspace
-    steps:
-      - upload_build_artifacts
-
-  upload_packages_osx:
-    executor: infrastructure_container_stable
-    <<: *infrastructure_config
-    environment:
-      <<: *infrastructure_config_environment
-      PKG_TARGET_OS: macos
-      PACKAGES_DIR: *packages_workspace
-    steps:
-      - upload_release_artifacts
-
-  upload_packages_linux:
-    executor: infrastructure_container_stable
-    <<: *infrastructure_config
-    environment:
-      <<: *infrastructure_config_environment
-      PKG_TARGET_OS: ubuntu
-      PACKAGES_DIR: *packages_workspace
-    steps:
-      - upload_release_artifacts
-
-  publish_build_packages:
-    executor: buildpack
-    steps:
-      - fixed_checkout
-      - attach_workspace:
-          at: *packages_workspace
-      - publish_ubuntu_package:
-          packages_dir: *packages_workspace
-          component: testing
-      - *fail_notification
-
-  publish_release_packages:
-    executor: buildpack
-    steps:
-      - fixed_checkout
-      - attach_workspace:
-          at: *packages_workspace
-      - publish_ubuntu_package:
-          packages_dir: *packages_workspace
-          component: main
-      - publish_osx_package:
-          packages_dir: *packages_workspace
-          branch: master
-      - *fail_notification
-
-  # upload_packages_windows:
-  #   executor: infrastructure_container_stable
-  #   <<: *infrastructure_config
-  #   environment:
-  #     <<: *infrastructure_config_environment
-  #     PKG_TARGET_OS: windows
-  #     PKG_EXT: -experimental.zip
-  #     PACKAGES_DIR: *packages_workspace
-  #   steps:
-  #     - upload_release_artifacts
-
-  upload_latest_packages_osx:
-    executor: infrastructure_container_stable
-    <<: *infrastructure_config
-    environment:
-      <<: *infrastructure_config_environment
-      PKG_TARGET_OS: macos
-      PACKAGES_DIR: *packages_workspace
-    steps:
-      - upload_latest_artifacts
-
-  upload_latest_packages_linux:
-    executor: infrastructure_container_stable
-    <<: *infrastructure_config
-    environment:
-      <<: *infrastructure_config_environment
-      PKG_TARGET_OS: ubuntu
-      PACKAGES_DIR: *packages_workspace
-    steps:
-      - upload_latest_artifacts
-
-  upload_latest_packages_windows:
-    executor: infrastructure_container_stable
-    <<: *infrastructure_config
-    environment:
-      <<: *infrastructure_config_environment
-      PKG_TARGET_OS: windows
-      PKG_EXT: -experimental.zip
-      PACKAGES_DIR: *packages_workspace
-    steps:
-      - upload_latest_artifacts
-
-  verify_release_artifacts:
-    executor: infrastructure_container_stable
-    <<: *infrastructure_config
-    environment:
-      <<: *infrastructure_config_environment
-      PACKAGES_DIR: *packages_workspace
-    steps:
-      - run:
-          name: Verify release artifacts
-          command: |
-            /infrastructure/scripts/check_release_artifacts.sh ${CIRCLE_TAG}
-
-  build_uml_diagrams:
-    docker:
-      - image: circleci/openjdk:11-jdk-stretch
-    steps:
-      - fixed_checkout
-      - run:
-          name: Install PlantUML dependencies
-          command: |
-            sudo apt-get -qq -y update && sudo apt-get -qq -y install graphviz librsvg2-bin
-      - run: make build-uml
-      - store_artifacts:
-          path: docs/state-channels
-      - *fail_notification
-
-  # Windows jobs
-  windows_package:
-    <<: *windows_container
-    steps:
-      - run: systeminfo
-      - windows_install_deps:
-          otp_install_path: << parameters.otp_install_path >>
-          otp_version: << parameters.otp_version >>
-          msys_install_path: << parameters.msys_install_path >>
-      - run:
-          name: Build packages
-          command: .circleci\windows\build
-      - run:
-          name: Smoke test
-          command: .circleci\windows\test
-      - store_artifacts:
-          path: *windows_artifacts
-          destination: packages-<< parameters.otp_version >>
-      - persist_to_workspace:
-          root: *windows_artifacts
-          paths:
-            - "*.zip"
-
-# CircleCI skips a job for a tag by default.
-# A job must have a filters tags section to run as a part of a tag push
-# and all its transitively dependent jobs must also have a filters tags section.
+    aevm-test:
+        executor: builder_container_otp22
+        steps:
+            - fixed_checkout
+            - restore_rebar_cache
+            - restore_build_cache:
+                otp: otp22
+            - run:
+                command: |
+                    make aevm-test
+                name: AEVM Tests
+            - store_rebar3_crashdump
+            - fail_notification
+    build:
+        executor: builder_container_<< parameters.otp >>
+        parameters:
+            otp:
+                type: string
+        steps:
+            - fixed_checkout
+            - restore_rebar_cache
+            - run:
+                command: make test-build
+                name: Build
+            - save_build_cache:
+                otp: << parameters.otp >>
+            - save_rebar_cache
+            - store_rebar3_crashdump
+            - fail_notification
+    build_nix:
+        executor: builder_container_nix_alpine
+        steps:
+            - fixed_checkout
+            - restore_rebar_cache
+            - restore_build_nix_cache
+            - run:
+                command: nix-shell -j auto --run "make KIND=test"
+                name: Build
+            - save_build_nix_cache
+            - save_rebar_cache
+            - store_rebar3_crashdump
+            - fail_notification_nix
+    db-smoke-test:
+        docker:
+            - image: circleci/buildpack-deps:bionic
+        environment:
+            - AE__CHAIN__PERSIST: true
+            - PACKAGES_DIR: << pipeline.parameters.packages_workspace >>
+        steps:
+            - fixed_checkout
+            - run:
+                command: sudo apt-get update && sudo apt-get install -y libsodium23 libtinfo5 libssl1.0
+                name: Install OS Deps
+            - attach_workspace:
+                at: << pipeline.parameters.packages_workspace >>
+            - run:
+                command: mkdir node_new && tar -xvf << pipeline.parameters.packages_workspace >>/aeternity-<< pipeline.git.revision >>-ubuntu-x86_64.tar.gz -C ./node_new
+                name: Unzip built node
+            - run:
+                command: wget https://releases.aeternity.io/aeternity-latest-ubuntu-x86_64.tar.gz
+                name: Download latest release package
+            - run:
+                command: mkdir node_stable && tar -xvf aeternity-latest-ubuntu-x86_64.tar.gz -C ./node_stable
+                name: Unzip stable node
+            - run:
+                command: |
+                    ./node_stable/bin/aeternity start
+                    sleep 60 # Let it sync a bit
+                    curl http://localhost:3013/v2/status
+                    ./node_stable/bin/aeternity stop
+                name: Generate an old DB
+            - run:
+                command: |
+                    cp -r ./node_stable/data/mnesia ./node_new/data/
+                    ./node_new/bin/aeternity start
+                    sleep 30
+                    curl http://localhost:3013/v2/status
+                    ./node_new/bin/aeternity stop
+                name: Test DB compatibility
+    deploy:
+        executor: infrastructure_container_<< parameters.executor_tag >>
+        parameters:
+            color:
+                default: ""
+                type: string
+            downtime:
+                default: 0
+                type: integer
+            env:
+                type: string
+            executor_tag:
+                default: unstable
+                type: string
+            version:
+                type: string
+        steps:
+            - fixed_checkout
+            - attach_workspace:
+                at: << pipeline.parameters.packages_workspace >>
+            - deploy_env:
+                color: << parameters.color >>
+                downtime: << parameters.downtime >>
+                env: << parameters.env >>
+                package_path: << pipeline.parameters.packages_workspace >>/aeternity-<< parameters.version >>-ubuntu-x86_64.tar.gz
+    docker-db-smoke-test:
+        docker:
+            - image: circleci/buildpack-deps:bionic
+        environment:
+            - AE__CHAIN__PERSIST: "true"
+        steps:
+            - fixed_checkout
+            - setup_docker
+            - run:
+                command: sudo apt-get update && sudo apt-get install -y libsodium23 libtinfo5 libssl1.0
+                name: Install OS Deps
+            - run:
+                command: wget https://releases.aeternity.io/aeternity-latest-ubuntu-x86_64.tar.gz
+                name: Download latest release package
+            - run:
+                command: mkdir node_stable && tar -xvf aeternity-latest-ubuntu-x86_64.tar.gz -C ./node_stable
+                name: Unzip stable node
+            - run:
+                command: |
+                    ./node_stable/bin/aeternity start
+                    sleep 60 # Let it sync a bit
+                    ./node_stable/bin/aeternity stop
+                name: Generate an old DB
+            - run:
+                command: |
+                    docker pull aeternity/builder:bionic-otp22
+                    docker build -t << pipeline.parameters.docker_repo >>:${CIRCLE_BRANCH/\//_} .
+                name: Build branch docker image
+            - run:
+                command: |
+                    docker run -d --name ae_${CIRCLE_SHA1:?} << pipeline.parameters.docker_repo >>:${CIRCLE_BRANCH/\//_} sleep 1337
+                name: Start container
+            - run:
+                command: |
+                    docker exec -u root -it ae_${CIRCLE_SHA1:?} mkdir /old_db
+                    docker cp ./node_stable/data/mnesia ae_${CIRCLE_SHA1:?}:/old_db/mnesia
+                    docker exec -u root -it ae_${CIRCLE_SHA1:?} chown -R aeternity:aeternity /old_db/mnesia
+                name: Copy the old DB into the container
+            - run:
+                background: true
+                command: |
+                    export AE__CHAIN__DB_PATH=/old_db
+                    docker exec -it -e AE__CHAIN__DB_PATH -e AE__CHAIN__PERSIST -e AE__FORK_MANAGEMENT__NETWORK_ID ae_${CIRCLE_SHA1:?} bin/aeternity console -noinput
+                name: Exec the node
+            - run:
+                command: |
+                    docker exec -it ae_${CIRCLE_SHA1:?} curl -4 --retry-connrefused --max-time 60 --retry 6 --connect-timeout 10 http://localhost:3013/v2/status
+                name: Wait for the node to be ready
+            - run:
+                command: |
+                    until [ "`docker inspect -f {{.State.Health.Status}} ae_${CIRCLE_SHA1:?}`"=="healthy" ]; do
+                        sleep 1;
+                    done;
+                name: Health check
+    docker-image:
+        executor: infrastructure_container_stable
+        parameters:
+            aeplugin_devmode:
+                default: false
+                type: boolean
+            tag:
+                type: string
+        steps:
+            - fixed_checkout
+            - when:
+                condition: << parameters.aeplugin_devmode >>
+                steps:
+                    - aeplugin_install_devmode
+            - setup_docker
+            - when:
+                condition:
+                    matches:
+                        pattern: ^latest.*$
+                        value: << parameters.tag >>
+                steps:
+                    - docker_image:
+                        tag: << parameters.tag >>
+                        tag_only: true
+            - when:
+                condition:
+                    not:
+                        matches:
+                            pattern: ^latest.*$
+                            value: << parameters.tag >>
+                steps:
+                    - docker_image:
+                        tag: << parameters.tag >>
+                        tag_only: false
+            - fail_notification
+    docker-js-sdk-smoke-test:
+        environment:
+            - AE__CHAIN__PERSIST: "false"
+            - AE__FORK_MANAGEMENT__NETWORK_ID: local_ceres_testnet
+        executor: buildpack
+        steps:
+            - fixed_checkout
+            - setup_docker
+            - docker_build:
+                tag: $CIRCLE_BRANCH
+            - run:
+                command: docker run -d --network container:ae_${CIRCLE_SHA1:?} --name nodejs circleci/node:15.0.0-buster sleep 1337
+                name: Start NodeJS
+            - run:
+                command: docker cp ./sdk_smoke_test/aepp-sdk-js nodejs:/tests
+                name: Copy tests
+            - run:
+                command: docker exec -it nodejs sh -c "cd /tests && npm ci && npm test"
+                name: Run JS SDK smoke test
+    docker-smoke-test:
+        executor: buildpack
+        steps:
+            - fixed_checkout
+            - setup_docker
+            - docker_build:
+                tag: $CIRCLE_BRANCH
+    docker-system-smoke-test:
+        executor: machine_2004
+        steps:
+            - docker_system_test:
+                smoke: true
+    docker-system-test:
+        executor: machine_2004
+        steps:
+            - docker_system_test:
+                smoke: false
+    eunit:
+        executor: builder_container_<< parameters.otp >>
+        parameters:
+            otp:
+                type: string
+            target:
+                type: string
+        steps:
+            - eunit:
+                otp: << parameters.otp >>
+                target: << parameters.target >>
+    js-sdk-smoke-test:
+        docker:
+            - image: circleci/buildpack-deps:bionic
+        environment:
+            - AE__CHAIN__PERSIST: false
+            - AE__FORK_MANAGEMENT__NETWORK_ID: local_ceres_testnet
+            - PACKAGES_DIR: << pipeline.parameters.packages_workspace >>
+        steps:
+            - fixed_checkout
+            - run:
+                command: |
+                    curl -fsSL https://deb.nodesource.com/setup_15.x | sudo -E bash -
+                    sudo apt-get update && sudo apt-get install -y nodejs libsodium23 libtinfo5 libssl1.0
+                name: Install OS Deps
+            - attach_workspace:
+                at: << pipeline.parameters.packages_workspace >>
+            - run:
+                command: cd ./sdk_smoke_test/aepp-sdk-js && npm ci
+                name: Install JS SDK
+            - run:
+                command: mkdir node && tar -xvf << pipeline.parameters.packages_workspace >>/aeternity-<< pipeline.git.revision >>-ubuntu-x86_64.tar.gz -C ./node
+                name: Unzip built node
+            - run:
+                command: ./node/bin/aeternity start
+                name: Start node
+            - run:
+                command: curl -4 --retry-connrefused --max-time 60 --retry 6 --connect-timeout 10 http://localhost:3013/v2/status
+                name: Wait for the node api to boot
+            - run:
+                command: cd ./sdk_smoke_test/aepp-sdk-js && npm test
+                name: Run js sdk smoke test
+            - run:
+                command: ./node/bin/aeternity stop
+                name: Stop node
+            - fail_notification
+    linux-tarball:
+        executor: builder_container_otp22
+        parameters:
+            aeplugin_devmode:
+                default: false
+                type: boolean
+            package_name:
+                type: string
+        steps:
+            - fixed_checkout
+            - when:
+                condition: << parameters.aeplugin_devmode >>
+                steps:
+                    - aeplugin_install_devmode
+            - test_arch_os_dependencies
+            - build_tarball:
+                output: << pipeline.parameters.packages_workspace >>/<< parameters.package_name >>
+            - store_artifacts:
+                path: /tmp/package_tests/node1/log
+            - store_artifacts:
+                path: /tmp/package_tests/node2/log
+            - store_artifacts:
+                path: /tmp/package_tests/node3/log
+            - store_package_artifacts
+            - store_rebar3_crashdump
+            - persist_to_workspace:
+                paths:
+                    - '*.tar.gz'
+                root: << pipeline.parameters.packages_workspace >>
+            - fail_notification
+    macos-tarball:
+        macos:
+            xcode: 11.1.0
+        parameters:
+            aeplugin_devmode:
+                default: false
+                type: boolean
+            package_name:
+                type: string
+        steps:
+            - fixed_checkout
+            - when:
+                condition: << parameters.aeplugin_devmode >>
+                steps:
+                    - aeplugin_install_devmode
+            - run:
+                command: |
+                    brew install gmp libsodium erlang@22 cmake
+                    brew link erlang@22
+                name: Install required tools
+            - test_arch_os_dependencies
+            - build_tarball:
+                output: << pipeline.parameters.packages_workspace >>/<< parameters.package_name >>
+            - store_artifacts:
+                path: /tmp/package_tests/node1/log
+            - store_artifacts:
+                path: /tmp/package_tests/node2/log
+            - store_artifacts:
+                path: /tmp/package_tests/node3/log
+            - store_package_artifacts
+            - persist_to_workspace:
+                paths:
+                    - '*.tar.gz'
+                root: << pipeline.parameters.packages_workspace >>
+            - fail_notification
+        working_directory: /Users/distiller/aeternity
+    promote-tarball-s3:
+        executor: infrastructure_container_stable
+        parameters:
+            uri:
+                type: string
+        steps:
+            - fixed_checkout
+            - setup_secrets
+            - promote_latest_artifact_s3:
+                uri: << parameters.uri >>
+    publish-build-packages:
+        executor: buildpack
+        steps:
+            - fixed_checkout
+            - attach_workspace:
+                at: << pipeline.parameters.packages_workspace >>
+            - upload_artifacts_apt:
+                component: testing
+                packages_dir: << pipeline.parameters.packages_workspace >>
+            - fail_notification
+    publish-release-packages:
+        executor: buildpack
+        steps:
+            - fixed_checkout
+            - attach_workspace:
+                at: << pipeline.parameters.packages_workspace >>
+            - upload_artifacts_apt:
+                component: main
+                packages_dir: << pipeline.parameters.packages_workspace >>
+            - upload_artifacts_brew:
+                branch: master
+                packages_dir: << pipeline.parameters.packages_workspace >>
+            - fail_notification
+    rebar_lock_check:
+        executor: builder_container_otp22
+        steps:
+            - fixed_checkout
+            - run:
+                command: |
+                    ./rebar3 upgrade
+                    git diff --quiet -- rebar.lock || (echo "rebar.lock is not up-to-date" && exit 1)
+                name: Ensure lock file is up-to-date
+            - store_rebar3_crashdump
+            - fail_notification
+    static-analysis:
+        executor: builder_container_<< parameters.otp >>
+        parameters:
+            otp:
+                type: string
+        steps:
+            - fixed_checkout
+            - run: make dockerignore-check
+            - restore_rebar_cache
+            - restore_build_cache:
+                otp: << parameters.otp >>
+            - run: make edoc
+            - restore_cache:
+                keys:
+                    - dialyzer-<< parameters.otp >>-cache-v5-{{ .Branch }}-{{ .Revision }}
+                    - dialyzer-<< parameters.otp >>-cache-v5-{{ .Branch }}-
+                    - dialyzer-<< parameters.otp >>-cache-v5-
+            - run:
+                command: make dialyzer-install
+                name: Update dialyzer PLT
+            - save_cache:
+                key: dialyzer-<< parameters.otp >>-cache-v5-{{ .Branch }}-{{ .Revision }}
+                paths:
+                    - _build/default/rebar3_{{ .Environment.OTP_VERSION }}_plt
+            - run:
+                command: make dialyzer
+                name: Run dialyzer
+                no_output_timeout: 20m
+            - run:
+                command: test "${OTP_VERSION:?}" = $(cat $(erl -noinput -eval 'io:format("~s", [filename:join([code:root_dir(), "releases", erlang:system_info(otp_release), "OTP_VERSION"])]), init:stop().'))
+                name: Check OTP version (for effective CI caching)
+            - store_rebar3_crashdump
+            - fail_notification
+    test:
+        executor: builder_container_<< parameters.otp >>
+        parallelism: 3
+        parameters:
+            otp:
+                type: string
+            target:
+                type: string
+        steps:
+            - common_tests:
+                otp: << parameters.otp >>
+                target: << parameters.target >>
+    ubuntu_package:
+        executor: builder_container_1804
+        steps:
+            - fixed_checkout
+            - build_deb:
+                output: << pipeline.parameters.packages_workspace >>
+            - store_package_artifacts
+            - persist_to_workspace:
+                paths:
+                    - '*.deb'
+                root: << pipeline.parameters.packages_workspace >>
+            - fail_notification
+        working_directory: /home/builder/aeternity_deb
+    upload-tarballs-github-release:
+        executor: infrastructure_container_stable
+        steps:
+            - fixed_checkout
+            - setup_secrets
+            - attach_workspace:
+                at: << pipeline.parameters.packages_workspace >>
+            - run:
+                command: |
+                    envdir /secrets /infrastructure/scripts/upload-github-release-assets.sh \
+                      github_api_token=${GITHUB_API_TOKEN:?} \
+                      owner=${CIRCLE_PROJECT_USERNAME} \
+                      repo=${CIRCLE_PROJECT_REPONAME} \
+                      tag=<< pipeline.git.tag >> \
+                      ASSETS=<< pipeline.parameters.packages_workspace >>/*
+                name: Upload GitHub Release Asset
+            - fail_notification
+    upload-tarballs-s3:
+        executor: infrastructure_container_stable
+        parameters:
+            bucket:
+                type: string
+        steps:
+            - fixed_checkout
+            - setup_secrets
+            - upload_artifacts_s3:
+                bucket: << parameters.bucket >>
+            - fail_notification
+    verify-artifacts:
+        executor: infrastructure_container_stable
+        steps:
+            - run:
+                command: |
+                    /infrastructure/scripts/check_release_artifacts.sh << pipeline.git.tag >>
+                name: Verify release artifacts
+parameters:
+    aeplugin_devmode_version:
+        default: 0.4.0
+        type: string
+    build_cache_version:
+        default: v5
+        type: string
+    build_nix_cache_key:
+        default: build-nix-cache-v3-{{ .Revision }}
+        type: string
+    docker_repo:
+        default: aeternity/aeternity
+        type: string
+    machine_build_cache_key:
+        default: machine-build-cache-v20-{{ .Branch }}-{{ .Revision }}
+        type: string
+    master_branch:
+        default: master
+        type: string
+    packages_workspace:
+        default: /tmp/packages
+        type: string
+    rebar_cache_key:
+        default: rebar-cache-{{ checksum "rebar.lock" }}-{{ checksum "rebar.config" }}
+        type: string
+    s3_builds_bucket:
+        default: aeternity-node-builds
+        type: string
+    s3_releases_bucket:
+        default: aeternity-node-releases
+        type: string
+    tag_regex:
+        default: /^v.*$/
+        type: string
+version: 2.1
 workflows:
-  version: 2
-  build_test_deploy:
-    jobs:
-      # FIXME: Disabled until Windows build is fixed
-      # - windows_package:
-      #     otp_version: "21.3"
-      #     context: ae-node-builds
-      #     filters:
-      #       branches:
-      #         ignore:
-      #           - system-tests
-      #       tags:
-      #         only: *tag_regex
+    commit:
+        jobs:
+            - build:
+                filters:
+                    branches:
+                        ignore:
+                            - env/dev1
+                            - env/dev2
+                            - system-tests
+                matrix:
+                    parameters:
+                        otp:
+                            - otp22
+                            - otp23
+                            - otp24
+                name: build-<< matrix.otp >>
+            - build_nix:
+                filters:
+                    branches:
+                        only:
+                            - << pipeline.parameters.master_branch >>
+            - test:
+                filters:
+                    branches:
+                        ignore:
+                            - env/dev1
+                            - env/dev2
+                            - system-tests
+                matrix:
+                    exclude:
+                        - otp: otp23
+                          target: ct-roma
+                        - otp: otp23
+                          target: ct-minerva
+                        - otp: otp23
+                          target: ct-fortuna
+                        - otp: otp23
+                          target: ct-lima
+                        - otp: otp23
+                          target: ct-iris
+                        - otp: otp23
+                          target: ct-latest-no-aci
+                        - otp: otp23
+                          target: ct-mnesia-leveled
+                        - otp: otp23
+                          target: ct-mnesia-rocksdb
+                        - otp: otp24
+                          target: ct-roma
+                        - otp: otp24
+                          target: ct-minerva
+                        - otp: otp24
+                          target: ct-fortuna
+                        - otp: otp24
+                          target: ct-lima
+                        - otp: otp24
+                          target: ct-iris
+                        - otp: otp24
+                          target: ct-latest-no-aci
+                        - otp: otp24
+                          target: ct-mnesia-leveled
+                        - otp: otp24
+                          target: ct-mnesia-rocksdb
+                    parameters:
+                        otp:
+                            - otp22
+                            - otp23
+                            - otp24
+                        target:
+                            - ct-roma
+                            - ct-minerva
+                            - ct-fortuna
+                            - ct-lima
+                            - ct-iris
+                            - ct-latest
+                            - ct-latest-no-aci
+                            - ct-mnesia-leveled
+                            - ct-mnesia-rocksdb
+                requires:
+                    - build-<< matrix.otp >>
+            - eunit:
+                filters:
+                    branches:
+                        ignore:
+                            - env/dev1
+                            - env/dev2
+                            - system-tests
+                matrix:
+                    parameters:
+                        otp:
+                            - otp22
+                        target:
+                            - roma
+                            - minerva
+                            - fortuna
+                            - lima
+                            - iris
+                            - latest
+                requires:
+                    - build-<< matrix.otp >>
+            - aevm-test:
+                filters:
+                    branches:
+                        ignore:
+                            - env/dev1
+                            - env/dev2
+                            - system-tests
+                requires:
+                    - build-otp22
+            - static-analysis:
+                filters:
+                    branches:
+                        ignore:
+                            - env/dev1
+                            - env/dev2
+                            - system-tests
+                matrix:
+                    parameters:
+                        otp:
+                            - otp22
+                            - otp23
+                            - otp24
+                requires:
+                    - build-<< matrix.otp >>
+            - docker-smoke-test:
+                context: ae-node-builds
+                filters:
+                    branches:
+                        ignore:
+                            - env/dev1
+                            - env/dev2
+                            - system-tests
+                            - /releases\/.*/
+                            - << pipeline.parameters.master_branch >>
+            - docker-system-smoke-test:
+                filters:
+                    branches:
+                        ignore:
+                            - env/dev1
+                            - env/dev2
+                            - system-tests
+            - docker-system-test:
+                filters:
+                    branches:
+                        only: system-tests
+            - docker-js-sdk-smoke-test:
+                context: ae-node-builds
+                filters:
+                    branches:
+                        ignore:
+                            - env/dev1
+                            - env/dev2
+                            - system-tests
+                            - /releases\/.*/
+                            - << pipeline.parameters.master_branch >>
+                requires:
+                    - docker-smoke-test
+            - docker-db-smoke-test:
+                context: ae-node-builds
+                filters:
+                    branches:
+                        ignore:
+                            - env/dev1
+                            - env/dev2
+                            - system-tests
+                            - /releases\/.*/
+                            - << pipeline.parameters.master_branch >>
+                requires:
+                    - docker-smoke-test
+            - js-sdk-smoke-test:
+                filters:
+                    branches:
+                        ignore:
+                            - env/dev1
+                            - env/dev2
+                            - system-tests
+                requires:
+                    - linux-tarball
+            - db-smoke-test:
+                filters:
+                    branches:
+                        ignore:
+                            - env/dev1
+                            - env/dev2
+                            - system-tests
+                requires:
+                    - linux-tarball
+            - rebar_lock_check:
+                filters:
+                    branches:
+                        ignore:
+                            - env/dev1
+                            - env/dev2
+                            - system-tests
+                requires:
+                    - build-otp22
+            - linux-tarball:
+                filters:
+                    branches:
+                        ignore:
+                            - system-tests
+                name: linux-tarball
+                package_name: aeternity-$CIRCLE_SHA1-ubuntu-x86_64.tar.gz
+            - linux-tarball:
+                aeplugin_devmode: true
+                filters:
+                    branches:
+                        ignore:
+                            - env/dev1
+                            - env/dev2
+                            - system-tests
+                name: linux-tarball-bundle
+                package_name: aeternity-bundle-$CIRCLE_SHA1-ubuntu-x86_64.tar.gz
+            - ubuntu_package:
+                filters:
+                    branches:
+                        only:
+                            - /releases\/.*/
+                            - << pipeline.parameters.master_branch >>
+                requires: []
+            - upload-tarballs-s3:
+                bucket: << pipeline.parameters.s3_builds_bucket >>
+                context: ae-node-builds
+                filters:
+                    branches:
+                        ignore:
+                            - /pull\/[0-9]+/
+                            - env/dev1
+                            - env/dev2
+                            - system-tests
+                name: upload-tarballs-s3
+                requires:
+                    - linux-tarball
+                    - linux-tarball-bundle
+            - promote-tarball-s3:
+                context: ae-node-builds
+                filters:
+                    branches:
+                        only:
+                            - /releases\/.*/
+                            - << pipeline.parameters.master_branch >>
+                name: promote-tarball-s3
+                requires:
+                    - upload-tarballs-s3
+                uri: s3://<< pipeline.parameters.s3_builds_bucket >>/aeternity-$CIRCLE_SHA1-ubuntu-x86_64.tar.gz
+            - macos-tarball:
+                filters:
+                    branches:
+                        only:
+                            - /releases\/.*/
+                            - << pipeline.parameters.master_branch >>
+                name: macos-tarball
+                package_name: aeternity-$CIRCLE_SHA1-macos-x86_64.tar.gz
+                requires: []
+            - macos-tarball:
+                aeplugin_devmode: true
+                filters:
+                    branches:
+                        only:
+                            - /releases\/.*/
+                            - << pipeline.parameters.master_branch >>
+                name: macos-tarball-bundle
+                package_name: aeternity-bundle-$CIRCLE_SHA1-macos-x86_64.tar.gz
+            - publish-build-packages:
+                filters:
+                    branches:
+                        only:
+                            - /releases\/.*/
+                            - << pipeline.parameters.master_branch >>
+                requires:
+                    - ubuntu_package
+            - deploy:
+                context: ae-node-builds
+                downtime: 900
+                env: integration
+                filters:
+                    branches:
+                        only: << pipeline.parameters.master_branch >>
+                name: deploy-integration
+                requires:
+                    - test
+                    - eunit
+                    - docker-db-smoke-test
+                    - db-smoke-test
+                    - aevm-test
+                    - static-analysis
+                    - rebar_lock_check
+                    - linux-tarball
+                version: $CIRCLE_SHA1
+            - docker-image:
+                context: ae-node-builds
+                filters:
+                    branches:
+                        only:
+                            - << pipeline.parameters.master_branch >>
+                name: docker-image-mainline
+                requires:
+                    - test
+                    - eunit
+                    - aevm-test
+                    - static-analysis
+                    - rebar_lock_check
+                tag: $CIRCLE_BRANCH
+            - docker-image:
+                aeplugin_devmode: true
+                context: ae-node-builds
+                filters:
+                    branches:
+                        only:
+                            - << pipeline.parameters.master_branch >>
+                name: docker-image-mainline-bundle
+                requires:
+                    - test
+                    - eunit
+                    - aevm-test
+                    - static-analysis
+                    - rebar_lock_check
+                tag: $CIRCLE_BRANCH-bundle
+            - deploy:
+                context: ae-node-builds
+                downtime: 900
+                env: next
+                filters:
+                    branches:
+                        only: << pipeline.parameters.master_branch >>
+                name: deploy-next
+                requires:
+                    - test
+                    - eunit
+                    - aevm-test
+                    - static-analysis
+                    - rebar_lock_check
+                    - linux-tarball
+                version: $CIRCLE_SHA1
+            - deploy:
+                context: ae-node-builds
+                env: dev1
+                filters:
+                    branches:
+                        only: env/dev1
+                name: deploy-dev1
+                requires:
+                    - linux-tarball
+                version: $CIRCLE_SHA1
+            - deploy:
+                context: ae-node-builds
+                env: dev2
+                filters:
+                    branches:
+                        only: env/dev2
+                name: deploy-dev2
+                requires:
+                    - linux-tarball
+                version: $CIRCLE_SHA1
+    release:
+        jobs:
+            - linux-tarball:
+                filters:
+                    branches:
+                        ignore: /.*/
+                    tags:
+                        only: << pipeline.parameters.tag_regex >>
+                name: linux-release-tarball
+                package_name: aeternity-$CIRCLE_TAG-ubuntu-x86_64.tar.gz
+            - linux-tarball:
+                aeplugin_devmode: true
+                filters:
+                    branches:
+                        ignore: /.*/
+                    tags:
+                        only: << pipeline.parameters.tag_regex >>
+                name: linux-release-tarball-bundle
+                package_name: aeternity-bundle-$CIRCLE_TAG-ubuntu-x86_64.tar.gz
+            - ubuntu_package:
+                filters:
+                    branches:
+                        ignore: /.*/
+                    tags:
+                        only: << pipeline.parameters.tag_regex >>
+            - macos-tarball:
+                filters:
+                    branches:
+                        ignore: /.*/
+                    tags:
+                        only: << pipeline.parameters.tag_regex >>
+                name: macos-release-tarball
+                package_name: aeternity-$CIRCLE_TAG-macos-x86_64.tar.gz
+            - macos-tarball:
+                aeplugin_devmode: true
+                filters:
+                    branches:
+                        ignore: /.*/
+                    tags:
+                        only: << pipeline.parameters.tag_regex >>
+                name: macos-release-tarball-bundle
+                package_name: aeternity-bundle-$CIRCLE_TAG-macos-x86_64.tar.gz
+            - hodl_artifact_upload:
+                filters:
+                    branches:
+                        ignore: /.*/
+                    tags:
+                        only: << pipeline.parameters.tag_regex >>
+                type: approval
+            - upload-tarballs-s3:
+                bucket: << pipeline.parameters.s3_releases_bucket >>
+                context: ae-node-builds
+                filters:
+                    branches:
+                        ignore: /.*/
+                    tags:
+                        only: << pipeline.parameters.tag_regex >>
+                name: upload-release-tarballs-s3
+                requires:
+                    - linux-release-tarball
+                    - macos-release-tarball
+                    - linux-release-tarball-bundle
+                    - macos-release-tarball-bundle
+                    - hodl_artifact_upload
+            - upload-tarballs-github-release:
+                context: ae-node-builds
+                filters:
+                    branches:
+                        ignore: /.*/
+                    tags:
+                        only: << pipeline.parameters.tag_regex >>
+                requires:
+                    - linux-release-tarball
+                    - macos-release-tarball
+                    - linux-release-tarball-bundle
+                    - macos-release-tarball-bundle
+                    - hodl_artifact_upload
+            - hodl_blue:
+                filters:
+                    branches:
+                        ignore: /.*/
+                    tags:
+                        only: << pipeline.parameters.tag_regex >>
+                type: approval
+            - deploy:
+                color: blue
+                context: ae-node-builds
+                downtime: 1800
+                env: uat
+                filters:
+                    branches:
+                        ignore: /.*/
+                    tags:
+                        only: << pipeline.parameters.tag_regex >>
+                name: deploy-uat-blue
+                requires:
+                    - linux-release-tarball
+                    - hodl_blue
+                version: $CIRCLE_TAG
+            - hodl_green:
+                filters:
+                    branches:
+                        ignore: /.*/
+                    tags:
+                        only: << pipeline.parameters.tag_regex >>
+                type: approval
+            - deploy:
+                color: green
+                context: ae-node-builds
+                downtime: 1800
+                env: uat
+                filters:
+                    branches:
+                        ignore: /.*/
+                    tags:
+                        only: << pipeline.parameters.tag_regex >>
+                name: deploy-uat-green
+                requires:
+                    - linux-release-tarball
+                    - deploy-uat-blue
+                    - hodl_green
+                version: $CIRCLE_TAG
+            - hodl_latest:
+                filters:
+                    branches:
+                        ignore: /.*/
+                    tags:
+                        only: << pipeline.parameters.tag_regex >>
+                type: approval
+            - promote-tarball-s3:
+                context: ae-node-builds
+                filters:
+                    branches:
+                        ignore: /.*/
+                    tags:
+                        only: << pipeline.parameters.tag_regex >>
+                name: promote-release-linux-tarball-s3
+                requires:
+                    - upload-release-tarballs-s3
+                    - hodl_latest
+                uri: s3://<< pipeline.parameters.s3_releases_bucket >>/aeternity-$CIRCLE_TAG-ubuntu-x86_64.tar.gz
+            - promote-tarball-s3:
+                context: ae-node-builds
+                filters:
+                    branches:
+                        ignore: /.*/
+                    tags:
+                        only: << pipeline.parameters.tag_regex >>
+                name: promote-release-macos-tarball-s3
+                requires:
+                    - upload-release-tarballs-s3
+                    - hodl_latest
+                uri: s3://<< pipeline.parameters.s3_releases_bucket >>/aeternity-$CIRCLE_TAG-macos-x86_64.tar.gz
+            - publish-release-packages:
+                filters:
+                    branches:
+                        ignore: /.*/
+                    tags:
+                        only: << pipeline.parameters.tag_regex >>
+                requires:
+                    - linux-release-tarball
+                    - macos-release-tarball
+                    - hodl_latest
+            - docker-image:
+                context: ae-node-builds
+                filters:
+                    branches:
+                        ignore: /.*/
+                    tags:
+                        only: << pipeline.parameters.tag_regex >>
+                name: docker-image-tag
+                requires:
+                    - hodl_artifact_upload
+                tag: $CIRCLE_TAG
+            - docker-image:
+                aeplugin_devmode: true
+                context: ae-node-builds
+                filters:
+                    branches:
+                        ignore: /.*/
+                    tags:
+                        only: << pipeline.parameters.tag_regex >>
+                name: docker-image-tag-bundle
+                requires:
+                    - hodl_artifact_upload
+                tag: $CIRCLE_TAG-bundle
+            - docker-image:
+                context: ae-node-builds
+                filters:
+                    branches:
+                        ignore: /.*/
+                    tags:
+                        only: << pipeline.parameters.tag_regex >>
+                name: docker-image-latest
+                requires:
+                    - docker-image-tag
+                    - hodl_latest
+                tag: latest
+            - docker-image:
+                aeplugin_devmode: true
+                context: ae-node-builds
+                filters:
+                    branches:
+                        ignore: /.*/
+                    tags:
+                        only: << pipeline.parameters.tag_regex >>
+                name: docker-image-latest-bundle
+                requires:
+                    - docker-image-tag
+                    - hodl_latest
+                tag: latest-bundle
+            - verify-artifacts:
+                context: ae-node-builds
+                filters:
+                    branches:
+                        ignore: /.*/
+                    tags:
+                        only: << pipeline.parameters.tag_regex >>
+                name: verify-release-artifacts
+                requires:
+                    - upload-release-tarballs-s3
+                    - promote-release-linux-tarball-s3
+                    - promote-release-macos-tarball-s3
+                    - upload-tarballs-github-release
+                    - docker-image-tag
+                    - docker-image-latest
+    system-tests:
+        jobs:
+            - docker-system-test
+        triggers:
+            - schedule:
+                cron: 0 0,12 * * *
+                filters:
+                    branches:
+                        only:
+                            - << pipeline.parameters.master_branch >>
+    version: 2
 
-      - build:
-          filters:
-            branches:
-              ignore:
-                - env/dev1
-                - env/dev2
-                - system-tests
-
-      - build_otp21:
-          filters:
-            branches:
-              ignore:
-                - env/dev1
-                - env/dev2
-                - system-tests
-
-      - build_nix:
-          filters:
-            branches:
-              only:
-                - *master_branch
-
-      - docker_smoke_tests:
-          context: ae-node-builds
-          filters:
-            branches:
-              ignore:
-                - env/dev1
-                - env/dev2
-                - system-tests
-                - /releases\/.*/
-                - *master_branch
-
-      - docker_js_sdk_smoke_test:
-          context: ae-node-builds
-          requires:
-            - docker_smoke_tests
-          filters:
-            branches:
-              ignore:
-                - env/dev1
-                - env/dev2
-                - system-tests
-                - /releases\/.*/
-                - *master_branch
-
-      - docker_db_smoke_test:
-          context: ae-node-builds
-          requires:
-            - docker_smoke_tests
-          filters:
-            branches:
-              ignore:
-                - env/dev1
-                - env/dev2
-                - system-tests
-                - /releases\/.*/
-                - *master_branch
-
-      - docker_system_smoke_tests:
-          requires: []
-          filters:
-            branches:
-              ignore:
-                - env/dev1
-                - env/dev2
-                - system-tests
-
-      - js_sdk_smoke_test:
-          requires:
-            - linux_package
-          filters:
-            branches:
-              ignore:
-                - env/dev1
-                - env/dev2
-                - system-tests
-
-      - db_smoke_test:
-          requires:
-            - linux_package
-          filters:
-            branches:
-              ignore:
-                - env/dev1
-                - env/dev2
-                - system-tests
-
-      - test_roma:
-          requires:
-            - build
-          filters:
-            branches:
-              ignore:
-                - env/dev1
-                - env/dev2
-                - system-tests
-
-      - test_minerva:
-          requires:
-            - build
-          filters:
-            branches:
-              ignore:
-                - env/dev1
-                - env/dev2
-                - system-tests
-
-      - test_fortuna:
-          requires:
-            - build
-          filters:
-            branches:
-              ignore:
-                - env/dev1
-                - env/dev2
-                - system-tests
-
-      - test_lima:
-          requires:
-            - build
-          filters:
-            branches:
-              ignore:
-                - env/dev1
-                - env/dev2
-                - system-tests
-
-      - test_latest:
-          requires:
-            - build
-          filters:
-            branches:
-              ignore:
-                - env/dev1
-                - env/dev2
-                - system-tests
-
-      - test_latest_with_aesophia_compiler:
-          requires:
-            - build
-          filters:
-            branches:
-              ignore:
-                - env/dev1
-                - env/dev2
-                - system-tests
-
-      - test_latest_otp21:
-          requires:
-            - build_otp21
-          filters:
-            branches:
-              ignore:
-                - env/dev1
-                - env/dev2
-                - system-tests
-
-      - test_mnesia_leveled:
-          requires:
-            - build
-          filters:
-            branches:
-              ignore:
-                - env/dev1
-                - env/dev2
-                - system-tests
-
-      - test_mnesia_rocksdb:
-          requires:
-            - build
-          filters:
-            branches:
-              ignore:
-                - env/dev1
-                - env/dev2
-                - system-tests
-
-      - eunit_roma:
-          requires:
-            - build
-          filters:
-            branches:
-              ignore:
-                - env/dev1
-                - env/dev2
-                - system-tests
-            tags:
-              only: *tag_regex
-
-      - eunit_minerva:
-          requires:
-            - build
-          filters:
-            branches:
-              ignore:
-                - env/dev1
-                - env/dev2
-                - system-tests
-            tags:
-              only: *tag_regex
-
-      - eunit_fortuna:
-          requires:
-            - build
-          filters:
-            branches:
-              ignore:
-                - env/dev1
-                - env/dev2
-                - system-tests
-            tags:
-              only: *tag_regex
-
-      - eunit_lima:
-          requires:
-            - build
-          filters:
-            branches:
-              ignore:
-                - env/dev1
-                - env/dev2
-                - system-tests
-            tags:
-              only: *tag_regex
-
-      - eunit_latest:
-          requires:
-            - build
-          filters:
-            branches:
-              ignore:
-                - env/dev1
-                - env/dev2
-                - system-tests
-            tags:
-              only: *tag_regex
-
-      - aevm_tests:
-          requires:
-            - build
-          filters:
-            branches:
-              ignore:
-                - env/dev1
-                - env/dev2
-                - system-tests
-            tags:
-              only: *tag_regex
-
-      - docker_system_tests:
-          filters:
-            branches:
-              only: system-tests
-
-      - static_analysis:
-          requires:
-            - build
-          filters:
-            branches:
-              ignore:
-                - env/dev1
-                - env/dev2
-                - system-tests
-
-      - static_analysis_otp21:
-          requires:
-            - build_otp21
-          filters:
-            branches:
-              ignore:
-                - env/dev1
-                - env/dev2
-                - system-tests
-
-      - rebar_lock_check:
-          requires:
-            - build
-          filters:
-            branches:
-              ignore:
-                - env/dev1
-                - env/dev2
-                - system-tests
-
-      - linux_package:
-          filters:
-            branches:
-              ignore:
-                - system-tests
-
-      - ubuntu_package:
-          requires: []
-          filters:
-            branches:
-              only:
-                - /releases\/.*/
-                - *master_branch
-
-      - upload_build_artifacts:
-          context: ae-node-builds
-          requires:
-            - linux_package
-          filters:
-            branches:
-              ignore:
-                - env/dev1
-                - env/dev2
-                - system-tests
-
-      - osx_package:
-          requires: []
-          filters:
-            branches:
-              only:
-                - /releases\/.*/
-                - *master_branch
-
-      - publish_build_packages:
-          requires:
-            - ubuntu_package
-          filters:
-            branches:
-              only:
-                - /releases\/.*/
-                - *master_branch
-
-      - deploy_integration:
-          context: ae-node-builds
-          requires:
-            - docker_db_smoke_test
-            - db_smoke_test
-            - test_roma
-            - test_minerva
-            - test_fortuna
-            - test_lima
-            - test_latest
-            - test_latest_with_aesophia_compiler
-            - test_mnesia_leveled
-            - test_mnesia_rocksdb
-            - eunit_roma
-            - eunit_minerva
-            - eunit_fortuna
-            - eunit_lima
-            - eunit_latest
-            - aevm_tests
-            - static_analysis
-            - rebar_lock_check
-            - linux_package
-            - build_uml_diagrams
-          filters:
-            branches:
-              only: master
-
-      - docker_test_push_branch:
-          context: ae-node-builds
-          requires:
-            - test_roma
-            - test_minerva
-            - test_fortuna
-            - test_lima
-            - test_latest
-            - test_latest_with_aesophia_compiler
-            - test_mnesia_leveled
-            - test_mnesia_rocksdb
-            - eunit_roma
-            - eunit_minerva
-            - eunit_fortuna
-            - eunit_lima
-            - eunit_latest
-            - aevm_tests
-            - static_analysis
-            - rebar_lock_check
-          filters:
-            branches:
-              only:
-                - *master_branch
-
-      - deploy_next:
-          context: ae-node-builds
-          requires:
-            - test_roma
-            - test_minerva
-            - test_fortuna
-            - test_lima
-            - test_latest
-            - test_latest_with_aesophia_compiler
-            - test_mnesia_leveled
-            - test_mnesia_rocksdb
-            - eunit_roma
-            - eunit_minerva
-            - eunit_fortuna
-            - eunit_lima
-            - eunit_latest
-            - aevm_tests
-            - static_analysis
-            - rebar_lock_check
-            - linux_package
-          filters:
-            branches:
-              only: *master_branch
-
-      - deploy_dev1:
-          context: ae-node-builds
-          requires:
-            - linux_package
-          filters:
-            branches:
-              only: env/dev1
-
-      - deploy_dev2:
-          context: ae-node-builds
-          requires:
-            - linux_package
-          filters:
-            branches:
-              only: env/dev2
-
-      - build_uml_diagrams:
-          requires:
-            - build
-          filters:
-            branches:
-              ignore:
-                - env/dev1
-                - env/dev2
-                - system-tests
-
-  release:
-    jobs:
-      - linux_package:
-          filters:
-            branches:
-              ignore: /.*/
-            tags:
-              only: *tag_regex
-
-      - ubuntu_package:
-          filters:
-            branches:
-              ignore: /.*/
-            tags:
-              only: *tag_regex
-
-      - osx_package:
-          filters:
-            branches:
-              ignore: /.*/
-            tags:
-              only: *tag_regex
-
-      - hodl_artifact_upload:
-          type: approval
-          filters:
-            branches:
-              ignore: /.*/
-            tags:
-              only: *tag_regex
-
-      - upload_packages_linux:
-          context: ae-node-builds
-          requires:
-            - linux_package
-            - hodl_artifact_upload
-          filters:
-            branches:
-              ignore: /.*/
-            tags:
-              only: *tag_regex
-
-      - upload_packages_osx:
-          context: ae-node-builds
-          requires:
-            - osx_package
-            - hodl_artifact_upload
-          filters:
-            branches:
-              ignore: /.*/
-            tags:
-              only: *tag_regex
-
-      - docker_push_tag:
-          context: ae-node-builds
-          requires:
-            - hodl_artifact_upload
-          filters:
-            branches:
-              ignore: /.*/
-            tags:
-              only: *tag_regex
-
-      - hodl_blue:
-          type: approval
-          filters:
-            branches:
-              ignore: /.*/
-            tags:
-              only: *tag_regex
-
-      - deploy_uat_blue:
-          context: ae-node-builds
-          requires:
-            - linux_package
-            - hodl_blue
-          filters:
-            branches:
-              ignore: /.*/
-            tags:
-              only: *tag_regex
-
-      - hodl_green:
-          type: approval
-          filters:
-            branches:
-              ignore: /.*/
-            tags:
-              only: *tag_regex
-
-      - deploy_uat_green:
-          context: ae-node-builds
-          requires:
-            - linux_package
-            - deploy_uat_blue
-            - hodl_green
-          filters:
-            branches:
-              ignore: /.*/
-            tags:
-              only: *tag_regex
-
-      - hodl_latest:
-          type: approval
-          filters:
-            branches:
-              ignore: /.*/
-            tags:
-              only: *tag_regex
-
-      - upload_latest_packages_linux:
-          context: ae-node-builds
-          requires:
-            - linux_package
-            - hodl_latest
-          filters:
-            branches:
-              ignore: /.*/
-            tags:
-              only: *tag_regex
-
-      - upload_latest_packages_osx:
-          context: ae-node-builds
-          requires:
-            - osx_package
-            - hodl_latest
-          filters:
-            branches:
-              ignore: /.*/
-            tags:
-              only: *tag_regex
-
-      - publish_release_packages:
-          requires:
-            - linux_package
-            - osx_package
-            - hodl_latest
-          filters:
-            branches:
-              ignore: /.*/
-            tags:
-              only: *tag_regex
-
-      - docker_push_latest:
-          context: ae-node-builds
-          requires:
-            - docker_push_tag
-            - hodl_latest
-          filters:
-            branches:
-              ignore: /.*/
-            tags:
-              only: *tag_regex
-
-      - verify_release_artifacts:
-          context: ae-node-builds
-          requires:
-            - upload_packages_linux
-            - upload_latest_packages_linux
-            - upload_packages_osx
-            - upload_latest_packages_osx
-            - docker_push_tag
-            - docker_push_latest
-          filters:
-            branches:
-              ignore: /.*/
-            tags:
-              only: *tag_regex
-
-  system_tests:
-    triggers:
-      - schedule:
-          # run at midnight and noon UTC
-          cron: "0 0,12 * * *"
-          filters:
-            branches:
-              only:
-                - *master_branch
-    jobs:
-      - docker_system_tests

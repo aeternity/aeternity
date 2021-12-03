@@ -6,7 +6,6 @@
         , respond/2
         ]).
 
--include_lib("aeutils/include/aeu_stacktrace.hrl").
 -include("aechannel.hrl").
 
 %% ==================================================================

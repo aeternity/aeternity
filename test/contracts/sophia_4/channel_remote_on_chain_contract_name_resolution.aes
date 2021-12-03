@@ -1,0 +1,9 @@
+contract Remote =
+  entrypoint get : () => int
+  entrypoint can_resolve : (string, string) => bool
+
+contract RemoteCall =
+
+    payable entrypoint remote_resolve(r : Remote, name: string, key: string) : bool =
+        r.can_resolve(name, key)
+

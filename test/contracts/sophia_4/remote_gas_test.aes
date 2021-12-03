@@ -1,0 +1,26 @@
+contract Remote1 =
+  entrypoint set : (int) => int
+  entrypoint bogus_return : (int) => string
+
+contract RemoteCall =
+    record state = { i : int }
+
+    entrypoint init(x) = { i = x }
+
+    entrypoint bogus_return(x : int) = x
+
+    payable entrypoint bogus_remote(r : Remote1, x : int, g : int) =
+       r.bogus_return(gas = g, x)
+
+    stateful payable entrypoint set( x : int) : int =
+        let old = state.i
+        put(state{ i = x })
+        old
+
+    stateful payable entrypoint call(r : Remote1, x : int, g : int) : int =
+        r.set(gas = g, value = 10, x)
+
+    entrypoint get() = state.i
+
+
+

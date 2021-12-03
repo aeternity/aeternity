@@ -1,0 +1,168 @@
+docker-smoke-test:
+  executor: buildpack
+  steps:
+    - fixed_checkout
+    - setup_docker
+    - docker_build:
+        tag: $CIRCLE_BRANCH
+
+docker-system-test:
+  executor: machine_2004
+  steps:
+    - docker_system_test:
+        smoke: false
+
+docker-system-smoke-test:
+  executor: machine_2004
+  steps:
+    - docker_system_test:
+        smoke: true
+
+docker-js-sdk-smoke-test:
+  executor: buildpack
+  environment:
+    - AE__CHAIN__PERSIST: "false"
+    - AE__FORK_MANAGEMENT__NETWORK_ID: local_ceres_testnet
+  steps:
+    - fixed_checkout
+    - setup_docker
+    - docker_build:
+        tag: $CIRCLE_BRANCH
+    - run:
+        name: Start NodeJS
+        command: docker run -d --network container:ae_${CIRCLE_SHA1:?} --name nodejs circleci/node:15.0.0-buster sleep 1337
+    - run:
+        name: Copy tests
+        command: docker cp ./sdk_smoke_test/aepp-sdk-js nodejs:/tests
+    - run:
+        name: Run JS SDK smoke test
+        command: docker exec -it nodejs sh -c "cd /tests && npm ci && npm test"
+
+docker-db-smoke-test:
+  docker:
+    - image: circleci/buildpack-deps:bionic
+  environment:
+    - AE__CHAIN__PERSIST: "true"
+  steps:
+    - fixed_checkout
+    - setup_docker
+    - run:
+        name: Install OS Deps
+        command: sudo apt-get update && sudo apt-get install -y libsodium23 libtinfo5 libssl1.0
+    - run:
+        name: Download latest release package
+        command: wget https://releases.aeternity.io/aeternity-latest-ubuntu-x86_64.tar.gz
+    - run:
+        name: Unzip stable node
+        command: mkdir node_stable && tar -xvf aeternity-latest-ubuntu-x86_64.tar.gz -C ./node_stable
+    - run:
+        name: Generate an old DB
+        command: |
+          ./node_stable/bin/aeternity start
+          sleep 60 # Let it sync a bit
+          ./node_stable/bin/aeternity stop
+    - run:
+        name: Build branch docker image
+        command: |
+          docker pull aeternity/builder:bionic-otp22
+          docker build -t << pipeline.parameters.docker_repo >>:${CIRCLE_BRANCH/\//_} .
+    - run:
+        name: Start container
+        command: |
+          docker run -d --name ae_${CIRCLE_SHA1:?} << pipeline.parameters.docker_repo >>:${CIRCLE_BRANCH/\//_} sleep 1337
+    - run:
+        name: Copy the old DB into the container
+        command: |
+          docker exec -u root -it ae_${CIRCLE_SHA1:?} mkdir /old_db
+          docker cp ./node_stable/data/mnesia ae_${CIRCLE_SHA1:?}:/old_db/mnesia
+          docker exec -u root -it ae_${CIRCLE_SHA1:?} chown -R aeternity:aeternity /old_db/mnesia
+    - run:
+        name: Exec the node
+        command: |
+          export AE__CHAIN__DB_PATH=/old_db
+          docker exec -it -e AE__CHAIN__DB_PATH -e AE__CHAIN__PERSIST -e AE__FORK_MANAGEMENT__NETWORK_ID ae_${CIRCLE_SHA1:?} bin/aeternity console -noinput
+        background: true
+    - run:
+        name: Wait for the node to be ready
+        command: |
+          docker exec -it ae_${CIRCLE_SHA1:?} curl -4 --retry-connrefused --max-time 60 --retry 6 --connect-timeout 10 http://localhost:3013/v2/status
+    - run:
+        name: Health check
+        command: |
+          until [ "`docker inspect -f {{.State.Health.Status}} ae_${CIRCLE_SHA1:?}`"=="healthy" ]; do
+              sleep 1;
+          done;
+
+js-sdk-smoke-test:
+  docker:
+    - image: circleci/buildpack-deps:bionic
+  environment:
+    - AE__CHAIN__PERSIST: false
+    - AE__FORK_MANAGEMENT__NETWORK_ID: local_ceres_testnet
+    - PACKAGES_DIR: << pipeline.parameters.packages_workspace >>
+  steps:
+    - fixed_checkout
+    - run:
+        name: Install OS Deps
+        command: |
+          curl -fsSL https://deb.nodesource.com/setup_15.x | sudo -E bash -
+          sudo apt-get update && sudo apt-get install -y nodejs libsodium23 libtinfo5 libssl1.0
+    - attach_workspace:
+        at: << pipeline.parameters.packages_workspace >>
+    - run:
+        name: Install JS SDK
+        command: cd ./sdk_smoke_test/aepp-sdk-js && npm ci
+    - run:
+        name: Unzip built node
+        command: mkdir node && tar -xvf << pipeline.parameters.packages_workspace >>/aeternity-<< pipeline.git.revision >>-ubuntu-x86_64.tar.gz -C ./node
+    - run:
+        name: Start node
+        command: ./node/bin/aeternity start
+    - run:
+        name: Wait for the node api to boot
+        command: curl -4 --retry-connrefused --max-time 60 --retry 6 --connect-timeout 10 http://localhost:3013/v2/status
+    - run:
+        name: Run js sdk smoke test
+        command: cd ./sdk_smoke_test/aepp-sdk-js && npm test
+    - run:
+        name: Stop node
+        command: ./node/bin/aeternity stop
+    - fail_notification
+
+db-smoke-test:
+  docker:
+    - image: circleci/buildpack-deps:bionic
+  environment:
+    - AE__CHAIN__PERSIST: true
+    - PACKAGES_DIR: << pipeline.parameters.packages_workspace >>
+  steps:
+    - fixed_checkout
+    - run:
+        name: Install OS Deps
+        command: sudo apt-get update && sudo apt-get install -y libsodium23 libtinfo5 libssl1.0
+    - attach_workspace:
+        at: << pipeline.parameters.packages_workspace >>
+    - run:
+        name: Unzip built node
+        command: mkdir node_new && tar -xvf << pipeline.parameters.packages_workspace >>/aeternity-<< pipeline.git.revision >>-ubuntu-x86_64.tar.gz -C ./node_new
+    - run:
+        name: Download latest release package
+        command: wget https://releases.aeternity.io/aeternity-latest-ubuntu-x86_64.tar.gz
+    - run:
+        name: Unzip stable node
+        command: mkdir node_stable && tar -xvf aeternity-latest-ubuntu-x86_64.tar.gz -C ./node_stable
+    - run:
+        name: Generate an old DB
+        command: |
+          ./node_stable/bin/aeternity start
+          sleep 60 # Let it sync a bit
+          curl http://localhost:3013/v2/status
+          ./node_stable/bin/aeternity stop
+    - run:
+        name: Test DB compatibility
+        command: |
+          cp -r ./node_stable/data/mnesia ./node_new/data/
+          ./node_new/bin/aeternity start
+          sleep 30
+          curl http://localhost:3013/v2/status
+          ./node_new/bin/aeternity stop

@@ -8,8 +8,8 @@
 
 -behavior(aetx).
 
--include("../../aecontract/include/aecontract.hrl").
--include("../../aecontract/include/hard_forks.hrl").
+-include_lib("aecontract/include/aecontract.hrl").
+-include_lib("aecontract/include/hard_forks.hrl").
 
 %% Behavior API
 -export([new/1,
@@ -138,8 +138,10 @@ is_legal_version_at_protocol(#{vm := VMVersion, abi := ABIVersion}, Protocol) ->
             VMVersion == ?VM_AEVM_SOPHIA_4;
         P when P == ?LIMA_PROTOCOL_VSN, ABIVersion == ?ABI_FATE_SOPHIA_1 ->
             VMVersion == ?VM_FATE_SOPHIA_1;
-        P when P >= ?IRIS_PROTOCOL_VSN, ABIVersion == ?ABI_FATE_SOPHIA_1 ->
+        P when P == ?IRIS_PROTOCOL_VSN, ABIVersion == ?ABI_FATE_SOPHIA_1 ->
             VMVersion == ?VM_FATE_SOPHIA_2;
+        P when P >= ?CERES_PROTOCOL_VSN, ABIVersion == ?ABI_FATE_SOPHIA_1 ->
+            VMVersion >= ?VM_FATE_SOPHIA_2;
         _ ->
             false
     end.
@@ -168,15 +170,15 @@ new(#{owner_id    := OwnerId,
       fee         := Fee} = Args) ->
     account = aeser_id:specialize_type(OwnerId),
     Tx = #ga_attach_tx{owner_id    = OwnerId,
-                             nonce       = Nonce,
-                             code        = Code,
-                             auth_fun    = AuthFun,
-                             ct_version  = #{vm => VMVersion, abi => ABIVersion},
-                             gas         = Gas,
-                             gas_price   = GasPrice,
-                             call_data   = CallData,
-                             fee         = Fee,
-                             ttl         = maps:get(ttl, Args, 0)},
+                       nonce       = Nonce,
+                       code        = Code,
+                       auth_fun    = AuthFun,
+                       ct_version  = #{vm => VMVersion, abi => ABIVersion},
+                       gas         = Gas,
+                       gas_price   = GasPrice,
+                       call_data   = CallData,
+                       fee         = Fee,
+                       ttl         = maps:get(ttl, Args, 0)},
     {ok, aetx:new(?MODULE, Tx)}.
 
 -spec type() -> atom().

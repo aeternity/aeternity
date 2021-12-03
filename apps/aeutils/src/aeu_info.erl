@@ -18,12 +18,20 @@ get_revision() ->
     cached_file(?REVISION_FILE).
 
 block_info() ->
-    cached_file(block_info,
-                fun(block_info) ->
-                    binary_to_integer(re:replace(cached_file(?VERSION_FILE), "^(\\d+)\\.(\\d+)\\.(\\d+).*", "\\1\\2\\3",
-                                                 [{return, binary}, global]))
-
-                end).
+    try
+        cached_file(block_info,
+                    fun(block_info) ->
+                            binary_to_integer(
+                              re:replace(
+                                cached_file(?VERSION_FILE),
+                                "^(\\d+)\\.(\\d+)\\.(\\d+).*", "\\1\\2\\3",
+                                [{return, binary}, global]))
+                    end)
+    catch
+        error:Error:ST ->
+            lager:debug("CAUGHT error:~p / ~p", [Error, ST]),
+            error(Error)
+    end.
 
 get_os() ->
     Bin = fun(A) when is_atom(A)    -> atom_to_binary(A, utf8)
@@ -51,7 +59,15 @@ trim_ending_whitespace(Binary) ->
     re:replace(Binary, "\\s+$", "", [{return, binary}, global]).
 
 cached_file(Filename) ->
-    cached_file(Filename, fun read_trimmed_file/1).
+    try
+        Res = cached_file(Filename, fun read_trimmed_file/1),
+        lager:debug("~p -> ~p", [Filename, Res]),
+        Res
+    catch
+        error:E:ST ->
+            lager:debug("CAUGHT error:~p:~p", [E, ST]),
+            error(E)
+    end.
 
 cached_file(Filename, ReadFun) ->
     EtsKey = {file, Filename},
@@ -60,12 +76,14 @@ cached_file(Filename, ReadFun) ->
         Data
     catch
         _:_ ->
+            lager:debug("~p not cached in ets", [Filename]),
             case ets:whereis(?ETS_TABLE) of
                 undefined ->
                     ets:new(?ETS_TABLE, [named_table, {read_concurrency, true}, public]);
                 _ -> pass
             end,
             ReadData = ReadFun(Filename),
+            lager:debug("ReadData (~p) = ~p", [Filename, ReadData]),
             ets:insert(?ETS_TABLE, {EtsKey, ReadData}),
             ReadData
     end.

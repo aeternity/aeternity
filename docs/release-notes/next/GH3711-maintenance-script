@@ -1,0 +1,2 @@
+* Introduces a command-line script to inspect and toggle maintenance mode:
+  `bin/aeternity maintenance on | off | status`

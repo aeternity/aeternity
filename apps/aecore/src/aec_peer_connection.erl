@@ -1468,8 +1468,8 @@ validate_micro_signature(MicroHeader, _PrevHeader, PrevKeyHeader)
     Sig = aec_headers:signature(MicroHeader),
     Signer = aec_headers:miner(PrevKeyHeader),
     case enacl:sign_verify_detached(Sig, Bin, Signer) of
-        {ok, _}    -> ok;
-        {error, _} -> {error, signature_verification_failed}
+        true  -> ok;
+        false -> {error, signature_verification_failed}
     end;
 validate_micro_signature(_MicroHeader, _PrevHeader, not_found) ->
     {error, signer_not_found}.
@@ -1485,7 +1485,7 @@ handle_get_node_info(S) ->
             Verified = aec_peers:count(verified),
             Unverified = aec_peers:count(unverified),
             NodeInfo = #{ version => NodeVersion
-                        , revision => NodeRevision 
+                        , revision => NodeRevision
                         , vendor => aeu_info:vendor()
                         , os => OS
                         , network_id => aec_governance:get_network_id()

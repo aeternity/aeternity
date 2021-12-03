@@ -1,0 +1,14 @@
+%% -*- mode: erlang; erlang-indent-level: 4; indent-tabs-mode: nil -*-
+{application, aesync,
+ [{description, "Node sync protocol for Aeternity"},
+  {vsn, {cmd, "cat ../../VERSION"}},
+  {registered, []},
+  {mod, { aesync_app, []}},
+  {applications,
+   [kernel,
+    stdlib,
+    aeutils,
+    aecore
+  ]},
+  {env, []}
+ ]}.

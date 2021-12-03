@@ -7,7 +7,7 @@
 
 -export([top_dir/1,
          make_shortcut/1,
-         epoch_config/2,
+         node_config/2,
          create_config/4,
          make_multi/2,
          node_shortcut/2,
@@ -26,6 +26,7 @@
          stop_node/2,
          reinit_with_bitcoin_ng/1,
          reinit_with_ct_consensus/1,
+         reinit_nodes_with_ct_consensus/1,
          get_node_db_config/1,
          delete_node_db_if_persisted/1,
          expected_mine_rate/0,
@@ -62,6 +63,8 @@
          peer_info/1,
          connect/1,
          connect/2,
+         connect_wait/2,
+         connect_await_mode/1,
          subscribe/2,
          unsubscribe/2,
          events_since/3,
@@ -104,7 +107,6 @@
 
 -include_lib("kernel/include/file.hrl").
 -include_lib("common_test/include/ct.hrl").
--include_lib("aeutils/include/aeu_stacktrace.hrl").
 
 -define(OPS_BIN, "aeternity").
 -define(DEFAULT_CUSTOM_EXPECTED_MINE_RATE, 100).
@@ -140,13 +142,7 @@ sign_keys(Node) ->
     {Priv, Pub}.
 
 patron() ->
-    #{ pubkey  => <<206,167,173,228,112,201,249,157,157,78,64,8,128,168,111,29,
-                    73,187,68,75,98,241,26,158,187,100,187,207,235,115,254,243>>, %% ak_2a1j2Mk9YSmC1gioUq4PWRm3bsv887MbuRVwyv4KaUGoR1eiKi
-       privkey => <<230,169,29,99,60,119,207,87,113,50,157,51,84,179,188,239,27,
-                    197,224,50,196,61,112,182,211,90,249,35,206,30,183,77,206,
-                    167,173,228,112,201,249,157,157,78,64,8,128,168,111,29,73,
-                    187,68,75,98,241,26,158,187,100,187,207,235,115,254,243>>
-      }.
+    aecore_env:patron_keypair_for_testing().
 
 -spec known_mocks() -> #{atom() => #mock_def{}}.
 known_mocks() -> #{}.
@@ -173,10 +169,10 @@ init_per_suite(NodesList, CustomNodeCfg, NodeCfgOpts, CTConfig) ->
     make_multi(CTConfig1, NodesList),
     CTConfig1.
 
-epoch_config(Node, CTConfig) ->
-    EpochConfig = epoch_config_dir(Node, CTConfig),
-    [OrigCfg] = jsx:consult(EpochConfig, [return_maps]),
-    backup_config(EpochConfig),
+node_config(Node, CTConfig) ->
+    NodeConfig = node_config_dir(Node, CTConfig),
+    [OrigCfg] = jsx:consult(NodeConfig, [return_maps]),
+    backup_config(NodeConfig),
     OrigCfg.
 
 create_configs(NodesList, CTConfig, CustomConfig, Options) ->
@@ -189,8 +185,9 @@ create_config(Node, CTConfig, CustomConfig, Options) ->
         Backend ->
             #{<<"chain">> => #{<<"db_backend">> => binary:list_to_bin(Backend)}}
     end,
-    EpochCfgPath = epoch_config_dir(Node, CTConfig),
-    ok = filelib:ensure_dir(EpochCfgPath),
+    Forks = #{ <<"chain">> => #{<<"hard_forks">> => forks()}},
+    NodeCfgPath = node_config_dir(Node, CTConfig),
+    ok = filelib:ensure_dir(NodeCfgPath),
     MergedCfg = maps_merge(default_config(Node, CTConfig), CustomConfig),
     MergedCfg1 = aec_metrics_test_utils:maybe_set_statsd_port_in_user_config(Node, MergedCfg, CTConfig),
     MergedCfg2 = maps_merge(MergedCfg1, DbBackendConfig),
@@ -212,9 +209,10 @@ create_config(Node, CTConfig, CustomConfig, Options) ->
                                  }
                               })
                  end,
-    Config = config_apply_options(Node, MergedCfg3, Options),
+    MergedCfg4 = maps_merge(MergedCfg3, Forks),
+    Config = config_apply_options(Node, MergedCfg4, Options),
     write_keys(Node, Config),
-    write_config(EpochCfgPath, Config).
+    write_config(NodeCfgPath, Config).
 
 maps_merge(V1, V2) when not is_map(V1); not is_map(V2) ->
     V2;
@@ -233,8 +231,8 @@ make_multi(Config, NodesList, RefRebarProfile) ->
     ct:log("RefRebarProfile = ~p", [RefRebarProfile]),
     Top = ?config(top_dir, Config),
     ct:log("Top = ~p", [Top]),
-    Epoch = filename:join(Top, "_build/" ++ RefRebarProfile ++ "/rel/aeternity"),
-    [setup_node(N, Top, Epoch, Config) || N <- NodesList].
+    Root = filename:join(Top, "_build/" ++ RefRebarProfile ++ "/rel/aeternity"),
+    [setup_node(N, Top, Root, Config) || N <- NodesList].
 
 make_shortcut(Config) ->
     PrivDir  = priv_dir(Config),
@@ -288,6 +286,18 @@ reinit_with_bitcoin_ng(N) ->
     ok = set_env(Node, aecore, consensus, #{<<"0">> => #{<<"name">> => <<"pow_cuckoo">>}}),
     ok = rpc:call(Node, aec_conductor, reinit_chain, []).
 
+reinit_nodes_with_ct_consensus(Nodes) ->
+    NodeNames = [node_name(N) || N <- Nodes],
+    Timeout = 5000,
+    [{ok, maintenance} = rpc:call(NN, app_ctrl, set_and_await_mode, [maintenance, Timeout])
+     || NN <- NodeNames],
+    [ok = set_env(NN, aecore, consensus, #{<<"0">> => #{<<"name">> => <<"ct_tests">>}})
+     || NN <- NodeNames],
+    [ok = rpc:call(NN, aec_conductor, reinit_chain, []) || NN <- NodeNames],
+    [{ok, normal} = rpc:call(NN, app_ctrl, set_and_await_mode, [normal, Timeout])
+     || NN <- NodeNames],
+    ok.
+
 reinit_with_ct_consensus(N) ->
     ct:log("Reinitializing chain on ~p with ct_tests consensus", [N]),
     Node = node_name(N),
@@ -319,6 +329,9 @@ delete_node_db_if_persisted({true, {ok, MnesiaDir}}) ->
 rpc_test_consensus_enabled(Node) ->
     aec_consensus_common_tests =:= rpc:call(Node, aec_conductor, get_active_consensus_module, []).
 
+rpc_on_demand_consensus_enabled(Node) ->
+  aec_consensus_on_demand =:= rpc:call(Node, aec_conductor, get_active_consensus_module, []).
+
 rpc_consensus_request(Node, Request) ->
     rpc:call(Node, aec_conductor, consensus_request, [Request]).
 
@@ -347,7 +360,8 @@ mine_blocks(Node, NumBlocksToMine, MiningRate, Opts) ->
     mine_blocks(Node, NumBlocksToMine, MiningRate, any, Opts).
 
 mine_blocks(Node, NumBlocksToMine, MiningRate, Type, Opts) ->
-    case rpc_test_consensus_enabled(Node) of
+    case rpc_test_consensus_enabled(Node)
+        orelse rpc_on_demand_consensus_enabled(Node) of
         true ->
             rpc_consensus_request(Node, {mine_blocks, NumBlocksToMine, Type});
         false ->
@@ -399,7 +413,8 @@ mine_blocks_until_txs_on_chain(Node, TxHashes, MiningRate, Max) ->
 mine_blocks_until_txs_on_chain(Node, TxHashes, MiningRate, Max, Opts) ->
     %% Fail early rather than having to wait until max_reached if txs already on-chain
     ok = assert_not_already_on_chain(Node, TxHashes),
-    case rpc_test_consensus_enabled(Node) of
+    case rpc_test_consensus_enabled(Node)
+        orelse rpc_on_demand_consensus_enabled(Node) of
         true ->
             rpc_consensus_request(Node, {mine_blocks_until_txs_on_chain, TxHashes, Max});
         false ->
@@ -410,7 +425,8 @@ mine_blocks_until_txs_on_chain(Node, TxHashes, MiningRate, Max, Opts) ->
     end.
 
 mine_micro_block_emptying_mempool_or_fail(Node) ->
-    case rpc_test_consensus_enabled(Node) of
+    case rpc_test_consensus_enabled(Node)
+        orelse rpc_on_demand_consensus_enabled(Node) of
         true ->
             rpc_consensus_request(Node, mine_micro_block_emptying_mempool_or_fail);
         false ->
@@ -575,9 +591,16 @@ sign_on_node(Id, Tx, SignHash) ->
     sign_on_node(node_tuple(Id), Tx, SignHash).
 
 forks() ->
-    Vs = aec_hard_forks:sorted_protocol_versions(),
-    Hs = lists:seq(0, (length(Vs) - 1)),
-    maps:from_list(lists:zip(Vs, Hs)).
+    NetworkId =
+        case os:getenv("PROTOCOL") of
+            false ->
+                {ok, NId} = application:get_env(aecore, network_id),
+                NId;
+            P ->
+                Protocol = list_to_binary(P),
+                <<"local_", Protocol/binary, "_testnet">>
+        end,
+    aec_hard_forks:protocols_from_network_id(NetworkId).
 
 latest_fork_height() ->
     lists:max(maps:values(forks())).
@@ -615,9 +638,16 @@ connect(N, Mocks) when is_list(Mocks) ->
 
 -spec connect(atom()) -> ok.
 connect(N) ->
-    connect_(N, 50),
+    connect_wait(N, aehttp).
+
+-spec connect_wait(atom(), atom()) -> ok.
+connect_wait(N, WaitForApp) ->
+    connect_(N, 50, fun() -> await_app(N, WaitForApp) end),
     report_node_config(N),
     ok.
+
+connect_await_mode(N) ->
+    connect_(N, 50, fun() -> rpc:call(N, app_ctrl, await_stable_mode, [30000]) end).
 
 subscribe(N, Event) ->
     call_proxy(N, {subscribe, Event}).
@@ -792,18 +822,18 @@ delete_file(F) ->
 %%% Internal functions
 %%%=============================================================================
 
-connect_(N, Timeout) when Timeout < 10000 ->
+connect_(N, Timeout, WaitF) when Timeout < 10000, is_function(WaitF, 0) ->
     timer:sleep(Timeout),
     case net_kernel:hidden_connect_node(N) of
         true ->
             ct:log("hidden_connect_node(~p) -> true", [N]),
-            await_aehttp(N),
+            WaitF(),
             true;
         false ->
             ct:log("hidden_connect_node(~p) -> false, retrying ...", [N]),
-            connect_(N, Timeout * 2)
+            connect_(N, Timeout * 2, WaitF)
     end;
-connect_(N, _) ->
+connect_(N, _, _) ->
     ct:log("exhausted retries (~p)", [N]),
     erlang:error({could_not_connect, N}).
 
@@ -827,41 +857,44 @@ end_mock(N, Mock) ->
     rpc:call(N, Module, FinishF, [], 2000).
 
 await_aehttp(N) ->
+    await_app(N, aehttp).
+
+await_app(N, App) ->
     subscribe(N, app_started),
     Events = events_since(N, app_started, 0),
     ct:log("`app_started` Events since 0: ~p", [Events]),
-    case [true || #{info := aehttp} <- Events] of
+    case [true || #{info := A} <- Events, A == App] of
         [] ->
             receive
-                {app_started, #{info := aehttp}} ->
-                    ct:log("aehttp started", []),
+                {app_started, #{info := App}} ->
+                    ct:log("~p started", [App]),
                     ok
             after 30000 ->
-                    error(timeout_waiting_for_aehttp)
+                    error(list_to_atom("timeout_waiting_for_" ++ atom_to_list(App)))
             end;
         [_|_] ->
-            ct:log("aehttp already started", []),
+            ct:log("~p already started", [App]),
             ok
     end,
     unsubscribe(N, app_started),
     ok.
 
-setup_node(N, Top, Epoch, Config) ->
+setup_node(N, Top, Root, Config) ->
     ct:log("setup_node(~p,Config)", [N]),
     DDir = node_shortcut(N, Config),
     filelib:ensure_dir(filename:join(DDir, "foo")),
-    cp_dir(filename:join(Epoch, "releases"), DDir ++ "/"),
-    cp_dir(filename:join(Epoch, "bin"), DDir ++ "/"),
-    symlink(filename:join(Epoch, "lib"), filename:join(DDir, "lib")),
-    symlink(filename:join(Epoch, "patches"), filename:join(DDir, "patches"), true),
-    {ok, VerContents} = file:read_file(filename:join(Epoch, "VERSION")),
+    cp_dir(filename:join(Root, "releases"), DDir ++ "/"),
+    cp_dir(filename:join(Root, "bin"), DDir ++ "/"),
+    symlink(filename:join(Root, "lib"), filename:join(DDir, "lib")),
+    symlink(filename:join(Root, "patches"), filename:join(DDir, "patches"), true),
+    {ok, VerContents} = file:read_file(filename:join(Root, "VERSION")),
     [VerB |_ ] = binary:split(VerContents, [<<"\n">>, <<"\r">>], [global]),
     Version = binary_to_list(VerB),
     %%
     CfgD = filename:join([Top, "config/", N]),
     RelD = filename:dirname(filename:join([DDir, "releases", Version, "aeternity.rel"])),
     [cp_file(filename:join(CfgD, F), filename:join(RelD, F)) || F <- ["vm.args", "sys.config"]],
-    [cp_file(filename:join(Epoch, F), filename:join(DDir, F)) || F <- ["VERSION", "REVISION"]],
+    [cp_file(filename:join(Root, F), filename:join(DDir, F)) || F <- ["VERSION", "REVISION"]],
     delete_file(filename:join(RelD, "vm.args.orig")),
     delete_file(filename:join(RelD, "sys.config.orig")),
     TestsDir = filename:dirname(code:which(?MODULE)),
@@ -869,7 +902,7 @@ setup_node(N, Top, Epoch, Config) ->
     ConfigFilename = proplists:get_value(config_name, Config, "default") ++ ".config",
     cp_file(filename:join(TestD, ConfigFilename),
             filename:join(DDir , ConfigFilename)),
-    aec_test_utils:copy_forks_dir(Epoch, DDir).
+    aec_test_utils:copy_forks_dir(Root, DDir).
 
 
 cp_dir(From, To) ->
@@ -883,6 +916,7 @@ cp_dir(From, To) ->
     cp_dir(file:list_dir(From), From, ToDir).
 
 cp_dir({ok, Fs}, From, To) ->
+    ct:log("cp_dir({ok, ~p}, ~p, ~p)", [Fs, From, To]),
     Res =
         lists:foldl(
             fun(F, Acc) ->
@@ -895,7 +929,7 @@ cp_dir({ok, Fs}, From, To) ->
                     false ->
                         Tgt = filename:join(To, F),
                         ok = filelib:ensure_dir(Tgt),
-                        {ok,_} = file:copy(FullF, Tgt),
+                        ok = file_copy(FullF, Tgt),
                         ok = match_mode(FullF, Tgt),
                         [FullF|Acc]
                 end
@@ -905,6 +939,15 @@ cp_dir({ok, Fs}, From, To) ->
 cp_dir({error, _} = Error, From, To) ->
     ct:log("cp_dir(~p, ~p) -> ~p", [From, To, Error]),
     Error.
+
+file_copy(From, To) ->
+    case file:copy(From, To) of
+        {ok, _} ->
+            ok;
+        Other ->
+            ct:log("ERROR in file:copy(~p, ~p):~n   ~p", [From, To, Other]),
+            error(Other, [From, To])
+    end.
 
 match_mode(A, B) ->
     case {file:read_link_info(A), file:read_file_info(B)} of
@@ -1080,7 +1123,7 @@ default_config(N, Config) ->
       <<"include_default_peers">> => false
      }.
 
-epoch_config_dir(N, Config) ->
+node_config_dir(N, Config) ->
     filename:join(data_dir(N, Config), "aeternity.json").
 
 %% dirs
@@ -1119,12 +1162,13 @@ pubkey(N) ->
     {N, {_, PubKey}} = lists:keyfind(N, 1, peer_keys()),
     PubKey.
 
-backup_config(EpochConfig) ->
-    Dir = filename:dirname(EpochConfig),
-    Ext = filename:extension(EpochConfig),
+backup_config(NodeConfig) ->
+    Dir = filename:dirname(NodeConfig),
+    Ext = filename:extension(NodeConfig),
+    Base = filename:basename(NodeConfig, Ext),
     {A,B,C} = os:timestamp(),
     BackupBase = lists:flatten(
-                   ["epoch-",
+                   [Base, "-",
                     integer_to_list(A),
                     "-",
                     integer_to_list(B),
@@ -1132,8 +1176,8 @@ backup_config(EpochConfig) ->
                     integer_to_list(C),
                     Ext]),
     Backup = filename:join(Dir, BackupBase),
-    ct:log("Back up ~p to ~p", [EpochConfig, Backup]),
-    cp_file(EpochConfig, Backup).
+    ct:log("Back up ~p to ~p", [NodeConfig, Backup]),
+    cp_file(NodeConfig, Backup).
 
 
 %% ============================================================
@@ -1324,11 +1368,18 @@ http_request(Host, post, Path, Params) ->
                            {"application/json", jsx:encode(Params)};
                        [] ->
                            {"application/x-www-form-urlencoded",
-                            http_uri:encode(Path)}
+                            aeu_uri:encode(Path)}
                    end,
     %% lager:debug("Type = ~p; Body = ~p", [Type, Body]),
     ct:log("POST ~p, type ~p, Body ~p", [URL, Type, Body]),
     R = httpc_request(post, {URL, [], Type, Body}, [], []),
+    process_http_return(R);
+http_request(Host, delete, Path, Params) ->
+    Prefix = get(api_prefix, "/v2/"),
+    URL = binary_to_list(
+            iolist_to_binary([Host, Prefix, Path, encode_get_params(Params)])),
+    ct:log("DELETE ~p", [URL]),
+    R = httpc_request(delete, {URL, []}, [], []),
     process_http_return(R).
 
 httpc_request(Method, Request, HTTPOptions, Options) ->
@@ -1367,7 +1418,7 @@ uenc(B) when is_boolean(B) ->
 uenc(I) when is_integer(I) ->
     uenc(integer_to_list(I));
 uenc(V) ->
-    http_uri:encode(V).
+    aeu_uri:encode(V).
 
 process_http_return(R) ->
     case R of
@@ -1382,7 +1433,7 @@ process_http_return(R) ->
                             jsx:decode(BodyB, [return_maps])
                     end,
                 {ok, ReturnCode, Result}
-            ?_catch_(error, E, ST)
+            catch error:E:ST ->
                 {error, {parse_error, [E, ST]}}
             end;
         {error, _} = Error ->

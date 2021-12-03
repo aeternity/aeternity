@@ -1,0 +1,25 @@
+deploy:
+  parameters:
+    version:
+      type: string
+    env:
+      type: string
+    color:
+      type: string
+      default: ""
+    downtime:
+      type: integer
+      default: 0
+    executor_tag:
+      type: string
+      default: "unstable"
+  executor: infrastructure_container_<< parameters.executor_tag >>
+  steps:
+    - fixed_checkout
+    - attach_workspace:
+        at: << pipeline.parameters.packages_workspace >>
+    - deploy_env:
+        env: << parameters.env >>
+        color: << parameters.color >>
+        downtime: << parameters.downtime >>
+        package_path: << pipeline.parameters.packages_workspace >>/aeternity-<< parameters.version >>-ubuntu-x86_64.tar.gz

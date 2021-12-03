@@ -1,6 +1,6 @@
 // AENS tests
 
-contract Remote =
+contract interface Remote =
   entrypoint foo : () => int
 
 contract AENSTest =

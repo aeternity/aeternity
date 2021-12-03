@@ -7,6 +7,7 @@
 -define(VM_FATE_SOPHIA_1,   16#05).
 -define(VM_AEVM_SOPHIA_4,   16#06).
 -define(VM_FATE_SOPHIA_2,   16#07).
+-define(VM_FATE_SOPHIA_3,   16#08).
 
 %% ABI versions
 -define(ABI_NO_VM,         16#00).
@@ -21,7 +22,8 @@
          ___VM_VERSION___ =:= ?VM_AEVM_SOPHIA_1)).
 
 -define(IS_FATE_SOPHIA(___VM_VERSION___),
-        (___VM_VERSION___ =:= ?VM_FATE_SOPHIA_2 orelse
+        (___VM_VERSION___ =:= ?VM_FATE_SOPHIA_3 orelse
+         ___VM_VERSION___ =:= ?VM_FATE_SOPHIA_2 orelse
          ___VM_VERSION___ =:= ?VM_FATE_SOPHIA_1)).
 
 -ifdef(TEST).

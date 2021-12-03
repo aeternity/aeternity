@@ -17,7 +17,6 @@
         ]).
 
 -include_lib("aecontract/include/hard_forks.hrl").
--include_lib("aeutils/include/aeu_stacktrace.hrl").
 
 %% test case exports
 -export([ simple_attach/1
@@ -81,8 +80,8 @@
 -include_lib("common_test/include/ct.hrl").
 -include_lib("stdlib/include/assert.hrl").
 
--include("../../aecore/include/blocks.hrl").
--include("../../aecontract/include/aecontract.hrl").
+-include_lib("aecore/include/blocks.hrl").
+-include_lib("aecontract/include/aecontract.hrl").
 
 -define(MINER_PUBKEY, <<12345:?MINER_PUB_BYTES/unit:8>>).
 -define(BENEFICIARY_PUBKEY, <<12345:?BENEFICIARY_PUB_BYTES/unit:8>>).
@@ -330,8 +329,8 @@ simple_contract_call(_Cfg) ->
 
     AuthOpts2 = #{ prep_fun => fun(_) -> simple_auth(["123", "2"]) end },
     {ok, #{tx_res := ok, call_res := ok, call_val := Val}} =
-        ?call(ga_call, Acc1, AuthOpts2, Ct, "identity", "main", ["42"]),
-    ?assertMatchABI("42", 42, decode_call_result("identity", "main", ok, Val)),
+        ?call(ga_call, Acc1, AuthOpts2, Ct, "identity", "main_", ["42"]),
+    ?assertMatchABI("42", 42, decode_call_result("identity", "main_", ok, Val)),
 
     ok.
 
@@ -412,8 +411,8 @@ basic_contract_call(_Cfg) ->
 
     AuthOpts2 = #{ prep_fun => fun(TxHash) -> ?call(basic_auth, Acc1, "2", TxHash) end },
     {ok, #{call_res := ok, call_val := Val}} =
-        ?call(ga_call, Acc1, AuthOpts2, Ct, "identity", "main", ["42"]),
-    ?assertMatchABI("42", 42, decode_call_result("identity", "main", ok, Val)),
+        ?call(ga_call, Acc1, AuthOpts2, Ct, "identity", "main_", ["42"]),
+    ?assertMatchABI("42", 42, decode_call_result("identity", "main_", ok, Val)),
 
     ok.
 
@@ -492,8 +491,8 @@ tx_check(_Cfg) ->
         ?call(ga_create, Acc1, Auth("1"), "identity", []),
 
     {ok, #{call_res := ok, call_val := Val}} =
-        ?call(ga_call, Acc1, Auth("2"), Ct, "identity", "main", ["42"]),
-    ?assertMatchABI("42", 42, decode_call_result("identity", "main", ok, Val)),
+        ?call(ga_call, Acc1, Auth("2"), Ct, "identity", "main_", ["42"]),
+    ?assertMatchABI("42", 42, decode_call_result("identity", "main_", ok, Val)),
 
     PreBalance  = ?call(account_balance, Acc2),
     {ok, #{tx_res := ok}} =
@@ -563,8 +562,8 @@ bitcoin_contract_call(_Cfg) ->
 
     AuthOpts2 = #{ prep_fun => fun(TxHash) -> ?call(bitcoin_auth, Acc1, "2", TxHash) end },
     {ok, #{call_res := ok, call_val := Val}} =
-        ?call(ga_call, Acc1, AuthOpts2, Ct, "identity", "main", ["42"]),
-    ?assertMatchABI("42", 42, decode_call_result("identity", "main", ok, Val)),
+        ?call(ga_call, Acc1, AuthOpts2, Ct, "identity", "main_", ["42"]),
+    ?assertMatchABI("42", 42, decode_call_result("identity", "main_", ok, Val)),
 
     ok.
 
@@ -619,8 +618,8 @@ ethereum_contract_call(_Cfg) ->
 
     AuthOpts2 = #{ prep_fun => fun(TxHash) -> ?call(ethereum_auth, Acc1, "2", TxHash) end },
     {ok, #{call_res := ok, call_val := Val}} =
-        ?call(ga_call, Acc1, AuthOpts2, Ct, "identity", "main", ["42"]),
-    ?assertMatchABI("42", 42, decode_call_result("identity", "main", ok, Val)),
+        ?call(ga_call, Acc1, AuthOpts2, Ct, "identity", "main_", ["42"]),
+    ?assertMatchABI("42", 42, decode_call_result("identity", "main_", ok, Val)),
 
     ok.
 
@@ -986,7 +985,7 @@ channel_force_progress(_Cfg) ->
     {CtId, OffState1} = aega_test_utils:add_contract(Acc1, ?call(dry_run, contract_create, {"identity", []}), OffState),
 
     {ok, #{tx_res := ok, round := 4, call_res := ok}} =
-        ?call(ga_channel_force_progress, Acc1, Auth("2"), ChId, OffState1, CtId, "identity", "main", ["42"]),
+        ?call(ga_channel_force_progress, Acc1, Auth("2"), ChId, OffState1, CtId, "identity", "main_", ["42"]),
 
     ok.
 
@@ -1632,7 +1631,7 @@ call(Name, Fun, Xs) ->
 call(Fun, Xs) when is_function(Fun, 1 + length(Xs)) ->
     S = state(),
     {R, S1} = try apply(Fun, Xs ++ [S])
-              ?_catch_(_, Reason, StackTrace)
+              catch _:Reason:StackTrace ->
                 case Reason of
                     {fail, Rx, Sx} -> {{failed, Rx}, Sx};
                     {fail, Error}  -> error(Error);

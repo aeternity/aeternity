@@ -568,6 +568,71 @@ paths:
           description: 'Account not found'
           schema:
             $ref: '#/definitions/Error'
+  /accounts/{pubkey}/next-nonce:
+    get:
+      tags:
+        - external
+        - account
+      operationId: GetAccountNextNonce
+      description: "Get an account's next nonce; This is computed according to whatever is the current account nonce and what transactions are currently present in the transaction pool"
+      produces:
+        - application/json
+      parameters:
+        - in: path
+          name: pubkey
+          description: 'The public key of the account'
+          required: true
+          type: string
+        - in: query
+          name: strategy
+          description: "What strategy to use in order to determine the next nonce: shall it check for continuity or return the largest nonce seen + 1. If you choose strategy max, then the greatest nonce seen in the account or currently in the transaction pool is incremented with 1 and returned. If you choose the strategy continuity, then transactions in the mempool are checked if there are gaps - missing nonces that prevent transactions with greater nonces to get included." 
+          required: false
+          default: max
+          type: string
+          enum: [max, continuity]
+      responses:
+        '200':
+          description: 'Successful operation'
+          schema:
+            type: object
+            properties:
+              next_nonce:
+                type: integer
+        '400':
+          description: 'Invalid public key'
+          schema:
+            $ref: '#/definitions/Error'
+        '404':
+          description: 'Account not found'
+          schema:
+            $ref: '#/definitions/Error'
+  /dry-run:
+    post:
+      tags:
+        - external 
+        - dry-run
+      operationId: 'ProtectedDryRunTxs'
+      description: 'Dry-run transactions on top of a given block. Supports all TXs except GAMetaTx, PayingForTx and OffchainTx. The maximum gas limit of all calls is capped. The maximum gas limit per request is a global node setting. Since DryRunCallReq object do not have a mandatory gas field, if not set a default value of 1000000 is being used instead.'
+      consumes:
+        - application/json
+      produces:
+        - application/json
+      parameters:
+        - in: body
+          name: body
+          description: transactions
+          required: true
+          schema:
+            $ref: '#/definitions/DryRunInput'
+      responses:
+        '200':
+          description: Dry-run result
+          schema:
+            $ref: '#/definitions/DryRunResults'
+        '403':
+          description: Invalid input
+          schema:
+            $ref: '#/definitions/Error'
   /transactions/{hash}:
     get:
       tags:
@@ -808,6 +873,7 @@ paths:
           name: type
           description: 'The type of a query: open, closed or all'
           required: false
+          default: all
           type: string
           enum: [open, closed, all]
       responses:
@@ -1719,7 +1785,7 @@ paths:
         - internal
         - debug
       operationId: 'DryRunTxs'
-      description: 'Dry-run transactions on top of a given block. Supports all TXs except GAMetaTx, PayingForTx and OffchainTx'
+      description: 'Dry-run transactions on top of a given block. Supports all TXs except GAMetaTx, PayingForTx and OffchainTx.'
       consumes:
         - application/json
       produces:
@@ -1770,6 +1836,36 @@ paths:
             $ref: '#/definitions/Error'
         '404':
           description: Payer account not found
+          schema:
+            $ref: '#/definitions/Error'
+  /debug/check-tx/pool/{hash}:
+    get:
+      tags:
+        - internal
+        - debug
+      operationId: GetCheckTxInPool
+      description: "Check if a transaction in the pool is valid in the current state of the chain and can be included in a microblock or if it is blocked by something: not enough tokens, missing nonce or something else"
+      produces:
+        - application/json
+      parameters:
+        - in: path
+          name: hash
+          description: The hash of the transaction
+          required: true
+          # UInt64
+          type: string
+      responses:
+        '200':
+          description: The transaction status
+          schema:
+            type: object
+            properties:
+              status:
+                type: string
+            required:
+              - status
+        '404':
+          description: Transaction is not in transaction pool
           schema:
             $ref: '#/definitions/Error'
   /debug/token-supply/height/{height}:
@@ -2411,8 +2507,6 @@ definitions:
       responder_id:
         $ref: '#/definitions/EncodedPubkey'
       responder_amount:
-        $ref: '#/definitions/UInt'
-      push_amount:
         $ref: '#/definitions/UInt'
       channel_reserve:
         $ref: '#/definitions/UInt'
@@ -3503,7 +3597,7 @@ definitions:
       auth_fun:
         description: Contract authorization function hash (hex encoded)
         type: string
-        pattern: ^(0x|0X)?[a-fA-F0-9]+$'
+        pattern: "^(0x|0X)?[a-fA-F0-9]+$"
     required:
       - owner_id
       - code

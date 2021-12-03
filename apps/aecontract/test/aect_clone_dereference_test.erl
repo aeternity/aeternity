@@ -1,7 +1,7 @@
 -module(aect_clone_dereference_test).
 
 -include_lib("eunit/include/eunit.hrl").
--include("../include/aecontract.hrl").
+-include("aecontract.hrl").
 
 dereference_test() ->
     T0 = aect_state_tree:empty(),
@@ -19,9 +19,6 @@ dereference_test() ->
     ?assertMatch({C0, Code0}, aect_state_tree:get_contract_with_code(aect_contracts:pubkey(C0), T3)),
     ?assertMatch({C1, Code1}, aect_state_tree:get_contract_with_code(aect_contracts:pubkey(C1), T3)),
     ?assertMatch({C2, Code0}, aect_state_tree:get_contract_with_code(aect_contracts:pubkey(C2), T3)).
-
-new_contract() ->
-    new_contract(#{}).
 
 new_contract(Override) ->
     Map = #{ owner_id    => aeser_id:create(account, <<4711:32/unit:8>>)

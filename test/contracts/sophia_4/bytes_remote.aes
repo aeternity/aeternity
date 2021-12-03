@@ -1,0 +1,10 @@
+contract BytesRemote =
+  entrypoint identity : (bytes(4)) => bytes(4)
+
+contract BytesX =
+  entrypoint remote(br : BytesRemote) : bool =
+    let b = #12345678
+    b == br.identity(b)
+
+  entrypoint identity(b : bytes(4)) = b
+

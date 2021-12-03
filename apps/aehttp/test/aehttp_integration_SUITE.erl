@@ -28,7 +28,9 @@
    , get_commitment_id/2
    , get_accounts_by_pubkey_sut/1
    , get_accounts_by_pubkey_and_height_sut/2
+   , get_accounts_next_nonce_sut/1
    , get_transactions_by_hash_sut/1
+   , check_transaction_in_pool_sut/1
    , get_contract_call_object/1
    , get_top_block/1
    , get_top_header/1
@@ -36,6 +38,11 @@
    , wait_for_tx_hash_on_chain/1
    , sign_and_post_tx/2
    , end_per_testcase_all/1
+   , get_spend/1
+   , post_transactions_sut/1
+   , get_transactions_pending_sut/0
+   , delete_tx_from_mempool_sut/1
+   , get_key_blocks_current_height_sut/0
    ]).
 
 -export(
@@ -131,10 +138,12 @@
     named_oracle_transactions/1,
     nameservice_transactions/1,
     spend_transaction/1,
+    next_nonce_missing_nonce/1,
     state_channels_onchain_transactions/1,
     unknown_atom_in_spend_tx/1,
 
     get_transaction/1,
+    check_transaction_in_pool/1,
 
     % sync gossip
     pending_transactions/1,
@@ -445,10 +454,12 @@ groups() ->
         named_oracle_transactions,
         nameservice_transactions,
         spend_transaction,
+        next_nonce_missing_nonce,
         state_channels_onchain_transactions,
         unknown_atom_in_spend_tx,
 
         get_transaction,
+        check_transaction_in_pool,
 
         % sync gossip
         pending_transactions,
@@ -572,7 +583,6 @@ groups() ->
        get_generation_by_hash,
        get_generation_by_height
       ]},
-     %% /oracles/*
      {paying_for_tx, [sequence],
       [post_paying_for_tx]}
     ].
@@ -581,10 +591,8 @@ suite() ->
     [].
 
 init_per_suite(Config) ->
-    Forks = aecore_suite_utils:forks(),
     DefCfg = #{<<"chain">> =>
-                   #{<<"persist">> => false,
-                     <<"hard_forks">> => Forks},
+                   #{<<"persist">> => false},
                <<"mining">> =>
                    #{<<"micro_block_cycle">> => 1,
                      <<"name_claim_bid_timeout">> => 0 %% NO name auctions
@@ -662,9 +670,10 @@ init_per_group(on_micro_block, Config) ->
     {ok, [Tx]} = rpc:call(Node, aec_tx_pool, peek, [infinity]),
     ct:log("Spend tx ~p", [Tx]),
     case aecore_suite_utils:mine_micro_block_emptying_mempool_or_fail(Node) of
-        {ok, [KeyBlock, MicroBlock]} ->
-            true = aec_blocks:is_key_block(KeyBlock),
+        {ok, [_|_] = Blocks} ->
+            MicroBlock = lists:last(Blocks),
             false = aec_blocks:is_key_block(MicroBlock),
+            KeyBlock = get_prev_key_block(Blocks),
             {ok, PendingKeyBlock} = wait_for_key_block_candidate(),
             [{prev_key_block, KeyBlock},
              {prev_key_block_hash, hash(key, KeyBlock)},
@@ -728,7 +737,9 @@ init_per_group(tx_is_pending, Config) ->
 init_per_group(tx_is_on_chain = _Group, Config) ->
     Node = aecore_suite_utils:node_name(?NODE),
     case aecore_suite_utils:mine_micro_block_emptying_mempool_or_fail(Node) of
-        {ok, [KeyBlock, MicroBlock]} ->
+        {ok, Blocks} ->
+            MicroBlock = lists:last(Blocks),
+            KeyBlock = get_prev_key_block(Blocks),
             true = aec_blocks:is_key_block(KeyBlock),
             false = aec_blocks:is_key_block(MicroBlock),
             [Tx] = aec_blocks:txs(MicroBlock),
@@ -866,7 +877,7 @@ init_per_testcase(_Case, Config) ->
 init_per_testcase_all(Config) ->
     [{_, Node} | _] = ?config(nodes, Config),
     aecore_suite_utils:mock_mempool_nonce_offset(Node, 100),
-    SwaggerVsn = proplists:get_value(swagger_version, Config),
+    SwaggerVsn = proplists:get_value(swagger_version, Config, oas3),
     aecore_suite_utils:use_swagger(SwaggerVsn),
     [{tc_start, os:timestamp()} | Config].
 
@@ -906,6 +917,7 @@ get_chain_ends(Config) ->
 
 get_chain_ends(CurrentBlockType, CurrentBlockHash, _Config) when
       CurrentBlockType =:= genesis_block; CurrentBlockType =:= key_block ->
+    ct:log("CurrentBlockHash = ~p", [CurrentBlockHash]),
     ?assertMatch({ok, 200, [CurrentBlockHash]}, get_chain_ends_sut()),
     ok;
 get_chain_ends(micro_block, CurrentBlockHash, Config) ->
@@ -924,9 +936,16 @@ get_chain_ends_sut() ->
 %% /blocks/top
 
 get_top_block(Config) ->
-    get_top_block(?config(current_block_type, Config),
-                  ?config(current_block_hash, Config),
-                  Config).
+    TopHdr = rpc(aec_chain, top_header, []),
+    Height = aec_headers:height(TopHdr),
+    IntType = aec_headers:type(TopHdr),
+    Type = case {Height, IntType} of
+               {0, _    } -> genesis_block;
+               {_, key  } -> key_block;
+               {_, micro} -> micro_block
+           end,
+    Hash = hash_header(IntType, TopHdr),
+    get_top_block(Type, Hash, Config).
 
 get_top_block(CurrentBlockType, CurrentBlockHash, _Config) when
       CurrentBlockType =:= genesis_block; CurrentBlockType =:= key_block ->
@@ -1116,7 +1135,7 @@ get_key_blocks_by_height_sut(Height) ->
 
 get_key_blocks_by_hash_sut(Hash) ->
     Host = external_address(),
-    http_request(Host, get, "key-blocks/hash/" ++ http_uri:encode(Hash), []).
+    http_request(Host, get, "key-blocks/hash/" ++ aeu_uri:encode(Hash), []).
 
 post_key_blocks_sut(KeyBlock) ->
     Host = internal_address(),
@@ -1213,23 +1232,23 @@ get_micro_block_transaction_by_hash_and_index(micro_block, Config) ->
 get_micro_blocks_header_by_hash_sut(Hash) ->
     Host = external_address(),
     Hash1 = binary_to_list(Hash),
-    http_request(Host, get, "micro-blocks/hash/" ++ http_uri:encode(Hash1) ++ "/header", []).
+    http_request(Host, get, "micro-blocks/hash/" ++ aeu_uri:encode(Hash1) ++ "/header", []).
 
 get_micro_blocks_transactions_by_hash_sut(Hash) ->
     Host = external_address(),
     Hash1 = binary_to_list(Hash),
-    http_request(Host, get, "micro-blocks/hash/" ++ http_uri:encode(Hash1) ++ "/transactions", []).
+    http_request(Host, get, "micro-blocks/hash/" ++ aeu_uri:encode(Hash1) ++ "/transactions", []).
 
 get_micro_blocks_transactions_count_by_hash_sut(Hash) ->
     Host = external_address(),
     Hash1 = binary_to_list(Hash),
-    http_request(Host, get, "micro-blocks/hash/" ++ http_uri:encode(Hash1) ++ "/transactions/count", []).
+    http_request(Host, get, "micro-blocks/hash/" ++ aeu_uri:encode(Hash1) ++ "/transactions/count", []).
 
 get_micro_blocks_transactions_by_hash_by_index_sut(Hash, Index) ->
     Host = external_address(),
     Hash1 = binary_to_list(Hash),
     Index1 = integer_to_list(Index),
-    Path = "micro-blocks/hash/" ++ http_uri:encode(Hash1) ++ "/transactions/index/" ++ Index1,
+    Path = "micro-blocks/hash/" ++ aeu_uri:encode(Hash1) ++ "/transactions/index/" ++ Index1,
     http_request(Host, get, Path, []).
 
 %% /generations/*
@@ -1310,7 +1329,7 @@ get_generation_current_sut() ->
 
 get_generation_by_hash_sut(Hash) ->
     Host = external_address(),
-    http_request(Host, get, "generations/hash/" ++ http_uri:encode(Hash), []).
+    http_request(Host, get, "generations/hash/" ++ aeu_uri:encode(Hash), []).
 
 get_generation_by_height_sut(Height) ->
     Host = external_address(),
@@ -1404,23 +1423,42 @@ get_pending_account_transactions_by_pubkey(true, Config) ->
 
 get_accounts_by_pubkey_sut(Id) ->
     Host = external_address(),
-    http_request(Host, get, "accounts/" ++ http_uri:encode(Id), []).
+    http_request(Host, get, "accounts/" ++ aeu_uri:encode(Id), []).
+
+get_accounts_next_nonce_sut(Id) ->
+    Host = external_address(),
+    http_request(Host, get, "accounts/" ++ binary_to_list(Id) ++ "/next-nonce", []).
+
+get_accounts_next_nonce_sut(Id, Strategy) when Strategy =:= max; Strategy =:= continuity ->
+    StrategyL = atom_to_list(Strategy),
+    Host = external_address(),
+    http_request(Host, get, "accounts/" ++ binary_to_list(Id) ++ "/next-nonce?strategy=" ++ StrategyL, []).
 
 get_accounts_by_pubkey_and_hash_sut(Id, Hash) ->
     Host = external_address(),
-    IdS = binary_to_list(http_uri:encode(Id)),
+    IdS = binary_to_list(aeu_uri:encode(Id)),
     http_request(Host, get, "accounts/" ++ IdS ++ "/hash/" ++ Hash, []).
 
 get_accounts_by_pubkey_and_height_sut(Id, Height) ->
     Host = external_address(),
-    IdS = binary_to_list(http_uri:encode(Id)),
+    IdS = binary_to_list(aeu_uri:encode(Id)),
     HeightS = integer_to_list(Height),
     http_request(Host, get, "accounts/" ++ IdS ++ "/height/" ++ HeightS, []).
 
 get_accounts_transactions_pending_by_pubkey_sut(Id) ->
     Host = external_address(),
     Id1 = binary_to_list(Id),
-    http_request(Host, get, "accounts/" ++ http_uri:encode(Id1) ++ "/transactions/pending", []).
+    http_request(Host, get, "accounts/" ++ aeu_uri:encode(Id1) ++ "/transactions/pending", []).
+
+get_transactions_pending_sut() ->
+    Host = internal_address(),
+    http_request(Host, get, "debug/transactions/pending", []).
+
+delete_tx_from_mempool_sut(Hash) when is_binary(Hash) ->
+    delete_tx_from_mempool_sut(binary_to_list(Hash));
+delete_tx_from_mempool_sut(Hash) when is_list(Hash) ->
+    Host = internal_address(),
+    http_request(Host, delete, "node/operator/mempool/hash/" ++ Hash, []).
 
 %% /transactions/*
 
@@ -1442,6 +1480,11 @@ get_transaction_by_hash([{TxHash, _ExpectedTx}], Config) ->
     BlockWithTxsHash = ?config(block_with_txs_hash, Config),
     BlockWithTxsHeight = ?config(block_with_txs_height, Config),
     {ok, 200, Tx} = get_transactions_by_hash_sut(TxHash),
+    case ?config(swagger_version, Config) of
+        swagger2 -> pass;
+        oas3 ->
+            {ok, 200, _Tx} = get_transactions_by_hash_int_as_string_sut(TxHash)
+    end,
     ?assertEqual(TxHash, maps:get(<<"hash">>, Tx)),
     ?assertEqual(BlockWithTxsHash, maps:get(<<"block_hash">>, Tx)),
     ?assertEqual(BlockWithTxsHeight, maps:get(<<"block_height">>, Tx)),
@@ -1539,7 +1582,7 @@ post_contract_and_call_tx(_Config) ->
     ?assertMatch({ok, 200, _}, get_transactions_by_hash_sut(ContractCreateTxHash)),
     ?assertMatch({ok, 200, _}, get_contract_call_object(ContractCreateTxHash)),
 
-    {ok, EncodedCallData} = encode_call_data(identity, "main", ["42"]),
+    {ok, EncodedCallData} = encode_call_data(identity, "main_", ["42"]),
     ContractCallEncoded = #{ caller_id   => Pubkey,
                              contract_id => EncodedContractPubKey,
                              abi_version => latest_sophia_abi(),
@@ -1564,11 +1607,19 @@ post_contract_and_call_tx(_Config) ->
 
 get_transactions_by_hash_sut(Hash) ->
     Host = external_address(),
-    http_request(Host, get, "transactions/" ++ http_uri:encode(Hash), []).
+    http_request(Host, get, "transactions/" ++ aeu_uri:encode(Hash), []).
+
+get_transactions_by_hash_int_as_string_sut(Hash) ->
+    Host = external_address(),
+    http_request(Host, get, "transactions/" ++ binary_to_list(aeu_uri:encode(Hash)) ++ "?int-as-string", []).
+
+check_transaction_in_pool_sut(Hash) ->
+    Host = internal_address(),
+    http_request(Host, get, "debug/check-tx/pool/" ++ aeu_uri:encode(Hash), []).
 
 get_transaction_info_by_hash_sut(Hash) ->
     Host = external_address(),
-    http_request(Host, get, "transactions/" ++ http_uri:encode(Hash) ++ "/info", []).
+    http_request(Host, get, "transactions/" ++ aeu_uri:encode(Hash) ++ "/info", []).
 
 post_transactions_sut(Tx) ->
     Host = external_address(),
@@ -1665,6 +1716,10 @@ post_oracle_register(Config) ->
     ok = post_tx(TxHash, Tx),
     ok = wait_for_tx_hash_on_chain(TxHash),
     {ok, 200, Resp} = get_oracles_by_pubkey_sut(OracleId),
+    {ok, 200, #{<<"oracle_queries">> := []}} = get_oracles_queries_by_pubkey_sut(OracleId, #{type => "all"}),
+    {ok, 200, #{<<"oracle_queries">> := []}} = get_oracles_queries_by_pubkey_sut(OracleId, #{}),
+    {ok, 200, #{<<"oracle_queries">> := []}} = get_oracles_queries_by_pubkey_sut(OracleId, #{type => "open"}),
+    {ok, 200, #{<<"oracle_queries">> := []}} = get_oracles_queries_by_pubkey_sut(OracleId, #{type => "closed"}),
     ?assertEqual(OracleId, maps:get(<<"id">>, Resp)),
     {save_config, save_config([account_id, oracle_id, oracle_ttl_value], Config)}.
 
@@ -1738,19 +1793,19 @@ post_oracle_response(Config) ->
 
 get_oracles_by_pubkey_sut(Pubkey) ->
     Host = external_address(),
-    http_request(Host, get, "oracles/" ++ http_uri:encode(Pubkey), []).
+    http_request(Host, get, "oracles/" ++ aeu_uri:encode(Pubkey), []).
 
 %% TODO: add test for 'limit' and 'from' in HTTP query
 get_oracles_queries_by_pubkey_sut(Pubkey, Params) ->
     Host = external_address(),
     Pubkey1 = binary_to_list(Pubkey),
-    http_request(Host, get, "oracles/" ++ http_uri:encode(Pubkey1) ++ "/queries", Params).
+    http_request(Host, get, "oracles/" ++ aeu_uri:encode(Pubkey1) ++ "/queries", Params).
 
 get_oracles_query_by_pubkey_and_query_id(Pubkey, Id) ->
     Host = external_address(),
     Pubkey1 = binary_to_list(Pubkey),
     Id1 = binary_to_list(Id),
-    http_request(Host, get, "oracles/" ++ http_uri:encode(Pubkey1) ++ "/queries/" ++ http_uri:encode(Id1), []).
+    http_request(Host, get, "oracles/" ++ aeu_uri:encode(Pubkey1) ++ "/queries/" ++ aeu_uri:encode(Id1), []).
 
 %% /names/*
 
@@ -1793,7 +1848,7 @@ get_channel_by_pubkey(_Config) ->
 get_channel_by_pubkey_sut(PubKey) ->
     Host = external_address(),
     PubKey1 = binary_to_list(PubKey),
-    http_request(Host, get, "channels/" ++ http_uri:encode(PubKey1), []).
+    http_request(Host, get, "channels/" ++ aeu_uri:encode(PubKey1), []).
 
 %% /peers/*
 
@@ -1908,6 +1963,13 @@ hash(micro, Block) ->
     {ok, Hash0} = aec_blocks:hash_internal_representation(Block),
     aeser_api_encoder:encode(micro_block_hash, Hash0).
 
+hash_header(key, Hdr) ->
+    {ok, Hash0} = aec_headers:hash_header(Hdr),
+    aeser_api_encoder:encode(key_block_hash, Hash0);
+hash_header(micro, Hdr) ->
+    {ok, Hash0} = aec_headers:hash_header(Hdr),
+    aeser_api_encoder:encode(micro_block_hash, Hash0).
+
 wait_for_key_block_candidate() -> wait_for_key_block_candidate(10).
 
 wait_for_key_block_candidate(0) -> {error, not_found};
@@ -1928,7 +1990,7 @@ save_config([], _Config, Acc) ->
     Acc.
 
 
-%% enpoints
+%% endpoints
 
 %% tests the following
 %% GET contract_create_tx unsigned transaction
@@ -2028,7 +2090,7 @@ contract_transactions(_Config) ->    % miner has an account
     {ok, 200, #{<<"balance">> := ContractInitBalance}} =
         get_accounts_by_pubkey_sut(EncodedContractPubKey),
 
-    {ok, EncodedCallData} = encode_call_data(identity, "main", ["42"]),
+    {ok, EncodedCallData} = encode_call_data(identity, "main_", ["42"]),
 
     ContractCallEncoded = #{ caller_id => MinerAddress,
                              contract_id => EncodedContractPubKey,
@@ -2912,6 +2974,11 @@ spend_transaction(_Config) ->
     {ok, 200, _} = get_balance_at_top(),
     MinerAddress = get_miner_address(),
     {ok, MinerPubkey} = aeser_api_encoder:safe_decode(account_pubkey, MinerAddress),
+    MinerID = aeser_api_encoder:encode(account_pubkey, MinerPubkey),
+    %% fetch what would be the next nonce
+    {ok, 200, #{<<"next_nonce">> := NextNonce}} = get_accounts_next_nonce_sut(MinerID),
+    {ok, 200, #{<<"next_nonce">> := NextNonce}} = get_accounts_next_nonce_sut(MinerID, max),
+    {ok, 200, #{<<"next_nonce">> := NextNonce}} = get_accounts_next_nonce_sut(MinerID, continuity),
     RandAddress = random_hash(),
     Payload = <<"hejsan svejsan">>,
     Encoded = #{sender_id => MinerAddress,
@@ -2929,6 +2996,11 @@ spend_transaction(_Config) ->
                                   fun get_spend/1,
                                   fun aec_spend_tx:new/1, MinerPubkey),
     {spend_tx, SpendTx} = aetx:specialize_type(T),
+    %% assert expected nonce
+    SpendNonce = aec_spend_tx:nonce(SpendTx),
+    {true, SpendNonce} = {SpendNonce =:= NextNonce, SpendNonce},
+    %% since the transaction is not posted, it is the same
+    {ok, 200, #{<<"next_nonce">> := NextNonce}} = get_accounts_next_nonce_sut(MinerID),
     ?assertEqual(Payload, aec_spend_tx:payload(SpendTx)),
 
     %% Test that we can also still pass unencoded payload.
@@ -2939,6 +3011,82 @@ spend_transaction(_Config) ->
     test_invalid_hash({account_pubkey, MinerPubkey}, sender_id, Encoded, fun get_spend/1),
     test_invalid_hash({account_pubkey, MinerPubkey}, {recipient_id, recipient_id}, Encoded, fun get_spend/1),
     test_missing_address(sender_id, Encoded, fun get_spend/1),
+    ok.
+
+next_nonce_missing_nonce(_Config) ->
+    MinerAddress = get_miner_address(),
+    {ok, MinerPubkey} = aeser_api_encoder:safe_decode(account_pubkey, MinerAddress),
+    MinerID = aeser_api_encoder:encode(account_pubkey, MinerPubkey),
+    %% fetch what would be the next nonce
+    {ok, 200, #{<<"next_nonce">> := NextNonce}} = get_accounts_next_nonce_sut(MinerID),
+    {ok, 200, #{<<"next_nonce">> := NextNonce}} = get_accounts_next_nonce_sut(MinerID, max),
+    {ok, 200, #{<<"next_nonce">> := NextNonce}} = get_accounts_next_nonce_sut(MinerID, continuity),
+    RandAddress = random_hash(),
+    PostSpendTxFun =
+        fun(Nonce) ->
+            Opts = #{ sender_id => aeser_id:create(account, MinerPubkey),
+                      recipient_id => aeser_id:create(account, RandAddress),
+                      amount => 2,
+                      fee => 100000 * aec_test_utils:min_gas_price(),
+                      nonce => Nonce,
+                      ttl => 43,
+                      payload => <<>>
+                      },
+            {ok, S} = aec_spend_tx:new(Opts),
+            {ok, SignedSpendTx} = aecore_suite_utils:sign_on_node(?NODE, S),
+            SerializedSpendTx = aetx_sign:serialize_to_binary(SignedSpendTx),
+            {ok, 200, _} = post_transactions_sut(aeser_api_encoder:encode(transaction, SerializedSpendTx)),
+            SignedSpendTx
+        end,
+    Node = aecore_suite_utils:node_name(?NODE),
+    MineTxFun =
+        fun(PendingTxs) ->
+            PendingTxHashes =
+                [aeser_api_encoder:encode(tx_hash, aetx_sign:hash(Tx))
+                    || Tx <- PendingTxs],
+            ct:log("Pending txs: ~p", [PendingTxs]),
+            ct:log("Pending tx hashes: ~p", [PendingTxHashes]),
+            aecore_suite_utils:mine_blocks_until_txs_on_chain(Node, PendingTxHashes, ?MAX_MINED_BLOCKS)
+        end,
+
+    Spend = PostSpendTxFun(NextNonce),
+    NextNonce1 = NextNonce + 1,
+    {ok, 200, #{<<"next_nonce">> := NextNonce1}} = get_accounts_next_nonce_sut(MinerID),
+    {ok, 200, #{<<"next_nonce">> := NextNonce1}} = get_accounts_next_nonce_sut(MinerID, max),
+    {ok, 200, #{<<"next_nonce">> := NextNonce1}} = get_accounts_next_nonce_sut(MinerID, continuity),
+
+    MineTxFun([Spend]),
+    {ok, 200, #{<<"next_nonce">> := NextNonce1}} = get_accounts_next_nonce_sut(MinerID),
+    {ok, 200, #{<<"next_nonce">> := NextNonce1}} = get_accounts_next_nonce_sut(MinerID, max),
+    {ok, 200, #{<<"next_nonce">> := NextNonce1}} = get_accounts_next_nonce_sut(MinerID, continuity),
+
+    %% skip a nonce
+    NextNonce2 = NextNonce1 + 1,
+    NextNonce3 = NextNonce2 + 1,
+    Spend2 = PostSpendTxFun(NextNonce2),
+
+    {ok, 200, #{<<"next_nonce">> := NextNonce3}} = get_accounts_next_nonce_sut(MinerID),
+    {ok, 200, #{<<"next_nonce">> := NextNonce3}} = get_accounts_next_nonce_sut(MinerID, max),
+    {ok, 200, #{<<"next_nonce">> := NextNonce1}} = get_accounts_next_nonce_sut(MinerID, continuity),
+    Spend1 = PostSpendTxFun(NextNonce1),
+    MineTxFun([Spend1, Spend2]),
+    {ok, 200, #{<<"next_nonce">> := NextNonce3}} = get_accounts_next_nonce_sut(MinerID),
+    {ok, 200, #{<<"next_nonce">> := NextNonce3}} = get_accounts_next_nonce_sut(MinerID, max),
+    {ok, 200, #{<<"next_nonce">> := NextNonce3}} = get_accounts_next_nonce_sut(MinerID, continuity),
+
+    %% skip a couple of nonces, only the first is returned
+    NextNonce4 = NextNonce3 + 1,
+    NextNonce5 = NextNonce4 + 1,
+    NextNonce6 = NextNonce5 + 1,
+    NextNonce7 = NextNonce6 + 1,
+    Spend6 = PostSpendTxFun(NextNonce6),
+    {ok, 200, #{<<"next_nonce">> := NextNonce7}} = get_accounts_next_nonce_sut(MinerID),
+    {ok, 200, #{<<"next_nonce">> := NextNonce7}} = get_accounts_next_nonce_sut(MinerID, max),
+    {ok, 200, #{<<"next_nonce">> := NextNonce3}} = get_accounts_next_nonce_sut(MinerID, continuity),
+    Spend3 = PostSpendTxFun(NextNonce3),
+    Spend4 = PostSpendTxFun(NextNonce4),
+    Spend5 = PostSpendTxFun(NextNonce5),
+    MineTxFun([Spend3, Spend4, Spend5, Spend6]),
     ok.
 
 %% tests the following
@@ -3001,6 +3149,7 @@ get_transaction(_Config) ->
         end,
       TxHashes),
 
+    {ok, 200, #{<<"next_nonce">> := NextNonce}} = get_accounts_next_nonce_sut(EncodedPubKey),
     %% test in mempool
     RandAddress = random_hash(),
     Encoded = #{sender_id => EncodedPubKey,
@@ -3012,6 +3161,8 @@ get_transaction(_Config) ->
     {ok, SpendTxBin} = aeser_api_encoder:safe_decode(transaction, EncodedSpendTx),
     SpendTx = aetx:deserialize_from_binary(SpendTxBin),
     {ok, SignedSpendTx} = aecore_suite_utils:sign_on_node(?NODE, SpendTx),
+    Nonce = aetx:nonce(aetx_sign:tx(SignedSpendTx)),
+    {Nonce, Nonce} = {Nonce, NextNonce},
     TxHash = aeser_api_encoder:encode(tx_hash, aetx_sign:hash(SignedSpendTx)),
 
     SerializedSpendTx = aetx_sign:serialize_to_binary(SignedSpendTx),
@@ -3019,8 +3170,68 @@ get_transaction(_Config) ->
     {ok, 200, PendingTx} = get_transactions_by_hash_sut(TxHash),
     Expected = aetx_sign:serialize_for_client_pending(SignedSpendTx),
     Expected = PendingTx,
+    {ok, 200, #{<<"next_nonce">> := NextNextNonce}} = get_accounts_next_nonce_sut(EncodedPubKey),
+    {NextNextNonce, NextNextNonce} = {NextNextNonce, NextNonce + 1},
 
     aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE), 2),
+    {ok, 200, #{<<"next_nonce">> := NextNextNonce}} = get_accounts_next_nonce_sut(EncodedPubKey),
+    ok.
+
+check_transaction_in_pool(_Config) ->
+    Node = aecore_suite_utils:node_name(?NODE),
+    MineTxFun =
+        fun(PendingTxs) ->
+            PendingTxHashes =
+                [aeser_api_encoder:encode(tx_hash, aetx_sign:hash(Tx))
+                    || Tx <- PendingTxs],
+            ct:log("Pending txs: ~p", [PendingTxs]),
+            ct:log("Pending tx hashes: ~p", [PendingTxHashes]),
+            aecore_suite_utils:mine_blocks_until_txs_on_chain(Node, PendingTxHashes, ?MAX_MINED_BLOCKS)
+        end,
+    {ok, HangingOldTxs} = rpc(aec_tx_pool, peek, [infinity]),
+    MineTxFun(HangingOldTxs),
+    {ok, []} = rpc(aec_tx_pool, peek, [infinity]), % empty
+    MinerAddress = get_miner_address(),
+    {ok, MinerPubkey} = aeser_api_encoder:safe_decode(account_pubkey, MinerAddress),
+    RandAddress = random_hash(),
+    NextNonceFun =
+        fun() ->
+            {ok, N} = rpc(aec_next_nonce, pick_for_account, [MinerPubkey]),
+            N
+        end,
+    PostSpendTxFun =
+        fun(Nonce) ->
+            Opts = #{ sender_id => aeser_id:create(account, MinerPubkey),
+                      recipient_id => aeser_id:create(account, RandAddress),
+                      amount => 2,
+                      fee => 100000 * aec_test_utils:min_gas_price(),
+                      nonce => Nonce,
+                      ttl => 43,
+                      payload => <<>>
+                      },
+            {ok, S} = aec_spend_tx:new(Opts),
+            {ok, SignedSpendTx} = aecore_suite_utils:sign_on_node(?NODE, S),
+            SerializedSpendTx = aetx_sign:serialize_to_binary(SignedSpendTx),
+            {ok, 200, _} = post_transactions_sut(aeser_api_encoder:encode(transaction, SerializedSpendTx)),
+            SignedSpendTx
+        end,
+    Tx1 = PostSpendTxFun(NextNonceFun()),
+    Tx1Hash = aeser_api_encoder:encode(tx_hash, aetx_sign:hash(Tx1)),
+    {ok, 200, #{<<"status">> := <<"includable">>}} = check_transaction_in_pool_sut(Tx1Hash),
+    MineTxFun([Tx1]),
+    {ok, 200, #{<<"status">> := <<"included">>}} = check_transaction_in_pool_sut(Tx1Hash),
+    Nonce2 = NextNonceFun(),
+    Tx3 = PostSpendTxFun(Nonce2 + 1), %% there is a gap in the nonce
+    Tx3Hash = aeser_api_encoder:encode(tx_hash, aetx_sign:hash(Tx3)),
+    {ok, 200, #{<<"status">> := <<"tx_nonce_too_high_for_account">>}} = check_transaction_in_pool_sut(Tx3Hash),
+    Tx2 = PostSpendTxFun(Nonce2),
+    Tx2Hash = aeser_api_encoder:encode(tx_hash, aetx_sign:hash(Tx2)),
+    MineTxFun([Tx2, Tx3]),
+    {ok, 200, #{<<"status">> := <<"included">>}} = check_transaction_in_pool_sut(Tx1Hash),
+    {ok, 200, #{<<"status">> := <<"included">>}} = check_transaction_in_pool_sut(Tx2Hash),
+    {ok, 200, #{<<"status">> := <<"included">>}} = check_transaction_in_pool_sut(Tx3Hash),
+    MissingHash = aeser_api_encoder:encode(tx_hash, random_hash()),
+    {ok, 404, #{<<"reason">> := <<"tx_not_found">>}} = check_transaction_in_pool_sut(MissingHash),
     ok.
 
 %% Maybe this test should be broken into a couple of smaller tests
@@ -3506,6 +3717,7 @@ encode_call_data(Name, Fun, Args) when is_atom(Name) ->
 encode_call_data(Src, Fun, Args) ->
     {ok, CallData} = aect_test_utils:encode_call_data(Src, Fun, Args),
     {ok, aeser_api_encoder:encode(contract_bytearray, CallData)}.
+
 wait_for_tx_hash_on_chain(TxHash) ->
     Node = aecore_suite_utils:node_name(?NODE),
     case rpc:call(Node, aec_chain, find_tx_location, [TxHash]) of
@@ -4331,3 +4543,11 @@ mine_tx(Node, SignedTx) ->
                                                                       [TxHash],
                                                                       10), %% max keyblocks
     TxHash.
+
+get_prev_key_block([KB, _MB]) ->
+    true = aec_blocks:is_key_block(KB),
+    KB;
+get_prev_key_block([MB]) ->
+    PrevKeyHash = aec_blocks:prev_key_hash(MB),
+    {ok, KB} = rpc(aec_chain, get_block, [PrevKeyHash]),
+    KB.

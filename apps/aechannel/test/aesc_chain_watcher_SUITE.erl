@@ -50,7 +50,6 @@
 
 
 -include_lib("common_test/include/ct.hrl").
--include_lib("aeutils/include/aeu_stacktrace.hrl").
 -include_lib("aecontract/include/hard_forks.hrl").
 
 -define(LOG(_Fmt, _Args), log(_Fmt, _Args, ?LINE, true)).
@@ -534,8 +533,8 @@ client_loop() ->
 
 handle_client_req(R) ->
     try handle_client_req_(R)
-    catch error:Err ->
-            ?LOG("CAUGHT error:~p / ~p", [Err, erlang:get_stacktrace()]),
+    catch error:Err:ST ->
+            ?LOG("CAUGHT error:~p / ~p", [Err, ST]),
             error(Err)
     end.
 
@@ -559,8 +558,8 @@ create_and_sign_tx(#{mod := Mod} = TxInfo, SKs) ->
         ?LOG("Tx = ~p", [Tx]),
         aec_test_utils:sign_tx(Tx, SKs)
     catch
-        error:Err ->
-            ?LOG("CAUGHT error:~p / ~p", [Err, erlang:get_stacktrace()]),
+        error:Err:ST ->
+            ?LOG("CAUGHT error:~p / ~p", [Err, ST]),
             error(Err)
     end.
 

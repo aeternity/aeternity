@@ -29,7 +29,6 @@
 -define(FORTUNA_DIR, ".fortuna").
 -define(LIMA_DIR,    ".lima").
 
-
 -spec dir(aec_hard_forks:protocol_vsn()) -> string().
 dir(ProtocolVsn) ->
     Dir =

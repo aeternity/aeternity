@@ -1,4 +1,4 @@
-contract Interface =
+contract interface Interface =
   entrypoint do_abort : (int, string) => unit
   entrypoint get_value : () => int
   entrypoint put_value : (int) => unit

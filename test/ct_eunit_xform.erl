@@ -4,6 +4,15 @@
 
 
 parse_transform(Forms, Opts) ->
+    case lists:keymember(error, 1, Forms) of
+        true ->
+            %% Abort
+            Forms;
+        false ->
+            parse_transform_(Forms, Opts)
+    end.
+
+parse_transform_(Forms, Opts) ->
     Ctxt = parse_trans:initial_context(Forms, Opts),
     [Mod] = [M || {attribute,_,module,M} <- Forms],
     F = atom_to_list(Mod) ++ ".erl",

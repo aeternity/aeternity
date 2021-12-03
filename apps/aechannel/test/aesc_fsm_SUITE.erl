@@ -49,6 +49,7 @@
         , withdraw_high_amount_short_confirmation_time/1
         , withdraw_low_amount_long_confirmation_time/1
         , withdraw_low_amount_long_confirmation_time_negative_test/1
+        , withdraw_plain_min_depth/1
         , channel_detects_close_solo_and_settles/1
         , close_mutual_with_failed_onchain/1
         , close_solo_with_failed_onchain/1
@@ -109,13 +110,34 @@
 -export([ create_channel_on_port/1
         ]).
 
+%% exports for aesc_htlc_SUITE
+-export([ create_channel_/3
+        , channel_shutdown/3
+        , prepare_contract_create_args/3
+        , load_contract/4
+        , call_contract/9
+        , upd_call_contract/4
+        , receive_log/2
+        , set_configs/2
+        , peek_message_queue/2
+        , prepare_patron/1
+        , prep_initiator/2
+        , prep_responder/2
+        , rpc/4
+        , receive_from_fsm/4
+        , get_both_balances/3
+        ]).
+
 -export([with_trace/3]).  % mostly to avoid warning if not used
 
 -include_lib("common_test/include/ct.hrl").
--include("../../aecontract/include/aecontract.hrl").
 -include("../../aecontract/test/include/aect_sophia_vsn.hrl").
+-include_lib("aecontract/include/aecontract.hrl").
 -include_lib("aecontract/include/hard_forks.hrl").
--include_lib("aeutils/include/aeu_stacktrace.hrl").
+-include("../../aecore/test/aec_test_utils.hrl").
+
+-import(aec_test_utils, [ get_debug/1
+                        , set_debug/2 ]).
 
 -define(TIMEOUT, 500).
 -define(SLIGHTLY_LONGER_TIMEOUT, 2000).
@@ -127,8 +149,6 @@
 -define(BOGUS_BLOCKHASH, <<42:32/unit:8>>).
 
 -define(PEEK_MSGQ(_D), peek_message_queue(?LINE, _D)).
--define(LOG(_Fmt, _Args), log(_Fmt, _Args, ?LINE, true)).
--define(LOG(_D, _Fmt, _Args), log(_Fmt, _Args, ?LINE, _D)).
 
 %% Default configuration values
 -define(MINIMUM_DEPTH, 5).
@@ -317,6 +337,7 @@ transactions_sequence() ->
       , withdraw_high_amount_short_confirmation_time
       , withdraw_low_amount_long_confirmation_time
       , withdraw_low_amount_long_confirmation_time_negative_test
+      , withdraw_plain_min_depth
       , channel_detects_close_solo_and_settles
       , leave_reestablish_responder_stays
       , leave_reestablish_close
@@ -362,11 +383,12 @@ init_per_suite(Config) ->
     TableOwner = new_config_table(),
     ct:log("network_id ~p", [aec_governance:get_network_id()]),
     Miner = aeser_api_encoder:encode(account_pubkey, PubKey),
+    SymLink = proplists:get_value(symlink, Config, "latest.aesc_fsm"),
     DefCfg = #{<<"chain">> => #{<<"persist">> => false},
                <<"mining">> => #{<<"micro_block_cycle">> => 1,
                                  <<"beneficiary">> => Miner,
                                  <<"beneficiary_reward_delay">> => 2}},
-    Config1 = aecore_suite_utils:init_per_suite([dev1], DefCfg, [{instant_mining, true}, {symlink_name, "latest.aesc_fsm"}, {test_module, ?MODULE}] ++ Config),
+    Config1 = aecore_suite_utils:init_per_suite([dev1], DefCfg, [{instant_mining, true}, {symlink_name, SymLink}, {test_module, ?MODULE}] ++ Config),
     Node = aecore_suite_utils:node_name(dev1),
     aecore_suite_utils:start_node(dev1, Config1),
     aecore_suite_utils:connect(Node),
@@ -473,12 +495,10 @@ end_per_group(Group, Config) ->
                                       responder_is_ga, both_are_ga]) of
                 true ->
                     ok;
-                    %%_Config1 = stop_node(dev1, Config);
                 false -> pass
             end;
         false ->
             ok
-            %%_Config1 = stop_node(dev1, Config)
     end,
     ok.
 
@@ -504,10 +524,6 @@ init_per_testcase(_, Config) ->
 end_per_testcase(_Case, _Config) ->
     bump_idx(),
     ok.
-
-stop_node(N, Config) ->
-    aecore_suite_utils:stop_node(N, Config),
-    Config.
 
 %%%===================================================================
 %%% Test state
@@ -1178,6 +1194,16 @@ withdraw_high_amount_static_confirmation_time(Cfg) ->
     Round = 1,
     ok = withdraw_full_cycle_(Amount, #{}, Round, Cfg1).
 
+withdraw_plain_min_depth(Cfg) ->
+    Cfg1 = set_configs([ ?SLOGAN
+                       , {assume_min_depth, false}
+                       , {minimum_depth, 1}
+                       , {minimum_depth_channel, 1}
+                       , {minimum_depth_strategy, plain} ], Cfg),
+    Amount = 30000,
+    Round = 1,
+    ok = withdraw_full_cycle_(Amount, #{}, Round, Cfg1).
+
 withdraw_high_amount_short_confirmation_time(Cfg) ->
     % High amount and high factor should lead to single block required
     Cfg1 = set_configs([ ?SLOGAN
@@ -1376,7 +1402,7 @@ check_fsm_log(Log, Participant, Cfg) ->
 
 check_log(Expected, Log, Participant) ->
     try check_log_(Expected, Log, Participant)
-    ?_catch_(error, Reason, _Trace)
+    catch error:Reason ->
              ?LOG("Expected = ~p", [Expected]),
              ?LOG("Actual = ~p", [Log]),
              error(Reason)
@@ -2186,6 +2212,9 @@ wait_for_fsm_state(St, FsmPid, Retries, Debug) when Retries > 0 ->
             wait_for_fsm_state(St, FsmPid, Retries-1, Debug)
     end.
 
+channel_shutdown(I, R, Cfg) ->
+    shutdown_(I, R, Cfg).
+
 shutdown_(#{fsm := FsmI, channel_id := ChannelId} = I, R, Cfg) ->
     Debug = get_debug(Cfg),
     assert_empty_msgq(Debug),
@@ -2343,7 +2372,7 @@ retry(0, _, _, E, ST) ->
     error(E, ST);
 retry(N, T, F, _, _) when N > 0 ->
     try F()
-    ?_catch_(error, E, ST)
+    catch error:E:ST ->
         timer:sleep(T),
         retry(N-1, T, F, E, ST)
     end.
@@ -2418,8 +2447,8 @@ ch_loop(I, R, Parent, Cfg, St) ->
                                   end, I, R, Cfg),
             {I1_, R1_}
             catch
-                error:R:Stacktrace ->
-                    ?LOG("CAUGHT ~p / ~p", [R, Stacktrace]),
+                error:R:ST ->
+                    ?LOG("CAUGHT ~p / ~p", [R, ST]),
                     {I, R}
             end,
             Parent ! {self(), loop_ack},
@@ -2493,7 +2522,7 @@ create_channel_from_spec(I, R, Spec0, Port, UseAny, Debug, Cfg) ->
     ?LOG(Debug, "channel paired: ~p", [Info]),
     ?LOG(Debug, "FSMs, I = ~p, R = ~p", [FsmI, FsmR]),
     {I2, R2} = try await_create_tx_i(I1, R1, Debug, Cfg)
-               ?_catch_(error, Err, ST)
+               catch error:Err:ST ->
                    ?LOG("Caught Err = ~p", [Err]),
                    ?PEEK_MSGQ(Debug),
                    error(Err, ST)
@@ -2916,7 +2945,7 @@ sign(Signer, Tag, SignedTx0, Updates, OtherSigs, SignatureType, Action,
                       according_account -> co_sign_tx(S, STx, Cfg);
                       basic ->
                           #{priv := Priv} = S,
-                          {aec_test_utils:co_sign_tx(STx, Priv), S}
+                          {aec_test_utils:co_sign_tx(STx, Priv, Cfg), S}
                   end,
                   {S1, STx1}
           end, SignedTx0, [Signer|OtherSigs]),
@@ -2944,7 +2973,7 @@ co_sign_tx(Signer, SignedTx, Cfg) ->
     #{role := Role, pub := Pubkey, priv := Priv} = Signer,
     case account_type(Signer) of
         basic ->
-            {aec_test_utils:co_sign_tx(SignedTx, Priv), Signer};
+            {aec_test_utils:co_sign_tx(SignedTx, Priv, Cfg), Signer};
         generalized ->
             #{auth_idx := N} = Signer,
             #{auth_params := Auths} = ?config(ga, Cfg),
@@ -3388,7 +3417,7 @@ with_trace(F, Config0, File, When) ->
     Config = [{trace_destination, File}|Config0],
     trace_checkpoint(?TR_START, Config),
     try F(Config)
-    ?_catch_(Error, Reason, Stack)
+    catch Error:Reason:Stack ->
         case {Error, Reason} of
             {error, R} ->
                 ct:pal("Error ~p~nStack = ~p", [R, Stack]),
@@ -3597,8 +3626,8 @@ new_config_table() ->
           end).
 
 load_idx(Cfg) ->
-    Cfg1 = load_last_idx(initiator, Cfg),
-    load_last_idx(responder, Cfg1).
+    Roles = proplists:get_value(roles, Cfg, [initiator, responder]),
+    lists:foldl(fun load_last_idx/2, Cfg, Roles).
 
 load_last_idx(Role, Cfg) ->
     OldValue =
@@ -3607,7 +3636,7 @@ load_last_idx(Role, Cfg) ->
             [] -> 1
         end,
     Part = proplists:get_value(Role, Cfg),
-    [{Role, Part#{auth_idx => OldValue}} | Cfg].
+    set_configs([{Role, Part#{auth_idx => OldValue}}], Cfg).
 
 bump_idx() ->
     bump_last_idx(responder, 10000),
@@ -3934,7 +3963,8 @@ reestablish_(Info, SignedTx, Port, Debug) ->
                           case IsSoloClosing of
                               true -> R2;
                               false ->
-                                  _R3 = await_open_report(R2, ?TIMEOUT, Debug)
+                                  R21 = await_open_report(R2, ?TIMEOUT, Debug),
+                                  _R3 = await_update_report(R21, ?TIMEOUT, Debug)
                           end,
                       {I3, R3};
                   true ->
@@ -3944,34 +3974,6 @@ reestablish_(Info, SignedTx, Port, Debug) ->
                end,
     % Done
     Info#{i => I4, r => R4, spec => Spec}.
-
-reestablish_wrong_fsm_id(Info, SignedTx, Port, Debug) ->
-    assert_empty_msgq(Debug),
-    #{ i := #{ channel_id := ChId
-             , initiator_amount := IAmt
-             , responder_amount := RAmt } = I0
-     , r := #{ initiator_amount := IAmt
-             , responder_amount := RAmt } = R0
-     , spec := Spec0
-     } = Info,
-
-    Spec = Spec0#{ existing_channel_id => ChId
-                 , offchain_tx => SignedTx
-                 , initiator_amount => IAmt
-                 , responder_amount => RAmt
-                 },
-
-    % Fail to start new FSMs
-    BogusFsmId1 = aesc_fsm_id:retrieve(aesc_fsm_id:new()),
-    BogusFsmId2 = aesc_fsm_id:retrieve(aesc_fsm_id:new()),
-    ISpec = move_fsm_id_to_spec(I0#{fsm_id => BogusFsmId1}, Spec),
-    RSpec = move_fsm_id_to_spec(R0#{fsm_id => BogusFsmId2}, Spec),
-    {error, invalid_fsm_id} = rpc(dev1, aesc_client, respond, [Port, RSpec]),
-    {error, invalid_fsm_id} = rpc(dev1, aesc_client, initiate, ["localhost", Port, ISpec], Debug),
-
-    % Done
-    assert_empty_msgq(Debug),
-    Info#{spec => Spec}.
 
 withdraw_full_cycle_(Amount, Opts, Round, Cfg) ->
     Debug = get_debug(Cfg),
@@ -4226,14 +4228,19 @@ channel_spec(Cfg, XOpts) ->
     %% dynamic key negotiation
     Proto = <<"Noise_NN_25519_ChaChaPoly_BLAKE2b">>,
 
+    MDStrategy = config(minimum_depth_strategy, Cfg, ?MINIMUM_DEPTH_STRATEGY),
+    MDepth = min_depth(MDStrategy, Cfg),
+    LockPeriod = lock_period(MDStrategy, MDepth),
+
     Spec0 = #{ initiator            => maps:get(pub, I)
              , responder            => maps:get(pub, R)
              , initiator_amount     => config(initiator_amount, Cfg, ?INITIATOR_AMOUNT)
              , responder_amount     => config(responder_amount, Cfg, ?RESPONDER_AMOUNT)
              , push_amount          => config(push_amount, Cfg, ?PUSH_AMOUNT)
-             , lock_period          => 10
+             , lock_period          => LockPeriod
              , channel_reserve      => config(channel_reserve, Cfg, ?CHANNEL_RESERVE)
-             , minimum_depth        => config(minimum_depth_factor, Cfg, ?MINIMUM_DEPTH_FACTOR)
+             , minimum_depth        => MDepth
+             , minimum_depth_strategy => MDStrategy
              , client               => self()
              , noise                => [{noise, Proto}]
              , timeouts             => #{idle => 200000}
@@ -4253,12 +4260,14 @@ channel_spec(Cfg, XOpts) ->
           [nonce, block_hash_delta]),
     {I, R, Spec2}.
 
-log(Fmt, Args, L, #{debug := true}) ->
-    log(Fmt, Args, L, true);
-log(Fmt, Args, L, true) ->
-    ct:log("~p at ~p: " ++ Fmt, [self(), L | Args]);
-log(_, _, _, _) ->
-    ok.
+min_depth(plain, Cfg) -> config(minimum_depth, Cfg, ?MINIMUM_DEPTH_FACTOR);
+min_depth(txfee, Cfg) -> config(minimum_depth_factor, Cfg, ?MINIMUM_DEPTH_FACTOR).
+
+lock_period(plain, Depth) ->
+    Depth;
+lock_period(_, _) ->
+    %% Was hard-coded before
+    10.
 
 config() ->
     Cfg = get(config),
@@ -4296,12 +4305,6 @@ set_config(K, V, Cfg, Replace) when is_list(Cfg) ->
             end
     end.
 
-get_debug(Config) ->
-    proplists:get_bool(debug, Config).
-
-set_debug(Bool, Config) when is_boolean(Bool) ->
-    lists:keystore(debug, 1, Config -- [debug], {debug, Bool}).
-
 %% @doc This function inspects the bitcoin_auth contract's store and extracts the
 %% nonce out of it. It heavily relies on the state of the contract being
 %% { nonce : int, owner : bytes(64) }
@@ -4311,7 +4314,7 @@ extract_nonce_from_btc_auth_store(Store) ->
             {ok, {Nonce, _}} = aeb_heap:from_binary({tuple, [word, {tuple, [word, word]}]},
                                                     EncodedHeap),
             Nonce;
-        #{<<0, 1>> := FateValue} = X ->
+        #{<<0, 1>> := FateValue} ->
             aeb_fate_encoding:deserialize(FateValue)
     end.
 
@@ -4663,8 +4666,8 @@ close_mutual_with_failed_onchain(Cfg) ->
                 initiator, % to
                 1,         % some amount
                 Cfg),
-    {R1, _CoSignedShutdownTx} = await_signing_request(shutdown_ack, R, Cfg),
-    _CoSignedShutdownTx = await_on_chain_report(R1, ?TIMEOUT), % same tx
+    {R1, CoSignedShutdownTx} = await_signing_request(shutdown_ack, R, Cfg),
+    CoSignedShutdownTx = await_on_chain_report(R1, ?TIMEOUT), % same tx
     {ok,_} = receive_from_fsm(info, R1, #{info => shutdown}, ?TIMEOUT, Debug),
     {ok,_} = receive_from_fsm(info, R1, fun closing/1, ?TIMEOUT, Debug),
     {ok, _} = receive_from_fsm(conflict, I1, #{info => #{ error_code => 5
@@ -4945,8 +4948,8 @@ force_progress_triggers_slash(Cfg) ->
     ok = rpc(dev1, aec_tx_pool, push, [SignedFP]),
     wait_for_signed_transaction_in_block(dev1, SignedFP, Debug),
 
-    _Tx = await_on_chain_report(I4, #{info => can_slash}, ?TIMEOUT),
-    _Tx = await_on_chain_report(R4, #{info => can_slash}, ?TIMEOUT),
+    StashTx1 = await_on_chain_report(I4, #{info => can_slash}, ?TIMEOUT),
+    StashTx1 = await_on_chain_report(R4, #{info => can_slash}, ?TIMEOUT),
     check_info(20),
     ok = rpc(dev1, aesc_fsm, slash, [FsmI, #{}]),
     {_, SignedSlashTx} = await_signing_request(slash_tx, I4, Cfg),
@@ -5180,20 +5183,13 @@ force_progress_closing_state(Cfg) ->
 
 
 create_contract(ContractName, InitArgs, Deposit,
-                #{ fsm := FsmC
-                 , pub := Owner} = Creator, Acknowledger, Cfg) ->
+                Creator, Acknowledger, Cfg) ->
+    CreateArgs = prepare_contract_create_args(ContractName, InitArgs, Deposit),
+    load_contract(CreateArgs, Creator, Acknowledger, Cfg).
+
+load_contract(CreateArgs, #{ fsm := FsmC, pub := Owner} = Creator, Acknowledger, Cfg) ->
     Debug = get_debug(Cfg),
     {ok, Round0} = rpc(dev1, aesc_fsm, get_round, [FsmC]),
-    {ok, BinCode} = aect_test_utils:compile_contract(aect_test_utils:sophia_version(), ContractName),
-    {ok, BinSrc} = aect_test_utils:read_contract(aect_test_utils:sophia_version(), ContractName),
-    {ok, CallData} =
-        aect_test_utils:encode_call_data(aect_test_utils:sophia_version(), BinSrc,
-                                         "init", InitArgs),
-    CreateArgs = #{ vm_version  => aect_test_utils:vm_version()
-                  , abi_version => aect_test_utils:abi_version()
-                  , deposit     => Deposit
-                  , code        => BinCode
-                  , call_data   => CallData},
     aesc_fsm:upd_create_contract(FsmC, CreateArgs),
     {Creator1, _} = await_signing_request(update, Creator, Cfg),
     await_update_incoming_report(Acknowledger, ?TIMEOUT, Debug),
@@ -5205,31 +5201,64 @@ create_contract(ContractName, InitArgs, Deposit,
     assert_empty_msgq(Debug),
     {Creator2, Acknowledger2, ContractPubkey}.
 
-call_contract(ContractId,
-              ContractName, FunName, FunArgs, Amount,
-              #{fsm := FsmC} = Caller, Acknowledger, Cfg) ->
-    Debug = get_debug(Cfg),
-    {ok, BinSrc} = aect_test_utils:read_contract(aect_test_utils:sophia_version(), ContractName),
+prepare_contract_create_args(ContractName, InitArgs, Deposit) ->
+    {ok, BinCode} = aect_test_utils:compile_contract(
+                      aect_test_utils:sophia_version(), ContractName),
+    {ok, BinSrc} = aect_test_utils:read_contract(
+                     aect_test_utils:sophia_version(), ContractName),
+    {ok, CallData} =
+        aect_test_utils:encode_call_data(aect_test_utils:sophia_version(), BinSrc,
+                                         "init", InitArgs),
+    _CreateArgs = #{ vm_version  => aect_test_utils:vm_version()
+                   , abi_version => aect_test_utils:abi_version()
+                   , deposit     => Deposit
+                   , code        => BinCode
+                   , call_data   => CallData}.
+
+call_contract(ContractId, ContractName, FunName, FunArgs,
+              Amount, Caller, Acknowledger, Cfg) ->
+    call_contract(ContractId, ContractName, FunName, FunArgs, Amount,
+                  Caller, Acknowledger, Cfg, false).
+
+call_contract(ContractId, ContractName, FunName, FunArgs, Amount,
+              Caller, Acknowledger, Cfg, ReturnResult) ->
+    {ok, BinSrc} = aect_test_utils:read_contract(
+                     aect_test_utils:sophia_version(), ContractName),
     {ok, CallData} =
         aect_test_utils:encode_call_data(aect_test_utils:sophia_version(), BinSrc,
                                          FunName, FunArgs),
+    ct:log("CallData (~p) = ~p", [FunName, CallData]),
     CallArgs = #{ contract    => ContractId
                 , abi_version => aect_test_utils:abi_version()
                 , amount      => Amount
-                , call_data   => CallData},
-    aesc_fsm:upd_call_contract(FsmC, CallArgs),
+                , call_data   => CallData
+                , return_result => ReturnResult },
+    upd_call_contract(Caller, Acknowledger, CallArgs, Cfg).
+
+upd_call_contract(#{fsm := FsmC} = Caller, Acknowledger, CallArgs, Cfg) ->
+    Debug = get_debug(Cfg),
+    UpdCallRes = aesc_fsm:upd_call_contract(FsmC, CallArgs),
+    ?LOG(Debug, "UpdCallRes = ~p", [UpdCallRes]),
     {Caller1, _} = await_signing_request(update, Caller, Cfg),
     await_update_incoming_report(Acknowledger, ?TIMEOUT, Debug),
     {Acknowledger1, _} = await_signing_request(update_ack, Acknowledger, Cfg),
     Caller2 = await_update_report(Caller1, ?TIMEOUT, Debug),
     Acknowledger2 = await_update_report(Acknowledger1, ?TIMEOUT, Debug),
     assert_empty_msgq(Debug),
-    {Caller2, Acknowledger2}.
+    case maps:get(return_result, CallArgs, false) of
+        true ->
+            {ok, CallRes} = UpdCallRes,
+            {Caller2, Acknowledger2, CallRes};
+        false ->
+            ok = UpdCallRes,
+            {Caller2, Acknowledger2}
+    end.
 
 trigger_force_progress(ContractPubkey,
                        ContractName, FunName, FunArgs, Amount,
                        #{ fsm := FsmC}) ->
-    {ok, BinSrc} = aect_test_utils:read_contract(aect_test_utils:sophia_version(), ContractName),
+    {ok, BinSrc} = aect_test_utils:read_contract(
+                     aect_test_utils:sophia_version(), ContractName),
     {ok, CallData} =
         aect_test_utils:encode_call_data(aect_test_utils:sophia_version(), BinSrc,
                                          FunName, FunArgs),
@@ -5712,11 +5741,11 @@ missing_malicious_close(Cfg0) ->
     ok = rpc(dev1, aec_tx_pool, push, [SignedCloseSoloTx]),
     TxHash = aeser_api_encoder:encode(tx_hash, aetx_sign:hash(SignedCloseSoloTx)),
     mine_blocks_until_txs_on_chain(dev1, [TxHash]),
-    SlashTx = await_on_chain_report(R2, #{info => can_slash}, ?TIMEOUT),
+    _SlashTx = await_on_chain_report(R2, #{info => can_slash}, ?TIMEOUT),
     {ok,_} = receive_from_fsm(info, R2, fun closing/1, ?TIMEOUT, Debug),
     %% reestablish initiator
     Info = #{i => I3, r => R2, spec => Spec},
-    #{i := #{fsm_id := _IFsmId1} = I4, r := #{fsm_id := _RFsmId1} = R3} =
+    #{i := #{fsm_id := _IFsmId1} = I4, r := #{fsm_id := _RFsmId1}} =
         reestablish_(Info, SignedTx, ?PORT, Debug),
     SignedCloseSoloTx = await_on_chain_report(I4, #{info => can_slash}, ?TIMEOUT),
     assert_empty_msgq(Debug),
@@ -6033,7 +6062,7 @@ snapshot_and_conflict(Cfg) ->
 
 force_progress_and_conflict(Cfg) ->
     Debug = get_debug(Cfg),
-    #{ i := #{fsm := FsmI} = I
+    #{ i := #{fsm := _FsmI} = I
      , r := #{fsm := FsmR} = R
      , spec := #{ initiator := PubI
                 , responder := PubR }} = create_channel_([?SLOGAN|Cfg]),
@@ -6060,4 +6089,3 @@ force_progress_and_conflict(Cfg) ->
     check_info(20),
     shutdown_(I, R, Cfg),
     ok.
-

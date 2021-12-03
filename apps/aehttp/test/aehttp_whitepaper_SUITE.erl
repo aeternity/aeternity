@@ -35,7 +35,6 @@
 -include_lib("stdlib/include/assert.hrl").
 -include_lib("common_test/include/ct.hrl").
 -include_lib("aecontract/include/hard_forks.hrl").
--include_lib("aeutils/include/aeu_stacktrace.hrl").
 -include("../../aecontract/test/include/aect_sophia_vsn.hrl").
 
 -define(NODE, dev1).
@@ -114,7 +113,7 @@ end_per_suite(Config) ->
     aehttp_sc_SUITE:stop_node(Config).
 
 init_per_group(Group, Config0) ->
-    VM = fate, 
+    VM = fate,
     Config1 = aect_test_utils:init_per_group(VM, Config0),
     Config2 = aehttp_sc_SUITE:reset_participants(Group, Config1),
     Config2.
@@ -272,7 +271,7 @@ can_insure_after_expiration(Cfg0) ->
         call_offchain_contract(responder, ContractPubkey,
                               ContractName, "get_insurance_range", [], 0, Cfg),
 
-    %% since insurance expired, the interval is reset 
+    %% since insurance expired, the interval is reset
     true = InsuredFrom1 < InsuredFrom2,
     %% the range is expected
     ExpectedInsuredTo = InsuredFrom2 + Generations2,
@@ -1159,7 +1158,7 @@ ask_oracle_service(City, Timestamp, Cfg) ->
         fun(S0) ->
             S = list_to_binary(S0),
             case aect_test_utils:backend() of
-                fate -> S 
+                fate -> S
             end
         end,
     Question = {tuple, {SophiaString(City), Timestamp}},
@@ -1219,7 +1218,7 @@ current_height() ->
 
 get_oracles_by_pubkey_sut(Pubkey) ->
     Host = external_address(),
-    http_request(Host, get, "oracles/" ++ http_uri:encode(Pubkey), []).
+    http_request(Host, get, "oracles/" ++ aeu_uri:encode(Pubkey), []).
 
 initialize_account(Amount, KeyPair) ->
     initialize_account(Amount, KeyPair, true).
@@ -1272,7 +1271,7 @@ assert_balance(Pubkey, ExpectedBalance, Action) ->
 
 get_accounts_by_pubkey_sut(Id) ->
     Host = external_address(),
-    http_request(Host, get, "accounts/" ++ http_uri:encode(Id), []).
+    http_request(Host, get, "accounts/" ++ aeu_uri:encode(Id), []).
 
 add_quotes(B) when is_binary(B) -> <<"\"", B/binary, "\"">>;
 add_quotes(Str) when is_list(Str) -> "\"" ++ Str ++  "\"".

@@ -1,0 +1,43 @@
+aeplugin_install_devmode:
+  steps:
+    - run:
+        name: Download devmode plugin
+        command: |
+          export PLUGIN_VERSION=<< pipeline.parameters.aeplugin_devmode_version >>
+          curl -fsSLOJ https://github.com/aeternity/aeplugin_dev_mode/releases/download/v$PLUGIN_VERSION/aeplugin_dev_mode.tar.gz
+          tar -zxf aeplugin_dev_mode.tar.gz -C plugins/
+
+install_os_deps:
+  steps:
+    - run:
+        name: Install OS dependancies
+        command: |
+          sudo apt-get update
+          sudo apt-get -qq -y install git curl \
+            autoconf build-essential ncurses-dev libssl-dev libgmp-dev
+
+install_otp:
+  steps:
+    - run:
+        name: Install OTP
+        command: |
+          # Install OTP package deps
+          sudo apt-get update && sudo apt-get install libncurses5 libwxbase3.0-dev libwxgtk3.0-gtk3-dev libsctp1
+          # Install OTP binary package
+          PACKAGE_NAME=esl-erlang_${OTP_VERSION}-1~ubuntu~focal_amd64.deb
+          OTP_DOWNLOAD_URL=https://packages.erlang-solutions.com/erlang/debian/pool/${PACKAGE_NAME}
+          curl -fsSL -o ${PACKAGE_NAME} "$OTP_DOWNLOAD_URL"
+          sudo dpkg -i ${PACKAGE_NAME}
+
+install_libsodium:
+  steps:
+    - run:
+        name: Install libsodium
+        # source: https://github.com/aeternity/docker-builder/blob/master/Dockerfile#L23
+        command: |
+          LIBSODIUM_DOWNLOAD_URL="https://github.com/jedisct1/libsodium/releases/download/${LIBSODIUM_VERSION}/libsodium-${LIBSODIUM_VERSION}.tar.gz" \
+            && curl -fsSL -o libsodium-src.tar.gz "$LIBSODIUM_DOWNLOAD_URL" \
+            && mkdir libsodium-src \
+            && tar -zxf libsodium-src.tar.gz -C libsodium-src --strip-components=1 \
+            && cd libsodium-src \
+            && ./configure && make -j$(nproc) && sudo make install && sudo ldconfig

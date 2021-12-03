@@ -3,6 +3,49 @@
     "type" : "object",
     "additionalProperties" : false,
     "properties" : {
+        "system" : {
+            "type" : "object",
+            "additionalProperties" : false,
+            "properties" : {
+                "maintenance_mode" : {
+                    "description" : "When true, the node disables sync, mining, http endpoints etc",
+                    "type" : "boolean",
+                    "default" : false
+                },
+                "dev_mode" : {
+                    "description" : "When true, the node sets up for development (default netw id: ae_dev, default consensus: on_demand)",
+                    "type" : "boolean",
+                    "default" : false
+                },
+                "plugin_path" : {
+                    "description" : "Directory containing Aeternity node plugins",
+                    "type" : "string",
+                    "default" : "plugins"
+                },
+                "plugins" : {
+                    "description" : "List of application names of plugins to load",
+                    "type" : "array",
+                    "items" : {
+                        "type" : "object",
+                        "description" : "Plugin name and properties",
+                        "required": ["name"],
+                        "properties": {
+                            "name": {
+                                "description": "Erlang application name of plugin",
+                                "type": "string"
+                            },
+                            "config": {
+                                "description": "Configuration for the given plugin",
+                                "type": "object",
+                                "oneOf": [
+                                    {"properties": {}}
+                                ]
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "peers" : {
             "description" :
             "Pre-configured addresses of nodes to contact. If not set testnet or mainnet seed peers will be used based on network_id configuration value.",
@@ -57,6 +100,900 @@
                 "cache_size" : {
                     "description" : "Maximum number of recently received cached transactions",
                     "type" : "integer"
+                },
+                "allow_reentry_of_txs" : {
+                    "description" : "Allow already deleted transactions to reenter the tx-pool.",
+                    "type" : "boolean",
+                    "default": false
+                },
+                "tx_failures" : {
+                    "type" : "object",
+                    "additionalProperties" : false,
+                    "properties" : {
+                        "enabled" : {
+                            "description" : "If true, the following error codes will have specific failures.",
+                            "type" : "boolean",
+                            "default" : true
+                        },
+                        "common" : {
+                            "type" : "object",
+                            "additionalProperties" : true,
+                            "properties" : {
+                                "fallback" : {
+                                    "description" : "Default value if the failed reason is not set.",
+                                    "type" : "integer",
+                                    "default" : 5
+                                },
+                                "insufficient_funds" : {
+                                    "description" : "If the origin of the transaction does not have enough tokens to spend. We provide a grace period in a number of generations.",
+                                    "type" : "integer",
+                                    "default" : 20
+                                },
+                                "crash" : {
+                                    "description" : "Something went really wrong, clean up.",
+                                    "type" : "integer",
+                                    "default" : 1 
+                                },
+                                "not_a_generalized_account" : {
+                                    "description" : "If the transaction is being authenticated as a GA but the account is still basic. We provide a grace period in a number of generations for the account to be upgraded.",
+                                    "type" : "integer",
+                                    "default" : 15
+                                },
+                                "tx_nonce_already_used_for_account" : {
+                                    "description" : "If the transaction nonce is already used, the transaction can not be applied. Clean it up.",
+                                    "type" : "integer",
+                                    "default" : 1
+                                },
+                                "tx_nonce_too_high_for_account" : {
+                                    "description" : "If the transaction nonce is set somewhere in the future it can get included once the transaction with the missing nonce is being included. Provide a grace period in a number of generations.",
+                                    "type" : "integer",
+                                    "default" : 30
+                                }
+                            }
+                        },
+                        "spend_tx" : {
+                            "type" : "object",
+                            "additionalProperties" : true,
+                            "properties" : {
+                                "fallback" : {
+                                    "description" : "Default value if the failed reason is not set.",
+                                    "type" : "integer",
+                                    "default" : 5
+                                },
+                                "insufficient_funds" : {
+                                    "description" : "If the origin of the transaction does not have enough tokens to spend. We provide a grace period in a number of generations.",
+                                    "type" : "integer",
+                                    "default" : 20
+                                }
+                            }
+                        },
+                        "name_preclaim_tx" : {
+                            "type" : "object",
+                            "additionalProperties" : true,
+                            "properties" : {
+                                "fallback" : {
+                                    "description" : "Default value if the failed reason is not set.",
+                                    "type" : "integer",
+                                    "default" : 5
+                                },
+                                "insufficient_funds" : {
+                                    "description" : "If the origin of the transaction does not have enough tokens to spend. We provide a grace period in a number of generations.",
+                                    "type" : "integer",
+                                    "default" : 20
+                                }
+                            }
+                        },
+                        "name_claim_tx" : {
+                            "type" : "object",
+                            "additionalProperties" : true,
+                            "properties" : {
+                                "fallback" : {
+                                    "description" : "Default value if the failed reason is not set.",
+                                    "type" : "integer",
+                                    "default" : 5
+                                },
+                                "insufficient_funds" : {
+                                    "description" : "If the origin of the transaction does not have enough tokens to spend. We provide a grace period in a number of generations.",
+                                    "type" : "integer",
+                                    "default" : 20
+                                },
+                                "bad_transaction" : {
+                                    "description" : "If there is something unexpected about the transaciton. Clean up.",
+                                    "type" : "integer",
+                                    "default" : 1
+                                },
+                                "name_not_preclaimed" : {
+                                    "description" : "If the origin of the transaction does not have ownership to the commitment. Legacy. Clean up.",
+                                    "type" : "integer",
+                                    "default" : 1
+                                },
+                                "commitment_not_owned" : {
+                                    "description" : "If the origin of the transaction does not have ownership to the commitment. Clean up.",
+                                    "type" : "integer",
+                                    "default" : 1
+                                },
+                                "commitment_delta_too_small" : {
+                                    "description" : "If the commitment had not yet matured, provide a grace period for it.",
+                                    "type" : "integer",
+                                    "default" : 50
+                                },
+                                "name_already_taken" : {
+                                    "description" : "If the name is already registered. Clean up.",
+                                    "type" : "integer",
+                                    "default" : 1
+                                },
+                                "invalid_registrar" : {
+                                    "description" : "If the registrar is not available, if there is an upcoming fork to allow new registrars - provide a grace period for it, otherwise clean up.",
+                                    "type" : "integer",
+                                    "default" : 1
+                                },
+                                "invalid_name_fee" : {
+                                    "description" : "If the fee is insufficient for the name. If there is an upcoming fork that changes pricing - provide a grace period for it, otherwise clean up.",
+                                    "type" : "integer",
+                                    "default" : 1
+                                }
+                            }
+                        },
+                        "name_revoke_tx" : {
+                            "type" : "object",
+                            "additionalProperties" : true,
+                            "properties" : {
+                                "fallback" : {
+                                    "description" : "Default value if the failed reason is not set.",
+                                    "type" : "integer",
+                                    "default" : 5
+                                },
+                                "insufficient_funds" : {
+                                    "description" : "If the origin of the transaction does not have enough tokens to spend. We provide a grace period in a number of generations.",
+                                    "type" : "integer",
+                                    "default" : 20
+                                },
+                                "name_not_owned" : {
+                                    "description" : "If the name is not owned by the origin of the transaction. Clean up.",
+                                    "type" : "integer",
+                                    "default" : 1
+                                },
+                                "name_revoked" : {
+                                    "description" : "If the the name is already revoked. Clean up",
+                                    "type" : "integer",
+                                    "default" : 1
+                                }
+                            }
+                        },
+                        "name_transfer_tx" : {
+                            "type" : "object",
+                            "additionalProperties" : true,
+                            "properties" : {
+                                "fallback" : {
+                                    "description" : "Default value if the failed reason is not set.",
+                                    "type" : "integer",
+                                    "default" : 5
+                                },
+                                "insufficient_funds" : {
+                                    "description" : "If the origin of the transaction does not have enough tokens to spend. We provide a grace period in a number of generations.",
+                                    "type" : "integer",
+                                    "default" : 20
+                                },
+                                "name_not_owned" : {
+                                    "description" : "If the name is not owned by the origin of the transaction. Clean up.",
+                                    "type" : "integer",
+                                    "default" : 1
+                                },
+                                "name_revoked" : {
+                                    "description" : "If the the name is already revoked. Clean up",
+                                    "type" : "integer",
+                                    "default" : 1
+                                }
+                            }
+                        },
+                        "name_update_tx" : {
+                            "type" : "object",
+                            "additionalProperties" : true,
+                            "properties" : {
+                                "fallback" : {
+                                    "description" : "Default value if the failed reason is not set.",
+                                    "type" : "integer",
+                                    "default" : 5
+                                },
+                                "insufficient_funds" : {
+                                    "description" : "If the origin of the transaction does not have enough tokens to spend. We provide a grace period in a number of generations.",
+                                    "type" : "integer",
+                                    "default" : 20
+                                },
+                                "ttl_too_high" : {
+                                    "description" : "If the provided TTL is too far away in the future. If there is an upcoming fork that changes pricing - provide a grace period for it, otherwise clean up.",
+                                    "type" : "integer",
+                                    "default" : 1
+                                },
+                                "ttl_too_low" : {
+                                    "description" : "If the provided TTL is too soon. If there is an upcoming fork that changes pricing - provide a grace period for it, otherwise clean up.",
+                                    "type" : "integer",
+                                    "default" : 1
+                                },
+                                "ttl_invalid" : {
+                                    "description" : "If the provided TTL is using unknown format. If there is an upcoming fork that changes pricing - provide a grace period for it, otherwise clean up.",
+                                    "type" : "integer",
+                                    "default" : 1
+                                },
+                                "name_not_owned" : {
+                                    "description" : "If the name is not owned by the origin of the transaction. Clean up.",
+                                    "type" : "integer",
+                                    "default" : 1
+                                },
+                                "name_revoked" : {
+                                    "description" : "If the name is already revoked. Clean up",
+                                    "type" : "integer",
+                                    "default" : 1
+                                },
+                                "invalid_pointers" : {
+                                    "description" : "If the provided pointers fail the required checks. If there is an upcoming fork that changes pricing - provide a grace period for it, otherwise clean up.",
+                                    "type" : "integer",
+                                    "default" : 1
+                                }
+                            }
+                        },
+                        "channel_create_tx" : {
+                            "type" : "object",
+                            "additionalProperties" : true,
+                            "properties" : {
+                                "fallback" : {
+                                    "description" : "Default value if the failed reason is not set.",
+                                    "type" : "integer",
+                                    "default" : 5
+                                },
+                                "insufficient_funds" : {
+                                    "description" : "If the origin of the transaction does not have enough tokens to spend. We provide a grace period in a number of generations.",
+                                    "type" : "integer",
+                                    "default" : 20
+                                }
+                            }
+                        },
+                        "channel_close_mutual_tx" : {
+                            "type" : "object",
+                            "additionalProperties" : true,
+                            "properties" : {
+                                "fallback" : {
+                                    "description" : "Default value if the failed reason is not set.",
+                                    "type" : "integer",
+                                    "default" : 5
+                                },
+                                "insufficient_funds" : {
+                                    "description" : "If the origin of the transaction does not have enough tokens to spend. We provide a grace period in a number of generations.",
+                                    "type" : "integer",
+                                    "default" : 20
+                                },
+                                "channel_does_not_exist" : {
+                                    "description" : "If the channel to be closed is not present. We provide a grace period in a number of generations.",
+                                    "type" : "integer",
+                                    "default" : 5
+                                },
+                                "account_not_peer" : {
+                                    "description" : "If the origin of the transaction is not a channel peer. Clean up.",
+                                    "type" : "integer",
+                                    "default" : 1
+                                },
+                                "channel_not_active" : {
+                                    "description" : "If the channel is already closing. Clean up.",
+                                    "type" : "integer",
+                                    "default" : 1
+                                },
+                                "wrong_amounts" : {
+                                    "description" : "If the channel closing amounts exceed the channel balance. There could be a hanging channel_deposit_tx, provide a grace period.",
+                                    "type" : "integer",
+                                    "default" : 20
+                                }
+                            }
+                        },
+                        "channel_deposit_tx" : {
+                            "type" : "object",
+                            "additionalProperties" : true,
+                            "properties" : {
+                                "fallback" : {
+                                    "description" : "Default value if the failed reason is not set.",
+                                    "type" : "integer",
+                                    "default" : 5
+                                },
+                                "insufficient_funds" : {
+                                    "description" : "If the origin of the transaction does not have enough tokens to spend. We provide a grace period in a number of generations.",
+                                    "type" : "integer",
+                                    "default" : 20
+                                },
+                                "channel_does_not_exist" : {
+                                    "description" : "If the channel to be deposited is not present. We provide a grace period in a number of generations.",
+                                    "type" : "integer",
+                                    "default" : 5
+                                },
+                                "channel_not_active" : {
+                                    "description" : "If the channel is already closing. Clean up.",
+                                    "type" : "integer",
+                                    "default" : 1
+                                },
+                                "old_round" : {
+                                    "description" : "If the channel deposit is based on a round older than the on-chain stored one. Clean up.",
+                                    "type" : "integer",
+                                    "default" : 1
+                                },
+                                "same_round" : {
+                                    "description" : "If the channel deposit is trying to replace current state hash. Clean up.",
+                                    "type" : "integer",
+                                    "default" : 1
+                                }
+                            }
+                        },
+                        "channel_withdraw_tx" : {
+                            "type" : "object",
+                            "additionalProperties" : true,
+                            "properties" : {
+                                "fallback" : {
+                                    "description" : "Default value if the failed reason is not set.",
+                                    "type" : "integer",
+                                    "default" : 5
+                                },
+                                "insufficient_funds" : {
+                                    "description" : "If the origin of the transaction does not have enough tokens to spend. We provide a grace period in a number of generations.",
+                                    "type" : "integer",
+                                    "default" : 20
+                                },
+                                "channel_does_not_exist" : {
+                                    "description" : "If the channel to be withdrawn from is not present. We provide a grace period in a number of generations.",
+                                    "type" : "integer",
+                                    "default" : 5
+                                },
+                                "channel_not_active" : {
+                                    "description" : "If the channel is already closing. Clean up.",
+                                    "type" : "integer",
+                                    "default" : 1
+                                },
+                                "old_round" : {
+                                    "description" : "If the channel withdrawal is based on a round older than the on-chain stored one. Clean up.",
+                                    "type" : "integer",
+                                    "default" : 1
+                                },
+                                "same_round" : {
+                                    "description" : "If the channel withdrawal is trying to replace current state hash. Clean up.",
+                                    "type" : "integer",
+                                    "default" : 1
+                                },
+                                "not_enough_channel_funds" : {
+                                    "description" : "If the channel withdrawal is trying to withdraw more tokens than the current channels balance allows it to.  There could be a hanging channel_deposit_tx, provide a grace period.",
+                                    "type" : "integer",
+                                    "default" : 20
+                                }
+                            }
+                        },
+                        "channel_settle_tx" : {
+                            "type" : "object",
+                            "additionalProperties" : true,
+                            "properties" : {
+                                "fallback" : {
+                                    "description" : "Default value if the failed reason is not set.",
+                                    "type" : "integer",
+                                    "default" : 5
+                                },
+                                "insufficient_funds" : {
+                                    "description" : "If the origin of the transaction does not have enough tokens to spend. We provide a grace period in a number of generations.",
+                                    "type" : "integer",
+                                    "default" : 20
+                                },
+                                "channel_does_not_exist" : {
+                                    "description" : "If the channel to be settled is not present. We provide a grace period in a number of generations.",
+                                    "type" : "integer",
+                                    "default" : 5
+                                },
+                                "account_not_peer" : {
+                                    "description" : "If the origin of the transaction is not a channel peer. Clean up.",
+                                    "type" : "integer",
+                                    "default" : 1
+                                },
+                                "channel_not_closed" : {
+                                    "description" : "If the channel dispute time interval is still active. Provide a grace period.",
+                                    "type" : "integer",
+                                    "default" : 20
+                                },
+                                "wrong_amt" : {
+                                    "description" : "If the channel final amounts do not match the closing amounts. There could be a hanging channel_slash_tx, provide a grace period.",
+                                    "type" : "integer",
+                                    "default" : 20
+                                },
+                                "insufficient_channel_funds" : {
+                                    "description" : "If the channel final amounts exceedthe channel balance. Clean up.",
+                                    "type" : "integer",
+                                    "default" : 1
+                                }
+                            }
+                        },
+                        "channel_close_solo_tx" : {
+                            "type" : "object",
+                            "additionalProperties" : true,
+                            "properties" : {
+                                "fallback" : {
+                                    "description" : "Default value if the failed reason is not set.",
+                                    "type" : "integer",
+                                    "default" : 5
+                                },
+                                "insufficient_funds" : {
+                                    "description" : "If the origin of the transaction does not have enough tokens to spend. We provide a grace period in a number of generations.",
+                                    "type" : "integer",
+                                    "default" : 20
+                                },
+                                "channel_does_not_exist" : {
+                                    "description" : "If the channel to be closed is not present. We provide a grace period in a number of generations.",
+                                    "type" : "integer",
+                                    "default" : 5
+                                },
+                                "account_not_peer" : {
+                                    "description" : "If the origin of the transaction is not a channel peer. Clean up.",
+                                    "type" : "integer",
+                                    "default" : 1
+                                },
+                                "channel_not_active" : {
+                                    "description" : "If the channel is already closing. Clean up.",
+                                    "type" : "integer",
+                                    "default" : 1
+                                },
+                                "payload_deserialization_failed" : {
+                                    "description" : "If the payload is from an unknown format, if there is an upcoming fork to allow new serializations - provide a grace period for it, otherwise clean up.",
+                                    "type" : "integer",
+                                    "default" : 1
+                                },
+                                "bad_offchain_state_type" : {
+                                    "description" : "If the offhchain state is from an unknown off-chain transaction type, if there is an upcoming fork to allow new off-chain transaction types - provide a grace period for it, otherwise clean up.",
+                                    "type" : "integer",
+                                    "default" : 1
+                                },
+                                "account_not_found" : {
+                                    "description" : "If the origin of the transaction is not in the state tree. Clean up.",
+                                    "type" : "integer",
+                                    "default" : 1
+                                },
+                                "invalid_poi_hash_in_channel" : {
+                                    "description" : "If the root of the proof of inclusion for the off-chain state does not match the provided hash. Clean up.",
+                                    "type" : "integer",
+                                    "default" : 1
+                                },
+                                "bad_state_channel_pubkey" : {
+                                    "description" : "If the channel id of the payload off-chain transaction does not match the transaction channel id. Clean up.",
+                                    "type" : "integer",
+                                    "default" : 1
+                                },
+                                "old_round" : {
+                                    "description" : "If the transaction is based on a round older than the on-chain stored one. Clean up.",
+                                    "type" : "integer",
+                                    "default" : 1
+                                },
+                                "same_round" : {
+                                    "description" : "If the transaction is trying to replace current state hash. Clean up.",
+                                    "type" : "integer",
+                                    "default" : 1
+                                },
+                                "signature_check_failed" : {
+                                    "description" : "If the payload authentication failed. Clean up.",
+                                    "type" : "integer",
+                                    "default" : 1
+                                },
+                                "wrong_channel_peers" : {
+                                    "description" : "If the accounts provided in the PoI are not of the channel participants. Clean up.",
+                                    "type" : "integer",
+                                    "default" : 1
+                                },
+                                "poi_amounts_change_channel_funds" : {
+                                    "description" : "If the amounts of accounts provided in the PoI exceed the total channel balance. Clean up.",
+                                    "type" : "integer",
+                                    "default" : 1
+                                }
+                            }
+                        },
+                        "channel_slash_tx" : {
+                            "type" : "object",
+                            "additionalProperties" : true,
+                            "properties" : {
+                                "fallback" : {
+                                    "description" : "Default value if the failed reason is not set.",
+                                    "type" : "integer",
+                                    "default" : 5
+                                },
+                                "insufficient_funds" : {
+                                    "description" : "If the origin of the transaction does not have enough tokens to spend. We provide a grace period in a number of generations.",
+                                    "type" : "integer",
+                                    "default" : 20
+                                },
+                                "channel_does_not_exist" : {
+                                    "description" : "If the channel to be slashed is not present. We provide a grace period in a number of generations.",
+                                    "type" : "integer",
+                                    "default" : 5
+                                },
+                                "account_not_peer" : {
+                                    "description" : "If the origin of the transaction is not a channel peer. Clean up.",
+                                    "type" : "integer",
+                                    "default" : 1
+                                },
+                                "channel_not_closing" : {
+                                    "description" : "If the channel is not yet closing. There might be a close solo hanging in the pool, provide a grace period.",
+                                    "type" : "integer",
+                                    "default" : 20
+                                },
+                                "payload_deserialization_failed" : {
+                                    "description" : "If the payload is from an unknown format, if there is an upcoming fork to allow new serializations - provide a grace period for it, otherwise clean up.",
+                                    "type" : "integer",
+                                    "default" : 1
+                                },
+                                "bad_offchain_state_type" : {
+                                    "description" : "If the offhchain state is from an unknown off-chain transaction type, if there is an upcoming fork to allow new off-chain transaction types - provide a grace period for it, otherwise clean up.",
+                                    "type" : "integer",
+                                    "default" : 1
+                                },
+                                "account_not_found" : {
+                                    "description" : "If the origin of the transaction is not in the state tree. Clean up.",
+                                    "type" : "integer",
+                                    "default" : 1
+                                },
+                                "invalid_poi_hash_in_channel" : {
+                                    "description" : "If the root of the proof of inclusion for the off-chain state does not match the provided hash. Clean up.",
+                                    "type" : "integer",
+                                    "default" : 1
+                                },
+                                "bad_state_channel_pubkey" : {
+                                    "description" : "If the channel id of the payload off-chain transaction does not match the transaction channel id. Clean up.",
+                                    "type" : "integer",
+                                    "default" : 1
+                                },
+                                "old_round" : {
+                                    "description" : "If the transaction is based on a round older than the on-chain stored one. Clean up.",
+                                    "type" : "integer",
+                                    "default" : 1
+                                },
+                                "same_round" : {
+                                    "description" : "If the transaction is trying to replace current state hash. Clean up.",
+                                    "type" : "integer",
+                                    "default" : 1
+                                },
+                                "signature_check_failed" : {
+                                    "description" : "If the payload authentication failed. Clean up.",
+                                    "type" : "integer",
+                                    "default" : 1
+                                },
+                                "wrong_channel_peers" : {
+                                    "description" : "If the accounts provided in the PoI are not of the channel participants. Clean up.",
+                                    "type" : "integer",
+                                    "default" : 1
+                                },
+                                "poi_amounts_change_channel_funds" : {
+                                    "description" : "If the amounts of accounts provided in the PoI exceed the total channel balance. Clean up.",
+                                    "type" : "integer",
+                                    "default" : 1
+                                },
+                                "slash_must_have_payload" : {
+                                    "description" : "If the slash transaction comes with an empty payload. Clean up.",
+                                    "type" : "integer",
+                                    "default" : 1
+                                }
+                            }
+                        },
+                        "channel_snapshot_solo_tx" : {
+                            "type" : "object",
+                            "additionalProperties" : true,
+                            "properties" : {
+                                "fallback" : {
+                                    "description" : "Default value if the failed reason is not set.",
+                                    "type" : "integer",
+                                    "default" : 5
+                                },
+                                "insufficient_funds" : {
+                                    "description" : "If the origin of the transaction does not have enough tokens to spend. We provide a grace period in a number of generations.",
+                                    "type" : "integer",
+                                    "default" : 20
+                                },
+                                "payload_deserialization_failed" : {
+                                    "description" : "If the payload is from an unknown format, if there is an upcoming fork to allow new serializations - provide a grace period for it, otherwise clean up.",
+                                    "type" : "integer",
+                                    "default" : 1
+                                },
+                                "snapshot_must_have_payload" : {
+                                    "description" : "If the snapshot transaction comes with an empty payload. Clean up.",
+                                    "type" : "integer",
+                                    "default" : 1
+                                },
+                                "bad_offchain_state_type" : {
+                                    "description" : "If the offhchain state is from an unknown off-chain transaction type, if there is an upcoming fork to allow new off-chain transaction types - provide a grace period for it, otherwise clean up.",
+                                    "type" : "integer",
+                                    "default" : 1
+                                },
+                                "channel_does_not_exist" : {
+                                    "description" : "If the channel to be snapshot is not present. We provide a grace period in a number of generations.",
+                                    "type" : "integer",
+                                    "default" : 5
+                                },
+                                "account_not_found" : {
+                                    "description" : "If the origin of the transaction is not in the state tree. Clean up.",
+                                    "type" : "integer",
+                                    "default" : 1
+                                },
+                                "account_not_peer" : {
+                                    "description" : "If the origin of the transaction is not a channel peer. Clean up.",
+                                    "type" : "integer",
+                                    "default" : 1
+                                },
+                                "channel_not_active" : {
+                                    "description" : "If the channel is already closing. Clean up.",
+                                    "type" : "integer",
+                                    "default" : 1
+                                },
+                                "old_round" : {
+                                    "description" : "If the channel deposit is based on a round older than the on-chain stored one. Clean up.",
+                                    "type" : "integer",
+                                    "default" : 1
+                                },
+                                "same_round" : {
+                                    "description" : "If the channel deposit is trying to replace current state hash. Clean up.",
+                                    "type" : "integer",
+                                    "default" : 1
+                                },
+                                "signature_check_failed" : {
+                                    "description" : "If the payload authentication failed. Clean up.",
+                                    "type" : "integer",
+                                    "default" : 1
+                                }
+                            }
+                        },
+                        "channel_set_delegates_tx" : {
+                            "type" : "object",
+                            "additionalProperties" : true,
+                            "properties" : {
+                                "fallback" : {
+                                    "description" : "Default value if the failed reason is not set.",
+                                    "type" : "integer",
+                                    "default" : 5
+                                },
+                                "insufficient_funds" : {
+                                    "description" : "If the origin of the transaction does not have enough tokens to spend. We provide a grace period in a number of generations.",
+                                    "type" : "integer",
+                                    "default" : 20
+                                },
+                                "channel_does_not_exist" : {
+                                    "description" : "If the channel to be set is not present. We provide a grace period in a number of generations.",
+                                    "type" : "integer",
+                                    "default" : 5
+                                },
+                                "bad_offchain_state_type" : {
+                                    "description" : "If the offhchain state is from an unknown off-chain transaction type, if there is an upcoming fork to allow new off-chain transaction types - provide a grace period for it, otherwise clean up.",
+                                    "type" : "integer",
+                                    "default" : 1
+                                },
+                                "payload_deserialization_failed" : {
+                                    "description" : "If the payload is from an unknown format, if there is an upcoming fork to allow new serializations - provide a grace period for it, otherwise clean up.",
+                                    "type" : "integer",
+                                    "default" : 1
+                                },
+                                "account_not_found" : {
+                                    "description" : "If the origin of the transaction is not in the state tree. Clean up.",
+                                    "type" : "integer",
+                                    "default" : 1
+                                },
+                                "account_not_peer" : {
+                                    "description" : "If the origin of the transaction is not a channel peer. Clean up.",
+                                    "type" : "integer",
+                                    "default" : 1
+                                },
+                                "channel_not_active" : {
+                                    "description" : "If the channel is already closing. Clean up.",
+                                    "type" : "integer",
+                                    "default" : 1
+                                },
+                                "unexpected_state_hash" : {
+                                    "description" : "If the set delegates is based on the latest state hash which is different. We provide a grace period in a number of generations.",
+                                    "type" : "integer",
+                                    "default" : 5
+                                },
+                                "unexpected_state_hash" : {
+                                    "description" : "If the set delegates is based on the latest round which is different. We provide a grace period in a number of generations.",
+                                    "type" : "integer",
+                                    "default" : 5
+                                }
+                            }
+                        },
+                        "contract_create_tx" : {
+                            "type" : "object",
+                            "additionalProperties" : true,
+                            "properties" : {
+                                "fallback" : {
+                                    "description" : "Default value if the failed reason is not set.",
+                                    "type" : "integer",
+                                    "default" : 5
+                                },
+                                "insufficient_funds" : {
+                                    "description" : "If the origin of the transaction does not have enough tokens to spend. We provide a grace period in a number of generations.",
+                                    "type" : "integer",
+                                    "default" : 20
+                                },
+                                "illegal_vm_version" : {
+                                    "description" : "If the VM version is not supported. If there is an upcoming hard fork - provide a grace period, otherwise - clean up",
+                                    "type" : "integer",
+                                    "default" : 1
+                                },
+                                "illegal_contract_compiler_version" : {
+                                    "description" : "If the compiler version is not supported. If there is an upcoming hard fork - provide a grace period, otherwise - clean up",
+                                    "type" : "integer",
+                                    "default" : 1
+                                },
+                                "bad_sophia_code" : {
+                                    "description" : "If the sophia code does not parse. If there is an upcoming hard fork - provide a grace period, otherwise - clean up",
+                                    "type" : "integer",
+                                    "default" : 1
+                                },
+                                "bad_init_function" : {
+                                    "description" : "If the init function fails. If there is an upcoming hard fork - provide a grace period, otherwise - clean up",
+                                    "type" : "integer",
+                                    "default" : 1
+                                }
+                            }
+                        },
+                        "contract_call_tx" : {
+                            "type" : "object",
+                            "additionalProperties" : true,
+                            "properties" : {
+                                "fallback" : {
+                                    "description" : "Default value if the failed reason is not set.",
+                                    "type" : "integer",
+                                    "default" : 5
+                                },
+                                "insufficient_funds" : {
+                                    "description" : "If the origin of the transaction does not have enough tokens to spend. We provide a grace period in a number of generations.",
+                                    "type" : "integer",
+                                    "default" : 20
+                                },
+                                "illegal_vm_version" : {
+                                    "description" : "If the VM version is not supported. If there is an upcoming hard fork - provide a grace period, otherwise - clean up",
+                                    "type" : "integer",
+                                    "default" : 1
+                                }
+                            }
+                        },
+                        "ga_attach_tx" : {
+                            "type" : "object",
+                            "additionalProperties" : true,
+                            "properties" : {
+                                "fallback" : {
+                                    "description" : "Default value if the failed reason is not set.",
+                                    "type" : "integer",
+                                    "default" : 5
+                                },
+                                "insufficient_funds" : {
+                                    "description" : "If the origin of the transaction does not have enough tokens to spend. We provide a grace period in a number of generations.",
+                                    "type" : "integer",
+                                    "default" : 20
+                                },
+                                "illegal_vm_version" : {
+                                    "description" : "If the VM version is not supported. If there is an upcoming hard fork - provide a grace period, otherwise - clean up",
+                                    "type" : "integer",
+                                    "default" : 1
+                                }
+                            }
+                        },
+                        "oracle_register_tx" : {
+                            "type" : "object",
+                            "additionalProperties" : true,
+                            "properties" : {
+                                "fallback" : {
+                                    "description" : "Default value if the failed reason is not set.",
+                                    "type" : "integer",
+                                    "default" : 5
+                                },
+                                "insufficient_funds" : {
+                                    "description" : "If the origin of the transaction does not have enough tokens to spend. We provide a grace period in a number of generations.",
+                                    "type" : "integer",
+                                    "default" : 20
+                                },
+                                "account_is_already_an_oracle" : {
+                                    "description" : "If account is already an oracle. Clean up",
+                                    "type" : "integer",
+                                    "default" : 1
+                                },
+                                "bad_abi_version" : {
+                                    "description" : "If the ABI version is not supported. If there is an upcoming hard fork - provide a grace period, otherwise - clean up",
+                                    "type" : "integer",
+                                    "default" : 1
+                                },
+                                "bad_query_format" : {
+                                    "description" : "If the query format is not supported. If there is an upcoming hard fork - provide a grace period, otherwise - clean up",
+                                    "type" : "integer",
+                                    "default" : 1
+                                },
+                                "bad_response_format" : {
+                                    "description" : "If the response format is not supported. If there is an upcoming hard fork - provide a grace period, otherwise - clean up",
+                                    "type" : "integer",
+                                    "default" : 1
+                                }
+                            }
+                        },
+                        "oracle_extend_tx" : {
+                            "type" : "object",
+                            "additionalProperties" : true,
+                            "properties" : {
+                                "fallback" : {
+                                    "description" : "Default value if the failed reason is not set.",
+                                    "type" : "integer",
+                                    "default" : 5
+                                },
+                                "insufficient_funds" : {
+                                    "description" : "If the origin of the transaction does not have enough tokens to spend. We provide a grace period in a number of generations.",
+                                    "type" : "integer",
+                                    "default" : 20
+                                },
+                                "account_is_not_an_active_oracle" : {
+                                    "description" : "If account is not an oracle. Clean up",
+                                    "type" : "integer",
+                                    "default" : 1
+                                }
+                            }
+                        },
+                        "oracle_query_tx" : {
+                            "type" : "object",
+                            "additionalProperties" : true,
+                            "properties" : {
+                                "fallback" : {
+                                    "description" : "Default value if the failed reason is not set.",
+                                    "type" : "integer",
+                                    "default" : 5
+                                },
+                                "insufficient_funds" : {
+                                    "description" : "If the origin of the transaction does not have enough tokens to spend. We provide a grace period in a number of generations.",
+                                    "type" : "integer",
+                                    "default" : 20
+                                },
+                                "oracle_does_not_exist" : {
+                                    "description" : "If oracle does not exist. Clean up",
+                                    "type" : "integer",
+                                    "default" : 1
+                                },
+                                "bad_format" : {
+                                    "description" : "If the query format does not match up. Clean up",
+                                    "type" : "integer",
+                                    "default" : 1
+                                },
+                                "query_fee_too_low" : {
+                                    "description" : "If the fee provided does not match expectations. Clean up",
+                                    "type" : "integer",
+                                    "default" : 1
+                                },
+                                "too_long_ttl" : {
+                                    "description" : "If the ttl provided does not match expectations. Clean up",
+                                    "type" : "integer",
+                                    "default" : 1
+                                }
+                            }
+                        },
+                        "oracle_response_tx" : {
+                            "type" : "object",
+                            "additionalProperties" : true,
+                            "properties" : {
+                                "fallback" : {
+                                    "description" : "Default value if the failed reason is not set.",
+                                    "type" : "integer",
+                                    "default" : 5
+                                },
+                                "insufficient_funds" : {
+                                    "description" : "If the origin of the transaction does not have enough tokens to spend. We provide a grace period in a number of generations.",
+                                    "type" : "integer",
+                                    "default" : 20
+                                },
+                                "oracle_does_not_exist" : {
+                                    "description" : "If oracle does not exist. Clean up",
+                                    "type" : "integer",
+                                    "default" : 1
+                                },
+                                "bad_format" : {
+                                    "description" : "If the query format does not match up. Clean up",
+                                    "type" : "integer",
+                                    "default" : 1
+                                },
+                                "no_matching_oracle_query" : {
+                                    "description" : "If there is no matching query id. Provide a grace period",
+                                    "type" : "integer",
+                                    "default" : 20
+                                }
+                            }
+                        }
+                    }
                 }
             }
         },
@@ -184,7 +1121,7 @@
                 "log_peer_connection_count_interval" : {
                     "description": "Time (milliseconds) between logging info about connected peers",
                     "type" : "integer",
-                    "default": 5000
+                    "default": 300000
                 },
                 "peer_pool" : {
                     "type" : "object",
@@ -306,6 +1243,11 @@
                             "description" : "Number of acceptors in external pool",
                             "type" : "integer",
                             "default" : 10
+                        },
+                        "gas_limit" : {
+                            "description" : "Maximum gas allowed to be available to a single dry-run call.",
+                            "type" : "integer",
+                            "default" : 6000000
                         }
                     }
                 },
@@ -354,7 +1296,8 @@
                     },
                     "node_operator" : {
                         "description" : "Node operator endpoints",
-                        "type" : "boolean"
+                        "type" : "boolean",
+                        "default" : false
                     },
                     "dev" : {
                         "description" : "Development only API - for validation of client implementations. Should not be used in real life scenarios",
@@ -366,6 +1309,10 @@
                     },
                     "obsolete" : {
                         "description" : "Old endpoints that will be removed",
+                        "type" : "boolean"
+                    },
+                    "dry-run" : {
+                        "description" : "External protected dry run endpoint",
                         "type" : "boolean"
                     }
                 },

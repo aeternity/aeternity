@@ -286,6 +286,7 @@ range_collect_reachable_hashes(LastHeight, ToHeight, Hashes) ->
     {ok, Hashes}.
 
 store_cache_and_restart(Hashes, GCedTab) ->
+    lager:debug("will terminate conductor", []),
     {atomic, ok} = create_accounts_table(GCedTab),
     {ok, _Count} = store_cache(Hashes, GCedTab),
     supervisor:terminate_child(aec_conductor_sup, aec_conductor),

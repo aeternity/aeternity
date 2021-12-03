@@ -146,7 +146,7 @@ set_options(ConnPid, Opts) when is_map(Opts) ->
     ConnPid ! {set_options, Opts}.
 
 stop(ConnPid) ->
-    ok = websocket_client:stop(ConnPid).
+    ok = gen_statem:stop(ConnPid).
 
 send(ConnPid, Action, Payload) ->
     send_(ConnPid, none, Action, Payload, #{}).
@@ -692,7 +692,7 @@ uenc(I) when is_integer(I) ->
 uenc(A) when is_atom(A) ->
     uenc(to_binary(A));
 uenc(V) ->
-    http_uri:encode(V).
+    aeu_uri:encode(V).
 
 get_protocol(#{protocol := Proto}, _) ->
     to_atom(Proto);

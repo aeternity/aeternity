@@ -2,7 +2,7 @@ CORE = rel/aeternity/bin/aeternity
 
 REBAR ?= ./rebar3
 
-PROTOCOLS = roma minerva fortuna lima iris
+PROTOCOLS = roma minerva fortuna lima iris ceres
 CT_TARGETS = $(patsubst %,ct-%,$(PROTOCOLS))
 LATEST_PROTOCOL = $(lastword $(PROTOCOLS))
 
@@ -28,8 +28,6 @@ OAS_YAML = apps/aehttp/priv/oas3.yaml
 
 CONTRACT_FILE = SimpleElection.aes
 CONTRACT_OBJECT = data/aehyperchains/StakingContract.json
-
-PACKAGE_SPEC_WIN32 ?= ../.circleci/windows/package.cfg
 
 # Packages from master MUST be pre-releases. Git master version
 # usually is higher then the last stable release. However
@@ -237,6 +235,7 @@ edoc: VERSION
 $(CT_TARGETS):
 	@KIND=test \
 	SYSCONFIG=config/test-$(patsubst ct-%,%,$@).config \
+	PROTOCOL=$(patsubst ct-%,%,$@) \
 	AETERNITY_TESTCONFIG_DB_BACKEND=mnesia \
 	$(MAKE) internal-ct
 
@@ -256,7 +255,7 @@ REVISION:
 VERSION:
 	@git describe --tags | \
 		sed -E "s/^v(.*)\-([0-9]+)\-g([a-f0-9]+)$$/\1+\2.\3/" | \
-		sed -E "s/^v([0-9]+)\.([0-9]+)\.([0-9]+)$$/\1.\2.\3/" > $@
+		sed -E "s/^v(.*)$$/\1/" > $@
 
 eunit-%: KIND=test
 eunit-%: internal-build
@@ -483,6 +482,9 @@ hc-compile-staking-contract:
 # TODO: Verify release packages
 hc-verify-staking-contract:
 	./rebar3 aesophia -s v4.3.1 -c ./apps/aehyperchains/src/contracts/SimpleElection.aes -o ./data/aehyperchains/StakingContract.json -v
+
+.circleci/config.yml: $(wildcard .circleci/config//**/*)
+	circleci config pack .circleci/config/ > $@
 
 .PHONY: \
 	all console hyperchains-console \

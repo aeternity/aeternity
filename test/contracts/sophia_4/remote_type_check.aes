@@ -1,0 +1,53 @@
+contract Remote =
+  entrypoint id : ('a) => 'a
+  entrypoint missing : ('a) => 'a
+  entrypoint bogus_string_string_arg : (string) => string
+  entrypoint bogus_string_string_ret : (string) => string
+  entrypoint bogus_id : ('a) => ('a)
+
+contract Main =
+
+  type state = int
+
+  entrypoint init() = 0
+
+  entrypoint next_state() = state + 1
+
+  entrypoint id(x : int) =
+    x
+
+  entrypoint bogus_id(x) =
+    (x, x)
+
+  entrypoint bogus_string_string_arg(x : int) =
+    "hello"
+
+  entrypoint bogus_string_string_ret(x : string) =
+    42
+
+  entrypoint remote_id(r : Remote, x) =
+    r.id(x)
+
+  entrypoint remote_missing(r : Remote, x) =
+    r.missing(x)
+
+  entrypoint remote_wrong_arg(r : Remote, x) =
+    r.bogus_string_string_arg(x)
+
+  entrypoint remote_wrong_ret(r : Remote, x) =
+    (r.bogus_string_string_ret(x), r.bogus_string_string_ret(x))
+
+  entrypoint remote_wrong_ret_tailcall(r : Remote, x) : string =
+    r.bogus_string_string_ret(x)
+
+  entrypoint remote_wrong_ret_tailcall_type_vars(r : Remote, x) =
+    r.bogus_id(x)
+
+  stateful entrypoint remote_wrong_put(r : Remote, x) =
+    put(r.bogus_id(x))
+
+  function call_bogus_id(r : Remote, x : 'a) : 'a = r.bogus_id(x)
+
+  stateful entrypoint remote_wrong_put_polymorphic(r : Remote, x) =
+    put(call_bogus_id(r, x))
+

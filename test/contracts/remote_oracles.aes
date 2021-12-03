@@ -1,4 +1,4 @@
-contract Oracles =
+contract interface Oracles =
 
   entrypoint registerOracle :
     (address,
@@ -24,7 +24,7 @@ contract Oracles =
      oracle_query(string, int),
      int) => unit
 
-contract OraclesErr =
+contract interface OraclesErr =
 
   entrypoint unsafeCreateQueryThenErr :
     (oracle(string, int),

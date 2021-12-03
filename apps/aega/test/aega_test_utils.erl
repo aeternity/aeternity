@@ -8,7 +8,7 @@
 -compile([export_all, nowarn_export_all]).
 
 -include("../../aecontract/test/include/aect_sophia_vsn.hrl").
--include("../../aecontract/include/aecontract.hrl").
+-include_lib("aecontract/include/aecontract.hrl").
 -include_lib("aecontract/include/hard_forks.hrl").
 
 %%%===================================================================
@@ -49,10 +49,10 @@ ga_meta_tx_default(PubKey) ->
     Protocol = aect_test_utils:latest_protocol_version(),
     Def0 =
         #{ fee         => 1000000 * aec_test_utils:min_gas_price()
-        , ga_id       => aeser_id:create(account, PubKey)
-        , abi_version => aega_SUITE:abi_version()
-        , gas         => 20000
-        , gas_price   => 1000 * aec_test_utils:min_gas_price()
+         , ga_id       => aeser_id:create(account, PubKey)
+         , abi_version => aega_SUITE:abi_version()
+         , gas         => 20000
+         , gas_price   => 1000 * aec_test_utils:min_gas_price()
         },
     case Protocol < ?IRIS_PROTOCOL_VSN of
         true -> Def0#{ttl => 0};
@@ -179,12 +179,15 @@ basic_auth_sign(Nonce, TxHash, PrivKey) ->
 %%% Helper functions
 %%%===================================================================
 
-make_calldata(Name, Fun, Args) when length(Name) < 20 ->
-    {ok, Src} = read_contract(Name),
-    make_calldata(Src, Fun, Args);
 make_calldata(Code, Fun, Args) ->
+    make_calldata(aega_SUITE:sophia_version(), Code, Fun, Args).
+
+make_calldata(SophiaVersion, Name, Fun, Args) when length(Name) < 20 ->
+    {ok, Src} = read_contract(Name),
+    make_calldata(SophiaVersion, Src, Fun, Args);
+make_calldata(SophiaVersion, Code, Fun, Args) ->
     %% Use the memoized version to not waste 500 ms each time we make a meta tx with the same nonce -.-
-    {ok, CallData} = aect_test_utils:encode_call_data(aega_SUITE:sophia_version(), Code, Fun, Args),
+    {ok, CallData} = aect_test_utils:encode_call_data(SophiaVersion, Code, Fun, Args),
     CallData.
 
 get_contract(Name) ->
@@ -218,7 +221,10 @@ hash_lit_to_bin("#" ++ Hex) ->
     end.
 
 auth_fun_hash(Name, AEVMTypeInfo) ->
-    case ?IS_AEVM_SOPHIA(aega_SUITE:vm_version()) of
+    auth_fun_hash(Name, AEVMTypeInfo, aega_SUITE:vm_version()).
+
+auth_fun_hash(Name, AEVMTypeInfo, VMVersion) ->
+    case ?IS_AEVM_SOPHIA(VMVersion) of
         true  -> aeb_aevm_abi:type_hash_from_function_name(Name, AEVMTypeInfo);
         false -> {ok, <<(aeb_fate_code:symbol_identifier(Name)):4/binary, 0:(28*8)>>}
     end.

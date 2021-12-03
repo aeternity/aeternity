@@ -20,7 +20,7 @@
         , tx_env/2
         ]).
 
--include("../../aecore/include/blocks.hrl").
+-include_lib("aecore/include/blocks.hrl").
 
 -endif.
 

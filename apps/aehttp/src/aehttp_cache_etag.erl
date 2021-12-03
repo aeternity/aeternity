@@ -59,12 +59,10 @@ generate('GetGenerationByHeight', Req, State) ->
     handle_generation_height(Req, State);
 
 generate('GetTransactionByHash', Req, State) ->
-    Hash = cowboy_req:binding(hash, Req),
-    {{strong, Hash}, Req, State};
+    handle_transaction_hash(Req, State);
 
 generate('GetTransactionInfoByHash', Req, State) ->
-    Hash = cowboy_req:binding(hash, Req),
-    {{strong, Hash}, Req, State};
+    handle_transaction_hash(Req, State);
 
 generate(_OperationId, Req, State) ->
     {undefined, Req, State}.
@@ -117,6 +115,21 @@ handle_generation_height(Req, State) ->
             {undefined, Req, State}
     end.
 
+-spec handle_transaction_hash(cowboy_req:req(), any()) -> cowboy_etag_res().
+handle_transaction_hash(Req, State) ->
+    Hash0 = cowboy_req:binding(hash, Req),
+    case aeser_api_encoder:safe_decode(tx_hash, Hash0) of
+        {ok, Hash} ->
+            case etag_transaction_hash(Hash) of
+                {ok, ETag} ->
+                    {{strong, ETag}, Req, State};
+                _ ->
+                    {undefined, Req, State}
+            end;
+        _ ->
+            {undefined, Req, State}
+    end.
+
 -spec etag_block_height(integer()) -> {ok, binary()} | undefined.
 etag_block_height(Height) ->
     case aehttp_logic:get_key_header_by_height(Height) of
@@ -153,6 +166,19 @@ etag_generation_hash(Hash) ->
         {ok, #{key_block := KeyBlock, micro_blocks := MBs}} ->
             ETag = etag_generation(KeyBlock, MBs),
             {ok, ETag};
+        _ ->
+            undefined
+    end.
+
+-spec etag_transaction_hash(binary()) -> {ok, binary()} | undefined.
+etag_transaction_hash(Hash) ->
+    case aec_chain:find_tx_with_location(Hash) of
+        {mempool, _Tx} ->
+            {ok, list_to_binary(aeu_hex:bin_to_hex(Hash))};
+        {BlockHash, _Tx} when is_binary(BlockHash) ->
+            H = <<Hash/binary, BlockHash/binary>>,
+            ETag = aeu_hex:bin_to_hex(crypto:hash(md5, H)),
+            {ok,  list_to_binary(ETag)};
         _ ->
             undefined
     end.

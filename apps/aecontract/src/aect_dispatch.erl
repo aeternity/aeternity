@@ -6,8 +6,8 @@
 %%%-------------------------------------------------------------------
 -module(aect_dispatch).
 
--include("../../aecore/include/blocks.hrl").
--include("../include/aecontract.hrl").
+-include("aecontract.hrl").
+-include_lib("aecore/include/blocks.hrl").
 
 %% API
 -export([run/2]).
@@ -22,11 +22,9 @@
             error:undef -> ok
         end).
 -define(DEBUG_LOG(Format, Data), begin lager:debug(Format, Data), ?TEST_LOG(Format, Data) end).
--define(ST(), erlang:get_stacktrace()).
 -else.
 -define(TEST_LOG(Format, Data), ok).
 -define(DEBUG_LOG(Format, Data), lager:debug(Format, Data)).
--define(ST(), {}).
 -endif.
 
 %% -- Running contract code on chain ---------------------------------------
@@ -80,6 +78,7 @@ run(_, #{ call := Call} = _CallDef) ->
                              , caller
                              , origin
                              , gas_price
+                             , fee
                              ]).
 
 run_common(#{vm := VMVersion, abi := ABIVersion},
@@ -92,6 +91,7 @@ run_common(#{vm := VMVersion, abi := ABIVersion},
             , store       := Store
             , contract    := <<_:?PUB_SIZE/unit:8>> = ContractAddress
             , gas         := Gas
+            , fee         := Fee
             , gas_price   :=_GasPrice
             , trees       := Trees
             , tx_env      := TxEnv0
@@ -108,6 +108,7 @@ run_common(#{vm := VMVersion, abi := ABIVersion},
                     , code       => Code
                     , store      => Store
                     , gas        => Gas
+                    , fee        => Fee
                     , value      => Value
                     , vm_version => VMVersion
                     , allow_init => maps:get(allow_init, CallDef, false)

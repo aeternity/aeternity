@@ -9,9 +9,9 @@
 
 -include_lib("eunit/include/eunit.hrl").
 
--include_lib("aeminer/include/aeminer.hrl").
--include("../../aecontract/include/aecontract.hrl").
 -include("../../aecontract/test/include/aect_sophia_vsn.hrl").
+-include_lib("aeminer/include/aeminer.hrl").
+-include_lib("aecontract/include/aecontract.hrl").
 -include_lib("aecore/include/blocks.hrl").
 -include_lib("aecontract/include/hard_forks.hrl").
 
@@ -132,10 +132,6 @@ out_of_order_test_() ->
      [ {"Out of order insert of block chain",
         fun out_of_order_test_block_chain/0}
      ]}.
-
-restart_chain_db() ->
-    aec_test_utils:stop_chain_db(),
-    aec_test_utils:start_chain_db().
 
 out_of_order_test_block_chain() ->
     %% Create a chain with both key and micro blocks
@@ -1685,7 +1681,7 @@ token_supply_ga() ->
     PresetAmount = 10000000 * min_gas_price(),
     PresetAccounts = [{PubKey, PresetAmount}],
     Fee     = 100000 * min_gas_price(),
-    Gas     = 1000,
+    Gas     = 5000,
     GasPrice = min_gas_price(),
     {ok, CodeMap} = aega_test_utils:get_contract("simple_auth.aes"),
     #{ bytecode := ByteCode
@@ -2283,4 +2279,3 @@ get_transactions_between_two_microblocks() ->
 
 min_gas_price() ->
     aec_test_utils:min_gas_price() * 1000000000.
-

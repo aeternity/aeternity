@@ -14,6 +14,7 @@
 -export([user_config/0, user_config/1, user_config/2]).
 -export([user_map/0, user_map/1]).
 -export([schema/0, schema/1]).
+-export([schema_default_values/1]).
 -export([user_config_or_env/3, user_config_or_env/4]).
 -export([user_map_or_env/4]).
 -export([env_or_user_map/4]).
@@ -21,12 +22,16 @@
 -export([find_config/2]).
 -export([nested_map_get/2]).
 -export([read_config/0]).
--export([apply_os_env/0]).
+-export([apply_os_env/0,
+         apply_os_env/3]).
+-export([check_env/2]).
 -export([parse_key_value_string/1]).
 -export([data_dir/1]).
 -export([check_config/1, check_config/2]).
 
--export([update_config/1]).
+-export([update_config/1,
+         update_config/2,
+         update_config/3]).
 
 -type basic_type() :: number() | binary() | boolean().
 -type basic_or_list()  :: basic_type() | [basic_type()].
@@ -213,8 +218,11 @@ schema() ->
             S
     end.
 
-schema([H|T]) ->
-    case schema() of
+schema(Key) ->
+    schema_(Key, schema()).
+
+schema_([H|T], Schema) ->
+    case Schema of
         #{<<"$schema">> := _, <<"properties">> := #{H := Tree}} ->
             schema_find(T, Tree);
         #{H := Tree} ->
@@ -222,10 +230,10 @@ schema([H|T]) ->
         _ ->
             undefined
     end;
-schema([]) ->
-    {ok, schema()};
-schema(Key) ->
-    case maps:find(Key, schema()) of
+schema_([], Schema) ->
+    {ok, Schema};
+schema_(Key, Schema) ->
+    case maps:find(Key, Schema) of
         {ok, _} = Ok -> Ok;
         error        -> undefined
     end.
@@ -244,6 +252,23 @@ schema_find([], S) ->
 
 default(Key) when is_list(Key) ->
     schema(Key ++ [<<"default">>]).
+
+schema_default_values(Path) ->
+    case schema(Path) of
+        undefined -> undefined;
+        {ok, Tree} ->
+            RecursiveDefault =
+                fun R(_PName,
+                      #{<<"type">> := <<"object">>, <<"properties">> := Props}) ->
+                          maps:map(fun(PN, #{<<"type">> := <<"object">>} = PP) -> R(PN, PP);
+                                      (_PN, #{<<"default">> := Def}) -> Def
+                                    end, Props);
+                    R(_PName, #{<<"default">> := Def}) ->
+                        Def
+                end,
+            Res = RecursiveDefault(<<"root">>, Tree),
+            {ok, Res}
+      end.
 
 parse_key_value_string(Bin) when is_binary(Bin) ->
     %% Parse: expect (binary) string of type "S1:L1 [, ...] Sn:Ln", where
@@ -286,21 +311,35 @@ read_config(Mode) when Mode =:= silent; Mode =:= report ->
     end.
 
 apply_os_env() ->
-    try
+    ok = application:ensure_started(gproc),
     Pfx = "AE",  %% TODO: make configurable
+    ConfigMap = application:get_env(aeutils, '$user_map', #{}),
+    case apply_os_env(Pfx, schema(), ConfigMap) of
+        NewConfig when is_map(NewConfig) ->
+            cache_config(NewConfig),
+            notify_update_config(NewConfig),
+            NewConfig;
+        Other ->
+            Other
+    end.
+
+%% Plugin API version, using plugin schema and config.
+%% The plugin API might decide to publish a specific event...
+apply_os_env(Pfx, Schema, ConfigMap) ->
     %% We sort on variable names to allow specific values to override object
     %% definitions at a higher level (e.g. AE__MEMPOOL followed by AE__MEMPOOL__TX_TTL)
     %% Note that all schema name parts are converted to uppercase.
-    Names = lists:keysort(1, schema_key_names(Pfx)),
+    try
+    Names = lists:keysort(1, schema_key_names(Pfx, Schema)),
     error_logger:info_msg("OS env config: ~p~n", [Names]),
     Map = lists:foldl(
             fun({_Name, Key, Value}, Acc) ->
-                    Value1 = coerce_type(Key, Value),
+                    Value1 = coerce_type(Key, Value, Schema),
                     update_map(to_map(Key, Value1), Acc)
             end, #{}, Names),
     error_logger:info_msg("Map fr OS env config: ~p~n", [Map]),
     if map_size(Map) > 0 ->
-            update_config(Map);
+            update_config_(Map, ConfigMap, Schema, report);
        true ->
             no_change
     end
@@ -320,8 +359,8 @@ to_map([H|T], Val, M) ->
     M#{H => to_map(T, Val, SubMap)}.
             
 
-coerce_type(Key, Value) ->
-    case schema(Key) of
+coerce_type(Key, Value, Schema) ->
+    case schema_(Key, Schema) of
         {ok, #{<<"type">> := Type}} ->
             case Type of
                 <<"integer">> -> to_integer(Value);
@@ -349,7 +388,10 @@ to_bool(Other) ->
     error({expected_boolean, Other}).
 
 schema_key_names(Prefix) ->
-    case schema() of
+    schema_key_names(Prefix, schema()).
+
+schema_key_names(Prefix, Schema) ->
+    case Schema of
         #{<<"$schema">> := _, <<"properties">> := Props} ->
             schema_key_names(Prefix, [], Props, []);
         _ ->
@@ -373,6 +415,30 @@ schema_key_names(NamePfx, KeyPfx, Map, Acc0) when is_map(Map) ->
                       schema_key_names(NamePfx1, KeyPfx1, Props, Acc1)
               end
       end, Acc0, Map).
+
+%% ======================================================================
+
+check_env(App, Spec) ->
+    {ok, MMode} = aeu_env:find_config([<<"system">>, <<"maintenance_mode">>],
+                                      [user_config, schema_default]),
+    lists:foreach(
+      fun({K, F}) ->
+              case aeu_env:user_config(K) of
+                  undefined -> ignore;
+                  {ok, V}   -> maybe_set_env(F, V, App, MMode)
+              end
+      end, Spec).
+
+maybe_set_env({set_env, K}, V, App, _MMode) when is_atom(K) ->
+    io:fwrite("setenv A=~p: K=~p, V=~p~n", [App, K, V]),
+    application:set_env(App, K, V);
+maybe_set_env(F, V, _, _MMode) when is_function(F, 1) ->
+    F(V);
+maybe_set_env(F, V, _, MMode) when is_function(F, 2) ->
+    F(V, MMode).
+
+%% ======================================================================
+
 
 check_config(F) ->
     do_read_config(F, schema_filename(), check, silent).
@@ -442,10 +508,14 @@ do_read_config(F, Schema, Action, Mode) ->
         {".yaml", check} -> check_config_(catch read_yaml(F, Schema, Mode))
     end.
 
-store([Vars0]) ->
-    Vars = to_tree(Vars0),
-    set_env(aeutils, '$user_config', Vars),
-    set_env(aeutils, '$user_map', Vars0).
+store([Vars0]) when is_map(Vars0) ->
+    cache_config(Vars0).
+
+cache_config(ConfigMap) when is_map(ConfigMap) ->
+    set_env(aeutils, '$user_map', ConfigMap),
+    ConfigTree = to_tree(ConfigMap),
+    set_env(aeutils, '$user_config', ConfigTree),
+    ok.
 
 check_config_({yamerl_exception, _StackTrace} = Error) ->
     {error, Error};
@@ -538,16 +608,33 @@ lst(L) when is_list(L) -> L;
 lst(E) -> [E].
 
 update_config(Map) when is_map(Map) ->
+    update_config(Map, _Notify = true).
+
+update_config(Map, Notify) ->
+    update_config(Map, Notify, report).
+
+update_config(Map, Notify, Mode) when is_map(Map), is_boolean(Notify) ->
     Schema = application:get_env(aeutils, '$schema', #{}),
-    check_validation([jesse:validate_with_schema(Schema, Map, [])],
-                     [Map], update_config, report),
     ConfigMap = application:get_env(aeutils, '$user_map', #{}),
-    ConfigMap1 = update_map(Map, ConfigMap),
-    ConfigTree1 = to_tree(ConfigMap1),
-    set_env(aeutils, '$user_map', ConfigMap1),
-    set_env(aeutils, '$user_config', ConfigTree1),
-    aec_events:publish(update_config, Map),
+    ConfigMap1 = update_config_(Map, ConfigMap, Schema, Mode),
+    cache_config(ConfigMap1),
+    if Notify ->
+            notify_update_config(Map);
+       true ->
+            ok
+    end,
     ok.
+
+notify_update_config(Map) ->
+    aec_events:publish(update_config, Map).
+
+update_config_(Map, ConfigMap, Schema, Mode) when Mode =:= silent;
+                                                 Mode =:= report ->
+    check_validation([jesse:validate_with_schema(Schema, Map, [])],
+                     [Map], update_config, Mode),
+    NewConfig = update_map(Map, ConfigMap),
+    NewConfig.
+
 
 update_map(With, Map) when is_map(With), is_map(Map) ->
     maps:fold(
@@ -563,7 +650,6 @@ update_map(With, Map) when is_map(With), is_map(Map) ->
       end, Map, With).
 
 set_env(App, K, V) ->
-    error_logger:info_msg("Set config (~p): ~p = ~p~n", [App, K, V]),
     application:set_env(App, K, V).
 
 read_json(F, Schema, Mode) ->

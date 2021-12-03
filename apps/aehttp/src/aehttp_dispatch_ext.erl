@@ -24,10 +24,12 @@
                         , unsigned_tx_response/1
                         , get_transaction/2
                         , encode_transaction/2
+                        , when_stable/1
                         , ok_response/1
                         , read_optional_param/3
                         , get_poi/3
                         , get_block_hash_optionally_by_hash_or_height/1
+                        , do_dry_run/0
                         ]).
 
 -compile({parse_transform, lager_transform}).
@@ -35,6 +37,10 @@
 -define(READ_Q, http_read).
 -define(WRITE_Q, http_update).
 -define(NO_Q, no_queue).
+
+%% dry run limits
+-define(DEFAULT_GAS_LIMIT, 6000000).
+-define(DEFAULT_CALL_REQ_GAS_LIMIT, 1000000).
 
 -define(TC(Expr, Msg), begin {Time, Res} = timer:tc(fun() -> Expr end), lager:debug("[~p] Msg = ~p", [Time, Msg]), Res end).
 
@@ -54,10 +60,15 @@ handle_request(OperationID, Req, Context) ->
 
 %% run(no_queue, F) -> F();
 run(Queue, F) ->
-    try aec_jobs_queues:run(Queue, F)
+    try when_stable(
+          fun() ->
+                  aec_jobs_queues:run(Queue, F)
+          end)
     catch
         error:{rejected, _} ->
-            {503, [], #{reason => <<"Temporary overload">>}}
+            {503, [], #{reason => <<"Temporary overload">>}};
+        error:timeout ->
+            {503, [], #{reason => <<"Not yet started">>}}
     end.
 
 %% read transactions
@@ -79,6 +90,7 @@ queue('GetGenerationByHeight')                  -> ?READ_Q;
 queue('GetAccountByPubkey')                     -> ?READ_Q;
 queue('GetAccountByPubkeyAndHeight')            -> ?READ_Q;
 queue('GetPendingAccountTransactionsByPubkey')  -> ?READ_Q;
+queue('GetAccountNextNonce')                     -> ?READ_Q;
 queue('GetTransactionByHash')                   -> ?READ_Q;
 queue('GetTransactionInfoByHash')               -> ?READ_Q;
 queue('GetContract')                            -> ?READ_Q;
@@ -417,6 +429,24 @@ handle_request_('GetPendingAccountTransactionsByPubkey', Params, _Context) ->
             {400, [], #{reason => <<"Invalid public key">>}}
     end;
 
+handle_request_('GetAccountNextNonce', Params, _Context) ->
+    case aeser_api_encoder:safe_decode(account_pubkey, maps:get(pubkey, Params)) of
+        {ok, Pubkey} ->
+            Strategy =
+                case maps:get(strategy, Params) of
+                    max -> max;
+                    continuity -> continuity
+                end,
+            case aec_next_nonce:pick_for_account(Pubkey, Strategy) of
+                {ok, NextNonce} ->
+                    {200, [], #{next_nonce => NextNonce}};
+                {error, account_not_found} ->
+                    {404, [], #{reason => <<"Account not found">>}}
+            end;
+        {error, _} ->
+            {400, [], #{reason => <<"Invalid public key">>}}
+    end;
+
 handle_request_('GetTransactionByHash', Params, _Config) ->
     case aeser_api_encoder:safe_decode(tx_hash, maps:get(hash, Params)) of
         {ok, Hash} ->
@@ -428,7 +458,8 @@ handle_request_('GetTransactionByHash', Params, _Config) ->
                     {200, [], SerializedTx};
                 {BlockHash, Tx} ->
                     {ok, Header} = aec_chain:get_header(BlockHash),
-                    {200, [], aetx_sign:serialize_for_client(Header, Tx)}
+                    Response = aetx_sign:serialize_for_client(Header, Tx),
+                    {200, [], Response}
             end;
         {error, _} ->
             {400, [], #{reason => <<"Invalid hash">>}}
@@ -660,6 +691,38 @@ handle_request_('GetStatus', _Params, _Context) ->
 
 handle_request_('GetChainEnds', _Params, _Context) ->
     {200, [], [aeser_api_encoder:encode(key_block_hash, H) || H <- aec_db:find_chain_end_hashes()]};
+
+handle_request_('ProtectedDryRunTxs', #{ 'DryRunInput' := Req }, _Context) ->
+    ParseFuns = [ parse_map_to_atom_keys(),
+                  read_required_params([txs]),
+                  read_optional_params([{top, top, top}, {accounts, accounts, []},
+                                        {tx_events, tx_events, false}]),
+                  fun(_Req, #{txs := Txs} = State) ->
+                      TopBlock = aec_chain:top_block(),
+                      Height = aec_blocks:height(TopBlock),
+                      Protocol = aec_hard_forks:protocol_effective_at_height(Height),
+                      TxGasLimit= lists:sum(
+                          lists:map(
+                              fun(#{<<"tx">> := ETx}) ->
+                                  case aeser_api_encoder:safe_decode(transaction, ETx) of
+                                      {ok, DTx} ->
+                                          Tx = aetx:deserialize_from_binary(DTx),
+                                          aetx:gas_limit(Tx, Height, Protocol);
+                                      {error, _Err} -> 0 %% this is handled later on
+                                  end;
+                                 (#{<<"call_req">> := CallReq}) ->
+                                    maps:get(<<"gas">>, CallReq, ?DEFAULT_CALL_REQ_GAS_LIMIT)
+                              end,
+                              Txs)),
+                      MaxGas = aeu_env:config_value([<<"http">>, <<"external">>, <<"gas_limit">>],
+                                                    aehttp, [external, gas_limit], ?DEFAULT_GAS_LIMIT),
+                      case TxGasLimit =< MaxGas of
+                          true -> {ok, State};
+                          false -> {error, {403, [], #{<<"reason">> => <<"Over the gas limit">>}}}
+                      end
+                  end,
+                  do_dry_run()],
+    process_request(ParseFuns, Req);
 
 handle_request_(OperationID, Req, Context) ->
     error_logger:error_msg(

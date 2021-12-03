@@ -9,7 +9,8 @@
 -export([publish/2,
          subscribe/1,
          ensure_subscription/1,
-         unsubscribe/1]).
+         unsubscribe/1,
+         ensure_unsubscribed/1]).
 
 -import(aeu_debug, [pp/1]).
 
@@ -64,3 +65,11 @@ ensure_subscription(Event) ->
 unsubscribe(Event) ->
     gproc_ps:unsubscribe(l, Event).
 
+-spec ensure_unsubscribed(event()) -> true.
+ensure_unsubscribed(Event) ->
+    case lists:member(self(), gproc_ps:list_subs(l,Event)) of
+        true ->
+            unsubscribe(Event);
+        false ->
+            true
+    end.

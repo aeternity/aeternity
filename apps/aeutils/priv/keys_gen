@@ -51,7 +51,7 @@ gen_filename(KeysDir, PubFile0, PrivFile0) ->
 check_keys(PubKey, PrivKey) ->
     SampleMsg = <<"random message">>,
     Signature = enacl:sign_detached(SampleMsg, PrivKey),
-    {ok, SampleMsg} == enacl:sign_verify_detached(Signature, SampleMsg, PubKey).
+    enacl:sign_verify_detached(Signature, SampleMsg, PubKey).
 
 save_keys(Pwd, PubFile, PubKey, PrivFile, PrivKey) ->
     EncPub  = encrypt_key(Pwd, PubKey),
@@ -60,7 +60,7 @@ save_keys(Pwd, PubFile, PubKey, PrivFile, PrivKey) ->
     ok = file:write_file(PrivFile, EncPriv).
 
 encrypt_key(Password, Bin) ->
-    crypto:block_encrypt(aes_ecb, hash(Password), Bin).
+    crypto:crypto_one_time(aes_256_ecb, hash(Password), Bin, true).
 
 hash(Bin) ->
     crypto:hash(sha256, Bin).

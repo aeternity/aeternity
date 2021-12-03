@@ -1,0 +1,30 @@
+include "List.aes"
+
+contract PatternGuards =
+  function assert(p) = switch(p)
+    (t, msg) => if(t) () else abort(msg)
+
+  function f(x)
+    | x > 10, x < 20 = 1
+    | x > 20 = 2
+    | true = 3
+
+  function g(x) =
+    switch(x)
+      a::[] | a > 10 => 1
+      a::b::[]
+        | a == 1, b == 1 => 2
+        | a > 1, b < 10 => 3
+      xs => 4
+
+  entrypoint test() = List.foreach(
+    [ (f(15) == 1, "test_1_failed")
+    , (f(30) == 2, "test_2_failed")
+    , (f(10) == 3, "test_3_failed")
+    , (g([1]) == 4 , "test_4_failed")
+    , (g([20]) == 1, "test_5_failed")
+    , (g([1, 1]) == 2, "test_6_failed")
+    , (g([2, 5]) == 3, "test_7_failed")
+    , (g([100, 100]) == 4, "test_8_failed")
+    , (g([1, 2, 3]) == 4, "test_9_failed")
+    ], assert)

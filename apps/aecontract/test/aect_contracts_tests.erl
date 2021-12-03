@@ -8,7 +8,7 @@
 -module(aect_contracts_tests).
 
 -include_lib("eunit/include/eunit.hrl").
--include("../include/aecontract.hrl").
+-include("aecontract.hrl").
 
 -import(aect_contracts, [ deserialize/2
                         , new/2

@@ -2,6 +2,7 @@
 
 -export([ensure_env/0]).
 -export([protocols/0,
+         protocols_from_network_id/1,
          protocol_effective_at_height/1,
          protocol_vsn_name/1,
          protocol_vsn/1
@@ -23,6 +24,7 @@
 %% version is effective.  The height must be strictly increasing with
 %% the version.
 -type protocol_vsn() :: pos_integer()
+                      | ?CERES_PROTOCOL_VSN
                       | ?IRIS_PROTOCOL_VSN
                       | ?LIMA_PROTOCOL_VSN
                       | ?FORTUNA_PROTOCOL_VSN
@@ -72,19 +74,21 @@ ensure_env() ->
 protocol_effective_at_height(Height) ->
     protocol_effective_at_height(Height, protocols()).
 
--spec protocol_vsn_name(protocol_vsn()) -> atom().
+-spec protocol_vsn_name(protocol_vsn())  -> atom().
 protocol_vsn_name(?ROMA_PROTOCOL_VSN)    -> roma;
 protocol_vsn_name(?MINERVA_PROTOCOL_VSN) -> minerva;
 protocol_vsn_name(?FORTUNA_PROTOCOL_VSN) -> fortuna;
 protocol_vsn_name(?LIMA_PROTOCOL_VSN)    -> lima;
-protocol_vsn_name(?IRIS_PROTOCOL_VSN)    -> iris.
+protocol_vsn_name(?IRIS_PROTOCOL_VSN)    -> iris;
+protocol_vsn_name(?CERES_PROTOCOL_VSN)   -> ceres.
 
 -spec protocol_vsn(atom()) -> protocol_vsn().
 protocol_vsn(roma)    -> ?ROMA_PROTOCOL_VSN;
 protocol_vsn(minerva) -> ?MINERVA_PROTOCOL_VSN;
 protocol_vsn(fortuna) -> ?FORTUNA_PROTOCOL_VSN;
 protocol_vsn(lima)    -> ?LIMA_PROTOCOL_VSN;
-protocol_vsn(iris)    -> ?IRIS_PROTOCOL_VSN.
+protocol_vsn(iris)    -> ?IRIS_PROTOCOL_VSN;
+protocol_vsn(ceres)   -> ?CERES_PROTOCOL_VSN.
 
 
 %%%===================================================================
@@ -96,14 +100,16 @@ protocols_from_network_id(<<"ae_mainnet">>) ->
      , ?MINERVA_PROTOCOL_VSN  => 47800
      , ?FORTUNA_PROTOCOL_VSN => 90800
      , ?LIMA_PROTOCOL_VSN => 161150
-%%%  , ?IRIS_PROTOCOL_VSN =>  Not yet decided
+     , ?IRIS_PROTOCOL_VSN =>  441444
+%%%  , ?CERES_PROTOCOL_VSN =>  Not yet decided
     };
 protocols_from_network_id(<<"ae_uat">>) ->
     #{ ?ROMA_PROTOCOL_VSN     => 0
      , ?MINERVA_PROTOCOL_VSN  => 40900
      , ?FORTUNA_PROTOCOL_VSN => 82900
-     , ?LIMA_PROTOCOL_VSN =>  154300
-%%%  , ?IRIS_PROTOCOL_VSN =>  Not yet decided
+     , ?LIMA_PROTOCOL_VSN => 154300
+     , ?IRIS_PROTOCOL_VSN => 425900
+%%%  , ?CERES_PROTOCOL_VSN =>  Not yet decided
      };
 
 protocols_from_network_id(<<"ae_hc_devnet">>) ->
@@ -116,6 +122,7 @@ protocols_from_network_id(<<"local_roma_testnet">>) ->
      %%, ?FORTUNA_PROTOCOL_VSN  => Excluded for testing old protocol
      %%, ?LIMA_PROTOCOL_VSN     => Excluded for testing old protocol
      %%, ?IRIS_PROTOCOL_VSN     => Excluded for testing old protocol
+     %%, ?CERES_PROTOCOL_VSN     => Excluded for testing old protocol
      };
 protocols_from_network_id(<<"local_minerva_testnet">>) ->
     #{ ?ROMA_PROTOCOL_VSN     => 0
@@ -123,6 +130,7 @@ protocols_from_network_id(<<"local_minerva_testnet">>) ->
      %%, ?FORTUNA_PROTOCOL_VSN  => Excluded for testing old protocol
      %%, ?LIMA_PROTOCOL_VSN     => Excluded for testing old protocol
      %%, ?IRIS_PROTOCOL_VSN     => Excluded for testing old protocol
+     %%, ?CERES_PROTOCOL_VSN     => Excluded for testing old protocol
      };
 protocols_from_network_id(<<"local_fortuna_testnet">>) ->
     #{ ?ROMA_PROTOCOL_VSN     => 0
@@ -130,6 +138,7 @@ protocols_from_network_id(<<"local_fortuna_testnet">>) ->
      , ?FORTUNA_PROTOCOL_VSN  => 1
      %%, ?LIMA_PROTOCOL_VSN     => Excluded for testing old protocol
      %%, ?IRIS_PROTOCOL_VSN     => Excluded for testing old protocol
+     %%, ?CERES_PROTOCOL_VSN     => Excluded for testing old protocol
      };
 protocols_from_network_id(<<"local_lima_testnet">>) ->
     #{ ?ROMA_PROTOCOL_VSN     => 0
@@ -137,6 +146,7 @@ protocols_from_network_id(<<"local_lima_testnet">>) ->
      %%, ?FORTUNA_PROTOCOL_VSN  => Excluded for testing new protocol
      , ?LIMA_PROTOCOL_VSN     => 1
      %% ?IRIS_PROTOCOL_VSN     => Excluded for testing new protocol
+     %%, ?CERES_PROTOCOL_VSN     => Excluded for testing old protocol
      };
 protocols_from_network_id(<<"local_iris_testnet">>) ->
     #{ ?ROMA_PROTOCOL_VSN     => 0
@@ -144,12 +154,31 @@ protocols_from_network_id(<<"local_iris_testnet">>) ->
      %%, ?FORTUNA_PROTOCOL_VSN  => Excluded for testing new protocol
      %%, ?LIMA_PROTOCOL_VSN     => Excluded for testing new protocol
      , ?IRIS_PROTOCOL_VSN     => 1
+     %%, ?CERES_PROTOCOL_VSN     => Excluded for testing old protocol
      };
+protocols_from_network_id(<<"local_ceres_testnet">>) ->
+    #{ ?ROMA_PROTOCOL_VSN     => 0
+     %%, ?MINERVA_PROTOCOL_VSN  => Excluded for testing new protocol
+     %%, ?FORTUNA_PROTOCOL_VSN  => Excluded for testing new protocol
+     %%, ?LIMA_PROTOCOL_VSN     => Excluded for testing new protocol
+     %%, ?IRIS_PROTOCOL_VSN     => Excluded for testing new protocol
+     , ?CERES_PROTOCOL_VSN    => 1
+     };
+protocols_from_network_id(<<"ae_dev">>) ->
+    case aeu_env:user_map_or_env([<<"chain">>, <<"hard_forks">>], aecore, hard_forks, undefined) of
+        undefined ->
+            #{ ?ROMA_PROTOCOL_VSN => 0
+             , ?IRIS_PROTOCOL_VSN => 1 };
+        M when is_map(M) ->
+            maps:fold(fun(K, V, Acc) ->
+                              Acc#{binary_to_integer(K) => V}
+                      end, #{}, M)
+    end;
 protocols_from_network_id(_ID) ->
     case aeu_env:user_map_or_env([<<"chain">>, <<"hard_forks">>], aecore, hard_forks, undefined) of
         undefined ->
             #{ ?ROMA_PROTOCOL_VSN  => 0
-             , ?LIMA_PROTOCOL_VSN  => 1 %% Update after switching to IRIS
+             , ?IRIS_PROTOCOL_VSN  => 1
              };
         M when is_map(M) ->
             maps:fold(fun(K, V, Acc) ->

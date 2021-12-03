@@ -1,6 +1,6 @@
 -module(aesc_offchain_state).
 
--include("../../aecore/include/blocks.hrl").
+-include_lib("aecore/include/blocks.hrl").
 -include_lib("aecontract/include/hard_forks.hrl").
 
 -define(NO_TX, no_tx).
@@ -187,8 +187,8 @@ check_update_tx(SignedTx, Updates, #state{signed_tx = OldSignedTx} = State,
 check_update_tx_(Mod, RefTx, Updates, #state{} = State,
                  ChannelPubkey,
                  Protocol, OnChainTrees, OnChainEnv, Reserve) ->
-    try Tx1 = make_update_tx(Updates, State, ChannelPubkey,
-                             Protocol, OnChainTrees, OnChainEnv, Reserve),
+    try {Tx1, _} = make_update_tx(Updates, State, ChannelPubkey,
+                                  Protocol, OnChainTrees, OnChainEnv, Reserve),
          {Mod1, Tx1I} = aetx:specialize_callback(Tx1),
          case Mod1:state_hash(Tx1I) =:= Mod:state_hash(RefTx) of
              true ->
@@ -217,7 +217,7 @@ prune_calls(State) ->
                      binary(),
                      aec_hard_forks:protocol_vsn(),
                      aec_trees:trees(), aetx_env:env(),
-                     non_neg_integer()) -> aetx:tx().
+                     non_neg_integer()) -> {aetx:tx(), list()}.
 make_update_tx(Updates, #state{signed_tx = LastSignedTx, trees=Trees},
                ChannelPubkey, Protocol,
                OnChainTrees, OnChainEnv, Reserve)
@@ -227,8 +227,9 @@ make_update_tx(Updates, #state{signed_tx = LastSignedTx, trees=Trees},
 
     NextRound = Mod:round(TxI) + 1,
 
-    Trees1 = apply_updates(Updates, NextRound, Trees, OnChainTrees,
-                           OnChainEnv, Reserve),
+    {Results, Trees1} = apply_updates(Updates, NextRound, Trees, OnChainTrees,
+                                      OnChainEnv, Reserve),
+    lager:debug("Results = ~p", [Results]),
     StateHash = aec_trees:hash(Trees1),
     Props0 =
         #{channel_id => aeser_id:create(channel, ChannelPubkey),
@@ -241,11 +242,11 @@ make_update_tx(Updates, #state{signed_tx = LastSignedTx, trees=Trees},
             _                     -> Props0
         end,
     {ok, OffchainTx} = aesc_offchain_tx:new(Props),
-    OffchainTx.
+    {OffchainTx, Results}.
 
 apply_updates(Updates, Round, Trees0, OnChainTrees, OnChainEnv, Reserve) ->
     Trees = aect_call_state_tree:prune_without_backend(Trees0),
-    lists:foldl(
+    lists:mapfoldl(
         fun(U, AccumTrees) ->
             aesc_offchain_update:apply_on_trees(U, AccumTrees, OnChainTrees,
                                                 OnChainEnv, Round, Reserve)
@@ -280,12 +281,12 @@ set_signed_tx(SignedTx, Updates, #state{}=State, OnChainTrees,
             {Trees, Calls} =
                 lists:foldl(
                     fun(Update, {TrAccum, CallsAccum}) ->
-                        TrAccum1 = aesc_offchain_update:apply_on_trees(Update,
-                                                                       TrAccum,
-                                                                       OnChainTrees,
-                                                                       OnChainEnv,
-                                                                       Mod:round(TxI),
-                                                                       Reserve),
+                        {_Res, TrAccum1} = aesc_offchain_update:apply_on_trees(Update,
+                                                                               TrAccum,
+                                                                               OnChainTrees,
+                                                                               OnChainEnv,
+                                                                               Mod:round(TxI),
+                                                                               Reserve),
                         IsCall = aesc_offchain_update:is_call(Update),
                         IsNewContract = aesc_offchain_update:is_contract_create(Update),
                         case IsNewContract orelse IsCall of

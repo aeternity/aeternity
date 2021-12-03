@@ -272,9 +272,9 @@ init_per_group(config_overwrites_defaults, Config) ->
     Dev1 = dev1,
     aecore_suite_utils:stop_node(Dev1, Config),
     Config1 = config({devs, [Dev1]}, Config),
-    EpochCfg0 = aecore_suite_utils:epoch_config(Dev1, Config),
-    EpochCfg = EpochCfg0#{<<"include_default_peers">> => true},
-    aecore_suite_utils:create_config(Dev1, Config1, EpochCfg,
+    NodeCfg0 = aecore_suite_utils:node_config(Dev1, Config),
+    NodeCfg = NodeCfg0#{<<"include_default_peers">> => true},
+    aecore_suite_utils:create_config(Dev1, Config1, NodeCfg,
                                             [no_peers
                                             ]),
     Config1;
@@ -305,8 +305,8 @@ init_per_group(Group, Config) when Group =:= one_blocked;
     {ok, _} = application:ensure_all_started(exometer_core),
     ok = aec_metrics_test_utils:start_statsd_loggers(aec_metrics_test_utils:port_map(Config1)),
     [Dev1, Dev2 | _] = proplists:get_value(devs, Config1),
-    EpochCfg = aecore_suite_utils:epoch_config(Dev1, Config),
-    aecore_suite_utils:create_config(Dev1, Config, EpochCfg,
+    NodeCfg = aecore_suite_utils:node_config(Dev1, Config),
+    aecore_suite_utils:create_config(Dev1, Config, NodeCfg,
                                             [{block_peers, [ Dev2 ]},
                                              {add_peers, true}
                                             ]),
@@ -332,9 +332,9 @@ end_per_group(Group, Config) when Group =:= one_blocked;
     %% reset dev1 config to no longer block any peers.
     Config1 = config({devs, [dev1]}, Config),
     [Dev1 | _] = proplists:get_value(devs, Config1),
-    EpochCfg = aecore_suite_utils:epoch_config(Dev1, Config),
+    NodeCfg = aecore_suite_utils:node_config(Dev1, Config),
     aecore_suite_utils:create_config(Dev1, Config,
-                                     maps:without([<<"blocked_peers">>], EpochCfg),
+                                     maps:without([<<"blocked_peers">>], NodeCfg),
                                      [{add_peers, true}]),
     ok;
 end_per_group(mempool_sync, Config) ->
@@ -367,9 +367,9 @@ end_per_group(Benchmark, _Config) when
     ok;
 end_per_group(config_overwrites_defaults, Config) ->
     Dev1 = dev1,
-    EpochCfg0 = aecore_suite_utils:epoch_config(Dev1, Config),
-    EpochCfg = EpochCfg0#{<<"include_default_peers">> => false},
-    aecore_suite_utils:create_config(Dev1, Config, EpochCfg,
+    NodeCfg0 = aecore_suite_utils:node_config(Dev1, Config),
+    NodeCfg = NodeCfg0#{<<"include_default_peers">> => false},
+    aecore_suite_utils:create_config(Dev1, Config, NodeCfg,
                                             [{add_peers, true}]),
     ok;
 end_per_group(persistence, _Config) ->
@@ -407,7 +407,7 @@ end_per_testcase(_Case, Config) ->
 
 start_first_node(Config) ->
     aecore_suite_utils:start_node(dev1, Config),
-    aecore_suite_utils:connect(aecore_suite_utils:node_name(dev1)),
+    connect(aecore_suite_utils:node_name(dev1)),
     ok = aecore_suite_utils:check_for_logs([dev1], Config),
     ok.
 
@@ -419,7 +419,7 @@ start_second_node(Config) ->
     N1 = aecore_suite_utils:node_name(Dev1),
     N2 = aecore_suite_utils:node_name(Dev2),
     aecore_suite_utils:start_node(Dev2, Config),
-    aecore_suite_utils:connect(N2),
+    connect(N2),
     aecore_suite_utils:await_aehttp(N2),
     ct:log("Connected peers on dev2: ~p",
            [rpc:call(N2, aec_peers, connected_peers, [], 5000)]),
@@ -432,7 +432,7 @@ start_third_node(Config) ->
     N3 = aecore_suite_utils:node_name(Dev3),
     T0 = os:timestamp(),
     aecore_suite_utils:start_node(Dev3, Config),
-    aecore_suite_utils:connect(N3),
+    connect(N3),
     aecore_suite_utils:await_aehttp(N3),
     ct:log("Connected peers on dev3: ~p",
            [rpc:call(N3, aec_peers, connected_peers, [], 5000)]),
@@ -456,7 +456,7 @@ start_blocked_second(Config) ->
     N1 = aecore_suite_utils:node_name(Dev1),
     N2 = aecore_suite_utils:node_name(Dev2),
     aecore_suite_utils:start_node(Dev2, Config),
-    aecore_suite_utils:connect(N2),
+    connect(N2),
     timer:sleep(2000),
 
     %% Check that there is only one non-blocked peer (dev3) and no connected peers
@@ -469,9 +469,10 @@ start_blocked_second(Config) ->
     0 = Standby,
 
     %% Also check that they have different top blocks
-    B1 = rpc:call(N1, aec_chain, top_block, [], 5000),
-    B2 = rpc:call(N2, aec_chain, top_block, [], 5000),
-    true = (B1 /= B2),
+    {ok, _} =
+        aec_test_utils:wait_for_pred_or_timeout(
+          fun() -> rpc:multicall([N1, N2], aec_chain, top_block, [], 5000) end,
+          fun({[B1, B2], []}) -> B1 =/= B2 end, 5000),
 
     %% Unblock dev2 at dev1 and check that peers sync
     rpc:call(N1, aec_peers, unblock_all, [], 5000),
@@ -608,7 +609,7 @@ crash_syncing_worker(Config) ->
     spawn_link(fun() -> kill_sync_worker(N2, PeerId) end),
 
     aecore_suite_utils:start_node(Dev2, Config),
-    aecore_suite_utils:connect(N2),
+    connect(N2),
     ct:log("node connected ~p", [N2]),
 
     %% Set the same mining_rate to validate target
@@ -665,7 +666,7 @@ restart_node(Nr, Config) ->
     T0 = os:timestamp(),
     aecore_suite_utils:start_node(Dev, Config),
     N = aecore_suite_utils:node_name(Dev),
-    aecore_suite_utils:connect(N),
+    connect(N),
     ct:log("~w restarted", [Dev]),
     true = expect_same(T0, Config).
 
@@ -707,43 +708,42 @@ expect_same(T0, Config) ->
     expect_same_tx(Nodes).
 
 expect_same_top(Nodes, Tries) when Tries > 0 ->
-    Blocks = lists:map(
-               fun(N) ->
-                       B = rpc:call(N, aec_chain, top_block, [], 5000),
-                       {N, B}
-               end, Nodes),
-    case lists:ukeysort(2, Blocks) of
-        [_] ->
-            ok;
-        [_,_|_] = Dups ->
-            ct:log("Blocks differ, retrying:~n~p", [Dups]),
-            timer:sleep(2000),
-            expect_same_top(Nodes, Tries-1)
-    end;
-expect_same_top(Nodes, _) ->
-    ct:log("tries exhausted", []),
-    erlang:error({top_blocks_differ, Nodes}).
+    Pred = fun(Txs) ->
+                   case lists:usort(Txs) of
+                       [_] -> true;
+                       _   -> false
+                   end
+           end,
+    pred_or_timeout_bool(
+      fun() ->
+              {Bs, []} = rpc:multicall(Nodes, aec_chain, top_block, [], 5000),
+              Bs
+      end, Pred, 5000).
 
 expect_same_tx(Nodes) ->
-    retry(fun() ->
-                  expect_same_tx_(Nodes)
-          end, {?LINE, expect_same_tx, Nodes}).
+    Pred = fun(Txs) ->
+                   case lists:usort(Txs) of
+                       [X] when X =/= error -> true;
+                       _ -> false
+                   end
+           end,
+    pred_or_timeout_bool(
+           fun() ->
+                   {Res, []} =
+                       rpc:multicall(Nodes, aec_tx_pool, peek, [infinity], 5000),
+                   lists:map(
+                     fun({ok, T}) -> T;
+                        (_Other)  -> error
+                     end, Res)
+           end,
+           Pred, 5000).
 
-expect_same_tx_(Nodes) ->
-    Txs = lists:map(
-            fun(N) ->
-                    case rpc:call(N, aec_tx_pool, peek, [infinity], 5000) of
-                        {ok, T} ->
-                            ct:log("Txs (~p): ~p", [N, T]),
-                            T;
-                        Other ->
-                            ct:log("Txs ERROR (~p): ~p", [N, Other]),
-                            error
-                    end
-            end, Nodes),
-    case lists:usort(Txs) of
-        [X] when X =/= error -> true;
-        _ -> false
+pred_or_timeout_bool(Fun, Pred, Timeout) ->
+    case aec_test_utils:wait_for_pred_or_timeout(Fun, Pred, Timeout) of
+        {ok, _} -> true;
+        Other ->
+            ct:log("wait_for_pred_or_timeout failed: ~p", [Other]),
+            false
     end.
 
 large_msgs(Config) ->
@@ -839,7 +839,7 @@ measure_second_node_sync_time(Config) ->
     N2 = aecore_suite_utils:node_name(Dev2),
     aecore_suite_utils:start_node(Dev2, Config),
     {T, _} = timer:tc(fun() ->
-        aecore_suite_utils:connect(N2),
+        connect(N2),
         aecore_suite_utils:reinit_with_ct_consensus(Dev2),
         Self = self(),
         Watcher = rpc:call(N2, erlang, spawn, [fun() ->
@@ -887,10 +887,10 @@ restart_with_different_defaults(Config) ->
     N1 = aecore_suite_utils:node_name(Dev1),
     aecore_suite_utils:stop_node(Dev1, Config),
     Peer = random_peer(),
-    EpochCfg0 = aecore_suite_utils:epoch_config(Dev1, Config),
-    EpochCfg = EpochCfg0#{<<"peers">> => [aec_peer:peer_config_info(Peer)],
+    NodeCfg0 = aecore_suite_utils:node_config(Dev1, Config),
+    NodeCfg = NodeCfg0#{<<"peers">> => [aec_peer:peer_config_info(Peer)],
                           <<"include_default_peers">> => false},
-    aecore_suite_utils:create_config(Dev1, Config, EpochCfg,
+    aecore_suite_utils:create_config(Dev1, Config, NodeCfg,
                                             []),
     start_first_node(Config),
     1 = rpc:call(N1, aec_peers, count, [verified], 5000),
@@ -908,17 +908,17 @@ start_with_trusted_peers(Config) ->
     Peer2 = random_peer(),
     Peer3 = random_peer(),
 
-    EpochCfg = aecore_suite_utils:epoch_config(Dev1, Config),
+    NodeCfg = aecore_suite_utils:node_config(Dev1, Config),
     Peers = [encode_peer_for_config(Peer1),
              encode_peer_for_config(Peer2),
              encode_peer_for_config(Peer3)],
-    aecore_suite_utils:create_config(Dev1, Config, EpochCfg,
+    aecore_suite_utils:create_config(Dev1, Config, NodeCfg,
                                             [{trusted_peers, Peers}
                                             ]),
     start_first_node(Config),
     timer:sleep(200),
-    3 = rpc:call(N1, aec_peers, count, [verified], 5000),
-    0 = rpc:call(N1, aec_peers, count, [unverified], 5000),
+    {ok, 3} = expect_val(N1, aec_peers, count, [verified], 3, 5000),
+    {ok, 0} = expect_val(N1, aec_peers, count, [unverified], 0, 5000),
     assert_all_peers(N1, verified, [Peer1, Peer2, Peer3]),
     assert_all_peers(N1, unverified, []),
     aecore_suite_utils:stop_node(Dev1, Config),
@@ -928,8 +928,8 @@ start_with_trusted_peers(Config) ->
 restart_with_no_trusted_peers(Config) ->
     Dev1 = dev1,
     N1 = aecore_suite_utils:node_name(Dev1),
-    EpochCfg = aecore_suite_utils:epoch_config(Dev1, Config),
-    aecore_suite_utils:create_config(Dev1, Config, EpochCfg,
+    NodeCfg = aecore_suite_utils:node_config(Dev1, Config),
+    aecore_suite_utils:create_config(Dev1, Config, NodeCfg,
                                             [{trusted_peers, []}
                                             ]),
     start_first_node(Config),
@@ -943,8 +943,8 @@ restart_with_no_trusted_peers(Config) ->
 add_and_delete_untrusted_peers_and_restart(Config) ->
     Dev1 = dev1,
     N1 = aecore_suite_utils:node_name(Dev1),
-    EpochCfg = aecore_suite_utils:epoch_config(Dev1, Config),
-    aecore_suite_utils:create_config(Dev1, Config, EpochCfg,
+    NodeCfg = aecore_suite_utils:node_config(Dev1, Config),
+    aecore_suite_utils:create_config(Dev1, Config, NodeCfg,
                                             [{trusted_peers, []}
                                             ]),
     start_first_node(Config),
@@ -1064,8 +1064,8 @@ trusted_peer_is_untrusted_after_a_restart(Config) ->
     assert_all_peers(N1, unverified, [Peer1, Peer2]),
     Dev2 = dev2,
     N2 = aecore_suite_utils:node_name(Dev2),
-    EpochCfg = aecore_suite_utils:epoch_config(Dev2, Config),
-    aecore_suite_utils:create_config(Dev2, Config, EpochCfg,
+    NodeCfg = aecore_suite_utils:node_config(Dev2, Config),
+    aecore_suite_utils:create_config(Dev2, Config, NodeCfg,
                                             [{trusted_peers, []}
                                             ]),
     start_second_node(Config),
@@ -1383,16 +1383,24 @@ start_third_with_enabled_node_info_no_analytics(Cfg) ->
     start_a_node_with_node_info_and_analytics(Cfg, dev3, true, false).
 
 start_a_node_with_node_info_and_analytics(Cfg, Node, NodeInfoFlag, AnalyticsFlag) ->
-    EpochCfg0 = aecore_suite_utils:epoch_config(Node, Cfg),
-    Sync0 = maps:get(<<"sync">>, EpochCfg0, #{}),
+    NodeCfg0 = aecore_suite_utils:node_config(Node, Cfg),
+    Sync0 = maps:get(<<"sync">>, NodeCfg0, #{}),
     Sync = Sync0#{ <<"provide_node_info">> => NodeInfoFlag
                  , <<"peer_analytics">> => AnalyticsFlag
                  },
-    EpochCfg = EpochCfg0#{<<"sync">> => Sync},
-    aecore_suite_utils:create_config(Node, Cfg, EpochCfg,
+    NodeCfg = NodeCfg0#{<<"sync">> => Sync},
+    aecore_suite_utils:create_config(Node, Cfg, NodeCfg,
                                             [
                                             ]),
     aecore_suite_utils:start_node(Node, Cfg),
-    aecore_suite_utils:connect(aecore_suite_utils:node_name(Node)),
+    connect(aecore_suite_utils:node_name(Node)),
     ok = aecore_suite_utils:check_for_logs([Node], Cfg),
     ok.
+
+connect(Node) ->
+    aecore_suite_utils:connect_wait(Node, aesync).
+
+expect_val(N, M, F, A, Val, Timeout) ->
+    aec_test_utils:wait_for_it_or_timeout(
+      fun() -> rpc:call(N, M, F, A) end,
+      Val, Timeout).

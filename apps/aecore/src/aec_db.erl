@@ -8,6 +8,7 @@
 -module(aec_db).
 
 -export([check_db/0,                    % called from setup hook
+         start_db/0,                    %  ------ " ------
          initialize_db/1,               % assumes mnesia started
          load_database/0,               % called in aecore app start phase
          tables/1,                      % for e.g. test database setup
@@ -63,6 +64,7 @@
 %% Location of chain transactions
 -export([ add_tx_location/2
         , add_tx/1
+        , remove_tx/1
         , add_tx_hash_to_mempool/1
         , is_in_tx_pool/1
         , find_tx_location/1
@@ -144,7 +146,6 @@
 
 -include("blocks.hrl").
 -include("aec_db.hrl").
--include_lib("aeutils/include/aeu_stacktrace.hrl").
 
 %% - transactions
 %% - headers
@@ -1003,8 +1004,7 @@ add_tx_location(STxHash, BlockHash) when is_binary(STxHash),
        [{aec_tx_location, STxHash}]).
 
 remove_tx_location(TxHash) when is_binary(TxHash) ->
-    ?t(mnesia:delete({aec_tx_location, TxHash}),
-       [{aec_tx_location, TxHash}]).
+    ?t(mnesia:delete({aec_tx_location, TxHash})).
 
 find_tx_location(STxHash) ->
     ?t(case mnesia:read(aec_tx_location, STxHash) of
@@ -1038,6 +1038,12 @@ find_tx_with_location(STxHash) ->
            [] -> none
        end).
 
+remove_tx(TxHash) ->
+    ?t(begin
+           remove_tx_location(TxHash),
+           mnesia:delete({aec_signed_tx, TxHash})
+       end).
+
 add_tx(STx) ->
     Hash = aetx_sign:hash(STx),
     ?t(case mnesia:read(aec_signed_tx, Hash) of
@@ -1061,7 +1067,7 @@ add_tx_hash_to_mempool(TxHash) when is_binary(TxHash) ->
       [{aec_tx_pool, TxHash}]).
 
 is_in_tx_pool(TxHash) ->
-    ?t(mnesia:read(aec_tx_pool, TxHash)) =/= ?TX_IN_MEMPOOL.
+    ?t(mnesia:read(aec_tx_pool, TxHash)) =:= ?TX_IN_MEMPOOL.
 
 remove_tx_from_mempool(TxHash) when is_binary(TxHash) ->
     ?t(mnesia:delete({aec_tx_pool, TxHash}),
@@ -1137,12 +1143,29 @@ check_db() ->
         lager:start(),
         Mode = backend_mode(),
         Storage = ensure_schema_storage_mode(Mode),
+        lager:info("Database persist mode ~p", [maps:get(persist, Mode)]),
+        lager:info("Database backend ~p", [maps:get(module, Mode)]),
+        lager:info("Database directory ~s", [mnesia:system_info(directory)]),
         ok = application:ensure_started(mnesia),
         ok = assert_schema_node_name(Mode),
         initialize_db(Mode, Storage)
-    ?_catch_(error, Reason, StackTrace)
+    catch error:Reason:StackTrace ->
         error_logger:error_msg("CAUGHT error:~p / ~p~n", [Reason, StackTrace]),
         erlang:error(Reason)
+    end.
+
+start_db() ->
+    load_database(),
+    aefa_fate_op:load_pre_iris_map_ordering(),
+    case aec_db:persisted_valid_genesis_block() of
+        true ->
+            aec_chain_state:ensure_chain_ends(),
+            aec_chain_state:ensure_key_headers_height_store(),
+            ok;
+        false ->
+            lager:error("Persisted chain has a different genesis block than "
+                        ++ "the one being expected. Aborting", []),
+            error(inconsistent_database)
     end.
 
 %% Test interface

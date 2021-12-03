@@ -2,11 +2,11 @@
 %%%=============================================================================
 %%% @copyright 2018, Aeternity Anstalt
 %%% @doc
-%%%    Supervisor (resr_for_one) for block candidate generation and conductor
+%%%    Supervisor (one_for_all) for block candidate generation and conductor
 %%%
 %%%  Supervision tree is
 %%%```
-%%%   aec_conductor_sup (rest_for_one)
+%%%   aec_conductor_sup (one_for_all)
 %%%         |
 %%%         ---------------------
 %%%         |                   |
@@ -43,4 +43,3 @@ start_link() ->
 init([]) ->
     {ok, {{one_for_all, 5, 50}, [?CHILD(aec_block_generator, 5000, worker),
                                  ?CHILD(aec_conductor, 5000, worker)]}}.
-

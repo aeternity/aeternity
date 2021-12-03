@@ -1,6 +1,0 @@
-* Introduces a new HTTP API for asking the node to provide a correct
-  `paying_for_tx`. It is marked as `debug` and it is intended to be used while
-  developing tools that produce that transaction. This API must not be used in
-  real-life scenarios. Since the inner transaction has a specific
-  `network_id`, a proper check has been added to the API so attempts to create
-  an erronous `paying_for_tx` will fail.

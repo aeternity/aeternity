@@ -24,7 +24,6 @@
 -export_type([handler/0]).
 
 -define(ERROR_TO_CLIENT(Err), {?MODULE, send_to_client, {error, Err}}).
--include_lib("aeutils/include/aeu_stacktrace.hrl").
 -include_lib("aechannel/src/aechannel.hrl").     % ?CATCH_LOG/1 macro
 
 %% ===========================================================================
@@ -460,7 +459,7 @@ read_channel_options(Params) ->
     sc_ws_utils:check_params(
       [ Read(<<"minimum_depth">>, minimum_depth, #{type => integer, mandatory => false})
       , Read(<<"minimum_depth_strategy">>, minimum_depth_strategy,
-             #{type => atom, enum => [txfee], mandatory => false})
+             #{type => atom, enum => [txfee, plain], mandatory => false})
       , Read(<<"ttl">>, ttl, #{type => integer, mandatory => false})
       , Read(<<"fee">>, fee, #{type => integer, mandatory => false})
       , Read(<<"gas_price">>, gas_price, #{type => integer, mandatory => false})

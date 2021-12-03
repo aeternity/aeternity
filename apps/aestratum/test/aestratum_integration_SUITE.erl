@@ -53,10 +53,12 @@ init_per_suite(Cfg) ->
     case aect_test_utils:latest_protocol_version() of
         ?ROMA_PROTOCOL_VSN -> {skip, stratum_payout_account_unsupported_in_roma};
         ?MINERVA_PROTOCOL_VSN -> {skip, stratum_payout_account_unsupported_in_minerva};
-        LatestProtocolVersion when LatestProtocolVersion =:= ?FORTUNA_PROTOCOL_VSN;
-                                   LatestProtocolVersion =:= ?LIMA_PROTOCOL_VSN ->
+        PreIris when PreIris =:= ?FORTUNA_PROTOCOL_VSN;
+                     PreIris =:= ?LIMA_PROTOCOL_VSN ->
             init_per_suite_(Cfg);
-        ?IRIS_PROTOCOL_VSN -> {skip, stratum_not_yet_working_in_iris}
+        FromIrisOn when FromIrisOn =:= ?IRIS_PROTOCOL_VSN;
+                        FromIrisOn =:= ?CERES_PROTOCOL_VSN ->
+            {skip, stratum_not_yet_working_in_iris_and_ceres}
     end.
 
 init_per_suite_(Cfg) ->

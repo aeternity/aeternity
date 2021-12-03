@@ -33,7 +33,7 @@ init_per_suite(Config0) ->
     Accounts = [new_pubkey() || _ <- lists:seq(1, 128)],
     B = os:getenv("AETERNITY_TESTCONFIG_DB_BACKEND"),
     try
-        os:set_env_var("AETERNITY_TESTCONFIG_DB_BACKEND", "rocksdb"),
+        os:putenv("AETERNITY_TESTCONFIG_DB_BACKEND", "rocksdb"),
         Config1 = aecore_suite_utils:init_per_suite([dev1], DefCfg, [{symlink_name, "latest.db_integrity"}, {test_module, ?MODULE}] ++ Config0),
         aecore_suite_utils:start_node(dev1, Config1),
         aecore_suite_utils:connect(aecore_suite_utils:node_name(dev1)),
@@ -42,7 +42,7 @@ init_per_suite(Config0) ->
     catch E:R:S ->
         ct:fail("Setup failed ~p ~p ~p", [E, R, S])
     after
-        os:set_env_var("AETERNITY_TESTCONFIG_DB_BACKEND", B),
+        os:putenv("AETERNITY_TESTCONFIG_DB_BACKEND", B),
         Config0
     end.
 
@@ -85,7 +85,7 @@ abort_large_insertion(Config) ->
     true = aec_blocks:is_key_block(KB0),
     Fee = 1500000 * aec_test_utils:min_gas_price(),
     TxOk = [element(1, create_spend_tx(10, Fee, Nonce, 100, PK)) || {Nonce, PK} <- lists:zip(lists:seq(1, length(Accounts)), Accounts)],
-    {MB0, Trees1} = rpc:call(N, aec_block_micro_candidate, create_with_state, [KB0, KB0, TxOk, Trees0]),
+    {MB0, _Trees1} = rpc:call(N, aec_block_micro_candidate, create_with_state, [KB0, KB0, TxOk, Trees0]),
     %% MB0 is now valid - let's add one more TX to ensure its not valid but will process the transactions
     {BadTx, _} = create_spend_tx(10, Fee, 2, 100, hd(Accounts)), %% It's not valid as the nonce is reused
     Txs = TxOk ++ [BadTx],

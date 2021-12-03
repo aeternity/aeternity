@@ -3,7 +3,6 @@
 -behaviour(gen_server).
 
 -include("aesc_codec.hrl").
--include_lib("aeutils/include/aeu_stacktrace.hrl").
 
 %% ==================================================================
 %% Process API
@@ -108,7 +107,7 @@ close(undefined) ->
     ok;
 close(Session) ->
     try call(Session, close)
-    ?_catch_(E, R, StackTrace)
+    catch E:R:StackTrace ->
         case {E, R} of
             {error, _} ->
                 ok;
@@ -208,7 +207,7 @@ handle_cast(post_init, #st{fsm = Fsm, init_op = Op} = St) ->
 handle_cast(Msg, St) ->
     try
         handle_cast_(Msg, St)
-    ?_catch_(error, Reason, Trace)
+    catch error:Reason:Trace ->
         lager:error("CAUGHT error:~p trace: ~p", [Reason, Trace]),
         error(Reason, Trace)
     end.
@@ -228,7 +227,7 @@ handle_info({'DOWN', Ref, process, Pid, _Reason},
 handle_info(Msg, St) ->
     try
         handle_info_(Msg, St)
-    ?_catch_(error, Reason, Trace)
+    catch error:Reason:Trace ->
         lager:error("CAUGHT error:~p trace: ~p", [Reason, Trace]),
         error(Reason, Trace)
     end.

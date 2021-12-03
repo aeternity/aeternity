@@ -47,8 +47,8 @@
 -define(TEST_LOG(Format, Data), ok).
 -endif.
 
--include("../../aecontract/include/aecontract.hrl").
--include("../../aecontract/include/hard_forks.hrl").
+-include_lib("aecontract/include/aecontract.hrl").
+-include_lib("aecontract/include/hard_forks.hrl").
 
 -include("aesc_values.hrl").
 
@@ -692,6 +692,7 @@ verify_meta_tx(SignerId, StoreKey, AuthContractId, MetaTx, Trees, Env, TxType)
             CallDef = #{ caller      => SignerPK
                        , contract    => AuthContractPK
                        , gas         => aega_meta_tx:gas_limit(MetaTx, Height, Protocol)
+                       , fee         => aega_meta_tx:fee(MetaTx)
                        , gas_price   => aega_meta_tx:gas_price(MetaTx)
                        , call_data   => aega_meta_tx:auth_data(MetaTx)
                        , amount      => 0
@@ -947,7 +948,7 @@ process_force_progress(Tx, OffChainTrees, Payload, TxHash, Height, Trees, Env) -
     %% use in gas payment
     Reserve = aesc_channels:channel_reserve(Channel),
     PrunedOffChainTrees = aect_call_state_tree:prune_without_backend(OffChainTrees),
-    NewOffChainTrees =
+    {_, NewOffChainTrees} =
         try aesc_offchain_update:apply_on_trees(Update,
                                                 PrunedOffChainTrees,
                                                 Trees, Env,

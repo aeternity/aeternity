@@ -52,8 +52,8 @@
           get_contract_fun_types/4
         ]).
 
--include("../include/blocks.hrl").
--include("../../aecontract/include/aecontract.hrl").
+-include("blocks.hrl").
+-include_lib("aecontract/include/aecontract.hrl").
 
 -define(NO_INNER_TREES, no_inner_trees).
 
@@ -532,8 +532,8 @@ check_signature(AKey, _CKey, Binary, Signature, State) ->
                 basic ->
                     BinaryForNetwork = aec_governance:add_network_id(Binary),
                     case enacl:sign_verify_detached(Signature, BinaryForNetwork, AKey) of
-                       {ok, _}    -> ok;
-                       {error, _} -> {error, signature_check_failed}
+                       true  -> ok;
+                       false -> {error, signature_check_failed}
                     end
             end
     end.

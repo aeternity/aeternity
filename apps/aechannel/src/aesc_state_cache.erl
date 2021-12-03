@@ -322,7 +322,7 @@ encrypt_cache(#ch_cache{ cache_id = CacheId
                        , opts = Opts
                        , dyn_opts = DOpts
                        , fsm_id_wrapper = FsmIdWrapper}) ->
-    Nonce = crypto:strong_rand_bytes(enacl:secretbox_nonce_size()),
+    Nonce = crypto:strong_rand_bytes(enacl:secretbox_NONCEBYTES()),
     SerializedState = aesc_offchain_state:serialize_to_binary(State),
     #pch_encrypted_cache{
         cache_id = CacheId,

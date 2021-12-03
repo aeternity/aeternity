@@ -1,18 +1,18 @@
 
-contract Remote1 =
-  entrypoint main : (int) => int
+contract interface Remote1 =
+  entrypoint main_ : (int) => int
 
-contract Remote2 =
+contract interface Remote2 =
   entrypoint call : (Remote1, int) => int
 
-contract Remote3 =
+contract interface Remote3 =
   entrypoint get : () => int
   entrypoint tick : () => unit
 
 contract RemoteCall =
 
     stateful payable entrypoint call(r : Remote1, x : int) : int =
-        r.main(gas = 10000, value = 10, x)
+        r.main_(gas = 10000, value = 10, x)
 
     entrypoint staged_call(r1 : Remote1, r2 : Remote2, x : int) =
         r2.call(r1, x)
@@ -26,4 +26,4 @@ contract RemoteCall =
     entrypoint plus(x, y) = x + y
 
     entrypoint gas_limit_call(r : Remote1, x : int, y : int) =
-        r.main(gas = y, x)
+        r.main_(gas = y, x)

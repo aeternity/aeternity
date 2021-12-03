@@ -216,9 +216,10 @@
                         | ?WDRAW_ERR.
 
 -type minimum_depth_factor()   :: non_neg_integer().
--type minimum_depth_strategy() :: txfee.
+-type minimum_depth_strategy() :: txfee | plain.
 
--opaque opts() :: #{ minimum_depth          => minimum_depth_factor()
+-opaque opts() :: #{ role                   := initiator | responder
+                   , minimum_depth          => minimum_depth_factor()
                    , minimum_depth_strategy => minimum_depth_strategy()
                    , timeouts               := #{state_name() := pos_integer()}
                    , report                 := #{atom() := boolean()}

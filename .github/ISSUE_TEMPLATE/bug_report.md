@@ -1,3 +1,12 @@
+---
+name: Bug report
+about: Create a bug report
+title: ''
+labels: need/triage
+assignees: ''
+
+---
+
 ## Expected Behavior
 
 ...

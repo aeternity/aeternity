@@ -1,6 +1,7 @@
 -module(aec_next_nonce).
 
--export([pick_for_account/1]).
+-export([pick_for_account/1,
+         pick_for_account/2]).
 
 -include("blocks.hrl").
 
@@ -14,11 +15,31 @@
 -spec pick_for_account(aec_keys:pubkey()) -> {ok, non_neg_integer()} |
                                     {error, account_not_found}.
 pick_for_account(Pubkey) ->
+    pick_for_account(Pubkey, max).
+
+-spec pick_for_account(aec_keys:pubkey(), max | continuity) ->
+    {ok, non_neg_integer()} | {error, account_not_found}.
+pick_for_account(Pubkey, Strategy) ->
     case get_state_tree_nonce(Pubkey) of
+        generalized_account -> {ok, 0};
         {ok, StateTreeNonce} ->
-            MempoolNonce = get_mempool_nonce(Pubkey),
-            NextNonce = pick_higher_nonce(StateTreeNonce, MempoolNonce) + 1,
-            {ok, NextNonce};
+            case Strategy of
+                max ->
+                    MempoolNonce = get_mempool_nonce(Pubkey),
+                    NextNonce = pick_higher_nonce(StateTreeNonce, MempoolNonce) + 1,
+                    {ok, NextNonce};
+                continuity ->
+                    {ok, AllTxs} = aec_tx_pool:peek(infinity, Pubkey),
+                    %% get all nonces from the pool sorted asc
+                    AllNoncesInPool = lists:sort([aetx:nonce(aetx_sign:tx(T)) ||
+                                                      T <- AllTxs]),
+                    %% prepend the account nonce this relies on it being
+                    %% smallest number (we don't keep invalid txs in the pool)
+                    Next = hd(lists:seq(StateTreeNonce + 1, StateTreeNonce + length(AllNoncesInPool) + 1) --
+                              AllNoncesInPool),
+                    {ok, Next}
+
+            end;
         {error, account_not_found} = Error ->
             Error
     end.
@@ -26,11 +47,16 @@ pick_for_account(Pubkey) ->
 %% Internals
 
 -spec get_state_tree_nonce(aec_keys:pubkey()) -> {ok, non_neg_integer()} |
-                                        {error, account_not_found}.
+                                                 generalized_account |
+                                                 {error, account_not_found}.
 get_state_tree_nonce(AccountPubkey) ->
     case aec_chain:get_account(AccountPubkey) of
         {value, Account} ->
-            {ok, aec_accounts:nonce(Account)};
+            case aec_accounts:type(Account) of
+                basic ->
+                    {ok, aec_accounts:nonce(Account)};
+                generalized -> generalized_account
+            end;
         none ->
             {error, account_not_found}
     end.

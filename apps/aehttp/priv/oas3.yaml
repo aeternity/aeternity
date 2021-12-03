@@ -31,6 +31,10 @@ tags:
     description: Debug endpoints
   - name: obsolete
     description: Old endpoints that will be removed
+  - name: dry-run
+    description: External dry run endpoint.
+  - name: node-operator
+    description: Endpoints to help the node oprator interract with the node
 externalDocs:
   description: Find out more about Aeternity
   url: http://www.aeternity.com
@@ -99,10 +103,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  hash:
-                    $ref: "#/components/schemas/EncodedHash"
+                $ref: "#/components/schemas/HashResponse"
         "404":
           description: Block not found
           content:
@@ -124,10 +125,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  height:
-                    $ref: "#/components/schemas/UInt64"
+                $ref: "#/components/schemas/HeightResponse"
         "404":
           description: Block not found
           content:
@@ -259,11 +257,7 @@ paths:
           content:
             application/json:
               schema:
-                properties:
-                  transactions:
-                    type: array
-                    items:
-                      $ref: "#/components/schemas/SignedTx"
+                $ref: "#/components/schemas/SignedTxs"
         "400":
           description: Invalid hash
           content:
@@ -329,10 +323,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  count:
-                    $ref: "#/components/schemas/UInt32"
+                $ref: "#/components/schemas/CountResponse"
         "400":
           description: Invalid hash
           content:
@@ -525,11 +516,7 @@ paths:
           content:
             application/json:
               schema:
-                properties:
-                  transactions:
-                    type: array
-                    items:
-                      $ref: "#/components/schemas/SignedTx"
+                $ref: "#/components/schemas/SignedTxs"
         "400":
           description: Invalid public key
           content:
@@ -538,6 +525,77 @@ paths:
                 $ref: "#/components/schemas/Error"
         "404":
           description: Account not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  "/accounts/{pubkey}/next-nonce":
+    get:
+      tags:
+        - external
+        - account
+      operationId: GetAccountNextNonce
+      description: Get an account's next nonce; This is computed according to whatever is the current account nonce and what transactions are currently present in the transaction pool
+      parameters:
+        - $ref: '#/components/parameters/intAsString'
+        - $ref: '#/components/parameters/accountPubkey'
+        - in: query
+          name: "strategy"
+          description: "What strategy to use in order to determine the next nonce: shall it check for continuity or return the largest nonce seen + 1. If you choose strategy max, then the greatest nonce seen in the account or currently in the transaction pool is incremented with 1 and returned. If you choose the strategy continuity, then transactions in the mempool are checked if there are gaps - missing nonces that prevent transactions with greater nonces to get included."
+          required: false
+          schema:
+            type: string
+            default: max
+            enum:
+              - max
+              - continuity
+            example: max
+      responses:
+        "200":
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                properties:
+                  next_nonce:
+                    $ref: "#/components/schemas/UInt"
+        "400":
+          description: Invalid public key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Account not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /dry-run:
+    post:
+      tags:
+        - external
+        - dry-run
+      operationId: ProtectedDryRunTxs
+      description: Dry-run transactions on top of a given block. Supports all TXs except GAMetaTx, PayingForTx and OffchainTx. The maximum gas limit of all calls is capped. The maximum gas limit per request is a global node setting. Since DryRunCallReq object do not have a mandatory gas field, if not set a default value of 1000000 is being used instead.
+      parameters:
+        - $ref: '#/components/parameters/intAsString'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DryRunInput"
+        description: transactions
+        required: true
+      responses:
+        "200":
+          description: Dry-run result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DryRunResults"
+        "403":
+          description: Invalid input
           content:
             application/json:
               schema:
@@ -954,9 +1012,9 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/EncodedHash"
-###
-## Internal endpoints
-###
+  ###
+  ## Internal endpoints
+  ###
   /key-blocks:
     post:
       tags:
@@ -1707,11 +1765,7 @@ paths:
           content:
             application/json:
               schema:
-                properties:
-                  transactions:
-                    type: array
-                    items:
-                      $ref: "#/components/schemas/SignedTx"
+                $ref: "#/components/schemas/SignedTxs"
   /debug/names/commitment-id:
     get:
       tags:
@@ -1881,6 +1935,34 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /debug/check-tx/pool/{hash}:
+    get:
+      tags:
+        - internal
+        - debug
+      operationId: GetCheckTxInPool
+      description: "Check if a transaction in the pool can be included in a microblock or if it is blocked by something: not enough tokens, missing nonce or something else"
+      parameters:
+        - $ref: '#/components/parameters/intAsString'
+        - $ref: '#/components/parameters/txHash'
+      responses:
+        "200":
+          description: The transaction status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                required:
+                  - status
+        "404":
+          description: Transaction is not in transaction pool
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   "/debug/token-supply/height/{height}":
     get:
       tags:
@@ -1900,6 +1982,37 @@ paths:
                 $ref: "#/components/schemas/TokenSupply"
         "400":
           description: Height not available
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  "/node/operator/mempool/hash/{hash}":
+    delete:
+      tags:
+        - internal
+        - node-operator
+      operationId: DeleteTxFromMempool
+      description: Delete a pending transaction from the mempool
+      parameters:
+        - $ref: '#/components/parameters/txHash'
+      responses:
+        "200":
+          description: The transaction was deleted from the pool
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+        "400":
+          description: Invalid tx hash
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Transaction not in mempool
           content:
             application/json:
               schema:
@@ -1930,9 +2043,11 @@ components:
           maximum: 18446744073709552000
         - type: string
     TxBlockHeight:
-      type: integer
-      minimum: -1
-      maximum: 18446744073709552000
+      oneOf:
+        - type: integer
+          minimum: -1
+          maximum: 18446744073709552000
+        - type: string
     EncodedHash:
       description: Base58Check encoded tagged hash
       type: string
@@ -2480,8 +2595,6 @@ components:
           $ref: "#/components/schemas/EncodedPubkey"
         responder_amount:
           $ref: "#/components/schemas/UInt"
-        push_amount:
-          $ref: "#/components/schemas/UInt"
         channel_reserve:
           $ref: "#/components/schemas/UInt"
         lock_period:
@@ -2501,7 +2614,6 @@ components:
         - initiator_amount
         - responder_id
         - responder_amount
-        - push_amount
         - channel_reserve
         - lock_period
         - fee
@@ -2891,7 +3003,6 @@ components:
             $ref: "#/components/schemas/EncodedValue"
       required:
         - tx
-        - signatures
     Tx:
       allOf:
         - type: object
@@ -2931,31 +3042,31 @@ components:
             - version
             - type
         - anyOf:
-          - $ref: "#/components/schemas/SpendTx"
-          - $ref: "#/components/schemas/ChannelCreateTx"
-          - $ref: "#/components/schemas/ChannelDepositTx"
-          - $ref: "#/components/schemas/ChannelWithdrawTx"
-          - $ref: "#/components/schemas/ChannelForceProgressTx"
-          - $ref: "#/components/schemas/ChannelCloseMutualTx"
-          - $ref: "#/components/schemas/ChannelCloseSoloTx"
-          - $ref: "#/components/schemas/ChannelSlashTx"
-          - $ref: "#/components/schemas/ChannelSettleTx"
-          - $ref: "#/components/schemas/ChannelSnapshotSoloTx"
-          - $ref: "#/components/schemas/ChannelSetDelegatesTx"
-          - $ref: "#/components/schemas/OracleRegisterTx"
-          - $ref: "#/components/schemas/OracleExtendTx"
-          - $ref: "#/components/schemas/OracleQueryTx"
-          - $ref: "#/components/schemas/OracleRespondTx"
-          - $ref: "#/components/schemas/NamePreclaimTx"
-          - $ref: "#/components/schemas/NameClaimTx"
-          - $ref: "#/components/schemas/NameUpdateTx"
-          - $ref: "#/components/schemas/NameTransferTx"
-          - $ref: "#/components/schemas/NameRevokeTx"
-          - $ref: "#/components/schemas/ContractCreateTx"
-          - $ref: "#/components/schemas/ContractCallTx"
-          - $ref: "#/components/schemas/GAAttachTx"
-          - $ref: "#/components/schemas/GAMetaTx"
-          - $ref: "#/components/schemas/PayingForTx"
+            - $ref: "#/components/schemas/SpendTx"
+            - $ref: "#/components/schemas/ChannelCreateTx"
+            - $ref: "#/components/schemas/ChannelDepositTx"
+            - $ref: "#/components/schemas/ChannelWithdrawTx"
+            - $ref: "#/components/schemas/ChannelForceProgressTx"
+            - $ref: "#/components/schemas/ChannelCloseMutualTx"
+            - $ref: "#/components/schemas/ChannelCloseSoloTx"
+            - $ref: "#/components/schemas/ChannelSlashTx"
+            - $ref: "#/components/schemas/ChannelSettleTx"
+            - $ref: "#/components/schemas/ChannelSnapshotSoloTx"
+            - $ref: "#/components/schemas/ChannelSetDelegatesTx"
+            - $ref: "#/components/schemas/OracleRegisterTx"
+            - $ref: "#/components/schemas/OracleExtendTx"
+            - $ref: "#/components/schemas/OracleQueryTx"
+            - $ref: "#/components/schemas/OracleRespondTx"
+            - $ref: "#/components/schemas/NamePreclaimTx"
+            - $ref: "#/components/schemas/NameClaimTx"
+            - $ref: "#/components/schemas/NameUpdateTx"
+            - $ref: "#/components/schemas/NameTransferTx"
+            - $ref: "#/components/schemas/NameRevokeTx"
+            - $ref: "#/components/schemas/ContractCreateTx"
+            - $ref: "#/components/schemas/ContractCallTx"
+            - $ref: "#/components/schemas/GAAttachTx"
+            - $ref: "#/components/schemas/GAMetaTx"
+            - $ref: "#/components/schemas/PayingForTx"
     TxInfoObject:
       type: object
       properties:
@@ -3457,7 +3568,7 @@ components:
         auth_fun:
           description: Contract authorization function hash (hex encoded)
           type: string
-          pattern: ^(0x|0X)?[a-fA-F0-9]+$'
+          pattern: "^(0x|0X)?[a-fA-F0-9]+$"
       required:
         - owner_id
         - code
@@ -3514,6 +3625,34 @@ components:
       anyOf:
         - $ref: "#/components/schemas/KeyBlock"
         - $ref: "#/components/schemas/MicroBlockHeader"
+    SignedTxs:
+      type: object
+      properties:
+        transactions:
+          type: array
+          items:
+            $ref: "#/components/schemas/SignedTx"
+    HashResponse:
+      type: object
+      properties:
+        hash:
+          type: string
+      required:
+        - hash
+    HeightResponse:
+      type: object
+      properties:
+        height:
+          $ref: "#/components/schemas/UInt64"
+      required:
+        - height
+    CountResponse:
+      type: object
+      properties:
+        count:
+          $ref: "#/components/schemas/UInt32"
+      required:
+        - count
   parameters:
     intAsString:
       in: query

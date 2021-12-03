@@ -1,0 +1,37 @@
+include "String.aes"
+contract CryptoTest =
+  entrypoint sha3_str    (s : string) : hash = String.sha3(s)
+  entrypoint sha256_str  (s : string) : hash = String.sha256(s)
+  entrypoint blake2b_str (s : string) : hash = String.blake2b(s)
+
+  type complex = list(option(int) * string)
+
+  entrypoint sha3    (x : complex) : hash = Crypto.sha3(x)
+  entrypoint sha256  (x : complex) : hash = Crypto.sha256(x)
+  entrypoint blake2b (x : complex) : hash = Crypto.blake2b(x)
+
+  entrypoint sha3_b17    (x : bytes(17)) : hash = Crypto.sha3(x)
+  entrypoint sha256_b17  (x : bytes(17)) : hash = Crypto.sha256(x)
+  entrypoint blake2b_b17 (x : bytes(17)) : hash = Crypto.blake2b(x)
+
+  entrypoint sha3_b52    (x : bytes(52)) : hash = Crypto.sha3(x)
+  entrypoint sha256_b52  (x : bytes(52)) : hash = Crypto.sha256(x)
+  entrypoint blake2b_b52 (x : bytes(52)) : hash = Crypto.blake2b(x)
+
+  entrypoint test_verify(msg : hash, pk : address, sig : signature) =
+    Crypto.verify_sig(msg, pk, sig)
+
+  entrypoint test_string_verify(x : string, pk : address, sig : signature) =
+    Crypto.verify_sig(String.sha3(x), pk, sig)
+
+  entrypoint test_verify_secp256k1(msg : hash, pk : bytes(64), sig : signature) =
+    Crypto.verify_sig_secp256k1(msg, pk, sig)
+
+  entrypoint test_string_verify_secp256k1(x : string, pk : bytes(64), sig : signature) =
+    Crypto.verify_sig_secp256k1(String.sha3(x), pk, sig)
+
+  entrypoint test_ecverify_secp256k1(msg : hash, pk : bytes(20), sig : bytes(65)) =
+    Crypto.ecverify_secp256k1(msg, pk, sig)
+
+  entrypoint test_recover_secp256k1(msg : hash, sig : bytes(65)) =
+    Crypto.ecrecover_secp256k1(msg, sig)

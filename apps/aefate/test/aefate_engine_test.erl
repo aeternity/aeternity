@@ -25,13 +25,14 @@ arith_test_() ->
 jumpif_test_() ->
     make_calls(conditional_jump()).
 
+chain_and_call_test_() ->
+    make_calls(chain_and_call()).
 
 memory_test_() ->
     make_calls(memory()).
 
 memory_restore_test_() ->
     make_calls(memory_restore()).
-
 
 tuple_test_() ->
     make_calls(tuple()).
@@ -63,6 +64,7 @@ make_calls(ListOfCalls) ->
            , caller => <<123:256>>
            , origin => <<123:256>>
            , gas_price => 1
+           , fee => 621
            , tx_env => aetx_env:tx_env(1)
            },
     [{lists:flatten(io_lib:format("call(~p,~p,~p)->~p~n~p : ~p",
@@ -137,6 +139,11 @@ arith() ->
             ]
     ].
 
+chain_and_call() ->
+    [ {<<"chain_and_call">>, <<"call_fee">>, [], 621}
+    , {<<"chain_and_call">>, <<"call_gasprice">>, [], 1}
+    ].
+
 conditional_jump() ->
     [ {<<"jumpif">>, F, A, R} ||
         {F,A,R} <-
@@ -192,9 +199,13 @@ map() ->
                 [{1, true}, {2, false}, {42, true}]}
             % Test really big map to list
             , case aec_governance:get_network_id() of
-                <<"local_iris_testnet">> ->
-                    {<<"map_to_list">>, [BigMap], BigList};
-                _ -> {<<"map_to_list">>, [BigMap], maps:to_list(BigMap)}
+                PreIris when PreIris =:= <<"local_roma_testnet">>;
+                             PreIris =:= <<"local_fortuna_testnet">>;
+                             PreIris =:= <<"local_minerva_testnet">>;
+                             PreIris =:= <<"local_lima_testnet">> ->
+                    {<<"map_to_list">>, [BigMap], maps:to_list(BigMap)};
+                _PostIris ->
+                    {<<"map_to_list">>, [BigMap], BigList}
               end
             ]
     ].
@@ -207,7 +218,8 @@ list() ->
             ,  {<<"cons">>, [42,[]], [42]}
             ,  {<<"head">>, [[42]], 42}
             ,  {<<"tail">>, [[42]], []}
-            ,  {<<"length">>, [[1,2,3,4]], 4}
+            %% Operation disabled
+            %% ,  {<<"length">>, [[1,2,3,4]], 4}
             ]
     ].
 
@@ -305,6 +317,7 @@ make_call(Contract, Function0, Arguments) ->
     Function = aeb_fate_code:symbol_identifier(Function0),
     #{ contract  => pad_contract_name(Contract)
      , gas => 100000
+     , fee => 621
      , value => 0
      , store => aect_contracts_store:new()
      , call => aeb_fate_encoding:serialize(
@@ -808,10 +821,25 @@ contracts() ->
               ]
              }
            ]
+     , <<"chain_and_call">> =>
+           [ {<<"call_fee">>, {[], integer},
+              [{0, [ {'FEE', {stack, 0}}
+                   , 'RETURN'
+                   ]}
+              ]
+             }
+           , {<<"call_gasprice">>, {[], integer},
+              [{0, [ {'GASPRICE', {stack, 0}}
+                   , 'RETURN'
+                   ]}
+              ]
+             }
+           ]
      , <<"remote">> =>
            [ {<<"add_five">>, {[integer], integer},
               [{0, [ {'ADD', {stack, 0}, {immediate, 5}, {arg, 0}}
-                    , 'RETURN']}]
+                   , 'RETURN'
+                   ]}]
              }
            , {<<"init">>, {[], {tuple, []}},
               [ {0, [ {'TUPLE', {stack, 0}, {immediate, 0}}

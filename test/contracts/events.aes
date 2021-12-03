@@ -1,4 +1,4 @@
-contract Remote =
+contract interface Remote =
   entrypoint dummy : () => unit
 
 contract Events =

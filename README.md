@@ -16,7 +16,7 @@ Written in Erlang.
 
 To install and run the Aeternity node, see the instructions [below](#how-to-start) or just follow the progress of the project via GitHub Issues.
 
-If you have discovered a bug or security vulnerability please get in touch. The aeternity Crypto Foundation pays bug-bounties up to 100.000 AE Tokens for critical vulnerabilities. Please get in touch via [security@aeternity-foundation.org](mailto:security@aeternity-foundation.org).
+If you have discovered a bug or security vulnerability please get in touch. The Aeternity Crypto Foundation pays bug-bounties up to 100.000 AE Tokens for critical vulnerabilities. Please get in touch via [security@aeternity-foundation.org](mailto:security@aeternity-foundation.org).
 
 [pivotal]: https://www.pivotaltracker.com/n/projects/2124891
 [hackerone]: https://hackerone.com/aeternity
@@ -48,10 +48,19 @@ The `master` branch tracks the ongoing efforts towards the next stable release t
 
 ## Quick Install
 
+**Linux / Mac**
+
 By using the installer to install the latest stable version:
 ```bash
 bash <(curl -s https://install.aeternity.io/install.sh)
 ```
+See the documentation for [starting](https://docs.aeternity.io/en/stable/operation/#start-the-node) and [configuring](https://docs.aeternity.io/en/stable/configuration/#example) the node.
+
+## Docker
+
+Alternatively, you can run the node client as a docker container:
+
+**Linux / Mac**
 
 Or running a docker container (latest tag):
 ```bash
@@ -60,6 +69,12 @@ docker pull aeternity/aeternity
 docker run -p 3013:3013 -p 3015:3015 \
     -v ~/.aeternity/maindb:/home/aeternity/node/data/mnesia \
     aeternity/aeternity
+```
+**Windows**
+```bash
+mkdir %APPDATA%\aeternity\maindb
+docker pull aeternity/aeternity
+docker run -p 3013:3013 -p 3015:3015 -v %APPDATA%/aeternity/maindb:/home/aeternity/node/data/mnesia aeternity/aeternity
 ```
 
 #### Restore from snapshot
@@ -76,11 +91,11 @@ To speedup the initial blockchain synchronization the node database can be resto
 The following snippet can be used to replace the current database with the latest mainnet snapshot assuming the database path is ` ~/.aeternity/maindb`:
 
 ```bash
-rm -rf ~/.aeternity/maindb/
-curl -o ~/.aeternity/mnesia_main_v-1_latest.tgz https://aeternity-database-backups.s3.eu-central-1.amazonaws.com/mnesia_main_v-1_latest.tgz
-CHECKSUM=$(curl https://aeternity-database-backups.s3.eu-central-1.amazonaws.com/mnesia_main_v-1_latest.tgz.md5)
-diff -qs <(echo $CHECKSUM) <(openssl md5 -r ~/.aeternity/mnesia_main_v-1_latest.tgz | awk '{ print $1; }')
-test $? -eq 0 && tar -xzf ~/.aeternity/mnesia_main_v-1_latest.tgz -C ~/.aeternity/maindb/
+rm -rf ~/.aeternity/maindb/ && mkdir -p ~/.aeternity/maindb/
+curl -o ~/.aeternity/mnesia_main_v-1_latest.tar.zst https://aeternity-database-backups.s3.eu-central-1.amazonaws.com/main_backup_v1_full_latest.tar.zst
+CHECKSUM=$(curl https://aeternity-database-backups.s3.eu-central-1.amazonaws.com/main_backup_v1_full_latest.tar.zst.md5)
+diff -qs <(echo $CHECKSUM) <(openssl md5 -r ~/.aeternity/mnesia_main_v-1_latest.tar.zst | awk '{ print $1; }')
+test $? -eq 0 && tar --use-compress-program=unzstd -xf ~/.aeternity/mnesia_main_v-1_latest.tar.zst -C ~/.aeternity/maindb/
 ```
 
 

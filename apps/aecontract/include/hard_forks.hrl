@@ -10,3 +10,4 @@
 -define(FORTUNA_PROTOCOL_VSN, 3).
 -define(LIMA_PROTOCOL_VSN, 4).
 -define(IRIS_PROTOCOL_VSN, 5).
+-define(CERES_PROTOCOL_VSN, 6).

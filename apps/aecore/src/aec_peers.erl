@@ -83,7 +83,9 @@
 -define(DEFAULT_RESOLVE_MAX_RETRY,             7).
 -define(DEFAULT_RESOLVE_BACKOFF_TIMES,
         [5000, 15000, 30000, 60000, 120000, 300000, 600000]).
--define(DEFAULT_LOG_PEER_CONNECTION_COUNT_INTERVAL, 5000).
+-define(DEFAULT_LOG_PEER_CONNECTION_COUNT_INTERVAL, 300000).
+
+-define(ERR_NOT_RUNNING, fun err_not_running/0).
 
 %=== TYPES =====================================================================
 
@@ -150,6 +152,44 @@
 
 %=== API FUNCTIONS =============================================================
 
+%--- WRAPPER TO HANDLE DEV MODE ------------------------------------------------
+
+opt_call(Req, Else) ->
+    case peers_running() of
+        false ->
+            else(Else);
+        true ->
+            gen_server:call(?MODULE, Req)
+    end.
+
+else(F) when is_function(F, 0) ->
+    F();
+else(Else) ->
+    Else.
+
+opt_cast(Msg) ->
+    case peers_running() of
+        false ->
+            ok;
+        true ->
+            gen_server:cast(?MODULE, Msg)
+    end.
+
+peers_running() ->
+    case whereis(?MODULE) of
+        undefined ->
+            aec_sync:sync_running();
+        _ ->
+            true
+    end.
+
+%% This is called via a fun largely because we need to apply a fun (raising
+%% an exception) in the test-compiled code. But if we only provide a fun as
+%% default in test-compiled code, Dialyzer will complain about the fun clause
+%% not being reachable when not test-compiled.
+err_not_running() ->
+    {error, not_running}.
+
 %--- PEER MANAGMENT FUNCTIONS --------------------------------------------------
 
 %% @doc Adds a trusted peer or a list of trusted peers.
@@ -171,20 +211,20 @@ add_peers(SourceAddr, PeerInfo) ->
 %% At the moment also removes peer from the blocked list.
 -spec del_peer(aec_peer:id() | aec_peer:info()) -> ok.
 del_peer(PeerId) ->
-    gen_server:cast(?MODULE, {del_peer, PeerId}).
+    opt_cast({del_peer, PeerId}).
 
 %% @doc Blocks given peer.
 -spec block_peer(aec_peer:info()) -> ok | {error, term()}.
 block_peer(PeerInfo) ->
-    gen_server:call(?MODULE, {block_peer, PeerInfo}).
+    opt_call({block_peer, PeerInfo}, ?ERR_NOT_RUNNING).
 
 %% @doc Unblocks given peer.
 -spec unblock_peer(aec_peer:id()) -> ok | {error, term()}.
 unblock_peer(PeerId) ->
-    gen_server:call(?MODULE, {unblock_peer, PeerId}).
+    opt_call({unblock_peer, PeerId}, ?ERR_NOT_RUNNING).
 
 peer_suspect(PeerId) ->
-    gen_server:call(?MODULE, {peer_suspect, PeerId}).
+    opt_call({peer_suspect, PeerId}, ?ERR_NOT_RUNNING).
 
 %--- GETTERS AND FLAGS FUNCTIONS -----------------------------------------------
 
@@ -192,7 +232,7 @@ peer_suspect(PeerId) ->
 %% Erroneous Peers are by definition blocked.
 -spec is_blocked(aec_peer:id()) -> boolean().
 is_blocked(PeerId) ->
-    gen_server:call(?MODULE, {is_blocked, PeerId}).
+    opt_call({is_blocked, PeerId}, false).
 
 %% Gives the number of:
 %%  * `connections' : Both inbound and outbound connections.
@@ -211,13 +251,13 @@ count(Tag)
        Tag =:= peers; Tag =:= verified; Tag =:= unverified;
        Tag =:= available; Tag =:= standby; Tag =:= hostnames; Tag =:= blocked
   ->
-    gen_server:call(?MODULE, {count, Tag}).
+    opt_call({count, Tag}, 0).
 
 %% @doc Gets the list of peers available to connect to.
 %% The result could be very large; use only for debugging/testing.
 -spec available_peers() -> [aec_peer:info()].
 available_peers() ->
-    gen_server:call(?MODULE, {available_peers, both}).
+    opt_call({available_peers, both}, []).
 
 %% @doc Gets the list of peers available to connect to.
 %%  * `both': both verified and unverified peers.
@@ -226,7 +266,7 @@ available_peers() ->
 %% The result could be very large; use only for debugging/testing.
 -spec available_peers(both | verified | unverified) -> [aec_peer:info()].
 available_peers(Tag) when Tag =:= both; Tag =:= verified; Tag =:= unverified ->
-    gen_server:call(?MODULE, {available_peers, Tag}).
+    opt_call({available_peers, Tag}, []).
 
 %% @doc Gets the list of all connected peers.
 -spec connected_peers() -> [aec_peer:info()].
@@ -239,12 +279,12 @@ connected_peers() ->
 %%  * `inbound': All peers with inbound connection from.
 -spec connected_peers(all | inbound | outbound) -> [aec_peer:info()].
 connected_peers(Tag) when Tag =:= all; Tag =:= inbound; Tag =:= outbound ->
-    gen_server:call(?MODULE, {connected_peers, Tag}).
+    opt_call({connected_peers, Tag}, []).
 
 %% @doc Gets the list of blocked peers.
 -spec blocked_peers() -> [aec_peer:info()].
 blocked_peers() ->
-    gen_server:call(?MODULE, blocked_peers).
+    opt_call(blocked_peers, []).
 
 %% @doc Gets up to N random peers.
 -spec get_random(all | non_neg_integer()) -> [aec_peer:info()].
@@ -257,27 +297,29 @@ get_random(NumberOfPeers) ->
 get_random(N, Exclude)
   when (Exclude =:= undefined) orelse is_list(Exclude),
        (N =:= all) orelse (is_integer(N) andalso N >= 0) ->
-    gen_server:call(?MODULE, {get_random, N, Exclude}).
+    opt_call({get_random, N, Exclude}, []).
 
 
 %% @doc Gets up to N random connected peers.
 -spec get_random_connected(pos_integer()) -> [aec_peer:info()].
 get_random_connected(N) when (is_integer(N) andalso N > 0) ->
-    gen_server:call(?MODULE, {get_random_connected, N}).
+    opt_call({get_random_connected, N}, []).
 
 %% @doc Gets a connection PID from a peer identifier.
 -spec get_connection(aec_peer:id()) -> {ok, pid()} | {error, term()}.
 get_connection(PeerId) ->
-    gen_server:call(?MODULE, {get_connection, PeerId}).
+    opt_call({get_connection, PeerId}, ?ERR_NOT_RUNNING).
 
 %--- UTILITY FUNCTIONS ---------------------------------------------------------
 
 %% @doc Parses a peer URI to a peer info map.
 -spec parse_peer_address(binary() | string())
     -> {ok, aec_peer:info()} | {error, term()}.
-parse_peer_address(PeerAddress) ->
-    case http_uri:parse(PeerAddress) of
-        {ok, {aenode, EncPubKey, Host, Port, _Path, _Query}} ->
+parse_peer_address(PeerAddress) when is_list(PeerAddress) ->
+    parse_peer_address(list_to_binary(PeerAddress));
+parse_peer_address(PeerAddress) when is_binary(PeerAddress) ->
+    case uri_string:parse(PeerAddress) of
+        #{scheme := <<"aenode">>, host := Host, userinfo := EncPubKey, port := Port} ->
             case aeser_api_encoder:safe_decode(peer_pubkey, to_binary(EncPubKey)) of
                 {ok, PubKey} ->
                     PeerInfo = aec_peer:info(PubKey, Host, Port),
@@ -285,8 +327,8 @@ parse_peer_address(PeerAddress) ->
                 {error, _} = Error ->
                     Error
             end;
-        {error, _Reason} = Error ->
-            Error
+        {error, Atom, Reason} ->
+            {error, {Atom, Reason}}
     end.
 
 %% @doc Encodes peer info map to a peer URI.
@@ -300,7 +342,7 @@ encode_peer_address(#{ pubkey := PubKey, host := Host, port := Port }) ->
 %% @doc Informs that an outbound connection successfully connected.
 -spec peer_connected(aec_peer:id(), pid()) -> ok | {error, term()}.
 peer_connected(PeerId, PeerCon) ->
-    gen_server:call(?MODULE, {peer_connected, PeerId, PeerCon}).
+    opt_call({peer_connected, PeerId, PeerCon}, ?ERR_NOT_RUNNING).
 
 %% @doc Informs that an inbound connection has been accepted.
 %% If it returns `temporary' the connection should be closed as soon as
@@ -308,41 +350,47 @@ peer_connected(PeerId, PeerCon) ->
 -spec peer_accepted(aec_peer:info(), inet:ip_address(), pid())
     -> permanent | temporary | {error, term()}.
 peer_accepted(PeerInfo, Addr, PeerCon) ->
-    gen_server:call(?MODULE, {peer_accepted, Addr, PeerInfo, PeerCon}).
+    opt_call({peer_accepted, Addr, PeerInfo, PeerCon}, ?ERR_NOT_RUNNING).
 
 -spec peer_alive(aec_peer:id(), pid()) -> ok | {error, term()}.
 peer_alive(PeerId, PeerCon) ->
-    gen_server:call(?MODULE, {peer_alive, PeerId, PeerCon}).
+    opt_call({peer_alive, PeerId, PeerCon}, ?ERR_NOT_RUNNING).
 
 %% @doc Informs that a connection failed unexpectedly; either when connecting
 %% or while already being connected.
 -spec connection_failed(aec_peer:id(), pid()) -> ok.
 connection_failed(PeerId, PeerCon) ->
-    gen_server:call(?MODULE, {connection_failed, PeerId, PeerCon}).
+    opt_call({connection_failed, PeerId, PeerCon}, ok).
 
 %% @doc Informs that a connection got closed cleanly.
 -spec connection_closed(aec_peer:id(), pid()) -> ok.
 connection_closed(PeerId, PeerCon) ->
-    gen_server:call(?MODULE, {connection_closed, PeerId, PeerCon}).
+    opt_call({connection_closed, PeerId, PeerCon}, ok).
 
 -spec peer_dead(aec_peer:id(), pid()) -> ok | {error, term()}.
 peer_dead(PeerId, PeerCon) ->
-    gen_server:call(?MODULE, {peer_dead, PeerId, PeerCon}).
+    opt_call({peer_dead, PeerId, PeerCon}, ?ERR_NOT_RUNNING).
 
 -ifdef(TEST).
+%% If called during test, while aesync is not supposed to run,
+%% let's be a bit more harsh.
 all() ->
-    gen_server:call(?MODULE, {all_peers, both}).
+    opt_call({all_peers, both}, fun abort_not_running/0).
 
 all(PeerPool) when PeerPool =:= verified
             orelse PeerPool =:= unverified
             orelse PeerPool =:= both ->
-    gen_server:call(?MODULE, {all_peers, PeerPool}).
+    opt_call({all_peers, PeerPool}, fun abort_not_running/0).
+
+abort_not_running() ->
+    error(not_running).
+
 -endif.
 %--- UTILITY FUNCTIONS FOR aec_sync ONLY ---------------------------------------
 
 -spec log_ping(aec_peer:id(), ok | error) -> ok | {error, any()}.
 log_ping(PeerId, Outcome) ->
-    gen_server:cast(?MODULE, {log_ping, Outcome, PeerId, timestamp()}).
+    opt_cast({log_ping, Outcome, PeerId, timestamp()}).
 
 %--- Utility functions for extraction of peer id ------------------------------
 
@@ -359,11 +407,11 @@ peer_id(#conn{ peer = Peer }) ->
 -ifdef(TEST).
 
 unblock_all() ->
-    gen_server:call(?MODULE, unblock_all).
+    opt_call(unblock_all, fun abort_not_running/0).
 
 -spec local_peer_info() -> aec_peer:info().
 local_peer_info() ->
-    {ok, LP} = gen_server:call(?MODULE, local_peer_info),
+    {ok, LP} = opt_call(local_peer_info, fun abort_not_running/0),
     LP.
 
 -endif.
@@ -610,7 +658,14 @@ update_ping_metrics(Outcome) ->
 %% will be able to detect that in the logs since we won't be able to
 %% connect.
 -spec async_add_peer(inet:ip_address() | undefined, aec_peer:info(), boolean()) -> ok.
-async_add_peer(SourceAddr0, #{ host := Host} = PeerInfo, IsTrusted) ->
+async_add_peer(SourceAddr, PeerInfo, IsTrusted) ->
+    case peers_running() of
+        false -> ok;
+        true ->
+            async_add_peer_(SourceAddr, PeerInfo, IsTrusted)
+    end.
+
+async_add_peer_(SourceAddr0, #{ host := Host} = PeerInfo, IsTrusted) ->
     spawn(fun() ->
              case inet:getaddr(to_list(Host), inet) of
                  {error, nxdomain} ->
@@ -629,6 +684,13 @@ async_add_peer(SourceAddr0, #{ host := Host} = PeerInfo, IsTrusted) ->
     ok.
 
 async_resolve_host(Host) ->
+    case peers_running() of
+        false -> ok;
+        true ->
+            async_resolve_host_(Host)
+    end.
+
+async_resolve_host_(Host) ->
     spawn(fun() ->
              case inet:getaddr(Host, inet) of
                  {error, nxdomain} ->

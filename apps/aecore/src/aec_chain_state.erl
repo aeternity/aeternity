@@ -116,6 +116,9 @@
                         , node_is_micro_block/1
                         , node_header/1] ).
 
+-export([ rollback_chain_state_to_hash/1
+        , rollback_chain_state_to_hash/2 ]).
+
 %% For tests
 -export([ get_top_block_hash/1
         , get_key_block_hash_at_height/2
@@ -319,6 +322,46 @@ get_info_field(Height, Fork) when Fork =/= undefined ->
     end;
 get_info_field(_Height, undefined) ->
     default.
+
+rollback_chain_state_to_hash(Hash) ->
+    rollback_chain_state_to_hash(async_dirty, Hash).
+
+rollback_chain_state_to_hash(Mode, Hash) ->
+    aec_db:ensure_activity(
+      Mode, fun() ->
+                    rollback_chain_state_to_hash_(Hash)
+            end).
+
+rollback_chain_state_to_hash_(Hash) ->
+    TopHash = aec_db:get_top_block_hash(),
+    case hash_is_in_main_chain(Hash, TopHash) of
+        true ->
+            case is_gc_disabled() of
+                true ->
+                    do_rollback_to_hash(Hash, TopHash);
+                false ->
+                    error(gc_active)
+            end;
+        false ->
+            error(not_in_main_chain)
+    end.
+
+do_rollback_to_hash(Hash, TopHash) ->
+    {value, Header} = aec_db:find_header(Hash),
+    Height = aec_headers:height(Header),
+    {value, TopHeader} = aec_db:find_header(TopHash),
+    TopHeight = aec_headers:height(TopHeader),
+    SafetyMargin = 1000, %% Why not?
+    [begin
+         [begin
+              Del = element(2, T),
+              ok = mnesia:delete(aec_headers, Del, write),
+              ok = mnesia:delete(aec_blocks, Del, write),
+              ok = mnesia:delete(aec_block_state, Del, write)
+              %% TODO: we really should also delete state tree objects
+          end || T <- mnesia:index_read(aec_headers, H, height)]
+     end || H <- lists:seq(Height+1, TopHeight+SafetyMargin)],
+    aec_db:write_top_block_node(Hash, Header).
 
 %%%===================================================================
 %%% Internal functions
@@ -1339,7 +1382,6 @@ chain_ends_maybe_apply([H1|T1] = OldTops, [H2|T2], NewTops) -> %% Check if H1 is
             chain_ends_maybe_apply(T1, NewTops, NewTops)
     end.
 
-
 % We use aec_chain_state to store all key block headers with heights.
 % This allows for cheap retrieval of key header by height.
 -spec ensure_key_headers_height_store() -> ok | pid().
@@ -1413,3 +1455,9 @@ key_headers_height_store_migration_step(Time, N, {TimeRead, {Headers, Cont}}) ->
         N + Count,
         timer:tc(fun() -> mnesia:select(Cont) end)
     ).
+
+is_gc_disabled() ->
+    case aec_db_gc:config() of
+        #{enabled := Bool} when is_boolean(Bool) ->
+            Bool
+    end.

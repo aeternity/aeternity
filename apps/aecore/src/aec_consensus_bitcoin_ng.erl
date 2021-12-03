@@ -55,12 +55,17 @@
         , assert_key_target_range/1
         , key_header_difficulty/1 ]).
 
+-export([ get_whitelist/0
+        , rollback/1
+        , rollback_to_hash/2 ]).
+
 -ifdef(TEST).
 -export([load_whitelist/0]).
 -endif.
 
 -include_lib("aecontract/include/hard_forks.hrl").
 -include("blocks.hrl").
+-include("aec_db.hrl").
 -include_lib("aeminer/include/aeminer.hrl").
 
 -define(WHITELIST, {?MODULE, whitelist}).
@@ -115,23 +120,98 @@ force_community_fork() ->
             end
     end.
 
+rollback(Height) ->
+    F = fun() ->
+                TopHeight = aec_chain:top_height(),
+                {ok, ForkPoint} = aec_chain_state:get_key_block_hash_at_height(Height),
+                do_rollback_(ForkPoint, height, key, Height, TopHeight)
+        end,
+    aec_db:ensure_activity(sync_dirty, F).
+
+rollback_to_hash(Type, Hash) ->
+    F = fun() ->
+                TopHeight = aec_chain:top_height(),
+                case aec_chain:get_header(Hash) of
+                    error ->
+                        {error, hash_not_found};
+                    {ok, Hdr} ->
+                        Type = aec_headers:type(Hdr),   % assertion
+                        Height = aec_headers:height(Hdr),
+                        {_, true} = {height_does_not_exceed_top, (TopHeight >= Height)},
+                        do_rollback_(Hash, hash, Type, Height, TopHeight)
+                end
+        end,
+    aec_db:ensure_activity(sync_dirty, F).
+
 do_rollback(ForkPoint, Height, TopHeight) ->
     lager:info("Jumping to the community fork", []),
+    aec_db:ensure_activity(sync_dirty,
+                           fun() ->
+                                   do_rollback_(ForkPoint, height, key, Height, TopHeight)
+                           end).
+
+do_rollback_(ForkPoint, Mode, Type, Height, TopHeight) ->
+    lager:debug("Perform rollback from ~p to ~p", [TopHeight, Height]),
     ensure_gc_disabled(),
     {value, FPHeader} = aec_db:find_header(ForkPoint),
     SafetyMargin = 1000, %% Why not?
-    aec_db:ensure_activity(sync_dirty, fun() ->
-        [begin
-             [begin
-                  Del = element(2, T),
-                  ok = mnesia:delete(aec_headers, Del, write),
-                  ok = mnesia:delete(aec_blocks, Del, write),
-                  ok = mnesia:delete(aec_block_state, Del, write)
-              end || T <- mnesia:index_read(aec_headers, H, height)]
-         end || H <- lists:seq(Height+1, TopHeight+SafetyMargin)],
-        aec_db:write_top_block_node(ForkPoint, FPHeader)
-      end),
+    FromHeight = case Mode of
+                     hash   -> Height;
+                     height -> Height + 1
+                 end,
+    lists:foreach(
+      fun(H) ->
+              roll_back_height_(H, Height, ForkPoint, Mode, Type)
+      end, lists:seq(FromHeight, TopHeight+SafetyMargin)),
+      aec_db:write_top_block_node(ForkPoint, FPHeader),
     ok.
+
+roll_back_height_(H, H, Hash, hash, Type) ->
+    %% We know that Hash is at this height, and that Type is correct
+    {ok, #{key_block := KB,
+           micro_blocks := MBs}} = aec_chain:get_generation_by_height(H, forward),
+    KBHash = ok(aec_blocks:hash_internal_representation(KB)),
+    MBHashes = [ok(aec_blocks:hash_internal_representation(B)) || B <- MBs],
+    GenHashes = [KBHash | MBHashes],
+    OtherHashes = [Hx || Hx <- hashes_at_height(H),
+                         not lists:member(Hx, GenHashes)],
+    MBs1 = case Type of
+               micro -> micros_after_hash(MBHashes, Hash);
+               key   -> MBHashes
+           end,
+    lists:foreach(fun remove_block/1, OtherHashes),
+    lists:foreach(fun remove_block/1, MBs1);
+roll_back_height_(CurH, _Height, _ForkPoint, _Mode, _Type) ->
+    lists:foreach(fun remove_block/1, hashes_at_height(CurH)).
+
+hashes_at_height(Height) ->
+    [Hash || #aec_headers{key = Hash}
+                 <- mnesia:index_read(aec_headers, Height, height)].
+
+ok({ok, Res}) -> Res.
+
+micros_after_hash([H|T], H) ->
+    T;
+micros_after_hash([_|T], H) ->
+    micros_after_hash(T, H).
+
+remove_block(Hash) ->
+    ok = remove_tx_locations(Hash),
+    ok = mnesia:delete(aec_headers, Hash, write),
+    ok = mnesia:delete(aec_blocks, Hash, write),
+    ok = mnesia:delete(aec_block_state, Hash, write).
+
+remove_tx_locations(Hash) ->
+    case aec_db:find_block_tx_hashes(Hash) of
+        none ->
+            ok;
+        {value, TxHashes} ->
+            lists:foreach(fun remove_tx/1, TxHashes),
+            ok
+    end.
+
+remove_tx(TxHash) ->
+    aec_db:remove_tx(TxHash).
 
 ensure_gc_disabled() ->
     case aec_db_gc:config() of
@@ -159,7 +239,7 @@ dirty_validate_block_pre_conductor(B) ->
     dirty_validate_header_pre_conductor(Header).
 
 dirty_validate_header_pre_conductor(H) ->
-    W = persistent_term:get(?WHITELIST),
+    W = get_whitelist(),
     Height = aec_headers:height(H),
     case aec_headers:type(H) of
         key ->
@@ -176,7 +256,7 @@ dirty_validate_header_pre_conductor(H) ->
     end.
 
 dirty_validate_key_hash_at_height(Height, Hash) ->
-    W = persistent_term:get(?WHITELIST),
+    W = get_whitelist(),
     case maps:find(Height, W) of
         {ok, Hash} ->
             ok;
@@ -446,3 +526,8 @@ key_header_difficulty(Header) ->
 load_whitelist() ->
     W = aec_fork_block_settings:block_whitelist(),
     persistent_term:put(?WHITELIST, W).
+
+%% ------------------------------------------------------------------
+%% Accessor function for block whitelist
+get_whitelist() ->
+    persistent_term:get(?WHITELIST).

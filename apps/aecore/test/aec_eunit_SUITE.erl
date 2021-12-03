@@ -8,7 +8,6 @@
 -export([application_test/1]).
 
 -include_lib("common_test/include/ct.hrl").
--include_lib("aeutils/include/aeu_stacktrace.hrl").
 -compile({parse_transform, ct_eunit_xform}).
 
 -define(STARTED_APPS_WHITELIST,
@@ -26,6 +25,7 @@
         , xmerl
         , aecuckoo
         , aecuckooprebuilt
+        , argparse
         , getopt
         , eblake2
         , ecrecover
@@ -121,7 +121,7 @@ iolist_to_s(L) ->
 %% depends upon are started.
 application_test(Config) ->
     {ok, StartedApps, TempDir} = prepare_app_start(aecore, Config),
-
+    ct:log("StartedApps = ~p", [StartedApps]),
     meck:new(aec_fork_block_settings, []),
     meck:expect(aec_fork_block_settings, genesis_accounts, 0, []),
     meck:expect(aec_fork_block_settings, minerva_accounts, 0, []),
@@ -133,17 +133,18 @@ application_test(Config) ->
     meck:expect(aec_fork_block_settings, pre_iris_map_ordering, 0, #{}),
     meck:new(aeu_info, []),
     meck:expect(aeu_info, block_info, 0, 591),
-    {ok,_} = application:ensure_all_started(aecore),
+    {ok,NewStarted} = application:ensure_all_started(aecore),
+    ct:log("NewStarted = ~p", [NewStarted]),
     timer:sleep(100),
-    ok = application:stop(aecore),
+    app_stop(remove_dups(StartedApps ++ NewStarted -- ?TO_BE_STOPPED_APPS_BLACKLIST),
+             TempDir),
+        %% ok = application:stop(aecore),
     meck:unload(aec_fork_block_settings),
-    meck:unload(aeu_info),
-
-    app_stop(StartedApps -- ?TO_BE_STOPPED_APPS_BLACKLIST, TempDir).
+    meck:unload(aeu_info).
 
 prepare_app_start(App, Config) ->
     try prepare_app_start_(App, Config)
-    ?_catch_(error, Reason, StackTrace)
+    catch error:Reason:StackTrace ->
         error({Reason, StackTrace})
     end.
 
@@ -160,9 +161,11 @@ prepare_app_start_(App, Config) ->
     [ application:ensure_started(Dep) || Dep <- Deps ],
     {ok, lists:reverse(Deps -- AlreadyRunning), TempDir}.
 
-app_stop(Apps, TempDir) ->
+app_stop(Apps0, TempDir) ->
+    Apps = lists:reverse(Apps0),
+    ct:log("app_stop: ~p", [Apps]),
+    [ {ok,_A} = {application:stop(App),App} || App <- Apps ],
     aec_test_utils:remove_temp_key_dir(TempDir),
-    [ application:stop(App) || App <- Apps ],
     ok.
 
 maybe_add_mnesia(App, Deps) ->
@@ -170,3 +173,8 @@ maybe_add_mnesia(App, Deps) ->
         true  -> Deps ++ [mnesia];
         false -> Deps
     end.
+
+remove_dups([H|T]) ->
+    [H | remove_dups(lists:delete(H, T))];
+remove_dups([]) ->
+    [].
