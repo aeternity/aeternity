@@ -20,10 +20,6 @@
         , whitelist_filename/0
         ]).
 
--pluggable([genesis_accounts/0]).
-
--include("aec_plugin.hrl").
-
 -define(GENESIS_DIR, ".genesis").
 -define(MINERVA_DIR, ".minerva").
 -define(FORTUNA_DIR, ".fortuna").
