@@ -24,9 +24,6 @@
         %% Building the Insertion Ctx
         , recent_cache_n/0
         , recent_cache_trim_key_header/1
-        %% Target adjustment when creating keyblocks
-        , keyblocks_for_target_calc/0
-        , keyblock_create_adjust_target/2
         %% Preconductor hook
         , dirty_validate_block_pre_conductor/1
         , dirty_validate_header_pre_conductor/1
@@ -35,9 +32,9 @@
         , dirty_validate_key_node_with_ctx/3
         , dirty_validate_micro_node_with_ctx/3
         %% State transition
-        , state_pre_transform_key_node_consensus_switch/2
-        , state_pre_transform_key_node/2
-        , state_pre_transform_micro_node/2
+        , state_pre_transform_key_node_consensus_switch/4
+        , state_pre_transform_key_node/4
+        , state_pre_transform_micro_node/4
         %% Block rewards
         , state_grant_reward/3
         %% PoGF
@@ -46,6 +43,10 @@
         , genesis_transform_trees/2
         , genesis_raw_header/0
         , genesis_difficulty/0
+        %% Keyblock creation
+        , new_unmined_key_node/8
+        , keyblocks_for_unmined_keyblock_adjust/0
+        , adjust_unmined_keyblock/2
         %% Keyblock sealing
         , key_header_for_sealing/1
         , validate_key_header_seal/2
@@ -152,8 +153,26 @@ extra_from_header(_) ->
 recent_cache_n() -> 1.
 recent_cache_trim_key_header(_) -> ok.
 
-keyblocks_for_target_calc() -> 0.
-keyblock_create_adjust_target(Block, []) -> {ok, Block}.
+%% -------------------------------------------------------------------
+%% Keyblock creation
+new_unmined_key_node(PrevNode, PrevKeyNode, Height, Miner, Beneficiary, Protocol, InfoField, _TreesIn) ->
+    FakeBlockHash = <<0:?BLOCK_HEADER_HASH_BYTES/unit:8>>,
+    FakeStateHash = <<1337:?STATE_HASH_BYTES/unit:8>>,
+    Header = aec_headers:new_key_header(Height,
+                               aec_block_insertion:node_hash(PrevNode),
+                               aec_block_insertion:node_hash(PrevKeyNode),
+                               FakeStateHash,
+                               Miner,
+                               Beneficiary,
+                               default_target(),
+                               no_value,
+                               0,
+                               aeu_time:now_in_msecs(),
+                               InfoField,
+                               Protocol),
+    aec_chain_state:wrap_header(Header, FakeBlockHash).
+keyblocks_for_unmined_keyblock_adjust() -> 0.
+adjust_unmined_keyblock(Block, []) -> {ok, Block}.
 
 dirty_validate_block_pre_conductor(_) -> ok.
 dirty_validate_header_pre_conductor(_) -> ok.
@@ -164,9 +183,9 @@ dirty_validate_micro_node_with_ctx(_Node, _Block, _Ctx) -> ok.
 
 %% -------------------------------------------------------------------
 %% Custom state transitions
-state_pre_transform_key_node_consensus_switch(_Node, Trees) -> Trees.
-state_pre_transform_key_node(_Node, Trees) -> Trees.
-state_pre_transform_micro_node(_Node, Trees) -> Trees.
+state_pre_transform_key_node_consensus_switch(_Node, _PrevNode, _PrevKeyNode, Trees) -> Trees.
+state_pre_transform_key_node(_Node, _PrevNode, _PrevKeyNode, Trees) -> Trees.
+state_pre_transform_micro_node(_Node, _PrevNode, _PrevKeyNode, Trees) -> Trees.
 
 %% -------------------------------------------------------------------
 %% Block rewards
