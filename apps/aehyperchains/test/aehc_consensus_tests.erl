@@ -27,7 +27,7 @@
 
 protocol_gate(X) ->
     case init:get_argument(network_id) of
-        {ok, [["local_iris_testnet"]]} -> X;
+        {ok, [["local_ceres_testnet"]]} -> X;
         {ok, OtherTestnet} ->
             io:format(user, "~nNot a relevant testnet: ~p~n", [OtherTestnet]),
             [];
@@ -87,7 +87,7 @@ genesis_header() ->
             0, 0, 0, 0, 0, 0, 0, 0,
             0, 0, 0, 0, 0, 0, 0, 0
         >>,
-        <<0, 0, 0, 0>>,
+        <<0, 0, 2,118>>,
         #{consensus => aec_consensus_bitcoin_ng}
     },
     ?assertEqual(Header, aehc_consensus_hyperchains:genesis_raw_header()).
