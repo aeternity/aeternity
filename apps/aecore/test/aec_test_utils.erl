@@ -699,10 +699,6 @@ sign_tx(Tx, PrivKeys, SignHash, AdditionalPrefix, Cfg) when is_list(PrivKeys) ->
             _ ->
               <<"-", AdditionalPrefix/binary, Bin1/binary>>
         end,
-    NwId = aec_governance:get_network_id(),
-    ?LOG(Debug, "NwId = ~p", [NwId]),
-    ?LOG(Debug, "This node: ~p", [node()]),
-    ?LOG(Debug, "aecore env = ~p", [application:get_all_env(aecore)]),
     BinForNetwork = aec_governance:add_network_id(Bin),
     case lists:filter(fun(PrivKey) -> not (?VALID_PRIVK(PrivKey)) end, PrivKeys) of
         [_|_]=BrokenKeys -> erlang:error({invalid_priv_key, BrokenKeys});

@@ -18,6 +18,7 @@
 -export_type([block_info/0]).
 
 -include("blocks.hrl").
+-include_lib("aecontract/include/hard_forks.hrl").
 
 -opaque block_info() :: #{trees := aec_trees:trees(),
                           txs_tree := aec_txs_trees:txs_tree(),
@@ -72,9 +73,10 @@ apply_block_txs_strict(Txs, Trees, Env) ->
 -spec update(aec_blocks:block(), nonempty_list(aetx_sign:signed_tx()),
              block_info()) ->
                     {ok, aec_blocks:block(), block_info()} | {error, no_update_to_block_candidate | block_is_full}.
-update(Block, Txs, BlockInfo) ->
+update(Block, Txs, BlockInfo = #{trees := Trees}) ->
     MaxGas = aec_governance:block_gas_limit(),
-    BlockGas = aec_blocks:gas(Block),
+    OldTxs = aec_blocks:txs(Block),
+    BlockGas = used_gas(Block, OldTxs, Trees),
     case BlockGas < MaxGas of
         true ->
             SortedTxs = sort_txs(Txs),
@@ -127,7 +129,7 @@ int_pack_block(GasAvailable, TxHashes, Txs, MBEnv, TxEnv, Trees, Events) ->
             {ok, Txs1, FailedTxs1, Trees1, Events1} = int_apply_block_txs(Txs0, Trees, TxEnv, false),
             report_failed_txs(FailedTxs1),
             TxHashes1 = [ aetx_sign:hash(Tx) || Tx <- Txs0 ],
-            int_pack_block(GasAvailable - used_gas(KeyBlock, Txs1), TxHashes ++ TxHashes1,
+            int_pack_block(GasAvailable - used_gas(KeyBlock, Txs1, Trees1), TxHashes ++ TxHashes1,
                            Txs ++ Txs1, MBEnv, TxEnv, Trees1, Events ++ Events1)
     end.
 
@@ -197,7 +199,9 @@ int_apply_block_txs(Txs, Trees, Env, false) ->
         aec_trees:apply_txs_on_state_trees(Txs, Trees, Env);
 %% strict
 int_apply_block_txs(Txs, Trees, Env, true) ->
-    case aec_trees:apply_txs_on_state_trees_strict(Txs, Trees, Env) of
+    BlockGasLimit = aec_governance:block_gas_limit(),
+    Opts = [strict, tx_events, {gas_limit, BlockGasLimit}],
+    case aec_trees:apply_txs_on_state_trees(Txs, Trees, Env, Opts) of
         {ok, Txs1, [], Trees1, Events} ->
             {ok, Txs1, Trees1, Events};
         Err = {error, _} ->
@@ -230,14 +234,19 @@ add_txs_to_trees(_MaxGas, Trees, [], Acc, Env) ->
 add_txs_to_trees(MaxGas, Trees, [Tx | Txs], Acc, Env) ->
     Protocol = aetx_env:consensus_version(Env),
     Height = aetx_env:height(Env),
-    TxGas = aetx:gas_limit(aetx_sign:tx(Tx), Height, Protocol),
-    case TxGas =< MaxGas of
+    TxGasLimit = aetx:gas_limit(aetx_sign:tx(Tx), Height, Protocol),
+    case TxGasLimit =< MaxGas of
         true ->
             case aec_trees:apply_txs_on_state_trees([Tx], Trees, Env) of
                 {ok, [], _, _, _} ->
                     add_txs_to_trees(MaxGas, Trees, Txs, Acc, Env);
                 {ok, [Tx], _, Trees1, Events} ->
                     Env1 = aetx_env:set_events(Env, Events),
+                    TxGas =
+                        case Protocol =< ?IRIS_PROTOCOL_VSN of
+                            true  -> TxGasLimit;
+                            false -> aetx:used_gas(aetx_sign:tx(Tx), Height, Protocol, Trees1)
+                        end,
                     add_txs_to_trees(MaxGas - TxGas, Trees1, Txs, [Tx | Acc], Env1)
             end;
         false ->
@@ -247,10 +256,15 @@ add_txs_to_trees(MaxGas, Trees, [Tx | Txs], Acc, Env) ->
 report_failed_txs([])  -> ok;
 report_failed_txs(Txs) -> aec_tx_pool:failed_txs(Txs).
 
-used_gas(Block, Txs) ->
+used_gas(Block, Txs, Trees) ->
     Version = aec_blocks:version(Block),
     Height = aec_blocks:height(Block),
-    lists:foldl(fun(Tx, Acc) -> aetx:gas_limit(aetx_sign:tx(Tx), Height, Version) + Acc end, 0, Txs).
+    GasFun =
+        case Version =< ?IRIS_PROTOCOL_VSN of
+            true  -> fun(Tx) -> aetx:gas_limit(aetx_sign:tx(Tx), Height, Version) end;
+            false -> fun(Tx) -> aetx:used_gas(aetx_sign:tx(Tx), Height, Version, Trees) end
+        end,
+    lists:foldl(fun(Tx, Acc) -> GasFun(Tx) + Acc end, 0, Txs).
 
 %% Respect nonces order
 sort_txs(Txs) ->

@@ -128,6 +128,7 @@
         ]).
 -endif.
 
+-include_lib("aecontract/include/hard_forks.hrl").
 -include("aec_block_insertion.hrl").
 -include("blocks.hrl").
 -include("aec_db.hrl").
@@ -675,8 +676,8 @@ update_state_tree(Node, State, Ctx) ->
     handle_top_block_change(OldTopNode, NewTopDifficulty, Node, Events, State3).
 
 update_state_tree(Node, TreesIn, ForkInfo, State) ->
-     case db_find_state(node_hash(Node), true) of
-         {ok, FoundTrees, FoundForkInfo} ->
+    case db_find_state(node_hash(Node), true) of
+        {ok, FoundTrees, FoundForkInfo} ->
             {Trees, _Fees, Events} = apply_node_transactions(Node, TreesIn,
                                                              ForkInfo, State),
             case aec_trees:hash(Trees) =:= aec_trees:hash(FoundTrees) of
@@ -691,9 +692,9 @@ update_state_tree(Node, TreesIn, ForkInfo, State) ->
                     %% so don't use aec_block_insertion:abort_state_transition
                     error({found_already_calculated_state, node_hash(Node)})
             end;
-         error ->
-             {DifficultyOut, Events} = apply_and_store_state_trees(Node, TreesIn,
-                                                        ForkInfo, State),
+        error ->
+            {DifficultyOut, Events} = apply_and_store_state_trees(Node, TreesIn,
+                                                                  ForkInfo, State),
             State1 = set_top_block_node(Node, State),
             {State1, DifficultyOut, Events}
     end.

@@ -58,6 +58,7 @@
         ]).
 
 -include("blocks.hrl").
+-include_lib("aecontract/include/hard_forks.hrl").
 
 %%%===================================================================
 %%% Records and types
@@ -247,7 +248,12 @@ difficulty(Block) ->
 gas(#mic_block{txs = Txs} = Block) ->
     Version = aec_blocks:version(Block),
     Height = aec_blocks:height(Block),
-    lists:foldl(fun(Tx, Acc) -> aetx:gas_limit(aetx_sign:tx(Tx), Height, Version) + Acc end, 0, Txs).
+    GasFun =
+        case Version =< ?IRIS_PROTOCOL_VSN of
+            true  -> fun(Tx) -> aetx:gas_limit(aetx_sign:tx(Tx), Height, Version) end;
+            false -> fun(Tx) -> aetx:tx_min_gas(aetx_sign:tx(Tx), Version) end
+        end,
+    lists:foldl(fun(Tx, Acc) -> GasFun(Tx) + Acc end, 0, Txs).
 
 -spec time_in_msecs(block()) -> non_neg_integer().
 time_in_msecs(Block) ->

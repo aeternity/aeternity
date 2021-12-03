@@ -37,6 +37,7 @@
         , valid_at_protocol/2
         , check_protocol/2
         , swagger_name_to_type/1
+        , tx_min_gas/2
         ]).
 
 -ifdef(TEST).
@@ -248,6 +249,12 @@ deep_fee(AeTx, Trees, AccFee0) ->
         {_, _} ->
             AccFee
     end.
+
+-spec tx_min_gas(Tx :: tx(), Version :: aec_hard_forks:protocol_vsn()) -> Gas :: integer().
+tx_min_gas(#aetx{type = Type, size = Size, cb = CB, tx = Tx}, Version) when ?IS_CONTRACT_TX(Type) ->
+    base_gas(Type, Version, CB:abi_version(Tx)) + size_gas(Size);
+tx_min_gas(#aetx{type = Type, size = Size}, Version) ->
+    base_gas(Type, Version) + size_gas(Size).
 
 %% In case 0 is returned, the tx will not be included in the micro block
 %% candidate by the mempool.

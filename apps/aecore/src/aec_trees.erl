@@ -647,11 +647,11 @@ apply_txs_on_state_trees([SignedTx | Rest], ValidTxs, InvalidTxs, Trees, Env, Op
         ok ->
             Env1 = aetx_env:set_signed_tx(Env, {value, SignedTx}),
             Tx = aetx_sign:tx(SignedTx),
-            try aetx:process(Tx, Trees, Env1) of
-                {ok, Trees1, Env20} ->
+            try tx_process(Tx, Trees, Env1, Opts) of
+                {ok, Trees1, Env20, Opts1} ->
                     Env21 = aetx_env:update_env(Env20, Env),
                     Valid1 = [SignedTx | ValidTxs],
-                    apply_txs_on_state_trees(Rest, Valid1, InvalidTxs, Trees1, Env21, Opts);
+                    apply_txs_on_state_trees(Rest, Valid1, InvalidTxs, Trees1, Env21, Opts1);
                 {error, Reason} when Strict ->
                     lager:debug("Tx ~p cannot be applied due to an error ~p", [Tx, Reason]),
                     {error, Reason};
@@ -682,6 +682,30 @@ apply_txs_on_state_trees([SignedTx | Rest], ValidTxs, InvalidTxs, Trees, Env, Op
 
 verify_signature(_, _, _, true)               -> ok;
 verify_signature(STx, Trees, Protocol, false) -> aetx_sign:verify(STx, Trees, Protocol).
+
+tx_process(Tx, Trees, Env, Opts) ->
+    GasLimit = proplists:get_value(gas_limit, Opts, undefined),
+    case aetx:process(Tx, Trees, Env) of
+        {ok, Trees1, Env1} ->
+            check_gas_limit(GasLimit, Tx, Trees1, Env1, Opts);
+        Err = {error, _} ->
+            Err
+    end.
+
+check_gas_limit(undefined, _, Trees, Env, Opts) -> {ok, Trees, Env, Opts};
+check_gas_limit(GasLimit, Tx, Trees, Env, Opts) ->
+    Height  = aetx_env:height(Env),
+    Version = aetx_env:consensus_version(Env),
+    GasUsed = aetx:used_gas(Tx, Height, Version, Trees),
+    case GasUsed =< GasLimit of
+        true ->
+            Opts1 = [{gas_limit, GasLimit - GasUsed} | proplists:delete(gas_limit, Opts)],
+            {ok, Trees, Env, Opts1};
+        false ->
+            lager:info("Applying tx ~p mean gas limit ~p is exceeded (used ~p)", [Tx, GasLimit, GasUsed]),
+            {error, gas_limit_exceeded}
+    end.
+
 
 -spec grant_fee(aec_keys:pubkey(), trees(), non_neg_integer()) -> trees().
 grant_fee(BeneficiaryPubKey, Trees0, Fee) ->
