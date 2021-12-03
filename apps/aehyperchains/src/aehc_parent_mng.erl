@@ -33,7 +33,6 @@
 -export([start_view/2, terminate_view/1]).
 -export([publish_block/2]).
 
--include_lib("aeutils/include/aeu_stacktrace.hrl").
 %% API.
 
 -spec start_link() ->
