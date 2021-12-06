@@ -61,21 +61,27 @@ create_with_txs(Block, Txs) ->
     end.
 
 create_with_txs_and_state(Block, Txs, Trees) ->
-    {ok, BlockHash} = aec_blocks:hash_internal_representation(Block),
     case aec_blocks:is_key_block(Block) of
-        true ->  int_create_block(BlockHash, Block, Block, Trees, Txs);
+        true ->
+            MBEnv = create_micro_block_env(Block, Block),
+            TxEnv = create_tx_env(MBEnv),
+            int_create_block(MBEnv, TxEnv, Txs, Trees);
         false ->
             case aec_chain:get_block(aec_blocks:prev_key_hash(Block)) of
-                {ok, KeyBlock} ->  int_create_block(BlockHash, Block, KeyBlock, Trees, Txs);
+                {ok, KeyBlock} ->
+                    MBEnv = create_micro_block_env(Block, KeyBlock),
+                    TxEnv = create_tx_env(MBEnv),
+                    int_create_block(MBEnv, TxEnv, Txs, Trees);
                 _ -> {error, block_not_found}
             end
     end.
 
 int_create_with_txs(Block, KeyBlock, Txs) ->
-    {ok, BlockHash} = aec_blocks:hash_internal_representation(Block),
-    case aec_chain:get_block_state(BlockHash) of
+    MBEnv = #{prev_hash := PrevBlockHash} = create_micro_block_env(Block, KeyBlock),
+    case aec_chain:get_block_state(PrevBlockHash) of
         {ok, Trees} ->
-            int_create_block(BlockHash, Block, KeyBlock, Trees, Txs);
+            TxEnv = create_tx_env(MBEnv),
+            int_create_block(MBEnv, TxEnv, Txs, Trees);
         error ->
             {error, block_state_not_found}
     end.
@@ -182,7 +188,7 @@ int_create_block(MBEnv, TxEnv, Txs, Trees, Events) ->
     Consensus = aec_blocks:consensus_module(KeyBlock),
     Height = aec_blocks:height(KeyBlock),
 
-    %% FIXME - HC branch added this transaformation. No idea how to apply it to new code:
+    %% FIXME - HC branch added this transformation. No idea how to apply it to new code:
 % +    FakeBlock = aec_blocks:new_micro(Height, PrevBlockHash, PrevKeyHash,
 % +                                    <<0:32/unit:8>>, <<0:32/unit:8>>, [],
 % +                                    Time, no_fraud, Protocol),
