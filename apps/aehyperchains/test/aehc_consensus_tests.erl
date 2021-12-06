@@ -99,7 +99,7 @@ extra_from_header() ->
 
 
 %% Persistent storage related functions coverage
-persistence_support_test_() ->
+persistence_support_test_suppressed() ->
     protocol_gate([
         {"Staking contract undeployed", fun staking_contract_bytecode/0}
     ]).
