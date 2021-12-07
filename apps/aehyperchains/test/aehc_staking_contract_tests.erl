@@ -62,7 +62,7 @@ unmock_protocol() ->
     meck:unload(aec_hard_forks).
 
 -define(PROTOCOL_GATE(X), case init:get_argument(network_id) of
-                              {ok,[["local_iris_testnet"]]} -> X;
+                              {ok,[["local_ceres_testnet"]]} -> X;
                               _ -> []
                           end).
 
@@ -75,12 +75,9 @@ staking_contract_test_() ->
 staking_contract_unit_test_group() ->
     {timeout, 20,
         [ {"Unit fun protocol_restrict", fun test_fun_protocol_restrict/0}
-        , {"Unit fun valuate", fun test_fun_valuate/0}
         , {"Unit fun staked_tokens", fun test_fun_staked_tokens/0}
         , {"Unit fun requested_withdrawals", fun test_fun_requested_withdrawals/0}
         , {"Unit fun retracted_stake", fun test_fun_retracted_stake/0}
-        , {"Unit fun extract_ripe_withdrawals", fun test_fun_extract_ripe_withdrawals/0}
-        , {"Unit fun decrease_stake", fun test_fun_decrease_stake/0}
         , {"Unit fun punish", fun test_fun_punish/0}
         ]}.
 
@@ -327,24 +324,13 @@ add_keyblock(Delegates) ->
 test_fun_protocol_restrict() ->
     ?INIT_SCENARIO(0, 0, 0, []),
 
-    R1 = call_staking_contract(restricted_account(), 0, protocol_restrict, [], {tuple, []}),
+    %% protocol_restrict is not exported from the contract, so test this through
+    %% another function that rejects attempts from normal accounts  
+    R1 = call_staking_contract(restricted_account(), 0, protocol_enable, [], {tuple, []}),
     ?assertEqual({}, R1),
 
-    R2 = call_staking_contract(new_account(?ALOT), 0, protocol_restrict, [], {tuple, []}),
+    R2 = call_staking_contract(new_account(?ALOT), 0, protocol_enable, [], {tuple, []}),
     ?assertAbort('PROTOCOL_RESTRICTED', R2).
-
-test_fun_valuate() ->
-    ?INIT_SCENARIO(0, 0, 0, []),
-
-    %% Just to ensure that aging does not lower the value
-    R1 = call_staking_contract(restricted_account(), 0,
-                               valuate, [{100, 0}], word),
-    R2 = call_staking_contract(restricted_account(), 0,
-                               valuate, [{100, 1}], word),
-    R3 = call_staking_contract(restricted_account(), 0,
-                               valuate, [{100, 100}], word),
-    ?assert(R2 < R1),
-    ?assert(R3 < R2).
 
 test_fun_staked_tokens() ->
     ?INIT_SCENARIO(0, 0, 0, [Acct1, Acct2, Acct3]),
@@ -443,87 +429,6 @@ test_fun_retracted_stake() ->
 
     ?assertRetractedStake(Acct1, 120),
     ?assertRetractedStake(Acct2, 12).
-
-
-test_fun_extract_ripe_withdrawals() ->
-    ?INIT_SCENARIO(0, 0, 5, []),
-
-    InitHeight = aec_chain_sim:get_height(),
-
-    [add_keyblock() || _ <- lists:seq(1, 10)],
-    % Height should be around 10, so requests of height < 5
-    % would get extracted and > 5 would remain.
-
-    Test =
-        % Takes: - list of HEIGHTS of consequential withdrawals;
-        %        - expected list of VALUES & INDICES of remaining withdrawals;
-        % Will assign values/indices accordingly: 1, 2, 3...
-        fun(WithdrawalHeights, ExpWithdrawalValues) ->
-                ValueSeq = lists:seq(1, length(WithdrawalHeights)),
-                Withdrawals = [{V, InitHeight + T}
-                          || {V, T} <- lists:zip(
-                                         ValueSeq,
-                                         WithdrawalHeights
-                                        )
-                         ],
-                {T, ResWithdrawals} = call_staking_contract(
-                            extract_ripe_withdrawals, [Withdrawals],
-                            {tuple, [word, {list, {tuple, [word, word]}}]}),
-                ResValues = lists:sort([V || {V, _} <- ResWithdrawals]),
-                ?assertEqual(lists:sort(ExpWithdrawalValues), ResValues),
-                ?assertEqual(lists:sum(ValueSeq) - lists:sum(ResValues), T)
-        end,
-
-    % TODO quickcheck?
-    Test([0,9], [2]),
-    Test([0,0,0,0], []),
-    Test([1,2,3,4,5,6,7,8,9,0], [5,6,7,8,9]),
-    Test([9,8,9,8], [1,2,3,4]),
-    Test([9,1,7,2,8], [1,3,5]),
-    Test([1,9,9,8,4,8,9,9,2], [2,3,4,6,7,8]),
-
-    ok.
-
-
-test_fun_decrease_stake() ->
-    ?INIT_SCENARIO(0, 0, 0, []),
-    [add_keyblock() || _ <- [1,2,3,4,5,6,7,8]],
-
-    S = fun(Value, Created) -> {Value, Created} end,
-    Test =
-        fun(Stakes, Tokens, ExpStakes) ->
-                Remaining = call_staking_contract(
-                              decrease_stake, [Stakes, Tokens], {list, {tuple, [word, word]}}),
-                ?assertEqual(lists:sort(ExpStakes), lists:sort(Remaining))
-        end,
-
-    % Assuming that aging doesn't have negative effect on the value
-    % TODO quickcheck?
-    Test(
-      [S(1, 2), S(3, 5), S(1, 0)],
-      0,
-      [S(1, 2), S(3, 5), S(1, 0)]
-     ),
-
-    Test(
-      [S(10, 0), S(10, 1), S(10, 2), S(10, 3)],
-      10,
-      [S(10, 0), S(10, 1), S(10, 2)]
-     ),
-
-    Test(
-      [S(10, 0), S(10, 1), S(10, 2), S(10, 3)],
-      15,
-      [S(10, 0), S(10, 1), S(5, 2)]
-     ),
-
-    Test(
-      [S(5, 3), S(10, 2), S(20, 1), S(30, 0)],
-      55,
-      [S(10, 0)]
-     ),
-    ok.
-
 
 test_fun_punish() ->
     ?INIT_SCENARIO(1, 1, 2, [Acct]),
