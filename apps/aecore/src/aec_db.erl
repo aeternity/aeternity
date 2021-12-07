@@ -137,11 +137,12 @@
 -include("blocks.hrl").
 -include("aec_db.hrl").
 
--define(IF_RDB(TrueExpr, FalseExpr), case get_backend_module() of mnesia_rocksdb ->
-                                             TrueExpr;
-                                          _ ->
-                                             FalseExpr
-                                     end).
+%% -define(IF_RDB(TrueExpr, FalseExpr), case get_backend_module() of mnesia_rocksdb ->
+%%                                              TrueExpr;
+%%                                           _ ->
+%%                                              FalseExpr
+%%                                      end).
+-define(IF_RDB(_TrueExpr, FalseExpr), FalseExpr).
 
 %% - transactions
 %% - headers
@@ -326,28 +327,30 @@ ensure_transaction(Fun) when is_function(Fun, 0) ->
 ensure_activity(Type, Fun) when is_function(Fun, 0) ->
     ensure_activity(get_backend_module(), Type, Fun).
 
-ensure_activity(mnesia_rocksdb, Type, Fun) ->
-    lager:debug("Backend = mnesia_rocksdb, Type = ~p, F = ~p:~p/0",
-                [Type, fun_info(Fun,module), fun_info(Fun,name)]),
-    case mrdb:current_context() of
-        undefined ->
-            case get(mnesia_activity_state) of
-                undefined ->
-                    mrdb_activity(Type, Fun);
-                {_, _, non_transaction} ->
-                    mrdb_activity(Type, Fun);
-                _ ->
-                    Fun()
-            end;
-        #{type := tx} ->
-            Fun();
-        _ when Type == async_dirty; Type == sync_dirty ->
-            Fun();
-        _ ->
-            mrdb_activity(Type, Fun)
-    end;
+%% UW: uncommented for now, until rocksdb transactions are robustly supported
+%% in the Erlang adaptation.
+%%
+%% ensure_activity(mnesia_rocksdb, Type, Fun) ->
+%%     lager:debug("Backend = mnesia_rocksdb, Type = ~p, F = ~p:~p/0",
+%%                 [Type, fun_info(Fun,module), fun_info(Fun,name)]),
+%%     case mrdb:current_context() of
+%%         undefined ->
+%%             case get(mnesia_activity_state) of
+%%                 undefined ->
+%%                     mrdb_activity(Type, Fun);
+%%                 {_, _, non_transaction} ->
+%%                     mrdb_activity(Type, Fun);
+%%                 _ ->
+%%                     Fun()
+%%             end;
+%%         #{type := tx} ->
+%%             Fun();
+%%         _ when Type == async_dirty; Type == sync_dirty ->
+%%             Fun();
+%%         _ ->
+%%             mrdb_activity(Type, Fun)
+%%     end;
 ensure_activity(Backend, transaction, Fun) when is_function(Fun, 0) ->
-    lager:debug("Backend = ~p, Type = transaction", [Backend]),
     case get(mnesia_activity_state) of
         undefined ->
             mnesia:activity(transaction, Fun);
@@ -359,7 +362,6 @@ ensure_activity(Backend, transaction, Fun) when is_function(Fun, 0) ->
             Fun()
     end;
 ensure_activity(Backend, PreferredType, Fun) when is_function(Fun, 0) ->
-    lager:debug("Backend = ~p, Pref.Type = ~p", [Backend, PreferredType]),
     case get(mnesia_activity_state) of
         undefined ->
             mnesia:activity(PreferredType, Fun);
@@ -367,12 +369,12 @@ ensure_activity(Backend, PreferredType, Fun) when is_function(Fun, 0) ->
             Fun()
     end.
 
-fun_info(F, K) ->
-    {K, V} = erlang:fun_info(F, K),
-    V.
+%% fun_info(F, K) ->
+%%     {K, V} = erlang:fun_info(F, K),
+%%     V.
 
-mrdb_activity(Type, Fun) ->
-    mrdb:activity(Type, rocksdb_copies, Fun).
+%% mrdb_activity(Type, Fun) ->
+%%     mrdb:activity(Type, rocksdb_copies, Fun).
 
 %% ======================================================================
 %% mnesia access wrappers
