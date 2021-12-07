@@ -556,9 +556,7 @@ paths:
           content:
             application/json:
               schema:
-                properties:
-                  next_nonce:
-                    $ref: "#/components/schemas/UInt"
+                $ref: "#/components/schemas/NextNonceResponse"
         "400":
           description: Invalid public key
           content:
@@ -3653,6 +3651,13 @@ components:
           $ref: "#/components/schemas/UInt32"
       required:
         - count
+    NextNonceResponse:
+      type: object
+      properties:
+        next_nonce:
+          type: integer
+      required:
+        - next_nonce
   parameters:
     intAsString:
       in: query
