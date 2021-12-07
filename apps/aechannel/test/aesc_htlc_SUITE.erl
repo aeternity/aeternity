@@ -286,7 +286,7 @@ alice_gets_refund_after_timeout(Cfg) ->
     %%
     %% Transaction
     %%
-    {AbsTimeout, Cfg1} = new_send(A, B, Amount, Fee, Timeout, HashLock, Cfg),
+    {_AbsTimeout, Cfg1} = new_send(A, B, Amount, Fee, Timeout, HashLock, Cfg),
     {ok, AfterSend} =
         expect_balances(Before, [{A, [{client_balance, -(Amount + Fee)}]}], Cfg1),
     %% Refund timeout is `Timeout + 3`
@@ -385,7 +385,7 @@ request_hashlock(A, B, Amount, Cfg) ->
     ?LOG("Inband msg OK:~n~p", [Rep]),
     #{hashlock => HashLock, secret => Secret}.
 
-new_send(A, B, Amount, Fee, Timeout, #{hashlock := HashLock, secret := Secret}, Cfg) ->
+new_send(A, B, Amount, Fee, Timeout, #{hashlock := HashLock}, Cfg) ->
     {{ok, {integer, AbsTimeout}}, Cfg1} =
         client_calls_contract(A, <<"new_send">>, [Amount, B, Fee, Timeout, HashLock],
                               Amount + Fee, Cfg),
@@ -466,16 +466,6 @@ call_contract_({A, B}, ChId, F, Args, Deposit, Cfg) ->
 update_market(ChId, Ch, Cfg) ->
     M = ?config(market, Cfg),
     set_configs([{market, M#{ChId := Ch}}], Cfg).
-
-encode_args(As) ->
-    lists:map(fun encode_arg/1, As).
-
-encode_arg({int , I}) -> integer_to_list(I);
-encode_arg({hash, H}) -> encode_hash(H);
-encode_arg({addr, A}) -> A.
-
-encode_hash(Bin) when byte_size(Bin) == 32 ->
-    "#" ++ aeu_hex:bin_to_hex(Bin).
 
 check_all_balances(Keys, Cfg) ->
     Market = ?config(market, Cfg),
