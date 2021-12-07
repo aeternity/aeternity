@@ -450,6 +450,8 @@ state_pre_transform_key_node(KeyNode, _PrevNode, PrevKeyNode, Trees1) ->
             Trees1
     end.
 
+%% FIXME Dializer warning should go away when we merge further HC branches
+-dialyzer({nowarn_function, ensure_hc_activation_criteria/3}).
 -spec ensure_hc_activation_criteria(aec_block_insertion:chain_node(), aetx_env:env(), aec_trees:trees()) -> ok | {error, any()}.
 ensure_hc_activation_criteria(KeyNode, TxEnv, Trees) ->
     {ok,
@@ -591,6 +593,9 @@ new_unmined_key_node(PrevNode, PrevKeyNode, Height, Miner, Beneficiary, Protocol
             end
     end.
 
+%%TODO Finish the BL here, then
+%%TODO Remove dialyzer cheat after FAKE_BLOCK_HASH is replaced with an actual parameter.
+-dialyzer({nowarn_function, new_pos_key_node/8}).
 new_pos_key_node(PrevNode, PrevKeyNode, Height, Miner, Beneficiary, Protocol, InfoField, _TreesIn) ->
     %% TODO: PoGF - for now just ignore generational fraud - let's first get a basic version working
     %%       When handling PoGF the commitment point is in a different place than usual
