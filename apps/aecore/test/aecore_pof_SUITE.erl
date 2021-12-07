@@ -179,7 +179,6 @@ siblings_common(TopBlock, N1, N2, Account1, Account2) ->
     {ok, TxH2} = aeser_api_encoder:safe_decode(tx_hash, Tx2),
     {ok, Micro2, #{trees := Micro2State}} =  rpc:call(N1, aec_block_micro_candidate, create_with_txs, [TopBlock, [STx2]]),
     {ok, Micro2S} = rpc:call(N1, aec_keys, sign_micro_block, [Micro2]),
-    {ok, Micro2SH} = aec_blocks:hash_internal_representation(Micro2S),
 
     ct:log("Micro1: ~p", [Micro1]),
     ct:log("Micro2: ~p", [Micro2]),
@@ -187,11 +186,16 @@ siblings_common(TopBlock, N1, N2, Account1, Account2) ->
     %% Extend one branch of the microfork
     {ok, Micro3, _} =  rpc:call(N1, aec_block_micro_candidate, create_with_txs_and_state, [Micro2S, [], Micro2State]),
     {ok, Micro3S} = rpc:call(N1, aec_keys, sign_micro_block, [Micro3]),
-    {ok, Micro3SH} = aec_blocks:hash_internal_representation(Micro3S),
 
-    %% Before posting the microblocks the tx are in mempool
-    mempool = rpc:call(N2, aec_chain, find_tx_location, [TxH1]),
-    mempool = rpc:call(N2, aec_chain, find_tx_location, [TxH2]),
+    %% Before posting the microblocks ensure the txs are in the mempool on the other node.
+    aec_test_utils:wait_for_it_or_timeout(
+        fun() -> rpc:call(N2, aec_chain, find_tx_location, [TxH1]) end,
+        mempool,
+        100),
+    aec_test_utils:wait_for_it_or_timeout(
+        fun() -> rpc:call(N2, aec_chain, find_tx_location, [TxH2]) end,
+        mempool,
+        100),
 
     %% Post both blocks to mock that N1 is fraudulent
     ok = rpc:call(N2, aec_conductor, post_block, [Micro1S]),
