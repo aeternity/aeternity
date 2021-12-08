@@ -1949,12 +1949,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  status:
-                    type: string
-                required:
-                  - status
+                $ref: "#/components/schemas/CheckTxInPoolResponse"
         "404":
           description: Transaction is not in transaction pool
           content:
@@ -3658,6 +3653,13 @@ components:
           type: integer
       required:
         - next_nonce
+    CheckTxInPoolResponse:
+      type: object
+      properties:
+        status:
+          type: string
+      required:
+        - status
   parameters:
     intAsString:
       in: query
