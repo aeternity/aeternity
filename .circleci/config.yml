@@ -1108,7 +1108,7 @@ jobs:
                 name: Verify release artifacts
 parameters:
     aeplugin_devmode_version:
-        default: 0.4.0
+        default: 0.4.1
         type: string
     build_cache_version:
         default: v5
