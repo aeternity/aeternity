@@ -1352,6 +1352,7 @@ paying_for_contract(Config) ->
     ok.
 
 packing_contract_calls(Config) ->
+    ?skipRest(aect_test_utils:vm_version() =< ?VM_AEVM_SOPHIA_3, payable_not_pre_lima),
     Node = proplists:get_value(node_name, Config),
     %% Get account information.
     #{acc_a := #{pub_key := APub, priv_key := APriv}} = proplists:get_value(accounts, Config),

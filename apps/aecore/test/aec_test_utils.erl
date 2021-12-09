@@ -685,8 +685,7 @@ sign_tx(Tx, PrivKey, SignHash, Pfx) ->
 
 sign_tx(Tx, PrivKey, SignHash, AdditionalPrefix, Cfg) when is_binary(PrivKey) ->
     sign_tx(Tx, [PrivKey], SignHash, AdditionalPrefix, Cfg);
-sign_tx(Tx, PrivKeys, SignHash, AdditionalPrefix, Cfg) when is_list(PrivKeys) ->
-    Debug = get_debug(Cfg),
+sign_tx(Tx, PrivKeys, SignHash, AdditionalPrefix, _Cfg) when is_list(PrivKeys) ->
     Bin0 = aetx:serialize_to_binary(Tx),
     Bin1 =
         case SignHash of

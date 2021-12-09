@@ -695,7 +695,6 @@ init_per_group(OnGenesis, Config) when OnGenesis =:= on_genesis_block;
                                        OnGenesis =:= oas_on_genesis_block ->
     rpc(aec_conductor, reinit_chain, []),
     GenesisBlock = rpc(aec_chain, genesis_block, []),
-    Protocols = aec_hard_forks:sorted_protocol_versions(),
     [{current_block, GenesisBlock},
      {current_block_hash, hash(key, GenesisBlock)},
      {current_block_hash_wrong_type, hash(micro, GenesisBlock)},
