@@ -299,6 +299,9 @@ gas_limit(#aetx{ type = channel_offchain_tx }, _Height, _Version) ->
 gas_limit(#aetx{ type = channel_client_reconnect_tx }, _Height, _Version) ->
     0.
 
+-spec used_gas(Tx :: tx(), Height :: aec_blocks:height(),
+               Version :: aec_hard_forks:protocol_vsn(), Trees :: aec_trees:trees()) ->
+        Gas :: non_neg_integer().
 used_gas(Tx, Height, Version, Trees) ->
     used_gas(Tx, Height, Version, Trees, #{}).
 

@@ -128,7 +128,6 @@
         ]).
 -endif.
 
--include_lib("aecontract/include/hard_forks.hrl").
 -include("aec_block_insertion.hrl").
 -include("blocks.hrl").
 -include("aec_db.hrl").
