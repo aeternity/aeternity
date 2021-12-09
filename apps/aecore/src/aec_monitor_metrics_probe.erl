@@ -46,7 +46,7 @@ set_triggers() ->
     Triggers =
         [{long_gc, 500},
          {long_schedule, 500},
-         {large_heap, 2048 * 1024},
+         {large_heap, 42 * 1024 * 1024},
          busy_port,
          busy_dist_port],
     _ = erlang:system_monitor(self(), Triggers),
