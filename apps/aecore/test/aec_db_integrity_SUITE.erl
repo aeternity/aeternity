@@ -200,9 +200,9 @@ new_pubkey() ->
     #{public := PubKey} = enacl:sign_keypair(),
     PubKey.
 
-node_db_cfg(Node) ->
-    {ok, DbCfg} = aecore_suite_utils:get_node_db_config(
-                    fun (M, F, A)->
-                            rpc:call(aecore_suite_utils:node_name(Node), M, F, A, 5000)
-                    end),
-    {ok, DbCfg}.
+%% node_db_cfg(Node) ->
+%%     {ok, DbCfg} = aecore_suite_utils:get_node_db_config(
+%%                     fun (M, F, A)->
+%%                             rpc:call(aecore_suite_utils:node_name(Node), M, F, A, 5000)
+%%                     end),
+%%     {ok, DbCfg}.

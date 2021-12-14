@@ -49,7 +49,8 @@
          events_contract/1,
          payable_contract/1,
          paysplit_contract/1,
-         paying_for_contract/1
+         paying_for_contract/1,
+         packing_contract_calls/1
         ]).
 
 -define(NODE, dev1).
@@ -90,6 +91,7 @@ all() ->
         , payable_contract
         , paysplit_contract
         , paying_for_contract
+        , packing_contract_calls
         ]).
 
 groups() ->
@@ -1349,6 +1351,52 @@ paying_for_contract(Config) ->
 
     ok.
 
+packing_contract_calls(Config) ->
+    ?skipRest(aect_test_utils:vm_version() =< ?VM_AEVM_SOPHIA_3, payable_not_pre_lima),
+    Node = proplists:get_value(node_name, Config),
+    %% Get account information.
+    #{acc_a := #{pub_key := APub, priv_key := APriv}} = proplists:get_value(accounts, Config),
+
+    init_fun_calls(),
+    Payable = compile_test_contract("payable"),
+
+    {_EncCPubP, DecP, _} = create_contract(Node, APub, APriv, Payable, []),
+    force_fun_calls(Node),
+
+    {ok, Calldata1} = aect_test_utils:encode_call_data(maps:get(src, Payable), "foo", ["42"]),
+
+    CreateAndPost =
+        fun(Gas, NonceOffset) ->
+            CallSpec = #{call_data => Calldata1, abi_version => aect_test_utils:abi_version(),
+                         amount => 100, gas => Gas, nonce => get_online_nonce(APub) + NonceOffset},
+            CallTx = aect_test_utils:call_tx(APub, DecP, CallSpec, #{}),
+            SignCallTx = aec_test_utils:sign_tx(CallTx, APriv),
+            SerCall = aeser_api_encoder:encode(transaction, aetx_sign:serialize_to_binary(SignCallTx)),
+            {ok, 200, #{<<"tx_hash">> := CallTxHash}} = post_tx(SerCall),
+            CallTxHash
+        end,
+
+
+    TestN =
+        fun(N) ->
+            %% Post N transactions that won't fit in an old style microblock
+            Txs = [ CreateAndPost(3000000, Offset) || Offset <- lists:seq(0, N - 1) ],
+
+            %% Mine them
+            XS = aecore_suite_utils:mine_blocks_until_txs_on_chain(Node, Txs, ?MAX_MINED_BLOCKS * 5),
+            ct:log("MINE: ~p", [XS]),
+
+            %% Fetch their respective block
+            Blocks = lists:usort([ block_for_tx(Tx) || Tx <- Txs ]),
+            case aect_test_utils:latest_protocol_version() of
+                P when P =< ?IRIS_PROTOCOL_VSN ->
+                  ?assertEqual(N, length(Blocks));
+                P when P > ?IRIS_PROTOCOL_VSN ->
+                  ?assertEqual(1, length(Blocks))
+            end
+        end,
+
+    [ TestN(N) || N <- [2, 3, 5, 7] ].
 
 %% Internal access functions.
 
@@ -1842,3 +1890,9 @@ ttb_stop() ->
 
 get_nodes() ->
     [aecore_suite_utils:node_name(?NODE)].
+
+-define(NODENAME, aecore_suite_utils:node_name(?NODE)).
+block_for_tx(EncTxHash) ->
+    {ok, TxHash} = aeser_api_encoder:safe_decode(tx_hash, EncTxHash),
+    {BlockHash, _} = rpc:call(?NODENAME, aec_chain, find_tx_with_location, [TxHash]),
+    aeser_api_encoder:encode(micro_block_hash, BlockHash).

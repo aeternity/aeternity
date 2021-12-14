@@ -37,6 +37,7 @@
         , valid_at_protocol/2
         , check_protocol/2
         , swagger_name_to_type/1
+        , tx_min_gas/2
         ]).
 
 -ifdef(TEST).
@@ -249,6 +250,12 @@ deep_fee(AeTx, Trees, AccFee0) ->
             AccFee
     end.
 
+-spec tx_min_gas(Tx :: tx(), Version :: aec_hard_forks:protocol_vsn()) -> Gas :: integer().
+tx_min_gas(#aetx{type = Type, size = Size, cb = CB, tx = Tx}, Version) when ?IS_CONTRACT_TX(Type) ->
+    base_gas(Type, Version, CB:abi_version(Tx)) + size_gas(Size);
+tx_min_gas(#aetx{type = Type, size = Size}, Version) ->
+    base_gas(Type, Version) + size_gas(Size).
+
 %% In case 0 is returned, the tx will not be included in the micro block
 %% candidate by the mempool.
 -spec gas_limit(Tx :: tx(), Height :: aec_blocks:height(), Version :: aec_hard_forks:protocol_vsn()) ->
@@ -292,28 +299,46 @@ gas_limit(#aetx{ type = channel_offchain_tx }, _Height, _Version) ->
 gas_limit(#aetx{ type = channel_client_reconnect_tx }, _Height, _Version) ->
     0.
 
-used_gas(#aetx{ type = paying_for_tx, cb = CB, size = Size, tx = Tx }, Height, Version, Trees) ->
+-spec used_gas(Tx :: tx(), Height :: aec_blocks:height(),
+               Version :: aec_hard_forks:protocol_vsn(), Trees :: aec_trees:trees()) ->
+        Gas :: non_neg_integer().
+used_gas(Tx, Height, Version, Trees) ->
+    used_gas(Tx, Height, Version, Trees, #{}).
+
+used_gas(#aetx{ type = paying_for_tx, cb = CB, size = Size, tx = Tx }, Height, Version, Trees, Ctx) ->
     InnerTx = #aetx{ size = ISize } = aetx_sign:tx(CB:tx(Tx)),
     PayingForTxGas = base_gas(paying_for_tx, Version) + size_gas(Size - ISize),
-    InnerTxGas = used_gas(InnerTx, Height, Version, Trees),
+    InnerTxGas = used_gas(InnerTx, Height, Version, Trees, Ctx),
     PayingForTxGas + InnerTxGas;
-used_gas(#aetx{ type = ga_meta_tx, cb = CB, size = Size, tx = Tx }, Height, Version, Trees) ->
+used_gas(#aetx{ type = ga_meta_tx, cb = CB, size = Size, tx = Tx }, Height, Version, Trees, Ctx) ->
     %% note that this is different than how gas_limit/3 works!
-    CallsTrees = aec_trees:calls(Trees),
     Pubkey = CB:ga_pubkey(Tx),
     AuthCallId = CB:call_id(Tx, Trees),
-    AuthCall = aect_call_state_tree:get_call(Pubkey, AuthCallId, CallsTrees),
-    AuthGas = aect_call:gas_used(AuthCall),
-    base_gas(ga_meta_tx, Version, CB:abi_version(Tx)) + size_gas(Size) + AuthGas + used_gas(aetx_sign:tx(CB:tx(Tx)), Height, Version, Trees);
-used_gas(#aetx{type = Type, cb = CB, size = Size, tx = Tx}, _Height, Version,
-        Trees) when ?IS_CONTRACT_TX(Type) ->
-    CallsTrees = aec_trees:calls(Trees),
+    AuthGas = call_gas_used(Trees, Pubkey, AuthCallId),
+    base_gas(ga_meta_tx, Version, CB:abi_version(Tx)) + size_gas(Size) + AuthGas +
+        case CB:inner_tx_was_succesful(Tx, Trees) of
+            false -> 0;
+            true  -> used_gas(aetx_sign:tx(CB:tx(Tx)), Height, Version, Trees, Ctx#{ga_nonce => CB:auth_id(Tx)})
+        end;
+used_gas(#aetx{type = contract_create_tx, cb = CB, size = Size, tx = Tx}, _Height, Version, Trees, #{ga_nonce := GANonce}) ->
+    ContractPubkey = aect_contracts:compute_contract_pubkey(CB:owner_pubkey(Tx), GANonce),
+    CallId = aect_call:ga_id(GANonce, ContractPubkey),
+    base_gas(contract_create_tx, Version, CB:abi_version(Tx)) + size_gas(Size) + call_gas_used(Trees, ContractPubkey, CallId);
+used_gas(#aetx{type = contract_call_tx, cb = CB, size = Size, tx = Tx}, _Height, Version, Trees, #{ga_nonce := GANonce}) ->
+    ContractPubkey = CB:contract_pubkey(Tx),
+    CallId = aect_call:ga_id(GANonce, ContractPubkey),
+    base_gas(contract_call_tx, Version, CB:abi_version(Tx)) + size_gas(Size) + call_gas_used(Trees, ContractPubkey, CallId);
+used_gas(#aetx{type = Type, cb = CB, size = Size, tx = Tx}, _Height, Version, Trees, _Ctx) when ?IS_CONTRACT_TX(Type) ->
     ContractPubkey = CB:contract_pubkey(Tx),
     CallId = CB:call_id(Tx),
-    Call = aect_call_state_tree:get_call(ContractPubkey, CallId, CallsTrees),
-    base_gas(Type, Version, CB:abi_version(Tx)) + size_gas(Size) + aect_call:gas_used(Call);
-used_gas(#aetx{type = Type} = Aetx, Height, Version, _Trees) when not ?IS_CONTRACT_TX(Type) ->
+    base_gas(Type, Version, CB:abi_version(Tx)) + size_gas(Size) + call_gas_used(Trees, ContractPubkey, CallId);
+used_gas(#aetx{type = Type} = Aetx, Height, Version, _Trees, _Ctx) when not ?IS_CONTRACT_TX(Type) ->
     gas_limit(Aetx, Height, Version).
+
+call_gas_used(Trees, ContractPubkey, CallId) ->
+    CallsTrees = aec_trees:calls(Trees),
+    Call = aect_call_state_tree:get_call(ContractPubkey, CallId, CallsTrees),
+    aect_call:gas_used(Call).
 
 -spec inner_gas_limit(Tx :: tx(), Height :: aec_blocks:height(), Version :: aec_hard_forks:protocol_vsn()) ->
                              Gas :: non_neg_integer().
