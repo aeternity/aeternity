@@ -143,15 +143,13 @@ rollback_to_hash(Type, Hash) ->
     aec_db:ensure_activity(sync_dirty, F).
 
 do_rollback(ForkPoint, Height, TopHeight) ->
-    lager:info("Jumping to the community fork", []),
+    lager:info("Perform rollback from ~p to ~p", [TopHeight, Height]),
     aec_db:ensure_activity(sync_dirty,
                            fun() ->
                                    do_rollback_(ForkPoint, height, key, Height, TopHeight)
                            end).
 
 do_rollback_(ForkPoint, Mode, Type, Height, TopHeight) ->
-    lager:debug("Perform rollback from ~p to ~p", [TopHeight, Height]),
-    ensure_gc_disabled(),
     {value, FPHeader} = aec_db:find_header(ForkPoint),
     SafetyMargin = 1000, %% Why not?
     FromHeight = case Mode of
@@ -211,15 +209,6 @@ remove_tx_locations(Hash) ->
 
 remove_tx(TxHash) ->
     aec_db:remove_tx(TxHash).
-
-ensure_gc_disabled() ->
-    case aec_db_gc:config() of
-        #{enabled := false} -> ok;
-        #{enabled := true} ->
-            Msg = "It looks like you want to join the community fork but you are already on the wrong chain. Unfortunatelly as the garbage collector is enabled there is nothing we can do switch automatically - please either sync from genesis or start the node from a db backup from before the forking point and reenable GC after syncing with the correct chain",
-            lager:error(Msg, []),
-            init:stop(Msg)
-    end.
 
 %% -------------------------------------------------------------------
 %% Deserialization

@@ -68,7 +68,7 @@ rollback(Node, #{opts := Opts}) ->
     end.
 
 
-check_block_hash(Hash, Node, St) ->
+check_block_hash(Hash, Node, #{ top_height := TopHeight } = St) ->
     NotValidHash = fun() -> abort("Specified hash is not a valid block hash") end,
     {Type, DecHash} =
         try aeser_api_encoder:decode(list_to_binary(Hash)) of
@@ -86,6 +86,7 @@ check_block_hash(Hash, Node, St) ->
     case rpc:call(Node, aec_chain, get_header, [DecHash]) of
         {ok, Hdr} ->
             HdrHeight = aec_headers:height(Hdr),
+            assert_gc(Node, TopHeight, HdrHeight),
             HdrType = case Type of
                           micro_block_hash -> micro;
                           key_block_hash   -> key
@@ -119,8 +120,9 @@ do_rollback(Spec, Node, _Opts) ->
 
 state_at_height(_Node, H, #{ top_height := TopHeight }) when H > TopHeight ->
     abort("Rollback height (~p) exceeds current top height (~p)", [H, TopHeight]);
-state_at_height(Node, H, St) ->
+state_at_height(Node, H, #{ top_height := TopHeight } = St) ->
     Hdr = header_by_height(Node, H),
+    assert_gc(Node, TopHeight, H),
     Hash = aec_headers:hash_header(Hdr),
     St#{ from => #{ height => H
                   , hash   => Hash
@@ -162,4 +164,21 @@ header_by_height(Node, H) ->
             Hdr;
         _ ->
             abort("Could not fetch header at height ~p", [H])
+    end.
+
+
+assert_gc(Node, TopHeight, RollbackHeight) ->
+    #{enabled  := Enabled
+    , interval := _Interval
+    , history  := History} = rpc:call(Node, aec_db_gc, config, []),
+    case Enabled of
+        true ->
+            LowestAllowedHeight = TopHeight - History,
+            case RollbackHeight < LowestAllowedHeight of
+                true ->
+                    abort("Rollback height (~p) is marked for GC. Lowest allowed rollback height is ~p",
+                          [RollbackHeight, LowestAllowedHeight]);
+                false -> ok
+            end;
+        false -> ok
     end.
