@@ -68,7 +68,10 @@ run(Queue, F) ->
         error:{rejected, _} ->
             {503, [], #{reason => <<"Temporary overload">>}};
         error:timeout ->
-            {503, [], #{reason => <<"Not yet started">>}}
+            {503, [], #{reason => <<"Not yet started">>}};
+        Class:Reason:Stacktrace ->
+            lager:error("CRASH ~p ~p, ~p", [Class, Reason, Stacktrace]),
+            {500, [], #{reason => <<"Internal server error">>}}
     end.
 
 %% read transactions
@@ -90,7 +93,7 @@ queue('GetGenerationByHeight')                  -> ?READ_Q;
 queue('GetAccountByPubkey')                     -> ?READ_Q;
 queue('GetAccountByPubkeyAndHeight')            -> ?READ_Q;
 queue('GetPendingAccountTransactionsByPubkey')  -> ?READ_Q;
-queue('GetAccountNextNonce')                     -> ?READ_Q;
+queue('GetAccountNextNonce')                    -> ?READ_Q;
 queue('GetTransactionByHash')                   -> ?READ_Q;
 queue('GetTransactionInfoByHash')               -> ?READ_Q;
 queue('GetContract')                            -> ?READ_Q;

@@ -1895,6 +1895,28 @@ paths:
           description: Height not available
           schema:
             $ref: '#/definitions/Error'
+  /debug/crash:
+    get:
+      tags:
+        - internal
+        - debug
+      operationId: GetCrashRequest
+      description: This is a sample URI to simulate a request crash. Shall be used for test purposes only
+      produces:
+        - application/json
+      parameters: []
+      responses:
+        '200':
+          description: This will never happen
+          schema:
+            type: object
+            properties:
+              next_nonce:
+                type: integer
+        '500':
+          description: We always end up here
+          schema:
+            $ref: "#/components/schemas/Error"
 
 
 ##
