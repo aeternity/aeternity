@@ -12,6 +12,7 @@
     exometer_core,
     yamerl
    ]},
+  {runtime_dependencies, ["app_ctrl-0.1.0"]},
   {mod, {aeutils_app, []}},
   {env,[
         {'$setup_hooks',

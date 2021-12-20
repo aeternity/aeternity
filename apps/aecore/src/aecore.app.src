@@ -46,6 +46,7 @@
     aeserialization,
     ranch
   ]},
+  {runtime_dependencies, ["app_ctrl-0.1.0"]},
   {env, [
          {'$app_ctrl',
           [
