@@ -2039,6 +2039,22 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  "/node/operator/peers/count":
+    get:
+      tags:
+        - internal
+        - node-operator
+      operationId: GetPeerCount
+      description: Get the number of peers in the different pools. This is to be used to catch if a node loses connectivity 
+      parameters:
+        - $ref: '#/components/parameters/intAsString'
+      responses:
+        "200":
+          description: The different count of peers in the respective pools
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PeerCount"
 components:
   schemas:
     UInt:
@@ -3333,6 +3349,29 @@ components:
             $ref: "#/components/schemas/Peer"
       required:
         - peers
+        - blocked
+    PeerCount:
+      type: object
+      properties:
+        connected:
+          type: object
+          properties:
+            inbound:
+              $ref: "#/components/schemas/UInt64"
+            outbound:
+              $ref: "#/components/schemas/UInt64"
+        available:
+          type: object
+          properties:
+            verified:
+              $ref: "#/components/schemas/UInt64"
+            unverified:
+              $ref: "#/components/schemas/UInt64"
+        blocked:
+          $ref: "#/components/schemas/UInt64"
+      required:
+        - connected
+        - available
         - blocked
     ContractCreateTx:
       type: object

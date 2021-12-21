@@ -42,6 +42,7 @@
    , post_transactions_sut/1
    , get_transactions_pending_sut/0
    , delete_tx_from_mempool_sut/1
+   , get_peer_count_sut/0
    , get_key_blocks_current_height_sut/0
    ]).
 
@@ -1461,6 +1462,10 @@ delete_tx_from_mempool_sut(Hash) when is_binary(Hash) ->
 delete_tx_from_mempool_sut(Hash) when is_list(Hash) ->
     Host = internal_address(),
     http_request(Host, delete, "node/operator/mempool/hash/" ++ Hash, []).
+
+get_peer_count_sut() ->
+    Host = internal_address(),
+    http_request(Host, get, "node/operator/peers/count", []).
 
 %% /transactions/*
 
