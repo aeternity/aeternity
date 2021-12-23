@@ -106,7 +106,7 @@ commands:
             - run:
                 command: |
                     docker pull aeternity/builder:bionic-otp22
-                    docker build -t << pipeline.parameters.docker_repo >>:<< parameters.tag >> .
+                    docker build -t << pipeline.parameters.docker_repo >>:${CIRCLE_BRANCH/\//_} .
                 name: Build docker image
             - run:
                 command: |
@@ -1732,4 +1732,3 @@ workflows:
                         only:
                             - << pipeline.parameters.master_branch >>
     version: 2
-
