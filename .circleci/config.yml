@@ -112,7 +112,7 @@ commands:
                 command: |
                     docker run -d -e AE__CHAIN__PERSIST -e AE__FORK_MANAGEMENT__NETWORK_ID \
                       --name ae_<< pipeline.git.revision >> \
-                      << pipeline.parameters.docker_repo >>:<< parameters.tag >> \
+                      << pipeline.parameters.docker_repo >>:${CIRCLE_BRANCH/\//_} \
                       bin/aeternity console -noinput -network_id ae_test
                 name: Start docker image
             - run:
