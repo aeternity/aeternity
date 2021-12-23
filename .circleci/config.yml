@@ -106,13 +106,13 @@ commands:
             - run:
                 command: |
                     docker pull aeternity/builder:bionic-otp22
-                    docker build -t << pipeline.parameters.docker_repo >>:${CIRCLE_BRANCH/\//_} .
+                    docker build -t << pipeline.parameters.docker_repo >>:<< parameters.tag >> .
                 name: Build docker image
             - run:
                 command: |
                     docker run -d -e AE__CHAIN__PERSIST -e AE__FORK_MANAGEMENT__NETWORK_ID \
                       --name ae_<< pipeline.git.revision >> \
-                      << pipeline.parameters.docker_repo >>:${CIRCLE_BRANCH/\//_} \
+                      << pipeline.parameters.docker_repo >>:<< parameters.tag >> \
                       bin/aeternity console -noinput -network_id ae_test
                 name: Start docker image
             - run:
