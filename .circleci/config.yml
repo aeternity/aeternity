@@ -612,7 +612,7 @@ executors:
         working_directory: /home/circleci/aeternity
     infrastructure_container_stable:
         docker:
-            - image: aeternity/infrastructure:stable
+            - image: aeternity/infrastructure:v2.12.3
         resource_class: large
     infrastructure_container_unstable:
         docker:
