@@ -935,7 +935,7 @@ jobs:
             - fail_notification
     macos-tarball:
         macos:
-            xcode: 11.1.0
+            xcode: 11.7.0
         parameters:
             aeplugin_devmode:
                 default: false
