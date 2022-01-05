@@ -1387,11 +1387,11 @@ workflows:
                     - upload-tarballs-s3
                 uri: s3://<< pipeline.parameters.s3_builds_bucket >>/aeternity-$CIRCLE_SHA1-ubuntu-x86_64.tar.gz
             - macos-tarball:
-                filters:
-                    branches:
-                        only:
-                            - /releases\/.*/
-                            - << pipeline.parameters.master_branch >>
+#                filters:
+#                    branches:
+#                        only:
+#                            - /releases\/.*/
+#                            - << pipeline.parameters.master_branch >>
                 name: macos-tarball
                 package_name: aeternity-$CIRCLE_SHA1-macos-x86_64.tar.gz
                 requires: []
@@ -1732,4 +1732,3 @@ workflows:
                         only:
                             - << pipeline.parameters.master_branch >>
     version: 2
-
