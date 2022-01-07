@@ -35,7 +35,7 @@ If the node is unresponsive, inspect the `log` directory for errors.
 
 Back up the peer key pair:
 ```bash
-cp -pr ~/aeternity/node/keys ~/my_aeternity_keys
+cp -pr ~/aeternity/node/data/aecore/keys ~/my_aeternity_keys
 ```
 
 ## Mainnet connection
