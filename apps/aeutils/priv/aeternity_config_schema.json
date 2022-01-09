@@ -1322,7 +1322,7 @@
                         "dry-run" : {
                             "description" : "External protected dry run endpoint",
                             "type" : "boolean",
-                            "default": false
+                            "default": true
                         },
                         "debug" : {
                             "description" : "Deprecated. See also 'http > internal > debug_endpoints' KILLME FIXME",
