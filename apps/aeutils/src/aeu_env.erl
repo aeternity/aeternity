@@ -542,7 +542,12 @@ pp_error_({error, [{data_invalid, Schema, Type, Value, Pos}]}) ->
               "Position: ~s~n"
               "Value   : ~s~n"
               "Schema  :~n~s~n"
-              "Reason  : ~s~n", [PosStr, ValStr, SchemaStr, TypeStr]).
+              "Reason  : ~s~n", [PosStr, ValStr, SchemaStr, TypeStr]);
+pp_error_({error, [{schema_invalid, Section, Description}]}) ->
+    SchemaStr = jsx:prettify(jsx:encode(Section)),
+    io:fwrite("Reading schema failed~n"
+              "Section: ~n~s~n"
+              "Reason: ~p~n", [SchemaStr, Description]).
 
 pp_pos([A,B|T]) when is_integer(B) ->
     [pp_pos_(A), pp_pos_(B) | pp_pos(T)];
