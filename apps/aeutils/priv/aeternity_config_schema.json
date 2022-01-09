@@ -1331,6 +1331,11 @@
                         }
                     }
                 },
+                "debug" : {
+                    "description" : "Deprecated. See also 'http > internal > debug_endpoints'",
+                    "type" : "boolean",
+                    "default": false
+                },
                 "cache": {
                     "type": "object",
                     "additionalProperties": false,
