@@ -1324,15 +1324,20 @@
                             "type" : "boolean",
                             "default": false
                         },
+                        "debug" : {
+                            "description" : "Deprecated. See also 'http > internal > debug_endpoints' KILLME FIXME",
+                            "type" : "boolean",
+                            "default": false
+                        },
                         "obsolete" : {
-                            "description" : "Old endpoints that will be removed",
+                            "description" : "Old endpoints that will be removed.",
                             "type" : "array",
-                            "default": []
+                            "default": ["debug"]
                         }
                     }
                 },
                 "debug" : {
-                    "description" : "Deprecated. See also 'http > internal > debug_endpoints'",
+                    "description" : "Deprecated. See also 'http > internal > debug_endpoints' KILLME FIXME",
                     "type" : "boolean",
                     "default": false
                 },
