@@ -784,6 +784,11 @@
                                     "type" : "integer",
                                     "default" : 1
                                 },
+                                "unexpected_state_hash" : {
+                                    "description" : "If the set delegates is based on the latest state hash which is different. We provide a grace period in a number of generations.",
+                                    "type" : "integer",
+                                    "default" : 5
+                                },
                                 "unexpected_round" : {
                                     "description" : "If the set delegates is based on the latest round which is different. We provide a grace period in a number of generations.",
                                     "type" : "integer",
