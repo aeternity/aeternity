@@ -37,25 +37,24 @@
                             "config": {
                                 "description": "Configuration for the given plugin",
                                 "type": "object",
-                                "oneOf": [
-                                    {"properties": {}}
-                                ]
+                                "oneOf": [{"properties": {}}]
                             }
                         }
-                    }
+                    },
+                    "default": []
                 }
             }
         },
         "peers" : {
-            "description" :
-            "Pre-configured addresses of nodes to contact. If not set testnet or mainnet seed peers will be used based on network_id configuration value.",
+            "description" : "Pre-configured addresses of nodes to contact. If not set testnet or mainnet seed peers will be used based on network_id configuration value.",
             "type"  : "array",
             "items" : {
                 "type" : "string",
                 "description" : "Aeternity Node address",
                 "example" : "aenode://pp_ySU7cHqsymnuBP9iSe4rMnH1Rz2FStx5rnoewYMJcuPhdaqPk@192.168.1.1:3015",
                 "pattern": "^aenode://pp_[a-zA-Z0-9]+@[^:\\.\"!#$%^&*()',/]+(\\.[^:\\.\"!#$%^&*()',/]+)*:[0-9]+/*$"
-            }
+            },
+            "default": []
         },
         "include_default_peers": {
             "description" : "If the default peers shall be added as trusted peers. Note: setting this to false means that the default seed nodes would not be used and a proper set of peers had been added instead.",
@@ -63,43 +62,49 @@
             "default": true
             },
         "blocked_peers" : {
-            "description" :
-            "Pre-configured addresses of nodes NOT to contact",
+            "description" : "Pre-configured addresses of nodes NOT to contact",
             "type"  : "array",
             "items" : {
                 "type" : "string",
                 "description" : "Aeternity Node address",
                 "example" : "aenode://pp_ySU7cHqsymnuBP9iSe4rMnH1Rz2FStx5rnoewYMJcuPhdaqPk@192.168.1.1:3015",
                 "pattern": "^aenode://pp_[a-zA-Z0-9]+@[^:\\.\"!#$%^&*()',/]+(\\.[^:\\.\"!#$%^&*()',/]+)*:[0-9]+/*$"
-            }
+            },
+            "default": []
         },
         "mempool" : {
             "type" : "object",
             "additionalProperties" : false,
             "properties" : {
                 "tx_ttl" : {
-                    "description" : "Number of blocks before inactive TXs are garbage collected",
-                    "type" : "integer"
+                    "description" : "Number of blocks before inactive TXs are garbage collected. Default: `(60 div 3) * 24 * 2 * 7`",
+                    "type" : "integer",
+                    "default" : 6720
                 },
                 "invalid_tx_ttl" : {
                     "description" : "Number of blocks before invalid (TTL or low nonce) TXs are garbage collected",
-                    "type" : "integer"
+                    "type" : "integer",
+                    "default" : 5
                 },
                 "sync_interval" : {
-                   "description" : "Interval between mempool (re-)synchronization (in ms)",
-                   "type" : "integer"
+                   "description" : "Interval between mempool (re-)synchronization (in ms) Default: `30 * 60 * 1000`",
+                   "type" : "integer",
+                   "default" : 1800000
                 },
                 "nonce_offset" : {
                     "description" : "Maximum nonce offset accepted",
-                    "type" : "integer"
+                    "type" : "integer",
+                    "default" : 5
                 },
                 "nonce_baseline" : {
                     "description" : "Maximum nonce accepted when pubkey is not present in state",
-                    "type" : "integer"
+                    "type" : "integer",
+                    "default" : 1
                 },
                 "cache_size" : {
                     "description" : "Maximum number of recently received cached transactions",
-                    "type" : "integer"
+                    "type" : "integer",
+                    "default" : 200
                 },
                 "allow_reentry_of_txs" : {
                     "description" : "Allow already deleted transactions to reenter the tx-pool.",
@@ -784,7 +789,7 @@
                                     "type" : "integer",
                                     "default" : 5
                                 },
-                                "unexpected_state_hash" : {
+                                "unexpected_round" : {
                                     "description" : "If the set delegates is based on the latest round which is different. We provide a grace period in a number of generations.",
                                     "type" : "integer",
                                     "default" : 5
