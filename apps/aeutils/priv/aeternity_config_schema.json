@@ -37,24 +37,25 @@
                             "config": {
                                 "description": "Configuration for the given plugin",
                                 "type": "object",
-                                "oneOf": [{"properties": {}}]
+                                "oneOf": [
+                                    {"properties": {}}
+                                ]
                             }
                         }
-                    },
-                    "default": []
+                    }
                 }
             }
         },
         "peers" : {
-            "description" : "Pre-configured addresses of nodes to contact. If not set testnet or mainnet seed peers will be used based on network_id configuration value.",
+            "description" :
+            "Pre-configured addresses of nodes to contact. If not set testnet or mainnet seed peers will be used based on network_id configuration value.",
             "type"  : "array",
             "items" : {
                 "type" : "string",
                 "description" : "Aeternity Node address",
                 "example" : "aenode://pp_ySU7cHqsymnuBP9iSe4rMnH1Rz2FStx5rnoewYMJcuPhdaqPk@192.168.1.1:3015",
                 "pattern": "^aenode://pp_[a-zA-Z0-9]+@[^:\\.\"!#$%^&*()',/]+(\\.[^:\\.\"!#$%^&*()',/]+)*:[0-9]+/*$"
-            },
-            "default": []
+            }
         },
         "include_default_peers": {
             "description" : "If the default peers shall be added as trusted peers. Note: setting this to false means that the default seed nodes would not be used and a proper set of peers had been added instead.",
@@ -62,49 +63,43 @@
             "default": true
             },
         "blocked_peers" : {
-            "description" : "Pre-configured addresses of nodes NOT to contact",
+            "description" :
+            "Pre-configured addresses of nodes NOT to contact",
             "type"  : "array",
             "items" : {
                 "type" : "string",
                 "description" : "Aeternity Node address",
                 "example" : "aenode://pp_ySU7cHqsymnuBP9iSe4rMnH1Rz2FStx5rnoewYMJcuPhdaqPk@192.168.1.1:3015",
                 "pattern": "^aenode://pp_[a-zA-Z0-9]+@[^:\\.\"!#$%^&*()',/]+(\\.[^:\\.\"!#$%^&*()',/]+)*:[0-9]+/*$"
-            },
-            "default": []
+            }
         },
         "mempool" : {
             "type" : "object",
             "additionalProperties" : false,
             "properties" : {
                 "tx_ttl" : {
-                    "description" : "Number of blocks before inactive TXs are garbage collected. Default: `(60 div 3) * 24 * 2 * 7`",
-                    "type" : "integer",
-                    "default" : 6720
+                    "description" : "Number of blocks before inactive TXs are garbage collected",
+                    "type" : "integer"
                 },
                 "invalid_tx_ttl" : {
                     "description" : "Number of blocks before invalid (TTL or low nonce) TXs are garbage collected",
-                    "type" : "integer",
-                    "default" : 5
+                    "type" : "integer"
                 },
                 "sync_interval" : {
-                   "description" : "Interval between mempool (re-)synchronization (in ms) Default: `30 * 60 * 1000`",
-                   "type" : "integer",
-                   "default" : 1800000
+                   "description" : "Interval between mempool (re-)synchronization (in ms)",
+                   "type" : "integer"
                 },
                 "nonce_offset" : {
                     "description" : "Maximum nonce offset accepted",
-                    "type" : "integer",
-                    "default" : 5
+                    "type" : "integer"
                 },
                 "nonce_baseline" : {
                     "description" : "Maximum nonce accepted when pubkey is not present in state",
-                    "type" : "integer",
-                    "default" : 1
+                    "type" : "integer"
                 },
                 "cache_size" : {
                     "description" : "Maximum number of recently received cached transactions",
-                    "type" : "integer",
-                    "default" : 200
+                    "type" : "integer"
                 },
                 "allow_reentry_of_txs" : {
                     "description" : "Allow already deleted transactions to reenter the tx-pool.",
@@ -789,7 +784,7 @@
                                     "type" : "integer",
                                     "default" : 5
                                 },
-                                "unexpected_round" : {
+                                "unexpected_state_hash" : {
                                     "description" : "If the set delegates is based on the latest round which is different. We provide a grace period in a number of generations.",
                                     "type" : "integer",
                                     "default" : 5
@@ -1012,25 +1007,23 @@
                     "default" : false
                 },
                 "listen_address": {
-                    "description": "Listen address for external interface. This should be publicly accessible",
-                    "type": "string",
-                    "example": "0.0.0.0",
-                    "default": "0.0.0.0"
-                },
+                          "description": "Listen address for external interface. This should be publicly accessible",
+                          "type": "string",
+                          "example": "0.0.0.0"
+                        },
                 "port" : {
-                    "description" : "Local port used for incoming sync connections. If behind NAT this may differ from the 'external_port' value.",
-                    "type" : "integer",
-                    "default" : 3015
+                    "description" : "Port used for (incoming) sync connections, must be reachable from the public facing IP",
+                    "type" : "integer"
                 },
+
                 "ping_interval" : {
                     "description" : "Interval between pings (in ms)",
-                    "type" : "integer",
-                    "default" : 120000
+                    "type" : "integer"
                 },
                 "external_port" : {
-                    "description" : "Listen port for external sync connections. This must be the WAN-facing port number (depending on NAT configuration this may be different from 'port' value above).",
-                    "type" : "integer",
-                    "default": 3015
+                    "description" :
+                    "Listen port for external sync connections.",
+                    "type" : "integer"
                 },
                 "acceptors" : {
                     "description" : "Number of acceptors in listening pool",
@@ -1109,8 +1102,7 @@
                 },
                 "gossip_allowed_height_from_top" : {
                     "description": "Allowed height difference from current top for incoming blocks (via gossip)",
-                    "type" : "integer",
-                    "default" : 5
+                    "type" : "integer"
                 },
                 "sync_allowed_height_from_top" : {
                     "description": "Once own node is synced, reject sync blocks at least this far from the current top; 0 means disabled",
@@ -1124,8 +1116,7 @@
                 },
                 "whitelist_file" : {
                     "description" : "The name of a block hash whitelist file (JSON format)",
-                    "type" : "string",
-                    "default" : ".block_whitelist.json" 
+                    "type" : "string"
                 },
                 "log_peer_connection_count_interval" : {
                     "description": "Time (milliseconds) between logging info about connected peers",
@@ -1233,23 +1224,20 @@
                         "listen_address": {
                           "description": "Listen address for external interface. This should be publicly accessible",
                           "type": "string",
-                          "example": "0.0.0.0",
-                          "default": "0.0.0.0"
+                          "example": "0.0.0.0"
                         },
                         "port" : {
-                            "description" : "Listen port for external HTTP interface.",
-                            "type" : "integer",
-                            "default" : 3013
+                            "description" :
+                            "Listen port for external HTTP interface.",
+                            "type" : "integer"
                         },
                         "request_timeout" : {
                             "description" : "HTTP Request timeout.",
-                            "type" : "integer",
-                            "default" : 30000
+                            "type" : "integer"
                         },
                         "connect_timeout" : {
                             "description" : "HTTP Request connect timeout.",
-                            "type" : "integer",
-                            "default" : 1000
+                            "type" : "integer"
                         },
                         "acceptors" : {
                             "description" : "Number of acceptors in external pool",
@@ -1270,13 +1258,12 @@
                         "listen_address": {
                           "description": "Listen address for internal interface. This should not be publicly accessible",
                           "type": "string",
-                          "example": "127.0.0.1",
-                          "default" : "127.0.0.1"
+                          "example": "127.0.0.1"
                         },
                         "port" : {
-                            "description" : "Listen port for internal HTTP interface.",
-                            "type" : "integer",
-                            "default" : 3113
+                            "description" :
+                            "Listen port for internal HTTP interface.",
+                            "type" : "integer"
                         },
                         "acceptors" : {
                             "description" : "Number of acceptors in internal pool",
@@ -1291,60 +1278,47 @@
                     }
                 },
                 "endpoints" : {
-                    "type": "object",
-                    "additionalProperties": false,
-                    "properties": {
-                        "gossip" : {
-                            "description" : "Gossip protocol API",
-                            "type" : "boolean",
-                            "default": true
-                        },
-                        "name_service" : {
-                            "description" : "Name resolution API",
-                            "type" : "boolean",
-                            "default": true
-                        },
-                        "chain" : {
-                            "description" : "Chain state inspection endpoints",
-                            "type" : "boolean",
-                            "default": true
-                        },
-                        "transactions" : {
-                            "description" : "Transactions insection endpoints",
-                            "type" : "boolean",
-                            "default": true
-                        },
-                        "node_operator" : {
-                            "description" : "Node operator endpoints",
-                            "type" : "boolean",
-                            "default" : false
-                        },
-                        "dev" : {
-                            "description" : "Development only API - for validation of client implementations. Should not be used in real life scenarios",
-                            "type" : "boolean",
-                            "default": false
-                        },
-                        "dry-run" : {
-                            "description" : "External protected dry run endpoint",
-                            "type" : "boolean",
-                            "default": true
-                        },
-                        "debug" : {
-                            "description" : "Deprecated. See also 'http > internal > debug_endpoints' KILLME FIXME",
-                            "type" : "boolean",
-                            "default": false
-                        },
-                        "obsolete" : {
-                            "description" : "Old endpoints that will be removed.",
-                            "type" : "array",
-                            "default": ["debug"]
-                        }
+                    "gossip" : {
+                        "description" : "Gossip protocol API",
+                        "type" : "boolean"
+                    },
+                    "name_service" : {
+                        "description" : "Name resolution API",
+                        "type" : "boolean"
+                    },
+                    "chain" : {
+                        "description" : "Chain state inspection endpoints",
+                        "type" : "boolean"
+                    },
+                    "transactions" : {
+                        "description" : "Transactions insection endpoints",
+                        "type" : "boolean"
+                    },
+                    "node_operator" : {
+                        "description" : "Node operator endpoints",
+                        "type" : "boolean",
+                        "default" : false
+                    },
+                    "dev" : {
+                        "description" : "Development only API - for validation of client implementations. Should not be used in real life scenarios",
+                        "type" : "boolean"
+                    },
+                    "debug" : {
+                        "description" : "Deprecated. See also 'http > internal > debug_endpoints'",
+                        "type" : "boolean"
+                    },
+                    "obsolete" : {
+                        "description" : "Old endpoints that will be removed",
+                        "type" : "boolean"
+                    },
+                    "dry-run" : {
+                        "description" : "External protected dry run endpoint",
+                        "type" : "boolean"
                     }
                 },
                 "debug" : {
-                    "description" : "Deprecated. See also 'http > internal > debug_endpoints' KILLME FIXME",
-                    "type" : "boolean",
-                    "default": false
+                    "description" : "Deprecated. See also 'http > internal > debug_endpoints'",
+                    "type" : "boolean"
                 },
                 "cache": {
                     "type": "object",
@@ -1388,16 +1362,16 @@
                     "type" : "object",
                     "additionalProperties" : false,
                     "properties" : {
-                        "listen_address": {
-                            "description": "Listen address for channels websocket interface.",
-                            "type": "string",
-                            "default": "127.0.0.1",
-                            "example": "0.0.0.0"
-                        },
                         "port" : {
-                            "description" : "Listen port for channels websocket interface.",
-                            "type" : "integer",
-                            "default" : 3014
+                            "description" :
+                            "Listen port for channels websocket interface.",
+                            "type" : "integer"
+                        },
+                        "listen_address": {
+                          "description": "Listen address for channels websocket interface.",
+                          "type": "string",
+                          "default": "127.0.0.1",
+                          "example": "0.0.0.0"
                         },
                         "acceptors" : {
                             "description" : "Number of acceptors in pool",
@@ -1429,7 +1403,8 @@
             "additionalProperties" : false,
             "properties" : {
                 "persist" : {
-                    "description" : "If true, all changes to the chain are written to disk.",
+                    "description" :
+                    "If true, all changes to the chain are written to disk.",
                     "type" : "boolean",
                     "default" : true
                 },
@@ -1531,17 +1506,18 @@
             "additionalProperties" : false,
             "properties" : {
                 "autostart" : {
-                    "description" : "If true, the node will start mining automatically.",
-                    "type" : "boolean",
-                    "default" : false
+                    "description" :
+                    "If true, the node will start mining automatically.",
+                    "type" : "boolean"
                 },
                 "attempt_timeout" : {
-                    "description" : "Maximum time (milliseconds) for each attempt to mine a block with a specific nonce.",
-                    "type" : "integer",
-                    "default" : 3600000
+                    "description" :
+                    "Maximum time (milliseconds) for each attempt to mine a block with a specific nonce.",
+                    "type" : "integer"
                 },
                 "beneficiary" : {
-                    "description" : "Public key of beneficiary account that will receive fees from mining on a node. Required when 'mining.autostart' is set to 'true'.",
+                    "description" :
+                    "Public key of beneficiary account that will receive fees from mining on a node. Required when 'mining.autostart' is set to 'true'.",
                     "type" : "string",
                     "example" : "ak_DummyPubKeyDoNotEverUse999999999999999999999999999",
                     "pattern": "^ak_[1-9A-HJ-NP-Za-km-z]*$"
@@ -1583,7 +1559,8 @@
                     "minimum" : 0
                 },
                 "strictly_follow_top" : {
-                    "description" : "If true, removes the risk of a race condition with eventual forking in fast mining context",
+                    "description" :
+                    "If true, removes the risk of a race condition with eventual forking in fast mining context",
                     "type" : "boolean",
                     "default": false
                 },
@@ -1718,8 +1695,7 @@
                     "description" :
                     "Controls the overload protection in the logs. Default=50.",
                     "type" : "integer",
-                    "minimum" : 50,
-                    "default": 50},
+                    "minimum" : 50 },
                 "level"   : {
                     "description" :
                     "Sets the level of logging in the default, mining, cuckoo and sync logs.",
@@ -1849,7 +1825,8 @@
                     "additionalProperties" : false,
                     "properties" : {
                         "size" : {
-                            "description" : "Number of transactions in the mempool",
+                            "description" :
+                            "Number of transactions in the mempool",
                             "type" : "string",
                             "$ref" : "#/definitions/key_value_pattern",
                             "default" : "1000:1,2000:2,3000:3,4000:4"
@@ -2137,14 +2114,12 @@
                             "default" : 10
                         },
                         "initial_share_target" : {
-                            "type" : "integer",
-                            "default": 115790322390251417039241401711187164934754157181743688420499462401711837020160
+                            "type" : "integer"
                         },
                         "max_share_target" : {
                             "type" : "integer",
                             "minimum" : 1,
-                            "maximum" : 115790322390251417039241401711187164934754157181743688420499462401711837020160,
-                            "default": 115790322390251417039241401711187164934754157181743688420499462401711837020160
+                            "maximum" : 115790322390251417039241401711187164934754157181743688420499462401711837020160
                         },
                         "desired_solve_time" : {
                             "type" : "integer",
@@ -2192,7 +2167,7 @@
                             "type" : "array",
                             "items" : {
                                 "description" : "Public key receiving pool reward to percent share map.",
-                                "pattern": "^ak_[1-9A-HJ-NP-Za-km-z]*:[0-9]+(\\.[0-9]*)?$"
+                                "pattern": "^ak_[1-9A-HJ-NP-Za-km-z]*:[0-9]+(\.[0-9]*)?$"
                             }
                         },
                         "keys" : {
