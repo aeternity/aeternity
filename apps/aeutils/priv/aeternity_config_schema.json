@@ -1233,20 +1233,23 @@
                         "listen_address": {
                           "description": "Listen address for external interface. This should be publicly accessible",
                           "type": "string",
-                          "example": "0.0.0.0"
+                          "example": "0.0.0.0",
+                          "default": "0.0.0.0"
                         },
                         "port" : {
-                            "description" :
-                            "Listen port for external HTTP interface.",
-                            "type" : "integer"
+                            "description" : "Listen port for external HTTP interface.",
+                            "type" : "integer",
+                            "default" : 3013
                         },
                         "request_timeout" : {
                             "description" : "HTTP Request timeout.",
-                            "type" : "integer"
+                            "type" : "integer",
+                            "default" : 30000
                         },
                         "connect_timeout" : {
                             "description" : "HTTP Request connect timeout.",
-                            "type" : "integer"
+                            "type" : "integer",
+                            "default" : 1000
                         },
                         "acceptors" : {
                             "description" : "Number of acceptors in external pool",
@@ -1267,12 +1270,13 @@
                         "listen_address": {
                           "description": "Listen address for internal interface. This should not be publicly accessible",
                           "type": "string",
-                          "example": "127.0.0.1"
+                          "example": "127.0.0.1",
+                          "default" : "127.0.0.1"
                         },
                         "port" : {
-                            "description" :
-                            "Listen port for internal HTTP interface.",
-                            "type" : "integer"
+                            "description" : "Listen port for internal HTTP interface.",
+                            "type" : "integer",
+                            "default" : 3113
                         },
                         "acceptors" : {
                             "description" : "Number of acceptors in internal pool",
@@ -1287,47 +1291,60 @@
                     }
                 },
                 "endpoints" : {
-                    "gossip" : {
-                        "description" : "Gossip protocol API",
-                        "type" : "boolean"
-                    },
-                    "name_service" : {
-                        "description" : "Name resolution API",
-                        "type" : "boolean"
-                    },
-                    "chain" : {
-                        "description" : "Chain state inspection endpoints",
-                        "type" : "boolean"
-                    },
-                    "transactions" : {
-                        "description" : "Transactions insection endpoints",
-                        "type" : "boolean"
-                    },
-                    "node_operator" : {
-                        "description" : "Node operator endpoints",
-                        "type" : "boolean",
-                        "default" : false
-                    },
-                    "dev" : {
-                        "description" : "Development only API - for validation of client implementations. Should not be used in real life scenarios",
-                        "type" : "boolean"
-                    },
-                    "debug" : {
-                        "description" : "Deprecated. See also 'http > internal > debug_endpoints'",
-                        "type" : "boolean"
-                    },
-                    "obsolete" : {
-                        "description" : "Old endpoints that will be removed",
-                        "type" : "boolean"
-                    },
-                    "dry-run" : {
-                        "description" : "External protected dry run endpoint",
-                        "type" : "boolean"
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                        "gossip" : {
+                            "description" : "Gossip protocol API",
+                            "type" : "boolean",
+                            "default": true
+                        },
+                        "name_service" : {
+                            "description" : "Name resolution API",
+                            "type" : "boolean",
+                            "default": true
+                        },
+                        "chain" : {
+                            "description" : "Chain state inspection endpoints",
+                            "type" : "boolean",
+                            "default": true
+                        },
+                        "transactions" : {
+                            "description" : "Transactions insection endpoints",
+                            "type" : "boolean",
+                            "default": true
+                        },
+                        "node_operator" : {
+                            "description" : "Node operator endpoints",
+                            "type" : "boolean",
+                            "default" : false
+                        },
+                        "dev" : {
+                            "description" : "Development only API - for validation of client implementations. Should not be used in real life scenarios",
+                            "type" : "boolean",
+                            "default": false
+                        },
+                        "dry-run" : {
+                            "description" : "External protected dry run endpoint",
+                            "type" : "boolean",
+                            "default": true
+                        },
+                        "debug" : {
+                            "description" : "Deprecated. See also 'http > internal > debug_endpoints' KILLME FIXME",
+                            "type" : "boolean",
+                            "default": false
+                        },
+                        "obsolete" : {
+                            "description" : "Old endpoints that will be removed.",
+                            "type" : "array",
+                            "default": ["debug"]
+                        }
                     }
                 },
                 "debug" : {
-                    "description" : "Deprecated. See also 'http > internal > debug_endpoints'",
-                    "type" : "boolean"
+                    "description" : "Deprecated. See also 'http > internal > debug_endpoints' KILLME FIXME",
+                    "type" : "boolean",
+                    "default": false
                 },
                 "cache": {
                     "type": "object",
