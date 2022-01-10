@@ -1012,23 +1012,25 @@
                     "default" : false
                 },
                 "listen_address": {
-                          "description": "Listen address for external interface. This should be publicly accessible",
-                          "type": "string",
-                          "example": "0.0.0.0"
-                        },
-                "port" : {
-                    "description" : "Port used for (incoming) sync connections, must be reachable from the public facing IP",
-                    "type" : "integer"
+                    "description": "Listen address for external interface. This should be publicly accessible",
+                    "type": "string",
+                    "example": "0.0.0.0",
+                    "default": "0.0.0.0"
                 },
-
+                "port" : {
+                    "description" : "Local port used for incoming sync connections. If behind NAT this may differ from the 'external_port' value.",
+                    "type" : "integer",
+                    "default" : 3015
+                },
                 "ping_interval" : {
                     "description" : "Interval between pings (in ms)",
-                    "type" : "integer"
+                    "type" : "integer",
+                    "default" : 120000
                 },
                 "external_port" : {
-                    "description" :
-                    "Listen port for external sync connections.",
-                    "type" : "integer"
+                    "description" : "Listen port for external sync connections. This must be the WAN-facing port number (depending on NAT configuration this may be different from 'port' value above).",
+                    "type" : "integer",
+                    "default": 3015
                 },
                 "acceptors" : {
                     "description" : "Number of acceptors in listening pool",
@@ -1107,7 +1109,8 @@
                 },
                 "gossip_allowed_height_from_top" : {
                     "description": "Allowed height difference from current top for incoming blocks (via gossip)",
-                    "type" : "integer"
+                    "type" : "integer",
+                    "default" : 5
                 },
                 "sync_allowed_height_from_top" : {
                     "description": "Once own node is synced, reject sync blocks at least this far from the current top; 0 means disabled",
@@ -1121,7 +1124,8 @@
                 },
                 "whitelist_file" : {
                     "description" : "The name of a block hash whitelist file (JSON format)",
-                    "type" : "string"
+                    "type" : "string",
+                    "default" : ".block_whitelist.json" 
                 },
                 "log_peer_connection_count_interval" : {
                     "description": "Time (milliseconds) between logging info about connected peers",
