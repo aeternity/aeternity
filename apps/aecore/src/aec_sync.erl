@@ -864,7 +864,7 @@ do_work_on_sync_task(PeerId, Task, LastResult) ->
 
 agree_on_height(PeerId, #chain{ blocks = [#chain_block{ hash = TopHash, height = TopHeight } | _] }) ->
     try
-        LocalHeader = aec_chain:top_header(),
+        LocalHeader = aec_chain:dirty_top_header(),
         LocalHeight = aec_headers:height(LocalHeader),
         MinHeight   = min(TopHeight, LocalHeight),
         RemoteHash =
@@ -1187,7 +1187,7 @@ sync_progress(#state{sync_tasks = SyncTasks} = State) ->
                           [#chain_block{height = Height} | _] = Chain,
                           max(Height, MaxHeight)
                   end, 0, SyncTasks),
-            TopHeight = aec_headers:height(aec_chain:top_header()),
+            TopHeight = aec_headers:height(aec_chain:dirty_top_header()),
             SyncProgress0 = round(10000000 * TopHeight / TargetHeight) / 100000,
             %% It is possible to have TopHeight already higher than Height in sync task,
             %% e.g. when a block was mined and the sync task was not yet removed.

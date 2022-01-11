@@ -1429,7 +1429,7 @@ validate_connected_to_chain(MicroHeader, _PrevHeader, _PrevKeyHeader) ->
 
 validate_delta_height(MicroHeader, _PrevHeader, _PrevKeyHeader) ->
     Height = aec_headers:height(MicroHeader),
-    case aec_chain:top_header() of
+    case aec_chain:dirty_top_header() of
         undefined -> ok;
         TopHeader ->
             MaxDelta = aec_chain_state:gossip_allowed_height_from_top(),
