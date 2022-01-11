@@ -227,8 +227,8 @@ accept_init(Ref, TcpSock, ranch_tcp, Opts) ->
                     %% ======  Exit critical section with Private keys in memory. ======
 
                     %% What to do here? Close the socket and stop?
-                    epoch_sync:info("Connection accept failed - ~p was from ~p",
-                                    [Reason, maps:get(host, S)]),
+                    epoch_sync:debug("Connection accept failed - ~p was from ~p",
+                                     [Reason, maps:get(host, S)]),
                     gen_tcp:close(TcpSock)
             end
     end.
@@ -1074,7 +1074,7 @@ handle_light_micro_block(_S, Header, TxHashes, PoF) ->
             ok;
         E = {error, _} ->
             {ok, HH} = aec_headers:hash_header(Header),
-            epoch_sync:info("Dropping gossiped light micro_block (~s): ~p", [pp(HH), E]),
+            epoch_sync:debug("Dropping gossiped light micro_block (~s): ~p", [pp(HH), E]),
             case aec_chain:get_header(aec_headers:prev_key_hash(Header)) of
                 {ok, PrevHeader} ->
                     epoch_sync:debug("miner beneficiary: ~p", [aec_headers:beneficiary(PrevHeader)]),
