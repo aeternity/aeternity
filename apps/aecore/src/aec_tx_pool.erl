@@ -292,7 +292,7 @@ peek(MaxN, Account) when is_integer(MaxN), MaxN >= 0; MaxN =:= infinity ->
 delete(TxHash) ->
     gen_server:call(?SERVER, {delete, TxHash}).
 
--spec inspect(binary()) -> {ok, Failures :: non_neg_integer(), Visited :: boolean(), TTL :: non_neg_integer()} 
+-spec inspect(binary()) -> {ok, Failures :: non_neg_integer(), Visited :: boolean(), TTL :: non_neg_integer()}
                            | {error, not_found | already_accepted}.
 inspect(TxHash) ->
     case gen_server:call(?SERVER, {failures_cnt, TxHash}) of
@@ -672,7 +672,7 @@ revisit(#dbs{db = Db, visited_db = VDb}) ->
     ok.
 
 top_height() ->
-    case aec_chain:top_header() of
+    case aec_chain:dirty_top_header() of
         undefined -> 0;
         Header    -> aec_headers:height(Header)
     end.

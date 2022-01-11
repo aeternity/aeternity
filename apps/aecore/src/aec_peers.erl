@@ -71,7 +71,7 @@
 -define(MAX_CONNECTION_INTERVAL,       30 * 1000). % 30 seconds
 
 -define(MIN_TCP_PROBE_INTERVAL,              100).
--define(MAX_TCP_PROBE_INTERVAL,       1 * 1000). % 1 second 
+-define(MAX_TCP_PROBE_INTERVAL,         1 * 1000). % 1 second
 
 -define(DEFAULT_PING_INTERVAL,        120 * 1000). %  2 minutes
 -define(DEFAULT_UNBLOCK_INTERVAL, 15 * 60 * 1000). % 15 minutes
@@ -123,6 +123,8 @@
     last_tcp_verified_probe_time :: undefined | non_neg_integer(),
     %% The last time there was a TCP probe to an unverified peer.
     last_tcp_unverified_probe_time :: undefined | non_neg_integer(),
+    %% TCP probe status.
+    tcp_probe_status = #{} :: #{aec_peer:id() => boolean()},
     %% The blocked peers.
     blocked           :: gb_trees:tree(aec_peer:id(), aec_peer:info()),
     %% The set of known addresses and ports
@@ -1048,10 +1050,9 @@ on_connection_closed(PeerId, Pid, State) ->
 on_peer_dead(PeerId, Pid, State) ->
     case conn_take(PeerId, State) of
         {#conn{ state = connecting, type = outbound, tcp_probe = true,
-                pid = Pid } = Conn, State2 } ->
-            epoch_sync:debug("Peer ~p - TCP probe failed through process ~p",
-                             [aec_peer:ppp(PeerId), Pid]),
-            pool_reject(PeerId, conn_cleanup(Conn, State2));
+                pid = Pid } = Conn, State2} ->
+            State3 = save_tcp_probe_status(PeerId, false, Pid, State2),
+            pool_reject(PeerId, conn_cleanup(Conn, State3));
         {#conn{ pid = OtherPid }, _State2} ->
             epoch_sync:info("Peer ~p - got peer_dead from unexpected "
                             "process ~p; supposed to come from ~p",
@@ -1164,10 +1165,9 @@ on_peer_alive(PeerId, Pid, State) ->
     case conn_take(PeerId, State) of
         {#conn{ state = connecting, type = outbound, tcp_probe = true,
                 pid = Pid } = Conn, State2} ->
-            epoch_sync:info("Peer ~p - TCP probe successful through process ~p",
-                            [aec_peer:ppp(PeerId), Pid]),
-            State3 = conn_cleanup(Conn, State2),
-            {ok, pool_verify(PeerId, pool_release(PeerId, State3))};
+            State3 = save_tcp_probe_status(PeerId, true, Pid, State2),
+            State4 = conn_cleanup(Conn, State3),
+            {ok, pool_verify(PeerId, pool_release(PeerId, State4))};
         {#conn{ state = ConnState, type = Type, pid = Pid2 } = Conn, State2} ->
             epoch_sync:info("Peer ~p - got unexpected peer_alive for ~p ~p "
                             "peer from process ~p; rejecting the connection",
@@ -1309,7 +1309,7 @@ on_add_peer(Peer, State0) ->
             case {pool_find_by_socket(PeerSocket, State),
                   pool_find(PeerId, State)} of
                 {error, error}  -> %% unknown peer and unknown address and port
-                    %% The TCP probe timer is started with addition of the firts peer.
+                    %% The TCP probe timer is started with addition of the first peer.
                     State2 = maybe_start_tcp_probe_timers(State),
                     add_peer(Peer, State2);
                 {{ok, PeerId}, {ok, Peer2}} ->
@@ -1326,12 +1326,12 @@ on_add_peer(Peer, State0) ->
                     LogMismatch(Peer2),
                     State;
                 {{ok, OtherPeerPubkey}, error} ->
-                    epoch_sync:info("Peer ~p with address ~p - ignoring peer pubkey changed "
-                                    "from ~s to ~s by ~s", [aec_peer:ppp(PeerId),
-                                    aec_peer:format_address(Peer),
-                                    aec_peer:ppp(PeerId),
-                                    aec_peer:ppp(OtherPeerPubkey),
-                                    aec_peer:format_address(SourceAddr)]),
+                    epoch_sync:debug("Peer ~p with address ~p - ignoring peer pubkey changed "
+                                     "from ~s to ~s by ~s", [aec_peer:ppp(PeerId),
+                                     aec_peer:format_address(Peer),
+                                     aec_peer:ppp(PeerId),
+                                     aec_peer:ppp(OtherPeerPubkey),
+                                     aec_peer:format_address(SourceAddr)]),
                     State
             end
     end.
@@ -1890,6 +1890,20 @@ conn_take_monitor(Pid, State) ->
         error -> error;
         {{Ref, PeerId}, Monitors2} ->
             {PeerId, Ref, State#state{ monitors = Monitors2 }}
+    end.
+
+%% Save a TCP probe status, info log if status changed
+save_tcp_probe_status(PeerId, NewStatus, Pid, State = #state{ tcp_probe_status = TCPStatus }) ->
+    TextStatus = if NewStatus -> "successful"; true -> "failed" end,
+    case maps:get(PeerId, TCPStatus, undefined) of
+        NewStatus ->
+            epoch_sync:debug("Peer ~p - TCP probe ~s through process ~p",
+                             [aec_peer:ppp(PeerId), TextStatus, Pid]),
+            State;
+        _Other ->
+            epoch_sync:info("Peer ~p - TCP probe ~s through process ~p",
+                            [aec_peer:ppp(PeerId), TextStatus, Pid]),
+            State#state{ tcp_probe_status = TCPStatus#{PeerId => NewStatus} }
     end.
 
 %--- CONFIGURATION FUNCTIONS ---------------------------------------------------
