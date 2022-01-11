@@ -39,6 +39,8 @@
 
 -define(MAX_HEADERS_PER_CHUNK, 100).
 -define(DEFAULT_MAX_GOSSIP, 16).
+%% Numbes of chunks to (max) pre-fetch (N * ?MAX_HEADERS_PER_CHUNK generations)
+-define(MAX_FORWARD_CHUNKS, 15).
 
 %%%=============================================================================
 %%% API
@@ -173,7 +175,7 @@ else(Else) ->
                     pool = [] :: [#pool_item{}],
                     agreed :: undefined | #chain_block{},
                     adding = [] :: [#pool_item{}],
-                    pending = [] :: [[#pool_item{}]],
+                    pending = none :: none | {[#pool_item{}], [[#pool_item{}]]},
                     workers = [] :: [#worker{}]}).
 -record(state, { sync_tasks = []                 :: [#sync_task{}]
                , last_generation_in_sync = false :: boolean()
@@ -417,16 +419,16 @@ handle_last_result(ST, {post_blocks, {error, BlockFromPeerId, Height}}) ->
     sync_task_post_error(ST, BlockFromPeerId, Height).
 
 sync_task_post_error(ST, BlockFromPeerId, Height) ->
-    #sync_task{ adding = Add, pending = Pends, pool = Pool
+    #sync_task{ adding = Add, pending = Pending, pool = Pool
               , chain = Chain
               } = ST,
     %% Put back the blocks we did not manage to post, and schedule failing block
     %% for another retrieval.
     [#pool_item{ height = Height, hash = Hash } | PutBack] =
         lists:dropwhile(fun(#pool_item{ height = H }) -> H < Height end,
-                        Add) ++ lists:append(Pends),
+                        Add) ++ append_pending(Pending),
     NewPool = [#pool_item{ height = Height, hash = Hash, got = false } | PutBack] ++ Pool,
-    ST1 = ST#sync_task{ adding = [], pending = [], pool = NewPool },
+    ST1 = ST#sync_task{ adding = [], pending = none, pool = NewPool },
 
     ST1#sync_task{ chain = Chain#chain{ peers = Chain#chain.peers -- [BlockFromPeerId] }}.
 
@@ -443,6 +445,26 @@ inform_workers(#sync_task{ workers = Ws }, {new_top, Height}) ->
 
 split_pool(Pool) ->
     lists:splitwith(fun(#pool_item{ got = X }) -> X =/= false end, Pool).
+
+get_pending({P1, []})        -> {P1, none};
+get_pending({Pn, [P1 | Ps]}) -> {P1, {Pn, Ps}}.
+
+add_pending(NewP, Pending) when length(NewP) > ?MAX_HEADERS_PER_CHUNK ->
+    {NewP1, NewP2} = lists:split(?MAX_HEADERS_PER_CHUNK, NewP),
+    add_pending(NewP2, add_pending(NewP1, Pending));
+add_pending(NewP, none) -> {NewP, []};
+add_pending(NewP, {Pn, Ps}) ->
+    Ln   = length(Pn),
+    LNew = length(NewP),
+    case Ln + LNew =< ?MAX_HEADERS_PER_CHUNK of
+        true -> {Pn ++ NewP, Ps};
+        false ->
+            {NewP1, NewP2} = lists:split(?MAX_HEADERS_PER_CHUNK - Ln, NewP),
+            {NewP2, Ps ++ [Pn ++ NewP1]}
+    end.
+
+append_pending(none) -> [];
+append_pending({Pn, Ps}) -> lists:append(Ps) ++ Pn.
 
 get_next_work_item(State, STId, PeerId) ->
     case get_sync_task(STId, State) of
@@ -461,28 +483,16 @@ get_next_work_item(State, STId, PeerId) ->
 get_next_work_item(ST = #sync_task{ suspect = true }) ->
     epoch_sync:info("Sync task flagged as suspect: ~1000p", [pp_sync_task(ST)]),
     {take_a_break, ST};
-get_next_work_item(ST = #sync_task{ adding = [], pending = [ToAdd | NewPending] }) ->
-    {{post_blocks, ToAdd}, ST#sync_task{ adding = ToAdd, pending = NewPending }};
 get_next_work_item(ST = #sync_task{ agreed = undefined }) ->
     {{agree_on_height, ST#sync_task.chain}, ST};
-get_next_work_item(ST = #sync_task{ pool = [], agreed = #chain_block{} }) ->
-    #chain_block{ hash = LastHash, height = H } = ST#sync_task.agreed,
-    Chain = ST#sync_task.chain,
-    TargetHash = next_known_hash(Chain#chain.blocks, H + ?MAX_HEADERS_PER_CHUNK),
-    {{fill_pool, LastHash, TargetHash}, ST};
-get_next_work_item(ST = #sync_task{ pool = [#pool_item{ got = {_, _} } | _] }) ->
-    #sync_task{ pool = Pool, adding = Add, pending = Pend } = ST,
+get_next_work_item(ST = #sync_task{ pool = [#pool_item{ got = {_, _} } | _] = Pool,
+                                    pending = Pending}) ->
     {ToBeAdded = [_|_], NewPool} = split_pool(Pool),
-    case Add of
-        [] ->
-            ST1 = ST#sync_task{ pool = NewPool, adding = ToBeAdded },
-            {{post_blocks, ToBeAdded}, ST1};
-        _ when length(Pend) < 10 orelse NewPool /= [] ->
-            ST1 = ST#sync_task{ pool = NewPool, pending = Pend ++ [ToBeAdded] },
-            get_next_work_item(ST1);
-        _ ->
-            {take_a_break, ST}
-    end;
+    NewPending = add_pending(ToBeAdded, Pending),
+    get_next_work_item(ST#sync_task{ pool = NewPool, pending = NewPending });
+get_next_work_item(ST = #sync_task{ adding = [], pending = Pending }) when Pending /= none ->
+    {ToAdd, NewPending} = get_pending(Pending),
+    {{post_blocks, ToAdd}, ST#sync_task{ adding = ToAdd, pending = NewPending }};
 get_next_work_item(ST = #sync_task{ pool = [#pool_item{ got = false } | _] }) ->
     Pool = ST#sync_task.pool,
     PickFrom = [ P || P = #pool_item{ got = false } <- Pool ],
@@ -492,6 +502,16 @@ get_next_work_item(ST = #sync_task{ pool = [#pool_item{ got = false } | _] }) ->
               , got = false} = lists:nth(Random, PickFrom),
     epoch_sync:debug("Get block at height ~p", [PickH]),
     {{get_generation, PickH, PickHash}, ST};
+get_next_work_item(ST = #sync_task{ pool = [], agreed = #chain_block{}, pending = Pending }) ->
+    case Pending of
+        {_, Ps} when length(Ps) > 15 ->
+            {take_a_break, ST};
+        _ ->
+            #chain_block{ hash = LastHash, height = H } = ST#sync_task.agreed,
+            Chain = ST#sync_task.chain,
+            TargetHash = next_known_hash(Chain#chain.blocks, H + ?MAX_HEADERS_PER_CHUNK),
+            {{fill_pool, LastHash, TargetHash}, ST}
+    end;
 get_next_work_item(ST) ->
     epoch_sync:info("Nothing to do: ~1000p", [pp_sync_task(ST)]),
     {take_a_break, ST}.
