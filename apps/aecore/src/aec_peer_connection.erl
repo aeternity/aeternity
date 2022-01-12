@@ -213,7 +213,7 @@ accept_init(Ref, TcpSock, ranch_tcp, Opts) ->
                     %% ======  Exit critical section with Private keys in memory. ======
 
                     PingTimeout = first_ping_timeout(),
-                    epoch_sync:debug("Connection accepted from ~p", [RemotePub]),
+                    epoch_sync:debug("Connection accepted from ~p", [aec_peer:ppp(RemotePub)]),
                     %% Report this to aec_peers!? And possibly fail?
                     %% Or, we can't do this yet we don't know the port?!
                     TRef = erlang:start_timer(PingTimeout, self(), first_ping_timeout),

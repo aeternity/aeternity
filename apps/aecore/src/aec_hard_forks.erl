@@ -245,22 +245,37 @@ maybe_protocol_from_fork({ok, #{signalling_end_height := EndHeight}}, Height, Pr
     %% Height is lower than signalling end height, so the greatest protocol
     %% before the community fork is returned.
     Protocol;
-maybe_protocol_from_fork({ok, #{signalling_end_height := Height} = Fork}, Height, Protocol) ->
-    %% Height is equal to the signalling end height which is the fork heght. The
-    %% fork signalling result needs to be taken from aec_chain_state module for
-    %% the last key block before the fork height (last signalling block height).
-    {ok, Block} = aec_chain:get_key_block_by_height(Height - 1),
-    case aec_chain_state:get_fork_result(Block, Fork) of
-        {ok, true}  -> maps:get(version, Fork);
-        {ok, false} -> Protocol
+maybe_protocol_from_fork({ok, #{signalling_end_height := Height, version := ForkProtocol} = Fork}, Height, Protocol) ->
+    %% Height is equal to the signalling end height which is where we expect the
+    %% new protocol version. The fork signalling result needs to be taken from
+    %% aec_chain_state module for the last key block before the fork height
+    %% (last signalling block height).
+    case aec_chain:get_key_block_by_height(Height - 1) of
+        {ok, Block} ->
+            case aec_chain_state:get_fork_result(Block, Fork) of
+                {ok, true}  -> maps:get(version, Fork);
+                {ok, false} -> Protocol
+            end;
+        _ ->
+            %% While filling the pool during sync we might not have yet stored
+            %% the previous block. This is checked again later when posting blocks.
+            %% Here we choose the protocol version that should be at this height,
+            %% and the later check ensures that the decision went this way
+            ForkProtocol
     end;
-maybe_protocol_from_fork({ok, #{signalling_end_height := EndHeight}}, Height, _Protocol)
+maybe_protocol_from_fork({ok, #{signalling_end_height := EndHeight, version := ForkProtocol}}, Height, _Protocol)
   when Height > EndHeight ->
     %% Height is greater than the signalling end height. The decision about the
     %% protocol version already happened, so the protocol version at this height
     %% is the same as the protocol version of the previous (key) block.
-    {ok, Block} = aec_chain:get_key_block_by_height(Height - 1),
-    aec_blocks:version(Block).
+    case aec_chain:get_key_block_by_height(Height - 1) of
+        {ok, Block} ->
+            aec_blocks:version(Block);
+        _ ->
+            %% While filling the pool during sync we might not have yet stored
+            %% the previous block. This is checked when adding blocks.
+            ForkProtocol
+    end.
 
 fork_config() ->
     case aeu_env:user_map([<<"fork_management">>, <<"fork">>]) of
