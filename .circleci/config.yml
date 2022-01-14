@@ -1149,6 +1149,9 @@ parameters:
   rebar_cache_key:
     default: rebar-cache-{{ checksum "rebar.lock" }}-{{ checksum "rebar.config" }}
     type: string
+  run_system_tests:
+    default: false
+    type: boolean
   s3_builds_bucket:
     default: aeternity-node-builds
     type: string
@@ -1513,6 +1516,8 @@ workflows:
         requires:
         - linux-tarball
         version: $CIRCLE_SHA1
+    when:
+      not: << pipeline.schedule.name >>
   release:
     jobs:
     - linux-tarball:
@@ -1739,15 +1744,11 @@ workflows:
         - upload-tarballs-github-release
         - docker-image-tag
         - docker-image-latest
+    when:
+      not: << pipeline.schedule.name >>
   system-tests:
     jobs:
     - docker-system-test
-    triggers:
-    - schedule:
-        cron: 0 0,12 * * *
-        filters:
-          branches:
-            only:
-            - << pipeline.parameters.master_branch >>
+    when: << pipeline.parameters.run_system_tests >>
   version: 2
 
