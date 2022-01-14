@@ -470,9 +470,6 @@ test-arch-os-dependencies: KIND=test
 test-arch-os-dependencies:
 	make ct-latest SUITE=apps/aecontract/test/aecontract GROUP=sophia TEST=sophia_crypto
 
-.circleci/config.yml: $(wildcard .circleci/config//**/*)
-	circleci config pack .circleci/config/ > $@
-
 .PHONY: \
 	all console \
 	test-build \
