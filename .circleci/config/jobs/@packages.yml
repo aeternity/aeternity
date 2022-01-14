@@ -51,7 +51,7 @@ macos-tarball:
     package_name:
       type: string
   macos:
-    xcode: "11.1.0" # 11.1.0 is macOS 10.14.4
+    xcode: "11.7.0" # macOS 10.15.5 (Catalina)
   working_directory: /Users/distiller/aeternity
   steps:
     - fixed_checkout

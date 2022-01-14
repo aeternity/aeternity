@@ -4,7 +4,7 @@ docker_repo:
 
 aeplugin_devmode_version:
   type: string
-  default: "0.3.1"
+  default: "0.4.1"
 
 tag_regex:
   type: string
