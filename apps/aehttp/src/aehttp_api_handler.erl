@@ -24,18 +24,22 @@
 -define(DEFAULT_HTTP_CACHE_ENABLED, false).
 
 init(Req, {SpecVsn, OperationId, AllowedMethod, LogicHandler}) ->
-    Mod =
-        case SpecVsn of
-            oas3 -> oas_endpoints;
-            swagger2 -> endpoints
-        end,
+    Mod = case LogicHandler of
+              aehttp_dispatch_rosetta ->
+                  rosetta_endpoints;
+              _ ->
+                  case SpecVsn of
+                      oas3 -> oas_endpoints;
+                      swagger2 -> endpoints
+                  end
+          end,
     State = #state{
-        operation_id = OperationId,
-        allowed_method = AllowedMethod,
-        logic_handler = LogicHandler,
-        validator = aehttp_api_validate:validator(SpecVsn),
-        endpoints = Mod
-    },
+               operation_id = OperationId,
+               allowed_method = AllowedMethod,
+               logic_handler = LogicHandler,
+               validator = aehttp_api_validate:validator(SpecVsn),
+               endpoints = Mod
+              },
     {cowboy_rest, Req, State}.
 
 
