@@ -35,10 +35,10 @@ workflows:
       - generate:
           filters:
             tags:
-              only: << pipeline.parameters.tag_regex >>
+              only: "/^v.*$/"
       - setup:
           requires:
             - generate
           filters:
             tags:
-              only: << pipeline.parameters.tag_regex >>
+              only: "/^v.*$/"
