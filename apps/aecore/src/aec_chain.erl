@@ -39,6 +39,7 @@
         , top_key_block_hash/0
         , top_block_with_state/0
         , top_header/0
+        , dirty_top_header/0
         , top_header_hash_and_state/0
         , top_height/0
         ]).
@@ -402,6 +403,14 @@ top_header() ->
             undefined
     end.
 
+dirty_top_header() ->
+    case dirty_top_block_node() of
+        #{ header := Header } ->
+            Header;
+        undefined ->
+            undefined
+    end.
+
 -spec top_height() -> 'undefined' | non_neg_integer().
 top_height() ->
     case top_header() of
@@ -420,6 +429,9 @@ top_block() ->
                                          , header := aec_headers:header() }.
 top_block_node() ->
     aec_db:get_top_block_node().
+
+dirty_top_block_node() ->
+    aec_db:dirty_get_top_block_node().
 
 -spec top_block_hash() -> 'undefined' | binary().
 top_block_hash() ->

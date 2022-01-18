@@ -1162,7 +1162,7 @@ handle_key_block_candidate_reply({{error, Reason}, _}, State) ->
 %%% In server context: A block was given to us from the outside world
 
 handle_synced_block(Block, State) ->
-    epoch_mining:info("synced_block: ~p", [Block]),
+    epoch_mining:debug("synced_block: ~p", [Block]),
     handle_add_block(Block, State, block_synced).
 
 handle_post_block(Block, State) ->

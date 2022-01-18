@@ -53,6 +53,7 @@
          dirty_get_signed_tx/1,
          get_top_block_hash/0,
          get_top_block_node/0,
+         dirty_get_top_block_node/0,
          get_finalized_height/0,
          dirty_get_finalized_height/0,
          get_block_state/1,
@@ -705,6 +706,9 @@ get_top_block_hash() ->
 
 get_top_block_node() ->
     get_chain_state_value(top_block_node).
+
+dirty_get_top_block_node() ->
+    dirty_get_chain_state_value(top_block_node).
 
 %% Some migration code: Ideally, top_block_node is there, and we're done.
 %% If not, we should find top_block_hash. Fetch the corresponding

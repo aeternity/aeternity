@@ -39,6 +39,8 @@
 
 -define(MAX_HEADERS_PER_CHUNK, 100).
 -define(DEFAULT_MAX_GOSSIP, 16).
+%% Numbes of chunks to (max) pre-fetch (N * ?MAX_HEADERS_PER_CHUNK generations)
+-define(MAX_FORWARD_CHUNKS, 15).
 
 %%%=============================================================================
 %%% API
@@ -173,7 +175,7 @@ else(Else) ->
                     pool = [] :: [#pool_item{}],
                     agreed :: undefined | #chain_block{},
                     adding = [] :: [#pool_item{}],
-                    pending = [] :: [[#pool_item{}]],
+                    pending = none :: none | {[#pool_item{}], [[#pool_item{}]]},
                     workers = [] :: [#worker{}]}).
 -record(state, { sync_tasks = []                 :: [#sync_task{}]
                , last_generation_in_sync = false :: boolean()
@@ -190,7 +192,7 @@ init([]) ->
     aec_events:subscribe(tx_created),
     aec_events:subscribe(tx_received),
 
-    DefaultPeers = 
+    DefaultPeers =
         case aeu_env:find_config([<<"include_default_peers">>], [user_config, schema_default, {value, true}]) of
             {ok, true} -> default_peers();
             {ok, false} -> [];
@@ -287,7 +289,7 @@ handle_cast({get_generation, PeerId, Hash},
     run_job(sync_tasks,
             fun() ->
                 case do_get_generation(PeerId, Hash) of
-                    ok         -> set_last_generation_in_sync();
+                    {ok, _}    -> set_last_generation_in_sync();
                     {error, _} -> ok
                 end
             end),
@@ -352,6 +354,7 @@ handle_info({'EXIT', Pid, Reason}, State) ->
 handle_info(update_sync_progress_metric, State) ->
     {_, SyncProgress} = sync_progress(State),
     aec_metrics:try_update([ae,epoch,aecore,sync,progress], SyncProgress),
+    log_sync_status(State),
 
     %% Next try in 30 secs.
     erlang:send_after(30 * 1000, self(), update_sync_progress_metric),
@@ -416,16 +419,16 @@ handle_last_result(ST, {post_blocks, {error, BlockFromPeerId, Height}}) ->
     sync_task_post_error(ST, BlockFromPeerId, Height).
 
 sync_task_post_error(ST, BlockFromPeerId, Height) ->
-    #sync_task{ adding = Add, pending = Pends, pool = Pool
+    #sync_task{ adding = Add, pending = Pending, pool = Pool
               , chain = Chain
               } = ST,
     %% Put back the blocks we did not manage to post, and schedule failing block
     %% for another retrieval.
     [#pool_item{ height = Height, hash = Hash } | PutBack] =
         lists:dropwhile(fun(#pool_item{ height = H }) -> H < Height end,
-                        Add) ++ lists:append(Pends),
+                        Add) ++ append_pending(Pending),
     NewPool = [#pool_item{ height = Height, hash = Hash, got = false } | PutBack] ++ Pool,
-    ST1 = ST#sync_task{ adding = [], pending = [], pool = NewPool },
+    ST1 = ST#sync_task{ adding = [], pending = none, pool = NewPool },
 
     ST1#sync_task{ chain = Chain#chain{ peers = Chain#chain.peers -- [BlockFromPeerId] }}.
 
@@ -442,6 +445,26 @@ inform_workers(#sync_task{ workers = Ws }, {new_top, Height}) ->
 
 split_pool(Pool) ->
     lists:splitwith(fun(#pool_item{ got = X }) -> X =/= false end, Pool).
+
+get_pending({P1, []})        -> {P1, none};
+get_pending({Pn, [P1 | Ps]}) -> {P1, {Pn, Ps}}.
+
+add_pending(NewP, Pending) when length(NewP) > ?MAX_HEADERS_PER_CHUNK ->
+    {NewP1, NewP2} = lists:split(?MAX_HEADERS_PER_CHUNK, NewP),
+    add_pending(NewP2, add_pending(NewP1, Pending));
+add_pending(NewP, none) -> {NewP, []};
+add_pending(NewP, {Pn, Ps}) ->
+    Ln   = length(Pn),
+    LNew = length(NewP),
+    case Ln + LNew =< ?MAX_HEADERS_PER_CHUNK of
+        true -> {Pn ++ NewP, Ps};
+        false ->
+            {NewP1, NewP2} = lists:split(?MAX_HEADERS_PER_CHUNK - Ln, NewP),
+            {NewP2, Ps ++ [Pn ++ NewP1]}
+    end.
+
+append_pending(none) -> [];
+append_pending({Pn, Ps}) -> lists:append(Ps) ++ Pn.
 
 get_next_work_item(State, STId, PeerId) ->
     case get_sync_task(STId, State) of
@@ -460,28 +483,16 @@ get_next_work_item(State, STId, PeerId) ->
 get_next_work_item(ST = #sync_task{ suspect = true }) ->
     epoch_sync:info("Sync task flagged as suspect: ~1000p", [pp_sync_task(ST)]),
     {take_a_break, ST};
-get_next_work_item(ST = #sync_task{ adding = [], pending = [ToAdd | NewPending] }) ->
-    {{post_blocks, ToAdd}, ST#sync_task{ adding = ToAdd, pending = NewPending }};
 get_next_work_item(ST = #sync_task{ agreed = undefined }) ->
     {{agree_on_height, ST#sync_task.chain}, ST};
-get_next_work_item(ST = #sync_task{ pool = [], agreed = #chain_block{} }) ->
-    #chain_block{ hash = LastHash, height = H } = ST#sync_task.agreed,
-    Chain = ST#sync_task.chain,
-    TargetHash = next_known_hash(Chain#chain.blocks, H + ?MAX_HEADERS_PER_CHUNK),
-    {{fill_pool, LastHash, TargetHash}, ST};
-get_next_work_item(ST = #sync_task{ pool = [#pool_item{ got = {_, _} } | _] }) ->
-    #sync_task{ pool = Pool, adding = Add, pending = Pend } = ST,
+get_next_work_item(ST = #sync_task{ pool = [#pool_item{ got = {_, _} } | _] = Pool,
+                                    pending = Pending}) ->
     {ToBeAdded = [_|_], NewPool} = split_pool(Pool),
-    case Add of
-        [] ->
-            ST1 = ST#sync_task{ pool = NewPool, adding = ToBeAdded },
-            {{post_blocks, ToBeAdded}, ST1};
-        _ when length(Pend) < 10 orelse NewPool /= [] ->
-            ST1 = ST#sync_task{ pool = NewPool, pending = Pend ++ [ToBeAdded] },
-            get_next_work_item(ST1);
-        _ ->
-            {take_a_break, ST}
-    end;
+    NewPending = add_pending(ToBeAdded, Pending),
+    get_next_work_item(ST#sync_task{ pool = NewPool, pending = NewPending });
+get_next_work_item(ST = #sync_task{ adding = [], pending = Pending }) when Pending /= none ->
+    {ToAdd, NewPending} = get_pending(Pending),
+    {{post_blocks, ToAdd}, ST#sync_task{ adding = ToAdd, pending = NewPending }};
 get_next_work_item(ST = #sync_task{ pool = [#pool_item{ got = false } | _] }) ->
     Pool = ST#sync_task.pool,
     PickFrom = [ P || P = #pool_item{ got = false } <- Pool ],
@@ -491,6 +502,16 @@ get_next_work_item(ST = #sync_task{ pool = [#pool_item{ got = false } | _] }) ->
               , got = false} = lists:nth(Random, PickFrom),
     epoch_sync:debug("Get block at height ~p", [PickH]),
     {{get_generation, PickH, PickHash}, ST};
+get_next_work_item(ST = #sync_task{ pool = [], agreed = #chain_block{}, pending = Pending }) ->
+    case Pending of
+        {_, Ps} when length(Ps) > 15 ->
+            {take_a_break, ST};
+        _ ->
+            #chain_block{ hash = LastHash, height = H } = ST#sync_task.agreed,
+            Chain = ST#sync_task.chain,
+            TargetHash = next_known_hash(Chain#chain.blocks, H + ?MAX_HEADERS_PER_CHUNK),
+            {{fill_pool, LastHash, TargetHash}, ST}
+    end;
 get_next_work_item(ST) ->
     epoch_sync:info("Nothing to do: ~1000p", [pp_sync_task(ST)]),
     {take_a_break, ST}.
@@ -863,7 +884,7 @@ do_work_on_sync_task(PeerId, Task, LastResult) ->
 
 agree_on_height(PeerId, #chain{ blocks = [#chain_block{ hash = TopHash, height = TopHeight } | _] }) ->
     try
-        LocalHeader = aec_chain:top_header(),
+        LocalHeader = aec_chain:dirty_top_header(),
         LocalHeight = aec_headers:height(LocalHeader),
         MinHeight   = min(TopHeight, LocalHeight),
         RemoteHash =
@@ -922,23 +943,24 @@ get_header_by_height(PeerId, Height, RemoteTop) ->
 
 post_blocks([]) -> ok;
 post_blocks([#pool_item{ height = StartHeight } | _] = Blocks) ->
-    post_blocks(StartHeight, StartHeight, Blocks).
+    post_blocks(StartHeight, StartHeight, Blocks, empty_stats()).
 
-post_blocks(To, To, []) ->
-    epoch_sync:info("Synced block  ~p", [To]),
+post_blocks(To, To, [], Stats) ->
+    epoch_sync:info("Synced block  ~p   (~s)", [To, pp_stats(Stats)]),
     {ok, To};
-post_blocks(From, To, []) ->
-    epoch_sync:info("Synced blocks ~p - ~p", [From, To]),
+post_blocks(From, To, [], Stats) ->
+    epoch_sync:info("Synced blocks ~p - ~p   (~s)", [From, To, pp_stats(Stats)]),
     {ok, To};
-post_blocks(From, _To, [#pool_item{ height = Height, got = {_PeerId, local} } | Blocks]) ->
-    post_blocks(From, Height, Blocks);
-post_blocks(From, To, [#pool_item{ height = Height, got = {PeerId, Block} } | Blocks]) ->
-    case add_generation(Block) of
-        ok ->
-            post_blocks(From, Height, Blocks);
+post_blocks(From, _To, [#pool_item{ height = Height, got = {_PeerId, local} } | Blocks],
+            Stats = #{gs := Gs}) ->
+    post_blocks(From, Height, Blocks, Stats#{gs := Gs + 1});
+post_blocks(From, To, [#pool_item{ height = Height, got = {PeerId, Block} } | Blocks], Stats) ->
+    case add_generation(Block, Stats) of
+        {ok, Stats1} ->
+            post_blocks(From, Height, Blocks, Stats1);
         {error, Reason} ->
             epoch_sync:info("Failed to add synced block ~p: ~p", [Height, Reason]),
-            [ epoch_sync:info("Synced blocks ~p - ~p", [From, To - 1]) || To > From ],
+            [ epoch_sync:info("Synced blocks ~p - ~p   (~s)", [From, To - 1, pp_stats(Stats)]) || To > From ],
             case Reason of
                 {too_far_below_top, _, _} ->
                     {rejected, PeerId, Height};
@@ -949,27 +971,44 @@ post_blocks(From, To, [#pool_item{ height = Height, got = {PeerId, Block} } | Bl
             end
     end.
 
+empty_stats() ->
+  #{t0 => os:timestamp(), gs => 0, mbs => 0, txs => 0}.
+
+pp_stats(#{t0 := T0, gs := Gs, mbs := MBs, txs := Txs}) ->
+    T = timer:now_diff(os:timestamp(), T0),
+    Avg = if Gs == 0 -> 0.0; true ->  T / (1000 * Gs) end,
+    io_lib:format("~p generations (~.2f ms/gen), ~p mblock(s), ~p tx(s)",
+                  [Gs, Avg, MBs, Txs]).
+
 %% In order not to timeout the conductor, large generations are added in
 %% smaller chuncks, one micro block at the time.
 %% Each micro block has a fixed maximum gas, by limiting the number of micro
 %% blocks we limit the total amount of work the conductor has to perform in
 %% each synchronous call.
 %% Map contains key dir, saying in which direction we sync
-add_generation(#{dir := forward, key_block := _KB, micro_blocks := MBs}) ->
-    add_blocks(MBs);
-add_generation(#{dir := backward, key_block := KB, micro_blocks := MBs}) ->
-    add_blocks(MBs ++ [KB]).
+add_generation(#{dir := forward, key_block := _KB, micro_blocks := MBs},
+               Stats = #{mbs := Bs, gs := Gs}) ->
+    add_blocks(MBs, Stats#{mbs := Bs + length(MBs), gs := Gs + 1});
+add_generation(#{dir := backward, key_block := KB, micro_blocks := MBs},
+               Stats = #{mbs := Bs, gs := Gs}) ->
+    add_blocks(MBs ++ [KB], Stats#{mbs := Bs + length(MBs), gs := Gs + 1}).
 
-add_blocks([]) ->
-    ok;
-add_blocks([B | Bs]) ->
+add_blocks([], Stats) ->
+    {ok, Stats};
+add_blocks([B | Bs], Stats = #{txs := Txs}) ->
     try aec_conductor:add_synced_block(B) of
-        ok -> add_blocks(Bs);
+        ok -> add_blocks(Bs, Stats#{txs := Txs + n_txs(B)});
         Err -> Err
     catch C:E:ST ->
         lager:debug("CAUGHT ~p:~p / ~p", [C,E,ST]),
         lager:warning("Timeout adding_synced block: ~p", [B]),
         {error, timeout}
+    end.
+
+n_txs(B) ->
+    case aec_blocks:type(B) of
+        'key'   -> 0;
+        'micro' -> length(aec_blocks:txs(B))
     end.
 
 fill_pool(PeerId, StartHash, TargetHash, ST) ->
@@ -1029,7 +1068,7 @@ do_get_generation(PeerId, LastHash) ->
             Generation = #{ key_block => KeyBlock,
                             micro_blocks => MicroBlocks,
                             dir => forward },
-            add_generation(Generation);
+            add_generation(Generation, empty_stats());
         Err = {error, _} ->
             Err
     end.
@@ -1168,7 +1207,7 @@ sync_progress(#state{sync_tasks = SyncTasks} = State) ->
                           [#chain_block{height = Height} | _] = Chain,
                           max(Height, MaxHeight)
                   end, 0, SyncTasks),
-            TopHeight = aec_headers:height(aec_chain:top_header()),
+            TopHeight = aec_headers:height(aec_chain:dirty_top_header()),
             SyncProgress0 = round(10000000 * TopHeight / TargetHeight) / 100000,
             %% It is possible to have TopHeight already higher than Height in sync task,
             %% e.g. when a block was mined and the sync task was not yet removed.
@@ -1265,6 +1304,20 @@ validate_block(Block) ->
             aec_validation:validate_block(Block, Protocol)
     end.
 
+log_sync_status(#state{is_syncing = false}) -> ok;
+log_sync_status(#state{sync_tasks = STs} = S) ->
+    {_, SyncProgress} = sync_progress(S),
+    epoch_sync:info("Sync progress: ~.4f%", [SyncProgress]),
+    [log_sync_task(ST) || ST <- STs].
+
+log_sync_task(#sync_task{id = Id, pool = Pool, adding = Add, pending = Ps, workers = Ws}) ->
+    PoolGot = length([x || #pool_item{got = {_, _}} <- Pool]),
+    epoch_sync:info("SyncTask (~p): Pool: size ~p (got ~p), Add: size ~p, Pending: ~s, Workers: ~p",
+                    [Id, length(Pool), PoolGot, length(Add), pp_pending(Ps), length(Ws)]).
+
+pp_pending(none) -> "none";
+pp_pending({Pn, Ps}) -> io_lib:format("~w + ~p", [[length(P) || P <- Ps], length(Pn)]).
+
 pp_chain_block(#chain_block{hash = Hash, height = Height}) ->
     #{ hash => Hash
      , height => Height
@@ -1299,7 +1352,7 @@ pp_sync_task(ST = #sync_task{}) ->
                 , {#sync_task.agreed, PPAgreedF}
                 , {#sync_task.adding, PPPoolF}
                 , {#sync_task.pending, fun(X) -> lists:map(PPPoolF, X) end}
-                , {#sync_task.workers, fun pp_worker/1}
+                , {#sync_task.workers, fun(X) -> lists:map(fun pp_worker/1, X) end}
                 ]).
 
 process_infos(Infos) ->
@@ -1323,7 +1376,7 @@ process_infos(Infos) ->
           fun(M) ->
               case map_size(M) =:= 0 of
                   true -> none;
-                  false -> M 
+                  false -> M
               end
           end,
       Aggr =
@@ -1358,7 +1411,7 @@ collect_infos(Timeout) ->
             PeerId = aec_peer:id(PeerInfo),
             %% this timeouts in Timeout milliseconds but there is a second
             %% outher timeout in the gen_server:call to the connection itself
-            %% so we call the aec_peer_connection:get_node_info/2 with 
+            %% so we call the aec_peer_connection:get_node_info/2 with
             %% Timeout - 2000 - TimerOffset
             aec_peer_connection:get_node_info(PeerId, Timeout - 2000 -
                                               TimerOffset)
@@ -1375,7 +1428,7 @@ pmap(Fun, L, Timeout) ->
                             spawn_monitor(
                                 fun() ->
                                     Res = Fun(E),
-                                    exit({ok, Res}) 
+                                    exit({ok, Res})
                                 end),
                         Result =
                             receive

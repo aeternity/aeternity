@@ -4,7 +4,7 @@ docker_repo:
 
 aeplugin_devmode_version:
   type: string
-  default: "0.3.1"
+  default: "0.4.1"
 
 tag_regex:
   type: string
@@ -41,3 +41,7 @@ s3_builds_bucket:
 s3_releases_bucket:
   type: string
   default: aeternity-node-releases
+
+run_system_tests:
+  type: boolean
+  default: false

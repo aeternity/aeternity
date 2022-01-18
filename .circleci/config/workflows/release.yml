@@ -1,3 +1,5 @@
+when:
+  not: << pipeline.schedule.name >>
 jobs:
   - linux-tarball:
       name: linux-release-tarball

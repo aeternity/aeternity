@@ -213,7 +213,7 @@ accept_init(Ref, TcpSock, ranch_tcp, Opts) ->
                     %% ======  Exit critical section with Private keys in memory. ======
 
                     PingTimeout = first_ping_timeout(),
-                    epoch_sync:debug("Connection accepted from ~p", [RemotePub]),
+                    epoch_sync:debug("Connection accepted from ~p", [aec_peer:ppp(RemotePub)]),
                     %% Report this to aec_peers!? And possibly fail?
                     %% Or, we can't do this yet we don't know the port?!
                     TRef = erlang:start_timer(PingTimeout, self(), first_ping_timeout),
@@ -227,8 +227,8 @@ accept_init(Ref, TcpSock, ranch_tcp, Opts) ->
                     %% ======  Exit critical section with Private keys in memory. ======
 
                     %% What to do here? Close the socket and stop?
-                    epoch_sync:info("Connection accept failed - ~p was from ~p",
-                                    [Reason, maps:get(host, S)]),
+                    epoch_sync:debug("Connection accept failed - ~p was from ~p",
+                                     [Reason, maps:get(host, S)]),
                     gen_tcp:close(TcpSock)
             end
     end.
@@ -1074,7 +1074,7 @@ handle_light_micro_block(_S, Header, TxHashes, PoF) ->
             ok;
         E = {error, _} ->
             {ok, HH} = aec_headers:hash_header(Header),
-            epoch_sync:info("Dropping gossiped light micro_block (~s): ~p", [pp(HH), E]),
+            epoch_sync:debug("Dropping gossiped light micro_block (~s): ~p", [pp(HH), E]),
             case aec_chain:get_header(aec_headers:prev_key_hash(Header)) of
                 {ok, PrevHeader} ->
                     epoch_sync:debug("miner beneficiary: ~p", [aec_headers:beneficiary(PrevHeader)]),
@@ -1429,7 +1429,7 @@ validate_connected_to_chain(MicroHeader, _PrevHeader, _PrevKeyHeader) ->
 
 validate_delta_height(MicroHeader, _PrevHeader, _PrevKeyHeader) ->
     Height = aec_headers:height(MicroHeader),
-    case aec_chain:top_header() of
+    case aec_chain:dirty_top_header() of
         undefined -> ok;
         TopHeader ->
             MaxDelta = aec_chain_state:gossip_allowed_height_from_top(),
