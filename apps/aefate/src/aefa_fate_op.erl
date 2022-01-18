@@ -2804,9 +2804,10 @@ store_map_lookup(Cache, MapId, Key, ES) ->
         void ->
             Pubkey        = aefa_engine_state:current_contract(ES),
             {Store, ES1}  = aefa_fate:ensure_contract_store(Pubkey, ES),
+            ES2           = aefa_engine_state:spend_gas_for_store_values(1, ES1),
             {Res, Store1} = aefa_stores:store_map_lookup(Pubkey, MapId, Key, Store),
-            ES2           = aefa_engine_state:set_stores(Store1, ES1),
-            {Res, ES2};
+            ES3           = aefa_engine_state:set_stores(Store1, ES2),
+            {Res, ES3};
         Val -> {{ok, Val}, ES}
     end.
 
@@ -2816,9 +2817,10 @@ store_map_member(Cache, MapId, Key, ES) ->
         void ->
             Pubkey        = aefa_engine_state:current_contract(ES),
             {Store, ES1}  = aefa_fate:ensure_contract_store(Pubkey, ES),
+            ES2           = aefa_engine_state:spend_gas_for_store_values(1, ES1),
             {Res, Store1} = aefa_stores:store_map_member(Pubkey, MapId, Key, Store),
-            ES2           = aefa_engine_state:set_stores(Store1, ES1),
-            {aeb_fate_data:make_boolean(Res), ES2};
+            ES3           = aefa_engine_state:set_stores(Store1, ES2),
+            {aeb_fate_data:make_boolean(Res), ES3};
         _Val -> {?FATE_TRUE, ES}
     end.
 
@@ -2837,12 +2839,14 @@ store_map_size(Cache, MapId, ES) ->
                          {true,  _Store} -> N
                      end
              end,
-    ES2 = aefa_engine_state:set_stores(Store1, ES1),
-    {maps:fold(Delta, Size, Cache), ES2}.
+    ES2 = aefa_engine_state:spend_gas_for_store_values(maps:size(Cache), ES1),
+    ES3 = aefa_engine_state:set_stores(Store1, ES2),
+    {maps:fold(Delta, Size, Cache), ES3}.
 
 store_map_get_clean(Cache, MapId, ES) ->
     Pubkey           = aefa_engine_state:current_contract(ES),
     {Store, ES1}     = aefa_fate:ensure_contract_store(Pubkey, ES),
+    {Size, Store1}   = aefa_stores:store_map_size(Pubkey, MapId, Store),
     ConsensusVersion = aefa_engine_state:consensus_version(ES),
     STORE_MAP_TO_LIST =
         if
@@ -2851,13 +2855,15 @@ store_map_get_clean(Cache, MapId, ES) ->
         true ->
             fun aefa_stores:store_map_to_list/3
         end,
-    {StoreList, Store1} = STORE_MAP_TO_LIST(Pubkey, MapId, Store),
+    ES2                 = aefa_engine_state:spend_gas_for_store_values(Size, ES1),
+    {StoreList, Store2} = STORE_MAP_TO_LIST(Pubkey, MapId, Store1),
     StoreMap            = maps:from_list(StoreList),
     Upd = fun(Key, ?FATE_MAP_TOMBSTONE, M) -> maps:remove(Key, M);
              (Key, Val, M)                 -> maps:put(Key, Val, M) end,
     Map = maps:fold(Upd, StoreMap, Cache),
-    ES2 = aefa_engine_state:set_stores(Store1, ES1),
-    {Map, ES2}.
+    ES3 = aefa_engine_state:set_stores(Store2, ES2),
+    {Map, ES3}.
+
 
 %% ------------------------------------------------------
 %% Comparison instructions
