@@ -32,7 +32,13 @@ jobs:
 workflows:
   setup:
     jobs:
-      - generate
+      - generate:
+          filters:
+            tags:
+              only: "/^v.*$/"
       - setup:
           requires:
             - generate
+          filters:
+            tags:
+              only: "/^v.*$/"
