@@ -1291,54 +1291,42 @@
                     }
                 },
                 "endpoints" : {
-                    "type": "object",
-                    "additionalProperties": false,
-                    "properties": {
-                        "gossip" : {
-                            "description" : "Gossip protocol API",
-                            "type" : "boolean",
-                            "default": true
-                        },
-                        "name_service" : {
-                            "description" : "Name resolution API",
-                            "type" : "boolean",
-                            "default": true
-                        },
-                        "chain" : {
-                            "description" : "Chain state inspection endpoints",
-                            "type" : "boolean",
-                            "default": true
-                        },
-                        "transactions" : {
-                            "description" : "Transactions insection endpoints",
-                            "type" : "boolean",
-                            "default": true
-                        },
-                        "node_operator" : {
-                            "description" : "Node operator endpoints",
-                            "type" : "boolean",
-                            "default" : false
-                        },
-                        "dev" : {
-                            "description" : "Development only API - for validation of client implementations. Should not be used in real life scenarios",
-                            "type" : "boolean",
-                            "default": false
-                        },
-                        "dry-run" : {
-                            "description" : "External protected dry run endpoint",
-                            "type" : "boolean",
-                            "default": true
-                        },
-                        "debug" : {
-                            "description" : "Deprecated. See also 'http > internal > debug_endpoints' KILLME FIXME",
-                            "type" : "boolean",
-                            "default": false
-                        },
-                        "obsolete" : {
-                            "description" : "Old endpoints that will be removed.",
-                            "type" : "array",
-                            "default": ["debug"]
-                        }
+                    "gossip" : {
+                        "description" : "Gossip protocol API",
+                        "type" : "boolean"
+                    },
+                    "name_service" : {
+                        "description" : "Name resolution API",
+                        "type" : "boolean"
+                    },
+                    "chain" : {
+                        "description" : "Chain state inspection endpoints",
+                        "type" : "boolean"
+                    },
+                    "transactions" : {
+                        "description" : "Transactions insection endpoints",
+                        "type" : "boolean"
+                    },
+                    "node_operator" : {
+                        "description" : "Node operator endpoints",
+                        "type" : "boolean",
+                        "default" : false
+                    },
+                    "dev" : {
+                        "description" : "Development only API - for validation of client implementations. Should not be used in real life scenarios",
+                        "type" : "boolean"
+                    },
+                    "debug" : {
+                        "description" : "Deprecated. See also 'http > internal > debug_endpoints'",
+                        "type" : "boolean"
+                    },
+                    "obsolete" : {
+                        "description" : "Old endpoints that will be removed",
+                        "type" : "boolean"
+                    },
+                    "dry-run" : {
+                        "description" : "External protected dry run endpoint",
+                        "type" : "boolean"
                     }
                 },
                 "debug" : {
@@ -1388,16 +1376,16 @@
                     "type" : "object",
                     "additionalProperties" : false,
                     "properties" : {
-                        "port" : {
-                            "description" :
-                            "Listen port for channels websocket interface.",
-                            "type" : "integer"
-                        },
                         "listen_address": {
-                          "description": "Listen address for channels websocket interface.",
-                          "type": "string",
-                          "default": "127.0.0.1",
-                          "example": "0.0.0.0"
+                            "description": "Listen address for channels websocket interface.",
+                            "type": "string",
+                            "default": "127.0.0.1",
+                            "example": "0.0.0.0"
+                        },
+                        "port" : {
+                            "description" : "Listen port for channels websocket interface.",
+                            "type" : "integer",
+                            "default" : 3014
                         },
                         "acceptors" : {
                             "description" : "Number of acceptors in pool",
@@ -1429,8 +1417,7 @@
             "additionalProperties" : false,
             "properties" : {
                 "persist" : {
-                    "description" :
-                    "If true, all changes to the chain are written to disk.",
+                    "description" : "If true, all changes to the chain are written to disk.",
                     "type" : "boolean",
                     "default" : true
                 },
@@ -1532,18 +1519,17 @@
             "additionalProperties" : false,
             "properties" : {
                 "autostart" : {
-                    "description" :
-                    "If true, the node will start mining automatically.",
-                    "type" : "boolean"
+                    "description" : "If true, the node will start mining automatically.",
+                    "type" : "boolean",
+                    "default" : false
                 },
                 "attempt_timeout" : {
-                    "description" :
-                    "Maximum time (milliseconds) for each attempt to mine a block with a specific nonce.",
-                    "type" : "integer"
+                    "description" : "Maximum time (milliseconds) for each attempt to mine a block with a specific nonce.",
+                    "type" : "integer",
+                    "default" : 3600000
                 },
                 "beneficiary" : {
-                    "description" :
-                    "Public key of beneficiary account that will receive fees from mining on a node. Required when 'mining.autostart' is set to 'true'.",
+                    "description" : "Public key of beneficiary account that will receive fees from mining on a node. Required when 'mining.autostart' is set to 'true'.",
                     "type" : "string",
                     "example" : "ak_DummyPubKeyDoNotEverUse999999999999999999999999999",
                     "pattern": "^ak_[1-9A-HJ-NP-Za-km-z]*$"
@@ -1585,8 +1571,7 @@
                     "minimum" : 0
                 },
                 "strictly_follow_top" : {
-                    "description" :
-                    "If true, removes the risk of a race condition with eventual forking in fast mining context",
+                    "description" : "If true, removes the risk of a race condition with eventual forking in fast mining context",
                     "type" : "boolean",
                     "default": false
                 },
@@ -1721,7 +1706,8 @@
                     "description" :
                     "Controls the overload protection in the logs. Default=50.",
                     "type" : "integer",
-                    "minimum" : 50 },
+                    "minimum" : 50,
+                    "default": 50},
                 "level"   : {
                     "description" :
                     "Sets the level of logging in the default, mining, cuckoo and sync logs.",
@@ -1851,8 +1837,7 @@
                     "additionalProperties" : false,
                     "properties" : {
                         "size" : {
-                            "description" :
-                            "Number of transactions in the mempool",
+                            "description" : "Number of transactions in the mempool",
                             "type" : "string",
                             "$ref" : "#/definitions/key_value_pattern",
                             "default" : "1000:1,2000:2,3000:3,4000:4"
@@ -2140,12 +2125,14 @@
                             "default" : 10
                         },
                         "initial_share_target" : {
-                            "type" : "integer"
+                            "type" : "integer",
+                            "default": 115790322390251417039241401711187164934754157181743688420499462401711837020160
                         },
                         "max_share_target" : {
                             "type" : "integer",
                             "minimum" : 1,
-                            "maximum" : 115790322390251417039241401711187164934754157181743688420499462401711837020160
+                            "maximum" : 115790322390251417039241401711187164934754157181743688420499462401711837020160,
+                            "default": 115790322390251417039241401711187164934754157181743688420499462401711837020160
                         },
                         "desired_solve_time" : {
                             "type" : "integer",
@@ -2193,7 +2180,7 @@
                             "type" : "array",
                             "items" : {
                                 "description" : "Public key receiving pool reward to percent share map.",
-                                "pattern": "^ak_[1-9A-HJ-NP-Za-km-z]*:[0-9]+(\.[0-9]*)?$"
+                                "pattern": "^ak_[1-9A-HJ-NP-Za-km-z]*:[0-9]+(\\.[0-9]*)?$"
                             }
                         },
                         "keys" : {

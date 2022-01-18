@@ -301,9 +301,7 @@ read_config() ->
 read_config(Mode) when Mode =:= silent; Mode =:= report ->
     case config_file() of
         undefined ->
-            info_msg(
-              Mode,
-              "No config file specified; using default settings~n", []),
+            info_msg(Mode, "No config file specified; using default settings~n", []),
             ok;
         F ->
             info_msg(Mode, "Reading config file ~s~n", [F]),
@@ -451,20 +449,16 @@ data_dir(Name) when is_atom(Name) ->
 
 config_file() ->
     case default_config_file()  of
-        undefined ->
-            deprecated_config_file();
-        F ->
-            F
+        undefined -> deprecated_config_file();
+        F         -> F
     end.
 
 default_config_file() ->
     case os:getenv("AETERNITY_CONFIG") of
         false ->
             case setup:get_env(aecore, config) of
-                {ok, F} ->
-                    F;
-                _ ->
-                    search_default_config()
+                {ok, F} -> F;
+                _       -> search_default_config()
             end;
         F ->
             F
@@ -472,10 +466,8 @@ default_config_file() ->
 
 deprecated_config_file() ->
     case os:getenv("EPOCH_CONFIG") of
-        false ->
-            search_deprecated_config();
-        F ->
-            F
+        false -> search_deprecated_config();
+        F     -> F
     end.
 
 search_default_config() ->
