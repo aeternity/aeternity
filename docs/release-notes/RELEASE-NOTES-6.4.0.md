@@ -3,8 +3,6 @@
 [This](https://github.com/aeternity/aeternity/releases/tag/v6.4.0) is a maintenance Iris release.
 
 It:
-* Introduces a command-line script to inspect and toggle maintenance mode:
-  `bin/aeternity maintenance on | off | status`
 
 * Introduces a new `cli` admin interface for the node operator to have better
   control of their node. It is to be used by
