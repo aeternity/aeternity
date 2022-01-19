@@ -41,7 +41,7 @@ new() ->
 
 -spec new(aeu_mtrees:mtree()) -> store().
 new(Tree) ->
-    #store{ cache = #{}, mtree = Tree }.
+    #store{ cache = #{}, mtree = aeu_mp_trees:tree_no_cache(Tree) }.
 
 %% Returns empty binary if key is not in the store.
 -spec get(key(), store()) -> val().
