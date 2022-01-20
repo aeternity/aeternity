@@ -92,6 +92,10 @@
         , ensure_chain_ends/0
         , ensure_key_headers_height_store/0
         , grant_fees/5
+        , is_gc_configured/0
+        , is_gc_enabled/0
+        , was_gc_enabled/0
+        , persist_gc_enabled/0
         ]).
 
 -import(aetx_env, [no_events/0]).
@@ -326,10 +330,10 @@ rollback_chain_state_to_hash_(Hash) ->
     TopHash = aec_db:get_top_block_hash(),
     case hash_is_in_main_chain(Hash, TopHash) of
         true ->
-            case is_gc_disabled() of
-                true ->
-                    do_rollback_to_hash(Hash, TopHash);
+            case is_gc_enabled() of
                 false ->
+                    do_rollback_to_hash(Hash, TopHash);
+                true ->
                     error(gc_active)
             end;
         false ->
@@ -1467,8 +1471,17 @@ key_headers_height_store_migration_step(Time, N, {TimeRead, {Headers, Cont}}) ->
         timer:tc(fun() -> mnesia:select(Cont) end)
     ).
 
-is_gc_disabled() ->
+is_gc_enabled() ->
+    is_gc_configured() orelse was_gc_enabled().
+
+is_gc_configured() ->
     case aec_db_gc:config() of
         #{enabled := Bool} when is_boolean(Bool) ->
             Bool
     end.
+
+persist_gc_enabled() ->
+    aec_db:write_gc_enabled().
+
+was_gc_enabled() ->
+    aec_db:get_was_gc_enabled().

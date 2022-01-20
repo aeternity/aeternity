@@ -33,6 +33,7 @@
          write_discovered_pof/2,
          write_genesis_hash/1,
          write_top_block_node/2,
+         write_gc_enabled/0,
          write_finalized_height/1,
          write_signal_count/2,
          find_block/1,
@@ -56,6 +57,7 @@
          dirty_get_top_block_node/0,
          get_finalized_height/0,
          dirty_get_finalized_height/0,
+         get_was_gc_enabled/0,
          get_block_state/1,
          get_block_state/2,
          get_block_state_partial/3,
@@ -654,6 +656,11 @@ write_top_block_node(Hash, Hdr) when is_binary(Hash) ->
                                                                     , header => Hdr} }),
        [{aec_chain_state, top_block_node}]).
 
+write_gc_enabled() ->
+    lager:debug("Persisting that GC was enabled in this database", []),
+    ?t(mnesia:write(#aec_chain_state{key = gc_was_enabled, value = true}),
+       [{aec_chain_state, gc_was_enabled}]).
+
 write_finalized_height(0) ->
     lager:debug("clearing finalized height", []),
     ?t(mnesia:delete(aec_chain_state, finalized_height, write));
@@ -706,6 +713,14 @@ get_top_block_hash() ->
 
 get_top_block_node() ->
     get_chain_state_value(top_block_node).
+
+get_was_gc_enabled() ->
+    case get_chain_state_value(gc_was_enabled) of
+        undefined ->
+            false;
+        true ->
+            true
+    end.
 
 dirty_get_top_block_node() ->
     dirty_get_chain_state_value(top_block_node).
@@ -1143,13 +1158,29 @@ start_db() ->
     aefa_fate_op:load_pre_iris_map_ordering(),
     case aec_db:persisted_valid_genesis_block() of
         true ->
-            aec_chain_state:ensure_chain_ends(),
-            aec_chain_state:ensure_key_headers_height_store(),
-            ok;
+            initialize_aec_chain_state();
         false ->
             lager:error("Persisted chain has a different genesis block than "
                         ++ "the one being expected. Aborting", []),
             error(inconsistent_database)
+    end.
+
+initialize_aec_chain_state() ->
+    case {aec_chain_state:is_gc_enabled(), aec_chain_state:was_gc_enabled()} of
+        {false, true} ->
+            lager:error("Persisted chain started out with GC enabled, cannot "
+                        ++ "disable GC on a GC'd database", []),
+            error(inconsistent_database);
+        {Config, Persisted} ->
+            if Config and not Persisted ->
+                lager:info("Enabling GC on previously non GC database"),
+                aec_chain_state:persist_gc_enabled();
+            true ->
+                ok
+            end,
+            aec_chain_state:ensure_chain_ends(),
+            aec_chain_state:ensure_key_headers_height_store(),
+            ok
     end.
 
 %% Test interface
