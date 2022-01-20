@@ -42,6 +42,17 @@ brew tap aeternity/aeternity
 brew install aeternity-node
 ```
 
+### Windows
+
+Use docker to run under Windows:
+
+```bash
+mkdir %APPDATA%\aeternity\maindb
+docker pull aeternity/aeternity
+docker run -p 3013:3013 -p 3015:3015 -v %APPDATA%/aeternity/maindb:/home/aeternity/node/data/mnesia aeternity/aeternity
+```
+
+
 ## Tarball Install
 
 In order to install an Aeternity node from a tarball, you need to:
