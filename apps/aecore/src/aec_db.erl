@@ -658,8 +658,7 @@ write_top_block_node(Hash, Hdr) when is_binary(Hash) ->
 
 write_gc_enabled() ->
     lager:debug("Persisting that GC was enabled in this database", []),
-    ?t(mnesia:write(#aec_chain_state{key = gc_was_enabled, value = true}),
-       [{aec_chain_state, gc_was_enabled}]).
+    ?t(mnesia:write(#aec_chain_state{key = gc_was_enabled, value = true})).
 
 write_finalized_height(0) ->
     lager:debug("clearing finalized height", []),
