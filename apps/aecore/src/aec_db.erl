@@ -1165,10 +1165,10 @@ start_db() ->
     end.
 
 initialize_aec_chain_state() ->
-    case {aec_chain_state:is_gc_enabled(), aec_chain_state:was_gc_enabled()} of
+    case {aec_chain_state:is_gc_configured(), aec_chain_state:was_gc_enabled()} of
         {false, true} ->
-            lager:error("Persisted chain started out with GC enabled, cannot "
-                        ++ "disable GC on a GC'd database", []),
+            lager:error("Persisted chain previously had GC enabled "
+            ++ "and GC is now disabled in the configuration (chain > garbage_collection > enabled = false). Aborting", []),
             error(inconsistent_database);
         {Config, Persisted} ->
             if Config and not Persisted ->
