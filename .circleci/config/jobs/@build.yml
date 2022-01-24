@@ -27,4 +27,4 @@ build_nix:
     - save_build_nix_cache
     - save_rebar_cache
     - store_rebar3_crashdump
-    - fail_notification_nix
+    - fail_notification

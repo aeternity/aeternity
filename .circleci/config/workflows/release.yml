@@ -46,8 +46,23 @@ jobs:
         tags:
           only: << pipeline.parameters.tag_regex >>
 
+  - slack/on-hold:
+      name: hodl-artifact-upload-notification
+      requires:
+        - linux-release-tarball
+        - macos-release-tarball
+        - linux-release-tarball-bundle
+        - macos-release-tarball-bundle
+      filters:
+        branches:
+          ignore: /.*/
+        tags:
+          only: << pipeline.parameters.tag_regex >>
+
   - hodl_artifact_upload:
       type: approval
+      requires:
+        - hodl-artifact-upload-notification
       filters:
         branches:
           ignore: /.*/
@@ -84,8 +99,20 @@ jobs:
         tags:
           only: << pipeline.parameters.tag_regex >>
 
+  - slack/on-hold:
+      name: hodl-blue-notification
+      requires:
+        - linux-release-tarball
+      filters:
+        branches:
+          ignore: /.*/
+        tags:
+          only: << pipeline.parameters.tag_regex >>
+
   - hodl_blue:
       type: approval
+      requires:
+        - hodl-blue-notification
       filters:
         branches:
           ignore: /.*/
@@ -108,8 +135,21 @@ jobs:
         tags:
           only: << pipeline.parameters.tag_regex >>
 
+  - slack/on-hold:
+      name: hodl-green-notification
+      requires:
+        - linux-release-tarball
+        - deploy-uat-blue
+      filters:
+        branches:
+          ignore: /.*/
+        tags:
+          only: << pipeline.parameters.tag_regex >>
+
   - hodl_green:
       type: approval
+      requires:
+        - hodl-green-notification
       filters:
         branches:
           ignore: /.*/
@@ -133,8 +173,23 @@ jobs:
         tags:
           only: << pipeline.parameters.tag_regex >>
 
+  - slack/on-hold:
+      name: hodl-latest-notification
+      requires:
+        - linux-release-tarball
+        - macos-release-tarball
+        - upload-release-tarballs-s3
+        - docker-image-tag
+      filters:
+        branches:
+          ignore: /.*/
+        tags:
+          only: << pipeline.parameters.tag_regex >>
+
   - hodl_latest:
       type: approval
+      requires:
+        - hodl-latest-notification
       filters:
         branches:
           ignore: /.*/
@@ -230,8 +285,7 @@ jobs:
         tags:
           only: << pipeline.parameters.tag_regex >>
 
-  - verify-artifacts:
-      name: verify-release-artifacts
+  - finalize-release:
       context: ae-node-builds
       requires:
         - upload-release-tarballs-s3
