@@ -1,24 +1,24 @@
 when:
   not: << pipeline.schedule.name >>
 jobs:
-  # - linux-tarball:
-  #     name: linux-release-tarball
-  #     package_name: aeternity-$CIRCLE_TAG-ubuntu-x86_64.tar.gz
-  #     filters:
-  #       branches:
-  #         ignore: /.*/
-  #       tags:
-  #         only: << pipeline.parameters.tag_regex >>
+  - linux-tarball:
+      name: linux-release-tarball
+      package_name: aeternity-$CIRCLE_TAG-ubuntu-x86_64.tar.gz
+      filters:
+        branches:
+          ignore: /.*/
+        tags:
+          only: << pipeline.parameters.tag_regex >>
 
-  # - linux-tarball:
-  #     name: linux-release-tarball-bundle
-  #     package_name: aeternity-bundle-$CIRCLE_TAG-ubuntu-x86_64.tar.gz
-  #     aeplugin_devmode: true
-  #     filters:
-  #       branches:
-  #         ignore: /.*/
-  #       tags:
-  #         only: << pipeline.parameters.tag_regex >>
+  - linux-tarball:
+      name: linux-release-tarball-bundle
+      package_name: aeternity-bundle-$CIRCLE_TAG-ubuntu-x86_64.tar.gz
+      aeplugin_devmode: true
+      filters:
+        branches:
+          ignore: /.*/
+        tags:
+          only: << pipeline.parameters.tag_regex >>
 
   - ubuntu_package:
       filters:
@@ -27,111 +27,111 @@ jobs:
         tags:
           only: << pipeline.parameters.tag_regex >>
 
-  # - macos-tarball:
-  #     name: macos-release-tarball
-  #     package_name: aeternity-$CIRCLE_TAG-macos-x86_64.tar.gz
-  #     filters:
-  #       branches:
-  #         ignore: /.*/
-  #       tags:
-  #         only: << pipeline.parameters.tag_regex >>
+  - macos-tarball:
+      name: macos-release-tarball
+      package_name: aeternity-$CIRCLE_TAG-macos-x86_64.tar.gz
+      filters:
+        branches:
+          ignore: /.*/
+        tags:
+          only: << pipeline.parameters.tag_regex >>
 
-  # - macos-tarball:
-  #     name: macos-release-tarball-bundle
-  #     package_name: aeternity-bundle-$CIRCLE_TAG-macos-x86_64.tar.gz
-  #     aeplugin_devmode: true
-  #     filters:
-  #       branches:
-  #         ignore: /.*/
-  #       tags:
-  #         only: << pipeline.parameters.tag_regex >>
+  - macos-tarball:
+      name: macos-release-tarball-bundle
+      package_name: aeternity-bundle-$CIRCLE_TAG-macos-x86_64.tar.gz
+      aeplugin_devmode: true
+      filters:
+        branches:
+          ignore: /.*/
+        tags:
+          only: << pipeline.parameters.tag_regex >>
 
-  # - hodl_artifact_upload:
-  #     type: approval
-  #     filters:
-  #       branches:
-  #         ignore: /.*/
-  #       tags:
-  #         only: << pipeline.parameters.tag_regex >>
+  - hodl_artifact_upload:
+      type: approval
+      filters:
+        branches:
+          ignore: /.*/
+        tags:
+          only: << pipeline.parameters.tag_regex >>
 
-  # - upload-tarballs-s3:
-  #     name: upload-release-tarballs-s3
-  #     bucket: << pipeline.parameters.s3_releases_bucket >>
-  #     context: ae-node-builds
-  #     requires:
-  #       - linux-release-tarball
-  #       - macos-release-tarball
-  #       - linux-release-tarball-bundle
-  #       - macos-release-tarball-bundle
-  #       - hodl_artifact_upload
-  #     filters:
-  #       branches:
-  #         ignore: /.*/
-  #       tags:
-  #         only: << pipeline.parameters.tag_regex >>
+  - upload-tarballs-s3:
+      name: upload-release-tarballs-s3
+      bucket: << pipeline.parameters.s3_releases_bucket >>
+      context: ae-node-builds
+      requires:
+        - linux-release-tarball
+        - macos-release-tarball
+        - linux-release-tarball-bundle
+        - macos-release-tarball-bundle
+        - hodl_artifact_upload
+      filters:
+        branches:
+          ignore: /.*/
+        tags:
+          only: << pipeline.parameters.tag_regex >>
 
-  # - upload-tarballs-github-release:
-  #     context: ae-node-builds
-  #     requires:
-  #       - linux-release-tarball
-  #       - macos-release-tarball
-  #       - linux-release-tarball-bundle
-  #       - macos-release-tarball-bundle
-  #       - hodl_artifact_upload
-  #     filters:
-  #       branches:
-  #         ignore: /.*/
-  #       tags:
-  #         only: << pipeline.parameters.tag_regex >>
+  - upload-tarballs-github-release:
+      context: ae-node-builds
+      requires:
+        - linux-release-tarball
+        - macos-release-tarball
+        - linux-release-tarball-bundle
+        - macos-release-tarball-bundle
+        - hodl_artifact_upload
+      filters:
+        branches:
+          ignore: /.*/
+        tags:
+          only: << pipeline.parameters.tag_regex >>
 
-  # - hodl_blue:
-  #     type: approval
-  #     filters:
-  #       branches:
-  #         ignore: /.*/
-  #       tags:
-  #         only: << pipeline.parameters.tag_regex >>
+  - hodl_blue:
+      type: approval
+      filters:
+        branches:
+          ignore: /.*/
+        tags:
+          only: << pipeline.parameters.tag_regex >>
 
-  # - deploy:
-  #     name: deploy-uat-blue
-  #     version: $CIRCLE_TAG
-  #     env: uat
-  #     color: blue
-  #     downtime: 1800 #30m
-  #     context: ae-node-builds
-  #     requires:
-  #       - linux-release-tarball
-  #       - hodl_blue
-  #     filters:
-  #       branches:
-  #         ignore: /.*/
-  #       tags:
-  #         only: << pipeline.parameters.tag_regex >>
+  - deploy:
+      name: deploy-uat-blue
+      version: $CIRCLE_TAG
+      env: uat
+      color: blue
+      downtime: 1800 #30m
+      context: ae-node-builds
+      requires:
+        - linux-release-tarball
+        - hodl_blue
+      filters:
+        branches:
+          ignore: /.*/
+        tags:
+          only: << pipeline.parameters.tag_regex >>
 
-  # - hodl_green:
-  #     type: approval
-  #     filters:
-  #       branches:
-  #         ignore: /.*/
-  #       tags:
-  #         only: << pipeline.parameters.tag_regex >>
+  - hodl_green:
+      type: approval
+      filters:
+        branches:
+          ignore: /.*/
+        tags:
+          only: << pipeline.parameters.tag_regex >>
 
-  # - deploy:
-  #     name: deploy-uat-green
-  #     version: $CIRCLE_TAG
-  #     env: uat
-  #     color: green
-  #     downtime: 1800 #30m
-  #     context: ae-node-builds
-  #     requires:
-  #       - linux-release-tarball
-  #       - deploy-uat-blue
-  #       - hodl_green
-  #     filters:
-  #       branches:
-  #         ignore: /.*/
-  #       tags:
-  #         only: << pipeline.parameters.tag_regex >>
+  - deploy:
+      name: deploy-uat-green
+      version: $CIRCLE_TAG
+      env: uat
+      color: green
+      downtime: 1800 #30m
+      context: ae-node-builds
+      requires:
+        - linux-release-tarball
+        - deploy-uat-blue
+        - hodl_green
+      filters:
+        branches:
+          ignore: /.*/
+        tags:
+          only: << pipeline.parameters.tag_regex >>
 
   - hodl_latest:
       type: approval
@@ -141,36 +141,36 @@ jobs:
         tags:
           only: << pipeline.parameters.tag_regex >>
 
-  # - promote-tarball-s3:
-  #     name: promote-release-linux-tarball-s3
-  #     uri: s3://<< pipeline.parameters.s3_releases_bucket >>/aeternity-$CIRCLE_TAG-ubuntu-x86_64.tar.gz
-  #     context: ae-node-builds
-  #     requires:
-  #       - upload-release-tarballs-s3
-  #       - hodl_latest
-  #     filters:
-  #       branches:
-  #         ignore: /.*/
-  #       tags:
-  #         only: << pipeline.parameters.tag_regex >>
+  - promote-tarball-s3:
+      name: promote-release-linux-tarball-s3
+      uri: s3://<< pipeline.parameters.s3_releases_bucket >>/aeternity-$CIRCLE_TAG-ubuntu-x86_64.tar.gz
+      context: ae-node-builds
+      requires:
+        - upload-release-tarballs-s3
+        - hodl_latest
+      filters:
+        branches:
+          ignore: /.*/
+        tags:
+          only: << pipeline.parameters.tag_regex >>
 
-  # - promote-tarball-s3:
-  #     name: promote-release-macos-tarball-s3
-  #     uri: s3://<< pipeline.parameters.s3_releases_bucket >>/aeternity-$CIRCLE_TAG-macos-x86_64.tar.gz
-  #     context: ae-node-builds
-  #     requires:
-  #       - upload-release-tarballs-s3
-  #       - hodl_latest
-  #     filters:
-  #       branches:
-  #         ignore: /.*/
-  #       tags:
-  #         only: << pipeline.parameters.tag_regex >>
+  - promote-tarball-s3:
+      name: promote-release-macos-tarball-s3
+      uri: s3://<< pipeline.parameters.s3_releases_bucket >>/aeternity-$CIRCLE_TAG-macos-x86_64.tar.gz
+      context: ae-node-builds
+      requires:
+        - upload-release-tarballs-s3
+        - hodl_latest
+      filters:
+        branches:
+          ignore: /.*/
+        tags:
+          only: << pipeline.parameters.tag_regex >>
 
   - publish-release-packages:
       requires:
-        # - linux-release-tarball
-        # - macos-release-tarball
+        - linux-release-tarball
+        - macos-release-tarball
         - ubuntu_package
         - hodl_latest
       filters:
@@ -179,70 +179,70 @@ jobs:
         tags:
           only: << pipeline.parameters.tag_regex >>
 
-  # - docker-image:
-  #     name: docker-image-tag
-  #     context: ae-node-builds
-  #     tag: $CIRCLE_TAG
-  #     requires:
-  #       - hodl_artifact_upload
-  #     filters:
-  #       branches:
-  #         ignore: /.*/
-  #       tags:
-  #         only: << pipeline.parameters.tag_regex >>
+  - docker-image:
+      name: docker-image-tag
+      context: ae-node-builds
+      tag: $CIRCLE_TAG
+      requires:
+        - hodl_artifact_upload
+      filters:
+        branches:
+          ignore: /.*/
+        tags:
+          only: << pipeline.parameters.tag_regex >>
 
-  # - docker-image:
-  #     name: docker-image-tag-bundle
-  #     context: ae-node-builds
-  #     aeplugin_devmode: true
-  #     tag: $CIRCLE_TAG-bundle
-  #     requires:
-  #       - hodl_artifact_upload
-  #     filters:
-  #       branches:
-  #         ignore: /.*/
-  #       tags:
-  #         only: << pipeline.parameters.tag_regex >>
+  - docker-image:
+      name: docker-image-tag-bundle
+      context: ae-node-builds
+      aeplugin_devmode: true
+      tag: $CIRCLE_TAG-bundle
+      requires:
+        - hodl_artifact_upload
+      filters:
+        branches:
+          ignore: /.*/
+        tags:
+          only: << pipeline.parameters.tag_regex >>
 
-  # - docker-image:
-  #     name: docker-image-latest
-  #     context: ae-node-builds
-  #     tag: latest
-  #     requires:
-  #       - docker-image-tag
-  #       - hodl_latest
-  #     filters:
-  #       branches:
-  #         ignore: /.*/
-  #       tags:
-  #         only: << pipeline.parameters.tag_regex >>
+  - docker-image:
+      name: docker-image-latest
+      context: ae-node-builds
+      tag: latest
+      requires:
+        - docker-image-tag
+        - hodl_latest
+      filters:
+        branches:
+          ignore: /.*/
+        tags:
+          only: << pipeline.parameters.tag_regex >>
 
-  # - docker-image:
-  #     name: docker-image-latest-bundle
-  #     context: ae-node-builds
-  #     aeplugin_devmode: true
-  #     tag: latest-bundle
-  #     requires:
-  #       - docker-image-tag
-  #       - hodl_latest
-  #     filters:
-  #       branches:
-  #         ignore: /.*/
-  #       tags:
-  #         only: << pipeline.parameters.tag_regex >>
+  - docker-image:
+      name: docker-image-latest-bundle
+      context: ae-node-builds
+      aeplugin_devmode: true
+      tag: latest-bundle
+      requires:
+        - docker-image-tag
+        - hodl_latest
+      filters:
+        branches:
+          ignore: /.*/
+        tags:
+          only: << pipeline.parameters.tag_regex >>
 
-  # - verify-artifacts:
-  #     name: verify-release-artifacts
-  #     context: ae-node-builds
-  #     requires:
-  #       - upload-release-tarballs-s3
-  #       - promote-release-linux-tarball-s3
-  #       - promote-release-macos-tarball-s3
-  #       - upload-tarballs-github-release
-  #       - docker-image-tag
-  #       - docker-image-latest
-  #     filters:
-  #       branches:
-  #         ignore: /.*/
-  #       tags:
-  #         only: << pipeline.parameters.tag_regex >>
+  - verify-artifacts:
+      name: verify-release-artifacts
+      context: ae-node-builds
+      requires:
+        - upload-release-tarballs-s3
+        - promote-release-linux-tarball-s3
+        - promote-release-macos-tarball-s3
+        - upload-tarballs-github-release
+        - docker-image-tag
+        - docker-image-latest
+      filters:
+        branches:
+          ignore: /.*/
+        tags:
+          only: << pipeline.parameters.tag_regex >>
