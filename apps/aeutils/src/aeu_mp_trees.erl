@@ -27,6 +27,7 @@
         , put/3
         , root_hash/1
         , read_only_subtree/2
+        , tree_no_cache/1
         , unfold/3
         , verify_proof/4
         , visit_reachable_hashes/3
@@ -55,6 +56,7 @@
 
 -record(mpt, { hash = <<>>          :: <<>> | hash() %% <<>> for the empty tree
              , db   = new_dict_db() :: aeu_mp_trees_db:db()
+             , node_cache = none    :: none | node_cache()
              }).
 
 -record(iter, { key  = <<>>          :: <<>> | key()
@@ -62,6 +64,7 @@
               , max_length           :: pos_integer() | 'undefined'
               , with_prefix = <<>>   :: <<>> | key()
               , db   = new_dict_db() :: aeu_mp_trees_db:db()
+              , node_cache = #{}     :: node_cache()
               }).
 
 -opaque tree() :: #mpt{}.
@@ -71,6 +74,8 @@
                          | {'with_prefix', key()}].
 
 -type tree_node() :: null() | leaf() | extension() | branch().
+
+-type node_cache() :: #{hash() => tree_node()}.
 
 -type null()         :: <<>>.
 -type leaf()         :: {'leaf', path(), value()}.
@@ -118,6 +123,9 @@ record_fields(_   ) -> no.
 new() ->
     #mpt{}.
 
+new_w_cache(Cache) ->
+    #mpt{ node_cache = Cache }.
+
 -spec new(db()) -> tree().
 new(DB) ->
     #mpt{db = DB}.
@@ -130,6 +138,10 @@ new(RootHash, DB) ->
         , db   = DB
         }.
 
+-spec tree_no_cache(tree()) -> tree().
+tree_no_cache(MPT = #mpt{}) ->
+    MPT#mpt{ node_cache = none }.
+
 -spec db(tree()) -> db().
 db(#mpt{ db = DB}) ->
     DB.
@@ -141,12 +153,13 @@ db(#mpt{ db = DB}) ->
 %%      for the given key.
 %%      Only use this for lookups, not for storing values.
 read_only_subtree(Key, #mpt{hash = Hash, db = DB} = MPT) ->
-    case int_get_subtree(Key, decode_node(Hash, DB), DB) of
-        {ok, {<<>>, _}} ->
-            {ok, new()};
-        {ok, {Node, DB1}} ->
-            {NewHash, DB2} = force_encoded_node_to_hash(Node, DB1),
-            {ok, MPT#mpt{hash = NewHash, db = DB2}};
+    {Node, Cache} = decode_node(Hash, #{}, DB),
+    case int_get_subtree(Key, Node, Cache, DB) of
+        {ok, {<<>>, _}, Cache1} ->
+            {ok, new_w_cache(Cache1)};
+        {ok, {Node1, DB1}, Cache1} ->
+            {NewHash, DB2} = force_encoded_node_to_hash(Node1, DB1),
+            {ok, MPT#mpt{hash = NewHash, db = DB2, node_cache = Cache1}};
         {error, no_such_subtree} = Err ->
             Err
     end.
@@ -237,35 +250,40 @@ lookup_in_proof(Key, Hash, ProofDB) ->
     end.
 
 -spec iterator(tree()) -> iterator().
-iterator(#mpt{hash = Hash, db = DB}) ->
-    #iter{key = <<>>, root = Hash, db = DB}.
+iterator(#mpt{hash = Hash, db = DB, node_cache = none}) ->
+    #iter{key = <<>>, root = Hash, db = DB};
+iterator(#mpt{hash = Hash, db = DB, node_cache = Cache}) ->
+    #iter{key = <<>>, root = Hash, db = DB, node_cache = Cache}.
 
 -spec iterator(tree(), iterator_opts()) -> iterator().
-iterator(#mpt{hash = Hash, db = DB}, Opts) ->
-    process_iterator_opts(#iter{key = <<>>, root = Hash, db = DB}, Opts).
+iterator(MPT, Opts) ->
+    process_iterator_opts(iterator(MPT), Opts).
 
 %%% @doc Iterator from a key. Key doesn't need to exist. Calling
 %%% iterator_next/1 gives the next value after Key.
 -spec iterator_from(key(), tree()) -> iterator().
-iterator_from(Key, #mpt{hash = Hash, db = DB}) ->
-    #iter{key = Key, root = Hash, db = DB}.
+iterator_from(Key, MPT) ->
+    I = iterator(MPT),
+    I#iter{key = Key}.
 
 -spec iterator_from(key(), tree(), iterator_opts()) -> iterator().
-iterator_from(Key, #mpt{hash = Hash, db = DB}, Opts) ->
-    process_iterator_opts(#iter{key = Key, root = Hash, db = DB}, Opts).
+iterator_from(Key, MPT, Opts) ->
+    process_iterator_opts(iterator_from(Key, MPT), Opts).
 
 -spec iterator_next(iterator()) ->
                            {key(), value(), iterator()} | '$end_of_table'.
-iterator_next(#iter{key = Key, root = Hash, db = DB,
+iterator_next(#iter{key = Key, root = Hash, db = DB, node_cache = Cache,
                     max_length = M, with_prefix = Prefix} = Iter) ->
-    Res =
+    {Node, Cache1} = decode_node(Hash, Cache, DB),
+    {Res, Cache2} =
         case Key =:= <<>> of
-            true  -> pick_first(decode_node(Hash, DB), M, Prefix, DB);
-            false -> int_iter_next(Key, decode_node(Hash, DB), M, Prefix, DB)
+            true  -> pick_first(Node, M, Prefix, Cache1, DB);
+            false -> int_iter_next(Key, Node, M, Prefix, Cache1, DB)
         end,
     case Res of
         '$end_of_table' -> '$end_of_table';
-        {Key1, Val} -> {Key1, Val, Iter#iter{key = Key1}}
+        {Key1, Val} ->
+          {Key1, Val, Iter#iter{key = Key1, node_cache = Cache2}}
     end.
 
 -spec unfold(path(), enc_node(), tree()) -> [unfold_node() | unfold_leaf()].
@@ -352,25 +370,26 @@ int_get(Path, {Type, NodePath, NodeVal}, DB) when Type =:= ext; Type =:= leaf ->
             <<>>
     end.
 
-int_get_subtree(<<>>, <<>>, DB) ->
-    {ok, {<<>>, DB}};
-int_get_subtree(_Path, <<>>,_DB) ->
+int_get_subtree(<<>>, <<>>, Cache, DB) ->
+    {ok, {<<>>, DB}, Cache};
+int_get_subtree(_Path, <<>>,_Cache,_DB) ->
     {error, no_such_subtree};
-int_get_subtree(<<>>, {branch, Branch}, DB) when tuple_size(Branch) =:= 17 ->
-    {ok, branch(set_branch_value(Branch, <<>>), DB)};
-int_get_subtree(Path, {branch, Branch}, DB) when tuple_size(Branch) =:= 17 ->
+int_get_subtree(<<>>, {branch, Branch}, Cache, DB) when tuple_size(Branch) =:= 17 ->
+    {ok, branch(set_branch_value(Branch, <<>>), DB), Cache};
+int_get_subtree(Path, {branch, Branch}, Cache, DB) when tuple_size(Branch) =:= 17 ->
     <<Next:4, Rest/bits>> = Path,
-    NextNode = decode_node(branch_next(Next, Branch), DB),
-    int_get_subtree(Rest, NextNode, DB);
-int_get_subtree(Path, {Type, NodePath, NodeVal}, DB) when Type =:= ext; Type =:= leaf ->
+    {NextNode, Cache1} = decode_node(branch_next(Next, Branch), Cache, DB),
+    int_get_subtree(Rest, NextNode, Cache1, DB);
+int_get_subtree(Path, {Type, NodePath, NodeVal}, Cache, DB) when Type =:= ext; Type =:= leaf ->
     S = bit_size(NodePath),
     case Path of
         NodePath when Type =:= leaf ->
-            {ok, {<<>>, DB}};
+            {ok, {<<>>, DB}, Cache};
         <<NodePath:S/bits, _/bits>> when Type =:= leaf ->
             {error, no_such_subtree};
         <<NodePath:S/bits, Rest/bits>> when Type =:= ext ->
-            int_get_subtree(Rest, decode_node(NodeVal, DB), DB);
+            {Next, Cache1} = decode_node(NodeVal, Cache, DB),
+            int_get_subtree(Rest, Next, Cache1, DB);
         _ ->
             {error, no_such_subtree}
     end.
@@ -755,138 +774,139 @@ process_iterator_opts(_Iter, [X|_]) ->
     error({illegal_iterator_option, X}).
 
 
--spec int_iter_next(path(), tree_node(), integer() | 'undefined', path(), db()) ->
-                           '$end_of_table' | {path(), value()}.
+-spec int_iter_next(path(), tree_node(), integer() | 'undefined', path(), node_cache(), db()) ->
+          {'$end_of_table' | {path(), value()}, node_cache()}.
 
-int_iter_next(_Path, <<>>,_Max,_Prefix,_DB) ->
-    '$end_of_table';
-int_iter_next(<<>>, {branch, Branch}, Max, Prefix, DB) ->
+int_iter_next(_Path, <<>>,_Max,_Prefix, Cache,_DB) ->
+    {'$end_of_table', Cache};
+int_iter_next(<<>>, {branch, Branch}, Max, Prefix, Cache, DB) ->
     case check_iter_path_length(<<0:4>>, Max) of
         {ok, NewMax} ->
-            pick_first_branch(Branch, 0, NewMax, Prefix, DB);
+            pick_first_branch(Branch, 0, NewMax, Prefix, Cache, DB);
         error ->
-            '$end_of_table'
+            {'$end_of_table', Cache}
     end;
-int_iter_next(<<N:4, Rest/bits>>, {branch, Branch}, Max,  Prefix, DB) ->
+int_iter_next(<<N:4, Rest/bits>>, {branch, Branch}, Max,  Prefix, Cache, DB) ->
     case check_iter_path_length(<<N:4>>, Max) of
         {ok, NewMax} ->
             {ok, NewPrefix} = match_prefix(Prefix, <<N:4>>),
-            Next = decode_node(branch_next(N, Branch), DB),
-            case int_iter_next(Rest, Next, NewMax, NewPrefix, DB) of
-                '$end_of_table' -> pick_first_branch(Branch, N + 1, NewMax, Prefix, DB);
-                {RestPath, Val} -> {<<N:4, RestPath/bits>>, Val}
+            {Next, Cache1} = decode_node(branch_next(N, Branch), Cache, DB),
+            case int_iter_next(Rest, Next, NewMax, NewPrefix, Cache1, DB) of
+                {'$end_of_table', Cache2} -> pick_first_branch(Branch, N + 1, NewMax, Prefix, Cache2, DB);
+                {{RestPath, Val}, Cache2} -> {{<<N:4, RestPath/bits>>, Val}, Cache2}
             end;
         error ->
-            '$end_of_table'
+            {'$end_of_table', Cache}
     end;
-int_iter_next(Path, {leaf, Path, _},_Max,_Prefix,_DB) ->
-    '$end_of_table';
-int_iter_next(Path, {leaf, NodePath, Val}, Max, Prefix,_DB) ->
+int_iter_next(Path, {leaf, Path, _},_Max,_Prefix, Cache, _DB) ->
+    {'$end_of_table', Cache};
+int_iter_next(Path, {leaf, NodePath, Val}, Max, Prefix, Cache, _DB) ->
     case check_iter_path_length(NodePath, Max) of
         {ok, _} ->
             case Path < NodePath of
                 true  ->
                     case has_prefix(Prefix, NodePath) of
-                        true -> {NodePath, Val};
-                        false -> '$end_of_table'
+                        true -> {{NodePath, Val}, Cache};
+                        false -> {'$end_of_table', Cache}
                     end;
-                false -> '$end_of_table'
+                false -> {'$end_of_table', Cache}
             end;
-        error   -> '$end_of_table'
+        error   -> {'$end_of_table', Cache}
     end;
-int_iter_next(Path, {ext, NodePath, Hash}, Max, Prefix, DB) ->
+int_iter_next(Path, {ext, NodePath, Hash}, Max, Prefix, Cache, DB) ->
     case check_iter_path_length(NodePath, Max) of
         {ok, NewMax} ->
             S = bit_size(NodePath),
             case Path of
                 <<NodePath:S/bits, Rest/bits>> ->
-                    Next = decode_node(Hash, DB),
+                    {Next, Cache1} = decode_node(Hash, Cache, DB),
                     {ok, NewPrefix} = match_prefix(Prefix, NodePath),
-                    case int_iter_next(Rest, Next, NewMax, NewPrefix, DB) of
-                        '$end_of_table' -> '$end_of_table';
-                        {RestPath, Val} ->
+                    case int_iter_next(Rest, Next, NewMax, NewPrefix, Cache1, DB) of
+                        {'$end_of_table', Cache2} -> {'$end_of_table', Cache2};
+                        {{RestPath, Val}, Cache2} ->
                             KeyPath = <<NodePath/bits, RestPath/bits>>,
                             case has_prefix(Prefix, KeyPath) of
-                                true -> {KeyPath, Val};
-                                false -> '$end_of_table'
+                                true -> {{KeyPath, Val}, Cache2};
+                                false -> {'$end_of_table', Cache2}
                             end
                     end;
                 _ when Path < NodePath ->
                     case match_prefix(Prefix, NodePath) of
                         {ok, NewPrefix} ->
-                            case pick_first(decode_node(Hash, DB),
-                                            NewMax, NewPrefix, DB) of
-                                '$end_of_table' -> '$end_of_table';
-                                {RestPath, Val} ->
+                            {Next, Cache1} = decode_node(Hash, Cache, DB),
+                            case pick_first(Next, NewMax, NewPrefix, Cache1, DB) of
+                                {'$end_of_table', Cache2} -> {'$end_of_table', Cache2};
+                                {{RestPath, Val}, Cache2} ->
                                     KeyPath = <<NodePath/bits, RestPath/bits>>,
-                                    {KeyPath, Val}
+                                    {{KeyPath, Val}, Cache2}
                             end;
                         error ->
-                            '$end_of_table'
+                            {'$end_of_table', Cache}
                     end;
                 _ when Path >= NodePath ->
-                    '$end_of_table'
+                    {'$end_of_table', Cache}
             end;
         error ->
-            '$end_of_table'
+            {'$end_of_table', Cache}
     end.
 
-pick_first(<<>>,_Max, _Prefix, _DB) ->
-    '$end_of_table';
-pick_first({leaf, Path, Val}, Max, Prefix, _DB) ->
+pick_first(<<>>,_Max, _Prefix, Cache, _DB) ->
+    {'$end_of_table', Cache};
+pick_first({leaf, Path, Val}, Max, Prefix, Cache, _DB) ->
     case check_iter_path_length(Path, Max) of
         {ok, _} ->
             case has_prefix(Prefix, Path) of
-                true -> {Path, Val};
-                false -> '$end_of_table'
+                true -> {{Path, Val}, Cache};
+                false -> {'$end_of_table', Cache}
             end;
-        error   -> '$end_of_table'
+        error   -> {'$end_of_table', Cache}
     end;
-pick_first({ext, Path, Hash}, Max, Prefix, DB) ->
+pick_first({ext, Path, Hash}, Max, Prefix, Cache, DB) ->
     case check_iter_path_length(Path, Max) of
         {ok, NewMax} ->
             case match_prefix(Prefix, Path) of
-                error -> '$end_of_table';
+                error -> {'$end_of_table', Cache};
                 {ok, NewPrefix} ->
-                    case pick_first(decode_node(Hash, DB), NewMax, NewPrefix, DB) of
-                        '$end_of_table' ->
-                            '$end_of_table';
-                        {RestPath, Val} ->
+                    {Next, Cache1} = decode_node(Hash, Cache, DB),
+                    case pick_first(Next, NewMax, NewPrefix, Cache1, DB) of
+                        {'$end_of_table', Cache2} ->
+                            {'$end_of_table', Cache2};
+                        {{RestPath, Val}, Cache2} ->
                             KeyPath = <<Path/bits, RestPath/bits>>,
-                            {KeyPath, Val}
+                            {{KeyPath, Val}, Cache2}
                     end
             end;
         error ->
-            '$end_of_table'
+            {'$end_of_table', Cache}
     end;
-pick_first({branch, Branch}, Max, Prefix, DB) ->
+pick_first({branch, Branch}, Max, Prefix, Cache, DB) ->
     case is_empty_prefix(Prefix) andalso (branch_value(Branch) =/= <<>>) of
         true ->
             case check_iter_path_length(<<>>, Max) of
-                {ok, _} -> {<<>>, branch_value(Branch)};
-                error -> '$end_of_table'
+                {ok, _} -> {{<<>>, branch_value(Branch)}, Cache};
+                error -> {'$end_of_table', Cache}
             end;
         false ->
             case check_iter_path_length(<<0:4>>, Max) of
-                {ok, NewMax} -> pick_first_branch(Branch, 0, NewMax, Prefix, DB);
-                error -> '$end_of_table'
+                {ok, NewMax} -> pick_first_branch(Branch, 0, NewMax, Prefix, Cache, DB);
+                error -> {'$end_of_table', Cache}
             end
     end.
 
-pick_first_branch(_Branch, N,_MaxPath,_Prefix,_DB) when is_integer(N), N > 15 ->
-    '$end_of_table';
-pick_first_branch(Branch, N, MaxPath, Prefix, DB) when is_integer(N) ->
+pick_first_branch(_Branch, N,_MaxPath,_Prefix, Cache, _DB) when is_integer(N), N > 15 ->
+    {'$end_of_table', Cache};
+pick_first_branch(Branch, N, MaxPath, Prefix, Cache, DB) when is_integer(N) ->
     case match_prefix(Prefix, <<N:4>>) of
         {ok, NewPrefix} ->
-            case pick_first(decode_node(branch_next(N, Branch), DB),
-                            MaxPath, NewPrefix, DB) of
-                '$end_of_table' ->
-                    pick_first_branch(Branch, N + 1, MaxPath, Prefix, DB);
-                {RestPath, Val} ->
-                    {<<N:4, RestPath/bits>>, Val}
+            {Next, Cache1} = decode_node(branch_next(N, Branch), Cache, DB),
+            case pick_first(Next, MaxPath, NewPrefix, Cache1, DB) of
+                {'$end_of_table', Cache2} ->
+                    pick_first_branch(Branch, N + 1, MaxPath, Prefix, Cache2, DB);
+                {{RestPath, Val}, Cache2} ->
+                    {{<<N:4, RestPath/bits>>, Val}, Cache2}
             end;
         error ->
-            '$end_of_table'
+            {'$end_of_table', Cache}
     end.
 
 check_iter_path_length(_Path, undefined) -> {ok, undefined};
@@ -972,6 +992,16 @@ hexchar(X) when X > -1, X < 16 -> $A + X - 10.
 node_hash(<<>>) -> error(no_hash_for_null);
 node_hash(Bin) when byte_size(Bin) < 32   -> aec_hash:hash(header, Bin);
 node_hash(Bin) when byte_size(Bin) =:= 32 -> Bin.
+
+-spec decode_node(enc_node(), node_cache(), db()) -> {tree_node(), node_cache()}.
+decode_node(Hash, Cache, DB) ->
+    case maps:get(Hash, Cache, none) of
+        none ->
+            Node = decode_node(Hash, DB),
+            {Node, Cache#{Hash => Node}};
+        Node ->
+            {Node, Cache}
+    end.
 
 -spec decode_node(enc_node(), db()) -> tree_node().
 decode_node(<<>> = X,_DB) -> X;

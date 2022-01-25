@@ -22,6 +22,9 @@ contract Benchmark =
   function get(k) = state.map[k]
   function noop() = ()
 
+  function get1() = state.map
+  function get2() = Map.to_list(state.map)
+
   stateful function benchmark(k, v) =
     let m = state.updater.update_map(k, v, state.map)
     put(state{ map = m })
