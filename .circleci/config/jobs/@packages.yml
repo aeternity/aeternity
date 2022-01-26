@@ -33,9 +33,6 @@ ubuntu_package:
   executor: builder_container_1804
   working_directory: /home/builder/aeternity_deb
   steps:
-    - run:
-        name: Install jq (slack notification dep)
-        command: apt-get install -y jq
     - fixed_checkout
     - build_deb:
         output: << pipeline.parameters.packages_workspace >>
