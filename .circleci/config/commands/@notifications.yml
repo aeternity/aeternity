@@ -1,17 +1,5 @@
 fail_notification:
   steps:
-    # the orb setup wrongly assumes that run in a container with sudo user
-    - run:
-        name: Setup slack notification logs
-        environment:
-          LOG_PATH: /tmp/slack-orb/logs
-          POST_TO_SLACK_LOG: post-to-slack.json
-        command: |
-          mkdir -p $LOG_PATH
-
-          if [ ! -f "$LOG_PATH/$POST_TO_SLACK_LOG" ]; then
-              echo "[]" | tee $LOG_PATH/$POST_TO_SLACK_LOG
-          fi
     - slack/notify:
         branch_pattern: << pipeline.parameters.master_branch >>
         channel: << pipeline.parameters.slack_notification_channel >>
