@@ -1,7 +1,11 @@
 fail_notification:
   steps:
+    - run:
+        name: artificial fail
+        command: |
+          false
     - slack/notify:
-        branch_pattern: << pipeline.parameters.master_branch >>
+        branch_pattern: slack_notifications
         event: fail
         template: basic_fail_1
     - slack/notify:
