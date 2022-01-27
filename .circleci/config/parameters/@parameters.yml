@@ -49,7 +49,3 @@ s3_releases_bucket:
 run_system_tests:
   type: boolean
   default: false
-
-slack_notification_channel:
-  type: string
-  default: C02VDRQHQEQ
