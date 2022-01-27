@@ -465,7 +465,7 @@ tx_event_data(aens_revoke, {Pubkey, NameId}, _Type) ->
 tx_event_data(aens_update, {Pubkey, NameHash, TTL, ClientTTL, Pointers}, _Type) ->
     ok(aens_update_tx:new(#{ account_id => acct_id(Pubkey)
                            , name_id    => name_id(NameHash)
-                           , name_ttl   => val(TTL, 0)
+                           , name_ttl   => val(TTL, -1)
                            , pointers   => val(Pointers, [])
                            , client_ttl => val(ClientTTL, 0)
                            , nonce => 0
