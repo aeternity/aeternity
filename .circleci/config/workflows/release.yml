@@ -53,6 +53,7 @@ jobs:
 
   - slack/on-hold:
       name: hodl-artifact-upload-notification
+      debug: true
       context: ae-slack
       requires:
         - linux-release-tarball
@@ -111,6 +112,7 @@ jobs:
 
   - slack/on-hold:
       name: hodl-blue-notification
+      debug: true
       context: ae-slack
       requires:
         - linux-release-tarball
@@ -150,6 +152,7 @@ jobs:
 
   - slack/on-hold:
       name: hodl-green-notification
+      debug: true
       context: ae-slack
       requires:
         - linux-release-tarball
@@ -191,6 +194,7 @@ jobs:
 
   - slack/on-hold:
       name: hodl-latest-notification
+      debug: true
       context: ae-slack
       requires:
         - linux-release-tarball

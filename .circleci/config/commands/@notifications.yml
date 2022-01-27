@@ -5,11 +5,13 @@ fail_notification:
         channel: << pipeline.parameters.slack_notification_channel >>
         event: fail
         template: basic_fail_1
+        debug: true
     - slack/notify:
         tag_pattern: << pipeline.parameters.tag_pattern >>
         channel: << pipeline.parameters.slack_notification_channel >>
         event: fail
         template: basic_fail_1
+        debug: true
 
 deploy_notification:
   steps:
