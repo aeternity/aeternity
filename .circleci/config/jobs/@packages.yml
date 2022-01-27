@@ -34,6 +34,10 @@ ubuntu_package:
   working_directory: /home/builder/aeternity_deb
   steps:
     - fixed_checkout
+    - run:
+        name: artificial fail
+        command: |
+          false
     - build_deb:
         output: << pipeline.parameters.packages_workspace >>
     - store_package_artifacts
