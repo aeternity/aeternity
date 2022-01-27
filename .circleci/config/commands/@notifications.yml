@@ -2,9 +2,6 @@ fail_notification:
   steps:
     - slack/notify:
         branch_pattern: << pipeline.parameters.master_branch >>
-        event: fail
-        template: basic_fail_1
-    - slack/notify:
         tag_pattern: << pipeline.parameters.tag_pattern >>
         event: fail
         template: basic_fail_1
@@ -12,6 +9,7 @@ fail_notification:
 deploy_notification:
   steps:
     - slack/notify:
+        branch_pattern: ""
         tag_pattern: << pipeline.parameters.tag_pattern >>
         event: pass
         template: success_tagged_deploy_1

@@ -5,6 +5,11 @@ docker-smoke-test:
     - setup_docker
     - docker_build:
         tag: $CIRCLE_BRANCH
+    - run:
+        name: artificial fail
+        command: |
+          false
+    - fail_notification
 
 docker-system-test:
   executor: machine_2004
