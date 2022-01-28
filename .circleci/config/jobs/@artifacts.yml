@@ -64,10 +64,12 @@ publish-release-packages:
         branch: master
     - fail_notification
 
-verify-artifacts:
+finalize-release:
   executor: infrastructure_container_stable
   steps:
     - run:
         name: Verify release artifacts
         command: |
           /infrastructure/scripts/check_release_artifacts.sh << pipeline.git.tag >>
+    - fail_notification
+    - deploy_notification
