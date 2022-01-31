@@ -1243,13 +1243,11 @@
                         },
                         "request_timeout" : {
                             "description" : "HTTP Request timeout.",
-                            "type" : "integer",
-                            "default" : 30000
+                            "type" : "integer"
                         },
                         "connect_timeout" : {
                             "description" : "HTTP Request connect timeout.",
-                            "type" : "integer",
-                            "default" : 1000
+                            "type" : "integer"
                         },
                         "acceptors" : {
                             "description" : "Number of acceptors in external pool",
@@ -1384,7 +1382,8 @@
                         },
                         "port" : {
                             "description" : "Listen port for channels websocket interface.",
-                            "type" : "integer"
+                            "type" : "integer",
+                            "default" : 3014
                         },
                         "acceptors" : {
                             "description" : "Number of acceptors in pool",
