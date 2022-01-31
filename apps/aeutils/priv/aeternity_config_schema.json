@@ -1384,8 +1384,7 @@
                         },
                         "port" : {
                             "description" : "Listen port for channels websocket interface.",
-                            "type" : "integer",
-                            "default" : 3014
+                            "type" : "integer"
                         },
                         "acceptors" : {
                             "description" : "Number of acceptors in pool",
