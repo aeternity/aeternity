@@ -646,7 +646,7 @@ handle_request_('GetStatus', _Params, _Context) ->
     GenesisBlockHash = aec_consensus:get_genesis_hash(),
     Solutions = 0, %% TODO
     Difficulty = aec_blocks:difficulty(TopKeyBlock),
-    {Syncing, SyncProgress} = aec_sync:sync_progress(),
+    {Syncing, SyncProgress, _} = aec_sync:sync_progress(),
     Listening = true, %% TODO
     Protocols =
         maps:fold(fun(Vsn, Height, Acc) ->

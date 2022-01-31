@@ -88,7 +88,7 @@ gossip_txs(GossipTxs) ->
 sync_in_progress(PeerId) ->
     opt_call({sync_in_progress, PeerId}, false).
 
--spec sync_progress() -> {boolean(), float()}.
+-spec sync_progress() -> {boolean(), float(), aec_blocks:height()}.
 sync_progress() ->
     opt_call(sync_progress, {false, 100.0}).
 
@@ -352,7 +352,7 @@ handle_info({'EXIT', Pid, Reason}, State) ->
     end,
     {noreply, do_terminate_worker(Pid, State, Reason)};
 handle_info(update_sync_progress_metric, State) ->
-    {_, SyncProgress} = sync_progress(State),
+    {_, SyncProgress, _} = sync_progress(State),
     aec_metrics:try_update([ae,epoch,aecore,sync,progress], SyncProgress),
     log_sync_status(State),
 
@@ -1193,10 +1193,10 @@ max_gossip() ->
 is_syncing(#state{sync_tasks = SyncTasks}) ->
     [1 || #sync_task{suspect = false} <- SyncTasks] =/= [].
 
--spec sync_progress(#state{}) -> {boolean(), float()}.
-sync_progress(#state{sync_tasks = SyncTasks} = State) ->
+-spec sync_progress(#state{}) -> {boolean(), float(), aec_blocks:height()}.
+sync_progress(#state{sync_tasks = SyncTasks, top_target = TopTarget} = State) ->
     case is_syncing(State) of
-        false -> {false, 100.0};
+        false -> {false, 100.0, TopTarget};
         true ->
             TargetHeight =
                 lists:foldl(
@@ -1218,7 +1218,7 @@ sync_progress(#state{sync_tasks = SyncTasks} = State) ->
                     true -> 99.9;
                     false -> SyncProgress0
                 end,
-            {true, SyncProgress}
+            {true, SyncProgress, TargetHeight}
     end.
 
 peer_get_header_by_hash(PeerId, RemoteHash) ->
