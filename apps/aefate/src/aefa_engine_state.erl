@@ -80,6 +80,7 @@
         , push_return_type_check/4
         , spend_gas/2
         , spend_gas_for_new_cells/2
+        , spend_gas_for_store_values/2
         , spend_gas_for_traversal/3
         , spend_gas_for_traversal/4
         , update_for_remote_call/5
@@ -507,6 +508,11 @@ spend_gas_for_new_cells1(NewCells, #es{ created_cells = Cells } = ES) ->
     CellCost = 1 + (TotalCells bsr 10),
     spend_gas(NewCells * CellCost, ES#es{ created_cells = TotalCells }).
 
+spend_gas_for_store_values(StoreValues, ES) ->
+    case consensus_version(ES) < ?CERES_PROTOCOL_VSN of
+        true  -> ES;
+        false -> spend_gas(StoreValues * 20000, ES)
+    end.
 
 -define(GAS_DENOMINATOR, 1000).
 

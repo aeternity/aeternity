@@ -128,6 +128,7 @@
         , sophia_signatures_aens/1
         , sophia_maps/1
         , sophia_map_benchmark/1
+        , sophia_big_map/1
         , sophia_big_map_benchmark/1
         , sophia_registry/1
         , sophia_pmaps/1
@@ -283,6 +284,17 @@
         ?VM_FATE_SOPHIA_3 -> ?assertMatch(__ExpVm2, __Res) %% For now :-)
     end).
 
+-define(assertMatchFATE(__ExpVm1, __ExpVm2, __ExpVm3, __Res),
+    case vm_version() of
+        ?VM_AEVM_SOPHIA_1 -> ok;
+        ?VM_AEVM_SOPHIA_2 -> ok;
+        ?VM_AEVM_SOPHIA_3 -> ok;
+        ?VM_AEVM_SOPHIA_4 -> ok;
+        ?VM_FATE_SOPHIA_1 -> ?assertMatch(__ExpVm1, __Res);
+        ?VM_FATE_SOPHIA_2 -> ?assertMatch(__ExpVm2, __Res);
+        ?VM_FATE_SOPHIA_3 -> ?assertMatch(__ExpVm3, __Res) %% For now :-)
+    end).
+
 -define(assertMatchVM(AEVM, FATE, Res),
     case ?IS_AEVM_SOPHIA(vm_version()) of
         true  -> ?assertMatch(AEVM, Res);
@@ -425,6 +437,7 @@ groups() ->
                                  sophia_signatures_aens,
                                  sophia_maps,
                                  sophia_map_benchmark,
+                                 sophia_big_map,
                                  sophia_big_map_benchmark,
                                  sophia_registry,
                                  sophia_map_of_maps,
@@ -4686,6 +4699,26 @@ sophia_big_map_benchmark(Cfg) ->
     io:format("Get: ~s (~p gas)\nNop: ~s (~p gas)\nPut: ~s (~p gas)\n", [Ms(Time), GasGet, Ms(Time1), GasNop, Ms(Time2), GasPut]),
     ok.
 
+sophia_big_map(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    Acc = ?call(new_account, 100000000000000 * aec_test_utils:min_gas_price()),
+    N     = 200,
+    Batch = 200,
+    Ct  = ?call(create_contract, Acc, maps_benchmark, {?cid(<<777:256>>), #{}}),
+    Ms  = fun(T) -> io_lib:format("~.2fms", [T / 1000]) end,
+    _   = [ begin
+                ?call(call_contract, Acc, Ct, update, {tuple, []}, {I, I + Batch - 1, integer_to_binary(I)}, #{ gas => 1000000000 }),
+                io:format(".")
+            end || I <- lists:seq(0, N - 1, Batch) ],
+    io:format("\n"),
+    io:format("-- Timed call --\n"),
+    {Time1, {_Val1, Gas1}} = timer:tc(fun() -> ?call(call_contract, Acc, Ct, get1, {map, word, string}, {}, #{ gas => 5000000, return_gas_used => true }) end),
+    {Time2, {_Val2, Gas2}} = timer:tc(fun() -> ?call(call_contract, Acc, Ct, get2, {list, {tuple, [word, string]}}, {}, #{ gas => 5000000, return_gas_used => true }) end),
+    io:format("Get1: ~s (~p gas)\nGet2: ~s (~p gas)\n", [Ms(Time1), Gas1, Ms(Time2), Gas2]),
+    ?assertMatchFATE(G when G < 1000000, G when G > 1000000, G when G > 1000000, Gas1),
+    ?assertMatchFATE(G when G < 1000000, G when G < 1000000, G when G > 1000000, Gas2),
+    ok.
+
 sophia_registry(Cfg) ->
     ?skipRest(vm_version() =< ?VM_AEVM_SOPHIA_3, only_lima),
     state(aect_test_utils:new_state()),
@@ -4841,9 +4874,10 @@ sophia_maps_gc_bug(_Cfg) ->
     _         = [ ?call(call_contract, Acc, Ct, set, {tuple, []}, {<<"foo">>}, #{ return_gas_used => true })
                   || _ <- lists:seq(1, 20) ],
     {{}, Gas} = ?call(call_contract, Acc, Ct, set, {tuple, []}, {<<"foo">>}, #{ return_gas_used => true }),
-    case protocol_version() >= ?IRIS_PROTOCOL_VSN of
-        true  -> ?assertMatch({_, '<', _, true}, {Gas, '<', 3000, Gas < 3000});
-        false -> ?assertMatch({_, '>', _, true}, {Gas, '>', 4000, Gas > 4000})
+    case protocol_version() of
+        ?LIMA_PROTOCOL_VSN -> ?assertMatch({_, '>', _, true}, {Gas, '>', 4000, Gas > 4000});
+        ?IRIS_PROTOCOL_VSN -> ?assertMatch({_, '<', _, true}, {Gas, '<', 3000, Gas < 3000});
+        _                  -> ?assertMatch({_, '<', _, true}, {Gas, '<', 50000, Gas < 50000})
     end.
 
 sophia_polymorphic_entrypoint(_Cfg) ->

@@ -130,7 +130,7 @@ docker_system_test:
           mkdir << parameters.system_test_host_logs >>
           dmesg > << parameters.system_test_host_logs >>/dmesg.log
         when: always
-    - fail_notification_system_test
+    - fail_notification
     - save_machine_build_cache
     - store_test_results:
         path: << parameters.system_test_logs >>

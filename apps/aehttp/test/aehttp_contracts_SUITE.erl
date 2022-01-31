@@ -1264,7 +1264,7 @@ paysplit_contract(Config) ->
 
     ECheck = fun([_]) -> ok end,
 
-    call_func(APub, APriv, EncCPub, Paysplit, "payAndSplit", [], #{<<"amount">> => 100000}, {log, ECheck}),
+    call_func(APub, APriv, EncCPub, Paysplit, "payAndSplit", [], #{<<"amount">> => 100000, <<"gas">> => 1000000}, {log, ECheck}),
     call_func(APub, APriv, EncCPub, Paysplit, "payAndSplit", [], #{}, revert),
     call_func(APub, APriv, EncCPub, Paysplit, "payAndSplit", [], #{<<"amount">> => 100000, <<"gas">> => 1000}, error),
 

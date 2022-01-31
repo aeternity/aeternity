@@ -158,7 +158,12 @@ main_test(_Config) ->
     monitor_node(N1, true),
     %% Mining of another keyblock starts second GC phase - storing cache to mnesia table and restart
     mine_until_height(N1, N2, ?GC_INTERVAL + 1),
-    receive {nodedown, N1} -> ct:log("////////// ~p restarted~n", [N1]) end,
+    receive
+        {nodedown, N1} -> ct:log("////////// ~p restarted~n", [N1])
+    after 30000 ->
+        %% Successful runs in CI take about 10 secs for the restart
+        ct:log("Timed out waiting for gc node restart")
+    end,
 
     block_while(fun () -> not net_kernel:hidden_connect_node(N1) end, 300, 300),
 

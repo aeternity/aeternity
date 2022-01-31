@@ -45,12 +45,6 @@ builder_container_nix_alpine:
   environment:
     ERLANG_ROCKSDB_BUILDOPTS: "-j2"
 
-builder_container_1804:
-  docker:
-    - image: aeternity/builder:1804
-      user: builder
-  working_directory: /home/builder/aeternity
-
 buildpack:
   docker:
     - image: circleci/buildpack-deps:xenial

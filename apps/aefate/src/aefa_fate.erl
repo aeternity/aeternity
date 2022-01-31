@@ -701,17 +701,21 @@ unfold_store_maps(Val, ES, CostModel) ->
             Pubkey = aefa_engine_state:current_contract(ES1),
             {Store, ES2} = ensure_contract_store(Pubkey, ES1),
             Store1 = aefa_stores:cache_map_metadata(Pubkey, Store),
-            ES3    = aefa_engine_state:set_stores(Store1, ES2),
+            put('$contract_store', Store1),
             Unfold = fun(Id) ->
-                        {List, _Store2} = aefa_stores:store_map_to_list(Pubkey, Id, Store1),
+                        Store2 = get('$contract_store'),
+                        {List, Store3} = aefa_stores:store_map_to_list(Pubkey, Id, Store2),
+                        put('$contract_store', Store3),
                         maps:from_list(List)
                      end,
             MapSize = fun(Id) ->
                           {Size, _Store2} = aefa_stores:store_map_size(Pubkey, Id, Store1),
                           Size
                       end,
-            ES4 = aefa_engine_state:spend_gas_for_traversal(Val, CostModel, {MapSize, Unfold}, ES3),
-            {aeb_fate_maps:unfold_store_maps(Unfold, Val), ES4};
+            ES3 = aefa_engine_state:spend_gas_for_traversal(Val, CostModel, {MapSize, Unfold}, ES2),
+            UnfoldVal = aeb_fate_maps:unfold_store_maps(Unfold, Val),
+            ES4 = aefa_engine_state:set_stores(get('$contract_store'), ES3),
+            {UnfoldVal, ES4};
         false ->
             {Val, ES1}
     end.

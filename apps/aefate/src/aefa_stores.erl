@@ -121,6 +121,10 @@ put_value(Pubkey, StorePos, FateVal, #store{cache = Cache} = S) ->
 
 %% -- Local functions --------------------------------------------------------
 
+update_ct_store(Pubkey, NewStore, #store{cache = Cache} = S) ->
+    E = maps:get(Pubkey, Cache),
+    S#store{cache = Cache#{Pubkey => E#cache_entry{store = NewStore}}}.
+
 find_value_(Pubkey, StorePos, #store{cache = Cache} = S) ->
     case find_term(StorePos, maps:get(Pubkey, Cache)) of
         {ok, Term} ->
@@ -170,8 +174,8 @@ store_map_lookup(Pubkey, MapId, Key, #store{cache = Cache} = S) ->
     {ok, Meta, S1} = find_meta_data(Pubkey, S),
     ?METADATA(RawId, _RefCount, _Size) = get_map_meta(MapId, Meta),
     case find_in_store(map_data_key(RawId, Key), Store) of
-        error     -> {error, S1};
-        {ok, Val} -> {{ok, Val}, S1}
+        error             -> {error, S1};
+        {ok, Val, Store1} -> {{ok, Val}, update_ct_store(Pubkey, Store1, S1)}
     end.
 
 -spec store_map_member(pubkey(), non_neg_integer(), fate_val(), store()) -> {boolean(), store()}.
@@ -179,9 +183,9 @@ store_map_member(Pubkey, MapId, Key, #store{cache = Cache} = S) ->
     #cache_entry{ store = Store } = maps:get(Pubkey, Cache),
     {ok, Meta, S1} = find_meta_data(Pubkey, S),
     ?METADATA(RawId, _RefCount, _Size) = get_map_meta(MapId, Meta),
-    case aect_contracts_store:get(map_data_key(RawId, Key), Store) of
-        <<>> -> {false, S1};
-        _Val -> {true,  S1}
+    case aect_contracts_store:get_w_cache(map_data_key(RawId, Key), Store) of
+        {<<>>, _}      -> {false, S1};
+        {_Val, Store1} -> {true,  update_ct_store(Pubkey, Store1, S1)}
     end.
 
 -spec store_map_to_list(pubkey(), non_neg_integer(), store()) -> {[{fate_val(), fate_val()}], store()}.
@@ -189,9 +193,9 @@ store_map_to_list(Pubkey, MapId, #store{cache = Cache} = S) ->
     #cache_entry{ store = Store } = maps:get(Pubkey, Cache),
     {ok, Meta, S1} = find_meta_data(Pubkey, S),
     ?METADATA(RawId, _, _) = get_map_meta(MapId, Meta),
-    Subtree = aect_contracts_store:subtree(map_data_key(RawId), Store),
+    {Subtree, Store1} = aect_contracts_store:subtree_w_cache(map_data_key(RawId), Store),
     {[ {aeb_fate_encoding:deserialize(K), aeb_fate_encoding:deserialize(V)}
-      || {K, V} <- lists:keysort(1,maps:to_list(Subtree)) ], S1}.
+      || {K, V} <- lists:keysort(1,maps:to_list(Subtree)) ], update_ct_store(Pubkey, Store1, S1)}.
 
 -spec store_map_size(pubkey(), non_neg_integer(), store()) -> {non_neg_integer(), store()}.
 store_map_size(Pubkey, MapId, S) ->
@@ -256,18 +260,19 @@ find_term(StorePos, #cache_entry{terms = Terms} = E) ->
             case find_in_store(store_key(StorePos), E#cache_entry.store) of
                 error ->
                     error;
-                {ok, FateVal} ->
-                    {ok, FateVal, E#cache_entry{terms = Terms#{StorePos => {FateVal, false}}}}
+                {ok, FateVal, Store1} ->
+                    {ok, FateVal, E#cache_entry{terms = Terms#{StorePos => {FateVal, false}},
+                                                store = Store1}}
             end
     end.
 
 find_in_store(Key, Store) ->
-    case aect_contracts_store:get(Key, Store) of
-        <<>> ->
+    case aect_contracts_store:get_w_cache(Key, Store) of
+        {<<>>, _Store1} ->
             error;
-        Value ->
+        {Value, Store1} ->
             FateVal = aeb_fate_encoding:deserialize(Value),
-            {ok, FateVal}
+            {ok, FateVal, Store1}
     end.
 
 store_key(Int) ->
@@ -473,9 +478,9 @@ copy_map(OldMeta, MapId, ?FATE_STORE_MAP(Cache, OldId), {Meta, Store}) ->
     %% for nested maps currently, so we keep the old metadata around and look
     %% it up there.
     ?METADATA(OldRawId, _RefCount, OldSize) = get_map_meta(OldId, OldMeta),
-    RawId    = MapId,
-    OldMap   = aect_contracts_store:subtree(map_data_key(OldRawId), Store),
-    NewData  = cache_to_bin_data(Cache),
+    RawId   = MapId,
+    OldMap  = aect_contracts_store:subtree(map_data_key(OldRawId), Store),
+    NewData = cache_to_bin_data(Cache),
     Size    = OldSize + size_delta(OldMap, NewData),
     Meta1   = put_map_meta(MapId, ?METADATA(RawId, RefCount, Size), Meta),
     %% First copy the old data, then update with the new
@@ -605,7 +610,7 @@ compute_copy_refcounts(Meta, Reuse, Maps, Store) ->
                               %% Subtract refcounts for entries overwritten by the Cache.
                               ?METADATA(RawId, _RefCount, _Size) = get_map_meta(Id, Meta),
                               RemovedValues = [ Val || Key <- maps:keys(Cache),
-                                                       {ok, Val} <- [find_in_store(map_data_key(RawId, Key), Store)] ],
+                                                       {ok, Val, _} <- [find_in_store(map_data_key(RawId, Key), Store)] ],
                               Removed = aeb_fate_maps:refcount(RemovedValues),
                               aeb_fate_maps:refcount_diff(Count, Removed);
                           _ ->
