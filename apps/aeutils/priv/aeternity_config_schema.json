@@ -1291,42 +1291,54 @@
                     }
                 },
                 "endpoints" : {
-                    "gossip" : {
-                        "description" : "Gossip protocol API",
-                        "type" : "boolean"
-                    },
-                    "name_service" : {
-                        "description" : "Name resolution API",
-                        "type" : "boolean"
-                    },
-                    "chain" : {
-                        "description" : "Chain state inspection endpoints",
-                        "type" : "boolean"
-                    },
-                    "transactions" : {
-                        "description" : "Transactions insection endpoints",
-                        "type" : "boolean"
-                    },
-                    "node_operator" : {
-                        "description" : "Node operator endpoints",
-                        "type" : "boolean",
-                        "default" : false
-                    },
-                    "dev" : {
-                        "description" : "Development only API - for validation of client implementations. Should not be used in real life scenarios",
-                        "type" : "boolean"
-                    },
-                    "debug" : {
-                        "description" : "Deprecated. See also 'http > internal > debug_endpoints'",
-                        "type" : "boolean"
-                    },
-                    "obsolete" : {
-                        "description" : "Old endpoints that will be removed",
-                        "type" : "boolean"
-                    },
-                    "dry-run" : {
-                        "description" : "External protected dry run endpoint",
-                        "type" : "boolean"
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                        "gossip" : {
+                            "description" : "Gossip protocol API",
+                            "type" : "boolean",
+                            "default": true
+                        },
+                        "name_service" : {
+                            "description" : "Name resolution API",
+                            "type" : "boolean",
+                            "default": true
+                        },
+                        "chain" : {
+                            "description" : "Chain state inspection endpoints",
+                            "type" : "boolean",
+                            "default": true
+                        },
+                        "transactions" : {
+                            "description" : "Transactions insection endpoints",
+                            "type" : "boolean",
+                            "default": true
+                        },
+                        "node_operator" : {
+                            "description" : "Node operator endpoints",
+                            "type" : "boolean",
+                            "default" : false
+                        },
+                        "dev" : {
+                            "description" : "Development only API - for validation of client implementations. Should not be used in real life scenarios",
+                            "type" : "boolean",
+                            "default": false
+                        },
+                        "dry-run" : {
+                            "description" : "External protected dry run endpoint",
+                            "type" : "boolean",
+                            "default": true
+                        },
+                        "debug" : {
+                            "description" : "Deprecated. See also 'http > internal > debug_endpoints' KILLME FIXME",
+                            "type" : "boolean",
+                            "default": false
+                        },
+                        "obsolete" : {
+                            "description" : "Old endpoints that will be removed.",
+                            "type" : "array",
+                            "default": ["debug"]
+                        }
                     }
                 },
                 "debug" : {
