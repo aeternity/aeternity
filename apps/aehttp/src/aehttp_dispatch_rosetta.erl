@@ -4,32 +4,8 @@
 -export([handle_request/3]).
 
 -import(aeu_debug, [pp/1]).
--import(aehttp_helpers, [ process_request/2
-                        , read_required_params/1
-                        , read_optional_params/1
-                        , parse_map_to_atom_keys/0
-                        , api_decode/1
-                        , nameservice_pointers_decode/1
-                        , get_nonce/1
-                        , get_nonce_from_account_id/1
-                        , print_state/0
-                        , get_contract_code/2
-                        , get_info_object_from_tx/3
-                        , verify_oracle_existence/1
-                        , verify_oracle_query_existence/2
-                        , verify_name/1
-                        , ttl_decode/1
-                        , poi_decode/1
-                        , relative_ttl_decode/1
-                        , unsigned_tx_response/1
-                        , get_transaction/2
-                        , encode_transaction/2
-                        , when_stable/1
-                        , ok_response/1
-                        , read_optional_param/3
-                        , get_poi/3
-                        , get_block_hash_optionally_by_hash_or_height/1
-                        , do_dry_run/0
+-import(aehttp_helpers, [ 
+                          when_stable/1
                         ]).
 
 -compile({parse_transform, lager_transform}).
@@ -109,34 +85,6 @@ queue('searchTransactions')     -> ?READ_Q;
 
 queue(_)                        -> ?WRITE_Q.
 
-%% handle_request_('GetTopBlock', _, _Context) ->
-%%     case aec_chain:top_block() of
-%%         Block when Block =/= undefined ->
-%%             case aec_blocks:height(Block) of
-%%                 0 ->
-%%                     Header = aec_blocks:to_header(Block),
-%%                     {200, [], #{key_block => aec_headers:serialize_for_client(Header, key)}};
-%%                 _ ->
-%%                     PrevBlockHash = aec_blocks:prev_hash(Block),
-%%                     case aec_chain:get_block(PrevBlockHash) of
-%%                         {ok, PrevBlock} ->
-%%                             PrevBlockType = aec_blocks:type(PrevBlock),
-%%                             Header = aec_blocks:to_header(Block),
-%%                             Type =
-%%                                 case aec_headers:type(Header) of
-%%                                     key -> key_block;
-%%                                     micro -> micro_block
-%%                                 end,
-%%                             SerializedHeader = aec_headers:serialize_for_client(Header, PrevBlockType),
-%%                             {200, [], #{Type => SerializedHeader}};
-%%                         error ->
-%%                             {404, [], #{reason => <<"Block not found">>}}
-%%                     end
-%%             end;
-%%         undefined ->
-%%             {404, [], #{reason => <<"Block not found">>}}
-%%     end;
-
 handle_request_('networkList', _, _Context) ->
     Resp = #{<<"network_identifiers">> => 
                  [#{<<"blockchain">> => <<"aeternity">>, %% TODO: check hardcoding
@@ -186,7 +134,7 @@ handle_request_('networkStatus', _, _Context) ->
                  <<"peers">> => PeersFormatted},
         {200, [], Resp}
     catch Class:Rsn:Stacktrace ->
-            io:format(
+            lager:error(
               ">>> Error determining networkStatus: ~p, ~p~n~p~n", [Class, Rsn, Stacktrace]),
             ErrResp = #{<<"code">> => 500,
                         <<"message">> => <<"Error determining networkStatus">>,
