@@ -165,13 +165,19 @@ handle_request_('networkStatus', _, _Context) ->
                      {false, 100.0} -> true;
                      _ -> false
                  end,
-        SyncStatus = #{<<"target_index">> => TargetHeight,
-                       <<"synced">> => Synced},
+        SyncStatus0 = #{<<"synced">> => Synced},
+        SyncStatus = case Synced of
+                         true ->
+                             SyncStatus0;
+                         false ->
+                             SyncStatus0#{<<"target_index">> => TargetHeight}
+                     end,
         Peers = aec_peers:connected_peers(),
         PeersFormatted = lists:map(
                            fun(Peer) ->
-                                   #{<<"id">> => aec_peer:ppp(Peer),
-                                     <<"metadata">> => aec_peer:info(Peer)}
+                                   #{<<"peer_id">> => aeser_api_encoder:encode(peer_pubkey, aec_peer:id(Peer)),
+                                     <<"metadata">> => #{<<"ip">> => aec_peer:ip(Peer),
+                                                         <<"port">> => aec_peer:port(Peer)}}
                            end, Peers),
         Resp = #{<<"current_block_identifier">> => CurrentBlockIdentifier,
                  <<"current_block_timestamp">> => CurrentBlockTimestamp,
@@ -179,9 +185,9 @@ handle_request_('networkStatus', _, _Context) ->
                  <<"sync_status">> => SyncStatus,
                  <<"peers">> => PeersFormatted},
         {200, [], Resp}
-    catch Class:Rsn ->
+    catch Class:Rsn:Stacktrace ->
             io:format(
-              ">>> Error determining networkStatus: ~p, ~p~n", [Class, Rsn]),
+              ">>> Error determining networkStatus: ~p, ~p~n~p~n", [Class, Rsn, Stacktrace]),
             ErrResp = #{<<"code">> => 500,
                         <<"message">> => <<"Error determining networkStatus">>,
                         <<"retriable">> => true
