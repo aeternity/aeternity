@@ -93,7 +93,7 @@
            %% The different hooks *could* be placed in the app env of each
            %% corresponding application. This would be less transparent, though.
            {normal, [
-                     {100, {aecore_env, check_env, []}},
+                     {110, {aecore_env, check_env, []}},
                      {110, {aec_dev_reward, ensure_env, []}},
                      {110, {aehttp_app, check_env, []}},
                      {110, {aec_consensus, check_env, []}},
