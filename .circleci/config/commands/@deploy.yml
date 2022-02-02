@@ -20,4 +20,4 @@ deploy_env:
           export PACKAGE=<< parameters.package_path >>
           export DEPLOY_DB_VERSION=$(cat deployment/DB_VERSION)
 
-          cd /infrastructure && make deploy
+          cd /infrastructure && make vault-config-update-${DEPLOY_ENVq} deploy
