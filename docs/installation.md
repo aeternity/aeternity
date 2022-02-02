@@ -103,7 +103,12 @@ You can create those symlinks by running the following commands:
 ln -s "$(brew --prefix openssl)"/lib/libcrypto.1.1.dylib /usr/local/opt/openssl/lib/libcrypto.1.1.dylib
 ln -s "$(brew --prefix libsodium)"/lib/libsodium.23.dylib /usr/local/opt/libsodium/lib/libsodium.23.dylib
 ```
-
+Also it would be needed to run :
+```
+export PATH=/opt/homebrew/bin:$PATH
+export CFLAGS="-I/opt/homebrew/include"
+export LDFLAGS="-L/opt/homebrew/lib"
+```
 ### Deploy node
 
 In the instructions below, the node is deployed in directory `~/aeternity/node`: you may prefer to deploy the node in an alternative location by amending the instructions accordingly.
