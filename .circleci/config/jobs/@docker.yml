@@ -15,7 +15,7 @@ docker-image:
     - setup_docker
     - when:
         condition:
-          matches: { pattern: "^latest-bundle.*$", value: << parameters.tag >> }
+          matches: { pattern: "^latest-bundle$", value: << parameters.tag >> }
         steps:
         - docker_image:
             tag: << parameters.tag >>
