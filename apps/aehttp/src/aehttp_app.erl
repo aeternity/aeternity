@@ -59,6 +59,8 @@ check_env() ->
     Default0 = not MMode,
     %% TODO: Consider which endpoints might be enabled by default during maintenance mode
     %TODO: we need to validate that all tags are present
+    % Q: Why are obsolete groups in the config file if they are obsolete?
+    %    This could be a linguistic abiguity -- "obsolete" is the stage after "deprecated"
     GroupDefaults = #{<<"chain">>         => Default0,
                       <<"transaction">>   => Default0,
                       <<"account">>       => Default0,
@@ -68,7 +70,6 @@ check_env() ->
                       <<"channel">>       => Default0,
                       <<"node_info">>     => Default0,
                       <<"debug">>         => true,
-                      <<"obsolete">>      => Default0,
                       <<"dry-run">>       => false,
                       <<"node-operator">> => false
                       },
@@ -86,7 +87,10 @@ check_env() ->
             end,
             [],
             maps:to_list(GroupDefaults)),
-    application:set_env(aehttp, enabled_endpoint_groups, EnabledGroups),
+    {ok, Obsolete} = aeu_env:find_config([<<"http">>, <<"endpoints">>, <<"obsolete">>],
+                                         [user_config, schema_default, {value, []}]),
+    Enabled = EnabledGroups -- Obsolete,
+    application:set_env(aehttp, enabled_endpoint_groups, Enabled),
     ok.
 
 %%====================================================================
