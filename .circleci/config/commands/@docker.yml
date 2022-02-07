@@ -12,6 +12,7 @@ docker_login:
         command: |
           docker login -u $(</secrets/DOCKER_USER) -p $(</secrets/DOCKER_PASS)
 
+
 docker_build:
   parameters:
     tag:
