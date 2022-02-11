@@ -751,6 +751,8 @@ paths:
             $ref: '#/definitions/Error'
         '404':
           description: 'Contract not found'
+          schema:
+            $ref: '#/definitions/Error'
   /contracts/{pubkey}/code:
     get:
       tags:
