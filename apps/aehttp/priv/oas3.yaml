@@ -709,6 +709,10 @@ paths:
                 $ref: "#/components/schemas/Error"
         "404":
           description: Contract not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   "/contracts/{pubkey}/code":
     get:
       tags:

@@ -585,7 +585,7 @@ paths:
           type: string
         - in: query
           name: strategy
-          description: "What strategy to use in order to determine the next nonce: shall it check for continuity or return the largest nonce seen + 1. If you choose strategy max, then the greatest nonce seen in the account or currently in the transaction pool is incremented with 1 and returned. If you choose the strategy continuity, then transactions in the mempool are checked if there are gaps - missing nonces that prevent transactions with greater nonces to get included." 
+          description: "What strategy to use in order to determine the next nonce: shall it check for continuity or return the largest nonce seen + 1. If you choose strategy max, then the greatest nonce seen in the account or currently in the transaction pool is incremented with 1 and returned. If you choose the strategy continuity, then transactions in the mempool are checked if there are gaps - missing nonces that prevent transactions with greater nonces to get included."
           required: false
           default: max
           type: string
@@ -609,7 +609,7 @@ paths:
   /dry-run:
     post:
       tags:
-        - external 
+        - external
         - dry-run
       operationId: 'ProtectedDryRunTxs'
       description: 'Dry-run transactions on top of a given block. Supports all TXs except GAMetaTx, PayingForTx and OffchainTx. The maximum gas limit of all calls is capped. The maximum gas limit per request is a global node setting. Since DryRunCallReq object do not have a mandatory gas field, if not set a default value of 1000000 is being used instead.'
@@ -747,6 +747,8 @@ paths:
             $ref: '#/definitions/Error'
         '404':
           description: 'Contract not found'
+          schema:
+            $ref: '#/definitions/Error'
   /contracts/{pubkey}/code:
     get:
       tags:
@@ -3684,10 +3686,10 @@ definitions:
     type: object
     properties:
       initiator:
-        description: Initiator's delegates 
+        description: Initiator's delegates
         $ref: '#/definitions/DelegatesList'
       responder:
-        description: Responder's delegates 
+        description: Responder's delegates
         $ref: '#/definitions/DelegatesList'
   Delegates:
     oneOf:
