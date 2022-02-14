@@ -556,9 +556,7 @@ paths:
           content:
             application/json:
               schema:
-                properties:
-                  next_nonce:
-                    $ref: "#/components/schemas/UInt"
+                $ref: "#/components/schemas/NextNonceResponse"
         "400":
           description: Invalid public key
           content:
@@ -1951,12 +1949,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  status:
-                    type: string
-                required:
-                  - status
+                $ref: "#/components/schemas/CheckTxInPoolResponse"
         "404":
           description: Transaction is not in transaction pool
           content:
@@ -3714,6 +3707,20 @@ components:
           $ref: "#/components/schemas/UInt32"
       required:
         - count
+    NextNonceResponse:
+      type: object
+      properties:
+        next_nonce:
+          type: integer
+      required:
+        - next_nonce
+    CheckTxInPoolResponse:
+      type: object
+      properties:
+        status:
+          type: string
+      required:
+        - status
   parameters:
     intAsString:
       in: query
