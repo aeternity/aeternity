@@ -94,6 +94,5 @@ docker_image:
         - docker_tag:
             tag: << parameters.tag >>
             src: << parameters.src >>
-
   - docker_push:
       tag: << parameters.tag >>
