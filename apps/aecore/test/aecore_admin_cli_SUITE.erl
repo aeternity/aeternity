@@ -63,7 +63,9 @@ init_per_suite(Config0) ->
               #{ <<"expected_mine_rate">> => ?MINE_RATE,
                   %% this is important so beneficiary can spend
                   <<"beneficiary_reward_delay">> => ?REWARD_DELAY},
-            <<"mempool">> => #{ <<"tx_ttl">> => ?GC_TTL}
+            <<"mempool">> => #{ <<"tx_ttl">> => ?GC_TTL},
+            <<"http">> =>
+                  #{<<"endpoints">> => #{<<"node-operator">> => true}}
            },
           [ {symlink_name, "latest.admin_cli"}
           , {instant_mining, true}
@@ -102,8 +104,11 @@ init_per_suite(Config0) ->
 init_per_group(peers, Config) ->
     aecore_suite_utils:start_node(?NODE2, Config),
     aecore_suite_utils:connect_wait(?NODE2_NAME, aehttp),
-    Config;
+    init_per_group_(Config);
 init_per_group(_, Config) ->
+    init_per_group_(Config).
+
+init_per_group_(Config) ->
     Config.
 
 end_per_group(peers, Config) ->
@@ -117,6 +122,7 @@ end_per_suite(Config) ->
     ok.
 
 init_per_testcase(_Case, Config) ->
+    aecore_suite_utils:use_swagger(oas3),
     [{tc_start, os:timestamp()}|Config].
 
 end_per_testcase(_Case, Config) ->
@@ -350,6 +356,11 @@ blocking_peers(Config) ->
     "0\n" = cli(["peers", "list", "unverified", "--count"], Config),
     "\n" = cli(["peers", "list", "blocked"], Config),
     "0\n" = cli(["peers", "list", "blocked", "--count"], Config),
+    {ok, 200,
+      #{ <<"connected">> := #{<<"inbound">> := 0,<<"outbound">> := 1}
+       , <<"available">> := #{<<"unverified">> := 0,<<"verified">> := 0}
+       , <<"blocked">> := 0 }}
+        = aehttp_integration_SUITE:get_peer_count_sut(),
     %% block peer2
     "Ok.\n" = cli(["peers", "block", Peer2], Config),
     %% peer2 is blocked
@@ -361,6 +372,11 @@ blocking_peers(Config) ->
     "0\n" = cli(["peers", "list", "unverified", "--count"], Config),
     Peer2Results = cli(["peers", "list", "blocked"], Config),
     "1\n" = cli(["peers", "list", "blocked", "--count"], Config),
+    {ok, 200,
+      #{ <<"connected">> := #{<<"inbound">> := 0,<<"outbound">> := 0}
+       , <<"available">> := #{<<"unverified">> := 0,<<"verified">> := 0}
+       , <<"blocked">> := 1 }}
+        = aehttp_integration_SUITE:get_peer_count_sut(),
     %% unblock peer2
     "Ok.\n" = cli(["peers", "unblock", EncPeer2Pubkey], Config),
     timer:sleep(1000),
@@ -372,5 +388,14 @@ blocking_peers(Config) ->
     "0\n" = cli(["peers", "list", "unverified", "--count"], Config),
     "\n" = cli(["peers", "list", "blocked"], Config),
     "0\n" = cli(["peers", "list", "blocked", "--count"], Config),
+    {ok, 200,
+      #{ <<"connected">> := Connected
+       , <<"available">> := #{<<"unverified">> := 0,<<"verified">> := 0}
+       , <<"blocked">> := 0 }}
+        = aehttp_integration_SUITE:get_peer_count_sut(),
+    case Connected of %% either inbound or outbound
+        #{<<"inbound">> := 0,<<"outbound">> := 1} -> pass;
+        #{<<"inbound">> := 1,<<"outbound">> := 0} -> pass
+    end,
     ok.
 

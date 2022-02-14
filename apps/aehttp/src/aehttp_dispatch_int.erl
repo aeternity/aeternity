@@ -238,7 +238,22 @@ handle_request_('DeleteTxFromMempool', Req, _Context) ->
                               {ok, {404, [], #{<<"reason">> => <<"not_found">>}}}
                       end
                   end],
-
+    process_request(ParseFuns, Req);
+handle_request_('GetPeerCount', Req, _Context) ->
+    ParseFuns = [
+                  fun(_Req, #{}) ->
+                      ConnectedInbound = length(aec_peers:connected_peers(inbound)),
+                      ConnectedOutbound = length(aec_peers:connected_peers(outbound)),
+                      AvailableVerified = length(aec_peers:available_peers(verified)),
+                      AvailableUnverified = length(aec_peers:available_peers(unverified)),
+                      Blocked = length(aec_peers:blocked_peers()),
+                      {ok, {200, [], #{<<"connected">> => #{<<"inbound">> => ConnectedInbound,
+                                                            <<"outbound">> => ConnectedOutbound},
+                                       <<"available">> => #{<<"verified">> => AvailableVerified,
+                                                            <<"unverified">> => AvailableUnverified},
+                                       <<"blocked">> => Blocked
+                                      }}}
+                  end],
     process_request(ParseFuns, Req);
 
 handle_request_('GetNetworkStatus', _Req, _Context) ->
