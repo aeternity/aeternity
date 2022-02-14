@@ -1,0 +1,15 @@
+{application, aeapi,
+ [{description, "Common API layer"},
+  {vsn, {cmd, "cat ../../VERSION"}},
+  {registered, []},
+  {applications,
+   [kernel,
+    stdlib
+   ]},
+  {env,[]},
+  {modules, []},
+
+  {maintainers, []},
+  {licenses, []},
+  {links, []}
+ ]}.
