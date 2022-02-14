@@ -19,4 +19,5 @@ deploy_env:
           export DEPLOY_DOWNTIME=<< parameters.downtime >>
           export PACKAGE=<< parameters.package_path >>
           export DEPLOY_DB_VERSION=$(cat deployment/DB_VERSION)
+          
           cd /infrastructure && make vault-config-update-${DEPLOY_ENV} deploy
