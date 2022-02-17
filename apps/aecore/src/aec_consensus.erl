@@ -186,6 +186,7 @@
 %% rewards and signing
 -callback beneficiary() -> {ok, binary() | fun(() -> binary())} | {error, atom()}.
 -callback get_sign_module() -> sign_module().
+-callback get_type() -> pow | pos.
 
 %% -------------------------------------------------------------------
 %% Block sealing
