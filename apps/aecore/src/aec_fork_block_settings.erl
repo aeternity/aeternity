@@ -23,6 +23,7 @@
 -define(MINERVA_DIR, ".minerva").
 -define(FORTUNA_DIR, ".fortuna").
 -define(LIMA_DIR,    ".lima").
+-define(CERES_DIR,   ".ceres").
 
 -spec dir(aec_hard_forks:protocol_vsn()) -> string().
 dir(ProtocolVsn) ->
@@ -31,13 +32,18 @@ dir(ProtocolVsn) ->
             ?ROMA_PROTOCOL_VSN    -> ?GENESIS_DIR;
             ?MINERVA_PROTOCOL_VSN -> ?MINERVA_DIR;
             ?FORTUNA_PROTOCOL_VSN -> ?FORTUNA_DIR;
-            ?LIMA_PROTOCOL_VSN    -> ?LIMA_DIR
+            ?LIMA_PROTOCOL_VSN    -> ?LIMA_DIR;
+            ?CERES_PROTOCOL_VSN   -> ?CERES_DIR
         end,
     filename:join(aeu_env:data_dir(aecore), Dir).
 
 -spec genesis_accounts() -> list().
-genesis_accounts() -> preset_accounts(accounts, ?ROMA_PROTOCOL_VSN,
-                                      genesis_accounts_file_missing).
+genesis_accounts() ->
+    ConsensusModule = aec_consensus:get_genesis_consensus_module(),
+    Header = ConsensusModule:genesis_raw_header(),
+    Protocol = aec_headers:version(Header),
+    preset_accounts(accounts, Protocol,
+                     genesis_accounts_file_missing).
 
 -spec minerva_accounts() -> list().
 minerva_accounts() -> preset_accounts(accounts, ?MINERVA_PROTOCOL_VSN,
@@ -254,7 +260,10 @@ contracts_file_name(Release) ->
 
 -ifdef(TEST).
 accounts_json_file() ->
-    "accounts_test.json".
+    case aec_governance:get_network_id() of
+        <<"ae_smart_contract_test">>      -> "accounts_smart_contract_consensus_test.json";
+        _ -> "accounts_test.json"
+    end.
 
 extra_accounts_json_file() ->
     "extra_accounts_test.json".
@@ -271,9 +280,9 @@ pre_iris_map_ordering_file() ->
 -else.
 accounts_json_file() ->
     case aec_governance:get_network_id() of
-        <<"ae_mainnet">> -> "accounts.json";
-        <<"ae_uat">>     -> "accounts_uat.json";
-        _                -> "accounts_test.json"
+        <<"ae_mainnet">>                  -> "accounts.json";
+        <<"ae_uat">>                      -> "accounts_uat.json";
+        _                                 -> "accounts_test.json"
     end.
 
 extra_accounts_json_file() ->

@@ -186,7 +186,11 @@ create_config(Node, CTConfig, CustomConfig, Options) ->
         Backend ->
             #{<<"chain">> => #{<<"db_backend">> => binary:list_to_bin(Backend)}}
     end,
-    Forks = #{ <<"chain">> => #{<<"hard_forks">> => forks()}},
+    Forks =
+        case CustomConfig of
+            #{ <<"chain">> := #{<<"hard_forks">> := _ }} -> #{}; %% already set
+            _ -> #{ <<"chain">> => #{<<"hard_forks">> => forks()}}
+        end,
     NodeCfgPath = node_config_dir(Node, CTConfig),
     ok = filelib:ensure_dir(NodeCfgPath),
     MergedCfg = maps_merge(default_config(Node, CTConfig), CustomConfig),
@@ -328,7 +332,10 @@ delete_node_db_if_persisted({true, {ok, MnesiaDir}}) ->
     ok.
 
 rpc_test_consensus_enabled(Node) ->
-    aec_consensus_common_tests =:= rpc:call(Node, aec_conductor, get_active_consensus_module, []).
+    ConsensusModule = rpc:call(Node, aec_conductor, get_active_consensus_module, []),
+    ConsensusModule =:= aec_consensus_common_tests orelse
+    ConsensusModule =:= aec_consensus_smart_contract.
+
 
 rpc_on_demand_consensus_enabled(Node) ->
   aec_consensus_on_demand =:= rpc:call(Node, aec_conductor, get_active_consensus_module, []).

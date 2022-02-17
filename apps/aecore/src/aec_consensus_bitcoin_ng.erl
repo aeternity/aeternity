@@ -34,7 +34,7 @@
         , state_pre_transform_key_node/2
         , state_pre_transform_micro_node/2
         %% Block rewards
-        , state_grant_reward/3
+        , state_grant_reward/4
         %% PoGF
         , pogf_detected/2
         %% Genesis block
@@ -52,7 +52,10 @@
         %% Block target and difficulty
         , default_target/0
         , assert_key_target_range/1
-        , key_header_difficulty/1 ]).
+        , key_header_difficulty/1
+        %% rewards and signing
+        , beneficiary/0
+        , get_sign_module/0]).
 
 -export([ get_whitelist/0
         , rollback/1
@@ -408,7 +411,7 @@ state_pre_transform_micro_node(_Node, Trees) -> Trees.
 
 %% -------------------------------------------------------------------
 %% Block rewards
-state_grant_reward(Beneficiary, Trees, Amount) -> aec_trees:grant_fee(Beneficiary, Trees, Amount).
+state_grant_reward(Beneficiary, _Node, Trees, Amount) -> aec_trees:grant_fee(Beneficiary, Trees, Amount).
 
 %% -------------------------------------------------------------------
 %% PoGF
@@ -494,6 +497,20 @@ assert_key_target_range(_Target) ->
 key_header_difficulty(Header) ->
     aeminer_pow:target_to_difficulty(aec_headers:target(Header)).
 
+beneficiary() ->
+    case aeu_env:user_config_or_env([<<"mining">>, <<"beneficiary">>], aecore, beneficiary) of
+        {ok, EncodedBeneficiary} ->
+            case aeser_api_encoder:safe_decode(account_pubkey, EncodedBeneficiary) of
+                {ok, _Beneficiary} = Result ->
+                    Result;
+                {error, Reason} ->
+                    {error, {beneficiary_error, Reason}}
+            end;
+        undefined ->
+            {error, beneficiary_not_configured}
+    end.
+
+get_sign_module() -> aec_keys.
 
 load_whitelist() ->
     W = aec_fork_block_settings:block_whitelist(),
