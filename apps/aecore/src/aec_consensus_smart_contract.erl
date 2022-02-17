@@ -61,6 +61,7 @@
         %% rewards and signing
         , beneficiary/0
         , get_sign_module/0
+        , get_type/0
         ]).
 
 -include_lib("aecontract/include/hard_forks.hrl").
@@ -401,4 +402,6 @@ next_beneficiary() ->
     end.
 
 get_sign_module() -> aec_preset_keys.
+
+get_type() -> pos.
 
