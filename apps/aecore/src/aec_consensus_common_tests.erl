@@ -40,7 +40,7 @@
         , state_pre_transform_key_node/2
         , state_pre_transform_micro_node/2
         %% Block rewards
-        , state_grant_reward/3
+        , state_grant_reward/4
         %% PoGF
         , pogf_detected/2
         %% Genesis block
@@ -58,7 +58,10 @@
         %% Block target and difficulty
         , default_target/0
         , assert_key_target_range/1
-        , key_header_difficulty/1 ]).
+        , key_header_difficulty/1
+        %% rewards and signing
+        , beneficiary/0
+        , get_sign_module/0]).
 
 -include_lib("aecontract/include/hard_forks.hrl").
 -include("blocks.hrl").
@@ -160,7 +163,7 @@ state_pre_transform_micro_node(_Node, Trees) -> Trees.
 
 %% -------------------------------------------------------------------
 %% Block rewards
-state_grant_reward(Beneficiary, Trees, Amount) -> aec_consensus_bitcoin_ng:state_grant_reward(Beneficiary, Trees, Amount).
+state_grant_reward(Beneficiary, _Node, Trees, Amount) -> aec_consensus_bitcoin_ng:state_grant_reward(Beneficiary, Trees, Amount).
 
 %% -------------------------------------------------------------------
 %% PoGF
@@ -214,4 +217,8 @@ assert_key_target_range(?TAG) ->
 
 key_header_difficulty(_) ->
     ?TAG.
+
+beneficiary() -> aec_consensus_bitcoin_ng:beneficiary().
+
+get_sign_module() -> aec_consensus_bitcoin_ng:get_sign_module().
 -endif.

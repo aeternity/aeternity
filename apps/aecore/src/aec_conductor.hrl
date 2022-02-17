@@ -49,7 +49,7 @@
                 workers                 = []      :: workers(),
                 miner_instances         = []      :: miner_instances(),
                 consensus                         :: #consensus{},
-                beneficiary                       :: <<_:(32*8)>> | 'undefined',
+                beneficiary                       :: <<_:(32*8)>> | 'undefined' | fun(() -> <<_:(32*8)>>),
                 fraud_list              = []      :: list({binary(), aec_pof:pof()}),
                 pending_key_block                 :: aec_blocks:block() | 'undefined',
                 stratum_mode            = false   :: boolean()

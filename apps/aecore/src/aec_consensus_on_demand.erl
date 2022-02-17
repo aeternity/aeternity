@@ -39,7 +39,7 @@
         , state_pre_transform_key_node/2
         , state_pre_transform_micro_node/2
         %% Block rewards
-        , state_grant_reward/3
+        , state_grant_reward/4
         %% PoGF
         , pogf_detected/2
         %% Genesis block
@@ -57,7 +57,11 @@
         %% Block target and difficulty
         , default_target/0
         , assert_key_target_range/1
-        , key_header_difficulty/1 ]).
+        , key_header_difficulty/1
+        %% rewards and signing
+        , beneficiary/0
+        , get_sign_module/0
+        ]).
 
 -include_lib("aecontract/include/hard_forks.hrl").
 -include("blocks.hrl").
@@ -72,14 +76,15 @@ is_providing_extra_http_endpoints() -> false.
 %% TODO: Expose via HTTP
 client_request(emit_kb) ->
     TopHash = aec_chain:top_block_hash(),
-    {ok, Beneficiary} = aec_conductor:get_beneficiary(),
+    {ok, Beneficiary} = aec_conductor:get_next_beneficiary(),
     {ok, Block} = aec_block_key_candidate:create(TopHash, Beneficiary),
     ok = aec_conductor:add_synced_block(Block),
     Block;
 client_request(emit_mb) ->
     TopHash = aec_chain:top_block_hash(),
     {ok, MicroBlock, _} = aec_block_micro_candidate:create(TopHash),
-    {ok, MicroBlockS} = aec_keys:sign_micro_block(MicroBlock),
+    SignModule = get_sign_module(),
+    {ok, MicroBlockS} = SignModule:sign_micro_block(MicroBlock),
     ok = aec_conductor:post_block(MicroBlockS),
     MicroBlockS;
 client_request({mine_blocks, NumBlocksToMine, Type}) ->
@@ -170,7 +175,8 @@ state_pre_transform_micro_node(_Node, Trees) -> Trees.
 
 %% -------------------------------------------------------------------
 %% Block rewards
-state_grant_reward(Beneficiary, Trees, Amount) -> aec_consensus_bitcoin_ng:state_grant_reward(Beneficiary, Trees, Amount).
+state_grant_reward(Beneficiary, Node, Trees, Amount) ->
+    aec_consensus_bitcoin_ng:state_grant_reward(Beneficiary, Node, Trees, Amount).
 
 %% -------------------------------------------------------------------
 %% PoGF
@@ -224,3 +230,8 @@ assert_key_target_range(?TAG) ->
 
 key_header_difficulty(_) ->
     ?TAG.
+
+beneficiary() -> aec_consensus_bitcoin_ng:beneficiary().
+
+get_sign_module() -> aec_consensus_bitcoin_ng:get_sign_module().
+
