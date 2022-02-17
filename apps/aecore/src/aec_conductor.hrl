@@ -13,7 +13,7 @@
 
 -type worker_info() :: #worker_info{}.
 -type workers() :: orddict:orddict(pid(), worker_info()).
--type mining_state() :: 'running' | 'stopped'.
+-type block_producing_state() :: 'running' | 'stopped'.
 
 -type mining_opts() :: #{ strictly_follow_top => boolean() }.
 
@@ -30,27 +30,28 @@
                     }).
 
 -type instance_state() :: pid() | 'available'.
--record(miner_instance, {id       :: non_neg_integer(),
+-record(instance, {id       :: non_neg_integer(),
                          instance :: aeminer_pow:instance() | 'undefined',
                          state    :: instance_state(),
                          config   :: aeminer_pow_cuckoo:config()}).
--type miner_instance() :: #miner_instance{}.
--type miner_instances() :: list(miner_instance()).
+-type instance() :: #instance{}.
+-type instances() :: list(instance()).
 
--record(state, {key_block_candidates              :: list({candidate_hash(), #candidate{}}) | 'undefined',
-                micro_block_candidate             :: #candidate{} | 'undefined',
-                blocked_tags            = []      :: ordsets:ordset(atom()),
-                keys_ready              = false   :: boolean(),
-                mining_state            = stopped :: mining_state(),
-                mining_opts             = #{}     :: mining_opts(),
-                top_block_hash                    :: binary() | 'undefined',
-                top_key_block_hash                :: binary() | 'undefined',
-                top_height                        :: aec_blocks:height(),
-                workers                 = []      :: workers(),
-                miner_instances         = []      :: miner_instances(),
-                consensus                         :: #consensus{},
-                beneficiary                       :: <<_:(32*8)>> | 'undefined' | fun(() -> <<_:(32*8)>>),
-                fraud_list              = []      :: list({binary(), aec_pof:pof()}),
-                pending_key_block                 :: aec_blocks:block() | 'undefined',
-                stratum_mode            = false   :: boolean()
+-type mode() :: local_pow | stratum | pos.
+-record(state, {key_block_candidates                :: list({candidate_hash(), #candidate{}}) | 'undefined',
+                micro_block_candidate               :: #candidate{} | 'undefined',
+                blocked_tags            = []        :: ordsets:ordset(atom()),
+                keys_ready              = false     :: boolean(),
+                block_producing_state   = stopped   :: block_producing_state(),
+                mining_opts             = #{}       :: mining_opts(),
+                top_block_hash                      :: binary() | 'undefined',
+                top_key_block_hash                  :: binary() | 'undefined',
+                top_height                          :: aec_blocks:height(),
+                workers                 = []        :: workers(),
+                instances               = []        :: instances(),
+                consensus                           :: #consensus{},
+                beneficiary                         :: <<_:(32*8)>> | 'undefined' | fun(() -> <<_:(32*8)>>),
+                fraud_list              = []        :: list({binary(), aec_pof:pof()}),
+                pending_key_block                   :: aec_blocks:block() | 'undefined',
+                mode                    = local_pow :: mode()
                }).

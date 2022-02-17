@@ -61,6 +61,7 @@
         %% rewards and signing
         , beneficiary/0
         , get_sign_module/0
+        , get_type/0
         ]).
 
 -include_lib("aecontract/include/hard_forks.hrl").
@@ -234,4 +235,6 @@ key_header_difficulty(_) ->
 beneficiary() -> aec_consensus_bitcoin_ng:beneficiary().
 
 get_sign_module() -> aec_consensus_bitcoin_ng:get_sign_module().
+
+get_type() -> aec_consensus_bitcoin_ng:get_type().
 

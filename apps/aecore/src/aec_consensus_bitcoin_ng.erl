@@ -55,7 +55,9 @@
         , key_header_difficulty/1
         %% rewards and signing
         , beneficiary/0
-        , get_sign_module/0]).
+        , get_sign_module/0
+        , get_type/0
+        ]).
 
 -export([ get_whitelist/0
         , rollback/1
@@ -511,6 +513,8 @@ beneficiary() ->
     end.
 
 get_sign_module() -> aec_keys.
+
+get_type() -> pow.
 
 load_whitelist() ->
     W = aec_fork_block_settings:block_whitelist(),
