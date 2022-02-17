@@ -36,30 +36,33 @@ int_create(BlockHash, Block, Beneficiary, Protocol) ->
     N = Consensus:keyblocks_for_target_calc() + 1,
     case aec_blocks:height(Block) < N of
         true  ->
-            int_create(BlockHash, Block, Beneficiary, [], Protocol);
+            int_create(BlockHash, Block, Beneficiary, [], Protocol, Consensus);
         false ->
             case N of
                 1 ->
-                    int_create(BlockHash, Block, Beneficiary, [], Protocol);
+                    int_create(BlockHash, Block, Beneficiary, [], Protocol,
+                               Consensus);
                 _ ->
                     case aec_chain:get_n_generation_headers_backwards_from_hash(BlockHash, N) of
                         {ok, Headers} ->
-                            int_create(BlockHash, Block, Beneficiary, Headers, Protocol);
+                            int_create(BlockHash, Block, Beneficiary, Headers,
+                                       Protocol, Consensus);
                         error ->
                             {error, headers_for_target_adjustment_not_found}
                     end
             end
     end.
 
-int_create(BlockHash, Block, Beneficiary, AdjChain, Protocol) ->
-    case aec_keys:candidate_pubkey() of
+int_create(BlockHash, Block, Beneficiary, AdjChain, Protocol, Consensus) ->
+    SignModule = Consensus:get_sign_module(),
+    case SignModule:candidate_pubkey() of
         {ok, Miner} ->
-            int_create(BlockHash, Block, Miner, Beneficiary, AdjChain, Protocol);
+            int_create_(BlockHash, Block, Miner, Beneficiary, AdjChain, Protocol);
         {error, _} = Error ->
             Error
     end.
 
-int_create(PrevBlockHash, PrevBlock, Miner, Beneficiary, AdjChain, Protocol) ->
+int_create_(PrevBlockHash, PrevBlock, Miner, Beneficiary, AdjChain, Protocol) ->
     {ok, Trees} =
         aec_chain_state:calculate_state_for_new_keyblock(PrevBlockHash, Miner, Beneficiary, Protocol),
     Block = int_create_block(PrevBlockHash, PrevBlock, Miner, Beneficiary, Trees, Protocol),

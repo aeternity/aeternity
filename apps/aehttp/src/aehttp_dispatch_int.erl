@@ -176,7 +176,7 @@ handle_request_('GetNodeBeneficiary', _, _Context) ->
     end;
 
 handle_request_('GetNodePubkey', _, _Context) ->
-    case aec_keys:pubkey() of
+    case aec_keys:get_pubkey() of %% TODO: rethink this from the perspective of HCs
         {ok, Pubkey} ->
             %% TODO: rename pub_key to pubkey
             {200, [], #{pub_key => aeser_api_encoder:encode(account_pubkey, Pubkey)}};

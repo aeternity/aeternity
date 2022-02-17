@@ -5,6 +5,10 @@
          apply_lima/2
         ]).
 
+%% used in consensus feeding
+-export([prepare_contract_owner/3,
+         apply_contract_create_tx/3]).
+
 -spec apply_minerva(aec_trees:trees()) -> aec_trees:trees().
 apply_minerva(Trees) ->
     apply_accounts_file(Trees, aec_fork_block_settings:minerva_accounts()).
@@ -80,8 +84,8 @@ apply_hard_fork_contracts_file(Specs0, Trees, TxEnv) ->
     OwnerPubkey   = maps:get(owner_pubkey, Static),
     CreateTxs     = fun(Spec) -> contract_create_tx(Spec, Static, TxEnv) end,
     Txs           = lists:map(CreateTxs, Specs),
-    Trees1        = fork_contracts_prepare_owner(Txs, Specs, Static, Trees),
-    ApplyTxs      = fun(Tx, T) -> apply_hard_fork_contract_tx(Tx, T, TxEnv) end,
+    Trees1        = prepare_contract_owner(Txs, TxEnv, Trees),
+    ApplyTxs      = fun(Tx, T) -> apply_contract_create_tx(Tx, T, TxEnv) end,
     {Contracts, Trees2} = lists:mapfoldl(ApplyTxs, Trees1, Txs),
     Nonce         = get_nonce(OwnerPubkey, Trees2),
     hard_fork_contracts_post_processing(Contracts, OwnerPubkey, Nonce, Trees).
@@ -95,11 +99,26 @@ fork_contracts_static_specs(TxEnv) ->
      , gas_price    => GasPrice
      }.
 
-fork_contracts_prepare_owner(Txs, Specs, Static, Trees) ->
-    #{gas_limit := GL, gas_price := GP, owner_pubkey := OwnerPubkey} = Static,
+prepare_contract_owner(Txs, _TxEnv, Trees) when length(Txs) =:= 0 -> Trees;
+prepare_contract_owner([FirstTx | _] = Txs, TxEnv, Trees) ->
+    Height = aetx_env:height(TxEnv),
+    Protocol = aec_hard_forks:protocol_effective_at_height(Height),
+    GL = aetx:gas_limit(FirstTx, Height, Protocol), 
+    GP = aetx:gas_price(FirstTx), 
+    OwnerPubkey = aetx:origin(FirstTx), 
+    %% assert the assumption there is one single owner
+    true = lists:all(fun(Tx) -> aetx:origin(Tx) =:= OwnerPubkey end, Txs),
+
     TotalFee       = lists:sum([aetx:fee(Tx) || Tx <- Txs]),
-    TotalAmount    = lists:sum([Amount || #{amount := Amount} <- Specs]),
-    NeededFunds    = GP * GL * length(Specs) + TotalAmount + TotalFee,
+    TotalAmount    =
+        lists:sum(
+            lists:map(
+                fun(AeTx) ->
+                    {contract_create_tx, Tx} = aetx:specialize_type(AeTx),
+                    aect_create_tx:amount(Tx) + aect_create_tx:deposit(Tx)
+                end,
+                Txs)),
+    NeededFunds    = GP * GL * length(Txs) + TotalAmount + TotalFee,
     AccountsTrees  = aec_trees:accounts(Trees),
     {ok, Account}  = case aec_accounts_trees:lookup(OwnerPubkey, AccountsTrees) of
                          none -> {ok, aec_accounts:new(OwnerPubkey, NeededFunds)};
@@ -165,7 +184,7 @@ contract_create_tx(#{ amount       := Amount
         Other          -> error({unexpected_pubkey, Other, ExpectedPubkey})
     end.
 
-apply_hard_fork_contract_tx(Tx, Trees, TxEnv) ->
+apply_contract_create_tx(Tx, Trees, TxEnv) ->
     case aetx:process(Tx, Trees, TxEnv) of
         {ok, Trees1, _} ->
             OwnerPubkey    = aetx:origin(Tx),

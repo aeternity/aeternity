@@ -53,6 +53,7 @@
         , stop_mining/0
         , is_leader/0
         , get_beneficiary/0
+        , get_next_beneficiary/0
         ]).
 
 %% Chain API
@@ -502,8 +503,8 @@ get_option(Opt, Options) ->
         {_, Val} -> {ok, Val}
     end.
 
-set_beneficiary(#state{mining_state = MiningState} = State) ->
-    case get_beneficiary() of
+set_beneficiary(#state{mining_state = MiningState, consensus = #consensus{consensus_module = Consensus}} = State) ->
+    case get_beneficiary(Consensus) of
         {ok, Beneficiary} ->
             {ok, State#state{beneficiary = Beneficiary}};
         {error, beneficiary_not_configured} = Error ->
@@ -518,18 +519,23 @@ set_beneficiary(#state{mining_state = MiningState} = State) ->
             Error
     end.
 
+
+
+get_beneficiary(Consensus) ->
+    Consensus:beneficiary().
+
 get_beneficiary() ->
-    case aeu_env:user_config_or_env([<<"mining">>, <<"beneficiary">>], aecore, beneficiary) of
-        {ok, EncodedBeneficiary} ->
-            case aeser_api_encoder:safe_decode(account_pubkey, EncodedBeneficiary) of
-                {ok, _Beneficiary} = Result ->
-                    Result;
-                {error, Reason} ->
-                    {error, {beneficiary_error, Reason}}
-            end;
-        undefined ->
-            {error, beneficiary_not_configured}
-    end.
+    TopBlockHash0 = aec_chain:top_block_hash(),
+    {ok, TopHeader} = aec_chain:get_header(TopBlockHash0),
+    Consensus = aec_consensus:get_consensus_module_at_height(aec_headers:height(TopHeader)),
+    get_beneficiary(Consensus).
+
+get_next_beneficiary() ->
+    TopBlockHash0 = aec_chain:top_block_hash(),
+    {ok, TopHeader} = aec_chain:get_header(TopBlockHash0),
+    Consensus = aec_consensus:get_consensus_module_at_height(aec_headers:height(TopHeader) + 1),
+    get_beneficiary(Consensus).
+
 
 set_stratum_mode(State) ->
     case aeu_env:user_config_or_env([<<"stratum">>, <<"enabled">>], aecore, stratum_enabled) of
@@ -796,7 +802,9 @@ deregister_miner_instance(Pid, #state{miner_instances = MinerInstances0} = State
 
 preempt_on_new_top(#state{ top_block_hash = OldHash,
                            top_key_block_hash = OldKeyHash,
-                           top_height = OldHeight } = State, NewBlock, NewHash, Origin) ->
+                           top_height = OldHeight,
+                           consensus = #consensus{consensus_module = ConsensusModule}
+                         } = State, NewBlock, NewHash, Origin) ->
     BlockType = aec_blocks:type(NewBlock),
     PrevNewHash = aec_blocks:prev_hash(NewBlock),
     Hdr = aec_blocks:to_header(NewBlock),
@@ -822,6 +830,7 @@ preempt_on_new_top(#state{ top_block_hash = OldHash,
         micro when OldKeyHash =:= KeyHash ->
             {micro_changed, State1};
         KeyOrNewForkMicro ->
+            SignModule = ConsensusModule:get_sign_module(),
             State2 = kill_all_workers_with_tag(mining, State1),
             State3 = kill_all_workers_with_tag(create_key_block_candidate, State2),
             State4 = kill_all_workers_with_tag(micro_sleep, State3), %% in case we are the leader
@@ -832,7 +841,7 @@ preempt_on_new_top(#state{ top_block_hash = OldHash,
             State5 = State4#state{ top_key_block_hash = NewTopKey,
                                    key_block_candidates = undefined },
 
-            [ aec_keys:promote_candidate(aec_blocks:miner(NewBlock)) || KeyOrNewForkMicro == key ],
+            [ SignModule:promote_candidate(aec_blocks:miner(NewBlock)) || KeyOrNewForkMicro == key ],
 
             {changed, KeyOrNewForkMicro, NewBlock, create_key_block_candidate(State5)}
     end.
@@ -899,22 +908,23 @@ maybe_publish_block(micro_block_created = T, Block) ->
 
 -define(WAIT_FOR_KEYS_RETRIES, 10).
 
-wait_for_keys(State) ->
-    Fun = fun wait_for_keys_worker/0,
+wait_for_keys(#state{consensus = #consensus{consensus_module = ConsensusModule}} = State) ->
+    Fun = fun () -> wait_for_keys_worker(ConsensusModule) end,
     {State1, _Pid} = dispatch_worker(wait_for_keys, Fun, State),
     State1.
 
-wait_for_keys_worker() ->
-    wait_for_keys_worker(?WAIT_FOR_KEYS_RETRIES).
+wait_for_keys_worker(ConsensusModule) ->
+    wait_for_keys_worker(ConsensusModule, ?WAIT_FOR_KEYS_RETRIES).
 
-wait_for_keys_worker(0) ->
+wait_for_keys_worker(_ConsensusModule, 0) ->
     timeout;
-wait_for_keys_worker(N) ->
-    case aec_keys:pubkey() of
+wait_for_keys_worker(ConsensusModule, N) ->
+    SignModule = ConsensusModule:get_sign_module(),
+    case SignModule:get_pubkey() of
         {ok, _Pubkey} -> keys_ready;
         {error, _} ->
             timer:sleep(500),
-            wait_for_keys_worker(N - 1)
+            wait_for_keys_worker(ConsensusModule, N - 1)
     end.
 
 handle_wait_for_keys_reply(keys_ready, State) ->
@@ -1067,7 +1077,7 @@ start_micro_signing(#state{consensus = #consensus{leader = true},
     %% Candidate generated with stale top hash.
     %% Regenerate the candidate.
     State#state{micro_block_candidate = undefined};
-start_micro_signing(#state{consensus = #consensus{leader = true},
+start_micro_signing(#state{consensus = #consensus{leader = true, consensus_module = ConsensusModule},
                            micro_block_candidate = #candidate{block = MicroBlock}} = State) ->
     case is_tag_blocked(micro_sleep, State) of
         true ->
@@ -1075,7 +1085,8 @@ start_micro_signing(#state{consensus = #consensus{leader = true},
             State;
         false ->
             epoch_mining:info("Signing microblock"),
-            {ok, SignedMicroBlock} = aec_keys:sign_micro_block(MicroBlock),
+            SignModule = ConsensusModule:get_sign_module(),
+            {ok, SignedMicroBlock} = SignModule:sign_micro_block(MicroBlock),
             State1 = State#state{micro_block_candidate = undefined},
             case handle_signed_block(SignedMicroBlock, State1) of
                 {ok, State2} ->
@@ -1258,6 +1269,7 @@ handle_successfully_added_block(Block, Hash, true, PrevKeyHeader, Events, State,
     maybe_publish_tx_events(Events, Hash, Origin),
     maybe_publish_block(Origin, Block),
     State1 = maybe_consensus_change(State, Block),
+    #state{consensus = #consensus{consensus_module = ConsensusModule}} = State1,
     case preempt_on_new_top(State1, Block, Hash, Origin) of
         {micro_changed, State2 = #state{ consensus = Cons }} ->
             {ok, setup_loop(State2, false, Cons#consensus.leader, Origin)};
@@ -1265,7 +1277,7 @@ handle_successfully_added_block(Block, Hash, true, PrevKeyHeader, Events, State,
             (BlockType == key) andalso
                 aec_metrics:try_update(
                   [ae,epoch,aecore,blocks,key,info], info_value(NewTopBlock)),
-            IsLeader = is_leader(NewTopBlock, PrevKeyHeader),
+            IsLeader = is_leader(NewTopBlock, PrevKeyHeader, ConsensusModule),
             case IsLeader of
                 true ->
                     ok; %% Don't spend time when we are the leader.
@@ -1303,7 +1315,7 @@ info_value(Block) ->
             0
     end.
 
-is_leader(NewTopBlock, PrevKeyHeader) ->
+is_leader(NewTopBlock, PrevKeyHeader, ConsensusModule) ->
     LeaderKey =
         case aec_blocks:type(NewTopBlock) of
             key   ->
@@ -1311,7 +1323,8 @@ is_leader(NewTopBlock, PrevKeyHeader) ->
             micro ->
                 aec_headers:miner(PrevKeyHeader)
         end,
-    case aec_keys:pubkey() of
+    SignModule = ConsensusModule:get_sign_module(),
+    case SignModule:get_pubkey() of
         {ok, MinerKey} -> LeaderKey =:= MinerKey;
         {error, _}     -> false
     end.

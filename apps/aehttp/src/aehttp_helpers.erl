@@ -20,6 +20,7 @@
         , print_state/0
         , get_contract_code/2
         , get_info_object_from_tx/3
+        , get_info_object_signed_tx/2
         , verify_oracle_existence/1
         , verify_oracle_query_existence/2
         , verify_name/1
