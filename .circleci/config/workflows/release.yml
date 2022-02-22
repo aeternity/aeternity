@@ -285,8 +285,9 @@ jobs:
         tags:
           only: << pipeline.parameters.tag_regex >>
 
-  - docker-image:
+  - docker-tag:
       name: docker-image-latest
+      src: $CIRCLE_TAG
       tag: latest
       context:
         - ae-slack
@@ -300,9 +301,9 @@ jobs:
         tags:
           only: << pipeline.parameters.tag_regex >>
 
-  - docker-image:
+  - docker-tag:
       name: docker-image-latest-bundle
-      aeplugin_devmode: true
+      src: $CIRCLE_TAG-bundle
       tag: latest-bundle
       context:
         - ae-slack
