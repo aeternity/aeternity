@@ -127,8 +127,8 @@ init_per_suite(Config0) ->
             aecore_suite_utils:create_config(?NODE2, Config1, BuildConfig([]), []),
             aecore_suite_utils:start_node(?NODE1, Config1),
             aecore_suite_utils:connect(?NODE1_NAME, []),
-%%            aecore_suite_utils:start_node(?NODE2, Config1),
-%%            aecore_suite_utils:connect(?NODE2_NAME, []),
+            aecore_suite_utils:start_node(?NODE2, Config1),
+            aecore_suite_utils:connect(?NODE2_NAME, []),
             seed_account(pubkey(?ALICE), 100000000 * ?DEFAULT_GAS_PRICE),
             seed_account(pubkey(?BOB), 100000000 * ?DEFAULT_GAS_PRICE),
             seed_account(pubkey(?CAROL), 100000000 * ?DEFAULT_GAS_PRICE),
@@ -143,7 +143,7 @@ end_per_suite(Config) ->
         A <- lists:reverse(
                proplists:get_value(started_apps, Config, []))],
     aecore_suite_utils:stop_node(?NODE1, Config),
-%%    aecore_suite_utils:stop_node(?NODE2, Config),
+    aecore_suite_utils:stop_node(?NODE2, Config),
     ok.
 
 init_per_group(_Group, Config0) ->

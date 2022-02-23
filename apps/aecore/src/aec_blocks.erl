@@ -32,7 +32,7 @@
          set_height/2,
          set_miner/2,
          set_nonce/2,
-         set_nonce_and_pow/3,
+         set_nonce_and_key_seal/3,
          set_pof/2,
          set_prev_hash/2,
          set_prev_key_hash/2,
@@ -301,9 +301,9 @@ set_pof(#mic_block{} = Block, PoF) ->
 pow(Block) ->
     aec_headers:pow(to_key_header(Block)).
 
--spec set_nonce_and_pow(key_block(), aec_consensus:key_nonce(), aec_consensus:key_seal()
+-spec set_nonce_and_key_seal(key_block(), aec_consensus:key_nonce(), aec_consensus:key_seal()
                        ) -> key_block().
-set_nonce_and_pow(Block, Nonce, Evd) ->
+set_nonce_and_key_seal(Block, Nonce, Evd) ->
     H = aec_headers:set_nonce_and_key_seal(to_key_header(Block), Nonce, Evd),
     set_header(Block, H).
 

@@ -227,7 +227,9 @@ genesis_raw_header() ->
 genesis_difficulty() -> 0.
 
 key_header_for_sealing(Header) ->
-    aec_headers:root_hash(Header).
+    Header1 = aec_headers:set_nonce(Header, 0),
+    Header2 = aec_headers:set_key_seal(Header1, no_value),
+    aec_headers:serialize_to_binary(Header2).
 
 validate_key_header_seal(_Header, _Protocol) ->
     ok.
@@ -243,7 +245,7 @@ generate_key_header_seal(_, Candidate, ?TAG, #{expected_key_block_rate := Expect
 
 set_key_block_seal(Block0, ?TAG) ->
     Block = aec_blocks:set_time_in_msecs(Block0, aeu_time:now_in_msecs()),
-    aec_blocks:set_nonce_and_pow(Block, ?TAG, ?TAG).
+    aec_blocks:set_nonce_and_key_seal(Block, ?TAG, lists:duplicate(42, ?TAG)).
 
 nonce_for_sealing(_Header) ->
     ?TAG.
