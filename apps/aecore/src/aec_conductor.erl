@@ -265,17 +265,16 @@ init(Options) ->
                      consensus          = Consensus},
     State2 = set_option(autostart, Options, State1),
     State3 = set_option(strictly_follow_top, Options, State2),
-    {ok, State4} = set_beneficiary(State3),
-    State5 = set_mode(State4), %% May overwrite beneficiary.
-    State6 = init_instances(State5),
+    State4 = set_mode(State3),
+    State5 = init_instances(State4),
 
     aec_metrics:try_update([ae,epoch,aecore,chain,height],
                            aec_blocks:height(aec_chain:top_block())),
-    epoch_mining:info("Miner process initilized ~p", [State6]),
+    epoch_mining:info("Miner process initilized ~p", [State5]),
     aec_events:subscribe(candidate_block),
     %% NOTE: The init continues at handle_info(init_continue, State).
     self() ! init_continue,
-    {ok, State6}.
+    {ok, State5}.
 
 init_chain_state() ->
     case aec_chain:genesis_hash() of
@@ -361,8 +360,6 @@ reinit_chain_impl(State) ->
 handle_call({add_synced_block, Block},_From, State) ->
     {Reply, State1} = handle_synced_block(Block, State),
     {reply, Reply, State1};
-handle_call(get_key_block_candidate,_From, #state{beneficiary = undefined} = State) ->
-    {reply, {error, beneficiary_not_configured}, State};
 handle_call(get_key_block_candidate,_From, State) ->
     {Res, State1} =
         case State#state.pending_key_block of
@@ -395,10 +392,10 @@ handle_call(stop_block_production,_From, State = #state{ consensus = Cons }) ->
 handle_call({start_block_production, _Opts},_From, #state{block_producing_state = 'running'} = State) ->
     epoch_mining:info("Mining running" ++ print_opts(State)),
     {reply, ok, State};
-handle_call({start_block_production, _Opts},_From, State = #state{ beneficiary = undefined }) ->
+handle_call({start_block_production, _Opts},_From, #state{has_beneficiary = false} = State) ->
     epoch_mining:error("Cannot start mining - beneficiary not configured"),
     {reply, {error, beneficiary_not_configured}, State};
-handle_call({start_block_production, Opts},_From, State = #state{ consensus = Cons }) ->
+handle_call({start_block_production, Opts},_From, #state{consensus = Cons} = State) ->
     epoch_mining:info("Mining started" ++ print_opts(State)),
     State1 = start_block_production_(State#state{block_producing_state = 'running', consensus = Cons#consensus{leader = false},
                                       mining_opts = Opts}),
@@ -510,26 +507,11 @@ get_option(Opt, Options) ->
         {_, Val} -> {ok, Val}
     end.
 
-set_beneficiary(#state{block_producing_state = MiningState, consensus = #consensus{consensus_module = Consensus}} = State) ->
-    case get_beneficiary(Consensus) of
-        {ok, Beneficiary} ->
-            {ok, State#state{beneficiary = Beneficiary}};
-        {error, beneficiary_not_configured} = Error ->
-            case MiningState of
-                running ->
-                    lager:error("Beneficiary must be configured with (autostart) mining on"),
-                    Error;
-                stopped ->
-                    {ok, State}
-            end;
-        {error, _Reason} = Error ->
-            Error
-    end.
-
-
-
 get_beneficiary(Consensus) ->
     Consensus:beneficiary().
+
+get_next_beneficiary(Consensus) ->
+    Consensus:next_beneficiary().
 
 get_beneficiary() ->
     TopBlockHash0 = aec_chain:top_block_hash(),
@@ -544,11 +526,17 @@ get_next_beneficiary() ->
     get_beneficiary(Consensus).
 
 
-set_mode(State = #state{ consensus = #consensus{consensus_module = ConsensusModule}}) ->
+set_mode(State) ->
+    ConsensusModule = consensus_module(State),
     case ConsensusModule:get_type() of
         pow -> set_pow_modes(State);
         pos -> 
-            State#state{mode = pos}
+            HasBeneficiaryConfigured =
+                case get_beneficiary(ConsensusModule) of
+                    {error, beneficiary_not_configured} -> false;
+                    {ok, _} -> true
+                end,
+            State#state{mode = pos, has_beneficiary = HasBeneficiaryConfigured}
     end.
 
 set_pow_modes(State) ->
@@ -559,9 +547,16 @@ set_pow_modes(State) ->
                           aecore, stratum_reward_keys_dir),
             {PubKey, _PrivKey} =  aestratum_config:read_keys(Dir, create),
             State#state{mode = stratum,
-                        beneficiary  = PubKey};
+                        stratum_beneficiary  = PubKey,
+                        has_beneficiary = true};
         _ ->
-            State#state{mode = local_pow}
+            ConsensusModule = consensus_module(State),
+            HasBeneficiaryConfigured =
+                case get_beneficiary(ConsensusModule) of
+                    {error, beneficiary_not_configured} -> false;
+                    {ok, _} -> true
+                end,
+            State#state{mode = local_pow, has_beneficiary = HasBeneficiaryConfigured}
     end.
 
 %%%===================================================================
@@ -759,21 +754,26 @@ erase_worker(Pid, #state{workers = Workers} = State) ->
 %%%===================================================================
 %%% Miner instances handling
 
-init_instances(State) ->
-    MinerConfigs   = aec_mining:get_miner_configs(),
-    MinerInstances = create_instances(MinerConfigs),
+init_instances(#state{mode = pos} = State) ->
+    ConsensusModule = consensus_module(State),
+    [{Instance, Config}] = ConsensusModule:get_block_producer_configs(),
+    State#state{instances = [create_instance(0, Instance, Config)]}; %% one instance shall be enough
+init_instances(State) -> %% local_pow and stratum
+    ConsensusModule = consensus_module(State),
+    MinerConfigs   = ConsensusModule:get_block_producer_configs(),
+    MinerInstances = create_miner_instances(MinerConfigs),
     State#state{instances = MinerInstances}.
 
-create_instances(MinerConfigs) when is_list(MinerConfigs) ->
+create_miner_instances(MinerConfigs) when is_list(MinerConfigs) ->
     {MinerInstances, _} =
         lists:foldl(
           fun(MinerConfig, {Acc, Id}) ->
-                  {Instances, NextId} = create_instances(MinerConfig, Id),
+                  {Instances, NextId} = create_miner_instances(MinerConfig, Id),
                   {Instances ++ Acc, NextId}
           end, {[], 0}, MinerConfigs),
     MinerInstances.
 
-create_instances(MinerConfig, FirstId) ->
+create_miner_instances(MinerConfig, FirstId) ->
     case aeminer_pow_cuckoo:addressed_instances(MinerConfig) of
         undefined ->
             {[create_instance(FirstId, undefined, MinerConfig)], FirstId + 1};
@@ -816,9 +816,9 @@ deregister_instance(Pid, #state{instances = MinerInstances0} = State) ->
 
 preempt_on_new_top(#state{ top_block_hash = OldHash,
                            top_key_block_hash = OldKeyHash,
-                           top_height = OldHeight,
-                           consensus = #consensus{consensus_module = ConsensusModule}
+                           top_height = OldHeight
                          } = State, NewBlock, NewHash, Origin) ->
+    ConsensusModule = consensus_module(State),
     BlockType = aec_blocks:type(NewBlock),
     PrevNewHash = aec_blocks:prev_hash(NewBlock),
     Hdr = aec_blocks:to_header(NewBlock),
@@ -855,6 +855,7 @@ preempt_on_new_top(#state{ top_block_hash = OldHash,
             State5 = State4#state{ top_key_block_hash = NewTopKey,
                                    key_block_candidates = undefined },
 
+            lager:info("ASDF maybe promote candidate", []),
             [ SignModule:promote_candidate(aec_blocks:miner(NewBlock)) || KeyOrNewForkMicro == key ],
 
             {changed, KeyOrNewForkMicro, NewBlock, create_key_block_candidate(State5)}
@@ -922,7 +923,8 @@ maybe_publish_block(micro_block_created = T, Block) ->
 
 -define(WAIT_FOR_KEYS_RETRIES, 10).
 
-wait_for_keys(#state{consensus = #consensus{consensus_module = ConsensusModule}} = State) ->
+wait_for_keys(State) ->
+    ConsensusModule = consensus_module(State),
     Fun = fun () -> wait_for_keys_worker(ConsensusModule) end,
     {State1, _Pid} = dispatch_worker(wait_for_keys, Fun, State),
     State1.
@@ -934,9 +936,10 @@ wait_for_keys_worker(_ConsensusModule, 0) ->
     timeout;
 wait_for_keys_worker(ConsensusModule, N) ->
     SignModule = ConsensusModule:get_sign_module(),
-    case SignModule:get_pubkey() of
-        {ok, _Pubkey} -> keys_ready;
-        {error, _} ->
+    lager:info("AAAA SignModule ~p, res ~p", [SignModule, SignModule:is_ready()]),
+    case SignModule:is_ready() of
+        true -> keys_ready;
+        false ->
             timer:sleep(500),
             wait_for_keys_worker(ConsensusModule, N - 1)
     end.
@@ -955,13 +958,14 @@ start_block_production_(#state{keys_ready = false} = State) ->
     %% We need to get the keys first
     wait_for_keys(State);
 start_block_production_(#state{key_block_candidates = undefined,
-                                beneficiary         = Beneficiary} = State) when Beneficiary =/= undefined ->
+                               has_beneficiary      = true} = State) ->
     %% If the mining is turned off and beneficiary is configured,
     %% the key block candidate is still created, but not mined.
     %% The candidate can be retrieved via the API and other nodes can mine it.
     State1 = kill_all_workers_with_tag(create_key_block_candidate, State),
     create_key_block_candidate(State1);
-start_block_production_(#state{mode = local_pow, block_producing_state = stopped} = State) ->
+start_block_production_(#state{mode = NotStratum, block_producing_state = stopped} = State)
+    when NotStratum =:= local_pow orelse NotStratum =:= pos ->
     State;
 start_block_production_(#state{key_block_candidates = [{_, #candidate{top_hash = OldHash}} | _],
                                top_block_hash = TopHash } = State) when OldHash =/= TopHash ->
@@ -994,11 +998,11 @@ start_block_production_(#state{mode = local_pow, key_block_candidates = [{ForSea
             State1 = State#state{key_block_candidates = [{ForSealing, Candidate1} | Candidates]},
             {State2, Pid} = dispatch_worker(mining, Fun, State1),
             State3 = register_instance(Instance, Pid, State2),
-            epoch_mining:info("Miner ~p started", [Pid]),
+            epoch_mining:info("Block generator worker ~p started", [Pid]),
             start_block_production_(State3)
     end;
-start_block_production_(#state{mode = stratum,
-                     key_block_candidates = [{ForSealing, #candidate{refs = StratumRefs} = Candidate} | Candidates]} = State)
+start_block_production_(#state{ mode = stratum,
+                                key_block_candidates = [{ForSealing, #candidate{refs = StratumRefs} = Candidate} | Candidates]} = State)
   when StratumRefs =:= 0  ->
     epoch_mining:info("Stratum dispatch ~p", [ForSealing]),
     Target            = aec_blocks:target(Candidate#candidate.block),
@@ -1008,7 +1012,35 @@ start_block_production_(#state{mode = stratum,
     aec_events:publish(stratum_new_candidate, [{ForSealing, Candidate, Target, Server}]),
     Candidate1 = register_stratum(Candidate),
     State1 = State#state{key_block_candidates = [{ForSealing, Candidate1} | Candidates]},
-    State1.
+    State1;
+start_block_production_(#state{mode = pos, key_block_candidates = [{ForSealing, Candidate} | Candidates]} = State) ->
+    case available_instance(State) of
+        none -> State;
+        Instance ->
+            epoch_mining:info("Starting PoS block generator on top of ~p", [State#state.top_block_hash]),
+            Consensus         = aec_blocks:consensus_module(Candidate#candidate.block),
+            Header            = aec_blocks:to_header(Candidate#candidate.block),
+            StakerConfig      = Instance#instance.config,
+            AddressedInstance = Instance#instance.instance,
+            Nonce             = Consensus:trim_sealing_nonce(Candidate#candidate.nonce, StakerConfig),
+            Info              = [{top_block_hash, State#state.top_block_hash}],
+            aec_events:publish(start_mining, Info),
+            Fun = fun() ->
+                          { Consensus:generate_key_header_seal(
+                              ForSealing,
+                              Header,
+                              Nonce,
+                              StakerConfig,
+                              AddressedInstance)
+                          , ForSealing}
+                  end,
+            Candidate1 = register_miner(Candidate, Consensus, Nonce, StakerConfig),
+            State1 = State#state{key_block_candidates = [{ForSealing, Candidate1} | Candidates]},
+            {State2, Pid} = dispatch_worker(mining, Fun, State1),
+            State3 = register_instance(Instance, Pid, State2),
+            epoch_mining:info("Block producer started ~p started", [Pid]),
+            start_block_production_(State3)
+    end.
 
 register_stratum(Candidate = #candidate{refs  = Refs}) ->
     Candidate#candidate{refs  = Refs + 1}.
@@ -1091,8 +1123,9 @@ start_micro_signing(#state{consensus = #consensus{leader = true},
     %% Candidate generated with stale top hash.
     %% Regenerate the candidate.
     State#state{micro_block_candidate = undefined};
-start_micro_signing(#state{consensus = #consensus{leader = true, consensus_module = ConsensusModule},
+start_micro_signing(#state{consensus = #consensus{leader = true},
                            micro_block_candidate = #candidate{block = MicroBlock}} = State) ->
+    ConsensusModule = consensus_module(State),
     case is_tag_blocked(micro_sleep, State) of
         true ->
             epoch_mining:debug("Too early to sign micro block, wait a bit longer"),
@@ -1144,14 +1177,21 @@ handle_micro_sleep_reply(ok, State) ->
 create_key_block_candidate(#state{keys_ready = false} = State) ->
     %% Keys are needed for creating a candidate
     wait_for_keys(State);
-create_key_block_candidate(#state{beneficiary = undefined} = State) ->
+create_key_block_candidate(#state{has_beneficiary = false} = State) ->
     State;
 create_key_block_candidate(#state{key_block_candidates = [{_, #candidate{top_hash = TopHash}} | _],
                                   top_block_hash       = TopHash} = State) ->
     %% We have the most recent candidate already. Just start mining.
     start_block_production_(State);
-create_key_block_candidate(#state{top_block_hash = TopHash,
-                                  beneficiary    = Beneficiary} = State) ->
+create_key_block_candidate(#state{top_block_hash = TopHash} = State) ->
+    Beneficiary =
+        case State#state.mode of
+            stratum -> State#state.stratum_beneficiary;
+            _ ->
+                ConsensusModule = consensus_module(State),
+                {ok, B} = get_next_beneficiary(ConsensusModule),
+                B
+        end,
     epoch_mining:info("Creating key block candidate on the top"),
     Fun = fun() ->
                   {aec_block_key_candidate:create(TopHash, Beneficiary), TopHash}
@@ -1216,13 +1256,14 @@ ok({ok, Value}) ->
     Value.
 
 
-handle_add_block(Block, #state{consensus = #consensus{consensus_module = ActiveConsensus}} = State, Origin) ->
+handle_add_block(Block, State, Origin) ->
+    ActiveConsensusModule = consensus_module(State),
     Header = aec_blocks:to_header(Block),
     case aec_headers:consensus_module(Header) of
-        ActiveConsensus ->
+        ActiveConsensusModule ->
             handle_add_block(Header, Block, State, Origin);
         _ ->
-            case ActiveConsensus:can_be_turned_off() of
+            case ActiveConsensusModule:can_be_turned_off() of
                 true ->
                     %% This is OK only when we deal with ordinary consensus algorithms
                     %% This is expected when switching between PoA, PoW, Hyperchains
@@ -1283,7 +1324,7 @@ handle_successfully_added_block(Block, Hash, true, PrevKeyHeader, Events, State,
     maybe_publish_tx_events(Events, Hash, Origin),
     maybe_publish_block(Origin, Block),
     State1 = maybe_consensus_change(State, Block),
-    #state{consensus = #consensus{consensus_module = ConsensusModule}} = State1,
+    ConsensusModule = consensus_module(State),
     case preempt_on_new_top(State1, Block, Hash, Origin) of
         {micro_changed, State2 = #state{ consensus = Cons }} ->
             {ok, setup_loop(State2, false, Cons#consensus.leader, Origin)};
@@ -1299,25 +1340,27 @@ handle_successfully_added_block(Block, Hash, true, PrevKeyHeader, Events, State,
                     aec_tx_pool:garbage_collect(),
                     [ maybe_garbage_collect_accounts() || BlockType == key ]
             end,
+            lager:info("ASDF IsLeader ~p", [IsLeader]),
             {ok, setup_loop(State2, true, IsLeader, Origin)}
     end.
 
-maybe_consensus_change(#state{ consensus = Consensus } = State, Block) ->
+maybe_consensus_change(State, Block) ->
     %% When a new block got successfully inserted we need to check whether the next block
     %% would use different consensus algorithm - This is the point where
     %% dev mode should wreck havoc on the entire system and redirect everything
     %% to a chain simulator ;)
-    #consensus{ consensus_module = ActiveConsensus } = Consensus,
+    ActiveConsensusModule = consensus_module(State),
     H = aec_blocks:height(Block),
     case aec_consensus:get_consensus_module_at_height(H + 1) of
-        ActiveConsensus ->
+        ActiveConsensusModule ->
             State;
         NewConsensus ->
             %% It looks like dev mode needs to be activated :)
-            true = ActiveConsensus:can_be_turned_off(),
-            ActiveConsensus:stop(),
+            true = ActiveConsensusModule:can_be_turned_off(),
+            ActiveConsensusModule:stop(),
             NewConfig = aec_consensus:get_consensus_config_at_height(H+1),
             NewConsensus:start(NewConfig),
+            #state{consensus = Consensus} = State,
             State#state{ consensus = Consensus#consensus{ consensus_module = NewConsensus } }
     end.
 
@@ -1338,6 +1381,7 @@ is_leader(NewTopBlock, PrevKeyHeader, ConsensusModule) ->
                 aec_headers:miner(PrevKeyHeader)
         end,
     SignModule = ConsensusModule:get_sign_module(),
+    lager:info("ASDF SignModule:get_pubkey() = ~p", [SignModule:get_pubkey()]),
     case SignModule:get_pubkey() of
         {ok, MinerKey} -> LeaderKey =:= MinerKey;
         {error, _}     -> false
@@ -1368,7 +1412,17 @@ setup_loop(State = #state{ consensus = Cons }, RestartMining, IsLeader, Origin) 
 
 get_pending_key_block(undefined, State) ->
     {{error, not_found}, State};
-get_pending_key_block(TopHash, #state{beneficiary = Beneficiary} = State) ->
+get_pending_key_block(_TopHash, #state{has_beneficiary = false} = State) ->
+    {{error, beneficiary_not_configured}, State};
+get_pending_key_block(TopHash, State) ->
+    Beneficiary =
+        case State#state.mode of
+            stratum -> State#state.stratum_beneficiary;
+            _ ->
+                ConsensusModule = consensus_module(State),
+                {ok, B} = get_next_beneficiary(ConsensusModule),
+                B
+        end,
     case aec_block_key_candidate:create(TopHash, Beneficiary) of
         {ok, Block} -> {{ok, Block}, State#state{ pending_key_block = Block }};
         {error, _}  -> {{error, not_found}, State}
@@ -1388,3 +1442,7 @@ maybe_garbage_collect_accounts() -> nop.
 maybe_garbage_collect_accounts() ->
     gen_statem:call(aec_db_gc, maybe_garbage_collect).
 -endif.
+
+consensus_module(#state{ consensus = #consensus{consensus_module =
+                                                ConsensusModule}}) ->
+    ConsensusModule.
