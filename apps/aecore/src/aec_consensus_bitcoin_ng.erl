@@ -55,8 +55,10 @@
         , key_header_difficulty/1
         %% rewards and signing
         , beneficiary/0
+        , next_beneficiary/0
         , get_sign_module/0
         , get_type/0
+        , get_block_producer_configs/0
         ]).
 
 -export([ get_whitelist/0
@@ -512,9 +514,13 @@ beneficiary() ->
             {error, beneficiary_not_configured}
     end.
 
+next_beneficiary() -> beneficiary().
+
 get_sign_module() -> aec_keys.
 
 get_type() -> pow.
+
+get_block_producer_configs() -> aec_mining:get_miner_configs().
 
 load_whitelist() ->
     W = aec_fork_block_settings:block_whitelist(),
