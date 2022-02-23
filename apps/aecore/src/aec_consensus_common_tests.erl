@@ -202,7 +202,7 @@ generate_key_header_seal(_, _, ?TAG, _, _) ->
     { continue_mining, {ok, ?TAG} }.
 
 set_key_block_seal(Block, ?TAG) ->
-    aec_blocks:set_nonce_and_pow(Block, ?TAG, ?TAG).
+    aec_blocks:set_nonce_and_key_seal(Block, ?TAG, [?TAG]).
 
 nonce_for_sealing(_Header) ->
     ?TAG.
