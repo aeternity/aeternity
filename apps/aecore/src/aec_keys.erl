@@ -29,7 +29,8 @@
          get_pubkey/0,
          candidate_pubkey/0,
          promote_candidate/1,
-         sign_micro_block/1
+         sign_micro_block/1,
+         is_ready/0
         ]).
 
 %% Supervisor API
@@ -131,6 +132,13 @@ peer_privkey() ->
 -spec promote_candidate(pubkey()) -> ok | {error, key_not_found}.
 promote_candidate(PubKey) ->
     gen_server:call(?MODULE, {promote_candidate, PubKey}).
+
+-spec is_ready() -> boolean().
+is_ready() ->
+    case gen_server:call(?MODULE, pubkey) of
+        {ok, _} -> true;
+        {error, _} -> false
+    end.
 
 %%%===================================================================
 %%% Test API
