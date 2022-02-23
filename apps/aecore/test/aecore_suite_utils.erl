@@ -333,8 +333,7 @@ delete_node_db_if_persisted({true, {ok, MnesiaDir}}) ->
 
 rpc_test_consensus_enabled(Node) ->
     ConsensusModule = rpc:call(Node, aec_conductor, get_active_consensus_module, []),
-    ConsensusModule =:= aec_consensus_common_tests orelse
-    ConsensusModule =:= aec_consensus_smart_contract.
+    ConsensusModule =:= aec_consensus_common_tests.
 
 
 rpc_on_demand_consensus_enabled(Node) ->

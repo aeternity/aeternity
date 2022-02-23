@@ -6,7 +6,8 @@
 -export([get_pubkey/0,
          candidate_pubkey/0,
          promote_candidate/1,
-         sign_micro_block/1
+         sign_micro_block/1,
+         is_ready/0
         ]).
 
 -export([set_candidate/1
@@ -54,10 +55,13 @@ candidate_pubkey() ->
 
 -spec promote_candidate(aec_keys:pubkey()) -> ok | {error, key_not_found}.
 promote_candidate(Pubkey) ->
-    case gen_server:call(?SERVER, {promote_candidate, Pubkey}) of
-        ok -> ok;
-        {error, not_found} -> {error, key_not_found}
-    end.
+    Res =
+        case gen_server:call(?SERVER, {promote_candidate, Pubkey}) of
+            ok -> ok;
+            {error, not_found} -> {error, key_not_found}
+        end,
+    lager:info("ASDF promote result: ~p", [Res]),
+    Res.
 
 -spec set_candidate(aec_keys:pubkey()) -> ok | {error, key_not_found}.
 set_candidate(Pubkey) ->
@@ -73,6 +77,13 @@ sign_micro_block(MicroBlock) ->
     Bin = aec_headers:serialize_to_signature_binary(Header),
     {ok, Signature} = gen_server:call(?MODULE, {sign, Bin}),
     {ok, aec_blocks:set_signature(MicroBlock, Signature)}.
+
+-spec is_ready() -> boolean().
+is_ready() ->
+    case get_pubkey() of
+        {ok, _} -> true;
+        {error, no_active} -> true %% keys are loaded, it is not this node that is the leader, though
+    end.
 
 %%%===================================================================
 %%% Gen server API
@@ -110,9 +121,10 @@ handle_call({promote_candidate, Pubkey}, _From, #state{ candidate = _Candidate }
             {reply, {error, not_found}, State#state{active = ?NOT_SET, candidate = ?NOT_SET}}
     end;
 handle_call({set_candidate, Pubkey}, _From, #state{} = State) ->
+    lager:info("ASDF: set_candidate", []),
     case is_known_pubkey(Pubkey, State) of
         true ->
-            {reply, ok, State#state{active = ?NOT_SET, candidate = Pubkey}};
+            {reply, ok, State#state{candidate = Pubkey}};
         false ->
             {reply, {error, not_found}, State}
     end;

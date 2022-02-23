@@ -31,9 +31,10 @@
 
 -type instance_state() :: pid() | 'available'.
 -record(instance, {id       :: non_neg_integer(),
-                         instance :: aeminer_pow:instance() | 'undefined',
-                         state    :: instance_state(),
-                         config   :: aeminer_pow_cuckoo:config()}).
+                   instance :: aeminer_pow:instance() | 'undefined',
+                   state    :: instance_state(),
+                   config   :: aeminer_pow_cuckoo:config() | 'undefined'
+                  }).
 -type instance() :: #instance{}.
 -type instances() :: list(instance()).
 
@@ -50,7 +51,8 @@
                 workers                 = []        :: workers(),
                 instances               = []        :: instances(),
                 consensus                           :: #consensus{},
-                beneficiary                         :: <<_:(32*8)>> | 'undefined' | fun(() -> <<_:(32*8)>>),
+                has_beneficiary         = false     :: boolean(),
+                stratum_beneficiary                 :: <<_:(32*8)>> | 'undefined' | fun(() -> <<_:(32*8)>>),
                 fraud_list              = []        :: list({binary(), aec_pof:pof()}),
                 pending_key_block                   :: aec_blocks:block() | 'undefined',
                 mode                    = local_pow :: mode()

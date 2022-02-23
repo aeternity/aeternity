@@ -60,8 +60,10 @@
         , key_header_difficulty/1
         %% rewards and signing
         , beneficiary/0
+        , next_beneficiary/0
         , get_sign_module/0
         , get_type/0
+        , get_block_producer_configs/0
         ]).
 
 -include_lib("aecontract/include/hard_forks.hrl").
@@ -106,76 +108,8 @@ start(Config) ->
 stop() -> ok.
 
 is_providing_extra_http_endpoints() -> false.
-%% This is not yet dev mode but it's close :)
-%% TODO: Expose via HTTP
-client_request(emit_kb) ->
-    TopHash = aec_chain:top_block_hash(),
-    Beneficiary = next_beneficiary(),
-    lager:info("AAAA ~p", [Beneficiary]),
-    SignModule = get_sign_module(),
-    ok = SignModule:set_candidate(Beneficiary),
-    {ok, Block} = aec_block_key_candidate:create(TopHash, Beneficiary),
-    ok = aec_conductor:add_synced_block(Block),
-    Block;
-client_request(emit_mb) ->
-    TopHash = aec_chain:top_block_hash(),
-    {ok, MicroBlock, _} = aec_block_micro_candidate:create(TopHash),
-    SignModule = get_sign_module(),
-    {ok, MicroBlockS} = SignModule:sign_micro_block(MicroBlock),
-    ok = aec_conductor:post_block(MicroBlockS),
-    MicroBlockS;
-client_request({mine_blocks, NumBlocksToMine, Type}) ->
-    case {aec_conductor:is_leader(), Type} of
-        {_, any} ->
-            %% Some test might expect to mine a tx - interleave KB with MB
-            Pairs = NumBlocksToMine div 2,
-            Rem = NumBlocksToMine rem 2,
-            P = [[ client_request(emit_kb)
-                 , client_request(emit_mb)
-                 ] || _ <- lists:seq(1, Pairs)],
-            R = [ client_request(emit_kb) || _ <- lists:seq(1, Rem)],
-            {ok, lists:flatten([P,R])};
-        {_, key} ->
-            {ok, [client_request(emit_kb) || _ <- lists:seq(1, NumBlocksToMine)]};
-        {true, micro} ->
-            {ok, [client_request(emit_mb) || _ <- lists:seq(1, NumBlocksToMine)]};
-        {false, micro} ->
-            client_request(emit_kb),
-            {ok, [client_request(emit_mb) || _ <- lists:seq(1, NumBlocksToMine)]}
-    end;
-client_request(mine_micro_block_emptying_mempool_or_fail) ->
-    KB = client_request(emit_kb),
-    MB = client_request(emit_mb),
-    %% If instant mining is enabled then we can't have microforks :)
-    {ok, []} = aec_tx_pool:peek(infinity),
-    {ok, [KB, MB]};
-client_request({mine_blocks_until_txs_on_chain, TxHashes, Max}) ->
-    mine_blocks_until_txs_on_chain(TxHashes, Max, []).
 
-mine_blocks_until_txs_on_chain(_TxHashes, 0, _Blocks) ->
-    {error, max_reached};
-mine_blocks_until_txs_on_chain(TxHashes, Max, Blocks) ->
-    case aec_conductor:is_leader() of
-        false ->
-            KB = client_request(emit_kb),
-            mine_blocks_until_txs_on_chain(TxHashes, Max-1, [KB|Blocks]);
-        true ->
-            MB = client_request(emit_mb),
-            KB = client_request(emit_kb),
-            NewAcc = [KB|Blocks],
-            case txs_not_in_microblock(MB, TxHashes) of
-                []        -> {ok, lists:reverse(NewAcc)};
-                TxHashes1 -> mine_blocks_until_txs_on_chain(TxHashes1, Max - 1, NewAcc)
-            end
-    end.
-
-txs_not_in_microblock(MB, TxHashes) ->
-    [ TxHash || TxHash <- TxHashes, not tx_in_microblock(MB, TxHash) ].
-
-tx_in_microblock(MB, TxHash) ->
-    lists:any(fun(STx) ->
-                      aeser_api_encoder:encode(tx_hash, aetx_sign:hash(STx)) == TxHash
-              end, aec_blocks:txs(MB)).
+client_request(_) -> error(unsupported).
 
 extra_from_header(_) ->
     #{consensus => ?MODULE}.
@@ -298,10 +232,17 @@ key_header_for_sealing(Header) ->
 validate_key_header_seal(_Header, _Protocol) ->
     ok.
 
-generate_key_header_seal(_, _, ?TAG, _, _) ->
+generate_key_header_seal(_, Candidate, ?TAG, #{expected_key_block_rate := Expected} = _Config, _) ->
+    {ok, PrevKeyHeader} = aec_chain:get_header(aec_headers:prev_key_hash(Candidate)),
+    PrevBlockTime = aec_headers:time_in_msecs(PrevKeyHeader),
+    Now = aeu_time:now_in_msecs(),
+    SleepTime = max(PrevBlockTime + Expected - Now, 0),
+    lager:info("Sleeping for ~p ms before contining", [SleepTime]),
+    timer:sleep(SleepTime),
     { continue_mining, {ok, ?TAG} }.
 
-set_key_block_seal(Block, ?TAG) ->
+set_key_block_seal(Block0, ?TAG) ->
+    Block = aec_blocks:set_time_in_msecs(Block0, aeu_time:now_in_msecs()),
     aec_blocks:set_nonce_and_pow(Block, ?TAG, ?TAG).
 
 nonce_for_sealing(_Header) ->
@@ -339,6 +280,13 @@ contract_owner() ->
     {ok, Pubkey}   = aeser_api_encoder:safe_decode(account_pubkey,
                                                    EncOwner),
     Pubkey.
+
+expected_key_block_rate() ->
+    {ok, ExpectedRate} =
+        aeu_env:user_config([<<"chain">>, <<"consensus">>,
+                                  <<"0">>, %% TODO: make this configurable
+                                  <<"config">>, <<"expected_key_block_rate">>]),
+    ExpectedRate.
 
 call_consensus_contract(Node, Trees, EncodedCallData, Keyword) ->
     call_consensus_contract(Node, Trees, EncodedCallData, Keyword, 0).
@@ -387,7 +335,18 @@ call_consensus_contract_(TxEnv, Trees, EncodedCallData, Keyword, Amount) ->
         {error, _What} = Err -> Err
     end.
 
-beneficiary() -> aec_consensus_bitcoin_ng:beneficiary().
+beneficiary() ->
+    %% TODO: cache this
+    {TxEnv, Trees} = aetx_env:tx_env_and_trees_from_top(aetx_transaction),
+    %% call elect_next
+    case call_consensus_contract_(TxEnv, Trees, <<"cb_KxFodeDRP1Jz2f0=">>, "elect()", 0) of
+        {ok, _Trees1, Call} ->
+            {address, Leader} = aeb_fate_encoding:deserialize(aect_call:return_value(Call)),
+            {ok, Leader};
+        {error, What} ->
+            error({failed_to_elect_new_leader, What}) %% maybe a softer approach than crash and burn?
+    end.
+
 
 next_beneficiary() ->
     %% TODO: cache this
@@ -396,7 +355,9 @@ next_beneficiary() ->
     case call_consensus_contract_(TxEnv, Trees, <<"cb_KxFodeDRP1Jz2f0=">>, "elect_next()", 0) of
         {ok, _Trees1, Call} ->
             {address, Leader} = aeb_fate_encoding:deserialize(aect_call:return_value(Call)),
-            Leader;
+            SignModule = get_sign_module(),
+            SignModule:set_candidate(Leader),
+            {ok, Leader};
         {error, What} ->
             error({failed_to_elect_new_leader, What}) %% maybe a softer approach than crash and burn?
     end.
@@ -404,4 +365,7 @@ next_beneficiary() ->
 get_sign_module() -> aec_preset_keys.
 
 get_type() -> pos.
+
+get_block_producer_configs() -> [{instance_not_used,
+                                  #{expected_key_block_rate => expected_key_block_rate()}}].
 

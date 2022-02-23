@@ -223,7 +223,7 @@ wait_for_pubkey() ->
     wait_for_pubkey(1).
 
 wait_for_pubkey(Sleep) ->
-    case aec_keys:pubkey() of %% this is OK for both HC and not HC tests
+    case aec_keys:get_pubkey() of %% this is OK for both HC and not HC tests
         {error, key_not_found} ->
             timer:sleep(Sleep),
             wait_for_pubkey(Sleep+10);
