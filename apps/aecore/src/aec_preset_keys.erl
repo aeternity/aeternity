@@ -55,13 +55,10 @@ candidate_pubkey() ->
 
 -spec promote_candidate(aec_keys:pubkey()) -> ok | {error, key_not_found}.
 promote_candidate(Pubkey) ->
-    Res =
-        case gen_server:call(?SERVER, {promote_candidate, Pubkey}) of
-            ok -> ok;
-            {error, not_found} -> {error, key_not_found}
-        end,
-    lager:info("ASDF promote result: ~p", [Res]),
-    Res.
+    case gen_server:call(?SERVER, {promote_candidate, Pubkey}) of
+        ok -> ok;
+        {error, not_found} -> {error, key_not_found}
+    end.
 
 -spec set_candidate(aec_keys:pubkey()) -> ok | {error, key_not_found}.
 set_candidate(Pubkey) ->
@@ -121,7 +118,6 @@ handle_call({promote_candidate, Pubkey}, _From, #state{ candidate = _Candidate }
             {reply, {error, not_found}, State#state{active = ?NOT_SET, candidate = ?NOT_SET}}
     end;
 handle_call({set_candidate, Pubkey}, _From, #state{} = State) ->
-    lager:info("ASDF: set_candidate", []),
     case is_known_pubkey(Pubkey, State) of
         true ->
             {reply, ok, State#state{candidate = Pubkey}};

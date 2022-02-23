@@ -36,7 +36,6 @@
          set_height/2,
          set_miner/2,
          set_nonce/2,
-         set_nonce_and_pow/3,
          set_nonce_and_key_seal/3,
          set_info/2,
          set_pof_hash/2,
@@ -131,7 +130,7 @@
              , micro_header/0
              ]).
 
--deprecated([{pow, 1, eventually}, {set_nonce_and_pow, 3, eventually}]).
+-deprecated([{pow, 1, eventually}]).
 
 %%%===================================================================
 %%% Test interface
@@ -418,12 +417,6 @@ root_hash(#mic_header{root_hash = H}) -> H.
 -spec set_root_hash(header(), state_hash()) -> header().
 set_root_hash(#key_header{} = H, Hash) -> H#key_header{root_hash = Hash};
 set_root_hash(#mic_header{} = H, Hash) -> H#mic_header{root_hash = Hash}.
-
--spec set_nonce_and_pow(key_header(), aec_consensus:key_nonce(),
-                        aec_consensus:key_seal()) -> key_header().
-%% Deprecated - please use set_nonce_and_key_seal/3 in new code
-set_nonce_and_pow(H, Nonce, KeySeal) ->
-    set_nonce_and_key_seal(H, Nonce, KeySeal).
 
 -spec set_nonce_and_key_seal(key_header(), aec_consensus:key_nonce(),
                         aec_consensus:key_seal()) -> key_header().

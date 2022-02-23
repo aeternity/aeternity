@@ -855,7 +855,6 @@ preempt_on_new_top(#state{ top_block_hash = OldHash,
             State5 = State4#state{ top_key_block_hash = NewTopKey,
                                    key_block_candidates = undefined },
 
-            lager:info("ASDF maybe promote candidate", []),
             [ SignModule:promote_candidate(aec_blocks:miner(NewBlock)) || KeyOrNewForkMicro == key ],
 
             {changed, KeyOrNewForkMicro, NewBlock, create_key_block_candidate(State5)}
@@ -936,7 +935,6 @@ wait_for_keys_worker(_ConsensusModule, 0) ->
     timeout;
 wait_for_keys_worker(ConsensusModule, N) ->
     SignModule = ConsensusModule:get_sign_module(),
-    lager:info("AAAA SignModule ~p, res ~p", [SignModule, SignModule:is_ready()]),
     case SignModule:is_ready() of
         true -> keys_ready;
         false ->
@@ -1340,7 +1338,6 @@ handle_successfully_added_block(Block, Hash, true, PrevKeyHeader, Events, State,
                     aec_tx_pool:garbage_collect(),
                     [ maybe_garbage_collect_accounts() || BlockType == key ]
             end,
-            lager:info("ASDF IsLeader ~p", [IsLeader]),
             {ok, setup_loop(State2, true, IsLeader, Origin)}
     end.
 
@@ -1381,7 +1378,6 @@ is_leader(NewTopBlock, PrevKeyHeader, ConsensusModule) ->
                 aec_headers:miner(PrevKeyHeader)
         end,
     SignModule = ConsensusModule:get_sign_module(),
-    lager:info("ASDF SignModule:get_pubkey() = ~p", [SignModule:get_pubkey()]),
     case SignModule:get_pubkey() of
         {ok, MinerKey} -> LeaderKey =:= MinerKey;
         {error, _}     -> false

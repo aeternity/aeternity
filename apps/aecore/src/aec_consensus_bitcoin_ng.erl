@@ -479,7 +479,7 @@ generate_key_header_seal(HeaderBin, Header, Nonce, MinerConfig, AddressedInstanc
     }.
 
 set_key_block_seal(Block, {Nonce, Evd}) ->
-    aec_blocks:set_nonce_and_pow(Block, Nonce, Evd).
+    aec_blocks:set_nonce_and_key_seal(Block, Nonce, Evd).
 
 nonce_for_sealing(_Header) ->
     aeminer_pow:pick_nonce().
