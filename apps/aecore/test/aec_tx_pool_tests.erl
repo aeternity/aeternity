@@ -230,7 +230,7 @@ tx_pool_test_() ->
        {timeout, 10, fun() ->
                ok = application:set_env(aecore, mempool_nonce_offset, 600),
                aec_test_utils:stop_chain_db(),
-               {ok, MinerPubKey} = aec_keys:pubkey(),
+               {ok, MinerPubKey} = aec_keys:get_pubkey(),
                PubKey1 = new_pubkey(),
                PubKey2 = new_pubkey(),
                meck:expect(aec_fork_block_settings, genesis_accounts, 0,
@@ -965,7 +965,7 @@ sign(PubKey, Tx) ->
     end.
 
 acct(me) ->
-    {ok, Key} = aec_keys:pubkey(),
+    {ok, Key} = aec_keys:get_pubkey(),
     aeser_id:create(account, Key);
 acct(A) when is_binary(A) ->
     aeser_id:create(account, A).

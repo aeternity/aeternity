@@ -3493,7 +3493,7 @@ broken_spend_tx(_Config) ->
     ok.
 
 node_pubkey(_Config) ->
-    {ok, MinerPubKey} = rpc(aec_keys, pubkey, []),
+    {ok, MinerPubKey} = rpc(aec_keys, get_pubkey, []),
     {ok, 200, #{<<"pub_key">> := EncodedPubKey}} = get_node_pubkey(),
     ct:log("MinerPubkey = ~p~nEncodedPubKey = ~p", [MinerPubKey,
                                                     EncodedPubKey]),

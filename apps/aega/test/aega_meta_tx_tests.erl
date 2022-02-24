@@ -145,7 +145,7 @@ ttl_iris(Allowed, Iris, HasTTL) ->
 %%%-------------------------------------------------------------------
 
 spend_tx(Opts) ->
-    {ok, MinerPubkey} = aec_keys:pubkey(),
+    {ok, MinerPubkey} = aec_keys:get_pubkey(),
     DefaultOpts =
         #{sender_id => aeser_id:create(account, MinerPubkey),
           recipient_id => aeser_id:create(account, ?RECIPIENT_PUBKEY),
@@ -157,7 +157,7 @@ spend_tx(Opts) ->
     {ok, _SpendTx} = aec_spend_tx:new(maps:merge(DefaultOpts, Opts)).
 
 meta(InnerTx, Opts) ->
-    {ok, MinerPubkey} = aec_keys:pubkey(),
+    {ok, MinerPubkey} = aec_keys:get_pubkey(),
     Protocol = aecore_suite_utils:latest_protocol_version(),
     DefaultOpts =
         #{ga_id       => aeser_id:create(account, MinerPubkey),
