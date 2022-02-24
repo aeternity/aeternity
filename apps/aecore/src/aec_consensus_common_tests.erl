@@ -167,7 +167,8 @@ state_pre_transform_micro_node(_Node, Trees) -> Trees.
 
 %% -------------------------------------------------------------------
 %% Block rewards
-state_grant_reward(Beneficiary, _Node, Trees, Amount) -> aec_consensus_bitcoin_ng:state_grant_reward(Beneficiary, Trees, Amount).
+state_grant_reward(Beneficiary, Node, Trees, Amount) ->
+    aec_consensus_bitcoin_ng:state_grant_reward(Beneficiary, Node, Trees, Amount).
 
 %% -------------------------------------------------------------------
 %% PoGF
