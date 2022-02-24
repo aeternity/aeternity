@@ -188,7 +188,7 @@
 -callback next_beneficiary() -> {ok, binary() | fun(() -> binary())} | {error, atom()}.
 -callback get_sign_module() -> sign_module().
 -callback get_type() -> pow | pos.
--callback get_block_producer_configs() -> [].
+-callback get_block_producer_configs() -> list().
 
 %% -------------------------------------------------------------------
 %% Block sealing
