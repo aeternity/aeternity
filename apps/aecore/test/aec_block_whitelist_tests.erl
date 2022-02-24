@@ -24,7 +24,7 @@ setup_minimal() ->
                         meck:passthrough([]) div 2560
                 end),
     TmpKeysDir = aec_test_utils:aec_keys_setup(),
-    {ok, PubKey} = aec_keys:pubkey(),
+    {ok, PubKey} = aec_keys:get_pubkey(),
     ok = application:set_env(aecore, beneficiary, aeser_api_encoder:encode(account_pubkey, PubKey)),
     aec_test_utils:mock_genesis_and_forks(preset_accounts(PubKey), #{}),
     aec_test_utils:mock_time(),
@@ -126,7 +126,7 @@ assert_stopped_and_genesis_at_top() ->
                  header_hash( aec_blocks:to_header( Genesis ))).
 
 beneficiary_keys() ->
-    {ok, Pub} = aec_keys:pubkey(),
+    {ok, Pub} = aec_keys:get_pubkey(),
     {ok, Priv} = aec_keys:sign_privkey(),
     {Pub, Priv}.
 

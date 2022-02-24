@@ -42,8 +42,7 @@ stop() ->
 get_candidate() ->
     try
         gen_server:call(?MODULE, get_candidate, 100)
-    catch E:R:Stack ->
-        lager:info("AFG: ~p, ~p, ~p", [E, R, Stack]),
+    catch _E:_R:_Stack ->
         {error, no_candidate}
     end.
 

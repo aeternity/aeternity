@@ -965,7 +965,7 @@ fork_gen_key_candidate() ->
     ?assertEqual(TopBlockHash, aec_chain:top_block_hash()),
 
     %% Assert that we can make a new key block candidate.
-    {ok, Pubkey} = aec_keys:pubkey(),
+    {ok, Pubkey} = aec_keys:get_pubkey(),
     %% The new key block candidate will have the same protocol version as the
     %% last block of hard chain.
     Protocol = aec_blocks:version(TopBlock),
