@@ -25,6 +25,7 @@
 -export([ from_binary_without_backend/1
         , to_binary_without_backend/1
         , serialize_to_client/1
+        , from_db_format/1
         ]).
 
 -export([record_fields/1]).
@@ -68,6 +69,10 @@ empty() ->
 -spec empty_with_backend() -> tree().
 empty_with_backend() ->
     new_with_backend(empty).
+
+-spec from_db_format(tree()) -> tree().
+from_db_format(Tree = #call_tree{calls = CtTree}) ->
+    Tree#call_tree{calls = aeu_mtrees:from_db_format(CtTree)}.
 
 -spec new_with_backend(aeu_mtrees:root_hash() | 'empty') -> tree().
 new_with_backend(Hash) ->
