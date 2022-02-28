@@ -97,8 +97,7 @@ upload_artifacts_brew:
           PACKAGE_URL=https://github.com/aeternity/aeternity/releases/download/v$VERSION/aeternity-$VERSION-macos-x86_64.tar.gz
           SHA256=$(sha256sum << parameters.packages_dir >>/aeternity-*-macos-x86_64.tar.gz | head -1 | cut -f 1 -d " ")
           cd ~/homebrew-aeternity/
-          sed -i "s|^  url .*|  url \"$PACKAGE_URL\"|g" Formula/aeternity-node.rb
-          sed -i "s|^  version .*|  version \"$VERSION\"|g" Formula/aeternity-node.rb
+          sed -i "s|^  AETERNITY_VERSION = .*|  AETERNITY_VERSION = \"$VERSION\"|g" Formula/aeternity-node.rb
           sed -i "s|^  sha256 .*|  sha256 \"$SHA256\"|g" Formula/aeternity-node.rb
     - run:
         name: Setup git
