@@ -49,7 +49,6 @@ docker_tag:
   parameters:
     src:
       type: string
-      default:  << pipeline.git.tag >>
     tag:
       type: string
   steps:
@@ -70,25 +69,3 @@ docker_push:
         name: Push Docker image
         command: |
           docker push << pipeline.parameters.docker_repo >>:<< parameters.tag >>
-
-docker_image:
-  parameters:
-    tag:
-      type: string
-    tag_only:
-      type: boolean
-      default: false
-  steps:
-  - when:
-      condition:
-        not: << parameters.tag_only >>
-      steps:
-        - docker_build:
-            tag: << parameters.tag >>
-  - when:
-      condition: << parameters.tag_only >>
-      steps:
-        - docker_tag:
-            tag: << parameters.tag >>
-  - docker_push:
-      tag: << parameters.tag >>
