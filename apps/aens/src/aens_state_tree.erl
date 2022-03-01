@@ -31,6 +31,7 @@
 
 -export([ from_binary_without_backend/1
         , to_binary_without_backend/1
+        , from_db_format/1
         ]).
 
 -export([record_fields/1]).
@@ -101,6 +102,11 @@ empty_with_backend() ->
     MTree = aeu_mtrees:empty_with_backend(aec_db_backends:ns_backend()),
     Cache = aeu_mtrees:empty_with_backend(aec_db_backends:ns_cache_backend()),
     #ns_tree{mtree = MTree, cache = Cache}.
+
+-spec from_db_format(tree()) -> tree().
+from_db_format(Tree = #ns_tree{mtree = MTree, cache = Cache}) ->
+    Tree#ns_tree{mtree = aeu_mtrees:from_db_format(MTree),
+                 cache = aeu_mtrees:from_db_format(Cache)}.
 
 -spec new_with_backend(aeu_mtrees:root_hash() | 'empty',
                        aeu_mtrees:root_hash() | 'empty') -> tree().

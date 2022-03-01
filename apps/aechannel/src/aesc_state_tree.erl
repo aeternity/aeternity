@@ -21,6 +21,7 @@
 
 -export([ from_binary_without_backend/1
         , to_binary_without_backend/1
+        , from_db_format/1
         ]).
 
 %%%===================================================================
@@ -56,6 +57,10 @@ empty() ->
 -spec empty_with_backend() -> tree().
 empty_with_backend() ->
     aeu_mtrees:empty_with_backend(aec_db_backends:channels_backend()).
+
+-spec from_db_format(tree()) -> tree().
+from_db_format(Tree) ->
+    aeu_mtrees:from_db_format(Tree).
 
 -spec new_with_backend(aeu_mtrees:root_hash() | 'empty') -> tree().
 new_with_backend(Hash) ->

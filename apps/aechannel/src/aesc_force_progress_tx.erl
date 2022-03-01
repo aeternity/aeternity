@@ -81,7 +81,7 @@
 -export_type([tx/0]).
 
 %% Record introduced temporarily during Fortuna development, shipped in releases 2.4.0 and 2.5.0, and potentially stored in DB.
--record(v2_db_record, {	
+-record(v2_db_record, {
           channel_id    :: aeser_id:id(),
           from_id       :: aeser_id:id(),
           payload       :: binary(),
@@ -98,10 +98,11 @@
 %%% Conversion of old db format
 
 -spec from_db_format(tx()) -> tx().
-from_db_format(#channel_force_progress_tx{update = Update} = Tx) ->
-    case aesc_offchain_update:from_db_format(Update) of
-        Update -> Tx; % update is already in new serialization
-        NewSUpdate -> Tx#channel_force_progress_tx{update = NewSUpdate}
+from_db_format(#channel_force_progress_tx{update = Update, offchain_trees = Trees} = Tx) ->
+    case {aesc_offchain_update:from_db_format(Update), aec_trees:from_db_format(Trees)} of
+        {Update, Trees}       -> Tx; % update is already in new serialization
+        {NewUpdate, NewTrees} -> Tx#channel_force_progress_tx{update = NewUpdate,
+                                                              offchain_trees = NewTrees}
     end;
 from_db_format(Tuple) ->
     case setelement(1, Tuple, v2_db_record) of
