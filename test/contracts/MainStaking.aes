@@ -1,0 +1,162 @@
+include "List.aes"
+contract interface StakingValidator =
+  record validator_state = { main_staking_ct : address, delegates : map(address, int), shares : int }
+  entrypoint init : address => unit
+  payable stateful entrypoint stake : address => unit
+  payable entrypoint profit : () => unit
+  stateful entrypoint unstake : (address, int) => int
+  entrypoint get_state : () => validator_state
+
+main contract MainStaking =
+  datatype bucket = ONLINE | OFFLINE
+
+  record validator =
+    { ct : StakingValidator, stake : int }
+
+  record state =
+    { staking_validator_ct  : StakingValidator,
+      online_validators     : map(address, validator),
+      offline_validators    : map(address, validator),
+      total_stake           : int,
+      entropy               : hash,
+      leader                : address
+      }
+
+  entrypoint init(staking_validator_ct : StakingValidator, entropy_str : string) =
+    { staking_validator_ct  = staking_validator_ct,
+      online_validators     = {},
+      offline_validators    = {},
+      total_stake           = 0,
+      entropy               = Crypto.sha256(entropy_str),
+      leader                = Contract.address
+      }
+
+  entrypoint online_validators() =
+    let vs = Map.to_list(state.online_validators)
+    [ (v, s) | (v, {stake = s}) <- vs ]
+
+  entrypoint offline_validators() =
+    let vs = Map.to_list(state.offline_validators)
+    [ (v, s) | (v, {stake = s}) <- vs ]
+
+  payable stateful entrypoint new_validator() : StakingValidator =
+    require(Call.value >= 1_000_000_000_000_000_000_000, "Must stake the minimum amount")
+    let validator_ct : StakingValidator = Chain.clone(ref = state.staking_validator_ct, Contract.address)
+    validator_ct.stake(value = Call.value, Call.caller)
+    put(state{offline_validators[Call.caller] = {ct = validator_ct, stake = Call.value}})
+    validator_ct
+
+  stateful entrypoint set_online() =
+    require(validator_bucket(Call.caller) == OFFLINE, "Validator not offline")
+    let validator = state.offline_validators[Call.caller]
+    put(state{online_validators[Call.caller] = validator,
+              offline_validators @ offv = Map.delete(Call.caller, offv),
+              total_stake @ ts = ts + validator.stake})
+
+  stateful entrypoint set_offline() =
+    require(validator_bucket(Call.caller) == ONLINE, "Validator not online")
+    let validator = state.online_validators[Call.caller]
+    put(state{offline_validators[Call.caller] = validator,
+              online_validators @ onv = Map.delete(Call.caller, onv),
+              total_stake @ ts = ts - validator.stake})
+
+  payable stateful entrypoint stake(to : address) =
+    require(Call.value >= 10_000_000_000_000_000_000, "Must stake the minimum amount")
+    switch(validator_bucket(to))
+      ONLINE =>
+        let validator = state.online_validators[to]
+        validator.ct.stake(value = Call.value, Call.caller)
+        put(state{online_validators[to] = validator{ stake @ s = s + Call.value },
+                  total_stake @ ts = ts + Call.value})
+      OFFLINE =>
+        let validator = state.offline_validators[to]
+        validator.ct.stake(value = Call.value, Call.caller)
+        put(state{offline_validators[to] = validator{ stake @ s = s + Call.value }})
+
+  stateful entrypoint unstake(from : address, stakes : int) : int =
+    switch(validator_bucket(from))
+      ONLINE =>
+        let validator = state.online_validators[from]
+        let payout = validator.ct.unstake(Call.caller, stakes)
+        put(state{online_validators[from] = validator{ stake @ s = s - payout},
+                  total_stake @ ts = ts - Call.value})
+        payout
+      OFFLINE =>
+        let validator = state.offline_validators[from]
+        let payout = validator.ct.unstake(Call.caller, stakes)
+        put(state{offline_validators[from] = validator{ stake @ s = s - payout }})
+        payout
+
+  payable stateful entrypoint reward(to : address) =
+    //assert_protocol_call()
+    switch(validator_bucket(to))
+      ONLINE =>
+        let validator = state.online_validators[to]
+        validator.ct.profit(value = Call.value)
+        put(state{online_validators[to] = validator{ stake @ s = s + Call.value },
+                  total_stake @ ts = ts + Call.value})
+      OFFLINE =>
+        let validator = state.offline_validators[to]
+        validator.ct.profit(value = Call.value)
+        put(state{offline_validators[to] = validator{ stake @ s = s + Call.value }})
+
+  entrypoint get_validator_state(v : address) =
+    switch(validator_bucket(v))
+      ONLINE =>
+        let validator = state.online_validators[v]
+        validator.ct.get_state()
+      OFFLINE =>
+        let validator = state.offline_validators[v]
+        validator.ct.get_state()
+
+  entrypoint leader() =
+    state.leader
+
+  stateful entrypoint elect() =
+    assert_protocol_call()
+    let new_leader = elect_at_height(Chain.block_height)
+    put(state{ leader = new_leader})
+
+  entrypoint elect_next() =
+    elect_at_height(Chain.block_height + 1)
+
+  entrypoint elect_at_height(height : int) =
+    let sorted = List.sort(validator_cmp, Map.to_list(state.online_validators))
+    let shot = Bytes.to_int(state.entropy) * height mod state.total_stake
+    switch(find_validator(sorted, shot))
+      None => abort("NO CANDIDATE") // should not be possible
+      Some(new_leader) => new_leader
+
+  entrypoint balance(who : address) =
+    let validator = get_validator(who)
+    validator.stake
+
+  function get_validator(who : address) =
+    switch(validator_bucket(who))
+      ONLINE => state.online_validators[who]
+      OFFLINE => state.offline_validators[who]
+
+  function find_validator(validators, shot) =
+    switch(validators)
+      []   => None
+      (validator_addr, validator : validator)::t =>
+        if(validator.stake > shot) Some(validator_addr)
+        else find_validator(t, shot - validator.stake)
+
+  function validator_cmp((x_addr : address, x : validator), (y_addr : address, y : validator)) =
+    if (x.stake == y.stake) x_addr < y_addr else x.stake < y.stake
+
+  function validator_bucket(who) : bucket =
+    switch(Map.member(who, state.online_validators))
+      true =>
+        ONLINE
+      false =>
+        switch(Map.member(who, state.offline_validators))
+          true =>
+            OFFLINE
+          false =>
+            abort("Validator must exists")
+
+  function assert_protocol_call() =
+      require(Call.caller == Contract.creator, "Must be called by the protocol")
+    
