@@ -7,7 +7,9 @@
 
 %% used in consensus feeding
 -export([prepare_contract_owner/3,
-         apply_contract_create_tx/3]).
+         apply_contract_create_tx/3,
+         apply_contract_call_tx/3
+        ]).
 
 -spec apply_minerva(aec_trees:trees()) -> aec_trees:trees().
 apply_minerva(Trees) ->
@@ -206,4 +208,27 @@ apply_contract_create_tx(Tx, Trees, TxEnv) ->
             end;
         {error, What} ->
             error({failed_apply_hard_fork_contracts, What, Tx})
+    end.
+
+apply_contract_call_tx(Tx, Trees, TxEnv) ->
+    case aetx:process(Tx, Trees, TxEnv) of
+        {ok, Trees1, _} ->
+            {contract_call_tx, CallTx} = aetx:specialize_type(Tx),
+            CallPubkey     = aect_call_tx:call_id(CallTx),
+            ContractPubkey = aect_call_tx:contract_pubkey(CallTx),
+            CallTree       = aec_trees:calls(Trees1),
+            {value, Call}  = aect_call_state_tree:lookup_call(ContractPubkey, CallPubkey, CallTree),
+            case aect_call:return_type(Call) of
+                ok ->
+                    CtTrees  = aec_trees:contracts(Trees1),
+                    AccTrees = aec_trees:accounts(Trees1),
+                    Contract = aect_state_tree:get_contract(ContractPubkey, CtTrees, [full_store_cache]),
+                    Account  = aec_accounts_trees:get(ContractPubkey, AccTrees),
+                    {{Account, Contract}, Trees1};
+                What ->
+                    Value = aect_call:return_value(Call),
+                    error({failed_apply_hard_fork_contract_call,{call_error, What, Value}})
+            end;
+        {error, What} ->
+            error({failed_apply_hard_fork_contract_call, What, Tx})
     end.
