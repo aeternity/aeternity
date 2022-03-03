@@ -10,7 +10,7 @@
 
 -behavior(aec_consensus).
 
--define(TAG, 1337).
+-define(TAG, 1337). %% TODO: remove this
 
 %% API
 -export([ can_be_turned_off/0
@@ -72,19 +72,23 @@
 can_be_turned_off() -> false.
 assert_config(Config) ->
     case Config of
-        #{<<"contract">> := Contract} ->
+        #{<<"contracts">> := Contracts} when is_list(Contracts) ->
             ContractSpecKeys = [<<"amount">>, <<"vm_version">>,
                                 <<"abi_version">>, <<"nonce">>, <<"code">>,
                                 <<"call_data">>, <<"owner_pubkey">>, <<"pubkey">>],
             lists:all(
-                fun(K) ->
-                    case maps:is_key(K, Contract) of
-                        true -> true;
-                        false ->  error({missing_contract_key, K})
-                    end
+                fun(Contract) ->
+                    lists:all(
+                        fun(K) ->
+                            case maps:is_key(K, Contract) of
+                                true -> true;
+                                false ->  error({missing_contract_key, K})
+                            end
+                        end,
+                        ContractSpecKeys)
                 end,
-                ContractSpecKeys);
-        _ -> error(contract_missing_from_config)
+                Contracts);
+        _ -> error(contracts_missing_from_config)
     end,
     ok.
 
@@ -145,11 +149,11 @@ state_pre_transform_micro_node(_Node, Trees) -> Trees.
 %% Block rewards
 state_grant_reward(Beneficiary, Node, Trees, Amount) ->
     %% TODO: improve this:
-    {ok, CD} = aeb_fate_abi:create_calldata("reward_fees", [aefa_fate_code:encode_arg({address, Beneficiary})]),
+    {ok, CD} = aeb_fate_abi:create_calldata("reward", [aefa_fate_code:encode_arg({address, Beneficiary})]),
     CallData =
         aeser_api_encoder:encode(contract_bytearray, CD),
     case call_consensus_contract(Node, Trees, CallData,
-                                 "reward_fees(" ++ binary_to_list(aeser_api_encoder:encode(account_pubkey, Beneficiary)) ++ ")", Amount) of
+                                 "reward(" ++ binary_to_list(aeser_api_encoder:encode(account_pubkey, Beneficiary)) ++ ")", Amount) of
         {ok, Trees1, _} -> Trees1;
         {error, What} ->
             error({failed_to_reward_leader, What}) %% maybe a softer approach than crash and burn?
@@ -162,53 +166,94 @@ pogf_detected(_H1, _H2) -> ok.
 
 %% -------------------------------------------------------------------
 %% Genesis block
-genesis_transform_trees(Trees0, #{<<"contract">> := Contract}) ->
-    %% TODO: make GasLimit and GasPrice configurable
+genesis_transform_trees(Trees0, #{ <<"contracts">> := Contracts
+                                 , <<"calls">> := Calls}) ->
     GasLimit = 10000000,
     GasPrice = 10000000000,
-    #{ <<"amount">> := Amount
-      , <<"vm_version">> := VM
-      , <<"abi_version">> := ABI
-      , <<"nonce">> := Nonce
-      , <<"code">> := EncodedCode
-      , <<"call_data">> := EncodedCallData
-      , <<"owner_pubkey">> := EncodedOwner
-      , <<"pubkey">> := EncodedPubkey } = Contract,
-    {ok, Pubkey}   = aeser_api_encoder:safe_decode(contract_pubkey, EncodedPubkey),
-    {ok, Owner}    = aeser_api_encoder:safe_decode(account_pubkey, EncodedOwner),
-    {ok, Code}     = aeser_api_encoder:safe_decode(contract_bytearray, EncodedCode),
-    {ok, CallData} = aeser_api_encoder:safe_decode(contract_bytearray, EncodedCallData),
-    TxSpec = #{owner_id    => aeser_id:create(account, Owner),
-               nonce       => Nonce,
-               code        => Code,
-               vm_version  => VM,
-               abi_version => ABI,
-               deposit     => 0,
-               amount      => Amount,
-               gas         => GasLimit,
-               gas_price   => GasPrice,
-               call_data   => CallData,
-               fee         => 1000000000000000}, %% Overshoot the size of the actual fee
-    {ok, DummyTx} = aect_create_tx:new(TxSpec),
     GenesisHeader = genesis_raw_header(),
     {ok, GenesisHash} = aec_headers:hash_header(GenesisHeader),
     TxEnv = aetx_env:tx_env_from_key_header(GenesisHeader,
                                             GenesisHash,
                                             aec_headers:time_in_msecs(GenesisHeader),
                                             aec_headers:prev_hash(GenesisHeader)),
-    Height   = aetx_env:height(TxEnv),
-    Protocol = aetx_env:consensus_version(TxEnv),
-    MinFee   = aetx:min_fee(DummyTx, Height, Protocol),
-    {ok, Tx} = aect_create_tx:new(TxSpec#{fee => MinFee}),
-    %% Make sure the transaction will give the expected pubkey.
-    case aect_contracts:compute_contract_pubkey(Owner, Nonce) of
-        Pubkey -> Tx;
-        Other          -> error({unexpected_pubkey, Other, Pubkey})
-    end,
-    Trees1 = aec_block_fork:prepare_contract_owner([Tx], TxEnv, Trees0),
-    {_, Trees} = aec_block_fork:apply_contract_create_tx(Tx, Trees1, TxEnv),
-    %% TODO: develop a functionality to allow contract calls as well
-    Trees.
+    Trees =
+        lists:foldl(
+            fun(Contract, TreesAccum) ->
+                #{ <<"amount">> := Amount
+                  , <<"vm_version">> := VM
+                  , <<"abi_version">> := ABI
+                  , <<"nonce">> := Nonce
+                  , <<"code">> := EncodedCode
+                  , <<"call_data">> := EncodedCallData
+                  , <<"owner_pubkey">> := EncodedOwner
+                  , <<"pubkey">> := EncodedPubkey } = Contract,
+                {ok, Pubkey}   = aeser_api_encoder:safe_decode(contract_pubkey, EncodedPubkey),
+                {ok, Owner}    = aeser_api_encoder:safe_decode(account_pubkey, EncodedOwner),
+                {ok, Code}     = aeser_api_encoder:safe_decode(contract_bytearray, EncodedCode),
+                {ok, CallData} = aeser_api_encoder:safe_decode(contract_bytearray, EncodedCallData),
+                TxSpec = #{owner_id    => aeser_id:create(account, Owner),
+                          nonce       => Nonce,
+                          code        => Code,
+                          vm_version  => VM,
+                          abi_version => ABI,
+                          deposit     => 0,
+                          amount      => Amount,
+                          gas         => GasLimit,
+                          gas_price   => GasPrice,
+                          call_data   => CallData,
+                          fee         => 1000000000000000}, %% Overshoot the size of the actual fee
+                {ok, DummyTx} = aect_create_tx:new(TxSpec),
+                Height   = aetx_env:height(TxEnv),
+                Protocol = aetx_env:consensus_version(TxEnv),
+                MinFee   = aetx:min_fee(DummyTx, Height, Protocol),
+                {ok, Tx} = aect_create_tx:new(TxSpec#{fee => MinFee}),
+                %% Make sure the transaction will give the expected pubkey.
+                case aect_contracts:compute_contract_pubkey(Owner, Nonce) of
+                    Pubkey -> Tx;
+                    Other          -> error({unexpected_pubkey, Other, Pubkey})
+                end,
+                TreesAccum1 = aec_block_fork:prepare_contract_owner([Tx], TxEnv, TreesAccum),
+                {_, TreesAccum2} = aec_block_fork:apply_contract_create_tx(Tx, TreesAccum1, TxEnv),
+                TreesAccum2
+            end,
+            Trees0,
+            Contracts),
+    Trees1 =
+        lists:foldl(
+            fun(Call, TreesAccum) ->
+                #{  <<"caller">>          := ECaller 
+                  , <<"nonce">>           := Nonce 
+                  , <<"contract_pubkey">> := EContractPubkey
+                  , <<"abi_version">>     := ABI 
+                  , <<"fee">>             := Fee
+                  , <<"amount">>          := Amount
+                  , <<"gas">>             := Gas
+                  , <<"gas_price">>       := GasPrice1
+                  , <<"call_data">>       := ECallData
+                 } = Call,
+                {ok, Caller} = aeser_api_encoder:safe_decode(account_pubkey, ECaller),
+                {ok, ContractPubkey}   = aeser_api_encoder:safe_decode(contract_pubkey, EContractPubkey),
+                {ok, CallData} = aeser_api_encoder:safe_decode(contract_bytearray, ECallData),
+                TxSpec = #{ caller_id    => aeser_id:create(account, Caller),
+                            contract_id  => aeser_id:create(contract, ContractPubkey),
+                            nonce        => Nonce,
+                            abi_version  => ABI,
+                            amount       => Amount,
+                            gas          => Gas,
+                            gas_price    => GasPrice1,
+                            call_data    => CallData,
+                            fee          => Fee},
+                {ok, DummyTx} = aect_call_tx:new(TxSpec),
+                Height   = aetx_env:height(TxEnv),
+                Protocol = aetx_env:consensus_version(TxEnv),
+                MinFee   = aetx:min_fee(DummyTx, Height, Protocol),
+                {ok, Tx} = aect_call_tx:new(TxSpec#{fee => MinFee}),
+                {_, TreesAccum1} = aec_block_fork:apply_contract_call_tx(Tx, TreesAccum, TxEnv),
+                TreesAccum1
+            end,
+            Trees,
+            Calls),
+    Trees1.
 
 genesis_raw_header() ->
     aec_headers:new_key_header(
@@ -269,7 +314,7 @@ contract_pubkey() ->
   {ok, EncContractId} =
         aeu_env:user_config([<<"chain">>, <<"consensus">>,
                                   <<"0">>, %% TODO: make this configurable
-                                  <<"config">>, <<"contract">>, <<"pubkey">>]),
+                                  <<"config">>, <<"consensus_contract">>]),
     {ok, Pubkey}   = aeser_api_encoder:safe_decode(contract_pubkey,
                                                    EncContractId),
     Pubkey.
@@ -278,7 +323,7 @@ contract_owner() ->
     {ok, EncOwner} =
         aeu_env:user_config([<<"chain">>, <<"consensus">>,
                                   <<"0">>, %% TODO: make this configurable
-                                  <<"config">>, <<"contract">>, <<"owner_pubkey">>]),
+                                  <<"config">>, <<"contract_owner">>]),
     {ok, Pubkey}   = aeser_api_encoder:safe_decode(account_pubkey,
                                                    EncOwner),
     Pubkey.
@@ -370,4 +415,47 @@ get_type() -> pos.
 
 get_block_producer_configs() -> [{instance_not_used,
                                   #{expected_key_block_rate => expected_key_block_rate()}}].
+
+
+create_contracts([], _TxEnv, Trees) -> Trees;
+create_contracts([Contract | Tail], TxEnv, TreesAccum) ->
+    %% TODO: make GasLimit and GasPrice configurable
+    GasLimit = 10000000,
+    GasPrice = 10000000000,
+    #{ <<"amount">> := Amount
+      , <<"vm_version">> := VM
+      , <<"abi_version">> := ABI
+      , <<"nonce">> := Nonce
+      , <<"code">> := EncodedCode
+      , <<"call_data">> := EncodedCallData
+      , <<"owner_pubkey">> := EncodedOwner
+      , <<"pubkey">> := EncodedPubkey } = Contract,
+    {ok, Pubkey}   = aeser_api_encoder:safe_decode(contract_pubkey, EncodedPubkey),
+    {ok, Owner}    = aeser_api_encoder:safe_decode(account_pubkey, EncodedOwner),
+    {ok, Code}     = aeser_api_encoder:safe_decode(contract_bytearray, EncodedCode),
+    {ok, CallData} = aeser_api_encoder:safe_decode(contract_bytearray, EncodedCallData),
+    TxSpec = #{owner_id    => aeser_id:create(account, Owner),
+              nonce       => Nonce,
+              code        => Code,
+              vm_version  => VM,
+              abi_version => ABI,
+              deposit     => 0,
+              amount      => Amount,
+              gas         => GasLimit,
+              gas_price   => GasPrice,
+              call_data   => CallData,
+              fee         => 1000000000000000}, %% Overshoot the size of the actual fee
+    {ok, DummyTx} = aect_create_tx:new(TxSpec),
+    Height   = aetx_env:height(TxEnv),
+    Protocol = aetx_env:consensus_version(TxEnv),
+    MinFee   = aetx:min_fee(DummyTx, Height, Protocol),
+    {ok, Tx} = aect_create_tx:new(TxSpec#{fee => MinFee}),
+    %% Make sure the transaction will give the expected pubkey.
+    case aect_contracts:compute_contract_pubkey(Owner, Nonce) of
+                    Pubkey -> Tx;
+                    Other          -> error({unexpected_pubkey, Other, Pubkey})
+                end,
+    TreesAccum1 = aec_block_fork:prepare_contract_owner([Tx], TxEnv, TreesAccum),
+    {_, TreesAccum2} = aec_block_fork:apply_contract_create_tx(Tx, TreesAccum1, TxEnv),
+    create_contracts(Tail, TxEnv, TreesAccum2).
 
