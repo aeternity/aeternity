@@ -387,7 +387,8 @@ handle_call(stop_block_production,_From, State = #state{ consensus = Cons }) ->
     [ aec_tx_pool:garbage_collect() || is_record(Cons, consensus) andalso Cons#consensus.leader ],
     State1 = kill_all_workers(State),
     State2 = State1#state{block_producing_state = 'stopped',
-                          key_block_candidates = undefined},
+                          consensus = Cons#consensus{leader = false},
+                          key_block_candidates  = undefined},
     {reply, ok, create_key_block_candidate(State2)};
 handle_call({start_block_production, _Opts},_From, #state{block_producing_state = 'running'} = State) ->
     epoch_mining:info("Mining running" ++ print_opts(State)),
@@ -816,7 +817,8 @@ deregister_instance(Pid, #state{instances = MinerInstances0} = State) ->
 
 preempt_on_new_top(#state{ top_block_hash = OldHash,
                            top_key_block_hash = OldKeyHash,
-                           top_height = OldHeight
+                           top_height = OldHeight,
+                           mode = Mode
                          } = State, NewBlock, NewHash, Origin) ->
     ConsensusModule = consensus_module(State),
     BlockType = aec_blocks:type(NewBlock),
@@ -838,26 +840,45 @@ preempt_on_new_top(#state{ top_block_hash = OldHash,
     State1 = State#state{top_block_hash = NewHash,
                          top_height = Height},
     KeyHash = aec_blocks:prev_key_hash(NewBlock),
-    %% A new micro block from the same generation should
-    %% not cause a pre-emption or full re-generation of key-block.
-    case BlockType of
-        micro when OldKeyHash =:= KeyHash ->
+    %% A new micro block from the same generation should:
+    %%  * not cause a pre-emption or full re-generation of key-block in PoW
+    %%    context. The keyblock is being regenerated on every attempt for solving
+    %%    the puzzle. There are a lot attempts durring the 3 seconds between
+    %%    microblocks. This is an optimisation for the miner to to throw away a
+    %%    valid solution that would discard the last microblock
+    %%  * cause a pre-emption or full re-generation of key-block in PoS
+    %%  context. The worker is blocked for waiting till it is time to produce
+    %%  a new keyblock and this makes it really highly likely that all
+    %%  microblocks would be discarded
+    ResetWorkers =
+        case Mode of
+            pos ->
+                true;
+            pow ->
+                case BlockType of
+                    micro when OldKeyHash =:= KeyHash ->
+                        false;
+                    _ -> true
+                end
+        end,
+    case ResetWorkers of
+        false ->
             {micro_changed, State1};
-        KeyOrNewForkMicro ->
+        true ->
             SignModule = ConsensusModule:get_sign_module(),
             State2 = kill_all_workers_with_tag(mining, State1),
             State3 = kill_all_workers_with_tag(create_key_block_candidate, State2),
             State4 = kill_all_workers_with_tag(micro_sleep, State3), %% in case we are the leader
-            NewTopKey = case KeyOrNewForkMicro of
+            NewTopKey = case BlockType of
                             micro -> KeyHash;
                             key   -> NewHash
                         end,
             State5 = State4#state{ top_key_block_hash = NewTopKey,
                                    key_block_candidates = undefined },
 
-            [ SignModule:promote_candidate(aec_blocks:miner(NewBlock)) || KeyOrNewForkMicro == key ],
+            [ SignModule:promote_candidate(aec_blocks:miner(NewBlock)) || BlockType == key ],
 
-            {changed, KeyOrNewForkMicro, NewBlock, create_key_block_candidate(State5)}
+            {changed, BlockType, NewBlock, create_key_block_candidate(State5)}
     end.
 
 %% GH3283: If we start storing more kinds of tx_events - we have to expand this
