@@ -1,0 +1,6 @@
+#!/bin/sh
+
+DIR="$(cd "$(dirname "$0")" ; pwd -P)"
+APP="$DIR/bin/{{release_name}}"
+
+exec "$APP" $@

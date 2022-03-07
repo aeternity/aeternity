@@ -220,6 +220,15 @@ jobs:
             - env/dev2
             - system-tests
 
+  - linux-standalone:
+      name: linux-standalone
+      package_name: aeternity-$CIRCLE_SHA1-ubuntu-x86_64-standalone
+      context: ae-slack
+      filters:
+        branches:
+          ignore:
+            - system-tests
+
   - ubuntu_package:
       requires: []
       context: ae-slack
