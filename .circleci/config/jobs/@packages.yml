@@ -64,7 +64,7 @@ linux-standalone:
     - persist_to_workspace:
         root: << pipeline.parameters.packages_workspace >>
         paths:
-          - << parameters.package_name >>
+          - "*"
     - fail_notification
 
 macos-tarball:
