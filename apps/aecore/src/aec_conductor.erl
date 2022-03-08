@@ -854,7 +854,8 @@ preempt_on_new_top(#state{ top_block_hash = OldHash,
         case Mode of
             pos ->
                 true;
-            pow ->
+            PoW when PoW =:= local_pow;
+                     PoW =:= stratum ->
                 case BlockType of
                     micro when OldKeyHash =:= KeyHash ->
                         false;
