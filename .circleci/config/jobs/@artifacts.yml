@@ -1,4 +1,4 @@
-upload-tarballs-s3:
+upload-artifacts-s3:
   parameters:
     bucket:
       type: string
@@ -21,7 +21,7 @@ promote-tarball-s3:
     - promote_latest_artifact_s3:
         uri: << parameters.uri >>
 
-upload-tarballs-github-release:
+upload-artifacts-github-release:
   executor: infrastructure_container_stable
   steps:
     - fixed_checkout
