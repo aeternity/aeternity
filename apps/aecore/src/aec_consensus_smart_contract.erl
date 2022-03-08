@@ -176,84 +176,9 @@ genesis_transform_trees(Trees0, #{ <<"contracts">> := Contracts
                                             GenesisHash,
                                             aec_headers:time_in_msecs(GenesisHeader),
                                             aec_headers:prev_hash(GenesisHeader)),
-    Trees =
-        lists:foldl(
-            fun(Contract, TreesAccum) ->
-                #{ <<"amount">> := Amount
-                  , <<"vm_version">> := VM
-                  , <<"abi_version">> := ABI
-                  , <<"nonce">> := Nonce
-                  , <<"code">> := EncodedCode
-                  , <<"call_data">> := EncodedCallData
-                  , <<"owner_pubkey">> := EncodedOwner
-                  , <<"pubkey">> := EncodedPubkey } = Contract,
-                {ok, Pubkey}   = aeser_api_encoder:safe_decode(contract_pubkey, EncodedPubkey),
-                {ok, Owner}    = aeser_api_encoder:safe_decode(account_pubkey, EncodedOwner),
-                {ok, Code}     = aeser_api_encoder:safe_decode(contract_bytearray, EncodedCode),
-                {ok, CallData} = aeser_api_encoder:safe_decode(contract_bytearray, EncodedCallData),
-                TxSpec = #{owner_id    => aeser_id:create(account, Owner),
-                          nonce       => Nonce,
-                          code        => Code,
-                          vm_version  => VM,
-                          abi_version => ABI,
-                          deposit     => 0,
-                          amount      => Amount,
-                          gas         => GasLimit,
-                          gas_price   => GasPrice,
-                          call_data   => CallData,
-                          fee         => 1000000000000000}, %% Overshoot the size of the actual fee
-                {ok, DummyTx} = aect_create_tx:new(TxSpec),
-                Height   = aetx_env:height(TxEnv),
-                Protocol = aetx_env:consensus_version(TxEnv),
-                MinFee   = aetx:min_fee(DummyTx, Height, Protocol),
-                {ok, Tx} = aect_create_tx:new(TxSpec#{fee => MinFee}),
-                %% Make sure the transaction will give the expected pubkey.
-                case aect_contracts:compute_contract_pubkey(Owner, Nonce) of
-                    Pubkey -> Tx;
-                    Other          -> error({unexpected_pubkey, Other, Pubkey})
-                end,
-                TreesAccum1 = aec_block_fork:prepare_contract_owner([Tx], TxEnv, TreesAccum),
-                {_, TreesAccum2} = aec_block_fork:apply_contract_create_tx(Tx, TreesAccum1, TxEnv),
-                TreesAccum2
-            end,
-            Trees0,
-            Contracts),
-    Trees1 =
-        lists:foldl(
-            fun(Call, TreesAccum) ->
-                #{  <<"caller">>          := ECaller 
-                  , <<"nonce">>           := Nonce 
-                  , <<"contract_pubkey">> := EContractPubkey
-                  , <<"abi_version">>     := ABI 
-                  , <<"fee">>             := Fee
-                  , <<"amount">>          := Amount
-                  , <<"gas">>             := Gas
-                  , <<"gas_price">>       := GasPrice1
-                  , <<"call_data">>       := ECallData
-                 } = Call,
-                {ok, Caller} = aeser_api_encoder:safe_decode(account_pubkey, ECaller),
-                {ok, ContractPubkey}   = aeser_api_encoder:safe_decode(contract_pubkey, EContractPubkey),
-                {ok, CallData} = aeser_api_encoder:safe_decode(contract_bytearray, ECallData),
-                TxSpec = #{ caller_id    => aeser_id:create(account, Caller),
-                            contract_id  => aeser_id:create(contract, ContractPubkey),
-                            nonce        => Nonce,
-                            abi_version  => ABI,
-                            amount       => Amount,
-                            gas          => Gas,
-                            gas_price    => GasPrice1,
-                            call_data    => CallData,
-                            fee          => Fee},
-                {ok, DummyTx} = aect_call_tx:new(TxSpec),
-                Height   = aetx_env:height(TxEnv),
-                Protocol = aetx_env:consensus_version(TxEnv),
-                MinFee   = aetx:min_fee(DummyTx, Height, Protocol),
-                {ok, Tx} = aect_call_tx:new(TxSpec#{fee => MinFee}),
-                {_, TreesAccum1} = aec_block_fork:apply_contract_call_tx(Tx, TreesAccum, TxEnv),
-                TreesAccum1
-            end,
-            Trees,
-            Calls),
-    Trees1.
+    Trees1 = create_contracts(Contracts, TxEnv, Trees0),
+    Trees = call_contracts(Calls, TxEnv, Trees1),
+    Trees.
 
 genesis_raw_header() ->
     aec_headers:new_key_header(
@@ -459,3 +384,34 @@ create_contracts([Contract | Tail], TxEnv, TreesAccum) ->
     {_, TreesAccum2} = aec_block_fork:apply_contract_create_tx(Tx, TreesAccum1, TxEnv),
     create_contracts(Tail, TxEnv, TreesAccum2).
 
+call_contracts([], _TxEnv, Trees) -> Trees;
+call_contracts([Call | Tail], TxEnv, TreesAccum) ->
+    #{  <<"caller">>          := ECaller 
+      , <<"nonce">>           := Nonce 
+      , <<"contract_pubkey">> := EContractPubkey
+      , <<"abi_version">>     := ABI 
+      , <<"fee">>             := Fee
+      , <<"amount">>          := Amount
+      , <<"gas">>             := Gas
+      , <<"gas_price">>       := GasPrice1
+      , <<"call_data">>       := ECallData
+      } = Call,
+    {ok, Caller} = aeser_api_encoder:safe_decode(account_pubkey, ECaller),
+    {ok, ContractPubkey}   = aeser_api_encoder:safe_decode(contract_pubkey, EContractPubkey),
+    {ok, CallData} = aeser_api_encoder:safe_decode(contract_bytearray, ECallData),
+    TxSpec = #{ caller_id    => aeser_id:create(account, Caller),
+                contract_id  => aeser_id:create(contract, ContractPubkey),
+                nonce        => Nonce,
+                abi_version  => ABI,
+                amount       => Amount,
+                gas          => Gas,
+                gas_price    => GasPrice1,
+                call_data    => CallData,
+                fee          => Fee},
+    {ok, DummyTx} = aect_call_tx:new(TxSpec),
+    Height   = aetx_env:height(TxEnv),
+    Protocol = aetx_env:consensus_version(TxEnv),
+    MinFee   = aetx:min_fee(DummyTx, Height, Protocol),
+    {ok, Tx} = aect_call_tx:new(TxSpec#{fee => MinFee}),
+    {_, TreesAccum1} = aec_block_fork:apply_contract_call_tx(Tx, TreesAccum, TxEnv),
+    call_contracts(Tail, TxEnv, TreesAccum1).
