@@ -80,7 +80,7 @@ sign_micro_block(MicroBlock) ->
 %% used in PoS context§
 -spec produce_key_header_signature(aec_headers:key_header(), aec_keys:pubkey()) -> {ok, block_signature()} | {error, term()}.
 produce_key_header_signature(Header, ByWho) ->
-   Bin = aec_headers:serialize_to_signature_binary(Header),
+    Bin = aec_headers:serialize_to_signature_binary(Header),
     case gen_server:call(?MODULE, {sign, Bin, ByWho}) of
         {ok, _Signature} = OK -> OK;
         {error, _Reason} = Err -> Err
