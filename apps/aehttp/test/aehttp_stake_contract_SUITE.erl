@@ -11,7 +11,8 @@
     init_per_testcase/2, end_per_testcase/2
    ]).
 
--export([spend_txs/1,
+-export([mine_and_sync/1,
+         spend_txs/1,
          simple_withdraw/1,
          change_leaders/1
         ]).
@@ -67,7 +68,8 @@ all() -> [{group, all}
 
 groups() ->
     [ {all, [sequence],
-       [ spend_txs
+       [ mine_and_sync
+       , spend_txs
        , simple_withdraw
        , change_leaders
        ]}
@@ -86,8 +88,6 @@ init_per_suite(Config0) ->
             {_PatronPriv, PatronPub} = aecore_suite_utils:sign_keys(?NODE1),
             ct:log("Patron is ~p", [aeser_api_encoder:encode(account_pubkey, PatronPub)]),
             Pubkey = <<42:32/unit:8>>,
-            Alice = binary_to_list(encoded_pubkey(?ALICE)),
-            Bob = binary_to_list(encoded_pubkey(?BOB)),
             EncodePub =
                 fun(P) ->
                     binary_to_list(aeser_api_encoder:encode(account_pubkey, P))
@@ -97,7 +97,6 @@ init_per_suite(Config0) ->
             #{ <<"pubkey">> := StakingValidatorContract} = C0
                 = contract_create_spec("StakingValidator",
                                        [EncodePub(Pubkey)], 0, 1, Pubkey),
-            InitialState = "{[" ++ Alice ++ "] = 1000, [" ++ Bob ++ "] = 2000}",
             #{ <<"pubkey">> := ConsensusContractPubkey
              , <<"owner_pubkey">> := ContractOwner } = C
                 = contract_create_spec(?STAKING_CONTRACT, [binary_to_list(StakingValidatorContract), "\"domat\""], 0, 2, Pubkey),
@@ -164,8 +163,7 @@ init_per_suite(Config0) ->
                         <<"beneficiary_reward_delay">> => 2
                         }}
                 end,
-
-            {ok, StartedApps} = application:ensure_all_started(gproc),
+            {ok, _StartedApps} = application:ensure_all_started(gproc),
             Config = [{symlink_name, "latest.staking"}, {test_module, ?MODULE}] ++ Config0,
             Config1 = aecore_suite_utils:init_per_suite([?NODE1, ?NODE2],
                                                         BuildConfig([?ALICE,
@@ -274,6 +272,25 @@ contract_call_staking_contract(Who, Fun, Args, Amt, Config) ->
     contract_call(ContractPubkey, ?STAKING_CONTRACT, Fun,
                   Args, Amt, pubkey(Who)).
 
+mine_and_sync(_Config) ->
+    {ok, [KB0]} = aecore_suite_utils:mine_key_blocks(?NODE1_NAME, 1),
+    {ok, KB0} = wait_same_top(),
+    ok.
+    
+wait_same_top() ->
+    wait_same_top(10).
+
+wait_same_top(Attempts) when Attempts < 1 ->
+    {error, run_out_of_attempts};
+wait_same_top(Attempts) ->
+    case {rpc(?NODE1, aec_chain, top_block, []), rpc(?NODE2, aec_chain, top_block, [])} of
+        {KB, KB} -> {ok, KB};
+        {KB1, KB2} ->
+            ct:log("Node1 top: ~p\nNode2 top: ~p", [KB1, KB2]),
+            timer:sleep(500),
+            wait_same_top(Attempts - 1)
+    end.
+
 spend_txs(_Config) ->
     Top0 = rpc(?NODE1, aec_chain, top_header, []),
     ct:log("Top before posting spend txs: ~p", [aec_headers:height(Top0)]),
@@ -325,7 +342,6 @@ simple_withdraw(Config) ->
     GasUsed = aect_call:gas_used(Call),
     GasPrice = aect_call:gas_price(Call),
     Fee = aetx:fee(aetx_sign:tx(CallTx)),
-    TotalSpent = Fee + GasUsed * GasPrice,
     ct:log("Initial balance: ~p, withdrawn: ~p, gas used: ~p, gas price: ~p, fee: ~p, end balance: ~p",
            [InitBalance, WithdrawAmount, GasUsed, GasPrice,
                           Fee, EndBalance]),
@@ -378,6 +394,7 @@ change_leaders(Config) ->
     true  = AliceLeaderCnt > 0,
     false = BobLeaderCnt =:= Blocks,
     true  = BobLeaderCnt > 0,
+    {ok, _B} = wait_same_top(),
     ok.
     
 
