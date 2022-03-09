@@ -33,6 +33,7 @@
          set_miner/2,
          set_nonce/2,
          set_nonce_and_key_seal/3,
+         set_key_seal/2,
          set_pof/2,
          set_prev_hash/2,
          set_prev_key_hash/2,
@@ -307,6 +308,10 @@ set_nonce_and_key_seal(Block, Nonce, Seal) ->
     H = aec_headers:set_nonce_and_key_seal(to_key_header(Block), Nonce, Seal),
     set_header(Block, H).
 
+-spec set_key_seal(key_block(), aec_consensus:key_seal()) -> key_block().
+set_key_seal(Block, Seal) ->
+    set_header(Block, aec_headers:set_key_seal(to_key_header(Block), Seal)).
+
 -spec signature(micro_block()) -> binary() | undefined.
 signature(Block) ->
     aec_headers:signature(to_micro_header(Block)).
@@ -402,7 +407,8 @@ serialization_template(micro) ->
 validate_key_block(#key_block{} = Block, Protocol) ->
     case aec_headers:validate_key_block_header(to_key_header(Block), Protocol) of
         ok -> ok;
-        {error, Reason} -> {error, {header, Reason}}
+        {error, Reason} ->
+            {error, {header, Reason}}
     end.
 
 -spec validate_micro_block(micro_block(), aec_hard_forks:protocol_vsn()) ->
