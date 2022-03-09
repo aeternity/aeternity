@@ -7,6 +7,7 @@
          candidate_pubkey/0,
          promote_candidate/1,
          sign_micro_block/1,
+         produce_key_header_signature/2,
          is_ready/0
         ]).
 
@@ -28,6 +29,7 @@
          code_change/3
         ]).
 
+-include("blocks.hrl").
 -define(SERVER, ?MODULE).
 -define(NOT_SET, not_set).
 
@@ -74,6 +76,15 @@ sign_micro_block(MicroBlock) ->
     Bin = aec_headers:serialize_to_signature_binary(Header),
     {ok, Signature} = gen_server:call(?MODULE, {sign, Bin}),
     {ok, aec_blocks:set_signature(MicroBlock, Signature)}.
+
+%% used in PoS context§
+-spec produce_key_header_signature(aec_headers:key_header(), aec_keys:pubkey()) -> {ok, block_signature()} | {error, term()}.
+produce_key_header_signature(Header, ByWho) ->
+   Bin = aec_headers:serialize_to_signature_binary(Header),
+    case gen_server:call(?MODULE, {sign, Bin, ByWho}) of
+        {ok, _Signature} = OK -> OK;
+        {error, _Reason} = Err -> Err
+    end.
 
 -spec is_ready() -> boolean().
 is_ready() ->
@@ -122,6 +133,19 @@ handle_call({set_candidate, Pubkey}, _From, #state{} = State) ->
         true ->
             {reply, ok, State#state{candidate = Pubkey}};
         false ->
+            {reply, {error, not_found}, State}
+    end;
+handle_call({sign, Bin, ByWho}, _From, #state{} = State) ->
+    case privkey(ByWho, State) of
+        {ok, Privkey} ->
+            Res =
+                try enacl:sign_detached(Bin, Privkey) of
+                    Signature -> {ok, Signature}
+                catch
+                    _Type:_What -> {error, failed_sign}
+                end,
+            {reply, Res, State};
+        error ->
             {reply, {error, not_found}, State}
     end;
 handle_call({sign, Bin}, _From, #state{active = Active} = State) ->

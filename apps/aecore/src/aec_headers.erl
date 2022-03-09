@@ -15,6 +15,7 @@
          deserialize_from_client/2,
          deserialize_from_binary_partial/1,
          deserialize_pow_evidence/1,
+         deserialize_pow_evidence_from_binary/1,
          difficulty/1,
          from_db_header/1,
          hash_header/1,
@@ -566,8 +567,7 @@ deserialize_from_client(key, KeyBlock) ->
         _:_ -> {error, invalid_header}
     end.
 
--spec serialize_to_signature_binary(micro_header()
-                                   ) -> deterministic_header_binary().
+-spec serialize_to_signature_binary(header()) -> deterministic_header_binary().
 serialize_to_signature_binary(#mic_header{signature = Sig} = H) ->
     case Sig of
         <<0:?BLOCK_SIGNATURE_BYTES/unit:8>> ->
@@ -575,7 +575,10 @@ serialize_to_signature_binary(#mic_header{signature = Sig} = H) ->
         <<_:?BLOCK_SIGNATURE_BYTES/unit:8>> ->
             Blank  = <<0:?BLOCK_SIGNATURE_BYTES/unit:8>>,
             serialize_to_binary(set_signature(H, Blank))
-    end.
+    end;
+serialize_to_signature_binary(#key_header{} = H) ->
+    Blank  = no_value,
+    serialize_to_binary(H#key_header{key_seal = Blank}).
 
 -spec serialize_to_binary(header()) -> deterministic_header_binary().
 serialize_to_binary(#key_header{} = Header) ->
@@ -752,8 +755,11 @@ deserialize_micro_from_binary(<<Version:32,
 deserialize_micro_from_binary(_Other) ->
     {error, malformed_header}.
 
+
+serialize_pow_evidence_to_binary(no_value) ->
+    << <<A:32>> || A <- lists:duplicate(?KEY_SEAL_SIZE, 0)>>;
 serialize_pow_evidence_to_binary(Ev) ->
-   << <<E:32>> || E <- serialize_pow_evidence(Ev) >>.
+    << <<E:32>> || E <- serialize_pow_evidence(Ev) >>.
 
 serialize_pow_evidence(Ev) ->
     case is_list(Ev) andalso length(Ev) =:= ?KEY_SEAL_SIZE of
