@@ -196,6 +196,30 @@ jobs:
         tags:
           only: << pipeline.parameters.tag_regex >>
 
+  - hodl_uat_hc:
+      type: approval
+      filters:
+        branches:
+          ignore: /.*/
+        tags:
+          only: << pipeline.parameters.tag_regex >>
+
+  - deploy:
+      name: deploy-uat-hc
+      version: $CIRCLE_TAG
+      env: uat-hc
+      downtime: 1800 #30m
+      context: ae-node-builds
+      requires:
+        - linux-release-tarball
+        - hodl_uat-hc
+      filters:
+        branches:
+          ignore: /.*/
+        tags:
+          only: << pipeline.parameters.tag_regex >>
+
+
   - deploy:
       name: deploy-uat-green
       version: $CIRCLE_TAG
