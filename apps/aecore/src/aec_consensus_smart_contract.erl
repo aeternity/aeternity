@@ -203,8 +203,32 @@ key_header_for_sealing(Header) ->
     Header2 = aec_headers:set_key_seal(Header1, no_value),
     aec_headers:serialize_to_binary(Header2).
 
-validate_key_header_seal(_Header, _Protocol) ->
-    ok.
+validate_key_header_seal(Header, _Protocol) ->
+    %% TODO: validate correct leader
+    Seal = aec_headers:key_seal(Header),
+    {SignaturePart, Padding} = lists:split(?SIGNATURE_SIZE, Seal),
+    Signature = << <<E:32>> || E <- SignaturePart >>,
+    Validators = [ fun seal_correct_padding/3 
+                 , fun seal_correct_signature/3
+                 ],
+    aeu_validation:run(Validators, [Header, Signature, Padding]).
+
+seal_correct_padding(_Header, _Signature, Padding) ->
+    PaddingSize = seal_padding_size(), 
+    ExpectedPadding = lists:duplicate(PaddingSize, 0),
+    case Padding =/= ExpectedPadding of
+        true -> {error, {erroneous_seal, Padding, ExpectedPadding}};
+        false -> ok
+    end.
+
+seal_correct_signature(Header, Signature, _Padding) ->
+    Leader = aec_headers:miner(Header),
+    Bin = aec_headers:serialize_to_signature_binary(Header),
+    case enacl:sign_verify_detached(Signature, Bin, Leader) of
+        true  -> ok;
+        false ->
+            {error, signature_verification_failed}
+    end.
 
 generate_key_header_seal(_, Candidate, ?TAG, #{expected_key_block_rate := Expected} = _Config, _) ->
     {ok, PrevKeyHeader} = aec_chain:get_header(aec_headers:prev_key_hash(Candidate)),
@@ -213,20 +237,24 @@ generate_key_header_seal(_, Candidate, ?TAG, #{expected_key_block_rate := Expect
     SleepTime = max(PrevBlockTime + Expected - Now, 0),
     lager:info("Sleeping for ~p ms before contining", [SleepTime]),
     timer:sleep(SleepTime),
-    Leader = aec_headers:miner(Candidate),
-    SignModule = get_sign_module(),
-    {ok, Signature} = SignModule:produce_key_header_signature(Candidate, Leader),
-    { continue_mining, {ok, Signature} }.
+    %% we are to adjust the time set in the block according to the actual time
+    %% when we sign it. This would effectively change the candidate. The
+    %% signature will be applied only after that. This is done in
+    %% set_key_block_seal/2
+    { continue_mining, {ok, to_be_signed} }.
 
-set_key_block_seal(KeyBlock0, Signature) ->
+set_key_block_seal(KeyBlock0, _Signature) ->
     KeyBlock = aec_blocks:set_time_in_msecs(KeyBlock0, aeu_time:now_in_msecs()),
+    KeyHeader = aec_blocks:to_header(KeyBlock),
+    Leader = aec_headers:miner(KeyHeader),
+    SignModule = get_sign_module(),
+    {ok, Signature} = SignModule:produce_key_header_signature(KeyHeader, Leader),
     %% the signature is 64 bytes. The seal is 168 bytes. We add 104 bytes at
     %% the end of the signature
     PaddingSize = seal_padding_size(), 
     Padding = << <<E:32>> || E <- lists:duplicate(PaddingSize, 0)>>,
-    Seal =
-    aec_headers:deserialize_pow_evidence_from_binary(<<Signature/binary, Padding/binary>>),
-    aec_blocks:set_nonce_and_key_seal(KeyBlock, ?TAG, Seal).
+    Seal = aec_headers:deserialize_pow_evidence_from_binary(<<Signature/binary, Padding/binary>>),
+    aec_blocks:set_key_seal(KeyBlock, Seal).
 
 nonce_for_sealing(_Header) ->
     ?TAG.
