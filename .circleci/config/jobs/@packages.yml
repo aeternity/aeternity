@@ -30,7 +30,7 @@ linux-tarball:
     - fail_notification
 
 ubuntu_package:
-  executor: builder_container_1804
+  executor: builder_container_otp22
   working_directory: /home/builder/aeternity_deb
   steps:
     - fixed_checkout

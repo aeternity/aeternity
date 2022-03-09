@@ -10,6 +10,10 @@ tag_regex:
   type: string
   default: "/^v.*$/"
 
+tag_pattern:
+  type: string
+  default: "v.*$"
+
 master_branch:
   type: string
   default: master

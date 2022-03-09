@@ -3,6 +3,7 @@ when:
 jobs:
   - build:
       name: build-<< matrix.otp >>
+      context: ae-slack
       matrix:
         parameters:
           otp: ["otp22", "otp23", "otp24"]
@@ -14,12 +15,14 @@ jobs:
             - system-tests
 
   - build_nix:
+      context: ae-slack
       filters:
         branches:
           only:
             - << pipeline.parameters.master_branch >>
 
   - test:
+      context: ae-slack
       matrix:
         parameters:
           otp: ["otp22", "otp23", "otp24"]
@@ -60,6 +63,7 @@ jobs:
             - system-tests
 
   - eunit:
+      context: ae-slack
       matrix:
         parameters:
           otp: ["otp22"]
@@ -80,6 +84,7 @@ jobs:
             - system-tests
 
   - aevm-test:
+      context: ae-slack
       requires:
         - build-otp22
       filters:
@@ -90,6 +95,7 @@ jobs:
             - system-tests
 
   - static-analysis:
+      context: ae-slack
       matrix:
         parameters:
           otp: ["otp22", "otp23", "otp24"]
@@ -103,7 +109,9 @@ jobs:
             - system-tests
 
   - docker-smoke-test:
-      context: ae-node-builds
+      context:
+        - ae-slack
+        - ae-node-builds
       filters:
         branches:
           ignore:
@@ -114,6 +122,7 @@ jobs:
             - << pipeline.parameters.master_branch >>
 
   - docker-system-smoke-test:
+      context: ae-slack
       filters:
         branches:
           ignore:
@@ -122,12 +131,15 @@ jobs:
             - system-tests
 
   - docker-system-test:
+      context: ae-slack
       filters:
         branches:
           only: system-tests
 
   - docker-js-sdk-smoke-test:
-      context: ae-node-builds
+      context:
+        - ae-slack
+        - ae-node-builds
       requires:
         - docker-smoke-test
       filters:
@@ -140,7 +152,9 @@ jobs:
             - << pipeline.parameters.master_branch >>
 
   - docker-db-smoke-test:
-      context: ae-node-builds
+      context:
+        - ae-slack
+        - ae-node-builds
       requires:
         - docker-smoke-test
       filters:
@@ -153,6 +167,7 @@ jobs:
             - << pipeline.parameters.master_branch >>
 
   - js-sdk-smoke-test:
+      context: ae-slack
       requires:
         - linux-tarball
       filters:
@@ -163,6 +178,7 @@ jobs:
             - system-tests
 
   - db-smoke-test:
+      context: ae-slack
       requires:
         - linux-tarball
       filters:
@@ -173,6 +189,7 @@ jobs:
             - system-tests
 
   - rebar_lock_check:
+      context: ae-slack
       requires:
         - build-otp22
       filters:
@@ -185,6 +202,7 @@ jobs:
   - linux-tarball:
       name: linux-tarball
       package_name: aeternity-$CIRCLE_SHA1-ubuntu-x86_64.tar.gz
+      context: ae-slack
       filters:
         branches:
           ignore:
@@ -194,6 +212,7 @@ jobs:
       name: linux-tarball-bundle
       package_name: aeternity-bundle-$CIRCLE_SHA1-ubuntu-x86_64.tar.gz
       aeplugin_devmode: true
+      context: ae-slack
       filters:
         branches:
           ignore:
@@ -203,6 +222,7 @@ jobs:
 
   - ubuntu_package:
       requires: []
+      context: ae-slack
       filters:
         branches:
           only:
@@ -212,7 +232,9 @@ jobs:
   - upload-tarballs-s3:
       name: upload-tarballs-s3
       bucket: << pipeline.parameters.s3_builds_bucket >>
-      context: ae-node-builds
+      context:
+        - ae-slack
+        - ae-node-builds
       requires:
         - linux-tarball
         - linux-tarball-bundle
@@ -228,7 +250,9 @@ jobs:
   - promote-tarball-s3:
       name: promote-tarball-s3
       uri: s3://<< pipeline.parameters.s3_builds_bucket >>/aeternity-$CIRCLE_SHA1-ubuntu-x86_64.tar.gz
-      context: ae-node-builds
+      context:
+        - ae-slack
+        - ae-node-builds
       requires:
         - upload-tarballs-s3
       filters:
@@ -240,6 +264,7 @@ jobs:
   - macos-tarball:
       name: macos-tarball
       package_name: aeternity-$CIRCLE_SHA1-macos-x86_64.tar.gz
+      context: ae-slack
       requires: []
       filters:
         branches:
@@ -251,6 +276,7 @@ jobs:
       name: macos-tarball-bundle
       package_name: aeternity-bundle-$CIRCLE_SHA1-macos-x86_64.tar.gz
       aeplugin_devmode: true
+      context: ae-slack
       filters:
         branches:
           only:
@@ -260,6 +286,7 @@ jobs:
   - publish-build-packages:
       requires:
         - ubuntu_package
+      context: ae-slack
       filters:
         branches:
           only:
@@ -271,7 +298,9 @@ jobs:
       version: $CIRCLE_SHA1
       env: integration
       downtime: 900 #15m
-      context: ae-node-builds
+      context:
+        - ae-slack
+        - ae-node-builds
       requires:
         - test
         - eunit
@@ -287,7 +316,9 @@ jobs:
 
   - docker-image:
       name: docker-image-mainline
-      context: ae-node-builds
+      context:
+        - ae-slack
+        - ae-node-builds
       tag: $CIRCLE_BRANCH
       requires:
         - test
@@ -302,7 +333,9 @@ jobs:
 
   - docker-image:
       name: docker-image-mainline-bundle
-      context: ae-node-builds
+      context:
+        - ae-slack
+        - ae-node-builds
       aeplugin_devmode: true
       tag: $CIRCLE_BRANCH-bundle
       requires:
@@ -321,7 +354,9 @@ jobs:
       version: $CIRCLE_SHA1
       env: next
       downtime: 900 #15m
-      context: ae-node-builds
+      context:
+        - ae-slack
+        - ae-node-builds
       requires:
         - test
         - eunit
@@ -337,7 +372,9 @@ jobs:
       name: deploy-dev1
       version: $CIRCLE_SHA1
       env: dev1
-      context: ae-node-builds
+      context:
+        - ae-slack
+        - ae-node-builds
       requires:
         - linux-tarball
       filters:
@@ -348,7 +385,9 @@ jobs:
       name: deploy-dev2
       version: $CIRCLE_SHA1
       env: dev2
-      context: ae-node-builds
+      context:
+        - ae-slack
+        - ae-node-builds
       requires:
         - linux-tarball
       filters:

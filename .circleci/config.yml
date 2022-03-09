@@ -5,6 +5,11 @@ setup: true
 orbs:
   continuation: circleci/continuation@0.1.2
 
+parameters:
+  run_system_tests:
+    type: boolean
+    default: false
+
 jobs:
   generate:
     docker:
@@ -32,7 +37,13 @@ jobs:
 workflows:
   setup:
     jobs:
-      - generate
+      - generate:
+          filters:
+            tags:
+              only: "/^v.*$/"
       - setup:
           requires:
             - generate
+          filters:
+            tags:
+              only: "/^v.*$/"
