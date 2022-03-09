@@ -303,8 +303,8 @@ pow(Block) ->
 
 -spec set_nonce_and_key_seal(key_block(), aec_consensus:key_nonce(), aec_consensus:key_seal()
                        ) -> key_block().
-set_nonce_and_key_seal(Block, Nonce, Evd) ->
-    H = aec_headers:set_nonce_and_key_seal(to_key_header(Block), Nonce, Evd),
+set_nonce_and_key_seal(Block, Nonce, Seal) ->
+    H = aec_headers:set_nonce_and_key_seal(to_key_header(Block), Nonce, Seal),
     set_header(Block, H).
 
 -spec signature(micro_block()) -> binary() | undefined.

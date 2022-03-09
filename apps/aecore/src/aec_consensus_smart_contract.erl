@@ -11,6 +11,7 @@
 -behavior(aec_consensus).
 
 -define(TAG, 1337). %% TODO: remove this
+-define(SIGNATURE_SIZE, 16).
 
 %% API
 -export([ can_be_turned_off/0
@@ -68,6 +69,7 @@
 
 -include_lib("aecontract/include/hard_forks.hrl").
 -include("blocks.hrl").
+-include("aec_consensus.hrl").
 
 can_be_turned_off() -> false.
 assert_config(Config) ->
@@ -211,11 +213,20 @@ generate_key_header_seal(_, Candidate, ?TAG, #{expected_key_block_rate := Expect
     SleepTime = max(PrevBlockTime + Expected - Now, 0),
     lager:info("Sleeping for ~p ms before contining", [SleepTime]),
     timer:sleep(SleepTime),
-    { continue_mining, {ok, ?TAG} }.
+    Leader = aec_headers:miner(Candidate),
+    SignModule = get_sign_module(),
+    {ok, Signature} = SignModule:produce_key_header_signature(Candidate, Leader),
+    { continue_mining, {ok, Signature} }.
 
-set_key_block_seal(Block0, ?TAG) ->
-    Block = aec_blocks:set_time_in_msecs(Block0, aeu_time:now_in_msecs()),
-    aec_blocks:set_nonce_and_key_seal(Block, ?TAG, lists:duplicate(42, ?TAG)).
+set_key_block_seal(KeyBlock0, Signature) ->
+    KeyBlock = aec_blocks:set_time_in_msecs(KeyBlock0, aeu_time:now_in_msecs()),
+    %% the signature is 64 bytes. The seal is 168 bytes. We add 104 bytes at
+    %% the end of the signature
+    PaddingSize = seal_padding_size(), 
+    Padding = << <<E:32>> || E <- lists:duplicate(PaddingSize, 0)>>,
+    Seal =
+    aec_headers:deserialize_pow_evidence_from_binary(<<Signature/binary, Padding/binary>>),
+    aec_blocks:set_nonce_and_key_seal(KeyBlock, ?TAG, Seal).
 
 nonce_for_sealing(_Header) ->
     ?TAG.
@@ -415,3 +426,7 @@ call_contracts([Call | Tail], TxEnv, TreesAccum) ->
     {ok, Tx} = aect_call_tx:new(TxSpec#{fee => MinFee}),
     {_, TreesAccum1} = aec_block_fork:apply_contract_call_tx(Tx, TreesAccum, TxEnv),
     call_contracts(Tail, TxEnv, TreesAccum1).
+
+seal_padding_size() ->
+    ?KEY_SEAL_SIZE - ?SIGNATURE_SIZE.
+
