@@ -132,7 +132,7 @@ jobs:
       context: ae-node-builds
       requires:
         - linux-release-tarball
-        - hodl_uat-hc
+        - hodl_uat_hc
       filters:
         branches:
           ignore: /.*/
