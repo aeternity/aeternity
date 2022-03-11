@@ -315,6 +315,8 @@ consensus_from_network_id(<<"ae_uat">>) ->
     [{0, {aec_consensus_bitcoin_ng, #{}}}];
 consensus_from_network_id(<<"ae_dev">>) ->
     consensus_config_or_default([{0, {aec_consensus_on_demand, #{}}}]);
+consensus_from_network_id(<<"ae_smart_contract_test">>) ->
+    consensus_config_or_default([{0, {aec_consensus_smart_contract, #{}}}]);
 consensus_from_network_id(_) ->
     consensus_config_or_default([{0, {aec_consensus_bitcoin_ng, #{}}}]).
 
@@ -349,6 +351,7 @@ consensus_module_from_name(_) -> undefined.
 -else.
 consensus_module_from_name(<<"pow_cuckoo">>) -> aec_consensus_bitcoin_ng;
 consensus_module_from_name(<<"on_demand">>) -> aec_consensus_on_demand;
+consensus_module_from_name(<<"smart_contract">>) -> aec_consensus_smart_contract;
 consensus_module_from_name(_) -> undefined.
 -endif.
 
