@@ -282,6 +282,7 @@ accounts_json_file() ->
     case aec_governance:get_network_id() of
         <<"ae_mainnet">>                  -> "accounts.json";
         <<"ae_uat">>                      -> "accounts_uat.json";
+        <<"ae_smart_contract_test">>      -> "accounts_smart_contract_consensus_test.json";
         _                                 -> "accounts_test.json"
     end.
 
