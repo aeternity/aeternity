@@ -828,6 +828,19 @@ assert_state_hash_valid(Trees, Node) ->
         false -> aec_block_insertion:abort_state_transition({root_hash_mismatch, RootHash, Expected})
     end.
 
+validate_generation_leader(Node, Trees, Env, State) ->
+    case node_is_key_block(Node) of
+        true  ->
+            ConsensusModule = aec_block_insertion:node_consensus(Node),
+            Header = node_header(Node),
+            case ConsensusModule:is_leader_valid(Node, Trees, Env) of
+                true -> ok;
+                false -> {error, invalid_leader}
+            end;
+        false ->
+            ok
+    end.
+    
 apply_node_transactions(Node, Trees, ForkInfo, State) ->
     Consensus = aec_block_insertion:node_consensus(Node),
     case node_is_micro_block(Node) of
@@ -851,10 +864,15 @@ apply_node_transactions(Node, Trees, ForkInfo, State) ->
                         true -> Consensus:state_pre_transform_key_node_consensus_switch(Node, Trees1)
                      end,
             Trees3 = Consensus:state_pre_transform_key_node(Node, Trees2),
-            Delay  = aec_governance:beneficiary_reward_delay(),
-            case Height > aec_block_genesis:height() + Delay of
-                true  -> {grant_fees(Node, Trees3, Delay, FraudStatus, State), TotalFees, no_events()};
-                false -> {Trees3, TotalFees, no_events()}
+            %% leader generation happens after pre_transformations
+            case validate_generation_leader(Node, Trees3, Env, State) of
+                ok ->
+                    Delay  = aec_governance:beneficiary_reward_delay(),
+                    case Height > aec_block_genesis:height() + Delay of
+                        true  -> {grant_fees(Node, Trees3, Delay, FraudStatus, State), TotalFees, no_events()};
+                        false -> {Trees3, TotalFees, no_events()}
+                    end;
+                {error, Reason} -> error({leader_validation_failed, Reason})
             end
     end.
 

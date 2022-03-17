@@ -65,6 +65,7 @@
         , get_sign_module/0
         , get_type/0
         , get_block_producer_configs/0
+        , is_leader_valid/3
         ]).
 
 -include_lib("aecontract/include/hard_forks.hrl").
@@ -232,4 +233,8 @@ get_sign_module() -> aec_consensus_bitcoin_ng:get_sign_module().
 get_type() -> aec_consensus_bitcoin_ng:get_type().
 
 get_block_producer_configs() -> aec_consensus_bitcoin_ng:get_block_producer_configs().
+
+is_leader_valid(_Node, _Trees, _TxEnv) ->
+    true.
+
 -endif.

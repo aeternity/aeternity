@@ -189,6 +189,7 @@
 -callback get_sign_module() -> sign_module().
 -callback get_type() -> pow | pos.
 -callback get_block_producer_configs() -> list().
+-callback is_leader_valid(#node{}, aec_trees:trees(), aetx_env:env()) -> boolean().
 
 %% -------------------------------------------------------------------
 %% Block sealing
