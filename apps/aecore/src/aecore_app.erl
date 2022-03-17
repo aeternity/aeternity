@@ -13,6 +13,12 @@
 %%====================================================================
 
 start(_StartType, _StartArgs) ->
+    %% dbg:tracer(),
+    %% dbg:tp(aec_db, add_tx_location,x),
+    %% dbg:tp(aec_db, find_tx_location,x),
+    %% dbg:tp(aec_db, remove_tx_location,x),
+    %% dbg:tp(rocksdb,x),
+    %% dbg:p(all,[c]),
     ok = lager:info("Starting aecore node"),
     ok = aec_jobs_queues:start(),
     ok = application:ensure_started(mnesia),

@@ -775,6 +775,7 @@ handle_top_block_change(OldTopNode, NewTopDifficulty, Node, Events, State) ->
                     {State1, Events};
                 false ->
                     %% We have a fork. Compare the difficulties.
+                    lager:debug("Fork - Old: ~p, New: ~p", [OldTopHash, NewTopHash]),
                     {ok, OldTopDifficulty} = db_find_difficulty(OldTopHash),
                     case OldTopDifficulty >= NewTopDifficulty of
                         true ->

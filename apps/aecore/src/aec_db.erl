@@ -130,8 +130,11 @@
         , chain_migration_status/1
         ]).
 
-%%
-%% for testing
+%% Migrate standalone rocksdb instances to column families
+-export([ migrate_tables/0
+        , migrate_tables/1
+        ]).
+
 -export([backend_mode/0]).
 
 -include("blocks.hrl").
@@ -169,14 +172,13 @@
 
 tables() -> tables(ram).
 
-%% WARNING: We are migrating away from mnesia - currently some
-%%          backends are bypasing the mnesia transaction manager and issuing
-%%          a custom commit to the backend - as a results indexes are not
-%%          updated automatically - If you add another index then you need
-%%          to update the custom bypass logic
-tables(Mode) when Mode==ram; Mode==disc ->
-    tables(expand_mode(Mode));
-tables(Mode) ->
+tables(Mode0) ->
+    Mode = expand_mode(Mode0),
+    Ts = tables_(Mode),
+    lager:debug("Tables = ~p", [Ts]),
+    Ts.
+
+tables_(Mode) ->
     [?TAB(aec_blocks)
    , ?TAB(aec_headers, [{index, [height]}])
    , ?TAB(aec_chain_state)
@@ -197,6 +199,32 @@ tables(Mode) ->
    , ?TAB(aec_peers)
     ].
 
+migrate_tables() -> migrate_tables(all).
+
+migrate_tables(Tabs0) ->
+    case backend_mode() of
+        #{module := mnesia_rocksdb} ->
+            migrate_tables_(Tabs0);
+        _ ->
+            {error, not_rocksdb}
+    end.
+
+migrate_tables_(Tabs0) ->
+    Tabs = case Tabs0 of
+               all -> [T || T <- all_standalone_tables()];
+               _ when is_list(Tabs0) -> Tabs0
+           end,
+    T0 = erlang:localtime(),
+    Res = mnesia_rocksdb_admin:migrate_standalone(rocksdb_copies, Tabs),
+    T1 = erlang:localtime(),
+    {ok, {calendar:time_difference(T0, T1), Res}}.
+
+all_standalone_tables() ->
+    maps:fold(
+      fun(T, #{type := standalone}, Acc) when is_atom(T) -> [T|Acc];
+         (_, _, Acc) -> Acc
+      end, [], mnesia_rocksdb_admin:meta()).
+
 tab(Mode0, Record, Attributes, Extra) ->
     Mode = expand_mode(Mode0),
     Type = tab_type(Record),
@@ -211,15 +239,32 @@ tab(Mode0, Record, Attributes, Extra) ->
     | Extra
     ].
 
+%% set_rocksdb_prop(K, V, {T, Opts}) ->
+%%     {T, lists_mkeystore([user_properties, rocksdb_opts, K], V, Opts)}.
+
+%% lists_mkeystore([K], V, L) when is_list(L) ->
+%%     lists:keystore(K, 1, L, {K, V});
+%% lists_mkeystore([K|T], V, L) ->
+%%     Sub = lists_mkeystore(T, V, proplists:get_value(K, L, [])),
+%%     lists:keystore(K, 1, L, {K, Sub}).
+
 opt_rocksdb_props(#{module := mnesia_rocksdb}, Tab, Type, Arity, Props) ->
     rocksdb_props(Tab, Type, Arity, Props);
 opt_rocksdb_props(_, _, _, _, Props) ->
     Props.
 
 rocksdb_props(Tab, Type, Arity, Props) ->
-    [encoding(Tab, Type, Arity) | Props].
+    [{mrdb_encoding, encoding(Tab, Type, Arity)} | Props].
 
-encoding(aec_chain_state, _, _) -> {term, {value, term}};
+encoding(T, _, _) when T==aec_chain_state;
+                       T==aec_contract_state;
+                       T==aec_call_state;
+                       T==aec_block_state;
+                       T==aec_oracle_state;
+                       T==aec_account_state;
+                       T==aec_channel_state;
+                       T==aec_name_service_state ->
+    {raw, {value, raw}};
 encoding(_Tab, set, 2) -> {raw, {value, term}};
 encoding(_Tab, set, _) -> {raw, {object, term}}.
 %% encoding(_, _, _) -> {sext, {object, sext}}.
@@ -350,7 +395,7 @@ ensure_activity(Type, Fun) when is_function(Fun, 0) ->
 %%         _ ->
 %%             mrdb_activity(Type, Fun)
 %%     end;
-ensure_activity(Backend, transaction, Fun) when is_function(Fun, 0) ->
+ensure_activity(_Backend, transaction, Fun) when is_function(Fun, 0) ->
     case get(mnesia_activity_state) of
         undefined ->
             mnesia:activity(transaction, Fun);
@@ -361,7 +406,7 @@ ensure_activity(Backend, transaction, Fun) when is_function(Fun, 0) ->
             %% We are already in a transaction.
             Fun()
     end;
-ensure_activity(Backend, PreferredType, Fun) when is_function(Fun, 0) ->
+ensure_activity(_Backend, PreferredType, Fun) when is_function(Fun, 0) ->
     case get(mnesia_activity_state) of
         undefined ->
             mnesia:activity(PreferredType, Fun);
@@ -976,9 +1021,11 @@ find_signal_count(Hash) ->
 
 add_tx_location(STxHash, BlockHash) when is_binary(STxHash),
                                          is_binary(BlockHash) ->
+    lager:debug("STxHash = ~p, BlockHash = ~p", [STxHash, BlockHash]),
     ?t(write(#aec_tx_location{key = STxHash, value = BlockHash})).
 
 remove_tx_location(TxHash) when is_binary(TxHash) ->
+    lager:debug("TxHash = ~p", [TxHash]),
     ?t(delete(aec_tx_location, TxHash)).
 
 find_tx_location(STxHash) ->
@@ -1055,12 +1102,15 @@ fold_mempool(FunIn, InitAcc) ->
 
 load_database() ->
     lager:debug("load_database()", []),
-    wait_for_tables(),
+    ok = wait_for_tables(),
     convert_top_block_entry(),
     aec_db_gc:maybe_swap_nodes().
 
 wait_for_tables() ->
     Tabs = mnesia:system_info(tables) -- [schema],
+    wait_for_tables(Tabs).
+
+wait_for_tables(Tabs) ->
     lager:debug("wait_for_tables (~p)", [Tabs]),
     wait_for_tables(Tabs, 0, _TimePeriods = 5, _MaxWait = 60).
 
@@ -1158,15 +1208,28 @@ ensure_mnesia_tables(Mode, Storage) ->
     Tables = tables(Mode),
     case Storage of
         existing_schema ->
-            handle_table_errors(Tables, Mode, check_mnesia_tables(Tables, []));
+            CheckRes = check_mnesia_tables(Tables, []),
+            lager:debug("CheckRes = ~p", [CheckRes]),
+            maybe_wait_for_tabs(CheckRes),
+            handle_table_errors(Tables, Mode, CheckRes);
         ok ->
             [{atomic,ok} = mnesia:create_table(T, Spec) || {T, Spec} <- Tables],
             run_hooks('$aec_db_create_tables', Mode),
             ok
     end.
 
+maybe_wait_for_tabs(Errors) ->
+    case [T || {on_write_error_present, T} <- Errors] of
+        [] -> ok;
+        Tabs ->
+            wait_for_tables(Tabs)
+    end.
+
 handle_table_errors(_Tables, _Mode, []) ->
     ok;
+handle_table_errors(Tables, Mode, [{on_write_error_present, Table} | Tl]) ->
+    remove_on_write_error(Table),
+    handle_table_errors(Tables, Mode, Tl);
 handle_table_errors(Tables, Mode, [{missing_table, aec_signal_count = Table} | Tl]) ->
     %% The table is new in node version 5.1.0.
     new_table_migration(Table, Tables),
@@ -1195,25 +1258,65 @@ check_table(Table, Spec, Acc) ->
     try
         UserProps = mnesia:table_info(Table, user_properties),
         UserPropsSpec = proplists:get_value(user_properties, Spec, []),
-        Vsn = proplists:get_value(vsn, UserProps),
-        VsnSpec = proplists:get_value(vsn, UserPropsSpec),
-        if
-            Vsn =:= undefined ->
-                [{missing_version, Table, UserProps}|Acc];
-            VsnSpec =:= undefined ->
-                [{missing_version_in_spec, Table, UserProps}|Acc];
-            Vsn =:= VsnSpec ->
-                Acc;
-            true ->
-                %% old version and spec are not equal
-                {vsn, Old} = VsnSpec,
-                {vsn, New} = Vsn,
-                [{vsn_fail, Table, [{expected, New}, {got, Old}]}|Acc]
-        end
+        Acc1 = check_table_vsn(Table, UserProps, UserPropsSpec, Acc),
+        check_table_on_error(Table, UserProps, Acc1)
     catch
         _:_ ->
             [{missing_table, Table}|Acc]
     end.
+
+check_table_vsn(Table, UserProps, UserPropsSpec, Acc) ->
+    Vsn = proplists:get_value(vsn, UserProps),
+    VsnSpec = proplists:get_value(vsn, UserPropsSpec),
+    if
+        Vsn =:= undefined ->
+            [{missing_version, Table, UserProps}|Acc];
+        VsnSpec =:= undefined ->
+            lager:debug("missing vsn i Spec ~p", [UserPropsSpec]),
+            [{missing_version_in_spec, Table, UserProps}|Acc];
+        Vsn =:= VsnSpec ->
+            Acc;
+        true ->
+            %% old version and spec are not equal
+            {vsn, Old} = VsnSpec,
+            {vsn, New} = Vsn,
+            [{vsn_fail, Table, [{expected, New}, {got, Old}]}|Acc]
+    end.
+
+check_table_on_error(Table, UserProps, Acc) ->
+    ROpts = proplists:get_value(rocksdb_opts, UserProps, []),
+    case lists:keymember(on_write_error, 1, ROpts) orelse
+         lists:keymember(on_write_error_store, 1, ROpts) of
+        true ->
+            [{on_write_error_present, Table}|Acc];
+        false ->
+            Acc
+    end.
+
+remove_on_write_error(Tab) ->
+    lager:debug("will remove on_write settings on ~p", [Tab]),
+    Res=
+    mnesia_schema:schema_transaction(
+      fun() ->
+              case mnesia_schema:do_read_table_property(Tab, rocksdb_opts) of
+                  undefined ->
+                      skip;
+                  {_, ROpts} ->
+                      case lists:keydelete(
+                             on_write_error, 1,
+                             lists:keydelete(
+                               on_write_error_store, 1, ROpts)) of
+                          [] ->
+                              mnesia_schema:do_delete_table_property(
+                                Tab, rocksdb_opts);
+                          ROpts1 ->
+                              mnesia_schema:do_write_table_property(
+                                Tab, {rocksdb_opts, ROpts1})
+                      end
+              end
+      end),
+    lager:debug("remove_on_write_error(~p) -> ~p", [Tab, Res]),
+    Res.
 
 assert_schema_node_name(#{persist := false}) ->
     ok;

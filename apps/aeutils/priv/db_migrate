@@ -1,0 +1,23 @@
+#!/usr/bin/env escript
+%% -*- erlang-indent-level: 4; indent-tabs-mode: nil -*-
+
+-mode(compile).
+
+spec() -> #{ arguments => [] }.
+
+main(Args) ->
+    Opts = aeu_ext_scripts:parse_opts(Args, spec()),
+    {ok, Node} = aeu_ext_scripts:connect_node(Opts),
+    migrate(Node, Opts).
+
+
+migrate(Node, #{opts := _Opts}) ->
+    PrevMode = rpc:call(Node, aeu_ext_scripts, ensure_mode, [maintenance]),
+    try
+        Res = rpc:call(Node, aec_db, migrate_tables, []),
+        io:fwrite(standard_io, "Migrate complete. Res: ~p~n", [Res])
+    after
+        ok = rpc:call(Node, aeu_ext_scripts, restore_mode, [PrevMode])
+    end,
+    ok.
+

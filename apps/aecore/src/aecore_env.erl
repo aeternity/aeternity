@@ -2,6 +2,7 @@
 
 -export([ check_env/0
         , is_dev_mode/0
+        , open_files_limit/0
         ]).
 
 -export([patron_keypair_for_testing/0]).
@@ -15,6 +16,7 @@
 %%
 check_env() ->
     dev_mode_expand(),
+    check_open_files_limit(),
     aeu_env:check_env(
       aecore,
       [{[<<"mining">>, <<"autostart">>], fun set_autostart/2},
@@ -33,6 +35,64 @@ is_dev_mode() ->
                     true;
                 _ ->
                     false
+            end
+    end.
+
+check_open_files_limit() ->
+    check_open_files_limit(aec_db:backend_mode()).
+
+check_open_files_limit(#{module := mnesia_rocksdb} = Mode) ->
+    case open_files_limit() of
+	undefined ->
+	    ok;
+	Limit0 ->
+	    case Limit0 - open_files_reserve() of
+		Limit when Limit > 0 ->
+		    application:set_env(mnesia_rocksdb, open_files_limit, Limit),
+		    NumTabs = number_of_tables(Mode),
+		    application:set_env(mnesia_rocksdb, number_of_tables, NumTabs);
+		_ ->
+		    ok
+	    end
+    end;
+check_open_files_limit(_) ->
+    %% Currently, we happily assume that the fd limit won't matter.
+    ok.
+
+%% Mnesia_rocksdb also treats indexes as tables
+%% Also, add 1 for the mnesia_rocksdb admin table.
+number_of_tables(Mode) ->
+    Tabs = aec_db:tables(Mode),
+    NTabs = length(Tabs),
+    NIxs = lists:foldl(fun count_ixs/2, 1, Tabs).
+
+count_ixs({_, Opts}, Acc) ->
+    length(proplists:get_value(index, Opts, [])) + Acc.
+
+open_files_limit() ->
+    case os:getenv("AE_OPEN_FILES_LIMIT") of
+        false ->
+            undefined;
+        LimitStr ->
+            try list_to_integer(LimitStr) of
+                Limit when is_integer(Limit) ->
+                    Limit
+            catch
+                error:_ ->
+                    lager:debug("Could not interpret ~p as limit", [LimitStr]),
+                    undefined
+            end
+    end.
+
+open_files_reserve() ->
+    Default = 512,
+    case os:getenv("AE_OPEN_FILES_RESERVE") of
+        false -> Default;
+        R ->
+            try list_to_integer(R)
+            catch
+                error:_ ->
+                    Default
             end
     end.
 

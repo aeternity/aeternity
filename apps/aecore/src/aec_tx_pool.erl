@@ -190,6 +190,7 @@ push(Tx, Event = tx_received, Timeout) ->
         true ->
             ok;
         false ->
+            lager:debug("queue TxHash ~p", [TxHash]),
             aec_jobs_queues:run(tx_pool_push, fun() -> push_(Tx, TxHash, Event, Timeout, false) end)
     end;
 push(Tx, Event = tx_created, Timeout) ->
@@ -396,6 +397,7 @@ handle_call(Req, From, St) ->
 handle_call_({get_max_nonce, Sender}, _From, #state{dbs = #dbs{db = Db}} = State) ->
     {reply, int_get_max_nonce(Db, Sender), State};
 handle_call_({push, Tx, Hash, Event}, _From, State) ->
+    lager:debug("push: TxHash = ~p", [Hash]),
     {Res, State1} = do_pool_db_put(pool_db_key(Tx), Tx, Hash, Event, State),
     {reply, Res, State1};
 handle_call_({top_change, Info}, _From, State) ->
@@ -648,6 +650,7 @@ check_candidate(Db, #dbs{gc_db = GCDb} = _Dbs,
                     {Gas, Acc}
             end;
         false ->
+            lager:debug("not valid anymore ~p", [TxHash]),
             %% This is not valid anymore.
             enter_tx_gc(GCDb, TxHash, Key, Height + invalid_tx_ttl()),
             {Gas, Acc#{ bad_txs := [{Db, Key, Tx} | maps:get(bad_txs, Acc)] }}
@@ -794,8 +797,12 @@ pool_db_merge(L1, [], N) ->
 enter_tx_gc(MempoolGC, TxHash, Key, TTL) ->
     Res = aec_tx_pool_gc:add_hash(MempoolGC, TxHash, Key, TTL),
     %% If Res == TTL we set the TTL otherwise kept prev. value
-    [ lager:debug("Adding ~p for GC at ~p", [pp(TxHash), TTL]) || Res == TTL ],
+    [ report_adding_tx_for_gc(TxHash, TTL) || Res == TTL ],
     ok.
+
+report_adding_tx_for_gc(TxHash, TTL) ->
+    lager:debug("Adding ~p for GC at ~p", [pp(TxHash), TTL]),
+    lager:debug("GCTx location: ~p", [aec_db:find_tx_location(TxHash)]).
 
 ets_select(T, P, infinity) ->
     ets:select(T, P);
@@ -815,6 +822,8 @@ do_top_change(#{old_height := OldHeight, new_height := NewHeight}, State)
     %% that the transactions in the deleted blocks were thereby undone
     %% (they may still be in the database, but their location info is gone)
     {ok, do_update_sync_top_target(NewHeight, State)};
+do_top_change(#{old_hash := OldHash, prev_new_hash := OldHash}, State) ->
+    {ok, State};
 do_top_change(#{type := Type, old_hash := OldHash, new_hash := NewHash}, State0) ->
     %% NG: does this work for common ancestor for micro blocks?
     {ok, Ancestor} =
@@ -844,6 +853,8 @@ do_top_change(Ancestor, Type, OldHash, NewHash, State0) ->
 
 update_pool_from_blocks(Hash, Hash,_Info,_Handled) -> ok;
 update_pool_from_blocks(Ancestor, Current, Info, Handled) ->
+    OnChain = aec_chain_state:hash_is_in_main_chain(Current),
+    lager:debug("Ancestor = ~p, Current = ~p (OnChain = ~p)", [Ancestor, Current, OnChain]),
     lists:foreach(fun(TxHash) ->
                           update_pool_on_tx_hash(TxHash, Info, Handled)
                   end,
@@ -858,6 +869,7 @@ safe_get_tx_hashes(Hash) ->
     end.
 
 update_pool_on_tx_hash(TxHash, {#dbs{gc_db = GCDb} = Dbs, OriginsCache, GCHeight}, Handled) ->
+    lager:debug("TxHash = ~p", [TxHash]),
     case ets:member(Handled, TxHash) of
         true -> ok;
         false ->
@@ -931,6 +943,7 @@ get_onchain_env() ->
 
 do_pool_db_put(Key, Tx, Hash, Event,
                #state{ dbs = #dbs{db = Db} = Dbs } = St0) ->
+    lager:debug("Hash = ~p", [Hash]),
     {GCHeight, St} = get_gc_height(St0),
     %% TODO: This check is never going to hit? Hash is part of the Key!?
     case ets:member(Db, Key) of
@@ -954,6 +967,7 @@ pool_db_raw_delete(#dbs{db = Db, visited_db = VDb, nonce_db = NDb}, Key) ->
 
 pool_db_raw_put(#dbs{db = Db, nonce_db = NDb, gc_db = GCDb},
                 GCHeight0, Key, Tx, TxHash) ->
+    lager:debug("TxHash = ~p", [TxHash]),
     ets:insert(Db, {Key, #tx{hash = TxHash, signed_tx = Tx}}), %% this resets any failed attempts
     insert_nonce(NDb, Key),
     GCHeight =
@@ -987,7 +1001,7 @@ check_signature(Tx, TxHash, Block, _BlockHash, Trees, _Event) ->
     Protocol = aec_blocks:version(Block),
     case aetx_sign:verify(Tx, Trees, Protocol) of
         {error, _} = E ->
-            lager:info("Failed signature check on tx: ~p, ~p\n", [E, TxHash]),
+            lager:debug("Failed signature check on tx: ~p, ~p\n", [E, TxHash]),
             E;
         ok ->
             ok
