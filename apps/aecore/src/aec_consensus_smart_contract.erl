@@ -65,6 +65,7 @@
         , get_sign_module/0
         , get_type/0
         , get_block_producer_configs/0
+        , is_leader_valid/3
         ]).
 
 -include_lib("aecontract/include/hard_forks.hrl").
@@ -380,6 +381,19 @@ get_type() -> pos.
 get_block_producer_configs() -> [{instance_not_used,
                                   #{expected_key_block_rate => expected_key_block_rate()}}].
 
+is_leader_valid(Node, Trees, TxEnv) ->
+    Header = aec_block_insertion:node_header(Node),
+    {ok, CD} = aeb_fate_abi:create_calldata("leader", []),
+    CallData = aeser_api_encoder:encode(contract_bytearray, CD),
+    case call_consensus_contract_(TxEnv, Trees, CallData, "leader()", 0) of
+        {ok, _Trees1, Call} ->
+            {address, ExpectedLeader} = aeb_fate_encoding:deserialize(aect_call:return_value(Call)),
+            Leader = aec_headers:miner(Header),
+            ExpectedLeader =:= Leader;
+        {error, What} ->
+            lager:info("Block validation failed with a reason ~p", [What]),
+            false
+    end.
 
 create_contracts([], _TxEnv, Trees) -> Trees;
 create_contracts([Contract | Tail], TxEnv, TreesAccum) ->

@@ -59,6 +59,7 @@
         , get_sign_module/0
         , get_type/0
         , get_block_producer_configs/0
+        , is_leader_valid/3
         ]).
 
 -export([ get_whitelist/0
@@ -521,6 +522,9 @@ get_sign_module() -> aec_keys.
 get_type() -> pow.
 
 get_block_producer_configs() -> aec_mining:get_miner_configs().
+
+is_leader_valid(_Node, _Trees, _TxEnv) ->
+    true.
 
 load_whitelist() ->
     W = aec_fork_block_settings:block_whitelist(),
