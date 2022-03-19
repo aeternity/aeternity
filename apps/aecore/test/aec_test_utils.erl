@@ -732,7 +732,7 @@ modify_innermost_tx(SignedTx, ModFun) ->
         {aega_meta_tx, Meta} ->
             NewInnerTx =
                 % recursively go to inner layers until the innermost tx is
-                % reached so its singed transaction is updated
+                % reached so its signed transaction is updated
                 % note: not tail recursive
                 modify_innermost_tx(aega_meta_tx:tx(Meta),
                                     ModFun),

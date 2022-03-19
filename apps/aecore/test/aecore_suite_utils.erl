@@ -269,7 +269,7 @@ stop_node(N, _Config) ->
     monitor_node(Node, true),
     case rpc:call(Node, init, stop, []) of
         ok ->
-            ct:log("Stop request to node ~p was sent succesfully", [N]),
+            ct:log("Stop request to node ~p was sent successfully", [N]),
             receive
                 {nodedown, Node} ->
                     ct:log("Node ~p stopped", [N]),

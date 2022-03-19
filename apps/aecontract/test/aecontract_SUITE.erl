@@ -2659,7 +2659,7 @@ register_no_vm_oracle(PubKey, S) ->
                                      , fee             => 100000 * aec_test_utils:min_gas_price()
                                      , nonce           => Nonce
                                      , query_fee       => 5
-                                     , query_format    => <<"Say someting">>
+                                     , query_format    => <<"Say something">>
                                      , response_format => <<"not a string anyway">>
                                      , ttl             => 0
                                      , abi_version     => ?ABI_NO_VM
@@ -6729,7 +6729,7 @@ sophia_use_memory_gas(_Cfg) ->
     ?assertEqual({true, Gas1, Gas4, Gas2}, {Gas4 > (Gas2 - Gas1) * 100, Gas1, Gas4, Gas2}),
 
 
-    %% Test that building a realy large string uses all gas. size = 5*pow(2,20)
+    %% Test that building a really large string uses all gas. size = 5*pow(2,20)
     {E,_Gas5} = ?call(call_contract, Acc, Ct0, dup_str, string, {<<"short">>, 20}, #{ return_gas_used => true
                                                                                     , gas => MaxAvailableGas}),
     ?assertMatchVM({error, <<"out_of_gas">>}, {error, <<"Out of gas">>}, E),

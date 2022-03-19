@@ -60,7 +60,7 @@ check_env() ->
     %% TODO: Consider which endpoints might be enabled by default during maintenance mode
     %TODO: we need to validate that all tags are present
     % Q: Why are obsolete groups in the config file if they are obsolete?
-    %    This could be a linguistic abiguity -- "obsolete" is the stage after "deprecated"
+    %    This could be a linguistic ambiguity -- "obsolete" is the stage after "deprecated"
     GroupDefaults = #{<<"chain">>         => Default0,
                       <<"transaction">>   => Default0,
                       <<"account">>       => Default0,

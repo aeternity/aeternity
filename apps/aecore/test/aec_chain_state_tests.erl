@@ -284,7 +284,7 @@ basic_chain(start_between_first_and_last_signalling_block, BlockCfg, ExpectedFor
 %%                 H1      HS            HE - 1
 %%
 %% Low difficulty chain has fork signalling result false.
-%% Hight difficulty chain has fork signalling result true.
+%% High difficulty chain has fork signalling result true.
 %% There is a fork at signalling start height. The low difficulty chain ends up
 %% at the last signalling block, then the high difficulty chain ends up at the
 %% same height and the fork signalling results are different for the two chains.

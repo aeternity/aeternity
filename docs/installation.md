@@ -14,7 +14,7 @@ Run below command to install latest version of aeternity node and follow the ins
 bash <(curl -s https://install.aeternity.io/install.sh)
 ```
 
-While this method is the easiest one it is not recomended for production systems.
+While this method is the easiest one it is not recommended for production systems.
 
 ## Package Install
 

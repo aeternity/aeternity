@@ -85,7 +85,7 @@ new_with_dirty_backend(Hash) ->
     #call_tree{calls = CtTree}.
 
 %% A new block always starts with an empty calls tree.
-%% Calls and return values are only keept for one block.
+%% Calls and return values are only kept for one block.
 -spec prune(aec_blocks:height(), aec_trees:trees()) -> aec_trees:trees().
 prune(_,Trees) ->
     aec_trees:set_calls(Trees, empty_with_backend()).

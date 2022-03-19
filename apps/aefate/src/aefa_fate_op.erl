@@ -977,7 +977,7 @@ bytes_cells(B) when ?IS_FATE_BYTES(B) ->
 %% A Variant also has a tag.
 %% A Variant has a tuple of values which size and types
 %%   are decided by the tag.
-%% Note: At the momement the types of the values are not
+%% Note: At the moment the types of the values are not
 %%       specified.
 %%       Also, tags are only numbers (in Sophia tags will
 %%       correspond to names)

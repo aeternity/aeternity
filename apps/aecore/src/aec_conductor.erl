@@ -263,7 +263,7 @@ init(Options) ->
 
     aec_metrics:try_update([ae,epoch,aecore,chain,height],
                            aec_blocks:height(aec_chain:top_block())),
-    epoch_mining:info("Miner process initilized ~p", [State6]),
+    epoch_mining:info("Miner process initialized ~p", [State6]),
     aec_events:subscribe(candidate_block),
     %% NOTE: The init continues at handle_info(init_continue, State).
     self() ! init_continue,

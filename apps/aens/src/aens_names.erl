@@ -61,7 +61,7 @@
 
 -spec new(aens_hash:name_hash(), aec_keys:pubkey(), non_neg_integer()) -> name().
 new(NameHash, OwnerPubkey, AbsoluteTTL) ->
-    %% TODO: add assertions on fields, similarily to what is done in aeo_oracles:new/2
+    %% TODO: add assertions on fields, similarly to what is done in aeo_oracles:new/2
     #name{id         = aeser_id:create(name, NameHash),
           owner_id   = aeser_id:create(account, OwnerPubkey),
           expires_by = AbsoluteTTL,

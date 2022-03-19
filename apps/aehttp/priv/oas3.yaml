@@ -34,7 +34,7 @@ tags:
   - name: dry-run
     description: External dry run endpoint.
   - name: node-operator
-    description: Endpoints to help the node oprator interract with the node
+    description: Endpoints to help the node oprator interact with the node
 externalDocs:
   description: Find out more about Aeternity
   url: http://www.aeternity.com

@@ -216,7 +216,7 @@ test_inject_account_at_genesis() ->
                                                            aec_trees:grant_fee(PK2, Trees, 400)
                                                            end),
     [{PK2, _}, {PK1, _}] = aeu_mtrees:to_list(aec_trees:accounts(aec_block_genesis:populated_trees())),
-    %% Changes to the genesis block need to be explicitly persisited
+    %% Changes to the genesis block need to be explicitly persisted
     G1 = aec_consensus:get_genesis_hash(),
     aec_consensus:set_genesis_hash(),
     G2 = aec_consensus:get_genesis_hash(),

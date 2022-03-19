@@ -19,7 +19,7 @@ It:
     generation.
   * Inspect a transaction currently present in the transaction pool. It
     provides number of failures and TTL.
-  * A getter and a setter for the minumum gas required from this node in
+  * A getter and a setter for the minimum gas required from this node in
     particular. This allows scripting node behaviour with varying gas price
     expectations. 
   It also supports the following peers functionalities:

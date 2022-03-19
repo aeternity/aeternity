@@ -143,7 +143,7 @@ There is quite a bit of overhead starting the GPU miner, thus running single
 mining attempts is not the best option. Therefore there is the configuration
 option `repeats: N` which will make multiple mining attempts (with different
 nonces) in one miner context. However, this option has to be used with CAUTION,
-the total run-time of the miner should preferrably not exceed 5 seconds. The
+the total run-time of the miner should preferably not exceed 5 seconds. The
 reason being that with the short block interval of BitCoin NG micro blocks (3
 seconds) - we risk mining on old blocks otherwise. (And thereby missing out on
 the reward collected from the transaction fees in the micro blocks.)

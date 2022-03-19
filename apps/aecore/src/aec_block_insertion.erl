@@ -118,7 +118,7 @@ ctx_get_recent_n([{_,H}|T], N, Acc) -> ctx_get_recent_n(T, N-1, [H|Acc]).
 
 %% Slims down the given key header for caching
 %% In case of BitcoinNG we should only care about the time, height and difficulty
-%% What get's cached depends on the currently active consensus engine
+%% What gets cached depends on the currently active consensus engine
 recent_cache_trim_node(ActiveConsensus, RecentNode) ->
     {node_hash(RecentNode), ActiveConsensus:recent_cache_trim_key_header(node_header(RecentNode))}.
 

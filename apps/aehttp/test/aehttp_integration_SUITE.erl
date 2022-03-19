@@ -830,7 +830,7 @@ init_per_testcase(named_oracle_transactions, Config) ->
         false -> {skip, requires_iris_or_newer}
     end;
 init_per_testcase(post_oracle_register, Config) ->
-    %% TODO: assert there is enought balance
+    %% TODO: assert there is enough balance
     {_, Pubkey} = aecore_suite_utils:sign_keys(?NODE),
     [{account_id, aeser_api_encoder:encode(account_pubkey, Pubkey)},
      {oracle_id, aeser_api_encoder:encode(oracle_pubkey, Pubkey)},
@@ -3522,7 +3522,7 @@ naming_system_manage_name(_Config) ->
 
     {ok, 200, #{<<"top_block_height">> := Height}} = get_status_sut(),
 
-    %% TODO: find out how to craete HTTP path with unicode chars
+    %% TODO: find out how to create HTTP path with unicode chars
     %%Name        = <<"詹姆斯詹姆斯.test"/utf8>>,
     Name        = aens_test_utils:fullname(<<"without-unicode">>, Height),
     NameSalt    = 12345,
@@ -4283,7 +4283,7 @@ prepare_for_spending(BlocksToMine) ->
 add_spend_txs() ->
     MineReward = rpc(aec_governance, block_mine_reward, [1]),
     Fee = ?SPEND_FEE,
-    %% For now. Mining is severly slowed down by having too many Tx:s in
+    %% For now. Mining is severely slowed down by having too many Tx:s in
     %% the tx pool
     MaxSpendTxsInBlock = 20,
     MinimalAmount = 1,

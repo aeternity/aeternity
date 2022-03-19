@@ -1216,7 +1216,7 @@ withdraw_high_amount_short_confirmation_time(Cfg) ->
     ok = withdraw_full_cycle_(Amount, #{}, Round, Cfg1).
 
 withdraw_low_amount_long_confirmation_time(Cfg) ->
-    % Low amount and low factor should lead to comparitively long confirmation time
+    % Low amount and low factor should lead to comparatively long confirmation time
     Cfg1 = set_configs([?SLOGAN, {minimum_depth_factor, 8}], Cfg),
     Amount = 1,
     Round = 1,
@@ -1234,7 +1234,7 @@ withdraw_low_amount_long_confirmation_time(Cfg) ->
     ok = withdraw_full_cycle_(Amount, #{}, Round, Cfg2).
 
 withdraw_low_amount_long_confirmation_time_negative_test(Cfg) ->
-    % Low amount and low factor should lead to comparitively long confirmation time
+    % Low amount and low factor should lead to comparatively long confirmation time
     Cfg1 = set_configs([ ?SLOGAN
                        , {minimum_depth, 3}
                        , {minimum_depth_channel, 10}
@@ -2069,7 +2069,7 @@ wrong_create_({I, R, #{initiator_amount := IAmt0, responder_amount := RAmt0,
             {_, WrongTx} = TryCheating(create_tx, I1, Debug),
             {ok, _} = receive_from_fsm(error, I1, ErrResponse, ?TIMEOUT, Debug),
 
-            % turn default behavior off, the initator deliberatly had sent
+            % turn default behavior off, the initator deliberately had sent
             % invalid tx, the responder must reject it
             ok = rpc(dev1, aesc_fsm, strict_checks, [FsmI, false], Debug),
 
@@ -2091,7 +2091,7 @@ wrong_create_({I, R, #{initiator_amount := IAmt0, responder_amount := RAmt0,
             %% new tx
             {ok, _} = receive_from_fsm(error, R1, bad_signature, ?TIMEOUT, Debug),
 
-            % turn default behavior off, the responder deliberatly had sent
+            % turn default behavior off, the responder deliberately had sent
             % invalid tx, the initiator must reject it
             ok = rpc(dev1, aesc_fsm, strict_checks, [FsmR, false], Debug),
 
@@ -2165,7 +2165,7 @@ wrong_action({I, R, _Spec, _Port, Debug}, Poster, Malicious,
             {ok, _} = receive_from_fsm(error, D, ErrMsg, ?TIMEOUT, Debug),
             wait_for_open(FsmD, Debug),
 
-            % turn default behavior off, the poster deliberatly had sent
+            % turn default behavior off, the poster deliberately had sent
             % invalid tx, the acknowledger must reject it
             ok = rpc(dev1, aesc_fsm, strict_checks, [FsmD, false], Debug),
 
@@ -2188,7 +2188,7 @@ wrong_action({I, R, _Spec, _Port, Debug}, Poster, Malicious,
             %% that the transaction was valid so it is rightfully in an `open`
             %% state when one receives the conflict message by the other party
             %% since this test is checking if the starting party (D) is
-            %% reporting the conflict, we don't exepect the malicious
+            %% reporting the conflict, we don't expect the malicious
             %% acknowledger to report anything
             ok = rpc(dev1, aesc_fsm, strict_checks, [FsmA, true], Debug)
     end,

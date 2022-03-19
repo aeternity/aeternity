@@ -452,7 +452,7 @@ query_oracle_negative(Cfg) ->
     Q1 = aeo_test_utils:query_tx(BadSenderKey, OracleId, S2),
     {error, account_not_found} = aetx:process(Q1, Trees, Env),
 
-    %% Test unsufficient funds.
+    %% Test insufficient funds.
     S3     = aeo_test_utils:set_account_balance(SenderKey, 0, S2),
     Trees1 = aeo_test_utils:trees(S3),
     Q2     = aeo_test_utils:query_tx(SenderKey, OracleId, S2),

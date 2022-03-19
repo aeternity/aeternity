@@ -1055,7 +1055,7 @@ downgrade_to_bucket_with_no_eviction_possible() ->
 
     % When verifying peer 2, peer 1 will be downgraded; but because there is
     % no space in the unverified bucket (the peer being upgraded is selected)
-    % it is deleted. Not very realistic in itself, but theorically possible.
+    % it is deleted. Not very realistic in itself, but theoretically possible.
     {verified, Pool6} = verify(Pool5, Now, Id2),
     ?assertEqual({undefined, undefined}, peer_state(Pool6, Id1)),
     ?assertEqual({verified, false}, peer_state(Pool6, Id2)),

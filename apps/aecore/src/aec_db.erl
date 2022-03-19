@@ -169,7 +169,7 @@
 tables() -> tables(ram).
 
 %% WARNING: We are migrating away from mnesia - currently some
-%%          backends are bypasing the mnesia transaction manager and issuing
+%%          backends are bypassing the mnesia transaction manager and issuing
 %%          a custom commit to the backend - as a results indexes are not
 %%          updated automatically - If you add another index then you need
 %%          to update the custom bypass logic

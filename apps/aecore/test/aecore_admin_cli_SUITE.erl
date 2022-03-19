@@ -97,7 +97,7 @@ init_per_suite(Config0) ->
         "  tx_pool Transaction pool commands\n",
     ExpectedRes = Res,
     %% mine keyblocks so the miner receives their first reward and have some
-    %% tokens in their account - this creates the account iteself
+    %% tokens in their account - this creates the account itself
     {ok, _} = aecore_suite_utils:mine_blocks(?NODE_NAME, ?REWARD_DELAY + 1, ?MINE_RATE, key, #{}),
     [{executable, Executable}, {nodes, [aecore_suite_utils:node_tuple(?NODE)]} | Config].
 

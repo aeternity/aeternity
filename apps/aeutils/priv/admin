@@ -73,13 +73,13 @@ tx_pool() ->
                                    , arguments => [tx_hash_arg(),
                                                    timeout_arg()]}
                    , "miner_gas_price" =>
-                      #{ help => "Handle tx_pool expectation for minumum gas_price"
+                      #{ help => "Handle tx_pool expectation for minimum gas_price"
                        , commands => #{ "get" => #{ helper => "Get the current miner_gas_price"
                                                   , handler => {fun tx_pool_miner_gas_price/2,
                                                                 not_used}
                                                   , arguments => [timeout_arg()]
                                                }
-                                      , "set" => #{ helper => "Set the minumum miner_gas_price. This does not impact transactions currently in the pool"
+                                      , "set" => #{ helper => "Set the minimum miner_gas_price. This does not impact transactions currently in the pool"
                                                   , handler => {fun set_tx_pool_miner_gas_price/2,
                                                                 not_used}
                                                   , arguments => [#{ name => new_gas_price 
