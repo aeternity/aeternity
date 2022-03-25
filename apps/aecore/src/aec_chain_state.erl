@@ -828,11 +828,10 @@ assert_state_hash_valid(Trees, Node) ->
         false -> aec_block_insertion:abort_state_transition({root_hash_mismatch, RootHash, Expected})
     end.
 
-validate_generation_leader(Node, Trees, Env, State) ->
+validate_generation_leader(Node, Trees, Env) ->
     case node_is_key_block(Node) of
         true  ->
             ConsensusModule = aec_block_insertion:node_consensus(Node),
-            Header = node_header(Node),
             case ConsensusModule:is_leader_valid(Node, Trees, Env) of
                 true -> ok;
                 false -> {error, invalid_leader}
@@ -865,7 +864,7 @@ apply_node_transactions(Node, Trees, ForkInfo, State) ->
                      end,
             Trees3 = Consensus:state_pre_transform_key_node(Node, Trees2),
             %% leader generation happens after pre_transformations
-            case validate_generation_leader(Node, Trees3, Env, State) of
+            case validate_generation_leader(Node, Trees3, Env) of
                 ok ->
                     Delay  = aec_governance:beneficiary_reward_delay(),
                     case Height > aec_block_genesis:height() + Delay of
@@ -937,12 +936,10 @@ grant_fees(Node, Trees, Delay, FraudStatus, _State) ->
     {BeneficiaryReward1, BeneficiaryReward2, LockAmount} =
         calc_rewards(FraudStatus1, FraudStatus2, KeyFees, MineReward2,
                      FraudReward1, node_is_genesis(KeyNode1)),
-
     OldestBeneficiaryVersion = node_version(KeyNode1),
     {{AdjustedReward1, AdjustedReward2}, DevRewards} =
         aec_dev_reward:split(BeneficiaryReward1, BeneficiaryReward2,
                              OldestBeneficiaryVersion),
-
     Trees1 = lists:foldl(
                fun({K, Amt}, TreesAccum) when Amt > 0 ->
                        Consensus:state_grant_reward(K, Node, TreesAccum, Amt);
