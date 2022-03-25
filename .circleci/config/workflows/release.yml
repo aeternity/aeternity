@@ -140,6 +140,7 @@ jobs:
       context: ae-slack
       requires:
         - linux-release-tarball
+        - upload-tarballs-github-release
       filters:
         branches:
           ignore: /.*/
