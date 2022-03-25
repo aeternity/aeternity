@@ -110,17 +110,6 @@ jobs:
           only: << pipeline.parameters.tag_regex >>
 
   - slack/on-hold:
-      name: hodl-blue-notification
-      context: ae-slack
-      requires:
-        - linux-release-tarball
-      filters:
-        branches:
-          ignore: /.*/
-        tags:
-          only: << pipeline.parameters.tag_regex >>
-
-  - slack/on-hold:
       name: hodl-uat-hc-notification
       context: ae-slack
       requires:
@@ -141,38 +130,12 @@ jobs:
         tags:
           only: << pipeline.parameters.tag_regex >>
 
-  - hodl_blue:
-      type: approval
-      requires:
-        - hodl-blue-notification
-      filters:
-        branches:
-          ignore: /.*/
-        tags:
-          only: << pipeline.parameters.tag_regex >>
-
   - deploy:
-      name: deploy-uat-blue
-      version: $CIRCLE_TAG
-      env: uat
-      color: blue
-      downtime: 1800 #30m
-      context:
-        - ae-slack
-        - ae-node-builds
-      requires:
-        - linux-release-tarball
-        - hodl_blue
-      filters:
-        branches:
-          ignore: /.*/
-        tags:
-          only: << pipeline.parameters.tag_regex >>
-
-  - deploy:
-      name: deploy-uat-hc
+      name: deploy-uat-hc-producer
       version: $CIRCLE_TAG
       env: uat-hc
+      kind: producer
+      config_env: uat-hc@producer
       downtime: 1800 #30m
       context:
         - ae-slack
@@ -186,41 +149,19 @@ jobs:
         tags:
           only: << pipeline.parameters.tag_regex >>
 
-  - slack/on-hold:
-      name: hodl-green-notification
-      context: ae-slack
-      requires:
-        - linux-release-tarball
-        - deploy-uat-blue
-      filters:
-        branches:
-          ignore: /.*/
-        tags:
-          only: << pipeline.parameters.tag_regex >>
-
-  - hodl_green:
-      type: approval
-      requires:
-        - hodl-green-notification
-      filters:
-        branches:
-          ignore: /.*/
-        tags:
-          only: << pipeline.parameters.tag_regex >>
-
   - deploy:
-      name: deploy-uat-green
+      name: deploy-uat-hc-syncing
       version: $CIRCLE_TAG
-      env: uat
-      color: green
+      env: uat-hc
+      kind: syncing
+      config_env: uat-hc@producer
       downtime: 1800 #30m
       context:
         - ae-slack
         - ae-node-builds
       requires:
         - linux-release-tarball
-        - deploy-uat-blue
-        - hodl_green
+        - hodl_uat_hc
       filters:
         branches:
           ignore: /.*/
