@@ -62,10 +62,13 @@ default_beneficiaries() ->
 
 enabled() ->
     env(dev_reward_enabled, ?ENABLED).
+
 beneficiaries() ->
     env(dev_reward_beneficiaries, ?MAINNET_BENEFICIARIES).
+
 total_shares() ->
     ?TOTAL_SHARES.
+
 allocated_shares() ->
     {ok, V} = aeu_env:get_env(aecore, dev_reward_allocated_shares),
     V.
