@@ -181,7 +181,7 @@ genesis_transform_trees(Trees0, #{ <<"contracts">> := Contracts
                                             aec_headers:prev_hash(GenesisHeader)),
     Trees1 = create_contracts(Contracts, TxEnv, Trees0),
     Trees = call_contracts(Calls, TxEnv, Trees1),
-    Trees.
+    aect_call_state_tree:prune(0, Trees).
 
 genesis_raw_header() ->
     aec_headers:new_key_header(
@@ -310,17 +310,18 @@ call_consensus_contract(Node, Trees, EncodedCallData, Keyword, Amount) ->
     call_consensus_contract_(TxEnv, Trees, EncodedCallData, Keyword, Amount).
     
 call_consensus_contract_(TxEnv, Trees, EncodedCallData, Keyword, Amount) ->
+    Height = aetx_env:height(TxEnv),
     lager:info("Height ~p, calling ~p with amount ~p aettos, encoded ~p",
-               [aetx_env:height(TxEnv), Keyword, Amount, EncodedCallData]),
+               [Height, Keyword, Amount, EncodedCallData]),
     ContractPubkey = contract_pubkey(),
     OwnerPubkey = contract_owner(),
     Contract = aect_state_tree:get_contract(ContractPubkey,
                                             aec_trees:contracts(Trees)),
     OwnerAcc = aec_accounts_trees:get(OwnerPubkey, 
                                             aec_trees:accounts(Trees)),
-    Fee = 1000000000000000000, %% TODO: fine tune this
-    Gas = 1000000000000000000, %% TODO: fine tune this
-    GasPrice = 10000000000, %% TODO: fine tune this
+    Fee = 5000000000000000000, %% TODO: fine tune this
+    Gas = 5000000000000000000, %% TODO: fine tune this
+    GasPrice = 50000000000, %% TODO: fine tune this
     {ok, OwnerAcc1} = aec_accounts:earn(OwnerAcc, Fee + Gas * GasPrice),
     Trees1 = aec_trees:set_accounts(Trees, aec_accounts_trees:enter(OwnerAcc1,
                                                                     aec_trees:accounts(Trees))),
@@ -343,7 +344,9 @@ call_consensus_contract_(TxEnv, Trees, EncodedCallData, Keyword, Amount) ->
             Call = aect_call_state_tree:get_call(ContractPubkey, CallId,
                                                  Calls),
             ok = aect_call:return_type(Call),
-            {ok, Trees2, Call};
+            %% prune the call being produced. If not done, the fees for it
+            %% would be redistributed to the corresponding leaders
+            {ok, aect_call_state_tree:prune(Height, Trees2), Call};
         {error, _What} = Err -> Err
     end.
 
