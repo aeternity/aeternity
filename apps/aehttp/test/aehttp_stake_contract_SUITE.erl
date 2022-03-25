@@ -14,7 +14,8 @@
 -export([mine_and_sync/1,
          spend_txs/1,
          simple_withdraw/1,
-         change_leaders/1
+         change_leaders/1,
+         verify_fees/1
         ]).
 
 -include_lib("stdlib/include/assert.hrl").
@@ -24,6 +25,7 @@
 
 -define(NETWORK_ID, <<"ae_smart_contract_test">>).
 -define(STAKING_CONTRACT, "MainStaking").
+-define(REWARD_DELAY, 10).
 -define(NODE1, dev1).
 -define(NODE1_NAME, aecore_suite_utils:node_name(?NODE1)).
 
@@ -68,7 +70,8 @@ all() -> [{group, all}
 
 groups() ->
     [ {all, [sequence],
-       [ mine_and_sync
+       [ verify_fees
+       , mine_and_sync
        , spend_txs
        , simple_withdraw
        , change_leaders
@@ -160,7 +163,7 @@ init_per_suite(Config0) ->
                   <<"mining">> =>
                       #{<<"micro_block_cycle">> => 1,
                         <<"autostart">> => false,
-                        <<"beneficiary_reward_delay">> => 2
+                        <<"beneficiary_reward_delay">> => ?REWARD_DELAY
                         }}
                 end,
             {ok, _StartedApps} = application:ensure_all_started(gproc),
@@ -318,8 +321,8 @@ simple_withdraw(Config) ->
     Top0 = rpc(?NODE1, aec_chain, top_header, []),
     ct_log_header(Top0),
     InitBalance = balance(pubkey(?ALICE)),
-    {ok, AliceContractBalance} = inspect_staking_contract(?ALICE, {balance, ?ALICE}, Config),
-    {ok, BobContractBalance} = inspect_staking_contract(?ALICE, {balance, ?BOB}, Config),
+    {ok, _AliceContractBalance} = inspect_staking_contract(?ALICE, {balance, ?ALICE}, Config),
+    {ok, _BobContractBalance} = inspect_staking_contract(?ALICE, {balance, ?BOB}, Config),
     {ok,
         #{<<"delegates">> := [[<<"ak_2MGLPW2CHTDXJhqFJezqSwYSNwbZokSKkG7wSbGtVmeyjGfHtm">>, 1000000000000000000000]],
           <<"main_staking_ct">> := <<"ak_LRbi65kmLtE7YMkG6mvG5TxAXTsPJDZjAtsPuaXtRyPA7gnfJ">>,
@@ -334,7 +337,7 @@ simple_withdraw(Config) ->
                                               Config),
                            ?ALICE),
     {ok, [_]} = rpc:call(?NODE1_NAME, aec_tx_pool, peek, [infinity]),
-    {value, Acc} = rpc(?NODE1, aec_chain, get_account, [pubkey(?ALICE)]),
+    {value, _Acc} = rpc(?NODE1, aec_chain, get_account, [pubkey(?ALICE)]),
     mine_tx(CallTx),
     EndBalance = balance(pubkey(?ALICE)),
     {ok, Call} = call_info(CallTx),
@@ -349,7 +352,7 @@ simple_withdraw(Config) ->
 %%    {EndBalance, EndBalance} = {EndBalance, InitBalance + WithdrawAmount -
 %%                               TotalSpent},
 
-    {ok, AliceContractBalance1} = inspect_staking_contract(?ALICE, {balance, ?ALICE}, Config),
+    {ok, _AliceContractBalance1} = inspect_staking_contract(?ALICE, {balance, ?ALICE}, Config),
 %%    {AliceContractBalance, AliceContractBalance} = {AliceContractBalance, AliceContractBalance1 + 1},
 %%    {ok, BobContractBalance} = inspect_staking_contract(?ALICE, {balance, ?BOB}, Config),
     Top1 = rpc(?NODE1, aec_chain, top_header, []),
@@ -379,15 +382,12 @@ change_leaders(Config) ->
             Leader
         end,
     Ls = lists:map(fun(_Idx) -> NewLeader() end, lists:seq(1, Blocks)),
-
     Stats =
         lists:foldl(
             fun(Leader, Accum) ->
                 maps:update_with(Leader, fun(X) -> X + 1 end, 1, Accum)
             end, #{}, Ls),
     ct:log("Leaders: ~p", [Stats]),
-
-
     AliceLeaderCnt = maps:get(encoded_pubkey(?ALICE), Stats, 0),
     BobLeaderCnt = maps:get(encoded_pubkey(?BOB), Stats, 0),
     false = AliceLeaderCnt =:= Blocks,
@@ -397,10 +397,90 @@ change_leaders(Config) ->
     {ok, _B} = wait_same_top(),
     ok.
     
+verify_fees(Config) ->
+    %% start without any tx fees, only a keyblock
+    {ok, _} = aecore_suite_utils:mine_key_blocks(?NODE1_NAME, ?REWARD_DELAY + 1),
+    Test =
+        fun() ->
+            %% gather balances before reward distribution
+            AliceBalance0 = balance(pubkey(?ALICE)),
+            BobBalance0 = balance(pubkey(?BOB)),
+            {ok, AliceContractBalance0} = inspect_staking_contract(?ALICE, {balance, ?ALICE}, Config),
+            {ok, BobContractBalance0} = inspect_staking_contract(?ALICE, {balance, ?BOB}, Config),
+            {ok, _} = aecore_suite_utils:mine_key_blocks(?NODE1_NAME, 1),
+            %% gather balances after reward distribution
+            AliceBalance1 = balance(pubkey(?ALICE)),
+            BobBalance1 = balance(pubkey(?BOB)),
+            {ok, AliceContractBalance1} = inspect_staking_contract(?ALICE, {balance, ?ALICE}, Config),
+            {ok, BobContractBalance1} = inspect_staking_contract(?ALICE, {balance, ?BOB}, Config),
+            %% inspect who shall receive what reward
+            Top = rpc(?NODE1, aec_chain, top_header, []),
+            Height = aec_headers:height(Top),
+            ct:log("Current top is ~p", [Height]),
+            RewardForHeight = Height - ?REWARD_DELAY,
+            {ok, PrevH} = rpc(?NODE1, aec_chain, get_key_header_by_height, [RewardForHeight - 1]),
+            {ok, RewardH} = rpc(?NODE1, aec_chain, get_key_header_by_height, [RewardForHeight]),
+            Beneficiary1 = aec_headers:beneficiary(PrevH),
+            Beneficiary2 = aec_headers:beneficiary(RewardH),
+            ct:log("Beneficiary1: ~p, Beneficiary2: ~p", [Beneficiary1, Beneficiary2]),
+            %% assert account balances do not change; only contract balances change
+            {AliceBalance0, AliceBalance0} = {AliceBalance0, AliceBalance1},
+            {BobBalance0, BobBalance0} = {BobBalance0, BobBalance1},
+            %% calc rewards
+            {{AdjustedReward1, AdjustedReward2}, _DevRewards} =
+                calc_rewards(RewardForHeight),
+            {AliceExpectedRewards, BobExpectedRewards} =
+                lists:foldl(
+                    fun({Pubkey, Amount}, {AliceRewards0, BobRewards0}) ->
+                          case who_by_pubkey(Pubkey) of
+                              ?ALICE ->
+                                  {AliceRewards0 + Amount, BobRewards0};
+                              ?BOB ->
+                                  {AliceRewards0, BobRewards0 + Amount}
+                          end
+                    end,
+                    {0, 0},
+                    [{Beneficiary1, AdjustedReward1},
+                    {Beneficiary2, AdjustedReward2}]),
+            AliceReward = AliceContractBalance1 - AliceContractBalance0,
+            ct:log("Alice expected rewards: ~p, actual rewards: ~p",
+                  [AliceExpectedRewards, AliceReward]),
+            {AliceExpectedReward, AliceExpectedReward} =
+                {AliceExpectedRewards, AliceReward},
+            BobReward = BobContractBalance1 - BobContractBalance0,
+            ct:log("Bob expected rewards: ~p, actual rewards: ~p",
+                  [BobExpectedRewards, BobReward]),
+            {BobExpectedReward, BobExpectedReward} =
+                {BobExpectedRewards, BobReward}
+        end,
+    %% test a couple of empty generations - there are no fees, only block
+    %% rewards
+    lists:foreach(
+        fun(_) -> Test() end,
+        lists:seq(1, 10)),
+    {ok, SignedTx} = seed_account(pubkey(?ALICE), 1),
+    {ok, _} = aecore_suite_utils:mine_key_blocks(?NODE1_NAME, ?REWARD_DELAY - 1),
+    ct:log("Test with no transaction", []),
+    Test(), %% before fees
+    ct:log("Test with a spend transaction", []),
+    Test(), %% fees
+    ct:log("Test with no transaction", []),
+    Test(), %% after fees
+    ok.
 
 pubkey({Pubkey, _}) -> Pubkey.
 
 privkey({_, Privkey}) -> Privkey.
+
+who_by_pubkey(Pubkey) ->
+    case Pubkey =:= pubkey(?ALICE) of
+        true -> ?ALICE;
+        false ->
+            case Pubkey =:= pubkey(?BOB) of
+                true -> ?BOB;
+                false -> error(unknown_beneficiary)
+            end
+    end.
 
 encoded_pubkey(Who) ->
     aeser_api_encoder:encode(account_pubkey, pubkey(Who)).
@@ -446,7 +526,7 @@ seed_account(RecpipientPubkey, Amount) ->
     ok = rpc:call(?NODE1_NAME, aec_tx_pool, push, [SignedTx, tx_received]),
     {ok, [_SpendTx]} = rpc:call(?NODE1_NAME, aec_tx_pool, peek, [infinity]),
     mine_tx(SignedTx),
-    ok.
+    {ok, SignedTx}.
 
 mine_tx(SignedTx) ->
     TxHash = aeser_api_encoder:encode(tx_hash, aetx_sign:hash(SignedTx)),
@@ -513,3 +593,44 @@ decode_consensus_result(Call, Fun) ->
         aect_test_utils:decode_call_result(binary_to_list(BinCode), Fun,
                                           ReturnType, ReturnValue),
     {ReturnType, Res}.
+
+calc_rewards(RewardForHeight) ->
+    %% we distribute rewards for the previous 
+    {ok, #{key_block := PrevKB,
+           micro_blocks := MBs}}
+        = rpc(?NODE1, aec_chain, get_generation_by_height,
+              [RewardForHeight - 1, forward]),
+    PrevGenProtocol = aec_blocks:version(PrevKB),
+    Txs = lists:flatten(
+            lists:map(
+                fun(MB) -> aec_blocks:txs(MB) end,
+                MBs)),
+    ct:log("Txs: ~p", [Txs]),
+    KeyReward = rpc(?NODE1, aec_governance, block_mine_reward,
+                    [RewardForHeight]),
+    GenerationFees =
+        lists:foldl(
+            fun(SignTx, Accum) ->
+                %% TODO: maybe add support for contract calls:
+                %% * contract create
+                %% * contract call
+                %% * force progress
+                %% * meta tx
+                Tx = aetx_sign:tx(SignTx),
+                Fee = aetx:fee(Tx),
+                Accum + Fee
+            end,
+            0,
+            Txs),
+    ct:log("Height ~p, Generation fees: ~p, key reward: ~p",
+           [RewardForHeight, GenerationFees, KeyReward]),
+    BeneficiaryReward1 = GenerationFees * 4 div 10,
+    BeneficiaryReward2 = GenerationFees - BeneficiaryReward1 + KeyReward,
+   %% TODO: verify devrewards
+    {{AdjustedReward1, AdjustedReward2}, _DevRewards} = Res =
+        rpc(?NODE1, aec_dev_reward, split,
+            [BeneficiaryReward1, BeneficiaryReward2, PrevGenProtocol]),
+    ct:log("AdjustedReward1: ~p, AdjustedReward2: ~p",
+           [AdjustedReward1, AdjustedReward2]),
+    Res.
+
