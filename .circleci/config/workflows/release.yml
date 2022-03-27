@@ -155,7 +155,7 @@ jobs:
       version: $CIRCLE_TAG
       env: uat-hc
       kind: syncing
-      config_env: uat-hc@producer
+      config_env: uat-hc@syncing
       downtime: 1800 #30m
       context:
         - ae-slack
