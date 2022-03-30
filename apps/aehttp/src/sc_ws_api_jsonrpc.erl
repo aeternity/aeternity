@@ -531,15 +531,20 @@ process_request(#{<<"method">> := <<"channels.get.poi">>,
         {{ok, _},     {error, _}} -> {error, {broken_encoding, [contract]}};
         {{error, _},  {error, _}} -> {error, {broken_encoding, [account, contract]}}
     end;
-process_request(#{<<"method">> := <<"channels.message">>,
+process_request(#{<<"method">> := <<"channels.message">> = M,
                   <<"params">> := #{ <<"to">>    := ToB
-                                   , <<"info">>  := Msg}}, FsmPid) ->
+                                   , <<"info">>  := Msg} = Params}, FsmPid) ->
     case aeser_api_encoder:safe_decode(account_pubkey, ToB) of
         {ok, To} ->
-            case aesc_fsm:inband_msg(FsmPid, To, Msg) of
-                ok -> no_reply;
-                {error, _Reason} = Err -> Err
-            end;
+            apply_with_optional_params(
+                M, #{}, Params,
+                fun(XOpts) ->
+                    From = maps:get(from, XOpts, me),
+                    case aesc_fsm:inband_msg(FsmPid, From, To, Msg) of
+                        ok -> no_reply;
+                        {error, _Reason} = Err -> Err
+                    end
+                end);
         _ -> {error, {broken_encoding, [account]}}
     end;
 process_request(#{<<"method">> := <<"channels.deposit">> = M,
@@ -865,6 +870,7 @@ merge_params({error, _} = Error, _) ->
 merge_params(Map1, Map2) when is_map(Map1), is_map(Map2) ->
     maps:merge(Map1, Map2).
 
+optional_params(<<"channels.message">>              ) -> [from_param()];
 optional_params(<<"channels.history.fetch">>        ) -> [n_param() | filter_params()];
 optional_params(<<"channels.update.new">>           ) -> offchain_update_params();
 optional_params(<<"channels.update.new_contract">>  ) -> offchain_update_params();
@@ -900,6 +906,9 @@ bh_param() ->
 
 meta_param() ->
     {<<"meta">>, meta, #{ type => {list, #{type => binary}} }}.
+
+from_param() ->
+    {<<"from">>, from, #{ type => {hash, account_pubkey} }}.
 
 fee_and_gas_price_params() ->
     [nonce_param(), fee_param(), gas_price_param()].
