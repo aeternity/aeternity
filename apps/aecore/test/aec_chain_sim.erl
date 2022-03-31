@@ -333,6 +333,7 @@ find_signed_tx(TxHash) ->
 %% are not already installed.
 %%
 setup_meck() ->
+    aec_db:install_test_env(),
     meck:expect(aec_chain_state, hash_is_in_main_chain, 2,
                 fun(Hash, TopHash) ->
                         chain_req({hash_is_in_main_chain, Hash, TopHash})
@@ -380,11 +381,11 @@ setup_meck() ->
 %% Removes the mocks installed by the simulator.
 %%
 remove_meck() ->
+    aec_db:uninstall_test_env(),
     meck:unload([ aec_chain
                 , aec_chain_state
                 , aec_db ]),
     ok.
-
 
 %%%===================================================================
 %$% gen_server implementation

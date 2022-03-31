@@ -137,6 +137,9 @@
 
 -export([backend_mode/0]).
 
+-export([ install_test_env/0
+        , uninstall_test_env/0 ]).
+
 -include("blocks.hrl").
 -include("aec_db.hrl").
 
@@ -256,10 +259,9 @@ opt_rocksdb_props(_, _, _, _, Props) ->
 rocksdb_props(Tab, Type, Arity, Props) ->
     [{mrdb_encoding, encoding(Tab, Type, Arity)} | Props].
 
-encoding(T, _, _) when T==aec_chain_state;
-                       T==aec_contract_state;
+encoding(aec_chain_state, _, _) -> {term, {object, term}};
+encoding(T, _, _) when T==aec_contract_state;
                        T==aec_call_state;
-                       T==aec_block_state;
                        T==aec_oracle_state;
                        T==aec_account_state;
                        T==aec_channel_state;
@@ -1103,7 +1105,9 @@ fold_mempool(FunIn, InitAcc) ->
 load_database() ->
     lager:debug("load_database()", []),
     ok = wait_for_tables(),
+    lager:debug("tables loaded", []),
     convert_top_block_entry(),
+    lager:debug("top block entry converted", []),
     aec_db_gc:maybe_swap_nodes().
 
 wait_for_tables() ->
@@ -1138,7 +1142,6 @@ check_db() ->
         %% debugging logs we will get an erl_crash.dump with a truncated stack trace.
         lager:start(),
         Mode = backend_mode(),
-        put_backend_module(Mode),
         Storage = ensure_schema_storage_mode(Mode),
         lager:info("Database persist mode ~p", [maps:get(persist, Mode)]),
         lager:info("Database backend ~p", [maps:get(module, Mode)]),
@@ -1152,12 +1155,17 @@ check_db() ->
     end.
 
 start_db() ->
+    lager:debug("starting db", []),
     load_database(),
+    lager:debug("database loaded", []),
     aefa_fate_op:load_pre_iris_map_ordering(),
+    lager:debug("pre-IRIS map ordering loaded", []),
     case aec_db:persisted_valid_genesis_block() of
         true ->
             aec_chain_state:ensure_chain_ends(),
+            lager:debug("chain ends ensured", []),
             aec_chain_state:ensure_key_headers_height_store(),
+            lager:debug("key headers height store ensured", []),
             ok;
         false ->
             lager:error("Persisted chain has a different genesis block than "
@@ -1175,7 +1183,43 @@ get_backend_module() ->
 initialize_db(ram) ->
     initialize_db(expand_mode(ram), ok).
 
+%% == Test setup env
+%% Ensures that e.g. persistent terms are present, logging which ones had to be added.
+
+install_test_env() ->
+    ensure_backend_module(),
+    ok.
+
+uninstall_test_env() ->
+    remove_added_pts().
+
+ensure_backend_module() ->
+    Key = {aec_db, backend_module},
+    case persistent_term:get(Key, error) of
+        error ->
+            note_added_pt(Key),
+            persistent_term:put(Key, get_test_backend_module());
+        _ ->
+            ok
+    end.
+
+get_test_backend_module() ->
+    Str = os:getenv("AETERNITY_TESTCONFIG_DB_BACKEND", "mnesia"),
+    list_to_existing_atom(Str).
+
+note_added_pt(Key) ->
+    Var = {?MODULE, added_pts},
+    Set = persistent_term:get(Var, ordsets:new()),
+    persistent_term:put(Var, ordsets:add_element(Key, Set)).
+
+remove_added_pts() ->
+    Keys = persistent_term:get({?MODULE, added_pts}, ordsets:new()),
+    [persistent_term:erase(K) || K <- Keys].
+
+%% == End Test setup env
+
 initialize_db(Mode, Storage) ->
+    put_backend_module(Mode),
     add_backend_plugins(Mode),
     run_hooks('$aec_db_add_plugins', Mode),
     add_index_plugins(),
