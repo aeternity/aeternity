@@ -332,7 +332,6 @@ start_chain_db(ram) ->
     ok = aec_db:initialize_db(ram),
     Tabs = [Tab || {Tab, _} <- aec_db:tables(ram)],
     ok = mnesia:wait_for_tables(Tabs, 5000),
-    aec_db:prepare_mnesia_bypass(),
     ok;
 
 start_chain_db(disc) ->
@@ -340,7 +339,6 @@ start_chain_db(disc) ->
     persistent_term:put({?MODULE, db_mode}, {disc, Persist}),
     application:set_env(aecore, persist, true),
     aec_db:check_db(),
-    aec_db:prepare_mnesia_bypass(),
     aec_db:clear_db(),
     ok = meck:new(mnesia_rocksdb_lib, [passthrough]).
 

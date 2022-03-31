@@ -1289,7 +1289,6 @@ global_setup() ->
     Persist = application:get_env(aecore, persist),
     application:set_env(aecore, persist, false),
     aec_db:check_db(),
-    aec_db:prepare_mnesia_bypass(),
     aec_db:clear_db(),
     Persist.
 
