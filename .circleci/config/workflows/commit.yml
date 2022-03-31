@@ -220,6 +220,16 @@ jobs:
             - env/dev2
             - system-tests
 
+  - linux-standalone:
+      name: linux-standalone
+      package_name: aeternity-$CIRCLE_SHA1-ubuntu-x86_64-standalone
+      context: ae-slack
+      filters:
+        branches:
+          only:
+            - /releases\/.*/
+            - << pipeline.parameters.master_branch >>
+
   - ubuntu_package:
       requires: []
       context: ae-slack
@@ -229,8 +239,8 @@ jobs:
             - /releases\/.*/
             - << pipeline.parameters.master_branch >>
 
-  - upload-tarballs-s3:
-      name: upload-tarballs-s3
+  - upload-artifacts-s3:
+      name: upload-artifacts-s3
       bucket: << pipeline.parameters.s3_builds_bucket >>
       context:
         - ae-slack
@@ -254,7 +264,7 @@ jobs:
         - ae-slack
         - ae-node-builds
       requires:
-        - upload-tarballs-s3
+        - upload-artifacts-s3
       filters:
         branches:
           only:
