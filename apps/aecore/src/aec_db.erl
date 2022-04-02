@@ -242,15 +242,6 @@ tab(Mode0, Record, Attributes, Extra) ->
     | Extra
     ].
 
-%% set_rocksdb_prop(K, V, {T, Opts}) ->
-%%     {T, lists_mkeystore([user_properties, rocksdb_opts, K], V, Opts)}.
-
-%% lists_mkeystore([K], V, L) when is_list(L) ->
-%%     lists:keystore(K, 1, L, {K, V});
-%% lists_mkeystore([K|T], V, L) ->
-%%     Sub = lists_mkeystore(T, V, proplists:get_value(K, L, [])),
-%%     lists:keystore(K, 1, L, {K, Sub}).
-
 opt_rocksdb_props(#{module := mnesia_rocksdb}, Tab, Type, Arity, Props) ->
     rocksdb_props(Tab, Type, Arity, Props);
 opt_rocksdb_props(_, _, _, _, Props) ->
@@ -260,13 +251,13 @@ rocksdb_props(Tab, Type, Arity, Props) ->
     [{mrdb_encoding, encoding(Tab, Type, Arity)} | Props].
 
 encoding(aec_chain_state, _, _) -> {term, {object, term}};
-encoding(T, _, _) when T==aec_contract_state;
-                       T==aec_call_state;
-                       T==aec_oracle_state;
-                       T==aec_account_state;
-                       T==aec_channel_state;
-                       T==aec_name_service_state ->
-    {raw, {value, raw}};
+%% encoding(T, _, _) when T==aec_contract_state;
+%%                       T==aec_call_state;
+%%                       T==aec_oracle_state;
+%%                       T==aec_account_state;
+%%                       T==aec_channel_state;
+%%                       T==aec_name_service_state ->
+%%    {raw, {value, raw}};
 encoding(_Tab, set, 2) -> {raw, {value, term}};
 encoding(_Tab, set, _) -> {raw, {object, term}}.
 %% encoding(_, _, _) -> {sext, {object, sext}}.
@@ -354,10 +345,6 @@ backend_mode(_ , #{persist := false} = M) ->
 backend_mode(<<"rocksdb">>, #{persist := true } = M) ->
         M#{ module => mnesia_rocksdb
           , alias => rocksdb_copies
-          %% , user_properties => [ {rocksdb_opts,
-          %%                         [
-          %%                         ]}
-          %%                      ]
           };
 backend_mode(<<"leveled">>, #{persist := true } = M) ->
         M#{ module => mnesia_leveled
