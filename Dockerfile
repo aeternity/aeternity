@@ -3,8 +3,8 @@ FROM aeternity/builder:bionic-otp23 as builder
 # Add required files to download and compile only the dependencies
 ADD rebar.config rebar.lock Makefile rebar3 rebar.config.script /app/
 ENV ERLANG_ROCKSDB_OPTS "-DWITH_SYSTEM_ROCKSDB=ON -DWITH_LZ4=ON -DWITH_SNAPPY=ON -DWITH_BZ2=ON -DWITH_ZSTD=ON"
-RUN cd /app && make prod-compile-deps
 
+RUN cd /app && make prod-compile-deps
 # Add the whole project and compile aeternity itself.
 ADD . /app
 RUN cd /app && make prod-build
