@@ -63,6 +63,7 @@
 add_hash(MempoolGC, TxHash, Key, TTL) ->
     %% Use update_counter with a threshold to do the compare and maybe update
     %% efficiently.
+    lager:debug("TxHash = ~p, TTL = ~p", [TxHash, TTL]),
     ets:update_counter(MempoolGC, TxHash, {#gc_tx.ttl, 0, TTL, TTL},
                        #gc_tx{hash = TxHash, ttl = TTL, key = Key}).
 

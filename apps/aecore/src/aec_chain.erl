@@ -388,6 +388,7 @@ find_tx_with_location(TxHash) ->
 -spec find_tx_location(binary()) -> 'not_found' | 'none' | 'mempool' | binary().
 
 find_tx_location(TxHash) ->
+    lager:debug("find_tx_location(~p)", [TxHash]),
     aec_db:find_tx_location(TxHash).
 
 %%%===================================================================
