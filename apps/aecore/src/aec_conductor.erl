@@ -377,7 +377,6 @@ handle_call({post_block, Block},_From, State) ->
     {Reply, State1} = handle_post_block(Block, State),
     {reply, Reply, State1};
 handle_call(stop_mining,_From, State = #state{ consensus = Cons }) ->
-    lager:debug("stop_mining requested", []),
     epoch_mining:info("Mining stopped"),
     aec_block_generator:stop_generation(),
     [ aec_tx_pool:garbage_collect() || is_record(Cons, consensus) andalso Cons#consensus.leader ],
@@ -386,15 +385,12 @@ handle_call(stop_mining,_From, State = #state{ consensus = Cons }) ->
                           key_block_candidates = undefined},
     {reply, ok, create_key_block_candidate(State2)};
 handle_call({start_mining, _Opts},_From, #state{mining_state = 'running'} = State) ->
-    lager:debug("start_mining requested - mining running", []),
     epoch_mining:info("Mining running" ++ print_opts(State)),
     {reply, ok, State};
 handle_call({start_mining, _Opts},_From, State = #state{ beneficiary = undefined }) ->
-    lager:debug("start_mining requested - no beneficiary", []),
     epoch_mining:error("Cannot start mining - beneficiary not configured"),
     {reply, {error, beneficiary_not_configured}, State};
 handle_call({start_mining, Opts},_From, State = #state{ consensus = Cons }) ->
-    lager:debug("start_mining requested - will try", []),
     epoch_mining:info("Mining started" ++ print_opts(State)),
     State1 = start_mining_(State#state{mining_state = 'running', consensus = Cons#consensus{leader = false},
                                       mining_opts = Opts}),
@@ -428,7 +424,6 @@ handle_info({gproc_ps_event, candidate_block, #{info := new_candidate}}, State) 
             {noreply, State#state{ micro_block_candidate = undefined }}
     end;
 handle_info(init_continue, State) ->
-    lager:debug("init_continue: State = ~p", [lager:pr(State, ?MODULE)]),
     {noreply, start_mining_(State)};
 handle_info({worker_reply, Pid, Res}, State) ->
     State1 = handle_worker_reply(Pid, Res, State),
@@ -490,11 +485,6 @@ make_micro_candidate(Block) ->
 %%% Handle init options
 
 set_option(autostart, Options, State) ->
-    lager:debug("set autostart: Options = ~p, Env = ~p, Conf = ~p",
-                [Options, application:get_env(aecore, autostart, undefined),
-                aeu_env:find_config([<<"mining">>,<<"autostart">>], [user_config,
-                                                                     schema_default,
-                                                                     {value, wtf}])]),
     case get_option(autostart, Options) of
         undefined   -> State;
         {ok, true}  -> State#state{mining_state = running};
@@ -928,7 +918,6 @@ wait_for_keys_worker(N) ->
     end.
 
 handle_wait_for_keys_reply(keys_ready, State) ->
-    lager:debug("keys_ready - will start mining"),
     start_mining_(State#state{keys_ready = true});
 handle_wait_for_keys_reply(timeout, State) ->
     %% TODO: We should probably die hard at some point instead of retrying.
@@ -940,32 +929,25 @@ handle_wait_for_keys_reply(timeout, State) ->
 
 start_mining_(#state{keys_ready = false} = State) ->
     %% We need to get the keys first
-    lager:debug("keys not ready - will not start mining", []),
     wait_for_keys(State);
 start_mining_(#state{key_block_candidates = undefined,
                      beneficiary         = Beneficiary} = State) when Beneficiary =/= undefined ->
     %% If the mining is turned off and beneficiary is configured,
     %% the key block candidate is still created, but not mined.
     %% The candidate can be retrieved via the API and other nodes can mine it.
-    lager:debug("have beneficiary but no keyblock cands", []),
     State1 = kill_all_workers_with_tag(create_key_block_candidate, State),
     create_key_block_candidate(State1);
 start_mining_(#state{stratum_mode = false, mining_state = stopped} = State) ->
-    lager:debug("no stratum, mining stopped - will not start mining", []),
     State;
 start_mining_(#state{key_block_candidates = [{_, #candidate{top_hash = OldHash}} | _],
                      top_block_hash = TopHash } = State) when OldHash =/= TopHash ->
     %% Candidate generated with stale top hash.
     %% Regenerate the candidate.
-    lager:debug("Key block candidate for old top hash; regenerating", []),
     epoch_mining:info("Key block candidate for old top hash; regenerating"),
     create_key_block_candidate(State);
 start_mining_(#state{stratum_mode = false, key_block_candidates = [{ForSealing, Candidate} | Candidates]} = State) ->
-    lager:debug("will start mining if available instance"),
     case available_miner_instance(State) of
-        none ->
-            lager:debug("no available instance - will not start mining", []),
-            State;
+        none -> State;
         Instance ->
             epoch_mining:info("Starting miner on top of ~p", [State#state.top_block_hash]),
             Consensus         = aec_blocks:consensus_module(Candidate#candidate.block),
