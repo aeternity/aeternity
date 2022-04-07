@@ -329,7 +329,7 @@ jobs:
       context:
         - ae-slack
         - ae-node-builds
-      tag: $CIRCLE_BRANCH
+      tag: ${CIRCLE_BRANCH/\//_}
       requires:
         - test
         - eunit
@@ -347,7 +347,7 @@ jobs:
         - ae-slack
         - ae-node-builds
       aeplugin_devmode: true
-      tag: $CIRCLE_BRANCH-bundle
+      tag: ${CIRCLE_BRANCH/\//_}-bundle
       requires:
         - test
         - eunit
