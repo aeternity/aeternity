@@ -339,8 +339,7 @@ start_chain_db(disc) ->
     persistent_term:put({?MODULE, db_mode}, {disc, Persist}),
     application:set_env(aecore, persist, true),
     aec_db:check_db(),
-    aec_db:clear_db(),
-    ok = meck:new(mnesia_rocksdb_lib, [passthrough]).
+    aec_db:clear_db().
 
 stop_chain_db() ->
     stop_chain_db(persistent_term:get({?MODULE, db_mode})).
@@ -349,7 +348,6 @@ stop_chain_db(ram) ->
 stop_chain_db({disc, Persist}) ->
     application:stop(mnesia),
     application:set_env(aecore, persist, Persist),
-    ok = meck:unload(mnesia_rocksdb_lib),
     ok = mnesia:delete_schema([node()]).
 
 genesis_block() ->

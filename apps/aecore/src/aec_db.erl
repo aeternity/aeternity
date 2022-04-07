@@ -173,8 +173,6 @@
 -define(TX_IN_MEMPOOL, []).
 -define(PERSIST, true).
 
-tables() -> tables(ram).
-
 tables(Mode0) ->
     Mode = expand_mode(Mode0),
     Ts = tables_(Mode),
@@ -271,13 +269,19 @@ tab_copies(Mode) when Mode == ram; Mode == disc ->
 tab_copies(#{alias := Alias}) -> {Alias, [node()]}.
 
 clear_db() ->
-    ?t(begin
-           lists:map(
-             fun({T, _}) ->
-                     Keys = all_keys(T),
-                     [delete(T, K) || K <- Keys]
-             end, tables())
-       end).
+    Tabs = mnesia:system_info(tables) -- [schema],
+    ensure_activity(
+        async_dirty,
+        fun() ->
+            lists:map(
+                fun(T) ->
+                    Keys = all_keys(T),
+                    [delete(T, K) || K <- Keys]
+                end, Tabs)
+        end).
+
+all_keys(Tab) ->
+    ?IF_RDB(mrdb:select(Tab, [{'$1',[],[{element,2,'$_'}]}]), mnesia:all_keys(Tab)).
 
 persisted_valid_genesis_block() ->
     case application:get_env(aecore, persist, ?PERSIST) of
@@ -440,9 +444,6 @@ dirty_select(Tab, Pat) ->
 db_foldl(Fun, InitAcc, Tab) ->
     ?IF_RDB(mrdb:fold(Tab, Fun, InitAcc, [{'_',[],['$_']}]),
             mnesia:foldl(Fun, InitAcc, Tab)).
-
-all_keys(Tab) ->
-    ?IF_RDB(mrdb:select(Tab, [{'$1',[],[{element,2,'$_'}]}]), mnesia:all_keys(Tab)).
 
 %%
 %% ======================================================================
@@ -1129,13 +1130,13 @@ check_db() ->
         %% debugging logs we will get an erl_crash.dump with a truncated stack trace.
         lager:start(),
         Mode = backend_mode(),
-        Storage = ensure_schema_storage_mode(Mode),
+        SchemaExists = pre_existing_schema(Mode),
         lager:info("Database persist mode ~p", [maps:get(persist, Mode)]),
         lager:info("Database backend ~p", [maps:get(module, Mode)]),
         lager:info("Database directory ~s", [mnesia:system_info(directory)]),
         ok = application:ensure_started(mnesia),
         ok = assert_schema_node_name(Mode),
-        initialize_db(Mode, Storage)
+        initialize_db(Mode, SchemaExists)
     catch error:Reason:StackTrace ->
         error_logger:error_msg("CAUGHT error:~p / ~p~n", [Reason, StackTrace]),
         erlang:error(Reason)
@@ -1168,7 +1169,7 @@ get_backend_module() ->
 
 %% Test interface
 initialize_db(ram) ->
-    initialize_db(expand_mode(ram), ok).
+    initialize_db(expand_mode(ram), false).
 
 %% == Test setup env
 %% Ensures that e.g. persistent terms are present, logging which ones had to be added.
@@ -1205,13 +1206,13 @@ remove_added_pts() ->
 
 %% == End Test setup env
 
-initialize_db(Mode, Storage) ->
+initialize_db(Mode, SchemaExists) when is_boolean(SchemaExists) ->
     put_backend_module(Mode),
     add_backend_plugins(Mode),
     run_hooks('$aec_db_add_plugins', Mode),
     add_index_plugins(),
     run_hooks('$aec_db_add_index_plugins', Mode),
-    ensure_mnesia_tables(Mode, Storage),
+    ensure_mnesia_tables(Mode, SchemaExists),
     ok.
 
 expand_mode(ram)  -> backend_mode(<<"mnesia">>, #{persist => false});
@@ -1235,15 +1236,15 @@ add_backend_plugins(_) ->
 add_index_plugins() ->
     ok.
 
-ensure_mnesia_tables(Mode, Storage) ->
+ensure_mnesia_tables(Mode, SchemaExists) when is_boolean(SchemaExists) ->
     Tables = tables(Mode),
-    case Storage of
-        existing_schema ->
+    case SchemaExists of
+        true ->
             CheckRes = check_mnesia_tables(Tables, []),
             lager:debug("CheckRes = ~p", [CheckRes]),
             maybe_wait_for_tabs(CheckRes),
             handle_table_errors(Tables, Mode, CheckRes);
-        ok ->
+        false ->
             [{atomic,ok} = mnesia:create_table(T, Spec) || {T, Spec} <- Tables],
             run_hooks('$aec_db_create_tables', Mode),
             ok
@@ -1365,18 +1366,19 @@ assert_schema_node_name(#{persist := true}) ->
             exit(wrong_db_owner_node)
     end.
 
-ensure_schema_storage_mode(#{persist := false}) ->
+pre_existing_schema(#{persist := false}) ->
     case disc_db_exists() of
         {true, Dir} ->
             lager:warning("Will not use existing Mnesia db (~s)", [Dir]),
             set_dummy_mnesia_dir(Dir);
         false ->
             ok
-    end;
-ensure_schema_storage_mode(#{persist := true}) ->
+    end,
+    false;
+pre_existing_schema(#{persist := true}) ->
     case mnesia:create_schema([node()]) of
-        {error, {_, {already_exists, _}}} -> existing_schema;
-        ok -> ok
+        {error, {_, {already_exists, _}}} -> true;
+        ok -> false
     end.
 
 disc_db_exists() ->

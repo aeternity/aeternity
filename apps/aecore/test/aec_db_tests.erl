@@ -240,7 +240,6 @@ persisted_database_write_error_test_() ->
              aec_db:check_db(),
              aec_db:clear_db(),
              TmpDir = aec_test_utils:aec_keys_setup(),
-             ok = meck:new(aec_db_lib, [passthrough]),
              aec_test_utils:mock_genesis_and_forks(),
              {TmpDir, Persist}
      end,
@@ -249,22 +248,9 @@ persisted_database_write_error_test_() ->
              aec_test_utils:unmock_genesis_and_forks(),
              aec_test_utils:aec_keys_cleanup(TmpDir),
              application:set_env(aecore, persist, Persist),
-             ok = meck:unload(aec_db_lib),
              ok = mnesia:delete_schema([node()])
      end,
-     [{"Failed database write will be reported to caller",
-       fun() ->
-               %% Setup
-               Res = {error, bad_thing_happened},
-               ok = meck:expect(aec_db_lib, rocksdb_write, fun(_, _, _) -> Res end),
-               [_GB, B1] = aec_test_utils:gen_blocks_only_chain(2),
-
-               %% Try writing a block
-               ?assertMatch({error, {io_error, {_, bad_thing_happened}}}, aec_db:write_block(B1)),
-
-               %% Cleanup
-               ok
-       end},
+     [
       {"Throughput test building chain with 10 blocks on disc",
        fun() ->
                %% Setup

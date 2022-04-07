@@ -60,17 +60,12 @@
 basic_access_test_() ->
     {foreach,
      fun() ->
-            dbg:tracer(),
-            dbg:tp(mnesia,x),
-            dbg:p(all,[c]),
              aec_test_utils:mock_genesis_and_forks(),
              aec_test_utils:start_chain_db(),
              aec_consensus_bitcoin_ng:load_whitelist(),
              aec_test_utils:aec_keys_setup()
      end,
      fun(TmpDir) ->
-            dbg:ctp('_'),
-            dbg:stop(),
              aec_test_utils:aec_keys_cleanup(TmpDir),
              aec_test_utils:unmock_genesis_and_forks(),
              aec_test_utils:stop_chain_db()

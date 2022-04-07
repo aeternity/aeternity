@@ -173,7 +173,6 @@ tx_pool_test_() ->
             ?assertEqual(ok, aec_tx_pool:push( a_signed_tx(PK1, me, 6, 20000), tx_received )),
 
             ?assertMatch({ok, [_, _, _, _, _, _]}, aec_tx_pool:peek(infinity)),
-
             %% The first block needs to be a key-block
             {ok, KeyBlock1} = aec_block_key_candidate:create(aec_chain:top_block(), PK1),
             {ok, KeyHash1} = aec_blocks:hash_internal_representation(KeyBlock1),
