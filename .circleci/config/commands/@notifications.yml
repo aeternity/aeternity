@@ -1,10 +1,16 @@
 fail_notification:
   steps:
-    - slack/notify:
-        branch_pattern: << pipeline.parameters.master_branch >>
-        tag_pattern: << pipeline.parameters.tag_pattern >>
-        event: fail
-        template: basic_fail_1
+    - unless:
+        condition:
+          matches:
+            pattern: /pull/[0-9]+/
+            value: << pipeline.git.branch >>
+        steps:
+          - slack/notify:
+              branch_pattern: << pipeline.parameters.master_branch >>
+              tag_pattern: << pipeline.parameters.tag_pattern >>
+              event: fail
+              template: basic_fail_1
 
 deploy_notification:
   steps:
