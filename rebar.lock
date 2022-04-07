@@ -26,7 +26,7 @@
   0},
  {<<"aestratum_lib">>,
   {git,"https://github.com/aeternity/aestratum_lib.git",
-      {ref,"cee4b3c9cd5ce4da91f9b1250c8f28c372fb7603"}},
+      {ref,"17b56c5edc3b4cf3a16778b82b1d247bfd8fb447"}},
   0},
  {<<"app_ctrl">>,
   {git,"https://github.com/aeternity/app_ctrl.git",
