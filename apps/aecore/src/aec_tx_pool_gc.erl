@@ -63,7 +63,6 @@
 add_hash(MempoolGC, TxHash, Key, TTL) ->
     %% Use update_counter with a threshold to do the compare and maybe update
     %% efficiently.
-    lager:debug("TxHash = ~p, TTL = ~p", [TxHash, TTL]),
     ets:update_counter(MempoolGC, TxHash, {#gc_tx.ttl, 0, TTL, TTL},
                        #gc_tx{hash = TxHash, ttl = TTL, key = Key}).
 
@@ -178,10 +177,11 @@ do_gc(Height, Dbs) ->
 do_gc_([], _Dbs, _GCDb) ->
     ok;
 do_gc_([{TxHash, Key} | TxHashes], Dbs, GCDb) ->
-    aec_tx_pool:raw_delete(Dbs, Key),
-    ets:delete(GCDb, TxHash),
     case aec_db:gc_tx(TxHash) of
         ok ->
+            aec_tx_pool:raw_delete(Dbs, Key),
+            aec_db:remove_tx_from_mempool(TxHash),
+            ets:delete(GCDb, TxHash),
             aec_metrics:try_update([ae,epoch,aecore,tx_pool,gced], 1),
             lager:debug("Garbage collected ~p", [pp(TxHash)]);
         {error, tx_not_found} ->
@@ -189,9 +189,8 @@ do_gc_([{TxHash, Key} | TxHashes], Dbs, GCDb) ->
                        [pp(TxHash)]),
             ok;
         {error, BlockHash} ->
-            OnChain = aec_chain_state:hash_is_in_main_chain(BlockHash),
-            lager:info("TX garbage collect failed ~p is present in ~p (OnChain = ~p)",
-                       [pp(TxHash), pp(BlockHash), OnChain]),
+            lager:info("TX garbage collect failed ~p is present in ~p",
+                       [pp(BlockHash), pp(TxHash)]),
             ok
     end,
     do_gc_(TxHashes, Dbs, GCDb).
