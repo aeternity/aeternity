@@ -213,7 +213,8 @@ consensus_request(Request) ->
         M:client_request(Request)
     catch
         Error:Reason:Stack ->
-            lager:debug("consensus_request(~p) Failed: ~p ~p ~p\n", [Request, Error, Reason, Stack])
+            lager:debug("consensus_request(~p) Failed: ~p ~p ~p\n", [Request, Error, Reason, Stack]),
+            error(Reason)
     end.
 
 %%%===================================================================
