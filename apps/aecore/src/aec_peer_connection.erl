@@ -787,8 +787,17 @@ ping_obj(#{ share := 0 } = PingObj, _Exclude) ->
     PingObj#{peers => []};
 ping_obj(PingObj, Exclude) ->
     #{ share := Share } = PingObj,
-    ConnectedN = max(1, Share div 10),
-    Connected = aec_peers:get_random_connected(ConnectedN),
+    %% Select max of Share peers from a combination of connected and
+    %% not connected. Aim to include up to 10% connected in the set
+    ConnectedQty = max(1, Share div 10),
+    ConnectedN = aec_peers:get_random_connected(ConnectedQty),
+    %% for "up to" 10% drop some or all
+    Connected = case ConnectedN of
+                    [] -> [];
+                    _ ->
+                        Select = rand:uniform(length(ConnectedN)),
+                        lists:sublist(ConnectedN, Select - 1)
+                end,
     ConnectedIds = [aec_peer:id(P) || P <- Connected] -- [Exclude],
     Peers = aec_peers:get_random(Share - length(ConnectedIds), ConnectedIds ++ Exclude),
     PingObj#{peers => lists:sort(Connected ++ Peers)}.
