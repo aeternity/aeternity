@@ -329,11 +329,7 @@ jobs:
       context:
         - ae-slack
         - ae-node-builds
-<<<<<<< HEAD
       tag: ${CIRCLE_BRANCH/\//_}
-=======
-      tag: $CIRCLE_BRANCH
->>>>>>> 8fb59f98 (update .circleci config)
       requires:
         - test
         - eunit
