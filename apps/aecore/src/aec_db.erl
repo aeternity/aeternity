@@ -1077,7 +1077,7 @@ add_tx_hash_to_mempool(TxHash) when is_binary(TxHash) ->
     ?t(write(#aec_tx_pool{key = TxHash, value = ?TX_IN_MEMPOOL})).
 
 is_in_tx_pool(TxHash) ->
-    ?t(read(aec_tx_pool, TxHash)) =/= ?TX_IN_MEMPOOL.
+    ?t(read(aec_tx_pool, TxHash)) =/= [].
 
 remove_tx_from_mempool(TxHash) when is_binary(TxHash) ->
     ?t(delete(aec_tx_pool, TxHash)).

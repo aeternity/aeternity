@@ -63,8 +63,7 @@ check_open_files_limit(_) ->
 %% Also, add 1 for the mnesia_rocksdb admin table.
 number_of_tables(Mode) ->
     Tabs = aec_db:tables(Mode),
-    NTabs = length(Tabs),
-    NIxs = lists:foldl(fun count_ixs/2, 1, Tabs).
+    lists:foldl(fun count_ixs/2, 1, Tabs).
 
 count_ixs({_, Opts}, Acc) ->
     length(proplists:get_value(index, Opts, [])) + Acc.
