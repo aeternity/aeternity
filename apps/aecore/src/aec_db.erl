@@ -1011,11 +1011,9 @@ find_signal_count(Hash) ->
 
 add_tx_location(STxHash, BlockHash) when is_binary(STxHash),
                                          is_binary(BlockHash) ->
-    lager:debug("STxHash = ~p, BlockHash = ~p", [STxHash, BlockHash]),
     ?t(write(#aec_tx_location{key = STxHash, value = BlockHash})).
 
 remove_tx_location(TxHash) when is_binary(TxHash) ->
-    lager:debug("TxHash = ~p", [TxHash]),
     ?t(delete(aec_tx_location, TxHash)).
 
 find_tx_location(STxHash) ->
