@@ -90,7 +90,7 @@ sync_in_progress(PeerId) ->
 
 -spec sync_progress() -> {boolean(), float(), aec_blocks:height()}.
 sync_progress() ->
-    opt_call(sync_progress, {false, 100.0}).
+    opt_call(sync_progress, {false, 100.0, 0}).
 
 -spec is_syncing() -> boolean().
 is_syncing() ->
@@ -1306,7 +1306,7 @@ validate_block(Block) ->
 
 log_sync_status(#state{is_syncing = false}) -> ok;
 log_sync_status(#state{sync_tasks = STs} = S) ->
-    {_, SyncProgress} = sync_progress(S),
+    {_, SyncProgress, _} = sync_progress(S),
     epoch_sync:info("Sync progress: ~.4f%", [SyncProgress]),
     [log_sync_task(ST) || ST <- STs].
 

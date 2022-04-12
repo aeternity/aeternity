@@ -92,17 +92,28 @@ queue(_)                        -> ?WRITE_Q.
 
 handle_request_('networkList', _, _Context) ->
     Resp = #{<<"network_identifiers">> => 
-                 [#{<<"blockchain">> => aecapi:get_blockchain_name(),
-                    <<"network">> => aeapi:get_network_id()
+                 [#{<<"blockchain">> => aeapi:blockchain_name(),
+                    <<"network">> => aeapi:network_id()
                    }
                  ]
             },
     {200, [], Resp};
 handle_request_('networkOptions', _, _Context) ->
     Resp = #{<<"version">> => #{<<"rosetta_version">> => <<"1.4.10">>,
-                                <<"node_version">> => aeapi:get_node_version(),
-                                <<"metadata">> => #{<<"node_revision">> => aeapi:get_node_revision()}},
-             <<"allow">> => #{} %% TODO
+                                <<"node_version">> => aeapi:node_version(),
+                                <<"metadata">> => #{<<"node_revision">> => aeapi:node_revision()}},
+             <<"allow">> => #{
+                              <<"operation_statuses">> => [#{<<"status">> => <<"SUCCESS">>,
+                                                             <<"successful">> => true},
+                                                           #{<<"status">> => <<"FAILED">>,
+                                                             <<"successful">> => false}],
+                              <<"operation_types">> => ae_operation_types(),
+                              <<"errors">> => rosetta_errors(),
+                              <<"historical_balance_lookup">> => true,
+                              <<"call_methods">> => [<<"TODO">>],
+                              <<"balance_exemptions">> => [],
+                              <<"mempool_coins">> => false
+                             }
             },
     {200, [], Resp};
 handle_request_('networkStatus', _, _Context) ->
@@ -225,6 +236,37 @@ handle_request_(OperationID, Req, Context) ->
      ),
     {501, [], #{}}.
 
+ae_operation_types() ->
+    [aetx:type_to_swagger_name(X) || X <- [spend_tx,
+                                           oracle_register_tx,
+                                           oracle_extend_tx,
+                                           oracle_query_tx,
+                                           oracle_response_tx,
+                                           name_preclaim_tx,
+                                           name_claim_tx,
+                                           name_transfer_tx,
+                                           name_update_tx,
+                                           name_revoke_tx,
+                                           contract_create_tx,
+                                           contract_call_tx,
+                                           ga_attach_tx,
+                                           ga_meta_tx,
+                                           channel_create_tx,
+                                           channel_deposit_tx,
+                                           channel_withdraw_tx,
+                                           channel_force_progress_tx,
+                                           channel_close_mutual_tx,
+                                           channel_close_solo_tx,
+                                           channel_slash_tx,
+                                           channel_settle_tx,
+                                           paying_for_tx]].
+
+rosetta_errors() ->
+    [rosetta_error_response(X) || X <- [?ROSETTA_ERR_NW_STATUS_ERR,
+                                        ?ROSETTA_ERR_INVALID_NETWORK,
+                                        ?ROSETTA_ERR_BLOCK_NOT_FOUND,
+                                        ?ROSETTA_ERR_CHAIN_TOO_SHORT]].
+
 -spec format_block(aec_blocks:block()) -> #{}.
 format_block(Block) ->
     PrevBlock = aeapi:prev_block(Block),
@@ -242,11 +284,31 @@ format_block_identifier(Block) ->
     #{<<"index">> => aeapi:block_height(Block),
       <<"hash">> => aeapi:printable_block_hash(Block)}.
 
-format_block_txs(_Txs) ->
-    [].
+format_block_txs(Txs) ->
+    {_, FormattedTxs} = lists:foldl(
+                          fun(SignedTx, {Offset, Acc}) ->
+                                  Tx = aetx_sign:tx(SignedTx),
+                                  TxType = aetx:tx_type(Tx),
+                                  X2 = format_tx(SignedTx, Offset, TxType),
+                                  OffsetIncrement = 1,
+                                  {Offset + OffsetIncrement, [X2 | Acc]}
+                          end, {0, []}, Txs),
+    lists:reverse(FormattedTxs).
+
+format_tx(SignedTx, Offset, TxType) ->
+    #{
+      <<"transaction_identifier">> => #{<<"hash">> => aeser_api_encoder:encode(tx_hash, aetx_sign:hash(SignedTx))},
+      <<"operations">> => tx_operations(SignedTx, Offset, TxType)
+     }.
+
+tx_operations(_Tx, Offset, TxType) ->
+    [#{
+       <<"operation_identifier">> => #{<<"index">> => Offset},
+       <<"type">> => aetx:type_to_swagger_name(TxType)
+      }].
 
 rosetta_error_response(ErrCode) ->
-    rosetta_error_response(ErrCode, true).
+    rosetta_error_response(ErrCode, rosetta_err_retriable(ErrCode)).
 
 rosetta_error_response(ErrCode, Retriable) when is_integer(ErrCode),
                                                 is_boolean(Retriable) ->
@@ -265,4 +327,12 @@ rosetta_error_response(ErrCode, Retriable, Details) when is_integer(ErrCode),
             Err#{<<"details">> => Details}
     end.
 
-rosetta_err_msg(?ROSETTA_ERR_NW_STATUS_ERR) -> <<"Error determining networkStatus">>.
+rosetta_err_msg(?ROSETTA_ERR_NW_STATUS_ERR)   -> <<"Error determining networkStatus">>;
+rosetta_err_msg(?ROSETTA_ERR_INVALID_NETWORK) -> <<"Invalid network specified">>;
+rosetta_err_msg(?ROSETTA_ERR_BLOCK_NOT_FOUND) -> <<"Specified block not found">>;
+rosetta_err_msg(?ROSETTA_ERR_CHAIN_TOO_SHORT) -> <<"Chain too short">>.
+
+rosetta_err_retriable(?ROSETTA_ERR_NW_STATUS_ERR)   -> true;
+rosetta_err_retriable(?ROSETTA_ERR_BLOCK_NOT_FOUND) -> true;
+rosetta_err_retriable(?ROSETTA_ERR_CHAIN_TOO_SHORT) -> true;
+rosetta_err_retriable(_)                            -> false.
