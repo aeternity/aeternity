@@ -22,6 +22,16 @@ jobs:
         tags:
           only: << pipeline.parameters.tag_regex >>
 
+  - linux-standalone:
+      name: linux-release-standalone
+      package_name: aeternity-$CIRCLE_TAG-ubuntu-x86_64-standalone
+      context: ae-slack
+      filters:
+        branches:
+          ignore: /.*/
+        tags:
+          only: << pipeline.parameters.tag_regex >>
+
   - ubuntu_package:
       context: ae-slack
       filters:
@@ -51,6 +61,16 @@ jobs:
         tags:
           only: << pipeline.parameters.tag_regex >>
 
+  - macos-standalone:
+      name: macos-release-standalone
+      package_name: aeternity-$CIRCLE_TAG-macos-x86_64-standalone
+      context: ae-slack
+      filters:
+        branches:
+          ignore: /.*/
+        tags:
+          only: << pipeline.parameters.tag_regex >>
+
   - slack/on-hold:
       name: hodl-artifact-upload-notification
       context: ae-slack
@@ -59,6 +79,8 @@ jobs:
         - macos-release-tarball
         - linux-release-tarball-bundle
         - macos-release-tarball-bundle
+        - linux-release-standalone
+        - macos-release-standalone
       filters:
         branches:
           ignore: /.*/
@@ -75,7 +97,7 @@ jobs:
         tags:
           only: << pipeline.parameters.tag_regex >>
 
-  - upload-tarballs-s3:
+  - upload-artifacts-s3:
       name: upload-release-tarballs-s3
       bucket: << pipeline.parameters.s3_releases_bucket >>
       context:
@@ -86,6 +108,8 @@ jobs:
         - macos-release-tarball
         - linux-release-tarball-bundle
         - macos-release-tarball-bundle
+        - linux-release-standalone
+        - macos-release-standalone
         - hodl_artifact_upload
       filters:
         branches:
@@ -93,7 +117,7 @@ jobs:
         tags:
           only: << pipeline.parameters.tag_regex >>
 
-  - upload-tarballs-github-release:
+  - upload-artifacts-github-release:
       context:
         - ae-slack
         - ae-node-builds
@@ -102,6 +126,8 @@ jobs:
         - macos-release-tarball
         - linux-release-tarball-bundle
         - macos-release-tarball-bundle
+        - linux-release-standalone
+        - macos-release-standalone
         - hodl_artifact_upload
       filters:
         branches:
@@ -285,8 +311,9 @@ jobs:
         tags:
           only: << pipeline.parameters.tag_regex >>
 
-  - docker-image:
+  - docker-tag:
       name: docker-image-latest
+      src: $CIRCLE_TAG
       tag: latest
       context:
         - ae-slack
@@ -300,9 +327,9 @@ jobs:
         tags:
           only: << pipeline.parameters.tag_regex >>
 
-  - docker-image:
+  - docker-tag:
       name: docker-image-latest-bundle
-      aeplugin_devmode: true
+      src: $CIRCLE_TAG-bundle
       tag: latest-bundle
       context:
         - ae-slack
@@ -324,7 +351,7 @@ jobs:
         - upload-release-tarballs-s3
         - promote-release-linux-tarball-s3
         - promote-release-macos-tarball-s3
-        - upload-tarballs-github-release
+        - upload-artifacts-github-release
         - docker-image-tag
         - docker-image-latest
       filters:

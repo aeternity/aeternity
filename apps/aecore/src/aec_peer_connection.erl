@@ -783,10 +783,15 @@ decode_remote_ping(_) ->
     {error, bad_ping_message}.
 
 %% Encode hashes and get peers for PingObj
+ping_obj(#{ share := 0 } = PingObj, _Exclude) ->
+    PingObj#{peers => []};
 ping_obj(PingObj, Exclude) ->
     #{ share := Share } = PingObj,
-    Peers = aec_peers:get_random(Share, Exclude),
-    PingObj#{peers => Peers}.
+    ConnectedN = max(1, Share div 10),
+    Connected = aec_peers:get_random_connected(ConnectedN),
+    ConnectedIds = [aec_peer:id(P) || P <- Connected] -- [Exclude],
+    Peers = aec_peers:get_random(Share - length(ConnectedIds), ConnectedIds ++ Exclude),
+    PingObj#{peers => lists:sort(Connected ++ Peers)}.
 
 ping_obj_rsp(S, RemotePingObj) ->
     PeerId = peer_id(S),

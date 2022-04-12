@@ -41,6 +41,7 @@
 
 -export([ from_binary_without_backend/1
         , to_binary_without_backend/1
+        , from_db_format/1
         ]).
 
 -export([record_fields/1]).
@@ -80,6 +81,10 @@ empty() ->
 empty_with_backend() ->
     CtTree = aeu_mtrees:empty_with_backend(aec_db_backends:contracts_backend()),
     #contract_tree{contracts = CtTree}.
+
+-spec from_db_format(tree()) -> tree().
+from_db_format(Tree = #contract_tree{contracts = CtTree}) ->
+    Tree#contract_tree{contracts = aeu_mtrees:from_db_format(CtTree)}.
 
 -spec new_with_backend(aeu_mtrees:root_hash() | 'empty') -> tree().
 new_with_backend(Hash) ->

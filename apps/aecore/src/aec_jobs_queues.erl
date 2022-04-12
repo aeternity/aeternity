@@ -89,7 +89,7 @@ metric(Queue, Sub) ->
 %%     }
 %% },
 %%
-%% Customized in epoch.yaml to be a pure rate-limited queue, at 100 reqs/sec,
+%% Customized in aeternity.yaml to be a pure rate-limited queue, at 100 reqs/sec,
 %% with a max queue wait time of 3 seconds:
 %%
 %% regulators:

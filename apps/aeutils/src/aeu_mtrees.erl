@@ -52,7 +52,8 @@
 
 -export([ serialize/1
         , deserialize/1
-        , deserialize_with_backend/2]).
+        , deserialize_with_backend/2
+        , from_db_format/1]).
 
 -export_type([iterator/0,
               iterator_opts/0,
@@ -105,6 +106,10 @@ new_with_backend(empty, DB) ->
     empty_with_backend(DB);
 new_with_backend(<<_:256>> = Hash, DB) ->
     aeu_mp_trees:new(Hash, DB).
+
+-spec from_db_format(tuple() | mtree()) -> mtree().
+from_db_format(Tree) ->
+    aeu_mp_trees:from_db_format(Tree).
 
 -spec gc_cache(mtree()) -> mtree().
 gc_cache(Tree) ->

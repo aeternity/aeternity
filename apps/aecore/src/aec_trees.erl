@@ -62,6 +62,8 @@
 
 -export([record_fields/1]).
 
+-export([from_db_format/1]).
+
 -ifdef(TEST).
 -export([internal_serialize_poi_fields/1,
          internal_serialize_poi_from_fields/1
@@ -137,6 +139,17 @@ new_without_backend() ->
            contracts = aect_state_tree:empty(),
            ns        = aens_state_tree:empty(),
            oracles   = aeo_state_tree:empty()
+          }.
+
+-spec from_db_format(trees()) -> trees().
+from_db_format(#trees{accounts = Accounts, calls = Calls, channels = Channels,
+                      contracts = Contracts, ns = Names, oracles = Oracles}) ->
+    #trees{accounts  = aec_accounts_trees:from_db_format(Accounts),
+           calls     = aect_call_state_tree:from_db_format(Calls),
+           channels  = aesc_state_tree:from_db_format(Channels),
+           contracts = aect_state_tree:from_db_format(Contracts),
+           ns        = aens_state_tree:from_db_format(Names),
+           oracles   = aeo_state_tree:from_db_format(Oracles)
           }.
 
 -spec new_poi(trees()) -> poi().

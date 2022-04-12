@@ -42,3 +42,28 @@ build_deb:
           make prod-deb-package
           mkdir << parameters.output>>
           mv _build/../../*aeternity-node_*.deb << parameters.output>>
+
+build_standalone:
+  parameters:
+    arch:
+      type: string
+    output:
+      type: string
+  steps:
+    - run:
+        name: Install Warp
+        command: |
+          curl -Lo warp-packer https://github.com/dgiagio/warp/releases/download/v0.3.0/<< parameters.arch >>.warp-packer
+          chmod +x warp-packer
+    - run:
+        name: Build Standalone Executable
+        environment:
+          ERLANG_ROCKSDB_OPTS: "-DWITH_BUNDLE_LZ4=ON -DWITH_BUNDLE_SNAPPY=ON"
+        command: |
+          # Ensure rocksdb gets build statically
+          rm -rf _build/default/lib/rocksdb/
+          rm -rf _build/default/lib/mnesia_rocksdb
+          # Build the package
+          make prod-build
+          mkdir $(dirname << parameters.output >>)
+          ./warp-packer -a << parameters.arch >> -i _build/prod/rel/aeternity -e launch -o << parameters.output >>

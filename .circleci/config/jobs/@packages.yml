@@ -43,6 +43,30 @@ ubuntu_package:
           - "*.deb"
     - fail_notification
 
+linux-standalone:
+  parameters:
+    aeplugin_devmode:
+      type: boolean
+      default: false
+    package_name:
+      type: string
+  executor: builder_container_otp22
+  steps:
+    - fixed_checkout
+    - when:
+        condition: << parameters.aeplugin_devmode >>
+        steps:
+          - aeplugin_install_devmode
+    - build_standalone:
+        arch: linux-x64
+        output: << pipeline.parameters.packages_workspace >>/<< parameters.package_name >>
+    - store_package_artifacts
+    - persist_to_workspace:
+        root: << pipeline.parameters.packages_workspace >>
+        paths:
+          - "*"
+    - fail_notification
+
 macos-tarball:
   parameters:
     aeplugin_devmode:
@@ -78,4 +102,35 @@ macos-tarball:
         root: << pipeline.parameters.packages_workspace >>
         paths:
           - "*.tar.gz"
+    - fail_notification
+
+macos-standalone:
+  parameters:
+    aeplugin_devmode:
+      type: boolean
+      default: false
+    package_name:
+      type: string
+  macos:
+    xcode: "11.7.0" # macOS 10.15.5 (Catalina)
+  working_directory: /Users/distiller/aeternity
+  steps:
+    - fixed_checkout
+    - when:
+        condition: << parameters.aeplugin_devmode >>
+        steps:
+          - aeplugin_install_devmode
+    - run:
+        name: Install required tools
+        command: |
+          brew install gmp libsodium erlang@22 cmake
+          brew link erlang@22
+    - build_standalone:
+        arch: macos-x64
+        output: << pipeline.parameters.packages_workspace >>/<< parameters.package_name >>
+    - store_package_artifacts
+    - persist_to_workspace:
+        root: << pipeline.parameters.packages_workspace >>
+        paths:
+          - "*"
     - fail_notification

@@ -13,18 +13,25 @@ docker-image:
         steps:
           - aeplugin_install_devmode
     - setup_docker
-    - when:
-        condition:
-          matches: { pattern: "^latest.*$", value: << parameters.tag >> }
-        steps:
-        - docker_image:
-            tag: << parameters.tag >>
-            tag_only: true
-    - when:
-        condition:
-          not: { matches: { pattern: "^latest.*$", value: << parameters.tag >> } }
-        steps:
-        - docker_image:
-            tag: << parameters.tag >>
-            tag_only: false
+    - docker_build:
+        tag: << parameters.tag >>
+    - docker_push:
+        tag: << parameters.tag >>
+    - fail_notification
+
+docker-tag:
+  executor: infrastructure_container_stable
+  parameters:
+    src:
+      type: string
+    tag:
+      type: string
+  steps:
+    - fixed_checkout
+    - setup_docker
+    - docker_tag:
+        src: << parameters.src >>
+        tag: << parameters.tag >>
+    - docker_push:
+        tag: << parameters.tag >>
     - fail_notification

@@ -6,6 +6,7 @@
 *.swp
 *.swo
 .erlang.cookie
+.directory
 ebin
 log
 erl_crash.dump

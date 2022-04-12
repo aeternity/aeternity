@@ -4,7 +4,7 @@ docker-smoke-test:
     - fixed_checkout
     - setup_docker
     - docker_build:
-        tag: $CIRCLE_BRANCH
+        tag: ${CIRCLE_BRANCH/\//_}
 
 docker-system-test:
   executor: machine_2004
@@ -27,7 +27,7 @@ docker-js-sdk-smoke-test:
     - fixed_checkout
     - setup_docker
     - docker_build:
-        tag: $CIRCLE_BRANCH
+        tag: ${CIRCLE_BRANCH/\//_}
     - run:
         name: Start NodeJS
         command: docker run -d --network container:ae_${CIRCLE_SHA1:?} --name nodejs circleci/node:15.0.0-buster sleep 1337

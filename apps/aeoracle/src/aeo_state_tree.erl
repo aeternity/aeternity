@@ -32,6 +32,7 @@
 
 -export([ from_binary_without_backend/1
         , to_binary_without_backend/1
+        , from_db_format/1
         ]).
 
 -export([record_fields/1]).
@@ -101,6 +102,11 @@ empty_with_backend() ->
     #oracle_tree{ otree  = OTree
                 , cache  = Cache
                 }.
+
+-spec from_db_format(tree()) -> tree().
+from_db_format(Tree = #oracle_tree{ otree = OTree, cache = Cache }) ->
+    Tree#oracle_tree{ otree = aeu_mtrees:from_db_format(OTree),
+                      cache = aeu_mtrees:from_db_format(Cache) }.
 
 -spec new_with_backend(aeu_mtrees:root_hash() | 'empty',
                        aeu_mtrees:root_hash() | 'empty') -> tree().

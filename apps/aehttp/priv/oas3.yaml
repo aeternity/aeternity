@@ -556,9 +556,7 @@ paths:
           content:
             application/json:
               schema:
-                properties:
-                  next_nonce:
-                    $ref: "#/components/schemas/UInt"
+                $ref: "#/components/schemas/NextNonceResponse"
         "400":
           description: Invalid public key
           content:
@@ -1951,12 +1949,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  status:
-                    type: string
-                required:
-                  - status
+                $ref: "#/components/schemas/CheckTxInPoolResponse"
         "404":
           description: Transaction is not in transaction pool
           content:
@@ -2039,6 +2032,22 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  "/node/operator/peers/count":
+    get:
+      tags:
+        - internal
+        - node-operator
+      operationId: GetPeerCount
+      description: Get the number of peers in the different pools. This is to be used to catch if a node loses connectivity 
+      parameters:
+        - $ref: '#/components/parameters/intAsString'
+      responses:
+        "200":
+          description: The different count of peers in the respective pools
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PeerCount"
 components:
   schemas:
     UInt:
@@ -3334,6 +3343,29 @@ components:
       required:
         - peers
         - blocked
+    PeerCount:
+      type: object
+      properties:
+        connected:
+          type: object
+          properties:
+            inbound:
+              $ref: "#/components/schemas/UInt64"
+            outbound:
+              $ref: "#/components/schemas/UInt64"
+        available:
+          type: object
+          properties:
+            verified:
+              $ref: "#/components/schemas/UInt64"
+            unverified:
+              $ref: "#/components/schemas/UInt64"
+        blocked:
+          $ref: "#/components/schemas/UInt64"
+      required:
+        - connected
+        - available
+        - blocked
     ContractCreateTx:
       type: object
       properties:
@@ -3675,6 +3707,20 @@ components:
           $ref: "#/components/schemas/UInt32"
       required:
         - count
+    NextNonceResponse:
+      type: object
+      properties:
+        next_nonce:
+          type: integer
+      required:
+        - next_nonce
+    CheckTxInPoolResponse:
+      type: object
+      properties:
+        status:
+          type: string
+      required:
+        - status
   parameters:
     intAsString:
       in: query

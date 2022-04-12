@@ -29,7 +29,6 @@
     enacl,
     enoise,
     jsx,
-    unicode_util_compat, %% to be removed, not needed in OTP 20
     idna,
     inets,
     nat,

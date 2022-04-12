@@ -34,6 +34,8 @@
 
 -export([delete/2]).
 
+%% Backwards compatibility conversion
+-export([from_db_format/1]).
 
 %% API - misc
 -export([ get_all_accounts_balances/1
@@ -52,6 +54,10 @@
 -spec empty() -> tree().
 empty() ->
     aeu_mtrees:empty().
+
+-spec from_db_format(tree()) -> tree().
+from_db_format(Tree) ->
+    aeu_mtrees:from_db_format(Tree).
 
 -spec empty_with_backend() -> tree().
 empty_with_backend() ->

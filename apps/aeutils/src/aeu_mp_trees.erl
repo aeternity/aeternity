@@ -43,6 +43,8 @@
 
 -export([record_fields/1]).
 
+-export([from_db_format/1]).
+
 -export_type([ tree/0
              , db/0
              , iterator/0
@@ -58,6 +60,10 @@
              , db   = new_dict_db() :: aeu_mp_trees_db:db()
              , node_cache = none    :: none | node_cache()
              }).
+
+-record(db_mpt, { hash :: <<>> | hash()
+                , db   = aeu_mp_trees_db:db()
+                }).
 
 -record(iter, { key  = <<>>          :: <<>> | key()
               , root = <<>>          :: <<>> | hash()
@@ -145,6 +151,16 @@ tree_no_cache(MPT = #mpt{}) ->
 -spec db(tree()) -> db().
 db(#mpt{ db = DB}) ->
     DB.
+
+-spec from_db_format(tree() | tuple()) -> tree().
+from_db_format(Tree = #mpt{}) -> Tree;
+from_db_format(Tuple) ->
+    case setelement(1, Tuple, db_mpt) of
+        #db_mpt{ hash = RootHash, db = DB } ->
+            #mpt{ hash = RootHash, db = DB, node_cache = none };
+        _ ->
+            error(illegal_db_format)
+    end.
 
 -spec read_only_subtree(key() | <<>>, tree()) -> {ok, tree()} | {error, no_such_subtree}.
 %% @doc Returns the subtree of a given key. Note that the key needs to be
