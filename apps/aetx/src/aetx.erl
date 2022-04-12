@@ -728,5 +728,6 @@ tx(Tx) ->
     Tx#aetx.tx.
 -endif.
 
+-spec tx_type(tx()) -> tx_type().
 tx_type(Tx) ->
     Tx#aetx.type.

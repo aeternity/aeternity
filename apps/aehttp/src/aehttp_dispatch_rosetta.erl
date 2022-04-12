@@ -179,12 +179,8 @@ handle_request_('block', #{'BlockRequest' :=
         end,
         Block = case maps:get(<<"block_identifier">>, Req) of
                     #{<<"index">> := Index} ->
-                        case aeapi:key_block_by_height(Index) of
-                            {ok, Block0} ->
-                                Block0;
-                            {error, Err} ->
-                                throw(Err)
-                        end;
+                        {ok, Block0} = aeapi:key_block_by_height(Index),
+                        Block0;
                     #{<<"hash">> := Hash} ->
                         case aeapi:key_block_by_hash(Hash) of
                             error ->
@@ -319,18 +315,19 @@ rosetta_error_response(ErrCode, Retriable) when is_integer(ErrCode),
                                                 is_boolean(Retriable) ->
     rosetta_error_response(ErrCode, Retriable, undefined).
 
-rosetta_error_response(ErrCode, Retriable, Details) when is_integer(ErrCode),
+rosetta_error_response(ErrCode, Retriable, _Details) when is_integer(ErrCode),
                                                          is_boolean(Retriable) ->
-    Err = #{<<"code">> => ErrCode,
-            <<"message">> => rosetta_err_msg(ErrCode),
-            <<"retriable">> => Retriable
-           },
-    case Details of
-        undefined ->
-            Err;
-        #{} ->
-            Err#{<<"details">> => Details}
-    end.
+    #{<<"code">> => ErrCode,
+      <<"message">> => rosetta_err_msg(ErrCode),
+      <<"retriable">> => Retriable
+    }.
+    % Remove this for now to help dialyzer pass CI. It knows Details can only be undefined..
+    % case Details of
+    %     undefined ->
+    %         Err;
+    %     #{} ->
+    %         Err#{<<"details">> => Details}
+    % end.
 
 rosetta_err_msg(?ROSETTA_ERR_NW_STATUS_ERR)   -> <<"Error determining networkStatus">>;
 rosetta_err_msg(?ROSETTA_ERR_INVALID_NETWORK) -> <<"Invalid network specified">>;
