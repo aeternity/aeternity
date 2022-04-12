@@ -82,6 +82,7 @@
          rpc/3,
          rpc/4,
          use_swagger/1,
+         use_rosetta/0,
          http_request/4,
          httpc_request/4,
          http_api_version/0,
@@ -1341,6 +1342,9 @@ use_swagger(SpecVsn) ->
             swagger2 -> "/v2/"
         end,
     put(api_prefix, Prefix).
+
+use_rosetta() ->
+    put(api_prefix, "/").
 
 get(Key, Default) ->
     case get(Key) of

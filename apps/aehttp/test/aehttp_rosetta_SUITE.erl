@@ -86,8 +86,7 @@ init_per_testcase(_Case, Config) ->
 init_per_testcase_all(Config) ->
     [{_, Node} | _] = ?config(nodes, Config),
     aecore_suite_utils:mock_mempool_nonce_offset(Node, 100),
-    SwaggerVsn = proplists:get_value(swagger_version, Config, oas3),
-    aecore_suite_utils:use_swagger(SwaggerVsn),
+    aecore_suite_utils:use_rosetta(),
     [{tc_start, os:timestamp()} | Config].
 
 end_per_testcase(_Case, Config) ->
@@ -120,7 +119,6 @@ network_list(_Config) ->
 
 get_list_sut() ->
     Host = rosetta_address(),
-    put(api_prefix, "/"),
     Body =
         #{metadata => #{}},
     http_request(Host, post, "network/list", Body).
@@ -147,7 +145,6 @@ network_options(_Config) ->
 
 get_options_sut() ->
     Host = rosetta_address(),
-    put(api_prefix, "/"),
     Body =
         #{network_identifier =>
               #{blockchain => <<"aeternity">>, network => aec_governance:get_network_id()},
@@ -173,7 +170,6 @@ network_status(_Config) ->
 
 get_status_sut() ->
     Host = rosetta_address(),
-    put(api_prefix, "/"),
     Body =
         #{network_identifier =>
               #{blockchain => <<"aeternity">>, network => aec_governance:get_network_id()},
