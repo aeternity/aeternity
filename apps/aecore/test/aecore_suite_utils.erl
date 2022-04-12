@@ -88,7 +88,8 @@
          http_api_prefix/0,
          process_http_return/1,
          internal_address/0,
-         external_address/0
+         external_address/0,
+         rosetta_address/0
         ]).
 
 -export([generate_key_pair/0]).
@@ -1455,6 +1456,12 @@ external_address() ->
               [ [<<"http">>, <<"external">>, <<"port">>],
                 aehttp, [external, port], 8043]),
     "http://127.0.0.1:" ++ integer_to_list(Port).     % good enough for requests
+
+rosetta_address() ->
+    Port = rpc(aeu_env, user_config_or_env,
+              [ [<<"http">>, <<"rosetta">>, <<"port">>],
+                aehttp, [rosetta, port], 8243]),
+    "http://127.0.0.1:" ++ integer_to_list(Port).
 
 rpc(Mod, Fun, Args) ->
     rpc(?DEFAULT_NODE, Mod, Fun, Args).

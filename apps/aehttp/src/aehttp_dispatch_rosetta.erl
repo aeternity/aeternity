@@ -119,7 +119,12 @@ handle_request_('networkOptions', _, _Context) ->
 handle_request_('networkStatus', _, _Context) ->
     try
         {ok, TopBlock} = aeapi:top_key_block(),
-        CurrentBlock = aeapi:prev_block(TopBlock),
+        CurrentBlock = case aec_blocks:height(TopBlock) of
+                        0 ->
+                            TopBlock;
+                        _ ->
+                            aeapi:prev_block(TopBlock)
+                        end,
         CurrentBlockIdentifier = format_block_identifier(CurrentBlock),
         CurrentBlockTimestamp = aec_blocks:time_in_msecs(CurrentBlock),
         GenesisBlockIdentifier = format_block_identifier(aec_chain:genesis_block()),
