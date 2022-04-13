@@ -1464,7 +1464,7 @@ external_address() ->
 rosetta_address() ->
     Port = rpc(aeu_env, user_config_or_env,
               [ [<<"http">>, <<"rosetta">>, <<"port">>],
-                aehttp, [rosetta, port], 8243]),
+                aehttp, [rosetta, port], 8247]),
     "http://127.0.0.1:" ++ integer_to_list(Port).
 
 rpc(Mod, Fun, Args) ->
