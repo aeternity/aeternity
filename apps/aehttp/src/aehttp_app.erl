@@ -47,6 +47,7 @@ start(_StartType, _StartArgs) ->
 stop(_State) ->
     _ = cowboy:stop_listener(internal),
     _ = cowboy:stop_listener(external),
+    _ = cowboy:stop_listener(rosetta),
     _ = cowboy:stop_listener(channels_socket),
     ok.
 
