@@ -16,6 +16,7 @@
 -export([all/0, groups/0, suite/0, init_per_suite/1, end_per_suite/1, init_per_group/2,
          end_per_group/2, init_per_testcase/2, end_per_testcase/2]).
 -export([network_status/1, network_options/1, network_list/1]).
+-export([block_key_only/1, block_spend_tx/1]).
 
 -include_lib("common_test/include/ct.hrl").
 -include_lib("aecontract/include/hard_forks.hrl").
@@ -34,9 +35,11 @@ groups() ->
      {rosetta,
       [sequence],
       %% /network/*
-      [{group, network_endpoint}]},
+      [{group, network_endpoint},
+       {group, block_endpoint}]},
      %% /network/*
-     {network_endpoint, [], [network_list, network_options, network_status]}].
+     {network_endpoint, [], [network_list, network_options, network_status]},
+     {block_endpoint, [], [block_key_only, block_spend_tx]}].
 
 suite() ->
     [].
@@ -152,7 +155,13 @@ get_options_sut() ->
     http_request(Host, post, "network/options", Body).
 
 %% /network/status
-network_status(_Config) ->
+network_status(Config) ->
+     [ {_NodeId, Node} | _ ] = ?config(nodes, Config),
+    aecore_suite_utils:reinit_with_ct_consensus(?NODE),
+    ToMine = max(2, aecore_suite_utils:latest_fork_height()),
+    aecore_suite_utils:mine_key_blocks(Node, ToMine),
+    {ok, [KeyBlock]} = aecore_suite_utils:mine_key_blocks(Node, 1),
+    true = aec_blocks:is_key_block(KeyBlock),
     {ok,
      200,
      #{<<"current_block_identifier">> := #{<<"hash">> := TopKeyBlockHash},
@@ -161,6 +170,7 @@ network_status(_Config) ->
        <<"sync_status">> := #{<<"synced">> := Synced},
        <<"peers">> := PeersFormatted}} =
         get_status_sut(),
+
     ?assertMatch({ok, _}, aeser_api_encoder:safe_decode(key_block_hash, GenesisKeyBlockHash)),
     ?assertMatch(X when is_boolean(X), Synced),
     ?assertMatch(true, is_integer(CurrentBlockTimestamp)),
@@ -175,3 +185,102 @@ get_status_sut() ->
               #{blockchain => <<"aeternity">>, network => aec_governance:get_network_id()},
           metadata => #{}},
     http_request(Host, post, "network/status", Body).
+
+%% /block
+
+%% Test we can fetch an empty keyblock
+block_key_only(Config) ->
+    [ {_NodeId, Node} | _ ] = ?config(nodes, Config),
+    aecore_suite_utils:reinit_with_ct_consensus(?NODE),
+    ToMine = max(2, aecore_suite_utils:latest_fork_height()),
+    aecore_suite_utils:mine_key_blocks(Node, ToMine),
+    {ok, [KeyBlock]} = aecore_suite_utils:mine_key_blocks(Node, 1),
+    true = aec_blocks:is_key_block(KeyBlock),
+    KeyHash = aeapi:printable_block_hash(KeyBlock),
+    {ok,
+     200,
+     #{<<"block_identifier">> := #{<<"hash">> := KeyBlockHash, <<"index">> := Height},
+       <<"timestamp">> := CurrentBlockTimestamp,
+       <<"parent_block_identifier">> := #{<<"hash">> := ParentKeyBlockHash},
+       <<"transactions">> := Transactions}} =
+        get_block_sut(KeyHash),
+    io:format(user, "block_key_only ~p~n", [Height]),
+    ?assertMatch({ok, _}, aeser_api_encoder:safe_decode(key_block_hash, KeyBlockHash)),
+    ?assertMatch(KeyHash, KeyBlockHash),
+    ?assertMatch(true, is_integer(CurrentBlockTimestamp)),
+    ?assertMatch([], Transactions),
+    ?assertMatch({ok, _}, aeser_api_encoder:safe_decode(key_block_hash, ParentKeyBlockHash)),
+    ok.
+
+%% Test fetch of SpendTx
+block_spend_tx(Config) ->
+    [ {_NodeId, Node} | _ ] = ?config(nodes, Config),
+    aecore_suite_utils:reinit_with_ct_consensus(?NODE),
+    ToMine = max(2, aecore_suite_utils:latest_fork_height()),
+    aecore_suite_utils:mine_key_blocks(Node, ToMine),
+    {ok, [KeyBlock]} = aecore_suite_utils:mine_key_blocks(Node, 1),
+    true = aec_blocks:is_key_block(KeyBlock),
+
+    %% Create To and From accounts and the SpendTx using the non rosetta API for now
+    %% Urrghh horrible uses process dictionary to set the path prefix
+    SwaggerVsn = proplists:get_value(swagger_version, Config, oas3),
+    aecore_suite_utils:use_swagger(SwaggerVsn),
+
+    {FromPubKey, FromPrivKey} = aehttp_integration_SUITE:initialize_account(100000000 * aec_test_utils:min_gas_price()),
+    {ToPubKey, _ToPrivKey} = aehttp_integration_SUITE:initialize_account(100000000 * aec_test_utils:min_gas_price()),
+
+    %% Check mempool empty
+    {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
+
+    {ok, Nonce} = rpc(aec_next_nonce, pick_for_account, [FromPubKey]),
+    {ok, SpendTx} =
+        aec_spend_tx:new(
+          #{sender_id => aeser_id:create(account, FromPubKey),
+            recipient_id => aeser_id:create(account, ToPubKey),
+            amount => 1,
+            fee => ?SPEND_FEE,
+            nonce => Nonce,
+            payload => <<"foo">>}),
+
+    SignedSpendTx = sign_tx(SpendTx, FromPrivKey),
+    {ok, 200, #{<<"tx_hash">> := SpendTxHash}} = post_tx(SignedSpendTx),
+
+    {ok, [_]} = rpc(aec_tx_pool, peek, [infinity]),
+    aecore_suite_utils:mine_blocks_until_txs_on_chain(Node, [SpendTxHash], 2),
+    {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
+
+    aecore_suite_utils:use_rosetta(),
+
+    %% Seems that mine_blocks_until_txs_on_chain stops at the block
+    %% containing the Tx. Or maybe this is a race condition??
+    {ok, 200, #{<<"current_block_identifier">> := #{<<"hash">> := TopKeyBlockHash}}} =
+        get_status_sut(),
+
+    {ok, 200,
+     #{<<"block_identifier">> := #{<<"hash">> := KeyBlockHash},
+       <<"timestamp">> := CurrentBlockTimestamp,
+       <<"parent_block_identifier">> := #{<<"hash">> := ParentKeyBlockHash},
+       <<"transactions">> := Transactions}} =
+        get_block_sut(TopKeyBlockHash),
+
+    ?assertMatch({ok, _}, aeser_api_encoder:safe_decode(key_block_hash, KeyBlockHash)),
+    ?assertMatch(true, is_integer(CurrentBlockTimestamp)),
+    ?assertMatch([_], Transactions),
+    ?assertMatch({ok, _}, aeser_api_encoder:safe_decode(key_block_hash, ParentKeyBlockHash)),
+    ok.
+
+get_block_sut(Hash) ->
+    Host = rosetta_address(),
+    Body =
+        #{network_identifier =>
+              #{blockchain => <<"aeternity">>, network => aec_governance:get_network_id()},
+                block_identifier => #{hash => Hash}},
+    http_request(Host, post, "block", Body).
+
+
+sign_tx(Tx, Privkey) ->
+    STx = aec_test_utils:sign_tx(Tx, [Privkey]),
+    aeser_api_encoder:encode(transaction, aetx_sign:serialize_to_binary(STx)).
+
+post_tx(Tx) ->
+    aehttp_integration_SUITE:post_transactions_sut(Tx).
