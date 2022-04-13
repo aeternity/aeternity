@@ -573,6 +573,7 @@ start_node(Config) ->
     [{node, Node} | Config1].
 
 reset_participants(Grp, Config) ->
+    ct:log("~p:reset_participants(Grp = ~p, Config)", [?MODULE, Grp]),
     Node = ?config(node, Config),
 
     StartAmt = 7000000000 * min_gas_price(),
@@ -597,7 +598,9 @@ reset_participants(Grp, Config) ->
                                     start_amt => StartAmt}},
     %% New participants need to bump the port to not risk colliding.
     Config1 = [{participants, Participants} | proplists:delete(participants, Config)],
-    inc_group_port(Grp, Config1).
+    Res = inc_group_port(Grp, Config1),
+    ct:log("~p:reset_participants(~p, Config) DONE", [?MODULE, Grp]),
+    Res.
 
 inc_group_port(Grp, Config) ->
     %% Note that we are dealing with a group hierarchy that will add different

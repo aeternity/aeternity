@@ -124,7 +124,7 @@
   0},
  {<<"mnesia_rocksdb">>,
   {git,"https://github.com/aeternity/mnesia_rocksdb.git",
-      {ref,"0830cecbf99eaf9823ecb955e94251eb143fb90b"}},
+      {ref,"b70654d0a2e965a73a03507a50038ba45c948d89"}},
   0},
  {<<"nat">>,
   {git,"https://github.com/aeternity/erlang-nat.git",
