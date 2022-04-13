@@ -1051,7 +1051,7 @@ add_tx_hash_to_mempool(TxHash) when is_binary(TxHash) ->
       [{aec_tx_pool, TxHash}]).
 
 is_in_tx_pool(TxHash) ->
-    ?t(mnesia:read(aec_tx_pool, TxHash)) =:= ?TX_IN_MEMPOOL.
+    ?t(mnesia:read(aec_tx_pool, TxHash)) =/= ?TX_IN_MEMPOOL.
 
 remove_tx_from_mempool(TxHash) when is_binary(TxHash) ->
     ?t(mnesia:delete({aec_tx_pool, TxHash}),
