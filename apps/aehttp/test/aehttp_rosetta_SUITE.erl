@@ -16,7 +16,7 @@
 -export([all/0, groups/0, suite/0, init_per_suite/1, end_per_suite/1, init_per_group/2,
          end_per_group/2, init_per_testcase/2, end_per_testcase/2]).
 -export([network_status/1, network_options/1, network_list/1]).
--export([block_key_only/1, block_spend_tx/1]).
+-export([block_key_only/1, block_spend_tx/1, block_create_contract_tx/1]).
 
 -include_lib("common_test/include/ct.hrl").
 -include_lib("aecontract/include/hard_forks.hrl").
@@ -39,7 +39,7 @@ groups() ->
        {group, block_endpoint}]},
      %% /network/*
      {network_endpoint, [], [network_list, network_options, network_status]},
-     {block_endpoint, [], [block_key_only, block_spend_tx]}].
+     {block_endpoint, [], [block_key_only, block_spend_tx, block_create_contract_tx]}].
 
 suite() ->
     [].
@@ -251,7 +251,7 @@ block_spend_tx(Config) ->
 
     aecore_suite_utils:use_rosetta(),
 
-    %% Seems that mine_blocks_until_txs_on_chain stops at the block
+    %% Seems that mine_blocks_until_txs_on_chain always stops at the block
     %% containing the Tx. Or maybe this is a race condition??
     {ok, 200, #{<<"current_block_identifier">> := #{<<"hash">> := TopKeyBlockHash}}} =
         get_status_sut(),
@@ -263,11 +263,82 @@ block_spend_tx(Config) ->
        <<"transactions">> := Transactions}} =
         get_block_sut(TopKeyBlockHash),
 
+    ?assertMatch([], Transactions),
+
+     [#{<<"operations">> :=
+            [#{<<"operation_identifier">> := #{<<"index">> := 0},
+                <<"type">> := <<"SpendTx">>}],
+                <<"transaction_identifier">> :=
+                   #{<<"hash">> := FetchedTxHash}}] = Transactions,
     ?assertMatch({ok, _}, aeser_api_encoder:safe_decode(key_block_hash, KeyBlockHash)),
     ?assertMatch(true, is_integer(CurrentBlockTimestamp)),
-    ?assertMatch([_], Transactions),
+    ?assertMatch(FetchedTxHash, SpendTxHash),
     ?assertMatch({ok, _}, aeser_api_encoder:safe_decode(key_block_hash, ParentKeyBlockHash)),
     ok.
+
+block_create_contract_tx(Config) ->
+    [ {_NodeId, Node} | _ ] = ?config(nodes, Config),
+    aecore_suite_utils:reinit_with_ct_consensus(?NODE),
+    ToMine = max(2, aecore_suite_utils:latest_fork_height()),
+    aecore_suite_utils:mine_key_blocks(Node, ToMine),
+    {ok, [KeyBlock]} = aecore_suite_utils:mine_key_blocks(Node, 1),
+    true = aec_blocks:is_key_block(KeyBlock),
+
+    %% Create To and From accounts and the SpendTx using the non rosetta API for now
+    %% Urrghh horrible uses process dictionary to set the path prefix
+    SwaggerVsn = proplists:get_value(swagger_version, Config, oas3),
+    aecore_suite_utils:use_swagger(SwaggerVsn),
+
+    {OwnerPubKey, OwnerPrivKey} = aehttp_integration_SUITE:initialize_account(100000000 * aec_test_utils:min_gas_price()),
+
+    %% Check mempool empty
+    {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
+
+    {ok, Nonce} = rpc(aec_next_nonce, pick_for_account, [OwnerPubKey]),
+    EncodedCode = contract_byte_code(spend_test),
+    {ok, EncodedInitCallData} = encode_call_data(spend_test, "init", []),
+
+    ValidEncoded =
+              #{owner_id => aeser_api_encoder:encode(account_pubkey, OwnerPubKey),
+                                   nonce => Nonce,
+                                   code => EncodedCode,
+                                   vm_version => aect_test_utils:latest_sophia_vm_version(),
+                                   abi_version => aect_test_utils:latest_sophia_abi_version(),
+                                   deposit => 2,
+                                   amount => 200,
+                                   gas => 1000,
+                                   gas_price => aec_test_utils:min_gas_price(),
+                                   call_data => EncodedInitCallData,
+                                   fee => 400000 * aec_test_utils:min_gas_price()},
+
+    %% prepare a contract_create_tx and post it
+    {ok, 200, #{<<"tx">> := EncodedUnsignedContractCreateTx,
+                <<"contract_id">> := EncodedContractPubKey}} =
+        aehttp_integration_SUITE:get_contract_create(ValidEncoded),
+
+    ContractCreateTxHash = aehttp_integration_SUITE:sign_and_post_tx(EncodedUnsignedContractCreateTx, OwnerPrivKey),
+
+%%        SignedCreateTx = sign_tx(CreateTx, OwnerPrivKey),
+  %%  {ok, 200, #{<<"tx_hash">> := CreateTxHash}} = post_tx(SignedCreateTx),
+
+    {ok, [_]} = rpc(aec_tx_pool, peek, [infinity]),
+    aecore_suite_utils:mine_blocks_until_txs_on_chain(Node, [ContractCreateTxHash], 2),
+    {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
+
+    aecore_suite_utils:use_rosetta(),
+
+    %% Seems that mine_blocks_until_txs_on_chain always stops at the block
+    %% containing the Tx. Or maybe this is a race condition??
+    {ok, 200, #{<<"current_block_identifier">> := #{<<"hash">> := TopKeyBlockHash}}} =
+        get_status_sut(),
+    {ok, 200,
+     #{<<"block_identifier">> := #{<<"hash">> := KeyBlockHash},
+       <<"timestamp">> := CurrentBlockTimestamp,
+       <<"parent_block_identifier">> := #{<<"hash">> := ParentKeyBlockHash},
+       <<"transactions">> := Transactions}} =
+        get_block_sut(TopKeyBlockHash),
+
+    ?assertMatch([], Transactions).
 
 get_block_sut(Hash) ->
     Host = rosetta_address(),
@@ -284,3 +355,25 @@ sign_tx(Tx, Privkey) ->
 
 post_tx(Tx) ->
     aehttp_integration_SUITE:post_transactions_sut(Tx).
+
+contract_byte_code(ContractName) ->
+    {ok, BinCode} = aect_test_utils:compile_contract(ContractName),
+    aeser_api_encoder:encode(contract_bytearray, BinCode).
+
+contract_code(ContractName) ->
+    {ok, BinSrc} = aect_test_utils:read_contract(ContractName),
+    BinSrc.
+
+encode_call_data(Name, Fun, Args) when is_atom(Name) ->
+    encode_call_data(contract_code(Name), Fun, Args);
+encode_call_data(Src, Fun, Args) ->
+    {ok, CallData} = aect_test_utils:encode_call_data(Src, Fun, Args),
+    {ok, aeser_api_encoder:encode(contract_bytearray, CallData)}.
+
+%% Balance of SpendTx to self of 20000 aettos at height.
+%% 581191: {"balance":6542226359999999997,"id":"ak_wTPFpksUJFjjntonTvwK4LJvDw11DPma7kZBneKbumb8yPeFq","kind":"basic","nonce":7327720,"payable":true}
+%% 581192: {"balance":6542168419999999997,"id":"ak_wTPFpksUJFjjntonTvwK4LJvDw11DPma7kZBneKbumb8yPeFq","kind":"basic","nonce":7327723,"payable":true}
+%% Difference: 6542226359999999997 - 6542168419999999997 = 57940000000000
+%% Fee per Tx is around 0.00001932 AE or 19320000000000 aetto
+%% So this account must have had 3 Spend TX in this generation
+%% Confirmed by https://explorer.aeternity.io/generations/581191

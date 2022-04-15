@@ -286,27 +286,49 @@ format_block_identifier(Block) ->
       <<"hash">> => aeapi:printable_block_hash(Block)}.
 
 format_block_txs(Txs) ->
-    {_, FormattedTxs} = lists:foldl(
-                          fun(SignedTx, {Offset, Acc}) ->
-                                  Tx = aetx_sign:tx(SignedTx),
-                                  TxType = aetx:tx_type(Tx),
-                                  X2 = format_tx(SignedTx, Offset, TxType),
-                                  OffsetIncrement = 1,
-                                  {Offset + OffsetIncrement, [X2 | Acc]}
-                          end, {0, []}, Txs),
-    lists:reverse(FormattedTxs).
+    lists:map(fun(SignedTx) ->
+                      format_tx(SignedTx)
+              end, Txs).
 
-format_tx(SignedTx, Offset, TxType) ->
+format_tx(SignedTx) ->
+    Tx = aetx_sign:tx(SignedTx),
+    TxType = aetx:tx_type(Tx),
     #{
       <<"transaction_identifier">> => #{<<"hash">> => aeser_api_encoder:encode(tx_hash, aetx_sign:hash(SignedTx))},
-      <<"operations">> => tx_operations(SignedTx, Offset, TxType)
+      <<"operations">> => tx_operations(SignedTx, TxType)
      }.
 
-tx_operations(_Tx, Offset, TxType) ->
+
+tx_operations(SignedTx, spend_tx) ->
+    Tx = aetx_sign:tx(SignedTx),
+    SpendTx = aetx:tx(Tx),
+    From = aeser_api_encoder:encode(account_pubkey, aec_spend_tx:sender_pubkey(SpendTx)),
+    %% The magic value 'id_hash' here does feel a little like it's
+    %% an an entry to an obfuscated code competition ;)
+    To = aeser_api_encoder:encode(id_hash, aec_spend_tx:recipient_id(SpendTx)),
+    Type = aetx:type_to_swagger_name(spend_tx),
+    [spend_tx_op(0, Type, From, -aec_spend_tx:amount(SpendTx)),
+     spend_tx_op(1, Type, To, aec_spend_tx:amount(SpendTx)),
+     spend_tx_op(2, <<"Fee">>, From, -aec_spend_tx:fee(SpendTx))];
+tx_operations(_Tx, TxType) ->
     [#{
-       <<"operation_identifier">> => #{<<"index">> => Offset},
+       <<"operation_identifier">> => #{<<"index">> => 0},
        <<"type">> => aetx:type_to_swagger_name(TxType)
       }].
+
+spend_tx_op(Index, Type, Address, Amount) ->
+    #{
+       <<"operation_identifier">> => #{<<"index">> => Index},
+       <<"type">> => Type,
+       <<"status">> => <<"SUCCESS">>,
+       <<"account">> => #{<<"address">> => Address,
+       <<"amount">> => amount(Amount)}
+      }.
+amount(Amount) ->
+    #{<<"value">> => integer_to_binary(Amount),
+      <<"currency">> => #{<<"symbol">> => <<"aettos">>,
+                          <<"decimals">> => 18}
+     }.
 
 rosetta_error_response(ErrCode) ->
     rosetta_error_response(ErrCode, rosetta_err_retriable(ErrCode)).
