@@ -10,8 +10,10 @@
 
 -behavior(aec_consensus).
 
+
 -define(TAG, 1337). %% TODO: remove this
 -define(SIGNATURE_SIZE, 16).
+-define(ETS_CACHE_TABLE, ?MODULE).
 
 %% API
 -export([ can_be_turned_off/0
@@ -109,7 +111,7 @@ start(Config) ->
             StakersEncoded),
     StakersMap = maps:from_list(Stakers),
     aec_preset_keys:start_link(StakersMap), %% TODO: attach it to the supervision tree
-    lager:info("Stakers: ~p", [StakersMap]),
+    lager:debug("Stakers: ~p", [StakersMap]),
     ok.
 
 stop() -> ok.
@@ -138,9 +140,9 @@ dirty_validate_micro_node_with_ctx(_Node, _Block, _Ctx) -> ok.
 %% Custom state transitions
 state_pre_transform_key_node_consensus_switch(_Node, Trees) -> Trees.
 state_pre_transform_key_node(Node, Trees) ->
-    %% TODO: encode the call data OR expose it in the config
-    %% the following call data corresponds to elect()
-    case call_consensus_contract(Node, Trees, <<"cb_KxHNPVq4P7bBqQA=">>, "elect()") of
+    {ok, CD} = aeb_fate_abi:create_calldata("elect", []),
+    CallData = aeser_api_encoder:encode(contract_bytearray, CD),
+    case call_consensus_contract(Node, Trees, CallData, "elect()") of
         {ok, Trees1, _} -> Trees1;
         {error, What} ->
             error({failed_to_elect_new_leader, What}) %% maybe a softer approach than crash and burn?
@@ -151,10 +153,8 @@ state_pre_transform_micro_node(_Node, Trees) -> Trees.
 %% -------------------------------------------------------------------
 %% Block rewards
 state_grant_reward(Beneficiary, Node, Trees, Amount) ->
-    %% TODO: improve this:
     {ok, CD} = aeb_fate_abi:create_calldata("reward", [aefa_fate_code:encode_arg({address, Beneficiary})]),
-    CallData =
-        aeser_api_encoder:encode(contract_bytearray, CD),
+    CallData = aeser_api_encoder:encode(contract_bytearray, CD),
     case call_consensus_contract(Node, Trees, CallData,
                                  "reward(" ++ binary_to_list(aeser_api_encoder:encode(account_pubkey, Beneficiary)) ++ ")", Amount) of
         {ok, Trees1, _} -> Trees1;
@@ -205,7 +205,6 @@ key_header_for_sealing(Header) ->
     aec_headers:serialize_to_binary(Header2).
 
 validate_key_header_seal(Header, _Protocol) ->
-    %% TODO: validate correct leader
     Seal = aec_headers:key_seal(Header),
     {SignaturePart, Padding} = lists:split(?SIGNATURE_SIZE, Seal),
     Signature = << <<E:32>> || E <- SignaturePart >>,
@@ -275,30 +274,49 @@ assert_key_target_range(?TAG) ->
 key_header_difficulty(_) ->
     ?TAG.
 
+%% This is initial height; if neeeded shall be reinit at fork height
 contract_pubkey() ->
-  {ok, EncContractId} =
-        aeu_env:user_config([<<"chain">>, <<"consensus">>,
-                                  <<"0">>, %% TODO: make this configurable
-                                  <<"config">>, <<"consensus_contract">>]),
-    {ok, Pubkey}   = aeser_api_encoder:safe_decode(contract_pubkey,
-                                                   EncContractId),
-    Pubkey.
+    aeu_ets_cache:get(
+        ?ETS_CACHE_TABLE,
+        contract_pubkey,
+        fun() ->
+            {ok, EncContractId} =
+                aeu_env:user_config([<<"chain">>, <<"consensus">>,
+                                     <<"0">>,
+                                     <<"config">>, <<"consensus_contract">>]),
+                {ok, Pubkey}   = aeser_api_encoder:safe_decode(contract_pubkey,
+                                                               EncContractId),
+                Pubkey
+        end).
 
+%% This is initial height; if neeeded shall be reinit at fork height
 contract_owner() ->
-    {ok, EncOwner} =
-        aeu_env:user_config([<<"chain">>, <<"consensus">>,
-                                  <<"0">>, %% TODO: make this configurable
-                                  <<"config">>, <<"contract_owner">>]),
-    {ok, Pubkey}   = aeser_api_encoder:safe_decode(account_pubkey,
-                                                   EncOwner),
-    Pubkey.
+    aeu_ets_cache:get(
+        ?ETS_CACHE_TABLE,
+        contract_owner,
+        fun() ->
+            {ok, EncOwner} =
+                aeu_env:user_config([<<"chain">>, <<"consensus">>,
+                                          <<"0">>,
+                                          <<"config">>, <<"contract_owner">>]),
+            {ok, Pubkey}   = aeser_api_encoder:safe_decode(account_pubkey,
+                                                          EncOwner),
+            Pubkey
+        end).
 
+%% This is initial height; if neeeded shall be reinit at fork height
 expected_key_block_rate() ->
-    {ok, ExpectedRate} =
-        aeu_env:user_config([<<"chain">>, <<"consensus">>,
-                                  <<"0">>, %% TODO: make this configurable
-                                  <<"config">>, <<"expected_key_block_rate">>]),
-    ExpectedRate.
+    aeu_ets_cache:get(
+        ?ETS_CACHE_TABLE,
+        key_block_rate,
+        fun() ->
+            {ok, ExpectedRate} =
+                aeu_env:user_config([<<"chain">>, <<"consensus">>,
+                                          <<"0">>,
+                                          <<"config">>, <<"expected_key_block_rate">>]),
+            ExpectedRate
+        end).
+
 
 call_consensus_contract(Node, Trees, EncodedCallData, Keyword) ->
     call_consensus_contract(Node, Trees, EncodedCallData, Keyword, 0).
@@ -311,7 +329,7 @@ call_consensus_contract(Node, Trees, EncodedCallData, Keyword, Amount) ->
     
 call_consensus_contract_(TxEnv, Trees, EncodedCallData, Keyword, Amount) ->
     Height = aetx_env:height(TxEnv),
-    lager:info("Height ~p, calling ~p with amount ~p aettos, encoded ~p",
+    lager:debug("Height ~p, calling ~p with amount ~p aettos, encoded ~p",
                [Height, Keyword, Amount, EncodedCallData]),
     ContractPubkey = contract_pubkey(),
     OwnerPubkey = contract_owner(),
@@ -354,7 +372,9 @@ beneficiary() ->
     %% TODO: cache this
     {TxEnv, Trees} = aetx_env:tx_env_and_trees_from_top(aetx_transaction),
     %% call elect_next
-    case call_consensus_contract_(TxEnv, Trees, <<"cb_KxFodeDRP1Jz2f0=">>, "elect()", 0) of
+    {ok, CD} = aeb_fate_abi:create_calldata("leader", []),
+    CallData = aeser_api_encoder:encode(contract_bytearray, CD),
+    case call_consensus_contract_(TxEnv, Trees, CallData, "leader()", 0) of
         {ok, _Trees1, Call} ->
             {address, Leader} = aeb_fate_encoding:deserialize(aect_call:return_value(Call)),
             {ok, Leader};
@@ -364,10 +384,11 @@ beneficiary() ->
 
 
 next_beneficiary() ->
-    %% TODO: cache this
     {TxEnv, Trees} = aetx_env:tx_env_and_trees_from_top(aetx_transaction),
     %% call elect_next
-    case call_consensus_contract_(TxEnv, Trees, <<"cb_KxFodeDRP1Jz2f0=">>, "elect_next()", 0) of
+    {ok, CD} = aeb_fate_abi:create_calldata("elect_next", []),
+    CallData = aeser_api_encoder:encode(contract_bytearray, CD),
+    case call_consensus_contract_(TxEnv, Trees, CallData, "elect_next()", 0) of
         {ok, _Trees1, Call} ->
             {address, Leader} = aeb_fate_encoding:deserialize(aect_call:return_value(Call)),
             SignModule = get_sign_module(),
