@@ -24,6 +24,7 @@
 -define(ROSETTA_ERR_INVALID_NETWORK, 2).
 -define(ROSETTA_ERR_BLOCK_NOT_FOUND, 3).
 -define(ROSETTA_ERR_CHAIN_TOO_SHORT, 4).
+-define(ROSETTA_ERR_TX_NOT_FOUND,    5).
 
 -spec forbidden( Mod :: module(), OperationID :: atom() ) -> boolean().
 forbidden(_Mod, _OpId) -> false.
@@ -120,11 +121,11 @@ handle_request_('networkStatus', _, _Context) ->
     try
         {ok, TopBlock} = aeapi:top_key_block(),
         CurrentBlock = case aec_blocks:height(TopBlock) of
-                        0 ->
-                            TopBlock;
-                        _ ->
-                            aeapi:prev_block(TopBlock)
-                        end,
+                           0 ->
+                               TopBlock;
+                           _ ->
+                               aeapi:prev_block(TopBlock)
+                       end,
         CurrentBlockIdentifier = format_block_identifier(CurrentBlock),
         CurrentBlockTimestamp = aec_blocks:time_in_msecs(CurrentBlock),
         GenesisBlockIdentifier = format_block_identifier(aec_chain:genesis_block()),
@@ -201,8 +202,61 @@ handle_request_('block', #{'BlockRequest' :=
           throw:chain_too_short ->
             {200, [], rosetta_error_response(?ROSETTA_ERR_CHAIN_TOO_SHORT)}
     end;
-handle_request_('blockTransaction', _, _Context) ->
-    {501, [], #{}};
+handle_request_('blockTransaction', #{'BlockTransactionRequest' :=
+                                          #{<<"block_identifier">> :=
+                                                #{<<"hash">> := BlockHash ,
+                                                  <<"index">> := BlockHeight},
+                                            <<"network_identifier">> := #{<<"blockchain">> := <<"aeternity">>},
+                                            <<"transaction_identifier">> :=
+                                                #{<<"hash">> := TxHash}}}, _Context) ->
+    try
+        %%
+        %% Fetch key block by height & hash and verify they match
+        %%
+        {ok, BlockByHeight} = aeapi:key_block_by_height(BlockHeight),
+        {ok, BlockByHash} = aeapi:key_block_by_hash(BlockHash),
+        case BlockByHeight =:= BlockByHash of
+            true ->
+                ok;
+            false ->
+                throw(block_not_found)
+        end,
+        %%
+        %% Decode the transaction hash
+        %%
+        TxHashInternal = case aeser_api_encoder:decode(TxHash) of
+                             {tx_hash, TxHash0} ->
+                                 TxHash0;
+                             _ ->
+                                 throw(tx_not_found)
+                         end,
+        %%
+        %% Fetch all the transactions from the block
+        %%
+        SignedTxs = case aeapi:block_txs(BlockByHeight) of
+                        error ->
+                            throw(block_not_found);
+                        Txs0 ->
+                            Txs0
+                    end,
+        %%
+        %% Find the transaction using the hash
+        %%        
+        case find_tx(SignedTxs, TxHashInternal) of
+            not_found ->
+                throw(tx_not_found);
+            {ok, SignedTx, Offset} ->
+                Tx = aetx_sign:tx(SignedTx),
+                TxType = aetx:tx_type(Tx),
+                Resp = #{<<"transaction">> => format_tx(SignedTx, Offset, TxType)},
+                io:format("Resp: ~p~n", [Resp]),
+                {200, [], Resp}
+        end
+    catch throw:block_not_found ->
+            {200, [], rosetta_error_response(?ROSETTA_ERR_BLOCK_NOT_FOUND)};
+          throw:tx_not_found ->
+            {200, [], rosetta_error_response(?ROSETTA_ERR_TX_NOT_FOUND)}
+    end;
 handle_request_('call', _, _Context) ->
     {501, [], #{}};
 handle_request_('constructionCombine', _, _Context) ->
@@ -266,7 +320,9 @@ rosetta_errors() ->
     [rosetta_error_response(X) || X <- [?ROSETTA_ERR_NW_STATUS_ERR,
                                         ?ROSETTA_ERR_INVALID_NETWORK,
                                         ?ROSETTA_ERR_BLOCK_NOT_FOUND,
-                                        ?ROSETTA_ERR_CHAIN_TOO_SHORT]].
+                                        ?ROSETTA_ERR_CHAIN_TOO_SHORT,
+                                        ?ROSETTA_ERR_TX_NOT_FOUND
+                                       ]].
 
 -spec format_block(aec_blocks:block()) -> #{}.
 format_block(Block) ->
@@ -354,9 +410,25 @@ rosetta_error_response(ErrCode, Retriable, _Details) when is_integer(ErrCode),
 rosetta_err_msg(?ROSETTA_ERR_NW_STATUS_ERR)   -> <<"Error determining networkStatus">>;
 rosetta_err_msg(?ROSETTA_ERR_INVALID_NETWORK) -> <<"Invalid network specified">>;
 rosetta_err_msg(?ROSETTA_ERR_BLOCK_NOT_FOUND) -> <<"Specified block not found">>;
+rosetta_err_msg(?ROSETTA_ERR_TX_NOT_FOUND)    -> <<"Specified transaction not found">>;
 rosetta_err_msg(?ROSETTA_ERR_CHAIN_TOO_SHORT) -> <<"Chain too short">>.
 
 rosetta_err_retriable(?ROSETTA_ERR_NW_STATUS_ERR)   -> true;
 rosetta_err_retriable(?ROSETTA_ERR_BLOCK_NOT_FOUND) -> true;
+rosetta_err_retriable(?ROSETTA_ERR_TX_NOT_FOUND)    -> true;
 rosetta_err_retriable(?ROSETTA_ERR_CHAIN_TOO_SHORT) -> true;
 rosetta_err_retriable(_)                            -> false.
+
+find_tx(SignedTxs, TxHash) ->
+    find_tx(SignedTxs, TxHash, 0).
+
+find_tx([], _, _) ->
+    not_found;
+find_tx([SignedTx | T], TxHash, Offset) ->
+    case aetx_sign:hash(SignedTx) == TxHash of
+        true ->
+            {ok, SignedTx, Offset};
+        false ->
+            find_tx(T, TxHash, Offset + 1)
+    end.
+
