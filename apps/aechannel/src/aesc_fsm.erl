@@ -39,7 +39,8 @@
         , get_contract_call/4     %% (fsm(), contract_id(), caller(), round())
         , get_offchain_state/1
         , get_poi/2
-        , inband_msg/3
+        , inband_msg/3            %% (fsm(), To, Msg)
+        , inband_msg/4            %% (fsm(), From, To, Msg)
         , leave/1
         , settle/2                %% (fsm(), map())
         , shutdown/2              %% (fsm(), map())
@@ -202,11 +203,15 @@ get_state(Fsm) ->
 -endif.
 
 inband_msg(Fsm, To, Msg) ->
+    inband_msg(Fsm, me, To, Msg).
+
+-spec inband_msg(pid(), me | aec_keys:pubkey(), aec_keys:pubkey(), binary()) -> ok | {error, any()}.
+inband_msg(Fsm, From, To, Msg) ->
     MaxSz = aesc_codec:max_inband_msg_size(),
     try iolist_to_binary(Msg) of
         MsgBin when byte_size(MsgBin) =< MaxSz ->
-            lager:debug("inband_msg(~p, ~p, ~p)", [Fsm, To, Msg]),
-            gen_statem:call(Fsm, {inband_msg, To, MsgBin});
+            lager:debug("inband_msg(~p, ~p, ~p, ~p)", [Fsm, From, To, Msg]),
+            gen_statem:call(Fsm, {inband_msg, From, To, MsgBin});
         MsgBin ->
             lager:debug("INVALID inband_msg(~p): ~p", [Fsm, byte_size(MsgBin)]),
             {error, invalid_request}
@@ -2923,9 +2928,12 @@ check_shutdown_ack_msg(#{ data       := #{tx := TxBin}
         {error, invalid_shutdown}
     end.
 
-send_inband_msg(To, Info, #data{session = Session} = D) ->
+send_inband_msg(From0, To, Info, #data{session = Session} = D) ->
     ChanId = cur_channel_id(D),
-    From = my_account(D),
+    From = case From0 of
+                me -> my_account(D);
+                _ when is_binary(From0) -> From0
+            end,
     M = #{ channel_id => ChanId
          , from       => From
          , to         => To
@@ -2941,8 +2949,12 @@ check_inband_msg(#{ channel_id := ChanId
                   , from       := From
                   , to         := To } = Msg,
                  #data{on_chain_id = ChanId} = D) ->
+    Forwarding = maps:get(msg_forwarding, D#data.opts, false),
+    NewD = fun() -> log(rcv, ?INBAND_MSG, Msg, D) end,
     case {my_account(D), other_account(D)} of
-        {To, From}     ->  {ok, log(rcv, ?INBAND_MSG, Msg, D)};
+        {To, From}                -> {ok, {direct        , NewD()}};
+        {To, _} when Forwarding   -> {ok, {forwarded     , NewD()}};
+        {_, From} when Forwarding -> {ok, {please_forward, NewD()}};
         {To, _Other}   ->  {error, invalid_sender};
         {_Other, From} ->  {error, invalid_recipient};
         _ ->
@@ -3837,6 +3849,7 @@ init_(#{opts := Opts0} = Arg) ->
               , fun check_log_opt/1
               , fun check_block_hash_deltas/1
               , fun check_keep_running_opt/1
+              , fun check_msg_forwarding_opt/1
               ], Opts1),
     Initiator = maps:get(initiator, Opts2),
     Opts3 = Opts2#{connection => ConnectOpts},
@@ -4128,6 +4141,17 @@ check_keep_running_opt(#{role := Role} = Opts) ->
             lager:debug("Invalid 'keep_running' option (~p) - ignoring", [Other]),
             maps:remove(keep_running, Opts);
         {error, _} ->
+            Opts
+    end.
+
+check_msg_forwarding_opt(Opts) ->
+    case maps:find(msg_forwarding, Opts) of
+        {ok, Bool} when is_boolean(Bool) ->
+            Opts;
+        {ok, Other} ->
+            lager:debug("Invalid 'msg_forwarding' option (~p) - ignoring", [Other]),
+            maps:remove(msg_forwarding, Opts);
+        error ->
             Opts
     end.
 
@@ -4541,10 +4565,18 @@ handle_call_(_NonSigningState, {abort_update, _, _Tag}, From, #data{} = D) ->
     lager:debug("update can not be aborted while ~p with tag ~p",
                 [_NonSigningState, _Tag]),
     keep_state(D, [{reply, From, {error, not_allowed_now}}]);
-handle_call_(_AnyState, {inband_msg, ToPub, Msg}, From, #data{} = D) ->
-    case {ToPub, other_account(D)} of
-        {X, X} ->
-            keep_state(send_inband_msg(ToPub, Msg, D), [{reply, From, ok}]);
+handle_call_(_AnyState, {inband_msg, FromId, ToPub, Msg}, From, #data{} = D) ->
+    FromMe = (FromId == me) orelse (FromId == my_account(D)),
+    IsForwarding = maps:get(msg_forwarding, D#data.opts, false),
+    DoSend = case {FromMe, ToPub, other_account(D)} of
+                {true, X, X} ->
+                    true;
+                _->
+                    IsForwarding
+            end,
+    case DoSend of
+        true ->
+            keep_state(send_inband_msg(FromId, ToPub, Msg, D), [{reply, From, ok}]);
         _ ->
             keep_state(D, [{reply, From, {error, unknown_recipient}}])
     end;
@@ -5017,8 +5049,8 @@ handle_common_event_(cast, ?DISCONNECT = Msg, _St, _, #data{ channel_status = St
     end;
 handle_common_event_(cast, {?INBAND_MSG, Msg}, _St, _, D) ->
     NewD = case check_inband_msg(Msg, D) of
-               {ok, D1} ->
-                   D2 = report(message, Msg, D1),
+               {ok, {Type, D1}} ->
+                   D2 = report_with_notice(message, Msg, Type, D1),
                    D2;
                {error, _} = Err ->
                    lager:warning("Error in inband_msg: ~p", [Err]),
