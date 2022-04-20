@@ -143,7 +143,12 @@ state_pre_transform_key_node(Node, Trees) ->
     {ok, CD} = aeb_fate_abi:create_calldata("elect", []),
     CallData = aeser_api_encoder:encode(contract_bytearray, CD),
     case call_consensus_contract(Node, Trees, CallData, "elect()") of
-        {ok, Trees1, _} -> Trees1;
+        {ok, Trees1, _} ->
+        aeu_ets_cache:reinit(
+            ?ETS_CACHE_TABLE,
+            current_leader,
+            fun beneficiary_/0),
+            Trees1;
         {error, What} ->
             error({failed_to_elect_new_leader, What}) %% maybe a softer approach than crash and burn?
     end.
@@ -369,6 +374,12 @@ call_consensus_contract_(TxEnv, Trees, EncodedCallData, Keyword, Amount) ->
     end.
 
 beneficiary() ->
+    aeu_ets_cache:get(
+        ?ETS_CACHE_TABLE,
+        current_leader,
+        fun beneficiary_/0).
+    
+beneficiary_() ->
     %% TODO: cache this
     {TxEnv, Trees} = aetx_env:tx_env_and_trees_from_top(aetx_transaction),
     %% call elect_next
