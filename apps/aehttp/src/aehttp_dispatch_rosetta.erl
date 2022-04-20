@@ -245,10 +245,10 @@ handle_request_('blockTransaction', #{'BlockTransactionRequest' :=
         case find_tx(SignedTxs, TxHashInternal) of
             not_found ->
                 throw(tx_not_found);
-            {ok, SignedTx, Offset} ->
+            {ok, SignedTx} ->
                 Tx = aetx_sign:tx(SignedTx),
                 TxType = aetx:tx_type(Tx),
-                Resp = #{<<"transaction">> => format_tx(SignedTx, Offset, TxType)},
+                Resp = #{<<"transaction">> => format_tx(SignedTx, BlockByHash)},
                 io:format("Resp: ~p~n", [Resp]),
                 {200, [], Resp}
         end
@@ -331,7 +331,7 @@ format_block(Block) ->
       <<"block_identifier">> => format_block_identifier(Block),
       <<"parent_block_identifier">> => format_block_identifier(PrevBlock),
       <<"timestamp">> => aeapi:block_time_in_msecs(Block),
-      <<"transactions">> => format_block_txs(aeapi:block_txs(Block))
+      <<"transactions">> => format_block_txs(Block)
      }.
 
 format_block_identifier(undefined) ->
@@ -341,32 +341,76 @@ format_block_identifier(Block) ->
     #{<<"index">> => aeapi:block_height(Block),
       <<"hash">> => aeapi:printable_block_hash(Block)}.
 
-format_block_txs(Txs) ->
+format_block_txs(Block) ->
+    Txs = aeapi:block_txs(Block),
     lists:map(fun(SignedTx) ->
-                      format_tx(SignedTx)
+                      format_tx(SignedTx, Block)
               end, Txs).
 
-format_tx(SignedTx) ->
+format_tx(SignedTx, Block) ->
     Tx = aetx_sign:tx(SignedTx),
     TxType = aetx:tx_type(Tx),
     #{
       <<"transaction_identifier">> => #{<<"hash">> => aeser_api_encoder:encode(tx_hash, aetx_sign:hash(SignedTx))},
-      <<"operations">> => tx_operations(SignedTx, TxType)
+      <<"operations">> => tx_operations(SignedTx, TxType, Block)
      }.
 
 
-tx_operations(SignedTx, spend_tx) ->
-    Tx = aetx_sign:tx(SignedTx),
-    SpendTx = aetx:tx(Tx),
-    From = aeser_api_encoder:encode(account_pubkey, aec_spend_tx:sender_pubkey(SpendTx)),
+tx_operations(SignedTx, spend_tx, _Block) ->
+    %% Balance changes for a SpendTx are simple - Fees and Amount from the 
+    %% Sending account, Amount to the Receiving account.
+    {Mod, SpendTx} = aetx:specialize_callback(aetx_sign:tx(SignedTx)),
+    From = aeser_api_encoder:encode(account_pubkey, Mod:sender_pubkey(SpendTx)),
     %% The magic value 'id_hash' here does feel a little like it's
     %% an an entry to an obfuscated code competition ;)
-    To = aeser_api_encoder:encode(id_hash, aec_spend_tx:recipient_id(SpendTx)),
+    To = aeser_api_encoder:encode(id_hash, Mod:recipient_id(SpendTx)),
     Type = aetx:type_to_swagger_name(spend_tx),
-    [spend_tx_op(0, Type, From, -aec_spend_tx:amount(SpendTx)),
-     spend_tx_op(1, Type, To, aec_spend_tx:amount(SpendTx)),
-     spend_tx_op(2, <<"Fee">>, From, -aec_spend_tx:fee(SpendTx))];
-tx_operations(_Tx, TxType) ->
+    [spend_tx_op(0, Type, From, -Mod:amount(SpendTx)),
+     spend_tx_op(1, Type, To, Mod:amount(SpendTx)),
+     spend_tx_op(2, <<"Fee">>, From, -Mod:fee(SpendTx))];
+tx_operations(SignedTx, contract_create_tx, Block) ->
+    %% The Rosetta API only really wants to see balance changes arising
+    %% from the create_tx. We could also provide the code in some metadata
+    Tx = aetx_sign:tx(SignedTx),
+    %% Dry run the Tx on the original State and capture any spend events
+     {ok, Hash} = aec_headers:hash_header(aec_blocks:to_header(Block)),
+     case aec_dry_run:dry_run(Hash, [], [{tx, Tx}], [tx_events]) of
+        {ok, Res} ->
+            {Results, EventRes} = aehttp_helpers:dry_run_results(Res),
+            lager:debug("dry_run_results: ~p", [Results]),
+            lager:debug("dry_run_results Events: ~p", [EventRes]),
+            [];
+        {error, _Reason} ->
+            throw(chain_too_short)
+    end;
+tx_operations(SignedTx, contract_call_tx, Block) ->
+    %% A contract call. A few balance changing operations always happen,
+    %% plus any initiated within the contract itself
+    Tx = aetx_sign:tx(SignedTx),
+
+    {ok, Hash} = aec_headers:hash_header(aec_blocks:to_header(Block)),
+
+    %% We already stored the result of running the Tx, could use this?
+    %% Or at least assert that the dry run gave us the same answer.
+    {CB, CTx} = aetx:specialize_callback(Tx),
+    Contract  = CB:contract_pubkey(CTx),
+    CallId    = CB:call_id(CTx),
+    aec_chain:get_contract_call(Contract, CallId, Hash),
+
+    %% Dry run the Tx on the original state trees and capture any/all balance
+    %% affecting events arisign from the contract execution
+    case aec_dry_run:dry_run(Hash, [], [{tx, Tx}], [tx_events]) of
+        {ok, Res} ->
+            {[Result], EventRes} = aehttp_helpers:dry_run_results(Res),
+            lager:debug("dry_run_results: ~p", [Result]),
+            lager:debug("dry_run_results Contract Call Events: ~p", [EventRes]),
+            #{call_obj := CallObj} = Result,
+
+            tx_spend_operations(EventRes);
+        {error, _Reason} ->
+            throw(chain_too_short)
+    end;
+tx_operations(_Tx, TxType, _Block) ->
     [#{
        <<"operation_identifier">> => #{<<"index">> => 0},
        <<"type">> => aetx:type_to_swagger_name(TxType)
@@ -377,14 +421,46 @@ spend_tx_op(Index, Type, Address, Amount) ->
        <<"operation_identifier">> => #{<<"index">> => Index},
        <<"type">> => Type,
        <<"status">> => <<"SUCCESS">>,
-       <<"account">> => #{<<"address">> => Address,
-       <<"amount">> => amount(Amount)}
+       <<"account">> => #{<<"address">> => Address},
+       <<"amount">> => amount(Amount)
       }.
+
+tx_spend_operations(Events) ->
+    {Res, _} =
+        lists:foldl(fun tx_spend_op/2, {[], 0}, Events),
+    lists:reverse(Res).
+
+%% One Trace looks like this:
+%% #{info => #{<<"amount">> => 15000,
+%%             <<"fee">> => 0,
+%%             <<"nonce">> => 0,
+%%             <<"payload">> => <<"ba_Q2hhaW4uc3BlbmRFa4Tl">>,
+%%             <<"recipient_id">> => <<"ak_3342amW4GffvrC3umbACQZo9WRmYsVKj3vKG44WMxhDt6EoU1">>,
+%%             <<"sender_id">> => <<"ak_2q41scn2VQ5Kdr1GNSpRs1G3zyDP1gCfcb1beMWpREuwG1gpmu">>,
+%%             <<"ttl">> => 0},
+%%     key => <<"Chain.spend">>,
+%%     kind => internal_call_tx,
+%%     tx_hash => <<"th_GkuKj9acYk4HSC5nzMjkLCLwbPztXuKfKv6w2iGuPqXCKN4A5">>,
+%%     type => contract_call_tx}
+%% Model the internally generated spend ops the same as standard SpendTx
+%% Not clear if this is what users might want / expect...
+tx_spend_op(#{info := Info}, {Acc, Ix}) ->
+    Type = aetx:type_to_swagger_name(spend_tx),
+    #{<<"amount">> := Amount, <<"sender_id">> := From, <<"recipient_id">> := To} = Info,
+    FromOp = spend_tx_op(Ix, Type, From, -Amount),
+    ToOp = spend_tx_op(Ix, Type, To, Amount),
+    {[ToOp, FromOp | Acc], Ix + 2}.
+
 amount(Amount) ->
     #{<<"value">> => integer_to_binary(Amount),
       <<"currency">> => #{<<"symbol">> => <<"aettos">>,
                           <<"decimals">> => 18}
      }.
+
+dry_run_err(Err) when is_list(Err) ->
+    dry_run_err(list_to_binary(Err));
+dry_run_err(Err) ->
+    {ok, {403, [], #{ reason => <<"Bad request: ", Err/binary>>}}}.
 
 rosetta_error_response(ErrCode) ->
     rosetta_error_response(ErrCode, rosetta_err_retriable(ErrCode)).
@@ -419,16 +495,14 @@ rosetta_err_retriable(?ROSETTA_ERR_TX_NOT_FOUND)    -> true;
 rosetta_err_retriable(?ROSETTA_ERR_CHAIN_TOO_SHORT) -> true;
 rosetta_err_retriable(_)                            -> false.
 
-find_tx(SignedTxs, TxHash) ->
-    find_tx(SignedTxs, TxHash, 0).
 
-find_tx([], _, _) ->
+find_tx([], _) ->
     not_found;
-find_tx([SignedTx | T], TxHash, Offset) ->
+find_tx([SignedTx | T], TxHash) ->
     case aetx_sign:hash(SignedTx) == TxHash of
         true ->
-            {ok, SignedTx, Offset};
+            {ok, SignedTx};
         false ->
-            find_tx(T, TxHash, Offset + 1)
+            find_tx(T, TxHash)
     end.
 
