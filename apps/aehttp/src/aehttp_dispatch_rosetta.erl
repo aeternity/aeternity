@@ -203,24 +203,15 @@ handle_request_('block', #{'BlockRequest' :=
             {200, [], rosetta_error_response(?ROSETTA_ERR_CHAIN_TOO_SHORT)}
     end;
 handle_request_('blockTransaction', #{'BlockTransactionRequest' :=
-                                          #{<<"block_identifier">> :=
-                                                #{<<"hash">> := BlockHash ,
-                                                  <<"index">> := BlockHeight},
+                                          #{<<"block_identifier">> := BlockIdentifier,
                                             <<"network_identifier">> := #{<<"blockchain">> := <<"aeternity">>},
                                             <<"transaction_identifier">> :=
                                                 #{<<"hash">> := TxHash}}}, _Context) ->
     try
         %%
-        %% Fetch key block by height & hash and verify they match
+        %% Fetch block
         %%
-        {ok, BlockByHeight} = aeapi:key_block_by_height(BlockHeight),
-        {ok, BlockByHash} = aeapi:key_block_by_hash(BlockHash),
-        case BlockByHeight =:= BlockByHash of
-            true ->
-                ok;
-            false ->
-                throw(block_not_found)
-        end,
+        Block = retrieve_block(BlockIdentifier),
         %%
         %% Decode the transaction hash
         %%
@@ -233,7 +224,7 @@ handle_request_('blockTransaction', #{'BlockTransactionRequest' :=
         %%
         %% Fetch all the transactions from the block
         %%
-        SignedTxs = case aeapi:block_txs(BlockByHeight) of
+        SignedTxs = case aeapi:block_txs(Block) of
                         error ->
                             throw(block_not_found);
                         Txs0 ->
@@ -246,9 +237,7 @@ handle_request_('blockTransaction', #{'BlockTransactionRequest' :=
             not_found ->
                 throw(tx_not_found);
             {ok, SignedTx} ->
-                Tx = aetx_sign:tx(SignedTx),
-                TxType = aetx:tx_type(Tx),
-                Resp = #{<<"transaction">> => format_tx(SignedTx, BlockByHash)},
+                Resp = #{<<"transaction">> => format_tx(SignedTx, Block)},
                 io:format("Resp: ~p~n", [Resp]),
                 {200, [], Resp}
         end
@@ -495,6 +484,28 @@ rosetta_err_retriable(?ROSETTA_ERR_TX_NOT_FOUND)    -> true;
 rosetta_err_retriable(?ROSETTA_ERR_CHAIN_TOO_SHORT) -> true;
 rosetta_err_retriable(_)                            -> false.
 
+retrieve_block(BlockIdentifier) ->
+    BlockHeight = maps:get(<<"index">>, BlockIdentifier, undefined),
+    BlockHash = maps:get(<<"hash">>, BlockIdentifier, undefined),
+    retrieve_block(BlockHeight, BlockHash).
+
+retrieve_block(undefined, undefined) ->
+    throw(block_not_found);
+retrieve_block(BlockHeight, undefined) ->
+    {ok, BlockByHeight} = aeapi:key_block_by_height(BlockHeight),
+    BlockByHeight;
+retrieve_block(undefined, BlockHash) ->
+    {ok, BlockByHash} = aeapi:key_block_by_hash(BlockHash),
+    BlockByHash;
+retrieve_block(BlockHeight, BlockHash) ->
+    {ok, BlockByHeight} = aeapi:key_block_by_height(BlockHeight),
+    {ok, BlockByHash} = aeapi:key_block_by_hash(BlockHash),
+    case BlockByHeight =:= BlockByHash of
+        true ->
+            BlockByHeight;
+        false ->
+            throw(block_not_found)
+    end.
 
 find_tx([], _) ->
     not_found;
@@ -505,4 +516,3 @@ find_tx([SignedTx | T], TxHash) ->
         false ->
             find_tx(T, TxHash)
     end.
-
