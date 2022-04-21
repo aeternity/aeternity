@@ -525,7 +525,7 @@ get_next_beneficiary() ->
     TopBlockHash0 = aec_chain:top_block_hash(),
     {ok, TopHeader} = aec_chain:get_header(TopBlockHash0),
     Consensus = aec_consensus:get_consensus_module_at_height(aec_headers:height(TopHeader) + 1),
-    get_beneficiary(Consensus).
+    get_next_beneficiary(Consensus).
 
 
 set_mode(State) ->
