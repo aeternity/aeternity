@@ -204,7 +204,6 @@ block_key_only(Config) ->
        <<"parent_block_identifier">> := #{<<"hash">> := ParentKeyBlockHash},
        <<"transactions">> := Transactions}} =
         get_block_sut(KeyHash),
-    io:format(user, "block_key_only ~p~n", [Height]),
     ?assertMatch({ok, _}, aeser_api_encoder:safe_decode(key_block_hash, KeyBlockHash)),
     ?assertMatch(KeyHash, KeyBlockHash),
     ?assertMatch(true, is_integer(CurrentBlockTimestamp)),
@@ -287,17 +286,20 @@ block_create_contract_tx(Config) ->
     {ok, [KeyBlock]} = aecore_suite_utils:mine_key_blocks(Node, 1),
     true = aec_blocks:is_key_block(KeyBlock),
 
+    %% Use the native http api for the operations not yet implemented in Rosetta
     SwaggerVsn = proplists:get_value(swagger_version, Config, oas3),
     aecore_suite_utils:use_swagger(SwaggerVsn),
 
     {OwnerPubKey, OwnerPrivKey} = aehttp_integration_SUITE:initialize_account(100000000 * aec_test_utils:min_gas_price()),
-    {ToPubKey, _ToPrivKey} = aehttp_integration_SUITE:initialize_account(100000000 * aec_test_utils:min_gas_price()),
+    {ToPubKey, _ToPrivKey} = aehttp_integration_SUITE:initialize_account(200000000 * aec_test_utils:min_gas_price()),
 
     OwnerAccountPubKey = aeser_api_encoder:encode(account_pubkey, OwnerPubKey),
     {ok, 200, #{<<"balance">> := OwnerBalance}} = aehttp_integration_SUITE:get_accounts_by_pubkey_sut(OwnerAccountPubKey),
-    io:format(user, "OwnerBalance = ~p~n", [OwnerBalance]),
+    ToAccountPubKey = aeser_api_encoder:encode(account_pubkey, ToPubKey),
+    {ok, 200, #{<<"balance">> := ToBalance}} = aehttp_integration_SUITE:get_accounts_by_pubkey_sut(ToAccountPubKey),
+    %% ------------------ Contract Create ---------------------------
 
-    %% Check mempool empty
+    %% Check mempool is empty before we start
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
 
     {ok, Nonce} = rpc(aec_next_nonce, pick_for_account, [OwnerPubKey]),
@@ -305,41 +307,91 @@ block_create_contract_tx(Config) ->
     %% Create and post spend_test.aes
     EncodedCode = contract_byte_code(spend_test),
     {ok, EncodedInitCallData} = encode_call_data(spend_test, "init", []),
-
+    CreateAmount = 20000,
+    CreateDeposit = 200,
+    CreateGas = 100000,
+    CreateGasPrice = aec_test_utils:min_gas_price(),
+    CreateFee = 400000 * aec_test_utils:min_gas_price(),
     ValidEncoded =
               #{owner_id => aeser_api_encoder:encode(account_pubkey, OwnerPubKey),
                 nonce => Nonce,
                 code => EncodedCode,
                 vm_version => aect_test_utils:latest_sophia_vm_version(),
                 abi_version => aect_test_utils:latest_sophia_abi_version(),
-                deposit => 0,
-                amount => 20000,
-                gas => 100000,
-                gas_price => aec_test_utils:min_gas_price(),
+                deposit => CreateDeposit,
+                amount => CreateAmount,
+                gas => CreateGas,
+                gas_price => CreateGasPrice,
                 call_data => EncodedInitCallData,
-                fee => 400000 * aec_test_utils:min_gas_price()},
+                fee => CreateFee},
 
     %% prepare the contract_create_tx and post it
-    {ok, 200, #{<<"tx">> := EncodedUnsignedContractCreateTx,
-                <<"contract_id">> := EncodedContractPubKey}} =
+    {ok, 200, #{<<"tx">> := EncodedUnsignedContractCreateTx}} =
         aehttp_integration_SUITE:get_contract_create(ValidEncoded),
 
     ContractCreateTxHash =
         aehttp_integration_SUITE:sign_and_post_tx(EncodedUnsignedContractCreateTx, OwnerPrivKey),
 
-%%        SignedCreateTx = sign_tx(CreateTx, OwnerPrivKey),
-  %%  {ok, 200, #{<<"tx_hash">> := CreateTxHash}} = post_tx(SignedCreateTx),
-
+    %% Mine the contract Tx so it is on chain when we try to retrieve it
     {ok, [_]} = rpc(aec_tx_pool, peek, [infinity]),
     aecore_suite_utils:mine_blocks_until_txs_on_chain(Node, [ContractCreateTxHash], 2),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
 
+    %% Check everyone's balance after the Contract Create is mined and on chain
+    {ok, 200, #{<<"balance">> := OwnerBalanceAfterCreate}} = aehttp_integration_SUITE:get_accounts_by_pubkey_sut(OwnerAccountPubKey),
+
+    {ok, 200, CO} = aehttp_integration_SUITE:get_contract_call_object(ContractCreateTxHash),
+    #{<<"call_info">> :=  #{<<"gas_used">> := CreateGasUsed,
+                            <<"gas_price">> := CreateGasPrice,
+                            <<"contract_id">> := ContractPubKeyEnc}} = CO,
+
+    %% Check Owner Balance using the call object as a cross check
+    TotalAmount = CreateAmount + CreateDeposit + CreateFee + CreateGas * CreateGasPrice,
+    Refund = (CreateGas - CreateGasUsed) * CreateGasPrice,
+    ExpectedBalance = OwnerBalance - TotalAmount + Refund,
+    ?assertMatch(ExpectedBalance, OwnerBalanceAfterCreate),
+
+    %% Finally reached a place where we can switch to using our new rosetta API
+    aecore_suite_utils:use_rosetta(),
+    {ok, 200, #{<<"current_block_identifier">> := #{<<"hash">> := TopKeyBlockHash}}} =
+        get_status_sut(),
+    {ok, 200, #{<<"transactions">> := [Transaction]}} = get_block_sut(TopKeyBlockHash),
+
+    %% Check the the listed balance changing operations contain the right things
+    %% and deliver the right answer.
+    #{<<"operations">> := [FromOp, ToContractOp, FeesOp]} = Transaction,
+    #{<<"amount">> := #{<<"value">> := FromDelta}, <<"account">> := #{<<"address">> := FromAcc}} = FromOp,
+    #{<<"amount">> := #{<<"value">> := FeesDelta}, <<"account">> := #{<<"address">> := FromAcc}} = FeesOp,
+
+    ?assertEqual(OwnerAccountPubKey, FromAcc),
+    ?assertEqual(OwnerBalanceAfterCreate, OwnerBalance + binary_to_integer(FromDelta) + binary_to_integer(FeesDelta)),
+
+    %% Convert the contract id into the matching account id
+    {_, ContractPubKey} = aeser_api_encoder:decode(ContractPubKeyEnc),
+    ContractAccountPubKey = aeser_api_encoder:encode(account_pubkey, ContractPubKey),
+
+    %% Fetch the contract Balance
+    %% Temp switch to the native http api until we have the balance Rosetta Op
+    SwaggerVsn = proplists:get_value(swagger_version, Config, oas3),
+    aecore_suite_utils:use_swagger(SwaggerVsn),
+    {ok, 200, #{<<"balance">> := ContractBalanceAfterCreate}} = aehttp_integration_SUITE:get_accounts_by_pubkey_sut(ContractAccountPubKey),
+    aecore_suite_utils:use_rosetta(),
+
+    #{<<"amount">> := #{<<"value">> := ContractDelta},
+      <<"account">> := #{<<"address">> := ContractAcc}} = ToContractOp,
+    ?assertEqual(ContractAcc, ContractAccountPubKey),
+    ?assertEqual(ContractBalanceAfterCreate, 0 + binary_to_integer(ContractDelta)),
+
+    %% ------------------ Contract Call ---------------------------
+
+    SwaggerVsn = proplists:get_value(swagger_version, Config, oas3),
+    aecore_suite_utils:use_swagger(SwaggerVsn),
     %% Call the contract, sending 15000 of the 20000 balance to the To Account
     %% This should generate a Chain.spend trace within the contract execution
     Args = [aeser_api_encoder:encode(account_pubkey, ToPubKey), "15000"],
     {ok, CallData} = encode_call_data(spend_test, "spend", Args),
     ContractCallEncoded = #{ caller_id => aeser_api_encoder:encode(account_pubkey, OwnerPubKey),
-                              contract_id => EncodedContractPubKey,
+                              contract_id => ContractPubKeyEnc,
                               call_data   => CallData,
                               abi_version => aect_test_utils:latest_sophia_abi_version(),
                               amount => 0,
@@ -356,40 +408,44 @@ block_create_contract_tx(Config) ->
     aecore_suite_utils:mine_blocks_until_txs_on_chain(Node, [ContractCallTxHash], 2),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
 
-    {ok, 200, X} = aehttp_integration_SUITE:get_contract_call_object(ContractCallTxHash),
-    io:format(user, "Contract Info = ~p~n", [X]),
+    {ok, 200, #{<<"balance">> := OwnerBalanceAfterCall}} =
+        aehttp_integration_SUITE:get_accounts_by_pubkey_sut(OwnerAccountPubKey),
+    {ok, 200, #{<<"balance">> := ContractBalanceAfterCall}} =
+        aehttp_integration_SUITE:get_accounts_by_pubkey_sut(ContractAccountPubKey),
+    {ok, 200, #{<<"balance">> := ToBalanceAfterCall}} =
+        aehttp_integration_SUITE:get_accounts_by_pubkey_sut(ToAccountPubKey),
 
-    {ok, 200, #{<<"balance">> := OwnerBalance0}} = aehttp_integration_SUITE:get_accounts_by_pubkey_sut(OwnerAccountPubKey),
-    io:format(user, "OwnerBalance = ~p~n", [OwnerBalance0]),
-
-    %% Get the balances of the contract and owner accounts so we can check what
-    %%  we expected to be spent is accounted for.
-
-    %% Convert the contract id into the matching account id
-    {_, ContractPubKey} = aeser_api_encoder:decode(EncodedContractPubKey),
-    ContractAccountPubKey = aeser_api_encoder:encode(account_pubkey, ContractPubKey),
-    io:format(user, "ContractPubKey = ~p EncodedContractPubKey = ~p~n", [ContractPubKey, EncodedContractPubKey]),
-    {ok, 200, #{<<"balance">> := ContractBalance}} = aehttp_integration_SUITE:get_accounts_by_pubkey_sut(ContractAccountPubKey),
-
-    io:format(user, "ContractBalance = ~p~n", [ContractBalance]),
-
-    {ok, 200, #{<<"balance">> := OwnerBalance1}} = aehttp_integration_SUITE:get_accounts_by_pubkey_sut(OwnerAccountPubKey),
-    io:format(user, "OwnerBalance = ~p~n", [OwnerBalance1]),
     %% Switch back to the Rosetta API root path
     aecore_suite_utils:use_rosetta(),
 
     %% Seems that mine_blocks_until_txs_on_chain always stops at the block
     %% containing the Tx. Or maybe this is a race condition??
-    {ok, 200, #{<<"current_block_identifier">> := #{<<"hash">> := TopKeyBlockHash}}} =
+    {ok, 200, #{<<"current_block_identifier">> := #{<<"hash">> := TopKeyBlockHash1}}} =
         get_status_sut(),
     {ok, 200,
-     #{<<"block_identifier">> := #{<<"hash">> := KeyBlockHash},
-       <<"timestamp">> := CurrentBlockTimestamp,
-       <<"parent_block_identifier">> := #{<<"hash">> := ParentKeyBlockHash},
-       <<"transactions">> := Transactions}} =
-        get_block_sut(TopKeyBlockHash),
+     #{<<"transactions">> := [CallTransaction]}} = get_block_sut(TopKeyBlockHash1),
+    
+    %% Expect
+    %% CallerAccount -= Fees
+    %% ContractAccount -= 15000
+    %% ToAccount += 15000
+    #{<<"operations">> := [CallerOp, FromContractOp, ToOp]} = CallTransaction,
 
-    ?assertMatch([], Transactions).
+    #{<<"amount">> := #{<<"value">> := CallerDelta},
+      <<"account">> := #{<<"address">> := CallerAcc}} = CallerOp,
+    ?assertEqual(OwnerAccountPubKey, CallerAcc),
+    ?assertEqual(OwnerBalanceAfterCall, OwnerBalanceAfterCreate + binary_to_integer(CallerDelta)),
+
+    #{<<"amount">> := #{<<"value">> := ContractCallDelta},
+      <<"account">> := #{<<"address">> := ContractAcc}} = FromContractOp,
+    ?assertEqual(ContractAccountPubKey, ContractAcc),
+    ?assertEqual(ContractBalanceAfterCall, ContractBalanceAfterCreate + binary_to_integer(ContractCallDelta)),
+
+    #{<<"amount">> := #{<<"value">> := ToDelta},
+      <<"account">> := #{<<"address">> := ToAcc}} = ToOp,
+    ?assertEqual(ToAccountPubKey, ToAcc),
+    ?assertEqual(ToBalanceAfterCall, ToBalance + binary_to_integer(ToDelta)).
+
 
 get_block_sut(Hash) ->
     Host = rosetta_address(),
@@ -421,6 +477,7 @@ encode_call_data(Src, Fun, Args) ->
     {ok, CallData} = aect_test_utils:encode_call_data(Src, Fun, Args),
     {ok, aeser_api_encoder:encode(contract_bytearray, CallData)}.
 
+%% NOTES from a real world Tx
 %% Balance of SpendTx to self of 20000 aettos at height.
 %% 581191: {"balance":6542226359999999997,"id":"ak_wTPFpksUJFjjntonTvwK4LJvDw11DPma7kZBneKbumb8yPeFq","kind":"basic","nonce":7327720,"payable":true}
 %% 581192: {"balance":6542168419999999997,"id":"ak_wTPFpksUJFjjntonTvwK4LJvDw11DPma7kZBneKbumb8yPeFq","kind":"basic","nonce":7327723,"payable":true}

@@ -358,46 +358,72 @@ tx_operations(SignedTx, spend_tx, _Block) ->
      spend_tx_op(1, Type, To, Mod:amount(SpendTx)),
      spend_tx_op(2, <<"Fee">>, From, -Mod:fee(SpendTx))];
 tx_operations(SignedTx, contract_create_tx, Block) ->
-    %% The Rosetta API only really wants to see balance changes arising
+    %% The Rosetta API only needs to see balance changes arising
     %% from the create_tx. We could also provide the code in some metadata
-    Tx = aetx_sign:tx(SignedTx),
-    %% Dry run the Tx on the original State and capture any spend events
+    {_Mod = aect_create_tx, Tx} = aetx:specialize_callback(aetx_sign:tx(SignedTx)),
+    Amount = aect_create_tx:amount(Tx),
+    Deposit = aect_create_tx:deposit(Tx),
+    Fee = aect_create_tx:fee(Tx),
+    GasLimit = aect_create_tx:gas_limit(Tx),
+    GasPrice = aect_create_tx:gas_price(Tx),
+    ContractPubKey = aect_create_tx:contract_pubkey(Tx),
+    lager:debug("dry_run_results GasLimit ~p GasPrice ~p", [GasLimit, GasPrice]),
+    %% Convert the contract id into the matching account id where the contract balance is held
+    ContractAccount = aeser_api_encoder:encode(account_pubkey, ContractPubKey),
+    lager:debug("dry_run_results ContractAccount: ~p", [ContractAccount]),
+    %% Dry run the Tx on the original State and capture spend events and fees
      {ok, Hash} = aec_headers:hash_header(aec_blocks:to_header(Block)),
-     case aec_dry_run:dry_run(Hash, [], [{tx, Tx}], [tx_events]) of
+     case aec_dry_run:dry_run(Hash, [], [{tx, aetx_sign:tx(SignedTx)}], [tx_events]) of
         {ok, Res} ->
-            {Results, EventRes} = aehttp_helpers:dry_run_results(Res),
-            lager:debug("dry_run_results: ~p", [Results]),
+            {[Result], EventRes} = aehttp_helpers:dry_run_results(Res),
+            lager:debug("dry_run_results: ~p", [Result]),
             lager:debug("dry_run_results Events: ~p", [EventRes]),
-            [];
-        {error, _Reason} ->
-            throw(chain_too_short)
+            #{call_obj := CallObj} = Result,
+            #{<<"gas_price">> := ResultGasPrice,
+              <<"gas_used">> := CreateGasUsed,
+              <<"caller_id">> := Caller} = CallObj,
+
+            %% TODO: Payed For transactions
+            %% TODO: Failed contract create that still consumed gas
+
+            %% Caller Account -= (Amount + Deposit)
+            %% Contract Account += Amount (-- Deposit is burned --)
+            %% Caller Account -= Fees
+            [spend_tx_op(0, <<"Spend">>, Caller, -(Amount + Deposit)),
+             spend_tx_op(1, <<"Spend">>, ContractAccount, Amount),
+             spend_tx_op(2, <<"Fee">>, Caller, -(Fee + CreateGasUsed * ResultGasPrice))];
+        {error, Reason} ->
+            lager:debug("dry_run_error: ~p", [Reason]),
+            throw(tx_not_found)
     end;
 tx_operations(SignedTx, contract_call_tx, Block) ->
-    %% A contract call. A few balance changing operations always happen,
-    %% plus any initiated within the contract itself
-    Tx = aetx_sign:tx(SignedTx),
-
+     {_Mod = aect_call_tx, Tx} = aetx:specialize_callback(aetx_sign:tx(SignedTx)),
     {ok, Hash} = aec_headers:hash_header(aec_blocks:to_header(Block)),
+
+    Fee = aect_call_tx:fee(Tx),
 
     %% We already stored the result of running the Tx, could use this?
     %% Or at least assert that the dry run gave us the same answer.
-    {CB, CTx} = aetx:specialize_callback(Tx),
-    Contract  = CB:contract_pubkey(CTx),
-    CallId    = CB:call_id(CTx),
+    Contract  = aect_call_tx:contract_pubkey(Tx),
+    CallId    = aect_call_tx:call_id(Tx),
     aec_chain:get_contract_call(Contract, CallId, Hash),
 
     %% Dry run the Tx on the original state trees and capture any/all balance
-    %% affecting events arisign from the contract execution
-    case aec_dry_run:dry_run(Hash, [], [{tx, Tx}], [tx_events]) of
+    %% affecting events arising from the contract execution
+    case aec_dry_run:dry_run(Hash, [], [{tx, aetx_sign:tx(SignedTx)}], [tx_events]) of
         {ok, Res} ->
             {[Result], EventRes} = aehttp_helpers:dry_run_results(Res),
             lager:debug("dry_run_results: ~p", [Result]),
             lager:debug("dry_run_results Contract Call Events: ~p", [EventRes]),
             #{call_obj := CallObj} = Result,
-
-            tx_spend_operations(EventRes);
-        {error, _Reason} ->
-            throw(chain_too_short)
+             #{<<"gas_price">> := ResultGasPrice,
+               <<"gas_used">> := CreateGasUsed,
+               <<"caller_id">> := Caller} = CallObj,
+            [spend_tx_op(0, <<"Fee">>, Caller, -(Fee + CreateGasUsed * ResultGasPrice)) |
+             tx_spend_operations(EventRes, 1)];
+        {error, Reason} ->
+            lager:debug("dry_run_error: ~p", [Reason]),
+            throw(tx_not_found)
     end;
 tx_operations(_Tx, TxType, _Block) ->
     [#{
@@ -414,9 +440,8 @@ spend_tx_op(Index, Type, Address, Amount) ->
        <<"amount">> => amount(Amount)
       }.
 
-tx_spend_operations(Events) ->
-    {Res, _} =
-        lists:foldl(fun tx_spend_op/2, {[], 0}, Events),
+tx_spend_operations(Events, InitIndex) ->
+    {Res, _} = lists:foldl(fun tx_spend_op/2, {[], InitIndex}, Events),
     lists:reverse(Res).
 
 %% One Trace looks like this:
@@ -437,7 +462,7 @@ tx_spend_op(#{info := Info}, {Acc, Ix}) ->
     Type = aetx:type_to_swagger_name(spend_tx),
     #{<<"amount">> := Amount, <<"sender_id">> := From, <<"recipient_id">> := To} = Info,
     FromOp = spend_tx_op(Ix, Type, From, -Amount),
-    ToOp = spend_tx_op(Ix, Type, To, Amount),
+    ToOp = spend_tx_op(Ix + 1, Type, To, Amount),
     {[ToOp, FromOp | Acc], Ix + 2}.
 
 amount(Amount) ->
