@@ -10,7 +10,8 @@
          lima_extra_accounts/0,
          lima_contracts/0,
          block_whitelist/0,
-         pre_iris_map_ordering/0
+         pre_iris_map_ordering/0,
+         hc_seed_contracts/2
         ]).
 
 -export([ accounts_file_name/1
@@ -258,6 +259,9 @@ extra_accounts_file_name(Release) ->
 contracts_file_name(Release) ->
     filename:join([dir(Release), contracts_json_file()]).
 
+seed_contracts_file_name(Release, NetworkId) ->
+    filename:join([dir(Release), <<"hc_", NetworkId/binary, "_contracts.json">>]).
+
 -ifdef(TEST).
 accounts_json_file() ->
     case aec_governance:get_network_id() of
@@ -314,3 +318,11 @@ pre_iris_map_ordering_file() ->
         _                -> ".pre_iris_map_ordering_test.json"
     end.
 -endif.
+
+hc_seed_contracts(Protocol, NetworkId) ->
+    ContractsFile = seed_contracts_file_name(Protocol, NetworkId),
+    case file:read_file(ContractsFile) of
+        {ok, Data} = OK ->
+            {ok, jsx:decode(Data, [return_maps])};
+        {error, Err} -> {error, {Err, ContractsFile}}
+    end.
