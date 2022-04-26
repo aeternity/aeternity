@@ -23,7 +23,7 @@
 -include_lib("aecontract/include/hard_forks.hrl").
 -include("../../aecontract/test/include/aect_sophia_vsn.hrl").
 
--define(NETWORK_ID, <<"ae_smart_contract_test">>).
+-define(NETWORK_ID, <<"hc_smart_contract">>).
 -define(STAKING_CONTRACT, "MainStaking").
 -define(REWARD_DELAY, 10).
 -define(NODE1, dev1).
@@ -145,23 +145,20 @@ init_per_suite(Config0) ->
                             end,
                             PotentialStakers),
                     #{<<"chain">> =>
-                        #{<<"persist">> => false,
-                        %% we start from CERES hard fork so we can use all
-                        %% the nice things CERES has to offer
-                        %% TODO: have a consensus-specific setting in aec_hard_forks
-                        <<"hard_forks">> => #{integer_to_binary(?CERES_PROTOCOL_VSN) => 0},
-                        <<"consensus">> => 
-                            #{<<"0">> => #{<<"name">> => <<"smart_contract">>,
-                                            <<"config">> => #{<<"consensus_contract">> => ConsensusContractPubkey,
-                                                              <<"contract_owner">> => ContractOwner,
-                                                              <<"expected_key_block_rate">> => 2000,
-                                                              <<"stakers">> => Stakers}}}},
-                  <<"fork_management">> =>
-                      #{<<"network_id">> => ?NETWORK_ID},
-                  <<"mining">> =>
-                      #{<<"micro_block_cycle">> => 1,
-                        <<"autostart">> => false,
-                        <<"beneficiary_reward_delay">> => ?REWARD_DELAY
+                          #{  <<"persist">> => false,
+                              <<"hard_forks">> => #{integer_to_binary(?CERES_PROTOCOL_VSN) => 0},
+                             <<"consensus">> => 
+                                #{<<"0">> => #{<<"name">> => <<"smart_contract">>,
+                                                <<"config">> => #{<<"consensus_contract">> => ConsensusContractPubkey,
+                                                                  <<"contract_owner">> => ContractOwner,
+                                                                  <<"expected_key_block_rate">> => 2000,
+                                                                  <<"stakers">> => Stakers}}}},
+                      <<"fork_management">> =>
+                          #{<<"network_id">> => ?NETWORK_ID},
+                      <<"mining">> =>
+                          #{<<"micro_block_cycle">> => 1,
+                            <<"autostart">> => false,
+                            <<"beneficiary_reward_delay">> => ?REWARD_DELAY
                         }}
                 end,
             {ok, _StartedApps} = application:ensure_all_started(gproc),
@@ -174,7 +171,7 @@ init_per_suite(Config0) ->
             aecore_suite_utils:create_config(?NODE2, Config1, BuildConfig([]), []),
             aecore_suite_utils:create_seed_contracts_file([?NODE1, ?NODE2],
                 Config1,
-                "ceres", "hc_" ++ binary_to_list(?NETWORK_ID) ++ "_contracts.json",
+                "ceres", binary_to_list(?NETWORK_ID) ++ "_contracts.json",
                 #{<<"contracts">> => [C0, C], <<"calls">> => AllCalls}),
             aecore_suite_utils:start_node(?NODE1, Config1),
             aecore_suite_utils:connect(?NODE1_NAME, []),

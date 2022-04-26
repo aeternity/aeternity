@@ -259,13 +259,15 @@ extra_accounts_file_name(Release) ->
 contracts_file_name(Release) ->
     filename:join([dir(Release), contracts_json_file()]).
 
-seed_contracts_file_name(Release, NetworkId) ->
-    filename:join([dir(Release), <<"hc_", NetworkId/binary, "_contracts.json">>]).
+seed_contracts_file_name(Release, <<"hc_", _/binary>> = NetworkId) ->
+    filename:join([dir(Release), <<NetworkId/binary, "_contracts.json">>]).
 
 -ifdef(TEST).
 accounts_json_file() ->
     case aec_governance:get_network_id() of
-        <<"ae_smart_contract_test">>      -> "accounts_smart_contract_consensus_test.json";
+        <<"hc_", _/binary>> = NetworkId ->
+            NetworkIdStr = binary_to_list(NetworkId),
+            NetworkIdStr ++ "_accounts_test.json";
         _ -> "accounts_test.json"
     end.
 
@@ -286,7 +288,9 @@ accounts_json_file() ->
     case aec_governance:get_network_id() of
         <<"ae_mainnet">>                  -> "accounts.json";
         <<"ae_uat">>                      -> "accounts_uat.json";
-        <<"ae_smart_contract_test">>      -> "accounts_smart_contract_consensus_test.json";
+        <<"hc_", _/binary>> = NetworkId ->
+            NetworkIdStr = binary_to_list(NetworkId),
+            NetworkIdStr ++ "_accounts.json";
         _                                 -> "accounts_test.json"
     end.
 
