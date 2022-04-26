@@ -9,6 +9,7 @@
          make_shortcut/1,
          node_config/2,
          create_config/4,
+         create_seed_contracts_file/5,
          make_multi/2,
          node_shortcut/2,
          shortcut_dir/1,
@@ -218,6 +219,15 @@ create_config(Node, CTConfig, CustomConfig, Options) ->
     Config = config_apply_options(Node, MergedCfg4, Options),
     write_keys(Node, Config),
     write_config(NodeCfgPath, Config).
+
+create_seed_contracts_file(Nodes, CTConfig, Consensus, FileName, Data) when
+    is_list(Nodes) ->
+    [create_seed_contracts_file(Node, CTConfig, Consensus, FileName, Data) ||
+        Node <- Nodes];
+create_seed_contracts_file(Node, CTConfig, Consensus, FileName, Data) ->
+    Path = filename:join([data_dir(Node, CTConfig), "aecore", "." ++ Consensus, FileName]),
+    ok = filelib:ensure_dir(Path),
+    write_config(Path, Data, false).
 
 maps_merge(V1, V2) when not is_map(V1); not is_map(V2) ->
     V2;
@@ -1099,6 +1109,9 @@ write_keys(Node, Config) ->
     ok.
 
 write_config(F, Config) ->
+    write_config(F, Config, true).
+
+write_config(F, Config, PerformCheck) ->
     JSON = jsx:prettify(jsx:encode(Config)),
     {ok, Fd} = file:open(F, [write]),
     ct:log("Writing config (~p)~n~s", [F, JSON]),
@@ -1106,9 +1119,13 @@ write_config(F, Config) ->
     after
         file:close(Fd)
     end,
-    VRes = aeu_env:check_config(F),
-    ct:log("Config (~p) check: ~p", [F, VRes]),
-    {ok,_} = VRes.
+    case PerformCheck of
+        true ->
+            VRes = aeu_env:check_config(F),
+            ct:log("Config (~p) check: ~p", [F, VRes]),
+            {ok,_} = VRes;
+        false -> {ok, Config}
+    end.
 
 default_config(N, Config) ->
     {A,B,C} = os:timestamp(),
