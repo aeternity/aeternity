@@ -75,27 +75,7 @@
 -include("aec_consensus.hrl").
 
 can_be_turned_off() -> false.
-assert_config(Config) ->
-    case Config of
-        #{<<"contracts">> := Contracts} when is_list(Contracts) ->
-            ContractSpecKeys = [<<"amount">>, <<"vm_version">>,
-                                <<"abi_version">>, <<"nonce">>, <<"code">>,
-                                <<"call_data">>, <<"owner_pubkey">>, <<"pubkey">>],
-            lists:all(
-                fun(Contract) ->
-                    lists:all(
-                        fun(K) ->
-                            case maps:is_key(K, Contract) of
-                                true -> true;
-                                false ->  error({missing_contract_key, K})
-                            end
-                        end,
-                        ContractSpecKeys)
-                end,
-                Contracts);
-        _ -> error(contracts_missing_from_config)
-    end,
-    ok.
+assert_config(_Config) -> ok.
 
 start(Config) ->
     #{<<"stakers">> := StakersEncoded} = Config,
@@ -174,10 +154,10 @@ pogf_detected(_H1, _H2) -> ok.
 
 %% -------------------------------------------------------------------
 %% Genesis block
-genesis_transform_trees(Trees0, #{ <<"contracts">> := Contracts
-                                 , <<"calls">> := Calls}) ->
-    GasLimit = 10000000,
-    GasPrice = 10000000000,
+genesis_transform_trees(Trees0, #{}) ->
+    NetworkId = aec_governance:get_network_id(),
+    {ok, #{ <<"contracts">> := Contracts
+          , <<"calls">> := Calls }} = aec_fork_block_settings:hc_seed_contracts(?CERES_PROTOCOL_VSN, NetworkId),
     GenesisHeader = genesis_raw_header(),
     {ok, GenesisHash} = aec_headers:hash_header(GenesisHeader),
     TxEnv = aetx_env:tx_env_from_key_header(GenesisHeader,

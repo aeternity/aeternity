@@ -169,8 +169,6 @@ protocols_from_network_id(<<"ae_dev">>) ->
                               Acc#{binary_to_integer(K) => V}
                       end, #{}, M)
     end;
-protocols_from_network_id(<<"ae_smart_contract_test">>) ->
-    #{ ?CERES_PROTOCOL_VSN => 0 };
 protocols_from_network_id(_ID) ->
     case aeu_env:user_map_or_env([<<"chain">>, <<"hard_forks">>], aecore, hard_forks, undefined) of
         undefined ->
