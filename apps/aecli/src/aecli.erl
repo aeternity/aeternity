@@ -36,13 +36,8 @@ prompt(#aecli{mode = Mode}) ->
                  configuration ->
                      "# "
              end,
-    case inet:gethostname() of
-        {ok, Hostname} ->
-            {ok, Hostname ++  Suffix};
-        _ ->
-            {ok, Suffix}
-    end.
-
+    {ok, Hostname} = inet:gethostname(),
+    {ok, Hostname ++  Suffix}.
 
 expand([], #aecli{mode = operational} = J) ->
     {no, [], ecli:format_menu(operational_menu()), J};
@@ -220,7 +215,7 @@ expand_cmd(Str, Menu, J) ->
     %% ?DBG("match_cmd ~p~n",[Str]),
     %% Use the library function provided in cli.erl to take care of
     %% the expansion.
-    case ecli:expand(Str, Menu, state) of
+    case ecli:expand(Str, Menu) of
         no ->
             {no, [], [], J};
         {yes, Extra, MenuItems} ->
