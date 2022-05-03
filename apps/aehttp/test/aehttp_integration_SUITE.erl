@@ -1924,11 +1924,25 @@ get_status(_Config) ->
         _ -> ct:fail("Node version is not semver")
     end,
     ?assertEqual(40, byte_size(NodeRevision)),
+
+    case proplists:get_value(swagger_version, _Config) of
+        oas3 ->
+            {ok, 200, #{ <<"protocols">> := ProtocolsStr }} = get_status_sut(true),
+            lists:foreach(fun(P) ->
+                                  ?assertMatch(X when is_binary(X), maps:get(<<"version">>, P)),
+                                  ?assertMatch(X when is_binary(X), maps:get(<<"effective_at_height">>, P))
+                          end, ProtocolsStr);
+        swagger2 -> none
+    end,
+
     ok.
 
 get_status_sut() ->
+    get_status_sut(false).
+get_status_sut(IntAsString) ->
     Host = external_address(),
-    http_request(Host, get, "status", []).
+    Parameters = case IntAsString of true -> "?int-as-string"; false -> "" end,
+    http_request(Host, get, "status" ++ Parameters, []).
 
 prepare_tx(TxType, Args) ->
     SignHash = lists:last(aec_hard_forks:sorted_protocol_versions()) >= ?LIMA_PROTOCOL_VSN,

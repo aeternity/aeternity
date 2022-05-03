@@ -125,10 +125,10 @@ cache_enabled() ->
     aeu_env:user_config_or_env([<<"http">>, <<"cache">>, <<"enabled">>],
                                aehttp, [cache, enabled], ?DEFAULT_HTTP_CACHE_ENABLED).
 
-convert_all_ints_to_string(Map) ->
-   maps:map(
-      fun(_, I) when is_integer(I) -> integer_to_binary(I);
-         (_, M) when is_map(M) -> convert_all_ints_to_string(M);
-         (_, Other) -> Other
-      end,
-      Map).
+convert_all_ints_to_string(Val) ->
+   case Val of
+      _ when is_integer(Val) -> integer_to_binary(Val);
+      _ when is_map(Val) -> maps:map(fun(_, V) -> convert_all_ints_to_string(V) end, Val);
+      _ when is_list(Val) -> lists:map(fun(I) -> convert_all_ints_to_string(I) end, Val);
+      Other -> Other
+   end.
