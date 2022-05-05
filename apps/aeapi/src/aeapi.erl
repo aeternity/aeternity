@@ -16,6 +16,7 @@
         , key_block_by_hash/1
         , prev_block/1
         , printable_block_hash/1
+        , printable_tx_hash/1
         , top_key_block/0
         ]).
 
@@ -84,6 +85,9 @@ block_txs(false, Block) ->
 printable_block_hash(Block) ->
     {ok, Hash} = aec_headers:hash_header(aec_blocks:to_header(Block)),
     aeser_api_encoder:encode(key_block_hash, Hash).
+
+printable_tx_hash(SignedTx) ->
+    aeser_api_encoder:encode(tx_hash, aetx_sign:hash(SignedTx)).
 
 -spec key_block_by_height(aec_blocks:height()) -> {ok, aec_blocks:key_block()} | error.
 

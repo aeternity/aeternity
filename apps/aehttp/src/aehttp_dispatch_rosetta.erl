@@ -240,7 +240,7 @@ handle_request_('blockTransaction', #{'BlockTransactionRequest' :=
                             {ok, RequestedBlockHash} = aec_headers:hash_header(Header),
                             if KeyBlockHash == RequestedBlockHash ->
                                     STx;
-                            true ->
+                               true ->
                                     throw(block_not_found)
                             end;
                         _ ->
@@ -248,7 +248,6 @@ handle_request_('blockTransaction', #{'BlockTransactionRequest' :=
                     end
             end,
         Resp = #{<<"transaction">> => format_tx(SignedTx, Block)},
-        io:format("Resp: ~p~n", [Resp]),
         {200, [], Resp}
     catch throw:block_not_found ->
             {200, [], rosetta_error_response(?ROSETTA_ERR_BLOCK_NOT_FOUND)};
@@ -275,10 +274,54 @@ handle_request_('constructionSubmit', _, _Context) ->
     {501, [], #{}};
 handle_request_('eventsBlocks', _, _Context) ->
     {501, [], #{}};
-handle_request_('mempool', _, _Context) ->
-    {501, [], #{}};
-handle_request_('mempoolTransaction', _, _Context) ->
-    {501, [], #{}};
+handle_request_('mempool',
+                #{'NetworkRequest' :=
+                      #{<<"network_identifier">> :=
+                            #{<<"blockchain">> := <<"aeternity">>}}}, _Context) ->
+    {ok, SignedTxList} = aec_tx_pool:peek(infinity),
+    SignedTxHashList = [#{<<"hash">> => aeapi:printable_tx_hash(X)} || X <- SignedTxList],
+    Resp = #{<<"transaction_identifiers">> => SignedTxHashList},
+    {200, [], Resp};
+handle_request_('mempoolTransaction',
+                #{'MempoolTransactionRequest' :=
+                      #{<<"network_identifier">> :=
+                            #{<<"blockchain">> := <<"aeternity">>},
+                        <<"transaction_identifier">> :=
+                            #{<<"hash">> := TxHash}}}, _Context) ->
+    %%
+    %% Decode the transaction hash
+    %%
+    TxHashInternal = case aeser_api_encoder:decode(TxHash) of
+                         {tx_hash, TxHash0} ->
+                             TxHash0;
+                         _ ->
+                             throw(tx_not_found)
+                     end,
+    case aec_db:find_tx_location(TxHashInternal) of
+        mempool ->
+            ok;
+        _ ->
+            throw(tx_not_found)
+    end,
+    case aec_db:find_signed_tx(TxHashInternal) of
+        {value, SignedTx} ->
+            Tx = aetx_sign:tx(SignedTx),
+            %% TODO:
+            %% The way format_tx/2 is implemented, it requires a Block
+            %% to format it for TxType of contract_create_tx or
+            %% contract_call_tx. Perhaps we should exclude these from
+            %% the /mempool API call response itself?
+            case aetx:tx_type(Tx) of
+                TxType when TxType == contract_create_tx;
+                            TxType == contract_call_tx ->
+                    throw(tx_not_found);
+                _ ->
+                    Resp = #{<<"transaction">> => format_tx(SignedTx, undefined)},
+                    {200, [], Resp}
+            end;
+        _ ->
+            throw(tx_not_found)
+    end;
 handle_request_('searchTransactions', _, _Context) ->
     {501, [], #{}};
 
