@@ -18,14 +18,13 @@
 -export([network_status/1, network_options/1, network_list/1]).
 -export([block_key_only/1, block_spend_tx/1, block_create_contract_tx/1]).
 
+%% for extarnal use
+-export([assertBalanceChanges/2]).
+
 -include_lib("common_test/include/ct.hrl").
--include_lib("aecontract/include/hard_forks.hrl").
 
 -define(NODE, dev1).
--define(DEFAULT_TESTS_COUNT, 5).
--define(BOGUS_STATE_HASH, <<42:32/unit:8>>).
 -define(SPEND_FEE, 20000 * aec_test_utils:min_gas_price()).
--define(MAX_MINED_BLOCKS, 20).
 
 all() ->
     [{group, all}].
@@ -103,6 +102,53 @@ end_per_testcase_all(Config) ->
            [[{N, aecore_suite_utils:all_events_since(N, Ts0)}
              || {_, N} <- ?config(nodes, Config)]]),
     ok.
+
+%% ============================================================
+%% External helpers to add Rosetta checks to other test suites
+%% ============================================================
+
+%% Assert a list of {Account, Delta} pairs for a Tx matches what
+%% we get from Rosetta
+assertBalanceChanges(TxHash, ExpectedChanges ) ->
+
+    %% This is designed for use within other non rosetta suites, so we need to restore
+    %% the api_prefix when we are done
+    Prefix = get(api_prefix),
+
+    aecore_suite_utils:use_swagger(oas3),
+    {ok, 200, #{ <<"block_height">> := Height, <<"block_hash">> := MBHash}} =
+        aehttp_integration_SUITE:get_transactions_by_hash_sut(TxHash),
+
+    {ok, 200, #{ <<"prev_hash">> := KeyBlockHash}} =
+        aehttp_integration_SUITE:get_micro_blocks_header_by_hash_sut(MBHash),
+
+    aecore_suite_utils:use_rosetta(),
+
+    {ok, 200,
+    #{<<"transaction">> := #{<<"transaction_identifier">> := #{<<"hash">> := TxHash},
+                            <<"operations">> := Ops}}} =
+        get_block_transaction_sut(KeyBlockHash, Height, TxHash),
+
+    matchBalanceChanges(Ops, ExpectedChanges, 0),
+
+    %% Restore original setup of calling SUITE
+    case Prefix of
+        undefined -> ok;
+        _ -> put(api_prefix, Prefix)
+    end.
+
+matchBalanceChanges([Op | Ops], [{ExpectedAccount, ExpectedDelta} | Es], Index) ->
+    #{<<"account">> := #{<<"address">> := Account},
+      <<"amount">> := #{<<"value">> := AmountBin},
+      <<"operation_identifier">> := #{<<"index">> := Ix}} = Op,
+    Delta = binary_to_integer(AmountBin),
+    ?assertEqual(ExpectedAccount, Account),
+    ?assertEqual(ExpectedDelta, Delta),
+    ?assertEqual(Index, Ix),
+    matchBalanceChanges(Ops, Es, Index + 1);
+matchBalanceChanges([], [], _) ->
+    ok.
+
 
 %% ============================================================
 %% Test cases
@@ -199,7 +245,7 @@ block_key_only(Config) ->
     KeyHash = aeapi:printable_block_hash(KeyBlock),
     {ok,
      200,
-     #{<<"block_identifier">> := #{<<"hash">> := KeyBlockHash, <<"index">> := Height},
+     #{<<"block_identifier">> := #{<<"hash">> := KeyBlockHash, <<"index">> := _Height},
        <<"timestamp">> := CurrentBlockTimestamp,
        <<"parent_block_identifier">> := #{<<"hash">> := ParentKeyBlockHash},
        <<"transactions">> := Transactions}} =
@@ -256,7 +302,7 @@ block_spend_tx(Config) ->
         get_status_sut(),
 
     {ok, 200,
-     #{<<"block_identifier">> := #{<<"hash">> := KeyBlockHash},
+     #{<<"block_identifier">> := #{<<"hash">> := KeyBlockHash, <<"index">> := Height},
        <<"timestamp">> := CurrentBlockTimestamp,
        <<"parent_block_identifier">> := #{<<"hash">> := ParentKeyBlockHash},
        <<"transactions">> := Transactions}} =
@@ -272,6 +318,18 @@ block_spend_tx(Config) ->
       <<"type">> := <<"SpendTx">>} = ToOp,
     #{<<"operation_identifier">> := #{<<"index">> := 2},
       <<"type">> := <<"Fee">>} = FeeOp,
+
+    %% Also check we can get the same Tx via the "fetch individual Tx" Rosetta API
+    {ok, 200,
+     #{<<"transaction">> := #{<<"transaction_identifier">> := #{<<"hash">> := SpendTxHash},
+                              <<"operations">> := [FromOp, ToOp, FeeOp]}}} =
+        get_block_transaction_sut(TopKeyBlockHash, Height, SpendTxHash),
+
+    FromPubKeyEnc = aeser_api_encoder:encode(account_pubkey, FromPubKey),
+    ToPubKeyEnc = aeser_api_encoder:encode(account_pubkey, ToPubKey),
+    assertBalanceChanges(SpendTxHash, [{FromPubKeyEnc, -1},
+                                        {ToPubKeyEnc, 1},
+                                        {FromPubKeyEnc, -?SPEND_FEE} ]),
 
     ?assertMatch({ok, _}, aeser_api_encoder:safe_decode(key_block_hash, KeyBlockHash)),
     ?assertMatch(true, is_integer(CurrentBlockTimestamp)),
@@ -424,7 +482,7 @@ block_create_contract_tx(Config) ->
         get_status_sut(),
     {ok, 200,
      #{<<"transactions">> := [CallTransaction]}} = get_block_sut(TopKeyBlockHash1),
-    
+
     %% Expect
     %% CallerAccount -= Fees
     %% ContractAccount -= 15000
@@ -444,9 +502,58 @@ block_create_contract_tx(Config) ->
     #{<<"amount">> := #{<<"value">> := ToDelta},
       <<"account">> := #{<<"address">> := ToAcc}} = ToOp,
     ?assertEqual(ToAccountPubKey, ToAcc),
-    ?assertEqual(ToBalanceAfterCall, ToBalance + binary_to_integer(ToDelta)).
+    ?assertEqual(ToBalanceAfterCall, ToBalance + binary_to_integer(ToDelta)),
+
+    %% ------------------ Errored Contract Call ---------------------------
+
+    SwaggerVsn = proplists:get_value(swagger_version, Config, oas3),
+    aecore_suite_utils:use_swagger(SwaggerVsn),
+    %% Call the contract, attempting to send amount 500 to a non payable entry point
+    %% This should just consume all the fees but not take the amount
+    ErrArgs = [aeser_api_encoder:encode(account_pubkey, ToPubKey), "2000"],
+    {ok, CallDataErr} = encode_call_data(spend_test, "spend", ErrArgs),
+    ContractCallErrEncoded = #{ caller_id => aeser_api_encoder:encode(account_pubkey, OwnerPubKey),
+                              contract_id => ContractPubKeyEnc,
+                              call_data   => CallDataErr,
+                              abi_version => aect_test_utils:latest_sophia_abi_version(),
+                              amount => 500,
+                              gas => 100000,    %May need a lot of gas
+                              gas_price => aec_test_utils:min_gas_price(),
+                              fee => 800000 * aec_test_utils:min_gas_price(),
+                              nonce => Nonce + 2 },
+
+    {ok, 200, #{<<"tx">> := EncodedUnsignedContractCallErrTx}} =
+        aehttp_integration_SUITE:get_contract_call(ContractCallErrEncoded),
+     ContractCallErrTxHash = aehttp_integration_SUITE:sign_and_post_tx(EncodedUnsignedContractCallErrTx, OwnerPrivKey),
+
+    {ok, [_]} = rpc(aec_tx_pool, peek, [infinity]),
+    aecore_suite_utils:mine_blocks_until_txs_on_chain(Node, [ContractCallErrTxHash], 2),
+    {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
+
+    {ok, 200, #{<<"balance">> := OwnerBalanceAfterErrCall}} =
+        aehttp_integration_SUITE:get_accounts_by_pubkey_sut(OwnerAccountPubKey),
+
+    %% Switch back to the Rosetta API root path
+    aecore_suite_utils:use_rosetta(),
+
+    {ok, 200, #{<<"current_block_identifier">> := #{<<"hash">> := TopKeyBlockHash2}}} =
+        get_status_sut(),
+    {ok, 200,
+     #{<<"transactions">> := [ErrCallTransaction]}} = get_block_sut(TopKeyBlockHash2),
+
+    %% Expect
+    %% CallerAccount -= Fees
+    #{<<"operations">> := [ErrCallerOp]} = ErrCallTransaction,
+
+    #{<<"amount">> := #{<<"value">> := ErrCallerDelta},
+      <<"account">> := #{<<"address">> := CallerAcc}} = ErrCallerOp,
+    ?assertEqual(OwnerAccountPubKey, CallerAcc),
+    ?assertEqual(OwnerBalanceAfterErrCall, OwnerBalanceAfterCall + binary_to_integer(ErrCallerDelta)).
 
 
+%% ============================================================
+%% Internal
+%% ============================================================
 get_block_sut(Hash) ->
     Host = rosetta_address(),
     Body =
@@ -455,6 +562,13 @@ get_block_sut(Hash) ->
                 block_identifier => #{hash => Hash}},
     http_request(Host, post, "block", Body).
 
+get_block_transaction_sut(KeyBlockHash, Height, TxHash) ->
+    Host = rosetta_address(),
+    Body = #{block_identifier =>  #{hash => KeyBlockHash, index => Height},
+            network_identifier => #{blockchain => <<"aeternity">>,
+                                    network => aec_governance:get_network_id()},
+            transaction_identifier => #{hash => TxHash}},
+    http_request(Host, post, "block/transaction", Body).
 
 sign_tx(Tx, Privkey) ->
     STx = aec_test_utils:sign_tx(Tx, [Privkey]),

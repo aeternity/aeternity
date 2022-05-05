@@ -222,25 +222,34 @@ handle_request_('blockTransaction', #{'BlockTransactionRequest' :=
                                  throw(tx_not_found)
                          end,
         %%
-        %% Fetch all the transactions from the block
+        %% Fetch the transaction, ensuring it was in the specified block
         %%
-        SignedTxs = case aeapi:block_txs(Block) of
-                        error ->
-                            throw(block_not_found);
-                        Txs0 ->
-                            Txs0
-                    end,
-        %%
-        %% Find the transaction using the hash
-        %%        
-        case find_tx(SignedTxs, TxHashInternal) of
-            not_found ->
-                throw(tx_not_found);
-            {ok, SignedTx} ->
-                Resp = #{<<"transaction">> => format_tx(SignedTx, Block)},
-                io:format("Resp: ~p~n", [Resp]),
-                {200, [], Resp}
-        end
+        SignedTx =
+            case aec_db:find_tx_with_location(TxHashInternal) of
+                none ->
+                    throw(block_not_found);
+                {mempool, _} ->
+                    throw(block_not_found);
+                {BlockHash, STx} ->
+                    %% Tx was in this microblock. Check this microblock is in the
+                    %% Requested keyblock
+                    case aec_chain:get_block(BlockHash) of
+                        {ok, MicroBlock} ->
+                            KeyBlockHash = aec_blocks:prev_key_hash(MicroBlock),
+                            Header = aec_blocks:to_header(Block),
+                            {ok, RequestedBlockHash} = aec_headers:hash_header(Header),
+                            if KeyBlockHash == RequestedBlockHash ->
+                                    STx;
+                            true ->
+                                    throw(block_not_found)
+                            end;
+                        _ ->
+                            throw(block_not_found)
+                    end
+            end,
+        Resp = #{<<"transaction">> => format_tx(SignedTx, Block)},
+        io:format("Resp: ~p~n", [Resp]),
+        {200, [], Resp}
     catch throw:block_not_found ->
             {200, [], rosetta_error_response(?ROSETTA_ERR_BLOCK_NOT_FOUND)};
           throw:tx_not_found ->
@@ -381,17 +390,22 @@ tx_operations(SignedTx, contract_create_tx, Block) ->
             #{call_obj := CallObj} = Result,
             #{<<"gas_price">> := ResultGasPrice,
               <<"gas_used">> := CreateGasUsed,
-              <<"caller_id">> := Caller} = CallObj,
-
+              <<"caller_id">> := Caller,
+              <<"return_type">> := ReturnType} = CallObj,
             %% TODO: Payed For transactions
-            %% TODO: Failed contract create that still consumed gas
 
-            %% Caller Account -= (Amount + Deposit)
-            %% Contract Account += Amount (-- Deposit is burned --)
-            %% Caller Account -= Fees
-            [spend_tx_op(0, <<"Spend">>, Caller, -(Amount + Deposit)),
-             spend_tx_op(1, <<"Spend">>, ContractAccount, Amount),
-             spend_tx_op(2, <<"Fee">>, Caller, -(Fee + CreateGasUsed * ResultGasPrice))];
+            case ReturnType of
+                <<"ok">> ->
+                    %% Caller Account -= (Amount + Deposit)
+                    %% Contract Account += Amount (-- Deposit is burned --)
+                    %% Caller Account -= Fees
+                    [spend_tx_op(0, <<"Spend">>, Caller, -(Amount + Deposit)),
+                     spend_tx_op(1, <<"Spend">>, ContractAccount, Amount),
+                     spend_tx_op(2, <<"Fee">>, Caller, -(Fee + CreateGasUsed * ResultGasPrice))];
+                <<"error">> ->
+                    %% Just take the fees
+                    [spend_tx_op(0, <<"Fee">>, Caller, -(Fee + CreateGasUsed * ResultGasPrice))]
+            end;
         {error, Reason} ->
             lager:debug("dry_run_error: ~p", [Reason]),
             throw(tx_not_found)
@@ -418,9 +432,16 @@ tx_operations(SignedTx, contract_call_tx, Block) ->
             #{call_obj := CallObj} = Result,
              #{<<"gas_price">> := ResultGasPrice,
                <<"gas_used">> := CreateGasUsed,
-               <<"caller_id">> := Caller} = CallObj,
-            [spend_tx_op(0, <<"Fee">>, Caller, -(Fee + CreateGasUsed * ResultGasPrice)) |
-             tx_spend_operations(EventRes, 1)];
+               <<"caller_id">> := Caller,
+               <<"return_type">> := ReturnType} = CallObj,
+            case ReturnType of
+                <<"ok">> ->
+                    [spend_tx_op(0, <<"Fee">>, Caller, -(Fee + CreateGasUsed * ResultGasPrice)) |
+                     tx_spend_operations(EventRes, 1)];
+                <<"error">> ->
+                    %% Just take the fees
+                    [spend_tx_op(0, <<"Fee">>, Caller, -(Fee + CreateGasUsed * ResultGasPrice))]
+            end;
         {error, Reason} ->
             lager:debug("dry_run_error: ~p", [Reason]),
             throw(tx_not_found)

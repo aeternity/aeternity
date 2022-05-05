@@ -30,6 +30,7 @@
    , get_accounts_by_pubkey_and_height_sut/2
    , get_accounts_next_nonce_sut/1
    , get_transactions_by_hash_sut/1
+   , get_micro_blocks_header_by_hash_sut/1
    , check_transaction_in_pool_sut/1
    , get_contract_call_object/1
    , get_top_block/1
