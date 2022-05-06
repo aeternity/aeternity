@@ -40,7 +40,7 @@ main contract MainStaking =
     [ (v, s) | (v, {stake = s}) <- vs ]
 
   payable stateful entrypoint new_validator() : StakingValidator =
-    require(Call.value >= 1_000_000_000_000_000_000_000, "Must stake the minimum amount")
+    require(Call.value >= 1_000_000_000_000_000_000_000_000, "Must stake the minimum amount")
     let validator_ct : StakingValidator = Chain.clone(ref = state.staking_validator_ct, Contract.address)
     validator_ct.stake(value = Call.value, Call.caller)
     put(state{offline_validators[Call.caller] = {ct = validator_ct, stake = Call.value}})
