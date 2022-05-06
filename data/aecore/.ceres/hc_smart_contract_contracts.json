@@ -2,7 +2,7 @@
   "calls": [
     {
       "abi_version": 3,
-      "amount": 1000000000000000000000,
+      "amount": 1000000000000000000000000,
       "call_data": "cb_KxFuGm1JPyDWziI=",
       "caller": "ak_2MGLPW2CHTDXJhqFJezqSwYSNwbZokSKkG7wSbGtVmeyjGfHtm",
       "contract_pubkey": "ct_LRbi65kmLtE7YMkG6mvG5TxAXTsPJDZjAtsPuaXtRyPA7gnfJ",
@@ -13,7 +13,7 @@
     },
     {
       "abi_version": 3,
-      "amount": 1000000000000000000000,
+      "amount": 1000000000000000000000000,
       "call_data": "cb_KxFuGm1JPyDWziI=",
       "caller": "ak_nQpnNuBPQwibGpSJmjAah6r3ktAB7pG9JHuaGWHgLKxaKqEvC",
       "contract_pubkey": "ct_LRbi65kmLtE7YMkG6mvG5TxAXTsPJDZjAtsPuaXtRyPA7gnfJ",
@@ -46,7 +46,7 @@
     },
     {
       "abi_version": 3,
-      "amount": 1000000000000000000000,
+      "amount": 1000000000000000000000000,
       "call_data": "cb_KxFuGm1JPyDWziI=",
       "caller": "ak_2KAcA2Pp1nrR8Wkt3FtCkReGzAi8vJ9Snxa4PcmrthVx8AhPe8",
       "contract_pubkey": "ct_LRbi65kmLtE7YMkG6mvG5TxAXTsPJDZjAtsPuaXtRyPA7gnfJ",
