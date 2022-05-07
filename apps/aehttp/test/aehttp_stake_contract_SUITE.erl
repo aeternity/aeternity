@@ -32,6 +32,10 @@
 -define(NODE2, dev2).
 -define(NODE2_NAME, aecore_suite_utils:node_name(?NODE2)).
 
+
+-define(PARENT_CHAIN_NODE1, aecore_suite_utils:parent_chain_node(1)).
+-define(PARENT_CHAIN_NODE1_NAME, aecore_suite_utils:node_name(?PARENT_CHAIN_NODE1)).
+
 -define(DEFAULT_GAS_PRICE, aec_test_utils:min_gas_price()).
 
 -define(PEEK_MSGQ, peek_msgq(?LINE)).
@@ -168,6 +172,10 @@ init_per_suite(Config0) ->
                                                                      ?BOB]),
                                                         [{add_peers, true}],
                                                         Config),
+            _Config1 = aecore_suite_utils:init_per_suite([?PARENT_CHAIN_NODE1],
+                                                         #{},
+                                                         [],
+                                                        Config),
             aecore_suite_utils:create_config(?NODE2, Config1, BuildConfig([]), []),
             aecore_suite_utils:create_seed_contracts_file([?NODE1, ?NODE2],
                 Config1,
@@ -177,6 +185,8 @@ init_per_suite(Config0) ->
             aecore_suite_utils:connect(?NODE1_NAME, []),
             aecore_suite_utils:start_node(?NODE2, Config1),
             aecore_suite_utils:connect(?NODE2_NAME, []),
+            aecore_suite_utils:start_node(?PARENT_CHAIN_NODE1, Config1),
+            aecore_suite_utils:connect(?PARENT_CHAIN_NODE1_NAME, []),
             #{<<"pubkey">> := EncodedContractPubkey} = C,
             {ok, ContractPubkey}   =
             aeser_api_encoder:safe_decode(contract_pubkey, EncodedContractPubkey),
@@ -189,6 +199,7 @@ end_per_suite(Config) ->
                proplists:get_value(started_apps, Config, []))],
     aecore_suite_utils:stop_node(?NODE1, Config),
     aecore_suite_utils:stop_node(?NODE2, Config),
+    aecore_suite_utils:stop_node(?PARENT_CHAIN_NODE1, Config),
     ok.
 
 init_per_group(_Group, Config0) ->
