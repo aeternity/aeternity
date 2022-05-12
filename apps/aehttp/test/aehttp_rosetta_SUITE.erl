@@ -17,6 +17,7 @@
          end_per_group/2, init_per_testcase/2, end_per_testcase/2]).
 -export([network_status/1, network_options/1, network_list/1]).
 -export([block_key_only/1, block_spend_tx/1, block_create_contract_tx/1]).
+-export([block_create_channel_tx/1]).
 
 %% for extarnal use
 -export([assertBalanceChanges/2]).
@@ -25,6 +26,7 @@
 
 -define(NODE, dev1).
 -define(SPEND_FEE, 20000 * aec_test_utils:min_gas_price()).
+-define(HTTP_INT, aehttp_integration_SUITE).
 
 all() ->
     [{group, all}].
@@ -35,10 +37,12 @@ groups() ->
       [sequence],
       %% /network/*
       [{group, network_endpoint},
-       {group, block_endpoint}]},
+       {group, block_basic_endpoint},
+       {group, block_channels_endpoint}]},
      %% /network/*
      {network_endpoint, [], [network_list, network_options, network_status]},
-     {block_endpoint, [], [block_key_only, block_spend_tx, block_create_contract_tx]}].
+     {block_basic_endpoint, [], [block_key_only, block_spend_tx, block_create_contract_tx]},
+     {block_channels_endpoint, [], [block_create_channel_tx]}].
 
 suite() ->
     [].
@@ -104,7 +108,7 @@ end_per_testcase_all(Config) ->
     ok.
 
 %% ============================================================
-%% External helpers to add Rosetta checks to other test suites
+%% External helper to add Rosetta checks to other test suites
 %% ============================================================
 
 %% Assert a list of {Account, Delta} pairs for a Tx matches what
@@ -119,23 +123,25 @@ assertBalanceChanges(TxHash, ExpectedChanges ) ->
     {ok, 200, #{ <<"block_height">> := Height, <<"block_hash">> := MBHash}} =
         aehttp_integration_SUITE:get_transactions_by_hash_sut(TxHash),
 
-    {ok, 200, #{ <<"prev_hash">> := KeyBlockHash}} =
+    {ok, 200, #{ <<"prev_key_hash">> := KeyBlockHash}} =
         aehttp_integration_SUITE:get_micro_blocks_header_by_hash_sut(MBHash),
 
     aecore_suite_utils:use_rosetta(),
 
     {ok, 200,
     #{<<"transaction">> := #{<<"transaction_identifier">> := #{<<"hash">> := TxHash},
-                            <<"operations">> := Ops}}} =
+                             <<"operations">> := Ops}}} =
         get_block_transaction_sut(KeyBlockHash, Height, TxHash),
 
+    %% io:format(user, "Ops = ~p~nExpected = ~p~n", [Ops, ExpectedChanges]),
     matchBalanceChanges(Ops, ExpectedChanges, 0),
 
     %% Restore original setup of calling SUITE
     case Prefix of
-        undefined -> ok;
+        undefined -> erase(api_prefix);
         _ -> put(api_prefix, Prefix)
-    end.
+    end,
+    ok.
 
 matchBalanceChanges([Op | Ops], [{ExpectedAccount, ExpectedDelta} | Es], Index) ->
     #{<<"account">> := #{<<"address">> := Account},
@@ -550,6 +556,239 @@ block_create_contract_tx(Config) ->
     ?assertEqual(OwnerAccountPubKey, CallerAcc),
     ?assertEqual(OwnerBalanceAfterErrCall, OwnerBalanceAfterCall + binary_to_integer(ErrCallerDelta)).
 
+block_create_channel_tx(Config) ->
+    [ {_NodeId, Node} | _ ] = ?config(nodes, Config),
+    aecore_suite_utils:reinit_with_ct_consensus(?NODE),
+    ToMine = max(2, aecore_suite_utils:latest_fork_height()),
+    aecore_suite_utils:mine_key_blocks(Node, ToMine),
+    {ok, [KeyBlock]} = aecore_suite_utils:mine_key_blocks(Node, 1),
+    true = aec_blocks:is_key_block(KeyBlock),
+
+    %% Use the native http api for the operations not yet implemented in Rosetta
+    SwaggerVsn = proplists:get_value(swagger_version, Config, oas3),
+    aecore_suite_utils:use_swagger(SwaggerVsn),
+
+    {InitiatorPubKey, InitiatorPrivKey} = aehttp_integration_SUITE:initialize_account(1000000000 * aec_test_utils:min_gas_price()),
+    {ResponderPubKey, ResponderPrivKey} = aehttp_integration_SUITE:initialize_account(2000000000 * aec_test_utils:min_gas_price()),
+
+    InitiatorAccountPubKey = aeser_api_encoder:encode(account_pubkey, InitiatorPubKey),
+    {ok, 200, #{<<"balance">> := InitiatorBalance}} = aehttp_integration_SUITE:get_accounts_by_pubkey_sut(InitiatorAccountPubKey),
+    ResponderAccountPubKey = aeser_api_encoder:encode(account_pubkey, ResponderPubKey),
+    {ok, 200, #{<<"balance">> := ResponderBalance}} = aehttp_integration_SUITE:get_accounts_by_pubkey_sut(ResponderAccountPubKey),
+
+    InitiatorId = aeser_id:create(account, InitiatorPubKey),
+    ResponderId = aeser_id:create(account, ResponderPubKey),
+
+    %% ------------------ Channel Create ---------------------------
+
+    %% Check mempool is empty before we start
+    {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
+
+    {ok, Nonce} = rpc(aec_next_nonce, pick_for_account, [InitiatorPubKey]),
+    Accounts = [aec_accounts:new(Pubkey, Balance) ||
+                {Pubkey, Balance} <- [{InitiatorPubKey, 30},
+                                      {ResponderPubKey, 50}]],
+    Trees = aec_test_utils:create_state_tree_with_accounts(Accounts, no_backend),
+    StateHash = aec_trees:hash(Trees),
+    {ok, ChannelCreateTx} =
+        aesc_create_tx:new(
+          #{initiator_id => InitiatorId,
+            initiator_amount => 3000000 * aec_test_utils:min_gas_price(),
+            responder_id => ResponderId,
+            responder_amount => 5000000 * aec_test_utils:min_gas_price(),
+            channel_reserve => 6,
+            lock_period => 5,
+            fee => ?SPEND_FEE,
+            state_hash => StateHash,
+            nonce => Nonce,
+            delegate_ids => {[], []}}),
+
+    SignedChannelCreateTx = aec_test_utils:sign_tx(ChannelCreateTx, [InitiatorPrivKey, ResponderPrivKey]),
+    EncTx  = aeser_api_encoder:encode(transaction, aetx_sign:serialize_to_binary(SignedChannelCreateTx)),
+    {ok, 200, #{<<"tx_hash">> := ChannelCreateTxHash}} = post_tx(EncTx),
+
+    {ok, [_]} = rpc(aec_tx_pool, peek, [infinity]),
+    aecore_suite_utils:mine_blocks_until_txs_on_chain(Node, [ChannelCreateTxHash], 2),
+    {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
+
+    {ok, 200, #{<<"balance">> := InitiatorBalanceAfterCreate}} =
+        aehttp_integration_SUITE:get_accounts_by_pubkey_sut(InitiatorAccountPubKey),
+    {ok, 200, #{<<"balance">> := ResponderBalanceAfterCreate}} =
+        aehttp_integration_SUITE:get_accounts_by_pubkey_sut(ResponderAccountPubKey),
+
+    %% Switch back to the Rosetta API root path
+    aecore_suite_utils:use_rosetta(),
+
+    {ok, 200, #{<<"current_block_identifier">> := #{<<"hash">> := TopKeyBlockHash}}} =
+        get_status_sut(),
+
+    {ok, 200,
+     #{<<"transactions">> := [CreateTransaction]}} = get_block_sut(TopKeyBlockHash),
+
+    %% Expect
+    %% Initiator -= Fees
+    %% Initiator -= initiator_amount
+    %% Responder -= responder_amount
+    #{<<"operations">> := [FeesOp, InitiatorOp, ResponderOp]} = CreateTransaction,
+
+    #{<<"amount">> := #{<<"value">> := FeesDelta},
+      <<"account">> := #{<<"address">> := FeesAcc}} = FeesOp,
+    ?assertEqual(InitiatorAccountPubKey, FeesAcc),
+
+    #{<<"amount">> := #{<<"value">> := InitiatorDelta},
+      <<"account">> := #{<<"address">> := InitiatorAcc}} = InitiatorOp,
+    ?assertEqual(InitiatorAccountPubKey, InitiatorAcc),
+    ?assertEqual(InitiatorBalanceAfterCreate, InitiatorBalance + binary_to_integer(FeesDelta) + binary_to_integer(InitiatorDelta)),
+
+    #{<<"amount">> := #{<<"value">> := ResponderDelta},
+      <<"account">> := #{<<"address">> := ResponderAcc}} = ResponderOp,
+    ?assertEqual(ResponderAccountPubKey, ResponderAcc),
+    ?assertEqual(ResponderBalanceAfterCreate, ResponderBalance + binary_to_integer(ResponderDelta)),
+
+    %% ------------------ Channel deposit ---------------------------
+
+    SwaggerVsn = proplists:get_value(swagger_version, Config, oas3),
+    aecore_suite_utils:use_swagger(SwaggerVsn),
+
+    ChannelId = aesc_create_tx:channel_id(aetx:tx(ChannelCreateTx)),
+
+    {ok, ChannelDepositTx} =
+        aesc_deposit_tx:new(
+          #{channel_id => ChannelId,
+            from_id => InitiatorId,
+            amount => 700000 * aec_test_utils:min_gas_price(),
+            fee => ?SPEND_FEE,
+            state_hash => StateHash,
+            nonce => Nonce + 1,
+            round => 2}),
+
+    SignedChannelDepositTx = aec_test_utils:sign_tx(ChannelDepositTx, [InitiatorPrivKey, ResponderPrivKey]),
+    EncDTx  = aeser_api_encoder:encode(transaction, aetx_sign:serialize_to_binary(SignedChannelDepositTx)),
+    {ok, 200, #{<<"tx_hash">> := ChannelDepositTxHash}} = post_tx(EncDTx),
+
+    {ok, [_]} = rpc(aec_tx_pool, peek, [infinity]),
+    aecore_suite_utils:mine_blocks_until_txs_on_chain(Node, [ChannelDepositTxHash], 2),
+    {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
+
+    {ok, 200, #{<<"balance">> := InitiatorBalanceAfterDeposit}} =
+        aehttp_integration_SUITE:get_accounts_by_pubkey_sut(InitiatorAccountPubKey),
+
+    aecore_suite_utils:use_rosetta(),
+    {ok, 200, #{<<"current_block_identifier">> := #{<<"hash">> := TopKeyBlockHash1}}} =
+        get_status_sut(),
+    {ok, 200,
+     #{<<"transactions">> := [DepositTransaction]}} = get_block_sut(TopKeyBlockHash1),
+
+    %% Expect
+    %% Initiator -= Fees
+    %% Initiator -= initiator_amount
+    #{<<"operations">> := [DepositFeesOp, DepositInitiatorOp]} = DepositTransaction,
+
+    #{<<"amount">> := #{<<"value">> := DepositFeesDelta},
+      <<"account">> := #{<<"address">> := DepositFeesAcc}} = DepositFeesOp,
+    ?assertEqual(InitiatorAccountPubKey, DepositFeesAcc),
+
+    #{<<"amount">> := #{<<"value">> := DepositInitiatorDelta},
+      <<"account">> := #{<<"address">> := DepositInitiatorAcc}} = DepositInitiatorOp,
+    ?assertEqual(InitiatorAccountPubKey, DepositInitiatorAcc),
+    ?assertEqual(InitiatorBalanceAfterDeposit, InitiatorBalanceAfterCreate + binary_to_integer(DepositFeesDelta) + binary_to_integer(DepositInitiatorDelta)),
+
+    %% ------------------ Channel withdraw ---------------------------
+
+    SwaggerVsn = proplists:get_value(swagger_version, Config, oas3),
+    aecore_suite_utils:use_swagger(SwaggerVsn),
+
+    ChannelId = aesc_create_tx:channel_id(aetx:tx(ChannelCreateTx)),
+
+    {ok, ChannelWithdrawTx} =
+        aesc_withdraw_tx:new(
+          #{channel_id => ChannelId,
+            to_id => InitiatorId,
+            amount => 100000 * aec_test_utils:min_gas_price(),
+            fee => ?SPEND_FEE,
+            state_hash => StateHash,
+            nonce => Nonce + 2,
+            round => 3}),
+
+    SignedChannelWithdrawTx = aec_test_utils:sign_tx(ChannelWithdrawTx, [InitiatorPrivKey, ResponderPrivKey]),
+    EncWTx  = aeser_api_encoder:encode(transaction, aetx_sign:serialize_to_binary(SignedChannelWithdrawTx)),
+    {ok, 200, #{<<"tx_hash">> := ChannelWithdrawTxHash}} = post_tx(EncWTx),
+
+    {ok, [_]} = rpc(aec_tx_pool, peek, [infinity]),
+    aecore_suite_utils:mine_blocks_until_txs_on_chain(Node, [ChannelWithdrawTxHash], 2),
+    {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
+
+    {ok, 200, #{<<"balance">> := InitiatorBalanceAfterWithdraw}} =
+        aehttp_integration_SUITE:get_accounts_by_pubkey_sut(InitiatorAccountPubKey),
+
+    aecore_suite_utils:use_rosetta(),
+    {ok, 200, #{<<"current_block_identifier">> := #{<<"hash">> := TopKeyBlockHash2}}} =
+        get_status_sut(),
+    {ok, 200,
+     #{<<"transactions">> := [WithdrawTransaction]}} = get_block_sut(TopKeyBlockHash2),
+
+    %% Expect
+    %% Initiator -= Fees
+    %% Initiator -= initiator_amount
+    #{<<"operations">> := [WithdrawFeesOp, WithdrawInitiatorOp]} = WithdrawTransaction,
+
+    #{<<"amount">> := #{<<"value">> := WithdrawFeesDelta},
+      <<"account">> := #{<<"address">> := WithdrawFeesAcc}} = WithdrawFeesOp,
+    ?assertEqual(InitiatorAccountPubKey, WithdrawFeesAcc),
+
+    #{<<"amount">> := #{<<"value">> := WithdrawInitiatorDelta},
+      <<"account">> := #{<<"address">> := WithdrawInitiatorAcc}} = WithdrawInitiatorOp,
+    ?assertEqual(InitiatorAccountPubKey, WithdrawInitiatorAcc),
+    ?assertEqual(InitiatorBalanceAfterWithdraw, InitiatorBalanceAfterDeposit + binary_to_integer(WithdrawFeesDelta) + binary_to_integer(WithdrawInitiatorDelta)),
+
+    %% ------------------ Channel close mutual ---------------------------
+
+    aecore_suite_utils:use_swagger(SwaggerVsn),
+
+    {ok, ChannelCloseMutualTx} =
+        aesc_close_mutual_tx:new(
+          #{channel_id => ChannelId,
+            from_id => InitiatorId,
+            initiator_amount_final  => 90,
+            responder_amount_final  => 50,
+            fee => ?SPEND_FEE,
+            nonce => Nonce + 3}),
+
+    SignedChannelCloseMutualTx = aec_test_utils:sign_tx(ChannelCloseMutualTx, [InitiatorPrivKey, ResponderPrivKey]),
+    EncFPTx  = aeser_api_encoder:encode(transaction, aetx_sign:serialize_to_binary(SignedChannelCloseMutualTx)),
+    {ok, 200, #{<<"tx_hash">> := ChannelCloseMutualTxHash}} = post_tx(EncFPTx),
+
+    {ok, [_]} = rpc(aec_tx_pool, peek, [infinity]),
+    aecore_suite_utils:mine_blocks_until_txs_on_chain(Node, [ChannelCloseMutualTxHash], 4),
+    {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
+
+    {ok, 200, #{<<"balance">> := ResponderBalanceAfterCloseMutual}} =
+        aehttp_integration_SUITE:get_accounts_by_pubkey_sut(ResponderAccountPubKey),
+    {ok, 200, #{<<"balance">> := InitiatorBalanceAfterCloseMutual}} =
+        aehttp_integration_SUITE:get_accounts_by_pubkey_sut(InitiatorAccountPubKey),
+
+    aecore_suite_utils:use_rosetta(),
+    {ok, 200, #{<<"current_block_identifier">> := #{<<"hash">> := TopKeyBlockHash3}}} =
+        get_status_sut(),
+    {ok, 200,
+     #{<<"transactions">> := [CloseMutualTransaction]}} = get_block_sut(TopKeyBlockHash3),
+
+    %% Expect
+    %% Initiator -= Fees
+    %% Initiator += initiator_amount_final
+    %% Responder += responder_amount_final
+    #{<<"operations">> := [CloseMutualInitiatorOp, CloseMutualResponderOp]} = CloseMutualTransaction,
+
+    #{<<"amount">> := #{<<"value">> := CloseMutualInitiatorDelta},
+      <<"account">> := #{<<"address">> := CloseMutualInitiatorAcc}} = CloseMutualInitiatorOp,
+    ?assertEqual(InitiatorAccountPubKey, CloseMutualInitiatorAcc),
+
+    ?assertEqual(InitiatorBalanceAfterCloseMutual, InitiatorBalanceAfterWithdraw + binary_to_integer(CloseMutualInitiatorDelta)),
+
+    #{<<"amount">> := #{<<"value">> := CloseMutualResponderDelta},
+      <<"account">> := #{<<"address">> := CloseMutualResponderAcc}} = CloseMutualResponderOp,
+    ?assertEqual(ResponderAccountPubKey, CloseMutualResponderAcc),
+    ?assertEqual(ResponderBalanceAfterCloseMutual, ResponderBalanceAfterCreate + binary_to_integer(CloseMutualResponderDelta)).
 
 %% ============================================================
 %% Internal

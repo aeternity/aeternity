@@ -393,11 +393,11 @@ format_tx(SignedTx, Block) ->
     TxType = aetx:tx_type(Tx),
     #{
       <<"transaction_identifier">> => #{<<"hash">> => aeser_api_encoder:encode(tx_hash, aetx_sign:hash(SignedTx))},
-      <<"operations">> => tx_operations(SignedTx, TxType, Block)
+      <<"operations">> => tx_operations(SignedTx, TxType, Block, 0)
      }.
 
 
-tx_operations(SignedTx, spend_tx, _Block) ->
+tx_operations(SignedTx, spend_tx, _Block, Ix) ->
     %% Balance changes for a SpendTx are simple - Fees and Amount from the 
     %% Sending account, Amount to the Receiving account.
     {Mod, SpendTx} = aetx:specialize_callback(aetx_sign:tx(SignedTx)),
@@ -406,30 +406,24 @@ tx_operations(SignedTx, spend_tx, _Block) ->
     %% an an entry to an obfuscated code competition ;)
     To = aeser_api_encoder:encode(id_hash, Mod:recipient_id(SpendTx)),
     Type = aetx:type_to_swagger_name(spend_tx),
-    [spend_tx_op(0, Type, From, -Mod:amount(SpendTx)),
-     spend_tx_op(1, Type, To, Mod:amount(SpendTx)),
-     spend_tx_op(2, <<"Fee">>, From, -Mod:fee(SpendTx))];
-tx_operations(SignedTx, contract_create_tx, Block) ->
+    [spend_tx_op(Ix, Type, From, -Mod:amount(SpendTx)),
+     spend_tx_op(Ix + 1, Type, To, Mod:amount(SpendTx)),
+     spend_tx_op(Ix + 2, <<"Fee">>, From, -Mod:fee(SpendTx))];
+tx_operations(SignedTx, contract_create_tx, Block, Ix) ->
     %% The Rosetta API only needs to see balance changes arising
     %% from the create_tx. We could also provide the code in some metadata
     {_Mod = aect_create_tx, Tx} = aetx:specialize_callback(aetx_sign:tx(SignedTx)),
     Amount = aect_create_tx:amount(Tx),
     Deposit = aect_create_tx:deposit(Tx),
     Fee = aect_create_tx:fee(Tx),
-    GasLimit = aect_create_tx:gas_limit(Tx),
-    GasPrice = aect_create_tx:gas_price(Tx),
     ContractPubKey = aect_create_tx:contract_pubkey(Tx),
-    lager:debug("dry_run_results GasLimit ~p GasPrice ~p", [GasLimit, GasPrice]),
     %% Convert the contract id into the matching account id where the contract balance is held
     ContractAccount = aeser_api_encoder:encode(account_pubkey, ContractPubKey),
-    lager:debug("dry_run_results ContractAccount: ~p", [ContractAccount]),
     %% Dry run the Tx on the original State and capture spend events and fees
      {ok, Hash} = aec_headers:hash_header(aec_blocks:to_header(Block)),
      case aec_dry_run:dry_run(Hash, [], [{tx, aetx_sign:tx(SignedTx)}], [tx_events]) of
         {ok, Res} ->
-            {[Result], EventRes} = aehttp_helpers:dry_run_results(Res),
-            lager:debug("dry_run_results: ~p", [Result]),
-            lager:debug("dry_run_results Events: ~p", [EventRes]),
+            {[Result], _EventRes} = aehttp_helpers:dry_run_results(Res),
             #{call_obj := CallObj} = Result,
             #{<<"gas_price">> := ResultGasPrice,
               <<"gas_used">> := CreateGasUsed,
@@ -442,18 +436,18 @@ tx_operations(SignedTx, contract_create_tx, Block) ->
                     %% Caller Account -= (Amount + Deposit)
                     %% Contract Account += Amount (-- Deposit is burned --)
                     %% Caller Account -= Fees
-                    [spend_tx_op(0, <<"Spend">>, Caller, -(Amount + Deposit)),
-                     spend_tx_op(1, <<"Spend">>, ContractAccount, Amount),
-                     spend_tx_op(2, <<"Fee">>, Caller, -(Fee + CreateGasUsed * ResultGasPrice))];
+                    [spend_tx_op(Ix, <<"Spend">>, Caller, -(Amount + Deposit)),
+                     spend_tx_op(Ix + 1, <<"Spend">>, ContractAccount, Amount),
+                     spend_tx_op(Ix + 2, <<"Fee">>, Caller, -(Fee + CreateGasUsed * ResultGasPrice))];
                 <<"error">> ->
                     %% Just take the fees
-                    [spend_tx_op(0, <<"Fee">>, Caller, -(Fee + CreateGasUsed * ResultGasPrice))]
+                    [spend_tx_op(Ix, <<"Fee">>, Caller, -(Fee + CreateGasUsed * ResultGasPrice))]
             end;
         {error, Reason} ->
             lager:debug("dry_run_error: ~p", [Reason]),
             throw(tx_not_found)
     end;
-tx_operations(SignedTx, contract_call_tx, Block) ->
+tx_operations(SignedTx, contract_call_tx, Block, Ix) ->
      {_Mod = aect_call_tx, Tx} = aetx:specialize_callback(aetx_sign:tx(SignedTx)),
     {ok, Hash} = aec_headers:hash_header(aec_blocks:to_header(Block)),
 
@@ -470,8 +464,6 @@ tx_operations(SignedTx, contract_call_tx, Block) ->
     case aec_dry_run:dry_run(Hash, [], [{tx, aetx_sign:tx(SignedTx)}], [tx_events]) of
         {ok, Res} ->
             {[Result], EventRes} = aehttp_helpers:dry_run_results(Res),
-            lager:debug("dry_run_results: ~p", [Result]),
-            lager:debug("dry_run_results Contract Call Events: ~p", [EventRes]),
             #{call_obj := CallObj} = Result,
              #{<<"gas_price">> := ResultGasPrice,
                <<"gas_used">> := CreateGasUsed,
@@ -479,17 +471,137 @@ tx_operations(SignedTx, contract_call_tx, Block) ->
                <<"return_type">> := ReturnType} = CallObj,
             case ReturnType of
                 <<"ok">> ->
-                    [spend_tx_op(0, <<"Fee">>, Caller, -(Fee + CreateGasUsed * ResultGasPrice)) |
+                    [spend_tx_op(Ix, <<"Fee">>, Caller, -(Fee + CreateGasUsed * ResultGasPrice)) |
                      tx_spend_operations(EventRes, 1)];
                 <<"error">> ->
                     %% Just take the fees
-                    [spend_tx_op(0, <<"Fee">>, Caller, -(Fee + CreateGasUsed * ResultGasPrice))]
+                    [spend_tx_op(Ix, <<"Fee">>, Caller, -(Fee + CreateGasUsed * ResultGasPrice))]
             end;
         {error, Reason} ->
             lager:debug("dry_run_error: ~p", [Reason]),
             throw(tx_not_found)
     end;
-tx_operations(_Tx, TxType, _Block) ->
+tx_operations(SignedTx, name_preclaim_tx, _Block, Ix) ->
+    {aens_preclaim_tx = Mod, Tx} = aetx:specialize_callback(aetx_sign:tx(SignedTx)),
+    From = aeser_api_encoder:encode(account_pubkey, Mod:origin(Tx)),
+    Type = aetx:type_to_swagger_name(name_preclaim_tx),
+    [spend_tx_op(Ix, Type, From, -Mod:fee(Tx))];
+tx_operations(SignedTx, name_claim_tx, _Block, Ix) ->
+    {aens_claim_tx = Mod, Tx} = aetx:specialize_callback(aetx_sign:tx(SignedTx)),
+    From = aeser_api_encoder:encode(account_pubkey, Mod:origin(Tx)),
+    Type = aetx:type_to_swagger_name(name_claim_tx),
+    %% For a subsequent bid this should be:
+    %% Original bidder gets refund
+    %% From pays fee
+    %% From pays their bid
+    %% But we do not record the details of the outbid account in the Tx so
+    %% this remains a gap in our Rosetta implementation
+    [spend_tx_op(Ix, Type, From, -Mod:fee(Tx)),
+     spend_tx_op(Ix + 1, Type, From, -Mod:name_fee(Tx))];
+tx_operations(SignedTx, name_update_tx, _Block, Ix) ->
+    {aens_update_tx = Mod, Tx} = aetx:specialize_callback(aetx_sign:tx(SignedTx)),
+    From = aeser_api_encoder:encode(account_pubkey, Mod:origin(Tx)),
+    Type = aetx:type_to_swagger_name(name_update_tx),
+    [spend_tx_op(Ix, Type, From, -Mod:fee(Tx))];
+tx_operations(SignedTx, name_transfer_tx, _Block, Ix) ->
+    {aens_transfer_tx = Mod, Tx} = aetx:specialize_callback(aetx_sign:tx(SignedTx)),
+    From = aeser_api_encoder:encode(account_pubkey, Mod:origin(Tx)),
+    Type = aetx:type_to_swagger_name(name_transfer_tx),
+    [spend_tx_op(Ix, Type, From, -Mod:fee(Tx))];
+tx_operations(SignedTx, name_revoke_tx, _Block, Ix) ->
+    {aens_revoke_tx = Mod, Tx} = aetx:specialize_callback(aetx_sign:tx(SignedTx)),
+    From = aeser_api_encoder:encode(account_pubkey, Mod:origin(Tx)),
+    Type = aetx:type_to_swagger_name(name_revoke_tx),
+    [spend_tx_op(Ix, Type, From, -Mod:fee(Tx))];
+tx_operations(SignedTx, oracle_register_tx, _Block, Ix) ->
+    {aeo_register_tx = Mod, Tx} = aetx:specialize_callback(aetx_sign:tx(SignedTx)),
+    From = aeser_api_encoder:encode(account_pubkey, Mod:origin(Tx)),
+    Type = aetx:type_to_swagger_name(oracle_register_tx),
+    [spend_tx_op(Ix, Type, From, -Mod:fee(Tx))];
+tx_operations(SignedTx, oracle_extend_tx, _Block, Ix) ->
+    {aeo_extend_tx = Mod, Tx} = aetx:specialize_callback(aetx_sign:tx(SignedTx)),
+    From = aeser_api_encoder:encode(account_pubkey, Mod:origin(Tx)),
+    Type = aetx:type_to_swagger_name(oracle_extend_tx),
+    [spend_tx_op(Ix, Type, From, -Mod:fee(Tx))];
+tx_operations(SignedTx, oracle_query_tx, _Block, Ix) ->
+    {aeo_query_tx = Mod, Tx} = aetx:specialize_callback(aetx_sign:tx(SignedTx)),
+    From = aeser_api_encoder:encode(account_pubkey, Mod:sender_pubkey(Tx)),
+    Type = aetx:type_to_swagger_name(oracle_query_tx),
+    [spend_tx_op(Ix, Type, From, -Mod:fee(Tx)),
+     spend_tx_op(Ix + 1, Type, From, -Mod:query_fee(Tx))];
+tx_operations(SignedTx, oracle_response_tx, Block, Ix) ->
+    {aeo_response_tx = Mod, Tx} = aetx:specialize_callback(aetx_sign:tx(SignedTx)),
+    From = aeser_api_encoder:encode(account_pubkey, Mod:origin(Tx)),
+    Type = aetx:type_to_swagger_name(oracle_response_tx),
+    Header = aec_blocks:to_header(Block),
+    {ok, Hash} = aec_headers:hash_header(Header),
+    {ok, Trees} = aec_chain:get_block_state(Hash),
+    OracleTrees = aec_trees:oracles(Trees),
+    QueryId = Mod:query_id(Tx),
+    OraclePubKey = aeo_response_tx:oracle_pubkey(Tx),
+    %% The response TX doesn't store the Query fee so we need to find it in the
+    %% state trees. Start from the root at the block we are being queried about.
+    case aeo_state_tree:lookup_query(OraclePubKey, QueryId, OracleTrees) of
+        {value, Query} ->
+            QueryFee = aeo_query:fee(Query),
+            [spend_tx_op(Ix, Type, From, -Mod:fee(Tx)),
+             spend_tx_op(Ix + 1, Type, From, QueryFee)];
+        _ ->
+            []
+    end;
+tx_operations(SignedTx, channel_create_tx, _Block, Ix) ->
+    {aesc_create_tx = Mod, Tx} = aetx:specialize_callback(aetx_sign:tx(SignedTx)),
+    Initiator = aeser_api_encoder:encode(account_pubkey, Mod:initiator_pubkey(Tx)),
+    Responder = aeser_api_encoder:encode(account_pubkey, Mod:responder_pubkey(Tx)),
+    Type = aetx:type_to_swagger_name(channel_create_tx),
+    [spend_tx_op(Ix, Type, Initiator, -Mod:initiator_amount(Tx)),
+     spend_tx_op(Ix + 1, Type, Initiator, -Mod:fee(Tx)),
+     spend_tx_op(Ix + 2, Type, Responder, -Mod:responder_amount(Tx))];
+tx_operations(SignedTx, channel_deposit_tx, _Block, Ix) ->
+    {aesc_deposit_tx = Mod, Tx} = aetx:specialize_callback(aetx_sign:tx(SignedTx)),
+    From = aeser_api_encoder:encode(account_pubkey, aesc_deposit_tx:origin(Tx)),
+    Type = aetx:type_to_swagger_name(channel_deposit_tx),
+    [spend_tx_op(Ix, Type, From, -Mod:amount(Tx)),
+     spend_tx_op(Ix + 1, Type, From, -Mod:fee(Tx))];
+tx_operations(SignedTx, channel_withdraw_tx, _Block, Ix) ->
+    {aesc_withdraw_tx = Mod, Tx} = aetx:specialize_callback(aetx_sign:tx(SignedTx)),
+    To = aeser_api_encoder:encode(account_pubkey, aesc_withdraw_tx:origin(Tx)),
+    Type = aetx:type_to_swagger_name(channel_withdraw_tx),
+    [spend_tx_op(Ix, Type, To, -Mod:fee(Tx)),
+     spend_tx_op(Ix + 1, Type, To, Mod:amount(Tx))];
+tx_operations(SignedTx, channel_close_mutual_tx, Block, Ix) ->
+    {aesc_close_mutual_tx = Mod, Tx} = aetx:specialize_callback(aetx_sign:tx(SignedTx)),
+    Header = aec_blocks:to_header(Block),
+    {ok, Hash} = aec_headers:hash_header(Header),
+    {ok, Trees} = aec_chain:get_block_state(Hash),
+    {ok, [InitPubkey, RespPubkey]} = aesc_close_mutual_tx:signers(Tx, Trees),
+    Initiator = aeser_api_encoder:encode(account_pubkey, InitPubkey),
+    Responder = aeser_api_encoder:encode(account_pubkey, RespPubkey),
+    Type = aetx:type_to_swagger_name(channel_close_mutual_tx),
+    %% Weirdly in the normal Payer case the fees are not charged
+    [spend_tx_op(Ix, Type, Initiator, Mod:initiator_amount_final(Tx)),
+     spend_tx_op(Ix + 1, Type, Responder, Mod:responder_amount_final(Tx))];
+%% TODO
+%% channel_settle_tx - need to find original Channel to identify both parties
+%% channel_force_progress_tx - need to create a contract in test case
+%% channel_close_solo_tx
+%% channel_slash_tx
+%% channel_snapshot_solo_tx
+%% channel_set_delegates_tx
+%% channel_offchain_tx
+%% channel_client_reconnect_tx
+%% ga_attach_tx
+%% paying_for_tx
+tx_operations(SignedTx, ga_meta_tx, Block, Ix) ->
+    {aega_meta_tx = Mod, Tx} = aetx:specialize_callback(aetx_sign:tx(SignedTx)),
+    Type = aetx:type_to_swagger_name(ga_meta_tx),
+    Owner = aeser_api_encoder:encode(account_pubkey, aega_meta_tx:ga_pubkey(Tx)),
+    AuthCost = aega_meta_tx:fee(Tx), % + aega_meta_tx:gas_price(Tx) * aega_meta_tx:gas(Tx),
+    InnerTx = Mod:tx(Tx),
+    InnerType = aetx:tx_type(aetx_sign:tx(InnerTx)),
+    InnerOps = tx_operations(InnerTx, InnerType, Block, Ix + 1),
+    [spend_tx_op(Ix, Type, Owner, -AuthCost) | InnerOps];
+tx_operations(_Tx, TxType, _Block, _Ix) ->
     [#{
        <<"operation_identifier">> => #{<<"index">> => 0},
        <<"type">> => aetx:type_to_swagger_name(TxType)
@@ -596,12 +708,3 @@ retrieve_block(BlockHeight, BlockHash) ->
             throw(block_not_found)
     end.
 
-find_tx([], _) ->
-    not_found;
-find_tx([SignedTx | T], TxHash) ->
-    case aetx_sign:hash(SignedTx) == TxHash of
-        true ->
-            {ok, SignedTx};
-        false ->
-            find_tx(T, TxHash)
-    end.

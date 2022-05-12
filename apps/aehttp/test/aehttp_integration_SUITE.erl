@@ -246,6 +246,7 @@
 -define(DEFAULT_TESTS_COUNT, 5).
 -define(BOGUS_STATE_HASH, <<42:32/unit:8>>).
 -define(SPEND_FEE, 20000 * aec_test_utils:min_gas_price()).
+-define(HTTP_ROS, aehttp_rosetta_SUITE).
 
 -define(MAX_MINED_BLOCKS, 20).
 
@@ -833,8 +834,12 @@ init_per_testcase(named_oracle_transactions, Config) ->
 init_per_testcase(post_oracle_register, Config) ->
     %% TODO: assert there is enought balance
     {_, Pubkey} = aecore_suite_utils:sign_keys(?NODE),
+    {OraPubkey, OraPrivkey} = initialize_account(100000000 * aec_test_utils:min_gas_price()),
+    ok = give_tokens(OraPubkey, 8000000000000000000),
     [{account_id, aeser_api_encoder:encode(account_pubkey, Pubkey)},
-     {oracle_id, aeser_api_encoder:encode(oracle_pubkey, Pubkey)},
+     {ora_account_id, aeser_api_encoder:encode(account_pubkey, OraPubkey)},
+     {ora_account, {OraPubkey, OraPrivkey}},
+     {oracle_id, aeser_api_encoder:encode(oracle_pubkey, OraPubkey)},
      {query_format, <<"something">>},
      {response_format, <<"something else">>},
      {query_fee, 1},
@@ -845,6 +850,8 @@ init_per_testcase(post_oracle_extend, Config) ->
     {post_oracle_register, SavedConfig} = ?config(saved_config, Config),
     OracleTtlDelta = 500,
     [{account_id, ?config(account_id, SavedConfig)},
+     {ora_account_id, ?config(ora_account_id, SavedConfig)},
+     {ora_account, ?config(ora_account, SavedConfig)},
      {oracle_id, ?config(oracle_id, SavedConfig)},
      {fee, 100000 * aec_test_utils:min_gas_price()},
      {oracle_ttl_value_final, ?config(oracle_ttl_value, SavedConfig) + OracleTtlDelta},
@@ -852,7 +859,11 @@ init_per_testcase(post_oracle_extend, Config) ->
      {oracle_ttl_value, OracleTtlDelta} | init_per_testcase_all(Config)];
 init_per_testcase(post_oracle_query, Config) ->
     {post_oracle_extend, SavedConfig} = ?config(saved_config, Config),
-    [{sender_id, ?config(account_id, SavedConfig)},
+    {SenderPubkey, SenderPrivkey} = initialize_account(100000000 * aec_test_utils:min_gas_price()),
+    [{sender_id, aeser_api_encoder:encode(account_pubkey, SenderPubkey)},
+     {sender_account, {SenderPubkey, SenderPrivkey}},
+     {ora_account_id, ?config(ora_account_id, SavedConfig)},
+     {ora_account, ?config(ora_account, SavedConfig)},
      {oracle_id, ?config(oracle_id, SavedConfig)},
      {query, <<"Hejsan Svejsan">>},
      {query_fee, 2},
@@ -865,8 +876,11 @@ init_per_testcase(post_oracle_response, Config) ->
     {post_oracle_query, SavedConfig} = ?config(saved_config, Config),
     [{sender_id, ?config(sender_id, SavedConfig)},
      {oracle_id, ?config(oracle_id, SavedConfig)},
+     {ora_account_id, ?config(ora_account_id, SavedConfig)},
+     {ora_account, ?config(ora_account, SavedConfig)},
      {query, ?config(query, SavedConfig)},
      {query_id, ?config(query_id, SavedConfig)},
+     {query_fee, ?config(query_fee, SavedConfig)},
      {fee, 100000 * aec_test_utils:min_gas_price()},
      {response_ttl_type, <<"delta">>},
      {response_ttl_value, 20},
@@ -1712,84 +1726,120 @@ get_oracle_by_pubkey(_Config) ->
 
 post_oracle_register(Config) ->
     OracleId = ?config(oracle_id, Config),
+    AccountId = ?config(ora_account_id, Config),
+    {_OraPubkey, OraPrivkey} = ?config(ora_account, Config),
+    QueryFee = ?config(query_fee, Config),
+    Fee = ?config(fee, Config),
+    %% Starting balance
+    {ok, 200, #{<<"balance">> := AccountIdBalance}} = get_accounts_by_pubkey_sut(AccountId),
     TxArgs =
-        #{account_id      => ?config(account_id, Config),
+        #{account_id      => AccountId,
           query_format    => ?config(query_format, Config),
           response_format => ?config(response_format, Config),
-          query_fee       => ?config(query_fee, Config),
-          fee             => ?config(fee, Config),
+          query_fee       => QueryFee,
+          fee             => Fee,
           oracle_ttl      => #{type  => ?config(oracle_ttl_type, Config),
                                value => ?config(oracle_ttl_value, Config)}},
-    {TxHash, Tx} = prepare_tx(oracle_register_tx, TxArgs),
-    ok = post_tx(TxHash, Tx),
+    {ok, 200, #{<<"tx">> := RegisterTx}} = get_oracle_register(TxArgs),
+    TxHash = sign_and_post_tx(RegisterTx, OraPrivkey),
     ok = wait_for_tx_hash_on_chain(TxHash),
+    %% Check balance
+    {ok, 200, #{<<"balance">> := AccountIdBalanceAfter}} = get_accounts_by_pubkey_sut(AccountId),
+    ?assertEqual(AccountIdBalanceAfter, AccountIdBalance - Fee),
+    ?HTTP_ROS:assertBalanceChanges(TxHash, [ {AccountId, -Fee}] ),
     {ok, 200, Resp} = get_oracles_by_pubkey_sut(OracleId),
     {ok, 200, #{<<"oracle_queries">> := []}} = get_oracles_queries_by_pubkey_sut(OracleId, #{type => "all"}),
     {ok, 200, #{<<"oracle_queries">> := []}} = get_oracles_queries_by_pubkey_sut(OracleId, #{}),
     {ok, 200, #{<<"oracle_queries">> := []}} = get_oracles_queries_by_pubkey_sut(OracleId, #{type => "open"}),
     {ok, 200, #{<<"oracle_queries">> := []}} = get_oracles_queries_by_pubkey_sut(OracleId, #{type => "closed"}),
     ?assertEqual(OracleId, maps:get(<<"id">>, Resp)),
-    {save_config, save_config([account_id, oracle_id, oracle_ttl_value], Config)}.
+    {save_config, save_config([account_id, ora_account_id, ora_account, oracle_id, oracle_ttl_value, query_fee], Config)}.
 
 post_oracle_extend(Config) ->
     OracleId = ?config(oracle_id, Config),
+    AccountId = ?config(ora_account_id, Config),
+    {_OraPubkey, OraPrivkey} = ?config(ora_account, Config),
+    Fee = ?config(fee, Config),
+    {ok, 200, #{<<"balance">> := AccountIdBalance}} = get_accounts_by_pubkey_sut(AccountId),
     TxArgs =
         #{oracle_id  => OracleId,
-          fee        => ?config(fee, Config),
+          fee        => Fee,
           oracle_ttl => #{type  => ?config(oracle_ttl_type, Config),
                           value => ?config(oracle_ttl_value, Config)}},
-    {TxHash, Tx} = prepare_tx(oracle_extend_tx, TxArgs),
-    ok = post_tx(TxHash, Tx),
+    {ok, 200, #{<<"tx">> := ExtendTx}} = get_oracle_extend(TxArgs),
+    TxHash = sign_and_post_tx(ExtendTx, OraPrivkey),
     ok = wait_for_tx_hash_on_chain(TxHash),
     {ok, 200, Resp} = get_oracles_by_pubkey_sut(OracleId),
     ?assertEqual(OracleId, maps:get(<<"id">>, Resp)),
     ?assertEqual(?config(oracle_ttl_value_final, Config), maps:get(<<"ttl">>, Resp)),
+    {ok, 200, #{<<"balance">> := AccountIdBalanceAfter}} = get_accounts_by_pubkey_sut(AccountId),
+    ?assertEqual(AccountIdBalanceAfter, AccountIdBalance - Fee),
+    ?HTTP_ROS:assertBalanceChanges(TxHash, [ {AccountId, -Fee}] ),
     {ok, 200, Resp1} = get_oracles_queries_by_pubkey_sut(OracleId, #{type => "all"}),
     ?assertEqual([], maps:get(<<"oracle_queries">>, Resp1)),
-    {save_config, save_config([account_id, oracle_id], Config)}.
+    {save_config, save_config([account_id, ora_account_id, ora_account, oracle_id], Config)}.
 
 post_oracle_query(Config) ->
     SenderId = ?config(sender_id, Config),
     OracleId = ?config(oracle_id, Config),
+    AccountId = ?config(ora_account_id, Config),
+    {_SenderPubkey, SenderPrivkey} = ?config(sender_account, Config),
+    QueryFee = ?config(query_fee, Config),
+    Fee = ?config(fee, Config),
+    {ok, 200, #{<<"balance">> := AccountIdBalance}} = get_accounts_by_pubkey_sut(AccountId),
+    {ok, 200, #{<<"balance">> := SenderIdBalance}} = get_accounts_by_pubkey_sut(SenderId),
     TxArgs =
         #{sender_id    => SenderId,
           oracle_id    => OracleId,
           query        => ?config(query, Config),
-          query_fee    => ?config(query_fee, Config),
-          fee          => ?config(fee, Config),
+          query_fee    => QueryFee,
+          fee          => Fee,
           query_ttl    => #{type  => ?config(query_ttl_type, Config),
                             value => ?config(query_ttl_value, Config)},
           response_ttl => #{type  => ?config(response_ttl_type, Config),
                             value => ?config(response_ttl_value, Config)}},
-    {TxHash, Tx} = prepare_tx(oracle_query_tx, TxArgs),
-    ok = post_tx(TxHash, Tx),
+    {ok, 200, #{<<"tx">> := QueryTx}} = get_oracle_query(TxArgs),
+    TxHash = sign_and_post_tx(QueryTx, SenderPrivkey),
     ok = wait_for_tx_hash_on_chain(TxHash),
     {ok, 200, Resp} = get_oracles_queries_by_pubkey_sut(OracleId, #{type => "closed"}),
     ?assertEqual([], maps:get(<<"oracle_queries">>, Resp)),
     {ok, 200, Resp1} = get_oracles_queries_by_pubkey_sut(OracleId, #{type => "all"}),
     ?assertEqual(1, length(maps:get(<<"oracle_queries">>, Resp1))),
+    {ok, 200, #{<<"balance">> := SenderIdBalanceAfter}} = get_accounts_by_pubkey_sut(SenderId),
+    ?assertEqual(SenderIdBalanceAfter, SenderIdBalance - Fee - QueryFee),
+    {ok, 200, #{<<"balance">> := AccountIdBalanceAfter}} = get_accounts_by_pubkey_sut(AccountId),
+    ?assertEqual(AccountIdBalanceAfter, AccountIdBalance),
+    ?HTTP_ROS:assertBalanceChanges(TxHash, [ {SenderId, -Fee}, {SenderId, -QueryFee}] ),
     [Query] = maps:get(<<"oracle_queries">>, Resp1),
     ?assertEqual(SenderId, maps:get(<<"sender_id">>, Query)),
     ?assertEqual(OracleId, maps:get(<<"oracle_id">>, Query)),
     QueryId = maps:get(<<"id">>, Query),
     Config1 = [{query, ?config(query, Config)}, {query_id, QueryId} | Config],
-    {save_config, save_config([sender_id, oracle_id, query, query_id], Config1)}.
+    {save_config, save_config([sender_id, oracle_id, ora_account_id, ora_account, query, query_id, query_fee], Config1)}.
 
 post_oracle_response(Config) ->
     OracleId = ?config(oracle_id, Config),
+    AccountId = ?config(ora_account_id, Config),
     Query = ?config(query, Config),
     QueryId = ?config(query_id, Config),
     Response = ?config(response, Config),
+    Fee = ?config(fee, Config),
+    QueryFee = ?config(query_fee, Config),
+    {_OraPubkey, OraPrivkey} = ?config(ora_account, Config),
+    {ok, 200, #{<<"balance">> := AccountIdBalance}} = get_accounts_by_pubkey_sut(AccountId),
     TxArgs =
         #{oracle_id    => OracleId,
           query_id     => QueryId,
           response     => Response,
           response_ttl => #{type  => ?config(response_ttl_type, Config),
                             value => ?config(response_ttl_value, Config)},
-          fee          => ?config(fee, Config)},
-    {TxHash, Tx} = prepare_tx(oracle_response_tx, TxArgs),
-    ok = post_tx(TxHash, Tx),
+          fee          => Fee},
+    {ok, 200, #{<<"tx">> := QueryTx}} = get_oracle_response(TxArgs),
+    TxHash = sign_and_post_tx(QueryTx, OraPrivkey),
     ok = wait_for_tx_hash_on_chain(TxHash),
+    {ok, 200, #{<<"balance">> := AccountIdBalanceAfter}} = get_accounts_by_pubkey_sut(AccountId),
+    ?assertEqual(AccountIdBalanceAfter, AccountIdBalance - Fee + QueryFee),
+    ?HTTP_ROS:assertBalanceChanges(TxHash, [{AccountId, -Fee}, {AccountId, QueryFee}] ),
     {ok, 200, Resp} = get_oracles_queries_by_pubkey_sut(OracleId, #{type => "open"}),
     ?assertEqual([], maps:get(<<"oracle_queries">>, Resp)),
     {ok, 200, Resp1} = get_oracles_query_by_pubkey_and_query_id(OracleId, QueryId),
@@ -3598,6 +3648,8 @@ naming_system_manage_name(_Config) ->
     {ok, 200, #{<<"balance">> := Balance3}} = get_accounts_by_pubkey_sut(PubKeyEnc),
     ?assertEqual(Balance3, Balance2 - Fee),
 
+    ?HTTP_ROS:assertBalanceChanges(UpdateTxHash, [{PubKeyEnc, -Fee}] ),
+
     %% Check that TTL and pointers got updated in name entry
     {ok, 200, #{<<"height">> := Height31}} = get_key_blocks_current_sut(),
     ExpectedTTL2 = (Height31 - 1) + NameTTL,
@@ -3633,6 +3685,8 @@ naming_system_manage_name(_Config) ->
     {ok, 200, #{<<"balance">> := Balance5}} = get_accounts_by_pubkey_sut(PubKeyEnc),
     ?assertEqual(Balance5, Balance4 - Fee),
 
+    ?HTTP_ROS:assertBalanceChanges(TransferTxHash, [{PubKeyEnc, -Fee}] ),
+
     %% Submit name revoke tx and check it is in mempool
     RevokeData = #{account_id => PubKeyEnc,
                    name_id => aeser_api_encoder:encode(name, NHash),
@@ -3647,6 +3701,8 @@ naming_system_manage_name(_Config) ->
     %% Check balance
     {ok, 200, #{<<"balance">> := Balance6}} = get_accounts_by_pubkey_sut(PubKeyEnc),
     ?assertEqual(Balance6, Balance5 - Fee),
+
+    ?HTTP_ROS:assertBalanceChanges(RevokeTxHash, [{PubKeyEnc, -Fee}] ),
 
     %% Check the name got expired
     {ok, 404, #{<<"reason">> := <<"Name revoked">>}} = get_names_entry_by_name_sut(Name),
@@ -4112,7 +4168,7 @@ cors_returned_on_get_request(_Config) ->
 
 cors_returned_on_error(_Config) ->
     Host = external_address(),
-    {ok, {{_, 404, _}, Headers1, _}} =
+    {ok, {{_, 404, _}, _Headers1, _}} =
         httpc_request(get, {Host ++ "/v3/names/nonExistentName.chain", [{"origin", "example.com"}]}, [], []),
 
     InternalHost = internal_address(),

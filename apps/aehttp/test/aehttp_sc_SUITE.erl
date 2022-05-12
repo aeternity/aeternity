@@ -166,6 +166,8 @@
 
 -define(ARBITRARY_BIG_FEE, 123456789876543).
 
+-define(HTTP_ROS, aehttp_rosetta_SUITE).
+
 all() -> [{group, plain}, {group, assume_min_depth}, {group, aevm}, {group, fate}].
 
 groups() ->
@@ -855,6 +857,42 @@ finish_sc_ws_open(Config, MinBlocksToMine, Register) ->
     %% ensure new balances
     assert_balance_at_most(IPubkey, IStartAmt - IAmt - ChannelCreateFee),
     assert_balance_at_most(RPubkey, RStartAmt - RAmt),
+
+    %% assert Rosetta API balance change operations
+    TxHash = aetx_sign:hash(SignedCrTx),
+    TxHashExt = aeser_api_encoder:encode(tx_hash, TxHash),
+    Initiator = aeser_api_encoder:encode(account_pubkey,IPubkey),
+    Responder = aeser_api_encoder:encode(account_pubkey,RPubkey),
+    case aetx:tx_type(aetx_sign:tx(SignedCrTx)) of
+        channel_create_tx ->
+            assert_balance(IPubkey, IStartAmt - IAmt - ChannelCreateFee),
+            assert_balance(RPubkey, RStartAmt - RAmt),
+            ?HTTP_ROS:assertBalanceChanges(TxHashExt, [{Initiator, -IAmt},
+                                                    {Initiator, -ChannelCreateFee},
+                                                    {Responder, -RAmt}] );
+        ga_meta_tx ->
+             %% GA Account sometimes held by Initiator, othertimes Responder,
+             %% And in the ga_both case, both.
+             GaFee = aetx:fee(aetx_sign:tx(SignedCrTx)),
+             {aega_meta_tx, ITx} = aetx:specialize_callback(aetx_sign:tx(SignedCrTx)),
+             InnerTx = aega_meta_tx:tx(ITx),
+             case aetx:tx_type(aetx_sign:tx(InnerTx)) of
+                ga_meta_tx ->
+                    ?HTTP_ROS:assertBalanceChanges(TxHashExt,
+                                [{Responder, -GaFee},
+                                {Initiator, -GaFee},
+                                {Initiator, -IAmt},
+                                {Initiator, -ChannelCreateFee},
+                                {Responder, -RAmt}] );
+                _ ->
+                    Owner = aetx:origin(aetx_sign:tx(SignedCrTx)),
+                    OwnerEnc = aeser_api_encoder:encode(account_pubkey, Owner),
+                    ?HTTP_ROS:assertBalanceChanges(TxHashExt, [{OwnerEnc, -GaFee},
+                                                    {Initiator, -IAmt},
+                                                    {Initiator, -ChannelCreateFee},
+                                                    {Responder, -RAmt}] )
+            end
+    end,
 
     %% mine min depth
     case proplists:get_bool(assume_min_depth, Config) of
