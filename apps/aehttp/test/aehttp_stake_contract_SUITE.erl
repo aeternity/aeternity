@@ -37,6 +37,7 @@
 -define(PARENT_CHAIN_NODE1_NAME, aecore_suite_utils:node_name(?PARENT_CHAIN_NODE1)).
 
 -define(DEFAULT_GAS_PRICE, aec_test_utils:min_gas_price()).
+-define(INITIAL_STAKE, 1000000000000000000000000).
 
 -define(PEEK_MSGQ, peek_msgq(?LINE)).
 
@@ -112,11 +113,11 @@ init_per_suite(Config0) ->
             Call1 = 
                 contract_call_spec(CCId, ?STAKING_CONTRACT,
                                    "new_validator", [],
-                                   trunc(math:pow(10,21)), pubkey(?ALICE), 1),
+                                   ?INITIAL_STAKE, pubkey(?ALICE), 1),
             Call2 = 
                 contract_call_spec(CCId, ?STAKING_CONTRACT,
                                    "new_validator", [],
-                                   trunc(math:pow(10,21)), pubkey(?BOB), 1),
+                                   ?INITIAL_STAKE, pubkey(?BOB), 1),
             Call3 = 
                 contract_call_spec(CCId, ?STAKING_CONTRACT,
                                    "set_online", [], 0, pubkey(?ALICE), 2),
@@ -134,7 +135,7 @@ init_per_suite(Config0) ->
             Call5 = 
                 contract_call_spec(CCId, ?STAKING_CONTRACT,
                                    "new_validator", [],
-                                   trunc(math:pow(10,21)), BRIPub, 1),
+                                   ?INITIAL_STAKE, BRIPub, 1),
             %% keep the BRI offline
             AllCalls =  [Call1, Call2, Call3, Call4, Call5],
             BuildConfig =
@@ -334,9 +335,9 @@ simple_withdraw(Config) ->
     {ok, _AliceContractBalance} = inspect_staking_contract(?ALICE, {balance, ?ALICE}, Config),
     {ok, _BobContractBalance} = inspect_staking_contract(?ALICE, {balance, ?BOB}, Config),
     {ok,
-        #{<<"delegates">> := [[<<"ak_2MGLPW2CHTDXJhqFJezqSwYSNwbZokSKkG7wSbGtVmeyjGfHtm">>, 1000000000000000000000]],
+        #{<<"delegates">> := [[<<"ak_2MGLPW2CHTDXJhqFJezqSwYSNwbZokSKkG7wSbGtVmeyjGfHtm">>, ?INITIAL_STAKE]],
           <<"main_staking_ct">> := <<"ak_LRbi65kmLtE7YMkG6mvG5TxAXTsPJDZjAtsPuaXtRyPA7gnfJ">>,
-          <<"shares">> := 1000000000000000000000}} =
+          <<"shares">> := ?INITIAL_STAKE}} =
         inspect_staking_contract(?ALICE, {get_validator_state, ?ALICE}, Config),
     WithdrawAmount = 1000,
     Fun = "unstake",
