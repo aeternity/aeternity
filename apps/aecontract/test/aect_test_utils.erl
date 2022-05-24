@@ -45,6 +45,7 @@
         , latest_protocol_version/0
         , latest_sophia_version/0
         , latest_sophia_contract_version/0
+	, require_at_least_protocol/1
         ]).
 
 -export([ abi_version/0
@@ -154,6 +155,23 @@ latest_sophia_contract_version() ->
 
 latest_protocol_version() ->
     lists:max(maps:keys(aec_hard_forks:protocols())).
+
+require_at_least_protocol(Protocol) ->
+    case latest_protocol_version() of
+	V when V >= Protocol ->
+	    ok;
+	Other ->
+	    Msg = case Other of
+		      ?ROMA_PROTOCOL_VSN    -> not_in_roma;
+		      ?MINERVA_PROTOCOL_VSN -> not_in_minerva;
+		      ?FORTUNA_PROTOCOL_VSN -> not_in_fortuna;
+		      ?LIMA_PROTOCOL_VSN    -> not_in_lima;
+		      ?IRIS_PROTOCOL_VSN    -> not_in_iris;
+		      ?CERES_PROTOCOL_VSN   -> not_in_ceres
+		  end,
+	    {skip, Msg}
+    end.
+			   
 
 calls(State) ->
     aec_trees:calls(trees(State)).
