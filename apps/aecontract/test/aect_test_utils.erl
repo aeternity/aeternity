@@ -171,7 +171,6 @@ require_at_least_protocol(Protocol) ->
 		  end,
 	    {skip, Msg}
     end.
-			   
 
 calls(State) ->
     aec_trees:calls(trees(State)).
