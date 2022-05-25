@@ -86,13 +86,9 @@ groups() ->
 suite() -> [].
 
 init_per_suite(Config0) ->
-    case aect_test_utils:latest_protocol_version() of
-        ?ROMA_PROTOCOL_VSN    -> {skip, not_in_roma};
-        ?MINERVA_PROTOCOL_VSN -> {skip, not_in_minerva};
-        ?FORTUNA_PROTOCOL_VSN -> {skip, not_in_fortuna};
-        ?LIMA_PROTOCOL_VSN    -> {skip, not_in_lima};
-        ?IRIS_PROTOCOL_VSN    -> {skip, not_in_iris};
-        Vsn when Vsn >= ?CERES_PROTOCOL_VSN ->
+    case aect_test_utils:require_at_least_protocol(?CERES_PROTOCOL_VSN) of
+	{skip, _} = Skip -> Skip;
+	ok ->
             {_PatronPriv, PatronPub} = aecore_suite_utils:sign_keys(?NODE1),
             ct:log("Patron is ~p", [aeser_api_encoder:encode(account_pubkey, PatronPub)]),
             Pubkey = <<42:32/unit:8>>,

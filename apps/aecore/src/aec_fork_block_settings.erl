@@ -326,7 +326,7 @@ pre_iris_map_ordering_file() ->
 hc_seed_contracts(Protocol, NetworkId) ->
     ContractsFile = seed_contracts_file_name(Protocol, NetworkId),
     case file:read_file(ContractsFile) of
-        {ok, Data} = OK ->
+        {ok, Data} ->
             {ok, jsx:decode(Data, [return_maps])};
         {error, Err} -> {error, {Err, ContractsFile}}
     end.
