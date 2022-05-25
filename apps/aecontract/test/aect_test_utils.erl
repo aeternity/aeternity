@@ -1,3 +1,4 @@
+%%% -*- erlang-indent-level: 4; indent-tabs-mode: nil -*-
 %%%-------------------------------------------------------------------
 %%% @copyright (C) 2017, Aeternity Anstalt
 %%% @doc Test utils for contracts
@@ -45,7 +46,7 @@
         , latest_protocol_version/0
         , latest_sophia_version/0
         , latest_sophia_contract_version/0
-	, require_at_least_protocol/1
+        , require_at_least_protocol/1
         ]).
 
 -export([ abi_version/0
