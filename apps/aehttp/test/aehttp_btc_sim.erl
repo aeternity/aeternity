@@ -51,7 +51,7 @@ init(Req0=#{method := <<"POST">>}, Pid) ->
       <<"jsonrpc">> := <<"2.0">>,
       <<"method">> := Method,
       <<"params">> := Params,
-      <<"id">> := Id
+      <<"id">> := _Id
     } = jsx:decode(Data),
     Bindings = cowboy_req:bindings(Req),
     case post_req(Pid, Method, Params, Bindings) of
@@ -246,7 +246,7 @@ tx_result(Tx, BlockHash) ->
                <<"hex">> => "str",             % (string) the hex
                <<"reqSigs">> => 1,             % (numeric) The required sigs
                <<"type">> => "pubkeyhash",     % (string) The type, eg 'pubkeyhash'
-               <<"addresses">> => [Tx#tx.to] % [(string)] bitcoin addresses
+               <<"addresses">> => [Tx#tx.to]   % [(string)] bitcoin addresses
             }
          }
      ],
@@ -394,7 +394,7 @@ chain_top_hash(Chain) ->
     end.
 
 chain_get_block(Chain, BlockHash) ->
-    case ets:match_object(Chain, {{'_', BlockHash}, '_', '_'}) of
+    case ets:match_object(Chain, {{'_', BlockHash}, '_', '_'}, 1) of
         [] ->
             {error, not_found};
         [{{_Height, _}, _Fork, _Txs} = Block] ->
