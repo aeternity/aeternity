@@ -8,8 +8,6 @@
 
 -module(aec_parent_connector).
 
-%% FSM states: Not clear what's needed
-%% 
 %% Functionality:
 %% - at intervals check parent chain to understand when new top block is
 %%   available.
@@ -24,7 +22,10 @@
 %%%=============================================================================
 
 %% External API
--export([start_link/0]).
+-export([start_link/0, start_link/3, stop/1]).
+
+%% Use in test only
+-export([trigger_fetch/0]).
 
 %% Callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -36,54 +37,73 @@
 %% Loop state
 -record(state,
     {
-        parent_chain_mod = aehttpc_btc,
+        parent_conn_mod = aehttpc_btc,
         fetch_interval = 10000, % Interval for parent top change checks
-        parent_nodes = [],
+        parent_hosts = [],
         parent_top = <<>>,
-        rpc_seed = crypto:strong_rand_bytes(?SEED_BYTES)
+        rpc_seed = crypto:strong_rand_bytes(?SEED_BYTES) % BTC Api only
     }).
 -type state() :: state.
 
 %%%=============================================================================
 %%% API
 %%%=============================================================================
-
 -spec start_link() -> {ok, pid()} | {error, {already_started, pid()}} | {error, Reason::any()}.
 start_link() ->
     FetchInterval = 10000,
-    ParentNodes = [#{host => "127.0.0.1",
+    ParentHosts = [#{host => <<"127.0.0.1">>,
                     port => 3013,
                     user => "test",
                     password => "Pass"
                     }],
-    gen_server:start_link({local, ?SERVER}, ?MODULE, [FetchInterval, ParentNodes], []).
+    ParentConnMod = aehttpc_aeternity,
+    start_link(ParentConnMod, FetchInterval, ParentHosts).
 
+-spec start_link(atom(), integer() | on_demand, [map()]) -> {ok, pid()} | {error, {already_started, pid()}} | {error, Reason::any()}.
+start_link(ParentConnMod, FetchInterval, ParentHosts) ->
+    gen_server:start_link({local, ?SERVER}, ?MODULE, [ParentConnMod, FetchInterval, ParentHosts], []).
+
+stop(Pid) ->
+    gen_server:stop(Pid).
+
+trigger_fetch() ->
+    gen_server:call(?SERVER, trigger_fetch).
 
 %%%=============================================================================
 %%% Gen Server Callbacks
 %%%=============================================================================
 
--spec init(state()) -> {ok, state()}.
-init([FetchInterval, ParentNodes]) ->
-    erlang:send_after(FetchInterval, self(), check_parent),
-    {ok, #state{fetch_interval = FetchInterval,
-                parent_nodes = ParentNodes}}.
+-spec init([any()]) -> {ok, #state{}}.
+init([ParentConnMod, FetchInterval, ParentHosts]) ->
+    if is_integer(FetchInterval) ->
+        erlang:send_after(FetchInterval, self(), check_parent);
+        true -> ok
+    end,
+    {ok, #state{parent_conn_mod = ParentConnMod,
+                fetch_interval = FetchInterval,
+                parent_hosts = ParentHosts}}.
 
--spec handle_call(any(), pid(), state()) -> {ok, any(), state()}.
+-spec handle_call(any(), any(), state()) -> {reply, any(), state()}.
+handle_call(trigger_fetch, _From, State) ->
+    self() ! check_parent,
+    Reply = ok,
+    {reply, Reply, State};
 handle_call(_Request, _From, State) ->
     Reply = ok,
-    {ok, Reply, State}.
+    {reply, Reply, State}.
 
 -spec handle_cast(any(), state()) -> {noreply, state()}.
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
 -spec handle_info(any(), state()) -> {noreply, state()}.
-handle_info(check_parent, #state{parent_nodes = ParentNodes,
-                                parent_chain_mod = Mod,
+handle_info(check_parent, #state{parent_hosts = ParentNodes,
+                                parent_conn_mod = Mod,
                                 parent_top = ParentTop,
+                                fetch_interval = FetchInterval,
                                 rpc_seed = Seed} = State) ->
     %% Parallel fetch top block from all configured parent chain nodes
+    io:format(user, "ParentNodes = ~p~n", [ParentNodes]),
     case fetch_parent_tops(Mod, ParentNodes, Seed) of
         {ok, ParentTop, _} ->
             %% No change, just check again later
@@ -91,7 +111,7 @@ handle_info(check_parent, #state{parent_nodes = ParentNodes,
         {ok, NewParentTop, Node} ->
             %% Fetch the commitment Txs in the parent block from a node
             %% that had the majority answer
-            Commitments = fetch_commitments(Mod, Node, Seed, NewParentTop)
+            _Commitments = fetch_commitments(Mod, Node, Seed, NewParentTop)
             %% Commitments may include varying view on what is the latest 
             %%   block.
             %% Commitments include:
@@ -100,7 +120,10 @@ handle_info(check_parent, #state{parent_nodes = ParentNodes,
             %% - Call the smart contract to elect new leader.
             %% - Notify conductor of new status
     end,
-    erlang:send_after(State#state.fetch_interval, self(), check_parent),
+    if is_integer(FetchInterval) ->
+        erlang:send_after(FetchInterval, self(), check_parent);
+        true -> ok
+    end,
     {noreply, State#state{rpc_seed = increment_seed(Seed)}};
 handle_info(_Info, State) ->
     {noreply, State}.
@@ -119,6 +142,7 @@ code_change(_OldVsn, State, _Extra) ->
 fetch_parent_tops(Mod, ParentNodes, Seed) ->
     Fun = fun(Parent) -> fetch_parent_top(Mod, Parent, Seed) end,
     {Good, Errors} = pmap(Fun, ParentNodes, 10000),
+    io:format(user, "Good, Errors = ~p~n", [{Good, Errors}]),
     parent_top_consensus(Good, Errors, length(ParentNodes)).
 
 fetch_parent_top(Mod, #{host := Host, port := Port,

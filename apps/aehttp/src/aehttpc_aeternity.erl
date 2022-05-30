@@ -15,6 +15,7 @@ get_commitment_tx_in_block(Host, Port, _User, _Password, _Seed, BlockHash) ->
 
 %% @doc Post commitment to AE parent chain.
 %% FIXME: When should this be called, how often, and by which accounts?
+%% FIXME: Sort out what we actually need to post to the parent chain
 post_commitment(Host, Port, AccountId, Signature, HCAccountId, CurrentTop) ->
     post_commitment_tx(Host, Port, AccountId, Signature, HCAccountId, CurrentTop).
 
@@ -37,7 +38,7 @@ get_generation(Host, Port, Hash) ->
     Path = <<"/v2/generations/hash/", Hash/binary>>,
     get_request(Path, Host, Port, 5000).
 
--spec get_transactions(binary(), integer(), [binary()]) -> {ok, map()} | {error, term()}.
+-spec get_transactions(binary(), integer(), [binary()]) -> {ok, list()} | {error, term()}.
 get_transactions(Host, Port, MBs) ->
     Txs = lists:flatmap(
         fun(MB) ->
@@ -66,7 +67,7 @@ get_hc_commitments(Host, Port, MB) ->
             end, [], Txs),
     {ok, Commitments}.
 
-post_commitment_tx(Host, Port, AccountId, Signature, HCAccountId, CurrentTop) ->
+post_commitment_tx(Host, Port, AccountId, _Signature, HCAccountId, CurrentTopHash) ->
     %% 1. get the next nonce for our account
     NoncePath = <<"/v2/accounts/", AccountId/binary, "next-nonce">>,
     {ok, #{<<"next_nonce">> := Nonce}} = get_request(NoncePath, Host, Port, 5000),
@@ -77,7 +78,7 @@ post_commitment_tx(Host, Port, AccountId, Signature, HCAccountId, CurrentTop) ->
           amount       => 10000,       %% FIXME config
           fee          => 1000000000,  %% FIXME config
           nonce        => Nonce,
-          payload      => CurrentTop},
+          payload      => CurrentTopHash},
     {ok, SpendTx} = aec_spend_tx:new(TxArgs),
     SignedSpendTx = sign_tx(SpendTx, AccountId),
     Body = #{<<"tx">> => SignedSpendTx},
@@ -85,7 +86,7 @@ post_commitment_tx(Host, Port, AccountId, Signature, HCAccountId, CurrentTop) ->
     post_request(Path, Body, Host, Port, 5000),
     ok.
 
-sign_tx(SpendTx, AccountId) ->
+sign_tx(SpendTx, _AccountId) ->
     %% TODO - wallet interaction of some kind
     %% For now aec_preset_keys??
     %% {ok, Sig} = aec_preset_keys:sign_tx(SpendTx, AccountId)
@@ -106,7 +107,7 @@ get_request(Path, Host, Port, Timeout) ->
     {error, {E, R, S}}
   end.
     
--spec post_request(binary(), binary(), binary(), integer(),integer()) -> {ok, map()} | {error, term()}.
+-spec post_request(binary(), map(), binary(), integer(),integer()) -> {ok, map()} | {error, term()}.
 post_request(Path, Body, Host, Port, Timeout) ->
   try
     Url = url(binary_to_list(Host), Port, false),
@@ -122,9 +123,7 @@ post_request(Path, Body, Host, Port, Timeout) ->
     {error, {E, R, S}}
   end.
 
-url(Host, Port, true = _SSL) when is_list(Host), is_integer(Port) ->
-  path("https://", Host, Port);
-url(Host, Port, _) when is_list(Host), is_integer(Port) ->
+url(Host, Port, false) when is_list(Host), is_integer(Port) ->
   path("http://", Host, Port).
 
 path(Scheme, Host, Port) ->

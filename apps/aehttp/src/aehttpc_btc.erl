@@ -20,7 +20,7 @@ get_commitment_tx_in_block(Host, Port, User, Password, Seed, BlockHash) ->
 %% 2. Create a transaction using createrawtransaction
 %% 3. Apply signatures using signrawtransaction
 %% 4. Submit it using sendrawtransaction
-post_commitment(Host, Port, BTCAcc, Signature,  AeValidatorPubkey, Commitment) ->
+post_commitment(_Host, _Port, _BTCAcc, _Signature, _AeValidatorPubkey, _Commitment) ->
     ok.
 
 
@@ -50,6 +50,9 @@ getblock(Host, Port, User, Password, Seed, SSL, Hash, Verbosity) ->
     {error, {E, R}}
   end.
 
+%% WIP - Suppress dializer warnings to keep build happy until these two functions
+%% are hooked into post_commitment
+-dialyzer({nowarn_function, signrawtransactionwithkey/8}).
 -spec signrawtransactionwithkey(binary(), binary(), binary(), binary(), binary(), boolean(), binary(), binary()) -> {ok, binary()} | {error, term()}.
 signrawtransactionwithkey(Host, Port, User, Password, Seed, SSL, RawTx, PrivKey) ->
   try
@@ -63,6 +66,7 @@ signrawtransactionwithkey(Host, Port, User, Password, Seed, SSL, RawTx, PrivKey)
     {error, {E, R}}
   end.
 
+-dialyzer({nowarn_function, sendrawtransaction/7}).
 -spec sendrawtransaction(binary(), binary(), binary(), binary(), binary(), boolean(), binary()) -> {ok, binary()} | {error, term()}.
 sendrawtransaction(Host, Port, User, Password, Seed, SSL, Hex) ->
   try
@@ -73,7 +77,7 @@ sendrawtransaction(Host, Port, User, Password, Seed, SSL, Hex) ->
     {error, {E, R}}
   end.
 
--spec result(map()) -> binary().
+-spec result(map()) -> term().
 result(Response) ->
   maps:get(<<"result">>, Response).
 
