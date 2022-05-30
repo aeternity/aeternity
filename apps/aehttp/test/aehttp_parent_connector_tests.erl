@@ -34,7 +34,7 @@ ae_sim_test_() ->
         [{"Basic http api operational to each child chain",
             fun() ->
                     aec_parent_connector:trigger_fetch(),
-                    ?assertEqual(xx, Connector),
+                    ?assertEqual(xx, xx),
                     ok
             end}]
     end]
