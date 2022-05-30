@@ -62,7 +62,7 @@ handle_request('GetGenerationByHash',#{hash := EncHash},#{sim_name := SimName}) 
             end
     end;
 handle_request(OperationId, Params, Context) ->
-    io:format(user, "Got request = ~p~n", [{OperationId, Params, Context}]),
+    %% io:format(user, "Got request = ~p~n", [{OperationId, Params, Context}]),
     aehttp_dispatch_ext:handle_request(OperationId, Params, Context).
 
 generation_rsp(_, error) ->

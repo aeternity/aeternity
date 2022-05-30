@@ -103,7 +103,6 @@ handle_info(check_parent, #state{parent_hosts = ParentNodes,
                                 fetch_interval = FetchInterval,
                                 rpc_seed = Seed} = State) ->
     %% Parallel fetch top block from all configured parent chain nodes
-    io:format(user, "ParentNodes = ~p~n", [ParentNodes]),
     case fetch_parent_tops(Mod, ParentNodes, Seed) of
         {ok, ParentTop, _} ->
             %% No change, just check again later
@@ -142,7 +141,6 @@ code_change(_OldVsn, State, _Extra) ->
 fetch_parent_tops(Mod, ParentNodes, Seed) ->
     Fun = fun(Parent) -> fetch_parent_top(Mod, Parent, Seed) end,
     {Good, Errors} = pmap(Fun, ParentNodes, 10000),
-    io:format(user, "Good, Errors = ~p~n", [{Good, Errors}]),
     parent_top_consensus(Good, Errors, length(ParentNodes)).
 
 fetch_parent_top(Mod, #{host := Host, port := Port,
