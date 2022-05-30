@@ -1194,7 +1194,7 @@ setup_node(N, Top, Root, Config) ->
     [VerB |_ ] = binary:split(VerContents, [<<"\n">>, <<"\r">>], [global]),
     Version = binary_to_list(VerB),
     %%
-    CfgD = filename:join([Top, "config/", "dev1"]),
+    CfgD = config_dir(Top, N),
     RelD = filename:dirname(filename:join([DDir, "releases", Version, "aeternity.rel"])),
     [cp_file(filename:join(CfgD, F), filename:join(RelD, F)) || F <- ["vm.args", "sys.config"]],
     [cp_file(filename:join(Root, F), filename:join(DDir, F)) || F <- ["VERSION", "REVISION"]],
@@ -1208,6 +1208,15 @@ setup_node(N, Top, Root, Config) ->
             filename:join(DDir , ConfigFilename)),
     aec_test_utils:copy_forks_dir(Root, DDir).
 
+%% Take the node specific config if it exists, otherwise just use dev1
+config_dir(Top, N) ->
+    Dir = filename:join([Top, "config/", N]),
+    case filelib:is_dir(Dir) of
+        true ->
+            Dir;
+        false ->
+            filename:join([Top, "config/", "dev1"])
+    end.
 
 cp_dir(From, To) ->
     ToDir = case lists:last(To) of
