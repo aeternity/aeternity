@@ -1,3 +1,4 @@
 when: << pipeline.parameters.run_system_tests >>
 jobs:
-  - docker-system-test
+  - docker-system-test:
+      context: ae-slack
