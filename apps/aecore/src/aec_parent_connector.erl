@@ -22,7 +22,7 @@
 %%%=============================================================================
 
 %% External API
--export([start_link/0, start_link/3, stop/1]).
+-export([start_link/0, start_link/3, stop/0]).
 
 %% Use in test only
 -export([trigger_fetch/0]).
@@ -59,12 +59,16 @@ start_link() ->
     ParentConnMod = aehttpc_aeternity,
     start_link(ParentConnMod, FetchInterval, ParentHosts).
 
+%% Start the parent connector process
+%% ParentConnMod :: atom() - module name of the http client module aehttpc_btc | aehttpc_aeternity
+%% FetchInterval :: integer() | on_demand - millisecs between parent chain checks or when asked (useful for test)
+%% ParentHosts :: [#{host => Host, port => Port, user => User, password => Pass}]
 -spec start_link(atom(), integer() | on_demand, [map()]) -> {ok, pid()} | {error, {already_started, pid()}} | {error, Reason::any()}.
 start_link(ParentConnMod, FetchInterval, ParentHosts) ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [ParentConnMod, FetchInterval, ParentHosts], []).
 
-stop(Pid) ->
-    gen_server:stop(Pid).
+stop() ->
+    gen_server:stop(?MODULE).
 
 trigger_fetch() ->
     gen_server:call(?SERVER, trigger_fetch).
