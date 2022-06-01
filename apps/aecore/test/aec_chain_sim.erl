@@ -38,8 +38,12 @@
 -export([ next_nonce/2                 %% (Name, Acct) -> integer()
         , new_account/2                %% (Name, Balance) -> KeyPair
         , new_account/3                %% (Name, ForkId, Balance) -> KeyPair
+        , add_existing_account/3       %% (Name, KeyPair, Balance) -> ok
+        , add_existing_account/4       %% (Name, ForkId, KeyPair, Balance) -> ok
         , get_balance/2                %% (Name, Acct) -> Balance
         , get_balance/3                %% (Name, ForkId, Acct) -> Balance
+        , get_next_nonce/2             %% (Name, Acct) -> integer()
+        , get_next_nonce/3             %% (Name, ForkId, Acct) -> integer()
         , get_height/1                 %% (Name) -> Int
         , get_height/2                 %% (Name, ForkId) -> Int
         , push/2                       %% (Name, Tx) -> ok
@@ -168,6 +172,20 @@ new_account(Name, Balance) ->
 new_account(Name, ForkId, Balance) ->
     chain_req(Name, {new_account, ForkId, Balance}).
 
+-spec add_existing_account(Name :: atom(), PK :: map(), Balance :: non_neg_integer()) -> {ok, map()}.
+%%
+%% Adds an account with a known private . public key pair
+%%
+add_existing_account(Name, Acct, Balance) ->
+    add_existing_account(Name, main, Acct, Balance).
+
+-spec add_existing_account(Name :: atom(), fork_id(), Acct :: map(), Balance :: non_neg_integer()) -> {ok, map()}.
+%%
+%% Creates new account with given balance
+%%
+add_existing_account(Name, ForkId, Acct, Balance) ->
+    chain_req(Name, {add_existing_account, ForkId, Acct, Balance}).
+
 -spec get_balance(Name :: atom(), Acct :: non_neg_integer()) -> integer().
 %%
 %% Equivalent to get_balance(main, Acct)
@@ -182,6 +200,11 @@ get_balance(Name, Acct) ->
 get_balance(Name, ForkId, Acct) ->
     chain_req(Name, {get_balance, ForkId, Acct}).
 
+get_next_nonce(Name, Acct) ->
+    get_next_nonce(Name, main, Acct).
+
+get_next_nonce(Name, ForkId, Acct) ->
+    chain_req(Name, {get_next_nonce, ForkId, Acct}).
 
 -spec get_height(Name :: atom()) -> integer().
 %%
@@ -425,11 +448,17 @@ handle_call({clone_micro_on_fork, Hash, ForkId}, _From, #st{opts = Opts, chain =
 handle_call({new_account, ForkId, Balance}, _From, #st{chain = Chain} = St) ->
     {Res, Chain1} = new_account_(ForkId, Balance, Chain),
     {reply, Res, St#st{chain = Chain1}};
+handle_call({add_existing_account, ForkId, Acct, Balance}, _From, #st{chain = Chain} = St) ->
+    {Res, Chain1} = add_account_keypair_(ForkId, Acct, Balance, Chain),
+    {reply, Res, St#st{chain = Chain1}};
 handle_call({add_key, ForkId}, _From, #st{opts = Opts, chain = Chain} = St) ->
     {Res, Chain1} = add_keyblock_(ForkId, Chain, Opts),
     {reply, Res, St#st{chain = Chain1}};
 handle_call({get_balance, ForkId, Acct}, _From, #st{chain = Chain} = St) ->
     Res = get_balance_(ForkId, Acct, Chain),
+    {reply, Res, St};
+handle_call({get_next_nonce, ForkId, Acct}, _From, #st{chain = Chain} = St) ->
+    Res = get_next_nonce_(ForkId, Acct, Chain),
     {reply, Res, St};
 handle_call({get_height, ForkId}, _From, #st{chain = Chain} = St) ->
     Res = get_height_(ForkId, Chain),
@@ -513,8 +542,11 @@ code_change(_FromVsn, C, _Extra) ->
 %%% gen_server requests implementations
 %%%===================================================================
 
-new_account_(ForkId, Balance, #{forks := Forks} = Chain) ->
-    #{pubkey := PK} = KP = new_keypair(),
+new_account_(ForkId, Balance, Chain) ->
+    #{pubkey := _PK} = KP = new_keypair(),
+    add_account_keypair_(ForkId, KP, Balance, Chain).
+
+add_account_keypair_(ForkId, #{pubkey := PK} = KP, Balance, #{forks := Forks} = Chain) ->
     Acct = aec_accounts:new(PK, Balance),
     #{ ForkId := #{blocks := [TopBlock|RestBlocks] = Blocks} = F } = Forks,
     Trees = case trees(Blocks) of
@@ -539,6 +571,19 @@ get_balance_(ForkId, PK, Chain) ->
         none -> 0;
         {value, Acct} ->
             aec_accounts:balance(Acct)
+    end.
+
+get_next_nonce_(ForkId, PK, Chain) ->
+    case trees(blocks(ForkId, Chain)) of
+        {ok, Ts} ->
+            case aec_accounts_trees:lookup(PK, aec_trees:accounts(Ts)) of
+                {value, Account} ->
+                     {ok, aec_accounts:nonce(Account) + 1};
+                none ->
+                    {error, account_not_found}
+            end;
+        error ->
+            {error, no_state_trees}
     end.
 
 get_height_(ForkId, #{forks := Forks}) ->
@@ -754,6 +799,16 @@ blocks_until_height(Height, Blocks) ->
               Height =/= aec_headers:height(aec_blocks:to_header(B))
       end, Blocks).
 
+blocks_at_height(Height, Blocks) ->
+    SkippedHigher = lists:dropwhile(
+      fun(#{block := B}) ->
+              Height =/= aec_headers:height(aec_blocks:to_header(B))
+      end, Blocks),
+    lists:takewhile(
+        fun(#{block := B}) ->
+              Height == aec_headers:height(aec_blocks:to_header(B))
+        end, SkippedHigher).
+
 top_block_hash_(Chain) ->
     [#{block := B}|_] = blocks(main, Chain),
     {ok, H} = aec_headers:hash_header(aec_blocks:to_header(B)),
@@ -803,7 +858,7 @@ get_generation_with_header_index(TopHash, Index, MBs, Chain) ->
     case aec_headers:type(H) of
         key -> {ok, #{ key_block => aec_blocks:new_key_from_header(H), micro_blocks => MBs, dir => forward }};
         micro ->
-            Block = aec_db:get_block_from_micro_header(TopHash, H, Chain),
+            Block = get_block_from_micro_header(TopHash, H, Chain),
             get_generation_with_header_index(aec_headers:prev_hash(H), Index, [Block | MBs], Chain)
     end.
 
@@ -850,6 +905,15 @@ get_generation_by_height(Height, forward, Chain) ->
            end
     end.
 
+get_block_from_micro_header(Hash, MicroHeader, Chain) ->
+    aec_headers:assert_micro_header(MicroHeader),
+    case find_block_txs_(Hash, Chain) of
+        {value, Txs} ->
+            aec_blocks:new_micro_from_header(MicroHeader, Txs, no_fraud);
+        not_found ->
+            aec_blocks:new_micro_from_header(MicroHeader, [], no_fraud)
+    end.
+
 %% Only return nodes in the main chain. This reflects the behaviour of the same
 %% function in aec_chain_state.erl
 get_key_block_by_height_(Height, Chain) ->
@@ -859,15 +923,17 @@ get_key_block_by_height_(Height, Chain) ->
 %% Search all forks at a height
 find_headers_and_hash_at_height_(Height, #{forks := Forks}) ->
     maps:fold(fun(_ForkId, #{blocks := Blocks}, Acc) ->
-                case blocks_until_height(Height, Blocks) of
-                    [#{block := Block}|_] ->
-                        Header = aec_blocks:to_header(Block),
-                        {ok, Hash} = aec_headers:hash_header(Header),
-                        [{Hash, Header} | Acc];
+                case blocks_at_height(Height, Blocks) of
+                    [#{block := _Block}|_] = Bs ->
+                        lists:foldl(fun(#{block := Block}, Acc1) ->
+                                        Header = aec_blocks:to_header(Block),
+                                        {ok, Hash} = aec_headers:hash_header(Header),
+                                        maps:put(Hash, Header, Acc1)
+                                    end, Acc, Bs);
                     _ ->
                         Acc
                 end
-              end, [], Forks).
+              end, #{}, Forks).
 
 
 get_block_state_(Hash, Chain) ->
@@ -984,6 +1050,18 @@ find_block_tx_hashes_(Hash, Chain) ->
                   end,
             TxHashes = [ aetx_sign:hash(Tx) || Tx <- Txs ],
             {value, TxHashes};
+        [] ->
+            not_found
+    end.
+
+find_block_txs_(Hash, Chain) ->
+    case blocks_until_hash(Hash, blocks(Chain)) of
+        [#{block := Block}|_] ->
+            Txs = case aec_blocks:is_key_block(Block) of
+                      true -> [];
+                      false -> aec_blocks:txs(Block)
+                  end,
+            {value, Txs};
         [] ->
             not_found
     end.
