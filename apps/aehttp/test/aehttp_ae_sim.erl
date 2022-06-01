@@ -14,7 +14,6 @@
 
 %% External API
 -export([start_link/3, stop/1]).
--export([mine_on_fork/2]).
 
 %% Cowboy callbacks called by aehttp_api_handler
 -export([forbidden/2, handle_request/3]).
@@ -56,14 +55,57 @@ handle_request('GetGenerationByHash',#{hash := EncHash},#{sim_name := SimName}) 
     case aeser_api_encoder:safe_decode(key_block_hash, EncHash) of
         {error, _} -> {400, [], #{reason => <<"Invalid hash">>}};
         {ok, Hash} ->
+            %% Forward to get all transactions at the same height as the keyblock
             case aec_chain_sim:get_generation_by_hash(SimName, Hash, forward) of
                 Ok = {ok, _G} -> generation_rsp(SimName, Ok);
                 error         -> {400, [], #{reason => <<"Hash not on main chain">>}}
             end
     end;
+handle_request('GetMicroBlockTransactionsByHash', #{hash := EncHash}, #{sim_name := SimName}) ->
+    case aeser_api_encoder:safe_decode(micro_block_hash, EncHash) of
+        {ok, Hash} ->
+            case aec_chain_sim:block_by_hash(SimName, Hash) of
+                {ok, Block} ->
+                    Header = aec_blocks:to_header(Block),
+                    Txs = [ aetx_sign:serialize_for_client(Header, Tx)
+                            || Tx <- aec_blocks:txs(Block)],
+                    {200, [], #{transactions => Txs}};
+                {error, block_not_found} ->
+                    {404, [], #{reason => <<"Block not found">>}}
+            end;
+        {error, _} ->
+            {400, [], #{reason => <<"Invalid hash">>}}
+    end;
+handle_request('GetAccountNextNonce',#{pubkey := EncPubkey}, #{sim_name := SimName}) ->
+    case aeser_api_encoder:safe_decode(account_pubkey, EncPubkey) of
+        {ok, Pubkey} ->
+            case aec_chain_sim:get_next_nonce(SimName, Pubkey) of
+                {ok, NextNonce} ->
+                    {200, [], #{next_nonce => NextNonce}};
+                {error, account_not_found} ->
+                    {404, [], #{reason => <<"Account not found">>}}
+            end;
+        {error, _} ->
+            {400, [], #{reason => <<"Invalid public key">>}}
+    end;
+handle_request('PostTransaction', #{'Tx' := #{<<"tx">> := Tx}}, #{sim_name := SimName}) ->
+    case aeser_api_encoder:safe_decode(transaction, Tx) of
+        {ok, TxDec} ->
+            SignedTx = aetx_sign:deserialize_from_binary(TxDec),
+            case aec_chain_sim:push(SimName, SignedTx) of
+                ok ->
+                    Hash = aetx_sign:hash(SignedTx),
+                    {200, [], #{<<"tx_hash">> => aeser_api_encoder:encode(tx_hash, Hash)}};
+                {error, E} ->
+                    lager:debug("Transaciton ~p failed to be pushed to pool because: ~p", [SignedTx, E]),
+                    {400, [], #{reason => <<"Invalid tx">>}}
+            end;
+        {error, _} ->
+            {400, [], #{reason => <<"Invalid api encoding">>}}
+    end;
 handle_request(OperationId, Params, Context) ->
-    %% io:format(user, "Got request = ~p~n", [{OperationId, Params, Context}]),
-    aehttp_dispatch_ext:handle_request(OperationId, Params, Context).
+    lager:debug("Unsupported request = ~p~n", [{OperationId, Params, Context}]),
+    {404, [], #{reason => <<"Unsupported operation in ae_sim">>}}.
 
 generation_rsp(_, error) ->
     {404, [], #{reason => <<"Block not found">>}};
@@ -73,7 +115,7 @@ generation_rsp(SimName, {ok, #{ key_block := KeyBlock, micro_blocks := MicroBloc
             {200, [], aehttp_helpers:encode_generation(KeyBlock, MicroBlocks, key)};
         _ ->
             PrevBlockHash = aec_blocks:prev_hash(KeyBlock),
-            case aec_chain_sim:get_block(SimName, PrevBlockHash) of
+            case aec_chain_sim:block_by_hash(SimName, PrevBlockHash) of
                 {ok, PrevBlock} ->
                     PrevBlockType = aec_blocks:type(PrevBlock),
                     {200, [], aehttp_helpers:encode_generation(KeyBlock, MicroBlocks, PrevBlockType)};
@@ -106,21 +148,11 @@ generation_rsp(SimName, {ok, #{ key_block := KeyBlock, micro_blocks := MicroBloc
 %% #{generations => ets storing [{{Height, Hash}, Fork, Txs}]
 %%   accounts => [{<<"3EktnHQD7RiAE6uzMj2ZifT9YgRrkSgzQX">> -> 10000}]}.
 -spec start_link(atom(), integer(), map()) -> {ok, pid()} | {error, {already_started, pid()}} | {error, Reason::any()}.
-start_link(Name, Port, InitialState) ->
+start_link(Name, Port, _InitialState) ->
     gen_server:start_link({local, Name}, ?MODULE, [Name, Port], []).
 
 stop(Pid) ->
     gen_server:stop(Pid).
-
-%% Web server received POST request
-post_req(Pid, Method, Params, Bindings) ->
-    gen_server:call(Pid, {post_req, Method, Params, Bindings}).
-
-%% @doc mine a block on a simulated BTC node.
-%% Afterwards this block will hold the current contents of the mempool
-mine_on_fork(Name, ForkName) when is_atom(Name), is_atom(ForkName) ->
-    gen_server:call(Name, {mine_on_fork, ForkName}).
-
 
 %%%=============================================================================
 %%% Gen Server Callbacks
@@ -129,16 +161,12 @@ mine_on_fork(Name, ForkName) when is_atom(Name), is_atom(ForkName) ->
 init([Name, Port]) ->
     %% First start simulated chain then open up http api to it
     {ok, _ChainP} = aec_chain_sim:start(#{name => Name}),
-    Enabled = [<<"chain">>],
+    Enabled = [<<"chain">>, <<"account">>, <<"transaction">>],
     application:set_env(aehttp, enabled_endpoint_groups, Enabled),
     {ok, _} = start_cowboy(Name, Port),
     {ok, #state{chain = Name, accounts = []}}.
 
 -spec handle_call(any(), pid(), state()) -> {ok, any(), state()}.
-handle_call({mine_on_fork, Fork}, _From, State) ->
-    %#state{chain = Chain, mempool = Mempool} = State,
-    %chain_post_block(Chain, Fork, Mempool),
-    {ok, ok, State};
 handle_call(_Request, _From, State) ->
     Reply = ok,
     {ok, Reply, State}.

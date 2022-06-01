@@ -1,17 +1,17 @@
 -module(aehttpc_aeternity).
 
-%% Low level subset of Aeternity API required to interact with a hyperchain
+%% Subset of Aeternity HTTP client API required to interact with a hyperchain
 
 %% Required exports:
--export([get_latest_block/5, get_commitment_tx_in_block/6, post_commitment/6]).
+-export([get_latest_block/5, get_commitment_tx_in_block/7, post_commitment/6]).
 
 %% @doc fetch latest top hash
 get_latest_block(Host, Port, _User, _Password, _Seed) ->
     get_top_block_hash(Host, Port).
 
-get_commitment_tx_in_block(Host, Port, _User, _Password, _Seed, BlockHash) ->
+get_commitment_tx_in_block(Host, Port, _User, _Password, _Seed, BlockHash, ParentHCAccountPubKey) ->
     {ok, #{<<"micro_blocks">> := MBs}} = get_generation(Host, Port, BlockHash),
-    get_transactions(Host, Port, MBs).
+    get_transactions(Host, Port, MBs, ParentHCAccountPubKey).
 
 %% @doc Post commitment to AE parent chain.
 %% FIXME: When should this be called, how often, and by which accounts?
@@ -38,59 +38,75 @@ get_generation(Host, Port, Hash) ->
     Path = <<"/v2/generations/hash/", Hash/binary>>,
     get_request(Path, Host, Port, 5000).
 
--spec get_transactions(binary(), integer(), [binary()]) -> {ok, list()} | {error, term()}.
-get_transactions(Host, Port, MBs) ->
+-spec get_transactions(binary(), integer(), [binary()], binary()) -> {ok, list()} | {error, term()}.
+get_transactions(Host, Port, MBs, ParentHCAccountPubKey) ->
     Txs = lists:flatmap(
         fun(MB) ->
-            get_hc_commitments(Host, Port, MB)
+            get_hc_commitments(Host, Port, MB, ParentHCAccountPubKey)
         end, MBs),
     {ok, Txs}.
 
-get_hc_commitments(Host, Port, MB) ->
+get_hc_commitments(Host, Port, MB, ParentHCAccountPubKey) ->
     Path =  <<"/v2/micro-blocks/hash/", MB/binary, "/transactions">>,
     {ok, Res} = get_request(Path, Host, Port, 5000),
     #{<<"transactions">> := Txs} = Res,
     %% TODO - take hc commitment account from some config
     %% Commitments include:
     %%   [{Committer, Committers view of child chain top hash}]
-    Commitments = lists:foldl(
+    ExpectedRecipient = aeser_api_encoder:encode(account_pubkey, ParentHCAccountPubKey),
+    lists:foldl(
             fun(#{<<"tx">> := Tx}, Acc) ->
                     case Tx of
                         #{<<"type">> := <<"SpendTx">>,
-                          <<"recipient_id">> := <<"ak_hc_account">>,
+                          <<"recipient_id">> := ExpectedRecipient,
                           <<"sender_id">> := SenderId,
                           <<"payload">> := Commitment} ->
                             [{SenderId, Commitment} | Acc];
                         _ ->
                             Acc
                     end
-            end, [], Txs),
-    {ok, Commitments}.
+            end, [], Txs).
 
-post_commitment_tx(Host, Port, AccountId, _Signature, HCAccountId, CurrentTopHash) ->
-    %% 1. get the next nonce for our account
-    NoncePath = <<"/v2/accounts/", AccountId/binary, "next-nonce">>,
+post_commitment_tx(Host, Port, AccountId, StakerPrivKey, HCAccountId, CurrentTopHash) ->
+    %% 1. get the next nonce for our account over at the parent chain
+    SenderEnc = aeser_api_encoder:encode(account_pubkey, AccountId),
+    NoncePath = <<"/v2/accounts/", SenderEnc/binary, "/next-nonce">>,
     {ok, #{<<"next_nonce">> := Nonce}} = get_request(NoncePath, Host, Port, 5000),
     %% 2. Create a SpendTx containing the commitment in its payload
     TxArgs =
         #{sender_id    => aeser_id:create(account, AccountId),
           recipient_id => aeser_id:create(account, HCAccountId),
           amount       => 10000,       %% FIXME config
-          fee          => 1000000000,  %% FIXME config
+          fee          => 1000000000000,  %% FIXME config
           nonce        => Nonce,
           payload      => CurrentTopHash},
     {ok, SpendTx} = aec_spend_tx:new(TxArgs),
-    SignedSpendTx = sign_tx(SpendTx, AccountId),
-    Body = #{<<"tx">> => SignedSpendTx},
-    Path = <<"/v2/transaction">>,
+    %% FIXME: We need to sign this parent chain Tx with the networkId of the parent chain
+    SignedSpendTx = sign_tx(SpendTx, [StakerPrivKey]),
+    Transaction = aeser_api_encoder:encode(transaction, aetx_sign:serialize_to_binary(SignedSpendTx)),
+    Body = #{<<"tx">> => Transaction},
+    Path = <<"/v2/transactions">>,
     post_request(Path, Body, Host, Port, 5000),
     ok.
 
-sign_tx(SpendTx, _AccountId) ->
-    %% TODO - wallet interaction of some kind
-    %% For now aec_preset_keys??
-    %% {ok, Sig} = aec_preset_keys:sign_tx(SpendTx, AccountId)
-    SpendTx.
+%% TODO the network ID here should be for the parent chain, but the
+%% test_utils code will pick up the local node.
+%% TODO - wallet interaction of some kind to get privKey
+%% This is a horrible hack for now
+%% Maybe aec_preset_keys??
+%% {ok, Sig} = aec_preset_keys:sign_tx(SpendTx, AccountId)
+%% TODO: redo this whole thing
+-define(VALID_PRIVK(K), byte_size(K) =:= 64).
+sign_tx(Tx, PrivKeys) when is_list(PrivKeys) ->
+    Bin0 = aetx:serialize_to_binary(Tx),
+    Bin = aec_hash:hash(signed_tx, Bin0),
+    BinForNetwork = aec_governance:add_network_id(Bin),
+    case lists:filter(fun(PrivKey) -> not (?VALID_PRIVK(PrivKey)) end, PrivKeys) of
+        [_|_]=BrokenKeys -> erlang:error({invalid_priv_key, BrokenKeys});
+        [] -> pass
+    end,
+    Signatures = [ enacl:sign_detached(BinForNetwork, PrivKey) || PrivKey <- PrivKeys ],
+    aetx_sign:new(Tx, Signatures).
 
 get_request(Path, Host, Port, Timeout) ->
     try
@@ -99,6 +115,7 @@ get_request(Path, Host, Port, Timeout) ->
     Req = {UrlPath, []},
     HTTPOpt = [{timeout, Timeout}],
     Opt = [],
+    lager:info("Req: ~p, with URL: ~ts", [Req, Url]),
     {ok, {{_, 200 = _Code, _}, _, Res}} = httpc:request(get, Req, HTTPOpt, Opt),
     lager:info("Req: ~p, Res: ~p with URL: ~ts", [Req, Res, Url]),
     {ok, jsx:decode(list_to_binary(Res), [return_maps])}
@@ -115,6 +132,7 @@ post_request(Path, Body, Host, Port, Timeout) ->
     Req = {UrlPath, [], "application/json", jsx:encode(Body)},
     HTTPOpt = [{timeout, Timeout}],
     Opt = [],
+    lager:info("Req: ~p, with URL: ~ts", [Req, Url]),
     {ok, {{_, 200 = _Code, _}, _, Res}} = httpc:request(post, Req, HTTPOpt, Opt),
     lager:info("Req: ~p, Res: ~p with URL: ~ts", [Req, Res, Url]),
     {ok, jsx:decode(list_to_binary(Res), [return_maps])}
@@ -128,3 +146,4 @@ url(Host, Port, false) when is_list(Host), is_integer(Port) ->
 
 path(Scheme, Host, Port) ->
   lists:concat([Scheme, Host, ":", Port]).
+
