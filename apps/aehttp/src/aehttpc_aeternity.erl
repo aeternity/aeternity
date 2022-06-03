@@ -2,8 +2,11 @@
 
 %% Subset of Aeternity HTTP client API required to interact with a hyperchain
 
-%% Required exports:
--export([get_latest_block/5, get_commitment_tx_in_block/7, post_commitment/6]).
+%% Required exports for hyperchain:
+-export([get_latest_block/5,
+        get_commitment_tx_in_block/7,
+        get_commitment_tx_at_height/7,
+        post_commitment/6]).
 
 %% @doc fetch latest top hash
 get_latest_block(Host, Port, _User, _Password, _Seed) ->
@@ -11,6 +14,10 @@ get_latest_block(Host, Port, _User, _Password, _Seed) ->
 
 get_commitment_tx_in_block(Host, Port, _User, _Password, _Seed, BlockHash, ParentHCAccountPubKey) ->
     {ok, #{<<"micro_blocks">> := MBs}} = get_generation(Host, Port, BlockHash),
+    get_transactions(Host, Port, MBs, ParentHCAccountPubKey).
+
+get_commitment_tx_at_height(Host, Port, _User, _Password, _Seed, Height, ParentHCAccountPubKey) ->
+    {ok, #{<<"micro_blocks">> := MBs}} = get_generation_by_height(Host, Port, Height),
     get_transactions(Host, Port, MBs, ParentHCAccountPubKey).
 
 %% @doc Post commitment to AE parent chain.
@@ -27,7 +34,7 @@ post_commitment(Host, Port, AccountId, Signature, HCAccountId, CurrentTop) ->
 get_top_block_hash(Host, Port) ->
     try
         {ok, #{<<"hash">> := Hash}} =
-            get_request(<<"/v2/key-blocks/current/hash">>, Host, Port, 5000),
+            get_request(<<"/v3/key-blocks/current/hash">>, Host, Port, 5000),
         {ok, Hash}
     catch E:R ->
         {error, {E, R}}
@@ -35,7 +42,13 @@ get_top_block_hash(Host, Port) ->
 
 -spec get_generation(binary(), integer(), binary()) -> {ok, map()} | {error, term()}.
 get_generation(Host, Port, Hash) ->
-    Path = <<"/v2/generations/hash/", Hash/binary>>,
+    Path = <<"/v3/generations/hash/", Hash/binary>>,
+    get_request(Path, Host, Port, 5000).
+
+-spec get_generation_by_height(binary(), integer(), integer()) -> {ok, map()} | {error, term()}.
+get_generation_by_height(Host, Port, Height) ->
+    HeightBin = list_to_binary(integer_to_list(Height)),
+    Path = <<"/v3/generations/height/", HeightBin/binary>>,
     get_request(Path, Host, Port, 5000).
 
 -spec get_transactions(binary(), integer(), [binary()], binary()) -> {ok, list()} | {error, term()}.
@@ -47,7 +60,7 @@ get_transactions(Host, Port, MBs, ParentHCAccountPubKey) ->
     {ok, Txs}.
 
 get_hc_commitments(Host, Port, MB, ParentHCAccountPubKey) ->
-    Path =  <<"/v2/micro-blocks/hash/", MB/binary, "/transactions">>,
+    Path =  <<"/v3/micro-blocks/hash/", MB/binary, "/transactions">>,
     {ok, Res} = get_request(Path, Host, Port, 5000),
     #{<<"transactions">> := Txs} = Res,
     %% TODO - take hc commitment account from some config
@@ -70,7 +83,7 @@ get_hc_commitments(Host, Port, MB, ParentHCAccountPubKey) ->
 post_commitment_tx(Host, Port, AccountId, StakerPrivKey, HCAccountId, CurrentTopHash) ->
     %% 1. get the next nonce for our account over at the parent chain
     SenderEnc = aeser_api_encoder:encode(account_pubkey, AccountId),
-    NoncePath = <<"/v2/accounts/", SenderEnc/binary, "/next-nonce">>,
+    NoncePath = <<"/v3/accounts/", SenderEnc/binary, "/next-nonce">>,
     {ok, #{<<"next_nonce">> := Nonce}} = get_request(NoncePath, Host, Port, 5000),
     %% 2. Create a SpendTx containing the commitment in its payload
     TxArgs =
@@ -82,13 +95,15 @@ post_commitment_tx(Host, Port, AccountId, StakerPrivKey, HCAccountId, CurrentTop
           payload      => CurrentTopHash},
     {ok, SpendTx} = aec_spend_tx:new(TxArgs),
     %% FIXME: We need to sign this parent chain Tx with the networkId of the parent chain
-    SignedSpendTx = sign_tx(SpendTx, [StakerPrivKey]),
+    SignedSpendTx = sign_tx(SpendTx, StakerPrivKey),
     Transaction = aeser_api_encoder:encode(transaction, aetx_sign:serialize_to_binary(SignedSpendTx)),
     Body = #{<<"tx">> => Transaction},
-    Path = <<"/v2/transactions">>,
+    Path = <<"/v3/transactions">>,
     post_request(Path, Body, Host, Port, 5000),
     ok.
 
+%% TODO This function copied from aec_test_utils as that module is not available
+%% in normal builds
 %% TODO the network ID here should be for the parent chain, but the
 %% test_utils code will pick up the local node.
 %% TODO - wallet interaction of some kind to get privKey
@@ -97,10 +112,12 @@ post_commitment_tx(Host, Port, AccountId, StakerPrivKey, HCAccountId, CurrentTop
 %% {ok, Sig} = aec_preset_keys:sign_tx(SpendTx, AccountId)
 %% TODO: redo this whole thing
 -define(VALID_PRIVK(K), byte_size(K) =:= 64).
+
+sign_tx(Tx, PrivKey) when is_binary(PrivKey) ->
+    sign_tx(Tx, [PrivKey]);
 sign_tx(Tx, PrivKeys) when is_list(PrivKeys) ->
     Bin0 = aetx:serialize_to_binary(Tx),
-    Bin = aec_hash:hash(signed_tx, Bin0),
-    BinForNetwork = aec_governance:add_network_id(Bin),
+    BinForNetwork = aec_governance:add_network_id(Bin0),
     case lists:filter(fun(PrivKey) -> not (?VALID_PRIVK(PrivKey)) end, PrivKeys) of
         [_|_]=BrokenKeys -> erlang:error({invalid_priv_key, BrokenKeys});
         [] -> pass
