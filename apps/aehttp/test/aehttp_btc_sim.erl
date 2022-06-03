@@ -126,7 +126,7 @@ scenario() ->
 init([Name, Port, #{accounts := Accounts}]) ->
     {ok, _} = start_cowboy(Name, Port, self()),
     Chain = chain_new(),
-    chain_post_block(Chain, default, []),
+    chain_post_block(Chain, main, []),
     {ok, #state{chain = Chain, accounts = Accounts}}.
 
 -spec handle_call(any(), pid(), state()) -> {ok, any(), state()}.
@@ -382,7 +382,7 @@ chain_new() ->
 
 chain_top_hash(Chain) ->
     case ets:last(Chain) of
-        {{Height, Hash}, default, Txs} ->
+        {{Height, Hash}, main, Txs} ->
             {ok, Hash};
         {{Height, Hash}, OtherFork, Txs} ->
             case ets:match_object(Chain, {{Height, '_'}, '_', '_'}) of
@@ -404,8 +404,8 @@ chain_get_block(Chain, BlockHash) ->
 chain_post_block(Chain, Fork, Txs) ->
     Height = case chain_top_block(Chain, Fork) of
         not_found ->
-            %% New fork, start at current default fork height for now
-             {{Height0, _}, default, _Txs} = chain_top_block(Chain, default),
+            %% New fork, start at current main fork height for now
+             {{Height0, _}, main, _Txs} = chain_top_block(Chain, main),
              Height0 + 1;
         {{Height0, _}, _OtherFork, Txs} ->
             Height0 + 1

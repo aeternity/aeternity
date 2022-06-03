@@ -51,7 +51,9 @@
         , top_block_hash/1             %% (Name) -> Hash
         , top_key_block_hash/1         %% (Name) -> Hash
         , block_by_hash/2              %% (Name, BlockHash) -> {ok, Block}
-        , get_generation_by_hash/3
+        , get_key_block_hash_at_height/2
+        , get_current_generation/1     %% (Name) -> {ok, Generation}
+        , get_generation_by_hash/3     %% (Name, BlockHash, Direction) -> {ok, Generation}
         , sign_and_push/3              %% (Name, Acct, Tx) -> ok
         , get_call/3                   %% (Name, ContractKey, CallKey) -> Call
         , get_call/4                   %% (Name, ForkId, ContractKey, CallKey) -> Call
@@ -281,7 +283,15 @@ top_block_hash(Name) ->
 top_key_block_hash(Name) ->
     chain_req(Name, top_key_block_hash).
 
--spec get_generation_by_hash(Name :: atom(), block_hash(), forward | backward) -> binary().
+-spec get_key_block_hash_at_height(Name :: atom(), Height :: integer()) -> binary().
+get_key_block_hash_at_height(Name, Height) ->
+    chain_req(Name, {get_key_block_hash_at_height, Height}).
+
+-spec get_current_generation(Name :: atom()) -> error | {'ok', generation()}.
+get_current_generation(Name) ->
+    chain_req(Name, get_current_generation).
+
+-spec get_generation_by_hash(Name :: atom(), block_hash(), forward | backward) -> error | {'ok', generation()}.
 get_generation_by_hash(Name, Hash, Dir) ->
     chain_req(Name, {get_generation_by_hash, Hash, Dir}).
 
@@ -495,8 +505,12 @@ handle_call(top_key_block_hash, _From, #st{chain = Chain} = St) ->
     {reply, top_key_block_hash_(Chain), St};
 handle_call({block_by_hash, Hash},_From, #st{chain = Chain} = St) ->
     {reply, get_block_(Hash, Chain), St};
+handle_call(get_current_generation,  _From, #st{chain = Chain} = St) ->
+    {reply, get_current_generation_(Chain), St};
 handle_call({get_generation_by_hash, Hash, Dir},  _From, #st{chain = Chain} = St) ->
     {reply, get_generation_by_hash_(Hash, Dir, Chain), St};
+handle_call({get_key_block_hash_at_height, Height}, _From, #st{chain = Chain} = St) ->
+    {reply, get_key_block_hash_at_height_(Height, Chain), St};
 handle_call({get_block_state, Hash}, _From, #st{chain = Chain} = St) ->
     {reply, get_block_state_(Hash, Chain), St};
 handle_call(get_top_state, _From, #st{chain = Chain} = St) ->
@@ -828,8 +842,8 @@ top_block_node(Chain) ->
 %%% Generations
 %%%===================================================================
 
--spec get_current_generation(Chain :: term()) -> 'error' | {'ok', generation()}.
-get_current_generation(Chain) ->
+-spec get_current_generation_(Chain :: term()) -> 'error' | {'ok', generation()}.
+get_current_generation_(Chain) ->
     get_generation_(top_block_node(Chain), Chain).
 
 get_generation_(#{hash := Hash, header := Header}, Chain) ->
@@ -916,8 +930,15 @@ get_block_from_micro_header(Hash, MicroHeader, Chain) ->
 %% Only return nodes in the main chain. This reflects the behaviour of the same
 %% function in aec_chain_state.erl
 get_key_block_by_height_(Height, Chain) ->
-    [#{block := KeyBlock}|_] = blocks_until_height(Height, blocks(main, Chain)),
+    [_|_] = BlocksAtHeight = blocks_until_height(Height, blocks(main, Chain)),
+    [#{block := KeyBlock}|_] = blocks_until_key(BlocksAtHeight),
     {ok, KeyBlock}.
+
+get_key_block_hash_at_height_(Height, Chain) ->
+    [_|_] = BlocksAtHeight = blocks_until_height(Height, blocks(main, Chain)),
+    [#{block := KeyBlock}|_] = blocks_until_key(BlocksAtHeight),
+    Header = aec_blocks:to_header(KeyBlock),
+    aec_headers:hash_header(Header).
 
 %% Search all forks at a height
 find_headers_and_hash_at_height_(Height, #{forks := Forks}) ->
