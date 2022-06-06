@@ -6,7 +6,7 @@ PROTOCOLS = roma minerva fortuna lima iris ceres
 CT_TARGETS = $(patsubst %,ct-%,$(PROTOCOLS))
 LATEST_PROTOCOL = $(lastword $(PROTOCOLS))
 
-DB_BACKENDS = mnesia-rocksdb mnesia-leveled
+DB_BACKENDS = mnesia-rocksdb
 CT_DB_TARGETS = $(patsubst %,ct-%,$(DB_BACKENDS))
 
 EUNIT_VM_ARGS = $(CURDIR)/config/eunit.vm.args

@@ -311,24 +311,11 @@ Aeternity nodes support several types of database persistence backends:
 
  - RocksDB (default for Unix, supported by Unix)
  - Mnesia (default for Win32, supported by all OS'es)
- - Leveled (experimental, supported by all OS'es)
 
-You may choose the database backend by setting `chain.db_backend` to the corresponding value `rocksdb`, `mnesia`, `leveled`
-
-Example (switch to Leveled):
-
-```yaml
-chain:
-    persist: true
-    db_path: ./my_db
-    db_backend: leveled
-```
+You may choose the database backend by setting `chain.db_backend` to the corresponding value `rocksdb`, `mnesia`
 
 **RocksDB** is only available under Unix compatible systems (including OS X and WSL) and is used there by default.
 RocksDB does not work with NTFS volumes.
-
-**Leveled** is designed to be a better alternative to RocksDB and is available for all OS'es.
-However currently it has an experimental support.
 
 **Mnesia** is the DB backend that is distributed with Erlang/OTP but is considered less performant than the other two.
 It is currently the default database when RocksDB is not available (i.e. Win32)

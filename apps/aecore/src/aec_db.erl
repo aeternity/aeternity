@@ -298,10 +298,6 @@ backend_mode(<<"rocksdb">>, #{persist := true } = M) ->
                                   ]}
                                ]
           };
-backend_mode(<<"leveled">>, #{persist := true } = M) ->
-        M#{ module => mnesia_leveled
-          , alias => leveled_copies
-          };
 backend_mode(<<"mnesia">>, #{persist := true } = M) ->
         M#{ module => mnesia
           , alias => disc_copies
@@ -1099,7 +1095,7 @@ prepare_mnesia_bypass() ->
     TNames = [N || {N,_} <- tables()],
     %% Check whether we can bypass mnesia in some cases
     case proplists:get_value(rocksdb_copies, P, []) of
-        [] -> persistent_term:erase(?BYPASS); %% TODO: add leveled backend here
+        [] -> persistent_term:erase(?BYPASS);
         [_] ->
             %% Ask the backend for the handle
             {HIndexRef, set} = mnesia_rocksdb:get_ref(undefined, {aec_headers, index, {4, ordered}}),

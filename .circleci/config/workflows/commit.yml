@@ -34,7 +34,6 @@ jobs:
             - "ct-iris"
             - "ct-latest"
             - "ct-latest-no-aci"
-            - "ct-mnesia-leveled"
             - "ct-mnesia-rocksdb"
         exclude:
           - {otp: "otp23", target: "ct-roma"}
@@ -43,7 +42,6 @@ jobs:
           - {otp: "otp23", target: "ct-lima"}
           - {otp: "otp23", target: "ct-iris"}
           - {otp: "otp23", target: "ct-latest-no-aci"}
-          - {otp: "otp23", target: "ct-mnesia-leveled"}
           - {otp: "otp23", target: "ct-mnesia-rocksdb"}
           - {otp: "otp24", target: "ct-roma"}
           - {otp: "otp24", target: "ct-minerva"}
@@ -51,7 +49,6 @@ jobs:
           - {otp: "otp24", target: "ct-lima"}
           - {otp: "otp24", target: "ct-iris"}
           - {otp: "otp24", target: "ct-latest-no-aci"}
-          - {otp: "otp24", target: "ct-mnesia-leveled"}
           - {otp: "otp24", target: "ct-mnesia-rocksdb"}
       requires:
         - build-<< matrix.otp >>
