@@ -51,7 +51,7 @@ init(Req0=#{method := <<"POST">>}, Pid) ->
       <<"jsonrpc">> := <<"2.0">>,
       <<"method">> := Method,
       <<"params">> := Params,
-      <<"id">> := Id
+      <<"id">> := _Id
     } = jsx:decode(Data),
     Bindings = cowboy_req:bindings(Req),
     case post_req(Pid, Method, Params, Bindings) of
@@ -126,7 +126,7 @@ scenario() ->
 init([Name, Port, #{accounts := Accounts}]) ->
     {ok, _} = start_cowboy(Name, Port, self()),
     Chain = chain_new(),
-    chain_post_block(Chain, default, []),
+    chain_post_block(Chain, main, []),
     {ok, #state{chain = Chain, accounts = Accounts}}.
 
 -spec handle_call(any(), pid(), state()) -> {ok, any(), state()}.
@@ -246,7 +246,7 @@ tx_result(Tx, BlockHash) ->
                <<"hex">> => "str",             % (string) the hex
                <<"reqSigs">> => 1,             % (numeric) The required sigs
                <<"type">> => "pubkeyhash",     % (string) The type, eg 'pubkeyhash'
-               <<"addresses">> => [Tx#tx.to] % [(string)] bitcoin addresses
+               <<"addresses">> => [Tx#tx.to]   % [(string)] bitcoin addresses
             }
          }
      ],
@@ -382,7 +382,7 @@ chain_new() ->
 
 chain_top_hash(Chain) ->
     case ets:last(Chain) of
-        {{Height, Hash}, default, Txs} ->
+        {{Height, Hash}, main, Txs} ->
             {ok, Hash};
         {{Height, Hash}, OtherFork, Txs} ->
             case ets:match_object(Chain, {{Height, '_'}, '_', '_'}) of
@@ -394,7 +394,7 @@ chain_top_hash(Chain) ->
     end.
 
 chain_get_block(Chain, BlockHash) ->
-    case ets:match_object(Chain, {{'_', BlockHash}, '_', '_'}) of
+    case ets:match_object(Chain, {{'_', BlockHash}, '_', '_'}, 1) of
         [] ->
             {error, not_found};
         [{{_Height, _}, _Fork, _Txs} = Block] ->
@@ -404,8 +404,8 @@ chain_get_block(Chain, BlockHash) ->
 chain_post_block(Chain, Fork, Txs) ->
     Height = case chain_top_block(Chain, Fork) of
         not_found ->
-            %% New fork, start at current default fork height for now
-             {{Height0, _}, default, _Txs} = chain_top_block(Chain, default),
+            %% New fork, start at current main fork height for now
+             {{Height0, _}, main, _Txs} = chain_top_block(Chain, main),
              Height0 + 1;
         {{Height0, _}, _OtherFork, Txs} ->
             Height0 + 1
