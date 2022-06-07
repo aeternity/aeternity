@@ -343,8 +343,7 @@ call_consensus_contract_(TxEnv, Trees, EncodedCallData, Keyword, Amount) ->
     CallSpec = #{ caller_id   => aeser_id:create(account, OwnerPubkey),
                   nonce       => aec_accounts:nonce(OwnerAcc) + 1,
                   contract_id => aeser_id:create(contract, ContractPubkey),
-                  %% TODO: maybe get the ABI from the config?
-                  abi_version => aect_contracts:abi_version(Contract),
+                  abi_version => aect_contracts:abi_version(Contract), %% TODO: maybe get the ABI from the config?
                   fee         => Fee,
                   amount      => Amount,
                   gas         => Gas,
