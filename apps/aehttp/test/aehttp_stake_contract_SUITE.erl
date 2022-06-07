@@ -97,27 +97,31 @@ init_per_suite(Config0) ->
                     binary_to_list(aeser_api_encoder:encode(account_pubkey, P))
                 end,
 
-              
+
             #{ <<"pubkey">> := StakingValidatorContract} = C0
                 = contract_create_spec("StakingValidator",
                                        [EncodePub(Pubkey)], 0, 1, Pubkey),
+            MinValidatorAmt = integer_to_list(trunc(math:pow(10,18) * math:pow(10, 6))), %% 1 mln AE
+            MinStakeAmt = integer_to_list(trunc(math:pow(10,18) * 1)), %% 1 AE
             #{ <<"pubkey">> := ConsensusContractPubkey
              , <<"owner_pubkey">> := ContractOwner } = C
-                = contract_create_spec(?STAKING_CONTRACT, [binary_to_list(StakingValidatorContract), "\"domat\""], 0, 2, Pubkey),
+                = contract_create_spec(?STAKING_CONTRACT,
+                                       [binary_to_list(StakingValidatorContract), "\"domat\"",
+                                        MinValidatorAmt, MinStakeAmt], 0, 2, Pubkey),
             {ok, CCId} = aeser_api_encoder:safe_decode(contract_pubkey,
-                                                       ConsensusContractPubkey), 
-            Call1 = 
+                                                       ConsensusContractPubkey),
+            Call1 =
                 contract_call_spec(CCId, ?STAKING_CONTRACT,
                                    "new_validator", [],
                                    ?INITIAL_STAKE, pubkey(?ALICE), 1),
-            Call2 = 
+            Call2 =
                 contract_call_spec(CCId, ?STAKING_CONTRACT,
                                    "new_validator", [],
                                    ?INITIAL_STAKE, pubkey(?BOB), 1),
-            Call3 = 
+            Call3 =
                 contract_call_spec(CCId, ?STAKING_CONTRACT,
                                    "set_online", [], 0, pubkey(?ALICE), 2),
-            Call4 = 
+            Call4 =
                 contract_call_spec(CCId, ?STAKING_CONTRACT,
                                    "set_online", [], 0, pubkey(?BOB), 2),
             %% create a BRI validator in the contract so they can receive
@@ -128,7 +132,7 @@ init_per_suite(Config0) ->
             %%  yet
             %%  C) something else
             {ok, BRIPub} = aeser_api_encoder:safe_decode(account_pubkey, <<"ak_2KAcA2Pp1nrR8Wkt3FtCkReGzAi8vJ9Snxa4PcmrthVx8AhPe8">>),
-            Call5 = 
+            Call5 =
                 contract_call_spec(CCId, ?STAKING_CONTRACT,
                                    "new_validator", [],
                                    ?INITIAL_STAKE, BRIPub, 1),
@@ -148,7 +152,7 @@ init_per_suite(Config0) ->
                     #{<<"chain">> =>
                           #{  <<"persist">> => false,
                               <<"hard_forks">> => #{integer_to_binary(?CERES_PROTOCOL_VSN) => 0},
-                             <<"consensus">> => 
+                             <<"consensus">> =>
                                 #{<<"0">> => #{<<"name">> => <<"smart_contract">>,
                                                 <<"config">> => #{<<"consensus_contract">> => ConsensusContractPubkey,
                                                                   <<"contract_owner">> => ContractOwner,
@@ -286,7 +290,7 @@ mine_and_sync(_Config) ->
     {ok, [KB0]} = aecore_suite_utils:mine_key_blocks(?NODE1_NAME, 1),
     {ok, KB0} = wait_same_top(),
     ok.
-    
+
 wait_same_top() ->
     wait_same_top(10).
 
@@ -403,7 +407,7 @@ change_leaders(Config) ->
     true  = BobLeaderCnt > 0,
     {ok, _B} = wait_same_top(),
     ok.
-    
+
 verify_fees(Config) ->
     %% start without any tx fees, only a keyblock
     {ok, _} = aecore_suite_utils:mine_key_blocks(?NODE1_NAME, ?REWARD_DELAY + 1),
