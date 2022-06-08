@@ -19,6 +19,10 @@ main contract MainStaking =
 
   record validator =
     { ct : StakingValidator, stake : int }
+  record v_state = {ct : StakingValidator,
+                    stake: int,
+                    is_online : bool,
+                    state : StakingValidator.validator_state}
 
   record state =
     { staking_validator_ct  : StakingValidator,
@@ -113,9 +117,16 @@ main contract MainStaking =
         validator.ct.profit(value = Call.value)
         put(state{offline_validators[to] = validator{ stake @ s = s + Call.value }})
 
-  entrypoint get_validator_state(v : address) =
+  entrypoint get_validator_state(v : address) : v_state =
     let validator = get_validator(v)
-    validator.ct.get_state()
+    let online =
+        switch(validator_bucket(v))
+            ONLINE => true
+            OFFLINE => false
+    {ct = validator.ct,
+     stake = validator.stake,
+     is_online = online,
+     state = validator.ct.get_state()}
 
   entrypoint set_validator_name(name : string) =
     let validator = get_validator(Call.caller)
