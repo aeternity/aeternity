@@ -322,6 +322,7 @@ spend_txs(_Config) ->
     ok.
 
 simple_withdraw(Config) ->
+    AliceBin = encoded_pubkey(?ALICE),
     Alice = binary_to_list(encoded_pubkey(?ALICE)),
     stopped = rpc:call(?NODE1_NAME, aec_conductor, get_mining_state, []),
     false = rpc:call(?NODE1_NAME, aec_conductor, is_leader, []),
@@ -335,9 +336,13 @@ simple_withdraw(Config) ->
     {ok, _AliceContractBalance} = inspect_staking_contract(?ALICE, {balance, ?ALICE}, Config),
     {ok, _BobContractBalance} = inspect_staking_contract(?ALICE, {balance, ?BOB}, Config),
     {ok,
-        #{<<"delegates">> := [[<<"ak_2MGLPW2CHTDXJhqFJezqSwYSNwbZokSKkG7wSbGtVmeyjGfHtm">>, ?INITIAL_STAKE]],
-          <<"main_staking_ct">> := <<"ak_LRbi65kmLtE7YMkG6mvG5TxAXTsPJDZjAtsPuaXtRyPA7gnfJ">>,
-          <<"shares">> := ?INITIAL_STAKE}} =
+        #{<<"ct">> := _, %% pool contract
+          <<"is_online">> := true,
+          <<"stake">> := _,
+          <<"state">> :=
+                #{<<"delegates">> := [[AliceBin, ?INITIAL_STAKE]],
+                  <<"main_staking_ct">> := <<"ak_LRbi65kmLtE7YMkG6mvG5TxAXTsPJDZjAtsPuaXtRyPA7gnfJ">>,
+                  <<"shares">> := ?INITIAL_STAKE}}} =
         inspect_staking_contract(?ALICE, {get_validator_state, ?ALICE}, Config),
     WithdrawAmount = 1000,
     Fun = "unstake",
