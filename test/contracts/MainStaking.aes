@@ -19,10 +19,20 @@ main contract MainStaking =
 
   record validator =
     { ct : StakingValidator, stake : int }
-  record v_state = {ct : StakingValidator,
-                    stake: int,
-                    is_online : bool,
-                    state : StakingValidator.validator_state}
+  record get_validator_response =
+    { ct        : StakingValidator,
+      stake     : int,
+      is_online : bool,
+      state     : StakingValidator.validator_state}
+  record get_state_response =
+    { staking_validator_ct  : StakingValidator,
+      validators            : list(get_validator_response),
+      total_stake           : int,
+      entropy               : hash,
+      leader                : address,
+      validator_min_stake   : int,
+      stake_minimum         : int
+      }
 
   record state =
     { staking_validator_ct  : StakingValidator,
@@ -117,7 +127,7 @@ main contract MainStaking =
         validator.ct.profit(value = Call.value)
         put(state{offline_validators[to] = validator{ stake @ s = s + Call.value }})
 
-  entrypoint get_validator_state(v : address) : v_state =
+  entrypoint get_validator_state(v : address) : get_validator_response =
     let validator = get_validator(v)
     let online =
         switch(validator_bucket(v))
@@ -127,6 +137,18 @@ main contract MainStaking =
      stake = validator.stake,
      is_online = online,
      state = validator.ct.get_state()}
+
+  entrypoint get_state() : get_state_response =
+    let validators = map_keys(state.online_validators) ++
+                     map_keys(state.offline_validators)
+    { staking_validator_ct  = state.staking_validator_ct,
+      validators            = [get_validator_state(v) | v <- validators],
+      total_stake           = state.total_stake,
+      entropy               = state.entropy,
+      leader                = state.leader,
+      validator_min_stake   = state.validator_min_stake,
+      stake_minimum         = state.stake_minimum
+      }
 
   entrypoint set_validator_name(name : string) =
     let validator = get_validator(Call.caller)
@@ -211,3 +233,6 @@ main contract MainStaking =
   function assert_protocol_call() =
       require(Call.caller == Contract.creator, "Must be called by the protocol")
     
+  function map_keys(map) =
+    [k | (k, v) <- Map.to_list(map)]
+
