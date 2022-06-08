@@ -145,13 +145,16 @@ inspect_validator(_Config) ->
     Amount = ?VALIDATOR_MIN,
     TxEnv = aetx_env:tx_env(?GENESIS_HEIGHT),
     Alice = pubkey(?ALICE),
-    {ok, Trees1, _} = new_validator_(Alice, Amount, TxEnv, Trees0),
+    {ok, Trees1, {contract, AliceContract}} = new_validator_(Alice, Amount, TxEnv, Trees0),
     {ok, _, Balance} = balance_(Alice, Alice, TxEnv, Trees1),
     {Balance, Balance} = {Amount, Balance},
     {ok, _, State} = get_validator_state_(Alice, Alice, TxEnv, Trees1),
-    {tuple, {{address, ConsensusContractPubkey}, %% main staking contract
-             _Name, _Description,
-             _AvatarURL, _Map, Balance}} = State,
+    {tuple, {{contract, AliceContract}, %% the pool contract
+             Balance, %% staker pool balance
+             false, %% is online
+             {tuple, {{address, ConsensusContractPubkey}, %% main staking contract
+                     _Name, _Description,
+                     _AvatarURL, _Map, Balance}}}} = State,
     {ok, _, IsOnline} = is_validator_online_(Alice, Alice, TxEnv, Trees1),
     false = IsOnline,
     ok.
@@ -476,45 +479,60 @@ change_name_description_avatar(_Config) ->
     {ok, Trees2, {tuple, {}}} = set_validator_online_(Alice, TxEnv, Trees1),
     #{public := Sam} = enacl:sign_keypair(),
     {ok, _, AliceState0} = get_validator_state_(Alice, Alice, TxEnv, Trees2),
-    {tuple, {{address, ConsensusContractPubkey}, %% main staking contract
-             <<"">>, %% name
-             <<"">>, %% description
-             <<"">>, %% avatarURL,
-             _MapA, ?VALIDATOR_MIN}} = AliceState0,
+    {tuple, {{contract, _}, %% the pool contract
+             _, %% staker pool balance
+             true, %% is online
+             {tuple, {{address, ConsensusContractPubkey}, %% main staking contract
+                     <<"">>, %% name
+                     <<"">>, %% description
+                     <<"">>, %% avatarURL,
+                     _MapA, ?VALIDATOR_MIN}}}} = AliceState0,
     {ok, _, BobState0} = get_validator_state_(Bob, Bob, TxEnv, Trees2),
-    {tuple, {{address, ConsensusContractPubkey}, %% main staking contract
-             <<"">>, %% name
-             <<"">>, %% description
-             <<"">>, %% avatarURL,
-             _MapB, ?VALIDATOR_MIN}} = BobState0,
+    {tuple, {{contract, _}, %% the pool contract
+             _, %% staker pool balance
+             false, %% is online
+             {tuple, {{address, ConsensusContractPubkey}, %% main staking contract
+                     <<"">>, %% name
+                     <<"">>, %% description
+                     <<"">>, %% avatarURL,
+                     _MapB, ?VALIDATOR_MIN}}}} = BobState0,
     AliceName = <<"AL1CE">>,
     {ok, Trees3, {tuple, {}}} = set_name_(AliceName, Alice, TxEnv, Trees2),
     {ok, _, AliceState1} = get_validator_state_(Alice, Alice, TxEnv, Trees3),
-    {tuple, {{address, ConsensusContractPubkey}, %% main staking contract
-             AliceName, %% name
-             <<"">>, %% description
-             <<"">>, %% avatarURL,
-             _MapA, ?VALIDATOR_MIN}} = AliceState1,
+    {tuple, {{contract, _}, %% the pool contract
+             _, %% staker pool balance
+             true, %% is online
+             {tuple, {{address, ConsensusContractPubkey}, %% main staking contract
+                     AliceName, %% name
+                     <<"">>, %% description
+                     <<"">>, %% avatarURL,
+                     _MapA, ?VALIDATOR_MIN}}}} = AliceState1,
     %% Bob is unchanged
     {ok, _, BobState0} = get_validator_state_(Bob, Bob, TxEnv, Trees3),
     AliceDescription = <<"Who in the world am I?' Ah, that's the great puzzle!">>,
     {ok, Trees4, {tuple, {}}} = set_description_(AliceDescription, Alice, TxEnv, Trees3),
     {ok, _, AliceState2} = get_validator_state_(Alice, Alice, TxEnv, Trees4),
-    {tuple, {{address, ConsensusContractPubkey}, %% main staking contract
-             AliceName, %% name
-             AliceDescription, %% description
-             <<"">>, %% avatarURL,
-             _MapA, ?VALIDATOR_MIN}} = AliceState2,
+    {tuple, {{contract, _}, %% the pool contract
+             _, %% staker pool balance
+             true, %% is online
+             {tuple, {{address, ConsensusContractPubkey}, %% main staking contract
+                     AliceName, %% name
+                     AliceDescription, %% description
+                     <<"">>, %% avatarURL,
+                     _MapA, ?VALIDATOR_MIN}}}} = AliceState2,
     %% Bob is unchanged
     {ok, _, BobState0} = get_validator_state_(Bob, Bob, TxEnv, Trees4),
     AliceAvatar = <<"test.test/img.jpg">>,
     {ok, Trees5, {tuple, {}}} = set_avatar_(AliceAvatar, Alice, TxEnv, Trees4),
     {ok, _, AliceState3} = get_validator_state_(Alice, Alice, TxEnv, Trees5),
-    {tuple, {{address, ConsensusContractPubkey}, %% main staking contract
-             AliceName, %% name
-             AliceDescription, %% description
-             AliceAvatar, %% avatarURL,
-             _MapA, ?VALIDATOR_MIN}} = AliceState3,
+    {tuple, {{contract, _}, %% the pool contract
+             _, %% staker pool balance
+             true, %% is online
+             {tuple, {{address, ConsensusContractPubkey}, %% main staking contract
+                     AliceName, %% name
+                     AliceDescription, %% description
+                     AliceAvatar, %% avatarURL,
+                     _MapA, ?VALIDATOR_MIN}}}} = AliceState3,
     %% Bob is unchanged
     {ok, _, BobState0} = get_validator_state_(Bob, Bob, TxEnv, Trees5),
     %% Sam has no account 
@@ -628,20 +646,27 @@ if_unstake_all_delegate_is_deleted(_Config) ->
     Test =
         fun(ToWhom) ->
             {ok, _, State0} = get_validator_state_(ToWhom, ToWhom, TxEnv, Trees3),
-            {tuple, {{address, ConsensusContractPubkey}, %% main staking contract
-                    _Name, _Description,
-                    _AvatarURL, Map0, Balance0}} = State0,
+            {tuple, {{contract, _}, %% the pool contract
+                    ?VALIDATOR_MIN, %% staker pool balance
+                    _, %% is online
+                    {tuple, {{address, ConsensusContractPubkey}, %% main staking contract
+                            _Name, _Description,
+                            _AvatarURL, Map0, Balance0}}}} = State0,
             %% assert balances
             #{{address, ToWhom} := ?VALIDATOR_MIN} = Map0,
             1 = maps:size(Map0), %% no other keys
             TotalStakedAmt = ?STAKE_MIN + 10,
+            TotalAmt = ?VALIDATOR_MIN + TotalStakedAmt,
             {ok, Trees4, {tuple, {}}} =
                 stake_(ToWhom, TotalStakedAmt, Sam, TxEnv, Trees3),
             {ok, _, State1} = get_validator_state_(ToWhom, ToWhom, TxEnv,
                                                    Trees4),
-            {tuple, {{address, ConsensusContractPubkey}, %% main staking contract
-                    _Name, _Description,
-                    _AvatarURL, Map1, Balance1}} = State1,
+            {tuple, {{contract, _}, %% the pool contract
+                    TotalAmt, %% staker pool balance
+                    _, %% is online
+                    {tuple, {{address, ConsensusContractPubkey}, %% main staking contract
+                            _Name, _Description,
+                            _AvatarURL, Map1, Balance1}}}} = State1,
             {Balance1, Balance1} = {Balance1, Balance0 + TotalStakedAmt},
             #{{address, ToWhom} := ?VALIDATOR_MIN,
               {address, Sam} := TotalStakedAmt } = Map1,
@@ -649,13 +674,17 @@ if_unstake_all_delegate_is_deleted(_Config) ->
             %% withdraw some shares and assert balances
             WithdrawnAmt = 10,
             StakeLeft = TotalStakedAmt - WithdrawnAmt,
+            PoolStakeLeft = TotalAmt - WithdrawnAmt,
             {ok, Trees5, WithdrawnAmt} =
                 unstake_(ToWhom, WithdrawnAmt, Sam, TxEnv, Trees4),
             {ok, _, State2} = get_validator_state_(ToWhom, ToWhom, TxEnv,
                                                    Trees5),
-            {tuple, {{address, ConsensusContractPubkey}, %% main staking contract
-                    _Name, _Description,
-                    _AvatarURL, Map2, Balance2}} = State2,
+            {tuple, {{contract, _}, %% the pool contract
+                    PoolStakeLeft, %% staker pool balance
+                    _, %% is online
+                    {tuple, {{address, ConsensusContractPubkey}, %% main staking contract
+                            _Name, _Description,
+                            _AvatarURL, Map2, Balance2}}}} = State2,
             {Balance2, Balance2} = {Balance2, Balance1 - WithdrawnAmt},
             #{{address, ToWhom} := ?VALIDATOR_MIN,
               {address, Sam} := StakeLeft } = Map2,
@@ -665,10 +694,13 @@ if_unstake_all_delegate_is_deleted(_Config) ->
                 unstake_(ToWhom, StakeLeft, Sam, TxEnv, Trees5),
             {ok, _, State3} = get_validator_state_(ToWhom, ToWhom, TxEnv,
                                                    Trees6),
-            {tuple, {{address, ConsensusContractPubkey}, %% main staking contract
-                    _Name, _Description,
-                    _AvatarURL, Map3, Balance3}} = State3,
-            {Balance3, Balance3} = {Balance3, Balance0},
+            {tuple, {{contract, _}, %% the pool contract
+                    ?VALIDATOR_MIN, %% staker pool balance
+                    _, %% is online
+                    {tuple, {{address, ConsensusContractPubkey}, %% main staking contract
+                            _Name, _Description,
+                            _AvatarURL, Map3, Balance3}}}} = State3,
+                    {Balance3, Balance3} = {Balance3, Balance0},
             #{{address, ToWhom} := ?VALIDATOR_MIN} = Map3,
             1 = maps:size(Map3) %% no other keys
         end,
