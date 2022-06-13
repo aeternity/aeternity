@@ -671,7 +671,7 @@ dry_run_accounts_([Account | Accounts], Acc) ->
         #{ <<"pub_key">> := EPK, <<"amount">> := Amount } ->
             case aeser_api_encoder:safe_decode(account_pubkey, EPK) of
                 {ok, PK} ->
-                    dry_run_accounts_(Accounts, [#{ pub_key => PK, amount => Amount } | Acc]);
+                    dry_run_accounts_(Accounts, [#{ pub_key => PK, amount => to_int(Amount) } | Acc]);
                 Err = {error, _Reason} ->
                     Err
             end;
