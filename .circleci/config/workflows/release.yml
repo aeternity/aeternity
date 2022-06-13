@@ -102,7 +102,7 @@ jobs:
       bucket: << pipeline.parameters.s3_releases_bucket >>
       context:
         - ae-slack
-        - ae-node-builds
+        - ae-vault-node
       requires:
         - linux-release-tarball
         - macos-release-tarball
@@ -120,7 +120,7 @@ jobs:
   - upload-artifacts-github-release:
       context:
         - ae-slack
-        - ae-node-builds
+        - ae-github
       requires:
         - linux-release-tarball
         - macos-release-tarball
@@ -164,7 +164,7 @@ jobs:
       downtime: 1800 #30m
       context:
         - ae-slack
-        - ae-node-builds
+        - ae-vault-node
       requires:
         - linux-release-tarball
         - hodl_blue
@@ -204,7 +204,7 @@ jobs:
       downtime: 1800 #30m
       context:
         - ae-slack
-        - ae-node-builds
+        - ae-vault-node
       requires:
         - linux-release-tarball
         - deploy-uat-blue
@@ -244,7 +244,7 @@ jobs:
       uri: s3://<< pipeline.parameters.s3_releases_bucket >>/aeternity-$CIRCLE_TAG-ubuntu-x86_64.tar.gz
       context:
         - ae-slack
-        - ae-node-builds
+        - ae-vault-node
       requires:
         - upload-release-tarballs-s3
         - hodl_latest
@@ -259,7 +259,7 @@ jobs:
       uri: s3://<< pipeline.parameters.s3_releases_bucket >>/aeternity-$CIRCLE_TAG-macos-x86_64.tar.gz
       context:
         - ae-slack
-        - ae-node-builds
+        - ae-vault-node
       requires:
         - upload-release-tarballs-s3
         - hodl_latest
@@ -287,7 +287,7 @@ jobs:
       tag: $CIRCLE_TAG
       context:
         - ae-slack
-        - ae-node-builds
+        - ae-vault-node
       requires:
         - hodl_artifact_upload
       filters:
@@ -302,7 +302,7 @@ jobs:
       tag: $CIRCLE_TAG-bundle
       context:
         - ae-slack
-        - ae-node-builds
+        - ae-dockerhub
       requires:
         - hodl_artifact_upload
       filters:
@@ -317,7 +317,7 @@ jobs:
       tag: latest
       context:
         - ae-slack
-        - ae-node-builds
+        - ae-dockerhub
       requires:
         - docker-image-tag
         - hodl_latest
@@ -333,7 +333,7 @@ jobs:
       tag: latest-bundle
       context:
         - ae-slack
-        - ae-node-builds
+        - ae-dockerhub
       requires:
         - docker-image-tag
         - hodl_latest
@@ -346,7 +346,7 @@ jobs:
   - finalize-release:
       context:
         - ae-slack
-        - ae-node-builds
+        - ae-dockerhub
       requires:
         - upload-release-tarballs-s3
         - promote-release-linux-tarball-s3
