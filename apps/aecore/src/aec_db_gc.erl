@@ -234,14 +234,17 @@ handle_event({call, _From}, maybe_garbage_collect, ready,
     case aec_headers:type(Header) of
         key ->
             Height  = aec_headers:height(Header),
+            ?LOG("maybe_garbage_collect called with key at height ~p", [Height]),
             ?PROTECT(range_collect_reachable_hashes(Height, Data),
                      %% we exit here as GCEd table is swapped at startup
                      fun ({ok, _}) -> store_cache_and_restart(Hashes, ?GCED_TABLE_NAME) end,
                      signal_scanning_failed_keep_state(Data));
         micro ->
+            ?LOG("maybe_garbage_collect called with micro at height ~p", [aec_headers:height(Header)]),
             {keep_state, Data}
     end;
-handle_event({call, From}, maybe_garbage_collect, _, Data) ->
+handle_event({call, From}, maybe_garbage_collect, _State, Data) ->
+    ?LOG("maybe_garbage_collect called in wrong state ~p", [_State]),
     {keep_state, Data, {reply, From, nop}};
 
 handle_event(_, _, _, Data) ->
