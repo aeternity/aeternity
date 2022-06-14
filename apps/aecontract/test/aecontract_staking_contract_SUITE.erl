@@ -86,6 +86,7 @@
 
 -define(VALIDATOR_MIN, 10000).
 -define(STAKE_MIN, 100).
+-define(ENTROPY, <<"asdf">>).
 
 all() -> [{group, all}
          ].
@@ -157,6 +158,24 @@ inspect_validator(_Config) ->
                      _AvatarURL, _Map, Balance}}}} = State,
     {ok, _, IsOnline} = is_validator_online_(Alice, Alice, TxEnv, Trees1),
     false = IsOnline,
+    {ok, _, ContractState} = get_state_(Alice, TxEnv, Trees1),
+    {tuple, {   StakingValidatorCT,
+                Validators,
+                0, %% total stake, only one offline staker
+                Entropy,
+                Leader,
+                ValidatorMinStake,
+                StakeMin
+                }} = ContractState,
+    {contract, _} = StakingValidatorCT,
+    [_] = Validators,
+    %% Amount = TotalStake,
+    %% Balance = TotalStake,
+    {bytes, _} = Entropy,
+    {address, ConsensusContractPubkey} = Leader, %% no election yet, the contract is the first leader
+    ?VALIDATOR_MIN = ValidatorMinStake,
+    ?STAKE_MIN = StakeMin,
+
     ok.
 
 setting_online_and_offline(_Config) ->
@@ -752,7 +771,7 @@ genesis_trees() ->
                                               [aefa_fate_code:encode_arg({contract,
                                                                         SVPubkey}),
                                                aefa_fate_code:encode_arg({string,
-                                                                          <<"asdf">>}),
+                                                                          ?ENTROPY}),
                                                aefa_fate_code:encode_arg({integer,
                                                                           ?VALIDATOR_MIN}),
                                                aefa_fate_code:encode_arg({integer,
@@ -907,6 +926,11 @@ get_validator_state_(Who, Caller, TxEnv, Trees0) ->
     {ok, CallData} = aeb_fate_abi:create_calldata("get_validator_state",
                                                   [aefa_fate_code:encode_arg({address,
                                                                               Who})]),
+    call_contract(ContractPubkey, Caller, CallData, 0, TxEnv, Trees0).
+
+get_state_(Caller, TxEnv, Trees0) ->
+    ContractPubkey = consensus_contract_address(),
+    {ok, CallData} = aeb_fate_abi:create_calldata("get_state", []),
     call_contract(ContractPubkey, Caller, CallData, 0, TxEnv, Trees0).
 
 is_validator_online_(Who, Caller, TxEnv, Trees0) ->
