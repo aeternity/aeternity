@@ -25,7 +25,6 @@ upload-artifacts-github-release:
   executor: infrastructure_container_stable
   steps:
     - fixed_checkout
-    - setup_secrets
     - attach_workspace:
         at: << pipeline.parameters.packages_workspace >>
     - run:
