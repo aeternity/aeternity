@@ -229,9 +229,11 @@ block_while_(X, Test, Repeats, MilliSecs) ->
     end.
 
 mine_until_height(ControlNode, MinerNode, TargetHeight) ->
+    ct:log("SHSHSHSHSHSH mine until  ~p~n", [TargetHeight]),
     timer:sleep(500),
     H = aec_headers:height(rpc:call(ControlNode, aec_chain, top_header, [])),
     if H < TargetHeight ->
+            ct:log("SHSHSHSHSHSH mining key block until ~p when Height = ~p~n", [TargetHeight, H]),
             aecore_suite_utils:mine_key_blocks(MinerNode, 1),
             mine_until_height(ControlNode, MinerNode, TargetHeight);
        true ->
