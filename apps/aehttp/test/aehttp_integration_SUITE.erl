@@ -1432,6 +1432,10 @@ get_accounts_next_nonce_sut(Id) ->
     Host = external_address(),
     http_request(Host, get, "accounts/" ++ binary_to_list(Id) ++ "/next-nonce", []).
 
+get_accounts_next_nonce_sut_(Id) ->
+    Host = external_address(),
+    http_request(Host, get, "accounts/" ++ binary_to_list(Id) ++ "/next-nonce?int-as-string", []).
+
 get_accounts_next_nonce_sut(Id, Strategy) when Strategy =:= max; Strategy =:= continuity ->
     StrategyL = atom_to_list(Strategy),
     Host = external_address(),
@@ -3007,6 +3011,12 @@ spend_transaction(_Config) ->
     {ok, 200, #{<<"next_nonce">> := NextNonce}} = get_accounts_next_nonce_sut(MinerID),
     {ok, 200, #{<<"next_nonce">> := NextNonce}} = get_accounts_next_nonce_sut(MinerID, max),
     {ok, 200, #{<<"next_nonce">> := NextNonce}} = get_accounts_next_nonce_sut(MinerID, continuity),
+    case aecore_suite_utils:http_api_version() of
+        oas3 ->
+            {ok, 200, #{<<"next_nonce">> := NextNonceBin}} = get_accounts_next_nonce_sut_(MinerID),
+            NextNonce = binary_to_integer(NextNonceBin);
+        _ -> pass
+    end,
     RandAddress = random_hash(),
     Payload = <<"hejsan svejsan">>,
     Encoded = #{sender_id => MinerAddress,
