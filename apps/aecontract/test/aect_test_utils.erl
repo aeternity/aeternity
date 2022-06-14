@@ -443,16 +443,18 @@ tempfile_name(Prefix, Extension) ->
 
 %% A few functions mostly lifted / adapted from the bucs lib
 temp_filename(Prefix, Extension) ->
-  Path = temp_dir(),
-  filename:join([Path, Prefix ++ randstr(20) ++ Extension]);
-temp_filename(Prefix, Options) when is_binary(Prefix) ->
-  temp_filename(binary_to_list(Prefix), Options).
+    Path = temp_dir(),
+    filename:join([Path, Prefix ++ randstr(20) ++ Extension]).
 
--define(CHARS, "azertyuiopqsdfghjklmwxcvbnAZERTYUIOPQSDFGHJKLMWXCVBN1234567890").
+-define(CHARS, <<"azertyuiopqsdfghjklmwxcvbn"
+                 "AZERTYUIOPQSDFGHJKLMWXCVBN1234567890">>).
 randstr(Size) ->
-    PoolSize = length(?CHARS),
-    lists:flatten([lists:sublist(?CHARS, rand:uniform(PoolSize), 1) || _ <- lists:seq(1, Size)]).
+    PoolSize = byte_size(?CHARS),
+    [binary:at(?CHARS, rand:uniform(PoolSize) - 1)
+     || _ <- lists:seq(1, Size)].
 
+%% Yes, this might be a dreaded nested case, but it is extremely obvious
+%% what it does at a glance.
 temp_dir() ->
     case os:getenv("TMPDIR") of
     false ->
@@ -460,13 +462,13 @@ temp_dir() ->
         false ->
           case os:getenv("TMP") of
             false ->
-              case write_tmp_dir("/tmp") of
+              case writeable_dir("/tmp") of
                 false ->
                   Cwd = case file:get_cwd() of
                           {ok, Dir} -> Dir;
                           _ -> "."
                         end,
-                  case write_tmp_dir(Cwd) of
+                  case writeable_dir(Cwd) of
                     false -> false;
                     LTmp -> LTmp
                   end;
@@ -479,9 +481,10 @@ temp_dir() ->
     Tmpdir -> Tmpdir
   end.
 
-write_tmp_dir(Path) ->
+writeable_dir(Path) ->
   case file:read_file_info(Path) of
-    {ok, #file_info{type = directory, access = Access}} when Access =:= read_write; Access =:= write ->
+    {ok, #file_info{type = directory, access = Access}}
+        when Access =:= read_write; Access =:= write ->
       Path;
     _ -> false
   end.
