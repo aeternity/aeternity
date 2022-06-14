@@ -2038,7 +2038,7 @@ paths:
         - internal
         - node-operator
       operationId: GetPeerCount
-      description: Get the number of peers in the different pools. This is to be used to catch if a node loses connectivity 
+      description: Get the number of peers in the different pools. This is to be used to catch if a node loses connectivity
       parameters:
         - $ref: '#/components/parameters/intAsString'
       responses:
@@ -3711,7 +3711,7 @@ components:
       type: object
       properties:
         next_nonce:
-          type: integer
+          $ref: "#/components/schemas/UInt64"
       required:
         - next_nonce
     CheckTxInPoolResponse:
