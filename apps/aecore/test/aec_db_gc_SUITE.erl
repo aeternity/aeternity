@@ -230,11 +230,13 @@ block_while_(X, Test, Repeats, MilliSecs) ->
 
 mine_until_height(ControlNode, MinerNode, TargetHeight) ->
     ct:log("SHSHSHSHSHSH mine until  ~p~n", [TargetHeight]),
-    timer:sleep(500),
+    timer:sleep(200),
     H = aec_headers:height(rpc:call(ControlNode, aec_chain, top_header, [])),
     if H < TargetHeight ->
             ct:log("SHSHSHSHSHSH mining key block until ~p when Height = ~p~n", [TargetHeight, H]),
             aecore_suite_utils:mine_key_blocks(MinerNode, 1),
+            %% If there was a sync delay we might overshoot, so explicitly wait until each block is mined and synced
+            block_while(fun () -> aec_headers:height(rpc:call(ControlNode, aec_chain, top_header, [])) == H end, 300, 100),
             mine_until_height(ControlNode, MinerNode, TargetHeight);
        true ->
             ct:log("SHSHSHSHSHSH NOT mining key block until ~p when Height = ~p~n", [TargetHeight, H]),
