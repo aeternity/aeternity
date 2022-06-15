@@ -98,6 +98,7 @@ groups() ->
        start_nodes_and_wait_sync_dev2_chain_wins,
        assert_orphaned_tx_in_pool_dev2_receives,
        mine_a_micro_block_on_dev2,
+       mine_a_key_block_on_dev2,
        stop_dev1,
        stop_dev2
        ]},
@@ -432,6 +433,7 @@ mine_a_micro_block(Node) ->
 spend(Node) ->
     {_, Pub} = aecore_suite_utils:sign_keys(Node),
     NName = aecore_suite_utils:node_name(Node),
+    {ok, []} = rpc:call(NName, aec_tx_pool, peek, [infinity]),
     {ok, Tx} = aecore_suite_utils:spend(NName, Pub, Pub, 1, ?SPEND_FEE),
     {ok, [Tx]} = rpc:call(NName, aec_tx_pool, peek, [infinity]),
     ct:log("Spend tx ~p", [Tx]),
