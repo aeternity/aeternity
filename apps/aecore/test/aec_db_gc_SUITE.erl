@@ -237,6 +237,7 @@ mine_until_height(ControlNode, MinerNode, TargetHeight) ->
             aecore_suite_utils:mine_key_blocks(MinerNode, 1),
             mine_until_height(ControlNode, MinerNode, TargetHeight);
        true ->
+            ct:log("SHSHSHSHSHSH NOT mining key block until ~p when Height = ~p~n", [TargetHeight, H]),
             ok
     end.
 
