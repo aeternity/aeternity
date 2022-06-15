@@ -241,7 +241,7 @@ handle_event({call, _From}, maybe_garbage_collect, ready,
         micro ->
             {keep_state, Data}
     end;
-handle_event({call, From}, maybe_garbage_collect, _State, Data) ->
+handle_event({call, From}, maybe_garbage_collect, _, Data) ->
     {keep_state, Data, {reply, From, nop}};
 
 handle_event(_, _, _, Data) ->
