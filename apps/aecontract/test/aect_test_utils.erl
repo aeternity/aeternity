@@ -443,8 +443,8 @@ tempfile_name(Prefix, Extension) ->
 
 %% A few functions mostly lifted / adapted from the bucs lib
 temp_filename(Prefix, Extension) ->
-  Path = temp_dir(),
-  filename:join([Path, Prefix ++ randstr(20) ++ Extension]).
+    Path = temp_dir(),
+    filename:join([Path, Prefix ++ randstr(20) ++ Extension]).
 
 -define(CHARS, <<"azertyuiopqsdfghjklmwxcvbn"
                  "AZERTYUIOPQSDFGHJKLMWXCVBN1234567890">>).
@@ -454,29 +454,29 @@ randstr(Size) ->
     [binary:at(?CHARS, rand:uniform(PoolSize) - 1)
      || _ <- lists:seq(1, Size)].
 
+%% Yes, this might be a dreaded nested case, but it is extremely obvious
+%% what it does at a glance.
 temp_dir() ->
-    case any_non_false([{fun os:getenv/1, V}
-                        || V <- ["TMPDIR", "TEMP", "TMP"]]) of
-        false ->
-            any_non_false([{fun writeable_dir/1, D}
-                           || D <- ["/tmp", cwd()]]);
-        Tmp ->
-            Tmp
-    end.
-
-any_non_false([{F, Arg} | T]) when is_function(F, 1) ->
-    case F(Arg) of
-        false -> any_non_false(T);
-        Other -> Other
-    end;
-any_non_false([]) ->
-    false.
-
-cwd() ->
-    case file:get_cwd() of
-        {ok, Dir} -> Dir;
-        _         -> "."
-    end.
+          case os:getenv("TMP") of
+            false ->
+              case writeable_dir("/tmp") of
+                false ->
+                  Cwd = case file:get_cwd() of
+                          {ok, Dir} -> Dir;
+                          _ -> "."
+                        end,
+                  case writeable_dir(Cwd) of
+                    false -> false;
+                    LTmp -> LTmp
+                  end;
+                STmp -> STmp
+              end;
+            Tmp -> Tmp
+          end;
+        Temp -> Temp
+      end;
+    Tmpdir -> Tmpdir
+  end.
 
 writeable_dir(Path) ->
   case file:read_file_info(Path) of
