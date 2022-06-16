@@ -457,7 +457,11 @@ randstr(Size) ->
 %% Yes, this might be a dreaded nested case, but it is extremely obvious
 %% what it does at a glance.
 temp_dir() ->
-          case os:getenv("TMP") of
+    case os:getenv("TMPDIR") of
+    false ->
+        case os:getenv("TEMP") of
+        false ->
+            case os:getenv("TMP") of
             false ->
               case writeable_dir("/tmp") of
                 false ->
