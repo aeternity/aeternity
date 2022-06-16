@@ -30,7 +30,8 @@
     start_nodes_and_wait_sync_dev1_chain_wins/1,
     start_nodes_and_wait_sync_dev2_chain_wins/1,
     assert_orphaned_tx_in_pool_dev1_receives/1,
-    assert_orphaned_tx_in_pool_dev2_receives/1
+    assert_orphaned_tx_in_pool_dev2_receives/1,
+    wait_dev1_txpool_empty/1
    ]).
 
 %% tr_ttb behavior callbacks
@@ -98,6 +99,7 @@ groups() ->
        start_nodes_and_wait_sync_dev2_chain_wins,
        assert_orphaned_tx_in_pool_dev2_receives,
        mine_a_micro_block_on_dev2,
+       wait_dev1_txpool_empty,
        stop_dev1,
        stop_dev2
        ]},
@@ -432,6 +434,7 @@ mine_a_micro_block(Node) ->
 spend(Node) ->
     {_, Pub} = aecore_suite_utils:sign_keys(Node),
     NName = aecore_suite_utils:node_name(Node),
+    {ok, []} = rpc:call(NName, aec_tx_pool, peek, [infinity]),
     {ok, Tx} = aecore_suite_utils:spend(NName, Pub, Pub, 1, ?SPEND_FEE),
     {ok, [Tx]} = rpc:call(NName, aec_tx_pool, peek, [infinity]),
     ct:log("Spend tx ~p", [Tx]),
@@ -439,6 +442,16 @@ spend(Node) ->
 
 spend_on_dev1(_Config) -> spend(dev1).
 spend_on_dev2(_Config) -> spend(dev2).
+
+wait_dev1_txpool_empty(_Config) ->
+    wait_txpool_empty(dev1).
+
+wait_txpool_empty(Node) ->
+     NName = aecore_suite_utils:node_name(Node),
+      aec_test_utils:wait_for_it(
+        fun() -> rpc:call(NName, aec_tx_pool, peek, [infinity]) end,
+        {ok, []}),
+    ok.
 
 wait_nodes_to_sync(ExpectedTop, WrongForkNode, T0) ->
     WFNName = aecore_suite_utils:node_name(WrongForkNode),
