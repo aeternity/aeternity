@@ -445,9 +445,6 @@ spend_on_dev2(_Config) -> spend(dev2).
 
 wait_dev1_txpool_empty(_Config) ->
     wait_txpool_empty(dev1).
-wait_dev2_txpool_empty(_Config) ->
-    wait_txpool_empty(dev2).
-
 
 wait_txpool_empty(Node) ->
      NName = aecore_suite_utils:node_name(Node),
