@@ -30,8 +30,8 @@ main contract StakingValidator =
     assert_caller()
     let staker_shares = state.delegates[staker = 0]
     require(staker_shares >= withdraw_shares, "Not enough shares")
-    let payout = (withdraw_shares * Contract.balance) / state.shares
-    Chain.spend(staker, payout)
+    let payout_amt = shares_to_ae(withdraw_shares)
+    Chain.spend(staker, payout_amt)
     let remaining_shares = staker_shares - withdraw_shares
     switch(remaining_shares == 0)
       true =>
@@ -40,9 +40,23 @@ main contract StakingValidator =
       false =>
         put(state{ shares @ s = s - withdraw_shares,
                   delegates[staker] @ balance = remaining_shares })
-    payout
+    payout_amt
 
-  entrypoint get_state() = state
+  entrypoint get_state() =
+    assert_caller()
+    state
+
+  entrypoint shares(who : address) =
+    assert_caller()
+    state.delegates[who = 0]
+
+  entrypoint all_shares() =
+    assert_caller()
+    state.shares
+
+  entrypoint balance(who : address) =
+    assert_caller()
+    shares_to_ae(state.delegates[who = 0])
 
   stateful entrypoint set_name(name : string) =
     assert_caller()
@@ -67,3 +81,6 @@ main contract StakingValidator =
 
   function assert_caller() =
     require(Call.caller == state.main_staking_ct, "Only allowed through MainStaking")
+
+  function shares_to_ae(shares : int) =
+    (shares * Contract.balance) / state.shares

@@ -332,9 +332,9 @@ simple_withdraw(Config) ->
     Top0 = aec_blocks:to_header(KB0),
     Top0 = rpc(?NODE1, aec_chain, top_header, []),
     ct_log_header(Top0),
-    InitBalance = balance(pubkey(?ALICE)),
-    {ok, _AliceContractBalance} = inspect_staking_contract(?ALICE, {balance, ?ALICE}, Config),
-    {ok, _BobContractBalance} = inspect_staking_contract(?ALICE, {balance, ?BOB}, Config),
+    InitBalance  = account_balance(pubkey(?ALICE)),
+    {ok, _AliceContractSPower} = inspect_staking_contract(?ALICE, {staking_power, ?ALICE}, Config),
+    {ok, _BobContractSPower} = inspect_staking_contract(?ALICE, {staking_power, ?BOB}, Config),
     {ok,
         #{<<"ct">> := _, %% pool contract
           <<"is_online">> := true,
@@ -355,7 +355,7 @@ simple_withdraw(Config) ->
     {ok, [_]} = rpc:call(?NODE1_NAME, aec_tx_pool, peek, [infinity]),
     {value, _Acc} = rpc(?NODE1, aec_chain, get_account, [pubkey(?ALICE)]),
     mine_tx(CallTx),
-    EndBalance = balance(pubkey(?ALICE)),
+    EndBalance = account_balance(pubkey(?ALICE)),
     {ok, Call} = call_info(CallTx),
     {ok, _Res} = decode_consensus_result(Call, Fun),
     GasUsed = aect_call:gas_used(Call),
@@ -365,12 +365,12 @@ simple_withdraw(Config) ->
            [InitBalance, WithdrawAmount, GasUsed, GasPrice,
                           Fee, EndBalance]),
 %% TODO: adjust rewarded fees
-%%    {EndBalance, EndBalance} = {EndBalance, InitBalance + WithdrawAmount -
+%%    {EndSPower, EndSPower} = {EndSPower, InitSPower + WithdrawAmount -
 %%                               TotalSpent},
 
-    {ok, _AliceContractBalance1} = inspect_staking_contract(?ALICE, {balance, ?ALICE}, Config),
-%%    {AliceContractBalance, AliceContractBalance} = {AliceContractBalance, AliceContractBalance1 + 1},
-%%    {ok, BobContractBalance} = inspect_staking_contract(?ALICE, {balance, ?BOB}, Config),
+    {ok, _AliceContractSPower1} = inspect_staking_contract(?ALICE, {staking_power, ?ALICE}, Config),
+%%    {AliceContractSPower, AliceContractSPower} = {AliceContractSPower, AliceContractSPower1 + 1},
+%%    {ok, BobContractSPower} = inspect_staking_contract(?ALICE, {staking_power, ?BOB}, Config),
     Top1 = rpc(?NODE1, aec_chain, top_header, []),
     ct_log_header(Top1),
     TimeInBetween = aec_headers:time_in_msecs(Top1) - aec_headers:time_in_msecs(Top0),
@@ -380,10 +380,10 @@ simple_withdraw(Config) ->
     ok.
 
 change_leaders(Config) ->
-    {ok, AliceBalance} = inspect_staking_contract(?ALICE, {balance, ?ALICE}, Config),
-    {ok, BobBalance} = inspect_staking_contract(?ALICE, {balance, ?BOB}, Config),
-    ct:log("Alice ~p, balance: ~p", [encoded_pubkey(?ALICE), AliceBalance]),
-    ct:log("Bob ~p, balance: ~p", [encoded_pubkey(?BOB), BobBalance]),
+    {ok, AliceSPower} = inspect_staking_contract(?ALICE, {staking_power, ?ALICE}, Config),
+    {ok, BobSPower} = inspect_staking_contract(?ALICE, {staking_power, ?BOB}, Config),
+    ct:log("Alice ~p, staking_power: ~p", [encoded_pubkey(?ALICE), AliceSPower]),
+    ct:log("Bob ~p, staking_power: ~p", [encoded_pubkey(?BOB), BobSPower]),
     Blocks = 10,
     NewLeader =
         fun() ->
@@ -418,17 +418,17 @@ verify_fees(Config) ->
     {ok, _} = aecore_suite_utils:mine_key_blocks(?NODE1_NAME, ?REWARD_DELAY + 1),
     Test =
         fun() ->
-            %% gather balances before reward distribution
-            AliceBalance0 = balance(pubkey(?ALICE)),
-            BobBalance0 = balance(pubkey(?BOB)),
-            {ok, AliceContractBalance0} = inspect_staking_contract(?ALICE, {balance, ?ALICE}, Config),
-            {ok, BobContractBalance0} = inspect_staking_contract(?ALICE, {balance, ?BOB}, Config),
+            %% gather staking_powers before reward distribution
+            AliceBalance0 = account_balance(pubkey(?ALICE)),
+            BobBalance0 = account_balance(pubkey(?BOB)),
+            {ok, AliceContractSPower0} = inspect_staking_contract(?ALICE, {staking_power, ?ALICE}, Config),
+            {ok, BobContractSPower0} = inspect_staking_contract(?ALICE, {staking_power, ?BOB}, Config),
             {ok, _} = aecore_suite_utils:mine_key_blocks(?NODE1_NAME, 1),
-            %% gather balances after reward distribution
-            AliceBalance1 = balance(pubkey(?ALICE)),
-            BobBalance1 = balance(pubkey(?BOB)),
-            {ok, AliceContractBalance1} = inspect_staking_contract(?ALICE, {balance, ?ALICE}, Config),
-            {ok, BobContractBalance1} = inspect_staking_contract(?ALICE, {balance, ?BOB}, Config),
+            %% gather staking_powers after reward distribution
+            AliceBalance1= account_balance(pubkey(?ALICE)),
+            BobBalance1 = account_balance(pubkey(?BOB)),
+            {ok, AliceContractSPower1} = inspect_staking_contract(?ALICE, {staking_power, ?ALICE}, Config),
+            {ok, BobContractSPower1} = inspect_staking_contract(?ALICE, {staking_power, ?BOB}, Config),
             %% inspect who shall receive what reward
             Top = rpc(?NODE1, aec_chain, top_header, []),
             Height = aec_headers:height(Top),
@@ -439,7 +439,7 @@ verify_fees(Config) ->
             Beneficiary1 = aec_headers:beneficiary(PrevH),
             Beneficiary2 = aec_headers:beneficiary(RewardH),
             ct:log("Beneficiary1: ~p, Beneficiary2: ~p", [Beneficiary1, Beneficiary2]),
-            %% assert account balances do not change; only contract balances change
+            %% assert account staking_powers do not change; only contract staking_powers change
             {AliceBalance0, AliceBalance0} = {AliceBalance0, AliceBalance1},
             {BobBalance0, BobBalance0} = {BobBalance0, BobBalance1},
             %% calc rewards
@@ -458,12 +458,12 @@ verify_fees(Config) ->
                     {0, 0},
                     [{Beneficiary1, AdjustedReward1},
                     {Beneficiary2, AdjustedReward2}]),
-            AliceReward = AliceContractBalance1 - AliceContractBalance0,
+            AliceReward = AliceContractSPower1 - AliceContractSPower0,
             ct:log("Alice expected rewards: ~p, actual rewards: ~p",
                   [AliceExpectedRewards, AliceReward]),
             {AliceExpectedReward, AliceExpectedReward} =
                 {AliceExpectedRewards, AliceReward},
-            BobReward = BobContractBalance1 - BobContractBalance0,
+            BobReward = BobContractSPower1 - BobContractSPower0,
             ct:log("Bob expected rewards: ~p, actual rewards: ~p",
                   [BobExpectedRewards, BobReward]),
             {BobExpectedReward, BobExpectedReward} =
@@ -550,7 +550,7 @@ mine_tx(SignedTx) ->
                                                       [TxHash],
                                                       10). %% max keyblocks
 
-balance(Pubkey) ->
+account_balance(Pubkey) ->
     case rpc(?NODE1, aec_chain, get_account, [Pubkey]) of
         {value, Account} -> aec_accounts:balance(Account);
         none -> no_such_account
@@ -559,8 +559,8 @@ balance(Pubkey) ->
 inspect_staking_contract(OriginWho, WhatToInspect, Config) ->
     {Fun, Args} =
         case WhatToInspect of
-            {balance, Who} ->
-                {"balance", [binary_to_list(encoded_pubkey(Who))]};
+            {staking_power, Who} ->
+                {"staking_power", [binary_to_list(encoded_pubkey(Who))]};
             current_leader ->
                 {"leader", []};
           {get_validator_state, Who} ->
