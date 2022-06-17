@@ -449,7 +449,7 @@ wait_dev1_txpool_empty(_Config) ->
 wait_txpool_empty(Node) ->
      NName = aecore_suite_utils:node_name(Node),
       aec_test_utils:wait_for_it(
-        fun() -> rpc:call(NName, aec_tx_pool, peek, [infinity], 100) end,
+        fun() -> rpc:call(NName, aec_tx_pool, peek, [infinity], 1000) end,
         {ok, []}),
     ok.
 
