@@ -30,7 +30,7 @@ upload-artifacts-github-release:
     - run:
         name: Upload GitHub Release Asset
         command: |
-          envdir /secrets /infrastructure/scripts/upload-github-release-assets.sh \
+          /infrastructure/scripts/upload-github-release-assets.sh \
             github_api_token=${GITHUB_API_TOKEN:?} \
             owner=${CIRCLE_PROJECT_USERNAME} \
             repo=${CIRCLE_PROJECT_REPONAME} \

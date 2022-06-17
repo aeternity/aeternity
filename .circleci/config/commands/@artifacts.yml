@@ -35,20 +35,6 @@ promote_latest_artifact_s3:
           DST=$(basename << parameters.uri >> | sed -e 's/\(aeternity\)-.*-\(.*\)-\(.*\).tar.gz/\1-latest-\2-\3.tar.gz/g')
           envdir /secrets aws s3 cp --acl public-read << parameters.uri >> $BUCKET/$DST
 
-upload_artifacts_github:
-  steps:
-    - attach_workspace:
-        at: << pipeline.parameters.packages_workspace >>
-    - run:
-        name: Upload GitHub Release Asset
-        command: |
-          envdir /secrets /infrastructure/scripts/upload-github-release-assets.sh \
-            github_api_token=${GITHUB_API_TOKEN:?} \
-            owner=${CIRCLE_PROJECT_USERNAME} \
-            repo=${CIRCLE_PROJECT_REPONAME} \
-            tag=${CIRCLE_TAG} \
-            ASSETS=<< pipeline.parameters.packages_workspace >>/*
-
 upload_artifacts_apt:
   parameters:
     packages_dir:
