@@ -887,7 +887,8 @@ if_unstake_all_delegate_is_deleted(_Config) ->
                             _Name, _Description,
                             _AvatarURL, Map0, SPower0}}}} = State0,
             %% assert balances
-            #{{address, ToWhom} := ?VALIDATOR_MIN} = Map0,
+            AddressKey = {address, ToWhom},
+            ?VALIDATOR_MIN = maps:get(AddressKey, Map0),
             1 = maps:size(Map0), %% no other keys
             TotalStakedAmt = ?STAKE_MIN + 10,
             TotalAmt = ?VALIDATOR_MIN + TotalStakedAmt,
@@ -902,8 +903,8 @@ if_unstake_all_delegate_is_deleted(_Config) ->
                             _Name, _Description,
                             _AvatarURL, Map1, SPower1}}}} = State1,
             {SPower1, SPower1} = {SPower1, SPower0 + TotalStakedAmt},
-            #{{address, ToWhom} := ?VALIDATOR_MIN,
-              {address, Sam} := TotalStakedAmt } = Map1,
+            ?VALIDATOR_MIN = maps:get({address, ToWhom}, Map1),
+            TotalStakedAmt = maps:get({address, Sam}, Map1),
             2 = maps:size(Map1), %% no other keys
             %% withdraw some shares and assert balances
             WithdrawnAmt = 10,
@@ -920,8 +921,8 @@ if_unstake_all_delegate_is_deleted(_Config) ->
                             _Name, _Description,
                             _AvatarURL, Map2, SPower2}}}} = State2,
             {SPower2, SPower2} = {SPower2, SPower1 - WithdrawnAmt},
-            #{{address, ToWhom} := ?VALIDATOR_MIN,
-              {address, Sam} := StakeLeft } = Map2,
+            ?VALIDATOR_MIN = maps:get({address, ToWhom}, Map2),
+            StakeLeft = maps:get({address, Sam}, Map2),
             2 = maps:size(Map2), %% no other keys
             %% withdraw what is left, the delegate is being deleted
             {ok, Trees6, StakeLeft} =
@@ -935,7 +936,7 @@ if_unstake_all_delegate_is_deleted(_Config) ->
                             _Name, _Description,
                             _AvatarURL, Map3, SPower3}}}} = State3,
                     {SPower3, SPower3} = {SPower3, SPower0},
-            #{{address, ToWhom} := ?VALIDATOR_MIN} = Map3,
+            ?VALIDATOR_MIN = maps:get({address, ToWhom}, Map3),
             1 = maps:size(Map3) %% no other keys
         end,
     Test(Alice), %% online
