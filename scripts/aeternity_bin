@@ -32,12 +32,12 @@ esac
 SCRIPT_DIR="$(cd "$(dirname "$SCRIPT")" && pwd -P)"
 RELEASE_ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd -P)"
 # Make the value available to variable substitution calls below
-export REL_NAME="{{ rel_name }}"
-REL_VSN="{{ rel_vsn }}"
+export REL_NAME="{{ release_name }}"
+REL_VSN="{{ release_version }}"
 
 # export these to match mix release environment variables
-export RELEASE_NAME="{{ rel_name }}"
-export RELEASE_VSN="{{ rel_vsn }}"
+export RELEASE_NAME="{{ release_name }}"
+export RELEASE_VSN="{{ release_version }}"
 export RELEASE_PROG="${SCRIPT}"
 
 ERTS_VSN="{{ erts_vsn }}"
@@ -61,97 +61,109 @@ fi
 export RELX_RPC_TIMEOUT
 
 # start/stop/install/upgrade pre/post hooks
-PRE_START_HOOKS="{{{ pre_start_hooks }}}"
-POST_START_HOOKS="{{{ post_start_hooks }}}"
-PRE_STOP_HOOKS="{{{ pre_stop_hooks }}}"
-POST_STOP_HOOKS="{{{ post_stop_hooks }}}"
-PRE_INSTALL_UPGRADE_HOOKS="{{{ pre_install_upgrade_hooks }}}"
-POST_INSTALL_UPGRADE_HOOKS="{{{ post_install_upgrade_hooks }}}"
-STATUS_HOOK="{{{ status_hook }}}"
+PRE_START_HOOKS="hooks/pre_start.sh"
+POST_START_HOOKS=""
+PRE_STOP_HOOKS=""
+POST_STOP_HOOKS=""
+PRE_INSTALL_UPGRADE_HOOKS=""
+POST_INSTALL_UPGRADE_HOOKS=""
+STATUS_HOOK=""
 EXTENSIONS="{{{ extensions }}}"
 
 relx_usage() {
     command="$1"
 
     case "$command" in
-        rpc)
-            echo "Usage: $REL_NAME rpc [Mod [Fun [Args]]]]"
-            echo "Applies the specified function and returns the result."
-            echo "Mod must be specified. However, start and [] are assumed"
-            echo "for unspecified Fun and Args, respectively. Args is to "
-            echo "be in the same format as for erlang:apply/3 in ERTS."
-            ;;
-        "eval")
-            echo "Usage: $REL_NAME eval [Exprs]"
-            echo "Executes a sequence of Erlang expressions, separated by"
-            echo "comma (,) and ended with a full stop (.)"
-            ;;
         foreground)
             echo "Usage: $REL_NAME foreground"
-            echo "Starts the release in the foreground, meaning all output"
-            echo "going to stdout but without an interactive shell."
+            echo "  Starts the Aeternity node in the foreground, meaning all output"
+            echo "  going to stdout but without an interactive shell."
+            echo "  This command is recommended for starting the Aeternity node"
+            echo "  in a systemd based system as a simple process."
+            ;;
+        start)
+            echo "Usage: $REL_NAME start"
+            echo "  Starts the Aeternity node as a background daemon"
+            echo "  This command is provided for use in traditional SysV init scripts"
             ;;
         console)
             echo "Usage: $REL_NAME console"
-            echo "Starts the release in the with an interactive shell."
+            echo "  Starts the Aeternity node with an interactive Erlang shell."
             ;;
-        remote_console|remote|remsh)
+        remote)
             echo "Usage: $REL_NAME remote"
-            echo "Attach a remote shell to an already running Erlang node for this release."
+            echo "  Attach a remote Erlang shell to an already running Aeternity node."
             ;;
-        unpack)
-            echo "Usage: $REL_NAME unpack [VERSION]"
-            echo "Unpacks a release package VERSION, it assumes that this"
-            echo "release package tarball has already been deployed at one"
-            echo "of the following locations:"
-            echo "      releases/<relname>-<version>.tar.gz"
-            echo "      releases/<version>/<relname>-<version>.tar.gz"
-            echo "      releases/<version>/<relname>.tar.gz"
+        stop)
+            echo "Usage: $REL_NAME stop"
+            echo "  Cleanly stop the running Aeternity node."
             ;;
-        install)
-            echo "Usage: $REL_NAME install [VERSION]"
-            echo "Installs a release package VERSION, it assumes that this"
-            echo "release package tarball has already been deployed at one"
-            echo "of the following locations:"
-            echo "      releases/<relname>-<version>.tar.gz"
-            echo "      releases/<version>/<relname>-<version>.tar.gz"
-            echo "      releases/<version>/<relname>.tar.gz"
-            echo ""
-            echo "     --no-permanent   Install release package VERSION but"
-            echo "                      don't make it permanent"
+        pid)
+            echo "Usage: $REL_NAME pid"
+            echo "  Print the OS pid of the running Aeternity node."
             ;;
-        uninstall)
-            echo "Usage: $REL_NAME uninstall [VERSION]"
-            echo "Uninstalls a release VERSION, it will only accept"
-            echo "versions that are not currently in use"
+        ping)
+            echo "Usage: $REL_NAME ping"
+            echo "  Test if the Aeternity node is running and responsive."
             ;;
-        upgrade)
-            echo "Usage: $REL_NAME upgrade [VERSION]"
-            echo "Upgrades the currently running release to VERSION, it assumes"
-            echo "that a release package tarball has already been deployed at one"
-            echo "of the following locations:"
-            echo "      releases/<relname>-<version>.tar.gz"
-            echo "      releases/<version>/<relname>-<version>.tar.gz"
-            echo "      releases/<version>/<relname>.tar.gz"
-            echo ""
-            echo "     --no-permanent   Install release package VERSION but"
-            echo "                      don't make it permanent"
-            ;;
-        downgrade)
-            echo "Usage: $REL_NAME downgrade [VERSION]"
-            echo "Downgrades the currently running release to VERSION, it assumes"
-            echo "that a release package tarball has already been deployed at one"
-            echo "of the following locations:"
-            echo "      releases/<relname>-<version>.tar.gz"
-            echo "      releases/<version>/<relname>-<version>.tar.gz"
-            echo "      releases/<version>/<relname>.tar.gz"
-            echo ""
-            echo "     --no-permanent   Install release package VERSION but"
-            echo "                      don't make it permanent"
+        console)
+            echo "Usage: $REL_NAME console"
+            echo "  Start the Aeternity node with an interacive Erlang shell."
+            echo "  This mode is useful for advanced users who wish to expore the internals"
+            echo "  of the Erlang node, and for debugging startup issues."
             ;;
         status)
             echo "Usage: $REL_NAME status"
-            echo "Obtains node status information through optionally defined hooks."
+            echo "  Show summary information about the Aeternity node."
+            ;;
+        check_config)
+            echo "Usage: $REL_NAME check_config"
+            echo "  Validate the aeternity config file against its schema."
+            ;;
+        keys_gen)
+            echo "Usage: $REL_NAME keys_gen PASSWORD"
+            echo "  Generate a password protected public private keypair."
+            ;;
+        peer_key)
+            echo "Usage: $REL_NAME peer_key"
+            echo "  Show the peer key of the Aeternity node."
+            echo "  This key is presented to other nodes and can be used by other nodes"
+            echo "  to connect to this node."
+            ;;
+        export)
+            echo "Usage: $REL_NAME export [FILE_PATH]"
+            echo "  Export the blockchain database to local file."
+            ;;
+        create_whitelist)
+            echo "Usage: $REL_NAME create_whitelist [-start Start] [-n N] [-step Step] [-o Outfile]"
+            echo "  -start Start : Begin <Start> key blocks below the current top (default: 100)"
+            echo "  -n     N     : Collect <N> hashes for the whitelist (default: 1000)"
+            echo "  -step  Step  : Separate the whitelisted hashes by <Step> (default: 1)"
+            echo "  -outfile F   : Write JSON to file <F> (default: ./block_whitelist-X-Y-Z.json)"
+            ;;
+        db_rollback)
+            echo "Usage: $REL_NAME db_rollback [-h Height] [-b Blockhash] [-w Whitelist]"
+            echo "  Rollback the blockchain to the specified height, blockhash, or to a whilelist."
+            echo "  -h (-height)    : Chain height from which to start deleting"
+            echo "  -n (-blockhash) : Block hash from which to start deleting"
+            echo "  -w (-whitelist) : Roll back based on contents of whitelist (true | false)"
+            ;;
+        maintenance)
+            echo "Usage: $REL_NAME maintenance [on | off | status] [-t timeout]"
+            echo "  Enable / disable / check status of maintenance mode"
+            echo "  Maintenance mode disables mining, sync and HTTP endpoints"
+            echo "  It is useful when performing operations on the system where the database"
+            echo "  should not change, and other debugging / maintenance tasks"
+            echo "  -t (-timeout) : Set the max time this command can wait until the mode change is done (millisecs)"
+            ;;
+        admin)
+            echo "Usage: $REL_NAME admin [SUB COMMAND]"
+            echo "  Additional Commands to administer the system"
+            echo "  To get further info just run $REL_NAME admin"
+            ;;
+        help)
+            echo "Usage: $REL_NAME help [COMMAND]"
+            echo "  Get additional help about a command"
             ;;
         *)
             # check for extension
@@ -160,35 +172,29 @@ relx_usage() {
                 EXTENSION_SCRIPT=$(relx_get_extension_script "$command")
                 relx_run_extension "$EXTENSION_SCRIPT" help
             else
-                EXTENSIONS=$(echo $EXTENSIONS | sed -e 's/|undefined//g')
                 echo "Usage: ${REL_NAME} [COMMAND] [ARGS]
 
 Commands:
 
-  foreground              Start release with output to stdout
-  remote_console          Connect remote shell to running node
-  rpc [Mod [Fun [Args]]]] Run apply(Mod, Fun, Args) on running node
-  eval [Exprs]            Run expressions on running node
+  foreground              Start aeternity node with output to stdout
+  start                   Start aeternity node as a background process
+  remote                  Connect remote Erlang shell to running aeternity node
   stop                    Stop the running node
-  restart                 Restart the applications but not the VM
-  reboot                  Reboot the entire VM
   pid                     Print the PID of the OS process
-  ping                    Print pong if the node is alive
-  console                 Start the release with an interactive shell
-  console_clean           Start an interactive shell without the release's applications
-  console_boot [File]     Start an interactive shell for boot script [File]
-  daemon                  Start release in the background with run_erl (named pipes)
-  daemon_boot [File]      Start boot script [File] in the background with run_erl (named pipes)
-  daemon_attach           Connect to node started as daemon with to_erl (named pipes)
-  upgrade [Version]       Upgrade the running release to a new version
-  downgrade [Version]     Downgrade the running release to a new version
-  install [Version]       Install a release
-  uninstall [Version]     Uninstall a release
-  unpack [Version]        Unpack a release tarball
-  versions                Print versions of the release available
-  escript                 Run an escript in the same environment as the release
-  status                  Verify node is running and then run status hook scripts
-  $EXTENSIONS"
+  ping                    Print pong if the aeternity node is alive
+  console                 Start the aeternity node in the foreground with an interactive Erlang shell
+  status                  Verify node is running and print status summary
+  check_config            Check validity of the configuration file
+  keys_gen                Generate password protected account keypair 
+  peer_key                Display the peer key of the aeternity node
+  export                  Export the entire blockchain database
+  create_whitelist        Export block hashes within a range of heights to json file
+  db_rollback             Rollback blockchain to specified height, hash, or from whitelist file
+  maintenance             Enable / disable maintenance mode
+  admin                   Aeternity node administration commands
+  messages_hash           Show incomprehensible Erlang binary
+  help                    Get additional help about a command
+  "
             fi
             ;;
     esac
@@ -554,14 +560,7 @@ relx_is_extension() {
 
 relx_get_extension_script() {
     EXTENSION=$1
-    # below are the extensions declarations
-    # of the form:
-    # foo_extension="path/to/foo_script";bar_extension="path/to/bar_script"
-    {{{extension_declarations}}}
-    # get the command extension (eg. foo) and
-    # obtain the actual script filename that it
-    # refers to (eg. "path/to/foo_script"
-    eval echo "$""${EXTENSION}_extension"
+    echo "extensions/${EXTENSION}"
 }
 
 relx_run_extension() {
@@ -1046,7 +1045,6 @@ case "$1" in
         relx_usage "$TOPIC"
         ;;
     *)
-        # check for extension
         IS_EXTENSION=$(relx_is_extension "$1")
         if [ "$IS_EXTENSION" = "1" ]; then
             EXTENSION_SCRIPT=$(relx_get_extension_script "$1")
