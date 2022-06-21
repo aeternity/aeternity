@@ -90,13 +90,11 @@ start(Config) ->
             end,
             StakersEncoded),
     StakersMap = maps:from_list(Stakers),
-    aec_consensus_sup:start_child(#{ id          => preset_keys
-                                   , start       => {aec_preset_keys, start_link, [StakersMap]}
-                                   , restart     => permanent
-                                   , significant => false
-                                   , shutdown    => 3000
-                                   , type        => worker
-                                   , modules     => [aec_preset_keys] }),
+    %% TODO: ditch this after we move beyond OTP24
+    Mod = aec_preset_keys,
+    OldSpec =
+        {Mod, {Mod, start_link, [StakersMap]}, permanent, 3000, worker, [Mod]},
+    aec_consensus_sup:start_child(OldSpec),
     lager:debug("Stakers: ~p", [StakersMap]),
     ok.
 
