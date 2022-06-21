@@ -11,6 +11,7 @@
 !test/ct_eunit_xform.erl
 !config
 !hooks
+!scripts/extensions.vars
 !data
 !docs
 !docker/healthcheck.sh
