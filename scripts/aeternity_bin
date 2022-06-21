@@ -117,7 +117,7 @@ relx_usage() {
             echo "  Show summary information about the Aeternity node."
             ;;
         check_config)
-            echo "Usage: $REL_NAME check_config"
+            echo "Usage: $REL_NAME check_config CONFIG_FILE [SCHhEMA_FILE]"
             echo "  Validate the aeternity config file against its schema."
             ;;
         keys_gen)
@@ -129,10 +129,6 @@ relx_usage() {
             echo "  Show the peer key of the Aeternity node."
             echo "  This key is presented to other nodes and can be used by other nodes"
             echo "  to connect to this node."
-            ;;
-        export)
-            echo "Usage: $REL_NAME export [FILE_PATH]"
-            echo "  Export the blockchain database to local file."
             ;;
         create_whitelist)
             echo "Usage: $REL_NAME create_whitelist [-start Start] [-n N] [-step Step] [-o Outfile]"
@@ -184,15 +180,13 @@ Commands:
   ping                    Print pong if the aeternity node is alive
   console                 Start the aeternity node in the foreground with an interactive Erlang shell
   status                  Verify node is running and print status summary
-  check_config            Check validity of the configuration file
+  check_config            Check validity of a configuration file
   keys_gen                Generate password protected account keypair 
   peer_key                Display the peer key of the aeternity node
-  export                  Export the entire blockchain database
   create_whitelist        Export block hashes within a range of heights to json file
   db_rollback             Rollback blockchain to specified height, hash, or from whitelist file
   maintenance             Enable / disable maintenance mode
   admin                   Aeternity node administration commands
-  messages_hash           Show incomprehensible Erlang binary
   help                    Get additional help about a command
   "
             fi
