@@ -1030,7 +1030,7 @@ test_ping() ->
     {ok, Conn} = ?assertCalled(connect, [#{ conn_type := noise, r_pubkey := PubKey }], {ok, _}, 200),
     ok = conn_peer_connected(Conn),
 
-    % Check we are sheduling a ping right away.
+    % Check we are scheduling a ping right away.
     ?assertCalled(schedule_ping, [Id], ok, 200),
     ok = conn_log_ping(Conn, ok),
 
@@ -1459,7 +1459,7 @@ conn_kill(Pid) ->
     receive
         {'DOWN', Ref, _Type, Pid, _Info} -> ok
     after
-        5000 -> ?fail("timout waiting for connection to get killed", [])
+        5000 -> ?fail("timeout waiting for connection to get killed", [])
     end.
 
 conn_peer_connected(Pid) ->

@@ -1038,17 +1038,17 @@
                     "default": 10
                 },
                 "connect_timeout" : {
-                    "description" : "Connection timeout in miliseconds",
+                    "description" : "Connection timeout in milliseconds",
                     "type" : "integer",
                     "default": 1000
                 },
                 "first_ping_timeout" : {
-                    "description" : "Maximum time for receiving a ping in miliseconds",
+                    "description" : "Maximum time for receiving a ping in milliseconds",
                     "type" : "integer",
                     "default": 30000
                 },
                 "noise_hs_timeout" : {
-                    "description" : "Maximum time for noise handshake in miliseconds",
+                    "description" : "Maximum time for noise handshake in milliseconds",
                     "type" : "integer",
                     "default": 5000
                 },
@@ -1494,7 +1494,7 @@
                     "additionalProperties" : false,
                     "properties" : {
                         "enabled": {
-                            "description": "If true, node will perform garbage collection of account state, removing unrechable merkle patricia nodes and free some disk space",
+                            "description": "If true, node will perform garbage collection of account state, removing unreachable merkle patricia nodes and free some disk space",
                             "type": "boolean",
                             "default": false
                         },

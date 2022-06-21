@@ -602,7 +602,7 @@ random_subset(St, Size, ExtFilterFun) ->
 %% When a peer is returned it is considered selected; it means that it will
 %% <b>never</b> be returned by @see select/3 again until it is released with
 %% {@link release/3} or marked as rejected with {@link reject/3} and the standby
-%% time is exausted.
+%% time is exhausted.
 -spec random_select(state(), millitimestamp(), select_target(),
              filter_fun() | undefined)
     -> {selected, ext_peer(), state()}
@@ -707,7 +707,7 @@ gen_seed() ->
     <<A:32, B:32, C:32>> = crypto:strong_rand_bytes(4 * 3),
     {A, B, C}.
 
-%% Generates a strongly random 16 bits unsinged integer.
+%% Generates a strongly random 16 bits unsigned integer.
 -spec strong_randword(boolean()) -> non_neg_integer().
 strong_randword(false) -> 0;
 strong_randword(true) ->
@@ -735,7 +735,7 @@ skewed_randint(RSt, Max, Skew) ->
 safe_min(undefined, Value) -> Value;
 safe_min(Value1, Value2) -> min(Value1, Value2).
 
-%% Returns the time in miliseconds a peer should stay in standby when rejected.
+%% Returns the time in milliseconds a peer should stay in standby when rejected.
 -spec rejection_delay([non_neg_integer()], pos_integer()) -> pos_integer().
 rejection_delay(BackoffTable, RejectionCount) ->
     BackoffIndex = min(RejectionCount, length(BackoffTable)),
@@ -983,7 +983,7 @@ standby_del(St, PeerId) ->
     Standby2 = maps:remove(PeerId, Standby),
     St#?ST{standby = Standby2}.
 
-%% Checks peers on standby and make them available again if they exausted
+%% Checks peers on standby and make them available again if they exhausted
 %% there standby time.
 -spec standby_refresh(state(), millitimestamp()) -> state().
 standby_refresh(St0, Now) ->
@@ -1217,7 +1217,7 @@ verified_downgrade(St, Now, PeerId) ->
     case unverified_maybe_add(St3, Now, PeerId, undefined) of
         {unverified, St4} -> St4;
         {ignored, St4} ->
-            % Failed to add it to unverified pool; removing peer completly.
+            % Failed to add it to unverified pool; removing peer completely.
             del_peer(St4, PeerId)
     end.
 
@@ -1445,7 +1445,7 @@ unverified_make_space(St, Now, BucketIdx, KeepPeerId) ->
 
 %% Acts on a peer reference being removed from the given unverified pool bucket.
 %% If it is the last reference, the pool size is decremented and the peer is
-%% COMPLETLY removed.
+%% COMPLETELY removed.
 -spec unverified_ref_deleted(state(), peer_id(), non_neg_integer()) -> state().
 unverified_ref_deleted(St, PeerId, BucketIdx) ->
     case get_peer(St, PeerId) of
@@ -1873,10 +1873,10 @@ lookup_select(Lookup, RSt, FilterFun, Offset, SamplingSize) ->
             lookup_select(Lookup2, RSt2, FilterFun, Offset, SamplingSize - 1)
     end.
 
-%% Samples a random number of peer identifers from given lookup table.
+%% Samples a random number of peer identifiers from given lookup table.
 %% If the requested sample size is `all' or larger than the size of the table
 %% the result will not be shuffled (maybe reversed).
-%% Optionaly uses a strong random number as offset to weak random numbers to
+%% Optionally uses a strong random number as offset to weak random numbers to
 %% ensure relatively strong randomness.
 -spec lookup_sample(lookup(), rand_state(), boolean(), non_neg_integer() | all,
                     int_filter_fun() | undefined)

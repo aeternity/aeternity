@@ -1,6 +1,6 @@
 @echo off
 
-:: Wrapper to inspect and enable/diable maintenance mode
+:: Wrapper to inspect and enable/disable maintenance mode
 
 set "PATH=%BINDIR%;%PATH%"
 set "ERL_LIBS=%ROOTDIR%\lib"

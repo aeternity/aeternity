@@ -37,13 +37,13 @@ It:
 
 * Improved the functionality of State Channel delegates: now they can provide
   `channel_solo_snapshot_tx` as well. This is really handy in cases one party
-  is missing and the other is doing malicious force progess on-chain while the
+  is missing and the other is doing malicious force progress on-chain while the
   channel is still open.
 
 * Revisited the State Channel delegates: so far they were a shared list for
   both participants. From Iris on, delegates are per peer: there is a list of
   delegates for the `initiator` and another one for the `responder`. Old
-  channel objects can still be used but users are strongly recomended to reset
+  channel objects can still be used but users are strongly recommended to reset
   their `delegates` list if they had any. Note that the HTTP representations
   are changed accordingly.
 

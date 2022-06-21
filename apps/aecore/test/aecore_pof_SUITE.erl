@@ -1,6 +1,6 @@
 -module(aecore_pof_SUITE).
 
-%% This code is brutaly copied form aecore_sync_SUITE and should use joined code base.
+%% This code is brutally copied form aecore_sync_SUITE and should use joined code base.
 
 %% common_test exports
 -export(

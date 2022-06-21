@@ -1,6 +1,6 @@
 -module(aecore_forking_SUITE).
 
-%% This code is brutaly copied form aecore_sync_SUITE and should use joined code base.
+%% This code is brutally copied form aecore_sync_SUITE and should use joined code base.
 
 %% common_test exports
 -export(
@@ -481,7 +481,7 @@ start_nodes_and_wait_sync(CorrectForkNode, OtherNode, Config) ->
 
     false = (ForkTop == CFTop),
     timer:sleep(100),
-    %% unexepctedly last block of dev1 arrives before rest of the chain
+    %% unexpectedly last block of dev1 arrives before rest of the chain
     %% This is no longer allowed, so it should fail.
     ?assertMatch({error, {illegal_orphan, _}},
                   rpc:call(ForkNName, aec_conductor, post_block, [CFTop], 5000)),

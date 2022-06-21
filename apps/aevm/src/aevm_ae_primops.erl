@@ -369,7 +369,7 @@ oracle_call_register(_Value, Data,
                      #chain{api = API, state = State, abi_version = ABIVersion} = Chain) ->
     ArgumentTypes = [word, sign_t(), word, oracle_ttl_t(), typerep, typerep],
     [Acct, Sign0, QFee, TTL, QFormat, RFormat] = get_args(ArgumentTypes, Data),
-    %% The aeo_register_tx expects the formats to be binary, althought, atoms are provided.
+    %% The aeo_register_tx expects the formats to be binary, although, atoms are provided.
     %% This should be solved in a different ticket.
     case chain_ttl_delta(TTL, Chain) of
         {error, _} = Err -> Err;
