@@ -1,0 +1,94 @@
+#!/usr/bin/env escript
+%% -*- erlang-indent-level: 4; indent-tabs-mode: nil -*-
+
+-mode(compile).
+
+main(Args) ->
+    {_RestArgs, TargetNode} = process_node_args(Args, [], undefined),
+
+    case connect_node(TargetNode) of
+        error ->
+            io:format("Node is not running!~n"),
+            halt(1);
+        ok ->
+            ok
+    end,
+
+    do_main(TargetNode),
+    halt(0).
+
+do_main(TargetNode) ->
+    case rpc:call(TargetNode, aeu_info, get_status, []) of
+        {ok, Status} ->
+            Str = format_status(Status),
+            io:format("~s~n", [Str]),
+            halt(0);
+        Err ->
+          io:format("Status not available ~p~n", [Err]),
+            halt(1)
+    end.
+    
+
+format_status(Status) ->
+    Keys = maps:keys(Status),
+    Longest = lists:max(lists:map(fun(K) -> key_size(K) end, Keys)),
+    lists:map(fun(K) -> [pad(K, Longest), " ", format_value(maps:get(K, Status)), "\r\n"] end, Keys).
+
+format_value(Bin) when is_binary(Bin) -> Bin;
+format_value(Int) when is_integer(Int) -> integer_to_binary(Int);
+format_value(Atom) when is_atom(Atom) -> atom_to_list(Atom);
+format_value(Else) -> io_lib:format("~p", [Else]).
+
+key_size(Bin) when is_binary(Bin) -> size(Bin);
+key_size(Atom) when is_atom(Atom) -> length(atom_to_list(Atom));
+key_size(Str) when is_list(Str) -> length(Str).
+
+pad(Val, Len) ->
+    Sz = key_size(Val),
+    Pad = max(0, Len - Sz),
+    [Val, lists:duplicate(Pad, $\s)].
+
+%%
+%% Common Helper Functions
+%%
+
+process_node_args([], Acc, TargetNode) ->
+    {lists:reverse(Acc), TargetNode};
+process_node_args(["-setcookie", Cookie | Rest], Acc, TargetNode) ->
+    erlang:set_cookie(node(), list_to_atom(Cookie)),
+    process_node_args(Rest, Acc, TargetNode);
+process_node_args(["-name", TargetName | Rest], Acc, _) ->
+    ThisNode = append_node_suffix(TargetName, "_util_"),
+    {ok, _} = net_kernel:start([ThisNode, longnames]),
+    process_node_args(Rest, Acc, nodename(TargetName));
+process_node_args(["-sname", TargetName | Rest], Acc, _) ->
+    ThisNode = append_node_suffix(TargetName, "_util_"),
+    {ok, _} = net_kernel:start([ThisNode, shortnames]),
+    process_node_args(Rest, Acc, nodename(TargetName));
+process_node_args([Arg | Rest], Acc, Opts) ->
+    process_node_args(Rest, [Arg | Acc], Opts).
+
+append_node_suffix(Name, Suffix) ->
+    case re:split(Name, "@", [{return, list}, unicode]) of
+        [Node, Host] ->
+            list_to_atom(lists:concat([Node, Suffix, os:getpid(), "@", Host]));
+        [Node] ->
+            list_to_atom(lists:concat([Node, Suffix, os:getpid()]))
+    end.
+
+nodename(Name) ->
+    case re:split(Name, "@", [{return, list}, unicode]) of
+        [_Node, _Host] ->
+            list_to_atom(Name);
+        [Node] ->
+            [_, Host] = re:split(atom_to_list(node()), "@", [{return, list}, unicode]),
+            list_to_atom(lists:concat([Node, "@", Host]))
+    end.
+
+connect_node(TargetNode) ->
+    case {net_kernel:hidden_connect_node(TargetNode), net_adm:ping(TargetNode)} of
+        {true, pong} ->
+            ok;
+        {_, pang} ->
+            error
+    end.
