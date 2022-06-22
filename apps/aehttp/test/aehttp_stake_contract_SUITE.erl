@@ -124,6 +124,23 @@ init_per_suite(Config0) ->
             Call4 =
                 contract_call_spec(CCId, ?STAKING_CONTRACT,
                                    "set_online", [], 0, pubkey(?BOB), 2),
+            Call5 =
+                contract_call_spec(CCId, ?STAKING_CONTRACT,
+                                   "set_validator_name", ["\"Alice\""], 0, pubkey(?ALICE), 3),
+            Call6 =
+                contract_call_spec(CCId, ?STAKING_CONTRACT,
+                                   "set_validator_name", ["\"Bob\""], 0, pubkey(?BOB), 3),
+
+            Call7 =
+                contract_call_spec(CCId, ?STAKING_CONTRACT,
+                                   "set_validator_description",
+                                   ["\"Alice is a really awesome validator and she had set a description of her great service to the network.\""], 0,
+                                   pubkey(?ALICE), 4),
+            Call8 =
+                contract_call_spec(CCId, ?STAKING_CONTRACT,
+                                   "set_validator_avatar_url",
+                                   ["\"https://aeternity.com/images/aeternity-logo.svg\""], 0,
+                                   pubkey(?ALICE), 5),
             %% create a BRI validator in the contract so they can receive
             %% rewards as well
             %% TODO: discuss how we want to tackle this:
@@ -132,12 +149,19 @@ init_per_suite(Config0) ->
             %%  yet
             %%  C) something else
             {ok, BRIPub} = aeser_api_encoder:safe_decode(account_pubkey, <<"ak_2KAcA2Pp1nrR8Wkt3FtCkReGzAi8vJ9Snxa4PcmrthVx8AhPe8">>),
-            Call5 =
+            Call9 =
                 contract_call_spec(CCId, ?STAKING_CONTRACT,
                                    "new_validator", [],
                                    ?INITIAL_STAKE, BRIPub, 1),
+            Call10 =
+                contract_call_spec(CCId, ?STAKING_CONTRACT,
+                                   "set_validator_description",
+                                   ["\"This validator is offline. She can never become a leader. She has no name set. She is receiving the BRI rewards\""],
+                                   0, BRIPub, 2),
             %% keep the BRI offline
-            AllCalls =  [Call1, Call2, Call3, Call4, Call5],
+            AllCalls =  [Call1, Call2, Call3, Call4, Call5, Call6,
+                         Call7, Call8, Call9,
+                         Call10],
             BuildConfig =
                 fun(PotentialStakers) ->
                     Stakers =
