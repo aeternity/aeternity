@@ -62,22 +62,22 @@ get_status() ->
     ProtocolStr = integer_to_list(Protocol) ++ " (" ++ atom_to_list(ProtocolName) ++ ")",
     TopBlockHash = aec_chain:top_key_block_hash(),
     Status =
-     #{<<"Genesis block Hash">>     => aeser_api_encoder:encode(key_block_hash, GenesisBlockHash),
-       <<"Difficulty">>                 => Difficulty,
-       <<"Syncing">>                    => Syncing,
-       <<"Sync progress">>              => SyncProgress,
-       <<"Node version">>               => NodeVersion,
-       <<"Node revision">>              => NodeRevision,
-       <<"Peer count">>                 => PeerCount,
-       <<"Peer connections (inbound)">> => aec_peers:count(inbound),
-       <<"Peer connections (outbound)">> => aec_peers:count(outbound),
-       <<"Pending transactions count">> => PendingTxsCount,
-       <<"Network id">>                 => aec_governance:get_network_id(),
-       <<"Peer pubkey">>                => aeser_api_encoder:encode(peer_pubkey, PeerPubkey),
-       <<"Top key block hash">>         => aeser_api_encoder:encode(key_block_hash, TopBlockHash),
-       <<"Top block height">>           => TopBlockHeight,
-       <<"Top block protocol">>         => list_to_binary(ProtocolStr)
-       },
+     [{<<"Genesis block Hash">>          , aeser_api_encoder:encode(key_block_hash, GenesisBlockHash)},
+      {<<"Difficulty">>                  , Difficulty},
+      {<<"Syncing">>                     , Syncing},
+      {<<"Sync progress">>               , SyncProgress},
+      {<<"Node version">>                , NodeVersion},
+      {<<"Node revision">>               , NodeRevision},
+      {<<"Peer count">>                  , PeerCount},
+      {<<"Peer connections (inbound)">>  , aec_peers:count(inbound)},
+      {<<"Peer connections (outbound)">> , aec_peers:count(outbound)},
+      {<<"Pending transactions count">>  , PendingTxsCount},
+      {<<"Network id">>                  , aec_governance:get_network_id()},
+      {<<"Peer pubkey">>                 , aeser_api_encoder:encode(peer_pubkey, PeerPubkey)},
+      {<<"Top key block hash">>          , aeser_api_encoder:encode(key_block_hash, TopBlockHash)},
+      {<<"Top block height">>            , TopBlockHeight},
+      {<<"Top block protocol">>          , list_to_binary(ProtocolStr)}
+     ],
     {ok, Status}.
 
 %% Internals

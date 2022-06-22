@@ -30,9 +30,9 @@ do_main(TargetNode) ->
     
 
 format_status(Status) ->
-    Keys = maps:keys(Status),
+    Keys = proplists:get_keys(Status),
     Longest = lists:max(lists:map(fun(K) -> key_size(K) end, Keys)),
-    lists:map(fun(K) -> [pad(K, Longest), " ", format_value(maps:get(K, Status)), "\r\n"] end, Keys).
+    lists:map(fun({K, V}) -> [pad(K, Longest), " ", format_value(V), "\r\n"] end, Status).
 
 format_value(Bin) when is_binary(Bin) -> Bin;
 format_value(Int) when is_integer(Int) -> integer_to_binary(Int);
