@@ -96,6 +96,11 @@ relx_usage() {
             echo "Usage: $REL_NAME stop"
             echo "  Cleanly stop the running Aeternity node."
             ;;
+        restart)
+            echo "Usage: $REL_NAME restart"
+            echo "  Restart the internal processes of the running Aeternity node"
+            echo "  without restarting the OS process."
+            ;;
         pid)
             echo "Usage: $REL_NAME pid"
             echo "  Print the OS pid of the running Aeternity node."
@@ -174,6 +179,7 @@ Commands:
   start                   Start aeternity node as a background process
   remote                  Connect remote Erlang shell to running aeternity node
   stop                    Stop the running node
+  restart                 Restart the internal applications but not the OS process
   pid                     Print the PID of the OS process
   ping                    Print pong if the aeternity node is alive
   console                 Start the aeternity node in the foreground with an interactive Erlang shell
