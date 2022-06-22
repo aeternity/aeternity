@@ -57,6 +57,9 @@ get_status() ->
     {ok, PeerPubkey} = aec_keys:peer_pubkey(),
     TopBlock = aec_chain:top_block(),
     TopBlockHeight = aec_blocks:height(TopBlock),
+    Protocol = aec_hard_forks:protocol_effective_at_height(TopBlockHeight),
+    ProtocolName = aec_hard_forks:protocol_vsn_name(Protocol),
+    ProtocolStr = integer_to_list(Protocol) ++ " (" ++ atom_to_list(ProtocolName) ++ ")",
     TopBlockHash = aec_chain:top_key_block_hash(),
     Status =
      #{<<"Genesis block Hash">>     => aeser_api_encoder:encode(key_block_hash, GenesisBlockHash),
@@ -72,7 +75,9 @@ get_status() ->
        <<"Network id">>                 => aec_governance:get_network_id(),
        <<"Peer pubkey">>                => aeser_api_encoder:encode(peer_pubkey, PeerPubkey),
        <<"Top key block hash">>         => aeser_api_encoder:encode(key_block_hash, TopBlockHash),
-       <<"Top block height">>           => TopBlockHeight},
+       <<"Top block height">>           => TopBlockHeight,
+       <<"Top block protocol">>         => list_to_binary(ProtocolStr)
+       },
     {ok, Status}.
 
 %% Internals
