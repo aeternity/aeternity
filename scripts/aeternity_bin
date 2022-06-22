@@ -65,8 +65,6 @@ PRE_START_HOOKS="hooks/pre_start.sh"
 POST_START_HOOKS=""
 PRE_STOP_HOOKS=""
 POST_STOP_HOOKS=""
-PRE_INSTALL_UPGRADE_HOOKS=""
-POST_INSTALL_UPGRADE_HOOKS=""
 STATUS_HOOK=""
 EXTENSIONS="{{{ extensions }}}"
 
@@ -535,8 +533,6 @@ relx_disable_hooks() {
     POST_START_HOOKS=""
     PRE_STOP_HOOKS=""
     POST_STOP_HOOKS=""
-    PRE_INSTALL_UPGRADE_HOOKS=""
-    POST_INSTALL_UPGRADE_HOOKS=""
     STATUS_HOOK=""
 }
 
@@ -896,36 +892,6 @@ case "$1" in
 
         shift
         relx_rem_sh
-        ;;
-
-    upgrade|downgrade|install|unpack|uninstall)
-        if [ -z "$2" ]; then
-            echo "Missing version argument"
-            echo "Usage: $REL_NAME $1 {version}"
-            exit 1
-        fi
-
-        COMMAND="$1"; shift
-
-        # Make sure a node IS running
-        ping_or_exit
-
-        relx_run_hooks "$PRE_INSTALL_UPGRADE_HOOKS"
-
-        exec "$BINDIR/escript" "$ROOTDIR/bin/install_upgrade.escript" \
-             "$COMMAND" "{'$REL_NAME', \"$NAME_TYPE\", '$NAME', '$COOKIE'}" "$@"
-
-        relx_run_hooks "$POST_INSTALL_UPGRADE_HOOKS"
-        ;;
-
-    versions)
-        # Make sure a node IS running
-        ping_or_exit
-
-        COMMAND="$1"; shift
-
-        exec "$BINDIR/escript" "$ROOTDIR/bin/install_upgrade.escript" \
-             "versions" "{'$REL_NAME', \"$NAME_TYPE\", '$NAME', '$COOKIE'}" "$@"
         ;;
 
     console|console_clean|console_boot|foreground)
