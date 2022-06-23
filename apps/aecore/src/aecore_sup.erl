@@ -70,6 +70,7 @@ init([]) ->
             ?CHILD(aec_db_error_store, 5000, worker),
             ?CHILD(aec_resilience, 5000, worker),
             ?CHILD(aec_db_gc, 5000, worker),
+            ?CHILD(aec_consensus_sup, 5000, supervisor),
             ?CHILD(aec_conductor_sup, 5000, supervisor) ],
 
     {ok, {{one_for_one, 5, 10}, ChildSpecs}}.

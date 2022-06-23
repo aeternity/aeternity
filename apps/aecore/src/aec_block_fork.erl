@@ -105,9 +105,9 @@ prepare_contract_owner(Txs, _TxEnv, Trees) when length(Txs) =:= 0 -> Trees;
 prepare_contract_owner([FirstTx | _] = Txs, TxEnv, Trees) ->
     Height = aetx_env:height(TxEnv),
     Protocol = aec_hard_forks:protocol_effective_at_height(Height),
-    GL = aetx:gas_limit(FirstTx, Height, Protocol), 
-    GP = aetx:gas_price(FirstTx), 
-    OwnerPubkey = aetx:origin(FirstTx), 
+    GL = aetx:gas_limit(FirstTx, Height, Protocol),
+    GP = aetx:gas_price(FirstTx),
+    OwnerPubkey = aetx:origin(FirstTx),
     %% assert the assumption there is one single owner
     true = lists:all(fun(Tx) -> aetx:origin(Tx) =:= OwnerPubkey end, Txs),
 

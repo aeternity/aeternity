@@ -2500,8 +2500,7 @@ initialize_account(Amount, {Pubkey, _Privkey}, Check) ->
     Node = aecore_suite_utils:node_name(?NODE),
     MaxMined = ?MAX_MINED_BLOCKS + (Amount div aec_governance:block_mine_reward(1)),
     ct:pal("Mining ~p blocks at most for ~p tokens", [MaxMined, Amount]),
-
-    {_, MinerPubkey} = proplists:get_value(?NODE, aecore_suite_utils:sign_keys()),
+    {_, MinerPubkey} = aecore_suite_utils:sign_keys(?NODE),
     MinerAddress = aeser_api_encoder:encode(account_pubkey, MinerPubkey),
     {ok, 200, #{<<"balance">> := _ActualBalance}} =
         get_accounts_by_pubkey_sut(MinerAddress),
