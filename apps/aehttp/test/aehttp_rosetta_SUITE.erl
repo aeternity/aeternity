@@ -277,8 +277,9 @@ block_spend_tx(Config) ->
     SwaggerVsn = proplists:get_value(swagger_version, Config, oas3),
     aecore_suite_utils:use_swagger(SwaggerVsn),
 
-    {FromPubKey, FromPrivKey} = aehttp_integration_SUITE:initialize_account(100000000 * aec_test_utils:min_gas_price()),
-    {ToPubKey, _ToPrivKey} = aehttp_integration_SUITE:initialize_account(100000000 * aec_test_utils:min_gas_price()),
+    StartBalance = 100000000 * aec_test_utils:min_gas_price(),
+    {FromPubKey, FromPrivKey} = aehttp_integration_SUITE:initialize_account(StartBalance),
+    {ToPubKey, _ToPrivKey} = aehttp_integration_SUITE:initialize_account(StartBalance),
 
     %% Check mempool empty
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
@@ -302,6 +303,18 @@ block_spend_tx(Config) ->
 
     aecore_suite_utils:use_rosetta(),
 
+    FromPubKeyEnc = aeser_api_encoder:encode(account_pubkey, FromPubKey),
+    ToPubKeyEnc = aeser_api_encoder:encode(account_pubkey, ToPubKey),
+
+    %% Test Rosetta /account/balance API
+    {ok, 200, #{<<"balances">> :=
+                     [#{<<"currency">> :=
+                            #{<<"decimals">> := 18,
+                              <<"symbol">> := <<"aettos">>},
+                        <<"value">> := FromBalance}]}} = get_balance_sut(FromPubKeyEnc),
+
+    ?assertEqual(integer_to_binary(StartBalance - 1 - ?SPEND_FEE), FromBalance),
+
     %% Seems that mine_blocks_until_txs_on_chain always stops at the block
     %% containing the Tx. Or maybe this is a race condition??
     {ok, 200, #{<<"current_block_identifier">> := #{<<"hash">> := TopKeyBlockHash}}} =
@@ -315,6 +328,18 @@ block_spend_tx(Config) ->
         get_block_sut(TopKeyBlockHash),
 
     ?assertMatch([_], Transactions),
+
+    {ok, 200, #{<<"balances">> :=
+                     [#{<<"currency">> :=
+                            #{<<"decimals">> := 18,
+                              <<"symbol">> := <<"aettos">>},
+                        <<"value">> := FromBalance}]}} = get_balance_at_hash_sut(FromPubKeyEnc, KeyBlockHash),
+
+    {ok, 200, #{<<"balances">> :=
+                     [#{<<"currency">> :=
+                            #{<<"decimals">> := 18,
+                              <<"symbol">> := <<"aettos">>},
+                        <<"value">> := FromBalance}]}} = get_balance_at_height_sut(FromPubKeyEnc, Height),
 
     %% Expect a Fee, and the two balance changes
     [#{<<"operations">> := [FromOp, ToOp, FeeOp]}] = Transactions,
@@ -808,6 +833,29 @@ get_block_transaction_sut(KeyBlockHash, Height, TxHash) ->
                                     network => aec_governance:get_network_id()},
             transaction_identifier => #{hash => TxHash}},
     http_request(Host, post, "block/transaction", Body).
+
+get_balance_sut(AccountPubKey) ->
+    Host = rosetta_address(),
+    Body = #{network_identifier => #{blockchain => <<"aeternity">>,
+                                     network => aec_governance:get_network_id()},
+             account_identifier => #{address => AccountPubKey}},
+    http_request(Host, post, "account/balance", Body).
+
+get_balance_at_hash_sut(AccountPubKey, Hash) ->
+    Host = rosetta_address(),
+    Body = #{network_identifier => #{blockchain => <<"aeternity">>,
+                                     network => aec_governance:get_network_id()},
+             block_identifier =>  #{hash => Hash},
+             account_identifier => #{address => AccountPubKey}},
+    http_request(Host, post, "account/balance", Body).
+
+get_balance_at_height_sut(AccountPubKey, Height) ->
+    Host = rosetta_address(),
+    Body = #{network_identifier => #{blockchain => <<"aeternity">>,
+                                     network => aec_governance:get_network_id()},
+             block_identifier =>  #{index => Height},
+             account_identifier => #{address => AccountPubKey}},
+    http_request(Host, post, "account/balance", Body).
 
 sign_tx(Tx, Privkey) ->
     STx = aec_test_utils:sign_tx(Tx, [Privkey]),

@@ -20,11 +20,12 @@
 
 -define(TC(Expr, Msg), begin {Time, Res} = timer:tc(fun() -> Expr end), lager:debug("[~p] Msg = ~p", [Time, Msg]), Res end).
 
--define(ROSETTA_ERR_NW_STATUS_ERR,   1).
--define(ROSETTA_ERR_INVALID_NETWORK, 2).
--define(ROSETTA_ERR_BLOCK_NOT_FOUND, 3).
--define(ROSETTA_ERR_CHAIN_TOO_SHORT, 4).
--define(ROSETTA_ERR_TX_NOT_FOUND,    5).
+-define(ROSETTA_ERR_NW_STATUS_ERR,      1).
+-define(ROSETTA_ERR_INVALID_NETWORK,    2).
+-define(ROSETTA_ERR_BLOCK_NOT_FOUND,    3).
+-define(ROSETTA_ERR_CHAIN_TOO_SHORT,    4).
+-define(ROSETTA_ERR_TX_NOT_FOUND,       5).
+-define(ROSETTA_ERR_TX_INVALID_ACCOUNT, 6).
 
 -spec forbidden( Mod :: module(), OperationID :: atom() ) -> boolean().
 forbidden(_Mod, _OpId) -> false.
@@ -161,8 +162,41 @@ handle_request_('networkStatus', _, _Context) ->
             {200, [], ErrResp}
     end;
 
-handle_request_('accountBalance', _, _Context) ->
-    {501, [], #{}};
+handle_request_('accountBalance', #{'AccountBalanceRequest' :=
+                                        #{<<"network_identifier">> :=
+                                            #{<<"blockchain">> := <<"aeternity">>,
+                                              <<"network">> := Network},
+                                          <<"account_identifier">> :=
+                                            #{<<"address">> := Address}} = Req}, _Context) ->
+    try
+        case aec_governance:get_network_id() of
+            Network ->
+                ok;
+            _ ->
+                throw(invalid_network)
+        end,
+        AllowedTypes = [account_pubkey, contract_pubkey],
+        case aeser_api_encoder:safe_decode({id_hash, AllowedTypes}, Address) of
+            {ok, Id} ->
+                {_IdType, Pubkey} = aeser_id:specialize(Id),
+                %% Request might specify a block. If absent use top block
+                {Block, Account} = retrieve_block_and_account_from_partial(Pubkey, Req),
+                Balance = aec_accounts:balance(Account),
+                Resp = #{<<"balances">> => [amount(Balance)],
+                         <<"block_identifier">> => format_block_identifier(Block)},
+                {200, [], Resp};
+            _ ->
+                throw(invalid_pubkey)
+        end
+    catch throw:invalid_network ->
+            {200, [], rosetta_error_response(?ROSETTA_ERR_INVALID_NETWORK)};
+          throw:block_not_found ->
+            {200, [], rosetta_error_response(?ROSETTA_ERR_BLOCK_NOT_FOUND)};
+          throw:chain_too_short ->
+            {200, [], rosetta_error_response(?ROSETTA_ERR_CHAIN_TOO_SHORT)};
+          throw:invalid_pubkey ->
+            {200, [], rosetta_error_response(?ROSETTA_ERR_TX_INVALID_ACCOUNT)}
+    end;
 handle_request_('accountCoins', _, _Context) ->
     {501, [], #{}};
 
@@ -178,20 +212,7 @@ handle_request_('block', #{'BlockRequest' :=
             _ ->
                 throw(invalid_network)
         end,
-        Block = case maps:get(<<"block_identifier">>, Req) of
-                    #{<<"index">> := Index} ->
-                        {ok, Block0} = aeapi:key_block_by_height(Index),
-                        Block0;
-                    #{<<"hash">> := Hash} ->
-                        case aeapi:key_block_by_hash(Hash) of
-                            error ->
-                                throw(block_not_found);
-                            {ok, Block0} ->
-                                Block0
-                        end;
-                    _ ->
-                        aeapi:prev_block(aeapi:current_block())
-                end,
+        Block = retrieve_block_from_partial(Req),
         BlockFmt = format_block(Block),
         Resp = BlockFmt#{<<"metadata">> => #{}},
         {200, [], Resp}
@@ -673,17 +694,19 @@ rosetta_error_response(ErrCode, Retriable, _Details) when is_integer(ErrCode),
     %         Err#{<<"details">> => Details}
     % end.
 
-rosetta_err_msg(?ROSETTA_ERR_NW_STATUS_ERR)   -> <<"Error determining networkStatus">>;
-rosetta_err_msg(?ROSETTA_ERR_INVALID_NETWORK) -> <<"Invalid network specified">>;
-rosetta_err_msg(?ROSETTA_ERR_BLOCK_NOT_FOUND) -> <<"Specified block not found">>;
-rosetta_err_msg(?ROSETTA_ERR_TX_NOT_FOUND)    -> <<"Specified transaction not found">>;
-rosetta_err_msg(?ROSETTA_ERR_CHAIN_TOO_SHORT) -> <<"Chain too short">>.
+rosetta_err_msg(?ROSETTA_ERR_NW_STATUS_ERR)      -> <<"Error determining networkStatus">>;
+rosetta_err_msg(?ROSETTA_ERR_INVALID_NETWORK)    -> <<"Invalid network specified">>;
+rosetta_err_msg(?ROSETTA_ERR_BLOCK_NOT_FOUND)    -> <<"Specified block not found">>;
+rosetta_err_msg(?ROSETTA_ERR_TX_NOT_FOUND)       -> <<"Specified transaction not found">>;
+rosetta_err_msg(?ROSETTA_ERR_CHAIN_TOO_SHORT)    -> <<"Chain too short">>;
+rosetta_err_msg(?ROSETTA_ERR_TX_INVALID_ACCOUNT) -> <<"Invalid account format">>.
 
-rosetta_err_retriable(?ROSETTA_ERR_NW_STATUS_ERR)   -> true;
-rosetta_err_retriable(?ROSETTA_ERR_BLOCK_NOT_FOUND) -> true;
-rosetta_err_retriable(?ROSETTA_ERR_TX_NOT_FOUND)    -> true;
-rosetta_err_retriable(?ROSETTA_ERR_CHAIN_TOO_SHORT) -> true;
-rosetta_err_retriable(_)                            -> false.
+rosetta_err_retriable(?ROSETTA_ERR_NW_STATUS_ERR)      -> true;
+rosetta_err_retriable(?ROSETTA_ERR_BLOCK_NOT_FOUND)    -> true;
+rosetta_err_retriable(?ROSETTA_ERR_TX_NOT_FOUND)       -> true;
+rosetta_err_retriable(?ROSETTA_ERR_CHAIN_TOO_SHORT)    -> true;
+rosetta_err_retriable(?ROSETTA_ERR_TX_INVALID_ACCOUNT) -> false;
+rosetta_err_retriable(_)                               -> false.
 
 retrieve_block(BlockIdentifier) ->
     BlockHeight = maps:get(<<"index">>, BlockIdentifier, undefined),
@@ -708,3 +731,43 @@ retrieve_block(BlockHeight, BlockHash) ->
             throw(block_not_found)
     end.
 
+retrieve_block_from_partial(Req) ->
+    case maps:get(<<"block_identifier">>, Req) of
+        #{<<"index">> := Index} ->
+            {ok, Block0} = aeapi:key_block_by_height(Index),
+            Block0;
+        #{<<"hash">> := Hash} ->
+            case aeapi:key_block_by_hash(Hash) of
+                error ->
+                    throw(block_not_found);
+                {ok, Block0} ->
+                    Block0
+            end;
+        _ ->
+            aeapi:prev_block(aeapi:current_block())
+    end.
+
+%% For rosetta we need to use the state trees from the Keyblock after
+%% the height the Tx is included in
+retrieve_block_and_account_from_partial(PubKey, Req) ->
+    case Req of
+        #{<<"block_identifier">> := #{ <<"index">> := Index}} ->
+            {ok, Block} = aeapi:key_block_by_height(Index),
+            {value, Account} = aec_chain:get_account_at_height(PubKey, Index + 1),
+            {Block, Account};
+        #{<<"block_identifier">> := #{<<"hash">> := Hash}} ->
+            case aeapi:key_block_by_hash(Hash) of
+                error ->
+                    throw(block_not_found);
+                {ok, Block} ->
+                    Height = aec_headers:height(aec_blocks:to_header(Block)),
+                    {value, Account} = aec_chain:get_account_at_height(PubKey, Height + 1),
+                    {Block, Account}
+            end;
+        _ ->
+            TopBlock = aeapi:current_block(),
+            {ok, TopHash} = aec_headers:hash_header(aec_blocks:to_header(TopBlock)),
+            Block = aeapi:prev_block(TopBlock),
+            {value, Account} = aec_chain:get_account_at_hash(PubKey, TopHash),
+            {Block, Account}
+    end.
