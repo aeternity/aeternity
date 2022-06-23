@@ -531,7 +531,7 @@ set_mode(State) ->
     ConsensusModule = consensus_module(State),
     case ConsensusModule:get_type() of
         pow -> set_pow_modes(State);
-        pos -> 
+        pos ->
             HasBeneficiaryConfigured =
                 case get_beneficiary(ConsensusModule) of
                     {error, beneficiary_not_configured} -> false;
