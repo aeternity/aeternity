@@ -222,7 +222,9 @@ handle_request_('block', #{'BlockRequest' :=
           throw:block_not_found ->
             {200, [], rosetta_error_response(?ROSETTA_ERR_BLOCK_NOT_FOUND)};
           throw:chain_too_short ->
-            {200, [], rosetta_error_response(?ROSETTA_ERR_CHAIN_TOO_SHORT)}
+            {200, [], rosetta_error_response(?ROSETTA_ERR_CHAIN_TOO_SHORT)};
+          throw:{dry_run_err, Err} ->
+            dry_run_err(Err)
     end;
 handle_request_('blockTransaction', #{'BlockTransactionRequest' :=
                                           #{<<"block_identifier">> := BlockIdentifier,
@@ -466,7 +468,7 @@ tx_operations(SignedTx, contract_create_tx, Block, Ix) ->
             end;
         {error, Reason} ->
             lager:debug("dry_run_error: ~p", [Reason]),
-            throw(tx_not_found)
+            throw({dry_run_err, Reason})
     end;
 tx_operations(SignedTx, contract_call_tx, Block, Ix) ->
      {_Mod = aect_call_tx, Tx} = aetx:specialize_callback(aetx_sign:tx(SignedTx)),
@@ -500,7 +502,7 @@ tx_operations(SignedTx, contract_call_tx, Block, Ix) ->
             end;
         {error, Reason} ->
             lager:debug("dry_run_error: ~p", [Reason]),
-            throw(tx_not_found)
+            throw({dry_run_err, Reason})
     end;
 tx_operations(SignedTx, name_preclaim_tx, _Block, Ix) ->
     {aens_preclaim_tx = Mod, Tx} = aetx:specialize_callback(aetx_sign:tx(SignedTx)),
@@ -671,7 +673,7 @@ amount(Amount) ->
 dry_run_err(Err) when is_list(Err) ->
     dry_run_err(list_to_binary(Err));
 dry_run_err(Err) ->
-    {ok, {403, [], #{ reason => <<"Bad request: ", Err/binary>>}}}.
+    {403, [], #{ reason => <<"Bad request: ", Err/binary>>}}.
 
 rosetta_error_response(ErrCode) ->
     rosetta_error_response(ErrCode, rosetta_err_retriable(ErrCode)).
