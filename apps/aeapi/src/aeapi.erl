@@ -1,12 +1,15 @@
+%%%-------------------------------------------------------------------
+%%% @copyright (C) 2022, Aeternity Crypto Foundation
+%%% @doc Provide a common API module to parts of the system
+%%% external interfaces interact with including
+%%% the various JSON interfaces, CLI and GUI.
+%%%
+%%% Brings together in one place a useful subset of internal APIs for looking
+%%% up blocks, accounts etc, and provides routines to convert between internal 
+%%% and internal forms of hashes, keys etc.
+%%% @end
+%%%-------------------------------------------------------------------
 -module(aeapi).
-
-%% @doc Provide a common API module to parts of the system
-%% external interfaces interact with including
-%% the various JSON interfaces, CLI and GUI.
-%%
-%% Brings together in one place a useful subset of internal APIs for looking
-%% up blocks, accounts etc, and provides routines to convert between internal 
-%% and internal forms of hashes, keys etc.
 
 -export([
          blockchain_name/0
