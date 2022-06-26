@@ -125,7 +125,8 @@ handle_request_('networkStatus', _, _Context) ->
                            0 ->
                                TopBlock;
                            _ ->
-                               aeapi:prev_block(TopBlock)
+                               {ok, Prev} = aeapi:prev_block(TopBlock),
+                               Prev
                        end,
         CurrentBlockIdentifier = format_block_identifier(CurrentBlock),
         CurrentBlockTimestamp = aec_blocks:time_in_msecs(CurrentBlock),
@@ -145,7 +146,7 @@ handle_request_('networkStatus', _, _Context) ->
         Peers = aeapi:connected_peers(),
         PeersFormatted = lists:map(
                            fun(Peer) ->
-                                   #{<<"peer_id">> => aeser_api_encoder:encode(peer_pubkey, aec_peer:id(Peer)),
+                                   #{<<"peer_id">> => aeapi:format(peer_pubkey, aec_peer:id(Peer)),
                                      <<"metadata">> => #{<<"ip">> => aec_peer:ip(Peer),
                                                          <<"port">> => aec_peer:port(Peer)}}
                            end, Peers),
@@ -176,9 +177,9 @@ handle_request_('accountBalance', #{'AccountBalanceRequest' :=
                 throw(invalid_network)
         end,
         AllowedTypes = [account_pubkey, contract_pubkey],
-        case aeser_api_encoder:safe_decode({id_hash, AllowedTypes}, Address) of
+        case aeapi:create_id(Address, AllowedTypes) of
             {ok, Id} ->
-                {_IdType, Pubkey} = aeser_id:specialize(Id),
+                Pubkey = aeapi:id_value(Id),
                 %% Request might specify a block. If absent use top block
                 {Block, Account} = retrieve_block_and_account_from_partial(Pubkey, Req),
                 Balance = aec_accounts:balance(Account),
@@ -236,7 +237,7 @@ handle_request_('blockTransaction', #{'BlockTransactionRequest' :=
         %%
         %% Decode the transaction hash
         %%
-        TxHashInternal = case aeser_api_encoder:decode(TxHash) of
+        TxHashInternal = case aeapi:decode(TxHash) of
                              {tx_hash, TxHash0} ->
                                  TxHash0;
                              _ ->
@@ -300,7 +301,7 @@ handle_request_('mempool',
                       #{<<"network_identifier">> :=
                             #{<<"blockchain">> := <<"aeternity">>}}}, _Context) ->
     {ok, SignedTxList} = aec_tx_pool:peek(infinity),
-    SignedTxHashList = [#{<<"hash">> => aeapi:printable_tx_hash(X)} || X <- SignedTxList],
+    SignedTxHashList = [#{<<"hash">> => aeapi:format(tx_hash, aetx_sign:hash(X))} || X <- SignedTxList],
     Resp = #{<<"transaction_identifiers">> => SignedTxHashList},
     {200, [], Resp};
 handle_request_('mempoolTransaction',
@@ -312,7 +313,7 @@ handle_request_('mempoolTransaction',
     %%
     %% Decode the transaction hash
     %%
-    TxHashInternal = case aeser_api_encoder:decode(TxHash) of
+    TxHashInternal = case aeapi:decode(TxHash) of
                          {tx_hash, TxHash0} ->
                              TxHash0;
                          _ ->
@@ -388,7 +389,7 @@ rosetta_errors() ->
 
 -spec format_block(aec_blocks:block()) -> #{}.
 format_block(Block) ->
-    PrevBlock = aeapi:prev_block(Block),
+    {ok, PrevBlock} = aeapi:prev_block(Block),
     #{
       <<"block_identifier">> => format_block_identifier(Block),
       <<"parent_block_identifier">> => format_block_identifier(PrevBlock),
@@ -400,8 +401,9 @@ format_block_identifier(undefined) ->
     #{<<"index">> => 0,
       <<"hash">> => <<>>};
 format_block_identifier(Block) ->
+    {ok, Hash} = aec_headers:hash_header(aec_blocks:to_header(Block)),
     #{<<"index">> => aeapi:block_height(Block),
-      <<"hash">> => aeapi:printable_block_hash(Block)}.
+      <<"hash">> => aeapi:format(key_block_hash, Hash)}.
 
 format_block_txs(Block) ->
     Txs = aeapi:block_txs(Block),
@@ -413,7 +415,7 @@ format_tx(SignedTx, Block) ->
     Tx = aetx_sign:tx(SignedTx),
     TxType = aetx:tx_type(Tx),
     #{
-      <<"transaction_identifier">> => #{<<"hash">> => aeser_api_encoder:encode(tx_hash, aetx_sign:hash(SignedTx))},
+      <<"transaction_identifier">> => #{<<"hash">> => aeapi:format(tx_hash, aetx_sign:hash(SignedTx))},
       <<"operations">> => tx_operations(SignedTx, TxType, Block, 0)
      }.
 
@@ -422,10 +424,8 @@ tx_operations(SignedTx, spend_tx, _Block, Ix) ->
     %% Balance changes for a SpendTx are simple - Fees and Amount from the 
     %% Sending account, Amount to the Receiving account.
     {Mod, SpendTx} = aetx:specialize_callback(aetx_sign:tx(SignedTx)),
-    From = aeser_api_encoder:encode(account_pubkey, Mod:sender_pubkey(SpendTx)),
-    %% The magic value 'id_hash' here does feel a little like it's
-    %% an an entry to an obfuscated code competition ;)
-    To = aeser_api_encoder:encode(id_hash, Mod:recipient_id(SpendTx)),
+    From = aeapi:format(account_pubkey, Mod:sender_pubkey(SpendTx)),
+    To = aeapi:format_id(Mod:recipient_id(SpendTx)),
     Type = aetx:type_to_swagger_name(spend_tx),
     [spend_tx_op(Ix, Type, From, -Mod:amount(SpendTx)),
      spend_tx_op(Ix + 1, Type, To, Mod:amount(SpendTx)),
@@ -439,7 +439,7 @@ tx_operations(SignedTx, contract_create_tx, Block, Ix) ->
     Fee = aect_create_tx:fee(Tx),
     ContractPubKey = aect_create_tx:contract_pubkey(Tx),
     %% Convert the contract id into the matching account id where the contract balance is held
-    ContractAccount = aeser_api_encoder:encode(account_pubkey, ContractPubKey),
+    ContractAccount = aeapi:format(account_pubkey, ContractPubKey),
     %% Dry run the Tx on the original State and capture spend events and fees
      {ok, Hash} = aec_headers:hash_header(aec_blocks:to_header(Block)),
      case aec_dry_run:dry_run(Hash, [], [{tx, aetx_sign:tx(SignedTx)}], [tx_events]) of
@@ -504,12 +504,12 @@ tx_operations(SignedTx, contract_call_tx, Block, Ix) ->
     end;
 tx_operations(SignedTx, name_preclaim_tx, _Block, Ix) ->
     {aens_preclaim_tx = Mod, Tx} = aetx:specialize_callback(aetx_sign:tx(SignedTx)),
-    From = aeser_api_encoder:encode(account_pubkey, Mod:origin(Tx)),
+    From = aeapi:format(account_pubkey, Mod:origin(Tx)),
     Type = aetx:type_to_swagger_name(name_preclaim_tx),
     [spend_tx_op(Ix, Type, From, -Mod:fee(Tx))];
 tx_operations(SignedTx, name_claim_tx, _Block, Ix) ->
     {aens_claim_tx = Mod, Tx} = aetx:specialize_callback(aetx_sign:tx(SignedTx)),
-    From = aeser_api_encoder:encode(account_pubkey, Mod:origin(Tx)),
+    From = aeapi:format(account_pubkey, Mod:origin(Tx)),
     Type = aetx:type_to_swagger_name(name_claim_tx),
     %% For a subsequent bid this should be:
     %% Original bidder gets refund
@@ -521,38 +521,38 @@ tx_operations(SignedTx, name_claim_tx, _Block, Ix) ->
      spend_tx_op(Ix + 1, Type, From, -Mod:name_fee(Tx))];
 tx_operations(SignedTx, name_update_tx, _Block, Ix) ->
     {aens_update_tx = Mod, Tx} = aetx:specialize_callback(aetx_sign:tx(SignedTx)),
-    From = aeser_api_encoder:encode(account_pubkey, Mod:origin(Tx)),
+    From = aeapi:format(account_pubkey, Mod:origin(Tx)),
     Type = aetx:type_to_swagger_name(name_update_tx),
     [spend_tx_op(Ix, Type, From, -Mod:fee(Tx))];
 tx_operations(SignedTx, name_transfer_tx, _Block, Ix) ->
     {aens_transfer_tx = Mod, Tx} = aetx:specialize_callback(aetx_sign:tx(SignedTx)),
-    From = aeser_api_encoder:encode(account_pubkey, Mod:origin(Tx)),
+    From = aeapi:format(account_pubkey, Mod:origin(Tx)),
     Type = aetx:type_to_swagger_name(name_transfer_tx),
     [spend_tx_op(Ix, Type, From, -Mod:fee(Tx))];
 tx_operations(SignedTx, name_revoke_tx, _Block, Ix) ->
     {aens_revoke_tx = Mod, Tx} = aetx:specialize_callback(aetx_sign:tx(SignedTx)),
-    From = aeser_api_encoder:encode(account_pubkey, Mod:origin(Tx)),
+    From =  aeapi:format(account_pubkey, Mod:origin(Tx)),
     Type = aetx:type_to_swagger_name(name_revoke_tx),
     [spend_tx_op(Ix, Type, From, -Mod:fee(Tx))];
 tx_operations(SignedTx, oracle_register_tx, _Block, Ix) ->
     {aeo_register_tx = Mod, Tx} = aetx:specialize_callback(aetx_sign:tx(SignedTx)),
-    From = aeser_api_encoder:encode(account_pubkey, Mod:origin(Tx)),
+    From = aeapi:format(account_pubkey, Mod:origin(Tx)),
     Type = aetx:type_to_swagger_name(oracle_register_tx),
     [spend_tx_op(Ix, Type, From, -Mod:fee(Tx))];
 tx_operations(SignedTx, oracle_extend_tx, _Block, Ix) ->
     {aeo_extend_tx = Mod, Tx} = aetx:specialize_callback(aetx_sign:tx(SignedTx)),
-    From = aeser_api_encoder:encode(account_pubkey, Mod:origin(Tx)),
+    From = aeapi:format(account_pubkey, Mod:origin(Tx)),
     Type = aetx:type_to_swagger_name(oracle_extend_tx),
     [spend_tx_op(Ix, Type, From, -Mod:fee(Tx))];
 tx_operations(SignedTx, oracle_query_tx, _Block, Ix) ->
     {aeo_query_tx = Mod, Tx} = aetx:specialize_callback(aetx_sign:tx(SignedTx)),
-    From = aeser_api_encoder:encode(account_pubkey, Mod:sender_pubkey(Tx)),
+    From = aeapi:format(account_pubkey, Mod:sender_pubkey(Tx)),
     Type = aetx:type_to_swagger_name(oracle_query_tx),
     [spend_tx_op(Ix, Type, From, -Mod:fee(Tx)),
      spend_tx_op(Ix + 1, Type, From, -Mod:query_fee(Tx))];
 tx_operations(SignedTx, oracle_response_tx, Block, Ix) ->
     {aeo_response_tx = Mod, Tx} = aetx:specialize_callback(aetx_sign:tx(SignedTx)),
-    From = aeser_api_encoder:encode(account_pubkey, Mod:origin(Tx)),
+    From = aeapi:format(account_pubkey, Mod:origin(Tx)),
     Type = aetx:type_to_swagger_name(oracle_response_tx),
     Header = aec_blocks:to_header(Block),
     {ok, Hash} = aec_headers:hash_header(Header),
@@ -572,21 +572,21 @@ tx_operations(SignedTx, oracle_response_tx, Block, Ix) ->
     end;
 tx_operations(SignedTx, channel_create_tx, _Block, Ix) ->
     {aesc_create_tx = Mod, Tx} = aetx:specialize_callback(aetx_sign:tx(SignedTx)),
-    Initiator = aeser_api_encoder:encode(account_pubkey, Mod:initiator_pubkey(Tx)),
-    Responder = aeser_api_encoder:encode(account_pubkey, Mod:responder_pubkey(Tx)),
+    Initiator = aeapi:format(account_pubkey, Mod:initiator_pubkey(Tx)),
+    Responder = aeapi:format(account_pubkey, Mod:responder_pubkey(Tx)),
     Type = aetx:type_to_swagger_name(channel_create_tx),
     [spend_tx_op(Ix, Type, Initiator, -Mod:initiator_amount(Tx)),
      spend_tx_op(Ix + 1, Type, Initiator, -Mod:fee(Tx)),
      spend_tx_op(Ix + 2, Type, Responder, -Mod:responder_amount(Tx))];
 tx_operations(SignedTx, channel_deposit_tx, _Block, Ix) ->
     {aesc_deposit_tx = Mod, Tx} = aetx:specialize_callback(aetx_sign:tx(SignedTx)),
-    From = aeser_api_encoder:encode(account_pubkey, aesc_deposit_tx:origin(Tx)),
+    From = aeapi:format(account_pubkey, aesc_deposit_tx:origin(Tx)),
     Type = aetx:type_to_swagger_name(channel_deposit_tx),
     [spend_tx_op(Ix, Type, From, -Mod:amount(Tx)),
      spend_tx_op(Ix + 1, Type, From, -Mod:fee(Tx))];
 tx_operations(SignedTx, channel_withdraw_tx, _Block, Ix) ->
     {aesc_withdraw_tx = Mod, Tx} = aetx:specialize_callback(aetx_sign:tx(SignedTx)),
-    To = aeser_api_encoder:encode(account_pubkey, aesc_withdraw_tx:origin(Tx)),
+    To = aeapi:format(account_pubkey, aesc_withdraw_tx:origin(Tx)),
     Type = aetx:type_to_swagger_name(channel_withdraw_tx),
     [spend_tx_op(Ix, Type, To, -Mod:fee(Tx)),
      spend_tx_op(Ix + 1, Type, To, Mod:amount(Tx))];
@@ -596,8 +596,8 @@ tx_operations(SignedTx, channel_close_mutual_tx, Block, Ix) ->
     {ok, Hash} = aec_headers:hash_header(Header),
     {ok, Trees} = aec_chain:get_block_state(Hash),
     {ok, [InitPubkey, RespPubkey]} = aesc_close_mutual_tx:signers(Tx, Trees),
-    Initiator = aeser_api_encoder:encode(account_pubkey, InitPubkey),
-    Responder = aeser_api_encoder:encode(account_pubkey, RespPubkey),
+    Initiator = aeapi:format(account_pubkey, InitPubkey),
+    Responder = aeapi:format(account_pubkey, RespPubkey),
     Type = aetx:type_to_swagger_name(channel_close_mutual_tx),
     %% Weirdly in the normal Payer case the fees are not charged
     [spend_tx_op(Ix, Type, Initiator, Mod:initiator_amount_final(Tx)),
@@ -616,7 +616,7 @@ tx_operations(SignedTx, channel_close_mutual_tx, Block, Ix) ->
 tx_operations(SignedTx, ga_meta_tx, Block, Ix) ->
     {aega_meta_tx = Mod, Tx} = aetx:specialize_callback(aetx_sign:tx(SignedTx)),
     Type = aetx:type_to_swagger_name(ga_meta_tx),
-    Owner = aeser_api_encoder:encode(account_pubkey, aega_meta_tx:ga_pubkey(Tx)),
+    Owner = aeapi:format(account_pubkey, aega_meta_tx:ga_pubkey(Tx)),
     AuthCost = aega_meta_tx:fee(Tx), % + aega_meta_tx:gas_price(Tx) * aega_meta_tx:gas(Tx),
     InnerTx = Mod:tx(Tx),
     InnerType = aetx:tx_type(aetx_sign:tx(InnerTx)),
@@ -734,17 +734,23 @@ retrieve_block(BlockHeight, BlockHash) ->
 retrieve_block_from_partial(Req) ->
     case maps:get(<<"block_identifier">>, Req) of
         #{<<"index">> := Index} ->
-            {ok, Block0} = aeapi:key_block_by_height(Index),
-            Block0;
+            {ok, Block} = aeapi:key_block_by_height(Index),
+            Block;
         #{<<"hash">> := Hash} ->
             case aeapi:key_block_by_hash(Hash) of
                 error ->
                     throw(block_not_found);
-                {ok, Block0} ->
-                    Block0
+                {ok, Block} ->
+                    Block
             end;
         _ ->
-            aeapi:prev_block(aeapi:current_block())
+            case aeapi:top_key_block() of
+                error ->
+                    throw(block_not_found);
+                {ok, Block} ->
+                    {ok, PrevBlock} = aeapi:prev_block(Block),
+                    PrevBlock
+            end
     end.
 
 %% For rosetta we need to use the state trees from the Keyblock after
@@ -765,9 +771,9 @@ retrieve_block_and_account_from_partial(PubKey, Req) ->
                     {Block, Account}
             end;
         _ ->
-            TopBlock = aeapi:current_block(),
+            {ok, TopBlock} = aeapi:top_key_block(),
             {ok, TopHash} = aec_headers:hash_header(aec_blocks:to_header(TopBlock)),
-            Block = aeapi:prev_block(TopBlock),
+            {ok, Block} = aeapi:prev_block(TopBlock),
             {value, Account} = aec_chain:get_account_at_hash(PubKey, TopHash),
             {Block, Account}
     end.

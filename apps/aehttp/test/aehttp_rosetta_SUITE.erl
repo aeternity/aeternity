@@ -223,11 +223,11 @@ network_status(Config) ->
        <<"peers">> := PeersFormatted}} =
         get_status_sut(),
 
-    ?assertMatch({ok, _}, aeser_api_encoder:safe_decode(key_block_hash, GenesisKeyBlockHash)),
+    ?assertMatch({ok, _}, aeapi:safe_decode(key_block_hash, GenesisKeyBlockHash)),
     ?assertMatch(X when is_boolean(X), Synced),
     ?assertMatch(true, is_integer(CurrentBlockTimestamp)),
     ?assertMatch([], PeersFormatted),
-    ?assertMatch({ok, _}, aeser_api_encoder:safe_decode(key_block_hash, TopKeyBlockHash)),
+    ?assertMatch({ok, _}, aeapi:safe_decode(key_block_hash, TopKeyBlockHash)),
     ok.
 
 get_status_sut() ->
@@ -248,7 +248,8 @@ block_key_only(Config) ->
     aecore_suite_utils:mine_key_blocks(Node, ToMine),
     {ok, [KeyBlock]} = aecore_suite_utils:mine_key_blocks(Node, 1),
     true = aec_blocks:is_key_block(KeyBlock),
-    KeyHash = aeapi:printable_block_hash(KeyBlock),
+    {ok, Hash} = aec_headers:hash_header(aec_blocks:to_header(KeyBlock)),
+    KeyHash = aeapi:format(key_block_hash, Hash),
     {ok,
      200,
      #{<<"block_identifier">> := #{<<"hash">> := KeyBlockHash, <<"index">> := _Height},
@@ -256,11 +257,11 @@ block_key_only(Config) ->
        <<"parent_block_identifier">> := #{<<"hash">> := ParentKeyBlockHash},
        <<"transactions">> := Transactions}} =
         get_block_sut(KeyHash),
-    ?assertMatch({ok, _}, aeser_api_encoder:safe_decode(key_block_hash, KeyBlockHash)),
+    ?assertMatch({ok, _}, aeapi:safe_decode(key_block_hash, KeyBlockHash)),
     ?assertMatch(KeyHash, KeyBlockHash),
     ?assertMatch(true, is_integer(CurrentBlockTimestamp)),
     ?assertMatch([], Transactions),
-    ?assertMatch({ok, _}, aeser_api_encoder:safe_decode(key_block_hash, ParentKeyBlockHash)),
+    ?assertMatch({ok, _}, aeapi:safe_decode(key_block_hash, ParentKeyBlockHash)),
     ok.
 
 %% Test fetch of SpendTx
@@ -303,8 +304,8 @@ block_spend_tx(Config) ->
 
     aecore_suite_utils:use_rosetta(),
 
-    FromPubKeyEnc = aeser_api_encoder:encode(account_pubkey, FromPubKey),
-    ToPubKeyEnc = aeser_api_encoder:encode(account_pubkey, ToPubKey),
+    FromPubKeyEnc = aeapi:format(account_pubkey, FromPubKey),
+    ToPubKeyEnc = aeapi:format(account_pubkey, ToPubKey),
 
     %% Test Rosetta /account/balance API
     {ok, 200, #{<<"balances">> :=
@@ -356,15 +357,15 @@ block_spend_tx(Config) ->
                               <<"operations">> := [FromOp, ToOp, FeeOp]}}} =
         get_block_transaction_sut(TopKeyBlockHash, Height, SpendTxHash),
 
-    FromPubKeyEnc = aeser_api_encoder:encode(account_pubkey, FromPubKey),
-    ToPubKeyEnc = aeser_api_encoder:encode(account_pubkey, ToPubKey),
+    FromPubKeyEnc = aeapi:format(account_pubkey, FromPubKey),
+    ToPubKeyEnc = aeapi:format(account_pubkey, ToPubKey),
     assertBalanceChanges(SpendTxHash, [{FromPubKeyEnc, -1},
                                         {ToPubKeyEnc, 1},
                                         {FromPubKeyEnc, -?SPEND_FEE} ]),
 
-    ?assertMatch({ok, _}, aeser_api_encoder:safe_decode(key_block_hash, KeyBlockHash)),
+    ?assertMatch({ok, _}, aeapi:safe_decode(key_block_hash, KeyBlockHash)),
     ?assertMatch(true, is_integer(CurrentBlockTimestamp)),
-    ?assertMatch({ok, _}, aeser_api_encoder:safe_decode(key_block_hash, ParentKeyBlockHash)),
+    ?assertMatch({ok, _}, aeapi:safe_decode(key_block_hash, ParentKeyBlockHash)),
     ok.
 
 block_create_contract_tx(Config) ->
@@ -382,9 +383,9 @@ block_create_contract_tx(Config) ->
     {OwnerPubKey, OwnerPrivKey} = aehttp_integration_SUITE:initialize_account(100000000 * aec_test_utils:min_gas_price()),
     {ToPubKey, _ToPrivKey} = aehttp_integration_SUITE:initialize_account(200000000 * aec_test_utils:min_gas_price()),
 
-    OwnerAccountPubKey = aeser_api_encoder:encode(account_pubkey, OwnerPubKey),
+    OwnerAccountPubKey = aeapi:format(account_pubkey, OwnerPubKey),
     {ok, 200, #{<<"balance">> := OwnerBalance}} = aehttp_integration_SUITE:get_accounts_by_pubkey_sut(OwnerAccountPubKey),
-    ToAccountPubKey = aeser_api_encoder:encode(account_pubkey, ToPubKey),
+    ToAccountPubKey = aeapi:format(account_pubkey, ToPubKey),
     {ok, 200, #{<<"balance">> := ToBalance}} = aehttp_integration_SUITE:get_accounts_by_pubkey_sut(ToAccountPubKey),
     %% ------------------ Contract Create ---------------------------
 
@@ -402,7 +403,7 @@ block_create_contract_tx(Config) ->
     CreateGasPrice = aec_test_utils:min_gas_price(),
     CreateFee = 400000 * aec_test_utils:min_gas_price(),
     ValidEncoded =
-              #{owner_id => aeser_api_encoder:encode(account_pubkey, OwnerPubKey),
+              #{owner_id => aeapi:format(account_pubkey, OwnerPubKey),
                 nonce => Nonce,
                 code => EncodedCode,
                 vm_version => aect_test_utils:latest_sophia_vm_version(),
@@ -456,8 +457,8 @@ block_create_contract_tx(Config) ->
     ?assertEqual(OwnerBalanceAfterCreate, OwnerBalance + binary_to_integer(FromDelta) + binary_to_integer(FeesDelta)),
 
     %% Convert the contract id into the matching account id
-    {_, ContractPubKey} = aeser_api_encoder:decode(ContractPubKeyEnc),
-    ContractAccountPubKey = aeser_api_encoder:encode(account_pubkey, ContractPubKey),
+    {_, ContractPubKey} = aeapi:decode(ContractPubKeyEnc),
+    ContractAccountPubKey = aeapi:format(account_pubkey, ContractPubKey),
 
     %% Fetch the contract Balance
     %% Temp switch to the native http api until we have the balance Rosetta Op
@@ -477,9 +478,9 @@ block_create_contract_tx(Config) ->
     aecore_suite_utils:use_swagger(SwaggerVsn),
     %% Call the contract, sending 15000 of the 20000 balance to the To Account
     %% This should generate a Chain.spend trace within the contract execution
-    Args = [aeser_api_encoder:encode(account_pubkey, ToPubKey), "15000"],
+    Args = [aeapi:format(account_pubkey, ToPubKey), "15000"],
     {ok, CallData} = encode_call_data(spend_test, "spend", Args),
-    ContractCallEncoded = #{ caller_id => aeser_api_encoder:encode(account_pubkey, OwnerPubKey),
+    ContractCallEncoded = #{ caller_id => aeapi:format(account_pubkey, OwnerPubKey),
                               contract_id => ContractPubKeyEnc,
                               call_data   => CallData,
                               abi_version => aect_test_utils:latest_sophia_abi_version(),
@@ -541,9 +542,9 @@ block_create_contract_tx(Config) ->
     aecore_suite_utils:use_swagger(SwaggerVsn),
     %% Call the contract, attempting to send amount 500 to a non payable entry point
     %% This should just consume all the fees but not take the amount
-    ErrArgs = [aeser_api_encoder:encode(account_pubkey, ToPubKey), "2000"],
+    ErrArgs = [aeapi:format(account_pubkey, ToPubKey), "2000"],
     {ok, CallDataErr} = encode_call_data(spend_test, "spend", ErrArgs),
-    ContractCallErrEncoded = #{ caller_id => aeser_api_encoder:encode(account_pubkey, OwnerPubKey),
+    ContractCallErrEncoded = #{ caller_id => aeapi:format(account_pubkey, OwnerPubKey),
                               contract_id => ContractPubKeyEnc,
                               call_data   => CallDataErr,
                               abi_version => aect_test_utils:latest_sophia_abi_version(),
@@ -596,9 +597,9 @@ block_create_channel_tx(Config) ->
     {InitiatorPubKey, InitiatorPrivKey} = aehttp_integration_SUITE:initialize_account(1000000000 * aec_test_utils:min_gas_price()),
     {ResponderPubKey, ResponderPrivKey} = aehttp_integration_SUITE:initialize_account(2000000000 * aec_test_utils:min_gas_price()),
 
-    InitiatorAccountPubKey = aeser_api_encoder:encode(account_pubkey, InitiatorPubKey),
+    InitiatorAccountPubKey = aeapi:format(account_pubkey, InitiatorPubKey),
     {ok, 200, #{<<"balance">> := InitiatorBalance}} = aehttp_integration_SUITE:get_accounts_by_pubkey_sut(InitiatorAccountPubKey),
-    ResponderAccountPubKey = aeser_api_encoder:encode(account_pubkey, ResponderPubKey),
+    ResponderAccountPubKey = aeapi:format(account_pubkey, ResponderPubKey),
     {ok, 200, #{<<"balance">> := ResponderBalance}} = aehttp_integration_SUITE:get_accounts_by_pubkey_sut(ResponderAccountPubKey),
 
     InitiatorId = aeser_id:create(account, InitiatorPubKey),
@@ -629,7 +630,7 @@ block_create_channel_tx(Config) ->
             delegate_ids => {[], []}}),
 
     SignedChannelCreateTx = aec_test_utils:sign_tx(ChannelCreateTx, [InitiatorPrivKey, ResponderPrivKey]),
-    EncTx  = aeser_api_encoder:encode(transaction, aetx_sign:serialize_to_binary(SignedChannelCreateTx)),
+    EncTx  = aeapi:format(transaction, aetx_sign:serialize_to_binary(SignedChannelCreateTx)),
     {ok, 200, #{<<"tx_hash">> := ChannelCreateTxHash}} = post_tx(EncTx),
 
     {ok, [_]} = rpc(aec_tx_pool, peek, [infinity]),
@@ -688,7 +689,7 @@ block_create_channel_tx(Config) ->
             round => 2}),
 
     SignedChannelDepositTx = aec_test_utils:sign_tx(ChannelDepositTx, [InitiatorPrivKey, ResponderPrivKey]),
-    EncDTx  = aeser_api_encoder:encode(transaction, aetx_sign:serialize_to_binary(SignedChannelDepositTx)),
+    EncDTx  = aeapi:format(transaction, aetx_sign:serialize_to_binary(SignedChannelDepositTx)),
     {ok, 200, #{<<"tx_hash">> := ChannelDepositTxHash}} = post_tx(EncDTx),
 
     {ok, [_]} = rpc(aec_tx_pool, peek, [infinity]),
@@ -736,7 +737,7 @@ block_create_channel_tx(Config) ->
             round => 3}),
 
     SignedChannelWithdrawTx = aec_test_utils:sign_tx(ChannelWithdrawTx, [InitiatorPrivKey, ResponderPrivKey]),
-    EncWTx  = aeser_api_encoder:encode(transaction, aetx_sign:serialize_to_binary(SignedChannelWithdrawTx)),
+    EncWTx  = aeapi:format(transaction, aetx_sign:serialize_to_binary(SignedChannelWithdrawTx)),
     {ok, 200, #{<<"tx_hash">> := ChannelWithdrawTxHash}} = post_tx(EncWTx),
 
     {ok, [_]} = rpc(aec_tx_pool, peek, [infinity]),
@@ -780,7 +781,7 @@ block_create_channel_tx(Config) ->
             nonce => Nonce + 3}),
 
     SignedChannelCloseMutualTx = aec_test_utils:sign_tx(ChannelCloseMutualTx, [InitiatorPrivKey, ResponderPrivKey]),
-    EncFPTx  = aeser_api_encoder:encode(transaction, aetx_sign:serialize_to_binary(SignedChannelCloseMutualTx)),
+    EncFPTx  = aeapi:format(transaction, aetx_sign:serialize_to_binary(SignedChannelCloseMutualTx)),
     {ok, 200, #{<<"tx_hash">> := ChannelCloseMutualTxHash}} = post_tx(EncFPTx),
 
     {ok, [_]} = rpc(aec_tx_pool, peek, [infinity]),
@@ -859,14 +860,14 @@ get_balance_at_height_sut(AccountPubKey, Height) ->
 
 sign_tx(Tx, Privkey) ->
     STx = aec_test_utils:sign_tx(Tx, [Privkey]),
-    aeser_api_encoder:encode(transaction, aetx_sign:serialize_to_binary(STx)).
+    aeapi:format(transaction, aetx_sign:serialize_to_binary(STx)).
 
 post_tx(Tx) ->
     aehttp_integration_SUITE:post_transactions_sut(Tx).
 
 contract_byte_code(ContractName) ->
     {ok, BinCode} = aect_test_utils:compile_contract(ContractName),
-    aeser_api_encoder:encode(contract_bytearray, BinCode).
+    aeapi:format(contract_bytearray, BinCode).
 
 contract_code(ContractName) ->
     {ok, BinSrc} = aect_test_utils:read_contract(ContractName),
@@ -876,7 +877,7 @@ encode_call_data(Name, Fun, Args) when is_atom(Name) ->
     encode_call_data(contract_code(Name), Fun, Args);
 encode_call_data(Src, Fun, Args) ->
     {ok, CallData} = aect_test_utils:encode_call_data(Src, Fun, Args),
-    {ok, aeser_api_encoder:encode(contract_bytearray, CallData)}.
+    {ok, aeapi:format(contract_bytearray, CallData)}.
 
 %% NOTES from a real world Tx
 %% Balance of SpendTx to self of 20000 aettos at height.
