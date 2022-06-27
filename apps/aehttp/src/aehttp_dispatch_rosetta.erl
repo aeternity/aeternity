@@ -12,11 +12,8 @@
 
 -define(READ_Q, http_read).
 -define(WRITE_Q, http_update).
--define(NO_Q, no_queue).
 
 %% dry run limits
--define(DEFAULT_GAS_LIMIT, 6000000).
--define(DEFAULT_CALL_REQ_GAS_LIMIT, 1000000).
 
 -define(TC(Expr, Msg), begin {Time, Res} = timer:tc(fun() -> Expr end), lager:debug("[~p] Msg = ~p", [Time, Msg]), Res end).
 

@@ -26,7 +26,6 @@
 
 -define(NODE, dev1).
 -define(SPEND_FEE, 20000 * aec_test_utils:min_gas_price()).
--define(HTTP_INT, aehttp_integration_SUITE).
 
 all() ->
     [{group, all}].
