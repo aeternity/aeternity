@@ -5,7 +5,7 @@
 -export_type([version/0]).
 %%
 %% @doc
-%% Get the json specification by parsing the swagger.yaml file and change it's version dynamicly.
+%% Get the json specification by parsing the swagger.yaml file and change it's version dynamically.
 -spec json(version()) -> jsx:json_text().
 json(SpecVsn) ->
     Filename = filename:join(code:priv_dir(aehttp), filename(SpecVsn)),

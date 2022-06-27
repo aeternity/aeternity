@@ -832,7 +832,7 @@ init_per_testcase(named_oracle_transactions, Config) ->
         false -> {skip, requires_iris_or_newer}
     end;
 init_per_testcase(post_oracle_register, Config) ->
-    %% TODO: assert there is enought balance
+    %% TODO: assert there is enough balance
     {_, Pubkey} = aecore_suite_utils:sign_keys(?NODE),
     {OraPubkey, OraPrivkey} = initialize_account(100000000 * aec_test_utils:min_gas_price()),
     ok = give_tokens(OraPubkey, 8000000000000000000),
@@ -1447,6 +1447,10 @@ get_accounts_next_nonce_sut(Id) ->
     Host = external_address(),
     http_request(Host, get, "accounts/" ++ binary_to_list(Id) ++ "/next-nonce", []).
 
+get_accounts_next_nonce_sut_(Id) ->
+    Host = external_address(),
+    http_request(Host, get, "accounts/" ++ binary_to_list(Id) ++ "/next-nonce?int-as-string", []).
+
 get_accounts_next_nonce_sut(Id, Strategy) when Strategy =:= max; Strategy =:= continuity ->
     StrategyL = atom_to_list(Strategy),
     Host = external_address(),
@@ -1975,11 +1979,25 @@ get_status(_Config) ->
         _ -> ct:fail("Node version is not semver")
     end,
     ?assertEqual(40, byte_size(NodeRevision)),
+
+    case proplists:get_value(swagger_version, _Config) of
+        oas3 ->
+            {ok, 200, #{ <<"protocols">> := ProtocolsStr }} = get_status_sut(true),
+            lists:foreach(fun(P) ->
+                                  ?assertMatch(X when is_binary(X), maps:get(<<"version">>, P)),
+                                  ?assertMatch(X when is_binary(X), maps:get(<<"effective_at_height">>, P))
+                          end, ProtocolsStr);
+        swagger2 -> none
+    end,
+
     ok.
 
 get_status_sut() ->
+    get_status_sut(false).
+get_status_sut(IntAsString) ->
     Host = external_address(),
-    http_request(Host, get, "status", []).
+    Parameters = case IntAsString of true -> "?int-as-string"; false -> "" end,
+    http_request(Host, get, "status" ++ Parameters, []).
 
 prepare_tx(TxType, Args) ->
     SignHash = lists:last(aec_hard_forks:sorted_protocol_versions()) >= ?LIMA_PROTOCOL_VSN,
@@ -3044,6 +3062,12 @@ spend_transaction(_Config) ->
     {ok, 200, #{<<"next_nonce">> := NextNonce}} = get_accounts_next_nonce_sut(MinerID),
     {ok, 200, #{<<"next_nonce">> := NextNonce}} = get_accounts_next_nonce_sut(MinerID, max),
     {ok, 200, #{<<"next_nonce">> := NextNonce}} = get_accounts_next_nonce_sut(MinerID, continuity),
+    case aecore_suite_utils:http_api_version() of
+        oas3 ->
+            {ok, 200, #{<<"next_nonce">> := NextNonceBin}} = get_accounts_next_nonce_sut_(MinerID),
+            NextNonce = binary_to_integer(NextNonceBin);
+        _ -> pass
+    end,
     RandAddress = random_hash(),
     Payload = <<"hejsan svejsan">>,
     Encoded = #{sender_id => MinerAddress,
@@ -3559,7 +3583,7 @@ naming_system_manage_name(_Config) ->
 
     {ok, 200, #{<<"top_block_height">> := Height}} = get_status_sut(),
 
-    %% TODO: find out how to craete HTTP path with unicode chars
+    %% TODO: find out how to create HTTP path with unicode chars
     %%Name        = <<"詹姆斯詹姆斯.test"/utf8>>,
     Name        = aens_test_utils:fullname(<<"without-unicode">>, Height),
     NameSalt    = 12345,
@@ -4326,7 +4350,7 @@ prepare_for_spending(BlocksToMine) ->
 add_spend_txs() ->
     MineReward = rpc(aec_governance, block_mine_reward, [1]),
     Fee = ?SPEND_FEE,
-    %% For now. Mining is severly slowed down by having too many Tx:s in
+    %% For now. Mining is severely slowed down by having too many Tx:s in
     %% the tx pool
     MaxSpendTxsInBlock = 20,
     MinimalAmount = 1,

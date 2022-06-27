@@ -165,7 +165,7 @@
 
     % The source of the docker image
     source  := {pull, binary() | string()},
-    % Public/private peer key can be specified explicity for the node.
+    % Public/private peer key can be specified explicitly for the node.
     % Both are required and will be saved, overriding any present keys.
     pubkey => binary(),
     privkey => binary()

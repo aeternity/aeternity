@@ -25,13 +25,12 @@ upload-artifacts-github-release:
   executor: infrastructure_container_stable
   steps:
     - fixed_checkout
-    - setup_secrets
     - attach_workspace:
         at: << pipeline.parameters.packages_workspace >>
     - run:
         name: Upload GitHub Release Asset
         command: |
-          envdir /secrets /infrastructure/scripts/upload-github-release-assets.sh \
+          /infrastructure/scripts/upload-github-release-assets.sh \
             github_api_token=${GITHUB_API_TOKEN:?} \
             owner=${CIRCLE_PROJECT_USERNAME} \
             repo=${CIRCLE_PROJECT_REPONAME} \

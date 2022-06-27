@@ -5,7 +5,7 @@
 include "List.aes"
 include "String.aes"
 
-contract ChannelHTLC = 
+contract ChannelHTLC =
 
   record state = { sends           : map(hash, send),
                    receives        : map(hash, recv),
@@ -68,7 +68,7 @@ contract ChannelHTLC =
 
     require(!send_exists(id), "Send entry already exists")
 
-    let _send : send = { 
+    let _send : send = {
       amount = amount',
       fee = fee',
       hash_lock = hash_lock',
@@ -80,7 +80,7 @@ contract ChannelHTLC =
     abs_timeout
 
   // Called by the hub on the receiver channel in order to forward
-  // the send request. The `hash_lock` is the one provided by the reciever earlier
+  // the send request. The `hash_lock` is the one provided by the receiver earlier
   // There is no fee here, since the fee is paid by the sender and collected by
   // the hub.
   //
@@ -96,7 +96,7 @@ contract ChannelHTLC =
 
     let id : hash = generate_id(sender', state.client, amount', hash_lock')
 
-    require(!recieve_exists(id), "Recieve entry already exists")
+    require(!receive_exists(id), "Receive entry already exists")
 
     let _recv : recv = {
             amount = amount',
@@ -108,7 +108,7 @@ contract ChannelHTLC =
     id
 
   // Called by the hub to collect the collateral + the fee
-  // To be safe, the withdraw should be performed before 
+  // To be safe, the withdraw should be performed before
   payable stateful entrypoint collect(
            receiver'  : address,
            amount'    : int,
@@ -143,7 +143,7 @@ contract ChannelHTLC =
     let id : hash = generate_id(Call.caller, receiver', amount', hash_lock')
     let _send : send = state.sends[id]
     refundable(_send)
-    
+
     Chain.spend(state.client, _send.amount)
     Chain.spend(state.hub, _send.fee)
 
@@ -167,13 +167,13 @@ contract ChannelHTLC =
 
   entrypoint generate_id(sender : address, receiver : address,
    amount : int, hash_lock : hash) : hash =
-    let packed_string : string = 
+    let packed_string : string =
      cc([
        Address.to_str(sender),
        Address.to_str(receiver),
        Int.to_str(amount),
        Bytes.to_str(hash_lock)])
-    
+
     Crypto.sha256(packed_string)
 
   entrypoint get_send(id : hash) : send =
@@ -212,7 +212,7 @@ contract ChannelHTLC =
   function send_exists(id : hash) : bool =
     Map.member(id, state.sends)
 
-  function recieve_exists(id : hash) : bool =
+  function receive_exists(id : hash) : bool =
     Map.member(id, state.receives)
 
   function cc(s :: ss : list(string)) : string =

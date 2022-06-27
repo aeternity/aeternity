@@ -103,7 +103,7 @@ many_spend_txs(Cfg) ->
     %% Transactions sync is faster that transactions posting and limit on http clients no issue
 
     %% This means we always create micro blocks in first generation (after genesis block)
-    %% That is a sligtly unrealistic situation, but if we first mine a few key blocks,
+    %% That is a slightly unrealistic situation, but if we first mine a few key blocks,
     %% then this test takes ages.
 
     %% Compute gas for a simple spend

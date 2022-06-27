@@ -75,7 +75,7 @@ end_per_testcase(_Case, Config) ->
 %% ============================================================
 
 abort_large_insertion(Config) ->
-    %% This is the easy case as the uncommited data is present in the ETS transaction store
+    %% This is the easy case as the uncommitted data is present in the ETS transaction store
     N = aecore_suite_utils:node_name(dev1),
     Accounts = ?config(accounts, Config),
     %% Mine 10 keyblocks

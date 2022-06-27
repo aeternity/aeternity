@@ -238,7 +238,7 @@ groups() ->
         sc_ws_environment_contract,
         %% both can call a remote contract
         sc_ws_remote_call_contract,
-        %% both can call a remote contract refering on-chain data
+        %% both can call a remote contract referring on-chain data
         sc_ws_remote_call_contract_refering_onchain_data,
         sc_ws_wrong_call_data,
         sc_ws_wrong_abi
@@ -1331,7 +1331,7 @@ sc_ws_close_(ConfigList) ->
                            Pid, #{ <<"method">> => <<"channels.system">>
                                  , <<"params">> => #{<<"action">> => <<"stop">>}})
                     catch
-                        %% when the WebSocket process dies, it emmits a
+                        %% when the WebSocket process dies, it emits a
                         %% {connpid_died, Reason} message
                         error:{connpid_died, Reason} when Reason == {error, closed}
                                                         ; Reason == {error, einval}
@@ -2330,7 +2330,7 @@ sc_ws_remote_call_contract_(Owner, GetVolley, CreateContract, ConnPid1, ConnPid2
             ValB = integer_to_list(Val),
             ContractCall(Who, RemoteCallCPubKey, remote_call, <<"call">>,
                          [EncIdPubkey, ValB], Val,
-                         % beacuse of hardcoded value=10 in the
+                         % because of hardcoded value=10 in the
                          % remote_call.aes -> amount in the call must be > 10
                          _Amount = 20)
         end,
@@ -2397,7 +2397,7 @@ sc_ws_remote_call_contract_refering_onchain_data_(Owner, GetVolley, CreateContra
             ContractCall(Who, RemoteCallCPubKey,
                          channel_remote_on_chain_contract_name_resolution,
                          <<"remote_resolve">>, Args, IsResolvable,
-                         % beacuse of hardcoded value=10 in the
+                         % because of hardcoded value=10 in the
                          % remote_call.aes -> amount in the call must be > 10
                          _Amount = 20)
         end,
@@ -4599,7 +4599,7 @@ sc_ws_broken_call_code_(Owner, GetVolley, _CreateContract, _ConnPid1, _ConnPid2,
                      code        => EncodedCode,
                      call_data   => EncodedInitData}, Config),
     #{tx := UnsignedCreateTx, updates := _Updates} = SignVolley(),
-    % contract is succesfully created
+    % contract is successfully created
     ContractPubKey = contract_id_from_create_update(OwnerPubKey,
                                                     UnsignedCreateTx),
 
@@ -4634,7 +4634,7 @@ sc_ws_wrong_abi_(Owner, GetVolley, _CreateContract, _ConnPid1, _ConnPid2,
                      code        => EncodedCode,
                      call_data   => EncodedInitData}, Config),
     #{tx := UnsignedCreateTx, updates := _Updates} = SignVolley(),
-    % contract is succesfully created
+    % contract is successfully created
     ContractPubKey = contract_id_from_create_update(OwnerPubKey,
                                                     UnsignedCreateTx),
     {ok, EncodedCalcCallData} = encode_call_data(safe_math, "add", ["1", "2"]),

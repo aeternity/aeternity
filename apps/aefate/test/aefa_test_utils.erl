@@ -28,9 +28,9 @@ make_calldata(Fun, Args) ->
     FunctionId = aeb_fate_code:symbol_identifier(Fun),
     aeb_fate_encoding:serialize(aefa_test_utils:encode({FunctionId, Args1})).
 
-%% Encode is a convinience function for testing, encoding an Erlang term
+%% Encode is a convenience function for testing, encoding an Erlang term
 %% to a Fate term, but it can not distinguish between e.g. 32-byte strings
-%% and addresses. Therfore an extra tuple layer on the erlang side for
+%% and addresses. Therefore an extra tuple layer on the erlang side for
 %% addresses and bits.
 encode({address, S}) when is_list(S)  ->
     %% The test code treats lists and binaries as semantically different

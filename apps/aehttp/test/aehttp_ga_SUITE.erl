@@ -256,7 +256,7 @@ dry_run_fail(Config) ->
     #{acc_a := #{pub_key := APub, priv_key := APriv}} = proplists:get_value(accounts, Config),
     #{public := XPub, secret := _XPriv} = enacl:sign_keypair(),
 
-    %% Ensure we cant dry-run a Meta transaction...
+    %% Ensure we can't dry-run a Meta transaction...
     MGP = aec_test_utils:min_gas_price(),
     SpendTx = spend_tx(APub, APriv, 0, XPub, 1234, 20000 * MGP),
     SMetaTx = ga_meta_tx(["1"], APub, APriv, SpendTx, 100000 * MGP, 10000),

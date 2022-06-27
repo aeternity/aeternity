@@ -22,7 +22,7 @@ Once done, stop your node by:
 /path/to/your/node/bin/aeternity stop
 ```
 
-Decompress your new node version overwritting the old version:
+Decompress your new node version overwriting the old version:
 
 ```
 tar -xzf aeternity.tar.gz -C /path/to/your/node;

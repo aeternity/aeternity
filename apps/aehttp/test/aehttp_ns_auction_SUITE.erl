@@ -157,11 +157,11 @@ naming_system_auction(Config) ->
     ?HTTP_ROS:assertBalanceChanges(ClaimTxHash1, [{PubKey1Enc, -Fee},
                                                   {PubKey1Enc, -FirstNameFee}] ),
 
-    %% Figure out minimal couter bid price
+    %% Figure out minimal counter bid price
     NextMinPrice = FirstNameFee + FirstNameFee *
         aec_governance:name_claim_bid_increment() div 100,
 
-    %% Submit couter bid with name claim tx and check it is in mempool
+    %% Submit counter bid with name claim tx and check it is in mempool
     ClaimData2 = #{account_id => PubKey2Enc,
                    name       => NameEnc,
                    name_salt  => 0,

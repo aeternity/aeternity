@@ -1,7 +1,7 @@
 %%%=============================================================================
 %%% @copyright 2017, Aeternity Anstalt
 %%% @doc
-%%%    Module storing peers list and providing funtions for peer interaction
+%%%    Module storing peers list and providing functions for peer interaction
 %%% @end
 %%%=============================================================================
 -module(aec_sync).
@@ -67,7 +67,7 @@ ask_all_for_node_info() ->
     ask_all_for_node_info(8500).
 
 %% there are a bunch of processes adding their own overhead for this timer.
-%% While this function will timeout in Timeout milliseconds, the acutal
+%% While this function will timeout in Timeout milliseconds, the actual
 %% timeout for the peer to respond is Timeout - 3000
 ask_all_for_node_info(Timeout) when Timeout > 3000 ->
     opt_call({ask_all_for_node_info, Timeout - 500}, Timeout,
@@ -981,7 +981,7 @@ pp_stats(#{t0 := T0, gs := Gs, mbs := MBs, txs := Txs}) ->
                   [Gs, Avg, MBs, Txs]).
 
 %% In order not to timeout the conductor, large generations are added in
-%% smaller chuncks, one micro block at the time.
+%% smaller chunks, one micro block at the time.
 %% Each micro block has a fixed maximum gas, by limiting the number of micro
 %% blocks we limit the total amount of work the conductor has to perform in
 %% each synchronous call.
@@ -1410,7 +1410,7 @@ collect_infos(Timeout) ->
         fun(PeerInfo) ->
             PeerId = aec_peer:id(PeerInfo),
             %% this timeouts in Timeout milliseconds but there is a second
-            %% outher timeout in the gen_server:call to the connection itself
+            %% other timeout in the gen_server:call to the connection itself
             %% so we call the aec_peer_connection:get_node_info/2 with
             %% Timeout - 2000 - TimerOffset
             aec_peer_connection:get_node_info(PeerId, Timeout - 2000 -

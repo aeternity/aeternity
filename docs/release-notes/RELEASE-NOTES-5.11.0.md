@@ -16,7 +16,7 @@ It:
 * Improves node performance: use a dirty read when possible while checking a
   signed transaction
 
-* Introduces some refactoring that is a prerequisite in order to accomodate
+* Introduces some refactoring that is a prerequisite in order to accommodate
   contract clone primitives.
 
 * Transaction lifecycle is: the transaction is being prepared and posted to a

@@ -1056,7 +1056,7 @@ erc20_token_contract(Config) ->
     CallF(APub, APriv, EncCPub, Contract, "balanceOf", [ECPub],  25000),
     CallF(APub, APriv, EncCPub, Contract, "balanceOf", [EDPub],  0),
 
-    %% Bert and Carl approve transfering 15000 to Alice.
+    %% Bert and Carl approve transferring 15000 to Alice.
     call_func(BPub, BPriv, EncCPub, Contract, "approve", [EAPub,"15000"]),
     force_fun_calls(Node), %% We need to ensure ordering, so force here!
     call_func(CPub, CPriv, EncCPub, Contract, "approve", [EAPub,"15000"]),
@@ -1194,7 +1194,7 @@ remote_gas_test_contract(Config) ->
     force_fun_calls(Node),
     Balance4 = get_balance(APub),
 
-    %% Test remote call with limited gas that fails (invald call).
+    %% Test remote call with limited gas that fails (invalid call).
     ZeroContract = aeser_api_encoder:encode(contract_pubkey, <<0:256>>),
     [] = call_func(APub, APriv, EncC1Pub, Contract, "call", [ZeroContract, "2", "1"], error),
     force_fun_calls(Node),

@@ -25,7 +25,7 @@
 %% Cache entry for recently inserted blocks
 -record(recent_blocks, { key :: binary()
                        %% Window of recent statistics of the chain
-                       %% The head of this list is always the node coresponding to the key
+                       %% The head of this list is always the node corresponding to the key
                        %% Invariant: key =:= node_hash(hd(recents))
                        %% The remaining entries are {hash, term()}
                        %% The first element of the tuple is used for maintaining the cache

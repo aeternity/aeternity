@@ -908,7 +908,7 @@ fork_on_old_fork_point() ->
     %% Add the original chain
     ok = write_blocks_to_chain(blocks_only_chain(OriginalChain)),
 
-    %% If we try to add the fork block trough gossip, it should be refused.
+    %% If we try to add the fork block through gossip, it should be refused.
     ?assertMatch({error, {too_far_below_top, _, _}}, insert_block(ForkBlock)),
 
     %% But if we add the blocks through sync, it is allowed

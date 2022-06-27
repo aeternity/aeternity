@@ -5,7 +5,7 @@ infrastructure_container_unstable:
 
 infrastructure_container_stable:
   docker:
-    - image: aeternity/infrastructure:v2.12.3
+    - image: aeternity/infrastructure:v2.13.1
   resource_class: large
 
 builder_container_otp22:

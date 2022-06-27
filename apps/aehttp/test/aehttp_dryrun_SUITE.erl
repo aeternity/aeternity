@@ -368,6 +368,14 @@ accounts(Config) ->
     {ok, 200, #{ <<"results">> := [#{ <<"result">> := <<"ok">> }, #{ <<"result">> := <<"ok">> }] }} =
         dry_run(Config, TopHash, [Tx2, Tx1], [#{ pub_key => EPub, amount => 1000000000000000}]),
 
+    %% Should work with amount as string
+    case proplists:get_value(swagger_version, Config) of
+        oas3 ->
+            {ok, 200, #{ <<"results">> := [#{ <<"result">> := <<"ok">> }, #{ <<"result">> := <<"ok">> }] }} =
+                dry_run(Config, TopHash, [Tx1, Tx2], [#{ pub_key => APub, amount => <<"100000000">> }]);
+        swagger2 -> none
+    end,
+
     ok.
 
 %% --- Internal functions ---
