@@ -23,6 +23,7 @@
 -export([assertBalanceChanges/2]).
 
 -include_lib("common_test/include/ct.hrl").
+-include_lib("aecontract/include/hard_forks.hrl").
 
 -define(NODE, dev1).
 -define(SPEND_FEE, 20000 * aec_test_utils:min_gas_price()).
@@ -615,6 +616,11 @@ block_create_channel_tx(Config) ->
                                       {ResponderPubKey, 50}]],
     Trees = aec_test_utils:create_state_tree_with_accounts(Accounts, no_backend),
     StateHash = aec_trees:hash(Trees),
+    Delegates =
+        case aecore_suite_utils:latest_protocol_version() >= ?IRIS_PROTOCOL_VSN of
+            true -> {[], []};
+            false -> []
+        end,
     {ok, ChannelCreateTx} =
         aesc_create_tx:new(
           #{initiator_id => InitiatorId,
@@ -626,7 +632,7 @@ block_create_channel_tx(Config) ->
             fee => ?SPEND_FEE,
             state_hash => StateHash,
             nonce => Nonce,
-            delegate_ids => {[], []}}),
+            delegate_ids => Delegates}),
 
     SignedChannelCreateTx = aec_test_utils:sign_tx(ChannelCreateTx, [InitiatorPrivKey, ResponderPrivKey]),
     EncTx  = aeapi:format(transaction, aetx_sign:serialize_to_binary(SignedChannelCreateTx)),
