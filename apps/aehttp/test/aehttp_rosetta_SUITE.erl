@@ -76,12 +76,11 @@ end_per_suite(Config) ->
                    proplists:get_value(started_apps, Config, []))],
     ok.
 
-init_per_group(all, Config) ->
-    Config;
-init_per_group(Group, Config) when Group =:= status_endpoints ->
-    Config;
 init_per_group(_Group, Config) ->
-    Config.
+    case aect_test_utils:latest_protocol_version() of
+        Vsn when Vsn < ?IRIS_PROTOCOL_VSN -> {skip, rosetta_not_before_iris};
+        _ -> Config
+    end.
 
 end_per_group(_Group, _Config) ->
     ok.
