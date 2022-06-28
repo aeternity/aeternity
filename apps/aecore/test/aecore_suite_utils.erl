@@ -290,6 +290,7 @@ reinit_with_bitcoin_ng(N) ->
     ok = rpc:call(Node, aec_conductor, reinit_chain, []).
 
 reinit_nodes_with_ct_consensus(Nodes) ->
+    ct:log("Reinitializing chain on ~p with ct_tests consensus", [Nodes]),
     NodeNames = [node_name(N) || N <- Nodes],
     Timeout = 5000,
     [{ok, maintenance} = rpc:call(NN, app_ctrl, set_and_await_mode, [maintenance, Timeout])
@@ -302,10 +303,7 @@ reinit_nodes_with_ct_consensus(Nodes) ->
     ok.
 
 reinit_with_ct_consensus(N) ->
-    ct:log("Reinitializing chain on ~p with ct_tests consensus", [N]),
-    Node = node_name(N),
-    ok = set_env(Node, aecore, consensus, #{<<"0">> => #{<<"name">> => <<"ct_tests">>}}),
-    ok = rpc:call(Node, aec_conductor, reinit_chain, []).
+    reinit_nodes_with_ct_consensus([N]).
 
 get_node_db_config(Rpc) when is_function(Rpc, 3) ->
     IsDbPersisted = Rpc(application, get_env, [aecore, persist, false]),
