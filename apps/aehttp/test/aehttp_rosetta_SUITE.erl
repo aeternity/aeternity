@@ -38,10 +38,12 @@ groups() ->
       %% /network/*
       [{group, network_endpoint},
        {group, block_basic_endpoint},
+       {group, block_contract_endpoint},
        {group, block_channels_endpoint}]},
      %% /network/*
      {network_endpoint, [], [network_list, network_options, network_status]},
-     {block_basic_endpoint, [], [block_key_only, block_spend_tx, block_create_contract_tx]},
+     {block_basic_endpoint, [], [block_key_only, block_spend_tx]},
+     {block_contract_endpoint, [], [block_create_contract_tx]},
      {block_channels_endpoint, [], [block_create_channel_tx]}].
 
 suite() ->
@@ -76,6 +78,10 @@ end_per_suite(Config) ->
                    proplists:get_value(started_apps, Config, []))],
     ok.
 
+init_per_group(network_endpoint, Config) ->
+    Config;
+init_per_group(block_basic_endpoint, Config) ->
+    Config;
 init_per_group(_Group, Config) ->
     case aect_test_utils:latest_protocol_version() of
         Vsn when Vsn < ?IRIS_PROTOCOL_VSN -> {skip, rosetta_not_before_iris};
