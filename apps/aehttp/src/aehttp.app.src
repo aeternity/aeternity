@@ -14,8 +14,7 @@
     jesse,
     aecore,
     aechannel,
-    gproc,
-    ephemeral
+    gproc
    ]},
   {env,[]},
   {modules, []},
