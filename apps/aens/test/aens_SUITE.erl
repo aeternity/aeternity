@@ -102,7 +102,7 @@ end_per_suite(_Config) ->
 init_per_group(transactions, Cfg) ->
     %% Disable name auction
     meck:expect(aec_governance, name_claim_bid_timeout, fun(_, _) -> 0 end),
-    %% dependening on how we call 'make' we get different protocols
+    %% depending on how we call 'make' we get different protocols
     [{protocol, aec_hard_forks:protocol_effective_at_height(1)},
      {name, ?NAME} | Cfg];
 init_per_group(no_auction_long_names, Cfg) ->

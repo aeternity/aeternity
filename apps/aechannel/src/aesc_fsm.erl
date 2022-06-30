@@ -342,7 +342,7 @@ change_config(Fsm, Key, Value) ->
 %% @doc Returns a list of [{Pubkey, Balance}], where keys are ordered the same
 %% way as in Accounts. If a key doesn't correspond to an existing account, it
 %% doesn't show up in the result. Thus, unknown accounts are recognized by
-%% their absense in the response.
+%% their absence in the response.
 get_balances(Fsm, Accounts) ->
     gen_statem:call(Fsm, {get_balances, Accounts}).
 
@@ -1922,7 +1922,7 @@ new_onchain_tx_(Mod, Opts, CurrHeight, D) when Mod =:= aesc_create_tx;
 
 %% @doc A valid transaction fee is a function on gas required and gas price used
 %% the following function uses the gas price the node would be using if it
-%% were mining gas required is a funcion of:
+%% were mining gas required is a function of:
 %%
 %%   * transaction type (base_gas)
 %%   * transaction size (size_gas)
@@ -5096,7 +5096,7 @@ handle_common_event_(cast, {?CHANNEL_CLOSING, #{tx_hash := TxHash} = Info} = Msg
         {error, not_solo_closing} ->
             %% the min depth watcher reported a channel object that is not
             %% closing, this could be due to a (micro) fork that rejected the
-            %% channel_close_solo_tx that had been initally detected
+            %% channel_close_solo_tx that had been initially detected
             lager:debug("Received a channel closing event for not closing channel", []),
             keep_state(D1)
     end;
@@ -5608,7 +5608,7 @@ process_incoming_forced_progress_(#{ tx := SignedTx
          CorrectFPPayload =
              case FirstSoloRound =:= LatestFSMRound + 1 of
                  true ->
-                     %% FP had been based on the lastest state known to the
+                     %% FP had been based on the latest state known to the
                      %% FSM. This is the expected scenario
                      true;
                  false ->
@@ -5639,7 +5639,7 @@ process_incoming_forced_progress_(#{ tx := SignedTx
              true ->
                  case FPRound - LatestFSMRound of
                      1 = _OkDiff ->
-                         lager:debug("Accomodate incoming forced progress", []),
+                         lager:debug("Accommodate incoming forced progress", []),
                          {OnChainEnv, OnChainTrees} = load_pinned_env(BlockHash),
                          Update = aesc_force_progress_tx:update(Tx),
                          State1 =

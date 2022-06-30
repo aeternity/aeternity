@@ -473,7 +473,7 @@ hash(Bin) ->
     crypto:hash(sha256, Bin).
 
 %% INFO: keep separate APIs and encrypt both priv & pub to protect external HDs
-%%       (there is known atack vector using master pub)
+%%       (there is known attack vector using master pub)
 encrypt_key(Password, Bin) ->
     crypto:crypto_one_time(aes_256_ecb, hash(Password),  Bin, true).
 

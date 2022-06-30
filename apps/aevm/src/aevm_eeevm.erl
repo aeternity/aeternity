@@ -11,8 +11,8 @@
 %%%     This implementation is not striving to be efficient.
 %%%     This implementation *is* striving to be correct.
 %%%
-%%%     EEEVM is the basis for building an efficent Aeternity VM (AEVM)
-%%%     which is comaptible vith EVM.
+%%%     EEEVM is the basis for building an efficient Aeternity VM (AEVM)
+%%%     which is compatible vith EVM.
 %%% @end
 %%% Created : 2 Oct 2017
 %%%-------------------------------------------------------------------

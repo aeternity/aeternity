@@ -20,7 +20,6 @@
         , hex2bin
         , inet_cidr
         , inet_ext
-        , lhttpc
         , rand_compat
         , xmerl
         , aecuckoo
@@ -31,6 +30,7 @@
         , ecrecover
         , ecrecoverprebuilt
         , emcl
+        , ecli
         ]).
 -define(TO_BE_STOPPED_APPS_BLACKLIST, []).
 -define(REGISTERED_PROCS_WHITELIST,
@@ -40,8 +40,7 @@
          dets_sup, dets,  %% by mnesia
          folsom_sup, folsom_sample_slide_sup, folsom_metrics_histogram_ets, %% by folsom
          folsom_meter_timer_server, %% by folsom
-         setup_sup, setup_srv, %% by setup
-         lhttpc_sup, lhttpc_manager %% by lhttpc
+         setup_sup, setup_srv %% by setup
         ]).
 
 -ifdef(EUNIT_INCLUDED).

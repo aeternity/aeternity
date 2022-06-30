@@ -162,7 +162,7 @@ handle_event(info, {_, chain_sync, #{info := {chain_sync_done, _}}}, idle,
     {keep_state, Data#data{synced = true}};
 
 %% starting collection when the *interval* matches, and don't have a GC state (hashes = undefined)
-%% OR some MPT was missing previosly so we try again later
+%% OR some MPT was missing previously so we try again later
 handle_event(info, {_, top_changed, #{info := #{height := Height}}}, idle,
              #data{interval = Interval, history = History,
                    enabled = true, synced = true, min_height = MinHeight,

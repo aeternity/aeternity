@@ -3757,7 +3757,7 @@ fp_register_name(Cfg) ->
     ContractName = "aens",
 
     % test contract on-chain
-    % this validates that the contract and the fucntion are indeed callable
+    % this validates that the contract and the function are indeed callable
     % on-chain and they produce a name preclaim
     ?TEST_LOG("Create contract ~p.aes on-chain", [ContractName]),
     run(#{cfg => Cfg},
@@ -4071,7 +4071,7 @@ fp_oracle_action(Cfg, ProduceCallData) ->
     QueryFee = 1,
 
     % test contract on-chain
-    % this validates that the contract and the fucntion are indeed callable
+    % this validates that the contract and the function are indeed callable
     % on-chain and they produce the expected oracle action
     ?TEST_LOG("Create contract ~p.aes on-chain", [ContractName]),
     run(#{cfg => Cfg},
@@ -4162,7 +4162,7 @@ fp_oracle_action(Cfg, ProduceCallData) ->
             S1 = aesc_test_utils:set_trees(OnChainTrees1, S0),
             Props#{state => S1}
           end]),
-    ?TEST_LOG("Oracle action succeded on-chain, proceeding with off-chain tests", []),
+    ?TEST_LOG("Oracle action succeeded on-chain, proceeding with off-chain tests", []),
     Test =
         fun(Owner, Forcer) ->
             ?TEST_LOG("Oracle off-chain action, owner is ~p, forcer is ~p",
@@ -4266,7 +4266,7 @@ fp_register_oracle(Cfg) ->
     ContractName = "oracles",
 
     % test contract on-chain
-    % this validates that the contract and the fucntion are indeed callable
+    % this validates that the contract and the function are indeed callable
     % on-chain and it registers an oracle on-chain
     ?TEST_LOG("Create contract ~p.aes on-chain", [ContractName]),
     run(#{cfg => Cfg},

@@ -69,7 +69,7 @@ insert_key_pair(Pub, Priv, S) ->
 
 -define(PRIV_SIZE, 32).
 
-%% Names are expesive these days, need a lot of tokens
+%% Names are expensive these days, need a lot of tokens
 setup_new_account(State) ->
     setup_new_account(4000000000000000000000 * aec_test_utils:min_gas_price(), State).
 

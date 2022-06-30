@@ -869,7 +869,7 @@ find_predecessor_at_height(Node, Height) ->
             case db_find_key_nodes_at_height(Height) of
                 {ok, [KeyNode]} -> KeyNode;
                 {ok, KeyNodes} ->
-                    %% Use the preceeding key node since fork info might not be known
+                    %% Use the preceding key node since fork info might not be known
                     %% for Node (i.e., in candidate generation).
                     %% The clause for Height + 1 above will catch the case of the
                     %% immediate previous key hash.
@@ -1198,8 +1198,8 @@ maybe_pogf(Node, [Sibling|T]) ->
 % instead.
 % if a miner reports a fraudulent previous miner - the reporter receives a
 % as a bonus a fraction of the previous miner's reward, the rest is locked.
-% Mining reward is awared with the previous generation (K2 mining reward is
-% awared with GenerationK1's fees) and thus when a miner is fraudulent we
+% Mining reward is awarded with the previous generation (K2 mining reward is
+% awarded with GenerationK1's fees) and thus when a miner is fraudulent we
 % don't award her with mining reward but we lock the excess of coins on the
 % next granting of fees. This way we can compute properly the locked amount.
 calc_rewards(FraudStatus1, FraudStatus2, GenerationFees,
@@ -1260,7 +1260,7 @@ count_blocks_with_signal(Block, Fork) ->
                     Count1 = Count + count_inc(is_matching_info_present(Block, Fork)),
                     {ok, Count1};
                 error ->
-                    %% No count stored for the previus block, it must be
+                    %% No count stored for the previous block, it must be
                     %% computed by traversing to the first signalling block.
                     {ok, count_blocks_with_signal(Block, Fork, 0)}
             end;
@@ -1416,7 +1416,7 @@ ensure_key_headers_height_store() ->
     end.
 
 start_key_headers_height_store_migration() ->
-    lager:info("[Key headers migrations scan] Retriving all key headers"),
+    lager:info("[Key headers migrations scan] Retrieving all key headers"),
     spawn(fun() -> %% Don't use spawn_link here - we can't be killed by the setup process
         %% An error here should bring down the entire node with it!
         try

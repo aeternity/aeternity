@@ -151,11 +151,11 @@ naming_system_auction(Config) ->
     {ok, 200, #{<<"balance">> := PubKey2BalPreAuction}} = ?HTTP_INT:get_accounts_by_pubkey_sut(PubKey2Enc),
     ct:log("Balance PubKey2 before counter bid: ~p", [PubKey2BalPreAuction]),
 
-    %% Figure out minimal couter bid price
+    %% Figure out minimal counter bid price
     NextMinPrice = FirstNameFee + FirstNameFee *
         aec_governance:name_claim_bid_increment() div 100,
 
-    %% Submit couter bid with name claim tx and check it is in mempool
+    %% Submit counter bid with name claim tx and check it is in mempool
     ClaimData2 = #{account_id => PubKey2Enc,
                    name       => NameEnc,
                    name_salt  => 0,

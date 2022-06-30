@@ -37,13 +37,13 @@ It:
 
 * Improves the functionality of State Channel delegates: now they can provide
   `channel_solo_snapshot_tx` as well. This is really handy in cases one party
-  is missing and the other is doing malicious force progess on-chain while the
+  is missing and the other is doing malicious force progress on-chain while the
   channel is still open.
 
 * Revisits the State Channel delegates: so far they were a shared list for
   both participants. From Iris on, delegates are per peer: there is a list of
   delegates for the `initiator` and another one for the `responder`. Old
-  channel objects can still be used but users are strongly recomended to reset
+  channel objects can still be used but users are strongly recommended to reset
   their `delegates` list if they had any. Note that the HTTP representations
   are changed accordingly.
 
@@ -51,7 +51,7 @@ It:
   them to do so.
 * Improved garbage collector for all Fate contracts form Iris
 
-* Fate contracts of different versions can call eachother (Fate1 can call Fate2 and vice-versa)
+* Fate contracts of different versions can call each other (Fate1 can call Fate2 and vice-versa)
 
 * Opcode availability and behaviour depends on VM version of the contract (Fate2 opcodes are available both when Fate2 contract is called directly and when called by another (possibly Fate1) contract)
 

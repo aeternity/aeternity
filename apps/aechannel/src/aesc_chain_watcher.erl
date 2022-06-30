@@ -474,7 +474,7 @@ delete_req_by_key_(Key) ->
 %% ============================================================
 
 %% TODO: Currently, we seem to be overly conservative about setting
-%% check_at_height => 0 for all requests. This should only be neeeded for
+%% check_at_height => 0 for all requests. This should only be needed for
 %% requests that come in *after* the channel has been created.
 %% (e.g. a min_depth request registered before the tx is on-chain doesn't
 %% need to be checked each time, since we will detect when the tx appears.)

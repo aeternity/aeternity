@@ -10,7 +10,7 @@ aeplugin_install_devmode:
 install_os_deps:
   steps:
     - run:
-        name: Install OS dependancies
+        name: Install OS dependencies
         command: |
           sudo apt-get update
           sudo apt-get -qq -y install git curl \
