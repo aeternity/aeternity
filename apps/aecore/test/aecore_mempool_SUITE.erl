@@ -508,13 +508,20 @@ name_claim_with_too_long_name_should_not_crash_error_handling(Config) ->
     NodeName = aecore_suite_utils:node_name(Node),
     {Priv, Pub} = aecore_suite_utils:sign_keys(Node),
     {ok, NextNonce} = rpc:call(NodeName, aec_next_nonce, pick_for_account, [Pub]),
-    {ok, Tx} =
-        aens_claim_tx:new(#{account_id => aeser_id:create(account, Pub),
-                            nonce => NextNonce,
-                            name => <<"asdf123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890.chain">>,
-                            name_salt => 123,
-                            name_fee => ?SPEND_FEE * 100,
-                            fee => ?SPEND_FEE * 10}),
+    Template =
+        #{account_id => aeser_id:create(account, Pub),
+          nonce      => NextNonce,
+          name       => <<"asdf123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890.chain">>,
+          name_salt  => 123,
+          name_fee   => ?SPEND_FEE * 100,
+          fee        => ?SPEND_FEE * 10},
+    Protocol = ?config(protocol, Config),
+    ClaimData =
+        case Protocol >= ?LIMA_PROTOCOL_VSN of
+            true  -> Template;
+            false -> maps:remove(name_fee, Template)
+        end,
+    {ok, Tx} = aens_claim_tx:new(ClaimData),
     SignedTx = aec_test_utils:sign_tx(Tx, Priv, false),
     ok = push(NodeName, SignedTx, Config),
     {ok, [SignedTx]} = rpc:call(NodeName, aec_tx_pool, peek, [infinity]),
