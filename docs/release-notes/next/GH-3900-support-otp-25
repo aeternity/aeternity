@@ -1,3 +1,0 @@
-* Added support for building and running the system with Erlang/OTP 25
-* This change removes the experimental leveled database backend. Anyone currently using this experimental feature
-  will need to delete their local database and re-sync using the default and supported RocksDB database.
