@@ -114,6 +114,7 @@ suite() ->
 
 init_per_suite(Config) ->
     %% Do not use 'instant_mining', as it short-cuts header validation/whitelist tests
+    Protocol = aec_hard_forks:protocol_effective_at_height(1),
     aecore_suite_utils:init_per_suite(?NODES,
                                       #{ <<"sync">> =>
                                              #{<<"sync_allowed_height_from_top">> => 0}
@@ -139,6 +140,7 @@ init_per_suite(Config) ->
                                                 <<"beneficiary_reward_delay">> => ?REWARD_DELAY}},
                                       [{add_peers, true}],
                                       [{symlink_name, "latest.mempool"},
+                                       {protocol, Protocol},
                                        {test_module, ?MODULE}]
                                       ++ Config).
 
@@ -498,7 +500,7 @@ name_claim_to_unknown_commitment_cleanup(Config) ->
             _ -> name_not_preclaimed
         end,
     {ok, 1} = rpc:call(NodeName, aec_tx_pool_failures, limit, [SignedTx, Error]),
-    make_microblock_attempts(5, Config),
+    make_microblock_attempts(1, Config),
     timer:sleep(100), %% provide some time for the tx pool to process the message
     {ok, []} = rpc:call(NodeName, aec_tx_pool, peek, [infinity]),
     ok.
