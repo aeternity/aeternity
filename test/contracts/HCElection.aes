@@ -1,0 +1,58 @@
+contract interface MainStaking =
+  entrypoint sorted_validators : () => list((address * int))
+  entrypoint total_stake : () => int
+  stateful entrypoint post_elect : () => unit
+
+
+main contract HCElection =
+  record state =
+    { main_staking_ct       : MainStaking,
+      entropy               : string,
+      leader                : address
+    }
+
+  record get_state_response =
+    { main_staking_ct       : MainStaking,
+      entropy               : string,
+      leader                : address
+    }
+
+  entrypoint init(main_staking_ct : MainStaking, entropy_str : string) =
+    { main_staking_ct       = main_staking_ct,
+      leader                = Contract.address,
+      entropy               = entropy_str
+      }
+
+  stateful entrypoint elect(entropy_str : string) =
+    assert_protocol_call()
+    let new_leader = elect_at_height(Chain.block_height, entropy_str)
+    state.main_staking_ct.post_elect()
+    put(state{ leader = new_leader, entropy = entropy_str})
+
+  entrypoint elect_at_height(height : int, entropy_str : string) =
+    let entropy : hash = Crypto.sha256(entropy_str)
+    let sorted = state.main_staking_ct.sorted_validators() 
+    let shot = Bytes.to_int(entropy) * height mod state.main_staking_ct.total_stake()
+    switch(find_validator(sorted, shot))
+      None => abort("NO CANDIDATE") // should not be possible
+      Some(new_leader) => new_leader
+
+  entrypoint leader() =
+    state.leader
+
+  entrypoint get_state() : get_state_response =
+    { main_staking_ct = state.main_staking_ct,
+      entropy         = state.entropy,
+      leader          = state.leader
+      }
+
+  function find_validator(validators, shot) =
+    switch(validators)
+      []   => None
+      (validator_addr, validator_stake : int)::t =>
+        if(validator_stake > shot) Some(validator_addr)
+        else find_validator(t, shot - validator_stake)
+
+  function assert_protocol_call() =
+      require(Call.caller == Contract.creator, "Must be called by the protocol")
+

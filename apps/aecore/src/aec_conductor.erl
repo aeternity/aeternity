@@ -1009,6 +1009,7 @@ start_block_production_(#state{key_block_candidates = [{_, #candidate{top_hash =
     epoch_mining:info("Key block candidate for old top hash; regenerating"),
     create_key_block_candidate(State);
 start_block_production_(#state{mode = local_pow, key_block_candidates = [{ForSealing, Candidate} | Candidates]} = State) ->
+    lager:info("ASDF start block generation", []),
     case available_instance(State) of
         none -> State;
         Instance ->
@@ -1218,18 +1219,26 @@ create_key_block_candidate(#state{key_block_candidates = [{_, #candidate{top_has
                                   top_block_hash       = TopHash} = State) ->
     %% We have the most recent candidate already. Just start mining.
     start_block_production_(State);
-create_key_block_candidate(#state{top_block_hash = TopHash} = State) ->
-    Beneficiary =
-        case State#state.mode of
-            stratum -> State#state.stratum_beneficiary;
-            _ ->
-                ConsensusModule = consensus_module(State),
-                {ok, B} = get_next_beneficiary(ConsensusModule),
-                B
-        end,
+create_key_block_candidate(#state{top_block_hash = TopHash,
+                                  top_height = Height} = State) ->
+    ConsensusModule = consensus_module(State),
     epoch_mining:info("Creating key block candidate on the top"),
     Fun = fun() ->
-                  {aec_block_key_candidate:create(TopHash, Beneficiary), TopHash}
+                SignModule = ConsensusModule:get_sign_module(),
+                BeneficiaryFun =
+                    fun() ->
+                        case State#state.mode of
+                            stratum -> {ok, State#state.stratum_beneficiary};
+                            _ ->
+                                get_next_beneficiary(ConsensusModule)
+                        end
+                    end,
+                case BeneficiaryFun() of
+                    {ok, Beneficiary} ->
+                        {ok, Miner} = SignModule:candidate_pubkey(),
+                        {aec_block_key_candidate:create(TopHash, Beneficiary, Miner), TopHash};
+                    {error, _} = Err -> {Err, TopHash}
+                end
           end,
     {State1, _Pid} = dispatch_worker(create_key_block_candidate, Fun, State),
     State1.
@@ -1449,15 +1458,17 @@ get_pending_key_block(undefined, State) ->
 get_pending_key_block(_TopHash, #state{has_beneficiary = false} = State) ->
     {{error, beneficiary_not_configured}, State};
 get_pending_key_block(TopHash, State) ->
+    ConsensusModule = consensus_module(State),
+    SignModule = ConsensusModule:get_sign_module(),
     Beneficiary =
         case State#state.mode of
             stratum -> State#state.stratum_beneficiary;
             _ ->
-                ConsensusModule = consensus_module(State),
                 {ok, B} = get_next_beneficiary(ConsensusModule),
                 B
         end,
-    case aec_block_key_candidate:create(TopHash, Beneficiary) of
+    {ok, Miner} = SignModule:candidate_pubkey(),
+    case aec_block_key_candidate:create(TopHash, Beneficiary, Miner) of
         {ok, Block} -> {{ok, Block}, State#state{ pending_key_block = Block }};
         {error, _}  -> {{error, not_found}, State}
     end.

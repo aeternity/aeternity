@@ -23,8 +23,11 @@
 -include_lib("aecontract/include/hard_forks.hrl").
 -include("../../aecontract/test/include/aect_sophia_vsn.hrl").
 
--define(NETWORK_ID, <<"hc_smart_contract">>).
 -define(STAKING_CONTRACT, "MainStaking").
+-define(POS_ELECTION_CONTRACT, "PoSElection").
+-define(HC_ELECTION_CONTRACT, "HCElection").
+-define(CONSENSUS_HC, hc).
+-define(CONSENSUS_POS, pos).
 -define(REWARD_DELAY, 10).
 -define(NODE1, dev1).
 -define(NODE1_NAME, aecore_suite_utils:node_name(?NODE1)).
@@ -32,6 +35,8 @@
 -define(NODE2, dev2).
 -define(NODE2_NAME, aecore_suite_utils:node_name(?NODE2)).
 
+
+-define(OWNER_PUBKEY, <<42:32/unit:8>>).
 
 -define(PARENT_CHAIN_NODE1, aecore_suite_utils:parent_chain_node(1)).
 -define(PARENT_CHAIN_NODE1_NAME, aecore_suite_utils:node_name(?PARENT_CHAIN_NODE1)).
@@ -70,172 +75,94 @@
       85,78,88,181,26,207,191,211,40,225,138,154>>}).
 
 
-all() -> [{group, all}
+all() -> [{group, pos},
+          {group, hc}
          ].
 
 groups() ->
-    [ {all, [sequence],
-       [ verify_fees
-       , mine_and_sync
-       , spend_txs
-       , simple_withdraw
-       , change_leaders
-       ]}
+    [{pos, [sequence], common_tests()},
+     {hc, [sequence], common_tests()}
+    ].
+
+common_tests() ->
+    [ verify_fees
+    , mine_and_sync
+    , spend_txs
+    , simple_withdraw
+    , change_leaders
     ].
 
 suite() -> [].
 
 init_per_suite(Config0) ->
     case aect_test_utils:require_at_least_protocol(?CERES_PROTOCOL_VSN) of
-	{skip, _} = Skip -> Skip;
-	ok ->
-            {_PatronPriv, PatronPub} = aecore_suite_utils:sign_keys(?NODE1),
-            ct:log("Patron is ~p", [aeser_api_encoder:encode(account_pubkey, PatronPub)]),
-            Pubkey = <<42:32/unit:8>>,
-            EncodePub =
-                fun(P) ->
-                    binary_to_list(aeser_api_encoder:encode(account_pubkey, P))
-                end,
-
-
-            #{ <<"pubkey">> := StakingValidatorContract} = C0
-                = contract_create_spec("StakingValidator",
-                                       [EncodePub(Pubkey)], 0, 1, Pubkey),
-            MinValidatorAmt = integer_to_list(trunc(math:pow(10,18) * math:pow(10, 6))), %% 1 mln AE
-            MinStakeAmt = integer_to_list(trunc(math:pow(10,18) * 1)), %% 1 AE
-            MinStakePercent = "30",
-            OnlineDelay = "0",
-            StakeDelay = "0",
-            #{ <<"pubkey">> := ConsensusContractPubkey
-             , <<"owner_pubkey">> := ContractOwner } = C
-                = contract_create_spec(?STAKING_CONTRACT,
-                                       [binary_to_list(StakingValidatorContract), "\"domat\"",
-                                        MinValidatorAmt, MinStakePercent, MinStakeAmt, OnlineDelay, StakeDelay],
-                                       0, 2, Pubkey),
-            {ok, CCId} = aeser_api_encoder:safe_decode(contract_pubkey,
-                                                       ConsensusContractPubkey),
-            Call1 =
-                contract_call_spec(CCId, ?STAKING_CONTRACT,
-                                   "new_validator", [],
-                                   ?INITIAL_STAKE, pubkey(?ALICE), 1),
-            Call2 =
-                contract_call_spec(CCId, ?STAKING_CONTRACT,
-                                   "new_validator", [],
-                                   ?INITIAL_STAKE, pubkey(?BOB), 1),
-            Call3 =
-                contract_call_spec(CCId, ?STAKING_CONTRACT,
-                                   "set_online", [], 0, pubkey(?ALICE), 2),
-            Call4 =
-                contract_call_spec(CCId, ?STAKING_CONTRACT,
-                                   "set_online", [], 0, pubkey(?BOB), 2),
-            Call5 =
-                contract_call_spec(CCId, ?STAKING_CONTRACT,
-                                   "set_validator_name", ["\"Alice\""], 0, pubkey(?ALICE), 3),
-            Call6 =
-                contract_call_spec(CCId, ?STAKING_CONTRACT,
-                                   "set_validator_name", ["\"Bob\""], 0, pubkey(?BOB), 3),
-
-            Call7 =
-                contract_call_spec(CCId, ?STAKING_CONTRACT,
-                                   "set_validator_description",
-                                   ["\"Alice is a really awesome validator and she had set a description of her great service to the network.\""], 0,
-                                   pubkey(?ALICE), 4),
-            Call8 =
-                contract_call_spec(CCId, ?STAKING_CONTRACT,
-                                   "set_validator_avatar_url",
-                                   ["\"https://aeternity.com/images/aeternity-logo.svg\""], 0,
-                                   pubkey(?ALICE), 5),
-            %% create a BRI validator in the contract so they can receive
-            %% rewards as well
-            %% TODO: discuss how we want to tackle this:
-            %%  A) require the BRI account to be validator
-            %%  B) allow pending stake in the contract that is not allocated
-            %%  yet
-            %%  C) something else
-            {ok, BRIPub} = aeser_api_encoder:safe_decode(account_pubkey, <<"ak_2KAcA2Pp1nrR8Wkt3FtCkReGzAi8vJ9Snxa4PcmrthVx8AhPe8">>),
-            Call9 =
-                contract_call_spec(CCId, ?STAKING_CONTRACT,
-                                   "new_validator", [],
-                                   ?INITIAL_STAKE, BRIPub, 1),
-            Call10 =
-                contract_call_spec(CCId, ?STAKING_CONTRACT,
-                                   "set_validator_description",
-                                   ["\"This validator is offline. She can never become a leader. She has no name set. She is receiving the BRI rewards\""],
-                                   0, BRIPub, 2),
-            %% keep the BRI offline
-            AllCalls =  [Call1, Call2, Call3, Call4, Call5, Call6,
-                         Call7, Call8, Call9,
-                         Call10],
-            BuildConfig =
-                fun(PotentialStakers) ->
-                    Stakers =
-                        lists:map(
-                            fun(Who) ->
-                                Pub = encoded_pubkey(Who),
-                                Priv = aeser_api_encoder:encode(contract_bytearray,
-                                                                privkey(Who)), %% TODO: discuss key management
-                                #{<<"pub">> => Pub, <<"priv">> => Priv}
-                            end,
-                            PotentialStakers),
-                    #{<<"chain">> =>
-                          #{  <<"persist">> => false,
-                              <<"hard_forks">> => #{integer_to_binary(?CERES_PROTOCOL_VSN) => 0},
-                             <<"consensus">> =>
-                                #{<<"0">> => #{<<"name">> => <<"smart_contract">>,
-                                                <<"config">> => #{<<"consensus_contract">> => ConsensusContractPubkey,
-                                                                  <<"contract_owner">> => ContractOwner,
-                                                                  <<"expected_key_block_rate">> => 2000,
-                                                                  <<"stakers">> => Stakers}}}},
-                      <<"fork_management">> =>
-                          #{<<"network_id">> => ?NETWORK_ID},
-                      <<"mining">> =>
-                          #{<<"micro_block_cycle">> => 1,
-                            <<"autostart">> => false,
-                            <<"beneficiary_reward_delay">> => ?REWARD_DELAY
-                        }}
-                end,
+        {skip, _} = Skip -> Skip;
+        ok ->
             {ok, _StartedApps} = application:ensure_all_started(gproc),
             Config = [{symlink_name, "latest.staking"}, {test_module, ?MODULE}] ++ Config0,
             Config1 = aecore_suite_utils:init_per_suite([?NODE1, ?NODE2],
-                                                        BuildConfig([?ALICE,
-                                                                     ?BOB]),
-                                                        [{add_peers, true}],
+                                                        #{}, %% config is rewritten per suite
+                                                        [],
                                                         Config),
+            ParentCfg =
+                #{<<"chain">> =>
+                        #{<<"persist">> => false},
+                    <<"mining">> =>
+                        #{<<"micro_block_cycle">> => 1,
+                          <<"expected_mine_rate">> => 10000,
+                          <<"autostart">> => true
+                            }},
             _Config1 = aecore_suite_utils:init_per_suite([?PARENT_CHAIN_NODE1],
-                                                         #{},
+                                                         ParentCfg,
                                                          [],
                                                         Config),
-            aecore_suite_utils:create_config(?NODE2, Config1, BuildConfig([]), []),
-            aecore_suite_utils:create_seed_contracts_file([?NODE1, ?NODE2],
-                Config1,
-                "ceres", binary_to_list(?NETWORK_ID) ++ "_contracts.json",
-                #{<<"contracts">> => [C0, C], <<"calls">> => AllCalls}),
-            aecore_suite_utils:start_node(?NODE1, Config1),
-            aecore_suite_utils:connect(?NODE1_NAME, []),
-            aecore_suite_utils:start_node(?NODE2, Config1),
-            aecore_suite_utils:connect(?NODE2_NAME, []),
-            aecore_suite_utils:start_node(?PARENT_CHAIN_NODE1, Config1),
-            aecore_suite_utils:connect(?PARENT_CHAIN_NODE1_NAME, []),
-            #{<<"pubkey">> := EncodedContractPubkey} = C,
-            {ok, ContractPubkey}   =
-            aeser_api_encoder:safe_decode(contract_pubkey, EncodedContractPubkey),
-            [{staking_contract, ContractPubkey} | Config1]
+            StakingContract = staking_contract_address(),
+            ElectionContract = election_contract_address(),
+            [{staking_contract, StakingContract},
+              {election_contract, ElectionContract} | Config1]
     end.
 
 end_per_suite(Config) ->
     [application:stop(A) ||
         A <- lists:reverse(
                proplists:get_value(started_apps, Config, []))],
-    aecore_suite_utils:stop_node(?NODE1, Config),
-    aecore_suite_utils:stop_node(?NODE2, Config),
-    aecore_suite_utils:stop_node(?PARENT_CHAIN_NODE1, Config),
     ok.
 
-init_per_group(_Group, Config0) ->
+init_per_group(Group, Config0) ->
     VM = fate,
     Config1 = aect_test_utils:init_per_group(VM, Config0),
-    Config1.
+    case Group of
+        pos -> init_per_group_custom(<<"pos">>, ?CONSENSUS_POS, Config1);
+        hc -> init_per_group_custom(<<"hc">>, ?CONSENSUS_HC, Config1);
+        _ -> Config1
+    end.
 
+init_per_group_custom(NetworkId, Consensus, Config) ->
+    ElectionContract = election_contract_by_consensus(Consensus),
+    build_json_files(NetworkId, ElectionContract, Config),
+    %% different runs use different network ids
+    Env = [ {"AE__FORK_MANAGEMENT__NETWORK_ID", binary_to_list(NetworkId)}
+          ],
+    aecore_suite_utils:start_node(?PARENT_CHAIN_NODE1, Config),
+    aecore_suite_utils:connect(?PARENT_CHAIN_NODE1_NAME, []),
+    aecore_suite_utils:create_config(?NODE1, Config,
+                                    node_config([?ALICE, ?BOB], Consensus),
+                                    [{add_peers, true} ]),
+    aecore_suite_utils:create_config(?NODE2, Config,
+                                    node_config([], Consensus),
+                                    [{add_peers, true} ]),
+    aecore_suite_utils:start_node(?NODE1, Config, Env),
+    aecore_suite_utils:connect(?NODE1_NAME, []),
+    aecore_suite_utils:start_node(?NODE2, Config, Env),
+    aecore_suite_utils:connect(?NODE2_NAME, []),
+    [{network_id, NetworkId},
+     {consensus, Consensus} | Config].
+
+end_per_group(Group, Config) when Group =:= pos;
+                                  Group =:= hc ->
+    aecore_suite_utils:stop_node(?NODE1, Config),
+    aecore_suite_utils:stop_node(?NODE2, Config),
+    aecore_suite_utils:stop_node(?PARENT_CHAIN_NODE1, Config);
 end_per_group(_Group, Config) ->
     Config.
 
@@ -309,18 +236,13 @@ contract_call(ContractPubkey, Name, Fun, Args, Amount, From, Nonce) ->
     {ok, Tx} = aect_call_tx:new(TxSpec),
     Tx.
 
-contract_call_staking_contract(Who, Fun, Args, Amt, Config) ->
-    ContractPubkey = ?config(staking_contract, Config),
-    contract_call(ContractPubkey, ?STAKING_CONTRACT, Fun,
-                  Args, Amt, pubkey(Who)).
-
 mine_and_sync(_Config) ->
     {ok, [KB0]} = aecore_suite_utils:mine_key_blocks(?NODE1_NAME, 1),
     {ok, KB0} = wait_same_top(),
     ok.
 
 wait_same_top() ->
-    wait_same_top(10).
+    wait_same_top(100).
 
 wait_same_top(Attempts) when Attempts < 1 ->
     {error, run_out_of_attempts};
@@ -333,12 +255,12 @@ wait_same_top(Attempts) ->
             wait_same_top(Attempts - 1)
     end.
 
-spend_txs(_Config) ->
+spend_txs(Config) ->
     Top0 = rpc(?NODE1, aec_chain, top_header, []),
     ct:log("Top before posting spend txs: ~p", [aec_headers:height(Top0)]),
-    seed_account(pubkey(?ALICE), 100000001 * ?DEFAULT_GAS_PRICE),
-    seed_account(pubkey(?BOB), 100000002 * ?DEFAULT_GAS_PRICE),
-    seed_account(pubkey(?CAROL), 100000003 * ?DEFAULT_GAS_PRICE),
+    seed_account(pubkey(?ALICE), 100000001 * ?DEFAULT_GAS_PRICE, Config),
+    seed_account(pubkey(?BOB), 100000002 * ?DEFAULT_GAS_PRICE, Config),
+    seed_account(pubkey(?CAROL), 100000003 * ?DEFAULT_GAS_PRICE, Config),
 
     lists:foreach(
         fun(GenIndex) ->
@@ -374,18 +296,19 @@ simple_withdraw(Config) ->
         inspect_staking_contract(?ALICE, {get_validator_state, ?ALICE}, Config),
     WithdrawAmount = 1000,
     Fun = "unstake",
+    ContractPubkey = ?config(staking_contract, Config),
     CallTx =
         sign_and_push(
-              contract_call_staking_contract( ?ALICE, Fun,
-                                              [Alice, integer_to_list(WithdrawAmount)], 0,
-                                              Config),
-                           ?ALICE),
+            contract_call(ContractPubkey, ?STAKING_CONTRACT, Fun,
+                  [Alice, integer_to_list(WithdrawAmount)], 0, pubkey(?ALICE)),
+            ?ALICE,
+            Config),
     {ok, [_]} = rpc:call(?NODE1_NAME, aec_tx_pool, peek, [infinity]),
     {value, _Acc} = rpc(?NODE1, aec_chain, get_account, [pubkey(?ALICE)]),
     mine_tx(CallTx),
     EndBalance = account_balance(pubkey(?ALICE)),
     {ok, Call} = call_info(CallTx),
-    {ok, _Res} = decode_consensus_result(Call, Fun),
+    {ok, _Res} = decode_consensus_result(Call, Fun, ?STAKING_CONTRACT),
     GasUsed = aect_call:gas_used(Call),
     GasPrice = aect_call:gas_price(Call),
     Fee = aetx:fee(aetx_sign:tx(CallTx)),
@@ -419,7 +342,7 @@ change_leaders(Config) ->
             Beneficiary = aec_blocks:beneficiary(KB),
             Beneficiary = aec_blocks:miner(KB),
             ct_log_block(KB),
-            {ok, Leader} = inspect_staking_contract(?ALICE, current_leader, Config),
+            {ok, Leader} = inspect_election_contract(?ALICE, current_leader, Config),
             {ok, LeaderDecoded} =
                 aeser_api_encoder:safe_decode(account_pubkey, Leader),
             Beneficiary = LeaderDecoded, %% assert
@@ -502,7 +425,7 @@ verify_fees(Config) ->
     lists:foreach(
         fun(_) -> Test() end,
         lists:seq(1, 10)),
-    {ok, SignedTx} = seed_account(pubkey(?ALICE), 1),
+    {ok, _SignedTx} = seed_account(pubkey(?ALICE), 1, Config),
     {ok, _} = aecore_suite_utils:mine_key_blocks(?NODE1_NAME, ?REWARD_DELAY - 1),
     ct:log("Test with no transaction", []),
     Test(), %% before fees
@@ -535,8 +458,8 @@ next_nonce(Pubkey) ->
         {error, account_not_found} -> 1
     end.
 
-sign_and_push(Tx, Who) ->
-    SignedTx = sign_tx(Tx, privkey(Who)),
+sign_and_push(Tx, Who, Config) ->
+    SignedTx = sign_tx(Tx, privkey(Who), Config),
     ok = rpc:call(?NODE1_NAME, aec_tx_pool, push, [SignedTx, tx_received]),
     SignedTx.
 
@@ -544,14 +467,15 @@ sign_and_push(Tx, Who) ->
 %% executed in the context of the CT test and uses the corresponding
 %% network_id. Since the network_id of the HC node is different, we must sign
 %% the tx using the test-specific network_id
-sign_tx(Tx, Privkey) ->
+sign_tx(Tx, Privkey, Config) ->
     Bin0 = aetx:serialize_to_binary(Tx),
     Bin = aec_hash:hash(signed_tx, Bin0), %% since we are in CERES context, we sign th hash
-    BinForNetwork = <<?NETWORK_ID/binary, Bin/binary>>,
+    NetworkId = ?config(network_id, Config),
+    BinForNetwork = <<NetworkId/binary, Bin/binary>>,
     Signatures = [ enacl:sign_detached(BinForNetwork, Privkey)],
     aetx_sign:new(Tx, Signatures).
 
-seed_account(RecpipientPubkey, Amount) ->
+seed_account(RecpipientPubkey, Amount, Config) ->
     %% precondition
     {ok, []} = rpc:call(?NODE1_NAME, aec_tx_pool, peek, [infinity]),
     ct:log("Seed spend tx", []),
@@ -566,7 +490,7 @@ seed_account(RecpipientPubkey, Amount) ->
           payload      => <<>>},
     ct:log("Preparing a spend tx: ~p", [Params]),
     {ok, Tx} = aec_spend_tx:new(Params),
-    SignedTx = sign_tx(Tx, PatronPriv),
+    SignedTx = sign_tx(Tx, PatronPriv, Config),
     ok = rpc:call(?NODE1_NAME, aec_tx_pool, push, [SignedTx, tx_received]),
     {ok, [_SpendTx]} = rpc:call(?NODE1_NAME, aec_tx_pool, peek, [infinity]),
     mine_tx(SignedTx),
@@ -589,14 +513,26 @@ inspect_staking_contract(OriginWho, WhatToInspect, Config) ->
         case WhatToInspect of
             {staking_power, Who} ->
                 {"staking_power", [binary_to_list(encoded_pubkey(Who))]};
-            current_leader ->
-                {"leader", []};
           {get_validator_state, Who} ->
                 {"get_validator_state", [binary_to_list(encoded_pubkey(Who))]}
         end,
-    Tx = contract_call_staking_contract(OriginWho, Fun, Args, 0, Config),
+    ContractPubkey = ?config(staking_contract, Config),
+    Tx = contract_call(ContractPubkey, ?STAKING_CONTRACT, Fun,
+                  Args, 0, pubkey(OriginWho)),
     {ok, Call} = dry_run(Tx),
-    {_Type, _Res} = decode_consensus_result(Call, Fun).
+    {_Type, _Res} = decode_consensus_result(Call, Fun, ?STAKING_CONTRACT).
+
+inspect_election_contract(OriginWho, WhatToInspect, Config) ->
+    {Fun, Args} =
+        case WhatToInspect of
+            current_leader -> {"leader", []}
+        end,
+    ContractPubkey = ?config(election_contract, Config),
+    ElectionContract = election_contract_by_consensus(?config(consensus, Config)),
+    Tx = contract_call(ContractPubkey, ElectionContract, Fun,
+                  Args, 0, pubkey(OriginWho)),
+    {ok, Call} = dry_run(Tx),
+    {_Type, _Res} = decode_consensus_result(Call, Fun, ElectionContract).
 
 dry_run(Tx) ->
     TopHash = rpc(?NODE1, aec_chain, top_block_hash, []),
@@ -629,10 +565,10 @@ ct_log_header(Header) ->
     Height = aec_headers:height(Header),
     ct:log("Block ~p, Timestamp: ~p (~p)", [Height, DateTime, Time]).
 
-decode_consensus_result(Call, Fun) ->
+decode_consensus_result(Call, Fun, Contract) ->
     ReturnType = aect_call:return_type(Call),
     ReturnValue = aect_call:return_value(Call),
-    {ok, BinCode} = aect_test_utils:read_contract(?SOPHIA_CERES_FATE, ?STAKING_CONTRACT),
+    {ok, BinCode} = aect_test_utils:read_contract(?SOPHIA_CERES_FATE, Contract),
     Res =
         aect_test_utils:decode_call_result(binary_to_list(BinCode), Fun,
                                           ReturnType, ReturnValue),
@@ -678,3 +614,194 @@ calc_rewards(RewardForHeight) ->
            [AdjustedReward1, AdjustedReward2]),
     Res.
 
+build_json_files(NetworkId, ElectionContract, Config) ->
+    Pubkey = ?OWNER_PUBKEY,
+    {_PatronPriv, PatronPub} = aecore_suite_utils:sign_keys(?NODE1),
+    ct:log("Patron is ~p", [aeser_api_encoder:encode(account_pubkey, PatronPub)]),
+    EncodePub =
+        fun(P) ->
+            binary_to_list(aeser_api_encoder:encode(account_pubkey, P))
+        end,
+    #{ <<"pubkey">> := StakingValidatorContract} = C0
+        = contract_create_spec("StakingValidator",
+                                [EncodePub(Pubkey)], 0, 1, Pubkey),
+    {ok, ValidatorPoolAddress} = aeser_api_encoder:safe_decode(contract_pubkey,
+                                                              StakingValidatorContract),
+    %% assert assumption
+    ValidatorPoolAddress = validator_pool_contract_address(),
+    %% create staking contract
+    MinValidatorAmt = integer_to_list(trunc(math:pow(10,18) * math:pow(10, 6))), %% 1 mln AE
+    MinStakeAmt = integer_to_list(trunc(math:pow(10,18) * 1)), %% 1 AE
+    MinStakePercent = "30",
+    OnlineDelay = "0",
+    StakeDelay = "0",
+    #{ <<"pubkey">> := StakingContractPubkey
+        , <<"owner_pubkey">> := ContractOwner } = SC
+        = contract_create_spec(?STAKING_CONTRACT,
+                                [binary_to_list(StakingValidatorContract),
+                                MinValidatorAmt, MinStakePercent, MinStakeAmt, OnlineDelay, StakeDelay],
+                                0, 2, Pubkey),
+    {ok, StakingAddress} = aeser_api_encoder:safe_decode(contract_pubkey,
+                                                         StakingContractPubkey),
+    %% assert assumption
+    StakingAddress = staking_contract_address(),
+    %% create election contract
+    #{ <<"pubkey">> := ElectionContractPubkey
+        , <<"owner_pubkey">> := ContractOwner } = EC
+        = contract_create_spec(ElectionContract,
+                                [binary_to_list(StakingContractPubkey),
+                                "\"domat\""], 0, 3, Pubkey),
+    {ok, ElectionAddress} = aeser_api_encoder:safe_decode(contract_pubkey,
+                                                          ElectionContractPubkey),
+    %% assert assumption
+    ElectionAddress = election_contract_address(),
+    {ok, SCId} = aeser_api_encoder:safe_decode(contract_pubkey,
+                                                StakingContractPubkey),
+    Call1 =
+        contract_call_spec(SCId, ?STAKING_CONTRACT,
+                            "new_validator", [],
+                            ?INITIAL_STAKE, pubkey(?ALICE), 1),
+    Call2 =
+        contract_call_spec(SCId, ?STAKING_CONTRACT,
+                            "new_validator", [],
+                            ?INITIAL_STAKE, pubkey(?BOB), 1),
+    Call3 =
+        contract_call_spec(SCId, ?STAKING_CONTRACT,
+                            "set_online", [], 0, pubkey(?ALICE), 2),
+    Call4 =
+        contract_call_spec(SCId, ?STAKING_CONTRACT,
+                            "set_online", [], 0, pubkey(?BOB), 2),
+    Call5 =
+        contract_call_spec(SCId, ?STAKING_CONTRACT,
+                            "set_validator_name", ["\"Alice\""], 0, pubkey(?ALICE), 3),
+    Call6 =
+        contract_call_spec(SCId, ?STAKING_CONTRACT,
+                            "set_validator_name", ["\"Bob\""], 0, pubkey(?BOB), 3),
+    Call7 =
+        contract_call_spec(SCId, ?STAKING_CONTRACT,
+                            "set_validator_description",
+                            ["\"Alice is a really awesome validator and she had set a description of her great service to the network.\""], 0,
+                            pubkey(?ALICE), 4),
+    Call8 =
+        contract_call_spec(SCId, ?STAKING_CONTRACT,
+                            "set_validator_avatar_url",
+                            ["\"https://aeternity.com/images/aeternity-logo.svg\""], 0,
+                            pubkey(?ALICE), 5),
+    %% create a BRI validator in the contract so they can receive
+    %% rewards as well
+    %% TODO: discuss how we want to tackle this:
+    %%  A) require the BRI account to be validator
+    %%  B) allow pending stake in the contract that is not allocated
+    %%  yet
+    %%  C) something else
+    BRI = <<"ak_2KAcA2Pp1nrR8Wkt3FtCkReGzAi8vJ9Snxa4PcmrthVx8AhPe8">>,
+    {ok, BRIPub} = aeser_api_encoder:safe_decode(account_pubkey, BRI),
+    Call9 =
+        contract_call_spec(SCId, ?STAKING_CONTRACT,
+                            "new_validator", [],
+                            ?INITIAL_STAKE, BRIPub, 1),
+    Call10 =
+        contract_call_spec(SCId, ?STAKING_CONTRACT,
+                            "set_validator_description",
+                            ["\"This validator is offline. She can never become a leader. She has no name set. She is receiving the BRI rewards\""],
+                            0, BRIPub, 2),
+    %% keep the BRI offline
+    AllCalls =  [Call1, Call2, Call3, Call4, Call5, Call6,
+                    Call7, Call8, Call9,
+                    Call10],
+    aecore_suite_utils:create_seed_file([?NODE1, ?NODE2],
+        Config,
+        "ceres", binary_to_list(NetworkId) ++ "_contracts.json",
+        #{<<"contracts">> => [C0, SC, EC], <<"calls">> => AllCalls}),
+    aecore_suite_utils:create_seed_file([?NODE1, ?NODE2],
+        Config,
+        "ceres", binary_to_list(NetworkId) ++ "_accounts.json",
+        #{  <<"ak_2evAxTKozswMyw9kXkvjJt3MbomCR1nLrf91BduXKdJLrvaaZt">> => 1000000000000000000000000000000000000000000000000,
+            encoded_pubkey(?ALICE) => 2100000000000000000000000000,
+            encoded_pubkey(?BOB) => 3100000000000000000000000000,
+            BRI => 2000000000000000000000000000
+         }),
+    ok.
+
+node_config(PotentialStakers, Consensus) ->
+    Stakers =
+        lists:map(
+            fun(Who) ->
+                Pub = encoded_pubkey(Who),
+                Priv = aeser_api_encoder:encode(contract_bytearray,
+                                                privkey(Who)), %% TODO: discuss key management
+                #{<<"pub">> => Pub, <<"priv">> => Priv}
+            end,
+            PotentialStakers),
+    ConsensusName =
+        case Consensus of
+            ?CONSENSUS_HC -> <<"hyper_chain">>;
+            ?CONSENSUS_POS -> <<"smart_contract">>
+        end,
+    SpecificConfig =
+        case Consensus of
+            ?CONSENSUS_POS -> #{};
+            ?CONSENSUS_HC ->
+                #{  <<"parent_chain">> =>
+                        #{  <<"type">> => <<"AE">>,
+                            <<"start_height">> => 35,
+                            <<"confirmations">> => 10,
+                            <<"fetch_interval">> => 1000,
+                            <<"nodes">> =>
+                                [   #{  <<"host">> => <<"127.0.0.1">>,
+                                        <<"port">> => aecore_suite_utils:external_api_port(?PARENT_CHAIN_NODE1),
+                                        <<"user">> => <<"test">>,
+                                        <<"password">> => <<"Pass">>}
+                                ]
+                        }
+                 }
+        end,
+    #{<<"chain">> =>
+            #{  <<"persist">> => false,
+                <<"hard_forks">> => #{integer_to_binary(?CERES_PROTOCOL_VSN) => 0},
+                <<"consensus">> =>
+                    #{<<"0">> => #{<<"name">> => ConsensusName,
+                                <<"config">> =>
+                                maps:merge(
+                                    #{  <<"election_contract">> => aeser_api_encoder:encode(contract_pubkey, election_contract_address()),
+                                        <<"rewards_contract">> => aeser_api_encoder:encode(contract_pubkey, staking_contract_address()),
+                                        <<"contract_owner">> => aeser_api_encoder:encode(account_pubkey,?OWNER_PUBKEY),
+                                        <<"expected_key_block_rate">> => 2000,
+                                        <<"stakers">> => Stakers},
+                                    SpecificConfig)
+                                    }}},
+        <<"fork_management">> =>
+            #{<<"network_id">> => <<"this_will_be_overwritten_runtime">>},
+        <<"mining">> =>
+            #{<<"micro_block_cycle">> => 1,
+            <<"autostart">> => false,
+            <<"beneficiary_reward_delay">> => ?REWARD_DELAY
+        }}.  %% this relies on certain nonce numbers
+validator_pool_contract_address() ->
+    aect_contracts:compute_contract_pubkey(?OWNER_PUBKEY, 1).
+
+staking_contract_address() ->
+    aect_contracts:compute_contract_pubkey(?OWNER_PUBKEY, 2).
+
+election_contract_address() ->
+    aect_contracts:compute_contract_pubkey(?OWNER_PUBKEY, 3).
+
+election_contract_by_consensus(?CONSENSUS_HC) -> ?HC_ELECTION_CONTRACT;
+election_contract_by_consensus(?CONSENSUS_POS) -> ?POS_ELECTION_CONTRACT.
+
+
+produce_validator_tx() ->
+    Who = ?BOB,
+    SCId = staking_contract_address(),
+    Tx =
+        contract_call(SCId, ?STAKING_CONTRACT,
+                            "set_validator_avatar_url",
+                            ["\"https://pbs.twimg.com/profile_images/1338340549804380160/A3oKPQuq_400x400.jpg\""], 0,
+                            pubkey(Who), 4),
+    Bin0 = aetx:serialize_to_binary(Tx),
+    Bin = aec_hash:hash(signed_tx, Bin0), %% since we are in CERES context, we sign th hash
+    NetworkId = <<"ae_smart_contract_test">>,
+    BinForNetwork = <<NetworkId/binary, Bin/binary>>,
+    Signatures = [ enacl:sign_detached(BinForNetwork, privkey(Who))],
+    SignedTx = aetx_sign:new(Tx, Signatures),
+    aeser_api_encoder:encode(transaction, aetx_sign:serialize_to_binary(SignedTx)).

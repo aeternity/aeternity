@@ -9,7 +9,7 @@
          make_shortcut/1,
          node_config/2,
          create_config/4,
-         create_seed_contracts_file/5,
+         create_seed_file/5,
          make_multi/2,
          node_shortcut/2,
          shortcut_dir/1,
@@ -62,6 +62,7 @@
 -export([node_tuple/1,
          node_name/1,
          parent_chain_node/1,
+         external_api_port/1,
 
          peer_info/1,
          connect/1,
@@ -503,11 +504,11 @@ create_config(Node, CTConfig, CustomConfig, Options) ->
     write_keys(Node, Config),
     write_config(NodeCfgPath, Config).
 
-create_seed_contracts_file(Nodes, CTConfig, Consensus, FileName, Data) when
+create_seed_file(Nodes, CTConfig, Consensus, FileName, Data) when
     is_list(Nodes) ->
-    [create_seed_contracts_file(Node, CTConfig, Consensus, FileName, Data) ||
+    [create_seed_file(Node, CTConfig, Consensus, FileName, Data) ||
         Node <- Nodes];
-create_seed_contracts_file(Node, CTConfig, Consensus, FileName, Data) ->
+create_seed_file(Node, CTConfig, Consensus, FileName, Data) ->
     Path = filename:join([data_dir(Node, CTConfig), "aecore", "." ++ Consensus, FileName]),
     ok = filelib:ensure_dir(Path),
     write_config(Path, Data, false).

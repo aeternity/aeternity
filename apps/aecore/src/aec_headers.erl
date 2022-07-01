@@ -36,6 +36,7 @@
          serialize_to_signature_binary/1,
          set_height/2,
          set_miner/2,
+         set_beneficiary/2,
          set_nonce/2,
          set_nonce_and_key_seal/3,
          set_info/2,
@@ -377,6 +378,9 @@ miner(Header) ->
 
 -spec set_miner(key_header(), aec_keys:pubkey()) -> header().
 set_miner(#key_header{} = H, Miner) -> H#key_header{miner = Miner}.
+
+-spec set_beneficiary(key_header(), aec_keys:pubkey()) -> header().
+set_beneficiary(#key_header{} = H, Beneficiary) -> H#key_header{beneficiary = Beneficiary}.
 
 -spec nonce(key_header()) -> non_neg_integer().
 nonce(#key_header{nonce = N}) -> N.

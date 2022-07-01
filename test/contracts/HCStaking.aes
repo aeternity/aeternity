@@ -1,0 +1,250 @@
+include "List.aes"
+contract interface StakingValidator =
+  record validator_state = { main_staking_ct : address,
+                             name : string,
+                             description : string,
+                             image_url : string,
+                             delegates : map(address, int), shares : int }
+  entrypoint init : (address) => unit
+  payable stateful entrypoint stake : address => unit
+  payable entrypoint profit : () => unit
+  stateful entrypoint unstake : (address, int) => int
+  entrypoint get_state : () => validator_state
+  entrypoint balance : (address) => int
+  entrypoint shares : (address) => int
+  entrypoint all_shares : () => int
+  stateful entrypoint set_name : (string) => unit
+  stateful entrypoint set_description : (string) => unit
+  stateful entrypoint set_avatar_url : (string) => unit
+
+main contract HCStaking =
+  datatype bucket = ONLINE | OFFLINE
+
+  record validator =
+    { ct : StakingValidator, stake : int }
+  record get_validator_response =
+    { ct        : StakingValidator,
+      stake     : int,
+      is_online : bool,
+      state     : StakingValidator.validator_state}
+  record get_state_response =
+    { staking_validator_ct  : StakingValidator,
+      validators            : list(get_validator_response),
+      total_stake           : int,
+      entropy               : hash,
+      leader                : address,
+      validator_min_stake   : int,
+      stake_minimum         : int
+      }
+
+  record state =
+    { staking_validator_ct  : StakingValidator,
+      online_validators     : map(address, validator),
+      offline_validators    : map(address, validator),
+      total_stake           : int,
+      entropy               : hash,
+      leader                : address,
+      validator_min_stake   : int,
+      stake_minimum         : int
+      }
+
+  entrypoint init(staking_validator_ct : StakingValidator, entropy_str : string,
+                  validator_min_stake : int, stake_minimum : int) =
+    { staking_validator_ct  = staking_validator_ct,
+      online_validators     = {},
+      offline_validators    = {},
+      total_stake           = 0,
+      entropy               = Crypto.sha256(entropy_str),
+      leader                = Contract.address,
+      validator_min_stake   = validator_min_stake,
+      stake_minimum         = stake_minimum
+      }
+
+  entrypoint online_validators() =
+    let vs = Map.to_list(state.online_validators)
+    [ (v, s) | (v, {stake = s}) <- vs ]
+
+  entrypoint offline_validators() =
+    let vs = Map.to_list(state.offline_validators)
+    [ (v, s) | (v, {stake = s}) <- vs ]
+
+  payable stateful entrypoint new_validator() : StakingValidator =
+    require(Call.value >= state.validator_min_stake, "A new validator stake the minimum amount")
+    assert_uknown_validator(Call.caller)
+    let validator_ct : StakingValidator = Chain.clone(ref = state.staking_validator_ct, Contract.address)
+    validator_ct.stake(value = Call.value, Call.caller)
+    put(state{offline_validators[Call.caller] = {ct = validator_ct, stake = Call.value}})
+    validator_ct
+
+  stateful entrypoint set_online() =
+    require(validator_bucket(Call.caller) == OFFLINE, "Validator not offline")
+    let validator = state.offline_validators[Call.caller]
+    put(state{online_validators[Call.caller] = validator,
+              offline_validators @ offv = Map.delete(Call.caller, offv),
+              total_stake @ ts = ts + validator.stake})
+
+  stateful entrypoint set_offline() =
+    require(validator_bucket(Call.caller) == ONLINE, "Validator not online")
+    let validator = state.online_validators[Call.caller]
+    put(state{offline_validators[Call.caller] = validator,
+              online_validators @ onv = Map.delete(Call.caller, onv),
+              total_stake @ ts = ts - validator.stake})
+
+  payable stateful entrypoint stake(to : address) =
+    require(Call.value >= state.stake_minimum, "Must stake the minimum amount")
+    switch(validator_bucket(to))
+      ONLINE =>
+        let validator = state.online_validators[to]
+        validator.ct.stake(value = Call.value, Call.caller)
+        put(state{online_validators[to] = validator{ stake @ s = s + Call.value },
+                  total_stake @ ts = ts + Call.value})
+      OFFLINE =>
+        let validator = state.offline_validators[to]
+        validator.ct.stake(value = Call.value, Call.caller)
+        put(state{offline_validators[to] = validator{ stake @ s = s + Call.value }})
+
+  stateful entrypoint unstake(from : address, stakes : int) : int =
+    switch(validator_bucket(from))
+      ONLINE =>
+        let validator = state.online_validators[from]
+        let payout = validator.ct.unstake(Call.caller, stakes)
+        assert_allowed_to_unstake(from, Call.caller, validator)
+        put(state{online_validators[from] = validator{ stake @ s = s - payout},
+                  total_stake @ ts = ts - payout})
+        payout
+      OFFLINE =>
+        let validator = state.offline_validators[from]
+        let payout = validator.ct.unstake(Call.caller, stakes)
+        assert_allowed_to_unstake(from, Call.caller, validator)
+        put(state{offline_validators[from] = validator{ stake @ s = s - payout }})
+        payout
+
+  payable stateful entrypoint reward(to : address) =
+    assert_protocol_call()
+    switch(validator_bucket(to))
+      ONLINE =>
+        let validator = state.online_validators[to]
+        validator.ct.profit(value = Call.value)
+        put(state{online_validators[to] = validator{ stake @ s = s + Call.value },
+                  total_stake @ ts = ts + Call.value})
+      OFFLINE =>
+        let validator = state.offline_validators[to]
+        validator.ct.profit(value = Call.value)
+        put(state{offline_validators[to] = validator{ stake @ s = s + Call.value }})
+
+  entrypoint get_validator_state(v : address) : get_validator_response =
+    let validator = get_validator(v)
+    let online =
+        switch(validator_bucket(v))
+            ONLINE => true
+            OFFLINE => false
+    {ct = validator.ct,
+     stake = validator.stake,
+     is_online = online,
+     state = validator.ct.get_state()}
+
+  entrypoint get_state() : get_state_response =
+    let validators = map_keys(state.online_validators) ++
+                     map_keys(state.offline_validators)
+    { staking_validator_ct  = state.staking_validator_ct,
+      validators            = [get_validator_state(v) | v <- validators],
+      total_stake           = state.total_stake,
+      entropy               = state.entropy,
+      leader                = state.leader,
+      validator_min_stake   = state.validator_min_stake,
+      stake_minimum         = state.stake_minimum
+      }
+
+  entrypoint set_validator_name(name : string) =
+    let validator = get_validator(Call.caller)
+    validator.ct.set_name(name)
+
+  entrypoint set_validator_description(description : string) =
+    let validator = get_validator(Call.caller)
+    validator.ct.set_description(description)
+
+  entrypoint set_validator_avatar_url(avatar_url : string) =
+    let validator = get_validator(Call.caller)
+    validator.ct.set_avatar_url(avatar_url)
+
+  entrypoint leader() =
+    state.leader
+
+  stateful entrypoint elect() =
+    assert_protocol_call()
+    let new_leader = elect_at_height(Chain.block_height)
+    put(state{ leader = new_leader})
+
+  entrypoint elect_next() =
+    elect_at_height(Chain.block_height + 1)
+
+  entrypoint elect_at_height(height : int) =
+    let sorted = List.sort(validator_cmp, Map.to_list(state.online_validators))
+    let shot = Bytes.to_int(state.entropy) * height mod state.total_stake
+    switch(find_validator(sorted, shot))
+      None => abort("NO CANDIDATE") // should not be possible
+      Some(new_leader) => new_leader
+
+  entrypoint staking_power(who : address) =
+    let validator = get_validator(who)
+    validator.stake
+
+  entrypoint is_validator_online(who : address) =
+    switch(validator_bucket(who))
+      ONLINE => true
+      OFFLINE => false
+
+  entrypoint get_validator_contract(who : address) =
+    let validator = get_validator(who)
+    validator.ct
+
+  function get_validator(who : address) =
+    switch(validator_bucket(who))
+      ONLINE => state.online_validators[who]
+      OFFLINE => state.offline_validators[who]
+
+  function assert_uknown_validator(who) : bool =
+    switch(Map.member(who, state.online_validators))
+      true =>
+        abort("Validator exists")
+      false =>
+        switch(Map.member(who, state.offline_validators))
+          true =>
+            abort("Validator exists")
+          false =>
+            true 
+
+  function find_validator(validators, shot) =
+    switch(validators)
+      []   => None
+      (validator_addr, validator : validator)::t =>
+        if(validator.stake > shot) Some(validator_addr)
+        else find_validator(t, shot - validator.stake)
+
+  function validator_cmp((x_addr : address, x : validator), (y_addr : address, y : validator)) =
+    if (x.stake == y.stake) x_addr < y_addr else x.stake < y.stake
+
+  function validator_bucket(who) : bucket =
+    switch(Map.member(who, state.online_validators))
+      true =>
+        ONLINE
+      false =>
+        switch(Map.member(who, state.offline_validators))
+          true =>
+            OFFLINE
+          false =>
+            abort("Validator must exists")
+
+  function assert_protocol_call() =
+      require(Call.caller == Contract.creator, "Must be called by the protocol")
+    
+  function map_keys(map) =
+    [k | (k, v) <- Map.to_list(map)]
+
+  function assert_allowed_to_unstake(from : address, who : address, v : validator) =
+    if(from == who)
+      let balance_left = v.ct.balance(from)
+      if(balance_left < state.validator_min_stake) abort("Validator can not withdraw below the treshhold")
+      else false
+    else
+      true
