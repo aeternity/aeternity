@@ -504,32 +504,32 @@ name_claim_to_unknown_commitment_cleanup(Config) ->
     ok.
 
 name_claim_with_too_long_name_should_not_crash_error_handling(Config) ->
-    Node = dev1,
-    NodeName = aecore_suite_utils:node_name(Node),
-    {Priv, Pub} = aecore_suite_utils:sign_keys(Node),
-    {ok, NextNonce} = rpc:call(NodeName, aec_next_nonce, pick_for_account, [Pub]),
-    Template =
-        #{account_id => aeser_id:create(account, Pub),
-          nonce      => NextNonce,
-          name       => <<"asdf123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890.chain">>,
-          name_salt  => 123,
-          name_fee   => ?SPEND_FEE * 100,
-          fee        => ?SPEND_FEE * 10},
     Protocol = ?config(protocol, Config),
-    ClaimData =
-        case Protocol >= ?LIMA_PROTOCOL_VSN of
-            true  -> Template;
-            false -> maps:remove(name_fee, Template)
-        end,
-    {ok, Tx} = aens_claim_tx:new(ClaimData),
-    SignedTx = aec_test_utils:sign_tx(Tx, Priv, false),
-    ok = push(NodeName, SignedTx, Config),
-    {ok, [SignedTx]} = rpc:call(NodeName, aec_tx_pool, peek, [infinity]),
-    {ok, 1} = rpc:call(NodeName, aec_tx_pool_failures, limit, [SignedTx, invalid_name]),
-    make_microblock_attempts(1, Config),
-    timer:sleep(100), %% provide some time for the tx pool to process the message
-    {ok, []} = rpc:call(NodeName, aec_tx_pool, peek, [infinity]),
-    ok.
+    case Protocol >= ?LIMA_PROTOCOL_VSN of
+        true ->
+            Node = dev1,
+            NodeName = aecore_suite_utils:node_name(Node),
+            {Priv, Pub} = aecore_suite_utils:sign_keys(Node),
+            {ok, NextNonce} = rpc:call(NodeName, aec_next_nonce, pick_for_account, [Pub]),
+            ClaimData =
+                #{account_id => aeser_id:create(account, Pub),
+                  nonce      => NextNonce,
+                  name       => <<"asdf123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890.chain">>,
+                  name_salt  => 123,
+                  name_fee   => ?SPEND_FEE * 100,
+                  fee        => ?SPEND_FEE * 10},
+            {ok, Tx} = aens_claim_tx:new(ClaimData),
+            SignedTx = aec_test_utils:sign_tx(Tx, Priv, false),
+            ok = push(NodeName, SignedTx, Config),
+            {ok, [SignedTx]} = rpc:call(NodeName, aec_tx_pool, peek, [infinity]),
+            {ok, 1} = rpc:call(NodeName, aec_tx_pool_failures, limit, [SignedTx, invalid_name]),
+            make_microblock_attempts(1, Config),
+            timer:sleep(100), %% provide some time for the tx pool to process the message
+            {ok, []} = rpc:call(NodeName, aec_tx_pool, peek, [infinity]),
+            ok;
+        false ->
+            ok
+    end.
 
 seed_account(Pubkey, Config) ->
     seed_account(Pubkey, ?SPEND_FEE * 10000, Config).
