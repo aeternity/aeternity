@@ -43,8 +43,7 @@
     aega,
     aefate,
     aeserialization,
-    ranch,
-    aecli
+    ranch
   ]},
   {runtime_dependencies, ["app_ctrl-0.1.0"]},
   {env, [
