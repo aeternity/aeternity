@@ -24,6 +24,7 @@
     skipped_nonce_specific_cleanup/1,
     insufficient_funds_specific_cleanup/1,
     name_claim_to_unknown_commitment_cleanup/1,
+    name_claim_with_too_long_name_should_not_crash_error_handling/1,
     test_defaults/1,
     test_disabled/1,
     stop_node/1
@@ -102,6 +103,7 @@ groups() ->
       [skipped_nonce_specific_cleanup,
        insufficient_funds_specific_cleanup,
        name_claim_to_unknown_commitment_cleanup,
+       name_claim_with_too_long_name_should_not_crash_error_handling,
        test_defaults,
        test_disabled
       ]}
@@ -122,7 +124,8 @@ init_per_suite(Config) ->
                                                 <<"tx_failures">> =>
                                                     #{<<"common">> =>
                                                         #{<<"fallback">> => ?COMMON_DEFAULT,
-                                                          <<"tx_nonce_too_high_for_account">> => ?NONCE_TOO_HIGH
+                                                          <<"tx_nonce_too_high_for_account">> => ?NONCE_TOO_HIGH,
+                                                          <<"invalid_name">> => 1
                                                          },
                                                       <<"spend_tx">> =>
                                                         #{<<"fallback">> => ?SPEND_DEFAULT,
@@ -218,7 +221,7 @@ start_node(Config) ->
             ok
     end,
     Alice = pubkey(?ALICE),
-    SpendTx = prepare_spend_tx(Node, 
+    SpendTx = prepare_spend_tx(Node,
                                #{recipient_id => aeser_id:create(account, Alice),
                                  amount => ?SPEND_FEE * 100}),
     ok = rpc:call(NodeName, aec_tx_pool, push, [SpendTx, tx_created]),
@@ -329,7 +332,7 @@ maybe_push_tx_out_cache(Config) ->
             NodeName = aecore_suite_utils:node_name(Node),
             Pub = pubkey(?ALICE),
             Priv = privkey(?ALICE),
-            Opts = 
+            Opts =
                 #{sender_id    => aeser_id:create(account, Pub),
                   recipient_id => aeser_id:create(account, Pub)},
             lists:foreach(
@@ -495,6 +498,27 @@ name_claim_to_unknown_commitment_cleanup(Config) ->
             _ -> name_not_preclaimed
         end,
     {ok, 1} = rpc:call(NodeName, aec_tx_pool_failures, limit, [SignedTx, Error]),
+    make_microblock_attempts(5, Config),
+    timer:sleep(100), %% provide some time for the tx pool to process the message
+    {ok, []} = rpc:call(NodeName, aec_tx_pool, peek, [infinity]),
+    ok.
+
+name_claim_with_too_long_name_should_not_crash_error_handling(Config) ->
+    Node = dev1,
+    NodeName = aecore_suite_utils:node_name(Node),
+    {Priv, Pub} = aecore_suite_utils:sign_keys(Node),
+    {ok, NextNonce} = rpc:call(NodeName, aec_next_nonce, pick_for_account, [Pub]),
+    {ok, Tx} =
+        aens_claim_tx:new(#{account_id => aeser_id:create(account, Pub),
+                            nonce => NextNonce,
+                            name => <<"asdf123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890.chain">>,
+                            name_salt => 123,
+                            name_fee => ?SPEND_FEE * 100,
+                            fee => ?SPEND_FEE * 10}),
+    SignedTx = aec_test_utils:sign_tx(Tx, Priv, false),
+    ok = push(NodeName, SignedTx, Config),
+    {ok, [SignedTx]} = rpc:call(NodeName, aec_tx_pool, peek, [infinity]),
+    {ok, 1} = rpc:call(NodeName, aec_tx_pool_failures, limit, [SignedTx, invalid_name]),
     make_microblock_attempts(1, Config),
     timer:sleep(100), %% provide some time for the tx pool to process the message
     {ok, []} = rpc:call(NodeName, aec_tx_pool, peek, [infinity]),
