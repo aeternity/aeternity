@@ -464,16 +464,20 @@ execute_cmd(CmdStr, Menu, #aecli{} = J) ->
             %% the command. We execute the action associated with the last one
             %% i.e. for "show configuration config path" we would execute
             %% the action for the "configuration" item with role == cmd.
-            #{action := Action} = lists:last(Cmd),
-            case catch Action(J, Leaf, "Value") of
-                {'EXIT', _Reason} ->
-                    {ok, "Error executing command", J};
-                {ok, Result} ->
-                    {ok, Result, J};
-                {ok, Result, J1} ->
-                    {ok, Result, J1};
-                stop ->
-                    stop
+            case lists:last(Cmd) of
+                #{action := Action} ->
+                    case catch Action(J, Leaf, "Value") of
+                        {'EXIT', _Reason} ->
+                            {ok, "Error executing command", J};
+                        {ok, Result} ->
+                            {ok, Result, J};
+                        {ok, Result, J1} ->
+                            {ok, Result, J1};
+                        stop ->
+                            stop
+                    end;
+                _ ->
+                    {ok, "Incomplete command", J}
             end
     end.
 
