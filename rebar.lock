@@ -62,7 +62,7 @@
  {<<"eblake2">>,{pkg,<<"eblake2">>,<<"1.0.0">>},1},
  {<<"ecli">>,
   {git,"https://github.com/mgmtd/ecli",
-      {ref,"673356891ce37d325326662869090e0ae4ef3ffa"}},
+      {ref,"29c889455537bde4fb39ee51c742583b101c15db"}},
   0},
  {<<"ecrecover">>,
   {git,"https://github.com/aeternity/ecrecover.git",
