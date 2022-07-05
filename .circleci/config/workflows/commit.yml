@@ -20,7 +20,6 @@ jobs:
         branches:
           only:
             - << pipeline.parameters.master_branch >>
-            - gh-3888-ecli-support
 
   - test:
       context: ae-slack
@@ -271,7 +270,6 @@ jobs:
           only:
             - /releases\/.*/
             - << pipeline.parameters.master_branch >>
-            - gh-3888-ecli-support
 
   - macos-tarball:
       name: macos-tarball
@@ -283,7 +281,6 @@ jobs:
           only:
             - /releases\/.*/
             - << pipeline.parameters.master_branch >>
-            - gh-3888-ecli-support
 
   - macos-tarball:
       name: macos-tarball-bundle
