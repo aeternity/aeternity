@@ -6,11 +6,10 @@ setup_docker:
 
 docker_login:
   steps:
-    - setup_secrets
     - run:
         name: Login to Docker Hub
         command: |
-          docker login -u $(</secrets/DOCKER_USER) -p $(</secrets/DOCKER_PASS)
+          docker login -u $DOCKER_USER -p $DOCKER_PASS
 
 docker_build:
   parameters:

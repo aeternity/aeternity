@@ -574,7 +574,7 @@ process_request(#{<<"method">> := Method,
                 {error, _Reason} = Err -> Err
             end;
         false ->
-            lager:warning("Recived unhandled method ~p", [Method]),
+            lager:warning("Received unhandled method ~p", [Method]),
             {error, error_code}
     end;
 process_request(#{<<"method">> := Method,

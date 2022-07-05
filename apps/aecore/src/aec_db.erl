@@ -169,7 +169,7 @@
 tables() -> tables(ram).
 
 %% WARNING: We are migrating away from mnesia - currently some
-%%          backends are bypasing the mnesia transaction manager and issuing
+%%          backends are bypassing the mnesia transaction manager and issuing
 %%          a custom commit to the backend - as a results indexes are not
 %%          updated automatically - If you add another index then you need
 %%          to update the custom bypass logic
@@ -297,10 +297,6 @@ backend_mode(<<"rocksdb">>, #{persist := true } = M) ->
                                   , {on_write_error_store, aec_db_error_store}
                                   ]}
                                ]
-          };
-backend_mode(<<"leveled">>, #{persist := true } = M) ->
-        M#{ module => mnesia_leveled
-          , alias => leveled_copies
           };
 backend_mode(<<"mnesia">>, #{persist := true } = M) ->
         M#{ module => mnesia
@@ -1051,7 +1047,7 @@ add_tx_hash_to_mempool(TxHash) when is_binary(TxHash) ->
       [{aec_tx_pool, TxHash}]).
 
 is_in_tx_pool(TxHash) ->
-    ?t(mnesia:read(aec_tx_pool, TxHash)) =:= ?TX_IN_MEMPOOL.
+    ?t(mnesia:read(aec_tx_pool, TxHash)) =/= [].
 
 remove_tx_from_mempool(TxHash) when is_binary(TxHash) ->
     ?t(mnesia:delete({aec_tx_pool, TxHash}),
@@ -1099,7 +1095,7 @@ prepare_mnesia_bypass() ->
     TNames = [N || {N,_} <- tables()],
     %% Check whether we can bypass mnesia in some cases
     case proplists:get_value(rocksdb_copies, P, []) of
-        [] -> persistent_term:erase(?BYPASS); %% TODO: add leveled backend here
+        [] -> persistent_term:erase(?BYPASS);
         [_] ->
             %% Ask the backend for the handle
             {HIndexRef, set} = mnesia_rocksdb:get_ref(undefined, {aec_headers, index, {4, ordered}}),

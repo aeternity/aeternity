@@ -864,13 +864,13 @@ update_pool_on_tx_hash(TxHash, {#dbs{gc_db = GCDb} = Dbs, OriginsCache, GCHeight
             ets:insert(Handled, {TxHash}),
             {ok, Tx} = aec_db:dirty_get_signed_tx(TxHash),
             case aec_db:is_in_tx_pool(TxHash) of
-                true ->
+                false ->
                     %% Added to chain
                     Key = pool_db_key(Tx),
                     pool_db_raw_delete(Dbs, Key),
                     aec_tx_pool_gc:delete_hash(GCDb, TxHash),
                     add_to_origins_cache(OriginsCache, Tx);
-                false ->
+                true ->
                     Key = pool_db_key(Tx),
                     pool_db_raw_put(Dbs, GCHeight, Key, Tx, TxHash)
             end

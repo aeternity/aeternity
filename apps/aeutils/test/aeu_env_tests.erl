@@ -37,7 +37,7 @@ extra_checks_test_() ->
        fun deprecated_miner_section_conflicting_with_miners/0},
       {"User configuration cannot contain 'fork_management > fork > signalling_start_height' greater or equal to 'fork_management > fork > signalling_end_height'",
        fun invalid_fork_signalling_interval/0},
-      {"User configuration cannot containt 'fork_management > fork > signalling_start_height' lower or equal to the last scheduled hard fork height",
+      {"User configuration cannot contain 'fork_management > fork > signalling_start_height' lower or equal to the last scheduled hard fork height",
        fun invalid_fork_signalling_start_height/0},
       {"User configuration cannot contain 'fork_management > fork > signalling_block_count' greater than signalling interval",
        fun invalid_fork_signalling_block_count/0},

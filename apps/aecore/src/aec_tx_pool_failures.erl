@@ -50,7 +50,19 @@ lookup_setting(Map, Key) ->
 
 tx_type_to_setting_name(TxNameAtom) -> atom_to_binary(TxNameAtom, utf8).
 
-error_to_setting_name(Event) when is_atom(Event) -> atom_to_binary(Event, utf8).
+error_to_setting_name(Event) when is_atom(Event) ->
+    atom_to_binary(Event, utf8);
+error_to_setting_name(Event) when is_tuple(Event) ->
+    Reason =
+        case element(1, Event) of
+            bad_label         -> invalid_name;
+            invalid_codepoint -> invalid_name;
+            Other             -> Other
+        end,
+    atom_to_binary(Reason, utf8);
+error_to_setting_name(Event) ->
+    lager:error("?p:error_to_setting_name(~p)", [?MODULE, Event]),
+    <<"unknown_error">>.
 
 load_settings() ->
     Settings0 =

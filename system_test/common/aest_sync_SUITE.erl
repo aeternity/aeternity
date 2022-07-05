@@ -179,7 +179,7 @@ new_node_joins_network(Cfg) ->
                     config_guest_path => "/home/aeternity/.epoch/epoch/epoch.yaml",
                     genesis_accounts => GenesisAccounts
                    },
-    ct:log("Testing compatiblity of aeternity/aeternity:local with ~p", [Compatible]),
+    ct:log("Testing compatibility of aeternity/aeternity:local with ~p", [Compatible]),
 
     OldNode1 = OldBaseSpec#{
       name    => old_node1,
@@ -416,7 +416,7 @@ tx_pool_sync(Cfg) ->
     start_node(node1, Cfg),
     wait_for_startup([node1], 4, Cfg),
 
-    %% Let's post a bunch of transactions, preferrably some valid
+    %% Let's post a bunch of transactions, preferably some valid
     %% and some "not yet valid"
 
     Patron = patron(),

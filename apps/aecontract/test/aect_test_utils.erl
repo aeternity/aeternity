@@ -60,6 +60,7 @@
         ]).
 
 -include_lib("common_test/include/ct.hrl").
+-include_lib("kernel/include/file.hrl").
 -include_lib("aecontract/include/aecontract.hrl").
 -include_lib("aecontract/include/hard_forks.hrl").
 -include_lib("aecontract/test/include/aect_sophia_vsn.hrl").
@@ -400,7 +401,7 @@ new_key_pair() ->
 
 legacy_compile(Vsn, SrcFile) ->
     Compiler = compiler_cmd(Vsn),
-    OutFile  = tempfile_name("tmp_sophia_", [{ext, ".aeb"}]),
+    OutFile  = tempfile_name("tmp_sophia_", ".aeb"),
     Cmd = Compiler ++ " " ++ SrcFile ++ " -o " ++ OutFile,
     _Output = os:cmd(Cmd),
     try
@@ -432,13 +433,61 @@ aci_json_enabled(Vsn) ->
         _                                -> yes_automatic
     end.
 
-tempfile_name(Prefix, Opts) ->
-    File = tempfile:name(Prefix, Opts),
+tempfile_name(Prefix, Extension) ->
+    File = temp_filename(Prefix, Extension),
     case get('$tmp_files') of
         undefined -> put('$tmp_files', [File]);
         Files     -> put('$tmp_files', [File | Files])
     end,
     File.
+
+%% A few functions mostly lifted / adapted from the bucs lib
+temp_filename(Prefix, Extension) ->
+    Path = temp_dir(),
+    filename:join([Path, Prefix ++ randstr(20) ++ Extension]).
+
+-define(CHARS, <<"azertyuiopqsdfghjklmwxcvbn"
+                 "AZERTYUIOPQSDFGHJKLMWXCVBN1234567890">>).
+randstr(Size) ->
+    PoolSize = byte_size(?CHARS),
+    [binary:at(?CHARS, rand:uniform(PoolSize) - 1)
+     || _ <- lists:seq(1, Size)].
+
+%% Yes, this might be a dreaded nested case, but it is extremely obvious
+%% what it does at a glance.
+temp_dir() ->
+    case os:getenv("TMPDIR") of
+    false ->
+      case os:getenv("TEMP") of
+        false ->
+          case os:getenv("TMP") of
+            false ->
+              case writeable_dir("/tmp") of
+                false ->
+                  Cwd = case file:get_cwd() of
+                          {ok, Dir} -> Dir;
+                          _ -> "."
+                        end,
+                  case writeable_dir(Cwd) of
+                    false -> false;
+                    LTmp -> LTmp
+                  end;
+                STmp -> STmp
+              end;
+            Tmp -> Tmp
+          end;
+        Temp -> Temp
+      end;
+    Tmpdir -> Tmpdir
+  end.
+
+writeable_dir(Path) ->
+  case file:read_file_info(Path) of
+    {ok, #file_info{type = directory, access = Access}}
+        when Access =:= read_write; Access =:= write ->
+      Path;
+    _ -> false
+  end.
 
 cleanup_tempfiles() ->
     case get('$tmp_files') of
@@ -503,7 +552,7 @@ slow_encode_call_data_(Vsn, Code, Fun, Args, Backend) when Vsn == ?SOPHIA_CERES_
         {error, <<"bad argument">>}
     end;
 slow_encode_call_data_(Vsn, Code, Fun, Args0, _Backend) ->
-    SrcFile = tempfile_name("sophia_code", [{ext, ".aes"}]),
+    SrcFile = tempfile_name("sophia_code", ".aes"),
     Args    = legacy_args(Vsn, Args0),
     ok = file:write_file(SrcFile, Code),
     Compiler = compiler_cmd(max(Vsn, ?SOPHIA_MINERVA)),
@@ -582,7 +631,7 @@ generate_json_aci_(Vsn, Backend, Code) when Vsn == ?SOPHIA_IRIS_FATE ->
         {error, <<"bad argument">>}
     end;
 generate_json_aci_(Vsn, Backend, Code) ->
-    SrcFile = tempfile_name("sophia_code", [{ext, ".aes"}]),
+    SrcFile = tempfile_name("sophia_code", ".aes"),
     ok = file:write_file(SrcFile, Code),
     Compiler = compiler_cmd(max(Vsn, ?SOPHIA_MINERVA)),
     Cmd = Compiler ++ " --create_json_aci " ++ SrcFile,

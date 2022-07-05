@@ -22,7 +22,7 @@
 %%%   txs
 %%% - Nonces: a map of `Acct => Nonce' pairs + support for incrementing an acct
 %%%   nonce
-%%% - Dictionary: for storing and retreiving (mainly) test-related state
+%%% - Dictionary: for storing and retrieving (mainly) test-related state
 %%% - Event reporting: the simulator uses the standard aec_events reporting
 %%%   mechanism.
 %%%

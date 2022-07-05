@@ -206,7 +206,7 @@ json_rpc_call(ConnPid, Req, Timeout) when is_map(Req) ->
     end.
 
 
-%% when an WS event occours, the registered process will receive a message in
+%% when an WS event occurs, the registered process will receive a message in
 %% the mailbox. Message structure will be:
 %% {Sender::pid(), websocket_event, Origin::atom(), Action::atom()}
 %% {Sender::pid(), websocket_event, Origin::atom(), Action::atom(), Payload::map()}
@@ -581,7 +581,7 @@ websocket_info({send_to_client, Msg}, _ConnState, #state{role=Role}=State) ->
     {reply, {text, Msg}, State}.
 
 websocket_terminate(Reason, _ConnState, State) ->
-    ct:log("Websocket closed in state ~p wih reason ~p~n",
+    ct:log("Websocket closed in state ~p with reason ~p~n",
               [State, Reason]),
     inform(websocket, closed, State),
     ok.

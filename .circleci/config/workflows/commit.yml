@@ -34,7 +34,6 @@ jobs:
             - "ct-iris"
             - "ct-latest"
             - "ct-latest-no-aci"
-            - "ct-mnesia-leveled"
             - "ct-mnesia-rocksdb"
         exclude:
           - {otp: "otp23", target: "ct-roma"}
@@ -43,7 +42,6 @@ jobs:
           - {otp: "otp23", target: "ct-lima"}
           - {otp: "otp23", target: "ct-iris"}
           - {otp: "otp23", target: "ct-latest-no-aci"}
-          - {otp: "otp23", target: "ct-mnesia-leveled"}
           - {otp: "otp23", target: "ct-mnesia-rocksdb"}
           - {otp: "otp24", target: "ct-roma"}
           - {otp: "otp24", target: "ct-minerva"}
@@ -51,7 +49,6 @@ jobs:
           - {otp: "otp24", target: "ct-lima"}
           - {otp: "otp24", target: "ct-iris"}
           - {otp: "otp24", target: "ct-latest-no-aci"}
-          - {otp: "otp24", target: "ct-mnesia-leveled"}
           - {otp: "otp24", target: "ct-mnesia-rocksdb"}
       requires:
         - build-<< matrix.otp >>
@@ -111,7 +108,6 @@ jobs:
   - docker-smoke-test:
       context:
         - ae-slack
-        - ae-node-builds
       filters:
         branches:
           ignore:
@@ -139,7 +135,6 @@ jobs:
   - docker-js-sdk-smoke-test:
       context:
         - ae-slack
-        - ae-node-builds
       requires:
         - docker-smoke-test
       filters:
@@ -154,7 +149,6 @@ jobs:
   - docker-db-smoke-test:
       context:
         - ae-slack
-        - ae-node-builds
       requires:
         - docker-smoke-test
       filters:
@@ -244,7 +238,7 @@ jobs:
       bucket: << pipeline.parameters.s3_builds_bucket >>
       context:
         - ae-slack
-        - ae-node-builds
+        - ae-vault-node
       requires:
         - linux-tarball
         - linux-tarball-bundle
@@ -262,7 +256,7 @@ jobs:
       uri: s3://<< pipeline.parameters.s3_builds_bucket >>/aeternity-$CIRCLE_SHA1-ubuntu-x86_64.tar.gz
       context:
         - ae-slack
-        - ae-node-builds
+        - ae-vault-node
       requires:
         - upload-artifacts-s3
       filters:
@@ -310,7 +304,7 @@ jobs:
       downtime: 900 #15m
       context:
         - ae-slack
-        - ae-node-builds
+        - ae-vault-node
       requires:
         - test
         - eunit
@@ -328,7 +322,7 @@ jobs:
       name: docker-image-mainline
       context:
         - ae-slack
-        - ae-node-builds
+        - ae-dockerhub
       tag: ${CIRCLE_BRANCH/\//_}
       requires:
         - test
@@ -345,7 +339,7 @@ jobs:
       name: docker-image-mainline-bundle
       context:
         - ae-slack
-        - ae-node-builds
+        - ae-dockerhub
       aeplugin_devmode: true
       tag: ${CIRCLE_BRANCH/\//_}-bundle
       requires:
@@ -366,7 +360,7 @@ jobs:
       downtime: 900 #15m
       context:
         - ae-slack
-        - ae-node-builds
+        - ae-vault-node
       requires:
         - test
         - eunit
@@ -384,7 +378,7 @@ jobs:
       env: dev1
       context:
         - ae-slack
-        - ae-node-builds
+        - ae-vault-node
       requires:
         - linux-tarball
       filters:
@@ -397,7 +391,7 @@ jobs:
       env: dev2
       context:
         - ae-slack
-        - ae-node-builds
+        - ae-vault-node
       requires:
         - linux-tarball
       filters:
