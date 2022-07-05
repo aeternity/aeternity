@@ -202,9 +202,8 @@ add_trusted(PeerInfo) ->
     async_add_peer(undefined, PeerInfo, true).
 
 %% @doc Adds a normal peer or a list of normal peers.
-%% The IP address of the node that gave us this peer must be specified
-%% except when manually added
--spec add_peers(inet:ip_address() | undefined, aec_peer:info() | [aec_peer:info()]) -> ok.
+%% The IP address of the node that gave us this peer must be specified.
+-spec add_peers(inet:ip_address(), aec_peer:info() | [aec_peer:info()]) -> ok.
 add_peers(SourceAddr, PeerInfos) when is_list(PeerInfos) ->
     lists:foreach(fun(I) -> add_peers(SourceAddr, I) end, PeerInfos);
 add_peers(SourceAddr, PeerInfo) ->
