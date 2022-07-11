@@ -10,9 +10,3 @@ if [ "$OPEN_FILES_RECOMMENDED" -gt "$AE_OPEN_FILES_LIMIT" ]; then
     echo "You are recommended to ensure the node is stopped and raise the maximum number of open files before starting the node."
     echo "Visit https://github.com/aeternity/aeternity/wiki/Setting-Number-of-Max-Open-Files for additional pointers."
 fi
-# prlimit doesn't automatically work on MaxOSx
-#
-#if [ "$ULIMIT" -lt "$AE_OPEN_FILES_LIMIT" ]; then
-#    echo "Trying to raise fd limit to $AE_OPEN_FILES_LIMIT"
-#    prlimit --pid=$PPID --nofile=$AE_OPEN_FILES_LIMIT
-#fi

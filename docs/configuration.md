@@ -331,3 +331,23 @@ Notes:
   However it is possible to make snapshots which could be used to speed up syncing of new nodes. 
  - Initial sync might take a lot of time and that heavily depends on the available CPU/IOPS.
  - Restarting a node might be slow on certain configurations due to intensive DB consistency checks.
+
+### RocksDB-related settings
+
+Two configuration settings modify how the RocksDB backend operates, shown below with their default values:
+
+```yaml
+chain:
+    db_commit_bypass: true
+    db_direct_access: false
+```
+
+The `chain:db_commit_bypass` option allows for turning off a special optimization used to speed up and make atomic updates to rocksdb tables from a mnesia transaction commit. This optimization is active by default, and should oly be turned off if it's suspected to cause problems.
+
+The `chain:db_direct_access` option makes the Aeternity node use a different API, `mrdb`, for all database accesses. This API is faster and should have better safety properties, but since it is new, it isn't yet the default when using the RocksdbDB backend.
+
+### The `db_migrate` script
+
+When initializing a new node using the RocksDB backend in current or future releases, mnesia tables are created as 'column families' - a form of logical tables supported by recent versions of RocksDB. This should improve both speed and consistency, as well as drastically lower the number of open file descriptors.
+
+If using an existing database, the old model with one database instance per table will be kept, until the `bin/aeternity db_migrate` script is executed. This script, which will activate maintenance mode during its operation, will convert all tables to column families. It will take a while, but should complete within an hour.

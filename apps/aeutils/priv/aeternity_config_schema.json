@@ -1444,7 +1444,8 @@
 		    "default" : true
 		},
                 "db_write_max_retries" : {
-                    "description" : "Maximum number of retries for failing database write operations.",
+		    "deprecated" : true,
+                    "description" : "OBSOLETE/ignored: Maximum number of retries for failing database write operations.",
                     "type" : "integer",
                     "default" : 3
                 },
