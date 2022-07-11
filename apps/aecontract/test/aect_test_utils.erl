@@ -727,10 +727,8 @@ get_oracle_queries(OracleId, Max, State) ->
 %%% Common test common stuff
 %%%===================================================================
 init_per_group(Vm, Cfg) ->
-    ct:log("~p:init_per_group(~p, Cfg)", [?MODULE, Vm]),
-    Res = init_per_group(Vm, Cfg, fun(X) -> X end),
-    ct:log("~p:init_per_group(~p, Cfg) DONE", [?MODULE, Vm]),
-    Res.
+    init_per_group(Vm, Cfg, fun(X) -> X end).
+
 
 sophia_version(aevm, ?ROMA_PROTOCOL_VSN) -> ?SOPHIA_ROMA;
 sophia_version(aevm, ?MINERVA_PROTOCOL_VSN) -> ?SOPHIA_MINERVA;

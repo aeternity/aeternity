@@ -886,7 +886,7 @@ setup_node(N, Top, Root, Config) ->
     filelib:ensure_dir(filename:join(DDir, "foo")),
     cp_dir(filename:join(Root, "releases"), DDir ++ "/"),
     cp_dir(filename:join(Root, "bin"), DDir ++ "/"),
-    symlink(filename:join(Root, "lib"), filename:join(DDir, "lib")),
+    symlink(filename:join(Root, "lib"), filename:join(DDir, "lib"), true),
     symlink(filename:join(Root, "patches"), filename:join(DDir, "patches"), true),
     {ok, VerContents} = file:read_file(filename:join(Root, "VERSION")),
     [VerB |_ ] = binary:split(VerContents, [<<"\n">>, <<"\r">>], [global]),
