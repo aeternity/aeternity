@@ -342,7 +342,7 @@ chain:
     db_direct_access: false
 ```
 
-The `chain:db_commit_bypass` option allows for turning off a special optimization used to speed up and make atomic updates to rocksdb tables from a mnesia transaction commit. This optimization is active by default, and should oly be turned off if it's suspected to cause problems.
+The `chain:db_commit_bypass` option allows for turning off a special optimization used to speed up and make atomic updates to rocksdb tables from a mnesia transaction commit. This optimization is active by default, and should only be turned off if it's suspected to cause problems.
 
 The `chain:db_direct_access` option makes the Aeternity node use a different API, `mrdb`, for all database accesses. This API is faster and should have better safety properties, but since it is new, it isn't yet the default when using the RocksdbDB backend.
 
