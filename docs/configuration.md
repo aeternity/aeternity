@@ -350,4 +350,9 @@ The `chain:db_direct_access` option makes the Aeternity node use a different API
 
 When initializing a new node using the RocksDB backend in current or future releases, mnesia tables are created as 'column families' - a form of logical tables supported by recent versions of RocksDB. This should improve both speed and consistency, as well as drastically lower the number of open file descriptors.
 
-If using an existing database, the old model with one database instance per table will be kept, until the `bin/aeternity db_migrate` script is executed. This script, which will activate maintenance mode during its operation, will convert all tables to column families. It will take a while, but should complete within an hour.
+If using an existing database, the old model with one database instance per table will be kept, until the `bin/aeternity db_migrate` script is executed. This script, which will activate maintenance mode during its operation, will convert all tables to column families. It will take a while, but should complete within ca 2 hours.
+
+#### Troubleshooting
+
+If an error occurs during migration, you will need to address the error and try to complete the migration, as the system is unlikely to work correctly after a partial migration.
+The script should leave the node in 'maintenance mode' after a failed migration. If the node died, try starting the node using e.g. `AE__SYSTEM__MAINTENANCE_MODE=true bin/aeternity console` and re-run the `db_migrate` script. If this doesn't work, fall back to synching the node from scratch, or download a good database snaphot and restart from there.

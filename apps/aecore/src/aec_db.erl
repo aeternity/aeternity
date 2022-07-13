@@ -134,6 +134,7 @@
 %% Migrate standalone rocksdb instances to column families
 -export([ migrate_tables/0
         , migrate_tables/1
+        , migrate_tables/2
         ]).
 
 %% Mnesia access wrappers
@@ -220,23 +221,26 @@ tables_(Mode) ->
    , ?TAB(aec_peers)
     ].
 
-migrate_tables() -> migrate_tables(all).
+migrate_tables() -> migrate_tables(all, undefined).
 
-migrate_tables(Tabs0) ->
+migrate_tables(Tabs) ->
+    migrate_tables(Tabs, undefined).
+
+migrate_tables(Tabs0, Rpt) ->
     case backend_mode() of
         #{module := mnesia_rocksdb} ->
-            migrate_tables_(Tabs0);
+            migrate_tables_(Tabs0, Rpt);
         _ ->
             {error, not_rocksdb}
     end.
 
-migrate_tables_(Tabs0) ->
+migrate_tables_(Tabs0, Rpt) ->
     Tabs = case Tabs0 of
                all -> [T || T <- all_standalone_tables()];
                _ when is_list(Tabs0) -> Tabs0
            end,
     T0 = erlang:localtime(),
-    Res = mnesia_rocksdb_admin:migrate_standalone(rocksdb_copies, Tabs),
+    Res = mnesia_rocksdb_admin:migrate_standalone(rocksdb_copies, Tabs, Rpt),
     T1 = erlang:localtime(),
     {ok, {calendar:time_difference(T0, T1), Res}}.
 

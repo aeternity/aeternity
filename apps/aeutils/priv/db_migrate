@@ -3,7 +3,12 @@
 
 -mode(compile).
 
-spec() -> #{ arguments => [] }.
+spec() -> #{ arguments => [
+                           #{ name => silent, short => $s, long => "-silent",
+                              required => false, type => boolean, default => false,
+                              help => "Suppress progress reports"
+                            }
+                          ] }.
 
 main(Args) ->
     Opts = aeu_ext_scripts:parse_opts(Args, spec()),
@@ -11,13 +16,36 @@ main(Args) ->
     migrate(Node, Opts).
 
 
-migrate(Node, #{opts := _Opts}) ->
+migrate(Node, #{opts := Opts}) ->
+    Silent = maps:get(silent, Opts, false),
+    Rpt = case Silent of
+              false -> aeu_ext_scripts:reporter();
+              true  -> undefined
+          end,
     PrevMode = rpc:call(Node, aeu_ext_scripts, ensure_mode, [maintenance]),
     try
-        Res = rpc:call(Node, aec_db, migrate_tables, []),
-        io:fwrite(standard_io, "Migrate complete. Res: ~p~n", [Res])
-    after
-        ok = rpc:call(Node, aeu_ext_scripts, restore_mode, [PrevMode])
-    end,
-    ok.
+        Res = rpc:call(Node, aec_db, migrate_tables, [all, Rpt]),
+        aeu_ext_scripts:stop_reporter(Rpt),
+        case Res of
+            {ok, _} ->
+                io:fwrite(standard_io, "Migrate complete. Res: ~p~n", [Res]),
+                ok = rpc:call(Node, aeu_ext_scripts, restore_mode, [PrevMode]),
+                halt(0);
+            {error, _} ->
+                failure(Res);
+            {badrpc, Bad} ->
+                failure(Bad)
+        end
+    catch
+        Cat:Err ->
+            failure({'CAUGHT', Cat, Err})
+    end.
 
+failure(Error) ->
+    io:fwrite(
+      standard_error,
+      "ERROR: ~p~n"
+      "Node will remain in maintenance mode (if still running).~n"
+      "Retry migration, delete the database, or restart from a good snapshot.~n",
+      [Error]),
+    halt(1).
