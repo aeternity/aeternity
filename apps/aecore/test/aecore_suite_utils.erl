@@ -886,7 +886,7 @@ setup_node(N, Top, Root, Config) ->
     filelib:ensure_dir(filename:join(DDir, "foo")),
     cp_dir(filename:join(Root, "releases"), DDir ++ "/"),
     cp_dir(filename:join(Root, "bin"), DDir ++ "/"),
-    symlink(filename:join(Root, "lib"), filename:join(DDir, "lib")),
+    symlink(filename:join(Root, "lib"), filename:join(DDir, "lib"), true),
     symlink(filename:join(Root, "patches"), filename:join(DDir, "patches"), true),
     {ok, VerContents} = file:read_file(filename:join(Root, "VERSION")),
     [VerB |_ ] = binary:split(VerContents, [<<"\n">>, <<"\r">>], [global]),
@@ -1112,7 +1112,8 @@ default_config(N, Config) ->
           #{<<"dir">> => iolist_to_binary(keys_dir(N, Config)),
             <<"peer_password">> => iolist_to_binary(io_lib:format("~w.~w.~w", [A,B,C]))},
       <<"logging">> =>
-          #{<<"hwm">> => 5000},
+          #{ <<"hwm">> => 5000
+           , <<"level">> => <<"debug">>},
       <<"mining">> =>
           #{<<"autostart">> => false,
             <<"beneficiary">> => aeser_api_encoder:encode(account_pubkey, PubKey),

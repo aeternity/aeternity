@@ -1517,12 +1517,12 @@ repeated_rollbacks_to_micro_hash(Config0) ->
 rollback_when_gc_enabled(Config) ->
     [{_, Node}] = ?config(nodes, Config), % important that there is only one
     #{enabled  := false
-    , interval := _Interval
+    , interval := Interval
     , history  := History} = rpc:call(Node, aec_db_gc, config, []),
     ShortHistory = 51,
     enable_gc(Node, ShortHistory),
     #{enabled  := true 
-    , interval := _Interval
+    , interval := Interval
     , history  := ShortHistory} = rpc:call(Node, aec_db_gc, config, []),
     Height= rpc:call(Node, aec_chain, top_height, []),
     BlocksCnt = 3,
@@ -1532,19 +1532,19 @@ rollback_when_gc_enabled(Config) ->
     ct:log("Top height ~p", [Height]),
     disable_gc(Node, History),
     #{enabled  := false
-    , interval := _Interval
+    , interval := Interval
     , history  := History} = rpc:call(Node, aec_db_gc, config, []),
     ok.
 
 rollback_when_gc_enabled_and_beyond_kept_history(Config) ->
     [{_, Node}] = ?config(nodes, Config), % important that there is only one
     #{enabled  := false
-    , interval := _Interval
+    , interval := Interval
     , history  := History} = rpc:call(Node, aec_db_gc, config, []),
     ShortHistory = 51,
     enable_gc(Node, ShortHistory),
     #{enabled  := true 
-    , interval := _Interval
+    , interval := Interval
     , history  := ShortHistory} = rpc:call(Node, aec_db_gc, config, []),
     Height= rpc:call(Node, aec_chain, top_height, []),
     BlocksCnt = 53,
@@ -1554,7 +1554,7 @@ rollback_when_gc_enabled_and_beyond_kept_history(Config) ->
     ct:log("Top height ~p", [Height]),
     disable_gc(Node, History),
     #{enabled  := false
-    , interval := _Interval
+    , interval := Interval
     , history  := History} = rpc:call(Node, aec_db_gc, config, []),
     ok.
 
