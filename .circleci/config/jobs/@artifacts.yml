@@ -55,6 +55,9 @@ publish-release-packages:
     - fixed_checkout
     - attach_workspace:
         at: << pipeline.parameters.packages_workspace >>
+    - upload_artifacts_apt:
+        packages_dir: << pipeline.parameters.packages_workspace >>
+        component: main
     - upload_artifacts_brew:
         packages_dir: << pipeline.parameters.packages_workspace >>
         branch: master

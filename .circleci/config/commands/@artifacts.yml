@@ -79,30 +79,26 @@ upload_artifacts_brew:
         name: Update the Homebrew formula
         command: |
           make VERSION
-          echo $? ${PIPESTATUS[@]}
           VERSION=$(cat VERSION)
-          echo $? ${PIPESTATUS[@]}
+          PACKAGE_URL=https://github.com/aeternity/aeternity/releases/download/v$VERSION/aeternity-$VERSION-macos-x86_64.tar.gz
           SHA256=$(sha256sum << parameters.packages_dir >>/aeternity-*-macos-x86_64.tar.gz | head -1 | cut -f 1 -d " ")
-          echo $? ${PIPESTATUS[@]}
           cd ~/homebrew-aeternity/
           sed -i "s|^  AETERNITY_VERSION = .*|  AETERNITY_VERSION = \"$VERSION\"|g" Formula/aeternity-node.rb
-          echo $? ${PIPESTATUS[@]}
           sed -i "s|^      sha256 .*|      sha256 \"$SHA256\"|g" Formula/aeternity-node.rb
-          echo $? ${PIPESTATUS[@]}
     - run:
         name: Setup git
         command: |
           git config --global push.default simple
           git config --global user.email "35604848+aeternity-bot@users.noreply.github.com"
           git config --global user.name "Aeternity node CI"
-    # - run:
-    #     name: Commit and push
-    #     command: |
-    #       make VERSION
-    #       VERSION=$(cat VERSION)
-    #       cd ~/homebrew-aeternity/
-    #       git add Formula/aeternity-node.rb
-    #       git diff --staged
-    #       git commit -m "Update aeternity-node formula to $VERSION"
-    #       git push
+    - run:
+        name: Commit and push
+        command: |
+          make VERSION
+          VERSION=$(cat VERSION)
+          cd ~/homebrew-aeternity/
+          git add Formula/aeternity-node.rb
+          git diff --staged
+          git commit -m "Update aeternity-node formula to $VERSION"
+          git push
 

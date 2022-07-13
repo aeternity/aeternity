@@ -46,7 +46,9 @@ jobs:
       context: ae-slack
       filters:
         branches:
-          only: fix_brew_update
+          ignore: /.*/
+        tags:
+          only: << pipeline.parameters.tag_regex >>
 
   - macos-tarball:
       name: macos-release-tarball-bundle
@@ -270,10 +272,15 @@ jobs:
   - publish-release-packages:
       context: ae-slack
       requires:
+        - linux-release-tarball
         - macos-release-tarball
+        - ubuntu_package
+        - hodl_latest
       filters:
         branches:
-          only: fix_brew_update
+          ignore: /.*/
+        tags:
+          only: << pipeline.parameters.tag_regex >>
 
   - docker-image:
       name: docker-image-tag
