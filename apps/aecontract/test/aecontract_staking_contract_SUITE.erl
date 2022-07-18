@@ -88,6 +88,7 @@
 -define(FEE, 1000000000000).
 
 -define(VALIDATOR_MIN, 10000).
+-define(VALIDATOR_MIN_PERCENT, 30).
 -define(STAKE_MIN, 100).
 -define(ENTROPY, <<"asdf">>).
 
@@ -160,6 +161,7 @@ inspect_validator(_Config) ->
                 Entropy,
                 Leader,
                 ValidatorMinStake,
+                ValidatorMinPercent,
                 StakeMin
                 }} = ContractState0,
     {contract, _} = StakingValidatorCT,
@@ -185,10 +187,12 @@ inspect_validator(_Config) ->
                 Entropy,
                 Leader,
                 ValidatorMinStake,
+                ValidatorMinPercent,
                 StakeMin
                 }} = ContractState,
     [ExpectedAliceOfflineState] = Validators,
     ?VALIDATOR_MIN = ValidatorMinStake,
+    ?VALIDATOR_MIN_PERCENT = ValidatorMinPercent,
     ?STAKE_MIN = StakeMin,
     %% set the validator as online; the total stake shall be the total stake
     %% of the validator
@@ -206,6 +210,7 @@ inspect_validator(_Config) ->
                 Entropy,
                 Leader,
                 ValidatorMinStake,
+                ValidatorMinPercent,
                 StakeMin
                 }} = ContractState1,
     [ExpectedAliceOnlineState] = Validators1,
@@ -228,6 +233,7 @@ inspect_validator(_Config) ->
                 Entropy, %% same
                 Leader2,
                 ValidatorMinStake, %% same
+                ValidatorMinPercent, %% same
                 StakeMin %% same
                 }} = ContractState2,
     {address, Alice} = Leader2, %% Alice is being elected as a leader
@@ -250,6 +256,7 @@ inspect_validator(_Config) ->
                 Entropy, %% same
                 Leader2,
                 ValidatorMinStake, %% same
+                ValidatorMinPercent, %% same
                 StakeMin %% same
                 }} = ContractState3,
     [ExpectedAliceOnlineState1] = Validators2,
@@ -262,6 +269,7 @@ inspect_validator(_Config) ->
                 Entropy, %% same
                 Leader2, %% same
                 ValidatorMinStake, %% same
+                ValidatorMinPercent, %% same
                 StakeMin %% same
                 }} = ContractState4,
     ExpectedAliceOfflineState1 =
@@ -288,6 +296,7 @@ inspect_two_validators(_Config) ->
                 Entropy,
                 Leader,
                 _ValidatorMinStake,
+                _ValidatorMinPercent,
                 _StakeMin
                 }} = ContractState0,
     {contract, _} = StakingValidatorCT,
@@ -317,6 +326,7 @@ inspect_two_validators(_Config) ->
                 Entropy,
                 Leader,
                 _ValidatorMinStake,
+                _ValidatorMinPercent,
                 _StakeMin
                 }} = ContractState1,
     %% set Alice online; this changes the total staked amount to Alice's
@@ -336,6 +346,7 @@ inspect_two_validators(_Config) ->
                 Entropy,
                 Leader,
                 _ValidatorMinStake,
+                _ValidatorMinPercent,
                 _StakeMin
                 }} = ContractState2,
     %% set Bob online as well
@@ -355,6 +366,7 @@ inspect_two_validators(_Config) ->
                 Entropy, %% same
                 Leader, %% same
                 _ValidatorMinStake, %% same
+                _ValidatorMinPercent, %% same
                 _StakeMin %% same
                 }} = ContractState3,
     ok.

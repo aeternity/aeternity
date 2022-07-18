@@ -34,6 +34,7 @@ main contract MainStaking =
       entropy               : hash,
       leader                : address,
       validator_min_stake   : int,
+      validator_min_percent : int,
       stake_minimum         : int
       }
 
@@ -154,6 +155,7 @@ main contract MainStaking =
       entropy               = state.entropy,
       leader                = state.leader,
       validator_min_stake   = state.validator_min_stake,
+      validator_min_percent = state.validator_min_percent,
       stake_minimum         = state.stake_minimum
       }
 
