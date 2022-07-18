@@ -212,7 +212,7 @@ main contract MainStaking =
           true =>
             abort("Validator exists")
           false =>
-            true 
+            true
 
   function find_validator(validators, shot) =
     switch(validators)
@@ -237,14 +237,17 @@ main contract MainStaking =
 
   function assert_protocol_call() =
       require(Call.caller == Contract.creator, "Must be called by the protocol")
-    
+
   function map_keys(map) =
     [k | (k, v) <- Map.to_list(map)]
 
   function assert_allowed_to_unstake(from : address, who : address, v : validator) =
     if(from == who)
       let balance_left = v.ct.balance(from)
-      if(balance_left < state.validator_min_stake) abort("Validator can not withdraw below the treshhold")
-      else false
+      if(balance_left < state.validator_min_stake) abort("Validator can not withdraw below the treshold")
+      else
+        let total_stake = state.total_stake
+        if((10 * balance_left) < (3 * total_stake)) abort("Validator can not withdraw below the 30% treshold")
+        else false
     else
       true
