@@ -3247,6 +3247,10 @@ definitions:
       return_type:
         description: The status of the call 'ok | error | revert'.
         type: string
+        enum:
+          - ok
+          - error
+          - revert
     required:
       - caller_id
       - caller_nonce
@@ -3273,6 +3277,9 @@ definitions:
       return_type:
         description: The status of the call 'ok | error'.
         type: string
+        enum:
+          - ok
+          - error
       inner_object:
         $ref: '#/definitions/TxInfoObject'
     required:
