@@ -33,7 +33,8 @@
           delegate_can_support_multiple_validators/1,
           if_unstake_all_delegate_is_deleted/1,
           can_not_become_validator_below_treshold/1,
-          can_not_stake_below_treshold/1
+          can_not_stake_below_treshold/1,
+          validator_can_not_unstake_below_30_percent_treshold/1
         ]).
 
 -include_lib("aecontract/include/hard_forks.hrl").
@@ -110,7 +111,8 @@ groups() ->
          delegate_can_support_multiple_validators,
          if_unstake_all_delegate_is_deleted,
          can_not_become_validator_below_treshold,
-         can_not_stake_below_treshold
+         can_not_stake_below_treshold,
+         validator_can_not_unstake_below_30_percent_treshold
        ]}
     ].
 
@@ -164,7 +166,7 @@ inspect_validator(_Config) ->
     {bytes, _} = Entropy,
     {address, ConsensusContractPubkey} = Leader, %% no election yet, the contract is the first leader
     %% create a validator and check the contract state; the newly created
-    %% validator is offline 
+    %% validator is offline
     {ok, Trees1, {contract, AliceContract}} = new_validator_(Alice, Amount, TxEnv, Trees0),
     {ok, _, SPower} = staking_power_(Alice, Alice, TxEnv, Trees1),
     {SPower, SPower} = {Amount, SPower},
@@ -228,7 +230,7 @@ inspect_validator(_Config) ->
                 ValidatorMinStake, %% same
                 StakeMin %% same
                 }} = ContractState2,
-    {address, Alice} = Leader2, %% Alice is being elected as a leader 
+    {address, Alice} = Leader2, %% Alice is being elected as a leader
     %% give away some rewards; this changes the total staking power but does
     %% not change the shares distribution
     Reward = 1000,
@@ -292,7 +294,7 @@ inspect_two_validators(_Config) ->
     {bytes, _} = Entropy,
     {address, ConsensusContractPubkey} = Leader, %% no election yet, the contract is the first leader
     %% create a validator and check the contract state; the newly created
-    %% validator is offline 
+    %% validator is offline
     {ok, Trees1, {contract, AliceContract}} = new_validator_(Alice, Amount, TxEnv, Trees0),
     {ok, _, AliceSPower} = staking_power_(Alice, Alice, TxEnv, Trees1),
     ExpectedAliceOfflineState0 =
@@ -369,11 +371,11 @@ validator_withdrawal(_Config) ->
     %% Alice will be online and Bob will be offline
     {ok, Trees3, {tuple, {}}} = set_validator_online_(Alice, TxEnv, Trees2),
     %% can not withdraw more than OverheadAmt
-    {revert, <<"Validator can not withdraw below the treshhold">>}
+    {revert, <<"Validator can not withdraw below the treshold">>}
         = unstake_(Alice, OverheadAmt + 1, Alice, TxEnv, Trees3),
     {ok, _, OverheadAmt}
         = unstake_(Alice, OverheadAmt, Alice, TxEnv, Trees3),
-    {revert, <<"Validator can not withdraw below the treshhold">>}
+    {revert, <<"Validator can not withdraw below the treshold">>}
         = unstake_(Bob, OverheadAmt + 1, Bob, TxEnv, Trees3),
     {ok, _, OverheadAmt}
         = unstake_(Bob, OverheadAmt, Bob, TxEnv, Trees3),
@@ -381,9 +383,9 @@ validator_withdrawal(_Config) ->
     Reward = 1,
     {ok, Trees4, {tuple, {}}} = reward_(Alice, Reward, ?OWNER_PUBKEY, TxEnv, Trees3),
     {ok, Trees5, {tuple, {}}} = reward_(Bob, Reward, ?OWNER_PUBKEY, TxEnv, Trees4),
-    {revert, <<"Validator can not withdraw below the treshhold">>}
+    {revert, <<"Validator can not withdraw below the treshold">>}
         = unstake_(Alice, OverheadAmt + Reward + 1, Alice, TxEnv, Trees5),
-    {revert, <<"Validator can not withdraw below the treshhold">>}
+    {revert, <<"Validator can not withdraw below the treshold">>}
         = unstake_(Bob, OverheadAmt + Reward + 1, Bob, TxEnv, Trees5),
     %% TODO: revisit the tests once decision is being made for unstaking AE or
     %% unstaking stake shares
@@ -769,7 +771,7 @@ change_name_description_avatar(_Config) ->
                      _MapA, ?VALIDATOR_MIN}}}} = AliceState3,
     %% Bob is unchanged
     {ok, _, BobState0} = get_validator_state_(Bob, Bob, TxEnv, Trees5),
-    %% Sam has no account 
+    %% Sam has no account
     {error, account_not_found} = set_name_(AliceName, Sam, TxEnv, Trees5),
     {error, account_not_found} = set_description_(AliceDescription, Sam, TxEnv, Trees5),
     {error, account_not_found} = set_avatar_(AliceAvatar, Sam, TxEnv, Trees5),
@@ -973,6 +975,32 @@ can_not_stake_below_treshold(_Config) ->
     Trees3 = set_up_account({Sam, SamSPower0}, Trees2),
     {revert, <<"Must stake the minimum amount">>} =
         stake_(Alice, ?STAKE_MIN - 1, Sam, TxEnv, Trees3),
+    ok.
+
+validator_can_not_unstake_below_30_percent_treshold(_Config) ->
+    Alice = pubkey(?ALICE),
+    TxEnv = aetx_env:tx_env(?GENESIS_HEIGHT),
+    Trees0 = genesis_trees(),
+
+    #{public := Sam} = enacl:sign_keypair(),
+    SamSPower0 = trunc(math:pow(10, 30)),
+    Trees1 = set_up_account({Sam, SamSPower0}, Trees0),
+
+    InitialStake = 2 * ?VALIDATOR_MIN,
+    {ok, Trees2, {contract, _}} = new_validator_(Alice, InitialStake, TxEnv, Trees1),
+    {ok, Trees3, {tuple, {}}} = set_validator_online_(Alice, TxEnv, Trees2),
+    {ok, Trees4, {tuple, {}}} = stake_(Alice, InitialStake, Sam, TxEnv, Trees3),
+
+    %% Total stake: 40000
+    %% Alice stake 20000
+    %% Sam stake: 20000
+    %% 30% treshold for Alice: 12000
+    UnstakeAmt = 8000,
+
+    {revert, <<"Validator can not withdraw below the 30% treshold">>}
+        = unstake_(Alice, UnstakeAmt + 1, Alice, TxEnv, Trees4),
+    {ok, _Trees4, _} = unstake_(Alice, UnstakeAmt, Alice, TxEnv, Trees4),
+
     ok.
 
 genesis_trees() ->
