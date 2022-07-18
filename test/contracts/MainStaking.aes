@@ -45,6 +45,7 @@ main contract MainStaking =
       entropy               : hash,
       leader                : address,
       validator_min_stake   : int,
+      validator_min_percent : int,
       stake_minimum         : int
       }
 
@@ -57,6 +58,7 @@ main contract MainStaking =
       entropy               = Crypto.sha256(entropy_str),
       leader                = Contract.address,
       validator_min_stake   = validator_min_stake,
+      validator_min_percent = 30,
       stake_minimum         = stake_minimum
       }
 
@@ -246,8 +248,8 @@ main contract MainStaking =
       let balance_left = v.ct.balance(from)
       if(balance_left < state.validator_min_stake) abort("Validator can not withdraw below the treshold")
       else
-        let total_stake = state.total_stake
-        if((10 * balance_left) < (3 * total_stake)) abort("Validator can not withdraw below the 30% treshold")
+        let min_percent = state.validator_min_percent
+        if((100 * balance_left) < (min_percent * state.total_stake)) abort("Validator can not withdraw below the 30% treshold")
         else false
     else
       true
