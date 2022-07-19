@@ -7,12 +7,6 @@ deploy:
     color:
       type: string
       default: ""
-    kind:
-      type: string
-      default: ""
-    config_env:
-      type: string
-      default: ""
     downtime:
       type: integer
       default: 0
@@ -27,7 +21,5 @@ deploy:
     - deploy_env:
         env: << parameters.env >>
         color: << parameters.color >>
-        kind: << parameters.kind >>
-        config_env: << parameters.config_env >>
         downtime: << parameters.downtime >>
         package_path: << pipeline.parameters.packages_workspace >>/aeternity-<< parameters.version >>-ubuntu-x86_64.tar.gz

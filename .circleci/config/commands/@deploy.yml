@@ -5,12 +5,6 @@ deploy_env:
     color:
       type: string
       default: ""
-    kind:
-      type: string
-      default: ""
-    config_env:
-      type: string
-      default: ""
     downtime:
       type: integer
       default: 0
@@ -22,8 +16,6 @@ deploy_env:
         command: |
           export DEPLOY_ENV=<< parameters.env >>
           export DEPLOY_COLOR=<< parameters.color >>
-          export DEPLOY_KIND=<< parameters.kind >>
-          export CONFIG_ENV=<< parameters.config_env >>
           export DEPLOY_DOWNTIME=<< parameters.downtime >>
           export PACKAGE=<< parameters.package_path >>
           export DEPLOY_DB_VERSION=$(cat deployment/DB_VERSION)
