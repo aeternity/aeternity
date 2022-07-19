@@ -248,10 +248,18 @@ main contract MainStaking =
   function assert_allowed_to_unstake(from : address, who : address, v : validator) =
     if(from == who)
       let balance_left = v.ct.balance(from)
-      if(balance_left < state.validator_min_stake) abort("Validator can not withdraw below the treshold")
-      else
-        let min_percent = state.validator_min_percent
-        if((100 * balance_left) < (min_percent * state.total_stake)) abort("Validator can not withdraw below the 30% treshold")
-        else false
+      assert_min_stake(balance_left)
+      assert_min_percent_stake(balance_left)
     else
       true
+
+  function assert_min_stake(balance : int) =
+      if(balance < state.validator_min_stake)
+        abort("Validator can not withdraw below the treshold")
+      else false
+
+  function assert_min_percent_stake(balance : int) =
+      let min_percent = state.validator_min_percent
+      if((100 * balance) < (min_percent * state.total_stake))
+        abort("Validator can not withdraw below the 30% treshold")
+      else false
