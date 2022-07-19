@@ -251,7 +251,7 @@ main contract MainStaking =
     if(from == who)
       let balance_left = v.ct.balance(from)
       assert_min_stake(balance_left)
-      assert_min_percent_stake(balance_left)
+      assert_min_percent_stake(who, balance_left)
     else
       true
 
@@ -260,8 +260,9 @@ main contract MainStaking =
         abort("Validator can not withdraw below the treshold")
       else false
 
-  function assert_min_percent_stake(balance : int) =
+  function assert_min_percent_stake(v: address, balance : int) =
+      let validator = get_validator_state(v)
       let min_percent = state.validator_min_percent
-      if((100 * balance) < (min_percent * state.total_stake))
+      if((100 * balance) < (min_percent * validator.stake))
         abort("Validator can not withdraw below the 30% treshold")
       else false

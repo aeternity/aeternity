@@ -1003,15 +1003,20 @@ validator_can_not_unstake_below_30_percent_treshold(_Config) ->
     {ok, Trees3, {tuple, {}}} = set_validator_online_(Alice, TxEnv, Trees2),
     {ok, Trees4, {tuple, {}}} = stake_(Alice, InitialStake, Sam, TxEnv, Trees3),
 
-    %% Total stake: 40000
+    Bob = pubkey(?BOB),
+    {ok, Trees5, {contract, _}} = new_validator_(Bob, InitialStake, TxEnv, Trees4),
+    {ok, Trees6, {tuple, {}}} = set_validator_online_(Bob, TxEnv, Trees5),
+
+    %% Total stake: 60000
+    %% Alice total stake: 40000
     %% Alice stake 20000
     %% Sam stake: 20000
     %% 30% treshold for Alice: 12000
     UnstakeAmt = 8000,
 
     {revert, <<"Validator can not withdraw below the 30% treshold">>}
-        = unstake_(Alice, UnstakeAmt + 1, Alice, TxEnv, Trees4),
-    {ok, _Trees4, _} = unstake_(Alice, UnstakeAmt, Alice, TxEnv, Trees4),
+        = unstake_(Alice, UnstakeAmt + 1, Alice, TxEnv, Trees6),
+    {ok, _, _} = unstake_(Alice, UnstakeAmt, Alice, TxEnv, Trees6),
 
     ok.
 
