@@ -1031,6 +1031,8 @@ genesis_trees() ->
                                                aefa_fate_code:encode_arg({integer,
                                                                           ?VALIDATOR_MIN}),
                                                aefa_fate_code:encode_arg({integer,
+                                                                          ?VALIDATOR_MIN_PERCENT}),
+                                               aefa_fate_code:encode_arg({integer,
                                                                           ?STAKE_MIN})
                                               ]),
     {MainPubkey, Trees3} = create_contract(?STAKING_CONTRACT, MainCD, TxEnv, Trees2),

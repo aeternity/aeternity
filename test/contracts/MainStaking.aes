@@ -51,7 +51,9 @@ main contract MainStaking =
       }
 
   entrypoint init(staking_validator_ct : StakingValidator, entropy_str : string,
-                  validator_min_stake : int, stake_minimum : int) =
+                  validator_min_stake : int,
+                  validator_min_percent : int,
+                  stake_minimum : int) =
     { staking_validator_ct  = staking_validator_ct,
       online_validators     = {},
       offline_validators    = {},
@@ -59,7 +61,7 @@ main contract MainStaking =
       entropy               = Crypto.sha256(entropy_str),
       leader                = Contract.address,
       validator_min_stake   = validator_min_stake,
-      validator_min_percent = 30,
+      validator_min_percent = validator_min_percent,
       stake_minimum         = stake_minimum
       }
 

@@ -103,11 +103,12 @@ init_per_suite(Config0) ->
                                        [EncodePub(Pubkey)], 0, 1, Pubkey),
             MinValidatorAmt = integer_to_list(trunc(math:pow(10,18) * math:pow(10, 6))), %% 1 mln AE
             MinStakeAmt = integer_to_list(trunc(math:pow(10,18) * 1)), %% 1 AE
+            MinStakePercent = "30",
             #{ <<"pubkey">> := ConsensusContractPubkey
              , <<"owner_pubkey">> := ContractOwner } = C
                 = contract_create_spec(?STAKING_CONTRACT,
                                        [binary_to_list(StakingValidatorContract), "\"domat\"",
-                                        MinValidatorAmt, MinStakeAmt], 0, 2, Pubkey),
+                                        MinValidatorAmt, MinStakePercent, MinStakeAmt], 0, 2, Pubkey),
             {ok, CCId} = aeser_api_encoder:safe_decode(contract_pubkey,
                                                        ConsensusContractPubkey),
             Call1 =
@@ -608,7 +609,7 @@ call_info(SignedTx) ->
         not_found ->  {error, unknown_tx};
         none -> {error, gced_tx};
         mempool -> {error, tx_in_pool};
-        MBHash when is_binary(MBHash) -> 
+        MBHash when is_binary(MBHash) ->
             case rpc:call(?NODE1_NAME, aehttp_helpers, get_info_object_signed_tx,
                           [MBHash, SignedTx]) of
                 {ok, Call} -> {ok, Call};
@@ -635,7 +636,7 @@ decode_consensus_result(Call, Fun) ->
     {ReturnType, Res}.
 
 calc_rewards(RewardForHeight) ->
-    %% we distribute rewards for the previous 
+    %% we distribute rewards for the previous
     {ok, #{key_block := PrevKB,
            micro_blocks := MBs}}
         = rpc(?NODE1, aec_chain, get_generation_by_height,
