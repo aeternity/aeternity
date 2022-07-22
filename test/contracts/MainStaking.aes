@@ -21,13 +21,17 @@ main contract MainStaking =
   datatype bucket = ONLINE | OFFLINE
 
   record validator =
-    { ct : StakingValidator, stake : int, stake_limit : int}
+    { ct              : StakingValidator,
+      creation_height : int,
+      stake           : int,
+      stake_limit     : int}
   record get_validator_response =
-    { ct          : StakingValidator,
-      stake       : int,
-      stake_limit : int,
-      is_online   : bool,
-      state       : StakingValidator.validator_state}
+    { ct              : StakingValidator,
+      creation_height : int,
+      stake           : int,
+      stake_limit     : int,
+      is_online       : bool,
+      state           : StakingValidator.validator_state}
   record get_state_response =
     { staking_validator_ct  : StakingValidator,
       validators            : list(get_validator_response),
@@ -36,7 +40,8 @@ main contract MainStaking =
       leader                : address,
       validator_min_stake   : int,
       validator_min_percent : int,
-      stake_minimum         : int
+      stake_minimum         : int,
+      online_delay          : int
       }
 
   record state =
@@ -48,14 +53,17 @@ main contract MainStaking =
       leader                : address,
       validator_min_stake   : int,
       validator_min_percent : int,
-      stake_minimum         : int
+      stake_minimum         : int,
+      online_delay          : int
       }
 
   entrypoint init(staking_validator_ct : StakingValidator,
                   entropy_str : string,
                   validator_min_stake : int,
                   validator_min_percent : int,
-                  stake_minimum : int) =
+                  stake_minimum : int,
+                  online_delay : int
+                  ) =
     { staking_validator_ct  = staking_validator_ct,
       online_validators     = {},
       offline_validators    = {},
@@ -64,7 +72,8 @@ main contract MainStaking =
       leader                = Contract.address,
       validator_min_stake   = validator_min_stake,
       validator_min_percent = validator_min_percent,
-      stake_minimum         = stake_minimum
+      stake_minimum         = stake_minimum,
+      online_delay          = online_delay
       }
 
   entrypoint online_validators() =
@@ -81,12 +90,15 @@ main contract MainStaking =
     let validator_ct : StakingValidator = Chain.clone(ref = state.staking_validator_ct, Contract.address)
     validator_ct.stake(value = Call.value, Call.caller)
     let stake_limit = calculate_stake_limit(Call.value)
-    put(state{offline_validators[Call.caller] = {ct = validator_ct, stake = Call.value, stake_limit = stake_limit}})
+    put(state{offline_validators[Call.caller] = {ct = validator_ct,
+        creation_height = Chain.block_height,
+       stake = Call.value, stake_limit = stake_limit}})
     validator_ct
 
   stateful entrypoint set_online() =
     require(validator_bucket(Call.caller) == OFFLINE, "Validator not offline")
     let validator = state.offline_validators[Call.caller]
+    assert_allowed_to_set_online(validator)
     put(state{online_validators[Call.caller] = validator,
               offline_validators @ offv = Map.delete(Call.caller, offv),
               total_stake @ ts = ts + validator.stake})
@@ -152,6 +164,7 @@ main contract MainStaking =
             ONLINE => true
             OFFLINE => false
     {ct = validator.ct,
+     creation_height = validator.creation_height,
      stake = validator.stake,
      stake_limit = validator.stake_limit,
      is_online = online,
@@ -167,7 +180,8 @@ main contract MainStaking =
       leader                = state.leader,
       validator_min_stake   = state.validator_min_stake,
       validator_min_percent = state.validator_min_percent,
-      stake_minimum         = state.stake_minimum
+      stake_minimum         = state.stake_minimum,
+      online_delay          = state.online_delay
       }
 
   entrypoint set_validator_name(name : string) =
@@ -290,3 +304,7 @@ main contract MainStaking =
   function assert_stake_limit(v : validator) : validator =
     if(v.stake_limit < v.stake) abort("Total stake limit exceeded")
     else v
+
+  function assert_allowed_to_set_online(v : validator) =
+    if(v.creation_height + state.online_delay =< Chain.block_height) true
+    else abort("Minimum height not reached")
