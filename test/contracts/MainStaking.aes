@@ -24,6 +24,7 @@ main contract MainStaking =
     { ct : StakingValidator, stake : int }
   record get_validator_response =
     { ct        : StakingValidator,
+      address   : address,
       stake     : int,
       is_online : bool,
       state     : StakingValidator.validator_state}
@@ -132,22 +133,19 @@ main contract MainStaking =
         validator.ct.profit(value = Call.value)
         put(state{offline_validators[to] = validator{ stake @ s = s + Call.value }})
 
-  entrypoint get_validator_state(v : address) : get_validator_response =
-    let validator = get_validator(v)
+  entrypoint get_validator_state(address : address) : get_validator_response =
+    let validator = get_validator(address)
     let online =
-        switch(validator_bucket(v))
+        switch(validator_bucket(address))
             ONLINE => true
             OFFLINE => false
-    {ct = validator.ct,
-     stake = validator.stake,
-     is_online = online,
-     state = validator.ct.get_state()}
+    get_validator_state_(address, validator, online)
 
   entrypoint get_state() : get_state_response =
-    let validators = map_keys(state.online_validators) ++
-                     map_keys(state.offline_validators)
+    let validators = map_validators_state(state.online_validators, true) ++
+                     map_validators_state(state.offline_validators, false)
     { staking_validator_ct  = state.staking_validator_ct,
-      validators            = [get_validator_state(v) | v <- validators],
+      validators            = validators,
       total_stake           = state.total_stake,
       entropy               = state.entropy,
       leader                = state.leader,
@@ -212,7 +210,7 @@ main contract MainStaking =
           true =>
             abort("Validator exists")
           false =>
-            true 
+            true
 
   function find_validator(validators, shot) =
     switch(validators)
@@ -237,9 +235,16 @@ main contract MainStaking =
 
   function assert_protocol_call() =
       require(Call.caller == Contract.creator, "Must be called by the protocol")
-    
-  function map_keys(map) =
-    [k | (k, v) <- Map.to_list(map)]
+
+  function get_validator_state_(address : address, validator : validator, is_online : bool) : get_validator_response =
+    {ct = validator.ct,
+     address = address,
+     stake = validator.stake,
+     is_online = is_online,
+     state = validator.ct.get_state()}
+
+  function map_validators_state(map, is_online) =
+    [get_validator_state_(addr, validator, is_online) | (addr, validator) <- Map.to_list(map)]
 
   function assert_allowed_to_unstake(from : address, who : address, v : validator) =
     if(from == who)
