@@ -6,7 +6,7 @@
 %%%-------------------------------------------------------------------
 
 -module(aefa_fate).
--export([run/2]).
+-export([run/2, execute/1]).
 
 -export([ gas/1
         , logs/1
