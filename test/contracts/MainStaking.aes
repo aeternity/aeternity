@@ -35,6 +35,7 @@ main contract MainStaking =
       entropy               : hash,
       leader                : address,
       validator_min_stake   : int,
+      validator_min_percent : int,
       stake_minimum         : int
       }
 
@@ -46,11 +47,14 @@ main contract MainStaking =
       entropy               : hash,
       leader                : address,
       validator_min_stake   : int,
+      validator_min_percent : int,
       stake_minimum         : int
       }
 
   entrypoint init(staking_validator_ct : StakingValidator, entropy_str : string,
-                  validator_min_stake : int, stake_minimum : int) =
+                  validator_min_stake : int,
+                  validator_min_percent : int,
+                  stake_minimum : int) =
     { staking_validator_ct  = staking_validator_ct,
       online_validators     = {},
       offline_validators    = {},
@@ -58,6 +62,7 @@ main contract MainStaking =
       entropy               = Crypto.sha256(entropy_str),
       leader                = Contract.address,
       validator_min_stake   = validator_min_stake,
+      validator_min_percent = validator_min_percent,
       stake_minimum         = stake_minimum
       }
 
@@ -150,6 +155,7 @@ main contract MainStaking =
       entropy               = state.entropy,
       leader                = state.leader,
       validator_min_stake   = state.validator_min_stake,
+      validator_min_percent = state.validator_min_percent,
       stake_minimum         = state.stake_minimum
       }
 
@@ -249,7 +255,19 @@ main contract MainStaking =
   function assert_allowed_to_unstake(from : address, who : address, v : validator) =
     if(from == who)
       let balance_left = v.ct.balance(from)
-      if(balance_left < state.validator_min_stake) abort("Validator can not withdraw below the treshhold")
-      else false
+      assert_min_stake(balance_left)
+      assert_min_percent_stake(who, balance_left)
     else
       true
+
+  function assert_min_stake(balance : int) =
+      if(balance < state.validator_min_stake)
+        abort("Validator can not withdraw below the treshold")
+      else false
+
+  function assert_min_percent_stake(v: address, balance : int) =
+      let validator = get_validator_state(v)
+      let min_percent = state.validator_min_percent
+      if((100 * balance) < (min_percent * validator.stake))
+        abort("Validator can not withdraw below the 30% treshold")
+      else false
