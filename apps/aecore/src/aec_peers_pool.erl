@@ -208,7 +208,7 @@
     % The number of element in the lookup table.
     size                   :: non_neg_integer(),
     % The array of element; its size may be larger.
-    array                  :: array:array(peer_id())
+    array                  :: [peer_id()]
 }).
 
 -record(?MODULE, {
@@ -261,7 +261,7 @@
 -type millitimestamp() :: pos_integer().
 -type milliseconds() :: pos_integer().
 -type bucket(Type) :: [Type].
--type buckets(Type) :: array:array(bucket(Type)).
+-type buckets(Type) :: [bucket(Type)].
 -type select_target() :: verified | unverified | both.
 -type filter_fun() :: fun((peer_id(), aec_peer:peer()) -> boolean()).
 -type int_filter_fun() :: fun((peer_id()) -> boolean()).
@@ -741,11 +741,6 @@ rejection_delay(BackoffTable, RejectionCount) ->
     BackoffIndex = min(RejectionCount, length(BackoffTable)),
     lists:nth(BackoffIndex, BackoffTable).
 
-%% Tells if we can add another reference to a pool.
--spec should_add_ref(rand_state(), pos_integer()) -> {boolean(), rand_state()}.
-should_add_ref(RSt, RefCount) ->
-    {RandVal, RSt2} = randint(RSt, floor(math:pow(2, RefCount))),
-    {RandVal =:= 0, RSt2}.
 
 %% Returns the modulo of the integer extracted from the SHA1 hash of the binary.
 -spec hash_modulo(binary(), pos_integer()) -> non_neg_integer().
@@ -1174,8 +1169,7 @@ verified_add(St, Now, Peer) ->
             % There is space to add the peer to the bucket.
             #?ST{verif_pool = Pool} = St2,
             Pool2 = pool_add(Pool, BucketIdx, PeerId),
-            Pool3 = pool_update_size(Pool2, 1),
-            St3 = St2#?ST{verif_pool = Pool3},
+            St3 = St2#?ST{verif_pool = Pool2},
             % Peer may have been changed by verified_make_space_for/4.
             Peer2 = get_peer(St3, PeerId),
             Peer3 = Peer2#peer{vidx = BucketIdx},
@@ -1350,8 +1344,7 @@ unverified_add(St, Now, Peer, KeepPeerId) ->
         {free_space, St2} ->
             #?ST{unver_pool = Pool} = St2,
             Pool2 = pool_add(Pool, BucketIdx, PeerId),
-            Pool3 = pool_update_size(Pool2, 1),
-            St3 = St2#?ST{unver_pool = Pool3},
+            St3 = St2#?ST{unver_pool = Pool2},
             % Peer may have been changed by unverified_make_space/4.
             Peer2 = get_peer(St3, PeerId),
             Peer3 = Peer2#peer{uidxs = [BucketIdx]},
@@ -1592,72 +1585,156 @@ pool_bucket_size(Pool, BucketIdx) ->
 
 -endif.
 
-%% Creates a new pool record.
+-spec pool_new(Count, Size, MaxRefs, EvictSkew) -> Pool
+    when Count     :: pos_integer(),
+         Size      :: pos_integer(),
+         MaxRefs   :: pos_integer(),
+         EvictSkew :: number(),
+         Pool      :: pool().
 -spec pool_new(pos_integer(), pos_integer(), pos_integer(), number()) -> pool().
+%% Creates a new pool record.
+
 pool_new(Count, Size, MaxRefs, EvictSkew) ->
-    #pool{
-        size = 0,
-        max_refs = MaxRefs,
-        skew  = EvictSkew,
-        bucket_count = Count,
-        bucket_size = Size,
-        buckets = array:new(Count, [{default, []}])
-    }.
+    #pool{size         = 0,
+          max_refs     = MaxRefs,
+          skew         = EvictSkew,
+          bucket_count = Count,
+          bucket_size  = Size,
+          buckets      = []}.
 
-%% Returns the number of peers in a pool.
+
 -spec pool_size(pool()) -> non_neg_integer().
-pool_size(#pool{size = Size}) -> Size.
+%% Returns the number of peers in a pool.
 
-%% Adds given value to the pool size.
+pool_size(#pool{size = Size}) ->
+    Size.
+
+
 -spec pool_update_size(pool(), integer()) -> pool().
-pool_update_size(Pool, Diff) ->
-    ?assert((Pool#pool.size + Diff) >= 0),
-    Pool#pool{size = Pool#pool.size + Diff}.
+%% Adds given value to the pool size.
 
-%% Adds a value to given pool's bucket.
-%% It doesn't increment the pool size, pool_update_size/2 should be called.
+pool_update_size(Pool = #pool{size = Size}, Diff) ->
+    Pool#pool{size = Size + Diff}.
+
+
 -spec pool_add(pool(), non_neg_integer(), term()) -> pool().
-pool_add(Pool, BucketIdx, Value) ->
-    ?assert(BucketIdx < Pool#pool.bucket_count),
-    #pool{buckets = Buckets} = Pool,
-    Bucket = array:get(BucketIdx, Buckets),
-    ?assert(length(Bucket) < Pool#pool.bucket_size),
-    ?assertNot(lists:member(Value, Bucket)),
-    Buckets2 = array:set(BucketIdx, [Value | Bucket], Buckets),
-    Pool#pool{buckets = Buckets2}.
+%% Adds a value to given pool's bucket.
 
+pool_add(Pool = #pool{size = Size, buckets = Buckets}, Index, Value) ->
+    NewBuckets = bucket_add(Buckets, 1, Index, Value),
+    Pool#pool{size = Size + 1, buckets = NewBuckets}.
+
+bucket_add([Bucket | Buckets], Goal, Goal, Value) ->
+    [[Value | Bucket] | Buckets];
+bucket_add([Bucket | Buckets], Index, Goal, Value) ->
+    [Bucket | bucket_add(Buckets, Index + 1, Goal, Value)].
+
+
+%pool_add(Pool, BucketIdx, Value) ->
+%    ?assert(BucketIdx < Pool#pool.bucket_count),
+%    #pool{buckets = Buckets} = Pool,
+%    Bucket = array:get(BucketIdx, Buckets),
+%    ?assert(length(Bucket) < Pool#pool.bucket_size),
+%    ?assertNot(lists:member(Value, Bucket)),
+%    Buckets2 = array:set(BucketIdx, [Value | Bucket], Buckets),
+%    Pool#pool{buckets = Buckets2}.
+
+-spec pool_del(pool(), non_neg_integer(), term()) -> pool().
 %% Removes a value from given pool's bucket.
 %% It doesn't decrement the pool size, pool_update_size/2 should be called.
--spec pool_del(pool(), non_neg_integer(), term()) -> pool().
-pool_del(Pool, BucketIdx, Value) ->
-    ?assert(BucketIdx < Pool#pool.bucket_count),
-    #pool{buckets = Buckets} = Pool,
-    Bucket = array:get(BucketIdx, Buckets),
-    ?assert(lists:member(Value, Bucket)),
-    Buckets2 = array:set(BucketIdx, lists:delete(Value, Bucket), Buckets),
-    Pool#pool{buckets = Buckets2}.
 
+pool_del(Pool = #pool{size = Size, buckets = Buckets}, Index, Value) ->
+    NewBuckets = bucket_del(Buckets, 1, Index, Value),
+    Pool#pool{size = Size - 1, buckets = NewBuckets}.
+
+bucket_del([Bucket | Buckets], Goal, Goal, Value) ->
+    [lists:delete(Value, Bucket) | Buckets];
+bucket_del([Bucket | Buckets], Index, Goal, Value) ->
+    [Bucket | bucket_del(Buckets, Index + 1, Goal, Value)].
+
+%pool_del(Pool, BucketIdx, Value) ->
+%    ?assert(BucketIdx < Pool#pool.bucket_count),
+%    #pool{buckets = Buckets} = Pool,
+%    Bucket = array:get(BucketIdx, Buckets),
+%    ?assert(lists:member(Value, Bucket)),
+%    Buckets2 = array:set(BucketIdx, lists:delete(Value, Bucket), Buckets),
+%    Pool#pool{buckets = Buckets2}.
+
+
+-spec pool_should_add_red(Pool, Rand, Indexes) -> {Answer, NewRand}
+    when Pool    :: pool(),
+         Rand    :: rand_state(),
+         Indexes :: pos_integer(),
+         Answer  :: boolean(),
+         NewRand :: rand_state().
 %% Tells if given the pool configuration and the current references, the caller
 %% should try to add another reference to the pool.
--spec pool_should_add_ref(pool(), rand_state(), [non_neg_integer()])
-    -> {boolean(), rand_state()}.
-pool_should_add_ref(Pool, RSt, RefIdxs) ->
-    #pool{max_refs = MaxRefCount} = Pool,
-    RefCount = length(RefIdxs),
-    case RefCount < MaxRefCount of
-        true -> should_add_ref(RSt, RefCount);
-        false -> {false, RSt}
+
+pool_should_add_ref(Pool = #pool{max_refs = MaxRefCount}, Rand, Indexes) ->
+    Count = length(Indexes),
+    case Count < MaxRefCount of
+        true  -> {1 =:= rand:uniform(trunc(math:pow(2, Count))), Rand};
+        false -> {false, Rand}
     end.
 
+%pool_should_add_ref(Pool, RSt, RefIdxs) ->
+%    #pool{max_refs = MaxRefCount} = Pool,
+%    RefCount = length(RefIdxs),
+%    case RefCount < MaxRefCount of
+%        true -> should_add_ref(RSt, RefCount);
+%        false -> {false, RSt}
+%    end.
+
+
+-spec pool_make_space(Pool, Rand, Index, Filter, Sort) -> Result
+    when Pool   :: pool(),
+         Rand   :: rand_state(),
+         Index  :: pos_integer(),
+         Filter :: bucket_filter_fun(),
+         Sort   :: bucket_sort_key_fun(),
+         Result :: {free_space,
+                    Removed :: [peer_id()],
+                    ID      :: peer_id() | undefined,
+                    NewRand :: rand_state(),
+                    NewPool :: pool()}
+                 | no_space.
 %% Makes space in the pool to add a new value.
 %% The filter function can either mark entries to keep them, remove them
 %% or elect them for eviction. The sort key function is used to order the
 %% buckets before selecting a random entry for eviction with the
 %% pool configured skew toward the entries with the smallest key.
--spec pool_make_space(pool(), rand_state(), non_neg_integer(),
-                      bucket_filter_fun(), bucket_sort_key_fun())
-    -> {free_space, [peer_id()], peer_id() | undefined, rand_state(), pool()}
-     | no_space.
+
+pool_make_space(Pool = #pool{size        = Size,
+                             buckets     = Buckets,
+                             bucket_size = MaxSize,
+                             skew        = Skew},
+                Rand, Index, Filter, Sort) ->
+    Bucket = lists:nth(Index, Buckets),
+    BucketSize = length(Bucket),
+    case BucketSize < MaxSize of
+        true ->
+            {free_space, [], undefined, Rand, Pool};
+        false ->
+            case bucket_prepare(Bucket, Filter, Sort) of
+                {_, [], 0, _, 0} ->
+                    no_space;
+                {Prepped, Removed, RemovedSize, _, _} ->
+                    NewBuckets = list_replace(Index, Prepped, Buckets),
+                    NewSize = Size - RemovedSize,
+                    NewPool = Pool#pool{size = NewSize, buckets = NewBuckets},
+                    {free_space, Removed, undefined, Rand, NewPool};
+                {Prepped, _, _, Evictable, EvictableSize} ->
+                    SortedEvictable = lists:keysort(1, Evictable),
+                    {EvictedIndex, NewRand} = skewed_randint(Rand, EvictableSize, Skew),
+                    {_, EvictedValue} = lists:nth(EvictedIndex, SortedEvictable),
+                    Scrubbed = lists:delete(EvictedValue, Prepped),
+                    NewBuckets = list_replace(Index, Scrubbed, Buckets),
+                    NewPool = Pool#pool{size = Size - 1, buckets = NewBuckets},
+                    {free_space, [], EvictedValue, Rand, NewPool}
+            end
+    end.
+
+
 pool_make_space(Pool, RSt, BucketIdx, FilterFun, SortKeyFun) ->
     ?assert(BucketIdx < Pool#pool.bucket_count),
     #pool{buckets = Buckets, bucket_size = MaxBucketSize, skew = Skew} = Pool,
@@ -1716,212 +1793,356 @@ bucket_prepare([Val | Rest], FFun, KFun, BAcc, RAcc, EAcc, ECount) ->
 
 %--- LOOKUP HANDLING FUNCTIONS -------------------------------------------------
 
--ifdef(TEST).
-
-lookup_internal_size(#lookup{array = Array}) -> array:size(Array).
-
-lookup_internal_free(#lookup{size = Size, array = Array}) ->
-    array:size(Array) - Size.
-
--endif.
-
-%% Creates a new lookup data structure.
 -spec lookup_new() -> lookup().
+%% Creates a new lookup data structure.
+
 lookup_new() ->
-    #lookup{
-        size = 0,
-        array = array:new(?LOOKUP_START_SIZE)
-    }.
+    #lookup{size = 0, array = []}.
 
-%% Converts a lookup table to a list.
+
 -spec lookup_to_list(lookup()) -> [peer_id()].
+%% Converts a lookup table to a list.
+
 lookup_to_list(#lookup{array = Array}) ->
-    array:sparse_to_list(Array).
+    Array.
 
-%% Returns the number of element in a lookup table.
+
 -spec lookup_size(lookup()) -> non_neg_integer().
-lookup_size(#lookup{size = Size}) -> Size.
+%% Returns the number of element in a lookup table.
 
-%% Get a value from the lookup table
+lookup_size(#lookup{size = Size}) ->
+    Size.
+
+
 -spec lookup_get(lookup(), non_neg_integer()) -> peer_id().
-lookup_get(#lookup{size = Size, array = Array}, Idx)
-  when Idx < Size ->
-    array:get(Idx, Array).
+%% Get a value from the lookup table
 
+lookup_get(#lookup{size = Size, array = Array}, Index) when Index < Size ->
+    lists:nth(Index, Array).
+
+
+-spec lookup_swap(Table, IndexA, IndexB) -> {ID_A, ID_B, NewTable}
+    when Table    :: lookup(),
+         IndexA   :: non_neg_integer(),
+         IndexB   :: non_neg_integer(),
+         ID_A     :: peer_id(),
+         ID_B     :: peer_id(),
+         NewTable :: lookup().
 %% Gets two values, swap them in the array and return them.
--spec lookup_swap(lookup(), non_neg_integer(), non_neg_integer())
-    -> {peer_id(), peer_id(), lookup()}.
-lookup_swap(#lookup{size = Size, array = Array} = Lookup, Idx1, Idx2)
-  when Idx1 < Size, Idx2 < Size ->
-    A = array:get(Idx1, Array),
-    B = array:get(Idx2, Array),
-    Array2 = array:set(Idx2, A, array:set(Idx1, B, Array)),
-    {A, B, Lookup#lookup{array = Array2}}.
 
-%% Appends a value at the end of the lookup table;
-%% eventually resize the underlying array.
+lookup_swap(Table = #lookup{array = Array}, IndexA, IndexB) when IndexA < IndexB ->
+    {LoID, HiID, NewArray} = swap(Array, IndexA, IndexB),
+    {LoID, HiID, Table#lookup{array = NewArray}};
+lookup_swap(Table = #lookup{array = Array}, IndexA, IndexB) when IndexA > IndexB ->
+    {LoID, HiID, NewArray} = swap(Array, IndexB, IndexA),
+    {HiID, LoID, Table#lookup{array = NewArray}}.
+
+swap(List, Lo, Hi) ->
+    {LoID, HiID} = pick(List, Lo, Hi),
+    NewList = insert(List, LoID, HiID),
+    {LoID, HiID, NewList}.
+
+pick(List, Lo, Hi) ->
+    pick(List, Lo, Hi, 1).
+
+pick_lo([LoID | Rest], Lo, Hi, Lo) ->
+    pick_hi(Rest, Hi, Lo + 1, LoID);
+pick_lo([_, Rest], Lo, Hi, I) ->
+    pick_lo(Rest, Lo, Hi, I + 1).
+
+pick_hi([HiID | _], Hi, Hi, LoID) ->
+    {LoID, HiID};
+pick_hi([_ | Rest], Hi, I, LoID) ->
+    pick_hi(Rest, Hi, I + 1, LoID).
+
+insert([LoID | Rest], LoID, HiID) ->
+    [HiID | insert2(Rest, LoID, HiID)];
+insert(ID | Rest], LoID, HiID) ->
+    [ID | insert(Rest, LoID, HiID).
+
+insert2([HiID | Rest], LoID, HiID) ->
+    [LoID | Rest];
+insert2([ID | Rest], LoID, HiID) ->
+    [ID | insert2(Rest, LoID, HiID).
+
+
 -spec lookup_append(lookup(), peer_id()) -> {non_neg_integer(), lookup()}.
-lookup_append(Lookup, Value) ->
-    #lookup{size = Size, array = Array} = Lookup,
-    ArraySize = array:size(Array),
-    case ArraySize > Size of
-        true ->
-            Array2 = array:set(Size, Value, Array),
-            {Size, Lookup#lookup{size = Size + 1, array = Array2}};
-        false ->
-            NewArraySize = ArraySize + min(ArraySize, ?MAX_LOOKUP_SIZE_INC),
-            Array2 = array:resize(NewArraySize, Array),
-            Array3 = array:set(Size, Value, Array2),
-            {Size, Lookup#lookup{size = Size + 1, array = Array3}}
-    end.
+%% Appends a value at the end of the lookup table.
 
-%% Shrinks the lookup table, removing the last value;
-%% eventually resize the underlying array.
+lookup_append(Table = #lookup{size = Size, array = Array}, Value) ->
+    Table#lookup{size = NewSize, array = NewArray}.
+
+%lookup_append(Lookup, Value) ->
+%    #lookup{size = Size, array = Array} = Lookup,
+%    ArraySize = array:size(Array),
+%    case ArraySize > Size of
+%        true ->
+%            Array2 = array:set(Size, Value, Array),
+%            {Size, Lookup#lookup{size = Size + 1, array = Array2}};
+%        false ->
+%            NewArraySize = ArraySize + min(ArraySize, ?MAX_LOOKUP_SIZE_INC),
+%            Array2 = array:resize(NewArraySize, Array),
+%            Array3 = array:set(Size, Value, Array2),
+%            {Size, Lookup#lookup{size = Size + 1, array = Array3}}
+%    end.
+
+
 -spec lookup_shrink(lookup()) -> lookup().
-lookup_shrink(Lookup) ->
-    #lookup{size = OldSize, array = Array} = Lookup,
-    NewSize = OldSize - 1,
-    ArraySize = array:size(Array),
-    FreeSpace = (ArraySize - NewSize),
-    MaxFreeSpace = min(?MAX_LOOKUP_SIZE_INC, NewSize),
-    case (NewSize < ?LOOKUP_START_SIZE) or (FreeSpace < MaxFreeSpace) of
-        true ->
-            Array2 = array:reset(NewSize, Array),
-            Lookup#lookup{size = NewSize, array = Array2};
-        false ->
-            Array2 = array:resize(NewSize, Array),
-            Lookup#lookup{size = NewSize, array = Array2}
-    end.
+%% Shrinks the lookup table, removing the last value.
 
+lookup_shrink(Table = #lookup{size = Size, array = Array}) ->
+    Table#lookup{size = Size - 1, array = lists:droplast(Array)}.
+
+%lookup_shrink(Lookup) ->
+%    #lookup{size = OldSize, array = Array} = Lookup,
+%    NewSize = OldSize - 1,
+%    ArraySize = array:size(Array),
+%    FreeSpace = (ArraySize - NewSize),
+%    MaxFreeSpace = min(?MAX_LOOKUP_SIZE_INC, NewSize),
+%    case (NewSize < ?LOOKUP_START_SIZE) or (FreeSpace < MaxFreeSpace) of
+%        true ->
+%            Array2 = array:reset(NewSize, Array),
+%            Lookup#lookup{size = NewSize, array = Array2};
+%        false ->
+%            Array2 = array:resize(NewSize, Array),
+%            Lookup#lookup{size = NewSize, array = Array2}
+%    end.
+
+
+-spec lookup_add(Table, Rand, Value) -> Result
+    when Table  :: lookup(),
+         Rand   :: term(),
+         Value  :: term(),
+         Result :: {InsertIndex :: pos_integer(),
+                    OldValue    :: {Index :: pos_integer(), term()} | undefined,
+                    NewRand     :: term(),
+                    NewTable    :: lookup()}.
 %% Adds the value in the given lookup table at a random position;
-%% if the lookup table had to move and existing value, it returns a tuple
+%% if the lookup table had to move an existing value, it returns a tuple
 %% with the value and its new index, otherwise it returns `undefined'.
 %% Needs the state of the random number generator.
--spec lookup_add(lookup(), term(), term())
-    -> {non_neg_integer(), {non_neg_integer(), term()} | undefined, term(), lookup()}.
-lookup_add(#lookup{size = 0} = Lookup, RSt, Value) ->
-    {0, Lookup2} = lookup_append(Lookup, Value),
-    {0, undefined, RSt, Lookup2};
-lookup_add(#lookup{size = 1} = Lookup, RSt, Value) ->
-    % even if there is a only two values we want the table randomized.
-    {1, Lookup2} = lookup_append(Lookup, Value),
-    {SwapFlag, RSt2} = randint(RSt, 2),
-    case SwapFlag =:= 0 of
-        false ->
-            {1, undefined, RSt2, Lookup2};
-        true ->
-            {OldValue, _, Lookup3} = lookup_swap(Lookup2, 0, 1),
-            {0, {1, OldValue}, RSt2, Lookup3}
+
+lookup_add(Table = #lookup{size = 0, array = []}, Rand, Value) ->
+    NewTable = lookup_append(Table, Value),
+    {1, undefined, Rand, NewTable};
+lookup_add(Table = #lookup{size = 1, array = [V]}, Rand, Value) ->
+    case rand:uniform(2) of
+        1 -> {1, {1, V}, Rand, Table#lookup{size = 2, array = [Value, V]}};
+        2 -> {2, undefined, Rand, Table#lookup{size = 2, array = [V, Value]}}
     end;
-lookup_add(Lookup, RSt, Value) ->
-    {Idx, Lookup2} = lookup_append(Lookup, Value),
-    {RandIdx, RSt2} = randint(RSt, Idx),
-    {OldValue, _, Lookup3} = lookup_swap(Lookup2, RandIdx, Idx),
-    {RandIdx, {Idx, OldValue}, RSt2, Lookup3}.
+lookup_add(Table, Rand, Value) ->
+    Appended = #lookup{size = LastIndex} = lookup_append(Table, Value),
+    RandIndex = random:uniform(LastIndex),
+    {OldValue, _, NewTable} = lookup_swap(Appended, RandIndex, LastIndex),
+    {RandIndex, {LastIndex, OldValue}, Rand, NewTable}.
 
+%lookup_add(#lookup{size = 0} = Lookup, RSt, Value) ->
+%    {0, Lookup2} = lookup_append(Lookup, Value),
+%    {0, undefined, RSt, Lookup2};
+%lookup_add(#lookup{size = 1} = Lookup, RSt, Value) ->
+%    % even if there is a only two values we want the table randomized.
+%    {1, Lookup2} = lookup_append(Lookup, Value),
+%    {SwapFlag, RSt2} = randint(RSt, 2),
+%    case SwapFlag =:= 0 of
+%        false ->
+%            {1, undefined, RSt2, Lookup2};
+%        true ->
+%            {OldValue, _, Lookup3} = lookup_swap(Lookup2, 0, 1),
+%            {0, {1, OldValue}, RSt2, Lookup3}
+%    end;
+%lookup_add(Lookup, RSt, Value) ->
+%    {Idx, Lookup2} = lookup_append(Lookup, Value),
+%    {RandIdx, RSt2} = randint(RSt, Idx),
+%    {OldValue, _, Lookup3} = lookup_swap(Lookup2, RandIdx, Idx),
+%    {RandIdx, {Idx, OldValue}, RSt2, Lookup3}.
+
+
+-spec lookup_del(Table, Index) -> Result
+    when Table  :: lookup(),
+         Index  :: pos_integer(),
+         Result :: {OldValue :: {Index :: pos_integer(), term()} | undefined,
+                    NewTable :: lookup()}.
 %% Removes the value at the given index;
-%% if the lookup table had to move and existing value, it returns a tuple
+%% if the lookup table had to move an existing value, it returns a tuple
 %% with the value and its new index, otherwise it returns `undefined'.
--spec lookup_del(lookup(), non_neg_integer())
-    -> {undefined | {non_neg_integer(), term()}, lookup()}.
-lookup_del(#lookup{size = 1} = Lookup, 0) ->
-    {undefined, lookup_shrink(Lookup)};
-lookup_del(#lookup{size = Size} = Lookup, Idx) when Idx =:= (Size - 1)->
-    {undefined, lookup_shrink(Lookup)};
-lookup_del(#lookup{size = Size} = Lookup, Idx) when Size > 1, Idx < Size ->
-    OldIdx = Size - 1,
-    {OldValue, _, Lookup2} = lookup_swap(Lookup, OldIdx, Idx),
-    {{Idx, OldValue}, lookup_shrink(Lookup2)}.
 
+lookup_del(#lookup{size = 1}, 1) ->
+    {undefined, #lookup{size = 0, array = []}};
+lookup_del(Table = #lookup{size = Size, array = Array}, Size) ->
+    {undefined, Table#lookup{size = Size - 1, array = lists:droplast(Array)}};
+lookup_del(Table = #lookup{size = Size, array = Array}, Index) ->
+    {SwappedValue, _, SwappedTable} = lookup_swap(Table, Size, Index),
+    NewTable = lists:droplast(SwappedTable),
+    {{Index, SwappedValue}, NewTable}.
+
+%lookup_del(#lookup{size = 1} = Lookup, 0) ->
+%    {undefined, lookup_shrink(Lookup)};
+%lookup_del(#lookup{size = Size} = Lookup, Idx) when Idx =:= (Size - 1)->
+%    {undefined, lookup_shrink(Lookup)};
+%lookup_del(#lookup{size = Size} = Lookup, Idx) when Size > 1, Idx < Size ->
+%    OldIdx = Size - 1,
+%    {OldValue, _, Lookup2} = lookup_swap(Lookup, OldIdx, Idx),
+%    {{Idx, OldValue}, lookup_shrink(Lookup2)}.
+
+
+-spec lookup_select(Table, Rand, UseRand, FilterFun) -> Result
+    when Table     :: lookup(),
+         Rand      :: term(),
+         UseRand   :: boolean(),
+         FilterFun :: int_filter_fun(),
+         Result    :: {unavailable, Rand}
+                    | {peer_id(), NewRand :: term()}.
 %% Selects a random value from the lookup table.
 %% If a restriction function is specified, it will keep selecting random values
 %% until either there is no more values or the function returns `true'.
 %% Optionally uses a strong random number as offset to weak random numbers
 %% to ensure relatively strong randomness.
--spec lookup_select(lookup(), rand_state(), boolean(), int_filter_fun())
-    -> {unavailable, rand_state()} | {peer_id(), rand_state()}.
-lookup_select(#lookup{size = 0}, RSt, _UseRandOff, _FilterFun) ->
-    {unavailable, RSt};
-lookup_select(#lookup{size = 1} = Lookup, RSt, _UseRandOff, undefined) ->
-    {lookup_get(Lookup, 0), RSt};
-lookup_select(Lookup, RSt, UseRandOff, undefined) ->
-    #lookup{size = Size} = Lookup,
-    RandOffset = strong_randword(UseRandOff),
-    {RandInt, RSt2} = randint(RSt, Size),
-    RandIdx = (RandInt + RandOffset) rem Size,
-    {lookup_get(Lookup, RandIdx), RSt2};
-lookup_select(Lookup, RSt, UseRandOff, FilterFun) ->
-    #lookup{size = Size} = Lookup,
-    RandOffset = strong_randword(UseRandOff),
-    lookup_select(Lookup, RSt, FilterFun, RandOffset, Size).
 
-lookup_select(Lookup, RSt, FilterFun, _Offset, 1) ->
-    Value = lookup_get(Lookup, 0),
+lookup_select(#lookup{size = 0}, Rand, _, _) ->
+    {unavailable, Rand};
+lookup_select(#lookup{array = [PeerID]}, Rand, _, _) ->
+    {PeerID, Rand};
+lookup_select(#lookup{size = Size, array = Array}, _, undefined) ->
+    Value = lists:nth(rand:uniform(Size), Array),
+    {Value, Rand};
+lookup_select(Table = #lookup{size = Size}, Rand, UseRand, FilterFun) ->
+    Offset = strong_randword(UseRand),
+    lookup_select2(Table, Rand, FilterFun, Offset, Size).
+
+lookup_select2(#lookup{array = Array}, Rand, FilterFun, Offset, Size) ->
+    RandInt = rand:uniform(Size),
+    RandIndex = (RandInt + Offset) rem Size,
+    Value = lists:nth(RandIndex, Array),
     case FilterFun(Value) of
-        true -> {Value, RSt};
-        false -> {unavailable, RSt}
-    end;
-lookup_select(Lookup, RSt, FilterFun, Offset, SamplingSize) ->
-    LastIdx = SamplingSize - 1,
-    {RandInt, RSt2} = randint(RSt, SamplingSize),
-    RandIdx = (RandInt + Offset) rem SamplingSize,
-    Value = lookup_get(Lookup, RandIdx),
-    case FilterFun(Value) of
-        true -> {Value, RSt2};
+        true ->
+            {Value, Rand};
         false ->
-            {_, _, Lookup2} = lookup_swap(Lookup, RandIdx, LastIdx),
-            lookup_select(Lookup2, RSt2, FilterFun, Offset, SamplingSize - 1)
+            {_, _, Swapped} = lookup_swap(Lookup, RandIndex, Size),
+            lookup_select(Swapped, Rand, FilterFun, Offset, Size - 1)
     end.
 
+%lookup_select(#lookup{size = 0}, RSt, _UseRandOff, _FilterFun) ->
+%    {unavailable, RSt};
+%lookup_select(#lookup{size = 1} = Lookup, RSt, _UseRandOff, undefined) ->
+%    {lookup_get(Lookup, 0), RSt};
+%lookup_select(Lookup, RSt, UseRandOff, undefined) ->
+%    #lookup{size = Size} = Lookup,
+%    RandOffset = strong_randword(UseRandOff),
+%    {RandInt, RSt2} = randint(RSt, Size),
+%    RandIdx = (RandInt + RandOffset) rem Size,
+%    {lookup_get(Lookup, RandIdx), RSt2};
+%lookup_select(Lookup, RSt, UseRandOff, FilterFun) ->
+%    #lookup{size = Size} = Lookup,
+%    RandOffset = strong_randword(UseRandOff),
+%    lookup_select(Lookup, RSt, FilterFun, RandOffset, Size).
+%
+% NOTE: First clause can never be called
+%lookup_select(Lookup, RSt, FilterFun, _Offset, 1) ->
+%    Value = lookup_get(Lookup, 0),
+%    case FilterFun(Value) of
+%        true -> {Value, RSt};
+%        false -> {unavailable, RSt}
+%    end;
+%lookup_select(Lookup, RSt, FilterFun, Offset, SamplingSize) ->
+%    LastIdx = SamplingSize - 1,
+%    {RandInt, RSt2} = randint(RSt, SamplingSize),
+%    RandIdx = (RandInt + Offset) rem SamplingSize,
+%    Value = lookup_get(Lookup, RandIdx),
+%    case FilterFun(Value) of
+%        true -> {Value, RSt2};
+%        false ->
+%            {_, _, Lookup2} = lookup_swap(Lookup, RandIdx, LastIdx),
+%            lookup_select(Lookup2, RSt2, FilterFun, Offset, SamplingSize - 1)
+%    end.
+
+
+-spec lookup_sample(Table, Rand, UseRand, SampleSize, FilterFun) -> Result
+    when Table      :: lookup(),
+         Rand       :: rand_state(),
+         UseRand    :: boolean(),
+         SampleSize :: non_neg_integer() | all,
+         FilterFun  :: int_filter_fun(),
+         Result     :: {[peer_id()], NewRand :: rand_state()}.
 %% Samples a random number of peer identifiers from given lookup table.
 %% If the requested sample size is `all' or larger than the size of the table
-%% the result will not be shuffled (maybe reversed).
-%% Optionally uses a strong random number as offset to weak random numbers to
-%% ensure relatively strong randomness.
--spec lookup_sample(lookup(), rand_state(), boolean(), non_neg_integer() | all,
-                    int_filter_fun() | undefined)
-    -> {[peer_id()], rand_state()}.
-lookup_sample(#lookup{size = 0}, RSt, _UseRandOff, _SampleSize, _FilterFun) ->
-    {[], RSt};
-lookup_sample(#lookup{size = Size} = Lookup, RSt, _, SampleSize, undefined)
-  when SampleSize =:= all; SampleSize >= Size ->
-    #lookup{array = Array} = Lookup,
-    {array:sparse_to_list(Array), RSt};
-lookup_sample(Lookup, RSt, _UseRandOff, all, FilterFun) ->
-    #lookup{array = Array} = Lookup,
-    Result = array:sparse_foldl(fun(_, V, Acc) ->
-        case FilterFun(V) of
-            true -> [V | Acc];
-            false -> Acc
-        end
-    end, [], Array),
-    {Result, RSt};
-lookup_sample(Lookup, RSt, UseRandOff, SampleSize, FilterFun) ->
-    #lookup{size = Size} = Lookup,
-    RandOffset = strong_randword(UseRandOff),
-    lookup_sample(Lookup, RSt, FilterFun, RandOffset, SampleSize, Size, []).
+%% the result will not be shuffled.
 
-lookup_sample(_Lookup, RSt, _FilterFun, _Offset, 0, _SamplingSize, Acc) ->
-    {Acc, RSt};
-lookup_sample(Lookup, RSt, FilterFun, _Offset, Remaining, 1, Acc) ->
-    Value = lookup_get(Lookup, 0),
-    {_, Acc2} = lookup_filter(Value, FilterFun, Remaining, Acc),
-    {Acc2, RSt};
-lookup_sample(Lookup, RSt, FilterFun, Offset, Remaining, SamplingSize, Acc) ->
-    {RandInt, RSt2} = randint(RSt, SamplingSize),
-    RandIdx = (Offset + RandInt) rem SamplingSize,
-    LastIdx = SamplingSize - 1,
-    {RandValue, _, Lookup2} = lookup_swap(Lookup, RandIdx, LastIdx),
-    {Remaining2, Acc2} = lookup_filter(RandValue, FilterFun, Remaining, Acc),
-    lookup_sample(Lookup2, RSt2, FilterFun, Offset, Remaining2, LastIdx, Acc2).
+lookup_sample(#lookup{size = 0}, Rand, _, _, _) ->
+    {[], Rand};
+lookup_sample(#lookup{size = Size, array = Array}, Rand, _, SampleSize, undefined)
+        when SampleSize =:= all; SampleSize >= Size ->
+    {Array, Rand};
+lookup_sample(#lookup{array = Array}, Rand, _, all, Fun) ->
+    {lists:filter(Fun, Array), Rand};
+lookup_sample(#lookup{size = Size, array = Array}, Rand, _, SampleSize, undefined) ->
+    Probability = SampleSize / Size,
+    lookup_sample2(Array, Probability, SampleSize, 0, []);
+lookup_sample(#lookup{size = Size, array = Array}, Rand, _, SampleSize, Fun) ->
+    Probability = SampleSize / Size,
+    lookup_sample2(Array, Probability, Fun, SampleSize, 0, []).
 
-lookup_filter(Value, undefined, Rem, Acc) ->
-    {Rem - 1, [Value | Acc]};
-lookup_filter(Value, FilterFun, Rem, Acc) ->
-    case FilterFun(Value) of
-        true -> {Rem - 1, [Value | Acc]};
-        false -> {Rem, Acc}
+lookup_sample2([], _, _, _, Acc) ->
+    Acc;
+lookup_sample2(_, _, Desired, Desired, Acc) ->
+    Acc;
+lookup_sample2([Value | Rest], Prob, Desired, Count, Acc) ->
+    case Prob > rand:uniform() of
+        true  -> lookup_sample(Rest, Prob, Desired, Count + 1, [Value | Acc]);
+        false -> lookup_sample(Rest, Prob, Desired, Count, Acc)
     end.
+
+lookup_sample2([], _, _, _, _, Acc) ->
+    Acc;
+lookup_sample2(_, _, _, Desired, Desired, Acc) ->
+    Acc;
+lookup_sample2([Value | Rest], Prob, Fun, Desired, Count, Acc) ->
+    case Prob > rand:uniform() andalso Fun(Value) of
+        true  -> lookup_sample(Rest, Prob, Fun, Desired, Count + 1, [Value | Acc]);
+        false -> lookup_sample(Rest, Prob, Fun, Desired, Count, Acc)
+    end.
+
+
+%lookup_sample(#lookup{size = 0}, RSt, _UseRandOff, _SampleSize, _FilterFun) ->
+%    {[], RSt};
+%lookup_sample(#lookup{size = Size} = Lookup, RSt, _, SampleSize, undefined)
+%  when SampleSize =:= all; SampleSize >= Size ->
+%    #lookup{array = Array} = Lookup,
+%    {array:sparse_to_list(Array), RSt};
+%lookup_sample(Lookup, RSt, _UseRandOff, all, FilterFun) ->
+%    #lookup{array = Array} = Lookup,
+%    Result = array:sparse_foldl(fun(_, V, Acc) ->
+%        case FilterFun(V) of
+%            true -> [V | Acc];
+%            false -> Acc
+%        end
+%    end, [], Array),
+%    {Result, RSt};
+%lookup_sample(Lookup, RSt, UseRandOff, SampleSize, FilterFun) ->
+%    #lookup{size = Size} = Lookup,
+%    RandOffset = strong_randword(UseRandOff),
+%    lookup_sample(Lookup, RSt, FilterFun, RandOffset, SampleSize, Size, []).
+%
+%lookup_sample(_Lookup, RSt, _FilterFun, _Offset, 0, _SamplingSize, Acc) ->
+%    {Acc, RSt};
+%lookup_sample(Lookup, RSt, FilterFun, _Offset, Remaining, 1, Acc) ->
+%    Value = lookup_get(Lookup, 0),
+%    {_, Acc2} = lookup_filter(Value, FilterFun, Remaining, Acc),
+%    {Acc2, RSt};
+%lookup_sample(Lookup, RSt, FilterFun, Offset, Remaining, SamplingSize, Acc) ->
+%    {RandInt, RSt2} = randint(RSt, SamplingSize),
+%    RandIdx = (Offset + RandInt) rem SamplingSize,
+%    LastIdx = SamplingSize - 1,
+%    {RandValue, _, Lookup2} = lookup_swap(Lookup, RandIdx, LastIdx),
+%    {Remaining2, Acc2} = lookup_filter(RandValue, FilterFun, Remaining, Acc),
+%    lookup_sample(Lookup2, RSt2, FilterFun, Offset, Remaining2, LastIdx, Acc2).
+%
+%lookup_filter(Value, undefined, Rem, Acc) ->
+%    {Rem - 1, [Value | Acc]};
+%lookup_filter(Value, FilterFun, Rem, Acc) ->
+%    case FilterFun(Value) of
+%        true -> {Rem - 1, [Value | Acc]};
+%        false -> {Rem, Acc}
+%    end.
 
 %% -- Configuration ----------------------------------------------------------
 
