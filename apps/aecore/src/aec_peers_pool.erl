@@ -1628,15 +1628,6 @@ bucket_add([Bucket | Buckets], Index, Goal, Value) ->
     [Bucket | bucket_add(Buckets, Index + 1, Goal, Value)].
 
 
-%pool_add(Pool, BucketIdx, Value) ->
-%    ?assert(BucketIdx < Pool#pool.bucket_count),
-%    #pool{buckets = Buckets} = Pool,
-%    Bucket = array:get(BucketIdx, Buckets),
-%    ?assert(length(Bucket) < Pool#pool.bucket_size),
-%    ?assertNot(lists:member(Value, Bucket)),
-%    Buckets2 = array:set(BucketIdx, [Value | Bucket], Buckets),
-%    Pool#pool{buckets = Buckets2}.
-
 -spec pool_del(pool(), non_neg_integer(), term()) -> pool().
 %% Removes a value from given pool's bucket.
 %% It doesn't decrement the pool size, pool_update_size/2 should be called.
@@ -1649,14 +1640,6 @@ bucket_del([Bucket | Buckets], Goal, Goal, Value) ->
     [lists:delete(Value, Bucket) | Buckets];
 bucket_del([Bucket | Buckets], Index, Goal, Value) ->
     [Bucket | bucket_del(Buckets, Index + 1, Goal, Value)].
-
-%pool_del(Pool, BucketIdx, Value) ->
-%    ?assert(BucketIdx < Pool#pool.bucket_count),
-%    #pool{buckets = Buckets} = Pool,
-%    Bucket = array:get(BucketIdx, Buckets),
-%    ?assert(lists:member(Value, Bucket)),
-%    Buckets2 = array:set(BucketIdx, lists:delete(Value, Bucket), Buckets),
-%    Pool#pool{buckets = Buckets2}.
 
 
 -spec pool_should_add_ref(Pool, Rand, Indexes) -> {Answer, NewRand}
@@ -1674,14 +1657,6 @@ pool_should_add_ref(#pool{max_refs = MaxRefCount}, Rand, Indexes) ->
         true  -> {1 =:= rand:uniform(trunc(math:pow(2, Count))), Rand};
         false -> {false, Rand}
     end.
-
-%pool_should_add_ref(Pool, RSt, RefIdxs) ->
-%    #pool{max_refs = MaxRefCount} = Pool,
-%    RefCount = length(RefIdxs),
-%    case RefCount < MaxRefCount of
-%        true -> should_add_ref(RSt, RefCount);
-%        false -> {false, RSt}
-%    end.
 
 
 -spec pool_make_space(Pool, Rand, Index, Filter, Sort) -> Result
@@ -1768,62 +1743,6 @@ bucket_prepare([], _, _, Bucket, Rem, RemSize, Ex, ExSize) ->
     {Bucket, Rem, RemSize, Ex, ExSize}.
 
 
-%pool_make_space(Pool, RSt, BucketIdx, FilterFun, SortKeyFun) ->
-%    ?assert(BucketIdx < Pool#pool.bucket_count),
-%    #pool{buckets = Buckets, bucket_size = MaxBucketSize, skew = Skew} = Pool,
-%    Bucket = array:get(BucketIdx, Buckets),
-%    BucketSize = length(Bucket),
-%    case BucketSize < MaxBucketSize of
-%        true ->
-%            {free_space, [], undefined, RSt, Pool};
-%        false ->
-%            {Bucket2, Removed, KeyedEvictable, EvictableSize}
-%                = bucket_prepare(Bucket, FilterFun, SortKeyFun),
-%            case {Removed, EvictableSize} of
-%                {[_|_], _} ->
-%                    % If some entry are removed, there is no need for eviction.
-%                    Buckets2 = array:set(BucketIdx, Bucket2, Buckets),
-%                    Pool2 = Pool#pool{buckets = Buckets2},
-%                    {free_space, Removed, undefined, RSt, Pool2};
-%                {[], 0} ->
-%                    % Nothing removed and nothing to evict.
-%                    no_space;
-%                _ ->
-%                    % We need to evict an entry.
-%                    SortedEvictable = lists:keysort(1, KeyedEvictable),
-%                    {EvictedIdx, RSt2} =
-%                        skewed_randint(RSt, EvictableSize, Skew),
-%                    {_, EvictedValue} =
-%                        lists:nth(EvictedIdx + 1, SortedEvictable),
-%                    Bucket3 = lists:delete(EvictedValue, Bucket2),
-%                    Buckets2 = array:set(BucketIdx, Bucket3, Buckets),
-%                    Pool2 = Pool#pool{buckets = Buckets2},
-%                    {free_space, [], EvictedValue, RSt2, Pool2}
-%            end
-%    end.
-%
-%%% Prepares a bucket for freeing space.
-%%% Returns the new bucket, the removed entries and the entries elected
-%%% for eviction keyed for sorting.
-%-spec bucket_prepare([peer_id()], bucket_filter_fun(), bucket_sort_key_fun())
-%    -> {[peer_id()], [peer_id()], [{term(), peer_id()}], non_neg_integer()}.
-%bucket_prepare(Bucket, FilterFun, SortKeyFun) ->
-%    bucket_prepare(Bucket, FilterFun, SortKeyFun, [], [], [], 0).
-%
-%bucket_prepare([], _FFun, _SortKeyFun, BAcc, RAcc, EAcc, ECount) ->
-%    {BAcc, RAcc, EAcc, ECount};
-%bucket_prepare([Val | Rest], FFun, KFun, BAcc, RAcc, EAcc, ECount) ->
-%    case FFun(Val) of
-%        keep ->
-%            bucket_prepare(Rest, FFun, KFun, [Val | BAcc], RAcc, EAcc, ECount);
-%        remove ->
-%            bucket_prepare(Rest, FFun, KFun, BAcc, [Val | RAcc], EAcc, ECount);
-%        evict ->
-%            BAcc2 = [Val | BAcc],
-%            EAcc2 = [{KFun(Val), Val} | EAcc],
-%            bucket_prepare(Rest, FFun, KFun, BAcc2, RAcc, EAcc2, ECount + 1)
-%    end.
-
 %--- LOOKUP HANDLING FUNCTIONS -------------------------------------------------
 
 -spec lookup_new() -> lookup().
@@ -1907,42 +1826,6 @@ lookup_append(Table = #lookup{size = Size, array = Array}, Value) ->
     NewArray = Array ++ [Value],
     Table#lookup{size = NewSize, array = NewArray}.
 
-%lookup_append(Lookup, Value) ->
-%    #lookup{size = Size, array = Array} = Lookup,
-%    ArraySize = array:size(Array),
-%    case ArraySize > Size of
-%        true ->
-%            Array2 = array:set(Size, Value, Array),
-%            {Size, Lookup#lookup{size = Size + 1, array = Array2}};
-%        false ->
-%            NewArraySize = ArraySize + min(ArraySize, ?MAX_LOOKUP_SIZE_INC),
-%            Array2 = array:resize(NewArraySize, Array),
-%            Array3 = array:set(Size, Value, Array2),
-%            {Size, Lookup#lookup{size = Size + 1, array = Array3}}
-%    end.
-
-
-%-spec lookup_shrink(lookup()) -> lookup().
-%%% Shrinks the lookup table, removing the last value.
-%
-%lookup_shrink(Table = #lookup{size = Size, array = Array}) ->
-%    Table#lookup{size = Size - 1, array = lists:droplast(Array)}.
-
-%lookup_shrink(Lookup) ->
-%    #lookup{size = OldSize, array = Array} = Lookup,
-%    NewSize = OldSize - 1,
-%    ArraySize = array:size(Array),
-%    FreeSpace = (ArraySize - NewSize),
-%    MaxFreeSpace = min(?MAX_LOOKUP_SIZE_INC, NewSize),
-%    case (NewSize < ?LOOKUP_START_SIZE) or (FreeSpace < MaxFreeSpace) of
-%        true ->
-%            Array2 = array:reset(NewSize, Array),
-%            Lookup#lookup{size = NewSize, array = Array2};
-%        false ->
-%            Array2 = array:resize(NewSize, Array),
-%            Lookup#lookup{size = NewSize, array = Array2}
-%    end.
-
 
 -spec lookup_add(Table, Rand, Value) -> Result
     when Table  :: lookup(),
@@ -1975,26 +1858,6 @@ lookup_add(Table, Rand, Value) ->
             {RandIndex, {LastIndex, OldValue}, Rand, NewTable}
     end.
 
-%lookup_add(#lookup{size = 0} = Lookup, RSt, Value) ->
-%    {0, Lookup2} = lookup_append(Lookup, Value),
-%    {0, undefined, RSt, Lookup2};
-%lookup_add(#lookup{size = 1} = Lookup, RSt, Value) ->
-%    % even if there is a only two values we want the table randomized.
-%    {1, Lookup2} = lookup_append(Lookup, Value),
-%    {SwapFlag, RSt2} = randint(RSt, 2),
-%    case SwapFlag =:= 0 of
-%        false ->
-%            {1, undefined, RSt2, Lookup2};
-%        true ->
-%            {OldValue, _, Lookup3} = lookup_swap(Lookup2, 0, 1),
-%            {0, {1, OldValue}, RSt2, Lookup3}
-%    end;
-%lookup_add(Lookup, RSt, Value) ->
-%    {Idx, Lookup2} = lookup_append(Lookup, Value),
-%    {RandIdx, RSt2} = randint(RSt, Idx),
-%    {OldValue, _, Lookup3} = lookup_swap(Lookup2, RandIdx, Idx),
-%    {RandIdx, {Idx, OldValue}, RSt2, Lookup3}.
-
 
 -spec lookup_del(Table, Index) -> Result
     when Table  :: lookup(),
@@ -2014,15 +1877,6 @@ lookup_del(Table = #lookup{size = Size}, Index) ->
     Dropped = lists:droplast(Swapped),
     NewTable = #lookup{size = Size - 1, array = Dropped},
     {{Index, SwappedValue}, NewTable}.
-
-%lookup_del(#lookup{size = 1} = Lookup, 0) ->
-%    {undefined, lookup_shrink(Lookup)};
-%lookup_del(#lookup{size = Size} = Lookup, Idx) when Idx =:= (Size - 1)->
-%    {undefined, lookup_shrink(Lookup)};
-%lookup_del(#lookup{size = Size} = Lookup, Idx) when Size > 1, Idx < Size ->
-%    OldIdx = Size - 1,
-%    {OldValue, _, Lookup2} = lookup_swap(Lookup, OldIdx, Idx),
-%    {{Idx, OldValue}, lookup_shrink(Lookup2)}.
 
 
 -spec lookup_select(Table, Rand, UseRand, FilterFun) -> Result
@@ -2074,40 +1928,6 @@ lookup_select2(#lookup{array = Array}, Rand, FilterFun, _, 1) ->
     end.
     
 
-%lookup_select(#lookup{size = 0}, RSt, _UseRandOff, _FilterFun) ->
-%    {unavailable, RSt};
-%lookup_select(#lookup{size = 1} = Lookup, RSt, _UseRandOff, undefined) ->
-%    {lookup_get(Lookup, 0), RSt};
-%lookup_select(Lookup, RSt, UseRandOff, undefined) ->
-%    #lookup{size = Size} = Lookup,
-%    RandOffset = strong_randword(UseRandOff),
-%    {RandInt, RSt2} = randint(RSt, Size),
-%    RandIdx = (RandInt + RandOffset) rem Size,
-%    {lookup_get(Lookup, RandIdx), RSt2};
-%lookup_select(Lookup, RSt, UseRandOff, FilterFun) ->
-%    #lookup{size = Size} = Lookup,
-%    RandOffset = strong_randword(UseRandOff),
-%    lookup_select(Lookup, RSt, FilterFun, RandOffset, Size).
-%
-%lookup_select(Lookup, RSt, FilterFun, _Offset, 1) ->
-%    Value = lookup_get(Lookup, 0),
-%    case FilterFun(Value) of
-%        true -> {Value, RSt};
-%        false -> {unavailable, RSt}
-%    end;
-%lookup_select(Lookup, RSt, FilterFun, Offset, SamplingSize) ->
-%    LastIdx = SamplingSize - 1,
-%    {RandInt, RSt2} = randint(RSt, SamplingSize),
-%    RandIdx = (RandInt + Offset) rem SamplingSize,
-%    Value = lookup_get(Lookup, RandIdx),
-%    case FilterFun(Value) of
-%        true -> {Value, RSt2};
-%        false ->
-%            {_, _, Lookup2} = lookup_swap(Lookup, RandIdx, LastIdx),
-%            lookup_select(Lookup2, RSt2, FilterFun, Offset, SamplingSize - 1)
-%    end.
-
-
 -spec lookup_sample(Table, Rand, UseRand, SampleSize, FilterFun) -> Result
     when Table      :: lookup(),
          Rand       :: rand_state(),
@@ -2155,48 +1975,6 @@ lookup_sample2([Value | Rest], Prob, Fun, Desired, Count, Acc) ->
         false -> lookup_sample2(Rest, Prob, Fun, Desired, Count, Acc)
     end.
 
-
-%lookup_sample(#lookup{size = 0}, RSt, _UseRandOff, _SampleSize, _FilterFun) ->
-%    {[], RSt};
-%lookup_sample(#lookup{size = Size} = Lookup, RSt, _, SampleSize, undefined)
-%  when SampleSize =:= all; SampleSize >= Size ->
-%    #lookup{array = Array} = Lookup,
-%    {array:sparse_to_list(Array), RSt};
-%lookup_sample(Lookup, RSt, _UseRandOff, all, FilterFun) ->
-%    #lookup{array = Array} = Lookup,
-%    Result = array:sparse_foldl(fun(_, V, Acc) ->
-%        case FilterFun(V) of
-%            true -> [V | Acc];
-%            false -> Acc
-%        end
-%    end, [], Array),
-%    {Result, RSt};
-%lookup_sample(Lookup, RSt, UseRandOff, SampleSize, FilterFun) ->
-%    #lookup{size = Size} = Lookup,
-%    RandOffset = strong_randword(UseRandOff),
-%    lookup_sample(Lookup, RSt, FilterFun, RandOffset, SampleSize, Size, []).
-%
-%lookup_sample(_Lookup, RSt, _FilterFun, _Offset, 0, _SamplingSize, Acc) ->
-%    {Acc, RSt};
-%lookup_sample(Lookup, RSt, FilterFun, _Offset, Remaining, 1, Acc) ->
-%    Value = lookup_get(Lookup, 0),
-%    {_, Acc2} = lookup_filter(Value, FilterFun, Remaining, Acc),
-%    {Acc2, RSt};
-%lookup_sample(Lookup, RSt, FilterFun, Offset, Remaining, SamplingSize, Acc) ->
-%    {RandInt, RSt2} = randint(RSt, SamplingSize),
-%    RandIdx = (Offset + RandInt) rem SamplingSize,
-%    LastIdx = SamplingSize - 1,
-%    {RandValue, _, Lookup2} = lookup_swap(Lookup, RandIdx, LastIdx),
-%    {Remaining2, Acc2} = lookup_filter(RandValue, FilterFun, Remaining, Acc),
-%    lookup_sample(Lookup2, RSt2, FilterFun, Offset, Remaining2, LastIdx, Acc2).
-%
-%lookup_filter(Value, undefined, Rem, Acc) ->
-%    {Rem - 1, [Value | Acc]};
-%lookup_filter(Value, FilterFun, Rem, Acc) ->
-%    case FilterFun(Value) of
-%        true -> {Rem - 1, [Value | Acc]};
-%        false -> {Rem, Acc}
-%    end.
 
 %% -- Configuration ----------------------------------------------------------
 
