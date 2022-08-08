@@ -1193,8 +1193,7 @@ verified_del(St, PeerId) ->
         #peer{vidx = VIdx} = Peer ->
             #?ST{verif_pool = Pool} = St,
             Pool2 = pool_del(Pool, VIdx, PeerId),
-            Pool3 = pool_update_size(Pool2, -1),
-            St2 = St#?ST{verif_pool = Pool3},
+            St2 = St#?ST{verif_pool = Pool2},
             Peer2 = Peer#peer{vidx = undefined},
             St3 = set_peer(St2, PeerId, Peer2),
             St4 = del_lookup_verif(St3, PeerId),
@@ -1241,8 +1240,7 @@ verified_make_space_for(St, Now, BucketIdx, PeerId) ->
             St2 = St#?ST{rand = RSt2, verif_pool = Pool2},
             {free_space, St2};
         {free_space, RemovedIds, undefined, RSt2, Pool2} ->
-            Pool3 = pool_update_size(Pool2, -length(RemovedIds)),
-            St2 = St#?ST{rand = RSt2, verif_pool = Pool3},
+            St2 = St#?ST{rand = RSt2, verif_pool = Pool2},
             St3 = lists:foldl(fun(I, S) ->
                 Peer = get_peer(S, I),
                 Peer2 = Peer#peer{vidx = undefined},
@@ -1253,8 +1251,7 @@ verified_make_space_for(St, Now, BucketIdx, PeerId) ->
         {free_space, [], EvictedId, RSt2, Pool2} ->
             % Try downgrading the evicted peer, if any;
             % delete it if downgrade fail.
-            Pool3 = pool_update_size(Pool2, -1),
-            St2 = St#?ST{rand = RSt2, verif_pool = Pool3},
+            St2 = St#?ST{rand = RSt2, verif_pool = Pool2},
             Peer = get_peer(St2, EvictedId),
             Peer2 = Peer#peer{vidx = undefined},
             St3 = set_peer(St2, EvictedId, Peer2),
@@ -1401,8 +1398,7 @@ unverified_del(St, PeerId) ->
             Pool2 = lists:foldl(fun(I, P) ->
                 pool_del(P, I, PeerId)
             end, Pool, BucketIdxs),
-            Pool3 = pool_update_size(Pool2, -1),
-            St2 = St#?ST{unver_pool = Pool3},
+            St2 = St#?ST{unver_pool = Pool2},
             Peer2 = Peer#peer{uidxs = []},
             St3 = set_peer(St2, PeerId, Peer2),
             del_lookup_unver(St3, PeerId)
@@ -1444,8 +1440,8 @@ unverified_ref_deleted(St, PeerId, BucketIdx) ->
     case get_peer(St, PeerId) of
         #peer{uidxs = [BucketIdx]} = Peer ->
             % Last reference is removed
-            #?ST{unver_pool = Pool} = St,
-            Pool2 = pool_update_size(Pool, -1),
+            #?ST{unver_pool = Pool = #pool{size = Size}} = St,
+            Pool2 = Pool#pool{size = Size - 1},
             Peer2 = Peer#peer{uidxs = []},
             St2 = St#?ST{unver_pool = Pool2},
             St3 = set_peer(St2, PeerId, Peer2),
@@ -1608,13 +1604,6 @@ pool_size(#pool{size = Size}) ->
     Size.
 
 
--spec pool_update_size(pool(), integer()) -> pool().
-%% Adds given value to the pool size.
-
-pool_update_size(Pool = #pool{size = Size}, Diff) ->
-    Pool#pool{size = Size + Diff}.
-
-
 -spec pool_add(pool(), non_neg_integer(), term()) -> pool().
 %% Adds a value to given pool's bucket.
 
@@ -1630,7 +1619,6 @@ bucket_add([Bucket | Buckets], Index, Goal, Value) ->
 
 -spec pool_del(pool(), non_neg_integer(), term()) -> pool().
 %% Removes a value from given pool's bucket.
-%% It doesn't decrement the pool size, pool_update_size/2 should be called.
 
 pool_del(Pool = #pool{size = Size, buckets = Buckets}, Index, Value) ->
     NewBuckets = bucket_del(Buckets, 1, Index, Value),
