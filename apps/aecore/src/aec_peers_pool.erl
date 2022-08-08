@@ -746,7 +746,7 @@ rejection_delay(BackoffTable, RejectionCount) ->
 -spec hash_modulo(binary(), pos_integer()) -> non_neg_integer().
 hash_modulo(Bin, Modulo) ->
     <<I:160/little-unsigned-integer>> = crypto:hash(sha, Bin),
-    I rem Modulo.
+    (I rem Modulo) + 1.
 
 %% Returns a binary describing the given IP address.
 %% Only supports IPv4 for now.
@@ -1577,10 +1577,9 @@ peers_lookup_del(Peers, PeerId, Lookup, RecField) ->
 
 -ifdef(TEST).
 
-pool_bucket_size(Pool, BucketIdx) ->
-    ?assert(BucketIdx < Pool#pool.bucket_count),
-    #pool{buckets = Buckets} = Pool,
-    Bucket = array:get(BucketIdx, Buckets),
+% TODO: Conform to the most common stdlib practice and reorder args as (Index, Pool)
+pool_bucket_size(#pool{buckets = Buckets}, Index) ->
+    Bucket = lists:nth(Index, Buckets),
     length(Bucket).
 
 -endif.
@@ -1591,7 +1590,6 @@ pool_bucket_size(Pool, BucketIdx) ->
          MaxRefs   :: pos_integer(),
          EvictSkew :: number(),
          Pool      :: pool().
--spec pool_new(pos_integer(), pos_integer(), pos_integer(), number()) -> pool().
 %% Creates a new pool record.
 
 pool_new(Count, Size, MaxRefs, EvictSkew) ->
@@ -1600,7 +1598,7 @@ pool_new(Count, Size, MaxRefs, EvictSkew) ->
           skew         = EvictSkew,
           bucket_count = Count,
           bucket_size  = Size,
-          buckets      = []}.
+          buckets      = lists:duplicate(Count, [])}.
 
 
 -spec pool_size(pool()) -> non_neg_integer().
@@ -1661,7 +1659,7 @@ bucket_del([Bucket | Buckets], Index, Goal, Value) ->
 %    Pool#pool{buckets = Buckets2}.
 
 
--spec pool_should_add_red(Pool, Rand, Indexes) -> {Answer, NewRand}
+-spec pool_should_add_ref(Pool, Rand, Indexes) -> {Answer, NewRand}
     when Pool    :: pool(),
          Rand    :: rand_state(),
          Indexes :: pos_integer(),
@@ -1670,7 +1668,7 @@ bucket_del([Bucket | Buckets], Index, Goal, Value) ->
 %% Tells if given the pool configuration and the current references, the caller
 %% should try to add another reference to the pool.
 
-pool_should_add_ref(Pool = #pool{max_refs = MaxRefCount}, Rand, Indexes) ->
+pool_should_add_ref(#pool{max_refs = MaxRefCount}, Rand, Indexes) ->
     Count = length(Indexes),
     case Count < MaxRefCount of
         true  -> {1 =:= rand:uniform(trunc(math:pow(2, Count))), Rand};
@@ -1718,78 +1716,113 @@ pool_make_space(Pool = #pool{size        = Size,
             case bucket_prepare(Bucket, Filter, Sort) of
                 {_, [], 0, _, 0} ->
                     no_space;
-                {Prepped, Removed, RemovedSize, _, _} ->
-                    NewBuckets = list_replace(Index, Prepped, Buckets),
-                    NewSize = Size - RemovedSize,
-                    NewPool = Pool#pool{size = NewSize, buckets = NewBuckets},
-                    {free_space, Removed, undefined, Rand, NewPool};
-                {Prepped, _, _, Evictable, EvictableSize} ->
+                {Prepped, [], 0, Evictable, EvictableSize} ->
                     SortedEvictable = lists:keysort(1, Evictable),
                     {EvictedIndex, NewRand} = skewed_randint(Rand, EvictableSize, Skew),
                     {_, EvictedValue} = lists:nth(EvictedIndex, SortedEvictable),
                     Scrubbed = lists:delete(EvictedValue, Prepped),
                     NewBuckets = list_replace(Index, Scrubbed, Buckets),
                     NewPool = Pool#pool{size = Size - 1, buckets = NewBuckets},
-                    {free_space, [], EvictedValue, Rand, NewPool}
+                    {free_space, [], EvictedValue, NewRand, NewPool};
+                {Prepped, Removed, RemovedSize, _, _} ->
+                    NewBuckets = list_replace(Index, Prepped, Buckets),
+                    NewSize = Size - RemovedSize,
+                    NewPool = Pool#pool{size = NewSize, buckets = NewBuckets},
+                    {free_space, Removed, undefined, Rand, NewPool}
             end
     end.
 
+list_replace(I, E, [H | T]) when I > 1 -> [H | list_replace(I - 1, E, T)];
+list_replace(1, E, [_ | T])            -> [E | T].
 
-pool_make_space(Pool, RSt, BucketIdx, FilterFun, SortKeyFun) ->
-    ?assert(BucketIdx < Pool#pool.bucket_count),
-    #pool{buckets = Buckets, bucket_size = MaxBucketSize, skew = Skew} = Pool,
-    Bucket = array:get(BucketIdx, Buckets),
-    BucketSize = length(Bucket),
-    case BucketSize < MaxBucketSize of
-        true ->
-            {free_space, [], undefined, RSt, Pool};
-        false ->
-            {Bucket2, Removed, KeyedEvictable, EvictableSize}
-                = bucket_prepare(Bucket, FilterFun, SortKeyFun),
-            case {Removed, EvictableSize} of
-                {[_|_], _} ->
-                    % If some entry are removed, there is no need for eviction.
-                    Buckets2 = array:set(BucketIdx, Bucket2, Buckets),
-                    Pool2 = Pool#pool{buckets = Buckets2},
-                    {free_space, Removed, undefined, RSt, Pool2};
-                {[], 0} ->
-                    % Nothing removed and nothing to evict.
-                    no_space;
-                _ ->
-                    % We need to evict an entry.
-                    SortedEvictable = lists:keysort(1, KeyedEvictable),
-                    {EvictedIdx, RSt2} =
-                        skewed_randint(RSt, EvictableSize, Skew),
-                    {_, EvictedValue} =
-                        lists:nth(EvictedIdx + 1, SortedEvictable),
-                    Bucket3 = lists:delete(EvictedValue, Bucket2),
-                    Buckets2 = array:set(BucketIdx, Bucket3, Buckets),
-                    Pool2 = Pool#pool{buckets = Buckets2},
-                    {free_space, [], EvictedValue, RSt2, Pool2}
-            end
-    end.
 
-%% Prepares a bucket for freeing space.
-%% Returns the new bucket, the removed entries and the entries elected
-%% for eviction keyed for sorting.
--spec bucket_prepare([peer_id()], bucket_filter_fun(), bucket_sort_key_fun())
-    -> {[peer_id()], [peer_id()], [{term(), peer_id()}], non_neg_integer()}.
-bucket_prepare(Bucket, FilterFun, SortKeyFun) ->
-    bucket_prepare(Bucket, FilterFun, SortKeyFun, [], [], [], 0).
+-spec bucket_prepare(Bucket, Filter, Sort) -> Result
+    when Bucket :: [peer_id()],
+         Filter :: bucket_filter_fun(),
+         Sort   :: bucket_sort_key_fun(),
+         Result :: {PreppedBucket :: [peer_id()],
+                    Removed       :: [peer_id()],
+                    RemovedSize   :: non_neg_integer(),
+                    Evictable     :: [{term(), peer_id()}],
+                    EvictableSize :: non_neg_integer()}.
 
-bucket_prepare([], _FFun, _SortKeyFun, BAcc, RAcc, EAcc, ECount) ->
-    {BAcc, RAcc, EAcc, ECount};
-bucket_prepare([Val | Rest], FFun, KFun, BAcc, RAcc, EAcc, ECount) ->
-    case FFun(Val) of
+bucket_prepare(Bucket, Filter, Sort) ->
+    bucket_prepare(Bucket, Filter, Sort, [], [], 0, [], 0).
+
+bucket_prepare([H | T], Filter, Sort, Bucket, Rem, RemSize, Ex, ExSize) ->
+    case Filter(H) of
         keep ->
-            bucket_prepare(Rest, FFun, KFun, [Val | BAcc], RAcc, EAcc, ECount);
+            NewBucket = [H | Bucket],
+            bucket_prepare(T, Filter, Sort, NewBucket, Rem, RemSize, Ex, ExSize);
         remove ->
-            bucket_prepare(Rest, FFun, KFun, BAcc, [Val | RAcc], EAcc, ECount);
+            NewRem = [H | Rem],
+            NewRemSize = RemSize + 1,
+            bucket_prepare(T, Filter, Sort, Bucket, NewRem, NewRemSize, Ex, ExSize);
         evict ->
-            BAcc2 = [Val | BAcc],
-            EAcc2 = [{KFun(Val), Val} | EAcc],
-            bucket_prepare(Rest, FFun, KFun, BAcc2, RAcc, EAcc2, ECount + 1)
-    end.
+            NewBucket = [H | Bucket],
+            NewEx = [H | Ex],
+            NewExSize = ExSize + 1,
+            bucket_prepare(T, Filter, Sort, NewBucket, Rem, RemSize, NewEx, NewExSize)
+    end;
+bucket_prepare([], _, _, Bucket, Rem, RemSize, Ex, ExSize) ->
+    {Bucket, Rem, RemSize, Ex, ExSize}.
+
+
+%pool_make_space(Pool, RSt, BucketIdx, FilterFun, SortKeyFun) ->
+%    ?assert(BucketIdx < Pool#pool.bucket_count),
+%    #pool{buckets = Buckets, bucket_size = MaxBucketSize, skew = Skew} = Pool,
+%    Bucket = array:get(BucketIdx, Buckets),
+%    BucketSize = length(Bucket),
+%    case BucketSize < MaxBucketSize of
+%        true ->
+%            {free_space, [], undefined, RSt, Pool};
+%        false ->
+%            {Bucket2, Removed, KeyedEvictable, EvictableSize}
+%                = bucket_prepare(Bucket, FilterFun, SortKeyFun),
+%            case {Removed, EvictableSize} of
+%                {[_|_], _} ->
+%                    % If some entry are removed, there is no need for eviction.
+%                    Buckets2 = array:set(BucketIdx, Bucket2, Buckets),
+%                    Pool2 = Pool#pool{buckets = Buckets2},
+%                    {free_space, Removed, undefined, RSt, Pool2};
+%                {[], 0} ->
+%                    % Nothing removed and nothing to evict.
+%                    no_space;
+%                _ ->
+%                    % We need to evict an entry.
+%                    SortedEvictable = lists:keysort(1, KeyedEvictable),
+%                    {EvictedIdx, RSt2} =
+%                        skewed_randint(RSt, EvictableSize, Skew),
+%                    {_, EvictedValue} =
+%                        lists:nth(EvictedIdx + 1, SortedEvictable),
+%                    Bucket3 = lists:delete(EvictedValue, Bucket2),
+%                    Buckets2 = array:set(BucketIdx, Bucket3, Buckets),
+%                    Pool2 = Pool#pool{buckets = Buckets2},
+%                    {free_space, [], EvictedValue, RSt2, Pool2}
+%            end
+%    end.
+%
+%%% Prepares a bucket for freeing space.
+%%% Returns the new bucket, the removed entries and the entries elected
+%%% for eviction keyed for sorting.
+%-spec bucket_prepare([peer_id()], bucket_filter_fun(), bucket_sort_key_fun())
+%    -> {[peer_id()], [peer_id()], [{term(), peer_id()}], non_neg_integer()}.
+%bucket_prepare(Bucket, FilterFun, SortKeyFun) ->
+%    bucket_prepare(Bucket, FilterFun, SortKeyFun, [], [], [], 0).
+%
+%bucket_prepare([], _FFun, _SortKeyFun, BAcc, RAcc, EAcc, ECount) ->
+%    {BAcc, RAcc, EAcc, ECount};
+%bucket_prepare([Val | Rest], FFun, KFun, BAcc, RAcc, EAcc, ECount) ->
+%    case FFun(Val) of
+%        keep ->
+%            bucket_prepare(Rest, FFun, KFun, [Val | BAcc], RAcc, EAcc, ECount);
+%        remove ->
+%            bucket_prepare(Rest, FFun, KFun, BAcc, [Val | RAcc], EAcc, ECount);
+%        evict ->
+%            BAcc2 = [Val | BAcc],
+%            EAcc2 = [{KFun(Val), Val} | EAcc],
+%            bucket_prepare(Rest, FFun, KFun, BAcc2, RAcc, EAcc2, ECount + 1)
+%    end.
 
 %--- LOOKUP HANDLING FUNCTIONS -------------------------------------------------
 
@@ -1817,7 +1850,7 @@ lookup_size(#lookup{size = Size}) ->
 -spec lookup_get(lookup(), non_neg_integer()) -> peer_id().
 %% Get a value from the lookup table
 
-lookup_get(#lookup{size = Size, array = Array}, Index) when Index < Size ->
+lookup_get(#lookup{array = Array}, Index) ->
     lists:nth(Index, Array).
 
 
@@ -1843,11 +1876,11 @@ swap(List, Lo, Hi) ->
     {LoID, HiID, NewList}.
 
 pick(List, Lo, Hi) ->
-    pick(List, Lo, Hi, 1).
+    pick_lo(List, Lo, Hi, 1).
 
 pick_lo([LoID | Rest], Lo, Hi, Lo) ->
     pick_hi(Rest, Hi, Lo + 1, LoID);
-pick_lo([_, Rest], Lo, Hi, I) ->
+pick_lo([_ | Rest], Lo, Hi, I) ->
     pick_lo(Rest, Lo, Hi, I + 1).
 
 pick_hi([HiID | _], Hi, Hi, LoID) ->
@@ -1857,19 +1890,21 @@ pick_hi([_ | Rest], Hi, I, LoID) ->
 
 insert([LoID | Rest], LoID, HiID) ->
     [HiID | insert2(Rest, LoID, HiID)];
-insert(ID | Rest], LoID, HiID) ->
-    [ID | insert(Rest, LoID, HiID).
+insert([ID | Rest], LoID, HiID) ->
+    [ID | insert(Rest, LoID, HiID)].
 
 insert2([HiID | Rest], LoID, HiID) ->
     [LoID | Rest];
 insert2([ID | Rest], LoID, HiID) ->
-    [ID | insert2(Rest, LoID, HiID).
+    [ID | insert2(Rest, LoID, HiID)].
 
 
 -spec lookup_append(lookup(), peer_id()) -> {non_neg_integer(), lookup()}.
 %% Appends a value at the end of the lookup table.
 
 lookup_append(Table = #lookup{size = Size, array = Array}, Value) ->
+    NewSize = Size + 1,
+    NewArray = Array ++ [Value],
     Table#lookup{size = NewSize, array = NewArray}.
 
 %lookup_append(Lookup, Value) ->
@@ -1887,11 +1922,11 @@ lookup_append(Table = #lookup{size = Size, array = Array}, Value) ->
 %    end.
 
 
--spec lookup_shrink(lookup()) -> lookup().
-%% Shrinks the lookup table, removing the last value.
-
-lookup_shrink(Table = #lookup{size = Size, array = Array}) ->
-    Table#lookup{size = Size - 1, array = lists:droplast(Array)}.
+%-spec lookup_shrink(lookup()) -> lookup().
+%%% Shrinks the lookup table, removing the last value.
+%
+%lookup_shrink(Table = #lookup{size = Size, array = Array}) ->
+%    Table#lookup{size = Size - 1, array = lists:droplast(Array)}.
 
 %lookup_shrink(Lookup) ->
 %    #lookup{size = OldSize, array = Array} = Lookup,
@@ -1932,9 +1967,13 @@ lookup_add(Table = #lookup{size = 1, array = [V]}, Rand, Value) ->
     end;
 lookup_add(Table, Rand, Value) ->
     Appended = #lookup{size = LastIndex} = lookup_append(Table, Value),
-    RandIndex = random:uniform(LastIndex),
-    {OldValue, _, NewTable} = lookup_swap(Appended, RandIndex, LastIndex),
-    {RandIndex, {LastIndex, OldValue}, Rand, NewTable}.
+    case rand:uniform(LastIndex) of
+        LastIndex ->
+            {LastIndex, undefined, Rand, Appended};
+        RandIndex ->
+            {OldValue, _, NewTable} = lookup_swap(Appended, RandIndex, LastIndex),
+            {RandIndex, {LastIndex, OldValue}, Rand, NewTable}
+    end.
 
 %lookup_add(#lookup{size = 0} = Lookup, RSt, Value) ->
 %    {0, Lookup2} = lookup_append(Lookup, Value),
@@ -1970,9 +2009,10 @@ lookup_del(#lookup{size = 1}, 1) ->
     {undefined, #lookup{size = 0, array = []}};
 lookup_del(Table = #lookup{size = Size, array = Array}, Size) ->
     {undefined, Table#lookup{size = Size - 1, array = lists:droplast(Array)}};
-lookup_del(Table = #lookup{size = Size, array = Array}, Index) ->
-    {SwappedValue, _, SwappedTable} = lookup_swap(Table, Size, Index),
-    NewTable = lists:droplast(SwappedTable),
+lookup_del(Table = #lookup{size = Size}, Index) ->
+    {SwappedValue, _, #lookup{array = Swapped}} = lookup_swap(Table, Size, Index),
+    Dropped = lists:droplast(Swapped),
+    NewTable = #lookup{size = Size - 1, array = Dropped},
     {{Index, SwappedValue}, NewTable}.
 
 %lookup_del(#lookup{size = 1} = Lookup, 0) ->
@@ -2002,24 +2042,37 @@ lookup_select(#lookup{size = 0}, Rand, _, _) ->
     {unavailable, Rand};
 lookup_select(#lookup{array = [PeerID]}, Rand, _, _) ->
     {PeerID, Rand};
-lookup_select(#lookup{size = Size, array = Array}, _, undefined) ->
+lookup_select(#lookup{size = Size, array = Array}, Rand, _, undefined) ->
     Value = lists:nth(rand:uniform(Size), Array),
     {Value, Rand};
 lookup_select(Table = #lookup{size = Size}, Rand, UseRand, FilterFun) ->
     Offset = strong_randword(UseRand),
     lookup_select2(Table, Rand, FilterFun, Offset, Size).
 
-lookup_select2(#lookup{array = Array}, Rand, FilterFun, Offset, Size) ->
+lookup_select2(Lookup = #lookup{array = Array}, Rand, FilterFun, Offset, Size)
+        when Size > 1 ->
     RandInt = rand:uniform(Size),
-    RandIndex = (RandInt + Offset) rem Size,
+    RandIndex = ((RandInt + Offset) rem Size) + 1,
     Value = lists:nth(RandIndex, Array),
     case FilterFun(Value) of
         true ->
             {Value, Rand};
         false ->
-            {_, _, Swapped} = lookup_swap(Lookup, RandIndex, Size),
-            lookup_select(Swapped, Rand, FilterFun, Offset, Size - 1)
+            case RandIndex =:= Size of
+                false ->
+                    {_, _, Swapped} = lookup_swap(Lookup, RandIndex, Size),
+                    lookup_select2(Swapped, Rand, FilterFun, Offset, Size - 1);
+                true ->
+                    lookup_select2(Lookup, Rand, FilterFun, Offset, Size - 1)
+            end
+    end;
+lookup_select2(#lookup{array = Array}, Rand, FilterFun, _, 1) ->
+    Value = hd(Array),
+    case FilterFun(Value) of
+        true  -> {Value, Rand};
+        false -> {unavailable, Rand}
     end.
+    
 
 %lookup_select(#lookup{size = 0}, RSt, _UseRandOff, _FilterFun) ->
 %    {unavailable, RSt};
@@ -2036,7 +2089,6 @@ lookup_select2(#lookup{array = Array}, Rand, FilterFun, Offset, Size) ->
 %    RandOffset = strong_randword(UseRandOff),
 %    lookup_select(Lookup, RSt, FilterFun, RandOffset, Size).
 %
-% NOTE: First clause can never be called
 %lookup_select(Lookup, RSt, FilterFun, _Offset, 1) ->
 %    Value = lookup_get(Lookup, 0),
 %    case FilterFun(Value) of
@@ -2076,10 +2128,12 @@ lookup_sample(#lookup{array = Array}, Rand, _, all, Fun) ->
     {lists:filter(Fun, Array), Rand};
 lookup_sample(#lookup{size = Size, array = Array}, Rand, _, SampleSize, undefined) ->
     Probability = SampleSize / Size,
-    lookup_sample2(Array, Probability, SampleSize, 0, []);
+    Sample = lookup_sample2(Array, Probability, SampleSize, 0, []),
+    {Sample, Rand};
 lookup_sample(#lookup{size = Size, array = Array}, Rand, _, SampleSize, Fun) ->
     Probability = SampleSize / Size,
-    lookup_sample2(Array, Probability, Fun, SampleSize, 0, []).
+    Sample = lookup_sample2(Array, Probability, Fun, SampleSize, 0, []),
+    {Sample, Rand}.
 
 lookup_sample2([], _, _, _, Acc) ->
     Acc;
@@ -2087,8 +2141,8 @@ lookup_sample2(_, _, Desired, Desired, Acc) ->
     Acc;
 lookup_sample2([Value | Rest], Prob, Desired, Count, Acc) ->
     case Prob > rand:uniform() of
-        true  -> lookup_sample(Rest, Prob, Desired, Count + 1, [Value | Acc]);
-        false -> lookup_sample(Rest, Prob, Desired, Count, Acc)
+        true  -> lookup_sample2(Rest, Prob, Desired, Count + 1, [Value | Acc]);
+        false -> lookup_sample2(Rest, Prob, Desired, Count, Acc)
     end.
 
 lookup_sample2([], _, _, _, _, Acc) ->
@@ -2097,8 +2151,8 @@ lookup_sample2(_, _, _, Desired, Desired, Acc) ->
     Acc;
 lookup_sample2([Value | Rest], Prob, Fun, Desired, Count, Acc) ->
     case Prob > rand:uniform() andalso Fun(Value) of
-        true  -> lookup_sample(Rest, Prob, Fun, Desired, Count + 1, [Value | Acc]);
-        false -> lookup_sample(Rest, Prob, Fun, Desired, Count, Acc)
+        true  -> lookup_sample2(Rest, Prob, Fun, Desired, Count + 1, [Value | Acc]);
+        false -> lookup_sample2(Rest, Prob, Fun, Desired, Count, Acc)
     end.
 
 
