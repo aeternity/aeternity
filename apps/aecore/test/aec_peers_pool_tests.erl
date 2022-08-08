@@ -1540,7 +1540,7 @@ pool_buckets_manipulation_test() ->
     ?assertEqual(0, aec_peers_pool:pool_bucket_size(P1, 2)),
     ?assertEqual(0, aec_peers_pool:pool_bucket_size(P1, 3)),
     P2 = aec_peers_pool:pool_add(P1, 1, foo),
-    P3 = aec_peers_pool:pool_add(P2, 2, bar),
+    P3 = aec_peers_pool:pool_add(P2, 3, bar),
     ?assertEqual(1, aec_peers_pool:pool_bucket_size(P3, 1)),
     ?assertEqual(0, aec_peers_pool:pool_bucket_size(P3, 2)),
     ?assertEqual(1, aec_peers_pool:pool_bucket_size(P3, 3)),
