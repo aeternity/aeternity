@@ -1239,15 +1239,6 @@ verified_make_space_for(St, Now, BucketIdx, PeerId) ->
         {free_space, [], undefined, RSt2, Pool2} ->
             St2 = St#?ST{rand = RSt2, verif_pool = Pool2},
             {free_space, St2};
-        {free_space, RemovedIds, undefined, RSt2, Pool2} ->
-            St2 = St#?ST{rand = RSt2, verif_pool = Pool2},
-            St3 = lists:foldl(fun(I, S) ->
-                Peer = get_peer(S, I),
-                Peer2 = Peer#peer{vidx = undefined},
-                S2 = set_peer(S, I, Peer2),
-                del_peer(S2, I)
-            end, St2, RemovedIds),
-            {free_space, St3};
         {free_space, [], EvictedId, RSt2, Pool2} ->
             % Try downgrading the evicted peer, if any;
             % delete it if downgrade fail.
@@ -1262,7 +1253,16 @@ verified_make_space_for(St, Now, BucketIdx, PeerId) ->
                     {free_space, St6};
                 {ignored, St6} ->
                     {free_space, del_peer(St6, EvictedId)}
-            end
+            end;
+        {free_space, RemovedIds, undefined, RSt2, Pool2} ->
+            St2 = St#?ST{rand = RSt2, verif_pool = Pool2},
+            St3 = lists:foldl(fun(I, S) ->
+                Peer = get_peer(S, I),
+                Peer2 = Peer#peer{vidx = undefined},
+                S2 = set_peer(S, I, Peer2),
+                del_peer(S2, I)
+            end, St2, RemovedIds),
+            {free_space, St3}
     end.
 
 %% Selects a random available peer from the verified pool.
@@ -1633,7 +1633,7 @@ bucket_del([Bucket | Buckets], Index, Goal, Value) ->
 -spec pool_should_add_ref(Pool, Rand, Indexes) -> {Answer, NewRand}
     when Pool    :: pool(),
          Rand    :: rand_state(),
-         Indexes :: pos_integer(),
+         Indexes :: [pos_integer()],
          Answer  :: boolean(),
          NewRand :: rand_state().
 %% Tells if given the pool configuration and the current references, the caller
@@ -1677,7 +1677,7 @@ pool_make_space(Pool = #pool{size        = Size,
             {free_space, [], undefined, Rand, Pool};
         false ->
             case bucket_prepare(Bucket, Filter, Sort) of
-                {_, [], 0, _, 0} ->
+                {_, [], 0, [], 0} ->
                     no_space;
                 {Prepped, [], 0, Evictable, EvictableSize} ->
                     SortedEvictable = lists:keysort(1, Evictable),
@@ -1806,7 +1806,10 @@ insert2([ID | Rest], LoID, HiID) ->
     [ID | insert2(Rest, LoID, HiID)].
 
 
--spec lookup_append(lookup(), peer_id()) -> {non_neg_integer(), lookup()}.
+-spec lookup_append(Table, ID) -> NewTable
+    when Table    :: lookup(),
+         ID       :: peer_id(),
+         NewTable :: lookup().
 %% Appends a value at the end of the lookup table.
 
 lookup_append(Table = #lookup{size = Size, array = Array}, Value) ->
