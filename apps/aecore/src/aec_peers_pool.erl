@@ -1677,7 +1677,7 @@ pool_make_space(Pool = #pool{size        = Size,
             {free_space, [], undefined, Rand, Pool};
         false ->
             case bucket_prepare(Bucket, Filter, Sort) of
-                {evict, Prepped, Evictable, EvictableSize} ->
+                {evict, Prepped, Evictable, EvictableSize} when length(Evictable) > 0 ->
                     SortedEvictable = lists:keysort(1, Evictable),
                     {EvictedIndex, NewRand} = skewed_randint(Rand, EvictableSize, Skew),
                     {_, EvictedValue} = lists:nth(EvictedIndex, SortedEvictable),
