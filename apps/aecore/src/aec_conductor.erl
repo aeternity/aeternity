@@ -516,17 +516,14 @@ get_next_beneficiary(Consensus) ->
     Consensus:next_beneficiary().
 
 get_beneficiary() ->
-    TopBlockHash0 = aec_chain:top_block_hash(),
-    {ok, TopHeader} = aec_chain:get_header(TopBlockHash0),
+    TopHeader = aec_chain:top_header(),
     Consensus = aec_consensus:get_consensus_module_at_height(aec_headers:height(TopHeader)),
     get_beneficiary(Consensus).
 
 get_next_beneficiary() ->
-    TopBlockHash0 = aec_chain:top_block_hash(),
-    {ok, TopHeader} = aec_chain:get_header(TopBlockHash0),
+    TopHeader = aec_chain:top_header(),
     Consensus = aec_consensus:get_consensus_module_at_height(aec_headers:height(TopHeader) + 1),
     get_next_beneficiary(Consensus).
-
 
 set_mode(State) ->
     ConsensusModule = consensus_module(State),
@@ -842,15 +839,15 @@ preempt_on_new_top(#state{ top_block_hash = OldHash,
                          top_height = Height},
     KeyHash = aec_blocks:prev_key_hash(NewBlock),
     %% A new micro block from the same generation should:
-    %%  * not cause a pre-emption or full re-generation of key-block in PoW
-    %%    context. The keyblock is being regenerated on every attempt for solving
-    %%    the puzzle. There are a lot attempts durring the 3 seconds between
-    %%    microblocks. This is an optimisation for the miner to to throw away a
-    %%    valid solution that would discard the last microblock
-    %%  * cause a pre-emption or full re-generation of key-block in PoS
-    %%  context. The worker is blocked for waiting till it is time to produce
-    %%  a new keyblock and this makes it really highly likely that all
-    %%  microblocks would be discarded
+    %%  * Not cause a pre-emption or full re-generation of key-block in PoW
+    %%    context. The keyblock is being regenerated on every attempt to solve
+    %%    the puzzle. There are a lot of attempts durring the 3 seconds between
+    %%    microblocks. It is an optimisation for the miner to throw away a
+    %%    valid solution that would discard the last microblock.
+    %%  * Cause a pre-emption or full re-generation of key-block in PoS
+    %%  context. The worker is blocked, waiting until it's time to produce
+    %%  a new keyblock, and this makes it really highly likely that all
+    %%  microblocks will be discarded.
     ResetWorkers =
         case Mode of
             pos ->
