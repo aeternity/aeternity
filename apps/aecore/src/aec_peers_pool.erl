@@ -1703,11 +1703,15 @@ list_replace(1, E, [_ | T])            -> [E | T].
     when Bucket :: [peer_id()],
          Filter :: bucket_filter_fun(),
          Sort   :: bucket_sort_key_fun(),
-         Result :: {PreppedBucket :: [peer_id()],
-                    Removed       :: [peer_id()],
-                    RemovedSize   :: non_neg_integer(),
+         Result :: no_space
+                 | {evict,
+                    PreppedBucket :: [peer_id()],
                     Evictable     :: [{term(), peer_id()}],
-                    EvictableSize :: non_neg_integer()}.
+                    EvictableSize :: non_neg_integer()}
+                 | {removed,
+                    PreppedBucket :: [peer_id()],
+                    Removed       :: [peer_id()],
+                    RemovedSize   :: non_neg_integer()}.
 
 bucket_prepare(Bucket, Filter, Sort) ->
     bucket_prepare(Bucket, Filter, Sort, [], [], 0, [], 0).
@@ -1729,7 +1733,7 @@ bucket_prepare([H | T], Filter, Sort, Bucket, Rem, RemSize, Ex, ExSize) ->
     end;
 bucket_prepare([], _, _, _, [], 0, [], 0) ->
     no_space;
-bucket_prepare([], _, _, Bucket, [], 0, Ex, ExSize) ->
+bucket_prepare([], _, _, Bucket, [], 0, Ex, ExSize) when Ex =/= [] ->
     {evict, Bucket, Ex, ExSize};
 bucket_prepare([], _, _, Bucket, Rem, RemSize, _, _) ->
     {removed, Bucket, Rem, RemSize}.
