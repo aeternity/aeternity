@@ -1677,9 +1677,7 @@ pool_make_space(Pool = #pool{size        = Size,
             {free_space, [], undefined, Rand, Pool};
         false ->
             case bucket_prepare(Bucket, Filter, Sort) of
-                {_, [], 0, [], 0} ->
-                    no_space;
-                {Prepped, [], 0, Evictable, EvictableSize} ->
+                {evict, Prepped, Evictable, EvictableSize} ->
                     SortedEvictable = lists:keysort(1, Evictable),
                     {EvictedIndex, NewRand} = skewed_randint(Rand, EvictableSize, Skew),
                     {_, EvictedValue} = lists:nth(EvictedIndex, SortedEvictable),
@@ -1687,11 +1685,13 @@ pool_make_space(Pool = #pool{size        = Size,
                     NewBuckets = list_replace(Index, Scrubbed, Buckets),
                     NewPool = Pool#pool{size = Size - 1, buckets = NewBuckets},
                     {free_space, [], EvictedValue, NewRand, NewPool};
-                {Prepped, Removed, RemovedSize, _, _} ->
+                {removed, Prepped, Removed, RemovedSize} ->
                     NewBuckets = list_replace(Index, Prepped, Buckets),
                     NewSize = Size - RemovedSize,
                     NewPool = Pool#pool{size = NewSize, buckets = NewBuckets},
-                    {free_space, Removed, undefined, Rand, NewPool}
+                    {free_space, Removed, undefined, Rand, NewPool};
+                no_space ->
+                    no_space
             end
     end.
 
@@ -1727,8 +1727,12 @@ bucket_prepare([H | T], Filter, Sort, Bucket, Rem, RemSize, Ex, ExSize) ->
             NewExSize = ExSize + 1,
             bucket_prepare(T, Filter, Sort, NewBucket, Rem, RemSize, NewEx, NewExSize)
     end;
-bucket_prepare([], _, _, Bucket, Rem, RemSize, Ex, ExSize) ->
-    {Bucket, Rem, RemSize, Ex, ExSize}.
+bucket_prepare([], _, _, _, [], 0, [], 0) ->
+    no_space;
+bucket_prepare([], _, _, Bucket, [], 0, Ex, ExSize) ->
+    {evict, Bucket, Ex, ExSize};
+bucket_prepare([], _, _, Bucket, Rem, RemSize, _, _) ->
+    {removed, Bucket, Rem, RemSize}.
 
 
 %--- LOOKUP HANDLING FUNCTIONS -------------------------------------------------
