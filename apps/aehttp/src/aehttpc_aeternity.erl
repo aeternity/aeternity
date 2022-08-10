@@ -1,3 +1,4 @@
+%%% @copyright (C) 2022, Aeternity
 -module(aehttpc_aeternity).
 
 %% Subset of Aeternity HTTP client API required to interact with a hyperchain
