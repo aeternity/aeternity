@@ -133,9 +133,9 @@ get_request(Path, Host, Port, Timeout) ->
     Req = {UrlPath, []},
     HTTPOpt = [{timeout, Timeout}],
     Opt = [],
-    lager:info("Req: ~p, with URL: ~ts", [Req, Url]),
+    lager:debug("Req: ~p, with URL: ~ts", [Req, Url]),
     {ok, {{_, 200 = _Code, _}, _, Res}} = httpc:request(get, Req, HTTPOpt, Opt),
-    lager:info("Req: ~p, Res: ~p with URL: ~ts", [Req, Res, Url]),
+    lager:debug("Req: ~p, Res: ~p with URL: ~ts", [Req, Res, Url]),
     {ok, jsx:decode(list_to_binary(Res), [return_maps])}
   catch E:R:S ->
     lager:info("Error: ~p Reason: ~p Stacktrace: ~p", [E, R, S]),
@@ -150,9 +150,9 @@ post_request(Path, Body, Host, Port, Timeout) ->
     Req = {UrlPath, [], "application/json", jsx:encode(Body)},
     HTTPOpt = [{timeout, Timeout}],
     Opt = [],
-    lager:info("Req: ~p, with URL: ~ts", [Req, Url]),
+    lager:debug("Req: ~p, with URL: ~ts", [Req, Url]),
     {ok, {{_, 200 = _Code, _}, _, Res}} = httpc:request(post, Req, HTTPOpt, Opt),
-    lager:info("Req: ~p, Res: ~p with URL: ~ts", [Req, Res, Url]),
+    lager:debug("Req: ~p, Res: ~p with URL: ~ts", [Req, Res, Url]),
     {ok, jsx:decode(list_to_binary(Res), [return_maps])}
   catch E:R:S ->
     lager:info("Error: ~p Reason: ~p Stacktrace: ~p", [E, R, S]),
