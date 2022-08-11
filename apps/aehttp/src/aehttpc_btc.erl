@@ -108,7 +108,7 @@ request(Path, Body, Host, Port, User, Password, SSL, Timeout) ->
     HTTPOpt = [{timeout, Timeout}],
     Opt = [],
     {ok, {{_, 200 = _Code, _}, _, Res}} = httpc:request(post, Req, HTTPOpt, Opt),
-    lager:info("Req: ~p, Res: ~p with URL: ~ts", [Req, Res, Url]),
+    lager:debug("Req: ~p, Res: ~p with URL: ~ts", [Req, Res, Url]),
     {ok, jsx:decode(list_to_binary(Res), [return_maps])}
   catch E:R:S ->
     lager:info("Error: ~p Reason: ~p Stacktrace: ~p", [E, R, S]),
