@@ -5,7 +5,7 @@
 %%% for testing hyperchains parent chain connector
 %%%
 %%% @author sean
-%%% @copyright <COPY_WRITE>
+%%% @copyright (C) 2022, Aeternity```
 %%% @version 0.0.1
 %%% @end
 %%%-----------------------------------------------------------------------------
