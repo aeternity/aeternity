@@ -1,3 +1,4 @@
+%%% @copyright (C) 2022, Aeternity
 -module(aehttp_parent_connector_tests).
 
 %% Test interactions with parent chains using chain simulators for AE and BTC nodes

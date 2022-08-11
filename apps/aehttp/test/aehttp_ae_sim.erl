@@ -3,7 +3,7 @@
 %%% @doc ae node simulator embedded in minimum http api
 %%%
 %%% @author sean
-%%% @copyright <COPY_WRITE>
+%%% @copyright (C) 2022, Aeternity
 %%% @version 0.0.1
 %%% @end
 %%%-----------------------------------------------------------------------------

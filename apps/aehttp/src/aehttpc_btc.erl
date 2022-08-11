@@ -1,3 +1,4 @@
+%%% @copyright (C) 2022, Aeternity
 -module(aehttpc_btc).
 
 %% Low level subset of bitcoin API required to interact with a hyperchain
