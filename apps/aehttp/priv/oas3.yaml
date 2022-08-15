@@ -1,11 +1,8 @@
 openapi: 3.0.0
 info:
-  description: This is the [Aeternity](https://www.aeternity.com/) node API.
+  description: This is the [Aeternity](https://www.aeternity.com) node API.
   version: x.y.z
   title: Aeternity node
-  termsOfService: https://www.aeternity.com/terms/
-  contact:
-    email: apiteam@aeternity.com
 tags:
   - name: external
     description: External API
@@ -37,9 +34,15 @@ tags:
     description: Endpoints to help the node oprator interact with the node
 externalDocs:
   description: Find out more about Aeternity
-  url: http://www.aeternity.com
+  url: https://www.aeternity.com
 servers:
-  - url: /v3
+  - url: https://{network}.aeternity.io/v3
+    variables:
+      network:
+        default: mainnet
+        enum:
+          - mainnet
+          - testnet
 paths:
 ###
 ## External endpoints
