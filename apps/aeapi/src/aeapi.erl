@@ -23,9 +23,12 @@
         , top_key_block/0
         , block_height/1
         , block_time_in_msecs/1
-        , block_txs/1
         , key_block_by_height/1
         , key_block_by_hash/1
+        , key_block_txs/1
+        , micro_blocks_at_key_block_height/1
+        , micro_block_txs/1
+        , prev_key_block/1
         , prev_block/1
 
         %% Dealing with id records
@@ -78,9 +81,18 @@ sync_progress() ->
 connected_peers() ->
     aec_peers:connected_peers().
 
-prev_block(Block) ->
+prev_key_block(Block) ->
     PrevBlockHash = aec_blocks:prev_key_hash(Block),
     case aec_chain:get_block(PrevBlockHash) of
+        {ok, _} = PrevBlock ->
+            PrevBlock;
+        error ->
+            {error, block_not_found}
+    end.
+
+prev_block(Block) ->
+    PrevHash = aec_blocks:prev_hash(Block),
+    case aec_chain:get_block(PrevHash) of
         {ok, _} = PrevBlock ->
             PrevBlock;
         error ->
@@ -93,10 +105,16 @@ block_height(Block) ->
 block_time_in_msecs(Block) ->
     aec_blocks:time_in_msecs(Block).
 
-block_txs(Block) ->
-    block_txs(aec_blocks:is_key_block(Block), Block).
+micro_blocks_at_key_block_height(KeyBlock) ->
+    {ok, BlockHash} = aec_headers:hash_header(aec_blocks:to_key_header(KeyBlock)),
+    case aec_chain:get_generation_by_hash(BlockHash, forward) of
+        {ok, #{micro_blocks := MicroBlocks}} ->
+            {ok, MicroBlocks};
+        error ->
+            error
+    end.
 
-block_txs(true, Block) ->
+key_block_txs(Block) ->
     {ok, BlockHash} = aec_headers:hash_header(aec_blocks:to_key_header(Block)),
     case aec_chain:get_generation_by_hash(BlockHash, forward) of
         {ok, #{micro_blocks := MicroBlocks}} ->
@@ -107,9 +125,10 @@ block_txs(true, Block) ->
             lists:flatten(lists:reverse(Txs));
         error ->
             error
-    end;
-block_txs(false, Block) ->
-    aec_blocks:txs(Block).
+    end.
+
+micro_block_txs(MicroBlock) ->
+    aec_blocks:txs(MicroBlock).
 
 %%
 %% Converting Ids between internal and printable forms

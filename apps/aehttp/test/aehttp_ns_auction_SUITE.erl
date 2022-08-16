@@ -186,15 +186,9 @@ naming_system_auction(Config) ->
     %% The second bidder, PubKey2, is now charged
     ?assertEqual(PubKey2BalPostAuction, PubKey2BalPreAuction - Fee - NextMinPrice),
 
-    %% This should be:
-    %% PubKey1 gets refund
-    %% PubKey2 pays fee
-    %% Pubkey2 pays their bid
-    %% But we do not record the details of the outbid account in the Tx
-    %% so we can't include the refund. This is an issue for Rosetta
-    ?HTTP_ROS:assertBalanceChanges(ClaimTxHash2, [ %% {PubKey1Enc, FirstNameFee},
-                                                  {PubKey2Enc, -Fee},
-                                                  {PubKey2Enc, -NextMinPrice}] ),
+    ?HTTP_ROS:assertBalanceChanges(ClaimTxHash2, [{PubKey2Enc, -Fee},
+                                                  {PubKey2Enc, -NextMinPrice},
+                                                  {PubKey1Enc, FirstNameFee}] ),
 
     {ok, 404, #{<<"reason">> := <<"Name not found">>}} = ?HTTP_INT:get_names_entry_by_name_sut(Name),
     aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE), ?BID_TIMEOUT),

@@ -709,11 +709,17 @@ dry_run_result(_Type, {error, Reason}, Res) when is_binary(Reason) ->
     Res#{ reason => list_to_binary(lists:concat(["Error: ", Reason])) };
 dry_run_result(_Type, {error, Reason}, Res) ->
     Res#{ reason => iolist_to_binary(io_lib:format("Internal error:\n  ~120p\n", [Reason])) };
+dry_run_result(Type, {ok, _Events, CallObj}, Res) when Type =:= contract_call_tx;
+                                                       Type =:= contract_create_tx;
+                                                       Type =:= ga_attach_tx ->
+    Res#{ call_obj => aect_call:serialize_for_client(CallObj) };
 dry_run_result(Type, {ok, CallObj}, Res) when Type =:= contract_call_tx;
                                               Type =:= contract_create_tx;
                                               Type =:= ga_attach_tx ->
     Res#{ call_obj => aect_call:serialize_for_client(CallObj) };
 dry_run_result(_Type, ok, Res) ->
+    Res;
+dry_run_result(_Type, {ok, _Events}, Res) ->
     Res.
 
 tx_event_result({EventKey, EventVal} = E, Acc) ->

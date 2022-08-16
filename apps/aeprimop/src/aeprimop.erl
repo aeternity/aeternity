@@ -226,6 +226,8 @@ spend_tx_instructions(SenderPubkey, RecipientID, Amount, Fee, Nonce) ->
     , resolve_account_op(Type, RecipientHash, Recipient)
     , spend_fee_op(SenderPubkey, Fee)
     , spend_op(SenderPubkey, Recipient, Amount)
+    , tx_event_op(delta, {SenderPubkey, -Fee}, <<"Chain.fee">>)
+    , tx_event_op(spend, {SenderPubkey, RecipientID, Amount}, <<"Chain.spend">>)
     ].
 
 -spec oracle_register_tx_instructions(
@@ -235,6 +237,7 @@ oracle_register_tx_instructions(AccountPubkey, QFormat, RFormat, QFee,
                                 DeltaTTL, ABIVersion, TxFee, Nonce) ->
     [ inc_account_nonce_op(AccountPubkey, Nonce)
     , spend_fee_op(AccountPubkey, TxFee)
+    , tx_event_op(delta, {AccountPubkey, -TxFee}, <<"Oracle.fee">>)
     , oracle_register_op(AccountPubkey, QFormat, RFormat, QFee,
                          DeltaTTL, ABIVersion)
     ].
@@ -243,6 +246,7 @@ oracle_register_tx_instructions(AccountPubkey, QFormat, RFormat, QFee,
 oracle_extend_tx_instructions(Pubkey, DeltaTTL, Fee, Nonce) ->
     [ inc_account_nonce_op(Pubkey, Nonce)
     , spend_fee_op(Pubkey, Fee)
+    , tx_event_op(delta, {Pubkey, -Fee}, <<"Oracle.fee">>)
     , oracle_extend_op(Pubkey, DeltaTTL)
     ].
 
@@ -252,6 +256,8 @@ oracle_query_tx_instructions(OraclePubkey, SenderPubkey, Query,
                              QueryFee, QTTL, RTTL, TxFee, Nonce) ->
     [ force_inc_account_nonce_op(SenderPubkey, Nonce)
     , spend_fee_op(SenderPubkey, TxFee, QueryFee)
+    , tx_event_op(delta, {SenderPubkey, -TxFee}, <<"Oracle.fee">>)
+    , tx_event_op(delta, {SenderPubkey, -QueryFee}, <<"Oracle.queryfee">>)
     , oracle_query_op(OraclePubkey, SenderPubkey, Nonce,
                       Query, QueryFee, QTTL, RTTL, false)
     ].
@@ -266,6 +272,7 @@ oracle_response_tx_instructions(OraclePubkey, QueryId, Response,
       %% the fee before earning the query fee.
       %% Changing this breaks consensus.
     , spend_fee_op(OraclePubkey, Fee)
+    , tx_event_op(delta, {OraclePubkey, -Fee}, <<"Oracle.fee">>)
     , oracle_earn_query_fee_op(OraclePubkey, QueryId)
     ].
 
@@ -275,6 +282,7 @@ name_preclaim_tx_instructions(AccountPubkey, CommitmentHash, DeltaTTL,
                               Fee, Nonce) ->
     [ inc_account_nonce_op(AccountPubkey, Nonce)
     , spend_fee_op(AccountPubkey, Fee)
+    , tx_event_op(delta, {AccountPubkey, -Fee}, <<"Name.fee">>)
     , name_preclaim_op(AccountPubkey, CommitmentHash, DeltaTTL)
     ].
 
@@ -284,6 +292,7 @@ name_claim_tx_instructions(AccountPubkey, PlainName, NameSalt, NameFee, Fee, Non
     PreclaimDelta = aec_governance:name_claim_preclaim_delta(),
     [ inc_account_nonce_op(AccountPubkey, Nonce)
     , spend_fee_op(AccountPubkey, Fee)
+    , tx_event_op(delta, {AccountPubkey, -Fee}, <<"Name.fee">>)
     , name_claim_op(AccountPubkey, PlainName, NameSalt, NameFee, PreclaimDelta)
     ].
 
@@ -292,6 +301,7 @@ name_revoke_tx_instructions(AccountPubkey, NameHash, Fee, Nonce) ->
     ProtectedDeltaTTL = aec_governance:name_protection_period(),
     [ inc_account_nonce_op(AccountPubkey, Nonce)
     , spend_fee_op(AccountPubkey, Fee)
+    , tx_event_op(delta, {AccountPubkey, -Fee}, <<"Name.fee">>)
     , name_revoke_op(AccountPubkey, NameHash, ProtectedDeltaTTL)
     ].
 
@@ -301,6 +311,7 @@ name_transfer_tx_instructions(OwnerPubkey, RecipientID, NameHash, Fee, Nonce) ->
     {Type, Hash} = specialize_account(RecipientID),
     [ inc_account_nonce_op(OwnerPubkey, Nonce)
     , spend_fee_op(OwnerPubkey, Fee)
+    , tx_event_op(delta, {OwnerPubkey, -Fee}, <<"Name.fee">>)
     , name_transfer_op(OwnerPubkey, Type, Hash, NameHash)
     ].
 
@@ -311,6 +322,7 @@ name_update_tx_instructions(OwnerPubkey, NameHash, DeltaTTL, ClientTTL,
                             Pointers, Fee, Nonce) ->
     [ inc_account_nonce_op(OwnerPubkey, Nonce)
     , spend_fee_op(OwnerPubkey, Fee)
+    , tx_event_op(delta, {OwnerPubkey, -Fee}, <<"Name.fee">>)
     , name_update_op(OwnerPubkey, NameHash, DeltaTTL, ClientTTL, Pointers)
     ].
 
@@ -399,6 +411,9 @@ channel_create_tx_instructions(InitiatorPubkey, InitiatorAmount,
                         ResponderPubkey, ResponderAmount,
                         ReserveAmount, DelegatePubkeys,
                         StateHash, LockPeriod, Nonce, Round)
+    , tx_event_op(delta, {InitiatorPubkey, -InitiatorAmount}, <<"Channel.amount">>)
+    , tx_event_op(delta, {InitiatorPubkey, -Fee}, <<"Channel.fee">>)
+    , tx_event_op(delta, {ResponderPubkey, -ResponderAmount}, <<"Channel.amount">>)
     , tx_event_op(channel, ChannelPubkey)
     ].
 
@@ -410,6 +425,8 @@ channel_deposit_tx_instructions(FromPubkey, ChannelPubkey, Amount, StateHash,
     [ inc_account_nonce_op(FromPubkey, Nonce)
     , spend_fee_op(FromPubkey, Fee, Amount)
     , channel_deposit_op(FromPubkey, ChannelPubkey, Amount, StateHash, Round)
+    , tx_event_op(delta, {FromPubkey, -Amount}, <<"Channel.amount">>)
+    , tx_event_op(delta, {FromPubkey, -Fee}, <<"Channel.fee">>)
     , tx_event_op(channel, ChannelPubkey)
     ].
 
@@ -432,6 +449,8 @@ channel_withdraw_tx_instructions(ToPubkey, ChannelPubkey, Amount, StateHash,
     [ inc_account_nonce_op(ToPubkey, Nonce)
     , spend_fee_op(ToPubkey, Fee)
     , channel_withdraw_op(ToPubkey, ChannelPubkey, Amount, StateHash, Round)
+    , tx_event_op(delta, {ToPubkey, Amount}, <<"Channel.amount">>)
+    , tx_event_op(delta, {ToPubkey, -Fee}, <<"Channel.fee">>)
     , tx_event_op(channel, ChannelPubkey)
     ].
 
@@ -623,13 +642,14 @@ lock_namefee(Kind, From, Amount, #state{protocol = Protocol} = S) ->
     {Account, S1} = get_account(From, S),
     assert_account_balance(Account, Amount),
     S2 = account_spend(Account, Amount, S1),
+    S3 = tx_event({delta, {From, -Amount}, <<"Name.amount">>}, S2),
     case Protocol >= ?LIMA_PROTOCOL_VSN of
         true when Amount > 0, Kind == spend ->
-            S2;
+            S3;
         true when Amount > 0, Kind == lock ->
-            int_lock_amount(Amount, S2);
+            int_lock_amount(Amount, S3);
         false when Amount == LockFee, Kind == lock ->
-            int_lock_amount(Amount, S2);
+            int_lock_amount(Amount, S3);
         _ -> runtime_error(illegal_name_fee)
     end.
 
@@ -865,7 +885,8 @@ oracle_earn_query_fee({OraclePubkey, QueryId}, S) ->
     {Account, S1} = get_account(OraclePubkey, S),
     {Query, S2} = get_oracle_query(OraclePubkey, QueryId, S1),
     {ok, Account1} = aec_accounts:earn(Account, aeo_query:fee(Query)),
-    put_account(Account1, S2).
+    S3 = tx_event({delta, {OraclePubkey, aeo_query:fee(Query)}, <<"Name.queryfee">>}, S2),
+    put_account(Account1, S3).
 
 %%%-------------------------------------------------------------------
 
@@ -932,8 +953,9 @@ name_claim({AccountPubkey, PlainName, NameSalt, NameFee, PreclaimDelta}, S) ->
             %% Return the tokens hold in the previous bid
             {PreviousBidderAccount, S2} = get_account(PreviousBidderPubkey, S1),
             S3 = account_earn(PreviousBidderAccount, PreviousBid, S2),
+            S4 = tx_event({delta, {PreviousBidderPubkey, PreviousBid}, <<"Name.refund">>}, S3),
             %% overwrite old auction with new one
-            put_name_auction(NewAuction, S3);
+            put_name_auction(NewAuction, S4);
         Timeout when NameSalt =/= 0 ->
             %% This is the first claim that starts an auction
             assert_not_name_auction(AuctionHash, S0),
@@ -1235,8 +1257,9 @@ channel_close_mutual({FromPubkey, ChannelPubkey,
             PayerPubKey when is_binary(PayerPubKey), Fee > 0 ->
                 {PayerAccount, Sx} = get_account(PayerPubKey, S1),
                 assert_account_balance(PayerAccount, Fee),
+                Sxx = tx_event({delta, {PayerPubKey, -Fee}, <<"Chain.fee">>}, Sx),
                 {InitiatorAmount + ResponderAmount,
-                 account_spend(PayerAccount, Fee, Sx)};
+                 account_spend(PayerAccount, Fee, Sxx)};
             _ ->
                 {InitiatorAmount + ResponderAmount + Fee, S1}
         end,
@@ -1244,12 +1267,16 @@ channel_close_mutual({FromPubkey, ChannelPubkey,
     ChannelAmount = aesc_channels:channel_amount(Channel),
     LockAmount = ChannelAmount - TotalAmount,
     assert(LockAmount >= 0, wrong_amounts),
-    {IAccount, S3} = get_account(aesc_channels:initiator_pubkey(Channel), S2),
-    {RAccount, S4} = get_account(aesc_channels:responder_pubkey(Channel), S3),
+    IPubKey = aesc_channels:initiator_pubkey(Channel),
+    RPubKey = aesc_channels:responder_pubkey(Channel),
+    {IAccount, S3} = get_account(IPubKey, S2),
+    {RAccount, S4} = get_account(RPubKey, S3),
     S5 = account_earn(IAccount, InitiatorAmount, S4),
-    S6 = account_earn(RAccount, ResponderAmount, S5),
-    S7 = int_lock_amount(LockAmount, S6),
-    delete_x(channel, ChannelPubkey, S7).
+    S6 = tx_event({delta, {IPubKey, InitiatorAmount}, <<"Chain.amount">>}, S5),
+    S7 = account_earn(RAccount, ResponderAmount, S6),
+    S8 = tx_event({delta, {RPubKey, ResponderAmount}, <<"Chain.amount">>}, S7),
+    S9 = int_lock_amount(LockAmount, S8),
+    delete_x(channel, ChannelPubkey, S9).
 
 %%%-------------------------------------------------------------------
 
@@ -1315,7 +1342,8 @@ split_payment(TotalAmount, Amount, S) ->
         PayerPubkey when is_binary(PayerPubkey), PayerAmount > 0 ->
             {PayerAccount, S1} = get_account(PayerPubkey, S),
             assert_account_balance(PayerAccount, PayerAmount),
-            {Amount, account_spend(PayerAccount, PayerAmount, S1)};
+            S2 = tx_event({delta, {PayerPubkey, -PayerAmount}, <<"Chain.fee">>}, S1),
+            {Amount, account_spend(PayerAccount, PayerAmount, S2)};
         _ ->
             {TotalAmount, S}
     end.
@@ -1342,22 +1370,24 @@ contract_call({CallerPubkey, ContractPubkey, CallData, GasLimit, GasPrice,
              Other when Other == aetx_transaction; Other == aetx_ga ->
                  account_spend(CallerAccount, CallerAmount, S1)
          end,
-    {ContractAccount, S3} = get_account(ContractPubkey, S2),
-    S4 = account_earn(ContractAccount, Amount, S3),
+    S3 = tx_event({delta, {CallerPubkey, -CallerAmount}, <<"Chain.amount">>}, S2),
+    {ContractAccount, S4} = get_account(ContractPubkey, S3),
+    S5 = account_earn(ContractAccount, Amount, S4),
+    S6 = tx_event({delta, {ContractPubkey, Amount}, <<"Chain.amount">>}, S5),
     %% Avoid writing the store back by skipping this state.
-    Contract = get_contract_no_cache(ContractPubkey, S4),
+    Contract = get_contract_no_cache(ContractPubkey, S6),
     ContractCall = fun() ->
                            run_contract(CallerId, Contract, GasLimit, Fee, GasPrice,
-                                        CallData, _AllowInit = false, Origin, Amount, CallStack, Nonce, S4)
+                                        CallData, _AllowInit = false, Origin, Amount, CallStack, Nonce, S6)
                    end,
-    {Call, S5} = timed_contract_call(contract_call, ContractCall, CallData, CTVersion),
+    {Call, S7} = timed_contract_call(contract_call, ContractCall, CallData, CTVersion),
     case aect_call:return_type(Call) of
         ok ->
             case Context of
                 aetx_contract ->
-                    {return, Call, S5}; %% Return instead of store
+                    {return, Call, S6}; %% Return instead of store
                 Other2 when Other2 == aetx_transaction; Other2 == aetx_ga ->
-                    contract_call_success(Call, GasLimit, S5)
+                    contract_call_success(Call, GasLimit, S7)
             end;
         Fail when (Fail =:= revert orelse Fail =:= error) ->
             case Context of
@@ -1417,8 +1447,11 @@ ga_attach({OwnerPubkey, GasLimit, GasPrice, ABIVersion,
     %% Charge the fee, the gas (the unused portion will be refunded)
     %% and the deposit (stored in the contract) to the contract owner (caller),
     CTVersion      = #{vm => VMVersion, abi => ABIVersion},
-    S2             = if OwnerAmount > 0 -> account_spend(Account, OwnerAmount, S1);
-                        true            -> S1
+    S2             = if OwnerAmount > 0 ->
+                            Sx = tx_event({delta, {OwnerPubkey, -Fee}, <<"Chain.fee">>}, S1),
+                            account_spend(Account, OwnerAmount, Sx);
+                        true ->
+                            S1
                      end,
     Contract       = aect_contracts:new(OwnerPubkey, Nonce, CTVersion,
                                         SerializedCode, 0),
@@ -1494,8 +1527,11 @@ ga_meta({OwnerPK, AuthData, ABIVersion, GasLimit, GasPrice, Fee, InnerTx}, S) ->
 
     CTVersion = assert_contract_call_version(AuthContractPK, ABIVersion, S),
     assert_auth_data_function(ABIVersion, AuthData, AuthFunHash),
-    S2 = if OwnerAmount > 0 -> account_spend(Account, OwnerAmount, S1);
-            true            -> S1 end,
+    S2 = if OwnerAmount > 0 ->
+                S1x = account_spend(Account, OwnerAmount, S1),
+                tx_event({delta, {OwnerPK, -OwnerAmount}, <<"GA.amount">>}, S1x);
+            true ->
+                S1 end,
     Contract = get_contract_no_cache(AuthContractPK, S2),
     CallerId   = aeser_id:create(account, OwnerPK),
     ContractCall = fun() ->
@@ -1581,6 +1617,7 @@ contract_create({OwnerPubkey, Amount, Deposit, GasLimit, GasPrice,
     Code           = assert_contract_byte_code(ABIVersion, SerializedCode, CallData, S),
     CTVersion      = #{vm => VMVersion, abi => ABIVersion},
     S2             = account_spend(Account, OwnerAmount, S1),
+    S3             = tx_event({delta, {OwnerPubkey, -OwnerAmount}, <<"Chain.amount">>}, S2),
     Nonce          = case aetx_env:ga_nonce(S#state.tx_env, OwnerPubkey) of
                          {value, NonceX} -> NonceX;
                          none            -> Nonce0
@@ -1589,11 +1626,12 @@ contract_create({OwnerPubkey, Amount, Deposit, GasLimit, GasPrice,
                                         SerializedCode, Deposit),
     ContractPubkey = aect_contracts:pubkey(Contract),
     Payable        = is_payable_contract(Code),
-    {CAccount, S3} = ensure_account(ContractPubkey, [non_payable || not Payable], S2),
-    S4             = account_earn(CAccount, Amount, S3),
+    {CAccount, S4} = ensure_account(ContractPubkey, [non_payable || not Payable], S3),
+    S5             = account_earn(CAccount, Amount, S4),
+    S6             = tx_event({delta, {ContractPubkey, Amount}, <<"Chain.amount">>}, S5),
     OwnerId        = aect_contracts:owner_id(Contract),
     init_contract(contract, OwnerId, Code, Contract, GasLimit, GasPrice,
-                  CallData, OwnerPubkey, Fee, Nonce0, RollbackS, S4,
+                  CallData, OwnerPubkey, Fee, Nonce0, RollbackS, S6,
                   contract_create, CTVersion).
 
 %%%-------------------------------------------------------------------
@@ -1750,7 +1788,8 @@ refund_payer(Call, GasLimit, S) ->
     Refund = (GasLimit - aect_call:gas_used(Call)) * aect_call:gas_price(Call),
     Payer = establish_payer(aect_call:caller_pubkey(Call), S),
     {CallerAccount, S1} = get_account(Payer, S),
-    account_earn(CallerAccount, Refund, S1).
+    S2 = tx_event({delta, {Payer, Refund}, <<"Chain.refund">>}, S1),
+    account_earn(CallerAccount, Refund, S2).
 
 -spec contract_call_success(call(), number(), state()) -> state().
 contract_call_success(Call, GasLimit, S) ->
@@ -1773,7 +1812,8 @@ contract_call_fail(Call0, Fee, S) ->
          end,
     Payer = establish_payer(aect_call:caller_pubkey(Call), S),
     {Account, S3} = get_account(Payer, S2),
-    account_spend(Account, UsedAmount, S3).
+    S4 = tx_event({delta, {Payer, -UsedAmount}, <<"Chain.fee">>}, S3),
+    account_spend(Account, UsedAmount, S4).
 
 -spec run_contract(id(), contract(), number(), fee(), non_neg_integer(), binary(),
     false, binary(), amount(), list(), nonce(), state()) -> {call(), state()}.
@@ -1838,6 +1878,7 @@ int_lock_amount(0, #state{} = S) ->
 int_lock_amount(Amount, S) when ?IS_NON_NEG_INTEGER(Amount) ->
     LockPubkey = aec_governance:locked_coins_holder_account(),
     {Account, S1} = ensure_account(LockPubkey, S),
+    %% FIXME: Re-evaluate whether we need to track this account for Rosetta
     account_earn(Account, Amount, S1).
 
 -spec int_resolve_name(hash(), binary(), state()) -> {pubkey(), state()} | no_return().
