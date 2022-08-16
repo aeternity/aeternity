@@ -1385,7 +1385,7 @@ contract_call({CallerPubkey, ContractPubkey, CallData, GasLimit, GasPrice,
         ok ->
             case Context of
                 aetx_contract ->
-                    {return, Call, S6}; %% Return instead of store
+                    {return, Call, S7}; %% Return instead of store
                 Other2 when Other2 == aetx_transaction; Other2 == aetx_ga ->
                     contract_call_success(Call, GasLimit, S7)
             end;
