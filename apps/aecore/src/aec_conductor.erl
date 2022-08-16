@@ -213,7 +213,8 @@ consensus_request(Request) ->
         M:client_request(Request)
     catch
         Error:Reason:Stack ->
-            lager:debug("consensus_request(~p) Failed: ~p ~p ~p\n", [Request, Error, Reason, Stack])
+            lager:debug("consensus_request(~p) Failed: ~p ~p ~p\n", [Request, Error, Reason, Stack]),
+            error(Reason)
     end.
 
 %%%===================================================================
@@ -1228,7 +1229,8 @@ handle_add_block(Block, Hash, Prev, #state{top_block_hash = TopBlockHash} = Stat
     %% external (gossip/sync) blocks and we trust the ones we
     %% produce ourselves.
     case aec_chain_state:insert_block_conductor(Block, Origin) of
-        {ok, TopChanged, PrevKeyHeader, Events}  ->
+        {ok, TopChanged, PrevKeyHeader, Events} = OkResult  ->
+            lager:debug("insert_block -> ~p", [OkResult]),
             handle_successfully_added_block(Block, Hash, TopChanged, PrevKeyHeader, Events, State, Origin);
         {pof, TopChanged, PrevKeyHeader, _PoF, Events} ->
             %% TODO: should we really publish tx_events in this case?

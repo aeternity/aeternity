@@ -76,7 +76,10 @@ macos-tarball:
       type: string
   macos:
     xcode: "11.7.0" # macOS 10.15.5 (Catalina)
+  resource_class: macos.x86.medium.gen2
   working_directory: /Users/distiller/aeternity
+  environment:
+    HOMEBREW_NO_AUTO_UPDATE: 1
   steps:
     - fixed_checkout
     - when:

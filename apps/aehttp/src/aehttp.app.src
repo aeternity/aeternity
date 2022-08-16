@@ -15,8 +15,7 @@
     aecore,
     aeapi,
     aechannel,
-    gproc,
-    ephemeral
+    gproc
    ]},
   {env,[]},
   {modules, []},

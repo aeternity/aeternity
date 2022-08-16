@@ -345,11 +345,11 @@ do_rollback_to_hash(Hash, TopHash) ->
     [begin
          [begin
               Del = element(2, T),
-              ok = mnesia:delete(aec_headers, Del, write),
-              ok = mnesia:delete(aec_blocks, Del, write),
-              ok = mnesia:delete(aec_block_state, Del, write)
+              ok = aec_db:delete(aec_headers, Del, write),
+              ok = aec_db:delete(aec_blocks, Del, write),
+              ok = aec_db:delete(aec_block_state, Del, write)
               %% TODO: we really should also delete state tree objects
-          end || T <- mnesia:index_read(aec_headers, H, height)]
+          end || T <- aec_db:index_read(aec_headers, H, height)]
      end || H <- lists:seq(Height+1, TopHeight+SafetyMargin)],
     aec_db:write_top_block_node(Hash, Header).
 
@@ -1340,7 +1340,7 @@ start_chain_ends_migration() ->
             %% Retrieves tuples {hash, prev_key_hash, height} and should work for legacy header formats
             %% Takes up at most a few MB of RAM
             {Time, R0} = timer:tc(fun() ->
-                mnesia:dirty_select(aec_headers, [{ {aec_headers, '$1', '$2', '$3'}
+                aec_db:dirty_select(aec_headers, [{ {aec_headers, '$1', '$2', '$3'}
                                                   , [{'=:=', {element, 1, '$2'}, key_header}]
                                                   , [{{'$1', {element, 4, '$2'}, '$3'}}]
                                                   }])
@@ -1420,9 +1420,9 @@ start_key_headers_height_store_migration() ->
     spawn(fun() -> %% Don't use spawn_link here - we can't be killed by the setup process
         %% An error here should bring down the entire node with it!
         try
-            mnesia:activity(async_dirty, fun () ->
+            aec_db:activity(async_dirty, fun () ->
                 Res = timer:tc(fun() ->
-                    mnesia:select(aec_headers,
+                    aec_db:select(aec_headers,
                                   [{ {aec_headers, '$1', '$2', '$3'}
                                   , [{'=:=', {element, 1, '$2'}, key_header}]
                                   , [{{'$1', '$2', '$3'}}]
@@ -1452,7 +1452,7 @@ key_headers_height_store_migration_step(Time, N, {TimeRead, {Headers, Cont}}) ->
         aec_db:ensure_transaction(fun() ->
             lists:foldl(
                 fun({Hash, Header, Height}, Count) ->
-                    mnesia:write(#aec_chain_state{key = {key_header, Height, Hash}, value = Header}),
+                    aec_db:write(#aec_chain_state{key = {key_header, Height, Hash}, value = Header}),
                     Count+1
                 end,
                 0,
@@ -1464,7 +1464,7 @@ key_headers_height_store_migration_step(Time, N, {TimeRead, {Headers, Cont}}) ->
     key_headers_height_store_migration_step(
         Time + TimeRead + TimeWrite,
         N + Count,
-        timer:tc(fun() -> mnesia:select(Cont) end)
+        timer:tc(fun() -> aec_db:select(Cont) end)
     ).
 
 is_gc_disabled() ->

@@ -58,7 +58,6 @@ application_test(Config) ->
     aecore_suite_utils:stop_node(dev2, Config),
 
     [] = aecore_suite_utils:errors_in_logs([dev1, dev2], Config),
-
     ok.
 
 jobs_server_test(Config) ->

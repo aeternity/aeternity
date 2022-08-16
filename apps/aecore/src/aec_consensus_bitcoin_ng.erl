@@ -183,7 +183,7 @@ roll_back_height_(CurH, _Height, _ForkPoint, _Mode, _Type) ->
 
 hashes_at_height(Height) ->
     [Hash || #aec_headers{key = Hash}
-                 <- mnesia:index_read(aec_headers, Height, height)].
+                 <- aec_db:index_read(aec_headers, Height, height)].
 
 ok({ok, Res}) -> Res.
 
@@ -194,9 +194,9 @@ micros_after_hash([_|T], H) ->
 
 remove_block(Hash) ->
     ok = remove_tx_locations(Hash),
-    ok = mnesia:delete(aec_headers, Hash, write),
-    ok = mnesia:delete(aec_blocks, Hash, write),
-    ok = mnesia:delete(aec_block_state, Hash, write).
+    ok = aec_db:delete(aec_headers, Hash, write),
+    ok = aec_db:delete(aec_blocks, Hash, write),
+    ok = aec_db:delete(aec_block_state, Hash, write).
 
 remove_tx_locations(Hash) ->
     case aec_db:find_block_tx_hashes(Hash) of

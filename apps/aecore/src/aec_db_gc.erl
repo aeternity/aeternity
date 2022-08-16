@@ -302,7 +302,7 @@ create_accounts_table(Name) ->
 iter(Fun, ets, Tab) ->
     ets:foldl(fun ({Hash, Node}, ok) -> Fun(Hash, Node), ok end, ok, Tab);
 iter(Fun, mnesia, Tab) ->
-    mnesia:foldl(fun (X, ok) -> Fun(element(2, X), element(3, X)), ok end, ok, Tab).
+    aec_db:foldl(fun (X, ok) -> Fun(element(2, X), element(3, X)), ok end, ok, Tab).
 
 
 write_nodes(SrcMod, SrcTab, TgtTab) ->
@@ -311,19 +311,19 @@ write_nodes(SrcMod, SrcTab, TgtTab) ->
                      iter(fun (Hash, Node) ->
                                   aec_db:write_accounts_node(TgtTab, Hash, Node)
                           end, SrcMod, SrcTab)
-             end, [], sync_transaction)).
+             end)).
 
 store_cache(SrcHashes, TgtTab) ->
     NodesCount = ets:info(SrcHashes, size),
     ?LOG("Writing ~p reachable account nodes to table ~p ...", [NodesCount, TgtTab]),
     {WriteTime, ok} = write_nodes(ets, SrcHashes, TgtTab),
     ?LOG("Writing reachable account nodes took ~p seconds", [WriteTime / 1000000]),
-    DBCount = length(mnesia:dirty_select(TgtTab, [{'_', [], [1]}])),
+    DBCount = length(aec_db:dirty_select(TgtTab, [{'_', [], [1]}])),
     ?LOG("GC cache has ~p aec_account_state records", [DBCount]),
     {ok, NodesCount}.
 
 maybe_swap_nodes(SrcTab, TgtTab) ->
-    try mnesia:dirty_first(SrcTab) of % table exists
+    try aec_db:dirty_first(SrcTab) of % table exists
         H when is_binary(H) ->        % and is non empty
             swap_nodes(SrcTab, TgtTab);
         '$end_of_table' ->
@@ -335,11 +335,11 @@ maybe_swap_nodes(SrcTab, TgtTab) ->
 
 swap_nodes(SrcTab, TgtTab) ->
     ?LOG("Clearing table ~p ...", [TgtTab]),
-    {atomic, ok} = mnesia:clear_table(TgtTab),
+    {atomic, ok} = aec_db:clear_table(TgtTab),
     ?LOG("Writing garbage collected accounts ..."),
     {WriteTime, ok} = write_nodes(mnesia, SrcTab, TgtTab),
     ?LOG("Writing garbage collected accounts took ~p seconds", [WriteTime / 1000000]),
-    DBCount = length(mnesia:dirty_select(TgtTab, [{'_', [], [1]}])),
+    DBCount = length(aec_db:dirty_select(TgtTab, [{'_', [], [1]}])),
     ?LOG("DB has ~p aec_account_state records", [DBCount]),
     ?LOG("Removing garbage collected table ~p ...", [SrcTab]),
     mnesia:delete_table(SrcTab),

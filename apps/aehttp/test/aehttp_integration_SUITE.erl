@@ -1077,7 +1077,7 @@ get_key_block_by_height(Config) ->
     get_key_block_by_height(?config(current_block_type, Config), Config).
 
 get_key_block_by_height(CurrentBlockType, Config) when
-      CurrentBlockType =:= genesis_block; CurrentBlockType =:= key_block ->
+    CurrentBlockType =:= genesis_block; CurrentBlockType =:= key_block ->
     CurrentBlockHash = ?config(current_block_hash, Config),
     CurrentBlockHeight = ?config(current_block_height, Config),
     {ok, 200, Block} = get_key_blocks_by_height_sut(CurrentBlockHeight),
@@ -1177,7 +1177,7 @@ get_micro_block_header_by_hash(micro_block, Config) ->
     PrevKeyBlockHash = ?config(prev_key_block_hash, Config),
     CurrentBlockHash = ?config(current_block_hash, Config),
     {ok, 200, Header} = get_micro_blocks_header_by_hash_sut(CurrentBlockHash),
-    ?assertEqual(PrevKeyBlockHash, maps:get(<<"prev_hash">>, Header)),
+    ?assertEqual(PrevKeyBlockHash, maps:get(<<"prev_key_hash">>, Header)),
     ?assertEqual(CurrentBlockHash, maps:get(<<"hash">>, Header)),
     ok.
 
@@ -1185,7 +1185,7 @@ get_micro_block_transactions_by_hash(Config) ->
     get_micro_block_transactions_by_hash(?config(current_block_type, Config), Config).
 
 get_micro_block_transactions_by_hash(CurrentBlockType, Config) when
-      CurrentBlockType =:= genesis_block; CurrentBlockType =:= key_block ->
+    CurrentBlockType =:= genesis_block; CurrentBlockType =:= key_block ->
     CurrentBlockHash = ?config(current_block_hash, Config),
     CurrentBlockHashWrongType = ?config(current_block_hash_wrong_type, Config),
     {ok, 400, Error} = get_micro_blocks_transactions_by_hash_sut(CurrentBlockHash),
@@ -1207,7 +1207,7 @@ get_micro_block_transactions_count_by_hash(Config) ->
     get_micro_block_transactions_count_by_hash(?config(current_block_type, Config), Config).
 
 get_micro_block_transactions_count_by_hash(CurrentBlockType, Config) when
-      CurrentBlockType =:= genesis_block; CurrentBlockType =:= key_block ->
+    CurrentBlockType =:= genesis_block; CurrentBlockType =:= key_block ->
     CurrentBlockHash = ?config(current_block_hash, Config),
     CurrentBlockHashWrongType = ?config(current_block_hash_wrong_type, Config),
     {ok, 400, Error} = get_micro_blocks_transactions_count_by_hash_sut(CurrentBlockHash),
@@ -1227,7 +1227,7 @@ get_micro_block_transaction_by_hash_and_index(Config) ->
     get_micro_block_transaction_by_hash_and_index(?config(current_block_type, Config), Config).
 
 get_micro_block_transaction_by_hash_and_index(CurrentBlockType, Config) when
-      CurrentBlockType =:= genesis_block; CurrentBlockType =:= key_block ->
+    CurrentBlockType =:= genesis_block; CurrentBlockType =:= key_block ->
     CurrentBlockHash = ?config(current_block_hash, Config),
     CurrentBlockHashWrongType = ?config(current_block_hash_wrong_type, Config),
     {ok, 400, Error} = get_micro_blocks_transactions_count_by_hash_sut(CurrentBlockHash),
