@@ -255,7 +255,7 @@ accounts_file_name(Release) ->
 is_devmode_accounts_present() ->
     Workspace = lists:last(filename:split(os:getenv("AE__CHAIN__DB_PATH"))),
     io:fwrite("---------->>> Workspace: ~p ~n", [Workspace]),        
-    FilePath = filename:join(os:getenv("AE__CHAIN__DB_PATH"), "devmode_accs_" ++ Workspace ++ ".json"),
+    FilePath = filename:join(os:getenv("AE__CHAIN__DB_PATH"), "devmode_prefunded_accs_" ++ Workspace ++ ".json"),
     io:fwrite("---------->>> Final calculated accounts file path: ~p ~n", [FilePath]),
     case filelib:is_regular(FilePath) of
         true ->  io:fwrite("---------->>> File found at path: ~p ~n", [FilePath]), FilePath;

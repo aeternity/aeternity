@@ -17,6 +17,11 @@
                     "type" : "boolean",
                     "default" : false
                 },
+                "dev_mode_accounts" : {
+                    "description" : "When not using a synced Chain Database, devmode gives you a set of prefunded accounts",
+                    "type" : "object",
+                    "default" : []
+                },
                 "plugin_path" : {
                     "description" : "Directory containing Aeternity node plugins",
                     "type" : "string",
