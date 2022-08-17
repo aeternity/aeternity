@@ -422,11 +422,11 @@ get_all_clients(ChSetup) when is_map(ChSetup) ->
       end, [], ChSetup).
 
 get_channel_setup() ->
-    aec_chain_sim:dict_get(channel_setup, #{}).
+    aec_chain_sim:dict_get(?MODULE, channel_setup, #{}).
 
 add_channel_setup(ChId, Setup) ->
     S = get_channel_setup(),
-    aec_chain_sim:dict_set(channel_setup, S#{ChId => Setup}).
+    aec_chain_sim:dict_set(?MODULE, channel_setup, S#{ChId => Setup}).
 
 set_reg_watch(C, ChId) ->
     client_apply(C, ?MODULE, reg_watch, [ChId]).
@@ -628,36 +628,36 @@ channel_round(ChId) ->
     end.
 
 next_nonce(Acct) ->
-    aec_chain_sim:next_nonce(Acct).
+    aec_chain_sim:next_nonce(?MODULE, Acct).
 
 %% Chain simulator requests
 
 push(Tx) ->
-    aec_chain_sim:push(Tx).
+    aec_chain_sim:push(?MODULE, Tx).
 
 add_keyblock() ->
-    aec_chain_sim:add_keyblock().
+    aec_chain_sim:add_keyblock(?MODULE).
 
 add_microblock() ->
-    aec_chain_sim:add_microblock().
+    aec_chain_sim:add_microblock(?MODULE).
 
 add_microblock(ForkId) ->
-    aec_chain_sim:add_microblock(ForkId).
+    aec_chain_sim:add_microblock(?MODULE, ForkId).
 
 clone_microblock_on_fork(Hash, ForkId) ->
-    aec_chain_sim:clone_microblock_on_fork(Hash, ForkId).
+    aec_chain_sim:clone_microblock_on_fork(?MODULE, Hash, ForkId).
 
 fork_from_hash(ForkId, FromHash) when is_binary(FromHash) ->
-    aec_chain_sim:fork_from_hash(ForkId, FromHash).
+    aec_chain_sim:fork_from_hash(?MODULE, ForkId, FromHash).
 
 fork_switch(ForkId) ->
-    aec_chain_sim:fork_switch(ForkId).
+    aec_chain_sim:fork_switch(?MODULE, ForkId).
 
 start_chain_process() ->
-    aec_chain_sim:start().
+    aec_chain_sim:start(#{name => ?MODULE}).
 
 stop_chain_process() ->
-    aec_chain_sim:stop().
+    aec_chain_sim:stop(?MODULE).
 
 %% ======================================================================
 %% Test environment setup
@@ -674,7 +674,7 @@ init_per_suite(Config0) ->
     {ok, Apps1} = application:ensure_all_started(lager),
     {ok, Apps2} = application:ensure_all_started(crypto),
     {ok, Apps3} = application:ensure_all_started(enacl),
-    aec_chain_sim:setup_meck(),
+    aec_chain_sim:setup_meck(?MODULE),
     [ {started_apps, StartedApps ++ [mnesia] ++ Apps1 ++ Apps2 ++ Apps3}
     | Config ].
 
@@ -692,8 +692,8 @@ init_per_group(GrpName, Config) ->
             Config;
         _ ->
             {ok, ChainP} = start_chain_process(),
-            {ok, #{pubkey := Initiator, privkey := InitiatorSK}} = aec_chain_sim:new_account(?BIG_AMOUNT),
-            {ok, #{pubkey := Responder, privkey := ResponderSK}} = aec_chain_sim:new_account(?BIG_AMOUNT),
+            {ok, #{pubkey := Initiator, privkey := InitiatorSK}} = aec_chain_sim:new_account(?MODULE, ?BIG_AMOUNT),
+            {ok, #{pubkey := Responder, privkey := ResponderSK}} = aec_chain_sim:new_account(?MODULE, ?BIG_AMOUNT),
             {ok, Watcher} = start_chain_watcher(),
             %% mine a few keyblocks so we are on the right protocol
             lists:foreach(

@@ -57,7 +57,7 @@ block_extension_test_() ->
           meck:expect(aeu_time, now_in_msecs, 0, 1234567890),
           meck:expect(aec_chain, get_block_state, 1, {ok, Trees0}),
           meck_tx_pool_get_candidate([STx]),
-          meck:expect(aec_keys, pubkey, 0, {ok, ?TEST_PUB}),
+          meck:expect(aec_keys, get_pubkey, 0, {ok, ?TEST_PUB}),
           meck:expect(aec_db, find_discovered_pof, 1, none),
           {ok, Block1A, #{ trees := Trees1A }} = aec_block_micro_candidate:create(Block0),
 
@@ -95,7 +95,7 @@ block_extension_test_() ->
           meck:expect(aeu_time, now_in_msecs, 0, 1234567890),
           meck:expect(aec_chain, get_block_state, 1, {ok, Trees0}),
           meck_tx_pool_get_candidate([STx]),
-          meck:expect(aec_keys, pubkey, 0, {ok, ?TEST_PUB}),
+          meck:expect(aec_keys, get_pubkey, 0, {ok, ?TEST_PUB}),
           meck:expect(aec_db, find_discovered_pof, 1, none),
 
           {ok,_Block1A, #{ trees := Trees1A }} = aec_block_micro_candidate:create(Block0),
@@ -175,7 +175,7 @@ block_extension_test_() ->
             AccMap = #{ preset_accounts => [{?TEST_PUB, 100000000000000000000000000000000}] },
             {Block0, Trees0} = aec_block_genesis:genesis_block_with_state(AccMap),
             meck:expect(aec_chain, get_block_state, 1, {ok, Trees0}),
-            meck:expect(aec_keys, pubkey, 0, {ok, ?TEST_PUB}),
+            meck:expect(aec_keys, get_pubkey, 0, {ok, ?TEST_PUB}),
             meck:expect(aec_db, find_discovered_pof, 1, none),
 
             %% Create full block, then check that attempting to add one tx fails.
@@ -530,7 +530,7 @@ used_gas_test_() ->
       ]}.
 
 get_miner_account_balance(State) ->
-    {ok, Miner} = aec_keys:pubkey(),
+    {ok, Miner} = aec_keys:get_pubkey(),
     aec_accounts:balance(aec_accounts_trees:get(Miner,
                                                 aec_trees:accounts(State))).
 

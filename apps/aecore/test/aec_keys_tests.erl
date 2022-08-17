@@ -24,10 +24,10 @@ all_test_() ->
      [fun(_) ->
               [ {"Promote signing keys candidate (positive case)",
                 fun() ->
-                        {ok, SPub0} = aec_keys:pubkey(),
+                        {ok, SPub0} = aec_keys:get_pubkey(),
                         {ok, CPub0} = aec_keys:candidate_pubkey(),
                         ok = aec_keys:promote_candidate(CPub0),
-                        {ok, SPub1} = aec_keys:pubkey(),
+                        {ok, SPub1} = aec_keys:get_pubkey(),
                         {ok, CPub1} = aec_keys:candidate_pubkey(),
                         ?assertEqual(CPub0, SPub1),
                         ?assertNotEqual(SPub0, SPub1),
@@ -35,10 +35,10 @@ all_test_() ->
                 end},
                 {"Promote signing keys candidate (negative case)",
                 fun() ->
-                        {ok, SPub0} = aec_keys:pubkey(),
+                        {ok, SPub0} = aec_keys:get_pubkey(),
                         {ok, CPub0} = aec_keys:candidate_pubkey(),
                         ?assertEqual({error, key_not_found}, aec_keys:promote_candidate(SPub0)),
-                        ?assertEqual({ok, SPub0}, aec_keys:pubkey()),
+                        ?assertEqual({ok, SPub0}, aec_keys:get_pubkey()),
                         ?assertEqual({ok, CPub0}, aec_keys:candidate_pubkey())
                 end},
                {"Keys validation (positive case)",
