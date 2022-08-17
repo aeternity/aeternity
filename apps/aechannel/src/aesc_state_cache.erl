@@ -268,7 +268,7 @@ key(ChId, PubKey) ->
 cache_status_(ChId) ->
     InRam = ets:select(
         ?TAB, [{ #ch_cache{cache_id = key(ChId, '$1'), _ = '_'}, [], ['$1']}]),
-    OnDisk = mnesia:dirty_select(
+    OnDisk = aec_db:dirty_select(
         ?PTAB, [{#pch_encrypted_cache{cache_id = key(ChId, '$1'), _ = '_'}, [], ['$1']}]),
     [ {in_ram, InRam}
     , {on_disk, OnDisk}].
@@ -335,11 +335,11 @@ encrypt_cache(#ch_cache{ cache_id = CacheId
     }.
 
 write_persistent(Pch) ->
-    activity(fun() -> mnesia:write(?PTAB, Pch, write) end).
+    activity(fun() -> aec_db:write(?PTAB, Pch, write) end).
 
 read_persistent(CacheId) ->
     activity(fun() ->
-                     case mnesia:read(?PTAB, CacheId) of
+                     case aec_db:read(?PTAB, CacheId) of
                          [#pch_encrypted_cache{} = Encrypted] ->
                              {ok, Encrypted};
                          [] ->
@@ -348,7 +348,7 @@ read_persistent(CacheId) ->
              end).
 
 delete_persistent(CacheId) ->
-    activity(fun() -> mnesia:delete(?PTAB, CacheId, write) end).
+    activity(fun() -> aec_db:delete(?PTAB, CacheId, write) end).
 
 activity(F) ->
     aec_db:ensure_transaction(F).
@@ -447,8 +447,8 @@ delete_offchain_state_for_channel(ChId, St) ->
       ?TAB, [{ #ch_cache{cache_id = key(ChId, '_'), _ = '_'}, [], [true] }]),
 
     activity(fun() ->
-        Records = mnesia:select(
+        Records = aec_db:select(
           ?PTAB, [{ #pch_encrypted_cache{cache_id = key(ChId, '$1'), _ = '_'}, [], ['$1'] }]),
-        [mnesia:delete(?PTAB, key(ChId, Pubkey), write) || Pubkey <- Records]
+        [aec_db:delete(?PTAB, key(ChId, Pubkey), write) || Pubkey <- Records]
     end),
     St.

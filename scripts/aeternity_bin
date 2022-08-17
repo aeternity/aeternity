@@ -146,6 +146,12 @@ relx_usage() {
             echo "  -n (-blockhash) : Block hash from which to start deleting"
             echo "  -w (-whitelist) : Roll back based on contents of whitelist (true | false)"
             ;;
+        db_migrate)
+            echo "Usage: $REL_NAME db_migrate [-s Silent]"
+            echo "  Migrate rocksdb storage created before version 6.5.2 to use higher performance column families"
+            echo "  This can take a few hours and the node will be placed in maintenance mode during the migration"
+            echo "  -s (-silent)    : Suppress progress reports"
+            ;;
         maintenance)
             echo "Usage: $REL_NAME maintenance [on | off | status] [-t timeout]"
             echo "  Enable / disable / check status of maintenance mode"
@@ -188,6 +194,7 @@ Commands:
   peer_key                Display the peer key of the aeternity node
   create_whitelist        Export block hashes within a range of heights to json file
   db_rollback             Rollback blockchain to specified height, hash, or from whitelist file
+  db_migrate              Migrate rocksdb database to column families
   maintenance             Enable / disable maintenance mode
   admin                   Aeternity node administration commands
   help                    Get additional help about a command

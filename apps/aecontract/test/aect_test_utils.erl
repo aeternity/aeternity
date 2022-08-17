@@ -729,6 +729,7 @@ get_oracle_queries(OracleId, Max, State) ->
 init_per_group(Vm, Cfg) ->
     init_per_group(Vm, Cfg, fun(X) -> X end).
 
+
 sophia_version(aevm, ?ROMA_PROTOCOL_VSN) -> ?SOPHIA_ROMA;
 sophia_version(aevm, ?MINERVA_PROTOCOL_VSN) -> ?SOPHIA_MINERVA;
 sophia_version(aevm, ?FORTUNA_PROTOCOL_VSN) -> ?SOPHIA_FORTUNA;
