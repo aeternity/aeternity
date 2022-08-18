@@ -822,7 +822,7 @@ do_top_change(#{old_height := OldHeight, new_height := NewHeight}, State)
     %% that the transactions in the deleted blocks were thereby undone
     %% (they may still be in the database, but their location info is gone)
     {ok, do_update_sync_top_target(NewHeight, State)};
-do_top_change(#{type := Type, old_hash := OldHash, new_hash := NewHash} = Info, State0) ->
+do_top_change(#{type := Type, old_hash := OldHash, new_hash := NewHash}, State0) ->
     %% NG: does this work for common ancestor for micro blocks?
     {ok, Ancestor} =
         aec_db:ensure_activity(async_dirty,

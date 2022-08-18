@@ -244,25 +244,26 @@ init(Options) ->
     State1 = acquire_top_and_consensus(),
     State2 = set_option(autostart, Options, State1),
     State3 = set_option(strictly_follow_top, Options, State2),
-    {ok, State4} = set_beneficiary(State3),
-    State5 = init_miner_instances(State4),
-    State6 = set_stratum_mode(State5), %% May overwrite beneficiary.
+    State4 = set_mode(State3),
+    State5 = init_instances(State4),
 
     aec_metrics:try_update([ae,epoch,aecore,chain,height],
                            aec_blocks:height(aec_chain:top_block())),
-    epoch_mining:info("Miner process initialized ~p", [State6]),
+    epoch_mining:info("Miner process initialized ~p", [State5]),
     aec_events:subscribe(candidate_block),
     %% NOTE: The init continues at handle_info(init_continue, State).
     self() ! init_continue,
-    {ok, State6}.
+    {ok, State5}.
 
 acquire_top_and_consensus() ->
     TopBlockHash0 = aec_chain:top_block_hash(),
     {ok, TopHeader0} = aec_chain:get_header(TopBlockHash0),
     ConsensusModule = aec_headers:consensus_module(TopHeader0),
     ConsensusConfig = aec_consensus:get_consensus_config_at_height(aec_headers:height(TopHeader0)),
+
     %% Might mutate the DB in some cases
     ConsensusModule:start(ConsensusConfig), %% Might do nothing or it might spawn a genserver :P
+
     Consensus = #consensus{ micro_block_cycle = aec_governance:micro_block_cycle()
                           , leader = false
                           , consensus_module = ConsensusModule },
@@ -274,30 +275,10 @@ acquire_top_and_consensus() ->
                    aec_chain:top_key_block_hash(),
                    aec_chain:top_height()}
           end),
-
-<<<<<<< HEAD
-    State1 = #state{ top_block_hash     = TopBlockHash,
-                     top_key_block_hash = TopKeyBlockHash,
-                     top_height         = TopHeight,
-                     consensus          = Consensus},
-    State2 = set_option(autostart, Options, State1),
-    State3 = set_option(strictly_follow_top, Options, State2),
-    State4 = set_mode(State3),
-    State5 = init_instances(State4),
-
-    aec_metrics:try_update([ae,epoch,aecore,chain,height],
-                           aec_blocks:height(aec_chain:top_block())),
-    epoch_mining:info("Miner process initilized ~p", [State5]),
-    aec_events:subscribe(candidate_block),
-    %% NOTE: The init continues at handle_info(init_continue, State).
-    self() ! init_continue,
-    {ok, State5}.
-=======
     #state{ top_block_hash     = TopBlockHash,
 	    top_key_block_hash = TopKeyBlockHash,
 	    top_height         = TopHeight,
 	    consensus          = Consensus}.
->>>>>>> Notify conductor and tx_pool after rollback
 
 init_chain_state() ->
     case aec_chain:genesis_hash() of
