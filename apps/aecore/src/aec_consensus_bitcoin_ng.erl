@@ -1,4 +1,4 @@
-%%% -*- erlang-indent-level: 4 -*-
+%%% -*- erlang-indent-level: 4; indent-tabs-mode: nil -*-
 %%% -------------------------------------------------------------------
 %%% @copyright (C) 2020, Aeternity Anstalt
 %%% @doc BitcoinNG consensus module
@@ -130,10 +130,11 @@ force_community_fork() ->
 rollback(Height) ->
     F = fun() ->
                 TopHeight = aec_chain:top_height(),
+                lager:debug("Rolling back from height ~p to ~p", [TopHeight, Height]),
                 {ok, ForkPoint} = aec_chain_state:get_key_block_hash_at_height(Height),
                 do_rollback_(ForkPoint, height, key, Height, TopHeight)
         end,
-    aec_db:ensure_activity(sync_dirty, F).
+    rollback_result(aec_db:ensure_activity(sync_dirty, F)).
 
 rollback_to_hash(Type, Hash) ->
     F = fun() ->
@@ -148,7 +149,11 @@ rollback_to_hash(Type, Hash) ->
                         do_rollback_(Hash, hash, Type, Height, TopHeight)
                 end
         end,
-    aec_db:ensure_activity(sync_dirty, F).
+    rollback_result(aec_db:ensure_activity(sync_dirty, F)).
+
+rollback_result({ok, Map}) when is_map(Map) ->
+    aec_conductor:note_rollback(Map),
+    ok.
 
 do_rollback(ForkPoint, Height, TopHeight) ->
     lager:info("Perform rollback from ~p to ~p", [TopHeight, Height]),
@@ -169,7 +174,8 @@ do_rollback_(ForkPoint, Mode, Type, Height, TopHeight) ->
               roll_back_height_(H, Height, ForkPoint, Mode, Type)
       end, lists:seq(FromHeight, TopHeight+SafetyMargin)),
       aec_db:write_top_block_node(ForkPoint, FPHeader),
-    ok.
+    {ok, #{new_top_hash => ForkPoint,
+	   new_top_header => FPHeader}}.
 
 roll_back_height_(H, H, Hash, hash, Type) ->
     %% We know that Hash is at this height, and that Type is correct

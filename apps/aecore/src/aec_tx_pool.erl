@@ -69,6 +69,7 @@
         ]).
 
 -export([ await_tx_pool/0 ]).
+-export([ note_rollback/1 ]).
 
 -include("aec_tx_pool.hrl").
 -include_lib("aecontract/include/hard_forks.hrl").
@@ -272,6 +273,9 @@ peek_nonces() ->
 await_tx_pool() ->
     gproc:await({n,l,?MODULE}, 5000).
 
+note_rollback(Result) ->
+    gen_server:call(?SERVER, {note_rollback, Result}).
+
 gproc_reg() ->
     gproc:reg({n,l,?MODULE}).
 
@@ -401,6 +405,9 @@ handle_call_({push, Tx, Hash, Event}, _From, State) ->
 handle_call_({top_change, Info}, _From, State) ->
     {_, State1} = do_top_change(Info, State),
     {reply, ok, State1};
+handle_call_({note_rollback, #{ new_top_header := NewTopHdr } = Info}, _From, State) ->
+    lager:debug("note_rollback - Info = ~p, State = ~p", [Info, State]),
+    {reply, ok, do_update_sync_top_target(aec_headers:height(NewTopHdr), State)};
 handle_call_({peek, MaxNumberOfTxs, Account}, _From, #state{dbs = Dbs} = State)
   when is_integer(MaxNumberOfTxs), MaxNumberOfTxs >= 0;
        MaxNumberOfTxs =:= infinity ->
@@ -815,7 +822,7 @@ do_top_change(#{old_height := OldHeight, new_height := NewHeight}, State)
     %% that the transactions in the deleted blocks were thereby undone
     %% (they may still be in the database, but their location info is gone)
     {ok, do_update_sync_top_target(NewHeight, State)};
-do_top_change(#{type := Type, old_hash := OldHash, new_hash := NewHash}, State0) ->
+do_top_change(#{type := Type, old_hash := OldHash, new_hash := NewHash} = Info, State0) ->
     %% NG: does this work for common ancestor for micro blocks?
     {ok, Ancestor} =
         aec_db:ensure_activity(async_dirty,
