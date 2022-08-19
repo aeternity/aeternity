@@ -26,10 +26,11 @@
 %% API
 -export([peer_pubkey/0,
          peer_privkey/0,
-         pubkey/0,
+         get_pubkey/0,
          candidate_pubkey/0,
          promote_candidate/1,
-         sign_micro_block/1
+         sign_micro_block/1,
+         is_ready/0
         ]).
 
 %% Supervisor API
@@ -112,8 +113,8 @@ sign_micro_block(MicroBlock) ->
     {ok, Signature} = gen_server:call(?MODULE, {sign, Bin}),
     {ok, aec_blocks:set_signature(MicroBlock, Signature)}.
 
--spec pubkey() -> {ok, binary()} | {error, key_not_found}.
-pubkey() ->
+-spec get_pubkey() -> {ok, binary()} | {error, key_not_found}.
+get_pubkey() ->
     gen_server:call(?MODULE, pubkey).
 
 -spec candidate_pubkey() -> {ok, binary()} | {error, key_not_found}.
@@ -131,6 +132,13 @@ peer_privkey() ->
 -spec promote_candidate(pubkey()) -> ok | {error, key_not_found}.
 promote_candidate(PubKey) ->
     gen_server:call(?MODULE, {promote_candidate, PubKey}).
+
+-spec is_ready() -> boolean().
+is_ready() ->
+    case gen_server:call(?MODULE, pubkey) of
+        {ok, _} -> true;
+        {error, _} -> false
+    end.
 
 %%%===================================================================
 %%% Test API

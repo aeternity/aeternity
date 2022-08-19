@@ -26,7 +26,7 @@ pick_for_account(Pubkey, Strategy) ->
             case Strategy of
                 max ->
                     MempoolNonce = get_mempool_nonce(Pubkey),
-                    NextNonce = pick_higher_nonce(StateTreeNonce, MempoolNonce) + 1,
+                    NextNonce = max(StateTreeNonce, MempoolNonce) + 1,
                     {ok, NextNonce};
                 continuity ->
                     {ok, AllTxs} = aec_tx_pool:peek(infinity, Pubkey),
@@ -69,9 +69,3 @@ get_mempool_nonce(AccountPubkey) ->
         undefined ->
             -1
     end.
-
--spec pick_higher_nonce(non_neg_integer(), integer()) -> non_neg_integer().
-pick_higher_nonce(Nonce1, Nonce2) when Nonce1 >= Nonce2 ->
-    Nonce1;
-pick_higher_nonce(_Nonce1, Nonce2) ->
-    Nonce2.

@@ -1,12 +1,13 @@
 -module(aehttp_api_router).
 
--export([get_paths/2]).
+-export([get_paths/2, get_paths/3]).
 
 -type init_args()  :: {
     SpecVsn :: aehttp_spec:version(),
     Operations :: atom(),
     Method :: binary(),
-    LogicHandler :: atom()
+    LogicHandler :: atom(),
+    Context :: any()
 
 }.
 
@@ -14,23 +15,26 @@
 
 -spec get_paths(Target :: atom(), LogicHandler :: atom()) -> [{
     Path :: binary(),
-    Handler :: aehttp_api_handler,
+    Handler :: atom(),
     InitArgs :: init_args()
 }].
 
 get_paths(Target, LogicHandler) ->
+    get_paths(Target, LogicHandler, #{}).
+
+get_paths(Target, LogicHandler, Context) ->
     {ok, EnabledGroups} = application:get_env(aehttp, enabled_endpoint_groups),
     PathsFun =
         fun(SpecVsn) ->
-                Endpoints =
-                    case SpecVsn of
-                        ?OAS3 -> oas_endpoints;
-                        ?SWAGGER2 -> endpoints;
-                        ?ROSETTA -> rosetta_endpoints
-                    end,
-                [{path(Path), aehttp_api_handler,
-                  {SpecVsn, OperationId, method(Method), LogicHandler}}
-                 || {OperationId, #{path := Path, tags := Tags, method := Method}} <- maps:to_list(Endpoints:operations()),
+            Endpoints =
+                case SpecVsn of
+                    ?OAS3 -> oas_endpoints;
+                    ?SWAGGER2 -> endpoints;
+                    ?ROSETTA -> rosetta_endpoints
+                end,
+            [{path(Path), aehttp_api_handler,
+                {SpecVsn, OperationId, method(Method), LogicHandler, Context}}
+                || {OperationId, #{path := Path, tags := Tags, method := Method}} <- maps:to_list(Endpoints:operations()),
                     is_enabled(Target, Tags, EnabledGroups)
                 ]
         end,

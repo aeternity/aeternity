@@ -10,7 +10,8 @@
          lima_extra_accounts/0,
          lima_contracts/0,
          block_whitelist/0,
-         pre_iris_map_ordering/0
+         pre_iris_map_ordering/0,
+         hc_seed_contracts/2
         ]).
 
 -export([ accounts_file_name/1
@@ -23,6 +24,7 @@
 -define(MINERVA_DIR, ".minerva").
 -define(FORTUNA_DIR, ".fortuna").
 -define(LIMA_DIR,    ".lima").
+-define(CERES_DIR,   ".ceres").
 
 -spec dir(aec_hard_forks:protocol_vsn()) -> string().
 dir(ProtocolVsn) ->
@@ -31,13 +33,18 @@ dir(ProtocolVsn) ->
             ?ROMA_PROTOCOL_VSN    -> ?GENESIS_DIR;
             ?MINERVA_PROTOCOL_VSN -> ?MINERVA_DIR;
             ?FORTUNA_PROTOCOL_VSN -> ?FORTUNA_DIR;
-            ?LIMA_PROTOCOL_VSN    -> ?LIMA_DIR
+            ?LIMA_PROTOCOL_VSN    -> ?LIMA_DIR;
+            ?CERES_PROTOCOL_VSN   -> ?CERES_DIR
         end,
     filename:join(aeu_env:data_dir(aecore), Dir).
 
 -spec genesis_accounts() -> list().
-genesis_accounts() -> preset_accounts(accounts, ?ROMA_PROTOCOL_VSN,
-                                      genesis_accounts_file_missing).
+genesis_accounts() ->
+    ConsensusModule = aec_consensus:get_genesis_consensus_module(),
+    Header = ConsensusModule:genesis_raw_header(),
+    Protocol = aec_headers:version(Header),
+    preset_accounts(accounts, Protocol,
+                     genesis_accounts_file_missing).
 
 -spec minerva_accounts() -> list().
 minerva_accounts() -> preset_accounts(accounts, ?MINERVA_PROTOCOL_VSN,
@@ -252,9 +259,20 @@ extra_accounts_file_name(Release) ->
 contracts_file_name(Release) ->
     filename:join([dir(Release), contracts_json_file()]).
 
+seed_contracts_file_name(Release, NetworkId) ->
+    filename:join([dir(Release), <<NetworkId/binary, "_contracts.json">>]).
+
 -ifdef(TEST).
 accounts_json_file() ->
-    "accounts_test.json".
+    ConsensusModule = aec_consensus:get_consensus_module_at_height(0),
+    case ConsensusModule:get_type() of
+        pos ->
+            NetworkId = aec_governance:get_network_id(),
+            NetworkIdStr = binary_to_list(NetworkId),
+            NetworkIdStr ++ "_accounts.json";
+        pow ->
+            "accounts_test.json"
+    end.
 
 extra_accounts_json_file() ->
     "extra_accounts_test.json".
@@ -270,10 +288,18 @@ pre_iris_map_ordering_file() ->
 
 -else.
 accounts_json_file() ->
-    case aec_governance:get_network_id() of
-        <<"ae_mainnet">> -> "accounts.json";
-        <<"ae_uat">>     -> "accounts_uat.json";
-        _                -> "accounts_test.json"
+    ConsensusModule = aec_consensus:get_consensus_module_at_height(0),
+    NetworkId = aec_governance:get_network_id(),
+    case ConsensusModule:get_type() of
+        pos ->
+            NetworkIdStr = binary_to_list(NetworkId),
+            NetworkIdStr ++ "_accounts.json";
+        pow ->
+            case NetworkId of
+                <<"ae_mainnet">>                  -> "accounts.json";
+                <<"ae_uat">>                      -> "accounts_uat.json";
+                _                                 -> "accounts_test.json"
+            end
     end.
 
 extra_accounts_json_file() ->
@@ -304,3 +330,11 @@ pre_iris_map_ordering_file() ->
         _                -> ".pre_iris_map_ordering_test.json"
     end.
 -endif.
+
+hc_seed_contracts(Protocol, NetworkId) ->
+    ContractsFile = seed_contracts_file_name(Protocol, NetworkId),
+    case file:read_file(ContractsFile) of
+        {ok, Data} ->
+            {ok, jsx:decode(Data, [return_maps])};
+        {error, Err} -> {error, {Err, ContractsFile}}
+    end.

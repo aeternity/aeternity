@@ -18,12 +18,13 @@
     allowed_method :: binary(),
     logic_handler :: atom(),
     validator :: jesse_state:state(),
-    endpoints :: module()
+    endpoints :: module(),
+    context :: undefined | map()
 }).
 
 -define(DEFAULT_HTTP_CACHE_ENABLED, false).
 
-init(Req, {SpecVsn, OperationId, AllowedMethod, LogicHandler}) ->
+init(Req, {SpecVsn, OperationId, AllowedMethod, LogicHandler, Context}) ->
     Mod = case LogicHandler of
               aehttp_dispatch_rosetta ->
                   rosetta_endpoints;
@@ -34,12 +35,13 @@ init(Req, {SpecVsn, OperationId, AllowedMethod, LogicHandler}) ->
                   end
           end,
     State = #state{
-               operation_id = OperationId,
-               allowed_method = AllowedMethod,
-               logic_handler = LogicHandler,
-               validator = aehttp_api_validate:validator(SpecVsn),
-               endpoints = Mod
-              },
+        operation_id = OperationId,
+        allowed_method = AllowedMethod,
+        logic_handler = LogicHandler,
+        validator = aehttp_api_validate:validator(SpecVsn),
+        endpoints = Mod,
+        context = Context
+    },
     {cowboy_rest, Req, State}.
 
 
@@ -79,12 +81,12 @@ handle_request_json(Req0, State = #state{
         operation_id = OperationId,
         logic_handler = LogicHandler,
         validator = Validator,
-        endpoints = Mod
+        endpoints = Mod,
+        context = Context
     }) ->
     Method = cowboy_req:method(Req0),
     try aehttp_api_validate:request(OperationId, Method, Req0, Validator, Mod) of
         {ok, Params, Req1} ->
-            Context = #{},
             {Code, Headers, Body0} = LogicHandler:handle_request(OperationId, Params, Context),
             Body =
                 case maps:get('int-as-string', Params, false) of

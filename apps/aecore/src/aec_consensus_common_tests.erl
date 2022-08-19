@@ -40,7 +40,7 @@
         , state_pre_transform_key_node/2
         , state_pre_transform_micro_node/2
         %% Block rewards
-        , state_grant_reward/3
+        , state_grant_reward/4
         %% PoGF
         , pogf_detected/2
         %% Genesis block
@@ -58,7 +58,15 @@
         %% Block target and difficulty
         , default_target/0
         , assert_key_target_range/1
-        , key_header_difficulty/1 ]).
+        , key_header_difficulty/1
+        %% rewards and signing
+        , beneficiary/0
+        , next_beneficiary/0
+        , get_sign_module/0
+        , get_type/0
+        , get_block_producer_configs/0
+        , is_leader_valid/3
+        ]).
 
 -include_lib("aecontract/include/hard_forks.hrl").
 -include("blocks.hrl").
@@ -160,7 +168,8 @@ state_pre_transform_micro_node(_Node, Trees) -> Trees.
 
 %% -------------------------------------------------------------------
 %% Block rewards
-state_grant_reward(Beneficiary, Trees, Amount) -> aec_consensus_bitcoin_ng:state_grant_reward(Beneficiary, Trees, Amount).
+state_grant_reward(Beneficiary, Node, Trees, Amount) ->
+    aec_consensus_bitcoin_ng:state_grant_reward(Beneficiary, Node, Trees, Amount).
 
 %% -------------------------------------------------------------------
 %% PoGF
@@ -195,7 +204,7 @@ generate_key_header_seal(_, _, ?TAG, _, _) ->
     { continue_mining, {ok, ?TAG} }.
 
 set_key_block_seal(Block, ?TAG) ->
-    aec_blocks:set_nonce_and_pow(Block, ?TAG, ?TAG).
+    aec_blocks:set_nonce_and_key_seal(Block, ?TAG, [?TAG]).
 
 nonce_for_sealing(_Header) ->
     ?TAG.
@@ -214,4 +223,18 @@ assert_key_target_range(?TAG) ->
 
 key_header_difficulty(_) ->
     ?TAG.
+
+beneficiary() -> aec_consensus_bitcoin_ng:beneficiary().
+
+next_beneficiary() -> aec_consensus_bitcoin_ng:next_beneficiary().
+
+get_sign_module() -> aec_consensus_bitcoin_ng:get_sign_module().
+
+get_type() -> aec_consensus_bitcoin_ng:get_type().
+
+get_block_producer_configs() -> aec_consensus_bitcoin_ng:get_block_producer_configs().
+
+is_leader_valid(_Node, _Trees, _TxEnv) ->
+    true.
+
 -endif.

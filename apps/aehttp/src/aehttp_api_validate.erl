@@ -13,20 +13,9 @@
 -spec json_spec(aehttp_spec:version()) -> jsx:json_text().
 json_spec(SpecVsn) ->
     EtsKey = {spec, SpecVsn},
-    try
-        [{EtsKey, CachedJson}] = ets:lookup(?ETS_TABLE, EtsKey),
-        CachedJson
-    catch
-        _:_ ->
-            case ets:whereis(?ETS_TABLE) of
-                undefined ->
-                    ets:new(?ETS_TABLE, [named_table, {read_concurrency, true}, public]);
-                _ -> pass
-            end,
-            Json = aehttp_spec:json(SpecVsn),
-            ets:insert(?ETS_TABLE, {EtsKey, Json}),
-            Json
-    end.
+    GetFun =
+        fun() -> aehttp_spec:json(SpecVsn) end,
+    aeu_ets_cache:get(?ETS_TABLE, EtsKey,  GetFun).
 
 -spec validator(aehttp_spec:version()) -> jesse_state:state().
 validator(SpecVsn) ->
