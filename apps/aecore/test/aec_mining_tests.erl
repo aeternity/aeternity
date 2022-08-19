@@ -63,7 +63,7 @@ mine_block_test_() ->
                  [Config] = aec_mining:get_miner_configs(),
                  {ok, {Nonce1, Evd}} = ?TEST_MODULE:generate(HeaderBin, Target, Nonce, Config, undefined),
 
-                 Block = aec_blocks:set_nonce_and_pow(BlockCandidate, Nonce1, Evd),
+                 Block = aec_blocks:set_nonce_and_key_seal(BlockCandidate, Nonce1, Evd),
 
                  ?assertEqual(1, aec_blocks:height(Block)),
                  ?assertEqual(ok, aec_headers:validate_key_block_header(
@@ -116,7 +116,7 @@ setup() ->
     aec_test_utils:create_state_tree_with_account(aec_accounts:new(?TEST_PUB, 0)),
     meck:expect(aec_trees, hash, 1, <<123:32/unit:8>>),
     meck:expect(aec_trees, apply_txs_on_state_trees, 3, {ok, [], [], Trees}),
-    meck:expect(aec_keys, pubkey, 0, {ok, ?TEST_PUB}),
+    meck:expect(aec_keys, get_pubkey, 0, {ok, ?TEST_PUB}),
     {InitialApps, [aec_blocks, aec_headers, aetx_sign, aec_governance, aec_keys, aec_trees, aeu_time]}.
 
 

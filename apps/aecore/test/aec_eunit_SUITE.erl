@@ -30,6 +30,7 @@
         , ecrecover
         , ecrecoverprebuilt
         , emcl
+        , ecli
         ]).
 -define(TO_BE_STOPPED_APPS_BLACKLIST, []).
 -define(REGISTERED_PROCS_WHITELIST,

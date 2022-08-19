@@ -329,7 +329,7 @@ assert_fields(I) ->
 
 assert_field(caller,           <<_:?PUB_SIZE/binary>> = X) -> X;
 assert_field(caller_nonce,     X) when is_integer(X), X >= 0 -> X;
-assert_field(height,           X) when is_integer(X), X > 0 -> X;
+assert_field(height,           X) when is_integer(X), X >= 0 -> X;
 assert_field(contract,         <<_:?PUB_SIZE/binary>> = X) -> X;
 assert_field(return_value,     X) when is_binary(X) -> X;
 assert_field(gas_price,        X) when is_integer(X), X >= 0 -> X;
