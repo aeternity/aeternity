@@ -1,14 +1,24 @@
+include "List.aes"
 main contract StakingValidator =
+  record pending_transfer =
+    { staker : address, stake : int }
+
   record state =
     { main_staking_ct : address,
+      unstake_delay : int,
+      pending_unstake_amount : int,
+      pending_unstake : map(int, list(pending_transfer)),
       name : string,
       description : string,
       avatar_url : string,
       delegates : map(address, int),
       shares : int }
 
-  entrypoint init(main_staking_ct : address) =
+  entrypoint init(main_staking_ct : address, unstake_delay : int) =
     { main_staking_ct = main_staking_ct,
+      unstake_delay = unstake_delay,
+      pending_unstake_amount = 0,
+      pending_unstake = {},
       name = "",
       description = "",
       avatar_url = "",
@@ -26,12 +36,36 @@ main contract StakingValidator =
     assert_caller()
     ()
 
+  stateful entrypoint distribute_unstake() =
+    assert_caller()
+    let height = Chain.block_height
+    switch(Map.member(height, state.pending_unstake))
+      false => ()
+      true =>
+        let payouts = state.pending_unstake[height]
+        List.foreach(payouts, distribute_payout)
+        let new_pus = Map.delete(height, state.pending_unstake)
+        put(state{pending_unstake = new_pus})
+
+  stateful function distribute_payout(payout) =
+    Chain.spend(payout.staker, payout.stake)
+    put(state{pending_unstake_amount @ pua = pua - payout.stake})
+
   stateful entrypoint unstake(staker : address, withdraw_shares : int) : int =
     assert_caller()
     let staker_shares = state.delegates[staker = 0]
     require(staker_shares >= withdraw_shares, "Not enough shares")
     let payout_amt = shares_to_ae(withdraw_shares)
-    Chain.spend(staker, payout_amt)
+    switch(state.unstake_delay)
+      0 => Chain.spend(staker, payout_amt)
+      _ =>
+        let height  = Chain.block_height + state.unstake_delay
+        let pending_transfer = { staker = staker, stake = payout_amt}
+        let pu = switch(Map.member(height, state.pending_unstake))
+            false => []
+            true => state.pending_unstake[height]
+        put(state{pending_unstake[height] = pending_transfer::pu,
+                  pending_unstake_amount @ pua = pua + payout_amt })
     let remaining_shares = staker_shares - withdraw_shares
     switch(remaining_shares == 0)
       true =>
@@ -77,10 +111,13 @@ main contract StakingValidator =
     if (state.shares == 0)
       stake_size
     else
-      (stake_size * state.shares) / (Contract.balance - stake_size)
+      (stake_size * state.shares) / (contract_balance() - stake_size)
 
   function assert_caller() =
     require(Call.caller == state.main_staking_ct, "Only allowed through MainStaking")
 
   function shares_to_ae(shares : int) =
-    (shares * Contract.balance) / state.shares
+    (shares * contract_balance()) / state.shares
+
+  function contract_balance() : int =
+    Contract.balance - state.pending_unstake_amount
