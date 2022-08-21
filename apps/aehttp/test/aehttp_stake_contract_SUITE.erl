@@ -100,17 +100,19 @@ init_per_suite(Config0) ->
 
             #{ <<"pubkey">> := StakingValidatorContract} = C0
                 = contract_create_spec("StakingValidator",
-                                       [EncodePub(Pubkey)], 0, 1, Pubkey),
+                                       [EncodePub(Pubkey), "101"], 0, 1, Pubkey),
             MinValidatorAmt = integer_to_list(trunc(math:pow(10,18) * math:pow(10, 6))), %% 1 mln AE
             MinStakeAmt = integer_to_list(trunc(math:pow(10,18) * 1)), %% 1 AE
             MinStakePercent = "30",
             OnlineDelay = "0",
             StakeDelay = "0",
+            UnstakeDelay = "102",
             #{ <<"pubkey">> := ConsensusContractPubkey
              , <<"owner_pubkey">> := ContractOwner } = C
                 = contract_create_spec(?STAKING_CONTRACT,
                                        [binary_to_list(StakingValidatorContract), "\"domat\"",
-                                        MinValidatorAmt, MinStakePercent, MinStakeAmt, OnlineDelay, StakeDelay],
+                                        MinValidatorAmt, MinStakePercent, MinStakeAmt, OnlineDelay,
+                                        StakeDelay, UnstakeDelay],
                                        0, 2, Pubkey),
             {ok, CCId} = aeser_api_encoder:safe_decode(contract_pubkey,
                                                        ConsensusContractPubkey),
