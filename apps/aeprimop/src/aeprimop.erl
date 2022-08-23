@@ -226,8 +226,8 @@ spend_tx_instructions(SenderPubkey, RecipientID, Amount, Fee, Nonce) ->
     , resolve_account_op(Type, RecipientHash, Recipient)
     , spend_fee_op(SenderPubkey, Fee)
     , spend_op(SenderPubkey, Recipient, Amount)
-    , tx_event_op(delta, {SenderPubkey, -Fee}, <<"Chain.fee">>)
-    , tx_event_op(spend, {SenderPubkey, RecipientID, Amount}, <<"Chain.spend">>)
+    , tx_event_op(delta, {SenderPubkey, -Fee}, <<"Spend.fee">>)
+    , tx_event_op(spend, {SenderPubkey, Recipient, Amount}, <<"Spend.amount">>)
     ].
 
 -spec oracle_register_tx_instructions(
@@ -352,6 +352,7 @@ ga_set_meta_tx_res_instructions(OwnerPubkey, AuthData, Result) ->
 paying_for_tx_instructions(Payer, Nonce, Fee) ->
     [ inc_account_nonce_op(Payer, Nonce)
     , spend_fee_op(Payer, Fee)
+    , tx_event_op(delta, {Payer, -Fee}, <<"PayingFor.fee">>)
     ].
 
 -spec contract_create_tx_instructions(pubkey(), amount(), amount(),
@@ -449,7 +450,6 @@ channel_withdraw_tx_instructions(ToPubkey, ChannelPubkey, Amount, StateHash,
     [ inc_account_nonce_op(ToPubkey, Nonce)
     , spend_fee_op(ToPubkey, Fee)
     , channel_withdraw_op(ToPubkey, ChannelPubkey, Amount, StateHash, Round)
-    , tx_event_op(delta, {ToPubkey, Amount}, <<"Channel.amount">>)
     , tx_event_op(delta, {ToPubkey, -Fee}, <<"Channel.fee">>)
     , tx_event_op(channel, ChannelPubkey)
     ].
@@ -461,6 +461,7 @@ channel_settle_tx_instructions(FromPubkey, ChannelPubkey,
     [ inc_account_nonce_op(FromPubkey, Nonce)
     , spend_fee_op(FromPubkey, Fee)
     , channel_settle_op(FromPubkey, ChannelPubkey, InitiatorAmount, ResponderAmount)
+    , tx_event_op(delta, {FromPubkey, -Fee}, <<"Channel.fee">>)
     , tx_event_op(channel, ChannelPubkey)
     ].
 
@@ -642,7 +643,7 @@ lock_namefee(Kind, From, Amount, #state{protocol = Protocol} = S) ->
     {Account, S1} = get_account(From, S),
     assert_account_balance(Account, Amount),
     S2 = account_spend(Account, Amount, S1),
-    S3 = tx_event({delta, {From, -Amount}, <<"Name.amount">>}, S2),
+    S3 = tx_event({delta, {From, -Amount}, <<"Name.lock">>}, S2),
     case Protocol >= ?LIMA_PROTOCOL_VSN of
         true when Amount > 0, Kind == spend ->
             S3;
@@ -885,7 +886,7 @@ oracle_earn_query_fee({OraclePubkey, QueryId}, S) ->
     {Account, S1} = get_account(OraclePubkey, S),
     {Query, S2} = get_oracle_query(OraclePubkey, QueryId, S1),
     {ok, Account1} = aec_accounts:earn(Account, aeo_query:fee(Query)),
-    S3 = tx_event({delta, {OraclePubkey, aeo_query:fee(Query)}, <<"Name.queryfee">>}, S2),
+    S3 = tx_event({delta, {OraclePubkey, aeo_query:fee(Query)}, <<"Oracle.queryfee">>}, S2),
     put_account(Account1, S3).
 
 %%%-------------------------------------------------------------------
@@ -1224,7 +1225,8 @@ channel_withdraw({ToPubkey, ChannelPubkey, Amount, StateHash, Round}, S) ->
     Channel1 = aesc_channels:withdraw(Channel, Amount, Round, StateHash),
     {Account, S2} = get_account(ToPubkey, S1),
     S3 = account_earn(Account, Amount, S2),
-    put_channel(Channel1, S3).
+    S4 = tx_event({delta, {ToPubkey, Amount}, <<"Channel.withdraw">>}, S3),
+    put_channel(Channel1, S4).
 
 %%%-------------------------------------------------------------------
 
@@ -1257,7 +1259,7 @@ channel_close_mutual({FromPubkey, ChannelPubkey,
             PayerPubKey when is_binary(PayerPubKey), Fee > 0 ->
                 {PayerAccount, Sx} = get_account(PayerPubKey, S1),
                 assert_account_balance(PayerAccount, Fee),
-                Sxx = tx_event({delta, {PayerPubKey, -Fee}, <<"Chain.fee">>}, Sx),
+                Sxx = tx_event({delta, {PayerPubKey, -Fee}, <<"Channel.fee">>}, Sx),
                 {InitiatorAmount + ResponderAmount,
                  account_spend(PayerAccount, Fee, Sxx)};
             _ ->
@@ -1272,9 +1274,9 @@ channel_close_mutual({FromPubkey, ChannelPubkey,
     {IAccount, S3} = get_account(IPubKey, S2),
     {RAccount, S4} = get_account(RPubKey, S3),
     S5 = account_earn(IAccount, InitiatorAmount, S4),
-    S6 = tx_event({delta, {IPubKey, InitiatorAmount}, <<"Chain.amount">>}, S5),
+    S6 = tx_event({delta, {IPubKey, InitiatorAmount}, <<"Channel.amount">>}, S5),
     S7 = account_earn(RAccount, ResponderAmount, S6),
-    S8 = tx_event({delta, {RPubKey, ResponderAmount}, <<"Chain.amount">>}, S7),
+    S8 = tx_event({delta, {RPubKey, ResponderAmount}, <<"Channel.amount">>}, S7),
     S9 = int_lock_amount(LockAmount, S8),
     delete_x(channel, ChannelPubkey, S9).
 
@@ -1310,8 +1312,10 @@ channel_settle({FromPubkey, ChannelPubkey,
     {InitiatorAccount, S3} = get_account(InitiatorPubkey, S2),
     S4 = account_earn(ResponderAccount, ResponderAmount, S3),
     S5 = account_earn(InitiatorAccount, InitiatorAmount, S4),
-    S6 = int_lock_amount(LockAmount, S5),
-    delete_x(channel, ChannelPubkey, S6).
+    S6 = tx_event({delta, {ResponderPubkey, ResponderAmount}, <<"Channel.settle">>}, S5),
+    S7 = tx_event({delta, {InitiatorPubkey, InitiatorAmount}, <<"Channel.settle">>}, S6),
+    S8 = int_lock_amount(LockAmount, S7),
+    delete_x(channel, ChannelPubkey, S8).
 
 %%%-------------------------------------------------------------------
 
@@ -1370,10 +1374,10 @@ contract_call({CallerPubkey, ContractPubkey, CallData, GasLimit, GasPrice,
              Other when Other == aetx_transaction; Other == aetx_ga ->
                  account_spend(CallerAccount, CallerAmount, S1)
          end,
-    S3 = tx_event({delta, {CallerPubkey, -CallerAmount}, <<"Chain.amount">>}, S2),
+    S3 = tx_event({delta, {CallerPubkey, -CallerAmount}, <<"Contract.amount">>}, S2),
     {ContractAccount, S4} = get_account(ContractPubkey, S3),
     S5 = account_earn(ContractAccount, Amount, S4),
-    S6 = tx_event({delta, {ContractPubkey, Amount}, <<"Chain.amount">>}, S5),
+    S6 = tx_event({delta, {ContractPubkey, Amount}, <<"Contract.amount">>}, S5),
     %% Avoid writing the store back by skipping this state.
     Contract = get_contract_no_cache(ContractPubkey, S6),
     ContractCall = fun() ->
@@ -1617,7 +1621,7 @@ contract_create({OwnerPubkey, Amount, Deposit, GasLimit, GasPrice,
     Code           = assert_contract_byte_code(ABIVersion, SerializedCode, CallData, S),
     CTVersion      = #{vm => VMVersion, abi => ABIVersion},
     S2             = account_spend(Account, OwnerAmount, S1),
-    S3             = tx_event({delta, {OwnerPubkey, -OwnerAmount}, <<"Chain.amount">>}, S2),
+    S3             = tx_event({delta, {OwnerPubkey, -OwnerAmount}, <<"Contract.amount">>}, S2),
     Nonce          = case aetx_env:ga_nonce(S#state.tx_env, OwnerPubkey) of
                          {value, NonceX} -> NonceX;
                          none            -> Nonce0
@@ -1628,7 +1632,7 @@ contract_create({OwnerPubkey, Amount, Deposit, GasLimit, GasPrice,
     Payable        = is_payable_contract(Code),
     {CAccount, S4} = ensure_account(ContractPubkey, [non_payable || not Payable], S3),
     S5             = account_earn(CAccount, Amount, S4),
-    S6             = tx_event({delta, {ContractPubkey, Amount}, <<"Chain.amount">>}, S5),
+    S6             = tx_event({delta, {ContractPubkey, Amount}, <<"Contract.amount">>}, S5),
     OwnerId        = aect_contracts:owner_id(Contract),
     init_contract(contract, OwnerId, Code, Contract, GasLimit, GasPrice,
                   CallData, OwnerPubkey, Fee, Nonce0, RollbackS, S6,
@@ -1643,10 +1647,16 @@ tx_event_op(Kind, Name) ->
 tx_event_op(Kind, Name, Info) ->
     {tx_event, {Kind, Name, Info}}.
 
+%% tx_event({delta, {ContractPubkey, Amount}, <<"Contract.amount">>}, S5),
 -spec tx_event({channel, pubkey()}, state()) -> state().
 tx_event({Kind, Name}, #state{tx_env = Env} = S) ->
     S#state{tx_env = aetx_env:tx_event(Kind, Name, Env)};
+tx_event({Kind, {From, {var, Tag}, Amount}, Info}, #state{tx_env = Env} = S) ->
+    lager:debug("tx_event variable = ~p", [{Kind, {{var, Tag}, Amount}, Info}]),
+    Account = aeprimop_state:get_var({var, Tag}, account, S),
+    S#state{tx_env = aetx_env:tx_event(Kind, {From, Account, Amount}, Info, Env)};
 tx_event({Kind, Name, Info}, #state{tx_env = Env} = S) ->
+    lager:debug("tx_event account = ~p", [{Kind, Name, Info}]),
     S#state{tx_env = aetx_env:tx_event(Kind, Name, Info, Env)}.
 
 %%%-------------------------------------------------------------------
@@ -1812,7 +1822,7 @@ contract_call_fail(Call0, Fee, S) ->
          end,
     Payer = establish_payer(aect_call:caller_pubkey(Call), S),
     {Account, S3} = get_account(Payer, S2),
-    S4 = tx_event({delta, {Payer, -UsedAmount}, <<"Chain.fee">>}, S3),
+    S4 = tx_event({delta, {Payer, -UsedAmount}, <<"Contract.gas">>}, S3),
     account_spend(Account, UsedAmount, S4).
 
 -spec run_contract(id(), contract(), number(), fee(), non_neg_integer(), binary(),

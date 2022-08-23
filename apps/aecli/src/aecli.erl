@@ -114,8 +114,29 @@ operational_show_menu() ->
        desc => "Transaction pool commands",
        action => fun(J, _Item, _) -> show_tx_pool_summary(J) end,
        children => fun() -> operational_tx_pool_menu() end
+      },
+     #{role => cmd,
+       node_type => container,
+       name => "block",
+       desc => "Show block",
+       children => fun() -> operational_block_menu() end,
+       action => fun(J, Item, Value) -> show_block(J, Item, Value) end
       }
     ].
+
+operational_block_menu() ->
+    [#{role => schema,
+       node_type => leaf,
+       name => "hash",
+       desc => "Hash of block starting with mh_ or kh_",
+       type => {aecli, tx_hash}
+      },
+     #{role => schema,
+       node_type => leaf,
+       name => "height",
+       desc => "Height of block",
+       type => integer
+      }].
 
 operational_tx_pool_menu() ->
     [#{role => cmd,
@@ -353,6 +374,14 @@ show_tx_summary(J, [#{name := "hash", value := TxHash}]) ->
 show_tx_summary(J, _Item) ->
     {ok, "Command not understood", J}.
 
+show_block(J, #{name := "height", value := Height}, _Value) ->
+    case aeapi:generation_by_height(Height) of
+        {ok, Generation} ->
+            {ok, ecli:format(Generation), J};
+        {error, Reason} ->
+            {ok, Reason, J}
+    end.
+
 set_gas_price(J, [#{name := "minimum_gas_price", value := NewGasPrice}], _Value) ->
     Config = #{<<"mining">> => #{ <<"min_miner_gas_price">> => NewGasPrice}},
     aeu_env:update_config(Config, _Notify = true, _InfoReport = silent),
@@ -376,7 +405,7 @@ show_status(#aecli{} = J, _Item) ->
     {ok, TopKeyBlock} = aec_chain:top_key_block(),
     GenesisBlockHash = aec_consensus:get_genesis_hash(),
     Difficulty = aec_blocks:difficulty(TopKeyBlock),
-    {Syncing, SyncProgress} = aec_sync:sync_progress(),
+    {Syncing, SyncProgress, _} = aec_sync:sync_progress(),
     NodeVersion = aeu_info:get_version(),
     NodeRevision = aeu_info:get_revision(),
     PeerCount = aec_peers:count(peers),

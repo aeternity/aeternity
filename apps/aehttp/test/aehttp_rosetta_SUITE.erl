@@ -16,7 +16,8 @@
 -export([all/0, groups/0, suite/0, init_per_suite/1, end_per_suite/1, init_per_group/2,
          end_per_group/2, init_per_testcase/2, end_per_testcase/2]).
 -export([network_status/1, network_options/1, network_list/1]).
--export([block_key_only/1, block_spend_tx/1, block_create_contract_tx/1]).
+-export([block_genesis/1, block_key_only/1, block_spend_tx/1,
+         block_create_contract_tx/1]).
 -export([block_create_channel_tx/1]).
 %% for extarnal use
 -export([assertBalanceChanges/2]).
@@ -41,7 +42,7 @@ groups() ->
        {group, block_channels_endpoint}]},
      %% /network/*
      {network_endpoint, [], [network_list, network_options, network_status]},
-     {block_basic_endpoint, [], [block_key_only, block_spend_tx]},
+     {block_basic_endpoint, [], [block_genesis, block_key_only, block_spend_tx]},
      {block_contract_endpoint, [], [block_create_contract_tx]},
      {block_channels_endpoint, [], [block_create_channel_tx]}].
 
@@ -132,7 +133,6 @@ assertBalanceChanges(TxHash, ExpectedChanges) ->
         aehttp_integration_SUITE:get_micro_blocks_header_by_hash_sut(MBHash),
 
     aecore_suite_utils:use_rosetta(),
-
     {ok,
      200,
      #{<<"transaction">> :=
@@ -162,7 +162,7 @@ matchBalanceChanges([Op | Ops], [{ExpectedAccount, ExpectedDelta} | Es], Index) 
     %% Don't use ?assertMatch here because we need the stacktrace logged to know
     %% who called this.
     ExpectedAccount = Account,
-    true = (ExpectedDelta == variable) orelse (ExpectedDelta == Delta),
+    true = ExpectedDelta == variable orelse ExpectedDelta == Delta,
     Index = Ix,
     matchBalanceChanges(Ops, Es, Index + 1);
 matchBalanceChanges([], [], _) ->
@@ -254,6 +254,13 @@ get_status_sut() ->
     http_request(Host, post, "network/status", Body).
 
 %% /block
+block_genesis(Config) ->
+    [{_NodeId, Node} | _] = ?config(nodes, Config),
+    aecore_suite_utils:reinit_with_ct_consensus(?NODE),
+    ToMine = max(2, aecore_suite_utils:latest_fork_height()),
+    aecore_suite_utils:mine_key_blocks(Node, ToMine),
+    {ok, 200, #{<<"block">> := #{<<"block_identifier">> := #{<<"index">> := 0}}}} =
+        get_block_at_height_sut(0).
 
 %% Test we can fetch an empty keyblock
 block_key_only(Config) ->
@@ -269,10 +276,11 @@ block_key_only(Config) ->
     KeyHash = aeapi:format(key_block_hash, Hash),
     {ok,
      200,
-     #{<<"block_identifier">> := #{<<"hash">> := KeyBlockHash, <<"index">> := _Height},
-       <<"timestamp">> := CurrentBlockTimestamp,
-       <<"parent_block_identifier">> := #{<<"hash">> := ParentKeyBlockHash},
-       <<"transactions">> := Transactions}} =
+     #{<<"block">> :=
+           #{<<"block_identifier">> := #{<<"hash">> := KeyBlockHash, <<"index">> := _Height},
+             <<"timestamp">> := CurrentBlockTimestamp,
+             <<"parent_block_identifier">> := #{<<"hash">> := ParentKeyBlockHash},
+             <<"transactions">> := Transactions}}} =
         get_block_sut(KeyHash),
     ?assertMatch({ok, _}, aeapi:safe_decode(key_block_hash, KeyBlockHash)),
     ?assertMatch(KeyHash, KeyBlockHash),
@@ -318,8 +326,6 @@ block_spend_tx(Config) ->
     aecore_suite_utils:mine_blocks_until_txs_on_chain(Node, [SpendTxHash], 2),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
 
-    TTXTX = aehttp_integration_SUITE:get_transactions_by_hash_sut(SpendTxHash),
-
     aecore_suite_utils:use_rosetta(),
 
     FromPubKeyEnc = aeapi:format(account_pubkey, FromPubKey),
@@ -329,7 +335,7 @@ block_spend_tx(Config) ->
     {ok,
      200,
      #{<<"balances">> :=
-           [#{<<"currency">> := #{<<"decimals">> := 18, <<"symbol">> := <<"aettos">>},
+           [#{<<"currency">> := #{<<"decimals">> := 18, <<"symbol">> := <<"AE">>},
               <<"value">> := FromBalance}]}} =
         get_balance_sut(FromPubKeyEnc),
 
@@ -339,40 +345,37 @@ block_spend_tx(Config) ->
     %% containing the Tx. Or maybe this is a race condition??
     {ok, 200, #{<<"current_block_identifier">> := #{<<"hash">> := TopKeyBlockHash}}} =
         get_status_sut(),
-
     {ok,
      200,
-     #{<<"block_identifier">> := #{<<"hash">> := KeyBlockHash, <<"index">> := Height},
-       <<"timestamp">> := CurrentBlockTimestamp,
-       <<"parent_block_identifier">> := #{<<"hash">> := ParentKeyBlockHash},
-       <<"transactions">> := Transactions}} =
+     #{<<"block">> :=
+           #{<<"block_identifier">> := #{<<"hash">> := KeyBlockHash, <<"index">> := Height},
+             <<"timestamp">> := CurrentBlockTimestamp,
+             <<"parent_block_identifier">> := #{<<"hash">> := ParentKeyBlockHash},
+             <<"transactions">> := Transactions}}} =
         get_block_sut(TopKeyBlockHash),
 
-    ?assertMatch([_], Transactions),
-
-    % [#{<<"transaction_identifier">> :=
-    %                  #{<<"hash">> := SpendTxHash}}] = Transactions,
-
+    ?assertMatch([_, _],
+                 Transactions),
     {ok,
      200,
      #{<<"balances">> :=
-           [#{<<"currency">> := #{<<"decimals">> := 18, <<"symbol">> := <<"aettos">>},
+           [#{<<"currency">> := #{<<"decimals">> := 18, <<"symbol">> := <<"AE">>},
               <<"value">> := FromBalance}]}} =
         get_balance_at_hash_sut(FromPubKeyEnc, KeyBlockHash),
-
     {ok,
      200,
      #{<<"balances">> :=
-           [#{<<"currency">> := #{<<"decimals">> := 18, <<"symbol">> := <<"aettos">>},
+           [#{<<"currency">> := #{<<"decimals">> := 18, <<"symbol">> := <<"AE">>},
               <<"value">> := FromBalance}]}} =
         get_balance_at_height_sut(FromPubKeyEnc, Height),
 
-    %% Expect a Fee, and the two balance changes
-    [#{<<"operations">> := [FeeOp, FromOp, ToOp]}] = Transactions,
-    #{<<"operation_identifier">> := #{<<"index">> := 0}, <<"type">> := <<"Chain.fee">>} =
+    %% Expect a Reward, then Fee, and the two balance changes
+    [_, #{<<"operations">> := [FeeOp, FromOp, ToOp]}] = Transactions,
+    #{<<"operation_identifier">> := #{<<"index">> := 0}, <<"type">> := <<"Spend.fee">>} =
         FeeOp,
-    #{<<"operation_identifier">> := #{<<"index">> := 1}, <<"type">> := <<"SpendTx">>} = FromOp,
-    #{<<"operation_identifier">> := #{<<"index">> := 2}, <<"type">> := <<"SpendTx">>} =
+    #{<<"operation_identifier">> := #{<<"index">> := 1}, <<"type">> := <<"Spend.amount">>} =
+        FromOp,
+    #{<<"operation_identifier">> := #{<<"index">> := 2}, <<"type">> := <<"Spend.amount">>} =
         ToOp,
 
     %% Also check we can get the same Tx via the "fetch individual Tx" Rosetta API
@@ -392,7 +395,7 @@ block_spend_tx(Config) ->
     FromPubKeyEnc = aeapi:format(account_pubkey, FromPubKey),
     ToPubKeyEnc = aeapi:format(account_pubkey, ToPubKey),
     assertBalanceChanges(SpendTxHash,
-                         [ {FromPubKeyEnc, -?SPEND_FEE}, {FromPubKeyEnc, -1}, {ToPubKeyEnc, 1}]),
+                         [{FromPubKeyEnc, -?SPEND_FEE}, {FromPubKeyEnc, -1}, {ToPubKeyEnc, 1}]),
 
     ?assertMatch({ok, _}, aeapi:safe_decode(key_block_hash, KeyBlockHash)),
     ?assertMatch(true, is_integer(CurrentBlockTimestamp)),
@@ -482,26 +485,23 @@ block_create_contract_tx(Config) ->
     aecore_suite_utils:use_rosetta(),
     {ok, 200, #{<<"current_block_identifier">> := #{<<"hash">> := TopKeyBlockHash}}} =
         get_status_sut(),
-    {ok, 200, #{<<"transactions">> := [Transaction]}} = get_block_sut(TopKeyBlockHash),
+    {ok, 200, #{<<"block">> := #{<<"transactions">> := [_, Transaction]}}} =
+        get_block_sut(TopKeyBlockHash),
 
     %% Check the the listed balance changing operations contain the right things
     %% and deliver the right answer.
     #{<<"operations">> := [AmountOp, ToContractOp, RefundOp]} = Transaction,
-
     #{<<"amount">> := #{<<"value">> := AmountDelta},
       <<"account">> := #{<<"address">> := AmountAcc}} =
         AmountOp,
-    #{<<"amount">> := #{<<"value">> :=  RefundDelta},
-      <<"account">> := #{<<"address">> :=  RefundAcc}} =
+    #{<<"amount">> := #{<<"value">> := RefundDelta},
+      <<"account">> := #{<<"address">> := RefundAcc}} =
         RefundOp,
-
 
     ?assertEqual(OwnerAccountPubKey, AmountAcc),
     ?assertEqual(OwnerAccountPubKey, RefundAcc),
     ?assertEqual(OwnerBalanceAfterCreate,
-                 OwnerBalance
-                 + binary_to_integer(AmountDelta)
-                 + binary_to_integer(RefundDelta)),
+                 OwnerBalance + binary_to_integer(AmountDelta) + binary_to_integer(RefundDelta)),
 
     %% Convert the contract id into the matching account id
     {_, ContractPubKey} = aeapi:decode(ContractPubKeyEnc),
@@ -514,7 +514,6 @@ block_create_contract_tx(Config) ->
     {ok, 200, #{<<"balance">> := ContractBalanceAfterCreate}} =
         aehttp_integration_SUITE:get_accounts_by_pubkey_sut(ContractAccountPubKey),
     aecore_suite_utils:use_rosetta(),
-
     #{<<"amount">> := #{<<"value">> := ContractDelta},
       <<"account">> := #{<<"address">> := ContractAcc}} =
         ToContractOp,
@@ -562,14 +561,16 @@ block_create_contract_tx(Config) ->
     %% containing the Tx. Or maybe this is a race condition??
     {ok, 200, #{<<"current_block_identifier">> := #{<<"hash">> := TopKeyBlockHash1}}} =
         get_status_sut(),
-    {ok, 200, #{<<"transactions">> := [CallTransaction]}} = get_block_sut(TopKeyBlockHash1),
+    {ok, 200, #{<<"block">> := #{<<"transactions">> := [_, CallTransaction]}}} =
+        get_block_sut(TopKeyBlockHash1),
 
     %% Expect
     %% CallerAccount -= Fees
     %% ContractAccount -= 15000
     %% ToAccount += 15000
-    #{<<"operations">> := [CallerFeeOp, ContractAmountOp, FromContractOp, ToOp, CallRefundOp]} = CallTransaction,
-
+    #{<<"operations">> :=
+          [CallerFeeOp, ContractAmountOp, FromContractOp, ToOp, CallRefundOp]} =
+        CallTransaction,
     #{<<"amount">> := #{<<"value">> := ContractCallDelta},
       <<"account">> := #{<<"address">> := ContractAcc}} =
         FromContractOp,
@@ -581,11 +582,10 @@ block_create_contract_tx(Config) ->
         ToOp,
     ?assertEqual(ToAccountPubKey, ToAcc),
     ?assertEqual(ToBalanceAfterCall, ToBalance + binary_to_integer(ToDelta)),
-
     #{<<"amount">> := #{<<"value">> := CallerFeeDelta},
       <<"account">> := #{<<"address">> := CallerFeeAcc}} =
         CallerFeeOp,
-    #{<<"amount">> := #{<<"value">> := ContractAmountOpDelta},
+    #{<<"amount">> := #{<<"value">> := _ContractAmountOpDelta},
       <<"account">> := #{<<"address">> := ContractAmountOpAcc}} =
         ContractAmountOp,
     #{<<"amount">> := #{<<"value">> := CallRefundOpDelta},
@@ -595,9 +595,9 @@ block_create_contract_tx(Config) ->
     ?assertEqual(ContractAccountPubKey, ContractAmountOpAcc),
     ?assertEqual(OwnerAccountPubKey, CallRefundOpAcc),
     ?assertEqual(OwnerBalanceAfterCall,
-                 OwnerBalanceAfterCreate + binary_to_integer(CallerFeeDelta) + binary_to_integer(CallRefundOpDelta)),
-
-
+                 OwnerBalanceAfterCreate
+                 + binary_to_integer(CallerFeeDelta)
+                 + binary_to_integer(CallRefundOpDelta)),
 
     %% ------------------ Errored Contract Call ---------------------------
     SwaggerVsn = proplists:get_value(swagger_version, Config, oas3),
@@ -634,13 +634,12 @@ block_create_contract_tx(Config) ->
 
     {ok, 200, #{<<"current_block_identifier">> := #{<<"hash">> := TopKeyBlockHash2}}} =
         get_status_sut(),
-    {ok, 200, #{<<"transactions">> := [ErrCallTransaction]}} =
+    {ok, 200, #{<<"block">> := #{<<"transactions">> := [_, ErrCallTransaction]}}} =
         get_block_sut(TopKeyBlockHash2),
 
     %% Expect
     %% CallerAccount -= Fees
     #{<<"operations">> := [ErrCallerOp]} = ErrCallTransaction,
-
     #{<<"amount">> := #{<<"value">> := ErrCallerDelta},
       <<"account">> := #{<<"address">> := CallerAcc}} =
         ErrCallerOp,
@@ -710,7 +709,6 @@ block_create_channel_tx(Config) ->
     % ChannelPubKeyEnc = aeapi:format_id(ChannelId),
     % {_, ChannelPubKey} = aeapi:decode(ChannelPubKeyEnc),
     % ChannelAccountPubKey = aeapi:format(account_pubkey, ChannelPubKey),
-
     SignedChannelCreateTx =
         aec_test_utils:sign_tx(ChannelCreateTx, [InitiatorPrivKey, ResponderPrivKey]),
     EncTx = aeapi:format(transaction, aetx_sign:serialize_to_binary(SignedChannelCreateTx)),
@@ -726,14 +724,14 @@ block_create_channel_tx(Config) ->
         aehttp_integration_SUITE:get_accounts_by_pubkey_sut(ResponderAccountPubKey),
     % {ok, 200, #{<<"balance">> := ChannelBalanceAfterCreate}} =
     %     aehttp_integration_SUITE:get_accounts_by_pubkey_sut(ChannelAccountPubKey),
-
     %% Switch back to the Rosetta API root path
     aecore_suite_utils:use_rosetta(),
 
     {ok, 200, #{<<"current_block_identifier">> := #{<<"hash">> := TopKeyBlockHash}}} =
         get_status_sut(),
 
-    {ok, 200, #{<<"transactions">> := [CreateTransaction]}} = get_block_sut(TopKeyBlockHash),
+    {ok, 200, #{<<"block">> := #{<<"transactions">> := [_, CreateTransaction]}}} =
+        get_block_sut(TopKeyBlockHash),
 
     %% Expect
     %% Initiator -= Fees
@@ -741,12 +739,10 @@ block_create_channel_tx(Config) ->
     %% Responder -= responder_amount
     %% Channel += initiator_amount + responder_amount
     #{<<"operations">> := [FeesOp, InitiatorOp, ResponderOp]} = CreateTransaction,
-
     #{<<"amount">> := #{<<"value">> := FeesDelta},
       <<"account">> := #{<<"address">> := FeesAcc}} =
         FeesOp,
     ?assertEqual(InitiatorAccountPubKey, FeesAcc),
-
     #{<<"amount">> := #{<<"value">> := InitiatorDelta},
       <<"account">> := #{<<"address">> := InitiatorAcc}} =
         InitiatorOp,
@@ -755,7 +751,6 @@ block_create_channel_tx(Config) ->
                  InitiatorBalance
                  + binary_to_integer(FeesDelta)
                  + binary_to_integer(InitiatorDelta)),
-
     #{<<"amount">> := #{<<"value">> := ResponderDelta},
       <<"account">> := #{<<"address">> := ResponderAcc}} =
         ResponderOp,
@@ -770,7 +765,6 @@ block_create_channel_tx(Config) ->
     % ?assertEqual(ChannelAccountPubKey, ChannelAcc),
     % ?assertEqual(ChannelBalanceAfterCreate,
     %               binary_to_integer(ChannelDelta)),
-
     %% ------------------ Channel deposit ---------------------------
     SwaggerVsn = proplists:get_value(swagger_version, Config, oas3),
     aecore_suite_utils:use_swagger(SwaggerVsn),
@@ -799,19 +793,17 @@ block_create_channel_tx(Config) ->
     aecore_suite_utils:use_rosetta(),
     {ok, 200, #{<<"current_block_identifier">> := #{<<"hash">> := TopKeyBlockHash1}}} =
         get_status_sut(),
-    {ok, 200, #{<<"transactions">> := [DepositTransaction]}} =
+    {ok, 200, #{<<"block">> := #{<<"transactions">> := [_, DepositTransaction]}}} =
         get_block_sut(TopKeyBlockHash1),
 
     %% Expect
     %% Initiator -= Fees
     %% Initiator -= initiator_amount
     #{<<"operations">> := [DepositFeesOp, DepositInitiatorOp]} = DepositTransaction,
-
     #{<<"amount">> := #{<<"value">> := DepositFeesDelta},
       <<"account">> := #{<<"address">> := DepositFeesAcc}} =
         DepositFeesOp,
     ?assertEqual(InitiatorAccountPubKey, DepositFeesAcc),
-
     #{<<"amount">> := #{<<"value">> := DepositInitiatorDelta},
       <<"account">> := #{<<"address">> := DepositInitiatorAcc}} =
         DepositInitiatorOp,
@@ -854,19 +846,17 @@ block_create_channel_tx(Config) ->
     aecore_suite_utils:use_rosetta(),
     {ok, 200, #{<<"current_block_identifier">> := #{<<"hash">> := TopKeyBlockHash2}}} =
         get_status_sut(),
-    {ok, 200, #{<<"transactions">> := [WithdrawTransaction]}} =
+    {ok, 200, #{<<"block">> := #{<<"transactions">> := [_, WithdrawTransaction]}}} =
         get_block_sut(TopKeyBlockHash2),
 
     %% Expect
     %% Initiator -= Fees
     %% Initiator -= initiator_amount
     #{<<"operations">> := [WithdrawFeesOp, WithdrawInitiatorOp]} = WithdrawTransaction,
-
     #{<<"amount">> := #{<<"value">> := WithdrawFeesDelta},
       <<"account">> := #{<<"address">> := WithdrawFeesAcc}} =
         WithdrawFeesOp,
     ?assertEqual(InitiatorAccountPubKey, WithdrawFeesAcc),
-
     #{<<"amount">> := #{<<"value">> := WithdrawInitiatorDelta},
       <<"account">> := #{<<"address">> := WithdrawInitiatorAcc}} =
         WithdrawInitiatorOp,
@@ -905,7 +895,7 @@ block_create_channel_tx(Config) ->
     aecore_suite_utils:use_rosetta(),
     {ok, 200, #{<<"current_block_identifier">> := #{<<"hash">> := TopKeyBlockHash3}}} =
         get_status_sut(),
-    {ok, 200, #{<<"transactions">> := [CloseMutualTransaction]}} =
+    {ok, 200, #{<<"block">> := #{<<"transactions">> := [_, CloseMutualTransaction]}}} =
         get_block_sut(TopKeyBlockHash3),
 
     %% Expect
@@ -914,7 +904,6 @@ block_create_channel_tx(Config) ->
     %% Responder += responder_amount_final
     #{<<"operations">> := [CloseMutualInitiatorOp, CloseMutualResponderOp]} =
         CloseMutualTransaction,
-
     #{<<"amount">> := #{<<"value">> := CloseMutualInitiatorDelta},
       <<"account">> := #{<<"address">> := CloseMutualInitiatorAcc}} =
         CloseMutualInitiatorOp,
@@ -922,7 +911,6 @@ block_create_channel_tx(Config) ->
 
     ?assertEqual(InitiatorBalanceAfterCloseMutual,
                  InitiatorBalanceAfterWithdraw + binary_to_integer(CloseMutualInitiatorDelta)),
-
     #{<<"amount">> := #{<<"value">> := CloseMutualResponderDelta},
       <<"account">> := #{<<"address">> := CloseMutualResponderAcc}} =
         CloseMutualResponderOp,
@@ -939,6 +927,14 @@ get_block_sut(Hash) ->
         #{network_identifier =>
               #{blockchain => <<"aeternity">>, network => aec_governance:get_network_id()},
           block_identifier => #{hash => Hash}},
+    http_request(Host, post, "block", Body).
+
+get_block_at_height_sut(Height) ->
+    Host = rosetta_address(),
+    Body =
+        #{network_identifier =>
+              #{blockchain => <<"aeternity">>, network => aec_governance:get_network_id()},
+          block_identifier => #{index => Height}},
     http_request(Host, post, "block", Body).
 
 get_block_transaction_sut(KeyBlockHash, Height, TxHash) ->

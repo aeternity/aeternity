@@ -1501,9 +1501,9 @@ deploy_contract(CodeOrPK, InitArgsTypes, Value, GasCap, Prot, ES0) ->
                 {ok, API} = aefa_chain_api:eval_primops(
                   [ case CodeOrPK of
                         {ref, Ref} ->
-                            aefa_chain_api:tx_event_op(clone, {Ref, Value, GasCap, ContractPK}, <<"Chain.clone">>);
+                            aefa_chain_api:tx_event_op(clone, {Ref, Value, GasCap, ContractPK}, <<"Call.clone">>);
                         {code, _} ->
-                            aefa_chain_api:tx_event_op(create, {Value, GasCap, ContractPK}, <<"Chain.create">>)
+                            aefa_chain_api:tx_event_op(create, {Value, GasCap, ContractPK}, <<"Call.create">>)
                     end
                   ], aefa_engine_state:chain_api(ES2)),
                 API

@@ -2,9 +2,12 @@
 
 -export([forbidden/2]).
 -export([handle_request/3]).
+-export([convert_bootstrap_accounts/2]).
 
 -import(aeu_debug, [pp/1]).
 -import(aehttp_helpers, [when_stable/1]).
+
+-include_lib("aecontract/include/hard_forks.hrl").
 
 -compile({parse_transform, lager_transform}).
 
@@ -119,6 +122,7 @@ handle_request_(networkOptions, _, _Context) ->
                 <<"operation_types">> => ae_operation_types(),
                 <<"errors">> => rosetta_errors(),
                 <<"historical_balance_lookup">> => true,
+                <<"timestamp_start_index">> => 1,
                 <<"call_methods">> => [<<"TODO">>],
                 <<"balance_exemptions">> => [],
                 <<"mempool_coins">> => false}},
@@ -232,7 +236,7 @@ handle_request_(block,
         end,
         Block = retrieve_block_from_partial_block_identifier(Req),
         BlockFmt = format_block(Block),
-        Resp = BlockFmt#{<<"metadata">> => #{}},
+        Resp = #{<<"block">> => BlockFmt},
         {200, [], Resp}
     catch
         invalid_network ->
@@ -375,31 +379,27 @@ handle_request_(OperationID, Req, Context) ->
     {501, [], #{}}.
 
 ae_operation_types() ->
-    [aetx:type_to_swagger_name(X)
-     || X
-            <- [spend_tx,
-                oracle_register_tx,
-                oracle_extend_tx,
-                oracle_query_tx,
-                oracle_response_tx,
-                name_preclaim_tx,
-                name_claim_tx,
-                name_transfer_tx,
-                name_update_tx,
-                name_revoke_tx,
-                contract_create_tx,
-                contract_call_tx,
-                ga_attach_tx,
-                ga_meta_tx,
-                channel_create_tx,
-                channel_deposit_tx,
-                channel_withdraw_tx,
-                channel_force_progress_tx,
-                channel_close_mutual_tx,
-                channel_close_solo_tx,
-                channel_slash_tx,
-                channel_settle_tx,
-                paying_for_tx]].
+    [<<"Spend.fee">>,
+     <<"Spend.amount">>,
+     <<"Oracle.fee">>,
+     <<"Oracle.queryfee">>,
+     <<"Name.lock">>,
+     <<"Name.fee">>,
+     <<"Name.refund">>,
+     <<"Channel.amount">>,
+     <<"Channel.fee">>,
+     <<"Channel.withdraw">>,
+     <<"Channel.settle">>,
+     <<"Contract.amount">>,
+     <<"Contract.gas">>,
+     <<"Call.clone">>,
+     <<"Call.create">>,
+     <<"Call.amount">>,
+     <<"GA.amount">>,
+     <<"PayingFor.fee">>,
+     <<"Chain.fee">>,
+     <<"Chain.refund">>,
+     <<"Chain.reward">>].
 
 rosetta_errors() ->
     [rosetta_error_response(X)
@@ -420,7 +420,7 @@ format_block(Block) ->
       <<"transactions">> => format_keyblock_txs(Block)}.
 
 format_block_identifier(undefined) ->
-    #{<<"index">> => 0, <<"hash">> => <<>>};
+    #{<<"index">> => 0, <<"hash">> => <<"0">>};
 format_block_identifier(Block) ->
     {ok, Hash} =
         aec_headers:hash_header(
@@ -429,10 +429,12 @@ format_block_identifier(Block) ->
       <<"hash">> => aeapi:format(key_block_hash, Hash)}.
 
 format_keyblock_txs(Block) ->
-    {ok, Hash} =
-        aec_headers:hash_header(
-            aec_blocks:to_header(Block)),
-    format_txs(aeapi:key_block_txs(Block), Hash).
+    Header = aec_blocks:to_header(Block),
+    {ok, Hash} = aec_headers:hash_header(Header),
+    ForkTxs = format_fork_txs(aec_blocks:height(Block)),
+    RewardTxs = format_reward_txs(Block),
+    BlockTxs = format_txs(aeapi:key_block_txs(Block), Hash),
+    tx_spend_operations(ForkTxs ++ RewardTxs ++ BlockTxs).
 
 %% Format a single Tx in a block. We need to dry run all the Txs in the microblock
 %% up to and including the one we want to know about. dry run works on dummy signed
@@ -446,7 +448,8 @@ format_tx(SignedTx, MicroBlock) ->
     BlockTxs = aeapi:micro_block_txs(MicroBlock),
     NeededTxs = keep_tx_until(BlockTxs, aetx_sign:hash(SignedTx)),
     Ops = format_txs(NeededTxs, Hash),
-    lists:last(Ops).
+    SpendOps = tx_spend_operations(Ops),
+    lists:last(SpendOps).
 
 keep_tx_until(Txs, TxHash) ->
     keep_tx_until(Txs, TxHash, []).
@@ -456,9 +459,9 @@ keep_tx_until([], _UntilTxHash, _Acc) ->
 keep_tx_until([SignedTx | Txs], UntilTxHash, Acc) ->
     TxHash = aetx_sign:hash(SignedTx),
     if TxHash == UntilTxHash ->
-            lists:reverse([SignedTx | Acc]);
-        true ->
-            keep_tx_until(Txs, UntilTxHash, [SignedTx | Acc])
+           lists:reverse([SignedTx | Acc]);
+       true ->
+           keep_tx_until(Txs, UntilTxHash, [SignedTx | Acc])
     end.
 
 format_txs(Txs, Hash) ->
@@ -467,12 +470,85 @@ format_txs(Txs, Hash) ->
         {ok, {Results, _Events}} ->
             lager:debug("dry_run Result: ~p", [Results]),
             TxHashes = [aetx_sign:hash(Tx) || Tx <- Txs],
-            Res = lists:zip(TxHashes, Results),
-            tx_spend_operations(Res);
+            lists:zip(TxHashes, Results);
         {error, Reason} ->
             lager:debug("dry_run_error: ~p", [Reason]),
             throw({dry_run_err, Reason})
     end.
+
+format_reward_txs(Block) ->
+    %% Block rewards.
+    %% In this block the reward for the beneficiary 180 blocks earlier will be paid
+    %% We don't store the amount on chain, so need to re-calculate
+    Delay = aec_governance:beneficiary_reward_delay(),
+    {ok, TopBlock} = aeapi:top_key_block(),
+    TopHeight = aec_blocks:height(TopBlock),
+    Height = aec_blocks:height(Block),
+    if Height >= Delay, Height < TopHeight ->
+           %% For Rosetta the reward Txs need to be in the block before the Beneficiary
+           %% account has their updated balance. No rewards yet at the top
+           {ok, NextBlock} = aeapi:key_block_by_height(Height + 1),
+           Node = aec_chain_state:wrap_block(NextBlock),
+           Trees = aec_chain_state:grant_fees(Node, aec_trees:new(), Delay, false, nil),
+           Accounts =
+               aeu_mtrees:to_list(
+                   aec_trees:accounts(Trees)),
+           %% Supply empty tx hash. Could invent one??
+           [{<<"">>,
+            {reward,
+             lists:map(fun({K, V}) ->
+                          Acct = aec_accounts:deserialize(K, V),
+                          {reward, {aec_accounts:pubkey(Acct), aec_accounts:balance(Acct)}}
+                       end,
+                       Accounts)}}];
+       true ->
+           []
+    end.
+
+%% Inject balance change operations at each of our historical hard forks
+%% The balance changes need to be in the block before the fork for Rosetta
+format_fork_txs(Height) ->
+    Forks =  maps:to_list(aec_hard_forks:protocols()),
+    case lists:keyfind(Height + 1, 2, Forks) of
+        false ->
+            [];
+        {?MINERVA_PROTOCOL_VSN, _} ->
+            Deltas = aec_fork_block_settings:minerva_accounts(),
+            Ops = fork_ops(Deltas),
+            [{<<"">>, {fork, Ops}}];
+        {?FORTUNA_PROTOCOL_VSN, _} ->
+            Deltas = aaec_fork_block_settings:fortuna_accounts(),
+            Ops = fork_ops(Deltas),
+            [{<<"">>, {fork, Ops}}];
+        {?LIMA_PROTOCOL_VSN, _} ->
+            Deltas = aec_fork_block_settings:lima_accounts(),
+            Ops = fork_ops(Deltas, []),
+            ExtraDeltas = aec_fork_block_settings:lima_extra_accounts(),
+            Ops1 = fork_ops(ExtraDeltas, Ops),
+            Contracts = aec_fork_block_settings:lima_contracts(),
+            Ops2 = fork_contract_ops(Contracts, Ops1),
+            [{<<"">>, {fork, lists:reverse(Ops2)}}];
+        {?IRIS_PROTOCOL_VSN, _} ->
+            [];
+        _ ->
+            []
+    end.
+
+fork_ops(Deltas) ->
+    lists:map(fun({K, V}) ->
+                          {fork, {K, V}}
+                       end,
+                       Deltas).
+
+fork_ops(Deltas, Acc0) ->
+    lists:foldl(fun({PubKey, Amount}, Acc) ->
+        [{fork, {PubKey, Amount}} | Acc]
+    end, Acc0, Deltas).
+
+fork_contract_ops(Contracts, Acc0) ->
+    lists:foldl(fun(#{pubkey := PubKey, amount := Amount}, Acc) ->
+        [{fork, {PubKey, Amount}} | Acc]
+    end, Acc0, Contracts).
 
 tx_spend_operations(Results) ->
     lists:map(fun({TxHash, Result}) ->
@@ -493,36 +569,35 @@ tx_spend_ops({_Type, {ok, Events, CallObj}}) ->
         <<"error">> ->
             %% Just take the fees
             lists:foldl(fun tx_spend_op/2, {[], 0}, Events)
-    end.
+    end;
+tx_spend_ops({reward, RewardOps}) ->
+    lists:foldl(fun tx_spend_op/2, {[], 0}, RewardOps).
 
-tx_spend_op({{internal_call_tx, Key},
-             #{type := Type,
-               info := Tx}},
-            {Acc, Ix}) ->
+tx_spend_op({{internal_call_tx, _Key}, #{info := Tx}}, {Acc, Ix}) ->
     {CB, TxI} = aetx:specialize_callback(Tx),
     TxS = CB:for_client(TxI),
-    SwaggerType = aetx:type_to_swagger_name(Type),
     #{<<"sender_id">> := From,
       <<"recipient_id">> := To,
       <<"amount">> := Amount} =
         TxS,
-    FromOp = spend_tx_op(Ix, SwaggerType, From, -Amount),
-    ToOp = spend_tx_op(Ix + 1, SwaggerType, To, Amount),
+    FromOp = spend_tx_op(Ix, <<"Spend.amount">>, From, -Amount),
+    ToOp = spend_tx_op(Ix + 1, <<"Spend.amount">>, To, Amount),
     {[ToOp, FromOp | Acc], Ix + 2};
-tx_spend_op({{spend, {SenderPubkey, RecipientId, Amount}},
-             #{type := Type}},
+tx_spend_op({{spend, {SenderPubkey, RecipientPubkey, Amount}}, #{type := _Type}},
             {Acc, Ix}) ->
     From = aeapi:format(account_pubkey, SenderPubkey),
-    To = aeapi:format_id(RecipientId),
-    SwaggerType = aetx:type_to_swagger_name(Type),
-    FromOp = spend_tx_op(Ix, SwaggerType, From, -Amount),
-    ToOp = spend_tx_op(Ix + 1, SwaggerType, To, Amount),
+    To = aeapi:format(account_pubkey, RecipientPubkey),
+    FromOp = spend_tx_op(Ix, <<"Spend.amount">>, From, -Amount),
+    ToOp = spend_tx_op(Ix + 1, <<"Spend.amount">>, To, Amount),
     {[ToOp, FromOp | Acc], Ix + 2};
-tx_spend_op({{delta, {Pubkey, Amount}}, #{info := Info}},
-            {Acc, Ix}) ->
+tx_spend_op({{delta, {Pubkey, Amount}}, #{info := Info}}, {Acc, Ix}) ->
     From = aeapi:format(account_pubkey, Pubkey),
     DeltaOp = spend_tx_op(Ix, Info, From, Amount),
     {[DeltaOp | Acc], Ix + 1};
+tx_spend_op({reward, {Pubkey, Amount}}, {Acc, Ix}) ->
+    To = aeapi:format(account_pubkey, Pubkey),
+    Op = spend_tx_op(Ix, <<"Chain.reward">>, To, Amount),
+    {[Op | Acc], Ix + 1};
 tx_spend_op({{channel, _Pubkey}, #{}}, {Acc, Ix}) ->
     {Acc, Ix}.
 
@@ -535,7 +610,7 @@ spend_tx_op(Index, Type, Address, Amount) ->
 
 amount(Amount) ->
     #{<<"value">> => integer_to_binary(Amount),
-      <<"currency">> => #{<<"symbol">> => <<"aettos">>, <<"decimals">> => 18}}.
+      <<"currency">> => #{<<"symbol">> => <<"AE">>, <<"decimals">> => 18}}.
 
 dry_run_err(Err) when is_list(Err) ->
     dry_run_err(list_to_binary(Err));
@@ -635,8 +710,7 @@ retrieve_block_from_partial_block_identifier(Req) ->
             end
     end.
 
-%% For rosetta we need to use the state trees from the Keyblock after
-%% the height the Tx is included in
+%% For rosetta we need the balance after the transactions in the block have been applied
 retrieve_block_and_account_from_partial_block_identifier(PubKey, Req) ->
     case Req of
         #{<<"block_identifier">> := #{<<"index">> := Index}} ->
@@ -663,3 +737,76 @@ retrieve_block_and_account_from_partial_block_identifier(PubKey, Req) ->
             {value, Account} = aec_chain:get_account_at_hash(PubKey, TopHash),
             {Block, Account}
     end.
+
+convert_bootstrap_accounts(InFile, OutFile) ->
+    {ok, InData} = file:read_file(InFile),
+    InJson = jsx:decode(InData),
+    %% rosetta-cli barfs on bootstrap acounts with zero balances
+    ExcludingZeroBalances = lists:filter(fun({_Acct, Balance}) -> Balance /= 0 end, InJson),
+    OutJson =
+        lists:map(fun({Acct, Balance}) ->
+                     #{<<"account_identifier">> => #{<<"address">> => Acct},
+                       <<"currency">> => #{<<"symbol">> => <<"AE">>, <<"decimals">> => 18},
+                       <<"value">> => integer_to_binary(Balance)}
+                  end,
+                  ExcludingZeroBalances),
+    JSON =
+        jsx:prettify(
+            jsx:encode(OutJson)),
+    ok = file:write_file(OutFile, JSON).
+
+%% Eth traces:
+%% POST /network/status {"network_identifier":{"blockchain":"Ethereum","network":"Mainnet"}}
+%% RESP: {"current_block_identifier":
+%%         {"index":576637,
+%%          "hash":"0x948f06389af2bc01cf2be00ec0081f6d3fbb7b3c5c1a6e69207748cfcea9d907"},
+%%        "current_block_timestamp":1448146083000,
+%%        "genesis_block_identifier":{"index":0,
+%%                                    "hash":"0xd4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3"},
+%%        "sync_status":{"current_index":576638,"target_index":13773036},
+%%        "peers":[{"peer_id":"cff5f364e684a0b4354e863f11744898d468d0311382cfd0340f060534c62f15",
+%%        "metadata":{"caps":["eth/65","eth/66","snap/1"],
+%%                    "enode":"enode://958eb6a893741a0456dbd34cac7f9c7cf30891b6c1cdcbc11762f88431c84e97ab3dd02bf1333e3037a088c518abaf60815b382c595606b76775f21d031c5860@107.148.133.79:30303",
+%%                    "enr":"enr:-J24QC-dLXo-c95hianVNl2DnqZPuEzY1uktGjHjrONAaha4fzeOWf_gw_xnxHUQmXEB-4PtrqNFXX8zA8Wc_EalBFwtg2V0aMfGhLcVB32AgmlkgnY0gmlwhGuUhU-Jc2VjcDI1NmsxoQKVjraok3QaBFbb00ysf5x88wiRtsHNy8EXYviEMchOl4RzbmFwwIN0Y3CCdl-DdWRwgnZf",
+%%                    "name":"Geth/ppcoin/v1.10.9-unstable-8dbf261f-20210824/linux-amd64/go1.16.4",
+%%                    "protocols":{"eth":{"difficulty":3.6206751599115524e+22,
+%%                                        "head":"0xfeb27336ca7923f8fab3bd617fcb6e75841538f71c1bcfc267d7838489d9e13d",
+%%                                        "version":66},"snap":{"version":1}}}}]}
+%% POST /network/options {"network_identifier":{"blockchain":"Ethereum","network":"Mainnet"}}
+%% RESP: {"version":{"rosetta_version":"1.4.10","node_version":"1.9.24","middleware_version":"0.0.4"},
+%%        "allow":{"operation_statuses":[{"status":"SUCCESS","successful":true},{"status":"FAILURE","successful":false}],
+%%                 "operation_types":["MINER_REWARD","UNCLE_REWARD","FEE","CALL","CREATE","CREATE2","SELFDESTRUCT","CALLCODE","DELEGATECALL","STATICCALL","DESTRUCT"],
+%%                 "errors":[{"code":0,"message":"Endpoint not implemented","retriable":false},
+%%                           {"code":1,"message":"Endpoint unavailable offline","retriable":false},
+%%                           {"code":2,"message":"geth error","retriable":false},
+%%                           {"code":3,"message":"unable to decompress public key","retriable":false},
+%%                           {"code":4,"message":"Unable to parse intent","retriable":false},
+%%                           {"code":5,"message":"Unable to parse intermediate result","retriable":false},
+%%                           {"code":6,"message":"Signature invalid","retriable":false},
+%%                           {"code":7,"message":"Unable to broadcast transaction","retriable":false},
+%%                           {"code":8,"message":"Call parameters invalid","retriable":false},
+%%                           {"code":9,"message":"Call output marshal failed","retriable":false},
+%%                           {"code":10,"message":"Call method invalid","retriable":false},
+%%                           {"code":11,"message":"Block orphaned","retriable":true},
+%%                           {"code":12,"message":"Invalid address","retriable":false},
+%%                           {"code":13,"message":"geth not ready","retriable":true},
+%%                           {"code":14,"message":"invalid input","retriable":false}],
+%%                   "historical_balance_lookup":true,
+%%                   "call_methods":["eth_getBlockByNumber","eth_getTransactionReceipt","eth_call","eth_estimateGas"],
+%%                   "balance_exemptions":null,"mempool_coins":false}}
+%% POST /network/list {}
+%% RESP: {"network_identifiers":[{"blockchain":"Ethereum","network":"Mainnet"}]}
+%% POST /block {"network_identifier":{"blockchain":"Ethereum","network":"Mainnet"},"block_identifier":{"index":0}}
+%% RESP: {"block":{"block_identifier":
+%%                   {"index":0,"hash":"0xd4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3"},
+%%                 "parent_block_identifier":{"index":0,"hash":"0xd4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3"},
+%%                 "timestamp":0,
+%%                 "transactions":[{"transaction_identifier":{"hash":"0xd4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3"},
+%%                                  "operations":[{"operation_identifier":{"index":0},
+%%                                                 "type":"MINER_REWARD","status":"SUCCESS",
+%%                                                 "account":{"address":"0x0000000000000000000000000000000000000000"},
+%%                                                 "amount":{"value":"5000000000000000000",
+%%                                                 "currency":{"symbol":"ETH","decimals":18}}}]}]}}
+
+
+

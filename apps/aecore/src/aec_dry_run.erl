@@ -51,14 +51,14 @@ dry_run_int([{tx, TxOpts, Tx} | Txs], Trees, Env, Opts, Acc) ->
     case aec_trees:apply_txs_on_state_trees([Tx], Trees, Env1, [strict, dont_verify_signature|Opts]) of
         {ok, [Tx], [], Trees1, Events} when Stateless ->
             OrderedEvents = lists:reverse(Events),
-            Env2 = aetx_env:set_events(Env, OrderedEvents),
+            Env2 = aetx_env:set_events(Env1, OrderedEvents),
             dry_run_int(Txs, Trees, Env2, Opts, [dry_run_res(Tx, Trees1, OrderedEvents, EventsEnabled, ok) | Acc]);
         {ok, [Tx], [], Trees1, Events} ->
             OrderedEvents = lists:reverse(Events),
-            Env2 = aetx_env:set_events(Env, OrderedEvents),
+            Env2 = aetx_env:set_events(Env1, OrderedEvents),
             dry_run_int(Txs, Trees1, Env2, Opts, [dry_run_res(Tx, Trees1, OrderedEvents, EventsEnabled, ok) | Acc]);
         Err = {error, _Reason} ->
-            dry_run_int(Txs, Trees, Env, Opts, [dry_run_res(Tx, Trees, [], EventsEnabled, Err) | Acc])
+            dry_run_int(Txs, Trees, Env1, Opts, [dry_run_res(Tx, Trees, [], EventsEnabled, Err) | Acc])
     end.
 
 dry_run_res(STx, Trees, Events, EventsEnabled, ok) ->
@@ -168,10 +168,11 @@ prepare_env(Env0, Opts) ->
                undefined -> Env0;
                TxHash    -> aetx_env:set_ga_tx_hash(Env0, TxHash)
            end,
-    case proplists:get_value(auth_tx, Opts, undefined) of
-        undefined -> Env1;
-        Tx        -> aetx_env:set_ga_tx(Env1, Tx)
-    end.
+    Env2 = case proplists:get_value(auth_tx, Opts, undefined) of
+               undefined -> Env1;
+               Tx        -> aetx_env:set_ga_tx(Env1, Tx)
+           end,
+    aetx_env:set_events(Env2, []).
 
 lookup_call_object(Key, CallId, Trees) ->
     CallTree = aec_trees:calls(Trees),

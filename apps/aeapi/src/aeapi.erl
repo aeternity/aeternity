@@ -30,6 +30,9 @@
         , micro_block_txs/1
         , prev_key_block/1
         , prev_block/1
+        , generation_by_height/1
+
+        , balance_at_height/2
 
         %% Dealing with id records
         , create_id/2
@@ -83,9 +86,12 @@ connected_peers() ->
 
 prev_key_block(Block) ->
     PrevBlockHash = aec_blocks:prev_key_hash(Block),
+    Height = aec_blocks:height(Block),
     case aec_chain:get_block(PrevBlockHash) of
         {ok, _} = PrevBlock ->
             PrevBlock;
+        error when Height == 0 ->
+            {ok, Block};
         error ->
             {error, block_not_found}
     end.
@@ -242,8 +248,49 @@ key_block_by_height(Height) when is_integer(Height) ->
     aec_chain:get_key_block_by_height(Height).
 
 -spec key_block_by_hash(aeser_api_encoder:encoded()) -> {ok, aec_blocks:key_block()} | error.
-
 key_block_by_hash(Hash) when is_binary(Hash) ->
     {key_block_hash, DecodedHash} = aeser_api_encoder:decode(Hash),
     aec_chain:get_block(DecodedHash).
 
+generation_by_height(Height) when is_integer(Height) ->
+    case aec_chain_state:get_key_block_hash_at_height(Height) of
+        error -> {error, "Block not found"};
+        {ok, Hash} ->
+            case aec_chain:get_generation_by_hash(Hash, forward) of
+                {ok, #{ key_block := KeyBlock, micro_blocks := MicroBlocks }} ->
+                    case aec_blocks:height(KeyBlock) of
+                        0 ->
+                            {ok, encode_generation(KeyBlock, MicroBlocks, key)};
+                        _ ->
+                            PrevBlockHash = aec_blocks:prev_hash(KeyBlock),
+                            case aec_chain:get_block(PrevBlockHash) of
+                                {ok, PrevBlock} ->
+                                    PrevBlockType = aec_blocks:type(PrevBlock),
+                                    {ok, encode_generation(KeyBlock, MicroBlocks, PrevBlockType)};
+                                error ->
+                                    {error, "Block not found"}
+                            end
+                    end;
+                _ ->
+                    {error, "Block not found"}
+            end
+    end.
+
+encode_generation(KeyBlock, MicroBlocks, PrevBlockType) ->
+    Header = aec_blocks:to_header(KeyBlock),
+    #{<<"key_block">> => aec_headers:serialize_for_client(Header, PrevBlockType),
+      <<"micro_blocks">> => [begin
+                           {ok, Hash} = aec_blocks:hash_internal_representation(M),
+                           aeser_api_encoder:encode(micro_block_hash, Hash)
+                       end || M <- MicroBlocks]}.
+
+balance_at_height(Address, Height) ->
+    AllowedTypes = [account_pubkey, contract_pubkey],
+    case create_id(Address, AllowedTypes) of
+        {ok, Id} ->
+            PubKey = aeapi:id_value(Id),
+            {value, Account} = aec_chain:get_account_at_height(PubKey, Height),
+            {ok, aec_accounts:balance(Account)};
+        _ ->
+            {error, invalid_pubkey}
+    end.
