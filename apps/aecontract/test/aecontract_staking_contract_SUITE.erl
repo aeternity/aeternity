@@ -39,6 +39,11 @@
           total_stake_limit/1
         ]).
 
+-export([ stake_delay/1,
+          stake_delay_respects_upper_stake_limit/1,
+          stake_delay_set_to_zero/1
+        ]).
+
 -include_lib("aecontract/include/hard_forks.hrl").
 -include_lib("aebytecode/include/aeb_fate_data.hrl").
 
@@ -93,6 +98,7 @@
 -define(VALIDATOR_MIN_PERCENT, 30).
 -define(STAKE_MIN, 100).
 -define(ONLINE_DELAY, 0).
+-define(STAKE_DELAY, 0).
 -define(ENTROPY, <<"asdf">>).
 
 all() -> [{group, all}
@@ -118,7 +124,10 @@ groups() ->
          can_not_become_validator_below_treshold,
          can_not_stake_below_treshold,
          validator_can_not_unstake_below_30_percent_treshold,
-         total_stake_limit
+         total_stake_limit,
+         stake_delay,
+         stake_delay_set_to_zero,
+         stake_delay_respects_upper_stake_limit
        ]}
     ].
 
@@ -168,7 +177,8 @@ inspect_validator(_Config) ->
                 ValidatorMinStake,
                 ValidatorMinPercent,
                 StakeMin,
-                OnlineDelay
+                OnlineDelay,
+                StakeDelay
                 }} = ContractState0,
     {contract, _} = StakingValidatorCT,
     {bytes, _} = Entropy,
@@ -180,7 +190,7 @@ inspect_validator(_Config) ->
     {SPower, SPower} = {Amount, SPower},
     {ok, _, State} = get_validator_state_(Alice, Alice, TxEnv, Trees1),
     ExpectedAliceOfflineState =
-        expected_validator_state(AliceContract, Alice, ?GENESIS_HEIGHT, SPower,
+        expected_validator_state(AliceContract, Alice, ?GENESIS_HEIGHT, SPower, 0,
                                  calculate_total_stake_limit(SPower),
                                  false, <<>>, <<>>, <<>>,
                                  #{Alice => SPower}),
@@ -196,18 +206,20 @@ inspect_validator(_Config) ->
                 ValidatorMinStake,
                 ValidatorMinPercent,
                 StakeMin,
-                OnlineDelay
+                OnlineDelay,
+                StakeDelay
                 }} = ContractState,
     ?assertEqual([ExpectedAliceOfflineState], Validators),
     ?VALIDATOR_MIN = ValidatorMinStake,
     ?VALIDATOR_MIN_PERCENT = ValidatorMinPercent,
     ?STAKE_MIN = StakeMin,
     ?ONLINE_DELAY = OnlineDelay,
+    ?STAKE_DELAY = StakeDelay,
     %% set the validator as online; the total stake shall be the total stake
     %% of the validator
     {ok, Trees2, {tuple, {}}} = set_validator_online_(Alice, TxEnv, Trees1),
     ExpectedAliceOnlineState =
-        expected_validator_state(AliceContract, Alice, ?GENESIS_HEIGHT, SPower,
+        expected_validator_state(AliceContract, Alice, ?GENESIS_HEIGHT, SPower, 0,
                                  calculate_total_stake_limit(SPower),
                                  true, <<>>, <<>>, <<>>,
                                  #{Alice => SPower}),
@@ -222,7 +234,8 @@ inspect_validator(_Config) ->
                 ValidatorMinStake,
                 ValidatorMinPercent,
                 StakeMin,
-                OnlineDelay
+                OnlineDelay,
+                StakeDelay
                 }} = ContractState1,
     [ExpectedAliceOnlineState] = Validators1,
     Amount = TotalStake,
@@ -246,7 +259,8 @@ inspect_validator(_Config) ->
                 ValidatorMinStake, %% same
                 ValidatorMinPercent, %% same
                 StakeMin, %% same
-                OnlineDelay %% same
+                OnlineDelay, %% same
+                StakeDelay %% same
                 }} = ContractState2,
     {address, Alice} = Leader2, %% Alice is being elected as a leader
     %% give away some rewards; this changes the total staking power but does
@@ -255,7 +269,7 @@ inspect_validator(_Config) ->
     {ok, Trees6, {tuple, {}}} = reward_(Alice, Reward, ?OWNER_PUBKEY,
                                         TxEnv, Trees5),
     ExpectedAliceOnlineState1 =
-        expected_validator_state(AliceContract, Alice, ?GENESIS_HEIGHT, SPower + Reward,
+        expected_validator_state(AliceContract, Alice, ?GENESIS_HEIGHT, SPower + Reward, 0,
                                  calculate_total_stake_limit(SPower + Reward),
                                  true, <<>>, <<>>, <<>>,
                                  #{Alice => SPower}), %% share distribution is the same
@@ -271,7 +285,8 @@ inspect_validator(_Config) ->
                 ValidatorMinStake, %% same
                 ValidatorMinPercent, %% same
                 StakeMin, %% same
-                OnlineDelay %% same
+                OnlineDelay, %% same
+                StakeDelay %% same
                 }} = ContractState3,
     [ExpectedAliceOnlineState1] = Validators2,
     %% test online-offline idemptence after a reward distribution
@@ -285,10 +300,11 @@ inspect_validator(_Config) ->
                 ValidatorMinStake, %% same
                 ValidatorMinPercent, %% same
                 StakeMin, %% same
-                OnlineDelay %% same
+                OnlineDelay, %% same
+                StakeDelay %% same
                 }} = ContractState4,
     ExpectedAliceOfflineState1 =
-        expected_validator_state(AliceContract, Alice, ?GENESIS_HEIGHT, SPower + Reward,
+        expected_validator_state(AliceContract, Alice, ?GENESIS_HEIGHT, SPower + Reward, 0,
                                  calculate_total_stake_limit(SPower + Reward),
                                  false, <<>>, <<>>, <<>>,
                                  #{Alice => SPower}), %% share distribution is the same
@@ -314,7 +330,8 @@ inspect_two_validators(_Config) ->
                 _ValidatorMinStake,
                 _ValidatorMinPercent,
                 _StakeMin,
-                _OnlineDelay
+                _OnlineDelay,
+                _StakeDelay
                 }} = ContractState0,
     {contract, _} = StakingValidatorCT,
     {bytes, _} = Entropy,
@@ -324,7 +341,7 @@ inspect_two_validators(_Config) ->
     {ok, Trees1, {contract, AliceContract}} = new_validator_(Alice, Amount, TxEnv, Trees0),
     {ok, _, AliceSPower} = staking_power_(Alice, Alice, TxEnv, Trees1),
     ExpectedAliceOfflineState0 =
-        expected_validator_state(AliceContract, Alice, ?GENESIS_HEIGHT, AliceSPower,
+        expected_validator_state(AliceContract, Alice, ?GENESIS_HEIGHT, AliceSPower, 0,
                                  calculate_total_stake_limit(AliceSPower),
                                  false, <<>>, <<>>, <<>>,
                                  #{Alice => AliceSPower}), %% share distribution is the same
@@ -333,7 +350,7 @@ inspect_two_validators(_Config) ->
     {ok, _, BobSPower} = staking_power_(Bob, Bob, TxEnv, Trees2),
     ?assertEqual(BobSPower, 2 * Amount),
     ExpectedBobOfflineState0 =
-        expected_validator_state(BobContract, Bob, ?GENESIS_HEIGHT, BobSPower,
+        expected_validator_state(BobContract, Bob, ?GENESIS_HEIGHT, BobSPower, 0,
                                  calculate_total_stake_limit(BobSPower),
                                  false, <<>>, <<>>, <<>>,
                                  #{Bob => BobSPower}), %% share distribution is the same
@@ -347,13 +364,14 @@ inspect_two_validators(_Config) ->
                 _ValidatorMinStake,
                 _ValidatorMinPercent,
                 _StakeMin,
-                _OnlineDelay
+                _OnlineDelay,
+                _StakeDelay
                 }} = ContractState1,
     %% set Alice online; this changes the total staked amount to Alice's
     %% balance
     {ok, Trees3, {tuple, {}}} = set_validator_online_(Alice, TxEnv, Trees2),
     ExpectedAliceOnlineState0 =
-        expected_validator_state(AliceContract, Alice, ?GENESIS_HEIGHT, AliceSPower,
+        expected_validator_state(AliceContract, Alice, ?GENESIS_HEIGHT, AliceSPower, 0,
                                  calculate_total_stake_limit(AliceSPower),
                                  true, <<>>, <<>>, <<>>,
                                  #{Alice => AliceSPower}), %% share distribution is the same
@@ -369,12 +387,13 @@ inspect_two_validators(_Config) ->
                 _ValidatorMinStake,
                 _ValidatorMinPercent,
                 _StakeMin,
-                _OnlineDelay
+                _OnlineDelay,
+                _StakeDelay
                 }} = ContractState2,
     %% set Bob online as well
     {ok, Trees4, {tuple, {}}} = set_validator_online_(Bob, TxEnv, Trees3),
     ExpectedBobOnlineState0 =
-        expected_validator_state(BobContract, Bob, ?GENESIS_HEIGHT, BobSPower,
+        expected_validator_state(BobContract, Bob, ?GENESIS_HEIGHT, BobSPower, 0,
                                  calculate_total_stake_limit(BobSPower),
                                  true, <<>>, <<>>, <<>>,
                                  #{Bob => BobSPower}), %% share distribution is the same
@@ -391,7 +410,8 @@ inspect_two_validators(_Config) ->
                 _ValidatorMinStake, %% same
                 _ValidatorMinPercent, %% same
                 _StakeMin, %% same
-                _OnlineDelay %% same
+                _OnlineDelay, %% same
+                _StakeDelay %% same
                 }} = ContractState3,
     ok.
 
@@ -441,11 +461,11 @@ setting_online_delay(_Config) ->
     {ok, Trees1, {contract, _}} = new_validator_(Alice, ?VALIDATOR_MIN, TxEnv, Trees),
 
     % State contains setting online delay
-    ?assertMatch({ok, _, {tuple, {_, _, _, _, _, _, _, _, Delay}}},
+    ?assertMatch({ok, _, {tuple, {_, _, _, _, _, _, _, _, Delay, _}}},
                  get_state_(Alice, TxEnv, Trees1)),
 
     % Validator state contains creation height
-    ?assertMatch({ok, _, {tuple, {_, _, Height, _, _, _, _}}},
+    ?assertMatch({ok, _, {tuple, {_, _, Height, _, _, _, _, _}}},
                  get_validator_state_(Alice, Alice, TxEnv, Trees1)),
 
     Reason = <<"Minimum height not reached">>,
@@ -781,6 +801,7 @@ change_name_description_avatar(_Config) ->
              {address, Alice},
              _, %% creation height
              _, %% staker pool balance
+             _, %% pending stake
              _, %% total stake limit
              true, %% is online
              {tuple, {{address, ConsensusContractPubkey}, %% main staking contract
@@ -793,6 +814,7 @@ change_name_description_avatar(_Config) ->
              {address, Bob},
              _, %% creation height
              _, %% staker pool balance
+             _, %% pending stake
              _, %% total stake limit
              false, %% is online
              {tuple, {{address, ConsensusContractPubkey}, %% main staking contract
@@ -807,6 +829,7 @@ change_name_description_avatar(_Config) ->
              {address, Alice},
              _, %% creation height
              _, %% staker pool balance
+             _, %% pending stake
              _, %% total stake limit
              true, %% is online
              {tuple, {{address, ConsensusContractPubkey}, %% main staking contract
@@ -823,6 +846,7 @@ change_name_description_avatar(_Config) ->
              {address, Alice},
              _, %% creation height
              _, %% staker pool balance
+             _, %% pending stake
              _, %% total stake limit
              true, %% is online
              {tuple, {{address, ConsensusContractPubkey}, %% main staking contract
@@ -839,6 +863,7 @@ change_name_description_avatar(_Config) ->
              {address, Alice},
              _, %% creation height
              _, %% staker pool balance
+             _, %% pending stake
              _, %% total stake limit
              true, %% is online
              {tuple, {{address, ConsensusContractPubkey}, %% main staking contract
@@ -963,6 +988,7 @@ if_unstake_all_delegate_is_deleted(_Config) ->
                     {address, ToWhom},
                     _, %% creation height
                     ?VALIDATOR_MIN, %% staker pool balance
+                    _, %% pending stake
                     _, %% total stake limit
                     _, %% is online
                     {tuple, {{address, ConsensusContractPubkey}, %% main staking contract
@@ -982,6 +1008,7 @@ if_unstake_all_delegate_is_deleted(_Config) ->
                     {address, ToWhom},
                     _, %% creation height
                     TotalAmt, %% staker pool balance
+                    _, %% pending stake
                     _, %% total stake limit
                     _, %% is online
                     {tuple, {{address, ConsensusContractPubkey}, %% main staking contract
@@ -1003,6 +1030,7 @@ if_unstake_all_delegate_is_deleted(_Config) ->
                     {address, ToWhom},
                     _, %% creation height
                     PoolStakeLeft, %% staker pool balance
+                    _, %% pending stake
                     _, %% total stake limit
                     _, %% is online
                     {tuple, {{address, ConsensusContractPubkey}, %% main staking contract
@@ -1021,6 +1049,7 @@ if_unstake_all_delegate_is_deleted(_Config) ->
                     {address, ToWhom},
                     _, %% creation height
                     ?VALIDATOR_MIN, %% staker pool balance
+                    _, %% pending stake
                     _, %% total stake limit
                     _, %% is online
                     {tuple, {{address, ConsensusContractPubkey}, %% main staking contract
@@ -1103,6 +1132,7 @@ total_stake_limit(_Config) ->
     Trees = genesis_trees(),
 
     #{public := Sam} = enacl:sign_keypair(),
+
     Trees0 = set_up_account({Sam, trunc(math:pow(10, 30))}, Trees),
 
     %% Online Validator
@@ -1123,6 +1153,157 @@ total_stake_limit(_Config) ->
     {ok, TreesOffline1, {contract, _}} = new_validator_(Alice, ?VALIDATOR_MIN, TxEnv, Trees0),
     ?assertEqual(BaseStakeLimit, get_total_stake_limit(Alice, TxEnv, TreesOffline1)),
     check_total_stake_limit_cases(Alice, Sam, TxEnv, TreesOffline1),
+
+    ok.
+
+stake_delay(_Config) ->
+    StakeDelay = 11,
+    Alice = pubkey(?ALICE),
+    Bob = pubkey(?BOB),
+    TxEnv = aetx_env:tx_env(?GENESIS_HEIGHT),
+    Trees0 = genesis_trees(#{stake_delay => StakeDelay}),
+
+    ?assertMatch({ok, _, {tuple, {_, _, _, _, _, _, _, _, _, StakeDelay}}}, get_state_(Alice, TxEnv, Trees0)),
+
+    % Bob is always online
+    {ok, Trees1, {contract, _}} = new_validator_(Bob, ?VALIDATOR_MIN, TxEnv, Trees0),
+    {ok, Trees2, {tuple, {}}} = set_validator_online_(Bob, TxEnv, Trees1),
+
+    %% Offline validator
+    {ok, Trees3, {contract, AliceCt}} = new_validator_(Alice, ?VALIDATOR_MIN, TxEnv, Trees2),
+    check_stake_delay(Alice, AliceCt, StakeDelay, TxEnv, Trees3),
+
+    %% Online validator
+    {ok, Trees4, {tuple, {}}} = set_validator_online_(Alice, TxEnv, Trees3),
+    check_stake_delay(Alice, AliceCt, StakeDelay, TxEnv, Trees4),
+
+    ok.
+
+check_stake_delay(Alice, AliceCt, StakeDelay, TxEnv, Trees) ->
+    Ct = consensus_contract_address(),
+    {Sam, Trees1} = set_up_account(Trees),
+    {Paul, Trees2} = set_up_account(Trees1),
+
+    %% no stakers
+    {ok, _, AliceState2} = get_validator_state_(Alice, Alice, TxEnv, Trees2),
+    ?assertMatch({tuple, {_, _, _, ?VALIDATOR_MIN, 0, _, _, _}}, AliceState2),
+    ?assertEqual(0, account_balance(Ct, Trees2)),
+    ?assertEqual(?VALIDATOR_MIN, account_balance(AliceCt, Trees2)),
+
+    %% single staker with delay
+    {ok, Trees3, _} = stake_(Alice, 100, Sam, TxEnv, Trees2),
+    {ok, _, AliceState3} = get_validator_state_(Alice, Alice, TxEnv, Trees3),
+    ?assertMatch({tuple, {_, _, _, ?VALIDATOR_MIN, 100, _, _, _}}, AliceState3),
+    ?assertEqual(100, account_balance(Ct, Trees3)),
+    ?assertEqual(?VALIDATOR_MIN, account_balance(AliceCt, Trees3)),
+
+    %% two stakers with delay
+    TxEnv0_1  = aetx_env:set_height(TxEnv, ?GENESIS_HEIGHT + 1),
+    {ok, Trees4, _} = stake_(Alice, 101, Sam, TxEnv0_1, Trees3),
+    {ok, _, AliceState4} = get_validator_state_(Alice, Alice, TxEnv0_1, Trees4),
+    ?assertMatch({tuple, {_, _, _, ?VALIDATOR_MIN, 201, _, _, _}}, AliceState4),
+    ?assertEqual(201, account_balance(Ct, Trees4)),
+    ?assertEqual(?VALIDATOR_MIN, account_balance(AliceCt, Trees4)),
+
+    {ok, Trees5, _} = stake_(Alice, 102, Paul, TxEnv0_1, Trees4),
+    {ok, _, AliceState5} = get_validator_state_(Alice, Alice, TxEnv0_1, Trees5),
+    ?assertMatch({tuple, {_, _, _, ?VALIDATOR_MIN, 303, _, _, _}}, AliceState5),
+    ?assertEqual(303, account_balance(Ct, Trees5)),
+    ?assertEqual(?VALIDATOR_MIN, account_balance(AliceCt, Trees5)),
+
+    AssertTotalStake5 = case is_validator_online_(Alice, Alice, TxEnv, Trees5) of
+                          {ok, _, true} -> ?VALIDATOR_MIN + ?VALIDATOR_MIN; % alice + bob
+                          {ok, _, false} -> ?VALIDATOR_MIN % bob
+                        end,
+    {ok, _, {tuple, {_, _, TotalStake5, _, _, _, _, _, _, _}}} = get_state_(Alice, TxEnv, Trees5),
+    ?assertMatch(AssertTotalStake5, TotalStake5),
+
+    %% stake distribution for single staker
+    TxEnv1  = aetx_env:set_height(TxEnv, ?GENESIS_HEIGHT + StakeDelay),
+    {ok, Trees6, _} = elect_(?OWNER_PUBKEY, TxEnv1, Trees5),
+    {ok, _, AliceState6} = get_validator_state_(Alice, Alice, TxEnv1, Trees6),
+    ?assertMatch({tuple, {_, _, _, ?VALIDATOR_MIN+100, 203, _, _, _}}, AliceState6),
+    ?assertEqual(203, account_balance(Ct, Trees6)),
+    ?assertEqual(?VALIDATOR_MIN+100, account_balance(AliceCt, Trees6)),
+    AssertTotalStake6 = case is_validator_online_(Alice, Alice, TxEnv1, Trees6) of
+                          {ok, _, true} -> ?VALIDATOR_MIN+?VALIDATOR_MIN+100; % alice + bob
+                          {ok, _, false} -> ?VALIDATOR_MIN % bob
+                        end,
+    {ok, _, {tuple, {_, _, TotalStake6, _, _, _, _, _, _, _}}} = get_state_(Alice, TxEnv1, Trees6),
+    ?assertMatch(AssertTotalStake6, TotalStake6),
+
+    % do not double spend
+    {ok, Trees6_1, _} = elect_(?OWNER_PUBKEY, TxEnv1, Trees6),
+    ?assertEqual(?VALIDATOR_MIN+100, account_balance(AliceCt, Trees6_1)),
+
+    %% stake distribution for multiple stakers
+    TxEnv2  = aetx_env:set_height(TxEnv, ?GENESIS_HEIGHT + StakeDelay + 1),
+    {ok, Trees7, _} = elect_(?OWNER_PUBKEY, TxEnv2, Trees6),
+    {ok, _, AliceState7} = get_validator_state_(Alice, Alice, TxEnv2, Trees7),
+    ?assertMatch({tuple, {_, _, _, ?VALIDATOR_MIN+303, 0, _, _, _}}, AliceState7),
+    ?assertEqual(0, account_balance(Ct, Trees7)),
+    ?assertEqual(?VALIDATOR_MIN+303, account_balance(AliceCt, Trees7)),
+    AssertTotalStake7 = case is_validator_online_(Alice, Alice, TxEnv2, Trees7) of
+                          {ok, _, true} -> ?VALIDATOR_MIN+?VALIDATOR_MIN+303; %% alice + bob
+                          {ok, _, false} -> ?VALIDATOR_MIN % bob
+                        end,
+    {ok, _, {tuple, {_, _, TotalStake7, _, _, _, _, _, _, _}}} = get_state_(Alice, TxEnv2, Trees7),
+    ?assertMatch(AssertTotalStake7, TotalStake7),
+
+    ok.
+
+stake_delay_respects_upper_stake_limit(_Config) ->
+    Alice = pubkey(?ALICE),
+    TxEnv = aetx_env:tx_env(?GENESIS_HEIGHT),
+    Trees0 = genesis_trees(#{stake_delay => 100}),
+    Ct = consensus_contract_address(),
+    {Sam, Trees1} = set_up_account(Trees0),
+
+    % Online validator
+    {ok, OnlineTrees2, {contract, AliceCt}} = new_validator_(Alice, ?VALIDATOR_MIN, TxEnv, Trees1),
+    {ok, OnlineTrees3, {tuple, {}}} = set_validator_online_(Alice, TxEnv, OnlineTrees2),
+    {ok, OnlineTrees4, _} = stake_(Alice, 100, Sam, TxEnv, OnlineTrees3),
+    ?assertEqual(100, account_balance(Ct, OnlineTrees4)),
+    ?assertEqual(?VALIDATOR_MIN, account_balance(AliceCt, OnlineTrees4)),
+
+    StakeLimit = get_total_stake_limit(Alice, TxEnv, OnlineTrees4),
+    ?assertMatch({revert, <<"Total stake limit exceeded">>},
+                 stake_(Alice, StakeLimit, Sam, TxEnv, OnlineTrees4)),
+
+    % Offline validator
+    {ok, OfflineTrees2, {contract, _}} = new_validator_(Alice, ?VALIDATOR_MIN, TxEnv, Trees1),
+    {ok, OfflineTrees3, _} = stake_(Alice, 100, Sam, TxEnv, OfflineTrees2),
+    ?assertEqual(100, account_balance(Ct, OfflineTrees3)),
+    ?assertEqual(?VALIDATOR_MIN, account_balance(AliceCt, OfflineTrees3)),
+
+    StakeLimit = get_total_stake_limit(Alice, TxEnv, OfflineTrees3),
+    ?assertMatch({revert, <<"Total stake limit exceeded">>},
+                 stake_(Alice, StakeLimit, Sam, TxEnv, OfflineTrees3)),
+    ok.
+
+stake_delay_set_to_zero(_Config) ->
+    Alice = pubkey(?ALICE),
+    TxEnv = aetx_env:tx_env(?GENESIS_HEIGHT),
+    Trees0 = genesis_trees(#{stake_delay => 0}),
+    Ct = consensus_contract_address(),
+    {Sam, Trees1} = set_up_account(Trees0),
+
+    % Online validator
+    {ok, OnlineTrees2, {contract, AliceCt}} = new_validator_(Alice, ?VALIDATOR_MIN, TxEnv, Trees1),
+    {ok, OnlineTrees3, {tuple, {}}} = set_validator_online_(Alice, TxEnv, OnlineTrees2),
+    {ok, OnlineTrees4, _} = stake_(Alice, 100, Sam, TxEnv, OnlineTrees3),
+    ?assertEqual(0, account_balance(Ct, OnlineTrees4)),
+    ?assertEqual(?VALIDATOR_MIN+100, account_balance(AliceCt, OnlineTrees4)),
+    {ok, _, {tuple, {_, _, OnlineTotalStake, _, _, _, _, _, _, _}}} = get_state_(Alice, TxEnv, OnlineTrees4),
+    ?assertMatch(?VALIDATOR_MIN+100, OnlineTotalStake),
+
+    % Offline validator
+    {ok, OfflineTrees2, {contract, AliceCt}} = new_validator_(Alice, ?VALIDATOR_MIN, TxEnv, Trees1),
+    {ok, OfflineTrees3, _} = stake_(Alice, 100, Sam, TxEnv, OfflineTrees2),
+    ?assertEqual(0, account_balance(Ct, OfflineTrees3)),
+    ?assertEqual(?VALIDATOR_MIN+100, account_balance(AliceCt, OfflineTrees3)),
+    {ok, _, {tuple, {_, _, OfflineTotalStake, _, _, _, _, _, _, _}}} = get_state_(Alice, TxEnv, OfflineTrees3),
+    ?assertMatch(0, OfflineTotalStake),
 
     ok.
 
@@ -1183,7 +1364,8 @@ genesis_trees(Opts) ->
                         genesis_trees_opts(integer,   min_stake,    Opts, ?VALIDATOR_MIN),
                         genesis_trees_opts(integer,   min_percent,  Opts, ?VALIDATOR_MIN_PERCENT),
                         genesis_trees_opts(integer,   stake_min,    Opts, ?STAKE_MIN),
-                        genesis_trees_opts(integer,   online_delay, Opts, ?ONLINE_DELAY)
+                        genesis_trees_opts(integer,   online_delay, Opts, ?ONLINE_DELAY),
+                        genesis_trees_opts(integer,   stake_delay,  Opts, ?STAKE_DELAY)
                        ]),
     {MainPubkey, Trees3} = create_contract(?STAKING_CONTRACT, MainCD, TxEnv, Trees2),
     %% assert expectation:
@@ -1201,6 +1383,11 @@ set_up_accounts(Trees) ->
                   {pubkey(?ALICE), trunc(math:pow(10, 30))},
                   {pubkey(?BOB), trunc(math:pow(10, 30))},
                   {pubkey(?CAROL), trunc(math:pow(10, 30))}]).
+
+set_up_account(Trees) ->
+    #{public := Account} = enacl:sign_keypair(),
+    Trees1 = set_up_account({Account, trunc(math:pow(10, 30))}, Trees),
+    {Account, Trees1}.
 
 set_up_account({Pubkey, Amount}, Trees) ->
     Account = aec_accounts:new(Pubkey, Amount),
@@ -1325,7 +1512,7 @@ calculate_total_stake_limit(Stake) ->
 
 get_total_stake_limit(Validator, TxEnv, Trees) ->
     {ok, _, State} = get_validator_state_(Validator, Validator, TxEnv, Trees),
-    {tuple, {_, _, _, _, StakeLimit, _, _}} = State,
+    {tuple, {_, _, _, _, _, StakeLimit, _, _}} = State,
     StakeLimit.
 
 %% contract call wrappers
@@ -1444,7 +1631,7 @@ set_avatar_(Avatar, Caller, TxEnv, Trees0) when is_binary(Avatar) ->
 
 
 expected_validator_state(PoolContract, ValidatorAddr, OnlineDelay,
-                         TotalSPower, TotalSLimit, IsOnline, Name,
+                         TotalSPower, PendingStake, TotalSLimit, IsOnline, Name,
                          Description, Avatar, PoolMap) ->
     ContractPubkey = consensus_contract_address(),
     Pool = maps:to_list(PoolMap),
@@ -1464,6 +1651,7 @@ expected_validator_state(PoolContract, ValidatorAddr, OnlineDelay,
            {address, ValidatorAddr},
            OnlineDelay,
            TotalSPower,
+           PendingStake,
            TotalSLimit,
            IsOnline,
            {tuple,
@@ -1478,6 +1666,7 @@ assert_equal_states(State1, State2) ->
            {address, ValidatorAddr1},
            OnlineDelay1,
            TotalSPower1,
+           PendingStake1,
            TotalSLimit1,
            IsOnline1,
            {tuple,
@@ -1490,6 +1679,7 @@ assert_equal_states(State1, State2) ->
            {address, ValidatorAddr2},
            OnlineDelay2,
            TotalSPower2,
+           PendingStake2,
            TotalSLimit2,
            IsOnline2,
            {tuple,
@@ -1501,6 +1691,7 @@ assert_equal_states(State1, State2) ->
     ?assertEqual(ValidatorAddr1, ValidatorAddr2),
     ?assertEqual(OnlineDelay1, OnlineDelay2),
     ?assertEqual(TotalSPower1, TotalSPower2),
+    ?assertEqual(PendingStake1, PendingStake2),
     ?assertEqual(TotalSLimit1, TotalSLimit2),
     ?assertEqual(IsOnline1, IsOnline2),
     ?assertEqual(ContractPubkey1, ContractPubkey2),

@@ -105,11 +105,13 @@ init_per_suite(Config0) ->
             MinStakeAmt = integer_to_list(trunc(math:pow(10,18) * 1)), %% 1 AE
             MinStakePercent = "30",
             OnlineDelay = "0",
+            StakeDelay = "0",
             #{ <<"pubkey">> := ConsensusContractPubkey
              , <<"owner_pubkey">> := ContractOwner } = C
                 = contract_create_spec(?STAKING_CONTRACT,
                                        [binary_to_list(StakingValidatorContract), "\"domat\"",
-                                        MinValidatorAmt, MinStakePercent, MinStakeAmt, OnlineDelay], 0, 2, Pubkey),
+                                        MinValidatorAmt, MinStakePercent, MinStakeAmt, OnlineDelay, StakeDelay],
+                                       0, 2, Pubkey),
             {ok, CCId} = aeser_api_encoder:safe_decode(contract_pubkey,
                                                        ConsensusContractPubkey),
             Call1 =

@@ -20,19 +20,28 @@ contract interface StakingValidator =
 main contract MainStaking =
   datatype bucket = ONLINE | OFFLINE
 
+  record pending_transfer =
+    { validator : address,
+      staker    : address,
+      stake     : int}
+
   record validator =
     { ct              : StakingValidator,
       creation_height : int,
       stake           : int,
+      pending_stake   : int,
       stake_limit     : int}
+
   record get_validator_response =
     { ct              : StakingValidator,
       address         : address,
       creation_height : int,
       stake           : int,
+      pending_stake   : int,
       stake_limit     : int,
       is_online       : bool,
       state           : StakingValidator.validator_state}
+
   record get_state_response =
     { staking_validator_ct  : StakingValidator,
       validators            : list(get_validator_response),
@@ -42,7 +51,8 @@ main contract MainStaking =
       validator_min_stake   : int,
       validator_min_percent : int,
       stake_minimum         : int,
-      online_delay          : int
+      online_delay          : int,
+      stake_delay           : int
       }
 
   record state =
@@ -55,7 +65,9 @@ main contract MainStaking =
       validator_min_stake   : int,
       validator_min_percent : int,
       stake_minimum         : int,
-      online_delay          : int
+      online_delay          : int,
+      stake_delay           : int,
+      pending_stake         : map(int, list(pending_transfer))
       }
 
   entrypoint init(staking_validator_ct : StakingValidator,
@@ -63,7 +75,8 @@ main contract MainStaking =
                   validator_min_stake : int,
                   validator_min_percent : int,
                   stake_minimum : int,
-                  online_delay : int
+                  online_delay : int,
+                  stake_delay : int
                   ) =
     { staking_validator_ct  = staking_validator_ct,
       online_validators     = {},
@@ -74,7 +87,9 @@ main contract MainStaking =
       validator_min_stake   = validator_min_stake,
       validator_min_percent = validator_min_percent,
       stake_minimum         = stake_minimum,
-      online_delay          = online_delay
+      online_delay          = online_delay,
+      stake_delay           = stake_delay,
+      pending_stake         = {}
       }
 
   entrypoint online_validators() =
@@ -91,9 +106,12 @@ main contract MainStaking =
     let validator_ct : StakingValidator = Chain.clone(ref = state.staking_validator_ct, Contract.address)
     validator_ct.stake(value = Call.value, Call.caller)
     let stake_limit = calculate_stake_limit(Call.value)
-    put(state{offline_validators[Call.caller] = {ct = validator_ct,
+    put(state{offline_validators[Call.caller] = {
+        ct = validator_ct,
         creation_height = Chain.block_height,
-       stake = Call.value, stake_limit = stake_limit}})
+        stake = Call.value,
+        pending_stake = 0,
+        stake_limit = stake_limit}})
     validator_ct
 
   stateful entrypoint set_online() =
@@ -113,17 +131,28 @@ main contract MainStaking =
 
   payable stateful entrypoint stake(to : address) =
     require(Call.value >= state.stake_minimum, "Must stake the minimum amount")
-    switch(validator_bucket(to))
-      ONLINE =>
-        let validator = state.online_validators[to]
+    switch(state.stake_delay)
+      0 =>
+        let validator : validator = get_validator(to)
         validator.ct.stake(value = Call.value, Call.caller)
         let new_validator = maybe_set_stake_limit(to, Call.caller, validator{ stake @ s = s + Call.value })
-        put(state{online_validators[to] = new_validator, total_stake @ ts = ts + Call.value})
-      OFFLINE =>
-        let validator = state.offline_validators[to]
-        validator.ct.stake(value = Call.value, Call.caller)
-        let new_validator = maybe_set_stake_limit(to, Call.caller, validator{ stake @ s = s + Call.value })
-        put(state{offline_validators[to] = new_validator})
+        switch(validator_bucket(to))
+          ONLINE => put(state{online_validators[to] = new_validator, total_stake @ ts = ts + Call.value })
+          OFFLINE => put(state{offline_validators[to] = new_validator})
+      _ =>
+        let validator : validator = get_validator(to)
+        let new_validator = maybe_set_stake_limit(to, Call.caller, validator{ pending_stake @ ps = ps + Call.value })
+        let height  = Chain.block_height + state.stake_delay
+        let pending_transfer = { validator = to, staker = Call.caller, stake = Call.value}
+        let ps = switch(Map.member(height, state.pending_stake))
+            false => []
+            true => state.pending_stake[height]
+        put(state{pending_stake[height] = pending_transfer::ps})
+        switch(validator_bucket(to))
+          ONLINE => put(state{online_validators[to] = new_validator})
+          OFFLINE => put(state{offline_validators[to] = new_validator})
+
+         // total_stake @ ts = ts + Call.value,
 
   stateful entrypoint unstake(from : address, stakes : int) : int =
     switch(validator_bucket(from))
@@ -177,7 +206,8 @@ main contract MainStaking =
       validator_min_stake   = state.validator_min_stake,
       validator_min_percent = state.validator_min_percent,
       stake_minimum         = state.stake_minimum,
-      online_delay          = state.online_delay
+      online_delay          = state.online_delay,
+      stake_delay           = state.stake_delay
       }
 
   entrypoint set_validator_name(name : string) =
@@ -197,8 +227,25 @@ main contract MainStaking =
 
   stateful entrypoint elect() =
     assert_protocol_call()
-    let new_leader = elect_at_height(Chain.block_height)
-    put(state{ leader = new_leader})
+    let height = Chain.block_height
+    let new_leader = elect_at_height(height)
+    switch(Map.member(height, state.pending_stake))
+      false => ()
+      true =>
+        let payouts = state.pending_stake[height]
+        List.foreach(payouts, distribute_payout)
+        let new_ps = Map.delete(height, state.pending_stake)
+        put(state{pending_stake = new_ps})
+    put(state{ leader = new_leader })
+
+  stateful function distribute_payout(payout) =
+    let validator : validator = get_validator(payout.validator)
+    validator.ct.stake(value = payout.stake, payout.staker)
+    let new_validator = validator{ stake @ s = s + payout.stake, pending_stake @ ps = ps - payout.stake}
+    switch(validator_bucket(payout.validator))
+      ONLINE => put(state{online_validators[payout.validator] = new_validator, total_stake @ ts = ts + payout.stake})
+      OFFLINE =>
+        put(state{offline_validators[payout.validator] = new_validator})
 
   entrypoint elect_next() =
     elect_at_height(Chain.block_height + 1)
@@ -223,10 +270,15 @@ main contract MainStaking =
     let validator = get_validator(who)
     validator.ct
 
-  function get_validator(who : address) =
+  function get_validator(who : address) : validator =
     switch(validator_bucket(who))
       ONLINE => state.online_validators[who]
       OFFLINE => state.offline_validators[who]
+
+  stateful function set_validator(who : address, v : validator) : unit =
+    switch(validator_bucket(who))
+      ONLINE => put(state{online_validators[who] = v})
+      OFFLINE => put(state{offline_validators[who] = v})
 
   function assert_uknown_validator(who) : bool =
     switch(Map.member(who, state.online_validators))
@@ -268,6 +320,7 @@ main contract MainStaking =
      address = address,
      creation_height = validator.creation_height,
      stake = validator.stake,
+     pending_stake = validator.pending_stake,
      stake_limit = validator.stake_limit,
      is_online = is_online,
      state = validator.ct.get_state()}
@@ -307,7 +360,7 @@ main contract MainStaking =
     stake * 100 / state.validator_min_percent
 
   function assert_stake_limit(v : validator) : validator =
-    if(v.stake_limit < v.stake) abort("Total stake limit exceeded")
+    if(v.stake_limit < v.stake + v.pending_stake) abort("Total stake limit exceeded")
     else v
 
   function assert_allowed_to_set_online(v : validator) =
