@@ -74,6 +74,7 @@
 %% Consensus API
 -export([ get_active_consensus_module/0
         , consensus_request/1
+        , throw_error/1
         ]).
 
 -ifdef(TEST).
@@ -1220,7 +1221,7 @@ create_key_block_candidate(#state{key_block_candidates = [{_, #candidate{top_has
     %% We have the most recent candidate already. Just start mining.
     start_block_production_(State);
 create_key_block_candidate(#state{top_block_hash = TopHash,
-                                  top_height = Height} = State) ->
+                                  top_height = _Height} = State) ->
     ConsensusModule = consensus_module(State),
     epoch_mining:info("Creating key block candidate on the top"),
     Fun = fun() ->
@@ -1263,6 +1264,11 @@ handle_key_block_candidate_reply({{ok, _KeyBlockCandidate}, _OldTopHash},
     create_key_block_candidate(State);
 handle_key_block_candidate_reply({{error, key_not_found}, _}, State) ->
     start_block_production_(State#state{keys_ready = false});
+handle_key_block_candidate_reply({{error, Reason}, _}, State)
+        when Reason =:= not_in_cache; 
+             Reason =:= not_leader ->
+    epoch_mining:debug("Creation of key block candidate failed: ~p", [Reason]),
+    create_key_block_candidate(State);
 handle_key_block_candidate_reply({{error, Reason}, _}, State) ->
     epoch_mining:error("Creation of key block candidate failed: ~p", [Reason]),
     create_key_block_candidate(State).
@@ -1302,6 +1308,7 @@ ok({ok, Value}) ->
 
 handle_add_block(Block, State, Origin) ->
     ActiveConsensusModule = consensus_module(State),
+    try
     Header = aec_blocks:to_header(Block),
     case aec_headers:consensus_module(Header) of
         ActiveConsensusModule ->
@@ -1317,7 +1324,16 @@ handle_add_block(Block, State, Origin) ->
                     %% Some pending blocks might still be present in the message queue - ignore them
                     {{error, special_consensus_active}, State}
             end
+    end
+    catch
+        exit:{aborted, {{handled_abort, Err}, _}} ->
+            lager:info("ASDF 1 CAUGHT ~p", [Err]),
+            {{error, Err}, State}
     end.
+
+
+throw_error(Error) ->
+    error({handled_abort, Error}).
 
 handle_add_block(Header, Block, State, Origin) ->
     {ok, Hash} = aec_headers:hash_header(Header),

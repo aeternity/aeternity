@@ -745,7 +745,7 @@ node_config(PotentialStakers, Consensus) ->
                 #{  <<"parent_chain">> =>
                         #{  <<"type">> => <<"AE">>,
                             <<"start_height">> => 35,
-                            <<"confirmations">> => 10,
+                            <<"confirmations">> => 2,
                             <<"fetch_interval">> => 1000,
                             <<"nodes">> =>
                                 [   #{  <<"host">> => <<"127.0.0.1">>,

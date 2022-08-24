@@ -159,8 +159,10 @@ state_pre_transform_key_node(Node, Trees) ->
     Height = aetx_env:height(TxEnv),
     PCHeight = Height + pc_start_height(),
     case aec_parent_chain_cache:get_block_by_height(PCHeight) of
-        {error, _} ->
-            throw({bypass, {error, parent_chain_block_not_synced}});
+        {error, not_in_cache} ->
+            aec_conductor:throw_error(parent_chain_block_not_synced);
+        {error, {not_enough_confirmations, Block}} ->
+            aec_conductor:throw_error({not_enough_confirmations, aec_parent_chain_block:height(Block)});
         {ok, Block} ->
             Hash = aec_parent_chain_block:hash(Block),
             HashStr = binary_to_list(Hash),
@@ -176,7 +178,7 @@ state_pre_transform_key_node(Node, Trees) ->
                     Trees1;
                 {error, What} ->
                     %% maybe a softer approach than crash and burn?
-                    error({failed_to_elect_new_leader, What})
+                    aec_conductor:throw_error({failed_to_elect_new_leader, What})
             end
     end.
 

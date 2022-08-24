@@ -75,7 +75,8 @@ post_block(Block) ->
     gen_server:cast(?SERVER, {post_block, Block}).
 
 -spec get_block_by_height(non_neg_integer()) -> {ok, aec_parent_chain_block:block()}
-                                              | {error, not_in_cache}.
+                                              | {error, not_in_cache}
+                                              | {error, {not_enough_confirmations, aec_parent_chain_block:block()}}.
 get_block_by_height(Height) ->
     gen_server:call(?SERVER, {get_block_by_height, Height}).
 
@@ -132,6 +133,7 @@ handle_info(initialize_cache, State) ->
     TargetHeight = target_parent_height(State),
     case aec_parent_connector:fetch_block_by_height(TargetHeight) of
         {ok, B} ->
+            aec_parent_connector:request_top(),
             {noreply, post_block(B, State)};
         {error, not_found} ->
             lager:debug("Waiting for block ~p to be mined on the parent chain", [TargetHeight]),
@@ -263,6 +265,7 @@ post_block(Block, #state{max_size = MaxSize,
             end
     end.
 
+maybe_request_previous_block(0 = _BlockHeight, _State) -> pass;
 maybe_request_previous_block(BlockHeight, #state{} = State) ->
     PrevHeight = BlockHeight - 1,
     case PrevHeight >= min_cachable_parent_height(State) of
