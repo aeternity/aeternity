@@ -311,7 +311,6 @@ terminate(Reason, _PartialReq, State) ->
         FsmPid ->
             true = unlink(FsmPid)
     end,
-    _ = jobs_done(State), %% strictly speaking, we don't have to do this.
     ok.
 
 jobs_done(#handler{job_id = JobId} = H) when JobId =/= undefined ->

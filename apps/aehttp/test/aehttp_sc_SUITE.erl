@@ -21,6 +21,7 @@
     sc_ws_min_depth_is_modifiable_plain/1,
     sc_ws_basic_open_close/1,
     sc_ws_basic_open_close_server/1,
+    sc_ws_multi_open_close/1,
     sc_ws_failed_update/1,
     sc_ws_generic_messages/1,
     sc_ws_update_with_meta/1,
@@ -202,7 +203,8 @@ groups() ->
       ]},
 
      {assume_min_depth, [],
-      [ sc_ws_basic_open_close ]},
+      [ sc_ws_basic_open_close,
+        sc_ws_multi_open_close ]},
 
      {with_meta, [],
       [ sc_ws_update_transfer,
@@ -3102,10 +3104,23 @@ sc_ws_min_depth_is_modifiable_plain(Config0) ->
     ok = sc_ws_close_(Config).
 
 sc_ws_basic_open_close(Config0) ->
+    {ok, Config} = sc_ws_basic_open_(Config0),
+    ok = sc_ws_close_(Config).
+
+sc_ws_basic_open_(Config0) ->
     Config = sc_ws_open_(Config0),
     ok = sc_ws_update_(Config),
     ok = maybe_collect_deferred_min_depth_msg(Config),
-    ok = sc_ws_close_(Config).
+    {ok, Config}.
+
+sc_ws_multi_open_close(Config0) ->
+    Config = [{assume_min_depth, true}|Config0],
+    Configs = [reset_participants(sc_ws_multi, Config) || _ <- lists:seq(1,20)],
+    Configs1 = [ok(sc_ws_basic_open_(C)) || C <- Configs],
+    QInfo = rpc(jobs, queue_info, [sc_ws_handlers]),
+    ct:log("Jobs Queue Info: ~p", [QInfo]),
+    _ = [ok = sc_ws_close_(C) || C <- Configs1],
+    ok.
 
 sc_ws_basic_open_close_server(Config0) ->
     Config = sc_ws_open_([server_mode|Config0]),
