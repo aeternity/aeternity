@@ -575,7 +575,7 @@ code_change(_FromVsn, C, _Extra) ->
 %%%===================================================================
 
 new_account_(ForkId, Balance, Chain) ->
-    #{pubkey := _PK} = KP = deterministic_keypair(),
+    #{pubkey := _PK} = KP = new_keypair(),
     add_account_keypair_(ForkId, KP, Balance, Chain).
 
 add_account_keypair_(ForkId, #{pubkey := PK} = KP, Balance, #{forks := Forks} = Chain) ->
@@ -1208,3 +1208,6 @@ deterministic_keypair() ->
     #{public := PK, secret := SK} = enacl:sign_seed_keypair(<<"asdf">>),
     #{pubkey => PK, privkey => SK}.
 
+new_keypair() ->
+    #{public := PK, secret := SK} = enacl:sign_keypair(),
+    #{pubkey => PK, privkey => SK}.
