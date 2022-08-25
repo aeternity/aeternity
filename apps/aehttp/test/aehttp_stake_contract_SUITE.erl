@@ -743,7 +743,7 @@ node_config(PotentialStakers, Consensus) ->
             ?CONSENSUS_POS -> #{};
             ?CONSENSUS_HC ->
                 #{  <<"parent_chain">> =>
-                        #{  <<"type">> => <<"AE">>,
+                        #{  
                             <<"start_height">> => 35,
                             <<"confirmations">> => 2,
                             <<"fetch_interval">> => 1000,

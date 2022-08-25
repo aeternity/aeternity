@@ -1,15 +1,20 @@
-%%% -*- erlang-indent-level:4; indent-tabs-mode:aec_parent_connector.erl
+%%% -*- erlang-indent-level:4; indent-tabs-mode:nil -*-
 %%%-------------------------------------------------------------------
 %%% @copyright (C) 2022, Aeternity
 %%% @doc
-%%% Manage hyperchain parent chain cache
+%%% Manage interaction with hyperchain parent chain
 %%% @end
 %%%-------------------------------------------------------------------
 
 -module(aec_parent_connector).
 
 %% Functionality:
-%% TODO
+%% - at intervals check parent chain to understand when new top block is
+%%   available.
+%% - New top block from parent chain should include commitment transactions
+%%   on the parent chain.
+%% - Call consensus smart contract
+%%
 -behaviour(gen_server).
 
 %%%=============================================================================

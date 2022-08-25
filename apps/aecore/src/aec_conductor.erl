@@ -1327,7 +1327,7 @@ handle_add_block(Block, State, Origin) ->
     end
     catch
         exit:{aborted, {{handled_abort, Err}, _}} ->
-            lager:info("ASDF 1 CAUGHT ~p", [Err]),
+            lager:debug("Block was not accepted because of ~p", [Err]),
             {{error, Err}, State}
     end.
 
