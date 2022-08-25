@@ -7,7 +7,9 @@
     * `pow_cuckoo` for PoW as it is currently on mainnet
     * `smart_contract` for a pure PoS consensus, driven by a smart contract
 * AE parent connector is being refactored, now its settings are exposed to the
-  config - parent chain nodes and a fetch interval in milliseconds
+  config - parent chain nodes and a fetch interval in milliseconds. The type
+  of the parent chain is also required, currently only AE2AE is available so
+  the parent type is 'AE'
 * Parent chain cache - we cache parent chain headers in order to speed up the
    child's syncing. It has the following configs:
    * a number of confirmations before a parent chain block is considered to be
