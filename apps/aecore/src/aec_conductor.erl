@@ -1010,7 +1010,6 @@ start_block_production_(#state{key_block_candidates = [{_, #candidate{top_hash =
     epoch_mining:info("Key block candidate for old top hash; regenerating"),
     create_key_block_candidate(State);
 start_block_production_(#state{mode = local_pow, key_block_candidates = [{ForSealing, Candidate} | Candidates]} = State) ->
-    lager:info("ASDF start block generation", []),
     case available_instance(State) of
         none -> State;
         Instance ->
