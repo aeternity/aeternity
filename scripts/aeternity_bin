@@ -87,6 +87,10 @@ relx_usage() {
             echo "Usage: $REL_NAME console"
             echo "  Starts the Aeternity node with an interactive Erlang shell."
             ;;
+        cli)
+            echo "Usage: $REL_NAME cli"
+            echo "  Open a cli towards the Aeternity node."
+            ;;
         remote)
             echo "Usage: $REL_NAME remote"
             echo "  Attach a remote Erlang shell to an already running Aeternity node."
@@ -185,6 +189,7 @@ Commands:
   remote                  Connect remote Erlang shell to running aeternity node
   stop                    Stop the running node
   restart                 Restart the internal applications but not the OS process
+  cli                     Open a CLI towards the running aeternity node
   pid                     Print the PID of the OS process
   ping                    Print pong if the aeternity node is alive
   console                 Start the aeternity node in the foreground with an interactive Erlang shell
