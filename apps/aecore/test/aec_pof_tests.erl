@@ -87,7 +87,7 @@ make_fraud_headers() ->
     Fork = aec_test_utils:extend_block_chain_with_micro_blocks(CommonChain, Txs),
     [_, _, MBF] = blocks_only_chain(Fork),
 
-    {ok, MinerPubKey} = aec_keys:pubkey(),
+    {ok, MinerPubKey} = aec_keys:get_pubkey(),
     {ok, MinerPrivKey} = aec_keys:sign_privkey(),
     {aec_blocks:to_header(MB), aec_blocks:to_header(MBF), MinerPubKey, MinerPrivKey}.
 

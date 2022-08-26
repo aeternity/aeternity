@@ -70,6 +70,7 @@
 %% Global config
 %% Height => {ConsensusName, ConsensusConfiguration}
 -type consensus_module() :: atom().
+-type sign_module() :: atom().
 -type consensus_config() :: #{binary() => term()}.
 -type global_consensus_config() :: [{non_neg_integer(), {consensus_module(), consensus_config()}}].
 
@@ -171,7 +172,7 @@
 -callback state_pre_transform_micro_node(#node{}, aec_trees:trees()) -> aec_trees:trees() | no_return().
 
 %% Block rewards :)
--callback state_grant_reward(aec_keys:pubkey(), aec_trees:trees(), non_neg_integer()) -> aec_trees:trees() | no_return().
+-callback state_grant_reward(aec_keys:pubkey(), #node{}, aec_trees:trees(), non_neg_integer()) -> aec_trees:trees() | no_return().
 
 %% PoGF - called just before exiting the DB transaction and fully validating the node in question
 -callback pogf_detected(aec_headers:key_header(), aec_headers:key_header()) -> ok.
@@ -181,6 +182,14 @@
 -callback genesis_transform_trees(aec_trees:trees(), consensus_config()) -> aec_trees:trees().
 -callback genesis_raw_header() -> aec_headers:key_header().
 -callback genesis_difficulty() -> key_difficulty().
+
+%% rewards and signing
+-callback beneficiary() -> {ok, binary() | fun(() -> binary())} | {error, atom()}.
+-callback next_beneficiary() -> {ok, binary() | fun(() -> binary())} | {error, atom()}.
+-callback get_sign_module() -> sign_module().
+-callback get_type() -> pow | pos.
+-callback get_block_producer_configs() -> list().
+-callback is_leader_valid(#node{}, aec_trees:trees(), aetx_env:env()) -> boolean().
 
 %% -------------------------------------------------------------------
 %% Block sealing
@@ -307,6 +316,8 @@ consensus_from_network_id(<<"ae_uat">>) ->
     [{0, {aec_consensus_bitcoin_ng, #{}}}];
 consensus_from_network_id(<<"ae_dev">>) ->
     consensus_config_or_default([{0, {aec_consensus_on_demand, #{}}}]);
+consensus_from_network_id(<<"hc", _/binary>>) ->
+    consensus_config_or_default([{0, {aec_consensus_smart_contract, #{}}}]);
 consensus_from_network_id(_) ->
     consensus_config_or_default([{0, {aec_consensus_bitcoin_ng, #{}}}]).
 
@@ -332,6 +343,8 @@ consensus_config_or_default(Default) ->
 consensus_module_from_name(<<"pow_cuckoo">>) -> aec_consensus_bitcoin_ng;
 consensus_module_from_name(<<"on_demand">>) -> aec_consensus_on_demand;
 consensus_module_from_name(<<"ct_tests">>) -> aec_consensus_common_tests;
+consensus_module_from_name(<<"smart_contract">>) ->
+  aec_consensus_smart_contract;
 consensus_module_from_name(<<"eunit_one">>) -> module_eunit_one;
 consensus_module_from_name(<<"eunit_two">>) -> module_eunit_two;
 consensus_module_from_name(<<"eunit_three">>) -> module_eunit_three;
@@ -339,6 +352,7 @@ consensus_module_from_name(_) -> undefined.
 -else.
 consensus_module_from_name(<<"pow_cuckoo">>) -> aec_consensus_bitcoin_ng;
 consensus_module_from_name(<<"on_demand">>) -> aec_consensus_on_demand;
+consensus_module_from_name(<<"smart_contract">>) -> aec_consensus_smart_contract;
 consensus_module_from_name(_) -> undefined.
 -endif.
 

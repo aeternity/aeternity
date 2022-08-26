@@ -239,6 +239,7 @@
 %% rollback combined with dev mode
 -export([
     rollback_returns_to_dev_mode/1,
+    repeated_rollbacks_basic/1,
     repeated_rollbacks/1,
     repeated_rollbacks_to_key_hash/1,
     repeated_rollbacks_to_key_hash_multiple_blocks/1,
@@ -602,6 +603,7 @@ groups() ->
       [post_paying_for_tx]},
      {rollback, [sequence],
       [rollback_returns_to_dev_mode,
+       repeated_rollbacks_basic,
        repeated_rollbacks,
        repeated_rollbacks_to_key_hash,
        repeated_rollbacks_to_key_hash_multiple_blocks,
@@ -1454,12 +1456,31 @@ rollback_returns_to_dev_mode(Config) ->
     dev_mode = rpc:call(Node, app_ctrl, get_mode, []),
     ok.
 
+repeated_rollbacks_basic(Config) ->
+    [{_, Node}] = ?config(nodes, Config), % important that there is only one
+    Height = rpc:call(Node, aec_chain, top_height, []),
+    TxPool = rpc:call(Node, erlang, whereis, [aec_tx_pool]),
+    Action = fun() ->
+                     {ok,_} = aecore_suite_utils:mine_key_blocks(Node, 1),
+                     ok
+             end,
+    ok = do_rollback(Node, Height),  % verifies height
+    ok = Action(),
+    ok = do_rollback(Node, Height),
+    ok = Action(),
+    ok = do_rollback(Node, Height),
+    ok = Action(),
+    TxPool = rpc:call(Node, erlang, whereis, [aec_tx_pool]),
+    ok.
+
 repeated_rollbacks(Config) ->
     [{_, Node}] = ?config(nodes, Config), % important that there is only one
     Height = rpc:call(Node, aec_chain, top_height, []),
     Action = fun() ->
                      aecore_suite_utils:mine_key_blocks(Node, 1),
-                     ok = post_contract_and_call_tx(Config)
+                     ok = post_contract_and_call_tx(Config),
+                     {ok,_} = aecore_suite_utils:mine_key_blocks(Node, 1),
+                     ok
              end,
     ok = do_rollback(Node, Height),  % verifies height
     ok = Action(),

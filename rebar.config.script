@@ -67,6 +67,10 @@ AdaptOverlayBin = fun(Overlay) ->
                                                       lists:keyreplace(Dest0, 3, Acc1, {copy, Src, Dest})
                                               end
                                           end, Acc0, OverlayReplacements);
+                                    ({template, "scripts/aeternity_bin", Dest0}, Acc0) ->
+                                        Src = "scripts/aeternity_bin_windows",
+                                        Dest = "bin/aeternity.cmd",
+                                        lists:keyreplace(Dest0, 3, Acc0, {template, Src, Dest});
                                     (_, Acc0) ->
                                         Acc0
                                 end, Overlay, Overlay)

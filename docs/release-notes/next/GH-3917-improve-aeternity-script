@@ -1,0 +1,4 @@
+* The default provided bin/aeternity script has been replaced by one customised to the aeternity project
+* The `bin/aeternity status` command now prints a subset of the output from `curl http://localhost:3013/v2/status` in a human friendly form.
+* WARNING - backwards incompatibility. This change removes the following currently unsupported commands:
+  `upgrade|downgrade|install|uninstall|unpack|versions|export|reboot` 
