@@ -133,15 +133,15 @@ handle_call(_Request, _From, State) ->
 handle_cast({request_block_by_hash, Hash}, State) ->
     case handle_fetch_block(fun fetch_block_by_hash/4, Hash, State) of
         {ok, Block} -> aec_parent_chain_cache:post_block(Block);
-        {error, not_found} = Err -> pass;
-        {error, no_parent_chain_agreement} = Err -> pass
+        {error, not_found} -> pass;
+        {error, no_parent_chain_agreement} -> pass
     end,
     {noreply, State};
 handle_cast({request_block_by_height, Height}, State) ->
     case handle_fetch_block(fun fetch_block_by_height/4, Height, State) of
         {ok, Block} -> aec_parent_chain_cache:post_block(Block);
-        {error, not_found} = Err -> pass;
-        {error, no_parent_chain_agreement} = Err -> pass
+        {error, not_found} -> pass;
+        {error, no_parent_chain_agreement} -> pass
     end,
     {noreply, State}.
 
@@ -157,7 +157,7 @@ handle_info(check_parent, #state{parent_hosts = ParentNodes,
             {ok, ParentTop, _} ->
                 %% No change, just check again later
                 ParentTop;
-            {ok, NewParentTop, Node} ->
+            {ok, NewParentTop, _Node} ->
                 %% Fetch the commitment Txs in the parent block from a node
                 %% that had the majority answer
                 aec_parent_chain_cache:post_block(NewParentTop),
@@ -196,31 +196,35 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%%===================================================================
 fetch_parent_tops(Mod, ParentNodes, Seed) ->
-    Fun = fun(Parent) -> fetch_block(fun Mod:get_latest_block/5, Parent, Seed) end,
+    FetchFun =
+        fun(Host, Port, User, Password) ->
+            Mod:get_latest_block(Host, Port, User, Password, Seed)
+        end,
+    Fun = fun(Parent) ->fetch_block(FetchFun, Parent) end,
     {Good, Errors} = pmap(Fun, ParentNodes, 10000),
     responses_consensus(Good, Errors, length(ParentNodes)).
 
 fetch_block_by_hash(Hash, Mod, ParentNodes, Seed) ->
     FetchFun =
-        fun(Host, Port, User, Password, Seed) ->
+        fun(Host, Port, User, Password) ->
             Mod:get_header_by_hash(Hash, Host, Port, User, Password, Seed)
         end,
-    Fun = fun(Parent) -> fetch_block(FetchFun, Parent, Seed) end,
+    Fun = fun(Parent) -> fetch_block(FetchFun, Parent) end,
     {Good, Errors} = pmap(Fun, ParentNodes, 10000),
     responses_consensus(Good, Errors, length(ParentNodes)).
 
 fetch_block_by_height(Height, Mod, ParentNodes, Seed) ->
     FetchFun =
-        fun(Host, Port, User, Password, Seed) ->
+        fun(Host, Port, User, Password) ->
             Mod:get_header_by_height(Height, Host, Port, User, Password, Seed)
         end,
-    Fun = fun(Parent) -> fetch_block(FetchFun, Parent, Seed) end,
+    Fun = fun(Parent) -> fetch_block(FetchFun, Parent) end,
     {Good, Errors} = pmap(Fun, ParentNodes, 10000),
     responses_consensus(Good, Errors, length(ParentNodes)).
 
 fetch_block(FetchFun, #{host := Host, port := Port,
-                        user := User, password := Password} = Node, Seed) ->
-    case FetchFun(Host, Port, User, Password, Seed) of
+                        user := User, password := Password} = Node) ->
+    case FetchFun(Host, Port, User, Password) of
         {ok, BlockHash, PrevHash, Height} ->
             Top = aec_parent_chain_block:new(BlockHash, Height, PrevHash),
             {ok, {Top, Node}};
@@ -308,7 +312,6 @@ increment_seed(Bin) when is_binary(Bin) ->
 handle_fetch_block(Fun, Arg,
             #state{ parent_hosts = ParentNodes,
                     parent_conn_mod = Mod,
-                    fetch_interval = FetchInterval,
                     rpc_seed = Seed}) ->
     %% Parallel fetch top block from all configured parent chain nodes
     case Fun(Arg, Mod, ParentNodes, Seed) of

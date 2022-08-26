@@ -1220,19 +1220,20 @@ create_key_block_candidate(#state{key_block_candidates = [{_, #candidate{top_has
     %% We have the most recent candidate already. Just start mining.
     start_block_production_(State);
 create_key_block_candidate(#state{top_block_hash = TopHash,
-                                  top_height = _Height} = State) ->
+                                  mode           = Mode,
+                                  stratum_beneficiary = StratumBeneficiary} = State) ->
     ConsensusModule = consensus_module(State),
     epoch_mining:info("Creating key block candidate on the top"),
+    BeneficiaryFun =
+        fun() ->
+            case Mode of
+                stratum -> {ok, StratumBeneficiary};
+                _ ->
+                    get_next_beneficiary(ConsensusModule)
+            end
+        end,
     Fun = fun() ->
                 SignModule = ConsensusModule:get_sign_module(),
-                BeneficiaryFun =
-                    fun() ->
-                        case State#state.mode of
-                            stratum -> {ok, State#state.stratum_beneficiary};
-                            _ ->
-                                get_next_beneficiary(ConsensusModule)
-                        end
-                    end,
                 case BeneficiaryFun() of
                     {ok, Beneficiary} ->
                         {ok, Miner} = SignModule:candidate_pubkey(),

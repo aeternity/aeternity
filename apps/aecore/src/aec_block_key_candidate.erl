@@ -12,9 +12,10 @@
 -include("blocks.hrl").
 
 %% -- API functions ----------------------------------------------------------
--spec create(aec_blocks:block() | aec_blocks:block_header_hash(),
-             aec_keys:pubkey(), aec_keys:pubkey()) ->
-                    {ok, aec_blocks:block()} | {error, term()}.
+-spec create(BlockHash, Beneficiary, Miner) -> {ok, aec_blocks:block()} | {error, term()} 
+  when BlockHash :: aec_blocks:block() | aec_blocks:block_header_hash()
+     , Beneficiary :: aec_keys:pubkey()
+     , Miner :: aec_keys:pubkey().
 create(BlockHash, Beneficiary, Miner) when is_binary(BlockHash) ->
     case aec_chain:get_block(BlockHash) of
         {ok, Block} ->

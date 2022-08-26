@@ -100,9 +100,7 @@ start(Config) ->
     StakersMap = maps:from_list(Stakers),
     %% TODO: ditch this after we move beyond OTP24
     Mod = aec_preset_keys,
-    OldSpec =
-        {Mod, {Mod, start_link, [StakersMap]}, permanent, 3000, worker, [Mod]},
-    aec_consensus_sup:start_child(OldSpec),
+    start_dependency(aec_preset_keys, [StakersMap]),
     lager:debug("Stakers: ~p", [StakersMap]),
     ParentConnMod =
         case PCType of
@@ -122,11 +120,21 @@ start(Config) ->
             end,
             Nodes0),
     CacheSize = 2000, %% TODO: make it configurable
-    aec_parent_connector:start_link(ParentConnMod, FetchInterval, ParentHosts),
-    aec_parent_chain_cache:start_link(StartHeight, CacheSize, Confirmations),
+    start_dependency(aec_parent_connector, [ParentConnMod, FetchInterval, ParentHosts]),
+    start_dependency(aec_parent_chain_cache, [StartHeight, CacheSize, Confirmations]),
     ok.
 
-stop() -> ok.
+start_dependency(Mod, Args) ->
+    %% TODO: ditch this after we move beyond OTP24
+    OldSpec =
+        {Mod, {Mod, start_link, Args}, permanent, 3000, worker, [Mod]},
+    aec_consensus_sup:start_child(OldSpec).
+
+stop() ->
+    aec_preset_keys:stop(),
+    aec_parent_connector:stop(),
+    aec_parent_chain_cache:stop(),
+    ok.
 
 is_providing_extra_http_endpoints() -> false.
 
