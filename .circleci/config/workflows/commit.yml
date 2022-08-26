@@ -78,7 +78,7 @@ jobs:
   - aevm-test:
       context: ae-slack
       requires:
-        - build-otp22
+        - build-otp23
       filters:
         branches:
           ignore:
@@ -180,7 +180,7 @@ jobs:
   - rebar_lock_check:
       context: ae-slack
       requires:
-        - build-otp22
+        - build-otp23
       filters:
         branches:
           ignore:
