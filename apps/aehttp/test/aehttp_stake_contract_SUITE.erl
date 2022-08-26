@@ -707,8 +707,8 @@ build_json_files(NetworkId, ElectionContract, Config) ->
                             0, BRIPub, 2),
     %% keep the BRI offline
     AllCalls =  [Call1, Call2, Call3, Call4, Call5, Call6,
-                    Call7, Call8, Call9,
-                    Call10],
+		 Call7, Call8, Call9,
+		 Call10],
     aecore_suite_utils:create_seed_file([?NODE1, ?NODE2],
         Config,
         "ceres", binary_to_list(NetworkId) ++ "_contracts.json",
