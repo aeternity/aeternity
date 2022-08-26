@@ -50,7 +50,9 @@
         , find_signed_tx/2             %% (Name, TxHash) -> {value, STx)} | none
         , top_block_hash/1             %% (Name) -> Hash
         , top_key_block_hash/1         %% (Name) -> Hash
+        , top_key_block/1              %% (Name) -> Block
         , block_by_hash/2              %% (Name, BlockHash) -> {ok, Block}
+        , block_by_height/2            %% (Name, BlockHeight) -> {ok, Block}
         , get_key_block_hash_at_height/2
         , get_current_generation/1     %% (Name) -> {ok, Generation}
         , get_generation_by_hash/3     %% (Name, BlockHash, Direction) -> {ok, Generation}
@@ -275,6 +277,10 @@ add_keyblock(Name) ->
 block_by_hash(Name, BlockHash) ->
     chain_req(Name, {block_by_hash, BlockHash}).
 
+-spec block_by_height(Name :: atom(), non_neg_integer()) -> {ok, aec_blocks:block()}.
+block_by_height(Name, BlockHeight) ->
+    chain_req(Name, {block_by_height, BlockHeight}).
+
 -spec top_block_hash(Name :: atom()) -> binary().
 top_block_hash(Name) ->
     chain_req(Name, top_block_hash).
@@ -282,6 +288,10 @@ top_block_hash(Name) ->
 -spec top_key_block_hash(Name :: atom()) -> binary().
 top_key_block_hash(Name) ->
     chain_req(Name, top_key_block_hash).
+
+-spec top_key_block(Name :: atom()) -> binary().
+top_key_block(Name) ->
+    chain_req(Name, top_key_block).
 
 -spec get_key_block_hash_at_height(Name :: atom(), Height :: integer()) -> binary().
 get_key_block_hash_at_height(Name, Height) ->
@@ -408,6 +418,10 @@ setup_meck(Name) ->
                 fun() ->
                         chain_req(Name, top_key_block_hash)
                 end),
+    meck:expect(aec_chain, top_key_block, 0,
+                fun() ->
+                        chain_req(Name, top_key_block)
+                end),
     meck:expect(aec_chain, get_header, 1,
                 fun(BHash) ->
                         chain_req(Name, {get_header, BHash})
@@ -504,8 +518,12 @@ handle_call(top_block_hash, _From, #st{chain = Chain} = St) ->
     {reply, top_block_hash_(Chain), St};
 handle_call(top_key_block_hash, _From, #st{chain = Chain} = St) ->
     {reply, top_key_block_hash_(Chain), St};
+handle_call(top_key_block, _From, #st{chain = Chain} = St) ->
+    {reply, top_key_block_(Chain), St};
 handle_call({block_by_hash, Hash},_From, #st{chain = Chain} = St) ->
     {reply, get_block_(Hash, Chain), St};
+handle_call({block_by_height, Height},_From, #st{chain = Chain} = St) ->
+    {reply, get_block__by_height_(Height, Chain), St};
 handle_call(get_current_generation,  _From, #st{chain = Chain} = St) ->
     {reply, get_current_generation_(Chain), St};
 handle_call({get_generation_by_hash, Hash, Dir},  _From, #st{chain = Chain} = St) ->
@@ -724,7 +742,7 @@ origin(micro) ->
 %% wrapped inside a #{blocks, miner => #{privkey,pubkey}} map
 new_chain(Opt) ->
     {Gen, Tre} = genesis_state_param(Opt),
-    Miner = new_keypair(),
+    Miner = deterministic_keypair(),
     {ok, Hash} = aec_headers:hash_header(aec_blocks:to_header(Gen)),
     Chain0 =
         #{ miner     => Miner
@@ -743,7 +761,11 @@ add_keyblock_(ForkId, #{forks := Forks, miner := #{pubkey := Miner}} = Chain, Op
     #{block := Block} = hd(Blocks),
     TopHdr = aec_blocks:to_header(Block),
     {ok, PrevHash} = aec_headers:hash_header(TopHdr),
-    PrevKeyHash = aec_headers:prev_key_hash(TopHdr),
+    PrevKeyHash =
+    case aec_headers:type(TopHdr) of
+        key -> PrevHash;
+        micro -> aec_headers:prev_key_hash(TopHdr)
+    end,
     Height = aec_headers:height(TopHdr),
     NewHdr = aec_headers:new_key_header(
                Height+1, PrevHash, PrevKeyHash, root_hash(),
@@ -810,7 +832,8 @@ blocks_until_key(Blocks) ->
 blocks_until_height(Height, Blocks) ->
     lists:dropwhile(
       fun(#{block := B}) ->
-              Height =/= aec_headers:height(aec_blocks:to_header(B))
+              H = aec_blocks:height(B),
+              H =/= Height
       end, Blocks).
 
 blocks_at_height(Height, Blocks) ->
@@ -828,10 +851,15 @@ top_block_hash_(Chain) ->
     {ok, H} = aec_headers:hash_header(aec_blocks:to_header(B)),
     H.
 
- top_key_block_hash_(Chain) ->
+top_key_block_hash_(Chain) ->
     [#{block := B}|_] = blocks_until_key(blocks(main, Chain)),
     {ok, H} = aec_headers:hash_header(aec_blocks:to_header(B)),
     H.
+
+top_key_block_(Chain) ->
+    [#{block := B}|_] = blocks_until_key(blocks(main, Chain)),
+    B.
+
 
 top_block_node(Chain) ->
     [#{block := B}|_] = blocks_until_key(blocks(main, Chain)),
@@ -1054,6 +1082,14 @@ get_block_(Hash, Chain) ->
             error
     end.
 
+get_block__by_height_(Height, Chain) ->
+    case blocks_until_height(Height, blocks(Chain)) of
+        [BlockEntry|_] ->
+            {ok, maps:get(block, BlockEntry)};
+        [] ->
+            error
+    end.
+
 get_channel_(ChId, Chain) ->
     case trees(blocks(Chain)) of
         {ok, Trees} ->
@@ -1168,7 +1204,10 @@ lists_funfind(Val, Fun, [H|T]) ->
 lists_funfind(_, _, []) ->
     false.
 
+deterministic_keypair() ->
+    #{public := PK, secret := SK} = enacl:sign_seed_keypair(<<"asdf">>),
+    #{pubkey => PK, privkey => SK}.
+
 new_keypair() ->
     #{public := PK, secret := SK} = enacl:sign_keypair(),
     #{pubkey => PK, privkey => SK}.
-
