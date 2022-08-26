@@ -721,7 +721,7 @@ randint(RSt, Max) ->
     {RandInt, RSt2} = rand:uniform_s(Max, RSt),
     {RandInt - 1, RSt2}.
 
-%% Generates a weak random integer `X' where `0 <= X < MAX' with a skewed
+%% Generates a weak random integer `X' where `1 =< X =< MAX' with a skewed
 %% distribution. If the given skew is `1.0' the distribution is uniform.
 %% The larger than `1.0'  the skew is, the more the distribution is skewed
 %% toward the small values.
@@ -729,7 +729,7 @@ randint(RSt, Max) ->
     -> {non_neg_integer(), rand_state()}.
 skewed_randint(RSt, Max, Skew) ->
     {RandFloat, RSt2} = rand:uniform_s(RSt),
-    {floor(Max * math:pow(RandFloat, Skew)), RSt2}.
+    {floor(Max * math:pow(RandFloat, Skew)) + 1, RSt2}.
 
 -spec safe_min(undefined | number(), number()) -> number().
 safe_min(undefined, Value) -> Value;
@@ -1677,9 +1677,9 @@ pool_make_space(Pool = #pool{size        = Size,
             {free_space, [], undefined, Rand, Pool};
         false ->
             case bucket_prepare(Bucket, Filter, Sort) of
-                {evict, Prepped, Evictable, EvictableSize} when length(Evictable) > 0 ->
+                {evict, Prepped, Evictable, EvictSize} when EvictSize > 0 ->
                     SortedEvictable = lists:keysort(1, Evictable),
-                    {EvictedIndex, NewRand} = skewed_randint(Rand, EvictableSize, Skew),
+                    {EvictedIndex, NewRand} = skewed_randint(Rand, EvictSize, Skew),
                     {_, EvictedValue} = lists:nth(EvictedIndex, SortedEvictable),
                     Scrubbed = lists:delete(EvictedValue, Prepped),
                     NewBuckets = list_replace(Index, Scrubbed, Buckets),
@@ -1727,13 +1727,13 @@ bucket_prepare([H | T], Filter, Sort, Bucket, Rem, RemSize, Ex, ExSize) ->
             bucket_prepare(T, Filter, Sort, Bucket, NewRem, NewRemSize, Ex, ExSize);
         evict ->
             NewBucket = [H | Bucket],
-            NewEx = [H | Ex],
+            NewEx = [{Sort(H), H} | Ex],
             NewExSize = ExSize + 1,
             bucket_prepare(T, Filter, Sort, NewBucket, Rem, RemSize, NewEx, NewExSize)
     end;
 bucket_prepare([], _, _, _, [], 0, [], 0) ->
     no_space;
-bucket_prepare([], _, _, Bucket, [], 0, Ex, ExSize) when Ex =/= [] ->
+bucket_prepare([], _, _, Bucket, [], 0, Ex, ExSize) when ExSize > 0 ->
     {evict, Bucket, Ex, ExSize};
 bucket_prepare([], _, _, Bucket, Rem, RemSize, _, _) ->
     {removed, Bucket, Rem, RemSize}.
@@ -1893,7 +1893,7 @@ lookup_del(Table = #lookup{size = Size}, Index) ->
 
 lookup_select(#lookup{size = 0}, Rand, _, _) ->
     {unavailable, Rand};
-lookup_select(#lookup{array = [PeerID]}, Rand, _, _) ->
+lookup_select(#lookup{array = [PeerID]}, Rand, _, undefined) ->
     {PeerID, Rand};
 lookup_select(#lookup{size = Size, array = Array}, Rand, _, undefined) ->
     Value = lists:nth(rand:uniform(Size), Array),
@@ -1946,33 +1946,45 @@ lookup_sample(#lookup{size = Size, array = Array}, Rand, _, SampleSize, undefine
 lookup_sample(#lookup{array = Array}, Rand, _, all, Fun) ->
     {lists:filter(Fun, Array), Rand};
 lookup_sample(#lookup{size = Size, array = Array}, Rand, _, SampleSize, undefined) ->
-    Probability = SampleSize / Size,
-    Sample = lookup_sample2(Array, Probability, SampleSize, 0, []),
+    Sample = lookup_sample2(Array, Size, SampleSize, []),
     {Sample, Rand};
 lookup_sample(#lookup{size = Size, array = Array}, Rand, _, SampleSize, Fun) ->
-    Probability = SampleSize / Size,
-    Sample = lookup_sample2(Array, Probability, Fun, SampleSize, 0, []),
+    Sample = lookup_sample2(Array, Size, SampleSize, [], Fun),
     {Sample, Rand}.
 
-lookup_sample2([], _, _, _, Acc) ->
+
+lookup_sample2(_, _, 0, Acc) ->
     Acc;
-lookup_sample2(_, _, Desired, Desired, Acc) ->
+lookup_sample2(Array, Size, Desired, Acc) ->
+    Index = rand:uniform(Size),
+    {Value, Remaining} = pluck(Index, Array),
+    lookup_sample2(Remaining, Size - 1, Desired - 1, [Value | Acc]).
+
+
+lookup_sample2([], 0, _, Acc, _) ->
     Acc;
-lookup_sample2([Value | Rest], Prob, Desired, Count, Acc) ->
-    case Prob > rand:uniform() of
-        true  -> lookup_sample2(Rest, Prob, Desired, Count + 1, [Value | Acc]);
-        false -> lookup_sample2(Rest, Prob, Desired, Count, Acc)
+lookup_sample2(_, _, 0, Acc, _) ->
+    Acc;
+lookup_sample2(Array, Size, Desired, Acc, Fun) ->
+    Index = rand:uniform(Size),
+    {Value, Remaining} = pluck(Index, Array),
+    NewSize = Size - 1,
+    case Fun(Value) of
+        true  -> lookup_sample2(Remaining, NewSize, Desired - 1, [Value | Acc], Fun);
+        false -> lookup_sample2(Remaining, NewSize, Desired, Acc, Fun)
     end.
 
-lookup_sample2([], _, _, _, _, Acc) ->
-    Acc;
-lookup_sample2(_, _, _, Desired, Desired, Acc) ->
-    Acc;
-lookup_sample2([Value | Rest], Prob, Fun, Desired, Count, Acc) ->
-    case Prob > rand:uniform() andalso Fun(Value) of
-        true  -> lookup_sample2(Rest, Prob, Fun, Desired, Count + 1, [Value | Acc]);
-        false -> lookup_sample2(Rest, Prob, Fun, Desired, Count, Acc)
-    end.
+
+pluck(1, [H | T]) ->
+    {H, T};
+pluck(I, L) ->
+    pluck(I, L, []).
+
+pluck(1, [H | T], A) ->
+    {H, lists:append(lists:reverse(A), T)};
+pluck(I, [H | T], A) ->
+    pluck(I - 1, T, [H | A]).
+
 
 
 %% -- Configuration ----------------------------------------------------------
