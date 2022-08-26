@@ -222,11 +222,7 @@ jobs:
   - ubuntu_package:
       requires: []
       context: ae-slack
-      filters:
-        branches:
-          only:
-            - /releases\/.*/
-            - << pipeline.parameters.master_branch >>
+
 
   - upload-artifacts-s3:
       name: upload-artifacts-s3
@@ -265,11 +261,7 @@ jobs:
       package_name: aeternity-$CIRCLE_SHA1-macos-x86_64.tar.gz
       context: ae-slack
       requires: []
-      filters:
-        branches:
-          only:
-            - /releases\/.*/
-            - << pipeline.parameters.master_branch >>
+
 
   - macos-tarball:
       name: macos-tarball-bundle
