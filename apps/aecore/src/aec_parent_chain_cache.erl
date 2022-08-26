@@ -18,8 +18,8 @@
 %%   till it reaches the top. After that the node is fully synced and we are
 %%   waiting for notifications from the parent chain nodes for top changes
 %% - provides parent chain blocks to the consensus module on demand. If it
-%%   asks for an older block, it is being fetched as well. This would take some
-%%   more time as a couple of blocks are being queried
+%%   asks for an older block, it is fetched as well. This may take some
+%%   more time as more blocks need to be queried
 %% - cleans up older states
 %% - is fork aware
 -behaviour(gen_server).
@@ -48,7 +48,7 @@
     {
         child_top_height                    :: non_neg_integer(),
         child_start_height                  :: non_neg_integer(),
-        pc_confirmations                          :: non_neg_integer(),
+        pc_confirmations                    :: non_neg_integer(),
         max_size                            :: non_neg_integer(),
         blocks          = #{}               :: #{non_neg_integer() => aec_parent_chain_block:block()},
         top_height      = 0                 :: non_neg_integer()

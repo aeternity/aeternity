@@ -169,7 +169,7 @@ state_pre_transform_key_node(Node, Trees) ->
             {ok, CD} = aeb_fate_abi:create_calldata("elect",
                                                     [aefa_fate_code:encode_arg({string, Hash})]),
             CallData = aeser_api_encoder:encode(contract_bytearray, CD),
-            case call_consensus_contract(?ELECTION_CONTRACT, Node, Trees, CallData, "elect(" ++ HashStr ++ ")") of
+            case call_consensus_contract(?ELECTION_CONTRACT, Node, Trees, CallData, ["elect(", HashStr,  ")"]) of
                 {ok, Trees1, _} ->
                 aeu_ets_cache:reinit(
                     ?ETS_CACHE_TABLE,
@@ -283,11 +283,8 @@ generate_key_header_seal(_, Candidate, PCHeight, #{expected_key_block_rate := Ex
             {ok, _Trees1, Call} = call_consensus_contract_(?ELECTION_CONTRACT,
                                                            TxEnv, Trees,
                                                            CallData,
-                                                           "elect_at_height("
-                                                           ++
-                                                           integer_to_list(Height)
-                                                           ++ ", " ++
-                                                           ParentHash ++ ")",
+                                                           ["elect_at_height(", integer_to_list(Height),
+                                                            ", " , ParentHash , ")"],
                                                            0),
             {address, Leader} = aeb_fate_encoding:deserialize(aect_call:return_value(Call)),
             SignModule = get_sign_module(),
@@ -327,11 +324,8 @@ set_key_block_seal(KeyBlock0, Seal) ->
     {ok, _Trees1, Call} = call_consensus_contract_(?ELECTION_CONTRACT,
                                                     TxEnv, Trees,
                                                     CallData,
-                                                    "elect_at_height("
-                                                    ++
-                                                    integer_to_list(Height)
-                                                    ++ ", " ++
-                                                    ParentHash ++ ")",
+                                                    ["elect_at_height(", integer_to_list(Height),
+                                                     ", ", ParentHash,  ")"],
                                                     0),
     {address, Leader} = aeb_fate_encoding:deserialize(aect_call:return_value(Call)),
     KeyBlock1 = aec_blocks:set_beneficiary(KeyBlock0, Leader),
@@ -523,11 +517,8 @@ next_beneficiary() ->
             {ok, _Trees1, Call} = call_consensus_contract_(?ELECTION_CONTRACT,
                                                             TxEnv, Trees,
                                                             CallData,
-                                                            "elect_at_height("
-                                                            ++
-                                                            integer_to_list(Height)
-                                                            ++ ", " ++
-                                                            ParentHash ++ ")",
+                                                            ["elect_at_height(", integer_to_list(Height),
+                                                             ", ", ParentHash, ")"],
                                                             0),
             {address, Leader} = aeb_fate_encoding:deserialize(aect_call:return_value(Call)),
             SignModule = get_sign_module(),

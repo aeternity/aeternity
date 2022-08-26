@@ -49,7 +49,7 @@
         parent_conn_mod = aehttpc_btc,
         fetch_interval = 10000, % Interval for parent top change checks
         parent_hosts = [],
-        parent_top  = not_yet_fetched :: not_yet_fetched | aec_parent_chain_block:block(),
+        parent_top = not_yet_fetched :: not_yet_fetched | aec_parent_chain_block:block(),
         rpc_seed = crypto:strong_rand_bytes(?SEED_BYTES) % BTC Api only
     }).
 -type state() :: #state{}.
@@ -236,7 +236,7 @@ responses_consensus(Good0, _Errors, TotalCount) ->
     Good = [{Top, Node} || {ok, {Top, Node}} <- Good0],
     Counts = lists:foldl(fun({Top, _Node}, Acc) ->
                             Fun = fun(V) -> V + 1 end,
-                            maps:update_with(Top,Fun,1,Acc)
+                            maps:update_with(Top, Fun, 1, Acc)
                         end, #{}, Good),
     NotFoundsCnt = length([1 || {error, not_found} <- Good0]),
     case maps:size(Counts) =:= 0 of

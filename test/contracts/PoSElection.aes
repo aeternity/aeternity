@@ -48,8 +48,6 @@ main contract PoSElection =
       leader          = state.leader
       }
 
-
-
   function find_validator(validators, shot) =
     switch(validators)
       []   => None
