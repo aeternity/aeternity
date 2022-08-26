@@ -73,7 +73,7 @@ static-analysis:
     - fail_notification
 
 rebar_lock_check:
-  executor: builder_container_otp22
+  executor: builder_container_otp23
   steps:
     - fixed_checkout
     - run:
