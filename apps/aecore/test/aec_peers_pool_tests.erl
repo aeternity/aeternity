@@ -1520,7 +1520,6 @@ validate_counters() ->
 
     % Delete all the peers.
     Pool4 = lists:foldl(fun({I, _}, P) ->
-        erlang:display(P, I),
         case peer_state(P, I) of
             {undefined, _} -> P;
             _ -> aec_peers_pool:delete(P, I)
