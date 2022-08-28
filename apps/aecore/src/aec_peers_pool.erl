@@ -214,37 +214,51 @@
 -record(?MODULE, {
     % The secret to randomize the pool.
     secret                 :: binary(),
+
     % The state of the weak random generator.
     rand                   :: rand_state(),
+
     % The map of all the pooled peers.
     peers                  :: peer_map(),
+
     % The set of peers that have been rejected and are now on standby.
     standby                :: #{peer_id() => true},
+
     % The verified pool.
     verif_pool             :: pool(),
+
     % The unverified pool.
     unver_pool             :: pool(),
+
     % The randomized list of all verified peers.
     lookup_verif_all       :: lookup(),
+
     % The randomized list of verified peers that are neither selected
     % nor rejected.
     lookup_verif           :: lookup(),
+
     % The randomized list of unverified peers that are neither selected
     % nor rejected.
     lookup_unver           :: lookup(),
+
     % The probability to select a verified peer when selecting from both pools.
     select_verif_prob      :: float(),
+
     % The time after which a peer got removed if never updated.
     max_update_lapse       :: pos_integer(),
+
     % The sharding configuration.
     verif_group_shard      :: pos_integer(),
     unver_source_shard     :: pos_integer(),
     unver_group_shard      :: pos_integer(),
+
     % If a strong random number should be used as an offset of weak ransdom
     % number for random_select/4 and random_subset/3.
     use_rand_offset        :: boolean(),
+
     % The lookupt table for standby time.
     standby_times          :: [non_neg_integer()],
+
     % The maximum time a peer can be rejected.
     max_rejections         :: pos_integer()
 }).
@@ -768,8 +782,8 @@ reference_count(St, PeerId) ->
 find_peer(St, PeerId) ->
     #?ST{peers = Peers} = St,
     case maps:find(PeerId, Peers) of
-        error -> undefined;
-        {ok, Peer} -> Peer
+        {ok, Peer} -> Peer;
+        error      -> undefined
     end.
 
 %% Gets a peer record by peer identifier; fails if the id doesn't exists.
@@ -824,18 +838,19 @@ del_peer(St, PeerId) ->
     St2 = standby_del(St, PeerId),
     St3 = verified_del(St2, PeerId),
     St4 = unverified_del(St3, PeerId),
-    St5 = lists:foldl(fun({LookupRecField, PeerRecField}, S) ->
-        #?ST{peers = Peers} = S,
-        Lookup = element(LookupRecField, S),
-        {Lookup2, Peers2} =
-            peers_lookup_del(Peers, PeerId, Lookup, PeerRecField),
-        S2 = setelement(LookupRecField, S, Lookup2),
-        S2#?ST{peers = Peers2}
-    end, St4, [
-        {#?ST.lookup_verif_all, #peer.lookup_verif_all_idx},
-        {#?ST.lookup_verif, #peer.lookup_verif_idx},
-        {#?ST.lookup_unver, #peer.lookup_unver_idx}
-    ]),
+    Puzzling =
+        fun({LookupRecField, PeerRecField}, S) ->
+            #?ST{peers = Peers} = S,
+            Lookup = element(LookupRecField, S),
+            {Lookup2, Peers2} = peers_lookup_del(Peers, PeerId, Lookup, PeerRecField),
+            S2 = setelement(LookupRecField, S, Lookup2),
+            S2#?ST{peers = Peers2}
+        end,
+    Nonsense =
+        [{#?ST.lookup_verif_all, #peer.lookup_verif_all_idx},
+         {#?ST.lookup_verif, #peer.lookup_verif_idx},
+         {#?ST.lookup_unver, #peer.lookup_unver_idx}],
+    St5 = lists:foldl(Puzzling, St4, Nonsense),
     #?ST{peers = Peers} = St5,
     %% this asserts the peer is present
     Peer = get_peer(St, PeerId),
@@ -1537,11 +1552,11 @@ peers_lookup_add(Peers, RSt, PeerId, Lookup, RecField) ->
             Peer2 = setelement(RecField, Peer, Idx),
             Peers2 = Peers#{PeerId := Peer2},
             {Lookup2, RSt2, Peers2};
-        {Idx, {MovedPeerIdx, MovedPeerId}, RSt2, Lookup2} ->
-            #{MovedPeerId := MovedPeer} = Peers,
+        {Idx, {MovedPeerIdx, MovedPeerID}, RSt2, Lookup2} ->
+            MovedPeer = maps:get(MovedPeerID, Peers),
             Peer2 = setelement(RecField, Peer, Idx),
             MovedPeer2 = setelement(RecField, MovedPeer, MovedPeerIdx),
-            Peers2 = Peers#{PeerId := Peer2, MovedPeerId := MovedPeer2},
+            Peers2 = Peers#{PeerId := Peer2, MovedPeerID := MovedPeer2},
             {Lookup2, RSt2, Peers2}
     end.
 
@@ -1844,7 +1859,7 @@ lookup_add(Table = #lookup{size = 0, array = []}, Rand, Value) ->
     {1, undefined, Rand, NewTable};
 lookup_add(Table = #lookup{size = 1, array = [V]}, Rand, Value) ->
     case rand:uniform(2) of
-        1 -> {1, {1, V}, Rand, Table#lookup{size = 2, array = [Value, V]}};
+        1 -> {1, {2, V},    Rand, Table#lookup{size = 2, array = [Value, V]}};
         2 -> {2, undefined, Rand, Table#lookup{size = 2, array = [V, Value]}}
     end;
 lookup_add(Table, Rand, Value) ->

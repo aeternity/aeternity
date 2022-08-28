@@ -6,6 +6,7 @@
 %%%=============================================================================
 -module(aec_peers_pool_tests).
 
+
 -ifdef(TEST).
 
 %=== INCLUDES ==================================================================
@@ -1446,6 +1447,11 @@ verified_old_peers_are_removed() ->
 
 %% Tests that the counters and internal structures stay synchronized when
 %% performing a lot of different operations.
+% validate_counters_test() ->
+%     T = db_setup(),
+%     ok = validate_counters(),
+%     db_teardown(T).
+
 validate_counters() ->
     seed_process_random(),
     PoolOpts = [
@@ -1514,6 +1520,7 @@ validate_counters() ->
 
     % Delete all the peers.
     Pool4 = lists:foldl(fun({I, _}, P) ->
+        erlang:display(P, I),
         case peer_state(P, I) of
             {undefined, _} -> P;
             _ -> aec_peers_pool:delete(P, I)
