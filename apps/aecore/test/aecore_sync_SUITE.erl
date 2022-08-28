@@ -813,7 +813,7 @@ inject_generation(Node, NMicro, NTx) ->
     %% Start a generation
     TopHash = rpc:call(Node, aec_chain, top_block_hash, []),
     {ok, Pub} = rpc:call(Node, aec_keys, get_pubkey, []),
-    {ok, Block} = rpc:call(Node, aec_block_key_candidate, create, [TopHash, Pub]),
+    {ok, Block} = rpc:call(Node, aec_block_key_candidate, create, [TopHash, Pub, Pub]),
     ok = rpc:call(Node, aec_conductor, post_block, [Block]),
     %% Add microblocks
     [inject_microblock(Node, NTx) || _ <- lists:seq(1, NMicro)].

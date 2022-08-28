@@ -31,6 +31,7 @@
          serialize_to_binary/1,
          set_height/2,
          set_miner/2,
+         set_beneficiary/2,
          set_nonce/2,
          set_nonce_and_key_seal/3,
          set_key_seal/2,
@@ -279,6 +280,10 @@ miner(Block) ->
 -spec set_miner(key_block(), aec_keys:pubkey()) -> key_block().
 set_miner(Block, M) ->
     set_header(Block, aec_headers:set_miner(to_key_header(Block), M)).
+
+-spec set_beneficiary(key_block(), aec_keys:pubkey()) -> key_block().
+set_beneficiary(Block, B) ->
+    set_header(Block, aec_headers:set_beneficiary(to_key_header(Block), B)).
 
 -spec version(block()) -> non_neg_integer().
 version(Block) ->

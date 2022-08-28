@@ -47,10 +47,44 @@ forbidden(_Mod, _OperationId) ->
     false.
 
 %% Simulator compatible callbacks for a subset of the API required
+handle_request('GetCurrentKeyBlock',_,#{sim_name := SimName}) ->
+    KB = aec_chain_sim:top_key_block(SimName),
+    case encode_keyblock(KB, SimName) of
+        {error, Reason} ->
+            {404, [], Reason};
+        {ok, EncodedKB} ->
+            {200, [], EncodedKB}
+    end;
 handle_request('GetCurrentKeyBlockHash',_,#{sim_name := SimName}) ->
     Hash = aec_chain_sim:top_key_block_hash(SimName),
     EncodedHash = aeser_api_encoder:encode(key_block_hash, Hash),
     {200, [], #{hash => EncodedHash}};
+handle_request('GetKeyBlockByHash',#{hash := EncHash},#{sim_name := SimName}) ->
+    case aeser_api_encoder:safe_decode(key_block_hash, EncHash) of
+        {error, _} -> {400, [], #{reason => <<"Invalid hash">>}};
+        {ok, Hash} ->
+            case aec_chain_sim:block_by_hash(SimName, Hash) of
+                {ok, KB} ->
+                    case encode_keyblock(KB, SimName) of
+                        {error, Reason} ->
+                            {404, [], Reason};
+                        {ok, EncodedKB} ->
+                            {200, [], EncodedKB}
+                    end;
+                error         -> {400, [], #{reason => <<"Hash not on main chain">>}}
+            end
+    end;
+handle_request('GetKeyBlockByHeight',#{height := Height},#{sim_name := SimName}) ->
+    case aec_chain_sim:block_by_height(SimName, Height) of
+        {ok, KB} ->
+            case encode_keyblock(KB, SimName) of
+                {error, Reason} ->
+                    {404, [], Reason};
+                {ok, EncodedKB} ->
+                    {200, [], EncodedKB}
+            end;
+        error         -> {400, [], #{reason => <<"Hash not on main chain">>}}
+    end;
 handle_request('GetCurrentGeneration', _, #{sim_name := SimName}) ->
     generation_rsp(SimName, aec_chain_sim:get_current_generation());
 handle_request('GetGenerationByHash',#{hash := EncHash},#{sim_name := SimName}) ->
@@ -119,21 +153,36 @@ handle_request(OperationId, Params, Context) ->
     lager:debug("Unsupported request = ~p~n", [{OperationId, Params, Context}]),
     {404, [], #{reason => <<"Unsupported operation in ae_sim">>}}.
 
-generation_rsp(_, error) ->
-    {404, [], #{reason => <<"Block not found">>}};
-generation_rsp(SimName, {ok, #{ key_block := KeyBlock, micro_blocks := MicroBlocks }}) ->
+prev_block_type(KeyBlock, SimName) ->
     case aec_blocks:height(KeyBlock) of
         0 ->
-            {200, [], aehttp_helpers:encode_generation(KeyBlock, MicroBlocks, key)};
+            {ok, key};
         _ ->
             PrevBlockHash = aec_blocks:prev_hash(KeyBlock),
             case aec_chain_sim:block_by_hash(SimName, PrevBlockHash) of
                 {ok, PrevBlock} ->
-                    PrevBlockType = aec_blocks:type(PrevBlock),
-                    {200, [], aehttp_helpers:encode_generation(KeyBlock, MicroBlocks, PrevBlockType)};
-                error ->
-                    {404, [], #{reason => <<"Block not found">>}}
+                    {ok, aec_blocks:type(PrevBlock)};
+                error -> {error, not_found}
             end
+    end.
+
+encode_keyblock(KeyBlock, SimName) ->
+    case prev_block_type(KeyBlock, SimName) of
+        {error, not_found} ->
+            {error, #{reason => <<"Block not found">>}};
+        {ok, PrevBlockType} ->
+             {ok, aehttp_helpers:encode_keyblock(KeyBlock, PrevBlockType)}
+    end.
+
+        
+generation_rsp(_, error) ->
+    {404, [], #{reason => <<"Block not found">>}};
+generation_rsp(SimName, {ok, #{ key_block := KeyBlock, micro_blocks := MicroBlocks }}) ->
+    case prev_block_type(KeyBlock, SimName) of
+        {error, not_found} ->
+            {404, [], #{reason => <<"Block not found">>}};
+        {ok, PrevBlockType} ->
+            {200, [], aehttp_helpers:encode_generation(KeyBlock, MicroBlocks, PrevBlockType)}
     end.
 
 %%%=============================================================================

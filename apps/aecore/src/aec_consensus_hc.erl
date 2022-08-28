@@ -1,17 +1,17 @@
 %%% -*- erlang-indent-level: 4; indent-tabs-mode: nil -*-
 %%% -------------------------------------------------------------------
-%%% @copyright (C) 2020, Aeternity Anstalt
-%%% @doc Consensus module for consensus defined in a smart contract
+%%% @copyright (C) 2022, Aeternity
+%%% @doc Consensus module for HyperChains consensus
 %%% @end
 %%% -------------------------------------------------------------------
--module(aec_consensus_smart_contract).
+-module(aec_consensus_hc).
 
 -export([]).
 
 -behavior(aec_consensus).
 
 
--define(TAG, 1337). %% TODO: remove this
+-define(TAG, 1336). %% TODO: remove this
 -define(SIGNATURE_SIZE, 16).
 -define(ETS_CACHE_TABLE, ?MODULE).
 -define(ELECTION_CONTRACT, election).
@@ -80,7 +80,13 @@ can_be_turned_off() -> false.
 assert_config(_Config) -> ok.
 
 start(Config) ->
-    #{<<"stakers">> := StakersEncoded} = Config,
+    #{<<"stakers">> := StakersEncoded,
+      <<"parent_chain">> :=
+        #{<<"type">> := PCType,
+          <<"fetch_interval">> := FetchInterval,
+          <<"nodes">> := Nodes0,
+          <<"confirmations">> := Confirmations,
+          <<"start_height">> := StartHeight}} = Config,
     Stakers =
         lists:map(
             fun(#{<<"pub">> := EncodedPubkey, <<"priv">> := EncodedPrivkey}) ->
@@ -94,13 +100,41 @@ start(Config) ->
     StakersMap = maps:from_list(Stakers),
     %% TODO: ditch this after we move beyond OTP24
     Mod = aec_preset_keys,
-    OldSpec =
-        {Mod, {Mod, start_link, [StakersMap]}, permanent, 3000, worker, [Mod]},
-    aec_consensus_sup:start_child(OldSpec),
+    start_dependency(aec_preset_keys, [StakersMap]),
     lager:debug("Stakers: ~p", [StakersMap]),
+    ParentConnMod =
+        case PCType of
+            <<"AE">> -> aehttpc_aeternity
+        end,
+    ParentHosts = 
+        lists:map(
+            fun(#{<<"host">> := Host,
+                  <<"port">> := Port,
+                  <<"user">> := User,
+                  <<"password">> := Pass
+                }) ->
+                #{host => Host,
+                  port => Port,
+                  user => User,
+                  password => Pass}
+            end,
+            Nodes0),
+    CacheSize = 2000, %% TODO: make it configurable
+    start_dependency(aec_parent_connector, [ParentConnMod, FetchInterval, ParentHosts]),
+    start_dependency(aec_parent_chain_cache, [StartHeight, CacheSize, Confirmations]),
     ok.
 
-stop() -> ok.
+start_dependency(Mod, Args) ->
+    %% TODO: ditch this after we move beyond OTP24
+    OldSpec =
+        {Mod, {Mod, start_link, Args}, permanent, 3000, worker, [Mod]},
+    aec_consensus_sup:start_child(OldSpec).
+
+stop() ->
+    aec_preset_keys:stop(),
+    aec_parent_connector:stop(),
+    aec_parent_chain_cache:stop(),
+    ok.
 
 is_providing_extra_http_endpoints() -> false.
 
@@ -126,18 +160,34 @@ dirty_validate_micro_node_with_ctx(_Node, _Block, _Ctx) -> ok.
 %% Custom state transitions
 state_pre_transform_key_node_consensus_switch(_Node, Trees) -> Trees.
 state_pre_transform_key_node(Node, Trees) ->
-    {ok, CD} = aeb_fate_abi:create_calldata("elect", []),
-    CallData = aeser_api_encoder:encode(contract_bytearray, CD),
-    case call_consensus_contract(?ELECTION_CONTRACT, Node, Trees, CallData, "elect()") of
-        {ok, Trees1, _} ->
-        aeu_ets_cache:reinit(
-            ?ETS_CACHE_TABLE,
-            current_leader,
-            fun beneficiary_/0),
-            Trees1;
-        {error, What} ->
-            %% maybe a softer approach than crash and burn?
-            error({failed_to_elect_new_leader, What})
+    Header = aec_block_insertion:node_header(Node),
+    TxEnv = aetx_env:tx_env_from_key_header(
+              Header, aec_block_insertion:node_hash(Node),
+              aec_block_insertion:node_time(Node), aec_block_insertion:node_prev_hash(Node)),
+    Height = aetx_env:height(TxEnv),
+    PCHeight = Height + pc_start_height(),
+    case aec_parent_chain_cache:get_block_by_height(PCHeight) of
+        {error, not_in_cache} ->
+            aec_conductor:throw_error(parent_chain_block_not_synced);
+        {error, {not_enough_confirmations, Block}} ->
+            aec_conductor:throw_error({not_enough_confirmations, aec_parent_chain_block:height(Block)});
+        {ok, Block} ->
+            Hash = aec_parent_chain_block:hash(Block),
+            HashStr = binary_to_list(Hash),
+            {ok, CD} = aeb_fate_abi:create_calldata("elect",
+                                                    [aefa_fate_code:encode_arg({string, Hash})]),
+            CallData = aeser_api_encoder:encode(contract_bytearray, CD),
+            case call_consensus_contract(?ELECTION_CONTRACT, Node, Trees, CallData, ["elect(", HashStr,  ")"]) of
+                {ok, Trees1, _} ->
+                aeu_ets_cache:reinit(
+                    ?ETS_CACHE_TABLE,
+                    current_leader,
+                    fun beneficiary_/0),
+                    Trees1;
+                {error, What} ->
+                    %% maybe a softer approach than crash and burn?
+                    aec_conductor:throw_error({failed_to_elect_new_leader, What})
+            end
     end.
 
 state_pre_transform_micro_node(_Node, Trees) -> Trees.
@@ -194,10 +244,9 @@ genesis_raw_header() ->
         ?CERES_PROTOCOL_VSN).
 genesis_difficulty() -> 0.
 
-key_header_for_sealing(Header) ->
-    Header1 = aec_headers:set_nonce(Header, 0),
-    Header2 = aec_headers:set_key_seal(Header1, no_value),
-    aec_headers:serialize_to_binary(Header2).
+key_header_for_sealing(Header0) ->
+    Header = aec_headers:set_key_seal(Header0, no_value),
+    aec_headers:serialize_to_binary(Header).
 
 validate_key_header_seal(Header, _Protocol) ->
     Seal = aec_headers:key_seal(Header),
@@ -206,7 +255,8 @@ validate_key_header_seal(Header, _Protocol) ->
     Validators = [ fun seal_correct_padding/3
                  , fun seal_correct_signature/3
                  ],
-    aeu_validation:run(Validators, [Header, Signature, Padding]).
+    Res = aeu_validation:run(Validators, [Header, Signature, Padding]),
+    Res.
 
 seal_correct_padding(_Header, _Signature, Padding) ->
     PaddingSize = seal_padding_size(),
@@ -225,40 +275,81 @@ seal_correct_signature(Header, Signature, _Padding) ->
             {error, signature_verification_failed}
     end.
 
-generate_key_header_seal(_, Candidate, ?TAG, #{expected_key_block_rate := Expected} = _Config, _) ->
-    {ok, PrevKeyHeader} = aec_chain:get_header(aec_headers:prev_key_hash(Candidate)),
-    PrevBlockTime = aec_headers:time_in_msecs(PrevKeyHeader),
-    Now = aeu_time:now_in_msecs(),
-    SleepTime = max(PrevBlockTime + Expected - Now, 0),
-    lager:info("Sleeping for ~p ms before contining", [SleepTime]),
-    timer:sleep(SleepTime),
-    %% we are to adjust the time set in the block according to the actual time
-    %% when we sign it. This would effectively change the candidate. The
-    %% signature will be applied only after that. This is done in
-    %% set_key_block_seal/2
-    { continue_mining, {ok, to_be_signed} }.
+generate_key_header_seal(_, Candidate, PCHeight, #{expected_key_block_rate := Expected} = _Config, _) ->
+    case aec_parent_chain_cache:get_block_by_height(PCHeight) of
+        {ok, Block} ->
+            Hash = aec_parent_chain_block:hash(Block),
+            ParentHash = binary_to_list(Hash),
+            {TxEnv0, Trees} = aetx_env:tx_env_and_trees_from_top(aetx_transaction),
+            Height0 = aetx_env:height(TxEnv0),
+            Height = Height0 + 1,
+            TxEnv = aetx_env:set_height(TxEnv0, Height),
+            {ok, CD} = aeb_fate_abi:create_calldata("elect_at_height",
+                                                    [aefa_fate_code:encode_arg({integer, Height}),
+                                                    aefa_fate_code:encode_arg({string, list_to_binary(ParentHash)})]),
+            CallData = aeser_api_encoder:encode(contract_bytearray, CD),
+            {ok, _Trees1, Call} = call_consensus_contract_(?ELECTION_CONTRACT,
+                                                           TxEnv, Trees,
+                                                           CallData,
+                                                           ["elect_at_height(", integer_to_list(Height),
+                                                            ", " , ParentHash , ")"],
+                                                           0),
+            {address, Leader} = aeb_fate_encoding:deserialize(aect_call:return_value(Call)),
+            SignModule = get_sign_module(),
+            case SignModule:set_candidate(Leader) of
+                {error, key_not_found} ->
+                    timer:sleep(1000),
+                    {continue_mining, {error, no_solution} };
+                ok ->
+                    Candidate1 = aec_headers:set_beneficiary(Candidate, Leader),
+                    Candidate2 = aec_headers:set_miner(Candidate1, Leader),
+                    {ok, Signature} = SignModule:produce_key_header_signature(Candidate2, Leader),
+                    %% the signature is 64 bytes. The seal is 168 bytes. We add 104 bytes at
+                    %% the end of the signature
+                    PaddingSize = seal_padding_size(),
+                    Padding = << <<E:32>> || E <- lists:duplicate(PaddingSize, 0)>>,
+                    Seal = aec_headers:deserialize_pow_evidence_from_binary(<<Signature/binary, Padding/binary>>),
+                    {continue_mining, {ok, Seal}}
+            end;
+        {error, _} ->
+            timer:sleep(1000),
+            {continue_mining, {error, no_solution} }
+    end.
 
-set_key_block_seal(KeyBlock0, _Signature) ->
-    KeyBlock = aec_blocks:set_time_in_msecs(KeyBlock0, aeu_time:now_in_msecs()),
-    KeyHeader = aec_blocks:to_header(KeyBlock),
-    Leader = aec_headers:miner(KeyHeader),
-    SignModule = get_sign_module(),
-    {ok, Signature} = SignModule:produce_key_header_signature(KeyHeader, Leader),
-    %% the signature is 64 bytes. The seal is 168 bytes. We add 104 bytes at
-    %% the end of the signature
-    PaddingSize = seal_padding_size(),
-    Padding = << <<E:32>> || E <- lists:duplicate(PaddingSize, 0)>>,
-    Seal = aec_headers:deserialize_pow_evidence_from_binary(<<Signature/binary, Padding/binary>>),
-    aec_blocks:set_key_seal(KeyBlock, Seal).
+set_key_block_seal(KeyBlock0, Seal) ->
+    {TxEnv0, Trees} = aetx_env:tx_env_and_trees_from_top(aetx_transaction),
+    Height0 = aetx_env:height(TxEnv0),
+    Height = Height0 + 1,
+    PCHeight = Height + pc_start_height(),
+    {ok, Block} = aec_parent_chain_cache:get_block_by_height(PCHeight),
+    Hash = aec_parent_chain_block:hash(Block),
+    ParentHash = binary_to_list(Hash),
+    TxEnv = aetx_env:set_height(TxEnv0, Height),
+    {ok, CD} = aeb_fate_abi:create_calldata("elect_at_height",
+                                            [aefa_fate_code:encode_arg({integer, Height}),
+                                            aefa_fate_code:encode_arg({string, list_to_binary(ParentHash)})]),
+    CallData = aeser_api_encoder:encode(contract_bytearray, CD),
+    {ok, _Trees1, Call} = call_consensus_contract_(?ELECTION_CONTRACT,
+                                                    TxEnv, Trees,
+                                                    CallData,
+                                                    ["elect_at_height(", integer_to_list(Height),
+                                                     ", ", ParentHash,  ")"],
+                                                    0),
+    {address, Leader} = aeb_fate_encoding:deserialize(aect_call:return_value(Call)),
+    KeyBlock1 = aec_blocks:set_beneficiary(KeyBlock0, Leader),
+    KeyBlock2 = aec_blocks:set_miner(KeyBlock1, Leader),
+    aec_blocks:set_key_seal(KeyBlock2, Seal).
 
-nonce_for_sealing(_Header) ->
-    ?TAG.
+nonce_for_sealing(Header) ->
+    Height = aec_headers:height(Header),
+    PCHeight = Height + pc_start_height(),
+    PCHeight.
 
-next_nonce_for_sealing(?TAG, _) ->
-    ?TAG.
+next_nonce_for_sealing(PCHeight, _) ->
+    PCHeight.
 
-trim_sealing_nonce(?TAG, _) ->
-    ?TAG.
+trim_sealing_nonce(PCHeight, _) ->
+    PCHeight.
 
 default_target() ->
     ?TAG.
@@ -297,6 +388,21 @@ rewards_contract_pubkey() ->
                                                              EncContractId),
               Pubkey
       end).
+
+pc_start_height() ->
+    aeu_ets_cache:get(
+      ?ETS_CACHE_TABLE,
+      pc_start_height,
+      fun() ->
+              {ok, H} =
+                  aeu_env:user_config([<<"chain">>, <<"consensus">>,
+                                       <<"0">>,
+                                       <<"config">>, <<"parent_chain">>,
+                                       <<"start_height">>]),
+              H 
+
+      end).
+
 
 %% This is initial height; if neeeded shall be reinit at fork height
 contract_owner() ->
@@ -391,7 +497,6 @@ beneficiary() ->
 beneficiary_() ->
     %% TODO: cache this
     {TxEnv, Trees} = aetx_env:tx_env_and_trees_from_top(aetx_transaction),
-    %% call elect_next
     {ok, CD} = aeb_fate_abi:create_calldata("leader", []),
     CallData = aeser_api_encoder:encode(contract_bytearray, CD),
     case call_consensus_contract_(?ELECTION_CONTRACT, TxEnv, Trees, CallData, "leader()", 0) of
@@ -403,21 +508,38 @@ beneficiary_() ->
             error({failed_to_elect_new_leader, What})
     end.
 
-
 next_beneficiary() ->
-    {TxEnv, Trees} = aetx_env:tx_env_and_trees_from_top(aetx_transaction),
-    %% call elect_next
-    {ok, CD} = aeb_fate_abi:create_calldata("elect_next", []),
-    CallData = aeser_api_encoder:encode(contract_bytearray, CD),
-    case call_consensus_contract_(?ELECTION_CONTRACT, TxEnv, Trees, CallData, "elect_next()", 0) of
-        {ok, _Trees1, Call} ->
+    {TxEnv0, Trees} = aetx_env:tx_env_and_trees_from_top(aetx_transaction),
+    Height0 = aetx_env:height(TxEnv0),
+    Height = Height0 + 1,
+    PCHeight = Height + pc_start_height(),
+    case aec_parent_chain_cache:get_block_by_height(PCHeight) of
+        {ok, Block} ->
+            Hash = aec_parent_chain_block:hash(Block),
+            ParentHash = binary_to_list(Hash),
+            TxEnv = aetx_env:set_height(TxEnv0, Height),
+            {ok, CD} = aeb_fate_abi:create_calldata("elect_at_height",
+                                                    [aefa_fate_code:encode_arg({integer, Height}),
+                                                    aefa_fate_code:encode_arg({string, list_to_binary(ParentHash)})]),
+            CallData = aeser_api_encoder:encode(contract_bytearray, CD),
+            {ok, _Trees1, Call} = call_consensus_contract_(?ELECTION_CONTRACT,
+                                                            TxEnv, Trees,
+                                                            CallData,
+                                                            ["elect_at_height(", integer_to_list(Height),
+                                                             ", ", ParentHash, ")"],
+                                                            0),
             {address, Leader} = aeb_fate_encoding:deserialize(aect_call:return_value(Call)),
             SignModule = get_sign_module(),
-            SignModule:set_candidate(Leader),
-            {ok, Leader};
-        {error, What} ->
-            %% maybe a softer approach than crash and burn?
-            error({failed_to_elect_new_leader, What})
+            case SignModule:set_candidate(Leader) of
+                {error, key_not_found} ->
+                    timer:sleep(1000),
+                    {error, not_leader};
+                ok ->
+                    {ok, Leader}
+            end;
+        {error, _} ->
+            timer:sleep(1000),
+            {error, not_in_cache}
     end.
 
 get_sign_module() -> aec_preset_keys.

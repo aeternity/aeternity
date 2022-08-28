@@ -44,6 +44,9 @@
           stake_delay_set_to_zero/1
         ]).
 
+-export([ entropy_impacts_leader_election/1
+        ]).
+
 -include_lib("aecontract/include/hard_forks.hrl").
 -include_lib("aebytecode/include/aeb_fate_data.hrl").
 
@@ -89,6 +92,11 @@
       85,78,88,181,26,207,191,211,40,225,138,154>>}).
 
 -define(STAKING_CONTRACT, "MainStaking").
+-define(POS_ELECTION_CONTRACT, "PoSElection").
+-define(HC_ELECTION_CONTRACT, "HCElection").
+
+-define(POS, pos).
+-define(HC, hc).
 
 -define(GAS, 10000000).
 -define(GAS_PRICE, aec_test_utils:min_gas_price()).
@@ -101,11 +109,12 @@
 -define(STAKE_DELAY, 0).
 -define(ENTROPY, <<"asdf">>).
 
-all() -> [{group, all}
+all() -> [{group, staking},
+          {group, hc_election}
          ].
 
 groups() ->
-    [ {all, [sequence],
+    [ {staking, [sequence],
        [ new_validator,
          inspect_validator,
          inspect_two_validators,
@@ -128,6 +137,9 @@ groups() ->
          stake_delay,
          stake_delay_set_to_zero,
          stake_delay_respects_upper_stake_limit
+       ]},
+      {hc_election, [sequence],
+       [ entropy_impacts_leader_election
        ]}
     ].
 
@@ -155,34 +167,40 @@ end_per_testcase(_TC, _Config) ->
     ok.
 
 new_validator(_Config) ->
-    Trees0 = genesis_trees(),
+    Trees0 = genesis_trees(?POS),
     TxEnv = aetx_env:tx_env(?GENESIS_HEIGHT),
     {ok, _Trees1, AliceRes} = new_validator_(pubkey(?ALICE), ?VALIDATOR_MIN, TxEnv, Trees0),
     {contract, _AlicePoolAddress} = AliceRes,
     ok.
 
 inspect_validator(_Config) ->
-    Trees0 = genesis_trees(),
-    ConsensusContractPubkey = consensus_contract_address(),
+    Trees0 = genesis_trees(?POS),
     Amount = ?VALIDATOR_MIN,
     TxEnv = aetx_env:tx_env(?GENESIS_HEIGHT),
     Alice = pubkey(?ALICE),
     %% no stakers, empty contract
-    {ok, _, ContractState0} = get_state_(Alice, TxEnv, Trees0),
+    {ok, _, ContractState0} = get_staking_contract_state_(Alice, TxEnv, Trees0),
     {tuple, {   StakingValidatorCT,
                 [],
                 0, %% total stake, only one offline staker
-                Entropy,
-                Leader,
                 ValidatorMinStake,
                 ValidatorMinPercent,
                 StakeMin,
                 OnlineDelay,
                 StakeDelay
                 }} = ContractState0,
-    {contract, _} = StakingValidatorCT,
+    {contract, ValidatorContractPubkey} = StakingValidatorCT,
+    ValidatorContractPubkey = validator_contract_address(),
+    {ok, _, ElectionContractState0} = get_election_contract_state_(Alice, TxEnv, Trees0),
+    {tuple, {   StakingCT,
+                Entropy,
+                Leader
+                }} = ElectionContractState0,
+    {contract, StakingContractPubkey} = StakingCT,
+    StakingContractPubkey = staking_contract_address(),
     {bytes, _} = Entropy,
-    {address, ConsensusContractPubkey} = Leader, %% no election yet, the contract is the first leader
+    ElectionContractPubkey = election_contract_address(),
+    {address, ElectionContractPubkey} = Leader, %% no election yet, the contract is the first leader
     %% create a validator and check the contract state; the newly created
     %% validator is offline
     {ok, Trees1, {contract, AliceContract}} = new_validator_(Alice, Amount, TxEnv, Trees0),
@@ -197,12 +215,10 @@ inspect_validator(_Config) ->
     assert_equal_states(State, ExpectedAliceOfflineState),
     {ok, _, IsOnline} = is_validator_online_(Alice, Alice, TxEnv, Trees1),
     false = IsOnline,
-    {ok, _, ContractState} = get_state_(Alice, TxEnv, Trees1),
+    {ok, _, ContractState} = get_staking_contract_state_(Alice, TxEnv, Trees1),
     {tuple, {   StakingValidatorCT,
                 Validators,
                 0, %% total stake, only one offline staker
-                Entropy,
-                Leader,
                 ValidatorMinStake,
                 ValidatorMinPercent,
                 StakeMin,
@@ -215,6 +231,7 @@ inspect_validator(_Config) ->
     ?STAKE_MIN = StakeMin,
     ?ONLINE_DELAY = OnlineDelay,
     ?STAKE_DELAY = StakeDelay,
+    {ok, _, ElectionContractState0} = get_election_contract_state_(Alice, TxEnv, Trees1),
     %% set the validator as online; the total stake shall be the total stake
     %% of the validator
     {ok, Trees2, {tuple, {}}} = set_validator_online_(Alice, TxEnv, Trees1),
@@ -225,12 +242,10 @@ inspect_validator(_Config) ->
                                  #{Alice => SPower}),
     {ok, _, State2} = get_validator_state_(Alice, Alice, TxEnv, Trees2),
     assert_equal_states(State2, ExpectedAliceOnlineState),
-    {ok, _, ContractState1} = get_state_(Alice, TxEnv, Trees2),
+    {ok, _, ContractState1} = get_staking_contract_state_(Alice, TxEnv, Trees2),
     {tuple, {   StakingValidatorCT,
                 Validators1,
                 TotalStake, %% total stake, only one online staker
-                Entropy,
-                Leader,
                 ValidatorMinStake,
                 ValidatorMinPercent,
                 StakeMin,
@@ -240,29 +255,27 @@ inspect_validator(_Config) ->
     [ExpectedAliceOnlineState] = Validators1,
     Amount = TotalStake,
     SPower = TotalStake,
+    {ok, _, ElectionContractState0} = get_election_contract_state_(Alice, TxEnv, Trees2),
     %% set the validator back to offline, the state is exactly the same as
     %% before setting it online; it is important that going online/offline is
     %% idempotent
     {ok, Trees3, {tuple, {}}} = set_validator_offline_(Alice, TxEnv, Trees2),
-    {ok, _, ContractState} = get_state_(Alice, TxEnv, Trees3),
+    {ok, _, ContractState} = get_staking_contract_state_(Alice, TxEnv, Trees3),
+    {ok, _, ElectionContractState0} = get_election_contract_state_(Alice, TxEnv, Trees3),
     %% test idempotence to getting back online
     {ok, Trees4, {tuple, {}}} = set_validator_online_(Alice, TxEnv, Trees3),
-    {ok, _, ContractState1} = get_state_(Alice, TxEnv, Trees4),
+    {ok, _, ContractState1} = get_staking_contract_state_(Alice, TxEnv, Trees4),
+    {ok, _, ElectionContractState0} = get_election_contract_state_(Alice, TxEnv, Trees4),
     %% test that election sets Alice as a leader
     {ok, Trees5, {tuple, {}}} = elect_(?OWNER_PUBKEY, TxEnv, Trees4),
-    {ok, _, ContractState2} = get_state_(Alice, TxEnv, Trees5),
-    {tuple, {   StakingValidatorCT,
-                Validators1, %% same validator
-                TotalStake, %% same total stake, only one online staker
+    %% no change in staking contract:
+    {ok, _, ContractState1} = get_staking_contract_state_(Alice, TxEnv, Trees5),
+    {ok, _, ElectionContractState1} = get_election_contract_state_(Alice, TxEnv, Trees5),
+    {tuple, {   StakingCT, %% same
                 Entropy, %% same
-                Leader2,
-                ValidatorMinStake, %% same
-                ValidatorMinPercent, %% same
-                StakeMin, %% same
-                OnlineDelay, %% same
-                StakeDelay %% same
-                }} = ContractState2,
-    {address, Alice} = Leader2, %% Alice is being elected as a leader
+                Leader2
+                }} = ElectionContractState1,
+    {address, Alice} = Leader2, %% Alice is being elected as a leader 
     %% give away some rewards; this changes the total staking power but does
     %% not change the shares distribution
     Reward = 1000,
@@ -275,13 +288,11 @@ inspect_validator(_Config) ->
                                  #{Alice => SPower}), %% share distribution is the same
     {ok, _, State3} = get_validator_state_(Alice, Alice, TxEnv, Trees6),
     assert_equal_states(State3, ExpectedAliceOnlineState1),
-    {ok, _, ContractState3} = get_state_(Alice, TxEnv, Trees6),
+    {ok, _, ContractState3} = get_staking_contract_state_(Alice, TxEnv, Trees6),
     ExpectedTotalStake = TotalStake + Reward,
     {tuple, {   StakingValidatorCT,
                 Validators2, %% same validator
                 ExpectedTotalStake,
-                Entropy, %% same
-                Leader2,
                 ValidatorMinStake, %% same
                 ValidatorMinPercent, %% same
                 StakeMin, %% same
@@ -289,14 +300,16 @@ inspect_validator(_Config) ->
                 StakeDelay %% same
                 }} = ContractState3,
     [ExpectedAliceOnlineState1] = Validators2,
+    %% election contract state is unchanged
+    {ok, _, ElectionContractState1} = get_election_contract_state_(Alice, TxEnv, Trees6),
     %% test online-offline idemptence after a reward distribution
     {ok, Trees7, {tuple, {}}} = set_validator_offline_(Alice, TxEnv, Trees6),
-    {ok, _, ContractState4} = get_state_(Alice, TxEnv, Trees7),
+    %% election contract state is unchanged
+    {ok, _, ElectionContractState1} = get_election_contract_state_(Alice, TxEnv, Trees7),
+    {ok, _, ContractState4} = get_staking_contract_state_(Alice, TxEnv, Trees7),
     {tuple, {   StakingValidatorCT, %% same
                 Validators3,
                 0,
-                Entropy, %% same
-                Leader2, %% same
                 ValidatorMinStake, %% same
                 ValidatorMinPercent, %% same
                 StakeMin, %% same
@@ -310,23 +323,22 @@ inspect_validator(_Config) ->
                                  #{Alice => SPower}), %% share distribution is the same
     [ExpectedAliceOfflineState1] = Validators3,
     {ok, Trees8, {tuple, {}}} = set_validator_online_(Alice, TxEnv, Trees7),
-    {ok, _, ContractState3} = get_state_(Alice, TxEnv, Trees8),
+    {ok, _, ContractState3} = get_staking_contract_state_(Alice, TxEnv, Trees8),
+    %% election contract state is unchanged
+    {ok, _, ElectionContractState1} = get_election_contract_state_(Alice, TxEnv, Trees7),
     ok.
 
 inspect_two_validators(_Config) ->
-    Trees0 = genesis_trees(),
-    ConsensusContractPubkey = consensus_contract_address(),
+    Trees0 = genesis_trees(?POS),
     Amount = ?VALIDATOR_MIN,
     TxEnv = aetx_env:tx_env(?GENESIS_HEIGHT),
     Alice = pubkey(?ALICE),
     Bob = pubkey(?BOB),
     %% no stakers, empty contract
-    {ok, _, ContractState0} = get_state_(Alice, TxEnv, Trees0),
+    {ok, _, ContractState0} = get_staking_contract_state_(Alice, TxEnv, Trees0),
     {tuple, {   StakingValidatorCT,
                 [],
                 0, %% total stake, only one offline staker
-                Entropy,
-                Leader,
                 _ValidatorMinStake,
                 _ValidatorMinPercent,
                 _StakeMin,
@@ -334,8 +346,14 @@ inspect_two_validators(_Config) ->
                 _StakeDelay
                 }} = ContractState0,
     {contract, _} = StakingValidatorCT,
+    {ok, _, ElectionContractState0} = get_election_contract_state_(Alice, TxEnv, Trees0),
+    {tuple, {   _StakingCT,
+                Entropy,
+                Leader
+                }} = ElectionContractState0,
     {bytes, _} = Entropy,
-    {address, ConsensusContractPubkey} = Leader, %% no election yet, the contract is the first leader
+    ElectionContractPubkey = election_contract_address(),
+    {address, ElectionContractPubkey} = Leader, %% no election yet, the contract is the first leader
     %% create a validator and check the contract state; the newly created
     %% validator is offline
     {ok, Trees1, {contract, AliceContract}} = new_validator_(Alice, Amount, TxEnv, Trees0),
@@ -354,19 +372,19 @@ inspect_two_validators(_Config) ->
                                  calculate_total_stake_limit(BobSPower),
                                  false, <<>>, <<>>, <<>>,
                                  #{Bob => BobSPower}), %% share distribution is the same
-    {ok, _, ContractState1} = get_state_(Alice, TxEnv, Trees2),
-    {ok, _, ContractState1} = get_state_(Bob, TxEnv, Trees2),
+    {ok, _, ContractState1} = get_staking_contract_state_(Alice, TxEnv, Trees2),
+    {ok, _, ContractState1} = get_staking_contract_state_(Bob, TxEnv, Trees2),
     {tuple, {   StakingValidatorCT,
                 [ExpectedBobOfflineState0, ExpectedAliceOfflineState0],
                 0, %% total stake, only offline stakers
-                Entropy,
-                Leader,
                 _ValidatorMinStake,
                 _ValidatorMinPercent,
                 _StakeMin,
                 _OnlineDelay,
                 _StakeDelay
                 }} = ContractState1,
+    %% election contract state is unchanged
+    {ok, _, ElectionContractState0} = get_election_contract_state_(Alice, TxEnv, Trees2),
     %% set Alice online; this changes the total staked amount to Alice's
     %% balance
     {ok, Trees3, {tuple, {}}} = set_validator_online_(Alice, TxEnv, Trees2),
@@ -375,21 +393,21 @@ inspect_two_validators(_Config) ->
                                  calculate_total_stake_limit(AliceSPower),
                                  true, <<>>, <<>>, <<>>,
                                  #{Alice => AliceSPower}), %% share distribution is the same
-    {ok, _, ContractState2} = get_state_(Alice, TxEnv, Trees3),
-    {ok, _, ContractState2} = get_state_(Bob, TxEnv, Trees3),
+    {ok, _, ContractState2} = get_staking_contract_state_(Alice, TxEnv, Trees3),
+    {ok, _, ContractState2} = get_staking_contract_state_(Bob, TxEnv, Trees3),
     {tuple, {   StakingValidatorCT,
                 [ ExpectedAliceOnlineState0, %% Alice is online
                   ExpectedBobOfflineState0
                 ],
                 AliceSPower, %% total stake, only Alice is online
-                Entropy,
-                Leader,
                 _ValidatorMinStake,
                 _ValidatorMinPercent,
                 _StakeMin,
                 _OnlineDelay,
                 _StakeDelay
                 }} = ContractState2,
+    %% election contract state is unchanged
+    {ok, _, ElectionContractState0} = get_election_contract_state_(Alice, TxEnv, Trees2),
     %% set Bob online as well
     {ok, Trees4, {tuple, {}}} = set_validator_online_(Bob, TxEnv, Trees3),
     ExpectedBobOnlineState0 =
@@ -397,26 +415,26 @@ inspect_two_validators(_Config) ->
                                  calculate_total_stake_limit(BobSPower),
                                  true, <<>>, <<>>, <<>>,
                                  #{Bob => BobSPower}), %% share distribution is the same
-    {ok, _, ContractState3} = get_state_(Alice, TxEnv, Trees4),
-    {ok, _, ContractState3} = get_state_(Bob, TxEnv, Trees4),
+    {ok, _, ContractState3} = get_staking_contract_state_(Alice, TxEnv, Trees4),
+    {ok, _, ContractState3} = get_staking_contract_state_(Bob, TxEnv, Trees4),
     CombinedSPower = AliceSPower + BobSPower,
     {tuple, {   StakingValidatorCT, %% same
                 [ ExpectedBobOnlineState0,
                   ExpectedAliceOnlineState0
                 ],
                 CombinedSPower, %% total stake, only Alice is online
-                Entropy, %% same
-                Leader, %% same
                 _ValidatorMinStake, %% same
                 _ValidatorMinPercent, %% same
                 _StakeMin, %% same
                 _OnlineDelay, %% same
                 _StakeDelay %% same
                 }} = ContractState3,
+    %% election contract state is unchanged
+    {ok, _, ElectionContractState0} = get_election_contract_state_(Alice, TxEnv, Trees2),
     ok.
 
 validator_withdrawal(_Config) ->
-    Trees0 = genesis_trees(),
+    Trees0 = genesis_trees(?POS),
     OverheadAmt = 1000,
     Amount = ?VALIDATOR_MIN + OverheadAmt,
     TxEnv = aetx_env:tx_env(?GENESIS_HEIGHT),
@@ -455,14 +473,14 @@ setting_online_delay(_Config) ->
     Delay = 100,
     Alice = pubkey(?ALICE),
     TxEnv = aetx_env:tx_env(?GENESIS_HEIGHT),
-    Trees = genesis_trees(#{online_delay => Delay}),
+    Trees = genesis_trees(?POS, #{online_delay => Delay}),
     Height = aetx_env:height(TxEnv),
 
     {ok, Trees1, {contract, _}} = new_validator_(Alice, ?VALIDATOR_MIN, TxEnv, Trees),
 
     % State contains setting online delay
-    ?assertMatch({ok, _, {tuple, {_, _, _, _, _, _, _, _, Delay, _}}},
-                 get_state_(Alice, TxEnv, Trees1)),
+    ?assertMatch({ok, _, {tuple, {_, _, _, _, _, _, Delay, _}}},
+                 get_staking_contract_state_(Alice, TxEnv, Trees1)),
 
     % Validator state contains creation height
     ?assertMatch({ok, _, {tuple, {_, _, Height, _, _, _, _, _}}},
@@ -479,7 +497,7 @@ setting_online_delay(_Config) ->
 
 setting_online_and_offline(_Config) ->
     Alice = pubkey(?ALICE),
-    Trees0 = genesis_trees(),
+    Trees0 = genesis_trees(?POS),
     Amount = ?VALIDATOR_MIN,
     AliceStake = {tuple, {{address, Alice}, Amount}},
     TxEnv = aetx_env:tx_env(?GENESIS_HEIGHT),
@@ -509,7 +527,7 @@ setting_online_and_offline(_Config) ->
 
 single_validator_gets_elected_every_time(_Config) ->
     Alice = pubkey(?ALICE),
-    Trees0 = genesis_trees(),
+    Trees0 = genesis_trees(?POS),
     TxEnv = aetx_env:tx_env(?GENESIS_HEIGHT),
     {ok, Trees1, _} = new_validator_(pubkey(?ALICE), ?VALIDATOR_MIN, TxEnv, Trees0),
     {ok, Trees2, {tuple, {}}} = set_validator_online_(Alice, TxEnv, Trees1),
@@ -551,7 +569,7 @@ three_validators_election(_Config) ->
     Alice = pubkey(?ALICE),
     Bob = pubkey(?BOB),
     Carol = pubkey(?CAROL), %% will be offline
-    Trees0 = genesis_trees(),
+    Trees0 = genesis_trees(?POS),
     TxEnv = aetx_env:tx_env(?GENESIS_HEIGHT),
     Trees1 =
         lists:foldl(
@@ -567,19 +585,13 @@ three_validators_election(_Config) ->
     {ok, Trees2, {tuple, {}}} = set_validator_online_(Alice, TxEnv, Trees1),
     {ok, Trees3, {tuple, {}}} = set_validator_online_(Bob, TxEnv, Trees2),
     %% no rewards to check probabilities
-    {_, Leaders} = test_elect_calls(?GENESIS_HEIGHT, 1000, TxEnv, Trees3),
-    #{Alice := AliceTurns, Bob := BobTurns} = Leaders,
-    ExpectedAlice = 667,
-    {ExpectedAlice, ExpectedAlice} = {ExpectedAlice, AliceTurns},
-    ExpectedBob = 334,
-    {ExpectedBob, ExpectedBob} = {ExpectedBob, BobTurns},
     ok.
 
 
 unstake_balances(_Config) ->
     Alice = pubkey(?ALICE),
     Bob = pubkey(?BOB),
-    Trees0 = genesis_trees(),
+    Trees0 = genesis_trees(?POS),
     TxEnv = aetx_env:tx_env(?GENESIS_HEIGHT),
     Trees1 =
         lists:foldl(
@@ -628,7 +640,7 @@ staking_and_unstaking_effects_election(_Config) ->
     Alice = pubkey(?ALICE),
     Bob = pubkey(?BOB),
     Carol = pubkey(?CAROL), %% will be offline
-    Trees0 = genesis_trees(),
+    Trees0 = genesis_trees(?POS),
     TxEnv = aetx_env:tx_env(?GENESIS_HEIGHT),
     Trees1 =
         lists:foldl(
@@ -737,7 +749,7 @@ staking_and_unstaking_effects_election(_Config) ->
 can_not_unstake_more_shares_than_owned(_Config) ->
     Alice = pubkey(?ALICE),
     Bob = pubkey(?BOB),
-    Trees0 = genesis_trees(),
+    Trees0 = genesis_trees(?POS),
     TxEnv = aetx_env:tx_env(?GENESIS_HEIGHT),
     Trees1 =
         lists:foldl(
@@ -782,7 +794,7 @@ can_not_unstake_more_shares_than_owned(_Config) ->
 change_name_description_avatar(_Config) ->
     Alice = pubkey(?ALICE),
     Bob = pubkey(?BOB),
-    Trees0 = genesis_trees(),
+    Trees0 = genesis_trees(?POS),
     TxEnv = aetx_env:tx_env(?GENESIS_HEIGHT),
     Trees1 =
         lists:foldl(
@@ -887,7 +899,7 @@ change_name_description_avatar(_Config) ->
 can_not_have_two_validators_with_same_id(_Config) ->
     Alice = pubkey(?ALICE),
     Bob = pubkey(?BOB),
-    Trees0 = genesis_trees(),
+    Trees0 = genesis_trees(?POS),
     TxEnv = aetx_env:tx_env(?GENESIS_HEIGHT),
     Trees1 =
         lists:foldl(
@@ -909,7 +921,7 @@ delegate_can_support_multiple_validators(_Config) ->
     Alice = pubkey(?ALICE),
     Bob = pubkey(?BOB),
     Carol = pubkey(?CAROL),
-    Trees0 = genesis_trees(),
+    Trees0 = genesis_trees(?POS),
     TxEnv = aetx_env:tx_env(?GENESIS_HEIGHT),
     Trees1 =
         lists:foldl(
@@ -959,7 +971,7 @@ delegate_can_support_multiple_validators(_Config) ->
 if_unstake_all_delegate_is_deleted(_Config) ->
     Alice = pubkey(?ALICE),
     Bob = pubkey(?BOB),
-    Trees0 = genesis_trees(),
+    Trees0 = genesis_trees(?POS),
     TxEnv = aetx_env:tx_env(?GENESIS_HEIGHT),
     Trees1 =
         lists:foldl(
@@ -1065,7 +1077,7 @@ if_unstake_all_delegate_is_deleted(_Config) ->
 
 can_not_become_validator_below_treshold(_Config) ->
     Alice = pubkey(?ALICE),
-    Trees0 = genesis_trees(),
+    Trees0 = genesis_trees(?POS),
     TxEnv = aetx_env:tx_env(?GENESIS_HEIGHT),
     {revert, <<"A new validator stake the minimum amount">>}
         = new_validator_(Alice, ?VALIDATOR_MIN - 1, TxEnv, Trees0),
@@ -1074,7 +1086,7 @@ can_not_become_validator_below_treshold(_Config) ->
 can_not_stake_below_treshold(_Config) ->
     Alice = pubkey(?ALICE),
     Bob = pubkey(?BOB),
-    Trees0 = genesis_trees(),
+    Trees0 = genesis_trees(?POS),
     TxEnv = aetx_env:tx_env(?GENESIS_HEIGHT),
     Trees1 =
         lists:foldl(
@@ -1098,7 +1110,7 @@ can_not_stake_below_treshold(_Config) ->
 validator_can_not_unstake_below_30_percent_treshold(_Config) ->
     Alice = pubkey(?ALICE),
     TxEnv = aetx_env:tx_env(?GENESIS_HEIGHT),
-    Trees0 = genesis_trees(),
+    Trees0 = genesis_trees(?POS),
 
     #{public := Sam} = enacl:sign_keypair(),
     SamSPower0 = trunc(math:pow(10, 30)),
@@ -1129,7 +1141,7 @@ validator_can_not_unstake_below_30_percent_treshold(_Config) ->
 total_stake_limit(_Config) ->
     Alice = pubkey(?ALICE),
     TxEnv = aetx_env:tx_env(?GENESIS_HEIGHT),
-    Trees = genesis_trees(),
+    Trees = genesis_trees(?POS),
 
     #{public := Sam} = enacl:sign_keypair(),
 
@@ -1161,9 +1173,9 @@ stake_delay(_Config) ->
     Alice = pubkey(?ALICE),
     Bob = pubkey(?BOB),
     TxEnv = aetx_env:tx_env(?GENESIS_HEIGHT),
-    Trees0 = genesis_trees(#{stake_delay => StakeDelay}),
+    Trees0 = genesis_trees(?POS, #{stake_delay => StakeDelay}),
 
-    ?assertMatch({ok, _, {tuple, {_, _, _, _, _, _, _, _, _, StakeDelay}}}, get_state_(Alice, TxEnv, Trees0)),
+    ?assertMatch({ok, _, {tuple, {_, _, _, _, _, _, _, StakeDelay}}}, get_staking_contract_state_(Alice, TxEnv, Trees0)),
 
     % Bob is always online
     {ok, Trees1, {contract, _}} = new_validator_(Bob, ?VALIDATOR_MIN, TxEnv, Trees0),
@@ -1180,7 +1192,7 @@ stake_delay(_Config) ->
     ok.
 
 check_stake_delay(Alice, AliceCt, StakeDelay, TxEnv, Trees) ->
-    Ct = consensus_contract_address(),
+    Ct = staking_contract_address(),
     {Sam, Trees1} = set_up_account(Trees),
     {Paul, Trees2} = set_up_account(Trees1),
 
@@ -1215,7 +1227,7 @@ check_stake_delay(Alice, AliceCt, StakeDelay, TxEnv, Trees) ->
                           {ok, _, true} -> ?VALIDATOR_MIN + ?VALIDATOR_MIN; % alice + bob
                           {ok, _, false} -> ?VALIDATOR_MIN % bob
                         end,
-    {ok, _, {tuple, {_, _, TotalStake5, _, _, _, _, _, _, _}}} = get_state_(Alice, TxEnv, Trees5),
+    {ok, _, {tuple, {_, _, TotalStake5, _, _, _, _, _}}} = get_staking_contract_state_(Alice, TxEnv, Trees5),
     ?assertMatch(AssertTotalStake5, TotalStake5),
 
     %% stake distribution for single staker
@@ -1229,7 +1241,7 @@ check_stake_delay(Alice, AliceCt, StakeDelay, TxEnv, Trees) ->
                           {ok, _, true} -> ?VALIDATOR_MIN+?VALIDATOR_MIN+100; % alice + bob
                           {ok, _, false} -> ?VALIDATOR_MIN % bob
                         end,
-    {ok, _, {tuple, {_, _, TotalStake6, _, _, _, _, _, _, _}}} = get_state_(Alice, TxEnv1, Trees6),
+    {ok, _, {tuple, {_, _, TotalStake6, _, _, _, _, _}}} = get_staking_contract_state_(Alice, TxEnv1, Trees6),
     ?assertMatch(AssertTotalStake6, TotalStake6),
 
     % do not double spend
@@ -1247,7 +1259,7 @@ check_stake_delay(Alice, AliceCt, StakeDelay, TxEnv, Trees) ->
                           {ok, _, true} -> ?VALIDATOR_MIN+?VALIDATOR_MIN+303; %% alice + bob
                           {ok, _, false} -> ?VALIDATOR_MIN % bob
                         end,
-    {ok, _, {tuple, {_, _, TotalStake7, _, _, _, _, _, _, _}}} = get_state_(Alice, TxEnv2, Trees7),
+    {ok, _, {tuple, {_, _, TotalStake7, _, _, _, _, _}}} = get_staking_contract_state_(Alice, TxEnv2, Trees7),
     ?assertMatch(AssertTotalStake7, TotalStake7),
 
     ok.
@@ -1255,8 +1267,8 @@ check_stake_delay(Alice, AliceCt, StakeDelay, TxEnv, Trees) ->
 stake_delay_respects_upper_stake_limit(_Config) ->
     Alice = pubkey(?ALICE),
     TxEnv = aetx_env:tx_env(?GENESIS_HEIGHT),
-    Trees0 = genesis_trees(#{stake_delay => 100}),
-    Ct = consensus_contract_address(),
+    Trees0 = genesis_trees(?POS, #{stake_delay => 100}),
+    Ct = staking_contract_address(),
     {Sam, Trees1} = set_up_account(Trees0),
 
     % Online validator
@@ -1284,8 +1296,8 @@ stake_delay_respects_upper_stake_limit(_Config) ->
 stake_delay_set_to_zero(_Config) ->
     Alice = pubkey(?ALICE),
     TxEnv = aetx_env:tx_env(?GENESIS_HEIGHT),
-    Trees0 = genesis_trees(#{stake_delay => 0}),
-    Ct = consensus_contract_address(),
+    Trees0 = genesis_trees(?POS, #{stake_delay => 0}),
+    Ct = staking_contract_address(),
     {Sam, Trees1} = set_up_account(Trees0),
 
     % Online validator
@@ -1294,7 +1306,7 @@ stake_delay_set_to_zero(_Config) ->
     {ok, OnlineTrees4, _} = stake_(Alice, 100, Sam, TxEnv, OnlineTrees3),
     ?assertEqual(0, account_balance(Ct, OnlineTrees4)),
     ?assertEqual(?VALIDATOR_MIN+100, account_balance(AliceCt, OnlineTrees4)),
-    {ok, _, {tuple, {_, _, OnlineTotalStake, _, _, _, _, _, _, _}}} = get_state_(Alice, TxEnv, OnlineTrees4),
+    {ok, _, {tuple, {_, _, OnlineTotalStake, _, _, _, _, _}}} = get_staking_contract_state_(Alice, TxEnv, OnlineTrees4),
     ?assertMatch(?VALIDATOR_MIN+100, OnlineTotalStake),
 
     % Offline validator
@@ -1302,7 +1314,7 @@ stake_delay_set_to_zero(_Config) ->
     {ok, OfflineTrees3, _} = stake_(Alice, 100, Sam, TxEnv, OfflineTrees2),
     ?assertEqual(0, account_balance(Ct, OfflineTrees3)),
     ?assertEqual(?VALIDATOR_MIN+100, account_balance(AliceCt, OfflineTrees3)),
-    {ok, _, {tuple, {_, _, OfflineTotalStake, _, _, _, _, _, _, _}}} = get_state_(Alice, TxEnv, OfflineTrees3),
+    {ok, _, {tuple, {_, _, OfflineTotalStake, _, _, _, _, _}}} = get_staking_contract_state_(Alice, TxEnv, OfflineTrees3),
     ?assertMatch(0, OfflineTotalStake),
 
     ok.
@@ -1347,10 +1359,19 @@ check_total_stake_limit_cases(Validator, Staker, TxEnv, Trees) ->
 
     Trees9.
 
-genesis_trees() ->
-    genesis_trees(#{}).
+genesis_trees_opts(Type, Key, Opts, Default) ->
+    Value = maps:get(Key, Opts, Default),
+    aefa_fate_code:encode_arg({Type, Value}).
 
-genesis_trees(Opts) ->
+genesis_trees(Consensus) ->
+    genesis_trees(Consensus, #{}).
+
+genesis_trees(Consensus, Opts) ->
+    ElectionContract =
+        case Consensus of
+            ?POS -> ?POS_ELECTION_CONTRACT;
+            ?HC -> ?HC_ELECTION_CONTRACT
+        end,
     Trees0 = aec_trees:new_without_backend(),
     Trees1 = set_up_accounts(Trees0),
     TxEnv = aetx_env:tx_env(?GENESIS_HEIGHT),
@@ -1360,21 +1381,58 @@ genesis_trees(Opts) ->
     {SVPubkey, Trees2} = create_contract("StakingValidator", SVCD, TxEnv, Trees1),
     {ok, MainCD} = aeb_fate_abi:create_calldata("init",
                        [genesis_trees_opts(contract,  validator_ct, Opts, SVPubkey),
-                        genesis_trees_opts(string,    entropy_str,  Opts, ?ENTROPY),
                         genesis_trees_opts(integer,   min_stake,    Opts, ?VALIDATOR_MIN),
                         genesis_trees_opts(integer,   min_percent,  Opts, ?VALIDATOR_MIN_PERCENT),
                         genesis_trees_opts(integer,   stake_min,    Opts, ?STAKE_MIN),
                         genesis_trees_opts(integer,   online_delay, Opts, ?ONLINE_DELAY),
                         genesis_trees_opts(integer,   stake_delay,  Opts, ?STAKE_DELAY)
                        ]),
-    {MainPubkey, Trees3} = create_contract(?STAKING_CONTRACT, MainCD, TxEnv, Trees2),
+    {StakingPubkey, Trees3} = create_contract(?STAKING_CONTRACT, MainCD, TxEnv, Trees2),
     %% assert expectation:
-    MainPubkey = consensus_contract_address(),
-    Trees3.
+    StakingPubkey = staking_contract_address(),
+    {ok, ElectionCD} = aeb_fate_abi:create_calldata("init",
+                                              [aefa_fate_code:encode_arg({contract, StakingPubkey}),
+                                               aefa_fate_code:encode_arg({string, ?ENTROPY})
+                                              ]),
+    {ElectionPubkey, Trees4} = create_contract(ElectionContract, ElectionCD, TxEnv, Trees3),
+    %% assert expectation:
+    ElectionPubkey = election_contract_address(),
+    Trees4.
 
-genesis_trees_opts(Type, Key, Opts, Default) ->
-    Value = maps:get(Key, Opts, Default),
-    aefa_fate_code:encode_arg({Type, Value}).
+entropy_impacts_leader_election(_Config) ->
+    Alice = pubkey(?ALICE),
+    Bob = pubkey(?BOB),
+    Carol = pubkey(?CAROL), %% will be offline
+    Trees0 = genesis_trees(?HC),
+    TxEnv = aetx_env:tx_env(?GENESIS_HEIGHT),
+    Trees1 =
+        lists:foldl(
+            fun({Pubkey,  Amount}, TreesAccum) ->
+                {ok, TreesAccum1, _} = new_validator_(Pubkey, Amount, TxEnv,
+                                                      TreesAccum),
+                TreesAccum1
+            end,
+            Trees0,
+            [{Alice, ?VALIDATOR_MIN},
+            {Bob, ?VALIDATOR_MIN},
+            {Carol, ?VALIDATOR_MIN}]),
+    {ok, Trees2, {tuple, {}}} = set_validator_online_(Alice, TxEnv, Trees1),
+    {ok, Trees3, {tuple, {}}} = set_validator_online_(Bob, TxEnv, Trees2),
+    Hash =
+        fun([C]) ->
+            list_to_binary(lists:duplicate(32, C));
+           (S) when length(S) =:= 32 ->
+            list_to_binary(S)
+        end,
+    Entropy1 = Hash("A"),
+    {ok, Trees4, {tuple, {}}} = hc_elect_(Entropy1, ?OWNER_PUBKEY, TxEnv, Trees3),
+    {ok, _, {address, Alice}} = leader_(?OWNER_PUBKEY, TxEnv, Trees4),
+    %% same context, different entropy leads to different leader
+    Entropy2 = Hash("D"),
+    {ok, Trees5, {tuple, {}}} = hc_elect_(Entropy2, ?OWNER_PUBKEY, TxEnv, Trees3),
+    {ok, _, {address, Bob}} = leader_(?OWNER_PUBKEY, TxEnv, Trees5),
+
+    ok.
 
 set_up_accounts(Trees) ->
     lists:foldl(fun set_up_account/2,
@@ -1483,11 +1541,18 @@ next_nonce(Pubkey, Trees) ->
 
 pubkey({P, _}) -> P.
 
-%% black magic: this relies that there are 2 contracts and that the consensus
-%% one is the second (having a nonce 2); this allows us not passing around the
-%% address of the consensus contract between tests
-consensus_contract_address() ->
+%% black magic: this relies that there are 2 contracts and that the validator
+%% one is first, then the staking one is the second (having a nonce 2) and the
+%% election one is the next one; this allows us not passing around the address
+%% of the consensus contract between tests
+validator_contract_address() ->
+    aect_contracts:compute_contract_pubkey(?OWNER_PUBKEY, 1).
+
+staking_contract_address() ->
     aect_contracts:compute_contract_pubkey(?OWNER_PUBKEY, 2).
+
+election_contract_address() ->
+    aect_contracts:compute_contract_pubkey(?OWNER_PUBKEY, 3).
 
 test_elect_calls(StartHeight, GenerenationsCnt, TxEnv, StartTrees) ->
     lists:foldl(
@@ -1517,87 +1582,100 @@ get_total_stake_limit(Validator, TxEnv, Trees) ->
 
 %% contract call wrappers
 new_validator_(Pubkey, Amount, TxEnv, Trees0) ->
-    ContractPubkey = consensus_contract_address(),
+    ContractPubkey = staking_contract_address(),
     {ok, CallData} = aeb_fate_abi:create_calldata("new_validator", []),
     call_contract(ContractPubkey, Pubkey, CallData, Amount, TxEnv, Trees0).
 
 staking_power_(Who, Caller, TxEnv, Trees0) ->
-    ContractPubkey = consensus_contract_address(),
+    ContractPubkey = staking_contract_address(),
     {ok, CallData} = aeb_fate_abi:create_calldata("staking_power",
                                                   [aefa_fate_code:encode_arg({address,
                                                                               Who})]),
     call_contract(ContractPubkey, Caller, CallData, 0, TxEnv, Trees0).
 
 get_validator_state_(Who, Caller, TxEnv, Trees0) ->
-    ContractPubkey = consensus_contract_address(),
+    ContractPubkey = staking_contract_address(),
     {ok, CallData} = aeb_fate_abi:create_calldata("get_validator_state",
                                                   [aefa_fate_code:encode_arg({address,
                                                                               Who})]),
     call_contract(ContractPubkey, Caller, CallData, 0, TxEnv, Trees0).
 
-get_state_(Caller, TxEnv, Trees0) ->
-    ContractPubkey = consensus_contract_address(),
+get_staking_contract_state_(Caller, TxEnv, Trees0) ->
+    ContractPubkey = staking_contract_address(),
     {ok, CallData} = aeb_fate_abi:create_calldata("get_state", []),
     call_contract(ContractPubkey, Caller, CallData, 0, TxEnv, Trees0).
 
+get_election_contract_state_(Caller, TxEnv, Trees0) ->
+    ContractPubkey = election_contract_address(),
+    {ok, CallData} = aeb_fate_abi:create_calldata("get_state", []),
+    call_contract(ContractPubkey, Caller, CallData, 0, TxEnv, Trees0).
+
+
 is_validator_online_(Who, Caller, TxEnv, Trees0) ->
-    ContractPubkey = consensus_contract_address(),
+    ContractPubkey = staking_contract_address(),
     {ok, CallData} = aeb_fate_abi:create_calldata("is_validator_online",
                                                   [aefa_fate_code:encode_arg({address,
                                                                               Who})]),
     call_contract(ContractPubkey, Caller, CallData, 0, TxEnv, Trees0).
 
 set_validator_online_(Caller, TxEnv, Trees0) ->
-    ContractPubkey = consensus_contract_address(),
+    ContractPubkey = staking_contract_address(),
     {ok, CallData} = aeb_fate_abi:create_calldata("set_online", []),
     call_contract(ContractPubkey, Caller, CallData, 0, TxEnv, Trees0).
 
 set_validator_offline_(Caller, TxEnv, Trees0) ->
-    ContractPubkey = consensus_contract_address(),
+    ContractPubkey = staking_contract_address(),
     {ok, CallData} = aeb_fate_abi:create_calldata("set_offline", []),
     call_contract(ContractPubkey, Caller, CallData, 0, TxEnv, Trees0).
 
 online_validators_(Caller, TxEnv, Trees0) ->
-    ContractPubkey = consensus_contract_address(),
+    ContractPubkey = staking_contract_address(),
     {ok, CallData} = aeb_fate_abi:create_calldata("online_validators", []),
     call_contract(ContractPubkey, Caller, CallData, 0, TxEnv, Trees0).
 
 offline_validators_(Caller, TxEnv, Trees0) ->
-    ContractPubkey = consensus_contract_address(),
+    ContractPubkey = staking_contract_address(),
     {ok, CallData} = aeb_fate_abi:create_calldata("offline_validators", []),
     call_contract(ContractPubkey, Caller, CallData, 0, TxEnv, Trees0).
 
 elect_next_(Caller, TxEnv, Trees0) ->
-    ContractPubkey = consensus_contract_address(),
+    ContractPubkey = election_contract_address(),
     {ok, CallData} = aeb_fate_abi:create_calldata("elect_next", []),
     call_contract(ContractPubkey, Caller, CallData, 0, TxEnv, Trees0).
 
 elect_(Caller, TxEnv, Trees0) ->
-    ContractPubkey = consensus_contract_address(),
+    ContractPubkey = election_contract_address(),
     {ok, CallData} = aeb_fate_abi:create_calldata("elect", []),
     call_contract(ContractPubkey, Caller, CallData, 0, TxEnv, Trees0).
 
+hc_elect_(Entropy, Caller, TxEnv, Trees0) ->
+    ContractPubkey = election_contract_address(),
+    {ok, CallData} = aeb_fate_abi:create_calldata("elect",
+                                                  [aefa_fate_code:encode_arg({string,
+                                                                              Entropy})]),
+    call_contract(ContractPubkey, Caller, CallData, 0, TxEnv, Trees0).
+
 leader_(Caller, TxEnv, Trees0) ->
-    ContractPubkey = consensus_contract_address(),
+    ContractPubkey = election_contract_address(),
     {ok, CallData} = aeb_fate_abi:create_calldata("leader", []),
     call_contract(ContractPubkey, Caller, CallData, 0, TxEnv, Trees0).
 
 reward_(Who, Amount, Caller, TxEnv, Trees0) ->
-    ContractPubkey = consensus_contract_address(),
+    ContractPubkey = staking_contract_address(),
     {ok, CallData} = aeb_fate_abi:create_calldata("reward",
                                                   [aefa_fate_code:encode_arg({address,
                                                                               Who})]),
     call_contract(ContractPubkey, Caller, CallData, Amount, TxEnv, Trees0).
 
 stake_(Who, Amount, Caller, TxEnv, Trees0) ->
-    ContractPubkey = consensus_contract_address(),
+    ContractPubkey = staking_contract_address(),
     {ok, CallData} = aeb_fate_abi:create_calldata("stake",
                                                   [aefa_fate_code:encode_arg({address,
                                                                               Who})]),
     call_contract(ContractPubkey, Caller, CallData, Amount, TxEnv, Trees0).
 
 unstake_(Who, Stakes, Caller, TxEnv, Trees0) ->
-    ContractPubkey = consensus_contract_address(),
+    ContractPubkey = staking_contract_address(),
     {ok, CallData} = aeb_fate_abi:create_calldata("unstake",
                                                   [aefa_fate_code:encode_arg({address,
                                                                               Who}),
@@ -1608,7 +1686,7 @@ unstake_(Who, Stakes, Caller, TxEnv, Trees0) ->
 set_name_(Name, Caller, TxEnv, Trees0) when is_list(Name) ->
     set_name_(list_to_binary(Name), Caller, TxEnv, Trees0);
 set_name_(Name, Caller, TxEnv, Trees0) when is_binary(Name) ->
-    ContractPubkey = consensus_contract_address(),
+    ContractPubkey = staking_contract_address(),
     {ok, CallData} = aeb_fate_abi:create_calldata("set_validator_name",
                                                   [aefa_fate_code:encode_arg({string, Name})]),
     call_contract(ContractPubkey, Caller, CallData, 0, TxEnv, Trees0).
@@ -1616,7 +1694,7 @@ set_name_(Name, Caller, TxEnv, Trees0) when is_binary(Name) ->
 set_description_(Description, Caller, TxEnv, Trees0) when is_list(Description) ->
     set_description_(list_to_binary(Description), Caller, TxEnv, Trees0);
 set_description_(Description, Caller, TxEnv, Trees0) when is_binary(Description) ->
-    ContractPubkey = consensus_contract_address(),
+    ContractPubkey = staking_contract_address(),
     {ok, CallData} = aeb_fate_abi:create_calldata("set_validator_description",
                                                   [aefa_fate_code:encode_arg({string, Description})]),
     call_contract(ContractPubkey, Caller, CallData, 0, TxEnv, Trees0).
@@ -1624,7 +1702,7 @@ set_description_(Description, Caller, TxEnv, Trees0) when is_binary(Description)
 set_avatar_(Avatar, Caller, TxEnv, Trees0) when is_list(Avatar) ->
     set_avatar_(list_to_binary(Avatar), Caller, TxEnv, Trees0);
 set_avatar_(Avatar, Caller, TxEnv, Trees0) when is_binary(Avatar) ->
-    ContractPubkey = consensus_contract_address(),
+    ContractPubkey = staking_contract_address(),
     {ok, CallData} = aeb_fate_abi:create_calldata("set_validator_avatar_url",
                                                   [aefa_fate_code:encode_arg({string, Avatar})]),
     call_contract(ContractPubkey, Caller, CallData, 0, TxEnv, Trees0).
@@ -1633,7 +1711,7 @@ set_avatar_(Avatar, Caller, TxEnv, Trees0) when is_binary(Avatar) ->
 expected_validator_state(PoolContract, ValidatorAddr, OnlineDelay,
                          TotalSPower, PendingStake, TotalSLimit, IsOnline, Name,
                          Description, Avatar, PoolMap) ->
-    ContractPubkey = consensus_contract_address(),
+    ContractPubkey = staking_contract_address(),
     Pool = maps:to_list(PoolMap),
     Shares =
         lists:foldl(

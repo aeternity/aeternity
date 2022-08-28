@@ -74,6 +74,7 @@
 %% Consensus API
 -export([ get_active_consensus_module/0
         , consensus_request/1
+        , throw_error/1
         ]).
 
 -ifdef(TEST).
@@ -1218,18 +1219,27 @@ create_key_block_candidate(#state{key_block_candidates = [{_, #candidate{top_has
                                   top_block_hash       = TopHash} = State) ->
     %% We have the most recent candidate already. Just start mining.
     start_block_production_(State);
-create_key_block_candidate(#state{top_block_hash = TopHash} = State) ->
-    Beneficiary =
-        case State#state.mode of
-            stratum -> State#state.stratum_beneficiary;
-            _ ->
-                ConsensusModule = consensus_module(State),
-                {ok, B} = get_next_beneficiary(ConsensusModule),
-                B
-        end,
+create_key_block_candidate(#state{top_block_hash = TopHash,
+                                  mode           = Mode,
+                                  stratum_beneficiary = StratumBeneficiary} = State) ->
+    ConsensusModule = consensus_module(State),
     epoch_mining:info("Creating key block candidate on the top"),
+    BeneficiaryFun =
+        fun() ->
+            case Mode of
+                stratum -> {ok, StratumBeneficiary};
+                _ ->
+                    get_next_beneficiary(ConsensusModule)
+            end
+        end,
     Fun = fun() ->
-                  {aec_block_key_candidate:create(TopHash, Beneficiary), TopHash}
+                SignModule = ConsensusModule:get_sign_module(),
+                case BeneficiaryFun() of
+                    {ok, Beneficiary} ->
+                        {ok, Miner} = SignModule:candidate_pubkey(),
+                        {aec_block_key_candidate:create(TopHash, Beneficiary, Miner), TopHash};
+                    {error, _} = Err -> {Err, TopHash}
+                end
           end,
     {State1, _Pid} = dispatch_worker(create_key_block_candidate, Fun, State),
     State1.
@@ -1254,6 +1264,11 @@ handle_key_block_candidate_reply({{ok, _KeyBlockCandidate}, _OldTopHash},
     create_key_block_candidate(State);
 handle_key_block_candidate_reply({{error, key_not_found}, _}, State) ->
     start_block_production_(State#state{keys_ready = false});
+handle_key_block_candidate_reply({{error, Reason}, _}, State)
+        when Reason =:= not_in_cache; 
+             Reason =:= not_leader ->
+    epoch_mining:debug("Creation of key block candidate failed: ~p", [Reason]),
+    create_key_block_candidate(State);
 handle_key_block_candidate_reply({{error, Reason}, _}, State) ->
     epoch_mining:error("Creation of key block candidate failed: ~p", [Reason]),
     create_key_block_candidate(State).
@@ -1293,6 +1308,7 @@ ok({ok, Value}) ->
 
 handle_add_block(Block, State, Origin) ->
     ActiveConsensusModule = consensus_module(State),
+    try
     Header = aec_blocks:to_header(Block),
     case aec_headers:consensus_module(Header) of
         ActiveConsensusModule ->
@@ -1308,7 +1324,16 @@ handle_add_block(Block, State, Origin) ->
                     %% Some pending blocks might still be present in the message queue - ignore them
                     {{error, special_consensus_active}, State}
             end
+    end
+    catch
+        exit:{aborted, {{handled_abort, Err}, _}} ->
+            lager:debug("Block was not accepted because of ~p", [Err]),
+            {{error, Err}, State}
     end.
+
+
+throw_error(Error) ->
+    error({handled_abort, Error}).
 
 handle_add_block(Header, Block, State, Origin) ->
     {ok, Hash} = aec_headers:hash_header(Header),
@@ -1449,15 +1474,17 @@ get_pending_key_block(undefined, State) ->
 get_pending_key_block(_TopHash, #state{has_beneficiary = false} = State) ->
     {{error, beneficiary_not_configured}, State};
 get_pending_key_block(TopHash, State) ->
+    ConsensusModule = consensus_module(State),
+    SignModule = ConsensusModule:get_sign_module(),
     Beneficiary =
         case State#state.mode of
             stratum -> State#state.stratum_beneficiary;
             _ ->
-                ConsensusModule = consensus_module(State),
                 {ok, B} = get_next_beneficiary(ConsensusModule),
                 B
         end,
-    case aec_block_key_candidate:create(TopHash, Beneficiary) of
+    {ok, Miner} = SignModule:candidate_pubkey(),
+    case aec_block_key_candidate:create(TopHash, Beneficiary, Miner) of
         {ok, Block} -> {{ok, Block}, State#state{ pending_key_block = Block }};
         {error, _}  -> {{error, not_found}, State}
     end.

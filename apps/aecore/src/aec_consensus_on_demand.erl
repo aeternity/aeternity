@@ -81,7 +81,8 @@ is_providing_extra_http_endpoints() -> false.
 client_request(emit_kb) ->
     TopHash = aec_chain:top_block_hash(),
     {ok, Beneficiary} = aec_conductor:get_next_beneficiary(),
-    {ok, Block} = aec_block_key_candidate:create(TopHash, Beneficiary),
+    {ok, Miner} = aec_keys:candidate_pubkey(),
+    {ok, Block} = aec_block_key_candidate:create(TopHash, Beneficiary, Miner),
     ok = aec_conductor:add_synced_block(Block),
     Block;
 client_request(emit_mb) ->

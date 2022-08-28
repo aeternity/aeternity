@@ -29,6 +29,7 @@
         , get_block_from_chain/1
         , get_block_hash_optionally_by_hash_or_height/1
         , safe_get_txs/1
+        , encode_keyblock/2
         , encode_generation/3
         , do_dry_run/0
         , dry_run_results/1
@@ -802,6 +803,10 @@ encode_transaction(TxKey, EncodedTxKey) ->
             end,
         {ok, maps:put(EncodedTxKey, #{tx => T}, State)}
     end.
+
+encode_keyblock(KeyBlock, PrevBlockType) ->
+    Header = aec_blocks:to_header(KeyBlock),
+    aec_headers:serialize_for_client(Header, PrevBlockType).
 
 encode_generation(KeyBlock, MicroBlocks, PrevBlockType) ->
     Header = aec_blocks:to_header(KeyBlock),

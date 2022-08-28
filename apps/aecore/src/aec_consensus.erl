@@ -317,7 +317,7 @@ consensus_from_network_id(<<"ae_uat">>) ->
 consensus_from_network_id(<<"ae_dev">>) ->
     consensus_config_or_default([{0, {aec_consensus_on_demand, #{}}}]);
 consensus_from_network_id(<<"hc", _/binary>>) ->
-    consensus_config_or_default([{0, {aec_consensus_smart_contract, #{}}}]);
+    consensus_config_or_default([{0, {aec_consensus_hc, #{}}}]);
 consensus_from_network_id(_) ->
     consensus_config_or_default([{0, {aec_consensus_bitcoin_ng, #{}}}]).
 
@@ -345,6 +345,7 @@ consensus_module_from_name(<<"on_demand">>) -> aec_consensus_on_demand;
 consensus_module_from_name(<<"ct_tests">>) -> aec_consensus_common_tests;
 consensus_module_from_name(<<"smart_contract">>) ->
   aec_consensus_smart_contract;
+consensus_module_from_name(<<"hyper_chain">>) -> aec_consensus_hc;
 consensus_module_from_name(<<"eunit_one">>) -> module_eunit_one;
 consensus_module_from_name(<<"eunit_two">>) -> module_eunit_two;
 consensus_module_from_name(<<"eunit_three">>) -> module_eunit_three;
@@ -353,6 +354,7 @@ consensus_module_from_name(_) -> undefined.
 consensus_module_from_name(<<"pow_cuckoo">>) -> aec_consensus_bitcoin_ng;
 consensus_module_from_name(<<"on_demand">>) -> aec_consensus_on_demand;
 consensus_module_from_name(<<"smart_contract">>) -> aec_consensus_smart_contract;
+consensus_module_from_name(<<"hyper_chain">>) -> aec_consensus_hc;
 consensus_module_from_name(_) -> undefined.
 -endif.
 
