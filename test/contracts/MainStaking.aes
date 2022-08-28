@@ -167,6 +167,7 @@ main contract MainStaking =
   stateful entrypoint unstake(from : address, stakes : int) : int =
     let validator : validator = get_validator(from)
     let payout = validator.ct.unstake(Call.caller, stakes)
+    assert_allowed_to_unstake(from, Call.caller, validator)
     switch(state.unstake_delay)
       0 => ()
       _ =>
@@ -175,7 +176,6 @@ main contract MainStaking =
             false => []
             true => state.pending_unstake[height]
         put(state{pending_unstake[height] = from::pus})
-    assert_allowed_to_unstake(from, Call.caller, validator)
     let new_validator = set_stake_limit(from, validator)
     switch(validator_bucket(from))
       ONLINE => put(state{online_validators[from] = new_validator{ stake @ s = s - payout}, total_stake @ ts = ts - payout})
