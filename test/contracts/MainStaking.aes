@@ -11,7 +11,7 @@ contract interface StakingValidator =
                              delegates : map(address, int),
                              shares : int }
   entrypoint init : (address, int) => unit
-  payable stateful entrypoint stake : address => unit
+  payable stateful entrypoint stake : address => int
   payable entrypoint profit : () => unit
   stateful entrypoint distribute_unstake : () => unit
   stateful entrypoint unstake : (address, int) => int
@@ -19,6 +19,7 @@ contract interface StakingValidator =
   entrypoint balance : (address) => int
   entrypoint shares : (address) => int
   entrypoint all_shares : () => int
+  entrypoint estimate_stake_shares : (int) => int
   stateful entrypoint set_name : (string) => unit
   stateful entrypoint set_description : (string) => unit
   stateful entrypoint set_avatar_url : (string) => unit
@@ -144,13 +145,15 @@ main contract MainStaking =
     switch(state.stake_delay)
       0 =>
         let validator : validator = get_validator(to)
-        validator.ct.stake(value = Call.value, Call.caller)
+        let shares = validator.ct.stake(value = Call.value, Call.caller)
         let new_validator = maybe_set_stake_limit(to, Call.caller, validator{ stake @ s = s + Call.value })
         switch(validator_bucket(to))
           ONLINE => put(state{online_validators[to] = new_validator, total_stake @ ts = ts + Call.value })
           OFFLINE => put(state{offline_validators[to] = new_validator})
+        shares
       _ =>
         let validator : validator = get_validator(to)
+        let shares = validator.ct.estimate_stake_shares(Call.value)
         let new_validator = maybe_set_stake_limit(to, Call.caller, validator{ pending_stake @ ps = ps + Call.value })
         let height  = Chain.block_height + state.stake_delay
         let pending_transfer = { validator = to, staker = Call.caller, stake = Call.value}
@@ -161,8 +164,7 @@ main contract MainStaking =
         switch(validator_bucket(to))
           ONLINE => put(state{online_validators[to] = new_validator})
           OFFLINE => put(state{offline_validators[to] = new_validator})
-
-         // total_stake @ ts = ts + Call.value,
+        shares
 
   stateful entrypoint unstake(from : address, stakes : int) : int =
     let validator : validator = get_validator(from)
