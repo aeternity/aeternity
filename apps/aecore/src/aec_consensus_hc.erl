@@ -99,14 +99,14 @@ start(Config) ->
             StakersEncoded),
     StakersMap = maps:from_list(Stakers),
     %% TODO: ditch this after we move beyond OTP24
-    Mod = aec_preset_keys,
+    _Mod = aec_preset_keys,
     start_dependency(aec_preset_keys, [StakersMap]),
     lager:debug("Stakers: ~p", [StakersMap]),
     ParentConnMod =
         case PCType of
             <<"AE">> -> aehttpc_aeternity
         end,
-    ParentHosts = 
+    ParentHosts =
         lists:map(
             fun(#{<<"host">> := Host,
                   <<"port">> := Port,
@@ -275,7 +275,7 @@ seal_correct_signature(Header, Signature, _Padding) ->
             {error, signature_verification_failed}
     end.
 
-generate_key_header_seal(_, Candidate, PCHeight, #{expected_key_block_rate := Expected} = _Config, _) ->
+generate_key_header_seal(_, Candidate, PCHeight, #{expected_key_block_rate := _Expected} = _Config, _) ->
     case aec_parent_chain_cache:get_block_by_height(PCHeight) of
         {ok, Block} ->
             Hash = aec_parent_chain_block:hash(Block),
@@ -399,7 +399,7 @@ pc_start_height() ->
                                        <<"0">>,
                                        <<"config">>, <<"parent_chain">>,
                                        <<"start_height">>]),
-              H 
+              H
 
       end).
 

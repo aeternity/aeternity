@@ -481,7 +481,7 @@ validator_withdrawal(_Config) ->
     %% unstaking stake shares
     {ok, Trees6, 1}
         = unstake_(Alice, 1, Alice, TxEnv, Trees5),
-    {ok, Trees7, 1}
+    {ok, _Trees7, 1}
         = unstake_(Bob, 1, Bob, TxEnv, Trees6),
     ok.
 
@@ -599,7 +599,7 @@ three_validators_election(_Config) ->
             {Bob, ?VALIDATOR_MIN},
             {Carol, ?VALIDATOR_MIN}]),
     {ok, Trees2, {tuple, {}}} = set_validator_online_(Alice, TxEnv, Trees1),
-    {ok, Trees3, {tuple, {}}} = set_validator_online_(Bob, TxEnv, Trees2),
+    {ok, _Trees3, {tuple, {}}} = set_validator_online_(Bob, TxEnv, Trees2),
     %% no rewards to check probabilities
     ok.
 
@@ -2041,7 +2041,7 @@ assert_equal_states(State1, State2) ->
            IsOnline1,
            {tuple,
                {{address, ContractPubkey1},
-                UnstakeDelay1, PendingUnstakeAmount1, PendingUnstake1,
+                UnstakeDelay1, _PendingUnstakeAmount1, PendingUnstake1,
                 Name1, Description1, Avatar1,
                 Map1,
                 Shares1}}}} = State1,
@@ -2055,7 +2055,7 @@ assert_equal_states(State1, State2) ->
            IsOnline2,
            {tuple,
                {{address, ContractPubkey2},
-                UnstakeDelay2, PendingUnstakeAmount2, PendingUnstake2,
+                UnstakeDelay2, _PendingUnstakeAmount2, PendingUnstake2,
                 Name2, Description2, Avatar2,
                 Map2,
                 Shares2}}}} = State2,

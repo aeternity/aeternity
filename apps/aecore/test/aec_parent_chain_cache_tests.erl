@@ -174,35 +174,35 @@ configurable_confirmation_height() ->
     ok.
 
 %%%===================================================================
-%%% Helper functions 
+%%% Helper functions
 %%%===================================================================
 
 start_cache(StartHeight, MaxSize, Confirmations) ->
     Args = [StartHeight, MaxSize, Confirmations],
     gen_server:start({local, ?TEST_MODULE}, ?TEST_MODULE, Args, []).
 
-height_to_hash(Height) when Height < 0 -> height_to_hash(0); 
+height_to_hash(Height) when Height < 0 -> height_to_hash(0);
 height_to_hash(Height) when is_integer(Height) -> <<Height:32/unit:8>>.
 
-hash_to_height(Hash) ->
-    MeaningfulBytes = [B || B <- binary_to_list(Hash), B =/= 0],
-    {Height, _} =
-        lists:foldr( %% NB: we go right to left!
-            fun(B, {AccumHeight, ByteIdx}) ->
-                {B * trunc(math:pow(8, ByteIdx)) + AccumHeight, ByteIdx + 1}
-            end,
-            {0, 0},
-            MeaningfulBytes),
-    Height.
+%% hash_to_height(Hash) ->
+%%     MeaningfulBytes = [B || B <- binary_to_list(Hash), B =/= 0],
+%%     {Height, _} =
+%%         lists:foldr( %% NB: we go right to left!
+%%             fun(B, {AccumHeight, ByteIdx}) ->
+%%                 {B * trunc(math:pow(8, ByteIdx)) + AccumHeight, ByteIdx + 1}
+%%             end,
+%%             {0, 0},
+%%             MeaningfulBytes),
+%%     Height.
 
 block_by_height(Height) ->
     Hash = height_to_hash(Height),
     PrevHash = height_to_hash(Height - 1),
     aec_parent_chain_block:new(Hash, Height, PrevHash).
 
-block_by_hash(Hash) ->
-    Height = hash_to_height(Hash),
-    block_by_height(Height).
+%% block_by_hash(Hash) ->
+%%     Height = hash_to_height(Hash),
+%%     block_by_height(Height).
 
 mock_parent_connector() ->
     meck:new(aec_parent_connector, []),

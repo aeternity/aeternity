@@ -69,30 +69,30 @@ getblock(Host, Port, User, Password, Seed, SSL, Hash, Verbosity) ->
 
 %% WIP - Suppress dializer warnings to keep build happy until these two functions
 %% are hooked into post_commitment
--dialyzer({nowarn_function, signrawtransactionwithkey/8}).
--spec signrawtransactionwithkey(binary(), binary(), binary(), binary(), binary(), boolean(), binary(), binary()) -> {ok, binary()} | {error, term()}.
-signrawtransactionwithkey(Host, Port, User, Password, Seed, SSL, RawTx, PrivKey) ->
-  try
-    Body = jsx:encode(request_body(<<"signrawtransactionwithkey">>, [RawTx, [PrivKey]], seed_to_utf8(Seed))),
-    {ok, Res} = request(<<"/">>, Body, Host, Port, User, Password, SSL, 5000),
-    SignedTx = result(Res),
-    Complete = maps:get(<<"complete">>, SignedTx), true = Complete,
-    Hex = maps:get(<<"hex">>, SignedTx),
-    {ok, Hex}
-  catch E:R ->
-    {error, {E, R}}
-  end.
+%% -dialyzer({nowarn_function, signrawtransactionwithkey/8}).
+%% -spec signrawtransactionwithkey(binary(), binary(), binary(), binary(), binary(), boolean(), binary(), binary()) -> {ok, binary()} | {error, term()}.
+%% signrawtransactionwithkey(Host, Port, User, Password, Seed, SSL, RawTx, PrivKey) ->
+%%   try
+%%     Body = jsx:encode(request_body(<<"signrawtransactionwithkey">>, [RawTx, [PrivKey]], seed_to_utf8(Seed))),
+%%     {ok, Res} = request(<<"/">>, Body, Host, Port, User, Password, SSL, 5000),
+%%     SignedTx = result(Res),
+%%     Complete = maps:get(<<"complete">>, SignedTx), true = Complete,
+%%     Hex = maps:get(<<"hex">>, SignedTx),
+%%     {ok, Hex}
+%%   catch E:R ->
+%%     {error, {E, R}}
+%%   end.
 
--dialyzer({nowarn_function, sendrawtransaction/7}).
--spec sendrawtransaction(binary(), binary(), binary(), binary(), binary(), boolean(), binary()) -> {ok, binary()} | {error, term()}.
-sendrawtransaction(Host, Port, User, Password, Seed, SSL, Hex) ->
-  try
-    Body = jsx:encode(request_body(<<"sendrawtransaction">>, [Hex], seed_to_utf8(Seed))),
-    {ok, Res} = request(<<"/">>, Body, Host, Port, User, Password, SSL, 5000),
-    {ok, result(Res)}
-  catch E:R ->
-    {error, {E, R}}
-  end.
+%% -dialyzer({nowarn_function, sendrawtransaction/7}).
+%% -spec sendrawtransaction(binary(), binary(), binary(), binary(), binary(), boolean(), binary()) -> {ok, binary()} | {error, term()}.
+%% sendrawtransaction(Host, Port, User, Password, Seed, SSL, Hex) ->
+%%   try
+%%     Body = jsx:encode(request_body(<<"sendrawtransaction">>, [Hex], seed_to_utf8(Seed))),
+%%     {ok, Res} = request(<<"/">>, Body, Host, Port, User, Password, SSL, 5000),
+%%     {ok, result(Res)}
+%%   catch E:R ->
+%%     {error, {E, R}}
+%%   end.
 
 -spec result(map()) -> term().
 result(Response) ->

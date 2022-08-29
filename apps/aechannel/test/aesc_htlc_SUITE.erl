@@ -219,8 +219,8 @@ simple_msg_relay(Cfg) ->
     #{pub := A, priv := Apriv, encoded_pub := Ae} = ?config(alice, Cfg),
     #{pub := B, priv := Bpriv, encoded_pub := Be} = ?config(bob, Cfg),
     Msg = <<"hello there!!!">>,
-    #{Ae := #{client := Ac, hub := Ah} = ChA,
-      Be := #{client := Bc, hub := Bh} = ChB} = _Market = ?config(market, Cfg),
+    #{Ae := #{client := Ac, hub := Ah} = _ChA,
+      Be := #{client := Bc, hub := Bh} = _ChB} = _Market = ?config(market, Cfg),
     EncryptedMsg = encrypt_msg(Msg, B, Apriv, Cfg),
     send_inband(Ac, A, B, EncryptedMsg, Cfg),
     relay_msg(Ah, Bh, Cfg),
@@ -459,8 +459,8 @@ refund_receive(B, Id, Cfg) ->
 
 inband_msg_via_hub(Msg0, ChA, ChB, Cfg) ->
     Msg = jsx:encode(Msg0),
-    #{ client := #{fsm := FsmC} = Ac, hub := #{pub := HubPub} = Ah } = ChA,
-    #{ hub := #{fsm := FsmH} = Bh, client := #{pub := BPub} = Bc } = ChB,
+    #{ client := #{fsm := _FsmC} = Ac, hub := #{pub := HubPub} = Ah } = ChA,
+    #{ hub := #{fsm := _FsmH} = Bh, client := #{pub := BPub} = Bc } = ChB,
     ok = send_inband(Ac, HubPub, Msg, Cfg),
     ok = receive_inband(Ah, Msg, Cfg),
     ok = send_inband(Bh, BPub, Msg, Cfg),
@@ -580,7 +580,7 @@ shutdown(I, R, Cfg, Debug) ->
 %%%===================================================================
 %%% Proxy process
 %%%===================================================================
-    
+
 spawn_proxy() ->
     Parent = self(),
     spawn(fun() ->
