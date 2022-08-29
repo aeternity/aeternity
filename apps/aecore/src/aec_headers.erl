@@ -296,16 +296,18 @@ new_key_header(Height, PrevHash, PrevKeyHash, RootHash, Miner, Beneficiary,
                     key_seal     = KeySeal,
                     nonce        = Nonce,
                     time         = Time,
-                    info         = make_info(Version, Info),
+                    info         = make_info(Height, Version, Info),
                     version      = Version
                }).
 
-make_info(Version, Info) when (Version >= ?MINERVA_PROTOCOL_VSN), ?IS_INT_INFO(Info) ->
+make_info(0, _Version, default) ->
+    <<>>;
+make_info(_, Version, Info) when (Version >= ?MINERVA_PROTOCOL_VSN), ?IS_INT_INFO(Info) ->
     <<Info:?OPTIONAL_INFO_BYTES/unit:8>>;
-make_info(Version, default) when Version >= ?MINERVA_PROTOCOL_VSN ->
+make_info(_, Version, default) when Version >= ?MINERVA_PROTOCOL_VSN ->
     PointReleaseInfo = aeu_info:block_info(),
     <<PointReleaseInfo:?OPTIONAL_INFO_BYTES/unit:8>>;
-make_info(_Version, default) ->
+make_info(_, _Version, default) ->
     <<>>.
 
 -spec new_micro_header(height(), block_header_hash(), block_header_hash(),
@@ -358,7 +360,7 @@ info(#key_header{info = <<I:?OPTIONAL_INFO_BYTES/unit:8>>}) ->
 
 -spec set_info(key_header(), info()) -> key_header().
 set_info(#key_header{version = Vsn} = H, I) ->
-    H#key_header{info = make_info(Vsn, I)}.
+    H#key_header{info = make_info(height(H), Vsn, I)}.
 
 -spec prev_hash(header()) -> block_header_hash().
 prev_hash(#key_header{prev_hash = H}) -> H;

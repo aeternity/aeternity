@@ -240,7 +240,7 @@ genesis_raw_header() ->
         no_value,
         0,
         0,
-        0, %% no info in genesis block
+        default,
         ?CERES_PROTOCOL_VSN).
 genesis_difficulty() -> 0.
 
