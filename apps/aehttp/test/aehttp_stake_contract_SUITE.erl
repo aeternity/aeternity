@@ -622,24 +622,28 @@ build_json_files(NetworkId, ElectionContract, Config) ->
         fun(P) ->
             binary_to_list(aeser_api_encoder:encode(account_pubkey, P))
         end,
-    #{ <<"pubkey">> := StakingValidatorContract} = C0
-        = contract_create_spec("StakingValidator",
-                                [EncodePub(Pubkey)], 0, 1, Pubkey),
-    {ok, ValidatorPoolAddress} = aeser_api_encoder:safe_decode(contract_pubkey,
-                                                              StakingValidatorContract),
-    %% assert assumption
-    ValidatorPoolAddress = validator_pool_contract_address(),
+
     %% create staking contract
     MinValidatorAmt = integer_to_list(trunc(math:pow(10,18) * math:pow(10, 6))), %% 1 mln AE
     MinStakeAmt = integer_to_list(trunc(math:pow(10,18) * 1)), %% 1 AE
     MinStakePercent = "30",
     OnlineDelay = "0",
     StakeDelay = "0",
+    UnstakeDelay = "0",
+
+    #{ <<"pubkey">> := StakingValidatorContract} = C0
+        = contract_create_spec("StakingValidator",
+                                [EncodePub(Pubkey), UnstakeDelay], 0, 1, Pubkey),
+    {ok, ValidatorPoolAddress} = aeser_api_encoder:safe_decode(contract_pubkey,
+                                                              StakingValidatorContract),
+    %% assert assumption
+    ValidatorPoolAddress = validator_pool_contract_address(),
     #{ <<"pubkey">> := StakingContractPubkey
         , <<"owner_pubkey">> := ContractOwner } = SC
         = contract_create_spec(?STAKING_CONTRACT,
                                 [binary_to_list(StakingValidatorContract),
-                                MinValidatorAmt, MinStakePercent, MinStakeAmt, OnlineDelay, StakeDelay],
+                                MinValidatorAmt, MinStakePercent, MinStakeAmt,
+                                OnlineDelay, StakeDelay, UnstakeDelay],
                                 0, 2, Pubkey),
     {ok, StakingAddress} = aeser_api_encoder:safe_decode(contract_pubkey,
                                                          StakingContractPubkey),
