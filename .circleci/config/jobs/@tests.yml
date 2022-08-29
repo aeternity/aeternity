@@ -24,12 +24,12 @@ test:
         target: << parameters.target >>
 
 aevm-test:
-  executor: builder_container_otp22
+  executor: builder_container_otp23
   steps:
     - fixed_checkout
     - restore_rebar_cache
     - restore_build_cache:
-        otp: otp22
+        otp: otp23
     - run:
         name: AEVM Tests
         command: |
@@ -73,13 +73,13 @@ static-analysis:
     - fail_notification
 
 rebar_lock_check:
-  executor: builder_container_otp22
+  executor: builder_container_otp23
   steps:
     - fixed_checkout
     - run:
         name: Ensure lock file is up-to-date
         command: |
-          ./rebar3 upgrade
+          ./rebar3 upgrade --all
           git diff --quiet -- rebar.lock || (echo "rebar.lock is not up-to-date" && exit 1)
     - store_rebar3_crashdump
     - fail_notification
