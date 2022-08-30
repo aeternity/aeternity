@@ -33,7 +33,10 @@
          request_top/0,
          %% blocking getting of blocks
          fetch_block_by_hash/1,
-         fetch_block_by_height/1]).
+         fetch_block_by_height/1,
+
+         post_commitment/2
+        ]).
 
 %% Callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -42,6 +45,13 @@
 -define(SERVER, ?MODULE).
 -define(SEED_BYTES, 16).
 
+-record(commitment_details,
+    {   parent_network_id  :: binary(),
+        sign_module :: module(),
+        recipient :: aec_keys:pubkey(),
+        amount :: non_neg_integer(),
+        fee :: non_neg_integer()
+    }).
 
 %% Loop state
 -record(state,
@@ -50,7 +60,8 @@
         fetch_interval = 10000, % Interval for parent top change checks
         parent_hosts = [],
         parent_top = not_yet_fetched :: not_yet_fetched | aec_parent_chain_block:block(),
-        rpc_seed = crypto:strong_rand_bytes(?SEED_BYTES) % BTC Api only
+        rpc_seed = crypto:strong_rand_bytes(?SEED_BYTES), % BTC Api only
+        c_details = #commitment_details{}
     }).
 -type state() :: #state{}.
 
@@ -100,6 +111,9 @@ fetch_block_by_hash(Hash) ->
 fetch_block_by_height(Height) ->
     gen_server:call(?SERVER, {fetch_block_by_height, Height}).
 
+post_commitment(Who, Hash) ->
+    gen_server:call(?SERVER, {post_commitment, Who, Hash}).
+
 %%%=============================================================================
 %%% Gen Server Callbacks
 %%%=============================================================================
@@ -110,9 +124,17 @@ init([ParentConnMod, FetchInterval, ParentHosts]) ->
         erlang:send_after(FetchInterval, self(), check_parent);
         true -> ok
     end,
+    CDetails =
+        #commitment_details{ parent_network_id  = <<"TODO">>, %% TODO: assert all nodes are having the same network id
+                            sign_module = todo,
+                            recipient = <<0:32/unit:8>>,
+                            amount = 0,
+                            fee = 0
+                            },
     {ok, #state{parent_conn_mod = ParentConnMod,
                 fetch_interval = FetchInterval,
-                parent_hosts = ParentHosts}}.
+                parent_hosts = ParentHosts,
+                c_details = CDetails}}.
 
 -spec handle_call(any(), any(), state()) -> {reply, any(), state()}.
 handle_call(trigger_fetch, _From, State) ->
@@ -124,6 +146,9 @@ handle_call({fetch_block_by_hash, Hash}, _From, State) ->
     {reply, Reply, State};
 handle_call({fetch_block_by_height, Height}, _From, State) ->
     Reply = handle_fetch_block(fun fetch_block_by_height/4, Height, State),
+    {reply, Reply, State};
+handle_call({post_commitment, Who, Hash}, _From, State) ->
+    Reply = post_commitment(Who, Hash, State),
     {reply, Reply, State};
 handle_call(_Request, _From, State) ->
     Reply = ok,
@@ -200,7 +225,7 @@ fetch_parent_tops(Mod, ParentNodes, Seed) ->
         fun(Host, Port, User, Password) ->
             Mod:get_latest_block(Host, Port, User, Password, Seed)
         end,
-    Fun = fun(Parent) ->fetch_block(FetchFun, Parent) end,
+    Fun = fun(Parent) -> fetch_block(FetchFun, Parent) end,
     {Good, Errors} = aeu_lib:pmap(Fun, ParentNodes, 10000),
     responses_consensus(Good, Errors, length(ParentNodes)).
 
@@ -283,5 +308,36 @@ handle_fetch_block(Fun, Arg,
             %% TODO: decide what to do: this is likely happening because of
             %% rapid parent chain reorganizations
             lager:warning("Parent nodes are unable to reach consensus", []),
+            Err
+    end.
+
+post_commitment(Who, Commitment,
+            #state{ parent_hosts = ParentNodes,
+                    parent_conn_mod = Mod,
+                    rpc_seed = Seed,
+                    c_details = CDetails}) ->
+    #commitment_details{
+        parent_network_id = PCNetworkId,
+        recipient = Receiver,
+        sign_module = SignModule,
+        amount = Amount,
+        fee = Fee} = CDetails,
+    Fun =
+        fun(Host, Port, User, Password) ->
+            case Mod:post_commitment(Host, Port, Who, Receiver, Amount, Fee,
+                                     Commitment, PCNetworkId, SignModule) of
+                {ok, #{<<"tx_hash">> := TxHash}} -> {ok, TxHash};
+                {error, 400, _} -> {error, invalid_transaction}
+            end
+        end,
+    %% Parallel post to all blocks
+    %% TODO: decide if we expect consensus or not
+    %% TODO: maybe track a transaction's progress?
+    {Good, Errors} = pmap(Fun, ParentNodes, 10000),
+    case responses_consensus(Good, Errors, length(ParentNodes)) of
+        {ok, _TxHash, _} -> ok;
+        {error, invalid_transaction} = Err ->
+            lager:warning("Unable to post a commitment on the parent chain",
+                          []),
             Err
     end.

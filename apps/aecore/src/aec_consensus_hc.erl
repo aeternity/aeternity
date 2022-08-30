@@ -82,15 +82,26 @@ assert_config(_Config) -> ok.
 start(Config) ->
     #{<<"stakers">> := StakersEncoded,
       <<"parent_chain">> :=
-        #{<<"type">> := PCType,
-          <<"fetch_interval">> := FetchInterval,
-          <<"nodes">> := Nodes0,
-          <<"confirmations">> := Confirmations,
-          <<"cache_size">> := CacheSize,
-          <<"start_height">> := StartHeight}} = Config,
+        #{  <<"start_height">> := StartHeight,
+            <<"confirmations">> := Confirmations,
+            <<"consensus">> :=
+                #{  <<"type">> := PCType,
+                    <<"network_id">> := NetworkId,
+                    <<"spend_address">> := PCSpendAddress
+                 }, 
+            <<"polling">> :=
+                #{  <<"fetch_interval">> := FetchInterval,
+                    <<"nodes">> := Nodes0
+                 } = Polling
+          }} = Config,
+    CacheSize = maps:get(<<"cache_size">>, Polling, 200),
     Stakers =
         lists:map(
-            fun(#{<<"pub">> := EncodedPubkey, <<"priv">> := EncodedPrivkey}) ->
+            fun(#{<<"hyper_chain_account">> := #{<<"pub">> := EncodedPubkey,
+                                                 <<"priv">> := EncodedPrivkey},
+                  <<"parent_chain_account">> := #{<<"pub">> := _EncodedPubkey,
+                                                  <<"priv">> := _EncodedPrivkey}
+                 }) ->
                 {ok, Pubkey} = aeser_api_encoder:safe_decode(account_pubkey,
                                                              EncodedPubkey),
                 Privkey = aeu_hex:hex_to_bin(EncodedPrivkey),
@@ -108,7 +119,7 @@ start(Config) ->
     lager:debug("Stakers: ~p", [StakersMap]),
     ParentConnMod =
         case PCType of
-            <<"AE">> -> aehttpc_aeternity
+            <<"AE2AE">> -> aehttpc_aeternity
         end,
     ParentHosts =
         lists:map(

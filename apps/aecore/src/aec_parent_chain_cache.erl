@@ -51,7 +51,8 @@
         pc_confirmations                    :: non_neg_integer(),
         max_size                            :: non_neg_integer(),
         blocks          = #{}               :: #{non_neg_integer() => aec_parent_chain_block:block()},
-        top_height      = 0                 :: non_neg_integer()
+        top_height      = 0                 :: non_neg_integer(),
+        posted_commitment = false           :: boolean()
     }).
 -type state() :: #state{}.
 

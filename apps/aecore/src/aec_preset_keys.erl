@@ -8,7 +8,8 @@
          promote_candidate/1,
          sign_micro_block/1,
          produce_key_header_signature/2,
-         is_ready/0
+         is_ready/0,
+         sign_binary/2
         ]).
 
 -export([set_candidate/1
@@ -76,6 +77,15 @@ sign_micro_block(MicroBlock) ->
     Bin = aec_headers:serialize_to_signature_binary(Header),
     {ok, Signature} = gen_server:call(?MODULE, {sign, Bin}),
     {ok, aec_blocks:set_signature(MicroBlock, Signature)}.
+
+-spec sign_binary(Bin, Signer) -> {ok, Signature} | {error, Reason}
+    when Bin :: binary(),
+         Signer :: aec_keys:pubkey(),
+         Signature :: binary(),
+         Reason :: not_found | failed_sign.
+sign_binary(Bin, Signer) ->
+    gen_server:call(?MODULE, {sign, Bin, Signer}).
+
 
 %% used in PoS context§
 -spec produce_key_header_signature(aec_headers:key_header(), aec_keys:pubkey()) -> {ok, block_signature()} | {error, term()}.

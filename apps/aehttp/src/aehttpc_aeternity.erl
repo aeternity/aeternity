@@ -9,7 +9,7 @@
          get_header_by_height/6,
          get_commitment_tx_in_block/7,
          get_commitment_tx_at_height/7,
-         post_commitment/6]).
+         post_commitment/9]).
 
 %% @doc fetch latest top hash
 get_latest_block(Host, Port, _User, _Password, _Seed) ->
@@ -32,8 +32,11 @@ get_commitment_tx_at_height(Host, Port, _User, _Password, _Seed, Height, ParentH
 %% @doc Post commitment to AE parent chain.
 %% FIXME: When should this be called, how often, and by which accounts?
 %% FIXME: Sort out what we actually need to post to the parent chain
-post_commitment(Host, Port, AccountId, Signature, HCAccountId, CurrentTop) ->
-    post_commitment_tx(Host, Port, AccountId, Signature, HCAccountId, CurrentTop).
+post_commitment(Host, Port, StakerPubkey, HCCollectPubkey, Amount, Fee, CurrentTop,
+                NetworkId, SignModule) ->
+    post_commitment_tx(Host, Port, StakerPubkey, HCCollectPubkey, Amount,
+                       Fee, CurrentTop,
+                       NetworkId, SignModule).
 
 
 %%%===================================================================
@@ -117,22 +120,32 @@ get_hc_commitments(Host, Port, MB, ParentHCAccountPubKey) ->
                     end
             end, [], Txs).
 
-post_commitment_tx(Host, Port, AccountId, StakerPrivKey, HCAccountId, CurrentTopHash) ->
+post_commitment_tx(Host, Port, SenderPubkey, ReceiverPubkey, Amount, Fee,
+                   CurrentTopHash,
+                   NetworkId, SignModule) ->
     %% 1. get the next nonce for our account over at the parent chain
-    SenderEnc = aeser_api_encoder:encode(account_pubkey, AccountId),
+    SenderEnc = aeser_api_encoder:encode(account_pubkey, SenderPubkey),
+    %% FIXME consider altenrative approaches to fetching a nonce: ex. if there
+    %% is a hanging transaction in the pool this would produce another hanging
+    %% one
     NoncePath = <<"/v3/accounts/", SenderEnc/binary, "/next-nonce">>,
     {ok, #{<<"next_nonce">> := Nonce}} = get_request(NoncePath, Host, Port, 5000),
     %% 2. Create a SpendTx containing the commitment in its payload
     TxArgs =
-        #{sender_id    => aeser_id:create(account, AccountId),
-          recipient_id => aeser_id:create(account, HCAccountId),
-          amount       => 10000,       %% FIXME config
-          fee          => 1000000000000,  %% FIXME config
+        #{sender_id    => aeser_id:create(account, SenderPubkey),
+          recipient_id => aeser_id:create(account, ReceiverPubkey),
+          amount       => Amount,
+          %% TODO: automatic fee computation
+          %% This might not be trivial as the fee depends on a bunch of
+          %% parameters, namely:
+          %% * parent chain's protocol version
+          %% * expected min_gas on both miner and protocol level
+          %% * current gas prices
+          fee          => Fee, 
           nonce        => Nonce,
           payload      => CurrentTopHash},
     {ok, SpendTx} = aec_spend_tx:new(TxArgs),
-    %% FIXME: We need to sign this parent chain Tx with the networkId of the parent chain
-    SignedSpendTx = sign_tx(SpendTx, StakerPrivKey),
+    SignedSpendTx = sign_tx(SpendTx, NetworkId, SenderPubkey, SignModule),
     Transaction = aeser_api_encoder:encode(transaction, aetx_sign:serialize_to_binary(SignedSpendTx)),
     Body = #{<<"tx">> => Transaction},
     Path = <<"/v3/transactions">>,
@@ -141,8 +154,6 @@ post_commitment_tx(Host, Port, AccountId, StakerPrivKey, HCAccountId, CurrentTop
 
 %% TODO This function copied from aec_test_utils as that module is not available
 %% in normal builds
-%% TODO the network ID here should be for the parent chain, but the
-%% test_utils code will pick up the local node.
 %% TODO - wallet interaction of some kind to get privKey
 %% This is a horrible hack for now
 %% Maybe aec_preset_keys??
@@ -150,17 +161,11 @@ post_commitment_tx(Host, Port, AccountId, StakerPrivKey, HCAccountId, CurrentTop
 %% TODO: redo this whole thing
 -define(VALID_PRIVK(K), byte_size(K) =:= 64).
 
-sign_tx(Tx, PrivKey) when is_binary(PrivKey) ->
-    sign_tx(Tx, [PrivKey]);
-sign_tx(Tx, PrivKeys) when is_list(PrivKeys) ->
+sign_tx(Tx, NetworkId, Signer, SignModule) when is_binary(Signer) ->
     Bin0 = aetx:serialize_to_binary(Tx),
-    BinForNetwork = aec_governance:add_network_id(Bin0),
-    case lists:filter(fun(PrivKey) -> not (?VALID_PRIVK(PrivKey)) end, PrivKeys) of
-        [_|_]=BrokenKeys -> erlang:error({invalid_priv_key, BrokenKeys});
-        [] -> pass
-    end,
-    Signatures = [ enacl:sign_detached(BinForNetwork, PrivKey) || PrivKey <- PrivKeys ],
-    aetx_sign:new(Tx, Signatures).
+    BinForNetwork = aec_governance:add_custom_network_id(NetworkId, Bin0),
+    {ok, Signature} = SignModule:sign_binary(BinForNetwork, Signer),
+    aetx_sign:new(Tx, [Signature]).
 
 get_request(Path, Host, Port, Timeout) ->
     try
@@ -191,9 +196,13 @@ post_request(Path, Body, Host, Port, Timeout) ->
     HTTPOpt = [{timeout, Timeout}],
     Opt = [],
     lager:debug("Req: ~p, with URL: ~ts", [Req, Url]),
-    {ok, {{_, 200 = _Code, _}, _, Res}} = httpc:request(post, Req, HTTPOpt, Opt),
-    lager:debug("Req: ~p, Res: ~p with URL: ~ts", [Req, Res, Url]),
-    {ok, jsx:decode(list_to_binary(Res), [return_maps])}
+    case httpc:request(post, Req, HTTPOpt, Opt) of
+        {ok, {{_, 200 = _Code, _}, _, Res}} ->
+            lager:debug("Req: ~p, Res: ~p with URL: ~ts", [Req, Res, Url]),
+            {ok, jsx:decode(list_to_binary(Res), [return_maps])};
+        {ok, {{_, 400, _}, _, Res}} ->
+            {error, 400, jsx:decode(list_to_binary(Res), [return_maps])}
+    end
   catch E:R:S ->
     lager:info("Error: ~p Reason: ~p Stacktrace: ~p", [E, R, S]),
     {error, {E, R, S}}

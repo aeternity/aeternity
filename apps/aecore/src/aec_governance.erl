@@ -34,6 +34,7 @@
          primop_base_gas/1,
          add_network_id/1,
          add_network_id_last/1,
+         add_custom_network_id/2,
          get_network_id/0,
          contributors_messages_hash/0,
          vm_gas_table/0,
@@ -378,6 +379,13 @@ fraud_report_reward(Height) ->
 add_network_id(SerializedTransaction) ->
     NetworkId = get_network_id(),
     <<NetworkId/binary, SerializedTransaction/binary>>.
+
+-spec add_custom_network_id(CustomNetworkId, SerializedTransaction) -> Bin
+    when CustomNetworkId :: binary(),
+         SerializedTransaction :: binary(),
+         Bin :: binary().
+add_custom_network_id(CustomNetworkId, SerializedTransaction) ->
+    <<CustomNetworkId/binary, SerializedTransaction/binary>>.
 
 -spec add_network_id_last(binary()) -> binary().
 add_network_id_last(Payload) ->

@@ -731,13 +731,25 @@ build_json_files(NetworkId, ElectionContract, Config) ->
 
 node_config(PotentialStakers, Consensus) ->
     Stakers =
-        lists:map(
-            fun(Who) ->
-                Pub = encoded_pubkey(Who),
-                Priv = list_to_binary(aeu_hex:bin_to_hex( privkey(Who))), %% TODO: discuss key management
-                #{<<"pub">> => Pub, <<"priv">> => Priv}
-            end,
-            PotentialStakers),
+        case Consensus of
+            ?CONSENSUS_POS ->
+                lists:map(
+                    fun(Who) ->
+                        Pub = encoded_pubkey(Who),
+                        Priv = list_to_binary(aeu_hex:bin_to_hex( privkey(Who))), %% TODO: discuss key management
+                        #{<<"pub">> => Pub, <<"priv">> => Priv}
+                    end,
+                    PotentialStakers);
+            ?CONSENSUS_HC ->
+                lists:map(
+                    fun(Who) ->
+                        Pub = encoded_pubkey(Who),
+                        Priv = list_to_binary(aeu_hex:bin_to_hex( privkey(Who))), %% TODO: discuss key management
+                        #{  <<"hyper_chain_account">> =>#{<<"pub">> => Pub, <<"priv">> => Priv},
+                            <<"parent_chain_account">> =>#{<<"pub">> => Pub, <<"priv">> => Priv}}
+                    end,
+                    PotentialStakers)
+        end,
     ConsensusName =
         case Consensus of
             ?CONSENSUS_HC -> <<"hyper_chain">>;
@@ -748,18 +760,24 @@ node_config(PotentialStakers, Consensus) ->
             ?CONSENSUS_POS -> #{};
             ?CONSENSUS_HC ->
                 #{  <<"parent_chain">> =>
-                        #{  <<"type">> => <<"AE">>,
-                            <<"start_height">> => 35,
-                            <<"confirmations">> => 2,
-                            <<"cache_size">> => 20,
-                            <<"fetch_interval">> => 1000,
-                            <<"nodes">> =>
-                                [   #{  <<"host">> => <<"127.0.0.1">>,
-                                        <<"port">> => aecore_suite_utils:external_api_port(?PARENT_CHAIN_NODE1),
-                                        <<"user">> => <<"test">>,
-                                        <<"password">> => <<"Pass">>}
-                                ]
+                    #{  <<"start_height">> => 35,
+                        <<"confirmations">> => 2,
+                        <<"consensus">> =>
+                            #{  <<"type">> => <<"AE2AE">>,
+                                <<"network_id">> => <<"DDD">>,
+                                <<"spend_address">> => <<"ASDF">>
+                            },
+                        <<"polling">> =>
+                            #{  <<"fetch_interval">> => 1000,
+                                <<"nodes">> =>
+                                    [   #{  <<"host">> => <<"127.0.0.1">>,
+                                            <<"port">> => aecore_suite_utils:external_api_port(?PARENT_CHAIN_NODE1),
+                                            <<"user">> => <<"test">>,
+                                            <<"password">> => <<"Pass">>}
+                                    ]
+                            }
                         }
+                        
                  }
         end,
     #{<<"chain">> =>
