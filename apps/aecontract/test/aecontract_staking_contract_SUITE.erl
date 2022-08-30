@@ -116,6 +116,8 @@
 -define(UNSTAKE_DELAY, 0).
 -define(ENTROPY, <<"asdf">>).
 
+-record(staking_resp, {stake, shares, execution_height}).
+
 all() -> [{group, staking},
           {group, hc_election}
          ].
@@ -635,11 +637,13 @@ unstake_balances(_Config) ->
     %% staking power as her so he will get 50% of the rewards
     SamSPower0 = account_balance(Sam, Trees4),
     ct:log("SPower before staking ~p", [SamSPower0]),
-    {ok, Trees5, ?VALIDATOR_MIN} = stake_(Alice, ?VALIDATOR_MIN, Sam, TxEnv, Trees4),
+    {ok, Trees5, StakeResp5} = stake_(Alice, ?VALIDATOR_MIN, Sam, TxEnv, Trees4),
+    ?assertEqual(?VALIDATOR_MIN, StakeResp5#staking_resp.stake),
+    ?assertEqual(?VALIDATOR_MIN, StakeResp5#staking_resp.shares),
+    ?assertEqual(?GENESIS_HEIGHT, StakeResp5#staking_resp.execution_height),
     SamSPower1 = account_balance(Sam, Trees5),
     ct:log("SPower after staking ~p, expected fees: ~p", [SamSPower1,
                                                            SamSPower0 - SamSPower1 - ?VALIDATOR_MIN]),
-    {ok, Trees5, ?VALIDATOR_MIN} = stake_(Alice, ?VALIDATOR_MIN, Sam, TxEnv, Trees4),
     true = SamSPower0 - SamSPower1 - ?VALIDATOR_MIN > 0, % some gas fees
     ExpectedSamReward = 1000000000000000000 * aec_governance:minimum_gas_price(?CERES_PROTOCOL_VSN), %% more than gas fees :)
     TotalReward = 2 * ExpectedSamReward,
@@ -706,9 +710,9 @@ staking_and_unstaking_effects_election(_Config) ->
             StakeTrees =
                 lists:foldl(
                     fun(Pubkey, TreesAccum) ->
-                        {ok, TreesAccum1, StakerStake} = stake_(Who, StakerStake,
-                                                                Pubkey, TxEnv,
-                                                                TreesAccum),
+                        {ok, TreesAccum1, _} = stake_(Who, StakerStake,
+                                                      Pubkey, TxEnv,
+                                                      TreesAccum),
                         TreesAccum1
                     end,
                     StakeTrees0,
@@ -785,7 +789,8 @@ can_not_unstake_more_shares_than_owned(_Config) ->
     {ok, Trees2, {tuple, {}}} = set_validator_online_(Alice, TxEnv, Trees1),
     #{public := Sam} = enacl:sign_keypair(),
     Trees3 = set_up_account({Sam, trunc(math:pow(10, 30))}, Trees2),
-    {ok, Trees4, ?STAKE_MIN} = stake_(Alice, ?STAKE_MIN, Sam, TxEnv, Trees3),
+    {ok, Trees4, StakeResp4} = stake_(Alice, ?STAKE_MIN, Sam, TxEnv, Trees3),
+    ?assertEqual(?STAKE_MIN, StakeResp4#staking_resp.stake),
     Test =
         fun(Trees) ->
             %% Bob is offline and can not unstake more than he has
@@ -1653,51 +1658,66 @@ staking_without_delay_return_shares(_Config) ->
     {Sam, Trees1} = set_up_account(Trees0),
     {ok, Trees2, _} = new_validator_(Alice, ?VALIDATOR_MIN, TxEnv, Trees1),
 
+    AliceStake = 101,
+    SamStake = 102,
+
     {ok, _, {tuple, AliceState2}} = get_validator_state_(Alice, Alice, TxEnv, Trees2),
     {_, _, _, _, _, _, _, {tuple, AliceCtState2}} = AliceState2,
     {_, _, _, _, _, _, _, _, TotalShares2} = AliceCtState2,
 
-    {ok, Trees3, AliceShares} = stake_(Alice, 101, Alice, TxEnv, Trees2),
+    {ok, Trees3, AliceResp} = stake_(Alice, AliceStake, Alice, TxEnv, Trees2),
     {ok, _, {tuple, AliceState3}} = get_validator_state_(Alice, Alice, TxEnv, Trees3),
     {_, _, _, _, _, _, _, {tuple, AliceCtState3}} = AliceState3,
     {_, _, _, _, _, _, _, _, TotalShares3} = AliceCtState3,
 
-    {ok, Trees4, SamShares} = stake_(Alice, 102, Sam, TxEnv, Trees3),
+    {ok, Trees4, SamResp} = stake_(Alice, SamStake, Sam, TxEnv, Trees3),
     {ok, _, {tuple, AliceState4}} = get_validator_state_(Alice, Alice, TxEnv, Trees4),
     {_, _, _, _, _, _, _, {tuple, AliceCtState4}} = AliceState4,
     {_, _, _, _, _, _, _, Delegates, TotalShares4} = AliceCtState4,
 
-    ?assertEqual(101, AliceShares),
-    ?assertEqual(102, SamShares),
-    ?assertEqual(TotalShares3, TotalShares2 + AliceShares),
-    ?assertEqual(TotalShares4, TotalShares2 + AliceShares + SamShares),
-    ?assertEqual(TotalShares2 + AliceShares, maps:get({address, Alice}, Delegates)),
-    ?assertEqual(SamShares, maps:get({address, Sam}, Delegates)),
+    ?assertEqual(AliceStake, AliceResp#staking_resp.shares),
+    ?assertEqual(SamStake, SamResp#staking_resp.shares),
+
+    ?assertEqual(?GENESIS_HEIGHT, AliceResp#staking_resp.execution_height),
+    ?assertEqual(?GENESIS_HEIGHT, SamResp#staking_resp.execution_height),
+
+    ?assertEqual(TotalShares3, TotalShares2 + AliceResp#staking_resp.shares),
+    ?assertEqual(TotalShares4, TotalShares3 + SamResp#staking_resp.shares),
+    ?assertEqual(TotalShares2 + AliceResp#staking_resp.shares, maps:get({address, Alice}, Delegates)),
+    ?assertEqual(SamResp#staking_resp.shares, maps:get({address, Sam}, Delegates)),
     ok.
 
 staking_with_delay_return_shares(_Config) ->
+    StakeDelay = 10,
     Alice = pubkey(?ALICE),
     TxEnv = aetx_env:tx_env(?GENESIS_HEIGHT),
-    Trees0 = genesis_trees(?POS, #{stake_delay => 10}),
+    Trees0 = genesis_trees(?POS, #{stake_delay => StakeDelay}),
     {Sam, Trees1} = set_up_account(Trees0),
     {ok, Trees2, _} = new_validator_(Alice, ?VALIDATOR_MIN, TxEnv, Trees1),
+
+    AliceStake = 101,
+    SamStake = 102,
 
     {ok, _, {tuple, AliceState2}} = get_validator_state_(Alice, Alice, TxEnv, Trees2),
     {_, _, _, _, _, _, _, {tuple, AliceCtState2}} = AliceState2,
     {_, _, _, _, _, _, _, _, TotalShares2} = AliceCtState2,
 
-    {ok, Trees3, AliceShares} = stake_(Alice, 101, Alice, TxEnv, Trees2),
+    {ok, Trees3, AliceResp} = stake_(Alice, AliceStake, Alice, TxEnv, Trees2),
     {ok, _, {tuple, AliceState3}} = get_validator_state_(Alice, Alice, TxEnv, Trees3),
     {_, _, _, _, _, _, _, {tuple, AliceCtState3}} = AliceState3,
     {_, _, _, _, _, _, _, _, TotalShares3} = AliceCtState3,
 
-    {ok, Trees4, SamShares} = stake_(Alice, 102, Sam, TxEnv, Trees3),
+    {ok, Trees4, SamResp} = stake_(Alice, SamStake, Sam, TxEnv, Trees3),
     {ok, _, {tuple, AliceState4}} = get_validator_state_(Alice, Alice, TxEnv, Trees4),
     {_, _, _, _, _, _, _, {tuple, AliceCtState4}} = AliceState4,
     {_, _, _, _, _, _, _, Delegates, TotalShares4} = AliceCtState4,
 
-    ?assertEqual(101, AliceShares),
-    ?assertEqual(102, SamShares),
+    ?assertEqual(AliceStake, AliceResp#staking_resp.shares),
+    ?assertEqual(SamStake, SamResp#staking_resp.shares),
+
+    ?assertEqual(?GENESIS_HEIGHT + StakeDelay, AliceResp#staking_resp.execution_height),
+    ?assertEqual(?GENESIS_HEIGHT + StakeDelay, SamResp#staking_resp.execution_height),
+
     ?assertEqual(TotalShares3, TotalShares2),
     ?assertEqual(TotalShares4, TotalShares2),
     ?assertEqual(#{{address, Alice} => TotalShares2}, Delegates),
@@ -1839,6 +1859,9 @@ create_contract(ContractName, CallData, TxEnv, Trees) ->
     {Pubkey, Trees2}.
 
 call_contract(ContractPubkey, Caller, CallData, Amount, TxEnv, Trees) ->
+  call_contract(ContractPubkey, Caller, CallData, Amount, TxEnv, Trees, fun(X) -> X end).
+
+call_contract(ContractPubkey, Caller, CallData, Amount, TxEnv, Trees, TransformFun) ->
     Nonce = next_nonce(Caller, Trees),
     ABI = aect_test_utils:latest_sophia_abi_version(),
     TxSpec = #{ caller_id    => aeser_id:create(account, Caller),
@@ -1866,8 +1889,9 @@ call_contract(ContractPubkey, Caller, CallData, Amount, TxEnv, Trees) ->
                 ok ->
                     %% prune the call being produced. If not done, the fees for it
                     %% would be redistributed to the corresponding leaders
-                    {ok, aect_call_state_tree:prune(Height, Trees2),
-                        aeb_fate_encoding:deserialize(aect_call:return_value(Call))};
+                    RespTrees = aect_call_state_tree:prune(Height, Trees2),
+                    Resp = aeb_fate_encoding:deserialize(aect_call:return_value(Call)),
+                    {ok, RespTrees, TransformFun(Resp)};
                 error -> {error,
                             aeb_fate_encoding:deserialize(aect_call:return_value(Call))};
                 revert -> {revert,
@@ -2019,7 +2043,7 @@ stake_(Who, Amount, Caller, TxEnv, Trees0) ->
     {ok, CallData} = aeb_fate_abi:create_calldata("stake",
                                                   [aefa_fate_code:encode_arg({address,
                                                                               Who})]),
-    call_contract(ContractPubkey, Caller, CallData, Amount, TxEnv, Trees0).
+    call_contract(ContractPubkey, Caller, CallData, Amount, TxEnv, Trees0, fun to_staking_resp/1).
 
 unstake_(Who, Stakes, Caller, TxEnv, Trees0) ->
     ContractPubkey = staking_contract_address(),
@@ -2054,6 +2078,11 @@ set_avatar_(Avatar, Caller, TxEnv, Trees0) when is_binary(Avatar) ->
                                                   [aefa_fate_code:encode_arg({string, Avatar})]),
     call_contract(ContractPubkey, Caller, CallData, 0, TxEnv, Trees0).
 
+to_staking_resp({tuple, {Stake, Shares, Height}}) ->
+  #staking_resp{
+    stake = Stake,
+    shares = Shares,
+    execution_height = Height}.
 
 expected_validator_state(PoolContract, ValidatorAddr, OnlineDelay,
                          TotalSPower, PendingStake, TotalSLimit, IsOnline, Name,

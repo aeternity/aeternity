@@ -39,6 +39,11 @@ main contract MainStaking =
       pending_stake   : int,
       stake_limit     : int}
 
+  record staking_response =
+    { stake            : int,
+      shares           : int,
+      execution_height : int}
+
   record get_validator_response =
     { ct              : StakingValidator,
       address         : address,
@@ -140,7 +145,7 @@ main contract MainStaking =
               online_validators @ onv = Map.delete(Call.caller, onv),
               total_stake @ ts = ts - validator.stake})
 
-  payable stateful entrypoint stake(to : address) =
+  payable stateful entrypoint stake(to : address) : staking_response =
     require(Call.value >= state.stake_minimum, "Must stake the minimum amount")
     switch(state.stake_delay)
       0 =>
@@ -150,7 +155,7 @@ main contract MainStaking =
         switch(validator_bucket(to))
           ONLINE => put(state{online_validators[to] = new_validator, total_stake @ ts = ts + Call.value })
           OFFLINE => put(state{offline_validators[to] = new_validator})
-        shares
+        {stake = Call.value, shares = shares, execution_height = Chain.block_height }
       _ =>
         let validator : validator = get_validator(to)
         let shares = validator.ct.estimate_stake_shares(Call.value)
@@ -164,7 +169,7 @@ main contract MainStaking =
         switch(validator_bucket(to))
           ONLINE => put(state{online_validators[to] = new_validator})
           OFFLINE => put(state{offline_validators[to] = new_validator})
-        shares
+        {stake = Call.value, shares = shares, execution_height = height }
 
   stateful entrypoint unstake(from : address, stakes : int) : int =
     let validator : validator = get_validator(from)
