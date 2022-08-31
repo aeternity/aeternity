@@ -15,6 +15,7 @@
 -define(SIGNATURE_SIZE, 16).
 -define(ETS_CACHE_TABLE, ?MODULE).
 -define(ELECTION_CONTRACT, election).
+-define(STAKING_CONTRACT, staking).
 -define(REWARDS_CONTRACT, rewards).
 
 %% API
@@ -70,6 +71,10 @@
         , get_type/0
         , get_block_producer_configs/0
         , is_leader_valid/3
+        ]).
+
+%% HC specific API
+-export([ parent_chain_validators/2
         ]).
 
 -include_lib("aecontract/include/hard_forks.hrl").
@@ -134,7 +139,10 @@ start(Config) ->
                   password => Pass}
             end,
             Nodes0),
-    start_dependency(aec_parent_connector, [ParentConnMod, FetchInterval, ParentHosts]),
+    SignModule = get_sign_module(),
+    start_dependency(aec_parent_connector, [ParentConnMod, FetchInterval,
+                                            ParentHosts, NetworkId,
+                                            SignModule, PCSpendAddress]),
     start_dependency(aec_parent_chain_cache, [StartHeight, CacheSize, Confirmations]),
     ok.
 
@@ -142,7 +150,7 @@ start_dependency(Mod, Args) ->
     %% TODO: ditch this after we move beyond OTP24
     OldSpec =
         {Mod, {Mod, start_link, Args}, permanent, 3000, worker, [Mod]},
-    aec_consensus_sup:start_child(OldSpec).
+    {ok, _} = aec_consensus_sup:start_child(OldSpec).
 
 stop() ->
     aec_preset_keys:stop(),
@@ -464,7 +472,8 @@ call_consensus_contract_(ContractType, TxEnv, Trees, EncodedCallData, Keyword, A
     ContractPubkey =
         case ContractType of
             ?ELECTION_CONTRACT -> election_contract_pubkey();
-            ?REWARDS_CONTRACT -> rewards_contract_pubkey()
+            ?REWARDS_CONTRACT -> rewards_contract_pubkey();
+            ?STAKING_CONTRACT -> rewards_contract_pubkey()
         end,
     OwnerPubkey = contract_owner(),
     Contract = aect_state_tree:get_contract(ContractPubkey,
@@ -575,6 +584,25 @@ is_leader_valid(Node, Trees, TxEnv) ->
         {error, What} ->
             lager:info("Block validation failed with a reason ~p", [What]),
             false
+    end.
+
+parent_chain_validators(TxEnv, Trees) ->
+    %% TODO: cache this
+    %% this could be cached: we only need to track contract call events for
+    %% validator creation and going online and offline
+    {ok, CD} = aeb_fate_abi:create_calldata("sorted_validators", []),
+    CallData = aeser_api_encoder:encode(contract_bytearray, CD),
+    case call_consensus_contract_(?STAKING_CONTRACT, TxEnv, Trees, CallData,
+                             "sorted_validators()", 0) of
+        {ok, _Trees1, Call} ->
+            SortedValidators =
+                lists:map(
+                    fun({tuple, {{address, Address}, _Amt}}) -> Address end,
+                    aeb_fate_encoding:deserialize(aect_call:return_value(Call))),
+            {ok, SortedValidators};
+        {error, What} ->
+            lager:warning("Unable to fetch validators from the contract because of ~p", [What]),
+            error
     end.
 
 create_contracts([], _TxEnv, Trees) -> Trees;

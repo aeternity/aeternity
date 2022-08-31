@@ -22,7 +22,7 @@
 %%%=============================================================================
 
 %% External API
--export([start_link/0, start_link/3, stop/0]).
+-export([start_link/0, start_link/6, stop/0]).
 
 %% Use in test only
 -export([trigger_fetch/0]).
@@ -78,15 +78,16 @@ start_link() ->
                     password => "Pass"
                     }],
     ParentConnMod = aehttpc_aeternity,
-    start_link(ParentConnMod, FetchInterval, ParentHosts).
+    start_link(ParentConnMod, FetchInterval, ParentHosts, <<"local_testnet">>,
+              aec_preset_keys, <<0:32/unit:8>>).
 
 %% Start the parent connector process
 %% ParentConnMod :: atom() - module name of the http client module aehttpc_btc | aehttpc_aeternity
 %% FetchInterval :: integer() | on_demand - millisecs between parent chain checks or when asked (useful for test)
 %% ParentHosts :: [#{host => Host, port => Port, user => User, password => Pass}]
--spec start_link(atom(), integer() | on_demand, [map()]) -> {ok, pid()} | {error, {already_started, pid()}} | {error, Reason::any()}.
-start_link(ParentConnMod, FetchInterval, ParentHosts) ->
-    gen_server:start_link({local, ?SERVER}, ?MODULE, [ParentConnMod, FetchInterval, ParentHosts], []).
+-spec start_link(atom(), integer() | on_demand, [map()], binary(), atom(), binary()) -> {ok, pid()} | {error, {already_started, pid()}} | {error, Reason::any()}.
+start_link(ParentConnMod, FetchInterval, ParentHosts, NetworkId, SignModule, Recipient) ->
+    gen_server:start_link({local, ?SERVER}, ?MODULE, [ParentConnMod, FetchInterval, ParentHosts, NetworkId, SignModule, Recipient], []).
 
 stop() ->
     gen_server:stop(?MODULE).
@@ -119,17 +120,17 @@ post_commitment(Who, Hash) ->
 %%%=============================================================================
 
 -spec init([any()]) -> {ok, #state{}}.
-init([ParentConnMod, FetchInterval, ParentHosts]) ->
+init([ParentConnMod, FetchInterval, ParentHosts, NetworkId, SignModule, Recipient]) ->
     if is_integer(FetchInterval) ->
         erlang:send_after(FetchInterval, self(), check_parent);
         true -> ok
     end,
     CDetails =
-        #commitment_details{ parent_network_id  = <<"TODO">>, %% TODO: assert all nodes are having the same network id
-                            sign_module = todo,
-                            recipient = <<0:32/unit:8>>,
-                            amount = 0,
-                            fee = 0
+        #commitment_details{ parent_network_id  = NetworkId, %% TODO: assert all nodes are having the same network id
+                             sign_module = SignModule,
+                             recipient = Recipient,
+                             amount = 0,
+                             fee = 100000000000000
                             },
     {ok, #state{parent_conn_mod = ParentConnMod,
                 fetch_interval = FetchInterval,
@@ -274,11 +275,11 @@ responses_consensus(Good0, _Errors, TotalCount) ->
         true ->
             {error, no_parent_chain_agreement};
         false ->
-            {MostReturnedTop, Qty} = lists:last(lists:keysort(2, maps:to_list(Counts))),
+            {MostReturnedResult, Qty} = lists:last(lists:keysort(2, maps:to_list(Counts))),
             %% Need Qty to be > half of the total number of configured nodes ??
             if Qty > MinRequired ->
-                {_, Node} = lists:keyfind(MostReturnedTop, 1, Good),
-                {ok, MostReturnedTop, Node};
+                {_, Node} = lists:keyfind(MostReturnedResult, 1, Good),
+                {ok, MostReturnedResult, Node};
             true ->
                 case NotFoundsCnt > MinRequired of
                     true -> {error, not_found};
@@ -335,9 +336,13 @@ post_commitment(Who, Commitment,
     %% TODO: maybe track a transaction's progress?
     {Good, Errors} = pmap(Fun, ParentNodes, 10000),
     case responses_consensus(Good, Errors, length(ParentNodes)) of
-        {ok, _TxHash, _} -> ok;
-        {error, invalid_transaction} = Err ->
-            lager:warning("Unable to post a commitment on the parent chain",
-                          []),
+        {ok, {ok, TxHash}, _} when is_binary (TxHash) -> ok;
+        {ok, {error, invalid_transaction}, _} ->
+            lager:warning("Unable to post commitment: invalid_transaction", []),
+            {error, invalid_transaction};
+        {error, no_parent_chain_agreement} = Err ->
+            %% TODO: decide what to do: this is likely happening because of
+            %% rapid parent chain reorganizations
+            lager:warning("Parent nodes are unable to reach consensus regarding posted commitment", []),
             Err
     end.

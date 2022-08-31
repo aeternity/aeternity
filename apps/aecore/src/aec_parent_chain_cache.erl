@@ -52,7 +52,7 @@
         max_size                            :: non_neg_integer(),
         blocks          = #{}               :: #{non_neg_integer() => aec_parent_chain_block:block()},
         top_height      = 0                 :: non_neg_integer(),
-        posted_commitment = false           :: boolean()
+        sign_module     = aec_preset_keys   :: atom() %% TODO: make it configurable
     }).
 -type state() :: #state{}.
 
@@ -146,6 +146,7 @@ handle_info(initialize_cache, State) ->
             {noreply, State}
     end;
 handle_info({gproc_ps_event, top_changed, #{info := #{block_type := key,
+                                                      block_hash := Hash,
                                                       height := Height}}},
             #state{child_top_height = OldHeight,
                    max_size = MaxSize} = State0) ->
@@ -158,6 +159,7 @@ handle_info({gproc_ps_event, top_changed, #{info := #{block_type := key,
     TargetHeight = target_parent_height(State),
     aec_parent_connector:request_block_by_height(TargetHeight),
     %% TODO: post a commitment
+    maybe_post_commitments(Hash, State),
     {noreply, State};
 handle_info({gproc_ps_event, top_changed, _}, State) ->
     {noreply, State};
@@ -301,3 +303,20 @@ maybe_request_next_block(BlockHeight, #state{max_size = MaxSize } = State) ->
             pass
     end.
 
+maybe_post_commitments(TopHash, #state{sign_module = SignModule} = _State) ->
+    %% use the key top hash as there could be a race condition. If there is a
+    %% microblock right after the keyblock, the state trees could have changed
+    %% (and could have modified the staker's state) and using
+    %% aetx_env:tx_env_and_trees_from_top/1 could be dangerous
+    {TxEnv, Trees} = aetx_env:tx_env_and_trees_from_hash(aetx_transaction, TopHash),
+    {ok, AllStakers} = aec_consensus_hc:parent_chain_validators(TxEnv, Trees),
+    LocalStakers =
+        lists:filter(fun SignModule:is_key_present/1, AllStakers),
+    Commitment = aeser_api_encoder:encode(key_block_hash, TopHash),
+    lists:foreach(
+        fun(Staker) ->
+            lager:info("Staker ~p", [Staker]),
+            ok = aec_parent_connector:post_commitment(Staker, Commitment),
+            ok
+        end,
+        LocalStakers).
