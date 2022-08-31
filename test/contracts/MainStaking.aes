@@ -103,8 +103,6 @@ main contract MainStaking =
       pending_unstake       = {}
       }
 
-
-
   entrypoint online_validators() =
     let vs = Map.to_list(state.online_validators)
     [ (v, s) | (v, {stake = s}) <- vs ]
@@ -171,7 +169,7 @@ main contract MainStaking =
           OFFLINE => put(state{offline_validators[to] = new_validator})
         {stake = Call.value, shares = shares, execution_height = height }
 
-  stateful entrypoint unstake(from : address, stakes : int) : int =
+  stateful entrypoint unstake(from : address, stakes : int) : staking_response =
     let validator : validator = get_validator(from)
     let payout = validator.ct.unstake(Call.caller, stakes)
     assert_allowed_to_unstake(from, Call.caller, validator)
@@ -187,7 +185,7 @@ main contract MainStaking =
     switch(validator_bucket(from))
       ONLINE => put(state{online_validators[from] = new_validator{ stake @ s = s - payout}, total_stake @ ts = ts - payout})
       OFFLINE => put(state{offline_validators[from] = new_validator{ stake @ s = s - payout }})
-    payout
+    { stake = payout, shares = stakes, execution_height = Chain.block_height + state.unstake_delay}
 
   payable stateful entrypoint reward(to : address) =
     assert_protocol_call()

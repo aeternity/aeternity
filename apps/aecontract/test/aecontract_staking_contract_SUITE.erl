@@ -47,7 +47,8 @@
         ]).
 
 -export([ staking_without_delay_return_shares/1,
-          staking_with_delay_return_shares/1
+          staking_with_delay_return_shares/1,
+          unstaking_return_shares/1
         ]).
 
 -export([ entropy_impacts_leader_election/1
@@ -150,7 +151,8 @@ groups() ->
          unstake_delay,
          unstake_delay_set_to_zero,
          staking_without_delay_return_shares,
-         staking_with_delay_return_shares
+         staking_with_delay_return_shares,
+         unstaking_return_shares
        ]},
       {hc_election, [sequence],
        [ entropy_impacts_leader_election
@@ -471,12 +473,13 @@ validator_withdrawal(_Config) ->
     %% can not withdraw more than OverheadAmt
     {revert, <<"Validator can not withdraw below the treshold">>}
         = unstake_(Alice, OverheadAmt + 1, Alice, TxEnv, Trees3),
-    {ok, _, OverheadAmt}
-        = unstake_(Alice, OverheadAmt, Alice, TxEnv, Trees3),
     {revert, <<"Validator can not withdraw below the treshold">>}
         = unstake_(Bob, OverheadAmt + 1, Bob, TxEnv, Trees3),
-    {ok, _, OverheadAmt}
-        = unstake_(Bob, OverheadAmt, Bob, TxEnv, Trees3),
+    {ok, _, AliceUnstakeResp3} = unstake_(Alice, OverheadAmt, Alice, TxEnv, Trees3),
+    {ok, _, BobUnstakeResp3} = unstake_(Bob, OverheadAmt, Bob, TxEnv, Trees3),
+    ?assertEqual(OverheadAmt, AliceUnstakeResp3#staking_resp.stake),
+    ?assertEqual(OverheadAmt, BobUnstakeResp3#staking_resp.stake),
+
     %% reward both parties and now they can unstake down to ?VALIDATOR_MIN amount
     Reward = 1,
     {ok, Trees4, {tuple, {}}} = reward_(Alice, Reward, ?OWNER_PUBKEY, TxEnv, Trees3),
@@ -487,10 +490,10 @@ validator_withdrawal(_Config) ->
         = unstake_(Bob, OverheadAmt + Reward + 1, Bob, TxEnv, Trees5),
     %% TODO: revisit the tests once decision is being made for unstaking AE or
     %% unstaking stake shares
-    {ok, Trees6, 1}
-        = unstake_(Alice, 1, Alice, TxEnv, Trees5),
-    {ok, _Trees7, 1}
-        = unstake_(Bob, 1, Bob, TxEnv, Trees6),
+    {ok, Trees6, AliceUnstakeResp} = unstake_(Alice, 1, Alice, TxEnv, Trees5),
+    {ok, Trees7, BobUnstakeResp} = unstake_(Bob, 1, Bob, TxEnv, Trees6),
+    ?assertEqual(1, AliceUnstakeResp#staking_resp.stake),
+    ?assertEqual(1, BobUnstakeResp#staking_resp.stake),
     ok.
 
 setting_online_delay(_Config) ->
@@ -649,7 +652,8 @@ unstake_balances(_Config) ->
     TotalReward = 2 * ExpectedSamReward,
     {ok, Trees6, {tuple, {}}} =
         reward_(Alice, TotalReward, ?OWNER_PUBKEY, TxEnv, Trees5),
-    {ok, Trees7, ActualAmt} = unstake_(Alice, ?VALIDATOR_MIN, Sam, TxEnv, Trees6),
+    {ok, Trees7, StakingResp} = unstake_(Alice, ?VALIDATOR_MIN, Sam, TxEnv, Trees6),
+    ActualAmt = StakingResp#staking_resp.stake,
     ActualReward = ActualAmt - ?VALIDATOR_MIN,
     {ActualReward, ActualReward} = {ActualReward, ExpectedSamReward},
     ct:log("Withdrawn amount ~p, rewards collected ~p", [ActualAmt, ActualReward]),
@@ -754,10 +758,10 @@ staking_and_unstaking_effects_election(_Config) ->
             {StakeTrees, TotalWithdrawnAmt} =
                 lists:foldl(
                     fun(Pubkey, {TreesAccum, WithdrawnSum}) ->
-                        {ok, TreesAccum1, Amt} = unstake_(Who, StakerStake,
+                        {ok, TreesAccum1, Resp} = unstake_(Who, StakerStake,
                                                           Pubkey, TxEnv,
                                                           TreesAccum),
-                        {TreesAccum1, WithdrawnSum + Amt}
+                        {TreesAccum1, WithdrawnSum + Resp#staking_resp.stake}
                     end,
                     {StakeTrees0, 0},
                     StakersList),
@@ -1070,10 +1074,9 @@ if_unstake_all_delegate_is_deleted(_Config) ->
             WithdrawnAmt = 10,
             StakeLeft = TotalStakedAmt - WithdrawnAmt,
             PoolStakeLeft = TotalAmt - WithdrawnAmt,
-            {ok, Trees5, WithdrawnAmt} =
-                unstake_(ToWhom, WithdrawnAmt, Sam, TxEnv, Trees4),
-            {ok, _, State2} = get_validator_state_(ToWhom, ToWhom, TxEnv,
-                                                   Trees5),
+            {ok, Trees5, Resp5} = unstake_(ToWhom, WithdrawnAmt, Sam, TxEnv, Trees4),
+            ?assertEqual(WithdrawnAmt, Resp5#staking_resp.stake),
+            {ok, _, State2} = get_validator_state_(ToWhom, ToWhom, TxEnv, Trees5),
             {tuple, {{contract, _}, %% the pool contract
                     {address, ToWhom},
                     _, %% creation height
@@ -1089,10 +1092,9 @@ if_unstake_all_delegate_is_deleted(_Config) ->
             StakeLeft = maps:get({address, Sam}, Map2),
             2 = maps:size(Map2), %% no other keys
             %% withdraw what is left, the delegate is being deleted
-            {ok, Trees6, StakeLeft} =
-                unstake_(ToWhom, StakeLeft, Sam, TxEnv, Trees5),
-            {ok, _, State3} = get_validator_state_(ToWhom, ToWhom, TxEnv,
-                                                   Trees6),
+            {ok, Trees6, Resp6} = unstake_(ToWhom, StakeLeft, Sam, TxEnv, Trees5),
+            ?assertEqual(StakeLeft, Resp6#staking_resp.stake),
+            {ok, _, State3} = get_validator_state_(ToWhom, ToWhom, TxEnv, Trees6),
             {tuple, {{contract, _}, %% the pool contract
                     {address, ToWhom},
                     _, %% creation height
@@ -1723,6 +1725,21 @@ staking_with_delay_return_shares(_Config) ->
     ?assertEqual(#{{address, Alice} => TotalShares2}, Delegates),
     ok.
 
+unstaking_return_shares(_Config) ->
+    UnstakeDelay = 10,
+    Alice = pubkey(?ALICE),
+    TxEnv = aetx_env:tx_env(?GENESIS_HEIGHT),
+    Trees0 = genesis_trees(?POS, #{unstake_delay => UnstakeDelay}),
+
+    {ok, Trees1, _} = new_validator_(Alice, 2*?VALIDATOR_MIN, TxEnv, Trees0),
+    {ok, Trees2, {tuple, {}}} = reward_(Alice, 2*?VALIDATOR_MIN, ?OWNER_PUBKEY, TxEnv, Trees1),
+    {ok, _, UnstakeResp} = unstake_(Alice, ?VALIDATOR_MIN, Alice, TxEnv, Trees2),
+
+    ?assertEqual(2*?VALIDATOR_MIN, UnstakeResp#staking_resp.stake),
+    ?assertEqual(?VALIDATOR_MIN, UnstakeResp#staking_resp.shares),
+    ?assertEqual(?GENESIS_HEIGHT+UnstakeDelay, UnstakeResp#staking_resp.execution_height),
+    ok.
+
 genesis_trees_opts(Type, Key, Opts, Default) ->
     Value = maps:get(Key, Opts, Default),
     aefa_fate_code:encode_arg({Type, Value}).
@@ -2052,7 +2069,7 @@ unstake_(Who, Stakes, Caller, TxEnv, Trees0) ->
                                                                               Who}),
                                                    aefa_fate_code:encode_arg({integer,
                                                                               Stakes})]),
-    call_contract(ContractPubkey, Caller, CallData, 0, TxEnv, Trees0).
+    call_contract(ContractPubkey, Caller, CallData, 0, TxEnv, Trees0, fun to_staking_resp/1).
 
 set_name_(Name, Caller, TxEnv, Trees0) when is_list(Name) ->
     set_name_(list_to_binary(Name), Caller, TxEnv, Trees0);
