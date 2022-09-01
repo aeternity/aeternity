@@ -750,6 +750,7 @@ node_config(PotentialStakers, Consensus) ->
                         #{  <<"type">> => <<"AE">>,
                             <<"start_height">> => 35,
                             <<"confirmations">> => 2,
+                            <<"cache_size">> => 20,
                             <<"fetch_interval">> => 1000,
                             <<"nodes">> =>
                                 [   #{  <<"host">> => <<"127.0.0.1">>,
