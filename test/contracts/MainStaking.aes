@@ -352,7 +352,7 @@ main contract MainStaking =
       let validator = get_validator_state(v)
       let min_percent = state.validator_min_percent
       if((100 * balance) < (min_percent * validator.stake))
-        abort("Validator can not withdraw below the 30% treshold")
+        abort("Validator can not withdraw below the treshold")
       else false
 
   stateful function maybe_set_stake_limit(to : address, who : address, v : validator) : validator =

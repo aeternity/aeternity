@@ -1170,8 +1170,8 @@ validator_can_not_unstake_below_30_percent_treshold(_Config) ->
     %% 30% treshold for Alice: 12000
     UnstakeAmt = 8000,
 
-    {revert, <<"Validator can not withdraw below the 30% treshold">>}
-        = unstake_(Alice, UnstakeAmt + 1, Alice, TxEnv, Trees6),
+    ?assertEqual({revert, <<"Validator can not withdraw below the treshold">>},
+                 unstake_(Alice, UnstakeAmt + 1, Alice, TxEnv, Trees6)),
     {ok, _, _} = unstake_(Alice, UnstakeAmt, Alice, TxEnv, Trees6),
 
     ok.
