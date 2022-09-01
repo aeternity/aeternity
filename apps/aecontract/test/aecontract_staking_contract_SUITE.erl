@@ -501,7 +501,6 @@ setting_online_delay(_Config) ->
     Alice = pubkey(?ALICE),
     TxEnv = aetx_env:tx_env(?GENESIS_HEIGHT),
     Trees = genesis_trees(?POS, #{online_delay => Delay}),
-    Height = aetx_env:height(TxEnv),
 
     {ok, Trees1, {contract, _}} = new_validator_(Alice, ?VALIDATOR_MIN, TxEnv, Trees),
 
@@ -513,12 +512,20 @@ setting_online_delay(_Config) ->
     ?assertMatch({ok, _, {tuple, {_, _, Height, _, _, _, _, _}}},
                  get_validator_state_(Alice, Alice, TxEnv, Trees1)),
 
+    % always allow to set online on genesis height
+    ?assertEqual(?GENESIS_HEIGHT, aetx_env:height(TxEnv)),
+    ?assertMatch({ok, _, _}, set_validator_online_(Alice, TxEnv, Trees1)),
+
     Reason = <<"Minimum height not reached">>,
-    ?assertEqual({revert, Reason}, set_validator_online_(Alice, TxEnv, Trees1)),
-    TxEnv1 = aetx_env:set_height(TxEnv, Height + Delay - 1),
+
+    TxEnv1  = aetx_env:set_height(TxEnv, ?GENESIS_HEIGHT + 1),
     ?assertEqual({revert, Reason}, set_validator_online_(Alice, TxEnv1, Trees1)),
-    TxEnv2 = aetx_env:set_height(TxEnv, Height + Delay),
-    ?assertMatch({ok, _, _}, set_validator_online_(Alice, TxEnv2, Trees1)),
+
+    TxEnv2 = aetx_env:set_height(TxEnv1, ?GENESIS_HEIGHT + Delay - 1),
+    ?assertEqual({revert, Reason}, set_validator_online_(Alice, TxEnv2, Trees1)),
+
+    TxEnv3 = aetx_env:set_height(TxEnv, ?GENESIS_HEIGHT + Delay),
+    ?assertMatch({ok, _, _}, set_validator_online_(Alice, TxEnv3, Trees1)),
 
     ok.
 

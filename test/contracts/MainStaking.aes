@@ -68,6 +68,7 @@ main contract MainStaking =
 
   record state =
     { staking_validator_ct  : StakingValidator,
+      genesis_height        : int,
       online_validators     : map(address, validator),
       offline_validators    : map(address, validator),
       total_stake           : int,
@@ -90,6 +91,7 @@ main contract MainStaking =
                   unstake_delay : int
                   ) =
     { staking_validator_ct  = staking_validator_ct,
+      genesis_height        = Chain.block_height,
       online_validators     = {},
       offline_validators    = {},
       total_stake           = 0,
@@ -371,5 +373,7 @@ main contract MainStaking =
     else v
 
   function assert_allowed_to_set_online(v : validator) =
-    if(v.creation_height + state.online_delay =< Chain.block_height) true
-    else abort("Minimum height not reached")
+    if(Chain.block_height == state.genesis_height) true
+    else
+      if(v.creation_height + state.online_delay =< Chain.block_height) true
+      else abort("Minimum height not reached")
