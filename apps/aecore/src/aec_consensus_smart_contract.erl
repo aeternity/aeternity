@@ -86,8 +86,8 @@ start(Config) ->
             fun(#{<<"pub">> := EncodedPubkey, <<"priv">> := EncodedPrivkey}) ->
                 {ok, Pubkey} = aeser_api_encoder:safe_decode(account_pubkey,
                                                              EncodedPubkey),
-                {ok, Privkey} = aeser_api_encoder:safe_decode(contract_bytearray,
-                                                             EncodedPrivkey),
+                Privkey = aeu_hex:hex_to_bin(EncodedPrivkey),
+                ok = ensure_keypair(Pubkey, Privkey),
                 {Pubkey, Privkey}
             end,
             StakersEncoded),
@@ -517,3 +517,21 @@ call_contracts([Call | Tail], TxEnv, TreesAccum) ->
 
 seal_padding_size() ->
     ?KEY_SEAL_SIZE - ?SIGNATURE_SIZE.
+
+ensure_keypair(Pubkey, Privkey) ->
+    Bin = <<"Random message to be signed">>,
+    Res =
+        try enacl:sign_detached(Bin, Privkey) of
+            Signature ->
+                case enacl:sign_verify_detached(Signature, Bin, Pubkey) of
+                    true  -> ok;
+                    false -> {error, wrong_keys}
+                end
+        catch
+            _Type:_What -> {error, failed_sign}
+        end,
+    case Res of
+        ok -> ok;
+        {error, Reason} ->
+            error({invalid_keypair, aeser_api_encoder:encode(account_pubkey, Pubkey), Reason})
+    end.
