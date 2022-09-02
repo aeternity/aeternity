@@ -397,16 +397,9 @@ inspect_two_validators(_Config) ->
                                  #{Bob => BobSPower}), %% share distribution is the same
     {ok, _, ContractState1} = get_staking_contract_state_(Alice, TxEnv, Trees2),
     {ok, _, ContractState1} = get_staking_contract_state_(Bob, TxEnv, Trees2),
-    {tuple, {   StakingValidatorCT,
-                [ExpectedBobOfflineState0, ExpectedAliceOfflineState0],
-                0, %% total stake, only offline stakers
-                _ValidatorMinStake,
-                _ValidatorMinPercent,
-                _StakeMin,
-                _OnlineDelay,
-                _StakeDelay,
-                _UnstakeDelay
-                }} = ContractState1,
+    {tuple, {StakingValidatorCT, [ExpectedBobOfflineState0, ExpectedAliceOfflineState0],
+             0, %% total stake, only offline stakers
+             _, _, _, _, _, _ }} = ContractState1,
     %% election contract state is unchanged
     {ok, _, ElectionContractState0} = get_election_contract_state_(Alice, TxEnv, Trees2),
     %% set Alice online; this changes the total staked amount to Alice's
@@ -419,18 +412,11 @@ inspect_two_validators(_Config) ->
                                  #{Alice => AliceSPower}), %% share distribution is the same
     {ok, _, ContractState2} = get_staking_contract_state_(Alice, TxEnv, Trees3),
     {ok, _, ContractState2} = get_staking_contract_state_(Bob, TxEnv, Trees3),
-    {tuple, {   StakingValidatorCT,
-                [ ExpectedAliceOnlineState0, %% Alice is online
-                  ExpectedBobOfflineState0
-                ],
-                AliceSPower, %% total stake, only Alice is online
-                _ValidatorMinStake,
-                _ValidatorMinPercent,
-                _StakeMin,
-                _OnlineDelay,
-                _StakeDelay,
-                _UnstakeDelay
-                }} = ContractState2,
+    {tuple, {StakingValidatorCT,
+             [ ExpectedAliceOnlineState0, %% Alice is online
+               ExpectedBobOfflineState0 ],
+             AliceSPower, %% total stake, only Alice is online
+             _, _, _, _, _, _ }} = ContractState2,
     %% election contract state is unchanged
     {ok, _, ElectionContractState0} = get_election_contract_state_(Alice, TxEnv, Trees2),
     %% set Bob online as well
@@ -443,18 +429,10 @@ inspect_two_validators(_Config) ->
     {ok, _, ContractState3} = get_staking_contract_state_(Alice, TxEnv, Trees4),
     {ok, _, ContractState3} = get_staking_contract_state_(Bob, TxEnv, Trees4),
     CombinedSPower = AliceSPower + BobSPower,
-    {tuple, {   StakingValidatorCT, %% same
-                [ ExpectedBobOnlineState0,
-                  ExpectedAliceOnlineState0
-                ],
-                CombinedSPower, %% total stake, only Alice is online
-                _ValidatorMinStake, %% same
-                _ValidatorMinPercent, %% same
-                _StakeMin, %% same
-                _OnlineDelay, %% same
-                _StakeDelay, %% same
-                _UnstakeDelay %% same
-                }} = ContractState3,
+    {tuple, {StakingValidatorCT, %% same
+             [ ExpectedBobOnlineState0, ExpectedAliceOnlineState0 ],
+             CombinedSPower, %% total stake, only Alice is online
+             _, _, _, _, _, _ }} = ContractState3,
     %% election contract state is unchanged
     {ok, _, ElectionContractState0} = get_election_contract_state_(Alice, TxEnv, Trees2),
     ok.
@@ -491,7 +469,7 @@ validator_withdrawal(_Config) ->
     %% TODO: revisit the tests once decision is being made for unstaking AE or
     %% unstaking stake shares
     {ok, Trees6, AliceUnstakeResp} = unstake_(Alice, 1, Alice, TxEnv, Trees5),
-    {ok, Trees7, BobUnstakeResp} = unstake_(Bob, 1, Bob, TxEnv, Trees6),
+    {ok, _, BobUnstakeResp} = unstake_(Bob, 1, Bob, TxEnv, Trees6),
     ?assertEqual(1, AliceUnstakeResp#staking_resp.stake),
     ?assertEqual(1, BobUnstakeResp#staking_resp.stake),
     ok.
@@ -509,7 +487,7 @@ setting_online_delay(_Config) ->
                  get_staking_contract_state_(Alice, TxEnv, Trees1)),
 
     % Validator state contains creation height
-    ?assertMatch({ok, _, {tuple, {_, _, Height, _, _, _, _, _}}},
+    ?assertMatch({ok, _, {tuple, {_, _, ?GENESIS_HEIGHT, _, _, _, _, _}}},
                  get_validator_state_(Alice, Alice, TxEnv, Trees1)),
 
     % always allow to set online on genesis height
@@ -617,7 +595,7 @@ three_validators_election(_Config) ->
             {Bob, ?VALIDATOR_MIN},
             {Carol, ?VALIDATOR_MIN}]),
     {ok, Trees2, {tuple, {}}} = set_validator_online_(Alice, TxEnv, Trees1),
-    {ok, _Trees3, {tuple, {}}} = set_validator_online_(Bob, TxEnv, Trees2),
+    {ok, _, {tuple, {}}} = set_validator_online_(Bob, TxEnv, Trees2),
     %% no rewards to check probabilities
     ok.
 
@@ -893,7 +871,7 @@ change_name_description_avatar(_Config) ->
                      AliceName, %% name
                      <<"">>, %% description
                      <<"">>, %% avatarURL,
-                     _MapA, ?VALIDATOR_MIN }}}} = AliceState1,
+                     MapA, ?VALIDATOR_MIN }}}} = AliceState1,
     %% Bob is unchanged
     {ok, _, BobState0} = get_validator_state_(Bob, Bob, TxEnv, Trees3),
     AliceDescription = <<"Who in the world am I?' Ah, that's the great puzzle!">>,
@@ -913,7 +891,7 @@ change_name_description_avatar(_Config) ->
                      AliceName, %% name
                      AliceDescription, %% description
                      <<"">>, %% avatarURL,
-                     _MapA, ?VALIDATOR_MIN}}}} = AliceState2,
+                     MapA, ?VALIDATOR_MIN}}}} = AliceState2,
     %% Bob is unchanged
     {ok, _, BobState0} = get_validator_state_(Bob, Bob, TxEnv, Trees4),
     AliceAvatar = <<"test.test/img.jpg">>,
@@ -933,7 +911,7 @@ change_name_description_avatar(_Config) ->
                      AliceName, %% name
                      AliceDescription, %% description
                      AliceAvatar, %% avatarURL,
-                     _MapA, ?VALIDATOR_MIN}}}} = AliceState3,
+                     MapA, ?VALIDATOR_MIN}}}} = AliceState3,
     %% Bob is unchanged
     {ok, _, BobState0} = get_validator_state_(Bob, Bob, TxEnv, Trees5),
     %% Sam has no account
@@ -1052,15 +1030,15 @@ if_unstake_all_delegate_is_deleted(_Config) ->
                     _, %% total stake limit
                     _, %% is online
                     {tuple, {{address, ConsensusContractPubkey}, %% main staking contract
-                            _, _, _, _Name, _Description,
-                            _AvatarURL, Map0, SPower0}}}} = State0,
+                            _, _, _, _, _, _, Map0, SPower0}}}} = State0,
             %% assert balances
             AddressKey = {address, ToWhom},
-            ?VALIDATOR_MIN = maps:get(AddressKey, Map0),
-            1 = maps:size(Map0), %% no other keys
+            ?assertEqual(?VALIDATOR_MIN, maps:get(AddressKey, Map0)),
+            ?assertEqual(1, maps:size(Map0)), %% no other keys
             TotalStakedAmt = ?STAKE_MIN + 10,
             TotalAmt = ?VALIDATOR_MIN + TotalStakedAmt,
-            {ok, Trees4, TotalStakeAmt} = stake_(ToWhom, TotalStakedAmt, Sam, TxEnv, Trees3),
+            {ok, Trees4, StakeResp4} = stake_(ToWhom, TotalStakedAmt, Sam, TxEnv, Trees3),
+            ?assertEqual(TotalStakedAmt, StakeResp4#staking_resp.stake),
             {ok, _, State1} = get_validator_state_(ToWhom, ToWhom, TxEnv,
                                                    Trees4),
             {tuple, {{contract, _}, %% the pool contract
@@ -1073,10 +1051,10 @@ if_unstake_all_delegate_is_deleted(_Config) ->
                     {tuple, {{address, ConsensusContractPubkey}, %% main staking contract
                             _, _, _, _Name, _Description,
                             _AvatarURL, Map1, SPower1}}}} = State1,
-            {SPower1, SPower1} = {SPower1, SPower0 + TotalStakedAmt},
-            ?VALIDATOR_MIN = maps:get({address, ToWhom}, Map1),
-            TotalStakedAmt = maps:get({address, Sam}, Map1),
-            2 = maps:size(Map1), %% no other keys
+            ?assertEqual({SPower1, SPower1}, {SPower1, SPower0 + TotalStakedAmt}),
+            ?assertEqual(?VALIDATOR_MIN, maps:get({address, ToWhom}, Map1)),
+            ?assertEqual(TotalStakedAmt, maps:get({address, Sam}, Map1)),
+            ?assertEqual(2, maps:size(Map1)), %% no other keys
             %% withdraw some shares and assert balances
             WithdrawnAmt = 10,
             StakeLeft = TotalStakedAmt - WithdrawnAmt,
@@ -1092,12 +1070,11 @@ if_unstake_all_delegate_is_deleted(_Config) ->
                     _, %% total stake limit
                     _, %% is online
                     {tuple, {{address, ConsensusContractPubkey}, %% main staking contract
-                            _, _, _, _Name, _Description,
-                            _AvatarURL, Map2, SPower2}}}} = State2,
-            {SPower2, SPower2} = {SPower2, SPower1 - WithdrawnAmt},
-            ?VALIDATOR_MIN = maps:get({address, ToWhom}, Map2),
-            StakeLeft = maps:get({address, Sam}, Map2),
-            2 = maps:size(Map2), %% no other keys
+                            _, _, _, _, _, _, Map2, SPower2}}}} = State2,
+            ?assertEqual({SPower2, SPower2}, {SPower2, SPower1 - WithdrawnAmt}),
+            ?assertEqual(?VALIDATOR_MIN, maps:get({address, ToWhom}, Map2)),
+            ?assertEqual(StakeLeft, maps:get({address, Sam}, Map2)),
+            ?assertEqual(2, maps:size(Map2)), %% no other keys
             %% withdraw what is left, the delegate is being deleted
             {ok, Trees6, Resp6} = unstake_(ToWhom, StakeLeft, Sam, TxEnv, Trees5),
             ?assertEqual(StakeLeft, Resp6#staking_resp.stake),
@@ -1110,11 +1087,10 @@ if_unstake_all_delegate_is_deleted(_Config) ->
                     _, %% total stake limit
                     _, %% is online
                     {tuple, {{address, ConsensusContractPubkey}, %% main staking contract
-                            _, _, _, _Name, _Description,
-                            _AvatarURL, Map3, SPower3}}}} = State3,
-                    {SPower3, SPower3} = {SPower3, SPower0},
-            ?VALIDATOR_MIN = maps:get({address, ToWhom}, Map3),
-            1 = maps:size(Map3) %% no other keys
+                            _, _, _, _, _, _, Map3, SPower3}}}} = State3,
+            ?assertEqual({SPower3, SPower3}, {SPower3, SPower0}),
+            ?assertEqual(?VALIDATOR_MIN, maps:get({address, ToWhom}, Map3)),
+            ?assertEqual(1, maps:size(Map3)) %% no other keys
         end,
     Test(Alice), %% online
     Test(Bob), %% offline
@@ -2150,7 +2126,7 @@ assert_equal_states(State1, State2) ->
            IsOnline1,
            {tuple,
                {{address, ContractPubkey1},
-                UnstakeDelay1, _PendingUnstakeAmount1, PendingUnstake1,
+                UnstakeDelay1, PendingUnstakeAmount1, PendingUnstake1,
                 Name1, Description1, Avatar1,
                 Map1,
                 Shares1}}}} = State1,
@@ -2164,7 +2140,7 @@ assert_equal_states(State1, State2) ->
            IsOnline2,
            {tuple,
                {{address, ContractPubkey2},
-                UnstakeDelay2, _PendingUnstakeAmount2, PendingUnstake2,
+                UnstakeDelay2, PendingUnstakeAmount2, PendingUnstake2,
                 Name2, Description2, Avatar2,
                 Map2,
                 Shares2}}}} = State2,
@@ -2177,6 +2153,7 @@ assert_equal_states(State1, State2) ->
     ?assertEqual(IsOnline1, IsOnline2),
     ?assertEqual(ContractPubkey1, ContractPubkey2),
     ?assertEqual(UnstakeDelay1, UnstakeDelay2),
+    ?assertEqual(PendingUnstakeAmount1, PendingUnstakeAmount2),
     ?assertEqual(PendingUnstake1, PendingUnstake2),
     ?assertEqual(Name1, Name2),
     ?assertEqual(Description1, Description2),
