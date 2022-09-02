@@ -13,11 +13,19 @@
 -define(MR_MAGIC, <<1:32/unit:8>>).
 -define(BIG_AMOUNT, 1000000000000000000000). %% 1000 AE
 
-dry_run(TopHash, Accounts, Txs) ->
-    dry_run(TopHash, Accounts, Txs, []).
+%% Let Top be one of:
+%% * {height, X :: int()} - this means "right after keyblock of generation X"
+%% * {in, X :: hash()} - this means "in the MB with hash X" - this gets the
+%%                       correct timestamp, important for replaying contract calls
+%% * X :: hash() - legacy, means "at the end of MB with hash X"
+%% * top - at the top of the chain; if top is MB "at then end of Top",
+%%         if top is KB in a fictive MB after Top.
 
-dry_run(TopHash, Accounts, Txs, Opts) ->
-    try setup_dry_run(TopHash, Accounts) of
+dry_run(Top, Accounts, Txs) ->
+    dry_run(Top, Accounts, Txs, []).
+
+dry_run(Top, Accounts, Txs, Opts) ->
+    try setup_dry_run(Top, Accounts) of
         {Env, Trees} -> dry_run_(Txs, Trees, Env, Opts)
     catch
         error:invalid_hash ->
@@ -26,11 +34,54 @@ dry_run(TopHash, Accounts, Txs, Opts) ->
             {error, <<"Block state of given hash was garbage collected">>}
     end.
 
-setup_dry_run(TopHash, Accounts) ->
-    {Env, Trees} = aetx_env:tx_env_and_trees_from_hash('aetx_transaction', TopHash),
+setup_dry_run(Top, Accounts) ->
+    {Env, Trees} = tx_env_and_trees(Top),
     Trees1 = add_accounts(Trees, [#{pub_key => ?MR_MAGIC, amount => ?BIG_AMOUNT} | Accounts]),
     Env1   = aetx_env:set_dry_run(Env, true),
     {Env1, Trees1}.
+
+tx_env_and_trees(top) ->
+    case aec_chain:top_block_hash() of
+        undefined -> {error, <<"No top block hash">>};
+        TopHash   -> tx_env_and_trees(TopHash)
+    end;
+tx_env_and_trees({height, X}) ->
+    case aec_chain:get_key_header_by_height(X) of
+        {ok, KeyHeader} ->
+            {ok, KeyHash} = aec_headers:hash_header(KeyHeader),
+            tx_env_and_trees(KeyHeader, KeyHash, aec_headers:time_in_msecs(KeyHeader));
+        {error, 'chain_too_short'} ->
+            {error, <<"Chain too short">>}
+    end;
+tx_env_and_trees({in, Hash}) ->
+    case aec_chain:get_header(Hash) of
+        {ok, Header} ->
+            case aec_headers:type(Header) of
+                key -> {error, <<"dry_run 'in' only applicable to Micro Block (hash)">>};
+                micro ->
+                    KeyHash = aec_headers:prev_key_hash(Header),
+                    {ok, KeyHeader} = aec_chain:get_header(KeyHash),
+                    tx_env_and_trees(KeyHeader,
+                                     aec_headers:prev_hash(Header),
+                                     aec_headers:time_in_msecs(Header))
+            end;
+        error ->
+            {error, <<"Block not found">>}
+    end;
+tx_env_and_trees(TopHash) ->
+    aetx_env:tx_env_and_trees_from_hash(aetx_transaction, TopHash).
+
+tx_env_and_trees(KeyHeader, PrevHash, Time) ->
+    try aec_chain:get_block_state(PrevHash) of
+        {ok, Trees} ->
+            {ok, KeyHash} = aec_headers:hash_header(KeyHeader),
+            Env = aetx_env:tx_env_from_key_header(KeyHeader, KeyHash, Time, PrevHash),
+            {aetx_env:set_context(Env, aetx_transaction), Trees}
+    catch
+        error:{hash_not_present_in_db, _} ->
+          {error, <<"state garbage collected">>}
+    end.
+
 
 dry_run_(Txs, Trees, Env, Opts) ->
     try

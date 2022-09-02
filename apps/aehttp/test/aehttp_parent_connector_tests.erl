@@ -18,7 +18,7 @@ ae_sim_test_() ->
              ParentHosts = ae_parent_http_specs(),
 
             %% Create a single account to receive commitments to exist on all
-            %% simulated parent chains (there is no sync between chain simulators) 
+            %% simulated parent chains (there is no sync between chain simulators)
             #{pubkey := CommitmentPubKey, privkey := _} = KeyPair = new_keypair(),
             %% Also create an account on the parent chains that represents a Staker
             %% We will need its private key to sign staking spendTxs on the parent
@@ -113,7 +113,7 @@ ae_sim_test_() ->
                     %% no consensus
                     ok =
                         receive
-                            {post_block, B} -> error(should_not_happen)
+                            {post_block, _B} -> error(should_not_happen)
                         after 100 -> ok
                         end,
                     {ok, Block1} =
@@ -135,7 +135,7 @@ ae_sim_test_() ->
                     {ok, KB3} = PostPCBlock(Spec2),
                     {ok, Block3} =
                         aec_parent_connector:fetch_block_by_height(3),
-                    %% trigger fetch again - 2 out 3 nodes should agree on block3 
+                    %% trigger fetch again - 2 out 3 nodes should agree on block3
                     aec_parent_connector:trigger_fetch(),
                     %% no consensus
                     {ok, Block3} =
@@ -155,7 +155,7 @@ ae_sim_test_() ->
                             aec_chain_sim:add_keyblock(SimName),
                             %% Post our local top hash as the commitment
                             Commitment = <<"kh_deadbeef">>,
-                            {ok, TopHash, PrevHash, Height} = aehttpc_aeternity:get_latest_block(Host, Port, User, Password, <<"Seed">>),
+                            {ok, TopHash, _PrevHash, Height} = aehttpc_aeternity:get_latest_block(Host, Port, User, Password, <<"Seed">>),
                             ok = aehttpc_aeternity:post_commitment(Host, Port, StakerPubKey, StakerPrivKey, CommitmentPubKey, Commitment),
                             ?assertMatch({ok, #{micro_blocks := []}}, aec_chain_sim:get_current_generation(SimName)),
                             %% Call the simulator directly to force our Tx in a block

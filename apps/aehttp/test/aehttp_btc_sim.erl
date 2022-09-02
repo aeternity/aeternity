@@ -1,6 +1,6 @@
 %%%-----------------------------------------------------------------------------
 %%% @title /Users/sean/Aeternity/aeternity-hyperchains/apps/aehttp/test/aehttp_btc_sim
-%%% @doc Extremely basic web server simulating a bitcoin node 
+%%% @doc Extremely basic web server simulating a bitcoin node
 %%% supporting a small number of hard coded bitcoin operations.
 %%% for testing hyperchains parent chain connector
 %%%
@@ -20,7 +20,7 @@
 
 %% Handy functions to generate various test scenarios as initial state
 %% for the simulator
--export([scenario/0]). 
+-export([scenario/0]).
 
 %% Callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -96,7 +96,7 @@ init(Req0=#{method := <<"POST">>}, Pid) ->
 
 %% @doc Start a BTC node simulator
 %% The node will start at the first of the provided generations with
-%% the specified accounts and balances 
+%% the specified accounts and balances
 %% #{generations => ets storing [{{Height, Hash}, Fork, Txs}]
 %%   accounts => [{<<"3EktnHQD7RiAE6uzMj2ZifT9YgRrkSgzQX">> -> 10000}]}.
 -spec start_link(atom(), integer(), map()) -> {ok, pid()} | {error, {already_started, pid()}} | {error, Reason::any()}.
@@ -256,7 +256,7 @@ tx_result(Tx, BlockHash) ->
      <<"time">> => 21                          % (numeric) Same as "blocktime"
     }.
 
-handle_listunspent(Wallet, Minconf, Maxconf, [Address], Unsafe,
+handle_listunspent(Wallet, _Minconf, _Maxconf, [_Address], _Unsafe,
                     #{ <<"minimumAmount">> := MinAmount }, State) ->
     case lookup_account(Wallet, State) of
         false ->
@@ -293,13 +293,13 @@ handle_createrawtransaction([Input], Outputs, State) ->
       <<"txid">> := TxId,           % (string, required) The transaction id
       <<"vout">> := Vout            % (numeric, required) The output number
     } = Input,
-    [Acct, #{<<"data">> := HexPayload}] = Outputs,
+    [Acct, #{<<"data">> := _HexPayload}] = Outputs,
     [{Account, Amount}] = maps:to_list(Acct),
     Tx = raw_tx(TxId, Vout, Account, Amount),
     TxStr = jsx:encode(Tx),
     {{ok, #{<<"result">> => to_hex(TxStr)}}, State}.
 
-raw_tx(TxId, Vout, Account, Amount) ->
+raw_tx(TxId, Vout, _Account, Amount) ->
     #{
         <<"txid">> => <<"TxHash">>,
         <<"version">> => 2,
@@ -321,17 +321,17 @@ raw_tx(TxId, Vout, Account, Amount) ->
         <<"blockhash">> =>  <<"blockhash">>
     }.
 
-handle_signrawtransactionwithkey([RawTx, [PrivKey]], Wallet, State) ->
+handle_signrawtransactionwithkey([RawTx, [_PrivKey]], _Wallet, State) ->
     Result = #{
         <<"hex">> => RawTx,
         <<"complete">> => true
     },
     {{ok, #{<<"result">> => Result}}, State}.
 
-handle_sendrawtransaction(Hex, State) ->
-    Tx = jsx:decode(from_hex(Hex)),
+handle_sendrawtransaction(_Hex, State) ->
+%%     Tx = jsx:decode(from_hex(Hex)),
     %% Place the Tx in the mempool
-    %% We need to record commitments against each 
+    %% We need to record commitments against each
     {{ok, #{<<"result">> =>  <<"">>}}, State}.
 
 %% @doc a few randomly generated bitcoin pub/priv keypairs
@@ -354,7 +354,7 @@ height_to_hash(Height, Fork) ->
 to_binary(Fork) when is_atom(Fork) ->
     list_to_binary(atom_to_list(Fork)).
 
-lookup_account(Address, #state{accounts = Accounts} = State) ->
+lookup_account(Address, #state{accounts = Accounts}) ->
     case maps:find(Address, Accounts) of
         {ok, Balance} ->
             {Address, Balance};
@@ -367,10 +367,10 @@ to_hex(Payload) ->
   ToHex = fun (X) -> integer_to_binary(X,16) end,
   _HexData = << <<(ToHex(X))/binary>> || <<X:4>> <= Payload >>.
 
--spec from_hex(binary()) -> binary().
-from_hex(HexData) ->
-  ToInt = fun (H, L) -> binary_to_integer(<<H, L>>,16) end,
-  _Payload = << <<(ToInt(H, L))>> || <<H:8, L:8>> <= HexData >>.
+%% -spec from_hex(binary()) -> binary().
+%% from_hex(HexData) ->
+%%   ToInt = fun (H, L) -> binary_to_integer(<<H, L>>,16) end,
+%%   _Payload = << <<(ToInt(H, L))>> || <<H:8, L:8>> <= HexData >>.
 
 %%%===================================================================
 %%% Chain DB
@@ -382,13 +382,13 @@ chain_new() ->
 
 chain_top_hash(Chain) ->
     case ets:last(Chain) of
-        {{Height, Hash}, main, Txs} ->
+        {{_Height, Hash}, main, _Txs} ->
             {ok, Hash};
-        {{Height, Hash}, OtherFork, Txs} ->
+        {{Height, Hash}, _OtherFork, _Txs} ->
             case ets:match_object(Chain, {{Height, '_'}, '_', '_'}) of
-                [Single] ->
+                [_Single] ->
                     {ok, Hash};
-                [_, {{Height, OtherHash}, Fork, OtherTxs} |_] ->
+                [_, {{Height, OtherHash}, _Fork, _OtherTxs} |_] ->
                     {ok, OtherHash}
             end
     end.
@@ -415,7 +415,7 @@ chain_post_block(Chain, Fork, Txs) ->
 
 chain_top_block(Chain, Fork) ->
     case ets:match_object(Chain, {{'_', '_'}, Fork, '_'}, 1) of
-        [{{Height, Hash}, OtherFork, Txs} = Block] ->
+        [{{_Height, _Hash}, _OtherFork, _Txs} = Block] ->
             Block;
         [] ->
             not_found
