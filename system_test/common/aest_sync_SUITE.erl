@@ -666,6 +666,8 @@ net_split_mining_power(Cfg) ->
     % Check that the larger cluster has more mining power.
     Net1MinedBlocks1 = node_mined_retries(Net1Nodes),
     Net2MinedBlocks1 = node_mined_retries(Net2Nodes),
+    ct:log("Net1MinedBlocks1 ~p, Net2MinedBlocks1 ~p", [Net1MinedBlocks1,
+                                                        Net2MinedBlocks1]),
     ?assert(Net1MinedBlocks1 < Net2MinedBlocks1),
 
     %% Join all the nodes
