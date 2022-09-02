@@ -19,7 +19,7 @@ docker_build:
     - run:
         name: Build docker image
         command: |
-          docker pull aeternity/builder:bionic-otp22
+          docker pull aeternity/builder:bionic-otp23
           docker build -t << pipeline.parameters.docker_repo >>:<< parameters.tag >> .
     - run:
         name: Start docker image

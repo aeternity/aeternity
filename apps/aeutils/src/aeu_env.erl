@@ -335,7 +335,7 @@ apply_os_env(Pfx, Schema, ConfigMap) ->
                     Value1 = coerce_type(Key, Value, Schema),
                     update_map(to_map(Key, Value1), Acc)
             end, #{}, Names),
-    error_logger:info_msg("Map fr OS env config: ~p~n", [Map]),
+    error_logger:info_msg("Map for OS env config: ~p~n", [Map]),
     if map_size(Map) > 0 ->
             update_config_(Map, ConfigMap, Schema, report);
        true ->
@@ -355,7 +355,6 @@ to_map([K], Val, M) ->
 to_map([H|T], Val, M) ->
     SubMap = maps:get(H, M, #{}),
     M#{H => to_map(T, Val, SubMap)}.
-            
 
 coerce_type(Key, Value, Schema) ->
     case schema_(Key, Schema) of

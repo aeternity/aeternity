@@ -6,8 +6,24 @@
 %% Required exports:
 -export([get_latest_block/5, get_commitment_tx_in_block/6, post_commitment/6]).
 
+-type hex() :: binary().%[byte()].
+
 get_latest_block(Host, Port, User, Password, Seed) ->
-    getbestblockhash(Host, Port, User, Password, Seed, true).
+    get_latest_block(Host, Port, User, Password, Seed, 3).
+
+get_latest_block(_Host, _Port, _User, _Password, _Seed, Attempts) when
+      Attempts < 1 ->
+    {error, inconsistent_responses};
+get_latest_block(Host, Port, User, Password, Seed, Attempts) ->
+    {ok, Hash} = getbestblockhash(Host, Port, User, Password, Seed, true),
+    {ok, {Height, Hash1, PrevHash, _Txs}}
+        = getblock(Host, Port, User, Password, Seed, true, to_hex(Hash), 5000),
+    case Hash1 =:= Hash of
+        true ->
+            {ok, Hash, PrevHash, Height};
+        false -> %% the block had been replaced?
+            get_latest_block(Host, Port, User, Password, Seed, Attempts - 1)
+    end.
 
 get_commitment_tx_in_block(Host, Port, User, Password, Seed, BlockHash) ->
     getblock(Host, Port, User, Password, Seed, true, BlockHash, _Verbosity = 2).
@@ -39,7 +55,7 @@ getbestblockhash(Host, Port, User, Password, Seed, SSL) ->
         {error, {E, R}}
     end.
 
--spec getblock(binary(), binary(), binary(), binary(), binary(), boolean(), binary(), integer()) -> {ok, tuple()} | {error, term()}.
+-spec getblock(binary(), binary(), binary(), binary(), binary(), boolean(), hex(), integer()) -> {ok, tuple()} | {error, term()}.
 getblock(Host, Port, User, Password, Seed, SSL, Hash, Verbosity) ->
   try
     Seed = <<>>,
@@ -53,30 +69,30 @@ getblock(Host, Port, User, Password, Seed, SSL, Hash, Verbosity) ->
 
 %% WIP - Suppress dializer warnings to keep build happy until these two functions
 %% are hooked into post_commitment
--dialyzer({nowarn_function, signrawtransactionwithkey/8}).
--spec signrawtransactionwithkey(binary(), binary(), binary(), binary(), binary(), boolean(), binary(), binary()) -> {ok, binary()} | {error, term()}.
-signrawtransactionwithkey(Host, Port, User, Password, Seed, SSL, RawTx, PrivKey) ->
-  try
-    Body = jsx:encode(request_body(<<"signrawtransactionwithkey">>, [RawTx, [PrivKey]], seed_to_utf8(Seed))),
-    {ok, Res} = request(<<"/">>, Body, Host, Port, User, Password, SSL, 5000),
-    SignedTx = result(Res),
-    Complete = maps:get(<<"complete">>, SignedTx), true = Complete,
-    Hex = maps:get(<<"hex">>, SignedTx),
-    {ok, Hex}
-  catch E:R ->
-    {error, {E, R}}
-  end.
+%% -dialyzer({nowarn_function, signrawtransactionwithkey/8}).
+%% -spec signrawtransactionwithkey(binary(), binary(), binary(), binary(), binary(), boolean(), binary(), binary()) -> {ok, binary()} | {error, term()}.
+%% signrawtransactionwithkey(Host, Port, User, Password, Seed, SSL, RawTx, PrivKey) ->
+%%   try
+%%     Body = jsx:encode(request_body(<<"signrawtransactionwithkey">>, [RawTx, [PrivKey]], seed_to_utf8(Seed))),
+%%     {ok, Res} = request(<<"/">>, Body, Host, Port, User, Password, SSL, 5000),
+%%     SignedTx = result(Res),
+%%     Complete = maps:get(<<"complete">>, SignedTx), true = Complete,
+%%     Hex = maps:get(<<"hex">>, SignedTx),
+%%     {ok, Hex}
+%%   catch E:R ->
+%%     {error, {E, R}}
+%%   end.
 
--dialyzer({nowarn_function, sendrawtransaction/7}).
--spec sendrawtransaction(binary(), binary(), binary(), binary(), binary(), boolean(), binary()) -> {ok, binary()} | {error, term()}.
-sendrawtransaction(Host, Port, User, Password, Seed, SSL, Hex) ->
-  try
-    Body = jsx:encode(request_body(<<"sendrawtransaction">>, [Hex], seed_to_utf8(Seed))),
-    {ok, Res} = request(<<"/">>, Body, Host, Port, User, Password, SSL, 5000),
-    {ok, result(Res)}
-  catch E:R ->
-    {error, {E, R}}
-  end.
+%% -dialyzer({nowarn_function, sendrawtransaction/7}).
+%% -spec sendrawtransaction(binary(), binary(), binary(), binary(), binary(), boolean(), binary()) -> {ok, binary()} | {error, term()}.
+%% sendrawtransaction(Host, Port, User, Password, Seed, SSL, Hex) ->
+%%   try
+%%     Body = jsx:encode(request_body(<<"sendrawtransaction">>, [Hex], seed_to_utf8(Seed))),
+%%     {ok, Res} = request(<<"/">>, Body, Host, Port, User, Password, SSL, 5000),
+%%     {ok, result(Res)}
+%%   catch E:R ->
+%%     {error, {E, R}}
+%%   end.
 
 -spec result(map()) -> term().
 result(Response) ->
@@ -135,12 +151,13 @@ url(Host, Port, _) when is_list(Host), is_integer(Port) ->
 path(Scheme, Host, Port) ->
   lists:concat([Scheme, Host, ":", Port]).
 
-
-
--spec from_hex(binary()) -> binary().
+-spec from_hex(hex()) -> binary().
 from_hex(HexData) ->
-  ToInt = fun (H, L) -> binary_to_integer(<<H, L>>,16) end,
-  _Payload = << <<(ToInt(H, L))>> || <<H:8, L:8>> <= HexData >>.
+    aeu_hex:hex_to_bin(HexData).
+
+-spec to_hex(binary()) -> hex().
+to_hex(Payload) ->
+    list_to_binary(aeu_hex:bin_to_hex(Payload)).
 
 -spec prev_hash(map()) -> null | binary().
 prev_hash(Obj) ->

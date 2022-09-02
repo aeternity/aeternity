@@ -22,14 +22,17 @@
         , hexstring_encode/1
         , hex_to_bin/1]).
 
--spec bin_to_hex(binary()) -> [byte()].
+-spec bin_to_hex(binary()) -> string().
 bin_to_hex(Bin) ->
     lists:flatten([io_lib:format("~2.16.0B", [X]) ||
     X <- binary_to_list(Bin)]).
 
--spec hex_to_bin([byte()]) -> binary().
+-spec hex_to_bin(string() | binary()) -> binary().
+hex_to_bin(Bin) when is_binary(Bin) ->
+    hex_to_bin(binary_to_list(Bin));
 hex_to_bin(S) ->
     hex_to_bin(S, []).
+
 hex_to_bin([], Acc) ->
     list_to_binary(lists:reverse(Acc));
 hex_to_bin([X,Y|T], Acc) ->

@@ -925,7 +925,6 @@ agree_on_height(PeerId, RemoteTop, MinH, MaxH, Hash) ->
         false ->
             agree_on_height(PeerId, RemoteTop, MinH, H, Hash)
     end.
-
 get_header_by_height(PeerId, Height, RemoteTop) ->
     case Height == aec_block_genesis:height() of
         true  -> aec_chain:genesis_hash(); %% Handshake ensure we agree on genesis

@@ -5,13 +5,21 @@
 
 %% Required exports for hyperchain:
 -export([get_latest_block/5,
-        get_commitment_tx_in_block/7,
-        get_commitment_tx_at_height/7,
-        post_commitment/6]).
+         get_header_by_hash/6,
+         get_header_by_height/6,
+         get_commitment_tx_in_block/7,
+         get_commitment_tx_at_height/7,
+         post_commitment/6]).
 
 %% @doc fetch latest top hash
 get_latest_block(Host, Port, _User, _Password, _Seed) ->
-    get_top_block_hash(Host, Port).
+    get_top_block_header(Host, Port).
+
+get_header_by_hash(Hash, Host, Port, _User, _Password, _Seed) ->
+    get_key_block_header(Hash, Host, Port).
+
+get_header_by_height(Height, Host, Port, _User, _Password, _Seed) ->
+    get_key_block_header_by_height(Height, Host, Port).
 
 get_commitment_tx_in_block(Host, Port, _User, _Password, _Seed, BlockHash, ParentHCAccountPubKey) ->
     {ok, #{<<"micro_blocks">> := MBs}} = get_generation(Host, Port, BlockHash),
@@ -31,15 +39,43 @@ post_commitment(Host, Port, AccountId, Signature, HCAccountId, CurrentTop) ->
 %%%===================================================================
 %%%  AE HTTP protocol
 %%%===================================================================
--spec get_top_block_hash(binary(), integer()) -> {ok, binary()} | {error, term()}.
-get_top_block_hash(Host, Port) ->
+-spec get_top_block_header(binary(), integer()) -> {ok, binary()} | {error, term()}.
+get_top_block_header(Host, Port) ->
     try
-        {ok, #{<<"hash">> := Hash}} =
-            get_request(<<"/v3/key-blocks/current/hash">>, Host, Port, 5000),
-        {ok, Hash}
+        {ok, #{<<"hash">> := Hash,
+               <<"prev_key_hash">> := PrevHash,
+               <<"height">> := Height}} =
+            get_request(<<"/v3/key-blocks/current">>, Host, Port, 5000),
+        {ok, Hash, PrevHash, Height}
     catch E:R ->
         {error, {E, R}}
     end.
+
+get_key_block_header(Hash, Host, Port) ->
+    try
+        {ok, #{<<"hash">> := Hash,
+               <<"prev_key_hash">> := PrevHash,
+               <<"height">> := Height}} =
+            get_request(<<"/v3/key-blocks/hash/", Hash/binary>>, Host, Port, 5000),
+        {ok, Hash, PrevHash, Height}
+    catch E:R ->
+        {error, {E, R}}
+    end.
+
+get_key_block_header_by_height(Height, Host, Port) ->
+    HeightB = integer_to_binary(Height),
+    try
+        case  get_request(<<"/v3/key-blocks/height/", HeightB/binary>>, Host, Port, 5000) of
+            {ok, #{ <<"hash">> := Hash,
+                    <<"prev_key_hash">> := PrevHash,
+                    <<"height">> := Height}} ->
+                {ok, Hash, PrevHash, Height};
+            {error, not_found} -> {error, not_found}
+        end
+    catch E:R ->
+        {error, {E, R}}
+    end.
+
 
 -spec get_generation(binary(), integer(), binary()) -> {ok, map()} | {error, term()}.
 get_generation(Host, Port, Hash) ->
@@ -134,9 +170,13 @@ get_request(Path, Host, Port, Timeout) ->
     HTTPOpt = [{timeout, Timeout}],
     Opt = [],
     lager:debug("Req: ~p, with URL: ~ts", [Req, Url]),
-    {ok, {{_, 200 = _Code, _}, _, Res}} = httpc:request(get, Req, HTTPOpt, Opt),
-    lager:debug("Req: ~p, Res: ~p with URL: ~ts", [Req, Res, Url]),
-    {ok, jsx:decode(list_to_binary(Res), [return_maps])}
+    case httpc:request(get, Req, HTTPOpt, Opt) of
+        {ok, {{_, 200 = _Code, _}, _, Res}} ->
+            lager:debug("Req: ~p, Res: ~p with URL: ~ts", [Req, Res, Url]),
+            {ok, jsx:decode(list_to_binary(Res), [return_maps])};
+        {ok, {{_, 404 = _Code, _}, _, "{\"reason\":\"Block not found\"}"}} ->
+            {error, not_found}
+    end
   catch E:R:S ->
     lager:info("Error: ~p Reason: ~p Stacktrace: ~p", [E, R, S]),
     {error, {E, R, S}}

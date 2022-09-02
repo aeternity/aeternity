@@ -6,6 +6,7 @@
 %%%=============================================================================
 -module(aec_peers_pool_tests).
 
+
 -ifdef(TEST).
 
 %=== INCLUDES ==================================================================
@@ -1446,6 +1447,11 @@ verified_old_peers_are_removed() ->
 
 %% Tests that the counters and internal structures stay synchronized when
 %% performing a lot of different operations.
+% validate_counters_test() ->
+%     T = db_setup(),
+%     ok = validate_counters(),
+%     db_teardown(T).
+
 validate_counters() ->
     seed_process_random(),
     PoolOpts = [
@@ -1536,34 +1542,34 @@ validate_counters() ->
 pool_buckets_manipulation_test() ->
     seed_process_random(),
     P1 = aec_peers_pool:pool_new(3, 4, 1, 1.2),
-    ?assertEqual(0, aec_peers_pool:pool_bucket_size(P1, 0)),
     ?assertEqual(0, aec_peers_pool:pool_bucket_size(P1, 1)),
     ?assertEqual(0, aec_peers_pool:pool_bucket_size(P1, 2)),
-    P2 = aec_peers_pool:pool_add(P1, 0, foo),
-    P3 = aec_peers_pool:pool_add(P2, 2, bar),
-    ?assertEqual(1, aec_peers_pool:pool_bucket_size(P3, 0)),
-    ?assertEqual(0, aec_peers_pool:pool_bucket_size(P3, 1)),
-    ?assertEqual(1, aec_peers_pool:pool_bucket_size(P3, 2)),
-    P4 = aec_peers_pool:pool_add(P3, 1, buz),
-    P5 = aec_peers_pool:pool_add(P4, 2, boz),
-    ?assertEqual(1, aec_peers_pool:pool_bucket_size(P5, 0)),
+    ?assertEqual(0, aec_peers_pool:pool_bucket_size(P1, 3)),
+    P2 = aec_peers_pool:pool_add(P1, 1, foo),
+    P3 = aec_peers_pool:pool_add(P2, 3, bar),
+    ?assertEqual(1, aec_peers_pool:pool_bucket_size(P3, 1)),
+    ?assertEqual(0, aec_peers_pool:pool_bucket_size(P3, 2)),
+    ?assertEqual(1, aec_peers_pool:pool_bucket_size(P3, 3)),
+    P4 = aec_peers_pool:pool_add(P3, 2, buz),
+    P5 = aec_peers_pool:pool_add(P4, 3, boz),
     ?assertEqual(1, aec_peers_pool:pool_bucket_size(P5, 1)),
-    ?assertEqual(2, aec_peers_pool:pool_bucket_size(P5, 2)),
-    P6 = aec_peers_pool:pool_add(P5, 0, biz),
-    P7 = aec_peers_pool:pool_add(P6, 1, bez),
-    ?assertEqual(2, aec_peers_pool:pool_bucket_size(P7, 0)),
+    ?assertEqual(1, aec_peers_pool:pool_bucket_size(P5, 2)),
+    ?assertEqual(2, aec_peers_pool:pool_bucket_size(P5, 3)),
+    P6 = aec_peers_pool:pool_add(P5, 1, biz),
+    P7 = aec_peers_pool:pool_add(P6, 2, bez),
     ?assertEqual(2, aec_peers_pool:pool_bucket_size(P7, 1)),
     ?assertEqual(2, aec_peers_pool:pool_bucket_size(P7, 2)),
-    P8 = aec_peers_pool:pool_del(P7, 1, buz),
-    P9 = aec_peers_pool:pool_del(P8, 2, bar),
-    ?assertEqual(2, aec_peers_pool:pool_bucket_size(P9, 0)),
-    ?assertEqual(1, aec_peers_pool:pool_bucket_size(P9, 1)),
+    ?assertEqual(2, aec_peers_pool:pool_bucket_size(P7, 3)),
+    P8 = aec_peers_pool:pool_del(P7, 2, buz),
+    P9 = aec_peers_pool:pool_del(P8, 3, bar),
+    ?assertEqual(2, aec_peers_pool:pool_bucket_size(P9, 1)),
     ?assertEqual(1, aec_peers_pool:pool_bucket_size(P9, 2)),
-    P10 = aec_peers_pool:pool_del(P9, 1, bez),
-    P11 = aec_peers_pool:pool_del(P10, 0, foo),
-    ?assertEqual(1, aec_peers_pool:pool_bucket_size(P11, 0)),
-    ?assertEqual(0, aec_peers_pool:pool_bucket_size(P11, 1)),
-    ?assertEqual(1, aec_peers_pool:pool_bucket_size(P11, 2)),
+    ?assertEqual(1, aec_peers_pool:pool_bucket_size(P9, 3)),
+    P10 = aec_peers_pool:pool_del(P9, 2, bez),
+    P11 = aec_peers_pool:pool_del(P10, 1, foo),
+    ?assertEqual(1, aec_peers_pool:pool_bucket_size(P11, 1)),
+    ?assertEqual(0, aec_peers_pool:pool_bucket_size(P11, 2)),
+    ?assertEqual(1, aec_peers_pool:pool_bucket_size(P11, 3)),
     ok.
 
 pool_make_space_test() ->
@@ -1583,38 +1589,38 @@ pool_make_space_test() ->
     Pool1 = aec_peers_pool:pool_new(1, 16, 4, 2.0),
 
     ?assertMatch({free_space, [], undefined, _, _},
-                 aec_peers_pool:pool_make_space(Pool1, RandState, 0,
+                 aec_peers_pool:pool_make_space(Pool1, RandState, 1,
                                                 KFilterFun, SortKeyFun)),
     ?assertMatch({free_space, [], undefined, _, _},
-                 aec_peers_pool:pool_make_space(Pool1, RandState, 0,
+                 aec_peers_pool:pool_make_space(Pool1, RandState, 1,
                                                 RFilterFun, SortKeyFun)),
 
-    Pool2 = lists:foldl(fun(V, P) ->
-        aec_peers_pool:pool_add(P, 0, V)
-    end, Pool1, lists:seq(0, 10)),
+    Pool2 = lists:foldl(fun(V, P) -> aec_peers_pool:pool_add(P, 1, V) end,
+                        Pool1,
+                        lists:seq(0, 10)),
 
     ?assertMatch({free_space, [], undefined, _, _},
-                 aec_peers_pool:pool_make_space(Pool2, RandState, 0,
+                 aec_peers_pool:pool_make_space(Pool2, RandState, 1,
                                                 KFilterFun, SortKeyFun)),
     ?assertMatch({free_space, [], undefined, _, _},
-                 aec_peers_pool:pool_make_space(Pool2, RandState, 0,
+                 aec_peers_pool:pool_make_space(Pool2, RandState, 1,
                                                 RFilterFun, SortKeyFun)),
 
-    Pool3 = lists:foldl(fun(V, P) ->
-        aec_peers_pool:pool_add(P, 0, V)
-    end, Pool2, lists:seq(11, 15)),
+    Pool3 = lists:foldl(fun(V, P) -> aec_peers_pool:pool_add(P, 1, V) end,
+                        Pool2,
+                        lists:seq(11, 15)),
 
     % Check that there is space and the entries are removed.
     {free_space, Removed, undefined, _, Pool3b} =
-        aec_peers_pool:pool_make_space(Pool3, RandState, 0,
+        aec_peers_pool:pool_make_space(Pool3, RandState, 1,
                                        RFilterFun, SortKeyFun),
     ?assertEqual([9, 10, 11, 12, 13, 14, 15], lists:sort(Removed)),
-    ?assertEqual(9, aec_peers_pool:pool_bucket_size(Pool3b, 0)),
+    ?assertEqual(9, aec_peers_pool:pool_bucket_size(Pool3b, 1)),
 
     % Check that only the entries marked for eviction are elected.
     {_, EvictCounters} = lists:foldl(fun(_, {R, M}) ->
         {free_space, [], Evicted, R2, _} =
-            aec_peers_pool:pool_make_space(Pool3, R, 0, KFilterFun, SortKeyFun),
+            aec_peers_pool:pool_make_space(Pool3, R, 1, KFilterFun, SortKeyFun),
         ?assert(Evicted =/= undefined),
         ?assert((Evicted rem 2) =/= 0),
         M2 = maps:put(Evicted, maps:get(Evicted, M, 0) + 1, M),
@@ -1633,52 +1639,12 @@ pool_make_space_test() ->
 
 %--- INTERNAL LOOKUP TABLE DATA STRUCTURE TEST CASES ---------------------------
 
-%% Tests the growth/shrink of the internal data structure for lookup.
-lookup_growth_test() ->
-    seed_process_random(),
-    % Assumes minimum internal size is 8 and maximum size increment is 128.
-    StartSize = 8,
-    MaxInc = 128,
-
-    Lookup = aec_peers_pool:lookup_new(),
-    ?assertEqual(StartSize, aec_peers_pool:lookup_internal_size(Lookup)),
-    ?assertEqual(0, aec_peers_pool:lookup_size(Lookup)),
-    % Grow the lookup table to 300.
-    Lookup2 = lists:foldl(fun(V, L) ->
-        {V, L2} = aec_peers_pool:lookup_append(L, V * 3),
-        Size = aec_peers_pool:lookup_size(L2),
-        ?assertEqual(V + 1, Size),
-        FreeSpace = aec_peers_pool:lookup_internal_free(L2),
-        ?assert((FreeSpace >= 0)
-                and (FreeSpace < min(max(Size, StartSize), MaxInc))),
-        L2
-    end, Lookup, lists:seq(0, 299)),
-    % Check values.
-    lists:foreach(fun(V) ->
-    ?assertEqual(V * 3, aec_peers_pool:lookup_get(Lookup2, V))
-    end, lists:seq(0, 299)),
-    % Shrink the lookup table to 0.
-    Lookup3 = lists:foldl(fun(V, L) ->
-        L2 = aec_peers_pool:lookup_shrink(L),
-        Size = aec_peers_pool:lookup_size(L2),
-        ?assertEqual(V, Size),
-        ?assert(aec_peers_pool:lookup_internal_size(L2) >= StartSize),
-        FreeSpace = aec_peers_pool:lookup_internal_free(L2),
-        ?assert((Size < StartSize)
-                or ((FreeSpace >= 0)
-                    and (FreeSpace < min(max(Size, StartSize), MaxInc)))),
-        L2
-    end, Lookup2, lists:seq(299, 0, -1)),
-    ?assertEqual(StartSize, aec_peers_pool:lookup_internal_size(Lookup3)),
-    ok.
-
 %% Tests the lookup internal data structure swapping of elements.
 lookup_swap_test() ->
     seed_process_random(),
-    Lookup1 = lists:foldl(fun(V, L) ->
-        {V, L2} = aec_peers_pool:lookup_append(L, V * 3),
-        L2
-    end, aec_peers_pool:lookup_new(), lists:seq(0, 29)),
+    Lookup1 = lists:foldl(fun(V, L) -> aec_peers_pool:lookup_append(L, V * 3) end,
+                          aec_peers_pool:lookup_new(),
+                          lists:seq(1, 30)),
     { 5 * 3, 12 * 3, Lookup2} = aec_peers_pool:lookup_swap(Lookup1,  5, 12),
     {10 * 3, 17 * 3, Lookup3} = aec_peers_pool:lookup_swap(Lookup2, 10, 17),
     {12 * 3, 10 * 3, Lookup4} = aec_peers_pool:lookup_swap(Lookup3,  5, 17),
@@ -1691,53 +1657,58 @@ lookup_swap_test() ->
 %% Tests adding elements to the internal lookup data structure.
 lookup_randomized_add_test() ->
     seed_process_random(),
-    lists:foldl(fun(V, {L, R}) ->
-        case aec_peers_pool:lookup_add(L, R, V * 3) of
-            {0, undefined, R2, L2} ->
-                {L2, R2};
-            {1, undefined, R2, L2} ->
-                {L2, R2};
-            {I, {I2, O}, R2, L2} ->
-                ?assert(V =/= I),
-                ?assert(I2 =/= I),
-                ?assertEqual(V * 3, aec_peers_pool:lookup_get(L2, I)),
-                ?assertEqual(O, aec_peers_pool:lookup_get(L2, I2)),
-                {L2, R2}
-        end
-    end, {aec_peers_pool:lookup_new(), rand_state()}, lists:seq(0, 29)),
+    Add =
+        fun(V, {L, R}) ->
+            case aec_peers_pool:lookup_add(L, R, V * 3) of
+                {1, undefined, R2, L2} ->
+                    {L2, R2};
+                {2, undefined, R2, L2} ->
+                    {L2, R2};
+                {I, undefined, R2, L2} ->
+                    ?assertEqual(V * 3, aec_peers_pool:lookup_get(L2, I)),
+                    {L2, R2};
+                {I, {I2, O}, R2, L2} ->
+                    ?assert(V =/= (I - 1)),
+                    ?assert(I2 =/= I),
+                    ?assertEqual(V * 3, aec_peers_pool:lookup_get(L2, I)),
+                    ?assertEqual(O, aec_peers_pool:lookup_get(L2, I2)),
+                    {L2, R2}
+            end
+        end,
+    lists:foldl(Add, {aec_peers_pool:lookup_new(), rand_state()}, lists:seq(0, 29)),
     ok.
 
 %% Tests deleting elements from the internal lookup data structure.
 lookup_randomized_del_test() ->
     seed_process_random(),
     L1 = aec_peers_pool:lookup_new(),
-    {0, L2} = aec_peers_pool:lookup_append(L1, foo),
-    {1, L3} = aec_peers_pool:lookup_append(L2, bar),
-    {2, L4} = aec_peers_pool:lookup_append(L3, buz),
-    {3, L5} = aec_peers_pool:lookup_append(L4, boz),
+    L2 = aec_peers_pool:lookup_append(L1, foo),
+    L3 = aec_peers_pool:lookup_append(L2, bar),
+    L4 = aec_peers_pool:lookup_append(L3, buz),
+    L5 = aec_peers_pool:lookup_append(L4, boz),
     ?assertEqual(4, aec_peers_pool:lookup_size(L5)),
 
-    {{0, boz}, _} = aec_peers_pool:lookup_del(L5, 0),
-    {{1, boz}, L6} = aec_peers_pool:lookup_del(L5, 1),
-    {{2, boz}, _} = aec_peers_pool:lookup_del(L5, 2),
-    {undefined, _} = aec_peers_pool:lookup_del(L5, 3),
+    {{1, boz}, _} = aec_peers_pool:lookup_del(L5, 1),
+    {{2, boz}, L6} = aec_peers_pool:lookup_del(L5, 2),
+    {{3, boz}, _} = aec_peers_pool:lookup_del(L5, 3),
+    {undefined, _} = aec_peers_pool:lookup_del(L5, 4),
 
     ?assertEqual(3, aec_peers_pool:lookup_size(L6)),
-    ?assertEqual(boz, aec_peers_pool:lookup_get(L6, 1)),
+    ?assertEqual(boz, aec_peers_pool:lookup_get(L6, 2)),
 
-    {{0, buz}, L7} = aec_peers_pool:lookup_del(L6, 0),
-    {{1, buz}, _} = aec_peers_pool:lookup_del(L6, 1),
-    {undefined, _} = aec_peers_pool:lookup_del(L6, 2),
+    {{1, buz}, L7} = aec_peers_pool:lookup_del(L6, 1),
+    {{2, buz}, _} = aec_peers_pool:lookup_del(L6, 2),
+    {undefined, _} = aec_peers_pool:lookup_del(L6, 3),
 
     ?assertEqual(2, aec_peers_pool:lookup_size(L7)),
-    ?assertEqual(buz, aec_peers_pool:lookup_get(L7, 0)),
+    ?assertEqual(buz, aec_peers_pool:lookup_get(L7, 1)),
 
-    {{0, boz}, _} = aec_peers_pool:lookup_del(L7, 0),
-    {undefined, L8} = aec_peers_pool:lookup_del(L7, 1),
+    {{1, boz}, _} = aec_peers_pool:lookup_del(L7, 1),
+    {undefined, L8} = aec_peers_pool:lookup_del(L7, 2),
 
     ?assertEqual(1, aec_peers_pool:lookup_size(L8)),
 
-    {undefined, L9} = aec_peers_pool:lookup_del(L8, 0),
+    {undefined, L9} = aec_peers_pool:lookup_del(L8, 1),
 
     ?assertEqual(0, aec_peers_pool:lookup_size(L9)),
     ok.
@@ -1759,26 +1730,24 @@ lookup_select_test() ->
     {unavailable, _} =
         aec_peers_pool:lookup_select(Lookup1, R, false, ExcludeFun),
 
-    {0, Lookup2} = aec_peers_pool:lookup_append(Lookup1, 0),
+    Lookup2 = aec_peers_pool:lookup_append(Lookup1, 0),
 
     {0, _} = aec_peers_pool:lookup_select(Lookup2, R, true, undefined),
     {unavailable, _} =
         aec_peers_pool:lookup_select(Lookup2, R, true, ExcludeFun),
 
-    Lookup3 = lists:foldl(fun(V, L) ->
-        {V, L2} = aec_peers_pool:lookup_append(L, V),
-        L2
-    end, Lookup2, lists:seq(1, 2)),
+    Lookup3 = lists:foldl(fun(V, L) -> aec_peers_pool:lookup_append(L, V) end,
+                          Lookup2,
+                          lists:seq(1, 2)),
 
     {V3a, _} = aec_peers_pool:lookup_select(Lookup3, R, true, undefined),
     ?assert(lists:member(V3a, lists:seq(0, 2))),
     {unavailable, _} =
         aec_peers_pool:lookup_select(Lookup3, R, true, ExcludeFun),
 
-    Lookup4 = lists:foldl(fun(V, L) ->
-        {V, L2} = aec_peers_pool:lookup_append(L, V),
-        L2
-    end, Lookup3, lists:seq(3, 29)),
+    Lookup4 = lists:foldl(fun(V, L) -> aec_peers_pool:lookup_append(L, V) end,
+                          Lookup3,
+                          lists:seq(3, 29)),
 
     {V4a, _} = aec_peers_pool:lookup_select(Lookup4, R, true, undefined),
     ?assert(lists:member(V4a, lists:seq(0, 29))),
@@ -1801,10 +1770,9 @@ lookup_sample_test() ->
     {[], _} = aec_peers_pool:lookup_sample(Lookup1, R, true, 10, undefined),
     {[], _} = aec_peers_pool:lookup_sample(Lookup1, R, true, 10, ExcludeFun),
 
-    Lookup2 = lists:foldl(fun(V, L) ->
-        {V, L2} = aec_peers_pool:lookup_append(L, V),
-        L2
-    end, Lookup1, lists:seq(0, 3)),
+    Lookup2 = lists:foldl(fun(V, L) -> aec_peers_pool:lookup_append(L, V) end,
+                          Lookup1,
+                          lists:seq(0, 3)),
 
     {S2a, _} = aec_peers_pool:lookup_sample(Lookup2, R, true, all, undefined),
     ?assertEqual(lists:seq(0, 3), lists:sort(S2a)),
@@ -1819,10 +1787,9 @@ lookup_sample_test() ->
     ?assertEqual(lists:seq(0, 3), lists:sort(S2c)),
     {[3], _} = aec_peers_pool:lookup_sample(Lookup2, R, false, 10, ExcludeFun),
 
-    Lookup3 = lists:foldl(fun(V, L) ->
-        {V, L2} = aec_peers_pool:lookup_append(L, V),
-        L2
-    end, Lookup2, lists:seq(4, 29)),
+    Lookup3 = lists:foldl(fun(V, L) -> aec_peers_pool:lookup_append(L, V) end,
+                          Lookup2,
+                          lists:seq(4, 29)),
 
     {S3a, _} = aec_peers_pool:lookup_sample(Lookup3, R, true, all, undefined),
     ?assertEqual(lists:seq(0, 29), lists:sort(S3a)),
