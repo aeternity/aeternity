@@ -328,13 +328,17 @@ read_last_metric(NodeName, MetricName) ->
     {LogPath, _} = aest_nodes_mgr:get_log_path(NodeName),
     MetricsLogPath = binary_to_list(filename:join(LogPath, "aeternity_metrics.log")),
     case filelib:is_file(MetricsLogPath) of
-        false -> undefined;
+        false ->
+            ct:log("Warning: didn't find file ~p", [MetricsLogPath]),
+            undefined;
         true ->
             EscapedName = escap_for_regex(MetricName),
             Command = "grep '[0-9:\\.]* " ++ EscapedName ++ ":.*' '"
                 ++ MetricsLogPath ++ "' | tail -n 1 | sed 's/^[0-9:\\.]*.*:\\([0-9]*\\)|.*$/\\1/'",
             case os:cmd(Command) of
-                "" -> undefined;
+                "" ->
+                    ct:log("Warning: command failed ~p", [Command]),
+                    undefined;
                 ValueStr ->
                     ValueStripped = string:strip(ValueStr, right, $\n),
                     list_to_integer(ValueStripped)
