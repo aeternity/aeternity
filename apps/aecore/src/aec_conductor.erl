@@ -1,4 +1,4 @@
-%%% -*- erlang-indent-level: 4 -*-
+%%% -*- erlang-indent-level: 4; indent-tabs-mode: nil -*-
 %%%-------------------------------------------------------------------
 %%% @copyright (C) 2017, Aeternity Anstalt
 %%% @doc Main conductor of the mining
@@ -62,6 +62,7 @@
         , is_leader/0
         , get_beneficiary/0
         , get_next_beneficiary/0
+        , note_rollback/1
         ]).
 
 %% Chain API
@@ -240,6 +241,21 @@ init(Options) ->
     lager:debug("Options = ~p", [Options]),
     process_flag(trap_exit, true),
     ok     = init_chain_state(),
+    State1 = acquire_top_and_consensus(),
+    State2 = set_option(autostart, Options, State1),
+    State3 = set_option(strictly_follow_top, Options, State2),
+    State4 = set_mode(State3),
+    State5 = init_instances(State4),
+
+    aec_metrics:try_update([ae,epoch,aecore,chain,height],
+                           aec_blocks:height(aec_chain:top_block())),
+    epoch_mining:info("Miner process initialized ~p", [State5]),
+    aec_events:subscribe(candidate_block),
+    %% NOTE: The init continues at handle_info(init_continue, State).
+    self() ! init_continue,
+    {ok, State5}.
+
+acquire_top_and_consensus() ->
     TopBlockHash0 = aec_chain:top_block_hash(),
     {ok, TopHeader0} = aec_chain:get_header(TopBlockHash0),
     ConsensusModule = aec_headers:consensus_module(TopHeader0),
@@ -259,23 +275,10 @@ init(Options) ->
                    aec_chain:top_key_block_hash(),
                    aec_chain:top_height()}
           end),
-
-    State1 = #state{ top_block_hash     = TopBlockHash,
-                     top_key_block_hash = TopKeyBlockHash,
-                     top_height         = TopHeight,
-                     consensus          = Consensus},
-    State2 = set_option(autostart, Options, State1),
-    State3 = set_option(strictly_follow_top, Options, State2),
-    State4 = set_mode(State3),
-    State5 = init_instances(State4),
-
-    aec_metrics:try_update([ae,epoch,aecore,chain,height],
-                           aec_blocks:height(aec_chain:top_block())),
-    epoch_mining:info("Miner process initilized ~p", [State5]),
-    aec_events:subscribe(candidate_block),
-    %% NOTE: The init continues at handle_info(init_continue, State).
-    self() ! init_continue,
-    {ok, State5}.
+    #state{ top_block_hash     = TopBlockHash,
+	    top_key_block_hash = TopKeyBlockHash,
+	    top_height         = TopHeight,
+	    consensus          = Consensus}.
 
 init_chain_state() ->
     case aec_chain:genesis_hash() of
@@ -410,6 +413,17 @@ handle_call(is_leader, _From, State = #state{ consensus = Cons }) ->
     {reply, Cons#consensus.leader, State};
 handle_call(reinit_chain, _From, State) ->
     reinit_chain_impl(State);
+handle_call({note_rollback, Info}, _From, State) ->
+    #state{ top_block_hash = TBHash
+	  , top_key_block_hash = TopKeyBlockHash
+	  , top_height = TopHeight
+	  , consensus = Consensus } = acquire_top_and_consensus(),
+    State1 = State#state{ top_block_hash = TBHash
+			, top_key_block_hash = TopKeyBlockHash
+			, top_height = TopHeight
+			, consensus = Consensus },
+    aec_tx_pool:note_rollback(Info),
+    {reply, ok, State1};
 handle_call(Request, _From, State) ->
     epoch_mining:error("Received unknown request: ~p", [Request]),
     Reply = ok,
@@ -524,6 +538,9 @@ get_next_beneficiary() ->
     TopHeader = aec_chain:top_header(),
     Consensus = aec_consensus:get_consensus_module_at_height(aec_headers:height(TopHeader) + 1),
     get_next_beneficiary(Consensus).
+
+note_rollback(Info) ->
+    gen_server:call(?SERVER, {note_rollback, Info}).
 
 set_mode(State) ->
     ConsensusModule = consensus_module(State),
