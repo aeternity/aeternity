@@ -759,7 +759,10 @@ node_mined_retries(Nodes) ->
     Metric = "ae.epoch.aecore.mining.retries.value",
     lists:foldl(fun(N, Acc) ->
         case aest_nodes:read_last_metric(N, Metric) of
-            undefined -> Acc;
+            undefined ->
+                ct:log("Warning: metric ~p was not found! Assuming default ~p",
+                       [Metric, Acc]),
+                Acc;
             Num -> Acc + Num
         end
     end, 0, Nodes).
