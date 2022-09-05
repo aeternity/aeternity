@@ -337,6 +337,7 @@ setup_node(Spec, BackendState) ->
         end,
     #{'Id' := ContId} = aest_docker_api:create_container(Hostname, DockerConfig),
     log(NodeState, "Container ~p [~s] created", [Name, ContId]),
+    ct:log("Containter config: ~p", [DockerConfig]),
 
     lists:map(fun(NetId) ->
         aest_docker_api:connect_container(ContId, NetId),
