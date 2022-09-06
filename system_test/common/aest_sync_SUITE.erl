@@ -492,6 +492,8 @@ add_spend_tx(Node, Sender, Nonce) ->
 %% network partitions, and that the network is partitiioned when the chain
 %% is already shared.
 net_split_recovery(Cfg) ->
+    Info = aest_docker_api:info(),
+    ct:log("Docker info: ~p", [Info]),
     Length = 40,
     %% It takes up to 20 seconds on some machines to connect docker containers
     %% This means we need more than 20 seconds (or blocks) to at all observe a
