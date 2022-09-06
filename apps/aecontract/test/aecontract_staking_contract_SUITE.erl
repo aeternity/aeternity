@@ -48,7 +48,8 @@
 
 -export([ staking_without_delay_return_shares/1,
           staking_with_delay_return_shares/1,
-          unstaking_return_shares/1
+          unstaking_return_shares/1,
+          unstaking_below_minimum_stake/1
         ]).
 
 -export([ entropy_impacts_leader_election/1
@@ -152,7 +153,8 @@ groups() ->
          unstake_delay_set_to_zero,
          staking_without_delay_return_shares,
          staking_with_delay_return_shares,
-         unstaking_return_shares
+         unstaking_return_shares,
+         unstaking_below_minimum_stake
        ]},
       {hc_election, [sequence],
        [ entropy_impacts_leader_election
@@ -1721,6 +1723,29 @@ unstaking_return_shares(_Config) ->
     ?assertEqual(2*?VALIDATOR_MIN, UnstakeResp#staking_resp.stake),
     ?assertEqual(?VALIDATOR_MIN, UnstakeResp#staking_resp.shares),
     ?assertEqual(?GENESIS_HEIGHT+UnstakeDelay, UnstakeResp#staking_resp.execution_height),
+    ok.
+
+unstaking_below_minimum_stake(_Config) ->
+    Alice = pubkey(?ALICE),
+    TxEnv = aetx_env:tx_env(?GENESIS_HEIGHT),
+    Trees0 = genesis_trees(?POS),
+    {Sam, Trees1} = set_up_account(Trees0),
+    {ok, Trees, _} = new_validator_(Alice, ?VALIDATOR_MIN, TxEnv, Trees1),
+
+    Reason = <<"Staker can not withdraw below the treshold">>,
+    %% Offline validator
+    {ok, OfflineTrees1, _} = stake_(Alice, ?STAKE_MIN + 1, Sam, TxEnv, Trees),
+    ?assertMatch({ok, _, _}, unstake_(Alice, 1, Sam, TxEnv, OfflineTrees1)),
+    ?assertEqual({revert, Reason}, unstake_(Alice, ?STAKE_MIN, Sam, TxEnv, OfflineTrees1)),
+    ?assertMatch({ok, _, _}, unstake_(Alice, ?STAKE_MIN + 1, Sam, TxEnv, OfflineTrees1)),
+
+    %% Online validator
+    {ok, OnlineTrees1, {tuple, {}}} = set_validator_online_(Alice, TxEnv, Trees),
+    {ok, OnlineTrees2, _} = stake_(Alice, ?STAKE_MIN + 1, Sam, TxEnv, OnlineTrees1),
+    ?assertMatch({ok, _, _}, unstake_(Alice, 1, Sam, TxEnv, OnlineTrees2)),
+    ?assertEqual({revert, Reason}, unstake_(Alice, ?STAKE_MIN, Sam, TxEnv, OnlineTrees2)),
+    ?assertMatch({ok, _, _}, unstake_(Alice, ?STAKE_MIN + 1, Sam, TxEnv, OnlineTrees2)),
+
     ok.
 
 genesis_trees_opts(Type, Key, Opts, Default) ->
