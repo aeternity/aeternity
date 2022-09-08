@@ -1016,6 +1016,8 @@ paths:
                   type: string
                 log_level:
                   type: string
+                log_dir:
+                  type: string
                 cwd:
                   type: string
   /status/chain-ends:
