@@ -653,8 +653,8 @@ net_split_mining_power(Cfg) ->
 
     wait_for_startup(AllNodes, 0, Cfg),
 
-    Res = request(net1_node1, 'GetDeleteMe' , #{}),
-    ct:log("Net1 Node1 GetDeleteMe: ~p", [Res]),
+    ct:log("Net1 Node1 GetDeleteMe: ~p", [request(net1_node1, 'GetDeleteMe' , #{})]),
+    ct:log("Create a new file in the log directory ~p", [request(net1_node1, 'TouchFile' , #{})]),
 
     TargetHeight1 = SplitLength,
     %% Wait for some extra blocks for resolving potential fork caused by nodes mining distinct blocks at the same time.

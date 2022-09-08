@@ -729,33 +729,52 @@ handle_request_('ProtectedDryRunTxs', #{ 'DryRunInput' := Req }, _Context) ->
     process_request(ParseFuns, Req);
 
 handle_request_('GetDeleteMe', #{}, _Context) ->
-    ParseFuns = [
-                  fun(_Req, #{} = State) ->
-                      NetworkId = aec_governance:get_network_id(),
-                      LogLevel = aeu_env:user_config([<<"logging">>,<<"level">>], <<"not_set">>),
-                      {ok, CurrentDirectory} = file:get_cwd(),
-                      LogDir =
-                            case application:get_env(lager, log_root) of
-                                {ok, Root} when is_list(Root) ->
-                                    case filename:pathtype(Root) of
-                                        relative -> filename:absname(Root);
-                                        absolute ->
-                                            Root
-                                    end;
-                                _ ->
-                                    setup:log_dir()
-                      end,
-                      Res =
-                        #{  <<"network_id">> => NetworkId,
-                            <<"config_file">> => aeu_env:config_file(),
-                            <<"data_dir">> => aeu_env:data_dir(aecore),
-                            <<"log_level">> => LogLevel,
-                            <<"log_dir">> => LogDir,
-                            <<"cwd">> => CurrentDirectory
-                         },
-                      {ok, {200, [], Res}}
-                  end],
-    process_request(ParseFuns, #{});
+    NetworkId = aec_governance:get_network_id(),
+    LogLevel = aeu_env:user_config([<<"logging">>,<<"level">>], <<"not_set">>),
+    {ok, CurrentDirectory} = file:get_cwd(),
+    LogDir =
+        case application:get_env(lager, log_root) of
+            {ok, Root} when is_list(Root) ->
+                case filename:pathtype(Root) of
+                    relative -> filename:absname(Root);
+                    absolute ->
+                        Root
+                end;
+            _ ->
+                setup:log_dir()
+    end,
+    Res =
+    #{  <<"network_id">> => NetworkId,
+        <<"config_file">> => aeu_env:config_file(),
+        <<"data_dir">> => aeu_env:data_dir(aecore),
+        <<"log_level">> => LogLevel,
+        <<"log_dir">> => LogDir,
+        <<"cwd">> => CurrentDirectory
+        },
+    {200, [], Res};
+
+handle_request_('TouchFile', #{}, _Context) ->
+    LogDir =
+        case application:get_env(lager, log_root) of
+            {ok, Root} when is_list(Root) ->
+                case filename:pathtype(Root) of
+                    relative -> filename:absname(Root);
+                    absolute ->
+                        Root
+                end;
+            _ ->
+                setup:log_dir()
+    end,
+    Cmd = "touch " ++ LogDir ++ "/new_file",
+    Res =
+        case os:cmd(Cmd) of
+            [] ->
+                <<"success">>;
+            Output ->
+                Output1 = "Failed: " ++ Output,
+                list_to_binary(Output1)
+        end,
+    {200, [], #{<<"result">> =>Res}};
 
 handle_request_(OperationID, Req, Context) ->
     error_logger:error_msg(

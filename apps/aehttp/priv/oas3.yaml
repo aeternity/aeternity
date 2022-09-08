@@ -1020,6 +1020,24 @@ paths:
                   type: string
                 cwd:
                   type: string
+  /touchfile:
+    get:
+      tags:
+        - external
+        - node_info
+      operationId: TouchFile 
+      description: Temporarily endpoint, please delete soon
+      parameters:
+        - $ref: '#/components/parameters/intAsString'
+      responses:
+        "200":
+          description: Successful operation
+          content:
+            application/json:
+              type: object
+              properties:
+                result:
+                  type: string
   /status/chain-ends:
     get:
       tags:
