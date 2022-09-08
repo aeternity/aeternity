@@ -30,10 +30,14 @@
     connect_node/3, disconnect_node/3,
     wait_for_value/4,
     wait_for_startup/3,
+    wait_for_startup_legacy_api/3,
     get_block/2,
+    get_block_legacy_api/2,
     get_top/1,
+    get_top_legacy_api/1,
     get_mempool/1,
     post_spend_tx/5,
+    post_spend_tx_legacy_api/5,
     request/3,
     assert_in_sync/1
 ]).
@@ -202,9 +206,9 @@ new_node_joins_network(Cfg) ->
     start_node(old_node1, Cfg),
     start_node(old_node2, Cfg),
     T0 = erlang:system_time(seconds),
-    wait_for_startup([old_node1, old_node2], 4, Cfg),
-    #{network_id := <<"ae_system_test">>} = aest_nodes:get_status(old_node1), %% Check node picked user config
-    #{network_id := <<"ae_system_test">>} = aest_nodes:get_status(old_node2), %% Check node picked user config
+    wait_for_startup_legacy_api([old_node1, old_node2], 4, Cfg),
+    #{network_id := <<"ae_system_test">>} = aest_nodes:get_status_legacy_api(old_node1), %% Check node picked user config
+    #{network_id := <<"ae_system_test">>} = aest_nodes:get_status_legacy_api(old_node2), %% Check node picked user config
     StartupTime = erlang:system_time(seconds) - T0,
 
     Length = max(30, 5 + proplists:get_value(blocks_per_second, Cfg) * StartupTime),
@@ -213,20 +217,20 @@ new_node_joins_network(Cfg) ->
     StartTime = erlang:system_time(seconds),
 
 
-    inject_spend_txs(old_node1, patron(), 5, 1, 100),
-    inject_spend_txs(old_node2, patron(), 5, 6, 100),
+    inject_spend_txs_legacy_api(old_node1, patron(), 5, 1, 100),
+    inject_spend_txs_legacy_api(old_node2, patron(), 5, 6, 100),
 
-    wait_for_value({height, Length + 1}, [old_node1, old_node2], Length * ?MINING_TIMEOUT, Cfg),
+    wait_for_value({legacy_api, height, Length + 1}, [old_node1, old_node2], Length * ?MINING_TIMEOUT, Cfg),
     EndTime = erlang:system_time(seconds),
     %% Average mining time per block
     MiningTime = ((EndTime - StartTime) * 1000) div Length,
     ct:log("Mining time per block ~p ms for ~p blocks", [MiningTime, Length]),
 
-    Top1 = get_top(old_node1),
+    Top1 = get_top_legacy_api(old_node1),
     ct:log("Node 1 top: ~p", [Top1]),
-    Height1 = get_block(old_node1, Length),
+    Height1 = get_block_legacy_api(old_node1, Length),
     ct:log("Node 1 at height ~p: ~p", [Length, Height1]),
-    Height2 = get_block(old_node2, Length),
+    Height2 = get_block_legacy_api(old_node2, Length),
     ct:log("Node 2 at height ~p: ~p", [Length, Height2]),
 
     %% Checks node 1 and 2 are synchronized
@@ -236,7 +240,7 @@ new_node_joins_network(Cfg) ->
     %% Starts a third node and check it synchronize with the first two
     start_node(new_node1, Cfg),
 
-    inject_spend_txs(old_node1, patron(), 5, 11, 100),
+    inject_spend_txs_legacy_api(old_node1, patron(), 5, 11, 100),
 
     wait_for_startup([new_node1], 0, Cfg),
 
@@ -486,14 +490,21 @@ add_spend_tx(Node, Sender, Nonce) ->
     #{ tx_hash := TxHash} = post_spend_tx(Node, Sender, #{pubkey => RecvPubKey}, Nonce, #{amount => 10000}),
     #{ receiver => RecvPubKey, receiver_sec => RecvSecKey, amount => 10000, tx_hash => TxHash }.
 
+inject_spend_txs_legacy_api(Node, SenderAcct, N, NonceStart, TimeDelay) ->
+    [ begin
+          %% create new receiver
+          #{ public := RecvPubKey, secret := RecvSecKey } =  enacl:sign_keypair(),
+          #{ tx_hash := TxHash} = post_spend_tx_legacy_api(Node, SenderAcct, #{pubkey => RecvPubKey}, Nonce, #{amount => 10000}),
+          timer:sleep(TimeDelay),
+          #{ receiver => RecvPubKey, receiver_sec => RecvSecKey, amount => 10000, tx_hash => TxHash }
+      end || Nonce <- lists:seq(NonceStart, NonceStart + N - 1) ].
+
 %% Test that two disconnected clusters of nodes are able to recover and merge
 %% there chain when connected back together.
 %% It tests both case of the chain being started from scratch in different
 %% network partitions, and that the network is partitiioned when the chain
 %% is already shared.
 net_split_recovery(Cfg) ->
-    Info = aest_docker_api:info(),
-    ct:log("Docker info: ~p", [Info]),
     Length = 40,
     %% It takes up to 20 seconds on some machines to connect docker containers
     %% This means we need more than 20 seconds (or blocks) to at all observe a
@@ -622,6 +633,8 @@ net_split_recovery(Cfg) ->
     ok.
 
 net_split_mining_power(Cfg) ->
+    Info = aest_docker_api:info(),
+    ct:log("Docker info: ~p", [Info]),
     SplitLength = 40,
     SyncLength = 20,
     ExtraLength = 3,
@@ -639,6 +652,9 @@ net_split_mining_power(Cfg) ->
     lists:foreach(fun(N) -> start_node(N, Cfg) end, Net1Nodes),
 
     wait_for_startup(AllNodes, 0, Cfg),
+
+    Res = request(net1_node1, 'GetDeleteMe' , #{}),
+    ct:log("Net1 Node1 GetDeleteMe: ~p", [Res]),
 
     TargetHeight1 = SplitLength,
     %% Wait for some extra blocks for resolving potential fork caused by nodes mining distinct blocks at the same time.

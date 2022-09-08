@@ -134,7 +134,9 @@ handle_call({get_hostname, NodeName}, _From, #{nodes := Nodes} = State) ->
     {reply, "localhost", State};
 handle_call({start_node, NodeName}, _From, #{nodes := Nodes} = State) ->
     {Mod, NodeState} = maps:get(NodeName, Nodes),
+    ct:log("Starting node ~p", [NodeName]),
     NodeState2 = Mod:start_node(NodeState),
+    ct:log("Node state ~p", [NodeState2]),
     {reply, ok, State#{nodes := Nodes#{NodeName := {Mod, NodeState2}}}};
 handle_call({stop_node, NodeName, Timeout}, _From, #{nodes := Nodes} =State) ->
     {Mod, NodeState} = maps:get(NodeName, Nodes),

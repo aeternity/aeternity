@@ -728,6 +728,23 @@ handle_request_('ProtectedDryRunTxs', #{ 'DryRunInput' := Req }, _Context) ->
                   do_dry_run()],
     process_request(ParseFuns, Req);
 
+handle_request_('GetDeleteMe', #{}, _Context) ->
+    ParseFuns = [
+                  fun(_Req, #{} = State) ->
+                      NetworkId = aec_governance:get_network_id(),
+                      LogLevel = aeu_env:user_config([<<"logging">>,<<"level">>], <<"not_set">>),
+                      {ok, CurrentDirectory} = file:get_cwd(),
+                      Res =
+                        #{  <<"network_id">> => NetworkId,
+                            <<"config_file">> => aeu_env:config_file(),
+                            <<"data_dir">> => aeu_env:data_dir(aecore),
+                            <<"log_level">> => LogLevel,
+                            <<"cwd">> => CurrentDirectory
+                         },
+                      {ok, {200, [], Res}}
+                  end],
+    process_request(ParseFuns, #{});
+
 handle_request_(OperationID, Req, Context) ->
     error_logger:error_msg(
       ">>> Got not implemented request to process: ~p~n",

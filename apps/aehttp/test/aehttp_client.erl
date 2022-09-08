@@ -1,6 +1,7 @@
 -module(aehttp_client).
 
--export([ request/3 ]).
+-export([ request/3,
+          request_legacy_api/3]).
 
 %%=============================================================================
 %% API
@@ -9,6 +10,15 @@
 %% Required config values: int_http, ext_http
 %% Optional config values: ct_log (true by default)
 request(OpId, Params, Cfg) ->
+    #{method := Method} = Op = oas_endpoints:operation(OpId),
+    {MethodAtom, Interface} = operation_spec(Op),
+    BaseUrl = string:trim(proplists:get_value(Interface, Cfg), trailing, "/"),
+    Path = oas_endpoints:path(Method, OpId, Params),
+    Query = oas_endpoints:query(Method, OpId, Params),
+    {ok, _} = application:ensure_all_started(inets),
+    request(MethodAtom, BaseUrl, Path, Query, Params, [], [{timeout, 15000}], [{socket_opts, [{reuseaddr, true}]}], default, Cfg).
+
+request_legacy_api(OpId, Params, Cfg) ->
     #{method := Method} = Op = endpoints:operation(OpId),
     {MethodAtom, Interface} = operation_spec(Op),
     BaseUrl = string:trim(proplists:get_value(Interface, Cfg), trailing, "/"),

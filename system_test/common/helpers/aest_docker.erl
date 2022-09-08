@@ -237,7 +237,7 @@ setup_node(Spec, BackendState) ->
                         hard_fork_info => []}}
         end,
     Mining = maps:merge(#{autostart => true,
-                          strictly_follow_top => false}, maps:get(mining, Spec, #{})),
+                          strictly_follow_top => true}, maps:get(mining, Spec, #{})),
     ct:log("~p has set mining ~p", [Name, Mining]),
     ForkManagementVars =
         case maps:find(fork_management, Spec) of

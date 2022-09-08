@@ -26,7 +26,7 @@
          apply_os_env/3]).
 -export([check_env/2]).
 -export([parse_key_value_string/1]).
--export([data_dir/1]).
+-export([data_dir/1, config_file/0]).
 -export([check_config/1, check_config/2]).
 
 -export([update_config/1,

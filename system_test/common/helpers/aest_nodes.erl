@@ -40,12 +40,16 @@
 -export([get_node_config/2]).
 -export([get/5]).
 -export([get_status/1]).
+-export([get_status_legacy_api/1]).
 -export([get_block/2]).
+-export([get_block_legacy_api/2]).
 -export([get_top/1]).
+-export([get_top_legacy_api/1]).
 -export([get_mempool/1]).
 -export([get_account/2]).
 -export([get_channel/2]).
 -export([post_spend_tx/5]).
+-export([post_spend_tx_legacy_api/5]).
 -export([post_create_state_channel_tx/4,
          post_close_mutual_state_channel_tx/5,
          post_withdraw_state_channel_tx/5,
@@ -66,6 +70,7 @@
 -export([wait_for_time/3]).
 -export([wait_for_time/4]).
 -export([wait_for_startup/3]).
+-export([wait_for_startup_legacy_api/3]).
 -export([time_to_ms/1]).
 -export([assert_in_sync/1]).
 
@@ -358,6 +363,13 @@ request(Node, Id, Params) ->
         {ct_log, fun(X,Y) -> aest_nodes_mgr:log(X, Y) end}  %% use the log function configured by mgr
     ]).
 
+request_legacy_api(Node, Id, Params) ->
+    aehttp_client:request_legacy_api(Id, Params, [
+        {ext_http, aest_nodes_mgr:get_service_address(Node, ext_http)},
+        {int_http, aest_nodes_mgr:get_service_address(Node, int_http)},
+        {ct_log, fun(X,Y) -> aest_nodes_mgr:log(X, Y) end}  %% use the log function configured by mgr
+    ]).
+
 get_node_config(Node, Path) ->
     aest_nodes_mgr:get_config(Node, Path).
 
@@ -381,6 +393,12 @@ get_status(NodeName) ->
         Other -> erlang:error({NodeName, Other})
     end.
 
+get_status_legacy_api(NodeName) ->
+    case request_legacy_api(NodeName, 'GetStatus', #{}) of
+        {ok, 200, Status} -> Status;
+        Other -> erlang:error({NodeName, Other})
+    end.
+
 get_block(NodeName, Height) ->
     case request(NodeName, 'GetKeyBlockByHeight', #{height => Height}) of
         {ok, 200, Block} -> Block;
@@ -388,11 +406,22 @@ get_block(NodeName, Height) ->
         Other -> erlang:error({NodeName, Other})
     end.
 
+get_block_legacy_api(NodeName, Height) ->
+    case request_legacy_api(NodeName, 'GetKeyBlockByHeight', #{height => Height}) of
+        {ok, 200, Block} -> Block;
+        {ok, 404, _} -> undefined;
+        Other -> erlang:error({NodeName, Other})
+    end.
+
 get_top(NodeName) ->
-    Top = verify(200, request(NodeName, 'GetTopBlock', #{})),
-    case Top of
-        #{key_block := KeyBlock} -> KeyBlock;
-        #{micro_block := MicroBlock} -> MicroBlock
+    Top = verify(200, request(NodeName, 'GetTopHeader', #{})),
+    Top.
+
+get_top_legacy_api(NodeName) ->
+    case verify(200, request_legacy_api(NodeName, 'GetTopBlock', #{})) of
+        #{key_block := Block} -> Block;
+        #{micro_block := Block} -> Block;
+        Other -> erlang:error({NodeName, Other})
     end.
 
 get_mempool(NodeName) ->
@@ -413,17 +442,26 @@ get_channel(NodeName, PubKey) ->
     verify(200, request(NodeName, 'GetChannelByPubkey', Params)).
 
 post_spend_tx(Node, From, To, Nonce, Map) ->
-    #{ pubkey := SendPubKey, privkey := SendSecKey } = From,
+    Params = spend_tx_params(Node, From, To, Nonce, Map),
+    #{privkey := SendSecKey } = From,
+    post_transaction(Node, aec_spend_tx, SendSecKey, Params, #{}).
+
+post_spend_tx_legacy_api(Node, From, To, Nonce, Map) ->
+    #{privkey := SendSecKey } = From,
+    Params = spend_tx_params(Node, From, To, Nonce, Map),
+    post_transaction_legacy_api(Node, aec_spend_tx, SendSecKey, Params, #{}).
+
+spend_tx_params(Node, From, To, Nonce, Map) ->
+    #{ pubkey := SendPubKey} = From,
     #{ pubkey := RecvPubKey} = To,
     PayLoad = iolist_to_binary(io_lib:format("~p", [Node])),
-    Params = maps:merge(#{ sender_id => aeser_id:create(account, SendPubKey)
-                         , recipient_id => aeser_id:create(account, RecvPubKey)
-                         , amount => 10000 * gas_price()
-                         , fee => 20000 * gas_price()
-                         , ttl => 10000000
-                         , nonce => Nonce
-                         , payload => PayLoad }, Map),
-    post_transaction(Node, aec_spend_tx, SendSecKey, Params, #{}).
+    maps:merge(#{ sender_id => aeser_id:create(account, SendPubKey)
+                , recipient_id => aeser_id:create(account, RecvPubKey)
+                , amount => 10000 * gas_price()
+                , fee => 20000 * gas_price()
+                , ttl => 10000000
+                , nonce => Nonce
+                , payload => PayLoad }, Map).
 
 post_create_state_channel_tx(Node, Initiator, Responder, #{nonce := Nonce} = Map) ->
     #{ pubkey := InPubKey, privkey := InSecKey } = Initiator,
@@ -579,11 +617,19 @@ post_contract_call_tx(Node, PrivKey, Opts) ->
     post_transaction(Node, aect_call_tx, PrivKey, #{}, Opts).
 
 post_transaction(Node, TxMod, PrivKey, ExtraTxArgs, TxArgs) ->
+    Transaction = prepare_signed_tx(TxMod, PrivKey, ExtraTxArgs, TxArgs),
+    verify(200, request(Node, 'PostTransaction', #{tx => Transaction})).
+
+post_transaction_legacy_api(Node, TxMod, PrivKey, ExtraTxArgs, TxArgs) ->
+    Transaction = prepare_signed_tx(TxMod, PrivKey, ExtraTxArgs, TxArgs),
+    verify(200, request_legacy_api(Node, 'PostTransaction', #{tx => Transaction})).
+
+prepare_signed_tx(TxMod, PrivKey, ExtraTxArgs, TxArgs) ->
     {ok, RespTx} = TxMod:new(maps:merge(TxArgs, ExtraTxArgs)),
     Signed = aec_test_utils:sign_tx(RespTx, [PrivKey]),
     SignedEnc = aetx_sign:serialize_to_binary(Signed),
-    Transaction = aeser_api_encoder:encode(transaction, SignedEnc),
-    verify(200, request(Node, 'PostTransaction', #{tx => Transaction})).
+    _Transaction = aeser_api_encoder:encode(transaction, SignedEnc).
+
 
 %% Use values that are not yet api encoded in test cases
 wait_for_value({balance, PubKey, MinBalance}, NodeNames, Timeout, Ctx) ->
@@ -603,6 +649,17 @@ wait_for_value({height, MinHeight}, NodeNames, Timeout, Ctx) ->
     CheckF =
         fun(Node) ->
                 case request(Node, 'GetKeyBlockByHeight', maps:merge(#{height => MinHeight}, FaultInject)) of
+                    {ok, 200, Block} -> {done, Block};
+                    _ -> wait
+                end
+        end,
+    loop_for_values(CheckF, NodeNames, [], Delay, Timeout, {"Height ~p on nodes ~p", [MinHeight, NodeNames]});
+wait_for_value({legacy_api, height, MinHeight}, NodeNames, Timeout, Ctx) ->
+    FaultInject = proplists:get_value(fault_inject, Ctx, #{}),
+    Delay = proplists:get_value(delay, Ctx, 500),
+    CheckF =
+        fun(Node) ->
+                case request_legacy_api(Node, 'GetKeyBlockByHeight', maps:merge(#{height => MinHeight}, FaultInject)) of
                     {ok, 200, Block} -> {done, Block};
                     _ -> wait
                 end
@@ -719,6 +776,10 @@ wait_for_time(height, NodeNames, TimeUnit, Opts) ->
 wait_for_startup(Nodes, Height, Cfg) ->
     StartupTimeout = proplists:get_value(node_startup_time, Cfg, 20000),
     wait_for_value({height, Height}, Nodes, StartupTimeout, Cfg).
+
+wait_for_startup_legacy_api(Nodes, Height, Cfg) ->
+    StartupTimeout = proplists:get_value(node_startup_time, Cfg, 20000),
+    wait_for_value({legacy_api, height, Height}, Nodes, StartupTimeout, Cfg).
 
 repeat(Fun, Interval, Max) ->
     Start = erlang:system_time(millisecond),

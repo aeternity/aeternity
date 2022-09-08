@@ -992,6 +992,32 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Status"
+  /deleteme:
+    get:
+      tags:
+        - external
+        - node_info
+      operationId: GetDeleteMe
+      description: Temporarily endpoint, please delete soon
+      parameters:
+        - $ref: '#/components/parameters/intAsString'
+      responses:
+        "200":
+          description: Successful operation
+          content:
+            application/json:
+              type: object
+              properties:
+                network_id:
+                  type: string
+                config_file:
+                  type: string
+                data_dir:
+                  type: string
+                log_level:
+                  type: string
+                cwd:
+                  type: string
   /status/chain-ends:
     get:
       tags:

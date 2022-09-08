@@ -93,8 +93,11 @@ disconnect_container(ContName, NetName) ->
 
 create_container(Name, #{image := Image} = Config) ->
     BodyObj = maps:fold(fun create_container_object/3, #{}, Config),
+    ct:log("Body ~p", [BodyObj]),
     case docker_post([containers, create], #{name => Name}, BodyObj) of
-        {ok, 201, Response} -> Response;
+        {ok, 201, Response} ->
+            ct:log("Container created ~p", [Response]),
+            Response;
         {ok, 404, _Response} -> throw({no_such_image, Image});
         {ok, 500, Response} ->
             throw({docker_error, maps:get(message, Response)})
