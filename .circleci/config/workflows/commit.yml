@@ -126,12 +126,7 @@ jobs:
         - docker-smoke-test
       filters:
         branches:
-          ignore:
-            - env/dev1
-            - env/dev2
-            - system-tests
-            - /releases\/.*/
-            - << pipeline.parameters.master_branch >>
+          only: system-tests
 
   - docker-db-smoke-test:
       context:
@@ -140,12 +135,7 @@ jobs:
         - docker-smoke-test
       filters:
         branches:
-          ignore:
-            - env/dev1
-            - env/dev2
-            - system-tests
-            - /releases\/.*/
-            - << pipeline.parameters.master_branch >>
+          only: system-tests
 
   - js-sdk-smoke-test:
       context: ae-slack
@@ -153,10 +143,7 @@ jobs:
         - linux-tarball
       filters:
         branches:
-          ignore:
-            - env/dev1
-            - env/dev2
-            - system-tests
+          only: system-tests
 
   - db-smoke-test:
       context: ae-slack
@@ -164,10 +151,7 @@ jobs:
         - linux-tarball
       filters:
         branches:
-          ignore:
-            - env/dev1
-            - env/dev2
-            - system-tests
+          only: system-tests
 
   - rebar_lock_check:
       context: ae-slack
