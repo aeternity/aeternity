@@ -30,7 +30,8 @@
          candidate_pubkey/0,
          promote_candidate/1,
          sign_micro_block/1,
-         is_ready/0
+         is_ready/0,
+         check_sign_keys/2
         ]).
 
 %% Supervisor API
@@ -56,7 +57,6 @@
 %% Test API
 -ifdef(TEST).
 -export([check_peer_keys/2,
-         check_sign_keys/2,
          encrypt_key/2,
          sign_privkey/0,
          start_link/1
