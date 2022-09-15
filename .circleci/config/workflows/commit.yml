@@ -111,10 +111,7 @@ jobs:
       context: ae-slack
       filters:
         branches:
-          ignore:
-            - env/dev1
-            - env/dev2
-            - system-tests
+          only: system-tests
 
   - docker-system-test:
       context: ae-slack
