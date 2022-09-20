@@ -126,6 +126,7 @@
         , sophia_signatures_oracles/1
         , sophia_signature_check_gas_cost/1
         , sophia_signatures_aens/1
+        , sophia_fate_signatures_aens/1
         , sophia_maps/1
         , sophia_map_benchmark/1
         , sophia_big_map/1
@@ -435,6 +436,7 @@ groups() ->
                                  sophia_signatures_oracles,
                                  sophia_signature_check_gas_cost,
                                  sophia_signatures_aens,
+                                 sophia_fate_signatures_aens,
                                  sophia_maps,
                                  sophia_map_benchmark,
                                  sophia_big_map,
@@ -672,6 +674,7 @@ init_per_testcase(fate_environment, Config) ->
     init_per_testcase_common(fate_environment, Config);
 init_per_testcase(TC, Config) when TC == sophia_aens_resolve;
                                    TC == sophia_signatures_aens;
+                                   TC == sophia_fate_signatures_aens;
                                    TC == sophia_aens_transactions ->
     %% Disable name auction
     meck:expect(aec_governance, name_claim_bid_timeout, fun(_, _) -> 0 end),
@@ -755,6 +758,7 @@ end_per_testcase(fate_environment, _Config) ->
 end_per_testcase(TC, _Config) when TC == sophia_aens_resolve;
                                    TC == sophia_aens_lookup;
                                    TC == sophia_signatures_aens;
+                                   TC == sophia_fate_signatures_aens;
                                    TC == sophia_aens_transactions;
                                    TC == sophia_aens_update_transaction ->
     meck:unload(aec_governance),
@@ -4299,8 +4303,82 @@ sophia_signatures_aens(Cfg) ->
     ?assertMatchProtocol(NonceAfterRevoke, ExpectedNonceAfterRevokeRoma, NonceBeforeRevoke),
     ok.
 
+%% Delegated signatures did not work for non-existing accounts pre-CERES, this test checks that this
+%% continues to be true :-)
+%% Note that Claim can't be done by a non-existing account since it require funds!
+sophia_fate_signatures_aens(_Cfg) ->
+    ?skipRest(not ?IS_FATE_SOPHIA(vm_version()), only_valid_for_fate),
+    state(aect_test_utils:new_state()),
+    %% AENS transactions from contract - using non-existing/not-funded 3rd party account(s)
+    #{ public := NameAcc2, secret := NameAcc2PrivKey } = enacl:sign_keypair(),
+    #{ public := NameAcc3, secret := NameAcc3PrivKey } = enacl:sign_keypair(),
+    Acc             = ?call(new_account, 40000000000000 * aec_test_utils:min_gas_price()),
+    NameAcc         = ?call(new_account, 40000000000000 * aec_test_utils:min_gas_price()),
+    Ct              = ?call(create_contract, Acc, aens, {}, #{ amount => 100000 }),
+    Name1           = aens_test_utils:fullname(<<"bla">>),
+    Salt1           = rand:uniform(10000),
+    {ok, NameAscii} = aens_utils:to_ascii(Name1),
+    CHash           = ?hsh(aens_hash:commitment_hash(NameAscii, Salt1)),
+    NHash           = aens_hash:name_hash(NameAscii),
+    NameArg         = Name1,
+    CtSigNameAcc    = sign(<<NameAcc/binary, Ct/binary>>, NameAcc),
+    NameSigNameAcc  = sign(<<NameAcc/binary, NHash/binary, Ct/binary>>, NameAcc),
+    NameSigNameAcc2 = sign_(<<NameAcc2/binary, NHash/binary, Ct/binary>>, NameAcc2PrivKey),
+    NameSigNameAcc3 = sign_(<<NameAcc3/binary, NHash/binary, Ct/binary>>, NameAcc3PrivKey),
+
+    %% PreClaim
+    {} = ?call(call_contract, Acc, Ct, signedPreclaim, {tuple, []}, {NameAcc, CHash, CtSigNameAcc}, #{ height => 10 }),
+
+    %% Claim
+    {} = ?call(call_contract, Acc, Ct, signedClaim,    {tuple, []}, {NameAcc, Name1, Salt1, NameSigNameAcc}, #{ height => 11 }),
+
+    %% Transfer
+    {} = ?call(call_contract, Acc, Ct, signedTransfer, {tuple, []}, {NameAcc, NameAcc2, NameArg, NameSigNameAcc}, #{ height => 12 }),
+
+    %% Transfer again
+    TransferRes = ?call(call_contract, Acc, Ct, signedTransfer, {tuple, []}, {NameAcc2, NameAcc3, NameArg, NameSigNameAcc2}, #{ height => 13 }),
+    ?assertMatchFATE({error, <<"Error in aens_transfer: bad_signature">>},
+                     {error, <<"Error in aens_transfer: bad_signature">>},
+                     {}, TransferRes),
+
+    %% Update (did not exist in Lima!)
+    AccountPointee  = fun (A) -> {variant, [1, 1, 1, 1], 0, {A}} end,
+    OraclePointee   = fun (A) -> {variant, [1, 1, 1, 1], 1, {A}} end,
+    Pointers = #{<<"account_pubkey">> => AccountPointee(<<2:256>>),
+                 <<"oracle_pubkey">>  => OraclePointee(<<3:256>>)},
+    None = none,
+    Some = fun (X) -> {some, X} end,
+
+    BadUpdate = ?call(call_contract, Acc, Ct, signedUpdate, {tuple, []}, {NameAcc2, NameArg, None, None, None, NameSigNameAcc2}, #{ height => 14 }),
+    ?assertMatchFATE({error,<<"Trying to call undefined function: <<121,30,40,69>>">>},
+                     {error, <<"Error in aens_update: bad_signature">>},
+                     {error,<<"Error in aens_update: name_not_owned">>}, BadUpdate),
+
+    UpdateRes = ?call(call_contract, Acc, Ct, signedUpdate, {tuple, []}, {NameAcc3, NameArg, None, None, Some(Pointers), NameSigNameAcc3}, #{height => 14}),
+    ?assertMatchFATE({error,<<"Trying to call undefined function: <<121,30,40,69>>">>},
+                     {error, <<"Error in aens_update: bad_signature">>},
+                     {}, UpdateRes),
+
+    %% Revoke
+    BadRevoke1 = ?call(call_contract, Acc, Ct, signedRevoke, {tuple, []}, {NameAcc, NameArg, NameSigNameAcc}, #{ height => 15 }),
+    ?assertMatch({error,<<"Error in aens_revoke: name_not_owned">>}, BadRevoke1),
+    BadRevoke2 = ?call(call_contract, Acc, Ct, signedRevoke, {tuple, []}, {NameAcc2, NameArg, NameSigNameAcc2}, #{ height => 15 }),
+    ?assertMatchFATE({error, <<"Error in aens_revoke: bad_signature">>},
+                     {error, <<"Error in aens_revoke: bad_signature">>},
+                     {error,<<"Error in aens_revoke: name_not_owned">>}, BadRevoke2),
+
+    RevokeRes = ?call(call_contract, Acc, Ct, signedRevoke, {tuple, []}, {NameAcc3, NameArg, NameSigNameAcc3}, #{ height => 15 }),
+    ?assertMatchFATE({error, <<"Error in aens_revoke: bad_signature">>},
+                     {error, <<"Error in aens_revoke: bad_signature">>},
+                     {}, RevokeRes),
+
+    ok.
+
 sign(Material, KeyHolder) ->
     PrivKey  = aect_test_utils:priv_key(KeyHolder, state()),
+    sign_(Material, PrivKey).
+
+sign_(Material, PrivKey) ->
     MaterialForNetworkId = aec_governance:add_network_id(Material),
     ?sig(enacl:sign_detached(MaterialForNetworkId, PrivKey)).
 
