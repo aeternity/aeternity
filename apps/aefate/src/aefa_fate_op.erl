@@ -2195,7 +2195,8 @@ check_delegation_signature(Type, Data, SignBin, Current, ES0) ->
             VerifyOp = aeb_fate_opcodes:m_to_op('VERIFY_SIG'),
             ES = spend_gas(aeb_fate_opcodes:gas_cost(VerifyOp), ES0),
             API = aefa_engine_state:chain_api(ES),
-            case aefa_chain_api:check_delegation_signature(Pubkey, Bin, SignBin, API) of
+            VmVersion = aefa_engine_state:vm_version(ES),
+            case aefa_chain_api:check_delegation_signature(Pubkey, Bin, SignBin, VmVersion, API) of
                 {ok, API1} ->
                     aefa_engine_state:set_chain_api(API1, ES);
                 error ->
