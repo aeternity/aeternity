@@ -74,7 +74,7 @@ run_docker_system_test:
         name: System Tests
         no_output_timeout: 2h
         command: |
-          sudo -u ubuntu -E -H make system-test
+          make system-test
 
 run_docker_system_smoke_test:
   steps:
@@ -86,7 +86,7 @@ run_docker_system_smoke_test:
         name: System Smoke Tests
         no_output_timeout: 1h
         command: |
-          sudo -u ubuntu -E -H make smoke-test-run
+          make smoke-test-run
 
 docker_system_test:
   parameters:
