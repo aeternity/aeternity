@@ -110,11 +110,6 @@ docker_system_test:
     - install_libsodium
     - restore_rebar_cache
     - restore_machine_build_cache
-    - run:
-        name: Prepare ubuntu user (1000:1000) to run docker commands
-        command: |
-          sudo usermod -aG docker ubuntu
-          sudo chown -R ubuntu:ubuntu ~/aeternity
     - when:
         condition:
           not: << parameters.smoke >>
