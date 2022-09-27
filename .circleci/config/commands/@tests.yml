@@ -74,7 +74,7 @@ run_docker_system_test:
         name: System Tests
         no_output_timeout: 2h
         command: |
-          sudo -u ubuntu -E -H make system-test
+          make system-test
 
 run_docker_system_smoke_test:
   steps:
@@ -86,7 +86,7 @@ run_docker_system_smoke_test:
         name: System Smoke Tests
         no_output_timeout: 1h
         command: |
-          sudo -u ubuntu -E -H make smoke-test-run
+          make smoke-test-run
 
 docker_system_test:
   parameters:
@@ -110,11 +110,6 @@ docker_system_test:
     - install_libsodium
     - restore_rebar_cache
     - restore_machine_build_cache
-    - run:
-        name: Prepare ubuntu user (1000:1000) to run docker commands
-        command: |
-          sudo usermod -aG docker ubuntu
-          sudo chown -R ubuntu:ubuntu ~/aeternity
     - when:
         condition:
           not: << parameters.smoke >>
@@ -124,12 +119,6 @@ docker_system_test:
         condition: << parameters.smoke >>
         steps:
           - run_docker_system_smoke_test
-    - run:
-        name: Collect system test host logs
-        command: |
-          mkdir << parameters.system_test_host_logs >>
-          dmesg > << parameters.system_test_host_logs >>/dmesg.log
-        when: always
     - fail_notification
     - save_machine_build_cache
     - store_test_results:
