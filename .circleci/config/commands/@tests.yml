@@ -124,12 +124,6 @@ docker_system_test:
         condition: << parameters.smoke >>
         steps:
           - run_docker_system_smoke_test
-    - run:
-        name: Collect system test host logs
-        command: |
-          mkdir << parameters.system_test_host_logs >>
-          dmesg > << parameters.system_test_host_logs >>/dmesg.log
-        when: always
     - fail_notification
     - save_machine_build_cache
     - store_test_results:
