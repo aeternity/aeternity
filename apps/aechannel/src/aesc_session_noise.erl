@@ -117,8 +117,17 @@ close(Session) ->
             {exit, R} ->
                 lager:error("Unhandled exit error during session closing: ~p, ~p", [R, StackTrace]),
                 unlink(Session),
+		kill_session(Session),
                 ok
         end
+    end.
+
+kill_session(Session) ->
+    MRef = erlang:monitor(process, Session),
+    exit(Session, kill),
+    receive
+	{'DOWN', MRef, _, _, _} ->
+	    ok
     end.
 
 %% ==================================================================
@@ -394,7 +403,14 @@ establish({accept, #{responder := R, port := Port, lsock := LSock}, NoiseOpts}, 
 establish({connect, Host, Port, Opts}, St) ->
     TcpOpts = tcp_opts(connect, Opts),
     lager:debug("connect: TcpOpts = ~p", [TcpOpts]),
-    case connect_tcp(Host, Port, St#st.fsm_mon_ref, TcpOpts) of
+    {Timeout, Retries} = get_reconnect_params(),
+    establish_connect(Retries, Host, Port, TcpOpts, Opts, Timeout, St).
+
+establish_connect(0, _Host, _Port, _TcpOpts, _Opts, _Timeout, _St) ->
+    {error, connect_timeout};
+establish_connect(Retries, Host, Port, TcpOpts, Opts, Timeout, St)
+  when Retries > 0 ->
+    case gen_tcp:connect(Host, Port, TcpOpts, Timeout) of
         {ok, TcpSock} ->
             lager:debug("Connect TcpSock = ~p", [TcpSock]),
             %% TODO: extract/check something from FinalState?
@@ -406,11 +422,18 @@ establish({connect, Host, Port, Opts}, St) ->
                     St1 = St#st{econn = EConn},
                     {ok, St1};
                 Err1 ->
-                    Err1
+		    lager:debug("Failed to pair with responder: ~p", [Err1]),
+		    sleep_retry_connect(Retries-1, Host, Port, TcpOpts, Opts, Timeout, St)
             end;
         Err ->
-            Err
+	    lager:debug("TCP connect failure: ~p", [Err]),
+	    sleep_retry_connect(Retries-1, Host, Port, TcpOpts, Opts, Timeout, St)
     end.
+
+sleep_retry_connect(Retries, Host, Port, TcpOpts, Opts, Timeout, St) ->
+    sleep(Timeout, St#st.fsm_mon_ref),
+    establish_connect(Retries, Host, Port, TcpOpts, Opts, Timeout, St).
+
 
 accept_tcp(LSock, Port, R, AcceptTimeout) ->
     case gen_tcp:accept(LSock, AcceptTimeout) of
@@ -436,26 +459,10 @@ accept_tcp(LSock, Port, R, AcceptTimeout) ->
             Error
     end.
 
-connect_tcp(Host, Port, Ref, Opts) ->
-    {Timeout, Retries} = get_reconnect_params(),
-    connect_tcp(Retries, Host, Port, Ref, Opts, Timeout).
-
-connect_tcp(0, _, _, _, _, _) ->
-    {error, connect_timeout};
-connect_tcp(Retries, Host, Port, Ref, Opts, Timeout)
-  when Retries > 0 ->
-    case gen_tcp:connect(Host, Port, Opts, Timeout) of
-        {ok, _TcpSock} = Ok ->
-            Ok;
-        {error, _} ->
-            sleep(Timeout, Ref),
-            connect_tcp(Retries-1, Host, Port, Ref, Opts, Timeout)
-    end.
-
 sleep(T, Ref) ->
     receive
-        {'$gen_call', From, close} = Msg ->
-            lager:debug("Got ~p while sleeping", [Msg]),
+        {'$gen_call', From, close} ->
+            lager:debug("Got close request from ~p while sleeping", [From]),
             gen:reply(From, ok),
             exit(normal);
         {'DOWN', Ref, _, _, _} = Msg ->
