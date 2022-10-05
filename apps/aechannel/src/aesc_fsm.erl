@@ -5030,7 +5030,13 @@ handle_info(Msg, #data{cur_statem_state = St} = D) ->
 %% * discard   - handle calls, but drop unknown casts (could be e.g. a stray
 %%               signing reply in the open state).
 handle_common_event(E, Msg, M, #data{cur_statem_state = St} = D) ->
-    lager:debug("handle_common_event(~p, ~p, ~p, ~p, D)", [E, Msg, St, M]),
+    case M of
+	discard ->
+	    %% Don't log debug as it risks flooding logs
+	    ok;
+       _ ->
+	    lager:debug("handle_common_event(~p, ~p, ~p, ~p, D)", [E, Msg, St, M])
+    end,
     handle_common_event_(E, Msg, St, M, D).
 
 handle_common_event_(timeout, Info, _St, _M, D) when D#data.ongoing_update == true ->
