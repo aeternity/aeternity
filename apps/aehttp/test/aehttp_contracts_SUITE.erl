@@ -97,6 +97,7 @@ all() ->
 groups() ->
     [ {aevm, [], ?ALL_TESTS}
     , {fate, [], ?ALL_TESTS}
+    , {fate_named, [], ?ALL_TESTS}
     ].
 
 suite() ->
@@ -122,9 +123,17 @@ end_per_suite(Config) ->
     ok.
 
 init_per_group(VM, Config) when VM == aevm; VM == fate ->
-    aect_test_utils:init_per_group(VM, Config, fun(Cfg) -> init_per_vm(Cfg) end).
+    aect_test_utils:init_per_group(VM, Config, fun(Cfg) -> init_per_vm(false, Cfg) end);
+init_per_group(fate_named, Config) ->
+    Protocol = aect_test_utils:latest_protocol_version(),
+    case Protocol >= ?CERES_PROTOCOL_VSN of
+        true ->
+            aect_test_utils:init_per_group(fate, Config, fun(Cfg) -> init_per_vm(true, Cfg) end);
+        false ->
+            {skip, contract_call_by_name_not_available}
+    end.
 
-init_per_vm(Config) ->
+init_per_vm(Named, Config) ->
     NodeName = aecore_suite_utils:node_name(?NODE),
     aecore_suite_utils:reinit_with_ct_consensus(?NODE),
 
@@ -156,8 +165,51 @@ init_per_vm(Config) ->
                  acc_d => #{pub_key => DPubkey,
                             priv_key => DPrivkey,
                             start_amt => StartAmt}},
-    [{accounts,Accounts}|Config].
+    case Named of
+        false -> [{accounts,Accounts}|Config];
+        true  -> init_setup_name(Accounts, Config)
+    end.
 
+-define(HTTP_INT, aehttp_integration_SUITE).
+-define(ENC_ACC(A), aeser_api_encoder:encode(account_pubkey, A)).
+-define(ENC_CT(A), aeser_api_encoder:encode(contract_pubkey, A)).
+
+init_setup_name(Accounts = #{acc_a := #{pub_key := APubkey,
+                                        priv_key := APrivkey,
+                                        start_amt := _AStartAmt}}, Config) ->
+    Name        = <<"contractpointer.chain">>,
+    {ok, NHash} = aens:get_name_hash(Name),
+    NameSalt    = 12345,
+    PreClaimFee = 100000 * aec_test_utils:min_gas_price(),
+
+    %% Get commitment hash to preclaim a name
+    {ok, 200, #{<<"commitment_id">> := EncodedCHash}} = ?HTTP_INT:get_commitment_id(Name, NameSalt),
+
+    %% Submit name preclaim tx and check it is in mempool
+    PreclaimData = #{commitment_id => EncodedCHash,
+                     fee           => PreClaimFee,
+                     account_id    => ?ENC_ACC(APubkey)},
+    {ok, 200, #{<<"tx">> := PreclaimTxEnc}} = ?HTTP_INT:get_name_preclaim(PreclaimData),
+    PreclaimTxHash = ?HTTP_INT:sign_and_post_tx(PreclaimTxEnc, APrivkey),
+
+    %% Mine a block and check mempool empty again
+    ok = ?HTTP_INT:wait_for_tx_hash_on_chain(PreclaimTxHash),
+
+    %% Submit name claim tx and check it is in mempool
+    ClaimFee = 5000000000 * aec_test_utils:min_gas_price(),
+    NameEnc = aeser_api_encoder:encode(name, Name),
+    ClaimData1 = #{account_id => ?ENC_ACC(APubkey),
+                   name       => NameEnc,
+                   name_salt  => NameSalt,
+                   name_fee   => ClaimFee,
+                   fee        => PreClaimFee},
+    {ok, 200, #{<<"tx">> := ClaimTxEnc1}} = ?HTTP_INT:get_name_claim(ClaimData1),
+    ClaimTxHash1 = ?HTTP_INT:sign_and_post_tx(ClaimTxEnc1, APrivkey),
+
+    %% Mine a block and check mempool empty again
+    ok = ?HTTP_INT:wait_for_tx_hash_on_chain(ClaimTxHash1),
+
+    [{name, aeser_api_encoder:encode(name, NHash)}, {accounts, Accounts} | Config].
 
 end_per_group(_Group, _Config) ->
     ok.
@@ -198,7 +250,7 @@ identity_contract(Config) ->
     init_fun_calls(),
 
     %% Initialise contract, owned by Carl.
-    {EncCPub,_,_} = create_contract(Node, CPub, CPriv, Contract, []),
+    {EncCPub,_,_} = create_and_maybe_name_contract(Config, CPub, CPriv, Contract, [], #{}),
 
     %% Call contract main function by Carl.
     call_func(CPub, CPriv, EncCPub, Contract, "main_", ["42"], {"identity", "main_", 42}),
@@ -228,14 +280,11 @@ abort_test_contract(Config) ->
     {EncodedTestPub,DecodedTestPub,_} =
         create_contract(Node, APub, APriv, TCode, ["42"]),
     {_EncodedInt1Pub,DecodedInt1Pub,_} =
-        create_contract(Node, APub, APriv, ICode,
-                        [aeser_api_encoder:encode(contract_pubkey, DecodedTestPub), "42"]),
+        create_contract(Node, APub, APriv, ICode, [?ENC_CT(DecodedTestPub), "42"]),
     {_EncodedInt2Pub,DecodedInt2Pub,_} =
-        create_contract(Node, APub, APriv, ICode,
-                        [aeser_api_encoder:encode(contract_pubkey, DecodedInt1Pub), "42"]),
+        create_contract(Node, APub, APriv, ICode, [?ENC_CT(DecodedInt1Pub), "42"]),
     {EncodedInt3Pub,_,_} =
-        create_contract(Node, APub, APriv, ICode,
-                        [aeser_api_encoder:encode(contract_pubkey, DecodedInt2Pub), "42"]),
+        create_and_maybe_name_contract(Config, APub, APriv, ICode, [?ENC_CT(DecodedInt2Pub), "42"], #{}),
 
     %% This should set state values to 17, 1017, 2017, 3017.
     call_compute_func(Node, APub, APriv, EncodedInt3Pub, ICode, "put_values", ["17"]),
@@ -295,7 +344,7 @@ simple_storage_contract(Config) ->
     Contract = compile_test_contract("simple_storage"),
 
     %% Initialise contract, owned by Alice.
-    {EncCPub,_,_} = create_contract(Node, APub, APriv, Contract, ["21"]),
+    {EncCPub,_,_} = create_and_maybe_name_contract(Config, APub, APriv, Contract, ["21"], #{}),
 
     init_fun_calls(),
 
@@ -348,7 +397,7 @@ counter_contract(Config) ->
     Contract = compile_test_contract("counter"),
 
     %% Initialise contract, owned by Bert.
-    {EncCPub,_,_} = create_contract(Node, BPub, BPriv, Contract, ["21"]),
+    {EncCPub,_,_} = create_and_maybe_name_contract(Config, BPub, BPriv, Contract, ["21"], #{}),
 
     init_fun_calls(),
 
@@ -392,7 +441,7 @@ stack_contract(Config) ->
     Contract = compile_test_contract("stack"),
 
     %% Create the contract with 2 elements in the stack.
-    {EncCPub,_,_} = create_contract(Node, APub, APriv, Contract, ["[\"two\", \"one\"]"]),
+    {EncCPub,_,_} = create_and_maybe_name_contract(Config, APub, APriv, Contract, ["[\"two\", \"one\"]"], #{}),
 
     init_fun_calls(), % setup call handling
 
@@ -436,7 +485,7 @@ polymorphism_test_contract(Config) ->
     Contract = compile_test_contract("polymorphism_test"),
 
     %% Initialise contract owned by Alice.
-    {EncCPub,_,_} = create_contract(Node, APub, APriv, Contract, []),
+    {EncCPub,_,_} = create_and_maybe_name_contract(Config, APub, APriv, Contract, [], #{}),
 
     %% Test the polymorphism.
     init_fun_calls(), % setup call handling
@@ -495,7 +544,7 @@ maps_contract(Config) ->
     Contract = compile_test_contract("maps"),
 
     %% Initialise contract owned by Alice.
-    {EncMapsPub, _DecMapsPub, _} = create_contract(Node, APub, APriv, Contract, []),
+    {EncMapsPub, _DecMapsPub, _} = create_and_maybe_name_contract(Config, APub, APriv, Contract, [], #{}),
 
     init_fun_calls(), % setup call handling
 
@@ -642,7 +691,7 @@ environment_contract_(Config) ->
     %% Initialise contract owned by Alice setting balance to 10000.
     ZeroContract = aeser_api_encoder:encode(contract_pubkey, <<0:256>>),
     {EncCPub, _, _} =
-        create_contract(Node, APub, APriv, Contract, [ZeroContract], #{amount => ContractBalance}),
+        create_and_maybe_name_contract(Config, APub, APriv, Contract, [ZeroContract], #{amount => ContractBalance}),
     %% Second contract for remote calls
     {EncRPub, _DecRPub, _} =
         create_contract(Node, APub, APriv, Contract, [ZeroContract], #{amount => ContractBalance}),
@@ -695,7 +744,7 @@ environment_contract_(Config) ->
     %% Account balances.
     ct:pal("Calling get_balance\n"),
     call_func(BPub, BPriv, EncCPub, Contract, "get_balance",
-              [aeser_api_encoder:encode(account_pubkey, BPub)]),
+              [?ENC_ACC(BPub)]),
 
     %% Block hash.
     ct:pal("Calling block_hash\n"),
@@ -782,7 +831,7 @@ spend_test_contract(Config) ->
     {EncC1Pub,_DecC1Pub,_} =
         create_contract(Node, APub, APriv, Contract, [], #{amount => 10000}),
     {EncC2Pub,DecC2Pub,_} =
-        create_contract(Node, APub, APriv, Contract, [], #{amount => 20000}),
+        create_and_maybe_name_contract(Config, APub, APriv, Contract, [], #{amount => 20000}),
 
     init_fun_calls(),
 
@@ -792,27 +841,27 @@ spend_test_contract(Config) ->
     call_func(APub, APriv, EncC2Pub, Contract, "get_balance", [], {"int", 20000}),
 
     %% Spend 15000 on to Bert.
-    Sp1Arg = [aeser_api_encoder:encode(account_pubkey, BPub), "15000"],
+    Sp1Arg = [?ENC_ACC(BPub), "15000"],
     call_func(APub, APriv, EncC2Pub, Contract, "spend", Sp1Arg, {"int", 5000}),
 
     %% Check that contract spent it.
-    GBO1Arg = [aeser_api_encoder:encode(account_pubkey, DecC2Pub)],
+    GBO1Arg = [?ENC_ACC(DecC2Pub)],
     call_func(APub, APriv, EncC1Pub, Contract, "get_balance_of", GBO1Arg, {"int", 5000}),
 
     %% Check that Bert got it.
-    GBO2Arg = [aeser_api_encoder:encode(account_pubkey, BPub)],
+    GBO2Arg = [?ENC_ACC(BPub)],
     call_func(APub, APriv, EncC1Pub, Contract, "get_balance_of", GBO2Arg, {"int", BBal0 + 15000}),
 
     %% Spend 6000 explicitly from contract 1 to Bert.
-    SF1Arg = [EncC1Pub, aeser_api_encoder:encode(account_pubkey, BPub), "6000"],
+    SF1Arg = [EncC1Pub, ?ENC_ACC(BPub), "6000"],
     call_func(APub, APriv, EncC2Pub, Contract, "spend_from", SF1Arg, {"int", BBal0 + 21000}),
 
     %% Check that Bert got it.
-    GBO3Arg = [aeser_api_encoder:encode(account_pubkey, BPub)],
+    GBO3Arg = [?ENC_ACC(BPub)],
     call_func(APub, APriv, EncC1Pub, Contract, "get_balance_of", GBO3Arg, {"int", BBal0 + 21000}),
 
     %% Check contract 2 balance.
-    GBO4Arg = [aeser_api_encoder:encode(account_pubkey, DecC2Pub)],
+    GBO4Arg = [?ENC_ACC(DecC2Pub)],
     call_func(APub, APriv, EncC1Pub, Contract, "get_balance_of", GBO4Arg, {"int", 5000}),
 
     force_fun_calls(Node),
@@ -845,9 +894,9 @@ dutch_auction_contract(Config) ->
     Fee      = 800000 * ?DEFAULT_GAS_PRICE,
 
     %% Initialise contract owned by Alice with Carl as benficiary.
-    InitArgument = [aeser_api_encoder:encode(account_pubkey, CPub),
+    InitArgument = [?ENC_ACC(CPub),
                     integer_to_list(StartAmt), integer_to_list(Decrease)],
-    {EncCPub, _, InitReturn} = create_contract(Node, APub, APriv, Contract, InitArgument),
+    {EncCPub, _, InitReturn} = create_and_maybe_name_contract(Config, APub, APriv, Contract, InitArgument, #{}),
     #{<<"height">> := Height0} = InitReturn,
 
     %% Mine 5 times to decrement value.
@@ -904,7 +953,7 @@ acm_dutch_auction_contract(Config) ->
 
     %% Initialise contract owned by Alice .
     InitArgument = [integer_to_list(StartAmt), integer_to_list(Decrease)],
-    {EncCPub,_,InitReturn} = create_contract(Node, APub, APriv, Contract, InitArgument),
+    {EncCPub,_,InitReturn} = create_and_maybe_name_contract(Config, APub, APriv, Contract, InitArgument, #{}),
     #{<<"height">> := Height0} = InitReturn,
 
     %% Mine 5 times to decrement value.
@@ -975,9 +1024,9 @@ fundme_contract(Config) ->
     Goal     = 150000,
 
     %% Initialise contract owned by Alice with Bert as benficiary.
-    InitArg = [aeser_api_encoder:encode(account_pubkey, BPub),
+    InitArg = [?ENC_ACC(BPub),
                integer_to_list(Deadline), integer_to_list(Goal)],
-    {EncCPub,_,_} = create_contract(Node, APub, APriv, Contract, InitArg),
+    {EncCPub,_,_} = create_and_maybe_name_contract(Config, APub, APriv, Contract, InitArg, #{}),
 
     init_fun_calls(),
 
@@ -1032,12 +1081,12 @@ erc20_token_contract(Config) ->
 
     %% Initialise contract owned by Alice.
     InitArg = [integer_to_list(Total), integer_to_list(Decimals), "\"Token Name\"", "\"TKN\""],
-    {EncCPub,_,_} = create_contract(Node, APub, APriv, Contract, InitArg),
+    {EncCPub,_,_} = create_and_maybe_name_contract(Config, APub, APriv, Contract, InitArg, #{}),
 
     init_fun_calls(),
 
     [EAPub, EBPub, ECPub, EDPub] =
-        [ aeser_api_encoder:encode(account_pubkey, Pub) || Pub <- [APub, BPub, CPub, DPub] ],
+        [ ?ENC_ACC(Pub) || Pub <- [APub, BPub, CPub, DPub] ],
 
     CallF = fun(Pub, Priv, EC, C, F, As, Exp) ->
                 call_func(Pub, Priv, EC, C, F, As, {"erc20_token", F, Exp}) end,
@@ -1072,7 +1121,7 @@ erc20_token_contract(Config) ->
     CallF(APub, APriv, EncCPub, Contract, "balanceOf", [EDPub],  25000),
 
     %% Check transfer and approval logs.
-    Addr = fun(A) -> aeser_api_encoder:encode(account_pubkey, A) end,
+    Addr = fun(A) -> ?ENC_ACC(A) end,
     TrfLog = [[Addr(CPub), Addr(DPub), 15000],
               [Addr(BPub), Addr(DPub), 10000],
               [Addr(APub), Addr(CPub), 25000],
@@ -1110,7 +1159,7 @@ events_contract(Config) ->
     init_fun_calls(),
     Contract = compile_test_contract("events"),
 
-    {EncCPub, _, _} = create_contract(Node, APub, APriv, Contract, []),
+    {EncCPub, DecCPub, _} = create_and_maybe_name_contract(Config, APub, APriv, Contract, [], #{}),
 
     force_fun_calls(Node),
 
@@ -1119,7 +1168,7 @@ events_contract(Config) ->
                                 true -> aec_hash:blake2b_256_hash(<<"Event1">>);
                                 false -> aec_hash:hash(evm, <<"Event1">>)
                              end,
-                ?assertEqual(Addr, EncCPub),
+                ?assertEqual(Addr, ?ENC_CT(DecCPub)), %% EncCPub might be a name...
                 ?assertEqual(Data, aeser_api_encoder:encode(contract_bytearray, <<"bar">>)),
                 ?assertMatch([E1, 1, 2], Ts)
               end,
@@ -1131,7 +1180,7 @@ events_contract(Config) ->
                                 false -> aec_hash:hash(evm, <<"Event2">>)
                              end,
                 <<A:256>>  = APub,
-                ?assertEqual(Addr, EncCPub),
+                ?assertEqual(Addr, ?ENC_CT(DecCPub)), %% EncCPub might be a name...
                 ?assertEqual(Data, aeser_api_encoder:encode(contract_bytearray, <<"foo">>)),
                 ?assertEqual([E2, A], Ts)
               end,
@@ -1163,7 +1212,7 @@ remote_gas_test_contract(Config) ->
     %% Compile test contract "remote_gas_test.aes".
     Contract = compile_test_contract("remote_gas_test"),
 
-    {EncC1Pub,_,_} = create_contract(Node, APub, APriv, Contract, ["0"], #{amount => 200}),
+    {EncC1Pub,_,_} = create_and_maybe_name_contract(Config, APub, APriv, Contract, ["0"], #{amount => 200}),
 
     {EncC2Pub, _DecC2Pub, _} = create_contract(Node, APub, APriv, Contract, ["100"]),
 
@@ -1220,10 +1269,10 @@ payable_contract(Config) ->
 
     force_fun_calls(Node),
 
-    EAccP = aeser_api_encoder:encode(account_pubkey, DecP),
-    EAccNP = aeser_api_encoder:encode(account_pubkey, DecNP),
-    EAPub = aeser_api_encoder:encode(account_pubkey, APub),
-    EBPub = aeser_api_encoder:encode(account_pubkey, BPub),
+    EAccP = ?ENC_ACC(DecP),
+    EAccNP = ?ENC_ACC(DecNP),
+    EAPub = ?ENC_ACC(APub),
+    EBPub = ?ENC_ACC(BPub),
 
     {ok, 200, #{<<"tx">> := SpendTx1}} = create_spend_tx(EAPub, EAccP, 10000, 20000 * ?DEFAULT_GAS_PRICE, <<"good">>),
     {ok, 200, #{<<"tx">> := SpendTx2}} = create_spend_tx(EBPub, EAccNP, 10000, 20000 * ?DEFAULT_GAS_PRICE, <<"bad">>),
@@ -1252,15 +1301,15 @@ paysplit_contract(Config) ->
     init_fun_calls(),
     Paysplit = compile_test_contract("paysplit"),
 
-    EAPub = aeser_api_encoder:encode(account_pubkey, APub),
-    EBPub = aeser_api_encoder:encode(account_pubkey, BPub),
-    ECPub = aeser_api_encoder:encode(account_pubkey, CPub),
-    EDPub = aeser_api_encoder:encode(account_pubkey, DPub),
+    EAPub = ?ENC_ACC(APub),
+    EBPub = ?ENC_ACC(BPub),
+    ECPub = ?ENC_ACC(CPub),
+    EDPub = ?ENC_ACC(DPub),
     SplitMap = "{ [" ++ binary_to_list(EBPub) ++ "] = 30, "
                "  [" ++ binary_to_list(EAPub) ++ "] = 10, "
                "  [" ++ binary_to_list(EDPub) ++ "] = 10, "
                "  [" ++ binary_to_list(ECPub) ++ "] = 50 }",
-    {EncCPub, _Dec, _} = create_contract(Node, APub, APriv, Paysplit, [SplitMap]),
+    {EncCPub, _Dec, _} = create_and_maybe_name_contract(Config, APub, APriv, Paysplit, [SplitMap], #{}),
 
     ECheck = fun([_]) -> ok end,
 
@@ -1401,7 +1450,7 @@ packing_contract_calls(Config) ->
 %% Internal access functions.
 
 get_balance(Pubkey) ->
-    Addr = aeser_api_encoder:encode(account_pubkey, Pubkey),
+    Addr = ?ENC_ACC(Pubkey),
     {ok,200,#{<<"balance">> := Balance}} = get_account_by_pubkey(Addr),
     Balance.
 
@@ -1455,6 +1504,33 @@ create_contract(NodeName, Pubkey, Privkey, Contract, InitArgs, CallerSet) ->
     ct:pal("Init return ~p\n", [InitReturn]),
 
     {EncodedContractPubkey, DecodedContractPubkey, InitReturn}.
+
+create_and_maybe_name_contract(Config, Pubkey, Privkey, Contract, InitArgs, CallOpts) ->
+    NodeName = proplists:get_value(node_name, Config),
+    {EncodedContractPubkey, DecodedContractPubkey, InitReturn} =
+        create_contract(NodeName, Pubkey, Privkey, Contract, InitArgs, CallOpts),
+    case proplists:get_value(name, Config, no_name) of
+        no_name ->
+            {EncodedContractPubkey, DecodedContractPubkey, InitReturn};
+        EncName ->
+            #{acc_a := #{pub_key := APub, priv_key := APriv}} = proplists:get_value(accounts, Config),
+            UpdateData = #{account_id => ?ENC_ACC(APub),
+                           name_id    => EncName,
+                           client_ttl => 42,
+                           name_ttl   => 10000,
+                           pointers   => [#{<<"key">> => <<"contract_pubkey">>, <<"id">> => EncodedContractPubkey}],
+                           fee        => 500000 * aec_test_utils:min_gas_price()},
+
+            {ok, 200, #{<<"tx">> := UpdateEnc}} = ?HTTP_INT:get_name_update(UpdateData),
+            #{tx_hash := UpdateTxHash} = sign_and_post_tx(APriv, UpdateEnc),
+
+            %% Mine a block
+            ok = wait_for_tx_hash_on_chain(NodeName, UpdateTxHash),
+
+            {EncName, DecodedContractPubkey, InitReturn}
+    end.
+
+
 
 %% init_fun_calls()
 %% force_fun_calls(Node)
@@ -1592,14 +1668,14 @@ call_func(Pub, Priv, EncCPub, Contract, Fun, Args, CallerSet, Check) ->
     put(fun_calls, Calls ++ [{Tx, Check}]).
 
 get_online_nonce(Pub) ->
-    Address = aeser_api_encoder:encode(account_pubkey, Pub),
+    Address = ?ENC_ACC(Pub),
     case get_account_by_pubkey(Address) of
         {ok,200,#{<<"nonce">> := Nonce}} -> Nonce + 1;
         {ok, _, _} -> 1
     end.
 
 get_nonce(Pub) ->
-    Address = aeser_api_encoder:encode(account_pubkey, Pub),
+    Address = ?ENC_ACC(Pub),
     %% Generate a nonce.
     {ok,200,#{<<"nonce">> := Nonce0}} = get_account_by_pubkey(Address),
     Nonces = get(nonces),
@@ -1665,7 +1741,7 @@ basic_call_compute_func(NodeName, Pubkey, Privkey, EncCPubkey,
     {CallReturn,ContractCallTxHash}.
 
 contract_create_tx(Pubkey, Privkey, Contract, CallData, CallerSet) ->
-    Address = aeser_api_encoder:encode(account_pubkey, Pubkey),
+    Address = ?ENC_ACC(Pubkey),
     %% Generate a nonce.
     {ok,200,#{<<"nonce">> := Nonce0}} = get_account_by_pubkey(Address),
     Nonce = Nonce0 + 1,
@@ -1686,14 +1762,14 @@ contract_create_tx(Pubkey, Privkey, Contract, CallData, CallerSet) ->
     sign_and_post_create_tx(Privkey, ContractInitEncoded).
 
 contract_call_tx(Pubkey, Privkey, EncCPubkey, ABI, CallData, CallerSet) ->
-    Address = aeser_api_encoder:encode(account_pubkey, Pubkey),
+    Address = ?ENC_ACC(Pubkey),
     %% Generate a nonce.
     {ok,200,#{<<"nonce">> := Nonce0}} = get_account_by_pubkey(Address),
     Nonce = Nonce0 + 1,
     contract_call_tx(Pubkey, Privkey, Nonce, EncCPubkey, ABI, CallData, CallerSet).
 
 contract_call_tx(Pubkey, Privkey, Nonce, EncCPubkey, ABI, CallData, CallerSet) ->
-    Address = aeser_api_encoder:encode(account_pubkey, Pubkey),
+    Address = ?ENC_ACC(Pubkey),
 
     ContractCallEncoded0 = #{ caller_id => Address,
                               contract_id => EncCPubkey,
@@ -1761,7 +1837,7 @@ get_tx(TxHash) ->
 
 create_spend_tx(RecipientId, Amount, Fee) ->
     Sender = maps:get(pubkey, aecore_suite_utils:patron()),
-    SenderId = aeser_api_encoder:encode(account_pubkey, Sender),
+    SenderId = ?ENC_ACC(Sender),
     create_spend_tx(SenderId, RecipientId, Amount, Fee, <<"post spend tx">>).
 
 create_spend_tx(SenderId, RecipientId, Amount, Fee, Payload) ->
@@ -1796,7 +1872,7 @@ new_account(Balance) ->
     {Pubkey,Privkey} = aecore_suite_utils:generate_key_pair(),
     Fee = 20000 * ?DEFAULT_GAS_PRICE,
     {ok, 200, #{<<"tx">> := SpendTx}} =
-        create_spend_tx(aeser_api_encoder:encode(account_pubkey, Pubkey), Balance, Fee),
+        create_spend_tx(?ENC_ACC(Pubkey), Balance, Fee),
     SignedSpendTx = sign_tx(SpendTx),
     {ok, 200, #{<<"tx_hash">> := SpendTxHash}} = post_tx(SignedSpendTx),
     {Pubkey,Privkey,SpendTxHash}.

@@ -88,6 +88,7 @@
     post_spend_tx_w_hash_sig/1,
     post_contract_and_call_tx/1,
     nonce_limit/1,
+    get_name_update/1,
     get_contract_create/1,
     get_contract_call/1,
     get_contract_bytecode/1,

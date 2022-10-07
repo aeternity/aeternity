@@ -1470,9 +1470,9 @@ do_meta(Owner, AuthData, InnerTx, MetaTx, Opts, S) ->
                 {ok, Res0#{ ct_pubkey => NewContract
                           , init_res  => aect_call:return_type(InitCall) }};
             {contract_call_tx, CCTx} ->
-                Contract    = aect_call_tx:contract_pubkey(CCTx),
-                InnerCallId = aect_call:ga_id(AuthId, Contract),
-                InnerCall   = aect_call_state_tree:get_call(Contract, InnerCallId, CallTree),
+                CtCallId    = aect_call_tx:ct_call_id(CCTx),
+                InnerCallId = aect_call:ga_id(AuthId, CtCallId),
+                InnerCall   = aect_call_state_tree:get_call(CtCallId, InnerCallId, CallTree),
                 {ok, Res0#{ call_res => aect_call:return_type(InnerCall),
                             call_val => aect_call:return_value(InnerCall),
                             call_gas => aect_call:gas_used(InnerCall) }};
