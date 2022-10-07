@@ -320,8 +320,12 @@ get_info_object_signed_tx(BlockHash, STx) ->
 get_info_object_signed_tx(BlockHash, STx, GAIds, OrigTx) ->
     Tx = aetx_sign:tx(STx),
     case aetx:specialize_type(Tx) of
+        {contract_call_tx, _} ->
+            {CB, CTx} = aetx:specialize_callback(Tx),
+            CtCallId  = CB:ct_call_id(CTx),
+            CallId    = CB:call_id(CTx),
+            aec_chain:get_contract_call(CtCallId, CallId, BlockHash);
         {TxType, _} when TxType =:= contract_create_tx;
-                         TxType =:= contract_call_tx;
                          TxType =:= ga_attach_tx ->
             {CB, CTx} = aetx:specialize_callback(Tx),
             Contract  = CB:contract_pubkey(CTx),
@@ -962,7 +966,7 @@ decode_transaction(ParamName) ->
                 {error, _} -> error;
                 {ok, TxDec} ->
                     try {ok, aetx_sign:deserialize_from_binary(TxDec)}
-                    catch 
+                    catch
                         _:_ -> error
                     end
             end

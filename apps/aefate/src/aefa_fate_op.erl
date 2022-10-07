@@ -1230,7 +1230,9 @@ make_fate_base_tx(BaseTxType, BaseTx, ES) ->
             Amount = aect_create_tx:amount(BaseTx),
             {VarGas(1) + AmtGas, MkVar(19, {Amount})};
         contract_call_tx ->
-            Ct     = aect_call_tx:contract_pubkey(BaseTx),
+            %% TODO: This isn't correct, a name is not an address...
+            %%       We should probably resolve the name
+            Ct     = aect_call_tx:ct_call_id(BaseTx),
             Amount = aect_call_tx:amount(BaseTx),
             {VarGas(2) + AddrGas + AmtGas, MkVar(20, {?FATE_ADDRESS(Ct), Amount})};
 
