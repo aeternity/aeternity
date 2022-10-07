@@ -91,12 +91,13 @@ new(CallerId, Nonce, CtId, BlockHeight, GasPrice) ->
 -spec new(aeser_id:id(), non_neg_integer(), aeser_id:id(), aec_keys:pubkey(), aec_blocks:height(), amount()) -> call().
 new(CallerId, Nonce, CtId, CtCallId, BlockHeight, GasPrice) ->
     {_, CallerPubkey} = aeser_id:specialize(CallerId),
+    {_, CtPubkey}     = aeser_id:specialize(CtId),
     C = #call{ id           = id(CallerPubkey, Nonce, CtCallId)
              , caller_id    = CallerId
              , caller_nonce = Nonce
              , height       = BlockHeight
              , contract_id  = CtId
-             , ct_call_id   = if CtCallId /= CtId -> CtCallId; true -> undefined end
+             , ct_call_id   = if CtCallId /= CtPubkey -> CtCallId; true -> undefined end
              , gas_price    = GasPrice
              , gas_used     = 0     %% These are filled later
              , return_value = <<>>  %% in aect_call_tx:process()

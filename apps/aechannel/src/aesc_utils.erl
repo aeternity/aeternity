@@ -1116,7 +1116,7 @@ add_call(Call0, TxHash, Trees, Env) ->
         end,
 
     Call1 = aect_call:set_contract(ContractPubkey, Call0),
-    Call2 = aect_call:set_ct_call_id(ContractPubkey, Call1),
+    Call2 = aect_call:set_ct_call_id(undefined, Call1),
     Call3 = aect_call:set_id(NewId, Call2),
     aect_utils:insert_call_in_trees(Call3, Trees).
 
