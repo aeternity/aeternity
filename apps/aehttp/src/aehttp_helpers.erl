@@ -275,20 +275,37 @@ print_state() ->
         lager:info("State: ~p", [State])
     end.
 
-get_contract_code(ContractKey, CodeKey) ->
+
+get_contract_code(CtIdKey, CodeKey) ->
     fun(_Req, State) ->
-        ContractId = maps:get(ContractKey, State),
-        ContractPubKey = aeser_id:specialize(ContractId, contract),
-        TopBlockHash = aec_chain:top_block_hash(),
-        {ok, Trees} = aec_chain:get_block_state(TopBlockHash),
-        Tree = aec_trees:contracts(Trees),
-        case aect_state_tree:lookup_contract_with_code(ContractPubKey, Tree) of
-            none ->
-                Msg = "Contract address for key " ++ atom_to_list(ContractKey) ++ " not found",
-                {error, {404, [], #{<<"reason">> => list_to_binary(Msg)}}};
-            {value, _Contract, Code} ->
-                {ok, maps:put(CodeKey, Code, State)}
+        ContractId = maps:get(CtIdKey, State),
+        case aeser_id:specialize(ContractId) of
+            {contract, _} -> get_contract_code_(ContractId, CodeKey, State);
+            {name, NameHash} ->
+                TopBlockHash = aec_chain:top_block_hash(),
+                {ok, Trees}  = aec_chain:get_block_state(TopBlockHash),
+                case aens:resolve_hash(<<"contract_pubkey">>, NameHash, aec_trees:ns(Trees)) of
+                    {ok, ContractId1} -> get_contract_code_(ContractId1, CodeKey, State);
+                    {error, _} ->
+                        Msg = io_lib:format("Could not resolve contract address for '~ts'",
+                                            [aeser_api_encoder:encode(name, NameHash)]),
+                        {error, {404, [], #{<<"reason">> => iolist_to_binary(Msg)}}}
+                end
         end
+    end.
+
+get_contract_code_(ContractId, CodeKey, State) ->
+    TopBlockHash   = aec_chain:top_block_hash(),
+    {ok, Trees}    = aec_chain:get_block_state(TopBlockHash),
+    ContractPubKey = aeser_id:specialize(ContractId, contract),
+    Tree           = aec_trees:contracts(Trees),
+    case aect_state_tree:lookup_contract_with_code(ContractPubKey, Tree) of
+        none ->
+            Msg = io_lib:format("Contract code for '~ts' not found",
+                                [aeser_api_encoder:encode(contract_pubkey, ContractPubKey)]),
+            {error, {404, [], #{<<"reason">> => iolist_to_binary(Msg)}}};
+        {value, _Contract, Code} ->
+            {ok, maps:put(CodeKey, Code, State)}
     end.
 
 get_info_object_from_tx(TxKey, TypeKey, CallKey) ->
@@ -303,7 +320,7 @@ get_info_object_from_tx(TxKey, TypeKey, CallKey) ->
                         {ok, InfoObject} ->
                             {ok, maps:put(TypeKey, TxType, maps:put(CallKey, InfoObject, State))};
                         {error, transaction_without_info} ->
-                            %% Potentialluy one could return
+                            %% Potentially one could return
                             %% {ok, maps:put(TypeKey, TxType, maps:put(CallKey, atom_to_binary(TxType, utf8), State))};
                             %% That is not backward compatible, but consistent with inner Txs
                             {error, {400, [], #{<<"reason">> => <<"Tx has no info">>}}};

@@ -69,6 +69,7 @@
 all() ->
     [ {group, aevm}
     , {group, fate}
+    , {group, fate_named}
     ].
 
 -define(ALL_TESTS,

@@ -2190,7 +2190,7 @@ contract_transactions(_Config) ->    % miner has an account
     {ok, 404, #{<<"reason">> := <<"Account of caller_id not found">>}} =
         get_contract_call(maps:put(caller_id, RandAddress, ContractCallEncoded)),
     %% contract not found
-    {ok, 404, #{<<"reason">> := <<"Contract address for key contract_id not found">>}} =
+    {ok, 404, #{<<"reason">> := <<"Contract code for", _/binary>>}} =
         get_contract_call(maps:put(contract_id, RandContractAddress,
                                    ContractCallEncoded)),
 
