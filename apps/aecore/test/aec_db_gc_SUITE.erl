@@ -77,8 +77,10 @@ init_per_suite(Config0) ->
 
     node_log_details(N1, accounts_on_chain),
 
+    N1Primary = primary(N1),
+
     ok = rpc:call(N1, mnesia, dirty_write,
-                  [{aec_account_state, ?DUMMY_HASH, lists:duplicate(17, <<>>)}]),
+                  [{N1Primary, ?DUMMY_HASH, lists:duplicate(17, <<>>)}]),
 
     aecore_suite_utils:start_node(dev2, Config2),
     aecore_suite_utils:connect(N2),
@@ -130,7 +132,8 @@ main_test(_Config) ->
     [N1, N2] = [aecore_suite_utils:node_name(X) || X <- [dev1, dev2]],
     H1 = aec_headers:height(rpc:call(N1, aec_chain, top_header, [])),
     true = H1 < ?GC_INTERVAL,
-    true = has_key(N1, ?DUMMY_HASH, aec_account_state),
+    Primary1 = primary(N1),
+    true = has_key(N1, ?DUMMY_HASH, Primary1),
 
     %% we mine just enough to start first GC phase - collection of reachable hashes
     mine_until_height(N1, N2, ?GC_INTERVAL), % aecore_suite_utils:mine_key_blocks(N2, ?GC_INTERVAL - H1),
@@ -158,23 +161,16 @@ main_test(_Config) ->
     monitor_node(N1, true),
     %% Mining of another keyblock starts second GC phase - storing cache to mnesia table and restart
     mine_until_height(N1, N2, ?GC_INTERVAL + 1),
-    receive
-        {nodedown, N1} -> ct:log("////////// ~p restarted~n", [N1])
-    after 30000 ->
-        %% Successful runs in CI take about 10 secs for the restart
-        ct:log("Timed out waiting for gc node restart")
-    end,
 
-    block_while(fun () -> not net_kernel:hidden_connect_node(N1) end, 300, 300),
+    block_while(fun () -> is_primary(N1, Primary1) end, 500, 100),
 
-    block_while(fun () -> not started(N1) end, 300, 300),
+    Primary2 = primary(N1),
 
-    block_while(fun () -> has_table(N1, aec_account_state_gced) end, 500, 100),
+    ct:log("Primary2 = ~p (Primary1 = ~p)", [Primary2, Primary1]),
 
-    false = has_table(N1, aec_account_state_gced),
-    false = has_key(N1, ?DUMMY_HASH, aec_account_state),
+    false = has_key(N1, ?DUMMY_HASH, Primary2),
 
-    Hashes = rpc:call(N1, mnesia, dirty_select, [aec_account_state, [{{'_','$1','$2'},[],[{{'$1','$2'}}]}]]),
+    Hashes = rpc:call(N1, mnesia, dirty_select, [Primary2, [{{'_','$1','$2'},[],[{{'$1','$2'}}]}]]),
     [] = GCedHashes -- Hashes,
 
     ok.
@@ -184,30 +180,20 @@ main_test(_Config) ->
 %% Private functions
 %% ==================================================
 
+primary(N) ->
+    rpc:call(N, aec_db, state_tab, [aec_account_state]).
+
+is_primary(N, P) ->
+    primary(N) =:= P.
+
 gc_state(N) ->
     rpc:call(N, sys, get_state, [aec_db_gc]).
-
-started(N) ->
-    case rpc:call(N, init, get_status, []) of
-        {started, _} ->
-            ct:log("////////// Node started ~p", [N]),
-            true;
-        _ ->
-            false
-    end.
-
-mnesia_system_info(N, X) ->
-    rpc:call(N, mnesia, system_info, [X]).
 
 has_key(N, Key, Tab) ->
     case rpc:call(N, mnesia, dirty_read, [Tab, Key]) of
         [_|_] -> true;
         _     -> false
     end.
-
-has_table(N, Tab) ->
-    Ts = mnesia_system_info(N, tables),
-    is_list(Ts) andalso lists:member(Tab, Ts).
 
 node_log_details(N, Prefix) ->
     ct:log("////////// ~p | ~p S = ~p~n", [N, Prefix, catch rpc:call(N, sys, get_state, [aec_db_gc])]),
