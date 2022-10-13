@@ -858,8 +858,8 @@ make_primary_state_tab(T, P) ->
 
 cache_primary_state_tabs() ->
     lager:debug("Caching primary for gced tabs", []),
-    maps:foreach(
-      fun(T, #{copies := Ts}) ->
+    maps:fold(
+      fun(T, #{copies := Ts}, _) ->
               Key = {primary_state_tab, T},
               case dirty_get_chain_state_value(Key) of
                   undefined ->
@@ -868,8 +868,9 @@ cache_primary_state_tabs() ->
                       cache_primary_state_tab(T, P);
                   P ->
                       cache_primary_state_tab(T, P)
-              end
-      end, gced_tables()).
+              end,
+              ok
+      end, ok, gced_tables()).
 
 cache_primary_state_tab(T, P) ->
     lager:debug("Caching primary for ~p: ~p", [T, P]),
