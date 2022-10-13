@@ -77,6 +77,9 @@
 -export([ fold_mempool/2
         ]).
 
+-export([ state_tab/1
+        , make_primary_state_tab/2
+        , secondary_state_tab/1 ]).
 
 %% MP trees backend
 -export([ find_accounts_node/1
@@ -201,25 +204,53 @@ tables(Mode0) ->
     Ts.
 
 tables_(Mode) ->
-    [?TAB(aec_blocks)
-   , ?TAB(aec_headers, [{index, [height]}])
-   , ?TAB(aec_chain_state)
-   , ?TAB(aec_contract_state)
-   , ?TAB(aec_call_state)
-   , ?TAB(aec_block_state)
-   , ?TAB(aec_oracle_cache)
-   , ?TAB(aec_oracle_state)
-   , ?TAB(aec_account_state)
-   , ?TAB(aec_channel_state)
-   , ?TAB(aec_name_service_cache)
-   , ?TAB(aec_name_service_state)
-   , ?TAB(aec_signed_tx)
-   , ?TAB(aec_tx_location)
-   , ?TAB(aec_tx_pool)
-   , ?TAB(aec_discovered_pof)
-   , ?TAB(aec_signal_count)
-   , ?TAB(aec_peers)
-    ].
+    add_gc_extra_tabs(
+      [ ?TAB(aec_blocks)
+      , ?TAB(aec_headers, [{index, [height]}])
+      , ?TAB(aec_chain_state)
+      , ?TAB(aec_contract_state)
+      , ?TAB(aec_call_state)
+      , ?TAB(aec_block_state)
+      , ?TAB(aec_oracle_cache)
+      , ?TAB(aec_oracle_state)
+      , ?TAB(aec_account_state)
+      , ?TAB(aec_channel_state)
+      , ?TAB(aec_name_service_cache)
+      , ?TAB(aec_name_service_state)
+      , ?TAB(aec_signed_tx)
+      , ?TAB(aec_tx_location)
+      , ?TAB(aec_tx_pool)
+      , ?TAB(aec_discovered_pof)
+      , ?TAB(aec_signal_count)
+      , ?TAB(aec_peers)
+      ]).
+
+add_gc_extra_tabs(Tabs) ->
+    lists:foldr(fun maybe_add_gc_tab/2, [], Tabs).
+
+maybe_add_gc_tab({Tab, Spec0} = Entry, Acc) ->
+    case maps:get(Tab, gced_tables(), undefined) of
+        #{copies := Tabs} when is_list(Tabs) ->
+            Spec = ensure_record_name(Tab, Spec0),
+            [{T, note_other_tabs(Tabs -- [T], Spec)} || T <- Tabs] ++ Acc;
+        undefined -> [Entry | Acc]
+     end.
+
+ensure_record_name(T, Spec) ->
+    case lists:keymember(record_name, 1, Spec) of
+        true ->
+            Spec;
+        false ->
+            [{record_name, T}|Spec]
+    end.
+
+gced_tables() ->
+    #{aec_account_state => #{copies => [aec_account_state, aec_account_state_1]}}.
+
+note_other_tabs(Ts, Props) ->
+    UPs = proplists:get_value(user_properties, Props, []),
+    lists:keystore(user_properties, 1, Props,
+                   {user_properties, [{aec_db_gc_other_tabs, Ts}|UPs]}).
 
 migrate_tables() -> migrate_tables(all, undefined).
 
@@ -801,8 +832,52 @@ write_block_state(Hash, Trees, AccDifficulty, ForkId, Fees, Fraud) ->
            write(BlockState)
        end).
 
+state_tab(T) ->
+    persistent_term:get({primary_state_tab, T}, T).
+
+secondary_state_tab(T) ->
+    Prim = persistent_term:get({primary_state_tab, T}),
+    #{copies := Tabs} = maps:get(T, gced_tables()),
+    [Secondary] = Tabs -- [Prim],
+    Secondary.
+
+make_primary_state_tab(T, P) ->
+    lager:debug("New primary for ~p: ~p", [T, P]),
+    case maps:find(T, gced_tables()) of
+        {ok, #{copies := Tabs}} ->
+            case lists:member(P, Tabs) of
+                true ->
+                    ?t(write(#aec_chain_state{key = {primary_state_tab, T}, value = P}));
+                false ->
+                    error({not_a_state_tab_candidate, {T, P}})
+            end,
+            cache_primary_state_tab(T, P);
+        error ->
+            error({not_a_gced_state_tab, T})
+    end.
+
+cache_primary_state_tabs() ->
+    lager:debug("Caching primary for gced tabs", []),
+    maps:fold(
+      fun(T, #{copies := Ts}, _) ->
+              Key = {primary_state_tab, T},
+              case dirty_get_chain_state_value(Key) of
+                  undefined ->
+                      P = hd(Ts),
+                      ?t(write(#aec_chain_state{key = Key, value = P})),
+                      cache_primary_state_tab(T, P);
+                  P ->
+                      cache_primary_state_tab(T, P)
+              end,
+              ok
+      end, ok, gced_tables()).
+
+cache_primary_state_tab(T, P) ->
+    lager:debug("Caching primary for ~p: ~p", [T, P]),
+    persistent_term:put({primary_state_tab, T}, P).
+
 write_accounts_node(Hash, Node) ->
-    ?t(write(#aec_account_state{key = Hash, value = Node})).
+    ?t(write(state_tab(aec_account_state), #aec_account_state{key = Hash, value = Node}, write)).
 
 write_accounts_node(Table, Hash, Node) ->
     ?t(write(Table, #aec_account_state{key = Hash, value = Node}, write)).
@@ -1092,13 +1167,13 @@ dirty_find_ns_cache_node(Hash) ->
     end.
 
 find_accounts_node(Hash) ->
-    case ?t(read(aec_account_state, Hash)) of
+    case ?t(read(state_tab(aec_account_state), Hash)) of
         [#aec_account_state{value = Node}] -> {value, Node};
         [] -> none
     end.
 
 dirty_find_accounts_node(Hash) ->
-    case ?dirty_dirty_read(aec_account_state, Hash) of
+    case ?dirty_dirty_read(state_tab(aec_account_state), Hash) of
         [#aec_account_state{value = Node}] -> {value, Node};
         [] -> none
     end.
@@ -1243,7 +1318,7 @@ load_database() ->
     lager:debug("tables loaded", []),
     convert_top_block_entry(),
     lager:debug("top block entry converted", []),
-    aec_db_gc:maybe_swap_nodes(),
+    cache_primary_state_tabs(),
     prepare_mnesia_bypass().
 
 wait_for_tables() ->
@@ -1454,6 +1529,15 @@ handle_table_errors(Tables, Mode, [{missing_table, aec_peers = Table} | Tl]) ->
 handle_table_errors(Tables, Mode, [{missing_table, aesc_state_cache_v2} | Tl]) ->
     aesc_db:create_tables(Mode),
     handle_table_errors(Tables, Mode, Tl);
+handle_table_errors(Tables, Mode, [{missing_table, Table} | Tl] = Errors) ->
+    case lists:keymember(Table, 1, Tables) of
+        true ->
+            new_table_migration(Table, Tables),
+            handle_table_errors(Tables, Mode, Tl);
+        false ->
+            lager:error("Database check failed: ~p", [Errors]),
+            erlang:error({table_check, Errors})
+    end;
 handle_table_errors(Tables, Mode, [{callback, {Mod, Fun, Args}} | Tl]) ->
     apply(Mod, Fun, Args),
     handle_table_errors(Tables, Mode, Tl);
