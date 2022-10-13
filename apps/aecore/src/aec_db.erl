@@ -1529,6 +1529,15 @@ handle_table_errors(Tables, Mode, [{missing_table, aec_peers = Table} | Tl]) ->
 handle_table_errors(Tables, Mode, [{missing_table, aesc_state_cache_v2} | Tl]) ->
     aesc_db:create_tables(Mode),
     handle_table_errors(Tables, Mode, Tl);
+handle_table_errors(Tables, Mode, [{missing_table, Table} | Tl] = Errors) ->
+    case lists:keymember(Table, 1, Tables) of
+        true ->
+            new_table_migration(Table, Tables),
+            handle_table_errors(Tables, Mode, Tl);
+        false ->
+            lager:error("Database check failed: ~p", [Errors]),
+            erlang:error({table_check, Errors})
+    end;
 handle_table_errors(Tables, Mode, [{callback, {Mod, Fun, Args}} | Tl]) ->
     apply(Mod, Fun, Args),
     handle_table_errors(Tables, Mode, Tl);

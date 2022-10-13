@@ -220,6 +220,7 @@ handle_event(info, {_, top_changed, #{info := #{block_type := key, height := Hei
        true ->
             %% in case previous key block was a fork, we can receive top_changed event
             %% with the same or lower height as seen last time
+            ?LOG("GC diffscan of accounts at height ~p", [Height]),
             ?PROTECT(collect_reachable_hashes_delta(Height, Hashes, both),
                      fun ({ok, _}) -> {keep_state, Data} end,
                      (signal_scanning_failed_keep_state(Data)))
@@ -250,8 +251,10 @@ handle_event({call, From}, maybe_garbage_collect, ready,
                      fun ({ok, _}) ->
                              Secondary = aec_db:secondary_state_tab(?TABLE_NAME),
                              aec_db:make_primary_state_tab(?TABLE_NAME, Secondary),
-                             lager:debug("GC swap time: ~p ms", [erlang:system_time(millisecond) - T0]),
+                             ?LOG("GC swap, time: ~p ms", [erlang:system_time(millisecond) - T0]),
+                             ets:delete(Hashes),
                              {next_state, idle, Data#data{hashes = undefined,
+                                                          height = undefined,
                                                           last_swap = Height},
                               {reply, From, ok}}
                      end,
@@ -295,8 +298,6 @@ collect_reachable_hashes_fullscan(Height) ->
 -spec collect_reachable_hashes_delta(non_neg_integer(), _, 'both' | 'ets') -> {'ok', _}.
 collect_reachable_hashes_delta(Height, Hashes, Tgt) ->
     MPT = get_mpt(Height),
-    ?LOG("GC diffscan at height ~p of accounts with hash ~w",
-         [Height, aeu_mp_trees:root_hash(MPT)]),
     Acc0 = case Tgt of
                ets -> Hashes;
                both -> {Hashes, aec_db:secondary_state_tab(?TABLE_NAME)}
@@ -307,8 +308,15 @@ range_collect_reachable_hashes(ToHeight, #data{height = LastHeight, hashes = Has
     range_collect_reachable_hashes_(LastHeight, ToHeight, Hashes, Tgt).
 
 range_collect_reachable_hashes_(LastHeight, ToHeight, Hashes, Tgt) ->
-    [collect_reachable_hashes_delta(H, Hashes, Tgt) || H <- lists:seq(LastHeight + 1, ToHeight)],
-    {ok, Hashes}.
+    StartHeight = LastHeight + 1,
+    if StartHeight > ToHeight ->
+            {ok, Hashes};
+       true ->
+            ?LOG("GC diffscan of accounts at heights ~p to ~p", [StartHeight, ToHeight]),
+            [collect_reachable_hashes_delta(H, Hashes, Tgt)
+             || H <- lists:seq(StartHeight, ToHeight)],
+            {ok, Hashes}
+    end.
 
     %% aec_db:make_primary_state_tab(aec_account_state, Secondary).
 
