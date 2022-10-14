@@ -133,9 +133,10 @@ start_http_api(Target, LogicHandler) ->
     Paths = aehttp_api_router:get_paths(Target, LogicHandler),
     Dispatch = cowboy_router:compile([{'_', Paths}]),
 
-    Opts = [{port, Port},
-            {ip, ListenAddress},
-            {num_acceptors, PoolSize}],
+    Opts = #{ num_acceptors => PoolSize
+            , socket_opts => [ {port, Port}
+                             , {ip, ListenAddress} ]
+            },
     Env = #{env => #{dispatch => Dispatch},
             middlewares => [aehttp_cors_middleware,
                             cowboy_router,
@@ -153,9 +154,10 @@ start_channel_websocket() ->
             {"/channel", sc_ws_handler, []}
         ]}
     ]),
-    Opts = [{port, Port},
-            {ip, ListenAddress},
-            {num_acceptors, Acceptors}],
+    Opts = #{ num_acceptors => Acceptors
+            , socket_opts => [ {port, Port}
+                             , {ip, ListenAddress} ]
+            },
     Env = #{env => #{dispatch => Dispatch}},
     lager:debug("Opts = ~p", [Opts]),
     {ok, _} = cowboy:start_clear(channels_socket, Opts, Env),
