@@ -260,11 +260,20 @@ schema_default_values(Path) ->
             RecursiveDefault =
                 fun R(_PName,
                       #{<<"type">> := <<"object">>, <<"properties">> := Props}) ->
-                          maps:map(fun(PN, #{<<"type">> := <<"object">>} = PP) -> R(PN, PP);
-                                      (_PN, #{<<"default">> := Def}) -> Def
-                                    end, Props);
+                        maps:map(fun(PN, #{<<"type">> := <<"object">>} = PP) ->
+                                         R(PN, PP);
+                                    (PN, #{<<"type">> := <<"array">>, <<"items">> := Items}) ->
+                                         [R(PN, Items)];
+                                    (_PN, #{<<"default">> := Def}) -> Def;
+                                    (_PN, _) -> undefined
+                                 end, Props);
+                    R(PName,
+                     #{<<"type">> := <<"array">>, <<"items">> := Items}) ->
+                        [R(PName, Items)];
                     R(_PName, #{<<"default">> := Def}) ->
-                        Def
+                        Def;
+                    R(_PName, _) ->
+                        undefined
                 end,
             Res = RecursiveDefault(<<"root">>, Tree),
             {ok, Res}

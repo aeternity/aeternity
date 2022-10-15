@@ -9,6 +9,7 @@
 -export([ connect/3
         , accept/2
         , close/1
+	, start_generic_acceptor/2
         , start_link/1
         ]).
 
@@ -96,12 +97,21 @@ connect(Host, Port, Opts) ->
     StartOpts = [#{fsm => self(), op => {connect, Host, Port, Opts}}],
     aesc_session_noise_sup:start_child(StartOpts).
 
-accept(#{ port := Port, responder := R } = Opts0, NoiseOpts) ->
+accept(#{ port := Port, responder := R } = Opts, NoiseOpts) ->
+    case aesc_listeners:ensure_acceptor(Port, R) of
+        ok ->
+            register_responder(Opts);
+        {error, } = Error ->
+            Error
+    end.
+
+start_generic_acceptor(LSock, Port, NoiseOpts) ->
     TcpOpts = tcp_opts(listen, NoiseOpts),
     lager:debug("listen: Opts0 = ~p; TcpOpts = ~p", [Opts0, TcpOpts]),
-    {ok, LSock} = aesc_listeners:listen(Port, R, TcpOpts),
-    Opts = Opts0#{lsock => LSock},
-    accept_(Opts, NoiseOpts).
+    Op = {accept, #{port => Port, lsock => LSock}, NoiseOpts},
+    StartOpts = [#{type => generic_acceptor, port => Port, op => Op}],
+    aesc_session_noise_sup:start_child(StartOpts),
+    ok.
 
 close(undefined) ->
     ok;
@@ -114,8 +124,10 @@ close(Session) ->
             {exit, {noproc, _}} ->
                 unlink(Session),
                 ok;
+	    {exit, {normal,_}} ->
+		ok;
             {exit, R} ->
-                lager:error("Unhandled exit error during session closing: ~p, ~p", [R, StackTrace]),
+                lager:error("Unexpected exit error during session closing: ~p, ~p", [R, StackTrace]),
                 unlink(Session),
 		kill_session(Session),
                 ok
@@ -179,6 +191,11 @@ record_fields(_ ) -> no.
 %% ==================================================================
 %% gen_server API
 
+init(#{type := generic_acceptor, port := Port, op := Op} = Arg) ->
+    lager:debug("generic_acceptor for port ~p", [Port]),
+    St = #st{ init_op = Op },
+    cast(self(), post_init),
+    {ok, St};
 init(#{fsm := Fsm, op := Op} = Arg) ->
     lager:debug("Arg = ~p", [Arg]),
     %% trap exits to avoid ugly crash reports. We rely on the monitor to
@@ -375,6 +392,19 @@ accept_(#{ initiator := I, responder := R, port := Port } = Opts, NoiseOpts) ->
     StartOpts = [#{fsm => self(), op => {accept, Opts, NoiseOpts}}],
     aesc_session_noise_sup:start_child(StartOpts).
 
+register_responder(#{ reestablish := true
+                    , chain_hash  := ChainH
+                    , channel_id  := ChId
+                    , responder   := R
+                    , port        := Port } = Opts, NoiseOpts) ->
+    Regkey = responder_reestabl_regkey(ChainH, ChId, R, Port),
+    lager:debug("Regkey = ~p", [Regkey]),
+    gproc:reg(Regkey);
+register_responder(#{ initiator := I, responder := R, port := Port } = Opts, NoiseOpts) ->
+    Regkey = responder_regkey(R, I, Port),
+    lager:debug("Regkey = ~p", [Regkey]),
+    gproc:reg(Regkey).
+
 establish({accept, #{responder := R, port := Port, lsock := LSock}, NoiseOpts}, St) ->
     lager:debug("LSock = ~p", [LSock]),
     AcceptTimeout = proplists:get_value(accept_timeout, NoiseOpts, ?ACCEPT_TIMEOUT),
@@ -399,6 +429,24 @@ establish({accept, #{responder := R, port := Port, lsock := LSock}, NoiseOpts}, 
             end;
         Err ->
             Err
+    end;
+establish({accept, #{port := Port, lsock := LSock}, NoiseOpts}, St) ->
+    lager:debug("LSock = ~p", [LSock]),
+    AcceptTimeout = proplists:get_value(accept_timeout, NoiseOpts, ?ACCEPT_TIMEOUT),
+    case accept_tcp(LSock, Port, AcceptTimeout) of
+	{ok, TcpSock} ->
+	    lager:debug("Accept TcpSock = ~p", [TcpSock]),
+	    EnoiseOpts = enoise_opts(accept, NoiseOpts),
+	    lager:debug("EnoiseOpts (accept) = ~p", [EnoiseOpts]),
+	    case enoise:accept(TcpSock, EnoiseOpts) of
+		{ok, EConn, _FinalSt} ->
+		    St1 = St#st{ econn = EConn },
+		    {ok, St1};
+		Err1 ->
+		    Err1
+	    end;
+	Err ->
+	    Err
     end;
 establish({connect, Host, Port, Opts}, St) ->
     TcpOpts = tcp_opts(connect, Opts),
@@ -434,6 +482,14 @@ sleep_retry_connect(Retries, Host, Port, TcpOpts, Opts, Timeout, St) ->
     sleep(Timeout, St#st.fsm_mon_ref),
     establish_connect(Retries, Host, Port, TcpOpts, Opts, Timeout, St).
 
+accept_tcp(LSock, Port, AcceptTimeout) ->
+    case gen_tcp:accept(LSock, AcceptTimeout) of
+        {ok, _} = Ok ->
+            Ok;
+        {error, timeout} ->
+            lager:debug("Timeout on accept call; terminate", []),
+	    {error, shutdown}
+    end.
 
 accept_tcp(LSock, Port, R, AcceptTimeout) ->
     case gen_tcp:accept(LSock, AcceptTimeout) of
@@ -449,11 +505,11 @@ accept_tcp(LSock, Port, R, AcceptTimeout) ->
                             accept_tcp(LSock, Port, R, AcceptTimeout);
                         false ->
                             lager:debug("No listeners for ~p on this port", [R]),
-                            {error, accept_timeout}
+                            {error, shutdown}
                     end;
                 _Other ->
                     lager:debug("_Other = ~p", [_Other]),
-                    {error, accept_timeout}
+                    {error, shutdown}
             end;
         Error ->
             Error

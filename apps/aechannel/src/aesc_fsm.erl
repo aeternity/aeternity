@@ -1304,7 +1304,7 @@ open(cast, {?LEAVE, Msg}, #data{ role = Role
             lager:debug("leave msg error: ~p", [E]),
             keep_state(D)
     end;
-open(cast, {?SHUTDOWN, Msg}, D) ->
+open(cast, {?SHUTDDOWN, Msg}, D) ->
     shutdown_msg_received(Msg, D);
 open(Type, Msg, D) ->
     handle_common_event(Type, Msg, discard, D).
@@ -4171,10 +4171,9 @@ invalid(What) ->
 prepare_for_reestablish(#data{ opts = Opts
                              , on_chain_id = ChanId } = D) ->
     try
-        {ok, _SessionPid} = start_noise_session(#{existing_channel_id => ChanId},
-                                                Opts#{role => responder}),
-        %% We don't save the session pid here
-        D
+        {ok, SessionPid} = start_noise_session(#{existing_channel_id => ChanId},
+					       Opts#{role => responder}),
+        D#data{session = #prelim_session{pid = SessionPid}}
     ?CATCH_LOG(_E)
             D
     end.

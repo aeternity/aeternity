@@ -137,6 +137,8 @@
                   , pick            :: integer()
                   }).
 
+-record(prelim_session, {pid :: pid()}).
+
 %% ==================================================================
 %% Records and Types
 
@@ -144,7 +146,7 @@
               , channel_status                  :: undefined | attached | open | closing
               , cur_statem_state                :: undefined | atom()
               , state                           :: aesc_offchain_state:state() | function()
-              , session                         :: undefined | pid()
+              , session                         :: undefined | pid() | #prelim_session{}
               , client                          :: undefined | pid()
               , client_mref                     :: undefined | reference()
               , client_connected = true         :: boolean()
