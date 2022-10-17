@@ -120,6 +120,7 @@ load_plugin_apps(Path) ->
                             ok;
                         Apps ->
                             lager:info("== PLUGINS: ~p ==", [Apps]),
+                            check_for_missing_deps(Apps),
                             app_ctrl:check_for_new_applications(),
                             [maybe_start_application(A) || A <- Apps],
                             ok
@@ -130,6 +131,31 @@ load_plugin_apps(Path) ->
         undefined ->
             ok
     end.
+
+check_for_missing_deps(Apps) ->
+    lists:foldr(fun(A, Acc) ->
+                        check_for_missing_deps_(A) ++ Acc
+                end, [], Apps).
+
+check_for_missing_deps_(A) ->
+    {ok, Deps} = application:get_key(A, applications),
+    Unknown = [D || D <- Deps,
+                    application:get_key(D, vsn) =:= undefined],
+    case Unknown of
+        [] -> ok;
+        _ ->
+            lager:info("UNKNOWN DEPS of ~p: ~p", [A, Unknown])
+    end,
+    look_for_neighbors(Unknown, A),
+    Unknown.
+
+look_for_neighbors(Unknown, A) ->
+    {ok, LibDir} = file:read_link(code:lib_dir(A)),
+    AParent = filename:dirname(LibDir),
+    PatchRes = try_patch_apps([atom_to_binary(App,utf8) || App <- Unknown],
+                              setup:lib_dirs_under_path(AParent)),
+    lager:info("Trying to patch unknowns: ~p", [PatchRes]).
+
 
 names_not_found(Names, Dir) ->
     case file:list_dir(Dir) of
