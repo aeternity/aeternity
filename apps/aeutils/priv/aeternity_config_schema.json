@@ -5,7 +5,7 @@
     "properties" : {
         "system" : {
             "type" : "object",
-            "additionalProperties" : true,
+            "additionalProperties" : false,
             "properties" : {
                 "maintenance_mode" : {
                     "description" : "When true, the node disables sync, mining, http endpoints etc",
