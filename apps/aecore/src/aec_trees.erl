@@ -260,14 +260,14 @@ gc_cache(Trees, TreesToGC) ->
         TreesToGC).
 
 -spec perform_pre_transformations(trees(), aetx_env:env(),
-                                  aec_hard_forks:protocol_vsn() | undefined) -> trees().
+                                  aec_hard_forks:protocol_vsn() | undefined) -> {trees(), aetx_env:env()}.
 perform_pre_transformations(Trees, TxEnv, PrevProtocol) ->
     Height = aetx_env:height(TxEnv),
     Protocol = aetx_env:consensus_version(TxEnv),
     Trees0 = aect_call_state_tree:prune(Height, Trees),
-    Trees1 = aeo_state_tree:prune(Height, Trees0),
-    Trees2 = aens_state_tree:prune(Height, Protocol, Trees1),
-    perform_pre_transformations(Trees2, TxEnv, Protocol, PrevProtocol).
+    {Trees1, TxEnv1} = aeo_state_tree:prune(Height, Trees0, TxEnv),
+    {Trees2, TxEnv2} = aens_state_tree:prune(Height, Protocol, Trees1, TxEnv1),
+    {perform_pre_transformations(Trees2, TxEnv1, Protocol, PrevProtocol), TxEnv2}.
 
 perform_pre_transformations(Trees, _TxEnv, _Protocol, undefined) ->
     %% Genesis block.

@@ -383,6 +383,7 @@ ae_operation_types() ->
      <<"Spend.amount">>,
      <<"Oracle.fee">>,
      <<"Oracle.queryfee">>,
+     <<"Oracle.refund">>,
      <<"Name.lock">>,
      <<"Name.fee">>,
      <<"Name.refund">>,
@@ -397,9 +398,11 @@ ae_operation_types() ->
      <<"Call.amount">>,
      <<"GA.amount">>,
      <<"PayingFor.fee">>,
+     <<"Chain.lock">>,
      <<"Chain.fee">>,
      <<"Chain.refund">>,
-     <<"Chain.reward">>].
+     <<"Chain.reward">>,
+     <<"Chain.amount">>].
 
 rosetta_errors() ->
     [rosetta_error_response(X)
@@ -428,26 +431,33 @@ format_block_identifier(Block) ->
     #{<<"index">> => aeapi:block_height(Block),
       <<"hash">> => aeapi:format(key_block_hash, Hash)}.
 
-format_keyblock_txs(Block) ->
-    Header = aec_blocks:to_header(Block),
-    {ok, Hash} = aec_headers:hash_header(Header),
-    ForkTxs = format_fork_txs(aec_blocks:height(Block)),
-    RewardTxs = format_reward_txs(Block),
-    BlockTxs = format_txs(aeapi:key_block_txs(Block), Hash),
-    tx_spend_operations(ForkTxs ++ RewardTxs ++ BlockTxs).
+format_keyblock_txs(KeyBlock) ->
+    KeyBlockTxs = format_block_txs(KeyBlock),
+    {ok, MicroBlocks} = aeapi:micro_blocks_at_key_block(KeyBlock),
+    BlockTxs = lists:foldl(
+        fun(MicroBlock, Acc) ->
+            BlockTxs = aeapi:micro_block_txs(MicroBlock),
+            {ok, MBHash} =
+                aec_headers:hash_header(
+                    aec_blocks:to_header(MicroBlock)),
+            Ops = format_txs(BlockTxs, MBHash),
+            [Ops | Acc]
+        end,
+    [], MicroBlocks),
+    BlockTxs1 = lists:flatten(lists:reverse(BlockTxs)),
+    tx_spend_operations(KeyBlockTxs ++ BlockTxs1).
 
 %% Format a single Tx in a block. We need to dry run all the Txs in the microblock
 %% up to and including the one we want to know about. dry run works on dummy signed
 %% Txs so the tx_hash included in the results is not the same as the one requested.
 %% Solve this by pre-filtering, then patching in the correct hash values afterwards.
 format_tx(SignedTx, MicroBlock) ->
-    {ok, PrevBlock} = aeapi:prev_block(MicroBlock),
-    {ok, Hash} =
+    {ok, MBHash} =
         aec_headers:hash_header(
-            aec_blocks:to_header(PrevBlock)),
+            aec_blocks:to_header(MicroBlock)),
     BlockTxs = aeapi:micro_block_txs(MicroBlock),
     NeededTxs = keep_tx_until(BlockTxs, aetx_sign:hash(SignedTx)),
-    Ops = format_txs(NeededTxs, Hash),
+    Ops = format_txs(NeededTxs, MBHash),
     SpendOps = tx_spend_operations(Ops),
     lists:last(SpendOps).
 
@@ -464,9 +474,9 @@ keep_tx_until([SignedTx | Txs], UntilTxHash, Acc) ->
            keep_tx_until(Txs, UntilTxHash, [SignedTx | Acc])
     end.
 
-format_txs(Txs, Hash) ->
+format_txs(Txs, MBHash) ->
     DryTxs = [{tx, aetx_sign:tx(Tx)} || Tx <- Txs],
-    case aec_dry_run:dry_run(Hash, [], DryTxs, [tx_events]) of
+    case aec_dry_run:dry_run({in, MBHash}, [], DryTxs, [tx_events]) of
         {ok, {Results, _Events}} ->
             lager:debug("dry_run Result: ~p", [Results]),
             TxHashes = [aetx_sign:hash(Tx) || Tx <- Txs],
@@ -476,7 +486,20 @@ format_txs(Txs, Hash) ->
             throw({dry_run_err, Reason})
     end.
 
-format_reward_txs(Block) ->
+format_block_txs(KeyBlock) ->
+    RewardTxs = reward_txs(KeyBlock),
+    PreTxs = expiry_txs(KeyBlock),
+    ForkTxs = hardfork_txs(aec_blocks:height(KeyBlock)),
+    case RewardTxs ++ PreTxs ++ ForkTxs of
+        [] ->
+            [];
+        KBTxs ->
+            %% Supply empty tx hash. Could invent one??
+            [{<<"">>,
+                {block, KBTxs}}]
+    end.
+
+reward_txs(Block) ->
     %% Block rewards.
     %% In this block the reward for the beneficiary 180 blocks earlier will be paid
     %% We don't store the amount on chain, so need to re-calculate
@@ -493,59 +516,69 @@ format_reward_txs(Block) ->
            Accounts =
                aeu_mtrees:to_list(
                    aec_trees:accounts(Trees)),
-           %% Supply empty tx hash. Could invent one??
-           [{<<"">>,
-            {reward,
              lists:map(fun({K, V}) ->
                           Acct = aec_accounts:deserialize(K, V),
                           {reward, {aec_accounts:pubkey(Acct), aec_accounts:balance(Acct)}}
                        end,
-                       Accounts)}}];
+                       Accounts);
        true ->
            []
     end.
 
+expiry_txs(KeyBlock) ->
+    Header = aec_blocks:to_header(KeyBlock),
+    {ok, Hash} = aec_headers:hash_header(Header),
+    Height = aec_blocks:height(KeyBlock),
+    % {ok, NextBlock} = aeapi:key_block_by_height(Height + 1),
+    % NextHeader = aec_blocks:to_header(NextBlock),
+    % {ok, NextHash} = aec_headers:hash_header(NextHeader),
+    TxEnv = aetx_env:tx_env_from_key_header(Header, Hash, aec_headers:time_in_msecs(Header), aec_headers:prev_hash(Header)),
+    Protocol = aetx_env:consensus_version(TxEnv),
+    {ok, Trees} = aec_chain:get_block_state(Hash),
+    {Trees1, TxEnv1} = aeo_state_tree:prune(Height + 1, Trees, TxEnv),
+    {_, TxEnv2} = aens_state_tree:prune(Height + 1, Protocol, Trees1, TxEnv1),
+    %% {_Trees1, Env1} = aec_trees:perform_pre_transformations(Trees, TxEnv, PrevVersion),
+    aetx_env:events(TxEnv2).
+
 %% Inject balance change operations at each of our historical hard forks
-%% The balance changes need to be in the block before the fork for Rosetta
-format_fork_txs(Height) ->
+%% The balance changes need to be in the block before the fork to keep Rosetta happy
+hardfork_txs(Height) ->
     Forks =  maps:to_list(aec_hard_forks:protocols()),
     case lists:keyfind(Height + 1, 2, Forks) of
         false ->
             [];
         {?MINERVA_PROTOCOL_VSN, _} ->
             Deltas = aec_fork_block_settings:minerva_accounts(),
-            Ops = fork_ops(Deltas),
-            [{<<"">>, {fork, Ops}}];
+            hardfork_ops(Deltas);
         {?FORTUNA_PROTOCOL_VSN, _} ->
-            Deltas = aaec_fork_block_settings:fortuna_accounts(),
-            Ops = fork_ops(Deltas),
-            [{<<"">>, {fork, Ops}}];
+            Deltas = aec_fork_block_settings:fortuna_accounts(),
+            hardfork_ops(Deltas);
         {?LIMA_PROTOCOL_VSN, _} ->
             Deltas = aec_fork_block_settings:lima_accounts(),
-            Ops = fork_ops(Deltas, []),
+            Ops = hardfork_ops(Deltas, []),
             ExtraDeltas = aec_fork_block_settings:lima_extra_accounts(),
-            Ops1 = fork_ops(ExtraDeltas, Ops),
+            Ops1 = hardfork_ops(ExtraDeltas, Ops),
             Contracts = aec_fork_block_settings:lima_contracts(),
-            Ops2 = fork_contract_ops(Contracts, Ops1),
-            [{<<"">>, {fork, lists:reverse(Ops2)}}];
+            Ops2 = hardfork_contract_ops(Contracts, Ops1),
+            lists:reverse(Ops2);
         {?IRIS_PROTOCOL_VSN, _} ->
             [];
         _ ->
             []
     end.
 
-fork_ops(Deltas) ->
+hardfork_ops(Deltas) ->
     lists:map(fun({K, V}) ->
                           {fork, {K, V}}
                        end,
                        Deltas).
 
-fork_ops(Deltas, Acc0) ->
+hardfork_ops(Deltas, Acc0) ->
     lists:foldl(fun({PubKey, Amount}, Acc) ->
         [{fork, {PubKey, Amount}} | Acc]
     end, Acc0, Deltas).
 
-fork_contract_ops(Contracts, Acc0) ->
+hardfork_contract_ops(Contracts, Acc0) ->
     lists:foldl(fun(#{pubkey := PubKey, amount := Amount}, Acc) ->
         [{fork, {PubKey, Amount}} | Acc]
     end, Acc0, Contracts).
@@ -566,23 +599,16 @@ tx_spend_ops({_Type, {ok, Events, CallObj}}) ->
     case ReturnType of
         <<"ok">> ->
             lists:foldl(fun tx_spend_op/2, {[], 0}, Events);
-        <<"error">> ->
+        Fail when Fail == <<"error">>; Fail == <<"revert">> ->
             %% Just take the fees
             lists:foldl(fun tx_spend_op/2, {[], 0}, Events)
     end;
-tx_spend_ops({reward, RewardOps}) ->
-    lists:foldl(fun tx_spend_op/2, {[], 0}, RewardOps).
+tx_spend_ops({block, BlockOps}) ->
+    lists:foldl(fun tx_spend_op/2, {[], 0}, BlockOps).
 
-tx_spend_op({{internal_call_tx, _Key}, #{info := Tx}}, {Acc, Ix}) ->
-    {CB, TxI} = aetx:specialize_callback(Tx),
-    TxS = CB:for_client(TxI),
-    #{<<"sender_id">> := From,
-      <<"recipient_id">> := To,
-      <<"amount">> := Amount} =
-        TxS,
-    FromOp = spend_tx_op(Ix, <<"Spend.amount">>, From, -Amount),
-    ToOp = spend_tx_op(Ix + 1, <<"Spend.amount">>, To, Amount),
-    {[ToOp, FromOp | Acc], Ix + 2};
+tx_spend_op({{internal_call_tx, _Key}, _}, {Acc, Ix}) ->
+    %% Balance change ops with contract calls 
+    {Acc, Ix};
 tx_spend_op({{spend, {SenderPubkey, RecipientPubkey, Amount}}, #{type := _Type}},
             {Acc, Ix}) ->
     From = aeapi:format(account_pubkey, SenderPubkey),
@@ -597,6 +623,10 @@ tx_spend_op({{delta, {Pubkey, Amount}}, #{info := Info}}, {Acc, Ix}) ->
 tx_spend_op({reward, {Pubkey, Amount}}, {Acc, Ix}) ->
     To = aeapi:format(account_pubkey, Pubkey),
     Op = spend_tx_op(Ix, <<"Chain.reward">>, To, Amount),
+    {[Op | Acc], Ix + 1};
+tx_spend_op({fork, {Pubkey, Amount}}, {Acc, Ix}) ->
+    To = aeapi:format(account_pubkey, Pubkey),
+    Op = spend_tx_op(Ix, <<"Chain.amount">>, To, Amount),
     {[Op | Acc], Ix + 1};
 tx_spend_op({{channel, _Pubkey}, #{}}, {Acc, Ix}) ->
     {Acc, Ix}.
@@ -710,7 +740,9 @@ retrieve_block_from_partial_block_identifier(Req) ->
             end
     end.
 
-%% For rosetta we need the balance after the transactions in the block have been applied
+%% For rosetta we need the balance after the transactions in the block have been applied.
+%% It assumes everything is done in the single block that's being queried, which makes sense for
+%% BTC and ETH, but not really for us with our microblocks.
 retrieve_block_and_account_from_partial_block_identifier(PubKey, Req) ->
     case Req of
         #{<<"block_identifier">> := #{<<"index">> := Index}} ->

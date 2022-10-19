@@ -938,4 +938,5 @@ namefee(Name, Cfg) ->
 perform_pre_transformations(Trees, Height) ->
     TxEnv = aetx_env:tx_env(Height),
     PrevProtocol = aec_hard_forks:protocol_effective_at_height(Height - 1),
-    aec_trees:perform_pre_transformations(Trees, TxEnv, PrevProtocol).
+    {Trees1, _} = aec_trees:perform_pre_transformations(Trees, TxEnv, PrevProtocol),
+    Trees1.

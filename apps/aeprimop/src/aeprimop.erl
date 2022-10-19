@@ -1452,7 +1452,7 @@ ga_attach({OwnerPubkey, GasLimit, GasPrice, ABIVersion,
     %% and the deposit (stored in the contract) to the contract owner (caller),
     CTVersion      = #{vm => VMVersion, abi => ABIVersion},
     S2             = if OwnerAmount > 0 ->
-                            Sx = tx_event({delta, {OwnerPubkey, -Fee}, <<"Chain.fee">>}, S1),
+                            Sx = tx_event({delta, {OwnerPubkey, -OwnerAmount}, <<"Chain.fee">>}, S1),
                             account_spend(Account, OwnerAmount, Sx);
                         true ->
                             S1
@@ -1647,16 +1647,13 @@ tx_event_op(Kind, Name) ->
 tx_event_op(Kind, Name, Info) ->
     {tx_event, {Kind, Name, Info}}.
 
-%% tx_event({delta, {ContractPubkey, Amount}, <<"Contract.amount">>}, S5),
 -spec tx_event({channel, pubkey()}, state()) -> state().
 tx_event({Kind, Name}, #state{tx_env = Env} = S) ->
     S#state{tx_env = aetx_env:tx_event(Kind, Name, Env)};
 tx_event({Kind, {From, {var, Tag}, Amount}, Info}, #state{tx_env = Env} = S) ->
-    lager:debug("tx_event variable = ~p", [{Kind, {{var, Tag}, Amount}, Info}]),
     Account = aeprimop_state:get_var({var, Tag}, account, S),
     S#state{tx_env = aetx_env:tx_event(Kind, {From, Account, Amount}, Info, Env)};
 tx_event({Kind, Name, Info}, #state{tx_env = Env} = S) ->
-    lager:debug("tx_event account = ~p", [{Kind, Name, Info}]),
     S#state{tx_env = aetx_env:tx_event(Kind, Name, Info, Env)}.
 
 %%%-------------------------------------------------------------------
@@ -1889,7 +1886,8 @@ int_lock_amount(Amount, S) when ?IS_NON_NEG_INTEGER(Amount) ->
     LockPubkey = aec_governance:locked_coins_holder_account(),
     {Account, S1} = ensure_account(LockPubkey, S),
     %% FIXME: Re-evaluate whether we need to track this account for Rosetta
-    account_earn(Account, Amount, S1).
+    S2 = tx_event({delta, {LockPubkey, Amount}, <<"Chain.lock">>}, S1),
+    account_earn(Account, Amount, S2).
 
 -spec int_resolve_name(hash(), binary(), state()) -> {pubkey(), state()} | no_return().
 int_resolve_name(NameHash, Key, S) ->

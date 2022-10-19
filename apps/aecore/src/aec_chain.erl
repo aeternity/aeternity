@@ -60,8 +60,11 @@
 %%% Oracles API
 -export([ get_oracles/2
         , get_oracle/1
+        , get_oracle_at_hash/2
         , get_oracle_queries/4
+        , get_oracle_queries_at_hash/5
         , get_oracle_query/2
+        , get_oracle_query_at_hash/3
         ]).
 
 %%% Contracts API
@@ -151,13 +154,30 @@ get_oracle(Pubkey) ->
         error -> {error, no_state_trees}
     end.
 
+-spec get_oracle_at_hash(aec_keys:pubkey(), binary()) ->
+    {ok, aeo_oracles:oracle()} | {error, not_found} | {error, no_state_trees}.
+get_oracle_at_hash(PubKey, Hash) ->
+    case get_block_state_partial(Hash, [oracles]) of
+        {ok, Trees} ->
+            get_oracle(PubKey, aec_trees:oracles(Trees));
+        error -> {error, no_state_trees}
+    end.
+
 -spec get_oracle_queries(aec_keys:pubkey(), binary() | '$first', open | closed | all, non_neg_integer()) ->
     {ok, [aeo_query:query()]} | {error, no_state_trees}.
 get_oracle_queries(Oracle, From, QueryType, Max) ->
     case get_top_state() of
         {ok, Trees} ->
-            OT = aec_trees:oracles(Trees),
-            {ok, aeo_state_tree:get_oracle_queries(Oracle, From, QueryType, Max, OT)};
+            get_oracle_queries(Oracle, From, QueryType, Max, aec_trees:oracles(Trees));
+        error -> {error, no_state_trees}
+    end.
+
+-spec get_oracle_queries_at_hash(aec_keys:pubkey(), binary() | '$first', open | closed | all, non_neg_integer(), binary()) ->
+    {ok, [aeo_query:query()]} | {error, no_state_trees}.
+get_oracle_queries_at_hash(Oracle, From, QueryType, Max, Hash) ->
+    case get_block_state_partial(Hash, [oracles]) of
+        {ok, Trees} ->
+            get_oracle_queries(Oracle, From, QueryType, Max, aec_trees:oracles(Trees));
         error -> {error, no_state_trees}
     end.
 
@@ -165,6 +185,14 @@ get_oracle_queries(Oracle, From, QueryType, Max) ->
     {ok, aeo_query:query()} | {error, not_found} | {error, no_state_trees}.
 get_oracle_query(Pubkey, Id) ->
     case get_top_state() of
+        {ok, Trees} -> get_oracle_query(Pubkey, Id, aec_trees:oracles(Trees));
+        error -> {error, no_state_trees}
+    end.
+
+-spec get_oracle_query_at_hash(aec_keys:pubkey(), aeo_query:id(), binary()) ->
+    {ok, aeo_query:query()} | {error, not_found} | {error, no_state_trees}.
+get_oracle_query_at_hash(Pubkey, Id, Hash) ->
+    case get_block_state_partial(Hash, [oracles]) of
         {ok, Trees} -> get_oracle_query(Pubkey, Id, aec_trees:oracles(Trees));
         error -> {error, no_state_trees}
     end.
@@ -180,6 +208,9 @@ get_oracle_query(Pubkey, Id, Trees) ->
         {value, Query} -> {ok, Query};
         none -> {error, not_found}
     end.
+
+get_oracle_queries(Oracle, From, QueryType, Max, Trees) ->
+    {ok, aeo_state_tree:get_oracle_queries(Oracle, From, QueryType, Max, Trees)}.
 
 %%%===================================================================
 %%% State channels

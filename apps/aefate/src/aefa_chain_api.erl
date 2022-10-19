@@ -382,6 +382,8 @@ check_delegation_signature(Pubkey, Binary, Signature,
 %% SpendTx = aec_spend_tx:new(#{sender_id => aeser_id:create(account, FromPubkey), ...})
 spend(FromPubkey, ToPubkey, Amount, State) ->
     eval_primops([ aeprimop:spend_op(FromPubkey, ToPubkey, Amount)
+                 , aeprimop:tx_event_op(delta, {FromPubkey, -Amount}, <<"Spend.amount">>)
+                 , aeprimop:tx_event_op(delta, {ToPubkey, Amount}, <<"Spend.amount">>)
                  , tx_event_op(spend, {FromPubkey, ToPubkey, Amount}, <<"Chain.spend">>)
                  ], State).
 
@@ -391,6 +393,8 @@ spend(FromPubkey, ToPubkey, Amount, State) ->
 %% transfer_value might be needed.
 transfer_value(FromPubkey, ToPubkey, Amount, State) ->
     eval_primops([ aeprimop:transfer_value_op(FromPubkey, ToPubkey, Amount)
+                 , aeprimop:tx_event_op(delta, {FromPubkey, -Amount}, <<"Spend.amount">>)
+                 , aeprimop:tx_event_op(delta, {ToPubkey, Amount}, <<"Spend.amount">>)
                  , tx_event_op(spend, {FromPubkey, ToPubkey, Amount}, <<"Call.amount">>)
                  ], State).
 
@@ -556,7 +560,7 @@ oracle_query(OraclePubkey, SenderPubkey, Question, QFee, QTTLType, QTTL, RTTL,
                     Gas = ttl_gas(oracle_query_tx, QTTL1) + size_gas([Question1]),
                     Ins   = [ aeprimop:force_inc_account_nonce_op(SenderPubkey, Nonce)
                             , aeprimop:spend_fee_op(SenderPubkey, QFee)
-                              %% TODO: Should we add a tx event for spend_fee?
+                            , aeprimop:tx_event_op(delta, {SenderPubkey, -QFee}, <<"Oracle.queryfee">>)
                             , tx_event_op(oracle_query, {OraclePubkey, SenderPubkey,
                                                          Question1, QFee,
                                                          ora_ttl(QTTLType, QTTL),

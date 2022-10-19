@@ -26,13 +26,21 @@
         , key_block_by_height/1
         , key_block_by_hash/1
         , key_block_txs/1
-        , micro_blocks_at_key_block_height/1
+        , micro_blocks_at_key_block/1
         , micro_block_txs/1
         , prev_key_block/1
         , prev_block/1
         , generation_by_height/1
 
         , balance_at_height/2
+        , balance_at_block/2
+
+        , oracle_at_block/2
+        , oracle_at_height/2
+        , oracle_queries_at_block/5
+        , oracle_queries_at_height/5
+        , oracle_query_at_block/3
+        , oracle_query_at_height/3
 
         %% Dealing with id records
         , create_id/2
@@ -111,7 +119,7 @@ block_height(Block) ->
 block_time_in_msecs(Block) ->
     aec_blocks:time_in_msecs(Block).
 
-micro_blocks_at_key_block_height(KeyBlock) ->
+micro_blocks_at_key_block(KeyBlock) ->
     {ok, BlockHash} = aec_headers:hash_header(aec_blocks:to_key_header(KeyBlock)),
     case aec_chain:get_generation_by_hash(BlockHash, forward) of
         {ok, #{micro_blocks := MicroBlocks}} ->
@@ -284,6 +292,9 @@ encode_generation(KeyBlock, MicroBlocks, PrevBlockType) ->
                            aeser_api_encoder:encode(micro_block_hash, Hash)
                        end || M <- MicroBlocks]}.
 
+%% @doc Lookup the opening balance of an account or contract at the keyblock with the given height.
+%% Example:
+%% ```balance_at_height(<<"ak_2HuVfa8qJmYeJPb5ntE5dXre9e4pmFEq9FYthvemB7idvbjUbE">>, ) -> {ok, 200}.'''
 balance_at_height(Address, Height) ->
     AllowedTypes = [account_pubkey, contract_pubkey],
     case create_id(Address, AllowedTypes) of
@@ -294,3 +305,59 @@ balance_at_height(Address, Height) ->
         _ ->
             {error, invalid_pubkey}
     end.
+
+balance_at_block(AccountAddress, BlockHash) ->
+    AllowedTypes = [account_pubkey, contract_pubkey],
+    {ok, Id} = create_id(AccountAddress, AllowedTypes),
+    PubKey = aeapi:id_value(Id),
+    {_BlockType, Hash} = aeser_api_encoder:decode(BlockHash),
+    {value, Account} = aec_chain:get_account_at_hash(PubKey, Hash),
+    {ok, aec_accounts:balance(Account)}.
+
+oracle_at_height(OracleAddress, Height) ->
+    {oracle_pubkey, OraclePubkey} = decode(OracleAddress),
+    {ok, KeyBlock} = key_block_by_height(Height),
+    Header = aec_blocks:to_header(KeyBlock),
+    {ok, Hash} = aec_headers:hash_header(Header),
+    aec_chain:get_oracle_at_hash(OraclePubkey, Hash).
+
+oracle_at_block(OracleAddress, BlockHash) ->
+    {oracle_pubkey, OraclePubkey} = decode(OracleAddress),
+    {_BlockType, Hash} = aeser_api_encoder:decode(BlockHash),
+    aec_chain:get_oracle_at_hash(OraclePubkey, Hash).
+
+oracle_query_at_height(OracleAddress, QueryId, Height) ->
+    {oracle_pubkey, OraclePubkey} = decode(OracleAddress),
+    {oracle_query_id, Query} = decode(QueryId),
+    {ok, KeyBlock} = key_block_by_height(Height),
+    Header = aec_blocks:to_header(KeyBlock),
+    {ok, Hash} = aec_headers:hash_header(Header),
+    get_oracle_query_at_hash(OraclePubkey, Query, Hash).
+
+oracle_query_at_block(OracleAddress, QueryId, BlockHash) ->
+    {oracle_pubkey, OraclePubkey} = decode(OracleAddress),
+    {oracle_query_id, Query} = decode(QueryId),
+    {_BlockType, Hash} = aeser_api_encoder:decode(BlockHash),
+    get_oracle_query_at_hash(OraclePubkey, Query, Hash).
+
+get_oracle_query_at_hash(OraclePubkey, Query, Hash) ->
+    case aec_chain:get_oracle_query_at_hash(OraclePubkey, Query, Hash) of
+        {ok, Q} ->
+            {ok, aeo_query:serialize_for_client(Q)};
+        Else ->
+            Else
+    end.
+
+oracle_queries_at_height(OracleAddress, From, QueryType, Max, Height) ->
+    {oracle_pubkey, OraclePubkey} = decode(OracleAddress),
+    {ok, KeyBlock} = key_block_by_height(Height),
+    Header = aec_blocks:to_header(KeyBlock),
+    {ok, Hash} = aec_headers:hash_header(Header),
+    aec_chain:get_oracle_queries_at_hash(OraclePubkey, From, QueryType, Max, Hash).
+
+-spec oracle_queries_at_block(aec_keys:pubkey(), binary() | '$first', open | closed | all, non_neg_integer(), aeser_api_encoder:encoded()) ->
+    {ok, [aeo_query:query()]} | {error, no_state_trees}.
+oracle_queries_at_block(OracleAddress, From, QueryType, Max, BlockHash) ->
+    {oracle_pubkey, OraclePubkey} = decode(OracleAddress),
+    {_BlockType, Hash} = aeser_api_encoder:decode(BlockHash),
+    aec_chain:get_oracle_queries_at_hash(OraclePubkey, From, QueryType, Max, Hash).
