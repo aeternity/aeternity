@@ -53,6 +53,7 @@
         , aens_claim/5
         , aens_preclaim/4
         , aens_resolve/3
+        , aens_resolve_name_hash/3
         , aens_revoke/3
         , aens_transfer/4
         , aens_update/6
@@ -812,26 +813,37 @@ aens_resolve(NameString, Key, S) ->
             Err
     end.
 
+aens_resolve_name_hash(NameHash, Key, S) ->
+    case aens_resolve_name_hash_from_pstate(NameHash, Key, get_pstate(S)) of
+        {ok, Tag, Pubkey, PState1} ->
+            {ok, Tag, Pubkey, set_pstate(PState1, S)};
+        none ->
+            none
+    end.
+
 aens_resolve_from_pstate(NameString, Key, PState) ->
     case aens_utils:to_ascii(NameString) of
         {ok, NameAscii} ->
             NameHash = aens_hash:name_hash(NameAscii),
-            case aeprimop_state:find_name(NameHash, PState) of
-                {Name, PState1} ->
-                    case aens:resolve_from_name_object(Key, Name) of
-                        {ok, Id} ->
-                            {Tag, Pubkey} = aeser_id:specialize(Id),
-                            {ok, Tag, Pubkey, PState1};
-                        {error, name_revoked} ->
-                            none;
-                        {error, pointer_id_not_found} ->
-                            none
-                    end;
-                none ->
-                    none
-            end;
+            aens_resolve_name_hash_from_pstate(NameHash, Key, PState);
         {error, _} = Err ->
             Err
+    end.
+
+aens_resolve_name_hash_from_pstate(NameHash, Key, PState) ->
+    case aeprimop_state:find_name(NameHash, PState) of
+        {Name, PState1} ->
+            case aens:resolve_from_name_object(Key, Name) of
+                {ok, Id} ->
+                    {Tag, Pubkey} = aeser_id:specialize(Id),
+                    {ok, Tag, Pubkey, PState1};
+                {error, name_revoked} ->
+                    none;
+                {error, pointer_id_not_found} ->
+                    none
+            end;
+        none ->
+            none
     end.
 
 aens_preclaim(Pubkey, Hash, #state{} = S, VmVersion) when ?IS_ONCHAIN(S) ->

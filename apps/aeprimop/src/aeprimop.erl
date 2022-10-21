@@ -1745,7 +1745,7 @@ contract_init_call_success(Type, InitCall, Contract, GasLimit, Fee, RollbackS, S
 set_call_object_id(Call, #state{ tx_env = TxEnv }) ->
     case aetx_env:ga_nonce(TxEnv, aect_call:caller_pubkey(Call)) of
         {value, Nonce} ->
-            CallId = aect_call:ga_id(Nonce, aect_call:contract_pubkey(Call)),
+            CallId = aect_call:ga_id(Nonce, aect_call:ct_call_id(Call)),
             aect_call:set_id(CallId, Call);
         none ->
             Call
