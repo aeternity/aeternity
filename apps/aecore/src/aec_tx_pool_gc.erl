@@ -244,12 +244,31 @@ origins_cache_gc(#state{origins_cache = OriginsCache, dbs = Dbs}) ->
     case origins_cache_get(OriginsCache, ?OC_ENTRIES_TO_PROCESS_COUNT) of
         [] -> ok;
         CacheEntries ->
-            case aec_chain:get_block_state(aec_chain:top_block_hash()) of
+            case aec_db:ensure_activity(
+                   async_dirty,
+                   fun() ->
+                           aec_chain:get_block_state(aec_chain:top_block_hash())
+                   end) of
                 error ->
                     lager:info("Error trying to get top block state");
                 {ok, Trees} ->
                     AccountsTree = aec_trees:accounts(Trees),
-                    origins_cache_gc(CacheEntries, AccountsTree, OriginsCache, Dbs)
+                    %% We run this in a dirty context, even though we are deleting
+                    %% some txs from the db. The deletions are from the tx_pool table.
+                    TxsForGc =
+                        aec_db:ensure_activity(
+                          async_dirty,
+                          fun() ->
+                                  origins_cache_gc(CacheEntries, AccountsTree, OriginsCache, Dbs)
+                          end),
+                    aec_db:ensure_activity(
+                      transaction,
+                      fun() ->
+                              lists:foreach(
+                                fun(Txs) ->
+                                        remove_txs_from_dbs(Txs, Dbs)
+                                end, TxsForGc)
+                      end)
             end
     end.
 
@@ -260,26 +279,31 @@ origins_cache_get(OriginsCache, Size) ->
         {Entries, _Cont} -> Entries
     end.
 
-origins_cache_gc([], _AccountsTree, _OriginsCache, _Dbs) ->
-    ok;
-origins_cache_gc([{Origin, Nonce} | Rest], AccountsTree, OriginsCache, Dbs) ->
-    case aec_tx_pool:pool_db_peek(Dbs, ?OC_TXS_PER_ORIGIN_COUNT, Origin, Nonce) of
-        [] ->
-            %% No hanging stale transactions, remove Origin from cache
-            true = ets:delete(OriginsCache, Origin);
-        SignedTxs ->
-            %% Origin cache information may be stale.
-            %% Re-check transactions, based on the account nonce from
-            %% accounts state tree.
-            case get_account(Origin, AccountsTree) of
-                none -> ok;
-                {value, Account} ->
-                    AccountNonce = aec_accounts:nonce(Account),
-                    SignedTxsForGc = filter_txs_by_account_nonce(SignedTxs, AccountNonce),
-                    remove_txs_from_dbs(SignedTxsForGc, Dbs)
-            end
-    end,
-    origins_cache_gc(Rest, AccountsTree, OriginsCache, Dbs).
+origins_cache_gc(Entries, Tree, OriginsCache, Dbs) ->
+    origins_cache_gc(Entries, Tree, OriginsCache, Dbs, []).
+
+origins_cache_gc([], _AccountsTree, _OriginsCache, _Dbs, Acc) ->
+    Acc;
+origins_cache_gc([{Origin, Nonce} | Rest], AccountsTree, OriginsCache, Dbs, Acc) ->
+    Acc1 = case aec_tx_pool:pool_db_peek(Dbs, ?OC_TXS_PER_ORIGIN_COUNT, Origin, Nonce) of
+               [] ->
+                   %% No hanging stale transactions, remove Origin from cache
+                   true = ets:delete(OriginsCache, Origin),
+                   Acc;
+               SignedTxs ->
+                   %% Origin cache information may be stale.
+                   %% Re-check transactions, based on the account nonce from
+                   %% accounts state tree.
+                   case get_account(Origin, AccountsTree) of
+                       none ->
+                           Acc;
+                       {value, Account} ->
+                           AccountNonce = aec_accounts:nonce(Account),
+                           SignedTxsForGc = filter_txs_by_account_nonce(SignedTxs, AccountNonce),
+                           [SignedTxsForGc | Acc]
+                   end
+           end,
+    origins_cache_gc(Rest, AccountsTree, OriginsCache, Dbs, Acc1).
 
 filter_txs_by_account_nonce(SignedTxs, AccountNonce) ->
     lists:filter(fun(SignedTx) ->
