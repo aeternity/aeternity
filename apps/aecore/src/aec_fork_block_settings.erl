@@ -254,15 +254,10 @@ accounts_file_name(Release) ->
     case is_list(os:getenv("AE__SYSTEM__CUSTOM_PREFUNDED_ACCS_FILE")) of
         false ->
             filename:join([dir(Release), accounts_json_file()]);
-        DevmodeAccsFilePath -> DevmodeAccsFilePath
-    end.
-    
-is_devmode_accounts_present() ->
-    Workspace = lists:last(filename:split(os:getenv("AE__CHAIN__DB_PATH"))),
-    FilePath = filename:join(os:getenv("AE__CHAIN__DB_PATH"), "devmode_prefunded_accs_" ++ Workspace ++ ".json"),
-    case filelib:is_regular(FilePath) of
-        true ->  FilePath;
-        false -> false        
+        true -> 
+            CustomAccsFilePath = os:getenv("AE__SYSTEM__CUSTOM_PREFUNDED_ACCS_FILE"),
+            lager:info("Custom file for prefunded accounts provided: ~p ~n", [CustomAccsFilePath]),
+            CustomAccsFilePath
     end.
 
 extra_accounts_file_name(Release) ->
