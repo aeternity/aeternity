@@ -11,6 +11,8 @@
 %%%-------------------------------------------------------------------
 -module(aeapi).
 
+-include_lib("aecontract/include/hard_forks.hrl").
+
 -export([
          blockchain_name/0
         , network_id/0
@@ -34,6 +36,8 @@
 
         , balance_at_height/2
         , balance_at_block/2
+        , balance_change_events_in_tx/2
+        , balance_change_events_in_block/1
 
         , oracle_at_block/2
         , oracle_at_height/2
@@ -284,6 +288,182 @@ generation_by_height(Height) when is_integer(Height) ->
             end
     end.
 
+%% Format a single Tx in a block. We need to dry run all the Txs in the microblock
+%% up to and including the one we want to know about. dry run works on dummy signed
+%% Txs so the tx_hash included in the results is not the same as the one requested.
+%% Solve this by pre-filtering, then patching in the correct hash values afterwards.
+balance_change_events_in_tx(SignedTx, MicroBlock) ->
+    {ok, MBHash} =
+        aec_headers:hash_header(
+            aec_blocks:to_header(MicroBlock)),
+    BlockTxs = aeapi:micro_block_txs(MicroBlock),
+    NeededTxs = keep_tx_until(BlockTxs, aetx_sign:hash(SignedTx)),
+    Ops = format_txs(NeededTxs, MBHash),
+    SpendOps = tx_spend_operations(Ops),
+    lists:last(SpendOps).
+
+
+keep_tx_until(Txs, TxHash) ->
+    keep_tx_until(Txs, TxHash, []).
+
+keep_tx_until([], _UntilTxHash, _Acc) ->
+    [];
+keep_tx_until([SignedTx | Txs], UntilTxHash, Acc) ->
+    TxHash = aetx_sign:hash(SignedTx),
+    if TxHash == UntilTxHash ->
+           lists:reverse([SignedTx | Acc]);
+       true ->
+           keep_tx_until(Txs, UntilTxHash, [SignedTx | Acc])
+    end.
+
+balance_change_events_in_block(Block) ->
+    case aec_blocks:type(Block) of
+        micro ->
+            BlockTxs = micro_block_txs(Block),
+            {ok, MBHash} =
+                aec_headers:hash_header(
+                    aec_blocks:to_header(Block)),
+            Txs = format_txs(BlockTxs, MBHash),
+            tx_spend_operations(Txs);
+        key ->
+            {ok, MicroBlocks} = micro_blocks_at_key_block(Block),
+            % BlockTxs = lists:foldl(
+            %     fun(MicroBlock, Acc) ->
+            %         BlockTxs = micro_block_txs(MicroBlock),
+            %         {ok, MBHash} =
+            %             aec_headers:hash_header(
+            %                 aec_blocks:to_header(MicroBlock)),
+            %         Ops = format_txs(BlockTxs, MBHash),
+            %         [Ops | Acc]
+            %     end,
+            % [], MicroBlocks),
+
+            {BlockTxs, []} = pmap(
+                fun(MicroBlock) ->
+                    BlockTxs = micro_block_txs(MicroBlock),
+                    {ok, MBHash} =
+                        aec_headers:hash_header(
+                            aec_blocks:to_header(MicroBlock)),
+                    format_txs(BlockTxs, MBHash)
+                end,
+                MicroBlocks, 600000),
+            BlockTxs1 = lists:flatten(lists:reverse(BlockTxs)),
+            KeyBlockTxs = format_block_txs(Block),
+            tx_spend_operations(KeyBlockTxs ++ BlockTxs1)
+    end.
+
+format_txs(Txs, MBHash) ->
+    DryTxs = [{tx, aetx_sign:tx(Tx)} || Tx <- Txs],
+    case aec_dry_run:dry_run({in, MBHash}, [], DryTxs, [tx_events]) of
+        {ok, {Results, _Events}} ->
+            TxHashes = [aetx_sign:hash(Tx) || Tx <- Txs],
+            lists:zip(TxHashes, Results);
+        {error, Reason} ->
+            lager:debug("dry_run_error: ~p", [Reason]),
+            throw({dry_run_err, Reason})
+    end.
+
+format_block_txs(KeyBlock) ->
+    RewardTxs = reward_txs(KeyBlock),
+    PreTxs = expiry_txs(KeyBlock),
+    ForkTxs = hardfork_txs(aec_blocks:height(KeyBlock)),
+    case RewardTxs ++ PreTxs ++ ForkTxs of
+        [] ->
+            [];
+        KBTxs ->
+            %% Supply empty tx hash. Could invent one??
+            [{<<"">>,
+                {block, KBTxs}}]
+    end.
+
+expiry_txs(KeyBlock0) ->
+    Height = aec_blocks:height(KeyBlock0),
+    {ok, KeyBlock} = aeapi:key_block_by_height(Height + 1),
+    Header = aec_blocks:to_header(KeyBlock),
+    {ok, Hash} = aec_headers:hash_header(Header),
+    TxEnv = aetx_env:tx_env_from_key_header(Header, Hash, aec_headers:time_in_msecs(Header), aec_headers:prev_hash(Header)),
+
+    %% Take the trees from the end of the last microblock of the prev tx
+    PrevHash = aec_headers:prev_hash(Header),
+    {ok, Trees} = aec_chain:get_block_state(PrevHash),
+    Protocol = aetx_env:consensus_version(TxEnv),
+    {Trees1, TxEnv1} = aeo_state_tree:prune(Height + 1, Trees, TxEnv),
+    {_, TxEnv2} = aens_state_tree:prune(Height + 1, Protocol, Trees1, TxEnv1),
+    %% Could possibly just use this call to take care of everything including hard fork accounts:
+    %% {_Trees1, Env1} = aec_trees:perform_pre_transformations(Trees, TxEnv, PrevVersion),
+    %% Possibly later
+    aetx_env:events(TxEnv2).
+
+
+reward_txs(Block) ->
+    %% Block rewards.
+    %% In this block the reward for the beneficiary 180 blocks earlier will be paid
+    %% We don't store the amount on chain, so need to re-calculate
+    Delay = aec_governance:beneficiary_reward_delay(),
+    {ok, TopBlock} = aeapi:top_key_block(),
+    TopHeight = aec_blocks:height(TopBlock),
+    Height = aec_blocks:height(Block),
+    if Height >= Delay, Height < TopHeight ->
+           %% For Rosetta the reward Txs need to be in the block before the Beneficiary
+           %% account has their updated balance. No rewards yet at the top
+           {ok, NextBlock} = aeapi:key_block_by_height(Height + 1),
+           Node = aec_chain_state:wrap_block(NextBlock),
+           Trees = aec_chain_state:grant_fees(Node, aec_trees:new(), Delay, false, nil),
+           Accounts =
+               aeu_mtrees:to_list(
+                   aec_trees:accounts(Trees)),
+             lists:map(fun({K, V}) ->
+                          Acct = aec_accounts:deserialize(K, V),
+                          {reward, {aec_accounts:pubkey(Acct), aec_accounts:balance(Acct)}}
+                       end,
+                       Accounts);
+       true ->
+           []
+    end.
+
+%% Inject balance change operations at each of our historical hard forks
+%% The balance changes need to be in the block before the fork to keep Rosetta happy
+hardfork_txs(Height) ->
+    Forks =  maps:to_list(aec_hard_forks:protocols()),
+    case lists:keyfind(Height + 1, 2, Forks) of
+        false ->
+            [];
+        {?MINERVA_PROTOCOL_VSN, _} ->
+            Deltas = aec_fork_block_settings:minerva_accounts(),
+            hardfork_ops(Deltas);
+        {?FORTUNA_PROTOCOL_VSN, _} ->
+            Deltas = aec_fork_block_settings:fortuna_accounts(),
+            hardfork_ops(Deltas);
+        {?LIMA_PROTOCOL_VSN, _} ->
+            Deltas = aec_fork_block_settings:lima_accounts(),
+            Ops = hardfork_ops(Deltas, []),
+            ExtraDeltas = aec_fork_block_settings:lima_extra_accounts(),
+            Ops1 = hardfork_ops(ExtraDeltas, Ops),
+            Contracts = aec_fork_block_settings:lima_contracts(),
+            Ops2 = hardfork_contract_ops(Contracts, Ops1),
+            lists:reverse(Ops2);
+        {?IRIS_PROTOCOL_VSN, _} ->
+            [];
+        _ ->
+            []
+    end.
+
+hardfork_ops(Deltas) ->
+    lists:map(fun({K, V}) ->
+                          {fork, {K, V}}
+                       end,
+                       Deltas).
+
+hardfork_ops(Deltas, Acc0) ->
+    lists:foldl(fun({PubKey, Amount}, Acc) ->
+        [{fork, {PubKey, Amount}} | Acc]
+    end, Acc0, Deltas).
+
+hardfork_contract_ops(Contracts, Acc0) ->
+    lists:foldl(fun(#{pubkey := PubKey, amount := Amount}, Acc) ->
+        [{fork, {PubKey, Amount}} | Acc]
+    end, Acc0, Contracts).
+
 encode_generation(KeyBlock, MicroBlocks, PrevBlockType) ->
     Header = aec_blocks:to_header(KeyBlock),
     #{<<"key_block">> => aec_headers:serialize_for_client(Header, PrevBlockType),
@@ -291,6 +471,66 @@ encode_generation(KeyBlock, MicroBlocks, PrevBlockType) ->
                            {ok, Hash} = aec_blocks:hash_internal_representation(M),
                            aeser_api_encoder:encode(micro_block_hash, Hash)
                        end || M <- MicroBlocks]}.
+
+
+tx_spend_operations(Results) ->
+    lists:map(fun({TxHash, Result}) ->
+                    {Res, _} = tx_spend_ops(Result),
+                    #{<<"transaction_identifier">> => #{<<"hash">> => aeapi:format(tx_hash, TxHash)},
+                    <<"operations">> => lists:reverse(Res)}
+                end,
+                Results).
+
+tx_spend_ops({_Type, {ok, Events}}) ->
+    lists:foldl(fun tx_spend_op/2, {[], 0}, Events);
+tx_spend_ops({_Type, {ok, Events, CallObj}}) ->
+    Call = aect_call:serialize_for_client(CallObj),
+    #{<<"return_type">> := ReturnType} = Call,
+    case ReturnType of
+        <<"ok">> ->
+            lists:foldl(fun tx_spend_op/2, {[], 0}, Events);
+        Fail when Fail == <<"error">>; Fail == <<"revert">> ->
+            %% Just take the fees
+            lists:foldl(fun tx_spend_op/2, {[], 0}, Events)
+    end;
+tx_spend_ops({block, BlockOps}) ->
+    lists:foldl(fun tx_spend_op/2, {[], 0}, BlockOps).
+
+tx_spend_op({{internal_call_tx, _Key}, _}, {Acc, Ix}) ->
+    %% Balance change ops with contract calls 
+    {Acc, Ix};
+tx_spend_op({{spend, {SenderPubkey, RecipientPubkey, Amount}}, #{type := _Type}},
+            {Acc, Ix}) ->
+    From = aeapi:format(account_pubkey, SenderPubkey),
+    To = aeapi:format(account_pubkey, RecipientPubkey),
+    FromOp = spend_tx_op(Ix, <<"Spend.amount">>, From, -Amount),
+    ToOp = spend_tx_op(Ix + 1, <<"Spend.amount">>, To, Amount),
+    {[ToOp, FromOp | Acc], Ix + 2};
+tx_spend_op({{delta, {Pubkey, Amount}}, #{info := Info}}, {Acc, Ix}) ->
+    From = aeapi:format(account_pubkey, Pubkey),
+    DeltaOp = spend_tx_op(Ix, Info, From, Amount),
+    {[DeltaOp | Acc], Ix + 1};
+tx_spend_op({reward, {Pubkey, Amount}}, {Acc, Ix}) ->
+    To = aeapi:format(account_pubkey, Pubkey),
+    Op = spend_tx_op(Ix, <<"Chain.reward">>, To, Amount),
+    {[Op | Acc], Ix + 1};
+tx_spend_op({fork, {Pubkey, Amount}}, {Acc, Ix}) ->
+    To = aeapi:format(account_pubkey, Pubkey),
+    Op = spend_tx_op(Ix, <<"Chain.amount">>, To, Amount),
+    {[Op | Acc], Ix + 1};
+tx_spend_op({{channel, _Pubkey}, #{}}, {Acc, Ix}) ->
+    {Acc, Ix}.
+
+spend_tx_op(Index, Type, Address, Amount) ->
+    #{<<"operation_identifier">> => #{<<"index">> => Index},
+        <<"type">> => Type,
+        <<"status">> => <<"SUCCESS">>,
+        <<"account">> => #{<<"address">> => Address},
+        <<"amount">> => amount(Amount)}.
+
+amount(Amount) ->
+    #{<<"value">> => integer_to_binary(Amount),
+        <<"currency">> => #{<<"symbol">> => <<"AE">>, <<"decimals">> => 18}}.
 
 %% @doc Lookup the opening balance of an account or contract at the keyblock with the given height.
 %% Example:
@@ -326,6 +566,9 @@ oracle_at_block(OracleAddress, BlockHash) ->
     {_BlockType, Hash} = aeser_api_encoder:decode(BlockHash),
     aec_chain:get_oracle_at_hash(OraclePubkey, Hash).
 
+%% @doc Lookup the state of an oracle query against a specific oracle at height.
+%% Example:
+%% ```aeapi:oracle_query_at_height(<<"ok_AFbLSrppnBFgbKPo4GykK5XEwdq15oXgosgcdL7ud6Vo2YPsH">>, <<"oq_2SkZv9hyJTbocBtHdk36yMXXrycWURyB2zjXXh8CaNaPC4RFvG">>, 248940).```
 oracle_query_at_height(OracleAddress, QueryId, Height) ->
     {oracle_pubkey, OraclePubkey} = decode(OracleAddress),
     {oracle_query_id, Query} = decode(QueryId),
@@ -348,6 +591,11 @@ get_oracle_query_at_hash(OraclePubkey, Query, Hash) ->
             Else
     end.
 
+%% @doc Lookup oracle queries against an oracle at a given height.
+%% Example:
+%% ```{ok, Qs} = aeapi:oracle_queries_at_height(<<"ok_4HGhEdjeRtpsWzfSEJZnBKNmjgHALAifcBUey8EvRAdDfRsqc">>,'$first', all, 100, 248940).```
+-spec oracle_queries_at_height(aec_keys:pubkey(), binary() | '$first', open | closed | all, non_neg_integer(), non_neg_integer()) ->
+    {ok, [aeo_query:query()]} | {error, no_state_trees}.
 oracle_queries_at_height(OracleAddress, From, QueryType, Max, Height) ->
     {oracle_pubkey, OraclePubkey} = decode(OracleAddress),
     {ok, KeyBlock} = key_block_by_height(Height),
@@ -355,9 +603,53 @@ oracle_queries_at_height(OracleAddress, From, QueryType, Max, Height) ->
     {ok, Hash} = aec_headers:hash_header(Header),
     aec_chain:get_oracle_queries_at_hash(OraclePubkey, From, QueryType, Max, Hash).
 
+
+%% @doc Lookup oracle queries against an oracle at a given blockhash.
+%% Example:
+%% ```{ok, Qs} = aeapi:oracle_queries_at_height(<<"ok_4HGhEdjeRtpsWzfSEJZnBKNmjgHALAifcBUey8EvRAdDfRsqc">>,'$first', all, 100, <<"kh_2hWHCGRcrYoZkuwD4GZ4DdZfyYY7PTrvf7SKT9ugjhh9NLVF19">>).```
 -spec oracle_queries_at_block(aec_keys:pubkey(), binary() | '$first', open | closed | all, non_neg_integer(), aeser_api_encoder:encoded()) ->
     {ok, [aeo_query:query()]} | {error, no_state_trees}.
 oracle_queries_at_block(OracleAddress, From, QueryType, Max, BlockHash) ->
     {oracle_pubkey, OraclePubkey} = decode(OracleAddress),
     {_BlockType, Hash} = aeser_api_encoder:decode(BlockHash),
     aec_chain:get_oracle_queries_at_hash(OraclePubkey, From, QueryType, Max, Hash).
+
+
+
+pmap(Fun, L, Timeout) ->
+    Workers =
+        lists:map(
+            fun(E) ->
+                spawn_monitor(
+                    fun() ->
+                        {WorkerPid, WorkerMRef} =
+                            spawn_monitor(
+                                fun() ->
+                                    Top = Fun(E),
+                                    exit({ok, Top})
+                                end),
+                        Result =
+                            receive
+                                {'DOWN', WorkerMRef, process, WorkerPid, Res} ->
+                                    case Res of
+                                        {ok, T} -> {ok, T};
+                                        _       -> {error, failed}
+                                    end
+                            after Timeout -> {error, request_timeout}
+                            end,
+                        exit(Result)
+                    end)
+            end,
+            L),
+    pmap_gather(Workers, [], []).
+
+pmap_gather([], Good, Errs) ->
+    {Good, Errs};
+pmap_gather([{Pid, MRef} | Pids], Good, Errs) ->
+    receive
+        {'DOWN', MRef, process, Pid, Res} ->
+            case Res of
+                {ok, GoodRes} -> pmap_gather(Pids, [GoodRes | Good], Errs);
+                {error, _} = Err -> pmap_gather(Pids, Good, [Err | Errs])
+            end
+    end.
