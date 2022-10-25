@@ -71,17 +71,14 @@ docker_buildx:
           docker buildx create --use --platform << pipeline.parameters.buildx_platforms >> aeternity
           docker buildx inspect --builder aeternity --bootstrap
     - docker_login
-    - unless:
-        condition: << parameters.latest >>
-        steps:
-          - run:
-              name: Build and push docker image to docker.io registry
-              environment:
-                DOCKER_CLI_EXPERIMENTAL: enabled
-              command: |
-                docker buildx build --progress=plain --push \
-                --platform << pipeline.parameters.buildx_platforms >> \
-                -t << pipeline.parameters.docker_repo >>:<< parameters.tag >> .
+    - run:
+        name: Build and push docker image to docker.io registry
+        environment:
+          DOCKER_CLI_EXPERIMENTAL: enabled
+        command: |
+          docker buildx build --progress=plain --push \
+          --platform << pipeline.parameters.buildx_platforms >> \
+          -t << pipeline.parameters.docker_repo >>:<< parameters.tag >> .
 
 docker_tag:
   parameters:
