@@ -265,7 +265,6 @@ add_query(How, I, #oracle_tree{otree = OTree} = Tree) ->
                     }.
 
 int_prune(Height, Trees, TxEnv) ->
-    lager:info("Prune at height ~p", [Height]),
     OTree = #oracle_tree{ cache = Cache } = aec_trees:oracles(Trees),
     ATree = aec_trees:accounts(Trees),
     {OTree1, ATree1, TxEnv1} = int_prune(cache_safe_peek(Cache), Height, OTree, ATree, TxEnv),
