@@ -502,7 +502,6 @@ handle_request_('PostTransaction', #{<<"tx">> := Tx}, _Context) ->
                     case aec_tx_pool:push(SignedTx) of
                         ok ->
                             Hash = aetx_sign:hash(SignedTx),
-                            lager:debug("Post Tx = ~p Hash = ~p", [SignedTx, aeser_api_encoder:encode(tx_hash, Hash)]),
                             {200, [], #{<<"tx_hash">> => aeser_api_encoder:encode(tx_hash, Hash)}};
                         {error, E} ->
                             lager:debug("Transaciton ~p failed to be pushed to pool because: ~p", [SignedTx, E]),

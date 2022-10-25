@@ -407,21 +407,25 @@ format_block_txs(KeyBlock) ->
 
 expiry_txs(KeyBlock0) ->
     Height = aec_blocks:height(KeyBlock0),
-    {ok, KeyBlock} = aeapi:key_block_by_height(Height + 1),
-    Header = aec_blocks:to_header(KeyBlock),
-    {ok, Hash} = aec_headers:hash_header(Header),
-    TxEnv = aetx_env:tx_env_from_key_header(Header, Hash, aec_headers:time_in_msecs(Header), aec_headers:prev_hash(Header)),
+    case aeapi:key_block_by_height(Height + 1) of
+        {error,chain_too_short} ->
+            [];
+        {ok, KeyBlock} ->
+            Header = aec_blocks:to_header(KeyBlock),
+            {ok, Hash} = aec_headers:hash_header(Header),
+            TxEnv = aetx_env:tx_env_from_key_header(Header, Hash, aec_headers:time_in_msecs(Header), aec_headers:prev_hash(Header)),
 
-    %% Take the trees from the end of the last microblock of the prev tx
-    PrevHash = aec_headers:prev_hash(Header),
-    {ok, Trees} = aec_chain:get_block_state(PrevHash),
-    Protocol = aetx_env:consensus_version(TxEnv),
-    {Trees1, TxEnv1} = aeo_state_tree:prune(Height + 1, Trees, TxEnv),
-    {_, TxEnv2} = aens_state_tree:prune(Height + 1, Protocol, Trees1, TxEnv1),
-    %% Could possibly just use this call to take care of everything including hard fork accounts:
-    %% {_Trees1, Env1} = aec_trees:perform_pre_transformations(Trees, TxEnv, PrevVersion),
-    %% Possibly later
-    aetx_env:events(TxEnv2).
+            %% Take the trees from the end of the last microblock of the prev tx
+            PrevHash = aec_headers:prev_hash(Header),
+            {ok, Trees} = aec_chain:get_block_state(PrevHash),
+            Protocol = aetx_env:consensus_version(TxEnv),
+            {Trees1, TxEnv1} = aeo_state_tree:prune(Height + 1, Trees, TxEnv),
+            {_, TxEnv2} = aens_state_tree:prune(Height + 1, Protocol, Trees1, TxEnv1),
+            %% Could possibly just use this call to take care of everything including hard fork accounts:
+            %% {_Trees1, Env1} = aec_trees:perform_pre_transformations(Trees, TxEnv, PrevVersion),
+            %% Possibly later
+            aetx_env:events(TxEnv2)
+    end.
 
 
 reward_txs(Block) ->

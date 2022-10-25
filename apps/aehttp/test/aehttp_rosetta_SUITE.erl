@@ -909,7 +909,7 @@ block_create_channel_tx(Config) ->
     %% Initiator -= Fees
     %% Initiator += initiator_amount_final
     %% Responder += responder_amount_final
-    #{<<"operations">> := [CloseMutualInitiatorOp, CloseMutualResponderOp]} =
+    #{<<"operations">> := [CloseMutualInitiatorOp, CloseMutualResponderOp, _LockFundsOp]} =
         CloseMutualTransaction,
     #{<<"amount">> := #{<<"value">> := CloseMutualInitiatorDelta},
       <<"account">> := #{<<"address">> := CloseMutualInitiatorAcc}} =
