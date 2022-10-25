@@ -53,3 +53,11 @@ run_system_tests:
 run_integration_sync:
   type: boolean
   default: false
+
+buildx_version:
+  type: string
+  default: "0.7.0"
+
+buildx_platforms:
+  type: string
+  default: "linux/amd64,linux/arm64"
