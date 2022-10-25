@@ -58,8 +58,8 @@ docker_buildx:
         command: |
           mkdir -p ~/.docker/cli-plugins
           baseUrl="https://github.com/docker/buildx/releases/download"
-          fileName="buildx-v<< pipeline.parameters.buildx-version >>.linux-amd64"
-          url="${baseUrl}/v<< pipeline.parameters.buildx-version >>/${fileName}"
+          fileName="buildx-v<< pipeline.parameters.buildx_version >>.linux-amd64"
+          url="${baseUrl}/v<< pipeline.parameters.buildx_version >>/${fileName}"
           curl -sSL -o ~/.docker/cli-plugins/docker-buildx $url
           chmod a+x ~/.docker/cli-plugins/docker-buildx
     - run:
