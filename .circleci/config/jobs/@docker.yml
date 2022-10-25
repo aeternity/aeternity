@@ -33,7 +33,7 @@ docker-buildx:
         condition: << parameters.aeplugin_devmode >>
         steps:
           - aeplugin_install_devmode
-    - setup_docker
+    # - setup_docker
     - docker_buildx:
         tag: << parameters.tag >>
     - fail_notification
