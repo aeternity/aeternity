@@ -301,12 +301,12 @@ reinit_chain_state() ->
     in_maintenance_mode(fun reinit_chain_state_/0).
 
 reinit_chain_state_() ->
-    ok = supervisor:terminate_child(aecore_sup, aec_tx_pool),
-    ok = supervisor:terminate_child(aecore_sup, aec_tx_pool_gc),
+    ok = supervisor:terminate_child(aec_worker_sup, aec_tx_pool),
+    ok = supervisor:terminate_child(aec_worker_sup, aec_tx_pool_gc),
     aec_db:ensure_transaction(fun aec_db:clear_db/0),
     aec_db:ensure_transaction(fun init_chain_state/0),
-    {ok, _} = supervisor:restart_child(aecore_sup, aec_tx_pool_gc),
-    {ok, _} = supervisor:restart_child(aecore_sup, aec_tx_pool),
+    {ok, _} = supervisor:restart_child(aec_worker_sup, aec_tx_pool_gc),
+    {ok, _} = supervisor:restart_child(aec_worker_sup, aec_tx_pool),
     ok.
 
 in_maintenance_mode(F) when is_function(F,0) ->

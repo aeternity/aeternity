@@ -18,6 +18,7 @@
          is_contract_create/1,
          extract_call/1,
          extract_caller/1,
+         extract_call_data/1,
          extract_contract_pubkey/1,
          extract_amounts/1,
          extract_abi_version/1]).
@@ -482,6 +483,10 @@ extract_caller(#call_contract{caller_id = CallerId}) ->
     account_pubkey(CallerId);
 extract_caller(#create_contract{owner_id = OwnerId}) ->
     account_pubkey(OwnerId).
+
+-spec extract_call_data(update()) -> binary().
+extract_call_data(#call_contract{call_data = CallData}) ->
+    CallData.
 
 -spec is_call(update()) -> boolean().
 is_call(#call_contract{}) ->
