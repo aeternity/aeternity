@@ -568,7 +568,7 @@ oracle_at_block(OracleAddress, BlockHash) ->
 
 %% @doc Lookup the state of an oracle query against a specific oracle at height.
 %% Example:
-%% ```aeapi:oracle_query_at_height(<<"ok_AFbLSrppnBFgbKPo4GykK5XEwdq15oXgosgcdL7ud6Vo2YPsH">>, <<"oq_2SkZv9hyJTbocBtHdk36yMXXrycWURyB2zjXXh8CaNaPC4RFvG">>, 248940).```
+%% ```aeapi:oracle_query_at_height(<<"ok_AFbLSrppnBFgbKPo4GykK5XEwdq15oXgosgcdL7ud6Vo2YPsH">>, <<"oq_2SkZv9hyJTbocBtHdk36yMXXrycWURyB2zjXXh8CaNaPC4RFvG">>, 248940).'''
 oracle_query_at_height(OracleAddress, QueryId, Height) ->
     {oracle_pubkey, OraclePubkey} = decode(OracleAddress),
     {oracle_query_id, Query} = decode(QueryId),
@@ -593,7 +593,7 @@ get_oracle_query_at_hash(OraclePubkey, Query, Hash) ->
 
 %% @doc Lookup oracle queries against an oracle at a given height.
 %% Example:
-%% ```{ok, Qs} = aeapi:oracle_queries_at_height(<<"ok_4HGhEdjeRtpsWzfSEJZnBKNmjgHALAifcBUey8EvRAdDfRsqc">>,'$first', all, 100, 248940).```
+%% ```{ok, Qs} = aeapi:oracle_queries_at_height(<<"ok_4HGhEdjeRtpsWzfSEJZnBKNmjgHALAifcBUey8EvRAdDfRsqc">>,'$first', all, 100, 248940).'''
 -spec oracle_queries_at_height(aec_keys:pubkey(), binary() | '$first', open | closed | all, non_neg_integer(), non_neg_integer()) ->
     {ok, [aeo_query:query()]} | {error, no_state_trees}.
 oracle_queries_at_height(OracleAddress, From, QueryType, Max, Height) ->
@@ -606,7 +606,7 @@ oracle_queries_at_height(OracleAddress, From, QueryType, Max, Height) ->
 
 %% @doc Lookup oracle queries against an oracle at a given blockhash.
 %% Example:
-%% ```{ok, Qs} = aeapi:oracle_queries_at_height(<<"ok_4HGhEdjeRtpsWzfSEJZnBKNmjgHALAifcBUey8EvRAdDfRsqc">>,'$first', all, 100, <<"kh_2hWHCGRcrYoZkuwD4GZ4DdZfyYY7PTrvf7SKT9ugjhh9NLVF19">>).```
+%% ```{ok, Qs} = aeapi:oracle_queries_at_height(<<"ok_4HGhEdjeRtpsWzfSEJZnBKNmjgHALAifcBUey8EvRAdDfRsqc">>,'$first', all, 100, <<"kh_2hWHCGRcrYoZkuwD4GZ4DdZfyYY7PTrvf7SKT9ugjhh9NLVF19">>).'''
 -spec oracle_queries_at_block(aec_keys:pubkey(), binary() | '$first', open | closed | all, non_neg_integer(), aeser_api_encoder:encoded()) ->
     {ok, [aeo_query:query()]} | {error, no_state_trees}.
 oracle_queries_at_block(OracleAddress, From, QueryType, Max, BlockHash) ->

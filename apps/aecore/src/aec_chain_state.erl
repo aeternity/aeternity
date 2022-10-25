@@ -858,7 +858,7 @@ apply_node_transactions(Node, Trees, ForkInfo, State) ->
             Env = aetx_env:tx_env_from_key_header(Header, node_hash(Node),
                                                   node_time(Node), node_prev_hash(Node)),
 
-            {Trees1, _Env1} = aec_trees:perform_pre_transformations(Trees, Env, PrevVersion),
+            Trees1 = aec_trees:perform_pre_transformations(Trees, Env, PrevVersion),
             Trees2 = if Consensus =:= PrevConsensus -> Trees1;
                         true -> Consensus:state_pre_transform_key_node_consensus_switch(Node, Trees1)
                      end,

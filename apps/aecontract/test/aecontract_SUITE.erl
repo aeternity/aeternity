@@ -1400,7 +1400,7 @@ perform_pre_transformations(Height, S) when Height > ?GENESIS_HEIGHT ->
     TxEnv = aetx_env:tx_env(Height),
     PrevProtocol = aec_hard_forks:protocol_effective_at_height(Height - 1),
     Trees = aect_test_utils:trees(S),
-    {Trees1, _} = aec_trees:perform_pre_transformations(Trees, TxEnv, PrevProtocol),
+    Trees1 = aec_trees:perform_pre_transformations(Trees, TxEnv, PrevProtocol),
     {ok, aect_test_utils:set_trees(Trees1, S)};
 perform_pre_transformations(?GENESIS_HEIGHT, S) ->
     {ok, S}.

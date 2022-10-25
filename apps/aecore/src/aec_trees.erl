@@ -265,9 +265,9 @@ perform_pre_transformations(Trees, TxEnv, PrevProtocol) ->
     Height = aetx_env:height(TxEnv),
     Protocol = aetx_env:consensus_version(TxEnv),
     Trees0 = aect_call_state_tree:prune(Height, Trees),
-    {Trees1, TxEnv1} = aeo_state_tree:prune(Height, Trees0, TxEnv),
-    {Trees2, TxEnv2} = aens_state_tree:prune(Height, Protocol, Trees1, TxEnv1),
-    {perform_pre_transformations(Trees2, TxEnv1, Protocol, PrevProtocol), TxEnv2}.
+    {Trees1, _} = aeo_state_tree:prune(Height, Trees0, TxEnv),
+    {Trees2, _} = aens_state_tree:prune(Height, Protocol, Trees1, TxEnv),
+    perform_pre_transformations(Trees2, TxEnv, Protocol, PrevProtocol).
 
 perform_pre_transformations(Trees, _TxEnv, _Protocol, undefined) ->
     %% Genesis block.

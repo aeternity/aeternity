@@ -305,8 +305,23 @@ handle_request_(call, _, _Context) ->
     {501, [], #{}};
 handle_request_(constructionCombine, _, _Context) ->
     {501, [], #{}};
-handle_request_(constructionDerive, _, _Context) ->
-    {501, [], #{}};
+handle_request_(constructionDerive,
+                #{'ConstructionDeriveRequest' :=
+                    #{<<"network_identifier">> := #{<<"blockchain">> := <<"aeternity">>},
+                     <<"public_key">> := #{<<"curve_type">> := CurveType,
+                                           <<"hex_bytes">> := HexBytes}}},
+                _Context) ->
+    case CurveType of
+        <<"edwards25519">> ->
+            PKBytes = aeu_hex:hex_to_bin(HexBytes),
+            Account = aeapi:format(account_pubkey, PKBytes),
+            AccountIdentifier = #{<<"account_identifier">> =>
+                                    #{<<"address">> => Account}},
+            Resp = #{<<"ConstructionDeriveResponse">> => AccountIdentifier},
+            {200, [], Resp};
+        _ ->
+            {501, [], #{}}
+    end;
 handle_request_(constructionHash, _, _Context) ->
     {501, [], #{}};
 handle_request_(constructionMetadata, _, _Context) ->

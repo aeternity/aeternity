@@ -224,7 +224,7 @@ mine(Height, Trees) ->
     NextHeight = Height + 1,
     TxEnv = aetx_env:tx_env(NextHeight),
     Protocol = aec_hard_forks:protocol_effective_at_height(Height),
-    {Trees1, _} = aec_trees:perform_pre_transformations(Trees, TxEnv, Protocol),
+    Trees1 = aec_trees:perform_pre_transformations(Trees, TxEnv, Protocol),
     {Trees1, TxEnv}.
 
 contract_create(Trees, Sender, CompiledContract, Init, Args, Backend) ->

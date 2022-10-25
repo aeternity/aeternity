@@ -19,7 +19,8 @@
 -export([block_genesis/1, block_key_only/1, block_spend_tx/1,
          block_create_contract_tx/1]).
 -export([block_create_channel_tx/1]).
-%% for extarnal use
+-export([contruction_derive/1]).
+%% for external use
 -export([assertBalanceChanges/2]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -32,8 +33,9 @@ all() ->
     [{group, all}].
 
 groups() ->
-    [{all, [sequence], [{group, rosetta}]},
-     {rosetta,
+    [{all, [sequence], [{group, rosetta_read},
+                        {group, rosetta_contruction}]},
+     {rosetta_read,
       [sequence],
       %% /network/*
       [{group, network_endpoint},
@@ -44,7 +46,12 @@ groups() ->
      {network_endpoint, [], [network_list, network_options, network_status]},
      {block_basic_endpoint, [], [block_genesis, block_key_only, block_spend_tx]},
      {block_contract_endpoint, [], [block_create_contract_tx]},
-     {block_channels_endpoint, [], [block_create_channel_tx]}].
+     {block_channels_endpoint, [], [block_create_channel_tx]},
+    %% /construction
+     {rosetta_contruction,
+        [sequence],
+        [contruction_derive]}
+    ].
 
 suite() ->
     [].
@@ -115,7 +122,7 @@ end_per_testcase_all(Config) ->
     ok.
 
 %% ============================================================
-%% External helper to add Rosetta checks to other test suites
+%% External helper for adding Rosetta checks to other test suites
 %% ============================================================
 
 %% Assert a list of {Account, Delta} pairs for a Tx matches what
@@ -918,6 +925,27 @@ block_create_channel_tx(Config) ->
     ?assertEqual(ResponderBalanceAfterCloseMutual,
                  ResponderBalanceAfterCreate + binary_to_integer(CloseMutualResponderDelta)).
 
+contruction_derive(Config) ->
+    [{_NodeId, Node} | _] = ?config(nodes, Config),
+    aecore_suite_utils:reinit_with_ct_consensus(?NODE),
+    ToMine = max(2, aecore_suite_utils:latest_fork_height()),
+    aecore_suite_utils:mine_key_blocks(Node, ToMine),
+    {ok, [KeyBlock]} = aecore_suite_utils:mine_key_blocks(Node, 1),
+    true = aec_blocks:is_key_block(KeyBlock),
+
+    %% Use the native http api for the operations not yet implemented in Rosetta
+    SwaggerVsn = proplists:get_value(swagger_version, Config, oas3),
+    aecore_suite_utils:use_swagger(SwaggerVsn),
+
+    {InitiatorPubKey, _InitiatorPrivKey} =
+        aehttp_integration_SUITE:initialize_account(1000000000 * aec_test_utils:min_gas_price()),
+    HexKey = aeu_hex:bin_to_hex(InitiatorPubKey),
+
+    aecore_suite_utils:use_rosetta(),
+
+    construction_derive_sut(HexKey).
+    
+    
 %% ============================================================
 %% Internal
 %% ============================================================
@@ -971,6 +999,16 @@ get_balance_at_height_sut(AccountPubKey, Height) ->
           block_identifier => #{index => Height},
           account_identifier => #{address => AccountPubKey}},
     http_request(Host, post, "account/balance", Body).
+
+construction_derive_sut(HexBytes) ->
+    Host = rosetta_address(),
+    Body =
+        #{network_identifier =>
+            #{blockchain => <<"aeternity">>,
+              network => aec_governance:get_network_id()},
+         public_key => #{curve_type => <<"edwards25519">>,
+                         hex_bytes => HexBytes}},
+    http_request(Host, post, "/construction/derive", Body).
 
 sign_tx(Tx, Privkey) ->
     STx = aec_test_utils:sign_tx(Tx, [Privkey]),
