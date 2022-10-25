@@ -1647,7 +1647,7 @@ tx_event_op(Kind, Name) ->
 tx_event_op(Kind, Name, Info) ->
     {tx_event, {Kind, Name, Info}}.
 
--spec tx_event({channel, pubkey()}, state()) -> state().
+-spec tx_event({channel, pubkey()} | {delta, {pubkey(), integer()}, binary()}, state()) -> state().
 tx_event({Kind, Name}, #state{tx_env = Env} = S) ->
     S#state{tx_env = aetx_env:tx_event(Kind, Name, Env)};
 tx_event({Kind, {From, {var, Tag}, Amount}, Info}, #state{tx_env = Env} = S) ->

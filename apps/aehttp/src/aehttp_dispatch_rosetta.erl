@@ -447,7 +447,10 @@ format_block_identifier(Block) ->
 format_keyblock_txs(KeyBlock) ->
     aeapi:balance_change_events_in_block(KeyBlock).
 
-format_tx(SignedTx, MicroBlock)->
+%% FIXME: Re-instate events for Txs in the mempool
+format_tx(_SignedTx, undefined) ->
+    [];
+format_tx(SignedTx, MicroBlock) ->
     aeapi:balance_change_events_in_tx(SignedTx, MicroBlock).
 
 amount(Amount) ->

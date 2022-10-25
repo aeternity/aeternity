@@ -260,7 +260,7 @@ gc_cache(Trees, TreesToGC) ->
         TreesToGC).
 
 -spec perform_pre_transformations(trees(), aetx_env:env(),
-                                  aec_hard_forks:protocol_vsn() | undefined) -> {trees(), aetx_env:env()}.
+                                  aec_hard_forks:protocol_vsn() | undefined) -> trees().
 perform_pre_transformations(Trees, TxEnv, PrevProtocol) ->
     Height = aetx_env:height(TxEnv),
     Protocol = aetx_env:consensus_version(TxEnv),

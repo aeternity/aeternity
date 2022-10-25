@@ -1087,7 +1087,7 @@ spend_(From, Payer, Amount, Nonce, Trees) ->
                           aec_keys:pubkey(),
                           non_neg_integer(),
                           aec_trees:trees(),
-                          aetx_env:env()) -> aec_trees:trees().
+                          aetx_env:env()) -> {aec_keys:pubkey(), aec_trees:trees()}.
 consume_gas_and_fee(UsedAmount, Fee, From, Nonce, Trees, Env) ->
     spend(From, UsedAmount + Fee, Nonce, Trees, Env).
 

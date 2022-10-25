@@ -58,6 +58,35 @@
         , safe_decode/2
         ]).
 
+-type known_type() :: key_block_hash
+    | micro_block_hash
+    | block_pof_hash
+    | block_tx_hash
+    | block_state_hash
+    | channel
+    | contract_bytearray
+    | contract_pubkey
+    | contract_store_key
+    | contract_store_value
+    | transaction
+    | tx_hash
+    | oracle_pubkey
+    | oracle_query
+    | oracle_query_id
+    | oracle_response
+    | account_pubkey
+    | signature
+    | name
+    | commitment
+    | peer_pubkey
+    | state
+    | poi
+    | state_trees
+    | call_state_tree
+    | bytearray.
+
+-type payload() :: binary().
+
 blockchain_name() ->
     <<"aeternity">>. %% TODO: check hardcoding
 
@@ -224,7 +253,7 @@ format_id(Id) ->
 %% ```aeapi:format(oracle_pubkey, <<170,20,197,4,89,131,91,158,24,63,28,200,44,49,35,88,224,211,211,30,
 %%                     29,108,91,130,93,230,47,111,34,172,124,50>>) ->
 %%      <<"ok_2HuVfa8qJmYeJPb5ntE5dXre9e4pmFEq9FYthvemB7idvbjUbE">>.'''
--spec format(aeser_api_encoder:known_type(), aeser_api_encoder:payload()) -> aeser_api_encoder:encoded().
+-spec format(known_type(), payload()) -> aeser_api_encoder:encoded().
 format(Type, Payload) ->
     aeser_api_encoder:encode(Type, Payload).
 
@@ -236,7 +265,7 @@ format(Type, Payload) ->
 %%       {contract_pubkey,<<170,20,197,4,89,131,91,158,24,63,28,
 %%                  200,44,49,35,88,224,211,211,30,29,108,
 %%                   91,130,93,230,47,...>>}'''
--spec decode(binary()) -> {aeser_api_encoder:known_type(), aeser_api_encoder:payload()}.
+-spec decode(binary()) -> {known_type(), payload()}.
 decode(Binary) ->
     aeser_api_encoder:decode(Binary).
 
@@ -248,8 +277,8 @@ decode(Binary) ->
 %%       {ok, <<170,20,197,4,89,131,91,158,24,63,28,
 %%                  200,44,49,35,88,224,211,211,30,29,108,
 %%                   91,130,93,230,47,...>>}'''
--spec safe_decode(aeser_api_encoder:known_type() | block_hash,
-                  aeser_api_encoder:encoded()) -> {'ok', aeser_api_encoder:payload()}
+-spec safe_decode(known_type() | block_hash,
+                  aeser_api_encoder:encoded()) -> {'ok', payload()}
                                                      | {'error', atom()}.
 safe_decode(Type, Binary) ->
     aeser_api_encoder:safe_decode(Type, Binary).
@@ -410,8 +439,8 @@ reward_txs(Block) ->
            Node = aec_chain_state:wrap_block(NextBlock),
            Trees = aec_chain_state:grant_fees(Node, aec_trees:new(), Delay, false, nil),
            Accounts =
-               aeu_mtrees:to_list(
-                   aec_trees:accounts(Trees)),
+               aec_accounts_trees:to_list(
+                    aec_trees:accounts(Trees)),
              lists:map(fun({K, V}) ->
                           Acct = aec_accounts:deserialize(K, V),
                           {reward, {aec_accounts:pubkey(Acct), aec_accounts:balance(Acct)}}
