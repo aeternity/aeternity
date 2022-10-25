@@ -19,6 +19,25 @@ docker-image:
         tag: << parameters.tag >>
     - fail_notification
 
+docker-buildx:
+  executor: buildx
+  parameters:
+    aeplugin_devmode:
+      type: boolean
+      default: false
+    tag:
+      type: string
+  steps:
+    - fixed_checkout
+    - when:
+        condition: << parameters.aeplugin_devmode >>
+        steps:
+          - aeplugin_install_devmode
+    - setup_docker
+    - docker_buildx:
+        tag: << parameters.tag >>
+    - fail_notification
+
 docker-tag:
   executor: infrastructure_container_stable
   parameters:
