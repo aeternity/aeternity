@@ -1,4 +1,4 @@
-FROM aeternity/builder:bionic-otp23 as builder
+FROM aeternity/builder:ci-bionic-otp23-buildx as builder
 
 # Add required files to download and compile only the dependencies
 ADD rebar.config rebar.lock Makefile rebar3 rebar.config.script /app/
