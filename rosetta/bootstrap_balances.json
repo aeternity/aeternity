@@ -1,0 +1,7142 @@
+[
+  {
+    "account_identifier": {
+      "address": "ak_1GPPzM3VDKCP5RNEbp2uBNtgGTHRNQmrNkeAKGp7wfPWKYQvM"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "6098700000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_1K5vpH1WEGSQnrSLdk1Y1fBBc48zA6xiijuaQQbUKgLhcHZ5J"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "24063510000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_211qpHaGTsNJTPGSTqGjSEwsc9y59EFLQhveVcWASxB4Wt8L6V"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "2100000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_216i6AuBfMHQUXvkzFxTwFgKvgiM7RTJ3HAnA22uxZutNQqe7"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "384279056000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_21CRygi4JNP3zPTTPVczp58dpoxfd5T4H8ihQqwfdGBscw5uxd"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1750000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_21SNo3YauCq2MCgLcHAeVhBju5zyfzMSTkSc94zqd15AVVeVaa"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "13177139541300000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_21bCwkU3c9CsM2CmJUtkFbmgZM2MsWZDDprUJDXUAYjytjce65"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_21fQWLjY8fW7qx5yjFJt83w8D5Wci3v2fFsn8o91RQofnw1kJ3"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "62536340215200000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_21sfKckpk3EgRtRJpBFFv8UF9QuDjC1fvbWzoAnmoBNuo2SUtH"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "28000000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_22AQKxLPJHi7AWZZ1gaqTUcb5CJ3UjnLp7MS52aTqnSjZcaeWP"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "779544745868412825000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_22LNk4mv6BxGPKN4ZC67QDcWnyghsQgu8cHV2X4eQVLP7v2FuU"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "427000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_22Q6xKjPFpS89KJMQoBZJTDqpuRtSsixebevcYp1HUiJcWVCZf"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "2005000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_22bz83S3zKRT7mYCyfhpoDPPwAK9M7WdF2Mznb1LWANvnhZReQ"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "136941000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_22fgVT3dNSjsenBQz5Tj17UgDHvPQothAGKK7J46hdpj36aYtG"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "7000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_22iF6QSo97DnWYzEaB96wHqrn8CamZ1HHX8tu9xzUyBQyGFUcw"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_233YeNsC6PYSD4cQ4AyNYKWNDyp4RDmaxk6pRJSh5Kft3es3ds"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "55000000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_234MxgEGKGnrpHJXMDmvxWQj9aHPyFD9TGauiV6vjvunWtBPYQ"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "45111000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_23AVgSsH99jPMHeTqopDS361YtkxVnDzTiAYqyrJU6Hwpt7Lkd"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "135280000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_23BsXvHUgEVadegiBczyBzjeRfyJZ4YwV7xejs5BjGEig6xK5i"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "250000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_23CGNERRAjAaF3KxJcMh2dyHfAwQs61u8QN9r9P8KQWzS5Mr1F"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "450708000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_23F6t3FfRWdumuw7gWwgTos6ohoTJ6Z88zDyESXipfM1fhA3Lu"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "6106490000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_23TZGNP8fTo1TMaiAochT5dXj3zAyhY42xpvjfsQTJR3kG7cr9"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1381513254000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_23dF57NgEwVi7gj44tXaS1QRF3TguKyXxqost8y1ihGmtKQ2pa"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "66666888880000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_23enb8s3NWndBpXUpdb4TWKV2gVHFUmsM2Td5YT66ZuVRSRjnF"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "934100000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_23xjVTXwDqAPMfmsr5v74gzYiXmHrBnQcgEcwLWdqFas4jWPD3"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "521131400000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_23yCStAASsKPMG2UKcVh1EPYwFuu3482B1woXAKywZRMEgcP7Z"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "9400968000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_24MYUpXv21YoMudR7agBWtcCjCiW3zi1QWG51oeFaQTpKzL7bX"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "13015000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_24ReRdji7J1brgSBXbPW1BnsmXEvpDDsmxamp9MARSamn97Voo"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "8964868850000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_24aVK3XA8mFnqhHZE7WME19Zu5NxAHo78Yw1XEBcknuu8LvDyJ"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "70200000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_24piBgSqoJRve43i9vsBrD4Dnxn9pxuYuDxofCxo7CZzNKQuP1"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "8618000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_258vUryDEfnAYTqLjtKjagRqdPKGqByEZo39kBhH8oShtLyhBn"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "13080000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_25KfmifWsN4UCSTVk9SRBwZ2vZD9RXwSv65x7bL3k3uwh2jEtq"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "2850000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_261YeYkpzgufex4erTRTcJtrjojPGkS5Y6CALziCRiMsQX8tnE"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1201000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_26H6Z9mF5XDGgFiNJAAsnr2Y86cc4w2gi92wjscEqw92CL7JiH"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "7153742666380000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_26X7hb1yZbpNPqnEDQracP3Rm5gvLd8ADshQ5vCwMhJyqFho7B"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "6000010000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_26dopN3U2zgfJG4Ao4J4ZvLTf5mqr7WAgLAq6WxjxuSapZhQg5"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "3000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_26epe1EAK6ppQbvkHr2o9bYJ77JpYGotoas5YCzejzL6uZiDH9"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "985212634900000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_26f3Yfbi5LDsLdmezmwHfs7j7eygt2XDHxsYpsGX8nzJDPHbrn"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "4000000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_26m8gMgpSHCUPgseyE2JS2DU4hXyU7j3iQmNThmoyAdB1Bazuk"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "7183480900000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_26nAiMmjpg9Ad96vYSLswUzKV7KFgkhLPSvoKmEnZhEmyacnfd"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "5000000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_26oMYD26tvwoNjfo3tMGnoyVv4rAWiPGTx1oniVYuf3CmtqnXY"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "7595250000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_26qTgsWBLaenSEDb1iphi547cFPd7JinAvjVfuE8Vgwdru3GeR"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1000000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_27Dnp4k3zdy5Q6ocegw6MvkEPXwKyZrnYVUC8vAUD3Dxm48Yjz"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "750000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_27SFwPeBrgWaXnVgr51nKTN21DJq8B7jPeZ8oC59koEEnrmkSc"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1000000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_27iro1xoaRGrdQ3B7YC6AhTg4XqcCgkjE1a3CixToYvsS5Ptek"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "6000000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_27vsEVcHkho5366SMdL4SBPJqp1tnyPUDXtHTN4v4HG6qzokpB"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1002296011320000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_27x2Xu6GhcVdXzKaSdZzap3Fi5YiTAsJZHPuabiDuAUgjRrUys"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "125000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_28BCyrEKTrnZPUW16bKtyie6BjGxK1Vn8QGZZ6Kwe58gDunu88"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1097000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_28CHM8mykAmxZ4n34zrUFLKdXKqhiF7a6f71KNsJPUyedEuX5o"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "200000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_28CpE1HJzhyGz75MNynTDjMxKwFKGHu25MhpvrcNQrmQg1D7X9"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "20992551998600000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_28E3NtFbooxR6S4pf3rJfeH4qAKh2FS7EUdkebAQ4V253WSL7b"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "11983000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_28EY2R8NB9tLTrAizN3LhPkaBrusTgrYZAFhbgckhSWkd6afnA"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "20001000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_28QQtwi5KSoe12zPJnbUTVpBzmcgacJkptmPzeyoPSzCwnAXmF"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "8354334544000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_28cdFqmBzE7F5sXtm5LRaKs4btequVyagxryKyh5xLCBu8XygJ"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "151848808000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_28gryFRbhRTEjyd331CzPWCMHw2uvV9jK5vY8Qnopq8nVa7QBB"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "49503000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_28qbcKocVT8FoR7Re5XEDHHHKBqCcWFBZCiyBAeAqBXnsgBYAK"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "2011042200000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_28qquWQyzVBivLZfqhEbiGLfPMxWBqyTUKcoj8czomftVxWh1h"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "19164738582825319014528"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_28uzv6fM6A3tK9xJQqJCrfm8zrg2FsUKZxJHNgmyB1FBZYsYpk"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "7000160000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_292UHRka5cWqrB9ZoXJLYyhiZeLQ31EyKwg4Q3EWs4WWqrNuxq"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "385000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_29Hwdx9PBM7kZh3VwRCKPJCCy3gxygUwAfxzQHT4h1josqkboY"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "700000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_29Jrc6KzhkkFNEM8xzhCz17yLez6tuA5ivC8VKyub5M4L8EmgS"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "6891600000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_29SmFXUMgBqmYgpDX9NYZUUv5sc8rCCt3GaWGVtWbWnsUzUCUn"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "40000000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_29ueAUgyUhmM3dae6Lo3sfzsJDZFur4uRn5cy6ZhW679bDTYiV"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "4920545000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_29w288qgD2jxfL4pqiJGK4BPeBFyXCPUa9h4M1d2JyKX1TXYg8"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "490000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2A8SNUmHvB7LKAN9MjTi6ebvxqo68uztCwRuJ4jM3tcVJFzs8r"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "16888888888888800000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2AJBRdZsRb7PBChjzn5N3e3vFGbQR2bt6u7F2s9pamRy1bZePK"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "73094739139628359256724"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2AKYbxyzN2gVQFdADLGEPEnudgoFJgVXo96upRNSYzVLwnmCjv"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "21999000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2AbxkqWxcE9pzYrkDWBho8kD6wmMBVwfGQJAcmPSMJmK3YKpAr"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "4400000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2Avrnv8aCJHU2tbdMTYpNMZw6ygerMgBPMqangUgNMyk9uj4hf"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "2309359998000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2BBK8CjtYnUTLPkDhBQep1yxBhtaZPkqW2oc88eXhP94ZpBTFU"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "154412798500000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2BHNZGYQtgxTLnnv19zpLsw9ha6sBMBWYePHkczv3sccnhiwV5"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "6001000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2BJ6ij1kvRxcijMpTTHNx93RwEg4HSkQMdhraAivQHZrE44i7v"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1124888800000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2BhcrdG9vkZpMJ6P6WttqZ27JqhuHHnVm3HBt1m3uqeBAqFTnD"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "634639175690000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2BitzNEqCVapBBwaeEPCFWcWGpQnNSF8ECthUozf7pj2ad5sFn"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "8499805014000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2BowsC41irtz5qWLRdBZc4q9RLKWbK8YZJ84fYkNA9aMU1HnNF"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "210318170000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2CB5GLmRaPcoGUT2BnvpnEnYjPxHqu6ioGgfXFbKV5BDjx6Ldo"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "29087429550000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2CC81QrxVxYD5T8eJcAUwJsfSRBS2fA1MpsccLRjJumZdFuD8g"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1162000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2CSTczqHHpnMD2g9QJLPnH6sLH7i5HNLrA662hPidY7nKfTxR8"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "244000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2CaKF2fP4oVuKHZw7oTLFF33Db9PXvu271zskB7qWiurihfZFr"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "400000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2CeF7eYtpatGULNJRCyE9VzHekmSJaNBPpZgUTCuEgGirt95KH"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "46483000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2CyUBdSJiVuDeVSQKLt4ryyG9mwoVL8QHagwfDKrAW9tA5Thdf"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "22000000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2D6LSRCr8vmTYKfDWdVWeSYJsnmru3sXksNMALmtNbLRS7k6r4"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "829111271200000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2DGZpRYJuvAuehoNvjoH4wkm2RtJtAjyDVV9wvnmUsERwFwjyU"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "49600000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2DU2etauheqKdLMbjsW91sSJVt1MyLWJCUAp9DkRQphEAeu8AU"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1600000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2DcESwMKNQQWirn8kjcqvnWBFc6psEcgm6bqPshiQutUuicTF2"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1008000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2Ddbh5vkVDgkfRdKSdVoTUnjHiJBzJKw1niMuusvRuQTTk8mHA"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "10000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2DrcX7ZH8WWnPRGttfjNF8PLykHAuwtKXVtkUXuyrE3Pz7DyjN"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "160000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2EU5M2nsYrbwyavsggb1CBsPpXcNs6ShAhetrMa8V5EFef3MUd"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "580324001258257300000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2EXCf28T6UK9vfAvDSm5GqZ6PjzKxGHjuBF9QD29zG913mjG5Y"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "30999000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2Ecio729vKAyW4hHhXskcVcbjd5eNn6E2uEuNM9cKqDqD41o6U"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "7500000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2EdFHGyLANQkrVTyfotzDesma33D2x1TbjcNn5mTM9wXf3zTgp"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1055225309800000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2EmitXGVuyACYVWNvQxd5nmTA8mXVWsJdxVumueHUzsQjzvW8o"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "2000821010201572910000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2EmkhDWg6aTRawTBB8vKp7W24xj2ER1NepjnvGbFEXpbxBdov4"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "99000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2F19usi9cjJ8spTi74KmXrmuqjzS8AZAqTrTm5eCGjFi8jNWcK"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "11981379000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2FBtz2MzPkixBRbw65n5z8ae1Fk6epuTrXYu6LQkZ3BxHMSKYn"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "108179500000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2FGbmbvbgjs5B2vHS8bpLEGRJC7rvRCYWkRr3pJVZzf6F9URNU"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "7000000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2FJdfpCWskQQtu58xijvEJR53WzX7cEBTJ59uVjJbuGePMjs7V"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1001000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2FNLg2bzPiuJid4TGNKYR5X2MKbPawhd8so4dDqsCgM7ae7Ygt"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "10000000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2FaRuWMibHoKP7bquAxiaJdQPgTrJK9ssy4NSuLxzQuMsfXe1t"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "18332999645015900000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2FbH95EV7GNhMPt5LuRmRpGDF7ADPiULFuu5SwSv5WS8ytC58c"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "2059000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2G32KbuaL1fxjtitMXwqzvNwnSz4CmZQdZAMDsQnFKaWVBJQ44"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1749534000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2GXxYWcdSM79ond8CDXo1vSuJHDXvY7DweQnFS148CFz3cPfAd"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "30726476790000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2HA6HfNGP8zzCzCNJvUvRzq3AEU2ALLidNyPgbM7rEXsoAm7Yf"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "3750000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2HL3SvRDFgDM4Zr9rFzuJLsEXgjtoeH5seK1JWoSeehgs5aoPL"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "200000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2HW7uQeMozS8oLppshgr9SJptWG2ZYrpVzA9EzLkRQoYTkf37e"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "13585000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2Hc2UfVjhgYeEnWMjSu3AKgPkJASUGwq9b8Xw2AL2R1xKTBtCg"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "16500000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2HekjxUmhUaWor8WrviQfMaHKJMKccg93VtPiaz8E9rsq3SyLb"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "49998700000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2HfDzfHtGBYkcdDZMP8cuNcQJ4zauRhD1m8d7foUqWnpFsJdeZ"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "2398559890000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2Hnd1KGP6AHnuwEbEiLt4zBW8Jjx5JjgS4u3uPL2qFAMsEMs5k"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "6532494000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2HzLvkQZoeurHCQD7bzzJvBmB1rnc5qPRMSjCw4LUjodv49AGn"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "20200000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2J1eKmLiQSSmHXUk4bKpJQ1QuTCN2xZyBCXMSdSeqVVDTjPZwr"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "400000000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2Jm3U1whUd5XyeXbHxcbvEsYCgAStmrQbePwUk9eLD8LJfW3f1"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "6408882400000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2K3Ny7WTRfSTPuAqBpkJAEdRCUDgjU9KingcdtMdDurr1z3CSC"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "10079600000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2K5n9bKLAm58JVJxUspVQG855FiqtqiDmPEim8wPuusB6C8apQ"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "55000000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2K691cKXFbF86JJgdr6yBpycLEMrbyoYs3BjxnDyTTFHtEGYQh"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "50027009060000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2K6oqLfkAQVxQwPoEDPcws4NkCxd2wmPwfSGsXHQEGEeyUjfGM"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "9000000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2KAzdVggmvnGA4i8bBfEGScaxQs7zJrRziiwcRAVeXyejXZ1ob"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1189725230000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2KKGTdm7rV3Xa2faK3JCL1GjgixjWgbPLdFscEFJ8jbxnLQqty"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "700000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2KxZ4huYvBP6Rxj5ceHyWaevHjPiWrx2tp8diA2oL2ZzAgPEtG"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "6772290991800000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2L1uXV5EzhRM9zjMj3X3bhMJu8ypyDFZtAk8gU6HsWormJYgDA"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "110000000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2L6wraCRfChRtSXQsVSPTfDMJ9Lbzg4wgXmVzEabfdecbSUFSE"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "20000252320000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2LE2o3gfKwKXsJwWfnb85NT5zcJznw9TYWTLWE6K8vhajg2VQb"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "510337000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2LRu1CHi2ydFDJmyUoUpdxivEkUKsaX7DHNTaZ5ykUCxjCC8NT"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "800000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2LVgkbFZLpCY1uXSqey1andYdxiCy7bGWbWtAWskSgEAEBbDrN"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1980075290299500000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2LbBnhL8BSyXnaNarUruvu9KDyg6Eg38dKKyi2d1CNWzsqyJas"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "464435541263377462344"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2Ld2DpadYH14uF9NvgXUxiyJokfn8ZoD2TkDFsVMrRvwLYGAic"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "133000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2LdKQTG2LEHc17GJMwWMhgpJwgwc1N397J75d9X9CgbBnrgqyb"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "172629031520000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2LizSWn3xLcxYKs2WgtGeD8baadPZZEN4vgTP8a4GQpiQRKX2c"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2LmRnYbJ75JjZuDL8hThhbjDbCQ3KbtkhoR8iAxVP79wNBZrBM"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "40000000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2LnPs8qcK2maZWrWVMzfeVVkgoHNuJePNK8caQbNKVNAWEi8cv"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2LnmNvPXAwPRGrgGxoa34FrJcb6kQhQmdYbjyrd9PUYbmDNejg"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1904784000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2LogKALJsqyKc5S7NEBKtfWK6W4c8f8qpqiSNDK1YxbQcdZep3"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "10000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2LuQ6CX5RmJ8T1duFp3V1ksZvPY6HmdonahvNeo2bsjcTUTaYd"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "2002000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2Lz4f5C1ttKjpKid9j7nAZCwMS3Gw3KGs635NX5edfsgswwzAP"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1200000000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2MN6Toa8bSM9iia6qXhpciGyzJhQDKCTsuyZkzFRPgJCHVLRo5"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1250000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2MbUgRy93bnJxsDqWZpBFKfLgayNQa4WukHJpbqdU1Mp3Aux3R"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "300229140003648327689866"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2MjVP8X61syiA9D3vpKig29hAmjKfYjmnosx7wLgvkPQjab7yu"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "100000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2N1eY2DYo9o9UPdSgrcoqFiEhW51m4xozDkptGpn8TbH5pvMPf"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "22000000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2NWzYAB92ohV5gQv7kecT3U1knTpEdWoe17HMfTRLkyhyxzqZp"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "8000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2NdewsifPHLmeD19vSus7UNnPMcQZXGe3Jfa3j8s1UGacDbMmX"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "2300000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2NdzVcKYgQGEyAeSCs6ikTgQ3iTTma3KJvWHJn9GnyyVEK218A"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1000000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2NuhnprfTwGos6z3i2YqsdS1mmVdgL56e6BH8qNGWAbefJGYuq"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "486600000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2NvaBbT2bXeuxnHE8gCDDtQ2JPcDyLUdvmKagEYd8f8fWq2C6d"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "4624755000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2PE2U4Q31pMuuBjfVPvq2phsnR9U4XunaXvYVbXUqUrY89oNQL"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "100000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2PGoM13fprrS6fsXx47pwQyNSoKuefqiwNUmKdsMrw8XJ7jAYw"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "2000000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2Pd2kFzcmt3fZRczyoHLXP9Th7yZfnanf3HfrFS9HfgiXmPm2K"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "9500269998500000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2PifAMfv7KgWE2xTozDX8Gu3CgbEaTR5ELNom6MXx5TDcwiTae"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "6397000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2Q3h74hRZjdwNJicoPfaZDWidHJ95gsvqe9SUq1CpkBBifgc3U"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1608770787000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2QbPZADvrQdvN4AnCnzAv7VQZ81mvqJSTE6bbVyKpJYRYmeY6R"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "64465800000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2QftRbPPCymnMu6Hr9afZX3QReF55xrkV3A1R8nynyrRoGagiw"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "23494005050300000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2QkKL7cVJtJTyPxMP3fa9iQKhocMaoULNi83Ps219rYqGcjEmZ"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "16500000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2QqGHLFwmCs9boQwUnnX26XAMrL2eRmgjyStEn8dma3jNvFTbD"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "471026194810000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2R4DeupG4VSoWyvy8rJZbRqPy2von1jLsb5moC7th9ApxkPQy3"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "6320000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2S6quiFe51pDaUC3XwE5uXPcq5DG25WX4y58KAXasQf9cACNFu"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "23603000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2SFESiVsio9XBooj7hRxJ64LC9ApxTJ7sNccrYWoFckEcHmEKH"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "5727000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2SPfVDgP7eajjNaKrruJKv6oMReDDH1RDjkVH8Ni5rFEcyHnrQ"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "256000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2SX8XsHCT72TCBkFctgj6icJ77mVsbGA5gGzCUY61sXHgtNJdD"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "46563215697900000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2SgqX4h51k91mEjJUKRRW2dG79ktB9g5LWkeYkzmi1Jgfgsbt4"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "744418325000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2SmjkEktYfXXkpg5xDtusnpxW1ERFm6UxiT4AiSrdJke6iL7u7"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "111819000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2SnuwqUkUZPu9k3CU6PrZGJ3wuqpDywozDKKHpNKNHKXfeJTRP"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "137500000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2SsRSgdwYwiEjQCr7xbnTgcmfkbYEvuPBa5DFm6eRwRJnNRaNu"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "2791509000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2TCRDRKpVzBgDdNjpELgwNoscF5Yd2DcmLWi6K5s9gm8GC934p"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "222888303000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2TTM4XfgnBkv3LYEpNXRW6sq1dqRmE3JEjcsuhpxmpNLuWRK6J"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "118856520000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2TTU75cf26EfPCY38T3uensNc7zGj5Xd2jzapxxedDmL2f7zGC"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "17280000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2TXo4aJjkqaBvjGV9disyRxwjQaVWQamk5MkAodtNmAwGYDHYZ"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "8116498000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2TZCdy1zwp5t3fitYAoqKYezaHXyJuyEnNgTTYYUSNdsvLiko1"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "10465000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2ThwdwFf2UPFEiNpnfkUmktHQxVjtEvYSVFCKFcqa6BstAB4JQ"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "8300000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2TjiuCYjMgQsLeNieVA4SXx26M9AamEYsttDdLUHatFmK6BEdn"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "390758631284916201120"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2TqatwDNDkUHzKqbfeQ26jRPw88z3DKg9WSxGEJzGeAhSjeq3e"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "30000815224800000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2TxZw329YLms5ALyhMz4xyGMYGmNsxgdizrDgTDnyALKTwEVVE"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1000000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2UACmBUYgm7FJVUUuc1dGrqYxu2bRg3XtoEZ1QuSFPNMcaAkko"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "656000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2UP8DuMYRzTwg9dbUvyVC7MP5oRUVYhNYzT4ydqUBi6xVSeLmx"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "52197311150000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2UhhmZEWBQaakbFqds3MswuawMArnQBnuWoWRcK1gQWf4DJuh7"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "2124728709821760000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2UwFCF7e77s3XErhwkxzd7CowneHQ7pahSGJ7cNGggsC65DFTJ"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "727426700000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2Vpk2GAXwCfMNVMrE1zNrT6ASMY14dMtujHKN6P74CozMSSy4C"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "5210000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2VycTvWVyUru8NhWbzFzzWqKGHTEswvh5yXLR2do6AWsgAcjJd"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "12226000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2W2gCzHZXgd1oFd17Jaw3ijpkxKZyEwdQ5X1JT81BEGTzgnK8h"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "10000000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2W2kpVG3Ln4DAyn2nZAdtiFbT9xUric8yBHw65MyadQidufBB4"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "940893600000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2WCHZQpcUp1vLb4f3Z5b53fGfzHmNezSoUJtUSo5zoNjcWiXkR"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1000000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2WDm3X1uk8JFEk5cypp7z4hqycrAUobQjPMsFHFvKTPs7UvB1U"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "776773298500000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2WSjpDp6RhzNBRTktzgTwR97rNSvPB37ZPHr2S3J6CUoKZuxVf"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "100000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2WXFcbPPFCgxgXmduQGDywfhGFRfe2GkkTjWKEEbf8jQQ44ZaC"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "100000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2Wk3kSqMbmUGcLiT2jEu7yusdQz7aCGDFDSPxZWmnsZAThJR48"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "6300000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2Wqzd8pEep6Fk3VJH6bpCwRFkqmTsZfFaPa17PbeJ7e59rwVwJ"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "66385985715991764855413"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2X6nL6KEv1XUhPMwpqra6HJrxbihqRaZPNv6AaAyHu6FkNG9MR"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "312000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2XGudWw5JmRGFYEkXphJygnmoR3aRpGmuFXw9MisaYv8eNS7FA"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "98000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2XPtNvo1VqPDPrjyuPAj3YtVPkrid8CdUkNDnDPbFBGE3Juzy4"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "3000000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2XQgEwRSUDjYYa1oeCbDybm4HJ7kxnvXopBweeFuEQxttuYbFv"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "15000000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2XVvE2TqePvMNS4aXxRZm69WFpzS6b1AwaWbjY9bdTqBquMQAe"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "18098025000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2XeMqQyYLFYnnRGyhXH2WV2fk7AUXY2X111oCvDwBsFCvzFcsF"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2Xi5neXdUpSLiYVZAkhRV5ut7Yc3VcV4CzZGtVsbNwRceoGWZG"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1208900000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2XpapcMFrmLZsidxJ2pgKqny7F8RAQtc3uHvHyYbVCZLKRaTzg"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "27000009402600000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2Y6bLGZUWtayeyXDTY1DLBYTgDHVN7NwPcn6e8gzu6cVBjNWcv"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "89000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2YLP18XFtt2uDMg91HJLrvz9qUyZciWCVWrViczKAf2XkphfGo"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1200000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2YTBVvhY46Hzg1YZxTRQPk98ZaNvjCV4Un7CPmEdZfEHpoXghx"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "3001000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2YaiufoktrDUjYnaDFRkonbiiiPriqLxBxLSqhYmAmMWQsj5XL"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "14300000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2YjGZ4pxQjnr965qJXxk5kF6t5cQN6sRPP3nwKZTUrtpo3vHHS"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "13349552000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2YjNQPNsYsGYUcSp3PMnWFkuxKkEMPS1eTULfY82mqbfKXQtCc"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "224284944130000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2YpQ9sv3XvNCS4xrBNquAhkCbxxCxpXjZJ4QMTtxQYZZqUTwpT"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "4000000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2Yrb5p9BRWKhgMVHjK3BHn6dwtuzxD2qnehsjPzEWM4jtvEZZi"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "349938120084000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2ZSVukAQNqiQNd5tBUpdKhEQtt39qbS2DL1ADV1Se2SUxkjDjn"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "7499498180250000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2ZWTFYQfonF892jU1MSxpWBNzmFawmBsxeu8iM2j2S1N9r7mSm"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "10977025100000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2Zp5KWiMLT63G3kXM9jXw3yzfLqTeL9m8TyqqY2aQmKD7o3ap6"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "204000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2ZqSSgy1dM5afAirVdCRgjvpi7s2LRpG17xfNmcwJsfnYup5Zf"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "50957690000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2Zsmc4Z4KWvUQ2nJQhKB57qWYZA5yDTcyvqzqeUCQLZDeHXdUy"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "17389580000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2ZwHRCahSE2Nvov8s85Wfhcy7tqDbKHVSbXQRCWTqt7p98usmm"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "333556000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2ZzJPXNSWDjJFG1orFuZkBo7oaeAPTFHS1S47kxpkMZJ9FVbSk"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "799507071200000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2a3NNRYRD3E3wzft1gPjYFwFYwUfoDMRzJyyatYskAPJL2bsE6"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "700000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2a3V32XGuwzc52tkWwaVSvQKrb8dLZ94c4CuV4zb7b2y1di8xz"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "4209999577810000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2aWXyVATCUQCigRAtHqsvm2EU9RZaMRCNKJWgvAs4aZPeNmmeN"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "2998800000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2aa8ncrXietKXtxDFtxuHoVeJHk2xYx3URZqJJf2n36foYjBdb"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "2606000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2ae2YwwaFd1ywHQSWgJjqmKJhwMzYUCjwCT6KF3bD9Ajb56FbP"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1118521829508196750000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2b4sGYb59Z2rqpc5NLmN5UjAL99uxowAHy9bLgnaB31JBQCd4r"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "36937000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2bgwdLp9CKNd3MPMC6SVR94kcP5RSPG97th2H71RZeNhuYBFrB"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2bkLX1w4DaLT1t8pPf9nezNs5UT8vmZ3XKXbREBMmYKhth1uVF"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "44011000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2bnCiZT4sxhHTg6PVvpd5ftCTjz81aFZ5gAeDVPnADTqachsB8"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "66493462563000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2c1wxA5QoeHAZeA12MPR9q7SP4KhaKGZJRnb45kBuEpu2BE2m2"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "983949998000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2cAYWKoaeQfgb1mYdkDxm4RDKPmD7Rsh7uNmZqdaRRGXbtwNd5"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "2244750000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2cBikxfWGCkM6spuMPqEcRjSSvs6UPfzE6A3vVtgHwjEyjwyJv"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2cJ2MVpPXBjTeDDkgRjTnNckG7krU8i1xvnTd6hHoejsGPwNjd"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "197122719296900000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2cJokSy6YHfoE9zuXMygYPkGb1NkrHsXqRUAAj3Y8jD7LdfnU7"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "55050000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2cQNGoRdXA2UNwSBQZ5LB38VeySrtSsepei7hju5c97TLZvgsq"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "25454000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2cagYpzJin8YvhPw7d94gr6crTqCVfKDt7LVcgfvSgoYvfL6wx"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "398200072000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2cnTNuHdiprMAy43g4e93fyjuFpb1icUSP8RxGQ3vGTWxfxUAz"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1000000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2cvbYJDMCe8GV18F9UatgC6GoCZkuqMXi4cRRNfE2hyFiB7ASk"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "20000000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2cwXNTczDjco3X5MAAJwYwRd6VYmAeYRV9eWpSyjAuW48QHmpo"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "7259706000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2d6LVmgCPbfHBroLQd55fMLGnBE6TxEn5BB83fLc7cPCNpxGRD"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "4998900000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2d7ntqJEdnH3NuYSZoay1uY4irJdnganGBAzwrHquJtokaDDfh"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "500541952700000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2dGEvLdXuGWZwabMm5ViCLKAFE8svUdKvt6n8kq5jk714uaH9h"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "41596981018660000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2dSaBxY6hpFFjva2sGPyiCjJs19y4ByfqdjPFAwsHdQFCVyQm4"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "17845374100000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2dWtQ6HyqxCFqF7yEtMgZJGMJxGWedmF3W7bspu2UReeVqa29J"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "33000000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2dXznQcySg1QphHNCPGSsxS854mMEoDh1v7SxfUfhdmNczYxBE"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2eBWUMGdFJywptZr9Y23XfFLT3aHzyANh3Rq9kKnjazmy1qLng"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "16528754221600000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2eDBo9oiAEWBDdrB3XpH1bNoF84YokacgkTjPeK3bLuhKGnFmf"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "2500000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2eDyjZQjH4JDvXJoXEnm4bF8BnaWPVjS4dW2o8cUrTphjYQm6"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "10999359980000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2eTx4yjGeoibFCLqqmEmk9yHXJVZBwhS4x1SmekrSdbcfNEzun"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "7115000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2f8yaYavc3xSrHg69UzBjMvwjKdSf6J2V8wtrJ7LQHiwgHwVzV"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "3300000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2fLS2Cit5bSHk7TpkfdHsuKkBjG6ge9zUGzW3sVEE3teU1dDM"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "3497891000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2fNTGtXT7M7wFa1TG5FmNJ1jrVYLjUwxQMTMKEapGqEcnjRFv2"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "39188000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2fRqdd5rivp5p2i1Ehmzy41QY7Yxv47aTAdAA7P3Hhgnb9c1Sd"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "202000000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2fYpx8qGB5FDgQTmnPQRjKyxmwMUiT5wX1JTfKuspgcgfjv4dP"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "27006113464317737217298"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2fi3KHy2MvGQB78UbB2hvsYf7tE5hMTHzC6pYpskJtL3bmjwNn"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "10009000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2fnSArQ6bEShNnGH8p4U4azGJFwSrHFh15oNDDiTVqrXcVCFHb"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "20000000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2fxTgkxES5fin4fAYHUWKdGGtjL9jNxT5STy8kBUTZY9uEP8z5"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "871970000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2g1rqjaj4sNhHumKDQ7EDNZwv63LMwzhh7hUW2mes9MSVQEHxf"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2g2yq6RniwW1cjKRu4HdVVQXa5GQZkBaXiaVogQXnRxUKpmhS"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "15000000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2g984wHCuwoaaB9CzdyE8rgZ2TzFvVedpTUe1H1ty8YZAS3SxF"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "113930654487060000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2gSe69bRRUyJxXAbEd1DNCd37TovbCyEHdPHM9Lah8HybhByLF"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "12415534544000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2gc6tr3dCsHCov8romwGpM5p8Mpm3Fi5fgrGeQLAeFWwgzrgGB"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1499624368000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2gdPXChHDmLmG8u9m7Tjvkx3VkHDh97QXQsx1sBjxedMmbXTNG"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "14299359998000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2gieizKUn7FGu1xApNtRbthxNdfsngCbHbW24E49A1Hvk2E8WC"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1112714200000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2gmrBkxt744JLH9dmR2YMqNQnrfFR92GWJh7b6gisrwRxf62ku"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "378490000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2gw4AmruV4HKQ5ECYgqv6MrggL1ERcBQ46u1H3MQnVDoRqiam9"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "205000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2h47m8utrAuc1aKuzQxSuvhjGMtnmoKJY3u9ANWpfziSib4YPX"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "3278279932780000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2h5M7AoyhNLjFumGtbehu9e9E7m4ofrabtQHheiHDMRUEDeBSZ"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "33000000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2hKBMHm7bi4G6QHbyKsoETmPrEHSh6yySp2U7v1j8BdVGJV1R5"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1121625000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2hLr6eEHxCckCuA1mjGSDnHRMfSRETkxMCSwysR7PKfcpeJasu"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "429948615484850000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2hSPUKrYGxBbf7g1a2E1rRHbtJW8XwFFrQS2RYNPVEUXiAJTqc"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "10843272600000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2hc3adxA17HnqB5EuZxGMYdCaNQUkZYLDkF7r62CsYDjwj3VBT"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1568000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2hck56nLJCAsYR9qN1EEAR94rrgAZ8ii1mecudhVmZXT6geXZL"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "30030692486380000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2hibkALXExcibTCbCm1aS6huoE8t2Cyhc6ykRd6AtgLVNe3NAi"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "20000000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2hnZf59ZTUcJASafmCnfLp4a2PUeYyfMSvSAtDbFDRsZJX3hw5"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "30051365708300000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2i5gbyBWwtfYgfFm5JEGq4GYVY4Tcd6TvFN2qQMsksA9e2hV2a"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "4000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2i5q6WxgcDESWxS6gx8HtU4fTfe2AAwMJinTmiNYmCqnCCTo7n"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "19995112712000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2iDJEPppau7fY7vsAmC6NE4o8fuDEBJ2kBbzKkXtEZNyyXU8GS"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "2500000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2iEXm89XiAMQnwJD1KfUnoxjqPUyP3ZavL98zGEqhnryXioeXt"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "146642406168150000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2iFFsDRLNncc3F2EHz3pC4VSgZug9Rm31qXDPZ9d3Nk5ApFjtL"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "56000681708470000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2iGcwj97ZCSokWgBGnoUUNCvCHJ1bwc4upeNr9FjmPEpbbdg9F"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "13310000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2iK7D3t5xyN8GHxQktvBnfoC3tpq1eVMzTpABQY72FXRfg3HMW"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "125799051000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2iZ8nkjjwrK4X7QvKpiHUwdBGyC7n78cwsNsKLE9Z9MXEUD3vP"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2igKamqmmv8tVWFTjbYX7B9MKKiLw6Q2pNi5qnByZjx3aYXr5D"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "174530116052580000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2iqfuYJNxXTHkibFyVLShYVFhD4CYiyWeUp6CgneYZBrtFGZYK"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "2000000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2ixBjvGieXUy4HMWQMYDEFLaxro43Sn7Dwq25E1kiPL8C7NdG1"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "58008328248620000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2j8uitDouhCk29S28gsApNds6zxcsq89RcEVRAsx5sV77FcLuA"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "17500000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2jB5EPGkXLe7RJT5PtNgNzjSvPz9LbKPawqnyz4n6zBHoweirJ"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "35933876784000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2jLgzwCCftn16Ey63zyNKkB37BvxnSuSaYdH52XcYkYm7VXuWf"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "59998998180000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2jW4fMuRr4i6gaMr34q81MJ5v6AfZvZdpbCWHfpsmtA2Q8PQbh"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1620000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2jb9aHnQtobkw2MsToSAa8DbAvVNu5P2j7398FrPvyxbLiWH7J"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "13000000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2jd3x7wxsgegGWGrJyCbhhGCD7B61AtsftTYJjDJmihUHKj31P"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "162000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2jjsRf2j74Bi22hgDhCx18L5TSmNWg4tTe2aev29hNiA2mpUxS"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "5008000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2jtvX4NAh6vUvt7ze6E1A7c8d1qAXLREZ7oRokEkNvYrGMRMpP"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "10000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2k1EepUgcg22uQ3aNuP7fqLV2FiFbMJc4q11SBgg67aehd6Rzq"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "46495198400000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2kHW73XhoW67mBu2QVbrfzxhZ8zxDjhGY4BvrZMbGLGgDtWvo9"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "3999622033600000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2kHa8oK2sLxUPtesrrG5kq4EUip14LXkJ1MhD9Cu7ts4JZK2Yg"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1200000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2kJALwAJEAb7rd8cRosEAkDFPqvLLsyPFik6twxVcewguEm4Cg"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "102426071107600000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2kbrkQW1DA28yCTVd5sBpMuasz88ypBczzMHEiH9Rw176MoTSL"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "7000000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2mKF35mXQmtNesmmPNPFXzV3vSMUHJ5uDNEJxuhxrnAWRXF217"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "57871000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2mLd8on7C6QQrMF94C7fi1hiZj1qBvXZ1oUBkyXirRTeSvPpwh"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "3227196960000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2mS2j7qFxUM3JypJm1HbsggDTG74dXEqT2urkGkVt48RBCQN4Q"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "7479000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2n8rmMspUgvm7nZUmc8yNh1Qcu5Kv62bDgFbr3ubwXWKJu4kd3"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "90001000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2nMNReBFrhNh9bcYAQWJAt8QEiLVzmFMgjbnYbuCDywn8QBk7t"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "4521377000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2nNgFm5KXC9yi2wRbnotGCQfFgZC4FGKe9n1EXZkZBwHP6EvHy"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "307000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2nQZsDBJXsJv2ncfwH78KBUsXn2UaFT1EpgLtmR8oa9B2ci9yN"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "27422241310000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2nYoJoPR1favE3WvHgoNpK5ZDMPGGaoj8VPHVQFuX4QgdcEYo2"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1178881740000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2nmtGEvnwYgBdCpiTezo4isyJy9rPeYUAgSgHfsXuhUpdwWQu5"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "11277050000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2o5JmYpjL21fuJMhsh9XED2bYx8EfJnHJ3tJK1T6vunxB52CPc"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "4014000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2oBVBfVrzCoMNXD7xqc6EW22vFiEQnEMsJ14KgedfJ2qywmSL3"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "54496430000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2oKNVvpj9QBJi2qPQqM7qHQoD2FBCVjcSgzDof3E7s3BWBUGiq"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "2002500000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2onZwKZq3fqDsxUDST1H6vx6GjVor7Q1CSuWDuDW5Y1AiNFBdj"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2otrhmofkXRcAdTt2oJXS6q5q98xmLMoiMJseMKmBfQcLwy73N"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1591966400000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2ouujbS8tjBHp3LrsQD2cziir1pwxSjxMEbnavQNthHdxe1Wyk"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1554835540810000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2p2fAinvW9Vft9UGsJZ1MZEzNCLMqHqgTNub2VzTqR2fiYJo6m"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "120000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2p3Caj8foM5A6eihqgMArr5oFUtVxhJAKBAUwdmLFkvr8MC3DW"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "3385625000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2pDc3LwsqrXqPWTYhrbqu6AxJnvKGvWHRCaAadJRTHN94w39Hc"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "45516395100000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2pLuGDgbBLntA1K3MLPeBV8xcJhmTJGjndcbRBirB6ik4ka2zb"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "49981400000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2pNebKZZ45ebsN6YWNYbN4SgS1r6HvncPF7BZX1gSr9gmKZksj"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "173625000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2pRSPbAG37nzBLS4E6diyEKR6ToEKwDXeRucg3UCjmCbDApWMe"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "14547424815000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2q87uFw5ALqXA8xKuNKtAAyKwQsDdvjDhMJ7mSGjRdeA9A8aCk"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "144881696663000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2qA6mMG2vw3tpgCmCp2Xpd2RAYsNtp4Tn7r397dYFSDVUQP353"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "140627915640000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2qSEdGQHPy9N7GVQWbM1ep77DtS8Jb1fizRDT3sTNfu6sk74qZ"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "5531000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2qp1shRyzXvJgSFhZrxJsbuGrKqByA6esggV6f1tm33ghf9hWu"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "17401000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2qy5uUNYk2vN4PT8itiArNcMJF9vNUsEbCN6adMTv7bX55MbkJ"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "9100000775450000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2r3dT9c3WpRByeEBj7s1aYHfgDhbEFQoKuTbWFVTjaqcukiKgA"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1150000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2r6MTxKHb8qWNxayyYMa5p5R66Xx682oPPMapHQvWqBrLoQtN8"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "50000000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2r6Mmd53BTd2rRuYnV2KfLeGMmxAZJo8g79bfDMW2uBdWe4ax"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1444554454444446550"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2rHvPx8ff8JZYGQxopjyetn7ChXHzx6DNjG5JgjmC3xuocvMb6"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "3894900000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2rV295ARQbhSG1QYoM1AMimXvXbmbMNeQKuCJzTEratQuYzXiJ"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "3038500000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2raSdssK6Js9J59SjdkffwTm32EdydrJKXVnxQBwDxYE3YtnTS"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "56596090840272520800000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2rbss6HBGbv2QbFzB48zFEwwrSRPfSH7oQh1uvRyHwGnA4rhVy"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "8671563315620147280000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2rcZQMjR4WLpDn4TujatXzdjJDvLN1xB7QbTBtS7xM82CeaZDk"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1554750334200000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2rqQRpCos6h14Cnb5bhmyF294GQAHLV1DQLKxfscvKdTHnbmP8"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "4094701411960000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2rqxWqiiTd2PdomS3YpZXwi1Hn7bkFE4CMnquYxGmnTnjCxy6G"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "300500000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2ruXgsLy9jMwEqsgyQgEsxw8chYDfv2QyBfCsR6qtpQYkektWB"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "5307138661548760000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2rvxvXuD6vfGBnSdtRXwfbTBMVRSGU98LkPd9JXwgv7A4iAyeT"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1200000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2s1AXexZDXMFS5x1QUGmK8uBADW7ybCjc3GJuJByHsdEekgTPC"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "5102783479940000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2s4KDLxqqp83XLcgUUFR8ati32AGzDQTap3Y2L5um4SMLuZEAZ"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "19000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2s5wE5GrQbPrDGSvGBBBdWcuKs34tZMqohH1NbzT5Ph3vz9PpX"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "100000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2sA5C9WZWr3JQwRG1UssBZQoMo9ksHafEF6rUzgN8WM6WJu2ek"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2sREkkACbPRrabJYeuxXdgz46TxrV52cX5QQ588NFsbydp213o"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "2099531634900000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2sUqX6JnNaJzG6xLcymsJMXTFgxxsY7e9JczkWnGNhKicv1g7a"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "48280280635787096000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2sdwayvXEpMZ7dVPVnbcLbPn9yDansQhZeQomfZdBzUQdyysgt"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "3758641341000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2sjs18SR6c1XVrqfK5QdEV2MacdwK23yPUxVxEefFDSpXK1dYM"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "219838000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2syHZe8TmDFkHPrQTZDKaUjiqCsPshMMzhgdpsk6NW45G5A4rs"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "139537172030000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2t5MERp9NSZBNVbn6Z6HJqQm6TXXad1cpECj9qztdWqRMTPhxW"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "748476669500000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2t6r3nhXQZBq3iMcycTzDeUUzCSdhVzmTmKszixfaz7k9JGnrp"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "2001903668000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2tAtRe4umWsSXtp1t7jMGpxiQnvmvtcf2AfsPMBfdZs8142gYf"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "20170328101300000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2tHMX4hQYPLhfTL6iBBuKzjzz3QYdY8uHACYtxEozjT9jTuiq6"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1420431700000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2tQiZzka2ar1K3Gytgfry4hZCkBgf4ymA21Tqqnn7uQHtXwiWh"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "3199511271200000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2tWzREjyZeVpSgY5BojaGRn9nXdHCUnEtvg2XZ5Du9LkTxStYs"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "16500000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2tnZmrL6i6MHuqcWKEJBKhtJRF3wpbStbHFWuWeYtp9ZzzjAzp"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "206000000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2tpCTvUuVKdELGmZJwLdyeVAqQLHeD8saBqDtpLiFZ84vz9yoR"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "135340206400000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2u4onyg13NtTkjCZ7EptZk4CB77rt5eXaQKqH3GwF78r2PHZme"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "22097947498000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2ubUvg75KbagSkLJGPXPXrQjZ87c1mfD7hM6vB5NWiGpnjQqpe"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "2001000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2ukUzbSVdLq1q8wahtkzUddpkRS9bu4KfW6V3CvzB19ss9Zguv"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "5210000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2v434HhqCmrBS2qUmnUyrnoXeHD1CEbr4znZFHyenv8Xvmaf19"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "37998800000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2vA9wMmPkCsYoTDsHSSPpzqRhr43fok6jxc9V7UYuXJgMgGASD"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1250000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2vY1tNGmFzc2KJ8xU8VNhfdKPMZjtJh22wguRc7T7UwFmvC77b"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "2262210018000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2vaMaAQy5KgzeZEqidnPJudCs83e22JWL3r9aFj3h52Rq4shZA"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "67366000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2vcntna5ck67j57mjQkaHUcbp5D6XwvH5JZuxtoJAqe1sPofDt"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "12004100000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2vscCX37QpLdD7SWNJhCQcCyrbFM64LaaAuonFugQAAoNjgXzx"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1000000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2vwh5jEgZh7FB6afCvzjUVqNUsdgPxQE8sxPX685t6H7PA5oj5"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2vzcm1fwgBjun32Uom8UZQvEVCAjMKzn2SfxogzDWquwUDPd4u"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "975000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_2wQHwg9H7yXQ1u3rKHRPRGaCFKMitsPxK3G861n8rgetZYcNfT"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "34317163421583882160000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_3HCoCkmMnqxxzNcwiA8PzdPLD57mxNwDa8ricV9LyVmecFLKY"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "400000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_3JnVAa2HS3BzagYoRiwxGe8LyPDyfs2MsjsX4RtDiGNrcxTZP"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "3357729000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_3R9mTbYV42MkncuRGGe6Qkf66ZCEDF1gUUn7Ng9YgAaFJoFx5"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "2250000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_3Sg8nM521DCsuTUTNGPGCxWrYLJdJSFa9aH8RJk6aTe1in7TM"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_4ENHT9Ag8h8cUXXobnjTQWbFzQXhCEC2TftysrhwnKR2GurRW"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "996000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_4ZH9Nv1mbK1c35wtAJ8gQZw6GMRPiou9Aosz7399yRGVh4ZRY"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_4mLLkAPFU4Djjr4TaH1NTUXVqMCQSYgjug2wEaRN7sFYKH1VY"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "632529000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_58CzQq7bT3FWdfXdeV6EiSDBbV1SjyjcGwWYqBNCCnApNXYi8"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "3044132580750000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_5KLjAw7fc7fdqeKdmoUwcitE4W6sYAbvEzFQujc3NU35AfWJm"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "8823069088000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_5TURVw5s2HtEEfoFveeCVSviepTBh8eiKcwLWDMBS1qLwuTRM"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "616000000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_5WVVfKqFeNzKjThrzuSMzPCeZzDsYL2mLGZL1d11GQDAuGmac"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "3000000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_5WZeeoKsjpSJ3bxEnkCNmKavSpgkPDNDghCS6M971tPKydiPY"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "800000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_5gTrenYP5NgSBGtJsU8tQ77kkuRZkwPsSG7pmPeExqi7VK1Er"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "705483250000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_5n7bVXvLZVLHuVA3LY9VtsjeZ5kqGzsKkTvebCBLVUAGLgkFs"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "2400000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_5zVehLU2gvGFDkPZ821wK49t8BMHfjBzNaq7XUTXUd4Fjju8E"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "13310000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_65vZU9X1zTzhrzdLvWS7m1eNhFuUvdv5rqr72Wg9t5coRNQHr"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "70000000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_66HVfv5P3VjQdNyLzMhAP4usQpMWN7w3YCqjnRMQ2ChpiVhzv"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "2099999911873193101385"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_6dZmPzj4GUcKXdCRhwTShPDNZNCaAqGShD6aRTBCEABJ9rpvD"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "118634477865431357620"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_6f12jQcb6VmLBy3jQBFxeRGqhVeN6nS6otQUEZqiHK5HXrmSi"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1678207000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_6muF9xSgy8CVWVjBeKAQLdemfSvgVo2Nn9MqjEQFXKdeSqov9"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1189214000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_6qLyLrtHq41hvmtSCt4gqZo97M2yduGBNb8znxAWNfsG5AU2i"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "319999534544000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_6u4ER4jCFgL42oSX5TN369grHHg5NKP6C7zMfL1YX5RLHa1Ls"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "350000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_73wPHQBbh7av911ak53PnENWU3oQxjyWSExZAth65eek5AWDx"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "2917000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_79sXxqRESWnxCHhp23EyVsyJJz43U4oQAsba5E6YVfAT9uHym"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1600000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_7NxYaEogghQpDPMMpQGWAZzGi3bYDdumjHVPPpfXRcNvyZLjJ"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "298359140000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_7S6dfTXYVCaQVCFzuRJfdve1XhBLnWL6rXmZ8zdN42XB61JgF"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "3020000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_7fq4GVnYEMUNNqmXrRSr3HzSzdafat9h4Qh8Ke2RM7opzRwKD"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "2800000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_7hXarH6U2TxwM9RA9VGkg5f7hExJhgGVy8fcceBCukZUFzdg4"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "4433256771690000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_7rVx9k3dHimEoW5XnmQbXULgzvatKHj44gqu4YugJTnz4pyLj"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "3000000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_7rdQLihTN5ia3UCfMSqcSV9CmUrfhnUKiGBwqFPAnVBusqrXo"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1061911814563223892030"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_7tDCj9vY8G8MXxC4evCNXwoLtSVDujKYT4oXSGV1PhSc3Zbhp"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "5573000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_7zP8sXrf4A2SiHm7XTzS57TRLqvzTqV8ryxXiaAVeAm8dtF1Y"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "100000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_8AHnKXHawdyNH3EWrh9RJxnRv1tNzpohjzQWcFoDSpYsXHygp"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "100000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_8ZEiMkzy8Ek3Lz7FVQSZybCd97ynm5feZa65RBgBRjQP5qEWy"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1022522540000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_8j8FKuYr5j6eA96hsunrqs3eJJJCf6TgabmUPR9gtSYCYwDc2"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1000000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_8jBvQkw7NmDhC6fFhAKEwtp8ysZ7fqcWFtzP1yi5BsGkiTwx5"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "22400000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_8trDwpmcGuCFU62SthgcmqJ8RcrxMHRLpEdz27n24bpyULwBd"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "20000000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_8vdvWeVmwGNkynPUd3QMCMBaxXsSQPbPtqE44pSJX9mruXJYL"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_96zHKi58FY2ZfutTFpPkKBgtrG5yy832syfNm6voKuZXtwZzw"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "2413879509150000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_98X1yjexQUyLUyNq7ExuoAvKfY4ihW4usxnjruNN71PiccfkV"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "14167359998000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_9MycghaJUyDkH9Eb4PnX1juXAMKVRMYrY9qQpPuw8PpB1zxvx"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "2340674025000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_9wy75gDEZr2pkYdkxXthXrSfbovMjpJmGiJQntruXk7NqcEbt"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "6148426600000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_AWkSH3T7Y4DdP8CayouXb8j3Chp3z5nqQT4Sbd1KejxJ1rhz8"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "42000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_AZhedqiLwaUR2Yg95p1X7bPLypfiTfdKJgNKPnPPYXGFVaWsr"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "100000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_AbozwuBhmPcnTFWHenVHUi7sTrKTnwUQuvg3gPmq1J61swJ77"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "252525252525252525"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_AcrnAQg46jk6BTXhkSpesAdWHxXH8BiMxUtv8xa2sLTXUXAY1"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "62930500000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_AnnTh7JrtRc49zxMjaqen6xirpczvkFob2jip4UScqsNpsuDk"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "16384000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_B3xse63xPquBpA3Zr4LSdBrt37PnyQrPPFfsUAQLhb8B8kD4x"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1000327626000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_B3zASrSK1kSXz77VX4YD2XZRzDKq2XmJBcbv62fSP5hp4RJHi"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "30000000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_BWtG1BEkVkAM4DAhDSErWxzxfCmWuYmaeJj8eQg9hNDdRLoLV"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "132899289283290000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_BrgGgwDGkrGPJhJ2LvhTav8zj7wygXrnuPZsgAwKWfZSreAew"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "20000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_CGBUVnsR9EyAGz8iwdBgy6gNpKnCsZatDkmSnFogR1LTJSnMr"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "3000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_CMq5XsRuKb3fzLDjNUTxM4qE8yEjnX3tz74y5h2SEhTwqhmnM"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "12000000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_CU2Chxo6xa6VYRLxgChk5zKVqJ4STF4x9ZAGVuMfwYW66MoH4"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "10104422544000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_Cbzum2Pxzu3Rnj7g8vTaUYsh6UedicFSdaEAMQaLv8xMGTS3G"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1536610000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_Cj1XjGkZnm5pqwoLq3Tnhoo8n9zZ2uHYKDkDB2V6iC1RTmNjh"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "800000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_DE2KLHTMcPSUxcZ8E9pKuhTDieiooHdzDNCk5MRx3Qa34PLTg"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "13310000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_DGx1V8yBQydcq2ArhdWvf799DrQtvfpXdciGF72NVxBGfLA6o"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1000000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_DJim8QGrk72aG7bDMkszdLPYfDL3AVhjvHcjPbrriDFWSTSgV"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "500000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_DfzM2sgFPWA1m1Sc5hpvEy55DaLmJBFKNeVLifZvVtoLc6SQZ"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "74992000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_DmSRLhzRBZJSfA8tBqE7o29Vu5aVBdkmbYGN6kjv9o1FokVgM"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "13500000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_DqsCmGnBjPop4GB5JUvTKDUZSfPpY5oAB3shbcG4JPrM2hQyY"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "682155960000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_DuNi6iUNe2raMpzRdBdhGeVAAm49WmZwBJ3HUEfZD7nenTf9c"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "400500000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_EV2f82xd1ytxRcHdjXCqytTAC7gTb8nDuX3tkzSeL93Uf9FTu"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "958309998000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_ErFCwHDgUDSc2YSvwuNTYWBGKVDCARXEJXHGkRg48moACTBX6"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "49823220000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_F2FGuhyDEq7vteTvjdYfdcZqctHCa3fK5XkqdtskHuQvejJBm"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1100000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_F92E645MyXXqYTtiVd2fwPCs8TMXiSHvyVt5SyyJG6Eg64Ws5"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1000000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_FHWzcdTyKcHqbmozCaNnUZ5h3HC4LKoqKBuUb8g11QP2wRtZr"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "150000000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_FVqES2mwcTFWvCusMMJZnRWUyGeLCJpqKzw19fZtMLd8TmhN2"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_FZE6JZvxfHcYCXfgMyt8QKwJ6ZKxLzvEGDWqvJxfTDciydzKX"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "2500000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_Fcj7kmYLq9AyBFFagj4ighznnWbMQEXKrPmM8bZNu5LeRkrYG"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "5173756907198900000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_FfBC4vN1p4fEHRmptKJ3UoqyNcpNAsJt6pv4heekwpL9iy6tm"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "100000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_Fh89JcVA7nBabFAVDUVsHh9TDrxHobeDxoKvYZjPihFLaoVEu"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "16500000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_FmCoM24QTxDeECa2Kdt4TXLiP8wpbQnzwtdZzb8ER8W8KdqtT"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "3800000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_Fowfckktub4tsPW35mfUwYSjhDxCLdEYacNeCx2qMhtSVXFLb"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "85000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_FsS5CfRWYLosv9qrU3gjVM81766HxvBFm7pL8j1L3nt9RNhEq"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "8208249440000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_FvAYRyDwMynCKNHZmJ9idAoMRmQ5kEyNoCWHzSZqSaTE68GJQ"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "242662500000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_G1BPkFj4X5kfRjScLMGAgY3a24rQBGY2xuxF7Quy84aPfVDNe"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "145660850312589463905000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_GKB6L1uPqqYiJH2p1VCbgP6qufJAY5TYESMSE8mQ1m8kqJqcd"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "399603291200000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_GNmZXrdH3QcBS3vbwE5zheBzPGn3wsTmcgewPjYkrxiQ24Vp4"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "17000000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_Gc2H28kGQedJh1DgLBWra511hL9EHQft4WzDV2vTDPebB7gmq"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1000000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_GvarRKePSUZURhG3MZnv2WFo8JL3wKRGEHQewf2yTS2XKNf3a"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "18073000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_GzgS2VVy7oQw4HT4d9Rgve4TZrR63bbCfLfgsHttuYwdMpmb9"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "15080805870000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_HAEzQp5okQ8s6hBQUUBjKpzLE1gGbtEonRG4ZDWHqXTENUHfH"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1329867083800000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_HAoakL4HimVwiNumUq4SpBppkgj429i5eLvjcbHNEAo57sWBr"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "2500757578800700000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_JLDg3ttsFc2TMrpqVvWD6A5BkQWwWrqYDVfC4o6eWSFy5XKeh"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "3000000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_JfUqzqEWVSiqrBRMBVc49wMgMyhx3fVxw9uYfTEWwfKUbW6ZY"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1046550400000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_KACZGzAfX2NzmX8vf9FUqwCRHp5PAPkMeUmGCbrAwjVT7PmvT"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "63974997900000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_Kc4GfQMftTQe8HWameUgJa5g5m4sFwTgMmYNvDr2HEHXF7XKp"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "13546000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_Kiskie5NSsSRvRmy13pQPnBdv8AjHVLLvZ9AMBCcyxnF4o41V"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "81470006739990000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_KmRhL4569WR4kd7fvq4HCebTqZj5jqZ3EYSRXZppU5hQQzmNB"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "799568088800000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_KrjazkGLhrr2Qx31vr43ZGGCNF6KqgtjzLWyNsy3zPLphuhat"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "10548142700000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_KxAn8Ue1AGE2NKrJ7H1mb11K8Lv8eL3xYjqKCTUvpKeUzdYLs"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "381493000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_L1Y9iEGbnFT2xUWy94uTjdLU5JJx7S462CuLhVzPsKxLpcX8M"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "8000000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_L2gYTHXuD7t7v2wz2eJFVsj1DFZxp9duqDahzXja1p3yrQpor"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "249998900000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_LS83YSarbdsMqx56FDy1pToVtQU83HNAcbAWcN5Uw9QaD4dYb"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_Lg4JdEiVA2pqabmjcNX6aLG4X2HC5ZGHN4EJPRLQHUzJMSw1q"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "699000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_LhQJScioufHbK46VXnjFEGGNy5QTX5H8JNu8YKmFWcwKjRhL1"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "27500000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_LiFc8HFBH5QqmPaxpnMmTyF7nZXsV6idGPt24ocUwY6SmWXq2"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "12960000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_LkQiDVuDQW3Y1EK1aaogjw7QcV5B3AZ4qmkfcC6cCiST9Q7jv"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "3347912000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_MKmbhsscy6vfj9wEuAa59SRh1yQ4f55bjoDZW6ENQvcsjS6i6"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "2399000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_MN5om7qHAyX3ivWZxLEknFLXCroCgzpdJnWpcp94PMcbkewRP"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "120512150000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_MbhjXrceMzi9cZ6TkEDM8aN4Ysv9FWf9LBi6AthUR1scxB9jX"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "57348990000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_MmgE6whfeGUBvu4ZPmVdWYZ3gGfRJhVjYozB3zZiDhuDjiy1f"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "2008469965380000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_MnFNrHFKrY7SvjYW7za2rQpZPGHbd1KS5Daicg8wCj5GxmzNB"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "2130511000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_NEwcdeecpr8iJsWLEP3SN3cFMSSjxcpsKL3b6nP3qjLfNPFWM"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "7868000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_NSu7ifcvMtiLUSSYToJrSPgHkqUeDbih9Y8Qw5HRC6houwTij"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "2000000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_NUBLKbmGjZWgHgijbpYjD17kRcAV46sZNfL5cicThkHNLmqAe"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "510000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_NZQ46RvWoZPavVYK828jLajc7PRPWVTVbrjvmDA7vBpVVJvAB"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "320000000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_Naw682ChRAvo7K2yEQyC4UWAKNJxCwMs7RReyaHopgJNo9pgZ"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "187269790600000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_NudNi1o9WMNUYJ7ppuB9sTgnoPTZ98P84zEfBxKh6o5QvYY2u"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "130519000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_P71dmib7vMBVbB3F7J7VaKW4mDkYu6uhUusQdohq7ar2hzCt7"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "4050534544000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_PR4nkWfwPccWiJdYydneeLj2SoHUTg8v5JXns9JVomBvvyykP"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "5999000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_Pduz4k4aQSitYMxq4dpTiNsupM7v1XEcRVMs6DEkV14DGfnvA"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "384000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_QPdg1A7H1xoXTr6cxoU4jbT6MMpZpupAnnsvpTWpqDZZWnkJ2"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1500000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_QSg2Qyjwz7b5dbJPcbnqDVip5niNdueNx7nhcmk6outAfkzXc"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "10547000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_QUrM4Wh4QGB25kEBKKE6aWUJHLbkQVgVG9Xq8MBJxGxzxAd9A"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "155368146080000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_QeeJnnSoAh7o9JiBDwXRjnxpe4U99EDtJaLPDFHQ5hMabt7sg"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1116000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_QiAsDCoL5i5fEAC8b4x5NhQNSbAXgobn7C9BQR9QNkJvVv2V5"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "24576000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_REvrRjqYYJWTGr2JikZiem2g1qfqBdb2fQ8pwmKVWHM2uLaV5"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "500000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_RFsL9gAHCZrj1zhqdbsCa373tr5rJLpGn48ZQDg8w6yYzuXFq"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "532875466641140997413"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_RMpmdsD5zSjgVERDboxodwGMyv1JzUfRQ13giVXD5KmgSs3AQ"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "2000000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_RrRjcMMjz4ZwwPtrAfdMSAua1DoyQbUM6iwuHH2eoGjLsfkTC"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "81000000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_SF7ChuJNLnXPBWvq5PgdHimixyhhCvYrovs1BFXUP2RJ6zuVh"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "25807627870000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_SKrDTBKFfvYmM1WZ6nWQEmLdkiUz4FJiPuUJ8JDhbNCk8V9hj"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "2018112500000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_SPxR8QoBgk1yB97fFAPakqads3mhReVwdxFnZGdyf181C9Dcq"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "88558349576390000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_SRhCx1uQquqbcjVGgdjHBiNFXWj9ZBy2NasuGKdihoSWvQ3kD"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "40000000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_SVgob1nGeBTeV7EWbfbpNkJWuGu6BWJKC2JdmThGeS1t7Fj56"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1050500000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_ScW9HnTcToaJ9PMTyFcK1gXHAUiv6PXJPNCwFTAzXouJNXYAB"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "158825490000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_SkZeaN6cxdKWdaZRyZ4292h2GDqutLR1kFNxrRKoUiYicMnyW"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "114486039020000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_SsQHQugkTy8cWrk8ejni3836gfrK9kyZR2DyJeAP2qqiqTC28"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "20900000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_SymZKsEvZ6qyugRKcCrZGdQm7BL9Pceb5jvEdT6bL79vTyatL"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "69223153480815954200000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_TEsqFAXWaLoQqFZFpwNJXpecUzZP4AyuRL3G47nWYgW64Ladz"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "50000080071200000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_THn7RRARh6w3T1xYxZ7KgMfk9L3D1y7848aWLrAY4Mp4ViUBz"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "749038556250000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_TPfMvePwXrmk4j5v4MG5y39uNDj4eVe3HHGQ1czrZ9YPTtjTS"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "8750000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_TWU9t66BuwyEYy9xSXeRu8rJHoWG4DU1Y9Vm1BRThCKj6Ddyf"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "11238179000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_TaufPa3rcAjHPtcTQhy7ssPM6RyehZxZB5tPkeuQd2xCixtRw"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "4654193929210000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_TcZsVLUJUzNcybKCHsMD1244EWncNpt8vCCtyzmNbjpFQyDZC"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "2450000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_TpVTLD75DWcS5qPLNYjWAmo16k7a7EkN3T5B3hrMmgqbakZ2X"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1006338000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_TxactxpLZMprm4w7tLVdeQaPdsUNYMcR6D7KZkmF66tdZciHa"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_Tz35LSdMnithtcsBTHVTdufWzxrgWBSuDCaWDL7nVikRGs4tM"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "544313040000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_TzMu1VSoocMX1NijM5ErGgV9L4vFDPnTDm4N2veuKgDDRVmAG"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "2662000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_U7AJaiNg3Hs1FKJADT6i9M6LC9uoVxwkCudRChgzgSbtNpZtW"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "100160000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_UEyfwgVm2DxsT5eDhFWwDUf8NasJacisVE35QByqRwxX8kb7p"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1099000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_UQkorD6ZG4u2Ac8J2bEGEaE5jLABvWo6VHJhRDR9N7UnWHvzb"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1023768665760000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_URHxw1amEjfobRUd9qmu6jYqJcMavxDQfiNC4XaEpcPSQbxrC"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1500000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_UTCFgz5bDMkjBmBfCELQSekGR31uQemqd8YtJow9SYeu8vbr2"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "112009529250000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_UTVERMGeWB2eCk8CsiUDg58hzWdA3eBbvitDB1g6wj5g42L9p"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "208100000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_UUJiUZXeisRvzfDhv9twbXUPig53ukWnHHwV5CgQXfbuqXkFQ"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "700000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_UfXPixEwtApowxAd9bWzHWvwGYK4rgpXZhKjjXHHXHZkp75ak"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "6978718800000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_UqS8re4u891BYEyHycC4xRtsFYS6ghfbzTqoXaxpQUt8aeCf6"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "960000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_V1UPAeZwzxNSfKnLgzwaC1sRZWq8MLgateD8vfTcPx46PGxqK"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "6403830000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_VAtnpxn5hvNmjawfCcXcX7gaNA453VQuDimTMfQJseL6T1g7m"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "2000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_VKRq1o4eipLaBYo7NpU7Nn5sG4BTQdj2xTu8Fg7V6zyWd8Y1j"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "757500000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_VU7ReHu3f9piekWnANpKqvUGJgQMwEBbXqgYHqKswav4PEsi3"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "6000000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_VUR63FyUh72U6Au5uiBg1jYd7sUpHMeknhfj43xBdqjxnsCfy"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "8791203589400000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_VYuJrS3fX4GyTFEk38efJ5AEdbYH3hQsyDJZSitjC7HYyrYnd"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1166671100000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_VoMAtLpfUYwx55W4okKEtzSnfV273YA8vxSuz8iSecCQSS5b3"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "188778000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_VoVfy1WrU1kxG9Air2ysQLMrRsqyDvQZZtW4kqq9274XVBgdU"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1802933460000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_Vx8oyHUF2JDJ8VQDUnm4RAyxLRskrHaeybk7u6WpQBWbxUS94"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "35337227169110000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_W3DSkj7RMJtHasqLC3844LzHkyM9zjXYPEz6RgQbjv5PBEPeH"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "30001000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_W61AnGmjU6H9dfxcRbyqE8EKrgzKNBT6pmzrWebCvsxSgqb8W"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "750000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_WD7xy8F7KPvsEAzJYDKq2StNy5vhwtisnB4JoJyQsdrAcHEN8"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "103514720000000002582829"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_WHHWFRKwozcs2gTa8dRiqHJsi6rBiFGJucnodYT7XFWXcyyVZ"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "291541850920210000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_WLxCAfARDeVE1T184Z4EBuJMzwNbH4TUPTxdKAf6bubkpq5x4"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "50000000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_WZkQWuH1HSfF3DyrUhjhSsdeAuHTyAWeYBDWNMVE9uHX5Gpdw"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1040000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_Wr5ErqTAbnYfWwSiwz1mVGURiVNw2p9HGij9uLND2hwvJMf3U"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "25753253936180000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_X8Ki27FFVvU94oBMaRbcunUYTiQZfpDDzZ9Z6STeAGrFfayvw"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "5168000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_XLp2xpNWU5tkNoUTTHoMFyQGjTPUgiYxqBkGUjn5qF4QJfNpv"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "618265300000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_XaY3iZD6dsjYTZtHfFzQb6tDcXPmjWDdxuCU9cryvswpVyZdi"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_XiDmtXQfURbsMS7EYCDkVE7w12yPrULvGjv9XNRd61wo7GWS3"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "21950000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_XxLmPGVRMthofx754HiHVjaNEAMjAv8gNyupqF3rqgHEXbLC9"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "5000000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_Y79UkpCerpJgL2i1rWoDkT1QYww6YhXncE46y4WhPKDJCrdQw"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "40461813600000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_Y8snq5TE7nbtx7Y8M3sHdMyjNjyA4Qv6PJMfDnNfGhoCsm4Az"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "2002000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_YPbGUGiETCsq5LpfMA99i9zbmM21AVqRCdCNLVQ7436UrrFnC"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "11999000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_YSFgqWshBvCyEfdCWLQFuway9M14q8yVvoKZkvLg5edT54QRm"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "16740671886050000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_YUXjZMyNqZHrTpq9wiyErNZnDHTUXwcjJkH1m1oAhP2r67ztQ"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "253000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_YXTxneKf4ZZvt42b2asfPUrxZA7367iLA6ic42F5jKuwvD8Cr"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "2497941000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_YbDdVcCeHTUUESuN5ejmX5Ps4KD1iRH9H4sm8dzbbDPKdqM2X"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1752000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_YjddBuUyp5gmUKmU2gJn62ra4Qouf7F7TW926ZMSbSLi9SSpH"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "15500000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_YnWXeQZdsdEiXfhfDNoKSq4bKqpxxvcHpLANBpZpeRN2GTJAf"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "15000000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_Yr2br4XPhn4LX2b6Q8eedXuw1enKvJERoEjeX7AsLNJYvVTWM"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "10000199411130000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_Z2eDiEzbN4vbCKDiFngLVAVL6MLnzVEjMhz9yNu88vQW9rK9y"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "8084700044800000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_ZBUenKDJYKCf43Wn1mggeaCVwunDbMTkX36M8xg7wYx1uyz92"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "2840000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_ZELt91bqhTc4QwtJvPwMvu1WJ9KcSVc1SPzfzPyh4CuHcX4yi"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "10027278365990000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_ZKZqEeE9qPTVxrerrmBZinVwAS8xybZqpzd37gBQydhZQS4Cz"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "973064931380000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_ZMrGzjyYBsNmnGR5rJXrHXFG4tHh5C5ioCEA11noVcLqWsVTm"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "14250000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_ZRu5Mnacp3FBdM5BzTF172q7PkiihCznUpaeH8X9r1sW1LVYm"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1115510900000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_ZSpppt8MFWTBCJGT2GVZfMieo3TyZ1Cyh3i8WFDtFxBit1cwy"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "749488899750000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_ZV6cxSYfmF2pBNP4FR6h8issbdxrCoCJNLeKBcxbg8grdgkHY"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "260905530000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_ZgeXjQ3fC5Uw5Kw1HRbe24Y3omD8Lj9DrCHSUizWy6RvjVbnn"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "111638290000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_Zm3ZFyXenWTFbya3v7zo4wxCupTZf4gQ8DYmLwMgP4kvTeeZX"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1008452731000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_a2Wj4r2avoK6bXJaNwyp8Gk5GXACrzQ2paa98WrztZMvozggq"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "127823087700000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_aJEwzy9pfVecTfm3h2jGnnF993NMbvfYKVWWhu7AM9FmvkRfd"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "4042000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_aXt8NLqMDhXmH34buEY847YfPhVzaTjy7d3Ydvoj5n7jJctPK"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "10000024131400000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_aYhMMaRSfgv36LGxARPAG1jL1hxYGepN1X5a5Q89Z1YvUZQPp"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "699524132300000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_aaWTR1byz1X6eiLbe5Dagq38Ero21WFWcH3ayXNxUbdbbcGv9"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1965059752010000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_atLBMjHYBZU26uiLozCNuhdqjaSoUJG2owacfoQqzH4HTafYv"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "16000000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_bbYhgeegj6o7SD1YxgBvUDDuhm1kNLrBG2fXMJ3ngzJ7nsLkX"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "431316000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_biSJMGSZVFQ7hLrbWhfQBwo4QhY8SxEKQgiokZrXW7pn2MF1K"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "510000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_bmSHsJPM1Fhd483sE8AEuz1ooQYTQXqMGvvD78hGNFTdJNhtB"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "11042000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_bqmPk4ej6Epk5YLww4zJsj2UwKrH5n4rQi1MNvcqFtu36hiF5"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "9009000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_bwE9rSss3RfG21EkEsssCne6b5RJBU1RNzyeu1v78sfUeVGzQ"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1797006610000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_c11WoCKXLRwi4msFcZAh9yjKAJUp8e6uzFhzANojhHHTwPJau"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "60000000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_cRQPtL1Sr9FjjK3JCAsc9aGNqYotqByFJiemRPQnHie3iJsVQ"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "56927586900860000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_cik5tfFeJk5rsYriTwWiXKnFtEq1KLrFLqyGBqit6WgMVMkX"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "4224972389540000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_coMi77LcZQ8shQ49rBHYZuSmNCarsAtr9v2s1VS1gqKxkP8Z8"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "70286114200000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_cvTHFmAX2nFFqxqkk38NBPBEDyNCXNUSkMc6EAYKHhE4QrDC1"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "500000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_dDnTFR21Ksm1vznarfgaBLZ8dmR62hDQPcuBTaJDiHM2HH1oD"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1320000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_daUmkW6ASZZSrjguRKSAfAjYwUHJTGyHpxsSKxQqhrZ6j7XXP"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "14350440000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_dr97SweGyVcBt1ZADFNYZg8gJPhg1DRFu7egrpgNhwT9nw4xK"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "33000000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_e9yojMbtEdCWmZPUvEY7waVD8abrGx5ZyTd5nnQbSmSney8zG"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "347974000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_eShR3sLMHDQa2PXABMPMyzUxPaNmZEac5n29SJo229t68ckeU"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1314520208000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_eXzzWWwZwyazMVCCcAujKSg57gQg3mNquTGYmS7qUxd2z3uQT"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "24188000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_ebJsBre9EnQqhW3LL3XMhQo3WmVktFETTaZZ9GqpwH4umqpHV"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "55810760684000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_ei1SL3bJDdJTKscEiBdNeCy3AT73RRjEymZ7wws45ZGDU6dCA"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "28598586600000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_enq4PHVdraPMgpUv4HCd8EHR7oVbtGC6DpWBemkYNcdCytYej"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1599534000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_ezHisj59jiWup91kg3jmqCRAB8a9iEN8yfTesvhfu4FTVknF1"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "180000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_f37nhJ2NyLR2LGb5PG9mGnYfLYLC2z2eFDkZFDrERYSo6zoLR"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "123556789000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_fD6eZvxkp211TWDq9Y5iLLCayEuJJGCKGV67YKLQrsCwtSZCb"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "2911008400000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_fMYJukGKrb5kzgGxnXifH5FwdTvFwQiYw5MjQfzt9UqX6VDeT"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "4152000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_fQRFGuML46HcTpaJZeqwQwUDPHtPkLNcGpesKEHDQ3dwC48ic"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "34738000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_fRpdz6oYMk1RXn2qSqkmL5eefBJHZaEprvcCVEFkxubaki8SX"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "6019768000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_fURxL4TQ3jSGvhpEzZeS7szmmNbiMwtDnUtfwRf3AqqPexXyK"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "22662564270000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_fUUzUkLqjZY1qAsR796CP6ShJLk61YVmygKvxQ58SBRrPeGgw"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "2190000028292000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_fWi3Y1PPikJyTv5DmnaCThZJ7bLoM9Hk2cdfDpoSQkUW6z4Fs"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "45682534421426347000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_fWuchJFBy7AdMkeuUbR8capyS8dueC8ApAdXucauspnonYyom"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "52196910100000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_fYSz5iPRyYTSogt7fcjtsRCzpBcnKTTWqY5XSaYpRo2hMV2AE"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "5888000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_fiWY7K6K6qk63KgtB2yZ3ZzDqxAzXoszriDQWu1ystk2QxA7P"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "75218000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_g96q5zHmB1148EKkoY5QhAcBSH2wCiy3L3wLuGc1ra3AkFnfR"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1372000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_gLWW6rgv4JkH54HR9aZ7LJuNAhRPyYQyrdPxaTu3yKusxsZsH"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "12999418180000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_gSVfYGGtQ7LHRAz9Cfhz6732sjwUXJQGXfdWfkPj3Smed8qim"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "20000000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_gXKLuPHye1PonDBh2KkgEUT6YLp5C1JSaQD3Ui62bUgXEsxMY"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1400000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_gkv6bhNeeBggMEKxaWGmd5buCxGzPxF7pshgrWZAdCSZoeWZm"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "55861103000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_gvzV8dy1rX2oczJajsyKjVYjfofXF8yEByuCickCEiekXfnbW"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "38116182990000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_gxMtcfvnd7aN9XdpmdNgRRETnLL4TNQ4uJgyLzcbBFa3vx6Da"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "3000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_gyBEprsuEbp3YnKkbyzZDQixQWciQS2gDAQ26WJMfGEF682Et"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "6430200000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_h9exsT9rtBzEuCfQCJqQosC1iZxvEPtQqDGMgZ8VboTLxLAT5"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "7800000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_hFY9fPHqBuKdURfqYVYyibjn6r7PwYb1KM7x72AoY3uqE6wPm"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "14398508134980000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_hGjs6iX4kmiRDJpMcrZH66b8QRP1Rq7dmqYYPR33GammYDVd3"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "20827260100000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_hT24r775LLxGi4iBZ1WnP4gSPz8R471WpshSMujRffJ9nMkFb"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "248800000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_heAJ1vApTvzyLKQDfLC7zgYBWFpAhTJtM6yVVB2khkBk6rxks"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "3742100000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_hpnQVyC2YQgK8n7E8JrXn9MdwyijFTesbS9CgCknhbAEB719f"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "14300000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_hucXojQEsrUmrz6rvXYKmdcS2j7Sm9xxjyxAm3qBZM7ZumvsA"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "31465000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_hvW3w9pvQ9Q4T52h6kn4qUpdoTCE3Uo5VTeTZX7fCdRpTJ9yg"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "3865172358580000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_hzhGsT7dEgjmdDRCvdbJaeb4HTqRPvDzCVqBRbyfj8PCSuwcT"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "6999000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_i5NW7FDQSEJitsyu4fB5YoQcynn6GjdKuEVHxhGkvYB1cVG4v"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "8000000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_iU9ixYLMo1VAdaSHwekQVS9rWtpdMUoSxjiSRrpDy6fAP1KJ2"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "4630000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_iULgaq5FgibdpVjNRwqdbtoNCy1ba38wZcXgZTXMCkbKUSRsL"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "3915691048000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_iY414NWTpzn5ykgpv5r26NbzqSeiXXJs3VJdTV29gw9No2Te2"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "187500000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_igKmv5eybfHhQKuBCASRjfN9szszEMaTo1Di3LhJKLjzgxTPF"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "7180943200000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_ioFdAx8d1X9h8XXhcTxa7LaroDTkaw6ZfQYZnhC4Y5ew8PvX"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "750000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_jFTNyMAt38GERQm5G7JUudvdgnVjE7v7nQ6gQzpx9vRgcQsvN"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "3164743930000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_jGKQkSBkb9dc4uB4jvJyrHWZA4mmzAq7WMkbsopoDsuk4z4sS"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "550000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_jU13SaZVXFzFEgrYBCjf9kJbFCuYDxobinmPvHr8Wfg7t9kNH"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "6854971780540000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_jdtDfw4fwx8cPBMt4gCLEvTDUDitskYjeF5fbbmQJXSNEJPKP"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "800000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_jhBKLHhpvyTfiH2QDGCBWgqb1goANmk3gNqvrwD8CZsDRyaok"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "50000000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_k4UQA5Z6msr61NEwsBniCBgcs8i4LnueDj7JJJ9BRffERohcD"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "16786630755250000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_kFDgotUW5doNS5azHz8pt6ud7a1gxA4VFoNf4sdjKmbVpENCA"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "25561000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_kZ7kuCdRc8KnuaqWjj4Q2Jfxzr41oJi7uLDEACMhdhN54jDFx"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "5001000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_ka86LD9TasyMnECHvKXDxoE7QE3bRL4LkXQWhZqP1QcVvtZTv"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "161021447185836403159500"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_kfKx5v1QkFktjEWnLbj7p5yt1GwMwCDujA2swn5qGWVxFavts"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "13596897976000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_khcxRFHiktDXo5mHuTJFxVhKEWtTXqTHieA6gxHZKP2vN7txH"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "257108000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_krxCCnFGwJUCkxyNpBEXxdHJLk95iW7cnSkRQH8korUSgc5vU"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "10000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_m4adAyEJhEk1fA9Yq6tQ1ArCjSCnpCRW3cSUjnCXFNYmikjW3"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1000000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_mNk6Wb4WjHxpwhKkSJaeV5s8CmGTNrjbTAr7fgWFRdYTCji6q"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "6600000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_mUUE8BX6V9UEMxHSfbBGTsXtYypDh26VM6YTnrthE6ErNvrFb"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "635640894150000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_meUCXCEMfCJzNuRBfgwssafohZJnfxJdYYimTFcTAwN9xZzv1"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "15093000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_mpXebgyouBdfYhTj149mUZKqPcrCX89bn8HQT5EQyFKHejeto"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "10000000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_mrJoFiPV9zq4Yo4ZghBHkMgAYvHQ8oBb55irDWq5P9RgmTsvo"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1050000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_muXCdEDgHxHRYokN6L9tDCnApzHBgbKGhNR7Li7KKbyskprvP"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "5700413866930000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_myHKYXRTCoGZMJNjuvram1LXp5z9Dt4N1oKHdbsbekSL3Arrn"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "26289049600000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_n2SDbZeYK6396wAUzMRzHcioEJrAf5LrVrVu49TA57i37o3Zy"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "10049051751790000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_nF9k92wz9BTMCHKEoHD1pwqCgvxSUQNGW2afn8tFFWwUNQxQA"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "10000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_nJrydZG1RAX91fFSxaVUWH2tWSrH1uQgh6uRVvNxumBXGiU6o"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "20888000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_nLCvCrscyCp49LL9Bmif39eqocYUFtECEACKLGssE6mguiSAZ"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "10849000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_nQq4fyYhFgTDQkjPJghWzYGijr2AJmY3QDNoBNXnRCN77thVz"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "51700000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_nSvCAfpVBLCD3R4Eam6s5xtLe1Qfbz7zYmD82VHPq5toNkh39"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "51096080000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_nW3TKQ3NKqVXdKNgSgxHMA2YnevbiCuYFPFFc4ParQwj4R4pL"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "24000000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_nbWWBH38a1GaBKz46JZ1AwMJyKkRuEw48m5LuFXEcGSyKErU4"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "5063404300000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_o2tkRkLgd55J98YUd56qYNERPCYatXYAgqNz2v24hqhccU9AG"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "101982122431000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_oCgrenN3BkBJEDEGNkP8EvCLNGZ2yU7kR29omyB5NcnzVAKEF"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "8516046616000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_oJUYn96m8iCYyedhsoYQYXYdXvCsCp7q6AHJpZjuzHGa7372h"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "25000000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_oQvkhx9UWfXc3Jfj2WNR5i2bEVAxSj4ej6UM2dRR4GQ29Fab5"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "12231314000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_oSubGWrVohuLZb5BamC2yoWYsGrLvyXSVgsR9eG3kBi6cuiP8"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "4092514364090000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_oZAuPfH2MMCxBDKs1GajEdurknoBFGzs53aqNYZ9v2wiouXBZ"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "762000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_oc45ahU2xw2aMCDNVGSURxxripZH6DisgCGCjJq3qYBe9m8Qu"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "15539277798000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_okYscb3HPBJ5WuVUt7wmbzVXhqm2ZxTHGE1MMUt9rycmeNSfW"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "183860618262000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_owQENofms5NRch3T3Rfjm2ccYbQnBYz7bPp9z5gd1r3GLCD9G"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "20230991136800000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_p2N4b5CAqsSNw8BUmE5dwXDGb1TZKDW9pwyPeLbzBzNhMRjs5"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "15353000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_pDCvQHpybz5nXRT7nzNjiVtPhCuFcDq5bMa5C2982XcndeDAb"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "7029606000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_pLuDtVYL5e2q6YJFSQSZUmLgokUkJSCziCqQeHhfTHm5n2WBK"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "8568989827640000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_pMwUuWtqDoPxVtyAmWT45JvbCF2pGTmbCMB4U5yQHi37XF9is"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "5492973939222002165983"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_pSJiEhVLAYSHjpkAAzWX3R4TW982jHgveT97DnPCCVB3CMp59"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1438161522600000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_pfCfkXtzTCsatzzcMQ3TYC57H8hykxc3UY8ru8FZHx4vdmqhg"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "751000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_pjJN9P747xdbsqQ3qPQDpsrskwCjVdWwskNnR66X6aWEyZXCK"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "13000000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_pqC28KdtbZUCoXCAGDDebCYLxnWKxay87zkEZN8rqDg8ZyvuP"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "5066000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_q4DXdnY2izVbUVnWSMV6xB6mDNPX91WVnCMWuXqpjnTkRNemX"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "12098000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_q6Rwn2Ru62nhSszU5appNYzmqjAZMZ5wvDxxBCAbhLMirB2zt"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "695299710000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_qCVDpgQwPtdUykS7NncVDBVm6nDaqDTXa74JmrpeHrxAt6kQD"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1796700000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_qNriSe9FwYPD3kLVSGer94CmH7aVaQXJdnZw8c5Rv6E1EpHcK"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "50100000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_qYzXCPteBc1aqbRugBowEoFgCiBUt6jHmvxqu39bkxkVrgwfh"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "50000000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_qdayYj459iQXmkkW4kt7fcUdpzqbj8usRcRxE4tueSEmKZ4iH"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "100000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_qmfRxdejJXX5hqvRx7iHaNsWXybXFVe7284tKPURNbDciro3d"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "26398780626400000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_qrMsADERsFk2RMCwFr8oAeyUbrxt1WEk6Z7mwrExr7VrWR6dS"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "13000000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_qyM2CpWd4niG14WSd9gEfHWYeaJTJg9R1VoofRhKwXczNnhWN"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "13814600000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_qySUMXc9HHsAiWFxiCyi3PRhH5vcCixRw2hV27yDtkwyfUFEz"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "338967437410000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_rNidgcYTdrwPQA6CcXc5NwMG38CrLkEGASHCD9VN5iUBEd3nn"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1797460426270000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_rSx6yHmtfMdUGkHuCGZ6o6bbWKdTRi3BYJakWrkZQfRxutsW4"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "10000000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_rj2EYKCzxckupErF1eXp3rAsDquCZiCFXGonyTs6uSk92hrdX"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "114036600000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_rjwjiS2FSy97W8JXTiZsEX9gTVhFi6kBLDo2TyhS4pVhRMh6m"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1000000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_rsiBH2FrVRgRKjDP5fVzG7fYLpRDG8YWYPXFtART5kiW32SK6"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "59300000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_sE4E7C3zw6YS8VLmQPyLWbK5FkwCrMbCeJdsVFwPZ8e6HvmB3"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "2300000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_sgHhW2WFEeV6AkJz6h9EpVaFJFEM7bz6VJjhhUKytBpNi5Ct2"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "32434684000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_sgP95bwAcm9Vt95c9U9WnKgqQ3H32zbaQ3FAZwzDspcS9Kayh"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "100000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_sjwujCYjgy7tEi65evGHm94uTrGoGMaoU2Yfmx4MgqSRbzeWS"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "100000000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_spP9ZAU7t1DKtFbHxmT7e99oXpVwxgkDCF7722Q5Vg133ikGr"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1195731770000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_sr4HmvQBnq5bZLvn8uKUGodTML6LfojYr63U6QSErFGNijUKL"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "244319612590799031480"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_svo34B3QUZkg1ydrvaqCFCKVhBBJqRtFsoypPd983Ekw38HEV"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "614635126817960000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_t6nCD9RkpBZ8J6NLbL7fDhM4sLKRtJBtytZVZsiHUWm6Vyu51"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "32250381198770000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_tMTKKUkhs4MKJMK5R2vC5JKo9i1GZHytLExcSPwaD1tAAKqVx"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "41000000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_tN8q9aMifhbh844C5aD7oephS62csD9BPBpZqxN4YrcEC21VK"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "233655377270000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_tYUapNpY9DUQsnNvNc8W6GiNQ51jRq9VZHvNQCxSXT3vXvpYc"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "18000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_ttepK3YUoBm9jyB2qPfKKYsA8S2HbTbxVJ4N3bYEkGH2odiEF"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "22562100000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_u2gFpRN5nABqfqb5Q3BkuHCf8c7ytcmqovZ6VyKwxmVNE5jqa"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "100000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_u7J88jxB25hyjnyvxK4NShkcHrkXriCXQe8PbvgBcVDiZHudG"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "767000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_uF7p1EHzxDDxkmAxbHh8XbcmBQQYpRVi9WjuRGqCKz7FhUN69"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "2249563635000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_uGBpQYYKPAXEtHpmTAHnePWzhc8NUkmNvdZpB176cpiSFpBkX"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "34160000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_uScCqSk6v2vnxtEHD1pUfkEc2wtHhE8M3svgZpsqj24sTRAe8"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "144299029020000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_uXvhppPeHuCcPYBNZfi7Udk6e7nzGj5DkKhV9UQzjJWnUadyF"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "9994000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_uarvuXKYxYGbnjfeca8WKgcoTUbXbe84K4SqVTW2HXXjANvGW"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "23967040080000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_ugdd6VU5J5TMeu6mjn8HN2U77ciP2o2xt78RCibWUnSuJ5YFi"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "2781454036000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_utztQF4v4KTRhMRmTaedM4139oYkyp81F2i8ipPjsAEWAZ3XP"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "10302000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_vAYCXpYAfJB9Doq6ygC8mBq22sAea3apWbTRMcBCibhgxw5Dq"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "40000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_vAmDdQTFhEunzerNHYKudwy4Go65R1XYkdWwUpXiZEbnyKNX2"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "2998445640750000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_vLWup8iKi4G47pFLevZAKfK5QDQEAjCapkihnxrmxQR8jvKSH"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1484151383441111000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_vx5cM3dB4rBTQpXwXa1Ad2JzejNxXCLk8gzYsats3HcYxZxnf"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "34150000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_vxDWuHW14LYGWtUAX2c9u82kSWm9eAFeqo64zn95RqtcrMoLR"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "800000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_w3TYT4x6JfZL9SpHbezvoxg1wmHDbQCeLH7akwDVWZWe67kX2"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "4029657733980000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_w4M5BnzNsRYBjS23HCuW8mGxzMXHdFCZCRgtTPTV8HstL3Jt4"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "91500742850960000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_wCY4QuCVXoTHzSDJnhZyYGvoDHAKwEabpvhqUjC25tbYqsheS"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "5748500193164327000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_wShrQafe1MEJfg3sNrefdoVcSB1DFVawELvkMgZp7kgD5QQFS"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "234360000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_waYcZJpjwsuNhkNL5Sgz927cg9F6Gh5hGTVUx5caX5vq2NpPf"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "6097500000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_wbcaSNi6kWQ6XPyf7WSgZnHYxsLybKBB4yv96ky6SkK3uZBCN"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "24484326379324962000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_wd27tKdCLNxGsEzKYvp13G7WGNED3PsBfTgpEnn2qxV3CwAN9"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "36000000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_wyC6eEBc4yCBjaSyCk9QayHFXVziNPgvH3HAdEghGwQBgPGiN"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "22648200580000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_x11Z1bM6yeB2U5UUpxz5im3QWmTAJQVDghzngxgwUEGSFnR4N"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "68722442492000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_xbvizAGoNweriBYz7rNaREa52yGePTiLM1p9uEZSu924MSPE7"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "30269160000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_xtU99DEZjCp6UkKwAuRAZdJsR6ULeFY2MfDAjeRN7ZhfMX8Rz"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "520111900000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_y5iRJAPepoZDfwzzjRzdc5xL1hBCdbdjWwbm2L4HfjpvjEuCa"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "800000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_y7PAkjYS56GUXENyyYJjZd1Y7VhBQ3w1PdByX9Wv9HK8Xnhip"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "35505189200000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_yaTiZLbWoes9gjd42itffCZrnPCq8m9Z7nFZJCJTKHMexNyVS"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "2701000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_ytrmfsiu4DMtXLukqRMTPBByB97JaMyUmyYoBFmqoa74YkHC1"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "5608749833000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_ywTCcNeHMSdyzowNBTgkVVvCXnFVVyYXo8YDDR3vZfxejzree"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "30990000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_z9G1U6cDuyGGbm7WArpYeRjA2TqvQ9apm6yN46VYZ2AGV2U3S"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "596000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_zPngxL1sAZWJSmhxaGWgRLTpPBHWEYDEPaBEjqePtpP7UdBPS"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "16000000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_zRNTDjW1jBCJBFYtYcFzGPWs6HQBBLpa7jqSmRjT3x7axTfgf"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "5895400000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_zUAhQGMVDinGp65K2H51PFWHqCUgE22CFeQbiT9e6T3rRGMmr"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "130317550000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_zmZLoAa39QoB7BZcrJ7bFVEimcdpMQXgdhXMX3bG9gW5NH6pz"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "10998965770464285552800"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_zpdaudUToc72WFhfsdKUHsGJN4jTzokNnhwAEWitEvpDbGY2X"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "1000000000000000000"
+  },
+  {
+    "account_identifier": {
+      "address": "ak_zwERS2s6GC5EcjNyJ7vr7AA4MsuWQtkZ81DTFJ657RWVSuaxB"
+    },
+    "currency": {
+      "decimals": 18,
+      "symbol": "AE"
+    },
+    "value": "8671563315620140000000"
+  }
+]
