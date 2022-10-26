@@ -283,7 +283,7 @@ decode(Binary) ->
 safe_decode(Type, Binary) ->
     aeser_api_encoder:safe_decode(Type, Binary).
 
--spec key_block_by_height(aec_blocks:height()) -> {ok, aec_blocks:key_block()} | error.
+-spec key_block_by_height(aec_blocks:height()) -> {ok, aec_blocks:key_block()} | {error, chain_too_short} | error.
 
 key_block_by_height(Height) when is_integer(Height) ->
     aec_chain:get_key_block_by_height(Height).
