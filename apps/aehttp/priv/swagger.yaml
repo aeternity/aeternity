@@ -2842,6 +2842,8 @@ definitions:
         $ref: '#/definitions/PeerConnections'
       pending_transactions_count:
         $ref: '#/definitions/UInt32'
+      channel_fsms_count:
+        $ref: '#/definitions/UInt32'
       network_id:
         type: string
       peer_pubkey:

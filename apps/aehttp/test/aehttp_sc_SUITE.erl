@@ -750,6 +750,10 @@ sc_ws_open_(Config, ChannelOpts0, MinBlocksToMine, LogDir) ->
            "RChanOpts = ~p~n", [IChanOpts, RChanOpts]),
     %% We need to register for some events as soon as possible - otherwise a race may occur where
     %% some fsm messages are missed
+
+    CountBefore = get_channels_count(),
+    ct:log("CountBefore = ~p", [CountBefore]),
+
     {ok, IConnPid, IFsmId} = channel_ws_start(initiator,
                                               maps:put(host, <<"localhost">>, IChanOpts),
                                               Config, TestEvents, LogDir),
@@ -794,6 +798,10 @@ sc_ws_open_(Config, ChannelOpts0, MinBlocksToMine, LogDir) ->
             ok = ?WS:unregister_test_for_channel_events(IConnPid, TestEvents),
             ok = ?WS:unregister_test_for_channel_events(RConnPid, TestEvents)
     end,
+
+    CountAfter = get_channels_count(),
+    ct:log("CountAfter = ~p", [CountAfter]),
+
     Config1.
 
 optionally_ping_pong(Config) ->
@@ -5890,3 +5898,8 @@ sc_ws_leave_responder_does_not_timeout(Config0) ->
 
 min_gas_price() ->
     rpc(aec_test_utils, min_gas_price, []).
+
+get_channels_count() ->
+    {ok, 200, #{ <<"channel_fsms_count">> := Count }} =
+        aehttp_integration_SUITE:get_status_sut(),
+    Count.

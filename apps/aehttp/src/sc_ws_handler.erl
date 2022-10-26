@@ -74,8 +74,10 @@ websocket_init(Params) ->
             %% relevant here as we will kill this process after sending a error code to the client
             handler_parsing_error(Err, #handler{protocol = sc_ws_api:protocol(<<"json-rpc">>)}, Params);
         {Handler, {error, Err}} ->
+            reg_session(Handler),
             handler_parsing_error(Err, Handler, Params);
         {Handler, ChannelOpts} ->
+	    reg_session(Handler),
             case maps:is_key(existing_channel_id, ChannelOpts) of
                 true ->
                     lager:debug("existing_channel_id key exists", []),
@@ -96,6 +98,15 @@ websocket_init(Params) ->
     ?CATCH_LOG(_E)
         error(_E)
     end.
+
+reg_session(#handler{ fsm_pid    = Fsm
+                    , channel_id = ChId
+                    , protocol   = Proto
+                    , role       = Role}) ->
+    gproc:reg({p,l,{?MODULE, session}}, #{ fsm => Fsm
+					 , channel_id => ChId
+					 , protocol => Proto
+					 , role => Role }).
 
 websocket_init_parsed(Handler, ChannelOpts) ->
     lager:debug("ChannelOpts = ~p", [ChannelOpts]),

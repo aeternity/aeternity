@@ -44,6 +44,7 @@
    , delete_tx_from_mempool_sut/1
    , get_peer_count_sut/0
    , get_key_blocks_current_height_sut/0
+   , get_status_sut/0
    ]).
 
 -export(
