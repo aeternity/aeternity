@@ -419,14 +419,14 @@ tx_event_data(oracle_extend, {Pubkey, RelTTL}, _Type) ->
                           , nonce      => 0
                           , oracle_ttl => {delta, RelTTL}
                           , fee        => 0 }));
-tx_event_data(oracle_query, {OraclePubkey, SenderPubkey, Query, QFee, QTTL, RTTL}, _Type) ->
+tx_event_data(oracle_query, {OraclePubkey, SenderPubkey, Nonce, Query, QFee, QTTL, RTTL}, _Type) ->
     ok(aeo_query_tx:new(#{ sender_id    => acct_id(SenderPubkey)
                          , oracle_id    => ora_id(OraclePubkey)
                          , query        => Query
                          , query_fee    => QFee
                          , query_ttl    => ora_ttl(QTTL)
                          , response_ttl => {delta, RTTL}
-                         , nonce        => 0
+                         , nonce        => Nonce
                          , fee          => 0
                          , ttl          => 0 }));
 tx_event_data(oracle_response, {OraclePubkey, QueryId, Response, RTTL}, _Type) ->
@@ -558,7 +558,7 @@ oracle_query(OraclePubkey, SenderPubkey, Question, QFee, QTTLType, QTTL, RTTL,
                             , aeprimop:spend_fee_op(SenderPubkey, QFee)
                               %% TODO: Should we add a tx event for spend_fee?
                             , tx_event_op(oracle_query, {OraclePubkey, SenderPubkey,
-                                                         Question1, QFee,
+                                                         Nonce, Question1, QFee,
                                                          ora_ttl(QTTLType, QTTL),
                                                          RTTL}, <<"Oracle.query">>)
                             , aeprimop:oracle_query_op_with_return(
