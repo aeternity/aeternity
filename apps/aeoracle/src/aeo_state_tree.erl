@@ -311,9 +311,7 @@ oracle_expired(Id, H, OTree) ->
 
 oracle_query_expired(OracleId, Id, H, OTree) ->
     case lookup_query(OracleId, Id, OTree) of
-        {value, Q} ->
-            lager:info("Oracle expired ~p ~p ~p", [H, aeo_query:ttl(Q), H >= aeo_query:ttl(Q)]),
-            H >= aeo_query:ttl(Q);
+        {value, Q} -> H >= aeo_query:ttl(Q);
         none       -> false
     end.
 
@@ -342,7 +340,6 @@ oracle_refund(Q, ATree, TxEnv) ->
     case aeo_query:is_closed(Q) of
         false ->
             PubKey = aeo_query:sender_pubkey(Q),
-            lager:info("Found ~p", [aeo_query:serialize_for_client(Q)]),
             case aec_accounts_trees:lookup(PubKey, ATree) of
                 {value, Account} ->
                     Fee = aeo_query:fee(Q),
@@ -355,14 +352,12 @@ oracle_refund(Q, ATree, TxEnv) ->
                     error({account_disappeared, aeo_query:sender_pubkey(Q)})
             end;
         true ->
-            lager:info("Closed ~p", [aeo_query:serialize_for_client(Q)]),
             {ATree, TxEnv}
     end.
 
 oracle_refund_tx_event(_PubKey, _Fee, undefined) ->
     undefined;
 oracle_refund_tx_event(PubKey, Fee, TxEnv) ->
-    lager:info("Oracle Refund ~p", [aeapi:format(account_pubkey, PubKey)]),
     aetx_env:tx_event(delta, {PubKey, Fee}, <<"Oracle.refund">>, TxEnv).
 
 %%%===================================================================
