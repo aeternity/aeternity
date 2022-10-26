@@ -498,7 +498,8 @@ create_config(Node, CTConfig, CustomConfig, Options) ->
     Ports =
         #{ <<"sync">> => #{ <<"port">> => sync_port(Node)},
            <<"http">> => #{ <<"external">> => #{<<"port">> => external_api_port(Node)},
-                            <<"internal">> => #{<<"port">> => internal_api_port(Node)}},
+                            <<"internal">> => #{<<"port">> => internal_api_port(Node)},
+                            <<"rosetta">> => #{<<"port">> => rosetta_api_port(Node)}},
            <<"websocket">> => #{<<"channel">> => #{<<"port">> => ws_port(Node)}}},
     MergedCfg5 = maps_merge(MergedCfg4, Ports),
 
@@ -1502,6 +1503,10 @@ external_api_port(Node) ->
 internal_api_port(Node) ->
     {NodeGroup, Idx} = split_node_name(Node),
     port_group(NodeGroup) + Idx * 10 + 103. %% dev1: 3113
+
+rosetta_api_port(Node) ->
+    {NodeGroup, Idx} = split_node_name(Node),
+    port_group(NodeGroup) + Idx * 10 + 203. %% dev1: 3213
 
 ws_port(Node) ->
     {NodeGroup, Idx} = split_node_name(Node),

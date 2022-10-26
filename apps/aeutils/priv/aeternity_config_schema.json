@@ -1290,6 +1290,28 @@
                         }
                     }
                 },
+                "rosetta" : {
+                    "type" : "object",
+                    "additionalProperties" : false,
+                    "properties" : {
+                        "listen_address": {
+                          "description": "Listen address for rosetta interface. This can be publicly accessible, but defaults to private",
+                          "type": "string",
+                          "example": "127.0.0.1",
+                          "default" : "127.0.0.1"
+                        },
+                        "port" : {
+                            "description" : "Listen port for rosetta HTTP interface.",
+                            "type" : "integer",
+                            "default" : 3213
+                        },
+                        "acceptors" : {
+                            "description" : "Number of acceptors in rosetta pool",
+                            "type" : "integer",
+                            "default" : 10
+                        }
+                    }
+                },
                 "endpoints" : {
                     "gossip" : {
                         "description" : "Gossip protocol API",
