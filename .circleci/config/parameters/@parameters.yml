@@ -49,3 +49,7 @@ s3_releases_bucket:
 run_system_tests:
   type: boolean
   default: false
+
+run_integration_sync:
+  type: boolean
+  default: false

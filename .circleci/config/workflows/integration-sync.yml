@@ -1,0 +1,10 @@
+when: << pipeline.parameters.run_integration_sync >>
+jobs:
+  - docker-system-test:
+      name: deploy-integration-sync
+      version: $CIRCLE_SHA1
+      env: integration_sync
+      downtime: 900 #15m
+      context:
+        - ae-slack
+        - ae-vault-node
