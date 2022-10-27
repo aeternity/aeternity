@@ -61,7 +61,7 @@
         , eval_primops/2
         ]).
 
--export([ check_delegation_signature/4
+-export([ check_delegation_signature/5
         , is_onchain/1
         ]).
 
@@ -354,9 +354,9 @@ next_nonce(Pubkey, #state{primop_state = PState0,
             end
     end.
 
--spec check_delegation_signature(pubkey(), binary(), binary(), state()) ->
+-spec check_delegation_signature(pubkey(), binary(), binary(), aect_contracts:vm_version(), state()) ->
                                         {'ok', state()} | 'error'.
-check_delegation_signature(Pubkey, Binary, Signature,
+check_delegation_signature(Pubkey, Binary, Signature, VmVersion,
                            #state{ primop_state = PState} = State) ->
     case aeprimop_state:find_account(Pubkey, PState) of
         {Account, PState1} ->
@@ -364,14 +364,20 @@ check_delegation_signature(Pubkey, Binary, Signature,
                 generalized ->
                     error;
                 basic ->
-                    BinaryForNetwork = aec_governance:add_network_id(Binary),
-                    case enacl:sign_verify_detached(Signature, BinaryForNetwork, Pubkey) of
-                        true  -> {ok, State#state{primop_state = PState1}};
-                        false -> error
-                    end
+                    State1 = State#state{primop_state = PState1},
+                    verify_delegation_signature(Pubkey, Binary, Signature, State1)
             end;
+        none when VmVersion >= ?VM_FATE_SOPHIA_3 ->
+            verify_delegation_signature(Pubkey, Binary, Signature, State);
         none ->
             error
+    end.
+
+verify_delegation_signature(Pubkey, Binary, Signature, State) ->
+    BinaryForNetwork = aec_governance:add_network_id(Binary),
+    case enacl:sign_verify_detached(Signature, BinaryForNetwork, Pubkey) of
+        true  -> {ok, State};
+        false -> error
     end.
 
 %%%-------------------------------------------------------------------
