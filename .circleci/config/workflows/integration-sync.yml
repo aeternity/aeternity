@@ -3,7 +3,6 @@ jobs:
   - reset-single-node:
       name: reset-integration-sync
       env: integration_sync
-      downtime: 900 #15m
       context:
         - ae-slack
         - ae-vault-node
