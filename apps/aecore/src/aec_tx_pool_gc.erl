@@ -253,8 +253,8 @@ origins_cache_gc(#state{origins_cache = OriginsCache, dbs = Dbs}) ->
                     lager:info("Error trying to get top block state");
                 {ok, Trees} ->
                     AccountsTree = aec_trees:accounts(Trees),
-                    %% We run this in a dirty context, even though we are deleting
-                    %% some txs from the db. The deletions are from the tx_pool table.
+                    %% We run as much as we think safe in a dirty context.
+                    %% The actual deletions are run in a transaction.
                     TxsForGc =
                         aec_db:ensure_activity(
                           async_dirty,
