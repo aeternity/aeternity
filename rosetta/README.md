@@ -4,7 +4,7 @@ Rosetta is a standardised HTTP API for interacting with the blockchain (https://
 
 It comes with its own API compliance test tool rosetta-cli (https://github.com/coinbase/rosetta-cli)
 
-The Aeternity node currently supports a subset of the API endpoints at this time, primarily the read only parts of the specification:
+The Aeternity node supports a subset of the API endpoints at this time, primarily the read only parts of the specification:
 
 - [x] `/network/list`
 - [x] `/network/options`
