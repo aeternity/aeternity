@@ -1747,6 +1747,21 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /debug/channels/fsm-count:
+    get:
+      tags:
+        - internal
+        - node_info
+        - debug
+      operationId: GetChannelsFsmCount
+      description: Get the number of currently active State Channel FSMs
+      responses:
+        "200":
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CountResponse"
   /debug/transactions/pending:
     get:
       tags:
@@ -2930,8 +2945,6 @@ components:
           $ref: "#/components/schemas/PeerConnections"
         pending_transactions_count:
           $ref: "#/components/schemas/UInt32"
-        channel_fsms_count:
-          $ref: "#/components/schemas/UInt32"
         network_id:
           type: string
         peer_pubkey:
@@ -2952,7 +2965,6 @@ components:
         - peer_count
         - peer_connections
         - pending_transactions_count
-        - channel_fsms_count
         - network_id
         - peer_pubkey
         - top_key_block_hash

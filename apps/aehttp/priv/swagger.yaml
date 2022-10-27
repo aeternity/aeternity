@@ -1671,6 +1671,23 @@ paths:
           description: Invalid transaction
           schema:
             $ref: '#/definitions/Error'
+  /debug/channels/fsm-count:
+    get:
+      tags:
+        - internal
+        - node_info
+        - debug
+      operationId: GetChannelsFsmCount
+      description: Get the number of currently active State Channel FSMs
+      responses:
+        '200':
+          description: 'Successful operation'
+          schema:
+            type: object
+            properties:
+              count:
+                description: 'Count'
+                $ref: '#/definitions/UInt32'
   /debug/transactions/pending:
     get:
       tags:
@@ -2841,8 +2858,6 @@ definitions:
       peer_connections:
         $ref: '#/definitions/PeerConnections'
       pending_transactions_count:
-        $ref: '#/definitions/UInt32'
-      channel_fsms_count:
         $ref: '#/definitions/UInt32'
       network_id:
         type: string

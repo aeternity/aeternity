@@ -801,6 +801,8 @@ sc_ws_open_(Config, ChannelOpts0, MinBlocksToMine, LogDir) ->
 
     CountAfter = get_channels_count(),
     ct:log("CountAfter = ~p", [CountAfter]),
+    %% Unfortunately, we can't assert that CountAfter - CountBefore = 2,
+    %% I believe because some channels linger past their test cases and terminate in the background.
 
     Config1.
 
@@ -5900,6 +5902,7 @@ min_gas_price() ->
     rpc(aec_test_utils, min_gas_price, []).
 
 get_channels_count() ->
-    {ok, 200, #{ <<"channel_fsms_count">> := Count }} =
-        aehttp_integration_SUITE:get_status_sut(),
+    Host = internal_address(),
+    {ok, 200, #{ <<"count">> := Count }} =
+        http_request(Host, get, "debug/channels/fsm-count", []),
     Count.

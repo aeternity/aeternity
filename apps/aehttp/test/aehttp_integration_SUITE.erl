@@ -44,7 +44,6 @@
    , delete_tx_from_mempool_sut/1
    , get_peer_count_sut/0
    , get_key_blocks_current_height_sut/0
-   , get_status_sut/0
    ]).
 
 -export(
@@ -89,6 +88,7 @@
     post_spend_tx_w_hash_sig/1,
     post_contract_and_call_tx/1,
     nonce_limit/1,
+    get_name_update/1,
     get_contract_create/1,
     get_contract_call/1,
     get_contract_bytecode/1,
@@ -1850,6 +1850,10 @@ get_channel_by_pubkey(_Config) ->
      } = aesc_fsm_SUITE:create_channel_on_port(9311),
     ChannelId = aeser_api_encoder:encode(channel, ChannelId0),
 
+    {ok, 200, #{
+        <<"count">> := _Count
+     }} = get_channels_fsm_count_sut(),   %% verify that the endpoint works
+
     NoDelegates = no_delegates(),
     {ok, 200, #{
         <<"id">> := ChannelId,
@@ -1868,6 +1872,10 @@ get_channel_by_pubkey_sut(PubKey) ->
     Host = external_address(),
     PubKey1 = binary_to_list(PubKey),
     http_request(Host, get, "channels/" ++ aeu_uri:encode(PubKey1), []).
+
+get_channels_fsm_count_sut() ->
+    Host = internal_address(),
+    http_request(Host, get, "debug/channels/fsm-count", []).
 
 %% /peers/*
 
