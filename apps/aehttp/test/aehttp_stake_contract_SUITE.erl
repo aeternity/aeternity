@@ -199,12 +199,14 @@ contract_call_spec(ContractPubkey, Name, Fun, Args, Amount, From, Nonce) ->
     {contract_call_tx, CallTx} =
         aetx:specialize_type(contract_call(ContractPubkey, Name, Fun, Args,
                                            Amount, From, Nonce)),
+    %% Don't allow named contracts!?
+    {contract, ContractPubKey} =
+        aeser_id:specialize(aect_call_tx:contract_id(CallTx)),
     Spec =
         #{  <<"caller">>          => aeser_api_encoder:encode(account_pubkey,
                                                               aect_call_tx:caller_pubkey(CallTx))
           , <<"nonce">>           => aect_call_tx:nonce(CallTx)
-          , <<"contract_pubkey">> => aeser_api_encoder:encode(contract_pubkey,
-                                                              aect_call_tx:contract_pubkey(CallTx))
+          , <<"contract_pubkey">> => aeser_api_encoder:encode(contract_pubkey, ContractPubKey)
           , <<"abi_version">>     => aect_call_tx:abi_version(CallTx)
           , <<"fee">>             => aect_call_tx:fee(CallTx)
           , <<"amount">>          => aect_call_tx:amount(CallTx)

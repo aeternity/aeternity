@@ -355,27 +355,27 @@ contract_create_tx_instructions(OwnerPubkey, Amount, Deposit, GasLimit, GasPrice
                          CallData, Fee, Nonce)
     ].
 
--spec contract_call_tx_instructions(pubkey(), pubkey(), binary(),
+-spec contract_call_tx_instructions(pubkey(), id(), binary(),
                                     non_neg_integer(), non_neg_integer(),
                                     amount(), [binary()], abi_version(),
                                     pubkey(), fee(), nonce()) -> [op()].
-contract_call_tx_instructions(CallerPubKey, ContractPubkey, CallData,
+contract_call_tx_instructions(CallerPubKey, ContractId, CallData,
                               GasLimit, GasPrice, Amount, CallStack,
                               ABIVersion, Origin, Fee, Nonce) ->
     [ inc_account_nonce_op(CallerPubKey, Nonce)
-    , contract_call_op(CallerPubKey, ContractPubkey, CallData,
+    , contract_call_op(CallerPubKey, ContractId, CallData,
                        GasLimit, GasPrice, Amount,
                        ABIVersion, Origin, CallStack, Fee, Nonce)
     ].
 
 -spec contract_call_from_contract_instructions(
-        pubkey(), pubkey(), binary(), non_neg_integer(), non_neg_integer(),
+        pubkey(), id(), binary(), non_neg_integer(), non_neg_integer(),
         amount(), [binary()], abi_version(), pubkey(), fee(), nonce()
        ) -> [op()].
-contract_call_from_contract_instructions(CallerPubKey, ContractPubkey, CallData,
+contract_call_from_contract_instructions(CallerPubKey, ContractId, CallData,
                                          GasLimit, GasPrice, Amount, CallStack,
                                          ABIVersion, Origin, Fee, Nonce) ->
-    [ contract_call_op(CallerPubKey, ContractPubkey, CallData,
+    [ contract_call_op(CallerPubKey, ContractId, CallData,
                        GasLimit, GasPrice, Amount,
                        ABIVersion, Origin, CallStack, Fee, Nonce)
     ].
@@ -1288,14 +1288,13 @@ channel_settle({FromPubkey, ChannelPubkey,
 
 %%%-------------------------------------------------------------------
 
--spec contract_call_op(pubkey(), pubkey(), binary(), non_neg_integer(), non_neg_integer(),
+-spec contract_call_op(pubkey(), id(), binary(), non_neg_integer(), non_neg_integer(),
     amount(), abi_version(), hash(), list(), fee(), nonce()) ->
-    {contract_call, {pubkey(), pubkey(), binary(), non_neg_integer(), non_neg_integer(),
+    {contract_call, {pubkey(), id(), binary(), non_neg_integer(), non_neg_integer(),
         amount(), abi_version(), hash(), list(), fee(), nonce()}}.
-contract_call_op(CallerPubkey, ContractPubkey, CallData, GasLimit, GasPrice,
+contract_call_op(CallerPubkey, ContractId, CallData, GasLimit, GasPrice,
                  Amount, ABIVersion, Origin, CallStack, Fee, Nonce
                 ) when ?IS_HASH(CallerPubkey),
-                       ?IS_HASH(ContractPubkey),
                        is_binary(CallData),
                        ?IS_NON_NEG_INTEGER(GasLimit),
                        ?IS_NON_NEG_INTEGER(GasPrice),
@@ -1305,7 +1304,7 @@ contract_call_op(CallerPubkey, ContractPubkey, CallData, GasLimit, GasPrice,
                        is_list(CallStack),
                        ?IS_NON_NEG_INTEGER(Fee),
                        ?IS_NON_NEG_INTEGER(Nonce) ->
-    {contract_call, {CallerPubkey, ContractPubkey, CallData, GasLimit, GasPrice,
+    {contract_call, {CallerPubkey, ContractId, CallData, GasLimit, GasPrice,
                      Amount, ABIVersion, Origin, CallStack, Fee, Nonce}}.
 
 -spec split_payment(amount(), amount(), state()) -> {amount(), state()}.
@@ -1320,9 +1319,23 @@ split_payment(TotalAmount, Amount, S) ->
             {TotalAmount, S}
     end.
 
--spec contract_call({pubkey(), pubkey(), binary(), non_neg_integer(), non_neg_integer(),
-    amount(), abi_version(), hash(), list(), fee(), nonce()}, state()) -> state().
-contract_call({CallerPubkey, ContractPubkey, CallData, GasLimit, GasPrice,
+
+%% -spec contract_call({pubkey(), id(), binary(), non_neg_integer(), non_neg_integer(),
+%%                      amount(), abi_version(), hash(), list(), fee(), nonce()}, state()) -> state().
+contract_call({CallerPubkey, ContractId, CallData, GasLimit, GasPrice,
+               Amount, ABIVersion, Origin, CallStack, Fee, Nonce}, S) ->
+    case aeser_id:specialize(ContractId) of
+        {contract, ContractPubkey} ->
+            contract_call({CallerPubkey, ContractPubkey, ContractPubkey, CallData, GasLimit,
+                           GasPrice, Amount, ABIVersion, Origin, CallStack, Fee, Nonce}, S);
+        {name, NameHash} ->
+            S#state.protocol >= ?CERES_PROTOCOL_VSN orelse
+                runtime_error(contract_call_by_name_hash_not_available_at_protocol),
+            {ContractPubkey, S1} = int_resolve_name(NameHash, <<"contract_pubkey">>, S),
+            contract_call({CallerPubkey, ContractPubkey, NameHash, CallData, GasLimit,
+                           GasPrice, Amount, ABIVersion, Origin, CallStack, Fee, Nonce}, S1)
+    end;
+contract_call({CallerPubkey, ContractPubkey, CtCallId, CallData, GasLimit, GasPrice,
                Amount, ABIVersion, Origin, CallStack, Fee, Nonce}, S) ->
     {CallerId, TotalAmount} = get_call_env_specific(CallerPubkey, GasLimit,
                                                     GasPrice, Amount, Fee, S),
@@ -1347,7 +1360,7 @@ contract_call({CallerPubkey, ContractPubkey, CallData, GasLimit, GasPrice,
     %% Avoid writing the store back by skipping this state.
     Contract = get_contract_no_cache(ContractPubkey, S4),
     ContractCall = fun() ->
-                           run_contract(CallerId, Contract, GasLimit, Fee, GasPrice,
+                           run_contract(CallerId, Contract, CtCallId, GasLimit, Fee, GasPrice,
                                         CallData, _AllowInit = false, Origin, Amount, CallStack, Nonce, S4)
                    end,
     {Call, S5} = timed_contract_call(contract_call, ContractCall, CallData, CTVersion),
@@ -1621,7 +1634,7 @@ init_contract(Context, OwnerId, Code, Contract, GasLimit, GasPrice, CallData,
               OwnerPubkey, Fee, Nonce, RollbackS, S, MetricType, CTVersion) ->
     {InitContract, ChainContract, S1} = prepare_init_call(Code, Contract, S),
     ContractCall = fun() ->
-                           run_contract(OwnerId, Code, InitContract, GasLimit, Fee, GasPrice,
+                           run_contract(OwnerId, Code, InitContract, aect_contracts:pubkey(InitContract), GasLimit, Fee, GasPrice,
                                         CallData, _AllowInit = true, OwnerPubkey, _InitAmount = 0,
                                         _CallStack = [], Nonce, S1)
                    end,
@@ -1732,7 +1745,7 @@ contract_init_call_success(Type, InitCall, Contract, GasLimit, Fee, RollbackS, S
 set_call_object_id(Call, #state{ tx_env = TxEnv }) ->
     case aetx_env:ga_nonce(TxEnv, aect_call:caller_pubkey(Call)) of
         {value, Nonce} ->
-            CallId = aect_call:ga_id(Nonce, aect_call:contract_pubkey(Call)),
+            CallId = aect_call:ga_id(Nonce, aect_call:ct_call_id(Call)),
             aect_call:set_id(CallId, Call);
         none ->
             Call
@@ -1779,6 +1792,14 @@ contract_call_fail(Call0, Fee, S) ->
     false, binary(), amount(), list(), nonce(), state()) -> {call(), state()}.
 run_contract(CallerId, Contract, GasLimit, Fee, GasPrice, CallData, AllowInit,
              Origin, Amount, CallStack, Nonce, S) ->
+    ContractPubkey = aect_contracts:pubkey(Contract),
+    run_contract(CallerId, Contract, ContractPubkey, GasLimit, Fee, GasPrice, CallData,
+                 AllowInit, Origin, Amount, CallStack, Nonce, S).
+
+-spec run_contract(id(), contract(), binary(), number(), fee(), non_neg_integer(), binary(),
+    false, binary(), amount(), list(), nonce(), state()) -> {call(), state()}.
+run_contract(CallerId, Contract, CtCallId, GasLimit, Fee, GasPrice, CallData, AllowInit,
+             Origin, Amount, CallStack, Nonce, S) ->
     Code =
         case aect_contracts:code(Contract) of
             {code, C} -> C;
@@ -1788,17 +1809,17 @@ run_contract(CallerId, Contract, GasLimit, Fee, GasPrice, CallData, AllowInit,
                 {code, C} = aect_contracts:code(RefContract),
                 C
         end,
-    run_contract(CallerId, Code, Contract, GasLimit, Fee,
+    run_contract(CallerId, Code, Contract, CtCallId, GasLimit, Fee,
                  GasPrice, CallData, AllowInit, Origin, Amount, CallStack, Nonce, S).
 
--spec run_contract(id(), code() | binary(), contract(), number(), fee(), non_neg_integer(), binary(),
+-spec run_contract(id(), code() | binary(), contract(), binary(), number(), fee(), non_neg_integer(), binary(),
     boolean(), binary(), amount(), list(), nonce(), state()) -> {call(), state()}.
-run_contract(CallerId, Code, Contract, GasLimit, Fee, GasPrice, CallData, AllowInit,
+run_contract(CallerId, Code, Contract, CtCallId, GasLimit, Fee, GasPrice, CallData, AllowInit,
              Origin, Amount, CallStack, Nonce, S) ->
     %% We need to push all to the trees before running a contract.
     S1 = aeprimop_state:cache_write_through(S),
     ContractId = aect_contracts:id(Contract),
-    Call = aect_call:new(CallerId, Nonce, ContractId, S#state.height, GasPrice),
+    Call = aect_call:new(CallerId, Nonce, ContractId, CtCallId, S#state.height, GasPrice),
     {_, CallerPubKey} = aeser_id:specialize(CallerId),
     CallDef = #{ caller      => CallerPubKey
                , contract    => aect_contracts:pubkey(Contract)

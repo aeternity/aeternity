@@ -13,8 +13,10 @@
         , ga_id/2
         , id/3
         , new/5
+        , new/6
         , contract_id/1
         , contract_pubkey/1
+        , ct_call_id/1
         , caller_id/1
         , caller_pubkey/1
         , caller_nonce/1
@@ -27,6 +29,7 @@
         , serialize/1
         , serialize_for_client/1
         , set_contract/2
+        , set_ct_call_id/2
         , set_caller/3
         , set_caller_nonce/2
         , set_id/2
@@ -41,6 +44,7 @@
 
 -define(CONTRACT_INTERACTION_TYPE, contract_call).
 -define(CONTRACT_INTERACTION_VSN, 2).
+-define(NAMED_CONTRACT_INTERACTION_VSN, 3).
 
 %%%===================================================================
 %%% Types
@@ -54,6 +58,7 @@
               , caller_nonce :: integer()
               , height       :: aec_blocks:height()
               , contract_id  :: aeser_id:id()
+              , ct_call_id   :: undefined | binary() %% set to name if named call
               , gas_price    :: amount()
               , gas_used     :: amount()
               , return_value :: binary()
@@ -79,14 +84,20 @@
 %%%===================================================================
 
 -spec new(aeser_id:id(), non_neg_integer(), aeser_id:id(), aec_blocks:height(), amount()) -> call().
-new(CallerId, Nonce, ContractId, BlockHeight, GasPrice) ->
+new(CallerId, Nonce, CtId, BlockHeight, GasPrice) ->
+    {_, CtPubkey} = aeser_id:specialize(CtId),
+    new(CallerId, Nonce, CtId, CtPubkey, BlockHeight, GasPrice).
+
+-spec new(aeser_id:id(), non_neg_integer(), aeser_id:id(), aec_keys:pubkey(), aec_blocks:height(), amount()) -> call().
+new(CallerId, Nonce, CtId, CtCallId, BlockHeight, GasPrice) ->
     {_, CallerPubkey} = aeser_id:specialize(CallerId),
-    {_, ContractPubkey} = aeser_id:specialize(ContractId),
-    C = #call{ id           = id(CallerPubkey, Nonce, ContractPubkey)
+    {_, CtPubkey}     = aeser_id:specialize(CtId),
+    C = #call{ id           = id(CallerPubkey, Nonce, CtCallId)
              , caller_id    = CallerId
              , caller_nonce = Nonce
              , height       = BlockHeight
-             , contract_id  = ContractId
+             , contract_id  = CtId
+             , ct_call_id   = if CtCallId /= CtPubkey -> CtCallId; true -> undefined end
              , gas_price    = GasPrice
              , gas_used     = 0     %% These are filled later
              , return_value = <<>>  %% in aect_call_tx:process()
@@ -116,6 +127,7 @@ serialize(#call{caller_id    = CallerId,
                 caller_nonce = CallerNonce,
                 height       = Height,
                 contract_id  = ContractId,
+                ct_call_id   = undefined,
                 gas_price    = GasPrice,
                 gas_used     = GasUsed,
                 return_value = ReturnValue,
@@ -135,46 +147,112 @@ serialize(#call{caller_id    = CallerId,
       , {return_value, ReturnValue}
       , {return_type, serialize_return_type(ReturnType)}
       , {log, Log}
+     ]);
+serialize(#call{caller_id    = CallerId,
+                caller_nonce = CallerNonce,
+                height       = Height,
+                contract_id  = ContractId,
+                ct_call_id   = CtCallId,
+                gas_price    = GasPrice,
+                gas_used     = GasUsed,
+                return_value = ReturnValue,
+                return_type  = ReturnType,
+                log          = Log
+               }) ->
+    aeser_chain_objects:serialize(
+      ?CONTRACT_INTERACTION_TYPE,
+      ?NAMED_CONTRACT_INTERACTION_VSN,
+      serialization_template(?NAMED_CONTRACT_INTERACTION_VSN),
+      [ {caller_id, CallerId}
+      , {caller_nonce, CallerNonce}
+      , {height, Height}
+      , {contract_id, ContractId}
+      , {ct_call_id, CtCallId}
+      , {gas_price, GasPrice}
+      , {gas_used, GasUsed}
+      , {return_value, ReturnValue}
+      , {return_type, serialize_return_type(ReturnType)}
+      , {log, Log}
      ]).
 
 -spec deserialize(id(), binary()) -> call().
 deserialize(CallId, B) ->
     {?CONTRACT_INTERACTION_TYPE, Vsn, Fields} =
         aeser_chain_objects:deserialize_type_and_vsn(B),
-    case Vsn of
-        ?CONTRACT_INTERACTION_VSN ->
-            [ {caller_id, CallerId}
-            , {caller_nonce, CallerNonce}
-            , {height, Height}
-            , {contract_id, ContractId}
-            , {gas_price, GasPrice}
-            , {gas_used, GasUsed}
-            , {return_value, ReturnValue}
-            , {return_type, ReturnType}
-            , {log, Log}
-            ] =  aeserialization:decode_fields(
-                   serialization_template(?CONTRACT_INTERACTION_VSN),
-                   Fields)
-    end,
+    Call =
+        case Vsn of
+            ?CONTRACT_INTERACTION_VSN ->
+                [ {caller_id, CallerId}
+                , {caller_nonce, CallerNonce}
+                , {height, Height}
+                , {contract_id, ContractId}
+                , {gas_price, GasPrice}
+                , {gas_used, GasUsed}
+                , {return_value, ReturnValue}
+                , {return_type, ReturnType}
+                , {log, Log}
+                ] = aeserialization:decode_fields(
+                        serialization_template(?CONTRACT_INTERACTION_VSN), Fields),
+                #call{ id           = CallId
+                     , caller_id    = CallerId
+                     , caller_nonce = CallerNonce
+                     , height       = Height
+                     , contract_id  = ContractId
+                     , ct_call_id   = undefined
+                     , gas_price    = GasPrice
+                     , gas_used     = GasUsed
+                     , return_value = ReturnValue
+                     , return_type  = deserialize_return_type(ReturnType)
+                     , log          = Log
+                     };
+
+            ?NAMED_CONTRACT_INTERACTION_VSN ->
+                [ {caller_id, CallerId}
+                , {caller_nonce, CallerNonce}
+                , {height, Height}
+                , {contract_id, ContractId}
+                , {ct_call_id, CtCallId}
+                , {gas_price, GasPrice}
+                , {gas_used, GasUsed}
+                , {return_value, ReturnValue}
+                , {return_type, ReturnType}
+                , {log, Log}
+                ] = aeserialization:decode_fields(
+                        serialization_template(?NAMED_CONTRACT_INTERACTION_VSN), Fields),
+                #call{ id           = CallId
+                     , caller_id    = CallerId
+                     , caller_nonce = CallerNonce
+                     , height       = Height
+                     , contract_id  = ContractId
+                     , ct_call_id   = CtCallId
+                     , gas_price    = GasPrice
+                     , gas_used     = GasUsed
+                     , return_value = ReturnValue
+                     , return_type  = deserialize_return_type(ReturnType)
+                     , log          = Log
+                     }
+        end,
     %% TODO: check caller_id type
-    contract = aeser_id:specialize_type(ContractId),
-    #call{ id           = CallId
-         , caller_id    = CallerId
-         , caller_nonce = CallerNonce
-         , height       = Height
-         , contract_id  = ContractId
-         , gas_price    = GasPrice
-         , gas_used     = GasUsed
-         , return_value = ReturnValue
-         , return_type  = deserialize_return_type(ReturnType)
-         , log          = Log
-         }.
+    contract = aeser_id:specialize_type(Call#call.contract_id),
+    Call.
 
 serialization_template(?CONTRACT_INTERACTION_VSN) ->
     [ {caller_id, id}
     , {caller_nonce, int}
     , {height, int}
     , {contract_id, id}
+    , {gas_price, int}
+    , {gas_used, int}
+    , {return_value, binary}
+    , {return_type, int}
+    , {log, [{binary, [binary], binary}]}
+    ];
+serialization_template(?NAMED_CONTRACT_INTERACTION_VSN) ->
+    [ {caller_id, id}
+    , {caller_nonce, int}
+    , {height, int}
+    , {contract_id, id}
+    , {ct_call_id, binary}
     , {gas_price, int}
     , {gas_used, int}
     , {return_value, binary}
@@ -242,9 +320,15 @@ height(#call{height = Height}) ->
 contract_id(#call{contract_id = ContractId}) ->
     ContractId.
 
+-spec ct_call_id(call()) -> aec_keys:pubkey().
+ct_call_id(#call{ct_call_id = undefined, contract_id = ContractId}) ->
+    aeser_id:specialize(ContractId, contract);
+ct_call_id(#call{ct_call_id = CtCallId}) ->
+    CtCallId.
+
 -spec contract_pubkey(call()) -> aec_keys:pubkey().
 contract_pubkey(#call{contract_id = ContractId}) ->
-  aeser_id:specialize(ContractId, contract).
+    aeser_id:specialize(ContractId, contract).
 
 -spec return_type(call()) -> ok | error | revert.
 return_type(#call{return_type = ReturnType}) ->
@@ -288,6 +372,10 @@ set_height(X, I) ->
 set_contract(X, I) ->
     I#call{contract_id = aeser_id:create(contract, assert_field(contract, X))}.
 
+-spec set_ct_call_id(undefined | aec_keys:pubkey(), call()) -> call().
+set_ct_call_id(X, I) ->
+    I#call{ct_call_id = assert_field(ct_call_id, X)}.
+
 -spec set_return_value(binary(), call()) -> call().
 set_return_value(X, I) ->
     I#call{return_value = assert_field(return_value, X)}.
@@ -315,6 +403,7 @@ assert_fields(I) ->
            , {caller_nonce, I#call.caller_nonce}
            , {height,       I#call.height}
            , {contract,     contract_pubkey(I)}
+           , {ct_call_id,   I#call.ct_call_id}
            , {return_value, I#call.return_value}
            , {gas_price,    I#call.gas_price}
            , {gas_used,     I#call.gas_used}
@@ -331,6 +420,8 @@ assert_field(caller,           <<_:?PUB_SIZE/binary>> = X) -> X;
 assert_field(caller_nonce,     X) when is_integer(X), X >= 0 -> X;
 assert_field(height,           X) when is_integer(X), X >= 0 -> X;
 assert_field(contract,         <<_:?PUB_SIZE/binary>> = X) -> X;
+assert_field(ct_call_id,       <<_:?PUB_SIZE/binary>> = X) -> X;
+assert_field(ct_call_id,       undefined = X) -> X;
 assert_field(return_value,     X) when is_binary(X) -> X;
 assert_field(gas_price,        X) when is_integer(X), X >= 0 -> X;
 assert_field(gas_used,         X) when is_integer(X), X >= 0 -> X;

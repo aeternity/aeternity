@@ -96,13 +96,13 @@ prune_without_backend(Trees) ->
 
 -spec insert_call(aect_call:call(), tree()) -> tree().
 insert_call(Call, Tree) ->
-    CtId = aect_call:contract_pubkey(Call),
-    add_call(insert, CtId, Call, Tree).
+    CtCallId = aect_call:ct_call_id(Call),
+    add_call(insert, CtCallId, Call, Tree).
 
 -spec enter_auth_call(aect_call:call(), tree()) -> tree().
 enter_auth_call(Call, Tree) ->
-    CtId       = aect_call:caller_pubkey(Call),
-    add_call(enter, CtId, Call, Tree).
+    CallerId = aect_call:caller_pubkey(Call),
+    add_call(enter, CallerId, Call, Tree).
 
 -spec lookup_call(aect_contracts:pubkey(), aect_call:id(), tree()) ->
     {value, aect_call:call()} | none.

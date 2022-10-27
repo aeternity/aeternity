@@ -214,8 +214,9 @@ apply_contract_call_tx(Tx, Trees, TxEnv) ->
     case aetx:process(Tx, Trees, TxEnv) of
         {ok, Trees1, _} ->
             {contract_call_tx, CallTx} = aetx:specialize_type(Tx),
+            %% Don't allow named contracts here :-)
+            {contract, ContractPubkey} = aeser_id:specialize(aect_call_tx:contract_id(CallTx)),
             CallPubkey     = aect_call_tx:call_id(CallTx),
-            ContractPubkey = aect_call_tx:contract_pubkey(CallTx),
             CallTree       = aec_trees:calls(Trees1),
             {value, Call}  = aect_call_state_tree:lookup_call(ContractPubkey, CallPubkey, CallTree),
             case aect_call:return_type(Call) of

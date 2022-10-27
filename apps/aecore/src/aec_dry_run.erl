@@ -113,8 +113,13 @@ dry_run_res(STx, Trees, ok) ->
     Tx = aetx_sign:tx(STx),
     {Type, _} = aetx:specialize_type(Tx),
     case Type of
-        _ when Type =:= contract_call_tx;
-               Type =:= contract_create_tx;
+        contract_call_tx ->
+            {CB, CTx} = aetx:specialize_callback(Tx),
+            CtCallId  = CB:ct_call_id(CTx),
+            CallId    = CB:call_id(CTx),
+            CallObj   = lookup_call_object(CtCallId, CallId, Trees),
+            {Type, {ok, CallObj}};
+        _ when Type =:= contract_create_tx;
                Type =:= ga_attach_tx ->
             {CB, CTx} = aetx:specialize_callback(Tx),
             Contract  = CB:contract_pubkey(CTx),

@@ -88,6 +88,7 @@
     post_spend_tx_w_hash_sig/1,
     post_contract_and_call_tx/1,
     nonce_limit/1,
+    get_name_update/1,
     get_contract_create/1,
     get_contract_call/1,
     get_contract_bytecode/1,
@@ -2189,7 +2190,7 @@ contract_transactions(_Config) ->    % miner has an account
     {ok, 404, #{<<"reason">> := <<"Account of caller_id not found">>}} =
         get_contract_call(maps:put(caller_id, RandAddress, ContractCallEncoded)),
     %% contract not found
-    {ok, 404, #{<<"reason">> := <<"Contract address for key contract_id not found">>}} =
+    {ok, 404, #{<<"reason">> := <<"Contract code for", _/binary>>}} =
         get_contract_call(maps:put(contract_id, RandContractAddress,
                                    ContractCallEncoded)),
 
