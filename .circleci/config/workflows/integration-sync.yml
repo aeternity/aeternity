@@ -1,6 +1,6 @@
 when: << pipeline.parameters.run_integration_sync >>
 jobs:
-  - docker-system-test:
+  - deploy:
       name: deploy-integration-sync
       version: $CIRCLE_SHA1
       env: integration_sync
