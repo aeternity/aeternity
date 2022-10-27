@@ -21,4 +21,7 @@ reset_single_node:
   steps:
     - run:
         name: Reset single node
-        command: cd /infrastructure && make mnesia-reset-once
+        command: |
+          export DEPLOY_ENV=<< parameters.env >>
+
+          cd /infrastructure && make mnesia-reset-once
