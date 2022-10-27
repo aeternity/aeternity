@@ -1,9 +1,7 @@
 when: << pipeline.parameters.run_integration_sync >>
 jobs:
-  - deploy:
-      name: deploy-integration-sync
-      package_path: https://builds.aeternity.io/aeternity-latest-ubuntu-x86_64.tar.gz
-      version: latest
+  - reset-single-node:
+      name: reset-integration-sync
       env: integration_sync
       downtime: 900 #15m
       context:

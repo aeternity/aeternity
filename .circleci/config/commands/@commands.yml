@@ -13,3 +13,12 @@ setup_secrets:
     - run:
         name: Setup environment secrets
         command: cd /infrastructure && make secrets SECRETS_OUTPUT_DIR=/secrets
+
+reset_single_node:
+  parameters:
+    env:
+      type: string
+  steps:
+    - run:
+        name: Reset single node
+        command: cd /infrastructure && make mnesia-reset-once

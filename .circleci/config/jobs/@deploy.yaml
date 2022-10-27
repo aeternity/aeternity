@@ -38,3 +38,16 @@ deploy:
               color: << parameters.color >>
               downtime: << parameters.downtime >>
               package_path: << pipeline.parameters.packages_workspace >>/aeternity-<< parameters.version >>-ubuntu-x86_64.tar.gz
+
+reset-single-node:
+  parameters:
+    env:
+      type: string
+    executor_tag:
+      type: string
+      default: "unstable"
+  executor: infrastructure_container_<< parameters.executor_tag >>
+  steps:
+    - fixed_checkout
+    - reset_single_node:
+        env: << parameters.env >>
