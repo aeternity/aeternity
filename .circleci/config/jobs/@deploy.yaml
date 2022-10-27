@@ -13,13 +13,28 @@ deploy:
     executor_tag:
       type: string
       default: "unstable"
+    package_path:
+      type: string
+      default: ""
   executor: infrastructure_container_<< parameters.executor_tag >>
   steps:
     - fixed_checkout
     - attach_workspace:
         at: << pipeline.parameters.packages_workspace >>
-    - deploy_env:
-        env: << parameters.env >>
-        color: << parameters.color >>
-        downtime: << parameters.downtime >>
-        package_path: << pipeline.parameters.packages_workspace >>/aeternity-<< parameters.version >>-ubuntu-x86_64.tar.gz
+    - when:
+        condition: << parameters.package_path >>
+        steps:
+          - deploy_env:
+              env: << parameters.env >>
+              color: << parameters.color >>
+              downtime: << parameters.downtime >>
+              package_path: << parameters.package_path >>
+    - when:
+        condition:
+          not: << parameters.package_path >>
+        steps:
+          - deploy_env:
+              env: << parameters.env >>
+              color: << parameters.color >>
+              downtime: << parameters.downtime >>
+              package_path: << pipeline.parameters.packages_workspace >>/aeternity-<< parameters.version >>-ubuntu-x86_64.tar.gz
