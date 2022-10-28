@@ -96,7 +96,7 @@ dry_run_int([], _Trees, Env, _Opts, Acc) ->
 dry_run_int([{tx, TxOpts, Tx} | Txs], Trees, Env, Opts, Acc) ->
     Stateless = proplists:get_value(stateless, TxOpts, false),
     Env1 = prepare_env(Env, TxOpts),
-    EventsEnabled = lists:member(tx_events, Opts),
+    EventsEnabled = proplists:get_bool(tx_events, Opts),
     %% GH3283: Here we should collect and present the `internal_call_tx` events.
     %% This means expanding the return type, and breaking the api :scream_cat:.
     case aec_trees:apply_txs_on_state_trees([Tx], Trees, Env1, [strict, dont_verify_signature|Opts]) of
