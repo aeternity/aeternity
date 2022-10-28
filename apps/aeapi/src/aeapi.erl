@@ -356,16 +356,6 @@ balance_change_events_in_block(Block) ->
             tx_spend_operations(Txs);
         key ->
             {ok, MicroBlocks} = micro_blocks_at_key_block(Block),
-            % BlockTxs = lists:foldl(
-            %     fun(MicroBlock, Acc) ->
-            %         BlockTxs = micro_block_txs(MicroBlock),
-            %         {ok, MBHash} =
-            %             aec_headers:hash_header(
-            %                 aec_blocks:to_header(MicroBlock)),
-            %         Ops = format_txs(BlockTxs, MBHash),
-            %         [Ops | Acc]
-            %     end,
-            % [], MicroBlocks),
 
             {BlockTxs, []} = pmap(
                 fun(MicroBlock) ->
