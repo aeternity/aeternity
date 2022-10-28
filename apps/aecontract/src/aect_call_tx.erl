@@ -7,6 +7,7 @@
 -module(aect_call_tx).
 
 -include("aecontract.hrl").
+-include_lib("aecontract/include/hard_forks.hrl").
 
 -behavior(aetx).
 
@@ -36,7 +37,7 @@
          caller_id/1,
          caller_pubkey/1,
          contract_id/1,
-         contract_pubkey/1,
+         ct_call_id/1,
          abi_version/1,
          amount/1,
          gas_limit/1,
@@ -108,7 +109,7 @@ new(#{caller_id   := CallerId,
             {contract, Pubkey} -> maps:get(origin, Args, Pubkey);
             {account,  Pubkey} -> maps:get(origin, Args, Pubkey)
         end,
-    contract = aeser_id:specialize_type(ContractId),
+    true = lists:member(aeser_id:specialize_type(ContractId), [contract, name]),
     Tx = #contract_call_tx{caller_id   = CallerId,
                            nonce       = Nonce,
                            contract_id = ContractId,
@@ -189,7 +190,7 @@ call_origin(#contract_call_tx{call_origin = CallOrigin}) ->
 
 -spec call_id(tx()) -> aect_call:id().
 call_id(#contract_call_tx{} = Tx) ->
-    aect_call:id(caller_pubkey(Tx), nonce(Tx), contract_pubkey(Tx)).
+    aect_call:id(caller_pubkey(Tx), nonce(Tx), ct_call_id(Tx)).
 
 -spec check(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()} | {error, term()}.
 check(#contract_call_tx{}, Trees,_Env) ->
@@ -210,7 +211,7 @@ process(#contract_call_tx{} = Tx, Trees, Env) ->
     Instructions =
         aeprimop:contract_call_tx_instructions(
           caller_pubkey(Tx),
-          contract_pubkey(Tx),
+          contract_id(Tx),
           call_data(Tx),
           gas_limit(Tx),
           gas_price(Tx),
@@ -231,7 +232,7 @@ process_call_from_contract(#contract_call_tx{} = Tx, Trees, Env) ->
     Instructions =
         aeprimop:contract_call_from_contract_instructions(
           caller_pubkey(Tx),
-          contract_pubkey(Tx),
+          contract_id(Tx),
           call_data(Tx),
           gas_limit(Tx),
           gas_price(Tx),
@@ -281,7 +282,7 @@ deserialize(?CONTRACT_CALL_TX_VSN,
             , {gas_price, GasPrice}
             , {call_data, CallData}]) ->
     {account, Origin} = aeser_id:specialize(CallerId),
-    contract = aeser_id:specialize_type(ContractId),
+    true = lists:member(aeser_id:specialize_type(ContractId), [contract, name]),
     #contract_call_tx{caller_id   = CallerId,
                       nonce       = Nonce,
                       contract_id = ContractId,
@@ -313,8 +314,10 @@ version(_) ->
     ?CONTRACT_CALL_TX_VSN.
 
 -spec valid_at_protocol(aec_hard_forks:protocol_vsn(), tx()) -> boolean().
-valid_at_protocol(_, _) ->
-    true.
+valid_at_protocol(Protocol, Tx) when Protocol >= ?CERES_PROTOCOL_VSN ->
+    lists:member(aeser_id:specialize_type(contract_id(Tx)), [contract, name]);
+valid_at_protocol(_Protocol, Tx) ->
+    aeser_id:specialize_type(contract_id(Tx)) == contract.
 
 for_client(#contract_call_tx{caller_id   = CallerId,
                              nonce       = Nonce,
@@ -352,9 +355,12 @@ caller_pubkey(#contract_call_tx{caller_id = CallerId}) ->
 contract_id(#contract_call_tx{contract_id = ContractId}) ->
     ContractId.
 
--spec contract_pubkey(tx()) -> aec_keys:pubkey().
-contract_pubkey(#contract_call_tx{contract_id = ContractId}) ->
-  aeser_id:specialize(ContractId, contract).
+-spec ct_call_id(tx()) -> <<_:256>>.
+ct_call_id(#contract_call_tx{contract_id = ContractId}) ->
+    case aeser_id:specialize(ContractId) of
+        {contract, PubKey} -> PubKey;
+        {name, NameHash}   -> NameHash
+    end.
 
 -spec abi_version(tx()) -> aect_contracts:abi_version().
 abi_version(#contract_call_tx{abi_version = ABIVersion}) ->

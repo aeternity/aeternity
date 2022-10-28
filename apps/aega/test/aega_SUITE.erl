@@ -36,6 +36,7 @@
         , basic_minimum_fee/1
 
         , tx_check/1
+        , tx_auth_name_resolution/1
 
         , bitcoin_attach/1
         , bitcoin_spend_from/1
@@ -147,7 +148,8 @@ groups() ->
                   , basic_minimum_fee
                   ]}
 
-    , {tx, [], [tx_check
+    , {tx, [], [ tx_check
+               , tx_auth_name_resolution
                ]}
 
     , {bitcoin, [], [ bitcoin_attach
@@ -505,6 +507,66 @@ tx_check(_Cfg) ->
         ?call(ga_spend, Acc1, Auth("4"), Acc2, 200, 20000 * MinGP, #{fail => true}),
     ok.
 
+
+-define(CT_NAMED_CALL_NAME, <<"contractpointer.chain">>).
+-define(CT_NAMED_CALL_NHASH, element(2, aens:get_name_hash(?CT_NAMED_CALL_NAME))).
+-define(CT_NAMED_CALL_NOBJ, aens_names:new(?CT_NAMED_CALL_NHASH, <<0:256>>, 50000)).
+-define(CT_NAMED_CALL_NAME2, <<"contractpointer2.chain">>).
+-define(CT_NAMED_CALL_NHASH2, element(2, aens:get_name_hash(?CT_NAMED_CALL_NAME2))).
+-define(CT_NAMED_CALL_NOBJ2, aens_names:new(?CT_NAMED_CALL_NHASH2, <<0:256>>, 50000)).
+tx_auth_name_resolution(Cfg) ->
+    case aect_test_utils:latest_protocol_version() of
+        Vsn when Vsn =< ?IRIS_PROTOCOL_VSN -> {skip, named_contract_calls_not_pre_ceres};
+        _Vsn -> tx_auth_name_resolution_(Cfg)
+    end.
+
+tx_auth_name_resolution_(_Cfg) ->
+    S0 = aect_test_utils:new_state(),
+    Trees   = aect_test_utils:trees(S0),
+    NTrees  = aec_trees:ns(Trees),
+    NTrees1 = aens_state_tree:enter_name(?CT_NAMED_CALL_NOBJ, NTrees),
+    NTrees2 = aens_state_tree:enter_name(?CT_NAMED_CALL_NOBJ2, NTrees1),
+    S1 = aect_test_utils:set_trees(aec_trees:set_ns(Trees, NTrees2), S0),
+    state(S1),
+
+
+    MinGP = aec_test_utils:min_gas_price(),
+    Acc1 = ?call(new_account, 1000000000 * MinGP),
+    {ok, _} = ?call(attach, Acc1, "tx_auth", "authorize_named_call", []),
+
+    Auth = fun(N, CtAddr) -> #{ prep_fun => fun(_Tx) -> ?call(tx_auth_named, Acc1, N, CtAddr) end } end,
+    {ok, #{init_res := ok, ct_pubkey := Ct}} =
+        ?call(ga_create, Acc1, Auth("1", <<0:256>>), "identity", []),
+
+    CtNameId = aeser_id:create(name, ?CT_NAMED_CALL_NHASH),
+    CtNameId2 = aeser_id:create(name, ?CT_NAMED_CALL_NHASH2),
+    meck:new(aens, [passthrough]),
+    meck:expect(aens, resolve_from_name_object,
+                fun(Key, NameObj) ->
+                    NameId = aens_names:id(NameObj),
+                    case (Key == <<"contract_pubkey">>) of
+                        true when NameId == CtNameId ->
+                            {ok, aeser_id:create(contract, Ct)};
+                        true when NameId == CtNameId2 ->
+                            {error, pointer_id_not_found};
+                        _ ->
+                            meck:passthrough([Key, NameObj])
+                    end
+                end),
+
+    {ok, #{call_res := ok, call_val := Val}} =
+        ?call(ga_call, Acc1, Auth("2", Ct), Ct, "identity", "main_", ["42"], #{contract_id => CtNameId}),
+
+    ?assertMatchABI("42", 42, decode_call_result("identity", "main_", ok, Val)),
+
+    CtNameId3 = aeser_id:create(name, <<1:256>>),
+    {failed, authentication_failed} =
+        ?call(ga_call, Acc1, Auth("3", Ct), Ct, "identity", "main_", ["42"], #{contract_id => CtNameId2, fail => true}),
+    {failed, authentication_failed} =
+        ?call(ga_call, Acc1, Auth("3", Ct), Ct, "identity", "main_", ["42"], #{contract_id => CtNameId3, fail => true}),
+
+    meck:unload(aens),
+    ok.
 
 %%%===================================================================
 %%% Bitcoin GA tests
@@ -1470,9 +1532,9 @@ do_meta(Owner, AuthData, InnerTx, MetaTx, Opts, S) ->
                 {ok, Res0#{ ct_pubkey => NewContract
                           , init_res  => aect_call:return_type(InitCall) }};
             {contract_call_tx, CCTx} ->
-                Contract    = aect_call_tx:contract_pubkey(CCTx),
-                InnerCallId = aect_call:ga_id(AuthId, Contract),
-                InnerCall   = aect_call_state_tree:get_call(Contract, InnerCallId, CallTree),
+                CtCallId    = aect_call_tx:ct_call_id(CCTx),
+                InnerCallId = aect_call:ga_id(AuthId, CtCallId),
+                InnerCall   = aect_call_state_tree:get_call(CtCallId, InnerCallId, CallTree),
                 {ok, Res0#{ call_res => aect_call:return_type(InnerCall),
                             call_val => aect_call:return_value(InnerCall),
                             call_gas => aect_call:gas_used(InnerCall) }};
@@ -1700,6 +1762,10 @@ simple_auth(Args) ->
 
 tx_auth(_GA, Nonce, S) ->
     {aega_test_utils:make_calldata("tx_auth", "authorize", [Nonce]), S}.
+
+tx_auth_named(_GA, Nonce, CtAddr, S) ->
+    Enc = lists:flatten(io_lib:format("~s", [aeser_api_encoder:encode(account_pubkey, CtAddr)])),
+    {aega_test_utils:make_calldata("tx_auth", "authorize_named_call", [Nonce, Enc]), S}.
 
 
 basic_auth(GA, Nonce, TxHash, S) ->

@@ -194,6 +194,7 @@
 -include_lib("aecore/include/blocks.hrl").
 -include_lib("aecontract/include/hard_forks.hrl").
 
+-define(AENS_RESOLVE_GAS_COST, 2000). %% TODO: make gas costs generally available?!
 -define(AVAILABLE_FROM(When, ES),
         aefa_engine_state:vm_version(ES) >= When
         orelse aefa_fate:abort({primop_error, ?FUNCTION_NAME, not_supported}, ES)).
@@ -1230,9 +1231,24 @@ make_fate_base_tx(BaseTxType, BaseTx, ES) ->
             Amount = aect_create_tx:amount(BaseTx),
             {VarGas(1) + AmtGas, MkVar(19, {Amount})};
         contract_call_tx ->
-            Ct     = aect_call_tx:contract_pubkey(BaseTx),
+            CtId   = aect_call_tx:contract_id(BaseTx),
             Amount = aect_call_tx:amount(BaseTx),
-            {VarGas(2) + AddrGas + AmtGas, MkVar(20, {?FATE_ADDRESS(Ct), Amount})};
+            case aeser_id:specialize(CtId) of
+                {contract, CtPubkey} ->
+                    {VarGas(2) + AddrGas + AmtGas,
+                     MkVar(20, {?FATE_ADDRESS(CtPubkey), Amount})};
+                {name, NameHash} ->
+                    ?AVAILABLE_FROM(?VM_FATE_SOPHIA_3, ES),
+                    API = aefa_engine_state:chain_api(ES),
+                    case aefa_chain_api:aens_resolve_name_hash(NameHash, <<"contract_pubkey">>, API) of
+                        {ok, _Tag, CtPubkey, _API1} ->
+                            {VarGas(2) + AddrGas + AmtGas + ?AENS_RESOLVE_GAS_COST,
+                             MkVar(20, {?FATE_ADDRESS(CtPubkey), Amount})};
+                        _ ->
+                            aefa_fate:abort({primop_error, aens_resolve, no_contract_pubkey}, ES)
+                    end
+            end;
+
 
         ga_attach_tx ->
             {VarGas(0), MkVar(21, {})};
@@ -2195,7 +2211,8 @@ check_delegation_signature(Type, Data, SignBin, Current, ES0) ->
             VerifyOp = aeb_fate_opcodes:m_to_op('VERIFY_SIG'),
             ES = spend_gas(aeb_fate_opcodes:gas_cost(VerifyOp), ES0),
             API = aefa_engine_state:chain_api(ES),
-            case aefa_chain_api:check_delegation_signature(Pubkey, Bin, SignBin, API) of
+            VmVersion = aefa_engine_state:vm_version(ES),
+            case aefa_chain_api:check_delegation_signature(Pubkey, Bin, SignBin, VmVersion, API) of
                 {ok, API1} ->
                     aefa_engine_state:set_chain_api(API1, ES);
                 error ->

@@ -16,6 +16,19 @@ contract TxAuth =
           Chain.ContractCallTx(_, _)   => true
           _                            => false
 
+  stateful entrypoint authorize_named_call(n : int, addr : address) : bool =
+    require(n >= state.nonce, "Nonce too low")
+    require(n =< state.nonce, "Nonce too high")
+    put(state{ nonce = n + 1 })
+    switch(Auth.tx)
+      None      => abort("Not in Auth context")
+      Some(tx0) =>
+        switch(tx0.tx)
+          Chain.ContractCreateTx(_)    => true
+          Chain.ContractCallTx(ct, _)  => ct == addr
+          _                            => false
+
+
   entrypoint test_no_auth_tx() =
     None == Auth.tx
 

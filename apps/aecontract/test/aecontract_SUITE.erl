@@ -126,6 +126,7 @@
         , sophia_signatures_oracles/1
         , sophia_signature_check_gas_cost/1
         , sophia_signatures_aens/1
+        , sophia_fate_signatures_aens/1
         , sophia_maps/1
         , sophia_map_benchmark/1
         , sophia_big_map/1
@@ -333,7 +334,8 @@
 all() ->
     [{group, protocol_interaction},
      {group, aevm},
-     {group, fate}
+     {group, fate},
+     {group, fate_named}
     ].
 
 %% To skip one level of indirection...
@@ -356,12 +358,10 @@ all() ->
                        , bad_aens_pointer_handling_lima_to_iris
                        ]).
 
--define(FATE_TODO, [
-                   ]).
-
 groups() ->
     [ {aevm, [], ?ALL_TESTS ++ ?AEVM_SPECIFIC}
     , {fate, [], ?ALL_TESTS ++ ?FATE_SPECIFIC}
+    , {fate_named, [], ?ALL_TESTS ++ ?FATE_SPECIFIC}
     , {protocol_interaction, [], [ aevm_version_interaction
                                  , create_contract_init_error_no_create_account
                                  ]}
@@ -435,6 +435,7 @@ groups() ->
                                  sophia_signatures_oracles,
                                  sophia_signature_check_gas_cost,
                                  sophia_signatures_aens,
+                                 sophia_fate_signatures_aens,
                                  sophia_maps,
                                  sophia_map_benchmark,
                                  sophia_big_map,
@@ -591,6 +592,14 @@ init_per_group(aevm, Cfg) ->
     aect_test_utils:init_per_group(aevm, Cfg, fun(X) -> X end);
 init_per_group(fate, Cfg) ->
     aect_test_utils:init_per_group(fate, Cfg, fun(X) -> X end);
+init_per_group(fate_named, Cfg) ->
+    case aect_test_utils:latest_protocol_version() of
+        P when P >= ?CERES_PROTOCOL_VSN ->
+            meck:new(aens, [passthrough]),
+            aect_test_utils:init_per_group(fate, [{ct_named_calls, true} | Cfg], fun(X) -> X end);
+        _ ->
+            {skip, named_contract_calls_not_before_ceres}
+    end;
 init_per_group(protocol_interaction, Cfg) ->
     case aect_test_utils:latest_protocol_version() of
         ?IRIS_PROTOCOL_VSN ->
@@ -635,23 +644,17 @@ init_per_group(protocol_interaction_fate, Cfg) ->
         _ ->
             {skip, only_test_protocol_interaction_on_latest_protocol}
     end;
-init_per_group(Group, Cfg) ->
-    case ?IS_FATE_SOPHIA(?config(vm_version, Cfg)) of
-        true ->
-            case lists:member({group, Group}, ?FATE_TODO) of
-                true ->
-                    {skip, not_working_yet_for_fate};
-                false ->
-                    Cfg
-            end;
-        false -> Cfg
-    end.
+init_per_group(_Group, Cfg) ->
+    Cfg.
 
 end_per_group(protocol_interaction, Cfg) ->
     meck:unload(aec_hard_forks),
     Cfg;
 end_per_group(protocol_interaction_fate, Cfg) ->
     meck:unload(aec_hard_forks),
+    Cfg;
+end_per_group(fate_named, Cfg) ->
+    meck:unload(aens),
     Cfg;
 end_per_group(_Grp, Cfg) ->
     Cfg.
@@ -672,6 +675,7 @@ init_per_testcase(fate_environment, Config) ->
     init_per_testcase_common(fate_environment, Config);
 init_per_testcase(TC, Config) when TC == sophia_aens_resolve;
                                    TC == sophia_signatures_aens;
+                                   TC == sophia_fate_signatures_aens;
                                    TC == sophia_aens_transactions ->
     %% Disable name auction
     meck:expect(aec_governance, name_claim_bid_timeout, fun(_, _) -> 0 end),
@@ -714,7 +718,9 @@ init_per_testcase(TC = bad_aens_pointer_handling_lima_to_iris, Config) ->
 init_per_testcase(TC, Config) ->
     init_per_testcase_common(TC, Config).
 
-init_per_testcase_common(TC, Config) ->
+init_per_testcase_common(_TC, Config) ->
+    put('$ct_named_calls', proplists:get_value(ct_named_calls, Config, false)),
+
     VmVersion = ?config(vm_version, Config),
     ABIVersion = ?config(abi_version, Config),
     SophiaVersion = ?config(sophia_version, Config),
@@ -737,17 +743,7 @@ init_per_testcase_common(TC, Config) ->
     put('$sophia_version', SophiaVersion),
     put('$protocol_version', ProtocolVersion),
     put('$aci_disabled', AciDisabled),
-    case ?IS_AEVM_SOPHIA(VmVersion) of
-        true ->
-            Config;
-        false ->
-            case lists:member(TC, ?FATE_TODO) of
-                true ->
-                    {skip, not_working_yet_for_fate};
-                false ->
-                    Config
-            end
-    end.
+    Config.
 
 end_per_testcase(fate_environment, _Config) ->
     meck:unload(aefa_chain_api),
@@ -755,6 +751,7 @@ end_per_testcase(fate_environment, _Config) ->
 end_per_testcase(TC, _Config) when TC == sophia_aens_resolve;
                                    TC == sophia_aens_lookup;
                                    TC == sophia_signatures_aens;
+                                   TC == sophia_fate_signatures_aens;
                                    TC == sophia_aens_transactions;
                                    TC == sophia_aens_update_transaction ->
     meck:unload(aec_governance),
@@ -766,12 +763,16 @@ end_per_testcase(bad_aens_pointer_handling_lima_to_iris, _Config) ->
 end_per_testcase(_TC, _Config) ->
     ok.
 
+-define(CT_NAMED_CALL_NAME, <<"contractpointer.chain">>).
+-define(CT_NAMED_CALL_NHASH, element(2, aens:get_name_hash(?CT_NAMED_CALL_NAME))).
+-define(CT_NAMED_CALL_NOBJ, aens_names:new(?CT_NAMED_CALL_NHASH, <<0:256>>, 50000)).
+
 %%%===================================================================
 %%% Create contract
 %%%===================================================================
 
 create_contract_negative_gas_price_zero(_Cfg) ->
-    {PubKey, S1} = aect_test_utils:setup_new_account(aect_test_utils:new_state()),
+    {PubKey, S1} = aect_test_utils:setup_new_account(new_state()),
     PrivKey      = aect_test_utils:priv_key(PubKey, S1),
 
     Overrides = #{gas_price => 0},
@@ -784,14 +785,14 @@ create_contract_negative_gas_price_zero(_Cfg) ->
     ok.
 
 create_contract_negative(_Cfg) ->
-    {PubKey, S1} = aect_test_utils:setup_new_account(aect_test_utils:new_state()),
+    {PubKey, S1} = aect_test_utils:setup_new_account(new_state()),
     Trees        = aect_test_utils:trees(S1),
     PrivKey      = aect_test_utils:priv_key(PubKey, S1),
     CurrHeight   = 1,
     Env          = aetx_env:tx_env(CurrHeight),
 
     %% Test creating a bogus account
-    {BadPubKey, BadS} = aect_test_utils:setup_new_account(aect_test_utils:new_state()),
+    {BadPubKey, BadS} = aect_test_utils:setup_new_account(new_state()),
     BadPrivKey        = aect_test_utils:priv_key(BadPubKey, BadS),
     RTx1              = create_tx(BadPubKey, S1),
     {error, _, S1}    = sign_and_apply_transaction(RTx1, BadPrivKey, S1),
@@ -817,7 +818,7 @@ create_contract_negative(_Cfg) ->
     ok.
 
 create_contract_init_error_call_wrong_function(_Cfg) ->
-    S  = aect_test_utils:new_state(),
+    S  = new_state(),
     S0 = aect_test_utils:setup_miner_account(?MINER_PUBKEY, S),
     {PubKey, S1} = aect_test_utils:setup_new_account(S0),
     {ok, Code}   = compile_contract(identity),
@@ -827,7 +828,7 @@ create_contract_init_error_call_wrong_function(_Cfg) ->
     ok.
 
 create_contract_init_error(_Cfg) ->
-    S  = aect_test_utils:new_state(),
+    S  = new_state(),
     S0 = aect_test_utils:setup_miner_account(?MINER_PUBKEY, S),
     {PubKey, S1} = aect_test_utils:setup_new_account(S0),
     PrivKey      = aect_test_utils:priv_key(PubKey, S1),
@@ -876,7 +877,7 @@ create_contract_init_error(_Cfg) ->
     ok.
 
 create_contract_init_error_no_create_account(Cfg) ->
-    S  = aect_test_utils:new_state(),
+    S  = new_state(),
     S0 = aect_test_utils:setup_miner_account(?MINER_PUBKEY, S),
     {PubKey, S1} = aect_test_utils:setup_new_account(S0),
     PrivKey      = aect_test_utils:priv_key(PubKey, S1),
@@ -941,7 +942,7 @@ create_contract_init_error_illegal_instructions_in_sophia(_Cfg) ->
     lists:foreach(F, Tests).
 
 create_contract_init_error_illegal_instruction_(OP, ErrReason) when is_binary(ErrReason) ->
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Acc = call(fun new_account/2, [10000000 * aec_test_utils:min_gas_price()]),
     {ok, Code} = compile_contract(minimal_init),
     HackedCode = hack_bytecode(Code, OP),
@@ -955,7 +956,7 @@ create_contract_init_error_illegal_instruction_(OP, ErrReason) when is_binary(Er
     ok.
 
 create_version_too_high(Cfg) ->
-    S  = aect_test_utils:new_state(),
+    S  = new_state(),
     S0 = aect_test_utils:setup_miner_account(?MINER_PUBKEY, S),
     {PubKey, S1} = aect_test_utils:setup_new_account(S0),
     PrivKey      = aect_test_utils:priv_key(PubKey, S1),
@@ -996,7 +997,7 @@ hack_fate_code(Serialized, Hack) ->
 create_contract(_Cfg) -> create_contract_(aec_test_utils:min_gas_price()).
 
 create_contract_(ContractCreateTxGasPrice) ->
-    S  = aect_test_utils:new_state(),
+    S  = new_state(),
     S0 = aect_test_utils:setup_miner_account(?MINER_PUBKEY, S),
     {PubKey, S1} = aect_test_utils:setup_new_account(S0),
     PrivKey      = aect_test_utils:priv_key(PubKey, S1),
@@ -1100,7 +1101,7 @@ create_contract_upfront_deposit(_Cfg) ->
     ok.
 
 sender_balance_in_create(CreateTxOpts) ->
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Sender = call(fun new_account/2, [10000000 * aec_test_utils:min_gas_price()]),
     Ct = call(fun create_contract/5, [Sender, upfront_charges, {}, CreateTxOpts]),
     SenderBalInCt = call(fun call_contract/6, [Sender, Ct, initialSenderBalance, word, {}]),
@@ -1154,7 +1155,7 @@ default_tx_env(Options) ->
 %%%===================================================================
 
 call_contract_negative_insufficient_funds(_Cfg) ->
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Acc1 = call(fun new_account/2, [2000000 * aec_test_utils:min_gas_price()]),
     IdC = call(fun create_contract/4, [Acc1, identity, {}]),
 
@@ -1174,7 +1175,7 @@ call_contract_negative_insufficient_funds(_Cfg) ->
     ok.
 
 call_contract_negative_gas_price_zero(_Cfg) ->
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Acc1 = call(fun new_account/2, [2000000 * aec_test_utils:min_gas_price()]),
     IdC  = call(fun create_contract/4, [Acc1, identity, {}]),
     S    = state(),
@@ -1194,7 +1195,7 @@ call_contract_negative(_Cfg) ->
 call_contract(_Cfg) -> call_contract_(2 * aec_test_utils:min_gas_price()).
 
 call_contract_(ContractCallTxGasPrice) ->
-    S  = aect_test_utils:new_state(),
+    S  = new_state(),
     S0 = aect_test_utils:setup_miner_account(?MINER_PUBKEY, S),
 
     {Owner,  S1}  = aect_test_utils:setup_new_account(S0),
@@ -1286,7 +1287,7 @@ call_contract_upfront_amount(_Cfg) ->
     ok.
 
 sender_balance_in_call(CallTxOpts) ->
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Sender = call(fun new_account/2, [10000000 * aec_test_utils:min_gas_price()]),
     Ct = call(fun create_contract/4, [Sender, upfront_charges, {}]),
     _SenderBalInCt = call(fun call_contract/7, [Sender, Ct, senderBalance, word, {}, CallTxOpts]).
@@ -1299,7 +1300,7 @@ call_contract_error_value(_Cfg) ->
     DefaultOpts = #{fee => F, gas_price => GasPrice, gas => G, amount => 0},
     Bal = fun(A, S) -> {B, S} = account_balance(A, S), B end,
     %% Initialization.
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Acc1 = call(fun new_account/2, [10000000 * aec_test_utils:min_gas_price()]),
     IdC = call(fun create_contract/5, [Acc1, value_on_err, {}, DefaultOpts#{deposit => 0}]),
     RemC = call(fun create_contract/5, [Acc1, remote_value_on_err, {}, DefaultOpts#{deposit => 0}]),
@@ -1346,7 +1347,7 @@ call_contract_error_value(_Cfg) ->
 %% error messages! However, we need to also test that the messages are
 %% sanitized under normal conditions.
 call_contract_error_sanitized(_Cfg) ->
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Acc1 = call(fun new_account/2, [10000000 * aec_test_utils:min_gas_price()]),
     IdC = ?call(create_contract, Acc1, value_on_err, {}),
     {Kind, Err} = ?call(call_contract, Acc1, IdC, err, word, {}, #{amount => 5, dry_run => false}),
@@ -1438,7 +1439,7 @@ get_call(Contract0, Call0, S) ->
     {Call, S}.
 
 state_tree(_Cfg) ->
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Acc1  = ?call(new_account, 100),
     Ct1   = ?call(insert_contract, Acc1, <<"Code for C1">>),
     Ct1   = ?call(get_contract, Ct1),
@@ -1454,6 +1455,21 @@ state_tree(_Cfg) ->
     Ct1   = ?call(get_contract, Ct1),
     {code, <<"Code for C1">>} = aect_contracts:code(Ct1),
     ok.
+
+init_new_state() ->
+    state(new_state()).
+
+new_state() ->
+    S       = aect_test_utils:new_state(),
+    case get('$ct_named_calls') of
+        true ->
+            Trees   = aect_test_utils:trees(S),
+            NTrees  = aec_trees:ns(Trees),
+            NTrees1 = aens_state_tree:enter_name(?CT_NAMED_CALL_NOBJ, NTrees),
+            aect_test_utils:set_trees(aec_trees:set_ns(Trees, NTrees1), S);
+        _ ->
+            S
+    end.
 
 %%%===================================================================
 %%% More elaborate Sophia contracts
@@ -1583,6 +1599,27 @@ call_contract(Caller, ContractKey, Fun, Type, Args, Options, S) ->
 
 call_contract_with_calldata(Caller, ContractKey, Type, Calldata, Options, S) ->
     Nonce    = aect_test_utils:next_nonce(Caller, S),
+    {CtId, CtCallId} =
+        case get('$ct_named_calls') of
+            true ->
+                ct:pal("Doing named call!", []),
+                {ok, NHash} = aens:get_name_hash(?CT_NAMED_CALL_NAME),
+                meck:expect(aens, resolve_from_name_object,
+                            fun(Key, NameObj) ->
+                                case (Key == <<"contract_pubkey">>) andalso
+                                     (aens_names:id(NameObj) == aeser_id:create(name, NHash)) of
+                                    true ->
+                                        {ok, aeser_id:create(contract, ContractKey)};
+                                    false ->
+                                        meck:passthrough([Key, NameObj])
+                                end
+                            end),
+                {aeser_id:create(name, NHash), NHash};
+            _ ->
+                ct:pal("Not doing named call!", []),
+                {aeser_id:create(contract, ContractKey), ContractKey}
+        end,
+
     CallTx   = aect_test_utils:call_tx(Caller, ContractKey,
                 maps:merge(
                 #{ nonce       => Nonce
@@ -1591,13 +1628,14 @@ call_contract_with_calldata(Caller, ContractKey, Type, Calldata, Options, S) ->
                  , fee         => maps:get(fee, Options, 1000000 * aec_test_utils:min_gas_price())
                  , amount      => 0
                  , gas         => 140000
+                 , contract_id => CtId
                  }, maps:without([height, return_gas_used, return_logs], Options)), S),
     PrivKey  = aect_test_utils:priv_key(Caller, S),
     case sign_and_apply_transaction(CallTx, PrivKey, S, Options) of
         {ok, S1} ->
-            CallKey  = aect_call:id(Caller, Nonce, ContractKey),
+            CallKey  = aect_call:id(Caller, Nonce, CtCallId),
             CallTree = aect_test_utils:calls(S1),
-            Call     = aect_call_state_tree:get_call(ContractKey, CallKey, CallTree),
+            Call     = aect_call_state_tree:get_call(CtCallId, CallKey, CallTree),
             {_, Tx}  = aetx:specialize_type(CallTx),
             ABI      = aect_call_tx:abi_version(Tx),
             Result   = call_result(ABI, Type, Call),
@@ -1713,7 +1751,7 @@ to_words(Bin) ->
 
 sophia_list_comp(_Cfg) ->
     ?skipRest(sophia_version() =< ?SOPHIA_FORTUNA, no_list_comprehensions_in_fortuna),
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Acc = ?call(new_account, 100000000000 * aec_test_utils:min_gas_price()),
     C   = ?call(create_contract, Acc, list_comp, {}),
 
@@ -1737,7 +1775,7 @@ sophia_list_comp(_Cfg) ->
 
 sophia_stdlib_tests(_Cfg) ->
     ?skipRest(sophia_version() =< ?SOPHIA_FORTUNA, no_stdlib_in_fortuna),
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Acc = ?call(new_account, 100000000000 * aec_test_utils:min_gas_price()),
     C   = ?call(create_contract, Acc, stdlib_tests, {}),
     {} = ?call(call_contract, Acc, C, test, {tuple, []}, {}),
@@ -1745,14 +1783,14 @@ sophia_stdlib_tests(_Cfg) ->
 
 
 sophia_identity(_Cfg) ->
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Acc1 = ?call(new_account, 10000000 * aec_test_utils:min_gas_price()),
     IdC   = ?call(create_contract, Acc1, identity, {}),
     42    = ?call(call_contract,   Acc1, IdC, main_, word, 42),
     ok.
 
 sophia_remote_identity(_Cfg) ->
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Acc1 = ?call(new_account, 10000000 * aec_test_utils:min_gas_price()),
     %% Remote calling the identity contract
     IdC   = ?call(create_contract, Acc1, identity, {}),
@@ -1764,7 +1802,7 @@ sophia_remote_identity(_Cfg) ->
     ok.
 
 sophia_remote_gas(_Cfg) ->
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Acc  = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
     Ctr1 = ?call(create_contract, Acc, remote_gas_test, {0}),
     Ctr2 = ?call(create_contract, Acc, remote_gas_test, {0}),
@@ -1797,7 +1835,7 @@ sophia_remote_gas(_Cfg) ->
 
 sophia_higher_order_state(_Cfg) ->
     ?skipRest(not ?IS_FATE_SOPHIA(vm_version()), higher_order_state_only_in_fate),
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Acc = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
     Ct  = ?call(create_contract, Acc, higher_order_state, {}),
     1   = ?call(call_contract, Acc, Ct, apply, word, {1}),
@@ -1811,7 +1849,7 @@ sophia_higher_order_state(_Cfg) ->
 
 sophia_clone(_Cfg) ->
     ?skipRest(vm_version() < ?VM_FATE_SOPHIA_2, clone_not_pre_iris),
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Acc     = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
     Remote  = ?call(create_contract, Acc, higher_order_state, {}),
     Ct      = ?call(create_contract, Acc, clone_test, {}),
@@ -1836,7 +1874,7 @@ sophia_clone(_Cfg) ->
 
 sophia_create(_Cfg) ->
     ?skipRest(vm_version() < ?VM_FATE_SOPHIA_2, create_not_pre_iris),
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Acc = ?call(new_account, 1000000000000000000000 * aec_test_utils:min_gas_price()),
     Ct  = ?call(create_contract, Acc, create_test, {}, #{gas => 1000000000000}),
     R1  = ?call(call_contract, Acc, Ct, increaseByThree, word, {2137}, #{gas => 1000000000000, amount => 1000000}),
@@ -1845,7 +1883,7 @@ sophia_create(_Cfg) ->
 
 sophia_bytecode_hash(_Cfg) ->
     ?skipRest(vm_version() < ?VM_FATE_SOPHIA_2, bytecode_hash_not_pre_iris),
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Acc = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
     Remote  = ?call(create_contract, Acc, higher_order_state, {}),
     Ct  = ?call(create_contract, Acc, bytecode_hash_test, {}),
@@ -1869,7 +1907,7 @@ sophia_bytecode_hash(_Cfg) ->
 
 sophia_factories(_Cfg) ->
     ?skipRest(vm_version() < ?VM_FATE_SOPHIA_2, factories_not_pre_iris),
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Acc = ?call(new_account, 1000000000000000000000 * aec_test_utils:min_gas_price()),
     Ct  = ?call(create_contract, Acc, factories, {}, #{gas => 10000000000000}),
     ?assertEqual(1, ?call(call_contract, Acc, Ct, add, word, {1}, #{gas => 1000000000000000})),
@@ -1880,7 +1918,7 @@ sophia_factories(_Cfg) ->
 
 sophia_bignum(_Cfg) ->
     ?skipRest(vm_version() < ?VM_AEVM_SOPHIA_2, no_arithmetic_errors_pre_minerva),
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Acc = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
     Ct  = ?call(create_contract, Acc, bignum, {}),
     65536 = ?call(call_contract, Acc, Ct, tetr1, word, {2, 4}),
@@ -1895,7 +1933,7 @@ sophia_bignum(_Cfg) ->
     ok.
 
 sophia_call_caller(_Cfg) ->
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Acc = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
     CtR1 = ?call(create_contract, Acc, identity, {}),
     CtR2 = ?call(create_contract, Acc, call_caller, {}),
@@ -1915,7 +1953,7 @@ sophia_call_caller(_Cfg) ->
 %% Test that the Auth.tx function works properly, in order to do
 %% this we need to pass a ga_tx in Options.
 sophia_auth_tx(_Cfg) ->
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Acc = ?call(new_account, 10000000000 * aec_test_utils:min_gas_price()),
     Ct  = ?call(create_contract, Acc, tx_auth, {}),
 
@@ -2107,7 +2145,7 @@ sophia_auth_tx(_Cfg) ->
 
 
 aevm_version_interaction(Cfg) ->
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     ForkHeights   = ?config(fork_heights, Cfg),
     RomaHeight    = maps:get(minerva, ForkHeights) - 1,
     MinervaHeight = maps:get(fortuna, ForkHeights) - 1,
@@ -2215,7 +2253,7 @@ aevm_version_interaction(Cfg) ->
     ok.
 
 sophia_strings(_Cfg) ->
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Acc = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
     Ct  = ?call(create_contract, Acc, strings, {}),
 
@@ -2272,7 +2310,7 @@ sophia_strings(_Cfg) ->
     ok.
 
 sophia_aevm_exploits(_Cfg) ->
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Acc  = ?call(new_account, 10000000 * aec_test_utils:min_gas_price()),
     {ok, Code} = compile_contract(exploits),
     StringType = aeb_heap:to_binary(string),
@@ -2301,7 +2339,7 @@ hack_type(HackFun, NewType, SerCode) ->
 
 sophia_functions(_Cfg) ->
     ?skipRest(sophia_version() =< ?SOPHIA_MINERVA, letfun_broken_pre_sophia_3),
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Acc = ?call(new_account, 10000000 * aec_test_utils:min_gas_price()),
     Ct  = ?call(create_contract, Acc, functions, {}),
     [6, 7, 8]       = ?call(call_contract, Acc, Ct, test1, {list, word}, [1, 2, 3]),
@@ -2310,7 +2348,7 @@ sophia_functions(_Cfg) ->
     ok.
 
 sophia_no_reentrant(_Cfg) ->
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Acc   = ?call(new_account, 10000000 * aec_test_utils:min_gas_price()),
     IdC   = ?call(create_contract, Acc, identity, {}),
     RemC  = ?call(create_contract, Acc, remote_call, {}, #{amount => 100}),
@@ -2321,7 +2359,7 @@ sophia_no_reentrant(_Cfg) ->
     ok.
 
 sophia_state(_Cfg) ->
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Acc1         = ?call(new_account, 10000000 * aec_test_utils:min_gas_price()),
     InitStack    = [<<"top">>, <<"middle">>, <<"bottom">>],
     Stack        = ?call(create_contract, Acc1, stack, InitStack),
@@ -2338,7 +2376,7 @@ sophia_state(_Cfg) ->
     ok.
 
 sophia_remote_state(_Cfg) ->
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Acc = ?call(new_account, 10000000 * aec_test_utils:min_gas_price()),
     Ct1 = ?call(create_contract, Acc, remote_state2, {<<"ct1-initial">>}),
     Ct2 = ?call(create_contract, Acc, remote_state2, {<<"ct2-initial">>}),
@@ -2347,7 +2385,7 @@ sophia_remote_state(_Cfg) ->
 
 %% There was a bug matching on _::_.
 sophia_match_bug(_Cfg) ->
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Acc1      = ?call(new_account, 10000000 * aec_test_utils:min_gas_price()),
     Poly      = ?call(create_contract, Acc1, polymorphism_test, {}),
     [5, 7, 9] = ?call(call_contract, Acc1, Poly, foo, {list, word}, {}),
@@ -2356,7 +2394,7 @@ sophia_match_bug(_Cfg) ->
     ok.
 
 sophia_spend(_Cfg) ->
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Acc1         = ?call(new_account, 20000000 * aec_test_utils:min_gas_price()),
     Acc2         = ?call(new_account, 20000000 * aec_test_utils:min_gas_price()),
     Ct1          = ?call(create_contract, Acc1, spend_test, {}, #{amount => 10000}),
@@ -2384,7 +2422,7 @@ sophia_spend(_Cfg) ->
     ok.
 
 sophia_typed_calls(_Cfg) ->
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Acc    = ?call(new_account, 20000000 * aec_test_utils:min_gas_price()),
     Server = ?call(create_contract, Acc, multiplication_server, {}, #{amount => 0}),
     Client = ?call(create_contract, Acc, contract_types, {?cid(Server)}, #{amount => 1000}),
@@ -2400,7 +2438,7 @@ sophia_typed_calls(_Cfg) ->
     ok.
 
 sophia_call_origin(_Cfg) ->
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Acc       = ?call(new_account, 10000000000 * aec_test_utils:min_gas_price()),
     EnvC      = ?call(create_contract, Acc, environment, {?cid(<<0:256>>)}, #{}),
     [error(EnvC) || not is_binary(EnvC)],
@@ -2432,7 +2470,7 @@ sophia_call_origin(_Cfg) ->
 
 sophia_contract_creator(_Cfg) ->
     ?skipRest(vm_version() < ?VM_AEVM_SOPHIA_3, contract_creator_not_in_minerva),
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Acc1      = ?call(new_account, 10000000000 * aec_test_utils:min_gas_price()),
     Acc2      = ?call(new_account, 10000000000 * aec_test_utils:min_gas_price()),
     Acc3      = ?call(new_account, 10000000000 * aec_test_utils:min_gas_price()),
@@ -2452,7 +2490,7 @@ sophia_contract_creator(_Cfg) ->
 %% Oracles tests
 
 sophia_oracles(_Cfg) ->
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     RelativeTTL       = fun(Delta)  -> ?CHAIN_RELATIVE_TTL_MEMORY_ENCODING(Delta) end,
     FixedTTL          = fun(Height) -> ?CHAIN_ABSOLUTE_TTL_MEMORY_ENCODING(Height) end,
     Acc               = ?call(new_account, 20000000 * aec_test_utils:min_gas_price()),
@@ -2508,7 +2546,7 @@ sophia_oracles(_Cfg) ->
 
 sophia_oracles_type_error_on_query_1(_Cfg) ->
     %% Create a query of the wrong type.
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     RelativeTTL       = fun(Delta)  -> ?CHAIN_RELATIVE_TTL_MEMORY_ENCODING(Delta) end,
     FixedTTL          = fun(Height) -> ?CHAIN_ABSOLUTE_TTL_MEMORY_ENCODING(Height) end,
     Acc               = ?call(new_account, 10000000 * aec_test_utils:min_gas_price()),
@@ -2525,7 +2563,7 @@ sophia_oracles_type_error_on_query_1(_Cfg) ->
 
 sophia_oracles_type_error_on_query_2(_Cfg) ->
     %% Create a query of the correct type, but to an oracle with wrong response type.
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     RelativeTTL       = fun(Delta)  -> ?CHAIN_RELATIVE_TTL_MEMORY_ENCODING(Delta) end,
     FixedTTL          = fun(Height) -> ?CHAIN_ABSOLUTE_TTL_MEMORY_ENCODING(Height) end,
     Acc               = ?call(new_account, 10000000 * aec_test_utils:min_gas_price()),
@@ -2545,7 +2583,7 @@ sophia_oracles_type_error_on_query_2(_Cfg) ->
 
 sophia_oracles_type_error_on_response_1(_Cfg) ->
     %% Make a query with correct type, but respond with the wrong type.
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     RelativeTTL       = fun(Delta)  -> ?CHAIN_RELATIVE_TTL_MEMORY_ENCODING(Delta) end,
     FixedTTL          = fun(Height) -> ?CHAIN_ABSOLUTE_TTL_MEMORY_ENCODING(Height) end,
     Acc               = ?call(new_account, 10000000 * aec_test_utils:min_gas_price()),
@@ -2566,7 +2604,7 @@ sophia_oracles_type_error_on_response_1(_Cfg) ->
 sophia_oracles_type_error_on_response_2(_Cfg) ->
     %% Make a query with correct type, respond with the correct type
     %% (for the oracle), but using the wrong type for the oracle
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     RelativeTTL       = fun(Delta)  -> ?CHAIN_RELATIVE_TTL_MEMORY_ENCODING(Delta) end,
     FixedTTL          = fun(Height) -> ?CHAIN_ABSOLUTE_TTL_MEMORY_ENCODING(Height) end,
     Acc               = ?call(new_account, 10000000 * aec_test_utils:min_gas_price()),
@@ -2588,7 +2626,7 @@ sophia_oracles_type_error_on_response_2(_Cfg) ->
 sophia_oracles_type_error_on_get(_Cfg) ->
     %% Create a correct query/response, but try to get the question/answer assuming
     %% that the oracle has a different type.
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     RelativeTTL       = fun(Delta)  -> ?CHAIN_RELATIVE_TTL_MEMORY_ENCODING(Delta) end,
     FixedTTL          = fun(Height) -> ?CHAIN_ABSOLUTE_TTL_MEMORY_ENCODING(Height) end,
     Acc               = ?call(new_account, 10000000 * aec_test_utils:min_gas_price()),
@@ -2620,7 +2658,7 @@ sophia_oracles_type_error_on_get(_Cfg) ->
     ok.
 
 sophia_oracles_interact_with_no_vm_oracle(_Cfg) ->
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     RelativeTTL       = fun(Delta)  -> ?CHAIN_RELATIVE_TTL_MEMORY_ENCODING(Delta) end,
     Acc               = ?call(new_account, 10000000 * aec_test_utils:min_gas_price()),
     Ct                = ?call(create_contract, Acc, oracles_no_vm, {}, #{amount => 100000}),
@@ -2860,7 +2898,7 @@ combine_ttl_scenarios(Cmds1, Cmds2) ->
     lists:keymerge(1, Cmds1, Cmds2).
 
 run_ttl_scenario(Scenario) ->
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Acc = ?call(new_account, 10000000000 * aec_test_utils:min_gas_price()),
     [ begin
         Ct = ?call(create_contract, Acc, oracles, {}, #{amount => 10000}),
@@ -3076,7 +3114,7 @@ sophia_oracles_qfee__flow_up_to_respond_(Cbs,
     QueryTxOpts    = #{fee => TxFee, gas_price => GasPrice, amount => QueryTxValue},
     RespondTxOpts  = #{fee => TxFee, gas_price => GasPrice, amount => 0},
 
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     OperatorAcc = call(fun new_account/2, [10000000 * aec_test_utils:min_gas_price()]),
     UserAcc = call(fun new_account/2, [10000000 * aec_test_utils:min_gas_price()]),
     CCbs = closed_oracle_cbs(Cbs,
@@ -3104,7 +3142,7 @@ sophia_oracles_qfee__flow_up_to_query_(Cbs,
                                        InitialOracleCtBalance,
                                        RegisterOpts,
                                        QueryOpts, QueryTxValue) ->
-    sophia_oracles_qfee__flow_up_to_query_(aect_test_utils:new_state(),
+    sophia_oracles_qfee__flow_up_to_query_(new_state(),
                                            Cbs,
                                            TxFee,
                                            GasPrice,
@@ -3856,7 +3894,7 @@ sophia_oracles_qfee__inner_error_after_primop__remote(_Cfg) ->
     {InitialOracleCtBalance, RegisterTxQFee, QueryTxValue, QueryTxQFee} =
         sophia_oracles_qfee__basic__data_(),
 
-    InitialState0 = aect_test_utils:new_state(),
+    InitialState0 = new_state(),
     {TmpAcc, InitialState1} = new_account(10000000 * aec_test_utils:min_gas_price(), InitialState0),
     {OracleErrCt, InitialState} = create_contract(TmpAcc, oracles_err, {}, #{amount => 0}, InitialState1),
 
@@ -3940,7 +3978,7 @@ sophia_oracles_qfee__outer_error_after_primop__remote(_Cfg) ->
                        | ?CHAIN_ABSOLUTE_TTL_MEMORY_ENCODING_TYPE(non_neg_integer()),
          respond_ttl  :: ?CHAIN_RELATIVE_TTL_MEMORY_ENCODING_TYPE(non_neg_integer())}).
 sophia_oracles_gas_ttl__measure_gas_used(Sc, Height, Gas) ->
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Caller = call(fun new_account/2, [100000000000 * aec_test_utils:min_gas_price()]),
     Ct = call(fun create_contract/4, [Caller, oracles_gas, {}]),
     QFee=1,
@@ -4110,7 +4148,7 @@ sophia_oracles_gas_ttl__response(_Cfg) ->
 
 %% Testing external oracles, with provided Signatures
 sophia_signatures_oracles(_Cfg) ->
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     RelativeTTL         = fun(Delta)  -> ?CHAIN_RELATIVE_TTL_MEMORY_ENCODING(Delta) end,
     FixedTTL            = fun(Height) -> ?CHAIN_ABSOLUTE_TTL_MEMORY_ENCODING(Height) end,
     Acc                 = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
@@ -4170,7 +4208,7 @@ sophia_signature_check_gas_cost(_Cfg) ->
     %% Check that when checking the delegation signature, the gas cost increases.
     %% The delegation signature handling is handled jointly for all such
     %% operations, so it is sufficient to test one operation.
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     FixedTTL            = fun(Height) -> ?CHAIN_ABSOLUTE_TTL_MEMORY_ENCODING(Height) end,
     Acc                 = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
     Orc                 = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
@@ -4195,7 +4233,7 @@ sophia_signature_check_gas_cost(_Cfg) ->
     ok.
 
 sophia_signatures_aens(Cfg) ->
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     %% AENS transactions from contract - using 3rd party account
     Acc             = ?call(new_account, 40000000000000 * aec_test_utils:min_gas_price()),
     NameAcc         = ?call(new_account, 40000000000000 * aec_test_utils:min_gas_price()),
@@ -4299,14 +4337,88 @@ sophia_signatures_aens(Cfg) ->
     ?assertMatchProtocol(NonceAfterRevoke, ExpectedNonceAfterRevokeRoma, NonceBeforeRevoke),
     ok.
 
+%% Delegated signatures did not work for non-existing accounts pre-CERES, this test checks that this
+%% continues to be true :-)
+%% Note that Claim can't be done by a non-existing account since it require funds!
+sophia_fate_signatures_aens(_Cfg) ->
+    ?skipRest(not ?IS_FATE_SOPHIA(vm_version()), only_valid_for_fate),
+    init_new_state(),
+    %% AENS transactions from contract - using non-existing/not-funded 3rd party account(s)
+    #{ public := NameAcc2, secret := NameAcc2PrivKey } = enacl:sign_keypair(),
+    #{ public := NameAcc3, secret := NameAcc3PrivKey } = enacl:sign_keypair(),
+    Acc             = ?call(new_account, 40000000000000 * aec_test_utils:min_gas_price()),
+    NameAcc         = ?call(new_account, 40000000000000 * aec_test_utils:min_gas_price()),
+    Ct              = ?call(create_contract, Acc, aens, {}, #{ amount => 100000 }),
+    Name1           = aens_test_utils:fullname(<<"bla">>),
+    Salt1           = rand:uniform(10000),
+    {ok, NameAscii} = aens_utils:to_ascii(Name1),
+    CHash           = ?hsh(aens_hash:commitment_hash(NameAscii, Salt1)),
+    NHash           = aens_hash:name_hash(NameAscii),
+    NameArg         = Name1,
+    CtSigNameAcc    = sign(<<NameAcc/binary, Ct/binary>>, NameAcc),
+    NameSigNameAcc  = sign(<<NameAcc/binary, NHash/binary, Ct/binary>>, NameAcc),
+    NameSigNameAcc2 = sign_(<<NameAcc2/binary, NHash/binary, Ct/binary>>, NameAcc2PrivKey),
+    NameSigNameAcc3 = sign_(<<NameAcc3/binary, NHash/binary, Ct/binary>>, NameAcc3PrivKey),
+
+    %% PreClaim
+    {} = ?call(call_contract, Acc, Ct, signedPreclaim, {tuple, []}, {NameAcc, CHash, CtSigNameAcc}, #{ height => 10 }),
+
+    %% Claim
+    {} = ?call(call_contract, Acc, Ct, signedClaim,    {tuple, []}, {NameAcc, Name1, Salt1, NameSigNameAcc}, #{ height => 11 }),
+
+    %% Transfer
+    {} = ?call(call_contract, Acc, Ct, signedTransfer, {tuple, []}, {NameAcc, NameAcc2, NameArg, NameSigNameAcc}, #{ height => 12 }),
+
+    %% Transfer again
+    TransferRes = ?call(call_contract, Acc, Ct, signedTransfer, {tuple, []}, {NameAcc2, NameAcc3, NameArg, NameSigNameAcc2}, #{ height => 13 }),
+    ?assertMatchFATE({error, <<"Error in aens_transfer: bad_signature">>},
+                     {error, <<"Error in aens_transfer: bad_signature">>},
+                     {}, TransferRes),
+
+    %% Update (did not exist in Lima!)
+    AccountPointee  = fun (A) -> {variant, [1, 1, 1, 1], 0, {A}} end,
+    OraclePointee   = fun (A) -> {variant, [1, 1, 1, 1], 1, {A}} end,
+    Pointers = #{<<"account_pubkey">> => AccountPointee(<<2:256>>),
+                 <<"oracle_pubkey">>  => OraclePointee(<<3:256>>)},
+    None = none,
+    Some = fun (X) -> {some, X} end,
+
+    BadUpdate = ?call(call_contract, Acc, Ct, signedUpdate, {tuple, []}, {NameAcc2, NameArg, None, None, None, NameSigNameAcc2}, #{ height => 14 }),
+    ?assertMatchFATE({error,<<"Trying to call undefined function: <<121,30,40,69>>">>},
+                     {error, <<"Error in aens_update: bad_signature">>},
+                     {error,<<"Error in aens_update: name_not_owned">>}, BadUpdate),
+
+    UpdateRes = ?call(call_contract, Acc, Ct, signedUpdate, {tuple, []}, {NameAcc3, NameArg, None, None, Some(Pointers), NameSigNameAcc3}, #{height => 14}),
+    ?assertMatchFATE({error,<<"Trying to call undefined function: <<121,30,40,69>>">>},
+                     {error, <<"Error in aens_update: bad_signature">>},
+                     {}, UpdateRes),
+
+    %% Revoke
+    BadRevoke1 = ?call(call_contract, Acc, Ct, signedRevoke, {tuple, []}, {NameAcc, NameArg, NameSigNameAcc}, #{ height => 15 }),
+    ?assertMatch({error,<<"Error in aens_revoke: name_not_owned">>}, BadRevoke1),
+    BadRevoke2 = ?call(call_contract, Acc, Ct, signedRevoke, {tuple, []}, {NameAcc2, NameArg, NameSigNameAcc2}, #{ height => 15 }),
+    ?assertMatchFATE({error, <<"Error in aens_revoke: bad_signature">>},
+                     {error, <<"Error in aens_revoke: bad_signature">>},
+                     {error,<<"Error in aens_revoke: name_not_owned">>}, BadRevoke2),
+
+    RevokeRes = ?call(call_contract, Acc, Ct, signedRevoke, {tuple, []}, {NameAcc3, NameArg, NameSigNameAcc3}, #{ height => 15 }),
+    ?assertMatchFATE({error, <<"Error in aens_revoke: bad_signature">>},
+                     {error, <<"Error in aens_revoke: bad_signature">>},
+                     {}, RevokeRes),
+
+    ok.
+
 sign(Material, KeyHolder) ->
     PrivKey  = aect_test_utils:priv_key(KeyHolder, state()),
+    sign_(Material, PrivKey).
+
+sign_(Material, PrivKey) ->
     MaterialForNetworkId = aec_governance:add_network_id(Material),
     ?sig(enacl:sign_detached(MaterialForNetworkId, PrivKey)).
 
 %% Testing map functions and primitives
 sophia_maps(_Cfg) ->
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Acc = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
     Ct  = ?call(create_contract, Acc, maps, {}, #{fee => 2000000 * aec_test_utils:min_gas_price()}),
 
@@ -4482,7 +4594,7 @@ sophia_maps(_Cfg) ->
     ok.
 
 sophia_map_benchmark(Cfg) ->
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Acc  = ?call(new_account, 100000000 * aec_test_utils:min_gas_price()),
     N    = proplists:get_value(n, Cfg, 10),
     Map  = maps:from_list([{I, list_to_binary(integer_to_list(I))} || I <- lists:seq(1, N) ]),
@@ -4679,7 +4791,7 @@ sophia_map_benchmark(Cfg) ->
     ok.
 
 sophia_big_map_benchmark(Cfg) ->
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Acc = ?call(new_account, 100000000000000 * aec_test_utils:min_gas_price()),
     N     = proplists:get_value(n, Cfg, 1000),
     Batch = proplists:get_value(batch, Cfg, N),
@@ -4700,7 +4812,7 @@ sophia_big_map_benchmark(Cfg) ->
     ok.
 
 sophia_big_map(_Cfg) ->
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Acc = ?call(new_account, 100000000000000 * aec_test_utils:min_gas_price()),
     N     = 200,
     Batch = 200,
@@ -4721,7 +4833,7 @@ sophia_big_map(_Cfg) ->
 
 sophia_registry(Cfg) ->
     ?skipRest(vm_version() =< ?VM_AEVM_SOPHIA_3, only_lima),
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     N    = proplists:get_value(n, Cfg, 20),
     Acc  = ?call(new_account, 100000000000000 * aec_test_utils:min_gas_price()),
     Ct   = ?call(create_contract, Acc, registry, {}),
@@ -4732,7 +4844,7 @@ sophia_registry(Cfg) ->
     ok.
 
 sophia_pmaps(_Cfg) ->
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Acc = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
     Ct  = ?call(create_contract, Acc, primitive_map, 0),
     {} = ?call(call_contract, Acc, Ct, set_remote, {tuple, []}, Ct),
@@ -4775,7 +4887,7 @@ sophia_pmaps(_Cfg) ->
     ok.
 
 sophia_chess(_Cfg) ->
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Acc = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
     {Ct, _Gas} = ?call(create_contract, Acc, chess, {}, #{gas => 1000000, return_gas_used => true}),
     {some, <<"black king">>}  = ?call(call_contract, Acc, Ct, piece, {option, string}, {8, 5}),
@@ -4789,7 +4901,7 @@ sophia_chess(_Cfg) ->
     ok.
 
 sophia_map_of_maps(_Cfg) ->
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Acc = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
     {Ct, _Gas} = ?call(create_contract, Acc, map_of_maps, {}, #{gas => 1000000, return_gas_used => true}),
     %% {}         = ?call(call_contract, Acc, Ct, setup_state, {tuple, []}, {}),
@@ -4828,7 +4940,7 @@ sophia_map_of_maps(_Cfg) ->
 
 sophia_maps_gc(_Cfg) ->
     ?skipRest(vm_version() =< ?VM_AEVM_SOPHIA_3, only_lima),
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Acc = ?call(new_account, 20000000 * aec_test_utils:min_gas_price()),
     %% Big to make sure it ends up in the store.
     InitA = maps:from_list([ {integer_to_binary(I), integer_to_binary(I + 100)}
@@ -4867,7 +4979,7 @@ sophia_maps_gc(_Cfg) ->
 %% aesophia/GH-204
 sophia_maps_gc_bug(_Cfg) ->
     ?skipRest(?IF_AEVM(true, false), only_fate),
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Acc       = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
     Ct        = ?call(create_contract, Acc, maps_gc_bug, {}),
     {}        = ?call(call_contract, Acc, Ct, set, {tuple, []}, {<<"bar">>}),
@@ -4881,7 +4993,7 @@ sophia_maps_gc_bug(_Cfg) ->
     end.
 
 sophia_polymorphic_entrypoint(_Cfg) ->
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Acc = ?call(new_account, 10000000 * aec_test_utils:min_gas_price()),
     Ct1 = ?call(create_contract, Acc, polymorphic_entrypoint, {}, #{fee => 2000000 * aec_test_utils:min_gas_price()}),
     Ct2 = ?call(create_contract, Acc, polymorphic_entrypoint, {}, #{fee => 2000000 * aec_test_utils:min_gas_price()}),
@@ -4898,7 +5010,7 @@ sophia_polymorphic_entrypoint(_Cfg) ->
     ok.
 
 sophia_variant_types(_Cfg) ->
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Acc = <<AccId:256>> = ?call(new_account, 10000000 * aec_test_utils:min_gas_price()),
     Ct  = ?call(create_contract, Acc, variant_types, {}, #{fee => 2000000 * aec_test_utils:min_gas_price()}),
     Call = fun(Fn, Type, Args) -> ?call(call_contract, Acc, Ct, Fn, Type, Args) end,
@@ -4920,7 +5032,7 @@ sophia_variant_types(_Cfg) ->
     ok.
 
 sophia_arity_check(_Cfg) ->
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Acc = ?call(new_account, 10000000 * aec_test_utils:min_gas_price()),
     Id = ?call(create_contract, Acc, identity,    {}, #{fee => 2000000 * aec_test_utils:min_gas_price()}),
     Ct = ?call(create_contract, Acc, remote_fail, {}, #{fee => 2000000 * aec_test_utils:min_gas_price()}),
@@ -4932,7 +5044,7 @@ sophia_arity_check(_Cfg) ->
 
 
 sophia_chain(_Cfg) ->
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Acc         = ?call(new_account, 10000000 * aec_test_utils:min_gas_price()),
     <<Beneficiary:?BENEFICIARY_PUB_BYTES/unit:8>> = ?BENEFICIARY_PUBKEY,
     Ct1         = ?call(create_contract, Acc, chain, {}, #{amount => 10000}),
@@ -4942,7 +5054,7 @@ sophia_chain(_Cfg) ->
     ok.
 
 sophia_savecoinbase(_Cfg) ->
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Acc = ?call(new_account, 10000000 * aec_test_utils:min_gas_price()),
     <<Beneficiary:?BENEFICIARY_PUB_BYTES/unit:8>> = ?BENEFICIARY_PUBKEY,
 
@@ -4964,7 +5076,7 @@ sophia_no_callobject_for_remote_calls(_Cfg) ->
                     length(aect_call_state_tree:to_list(CallTree))
                  end,
 
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Acc   = ?call(new_account, 10000000 * aec_test_utils:min_gas_price()),
     IdC   = ?call(create_contract, Acc, identity, {}),
     RemC  = ?call(create_contract, Acc, remote_call, {}, #{amount => 100}),
@@ -4985,7 +5097,7 @@ sophia_no_callobject_for_remote_calls(_Cfg) ->
     ok.
 
 sophia_operators(_Cfg) ->
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Acc   = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
     IdC   = ?call(create_contract, Acc, operators, {}),
 
@@ -5023,7 +5135,7 @@ sophia_operators(_Cfg) ->
 sophia_bits(_Cfg) ->
     ?skipRest(vm_version() < ?VM_AEVM_SOPHIA_2,
               bitmaps_not_in_roma),
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Acc = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
 
     C = ?call(create_contract, Acc, bits, {}),
@@ -5097,7 +5209,7 @@ sophia_bits(_Cfg) ->
     ok.
 
 sophia_int_to_str(_Cfg) ->
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Acc   = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
     IdC   = ?call(create_contract, Acc, int_to_str, {}),
 
@@ -5133,7 +5245,7 @@ sophia_events(Cfg) ->
     end.
 
 sophia_events_old(_Cfg) ->
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Acc   = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
     IdC   = ?call(create_contract, Acc, events, {}),
 
@@ -5147,7 +5259,7 @@ sophia_events_old(_Cfg) ->
     ok.
 
 sophia_events_new(_Cfg) ->
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Acc = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
     Ct  = ?call(create_contract, Acc, events, {}),
 
@@ -5252,7 +5364,7 @@ sophia_crypto(_Cfg) ->
     set_compiler_version(?VM_AEVM_SOPHIA_1, ?SOPHIA_FORTUNA),
     set_compiler_version(?VM_AEVM_SOPHIA_2, ?SOPHIA_FORTUNA),
 
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Acc   = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
 
     IdC = case RealCompilerVersion of
@@ -5461,7 +5573,7 @@ sophia_crypto_pairing_neg(_Cfg) ->
     %% For the negative test, overload the compiler
     set_compiler_version(?VM_FATE_SOPHIA_1, ?SOPHIA_IRIS_FATE),
 
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Acc = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
     C   = ?call(create_contract, Acc, crypto_pairing, {}),
 
@@ -5477,7 +5589,7 @@ sophia_crypto_pairing_neg(_Cfg) ->
 sophia_crypto_pairing_(_Cfg) ->
     ?skipRest(vm_version() < ?VM_FATE_SOPHIA_2, fancy_pairing_crypto_not_pre_iris),
 
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Acc = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
     C   = ?call(create_contract, Acc, crypto_pairing, {}),
 
@@ -5599,7 +5711,7 @@ sophia_safe_math(Cfg) ->
     end.
 
 sophia_safe_math() ->
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Acc = ?call(new_account, 1000000000000 * aec_test_utils:min_gas_price()),
     C   = ?call(create_contract, Acc, safe_math, {}),
 
@@ -5643,7 +5755,7 @@ sophia_safe_math() ->
     ok.
 
 sophia_safe_math_old() ->
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Acc = ?call(new_account, 1000000000000 * aec_test_utils:min_gas_price()),
     C   = ?call(create_contract, Acc, safe_math, {}),
 
@@ -5677,7 +5789,7 @@ sophia_safe_math_old() ->
     ok.
 
 sophia_compiler_version(_Cfg) ->
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Acc = ?call(new_account, 10000000 * aec_test_utils:min_gas_price()),
     IdC = ?call(create_contract, Acc, identity, {}, #{}),
     {value, C} = ?call(lookup_contract_by_id, IdC),
@@ -5689,7 +5801,7 @@ sophia_compiler_version(_Cfg) ->
 
 sophia_protected_call(_Cfg) ->
     ?skipRest(vm_version() < ?VM_FATE_SOPHIA_2, protected_call_only_since_iris),
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Acc = ?call(new_account, 10000000000 * aec_test_utils:min_gas_price()),
     {ok, Code} = compile_contract(protected_call),
     HackedCode = hack_fate_code(Code,
@@ -5747,7 +5859,7 @@ sophia_protected_call(_Cfg) ->
     ok.
 
 sophia_aevm_bad_code(_Cfg) ->
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Acc  = ?call(new_account, 10000000 * aec_test_utils:min_gas_price()),
     {ok, Code} = compile_contract(bad_code),
     %% Switch DUP3 against DUP11 - will make init crash...
@@ -5772,7 +5884,7 @@ hack_dup(A, B, <<X:8, Rest/binary>>) -> <<X:8, (hack_dup(A, B, Rest))/binary>>.
 
 sophia_aevm_bad_init(_Cfg) ->
     ?skipRest(vm_version() >= ?VM_AEVM_SOPHIA_4, old_bytecode_format_not_allowed_in_lima),
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Acc   = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
 
     BadByteCode = <<249,2,163,70,1,160,148,150,21,128,247,154,18,103,230,176,30,42,133,14,242,51,251,159,51,
@@ -5806,7 +5918,7 @@ sophia_aevm_bad_init(_Cfg) ->
     ok.
 
 sophia_heap_to_heap_bug(_Cfg) ->
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Acc   = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
     IdC   = ?call(create_contract, Acc, expose_put_size_check_bug, {}),
 
@@ -5819,7 +5931,7 @@ sophia_heap_to_heap_bug(_Cfg) ->
 
 sophia_namespaces(_Cfg) ->
     ?skipRest(vm_version() < ?VM_AEVM_SOPHIA_2, namespaces_not_in_roma),
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Acc = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
     C   = ?call(create_contract, Acc, namespaces, {}),
     true  = ?call(call_contract, Acc, C, palindrome, bool, [1, 2, 3, 2, 1]),
@@ -5832,7 +5944,7 @@ sophia_namespaces(_Cfg) ->
 
 sophia_bytes(_Cfg) ->
     ?skipRest(vm_version() < ?VM_AEVM_SOPHIA_3, bytes_not_in_minerva),
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Acc  = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
     C    = ?call(create_contract, Acc, bytes_equality, {}),
     Bytes = fun(W) -> [{bytes, <<N:W/unit:8>>} || N <- [0, 1, 256, -1, 1 bsl ((W - 1) * 8)]] end,
@@ -5847,7 +5959,7 @@ sophia_bytes(_Cfg) ->
 
 sophia_bytes_remote(_Cfg) ->
     ?skipRest(vm_version() < ?VM_AEVM_SOPHIA_3, bytes_not_in_minerva),
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Acc  = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
     C    = ?call(create_contract, Acc, bytes_remote, {}),
     CR   = ?call(create_contract, Acc, bytes_remote, {}),
@@ -5861,7 +5973,7 @@ sophia_bytes_remote(_Cfg) ->
 
 sophia_bytes_to_x(_Cfg) ->
     ?skipRest(sophia_version() =< ?SOPHIA_MINERVA, bytes_to_x_not_in_minerva),
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Acc  = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
     C    = ?call(create_contract, Acc, bytes_to_x, {}),
 
@@ -5896,7 +6008,7 @@ sophia_bytes_to_x(_Cfg) ->
 
 sophia_bytes_concat(_Cfg) ->
     ?skipRest(sophia_version() =< ?SOPHIA_FORTUNA, bytes_concat_not_in_fortuna),
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Acc = ?call(new_account, 10000000000 * aec_test_utils:min_gas_price()),
     Ct  = ?call(create_contract, Acc, bytes_concat, {}),
 
@@ -5925,7 +6037,7 @@ sophia_bytes_concat(_Cfg) ->
 
 sophia_address_checks(_Cfg) ->
     ?skipRest(vm_version() < ?VM_AEVM_SOPHIA_3, address_checks_not_in_minerva),
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Acc  = ?call(new_account, 10000000000 * aec_test_utils:min_gas_price()),
     C1   = ?call(create_contract, Acc, address_checks, {}),
     C2   = ?call(create_contract, Acc, address_checks, {}),
@@ -5992,7 +6104,7 @@ sophia_address_checks(_Cfg) ->
 
 
 sophia_too_little_gas_for_mem(_Cfg) ->
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Acc   = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
     IdC   = ?call(create_contract, Acc, counter, {4}),
 
@@ -6018,7 +6130,7 @@ run_scenario(#fundme_scenario
              , deadline = Deadline
              , events   = Events }) ->
 
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Denomination  = 1000 * 1000,
     StartingFunds = 1000 * 1000 * Denomination * aec_test_utils:min_gas_price(),
     InvestorNames = [ Investor || {contribute, Investor, _Amount, _Height} <- Events ],
@@ -6216,7 +6328,7 @@ aens_update(PubKey, NameHash, Pointers, Options, S) ->
     {ok, S1}.
 
 sophia_aens_resolve(Cfg) ->
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Acc      = ?call(new_account, 400000000000000000000 * aec_test_utils:min_gas_price()),
     Ct       = ?call(create_contract, Acc, aens, {}, #{ amount => 100000 }),
     Name     = aens_test_utils:fullname(<<"foo">>),
@@ -6273,7 +6385,7 @@ sophia_aens_resolve(Cfg) ->
     ok.
 
 sophia_aens_lookup(_Cfg) ->
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Acc      = ?call(new_account, 40000000000000 * aec_test_utils:min_gas_price()),
     Ct       = ?call(create_contract, Acc, aens_lookup, {}, #{ amount => 20000000000000 * aec_test_utils:min_gas_price() }),
     Name1           = aens_test_utils:fullname(<<"bla">>),
@@ -6290,7 +6402,7 @@ sophia_aens_lookup(_Cfg) ->
 
 sophia_aens_transactions(Cfg) ->
     %% AENS transactions from contract
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Acc      = ?call(new_account, 40000000000000 * aec_test_utils:min_gas_price()),
     Ct       = ?call(create_contract, Acc, aens, {}, #{ amount => 20000000000000 * aec_test_utils:min_gas_price() }),
 
@@ -6359,7 +6471,7 @@ sophia_aens_transactions(Cfg) ->
 
 sophia_aens_update_transaction(_Cfg) ->
     %% AENS transactions from contract
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Acc      = ?call(new_account, 40000000000000 * aec_test_utils:min_gas_price()),
     Ct       = ?call(create_contract, Acc, aens, {}, #{ amount => 20000000000000 * aec_test_utils:min_gas_price() }),
 
@@ -6452,7 +6564,7 @@ sophia_aens_update_transaction(_Cfg) ->
 bad_aens_pointer_handling_lima_to_iris(Cfg) ->
     IrisHeight = maps:get(iris, ?config(fork_heights, Cfg)),
 
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Acc      = ?call(new_account, 40000000000000 * aec_test_utils:min_gas_price()),
 
     Name1    = aens_test_utils:fullname(<<"foo">>),
@@ -6513,7 +6625,7 @@ bad_aens_pointer_handling_lima_to_iris(Cfg) ->
     ok.
 
 sophia_state_handling(_Cfg) ->
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Acc      = ?call(new_account, 50000000 * aec_test_utils:min_gas_price()),
     Ct0      = ?call(create_contract, Acc, remote_state, {}, #{ amount => 100000 }),
     %% Test an init function that calls a remote contract to compute the state
@@ -6582,7 +6694,7 @@ sophia_state_handling(_Cfg) ->
     ok.
 
 sophia_state_gas_arguments(_Cfg) ->
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Acc      = ?call(new_account, 20000000 * aec_test_utils:min_gas_price()),
     ContractName =
         case vm_version() of
@@ -6633,7 +6745,7 @@ sophia_state_gas_arguments(_Cfg) ->
 
 sophia_state_gas_store_size(_Cfg) ->
     ?skipRest(not ?IS_FATE_SOPHIA(vm_version()), only_valid_for_fate),
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Acc      = ?call(new_account, 20000000 * aec_test_utils:min_gas_price()),
     Ct0      = ?call(create_contract, Acc, remote_state, {}, #{ amount => 100000 }),
     Ct1      = ?call(create_contract, Acc, state_handling, {?cid(Ct0), 1}, #{ amount => 100000 }),
@@ -6698,7 +6810,7 @@ sophia_state_gas_store_size(_Cfg) ->
 
 sophia_use_memory_gas(_Cfg) ->
     ?skipRest(sophia_version() =< ?SOPHIA_FORTUNA, fate_gas_only_post_fortuna),
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Acc      = ?call(new_account, 20000000 * aec_test_utils:min_gas_price()),
     ContractName = use_memory,
     Ct0      = ?call(create_contract, Acc, ContractName, {}, #{ amount => 100000 }),
@@ -6768,7 +6880,7 @@ lima_migration(_Config) ->
     RootStr  = mtree:root_hash(MTree),
     ct:pal("Merkle-tree root hash: ~s", [RootStr]),
 
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Acc = ?call(new_account, 200000000000 * aec_test_utils:min_gas_price()),
     Ct  = ?call(create_contract, Acc, token_migration, {iolist_to_binary(RootStr), 0}, #{ amount => Total }),
 
@@ -6850,7 +6962,7 @@ lima_migration(_Config) ->
 
 
 fate_vm_interaction(Cfg) ->
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     ForkHeights = ?config(fork_heights, Cfg),
     LimaHeight = maps:get(lima, ForkHeights),
     IrisHeight = maps:get(iris, ForkHeights),
@@ -6919,7 +7031,7 @@ fate_vm_interaction(Cfg) ->
 
 
 fate_vm_version_switching(Cfg) ->
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     ForkHeights = ?config(fork_heights, Cfg),
     LimaHeight = maps:get(lima, ForkHeights),
     IrisHeight = maps:get(iris, ForkHeights),
@@ -6976,7 +7088,7 @@ fate_vm_version_switching(Cfg) ->
 
 
 contract_init_on_chain_fate(Cfg) ->
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     ForkHeights = ?config(fork_heights, Cfg),
     LimaHeight = maps:get(lima, ForkHeights),
     IrisHeight = maps:get(iris, ForkHeights),
@@ -7033,7 +7145,7 @@ get_ct_store(Ct) ->
     aect_contracts_store:contents(aect_contracts:state(Ct)).
 
 create_store(_Cfg) ->
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Acc1  = ?call(new_account, 100 * aec_test_utils:min_gas_price()),
     Ct1   = ?call(insert_contract, Acc1, <<"Code for C1">>),
     Ct1   = ?call(get_contract, Ct1),
@@ -7042,7 +7154,7 @@ create_store(_Cfg) ->
     ok.
 
 read_store(_Cfg) ->
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Acc1   = ?call(new_account, 100 * aec_test_utils:min_gas_price()),
     Ct1    = ?call(insert_contract, Acc1, <<"Code for C1">>),
     Ct1    = ?call(get_contract, Ct1),
@@ -7055,7 +7167,7 @@ read_store(_Cfg) ->
 
 
 store_zero_value(_Cfg) ->
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Acc1   = ?call(new_account, 100 * aec_test_utils:min_gas_price()),
     Ct1    = ?call(insert_contract, Acc1, <<"Code for C1">>),
     Ct1    = ?call(get_contract, Ct1),
@@ -7072,7 +7184,7 @@ store_zero_value(_Cfg) ->
     ok.
 
 merge_new_zero_value(_Cfg) ->
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Acc1   = ?call(new_account, 100 * aec_test_utils:min_gas_price()),
     Ct1    = ?call(insert_contract, Acc1, <<"Code for C1">>),
     Ct1    = ?call(get_contract, Ct1),
@@ -7187,7 +7299,7 @@ store_rand_exe_oplist(Ops, State, Dim, Tester, Acc, Spec) ->
 %%%%%%%%%%%%%%%%
 
 store_single_ops(_Cfg) ->
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Dim={5,5,5},
     InitialState = store_rand_initial_state(Dim),
     Acc = ?call(new_account, 1000000000000000000000000000000000000000 * aec_test_utils:min_gas_price()),
@@ -7220,7 +7332,7 @@ store_single_ops(_Cfg) ->
 
 
 store_multiple_random_ops(_Cfg) ->
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Dim={5,5,5},
     InitialState = store_rand_initial_state(Dim),
     Acc           = ?call(new_account, 1000000000000000000000000000000000000000 * aec_test_utils:min_gas_price()),
@@ -7255,7 +7367,7 @@ store_multiple_random_ops(_Cfg) ->
 
 
 store_onetype_random_ops(_Cfg) ->
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Dim={5,5,5},
     InitialState = store_rand_initial_state(Dim),
     Acc = ?call(new_account, 1000000000000000000000000000000000000000 * aec_test_utils:min_gas_price()),
@@ -7302,7 +7414,7 @@ store_onetype_random_ops(_Cfg) ->
     ok.
 
 fate_vm_cross_protocol_store_big(Cfg) ->
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Dim={5,5,5},
     InitialState = store_rand_initial_state(Dim),
     ForkHeights   = ?config(fork_heights, Cfg),
@@ -7330,7 +7442,7 @@ fate_vm_cross_protocol_store_big(Cfg) ->
     ok.
 
 fate_vm_cross_protocol_store_multi_small(Cfg) ->
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Dim={5,5,5},
     InitialState = store_rand_initial_state(Dim),
     ForkHeights   = ?config(fork_heights, Cfg),
@@ -7365,7 +7477,7 @@ fate_vm_cross_protocol_store_multi_small(Cfg) ->
 %%%===================================================================
 
 call_missing(_Cfg) ->
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Acc1      = ?call(new_account, 10000000 * aec_test_utils:min_gas_price()),
     Contract1 = ?call(create_contract, Acc1, remote_type_check, {}),
     Contract2 = ?call(create_contract, Acc1, remote_type_check, {}),
@@ -7375,7 +7487,7 @@ call_missing(_Cfg) ->
     ok.
 
 call_wrong_type(_Cfg) ->
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Acc1     = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
     Contract1 = ?call(create_contract, Acc1, remote_type_check, {}),
     Contract2 = ?call(create_contract, Acc1, remote_type_check, {}),
@@ -7407,7 +7519,7 @@ call_wrong_type(_Cfg) ->
 %%%===================================================================
 
 fate_environment(_Cfg) ->
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Acc = <<AccInt:256>> = ?call(new_account, 100000000 * aec_test_utils:min_gas_price()),
     Acc1Balance = 123456789,
     <<Acc1Int:256>> = ?call(new_account, Acc1Balance),
@@ -7468,7 +7580,7 @@ fate_environment(_Cfg) ->
     ok.
 
 fate_list_of_maps(_Cfg) ->
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Acc = ?call(new_account, 10000000000 * aec_test_utils:min_gas_price()),
     Ct  = ?call(create_contract, Acc, list_of_maps, {}, #{}),
     Map1 = #{<<"a">> => <<"b">>},
@@ -7478,7 +7590,7 @@ fate_list_of_maps(_Cfg) ->
 
 sophia_call_value(_Cfg) ->
     %% Test that we can use the value parameter to transfer funds
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Acc      = ?call(new_account, 10000000000 * aec_test_utils:min_gas_price()),
     C1       = ?call(create_contract, Acc, spend_test, {}, #{}),
     C2       = ?call(create_contract, Acc, spend_test, {}, #{}),
@@ -7494,7 +7606,7 @@ sophia_call_value(_Cfg) ->
 
 sophia_payable_contract(_Cfg) ->
     ?skipRest(sophia_version() =< ?SOPHIA_FORTUNA, payable_not_pre_lima),
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Acc = ?call(new_account, 10000000000 * aec_test_utils:min_gas_price()),
     C1  = ?call(create_contract, Acc, payable, {}, #{}),
     C2  = ?call(create_contract, Acc, non_payable, {}, #{}),
@@ -7523,7 +7635,7 @@ sophia_payable_contract(_Cfg) ->
 
 sophia_payable_entrypoint(_Cfg) ->
     ?skipRest(sophia_version() =< ?SOPHIA_FORTUNA, payable_not_pre_lima),
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Acc = ?call(new_account, 10000000000 * aec_test_utils:min_gas_price()),
     C1  = ?call(create_contract, Acc, payable, {}, #{}),
 
@@ -7551,7 +7663,7 @@ sophia_payable_entrypoint(_Cfg) ->
     ok.
 
 sophia_private_entrypoint(_Cfg) ->
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Acc = ?call(new_account, 10000000000 * aec_test_utils:min_gas_price()),
     C1  = ?call(create_contract, Acc, remote_private, {}, #{}),
     C2  = ?call(create_contract, Acc, remote_private, {}, #{}),
@@ -7592,7 +7704,7 @@ sophia_private_entrypoint(_Cfg) ->
     end.
 
 sophia_call_out_of_gas(_Cfg) ->
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Acc      = ?call(new_account, 10000000000 * aec_test_utils:min_gas_price()),
     RemC     = ?call(create_contract, Acc, remote_call, {}, #{}),
     IdC      = ?call(create_contract, Acc, identity, {}, #{}),
@@ -7628,7 +7740,7 @@ sophia_call_out_of_gas(_Cfg) ->
     ok.
 
 sophia_no_calls_to_init(_Cfg) ->
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Acc = ?call(new_account, 10000000000 * aec_test_utils:min_gas_price()),
     C   = ?call(create_contract, Acc, simple_auth, {123}, #{}),
 
@@ -7643,7 +7755,7 @@ sophia_no_calls_to_init(_Cfg) ->
 
 sophia_pattern_guards(_Cfg) ->
     ?skipRest(sophia_version() =< ?SOPHIA_LIMA_FATE, no_pattern_guards_until_iris),
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Acc = ?call(new_account, 100000000000 * aec_test_utils:min_gas_price()),
     C   = ?call(create_contract, Acc, pattern_guards, {}),
     {}  = ?call(call_contract, Acc, C, test, {tuple, []}, {}),
@@ -7651,7 +7763,7 @@ sophia_pattern_guards(_Cfg) ->
 
 sophia_bitwise_operations(_Cfg) ->
     ?skipRest(sophia_version() =< ?SOPHIA_IRIS_FATE, no_bitwise_operations_until_ceres),
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     Acc = ?call(new_account, 100000000000 * aec_test_utils:min_gas_price()),
     C   = ?call(create_contract, Acc, bitwise_ops, {}),
     {}  = ?call(call_contract, Acc, C, test, {tuple, []}, {}),

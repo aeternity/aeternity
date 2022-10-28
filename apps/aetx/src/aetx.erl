@@ -326,9 +326,13 @@ used_gas(#aetx{type = contract_create_tx, cb = CB, size = Size, tx = Tx}, _Heigh
     CallId = aect_call:ga_id(GANonce, ContractPubkey),
     base_gas(contract_create_tx, Version, CB:abi_version(Tx)) + size_gas(Size) + call_gas_used(Trees, ContractPubkey, CallId);
 used_gas(#aetx{type = contract_call_tx, cb = CB, size = Size, tx = Tx}, _Height, Version, Trees, #{ga_nonce := GANonce}) ->
-    ContractPubkey = CB:contract_pubkey(Tx),
-    CallId = aect_call:ga_id(GANonce, ContractPubkey),
-    base_gas(contract_call_tx, Version, CB:abi_version(Tx)) + size_gas(Size) + call_gas_used(Trees, ContractPubkey, CallId);
+    CtCallId = CB:ct_call_id(Tx),
+    CallId = aect_call:ga_id(GANonce, CtCallId),
+    base_gas(contract_call_tx, Version, CB:abi_version(Tx)) + size_gas(Size) + call_gas_used(Trees, CtCallId, CallId);
+used_gas(#aetx{type = contract_call_tx, cb = CB, size = Size, tx = Tx}, _Height, Version, Trees, _Ctx) ->
+    CtCallId = CB:ct_call_id(Tx),
+    CallId = CB:call_id(Tx),
+    base_gas(contract_call_tx, Version, CB:abi_version(Tx)) + size_gas(Size) + call_gas_used(Trees, CtCallId, CallId);
 used_gas(#aetx{type = Type, cb = CB, size = Size, tx = Tx}, _Height, Version, Trees, _Ctx) when ?IS_CONTRACT_TX(Type) ->
     ContractPubkey = CB:contract_pubkey(Tx),
     CallId = CB:call_id(Tx),

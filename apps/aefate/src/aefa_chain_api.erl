@@ -53,6 +53,7 @@
         , aens_claim/5
         , aens_preclaim/4
         , aens_resolve/3
+        , aens_resolve_name_hash/3
         , aens_revoke/3
         , aens_transfer/4
         , aens_update/6
@@ -60,7 +61,7 @@
         , eval_primops/2
         ]).
 
--export([ check_delegation_signature/4
+-export([ check_delegation_signature/5
         , is_onchain/1
         ]).
 
@@ -353,9 +354,9 @@ next_nonce(Pubkey, #state{primop_state = PState0,
             end
     end.
 
--spec check_delegation_signature(pubkey(), binary(), binary(), state()) ->
+-spec check_delegation_signature(pubkey(), binary(), binary(), aect_contracts:vm_version(), state()) ->
                                         {'ok', state()} | 'error'.
-check_delegation_signature(Pubkey, Binary, Signature,
+check_delegation_signature(Pubkey, Binary, Signature, VmVersion,
                            #state{ primop_state = PState} = State) ->
     case aeprimop_state:find_account(Pubkey, PState) of
         {Account, PState1} ->
@@ -363,14 +364,20 @@ check_delegation_signature(Pubkey, Binary, Signature,
                 generalized ->
                     error;
                 basic ->
-                    BinaryForNetwork = aec_governance:add_network_id(Binary),
-                    case enacl:sign_verify_detached(Signature, BinaryForNetwork, Pubkey) of
-                        true  -> {ok, State#state{primop_state = PState1}};
-                        false -> error
-                    end
+                    State1 = State#state{primop_state = PState1},
+                    verify_delegation_signature(Pubkey, Binary, Signature, State1)
             end;
+        none when VmVersion >= ?VM_FATE_SOPHIA_3 ->
+            verify_delegation_signature(Pubkey, Binary, Signature, State);
         none ->
             error
+    end.
+
+verify_delegation_signature(Pubkey, Binary, Signature, State) ->
+    BinaryForNetwork = aec_governance:add_network_id(Binary),
+    case enacl:sign_verify_detached(Signature, BinaryForNetwork, Pubkey) of
+        true  -> {ok, State};
+        false -> error
     end.
 
 %%%-------------------------------------------------------------------
@@ -816,26 +823,37 @@ aens_resolve(NameString, Key, S) ->
             Err
     end.
 
+aens_resolve_name_hash(NameHash, Key, S) ->
+    case aens_resolve_name_hash_from_pstate(NameHash, Key, get_pstate(S)) of
+        {ok, Tag, Pubkey, PState1} ->
+            {ok, Tag, Pubkey, set_pstate(PState1, S)};
+        none ->
+            none
+    end.
+
 aens_resolve_from_pstate(NameString, Key, PState) ->
     case aens_utils:to_ascii(NameString) of
         {ok, NameAscii} ->
             NameHash = aens_hash:name_hash(NameAscii),
-            case aeprimop_state:find_name(NameHash, PState) of
-                {Name, PState1} ->
-                    case aens:resolve_from_name_object(Key, Name) of
-                        {ok, Id} ->
-                            {Tag, Pubkey} = aeser_id:specialize(Id),
-                            {ok, Tag, Pubkey, PState1};
-                        {error, name_revoked} ->
-                            none;
-                        {error, pointer_id_not_found} ->
-                            none
-                    end;
-                none ->
-                    none
-            end;
+            aens_resolve_name_hash_from_pstate(NameHash, Key, PState);
         {error, _} = Err ->
             Err
+    end.
+
+aens_resolve_name_hash_from_pstate(NameHash, Key, PState) ->
+    case aeprimop_state:find_name(NameHash, PState) of
+        {Name, PState1} ->
+            case aens:resolve_from_name_object(Key, Name) of
+                {ok, Id} ->
+                    {Tag, Pubkey} = aeser_id:specialize(Id),
+                    {ok, Tag, Pubkey, PState1};
+                {error, name_revoked} ->
+                    none;
+                {error, pointer_id_not_found} ->
+                    none
+            end;
+        none ->
+            none
     end.
 
 aens_preclaim(Pubkey, Hash, #state{} = S, VmVersion) when ?IS_ONCHAIN(S) ->

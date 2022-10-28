@@ -1109,18 +1109,19 @@ tx_hash_to_contract_pubkey(TxHash) ->
 
 add_call(Call0, TxHash, Trees, Env) ->
     ContractPubkey = tx_hash_to_contract_pubkey(TxHash),
-    Call1          = aect_call:set_contract(ContractPubkey, Call0),
-    Caller         = aect_call:caller_pubkey(Call1),
+    Caller         = aect_call:caller_pubkey(Call0),
     NewId =
         case aetx_env:ga_nonce(Env, Caller) of
             {value, Nonce} ->
                 aect_call:ga_id(Nonce, ContractPubkey);
             none ->
-                aect_call:id(Caller, aect_call:caller_nonce(Call1), ContractPubkey)
+                aect_call:id(Caller, aect_call:caller_nonce(Call0), ContractPubkey)
         end,
 
-    Call = aect_call:set_id(NewId, Call1),
-    aect_utils:insert_call_in_trees(Call, Trees).
+    Call1 = aect_call:set_contract(ContractPubkey, Call0),
+    Call2 = aect_call:set_ct_call_id(undefined, Call1),
+    Call3 = aect_call:set_id(NewId, Call2),
+    aect_utils:insert_call_in_trees(Call3, Trees).
 
 -spec add_event(aec_trees:trees(), binary(), aetx_env:env()) ->
                        {ok, aec_trees:trees(), aetx_env:env()}.
