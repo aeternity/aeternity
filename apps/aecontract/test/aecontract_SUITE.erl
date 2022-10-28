@@ -4342,7 +4342,7 @@ sophia_signatures_aens(Cfg) ->
 %% Note that Claim can't be done by a non-existing account since it require funds!
 sophia_fate_signatures_aens(_Cfg) ->
     ?skipRest(not ?IS_FATE_SOPHIA(vm_version()), only_valid_for_fate),
-    state(aect_test_utils:new_state()),
+    init_new_state(),
     %% AENS transactions from contract - using non-existing/not-funded 3rd party account(s)
     #{ public := NameAcc2, secret := NameAcc2PrivKey } = enacl:sign_keypair(),
     #{ public := NameAcc3, secret := NameAcc3PrivKey } = enacl:sign_keypair(),
