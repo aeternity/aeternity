@@ -201,7 +201,7 @@ fetch_parent_tops(Mod, ParentNodes, Seed) ->
             Mod:get_latest_block(Host, Port, User, Password, Seed)
         end,
     Fun = fun(Parent) ->fetch_block(FetchFun, Parent) end,
-    {Good, Errors} = pmap(Fun, ParentNodes, 10000),
+    {Good, Errors} = aeu_lib:pmap(Fun, ParentNodes, 10000),
     responses_consensus(Good, Errors, length(ParentNodes)).
 
 fetch_block_by_hash(Hash, Mod, ParentNodes, Seed) ->
@@ -210,7 +210,7 @@ fetch_block_by_hash(Hash, Mod, ParentNodes, Seed) ->
             Mod:get_header_by_hash(Hash, Host, Port, User, Password, Seed)
         end,
     Fun = fun(Parent) -> fetch_block(FetchFun, Parent) end,
-    {Good, Errors} = pmap(Fun, ParentNodes, 10000),
+    {Good, Errors} = aeu_lib:pmap(Fun, ParentNodes, 10000),
     responses_consensus(Good, Errors, length(ParentNodes)).
 
 fetch_block_by_height(Height, Mod, ParentNodes, Seed) ->
@@ -219,7 +219,7 @@ fetch_block_by_height(Height, Mod, ParentNodes, Seed) ->
             Mod:get_header_by_height(Height, Host, Port, User, Password, Seed)
         end,
     Fun = fun(Parent) -> fetch_block(FetchFun, Parent) end,
-    {Good, Errors} = pmap(Fun, ParentNodes, 10000),
+    {Good, Errors} = aeu_lib:pmap(Fun, ParentNodes, 10000),
     responses_consensus(Good, Errors, length(ParentNodes)).
 
 fetch_block(FetchFun, #{host := Host, port := Port,
@@ -265,44 +265,6 @@ responses_consensus(Good0, _Errors, TotalCount) ->
 %%fetch_commitments(Mod, #{host := Host, port := Port,
 %%                        user := User, password := Password}, Seed, NewParentHash) ->
 %%    Mod:get_commitment_tx_in_block(Host, Port, User, Password, Seed, NewParentHash).
-
-pmap(Fun, L, Timeout) ->
-    Workers =
-        lists:map(
-            fun(E) ->
-                spawn_monitor(
-                    fun() ->
-                        {WorkerPid, WorkerMRef} =
-                            spawn_monitor(
-                                fun() ->
-                                    Top = Fun(E),
-                                    exit({ok, Top})
-                                end),
-                        Result =
-                            receive
-                                {'DOWN', WorkerMRef, process, WorkerPid, Res} ->
-                                    case Res of
-                                        {ok, T} -> {ok, T};
-                                        _       -> {error, failed}
-                                    end
-                            after Timeout -> {error, request_timeout}
-                            end,
-                        exit(Result)
-                    end)
-            end,
-            L),
-    pmap_gather(Workers, [], []).
-
-pmap_gather([], Good, Errs) ->
-    {Good, Errs};
-pmap_gather([{Pid, MRef} | Pids], Good, Errs) ->
-    receive
-        {'DOWN', MRef, process, Pid, Res} ->
-            case Res of
-                {ok, GoodRes} -> pmap_gather(Pids, [GoodRes | Good], Errs);
-                {error, _} = Err -> pmap_gather(Pids, Good, [Err | Errs])
-            end
-    end.
 
 increment_seed(<<Num:?SEED_BYTES/unsigned-integer-unit:8>>) ->
     <<(Num + 1):?SEED_BYTES/unsigned-integer-unit:8>>;

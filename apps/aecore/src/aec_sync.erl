@@ -1415,43 +1415,4 @@ collect_infos(Timeout) ->
             aec_peer_connection:get_node_info(PeerId, Timeout - 2000 -
                                               TimerOffset)
         end,
-    pmap(Fun, ConnectedPeers, Timeout + 2000 + TimerOffset).
-
-pmap(Fun, L, Timeout) ->
-    Workers =
-        lists:map(
-            fun(E) ->
-                spawn_monitor(
-                    fun() ->
-                        {WorkerPid, WorkerMRef} =
-                            spawn_monitor(
-                                fun() ->
-                                    Res = Fun(E),
-                                    exit({ok, Res})
-                                end),
-                        Result =
-                            receive
-                                {'DOWN', WorkerMRef, process, WorkerPid, Res} ->
-                                    case Res of
-                                        {ok, R} -> {ok, R};
-                                        _       -> {error, failed}
-                                    end
-                            after Timeout -> {error, request_timeout}
-                            end,
-                        exit(Result)
-                    end)
-            end,
-            L),
-    pmap_gather(Workers, []).
-
-pmap_gather([], Acc) ->
-    Acc;
-pmap_gather([{Pid, MRef} | Pids], Acc) ->
-    receive
-        {'DOWN', MRef, process, Pid, Res} ->
-            case Res of
-                {ok, GoodRes} -> pmap_gather(Pids, [GoodRes | Acc]);
-                {error, _} = Err -> pmap_gather(Pids, [Err | Acc])
-            end
-    end.
-
+    aeu_lib:pmap(Fun, ConnectedPeers, Timeout + 2000 + TimerOffset).

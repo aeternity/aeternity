@@ -353,12 +353,11 @@ balance_change_events_in_block(Block) ->
                 aec_headers:hash_header(
                     aec_blocks:to_header(Block)),
             Txs = format_txs(BlockTxs, MBHash),
-            lager:info("Microblock Txs ~p~n", [Txs]),
             tx_spend_operations(Txs);
         key ->
             {ok, MicroBlocks} = micro_blocks_at_key_block(Block),
 
-            {BlockTxs, []} = pmap(
+            {BlockTxs, []} = aeu_lib:pmap(
                 fun(MicroBlock) ->
                     BlockTxs = micro_block_txs(MicroBlock),
                     {ok, MBHash} =
@@ -369,8 +368,6 @@ balance_change_events_in_block(Block) ->
                 MicroBlocks, 600000),
             BlockTxs1 = lists:flatten(lists:reverse(BlockTxs)),
             KeyBlockTxs = format_block_txs(Block),
-            lager:info("KeyBlockTxs Txs ~p~n", [KeyBlockTxs]),
-            lager:info("BlockTxs1 Txs ~p~n", [BlockTxs1]),
             tx_spend_operations(KeyBlockTxs ++ BlockTxs1)
     end.
 
@@ -378,7 +375,6 @@ format_txs(Txs, MBHash) ->
     DryTxs = [{tx, aetx_sign:tx(Tx)} || Tx <- Txs],
     case aec_dry_run:dry_run({in, MBHash}, [], DryTxs, [tx_events]) of
         {ok, {Results, _Events}} ->
-            lager:info("Results ~p~n", [Results]),
             TxHashes = [aetx_sign:hash(Tx) || Tx <- Txs],
             lists:zip(TxHashes, Results);
         {error, Reason} ->
@@ -642,41 +638,3 @@ oracle_queries_at_block(OracleAddress, From, QueryType, Max, BlockHash) ->
     aec_chain:get_oracle_queries_at_hash(OraclePubkey, From, QueryType, Max, Hash).
 
 
-
-pmap(Fun, L, Timeout) ->
-    Workers =
-        lists:map(
-            fun(E) ->
-                spawn_monitor(
-                    fun() ->
-                        {WorkerPid, WorkerMRef} =
-                            spawn_monitor(
-                                fun() ->
-                                    Top = Fun(E),
-                                    exit({ok, Top})
-                                end),
-                        Result =
-                            receive
-                                {'DOWN', WorkerMRef, process, WorkerPid, Res} ->
-                                    case Res of
-                                        {ok, T} -> {ok, T};
-                                        _       -> {error, failed}
-                                    end
-                            after Timeout -> {error, request_timeout}
-                            end,
-                        exit(Result)
-                    end)
-            end,
-            L),
-    pmap_gather(Workers, [], []).
-
-pmap_gather([], Good, Errs) ->
-    {Good, Errs};
-pmap_gather([{Pid, MRef} | Pids], Good, Errs) ->
-    receive
-        {'DOWN', MRef, process, Pid, Res} ->
-            case Res of
-                {ok, GoodRes} -> pmap_gather(Pids, [GoodRes | Good], Errs);
-                {error, _} = Err -> pmap_gather(Pids, Good, [Err | Errs])
-            end
-    end.
