@@ -121,7 +121,11 @@ dry_run_res(STx, Trees, Events, EventsEnabled, ok) ->
             CtCallId  = CB:ct_call_id(CTx),
             CallId    = CB:call_id(CTx),
             CallObj   = lookup_call_object(CtCallId, CallId, Trees),
-            {Type, {ok, CallObj}};
+            if EventsEnabled ->
+                {Type, {ok, Events, CallObj}};
+               true ->
+                {Type, {ok, CallObj}}
+            end;
         _ when Type =:= contract_create_tx;
                Type =:= ga_attach_tx ->
             {CB, CTx} = aetx:specialize_callback(Tx),

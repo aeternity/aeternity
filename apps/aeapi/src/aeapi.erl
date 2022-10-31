@@ -353,6 +353,7 @@ balance_change_events_in_block(Block) ->
                 aec_headers:hash_header(
                     aec_blocks:to_header(Block)),
             Txs = format_txs(BlockTxs, MBHash),
+            lager:info("Microblock Txs ~p~n", [Txs]),
             tx_spend_operations(Txs);
         key ->
             {ok, MicroBlocks} = micro_blocks_at_key_block(Block),
@@ -368,6 +369,8 @@ balance_change_events_in_block(Block) ->
                 MicroBlocks, 600000),
             BlockTxs1 = lists:flatten(lists:reverse(BlockTxs)),
             KeyBlockTxs = format_block_txs(Block),
+            lager:info("KeyBlockTxs Txs ~p~n", [KeyBlockTxs]),
+            lager:info("BlockTxs1 Txs ~p~n", [BlockTxs1]),
             tx_spend_operations(KeyBlockTxs ++ BlockTxs1)
     end.
 
@@ -375,6 +378,7 @@ format_txs(Txs, MBHash) ->
     DryTxs = [{tx, aetx_sign:tx(Tx)} || Tx <- Txs],
     case aec_dry_run:dry_run({in, MBHash}, [], DryTxs, [tx_events]) of
         {ok, {Results, _Events}} ->
+            lager:info("Results ~p~n", [Results]),
             TxHashes = [aetx_sign:hash(Tx) || Tx <- Txs],
             lists:zip(TxHashes, Results);
         {error, Reason} ->
