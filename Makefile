@@ -26,7 +26,7 @@ SWAGGER_ENDPOINTS_SPEC = apps/aeutils/src/endpoints.erl
 OAS_ENDPOINTS_SPEC = apps/aeutils/src/oas_endpoints.erl
 OAS_YAML = apps/aehttp/priv/oas3.yaml
 
-export ERLANG_ROCKSDB_OPTS=-DWITH_BUNDLE_LZ4=ON -DWITH_BUNDLE_SNAPPY=ON
+export ERLANG_ROCKSDB_OPTS ?= -DWITH_BUNDLE_LZ4=ON -DWITH_BUNDLE_SNAPPY=ON
 
 # Packages from master MUST be pre-releases. Git master version
 # usually is higher then the last stable release. However
