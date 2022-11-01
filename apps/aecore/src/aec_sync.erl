@@ -1415,4 +1415,5 @@ collect_infos(Timeout) ->
             aec_peer_connection:get_node_info(PeerId, Timeout - 2000 -
                                               TimerOffset)
         end,
-    aeu_lib:pmap(Fun, ConnectedPeers, Timeout + 2000 + TimerOffset).
+    {Good, _Bad} = aeu_lib:pmap(Fun, ConnectedPeers, Timeout + 2000 + TimerOffset),
+    Good.

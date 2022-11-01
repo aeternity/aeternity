@@ -11,8 +11,8 @@ pmap(Fun, L, Timeout) ->
                         {WorkerPid, WorkerMRef} =
                             spawn_monitor(
                                 fun() ->
-                                    Top = Fun(E),
-                                    exit({ok, Top})
+                                    Res = Fun(E),
+                                    exit({ok, Res})
                                 end),
                         Result =
                             receive
