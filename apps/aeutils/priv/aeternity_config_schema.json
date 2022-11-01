@@ -12,6 +12,11 @@
                     "type" : "boolean",
                     "default" : false
                 },
+                "offline_mode" : {
+                    "description" : "When true, the node disables sync, mining, but keeps http endpoints open",
+                    "type" : "boolean",
+                    "default" : false
+                },
                 "dev_mode" : {
                     "description" : "When true, the node sets up for development (default netw id: ae_dev, default consensus: on_demand)",
                     "type" : "boolean",

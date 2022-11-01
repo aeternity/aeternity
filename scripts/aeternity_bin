@@ -164,6 +164,13 @@ relx_usage() {
             echo "  should not change, and other debugging / maintenance tasks"
             echo "  -t (-timeout) : Set the max time this command can wait until the mode change is done (millisecs)"
             ;;
+        offline)
+            echo "Usage: $REL_NAME offline [on | off | status] [-t timeout]"
+            echo "  Enable / disable / check status of offline mode"
+            echo "  Offline mode disables mining and sync, but leaves HTTP endpoints active"
+            echo "  It is useful for testing a node in isolation"
+            echo "  -t (-timeout) : Set the max time this command can wait until the mode change is done (millisecs)"
+            ;;
         admin)
             echo "Usage: $REL_NAME admin [SUB COMMAND]"
             echo "  Additional Commands to administer the system"
@@ -201,6 +208,7 @@ Commands:
   db_rollback             Rollback blockchain to specified height, hash, or from whitelist file
   db_migrate              Migrate rocksdb database to column families
   maintenance             Enable / disable maintenance mode
+  offline                 Enable / disable offline mode
   admin                   Aeternity node administration commands
   help                    Get additional help about a command
   "

@@ -38,11 +38,15 @@ stop(_State) ->
 set_app_ctrl_mode() ->
     MMode = ok(aeu_env:find_config([<<"system">>, <<"maintenance_mode">>],
                                    [user_config, schema_default])),
+    OMode = ok(aeu_env:find_config([<<"system">>, <<"offline_mode">>],
+                                   [user_config, schema_default])),
     DevMode = aecore_env:is_dev_mode(),
-    Mode = case {MMode, DevMode} of
-               {true , _}     -> maintenance;
-               {false, true}  -> dev_mode;
-               {false, false} -> normal
+    %% maintenence mode disables more stuff than offline, so takes precedence
+    Mode = case {MMode, OMode, DevMode} of
+               {true , _, _}     -> maintenance;
+               {_ , true, _}     -> offline;
+               {_, _, true}  -> dev_mode;
+               {false, false, false} -> normal
            end,
     %% This setting will take effect once `app_ctrl` leaves protected mode
     lager:info("Set app_ctrl mode: ~p", [Mode]),

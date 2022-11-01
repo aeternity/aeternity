@@ -96,3 +96,9 @@ as strong guarantee as the `prev_hash`.
 It is possible to start the node in "maintenance mode", where mining, sync and HTTP
 endpoints are disabled. To do so, start the node with `AE__SYSTEM__MAINTENANCE_MODE=true`.
 This can be useful when debugging or performing maintenance tasks on the system.
+
+## Offline mode
+
+It is possible to start the node in "offline mode", where mining and sync
+endpoints are disabled. To do so, start the node with `AE__SYSTEM__OFFLINE_MODE=true`.
+This can be useful when debugging or performing rosetta-cli testing on the system.
