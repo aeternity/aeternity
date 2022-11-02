@@ -251,13 +251,18 @@ read_preset_contracts(?LIMA_PROTOCOL_VSN = Release) ->
     end.
 
 accounts_file_name(Release) ->
-    case is_list(os:getenv("AE__SYSTEM__CUSTOM_PREFUNDED_ACCS_FILE")) of
+    case os:getenv("AE__SYSTEM__CUSTOM_PREFUNDED_ACCS_FILE") of
         false ->
             filename:join([dir(Release), accounts_json_file()]);
-        true -> 
-            CustomAccsFilePath = os:getenv("AE__SYSTEM__CUSTOM_PREFUNDED_ACCS_FILE"),
-            lager:info("Custom file for prefunded accounts provided: ~p ~n", [CustomAccsFilePath]),
-            CustomAccsFilePath
+        CustomAccsFilePath -> 
+            case file:read_file(CustomAccsFilePath) of 
+                {ok, _} ->
+                    lager:info("Custom file for prefunded accounts provided: ~p ~n", [CustomAccsFilePath]),
+                    CustomAccsFilePath;
+                {error, _} ->
+                    lager:info("Invalid path to file with prefunded accounts provided: File not found.: ~p ~n", [CustomAccsFilePath]),
+                    erlang:error({provided_accounts_file_not_found, CustomAccsFilePath})
+            end
     end.
 
 extra_accounts_file_name(Release) ->
