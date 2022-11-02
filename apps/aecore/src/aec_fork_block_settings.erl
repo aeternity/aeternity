@@ -255,11 +255,11 @@ accounts_file_name(Release) ->
         false ->
             filename:join([dir(Release), accounts_json_file()]);
         CustomAccsFilePath -> 
-            case file:read_file(CustomAccsFilePath) of 
-                {ok, _} ->
+            case filelib:is_file(CustomAccsFilePath) of 
+                true ->
                     lager:info("Custom file for prefunded accounts provided: ~p ~n", [CustomAccsFilePath]),
                     CustomAccsFilePath;
-                {error, _} ->
+                false ->
                     lager:info("Invalid path to file with prefunded accounts provided: File not found.: ~p ~n", [CustomAccsFilePath]),
                     erlang:error({provided_accounts_file_not_found, CustomAccsFilePath})
             end
