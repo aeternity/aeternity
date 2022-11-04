@@ -86,6 +86,7 @@ start(Config) ->
           <<"fetch_interval">> := FetchInterval,
           <<"nodes">> := Nodes0,
           <<"confirmations">> := Confirmations,
+          <<"cache_size">> := CacheSize,
           <<"start_height">> := StartHeight}} = Config,
     Stakers =
         lists:map(
@@ -119,7 +120,6 @@ start(Config) ->
                   password => Pass}
             end,
             Nodes0),
-    CacheSize = 2000, %% TODO: make it configurable
     start_dependency(aec_parent_connector, [ParentConnMod, FetchInterval, ParentHosts]),
     start_dependency(aec_parent_chain_cache, [StartHeight, CacheSize, Confirmations]),
     ok.
