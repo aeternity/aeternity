@@ -140,9 +140,10 @@ start(Config) ->
             end,
             Nodes0),
     SignModule = get_sign_module(),
+    {ok, PCSpendPubkey} = aeser_api_encoder:safe_decode(account_pubkey, PCSpendAddress),
     start_dependency(aec_parent_connector, [ParentConnMod, FetchInterval,
                                             ParentHosts, NetworkId,
-                                            SignModule, PCSpendAddress]),
+                                            SignModule, PCSpendPubkey]),
     start_dependency(aec_parent_chain_cache, [StartHeight, CacheSize, Confirmations]),
     ok.
 
@@ -560,7 +561,7 @@ next_beneficiary() ->
                 ok ->
                     {ok, Leader}
             end;
-        {error, _} ->
+        {error, _Err} ->
             timer:sleep(1000),
             {error, not_in_cache}
     end.

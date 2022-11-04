@@ -149,8 +149,7 @@ post_commitment_tx(Host, Port, SenderPubkey, ReceiverPubkey, Amount, Fee,
     Transaction = aeser_api_encoder:encode(transaction, aetx_sign:serialize_to_binary(SignedSpendTx)),
     Body = #{<<"tx">> => Transaction},
     Path = <<"/v3/transactions">>,
-    post_request(Path, Body, Host, Port, 5000),
-    ok.
+    post_request(Path, Body, Host, Port, 5000).
 
 %% TODO This function copied from aec_test_utils as that module is not available
 %% in normal builds

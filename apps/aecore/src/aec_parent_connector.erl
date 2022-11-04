@@ -263,10 +263,10 @@ fetch_block(FetchFun, #{host := Host, port := Port,
 %% * majority agree on a block
 responses_consensus(Good0, _Errors, TotalCount) ->
     MinRequired = TotalCount div 2,
-    Good = [{Top, Node} || {ok, {Top, Node}} <- Good0],
-    Counts = lists:foldl(fun({Top, _Node}, Acc) ->
+    Good = [{Res, Node} || {ok, {Res, Node}} <- Good0],
+    Counts = lists:foldl(fun({Res, _Node}, Acc) ->
                             Fun = fun(V) -> V + 1 end,
-                            maps:update_with(Top, Fun, 1, Acc)
+                            maps:update_with(Res, Fun, 1, Acc)
                         end, #{}, Good),
     NotFoundsCnt = length([1 || {error, not_found} <- Good0]),
     case maps:size(Counts) =:= 0 of
@@ -324,11 +324,12 @@ post_commitment(Who, Commitment,
         amount = Amount,
         fee = Fee} = CDetails,
     Fun =
-        fun(Host, Port, User, Password) ->
+        fun(#{host := Host, port := Port, user := User, password := Password} = Node) ->
             case Mod:post_commitment(Host, Port, Who, Receiver, Amount, Fee,
                                      Commitment, PCNetworkId, SignModule) of
-                {ok, #{<<"tx_hash">> := TxHash}} -> {ok, TxHash};
-                {error, 400, _} -> {error, invalid_transaction}
+                {ok, #{<<"tx_hash">> := TxHash}} -> {ok, {TxHash, Node}};
+                {error, 400, _E} ->
+                    {error, invalid_transaction}
             end
         end,
     %% Parallel post to all blocks
@@ -336,7 +337,7 @@ post_commitment(Who, Commitment,
     %% TODO: maybe track a transaction's progress?
     {Good, Errors} = pmap(Fun, ParentNodes, 10000),
     case responses_consensus(Good, Errors, length(ParentNodes)) of
-        {ok, {ok, TxHash}, _} when is_binary (TxHash) -> ok;
+       {ok, TxHash, _} when is_binary (TxHash) -> ok;
         {ok, {error, invalid_transaction}, _} ->
             lager:warning("Unable to post commitment: invalid_transaction", []),
             {error, invalid_transaction};

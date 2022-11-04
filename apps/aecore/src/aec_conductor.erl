@@ -1051,7 +1051,9 @@ start_block_production_(#state{ mode = stratum,
     State1;
 start_block_production_(#state{mode = pos, key_block_candidates = [{ForSealing, Candidate} | Candidates]} = State) ->
     case available_instance(State) of
-        none -> State;
+        none ->
+            epoch_mining:debug("No available instance", []),
+            State;
         Instance ->
             epoch_mining:info("Starting PoS block generator on top of ~p", [State#state.top_block_hash]),
             Consensus         = aec_blocks:consensus_module(Candidate#candidate.block),
@@ -1252,6 +1254,7 @@ handle_key_block_candidate_reply({{ok, KeyBlockCandidate}, TopHash},
                       [aec_blocks:target(KeyBlockCandidate),
                        aec_blocks:difficulty(KeyBlockCandidate)]),
     {ForSealing, Candidate} = make_key_candidate(KeyBlockCandidate),
+
     Candidates = case Candidates0 of
                      undefined -> [{ForSealing, Candidate}];
                      _         -> [{ForSealing, Candidate} | Candidates0]

@@ -73,13 +73,19 @@ stop() ->
 
 -spec post_block(aec_parent_chain_block:block()) -> ok.
 post_block(Block) ->
+    Height = aec_parent_chain_block:height(Block),
     gen_server:cast(?SERVER, {post_block, Block}).
 
 -spec get_block_by_height(non_neg_integer()) -> {ok, aec_parent_chain_block:block()}
                                               | {error, not_in_cache}
                                               | {error, {not_enough_confirmations, aec_parent_chain_block:block()}}.
 get_block_by_height(Height) ->
-    gen_server:call(?SERVER, {get_block_by_height, Height}).
+    case gen_server:call(?SERVER, {get_block_by_height, Height}) of
+        {ok, _B} = OK -> OK;
+        {error, not_in_cache} = Err ->
+            Err;
+        {error, {not_enough_confirmations, _}} = Err -> Err
+    end.
 
 -spec get_state() -> {ok, map()}.
 get_state() ->
@@ -164,6 +170,7 @@ handle_info({gproc_ps_event, top_changed, #{info := #{block_type := key,
 handle_info({gproc_ps_event, top_changed, _}, State) ->
     {noreply, State};
 handle_info(_Info, State) ->
+    lager:info("Unhandled info: ~p", [_Info]),
     {noreply, State}.
 
 -spec terminate(any(), state()) -> ok.
@@ -229,7 +236,8 @@ post_block(Block, #state{max_size = MaxSize,
     MaxBlockToRequest = TargetHeight + MaxSize - 1,
     GCHeight = min_cachable_parent_height(State0),
     case BlockHeight < GCHeight of
-        true -> State0;
+        true ->
+            State0;
         false ->
             case BlockHeight > MaxBlockToRequest of
                 true ->
@@ -252,7 +260,8 @@ post_block(Block, #state{max_size = MaxSize,
                         case BlockHeight > GCHeight of
                             true ->
                                 insert_block(Block, State0);
-                            false -> State0
+                            false ->
+                                State0
                         end,
                     TryGCHeight = BlockHeight - MaxSize,
                     State2 =
@@ -316,7 +325,12 @@ maybe_post_commitments(TopHash, #state{sign_module = SignModule} = _State) ->
     lists:foreach(
         fun(Staker) ->
             lager:info("Staker ~p", [Staker]),
-            ok = aec_parent_connector:post_commitment(Staker, Commitment),
+            case aec_parent_connector:post_commitment(Staker, Commitment) of
+                ok -> ok;
+                {error, _Err} ->
+                    %% TODO: maybe repost?
+                    pass
+            end,
             ok
         end,
         LocalStakers).

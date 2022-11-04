@@ -48,6 +48,7 @@
          wait_for_tx_in_pool/2,
          wait_for_tx_in_pool/3,
          wait_for_height/2,
+         wait_for_height/3,
          flush_new_blocks/0,
          spend/5,         %% (Node, FromPub, ToPub, Amount, Fee) -> ok
          sign_on_node/2,
@@ -533,7 +534,7 @@ make_multi(Config, NodesList) ->
 
 make_multi(Config, NodesList, RefRebarProfile) ->
     ct:log("RefRebarProfile = ~p", [RefRebarProfile]),
-    Top = ?config(top_dir, Config),
+    Top = proplists:get_value(top_dir, Config),
     ct:log("Top = ~p", [Top]),
     Root = filename:join(Top, "_build/" ++ RefRebarProfile ++ "/rel/aeternity"),
     [setup_node(N, Top, Root, Config) || N <- NodesList].
@@ -850,14 +851,18 @@ flush_new_blocks_(Acc) ->
 %% this has the expectation that the Node is mining
 %% there is a timeout of 30 seconds for a single block to be produced
 wait_for_height(Node, Height) ->
+    wait_for_height(Node, Height, 30000).
+
+wait_for_height(Node, Height, TimeoutPerBlock) ->
     flush_new_blocks(),
     subscribe(Node, block_created),
     subscribe(Node, micro_block_created),
-    wait_for_height_(Node, Height),
+    ok = wait_for_height_(Node, Height, TimeoutPerBlock),
     unsubscribe(Node, block_created),
-    unsubscribe(Node, micro_block_created).
+    unsubscribe(Node, micro_block_created),
+    ok.
 
-wait_for_height_(Node, Height) ->
+wait_for_height_(Node, Height, TimeoutPerBlock) ->
     TopHeight =
         case rpc:call(Node, aec_chain, top_header, []) of
             undefined -> 0;
@@ -867,8 +872,11 @@ wait_for_height_(Node, Height) ->
         true -> % reached height
             ok;
         false ->
-            _ = wait_for_new_block(),
-            wait_for_height_(Node, Height)
+            case wait_for_new_block(TimeoutPerBlock) of
+                {error, timeout_waiting_for_block} = E -> E;
+                {ok, _B} ->
+                    wait_for_height_(Node, Height, TimeoutPerBlock)
+            end
     end.
 
 spend(Node, FromPub, ToPub, Amount, Fee) ->
@@ -1834,7 +1842,11 @@ rpc(Mod, Fun, Args) ->
     rpc(?DEFAULT_NODE, Mod, Fun, Args).
 
 rpc(Node, Mod, Fun, Args) ->
-    rpc:call(node_name(Node), Mod, Fun, Args, 5000).
+    case rpc:call(node_name(Node), Mod, Fun, Args, 5000) of
+        {badrpc, Reason} ->
+            error({badrpc, Reason});
+        R -> R
+    end.
 
 generate_key_pair() ->
     #{ public := Pubkey, secret := Privkey } = enacl:sign_keypair(),
