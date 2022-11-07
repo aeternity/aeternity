@@ -159,14 +159,21 @@
 opt_call(Req, Else) ->
     case peers_running() of
         false ->
-            else(Else);
+            do_else(Else);
         true ->
-            gen_server:call(?MODULE, Req)
+            try_call(Req, Else)
     end.
 
-else(F) when is_function(F, 0) ->
+try_call(Req, Else) ->
+    try gen_server:call(?MODULE, Req)
+    catch
+        exit:shutdown ->
+            do_else(Else)
+    end.
+
+do_else(F) when is_function(F, 0) ->
     F();
-else(Else) ->
+do_else(Else) ->
     Else.
 
 opt_cast(Msg) ->
@@ -177,6 +184,7 @@ opt_cast(Msg) ->
             gen_server:cast(?MODULE, Msg)
     end.
 
+%% Not to clutter up the crash log (causes trouble during system test)
 peers_running() ->
     case whereis(?MODULE) of
         undefined ->
