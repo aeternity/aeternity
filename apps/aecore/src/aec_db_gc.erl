@@ -159,8 +159,12 @@ handle_event({call, From}, {run, History}, ready, #data{} = Data) ->
 %% once the chain is synced, there's no way to "unsync"
 handle_event(info, {_, chain_sync, #{info := {chain_sync_done, _}}}, idle,
              #data{enabled = true} = Data) ->
-    catch aec_events:unsubscribe(chain_sync),
-    {keep_state, Data#data{synced = true}};
+    case aec_sync:sync_progress() of
+        {false, _} ->
+            {keep_state, Data#data{synced = true}};
+        _ ->
+            {keep_state, Data}
+    end;
 
 %% starting collection when the *interval* matches, and don't have a GC state (hashes = undefined)
 %% OR some MPT was missing previously so we try again later
