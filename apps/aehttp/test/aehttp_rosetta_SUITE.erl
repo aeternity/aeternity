@@ -277,11 +277,11 @@ network_status(Config) ->
        <<"peers">> := PeersFormatted}} =
         get_status_sut(),
 
-    ?assertMatch({ok, _}, aeapi:safe_decode(key_block_hash, GenesisKeyBlockHash)),
+    ?assertMatch({ok, _}, aeapi:decode_key_block_hash(GenesisKeyBlockHash)),
     ?assertMatch(X when is_boolean(X), Synced),
     ?assertMatch(true, is_integer(CurrentBlockTimestamp)),
     ?assertMatch([], PeersFormatted),
-    ?assertMatch({ok, _}, aeapi:safe_decode(key_block_hash, TopKeyBlockHash)),
+    ?assertMatch({ok, _}, aeapi:decode_key_block_hash(TopKeyBlockHash)),
     ok.
 
 get_status_sut() ->
