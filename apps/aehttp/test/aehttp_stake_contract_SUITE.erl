@@ -734,8 +734,7 @@ node_config(PotentialStakers, Consensus) ->
         lists:map(
             fun(Who) ->
                 Pub = encoded_pubkey(Who),
-                Priv = aeser_api_encoder:encode(contract_bytearray,
-                                                privkey(Who)), %% TODO: discuss key management
+                Priv = list_to_binary(aeu_hex:bin_to_hex( privkey(Who))), %% TODO: discuss key management
                 #{<<"pub">> => Pub, <<"priv">> => Priv}
             end,
             PotentialStakers),
@@ -812,3 +811,4 @@ produce_validator_tx() ->
     Signatures = [ enacl:sign_detached(BinForNetwork, privkey(Who))],
     SignedTx = aetx_sign:new(Tx, Signatures),
     aeser_api_encoder:encode(transaction, aetx_sign:serialize_to_binary(SignedTx)).
+

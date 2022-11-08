@@ -93,8 +93,11 @@ start(Config) ->
             fun(#{<<"pub">> := EncodedPubkey, <<"priv">> := EncodedPrivkey}) ->
                 {ok, Pubkey} = aeser_api_encoder:safe_decode(account_pubkey,
                                                              EncodedPubkey),
-                {ok, Privkey} = aeser_api_encoder:safe_decode(contract_bytearray,
-                                                             EncodedPrivkey),
+                Privkey = aeu_hex:hex_to_bin(EncodedPrivkey),
+                case aec_keys:check_sign_keys(Pubkey, Privkey) of
+                    true -> pass;
+                    false -> throw({error, invalid_staker_pair, {EncodedPubkey, EncodedPrivkey}})
+                end,
                 {Pubkey, Privkey}
             end,
             StakersEncoded),
@@ -639,3 +642,4 @@ call_contracts([Call | Tail], TxEnv, TreesAccum) ->
 
 seal_padding_size() ->
     ?KEY_SEAL_SIZE - ?SIGNATURE_SIZE.
+
