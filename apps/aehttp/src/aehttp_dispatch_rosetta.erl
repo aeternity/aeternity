@@ -457,7 +457,7 @@ handle_request_(constructionHash, #{'ConstructionHashRequest' :=
     {200, [], Resp};
 handle_request_(constructionSubmit, #{'ConstructionSubmitRequest' :=
                                  #{<<"network_identifier">> := #{<<"blockchain">> := <<"aeternity">>,
-                                                                    <<"network">> := <<"local_ceres_testnet">>},
+                                                                    <<"network">> := _Network},
                                 <<"signed_transaction">> := SignedTxBin}}, _Context) ->
     %% Woohoo. Finally get to post the Tx
     {ok, SignedTx} = aeapi:decode_transaction(SignedTxBin),
