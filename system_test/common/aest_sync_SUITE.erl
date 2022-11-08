@@ -653,7 +653,6 @@ net_split_mining_power(Cfg) ->
 
     wait_for_startup(AllNodes, 0, Cfg),
 
-    ct:log("Net1 Node1 GetDeleteMe: ~p", [request(net1_node1, 'GetDeleteMe' , #{})]),
     ct:log("Create a new file in the log directory ~p", [request(net1_node1, 'TouchFile' , #{})]),
 
     TargetHeight1 = SplitLength,
