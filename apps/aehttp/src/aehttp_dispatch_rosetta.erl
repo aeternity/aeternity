@@ -1,3 +1,8 @@
+%% TODO
+%% - Error cases for broken params
+%% - allow missing optional params
+
+
 -module(aehttp_dispatch_rosetta).
 
 -export([forbidden/2]).
@@ -26,6 +31,7 @@
 -define(ROSETTA_ERR_CHAIN_TOO_SHORT, 4).
 -define(ROSETTA_ERR_TX_NOT_FOUND, 5).
 -define(ROSETTA_ERR_TX_INVALID_ACCOUNT, 6).
+-define(ROSETTA_ERR_TX_INVALID_TRANSACTION, 7).
 
 -spec forbidden(Mod :: module(), OperationID :: atom()) -> boolean().
 forbidden(_Mod, _OpId) ->
@@ -158,7 +164,7 @@ handle_request_(networkStatus, _, _Context) ->
         Peers = aeapi:connected_peers(),
         PeersFormatted =
             lists:map(fun(Peer) ->
-                         #{<<"peer_id">> => aeapi:format(peer_pubkey, aec_peer:id(Peer)),
+                         #{<<"peer_id">> => aeapi:format_peer_pubkey(aec_peer:id(Peer)),
                            <<"metadata">> =>
                                #{<<"ip">> => aec_peer:ip(Peer), <<"port">> => aec_peer:port(Peer)}}
                       end,
@@ -175,7 +181,7 @@ handle_request_(networkStatus, _, _Context) ->
             lager:error(">>> Error determining networkStatus: ~p, ~p~n~p~n",
                         [Class, Rsn, Stacktrace]),
             ErrResp = rosetta_error_response(?ROSETTA_ERR_NW_STATUS_ERR),
-            {200, [], ErrResp}
+            {500, [], ErrResp}
     end;
 handle_request_(accountBalance,
                 #{'AccountBalanceRequest' :=
@@ -208,13 +214,13 @@ handle_request_(accountBalance,
         end
     catch
         invalid_network ->
-            {200, [], rosetta_error_response(?ROSETTA_ERR_INVALID_NETWORK)};
+            {500, [], rosetta_error_response(?ROSETTA_ERR_INVALID_NETWORK)};
         block_not_found ->
-            {200, [], rosetta_error_response(?ROSETTA_ERR_BLOCK_NOT_FOUND)};
+            {500, [], rosetta_error_response(?ROSETTA_ERR_BLOCK_NOT_FOUND)};
         chain_too_short ->
-            {200, [], rosetta_error_response(?ROSETTA_ERR_CHAIN_TOO_SHORT)};
+            {500, [], rosetta_error_response(?ROSETTA_ERR_CHAIN_TOO_SHORT)};
         invalid_pubkey ->
-            {200, [], rosetta_error_response(?ROSETTA_ERR_TX_INVALID_ACCOUNT)}
+            {500, [], rosetta_error_response(?ROSETTA_ERR_TX_INVALID_ACCOUNT)}
     end;
 handle_request_(accountCoins, _, _Context) ->
     {501, [], #{}};
@@ -238,11 +244,11 @@ handle_request_(block,
         {200, [], Resp}
     catch
         invalid_network ->
-            {200, [], rosetta_error_response(?ROSETTA_ERR_INVALID_NETWORK)};
+            {500, [], rosetta_error_response(?ROSETTA_ERR_INVALID_NETWORK)};
         block_not_found ->
-            {200, [], rosetta_error_response(?ROSETTA_ERR_BLOCK_NOT_FOUND)};
+            {500, [], rosetta_error_response(?ROSETTA_ERR_BLOCK_NOT_FOUND)};
         chain_too_short ->
-            {200, [], rosetta_error_response(?ROSETTA_ERR_CHAIN_TOO_SHORT)};
+            {500, [], rosetta_error_response(?ROSETTA_ERR_CHAIN_TOO_SHORT)};
         {dry_run_err, Err} ->
             dry_run_err(Err)
     end;
@@ -297,13 +303,11 @@ handle_request_(blockTransaction,
         {200, [], Resp}
     catch
         block_not_found ->
-            {200, [], rosetta_error_response(?ROSETTA_ERR_BLOCK_NOT_FOUND)};
+            {500, [], rosetta_error_response(?ROSETTA_ERR_BLOCK_NOT_FOUND)};
         tx_not_found ->
-            {200, [], rosetta_error_response(?ROSETTA_ERR_TX_NOT_FOUND)}
+            {500, [], rosetta_error_response(?ROSETTA_ERR_TX_NOT_FOUND)}
     end;
 handle_request_(call, _, _Context) ->
-    {501, [], #{}};
-handle_request_(constructionCombine, _, _Context) ->
     {501, [], #{}};
 handle_request_(constructionDerive,
                 #{'ConstructionDeriveRequest' :=
@@ -314,26 +318,159 @@ handle_request_(constructionDerive,
     case CurveType of
         <<"edwards25519">> ->
             PKBytes = aeu_hex:hex_to_bin(HexBytes),
-            Account = aeapi:format(account_pubkey, PKBytes),
-            AccountIdentifier = #{<<"account_identifier">> =>
-                                    #{<<"address">> => Account}},
-            Resp = #{<<"ConstructionDeriveResponse">> => AccountIdentifier},
-            {200, [], Resp};
+            Account = aeapi:format_account_pubkey(PKBytes),
+            AccountIdentifier = #{<<"address">> => Account,
+                                  <<"account_identifier">> =>
+                                      #{<<"address">> => Account}},
+            {200, [], AccountIdentifier};
         _ ->
-            {501, [], #{}}
+            {500, [], #{}}
     end;
-handle_request_(constructionHash, _, _Context) ->
-    {501, [], #{}};
-handle_request_(constructionMetadata, _, _Context) ->
-    {501, [], #{}};
-handle_request_(constructionParse, _, _Context) ->
-    {501, [], #{}};
-handle_request_(constructionPayloads, _, _Context) ->
-    {501, [], #{}};
-handle_request_(constructionPreprocess, _, _Context) ->
-    {501, [], #{}};
-handle_request_(constructionSubmit, _, _Context) ->
-    {501, [], #{}};
+handle_request_(constructionPreprocess, #{'ConstructionPreprocessRequest' :=
+                            #{<<"network_identifier">> := #{<<"blockchain">> := <<"aeternity">>,
+                                                            <<"network">> := Network},
+                            <<"operations">> := Ops}}, _Context) ->
+    [From, To] = Ops,
+    {FromAcc, FromAmt} = parse_construction_op(From),
+    {ToAcc, ToAmt} = parse_construction_op(To),
+
+    Resp = #{<<"options">> => #{<<"from">> => FromAcc}},
+
+    {200, [], Resp};
+handle_request_(constructionMetadata, #{'ConstructionMetadataRequest' :=
+                            #{<<"network_identifier">> := #{<<"blockchain">> := <<"aeternity">>,
+                                                            <<"network">> := Network},
+                              <<"options">> := #{<<"from">> := From}}} = Req, _Context) ->
+    SuggestedFee = integer_to_binary(20000 * aec_tx_pool:minimum_miner_gas_price()),
+    {ok, NextNonce} = aeapi:next_nonce(From),
+    Resp = #{
+        <<"suggested_fee">> =>
+            [#{<<"value">> => SuggestedFee,
+               <<"currency">> => #{<<"symbol">> => <<"AE">>, <<"decimals">> => 18}}],
+        <<"metadata">> => #{
+            <<"nonce">> => NextNonce,
+            <<"fee">> => SuggestedFee
+        }
+    },
+    {200, [], Resp};
+handle_request_(constructionPayloads, #{'ConstructionPayloadsRequest' :=
+                                            #{<<"network_identifier">> := #{<<"blockchain">> := <<"aeternity">>,
+                                                                           <<"network">> := Network},
+                                             <<"metadata">> := #{
+                                                <<"nonce">> := Nonce,
+                                                <<"fee">> := Fee
+                                             },
+                                             <<"operations">> := Ops}}, _Context) ->
+    %% Create and serialize a transaction to pass through to the next rosetta stage (/construction/parse)
+    [From, To] = Ops,
+    {FromAcc, FromAmt} = parse_construction_op(From),
+    {ToAcc, ToAmt} = parse_construction_op(To),
+    {ok, FromId} = aeapi:create_id(FromAcc, [account_pubkey]),
+    {ok, ToId} = aeapi:create_id(ToAcc, [account_pubkey]),
+    TxArgs = #{sender_id    => FromId,
+               recipient_id => ToId,
+               amount       => ToAmt,
+               nonce        => Nonce,
+               fee          => binary_to_integer(Fee),
+               payload      => <<"">>},
+    {ok, Tx} = aec_spend_tx:new(TxArgs),
+    TxSer = aetx:serialize_to_binary(Tx),
+    TxBin = aeapi:format_transaction(TxSer),
+    UnsignedBin = aec_hash:hash(tx, TxSer),
+    %% FIXME: check network id is same as provided in the request?
+    BinForNetwork = aec_governance:add_network_id(UnsignedBin),
+
+    %% Create the signing details for use later. hex_bytes is the binary
+    %% that the client will sign, which includes the network-id
+    Signer = #{<<"account_identifier">> => #{<<"address">> => FromAcc},
+                    <<"hex_bytes">> => list_to_binary(aeu_hex:bin_to_hex(BinForNetwork)),
+                    <<"signature_type">> => <<"ed25519">>},
+    Resp = #{<<"payloads">> => [Signer],
+             <<"unsigned_transaction">> => TxBin},
+    {200, [], Resp};
+handle_request_(constructionParse, #{'ConstructionParseRequest' :=
+                 #{<<"network_identifier">> := #{<<"blockchain">> := <<"aeternity">>,
+                                                 <<"network">> := Network},
+                    <<"signed">> := Signed,
+                    <<"transaction">> := Tx}}, _Context) ->
+    {ok, TxBin} = aeapi:decode_transaction(Tx),
+    AeTx = case Signed of
+                        true ->
+                            Deser = aetx_sign:deserialize_from_binary(TxBin),
+                            aetx_sign:tx(Deser);
+                        false ->
+                            aetx:deserialize_from_binary(TxBin)
+                    end,
+    {aec_spend_tx, SpendTx} = aetx:specialize_callback(AeTx),
+    FromId = aec_spend_tx:sender_id(SpendTx),
+    ToId = aec_spend_tx:recipient_id(SpendTx),
+    Value = aec_spend_tx:amount(SpendTx),
+    FromOp = #{<<"account">> => #{<<"address">> => aeapi:format_id(FromId)},
+               <<"amount">> => amount(-Value),
+                <<"operation_identifier">> => #{<<"index">> => 0},
+                <<"type">> => <<"Spend.amount">>},
+    ToOp = #{<<"account">> => #{<<"address">> => aeapi:format_id(ToId)},
+             <<"amount">> => amount(Value),
+             <<"operation_identifier">> => #{<<"index">> => 1},
+             <<"type">> => <<"Spend.amount">>},
+    Signers = case Signed of
+                    true ->
+                        [#{<<"address">> => aeapi:format_id(FromId)}];
+                    false ->
+                        []
+                    end,
+    Resp = #{<<"operations">> => [FromOp, ToOp],
+             <<"account_identifier_signers">> => Signers},
+    {200, [], Resp};
+handle_request_(constructionCombine, #{'ConstructionCombineRequest' :=
+                    #{<<"network_identifier">> := #{<<"blockchain">> := <<"aeternity">>,
+                                                    <<"network">> := _Network},
+                      <<"signatures">> := [#{<<"hex_bytes">> := HexBytesSignature,
+                                           <<"public_key">> :=
+                                                 #{<<"curve_type">> := <<"edwards25519">>,
+                                                  <<"hex_bytes">> := _HexBytes},
+                                            <<"signature_type">> := <<"ed25519">>,
+                                            <<"signing_payload">> :=
+                                                    #{<<"account_identifier">> := #{<<"address">> := _},
+                                                      <<"address">> := _,
+                                                      <<"hex_bytes">> := _Payload,
+                                                      <<"signature_type">> := <<"ed25519">>}}],
+                    <<"unsigned_transaction">> := UnsignedTx}}, _Context) ->
+    %% The user signed the Tx and sent the signature to us in hex_bytes.
+    %% Our job is just to add the provided signature to the Tx and re-serialise
+    SigBin = aeu_hex:hex_to_bin(HexBytesSignature),
+    {ok, UnsignedBin} = aeapi:decode_transaction(UnsignedTx),
+    AeTx = aetx:deserialize_from_binary(UnsignedBin),
+    SignedTx = aetx_sign:new(AeTx, [SigBin]),
+    TxSer = aetx_sign:serialize_to_binary(SignedTx),
+    SignedTxBin = aeapi:format_transaction(TxSer),
+    Resp = #{<<"signed_transaction">> => SignedTxBin},
+    {200, [], Resp};
+handle_request_(constructionHash, #{'ConstructionHashRequest' :=
+                                      #{<<"network_identifier">> := #{<<"blockchain">> := <<"aeternity">>,
+                                                                    <<"network">> := _Network},
+                                        <<"signed_transaction">> := SignedTxBin}}, _Context) ->
+    {ok, SignedTx} = aeapi:decode_transaction(SignedTxBin),
+    Deser = aetx_sign:deserialize_from_binary(SignedTx),
+    Hash = aetx_sign:hash(Deser),
+    Resp = #{<<"transaction_identifier">> => #{<<"hash">> => aeapi:format_tx_hash(Hash)}},
+    {200, [], Resp};
+handle_request_(constructionSubmit, #{'ConstructionSubmitRequest' :=
+                                 #{<<"network_identifier">> := #{<<"blockchain">> := <<"aeternity">>,
+                                                                    <<"network">> := <<"local_ceres_testnet">>},
+                                <<"signed_transaction">> := SignedTxBin}}, _Context) ->
+    %% Woohoo. Finally get to post the Tx
+    {ok, SignedTx} = aeapi:decode_transaction(SignedTxBin),
+    Deser = aetx_sign:deserialize_from_binary(SignedTx),
+    case aec_tx_pool:push(Deser) of
+        ok ->
+            Hash = aetx_sign:hash(Deser),
+            Resp = #{<<"transaction_identifier">> => #{<<"hash">> => aeapi:format_tx_hash(Hash)}},
+            {200, [], Resp};
+        {error, E} ->
+            lager:debug("Transaction ~p failed to be pushed to pool because: ~p", [SignedTx, E]),
+            {500, [], rosetta_error_response(?ROSETTA_ERR_TX_NOT_FOUND)}
+    end;
 handle_request_(eventsBlocks, _, _Context) ->
     {501, [], #{}};
 handle_request_(mempool,
@@ -342,7 +479,7 @@ handle_request_(mempool,
                 _Context) ->
     {ok, SignedTxList} = aec_tx_pool:peek(infinity),
     SignedTxHashList =
-        [#{<<"hash">> => aeapi:format(tx_hash, aetx_sign:hash(X))} || X <- SignedTxList],
+        [#{<<"hash">> => aeapi:format_tx_hash(aetx_sign:hash(X))} || X <- SignedTxList],
     Resp = #{<<"transaction_identifiers">> => SignedTxHashList},
     {200, [], Resp};
 handle_request_(mempoolTransaction,
@@ -424,7 +561,8 @@ rosetta_errors() ->
                 ?ROSETTA_ERR_INVALID_NETWORK,
                 ?ROSETTA_ERR_BLOCK_NOT_FOUND,
                 ?ROSETTA_ERR_CHAIN_TOO_SHORT,
-                ?ROSETTA_ERR_TX_NOT_FOUND]].
+                ?ROSETTA_ERR_TX_NOT_FOUND,
+                ?ROSETTA_ERR_TX_INVALID_TRANSACTION]].
 
 %% Format all the Txs in a KeyBlock
 -spec format_block(aec_blocks:block()) -> #{}.
@@ -442,7 +580,7 @@ format_block_identifier(Block) ->
         aec_headers:hash_header(
             aec_blocks:to_header(Block)),
     #{<<"index">> => aeapi:block_height(Block),
-      <<"hash">> => aeapi:format(key_block_hash, Hash)}.
+      <<"hash">> => aeapi:format_key_block_hash(Hash)}.
 
 format_keyblock_txs(KeyBlock) ->
     aeapi:balance_change_events_in_block(KeyBlock).
@@ -456,6 +594,14 @@ format_tx(SignedTx, MicroBlock) ->
 amount(Amount) ->
     #{<<"value">> => integer_to_binary(Amount),
         <<"currency">> => #{<<"symbol">> => <<"AE">>, <<"decimals">> => 18}}.
+
+
+parse_construction_op(#{<<"account">> := #{<<"address">> := Address},
+                        <<"amount">> := #{<<"currency">> := #{<<"decimals">> := 18,<<"symbol">> := <<"AE">>},
+                        <<"value">> := ValueBin},
+                        <<"operation_identifier">> := #{<<"index">> := Ix},
+                        <<"type">> := <<"Spend.amount">>}) ->
+    {Address, binary_to_integer(ValueBin)}.
 
 dry_run_err(Err) when is_list(Err) ->
     dry_run_err(list_to_binary(Err));
@@ -494,7 +640,9 @@ rosetta_err_msg(?ROSETTA_ERR_TX_NOT_FOUND) ->
 rosetta_err_msg(?ROSETTA_ERR_CHAIN_TOO_SHORT) ->
     <<"Chain too short">>;
 rosetta_err_msg(?ROSETTA_ERR_TX_INVALID_ACCOUNT) ->
-    <<"Invalid account format">>.
+    <<"Invalid account format">>;
+rosetta_err_msg(?ROSETTA_ERR_TX_INVALID_TRANSACTION) ->
+    <<"Invalid transaction">>.
 
 rosetta_err_retriable(?ROSETTA_ERR_NW_STATUS_ERR) ->
     true;
@@ -517,14 +665,14 @@ retrieve_block(BlockIdentifier) ->
 retrieve_block(undefined, undefined) ->
     throw(block_not_found);
 retrieve_block(BlockHeight, undefined) ->
-    {ok, BlockByHeight} = aeapi:key_block_by_height(BlockHeight),
+    {ok, BlockByHeight} = aeapi:key_block_at_height(BlockHeight),
     BlockByHeight;
 retrieve_block(undefined, BlockHash) ->
-    {ok, BlockByHash} = aeapi:key_block_by_hash(BlockHash),
+    {ok, BlockByHash} = aeapi:key_block_at_hash(BlockHash),
     BlockByHash;
 retrieve_block(BlockHeight, BlockHash) ->
-    {ok, BlockByHeight} = aeapi:key_block_by_height(BlockHeight),
-    {ok, BlockByHash} = aeapi:key_block_by_hash(BlockHash),
+    {ok, BlockByHeight} = aeapi:key_block_at_height(BlockHeight),
+    {ok, BlockByHash} = aeapi:key_block_at_hash(BlockHash),
     case BlockByHeight =:= BlockByHash of
         true ->
             BlockByHeight;
@@ -536,10 +684,10 @@ retrieve_block(BlockHeight, BlockHash) ->
 retrieve_block_from_partial_block_identifier(Req) ->
     case maps:get(<<"block_identifier">>, Req) of
         #{<<"index">> := Index} ->
-            {ok, Block} = aeapi:key_block_by_height(Index),
+            {ok, Block} = aeapi:key_block_at_height(Index),
             Block;
         #{<<"hash">> := Hash} ->
-            case aeapi:key_block_by_hash(Hash) of
+            case aeapi:key_block_at_hash(Hash) of
                 error ->
                     throw(block_not_found);
                 {ok, Block} ->
@@ -561,11 +709,11 @@ retrieve_block_from_partial_block_identifier(Req) ->
 retrieve_block_and_account_from_partial_block_identifier(PubKey, Req) ->
     case Req of
         #{<<"block_identifier">> := #{<<"index">> := Index}} ->
-            {ok, Block} = aeapi:key_block_by_height(Index),
+            {ok, Block} = aeapi:key_block_at_height(Index),
             {value, Account} = aec_chain:get_account_at_height(PubKey, Index + 1),
             {Block, Account};
         #{<<"block_identifier">> := #{<<"hash">> := Hash}} ->
-            case aeapi:key_block_by_hash(Hash) of
+            case aeapi:key_block_at_hash(Hash) of
                 error ->
                     throw(block_not_found);
                 {ok, Block} ->

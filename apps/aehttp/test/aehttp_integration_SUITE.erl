@@ -22,6 +22,7 @@
 %% Exports for other tests
 -export(
    [ initialize_account/1
+   , initialize_account/2
    , get_name_preclaim/1
    , get_name_claim/1
    , get_names_entry_by_name_sut/1

@@ -25,19 +25,20 @@
         , top_key_block/0
         , block_height/1
         , block_time_in_msecs/1
-        , key_block_by_height/1
-        , key_block_by_hash/1
+        , key_block_at_height/1
+        , key_block_at_hash/1
         , key_block_txs/1
         , micro_blocks_at_key_block/1
         , micro_block_txs/1
         , prev_key_block/1
         , prev_block/1
-        , generation_by_height/1
+        , generation_at_height/1
 
         , balance_at_height/2
         , balance_at_block/2
         , balance_change_events_in_tx/2
         , balance_change_events_in_block/1
+        , next_nonce/1
 
         , oracle_at_block/2
         , oracle_at_height/2
@@ -53,39 +54,60 @@
         , format_id/1
 
         %% Formatting and decoding hashes and keys
-        , format/2
+        , format_key_block_hash/1
+        , format_micro_block_hash/1
+        , format_block_pof_hash/1
+        , format_block_tx_hash/1
+        , format_block_state_hash/1
+        , format_channel/1
+        , format_contract_bytearray/1
+        , format_contract_pubkey/1
+        , format_contract_store_key/1
+        , format_transaction/1
+        , format_tx_hash/1
+        , format_oracle_pubkey/1
+        , format_oracle_query/1
+        , format_oracle_query_id/1
+        , format_oracle_response/1
+        , format_account_pubkey/1
+        , format_signature/1
+        , format_name/1
+        , format_commitment/1
+        , format_peer_pubkey/1
+        , format_state/1
+        , format_poi/1
+        , format_state_trees/1
+        , format_call_state_tree/1
+        , format_bytearray/1
+
         , decode/1
-        , safe_decode/2
+        , decode_key_block_hash/1
+        , decode_micro_block_hash/1
+        , decode_block_pof_hash/1
+        , decode_block_tx_hash/1
+        , decode_block_state_hash/1
+        , decode_channel/1
+        , decode_contract_bytearray/1
+        , decode_contract_pubkey/1
+        , decode_contract_store_key/1
+        , decode_transaction/1
+        , decode_tx_hash/1
+        , decode_oracle_pubkey/1
+        , decode_oracle_query/1
+        , decode_oracle_query_id/1
+        , decode_oracle_response/1
+        , decode_account_pubkey/1
+        , decode_signature/1
+        , decode_name/1
+        , decode_commitment/1
+        , decode_peer_pubkey/1
+        , decode_state/1
+        , decode_poi/1
+        , decode_state_trees/1
+        , decode_call_state_tree/1
+        , decode_bytearray/1
         ]).
 
--type known_type() :: key_block_hash
-    | micro_block_hash
-    | block_pof_hash
-    | block_tx_hash
-    | block_state_hash
-    | channel
-    | contract_bytearray
-    | contract_pubkey
-    | contract_store_key
-    | contract_store_value
-    | transaction
-    | tx_hash
-    | oracle_pubkey
-    | oracle_query
-    | oracle_query_id
-    | oracle_response
-    | account_pubkey
-    | signature
-    | name
-    | commitment
-    | peer_pubkey
-    | state
-    | poi
-    | state_trees
-    | call_state_tree
-    | bytearray.
-
--type payload() :: binary().
 
 blockchain_name() ->
     <<"aeternity">>. %% TODO: check hardcoding
@@ -245,17 +267,64 @@ format_id(Id) ->
 %% normal account or oracle depending on context.
 %%
 %% Format as normal account:
-%% ```aeapi:format(account_pubkey, <<170,20,197,4,89,131,91,158,24,63,28,200,44,49,35,88,224,211,211,30,
+%% ```aeapi:format_account_pubkey(<<170,20,197,4,89,131,91,158,24,63,28,200,44,49,35,88,224,211,211,30,
 %%                     29,108,91,130,93,230,47,111,34,172,124,50>>) ->
 %%      <<"ak_2HuVfa8qJmYeJPb5ntE5dXre9e4pmFEq9FYthvemB7idvbjUbE">>.'''
 %%
 %% Format as an Oracle linked to the same account:
-%% ```aeapi:format(oracle_pubkey, <<170,20,197,4,89,131,91,158,24,63,28,200,44,49,35,88,224,211,211,30,
+%% ```aeapi:format_oracle_pubkey(<<170,20,197,4,89,131,91,158,24,63,28,200,44,49,35,88,224,211,211,30,
 %%                     29,108,91,130,93,230,47,111,34,172,124,50>>) ->
 %%      <<"ok_2HuVfa8qJmYeJPb5ntE5dXre9e4pmFEq9FYthvemB7idvbjUbE">>.'''
--spec format(known_type(), payload()) -> aeser_api_encoder:encoded().
-format(Type, Payload) ->
-    aeser_api_encoder:encode(Type, Payload).
+format_key_block_hash(Payload) ->
+    aeser_api_encoder:encode(key_block_hash, Payload).
+format_micro_block_hash(Payload) ->
+    aeser_api_encoder:encode(micro_block_hash, Payload).
+format_block_pof_hash(Payload) ->
+    aeser_api_encoder:encode(block_pof_hash, Payload).
+format_block_tx_hash(Payload) ->
+    aeser_api_encoder:encode(block_tx_hash, Payload).
+format_block_state_hash(Payload) ->
+    aeser_api_encoder:encode(block_state_hash, Payload).
+format_channel(Payload) ->
+    aeser_api_encoder:encode(channel, Payload).
+format_contract_bytearray(Payload) ->
+    aeser_api_encoder:encode(contract_bytearray, Payload).
+format_contract_pubkey(Payload) ->
+    aeser_api_encoder:encode(contract_pubkey, Payload).
+format_contract_store_key(Payload) ->
+    aeser_api_encoder:encode(contract_store_key, Payload).
+format_transaction(Payload) ->
+    aeser_api_encoder:encode(transaction, Payload).
+format_tx_hash(Payload) ->
+    aeser_api_encoder:encode(tx_hash, Payload).
+format_oracle_pubkey(Payload) ->
+    aeser_api_encoder:encode(oracle_pubkey, Payload).
+format_oracle_query(Payload) ->
+    aeser_api_encoder:encode(oracle_query, Payload).
+format_oracle_query_id(Payload) ->
+    aeser_api_encoder:encode(oracle_query_id, Payload).
+format_oracle_response(Payload) ->
+    aeser_api_encoder:encode(oracle_response, Payload).
+format_account_pubkey(Payload) ->
+    aeser_api_encoder:encode(account_pubkey, Payload).
+format_signature(Payload) ->
+    aeser_api_encoder:encode(signature, Payload).
+format_name(Payload) ->
+    aeser_api_encoder:encode(name, Payload).
+format_commitment(Payload) ->
+    aeser_api_encoder:encode(commitment, Payload).
+format_peer_pubkey(Payload) ->
+    aeser_api_encoder:encode(peer_pubkey, Payload).
+format_state(Payload) ->
+    aeser_api_encoder:encode(state, Payload).
+format_poi(Payload) ->
+    aeser_api_encoder:encode(poi, Payload).
+format_state_trees(Payload) ->
+    aeser_api_encoder:encode(state_trees, Payload).
+format_call_state_tree(Payload) ->
+    aeser_api_encoder:encode(call_state_tree, Payload).
+format_bytearray(Payload) ->
+    aeser_api_encoder:encode(bytearray, Payload).
 
 %% @doc Decode the external / printable form of a key / hash.
 %% Returns its type and internal binary value.
@@ -265,35 +334,83 @@ format(Type, Payload) ->
 %%       {contract_pubkey,<<170,20,197,4,89,131,91,158,24,63,28,
 %%                  200,44,49,35,88,224,211,211,30,29,108,
 %%                   91,130,93,230,47,...>>}'''
--spec decode(binary()) -> {known_type(), payload()}.
+-spec decode(binary()) -> {atom(), binary()}.
 decode(Binary) ->
     aeser_api_encoder:decode(Binary).
+
+%% FIXME: Maybe add variants to decode further - aeapi:decode_contract(<<"cb_..">>, [decompile]).
 
 %% @doc Decode the external / printable form of a key / hash, returning an error it is not of the specified type.
 %% Returns the internal binary value or {error,Reason}
 %%
 %% For example:
-%% ```aeapi:safe_decode(contract_pubkey, <<"ct_2HuVfa8qJmYeJPb5ntE5dXre9e4pmFEq9FYthvemB7idvbjUbE">>) ->
+%% ```aeapi:decode_contract_pubkey(<<"ct_2HuVfa8qJmYeJPb5ntE5dXre9e4pmFEq9FYthvemB7idvbjUbE">>) ->
 %%       {ok, <<170,20,197,4,89,131,91,158,24,63,28,
 %%                  200,44,49,35,88,224,211,211,30,29,108,
 %%                   91,130,93,230,47,...>>}'''
--spec safe_decode(known_type() | block_hash,
-                  aeser_api_encoder:encoded()) -> {'ok', payload()}
-                                                     | {'error', atom()}.
-safe_decode(Type, Binary) ->
-    aeser_api_encoder:safe_decode(Type, Binary).
+decode_key_block_hash(Binary) ->
+    aeser_api_encoder:safe_decode(key_block_hash, Binary).
+decode_micro_block_hash(Binary) ->
+    aeser_api_encoder:safe_decode(micro_block_hash, Binary).
+decode_block_pof_hash(Binary) ->
+    aeser_api_encoder:safe_decode(block_pof_hash, Binary).
+decode_block_tx_hash(Binary) ->
+    aeser_api_encoder:safe_decode(block_tx_hash, Binary).
+decode_block_state_hash(Binary) ->
+    aeser_api_encoder:safe_decode(block_state_hash, Binary).
+decode_channel(Binary) ->
+    aeser_api_encoder:safe_decode(channel, Binary).
+decode_contract_bytearray(Binary) ->
+    aeser_api_encoder:safe_decode(contract_bytearray, Binary).
+decode_contract_pubkey(Binary) ->
+    aeser_api_encoder:safe_decode(contract_pubkey, Binary).
+decode_contract_store_key(Binary) ->
+    aeser_api_encoder:safe_decode(contract_store_key, Binary).
+decode_transaction(Binary) ->
+    aeser_api_encoder:safe_decode(transaction, Binary).
+decode_tx_hash(Binary) ->
+    aeser_api_encoder:safe_decode(tx_hash, Binary).
+decode_oracle_pubkey(Binary) ->
+    aeser_api_encoder:safe_decode(oracle_pubkey, Binary).
+decode_oracle_query(Binary) ->
+    aeser_api_encoder:safe_decode(oracle_query, Binary).
+decode_oracle_query_id(Binary) ->
+    aeser_api_encoder:safe_decode(oracle_query_id, Binary).
+decode_oracle_response(Binary) ->
+    aeser_api_encoder:safe_decode(oracle_response, Binary).
+decode_account_pubkey(Binary) ->
+    aeser_api_encoder:safe_decode(account_pubkey, Binary).
+decode_signature(Binary) ->
+    aeser_api_encoder:safe_decode(signature, Binary).
+decode_name(Binary) ->
+    aeser_api_encoder:safe_decode(name, Binary).
+decode_commitment(Binary) ->
+    aeser_api_encoder:safe_decode(commitment, Binary).
+decode_peer_pubkey(Binary) ->
+    aeser_api_encoder:safe_decode(peer_pubkey, Binary).
+decode_state(Binary) ->
+    aeser_api_encoder:safe_decode(state, Binary).
+decode_poi(Binary) ->
+    aeser_api_encoder:safe_decode(poi, Binary).
+decode_state_trees(Binary) ->
+    aeser_api_encoder:safe_decode(state_trees, Binary).
+decode_call_state_tree(Binary) ->
+    aeser_api_encoder:safe_decode(call_state_tree, Binary).
+decode_bytearray(Binary) ->
+    aeser_api_encoder:safe_decode(bytearray, Binary).
 
--spec key_block_by_height(aec_blocks:height()) -> {ok, aec_blocks:key_block()} | {error, chain_too_short} | error.
 
-key_block_by_height(Height) when is_integer(Height) ->
+-spec key_block_at_height(aec_blocks:height()) -> {ok, aec_blocks:key_block()} | {error, chain_too_short} | error.
+
+key_block_at_height(Height) when is_integer(Height) ->
     aec_chain:get_key_block_by_height(Height).
 
--spec key_block_by_hash(aeser_api_encoder:encoded()) -> {ok, aec_blocks:key_block()} | error.
-key_block_by_hash(Hash) when is_binary(Hash) ->
+-spec key_block_at_hash(aeser_api_encoder:encoded()) -> {ok, aec_blocks:key_block()} | error.
+key_block_at_hash(Hash) when is_binary(Hash) ->
     {key_block_hash, DecodedHash} = aeser_api_encoder:decode(Hash),
     aec_chain:get_block(DecodedHash).
 
-generation_by_height(Height) when is_integer(Height) ->
+generation_at_height(Height) when is_integer(Height) ->
     case aec_chain_state:get_key_block_hash_at_height(Height) of
         error -> {error, "Block not found"};
         {ok, Hash} ->
@@ -325,12 +442,11 @@ balance_change_events_in_tx(SignedTx, MicroBlock) ->
     {ok, MBHash} =
         aec_headers:hash_header(
             aec_blocks:to_header(MicroBlock)),
-    BlockTxs = aeapi:micro_block_txs(MicroBlock),
+    BlockTxs = micro_block_txs(MicroBlock),
     NeededTxs = keep_tx_until(BlockTxs, aetx_sign:hash(SignedTx)),
     Ops = format_txs(NeededTxs, MBHash),
     SpendOps = tx_spend_operations(Ops),
     lists:last(SpendOps).
-
 
 keep_tx_until(Txs, TxHash) ->
     keep_tx_until(Txs, TxHash, []).
@@ -397,7 +513,7 @@ format_block_txs(KeyBlock) ->
 
 expiry_txs(KeyBlock0) ->
     Height = aec_blocks:height(KeyBlock0),
-    case aeapi:key_block_by_height(Height + 1) of
+    case key_block_at_height(Height + 1) of
         {error,chain_too_short} ->
             [];
         {ok, KeyBlock} ->
@@ -423,13 +539,13 @@ reward_txs(Block) ->
     %% In this block the reward for the beneficiary 180 blocks earlier will be paid
     %% We don't store the amount on chain, so need to re-calculate
     Delay = aec_governance:beneficiary_reward_delay(),
-    {ok, TopBlock} = aeapi:top_key_block(),
+    {ok, TopBlock} = top_key_block(),
     TopHeight = aec_blocks:height(TopBlock),
     Height = aec_blocks:height(Block),
     if Height >= Delay, Height < TopHeight ->
            %% For Rosetta the reward Txs need to be in the block before the Beneficiary
            %% account has their updated balance. No rewards yet at the top
-           {ok, NextBlock} = aeapi:key_block_by_height(Height + 1),
+           {ok, NextBlock} = key_block_at_height(Height + 1),
            Node = aec_chain_state:wrap_block(NextBlock),
            Trees = aec_chain_state:grant_fees(Node, aec_trees:new(), Delay, false, nil),
            Accounts =
@@ -499,7 +615,7 @@ encode_generation(KeyBlock, MicroBlocks, PrevBlockType) ->
 tx_spend_operations(Results) ->
     lists:map(fun({TxHash, Result}) ->
                     {Res, _} = tx_spend_ops(Result),
-                    #{<<"transaction_identifier">> => #{<<"hash">> => aeapi:format(tx_hash, TxHash)},
+                    #{<<"transaction_identifier">> => #{<<"hash">> => format_tx_hash(TxHash)},
                     <<"operations">> => lists:reverse(Res)}
                 end,
                 Results).
@@ -524,21 +640,21 @@ tx_spend_op({{internal_call_tx, _Key}, _}, {Acc, Ix}) ->
     {Acc, Ix};
 tx_spend_op({{spend, {SenderPubkey, RecipientPubkey, Amount}}, #{type := _Type}},
             {Acc, Ix}) ->
-    From = aeapi:format(account_pubkey, SenderPubkey),
-    To = aeapi:format(account_pubkey, RecipientPubkey),
+    From = format_account_pubkey(SenderPubkey),
+    To = format_account_pubkey(RecipientPubkey),
     FromOp = spend_tx_op(Ix, <<"Spend.amount">>, From, -Amount),
     ToOp = spend_tx_op(Ix + 1, <<"Spend.amount">>, To, Amount),
     {[ToOp, FromOp | Acc], Ix + 2};
 tx_spend_op({{delta, {Pubkey, Amount}}, #{info := Info}}, {Acc, Ix}) ->
-    From = aeapi:format(account_pubkey, Pubkey),
+    From = format_account_pubkey(Pubkey),
     DeltaOp = spend_tx_op(Ix, Info, From, Amount),
     {[DeltaOp | Acc], Ix + 1};
 tx_spend_op({reward, {Pubkey, Amount}}, {Acc, Ix}) ->
-    To = aeapi:format(account_pubkey, Pubkey),
+    To = format_account_pubkey(Pubkey),
     Op = spend_tx_op(Ix, <<"Chain.reward">>, To, Amount),
     {[Op | Acc], Ix + 1};
 tx_spend_op({fork, {Pubkey, Amount}}, {Acc, Ix}) ->
-    To = aeapi:format(account_pubkey, Pubkey),
+    To = format_account_pubkey(Pubkey),
     Op = spend_tx_op(Ix, <<"Chain.amount">>, To, Amount),
     {[Op | Acc], Ix + 1};
 tx_spend_op({{channel, _Pubkey}, #{}}, {Acc, Ix}) ->
@@ -562,7 +678,7 @@ balance_at_height(Address, Height) ->
     AllowedTypes = [account_pubkey, contract_pubkey],
     case create_id(Address, AllowedTypes) of
         {ok, Id} ->
-            PubKey = aeapi:id_value(Id),
+            PubKey = id_value(Id),
             {value, Account} = aec_chain:get_account_at_height(PubKey, Height),
             {ok, aec_accounts:balance(Account)};
         _ ->
@@ -572,14 +688,21 @@ balance_at_height(Address, Height) ->
 balance_at_block(AccountAddress, BlockHash) ->
     AllowedTypes = [account_pubkey, contract_pubkey],
     {ok, Id} = create_id(AccountAddress, AllowedTypes),
-    PubKey = aeapi:id_value(Id),
+    PubKey = id_value(Id),
     {_BlockType, Hash} = aeser_api_encoder:decode(BlockHash),
     {value, Account} = aec_chain:get_account_at_hash(PubKey, Hash),
     {ok, aec_accounts:balance(Account)}.
 
+-spec next_nonce(aeser_api_encoder:encoded()) -> {ok, non_neg_integer()} | {error, account_not_found}.
+next_nonce(AccountAddress) ->
+    AllowedTypes = [account_pubkey, contract_pubkey],
+    {ok, Id} = create_id(AccountAddress, AllowedTypes),
+    PubKey = id_value(Id),
+    aec_next_nonce:pick_for_account(PubKey).
+
 oracle_at_height(OracleAddress, Height) ->
     {oracle_pubkey, OraclePubkey} = decode(OracleAddress),
-    {ok, KeyBlock} = key_block_by_height(Height),
+    {ok, KeyBlock} = key_block_at_height(Height),
     Header = aec_blocks:to_header(KeyBlock),
     {ok, Hash} = aec_headers:hash_header(Header),
     aec_chain:get_oracle_at_hash(OraclePubkey, Hash).
@@ -595,7 +718,7 @@ oracle_at_block(OracleAddress, BlockHash) ->
 oracle_query_at_height(OracleAddress, QueryId, Height) ->
     {oracle_pubkey, OraclePubkey} = decode(OracleAddress),
     {oracle_query_id, Query} = decode(QueryId),
-    {ok, KeyBlock} = key_block_by_height(Height),
+    {ok, KeyBlock} = key_block_at_height(Height),
     Header = aec_blocks:to_header(KeyBlock),
     {ok, Hash} = aec_headers:hash_header(Header),
     get_oracle_query_at_hash(OraclePubkey, Query, Hash).
@@ -621,7 +744,7 @@ get_oracle_query_at_hash(OraclePubkey, Query, Hash) ->
     {ok, [aeo_query:query()]} | {error, no_state_trees}.
 oracle_queries_at_height(OracleAddress, From, QueryType, Max, Height) ->
     {oracle_pubkey, OraclePubkey} = decode(OracleAddress),
-    {ok, KeyBlock} = key_block_by_height(Height),
+    {ok, KeyBlock} = key_block_at_height(Height),
     Header = aec_blocks:to_header(KeyBlock),
     {ok, Hash} = aec_headers:hash_header(Header),
     aec_chain:get_oracle_queries_at_hash(OraclePubkey, From, QueryType, Max, Hash).

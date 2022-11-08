@@ -10,7 +10,12 @@
 
 -import(aecore_suite_utils, [http_request/4, httpc_request/4, process_http_return/1]).
 -import(aecore_suite_utils,
-        [internal_address/0, external_address/0, rosetta_address/0, rpc/3, rpc/4]).
+        [internal_address/0,
+         external_address/0,
+         rosetta_address/0,
+         rosetta_offline_address/0,
+         rpc/3,
+         rpc/4]).
 
 %% common_test exports
 -export([all/0, groups/0, suite/0, init_per_suite/1, end_per_suite/1, init_per_group/2,
@@ -19,7 +24,8 @@
 -export([block_genesis/1, block_key_only/1, block_spend_tx/1,
          block_create_contract_tx/1]).
 -export([block_create_channel_tx/1]).
--export([contruction_derive/1]).
+-export([construction_flow/1]).
+-export([construction_rosetta_cli/1]).
 %% for external use
 -export([assertBalanceChanges/2]).
 
@@ -29,12 +35,29 @@
 -define(NODE, dev1).
 -define(SPEND_FEE, 20000 * aec_test_utils:min_gas_price()).
 
+%% These funded accounts must also be included in rosetta/rosetta.cfg
+-define(FUNDED_PUBKEY,
+        <<184, 46, 221, 75, 166, 126, 195, 164, 224, 106, 80, 86, 58, 196, 56, 149, 36, 43, 124,
+          67, 52, 167, 116, 213, 32, 233, 130, 33, 11, 67, 246, 248>>).
+-define(FUNDED_PRIVKEY,
+        <<197, 127, 76, 110, 192, 197, 4, 189, 106, 225, 212, 178, 106, 62, 168, 51, 195, 28, 223,
+          90, 210, 159, 38, 185, 217, 37, 82, 64, 89, 53, 120, 195, 184, 46, 221, 75, 166, 126, 195,
+          164, 224, 106, 80, 86, 58, 196, 56, 149, 36, 43, 124, 67, 52, 167, 116, 213, 32, 233, 130,
+          33, 11, 67, 246, 248>>).
+-define(FUNDED_PUBKEY2,
+        <<59, 21, 39, 47, 165, 14, 39, 153, 244, 204, 123, 53, 145, 239, 0, 38, 27, 6, 124, 50,
+          149, 253, 228, 170, 53, 66, 224, 229, 126, 95, 204, 139>>).
+-define(FUNDED_PRIVKEY2,
+        <<117, 194, 27, 249, 50, 137, 80, 68, 225, 170, 175, 196, 97, 176, 80, 140, 25, 58, 234,
+          156, 243, 232, 53, 126, 216, 29, 118, 4, 206, 89, 177, 133, 59, 21, 39, 47, 165, 14, 39,
+          153, 244, 204, 123, 53, 145, 239, 0, 38, 27, 6, 124, 50, 149, 253, 228, 170, 53, 66, 224,
+          229, 126, 95, 204, 139>>).
+
 all() ->
     [{group, all}].
 
 groups() ->
-    [{all, [sequence], [{group, rosetta_read},
-                        {group, rosetta_contruction}]},
+    [{all, [sequence], [{group, rosetta_read}, {group, rosetta_construction}]},
      {rosetta_read,
       [sequence],
       %% /network/*
@@ -47,11 +70,10 @@ groups() ->
      {block_basic_endpoint, [], [block_genesis, block_key_only, block_spend_tx]},
      {block_contract_endpoint, [], [block_create_contract_tx]},
      {block_channels_endpoint, [], [block_create_channel_tx]},
-    %% /construction
-     {rosetta_contruction,
-        [sequence],
-        [contruction_derive]}
-    ].
+     %% /construction
+     {rosetta_construction, [sequence], [{group, rosetta_flow}, {group, rosetta_cli}]},
+     {rosetta_flow, [], [construction_flow]},
+     {rosetta_cli, [], [construction_rosetta_cli]}].
 
 suite() ->
     [].
@@ -89,6 +111,16 @@ init_per_group(network_endpoint, Config) ->
     Config;
 init_per_group(block_basic_endpoint, Config) ->
     Config;
+init_per_group(rosetta_cli, Config) ->
+    ProtoVsn = aect_test_utils:latest_protocol_version(),
+    case os:cmd("rosetta-cli version") of
+        _ when ProtoVsn < ?IRIS_PROTOCOL_VSN ->
+            {skip, rosetta_not_before_iris};
+        "v" ++ _ ->
+            Config;
+        _ ->
+            {skip, rosetta_cli_executable_not_found}
+    end;
 init_per_group(_Group, Config) ->
     case aect_test_utils:latest_protocol_version() of
         Vsn when Vsn < ?IRIS_PROTOCOL_VSN ->
@@ -280,7 +312,7 @@ block_key_only(Config) ->
     {ok, Hash} =
         aec_headers:hash_header(
             aec_blocks:to_header(KeyBlock)),
-    KeyHash = aeapi:format(key_block_hash, Hash),
+    KeyHash = aeapi:format_key_block_hash(Hash),
     {ok,
      200,
      #{<<"block">> :=
@@ -289,11 +321,11 @@ block_key_only(Config) ->
              <<"parent_block_identifier">> := #{<<"hash">> := ParentKeyBlockHash},
              <<"transactions">> := Transactions}}} =
         get_block_sut(KeyHash),
-    ?assertMatch({ok, _}, aeapi:safe_decode(key_block_hash, KeyBlockHash)),
+    ?assertMatch({ok, _}, aeapi:decode_key_block_hash(KeyBlockHash)),
     ?assertMatch(KeyHash, KeyBlockHash),
     ?assertMatch(true, is_integer(CurrentBlockTimestamp)),
     ?assertMatch([], Transactions),
-    ?assertMatch({ok, _}, aeapi:safe_decode(key_block_hash, ParentKeyBlockHash)),
+    ?assertMatch({ok, _}, aeapi:decode_key_block_hash(ParentKeyBlockHash)),
     ok.
 
 %% Test fetch of SpendTx
@@ -335,8 +367,8 @@ block_spend_tx(Config) ->
 
     aecore_suite_utils:use_rosetta(),
 
-    FromPubKeyEnc = aeapi:format(account_pubkey, FromPubKey),
-    ToPubKeyEnc = aeapi:format(account_pubkey, ToPubKey),
+    FromPubKeyEnc = aeapi:format_account_pubkey(FromPubKey),
+    ToPubKeyEnc = aeapi:format_account_pubkey(ToPubKey),
 
     %% Test Rosetta /account/balance API
     {ok,
@@ -361,8 +393,7 @@ block_spend_tx(Config) ->
              <<"transactions">> := Transactions}}} =
         get_block_sut(TopKeyBlockHash),
 
-    ?assertMatch([_, _],
-                 Transactions),
+    ?assertMatch([_, _], Transactions),
     {ok,
      200,
      #{<<"balances">> :=
@@ -399,14 +430,14 @@ block_spend_tx(Config) ->
     ?assertEqual(ToOp, ToOp1),
     ?assertEqual(FeeOp, FeeOp1),
 
-    FromPubKeyEnc = aeapi:format(account_pubkey, FromPubKey),
-    ToPubKeyEnc = aeapi:format(account_pubkey, ToPubKey),
+    FromPubKeyEnc = aeapi:format_account_pubkey(FromPubKey),
+    ToPubKeyEnc = aeapi:format_account_pubkey(ToPubKey),
     assertBalanceChanges(SpendTxHash,
                          [{FromPubKeyEnc, -?SPEND_FEE}, {FromPubKeyEnc, -1}, {ToPubKeyEnc, 1}]),
 
-    ?assertMatch({ok, _}, aeapi:safe_decode(key_block_hash, KeyBlockHash)),
+    ?assertMatch({ok, _}, aeapi:decode_key_block_hash(KeyBlockHash)),
     ?assertMatch(true, is_integer(CurrentBlockTimestamp)),
-    ?assertMatch({ok, _}, aeapi:safe_decode(key_block_hash, ParentKeyBlockHash)),
+    ?assertMatch({ok, _}, aeapi:decode_key_block_hash(ParentKeyBlockHash)),
     ok.
 
 block_create_contract_tx(Config) ->
@@ -426,10 +457,10 @@ block_create_contract_tx(Config) ->
     {ToPubKey, _ToPrivKey} =
         aehttp_integration_SUITE:initialize_account(200000000 * aec_test_utils:min_gas_price()),
 
-    OwnerAccountPubKey = aeapi:format(account_pubkey, OwnerPubKey),
+    OwnerAccountPubKey = aeapi:format_account_pubkey(OwnerPubKey),
     {ok, 200, #{<<"balance">> := OwnerBalance}} =
         aehttp_integration_SUITE:get_accounts_by_pubkey_sut(OwnerAccountPubKey),
-    ToAccountPubKey = aeapi:format(account_pubkey, ToPubKey),
+    ToAccountPubKey = aeapi:format_account_pubkey(ToPubKey),
     {ok, 200, #{<<"balance">> := ToBalance}} =
         aehttp_integration_SUITE:get_accounts_by_pubkey_sut(ToAccountPubKey),
     %% ------------------ Contract Create ---------------------------
@@ -447,7 +478,7 @@ block_create_contract_tx(Config) ->
     CreateGasPrice = aec_test_utils:min_gas_price(),
     CreateFee = 400000 * aec_test_utils:min_gas_price(),
     ValidEncoded =
-        #{owner_id => aeapi:format(account_pubkey, OwnerPubKey),
+        #{owner_id => aeapi:format_account_pubkey(OwnerPubKey),
           nonce => Nonce,
           code => EncodedCode,
           vm_version => aect_test_utils:latest_sophia_vm_version(),
@@ -512,7 +543,7 @@ block_create_contract_tx(Config) ->
 
     %% Convert the contract id into the matching account id
     {_, ContractPubKey} = aeapi:decode(ContractPubKeyEnc),
-    ContractAccountPubKey = aeapi:format(account_pubkey, ContractPubKey),
+    ContractAccountPubKey = aeapi:format_account_pubkey(ContractPubKey),
 
     %% Fetch the contract Balance
     %% Temp switch to the native http api until we have the balance Rosetta Op
@@ -532,10 +563,10 @@ block_create_contract_tx(Config) ->
     aecore_suite_utils:use_swagger(SwaggerVsn),
     %% Call the contract, sending 15000 of the 20000 balance to the To Account
     %% This should generate a Chain.spend trace within the contract execution
-    Args = [aeapi:format(account_pubkey, ToPubKey), "15000"],
+    Args = [aeapi:format_account_pubkey(ToPubKey), "15000"],
     {ok, CallData} = encode_call_data(spend_test, "spend", Args),
     ContractCallEncoded =
-        #{caller_id => aeapi:format(account_pubkey, OwnerPubKey),
+        #{caller_id => aeapi:format_account_pubkey(OwnerPubKey),
           contract_id => ContractPubKeyEnc,
           call_data => CallData,
           abi_version => aect_test_utils:latest_sophia_abi_version(),
@@ -611,10 +642,10 @@ block_create_contract_tx(Config) ->
     aecore_suite_utils:use_swagger(SwaggerVsn),
     %% Call the contract, attempting to send amount 500 to a non payable entry point
     %% This should just consume all the fees but not take the amount
-    ErrArgs = [aeapi:format(account_pubkey, ToPubKey), "2000"],
+    ErrArgs = [aeapi:format_account_pubkey(ToPubKey), "2000"],
     {ok, CallDataErr} = encode_call_data(spend_test, "spend", ErrArgs),
     ContractCallErrEncoded =
-        #{caller_id => aeapi:format(account_pubkey, OwnerPubKey),
+        #{caller_id => aeapi:format_account_pubkey(OwnerPubKey),
           contract_id => ContractPubKeyEnc,
           call_data => CallDataErr,
           abi_version => aect_test_utils:latest_sophia_abi_version(),
@@ -671,10 +702,10 @@ block_create_channel_tx(Config) ->
     {ResponderPubKey, ResponderPrivKey} =
         aehttp_integration_SUITE:initialize_account(2000000000 * aec_test_utils:min_gas_price()),
 
-    InitiatorAccountPubKey = aeapi:format(account_pubkey, InitiatorPubKey),
+    InitiatorAccountPubKey = aeapi:format_account_pubkey(InitiatorPubKey),
     {ok, 200, #{<<"balance">> := InitiatorBalance}} =
         aehttp_integration_SUITE:get_accounts_by_pubkey_sut(InitiatorAccountPubKey),
-    ResponderAccountPubKey = aeapi:format(account_pubkey, ResponderPubKey),
+    ResponderAccountPubKey = aeapi:format_account_pubkey(ResponderPubKey),
     {ok, 200, #{<<"balance">> := ResponderBalance}} =
         aehttp_integration_SUITE:get_accounts_by_pubkey_sut(ResponderAccountPubKey),
 
@@ -715,10 +746,12 @@ block_create_channel_tx(Config) ->
             aetx:tx(ChannelCreateTx)),
     % ChannelPubKeyEnc = aeapi:format_id(ChannelId),
     % {_, ChannelPubKey} = aeapi:decode(ChannelPubKeyEnc),
-    % ChannelAccountPubKey = aeapi:format(account_pubkey, ChannelPubKey),
+    % ChannelAccountPubKey = aeapi:format_account_pubkey(ChannelPubKey),
     SignedChannelCreateTx =
         aec_test_utils:sign_tx(ChannelCreateTx, [InitiatorPrivKey, ResponderPrivKey]),
-    EncTx = aeapi:format(transaction, aetx_sign:serialize_to_binary(SignedChannelCreateTx)),
+    EncTx =
+        aeapi:format_transaction(
+            aetx_sign:serialize_to_binary(SignedChannelCreateTx)),
     {ok, 200, #{<<"tx_hash">> := ChannelCreateTxHash}} = post_tx(EncTx),
 
     {ok, [_]} = rpc(aec_tx_pool, peek, [infinity]),
@@ -787,7 +820,9 @@ block_create_channel_tx(Config) ->
 
     SignedChannelDepositTx =
         aec_test_utils:sign_tx(ChannelDepositTx, [InitiatorPrivKey, ResponderPrivKey]),
-    EncDTx = aeapi:format(transaction, aetx_sign:serialize_to_binary(SignedChannelDepositTx)),
+    EncDTx =
+        aeapi:format_transaction(
+            aetx_sign:serialize_to_binary(SignedChannelDepositTx)),
     {ok, 200, #{<<"tx_hash">> := ChannelDepositTxHash}} = post_tx(EncDTx),
 
     {ok, [_]} = rpc(aec_tx_pool, peek, [infinity]),
@@ -840,7 +875,8 @@ block_create_channel_tx(Config) ->
     SignedChannelWithdrawTx =
         aec_test_utils:sign_tx(ChannelWithdrawTx, [InitiatorPrivKey, ResponderPrivKey]),
     EncWTx =
-        aeapi:format(transaction, aetx_sign:serialize_to_binary(SignedChannelWithdrawTx)),
+        aeapi:format_transaction(
+            aetx_sign:serialize_to_binary(SignedChannelWithdrawTx)),
     {ok, 200, #{<<"tx_hash">> := ChannelWithdrawTxHash}} = post_tx(EncWTx),
 
     {ok, [_]} = rpc(aec_tx_pool, peek, [infinity]),
@@ -887,7 +923,8 @@ block_create_channel_tx(Config) ->
     SignedChannelCloseMutualTx =
         aec_test_utils:sign_tx(ChannelCloseMutualTx, [InitiatorPrivKey, ResponderPrivKey]),
     EncFPTx =
-        aeapi:format(transaction, aetx_sign:serialize_to_binary(SignedChannelCloseMutualTx)),
+        aeapi:format_transaction(
+            aetx_sign:serialize_to_binary(SignedChannelCloseMutualTx)),
     {ok, 200, #{<<"tx_hash">> := ChannelCloseMutualTxHash}} = post_tx(EncFPTx),
 
     {ok, [_]} = rpc(aec_tx_pool, peek, [infinity]),
@@ -925,7 +962,7 @@ block_create_channel_tx(Config) ->
     ?assertEqual(ResponderBalanceAfterCloseMutual,
                  ResponderBalanceAfterCreate + binary_to_integer(CloseMutualResponderDelta)).
 
-contruction_derive(Config) ->
+construction_flow(Config) ->
     [{_NodeId, Node} | _] = ?config(nodes, Config),
     aecore_suite_utils:reinit_with_ct_consensus(?NODE),
     ToMine = max(2, aecore_suite_utils:latest_fork_height()),
@@ -937,15 +974,110 @@ contruction_derive(Config) ->
     SwaggerVsn = proplists:get_value(swagger_version, Config, oas3),
     aecore_suite_utils:use_swagger(SwaggerVsn),
 
-    {InitiatorPubKey, _InitiatorPrivKey} =
+    {FromPubKey, FromPrivKey} =
         aehttp_integration_SUITE:initialize_account(1000000000 * aec_test_utils:min_gas_price()),
-    HexKey = aeu_hex:bin_to_hex(InitiatorPubKey),
+    FromHexKey = list_to_binary(aeu_hex:bin_to_hex(FromPubKey)),
+    FromPubKeyExt = aeapi:format_account_pubkey(FromPubKey),
+
+    {ToPubKey, _ToPrivKey} =
+        aehttp_integration_SUITE:initialize_account(2000000000 * aec_test_utils:min_gas_price()),
+    ToPubKeyExt = aeapi:format_account_pubkey(ToPubKey),
 
     aecore_suite_utils:use_rosetta(),
 
-    construction_derive_sut(HexKey).
-    
-    
+    %% The standard rosetta construction flow (create and post a SpendTx) must follow all 9 steps in this test case:
+    %%
+    %% 1. /construction/derive - turn client generated priv key into account name
+    {ok, 200, DeriveResp} = construction_derive_sut(FromHexKey),
+    #{<<"address">> := Account, <<"account_identifier">> := #{<<"address">> := Account}} =
+        DeriveResp,
+    ?assertEqual(FromPubKeyExt, Account),
+
+    %% 2. /construction/preprocess - turn sequence of ops into what is needed for metadata request (in our case we just need the from address)
+    [From, To] = rosetta_ops(FromPubKeyExt, ToPubKeyExt, 10000),
+    {ok, 200, PreprocessResp} = construction_preprocess_sut([From, To]),
+    #{<<"options">> := #{<<"from">> := FromAcc}} = PreprocessResp,
+    ?assertEqual(FromPubKeyExt, FromAcc),
+
+    %% 3. /construction/metadata - query for metadata (fetch next nonce for the from address) (online)
+    {ok, 200, MetadataResp} = construction_metadata_sut(FromPubKeyExt),
+    #{<<"suggested_fee">> :=
+          [#{<<"value">> := SuggestedFee,
+             <<"currency">> := #{<<"symbol">> := <<"AE">>, <<"decimals">> := 18}}],
+      <<"metadata">> := #{<<"nonce">> := NextNonce, <<"fee">> := SuggestedFee}} =
+        MetadataResp,
+    ?assertEqual(FromPubKeyExt, FromAcc),
+
+    %% 4. /construction/payloads - create unsigned tx from sequence of ops and metadata
+    {ok, 200, PayloadsResp} = construction_payloads_sut(NextNonce, SuggestedFee, [From, To]),
+    #{<<"payloads">> := [Signer], <<"unsigned_transaction">> := UnsignedTx} = PayloadsResp,
+    #{<<"account_identifier">> := #{<<"address">> := FromPubKeyExt},
+      <<"hex_bytes">> := HexBytes,
+      <<"signature_type">> := <<"ed25519">>} =
+        Signer,
+
+    %% 5. /construction/parse - turn unsigned tx back into sequence of ops (so we the client can check it's correct)
+    {ok, 200, ParseUnsignedResp} = construction_parse_sut(UnsignedTx, false),
+    #{<<"operations">> := [_FromOp, _ToOp], <<"account_identifier_signers">> := _Signers} =
+        ParseUnsignedResp,
+
+    %% 6. /construction/combine - combine client generated signature with the unsigned tx to create a signed tx object
+    %% We are the client here, so we sign and send the signature to Rosetta
+    HexBytesBin = aeu_hex:hex_to_bin(HexBytes),
+    SignedHexBytesBin = enacl:sign_detached(HexBytesBin, FromPrivKey),
+    {ok, 200, CombineResp} =
+        construction_combine_sut(SignedHexBytesBin, FromPubKey, FromPubKeyExt, UnsignedTx),
+    #{<<"signed_transaction">> := SignedTx} = CombineResp,
+
+    %% 7. /construction/parse - turn signed tx back into sequence of ops (so client can check it's correct)
+    {ok, 200, ParseSignedResp} = construction_parse_sut(SignedTx, true),
+    #{<<"operations">> := [_FromOpBin, _ToOpBin], <<"account_identifier_signers">> := [#{<<"address">> := FromPubKeyExt}]} =
+        ParseSignedResp,
+
+    %% 8. /construction/hash - turn transaction into tx hash (so client can track progress of tx)
+    {ok, 200, HashResp} = construction_hash_sut(SignedTx),
+    #{<<"transaction_identifier">> := #{<<"hash">> := Hash}} = HashResp,
+
+    %% 9. /construction/submit - post signed tx to chain (online)
+    {ok, 200, SubmitResp} = construction_submit_sut(SignedTx),
+    #{<<"transaction_identifier">> := #{<<"hash">> := Hash}} = SubmitResp,
+
+    {ok, N} = aecore_suite_utils:mine_blocks_until_txs_on_chain(Node, [Hash], 10),
+    ?assert(N > 0).
+
+construction_rosetta_cli(Config) ->
+    [{_NodeId, Node} | _] = ?config(nodes, Config),
+    aecore_suite_utils:reinit_with_ct_consensus(?NODE),
+    ToMine = max(2, aecore_suite_utils:latest_fork_height()),
+    aecore_suite_utils:mine_key_blocks(Node, ToMine),
+    {ok, [KeyBlock]} = aecore_suite_utils:mine_key_blocks(Node, 1),
+    true = aec_blocks:is_key_block(KeyBlock),
+
+    %% Use the native http api for the operations not yet implemented in Rosetta
+    SwaggerVsn = proplists:get_value(swagger_version, Config, oas3),
+    aecore_suite_utils:use_swagger(SwaggerVsn),
+
+    {_Pubkey, _Privkey} =
+        aehttp_integration_SUITE:initialize_account(1000000000 * aec_test_utils:min_gas_price(),
+                                                    {?FUNDED_PUBKEY, ?FUNDED_PRIVKEY}),
+    {_Pubkey2, _Privkey2} =
+        aehttp_integration_SUITE:initialize_account(1000000000 * aec_test_utils:min_gas_price(),
+                                                    {?FUNDED_PUBKEY2, ?FUNDED_PRIVKEY2}),
+
+    ConfigFile = filename:join([code:lib_dir(aehttp), "test", "rosetta", "rosetta.cfg"]),
+    Cmd = "rosetta-cli --result-file ros-res --configuration-file " ++ ConfigFile ++ " check:construction",
+    Pid = spawn(fun() -> mine_many(Node) end),
+    Result = os:cmd(Cmd),
+    ct:log("rosetta-cli result ~s", [Result]),
+    exit(Pid, kill),
+    ?assert(string:str(Result, "Success") > 0).
+
+mine_many(Node) ->
+    timer:sleep(2000),
+    aecore_suite_utils:mine_micro_blocks(Node, 1),
+    aecore_suite_utils:mine_key_blocks(Node, 1),
+    mine_many(Node).
+
 %% ============================================================
 %% Internal
 %% ============================================================
@@ -1001,25 +1133,110 @@ get_balance_at_height_sut(AccountPubKey, Height) ->
     http_request(Host, post, "account/balance", Body).
 
 construction_derive_sut(HexBytes) ->
+    Host = rosetta_offline_address(),
+    Body =
+        #{network_identifier =>
+              #{blockchain => <<"aeternity">>, network => aec_governance:get_network_id()},
+          public_key => #{curve_type => <<"edwards25519">>, hex_bytes => HexBytes}},
+    http_request(Host, post, "construction/derive", Body).
+
+construction_preprocess_sut([From, To]) ->
+    Host = rosetta_offline_address(),
+    Body =
+        #{network_identifier =>
+              #{blockchain => <<"aeternity">>, network => aec_governance:get_network_id()},
+          operations => [From, To]},
+    http_request(Host, post, "construction/preprocess", Body).
+
+construction_metadata_sut(FromPubKeyExt) ->
     Host = rosetta_address(),
     Body =
         #{network_identifier =>
-            #{blockchain => <<"aeternity">>,
-              network => aec_governance:get_network_id()},
-         public_key => #{curve_type => <<"edwards25519">>,
-                         hex_bytes => HexBytes}},
-    http_request(Host, post, "/construction/derive", Body).
+              #{blockchain => <<"aeternity">>, network => aec_governance:get_network_id()},
+          options => #{from => FromPubKeyExt}},
+    http_request(Host, post, "construction/metadata", Body).
+
+construction_payloads_sut(Nonce, Fee, [From, To]) ->
+    Host = rosetta_offline_address(),
+    Body =
+        #{network_identifier =>
+              #{blockchain => <<"aeternity">>, network => aec_governance:get_network_id()},
+          metadata => #{nonce => Nonce, fee => Fee},
+          operations => [From, To]},
+    http_request(Host, post, "construction/payloads", Body).
+
+construction_parse_sut(TxBin, Signed) when is_boolean(Signed) ->
+    Host = rosetta_offline_address(),
+    Body =
+        #{network_identifier =>
+              #{blockchain => <<"aeternity">>, network => aec_governance:get_network_id()},
+          signed => Signed,
+          transaction => TxBin},
+    http_request(Host, post, "construction/parse", Body).
+
+construction_hash_sut(SignedTx) ->
+    Host = rosetta_offline_address(),
+    Body =
+        #{network_identifier =>
+              #{blockchain => <<"aeternity">>, network => aec_governance:get_network_id()},
+        signed_transaction => SignedTx},
+    http_request(Host, post, "construction/hash", Body).
+
+construction_submit_sut(SignedTx) ->
+    Host = rosetta_address(),
+    Body =
+        #{network_identifier =>
+              #{blockchain => <<"aeternity">>, network => aec_governance:get_network_id()},
+        signed_transaction => SignedTx},
+    http_request(Host, post, "construction/submit", Body).
+
+construction_combine_sut(Signature, PubKey, From, UnsignedTx) ->
+    Host = rosetta_offline_address(),
+    Body =
+        #{network_identifier =>
+              #{blockchain => <<"aeternity">>, network => aec_governance:get_network_id()},
+          signatures =>
+              [#{hex_bytes => list_to_binary(aeu_hex:bin_to_hex(Signature)),
+                 public_key =>
+                     #{curve_type => <<"edwards25519">>,
+                       hex_bytes => list_to_binary(aeu_hex:bin_to_hex(PubKey))},
+                 signature_type => <<"ed25519">>,
+                 signing_payload =>
+                     #{account_identifier => #{address => From},
+                       address => From,
+                       hex_bytes => <<>>,
+                       signature_type => <<"ed25519">>}}],
+          unsigned_transaction => UnsignedTx},
+    http_request(Host, post, "construction/combine", Body).
+
+rosetta_ops(From, To, Amount) ->
+    FromOp =
+        #{account => #{address => From},
+          amount =>
+              #{currency => #{decimals => 18, symbol => <<"AE">>},
+                value => integer_to_binary(-Amount)},
+          operation_identifier => #{index => 0},
+          type => <<"Spend.amount">>},
+    ToOp =
+        #{account => #{address => To},
+          amount =>
+              #{currency => #{decimals => 18, symbol => <<"AE">>},
+                value => integer_to_binary(Amount)},
+          operation_identifier => #{index => 1},
+          type => <<"Spend.amount">>},
+    [FromOp, ToOp].
 
 sign_tx(Tx, Privkey) ->
     STx = aec_test_utils:sign_tx(Tx, [Privkey]),
-    aeapi:format(transaction, aetx_sign:serialize_to_binary(STx)).
+    aeapi:format_transaction(
+        aetx_sign:serialize_to_binary(STx)).
 
 post_tx(Tx) ->
     aehttp_integration_SUITE:post_transactions_sut(Tx).
 
 contract_byte_code(ContractName) ->
     {ok, BinCode} = aect_test_utils:compile_contract(ContractName),
-    aeapi:format(contract_bytearray, BinCode).
+    aeapi:format_contract_bytearray(BinCode).
 
 contract_code(ContractName) ->
     {ok, BinSrc} = aect_test_utils:read_contract(ContractName),
@@ -1029,7 +1246,7 @@ encode_call_data(Name, Fun, Args) when is_atom(Name) ->
     encode_call_data(contract_code(Name), Fun, Args);
 encode_call_data(Src, Fun, Args) ->
     {ok, CallData} = aect_test_utils:encode_call_data(Src, Fun, Args),
-    {ok, aeapi:format(contract_bytearray, CallData)}.
+    {ok, aeapi:format_contract_bytearray(CallData)}.
 
 %% NOTES from a real world Tx
 %% Balance of SpendTx to self of 20000 aettos at height.

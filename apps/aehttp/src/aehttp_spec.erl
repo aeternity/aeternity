@@ -38,5 +38,6 @@ set_version(Yaml) ->
 
 filename(?SWAGGER2) -> "swagger.yaml";
 filename(?OAS3) -> "oas3.yaml";
-filename(?ROSETTA) -> "rosetta.yaml".
+filename(?ROSETTA) -> "rosetta.yaml";
+filename(?ROSETTA_OFFLINE) -> "rosetta.yaml".
 

@@ -30,7 +30,8 @@ get_paths(Target, LogicHandler, Context) ->
                 case SpecVsn of
                     ?OAS3 -> oas_endpoints;
                     ?SWAGGER2 -> endpoints;
-                    ?ROSETTA -> rosetta_endpoints
+                    ?ROSETTA -> rosetta_endpoints;
+                    ?ROSETTA_OFFLINE -> rosetta_endpoints
                 end,
             [{path(Path), aehttp_api_handler,
                 {SpecVsn, OperationId, method(Method), LogicHandler, Context}}
@@ -40,6 +41,7 @@ get_paths(Target, LogicHandler, Context) ->
         end,
     Paths = case Target of
                 rosetta -> PathsFun(?ROSETTA);
+                rosetta_offline -> PathsFun(?ROSETTA_OFFLINE);
                 _ -> PathsFun(?SWAGGER2) ++ PathsFun(?OAS3)
             end,
     %% Dirty hack to make sure /tx is not matched before /tx/{hash} is evaluated:
@@ -55,6 +57,8 @@ method(Method) ->
     list_to_binary(string:uppercase(Method)).
 
 is_enabled(rosetta, Tags, EnabledGroups) ->
+    lists:any(fun(Tag) -> lists:member(Tag, EnabledGroups) end, Tags);
+is_enabled(rosetta_offline, Tags, EnabledGroups) ->
     lists:any(fun(Tag) -> lists:member(Tag, EnabledGroups) end, Tags);
 is_enabled(Target, Tags, EnabledGroups) when is_atom(Target) ->
     TargetBin = atom_to_binary(Target, utf8),

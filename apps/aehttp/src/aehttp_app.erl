@@ -14,6 +14,8 @@
 -define(DEFAULT_SWAGGER_INTERNAL_LISTEN_ADDRESS, <<"127.0.0.1">>).
 -define(DEFAULT_ROSETTA_PORT, 8243).
 -define(DEFAULT_ROSETTA_LISTEN_ADDRESS, <<"127.0.0.1">>).
+-define(DEFAULT_ROSETTA_OFFLINE_PORT, 8343).
+-define(DEFAULT_ROSETTA_OFFLINE_LISTEN_ADDRESS, <<"127.0.0.1">>).
 
 -define(DEFAULT_HTTP_ACCEPTORS, 10).
 
@@ -48,6 +50,7 @@ stop(_State) ->
     _ = cowboy:stop_listener(internal),
     _ = cowboy:stop_listener(external),
     _ = cowboy:stop_listener(rosetta),
+    _ = cowboy:stop_listener(rosetta_offline),
     _ = cowboy:stop_listener(channels_socket),
     ok.
 
@@ -114,7 +117,8 @@ check_env() ->
 start_http_api() ->
     ok = start_http_api(external, aehttp_dispatch_ext),
     ok = start_http_api(internal, aehttp_dispatch_int),
-    ok = start_http_api(rosetta, aehttp_dispatch_rosetta).
+    ok = start_http_api(rosetta, aehttp_dispatch_rosetta),
+    ok = start_http_api(rosetta_offline, aehttp_dispatch_rosetta).
 
 start_http_api(Target, LogicHandler) ->
     PoolSize = get_http_api_acceptors(Target),
@@ -125,6 +129,8 @@ start_http_api(Target, LogicHandler) ->
     case Target of
         rosetta ->
             _ = aehttp_api_validate:validator(?ROSETTA);
+        rosetta_offline ->
+            _ = aehttp_api_validate:validator(?ROSETTA_OFFLINE);
         _ ->
             _ = aehttp_api_validate:validator(?SWAGGER2),
             _ = aehttp_api_validate:validator(?OAS3)
@@ -176,7 +182,10 @@ get_http_api_acceptors(internal) ->
                                aehttp, [internal, acceptors], ?DEFAULT_HTTP_ACCEPTORS);
 get_http_api_acceptors(rosetta) ->
     aeu_env:config_value([<<"http">>, <<"rosetta">>, <<"acceptors">>],
-                               aehttp, [rosetta, acceptors], ?DEFAULT_HTTP_ACCEPTORS).
+                               aehttp, [rosetta, acceptors], ?DEFAULT_HTTP_ACCEPTORS);
+get_http_api_acceptors(rosetta_offline) ->
+    aeu_env:config_value([<<"http">>, <<"rosetta_offline">>, <<"acceptors">>],
+                                aehttp, [rosetta_offline, acceptors], ?DEFAULT_HTTP_ACCEPTORS).
 
 get_http_api_port(external) ->
     aeu_env:config_value([<<"http">>, <<"external">>, <<"port">>],
@@ -186,7 +195,10 @@ get_http_api_port(internal) ->
                          aehttp, [internal, port], ?DEFAULT_SWAGGER_INTERNAL_PORT);
 get_http_api_port(rosetta) ->
     aeu_env:config_value([<<"http">>, <<"rosetta">>, <<"port">>],
-                         aehttp, [rosetta, port], ?DEFAULT_ROSETTA_PORT).
+                         aehttp, [rosetta, port], ?DEFAULT_ROSETTA_PORT);
+get_http_api_port(rosetta_offline) ->
+    aeu_env:config_value([<<"http">>, <<"rosetta_offline">>, <<"port">>],
+                            aehttp, [rosetta_offline, port], ?DEFAULT_ROSETTA_OFFLINE_PORT).
 
 get_http_api_listen_address(external) ->
     get_and_parse_ip_address_from_config_or_env([<<"http">>, <<"external">>, <<"listen_address">>],
@@ -196,7 +208,10 @@ get_http_api_listen_address(internal) ->
                                                 aehttp, [http, websocket, listen_address], ?DEFAULT_SWAGGER_INTERNAL_LISTEN_ADDRESS);
 get_http_api_listen_address(rosetta) ->
     get_and_parse_ip_address_from_config_or_env([<<"http">>, <<"rosetta">>, <<"listen_address">>],
-                                                aehttp, [http, websocket, listen_address], ?DEFAULT_ROSETTA_LISTEN_ADDRESS).
+                                                aehttp, [http, websocket, listen_address], ?DEFAULT_ROSETTA_LISTEN_ADDRESS);
+get_http_api_listen_address(rosetta_offline) ->
+    get_and_parse_ip_address_from_config_or_env([<<"http">>, <<"rosetta_offline">>, <<"listen_address">>],
+                                                aehttp, [http, websocket, listen_address], ?DEFAULT_ROSETTA_OFFLINE_LISTEN_ADDRESS).
 
 get_channel_websockets_listen_address() ->
     get_and_parse_ip_address_from_config_or_env(

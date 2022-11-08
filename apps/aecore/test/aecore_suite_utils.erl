@@ -94,7 +94,8 @@
          process_http_return/1,
          internal_address/0,
          external_address/0,
-         rosetta_address/0
+         rosetta_address/0,
+         rosetta_offline_address/0
         ]).
 
 -export([generate_key_pair/0]).
@@ -499,7 +500,8 @@ create_config(Node, CTConfig, CustomConfig, Options) ->
         #{ <<"sync">> => #{ <<"port">> => sync_port(Node)},
            <<"http">> => #{ <<"external">> => #{<<"port">> => external_api_port(Node)},
                             <<"internal">> => #{<<"port">> => internal_api_port(Node)},
-                            <<"rosetta">> => #{<<"port">> => rosetta_api_port(Node)}},
+                            <<"rosetta">> => #{<<"port">> => rosetta_api_port(Node)},
+                            <<"rosetta_offline">> => #{<<"port">> => rosetta_offline_api_port(Node)}},
            <<"websocket">> => #{<<"channel">> => #{<<"port">> => ws_port(Node)}}},
     MergedCfg5 = maps_merge(MergedCfg4, Ports),
 
@@ -1508,6 +1510,10 @@ rosetta_api_port(Node) ->
     {NodeGroup, Idx} = split_node_name(Node),
     port_group(NodeGroup) + Idx * 10 + 203. %% dev1: 3213
 
+rosetta_offline_api_port(Node) ->
+    {NodeGroup, Idx} = split_node_name(Node),
+    port_group(NodeGroup) + Idx * 10 + 303. %% dev1: 3313
+
 ws_port(Node) ->
     {NodeGroup, Idx} = split_node_name(Node),
     port_group(NodeGroup) + Idx * 10 + 4. %% dev1: 3014
@@ -1816,6 +1822,12 @@ rosetta_address() ->
     Port = rpc(aeu_env, user_config_or_env,
               [ [<<"http">>, <<"rosetta">>, <<"port">>],
                 aehttp, [rosetta, port], 8243]),
+    "http://127.0.0.1:" ++ integer_to_list(Port).
+
+rosetta_offline_address() ->
+    Port = rpc(aeu_env, user_config_or_env,
+              [ [<<"http">>, <<"rosetta_offline">>, <<"port">>],
+                aehttp, [rosetta_offline, port], 8343]),
     "http://127.0.0.1:" ++ integer_to_list(Port).
 
 rpc(Mod, Fun, Args) ->
