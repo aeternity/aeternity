@@ -15,7 +15,8 @@
          spend_txs/1,
          simple_withdraw/1,
          change_leaders/1,
-         verify_fees/1
+         verify_fees/1,
+         verify_commitments/1
         ]).
 
 -include_lib("stdlib/include/assert.hrl").
@@ -86,7 +87,7 @@ all() -> [{group, pos},
 
 groups() ->
     [{pos, [sequence], common_tests()},
-     {hc, [sequence], common_tests()}
+     {hc, [sequence], common_tests() ++ hc_specific_tests()}
     ].
 
 common_tests() ->
@@ -95,6 +96,10 @@ common_tests() ->
     , spend_txs
     , simple_withdraw
     , change_leaders
+    ].
+
+hc_specific_tests() ->
+    [ verify_commitments
     ].
 
 suite() -> [].
@@ -504,6 +509,93 @@ verify_fees(Config) ->
     Test(), %% fees
     ct:log("Test with no transaction", []),
     Test(), %% after fees
+    ok.
+
+verify_commitments(Config) ->
+    %% start without any tx fees, only a keyblock
+    MineOrWait =
+        fun(Node, NodeName, NodeType, BlocksCnt) when NodeType =:= child;
+                                                NodeType =:= parent ->
+            case ?config(consensus, Config) of
+                ?CONSENSUS_POS when NodeType =:= parent->
+                    {ok, _} = aecore_suite_utils:mine_key_blocks(NodeName, BlocksCnt);
+                _ ->
+                    TopHeight = rpc(Node, aec_chain, top_height, []),
+                    ok = aecore_suite_utils:wait_for_height(NodeName, TopHeight + BlocksCnt, 50000) %% 50s per block
+            end
+        end,
+    MineOrWait(?NODE1, ?NODE1_NAME, child, ?REWARD_DELAY + 1),
+    %% gather staking_powers before reward distribution
+    AliceBalance0 = account_balance(pubkey(?ALICE)),
+    BobBalance0 = account_balance(pubkey(?BOB)),
+    MineOrWait(?NODE1, ?NODE1_NAME, child, 1),
+    TopHeader = rpc(?NODE1, aec_chain, top_header, []),
+    {ok, TopHash} = aec_headers:hash_header(TopHeader),
+    PrevHash = aec_headers:prev_hash(TopHeader),
+    {ok, AliceContractSPower0} = inspect_staking_contract(?ALICE,
+                                                            {staking_power,
+                                                            ?ALICE},
+                                                            Config,
+                                                            PrevHash),
+    {ok, BobContractSPower0} = inspect_staking_contract(?ALICE,
+                                                        {staking_power,
+                                                            ?BOB},
+                                                        Config,
+                                                        PrevHash),
+    %% gather staking_powers after reward distribution
+    AliceBalance1= account_balance(pubkey(?ALICE)),
+    BobBalance1 = account_balance(pubkey(?BOB)),
+    {ok, AliceContractSPower1} = inspect_staking_contract(?ALICE,
+                                                            {staking_power,
+                                                            ?ALICE},
+                                                            Config,
+                                                            TopHash),
+    {ok, BobContractSPower1} = inspect_staking_contract(?ALICE,
+                                                        {staking_power,
+                                                            ?BOB},
+                                                        Config,
+                                                        TopHash),
+    %% inspect who shall receive what reward
+    RewardForHeight = aec_headers:height(TopHeader) - ?REWARD_DELAY,
+    {ok, PrevH} = rpc(?NODE1, aec_chain, get_key_header_by_height, [RewardForHeight - 1]),
+    {ok, RewardH} = rpc(?NODE1, aec_chain, get_key_header_by_height, [RewardForHeight]),
+    Beneficiary1 = aec_headers:beneficiary(PrevH),
+    Beneficiary1Name = name(who_by_pubkey(Beneficiary1)),
+    Beneficiary2 = aec_headers:beneficiary(RewardH),
+    Beneficiary2Name = name(who_by_pubkey(Beneficiary2)),
+    ct:log("Beneficiary1: ~p, Beneficiary2: ~p", [Beneficiary1Name,
+                                                    Beneficiary2Name]),
+    %% assert account staking_powers do not change; only contract staking_powers change
+    {AliceBalance0, AliceBalance0} = {AliceBalance0, AliceBalance1},
+    {BobBalance0, BobBalance0} = {BobBalance0, BobBalance1},
+    %% calc rewards
+    {{AdjustedReward1, AdjustedReward2}, _DevRewards} =
+        calc_rewards(RewardForHeight),
+    {AliceExpectedRewards, BobExpectedRewards} =
+        lists:foldl(
+            fun({Pubkey, Amount}, {AliceRewards0, BobRewards0}) ->
+                    case who_by_pubkey(Pubkey) of
+                        ?ALICE ->
+                            {AliceRewards0 + Amount, BobRewards0};
+                        ?BOB ->
+                            {AliceRewards0, BobRewards0 + Amount};
+                        genesis ->
+                            {AliceRewards0, BobRewards0}
+                    end
+            end,
+            {0, 0},
+            [{Beneficiary1, AdjustedReward1},
+            {Beneficiary2, AdjustedReward2}]),
+    AliceReward = AliceContractSPower1 - AliceContractSPower0,
+    ct:log("Alice expected rewards: ~p, actual rewards: ~p",
+            [AliceExpectedRewards, AliceReward]),
+    {AliceExpectedReward, AliceExpectedReward} =
+        {AliceExpectedRewards, AliceReward},
+    BobReward = BobContractSPower1 - BobContractSPower0,
+    ct:log("Bob expected rewards: ~p, actual rewards: ~p",
+            [BobExpectedRewards, BobReward]),
+    {BobExpectedReward, BobExpectedReward} =
+        {BobExpectedRewards, BobReward},
     ok.
 
 pubkey({Pubkey, _, _}) -> Pubkey.
@@ -956,4 +1048,42 @@ wait_for_blocks_pos(Node, BlocksCnt) ->
     ok = aecore_suite_utils:wait_for_height(NodeName, TopHeight + BlocksCnt, 50000),%% 50s per block
     Top = rpc(Node, aec_chain, top_block, []),
     {ok, Top}.
+
+produce_blocks(Node, NodeName, parent = _NodeType, BlocksCnt, _Consensus) ->
+    {ok, _} = aecore_suite_utils:mine_key_blocks(NodeName, BlocksCnt);
+produce_blocks(Node, NodeName, child = _NodeType, BlocksCnt, ?CONSENSUS_POS) ->
+    {ok, _} = aecore_suite_utils:mine_key_blocks(NodeName, BlocksCnt);
+produce_blocks(Node, NodeName, child = _NodeType, BlocksCnt, ?CONSENSUS_HC) ->
+    TopHeight0 = rpc(Node, aec_chain, top_height, []),
+    produce_blocks_hc(Node, NodeName, BlocksCnt),
+    TopHeight = rpc(Node, aec_chain, top_height, []),
+    ReversedBlocks =
+        lists:foldl(
+            fun(Height, Accum) ->
+                case rpc(Node, aec_chain, get_generation_by_height, [Height, forward]) of
+                    {ok, #{key_block := KB, micro_blocks := MBs}} ->
+                        ReversedGeneration = lists:reverse(MBs) ++ [KB],
+                        ReversedGeneration ++ Accum;
+                    error -> error({failed_to_fetch_generation, Height})
+                end
+            end,
+            [],
+            lists:seq(TopHeight0, TopHeight)),
+    {ok, lists:reverse(ReversedBlocks)}.
+
+
+produce_blocks_hc(Node, NodeName, BlocksCnt) when BlocksCnt < 1 ->
+    ok;
+produce_blocks_hc(Node, NodeName, BlocksCnt) ->
+    ParentNode = ?PARENT_CHAIN_NODE1,
+    ParentNodeName = ?PARENT_CHAIN_NODE1_NAME,
+    %% make sure the parent chain is not mining
+    stopped = rpc:call(ParentNodeName, aec_conductor, get_mining_state, []),
+    %% initial child chain state
+    TopHeight = rpc(Node, aec_chain, top_height, []),
+    %% mine a single block on the parent chain
+    {ok, _} = aecore_suite_utils:mine_key_blocks(ParentNodeName, 1),
+    %% wait for the child to catch up
+    ok = aecore_suite_utils:wait_for_height(NodeName, TopHeight + 1, 5000), %% 5s per block
+    produce_blocks_hc(Node, NodeName, BlocksCnt - 1).
 
