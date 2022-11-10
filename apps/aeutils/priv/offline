@@ -18,16 +18,16 @@ spec() -> #{ commands => cmds()
                           ] }.
 
 cmds() ->
-    #{ "on" => #{ help => "Enable maintenance mode" }
-     , "off" => #{ help => "Disable maintenance mode" }
-     , "status" => #{ help => "Check maintenance mode status. Returns on | off" } }.
+    #{ "on" => #{ help => "Enable offline mode" }
+     , "off" => #{ help => "Disable offline mode" }
+     , "status" => #{ help => "Check offline mode status. Returns on | off" } }.
 
 main(Args) ->
-    Opts = aeu_ext_scripts:parse_opts(Args, spec(), #{progname => maintenance}),
+    Opts = aeu_ext_scripts:parse_opts(Args, spec(), #{progname => offline}),
     {ok, Node} = aeu_ext_scripts:connect_node(Opts),
     case Opts of
         #{cmd_spec := {["on"], _}, opts := #{'timeout' := Timeout}} ->
-            set_mode(maintenance, Node, Timeout);
+            set_mode(offline, Node, Timeout);
         #{cmd_spec := {["off"], _}, opts := #{'timeout' := Timeout}} ->
             set_mode(normal, Node, Timeout);
         #{cmd_spec := {["status"], _}} ->
@@ -47,8 +47,8 @@ set_mode(Mode, Node, Timeout) ->
 get_mode(Node) ->
     Res = rpc:call(Node, app_ctrl, get_mode, []),
     Output = case Res of
-                 maintenance -> on
-                 _ -> off;
+                 offline -> on
+                 _ -> off
              end,
     io:fwrite("~p~n", [Output]),
     erlang:halt(0).
