@@ -1850,6 +1850,10 @@ get_channel_by_pubkey(_Config) ->
      } = aesc_fsm_SUITE:create_channel_on_port(9311),
     ChannelId = aeser_api_encoder:encode(channel, ChannelId0),
 
+    {ok, 200, #{
+        <<"count">> := _Count
+     }} = get_channels_fsm_count_sut(),   %% verify that the endpoint works
+
     NoDelegates = no_delegates(),
     {ok, 200, #{
         <<"id">> := ChannelId,
@@ -1868,6 +1872,10 @@ get_channel_by_pubkey_sut(PubKey) ->
     Host = external_address(),
     PubKey1 = binary_to_list(PubKey),
     http_request(Host, get, "channels/" ++ aeu_uri:encode(PubKey1), []).
+
+get_channels_fsm_count_sut() ->
+    Host = internal_address(),
+    http_request(Host, get, "debug/channels/fsm-count", []).
 
 %% /peers/*
 

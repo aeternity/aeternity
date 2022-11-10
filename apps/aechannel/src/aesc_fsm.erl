@@ -88,6 +88,11 @@
         , channel_unlocked/2
         ]). %% (Fsm, Info)
 
+%% Used by GetStatus API
+-export([ init_active_fsm_counter/0
+        , unreg_active_fsm_counter/0 ]).
+-export([ count_active_fsms/0 ]).
+
 %% gen_statem callbacks
 -export([ init/1
         , callback_mode/0
@@ -4301,6 +4306,7 @@ cur_channel_id(#data{on_chain_id = undefined, channel_id = ChId}) -> ChId;
 cur_channel_id(#data{on_chain_id = ChId}) -> ChId.
 
 gproc_register(#data{role = Role, channel_id = ChanId} = D) ->
+    gproc:reg({c,l,?MODULE}, 1),
     gproc_register_(ChanId, Role, D).
 
 gproc_register_on_chain_id(#data{role = Role, on_chain_id = Id} = D)
@@ -4333,6 +4339,19 @@ gproc_name_by_role(Id, Role) ->
 
 gproc_name_by_pubkey(Id, Pubkey) ->
     {n, l, {aesc_channel, {Id, key, Pubkey}}}.
+
+init_active_fsm_counter() ->
+    gproc:reg_shared({a,l,?MODULE}).
+
+unreg_active_fsm_counter() ->
+    gproc:unreg_shared({a,l,?MODULE}).
+
+count_active_fsms() ->
+    try gproc:get_value_shared({a,l,?MODULE})
+    catch
+        error:badarg ->
+            0
+    end.
 
 evt(_Msg) ->
     ok.
