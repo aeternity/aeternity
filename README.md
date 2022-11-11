@@ -16,7 +16,7 @@ Written in Erlang.
 
 To install and run the Aeternity node, see the instructions [below](#how-to-start) or just follow the progress of the project via GitHub Issues.
 
-If you have discovered a bug or security vulnerability please get in touch. The Aeternity Crypto Foundation pays bug-bounties up to 100.000 AE Tokens for critical vulnerabilities. Please get in touch via [security@aeternity-foundation.org](mailto:security@aeternity-foundation.org).
+If you have discovered a bug or security vulnerability please get in touch. The Aeternity Crypto Foundation pays bug bounties up to 100.000 AE Tokens for critical vulnerabilities. Please get in touch via [security@aeternity-foundation.org](mailto:security@aeternity-foundation.org).
 
 [pivotal]: https://www.pivotaltracker.com/n/projects/2124891
 [hackerone]: https://hackerone.com/aeternity
@@ -79,11 +79,11 @@ docker run -p 3013:3013 -p 3015:3015 -v %APPDATA%/aeternity/maindb:/home/aeterni
 
 #### Restore from snapshot
 
-To speedup the initial blockchain synchronization the node database can be restored from a snapshot following the below steps:
+To speed up the initial blockchain synchronization the node database can be restored from a snapshot following the below steps:
 
 * delete the contents of the database if the node has been started already
 * download the database snapshot
-* verify if the snapshot checksum match the downloaded file
+* verify if the snapshot checksum matches the downloaded file
 * unarchive the database snapshot
 
 **Note that the docker container must be stopped before replacing the database**
