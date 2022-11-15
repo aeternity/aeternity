@@ -179,7 +179,7 @@ jobs:
       context: ae-slack
       requires:
         - linux-release-tarball
-        - deploy-uat-blue
+        # - deploy-uat-blue
       filters:
         branches:
           ignore: /.*/
@@ -207,7 +207,7 @@ jobs:
         - ae-vault-node
       requires:
         - linux-release-tarball
-        - deploy-uat-blue
+        # - deploy-uat-blue
         - hodl_green
       filters:
         branches:
