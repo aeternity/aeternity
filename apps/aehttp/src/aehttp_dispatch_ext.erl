@@ -508,7 +508,6 @@ handle_request_('PostTransaction', #{<<"tx">> := Tx}, _Context) ->
                             {400, [], #{reason => <<"Invalid tx">>}}
                     end;
                 {error, broken_tx} ->
-                    lager:debug("ASDF BROKEN TRANSACTION", []),
                     {400, [], #{reason => <<"Invalid tx">>}}
             end;
         {error, _} ->

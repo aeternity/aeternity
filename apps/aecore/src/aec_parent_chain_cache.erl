@@ -164,6 +164,7 @@ handle_info({gproc_ps_event, top_changed, #{info := #{block_type := key,
         end,
     TargetHeight = target_parent_height(State),
     aec_parent_connector:request_block_by_height(TargetHeight),
+    lager:info("ASDF MAYBE POST COMMITMENT (child height ~p)", [Height]),
     %% TODO: post a commitment
     maybe_post_commitments(Hash, State),
     {noreply, State};
@@ -324,11 +325,13 @@ maybe_post_commitments(TopHash, #state{sign_module = SignModule} = _State) ->
     Commitment = aeser_api_encoder:encode(key_block_hash, TopHash),
     lists:foreach(
         fun(Staker) ->
-            lager:info("Staker ~p", [Staker]),
             case aec_parent_connector:post_commitment(Staker, Commitment) of
-                ok -> ok;
+                ok ->
+                    lager:debug("Posted commitment for staker ~p", [Staker]),
+                    ok;
                 {error, _Err} ->
                     %% TODO: maybe repost?
+                    lager:debug("Did NOT post commitment for staker ~p because of ~p", [Staker, _Err]),
                     pass
             end,
             ok

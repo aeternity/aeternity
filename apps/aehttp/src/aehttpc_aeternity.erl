@@ -130,6 +130,7 @@ post_commitment_tx(Host, Port, SenderPubkey, ReceiverPubkey, Amount, Fee,
     %% one
     NoncePath = <<"/v3/accounts/", SenderEnc/binary, "/next-nonce">>,
     {ok, #{<<"next_nonce">> := Nonce}} = get_request(NoncePath, Host, Port, 5000),
+    lager:debug("ASDF: next nonce ~p", [Nonce]),
     %% 2. Create a SpendTx containing the commitment in its payload
     TxArgs =
         #{sender_id    => aeser_id:create(account, SenderPubkey),
@@ -194,12 +195,12 @@ post_request(Path, Body, Host, Port, Timeout) ->
     Req = {UrlPath, [], "application/json", jsx:encode(Body)},
     HTTPOpt = [{timeout, Timeout}],
     Opt = [],
-    lager:debug("Req: ~p, with URL: ~ts", [Req, Url]),
     case httpc:request(post, Req, HTTPOpt, Opt) of
         {ok, {{_, 200 = _Code, _}, _, Res}} ->
             lager:debug("Req: ~p, Res: ~p with URL: ~ts", [Req, Res, Url]),
             {ok, jsx:decode(list_to_binary(Res), [return_maps])};
         {ok, {{_, 400, _}, _, Res}} ->
+            lager:debug("Req: ~p, Res: ~p with URL: ~ts", [Req, Res, Url]),
             {error, 400, jsx:decode(list_to_binary(Res), [return_maps])}
     end
   catch E:R:S ->
