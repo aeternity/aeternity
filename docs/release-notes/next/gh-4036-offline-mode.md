@@ -1,4 +1,4 @@
-* A new runtime mode has been added: 'offline', which disables mining and sync, but leaves HTTP endpoints active. Controlled via the command `bin/aeternity offline [on | off | statsus]` (GH #4036)
+* A new runtime mode has been added: 'offline', which disables mining and sync, but leaves HTTP endpoints active. Controlled via the command `bin/aeternity offline [on | off | status]` (GH #4036)
 
 * The method `debug/channels/fsm-count` has been added as a debug HTTP endpoint (GH #4029)
 
