@@ -179,11 +179,7 @@ init_per_group_custom(NetworkId, Consensus, Config) ->
         ?CONSENSUS_POS -> pass;
         ?CONSENSUS_HC ->
             produce_blocks(?PARENT_CHAIN_NODE1, ?PARENT_CHAIN_NODE1_NAME,
-                           parent, ?CHILD_START_HEIGHT + ?CHILD_CONFIRMATIONS - 2, ?config(consensus, Config)),
-%%            seed_account_pow(?PARENT_CHAIN_NODE1, ?PARENT_CHAIN_NODE1_NAME,
-%%                         pubkey(?ALICE), 1000000000000 * ?DEFAULT_GAS_PRICE, ?PARENT_CHAIN_NETWORK_ID),
-%%            seed_account_pow(?PARENT_CHAIN_NODE1, ?PARENT_CHAIN_NODE1_NAME,
-%%                         pubkey(?BOB), 1000000000000 * ?DEFAULT_GAS_PRICE, ?PARENT_CHAIN_NETWORK_ID)
+                           parent, ?CHILD_START_HEIGHT + ?CHILD_CONFIRMATIONS + 1, ?config(consensus, Config)),
             ok
     end,
 
@@ -504,65 +500,77 @@ verify_fees(Config) ->
     ok.
 
 verify_commitments(Config) ->
-    produce_blocks(?PARENT_CHAIN_NODE1, ?PARENT_CHAIN_NODE1_NAME,
-                           parent, 10, ?config(consensus, Config)),
-    TopHeight0 = rpc(?NODE1, aec_chain, top_height, []),
-    produce_blocks(?NODE1, ?NODE1_NAME, child, 1, ?config(consensus, Config)),
-    TopHeight = rpc(?NODE1, aec_chain, top_height, []),
-%%    {true, TopHeight0, TopHeight} = {TopHeight0 =:= TopHeight - 1, TopHeight0, TopHeight},
-    ParentTopHeight = rpc(?PARENT_CHAIN_NODE1, aec_chain, top_height, []),
-    {ok, Blocks} = get_generations(?PARENT_CHAIN_NODE1, 1, ParentTopHeight),
-    MicroBlocks =
-        lists:filter(
-           fun(B) -> aec_blocks:type(B) =:= micro end,
-           Blocks),
-    Commitments =
-        lists:flatten(lists:map(
-            fun(MB) ->
-                MBHeight = aec_blocks:height(MB),
-                Txs = aec_blocks:txs(MB),
-                lists:map(
-                    fun(SignedTx) ->
-                        Tx = aetx_sign:tx(SignedTx),
-                        Spender = name(who_by_pubkey(aetx:origin(Tx))),
-                        Nonce = aetx:nonce(Tx),
-                        {spend_tx, SpendTx} = aetx:specialize_type(Tx),
-                        Payload = aec_spend_tx:payload(SpendTx),
-                        {MBHeight, Spender, Nonce, Payload}
+    Test =
+        fun(GenerationsCnt) ->
+            ParentTopHeight0 = rpc(?PARENT_CHAIN_NODE1, aec_chain, top_height, []),
+            TopHeight0 = rpc(?NODE1, aec_chain, top_height, []),
+            ct:log("Start height: ~p, parent height ~p", [TopHeight0, ParentTopHeight0]),
+            produce_blocks(?NODE1, ?NODE1_NAME, child, GenerationsCnt, ?config(consensus, Config)),
+            TopHeight = rpc(?NODE1, aec_chain, top_height, []),
+            {true, TopHeight0, TopHeight} = {TopHeight0 =:= TopHeight - GenerationsCnt, TopHeight0, TopHeight},
+            ParentTopHeight = rpc(?PARENT_CHAIN_NODE1, aec_chain, top_height, []),
+            ct:log("End height: ~p, parent height ~p", [TopHeight, ParentTopHeight]),
+            {ok, Blocks} = get_generations(?PARENT_CHAIN_NODE1, ParentTopHeight0 + 1, ParentTopHeight),
+            MicroBlocks =
+                lists:filter(
+                fun(B) -> aec_blocks:type(B) =:= micro end,
+                Blocks),
+            Commitments =
+                lists:flatten(lists:map(
+                    fun(MB) ->
+                        MBHeight = aec_blocks:height(MB),
+                        Txs = aec_blocks:txs(MB),
+                        lists:map(
+                            fun(SignedTx) ->
+                                Tx = aetx_sign:tx(SignedTx),
+                                Spender = name(who_by_pubkey(aetx:origin(Tx))),
+                                Nonce = aetx:nonce(Tx),
+                                {spend_tx, SpendTx} = aetx:specialize_type(Tx),
+                                Payload = aec_spend_tx:payload(SpendTx),
+                                {MBHeight, Spender, Nonce, Payload}
+                            end,
+                            Txs)
                     end,
-                    Txs)
-            end,
-            MicroBlocks)),
-    Filter =
-        fun(Name) ->
-            lists:filter(
-                fun({_MBHeight, Spender, _Nonce, _Payload}) -> Spender =:= Name end,
-                Commitments)
+                    MicroBlocks)),
+            Filter =
+                fun(Name) ->
+                    lists:filter(
+                        fun({_MBHeight, Spender, _Nonce, _Payload}) -> Spender =:= Name end,
+                        Commitments)
+                end,
+            AliceCommitments = Filter(name(?ALICE)),
+            ct:log("Alice commitments: ~p", [AliceCommitments]),
+            BobCommitments = Filter(name(?BOB)),
+            ct:log("Bob commitments: ~p", [BobCommitments]),
+            {GenerationsCnt, GenerationsCnt} = {GenerationsCnt, length(AliceCommitments)},
+            {GenerationsCnt, GenerationsCnt} = {GenerationsCnt, length(BobCommitments)},
+            AssertOrder =
+                fun(Comms) ->
+                    ParsedComms =
+                        lists:map(
+                            fun({MBHeight, _Spender, Nonce, Payload}) ->
+                                {ok, Hash} = aeser_api_encoder:safe_decode(key_block_hash,
+                                                                        Payload),
+                                {ok, Block} = rpc(?NODE1, aec_chain, get_block, [Hash]),
+                                {MBHeight, Nonce, aec_blocks:height(Block)}
+                            end,
+                        Comms),
+                    ct:log("Commitments: ~p", [ParsedComms]),
+                    lists:map(
+                        fun({ParentHeight, N, H}) ->
+                            {N, N} = {N, H},
+                            ExpectedParentHeight = N + ?CHILD_START_HEIGHT + ?CHILD_CONFIRMATIONS + 1,
+                            {ParentHeight, ParentHeight} = {ParentHeight, ExpectedParentHeight}
+                        end,
+                        ParsedComms)
+                end,
+            AssertOrder(AliceCommitments),
+            AssertOrder(BobCommitments),
+            ok
         end,
-    AliceCommitments = Filter(name(?ALICE)),
-    ct:log("Alice commitments: ~p", [AliceCommitments]),
-    BobCommitments = Filter(name(?BOB)),
-    ct:log("Bob commitments: ~p", [BobCommitments]),
-    true = length(AliceCommitments) > 0,
-    true = length(BobCommitments) > 0,
-    AssertOrder =
-        fun(Comms) ->
-            ParsedComms =
-                lists:map(
-                    fun({_MBHeight, _Spender, Nonce, Payload}) ->
-                        {ok, Hash} = aeser_api_encoder:safe_decode(key_block_hash,
-                                                                Payload),
-                        {ok, Block} = rpc(?NODE1, aec_chain, get_block, [Hash]),
-                        {Nonce, aec_blocks:height(Block)}
-                    end,
-                Comms),
-            ct:log("Commitments: ~p", [ParsedComms]),
-            lists:map(
-                fun({N, H}) -> {N, N} = {N, H} end,
-                ParsedComms)
-        end,
-    AssertOrder(AliceCommitments),
-    AssertOrder(BobCommitments),
+    Test(1),
+    Test(5),
+    Test(10),
     ok.
 
 pubkey({Pubkey, _, _}) -> Pubkey.
@@ -1031,6 +1039,8 @@ produce_blocks_hc(Node, NodeName, BlocksCnt) ->
     %% initial child chain state
     TopHeight = rpc(Node, aec_chain, top_height, []),
     %% mine a single block on the parent chain
+    {ok, _} = aecore_suite_utils:mine_key_blocks(ParentNodeName, 1),
+    timer:sleep(100),
     {ok, _} = aecore_suite_utils:mine_micro_blocks(ParentNodeName, 1),
     %% wait for the child to catch up
     ok = aecore_suite_utils:wait_for_height(NodeName, TopHeight + 1, 5000), %% 5s per block

@@ -1267,10 +1267,10 @@ handle_key_block_candidate_reply({{ok, _KeyBlockCandidate}, _OldTopHash},
     create_key_block_candidate(State);
 handle_key_block_candidate_reply({{error, key_not_found}, _}, State) ->
     start_block_production_(State#state{keys_ready = false});
-handle_key_block_candidate_reply({{error, Reason}, _}, State)
+handle_key_block_candidate_reply({{error, Reason}, _}, #state{top_height = Height} = State)
         when Reason =:= not_in_cache; 
              Reason =:= not_leader ->
-    epoch_mining:debug("Creation of key block candidate failed: ~p", [Reason]),
+    epoch_mining:debug("Creation of key block candidate (~p) failed: ~p", [Height + 1, Reason]),
     create_key_block_candidate(State);
 handle_key_block_candidate_reply({{error, Reason}, _}, State) ->
     epoch_mining:error("Creation of key block candidate failed: ~p", [Reason]),

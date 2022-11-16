@@ -562,6 +562,7 @@ next_beneficiary() ->
                     {ok, Leader}
             end;
         {error, _Err} ->
+            epoch_mining:debug("ASDF DID NOT FIND  PARENT BLOCK WITH HEIGHT ~p FOR REASON ~p", [PCHeight, _Err]),
             timer:sleep(1000),
             {error, not_in_cache}
     end.
