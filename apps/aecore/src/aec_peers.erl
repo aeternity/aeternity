@@ -167,7 +167,7 @@ opt_call(Req, Else) ->
 try_call(Req, Else) ->
     try gen_server:call(?MODULE, Req)
     catch
-        exit:shutdown ->
+        exit:{shutdown, _} ->
             do_else(Else)
     end.
 
