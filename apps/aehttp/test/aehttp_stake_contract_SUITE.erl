@@ -90,8 +90,7 @@ all() -> [{group, pos},
 
 groups() ->
     [{pos, [sequence], common_tests()},
-%%     {hc, [sequence], common_tests() ++ hc_specific_tests()}
-     {hc, [sequence], hc_specific_tests()}
+     {hc, [sequence], common_tests() ++ hc_specific_tests()}
     ].
 
 common_tests() ->
@@ -169,8 +168,25 @@ init_per_group(Group, Config0) ->
         _ -> Config1
     end.
 
-init_per_group_custom(NetworkId, Consensus, Config) ->
-    ElectionContract = election_contract_by_consensus(Consensus),
+init_per_group_custom(NetworkId, ?CONSENSUS_POS, Config) ->
+    ElectionContract = election_contract_by_consensus(?CONSENSUS_POS),
+    build_json_files(NetworkId, ElectionContract, Config),
+    %% different runs use different network ids
+    Env = [ {"AE__FORK_MANAGEMENT__NETWORK_ID", binary_to_list(NetworkId)}
+          ],
+    aecore_suite_utils:create_config(?NODE1, Config,
+                                    node_config([?ALICE, ?BOB], ?CONSENSUS_POS),
+                                    [{add_peers, true} ]),
+    aecore_suite_utils:create_config(?NODE2, Config,
+                                    node_config([], ?CONSENSUS_POS),
+                                    [{add_peers, true} ]),
+    aecore_suite_utils:start_node(?NODE1, Config, Env),
+    aecore_suite_utils:connect(?NODE1_NAME, []),
+    aecore_suite_utils:start_node(?NODE2, Config, Env),
+    aecore_suite_utils:connect(?NODE2_NAME, []),
+    Config1 = [{network_id, NetworkId}, {consensus, ?CONSENSUS_POS} | Config];
+init_per_group_custom(NetworkId, ?CONSENSUS_HC, Config) ->
+    ElectionContract = election_contract_by_consensus(?CONSENSUS_HC),
     build_json_files(NetworkId, ElectionContract, Config),
     %% different runs use different network ids
     Env = [ {"AE__FORK_MANAGEMENT__NETWORK_ID", binary_to_list(NetworkId)}
@@ -178,19 +194,14 @@ init_per_group_custom(NetworkId, Consensus, Config) ->
     aecore_suite_utils:start_node(?PARENT_CHAIN_NODE1, Config),
     aecore_suite_utils:connect(?PARENT_CHAIN_NODE1_NAME, []),
     timer:sleep(1000),
-    case Consensus of
-        ?CONSENSUS_POS -> pass;
-        ?CONSENSUS_HC ->
-            produce_blocks(?PARENT_CHAIN_NODE1, ?PARENT_CHAIN_NODE1_NAME,
-                           parent, ?CHILD_START_HEIGHT, ?config(consensus, Config)),
-            ok
-    end,
+    produce_blocks(?PARENT_CHAIN_NODE1, ?PARENT_CHAIN_NODE1_NAME,
+                    parent, ?CHILD_START_HEIGHT, ?CONSENSUS_HC),
 
     aecore_suite_utils:create_config(?NODE1, Config,
-                                    node_config([?ALICE, ?BOB], Consensus),
+                                    node_config([?ALICE, ?BOB], ?CONSENSUS_HC),
                                     [{add_peers, true} ]),
     aecore_suite_utils:create_config(?NODE2, Config,
-                                    node_config([], Consensus),
+                                    node_config([], ?CONSENSUS_HC),
                                     [{add_peers, true} ]),
     aecore_suite_utils:start_node(?NODE1, Config, Env),
     aecore_suite_utils:connect(?NODE1_NAME, []),
@@ -213,7 +224,7 @@ init_per_group_custom(NetworkId, Consensus, Config) ->
     ct:log("Mining last initial commitment on the parent chain", []),
     wait_for_commitments_in_pool(?PARENT_CHAIN_NODE1, NumberOfCommitments),
     {ok, _} = aecore_suite_utils:mine_micro_blocks(?PARENT_CHAIN_NODE1_NAME, 1),
-    Config1 = [{network_id, NetworkId}, {consensus, Consensus} | Config],
+    Config1 = [{network_id, NetworkId}, {consensus, ?CONSENSUS_HC} | Config],
     {ok, _} = produce_blocks(?NODE1, ?NODE1_NAME, child, 10, ?config(consensus, Config1)),
     ParentTopHeight = rpc(?PARENT_CHAIN_NODE1, aec_chain, top_height, []),
     {ok, ParentBlocks} = get_generations(?PARENT_CHAIN_NODE1, 0, ParentTopHeight),
@@ -224,8 +235,10 @@ init_per_group_custom(NetworkId, Consensus, Config) ->
 
     Config1.
 
-end_per_group(Group, Config) when Group =:= pos;
-                                  Group =:= hc ->
+end_per_group(pos, Config) ->
+    aecore_suite_utils:stop_node(?NODE1, Config),
+    aecore_suite_utils:stop_node(?NODE2, Config);
+end_per_group(hc, Config) -> 
     aecore_suite_utils:stop_node(?NODE1, Config),
     aecore_suite_utils:stop_node(?NODE2, Config),
     aecore_suite_utils:stop_node(?PARENT_CHAIN_NODE1, Config);
