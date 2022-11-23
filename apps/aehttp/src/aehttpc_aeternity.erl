@@ -130,7 +130,6 @@ post_commitment_tx(Host, Port, SenderPubkey, ReceiverPubkey, Amount, Fee,
     %% one
     NoncePath = <<"/v3/accounts/", SenderEnc/binary, "/next-nonce">>,
     {ok, #{<<"next_nonce">> := Nonce}} = get_request(NoncePath, Host, Port, 5000),
-    lager:debug("ASDF: next nonce ~p", [Nonce]),
     %% 2. Create a SpendTx containing the commitment in its payload
     TxArgs =
         #{sender_id    => aeser_id:create(account, SenderPubkey),

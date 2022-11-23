@@ -52,7 +52,8 @@
         max_size                            :: non_neg_integer(),
         blocks          = #{}               :: #{non_neg_integer() => aec_parent_chain_block:block()},
         top_height      = 0                 :: non_neg_integer(),
-        sign_module     = aec_preset_keys   :: atom() %% TODO: make it configurable
+        sign_module     = aec_preset_keys   :: atom(), %% TODO: make it configurable
+        initial_commits_heights = []         :: list()
     }).
 -type state() :: #state{}.
 
@@ -102,12 +103,15 @@ init([StartHeight, Size, Confirmations]) ->
     aec_events:subscribe(top_changed),
     ChildHeight = aec_chain:top_height(),
     true = is_integer(ChildHeight),
+    InitialCommitsHeights = lists:seq(StartHeight, StartHeight + Confirmations - 1),
     self() ! initialize_cache,
-    {ok, #state{child_start_height  = StartHeight,
-                child_top_height    = ChildHeight,
-                pc_confirmations    = Confirmations, 
-                max_size            = Size,
-                blocks              = #{}}}.
+
+    {ok, #state{child_start_height      = StartHeight,
+                child_top_height        = ChildHeight,
+                pc_confirmations        = Confirmations, 
+                max_size                = Size,
+                blocks                  = #{},
+                initial_commits_heights = InitialCommitsHeights}}.
 
 -spec handle_call(any(), any(), state()) -> {reply, any(), state()}.
 handle_call({get_block_by_height, Height}, _From,
@@ -117,6 +121,7 @@ handle_call({get_block_by_height, Height}, _From,
         case get_block(Height, State) of
             {error, _} = Err -> Err;
             {ok, Block} when Height > TopHeight - Confirmations ->
+                lager:info("ASDF asked height ~p, Top height: ~p, confirmations: ~p", [Height, TopHeight, Confirmations]),
                 {error, {not_enough_confirmations, Block}};
             {ok, _Block} = OK -> OK
         end,
@@ -125,13 +130,14 @@ handle_call(get_state, _From, State) ->
     Reply = {ok, state_to_map(State)},
     {reply, Reply, State};
 handle_call(_Request, _From, State) ->
-    Reply = ok,
+    Reply = unhandled,
     {reply, Reply, State}.
 
 -spec handle_cast(any(), state()) -> {noreply, state()}.
 handle_cast({post_block, Block}, #state{} = State0) ->
     State = post_block(Block, State0),
-    {noreply, State};
+    State1 = maybe_post_initial_commitments(Block, State),
+    {noreply, State1};
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
@@ -141,7 +147,9 @@ handle_info(initialize_cache, State) ->
     case aec_parent_connector:fetch_block_by_height(TargetHeight) of
         {ok, B} ->
             aec_parent_connector:request_top(),
-            {noreply, post_block(B, State)};
+            State1 = post_block(B, State),
+            State2 = maybe_post_initial_commitments(B, State1),
+            {noreply, State2};
         {error, not_found} ->
             lager:debug("Waiting for block ~p to be mined on the parent chain", [TargetHeight]),
             timer:send_after(1000, initialize_cache),
@@ -157,17 +165,15 @@ handle_info({gproc_ps_event, top_changed, #{info := #{block_type := key,
             #state{child_top_height = OldHeight,
                    max_size = MaxSize} = State0) ->
     State1 = State0#state{child_top_height = Height},
-    State =
+    State2 =
         case OldHeight + MaxSize < Height of
             true -> State1#state{blocks = #{}}; %% we flush the whole state - this should not happen
             false -> State1
         end,
-    TargetHeight = target_parent_height(State),
+    TargetHeight = target_parent_height(State2),
     aec_parent_connector:request_block_by_height(TargetHeight),
-    lager:info("ASDF MAYBE POST COMMITMENT (child height ~p)", [Height]),
-    %% TODO: post a commitment
-    maybe_post_commitments(Hash, State),
-    {noreply, State};
+    maybe_post_commitments(Hash, State2),
+    {noreply, State2};
 handle_info({gproc_ps_event, top_changed, _}, State) ->
     {noreply, State};
 handle_info(_Info, State) ->
@@ -337,3 +343,32 @@ maybe_post_commitments(TopHash, #state{sign_module = SignModule} = _State) ->
             ok
         end,
         LocalStakers).
+
+
+%% we post commitments when there is a new block on the child chain
+%% the situation is a bit different for commitments right after the
+%% genesis block before the block with height 1: those are not posted as
+%% there is no trigger for the genesis block itself
+%% We detect once there is a block that would trigger one with height 1
+maybe_post_initial_commitments(_Block, #state{child_top_height = ChildTop} = State) when
+      ChildTop > 0 ->
+    State;
+maybe_post_initial_commitments(Block, #state{child_top_height = 0,
+                                             pc_confirmations = Confirmations,
+                                             initial_commits_heights = InitialCommitsHeights} = State) ->
+    Height = aec_parent_chain_block:height(Block),
+    ChildStartHeight = State#state.child_start_height,
+    %% we start one block before the parent chain height that would result in block 1 of the child chain
+    IsFirstCommitment = Height >= ChildStartHeight - 1 andalso
+                        Height < ChildStartHeight + Confirmations,
+    NotPostedYet = lists:member(Height, InitialCommitsHeights),
+    case IsFirstCommitment andalso NotPostedYet of
+        true ->
+            Hash = aec_chain:genesis_hash(), %% TODO: Genesis hash?
+            lager:info("ASDF InitialCommitsHeights ~p", [InitialCommitsHeights]),
+            lager:info("ASDF FIRST COMMITMENT ~p", [Height]),
+            maybe_post_commitments(Hash, State),
+            State#state{initial_commits_heights = lists:delete(Height, InitialCommitsHeights)};
+        false ->
+            State
+    end.

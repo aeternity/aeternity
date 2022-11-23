@@ -188,7 +188,7 @@ state_pre_transform_key_node(Node, Trees) ->
               Header, aec_block_insertion:node_hash(Node),
               aec_block_insertion:node_time(Node), aec_block_insertion:node_prev_hash(Node)),
     Height = aetx_env:height(TxEnv),
-    PCHeight = Height + pc_start_height(),
+    PCHeight = pc_height(Height),
     case aec_parent_chain_cache:get_block_by_height(PCHeight) of
         {error, not_in_cache} ->
             aec_conductor:throw_error(parent_chain_block_not_synced);
@@ -343,7 +343,7 @@ set_key_block_seal(KeyBlock0, Seal) ->
     {TxEnv0, Trees} = aetx_env:tx_env_and_trees_from_top(aetx_transaction),
     Height0 = aetx_env:height(TxEnv0),
     Height = Height0 + 1,
-    PCHeight = Height + pc_start_height(),
+    PCHeight = pc_height(Height),
     {ok, Block} = aec_parent_chain_cache:get_block_by_height(PCHeight),
     Hash = aec_parent_chain_block:hash(Block),
     ParentHash = binary_to_list(Hash),
@@ -365,7 +365,7 @@ set_key_block_seal(KeyBlock0, Seal) ->
 
 nonce_for_sealing(Header) ->
     Height = aec_headers:height(Header),
-    PCHeight = Height + pc_start_height(),
+    PCHeight = pc_height(Height),
     PCHeight.
 
 next_nonce_for_sealing(PCHeight, _) ->
@@ -536,7 +536,10 @@ next_beneficiary() ->
     {TxEnv0, Trees} = aetx_env:tx_env_and_trees_from_top(aetx_transaction),
     Height0 = aetx_env:height(TxEnv0),
     Height = Height0 + 1,
-    PCHeight = Height + pc_start_height(),
+    PCHeight = Height + pc_start_height() - 1, %% child starts pinning from height 1, not genesis
+    lager:debug("ASDF height ~p, parent start height ~p, looking for PC height ~p",
+                [Height0, pc_start_height(), PCHeight]),
+
     case aec_parent_chain_cache:get_block_by_height(PCHeight) of
         {ok, Block} ->
             Hash = aec_parent_chain_block:hash(Block),
@@ -684,3 +687,5 @@ call_contracts([Call | Tail], TxEnv, TreesAccum) ->
 seal_padding_size() ->
     ?KEY_SEAL_SIZE - ?SIGNATURE_SIZE.
 
+pc_height(ChildHeight) ->
+    ChildHeight + pc_start_height() - 1.%% child starts pinning from height 1, not genesis

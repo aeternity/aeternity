@@ -16,7 +16,8 @@
          simple_withdraw/1,
          change_leaders/1,
          verify_fees/1,
-         verify_commitments/1
+         verify_commitments/1,
+         genesis_has_commitments/1
         ]).
 
 -include_lib("stdlib/include/assert.hrl").
@@ -30,7 +31,7 @@
 -define(CONSENSUS_HC, hc).
 -define(CONSENSUS_POS, pos).
 -define(CHILD_START_HEIGHT, 10).
--define(CHILD_CONFIRMATIONS, 2).
+-define(CHILD_CONFIRMATIONS, 7).
 -define(REWARD_DELAY, 2).
 -define(NODE1, dev1).
 -define(NODE1_NAME, aecore_suite_utils:node_name(?NODE1)).
@@ -102,7 +103,9 @@ common_tests() ->
     ].
 
 hc_specific_tests() ->
-    [ verify_commitments
+    [ 
+     verify_commitments,
+     genesis_has_commitments
     ].
 
 suite() -> [].
@@ -179,7 +182,7 @@ init_per_group_custom(NetworkId, Consensus, Config) ->
         ?CONSENSUS_POS -> pass;
         ?CONSENSUS_HC ->
             produce_blocks(?PARENT_CHAIN_NODE1, ?PARENT_CHAIN_NODE1_NAME,
-                           parent, ?CHILD_START_HEIGHT + ?CHILD_CONFIRMATIONS + 1, ?config(consensus, Config)),
+                           parent, ?CHILD_START_HEIGHT, ?config(consensus, Config)),
             ok
     end,
 
@@ -193,8 +196,33 @@ init_per_group_custom(NetworkId, Consensus, Config) ->
     aecore_suite_utils:connect(?NODE1_NAME, []),
     aecore_suite_utils:start_node(?NODE2, Config, Env),
     aecore_suite_utils:connect(?NODE2_NAME, []),
-    [{network_id, NetworkId},
-     {consensus, Consensus} | Config].
+
+    timer:sleep(1000),
+    NumberOfCommitments = 2,
+    %% mine blocks on the parent chain and include commitments; stop right
+    %% before the child chain produces a block
+    lists:foreach(
+        fun(Idx) ->
+            PCTopHeight = rpc(?PARENT_CHAIN_NODE1, aec_chain, top_height, []),
+            ct:log("Mining commitment on the parent chain, idx ~p, parent height ~p", [Idx, PCTopHeight]),
+            wait_for_commitments_in_pool(?PARENT_CHAIN_NODE1, NumberOfCommitments),
+            {ok, _} = aecore_suite_utils:mine_micro_blocks(?PARENT_CHAIN_NODE1_NAME, 1),
+            {ok, _} = aecore_suite_utils:mine_key_blocks(?PARENT_CHAIN_NODE1_NAME, 1)
+        end,
+        lists:seq(1, ?CHILD_CONFIRMATIONS - 1)),
+    ct:log("Mining last initial commitment on the parent chain", []),
+    wait_for_commitments_in_pool(?PARENT_CHAIN_NODE1, NumberOfCommitments),
+    {ok, _} = aecore_suite_utils:mine_micro_blocks(?PARENT_CHAIN_NODE1_NAME, 1),
+    Config1 = [{network_id, NetworkId}, {consensus, Consensus} | Config],
+    {ok, _} = produce_blocks(?NODE1, ?NODE1_NAME, child, 10, ?config(consensus, Config1)),
+    ParentTopHeight = rpc(?PARENT_CHAIN_NODE1, aec_chain, top_height, []),
+    {ok, ParentBlocks} = get_generations(?PARENT_CHAIN_NODE1, 0, ParentTopHeight),
+    ct:log("Parent chain blocks ~p", [ParentBlocks]),
+    ChildTopHeight = rpc(?NODE1, aec_chain, top_height, []),
+    {ok, ChildBlocks} = get_generations(?NODE1, 0, ChildTopHeight),
+    ct:log("Child chain blocks ~p", [ChildBlocks]),
+
+    Config1.
 
 end_per_group(Group, Config) when Group =:= pos;
                                   Group =:= hc ->
@@ -558,8 +586,8 @@ verify_commitments(Config) ->
                     ct:log("Commitments: ~p", [ParsedComms]),
                     lists:map(
                         fun({ParentHeight, N, H}) ->
-                            {N, N} = {N, H},
-                            ExpectedParentHeight = N + ?CHILD_START_HEIGHT + ?CHILD_CONFIRMATIONS + 1,
+                            {N, N} = {N, H + ?CHILD_CONFIRMATIONS}, 
+                            ExpectedParentHeight = H + ?CHILD_START_HEIGHT + ?CHILD_CONFIRMATIONS - 1,
                             {ParentHeight, ParentHeight} = {ParentHeight, ExpectedParentHeight}
                         end,
                         ParsedComms)
@@ -573,6 +601,37 @@ verify_commitments(Config) ->
     Test(10),
     ok.
 
+genesis_has_commitments(_Config) ->
+    PCStartHeight = ?CHILD_START_HEIGHT,
+    PCConfirmationsEndHeight = ?CHILD_START_HEIGHT + ?CHILD_CONFIRMATIONS - 1,
+    GetCommitments =
+        fun(From, To) ->
+            {ok, Blocks} = get_generations(?PARENT_CHAIN_NODE1, From, To + 1),
+            MicroBlocks =
+                lists:filter(fun(B) -> aec_blocks:type(B) =:= micro end, Blocks),
+            maps:from_list(
+                lists:map(
+                    fun(MB) -> {aec_blocks:height(MB), aec_blocks:txs(MB)} end,
+                    MicroBlocks))
+        end,
+    InitialCommitments = GetCommitments(PCStartHeight, PCConfirmationsEndHeight),
+    GenesisHash = aeser_api_encoder:encode(key_block_hash, rpc(?NODE1, aec_chain, genesis_hash, [])),
+    lists:foreach(
+        fun(Height) ->
+            Txs = maps:get(Height, InitialCommitments),
+            2 = length(Txs),
+            lists:foreach(
+                fun(SignedTx) ->
+                    {spend_tx, SpendTx} = aetx:specialize_type(aetx_sign:tx(SignedTx)),
+                    {GenesisHash, GenesisHash} = {aec_spend_tx:payload(SpendTx), GenesisHash}
+                end,
+                Txs),
+            ok
+        end,
+        lists:seq(PCStartHeight, PCConfirmationsEndHeight)),
+
+    ok.
+    
 pubkey({Pubkey, _, _}) -> Pubkey.
 
 privkey({_, Privkey, _}) -> Privkey.
@@ -955,7 +1014,7 @@ node_config(PotentialStakers, Consensus) ->
                                 <<"spend_address">> => ReceiveAddress
                             },
                         <<"polling">> =>
-                            #{  <<"fetch_interval">> => 1000,
+                            #{  <<"fetch_interval">> => 100,
                                 <<"nodes">> =>
                                     [   #{  <<"host">> => <<"127.0.0.1">>,
                                             <<"port">> => aecore_suite_utils:external_api_port(?PARENT_CHAIN_NODE1),
@@ -1040,9 +1099,29 @@ produce_blocks_hc(Node, NodeName, BlocksCnt) ->
     TopHeight = rpc(Node, aec_chain, top_height, []),
     %% mine a single block on the parent chain
     {ok, _} = aecore_suite_utils:mine_key_blocks(ParentNodeName, 1),
-    timer:sleep(100),
+    ok = aecore_suite_utils:wait_for_height(NodeName, TopHeight + 1, 5000), %% 5s per block
+    wait_for_commitments_in_pool(ParentNode, 2),
     {ok, _} = aecore_suite_utils:mine_micro_blocks(ParentNodeName, 1),
     %% wait for the child to catch up
-    ok = aecore_suite_utils:wait_for_height(NodeName, TopHeight + 1, 5000), %% 5s per block
     produce_blocks_hc(Node, NodeName, BlocksCnt - 1).
+
+
+
+wait_for_commitments_in_pool(Node, Cnt) ->
+    wait_for_commitments_in_pool(Node, Cnt, 100).
+
+wait_for_commitments_in_pool(Node, Cnt, Attempts) when Attempts < 1 ->
+    {ok, Pool} = rpc(Node, aec_tx_pool, peek, [infinity]),
+    TxsCnt = length(Pool),
+    error({run_out_of_attempts, Cnt, TxsCnt});
+wait_for_commitments_in_pool(Node, Cnt, Attempts) ->
+    {ok, Pool} = rpc(Node, aec_tx_pool, peek, [infinity]),
+    TxsCnt = length(Pool),
+    case TxsCnt =:= Cnt of
+        true -> ok;
+        false when TxsCnt > Cnt -> error(more_tx_in_pool);
+        false ->
+            timer:sleep(30),
+            wait_for_commitments_in_pool(Node, Cnt, Attempts - 1)
+    end.
 
