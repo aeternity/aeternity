@@ -3,9 +3,9 @@
 
 -export([
           start_link/0
-        , listen/3
+        , ensure_listener/1
+        , ensure_listener/2
         , close/1
-        , ensure_acceptor/2
         , lsock_info/1  %% (LSock) -> lsock_info(LSock, all).
         , lsock_info/2  %% (LSock, Item | list(Item)) -> undefined | map()
         ]).
@@ -23,15 +23,15 @@
         , record_fields/1]).
 
 -record(st, {
-              responders = new_tab(aesc_listeners_responders)
-            , ports = new_tab(aesc_listeners_ports)
+              ports = new_tab(aesc_listeners_ports)
+            , pids  = new_tab(aesc_listeners_pids)
             , socks = new_tab(aesc_listener_socks)
             , refs  = new_tab(aesc_listeners_refs)
             }).
--record(resp, {key}).
--record(port, {key, mref, lsock}).
+-record(port, {key, mref, lsock, type}).
+-record(pid , {key, lsock, mref}).          % key :: {Port, pid()}
 -record(sock, {key, port}).
--record(ref , {mref, port, lsock, responder, pid}).
+-record(ref , {mref, port, lsock, pid}).
 
 -define(SERVER, ?MODULE).
 
@@ -50,15 +50,14 @@ record_fields(st) -> record_info(fields, st);
 record_fields(_ ) -> no.
 %% ==================================================================
 
+ensure_listener(Port) ->
+    ensure_listener(Port, #{}).
 
-listen(Port, Responder, Opts) ->
-    call({listen, Port, Responder, Opts}).
+ensure_listener(Port, Opts) ->
+    call({ensure_listener, Port, Opts}).
 
 close(Port) ->
     call({close, Port}).
-
-ensure_acceptor(Port, Responder) ->
-    call({ensure_acceptor, Port, Responder}).
 
 lsock_info(LSock) ->
     lsock_info(LSock, all).
@@ -66,135 +65,118 @@ lsock_info(LSock) ->
 lsock_info(LSock, Item) ->
     call({lsock_info, LSock, Item}).
 
-await_new_responder(Responder, Port, Timeout) ->
-    receive
-	{gproc_ps_event, {new_channel_responder, Responder, Port}, #{info := Info}} ->
-	    {ok, Info}
-    after Timeout ->
-	    {error, timeout}
-    end.
-
-
-announce_new_responder(Responder, Port, Pid) ->
-    gproc_ps:tell_singles(l, new_channel_responder, #{ sender => self()
-						     , time => os:timestamp()
-						     , info => #{pid => Pid}}).
-
 start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
 init([]) ->
-    St = start_listeners(),
+    St = start_listeners(#st{}),
     {ok, St}.
 
-start_listeners() ->
-    St0 = #st{},
+start_listeners(St0) ->
     Key = [<<"channels">>, <<"listeners">>],
-    case aeu_env:find_config(Key, [user_config, {default, []}]) of
+    case aeu_env:find_config(Key, [user_config, {value, []}]) of
 	{ok, Ls0} ->
 	    {ok, [#{<<"acceptors">> := AcceptorsDefault}]} = aeu_env:schema_default_values(Key),
 	    Ls = lists:map(
 		   fun(#{<<"port">> := P} = L) ->
 			   As = maps:get(<<"acceptors">>, L, AcceptorsDefault),
-			   #{port => P, acceptors => As}
+			   #{port => P, acceptors => As, type => preconfigured}
 		   end, Ls0),
 	    lager:info("Preconfigured channel listeners: ~p", [Ls]),
 	    lager:info("Acceptors default: ~p", [AcceptorsDefault]),
-            
-	    St;
+            lists:foldl(fun new_listener_or_fail/2, St0, Ls);
 	_ ->
-	    St
+	    St0
     end.
 
-new_listener(#{port := Port, acceptors
-
-insert_responder(Port, Pid, Responder, LSock, IsFirst, #st{ responders = Resps
-							  , ports      = Ports
-							  , socks      = Socks
-							  , refs       = Refs } = St) ->
-    MRef = erlang:monitor(process, Pid),
-    RPort = #port{ key = {Port, Pid}, mref = MRef },
-    {Ports1, Socks1} =
-	case IsFirst of
-	    true ->
-		{db_insert(Ports, [ #port{key = {Port, 0}, lsock = LSock}
-				  , RPort ]),
-		 db_insert(Socks, #sock{key = LSock, port = Port})};
-	    false ->
-		{db_insert(Ports, RPort), Socks}
-	end,
-    Refs1 = db_insert(Refs, #ref{ mref = MRef
-				, port = Port
-				, responder = Responder
-				, lsock = LSock
-				, pid = Pid }),
-    Resps1 = db_insert(Resps, #resp{key = {Port, Responder, Pid}}),
-    announce_new_responder(Responder, Port, Pid),
-    St#st{ responders = Resps1
-	 , ports = Ports1
-	 , socks = Socks1
-	 , refs = Refs1 }.
-
-handle_call({listen, Port, Responder, Opts}, {Pid,_Ref}, #st{ ports = Ports } = St) ->
-    case db_lookup(Ports, {Port,0}) of
-        [#port{lsock = LSock}] ->
-	    St1 = insert_responder(Port, Pid, Responder, LSock, false, St),
-	    %% MRef = erlang:monitor(process, Pid),
-	    %% Ports1 = db_insert(Ports, #port{key = {Port, Pid}, mref = MRef}),
-	    %% Refs1 = db_insert(Refs, #ref{ mref = MRef
-	    %%                             , port = Port
-	    %%                             , responder = Responder
-	    %%                             , lsock = LSock
-            %%                             , pid = Pid }),
-            %% Resps1 = db_insert(Resps, #resp{key = {Port, Responder, Pid}}),
-            {reply, {ok, LSock}, St1};
+new_listener_or_fail(#{port := Port} = L, #st{ports = Ports} = St) ->
+    case db_lookup(Ports, Port) of
+        [_] ->
+            error({duplicate_port, Port});
         [] ->
-            try gen_tcp:listen(Port, Opts) of
-                {ok, LSock} ->
-		    St1 = insert_responder(Port, Pid, Responder, LSock, true, St),
-                    %% MRef = erlang:monitor(process, Pid),
-                    %% Ports1 = db_insert(
-                    %%            Ports, [#port{key = {Port,0}, lsock = LSock},
-                    %%                    #port{key = {Port,Pid},
-                    %%                          lsock = LSock,
-                    %%                          mref = MRef}]),
-                    %% Socks1 = db_insert(Socks, #sock{key = LSock, port = Port}),
-                    %% Refs1 = db_insert(Refs, #ref{mref = MRef, port = Port,
-                    %%                              responder = Responder,
-                    %%                              lsock = LSock, pid = Pid}),
-                    %% Resps1 = db_insert(Resps, #resp{key = {Port, Responder, Pid}}),
-                    %% {reply, {ok, LSock}, St#st{ responders = Resps1
-                    %%                           , ports = Ports1
-                    %%                           , socks = Socks1
-                    %%                           , refs  = Refs1 }};
-		    {reply, {ok, LSock}, St1};
-                {error, _} = Error ->
-                    {reply, Error, St}
+            new_listener_(L, St)
+    end.
+
+ensure_listener_(Port, Opts, Pid, #st{ports = Ports} = St) ->
+    case db_lookup(Ports, Port) of
+        [#port{lsock = LSock}] ->
+            lager:debug("Listener already active on port ~p: ~p", [Port, LSock]),
+            {ok, LSock, St};
+        [] ->
+            lager:debug("No listener on port ~p yet - create one", [Port]),
+            As = acceptors(St),
+            try new_listener(#{port => Port, opts => Opts, acceptors => As,
+                               type => dynamic, pid => Pid}, St)
             catch
                 error:Reason ->
-                    {reply, {exception, Reason}, St}
+                    {error, {exception, Reason}}
             end
+    end.
+
+new_listener(#{port := Port} = L, #st{ ports = Ports } = St) ->
+    St1 = new_listener_(L, St),
+    [#port{lsock = LSock}] = db_lookup(Ports, Port),
+    {ok, LSock, St1}.
+
+-spec new_listener_(map(), #st{}) -> #st{} | no_return().
+new_listener_(#{port := Port, acceptors := As, type := Type} = L, #st{ports = Ports, socks = Socks} = St) ->
+    try gen_tcp:listen(Port, listen_opts(St)) of
+        {ok, LSock} ->
+            lager:debug("New listener on port ~p: ~p", [Port, LSock]),
+            Ports1 = db_insert(Ports, #port{key = Port, lsock = LSock, type = Type}),
+            Socks1 = db_insert(Socks, #sock{key = LSock, port = Port}),
+            start_acceptors(LSock, Port, As),
+            maybe_dynamic(L, LSock, St#st{ports = Ports1, socks = Socks1});
+        {error, Err} ->
+            lager:error("Cannot open State Channel listener on ~p: ~p", [Port, Err]),
+            error({Err, Port})
+    catch
+        error:Ex ->
+            lager:error("Cannot open State Channel listener on ~p: CAUGHT error:~p", [Port, Ex]),
+            error({Ex, Port})
+    end.
+
+maybe_dynamic(#{type := dynamic, pid := Pid, port := Port}, LSock, #st{refs = Refs, pids = Pids} = St) ->
+    MRef = erlang:monitor(process, Pid),
+    Refs1 = db_insert(Refs, #ref{ mref  = MRef
+                                , port  = Port
+                                , lsock = LSock
+                                , pid   = Pid }),
+    Pids1 = db_insert(Pids, #pid{key = {Port, Pid}, lsock = LSock, mref = MRef}),
+    St#st{refs = Refs1, pids = Pids1};
+maybe_dynamic(_, _, St) ->
+    St.
+
+listen_opts(_) ->
+    [ {reuseaddr, true}
+    , {mode, binary} ].
+
+%% Default number of concurrent acceptors to initiate for a listener.
+acceptors(_) ->
+    1.
+
+handle_call({ensure_listener, Port, Opts}, {Pid,_Ref}, #st{} = St) ->
+    case ensure_listener_(Port, Opts, Pid, St) of
+        {ok, LSock, St1} ->
+            {reply, {ok, LSock}, St1};
+        {error, _} = Error ->
+            {reply, Error, St}
     end;
-handle_call({close, LSock}, {Pid,_Ref}, #st{ responders = Resps
-                                           , socks = Socks
-                                           , ports = Ports
+handle_call({close, LSock}, {Pid,_Ref}, #st{ socks = Socks
+                                           , pids  = Pids
                                            , refs  = Refs} = St) ->
     case db_lookup(Socks, LSock) of
         [#sock{port = Port}] ->
-            case db_lookup(Ports, {Port, Pid}) of
-                [#port{mref = MRef}] ->
-                    [#ref{ responder = Responder }]
-                        = db_lookup(Refs, MRef),
+            case db_lookup(Pids, {Port, Pid}) of
+                [#pid{mref = MRef}] ->
                     erlang:demonitor(MRef),
                     Refs1 = db_delete(Refs, MRef),
-                    Ports1 = db_delete(Ports, {Port, Pid}),
-                    Resps1 = db_delete(Resps, {Port, Responder, Pid}),
+                    Pids1 = db_delete(Pids, {Port, Pid}),
                     {reply, ok, maybe_close_lsock(
-                                  Port, LSock, St#st{ responders = Resps1
-                                                    , refs  = Refs1
-                                                    , ports = Ports1 })};
+                                  Port, LSock, St#st{ refs = Refs1
+                                                    , pids = Pids1 })};
                 [] ->
-                    {reply, {exception, not_found}, St}
+                    {reply, ok, maybe_close_lsock(Port, LSock, St)}
             end;
         [] ->
             {reply, {exception, not_found}, St}
@@ -215,17 +197,14 @@ handle_call(_Req, _From, St) ->
 handle_cast(_Msg, St) ->
     {noreply, St}.
 
-handle_info({'DOWN', MRef, process, Pid, _Reason}, #st{ responders = Resps
-                                                      , refs = Refs
-                                                      , ports = Ports} = St) ->
+handle_info({'DOWN', MRef, process, Pid, _Reason}, #st{ refs = Refs
+                                                      , pids = Pids } = St) ->
     case db_lookup(Refs, MRef) of
-        [#ref{port = Port, lsock = LSock, responder = Responder, pid = Pid}] ->
+        [#ref{port = Port, lsock = LSock, pid = Pid}] ->
             Refs1  = db_delete(Refs, MRef),
-            Ports1 = db_delete(Ports, {Port,Pid}),
-            Resps1 = db_delete(Resps, {Port, Responder, Pid}),
-            {noreply, maybe_close_lsock(Port, LSock, St#st{ responders = Resps1
-                                                          , refs  = Refs1
-                                                          , ports = Ports1 })};
+            Pids1  = db_delete(Pids, {Port, Pid}),
+            {noreply, maybe_close_lsock(Port, LSock, St#st{ refs  = Refs1
+                                                          , pids  = Pids1 })};
         [] ->
             {noreply, St}
     end;
@@ -246,26 +225,33 @@ call(Req) ->
             Other
     end.
 
-start_acceptors(LSock, Port) ->
-    aec_jobs_queues:add_queue({?MODULE, Port}, [ {producer, fun() ->
-								    init_job(LSock, Port)
-							    end}
-					       , {standard_counter, 10} ]).
+start_acceptors(LSock, Port, As) ->
+    InitF = fun aesc_session_noise:start_generic_acceptor/3,
+    aesc_acceptors:start_acceptors(Port, LSock, InitF, As, []).
 
-init_job(LSock, Port) ->
-    aesc_session_noise:start_generic_acceptor(LSock, Port).
+stop_acceptors(Port) ->
+    aesc_acceptors:stop_acceptors(Port).
 
-maybe_close_lsock(Port, LSock, #st{ ports = Ports, socks = Socks } = St) ->
-    case db_next(Ports, {Port,0}) of
+maybe_close_lsock(Port, LSock, #st{ pids = Pids } = St) ->
+    case db_next(Pids, {Port,0}) of
         {Port,_}        -> St;
         '$end_of_table' -> St;
         {_OtherPort, _} ->
             %% no more references to LSock
+            close_lsock_if_dynamic(Port, LSock, St)
+    end.
+
+close_lsock_if_dynamic(Port, LSock, #st{ports = Ports, socks = Socks} = St) ->
+    case db_lookup(Ports, Port) of
+        [#port{lsock = LSock, type = T}] when element(1,T) == dynamic ->
+            stop_acceptors(Port),
             ok = gen_tcp:close(LSock),
             Socks1 = db_delete(Socks, LSock),
-            Ports1 = db_delete(Ports, {Port, 0}),
+            Ports1 = db_delete(Ports, Port),
             St#st{ ports = Ports1
-                 , socks = Socks1 }
+                 , socks = Socks1 };
+        _ ->
+            St
     end.
 
 new_tab(Name) ->
@@ -282,9 +268,6 @@ db_delete(#{db := Tab, keypos := _P} = Db, Key) ->
     ets:delete(Tab, Key),
     Db.
 
-db_insert(#{keypos := _P, db := Tab} = Db, Objs) when is_list(Objs) ->
-    ets:insert(Tab, Objs),
-    Db;
 db_insert(#{db := Tab, keypos := _P} = Db, Obj) ->
     ets:insert(Tab, Obj),
     Db.
@@ -295,16 +278,13 @@ db_next(#{db := Tab, keypos := _P}, Key) ->
 db_select(#{db := Tab}, Pat) ->
     ets:select(Tab, Pat).
 
-list_pids(#{db := PortsTab}, P) ->
-    ets:select(PortsTab, [{ #port{ key = {P,'$1'}, _ = '_'}, [], ['$1'] }]).
+list_pids(Pids, P) ->
+    db_select(Pids, [{ #pid{ key = {P,'$1'}, _ = '_'}, [], ['$1'] }]).
 
-get_lsock_info(pids, #{port := Port} = I, #st{ ports = Ports }) ->
-    I#{pids => list_pids(Ports, Port)};
+get_lsock_info(pids, #{port := Port} = I, #st{ pids = Pids }) ->
+    I#{pids => list_pids(Pids, Port)};
 get_lsock_info(Item, I, _) when Item == port; Item == lsock ->
     I;
-get_lsock_info(responders, #{port := Port} = I, #st{ responders = Resps }) ->
-    Rs = db_select(Resps, [{ #resp{ key = { Port, '$1', '_'}, _ = '_' }, [], ['$1'] }]),
-    I#{responders => lists:usort(Rs)};
 get_lsock_info(Items, I, St) when is_list(Items) ->
     lists:foldl(
       fun(Item, Acc) ->

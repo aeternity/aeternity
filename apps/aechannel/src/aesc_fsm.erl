@@ -367,7 +367,7 @@ dry_run_contract(Fsm, #{ contract    := _
 %% Used by noise session
 
 message(Fsm, {T, _} = Msg) when ?KNOWN_MSG_TYPE(T) ->
-    lager:debug("message(~p, ~p)", [Fsm, Msg]),
+    lager:debug("message(~p, ~p)", [Fsm, aesc_session_noise:pp_msg(Msg)]),
     gen_statem:cast(Fsm, Msg).
 
 noise_connected(Fsm) ->
@@ -1304,7 +1304,7 @@ open(cast, {?LEAVE, Msg}, #data{ role = Role
             lager:debug("leave msg error: ~p", [E]),
             keep_state(D)
     end;
-open(cast, {?SHUTDDOWN, Msg}, D) ->
+open(cast, {?SHUTDOWN, Msg}, D) ->
     shutdown_msg_received(Msg, D);
 open(Type, Msg, D) ->
     handle_common_event(Type, Msg, discard, D).
@@ -3767,23 +3767,17 @@ check_attach_info(Info, #data{opts = Opts} = D) ->
     #{initiator := I, responder := R} = Opts,
     check_attach_info(Info, I, R, D).
 
-check_attach_info(#{reestablish := true} = Info, _I, R, #data{on_chain_id = ChannelId}) ->
+check_attach_info(#{reestablish := true} = Info, _I, _R, #data{on_chain_id = ChannelId}) ->
+    %% The 'reestablish' message in the SC protocol only includes the chain hash and
+    %% the channel_id, so these are the only things it makes sense to check.
     ChainHash = aec_chain:genesis_hash(),
     lager:debug("Info = ~p, ChainHash = ~p, ChannelId = ~p", [Info, ChainHash, ChannelId]),
     case Info of
         #{ chain_hash := ChainHash
-         , channel_id := ChannelId
-         , responder  := R
-         , port       := _Port
-         , gproc_key  := _K } ->
+         , channel_id := ChannelId } ->
             ok;
         _ ->
-            case maps:find(responder, Info) of
-                {ok, R1} when R1 =/= R ->
-                    {error, responder_key_mismatch};
-                _Other ->
-                    {error, unrecognized_attach_info}
-            end
+            {error, unrecognized_attach_info}
     end;
 check_attach_info(#{ initiator := I1
                    , responder := R1
@@ -4220,8 +4214,9 @@ noise_accept(_SessionOpts, _NoiseOpts, Attempts, #{ responder := Responder
     {error, Error};
 noise_accept(SessionOpts, NoiseOpts, Attempts, COpts) ->
     case aesc_session_noise:accept(SessionOpts, NoiseOpts) of
-        {ok, Pid} ->
-            {ok, Pid};
+        ok ->
+            %% We don't get a pid yet. Albeit unelegant, return an 'undefined' pid
+            {ok, undefined};
         {error, Err} ->
             lager:warning("Noise accept failed with ~p", [Err]),
             noise_accept(SessionOpts, NoiseOpts, Attempts - 1, COpts)

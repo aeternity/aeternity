@@ -6,10 +6,10 @@
 
 %% ==================================================================
 %% Process API
--export([ connect/3
-        , accept/2
+-export([ connect/3                 % called by FSM
+        , accept/2                  % called by FSM
         , close/1
-	, start_generic_acceptor/2
+	, start_generic_acceptor/3  % called by acceptor pool
         , start_link/1
         ]).
 
@@ -59,6 +59,7 @@
 %% helpers
 -export([ patterns/0
         , record_fields/1
+        , pp_msg/1
         ]).
 
 -record(st, { init_op     :: op()
@@ -93,25 +94,32 @@
 start_link(Arg) when is_map(Arg) ->
     gen_server:start_link(?MODULE, Arg, []).
 
+%% Called by the initiator FSM. This starts a connector process.
+%% The connector will 
 connect(Host, Port, Opts) ->
     StartOpts = [#{fsm => self(), op => {connect, Host, Port, Opts}}],
     aesc_session_noise_sup:start_child(StartOpts).
 
-accept(#{ port := Port, responder := R } = Opts, NoiseOpts) ->
-    case aesc_listeners:ensure_acceptor(Port, R) of
-        ok ->
+%% Called by the responder FSM. The FSM doesn't actually start an acceptor, but
+%% simply register with a special Gproc key so that the automatically started
+%% acceptors (see `start_generic_acceptor/3') can find them.
+%%
+accept(#{ port := Port } = Opts, NoiseOpts) ->
+    case aesc_listeners:ensure_listener(Port, NoiseOpts) of
+        {ok, _} ->
             register_responder(Opts);
-        {error, } = Error ->
+        {error, _} = Error ->
             Error
     end.
 
-start_generic_acceptor(LSock, Port, NoiseOpts) ->
-    TcpOpts = tcp_opts(listen, NoiseOpts),
-    lager:debug("listen: Opts0 = ~p; TcpOpts = ~p", [Opts0, TcpOpts]),
+start_generic_acceptor(Port, LSock, Opts) ->
+    TcpOpts = tcp_opts(listen, Opts),
+    NoiseOpts = proplists:get_value(noise, Opts, noise_defaults()),
+    lager:debug("generic acceptor: Opts = ~p; TcpOpts = ~p", [Opts, TcpOpts]),
     Op = {accept, #{port => Port, lsock => LSock}, NoiseOpts},
-    StartOpts = [#{type => generic_acceptor, port => Port, op => Op}],
-    aesc_session_noise_sup:start_child(StartOpts),
-    ok.
+    StartOpts = #{ type => generic_acceptor, port => Port, op => Op
+                  , noise => NoiseOpts},
+    start_link(StartOpts).
 
 close(undefined) ->
     ok;
@@ -134,6 +142,7 @@ close(Session) ->
         end
     end.
 
+-spec kill_session(pid() | port()) -> 'ok'.
 kill_session(Session) ->
     MRef = erlang:monitor(process, Session),
     exit(Session, kill),
@@ -191,9 +200,9 @@ record_fields(_ ) -> no.
 %% ==================================================================
 %% gen_server API
 
-init(#{type := generic_acceptor, port := Port, op := Op} = Arg) ->
+init(#{type := generic_acceptor, port := Port, op := Op}) ->
     lager:debug("generic_acceptor for port ~p", [Port]),
-    St = #st{ init_op = Op },
+    St = #st{ init_op = Op},
     cast(self(), post_init),
     {ok, St};
 init(#{fsm := Fsm, op := Op} = Arg) ->
@@ -223,7 +232,11 @@ handle_cast(post_init, #st{fsm = Fsm, init_op = Op} = St) ->
         {ok, St1} ->
             %% As the monitor was created and the session established we don't
             %% need the link anymore.
-            unlink(Fsm),
+            if is_pid(Fsm) ->
+                    unlink(Fsm);
+               true ->
+                    ok
+            end,
             {noreply, St1};
         {error, Err} ->
             %% If we can't establish a connection the process must terminate to
@@ -260,7 +273,7 @@ handle_info(Msg, St) ->
 
 handle_info_({noise, EConn, Data}, #st{econn = EConn, fsm = Fsm} = St) ->
     {Type, Info} = Msg = aesc_codec:dec(Data),
-    lager:debug("Msg = ~p", [Msg]),
+    lager:debug("Msg = ~p", [pp_msg(Msg)]),
     St1 = case {Type, Fsm} of
               {?CH_OPEN, undefined} ->
                   locate_fsm(Type, Info, St);
@@ -286,17 +299,63 @@ terminate(_Reason, #st{econn = EConn}) ->
 code_change(_FromVsn, St, _Extra) ->
     {ok, St}.
 
+%% Lager Debugging: The following code reduces logging noise related to hashes and keys
+%% Given that lager does compile-time transformation of the code, these functions are only
+%% called when there will actually be output.
+
+pp_msg({Tag, M}) when is_atom(Tag), is_map(M) ->
+    {Tag, pp_msg(M)};
+pp_msg({Tag1, Tag2, M}) when is_atom(Tag1), is_atom(Tag2), is_map(M) ->
+    {Tag1, Tag2, pp_msg(M)};
+pp_msg(M) when is_map(M) ->
+    maps:map(fun pp_elem/2, M);
+pp_msg(M) ->
+    M.
+
+pp_elem(K, Hash) when K == chain_hash
+                    ; K == initiator
+                    ; K == responder
+                    ; K == temporary_channel_id
+                    ; K == block_hash
+                    ; K == channel_id ->
+    abbrev_hash(Hash);
+pp_elem(data, D) ->
+    case D of
+        #{tx := Hash} ->
+            D#{tx := abbrev_hash(Hash)};
+        _ ->
+            D
+    end;
+pp_elem(_, X) ->
+    X.
+
+abbrev_hash(H) when byte_size(H) > 12 ->
+    First = binary:part(H, 0, 5),
+    Last  = binary:part(H, byte_size(H), -5),
+    <<First/binary, 0,0,0,0, Last/binary>>;
+abbrev_hash(H) ->
+    H.
+
+%% End Lager Debugging
 
 %% ==================================================================
 %% gen_server API (internal)
 
-locate_fsm(Type, MInfo, #st{ init_op = {accept, SnInfo, _Opts} } = St) ->
-    lager:debug("Type = ~p, MInfo = ~p, SnInfo = ~p", [Type, MInfo, SnInfo]),
-    %% any duplicates overridden by what was received
-    Info0 = maps:merge(maps:with([ initiator
-                                 , responder
-                                 , port ], SnInfo), MInfo),
-    Info = Info0#{reestablish => (Type =:= ?CH_REESTABL)},
+locate_fsm(Type, Msg, #st{init_op = {accept, #{port := Port}, _}} = St) ->
+    Info = case {Type, Msg} of
+               {?CH_OPEN, #{ chain_hash := _
+                           , initiator  := _
+                           , responder  := _ }} ->
+                   Msg#{port => Port};
+               {?CH_REESTABL, #{ chain_hash := ChainHash
+                               , channel_id := ChanId }} ->
+                   #{ reestablish => true
+                    , chain_hash => ChainHash
+                    , channel_id => ChanId
+                    , port       => Port };
+               _ ->
+                   error(protocol_error)
+           end,
     Cands = get_cands(Type, Info),
     lager:debug("Cands = ~p", [Cands]),
     try_cands(Cands, 5, 0, Type, Info, St).
@@ -318,14 +377,15 @@ get_cands(?CH_OPEN, #{ initiator := I
              {'=:=', '$1', any}}], ['$_'] }]));
 get_cands(?CH_REESTABL, #{ chain_hash := Chain
                          , channel_id := ChId
-                         , responder  := R
                          , port := Port}) ->
     gproc:select({l,p},
-                 [{ {responder_reestabl_regkey(Chain, ChId, R, Port), '_', '_'},
+                 [{ {responder_reestabl_regkey(Chain, ChId, Port), '_', '_'},
                     [], ['$_'] }]).
 
-responder_reestabl_regkey(Chain, ChId, R, Port) ->
-    {p, l, {?MODULE, accept_reestabl, Chain, ChId, R, Port}}.
+responder_reestabl_regkey(Chain, ChId, Port) ->
+    K = {p, l, {?MODULE, accept_reestabl, Chain, ChId, Port}},
+    lager:debug("RegKey = ~p", [K]),
+    K.
 
 responder_regkey(R, I, Port) ->
     {p, l, {?MODULE, accept, R, I, Port}}.
@@ -362,11 +422,11 @@ close_econn(EConn) ->
     end.
 
 cast(P, Msg) ->
-    lager:debug("to noise session ~p: ~p", [P, Msg]),
+    lager:debug("to noise session ~p: ~p", [P, pp_msg(Msg)]),
     gen_server:cast(P, Msg).
 
 call(P, Msg) ->
-    lager:debug("Call to noise session ~p: ~p", [P, Msg]),
+    lager:debug("Call to noise session ~p: ~p", [P, pp_msg(Msg)]),
     gen_server:call(P, Msg).
 
 tell_fsm({_, _} = Msg, #st{fsm = Fsm}) ->
@@ -375,67 +435,27 @@ tell_fsm({_, _} = Msg, #st{fsm = Fsm}) ->
 %% ==================================================================
 %% Process API (internal)
 
-accept_(#{ reestablish := true
-         , chain_hash  := ChainH
-         , channel_id  := ChId
-         , responder   := R
-         , port        := Port } = Opts, NoiseOpts) ->
-    Regkey = responder_reestabl_regkey(ChainH, ChId, R, Port),
-    lager:debug("Regkey = ~p", [Regkey]),
-    gproc:reg(Regkey),
-    StartOpts = [#{fsm => self(), op => {accept, Opts, NoiseOpts}}],
-    aesc_session_noise_sup:start_child(StartOpts);
-accept_(#{ initiator := I, responder := R, port := Port } = Opts, NoiseOpts) ->
-    Regkey = responder_regkey(R, I, Port),
-    lager:debug("Regkey = ~p", [Regkey]),
-    gproc:reg(Regkey),
-    StartOpts = [#{fsm => self(), op => {accept, Opts, NoiseOpts}}],
-    aesc_session_noise_sup:start_child(StartOpts).
-
 register_responder(#{ reestablish := true
                     , chain_hash  := ChainH
                     , channel_id  := ChId
-                    , responder   := R
-                    , port        := Port } = Opts, NoiseOpts) ->
-    Regkey = responder_reestabl_regkey(ChainH, ChId, R, Port),
+                    , port        := Port }) ->
+    Regkey = responder_reestabl_regkey(ChainH, ChId, Port),
     lager:debug("Regkey = ~p", [Regkey]),
-    gproc:reg(Regkey);
-register_responder(#{ initiator := I, responder := R, port := Port } = Opts, NoiseOpts) ->
+    gproc:reg(Regkey),
+    ok;
+register_responder(#{ initiator := I, responder := R, port := Port }) ->
     Regkey = responder_regkey(R, I, Port),
     lager:debug("Regkey = ~p", [Regkey]),
-    gproc:reg(Regkey).
+    gproc:reg(Regkey),
+    ok.
 
-establish({accept, #{responder := R, port := Port, lsock := LSock}, NoiseOpts}, St) ->
-    lager:debug("LSock = ~p", [LSock]),
-    AcceptTimeout = proplists:get_value(accept_timeout, NoiseOpts, ?ACCEPT_TIMEOUT),
-    case accept_tcp(LSock, Port, R, AcceptTimeout) of
-        {ok, TcpSock} ->
-            lager:debug("Accept TcpSock = ~p", [TcpSock]),
-            %% TODO: extract/check something from FinalState?
-            EnoiseOpts = enoise_opts(accept, NoiseOpts),
-            lager:debug("EnoiseOpts (accept) = ~p", [EnoiseOpts]),
-            case enoise:accept(TcpSock, EnoiseOpts) of
-                {ok, EConn, _FinalSt} ->
-                    %% At this point, we should de-couple from the parent fsm and instead
-                    %% attach to the fsm we eventually pair with, once the `CH_OPEN`
-                    %% (or `CH_REESTABL`) message arrives from the other side.
-                    erlang:demonitor(St#st.fsm_mon_ref),
-                    St1 = St#st{ econn = EConn
-                               , fsm = undefined
-                               , fsm_mon_ref = undefined },
-                    {ok, St1};
-                Err1 ->
-                    Err1
-            end;
-        Err ->
-            Err
-    end;
 establish({accept, #{port := Port, lsock := LSock}, NoiseOpts}, St) ->
     lager:debug("LSock = ~p", [LSock]),
-    AcceptTimeout = proplists:get_value(accept_timeout, NoiseOpts, ?ACCEPT_TIMEOUT),
-    case accept_tcp(LSock, Port, AcceptTimeout) of
+    case accept_tcp(LSock, Port) of
 	{ok, TcpSock} ->
 	    lager:debug("Accept TcpSock = ~p", [TcpSock]),
+            %% Since we have a connection, no need to hold up the acceptor pool
+            aesc_acceptors:worker_done(Port),
 	    EnoiseOpts = enoise_opts(accept, NoiseOpts),
 	    lager:debug("EnoiseOpts (accept) = ~p", [EnoiseOpts]),
 	    case enoise:accept(TcpSock, EnoiseOpts) of
@@ -482,37 +502,13 @@ sleep_retry_connect(Retries, Host, Port, TcpOpts, Opts, Timeout, St) ->
     sleep(Timeout, St#st.fsm_mon_ref),
     establish_connect(Retries, Host, Port, TcpOpts, Opts, Timeout, St).
 
-accept_tcp(LSock, Port, AcceptTimeout) ->
-    case gen_tcp:accept(LSock, AcceptTimeout) of
+accept_tcp(LSock, Port) ->
+    case gen_tcp:accept(LSock) of
         {ok, _} = Ok ->
             Ok;
-        {error, timeout} ->
-            lager:debug("Timeout on accept call; terminate", []),
-	    {error, shutdown}
-    end.
-
-accept_tcp(LSock, Port, R, AcceptTimeout) ->
-    case gen_tcp:accept(LSock, AcceptTimeout) of
-        {ok, _} = Ok ->
-            Ok;
-        {error, timeout} ->
-            lager:debug("Timeout on accept call; see if we should retry", []),
-            case aesc_listeners:lsock_info(LSock, [port, responders]) of
-                #{ port := Port, responders := Rs } ->
-                    case lists:member(R, Rs) of
-                        true ->
-                            lager:debug("Still listeners on this port, loop", []),
-                            accept_tcp(LSock, Port, R, AcceptTimeout);
-                        false ->
-                            lager:debug("No listeners for ~p on this port", [R]),
-                            {error, shutdown}
-                    end;
-                _Other ->
-                    lager:debug("_Other = ~p", [_Other]),
-                    {error, shutdown}
-            end;
-        Error ->
-            Error
+        {error, Reason} ->
+            lager:debug("Error from accept (~p); terminate: ~p", [Port, Reason]),
+            {error, shutdown}
     end.
 
 sleep(T, Ref) ->
@@ -550,7 +546,7 @@ tcp_opts(_Op, Opts) ->
     end.
 
 noise_defaults() ->
-    [{noise, <<"Noise_XK_25519_ChaChaPoly_BLAKE2b">>}].
+    [{noise, <<"Noise_NN_25519_ChaChaPoly_BLAKE2b">>}].
 
 tcp_defaults() ->
     [ {active, true}
