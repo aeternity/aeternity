@@ -1,3 +1,4 @@
+%% -*- mode: erlang; erlang-indent-level: 4; indent-tabs-mode: nil -*-
 %% @doc This modules implements the State Channel FSM and its external API. The
 %% FSM is used for both state channel roles, 'responder' and 'initiator',
 %% because most logic is shared with the initialization being specific to the
@@ -3834,7 +3835,6 @@ check_limits(Opts) ->
     end.
 
 init_(#{opts := Opts0} = Arg) ->
-    
     {ReestablishOpts, ConnectOpts, Opts1} =
         { maps:with(?REESTABLISH_OPTS_KEYS, Opts0)
         , connection_opts(Arg)
@@ -4166,7 +4166,7 @@ prepare_for_reestablish(#data{ opts = Opts
                              , on_chain_id = ChanId } = D) ->
     try
         {ok, SessionPid} = start_noise_session(#{existing_channel_id => ChanId},
-					       Opts#{role => responder}),
+                                               Opts#{role => responder}),
         D#data{session = #prelim_session{pid = SessionPid}}
     ?CATCH_LOG(_E)
             D
@@ -5025,11 +5025,11 @@ handle_info(Msg, #data{cur_statem_state = St} = D) ->
 %%               signing reply in the open state).
 handle_common_event(E, Msg, M, #data{cur_statem_state = St} = D) ->
     case M of
-	discard ->
-	    %% Don't log debug as it risks flooding logs
-	    ok;
-       _ ->
-	    lager:debug("handle_common_event(~p, ~p, ~p, ~p, D)", [E, Msg, St, M])
+        discard ->
+            %% Don't log debug as it risks flooding logs
+            ok;
+        _ ->
+            lager:debug("handle_common_event(~p, ~p, ~p, ~p, D)", [E, Msg, St, M])
     end,
     handle_common_event_(E, Msg, St, M, D).
 
@@ -5781,7 +5781,7 @@ apply_non_malicious_txs_([], #data{} = Data) -> %% applied all
     {ok, Data};
 apply_non_malicious_txs_([{BlockHash, SignedTx} | Rest],
                          #data{state = State0, opts = Opts} = Data) when
-is_binary(BlockHash) -> 
+is_binary(BlockHash) ->
     Aetx = aetx_sign:innermost_tx(SignedTx),
     {Mod, Tx} = aetx:specialize_callback(Aetx),
     State =
@@ -5852,4 +5852,3 @@ is_onchain_tx_malicious(Mod, Tx, State, BlockHash) when is_binary(BlockHash) ->
             when UnexpectedRound < LastValidRound + 1 -> true;
         _ -> false
     end.
-

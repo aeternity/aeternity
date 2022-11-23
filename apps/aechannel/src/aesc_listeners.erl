@@ -1,3 +1,4 @@
+%% -*- mode:erlang; erlang-indent-level: 4; indent-tabs-mode: nil -*-
 -module(aesc_listeners).
 -behaviour(gen_server).
 
@@ -75,18 +76,18 @@ init([]) ->
 start_listeners(St0) ->
     Key = [<<"channels">>, <<"listeners">>],
     case aeu_env:find_config(Key, [user_config, {value, []}]) of
-	{ok, Ls0} ->
-	    {ok, [#{<<"acceptors">> := AcceptorsDefault}]} = aeu_env:schema_default_values(Key),
-	    Ls = lists:map(
-		   fun(#{<<"port">> := P} = L) ->
-			   As = maps:get(<<"acceptors">>, L, AcceptorsDefault),
-			   #{port => P, acceptors => As, type => preconfigured}
-		   end, Ls0),
-	    lager:info("Preconfigured channel listeners: ~p", [Ls]),
-	    lager:info("Acceptors default: ~p", [AcceptorsDefault]),
+{ok, Ls0} ->
+    {ok, [#{<<"acceptors">> := AcceptorsDefault}]} = aeu_env:schema_default_values(Key),
+            Ls = lists:map(
+                   fun(#{<<"port">> := P} = L) ->
+                           As = maps:get(<<"acceptors">>, L, AcceptorsDefault),
+                           #{port => P, acceptors => As, type => preconfigured}
+                   end, Ls0),
+            lager:info("Preconfigured channel listeners: ~p", [Ls]),
+            lager:info("Acceptors default: ~p", [AcceptorsDefault]),
             lists:foldl(fun new_listener_or_fail/2, St0, Ls);
-	_ ->
-	    St0
+        _ ->
+            St0
     end.
 
 new_listener_or_fail(#{port := Port} = L, #st{ports = Ports} = St) ->
@@ -292,4 +293,3 @@ get_lsock_info(Items, I, St) when is_list(Items) ->
       end, I, Items);
 get_lsock_info(all, I, St) ->
     get_lsock_info([pids, responders], I, St).
-

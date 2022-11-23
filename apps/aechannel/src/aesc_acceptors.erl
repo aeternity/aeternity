@@ -45,7 +45,6 @@ init([]) ->
     process_flag(trap_exit, true),
     {ok, #st{}}.
 
-
 handle_call({start_acceptors, Port, LSock, InitF, N, Opts}, _From, #st{ ports = Ports
                                                                       , socks = Socks} = St) ->
     LSMRef = erlang:monitor(port, LSock),
@@ -103,7 +102,6 @@ code_change(_FromVsn, St, _Extra) ->
     {ok, St}.
 
 %% Internal functions ==========================================================
-
 
 maybe_start_workers(Port, #st{ports = Ports} = St) ->
     case maps:find(Port, Ports) of
@@ -176,4 +174,3 @@ kill_worker(Pid, MRef) ->
 
 add_map_elems(Keys, Value, Map) ->
     maps:merge(Map, maps:from_list([{K, Value} || K <- Keys])).
-

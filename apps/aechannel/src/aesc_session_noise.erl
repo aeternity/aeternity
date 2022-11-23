@@ -1,3 +1,4 @@
+%% -*- mode: erlang; erlang-indent-level: 4; indent-tabs-mode: nil -*-
 -module(aesc_session_noise).
 
 -behaviour(gen_server).
@@ -9,7 +10,7 @@
 -export([ connect/3                 % called by FSM
         , accept/2                  % called by FSM
         , close/1
-	, start_generic_acceptor/3  % called by acceptor pool
+        , start_generic_acceptor/3  % called by acceptor pool
         , start_link/1
         ]).
 
@@ -132,12 +133,12 @@ close(Session) ->
             {exit, {noproc, _}} ->
                 unlink(Session),
                 ok;
-	    {exit, {normal,_}} ->
-		ok;
+            {exit, {normal,_}} ->
+                ok;
             {exit, R} ->
                 lager:error("Unexpected exit error during session closing: ~p, ~p", [R, StackTrace]),
                 unlink(Session),
-		kill_session(Session),
+                kill_session(Session),
                 ok
         end
     end.
@@ -147,8 +148,8 @@ kill_session(Session) ->
     MRef = erlang:monitor(process, Session),
     exit(Session, kill),
     receive
-	{'DOWN', MRef, _, _, _} ->
-	    ok
+        {'DOWN', MRef, _, _, _} ->
+            ok
     end.
 
 %% ==================================================================
@@ -452,21 +453,21 @@ register_responder(#{ initiator := I, responder := R, port := Port }) ->
 establish({accept, #{port := Port, lsock := LSock}, NoiseOpts}, St) ->
     lager:debug("LSock = ~p", [LSock]),
     case accept_tcp(LSock, Port) of
-	{ok, TcpSock} ->
-	    lager:debug("Accept TcpSock = ~p", [TcpSock]),
+        {ok, TcpSock} ->
+            lager:debug("Accept TcpSock = ~p", [TcpSock]),
             %% Since we have a connection, no need to hold up the acceptor pool
             aesc_acceptors:worker_done(Port),
-	    EnoiseOpts = enoise_opts(accept, NoiseOpts),
-	    lager:debug("EnoiseOpts (accept) = ~p", [EnoiseOpts]),
-	    case enoise:accept(TcpSock, EnoiseOpts) of
-		{ok, EConn, _FinalSt} ->
-		    St1 = St#st{ econn = EConn },
-		    {ok, St1};
-		Err1 ->
-		    Err1
-	    end;
-	Err ->
-	    Err
+            EnoiseOpts = enoise_opts(accept, NoiseOpts),
+            lager:debug("EnoiseOpts (accept) = ~p", [EnoiseOpts]),
+            case enoise:accept(TcpSock, EnoiseOpts) of
+                {ok, EConn, _FinalSt} ->
+                    St1 = St#st{ econn = EConn },
+                    {ok, St1};
+                Err1 ->
+                    Err1
+            end;
+Err ->
+    Err
     end;
 establish({connect, Host, Port, Opts}, St) ->
     TcpOpts = tcp_opts(connect, Opts),
@@ -490,12 +491,12 @@ establish_connect(Retries, Host, Port, TcpOpts, Opts, Timeout, St)
                     St1 = St#st{econn = EConn},
                     {ok, St1};
                 Err1 ->
-		    lager:debug("Failed to pair with responder: ~p", [Err1]),
-		    sleep_retry_connect(Retries-1, Host, Port, TcpOpts, Opts, Timeout, St)
+                    lager:debug("Failed to pair with responder: ~p", [Err1]),
+                    sleep_retry_connect(Retries-1, Host, Port, TcpOpts, Opts, Timeout, St)
             end;
         Err ->
-	    lager:debug("TCP connect failure: ~p", [Err]),
-	    sleep_retry_connect(Retries-1, Host, Port, TcpOpts, Opts, Timeout, St)
+            lager:debug("TCP connect failure: ~p", [Err]),
+            sleep_retry_connect(Retries-1, Host, Port, TcpOpts, Opts, Timeout, St)
     end.
 
 sleep_retry_connect(Retries, Host, Port, TcpOpts, Opts, Timeout, St) ->
