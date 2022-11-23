@@ -121,7 +121,6 @@ handle_call({get_block_by_height, Height}, _From,
         case get_block(Height, State) of
             {error, _} = Err -> Err;
             {ok, Block} when Height > TopHeight - Confirmations ->
-                lager:info("ASDF asked height ~p, Top height: ~p, confirmations: ~p", [Height, TopHeight, Confirmations]),
                 {error, {not_enough_confirmations, Block}};
             {ok, _Block} = OK -> OK
         end,
@@ -365,10 +364,9 @@ maybe_post_initial_commitments(Block, #state{child_top_height = 0,
     case IsFirstCommitment andalso NotPostedYet of
         true ->
             Hash = aec_chain:genesis_hash(), %% TODO: Genesis hash?
-            lager:info("ASDF InitialCommitsHeights ~p", [InitialCommitsHeights]),
-            lager:info("ASDF FIRST COMMITMENT ~p", [Height]),
             maybe_post_commitments(Hash, State),
             State#state{initial_commits_heights = lists:delete(Height, InitialCommitsHeights)};
         false ->
             State
     end.
+

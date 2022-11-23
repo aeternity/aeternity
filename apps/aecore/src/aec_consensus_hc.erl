@@ -537,9 +537,6 @@ next_beneficiary() ->
     Height0 = aetx_env:height(TxEnv0),
     Height = Height0 + 1,
     PCHeight = Height + pc_start_height() - 1, %% child starts pinning from height 1, not genesis
-    lager:debug("ASDF height ~p, parent start height ~p, looking for PC height ~p",
-                [Height0, pc_start_height(), PCHeight]),
-
     case aec_parent_chain_cache:get_block_by_height(PCHeight) of
         {ok, Block} ->
             Hash = aec_parent_chain_block:hash(Block),
@@ -565,7 +562,8 @@ next_beneficiary() ->
                     {ok, Leader}
             end;
         {error, _Err} ->
-            epoch_mining:debug("ASDF DID NOT FIND  PARENT BLOCK WITH HEIGHT ~p FOR REASON ~p", [PCHeight, _Err]),
+            lager:debug("Unable to pick the next leader for height ~p, parent height ~p; reason is ~p",
+                        [Height, PCHeight, _Err]),
             timer:sleep(1000),
             {error, not_in_cache}
     end.
