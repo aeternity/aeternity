@@ -55,6 +55,7 @@ forbidden(Mod, OpId) ->
     end.
 
 queue('GetNetworkStatus') -> ?READ_Q;
+queue('GetChannelsFsmCount') -> ?READ_Q;
 queue(_)                  -> ?WRITE_Q.
 
 -spec handle_request(
@@ -292,6 +293,10 @@ handle_request_('GetCheckTxInPool', Req, _Context) ->
                   end
                 ],
     process_request(ParseFuns, Req);
+
+handle_request_('GetChannelsFsmCount', _Req, _Context) ->
+    FsmCount = aesc_fsm:count_active_fsms(),
+    {200, [], #{count => FsmCount}};
 
 handle_request_(OperationID, Req, Context) ->
     error_logger:error_msg(

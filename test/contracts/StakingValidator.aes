@@ -31,6 +31,10 @@ main contract StakingValidator =
     let new_shares = calculate_shares(Call.value)
     add_shares(staker, new_shares)
     put(state{shares @ s = s + new_shares})
+    new_shares
+
+  entrypoint estimate_stake_shares(value : int) =
+    estimate_shares(value)
 
   payable entrypoint profit() =
     assert_caller()
@@ -112,6 +116,9 @@ main contract StakingValidator =
       stake_size
     else
       (stake_size * state.shares) / (contract_balance() - stake_size)
+
+  function estimate_shares(stake_size : int) =
+      (stake_size * state.shares) / contract_balance()
 
   function assert_caller() =
     require(Call.caller == state.main_staking_ct, "Only allowed through MainStaking")

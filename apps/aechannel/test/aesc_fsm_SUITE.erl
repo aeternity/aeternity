@@ -744,9 +744,17 @@ t_create_channel_(Cfg) ->
     Cfg1 = [?SLOGAN | set_expected_fsm_logs(?FUNCTION_NAME, Cfg)],
     assert_empty_msgq(Debug),
 
+    PrevCount = rpc(dev1, aesc_fsm, count_active_fsms, []),
+    ?LOG("Active FSMs before: ~p", [PrevCount]),
+
     #{ i := #{channel_id := ChannelId} = I
      , r := #{} = R} = create_channel_(Cfg1, #{}, Debug),
     assert_empty_msgq(Debug),
+
+    CountAfter = rpc(dev1, aesc_fsm, count_active_fsms, []),
+    ?LOG("Active FSMs after create: ~p", [CountAfter]),
+
+    2 = CountAfter - PrevCount,
 
     {ok, _} = rpc(dev1, aec_chain, get_channel, [ChannelId]),
 
@@ -754,6 +762,10 @@ t_create_channel_(Cfg) ->
                                                          #{n => 5, type => [rpt]}])]),
 
     shutdown_(I, R, Cfg1),
+
+    CountAfterShutdown = rpc(dev1, aesc_fsm, count_active_fsms, []),
+    ?LOG("Active FSMs after shutdown: ~p", [CountAfterShutdown]),
+    CountAfterShutdown = PrevCount,
 
     {ok, #{info := {log, ILog}}} = receive_log(I, Debug),
     {ok, #{info := {log, RLog}}} = receive_log(R, Debug),

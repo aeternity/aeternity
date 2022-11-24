@@ -164,6 +164,13 @@ relx_usage() {
             echo "  should not change, and other debugging / maintenance tasks"
             echo "  -t (-timeout) : Set the max time this command can wait until the mode change is done (millisecs)"
             ;;
+        offline)
+            echo "Usage: $REL_NAME offline [on | off | status] [-t timeout]"
+            echo "  Enable / disable / check status of offline mode"
+            echo "  Offline mode disables mining and sync, but leaves HTTP endpoints active"
+            echo "  It is useful for testing a node in isolation"
+            echo "  -t (-timeout) : Set the max time this command can wait until the mode change is done (millisecs)"
+            ;;
         admin)
             echo "Usage: $REL_NAME admin [SUB COMMAND]"
             echo "  Additional Commands to administer the system"
@@ -201,6 +208,7 @@ Commands:
   db_rollback             Rollback blockchain to specified height, hash, or from whitelist file
   db_migrate              Migrate rocksdb database to column families
   maintenance             Enable / disable maintenance mode
+  offline                 Enable / disable offline mode
   admin                   Aeternity node administration commands
   help                    Get additional help about a command
   "
@@ -784,10 +792,6 @@ case "$1" in
                 HEART_OPTION="daemon_boot"
                 ;;
             start)
-                # TODO, add here the right annoying message asking users to consider
-                # instead using systemd or some such other init system
-                echo "'start' has been deprecated, replaced by 'daemon' and will be removed in the short-term, please consult rebar3.org on why you should be"\
-                     "using 'foreground' and an init tool such as 'systemd'"
                 shift
                 START_OPTION="console"
                 HEART_OPTION="daemon"

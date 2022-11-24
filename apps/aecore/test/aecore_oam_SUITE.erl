@@ -16,8 +16,10 @@
    [
      mode_is_normal/1
    , mode_is_maintenance/1
+   , mode_is_offline/1
    , set_mode_normal/1
    , set_mode_maintenance/1
+   , set_mode_offline/1
    ]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -38,6 +40,8 @@ groups() ->
       , set_mode_normal
       , set_mode_maintenance
       , set_mode_normal
+      , set_mode_offline
+      , set_mode_normal
       ]},
      {maintenance_init, [sequence],
       [ mode_is_maintenance
@@ -45,6 +49,17 @@ groups() ->
       , set_mode_maintenance
       , set_mode_normal
       , set_mode_maintenance
+      , set_mode_offline
+      , set_mode_maintenance
+      ]},
+      {offline_init, [sequence],
+      [ mode_is_offline
+      , set_mode_normal
+      , set_mode_offline
+      , set_mode_normal
+      , set_mode_offline
+      , set_mode_maintenance
+      , set_mode_offline
       ]}
     ].
 
@@ -58,19 +73,31 @@ init_per_suite(Config) ->
        {test_module, ?MODULE}] ++ Config).
 
 init_per_group(normal_init, Config) ->
-    init_(false, Config);
+    init_(false, false, Config);
 init_per_group(maintenance_init, Config) ->
-    init_(true, Config);
+    init_(true, false, Config);
+init_per_group(offline_init, Config) ->
+    init_(false, true, Config);
 init_per_group(_, Config) ->
     Config.
 
-init_(MMode, Config) when is_boolean(MMode) ->
+init_(MMode, false, Config) when is_boolean(MMode) ->
     aecore_suite_utils:start_node(
       dev1, Config, [{"AE__SYSTEM__MAINTENANCE_MODE", atom_to_list(MMode)}]),
     N = aecore_suite_utils:node_name(dev1),
     App = case MMode of
               true  -> aecore;
               false -> aehttp
+          end,
+    aecore_suite_utils:connect_wait(N, App),
+    [{nodes, [aecore_suite_utils:node_tuple(dev1)]} | Config];
+init_(false, OMode, Config) when is_boolean(OMode) ->
+    aecore_suite_utils:start_node(
+      dev1, Config, [{"AE__SYSTEM__OFFLINE_MODE", atom_to_list(OMode)}]),
+    N = aecore_suite_utils:node_name(dev1),
+    App = case OMode of
+              true  -> aehttp;
+              false -> aesync
           end,
     aecore_suite_utils:connect_wait(N, App),
     [{nodes, [aecore_suite_utils:node_tuple(dev1)]} | Config].
@@ -105,6 +132,10 @@ mode_is_maintenance(_Config) ->
     maintenance = get_mode(),
     ok.
 
+mode_is_offline(_Config) ->
+    offline = get_mode(),
+    ok.
+
 set_mode_normal(_Config) ->
     rpc_call(app_ctrl, set_mode, [normal]),
     await_stable_mode(),
@@ -118,6 +149,14 @@ set_mode_maintenance(_Config) ->
     await_stable_mode(),
     false = is_running(aesync),
     false = is_running(aehttp),
+    false = is_running(aestratum),
+    ok.
+
+set_mode_offline(_Config) ->
+    rpc_call(app_ctrl, set_mode, [offline]),
+    await_stable_mode(),
+    false = is_running(aesync),
+    true = is_running(aehttp),
     false = is_running(aestratum),
     ok.
 

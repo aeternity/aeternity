@@ -52,12 +52,14 @@
           [
             {roles,
              [ {basic, []}
+             , {nosync, [aehttp, aemon]}
              , {active, [aesync, aehttp, aemon, aestratum]}
              , {dev, [aehttp]}
              ]}
           , {mode, normal}
           , {modes,
              [ {normal, [basic, active]}
+             , {offline, [basic, nosync]}
              , {maintenance, [basic]}
              , {dev_mode, [basic, dev]}
              ]}
