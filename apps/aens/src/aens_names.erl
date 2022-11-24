@@ -53,7 +53,8 @@
               serialized/0]).
 
 -define(NAME_TYPE, name).
--define(NAME_VSN, 1).
+-define(NAME_VSN_1, 1).
+-define(NAME_VSN_2, 2).
 
 %%%===================================================================
 %%% API
@@ -91,44 +92,60 @@ serialize(#name{owner_id   = OwnerId,
                 status     = Status,
                 client_ttl = ClientTTL,
                 pointers   = Pointers}) ->
+    {Vsn, SerializePtrFun} =
+        case aens_pointer:has_raw_data_pointer(Pointers) of
+            false -> {?NAME_VSN_1, fun aens_pointer:serialize_pointer_vsn1/1};
+            true  -> {?NAME_VSN_2, fun aens_pointer:serialize_pointer_vsn2/1}
+        end,
     aeser_chain_objects:serialize(
       ?NAME_TYPE,
-      ?NAME_VSN,
-      serialization_template(?NAME_VSN),
+      Vsn,
+      serialization_template(Vsn),
       [ {owner_id, OwnerId}
       , {expires_by, ExpiresBy}
       , {status, atom_to_binary(Status, utf8)}
       , {client_ttl, ClientTTL}
-      , {pointers, [{aens_pointer:key(P), aens_pointer:id(P)} || P <- Pointers]}]).
+      , {pointers, [SerializePtrFun(P) || P <- Pointers]}]).
 
 -spec deserialize(aens_hash:name_hash(), binary()) -> name().
 deserialize(NameHash, Bin) ->
-    Fields = aeser_chain_objects:deserialize(
-                  ?NAME_TYPE,
-                  ?NAME_VSN,
-                  serialization_template(?NAME_VSN),
-                  Bin),
-    deserialize_from_fields(?NAME_VSN, NameHash, Fields).
+    {?NAME_TYPE, Vsn, RawFields} =
+        aeser_chain_objects:deserialize_type_and_vsn(Bin),
+    Template = serialization_template(Vsn),
+    Fields   = aeserialization:decode_fields(Template, RawFields),
+    deserialize_from_fields(Vsn, NameHash, Fields).
 
-deserialize_from_fields(?NAME_VSN, NameHash,
+deserialize_from_fields(Vsn, NameHash,
     [ {owner_id, OwnerId}
     , {expires_by, ExpiresBy}
     , {status, Status}
     , {client_ttl, ClientTTL}
     , {pointers, Pointers}]) ->
+    DeserializePtrFun =
+        case Vsn of
+            ?NAME_VSN_1 -> fun aens_pointer:deserialize_pointer_vsn1/1;
+            ?NAME_VSN_2 -> fun aens_pointer:deserialize_pointer_vsn2/1
+        end,
     #name{id         = aeser_id:create(name, NameHash),
           owner_id   = OwnerId,
           expires_by = ExpiresBy,
           status     = binary_to_existing_atom(Status, utf8),
           client_ttl = ClientTTL,
-          pointers   = [aens_pointer:new(Key, Id) || {Key, Id} <- Pointers]}.
+          pointers   = [DeserializePtrFun(P) || P <- Pointers]}.
 
-serialization_template(?NAME_VSN) ->
+serialization_template(?NAME_VSN_1) ->
     [ {owner_id, id}
     , {expires_by, int}
     , {status, binary}
     , {client_ttl, int}
     , {pointers, [{binary, id}]}
+    ];
+serialization_template(?NAME_VSN_2) ->
+    [ {owner_id, id}
+    , {expires_by, int}
+    , {status, binary}
+    , {client_ttl, int}
+    , {pointers, [{binary, binary}]}
     ].
 
 serialization_type() -> ?NAME_TYPE.
