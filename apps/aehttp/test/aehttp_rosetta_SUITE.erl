@@ -34,7 +34,6 @@
 
 -define(NODE, dev1).
 -define(SPEND_FEE, 20000 * aec_test_utils:min_gas_price()).
-
 %% These funded accounts must also be included in rosetta/rosetta.cfg
 -define(FUNDED_PUBKEY,
         <<184, 46, 221, 75, 166, 126, 195, 164, 224, 106, 80, 86, 58, 196, 56, 149, 36, 43, 124,
@@ -988,18 +987,43 @@ construction_flow(Config) ->
     %% The standard rosetta construction flow (create and post a SpendTx) must follow all 9 steps in this test case:
     %%
     %% 1. /construction/derive - turn client generated priv key into account name
+    {ok,
+     500,
+     #{<<"code">> := 8,
+       <<"message">> := <<"Invalid input">>,
+       <<"retriable">> := false}} =
+        construction_derive_sut(<<"nothex">>),
+    {ok,
+     500,
+     #{<<"code">> := 6,
+       <<"message">> := <<"Invalid account format">>,
+       <<"retriable">> := false}} =
+        construction_derive_sut(<<"deadbeef">>),
     {ok, 200, DeriveResp} = construction_derive_sut(FromHexKey),
     #{<<"address">> := Account, <<"account_identifier">> := #{<<"address">> := Account}} =
         DeriveResp,
     ?assertEqual(FromPubKeyExt, Account),
 
     %% 2. /construction/preprocess - turn sequence of ops into what is needed for metadata request (in our case we just need the from address)
+    InvalidOps = rosetta_ops(<<"ak_eFGDJPketnz">>, <<"ak_eFGDJPketnz">>, 1000),
+    {ok,
+     500,
+     #{<<"code">> := 6,
+       <<"message">> := <<"Invalid account format">>,
+       <<"retriable">> := false}} =
+        construction_preprocess_sut(InvalidOps),
     [From, To] = rosetta_ops(FromPubKeyExt, ToPubKeyExt, 10000),
     {ok, 200, PreprocessResp} = construction_preprocess_sut([From, To]),
     #{<<"options">> := #{<<"from">> := FromAcc}} = PreprocessResp,
     ?assertEqual(FromPubKeyExt, FromAcc),
 
     %% 3. /construction/metadata - query for metadata (fetch next nonce for the from address) (online)
+    {ok,
+     500,
+     #{<<"code">> := 6,
+       <<"message">> := <<"Invalid account format">>,
+       <<"retriable">> := false}} =
+        construction_metadata_sut(<<"ak_eFGDJPketnz">>),
     {ok, 200, MetadataResp} = construction_metadata_sut(FromPubKeyExt),
     #{<<"suggested_fee">> :=
           [#{<<"value">> := SuggestedFee,
@@ -1031,7 +1055,8 @@ construction_flow(Config) ->
 
     %% 7. /construction/parse - turn signed tx back into sequence of ops (so client can check it's correct)
     {ok, 200, ParseSignedResp} = construction_parse_sut(SignedTx, true),
-    #{<<"operations">> := [_FromOpBin, _ToOpBin], <<"account_identifier_signers">> := [#{<<"address">> := FromPubKeyExt}]} =
+    #{<<"operations">> := [_FromOpBin, _ToOpBin],
+      <<"account_identifier_signers">> := [#{<<"address">> := FromPubKeyExt}]} =
         ParseSignedResp,
 
     %% 8. /construction/hash - turn transaction into tx hash (so client can track progress of tx)
@@ -1065,7 +1090,9 @@ construction_rosetta_cli(Config) ->
                                                     {?FUNDED_PUBKEY2, ?FUNDED_PRIVKEY2}),
 
     ConfigFile = filename:join([code:lib_dir(aehttp), "test", "rosetta", "rosetta.cfg"]),
-    Cmd = "rosetta-cli --result-file ros-res --configuration-file " ++ ConfigFile ++ " check:construction",
+    Cmd = "rosetta-cli --result-file ros-res --configuration-file "
+          ++ ConfigFile
+          ++ " check:construction",
     Pid = spawn(fun() -> mine_many(Node) end),
     Result = os:cmd(Cmd),
     ct:log("rosetta-cli result ~s", [Result]),
@@ -1179,7 +1206,7 @@ construction_hash_sut(SignedTx) ->
     Body =
         #{network_identifier =>
               #{blockchain => <<"aeternity">>, network => aec_governance:get_network_id()},
-        signed_transaction => SignedTx},
+          signed_transaction => SignedTx},
     http_request(Host, post, "construction/hash", Body).
 
 construction_submit_sut(SignedTx) ->
@@ -1187,7 +1214,7 @@ construction_submit_sut(SignedTx) ->
     Body =
         #{network_identifier =>
               #{blockchain => <<"aeternity">>, network => aec_governance:get_network_id()},
-        signed_transaction => SignedTx},
+          signed_transaction => SignedTx},
     http_request(Host, post, "construction/submit", Body).
 
 construction_combine_sut(Signature, PubKey, From, UnsignedTx) ->
