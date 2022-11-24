@@ -1512,7 +1512,7 @@ rosetta_api_port(Node) ->
 
 rosetta_offline_api_port(Node) ->
     {NodeGroup, Idx} = split_node_name(Node),
-    port_group(NodeGroup) + Idx * 10 + 303. %% dev1: 3313
+    port_group(NodeGroup) + Idx * 10 + 403. %% dev1: 3413
 
 ws_port(Node) ->
     {NodeGroup, Idx} = split_node_name(Node),

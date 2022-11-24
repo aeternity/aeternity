@@ -1301,7 +1301,7 @@
                           "default" : "127.0.0.1"
                         },
                         "port" : {
-                            "description" : "Listen port for rosetta HTTP interface.",
+                            "description" : "Listen port for rosetta online HTTP interface.",
                             "type" : "integer",
                             "default" : 3213
                         },
@@ -1325,7 +1325,7 @@
                         "port" : {
                             "description" : "Listen port for the rosetta offline HTTP interface.",
                             "type" : "integer",
-                            "default" : 3313
+                            "default" : 3413
                         },
                         "acceptors" : {
                             "description" : "Number of acceptors in rosetta offline HTTP pool",
