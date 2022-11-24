@@ -84,7 +84,7 @@ user_config() ->
 
 -spec user_config(list() | binary()) -> undefined | {ok, any()}.
 user_config(Key) when is_list(Key) ->
-    get_env(aeutils, ['$user_config'|Key]);
+    find_config(Key, [user_config]);
 user_config(Key) when is_binary(Key) ->
     get_env(aeutils, ['$user_config',Key]).
 
@@ -196,6 +196,13 @@ nested_map_get([H|T], L) when is_list(L) ->
             undefined
     end.
 
+lists_map_key_find({K,V,Then} = Pat, [#{} = H|T]) ->
+    case maps:find(K, H) of
+        {ok, V} ->
+            maps:find(Then, H);
+        error ->
+            lists_map_key_find(Pat, T)
+    end;
 lists_map_key_find(K, [#{} = H|T]) ->
     case maps:find(K, H) of
         {ok, _} = Ok ->
