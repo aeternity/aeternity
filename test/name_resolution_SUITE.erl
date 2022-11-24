@@ -19,6 +19,7 @@
         %% , query_named_oracle/1
         , transfer_name_to_named_account/1
         , transfer_name_to_named_account_when_multiple_pointer_entries/1
+        , transfer_name_to_named_account_when_raw_data_pointer_present/1
         ]).
 
 -import(aec_block_micro_candidate, [apply_block_txs_strict/3
@@ -43,6 +44,7 @@ groups() ->
     , spend_to_name_when_multiple_pointer_entries
     , transfer_name_to_named_account
     , transfer_name_to_named_account_when_multiple_pointer_entries
+    , transfer_name_to_named_account_when_raw_data_pointer_present
     ]}].
 
 init_per_group(no_auction, Cfg) ->
@@ -168,6 +170,10 @@ pointers_with_duplicated_key_at_end(Tag, ToPubkey) ->
     ShadowedP = aens_pointer:new(aens_pointer:key(P), ShadowedId),
     [P, ShadowedP].
 
+pointers_with_raw_data_pointer(Tag, ToPubkey) ->
+    Ps = pointers(Tag, ToPubkey),
+    [aens_pointer:new(<<"raw data key">>, <<"raw data pointer">>) | Ps].
+
 update_pointers(Pointers, Pubkey, NameID, Nonce, S) ->
     UpdateSpec  = #{ account_id => account_id(Pubkey)
                    , nonce => Nonce
@@ -245,6 +251,15 @@ transfer_name_to_named_account_when_multiple_pointer_entries(_Cfg) ->
         true -> ok;
         false ->
             transfer_name_to_named_account_(fun pointers_with_duplicated_key_at_end/2)
+    end.
+
+transfer_name_to_named_account_when_raw_data_pointer_present(_Cfg) ->
+    Protocol = aec_hard_forks:protocol_effective_at_height(1),
+    case Protocol >= ?CERES_PROTOCOL_VSN of
+        true ->
+            transfer_name_to_named_account_(fun pointers_with_raw_data_pointer/2);
+        false ->
+            ok
     end.
 
 transfer_name_to_named_account_(PointersFun) ->

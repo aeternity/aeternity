@@ -532,6 +532,26 @@ update(Cfg) ->
     {value, N1} = aens_state_tree:lookup_name(NHash, aec_trees:ns(Trees1)),
     Pointers = aens_names:pointers(N1),
     NameTTL  = aens_names:ttl(N1) - Height,
+
+    %% Raw data pointers from CERES
+    Pointers2 = [aens_pointer:new(<<"account_pubkey">>, <<"raw data pointer">>)],
+    TxSpec2 = aens_test_utils:update_tx_spec(
+                PubKey, NHash, #{pointers => Pointers2, name_ttl => NameTTL}, S1),
+    {ok, Tx2} = aens_update_tx:new(TxSpec2),
+    SignedTx2 = aec_test_utils:sign_tx(Tx2, PrivKey),
+
+    Protocol = ?config(protocol, Cfg),
+    case Protocol >= ?CERES_PROTOCOL_VSN of
+        true  ->
+            {ok, [SignedTx2], Trees2, _} =
+                aec_block_micro_candidate:apply_block_txs([SignedTx2], Trees, Env),
+            {value, N2} = aens_state_tree:lookup_name(NHash, aec_trees:ns(Trees2)),
+            Pointers2 = aens_names:pointers(N2);
+        false ->
+            %% Transaction should not be accepted...
+            {ok, [], _, _} =
+                aec_block_micro_candidate:apply_block_txs([SignedTx2], Trees, Env)
+    end,
     ok.
 
 update_expire_at_once(Cfg) ->
@@ -635,6 +655,15 @@ update_negative(Cfg) ->
     case Protocol >= ?IRIS_PROTOCOL_VSN of
         true  -> {error, invalid_pointers} = aetx:process(Tx5d, Trees, Env);
         false -> {ok, _, _}                = aetx:process(Tx5d, Trees, Env)
+    end,
+
+    %% Raw data pointer - pre-CERES
+    BadPts4  = [aens_pointer:new(<<"key">>, <<"raw data">>)],
+    TxSpec5e = aens_test_utils:update_tx_spec(PubKey, NHash, #{pointers => BadPts4}, S1),
+    {ok, Tx5e} = aens_update_tx:new(TxSpec5e),
+    case Protocol >= ?CERES_PROTOCOL_VSN of
+        true  -> {ok, _, _}                   = aetx:process(Tx5e, Trees, Env);
+        false -> {error, invalid_at_protocol} = aetx:process(Tx5e, Trees, Env)
     end,
 
     %% Test name not owned

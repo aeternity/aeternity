@@ -2868,11 +2868,15 @@ fp_use_onchain_name_resolution(Cfg) ->
                 register_name(Name,
                               [{<<"account_pubkey">>, aeser_id:create(account, <<1:256>>)},
                                {<<"oracle">>, aeser_id:create(oracle, <<2:256>>)},
-                               {<<"unexpected_key">>, aeser_id:create(account, <<3:256>>)}]),
+                               {<<"unexpected_key">>, aeser_id:create(account, <<3:256>>)}]
+                              ++ [{<<"raw data key">>, <<"raw data pointer">>}
+                                  || aect_test_utils:latest_protocol_version() >= ?CERES_PROTOCOL_VSN ]),
                 ForceCallCheckName(Forcer, <<"oracle">>, true),
                 ForceCallCheckName(Forcer, <<"unexpected_key">>, true),
                 ForceCallCheckName(Forcer, <<"no_such_pointer">>, false)
-               ])
+               ] ++
+               [ ForceCallCheckName(Forcer, <<"raw data key">>, true)
+                 || aect_test_utils:latest_protocol_version() >= ?CERES_PROTOCOL_VSN ])
         end,
     [CallOnChain(Owner, Forcer) || Owner  <- ?ROLES,
                                    Forcer <- ?ROLES],
