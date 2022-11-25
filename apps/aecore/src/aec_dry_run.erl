@@ -101,13 +101,11 @@ dry_run_int([{tx, TxOpts, Tx} | Txs], Trees, Env, Opts, Acc) ->
     %% This means expanding the return type, and breaking the api :scream_cat:.
     case aec_trees:apply_txs_on_state_trees([Tx], Trees, Env1, [strict, dont_verify_signature|Opts]) of
         {ok, [Tx], [], Trees1, Events} when Stateless ->
-            OrderedEvents = lists:reverse(Events),
-            Env2 = aetx_env:set_events(Env1, OrderedEvents),
-            dry_run_int(Txs, Trees, Env2, Opts, [dry_run_res(Tx, Trees1, OrderedEvents, EventsEnabled, ok) | Acc]);
+            Env2 = aetx_env:set_events(Env1, Events),
+            dry_run_int(Txs, Trees, Env2, Opts, [dry_run_res(Tx, Trees1, Events, EventsEnabled, ok) | Acc]);
         {ok, [Tx], [], Trees1, Events} ->
-            OrderedEvents = lists:reverse(Events),
-            Env2 = aetx_env:set_events(Env1, OrderedEvents),
-            dry_run_int(Txs, Trees1, Env2, Opts, [dry_run_res(Tx, Trees1, OrderedEvents, EventsEnabled, ok) | Acc]);
+            Env2 = aetx_env:set_events(Env1, Events),
+            dry_run_int(Txs, Trees1, Env2, Opts, [dry_run_res(Tx, Trees1, Events, EventsEnabled, ok) | Acc]);
         Err = {error, _Reason} ->
             dry_run_int(Txs, Trees, Env1, Opts, [dry_run_res(Tx, Trees, [], EventsEnabled, Err) | Acc])
     end.

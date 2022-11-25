@@ -651,7 +651,7 @@ apply_txs_on_state_trees([], ValidTxs, InvalidTxs, Trees,Env,Opts) ->
                  true -> aetx_env:events(Env);
                  false -> []
              end,
-    {ok, lists:reverse(ValidTxs), lists:reverse(InvalidTxs), Trees, Events};
+    {ok, lists:reverse(ValidTxs), lists:reverse(InvalidTxs), Trees, lists:reverse(Events)};
 apply_txs_on_state_trees([SignedTx | Rest], ValidTxs, InvalidTxs, Trees, Env, Opts) ->
     Strict     = proplists:get_value(strict, Opts, false),
     DontVerify = proplists:get_value(dont_verify_signature, Opts, false),
