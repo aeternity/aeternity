@@ -6,6 +6,8 @@
 -include_lib("eunit/include/eunit.hrl").
 
 -define(BIG_AMOUNT, 10000000000000000000000000000 * aec_test_utils:min_gas_price()).
+-define(PARENT_CHAIN_NETWORK_ID, <<"pc_network_id">>).
+-define(SIGN_MODULE, aec_preset_keys).
 
 ae_sim_test_() ->
     {foreach,
@@ -29,11 +31,21 @@ ae_sim_test_() ->
              %% Start the process that that regularly checkes the parent chain.
              %% FIXME: this would normally be running in the main ae node
              %% as part of the normal supervisor tree in a HC enabled system
-             {ok, _Connector} = aec_parent_connector:start_link(aehttpc_aeternity, on_demand, ParentHosts),
+             {ok, _Connector} =
+                aec_parent_connector:start_link(aehttpc_aeternity,
+                                                on_demand,
+                                                ParentHosts,
+                                                ?PARENT_CHAIN_NETWORK_ID,
+                                                ?SIGN_MODULE,
+                                                CommitmentPubKey),
              mock_parent_cache(),
+             mock_network_id(?PARENT_CHAIN_NETWORK_ID),
+             mock_sign_module(StakerKeyPair),
              {ok, CommitmentPubKey, StakerKeyPair, ParentSims}
      end,
      fun({ok, _CommitmentPubKey, _StakerKeyPair, ParentSims}) ->
+             unmock_sign_module(),
+             unmock_network_id(),
              unmock_parent_cache(),
              aec_parent_connector:stop(),
              stop_ae_parent_sims(ParentSims),
@@ -156,7 +168,15 @@ ae_sim_test_() ->
                             %% Post our local top hash as the commitment
                             Commitment = <<"kh_deadbeef">>,
                             {ok, TopHash, _PrevHash, Height} = aehttpc_aeternity:get_latest_block(Host, Port, User, Password, <<"Seed">>),
-                            ok = aehttpc_aeternity:post_commitment(Host, Port, StakerPubKey, StakerPrivKey, CommitmentPubKey, Commitment),
+                            Fee = 20000 * aec_test_utils:min_gas_price(),
+                            {ok, #{<<"tx_hash">> := _}} =
+                                aehttpc_aeternity:post_commitment(Host, Port,
+                                                                   StakerPubKey,
+                                                                   CommitmentPubKey,
+                                                                   1, Fee,
+                                                                   Commitment,
+                                                                  ?PARENT_CHAIN_NETWORK_ID,
+                                                                  ?SIGN_MODULE),
                             ?assertMatch({ok, #{micro_blocks := []}}, aec_chain_sim:get_current_generation(SimName)),
                             %% Call the simulator directly to force our Tx in a block
                             aec_chain_sim:add_microblock(SimName),
@@ -229,6 +249,25 @@ mock_parent_cache() ->
 
 unmock_parent_cache() ->
     meck:unload(aec_parent_chain_cache).
+
+mock_sign_module(#{pubkey := ExpectedPubKey, privkey := PrivKey}) ->
+    meck:new(?SIGN_MODULE, []),
+    meck:expect(?SIGN_MODULE, sign_binary,
+        fun(Bin, Pubkey) when Pubkey =:= ExpectedPubKey ->
+            Signature = enacl:sign_detached(Bin, PrivKey), 
+            {ok, Signature}
+        end).
+
+unmock_sign_module() ->
+    meck:unload(?SIGN_MODULE).
+
+mock_network_id(NetworkId) ->
+    meck:new(aec_governance, [passthrough]),
+    meck:expect(aec_governance, get_network_id,
+                fun() -> NetworkId end).
+
+unmock_network_id() ->
+    meck:unload(aec_governance).
 
 keyblock_to_pc_block(KB) ->
     {ok, Hash0} = aec_blocks:hash_internal_representation(KB),

@@ -377,7 +377,7 @@ fraud_report_reward(Height) ->
 
 -spec add_network_id(binary()) -> binary().
 add_network_id(SerializedTransaction) ->
-    NetworkId = get_network_id(),
+    NetworkId = ?MODULE:get_network_id(),
     <<NetworkId/binary, SerializedTransaction/binary>>.
 
 -spec add_custom_network_id(CustomNetworkId, SerializedTransaction) -> Bin
@@ -389,7 +389,7 @@ add_custom_network_id(CustomNetworkId, SerializedTransaction) ->
 
 -spec add_network_id_last(binary()) -> binary().
 add_network_id_last(Payload) ->
-    NetworkId = get_network_id(),
+    NetworkId = ?MODULE:get_network_id(),
     <<Payload/binary, NetworkId/binary>>.
 
 get_network_id() ->

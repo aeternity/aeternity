@@ -444,7 +444,7 @@ remove_meck() ->
     aec_db:uninstall_test_env(),
     meck:unload([ aec_chain
                 , aec_chain_state
-                , aec_db ]),
+                , aec_db]),
     ok.
 
 %%%===================================================================

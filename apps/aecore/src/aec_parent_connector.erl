@@ -85,6 +85,9 @@ start_link() ->
 %% ParentConnMod :: atom() - module name of the http client module aehttpc_btc | aehttpc_aeternity
 %% FetchInterval :: integer() | on_demand - millisecs between parent chain checks or when asked (useful for test)
 %% ParentHosts :: [#{host => Host, port => Port, user => User, password => Pass}]
+%% NetworkID :: binary() - the parent chain's network id 
+%% SignModule :: atom() - module name of the module that keeps the keys for the parent chain transactions to be signed
+%% Recipient :: binary() - the parent chain address to which the commitments must be sent to
 -spec start_link(atom(), integer() | on_demand, [map()], binary(), atom(), binary()) -> {ok, pid()} | {error, {already_started, pid()}} | {error, Reason::any()}.
 start_link(ParentConnMod, FetchInterval, ParentHosts, NetworkId, SignModule, Recipient) ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [ParentConnMod, FetchInterval, ParentHosts, NetworkId, SignModule, Recipient], []).
