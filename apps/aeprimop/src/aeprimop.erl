@@ -2235,13 +2235,23 @@ assert_name_claimed(Name) ->
         revoked -> runtime_error(name_revoked)
     end.
 
-assert_name_pointers(_, Protocol) when Protocol < ?IRIS_PROTOCOL_VSN ->
-    ok;
+assert_name_pointers(Pointers, Protocol) when Protocol < ?IRIS_PROTOCOL_VSN ->
+    case aens_pointer:has_raw_data_pointer(Pointers) of
+        true  -> runtime_error(invalid_pointers);
+        false -> ok
+    end;
+assert_name_pointers(Pointers, Protocol) when Protocol == ?IRIS_PROTOCOL_VSN ->
+    case Pointers == aens_pointer:sanitize_pointers(Pointers)
+             andalso not aens_pointer:has_raw_data_pointer(Pointers) of
+        true  -> ok;
+        false -> runtime_error(invalid_pointers)
+    end;
 assert_name_pointers(Pointers, _) ->
     case Pointers == aens_pointer:sanitize_pointers(Pointers) of
         true  -> ok;
         false -> runtime_error(invalid_pointers)
     end.
+
 
 %% Note: returns deserialized Code to avoid extra work
 assert_ga_attach_byte_code(ABIVersion, SerializedCode, CallData, FunHash, #state{protocol = Protocol})

@@ -843,6 +843,8 @@ aens_resolve_name_hash_from_pstate(NameHash, Key, PState) ->
     case aeprimop_state:find_name(NameHash, PState) of
         {Name, PState1} ->
             case aens:resolve_from_name_object(Key, Name) of
+                {ok, {data, Data}} ->
+                    {ok, data, Data, PState1};
                 {ok, Id} ->
                     {Tag, Pubkey} = aeser_id:specialize(Id),
                     {ok, Tag, Pubkey, PState1};
