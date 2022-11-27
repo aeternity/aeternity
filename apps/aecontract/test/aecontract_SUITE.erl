@@ -4244,10 +4244,11 @@ sophia_signatures_aens(Cfg) ->
     {ok, NameAscii} = aens_utils:to_ascii(Name1),
     CHash           = ?hsh(aens_hash:commitment_hash(NameAscii, Salt1)),
     NHash           = aens_hash:name_hash(NameAscii),
-    NameArg = case ?config(vm_version, Cfg) of
-                  VMVersion when ?IS_AEVM_SOPHIA(VMVersion), VMVersion >= ?VM_AEVM_SOPHIA_4 -> Name1;
-                  VMVersion when ?IS_AEVM_SOPHIA(VMVersion), VMVersion < ?VM_AEVM_SOPHIA_4 -> ?hsh(NHash);
-                  VMVersion when ?IS_FATE_SOPHIA(VMVersion) -> Name1
+    VMVersion       = ?config(vm_version, Cfg),
+    NameArg = if
+                  ?IS_AEVM_SOPHIA(VMVersion), VMVersion >= ?VM_AEVM_SOPHIA_4 -> Name1;
+                  ?IS_AEVM_SOPHIA(VMVersion), VMVersion < ?VM_AEVM_SOPHIA_4 -> ?hsh(NHash);
+                  ?IS_FATE_SOPHIA(VMVersion) -> Name1
               end,
     NameAccSig      = sign(<<NameAcc/binary, Ct/binary>>, NameAcc),
     NameSig         = sign(<<NameAcc/binary, NHash/binary, Ct/binary>>, NameAcc),
@@ -4277,8 +4278,13 @@ sophia_signatures_aens(Cfg) ->
     %% Update - Only in FATE > v1
     case protocol_version() of
         P when P >= ?IRIS_PROTOCOL_VSN ->
-            AccountPointee  = fun (A) -> {variant, [1, 1, 1, 1], 0, {A}} end,
-            OraclePointee   = fun (A) -> {variant, [1, 1, 1, 1], 1, {A}} end,
+            PointeeVariantArities =
+                case VMVersion of
+                    ?VM_FATE_SOPHIA_2 -> [1, 1, 1, 1];
+                    _                 -> [1, 1, 1, 1, 1]
+                end,
+            AccountPointee  = fun (A) -> {variant, PointeeVariantArities, 0, {A}} end,
+            OraclePointee   = fun (A) -> {variant, PointeeVariantArities, 1, {A}} end,
             Pointers = #{<<"account_pubkey">> => AccountPointee(<<APubkey:256>>),
                          <<"oracle_pubkey">>  => OraclePointee(<<OPubkey:256>>)},
             None = none,
@@ -4341,7 +4347,7 @@ sophia_signatures_aens(Cfg) ->
 %% Delegated signatures did not work for non-existing accounts pre-CERES, this test checks that this
 %% continues to be true :-)
 %% Note that Claim can't be done by a non-existing account since it require funds!
-sophia_fate_signatures_aens(_Cfg) ->
+sophia_fate_signatures_aens(Cfg) ->
     ?skipRest(not ?IS_FATE_SOPHIA(vm_version()), only_valid_for_fate),
     init_new_state(),
     %% AENS transactions from contract - using non-existing/not-funded 3rd party account(s)
@@ -4377,8 +4383,13 @@ sophia_fate_signatures_aens(_Cfg) ->
                      {}, TransferRes),
 
     %% Update (did not exist in Lima!)
-    AccountPointee  = fun (A) -> {variant, [1, 1, 1, 1], 0, {A}} end,
-    OraclePointee   = fun (A) -> {variant, [1, 1, 1, 1], 1, {A}} end,
+    PointeeVariantArities =
+        case ?config(vm_version, Cfg) of
+            VM when VM >= ?VM_FATE_SOPHIA_3 -> [1, 1, 1, 1, 1];
+            _                               -> [1, 1, 1, 1]
+        end,
+    AccountPointee  = fun (A) -> {variant, PointeeVariantArities, 0, {A}} end,
+    OraclePointee   = fun (A) -> {variant, PointeeVariantArities, 1, {A}} end,
     Pointers = #{<<"account_pubkey">> => AccountPointee(<<2:256>>),
                  <<"oracle_pubkey">>  => OraclePointee(<<3:256>>)},
     None = none,
@@ -5797,7 +5808,7 @@ sophia_compiler_version(_Cfg) ->
     {code, Code} = aect_contracts:code(C),
     CMap = aeser_contract_code:deserialize(Code),
     ?assertMatchProtocol(maps:get(compiler_version, CMap, undefined),
-                         undefined, <<"2.1.0">>, <<"3.2.0">>, <<"unknown">>, <<"6.1.0">>, <<"7.0.0">>),
+                         undefined, <<"2.1.0">>, <<"3.2.0">>, <<"unknown">>, <<"6.1.0">>, <<"8.0.0">>),
     ok.
 
 sophia_protected_call(_Cfg) ->
@@ -6470,7 +6481,9 @@ sophia_aens_transactions(Cfg) ->
 
     ok.
 
-sophia_aens_update_transaction(_Cfg) ->
+sophia_aens_update_transaction(Cfg) ->
+    VMVersion = ?config(vm_version, Cfg),
+
     %% AENS transactions from contract
     init_new_state(),
     Acc      = ?call(new_account, 40000000000000 * aec_test_utils:min_gas_price()),
@@ -6497,9 +6510,14 @@ sophia_aens_update_transaction(_Cfg) ->
     Some = fun (X) -> {some, X} end,
     RelTTL = fun (I) -> {variant, [1, 1], 0, {I}} end,
     FixTTL = fun (I) -> {variant, [1, 1], 1, {I}} end,
-    AccountPointee  = fun (A) -> {variant, [1, 1, 1, 1], 0, {A}} end,
-    OraclePointee   = fun (A) -> {variant, [1, 1, 1, 1], 1, {A}} end,
-    ContractPointee = fun (A) -> {variant, [1, 1, 1, 1], 2, {A}} end,
+    PointeeVariantArities =
+        case VMVersion of
+            ?VM_FATE_SOPHIA_2 -> [1, 1, 1, 1];
+            _                 -> [1, 1, 1, 1, 1]
+        end,
+    AccountPointee  = fun (A) -> {variant, PointeeVariantArities, 0, {A}} end,
+    OraclePointee   = fun (A) -> {variant, PointeeVariantArities, 1, {A}} end,
+    ContractPointee = fun (A) -> {variant, PointeeVariantArities, 2, {A}} end,
 
     Rec0 = GetNameRecord(),
     {} = ?call(call_contract, Acc, Ct, update, {tuple, []},
