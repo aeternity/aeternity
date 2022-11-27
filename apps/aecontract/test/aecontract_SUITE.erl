@@ -333,6 +333,7 @@
 
 all() ->
     [{group, protocol_interaction},
+     {group, protocol_interaction_fate},
      {group, aevm},
      {group, fate},
      {group, fate_named}
@@ -7113,9 +7114,9 @@ contract_init_on_chain_fate(Cfg) ->
         fun(CallSpec) ->
             Id = ?call(create_contract_with_code, Acc, IdCode, {}, CallSpec),
             {value, Contract} = ?call(lookup_contract_by_id, Id),
-            aeb_fate_code:functions(
-                aeb_fate_code:deserialize(
-                    aect_contracts:code(Contract)))
+            {code, Code} = aect_contracts:code(Contract),
+            #{byte_code := ByteCode} = aect_sophia:deserialize(Code),
+            aeb_fate_code:functions(aeb_fate_code:deserialize(ByteCode))
         end,
 
     HasInit =
