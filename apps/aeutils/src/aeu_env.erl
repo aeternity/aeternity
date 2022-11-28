@@ -13,7 +13,8 @@
 
 -export([user_config/0, user_config/1, user_config/2]).
 -export([user_map/0, user_map/1]).
--export([schema/0, schema/1]).
+-export([schema/0, schema/1, schema/2]).
+-export([schema_default/1, schema_default/2]).
 -export([schema_default_values/1]).
 -export([user_config_or_env/3, user_config_or_env/4]).
 -export([user_map_or_env/4]).
@@ -152,7 +153,7 @@ find_config(_, []) ->
 
 find_config_(K, user_config       ) -> user_map(K);
 find_config_(_, {env, App, EnvKey}) -> get_env(App, EnvKey);
-find_config_(K, schema_default    ) -> default(K);
+find_config_(K, schema_default    ) -> schema_default(K);
 find_config_(_, {value, V}        ) -> {ok, V}.
 
 
@@ -226,9 +227,9 @@ schema() ->
     end.
 
 schema(Key) ->
-    schema_(Key, schema()).
+    schema(Key, schema()).
 
-schema_([H|T], Schema) ->
+schema([H|T], Schema) ->
     case Schema of
         #{<<"$schema">> := _, <<"properties">> := #{H := Tree}} ->
             schema_find(T, Tree);
@@ -237,9 +238,9 @@ schema_([H|T], Schema) ->
         _ ->
             undefined
     end;
-schema_([], Schema) ->
+schema([], Schema) ->
     {ok, Schema};
-schema_(Key, Schema) ->
+schema(Key, Schema) ->
     case maps:find(Key, Schema) of
         {ok, _} = Ok -> Ok;
         error        -> undefined
@@ -257,8 +258,11 @@ schema_find([H|T], S) ->
 schema_find([], S) ->
     {ok, S}.
 
-default(Key) when is_list(Key) ->
+schema_default(Key) when is_list(Key) ->
     schema(Key ++ [<<"default">>]).
+
+schema_default(Key, Schema) when is_list(Key) ->
+    schema(Key ++ [<<"default">>], Schema).
 
 schema_default_values(Path) ->
     case schema(Path) of
@@ -364,7 +368,7 @@ to_map([H|T], Val, M) ->
     M#{H => to_map(T, Val, SubMap)}.
 
 coerce_type(Key, Value, Schema) ->
-    case schema_(Key, Schema) of
+    case schema(Key, Schema) of
         {ok, #{<<"type">> := Type}} ->
             case Type of
                 <<"integer">> -> to_integer(Value);
