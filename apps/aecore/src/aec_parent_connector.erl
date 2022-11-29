@@ -318,7 +318,7 @@ handle_fetch_block(Fun, Arg,
 post_commitment(Who, Commitment,
             #state{ parent_hosts = ParentNodes,
                     parent_conn_mod = Mod,
-                    rpc_seed = Seed,
+                    rpc_seed = _Seed,
                     c_details = CDetails}) ->
     #commitment_details{
         parent_network_id = PCNetworkId,
@@ -327,7 +327,7 @@ post_commitment(Who, Commitment,
         amount = Amount,
         fee = Fee} = CDetails,
     Fun =
-        fun(#{host := Host, port := Port, user := User, password := Password} = Node) ->
+        fun(#{host := Host, port := Port, user := _User, password := _Password} = Node) ->
             case Mod:post_commitment(Host, Port, Who, Receiver, Amount, Fee,
                                      Commitment, PCNetworkId, SignModule) of
                 {ok, #{<<"tx_hash">> := TxHash}} -> {ok, {TxHash, Node}};

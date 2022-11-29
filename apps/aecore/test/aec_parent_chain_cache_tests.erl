@@ -20,12 +20,15 @@ follow_child_chain_strategy_test_() ->
      fun() ->
             meck:new(aec_chain, []),
             meck:expect(aec_chain, top_height, fun() -> 0 end),
+            meck:new(aec_conductor, []),
+            meck:expect(aec_conductor, get_mining_state, fun() -> stopped end),
             mock_parent_connector(),
             mock_events()
      end,
      fun(_) ->
             unmock_events(),
             meck:unload(aec_chain),
+            meck:unload(aec_conductor),
             unmock_parent_connector()
      end,
      [  {"Cache all the blocks above current child height", fun cache_all_above_child_height/0},
@@ -44,7 +47,7 @@ cache_all_above_child_height() ->
         fun(CacheMaxSize, StartHeight, ChildTop0) ->
             meck:expect(aec_chain, top_height, fun() -> ChildTop0 end),
             {ok, _CachePid} = start_cache(StartHeight, CacheMaxSize, _Confirmations = 1),
-            timer:sleep(10),
+            timer:sleep(20),
             %% the cache is waiting for a new top, the cache is up to the target top
             ExpectedTopHeight = ChildTop0 + StartHeight,
             {ok, #{ child_start_height := StartHeight,
@@ -67,7 +70,7 @@ post_cachable_parent_top() ->
         fun(CacheMaxSize, StartHeight, ChildTop0) ->
             meck:expect(aec_chain, top_height, fun() -> ChildTop0 end),
             {ok, _CachePid} = start_cache(StartHeight, CacheMaxSize, _Confirmations = 1),
-            timer:sleep(10),
+            timer:sleep(20),
             %% the cache is waiting for a new top, the cache is up to the target top
             ExpectedTopHeight =  ChildTop0 + StartHeight,
             MaxCachableHeight =
@@ -78,7 +81,7 @@ post_cachable_parent_top() ->
             %% post some top in the cache's range
             ParentTop = MaxCachableHeight(ChildTop0) - 2,
             ?TEST_MODULE:post_block(block_by_height(ParentTop)),
-            timer:sleep(10),
+            timer:sleep(20),
             {ok, #{ child_start_height := StartHeight,
                     child_top_height   := ChildTop0,
                     top_height         := ParentTop} = Res} = ?TEST_MODULE:get_state(),
@@ -94,7 +97,7 @@ post_non_cachable_parent_top() ->
         fun(CacheMaxSize, StartHeight, ChildTop0) ->
             meck:expect(aec_chain, top_height, fun() -> ChildTop0 end),
             {ok, _CachePid} = start_cache(StartHeight, CacheMaxSize, _Confirmations = 1),
-            timer:sleep(10),
+            timer:sleep(20),
             %% the cache is waiting for a new top, the cache is up to the target top
             ExpectedTopHeight =  ChildTop0 + StartHeight,
             MaxCachableHeight =
@@ -105,7 +108,7 @@ post_non_cachable_parent_top() ->
             %% post some top in the cache's range
             ParentTop = MaxCachableHeight(ChildTop0) + 10,
             ?TEST_MODULE:post_block(block_by_height(ParentTop)),
-            timer:sleep(10),
+            timer:sleep(20),
             {ok, #{ child_start_height := StartHeight,
                     child_top_height   := ChildTop0,
                     top_height         := ParentTop} = Res} = ?TEST_MODULE:get_state(),
@@ -121,7 +124,7 @@ post_child_top_in_the_middle_of_cachable_heights() ->
         fun(CacheMaxSize, StartHeight, ChildTop0) ->
             meck:expect(aec_chain, top_height, fun() -> ChildTop0 end),
             {ok, CachePid} = start_cache(StartHeight, CacheMaxSize, _Confirmations = 1),
-            timer:sleep(10),
+            timer:sleep(20),
             %% the cache is waiting for a new top, the cache is up to the target top
             ExpectedTopHeight =  ChildTop0 + StartHeight,
             MaxCachableHeight =
@@ -132,16 +135,17 @@ post_child_top_in_the_middle_of_cachable_heights() ->
             %% post some top in the cache's range
             ParentTop = MaxCachableHeight(ChildTop0) + 10,
             ?TEST_MODULE:post_block(block_by_height(ParentTop)),
-            timer:sleep(10),
+            timer:sleep(20),
             {ok, #{ child_start_height := StartHeight,
                     child_top_height   := ChildTop0,
                     top_height         := ParentTop}} = ?TEST_MODULE:get_state(),
             ChildTop1 = ChildTop0 + 10,
             child_new_top(CachePid, ChildTop1),
-            timer:sleep(10),
+            timer:sleep(20),
             {ok, #{ child_start_height := StartHeight,
-                    child_top_height   := ChildTop1,
+                    child_top_height   := ChildTop2,
                     top_height         := ParentTop} = Res} = ?TEST_MODULE:get_state(),
+            {ChildTop1, ChildTop1} = {ChildTop1, ChildTop2},
             assert_child_cache_consistency(Res),
             ?TEST_MODULE:stop()
         end,
@@ -155,17 +159,14 @@ configurable_confirmation_height() ->
         fun(CacheMaxSize, StartHeight, ChildTop0, Confirmations) ->
             meck:expect(aec_chain, top_height, fun() -> ChildTop0 end),
             {ok, _CachePid} = start_cache(StartHeight, CacheMaxSize, Confirmations),
-            timer:sleep(10),
+            timer:sleep(20),
             %% the cache is waiting for a new top, the cache is up to the target top
             ExpectedTopHeight = ChildTop0 + StartHeight,
             {ok, #{ child_start_height := StartHeight,
                     top_height         := ExpectedTopHeight,
                     child_top_height   := ChildTop0} = Res} = ?TEST_MODULE:get_state(),
             assert_child_cache_consistency(Res),
-            {error, not_in_cache} = ?TEST_MODULE:get_block_by_height(ChildTop0
-                                                                     +
-                                                                     StartHeight
-                                                                     - CacheMaxSize - 1),
+            {error, not_in_cache} = ?TEST_MODULE:get_block_by_height(ChildTop0 + StartHeight - CacheMaxSize - 1),
             {error, not_in_cache} = ?TEST_MODULE:get_block_by_height(ExpectedTopHeight + 1),
             ?TEST_MODULE:stop()
         end,
@@ -235,7 +236,9 @@ unmock_events() ->
     meck:unload(aec_events).
 
 child_new_top(CachePid, Height) ->
+    Hash = height_to_hash(Height),
     CachePid ! {gproc_ps_event, top_changed, #{info => #{block_type => key,
+                                                         block_hash => Hash,
                                                          height => Height}}}.
 
 assert_child_cache_consistency(#{ child_start_height := StartHeight,

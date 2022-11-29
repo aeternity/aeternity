@@ -74,7 +74,6 @@ stop() ->
 
 -spec post_block(aec_parent_chain_block:block()) -> ok.
 post_block(Block) ->
-    Height = aec_parent_chain_block:height(Block),
     gen_server:cast(?SERVER, {post_block, Block}).
 
 -spec get_block_by_height(non_neg_integer()) -> {ok, aec_parent_chain_block:block()}
@@ -160,7 +159,7 @@ handle_info(initialize_cache, State) ->
     end;
 handle_info({gproc_ps_event, top_changed, #{info := #{block_type := key,
                                                       block_hash := Hash,
-                                                      height := Height}}},
+                                                      height     := Height}}},
             #state{child_top_height = OldHeight,
                    max_size = MaxSize} = State0) ->
     State1 = State0#state{child_top_height = Height},
@@ -171,8 +170,8 @@ handle_info({gproc_ps_event, top_changed, #{info := #{block_type := key,
         end,
     TargetHeight = target_parent_height(State2),
     aec_parent_connector:request_block_by_height(TargetHeight),
-    maybe_post_commitments(Hash, State2),
-    {noreply, State2};
+    State = maybe_post_commitments(Hash, State2),
+    {noreply, State};
 handle_info({gproc_ps_event, top_changed, _}, State) ->
     {noreply, State};
 handle_info(_Info, State) ->
@@ -318,7 +317,17 @@ maybe_request_next_block(BlockHeight, #state{max_size = MaxSize } = State) ->
             pass
     end.
 
-maybe_post_commitments(TopHash, #state{sign_module = SignModule} = _State) ->
+maybe_post_commitments(TopHash, #state{sign_module = SignModule} = State) ->
+    case posting_commitments_enabled() of
+        true ->
+            post_commitments(TopHash, #state{sign_module = SignModule} = State);
+        false ->
+            lager:debug("Will not post commitments, disabled", []),
+            State
+    end.
+
+
+post_commitments(TopHash, #state{sign_module = SignModule} = State) ->
     %% use the key top hash as there could be a race condition. If there is a
     %% microblock right after the keyblock, the state trees could have changed
     %% (and could have modified the staker's state) and using
@@ -341,7 +350,8 @@ maybe_post_commitments(TopHash, #state{sign_module = SignModule} = _State) ->
             end,
             ok
         end,
-        LocalStakers).
+        LocalStakers),
+    State.
 
 
 %% we post commitments when there is a new block on the child chain
@@ -349,11 +359,7 @@ maybe_post_commitments(TopHash, #state{sign_module = SignModule} = _State) ->
 %% genesis block before the block with height 1: those are not posted as
 %% there is no trigger for the genesis block itself
 %% We detect once there is a block that would trigger one with height 1
-maybe_post_initial_commitments(_Block, #state{child_top_height = ChildTop} = State) when
-      ChildTop > 0 ->
-    State;
-maybe_post_initial_commitments(Block, #state{child_top_height = 0,
-                                             pc_confirmations = Confirmations,
+maybe_post_initial_commitments(Block, #state{pc_confirmations = Confirmations,
                                              initial_commits_heights = InitialCommitsHeights} = State) ->
     Height = aec_parent_chain_block:height(Block),
     ChildStartHeight = State#state.child_start_height,
@@ -361,12 +367,20 @@ maybe_post_initial_commitments(Block, #state{child_top_height = 0,
     IsFirstCommitment = Height >= ChildStartHeight - 1 andalso
                         Height < ChildStartHeight + Confirmations,
     NotPostedYet = lists:member(Height, InitialCommitsHeights),
-    case IsFirstCommitment andalso NotPostedYet of
+    IsPublishingCommitments = posting_commitments_enabled(),
+    case IsFirstCommitment andalso NotPostedYet  andalso IsPublishingCommitments of
         true ->
             Hash = aec_chain:genesis_hash(), %% TODO: Genesis hash?
-            maybe_post_commitments(Hash, State),
-            State#state{initial_commits_heights = lists:delete(Height, InitialCommitsHeights)};
+            State1 = maybe_post_commitments(Hash, State),
+            State1#state{initial_commits_heights = lists:delete(Height, InitialCommitsHeights)};
         false ->
             State
     end.
+
+posting_commitments_enabled() ->
+    case aec_conductor:get_mining_state() of
+        running -> true;
+        stopped -> false
+    end.
+
 
