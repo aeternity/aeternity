@@ -1479,11 +1479,14 @@ prep_meta(Owner, AuthOpts, InnerTx0) ->
     TxBin    = aec_governance:add_network_id(aetx:serialize_to_binary(InnerTx)),
     AuthData = make_authdata(AuthOpts, aec_hash:hash(tx, TxBin)),
     Options1 = maps:merge(#{auth_data => AuthData, tx => InnerSTx}, AuthOpts),
-    MetaTx   = aega_test_utils:ga_meta_tx(Owner, Options1),
+    MetaTx   = aega_test_utils:ga_meta_tx(Owner, Options1),  %% here we can tamper the fee and gas_price
     {AuthData, InnerTx, MetaTx}.
 
 do_meta(Owner, AuthData, InnerTx, MetaTx, Opts, S) ->
-    Fail     = maps:get(fail, Opts, false),
+    TamperFee = maps:get(tamper_fee, Opts, false),
+    TamperGasPrice = maps:get(tamper_gas_price, Opts, false),
+    Fail     = maps:get(fail, Opts, (TamperFee orelse TamperGasPrice)
+                                    andalso aect_test_utils:latest_protocol_version() >= ?CERES_PROTOCOL_VSN),
     Height   = maps:get(height, Opts, 1),
     SMetaTx  = aetx_sign:new(MetaTx, []),
     S1       = case apply_transaction(SMetaTx, S, Height) of

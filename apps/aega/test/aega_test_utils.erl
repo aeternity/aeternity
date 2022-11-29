@@ -42,7 +42,15 @@ ga_attach_tx_default(PubKey) ->
 
 ga_meta_tx(PubKey, Spec0) ->
     Spec = maps:merge(ga_meta_tx_default(PubKey), Spec0),
-    {ok, Tx} = aega_meta_tx:new(Spec),
+    Spec1 = case maps:get(tamper_fee, Spec0, false) of
+                true -> maps:put(fee, maps:get(fee, Spec) + 100, Spec);
+                false -> Spec
+            end,
+    Spec2 = case maps:get(tamper_gas_price, Spec0, false) of
+                true -> maps:put(gas_price, maps:get(gas_price, Spec1) + 100, Spec1);
+                false -> Spec1
+            end,
+    {ok, Tx} = aega_meta_tx:new(Spec2),
     Tx.
 
 ga_meta_tx_default(PubKey) ->
