@@ -108,10 +108,14 @@ request_top() ->
     ?SERVER ! check_parent.
 
 %% this blocks the caller process, use with caution
+-spec fetch_block_by_hash(binary()) -> {ok, aec_parent_chain_block:block()}
+                                     | {error, not_found | no_parent_chain_agreement}.
 fetch_block_by_hash(Hash) ->
     gen_server:call(?SERVER, {fetch_block_by_hash, Hash}).
 
 %% this blocks the caller process, use with caution
+-spec fetch_block_by_height(non_neg_integer()) -> {ok, aec_parent_chain_block:block()}
+                                                | {error, not_found | no_parent_chain_agreement}.
 fetch_block_by_height(Height) ->
     gen_server:call(?SERVER, {fetch_block_by_height, Height}).
 

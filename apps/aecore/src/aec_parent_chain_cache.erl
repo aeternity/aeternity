@@ -368,7 +368,7 @@ maybe_post_initial_commitments(Block, #state{pc_confirmations = Confirmations,
                         Height < ChildStartHeight + Confirmations,
     NotPostedYet = lists:member(Height, InitialCommitsHeights),
     IsPublishingCommitments = posting_commitments_enabled(),
-    case IsFirstCommitment andalso NotPostedYet  andalso IsPublishingCommitments of
+    case IsFirstCommitment andalso NotPostedYet andalso IsPublishingCommitments of
         true ->
             Hash = aec_chain:genesis_hash(), %% TODO: Genesis hash?
             State1 = maybe_post_commitments(Hash, State),
