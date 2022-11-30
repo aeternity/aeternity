@@ -83,14 +83,7 @@ is_dev_mode() ->
 %% Checks if a given config key (list of binary keys corresponding to the AE
 %% config schema) is already configured. If not, the suggested value is used.
 suggest_config(Key, Value) ->
-    case aeu_env:user_config(Key) of
-        {ok, _} ->
-            {error, already_configured};
-        undefined ->
-            Map = kv_to_config_map(Key, Value),
-            aeu_env:update_config(Map, false),
-            ok
-    end.
+    aeu_env:suggest_config(Key, Value).
 
 load_schema(SchemaFilename) ->
     {ok, AppName} = application:get_application(),
@@ -256,8 +249,3 @@ bin(B) when is_binary(B) ->
     B;
 bin(Str) ->
     iolist_to_binary(Str).
-
-kv_to_config_map([H], V) ->
-    #{H => V};
-kv_to_config_map([H|T], V) ->
-    #{H => kv_to_config_map(T, V)}.

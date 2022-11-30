@@ -32,7 +32,8 @@
 
 -export([update_config/1,
          update_config/2,
-         update_config/3]).
+         update_config/3,
+         suggest_config/2]).
 
 -type basic_type() :: number() | binary() | boolean().
 -type basic_or_list()  :: basic_type() | [basic_type()].
@@ -631,6 +632,23 @@ update_config(Map, Notify, Mode) when is_map(Map), is_boolean(Notify) ->
             ok
     end,
     ok.
+
+%% Checks if a given config key (list of binary keys corresponding to the AE
+%% config schema) is already configured. If not, the suggested value is used.
+suggest_config(Key, Value) ->
+    case user_config(Key) of
+        {ok, _} ->
+            {error, already_configured};
+        undefined ->
+            Map = kv_to_config_map(Key, Value),
+            update_config(Map, false),
+            ok
+    end.
+
+kv_to_config_map([H], V) ->
+    #{H => V};
+kv_to_config_map([H|T], V) ->
+    #{H => kv_to_config_map(T, V)}.
 
 notify_update_config(Map) ->
     aec_events:publish(update_config, Map).

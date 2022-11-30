@@ -54,7 +54,7 @@
              [ {basic, []}
              , {nosync, [aehttp, aemon]}
              , {active, [aesync, aehttp, aemon, aestratum]}
-             , {dev, [aehttp]}
+             , {dev, [aehttp, aedevmode]}
              ]}
           , {mode, normal}
           , {modes,
