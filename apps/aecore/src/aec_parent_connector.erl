@@ -22,10 +22,14 @@
 %%%=============================================================================
 
 %% External API
--export([start_link/0, start_link/6, stop/0]).
+-export([start_link/6, stop/0]).
 
 %% Use in test only
+-ifdef(TEST).
+-export([start_link/0]).
 -export([trigger_fetch/0]).
+-endif.
+
 
 -export([%% async getting of blocks
          request_block_by_hash/1,
@@ -69,6 +73,7 @@
 %%%=============================================================================
 %%% API
 %%%=============================================================================
+-ifdef(TEST).
 -spec start_link() -> {ok, pid()} | {error, {already_started, pid()}} | {error, Reason::any()}.
 start_link() ->
     FetchInterval = 10000,
@@ -80,6 +85,7 @@ start_link() ->
     ParentConnMod = aehttpc_aeternity,
     start_link(ParentConnMod, FetchInterval, ParentHosts, <<"local_testnet">>,
               aec_preset_keys, <<0:32/unit:8>>).
+-endif.
 
 %% Start the parent connector process
 %% ParentConnMod :: atom() - module name of the http client module aehttpc_btc | aehttpc_aeternity
@@ -95,8 +101,10 @@ start_link(ParentConnMod, FetchInterval, ParentHosts, NetworkId, SignModule, Rec
 stop() ->
     gen_server:stop(?MODULE).
 
+-ifdef(TEST).
 trigger_fetch() ->
     gen_server:call(?SERVER, trigger_fetch).
+-endif.
 
 request_block_by_hash(Hash) ->
     gen_server:cast(?SERVER, {request_block_by_hash, Hash}).
