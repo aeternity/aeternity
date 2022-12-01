@@ -859,11 +859,10 @@ cur_config(Config) ->
     IntType = aec_blocks:type(TopBlock),
     BlockHash = hash(IntType, TopBlock),
     Height = aec_blocks:height(TopBlock),
-    Txs = rpc(aec_blocks, txs, [TopBlock]),
-    Type = case {Height, IntType} of
-               {0, key} -> genesis_block;
-               {_, key} -> key_block;
-               {_, micro} -> micro_block
+    {Type, Txs} = case {Height, IntType} of
+               {0, key} -> {genesis_block, []};
+               {_, key} -> {key_block, []};
+               {_, micro} -> {micro_block, rpc(aec_blocks, txs, [TopBlock])}
            end,
     Config1 = [ {current_block, TopBlock}
               , {current_block_hash, BlockHash}
