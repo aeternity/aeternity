@@ -137,7 +137,7 @@ dry_run_res(STx, Trees, Events, EventsEnabled, ok) ->
                true ->
                 {Type, {ok, CallObj}}
             end;
-        Other when Other /= paying_for_tx, Other /= offchain_tx ->
+        Other when Other /= offchain_tx ->
             if EventsEnabled ->
                 {Type, {ok, Events}};
                true ->

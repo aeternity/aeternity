@@ -4606,10 +4606,12 @@ post_paying_for_tx(Config) ->
     {BobPubKey, BobPrivKey} = initialize_account(100000000 * aec_test_utils:min_gas_price()),
 
     {ok, Nonce} = rpc(aec_next_nonce, pick_for_account, [AlicePubKey]),
+    RecipientId = aeser_id:create(account, random_hash()),
+    RecipientPubkey = aeapi:format_id(RecipientId),
     {ok, SpendTx} =
         aec_spend_tx:new(
           #{sender_id => aeser_id:create(account, AlicePubKey),
-            recipient_id => aeser_id:create(account, random_hash()),
+            recipient_id => RecipientId,
             amount => 1,
             fee => ?SPEND_FEE,
             nonce => Nonce,
@@ -4645,6 +4647,11 @@ post_paying_for_tx(Config) ->
                 <<"signatures">> := EncSigs,
                 <<"block_hash">> := BlockHash } = MinedPayingForTx} = get_transactions_by_hash_sut(TxHash),
     {ok, 200, #{<<"transactions">> := [MinedPayingForTx]}} = get_micro_blocks_transactions_by_hash_sut(BlockHash),
+
+    ?HTTP_ROS:assertBalanceChanges(TxHash, [ {aeapi:format_account_pubkey(BobPubKey), -?SPEND_FEE * 3},
+                                             {aeapi:format_account_pubkey(AlicePubKey), -?SPEND_FEE},
+                                             {aeapi:format_account_pubkey(AlicePubKey), -1},
+                                             {RecipientPubkey, 1} ] ),
 
     %% lets test that we get a proper message when inner tx is wrongly signed
     WronglySignedInnerTx = aec_test_utils:sign_tx(SpendTx, AlicePrivKey, true, <<"some other network id suffix">>),
