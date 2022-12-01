@@ -176,6 +176,11 @@ sign_tx(STx, [Sig | Sigs], S) ->
             end
     end.
 
+auth_data_hash(Pubkey, TxBin) ->
+    Fee      = maps:get(fee, aega_test_utils:ga_meta_tx_default(Pubkey)),
+    GasPrice = maps:get(gas_price, aega_test_utils:ga_meta_tx_default(Pubkey)),
+    auth_data_hash(Fee, GasPrice, TxBin).
+
 auth_data_hash(Fee, GasPrice, TxBin) ->
     case aect_test_utils:latest_protocol_version() >= ?CERES_PROTOCOL_VSN of
         true ->
