@@ -683,13 +683,10 @@ handle_request_(OperationID, Req, Context) ->
     {501, [], #{}}.
 
 ae_operation_types() ->
-    [<<"Spend.fee">>,
-     <<"Spend.amount">>,
-     <<"Oracle.fee">>,
+    [<<"Spend.amount">>,
      <<"Oracle.queryfee">>,
      <<"Oracle.refund">>,
      <<"Name.lock">>,
-     <<"Name.fee">>,
      <<"Name.refund">>,
      <<"Channel.amount">>,
      <<"Channel.fee">>,
@@ -701,7 +698,6 @@ ae_operation_types() ->
      <<"Call.create">>,
      <<"Call.amount">>,
      <<"GA.amount">>,
-     <<"PayingFor.fee">>,
      <<"Chain.lock">>,
      <<"Chain.fee">>,
      <<"Chain.refund">>,

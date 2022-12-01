@@ -226,7 +226,6 @@ spend_tx_instructions(SenderPubkey, RecipientID, Amount, Fee, Nonce) ->
     , resolve_account_op(Type, RecipientHash, Recipient)
     , spend_fee_op(SenderPubkey, Fee)
     , spend_op(SenderPubkey, Recipient, Amount)
-    , tx_event_op(delta, {SenderPubkey, -Fee}, <<"Spend.fee">>)
     , tx_event_op(spend, {SenderPubkey, Recipient, Amount}, <<"Spend.amount">>)
     ].
 
@@ -237,7 +236,6 @@ oracle_register_tx_instructions(AccountPubkey, QFormat, RFormat, QFee,
                                 DeltaTTL, ABIVersion, TxFee, Nonce) ->
     [ inc_account_nonce_op(AccountPubkey, Nonce)
     , spend_fee_op(AccountPubkey, TxFee)
-    , tx_event_op(delta, {AccountPubkey, -TxFee}, <<"Oracle.fee">>)
     , oracle_register_op(AccountPubkey, QFormat, RFormat, QFee,
                          DeltaTTL, ABIVersion)
     ].
@@ -246,7 +244,6 @@ oracle_register_tx_instructions(AccountPubkey, QFormat, RFormat, QFee,
 oracle_extend_tx_instructions(Pubkey, DeltaTTL, Fee, Nonce) ->
     [ inc_account_nonce_op(Pubkey, Nonce)
     , spend_fee_op(Pubkey, Fee)
-    , tx_event_op(delta, {Pubkey, -Fee}, <<"Oracle.fee">>)
     , oracle_extend_op(Pubkey, DeltaTTL)
     ].
 
@@ -256,8 +253,6 @@ oracle_query_tx_instructions(OraclePubkey, SenderPubkey, Query,
                              QueryFee, QTTL, RTTL, TxFee, Nonce) ->
     [ force_inc_account_nonce_op(SenderPubkey, Nonce)
     , spend_fee_op(SenderPubkey, TxFee, QueryFee)
-    , tx_event_op(delta, {SenderPubkey, -TxFee}, <<"Oracle.fee">>)
-    , tx_event_op(delta, {SenderPubkey, -QueryFee}, <<"Oracle.queryfee">>)
     , oracle_query_op(OraclePubkey, SenderPubkey, Nonce,
                       Query, QueryFee, QTTL, RTTL, false)
     ].
@@ -272,7 +267,6 @@ oracle_response_tx_instructions(OraclePubkey, QueryId, Response,
       %% the fee before earning the query fee.
       %% Changing this breaks consensus.
     , spend_fee_op(OraclePubkey, Fee)
-    , tx_event_op(delta, {OraclePubkey, -Fee}, <<"Oracle.fee">>)
     , oracle_earn_query_fee_op(OraclePubkey, QueryId)
     ].
 
@@ -282,7 +276,6 @@ name_preclaim_tx_instructions(AccountPubkey, CommitmentHash, DeltaTTL,
                               Fee, Nonce) ->
     [ inc_account_nonce_op(AccountPubkey, Nonce)
     , spend_fee_op(AccountPubkey, Fee)
-    , tx_event_op(delta, {AccountPubkey, -Fee}, <<"Name.fee">>)
     , name_preclaim_op(AccountPubkey, CommitmentHash, DeltaTTL)
     ].
 
@@ -292,7 +285,6 @@ name_claim_tx_instructions(AccountPubkey, PlainName, NameSalt, NameFee, Fee, Non
     PreclaimDelta = aec_governance:name_claim_preclaim_delta(),
     [ inc_account_nonce_op(AccountPubkey, Nonce)
     , spend_fee_op(AccountPubkey, Fee)
-    , tx_event_op(delta, {AccountPubkey, -Fee}, <<"Name.fee">>)
     , name_claim_op(AccountPubkey, PlainName, NameSalt, NameFee, PreclaimDelta)
     ].
 
@@ -301,7 +293,6 @@ name_revoke_tx_instructions(AccountPubkey, NameHash, Fee, Nonce) ->
     ProtectedDeltaTTL = aec_governance:name_protection_period(),
     [ inc_account_nonce_op(AccountPubkey, Nonce)
     , spend_fee_op(AccountPubkey, Fee)
-    , tx_event_op(delta, {AccountPubkey, -Fee}, <<"Name.fee">>)
     , name_revoke_op(AccountPubkey, NameHash, ProtectedDeltaTTL)
     ].
 
@@ -311,7 +302,6 @@ name_transfer_tx_instructions(OwnerPubkey, RecipientID, NameHash, Fee, Nonce) ->
     {Type, Hash} = specialize_account(RecipientID),
     [ inc_account_nonce_op(OwnerPubkey, Nonce)
     , spend_fee_op(OwnerPubkey, Fee)
-    , tx_event_op(delta, {OwnerPubkey, -Fee}, <<"Name.fee">>)
     , name_transfer_op(OwnerPubkey, Type, Hash, NameHash)
     ].
 
@@ -322,7 +312,6 @@ name_update_tx_instructions(OwnerPubkey, NameHash, DeltaTTL, ClientTTL,
                             Pointers, Fee, Nonce) ->
     [ inc_account_nonce_op(OwnerPubkey, Nonce)
     , spend_fee_op(OwnerPubkey, Fee)
-    , tx_event_op(delta, {OwnerPubkey, -Fee}, <<"Name.fee">>)
     , name_update_op(OwnerPubkey, NameHash, DeltaTTL, ClientTTL, Pointers)
     ].
 
@@ -352,7 +341,6 @@ ga_set_meta_tx_res_instructions(OwnerPubkey, AuthData, Result) ->
 paying_for_tx_instructions(Payer, Nonce, Fee) ->
     [ inc_account_nonce_op(Payer, Nonce)
     , spend_fee_op(Payer, Fee)
-    , tx_event_op(delta, {Payer, -Fee}, <<"PayingFor.fee">>)
     ].
 
 -spec contract_create_tx_instructions(pubkey(), amount(), amount(),
@@ -412,9 +400,6 @@ channel_create_tx_instructions(InitiatorPubkey, InitiatorAmount,
                         ResponderPubkey, ResponderAmount,
                         ReserveAmount, DelegatePubkeys,
                         StateHash, LockPeriod, Nonce, Round)
-    , tx_event_op(delta, {InitiatorPubkey, -InitiatorAmount}, <<"Channel.amount">>)
-    , tx_event_op(delta, {InitiatorPubkey, -Fee}, <<"Channel.fee">>)
-    , tx_event_op(delta, {ResponderPubkey, -ResponderAmount}, <<"Channel.amount">>)
     , tx_event_op(channel, ChannelPubkey)
     ].
 
@@ -426,8 +411,6 @@ channel_deposit_tx_instructions(FromPubkey, ChannelPubkey, Amount, StateHash,
     [ inc_account_nonce_op(FromPubkey, Nonce)
     , spend_fee_op(FromPubkey, Fee, Amount)
     , channel_deposit_op(FromPubkey, ChannelPubkey, Amount, StateHash, Round)
-    , tx_event_op(delta, {FromPubkey, -Amount}, <<"Channel.amount">>)
-    , tx_event_op(delta, {FromPubkey, -Fee}, <<"Channel.fee">>)
     , tx_event_op(channel, ChannelPubkey)
     ].
 
@@ -450,7 +433,6 @@ channel_withdraw_tx_instructions(ToPubkey, ChannelPubkey, Amount, StateHash,
     [ inc_account_nonce_op(ToPubkey, Nonce)
     , spend_fee_op(ToPubkey, Fee)
     , channel_withdraw_op(ToPubkey, ChannelPubkey, Amount, StateHash, Round)
-    , tx_event_op(delta, {ToPubkey, -Fee}, <<"Channel.fee">>)
     , tx_event_op(channel, ChannelPubkey)
     ].
 
@@ -461,7 +443,6 @@ channel_settle_tx_instructions(FromPubkey, ChannelPubkey,
     [ inc_account_nonce_op(FromPubkey, Nonce)
     , spend_fee_op(FromPubkey, Fee)
     , channel_settle_op(FromPubkey, ChannelPubkey, InitiatorAmount, ResponderAmount)
-    , tx_event_op(delta, {FromPubkey, -Fee}, <<"Channel.fee">>)
     , tx_event_op(channel, ChannelPubkey)
     ].
 
@@ -689,7 +670,8 @@ spend_fee(From, Delegated, Amount, DelegatedAmount, S) ->
 spend_fee(From, Amount, S) ->
     {Spender1, S1} = get_account(From, S),
     assert_account_balance(Spender1, Amount),
-    account_spend(Spender1, Amount, S1).
+    S2 = tx_event({delta, {From, -Amount}, <<"Chain.fee">>}, S1),
+    account_spend(Spender1, Amount, S2).
 
 %%%-------------------------------------------------------------------
 

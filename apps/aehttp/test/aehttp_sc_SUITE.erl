@@ -880,8 +880,7 @@ finish_sc_ws_open(Config, MinBlocksToMine, Register) ->
         channel_create_tx ->
             assert_balance(IPubkey, IStartAmt - IAmt - ChannelCreateFee),
             assert_balance(RPubkey, RStartAmt - RAmt),
-            ?HTTP_ROS:assertBalanceChanges(TxHashExt, [{Initiator, -IAmt},
-                                                       {Initiator, -ChannelCreateFee},
+            ?HTTP_ROS:assertBalanceChanges(TxHashExt, [{Initiator, -(IAmt + ChannelCreateFee)},
                                                        {Responder, -RAmt}] );
         ga_meta_tx ->
              %% GA Account sometimes held by Initiator, othertimes Responder,
@@ -895,8 +894,7 @@ finish_sc_ws_open(Config, MinBlocksToMine, Register) ->
                                  {Responder, variable},
                                  {Initiator, variable},
                                  {Initiator, variable},
-                                 {Initiator, -IAmt},
-                                 {Initiator, -ChannelCreateFee},
+                                 {Initiator, -(IAmt + ChannelCreateFee)},
                                  {Responder, -RAmt}] );
                 _ ->
                     Owner = aetx:origin(aetx_sign:tx(SignedCrTx)),
@@ -905,8 +903,7 @@ finish_sc_ws_open(Config, MinBlocksToMine, Register) ->
                     %% The values will be validated by running rosetta-cli
                     ?HTTP_ROS:assertBalanceChanges(TxHashExt, [{OwnerEnc, variable},
                                                                {OwnerEnc, variable},
-                                                               {Initiator, -IAmt},
-                                                               {Initiator, -ChannelCreateFee},
+                                                               {Initiator, -(IAmt + ChannelCreateFee)},
                                                                {Responder, -RAmt}] )
             end
     end,

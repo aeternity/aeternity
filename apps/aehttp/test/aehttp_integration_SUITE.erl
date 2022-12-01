@@ -1815,7 +1815,7 @@ post_oracle_query(Config) ->
     ?assertEqual(SenderIdBalanceAfter, SenderIdBalance - Fee - QueryFee),
     {ok, 200, #{<<"balance">> := AccountIdBalanceAfter}} = get_accounts_by_pubkey_sut(AccountId),
     ?assertEqual(AccountIdBalanceAfter, AccountIdBalance),
-    ?HTTP_ROS:assertBalanceChanges(TxHash, [ {SenderId, -Fee}, {SenderId, -QueryFee}] ),
+    ?HTTP_ROS:assertBalanceChanges(TxHash, [ {SenderId, -(Fee + QueryFee)}] ),
     [Query] = maps:get(<<"oracle_queries">>, Resp1),
     ?assertEqual(SenderId, maps:get(<<"sender_id">>, Query)),
     ?assertEqual(OracleId, maps:get(<<"oracle_id">>, Query)),
@@ -4649,7 +4649,7 @@ post_paying_for_tx(Config) ->
     {ok, 200, #{<<"transactions">> := [MinedPayingForTx]}} = get_micro_blocks_transactions_by_hash_sut(BlockHash),
 
     ?HTTP_ROS:assertBalanceChanges(TxHash, [ {aeapi:format_account_pubkey(BobPubKey), -?SPEND_FEE * 3},
-                                             {aeapi:format_account_pubkey(AlicePubKey), -?SPEND_FEE},
+                                             {aeapi:format_account_pubkey(BobPubKey), -?SPEND_FEE},
                                              {aeapi:format_account_pubkey(AlicePubKey), -1},
                                              {RecipientPubkey, 1} ] ),
 

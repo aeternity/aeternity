@@ -408,7 +408,7 @@ block_spend_tx(Config) ->
 
     %% Expect a Reward, then Fee, and the two balance changes
     [_, #{<<"operations">> := [FeeOp, FromOp, ToOp]}] = Transactions,
-    #{<<"operation_identifier">> := #{<<"index">> := 0}, <<"type">> := <<"Spend.fee">>} =
+    #{<<"operation_identifier">> := #{<<"index">> := 0}, <<"type">> := <<"Chain.fee">>} =
         FeeOp,
     #{<<"operation_identifier">> := #{<<"index">> := 1}, <<"type">> := <<"Spend.amount">>} =
         FromOp,
@@ -777,18 +777,13 @@ block_create_channel_tx(Config) ->
     %% Initiator -= initiator_amount
     %% Responder -= responder_amount
     %% Channel += initiator_amount + responder_amount
-    #{<<"operations">> := [FeesOp, InitiatorOp, ResponderOp]} = CreateTransaction,
-    #{<<"amount">> := #{<<"value">> := FeesDelta},
-      <<"account">> := #{<<"address">> := FeesAcc}} =
-        FeesOp,
-    ?assertEqual(InitiatorAccountPubKey, FeesAcc),
+    #{<<"operations">> := [InitiatorOp, ResponderOp]} = CreateTransaction,
     #{<<"amount">> := #{<<"value">> := InitiatorDelta},
       <<"account">> := #{<<"address">> := InitiatorAcc}} =
         InitiatorOp,
     ?assertEqual(InitiatorAccountPubKey, InitiatorAcc),
     ?assertEqual(InitiatorBalanceAfterCreate,
                  InitiatorBalance
-                 + binary_to_integer(FeesDelta)
                  + binary_to_integer(InitiatorDelta)),
     #{<<"amount">> := #{<<"value">> := ResponderDelta},
       <<"account">> := #{<<"address">> := ResponderAcc}} =
@@ -797,13 +792,6 @@ block_create_channel_tx(Config) ->
     ?assertEqual(ResponderBalanceAfterCreate,
                  ResponderBalance + binary_to_integer(ResponderDelta)),
 
-    % FIXME: Do state channels actually have an on chain account or not?
-    % #{<<"amount">> := #{<<"value">> := ChannelDelta},
-    %   <<"account">> := #{<<"address">> := ChannelAcc}} =
-    %     ChannelOp,
-    % ?assertEqual(ChannelAccountPubKey, ChannelAcc),
-    % ?assertEqual(ChannelBalanceAfterCreate,
-    %               binary_to_integer(ChannelDelta)),
     %% ------------------ Channel deposit ---------------------------
     SwaggerVsn = proplists:get_value(swagger_version, Config, oas3),
     aecore_suite_utils:use_swagger(SwaggerVsn),
@@ -840,18 +828,13 @@ block_create_channel_tx(Config) ->
     %% Expect
     %% Initiator -= Fees
     %% Initiator -= initiator_amount
-    #{<<"operations">> := [DepositFeesOp, DepositInitiatorOp]} = DepositTransaction,
-    #{<<"amount">> := #{<<"value">> := DepositFeesDelta},
-      <<"account">> := #{<<"address">> := DepositFeesAcc}} =
-        DepositFeesOp,
-    ?assertEqual(InitiatorAccountPubKey, DepositFeesAcc),
+    #{<<"operations">> := [DepositInitiatorOp]} = DepositTransaction,
     #{<<"amount">> := #{<<"value">> := DepositInitiatorDelta},
       <<"account">> := #{<<"address">> := DepositInitiatorAcc}} =
         DepositInitiatorOp,
     ?assertEqual(InitiatorAccountPubKey, DepositInitiatorAcc),
     ?assertEqual(InitiatorBalanceAfterDeposit,
                  InitiatorBalanceAfterCreate
-                 + binary_to_integer(DepositFeesDelta)
                  + binary_to_integer(DepositInitiatorDelta)),
 
     %% ------------------ Channel withdraw ---------------------------
