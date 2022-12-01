@@ -176,6 +176,14 @@ sign_tx(STx, [Sig | Sigs], S) ->
             end
     end.
 
+auth_data_hash(Fee, GasPrice, TxBin) ->
+    case aect_test_utils:latest_protocol_version() >= ?CERES_PROTOCOL_VSN of
+        true ->
+            H = aec_hash:hash(tx, <<Fee:256, GasPrice:256, TxBin/binary>>),
+            H;
+        false -> aec_hash:hash(tx, TxBin)
+    end.
+
 basic_auth_sign(Nonce, TxHash, PrivKey) ->
     Val = case aega_SUITE:abi_version() of
               ?ABI_AEVM_SOPHIA_1 -> <<32:256, TxHash/binary, Nonce:256>>;
