@@ -640,7 +640,7 @@ generate_json_aci(Vsn, Code) ->
             Result
     end.
 
-generate_json_aci_(Vsn, Backend, Code) when Vsn == ?SOPHIA_IRIS_FATE ->
+generate_json_aci_(Vsn, Backend, Code) when Vsn == ?SOPHIA_CERES_FATE ->
     try
         {ok, JAci} = aeso_aci:contract_interface(json, to_str(Code), [{backend, Backend}]),
         aeaci_aci:from_string(jsx:encode(JAci), #{backend => Backend})

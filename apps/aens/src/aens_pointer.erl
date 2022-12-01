@@ -13,16 +13,19 @@
 -type key()  :: binary().
 -type id()   :: aeser_id:id().
 -type data() :: {data, binary()}.
+-type id_type() :: id() | data().
 
 -record(pointer, {
           key :: key(),
-          id  :: id() | data()
+          id  :: id_type()
         }).
 
 -opaque pointer() :: #pointer{}.
 
 -export_type([key/0,
               id/0,
+              data/0,
+              id_type/0,
               pointer/0
              ]).
 
@@ -42,7 +45,7 @@ new(Key, Id) ->
 key(#pointer{key = Key}) ->
     Key.
 
--spec id(pointer()) -> id().
+-spec id(pointer()) -> id() | data().
 id(#pointer{id = Id}) ->
     Id.
 

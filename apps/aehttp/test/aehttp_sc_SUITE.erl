@@ -4363,7 +4363,7 @@ ws_get_decoded_result_(ConnPid1, ConnPid2, Contract, Function, [Update], Unsigne
     decode_call_result(Contract, Function, ok, ReturnValue).
 
 decode_call_result(ContractName, Fun, ResType, ResValue) ->
-    {ok, BinCode} = aect_test_utils:read_contract(?SOPHIA_IRIS_FATE, ContractName),
+    {ok, BinCode} = aect_test_utils:read_contract(?SOPHIA_CERES_FATE, ContractName),
     aect_test_utils:decode_call_result(binary_to_list(BinCode), Fun, ResType, ResValue).
 
 
