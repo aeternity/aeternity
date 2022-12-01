@@ -1,0 +1,43 @@
+// AENS update tests, including interaction with AENSv1
+
+include "Option.aes"
+include "AENSCompat.aes"
+contract interface OldAENSContract =
+  entrypoint set : (string, string, AENS.pointee) => unit
+  entrypoint lookup : (string, string) => AENS.pointee
+  entrypoint resolve_account : (string, string) => address
+
+main contract AENSUpdate =
+  entrypoint remote_lookup(o : OldAENSContract, name : string, key : string) : AENSv2.pointee =
+    let pv1 = o.lookup(name, key)
+    AENSCompat.pointee_to_V2(pv1)
+
+  entrypoint remote_resolve(o : OldAENSContract, name : string, key : string) : address =
+    o.resolve_account(name, key)
+
+  entrypoint remote_set(o : OldAENSContract, name : string, key : string, ptr : AENSv2.pointee) =
+    let Some(pv1) = AENSCompat.pointee_from_V2(ptr)
+    o.set(name, key, pv1)
+
+  stateful entrypoint add_data_ptr(name : string, key : string, data : string) =
+    set(name, key, AENSv2.DataPt(data))
+
+  stateful entrypoint set(name : string, key : string, ptr : AENSv2.pointee) =
+    switch(AENSv2.lookup(name))
+      Some(AENSv2.Name(_, _, pt_map)) =>
+        AENSv2.update(Contract.address, name, None, None, Some(pt_map{ [key] = ptr }))
+
+  stateful entrypoint remove_ptr(name : string, key : string) =
+    switch(AENSv2.lookup(name))
+      Some(AENSv2.Name(_, _, pt_map)) =>
+        AENSv2.update(Contract.address, name, None, None, Some(Map.delete(key, pt_map)))
+
+//   stateful entrypoint old_interaction(c : OldAENSContract, owner : address, name : string) =
+//     let p : AENS.pointee = c.lookup(name, "key1")
+//     AENSv2.update(owner, name, None, None, Some({ ["key1"] = AENSCompat.pointee_to_V2(p) }))
+//     switch(AENSv2.lookup(name))
+//       Some(AENSv2.Name(_, _, pt_map)) =>
+//         c.set(name, "key2", Option.force(AENSCompat.pointee_from_V2(pt_map["key1"])))
+
+  stateful entrypoint trf(name : string, to : address) =
+    AENSv2.transfer(Contract.address, to, name)

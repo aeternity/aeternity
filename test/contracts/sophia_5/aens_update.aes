@@ -1,0 +1,22 @@
+// AENS update tests, including interaction with AENSv1
+
+main contract AENSUpdate =
+  stateful entrypoint add_account(name : string, key : string, a : address) =
+    set(name, key, AENS.AccountPt(a))
+
+  stateful entrypoint set(name : string, key : string, ptr : AENS.pointee) =
+    switch(AENS.lookup(name))
+      Some(AENS.Name(_, _, pt_map)) =>
+        AENS.update(Contract.address, name, None, None, Some(pt_map{ [key] = ptr }))
+
+  entrypoint lookup(name : string, key : string) : AENS.pointee =
+    switch(AENS.lookup(name))
+      Some(AENS.Name(_, _, pt_map)) => pt_map[key]
+
+  stateful entrypoint trf(name : string, to : address) =
+    AENS.transfer(Contract.address, to, name)
+
+  stateful entrypoint reg(name : string, chash : hash, salt : int, name_fee : int) =
+    AENS.preclaim(Contract.address, chash)
+    AENS.claim(Contract.address, name, salt, name_fee)
+
