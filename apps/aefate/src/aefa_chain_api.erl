@@ -567,7 +567,6 @@ oracle_query(OraclePubkey, SenderPubkey, Question, QFee, QTTLType, QTTL, RTTL,
                     Gas = ttl_gas(oracle_query_tx, QTTL1) + size_gas([Question1]),
                     Ins   = [ aeprimop:force_inc_account_nonce_op(SenderPubkey, Nonce)
                             , aeprimop:spend_fee_op(SenderPubkey, QFee)
-                            , aeprimop:tx_event_op(delta, {SenderPubkey, -QFee}, <<"Oracle.queryfee">>)
                             , tx_event_op(oracle_query, {OraclePubkey, SenderPubkey,
                                                          Nonce, Question1, QFee,
                                                          ora_ttl(QTTLType, QTTL),
