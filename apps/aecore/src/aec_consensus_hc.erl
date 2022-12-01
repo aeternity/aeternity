@@ -536,7 +536,7 @@ next_beneficiary() ->
     {TxEnv0, Trees} = aetx_env:tx_env_and_trees_from_top(aetx_transaction),
     Height0 = aetx_env:height(TxEnv0),
     Height = Height0 + 1,
-    PCHeight = Height + pc_start_height() - 1, %% child starts pinning from height 1, not genesis
+    PCHeight = pc_height(Height), 
     case aec_parent_chain_cache:get_block_by_height(PCHeight) of
         {ok, Block} ->
             Hash = aec_parent_chain_block:hash(Block),
