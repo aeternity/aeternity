@@ -25,6 +25,7 @@
          version/1,
          serialization_template/1,
          serialize/1,
+         serialize_auth_data/3,
          deserialize/2,
          for_client/1,
          valid_at_protocol/2
@@ -397,8 +398,12 @@ auth_data_inner_tx(P, #ga_meta_tx{} = Tx) ->
         false ->
             Fee = fee(Tx),
             GasPrice = gas_price(Tx),
-            {InnerTx, aec_hash:hash(tx, <<Fee:256, GasPrice:256, BinForNetwork/binary>>)}
+            {InnerTx, aec_hash:hash(tx, serialize_auth_data(Fee, GasPrice, BinForNetwork))}
     end.
+
+serialize_auth_data(Fee, GasPrice, Binary) ->
+    Hash = aec_hash:hash(tx, Binary),
+    <<Fee:256, GasPrice:256, Hash/binary>>.
 
 set_ga_context(Env0, Tx) ->
     Env1 = aetx_env:set_context(Env0, aetx_ga),

@@ -1504,9 +1504,7 @@ prep_meta(Owner, AuthOpts, InnerTx0) ->
             {InnerTx0, aetx_sign:new(InnerTx0, [])}
         end,
     TxBin    = aec_governance:add_network_id(aetx:serialize_to_binary(InnerTx)),
-    Fee      = maps:get(fee, AuthOpts, maps:get(fee, aega_test_utils:ga_meta_tx_default(<<0:256>>))),
-    GasPrice = maps:get(gas_price, AuthOpts, maps:get(gas_price, aega_test_utils:ga_meta_tx_default(<<0:256>>))),
-    TxHash   = aega_test_utils:auth_data_hash(Fee, GasPrice, TxBin),
+    TxHash   = aega_test_utils:auth_data_hash(AuthOpts, TxBin),
     AuthData = make_authdata(AuthOpts, TxHash),
     Options1 = maps:merge(#{auth_data => AuthData, tx => InnerSTx}, AuthOpts),
     MetaTx   = aega_test_utils:ga_meta_tx(Owner, Options1),  %% here we can tamper the fee and gas_price
@@ -1692,7 +1690,8 @@ sign_tx(Pubkey, plain, Tx, S) ->
     aec_test_utils:sign_tx(Tx, PrivKey);
 sign_tx(Pubkey, AuthOpts, Tx, _S) ->
     TxBin    = aec_governance:add_network_id(aetx:serialize_to_binary(Tx)),
-    AuthData = make_authdata(AuthOpts, aec_hash:hash(tx, TxBin)),
+    TxHash   = aega_test_utils:auth_data_hash(AuthOpts, TxBin),
+    AuthData = make_authdata(AuthOpts, TxHash),
     Options1 = #{auth_data => AuthData, tx => aetx_sign:new(Tx, [])},
     MetaTx   = aega_test_utils:ga_meta_tx(Pubkey, Options1),
     aetx_sign:new(MetaTx, []).
