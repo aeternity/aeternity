@@ -647,7 +647,8 @@ post_ga_spend_tx(AccPK, AccSK, Nonces, Recipient, Amount, Fee, MetaFee, AuthGas)
 ga_meta_tx([], _AccPK, _AccSK, InnerTx, _MetaFee, _AuthGas) ->
     aetx_sign:new(InnerTx, []);
 ga_meta_tx([Nonce|Nonces], AccPK, AccSK, InnerTx, MetaFee, AuthGas) ->
-    TxHash    = aec_hash:hash(tx, aec_governance:add_network_id(aetx:serialize_to_binary(InnerTx))),
+    TxBin     = aec_governance:add_network_id(aetx:serialize_to_binary(InnerTx)),
+    TxHash    = aega_test_utils:auth_data_hash(#{ fee => MetaFee }, TxBin),
     Signature = aega_test_utils:basic_auth_sign(list_to_integer(Nonce), TxHash, AccSK),
     AuthData  = aega_test_utils:make_calldata("basic_auth", "authorize",
                     [Nonce, aega_test_utils:to_hex_lit(64, Signature)]),
@@ -690,13 +691,14 @@ post_ga_sc_create_fail_tx(APK, ASK, NonceA, BPK, BSK) ->
     post_aetx(aetx_sign:new(SMetaTx1, [])).
 
 ga_meta_tx(PK, SK, Nonce, InnerTx, Sigs) ->
-    TxHash = aec_hash:hash(tx, aec_governance:add_network_id(aetx:serialize_to_binary(InnerTx))),
+    Opts   = #{ fee => 100000 * aec_test_utils:min_gas_price() },
+    TxBin  = aec_governance:add_network_id(aetx:serialize_to_binary(InnerTx)),
+    TxHash = aega_test_utils:auth_data_hash(Opts, TxBin),
     Sig    = aega_test_utils:basic_auth_sign(list_to_integer(Nonce), TxHash, SK),
     Auth   = aega_test_utils:make_calldata("basic_auth", "authorize",
                     [Nonce, aega_test_utils:to_hex_lit(64, Sig)]),
-    aega_test_utils:ga_meta_tx(PK, #{ gas => 10000, auth_data => Auth,
-                                      tx => aetx_sign:new(InnerTx, Sigs),
-                                      fee => 100000 * aec_test_utils:min_gas_price() }).
+    aega_test_utils:ga_meta_tx(PK, Opts#{ gas => 10000, auth_data => Auth,
+                                          tx => aetx_sign:new(InnerTx, Sigs) }).
 
 
 sign_and_post_aetx(PrivKey, Tx) ->

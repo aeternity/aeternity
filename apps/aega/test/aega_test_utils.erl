@@ -178,7 +178,7 @@ sign_tx(STx, [Sig | Sigs], S) ->
 
 auth_data_hash(Opts, TxBin) ->
     Fee      = maps:get(fee, Opts, maps:get(fee, ga_meta_tx_default(<<0:256>>))),
-    GasPrice = maps:get(gas_price,Opts, maps:get(gas_price, ga_meta_tx_default(<<0:256>>))),
+    GasPrice = maps:get(gas_price, Opts, maps:get(gas_price, ga_meta_tx_default(<<0:256>>))),
     auth_data_hash(Fee, GasPrice, TxBin).
 
 auth_data_hash(Fee, GasPrice, TxBin) ->
