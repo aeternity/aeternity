@@ -125,7 +125,9 @@ init_per_suite(Config0) ->
                             <<"hard_forks">> =>
                                 #{  <<"1">> => 0,
                                     integer_to_binary(?CERES_PROTOCOL_VSN) => 1
-                                }
+                                },
+                            <<"consensus">> =>
+                                #{ <<"0">> => #{<<"name">> => <<"ct_tests">>}}
                          },
                     <<"fork_management">> =>
                         #{<<"network_id">> => ?PARENT_CHAIN_NETWORK_ID},
