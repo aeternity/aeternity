@@ -873,7 +873,8 @@ wait_for_height_(Node, Height, TimeoutPerBlock) ->
             ok;
         false ->
             case wait_for_new_block(TimeoutPerBlock) of
-                {error, timeout_waiting_for_block, {top, TopHeight}, {waiting_for, Height}} = E -> E;
+                {error, timeout_waiting_for_block}->
+                    {error, timeout_waiting_for_block, {top, TopHeight}, {waiting_for, Height}}
                 {ok, _B} ->
                     wait_for_height_(Node, Height, TimeoutPerBlock)
             end
