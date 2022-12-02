@@ -702,7 +702,7 @@ verify_meta_tx(SignerId, StoreKey, AuthContractId, MetaTx, Trees, Env, TxType)
                        , store       => Store
                        , call        => Call
                        , trees       => Trees
-                       , tx_env      => set_auth_tx_hash(aega_meta_tx:tx(MetaTx), Env, TxType)
+                       , tx_env      => set_auth_tx_hash(MetaTx, Env, TxType)
                        , off_chain   => false
                        , origin      => SignerPK
                        , creator     => aect_contracts:owner_pubkey(Contract)
@@ -763,14 +763,25 @@ check_auth_result(#{ abi := ABIVersion }, Call) ->
             {error, signature_verification_failed_contract_error}
     end.
 
-set_auth_tx_hash(STx, Env, TxType) ->
+set_auth_tx_hash(MetaTx, Env, TxType) ->
+    STx = aega_meta_tx:tx(MetaTx),
+    Protocol = aetx_env:consensus_version(Env),
     Tx =
         case TxType of
             onchain -> aetx_sign:tx(STx);
             offchain -> aetx_sign:innermost_tx(STx)
         end,
     BinForNetwork = aec_governance:add_network_id(aetx:serialize_to_binary(Tx)),
-    aetx_env:set_ga_tx_hash(Env, aec_hash:hash(tx, BinForNetwork)).
+    Hash =
+        case Protocol < ?CERES_PROTOCOL_VSN of
+            true ->
+                aec_hash:hash(tx, BinForNetwork);
+            false ->
+                Fee =  aega_meta_tx:fee(MetaTx),
+                GasPrice = aega_meta_tx:gas_price(MetaTx),
+                aec_hash:hash(tx, aega_meta_tx:serialize_auth_data(Fee, GasPrice, BinForNetwork))
+        end,
+    aetx_env:set_ga_tx_hash(Env, Hash).
 
 is_delegatable_tx_type(Type, Protocol) ->
     lists:member(Type, delegatable_tx_types(Protocol)).
