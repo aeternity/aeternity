@@ -1621,7 +1621,7 @@ call_contract_with_calldata(Caller, ContractKey, Type, Calldata, Options, S) ->
     {CtId, CtCallId} =
         case get('$ct_named_calls') of
             true ->
-                ct:pal("Doing named call!", []),
+                ct:log("Doing named call!", []),
                 {ok, NHash} = aens:get_name_hash(?CT_NAMED_CALL_NAME),
                 meck:expect(aens, resolve_from_name_object,
                             fun(Key, NameObj) ->
@@ -1635,7 +1635,7 @@ call_contract_with_calldata(Caller, ContractKey, Type, Calldata, Options, S) ->
                             end),
                 {aeser_id:create(name, NHash), NHash};
             _ ->
-                ct:pal("Not doing named call!", []),
+                ct:log("Not doing named call!", []),
                 {aeser_id:create(contract, ContractKey), ContractKey}
         end,
 

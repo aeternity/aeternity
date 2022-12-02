@@ -611,17 +611,84 @@ decode_call_result(Code, Fun, Res, Value) ->
             Result
     end.
 
-decode_call_result(Backend, Code, Fun, Res, EValue = <<"cb_", _/binary>>) ->
+
+decode_call_result(aevm, Code, Fun, Res, Value) ->
+    decode_call_result_aevm(Code, Fun, Res, Value);
+decode_call_result(fate, Code, Fun, Res, Value) ->
+    decode_call_result_fate(Code, Fun, Res, Value).
+
+decode_call_result_aevm(Code, Fun, Res, EValue = <<"cb_", _/binary>>) ->
+    SrcFile = tempfile_name("sophia_code", ".aes"),
+    ok = file:write_file(SrcFile, Code),
+    Compiler = compiler_cmd(?SOPHIA_LIMA_AEVM),
+    Args = lists:flatten(io_lib:format(" ~s --call_result_type ~p --call_result ~s --call_result_fun ~s",
+                                       [SrcFile, Res, EValue, Fun])),
+
+    Cmd = Compiler ++ Args,
+    Output = os:cmd(Cmd),
+    try
+        [_ | CallRes] = string:lexemes(Output, "\n"),
+        simple_encode_expr(string:join(CallRes, ""))
+    catch _:Err:StackTrace ->
+        {error, {<<"Compiler error">>, Err, StackTrace}}
+    after
+        cleanup_tempfiles()
+    end;
+decode_call_result_aevm(Code, Fun, Res, Value) ->
+    decode_call_result_aevm(Code, Fun, Res, aeser_api_encoder:encode(contract_bytearray, Value)).
+
+decode_call_result_fate(Code, Fun, Res, EValue = <<"cb_", _/binary>>) ->
     case aeser_api_encoder:safe_decode(contract_bytearray, EValue) of
         {ok, Value} ->
-            decode_call_result(Backend, Code, Fun, Res, Value);
+            decode_call_result_fate(Code, Fun, Res, Value);
         Err = {error, _} ->
             Err
     end;
-decode_call_result(Backend, Code, Fun, Res, Value) ->
-    {ok, ValExpr} = aeso_compiler:to_sophia_value(to_str(Code), to_str(Fun),
-                                                  Res, Value, [{backend, Backend}]),
+decode_call_result_fate(Code, Fun, Res, Value) ->
+    {ok, ValExpr} = aeso_compiler:to_sophia_value(to_str(Code), to_str(Fun), Res, Value),
     aeso_aci:json_encode_expr(ValExpr).
+
+
+simple_encode_expr(E = [C | _]) when C == $[; C == $( ->
+    [ simple_encode_expr(E0) || E0 <- split_at_top_expr([$,], trim_outer(E)) ];
+simple_encode_expr(E = [${ | _]) ->
+    maps:from_list([ simple_encode_map_expr(string:trim(E0, both)) || E0 <- split_at_top_expr([$,], trim_outer(E)) ]);
+simple_encode_expr("false") -> false;
+simple_encode_expr("true") -> true;
+simple_encode_expr("None") -> <<"None">>;
+simple_encode_expr("Some" ++ SomeVal) -> #{<<"Some">> => [simple_encode_expr(trim_outer(SomeVal))]};
+simple_encode_expr("abort" ++ SomeVal) -> #{<<"abort">> => [simple_encode_expr(trim_outer(SomeVal))]};
+simple_encode_expr([$" | _] = Str) ->
+    list_to_binary(string:trim(Str, both, "\""));
+simple_encode_expr([D | _] = Int) when D >= $0, D =< $9 ->
+    list_to_integer(Int);
+simple_encode_expr([$# | _] = Enc) ->
+    list_to_binary(Enc);
+simple_encode_expr([_, _, $_ | _] = Enc) ->
+    list_to_binary(Enc);
+simple_encode_expr(E) ->
+    E.
+
+simple_encode_map_expr(E) ->
+    [Key, Val] = split_at_top_expr(E),
+    {list_to_binary(Key), simple_encode_expr(Val)}.
+
+trim_outer(S) ->
+    lists:droplast(tl(string:trim(S, both))).
+
+
+split_at_top_expr(Str) -> split_at(Str, [$,, $=], [$(, $[, ${], [$), $], $}], 0, []).
+split_at_top_expr(At, Str) -> split_at(Str, At, [$(, $[, ${], [$), $], $}], 0, []).
+
+split_at([], _, _, _, _, [])                -> [];
+split_at([], _, _, _, _, Acc)               -> [string:trim(lists:reverse(Acc), both)];
+split_at([C | Rest], At, In, Out, N, Acc)   ->
+  case {lists:member(C, At) andalso N == 0, lists:member(C, In), lists:member(C, Out)} of
+        {true, _, _} -> [string:trim(lists:reverse(Acc), both) | split_at(Rest, At, In, Out, N, [])];
+        {_, true, _} -> split_at(Rest, At, In, Out, N + 1, [C | Acc]);
+        {_, _, true} -> split_at(Rest, At, In, Out, N - 1, [C | Acc]);
+        _            -> split_at(Rest, At, In, Out, N, [C | Acc])
+    end.
 
 generate_json_aci(Vsn, Code) ->
     Backend = backend(),
@@ -694,20 +761,37 @@ decode_data_(fate, _Type, Data) ->
     try {ok, aefa_test_utils:decode(aeb_fate_encoding:deserialize(Data))}
     catch _:_ -> {error, <<"bad fate data">>}
     end;
-decode_data_(aevm, Type, Data) ->
-    case get_type(Type) of
-        {ok, SophiaType} ->
-            try aeb_heap:from_binary(SophiaType, Data) of
-                {ok, Term} ->
-                    try aect_sophia:prepare_for_json(SophiaType, Term) of
-                        R -> {ok, R}
-                    catch throw:R -> R
-                    end;
-                {error, _} -> {error, <<"bad type/data">>}
-            catch _T:_E ->    {error, <<"bad argument">>}
-            end;
-        {error, _} = E -> E
+decode_data_(aevm, Type, Data0) ->
+    Data = case Data0 of
+               <<"cb_", _/binary>> -> Data0;
+               _ -> aeser_api_encoder:encode(contract_bytearray, Data0)
+           end,
+
+    Compiler = compiler_cmd(?SOPHIA_LIMA_AEVM),
+    Args = lists:flatten(io_lib:format(" -b aevm --decode_data ~s --decode_type ~s", [Data, Type])),
+    Cmd = Compiler ++ Args,
+    Output = os:cmd(Cmd),
+    try
+        [_ | ValueStr] = string:lexemes(Output, "\n"),
+        {ok, simple_encode_expr(string:join(ValueStr, ""))}
+    catch _:Err:StackTrace ->
+        {error, {<<"Compiler error">>, Err, StackTrace}}
+    after
+        cleanup_tempfiles()
     end.
+%%     case get_type(Type) of
+%%         {ok, SophiaType} ->
+%%             try aeb_heap:from_binary(SophiaType, Data) of
+%%                 {ok, Term} ->
+%%                     try aect_sophia:prepare_for_json(SophiaType, Term) of
+%%                         R -> {ok, R}
+%%                     catch throw:R -> R
+%%                     end;
+%%                 {error, _} -> {error, <<"bad type/data">>}
+%%             catch _T:_E ->    {error, <<"bad argument">>}
+%%             end;
+%%         {error, _} = E -> E
+%%     end.
 
 get_type(Type) ->
     case aeso_compiler:sophia_type_to_typerep(to_str(Type)) of
