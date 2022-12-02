@@ -144,6 +144,7 @@ start_http_api(Target, LogicHandler) ->
                              , {ip, ListenAddress} ]
             },
     Env = #{env => #{dispatch => Dispatch},
+            idle_timeout => 480000,
             middlewares => [aehttp_cors_middleware,
                             cowboy_router,
                             cowboy_handler]},
