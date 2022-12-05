@@ -803,7 +803,7 @@ mine_blocks_loop(Cnt, Type) ->
 mine_blocks_loop(Blocks, 0, _Type) ->
     {ok, Blocks};
 mine_blocks_loop(Blocks, BlocksToMine, Type) when is_integer(BlocksToMine), BlocksToMine > 0 ->
-    {ok, Block} = wait_for_new_block(),
+    {ok, Block} = wait_for_new_block_mined(),
     case aec_blocks:type(Block) of
         Type1 when Type =/= any andalso Type =/= Type1 ->
             %% Don't decrement
@@ -812,10 +812,10 @@ mine_blocks_loop(Blocks, BlocksToMine, Type) when is_integer(BlocksToMine), Bloc
             mine_blocks_loop([Block | Blocks], BlocksToMine - 1, Type)
     end.
 
-wait_for_new_block() ->
-    wait_for_new_block(30000).
+wait_for_new_block_mined() ->
+    wait_for_new_block_mined(30000).
 
-wait_for_new_block(T) when is_integer(T), T >= 0 ->
+wait_for_new_block_mined(T) when is_integer(T), T >= 0 ->
     receive
         {gproc_ps_event, block_created, Info} ->
             #{info := Block} = Info,
@@ -836,16 +836,45 @@ wait_for_new_block(T) when is_integer(T), T >= 0 ->
             {error, timeout_waiting_for_block}
     end.
 
+wait_for_new_block() ->
+    wait_for_new_block(30000).
+
+wait_for_new_block(T) when is_integer(T), T >= 0 ->
+    receive
+        {gproc_ps_event, top_changed, #{block_hash := Hash}} ->
+            {ok, Block} = aec_chain:get_block(Hash),
+            {ok, Block}
+    after
+        T ->
+            case T of
+                0 ->
+                    not_logging;
+                _ ->
+                    ct:log("timeout waiting for block event~n"
+                           "~p", [process_info(self(), messages)])
+            end,
+            {error, timeout_waiting_for_block}
+    end.
+
 flush_new_blocks() ->
     flush_new_blocks_([]).
 
 flush_new_blocks_(Acc) ->
-    case wait_for_new_block(0) of
+    case wait_for_new_block_mined(0) of
         {error, timeout_waiting_for_block} ->
             lists:reverse(Acc);
         {ok, Block} ->
             flush_new_blocks_([Block | Acc])
     end.
+
+flush_new_blocks_produced(Acc) ->
+    case wait_for_new_block(0) of
+        {error, timeout_waiting_for_block} ->
+            lists:reverse(Acc);
+        {ok, Block} ->
+            flush_new_blocks_produced([Block | Acc])
+    end.
+
 
 %% block the process until a certain height is reached
 %% this has the expectation that the Node is mining
@@ -854,12 +883,10 @@ wait_for_height(Node, Height) ->
     wait_for_height(Node, Height, 30000).
 
 wait_for_height(Node, Height, TimeoutPerBlock) ->
-    flush_new_blocks(),
-    subscribe(Node, block_created),
-    subscribe(Node, micro_block_created),
+    flush_new_blocks_produced([]),
+    subscribe(Node, top_changed),
     ok = wait_for_height_(Node, Height, TimeoutPerBlock),
-    unsubscribe(Node, block_created),
-    unsubscribe(Node, micro_block_created),
+    unsubscribe(Node, top_changed),
     ok.
 
 wait_for_height_(Node, Height, TimeoutPerBlock) ->
@@ -873,8 +900,8 @@ wait_for_height_(Node, Height, TimeoutPerBlock) ->
             ok;
         false ->
             case wait_for_new_block(TimeoutPerBlock) of
-                {error, timeout_waiting_for_block}->
-                    {error, timeout_waiting_for_block, {top, TopHeight}, {waiting_for, Height}}
+                {error, timeout_waiting_for_block} ->
+                    {error, timeout_waiting_for_block, {top, TopHeight}, {waiting_for, Height}};
                 {ok, _B} ->
                     wait_for_height_(Node, Height, TimeoutPerBlock)
             end
