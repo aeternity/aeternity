@@ -160,7 +160,7 @@ handle_event({call, From}, {run, History}, ready, #data{} = Data) ->
 handle_event(info, {_, chain_sync, #{info := {chain_sync_done, _}}}, idle,
              #data{enabled = true} = Data) ->
     case aec_sync:sync_progress() of
-        {false, _} ->
+        {false, _, _} ->
             {keep_state, Data#data{synced = true}};
         _ ->
             {keep_state, Data}

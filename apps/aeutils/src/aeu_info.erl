@@ -49,7 +49,7 @@ get_status() ->
     {ok, TopKeyBlock} = aec_chain:top_key_block(),
     GenesisBlockHash = aec_consensus:get_genesis_hash(),
     Difficulty = aec_blocks:difficulty(TopKeyBlock),
-    {Syncing, SyncProgress} = aec_sync:sync_progress(),
+    {Syncing, SyncProgress, _} = aec_sync:sync_progress(),
     NodeVersion = aeu_info:get_version(),
     NodeRevision = aeu_info:get_revision(),
     PeerCount = aec_peers:count(peers),

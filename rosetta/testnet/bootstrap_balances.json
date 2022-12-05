@@ -1,0 +1,12 @@
+[
+    {
+      "account_identifier": {
+        "address": "ak_2a1j2Mk9YSmC1gioUq4PWRm3bsv887MbuRVwyv4KaUGoR1eiKi"
+      },
+      "currency": {
+        "decimals": 18,
+        "symbol": "AE"
+      },
+      "value": "100000000000001"
+    }
+]

@@ -96,20 +96,19 @@ dry_run_int([], _Trees, Env, _Opts, Acc) ->
 dry_run_int([{tx, TxOpts, Tx} | Txs], Trees, Env, Opts, Acc) ->
     Stateless = proplists:get_value(stateless, TxOpts, false),
     Env1 = prepare_env(Env, TxOpts),
-    %% GH3283: Here we should collect and present the `internal_call_tx` events.
-    %% This means expanding the return type, and breaking the api :scream_cat:.
+    EventsEnabled = proplists:get_bool(tx_events, Opts),
     case aec_trees:apply_txs_on_state_trees([Tx], Trees, Env1, [strict, dont_verify_signature|Opts]) of
         {ok, [Tx], [], Trees1, Events} when Stateless ->
-            Env2 = aetx_env:set_events(Env, Events),
-            dry_run_int(Txs, Trees, Env2, Opts, [dry_run_res(Tx, Trees1, ok) | Acc]);
+            Env2 = aetx_env:set_events(Env1, Events),
+            dry_run_int(Txs, Trees, Env2, Opts, [dry_run_res(Tx, Trees1, Events, EventsEnabled, ok) | Acc]);
         {ok, [Tx], [], Trees1, Events} ->
-            Env2 = aetx_env:set_events(Env, Events),
-            dry_run_int(Txs, Trees1, Env2, Opts, [dry_run_res(Tx, Trees1, ok) | Acc]);
+            Env2 = aetx_env:set_events(Env1, Events),
+            dry_run_int(Txs, Trees1, Env2, Opts, [dry_run_res(Tx, Trees1, Events, EventsEnabled, ok) | Acc]);
         Err = {error, _Reason} ->
-            dry_run_int(Txs, Trees, Env, Opts, [dry_run_res(Tx, Trees, Err) | Acc])
+            dry_run_int(Txs, Trees, Env1, Opts, [dry_run_res(Tx, Trees, [], EventsEnabled, Err) | Acc])
     end.
 
-dry_run_res(STx, Trees, ok) ->
+dry_run_res(STx, Trees, Events, EventsEnabled, ok) ->
     Tx = aetx_sign:tx(STx),
     {Type, _} = aetx:specialize_type(Tx),
     case Type of
@@ -118,18 +117,34 @@ dry_run_res(STx, Trees, ok) ->
             CtCallId  = CB:ct_call_id(CTx),
             CallId    = CB:call_id(CTx),
             CallObj   = lookup_call_object(CtCallId, CallId, Trees),
-            {Type, {ok, CallObj}};
+            if EventsEnabled ->
+                {Type, {ok, Events, CallObj}};
+               true ->
+                {Type, {ok, CallObj}}
+            end;
         _ when Type =:= contract_create_tx;
                Type =:= ga_attach_tx ->
             {CB, CTx} = aetx:specialize_callback(Tx),
             Contract  = CB:contract_pubkey(CTx),
             CallId    = CB:call_id(CTx),
             CallObj   = lookup_call_object(Contract, CallId, Trees),
-            {Type, {ok, CallObj}};
-        Other when Other /= paying_for_tx, Other /= ga_meta_tx, Other /= offchain_tx ->
-            {Type, ok}
+            %% PR#3848 (Rosetta API): Changing the external API of this function to return
+            %% events per transaction would have broken the middleware. Fortunately
+            %% the MDW doesn't enable tx_events so keeping the old API for the
+            %% no tx_events case is safe.
+            if EventsEnabled ->
+                {Type, {ok, Events, CallObj}};
+               true ->
+                {Type, {ok, CallObj}}
+            end;
+        Other when Other /= offchain_tx ->
+            if EventsEnabled ->
+                {Type, {ok, Events}};
+               true ->
+                {Type, ok}
+            end
     end;
-dry_run_res(STx, _Trees, Err) ->
+dry_run_res(STx, _Trees, _Events, _EventsEnabled, Err) ->
     {Type, _} = aetx:specialize_type(aetx_sign:tx(STx)),
     {Type, Err}.
 
@@ -209,10 +224,11 @@ prepare_env(Env0, Opts) ->
                undefined -> Env0;
                TxHash    -> aetx_env:set_ga_tx_hash(Env0, TxHash)
            end,
-    case proplists:get_value(auth_tx, Opts, undefined) of
-        undefined -> Env1;
-        Tx        -> aetx_env:set_ga_tx(Env1, Tx)
-    end.
+    Env2 = case proplists:get_value(auth_tx, Opts, undefined) of
+               undefined -> Env1;
+               Tx        -> aetx_env:set_ga_tx(Env1, Tx)
+           end,
+    aetx_env:set_events(Env2, []).
 
 lookup_call_object(Key, CallId, Trees) ->
     CallTree = aec_trees:calls(Trees),

@@ -37,12 +37,13 @@
         , valid_at_protocol/2
         , check_protocol/2
         , swagger_name_to_type/1
+        , type_to_swagger_name/1
         , tx_min_gas/2
+        , tx_type/1
         ]).
 
 -ifdef(TEST).
 -export([tx/1]).
--export([type_to_swagger_name/1]).
 -endif.
 
 -define(IS_CONTRACT_TX(T), ((T =:= contract_create_tx) or (T =:= contract_call_tx)
@@ -730,3 +731,7 @@ ttl_delta(Height, {block, _H} = TTL) ->
 tx(Tx) ->
     Tx#aetx.tx.
 -endif.
+
+-spec tx_type(tx()) -> tx_type().
+tx_type(Tx) ->
+    Tx#aetx.type.

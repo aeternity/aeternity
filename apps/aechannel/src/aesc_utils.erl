@@ -331,8 +331,9 @@ process_set_delegates(ChannelPubKey, FromPubKey, IDelegates,
                 Channel1
         end,
     Trees1 = set_channel(Channel, Trees),
-    Trees2 = spend(FromPubKey, Fee, Nonce, Trees1, Env),
-    add_event(Trees2, ChannelPubKey, Env).
+    {Payer, Trees2} = spend(FromPubKey, Fee, Nonce, Trees1, Env),
+    Env1 = aetx_env:tx_event(delta, {Payer, -Fee}, <<"Channel.fee">>, Env),
+    add_event(Trees2, ChannelPubKey, Env1).
 
 -spec check_slash_payload(aesc_channels:pubkey(), aec_keys:pubkey(),
                           non_neg_integer(), non_neg_integer(), binary(),
@@ -896,18 +897,17 @@ establish_payer(NormalPayer, TxEnv) ->
 
 process_solo_close(ChannelPubKey, FromPubKey, Nonce, Fee,
                    Payload, PoI, Height, Trees, Env) ->
-    add_event(
-      process_solo_close_slash(ChannelPubKey, FromPubKey, Nonce, Fee,
-                               Payload, PoI, Height, Trees, Env),
-      ChannelPubKey, Env).
-
+    Trees1 = process_solo_close_slash(ChannelPubKey, FromPubKey, Nonce, Fee,
+                                      Payload, PoI, Height, Trees, Env),
+    Env1 = aetx_env:tx_event(delta, {FromPubKey, -Fee}, <<"Channel.fee">>, Env),
+    add_event(Trees1, ChannelPubKey, Env1).
 
 process_slash(ChannelPubKey, FromPubKey, Nonce, Fee,
               Payload, PoI, Height, Trees, Env) ->
-    add_event(
-      process_solo_close_slash(ChannelPubKey, FromPubKey, Nonce, Fee,
-                               Payload, PoI, Height, Trees, Env),
-      ChannelPubKey, Env).
+    Trees1 = process_solo_close_slash(ChannelPubKey, FromPubKey, Nonce, Fee,
+                                    Payload, PoI, Height, Trees, Env),
+    Env1 = aetx_env:tx_event(delta, {FromPubKey, -Fee}, <<"Channel.fee">>, Env),
+    add_event(Trees1, ChannelPubKey, Env1).
 
 process_solo_snapshot(ChannelPubKey, FromPubKey, Nonce, Fee, Payload, Trees, Env) ->
     ChannelsTree0 = aec_trees:channels(Trees),
@@ -915,12 +915,13 @@ process_solo_snapshot(ChannelPubKey, FromPubKey, Nonce, Fee, Payload, Trees, Env
     {ok, _SignedOffchainTx, PayloadTx} = deserialize_payload(Payload),
     Channel = aesc_channels:snapshot_solo(Channel0, PayloadTx),
     Trees1 = set_channel(Channel, Trees),
-    Trees2 = spend(FromPubKey, Fee, Nonce, Trees1, Env),
-    add_event(Trees2, ChannelPubKey, Env).
+    {Payer, Trees2} = spend(FromPubKey, Fee, Nonce, Trees1, Env),
+    Env1 = aetx_env:tx_event(delta, {Payer, -Fee}, <<"Channel.fee">>, Env),
+    add_event(Trees2, ChannelPubKey, Env1).
 
 process_solo_close_slash(ChannelPubKey, FromPubKey, Nonce, Fee,
                          Payload, PoI, Height, Trees, Env) ->
-    Trees1        = spend(FromPubKey, Fee, Nonce, Trees, Env),
+    {_Payer, Trees1} = spend(FromPubKey, Fee, Nonce, Trees, Env),
     ChannelsTree0 = aec_trees:channels(Trees1),
 
     Channel0 = aesc_state_tree:get(ChannelPubKey, ChannelsTree0),
@@ -982,10 +983,13 @@ process_force_progress(Tx, OffChainTrees, Payload, TxHash, Height, Trees, Env) -
 
 
     % consume gas from sender
-    Trees1 = consume_gas_and_fee(Call, Fee, FromPubKey, Nonce, Trees, Env),
+    UsedAmount = aect_call:gas_used(Call) * aect_call:gas_price(Call),
+    {Payer, Trees1} = consume_gas_and_fee(UsedAmount, Fee, FromPubKey, Nonce, Trees, Env),
+    Env1 = aetx_env:tx_event(delta, {Payer, -Fee}, <<"Channel.fee">>, Env),
+    Env2 = aetx_env:tx_event(delta, {Payer, -UsedAmount}, <<"Channel.amount">>, Env1),
 
     % add a receipt call in the calls state tree
-    Trees2 = add_call(Call, TxHash, Trees1, Env),
+    Trees2 = add_call(Call, TxHash, Trees1, Env2),
 
     ?TEST_LOG("Expected hash ~p", [ExpectedHash]),
     ?TEST_LOG("Computed hash ~p", [ComputedHash]),
@@ -1024,7 +1028,7 @@ process_force_progress(Tx, OffChainTrees, Payload, TxHash, Height, Trees, Env) -
                 ?TEST_LOG("Expected and computed values DO NOT MATCH. Channel object is NOT being updated", []),
                 Trees2
         end,
-    add_event(Trees3, ChannelPubKey, Env).
+    add_event(Trees3, ChannelPubKey, Env2).
 
 
 get_vals(List) ->
@@ -1067,7 +1071,7 @@ spend_(From, From, Amount, Nonce, Trees) ->
     Acc0 = aec_accounts_trees:get(From, ATree0),
     {ok, Acc} = aec_accounts:spend(Acc0, Amount, Nonce),
     ATree1 = aec_accounts_trees:enter(Acc, ATree0),
-    aec_trees:set_accounts(Trees, ATree1);
+    {From, aec_trees:set_accounts(Trees, ATree1)};
 spend_(From, Payer, Amount, Nonce, Trees) ->
     ATree0 = aec_trees:accounts(Trees),
     AccF0 = aec_accounts_trees:get(From, ATree0),
@@ -1076,16 +1080,15 @@ spend_(From, Payer, Amount, Nonce, Trees) ->
     {ok, AccP1} = aec_accounts:spend_without_nonce_bump(AccP0, Amount),
     ATree1 = aec_accounts_trees:enter(AccF1, ATree0),
     ATree2 = aec_accounts_trees:enter(AccP1, ATree1),
-    aec_trees:set_accounts(Trees, ATree2).
+    {Payer, aec_trees:set_accounts(Trees, ATree2)}.
 
--spec consume_gas_and_fee(aect_call:call(),
+-spec consume_gas_and_fee(integer(),
                           integer(),
                           aec_keys:pubkey(),
                           non_neg_integer(),
                           aec_trees:trees(),
-                          aetx_env:env()) -> aec_trees:trees().
-consume_gas_and_fee(Call, Fee, From, Nonce, Trees, Env) ->
-    UsedAmount = aect_call:gas_used(Call) * aect_call:gas_price(Call),
+                          aetx_env:env()) -> {aec_keys:pubkey(), aec_trees:trees()}.
+consume_gas_and_fee(UsedAmount, Fee, From, Nonce, Trees, Env) ->
     spend(From, UsedAmount + Fee, Nonce, Trees, Env).
 
 set_channel(Channel, Trees) ->

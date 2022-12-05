@@ -86,13 +86,16 @@
          rpc/3,
          rpc/4,
          use_swagger/1,
+         use_rosetta/0,
          http_request/4,
          httpc_request/4,
          http_api_version/0,
          http_api_prefix/0,
          process_http_return/1,
          internal_address/0,
-         external_address/0
+         external_address/0,
+         rosetta_address/0,
+         rosetta_offline_address/0
         ]).
 
 -export([generate_key_pair/0]).
@@ -496,7 +499,9 @@ create_config(Node, CTConfig, CustomConfig, Options) ->
     Ports =
         #{ <<"sync">> => #{ <<"port">> => sync_port(Node)},
            <<"http">> => #{ <<"external">> => #{<<"port">> => external_api_port(Node)},
-                            <<"internal">> => #{<<"port">> => internal_api_port(Node)}},
+                            <<"internal">> => #{<<"port">> => internal_api_port(Node)},
+                            <<"rosetta">> => #{<<"port">> => rosetta_api_port(Node)},
+                            <<"rosetta_offline">> => #{<<"port">> => rosetta_offline_api_port(Node)}},
            <<"websocket">> => #{<<"channel">> => #{<<"port">> => ws_port(Node)}}},
     MergedCfg5 = maps_merge(MergedCfg4, Ports),
 
@@ -586,6 +591,7 @@ reinit_with_bitcoin_ng(N) ->
     ok = rpc:call(Node, aec_conductor, reinit_chain, []).
 
 reinit_nodes_with_ct_consensus(Nodes) ->
+    ct:log("Reinitializing chain on ~p with ct_tests consensus", [Nodes]),
     NodeNames = [node_name(N) || N <- Nodes],
     Timeout = 5000,
     [{ok, maintenance} = rpc:call(NN, app_ctrl, set_and_await_mode, [maintenance, Timeout])
@@ -598,10 +604,7 @@ reinit_nodes_with_ct_consensus(Nodes) ->
     ok.
 
 reinit_with_ct_consensus(N) ->
-    ct:log("Reinitializing chain on ~p with ct_tests consensus", [N]),
-    Node = node_name(N),
-    ok = set_env(Node, aecore, consensus, #{<<"0">> => #{<<"name">> => <<"ct_tests">>}}),
-    ok = rpc:call(Node, aec_conductor, reinit_chain, []).
+    reinit_nodes_with_ct_consensus([N]).
 
 get_node_db_config(Rpc) when is_function(Rpc, 3) ->
     IsDbPersisted = Rpc(application, get_env, [aecore, persist, false]),
@@ -1503,6 +1506,14 @@ internal_api_port(Node) ->
     {NodeGroup, Idx} = split_node_name(Node),
     port_group(NodeGroup) + Idx * 10 + 103. %% dev1: 3113
 
+rosetta_api_port(Node) ->
+    {NodeGroup, Idx} = split_node_name(Node),
+    port_group(NodeGroup) + Idx * 10 + 203. %% dev1: 3213
+
+rosetta_offline_api_port(Node) ->
+    {NodeGroup, Idx} = split_node_name(Node),
+    port_group(NodeGroup) + Idx * 10 + 403. %% dev1: 3413
+
 ws_port(Node) ->
     {NodeGroup, Idx} = split_node_name(Node),
     port_group(NodeGroup) + Idx * 10 + 4. %% dev1: 3014
@@ -1689,6 +1700,9 @@ use_swagger(SpecVsn) ->
         end,
     put(api_prefix, Prefix).
 
+use_rosetta() ->
+    put(api_prefix, "/").
+
 get(Key, Default) ->
     case get(Key) of
         undefined -> Default;
@@ -1803,6 +1817,18 @@ external_address() ->
               [ [<<"http">>, <<"external">>, <<"port">>],
                 aehttp, [external, port], 8043]),
     "http://127.0.0.1:" ++ integer_to_list(Port).     % good enough for requests
+
+rosetta_address() ->
+    Port = rpc(aeu_env, user_config_or_env,
+              [ [<<"http">>, <<"rosetta">>, <<"port">>],
+                aehttp, [rosetta, port], 8243]),
+    "http://127.0.0.1:" ++ integer_to_list(Port).
+
+rosetta_offline_address() ->
+    Port = rpc(aeu_env, user_config_or_env,
+              [ [<<"http">>, <<"rosetta_offline">>, <<"port">>],
+                aehttp, [rosetta_offline, port], 8343]),
+    "http://127.0.0.1:" ++ integer_to_list(Port).
 
 rpc(Mod, Fun, Args) ->
     rpc(?DEFAULT_NODE, Mod, Fun, Args).

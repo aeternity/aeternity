@@ -265,8 +265,8 @@ perform_pre_transformations(Trees, TxEnv, PrevProtocol) ->
     Height = aetx_env:height(TxEnv),
     Protocol = aetx_env:consensus_version(TxEnv),
     Trees0 = aect_call_state_tree:prune(Height, Trees),
-    Trees1 = aeo_state_tree:prune(Height, Trees0),
-    Trees2 = aens_state_tree:prune(Height, Protocol, Trees1),
+    {Trees1, _} = aeo_state_tree:prune(Height, Trees0, TxEnv),
+    {Trees2, _} = aens_state_tree:prune(Height, Protocol, Trees1, TxEnv),
     perform_pre_transformations(Trees2, TxEnv, Protocol, PrevProtocol).
 
 perform_pre_transformations(Trees, _TxEnv, _Protocol, undefined) ->
@@ -651,7 +651,7 @@ apply_txs_on_state_trees([], ValidTxs, InvalidTxs, Trees,Env,Opts) ->
                  true -> aetx_env:events(Env);
                  false -> []
              end,
-    {ok, lists:reverse(ValidTxs), lists:reverse(InvalidTxs), Trees, Events};
+    {ok, lists:reverse(ValidTxs), lists:reverse(InvalidTxs), Trees, lists:reverse(Events)};
 apply_txs_on_state_trees([SignedTx | Rest], ValidTxs, InvalidTxs, Trees, Env, Opts) ->
     Strict     = proplists:get_value(strict, Opts, false),
     DontVerify = proplists:get_value(dont_verify_signature, Opts, false),

@@ -1,0 +1,2196 @@
+openapi: 3.0.2
+info:
+  title: Rosetta
+  description: Build Once. Integrate Your Blockchain Everywhere.
+  license:
+    name: Apache 2.0
+    url: http://www.apache.org/licenses/LICENSE-2.0.html
+  version: 1.4.11
+servers:
+- url: /
+paths:
+  /network/list:
+    post:
+      tags:
+      - Network
+      summary: Get List of Available Networks
+      description: This endpoint returns a list of NetworkIdentifiers that the Rosetta
+        server supports.
+      operationId: networkList
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MetadataRequest'
+        required: true
+      responses:
+        "200":
+          description: Expected response to a valid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NetworkListResponse'
+        "500":
+          description: unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /network/status:
+    post:
+      tags:
+      - Network
+      summary: Get Network Status
+      description: This endpoint returns the current status of the network requested.
+        Any NetworkIdentifier returned by /network/list should be accessible here.
+      operationId: networkStatus
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NetworkRequest'
+        required: true
+      responses:
+        "200":
+          description: Expected response to a valid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NetworkStatusResponse'
+        "500":
+          description: unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /network/options:
+    post:
+      tags:
+      - Network
+      summary: Get Network Options
+      description: "This endpoint returns the version information and allowed network-specific\
+        \ types for a NetworkIdentifier. Any NetworkIdentifier returned by /network/list\
+        \ should be accessible here. Because options are retrievable in the context\
+        \ of a NetworkIdentifier, it is possible to define unique options for each\
+        \ network."
+      operationId: networkOptions
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NetworkRequest'
+        required: true
+      responses:
+        "200":
+          description: Expected response to a valid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NetworkOptionsResponse'
+        "500":
+          description: unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /block:
+    post:
+      tags:
+      - Block
+      summary: Get a Block
+      description: "Get a block by its Block Identifier. If transactions are returned\
+        \ in the same call to the node as fetching the block, the response should\
+        \ include these transactions in the Block object. If not, an array of Transaction\
+        \ Identifiers should be returned so /block/transaction fetches can be done\
+        \ to get all transaction information. When requesting a block by the hash\
+        \ component of the BlockIdentifier, this request MUST be idempotent: repeated\
+        \ invocations for the same hash-identified block must return the exact same\
+        \ block contents. No such restriction is imposed when requesting a block by\
+        \ height, given that a chain reorg event might cause the specific block at\
+        \ height `n` to be set to a different one."
+      operationId: block
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BlockRequest'
+        required: true
+      responses:
+        "200":
+          description: Expected response to a valid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BlockResponse'
+        "500":
+          description: unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /block/transaction:
+    post:
+      tags:
+      - Block
+      summary: Get a Block Transaction
+      description: "Get a transaction in a block by its Transaction Identifier. This\
+        \ endpoint should only be used when querying a node for a block does not return\
+        \ all transactions contained within it. All transactions returned by this\
+        \ endpoint must be appended to any transactions returned by the /block method\
+        \ by consumers of this data. Fetching a transaction by hash is considered\
+        \ an Explorer Method (which is classified under the Future Work section).\
+        \ This method can be used to let consumers to paginate results when the  block\
+        \ trasactions count is too big to be returned in a single BlockResponse. Calling\
+        \ this endpoint requires reference to a BlockIdentifier because transaction\
+        \ parsing can change depending on which block contains the transaction. For\
+        \ example, in Bitcoin it is necessary to know which block contains a transaction\
+        \ to determine the destination of fee payments. Without specifying a block\
+        \ identifier, the node would have to infer which block to use (which could\
+        \ change during a re-org). Implementations that require fetching previous\
+        \ transactions to populate the response (ex: Previous UTXOs in Bitcoin) may\
+        \ find it useful to run a cache within the Rosetta server in the /data directory\
+        \ (on a path that does not conflict with the node)."
+      operationId: blockTransaction
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BlockTransactionRequest'
+        required: true
+      responses:
+        "200":
+          description: Expected response to a valid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BlockTransactionResponse'
+        "500":
+          description: unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /mempool:
+    post:
+      tags:
+      - Mempool
+      summary: Get All Mempool Transactions
+      description: Get all Transaction Identifiers in the mempool
+      operationId: mempool
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NetworkRequest'
+        required: true
+      responses:
+        "200":
+          description: Expected response to a valid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MempoolResponse'
+        "500":
+          description: unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /mempool/transaction:
+    post:
+      tags:
+      - Mempool
+      summary: Get a Mempool Transaction
+      description: "Get a transaction in the mempool by its Transaction Identifier.\
+        \ This is a separate request than fetching a block transaction (/block/transaction)\
+        \ because some blockchain nodes need to know that a transaction query is for\
+        \ something in the mempool instead of a transaction in a block. Transactions\
+        \ may not be fully parsable until they are in a block (ex: may not be possible\
+        \ to determine the fee to pay before a transaction is executed). On this endpoint,\
+        \ it is ok that returned transactions are only estimates of what may actually\
+        \ be included in a block."
+      operationId: mempoolTransaction
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MempoolTransactionRequest'
+        required: true
+      responses:
+        "200":
+          description: Expected response to a valid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MempoolTransactionResponse'
+        "500":
+          description: unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /account/balance:
+    post:
+      tags:
+      - Account
+      summary: Get an Account's Balance
+      description: "Get an array of all AccountBalances for an AccountIdentifier and\
+        \ the BlockIdentifier at which the balance lookup was performed. The BlockIdentifier\
+        \ must always be returned because some consumers of account balance data need\
+        \ to know specifically at which block the balance was calculated to compare\
+        \ balances they compute from operations with the balance returned by the node.\
+        \ It is important to note that making a balance request for an account without\
+        \ populating the SubAccountIdentifier should not result in the balance of\
+        \ all possible SubAccountIdentifiers being returned. Rather, it should result\
+        \ in the balance pertaining to no SubAccountIdentifiers being returned (sometimes\
+        \ called the liquid balance). To get all balances associated with an account,\
+        \ it may be necessary to perform multiple balance requests with unique AccountIdentifiers.\
+        \ It is also possible to perform a historical balance lookup (if the server\
+        \ supports it) by passing in an optional BlockIdentifier."
+      operationId: accountBalance
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AccountBalanceRequest'
+        required: true
+      responses:
+        "200":
+          description: Expected response to a valid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountBalanceResponse'
+        "500":
+          description: unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /account/coins:
+    post:
+      tags:
+      - Account
+      summary: Get an Account's Unspent Coins
+      description: "Get an array of all unspent coins for an AccountIdentifier and\
+        \ the BlockIdentifier at which the lookup was performed. If your implementation\
+        \ does not support coins (i.e. it is for an account-based blockchain), you\
+        \ do not need to implement this endpoint. If you implementation does support\
+        \ coins (i.e. it is fro a UTXO-based blockchain), you MUST also complete the\
+        \ `/account/balance` endpoint. It is important to note that making a coins\
+        \ request for an account without populating the SubAccountIdentifier should\
+        \ not result in the coins of all possible SubAccountIdentifiers being returned.\
+        \ Rather, it should result in the coins pertaining to no SubAccountIdentifiers\
+        \ being returned. To get all coins associated with an account, it may be necessary\
+        \ to perform multiple coin requests with unique AccountIdentifiers. Optionally,\
+        \ an implementation may choose to support updating an AccountIdentifier's\
+        \ unspent coins based on the contents of the mempool. Note, using this functionality\
+        \ breaks any guarantee of idempotency."
+      operationId: accountCoins
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AccountCoinsRequest'
+        required: true
+      responses:
+        "200":
+          description: Expected response to a valid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountCoinsResponse'
+        "500":
+          description: unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /construction/derive:
+    post:
+      tags:
+      - Construction
+      summary: Derive an AccountIdentifier from a PublicKey
+      description: Derive returns the AccountIdentifier associated with a public key.
+        Blockchains that require an on-chain action to create an account should not
+        implement this method.
+      operationId: constructionDerive
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConstructionDeriveRequest'
+        required: true
+      responses:
+        "200":
+          description: Expected response to a valid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConstructionDeriveResponse'
+        "500":
+          description: unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /construction/preprocess:
+    post:
+      tags:
+      - Construction
+      summary: Create a Request to Fetch Metadata
+      description: "Preprocess is called prior to `/construction/payloads` to construct\
+        \ a request for any metadata that is needed for transaction construction given\
+        \ (i.e. account nonce). The `options` object returned from this endpoint will\
+        \ be sent to the `/construction/metadata` endpoint UNMODIFIED by the caller\
+        \ (in an offline execution environment). If your Construction API implementation\
+        \ has configuration options, they MUST be specified in the `/construction/preprocess`\
+        \ request (in the `metadata` field)."
+      operationId: constructionPreprocess
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConstructionPreprocessRequest'
+        required: true
+      responses:
+        "200":
+          description: Expected response to a valid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConstructionPreprocessResponse'
+        "500":
+          description: unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /construction/metadata:
+    post:
+      tags:
+      - Construction
+      summary: Get Metadata for Transaction Construction
+      description: "Get any information required to construct a transaction for a\
+        \ specific network. Metadata returned here could be a recent hash to use,\
+        \ an account sequence number, or even arbitrary chain state. The request used\
+        \ when calling this endpoint is created by calling `/construction/preprocess`\
+        \ in an offline environment. You should NEVER assume that the request sent\
+        \ to this endpoint will be created by the caller or populated with any custom\
+        \ parameters. This must occur in `/construction/preprocess`. It is important\
+        \ to clarify that this endpoint should not pre-construct any transactions\
+        \ for the client (this should happen in `/construction/payloads`). This endpoint\
+        \ is left purposely unstructured because of the wide scope of metadata that\
+        \ could be required."
+      operationId: constructionMetadata
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConstructionMetadataRequest'
+        required: true
+      responses:
+        "200":
+          description: Expected response to a valid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConstructionMetadataResponse'
+        "500":
+          description: unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /construction/payloads:
+    post:
+      tags:
+      - Construction
+      summary: Generate an Unsigned Transaction and Signing Payloads
+      description: "Payloads is called with an array of operations and the response\
+        \ from `/construction/metadata`. It returns an unsigned transaction blob and\
+        \ a collection of payloads that must be signed by particular AccountIdentifiers\
+        \ using a certain SignatureType. The array of operations provided in transaction\
+        \ construction often times can not specify all \"effects\" of a transaction\
+        \ (consider invoked transactions in Ethereum). However, they can deterministically\
+        \ specify the \"intent\" of the transaction, which is sufficient for construction.\
+        \ For this reason, parsing the corresponding transaction in the Data API (when\
+        \ it lands on chain) will contain a superset of whatever operations were provided\
+        \ during construction."
+      operationId: constructionPayloads
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConstructionPayloadsRequest'
+        required: true
+      responses:
+        "200":
+          description: Expected response to a valid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConstructionPayloadsResponse'
+        "500":
+          description: unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /construction/combine:
+    post:
+      tags:
+      - Construction
+      summary: Create Network Transaction from Signatures
+      description: Combine creates a network-specific transaction from an unsigned
+        transaction and an array of provided signatures. The signed transaction returned
+        from this method will be sent to the `/construction/submit` endpoint by the
+        caller.
+      operationId: constructionCombine
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConstructionCombineRequest'
+        required: true
+      responses:
+        "200":
+          description: Expected response to a valid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConstructionCombineResponse'
+        "500":
+          description: unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /construction/parse:
+    post:
+      tags:
+      - Construction
+      summary: Parse a Transaction
+      description: 'Parse is called on both unsigned and signed transactions to understand
+        the intent of the formulated transaction. This is run as a sanity check before
+        signing (after `/construction/payloads`) and before broadcast (after `/construction/combine`). '
+      operationId: constructionParse
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConstructionParseRequest'
+        required: true
+      responses:
+        "200":
+          description: Expected response to a valid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConstructionParseResponse'
+        "500":
+          description: unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /construction/hash:
+    post:
+      tags:
+      - Construction
+      summary: Get the Hash of a Signed Transaction
+      description: TransactionHash returns the network-specific transaction hash for
+        a signed transaction.
+      operationId: constructionHash
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConstructionHashRequest'
+        required: true
+      responses:
+        "200":
+          description: Expected response to a valid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransactionIdentifierResponse'
+        "500":
+          description: unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /construction/submit:
+    post:
+      tags:
+      - Construction
+      summary: Submit a Signed Transaction
+      description: "Submit a pre-signed transaction to the node. This call should\
+        \ not block on the transaction being included in a block. Rather, it should\
+        \ return immediately with an indication of whether or not the transaction\
+        \ was included in the mempool. The transaction submission response should\
+        \ only return a 200 status if the submitted transaction could be included\
+        \ in the mempool. Otherwise, it should return an error."
+      operationId: constructionSubmit
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConstructionSubmitRequest'
+        required: true
+      responses:
+        "200":
+          description: Expected response to a valid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransactionIdentifierResponse'
+        "500":
+          description: unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /call:
+    post:
+      tags:
+      - Call
+      summary: Make a Network-Specific Procedure Call
+      description: "Call invokes an arbitrary, network-specific procedure call with\
+        \ network-specific parameters. The guidance for what this endpoint should\
+        \ or could do is purposely left vague. In Ethereum, this could be used to\
+        \ invoke `eth_call` to implement an entire Rosetta API interface for some\
+        \ smart contract that is not parsed by the implementation creator (like a\
+        \ DEX). This endpoint could also be used to provide access to data that does\
+        \ not map to any Rosetta models instead of requiring an integrator to use\
+        \ some network-specific SDK and call some network-specific endpoint (like\
+        \ surfacing staking parameters). Call is NOT a replacement for implementing\
+        \ Rosetta API endpoints or mapping network-specific data to Rosetta models.\
+        \ Rather, it enables developers to build additional Rosetta API interfaces\
+        \ for things they care about without introducing complexity into a base-level\
+        \ Rosetta implementation. Simply put, imagine that the average integrator\
+        \ will use layered Rosetta API implementations that each surfaces unique data."
+      operationId: call
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CallRequest'
+        required: true
+      responses:
+        "200":
+          description: Expected response to a valid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CallResponse'
+        "500":
+          description: unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /events/blocks:
+    post:
+      tags:
+      - Events
+      summary: "[INDEXER] Get a range of BlockEvents"
+      description: "`/events/blocks` allows the caller to query a sequence of BlockEvents\
+        \ indicating which blocks were added and removed from storage to reach the\
+        \ current state. Following BlockEvents allows lightweight clients to update\
+        \ their state without needing to implement their own syncing logic (like finding\
+        \ the common parent in a reorg). `/events/blocks` is considered an \"indexer\"\
+        \ endpoint and Rosetta implementations are not required to complete it to\
+        \ adhere to the Rosetta spec. However, any Rosetta \"indexer\" MUST support\
+        \ this endpoint."
+      operationId: eventsBlocks
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EventsBlocksRequest'
+        required: true
+      responses:
+        "200":
+          description: Expected response to a valid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventsBlocksResponse'
+        "500":
+          description: unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /search/transactions:
+    post:
+      tags:
+      - Search
+      summary: "[INDEXER] Search for Transactions"
+      description: "`/search/transactions` allows the caller to search for transactions\
+        \ that meet certain conditions. Some conditions include matching a transaction\
+        \ hash, containing an operation with a certain status, or containing an operation\
+        \ that affects a certain account. `/search/transactions` is considered an\
+        \ \"indexer\" endpoint and Rosetta implementations are not required to complete\
+        \ it to adhere to the Rosetta spec. However, any Rosetta \"indexer\" MUST\
+        \ support this endpoint."
+      operationId: searchTransactions
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SearchTransactionsRequest'
+        required: true
+      responses:
+        "200":
+          description: Expected response to a valid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchTransactionsResponse'
+        "500":
+          description: unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+components:
+  schemas:
+    NetworkIdentifier:
+      required:
+      - blockchain
+      - network
+      type: object
+      properties:
+        blockchain:
+          type: string
+          example: bitcoin
+        network:
+          type: string
+          description: "If a blockchain has a specific chain-id or network identifier,\
+            \ it should go in this field. It is up to the client to determine which\
+            \ network-specific identifier is mainnet or testnet."
+          example: mainnet
+        sub_network_identifier:
+          $ref: '#/components/schemas/SubNetworkIdentifier'
+      description: The network_identifier specifies which network a particular object
+        is associated with.
+    SubNetworkIdentifier:
+      required:
+      - network
+      type: object
+      properties:
+        network:
+          type: string
+          example: shard 1
+        metadata:
+          type: object
+          example:
+            producer: 0x52bc44d5378309ee2abf1539bf71de1b7d7be3b5
+      description: "In blockchains with sharded state, the SubNetworkIdentifier is\
+        \ required to query some object on a specific shard. This identifier is optional\
+        \ for all non-sharded blockchains."
+    BlockIdentifier:
+      required:
+      - hash
+      - index
+      type: object
+      properties:
+        index:
+          type: integer
+          description: This is also known as the block height.
+          format: int64
+          example: 1123941
+        hash:
+          type: string
+          description: This should be normalized according to the case specified in
+            the block_hash_case network options.
+          example: 0x1f2cc6c5027d2f201a5453ad1119574d2aed23a392654742ac3c78783c071f85
+      description: The block_identifier uniquely identifies a block in a particular
+        network.
+    PartialBlockIdentifier:
+      type: object
+      properties:
+        index:
+          type: integer
+          format: int64
+          example: 1123941
+        hash:
+          type: string
+          example: 0x1f2cc6c5027d2f201a5453ad1119574d2aed23a392654742ac3c78783c071f85
+      description: "When fetching data by BlockIdentifier, it may be possible to only\
+        \ specify the index or hash. If neither property is specified, it is assumed\
+        \ that the client is making a request at the current block."
+    TransactionIdentifier:
+      required:
+      - hash
+      type: object
+      properties:
+        hash:
+          type: string
+          description: "Any transactions that are attributable only to a block (ex:\
+            \ a block event) should use the hash of the block as the identifier. \
+            \ This should be normalized according to the case specified in the transaction_hash_case\
+            \ in network options."
+          example: 0x2f23fd8cca835af21f3ac375bac601f97ead75f2e79143bdf71fe2c4be043e8f
+      description: The transaction_identifier uniquely identifies a transaction in
+        a particular network and block or in the mempool.
+    OperationIdentifier:
+      required:
+      - index
+      type: object
+      properties:
+        index:
+          minimum: 0
+          type: integer
+          description: "The operation index is used to ensure each operation has a\
+            \ unique identifier within a transaction. This index is only relative\
+            \ to the transaction and NOT GLOBAL. The operations in each transaction\
+            \ should start from index 0. To clarify, there may not be any notion of\
+            \ an operation index in the blockchain being described."
+          format: int64
+          example: 5
+        network_index:
+          minimum: 0
+          type: integer
+          description: "Some blockchains specify an operation index that is essential\
+            \ for client use. For example, Bitcoin uses a network_index to identify\
+            \ which UTXO was used in a transaction. network_index should not be populated\
+            \ if there is no notion of an operation index in a blockchain (typically\
+            \ most account-based blockchains)."
+          format: int64
+          example: 0
+      description: The operation_identifier uniquely identifies an operation within
+        a transaction.
+    AccountIdentifier:
+      required:
+      - address
+      type: object
+      properties:
+        address:
+          type: string
+          description: The address may be a cryptographic public key (or some encoding
+            of it) or a provided username.
+          example: 0x3a065000ab4183c6bf581dc1e55a605455fc6d61
+        sub_account:
+          $ref: '#/components/schemas/SubAccountIdentifier'
+        metadata:
+          type: object
+          description: Blockchains that utilize a username model (where the address
+            is not a derivative of a cryptographic public key) should specify the
+            public key(s) owned by the address in metadata.
+      description: "The account_identifier uniquely identifies an account within a\
+        \ network. All fields in the account_identifier are utilized to determine\
+        \ this uniqueness (including the metadata field, if populated)."
+    SubAccountIdentifier:
+      required:
+      - address
+      type: object
+      properties:
+        address:
+          type: string
+          description: "The SubAccount address may be a cryptographic value or some\
+            \ other identifier (ex: bonded) that uniquely specifies a SubAccount."
+          example: 0x6b175474e89094c44da98b954eedeac495271d0f
+        metadata:
+          type: object
+          description: "If the SubAccount address is not sufficient to uniquely specify\
+            \ a SubAccount, any other identifying information can be stored here.\
+            \ It is important to note that two SubAccounts with identical addresses\
+            \ but differing metadata will not be considered equal by clients."
+      description: An account may have state specific to a contract address (ERC-20
+        token) and/or a stake (delegated balance). The sub_account_identifier should
+        specify which state (if applicable) an account instantiation refers to.
+    Block:
+      required:
+      - block_identifier
+      - parent_block_identifier
+      - timestamp
+      - transactions
+      type: object
+      properties:
+        block_identifier:
+          $ref: '#/components/schemas/BlockIdentifier'
+        parent_block_identifier:
+          $ref: '#/components/schemas/BlockIdentifier'
+        timestamp:
+          $ref: '#/components/schemas/Timestamp'
+        transactions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Transaction'
+        metadata:
+          type: object
+          example:
+            transactions_root: 0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347
+            difficulty: "123891724987128947"
+      description: "Blocks contain an array of Transactions that occurred at a particular\
+        \ BlockIdentifier. A hard requirement for blocks returned by Rosetta implementations\
+        \ is that they MUST be _inalterable_: once a client has requested and received\
+        \ a block identified by a specific BlockIndentifier, all future calls for\
+        \ that same BlockIdentifier must return the same block contents."
+    Transaction:
+      required:
+      - operations
+      - transaction_identifier
+      type: object
+      properties:
+        transaction_identifier:
+          $ref: '#/components/schemas/TransactionIdentifier'
+        operations:
+          type: array
+          items:
+            $ref: '#/components/schemas/Operation'
+        related_transactions:
+          type: array
+          items:
+            $ref: '#/components/schemas/RelatedTransaction'
+        metadata:
+          type: object
+          description: Transactions that are related to other transactions (like a
+            cross-shard transaction) should include the tranaction_identifier of these
+            transactions in the metadata.
+          example:
+            size: 12378
+            lockTime: 1582272577
+      description: Transactions contain an array of Operations that are attributable
+        to the same TransactionIdentifier.
+    Operation:
+      required:
+      - operation_identifier
+      - type
+      type: object
+      properties:
+        operation_identifier:
+          $ref: '#/components/schemas/OperationIdentifier'
+        related_operations:
+          type: array
+          description: "Restrict referenced related_operations to identifier indices\
+            \ < the current operation_identifier.index. This ensures there exists\
+            \ a clear DAG-structure of relations. Since operations are one-sided,\
+            \ one could imagine relating operations in a single transfer or linking\
+            \ operations in a call tree."
+          example:
+          - index: 1
+          - index: 2
+          items:
+            $ref: '#/components/schemas/OperationIdentifier'
+        type:
+          type: string
+          description: Type is the network-specific type of the operation. Ensure
+            that any type that can be returned here is also specified in the NetworkOptionsResponse.
+            This can be very useful to downstream consumers that parse all block data.
+          example: Transfer
+        status:
+          type: string
+          description: "Status is the network-specific status of the operation. Status\
+            \ is not defined on the transaction object because blockchains with smart\
+            \ contracts may have transactions that partially apply (some operations\
+            \ are successful and some are not). Blockchains with atomic transactions\
+            \ (all operations succeed or all operations fail) will have the same status\
+            \ for each operation. On-chain operations (operations retrieved in the\
+            \ `/block` and `/block/transaction` endpoints) MUST have a populated status\
+            \ field (anything on-chain must have succeeded or failed). However, operations\
+            \ provided during transaction construction (often times called \"intent\"\
+            \ in the documentation) MUST NOT have a populated status field (operations\
+            \ yet to be included on-chain have not yet succeeded or failed)."
+          example: Reverted
+        account:
+          $ref: '#/components/schemas/AccountIdentifier'
+        amount:
+          $ref: '#/components/schemas/Amount'
+        coin_change:
+          $ref: '#/components/schemas/CoinChange'
+        metadata:
+          type: object
+          example:
+            asm: 304502201fd8abb11443f8b1b9a04e0495e0543d05611473a790c8939f089d073f90509a022100f4677825136605d732e2126d09a2d38c20c75946cd9fc239c0497e84c634e3dd01
+              03301a8259a12e35694cc22ebc45fee635f4993064190f6ce96e7fb19a03bb6be2
+            hex: 48304502201fd8abb11443f8b1b9a04e0495e0543d05611473a790c8939f089d073f90509a022100f4677825136605d732e2126d09a2d38c20c75946cd9fc239c0497e84c634e3dd012103301a8259a12e35694cc22ebc45fee635f4993064190f6ce96e7fb19a03bb6be2
+      description: "Operations contain all balance-changing information within a transaction.\
+        \ They are always one-sided (only affect 1 AccountIdentifier) and can succeed\
+        \ or fail independently from a Transaction. Operations are used both to represent\
+        \ on-chain data (Data API) and to construct new transactions (Construction\
+        \ API), creating a standard interface for reading and writing to blockchains."
+    Amount:
+      required:
+      - currency
+      - value
+      type: object
+      properties:
+        value:
+          type: string
+          description: "Value of the transaction in atomic units represented as an\
+            \ arbitrary-sized signed integer. For example, 1 BTC would be represented\
+            \ by a value of 100000000."
+          example: "1238089899992"
+        currency:
+          $ref: '#/components/schemas/Currency'
+        metadata:
+          type: object
+      description: Amount is some Value of a Currency. It is considered invalid to
+        specify a Value without a Currency.
+    Currency:
+      required:
+      - decimals
+      - symbol
+      type: object
+      properties:
+        symbol:
+          type: string
+          description: Canonical symbol associated with a currency.
+          example: BTC
+        decimals:
+          minimum: 0
+          type: integer
+          description: "Number of decimal places in the standard unit representation\
+            \ of the amount. For example, BTC has 8 decimals. Note that it is not\
+            \ possible to represent the value of some currency in atomic units that\
+            \ is not base 10."
+          format: int32
+          example: 8
+        metadata:
+          type: object
+          description: "Any additional information related to the currency itself.\
+            \ For example, it would be useful to populate this object with the contract\
+            \ address of an ERC-20 token."
+          example:
+            Issuer: Satoshi
+      description: Currency is composed of a canonical Symbol and Decimals. This Decimals
+        value is used to convert an Amount.Value from atomic units (Satoshis) to standard
+        units (Bitcoins).
+    SyncStatus:
+      type: object
+      properties:
+        current_index:
+          type: integer
+          description: "CurrentIndex is the index of the last synced block in the\
+            \ current stage. This is a separate field from current_block_identifier\
+            \ in NetworkStatusResponse because blocks with indices up to and including\
+            \ the current_index may not yet be queryable by the caller. To reiterate,\
+            \ all indices up to and including current_block_identifier in NetworkStatusResponse\
+            \ must be queryable via the /block endpoint (excluding indices less than\
+            \ oldest_block_identifier)."
+          format: int64
+          example: 100
+        target_index:
+          type: integer
+          description: TargetIndex is the index of the block that the implementation
+            is attempting to sync to in the current stage.
+          format: int64
+          example: 150
+        stage:
+          type: string
+          description: Stage is the phase of the sync process.
+          example: header sync
+        synced:
+          type: boolean
+          description: "synced is a boolean that indicates if an implementation has\
+            \ synced up to the most recent block. If this field is not populated,\
+            \ the caller should rely on a traditional tip timestamp comparison to\
+            \ determine if an implementation is synced. This field is particularly\
+            \ useful for quiescent blockchains (blocks only produced when there are\
+            \ pending transactions). In these blockchains, the most recent block could\
+            \ have a timestamp far behind the current time but the node could be healthy\
+            \ and at tip."
+      description: SyncStatus is used to provide additional context about an implementation's
+        sync status. This object is often used by implementations to indicate healthiness
+        when block data cannot be queried until some sync phase completes or cannot
+        be determined by comparing the timestamp of the most recent block with the
+        current time.
+    Peer:
+      required:
+      - peer_id
+      type: object
+      properties:
+        peer_id:
+          type: string
+          example: 0x52bc44d5378309ee2abf1539bf71de1b7d7be3b5
+        metadata:
+          type: object
+      description: A Peer is a representation of a node's peer.
+    Version:
+      required:
+      - node_version
+      - rosetta_version
+      type: object
+      properties:
+        rosetta_version:
+          type: string
+          description: The rosetta_version is the version of the Rosetta interface
+            the implementation adheres to. This can be useful for clients looking
+            to reliably parse responses.
+          example: 1.2.5
+        node_version:
+          type: string
+          description: The node_version is the canonical version of the node runtime.
+            This can help clients manage deployments.
+          example: 1.0.2
+        middleware_version:
+          type: string
+          description: "When a middleware server is used to adhere to the Rosetta\
+            \ interface, it should return its version here. This can help clients\
+            \ manage deployments."
+          example: 0.2.7
+        metadata:
+          type: object
+          description: Any other information that may be useful about versioning of
+            dependent services should be returned here.
+      description: The Version object is utilized to inform the client of the versions
+        of different components of the Rosetta implementation.
+    Allow:
+      required:
+      - balance_exemptions
+      - call_methods
+      - errors
+      - historical_balance_lookup
+      - mempool_coins
+      - operation_statuses
+      - operation_types
+      type: object
+      properties:
+        operation_statuses:
+          type: array
+          description: All Operation.Status this implementation supports. Any status
+            that is returned during parsing that is not listed here will cause client
+            validation to error.
+          items:
+            $ref: '#/components/schemas/OperationStatus'
+        operation_types:
+          type: array
+          description: All Operation.Type this implementation supports. Any type that
+            is returned during parsing that is not listed here will cause client validation
+            to error.
+          items:
+            type: string
+            example: TRANSFER
+        errors:
+          type: array
+          description: All Errors that this implementation could return. Any error
+            that is returned during parsing that is not listed here will cause client
+            validation to error.
+          items:
+            $ref: '#/components/schemas/Error'
+        historical_balance_lookup:
+          type: boolean
+          description: Any Rosetta implementation that supports querying the balance
+            of an account at any height in the past should set this to true.
+        timestamp_start_index:
+          minimum: 0
+          type: integer
+          description: "If populated, `timestamp_start_index` indicates the first\
+            \ block index where block timestamps are considered valid (i.e. all blocks\
+            \ less than `timestamp_start_index` could have invalid timestamps). This\
+            \ is useful when the genesis block (or blocks) of a network have timestamp\
+            \ 0. If not populated, block timestamps are assumed to be valid for all\
+            \ available blocks."
+          format: int64
+        call_methods:
+          type: array
+          description: All methods that are supported by the /call endpoint. Communicating
+            which parameters should be provided to /call is the responsibility of
+            the implementer (this is en lieu of defining an entire type system and
+            requiring the implementer to define that in Allow).
+          items:
+            type: string
+            example: eth_call
+        balance_exemptions:
+          type: array
+          description: "BalanceExemptions is an array of BalanceExemption indicating\
+            \ which account balances could change without a corresponding Operation.\
+            \ BalanceExemptions should be used sparingly as they may introduce significant\
+            \ complexity for integrators that attempt to reconcile all account balance\
+            \ changes. If your implementation relies on any BalanceExemptions, you\
+            \ MUST implement historical balance lookup (the ability to query an account\
+            \ balance at any BlockIdentifier)."
+          items:
+            $ref: '#/components/schemas/BalanceExemption'
+        mempool_coins:
+          type: boolean
+          description: "Any Rosetta implementation that can update an AccountIdentifier's\
+            \ unspent coins based on the contents of the mempool should populate this\
+            \ field as true. If false, requests to `/account/coins` that set `include_mempool`\
+            \ as true will be automatically rejected."
+        block_hash_case:
+          type: string
+          description: "This specifies the normalized case for block hash in the BlockIdentifier.\
+            \ If not specified, it's assumed to be case sensitive."
+          nullable: true
+          default: case_sensitive
+          enum:
+          - upper_case
+          - lower_case
+          - case_sensitive
+          - null
+        transaction_hash_case:
+          $ref: '#/components/schemas/Allow/properties/block_hash_case'
+      description: "Allow specifies supported Operation status, Operation types, and\
+        \ all possible error statuses. This Allow object is used by clients to validate\
+        \ the correctness of a Rosetta Server implementation. It is expected that\
+        \ these clients will error if they receive some response that contains any\
+        \ of the above information that is not specified here."
+    OperationStatus:
+      required:
+      - status
+      - successful
+      type: object
+      properties:
+        status:
+          type: string
+          description: The status is the network-specific status of the operation.
+        successful:
+          type: boolean
+          description: "An Operation is considered successful if the Operation.Amount\
+            \ should affect the Operation.Account. Some blockchains (like Bitcoin)\
+            \ only include successful operations in blocks but other blockchains (like\
+            \ Ethereum) include unsuccessful operations that incur a fee. To reconcile\
+            \ the computed balance from the stream of Operations, it is critical to\
+            \ understand which Operation.Status indicate an Operation is successful\
+            \ and should affect an Account."
+      description: OperationStatus is utilized to indicate which Operation status
+        are considered successful.
+      example:
+        status: SUCCESS
+        successful: true
+    Timestamp:
+      minimum: 0
+      type: integer
+      description: The timestamp of the block in milliseconds since the Unix Epoch.
+        The timestamp is stored in milliseconds because some blockchains produce blocks
+        more often than once a second.
+      format: int64
+      example: 1582833600000
+    PublicKey:
+      required:
+      - curve_type
+      - hex_bytes
+      type: object
+      properties:
+        hex_bytes:
+          type: string
+          description: Hex-encoded public key bytes in the format specified by the
+            CurveType.
+        curve_type:
+          $ref: '#/components/schemas/CurveType'
+      description: PublicKey contains a public key byte array for a particular CurveType
+        encoded in hex. Note that there is no PrivateKey struct as this is NEVER the
+        concern of an implementation.
+    CurveType:
+      type: string
+      description: "CurveType is the type of cryptographic curve associated with a\
+        \ PublicKey. * secp256k1: SEC compressed - `33 bytes` (https://secg.org/sec1-v2.pdf#subsubsection.2.3.3)\
+        \ * secp256r1: SEC compressed - `33 bytes` (https://secg.org/sec1-v2.pdf#subsubsection.2.3.3)\
+        \ * edwards25519: `y (255-bits) || x-sign-bit (1-bit)` - `32 bytes` (https://ed25519.cr.yp.to/ed25519-20110926.pdf)\
+        \ * tweedle: 1st pk : Fq.t (32 bytes) || 2nd pk : Fq.t (32 bytes) (https://github.com/CodaProtocol/coda/blob/develop/rfcs/0038-rosetta-construction-api.md#marshal-keys)"
+      enum:
+      - secp256k1
+      - secp256r1
+      - edwards25519
+      - tweedle
+    SigningPayload:
+      required:
+      - hex_bytes
+      type: object
+      properties:
+        address:
+          type: string
+          description: "[DEPRECATED by `account_identifier` in `v1.4.4`] The network-specific\
+            \ address of the account that should sign the payload."
+        account_identifier:
+          $ref: '#/components/schemas/AccountIdentifier'
+        hex_bytes:
+          type: string
+          description: Hex-encoded string of the payload bytes.
+        signature_type:
+          $ref: '#/components/schemas/SignatureType'
+      description: SigningPayload is signed by the client with the keypair associated
+        with an AccountIdentifier using the specified SignatureType. SignatureType
+        can be optionally populated if there is a restriction on the signature scheme
+        that can be used to sign the payload.
+    Signature:
+      required:
+      - hex_bytes
+      - public_key
+      - signature_type
+      - signing_payload
+      type: object
+      properties:
+        signing_payload:
+          $ref: '#/components/schemas/SigningPayload'
+        public_key:
+          $ref: '#/components/schemas/PublicKey'
+        signature_type:
+          $ref: '#/components/schemas/SignatureType'
+        hex_bytes:
+          type: string
+      description: "Signature contains the payload that was signed, the public keys\
+        \ of the keypairs used to produce the signature, the signature (encoded in\
+        \ hex), and the SignatureType. PublicKey is often times not known during construction\
+        \ of the signing payloads but may be needed to combine signatures properly."
+    SignatureType:
+      type: string
+      description: "SignatureType is the type of a cryptographic signature. * ecdsa:\
+        \ `r (32-bytes) || s (32-bytes)` - `64 bytes` * ecdsa_recovery: `r (32-bytes)\
+        \ || s (32-bytes) || v (1-byte)` - `65 bytes` * ed25519: `R (32-byte) || s\
+        \ (32-bytes)` - `64 bytes` * schnorr_1: `r (32-bytes) || s (32-bytes)` - `64\
+        \ bytes`  (schnorr signature implemented by Zilliqa where both `r` and `s`\
+        \ are scalars encoded as `32-bytes` values, most significant byte first.)\
+        \ * schnorr_poseidon: `r (32-bytes) || s (32-bytes)` where s = Hash(1st pk\
+        \ || 2nd pk || r) - `64 bytes`  (schnorr signature w/ Poseidon hash function\
+        \ implemented by O(1) Labs where both `r` and `s` are scalars encoded as `32-bytes`\
+        \ values, least significant byte first. https://github.com/CodaProtocol/signer-reference/blob/master/schnorr.ml\
+        \ )"
+      enum:
+      - ecdsa
+      - ecdsa_recovery
+      - ed25519
+      - schnorr_1
+      - schnorr_poseidon
+    CoinAction:
+      type: string
+      description: "CoinActions are different state changes that a Coin can undergo.\
+        \ When a Coin is created, it is coin_created. When a Coin is spent, it is\
+        \ coin_spent. It is assumed that a single Coin cannot be created or spent\
+        \ more than once."
+      enum:
+      - coin_created
+      - coin_spent
+    CoinIdentifier:
+      required:
+      - identifier
+      type: object
+      properties:
+        identifier:
+          type: string
+          description: "Identifier should be populated with a globally unique identifier\
+            \ of a Coin. In Bitcoin, this identifier would be transaction_hash:index."
+          example: 0x2f23fd8cca835af21f3ac375bac601f97ead75f2e79143bdf71fe2c4be043e8f:1
+      description: CoinIdentifier uniquely identifies a Coin.
+    CoinChange:
+      required:
+      - coin_action
+      - coin_identifier
+      type: object
+      properties:
+        coin_identifier:
+          $ref: '#/components/schemas/CoinIdentifier'
+        coin_action:
+          $ref: '#/components/schemas/CoinAction'
+      description: "CoinChange is used to represent a change in state of a some coin\
+        \ identified by a coin_identifier. This object is part of the Operation model\
+        \ and must be populated for UTXO-based blockchains. Coincidentally, this abstraction\
+        \ of UTXOs allows for supporting both account-based transfers and UTXO-based\
+        \ transfers on the same blockchain (when a transfer is account-based, don't\
+        \ populate this model)."
+    Coin:
+      required:
+      - amount
+      - coin_identifier
+      type: object
+      properties:
+        coin_identifier:
+          $ref: '#/components/schemas/CoinIdentifier'
+        amount:
+          $ref: '#/components/schemas/Amount'
+      description: Coin contains its unique identifier and the amount it represents.
+    BalanceExemption:
+      type: object
+      properties:
+        sub_account_address:
+          type: string
+          description: SubAccountAddress is the SubAccountIdentifier.Address that
+            the BalanceExemption applies to (regardless of the value of SubAccountIdentifier.Metadata).
+          example: staking
+        currency:
+          $ref: '#/components/schemas/Currency'
+        exemption_type:
+          $ref: '#/components/schemas/ExemptionType'
+      description: "BalanceExemption indicates that the balance for an exempt account\
+        \ could change without a corresponding Operation. This typically occurs with\
+        \ staking rewards, vesting balances, and Currencies with a dynamic supply.\
+        \ Currently, it is possible to exempt an account from strict reconciliation\
+        \ by SubAccountIdentifier.Address or by Currency. This means that any account\
+        \ with SubAccountIdentifier.Address would be exempt or any balance of a particular\
+        \ Currency would be exempt, respectively. BalanceExemptions should be used\
+        \ sparingly as they may introduce significant complexity for integrators that\
+        \ attempt to reconcile all account balance changes. If your implementation\
+        \ relies on any BalanceExemptions, you MUST implement historical balance lookup\
+        \ (the ability to query an account balance at any BlockIdentifier)."
+    ExemptionType:
+      type: string
+      description: "ExemptionType is used to indicate if the live balance for an account\
+        \ subject to a BalanceExemption could increase above, decrease below, or equal\
+        \ the computed balance. * greater_or_equal: The live balance may increase\
+        \ above or equal the computed balance. This typically   occurs with staking\
+        \ rewards that accrue on each block. * less_or_equal: The live balance may\
+        \ decrease below or equal the computed balance. This typically   occurs as\
+        \ balance moves from locked to spendable on a vesting account. * dynamic:\
+        \ The live balance may increase above, decrease below, or equal the computed\
+        \ balance. This   typically occurs with tokens that have a dynamic supply."
+      enum:
+      - greater_or_equal
+      - less_or_equal
+      - dynamic
+    BlockEvent:
+      required:
+      - block_identifier
+      - sequence
+      - type
+      type: object
+      properties:
+        sequence:
+          minimum: 0
+          type: integer
+          description: sequence is the unique identifier of a BlockEvent within the
+            context of a NetworkIdentifier.
+          format: int64
+          example: 5
+        block_identifier:
+          $ref: '#/components/schemas/BlockIdentifier'
+        type:
+          $ref: '#/components/schemas/BlockEventType'
+      description: BlockEvent represents the addition or removal of a BlockIdentifier
+        from storage. Streaming BlockEvents allows lightweight clients to update their
+        own state without needing to implement their own syncing logic.
+    BlockEventType:
+      type: string
+      description: BlockEventType determines if a BlockEvent represents the addition
+        or removal of a block.
+      enum:
+      - block_added
+      - block_removed
+    Operator:
+      type: string
+      description: "Operator is used by query-related endpoints to determine how to\
+        \ apply conditions. If this field is not populated, the default `and` value\
+        \ will be used."
+      enum:
+      - or
+      - and
+    BlockTransaction:
+      required:
+      - block_identifier
+      - transaction
+      type: object
+      properties:
+        block_identifier:
+          $ref: '#/components/schemas/BlockIdentifier'
+        transaction:
+          $ref: '#/components/schemas/Transaction'
+      description: BlockTransaction contains a populated Transaction and the BlockIdentifier
+        that contains it.
+    RelatedTransaction:
+      required:
+      - direction
+      - transaction_identifier
+      type: object
+      properties:
+        network_identifier:
+          $ref: '#/components/schemas/NetworkIdentifier'
+        transaction_identifier:
+          $ref: '#/components/schemas/TransactionIdentifier'
+        direction:
+          $ref: '#/components/schemas/Direction'
+      description: The related_transaction allows implementations to link together
+        multiple transactions. An unpopulated network identifier indicates that the
+        related transaction is on the same network.
+    Direction:
+      type: string
+      description: Used by RelatedTransaction to indicate the direction of the relation
+        (i.e. cross-shard/cross-network sends may reference `backward` to an earlier
+        transaction and async execution may reference `forward`). Can be used to indicate
+        if a transaction relation is from child to parent or the reverse.
+      enum:
+      - forward
+      - backward
+    AccountBalanceRequest:
+      required:
+      - account_identifier
+      - network_identifier
+      type: object
+      properties:
+        network_identifier:
+          $ref: '#/components/schemas/NetworkIdentifier'
+        account_identifier:
+          $ref: '#/components/schemas/AccountIdentifier'
+        block_identifier:
+          $ref: '#/components/schemas/PartialBlockIdentifier'
+        currencies:
+          type: array
+          description: "In some cases, the caller may not want to retrieve all available\
+            \ balances for an AccountIdentifier. If the currencies field is populated,\
+            \ only balances for the specified currencies will be returned. If not\
+            \ populated, all available balances will be returned."
+          items:
+            $ref: '#/components/schemas/Currency'
+      description: "An AccountBalanceRequest is utilized to make a balance request\
+        \ on the /account/balance endpoint. If the block_identifier is populated,\
+        \ a historical balance query should be performed."
+    AccountBalanceResponse:
+      required:
+      - balances
+      - block_identifier
+      type: object
+      properties:
+        block_identifier:
+          $ref: '#/components/schemas/BlockIdentifier'
+        balances:
+          type: array
+          description: A single account may have a balance in multiple currencies.
+          items:
+            $ref: '#/components/schemas/Amount'
+        metadata:
+          type: object
+          description: Account-based blockchains that utilize a nonce or sequence
+            number should include that number in the metadata. This number could be
+            unique to the identifier or global across the account address.
+          example:
+            sequence_number: 23
+      description: "An AccountBalanceResponse is returned on the /account/balance\
+        \ endpoint. If an account has a balance for each AccountIdentifier describing\
+        \ it (ex: an ERC-20 token balance on a few smart contracts), an account balance\
+        \ request must be made with each AccountIdentifier. The `coins` field was\
+        \ removed and replaced by by `/account/coins` in `v1.4.7`."
+    AccountCoinsRequest:
+      required:
+      - account_identifier
+      - include_mempool
+      - network_identifier
+      type: object
+      properties:
+        network_identifier:
+          $ref: '#/components/schemas/NetworkIdentifier'
+        account_identifier:
+          $ref: '#/components/schemas/AccountIdentifier'
+        include_mempool:
+          type: boolean
+          description: "Include state from the mempool when looking up an account's\
+            \ unspent coins. Note, using this functionality breaks any guarantee of\
+            \ idempotency."
+        currencies:
+          type: array
+          description: "In some cases, the caller may not want to retrieve coins for\
+            \ all currencies for an AccountIdentifier. If the currencies field is\
+            \ populated, only coins for the specified currencies will be returned.\
+            \ If not populated, all unspent coins will be returned."
+          items:
+            $ref: '#/components/schemas/Currency'
+      description: AccountCoinsRequest is utilized to make a request on the /account/coins
+        endpoint.
+    AccountCoinsResponse:
+      required:
+      - block_identifier
+      - coins
+      type: object
+      properties:
+        block_identifier:
+          $ref: '#/components/schemas/BlockIdentifier'
+        coins:
+          type: array
+          description: "If a blockchain is UTXO-based, all unspent Coins owned by\
+            \ an account_identifier should be returned alongside the balance. It is\
+            \ highly recommended to populate this field so that users of the Rosetta\
+            \ API implementation don't need to maintain their own indexer to track\
+            \ their UTXOs."
+          items:
+            $ref: '#/components/schemas/Coin'
+        metadata:
+          type: object
+          description: Account-based blockchains that utilize a nonce or sequence
+            number should include that number in the metadata. This number could be
+            unique to the identifier or global across the account address.
+          example:
+            sequence_number: 23
+      description: AccountCoinsResponse is returned on the /account/coins endpoint
+        and includes all unspent Coins owned by an AccountIdentifier.
+    BlockRequest:
+      required:
+      - block_identifier
+      - network_identifier
+      type: object
+      properties:
+        network_identifier:
+          $ref: '#/components/schemas/NetworkIdentifier'
+        block_identifier:
+          $ref: '#/components/schemas/PartialBlockIdentifier'
+      description: A BlockRequest is utilized to make a block request on the /block
+        endpoint.
+    BlockResponse:
+      type: object
+      properties:
+        block:
+          $ref: '#/components/schemas/Block'
+        other_transactions:
+          type: array
+          description: "Some blockchains may require additional transactions to be\
+            \ fetched that weren't returned in the block response (ex: block only\
+            \ returns transaction hashes). For blockchains with a lot of transactions\
+            \ in each block, this can be very useful as consumers can concurrently\
+            \ fetch all transactions returned."
+          items:
+            $ref: '#/components/schemas/TransactionIdentifier'
+      description: "A BlockResponse includes a fully-populated block or a partially-populated\
+        \ block with a list of other transactions to fetch (other_transactions). As\
+        \ a result of the consensus algorithm of some blockchains, blocks can be omitted\
+        \ (i.e. certain block indices can be skipped). If a query for one of these\
+        \ omitted indices is made, the response should not include a `Block` object.\
+        \ It is VERY important to note that blocks MUST still form a canonical, connected\
+        \ chain of blocks where each block has a unique index. In other words, the\
+        \ `PartialBlockIdentifier` of a block after an omitted block should reference\
+        \ the last non-omitted block."
+    BlockTransactionRequest:
+      required:
+      - block_identifier
+      - network_identifier
+      - transaction_identifier
+      type: object
+      properties:
+        network_identifier:
+          $ref: '#/components/schemas/NetworkIdentifier'
+        block_identifier:
+          $ref: '#/components/schemas/BlockIdentifier'
+        transaction_identifier:
+          $ref: '#/components/schemas/TransactionIdentifier'
+      description: A BlockTransactionRequest is used to fetch a Transaction included
+        in a block that is not returned in a BlockResponse.
+    BlockTransactionResponse:
+      required:
+      - transaction
+      type: object
+      properties:
+        transaction:
+          $ref: '#/components/schemas/Transaction'
+      description: A BlockTransactionResponse contains information about a block transaction.
+    MempoolResponse:
+      required:
+      - transaction_identifiers
+      type: object
+      properties:
+        transaction_identifiers:
+          type: array
+          items:
+            $ref: '#/components/schemas/TransactionIdentifier'
+      description: A MempoolResponse contains all transaction identifiers in the mempool
+        for a particular network_identifier.
+    MempoolTransactionRequest:
+      required:
+      - network_identifier
+      - transaction_identifier
+      type: object
+      properties:
+        network_identifier:
+          $ref: '#/components/schemas/NetworkIdentifier'
+        transaction_identifier:
+          $ref: '#/components/schemas/TransactionIdentifier'
+      description: A MempoolTransactionRequest is utilized to retrieve a transaction
+        from the mempool.
+    MempoolTransactionResponse:
+      required:
+      - transaction
+      type: object
+      properties:
+        transaction:
+          $ref: '#/components/schemas/Transaction'
+        metadata:
+          type: object
+          example:
+            descendant_fees: 123923
+            ancestor_count: 2
+      description: "A MempoolTransactionResponse contains an estimate of a mempool\
+        \ transaction. It may not be possible to know the full impact of a transaction\
+        \ in the mempool (ex: fee paid)."
+    MetadataRequest:
+      type: object
+      properties:
+        metadata:
+          type: object
+      description: A MetadataRequest is utilized in any request where the only argument
+        is optional metadata.
+    NetworkListResponse:
+      required:
+      - network_identifiers
+      type: object
+      properties:
+        network_identifiers:
+          type: array
+          items:
+            $ref: '#/components/schemas/NetworkIdentifier'
+      description: A NetworkListResponse contains all NetworkIdentifiers that the
+        node can serve information for.
+    NetworkRequest:
+      required:
+      - network_identifier
+      type: object
+      properties:
+        network_identifier:
+          $ref: '#/components/schemas/NetworkIdentifier'
+        metadata:
+          type: object
+      description: A NetworkRequest is utilized to retrieve some data specific exclusively
+        to a NetworkIdentifier.
+    NetworkStatusResponse:
+      required:
+      - current_block_identifier
+      - current_block_timestamp
+      - genesis_block_identifier
+      - peers
+      type: object
+      properties:
+        current_block_identifier:
+          $ref: '#/components/schemas/BlockIdentifier'
+        current_block_timestamp:
+          $ref: '#/components/schemas/Timestamp'
+        genesis_block_identifier:
+          $ref: '#/components/schemas/BlockIdentifier'
+        oldest_block_identifier:
+          $ref: '#/components/schemas/BlockIdentifier'
+        sync_status:
+          $ref: '#/components/schemas/SyncStatus'
+        peers:
+          type: array
+          items:
+            $ref: '#/components/schemas/Peer'
+      description: "NetworkStatusResponse contains basic information about the node's\
+        \ view of a blockchain network. It is assumed that any BlockIdentifier.Index\
+        \ less than or equal to CurrentBlockIdentifier.Index can be queried. If a\
+        \ Rosetta implementation prunes historical state, it should populate the optional\
+        \ `oldest_block_identifier` field with the oldest block available to query.\
+        \ If this is not populated, it is assumed that the `genesis_block_identifier`\
+        \ is the oldest queryable block. If a Rosetta implementation performs some\
+        \ pre-sync before it is possible to query blocks, sync_status should be populated\
+        \ so that clients can still monitor healthiness. Without this field, it may\
+        \ appear that the implementation is stuck syncing and needs to be terminated."
+    NetworkOptionsResponse:
+      required:
+      - allow
+      - version
+      type: object
+      properties:
+        version:
+          $ref: '#/components/schemas/Version'
+        allow:
+          $ref: '#/components/schemas/Allow'
+      description: "NetworkOptionsResponse contains information about the versioning\
+        \ of the node and the allowed operation statuses, operation types, and errors."
+    ConstructionMetadataRequest:
+      required:
+      - network_identifier
+      type: object
+      properties:
+        network_identifier:
+          $ref: '#/components/schemas/NetworkIdentifier'
+        options:
+          type: object
+          description: "Some blockchains require different metadata for different\
+            \ types of transaction construction (ex: delegation versus a transfer).\
+            \ Instead of requiring a blockchain node to return all possible types\
+            \ of metadata for construction (which may require multiple node fetches),\
+            \ the client can populate an options object to limit the metadata returned\
+            \ to only the subset required."
+        public_keys:
+          type: array
+          items:
+            $ref: '#/components/schemas/PublicKey'
+      description: "A ConstructionMetadataRequest is utilized to get information required\
+        \ to construct a transaction. The Options object used to specify which metadata\
+        \ to return is left purposely unstructured to allow flexibility for implementers.\
+        \ Options is not required in the case that there is network-wide metadata\
+        \ of interest. Optionally, the request can also include an array of PublicKeys\
+        \ associated with the AccountIdentifiers returned in ConstructionPreprocessResponse."
+    ConstructionMetadataResponse:
+      required:
+      - metadata
+      type: object
+      properties:
+        metadata:
+          type: object
+          example:
+            account_sequence: 23
+            recent_block_hash: 0x52bc44d5378309ee2abf1539bf71de1b7d7be3b5
+        suggested_fee:
+          type: array
+          items:
+            $ref: '#/components/schemas/Amount'
+      description: "The ConstructionMetadataResponse returns network-specific metadata\
+        \ used for transaction construction. Optionally, the implementer can return\
+        \ the suggested fee associated with the transaction being constructed. The\
+        \ caller may use this info to adjust the intent of the transaction or to create\
+        \ a transaction with a different account that can pay the suggested fee. Suggested\
+        \ fee is an array in case fee payment must occur in multiple currencies."
+    ConstructionDeriveRequest:
+      required:
+      - network_identifier
+      - public_key
+      type: object
+      properties:
+        network_identifier:
+          $ref: '#/components/schemas/NetworkIdentifier'
+        public_key:
+          $ref: '#/components/schemas/PublicKey'
+        metadata:
+          type: object
+      description: ConstructionDeriveRequest is passed to the `/construction/derive`
+        endpoint. Network is provided in the request because some blockchains have
+        different address formats for different networks. Metadata is provided in
+        the request because some blockchains allow for multiple address types (i.e.
+        different address for validators vs normal accounts).
+    ConstructionDeriveResponse:
+      type: object
+      properties:
+        address:
+          type: string
+          description: "[DEPRECATED by `account_identifier` in `v1.4.4`] Address in\
+            \ network-specific format."
+        account_identifier:
+          $ref: '#/components/schemas/AccountIdentifier'
+        metadata:
+          type: object
+      description: ConstructionDeriveResponse is returned by the `/construction/derive`
+        endpoint.
+    ConstructionPreprocessRequest:
+      required:
+      - network_identifier
+      - operations
+      type: object
+      properties:
+        network_identifier:
+          $ref: '#/components/schemas/NetworkIdentifier'
+        operations:
+          type: array
+          items:
+            $ref: '#/components/schemas/Operation'
+        metadata:
+          type: object
+        max_fee:
+          type: array
+          items:
+            $ref: '#/components/schemas/Amount'
+        suggested_fee_multiplier:
+          minimum: 0
+          type: number
+          format: double
+      description: "ConstructionPreprocessRequest is passed to the `/construction/preprocess`\
+        \ endpoint so that a Rosetta implementation can determine which metadata it\
+        \ needs to request for construction. Metadata provided in this object should\
+        \ NEVER be a product of live data (i.e. the caller must follow some network-specific\
+        \ data fetching strategy outside of the Construction API to populate required\
+        \ Metadata). If live data is required for construction, it MUST be fetched\
+        \ in the call to `/construction/metadata`. The caller can provide a max fee\
+        \ they are willing to pay for a transaction. This is an array in the case\
+        \ fees must be paid in multiple currencies. The caller can also provide a\
+        \ suggested fee multiplier to indicate that the suggested fee should be scaled.\
+        \ This may be used to set higher fees for urgent transactions or to pay lower\
+        \ fees when there is less urgency. It is assumed that providing a very low\
+        \ multiplier (like 0.0001) will never lead to a transaction being created\
+        \ with a fee less than the minimum network fee (if applicable). In the case\
+        \ that the caller provides both a max fee and a suggested fee multiplier,\
+        \ the max fee will set an upper bound on the suggested fee (regardless of\
+        \ the multiplier provided)."
+    ConstructionPreprocessResponse:
+      type: object
+      properties:
+        options:
+          type: object
+          description: The options that will be sent directly to `/construction/metadata`
+            by the caller.
+        required_public_keys:
+          type: array
+          items:
+            $ref: '#/components/schemas/AccountIdentifier'
+      description: "ConstructionPreprocessResponse contains `options` that will be\
+        \ sent unmodified to `/construction/metadata`. If it is not necessary to make\
+        \ a request to `/construction/metadata`, `options` should be omitted.  Some\
+        \ blockchains require the PublicKey of particular AccountIdentifiers to construct\
+        \ a valid transaction. To fetch these PublicKeys, populate `required_public_keys`\
+        \ with the AccountIdentifiers associated with the desired PublicKeys. If it\
+        \ is not necessary to retrieve any PublicKeys for construction, `required_public_keys`\
+        \ should be omitted."
+    ConstructionPayloadsRequest:
+      required:
+      - network_identifier
+      - operations
+      type: object
+      properties:
+        network_identifier:
+          $ref: '#/components/schemas/NetworkIdentifier'
+        operations:
+          type: array
+          items:
+            $ref: '#/components/schemas/Operation'
+        metadata:
+          type: object
+        public_keys:
+          type: array
+          items:
+            $ref: '#/components/schemas/PublicKey'
+      description: "ConstructionPayloadsRequest is the request to `/construction/payloads`.\
+        \ It contains the network, a slice of operations, and arbitrary metadata that\
+        \ was returned by the call to `/construction/metadata`. Optionally, the request\
+        \ can also include an array of PublicKeys associated with the AccountIdentifiers\
+        \ returned in ConstructionPreprocessResponse."
+    ConstructionPayloadsResponse:
+      required:
+      - payloads
+      - unsigned_transaction
+      type: object
+      properties:
+        unsigned_transaction:
+          type: string
+        payloads:
+          type: array
+          items:
+            $ref: '#/components/schemas/SigningPayload'
+      description: ConstructionTransactionResponse is returned by `/construction/payloads`.
+        It contains an unsigned transaction blob (that is usually needed to construct
+        the a network transaction from a collection of signatures) and an array of
+        payloads that must be signed by the caller.
+    ConstructionCombineRequest:
+      required:
+      - network_identifier
+      - signatures
+      - unsigned_transaction
+      type: object
+      properties:
+        network_identifier:
+          $ref: '#/components/schemas/NetworkIdentifier'
+        unsigned_transaction:
+          type: string
+        signatures:
+          type: array
+          items:
+            $ref: '#/components/schemas/Signature'
+      description: ConstructionCombineRequest is the input to the `/construction/combine`
+        endpoint. It contains the unsigned transaction blob returned by `/construction/payloads`
+        and all required signatures to create a network transaction.
+    ConstructionCombineResponse:
+      required:
+      - signed_transaction
+      type: object
+      properties:
+        signed_transaction:
+          type: string
+      description: ConstructionCombineResponse is returned by `/construction/combine`.
+        The network payload will be sent directly to the `construction/submit` endpoint.
+    ConstructionParseRequest:
+      required:
+      - network_identifier
+      - signed
+      - transaction
+      type: object
+      properties:
+        network_identifier:
+          $ref: '#/components/schemas/NetworkIdentifier'
+        signed:
+          type: boolean
+          description: Signed is a boolean indicating whether the transaction is signed.
+        transaction:
+          type: string
+          description: This must be either the unsigned transaction blob returned
+            by `/construction/payloads` or the signed transaction blob returned by
+            `/construction/combine`.
+      description: ConstructionParseRequest is the input to the `/construction/parse`
+        endpoint. It allows the caller to parse either an unsigned or signed transaction.
+    ConstructionParseResponse:
+      required:
+      - operations
+      type: object
+      properties:
+        operations:
+          type: array
+          items:
+            $ref: '#/components/schemas/Operation'
+        signers:
+          type: array
+          description: "[DEPRECATED by `account_identifier_signers` in `v1.4.4`] All\
+            \ signers (addresses) of a particular transaction. If the transaction\
+            \ is unsigned, it should be empty."
+          items:
+            type: string
+        account_identifier_signers:
+          type: array
+          items:
+            $ref: '#/components/schemas/AccountIdentifier'
+        metadata:
+          type: object
+      description: ConstructionParseResponse contains an array of operations that
+        occur in a transaction blob. This should match the array of operations provided
+        to `/construction/preprocess` and `/construction/payloads`.
+    ConstructionHashRequest:
+      required:
+      - network_identifier
+      - signed_transaction
+      type: object
+      properties:
+        network_identifier:
+          $ref: '#/components/schemas/NetworkIdentifier'
+        signed_transaction:
+          type: string
+      description: ConstructionHashRequest is the input to the `/construction/hash`
+        endpoint.
+    ConstructionSubmitRequest:
+      required:
+      - network_identifier
+      - signed_transaction
+      type: object
+      properties:
+        network_identifier:
+          $ref: '#/components/schemas/NetworkIdentifier'
+        signed_transaction:
+          type: string
+      description: The transaction submission request includes a signed transaction.
+    TransactionIdentifierResponse:
+      required:
+      - transaction_identifier
+      type: object
+      properties:
+        transaction_identifier:
+          $ref: '#/components/schemas/TransactionIdentifier'
+        metadata:
+          type: object
+      description: TransactionIdentifierResponse contains the transaction_identifier
+        of a transaction that was submitted to either `/construction/hash` or `/construction/submit`.
+    CallRequest:
+      required:
+      - method
+      - network_identifier
+      - parameters
+      type: object
+      properties:
+        network_identifier:
+          $ref: '#/components/schemas/NetworkIdentifier'
+        method:
+          type: string
+          description: "Method is some network-specific procedure call. This method\
+            \ could map to a network-specific RPC endpoint, a method in an SDK generated\
+            \ from a smart contract, or some hybrid of the two. The implementation\
+            \ must define all available methods in the Allow object. However, it is\
+            \ up to the caller to determine which parameters to provide when invoking\
+            \ `/call`."
+          example: eth_call
+        parameters:
+          type: object
+          description: Parameters is some network-specific argument for a method.
+            It is up to the caller to determine which parameters to provide when invoking
+            `/call`.
+          example:
+            block_number: 23
+            address: 0x52bc44d5378309ee2abf1539bf71de1b7d7be3b5
+      description: CallRequest is the input to the `/call` endpoint.
+    CallResponse:
+      required:
+      - idempotent
+      - result
+      type: object
+      properties:
+        result:
+          type: object
+          description: Result contains the result of the `/call` invocation. This
+            result will not be inspected or interpreted by Rosetta tooling and is
+            left to the caller to decode.
+          example:
+            count: 1000
+        idempotent:
+          type: boolean
+          description: "Idempotent indicates that if `/call` is invoked with the same\
+            \ CallRequest again, at any point in time, it will return the same CallResponse.\
+            \ Integrators may cache the CallResponse if this is set to true to avoid\
+            \ making unnecessary calls to the Rosetta implementation. For this reason,\
+            \ implementers should be very conservative about returning true here or\
+            \ they could cause issues for the caller."
+      description: CallResponse contains the result of a `/call` invocation.
+    EventsBlocksRequest:
+      required:
+      - network_identifier
+      type: object
+      properties:
+        network_identifier:
+          $ref: '#/components/schemas/NetworkIdentifier'
+        offset:
+          minimum: 0
+          type: integer
+          description: "offset is the offset into the event stream to sync events\
+            \ from. If this field is not populated, we return the limit events backwards\
+            \ from tip. If this is set to 0, we start from the beginning."
+          format: int64
+          example: 5
+        limit:
+          minimum: 0
+          type: integer
+          description: limit is the maximum number of events to fetch in one call.
+            The implementation may return <= limit events.
+          format: int64
+          example: 5
+      description: EventsBlocksRequest is utilized to fetch a sequence of BlockEvents
+        indicating which blocks were added and removed from storage to reach the current
+        state.
+    EventsBlocksResponse:
+      required:
+      - events
+      - max_sequence
+      type: object
+      properties:
+        max_sequence:
+          minimum: 0
+          type: integer
+          description: max_sequence is the maximum available sequence number to fetch.
+          format: int64
+          example: 5
+        events:
+          type: array
+          description: events is an array of BlockEvents indicating the order to add
+            and remove blocks to maintain a canonical view of blockchain state. Lightweight
+            clients can use this event stream to update state without implementing
+            their own block syncing logic.
+          items:
+            $ref: '#/components/schemas/BlockEvent'
+      description: EventsBlocksResponse contains an ordered collection of BlockEvents
+        and the max retrievable sequence.
+    SearchTransactionsRequest:
+      required:
+      - network_identifier
+      type: object
+      properties:
+        network_identifier:
+          $ref: '#/components/schemas/NetworkIdentifier'
+        operator:
+          $ref: '#/components/schemas/Operator'
+        max_block:
+          minimum: 0
+          type: integer
+          description: "max_block is the largest block index to consider when searching\
+            \ for transactions. If this field is not populated, the current block\
+            \ is considered the max_block. If you do not specify a max_block, it is\
+            \ possible a newly synced block will interfere with paginated transaction\
+            \ queries (as the offset could become invalid with newly added rows)."
+          format: int64
+          example: 5
+        offset:
+          minimum: 0
+          type: integer
+          description: "offset is the offset into the query result to start returning\
+            \ transactions. If any search conditions are changed, the query offset\
+            \ will change and you must restart your search iteration."
+          format: int64
+          example: 5
+        limit:
+          minimum: 0
+          type: integer
+          description: limit is the maximum number of transactions to return in one
+            call. The implementation may return <= limit transactions.
+          format: int64
+          example: 5
+        transaction_identifier:
+          $ref: '#/components/schemas/TransactionIdentifier'
+        account_identifier:
+          $ref: '#/components/schemas/AccountIdentifier'
+        coin_identifier:
+          $ref: '#/components/schemas/CoinIdentifier'
+        currency:
+          $ref: '#/components/schemas/Currency'
+        status:
+          type: string
+          description: status is the network-specific operation type.
+          example: reverted
+        type:
+          type: string
+          description: type is the network-specific operation type.
+          example: transfer
+        address:
+          type: string
+          description: "address is AccountIdentifier.Address. This is used to get\
+            \ all transactions related to an AccountIdentifier.Address, regardless\
+            \ of SubAccountIdentifier."
+          example: 0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347
+        success:
+          type: boolean
+          description: success is a synthetic condition populated by parsing network-specific
+            operation statuses (using the mapping provided in `/network/options`).
+      description: SearchTransactionsRequest is used to search for transactions matching
+        a set of provided conditions in canonical blocks.
+    SearchTransactionsResponse:
+      required:
+      - total_count
+      - transactions
+      type: object
+      properties:
+        transactions:
+          type: array
+          description: "transactions is an array of BlockTransactions sorted by most\
+            \ recent BlockIdentifier (meaning that transactions in recent blocks appear\
+            \ first). If there are many transactions for a particular search, transactions\
+            \ may not contain all matching transactions. It is up to the caller to\
+            \ paginate these transactions using the max_block field."
+          items:
+            $ref: '#/components/schemas/BlockTransaction'
+        total_count:
+          minimum: 0
+          type: integer
+          description: total_count is the number of results for a given search. Callers
+            typically use this value to concurrently fetch results by offset or to
+            display a virtual page number associated with results.
+          format: int64
+          example: 5
+        next_offset:
+          minimum: 0
+          type: integer
+          description: "next_offset is the next offset to use when paginating through\
+            \ transaction results. If this field is not populated, there are no more\
+            \ transactions to query."
+          format: int64
+          example: 5
+      description: SearchTransactionsResponse contains an ordered collection of BlockTransactions
+        that match the query in SearchTransactionsRequest. These BlockTransactions
+        are sorted from most recent block to oldest block.
+    Error:
+      required:
+      - code
+      - message
+      - retriable
+      type: object
+      properties:
+        code:
+          minimum: 0
+          type: integer
+          description: "Code is a network-specific error code. If desired, this code\
+            \ can be equivalent to an HTTP status code."
+          format: int32
+          example: 12
+        message:
+          type: string
+          description: "Message is a network-specific error message. The message MUST\
+            \ NOT change for a given code. In particular, this means that any contextual\
+            \ information should be included in the details field."
+          example: Invalid account format
+        description:
+          type: string
+          description: "Description allows the implementer to optionally provide additional\
+            \ information about an error. In many cases, the content of this field\
+            \ will be a copy-and-paste from existing developer documentation. Description\
+            \ can ONLY be populated with generic information about a particular type\
+            \ of error. It MUST NOT be populated with information about a particular\
+            \ instantiation of an error (use `details` for this). Whereas the content\
+            \ of Error.Message should stay stable across releases, the content of\
+            \ Error.Description will likely change across releases (as implementers\
+            \ improve error documentation). For this reason, the content in this field\
+            \ is not part of any type assertion (unlike Error.Message)."
+          example: This error is returned when the requested AccountIdentifier is
+            improperly formatted.
+        retriable:
+          type: boolean
+          description: An error is retriable if the same request may succeed if submitted
+            again.
+        details:
+          type: object
+          description: Often times it is useful to return context specific to the
+            request that caused the error (i.e. a sample of the stack trace or impacted
+            account) in addition to the standard error message.
+          example:
+            address: 0x1dcc4de8dec75d7aab85b567b6
+            error: not base64
+      description: "Instead of utilizing HTTP status codes to describe node errors\
+        \ (which often do not have a good analog), rich errors are returned using\
+        \ this object. Both the code and message fields can be individually used to\
+        \ correctly identify an error. Implementations MUST use unique values for\
+        \ both fields."

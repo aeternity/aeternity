@@ -316,7 +316,13 @@ tx_event(Kind, Data, Env) ->
 -spec tx_event(atom(), any(), any(), env()) -> env().
 tx_event(Kind, Key, Info, #env{events = Events} = Env) ->
     case signed_tx(Env) of
-        none -> Env;
+        none ->
+            Name = {Kind, Key},
+            TxHash = <<>>,
+            Type = non_tx,
+            Env#env{events = [{Name, #{ type => Type
+                                      , info => Info
+                                      , tx_hash => TxHash }} | Events]};
         {value, SignedTx} ->
             Name = {Kind, Key},
             TxHash = aetx_sign:hash(SignedTx),
