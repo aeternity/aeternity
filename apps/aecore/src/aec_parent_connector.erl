@@ -350,7 +350,7 @@ post_commitment(Who, Commitment,
     %% Parallel post to all blocks
     %% TODO: decide if we expect consensus or not
     %% TODO: maybe track a transaction's progress?
-    {Good, Errors} = pmap(Fun, ParentNodes, 10000),
+    {Good, Errors} = aeu_lib:pmap(Fun, ParentNodes, 10000),
     case responses_consensus(Good, Errors, length(ParentNodes)) of
        {ok, TxHash, _} when is_binary (TxHash) -> ok;
         {ok, {error, invalid_transaction}, _} ->
