@@ -841,9 +841,8 @@ wait_for_new_block() ->
 
 wait_for_new_block(T) when is_integer(T), T >= 0 ->
     receive
-        {gproc_ps_event, top_changed, #{block_hash := Hash}} ->
-            {ok, Block} = aec_chain:get_block(Hash),
-            {ok, Block}
+        {gproc_ps_event, top_changed, #{info := #{block_hash := _Hash}}} ->
+            ok
     after
         T ->
             case T of
@@ -867,12 +866,11 @@ flush_new_blocks_(Acc) ->
             flush_new_blocks_([Block | Acc])
     end.
 
-flush_new_blocks_produced(Acc) ->
+flush_new_blocks_produced() ->
     case wait_for_new_block(0) of
-        {error, timeout_waiting_for_block} ->
-            lists:reverse(Acc);
-        {ok, Block} ->
-            flush_new_blocks_produced([Block | Acc])
+        {error, timeout_waiting_for_block} -> ok;
+        ok ->
+            flush_new_blocks_produced()
     end.
 
 
@@ -883,7 +881,7 @@ wait_for_height(Node, Height) ->
     wait_for_height(Node, Height, 30000).
 
 wait_for_height(Node, Height, TimeoutPerBlock) ->
-    flush_new_blocks_produced([]),
+    flush_new_blocks_produced(),
     subscribe(Node, top_changed),
     ok = wait_for_height_(Node, Height, TimeoutPerBlock),
     unsubscribe(Node, top_changed),
@@ -902,7 +900,7 @@ wait_for_height_(Node, Height, TimeoutPerBlock) ->
             case wait_for_new_block(TimeoutPerBlock) of
                 {error, timeout_waiting_for_block} ->
                     {error, timeout_waiting_for_block, {top, TopHeight}, {waiting_for, Height}};
-                {ok, _B} ->
+                ok ->
                     wait_for_height_(Node, Height, TimeoutPerBlock)
             end
     end.
