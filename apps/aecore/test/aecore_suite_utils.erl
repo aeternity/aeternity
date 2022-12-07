@@ -557,14 +557,25 @@ start_node(N, Config) ->
 start_node(N, Config, ExtraEnv) ->
     MyDir = filename:dirname(code:which(?MODULE)),
     ConfigFilename = proplists:get_value(config_name, Config, "default"),
-    Flags = ["-pa ", MyDir, " -config ./" ++ ConfigFilename],
+    Flags =
+        case ?config(build_to_connect_to_mainnet, Config) of
+            true -> %% no proxy!
+                ["-pa ", MyDir];
+            _ ->
+                ["-pa ", MyDir, " -config ./" ++ ConfigFilename]
+        end,
     Env0 = [
             {"ERL_FLAGS", Flags},
             {"AETERNITY_CONFIG", "data/aeternity.json"},
-            {"RUNNER_LOG_DIR","log"},
-            {"CODE_LOADING_MODE", "interactive"}
+            {"RUNNER_LOG_DIR","log"}
            ],
-    Env = maybe_override(ExtraEnv, Env0),
+    AdditionalEnv =
+        case ?config(build_to_connect_to_mainnet, Config) of
+            true -> [];
+            _ ->
+                {"CODE_LOADING_MODE", "interactive"}
+        end,
+    Env = maybe_override(ExtraEnv, Env0 ++ AdditionalEnv),
     cmd(?OPS_BIN, node_shortcut(N, Config), "bin", ["daemon"], Env).
 
 maybe_override([{K,_} = H|T], L0) ->
@@ -1759,7 +1770,6 @@ http_request(Host, post, Path, Params) ->
                            {"application/x-www-form-urlencoded",
                             aeu_uri:encode(Path)}
                    end,
-    %% lager:debug("Type = ~p; Body = ~p", [Type, Body]),
     ct:log("POST ~p, type ~p, Body ~p", [URL, Type, Body]),
     R = httpc_request(post, {URL, [], Type, Body}, [], []),
     process_http_return(R);

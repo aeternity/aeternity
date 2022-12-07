@@ -48,13 +48,9 @@ init_per_suite(Config) ->
                                                  {test_module, ?MODULE}] ++ Config),
     Config2 = [ {nodes, [aecore_suite_utils:node_tuple(?NODE)]}
               , {started_apps, StartedApps} ]  ++ Config1,
-    aecore_suite_utils:start_node(?NODE, Config2),
-    Node = aecore_suite_utils:node_name(?NODE),
-    aecore_suite_utils:connect(Node, []),
-    [{node, Node} | Config2].
+    Config2.
 
 end_per_suite(Config) ->
-    aecore_suite_utils:stop_node(?NODE, Config),
     [application:stop(A) ||
         A <- lists:reverse(
                proplists:get_value(started_apps, Config, []))],
@@ -73,4 +69,63 @@ end_per_testcase(_Case, _Config) ->
     ok.
 
 test_restart(Config) ->
+    lists:foreach(
+        fun(Idx) ->
+            ct:log("Test try ~p", [Idx]),
+            assert_no_running_node_process(),
+            start_node_with_db_intensive_sync(Config),
+            assert_one_running_node_process(),
+            aecore_suite_utils:stop_node(?NODE, Config),
+            assert_no_running_node_process()
+        end,
+        lists:seq(1, 10)),
     ok.
+
+start_node_with_db_intensive_sync(Config) ->
+    aecore_suite_utils:start_node(?NODE, Config),
+    ok = wait_till_node_starts(),
+    %%aecore_suite_utils:start_node(?NODE, Config),
+    {ok, 200, #{<<"top_block_height">> := Height0}} =
+        aehttp_integration_SUITE:get_status_sut(),
+    ct:log("Initial height ~p", [Height0]),
+    timer:sleep(5000),
+    {ok, 200, #{<<"top_block_height">> := Height1}} =
+        aehttp_integration_SUITE:get_status_sut(),
+    ct:log("Synced height ~p", [Height1]),
+    true = Height0 < Height1,
+    ok.
+
+wait_till_node_starts() ->
+    wait_till_node_starts(40).
+
+wait_till_node_starts(Attempts) when Attempts < 1 ->
+    {error, node_did_not_start};
+wait_till_node_starts(Attempts) ->
+    case aehttp_integration_SUITE:get_status_sut() of
+        {error, _} ->
+            timer:sleep(50),
+            wait_till_node_starts(Attempts - 1);
+        {ok, 200, _} ->
+            ok
+    end.
+
+assert_no_running_node_process() ->
+    RunningNodes = get_number_of_processes(),
+    0 = RunningNodes,
+    ok.
+
+assert_one_running_node_process() ->
+    RunningNodes = get_number_of_processes(),
+    1 = RunningNodes,
+    ok.
+
+get_number_of_processes() ->
+    Cmd0 = "ps -fea| grep 'bin\/aeternity\" \"console' | wc -l",
+    BaseCommand = "ps -fea | grep aeternity | grep daemon",
+    Cmd = BaseCommand ++ " | wc -l",
+    ResTmp = os:cmd(BaseCommand),
+    ct:log("Currently running processes:\n~s", [ResTmp]),
+    Res = os:cmd(Cmd),
+    {RunningNodes, _} = string:to_integer(string:trim(Res)),
+    ct:log("Currently there are ~p running nodes", [RunningNodes]),
+    RunningNodes.
