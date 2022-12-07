@@ -24,6 +24,7 @@
 -define(MINERVA_DIR, ".minerva").
 -define(FORTUNA_DIR, ".fortuna").
 -define(LIMA_DIR,    ".lima").
+-define(IRIS_DIR,    ".iris").
 -define(CERES_DIR,   ".ceres").
 
 -spec dir(aec_hard_forks:protocol_vsn()) -> string().
@@ -34,6 +35,7 @@ dir(ProtocolVsn) ->
             ?MINERVA_PROTOCOL_VSN -> ?MINERVA_DIR;
             ?FORTUNA_PROTOCOL_VSN -> ?FORTUNA_DIR;
             ?LIMA_PROTOCOL_VSN    -> ?LIMA_DIR;
+            ?IRIS_PROTOCOL_VSN    -> ?IRIS_DIR;
             ?CERES_PROTOCOL_VSN   -> ?CERES_DIR
         end,
     filename:join(aeu_env:data_dir(aecore), Dir).

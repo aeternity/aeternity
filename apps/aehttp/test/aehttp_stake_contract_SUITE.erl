@@ -110,7 +110,7 @@ hc_specific_tests() ->
 suite() -> [].
 
 init_per_suite(Config0) ->
-    case aect_test_utils:require_at_least_protocol(?CERES_PROTOCOL_VSN) of
+    case aect_test_utils:require_at_least_protocol(?IRIS_PROTOCOL_VSN) of
         {skip, _} = Skip -> Skip;
         ok ->
             {ok, _StartedApps} = application:ensure_all_started(gproc),
@@ -830,7 +830,8 @@ ct_log_header(Header) ->
 decode_consensus_result(Call, Fun, Contract) ->
     ReturnType = aect_call:return_type(Call),
     ReturnValue = aect_call:return_value(Call),
-    {ok, BinCode} = aect_test_utils:read_contract(?SOPHIA_CERES_FATE, Contract),
+    SophiaVersion = aect_test_utils:latest_sophia_version(),
+    {ok, BinCode} = aect_test_utils:read_contract(SophiaVersion, Contract),
     Res =
         aect_test_utils:decode_call_result(binary_to_list(BinCode), Fun,
                                           ReturnType, ReturnValue),
@@ -975,13 +976,18 @@ build_json_files(NetworkId, ElectionContract, Config) ->
     AllCalls =  [Call1, Call2, Call3, Call4, Call5, Call6,
 		 Call7, Call8, Call9,
 		 Call10],
+    Subdir =
+        case aect_test_utils:latest_protocol_version() of
+            ?IRIS_PROTOCOL_VSN -> "iris";
+            ?CERES_PROTOCOL_VSN -> "ceres"
+        end,
     aecore_suite_utils:create_seed_file([?NODE1, ?NODE2],
         Config,
-        "ceres", binary_to_list(NetworkId) ++ "_contracts.json",
+        Subdir, binary_to_list(NetworkId) ++ "_contracts.json",
         #{<<"contracts">> => [C0, SC, EC], <<"calls">> => AllCalls}),
     aecore_suite_utils:create_seed_file([?NODE1, ?NODE2],
         Config,
-        "ceres", binary_to_list(NetworkId) ++ "_accounts.json",
+        Subdir, binary_to_list(NetworkId) ++ "_accounts.json",
         #{  <<"ak_2evAxTKozswMyw9kXkvjJt3MbomCR1nLrf91BduXKdJLrvaaZt">> => 1000000000000000000000000000000000000000000000000,
             encoded_pubkey(?ALICE) => 2100000000000000000000000000,
             encoded_pubkey(?BOB) => 3100000000000000000000000000,
@@ -1041,9 +1047,10 @@ node_config(PotentialStakers, Consensus) ->
                         
                  }
         end,
+    Protocol = aect_test_utils:latest_protocol_version(),
     #{<<"chain">> =>
             #{  <<"persist">> => false,
-                <<"hard_forks">> => #{integer_to_binary(?CERES_PROTOCOL_VSN) => 0},
+                <<"hard_forks">> => #{integer_to_binary(Protocol) => 0},
                 <<"consensus">> =>
                     #{<<"0">> => #{<<"name">> => ConsensusName,
                                 <<"config">> =>
@@ -1139,4 +1146,20 @@ wait_for_commitments_in_pool(Node, Cnt, Attempts) ->
             timer:sleep(30),
             wait_for_commitments_in_pool(Node, Cnt, Attempts - 1)
     end.
+
+produce_validator_tx() ->
+    Who = ?BOB,
+    SCId = staking_contract_address(),
+    Tx =
+        contract_call(SCId, ?STAKING_CONTRACT,
+                            "set_validator_avatar_url",
+                            ["\"https://pbs.twimg.com/profile_images/1338340549804380160/A3oKPQuq_400x400.jpg\""], 0,
+                            pubkey(Who), 4),
+    Bin0 = aetx:serialize_to_binary(Tx),
+    Bin = aec_hash:hash(signed_tx, Bin0), %% since we are in IRIS or CERES context, we sign th hash
+    NetworkId = <<"ae_smart_contract_test">>,
+    BinForNetwork = <<NetworkId/binary, Bin/binary>>,
+    Signatures = [ enacl:sign_detached(BinForNetwork, privkey(Who))],
+    SignedTx = aetx_sign:new(Tx, Signatures),
+    aeser_api_encoder:encode(transaction, aetx_sign:serialize_to_binary(SignedTx)).
 

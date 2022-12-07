@@ -238,9 +238,10 @@ pogf_detected(_H1, _H2) -> ok.
 %% Genesis block
 genesis_transform_trees(Trees0, #{}) ->
     NetworkId = aec_governance:get_network_id(),
+    GenesisProtocol = genesis_protocol_version(),
     {ok, #{ <<"contracts">> := Contracts
           , <<"calls">> := Calls }} =
-        aec_fork_block_settings:hc_seed_contracts(?CERES_PROTOCOL_VSN, NetworkId),
+        aec_fork_block_settings:hc_seed_contracts(GenesisProtocol, NetworkId),
     GenesisHeader = genesis_raw_header(),
     {ok, GenesisHash} = aec_headers:hash_header(GenesisHeader),
     TxEnv = aetx_env:tx_env_from_key_header(GenesisHeader,
@@ -252,6 +253,7 @@ genesis_transform_trees(Trees0, #{}) ->
     aect_call_state_tree:prune(0, Trees).
 
 genesis_raw_header() ->
+    GenesisProtocol = genesis_protocol_version(),
     aec_headers:new_key_header(
         0,
         aec_governance:contributors_messages_hash(),
@@ -264,7 +266,8 @@ genesis_raw_header() ->
         0,
         0,
         default,
-        ?CERES_PROTOCOL_VSN).
+        GenesisProtocol).
+
 genesis_difficulty() -> 0.
 
 key_header_for_sealing(Header0) ->
@@ -427,7 +430,7 @@ pc_start_height() ->
       end).
 
 
-%% This is initial height; if neeeded shall be reinit at fork height
+%% This is the contract owner, calls shall be only available via protocol
 contract_owner() ->
     aeu_ets_cache:get(
       ?ETS_CACHE_TABLE,
@@ -442,7 +445,7 @@ contract_owner() ->
               Pubkey
       end).
 
-%% This is initial height; if neeeded shall be reinit at fork height
+%% TODO: do we need this in HC?
 expected_key_block_rate() ->
     aeu_ets_cache:get(
       ?ETS_CACHE_TABLE,
@@ -453,6 +456,14 @@ expected_key_block_rate() ->
                                        <<"0">>,
                                        <<"config">>, <<"expected_key_block_rate">>]),
               ExpectedRate
+      end).
+
+genesis_protocol_version() ->
+    aeu_ets_cache:get(
+      ?ETS_CACHE_TABLE,
+      genesis_protocol_version,
+      fun() ->
+            aec_hard_forks:protocol_effective_at_height(0)
       end).
 
 
