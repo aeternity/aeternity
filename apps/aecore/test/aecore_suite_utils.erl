@@ -588,22 +588,15 @@ maybe_override([{K,_} = H|T], L0) ->
 maybe_override([], L0) ->
     L0.
 
-stop_node(N, _Config) ->
+stop_node(N, Config) ->
     ct:log("Stopping node ~p", [N]),
-    Node = node_name(N),
-    monitor_node(Node, true),
-    case rpc:call(Node, init, stop, []) of
-        ok ->
-            ct:log("Stop request to node ~p was sent successfully", [N]),
-            receive
-                {nodedown, Node} ->
-                    ct:log("Node ~p stopped", [N]),
-                    ok
-            after 30000 ->
-                error(stop_failed)
-            end;
-        {badrpc, nodedown} ->
-            ct:log("Not stopping node ~p as it's stopped", [N])
+    case cmd(?OPS_BIN, node_shortcut(N, Config), "bin", ["stop"]) of
+        {ok, 0, _Res} ->
+            ct:log("Node ~p stopped", [N]),
+            ok;
+        Else ->
+            ct:log("Failed stopping node ~p, Reason: ~p", [N, Else]),
+            Else
     end.
 
 reinit_with_bitcoin_ng(N) ->
