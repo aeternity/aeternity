@@ -463,7 +463,7 @@ genesis_protocol_version() ->
       ?ETS_CACHE_TABLE,
       genesis_protocol_version,
       fun() ->
-            aec_hard_forks:protocol_effective_at_height(0)
+            hd(lists:sort(maps:keys(aec_hard_forks:protocols())))
       end).
 
 
