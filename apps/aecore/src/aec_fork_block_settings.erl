@@ -276,14 +276,20 @@ seed_contracts_file_name(Release, NetworkId) ->
 
 -ifdef(TEST).
 accounts_json_file() ->
+    NetworkId = aec_governance:get_network_id(),
     ConsensusModule = aec_consensus:get_consensus_module_at_height(0),
-    case ConsensusModule:get_type() of
-        pos ->
-            NetworkId = aec_governance:get_network_id(),
-            NetworkIdStr = binary_to_list(NetworkId),
-            NetworkIdStr ++ "_accounts.json";
-        pow ->
-            "accounts_test.json"
+    case NetworkId of
+        <<"ae_mainnet">>                  -> "accounts.json";
+        <<"ae_uat">>                      -> "accounts_uat.json";
+        _ ->
+            case ConsensusModule:get_type() of
+                pos ->
+                    NetworkId = aec_governance:get_network_id(),
+                    NetworkIdStr = binary_to_list(NetworkId),
+                    NetworkIdStr ++ "_accounts.json";
+                pow ->
+                    "accounts_test.json"
+            end
     end.
 
 extra_accounts_json_file() ->

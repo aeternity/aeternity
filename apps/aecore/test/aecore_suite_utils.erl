@@ -467,47 +467,53 @@ create_config(Node, CTConfig, CustomConfig, Options) ->
         Backend ->
             #{<<"chain">> => #{<<"db_backend">> => binary:list_to_bin(Backend)}}
     end,
-    Forks =
-        case CustomConfig of
-            #{ <<"chain">> := #{<<"hard_forks">> := _ }} -> #{}; %% already set
-            _ -> #{ <<"chain">> => #{<<"hard_forks">> => forks()}}
+    FinalConfig =
+        case ?config(use_config_defaults, CTConfig) of
+            false ->
+                CustomConfig;
+            _ -> %% true or undefined
+                Forks =
+                    case CustomConfig of
+                        #{ <<"chain">> := #{<<"hard_forks">> := _ }} -> #{}; %% already set
+                        _ -> #{ <<"chain">> => #{<<"hard_forks">> => forks()}}
+                    end,
+                MergedCfg = maps_merge(default_config(Node, CTConfig), CustomConfig),
+                MergedCfg1 = aec_metrics_test_utils:maybe_set_statsd_port_in_user_config(Node, MergedCfg, CTConfig),
+                MergedCfg2 = maps_merge(MergedCfg1, DbBackendConfig),
+                MergedCfg3 = case proplists:get_value(instant_mining, CTConfig) of
+                                undefined ->
+                                    ct:log("Instant mining consensus disabled in node"),
+                                    MergedCfg2;
+                                _ ->
+                                    ct:log("Instant mining consensus enabled in node"),
+                                    maps_merge(MergedCfg2,
+                                        #{<<"chain">> =>
+                                            #{<<"consensus">> =>
+                                                #{
+                                                    <<"0">> =>
+                                                        #{
+                                                            <<"name">> => <<"ct_tests">>
+                                                        }
+                                                }
+                                            }
+                                        })
+                            end,
+                MergedCfg4 = maps_merge(MergedCfg3, Forks),
+                Ports =
+                    #{ <<"sync">> => #{ <<"port">> => sync_port(Node)},
+                    <<"http">> => #{ <<"external">> => #{<<"port">> => external_api_port(Node)},
+                                        <<"internal">> => #{<<"port">> => internal_api_port(Node)},
+                                        <<"rosetta">> => #{<<"port">> => rosetta_api_port(Node)},
+                                        <<"rosetta_offline">> => #{<<"port">> => rosetta_offline_api_port(Node)}},
+                    <<"websocket">> => #{<<"channel">> => #{<<"port">> => ws_port(Node)}}},
+                MergedCfg5 = maps_merge(MergedCfg4, Ports),
+                FConfig = config_apply_options(Node, MergedCfg5, Options),
+                write_keys(Node, FConfig),
+                FConfig
         end,
     NodeCfgPath = node_config_dir(Node, CTConfig),
     ok = filelib:ensure_dir(NodeCfgPath),
-    MergedCfg = maps_merge(default_config(Node, CTConfig), CustomConfig),
-    MergedCfg1 = aec_metrics_test_utils:maybe_set_statsd_port_in_user_config(Node, MergedCfg, CTConfig),
-    MergedCfg2 = maps_merge(MergedCfg1, DbBackendConfig),
-    MergedCfg3 = case proplists:get_value(instant_mining, CTConfig) of
-                     undefined ->
-                         ct:log("Instant mining consensus disabled in node"),
-                         MergedCfg2;
-                     _ ->
-                         ct:log("Instant mining consensus enabled in node"),
-                         maps_merge(MergedCfg2,
-                             #{<<"chain">> =>
-                                #{<<"consensus">> =>
-                                    #{
-                                        <<"0">> =>
-                                            #{
-                                                <<"name">> => <<"ct_tests">>
-                                             }
-                                    }
-                                 }
-                              })
-                 end,
-    MergedCfg4 = maps_merge(MergedCfg3, Forks),
-    Ports =
-        #{ <<"sync">> => #{ <<"port">> => sync_port(Node)},
-           <<"http">> => #{ <<"external">> => #{<<"port">> => external_api_port(Node)},
-                            <<"internal">> => #{<<"port">> => internal_api_port(Node)},
-                            <<"rosetta">> => #{<<"port">> => rosetta_api_port(Node)},
-                            <<"rosetta_offline">> => #{<<"port">> => rosetta_offline_api_port(Node)}},
-           <<"websocket">> => #{<<"channel">> => #{<<"port">> => ws_port(Node)}}},
-    MergedCfg5 = maps_merge(MergedCfg4, Ports),
-
-    Config = config_apply_options(Node, MergedCfg5, Options),
-    write_keys(Node, Config),
-    write_config(NodeCfgPath, Config).
+    write_config(NodeCfgPath, FinalConfig).
 
 create_seed_file(Nodes, CTConfig, Consensus, FileName, Data) when
     is_list(Nodes) ->
@@ -1188,19 +1194,22 @@ await_app(N, App) ->
 
 setup_node(N, Top, Root, Config) ->
     ct:log("setup_node(~p,Config)", [N]),
-    DDir = node_shortcut(N, Config),
-    filelib:ensure_dir(filename:join(DDir, "foo")),
-    cp_dir(filename:join(Root, "releases"), DDir ++ "/"),
-    cp_dir(filename:join(Root, "bin"), DDir ++ "/"),
-    symlink(filename:join(Root, "lib"), filename:join(DDir, "lib"), true),
-    symlink(filename:join(Root, "patches"), filename:join(DDir, "patches"), true),
     {ok, VerContents} = file:read_file(filename:join(Root, "VERSION")),
     [VerB |_ ] = binary:split(VerContents, [<<"\n">>, <<"\r">>], [global]),
     Version = binary_to_list(VerB),
+    DDir = node_shortcut(N, Config),
+    filelib:ensure_dir(filename:join(DDir, "foo")),
+    ok = cp_dir(filename:join([Root, "releases", Version]),
+                filename:join([DDir, "releases", Version])),
+    cp_dir(filename:join(Root, "bin"), DDir ++ "/"),
+    symlink(filename:join(Root, "lib"), filename:join(DDir, "lib"), true),
+    symlink(filename:join(Root, "patches"), filename:join(DDir, "patches"), true),
     %%
-    CfgD = config_dir(Top, N),
+    SysCfgD = sys_config_dir(Top, N, Config),
+    VMCfgD = vm_config_dir(Top, N, Config),
     RelD = filename:dirname(filename:join([DDir, "releases", Version, "aeternity.rel"])),
-    [cp_file(filename:join(CfgD, F), filename:join(RelD, F)) || F <- ["vm.args", "sys.config"]],
+    [cp_file(filename:join(VMCfgD, F), filename:join(RelD, F)) || F <- ["vm.args"]],
+    [cp_file(filename:join(SysCfgD, F), filename:join(RelD, F)) || F <- ["sys.config"]],
     [cp_file(filename:join(Root, F), filename:join(DDir, F)) || F <- ["VERSION", "REVISION"]],
     delete_file(filename:join(RelD, "vm.args.orig")),
     delete_file(filename:join(RelD, "sys.config.orig")),
@@ -1213,7 +1222,21 @@ setup_node(N, Top, Root, Config) ->
     aec_test_utils:copy_forks_dir(Root, DDir).
 
 %% Take the node specific config if it exists, otherwise just use dev1
-config_dir(Top, N) ->
+sys_config_dir(Top, N, Config) ->
+    case ?config(build_to_connect_to_mainnet, Config) of
+        true ->
+            filename:join([Top, "config"]);
+        _ ->
+            Dir = filename:join([Top, "config/", N]),
+            case filelib:is_dir(Dir) of
+                true ->
+                    Dir;
+                false ->
+                    filename:join([Top, "config/", "dev1"])
+            end
+    end.
+
+vm_config_dir(Top, N, Config) ->
     Dir = filename:join([Top, "config/", N]),
     case filelib:is_dir(Dir) of
         true ->
@@ -1975,6 +1998,7 @@ win32_delete_junction(Target) ->
 
 set_node_name(Node, Path) ->
     Name = atom_to_binary(node_name(Node), utf8),
+    ct:log("Setting name ~p to ~p", [Name, Path]),
     {ok, Data} = file:read_file(Path),
     Lines = binary:split(Data, [<<"\n">>], [global]),
     Lines1 =
