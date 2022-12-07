@@ -564,18 +564,23 @@ start_node(N, Config, ExtraEnv) ->
             _ ->
                 ["-pa ", MyDir, " -config ./" ++ ConfigFilename]
         end,
-    Env0 = [
-            {"ERL_FLAGS", Flags},
-            {"AETERNITY_CONFIG", "data/aeternity.json"},
-            {"RUNNER_LOG_DIR","log"}
-           ],
-    AdditionalEnv =
+    Env0 = 
         case ?config(build_to_connect_to_mainnet, Config) of
-            true -> [];
+            true ->
+                [
+                    {"ERL_FLAGS", Flags},
+                    {"AETERNITY_CONFIG", "data/aeternity.json"},
+                    {"RUNNER_LOG_DIR","log"}
+                ];
             _ ->
-                {"CODE_LOADING_MODE", "interactive"}
+                [
+                    {"ERL_FLAGS", Flags},
+                    {"AETERNITY_CONFIG", "data/aeternity.json"},
+                    {"RUNNER_LOG_DIR","log"},
+                    {"CODE_LOADING_MODE", "interactive"}
+                ]
         end,
-    Env = maybe_override(ExtraEnv, Env0 ++ AdditionalEnv),
+    Env = maybe_override(ExtraEnv, Env0),
     cmd(?OPS_BIN, node_shortcut(N, Config), "bin", ["daemon"], Env).
 
 maybe_override([{K,_} = H|T], L0) ->
@@ -1247,7 +1252,7 @@ sys_config_dir(Top, N, Config) ->
             end
     end.
 
-vm_config_dir(Top, N, Config) ->
+vm_config_dir(Top, N, _Config) ->
     Dir = filename:join([Top, "config/", N]),
     case filelib:is_dir(Dir) of
         true ->
