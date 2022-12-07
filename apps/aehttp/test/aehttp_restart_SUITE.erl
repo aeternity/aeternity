@@ -103,7 +103,7 @@ wait_till_node_starts(Attempts) when Attempts < 1 ->
 wait_till_node_starts(Attempts) ->
     case aehttp_integration_SUITE:get_status_sut() of
         {error, _} ->
-            timer:sleep(50),
+            timer:sleep(250),
             wait_till_node_starts(Attempts - 1);
         {ok, 200, _} ->
             ok
@@ -120,7 +120,6 @@ assert_one_running_node_process() ->
     ok.
 
 get_number_of_processes() ->
-    Cmd0 = "ps -fea| grep 'bin\/aeternity\" \"console' | wc -l",
     BaseCommand = "ps -fea | grep aeternity | grep daemon",
     Cmd = BaseCommand ++ " | wc -l",
     ResTmp = os:cmd(BaseCommand),
