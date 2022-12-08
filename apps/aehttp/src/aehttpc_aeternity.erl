@@ -30,8 +30,6 @@ get_commitment_tx_at_height(Host, Port, _User, _Password, _Seed, Height, ParentH
     get_transactions(Host, Port, MBs, ParentHCAccountPubKey).
 
 %% @doc Post commitment to AE parent chain.
-%% FIXME: When should this be called, how often, and by which accounts?
-%% FIXME: Sort out what we actually need to post to the parent chain
 post_commitment(Host, Port, StakerPubkey, HCCollectPubkey, Amount, Fee, CurrentTop,
                 NetworkId, SignModule) ->
     post_commitment_tx(Host, Port, StakerPubkey, HCCollectPubkey, Amount,

@@ -175,7 +175,7 @@ handle_info({gproc_ps_event, top_changed, #{info := #{block_type := key,
 handle_info({gproc_ps_event, top_changed, _}, State) ->
     {noreply, State};
 handle_info(_Info, State) ->
-    lager:info("Unhandled info: ~p", [_Info]),
+    lager:debug("Unhandled info: ~p", [_Info]),
     {noreply, State}.
 
 -spec terminate(any(), state()) -> ok.
@@ -370,7 +370,7 @@ maybe_post_initial_commitments(Block, #state{pc_confirmations = Confirmations,
     IsPublishingCommitments = posting_commitments_enabled(),
     case IsFirstCommitment andalso NotPostedYet andalso IsPublishingCommitments of
         true ->
-            Hash = aec_chain:genesis_hash(), %% TODO: Genesis hash?
+            Hash = aec_chain:genesis_hash(), %% TODO: maybe reconsider if we shall post Genesis hash before seeing any block on the parent chain or a different approach should be taken
             State1 = maybe_post_commitments(Hash, State),
             State1#state{initial_commits_heights = lists:delete(Height, InitialCommitsHeights)};
         false ->
