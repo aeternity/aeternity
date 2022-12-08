@@ -93,7 +93,7 @@ start(Config) ->
                 #{  <<"type">> := PCType,
                     <<"network_id">> := NetworkId,
                     <<"spend_address">> := PCSpendAddress
-                 }, 
+                 },
             <<"polling">> :=
                 #{  <<"fetch_interval">> := FetchInterval,
                     <<"nodes">> := Nodes0
@@ -596,7 +596,7 @@ parent_chain_validators(TxEnv, Trees) ->
     {ok, CD} = aeb_fate_abi:create_calldata("sorted_validators", []),
     CallData = aeser_api_encoder:encode(contract_bytearray, CD),
     case call_consensus_contract_(?STAKING_CONTRACT, TxEnv, Trees, CallData,
-                             "sorted_validators()", 0) of
+                                  "sorted_validators()", 0) of
         {ok, _Trees1, Call} ->
             SortedValidators =
                 lists:map(

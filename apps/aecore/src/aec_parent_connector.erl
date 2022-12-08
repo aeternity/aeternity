@@ -290,6 +290,7 @@ responses_consensus(Good0, _Errors, TotalCount) ->
         true ->
             {error, no_parent_chain_agreement};
         false ->
+            {MostReturnedResult, Qty} = maps:fold(fun(K, V, {_,Max} = Acc) -> if V > Max -> {K,V}; true -> Acc end end, {undefined, 0}, Counts)
             {MostReturnedResult, Qty} = lists:last(lists:keysort(2, maps:to_list(Counts))),
             %% Need Qty to be > half of the total number of configured nodes ??
             if Qty > MinRequired ->
