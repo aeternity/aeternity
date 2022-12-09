@@ -292,14 +292,11 @@ responses_consensus(Good0, _Errors, TotalCount) ->
         false ->
             {MostReturnedResult, Qty} =
                 maps:fold(
-                    fun(K, V, {_,Max} = Acc) ->
-                        if V > Max -> {K,V};
-                           true -> Acc
-                        end
+                    fun(K, V, {_,Max} = Acc) when V > Max -> {K,V};
+                       (_K, V, Acc) -> Acc
                     end,
                     {undefined, 0},
                     Counts),
-            {MostReturnedResult, Qty} = lists:last(lists:keysort(2, maps:to_list(Counts))),
             %% Need Qty to be > half of the total number of configured nodes ??
             if Qty > MinRequired ->
                 {_, Node} = lists:keyfind(MostReturnedResult, 1, Good),
