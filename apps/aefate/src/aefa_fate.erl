@@ -273,6 +273,8 @@ loop(Instructions, EngineState) ->
                         aefa_engine_state:accumulator(ES), final, ES);
                 {error, What} -> abort(What, FinalState)
             end;
+        {break, BreakState} ->
+            aefa_engine_state:set_breakpoint_stop(true, BreakState);
         {jump, BB, NewState} ->
             {NewInstructions, State2} = jump(BB, NewState),
             loop(NewInstructions, State2)
@@ -284,15 +286,19 @@ step([], EngineState) ->
     {jump, BB, EngineState};
 step([I|Is], EngineState0) ->
     ES = ?trace(I, EngineState0),
-    try aefa_fate_eval:eval(I, ES) of
-        {next, NewState} -> step(Is, NewState);
-        {jump,_BB,_NewState} = Res -> Res;
-        {stop, _NewState} = Res -> Res
-    catch
-        throw:{?MODULE, _, _} = Err ->
-            catch_protected(Err, EngineState0);
-        throw:{?MODULE, revert, _, _} = Err ->
-            catch_protected(Err, EngineState0)
+    case aefa_engine_state:breakpoint_stop(EngineState0) of
+        true -> {break, ES};
+        false ->
+            try aefa_fate_eval:eval(I, ES) of
+                {next, NewState} -> step(Is, NewState);
+                {jump,_BB,_NewState} = Res -> Res;
+                {stop, _NewState} = Res -> Res
+            catch
+                throw:{?MODULE, _, _} = Err ->
+                    catch_protected(Err, EngineState0);
+                throw:{?MODULE, revert, _, _} = Err ->
+                    catch_protected(Err, EngineState0)
+            end
     end.
 
 catch_protected(Err, ES) ->
