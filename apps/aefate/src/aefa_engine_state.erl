@@ -7,6 +7,7 @@
 -module(aefa_engine_state).
 
 -export([ new/7
+        , new_dbg/8
         , finalize/1
         ]).
 
@@ -32,6 +33,8 @@
         , trace/1
         , vm_version/1
         , consensus_version/1
+        , breakpoints/1
+        , breakpoint_stop/1
         ]).
 
 %% Setters
@@ -54,6 +57,7 @@
         , set_memory/2
         , set_stores/2
         , set_trace/2
+        , set_breakpoint_stop/2
         ]).
 
 %% More complex stuff
@@ -126,6 +130,8 @@
             , stores            :: aefa_stores:store()
             , trace             :: list()
             , vm_version        :: non_neg_integer()
+            , breakpoints       :: sets:set()
+            , breakpoint_stop   :: boolean()
             }).
 
 -opaque state() :: #es{}.
@@ -158,7 +164,13 @@ new(Gas, Value, Spec, Stores, APIState, CodeCache, VMVersion) ->
        , stores            = Stores
        , trace             = []
        , vm_version        = VMVersion
+       , breakpoints       = sets:new()
+       , breakpoint_stop   = false
        }.
+
+new_dbg(Gas, Value, Spec, Stores, APIState, CodeCache, VMVersion, Breakpoints) ->
+    ES = new(Gas, Value, Spec, Stores, APIState, CodeCache, VMVersion),
+    ES#es{ breakpoints = Breakpoints }.
 
 aefa_stores(#es{ chain_api = APIState }) ->
     Protocol = aetx_env:consensus_version(aefa_chain_api:tx_env(APIState)),
@@ -854,6 +866,16 @@ set_trace(X, ES) ->
     ES#es{trace = X}.
 
 %%%------------------
+
+-spec breakpoint_stop(state()) -> boolean().
+breakpoint_stop(#es{breakpoint_stop = BS}) ->
+    BS.
+
+-spec set_breakpoint_stop(boolean(), state()) -> state().
+set_breakpoint_stop(Val, ES) ->
+    ES#es{breakpoint_stop = Val}.
+
+%%%------------------
 -spec vm_version(state()) -> non_neg_integer().
 vm_version(#es{vm_version = X}) ->
     X.
@@ -863,3 +885,8 @@ vm_version(#es{vm_version = X}) ->
 consensus_version(#es{chain_api = Api}) ->
     TxEnv = aefa_chain_api:tx_env(Api),
     aetx_env:consensus_version(TxEnv).
+
+%%%------------------
+-spec breakpoints(state()) -> sets:set().
+breakpoints(#es{breakpoints = Breakpoints}) ->
+    Breakpoints.
