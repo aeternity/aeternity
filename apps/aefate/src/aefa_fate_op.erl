@@ -3023,7 +3023,7 @@ gt_to_emcl(X1, X2, X3, X4, X5, X6, X7, X8, X9, X10, X11, X12) ->
                emcl:mk_Fp(X5), emcl:mk_Fp(X6), emcl:mk_Fp(X7), emcl:mk_Fp(X8),
                emcl:mk_Fp(X9), emcl:mk_Fp(X10), emcl:mk_Fp(X11), emcl:mk_Fp(X12)).
 
-dbgloc({immedicate, File}, {immediate, Line}, _Col, EngineState) ->
+dbgloc({immediate, File}, {immediate, Line}, _Col, EngineState) ->
     case sets:is_element({File, Line}, aefa_engine_state:breakpoints(EngineState)) of
         true  -> aefa_engine_state:set_breakpoint_stop(true, EngineState);
         false -> EngineState
