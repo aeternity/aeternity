@@ -8,7 +8,9 @@
          promote_candidate/1,
          sign_micro_block/1,
          produce_key_header_signature/2,
-         is_ready/0
+         is_ready/0,
+         sign_binary/2,
+         is_key_present/1
         ]).
 
 -export([set_candidate/1
@@ -76,6 +78,21 @@ sign_micro_block(MicroBlock) ->
     Bin = aec_headers:serialize_to_signature_binary(Header),
     {ok, Signature} = gen_server:call(?MODULE, {sign, Bin}),
     {ok, aec_blocks:set_signature(MicroBlock, Signature)}.
+
+-spec sign_binary(Bin, Signer) -> {ok, Signature} | {error, Reason}
+    when Bin :: binary(),
+         Signer :: aec_keys:pubkey(),
+         Signature :: binary(),
+         Reason :: not_found | failed_sign.
+sign_binary(Bin, Signer) ->
+    gen_server:call(?MODULE, {sign, Bin, Signer}).
+
+-spec is_key_present(Pubkey) -> boolean()
+    when  Pubkey :: aec_keys:pubkey().
+is_key_present(Pubkey) ->
+    gen_server:call(?MODULE, {is_present, Pubkey}).
+
+
 
 %% used in PoS context§
 -spec produce_key_header_signature(aec_headers:key_header(), aec_keys:pubkey()) -> {ok, block_signature()} | {error, term()}.
@@ -161,6 +178,15 @@ handle_call({sign, Bin}, _From, #state{active = Active} = State) ->
         error ->
             {reply, {error, not_found}, State}
     end;
+handle_call({is_present, Pubkey}, _From, #state{active = Active} = State) ->
+    Res =
+        case privkey(Pubkey, State) of
+            {ok, _Privkey} ->
+                true;
+            error ->
+                false
+        end,
+    {reply, Res, State};
 handle_call(_Msg, _From, State) ->
     {reply, {error, todo}, State}.
 

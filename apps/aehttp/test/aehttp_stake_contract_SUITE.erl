@@ -15,7 +15,9 @@
          spend_txs/1,
          simple_withdraw/1,
          change_leaders/1,
-         verify_fees/1
+         verify_fees/1,
+         verify_commitments/1,
+         genesis_has_commitments/1
         ]).
 
 -include_lib("stdlib/include/assert.hrl").
@@ -28,7 +30,9 @@
 -define(HC_ELECTION_CONTRACT, "HCElection").
 -define(CONSENSUS_HC, hc).
 -define(CONSENSUS_POS, pos).
--define(REWARD_DELAY, 10).
+-define(CHILD_START_HEIGHT, 10).
+-define(CHILD_CONFIRMATIONS, 7).
+-define(REWARD_DELAY, 2).
 -define(NODE1, dev1).
 -define(NODE1_NAME, aecore_suite_utils:node_name(?NODE1)).
 
@@ -40,6 +44,7 @@
 
 -define(PARENT_CHAIN_NODE1, aecore_suite_utils:parent_chain_node(1)).
 -define(PARENT_CHAIN_NODE1_NAME, aecore_suite_utils:node_name(?PARENT_CHAIN_NODE1)).
+-define(PARENT_CHAIN_NETWORK_ID, <<"local_testnet">>).
 
 -define(DEFAULT_GAS_PRICE, aec_test_utils:min_gas_price()).
 -define(INITIAL_STAKE, 1000000000000000000000000).
@@ -52,7 +57,8 @@
     <<145,69,14,254,5,22,194,68,118,57,0,134,66,96,8,20,124,253,238,
       207,230,147,95,173,161,192,86,195,165,186,115,251,177,181,119,
       188,211,39,203,57,229,94,108,2,107,214,167,74,27,53,222,108,6,
-      80,196,174,81,239,171,117,158,65,91,102>>}).
+      80,196,174,81,239,171,117,158,65,91,102>>,
+    "Alice"}).
 %% ak_2MGLPW2CHTDXJhqFJezqSwYSNwbZokSKkG7wSbGtVmeyjGfHtm
 
 -define(BOB, {
@@ -62,7 +68,8 @@
     <<59,130,10,50,47,94,36,188,50,163,253,39,81,120,89,219,72,88,68,
       154,183,225,78,92,9,216,215,59,108,82,203,25,103,28,85,70,70,
       73,69,117,178,180,148,246,81,104,33,113,6,99,216,72,147,205,
-      210,210,54,3,122,84,195,62,238,132>>}).
+      210,210,54,3,122,84,195,62,238,132>>,
+    "Bob"}).
 %% ak_nQpnNuBPQwibGpSJmjAah6r3ktAB7pG9JHuaGWHgLKxaKqEvC
 
 -define(CAROL, {
@@ -72,8 +79,10 @@
     <<237,12,20,128,115,166,32,106,220,142,111,97,141,104,201,130,56,
       100,64,142,139,163,87,166,185,94,4,159,217,243,160,169,200,171,
       93,11,3,93,177,65,197,27,123,127,177,165,190,211,20,112,79,108,
-      85,78,88,181,26,207,191,211,40,225,138,154>>}).
+      85,78,88,181,26,207,191,211,40,225,138,154>>,
+    "Carol"}).
 
+-define(GENESIS_BENFICIARY, <<0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0>>).
 
 all() -> [{group, pos},
           {group, hc}
@@ -81,7 +90,7 @@ all() -> [{group, pos},
 
 groups() ->
     [{pos, [sequence], common_tests()},
-     {hc, [sequence], common_tests()}
+     {hc, [sequence], common_tests() ++ hc_specific_tests()}
     ].
 
 common_tests() ->
@@ -90,6 +99,12 @@ common_tests() ->
     , spend_txs
     , simple_withdraw
     , change_leaders
+    ].
+
+hc_specific_tests() ->
+    [ 
+     verify_commitments,
+     genesis_has_commitments
     ].
 
 suite() -> [].
@@ -105,17 +120,35 @@ init_per_suite(Config0) ->
                                                         [],
                                                         Config),
             ParentCfg =
-                #{<<"chain">> =>
-                        #{<<"persist">> => false},
+                #{  <<"chain">> =>
+                        #{  <<"persist">> => false,
+                            <<"hard_forks">> =>
+                                #{  <<"1">> => 0,
+                                    integer_to_binary(?CERES_PROTOCOL_VSN) => 1
+                                },
+                            <<"consensus">> =>
+                                #{ <<"0">> => #{<<"name">> => <<"ct_tests">>}}
+                         },
+                    <<"fork_management">> =>
+                        #{<<"network_id">> => ?PARENT_CHAIN_NETWORK_ID},
                     <<"mining">> =>
                         #{<<"micro_block_cycle">> => 1,
-                          <<"expected_mine_rate">> => 10000,
-                          <<"autostart">> => true
+                          <<"expected_mine_rate">> => 2000,
+                          <<"autostart">> => false,
+                          <<"beneficiary_reward_delay">> => ?REWARD_DELAY
                             }},
-            _Config1 = aecore_suite_utils:init_per_suite([?PARENT_CHAIN_NODE1],
-                                                         ParentCfg,
-                                                         [],
-                                                        Config),
+            aecore_suite_utils:make_multi(Config1, [?PARENT_CHAIN_NODE1]),
+            aecore_suite_utils:create_config(?PARENT_CHAIN_NODE1, Config1, ParentCfg, []),
+            {_ParentPatronPriv, ParentPatronPub} = aecore_suite_utils:sign_keys(?PARENT_CHAIN_NODE1),
+            ParentPatronPubEnc = aeser_api_encoder:encode(account_pubkey, ParentPatronPub),
+            aecore_suite_utils:create_seed_file([?PARENT_CHAIN_NODE1],
+                Config1,
+                "genesis", "accounts_test.json", 
+                #{  ParentPatronPubEnc =>
+                    100000000000000000000000000000000000000000000000000000000000000000000000,
+                    encoded_pubkey(?ALICE) => 2100000000000000000000000000,
+                    encoded_pubkey(?BOB) => 3100000000000000000000000000
+                }),
             StakingContract = staking_contract_address(),
             ElectionContract = election_contract_address(),
             [{staking_contract, StakingContract},
@@ -137,29 +170,77 @@ init_per_group(Group, Config0) ->
         _ -> Config1
     end.
 
-init_per_group_custom(NetworkId, Consensus, Config) ->
-    ElectionContract = election_contract_by_consensus(Consensus),
+init_per_group_custom(NetworkId, ?CONSENSUS_POS, Config) ->
+    ElectionContract = election_contract_by_consensus(?CONSENSUS_POS),
+    build_json_files(NetworkId, ElectionContract, Config),
+    %% different runs use different network ids
+    Env = [ {"AE__FORK_MANAGEMENT__NETWORK_ID", binary_to_list(NetworkId)}
+          ],
+    aecore_suite_utils:create_config(?NODE1, Config,
+                                    node_config([?ALICE, ?BOB], ?CONSENSUS_POS),
+                                    [{add_peers, true} ]),
+    aecore_suite_utils:create_config(?NODE2, Config,
+                                    node_config([], ?CONSENSUS_POS),
+                                    [{add_peers, true} ]),
+    aecore_suite_utils:start_node(?NODE1, Config, Env),
+    aecore_suite_utils:connect(?NODE1_NAME, []),
+    aecore_suite_utils:start_node(?NODE2, Config, Env),
+    aecore_suite_utils:connect(?NODE2_NAME, []),
+    Config1 = [{network_id, NetworkId}, {consensus, ?CONSENSUS_POS} | Config];
+init_per_group_custom(NetworkId, ?CONSENSUS_HC, Config) ->
+    ElectionContract = election_contract_by_consensus(?CONSENSUS_HC),
     build_json_files(NetworkId, ElectionContract, Config),
     %% different runs use different network ids
     Env = [ {"AE__FORK_MANAGEMENT__NETWORK_ID", binary_to_list(NetworkId)}
           ],
     aecore_suite_utils:start_node(?PARENT_CHAIN_NODE1, Config),
     aecore_suite_utils:connect(?PARENT_CHAIN_NODE1_NAME, []),
+    timer:sleep(1000),
+    produce_blocks(?PARENT_CHAIN_NODE1, ?PARENT_CHAIN_NODE1_NAME,
+                    parent, ?CHILD_START_HEIGHT, ?CONSENSUS_HC),
+
     aecore_suite_utils:create_config(?NODE1, Config,
-                                    node_config([?ALICE, ?BOB], Consensus),
+                                    node_config([?ALICE, ?BOB], ?CONSENSUS_HC),
                                     [{add_peers, true} ]),
     aecore_suite_utils:create_config(?NODE2, Config,
-                                    node_config([], Consensus),
+                                    node_config([], ?CONSENSUS_HC),
                                     [{add_peers, true} ]),
     aecore_suite_utils:start_node(?NODE1, Config, Env),
     aecore_suite_utils:connect(?NODE1_NAME, []),
     aecore_suite_utils:start_node(?NODE2, Config, Env),
     aecore_suite_utils:connect(?NODE2_NAME, []),
-    [{network_id, NetworkId},
-     {consensus, Consensus} | Config].
 
-end_per_group(Group, Config) when Group =:= pos;
-                                  Group =:= hc ->
+    timer:sleep(1000),
+    NumberOfCommitments = 2,
+    %% mine blocks on the parent chain and include commitments; stop right
+    %% before the child chain produces a block
+    lists:foreach(
+        fun(Idx) ->
+            PCTopHeight = rpc(?PARENT_CHAIN_NODE1, aec_chain, top_height, []),
+            ct:log("Mining commitment on the parent chain, idx ~p, parent height ~p", [Idx, PCTopHeight]),
+            wait_for_commitments_in_pool(?PARENT_CHAIN_NODE1, NumberOfCommitments),
+            {ok, _} = aecore_suite_utils:mine_micro_blocks(?PARENT_CHAIN_NODE1_NAME, 1),
+            {ok, _} = aecore_suite_utils:mine_key_blocks(?PARENT_CHAIN_NODE1_NAME, 1)
+        end,
+        lists:seq(1, ?CHILD_CONFIRMATIONS - 1)),
+    ct:log("Mining last initial commitment on the parent chain", []),
+    wait_for_commitments_in_pool(?PARENT_CHAIN_NODE1, NumberOfCommitments),
+    {ok, _} = aecore_suite_utils:mine_micro_blocks(?PARENT_CHAIN_NODE1_NAME, 1),
+    Config1 = [{network_id, NetworkId}, {consensus, ?CONSENSUS_HC} | Config],
+    {ok, _} = produce_blocks(?NODE1, ?NODE1_NAME, child, 10, ?config(consensus, Config1)),
+    ParentTopHeight = rpc(?PARENT_CHAIN_NODE1, aec_chain, top_height, []),
+    {ok, ParentBlocks} = get_generations(?PARENT_CHAIN_NODE1, 0, ParentTopHeight),
+    ct:log("Parent chain blocks ~p", [ParentBlocks]),
+    ChildTopHeight = rpc(?NODE1, aec_chain, top_height, []),
+    {ok, ChildBlocks} = get_generations(?NODE1, 0, ChildTopHeight),
+    ct:log("Child chain blocks ~p", [ChildBlocks]),
+
+    Config1.
+
+end_per_group(pos, Config) ->
+    aecore_suite_utils:stop_node(?NODE1, Config),
+    aecore_suite_utils:stop_node(?NODE2, Config);
+end_per_group(hc, Config) -> 
     aecore_suite_utils:stop_node(?NODE1, Config),
     aecore_suite_utils:stop_node(?NODE2, Config),
     aecore_suite_utils:stop_node(?PARENT_CHAIN_NODE1, Config);
@@ -217,7 +298,7 @@ contract_call_spec(ContractPubkey, Name, Fun, Args, Amount, From, Nonce) ->
     Spec.
 
 contract_call(ContractPubkey, Name, Fun, Args, Amount, From) ->
-    Nonce = next_nonce(From),
+    Nonce = next_nonce(?NODE1, From), %% no contract calls support for parent chain
     contract_call(ContractPubkey, Name, Fun, Args, Amount, From, Nonce).
 
 contract_call(ContractPubkey, Name, Fun, Args, Amount, From, Nonce) ->
@@ -238,9 +319,9 @@ contract_call(ContractPubkey, Name, Fun, Args, Amount, From, Nonce) ->
     {ok, Tx} = aect_call_tx:new(TxSpec),
     Tx.
 
-mine_and_sync(_Config) ->
-    {ok, [KB0]} = aecore_suite_utils:mine_key_blocks(?NODE1_NAME, 1),
-    {ok, KB0} = wait_same_top(),
+mine_and_sync(Config) ->
+    {ok, [KB]} = produce_blocks(?NODE1, ?NODE1_NAME, child, 1, ?config(consensus, Config)),
+    {ok, KB} = wait_same_top(),
     ok.
 
 wait_same_top() ->
@@ -260,9 +341,10 @@ wait_same_top(Attempts) ->
 spend_txs(Config) ->
     Top0 = rpc(?NODE1, aec_chain, top_header, []),
     ct:log("Top before posting spend txs: ~p", [aec_headers:height(Top0)]),
-    seed_account(pubkey(?ALICE), 100000001 * ?DEFAULT_GAS_PRICE, Config),
-    seed_account(pubkey(?BOB), 100000002 * ?DEFAULT_GAS_PRICE, Config),
-    seed_account(pubkey(?CAROL), 100000003 * ?DEFAULT_GAS_PRICE, Config),
+    NetworkId = ?config(network_id, Config),
+    seed_account(pubkey(?ALICE), 100000001 * ?DEFAULT_GAS_PRICE, NetworkId),
+    seed_account(pubkey(?BOB), 100000002 * ?DEFAULT_GAS_PRICE, NetworkId),
+    seed_account(pubkey(?CAROL), 100000003 * ?DEFAULT_GAS_PRICE, NetworkId),
 
     lists:foreach(
         fun(GenIndex) ->
@@ -276,11 +358,11 @@ spend_txs(Config) ->
 simple_withdraw(Config) ->
     AliceBin = encoded_pubkey(?ALICE),
     Alice = binary_to_list(encoded_pubkey(?ALICE)),
-    stopped = rpc:call(?NODE1_NAME, aec_conductor, get_mining_state, []),
-    false = rpc:call(?NODE1_NAME, aec_conductor, is_leader, []),
+    running = rpc:call(?NODE1_NAME, aec_conductor, get_mining_state, []),
+    true = rpc:call(?NODE1_NAME, aec_conductor, is_leader, []),
     {ok, []} = rpc:call(?NODE1_NAME, aec_tx_pool, peek, [infinity]),
 
-    {ok, [KB0]} = aecore_suite_utils:mine_key_blocks(?NODE1_NAME, 1),
+    {ok, [KB0 | _ ]} = produce_blocks(?NODE1, ?NODE1_NAME, child, 1, ?config(consensus, Config)),
     Top0 = aec_blocks:to_header(KB0),
     Top0 = rpc(?NODE1, aec_chain, top_header, []),
     ct_log_header(Top0),
@@ -299,15 +381,16 @@ simple_withdraw(Config) ->
     WithdrawAmount = 1000,
     Fun = "unstake",
     ContractPubkey = ?config(staking_contract, Config),
+    NetworkId = ?config(network_id, Config),
     CallTx =
         sign_and_push(
             contract_call(ContractPubkey, ?STAKING_CONTRACT, Fun,
                   [Alice, integer_to_list(WithdrawAmount)], 0, pubkey(?ALICE)),
             ?ALICE,
-            Config),
+            NetworkId),
     {ok, [_]} = rpc:call(?NODE1_NAME, aec_tx_pool, peek, [infinity]),
     {value, _Acc} = rpc(?NODE1, aec_chain, get_account, [pubkey(?ALICE)]),
-    mine_tx(CallTx),
+    mine_tx_no_cheating(?NODE1, CallTx),
     EndBalance = account_balance(pubkey(?ALICE)),
     {ok, Call} = call_info(CallTx),
     {ok, _Res} = decode_consensus_result(Call, Fun, ?STAKING_CONTRACT),
@@ -340,7 +423,7 @@ change_leaders(Config) ->
     Blocks = 10,
     NewLeader =
         fun() ->
-            {ok, [KB]} = aecore_suite_utils:mine_key_blocks(?NODE1_NAME, 1),
+            {ok, [KB | _ ]} = produce_blocks(?NODE1, ?NODE1_NAME, child, 1, ?config(consensus, Config)),
             Beneficiary = aec_blocks:beneficiary(KB),
             Beneficiary = aec_blocks:miner(KB),
             ct_log_block(KB),
@@ -368,30 +451,49 @@ change_leaders(Config) ->
 
 verify_fees(Config) ->
     %% start without any tx fees, only a keyblock
-    {ok, _} = aecore_suite_utils:mine_key_blocks(?NODE1_NAME, ?REWARD_DELAY + 1),
+    produce_blocks(?NODE1, ?NODE1_NAME, child, ?REWARD_DELAY + 1, ?config(consensus, Config)),
     Test =
         fun() ->
             %% gather staking_powers before reward distribution
             AliceBalance0 = account_balance(pubkey(?ALICE)),
             BobBalance0 = account_balance(pubkey(?BOB)),
-            {ok, AliceContractSPower0} = inspect_staking_contract(?ALICE, {staking_power, ?ALICE}, Config),
-            {ok, BobContractSPower0} = inspect_staking_contract(?ALICE, {staking_power, ?BOB}, Config),
-            {ok, _} = aecore_suite_utils:mine_key_blocks(?NODE1_NAME, 1),
+            produce_blocks(?NODE1, ?NODE1_NAME, child, 1, ?config(consensus, Config)),
+            TopHeader = rpc(?NODE1, aec_chain, top_header, []),
+            {ok, TopHash} = aec_headers:hash_header(TopHeader),
+            PrevHash = aec_headers:prev_hash(TopHeader),
+            {ok, AliceContractSPower0} = inspect_staking_contract(?ALICE,
+                                                                  {staking_power,
+                                                                   ?ALICE},
+                                                                  Config,
+                                                                  PrevHash),
+            {ok, BobContractSPower0} = inspect_staking_contract(?ALICE,
+                                                                {staking_power,
+                                                                 ?BOB},
+                                                                Config,
+                                                                PrevHash),
             %% gather staking_powers after reward distribution
             AliceBalance1= account_balance(pubkey(?ALICE)),
             BobBalance1 = account_balance(pubkey(?BOB)),
-            {ok, AliceContractSPower1} = inspect_staking_contract(?ALICE, {staking_power, ?ALICE}, Config),
-            {ok, BobContractSPower1} = inspect_staking_contract(?ALICE, {staking_power, ?BOB}, Config),
+            {ok, AliceContractSPower1} = inspect_staking_contract(?ALICE,
+                                                                  {staking_power,
+                                                                   ?ALICE},
+                                                                  Config,
+                                                                  TopHash),
+            {ok, BobContractSPower1} = inspect_staking_contract(?ALICE,
+                                                                {staking_power,
+                                                                 ?BOB},
+                                                                Config,
+                                                                TopHash),
             %% inspect who shall receive what reward
-            Top = rpc(?NODE1, aec_chain, top_header, []),
-            Height = aec_headers:height(Top),
-            ct:log("Current top is ~p", [Height]),
-            RewardForHeight = Height - ?REWARD_DELAY,
+            RewardForHeight = aec_headers:height(TopHeader) - ?REWARD_DELAY,
             {ok, PrevH} = rpc(?NODE1, aec_chain, get_key_header_by_height, [RewardForHeight - 1]),
             {ok, RewardH} = rpc(?NODE1, aec_chain, get_key_header_by_height, [RewardForHeight]),
             Beneficiary1 = aec_headers:beneficiary(PrevH),
+            Beneficiary1Name = name(who_by_pubkey(Beneficiary1)),
             Beneficiary2 = aec_headers:beneficiary(RewardH),
-            ct:log("Beneficiary1: ~p, Beneficiary2: ~p", [Beneficiary1, Beneficiary2]),
+            Beneficiary2Name = name(who_by_pubkey(Beneficiary2)),
+            ct:log("Beneficiary1: ~p, Beneficiary2: ~p", [Beneficiary1Name,
+                                                          Beneficiary2Name]),
             %% assert account staking_powers do not change; only contract staking_powers change
             {AliceBalance0, AliceBalance0} = {AliceBalance0, AliceBalance1},
             {BobBalance0, BobBalance0} = {BobBalance0, BobBalance1},
@@ -405,7 +507,9 @@ verify_fees(Config) ->
                               ?ALICE ->
                                   {AliceRewards0 + Amount, BobRewards0};
                               ?BOB ->
-                                  {AliceRewards0, BobRewards0 + Amount}
+                                  {AliceRewards0, BobRewards0 + Amount};
+                              genesis ->
+                                  {AliceRewards0, BobRewards0}
                           end
                     end,
                     {0, 0},
@@ -424,11 +528,12 @@ verify_fees(Config) ->
         end,
     %% test a couple of empty generations - there are no fees, only block
     %% rewards
+    NetworkId = ?config(network_id, Config),
     lists:foreach(
         fun(_) -> Test() end,
         lists:seq(1, 10)),
-    {ok, _SignedTx} = seed_account(pubkey(?ALICE), 1, Config),
-    {ok, _} = aecore_suite_utils:mine_key_blocks(?NODE1_NAME, ?REWARD_DELAY - 1),
+    {ok, _SignedTx} = seed_account(pubkey(?ALICE), 1, NetworkId),
+    produce_blocks(?NODE1, ?NODE1_NAME, child, ?REWARD_DELAY - 1, ?config(consensus, Config)),
     ct:log("Test with no transaction", []),
     Test(), %% before fees
     ct:log("Test with a spend transaction", []),
@@ -437,31 +542,139 @@ verify_fees(Config) ->
     Test(), %% after fees
     ok.
 
-pubkey({Pubkey, _}) -> Pubkey.
+verify_commitments(Config) ->
+    Test =
+        fun(GenerationsCnt) ->
+            ParentTopHeight0 = rpc(?PARENT_CHAIN_NODE1, aec_chain, top_height, []),
+            TopHeight0 = rpc(?NODE1, aec_chain, top_height, []),
+            ct:log("Start height: ~p, parent height ~p", [TopHeight0, ParentTopHeight0]),
+            produce_blocks(?NODE1, ?NODE1_NAME, child, GenerationsCnt, ?config(consensus, Config)),
+            TopHeight = rpc(?NODE1, aec_chain, top_height, []),
+            {true, TopHeight0, TopHeight} = {TopHeight0 =:= TopHeight - GenerationsCnt, TopHeight0, TopHeight},
+            ParentTopHeight = rpc(?PARENT_CHAIN_NODE1, aec_chain, top_height, []),
+            ct:log("End height: ~p, parent height ~p", [TopHeight, ParentTopHeight]),
+            {ok, Blocks} = get_generations(?PARENT_CHAIN_NODE1, ParentTopHeight0 + 1, ParentTopHeight),
+            MicroBlocks =
+                lists:filter(
+                fun(B) -> aec_blocks:type(B) =:= micro end,
+                Blocks),
+            Commitments =
+                lists:flatten(lists:map(
+                    fun(MB) ->
+                        MBHeight = aec_blocks:height(MB),
+                        Txs = aec_blocks:txs(MB),
+                        lists:map(
+                            fun(SignedTx) ->
+                                Tx = aetx_sign:tx(SignedTx),
+                                Spender = name(who_by_pubkey(aetx:origin(Tx))),
+                                Nonce = aetx:nonce(Tx),
+                                {spend_tx, SpendTx} = aetx:specialize_type(Tx),
+                                Payload = aec_spend_tx:payload(SpendTx),
+                                {MBHeight, Spender, Nonce, Payload}
+                            end,
+                            Txs)
+                    end,
+                    MicroBlocks)),
+            Filter =
+                fun(Name) ->
+                    lists:filter(
+                        fun({_MBHeight, Spender, _Nonce, _Payload}) -> Spender =:= Name end,
+                        Commitments)
+                end,
+            AliceCommitments = Filter(name(?ALICE)),
+            ct:log("Alice commitments: ~p", [AliceCommitments]),
+            BobCommitments = Filter(name(?BOB)),
+            ct:log("Bob commitments: ~p", [BobCommitments]),
+            {GenerationsCnt, GenerationsCnt} = {GenerationsCnt, length(AliceCommitments)},
+            {GenerationsCnt, GenerationsCnt} = {GenerationsCnt, length(BobCommitments)},
+            AssertOrder =
+                fun(Comms) ->
+                    ParsedComms =
+                        lists:map(
+                            fun({MBHeight, _Spender, Nonce, Payload}) ->
+                                {ok, Hash} = aeser_api_encoder:safe_decode(key_block_hash,
+                                                                        Payload),
+                                {ok, Block} = rpc(?NODE1, aec_chain, get_block, [Hash]),
+                                {MBHeight, Nonce, aec_blocks:height(Block)}
+                            end,
+                        Comms),
+                    ct:log("Commitments: ~p", [ParsedComms]),
+                    lists:map(
+                        fun({ParentHeight, N, H}) ->
+                            {N, N} = {N, H + ?CHILD_CONFIRMATIONS}, 
+                            ExpectedParentHeight = H + ?CHILD_START_HEIGHT + ?CHILD_CONFIRMATIONS - 1,
+                            {ParentHeight, ParentHeight} = {ParentHeight, ExpectedParentHeight}
+                        end,
+                        ParsedComms)
+                end,
+            AssertOrder(AliceCommitments),
+            AssertOrder(BobCommitments),
+            ok
+        end,
+    Test(1),
+    Test(5),
+    Test(10),
+    ok.
 
-privkey({_, Privkey}) -> Privkey.
+genesis_has_commitments(_Config) ->
+    PCStartHeight = ?CHILD_START_HEIGHT,
+    PCConfirmationsEndHeight = ?CHILD_START_HEIGHT + ?CHILD_CONFIRMATIONS - 1,
+    GetCommitments =
+        fun(From, To) ->
+            {ok, Blocks} = get_generations(?PARENT_CHAIN_NODE1, From, To + 1),
+            MicroBlocks =
+                lists:filter(fun(B) -> aec_blocks:type(B) =:= micro end, Blocks),
+            maps:from_list(
+                lists:map(
+                    fun(MB) -> {aec_blocks:height(MB), aec_blocks:txs(MB)} end,
+                    MicroBlocks))
+        end,
+    InitialCommitments = GetCommitments(PCStartHeight, PCConfirmationsEndHeight),
+    GenesisHash = aeser_api_encoder:encode(key_block_hash, rpc(?NODE1, aec_chain, genesis_hash, [])),
+    lists:foreach(
+        fun(Height) ->
+            Txs = maps:get(Height, InitialCommitments),
+            2 = length(Txs),
+            lists:foreach(
+                fun(SignedTx) ->
+                    {spend_tx, SpendTx} = aetx:specialize_type(aetx_sign:tx(SignedTx)),
+                    {GenesisHash, GenesisHash} = {aec_spend_tx:payload(SpendTx), GenesisHash}
+                end,
+                Txs),
+            ok
+        end,
+        lists:seq(PCStartHeight, PCConfirmationsEndHeight)),
+
+    ok.
+    
+pubkey({Pubkey, _, _}) -> Pubkey.
+
+privkey({_, Privkey, _}) -> Privkey.
+
+name({_, _, Name}) -> Name.
 
 who_by_pubkey(Pubkey) ->
-    case Pubkey =:= pubkey(?ALICE) of
-        true -> ?ALICE;
-        false ->
-            case Pubkey =:= pubkey(?BOB) of
-                true -> ?BOB;
-                false -> error(unknown_beneficiary)
-            end
+    Alice = pubkey(?ALICE),
+    Bob = pubkey(?BOB),
+    Genesis = ?GENESIS_BENFICIARY,
+    case Pubkey of
+        Alice -> ?ALICE;
+        Bob -> ?BOB;
+        Genesis -> genesis;
+        _  -> error(unknown_beneficiary)
     end.
 
 encoded_pubkey(Who) ->
     aeser_api_encoder:encode(account_pubkey, pubkey(Who)).
 
-next_nonce(Pubkey) ->
-    case rpc(?NODE1, aec_next_nonce, pick_for_account, [Pubkey, max]) of
+next_nonce(Node, Pubkey) ->
+    case rpc(Node, aec_next_nonce, pick_for_account, [Pubkey, max]) of
         {ok, NextNonce} -> NextNonce;
         {error, account_not_found} -> 1
     end.
 
-sign_and_push(Tx, Who, Config) ->
-    SignedTx = sign_tx(Tx, privkey(Who), Config),
+sign_and_push(Tx, Who, NetworkId) ->
+    SignedTx = sign_tx(Tx, privkey(Who), NetworkId),
     ok = rpc:call(?NODE1_NAME, aec_tx_pool, push, [SignedTx, tx_received]),
     SignedTx.
 
@@ -469,40 +682,80 @@ sign_and_push(Tx, Who, Config) ->
 %% executed in the context of the CT test and uses the corresponding
 %% network_id. Since the network_id of the HC node is different, we must sign
 %% the tx using the test-specific network_id
-sign_tx(Tx, Privkey, Config) ->
+sign_tx(Tx, Privkey, NetworkId) ->
     Bin0 = aetx:serialize_to_binary(Tx),
     Bin = aec_hash:hash(signed_tx, Bin0), %% since we are in CERES context, we sign th hash
-    NetworkId = ?config(network_id, Config),
     BinForNetwork = <<NetworkId/binary, Bin/binary>>,
     Signatures = [ enacl:sign_detached(BinForNetwork, Privkey)],
     aetx_sign:new(Tx, Signatures).
 
-seed_account(RecpipientPubkey, Amount, Config) ->
+seed_account(RecpipientPubkey, Amount, NetworkId) ->
+    seed_account(?NODE1, ?NODE1_NAME, RecpipientPubkey, Amount, NetworkId).
+
+seed_account(Node, NodeName, RecpipientPubkey, Amount, NetworkId) ->
+    MineFun = fun(Tx) -> mine_tx_no_cheating(Node, Tx) end,
+    seed_account(Node, NodeName, RecpipientPubkey, Amount, NetworkId, MineFun).
+
+seed_account_pow(Node, NodeName, RecpipientPubkey, Amount, NetworkId) ->
+    MineFun = fun(Tx) -> mine_tx(NodeName, Tx) end,
+    seed_account(Node, NodeName, RecpipientPubkey, Amount, NetworkId, MineFun).
+
+
+seed_account(Node, NodeName, RecpipientPubkey, Amount, NetworkId, MineFun) ->
     %% precondition
-    {ok, []} = rpc:call(?NODE1_NAME, aec_tx_pool, peek, [infinity]),
+    {ok, []} = rpc:call(NodeName, aec_tx_pool, peek, [infinity]),
     ct:log("Seed spend tx", []),
-    {PatronPriv, PatronPub} = aecore_suite_utils:sign_keys(?NODE1),
-    Nonce = next_nonce(PatronPub),
+    {PatronPriv, PatronPub} = aecore_suite_utils:sign_keys(Node),
+    Nonce = next_nonce(Node, PatronPub),
     Params =
         #{sender_id    => aeser_id:create(account, PatronPub),
           recipient_id => aeser_id:create(account, RecpipientPubkey),
           amount       => Amount,
-          fee          => 18000 * ?DEFAULT_GAS_PRICE,
+          fee          => 30000 * ?DEFAULT_GAS_PRICE,
           nonce        => Nonce,
           payload      => <<>>},
+    ct:log("Network id ~p", [NetworkId]),
     ct:log("Preparing a spend tx: ~p", [Params]),
     {ok, Tx} = aec_spend_tx:new(Params),
-    SignedTx = sign_tx(Tx, PatronPriv, Config),
-    ok = rpc:call(?NODE1_NAME, aec_tx_pool, push, [SignedTx, tx_received]),
-    {ok, [_SpendTx]} = rpc:call(?NODE1_NAME, aec_tx_pool, peek, [infinity]),
-    mine_tx(SignedTx),
+    SignedTx = sign_tx(Tx, PatronPriv, NetworkId),
+    ok = rpc:call(NodeName, aec_tx_pool, push, [SignedTx, tx_received]),
+    {ok, [_SpendTx]} = rpc:call(NodeName, aec_tx_pool, peek, [infinity]),
+    MineFun(SignedTx),
     {ok, SignedTx}.
 
-mine_tx(SignedTx) ->
+mine_tx(NodeName, SignedTx) ->
     TxHash = aeser_api_encoder:encode(tx_hash, aetx_sign:hash(SignedTx)),
-    aecore_suite_utils:mine_blocks_until_txs_on_chain(?NODE1_NAME,
+    aecore_suite_utils:mine_blocks_until_txs_on_chain(NodeName,
                                                       [TxHash],
                                                       10). %% max keyblocks
+
+mine_tx_no_cheating(Node, SignedTx) ->
+    mine_tx_no_cheating(Node, SignedTx, 100).
+
+mine_tx_no_cheating(Node, SignedTx, Attempts) when Attempts < 1 ->
+    {TxEnv, Trees} = rpc(Node, aetx_env, tx_env_and_trees_from_top, [aetx_transaction]),
+    Reason =
+        case rpc(Node, aetx_sign, verify, [SignedTx, Trees, ?CERES_PROTOCOL_VSN]) of
+            ok ->
+                case rpc(Node, aetx, process, [aetx_sign:tx(SignedTx), Trees, TxEnv]) of
+                    {ok, _Trees, _} -> no_reason;
+                    {error, R} -> R
+                end;
+            {error, R} -> R
+        end,
+    error({could_not_mine_tx, Reason, SignedTx});
+mine_tx_no_cheating(Node, SignedTx, Attempts) ->
+    Retry = fun() -> timer:sleep(100), mine_tx_no_cheating(Node, SignedTx, Attempts - 1) end,
+    TxHash = aetx_sign:hash(SignedTx),
+    case rpc(Node, aec_chain, find_tx_location, [TxHash]) of
+        mempool -> Retry(); 
+        none ->
+            error({could_not_mine_tx, garbage_collected, SignedTx});
+        not_found ->
+            error({could_not_mine_tx, tx_not_found, SignedTx});
+        BlockHash when is_binary(BlockHash) ->
+            ok
+    end.
 
 account_balance(Pubkey) ->
     case rpc(?NODE1, aec_chain, get_account, [Pubkey]) of
@@ -511,6 +764,10 @@ account_balance(Pubkey) ->
     end.
 
 inspect_staking_contract(OriginWho, WhatToInspect, Config) ->
+    TopHash = rpc(?NODE1, aec_chain, top_block_hash, []),
+    inspect_staking_contract(OriginWho, WhatToInspect, Config, TopHash).
+
+inspect_staking_contract(OriginWho, WhatToInspect, Config, TopHash) ->
     {Fun, Args} =
         case WhatToInspect of
             {staking_power, Who} ->
@@ -521,10 +778,14 @@ inspect_staking_contract(OriginWho, WhatToInspect, Config) ->
     ContractPubkey = ?config(staking_contract, Config),
     Tx = contract_call(ContractPubkey, ?STAKING_CONTRACT, Fun,
                   Args, 0, pubkey(OriginWho)),
-    {ok, Call} = dry_run(Tx),
+    {ok, Call} = dry_run(TopHash, Tx),
     {_Type, _Res} = decode_consensus_result(Call, Fun, ?STAKING_CONTRACT).
 
 inspect_election_contract(OriginWho, WhatToInspect, Config) ->
+    TopHash = rpc(?NODE1, aec_chain, top_block_hash, []),
+    inspect_election_contract(OriginWho, WhatToInspect, Config, TopHash).
+
+inspect_election_contract(OriginWho, WhatToInspect, Config, TopHash) ->
     {Fun, Args} =
         case WhatToInspect of
             current_leader -> {"leader", []}
@@ -533,11 +794,10 @@ inspect_election_contract(OriginWho, WhatToInspect, Config) ->
     ElectionContract = election_contract_by_consensus(?config(consensus, Config)),
     Tx = contract_call(ContractPubkey, ElectionContract, Fun,
                   Args, 0, pubkey(OriginWho)),
-    {ok, Call} = dry_run(Tx),
+    {ok, Call} = dry_run(TopHash, Tx),
     {_Type, _Res} = decode_consensus_result(Call, Fun, ElectionContract).
 
-dry_run(Tx) ->
-    TopHash = rpc(?NODE1, aec_chain, top_block_hash, []),
+dry_run(TopHash, Tx) ->
     case rpc(?NODE1, aec_dry_run, dry_run, [TopHash, [], [{tx, Tx}]]) of
         {error, _} = Err -> Err;
         {ok, {[{contract_call_tx, {ok, Call}}], _Events}} -> {ok, Call}
@@ -731,13 +991,25 @@ build_json_files(NetworkId, ElectionContract, Config) ->
 
 node_config(PotentialStakers, Consensus) ->
     Stakers =
-        lists:map(
-            fun(Who) ->
-                Pub = encoded_pubkey(Who),
-                Priv = list_to_binary(aeu_hex:bin_to_hex( privkey(Who))), %% TODO: discuss key management
-                #{<<"pub">> => Pub, <<"priv">> => Priv}
-            end,
-            PotentialStakers),
+        case Consensus of
+            ?CONSENSUS_POS ->
+                lists:map(
+                    fun(Who) ->
+                        Pub = encoded_pubkey(Who),
+                        Priv = list_to_binary(aeu_hex:bin_to_hex( privkey(Who))), %% TODO: discuss key management
+                        #{<<"pub">> => Pub, <<"priv">> => Priv}
+                    end,
+                    PotentialStakers);
+            ?CONSENSUS_HC ->
+                lists:map(
+                    fun(Who) ->
+                        Pub = encoded_pubkey(Who),
+                        Priv = list_to_binary(aeu_hex:bin_to_hex( privkey(Who))), %% TODO: discuss key management
+                        #{  <<"hyper_chain_account">> =>#{<<"pub">> => Pub, <<"priv">> => Priv},
+                            <<"parent_chain_account">> =>#{<<"pub">> => Pub, <<"priv">> => Priv}}
+                    end,
+                    PotentialStakers)
+        end,
     ConsensusName =
         case Consensus of
             ?CONSENSUS_HC -> <<"hyper_chain">>;
@@ -747,19 +1019,26 @@ node_config(PotentialStakers, Consensus) ->
         case Consensus of
             ?CONSENSUS_POS -> #{};
             ?CONSENSUS_HC ->
+                ReceiveAddress = encoded_pubkey(?ALICE), %% TODO: do we need it?
                 #{  <<"parent_chain">> =>
-                        #{  <<"type">> => <<"AE">>,
-                            <<"start_height">> => 35,
-                            <<"confirmations">> => 2,
-                            <<"cache_size">> => 20,
-                            <<"fetch_interval">> => 1000,
-                            <<"nodes">> =>
-                                [   #{  <<"host">> => <<"127.0.0.1">>,
-                                        <<"port">> => aecore_suite_utils:external_api_port(?PARENT_CHAIN_NODE1),
-                                        <<"user">> => <<"test">>,
-                                        <<"password">> => <<"Pass">>}
-                                ]
+                    #{  <<"start_height">> => ?CHILD_START_HEIGHT,
+                        <<"confirmations">> => ?CHILD_CONFIRMATIONS,
+                        <<"consensus">> =>
+                            #{  <<"type">> => <<"AE2AE">>,
+                                <<"network_id">> => ?PARENT_CHAIN_NETWORK_ID,
+                                <<"spend_address">> => ReceiveAddress
+                            },
+                        <<"polling">> =>
+                            #{  <<"fetch_interval">> => 100,
+                                <<"nodes">> =>
+                                    [   #{  <<"host">> => <<"127.0.0.1">>,
+                                            <<"port">> => aecore_suite_utils:external_api_port(?PARENT_CHAIN_NODE1),
+                                            <<"user">> => <<"test">>,
+                                            <<"password">> => <<"Pass">>}
+                                    ]
+                            }
                         }
+                        
                  }
         end,
     #{<<"chain">> =>
@@ -780,7 +1059,7 @@ node_config(PotentialStakers, Consensus) ->
             #{<<"network_id">> => <<"this_will_be_overwritten_runtime">>},
         <<"mining">> =>
             #{<<"micro_block_cycle">> => 1,
-            <<"autostart">> => false,
+            <<"autostart">> => true,
             <<"beneficiary_reward_delay">> => ?REWARD_DELAY
         }}.  %% this relies on certain nonce numbers
 validator_pool_contract_address() ->
@@ -795,20 +1074,69 @@ election_contract_address() ->
 election_contract_by_consensus(?CONSENSUS_HC) -> ?HC_ELECTION_CONTRACT;
 election_contract_by_consensus(?CONSENSUS_POS) -> ?POS_ELECTION_CONTRACT.
 
+produce_blocks(Node, NodeName, parent = _NodeType, BlocksCnt, _Consensus) ->
+    {ok, _} = aecore_suite_utils:mine_key_blocks(NodeName, BlocksCnt);
+produce_blocks(Node, NodeName, child = _NodeType, BlocksCnt, ?CONSENSUS_POS) ->
+    TopHeight = rpc(Node, aec_chain, top_height, []),
+    ok = aecore_suite_utils:wait_for_height(NodeName, TopHeight + BlocksCnt,
+                                            5000 * BlocksCnt), %% 5s per block
+    get_generations(Node, TopHeight + 1, TopHeight + BlocksCnt);
+produce_blocks(Node, NodeName, child = _NodeType, BlocksCnt, ?CONSENSUS_HC) ->
+    TopHeight0 = rpc(Node, aec_chain, top_height, []),
+    produce_blocks_hc(Node, NodeName, BlocksCnt),
+    TopHeight = rpc(Node, aec_chain, top_height, []),
+    get_generations(Node, TopHeight0 + 1, TopHeight).
 
-produce_validator_tx() ->
-    Who = ?BOB,
-    SCId = staking_contract_address(),
-    Tx =
-        contract_call(SCId, ?STAKING_CONTRACT,
-                            "set_validator_avatar_url",
-                            ["\"https://pbs.twimg.com/profile_images/1338340549804380160/A3oKPQuq_400x400.jpg\""], 0,
-                            pubkey(Who), 4),
-    Bin0 = aetx:serialize_to_binary(Tx),
-    Bin = aec_hash:hash(signed_tx, Bin0), %% since we are in CERES context, we sign th hash
-    NetworkId = <<"ae_smart_contract_test">>,
-    BinForNetwork = <<NetworkId/binary, Bin/binary>>,
-    Signatures = [ enacl:sign_detached(BinForNetwork, privkey(Who))],
-    SignedTx = aetx_sign:new(Tx, Signatures),
-    aeser_api_encoder:encode(transaction, aetx_sign:serialize_to_binary(SignedTx)).
+get_generations(Node, FromHeight, ToHeight) ->
+    ReversedBlocks =
+        lists:foldl(
+            fun(Height, Accum) ->
+                case rpc(Node, aec_chain, get_generation_by_height, [Height, forward]) of
+                    {ok, #{key_block := KB, micro_blocks := MBs}} ->
+                        ReversedGeneration = lists:reverse(MBs) ++ [KB],
+                        ReversedGeneration ++ Accum;
+                    error -> error({failed_to_fetch_generation, Height})
+                end
+            end,
+            [],
+            lists:seq(FromHeight, ToHeight)),
+    {ok, lists:reverse(ReversedBlocks)}.
+
+
+produce_blocks_hc(Node, NodeName, BlocksCnt) when BlocksCnt < 1 ->
+    ok;
+produce_blocks_hc(Node, NodeName, BlocksCnt) ->
+    ParentNode = ?PARENT_CHAIN_NODE1,
+    ParentNodeName = ?PARENT_CHAIN_NODE1_NAME,
+    %% make sure the parent chain is not mining
+    stopped = rpc:call(ParentNodeName, aec_conductor, get_mining_state, []),
+    %% initial child chain state
+    TopHeight = rpc(Node, aec_chain, top_height, []),
+    %% mine a single block on the parent chain
+    {ok, _} = aecore_suite_utils:mine_key_blocks(ParentNodeName, 1),
+    ok = aecore_suite_utils:wait_for_height(NodeName, TopHeight + 1, 5000), %% 5s per block
+    wait_for_commitments_in_pool(ParentNode, 2),
+    {ok, _} = aecore_suite_utils:mine_micro_blocks(ParentNodeName, 1),
+    %% wait for the child to catch up
+    produce_blocks_hc(Node, NodeName, BlocksCnt - 1).
+
+
+
+wait_for_commitments_in_pool(Node, Cnt) ->
+    wait_for_commitments_in_pool(Node, Cnt, 100).
+
+wait_for_commitments_in_pool(Node, Cnt, Attempts) when Attempts < 1 ->
+    {ok, Pool} = rpc(Node, aec_tx_pool, peek, [infinity]),
+    TxsCnt = length(Pool),
+    error({run_out_of_attempts, Cnt, TxsCnt});
+wait_for_commitments_in_pool(Node, Cnt, Attempts) ->
+    {ok, Pool} = rpc(Node, aec_tx_pool, peek, [infinity]),
+    TxsCnt = length(Pool),
+    case TxsCnt =:= Cnt of
+        true -> ok;
+        false when TxsCnt > Cnt -> error(more_tx_in_pool);
+        false ->
+            timer:sleep(30),
+            wait_for_commitments_in_pool(Node, Cnt, Attempts - 1)
+    end.
 

@@ -22,10 +22,14 @@
 %%%=============================================================================
 
 %% External API
--export([start_link/0, start_link/3, stop/0]).
+-export([start_link/6, stop/0]).
 
 %% Use in test only
+-ifdef(TEST).
+-export([start_link/0]).
 -export([trigger_fetch/0]).
+-endif.
+
 
 -export([%% async getting of blocks
          request_block_by_hash/1,
@@ -33,7 +37,10 @@
          request_top/0,
          %% blocking getting of blocks
          fetch_block_by_hash/1,
-         fetch_block_by_height/1]).
+         fetch_block_by_height/1,
+
+         post_commitment/2
+        ]).
 
 %% Callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -42,6 +49,13 @@
 -define(SERVER, ?MODULE).
 -define(SEED_BYTES, 16).
 
+-record(commitment_details,
+    {   parent_network_id  :: binary(),
+        sign_module :: module(),
+        recipient :: aec_keys:pubkey(),
+        amount :: non_neg_integer(),
+        fee :: non_neg_integer()
+    }).
 
 %% Loop state
 -record(state,
@@ -50,7 +64,8 @@
         fetch_interval = 10000, % Interval for parent top change checks
         parent_hosts = [],
         parent_top = not_yet_fetched :: not_yet_fetched | aec_parent_chain_block:block(),
-        rpc_seed = crypto:strong_rand_bytes(?SEED_BYTES) % BTC Api only
+        rpc_seed = crypto:strong_rand_bytes(?SEED_BYTES), % BTC Api only
+        c_details = #commitment_details{}
     }).
 -type state() :: #state{}.
 
@@ -58,6 +73,7 @@
 %%%=============================================================================
 %%% API
 %%%=============================================================================
+-ifdef(TEST).
 -spec start_link() -> {ok, pid()} | {error, {already_started, pid()}} | {error, Reason::any()}.
 start_link() ->
     FetchInterval = 10000,
@@ -67,21 +83,28 @@ start_link() ->
                     password => "Pass"
                     }],
     ParentConnMod = aehttpc_aeternity,
-    start_link(ParentConnMod, FetchInterval, ParentHosts).
+    start_link(ParentConnMod, FetchInterval, ParentHosts, <<"local_testnet">>,
+              aec_preset_keys, <<0:32/unit:8>>).
+-endif.
 
 %% Start the parent connector process
 %% ParentConnMod :: atom() - module name of the http client module aehttpc_btc | aehttpc_aeternity
 %% FetchInterval :: integer() | on_demand - millisecs between parent chain checks or when asked (useful for test)
 %% ParentHosts :: [#{host => Host, port => Port, user => User, password => Pass}]
--spec start_link(atom(), integer() | on_demand, [map()]) -> {ok, pid()} | {error, {already_started, pid()}} | {error, Reason::any()}.
-start_link(ParentConnMod, FetchInterval, ParentHosts) ->
-    gen_server:start_link({local, ?SERVER}, ?MODULE, [ParentConnMod, FetchInterval, ParentHosts], []).
+%% NetworkID :: binary() - the parent chain's network id 
+%% SignModule :: atom() - module name of the module that keeps the keys for the parent chain transactions to be signed
+%% Recipient :: binary() - the parent chain address to which the commitments must be sent to
+-spec start_link(atom(), integer() | on_demand, [map()], binary(), atom(), binary()) -> {ok, pid()} | {error, {already_started, pid()}} | {error, Reason::any()}.
+start_link(ParentConnMod, FetchInterval, ParentHosts, NetworkId, SignModule, Recipient) ->
+    gen_server:start_link({local, ?SERVER}, ?MODULE, [ParentConnMod, FetchInterval, ParentHosts, NetworkId, SignModule, Recipient], []).
 
 stop() ->
     gen_server:stop(?MODULE).
 
+-ifdef(TEST).
 trigger_fetch() ->
     gen_server:call(?SERVER, trigger_fetch).
+-endif.
 
 request_block_by_hash(Hash) ->
     gen_server:cast(?SERVER, {request_block_by_hash, Hash}).
@@ -93,26 +116,41 @@ request_top() ->
     ?SERVER ! check_parent.
 
 %% this blocks the caller process, use with caution
+-spec fetch_block_by_hash(binary()) -> {ok, aec_parent_chain_block:block()}
+                                     | {error, not_found | no_parent_chain_agreement}.
 fetch_block_by_hash(Hash) ->
     gen_server:call(?SERVER, {fetch_block_by_hash, Hash}).
 
 %% this blocks the caller process, use with caution
+-spec fetch_block_by_height(non_neg_integer()) -> {ok, aec_parent_chain_block:block()}
+                                                | {error, not_found | no_parent_chain_agreement}.
 fetch_block_by_height(Height) ->
     gen_server:call(?SERVER, {fetch_block_by_height, Height}).
+
+post_commitment(Who, Hash) ->
+    gen_server:call(?SERVER, {post_commitment, Who, Hash}).
 
 %%%=============================================================================
 %%% Gen Server Callbacks
 %%%=============================================================================
 
 -spec init([any()]) -> {ok, #state{}}.
-init([ParentConnMod, FetchInterval, ParentHosts]) ->
+init([ParentConnMod, FetchInterval, ParentHosts, NetworkId, SignModule, Recipient]) ->
     if is_integer(FetchInterval) ->
         erlang:send_after(FetchInterval, self(), check_parent);
         true -> ok
     end,
+    CDetails =
+        #commitment_details{ parent_network_id  = NetworkId, %% TODO: assert all nodes are having the same network id
+                             sign_module = SignModule,
+                             recipient = Recipient,
+                             amount = 0,
+                             fee = 100000000000000
+                            },
     {ok, #state{parent_conn_mod = ParentConnMod,
                 fetch_interval = FetchInterval,
-                parent_hosts = ParentHosts}}.
+                parent_hosts = ParentHosts,
+                c_details = CDetails}}.
 
 -spec handle_call(any(), any(), state()) -> {reply, any(), state()}.
 handle_call(trigger_fetch, _From, State) ->
@@ -124,6 +162,9 @@ handle_call({fetch_block_by_hash, Hash}, _From, State) ->
     {reply, Reply, State};
 handle_call({fetch_block_by_height, Height}, _From, State) ->
     Reply = handle_fetch_block(fun fetch_block_by_height/4, Height, State),
+    {reply, Reply, State};
+handle_call({post_commitment, Who, Hash}, _From, State) ->
+    Reply = post_commitment(Who, Hash, State),
     {reply, Reply, State};
 handle_call(_Request, _From, State) ->
     Reply = ok,
@@ -200,7 +241,7 @@ fetch_parent_tops(Mod, ParentNodes, Seed) ->
         fun(Host, Port, User, Password) ->
             Mod:get_latest_block(Host, Port, User, Password, Seed)
         end,
-    Fun = fun(Parent) ->fetch_block(FetchFun, Parent) end,
+    Fun = fun(Parent) -> fetch_block(FetchFun, Parent) end,
     {Good, Errors} = aeu_lib:pmap(Fun, ParentNodes, 10000),
     responses_consensus(Good, Errors, length(ParentNodes)).
 
@@ -237,10 +278,10 @@ fetch_block(FetchFun, #{host := Host, port := Port,
 %% * majority agree on a block
 responses_consensus(Good0, _Errors, TotalCount) ->
     MinRequired = TotalCount div 2,
-    Good = [{Top, Node} || {ok, {Top, Node}} <- Good0],
-    Counts = lists:foldl(fun({Top, _Node}, Acc) ->
+    Good = [{Res, Node} || {ok, {Res, Node}} <- Good0],
+    Counts = lists:foldl(fun({Res, _Node}, Acc) ->
                             Fun = fun(V) -> V + 1 end,
-                            maps:update_with(Top, Fun, 1, Acc)
+                            maps:update_with(Res, Fun, 1, Acc)
                         end, #{}, Good),
     NotFoundsCnt = length([1 || {error, not_found} <- Good0]),
     case maps:size(Counts) =:= 0 of
@@ -249,11 +290,17 @@ responses_consensus(Good0, _Errors, TotalCount) ->
         true ->
             {error, no_parent_chain_agreement};
         false ->
-            {MostReturnedTop, Qty} = lists:last(lists:keysort(2, maps:to_list(Counts))),
+            {MostReturnedResult, Qty} =
+                maps:fold(
+                    fun(K, V, {_,Max} = Acc) when V > Max -> {K,V};
+                       (_K, V, Acc) -> Acc
+                    end,
+                    {undefined, 0},
+                    Counts),
             %% Need Qty to be > half of the total number of configured nodes ??
             if Qty > MinRequired ->
-                {_, Node} = lists:keyfind(MostReturnedTop, 1, Good),
-                {ok, MostReturnedTop, Node};
+                {_, Node} = lists:keyfind(MostReturnedResult, 1, Good),
+                {ok, MostReturnedResult, Node};
             true ->
                 case NotFoundsCnt > MinRequired of
                     true -> {error, not_found};
@@ -283,5 +330,41 @@ handle_fetch_block(Fun, Arg,
             %% TODO: decide what to do: this is likely happening because of
             %% rapid parent chain reorganizations
             lager:warning("Parent nodes are unable to reach consensus", []),
+            Err
+    end.
+
+post_commitment(Who, Commitment,
+            #state{ parent_hosts = ParentNodes,
+                    parent_conn_mod = Mod,
+                    rpc_seed = _Seed,
+                    c_details = CDetails}) ->
+    #commitment_details{
+        parent_network_id = PCNetworkId,
+        recipient = Receiver,
+        sign_module = SignModule,
+        amount = Amount,
+        fee = Fee} = CDetails,
+    Fun =
+        fun(#{host := Host, port := Port, user := _User, password := _Password} = Node) ->
+            case Mod:post_commitment(Host, Port, Who, Receiver, Amount, Fee,
+                                     Commitment, PCNetworkId, SignModule) of
+                {ok, #{<<"tx_hash">> := TxHash}} -> {ok, {TxHash, Node}};
+                {error, 400, _E} ->
+                    {error, invalid_transaction}
+            end
+        end,
+    %% Parallel post to all blocks
+    %% TODO: decide if we expect consensus or not
+    %% TODO: maybe track a transaction's progress?
+    {Good, Errors} = aeu_lib:pmap(Fun, ParentNodes, 10000),
+    case responses_consensus(Good, Errors, length(ParentNodes)) of
+       {ok, TxHash, _} when is_binary (TxHash) -> ok;
+        {ok, {error, invalid_transaction}, _} ->
+            lager:warning("Unable to post commitment: invalid_transaction", []),
+            {error, invalid_transaction};
+        {error, no_parent_chain_agreement} = Err ->
+            %% TODO: decide what to do: this is likely happening because of
+            %% rapid parent chain reorganizations
+            lager:warning("Parent nodes are unable to reach consensus regarding posted commitment", []),
             Err
     end.

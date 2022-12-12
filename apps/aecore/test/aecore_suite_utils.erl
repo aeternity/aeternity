@@ -48,6 +48,7 @@
          wait_for_tx_in_pool/2,
          wait_for_tx_in_pool/3,
          wait_for_height/2,
+         wait_for_height/3,
          flush_new_blocks/0,
          spend/5,         %% (Node, FromPub, ToPub, Amount, Fee) -> ok
          sign_on_node/2,
@@ -533,7 +534,7 @@ make_multi(Config, NodesList) ->
 
 make_multi(Config, NodesList, RefRebarProfile) ->
     ct:log("RefRebarProfile = ~p", [RefRebarProfile]),
-    Top = ?config(top_dir, Config),
+    Top = proplists:get_value(top_dir, Config),
     ct:log("Top = ~p", [Top]),
     Root = filename:join(Top, "_build/" ++ RefRebarProfile ++ "/rel/aeternity"),
     [setup_node(N, Top, Root, Config) || N <- NodesList].
@@ -802,7 +803,7 @@ mine_blocks_loop(Cnt, Type) ->
 mine_blocks_loop(Blocks, 0, _Type) ->
     {ok, Blocks};
 mine_blocks_loop(Blocks, BlocksToMine, Type) when is_integer(BlocksToMine), BlocksToMine > 0 ->
-    {ok, Block} = wait_for_new_block(),
+    {ok, Block} = wait_for_new_block_mined(),
     case aec_blocks:type(Block) of
         Type1 when Type =/= any andalso Type =/= Type1 ->
             %% Don't decrement
@@ -811,10 +812,10 @@ mine_blocks_loop(Blocks, BlocksToMine, Type) when is_integer(BlocksToMine), Bloc
             mine_blocks_loop([Block | Blocks], BlocksToMine - 1, Type)
     end.
 
-wait_for_new_block() ->
-    wait_for_new_block(30000).
+wait_for_new_block_mined() ->
+    wait_for_new_block_mined(30000).
 
-wait_for_new_block(T) when is_integer(T), T >= 0 ->
+wait_for_new_block_mined(T) when is_integer(T), T >= 0 ->
     receive
         {gproc_ps_event, block_created, Info} ->
             #{info := Block} = Info,
@@ -835,29 +836,58 @@ wait_for_new_block(T) when is_integer(T), T >= 0 ->
             {error, timeout_waiting_for_block}
     end.
 
+wait_for_new_block() ->
+    wait_for_new_block(30000).
+
+wait_for_new_block(T) when is_integer(T), T >= 0 ->
+    receive
+        {gproc_ps_event, top_changed, #{info := #{block_hash := _Hash}}} ->
+            ok
+    after
+        T ->
+            case T of
+                0 ->
+                    not_logging;
+                _ ->
+                    ct:log("timeout waiting for block event~n"
+                           "~p", [process_info(self(), messages)])
+            end,
+            {error, timeout_waiting_for_block}
+    end.
+
 flush_new_blocks() ->
     flush_new_blocks_([]).
 
 flush_new_blocks_(Acc) ->
-    case wait_for_new_block(0) of
+    case wait_for_new_block_mined(0) of
         {error, timeout_waiting_for_block} ->
             lists:reverse(Acc);
         {ok, Block} ->
             flush_new_blocks_([Block | Acc])
     end.
 
+flush_new_blocks_produced() ->
+    case wait_for_new_block(0) of
+        {error, timeout_waiting_for_block} -> ok;
+        ok ->
+            flush_new_blocks_produced()
+    end.
+
+
 %% block the process until a certain height is reached
 %% this has the expectation that the Node is mining
 %% there is a timeout of 30 seconds for a single block to be produced
 wait_for_height(Node, Height) ->
-    flush_new_blocks(),
-    subscribe(Node, block_created),
-    subscribe(Node, micro_block_created),
-    wait_for_height_(Node, Height),
-    unsubscribe(Node, block_created),
-    unsubscribe(Node, micro_block_created).
+    wait_for_height(Node, Height, 30000).
 
-wait_for_height_(Node, Height) ->
+wait_for_height(Node, Height, TimeoutPerBlock) ->
+    flush_new_blocks_produced(),
+    subscribe(Node, top_changed),
+    ok = wait_for_height_(Node, Height, TimeoutPerBlock),
+    unsubscribe(Node, top_changed),
+    ok.
+
+wait_for_height_(Node, Height, TimeoutPerBlock) ->
     TopHeight =
         case rpc:call(Node, aec_chain, top_header, []) of
             undefined -> 0;
@@ -867,8 +897,12 @@ wait_for_height_(Node, Height) ->
         true -> % reached height
             ok;
         false ->
-            _ = wait_for_new_block(),
-            wait_for_height_(Node, Height)
+            case wait_for_new_block(TimeoutPerBlock) of
+                {error, timeout_waiting_for_block} ->
+                    {error, timeout_waiting_for_block, {top, TopHeight}, {waiting_for, Height}};
+                ok ->
+                    wait_for_height_(Node, Height, TimeoutPerBlock)
+            end
     end.
 
 spend(Node, FromPub, ToPub, Amount, Fee) ->
@@ -1834,7 +1868,11 @@ rpc(Mod, Fun, Args) ->
     rpc(?DEFAULT_NODE, Mod, Fun, Args).
 
 rpc(Node, Mod, Fun, Args) ->
-    rpc:call(node_name(Node), Mod, Fun, Args, 5000).
+    case rpc:call(node_name(Node), Mod, Fun, Args, 5000) of
+        {badrpc, Reason} ->
+            error({badrpc, Reason});
+        R -> R
+    end.
 
 generate_key_pair() ->
     #{ public := Pubkey, secret := Privkey } = enacl:sign_keypair(),

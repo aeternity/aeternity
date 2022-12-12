@@ -1051,7 +1051,9 @@ start_block_production_(#state{ mode = stratum,
     State1;
 start_block_production_(#state{mode = pos, key_block_candidates = [{ForSealing, Candidate} | Candidates]} = State) ->
     case available_instance(State) of
-        none -> State;
+        none ->
+            epoch_mining:debug("No available instance", []),
+            State;
         Instance ->
             epoch_mining:info("Starting PoS block generator on top of ~p", [State#state.top_block_hash]),
             Consensus         = aec_blocks:consensus_module(Candidate#candidate.block),
@@ -1252,6 +1254,7 @@ handle_key_block_candidate_reply({{ok, KeyBlockCandidate}, TopHash},
                       [aec_blocks:target(KeyBlockCandidate),
                        aec_blocks:difficulty(KeyBlockCandidate)]),
     {ForSealing, Candidate} = make_key_candidate(KeyBlockCandidate),
+
     Candidates = case Candidates0 of
                      undefined -> [{ForSealing, Candidate}];
                      _         -> [{ForSealing, Candidate} | Candidates0]
@@ -1264,10 +1267,10 @@ handle_key_block_candidate_reply({{ok, _KeyBlockCandidate}, _OldTopHash},
     create_key_block_candidate(State);
 handle_key_block_candidate_reply({{error, key_not_found}, _}, State) ->
     start_block_production_(State#state{keys_ready = false});
-handle_key_block_candidate_reply({{error, Reason}, _}, State)
+handle_key_block_candidate_reply({{error, Reason}, _}, #state{top_height = Height} = State)
         when Reason =:= not_in_cache; 
              Reason =:= not_leader ->
-    epoch_mining:debug("Creation of key block candidate failed: ~p", [Reason]),
+    epoch_mining:debug("Creation of key block candidate (~p) failed: ~p", [Height + 1, Reason]),
     create_key_block_candidate(State);
 handle_key_block_candidate_reply({{error, Reason}, _}, State) ->
     epoch_mining:error("Creation of key block candidate failed: ~p", [Reason]),

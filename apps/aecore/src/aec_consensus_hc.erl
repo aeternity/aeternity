@@ -15,6 +15,7 @@
 -define(SIGNATURE_SIZE, 16).
 -define(ETS_CACHE_TABLE, ?MODULE).
 -define(ELECTION_CONTRACT, election).
+-define(STAKING_CONTRACT, staking).
 -define(REWARDS_CONTRACT, rewards).
 
 %% API
@@ -72,6 +73,10 @@
         , is_leader_valid/3
         ]).
 
+%% HC specific API
+-export([ parent_chain_validators/2
+        ]).
+
 -include_lib("aecontract/include/hard_forks.hrl").
 -include("blocks.hrl").
 -include("aec_consensus.hrl").
@@ -82,15 +87,26 @@ assert_config(_Config) -> ok.
 start(Config) ->
     #{<<"stakers">> := StakersEncoded,
       <<"parent_chain">> :=
-        #{<<"type">> := PCType,
-          <<"fetch_interval">> := FetchInterval,
-          <<"nodes">> := Nodes0,
-          <<"confirmations">> := Confirmations,
-          <<"cache_size">> := CacheSize,
-          <<"start_height">> := StartHeight}} = Config,
+        #{  <<"start_height">> := StartHeight,
+            <<"confirmations">> := Confirmations,
+            <<"consensus">> :=
+                #{  <<"type">> := PCType,
+                    <<"network_id">> := NetworkId,
+                    <<"spend_address">> := PCSpendAddress
+                 },
+            <<"polling">> :=
+                #{  <<"fetch_interval">> := FetchInterval,
+                    <<"nodes">> := Nodes0
+                 } = Polling
+          }} = Config,
+    CacheSize = maps:get(<<"cache_size">>, Polling, 200),
     Stakers =
         lists:map(
-            fun(#{<<"pub">> := EncodedPubkey, <<"priv">> := EncodedPrivkey}) ->
+            fun(#{<<"hyper_chain_account">> := #{<<"pub">> := EncodedPubkey,
+                                                 <<"priv">> := EncodedPrivkey},
+                  <<"parent_chain_account">> := #{<<"pub">> := _EncodedPubkey,
+                                                  <<"priv">> := _EncodedPrivkey}
+                 }) ->
                 {ok, Pubkey} = aeser_api_encoder:safe_decode(account_pubkey,
                                                              EncodedPubkey),
                 Privkey = aeu_hex:hex_to_bin(EncodedPrivkey),
@@ -108,7 +124,7 @@ start(Config) ->
     lager:debug("Stakers: ~p", [StakersMap]),
     ParentConnMod =
         case PCType of
-            <<"AE">> -> aehttpc_aeternity
+            <<"AE2AE">> -> aehttpc_aeternity
         end,
     ParentHosts =
         lists:map(
@@ -123,7 +139,11 @@ start(Config) ->
                   password => Pass}
             end,
             Nodes0),
-    start_dependency(aec_parent_connector, [ParentConnMod, FetchInterval, ParentHosts]),
+    SignModule = get_sign_module(),
+    {ok, PCSpendPubkey} = aeser_api_encoder:safe_decode(account_pubkey, PCSpendAddress),
+    start_dependency(aec_parent_connector, [ParentConnMod, FetchInterval,
+                                            ParentHosts, NetworkId,
+                                            SignModule, PCSpendPubkey]),
     start_dependency(aec_parent_chain_cache, [StartHeight, CacheSize, Confirmations]),
     ok.
 
@@ -131,7 +151,7 @@ start_dependency(Mod, Args) ->
     %% TODO: ditch this after we move beyond OTP24
     OldSpec =
         {Mod, {Mod, start_link, Args}, permanent, 3000, worker, [Mod]},
-    aec_consensus_sup:start_child(OldSpec).
+    {ok, _} = aec_consensus_sup:start_child(OldSpec).
 
 stop() ->
     aec_preset_keys:stop(),
@@ -168,7 +188,7 @@ state_pre_transform_key_node(Node, Trees) ->
               Header, aec_block_insertion:node_hash(Node),
               aec_block_insertion:node_time(Node), aec_block_insertion:node_prev_hash(Node)),
     Height = aetx_env:height(TxEnv),
-    PCHeight = Height + pc_start_height(),
+    PCHeight = pc_height(Height),
     case aec_parent_chain_cache:get_block_by_height(PCHeight) of
         {error, not_in_cache} ->
             aec_conductor:throw_error(parent_chain_block_not_synced);
@@ -323,7 +343,7 @@ set_key_block_seal(KeyBlock0, Seal) ->
     {TxEnv0, Trees} = aetx_env:tx_env_and_trees_from_top(aetx_transaction),
     Height0 = aetx_env:height(TxEnv0),
     Height = Height0 + 1,
-    PCHeight = Height + pc_start_height(),
+    PCHeight = pc_height(Height),
     {ok, Block} = aec_parent_chain_cache:get_block_by_height(PCHeight),
     Hash = aec_parent_chain_block:hash(Block),
     ParentHash = binary_to_list(Hash),
@@ -345,7 +365,7 @@ set_key_block_seal(KeyBlock0, Seal) ->
 
 nonce_for_sealing(Header) ->
     Height = aec_headers:height(Header),
-    PCHeight = Height + pc_start_height(),
+    PCHeight = pc_height(Height),
     PCHeight.
 
 next_nonce_for_sealing(PCHeight, _) ->
@@ -453,7 +473,8 @@ call_consensus_contract_(ContractType, TxEnv, Trees, EncodedCallData, Keyword, A
     ContractPubkey =
         case ContractType of
             ?ELECTION_CONTRACT -> election_contract_pubkey();
-            ?REWARDS_CONTRACT -> rewards_contract_pubkey()
+            ?REWARDS_CONTRACT -> rewards_contract_pubkey();
+            ?STAKING_CONTRACT -> rewards_contract_pubkey()
         end,
     OwnerPubkey = contract_owner(),
     Contract = aect_state_tree:get_contract(ContractPubkey,
@@ -515,7 +536,7 @@ next_beneficiary() ->
     {TxEnv0, Trees} = aetx_env:tx_env_and_trees_from_top(aetx_transaction),
     Height0 = aetx_env:height(TxEnv0),
     Height = Height0 + 1,
-    PCHeight = Height + pc_start_height(),
+    PCHeight = pc_height(Height), 
     case aec_parent_chain_cache:get_block_by_height(PCHeight) of
         {ok, Block} ->
             Hash = aec_parent_chain_block:hash(Block),
@@ -540,7 +561,9 @@ next_beneficiary() ->
                 ok ->
                     {ok, Leader}
             end;
-        {error, _} ->
+        {error, _Err} ->
+            lager:debug("Unable to pick the next leader for height ~p, parent height ~p; reason is ~p",
+                        [Height, PCHeight, _Err]),
             timer:sleep(1000),
             {error, not_in_cache}
     end.
@@ -564,6 +587,25 @@ is_leader_valid(Node, Trees, TxEnv) ->
         {error, What} ->
             lager:info("Block validation failed with a reason ~p", [What]),
             false
+    end.
+
+parent_chain_validators(TxEnv, Trees) ->
+    %% TODO: cache this
+    %% this could be cached: we only need to track contract call events for
+    %% validator creation and going online and offline
+    {ok, CD} = aeb_fate_abi:create_calldata("sorted_validators", []),
+    CallData = aeser_api_encoder:encode(contract_bytearray, CD),
+    case call_consensus_contract_(?STAKING_CONTRACT, TxEnv, Trees, CallData,
+                                  "sorted_validators()", 0) of
+        {ok, _Trees1, Call} ->
+            SortedValidators =
+                lists:map(
+                    fun({tuple, {{address, Address}, _Amt}}) -> Address end,
+                    aeb_fate_encoding:deserialize(aect_call:return_value(Call))),
+            {ok, SortedValidators};
+        {error, What} ->
+            lager:warning("Unable to fetch validators from the contract because of ~p", [What]),
+            error
     end.
 
 create_contracts([], _TxEnv, Trees) -> Trees;
@@ -643,3 +685,5 @@ call_contracts([Call | Tail], TxEnv, TreesAccum) ->
 seal_padding_size() ->
     ?KEY_SEAL_SIZE - ?SIGNATURE_SIZE.
 
+pc_height(ChildHeight) ->
+    ChildHeight + pc_start_height() - 1.%% child starts pinning from height 1, not genesis
