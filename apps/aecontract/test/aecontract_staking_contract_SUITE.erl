@@ -170,8 +170,8 @@ end_per_suite(_Config) ->
 
 init_per_group(_, Config) ->
     case aect_test_utils:latest_protocol_version() of
-        PreCeres when PreCeres < ?CERES_PROTOCOL_VSN ->
-            {skip, from_ceres_on};
+        PreIris when PreIris < ?IRIS_PROTOCOL_VSN ->
+            {skip, from_iris_on};
         _ ->
             aect_test_utils:init_per_group(fate, Config, fun(X) -> X end)
     end.

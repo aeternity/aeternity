@@ -168,9 +168,10 @@ pogf_detected(_H1, _H2) -> ok.
 %% Genesis block
 genesis_transform_trees(Trees0, #{}) ->
     NetworkId = aec_governance:get_network_id(),
+    GenesisProtocol = genesis_protocol_version(),
     {ok, #{ <<"contracts">> := Contracts
           , <<"calls">> := Calls }} =
-        aec_fork_block_settings:hc_seed_contracts(?CERES_PROTOCOL_VSN, NetworkId),
+        aec_fork_block_settings:hc_seed_contracts(GenesisProtocol, NetworkId),
     GenesisHeader = genesis_raw_header(),
     {ok, GenesisHash} = aec_headers:hash_header(GenesisHeader),
     TxEnv = aetx_env:tx_env_from_key_header(GenesisHeader,
@@ -182,6 +183,7 @@ genesis_transform_trees(Trees0, #{}) ->
     aect_call_state_tree:prune(0, Trees).
 
 genesis_raw_header() ->
+    GenesisProtocol = genesis_protocol_version(),
     aec_headers:new_key_header(
         0,
         aec_governance:contributors_messages_hash(),
@@ -194,7 +196,7 @@ genesis_raw_header() ->
         0,
         0,
         default,
-        ?CERES_PROTOCOL_VSN).
+        GenesisProtocol).
 genesis_difficulty() -> 0.
 
 key_header_for_sealing(Header) ->
@@ -329,6 +331,13 @@ expected_key_block_rate() ->
               ExpectedRate
       end).
 
+genesis_protocol_version() ->
+    aeu_ets_cache:get(
+      ?ETS_CACHE_TABLE,
+      genesis_protocol_version,
+      fun() ->
+            hd(lists:sort(maps:keys(aec_hard_forks:protocols())))
+      end).
 
 call_consensus_contract(Contract, Node, Trees, EncodedCallData, Keyword) ->
     call_consensus_contract(Contract, Node, Trees, EncodedCallData, Keyword, 0).
