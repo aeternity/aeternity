@@ -1,3 +1,4 @@
+%% -*- mode: erlang; erlang-indent-level: 4; indent-tabs-mode: nil -*-
 %% @doc This modules implements the State Channel FSM and its external API. The
 %% FSM is used for both state channel roles, 'responder' and 'initiator',
 %% because most logic is shared with the initialization being specific to the
@@ -367,7 +368,7 @@ dry_run_contract(Fsm, #{ contract    := _
 %% Used by noise session
 
 message(Fsm, {T, _} = Msg) when ?KNOWN_MSG_TYPE(T) ->
-    lager:debug("message(~p, ~p)", [Fsm, Msg]),
+    lager:debug("message(~p, ~p)", [Fsm, aesc_session_noise:pp_msg(Msg)]),
     gen_statem:cast(Fsm, Msg).
 
 noise_connected(Fsm) ->
@@ -3767,23 +3768,17 @@ check_attach_info(Info, #data{opts = Opts} = D) ->
     #{initiator := I, responder := R} = Opts,
     check_attach_info(Info, I, R, D).
 
-check_attach_info(#{reestablish := true} = Info, _I, R, #data{on_chain_id = ChannelId}) ->
+check_attach_info(#{reestablish := true} = Info, _I, _R, #data{on_chain_id = ChannelId}) ->
+    %% The 'reestablish' message in the SC protocol only includes the chain hash and
+    %% the channel_id, so these are the only things it makes sense to check.
     ChainHash = aec_chain:genesis_hash(),
     lager:debug("Info = ~p, ChainHash = ~p, ChannelId = ~p", [Info, ChainHash, ChannelId]),
     case Info of
         #{ chain_hash := ChainHash
-         , channel_id := ChannelId
-         , responder  := R
-         , port       := _Port
-         , gproc_key  := _K } ->
+         , channel_id := ChannelId } ->
             ok;
         _ ->
-            case maps:find(responder, Info) of
-                {ok, R1} when R1 =/= R ->
-                    {error, responder_key_mismatch};
-                _Other ->
-                    {error, unrecognized_attach_info}
-            end
+            {error, unrecognized_attach_info}
     end;
 check_attach_info(#{ initiator := I1
                    , responder := R1
@@ -3840,7 +3835,6 @@ check_limits(Opts) ->
     end.
 
 init_(#{opts := Opts0} = Arg) ->
-    
     {ReestablishOpts, ConnectOpts, Opts1} =
         { maps:with(?REESTABLISH_OPTS_KEYS, Opts0)
         , connection_opts(Arg)
@@ -4171,10 +4165,9 @@ invalid(What) ->
 prepare_for_reestablish(#data{ opts = Opts
                              , on_chain_id = ChanId } = D) ->
     try
-        {ok, _SessionPid} = start_noise_session(#{existing_channel_id => ChanId},
-                                                Opts#{role => responder}),
-        %% We don't save the session pid here
-        D
+        {ok, SessionPid} = start_noise_session(#{existing_channel_id => ChanId},
+                                               Opts#{role => responder}),
+        D#data{session = #prelim_session{pid = SessionPid}}
     ?CATCH_LOG(_E)
             D
     end.
@@ -4221,8 +4214,9 @@ noise_accept(_SessionOpts, _NoiseOpts, Attempts, #{ responder := Responder
     {error, Error};
 noise_accept(SessionOpts, NoiseOpts, Attempts, COpts) ->
     case aesc_session_noise:accept(SessionOpts, NoiseOpts) of
-        {ok, Pid} ->
-            {ok, Pid};
+        ok ->
+            %% We don't get a pid yet. Albeit unelegant, return an 'undefined' pid
+            {ok, undefined};
         {error, Err} ->
             lager:warning("Noise accept failed with ~p", [Err]),
             noise_accept(SessionOpts, NoiseOpts, Attempts - 1, COpts)
@@ -5030,7 +5024,13 @@ handle_info(Msg, #data{cur_statem_state = St} = D) ->
 %% * discard   - handle calls, but drop unknown casts (could be e.g. a stray
 %%               signing reply in the open state).
 handle_common_event(E, Msg, M, #data{cur_statem_state = St} = D) ->
-    lager:debug("handle_common_event(~p, ~p, ~p, ~p, D)", [E, Msg, St, M]),
+    case M of
+        discard ->
+            %% Don't log debug as it risks flooding logs
+            ok;
+        _ ->
+            lager:debug("handle_common_event(~p, ~p, ~p, ~p, D)", [E, Msg, St, M])
+    end,
     handle_common_event_(E, Msg, St, M, D).
 
 handle_common_event_(timeout, Info, _St, _M, D) when D#data.ongoing_update == true ->
@@ -5781,7 +5781,7 @@ apply_non_malicious_txs_([], #data{} = Data) -> %% applied all
     {ok, Data};
 apply_non_malicious_txs_([{BlockHash, SignedTx} | Rest],
                          #data{state = State0, opts = Opts} = Data) when
-is_binary(BlockHash) -> 
+is_binary(BlockHash) ->
     Aetx = aetx_sign:innermost_tx(SignedTx),
     {Mod, Tx} = aetx:specialize_callback(Aetx),
     State =
@@ -5852,4 +5852,3 @@ is_onchain_tx_malicious(Mod, Tx, State, BlockHash) when is_binary(BlockHash) ->
             when UnexpectedRound < LastValidRound + 1 -> true;
         _ -> false
     end.
-

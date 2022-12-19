@@ -1414,7 +1414,34 @@
                     "description" : "Max number of active state channel clients allowed on node",
                     "type" : "integer",
                     "default" : 1000
-                }
+                },
+		"ad_hoc_listen_ports" : {
+		    "type" : "boolean",
+		    "description" : "Whether to allow responders to listen on any ports other than preconfigured ones",
+		    "default" : true
+		},
+		"listeners" : {
+		    "description" : "Pre-configured responder listen ports",
+		    "type" : "array",
+		    "items" : {
+			"type" : "object",
+			"additionalProperties" : false,
+			"required" : [
+			    "port"
+			],
+			"properties" : {
+			    "port" : {
+				"type" : "integer",
+				"description" : "Listen port number"
+			    },
+			    "acceptors" : {
+				"type" : "integer",
+				"description" : "Number of concurrent acceptors on port (default: 1)",
+				"default" : 1
+			    }
+			}
+		    }
+		}
             }
         },
         "websocket" : {
