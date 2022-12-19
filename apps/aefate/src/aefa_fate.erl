@@ -259,8 +259,10 @@ abort({auth_tx_type_not_handled, TxType}, ES) ->
 abort(E) -> throw({add_engine_state, E}).
 
 execute(EngineState) ->
-    Instructions = aefa_engine_state:current_bb_instructions(EngineState),
-    loop(Instructions, EngineState).
+    Skip = aefa_engine_state:skip_instructions(EngineState),
+    AllInstructions = aefa_engine_state:current_bb_instructions(EngineState),
+    Instructions = lists:nthtail(Skip, AllInstructions),
+    loop(Instructions, aefa_engine_state:set_skip_instructions(0, EngineState)).
 
 loop(Instructions, EngineState) ->
     case step(Instructions, EngineState) of
@@ -286,8 +288,11 @@ step([], EngineState) ->
     {jump, BB, EngineState};
 step([I|Is], EngineState0) ->
     ES = ?trace(I, EngineState0),
-    case aefa_engine_state:breakpoint_stop(EngineState0) of
-        true -> {break, ES};
+    case aefa_engine_state:breakpoint_stop(ES) of
+        true ->
+            InstructionsCount = length(aefa_engine_state:current_bb_instructions(ES)),
+            InstructionsSkip = InstructionsCount - length(Is) - 1,
+            {break, aefa_engine_state:set_skip_instructions(InstructionsSkip, ES)};
         false ->
             try aefa_fate_eval:eval(I, ES) of
                 {next, NewState} -> step(Is, NewState);

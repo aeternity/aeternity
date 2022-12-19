@@ -35,6 +35,7 @@
         , consensus_version/1
         , breakpoints/1
         , breakpoint_stop/1
+        , skip_instructions/1
         ]).
 
 %% Setters
@@ -58,6 +59,7 @@
         , set_stores/2
         , set_trace/2
         , set_breakpoint_stop/2
+        , set_skip_instructions/2
         ]).
 
 %% More complex stuff
@@ -132,6 +134,7 @@
             , vm_version        :: non_neg_integer()
             , breakpoints       :: sets:set()
             , breakpoint_stop   :: boolean()
+            , skip_instructions :: integer()
             }).
 
 -opaque state() :: #es{}.
@@ -166,6 +169,7 @@ new(Gas, Value, Spec, Stores, APIState, CodeCache, VMVersion) ->
        , vm_version        = VMVersion
        , breakpoints       = sets:new()
        , breakpoint_stop   = false
+       , skip_instructions = 0
        }.
 
 new_dbg(Gas, Value, Spec, Stores, APIState, CodeCache, VMVersion, Breakpoints) ->
@@ -890,3 +894,13 @@ consensus_version(#es{chain_api = Api}) ->
 -spec breakpoints(state()) -> sets:set().
 breakpoints(#es{breakpoints = Breakpoints}) ->
     Breakpoints.
+
+%%%------------------
+
+-spec skip_instructions(state()) -> integer().
+skip_instructions(#es{skip_instructions = Skip}) ->
+    Skip.
+
+-spec set_skip_instructions(integer(), state()) -> state().
+set_skip_instructions(Skip, ES) ->
+    ES#es{skip_instructions = Skip}.
