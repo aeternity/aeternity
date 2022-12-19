@@ -400,10 +400,11 @@ schema_key_names(NamePfx, KeyPfx, Map, Acc0) when is_map(Map) ->
       fun(SubKey, SubMap, Acc) ->
               NamePfx1 = NamePfx ++ "__" ++ string:to_upper(binary_to_list(SubKey)),
               KeyPfx1 = KeyPfx ++ [SubKey],
-              Acc1 = case os:getenv(NamePfx1) of
+              EnvKey = unhyphenate(NamePfx1),
+              Acc1 = case os:getenv(EnvKey) of
                          false -> Acc;
                          Value ->
-                             [{NamePfx1, KeyPfx1, Value} | Acc]
+                             [{EnvKey, KeyPfx1, Value} | Acc]
                      end,
               case maps:find(<<"properties">>, SubMap) of
                   error ->
@@ -412,6 +413,12 @@ schema_key_names(NamePfx, KeyPfx, Map, Acc0) when is_map(Map) ->
                       schema_key_names(NamePfx1, KeyPfx1, Props, Acc1)
               end
       end, Acc0, Map).
+
+%% Unfortunately, the config schema contains some names with hyphens in them.
+%% Since hyphens aren't allowed in OS environment names, we replace them with underscores.
+%% This should be safe, since we DO NOT stupidly have names that differ only on '-' v '_'.
+unhyphenate(Str) ->
+    re:replace(Str, <<"\\-">>, <<"_">>, [global, {return, list}]).
 
 %% ======================================================================
 
