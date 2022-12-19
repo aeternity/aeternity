@@ -166,10 +166,9 @@ info_micro_block(#{block_type := micro, block_hash := BHash, height := Height}) 
             Txs = aec_blocks:txs(Block),
             lager:info("New micro block - height: ~p, ~p txs",
                        [Height, length(Txs)]);
-        {error, Reason} ->
+        error ->
             %% Shouldn't happen
-            lager:info("New micro block - height: ~p, CANNOT READ (~p)",
-                       [Height, Reason])
+            lager:info("New micro block - height: ~p, CANNOT READ", [Height])
     end.
 
 flush_tx_events() ->
