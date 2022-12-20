@@ -2283,8 +2283,29 @@
                     }
                 }
             }
+        },
+        "dev_mode" : {
+            "type" : "object",
+            "description" : "Settings for when dev mode consensus is activated",
+            "additionalProperties" : false,
+            "properties" : {
+                "keyblock_interval" : {
+                    "type" : "integer",
+                    "default" : 0,
+                    "description" : "Interval, in seconds, between keyblocks. If 0, keyblocks are only produced on-demand"
+                },
+                "microblock_interval" : {
+                    "type" : "integer",
+                    "default" : 0,
+                    "description" : "Interval, in seconds, between microblocks. If 0, microblocks are only produced on-demand"
+                },
+                "auto_emit_microblocks" : {
+                    "type" : "boolean",
+                    "default" : false,
+                    "description" : "Emit microblocks as soon as transactions have been pushed to the mempool"
+                }
+            }
         }
-
     },
     "definitions" : {
         "key_value_pattern": {
