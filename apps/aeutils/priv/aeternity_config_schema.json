@@ -1310,7 +1310,7 @@
                             "description" : "Transactions insection endpoints",
                             "type" : "boolean"
                         },
-                        "node_operator" : {
+                        "node-operator" : {
                             "description" : "Node operator endpoints",
                             "type" : "boolean",
                             "default" : false
