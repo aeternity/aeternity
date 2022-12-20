@@ -51,6 +51,8 @@
 -define(PRE_IRIS_VSN, 1).
 -define(GA_META_TX_TYPE, ga_meta_tx).
 
+-define(AUTH_DATA_VSN, 1).
+
 %% Should this be in a header file somewhere?
 -define(PUB_SIZE, 32).
 
@@ -380,6 +382,13 @@ valid_at_protocol(P, #ga_meta_tx{ tx = SignedTx }) ->
     P >= ?FORTUNA_PROTOCOL_VSN andalso
         aetx:valid_at_protocol(P, aetx_sign:tx(SignedTx)).
 
+-spec serialize_auth_data(non_neg_integer(), non_neg_integer(), binary()) -> binary().
+serialize_auth_data(Fee, GasPrice, TxBinary) ->
+    TxHash = aec_hash:hash(tx, TxBinary),
+    SerTemplate = auth_data_serialization_template(?AUTH_DATA_VSN),
+    aeser_chain_objects:serialize(ga_meta_tx_auth_data, ?AUTH_DATA_VSN, SerTemplate,
+                                  [{fee, Fee}, {gas_price, GasPrice}, {tx_hash, TxHash}]).
+
 %%%===================================================================
 %%% Internal functions
 
@@ -401,10 +410,6 @@ auth_data_inner_tx(P, #ga_meta_tx{} = Tx) ->
             {InnerTx, aec_hash:hash(tx, serialize_auth_data(Fee, GasPrice, BinForNetwork))}
     end.
 
-serialize_auth_data(Fee, GasPrice, Binary) ->
-    Hash = aec_hash:hash(tx, Binary),
-    <<Fee:256, GasPrice:256, Hash/binary>>.
-
 set_ga_context(Env0, Tx) ->
     Env1 = aetx_env:set_context(Env0, aetx_ga),
     Env2 = aetx_env:add_ga_auth_id(Env1, ga_pubkey(Tx)),
@@ -415,3 +420,9 @@ reset_ga_context(Env0, Tx, OldEnv) ->
     Env1 = aetx_env:set_context(Env0, aetx_env:context(OldEnv)),
     Env2 = aetx_env:del_ga_auth_id(Env1, ga_pubkey(Tx)),
     aetx_env:del_ga_nonce(Env2, ga_pubkey(Tx)).
+
+auth_data_serialization_template(?AUTH_DATA_VSN) ->
+  [ {fee, int}
+  , {gas_price, int}
+  , {tx_hash, binary}
+  ].
