@@ -148,17 +148,22 @@ load_plugin_apps(Path) ->
         {ok, Objs} ->
             lager:info("Plugin Objs = ~p", [Objs]),
             NameStrs = [Name || #{<<"name">> := Name} <- Objs],
-            case names_not_found(NameStrs, Path) of
+            LibDirs = setup:lib_dirs_under_path(Path),
+            case names_not_found(NameStrs, LibDirs) of
                 [] ->
-                    case try_patch_apps(NameStrs, setup:lib_dirs_under_path(Path)) of
+                    case try_patch_apps(NameStrs, LibDirs) of
                         [] ->
                             ok;
-                        Apps ->
+                        {Apps, []} ->
                             lager:info("== PLUGINS: ~p ==", [Apps]),
-                            check_for_missing_deps(Apps),
-                            app_ctrl:check_for_new_applications(),
-                            [maybe_start_application(A) || A <- Apps],
-                            ok
+                            case check_for_missing_deps(Apps, LibDirs) of
+                                ok ->
+                                    app_ctrl:check_for_new_applications(),
+                                    [maybe_start_application(A) || A <- Apps], % will include deps
+                                    ok;
+                                {error, _} = DepError ->
+                                    error({missing_plugin_deps, DepError})
+                            end
                     end;
                 Missing ->
                     error({missing_plugins, Missing})
@@ -167,39 +172,58 @@ load_plugin_apps(Path) ->
             ok
     end.
 
-check_for_missing_deps(Apps) ->
-    lists:foldr(fun(A, Acc) ->
-                        check_for_missing_deps_(A) ++ Acc
-                end, [], Apps).
+check_for_missing_deps([A|Apps], LibDirs) ->
+    case check_for_missing_deps_(A, LibDirs) of
+        ok ->
+            check_for_missing_deps(Apps, LibDirs);
+        {error,_} = Err ->
+            Err
+    end;
+check_for_missing_deps([], _) ->
+    ok.
 
-check_for_missing_deps_(A) ->
+check_for_missing_deps_(A, LibDirs) ->
     {ok, Deps} = application:get_key(A, applications),
     Unknown = [D || D <- Deps,
                     application:get_key(D, vsn) =:= undefined],
     case Unknown of
         [] -> ok;
         _ ->
-            lager:info("UNKNOWN DEPS of ~p: ~p", [A, Unknown])
-    end,
-    look_for_neighbors(Unknown, A),
-    Unknown.
+            lager:info("UNKNOWN DEPS of ~p: ~p", [A, Unknown]),
+            case try_patch_apps([atom_to_binary(App, utf8) || App <- Unknown],
+                                LibDirs) of
+                {_, []} ->
+                    lager:debug("Loaded plugin deps ~p", [Unknown]),
+                    ok;
+                {_, StillMissing} ->
+                    lager:debug("Deps still missing: ~p", [StillMissing]),
+                    look_for_neighbors(StillMissing, A)
+            end
+    end.
 
 look_for_neighbors(Unknown, A) ->
-    {ok, LibDir} = file:read_link(code:lib_dir(A)),
-    AParent = filename:dirname(LibDir),
-    PatchRes = try_patch_apps([atom_to_binary(App,utf8) || App <- Unknown],
-                              setup:lib_dirs_under_path(AParent)),
-    lager:info("Trying to patch unknowns: ~p", [PatchRes]).
-
-
-names_not_found(Names, Dir) ->
-    case file:list_dir(Dir) of
-        {ok, Fs} ->
-            [N || N <- Names,
-                  not app_name_is_member(N, Fs)];
-        {error, Reason} ->
-            error({cannot_read_plugin_path, Reason})
+    case file:read_link(code:lib_dir(A)) of
+        {ok, LibDir} ->
+            AParent = filename:dirname(LibDir),
+            case try_patch_apps([atom_to_binary(App,utf8) || App <- Unknown],
+                                setup:lib_dirs_under_path(AParent)) of
+                {_, []} ->
+                    lager:info("Found dep plugins indirectly: ~p", [Unknown]),
+                    ok;
+                {_, StillMissing} ->
+                    lager:info("Plugin deps still missing: ~p", [StillMissing]),
+                    {error, {missing_deps, StillMissing}}
+            end;
+        {error, _} ->
+            {error, {missing_deps, Unknown}}
     end.
+
+names_not_found(Names, Dirs) ->
+    BaseNames = [filename:basename(filename:dirname(D)) || D <- Dirs],
+    lager:debug("Names = ~p", [Names]),
+    lager:debug("BaseNames = ~p", [BaseNames]),
+    [N || N <- Names,
+          not app_name_is_member(N, BaseNames)].
 
 app_name_is_member(Name, Fs) ->
     %% Regexp copied from setup:is_app_dir/2
@@ -208,18 +232,22 @@ app_name_is_member(Name, Fs) ->
                       re:run(F, Pat, []) =/= nomatch
               end, Fs).
 
-try_patch_apps([Name|Ns], LibDirs) ->
+try_patch_apps(Names, LibDirs) ->
+    try_patch_apps(Names, LibDirs, [], []).
+
+try_patch_apps([Name|Ns], LibDirs, Good, Bad) ->
     App = binary_to_atom(Name, utf8),
+    lager:debug("Try patching app ~p using LibDirs = ~p", [App,LibDirs]),
     case setup:patch_app(App, latest, LibDirs) of
         true ->
             {ok,_} = setup:reload_app(App),
-            [App | try_patch_apps(Ns, LibDirs)];
+            try_patch_apps(Ns, LibDirs, [App|Good], Bad);
         Other ->
             lager:error("Couldn't add plugin application ~p: ~p", [App, Other]),
-            error({could_not_add_plugin_app, App})
+            try_patch_apps(Ns, LibDirs, Good, [App|Bad])
     end;
-try_patch_apps([], _) ->
-    [].
+try_patch_apps([], _, Good, Bad) ->
+    {lists:reverse(Good), lists:reverse(Bad)}.
 
 
 maybe_start_application(App) ->
