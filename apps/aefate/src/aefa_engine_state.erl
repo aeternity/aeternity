@@ -135,7 +135,7 @@
             , stores              :: aefa_stores:store()
             , trace               :: list()
             , vm_version          :: non_neg_integer()
-            , breakpoints         :: sets:set()
+            , breakpoints         :: list()
             , breakpoint_stop     :: boolean()
             , skip_instructions   :: integer()
             , variables_registers :: map()
@@ -171,7 +171,7 @@ new(Gas, Value, Spec, Stores, APIState, CodeCache, VMVersion) ->
        , stores              = Stores
        , trace               = []
        , vm_version          = VMVersion
-       , breakpoints         = sets:new()
+       , breakpoints         = []
        , breakpoint_stop     = false
        , skip_instructions   = 0
        , variables_registers = #{}
@@ -896,7 +896,7 @@ consensus_version(#es{chain_api = Api}) ->
     aetx_env:consensus_version(TxEnv).
 
 %%%------------------
--spec breakpoints(state()) -> sets:set().
+-spec breakpoints(state()) -> list().
 breakpoints(#es{breakpoints = Breakpoints}) ->
     Breakpoints.
 
