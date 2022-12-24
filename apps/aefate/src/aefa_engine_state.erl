@@ -90,6 +90,9 @@
         , spend_gas_for_traversal/3
         , spend_gas_for_traversal/4
         , update_for_remote_call/5
+        , add_variable_register/3
+        , del_variable_register/2
+        , get_variable_register/2
         ]).
 
 -ifdef(TEST).
@@ -109,32 +112,33 @@
 -type void_or_fate() :: ?FATE_VOID | aeb_fate_data:fate_type().
 -type pubkey() :: <<_:256>>.
 
--record(es, { accumulator       :: void_or_fate()
-            , accumulator_stack :: [aeb_fate_data:fate_type()]
-            , bbs               :: map()
-            , call_stack        :: [tuple()] %% TODO: Better type
-            , caller            :: aeb_fate_data:fate_address()
-            , call_value        :: non_neg_integer()
-            , chain_api         :: aefa_chain_api:state()
-            , code_cache        :: map() %% Cache for loaded contracts.
-            , creator_cache     :: map() %% Cache for creators of contracts
-            , created_cells     :: integer() %% Heap memory used
-            , current_bb        :: non_neg_integer()
-            , current_contract  :: ?FATE_VOID | pubkey()
-            , current_function  :: ?FATE_VOID | binary()
-            , current_tvars     :: map()    %% Instantiations for type variables in the current call (needed when type checking return value)
-            , functions         :: map()    %% Cache for current contract.
-            , gas               :: integer()
-            , logs              :: [term()]
-            , memory            :: map()    %% Environment #{name => val}
-            , seen_contracts    :: [pubkey()]
-                                   %% Call stack of contracts (including tail calls)
-            , stores            :: aefa_stores:store()
-            , trace             :: list()
-            , vm_version        :: non_neg_integer()
-            , breakpoints       :: sets:set()
-            , breakpoint_stop   :: boolean()
-            , skip_instructions :: integer()
+-record(es, { accumulator         :: void_or_fate()
+            , accumulator_stack   :: [aeb_fate_data:fate_type()]
+            , bbs                 :: map()
+            , call_stack          :: [tuple()] %% TODO: Better type
+            , caller              :: aeb_fate_data:fate_address()
+            , call_value          :: non_neg_integer()
+            , chain_api           :: aefa_chain_api:state()
+            , code_cache          :: map() %% Cache for loaded contracts.
+            , creator_cache       :: map() %% Cache for creators of contracts
+            , created_cells       :: integer() %% Heap memory used
+            , current_bb          :: non_neg_integer()
+            , current_contract    :: ?FATE_VOID | pubkey()
+            , current_function    :: ?FATE_VOID | binary()
+            , current_tvars       :: map()    %% Instantiations for type variables in the current call (needed when type checking return value)
+            , functions           :: map()    %% Cache for current contract.
+            , gas                 :: integer()
+            , logs                :: [term()]
+            , memory              :: map()    %% Environment #{name => val}
+            , seen_contracts      :: [pubkey()]
+                                     %% Call stack of contracts (including tail calls)
+            , stores              :: aefa_stores:store()
+            , trace               :: list()
+            , vm_version          :: non_neg_integer()
+            , breakpoints         :: sets:set()
+            , breakpoint_stop     :: boolean()
+            , skip_instructions   :: integer()
+            , variables_registers :: map()
             }).
 
 -opaque state() :: #es{}.
@@ -145,31 +149,32 @@
 new(Gas, Value, Spec, Stores, APIState, CodeCache, VMVersion) ->
     [error({bad_init_arg, X, Y}) || {X, Y} <- [{gas, Gas}, {value, Value}],
                                     not (is_integer(Y) andalso Y >= 0)],
-    #es{ accumulator       = ?FATE_VOID
-       , accumulator_stack = []
-       , bbs               = #{}
-       , call_stack        = []
-       , caller            = aeb_fate_data:make_address(maps:get(caller, Spec))
-       , call_value        = Value
-       , chain_api         = APIState
-       , code_cache        = CodeCache
-       , creator_cache     = #{}
-       , created_cells     = 0
-       , current_bb        = 0
-       , current_contract  = ?FATE_VOID
-       , current_function  = ?FATE_VOID
-       , current_tvars     = #{}
-       , functions         = #{}
-       , gas               = Gas
-       , logs              = []
-       , memory            = #{}
-       , seen_contracts    = []
-       , stores            = Stores
-       , trace             = []
-       , vm_version        = VMVersion
-       , breakpoints       = sets:new()
-       , breakpoint_stop   = false
-       , skip_instructions = 0
+    #es{ accumulator         = ?FATE_VOID
+       , accumulator_stack   = []
+       , bbs                 = #{}
+       , call_stack          = []
+       , caller              = aeb_fate_data:make_address(maps:get(caller, Spec))
+       , call_value          = Value
+       , chain_api           = APIState
+       , code_cache          = CodeCache
+       , creator_cache       = #{}
+       , created_cells       = 0
+       , current_bb          = 0
+       , current_contract    = ?FATE_VOID
+       , current_function    = ?FATE_VOID
+       , current_tvars       = #{}
+       , functions           = #{}
+       , gas                 = Gas
+       , logs                = []
+       , memory              = #{}
+       , seen_contracts      = []
+       , stores              = Stores
+       , trace               = []
+       , vm_version          = VMVersion
+       , breakpoints         = sets:new()
+       , breakpoint_stop     = false
+       , skip_instructions   = 0
+       , variables_registers = #{}
        }.
 
 new_dbg(Gas, Value, Spec, Stores, APIState, CodeCache, VMVersion, Breakpoints) ->
@@ -904,3 +909,16 @@ skip_instructions(#es{skip_instructions = Skip}) ->
 -spec set_skip_instructions(integer(), state()) -> state().
 set_skip_instructions(Skip, ES) ->
     ES#es{skip_instructions = Skip}.
+
+add_variable_register(Var, Reg, ES = #es{variables_registers = VarsRegs}) ->
+    Old = maps:get(Var, VarsRegs, []),
+    New = [Reg | Old],
+    ES#es{variables_registers = VarsRegs#{Var => New}}.
+
+del_variable_register(Var, ES = #es{variables_registers = VarsRegs}) ->
+    [_ | New] = maps:get(Var, VarsRegs, []),
+    ES#es{variables_registers = VarsRegs#{Var => New}}.
+
+get_variable_register(Var, #es{variables_registers = VarsRegs}) ->
+    [Reg | _] = maps:get(Var, VarsRegs, [undefined]),
+    Reg.

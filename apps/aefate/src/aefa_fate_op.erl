@@ -188,6 +188,8 @@
         , bytes_split/4
         , load_pre_iris_map_ordering/0
         , dbgloc/4
+        , dbg_def/3
+        , dbg_undef/3
         ]).
 
 -include_lib("aebytecode/include/aeb_fate_data.hrl").
@@ -3028,3 +3030,9 @@ dbgloc({immediate, File}, {immediate, Line}, _Col, EngineState) ->
         true  -> aefa_engine_state:set_breakpoint_stop(true, EngineState);
         false -> EngineState
     end.
+
+dbg_def({immediate, VarName}, Reg, EngineState) ->
+    aefa_engine_state:add_variable_register(VarName, Reg, EngineState).
+
+dbg_undef({immediate, VarName}, _Reg, EngineState) ->
+    aefa_engine_state:del_variable_register(VarName, EngineState).
