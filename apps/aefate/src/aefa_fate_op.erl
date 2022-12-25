@@ -3034,5 +3034,5 @@ dbg_loc({immediate, File}, {immediate, Line}, EngineState) ->
 dbg_def({immediate, VarName}, Reg, EngineState) ->
     aefa_engine_state:add_variable_register(VarName, Reg, EngineState).
 
-dbg_undef({immediate, VarName}, _Reg, EngineState) ->
-    aefa_engine_state:del_variable_register(VarName, EngineState).
+dbg_undef({immediate, VarName}, Reg, EngineState) ->
+    aefa_engine_state:del_variable_register(VarName, Reg, EngineState).

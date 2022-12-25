@@ -91,7 +91,7 @@
         , spend_gas_for_traversal/4
         , update_for_remote_call/5
         , add_variable_register/3
-        , del_variable_register/2
+        , del_variable_register/3
         , get_variable_register/2
         ]).
 
@@ -916,9 +916,9 @@ add_variable_register(Var, Reg, ES = #es{variables_registers = VarsRegs}) ->
     New = [Reg | Old],
     ES#es{variables_registers = VarsRegs#{Var => New}}.
 
--spec del_variable_register(string(), state()) -> state().
-del_variable_register(Var, ES = #es{variables_registers = VarsRegs}) ->
-    [_ | New] = maps:get(Var, VarsRegs, []),
+-spec del_variable_register(string(), tuple(), state()) -> state().
+del_variable_register(Var, Reg, ES = #es{variables_registers = VarsRegs}) ->
+    New = lists:delete(Reg, maps:get(Var, VarsRegs, [])),
     ES#es{variables_registers = VarsRegs#{Var => New}}.
 
 -spec get_variable_register(string(), state()) -> tuple().
