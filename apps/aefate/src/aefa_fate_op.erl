@@ -187,7 +187,7 @@
         , bytes_concat/4
         , bytes_split/4
         , load_pre_iris_map_ordering/0
-        , dbg_loc/4
+        , dbg_loc/3
         , dbg_def/3
         , dbg_undef/3
         ]).
@@ -3025,7 +3025,7 @@ gt_to_emcl(X1, X2, X3, X4, X5, X6, X7, X8, X9, X10, X11, X12) ->
                emcl:mk_Fp(X5), emcl:mk_Fp(X6), emcl:mk_Fp(X7), emcl:mk_Fp(X8),
                emcl:mk_Fp(X9), emcl:mk_Fp(X10), emcl:mk_Fp(X11), emcl:mk_Fp(X12)).
 
-dbg_loc({immediate, File}, {immediate, Line}, _Col, EngineState) ->
+dbg_loc({immediate, File}, {immediate, Line}, EngineState) ->
     case lists:member({File, Line}, aefa_engine_state:breakpoints(EngineState)) of
         true  -> aefa_engine_state:set_breakpoint_stop(true, EngineState);
         false -> EngineState
