@@ -910,15 +910,18 @@ skip_instructions(#es{skip_instructions = Skip}) ->
 set_skip_instructions(Skip, ES) ->
     ES#es{skip_instructions = Skip}.
 
+-spec add_variable_register(string(), tuple(), state()) -> state().
 add_variable_register(Var, Reg, ES = #es{variables_registers = VarsRegs}) ->
     Old = maps:get(Var, VarsRegs, []),
     New = [Reg | Old],
     ES#es{variables_registers = VarsRegs#{Var => New}}.
 
+-spec del_variable_register(string(), state()) -> state().
 del_variable_register(Var, ES = #es{variables_registers = VarsRegs}) ->
     [_ | New] = maps:get(Var, VarsRegs, []),
     ES#es{variables_registers = VarsRegs#{Var => New}}.
 
+-spec get_variable_register(string(), state()) -> tuple().
 get_variable_register(Var, #es{variables_registers = VarsRegs}) ->
     [Reg | _] = maps:get(Var, VarsRegs, [undefined]),
     Reg.
