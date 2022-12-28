@@ -8,15 +8,18 @@
         , is_dev_mode/0
         , suggest_config/2 ]).
 
+-export([ data_dir/1
+        , log_dir/1 ]).
+
 check_config(PluginName, SchemaFilename, OsEnvPrefix) ->
     case aeu_env:find_config([<<"system">>, <<"plugins">>],
                              [user_config, schema_default]) of
         {ok, Objs} ->
             NameBin = bin(PluginName),
-            case [Conf || #{<<"name">> := N, <<"config">> := Conf} <- Objs,
+            case [maps:get(<<"config">>, Obj, #{}) || #{<<"name">> := N} = Obj <- Objs,
                           N == NameBin] of
                 [Config] ->
-                    Schema = load_schema(SchemaFilename),
+                    Schema = load_schema(NameBin, SchemaFilename),
                     {ok, Config1} = validate(Config, Schema),
                     Result = case aeu_env:apply_os_env(OsEnvPrefix, Schema, Config1) of
                                  no_change ->
@@ -38,6 +41,12 @@ check_config(PluginName, SchemaFilename, OsEnvPrefix) ->
                           [PluginName]),
             not_found
     end.
+
+data_dir(PluginName) ->
+    filename:join(setup:data_dir(), bin(PluginName)).
+
+log_dir(PluginName) ->
+    filename:join(setup:log_dir(), bin(PluginName)).
 
 %% Look up a user config value for a specific plugin.
 %% Key is a list of binaries, corresponding to the plugin config schema
@@ -74,7 +83,8 @@ find_config_step(_, Key, Step) ->
     aeu_env:find_config(Key, [Step]).
 
 validate_config(JSON, SchemaFilename) ->
-    Schema = load_schema(SchemaFilename),
+    {ok, AppName} = application:get_application(),
+    Schema = load_schema_(AppName, SchemaFilename),
     validate(JSON, Schema).
 
 is_dev_mode() ->
@@ -85,8 +95,12 @@ is_dev_mode() ->
 suggest_config(Key, Value) ->
     aeu_env:suggest_config(Key, Value).
 
-load_schema(SchemaFilename) ->
-    {ok, AppName} = application:get_application(),
+load_schema(Plugin, SchemaFilename) ->
+    %% If loaded, the Plugin name exists in atom form (the application name)
+    AppName = binary_to_existing_atom(Plugin, utf8),
+    load_schema_(AppName, SchemaFilename).
+
+load_schema_(AppName, SchemaFilename) ->
     Fname = case filename:pathtype(SchemaFilename) of
                 relative ->
                     filename:join(code:priv_dir(AppName), SchemaFilename);
@@ -95,8 +109,8 @@ load_schema(SchemaFilename) ->
             end,
     case filelib:is_regular(Fname) of
         true ->
-            lager:info("Reading plugin schema (~p) ~p", [AppName, Fname]),
             [Schema] = jsx:consult(Fname, [return_maps]),
+            %% Schema = jsx_read_and_decode(Fname, [return_maps]),
             Schema;
         false ->
             lager:warning("Cannot locate plugin schema (~p) ~p", [AppName, Fname]),
@@ -110,7 +124,7 @@ cache_plugin_schema(PluginName, Schema) ->
     persistent_term:put({?MODULE, cached_schema, PluginName}, Schema).
 
 cached_plugin_schema(PluginName) ->
-    persistent_term:get({?MODULE, cached_schema, PluginName}).
+    persistent_term:get({?MODULE, cached_schema, PluginName}, #{}).
 
 load_plugins() ->
     case aeu_env:find_config([<<"system">>, <<"plugin_path">>],
@@ -121,7 +135,6 @@ load_plugins() ->
             Abs = binary_to_list(maybe_expand_relpath(Path)),
             case filelib:is_dir(Abs) of
                 true ->
-                    lager:info("Plugin lib dir: ~s", [Abs]),
                     load_plugin_apps(Abs);
                 false ->
                     lager:info("Plugin dir doesn't exist: ~s", [Abs]),
@@ -148,105 +161,199 @@ load_plugin_apps(Path) ->
         {ok, Objs} ->
             lager:info("Plugin Objs = ~p", [Objs]),
             NameStrs = [Name || #{<<"name">> := Name} <- Objs],
+            ensure_empty_lib_subdir(Path),
             LibDirs = setup:lib_dirs_under_path(Path),
-            case names_not_found(NameStrs, LibDirs) of
-                [] ->
-                    case try_patch_apps(NameStrs, LibDirs) of
-                        [] ->
-                            ok;
-                        {Apps, []} ->
-                            lager:info("== PLUGINS: ~p ==", [Apps]),
-                            case check_for_missing_deps(Apps, LibDirs) of
-                                ok ->
-                                    app_ctrl:check_for_new_applications(),
-                                    [maybe_start_application(A) || A <- Apps], % will include deps
-                                    ok;
-                                {error, _} = DepError ->
-                                    error({missing_plugin_deps, DepError})
-                            end
-                    end;
-                Missing ->
-                    error({missing_plugins, Missing})
+            SelectedDirs = select_dirs(LibDirs, NameStrs),
+            FinalLibDirs = final_lib_dirs(Path, SelectedDirs),
+            case try_patch_apps(FinalLibDirs) of
+                {[], []} ->
+                    ok;
+                {Apps, []} ->
+                    lager:info("== PLUGINS + deps: ~p ==", [Apps]),
+                    app_ctrl:check_for_new_applications(),
+                    [maybe_start_application(A) || A <- Apps], % will include deps
+                    ok;
+                {_, Bad} ->
+                    error({cannot_load_plugins, Bad})
             end;
         undefined ->
             ok
     end.
 
-check_for_missing_deps([A|Apps], LibDirs) ->
-    case check_for_missing_deps_(A, LibDirs) of
-        ok ->
-            check_for_missing_deps(Apps, LibDirs);
-        {error,_} = Err ->
-            Err
-    end;
-check_for_missing_deps([], _) ->
-    ok.
-
-check_for_missing_deps_(A, LibDirs) ->
-    {ok, Deps} = application:get_key(A, applications),
-    Unknown = [D || D <- Deps,
-                    application:get_key(D, vsn) =:= undefined],
-    case Unknown of
-        [] -> ok;
-        _ ->
-            lager:info("UNKNOWN DEPS of ~p: ~p", [A, Unknown]),
-            case try_patch_apps([atom_to_binary(App, utf8) || App <- Unknown],
-                                LibDirs) of
-                {_, []} ->
-                    lager:debug("Loaded plugin deps ~p", [Unknown]),
+ensure_empty_lib_subdir(Path) ->
+    Lib = filename:join(Path, "lib"),
+    case filelib:is_dir(Lib) of
+        true ->
+            delete_all_under(Lib);
+        false ->
+            case filelib:ensure_dir(filename:join(Lib, "foo")) of
+                ok ->
                     ok;
-                {_, StillMissing} ->
-                    lager:debug("Deps still missing: ~p", [StillMissing]),
-                    look_for_neighbors(StillMissing, A)
+                Err ->
+                    erlang:error({cannot_create_lib_subdir, Err})
             end
     end.
 
-look_for_neighbors(Unknown, A) ->
-    case file:read_link(code:lib_dir(A)) of
-        {ok, LibDir} ->
-            AParent = filename:dirname(LibDir),
-            case try_patch_apps([atom_to_binary(App,utf8) || App <- Unknown],
-                                setup:lib_dirs_under_path(AParent)) of
-                {_, []} ->
-                    lager:info("Found dep plugins indirectly: ~p", [Unknown]),
-                    ok;
-                {_, StillMissing} ->
-                    lager:info("Plugin deps still missing: ~p", [StillMissing]),
-                    {error, {missing_deps, StillMissing}}
-            end;
-        {error, _} ->
-            {error, {missing_deps, Unknown}}
+delete_all_under(Dir) ->
+    case file:list_dir(Dir) of
+        {ok, Fs} ->
+            lists:foreach(
+              fun(F) ->
+                      %% this handles both dirs and regular files, recursively
+                      ok = file:del_dir_r(filename:join(Dir, F))
+              end, Fs);
+        {error, _} = Err ->
+            error({cannot_read_dir, Dir, Err})
     end.
 
-names_not_found(Names, Dirs) ->
-    BaseNames = [filename:basename(filename:dirname(D)) || D <- Dirs],
-    lager:debug("Names = ~p", [Names]),
-    lager:debug("BaseNames = ~p", [BaseNames]),
-    [N || N <- Names,
-          not app_name_is_member(N, BaseNames)].
+final_lib_dirs(Root, Dirs) ->
+    Lib = filename:join(Root, "lib"),
+    populate_lib_dir(Dirs, Root, Lib).
 
-app_name_is_member(Name, Fs) ->
-    %% Regexp copied from setup:is_app_dir/2
-    Pat = << Name/binary, "(-[0-9]+(\\..+)?)?" >>,
-    lists:any(fun(F) ->
-                      re:run(F, Pat, []) =/= nomatch
-              end, Fs).
+populate_lib_dir(Dirs, Root, Lib) ->
+    RootNParts = length(filename:split(Root)),
+    ArchiveExt = init:archive_extension(),
+    lists:foldr(
+      fun({N,D,_}, Acc) ->
+              populate_lib_dir_(N, D, RootNParts, Root, Lib, ArchiveExt, Acc)
+      end,
+      [], Dirs).
 
-try_patch_apps(Names, LibDirs) ->
-    try_patch_apps(Names, LibDirs, [], []).
+populate_lib_dir_(N, Dir, RootN, Root, Lib, AExt, Acc) ->
+    DirParts = filename:split(Dir),
+    Rel = filename:join(lists:nthtail(RootN, DirParts)),
+    AppDir = app_dir(Dir),
+    case is_archive_path(Rel, AExt) of
+        true ->
+            ArchiveF = filename:join(Root, hd(filename:split(Rel))),
+            zip:foldl(fun(F, _Info, Bin, Acc1) ->
+                              case lists:member(AppDir, filename:split(F)) of
+                                  true ->
+                                      OutF = filename:join(Lib, F),
+                                      filelib:ensure_dir(OutF),
+                                      Res = file:write_file(OutF, Bin()),
+                                      [{F, Res} | Acc1];
+                                  false ->
+                                      Acc1
+                              end
+                      end, [], ArchiveF),
+            [{N, filename:join([Lib, AppDir, "ebin"])}|Acc];
+        false ->
+            {AppName, AppVsn} =
+                case app_name(Dir) of
+                    {A, undefined} ->
+                        {A, get_app_vsn(A, Dir)};
+                    AppAndVsn ->
+                        AppAndVsn
+                end,
+            Tgt = filename:join(Lib, binary_to_list(bin([AppName, "-", AppVsn]))),
+            make_symlink(filename:dirname(Dir), Tgt),
+            [{N, filename:join(Tgt, "ebin")} | Acc]
+    end.
 
-try_patch_apps([Name|Ns], LibDirs, Good, Bad) ->
+is_archive_path(F, Ext) ->
+    case re:run(F, [$\\|Ext] ++ "/", []) of
+        {match,_} ->
+            true;
+        nomatch ->
+            false
+    end.
+
+make_symlink(Existing, New) ->
+    case file:make_symlink(Existing, New) of
+        ok ->
+            ok;
+        {error, eexist} ->
+            ok;
+        {error, _} = Error ->
+            lager:warning("Symlink ~s -> ~s failed: ~p", [New, Existing, Error]),
+            Error
+    end.
+
+get_app_vsn(Name, Ebin) ->
+    {ok, [{application,_,Opts}]} =
+        file:consult(filename:join(Ebin, binary_to_list(Name) ++ ".app")),
+    proplists:get_value(vsn, Opts).
+
+select_dirs(Fs, Names) ->
+    %% Find all top-level plugins, and their dependencies
+    %% Ignore dependencies that are already in the system
+    Sel1 = select_dirs_(Fs, Names),
+    AllDeps = lists:usort(lists:append([Ds || {_,_,Ds} <- Sel1])),
+    AllLoadedApps = [A || {A,_,_} <- application:loaded_applications()],
+    NewDeps = lists:foldr(
+                fun(Da, Acc) ->
+                        Db = atom_to_binary(Da),
+                        case (lists:member(Db, Names) orelse
+                              lists:member(Da, AllLoadedApps)) of
+                            true ->
+                                Acc;
+                            false ->
+                                [Db|Acc]
+                        end
+                end, [], AllDeps),
+    DepsDirs = select_dirs_(Fs, NewDeps),
+    case NewDeps -- [D || {D,_,_} <- DepsDirs] of
+        [] ->
+            Sel1 ++ DepsDirs;
+        Missing ->
+            error({missing_deps, Missing})
+    end.
+
+select_dirs_(Fs, Names) ->
+    lists:foldr(
+      fun(F, Acc) ->
+              select_dir_(F, Names, Acc)
+      end, [], Fs).
+
+select_dir_(F, Names, Acc) ->
+    {App, _} = app_name(F),
+    case lists:member(App, Names) of
+        true ->
+            [{App, F, deps_of_app(App, F)} | Acc];
+        false ->
+            Acc
+    end.
+
+app_dir(F) ->
+    ["ebin", AppDir | _] = lists:reverse(filename:split(F)),
+    AppDir.
+
+app_name(F) ->
+    ["ebin", AppDir | _] = lists:reverse(filename:split(F)),
+    case re:split(AppDir, "-", [{return, binary}]) of
+        [A] ->
+            {A, undefined};
+        [A, Vsn] ->
+            {A, Vsn}
+    end.
+
+deps_of_app(AppBin, F) ->
+    AppF = filename:join(F, <<AppBin/binary, ".app">>),
+    case setup_file:consult(AppF) of
+        {ok, [{application, _, Opts}]} ->
+            proplists:get_value(applications, Opts, []);
+        Other ->
+            error({could_not_read_app_file, AppF, Other})
+    end.
+
+try_patch_apps(LibDirs) ->
+    lager:debug("LibDirs = ~p", [LibDirs]),
+    try_patch_apps(LibDirs, [], []).
+
+try_patch_apps([{Name, LibDir}|LibDirs], Good, Bad) ->
     App = binary_to_atom(Name, utf8),
-    lager:debug("Try patching app ~p using LibDirs = ~p", [App,LibDirs]),
-    case setup:patch_app(App, latest, LibDirs) of
+    lager:debug("Try patching app ~p using LibDir = ~p", [App,LibDir]),
+    case setup:patch_app(App, latest, [LibDir]) of
         true ->
             {ok,_} = setup:reload_app(App),
-            try_patch_apps(Ns, LibDirs, [App|Good], Bad);
+            lager:info("loaded app ~p", [App]),
+            try_patch_apps(LibDirs, [App|Good], Bad);
         Other ->
             lager:error("Couldn't add plugin application ~p: ~p", [App, Other]),
-            try_patch_apps(Ns, LibDirs, Good, [App|Bad])
+            try_patch_apps(LibDirs, Good, [App|Bad])
     end;
-try_patch_apps([], _, Good, Bad) ->
+try_patch_apps([], Good, Bad) ->
     {lists:reverse(Good), lists:reverse(Bad)}.
 
 
@@ -257,7 +364,6 @@ maybe_start_application(App) ->
             spawn(fun() -> ensure_started(App) end),
             ok;
         false ->
-            lager:info("~p not runnable", [App]),
             ok
     end.
 	                
