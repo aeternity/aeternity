@@ -1,0 +1,92 @@
+// GA contract
+//
+// Main/master account can change setting
+//
+// Temporary accounts can authenticate
+
+@compiler >= 5
+
+main contract GAMainWTemporary =
+  datatype validator
+    = Plain
+    | TimeBound(int)
+    | NBound(int)
+
+  record meta_tx_protection =
+    { max_fee : int,
+      max_gasprice : int }
+
+  record state =
+    { master : address,
+      validators : map(address, validator),
+      fee_protection : option(meta_tx_protection),
+      nonce : int }
+
+  entrypoint init(master : address) =
+    { master = master,
+      validators = {},
+      fee_protection = Some({max_fee = 2_000_000_000_000_000, max_gasprice = 1_000_000_000_000}),
+      nonce = 1 }
+
+  stateful entrypoint authorize(n : int, signer : address, sig : signature) : bool =
+    require(n >= state.nonce, "Nonce too low")
+    require(n =< state.nonce, "Nonce too high")
+    require(fee_ok(), "Fee or gasprice too high")
+    require(allowed_signer(signer), "Not allowed to sign")
+    put(state{ nonce = n + 1 })
+
+    switch(Auth.tx_hash)
+      None => abort("Not in Auth context")
+      Some(tx_hash) =>
+        Crypto.verify_sig(to_sign(tx_hash, n), signer, sig)
+
+  stateful entrypoint add_validator(signer : address, validator : validator) =
+    require(Call.caller == state.master, "Only for master")
+    put(state{ validators[signer] = validator })
+
+  stateful entrypoint remove_validator(signer : address) =
+    require(Call.caller == state.master, "Only for master")
+    put(state{ validators = Map.delete(signer, state.validators) })
+
+  entrypoint get_signer(signer) : option(validator) =
+    Map.lookup(signer, state.validators)
+
+  entrypoint get_nonce() : int =
+    state.nonce
+
+  stateful entrypoint set_fee_protection(fee_protection : option(meta_tx_protection)) =
+    require(Call.caller == state.master, "Only for master")
+    put(state{ fee_protection = fee_protection })
+
+  stateful function allowed_signer(signer : address) =
+    if (signer == state.master)
+      true
+    else
+      switch(Map.lookup(signer, state.validators))
+        Some(Plain) =>
+          true
+        Some(TimeBound(height)) =>
+          if(height < Chain.block_height)
+            put(state{ validators = Map.delete(signer, state.validators) })
+            false
+          else
+            true
+        Some(NBound(n)) | n > 1 =>
+          put(state{ validators[signer] = NBound(n - 1) })
+          true
+        Some(NBound(_)) =>
+          put(state{ validators = Map.delete(signer, state.validators) })
+          true
+        _ =>
+          false
+
+  // Static function, but useful with dry-run to create signing material
+  entrypoint to_sign(tx_hash : hash, nonce : int) : hash =
+    Crypto.blake2b((tx_hash, nonce))
+
+  function fee_ok() =
+    switch(state.fee_protection)
+      None =>
+        true
+      Some(fp) =>
+        fp.max_fee >= Call.fee && fp.max_gasprice >= Call.gas_price
