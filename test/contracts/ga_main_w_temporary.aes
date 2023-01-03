@@ -54,6 +54,9 @@ main contract GAMainWTemporary =
   entrypoint get_nonce() : int =
     state.nonce
 
+  entrypoint get_validators() : list(address * validator) =
+    Map.to_list(state.validators)
+
   stateful entrypoint set_fee_protection(fee_protection : option(meta_tx_protection)) =
     require(Call.caller == state.master, "Only for master")
     put(state{ fee_protection = fee_protection })
