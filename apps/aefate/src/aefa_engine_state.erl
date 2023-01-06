@@ -36,6 +36,9 @@
         , breakpoints/1
         , breakpoint_stop/1
         , skip_instructions/1
+        , debugger_status/1
+        , debugger_location/1
+        , last_breakpoint_function/1
         ]).
 
 %% Setters
@@ -60,6 +63,9 @@
         , set_trace/2
         , set_breakpoint_stop/2
         , set_skip_instructions/2
+        , set_debugger_status/2
+        , set_debugger_location/2
+        , set_last_breakpoint_function/2
         ]).
 
 %% More complex stuff
@@ -109,6 +115,9 @@
 -include_lib("aecontract/include/aecontract.hrl").
 -include_lib("aecontract/include/hard_forks.hrl").
 
+-type debugger_status() :: disabled | next | step | continue.
+-type debugger_location() :: none | {string(), integer()}.
+
 -type void_or_fate() :: ?FATE_VOID | aeb_fate_data:fate_type().
 -type pubkey() :: <<_:256>>.
 
@@ -139,6 +148,9 @@
             , breakpoint_stop     :: boolean()
             , skip_instructions   :: integer()
             , variables_registers :: map()
+            , debugger_status     :: debugger_status()
+            , debugger_location   :: debugger_location()
+            , last_breakpoint_function :: ?FATE_VOID | binary()
             }).
 
 -opaque state() :: #es{}.
@@ -175,6 +187,9 @@ new(Gas, Value, Spec, Stores, APIState, CodeCache, VMVersion) ->
        , breakpoint_stop     = false
        , skip_instructions   = 0
        , variables_registers = #{}
+       , debugger_status     = disabled
+       , debugger_location   = none
+       , last_breakpoint_function = ?FATE_VOID
        }.
 
 new_dbg(Gas, Value, Spec, Stores, APIState, CodeCache, VMVersion, Breakpoints) ->
@@ -910,6 +925,38 @@ skip_instructions(#es{skip_instructions = Skip}) ->
 set_skip_instructions(Skip, ES) ->
     ES#es{skip_instructions = Skip}.
 
+%%%------------------
+
+-spec debugger_status(state()) -> debugger_status().
+debugger_status(#es{debugger_status = Status}) ->
+    Status.
+
+-spec set_debugger_status(debugger_status(), state()) -> state().
+set_debugger_status(Status, ES) ->
+    ES#es{debugger_status = Status}.
+
+%%%------------------
+
+-spec debugger_location(state()) -> debugger_location().
+debugger_location(#es{debugger_location = Location}) ->
+    Location.
+
+-spec set_debugger_location(debugger_location(), state()) -> state().
+set_debugger_location(Location, ES) ->
+    ES#es{debugger_location = Location}.
+
+%%%------------------
+
+-spec last_breakpoint_function(state()) -> binary().
+last_breakpoint_function(#es{last_breakpoint_function = Fun}) ->
+    Fun.
+
+-spec set_last_breakpoint_function(binary(), state()) -> state().
+set_last_breakpoint_function(Fun, ES) ->
+    ES#es{last_breakpoint_function = Fun}.
+
+%%%------------------
+
 -spec add_variable_register(string(), tuple(), state()) -> state().
 add_variable_register(Var, Reg, ES = #es{variables_registers = VarsRegs}) ->
     Old = maps:get(Var, VarsRegs, []),
@@ -923,5 +970,7 @@ del_variable_register(Var, Reg, ES = #es{variables_registers = VarsRegs}) ->
 
 -spec get_variable_register(string(), state()) -> tuple().
 get_variable_register(Var, #es{variables_registers = VarsRegs}) ->
-    [Reg | _] = maps:get(Var, VarsRegs, [undefined]),
-    Reg.
+    case maps:get(Var, VarsRegs, [undefined]) of
+        []        -> undefined;
+        [Reg | _] -> Reg
+    end.
