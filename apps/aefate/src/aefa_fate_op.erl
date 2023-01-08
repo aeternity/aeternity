@@ -3028,18 +3028,28 @@ gt_to_emcl(X1, X2, X3, X4, X5, X6, X7, X8, X9, X10, X11, X12) ->
 dbg_loc({immediate, File}, {immediate, Line}, EngineState) ->
     EngineState1 = aefa_engine_state:set_debugger_location({File, Line}, EngineState),
     case lists:member({File, Line}, aefa_engine_state:breakpoints(EngineState1)) of
-        true  -> 
-            Current = aefa_engine_state:current_function(EngineState1),
-            EngineState2 = aefa_engine_state:set_last_breakpoint_function(Current, EngineState1),
-            aefa_engine_state:set_breakpoint_stop(true, EngineState2);
+        true  -> aefa_engine_state:set_breakpoint_stop(true, EngineState1);
         false ->
             case aefa_engine_state:debugger_status(EngineState1) of
                 step -> aefa_engine_state:set_breakpoint_stop(true, EngineState1);
                 next ->
-                    Last = aefa_engine_state:last_breakpoint_function(EngineState1),
+                    Next    = aefa_engine_state:next_function(EngineState1),
                     Current = aefa_engine_state:current_function(EngineState1),
-                    case Last == Current of
-                        true  -> aefa_engine_state:set_breakpoint_stop(true, EngineState1);
+                    case Next == Current of
+                        true  ->
+                            ES1 = aefa_engine_state:set_breakpoint_stop(true, EngineState1),
+                            ES2 = aefa_engine_state:set_next_function(?FATE_VOID, ES1),
+                            ES2;
+                        false -> EngineState1
+                    end;
+                finish ->
+                    Finish  = aefa_engine_state:finish_function(EngineState1),
+                    Current = aefa_engine_state:current_function(EngineState1),
+                    case Finish =/= Current of
+                        true  ->
+                            ES1 = aefa_engine_state:set_breakpoint_stop(true, EngineState1),
+                            ES2 = aefa_engine_state:set_finish_function(?FATE_VOID, ES1),
+                            ES2;
                         false -> EngineState1
                     end;
                 _ -> EngineState1
