@@ -38,8 +38,6 @@
         , skip_instructions/1
         , debugger_status/1
         , debugger_location/1
-        , next_function/1
-        , finish_function/1
         ]).
 
 %% Setters
@@ -66,8 +64,6 @@
         , set_skip_instructions/2
         , set_debugger_status/2
         , set_debugger_location/2
-        , set_next_function/2
-        , set_finish_function/2
         ]).
 
 %% More complex stuff
@@ -152,8 +148,6 @@
             , variables_registers :: map()
             , debugger_status     :: debugger_status()
             , debugger_location   :: debugger_location()
-            , next_function       :: ?FATE_VOID | binary()
-            , finish_function     :: ?FATE_VOID | binary()
             }).
 
 -opaque state() :: #es{}.
@@ -192,8 +186,6 @@ new(Gas, Value, Spec, Stores, APIState, CodeCache, VMVersion) ->
        , variables_registers = #{}
        , debugger_status     = disabled
        , debugger_location   = none
-       , next_function       = ?FATE_VOID
-       , finish_function     = ?FATE_VOID
        }.
 
 new_dbg(Gas, Value, Spec, Stores, APIState, CodeCache, VMVersion, Breakpoints) ->
@@ -948,26 +940,6 @@ debugger_location(#es{debugger_location = Location}) ->
 -spec set_debugger_location(debugger_location(), state()) -> state().
 set_debugger_location(Location, ES) ->
     ES#es{debugger_location = Location}.
-
-%%%------------------
-
--spec next_function(state()) -> binary().
-next_function(#es{next_function = Fun}) ->
-    Fun.
-
--spec set_next_function(binary(), state()) -> state().
-set_next_function(Fun, ES) ->
-    ES#es{next_function = Fun}.
-
-%%%------------------
-
--spec finish_function(state()) -> binary().
-finish_function(#es{finish_function = Fun}) ->
-    Fun.
-
--spec set_finish_function(binary(), state()) -> state().
-set_finish_function(Fun, ES) ->
-    ES#es{finish_function = Fun}.
 
 %%%------------------
 
