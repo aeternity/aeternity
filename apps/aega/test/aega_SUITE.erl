@@ -48,6 +48,14 @@
         , ethereum_contract_create/1
         , ethereum_contract_call/1
 
+        , mwt_spend/1
+        , mwt_temp_spend/1
+        , mwt_neg_temp_spend/1
+        , mwt_temp_multi_spend/1
+        , mwt_temp_n_spend/1
+        , mwt_temp_height_spend/1
+        , mwt_neg_master_actions/1
+
         , oracle_register/1
         , oracle_query/1
         , oracle_query_x2/1
@@ -118,11 +126,13 @@ groups() ->
                  , {group, paying_for}
                  , {group, negative}
                  ]}
+
     , {fate, [], [ {group, simple}
                  , {group, basic}
                  , {group, tx}
                  , {group, bitcoin}
                  , {group, ethereum}
+                 , {group, mwt}
                  , {group, oracle}
                  , {group, channel}
                  , {group, multi_wrap}
@@ -147,6 +157,15 @@ groups() ->
                   , basic_contract_call
                   , basic_minimum_fee
                   ]}
+
+    , {mwt, [], [ mwt_spend
+                , mwt_temp_spend
+                , mwt_neg_temp_spend
+                , mwt_temp_multi_spend
+                , mwt_temp_n_spend
+                , mwt_temp_height_spend
+                , mwt_neg_master_actions
+                ]}
 
     , {tx, [], [ tx_check
                , tx_auth_name_resolution
@@ -213,6 +232,11 @@ init_per_group(ethereum, Cfg) ->
 init_per_group(paying_for, Cfg) ->
     case aect_test_utils:latest_protocol_version() of
         Vsn when Vsn < ?IRIS_PROTOCOL_VSN -> {skip, paying_for_not_pre_iris};
+        _Vsn -> Cfg
+    end;
+init_per_group(mwt, Cfg) ->
+    case aect_test_utils:latest_protocol_version() of
+        Vsn when Vsn < ?IRIS_PROTOCOL_VSN -> {skip, mwt_not_pre_iris};
         _Vsn -> Cfg
     end;
 init_per_group(tx, Cfg) ->
@@ -368,6 +392,7 @@ simple_spend_from_fail(_Cfg) ->
 %%%===================================================================
 %%% Basic GA tests
 %%%===================================================================
+
 basic_attach(_Cfg) ->
     state(aect_test_utils:new_state()),
     Acc1 = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
@@ -481,6 +506,7 @@ basic_minimum_fee(_Cfg) ->
 %%%===================================================================
 %%% Transaction introspection in authorization function
 %%%===================================================================
+
 tx_check(_Cfg) ->
     state(aect_test_utils:new_state()),
     MinGP = aec_test_utils:min_gas_price(),
@@ -571,6 +597,7 @@ tx_auth_name_resolution_(_Cfg) ->
 %%%===================================================================
 %%% Bitcoin GA tests
 %%%===================================================================
+
 -define(SECP256K1_PRIV, <<129,67,4,165,74,42,181,117,141,36,184,24,52,32,144,252,
                           23,236,21,76,171,79,8,23,32,235,57,139,176,168,252,102>>).
 -define(SECP256K1_PUB,  <<80,178,23,109,30,43,94,53,192,188,114,212,49,16,33,
@@ -632,6 +659,7 @@ bitcoin_contract_call(_Cfg) ->
 %%%===================================================================
 %%% Ethereum GA tests
 %%%===================================================================
+
 -define(SECP256K1_ADDR, binary:part(sha3:hash(256, ?SECP256K1_PUB), 32, -20)).
 -define(E_OWNER, aega_test_utils:to_hex_lit(20, ?SECP256K1_ADDR)).
 
@@ -686,8 +714,174 @@ ethereum_contract_call(_Cfg) ->
     ok.
 
 %%%===================================================================
+%%% More realistic GA contract with a main/master account and
+%%% temporary signers
+%%%===================================================================
+mwt_auth_opts(Acc, Nonce) ->
+    #{ prep_fun => fun(TxHash) -> ?call(main_w_temp_auth, Acc, Nonce, TxHash) end }.
+
+account_lit(Acc) ->
+    binary_to_list(aeser_api_encoder:encode(account_pubkey, Acc)).
+
+%% Test that the main/master account can sign a transaction
+mwt_spend(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    MinGP = aec_test_utils:min_gas_price(),
+    GAAcc    = ?call(new_account, 1000000000 * MinGP),
+    MainAcc  = ?call(new_account, 1000000000 * MinGP),
+    OtherAcc = ?call(new_account, 1000000000 * MinGP),
+    {ok, _}  = ?call(attach, GAAcc, "ga_main_w_temporary", "authorize", [account_lit(MainAcc)]),
+
+    PreBalance = ?call(account_balance, OtherAcc),
+    {ok, #{tx_res := ok}} =
+        ?call(ga_spend, GAAcc, mwt_auth_opts(MainAcc, "1"), OtherAcc, 500, 20000 * MinGP),
+    PostBalance = ?call(account_balance, OtherAcc),
+    ?assertMatch({X, Y} when X + 500 == Y, {PreBalance, PostBalance}),
+
+    ok.
+
+%% Test that a temporary signer can sign a transaction
+mwt_temp_spend(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    MinGP = aec_test_utils:min_gas_price(),
+    GAAcc    = ?call(new_account, 1000000000 * MinGP),
+    MainAcc  = ?call(new_account, 1000000000 * MinGP),
+    TempAcc  = ?call(new_account, 1000000000 * MinGP),
+    OtherAcc = ?call(new_account, 1000000000 * MinGP),
+    {ok, #{ct := GACt}}  = ?call(attach, GAAcc, "ga_main_w_temporary", "authorize", [account_lit(MainAcc)]),
+
+    {ok, #{call_res := ok}} =
+        ?call(ct_call, MainAcc, GACt, "ga_main_w_temporary", "add_validator", [account_lit(TempAcc), "Plain"], #{}),
+
+    PreBalance = ?call(account_balance, OtherAcc),
+    {ok, #{tx_res := ok}} =
+        ?call(ga_spend, GAAcc, mwt_auth_opts(TempAcc, "1"), OtherAcc, 500, 20000 * MinGP),
+    PostBalance = ?call(account_balance, OtherAcc),
+    ?assertMatch({X, Y} when X + 500 == Y, {PreBalance, PostBalance}),
+
+    ok.
+
+%% Test that a removed temporary signer can't sign a transaction
+mwt_neg_temp_spend(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    MinGP = aec_test_utils:min_gas_price(),
+    GAAcc    = ?call(new_account, 1000000000 * MinGP),
+    MainAcc  = ?call(new_account, 1000000000 * MinGP),
+    TempAcc  = ?call(new_account, 1000000000 * MinGP),
+    OtherAcc = ?call(new_account, 1000000000 * MinGP),
+    {ok, #{ct := GACt}}  = ?call(attach, GAAcc, "ga_main_w_temporary", "authorize", [account_lit(MainAcc)]),
+
+    {ok, #{call_res := ok}} =
+        ?call(ct_call, MainAcc, GACt, "ga_main_w_temporary", "add_validator", [account_lit(TempAcc), "Plain"], #{}),
+
+    {ok, #{tx_res := ok}} =
+        ?call(ga_spend, GAAcc, mwt_auth_opts(TempAcc, "1"), OtherAcc, 500, 20000 * MinGP),
+
+    {ok, #{call_res := ok}} =
+        ?call(ct_call, MainAcc, GACt, "ga_main_w_temporary", "remove_validator", [account_lit(TempAcc)], #{}),
+
+    {failed, authentication_failed} =
+        ?call(ga_spend, GAAcc, mwt_auth_opts(TempAcc, "2"), OtherAcc, 500, 20000 * MinGP, #{fail => true}),
+
+    ok.
+
+%% Test that two temporary signers can sign transactions overlapping
+mwt_temp_multi_spend(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    MinGP = aec_test_utils:min_gas_price(),
+    GAAcc    = ?call(new_account, 1000000000 * MinGP),
+    MainAcc  = ?call(new_account, 1000000000 * MinGP),
+    TempAcc1 = ?call(new_account, 1000000000 * MinGP),
+    TempAcc2 = ?call(new_account, 1000000000 * MinGP),
+    OtherAcc = ?call(new_account, 1000000000 * MinGP),
+    {ok, #{ct := GACt}}  = ?call(attach, GAAcc, "ga_main_w_temporary", "authorize", [account_lit(MainAcc)]),
+
+    {ok, #{call_res := ok}} =
+        ?call(ct_call, MainAcc, GACt, "ga_main_w_temporary", "add_validator", [account_lit(TempAcc1), "Plain"], #{}),
+    {ok, #{call_res := ok}} =
+        ?call(ct_call, MainAcc, GACt, "ga_main_w_temporary", "add_validator", [account_lit(TempAcc2), "Plain"], #{}),
+
+    {ok, #{tx_res := ok}} =
+        ?call(ga_spend, GAAcc, mwt_auth_opts(TempAcc2, "1"), OtherAcc, 500, 20000 * MinGP),
+    {ok, #{tx_res := ok}} =
+        ?call(ga_spend, GAAcc, mwt_auth_opts(TempAcc1, "2"), OtherAcc, 500, 20000 * MinGP),
+    {ok, #{tx_res := ok}} =
+        ?call(ga_spend, GAAcc, mwt_auth_opts(TempAcc2, "3"), OtherAcc, 500, 20000 * MinGP),
+
+    ok.
+
+%% Test that temporary signer with NBound can sign transactions
+mwt_temp_n_spend(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    MinGP = aec_test_utils:min_gas_price(),
+    GAAcc    = ?call(new_account, 1000000000 * MinGP),
+    MainAcc  = ?call(new_account, 1000000000 * MinGP),
+    TempAcc = ?call(new_account, 1000000000 * MinGP),
+    OtherAcc = ?call(new_account, 1000000000 * MinGP),
+    {ok, #{ct := GACt}}  = ?call(attach, GAAcc, "ga_main_w_temporary", "authorize", [account_lit(MainAcc)]),
+
+    {ok, #{call_res := ok}} =
+        ?call(ct_call, MainAcc, GACt, "ga_main_w_temporary", "add_validator", [account_lit(TempAcc), "NBound(2)"], #{}),
+
+    {ok, #{tx_res := ok}} =
+        ?call(ga_spend, GAAcc, mwt_auth_opts(TempAcc, "1"), OtherAcc, 500, 20000 * MinGP),
+    {ok, #{tx_res := ok}} =
+        ?call(ga_spend, GAAcc, mwt_auth_opts(TempAcc, "2"), OtherAcc, 500, 20000 * MinGP),
+    {failed, authentication_failed} =
+        ?call(ga_spend, GAAcc, mwt_auth_opts(TempAcc, "3"), OtherAcc, 500, 20000 * MinGP, #{fail => true}),
+
+    ok.
+
+%% Test that temporary signer with TimeBound can sign transactions
+mwt_temp_height_spend(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    MinGP = aec_test_utils:min_gas_price(),
+    GAAcc    = ?call(new_account, 1000000000 * MinGP),
+    MainAcc  = ?call(new_account, 1000000000 * MinGP),
+    TempAcc = ?call(new_account, 1000000000 * MinGP),
+    OtherAcc = ?call(new_account, 1000000000 * MinGP),
+    {ok, #{ct := GACt}}  = ?call(attach, GAAcc, "ga_main_w_temporary", "authorize", [account_lit(MainAcc)]),
+
+    {ok, #{call_res := ok}} =
+        ?call(ct_call, MainAcc, GACt, "ga_main_w_temporary", "add_validator", [account_lit(TempAcc), "TimeBound(10)"], #{}),
+
+    {ok, #{tx_res := ok}} =
+        ?call(ga_spend, GAAcc, mwt_auth_opts(TempAcc, "1"), OtherAcc, 500, 20000 * MinGP),
+    {ok, #{tx_res := ok}} =
+        ?call(ga_spend, GAAcc, mwt_auth_opts(TempAcc, "2"), OtherAcc, 500, 20000 * MinGP),
+    {failed, authentication_failed} =
+        ?call(ga_spend, GAAcc, mwt_auth_opts(TempAcc, "3"), OtherAcc, 500, 20000 * MinGP, #{height => 11, fail => true}),
+
+    ok.
+
+%% Assert that only master account can manipulate contract
+mwt_neg_master_actions(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    MinGP = aec_test_utils:min_gas_price(),
+    GAAcc    = ?call(new_account, 1000000000 * MinGP),
+    MainAcc  = ?call(new_account, 1000000000 * MinGP),
+    TempAcc  = ?call(new_account, 1000000000 * MinGP),
+    OtherAcc = ?call(new_account, 1000000000 * MinGP),
+    {ok, #{ct := GACt}}  = ?call(attach, GAAcc, "ga_main_w_temporary", "authorize", [account_lit(MainAcc)]),
+
+    {ok, #{call_res := ok}} =
+        ?call(ct_call, MainAcc, GACt, "ga_main_w_temporary", "add_validator", [account_lit(TempAcc), "TimeBound(10)"], #{}),
+
+    {ok, #{call_res := revert, call_val := <<"=Only for master">>}} =
+        ?call(ct_call, TempAcc, GACt, "ga_main_w_temporary", "add_validator", [account_lit(OtherAcc), "TimeBound(10)"]),
+
+    {ok, #{call_res := revert, call_val := <<"=Only for master">>}} =
+        ?call(ct_call, TempAcc, GACt, "ga_main_w_temporary", "remove_validator", [account_lit(OtherAcc)]),
+
+    {ok, #{call_res := revert, call_val := <<"=Only for master">>}} =
+        ?call(ct_call, TempAcc, GACt, "ga_main_w_temporary", "set_fee_protection", ["None"]),
+
+    ok.
+
+%%%===================================================================
 %%% Oracle GA tests
 %%%===================================================================
+
 oracle_register(_Cfg) ->
     state(aect_test_utils:new_state()),
     Acc1 = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
@@ -1247,6 +1441,26 @@ paying_for(Payer, Tx, Fee, S) ->
     S1 = sign_and_apply_tx(false, Payer, PayingTx, #{}, S),
     {ok, S1}.
 
+ct_call(Caller, Contract, ContractName, Fun, Args, S) ->
+    ct_call(Caller, Contract, ContractName, Fun, Args, #{}, S).
+
+ct_call(Caller, Contract, ContractName, Fun, Args, Opts, S) ->
+    Fail  = maps:get(fail, Opts, false),
+    Nonce = aect_test_utils:next_nonce(Caller, S),
+    CallData = aega_test_utils:make_calldata(ContractName, Fun, Args),
+    Options1 = maps:merge(#{nonce => Nonce, call_data => CallData}, maps:without([height, fail], Opts)),
+    CallTx   = call_tx(Caller, Contract, Options1, S),
+
+    S1 = sign_and_apply_tx(Fail, Caller, CallTx, Opts, S),
+
+    CallTree = aect_test_utils:calls(S1),
+    {_, CTx} = aetx:specialize_type(CallTx),
+    CallId   = aect_call_tx:call_id(CTx),
+    Call     = aect_call_state_tree:get_call(Contract, CallId, CallTree),
+    {{ok, #{ call_res => aect_call:return_type(Call),
+             call_val => aect_call:return_value(Call),
+             call_gas => aect_call:gas_used(Call) }}, S1}.
+
 ga_spend(From, AuthOpts, To, Amount, Fee, S) ->
     ga_spend(From, AuthOpts, To, Amount, Fee, #{}, S).
 
@@ -1803,3 +2017,10 @@ ethereum_auth(_GA, Nonce, TxHash, S) ->
     Sig2 = aeu_crypto:ecdsa_recoverable_from_ecdsa(Msg, Sig1, ?SECP256K1_ADDR),
     Sig  = aega_test_utils:to_hex_lit(65, Sig2),
     {aega_test_utils:make_calldata("ethereum_auth", "authorize", [Nonce, Sig]), S}.
+
+main_w_temp_auth(Acc, Nonce, TxHash, S) ->
+    AccPrivKey = aect_test_utils:priv_key(Acc, S),
+    Sign = aega_test_utils:basic_auth_sign(list_to_integer(Nonce), TxHash, AccPrivKey),
+
+    Args = [Nonce, account_lit(Acc), aega_test_utils:to_hex_lit(64, Sign)],
+    {aega_test_utils:make_calldata("ga_main_w_temporary", "authorize", Args), S}.
