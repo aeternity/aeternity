@@ -1,3 +1,5 @@
+include "List.aes"
+
 contract interface MainStaking =
   entrypoint sorted_validators : () => list((address * int))
   entrypoint total_stake : () => int
@@ -23,16 +25,27 @@ main contract HCElection =
       entropy               = entropy_str
       }
 
-  stateful entrypoint elect(entropy_str : string) =
+  stateful entrypoint elect(entropy_str : string, commitments : map(hash, list(address))) =
     assert_protocol_call()
-    let new_leader = elect_at_height(Chain.block_height, entropy_str)
+    let new_leader = elect_(entropy_str, commitments)
     state.main_staking_ct.post_elect()
     put(state{ leader = new_leader, entropy = entropy_str})
 
-  entrypoint elect_at_height(height : int, entropy_str : string) =
+  entrypoint elect_next(entropy_str : string, commitments : map(hash, list(address))) =
+    elect_(entropy_str, commitments)
+
+  function elect_(entropy_str : string, commitments : map(hash, list(address))) =
+    let Some(current_hash : hash) = Chain.block_hash(Chain.block_height) // current hash!
     let entropy : hash = Crypto.sha256(entropy_str)
-    let sorted = state.main_staking_ct.sorted_validators() 
-    let shot = Bytes.to_int(entropy) * height mod state.main_staking_ct.total_stake()
+    let sorted0 = state.main_staking_ct.sorted_validators() 
+    let (sorted, total_stake) =
+        if (Chain.block_height == 0)
+            (sorted0, state.main_staking_ct.total_stake())
+        else
+            let accepted_commitments = commitments[current_hash]
+            let (sorted1, total_s, _)  = List.foldl(filter_posted_commitmens, ([], 0, accepted_commitments), sorted0)
+            (sorted1, total_s)
+    let shot = Bytes.to_int(entropy) mod total_stake
     switch(find_validator(sorted, shot))
       None => abort("NO CANDIDATE") // should not be possible
       Some(new_leader) => new_leader
@@ -55,4 +68,10 @@ main contract HCElection =
 
   function assert_protocol_call() =
       require(Call.caller == Contract.creator, "Must be called by the protocol")
+
+  function filter_posted_commitmens((accum, total_s, commitments), (addr, stake)) =
+    if (List.contains(addr, commitments))
+        ((addr, stake) :: accum, stake + total_s, commitments)
+    else
+        (accum, total_s, commitments)
 

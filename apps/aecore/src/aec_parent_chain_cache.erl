@@ -36,7 +36,8 @@
             terminate/2, code_change/3]).
 
 -export([post_block/1,
-         get_block_by_height/1]).
+         get_block_by_height/1,
+         get_commitments/1]).
 
 -export([get_state/0]).
 
@@ -46,15 +47,16 @@
 
 -record(state,
     {
-        child_top_height                    :: non_neg_integer(),
-        child_start_height                  :: non_neg_integer(),
-        pc_confirmations                    :: non_neg_integer(),
-        max_size                            :: non_neg_integer(),
-        blocks          = #{}               :: #{non_neg_integer() => aec_parent_chain_block:block()},
-        top_height      = 0                 :: non_neg_integer(),
-        sign_module     = aec_preset_keys   :: atom(), %% TODO: make it configurable
-        initial_commits_heights = []        :: list(),
-        publishing_commitments = false      :: boolean() 
+        child_top_height                        :: non_neg_integer(),
+        child_start_height                      :: non_neg_integer(),
+        pc_confirmations                        :: non_neg_integer(),
+        max_size                                :: non_neg_integer(),
+        blocks              = #{}               :: #{non_neg_integer() => aec_parent_chain_block:block()},
+        blocks_hash_index   = #{}               :: #{aec_parent_chain_block:hash() => non_neg_integer()},
+        top_height          = 0                 :: non_neg_integer(),
+        sign_module         = aec_preset_keys   :: atom(), %% TODO: make it configurable
+        initial_commits_heights = []            :: list(),
+        publishing_commitments = false          :: boolean() 
     }).
 -type state() :: #state{}.
 
@@ -87,6 +89,21 @@ get_block_by_height(Height) ->
             Err;
         {error, {not_enough_confirmations, _}} = Err -> Err
     end.
+
+-spec get_commitments(binary()) -> {ok, list()}
+                                | {error, not_in_cache}
+                                | {error, not_fetched}
+                                | {error, {not_enough_confirmations, aec_parent_chain_block:block()}}.
+get_commitments(Hash) ->
+    case gen_server:call(?SERVER, {get_commitments, Hash}) of
+        {ok, _B} = OK -> OK;
+        {error, not_in_cache} = Err ->
+            Err;
+        {error, not_fetched} = Err ->
+            Err;
+        {error, {not_enough_confirmations, _}} = Err -> Err
+    end.
+
 
 -spec get_state() -> {ok, map()}.
 get_state() ->
@@ -125,6 +142,28 @@ handle_call({get_block_by_height, Height}, _From,
             {ok, Block} when Height > TopHeight - Confirmations ->
                 {error, {not_enough_confirmations, Block}};
             {ok, _Block} = OK -> OK
+        end,
+    {reply, Reply, State};
+handle_call({get_commitments, Hash}, _From,
+            #state{pc_confirmations = Confirmations,
+                   top_height = TopHeight } = State) ->
+    Reply = 
+        case get_block_height_by_hash(Hash, State) of
+            {error, _} = Err -> Err;
+            {ok, Height} ->
+                {ok, Block} = get_block(Height, State),
+                case Height > TopHeight - Confirmations of
+                    true ->
+                        case aec_parent_chain_block:commitments(Block) of
+                            error -> {error, {not_enough_confirmations, not_fetched}}; %% TODO: maybe request them?
+                            {ok, _Commitments} = Ok -> {error, {not_enough_confirmations, Ok}}
+                        end;
+                    false ->
+                        case aec_parent_chain_block:commitments(Block) of
+                            error -> {error, not_fetched}; %% TODO: maybe request them?
+                            {ok, _Commitments} = Ok -> Ok
+                        end
+                end
         end,
     {reply, Reply, State};
 handle_call(get_state, _From, State) ->
@@ -198,14 +237,26 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 
 -spec insert_block(aec_parent_chain_block:block(), state()) -> state().
-insert_block(Block, #state{blocks = Blocks} = State) ->
+insert_block(Block, #state{blocks = Blocks,
+                           blocks_hash_index = Index} = State) ->
     Height = aec_parent_chain_block:height(Block),
-    State#state{blocks = maps:put(Height, Block, Blocks)}.
+    Hash = aec_parent_chain_block:hash(Block),
+    State#state{blocks = maps:put(Height, Block, Blocks),
+                blocks_hash_index = maps:put(Hash, Height, Index)}.
 
 -spec get_block(non_neg_integer(), state()) -> {ok, aec_parent_chain_block:block()} | {error, not_in_cache}.
 get_block(Height, #state{blocks = Blocks}) ->
     case maps:find(Height, Blocks) of
         {ok, _Block} = OK -> OK;
+        error ->
+            {error, not_in_cache}
+    end.
+    
+-spec get_block_height_by_hash(aec_parent_chain_block:hash(), state()) ->
+    {ok, non_neg_integer()} | {error, not_in_cache}.
+get_block_height_by_hash(Hash, #state{blocks_hash_index = Index}) ->
+    case maps:find(Hash, Index) of
+        {ok, _Height} = OK -> OK;
         error ->
             {error, not_in_cache}
     end.
@@ -217,8 +268,15 @@ max_block(#state{blocks = Blocks}) ->
     lists:max(maps:keys(Blocks)).
     
 -spec delete_block(non_neg_integer(), state()) -> state().
-delete_block(Height, #state{blocks = Blocks} = State) ->
-    State#state{blocks = maps:remove(Height, Blocks)}.
+delete_block(Height, #state{blocks = Blocks,
+                            blocks_hash_index = Index} = State) ->
+    case get_block(Height, State) of
+        {ok, Block} ->
+            Hash = aec_parent_chain_block:hash(Block),
+            State#state{blocks = maps:remove(Height, Blocks),
+                        blocks_hash_index = maps:remove(Hash, Index)};
+        {error, not_in_cache} -> State
+    end.
 
 state_to_map(#state{child_start_height = StartHeight,
                     child_top_height   = ChildHeight,
@@ -245,6 +303,7 @@ post_block(Block, #state{max_size = MaxSize,
                          top_height = TopHeight} = State0) ->
     TargetHeight = target_parent_height(State0),
     BlockHeight = aec_parent_chain_block:height(Block),
+    BlockHash = aec_parent_chain_block:hash(Block),
     MaxBlockToRequest = TargetHeight + MaxSize - 1,
     GCHeight = min_cachable_parent_height(State0),
     case BlockHeight < GCHeight of

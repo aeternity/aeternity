@@ -97,6 +97,13 @@ handle_request('GetGenerationByHash',#{hash := EncHash},#{sim_name := SimName}) 
                 error         -> {400, [], #{reason => <<"Hash not on main chain">>}}
             end
     end;
+handle_request('GetGenerationByHash',#{hash := EncHash},#{sim_name := SimName}) ->
+    case aeser_api_encoder:safe_decode(micro_block_hash, EncHash) of
+        {ok, Hash} ->
+            generation_rsp(SimName, aec_chain_sim:get_generation_by_hash(SimName, Hash, forward));
+        {error, _} ->
+            {400, [], #{reason => <<"Invalid hash">>}}
+    end;
 handle_request('GetGenerationByHeight',#{height := HeightStr},#{sim_name := SimName}) ->
     Height = aehttp_helpers:to_int(HeightStr),
     case aec_chain_sim:get_key_block_hash_at_height(SimName, Height) of
