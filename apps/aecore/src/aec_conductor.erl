@@ -390,6 +390,7 @@ handle_call(stop_block_production,_From, State = #state{ consensus = Cons }) ->
     epoch_mining:info("Mining stopped"),
     aec_block_generator:stop_generation(),
     [ aec_tx_pool:garbage_collect() || is_record(Cons, consensus) andalso Cons#consensus.leader ],
+    aec_events:publish(stop_mining, []),
     State1 = kill_all_workers(State),
     State2 = State1#state{block_producing_state = 'stopped',
                           consensus = Cons#consensus{leader = false},

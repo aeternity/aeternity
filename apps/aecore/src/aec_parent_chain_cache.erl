@@ -53,7 +53,8 @@
         blocks          = #{}               :: #{non_neg_integer() => aec_parent_chain_block:block()},
         top_height      = 0                 :: non_neg_integer(),
         sign_module     = aec_preset_keys   :: atom(), %% TODO: make it configurable
-        initial_commits_heights = []         :: list()
+        initial_commits_heights = []        :: list(),
+        publishing_commitments = false      :: boolean() 
     }).
 -type state() :: #state{}.
 
@@ -100,11 +101,12 @@ get_state() ->
 -spec init([any()]) -> {ok, #state{}}.
 init([StartHeight, Size, Confirmations]) ->
     aec_events:subscribe(top_changed),
+    aec_events:subscribe(start_mining),
+    aec_events:subscribe(stop_mining),
     ChildHeight = aec_chain:top_height(),
     true = is_integer(ChildHeight),
     InitialCommitsHeights = lists:seq(StartHeight, StartHeight + Confirmations - 1),
     self() ! initialize_cache,
-
     {ok, #state{child_start_height      = StartHeight,
                 child_top_height        = ChildHeight,
                 pc_confirmations        = Confirmations, 
@@ -140,8 +142,14 @@ handle_cast(_Msg, State) ->
     {noreply, State}.
 
 -spec handle_info(any(), state()) -> {noreply, state()}.
-handle_info(initialize_cache, State) ->
-    TargetHeight = target_parent_height(State),
+handle_info(initialize_cache, State0) ->
+    TargetHeight = target_parent_height(State0),
+    CommitmentsEnabled =
+        case aec_conductor:get_mining_state() of
+            running -> true;
+            stopped -> false
+        end,
+    State = State0#state{publishing_commitments  = CommitmentsEnabled},
     case aec_parent_connector:fetch_block_by_height(TargetHeight) of
         {ok, B} ->
             aec_parent_connector:request_top(),
@@ -174,6 +182,10 @@ handle_info({gproc_ps_event, top_changed, #{info := #{block_type := key,
     {noreply, State};
 handle_info({gproc_ps_event, top_changed, _}, State) ->
     {noreply, State};
+handle_info({gproc_ps_event, start_mining, _}, State) ->
+    {noreply, State#state{publishing_commitments = true}};
+handle_info({gproc_ps_event, stop_mining, _}, State) ->
+    {noreply, State#state{publishing_commitments = false}};
 handle_info(_Info, State) ->
     lager:debug("Unhandled info: ~p", [_Info]),
     {noreply, State}.
@@ -318,7 +330,7 @@ maybe_request_next_block(BlockHeight, #state{max_size = MaxSize } = State) ->
     end.
 
 maybe_post_commitments(TopHash, #state{sign_module = SignModule} = State) ->
-    case posting_commitments_enabled() of
+    case posting_commitments_enabled(State) of
         true ->
             post_commitments(TopHash, #state{sign_module = SignModule} = State);
         false ->
@@ -367,7 +379,7 @@ maybe_post_initial_commitments(Block, #state{pc_confirmations = Confirmations,
     IsFirstCommitment = Height >= ChildStartHeight - 1 andalso
                         Height < ChildStartHeight + Confirmations,
     NotPostedYet = lists:member(Height, InitialCommitsHeights),
-    IsPublishingCommitments = posting_commitments_enabled(),
+    IsPublishingCommitments = posting_commitments_enabled(State),
     case IsFirstCommitment andalso NotPostedYet andalso IsPublishingCommitments of
         true ->
             Hash = aec_chain:genesis_hash(), %% TODO: maybe reconsider if we shall post Genesis hash before seeing any block on the parent chain or a different approach should be taken
@@ -377,10 +389,6 @@ maybe_post_initial_commitments(Block, #state{pc_confirmations = Confirmations,
             State
     end.
 
-posting_commitments_enabled() ->
-    case aec_conductor:get_mining_state() of
-        running -> true;
-        stopped -> false
-    end.
-
+posting_commitments_enabled(#state{publishing_commitments = Enabled}) ->
+    Enabled.
 
