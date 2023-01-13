@@ -38,6 +38,7 @@
         , skip_instructions/1
         , debugger_status/1
         , debugger_location/1
+        , dbg_call_stack/1
         ]).
 
 %% Setters
@@ -148,6 +149,7 @@
             , variables_registers :: map()
             , debugger_status     :: debugger_status()
             , debugger_location   :: debugger_location()
+            , dbg_call_stack      :: [{string(), pos_integer()}]
             }).
 
 -opaque state() :: #es{}.
@@ -186,6 +188,7 @@ new(Gas, Value, Spec, Stores, APIState, CodeCache, VMVersion) ->
        , variables_registers = #{}
        , debugger_status     = disabled
        , debugger_location   = none
+       , dbg_call_stack      = []
        }.
 
 new_dbg(Gas, Value, Spec, Stores, APIState, CodeCache, VMVersion, Breakpoints) ->
@@ -312,11 +315,14 @@ push_call_stack(#es{ current_bb = BB
                    , call_stack = Stack
                    , call_value = Value
                    , caller = Caller
-                   , memory = Mem} = ES) ->
+                   , memory = Mem
+                   , debugger_location = Loc
+                   , dbg_call_stack = DbgStack} = ES) ->
     AccS1 = [Acc || Acc /= void] ++ AccS,
     ES#es{accumulator       = void,
           accumulator_stack = [],
-          call_stack        = [{Caller, Contract, VmVersion, Function, TVars, BB + 1, AccS1, Mem, Value}|Stack]}.
+          call_stack        = [{Caller, Contract, VmVersion, Function, TVars, BB + 1, AccS1, Mem, Value}|Stack],
+          dbg_call_stack    = [Loc|DbgStack]}.
 
 %% TODO: Make better types for all these things
 -spec pop_call_stack(state()) ->
@@ -329,7 +335,13 @@ push_call_stack(#es{ current_bb = BB
                                        _, map(), non_neg_integer(), state()}.
 pop_call_stack(#es{accumulator = ReturnValue,
                    call_stack = Stack,
+                   dbg_call_stack = DbgStack,
                    current_contract = Current} = ES) ->
+    DbgStackRest =
+        case DbgStack of
+            []              -> [];
+            [_ | StackRest] -> StackRest
+        end,
     case Stack of
         [] -> {empty, ES};
         [{modify, Continuation}| Rest] ->
@@ -348,6 +360,7 @@ pop_call_stack(#es{accumulator = ReturnValue,
                   , accumulator_stack = AccS
                   , memory = Mem
                   , call_stack = Rest
+                  , dbg_call_stack = DbgStackRest
                   }};
         [{Caller, Pubkey, VmVersion, Function, TVars, BB, AccS, Mem, Value}| Rest] ->
             Seen = pop_seen_contracts(Pubkey, ES),
@@ -368,6 +381,7 @@ pop_call_stack(#es{accumulator = ReturnValue,
                   , seen_contracts = Seen
                   , current_contract = NewCurrent
                   , vm_version = VmVersion
+                  , dbg_call_stack = DbgStackRest
                   }}
     end.
 
@@ -940,6 +954,12 @@ debugger_location(#es{debugger_location = Location}) ->
 -spec set_debugger_location(debugger_location(), state()) -> state().
 set_debugger_location(Location, ES) ->
     ES#es{debugger_location = Location}.
+
+%%%------------------
+
+-spec dbg_call_stack(state()) -> [{string(), pos_integer()}].
+dbg_call_stack(#es{dbg_call_stack = Stack}) ->
+    Stack.
 
 %%%------------------
 
