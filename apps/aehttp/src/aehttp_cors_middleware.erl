@@ -77,7 +77,7 @@ cors_headers(Req, Origin) ->
         undefined ->
             CorsHeaders;
         AllowHeaders0 ->
-            AllowHeaders = proplists:get_value(<<"allow_headers">>, CorsConfig, AllowHeaders0),
+            AllowHeaders = maps:get(<<"allow_headers">>, CorsConfig, AllowHeaders0),
             [{<<"access-control-allow-headers">>, AllowHeaders} | CorsHeaders]
     end.
 
