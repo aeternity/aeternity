@@ -455,7 +455,10 @@ unmock_parent_connector() ->
 mock_events() ->
     meck:new(aec_events, []),
     meck:expect(aec_events, subscribe,
-                fun(top_changed) -> ok end),
+                fun(top_changed) -> ok;
+                   (start_mining) -> ok;
+                   (stop_mining) -> ok
+                end),
     ok.
 
 unmock_events() ->
