@@ -64,9 +64,9 @@ set_cors_headers(Req, Origin) ->
     lists:foldl(SetHeader, Req, Headers).
 
 cors_headers(Req, Origin) ->
-    CorsConfig   = aeu_env:user_config([<<"http">>, <<"cors">>], []),
-    AllowMethods = proplists:get_value(<<"allow_methods">> , CorsConfig, ?ACCESS_CONTROL_ALLOW_METHODS),
-    MaxAge       = proplists:get_value(<<"max_age">>       , CorsConfig, ?ACCESS_CONTROL_MAX_AGE),
+    CorsConfig   = aeu_env:user_config([<<"http">>, <<"cors">>], #{}),
+    AllowMethods = concat_methods(maps:get(<<"allow_methods">> , CorsConfig, ?ACCESS_CONTROL_ALLOW_METHODS)),
+    MaxAge       = maps:get(<<"max_age">>       , CorsConfig, ?ACCESS_CONTROL_MAX_AGE),
     CorsHeaders =
         [{<<"vary">>                             , <<"origin">>},
          {<<"access-control-allow-origin">>      , Origin},
@@ -80,3 +80,12 @@ cors_headers(Req, Origin) ->
             AllowHeaders = proplists:get_value(<<"allow_headers">>, CorsConfig, AllowHeaders0),
             [{<<"access-control-allow-headers">>, AllowHeaders} | CorsHeaders]
     end.
+
+concat_methods(Methods) when is_binary(Methods) -> Methods;
+concat_methods(Methods) when is_list(Methods) ->
+    [Method | T] = Methods,
+    concat_methods(Method, T).
+
+concat_methods(Accum, []) -> Accum;
+concat_methods(Accum, [Method | T]) ->
+    concat_methods(<<Accum/binary, ", ", Method/binary>>, T).
