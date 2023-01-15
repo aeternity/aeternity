@@ -28,7 +28,6 @@
         , getopt
         , eblake2
         , ecrecover
-        , ecrecoverprebuilt
         , emcl
         , ecli
         ]).
