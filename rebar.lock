@@ -53,7 +53,7 @@
   0},
  {<<"ecrecover">>,
   {git,"https://github.com/aeternity/ecrecover.git",
-      {ref,"5a4fbfc454dcf30739fb75d561fde2d1c4189e1f"}},
+      {ref,"889c302db3c4961b4af2194f2e118419f668d337"}},
   0},
  {<<"emcl">>,
   {git,"https://github.com/aeternity/emcl.git",
