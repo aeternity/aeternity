@@ -17,6 +17,7 @@
          nonce/1,
          origin/1,
          check/3,
+         payload/1,
          process/3,
          signers/2,
          version/1,
@@ -109,6 +110,10 @@ channel_pubkey(#channel_slash_tx{channel_id = ChannelId}) ->
 
 channel_id(#channel_slash_tx{channel_id = ChannelId}) ->
     ChannelId.
+
+-spec payload(tx()) -> binary().
+payload(#channel_slash_tx{payload = Payload}) ->
+    Payload.
 
 -spec check(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()} | {error, term()}.
 check(#channel_slash_tx{payload    = Payload,
