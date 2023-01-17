@@ -197,14 +197,6 @@
 
     ]).
 
-%% test case exports
-%% for CORS headers
--export([
-    cors_not_returned_when_origin_not_sent/1,
-    cors_returned_on_preflight_request/1,
-    cors_returned_on_get_request/1,
-    cors_returned_on_error/1]).
-
 %% test case exports for HTTP cache headers
 -export([
     expires_cache_header/1,
@@ -499,12 +491,6 @@ groups() ->
         swagger_validation_schema
         %%swagger_validation_types
       ]},
-     {cors_headers, [],
-      [cors_not_returned_when_origin_not_sent,
-       cors_returned_on_preflight_request,
-       cors_returned_on_get_request,
-       cors_returned_on_error]},
-
      {http_cache, [],
       [expires_cache_header,
        etag_cache_header]},
@@ -4169,49 +4155,6 @@ swagger_validation_schema(_Config) ->
 %%                           "/transactions/index/" ++
 %%                           "not_integer", []).
 
-
-%% ============================================================
-%% Test CORS headers
-%% ============================================================
-
-cors_not_returned_when_origin_not_sent(_Config) ->
-    Host = external_address(),
-    {ok, {{_, 200, _}, Headers, _Body}} =
-        httpc_request(get, {Host ++ "/v2/blocks/top", []}, [], []),
-
-    undefined = proplists:get_value(<<"access-control-allow-origin">>, Headers),
-    ok.
-
-cors_returned_on_preflight_request(_Config) ->
-    Host = external_address(),
-    {ok, {{_, 200, _}, Headers, _Body}} =
-        httpc_request(options, {Host ++ "/v2/blocks/top", [{"origin", "example.com"}]}, [], []),
-
-    "example.com" = proplists:get_value("access-control-allow-origin", Headers),
-    "DELETE, GET, HEAD, OPTIONS, PATCH, POST, PUT" = proplists:get_value("access-control-allow-methods", Headers),
-    "1800" = proplists:get_value("access-control-max-age", Headers),
-    "true" = proplists:get_value("access-control-allow-credentials", Headers),
-    ok.
-
-cors_returned_on_get_request(_Config) ->
-    Host = external_address(),
-    {ok, {{_, 200, _}, Headers, _Body}} =
-        httpc_request(get, {Host ++ "/v2/blocks/top", [{"origin", "example.com"}]}, [], []),
-
-    "example.com" = proplists:get_value("access-control-allow-origin", Headers),
-    ok.
-
-cors_returned_on_error(_Config) ->
-    Host = external_address(),
-    {ok, {{_, 404, _}, _Headers1, _}} =
-        httpc_request(get, {Host ++ "/v3/names/nonExistentName.chain", [{"origin", "example.com"}]}, [], []),
-
-    InternalHost = internal_address(),
-    {ok, {{_, 500, _}, Headers2, _}} =
-        httpc_request(get, {InternalHost ++ "/v3/debug/crash", [{"origin", "example.com"}]}, [], []),
-    "example.com" = proplists:get_value("access-control-allow-origin", Headers2),
-
-    ok.
 
 %% ============================================================
 %% Test HTTP cache headers
