@@ -29,7 +29,7 @@
 %%%=============================================================================
 
 %% External API
--export([start_link/3, stop/0]).
+-export([start_link/4, stop/0]).
 
 %% Callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -64,10 +64,10 @@
 %%% API
 %%%=============================================================================
 %% Start the parent chain cache process
--spec start_link(non_neg_integer(), non_neg_integer(), non_neg_integer()) ->
+-spec start_link(non_neg_integer(), non_neg_integer(), non_neg_integer(), boolean()) ->
     {ok, pid()} | {error, {already_started, pid()}} | {error, Reason::any()}.
-start_link(Height, Size, Confirmations) ->
-    Args = [Height, Size, Confirmations],
+start_link(Height, Size, Confirmations, IsPublishingCommitments) ->
+    Args = [Height, Size, Confirmations, IsPublishingCommitments],
     gen_server:start_link({local, ?SERVER}, ?MODULE, Args, []).
 
 stop() ->
@@ -99,7 +99,7 @@ get_state() ->
 %%%=============================================================================
 
 -spec init([any()]) -> {ok, #state{}}.
-init([StartHeight, Size, Confirmations]) ->
+init([StartHeight, Size, Confirmations, BlockProducing]) ->
     aec_events:subscribe(top_changed),
     aec_events:subscribe(start_mining),
     aec_events:subscribe(stop_mining),
@@ -112,6 +112,7 @@ init([StartHeight, Size, Confirmations]) ->
                 pc_confirmations        = Confirmations, 
                 max_size                = Size,
                 blocks                  = #{},
+                publishing_commitments  = BlockProducing,
                 initial_commits_heights = InitialCommitsHeights}}.
 
 -spec handle_call(any(), any(), state()) -> {reply, any(), state()}.
@@ -142,14 +143,8 @@ handle_cast(_Msg, State) ->
     {noreply, State}.
 
 -spec handle_info(any(), state()) -> {noreply, state()}.
-handle_info(initialize_cache, State0) ->
-    TargetHeight = target_parent_height(State0),
-    CommitmentsEnabled =
-        case aec_conductor:get_mining_state() of
-            running -> true;
-            stopped -> false
-        end,
-    State = State0#state{publishing_commitments  = CommitmentsEnabled},
+handle_info(initialize_cache, State) ->
+    TargetHeight = target_parent_height(State),
     case aec_parent_connector:fetch_block_by_height(TargetHeight) of
         {ok, B} ->
             aec_parent_connector:request_top(),

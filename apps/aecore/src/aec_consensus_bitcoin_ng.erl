@@ -10,7 +10,7 @@
 %% API
 -export([ can_be_turned_off/0
         , assert_config/1
-        , start/1
+        , start/2
         , stop/0
         , is_providing_extra_http_endpoints/0
         , client_request/1
@@ -81,7 +81,7 @@
 %% Configuration and extra features/http endpoints
 can_be_turned_off() -> true.
 assert_config(_Config) -> ok.
-start(_Config) ->
+start(_Config, _) ->
     load_whitelist(),
     case aec_governance:get_network_id() of
         <<"ae_mainnet">> -> force_community_fork();
