@@ -20,7 +20,7 @@
 %% API
 -export([ can_be_turned_off/0
         , assert_config/1
-        , start/1
+        , start/2
         , stop/0
         , is_providing_extra_http_endpoints/0
         , client_request/1
@@ -79,7 +79,7 @@
 can_be_turned_off() -> false.
 assert_config(_Config) -> ok.
 
-start(Config) ->
+start(Config, _) ->
     #{<<"stakers">> := StakersEncoded} = Config,
     Stakers =
         lists:map(

@@ -21,7 +21,7 @@
 %% API
 -export([ can_be_turned_off/0
         , assert_config/1
-        , start/1
+        , start/2
         , stop/0
         , is_providing_extra_http_endpoints/0
         , client_request/1
@@ -84,7 +84,7 @@
 can_be_turned_off() -> false.
 assert_config(_Config) -> ok.
 
-start(Config) ->
+start(Config, #{block_production := BlockProduction}) ->
     #{<<"stakers">> := StakersEncoded,
       <<"parent_chain">> :=
         #{  <<"start_height">> := StartHeight,
@@ -144,7 +144,8 @@ start(Config) ->
     start_dependency(aec_parent_connector, [ParentConnMod, FetchInterval,
                                             ParentHosts, NetworkId,
                                             SignModule, PCSpendPubkey]),
-    start_dependency(aec_parent_chain_cache, [StartHeight, CacheSize, Confirmations]),
+    start_dependency(aec_parent_chain_cache, [StartHeight, CacheSize,
+                                              Confirmations, BlockProduction]),
     ok.
 
 start_dependency(Mod, Args) ->

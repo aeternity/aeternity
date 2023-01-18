@@ -102,7 +102,7 @@
 %% Some consensus implementations should ensure that it can be enabled at the given point in time
 %% for instance by killing the peer pool, bypassing the mining conductor etc...
 %% gets the configuration previously validated by assert_config/1
--callback start(consensus_config()) -> ok.
+-callback start(consensus_config(), map()) -> ok.
 %% Stops the given consensus
 %% Only required for consensuses for which can_be_turned_off() =:= true
 -callback stop() -> ok.

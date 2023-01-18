@@ -19,6 +19,7 @@
 -include("blocks.hrl").
 
 -type event() :: start_mining
+               | stop_mining
                | block_created
                | micro_block_created
                | start_micro_mining

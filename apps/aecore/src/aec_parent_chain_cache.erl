@@ -29,7 +29,7 @@
 %%%=============================================================================
 
 %% External API
--export([start_link/3, stop/0]).
+-export([start_link/4, stop/0]).
 
 %% Callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -53,7 +53,8 @@
         blocks          = #{}               :: #{non_neg_integer() => aec_parent_chain_block:block()},
         top_height      = 0                 :: non_neg_integer(),
         sign_module     = aec_preset_keys   :: atom(), %% TODO: make it configurable
-        initial_commits_heights = []         :: list()
+        initial_commits_heights = []        :: list(),
+        publishing_commitments = false      :: boolean() 
     }).
 -type state() :: #state{}.
 
@@ -63,10 +64,10 @@
 %%% API
 %%%=============================================================================
 %% Start the parent chain cache process
--spec start_link(non_neg_integer(), non_neg_integer(), non_neg_integer()) ->
+-spec start_link(non_neg_integer(), non_neg_integer(), non_neg_integer(), boolean()) ->
     {ok, pid()} | {error, {already_started, pid()}} | {error, Reason::any()}.
-start_link(Height, Size, Confirmations) ->
-    Args = [Height, Size, Confirmations],
+start_link(Height, Size, Confirmations, IsPublishingCommitments) ->
+    Args = [Height, Size, Confirmations, IsPublishingCommitments],
     gen_server:start_link({local, ?SERVER}, ?MODULE, Args, []).
 
 stop() ->
@@ -98,18 +99,20 @@ get_state() ->
 %%%=============================================================================
 
 -spec init([any()]) -> {ok, #state{}}.
-init([StartHeight, Size, Confirmations]) ->
+init([StartHeight, Size, Confirmations, BlockProducing]) ->
     aec_events:subscribe(top_changed),
+    aec_events:subscribe(start_mining),
+    aec_events:subscribe(stop_mining),
     ChildHeight = aec_chain:top_height(),
     true = is_integer(ChildHeight),
     InitialCommitsHeights = lists:seq(StartHeight, StartHeight + Confirmations - 1),
     self() ! initialize_cache,
-
     {ok, #state{child_start_height      = StartHeight,
                 child_top_height        = ChildHeight,
                 pc_confirmations        = Confirmations, 
                 max_size                = Size,
                 blocks                  = #{},
+                publishing_commitments  = BlockProducing,
                 initial_commits_heights = InitialCommitsHeights}}.
 
 -spec handle_call(any(), any(), state()) -> {reply, any(), state()}.
@@ -174,6 +177,10 @@ handle_info({gproc_ps_event, top_changed, #{info := #{block_type := key,
     {noreply, State};
 handle_info({gproc_ps_event, top_changed, _}, State) ->
     {noreply, State};
+handle_info({gproc_ps_event, start_mining, _}, State) ->
+    {noreply, State#state{publishing_commitments = true}};
+handle_info({gproc_ps_event, stop_mining, _}, State) ->
+    {noreply, State#state{publishing_commitments = false}};
 handle_info(_Info, State) ->
     lager:debug("Unhandled info: ~p", [_Info]),
     {noreply, State}.
@@ -318,7 +325,7 @@ maybe_request_next_block(BlockHeight, #state{max_size = MaxSize } = State) ->
     end.
 
 maybe_post_commitments(TopHash, #state{sign_module = SignModule} = State) ->
-    case posting_commitments_enabled() of
+    case posting_commitments_enabled(State) of
         true ->
             post_commitments(TopHash, #state{sign_module = SignModule} = State);
         false ->
@@ -367,7 +374,7 @@ maybe_post_initial_commitments(Block, #state{pc_confirmations = Confirmations,
     IsFirstCommitment = Height >= ChildStartHeight - 1 andalso
                         Height < ChildStartHeight + Confirmations,
     NotPostedYet = lists:member(Height, InitialCommitsHeights),
-    IsPublishingCommitments = posting_commitments_enabled(),
+    IsPublishingCommitments = posting_commitments_enabled(State),
     case IsFirstCommitment andalso NotPostedYet andalso IsPublishingCommitments of
         true ->
             Hash = aec_chain:genesis_hash(), %% TODO: maybe reconsider if we shall post Genesis hash before seeing any block on the parent chain or a different approach should be taken
@@ -377,10 +384,6 @@ maybe_post_initial_commitments(Block, #state{pc_confirmations = Confirmations,
             State
     end.
 
-posting_commitments_enabled() ->
-    case aec_conductor:get_mining_state() of
-        running -> true;
-        stopped -> false
-    end.
-
+posting_commitments_enabled(#state{publishing_commitments = Enabled}) ->
+    Enabled.
 
