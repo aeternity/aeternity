@@ -56,7 +56,7 @@ run_integration_sync:
 
 buildx_version:
   type: string
-  default: "0.7.0"
+  default: "0.10.0"
 
 buildx_platforms:
   type: string
