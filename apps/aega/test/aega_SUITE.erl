@@ -42,6 +42,7 @@
         , bitcoin_spend_from/1
         , bitcoin_contract_create/1
         , bitcoin_contract_call/1
+        , bitcoin_tamper_proof/1
 
         , ethereum_attach/1
         , ethereum_spend_from/1
@@ -175,6 +176,7 @@ groups() ->
                     , bitcoin_spend_from
                     , bitcoin_contract_create
                     , bitcoin_contract_call
+                    , bitcoin_tamper_proof
                     ]}
 
     , {ethereum, [], [ ethereum_attach
@@ -654,6 +656,30 @@ bitcoin_contract_call(_Cfg) ->
         ?call(ga_call, Acc1, AuthOpts2, Ct, "identity", "main_", ["42"]),
     ?assertMatchABI("42", 42, decode_call_result("identity", "main_", ok, Val)),
 
+    ok.
+
+bitcoin_tamper_proof(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    MinGP = aec_test_utils:min_gas_price(),
+    Acc1 = ?call(new_account, 1000000000 * MinGP),
+    Acc2 = ?call(new_account, 1000000000 * MinGP),
+    {ok, _} = ?call(attach, Acc1, "bitcoin_auth", "authorize", [?B_OWNER]),
+
+    AuthOpts    = #{ prep_fun => fun(TxHash) -> ?call(bitcoin_auth, Acc1, "1", TxHash) end },
+    PreBalance  = ?call(account_balance, Acc2),
+    case aect_test_utils:latest_protocol_version() >= ?CERES_PROTOCOL_VSN  of
+        true ->
+            {failed, authentication_failed} =
+                ?call(ga_spend, Acc1, AuthOpts, Acc2, 500, 20000 * MinGP, #{tamper_fee => true}),
+            {failed, authentication_failed} =
+                ?call(ga_spend, Acc1, AuthOpts, Acc2, 500, 20000 * MinGP, #{tamper_gas_price => true});
+        false ->
+            %% before CERES we could tamper with the fee
+            {ok, #{tx_res := ok}} =
+                ?call(ga_spend, Acc1, AuthOpts, Acc2, 500, 20000 * MinGP, #{tamper_fee => true}),
+            PostBalance = ?call(account_balance, Acc2),
+            ?assertMatch({X, Y} when X + 500 == Y, {PreBalance, PostBalance})
+    end,
     ok.
 
 %%%===================================================================
@@ -1680,7 +1706,8 @@ ga_channel_force_progress(Acc1, AuthOpts, CId, OffState, CtId, Contract, Fun, Ar
 
 
 meta(Owner, AuthOpts, InnerTx0, Opts, S) ->
-    {AuthData, InnerTx, MetaTx} = prep_meta(Owner, AuthOpts, InnerTx0),
+    {AuthData, InnerTx, MetaTx} =
+        prep_meta(Owner, maps:merge(AuthOpts, maps:with([tamper_fee, tamper_gas_price], Opts)), InnerTx0),
     do_meta(Owner, AuthData, InnerTx, MetaTx, Opts, S).
 
 prep_meta(Owner, AuthOpts, InnerTx0) ->
@@ -1691,13 +1718,17 @@ prep_meta(Owner, AuthOpts, InnerTx0) ->
             {InnerTx0, aetx_sign:new(InnerTx0, [])}
         end,
     TxBin    = aec_governance:add_network_id(aetx:serialize_to_binary(InnerTx)),
-    AuthData = make_authdata(AuthOpts, aec_hash:hash(tx, TxBin)),
+    TxHash   = aega_test_utils:auth_data_hash(AuthOpts, TxBin),
+    AuthData = make_authdata(AuthOpts, TxHash),
     Options1 = maps:merge(#{auth_data => AuthData, tx => InnerSTx}, AuthOpts),
-    MetaTx   = aega_test_utils:ga_meta_tx(Owner, Options1),
+    MetaTx   = aega_test_utils:ga_meta_tx(Owner, Options1),  %% here we can tamper the fee and gas_price
     {AuthData, InnerTx, MetaTx}.
 
 do_meta(Owner, AuthData, InnerTx, MetaTx, Opts, S) ->
-    Fail     = maps:get(fail, Opts, false),
+    TamperFee = maps:get(tamper_fee, Opts, false),
+    TamperGasPrice = maps:get(tamper_gas_price, Opts, false),
+    Fail     = maps:get(fail, Opts, (TamperFee orelse TamperGasPrice)
+                                    andalso aect_test_utils:latest_protocol_version() >= ?CERES_PROTOCOL_VSN),
     Height   = maps:get(height, Opts, 1),
     SMetaTx  = aetx_sign:new(MetaTx, []),
     S1       = case apply_transaction(SMetaTx, S, Height) of
@@ -1873,7 +1904,8 @@ sign_tx(Pubkey, plain, Tx, S) ->
     aec_test_utils:sign_tx(Tx, PrivKey);
 sign_tx(Pubkey, AuthOpts, Tx, _S) ->
     TxBin    = aec_governance:add_network_id(aetx:serialize_to_binary(Tx)),
-    AuthData = make_authdata(AuthOpts, aec_hash:hash(tx, TxBin)),
+    TxHash   = aega_test_utils:auth_data_hash(AuthOpts, TxBin),
+    AuthData = make_authdata(AuthOpts, TxHash),
     Options1 = #{auth_data => AuthData, tx => aetx_sign:new(Tx, [])},
     MetaTx   = aega_test_utils:ga_meta_tx(Pubkey, Options1),
     aetx_sign:new(MetaTx, []).

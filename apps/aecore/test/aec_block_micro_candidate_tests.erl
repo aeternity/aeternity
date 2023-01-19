@@ -426,14 +426,17 @@ used_gas_test_() ->
                             %% use meta tx
                             Spend = spend_tx(#{}, Trees0),
                             GANonce = "1",
-                            TxHash    = aec_hash:hash(tx, aec_governance:add_network_id(aetx:serialize_to_binary(Spend))),
+                            Fee      = 20000 * aec_test_utils:min_gas_price(),
+                            GasPrice = 1000 * aec_test_utils:min_gas_price(),
+                            TxHash    = aega_test_utils:auth_data_hash(Fee, GasPrice,
+                                                                       aec_governance:add_network_id(aetx:serialize_to_binary(Spend))),
                             Signature = aega_test_utils:basic_auth_sign(list_to_integer(GANonce), TxHash, ?TEST_PRIV),
                             AuthData  = aega_test_utils:make_calldata(SophiaVersion, "basic_auth", "authorize",
                                 [GANonce, aega_test_utils:to_hex_lit(64, Signature)]),
 
                             PrevKeyHash = aec_blocks:prev_key_hash(Block1),
                             meck:expect(aec_chain, get_block, fun(Hash) -> if Hash == PrevKeyHash -> {ok, Block0} end end),
-                            STx = aetx_sign:new(meta_tx(Spend, ?TEST_PUB, AuthData, CallOpts0), []),
+                            STx = aetx_sign:new(meta_tx(Spend, ?TEST_PUB, AuthData, CallOpts0#{fee => Fee, gas_price => GasPrice}), []),
                             meck_expect_candidate_prerequisites(Time, Trees1, [STx]),
                             {ok, Block2, #{ trees := Trees2 }} = aec_block_micro_candidate:create(Block1),
                             [STx] = aec_blocks:txs(Block2),
@@ -491,14 +494,17 @@ used_gas_test_() ->
                             Create = contract_create_tx(?TEST_PUB, SophiaVersion, ContractName, "init", [],
                                                         Trees1, CallOpts0#{nonce => 0}),
                             GANonce = "1",
-                            TxHash    = aec_hash:hash(tx, aec_governance:add_network_id(aetx:serialize_to_binary(Create))),
+                            Fee      =  20000 * aec_test_utils:min_gas_price(),
+                            GasPrice =  1000 * aec_test_utils:min_gas_price(),
+                            TxHash    = aega_test_utils:auth_data_hash(Fee, GasPrice,
+                                                                       aec_governance:add_network_id(aetx:serialize_to_binary(Create))),
                             Signature = aega_test_utils:basic_auth_sign(list_to_integer(GANonce), TxHash, ?TEST_PRIV),
                             AuthData  = aega_test_utils:make_calldata(SophiaVersion, "basic_auth", "authorize",
                                 [GANonce, aega_test_utils:to_hex_lit(64, Signature)]),
 
                             PrevKeyHash = aec_blocks:prev_key_hash(Block1),
                             meck:expect(aec_chain, get_block, fun(Hash) -> if Hash == PrevKeyHash -> {ok, Block0} end end),
-                            STx = aetx_sign:new(meta_tx(Create, ?TEST_PUB, AuthData, CallOpts0), []),
+                            STx = aetx_sign:new(meta_tx(Create, ?TEST_PUB, AuthData, CallOpts0#{fee => Fee, gas_price => GasPrice}), []),
                             meck_expect_candidate_prerequisites(Time, Trees1, [STx]),
                             {ok, Block2, #{ trees := Trees2 }} = aec_block_micro_candidate:create(Block1),
                             [STx] = aec_blocks:txs(Block2),
@@ -618,8 +624,9 @@ attach_tx(Pubkey, SophiaVersion, ContractName, _Fun, _Args, Opts, Trees, VMVersi
                  call_data => CallData},
     aega_test_utils:ga_attach_tx(Pubkey, Map).
 
-meta_tx(InnerTx, Pubkey, AuthData, _Opts) ->
+meta_tx(InnerTx, Pubkey, AuthData, Opts) ->
     aega_test_utils:ga_meta_tx(Pubkey,
-                               #{ auth_data => AuthData,
-                                  tx => aetx_sign:new(InnerTx, []), fee => 20000 * aec_test_utils:min_gas_price() }).
+                               maps:merge(
+                                 #{ auth_data => AuthData,
+                                    tx => aetx_sign:new(InnerTx, [])}, Opts)).
 -endif.

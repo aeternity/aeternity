@@ -25,6 +25,7 @@
          version/1,
          serialization_template/1,
          serialize/1,
+         serialize_auth_data/3,
          deserialize/2,
          for_client/1,
          valid_at_protocol/2
@@ -49,6 +50,8 @@
 -define(NO_TTL_VSN, 2).
 -define(PRE_IRIS_VSN, 1).
 -define(GA_META_TX_TYPE, ga_meta_tx).
+
+-define(AUTH_DATA_VSN, 1).
 
 %% Should this be in a header file somewhere?
 -define(PUB_SIZE, 32).
@@ -184,7 +187,7 @@ process(#ga_meta_tx{} = Tx, Trees, Env0) ->
           gas_price(Tx),
           fee(Tx),
           tx(Tx)),
-    Env = add_tx(Env0, aetx_sign:tx(tx(Tx))),
+    Env = add_tx(Env0, Tx),
     case aeprimop:eval(AuthInstructions, Trees, Env) of
         {ok, Trees1, Env1} ->
             %% Successful authentication - we have a call object in Trees1
@@ -379,13 +382,33 @@ valid_at_protocol(P, #ga_meta_tx{ tx = SignedTx }) ->
     P >= ?FORTUNA_PROTOCOL_VSN andalso
         aetx:valid_at_protocol(P, aetx_sign:tx(SignedTx)).
 
+-spec serialize_auth_data(non_neg_integer(), non_neg_integer(), binary()) -> binary().
+serialize_auth_data(Fee, GasPrice, TxBinary) ->
+    TxHash = aec_hash:hash(tx, TxBinary),
+    SerTemplate = auth_data_serialization_template(?AUTH_DATA_VSN),
+    aeser_chain_objects:serialize(ga_meta_tx_auth_data, ?AUTH_DATA_VSN, SerTemplate,
+                                  [{fee, Fee}, {gas_price, GasPrice}, {tx_hash, TxHash}]).
+
 %%%===================================================================
 %%% Internal functions
 
-add_tx(Env0, Tx) ->
-    BinForNetwork = aec_governance:add_network_id(aetx:serialize_to_binary(Tx)),
+add_tx(Env0, #ga_meta_tx{} = Tx) ->
+    Protocol = aetx_env:consensus_version(Env0),
+    {InnerTx, TxHash} = auth_data_inner_tx(Protocol, Tx),
     aetx_env:set_ga_tx(
-      aetx_env:set_ga_tx_hash(Env0, aec_hash:hash(tx, BinForNetwork)), Tx).
+      aetx_env:set_ga_tx_hash(Env0, TxHash), InnerTx).
+
+auth_data_inner_tx(P, #ga_meta_tx{} = Tx) ->
+    InnerTx = aetx_sign:tx(tx(Tx)),
+    BinForNetwork = aec_governance:add_network_id(aetx:serialize_to_binary(InnerTx)),
+    case P < ?CERES_PROTOCOL_VSN of
+        true ->
+            {InnerTx, aec_hash:hash(tx, BinForNetwork)};
+        false ->
+            Fee = fee(Tx),
+            GasPrice = gas_price(Tx),
+            {InnerTx, aec_hash:hash(tx, serialize_auth_data(Fee, GasPrice, BinForNetwork))}
+    end.
 
 set_ga_context(Env0, Tx) ->
     Env1 = aetx_env:set_context(Env0, aetx_ga),
@@ -397,3 +420,9 @@ reset_ga_context(Env0, Tx, OldEnv) ->
     Env1 = aetx_env:set_context(Env0, aetx_env:context(OldEnv)),
     Env2 = aetx_env:del_ga_auth_id(Env1, ga_pubkey(Tx)),
     aetx_env:del_ga_nonce(Env2, ga_pubkey(Tx)).
+
+auth_data_serialization_template(?AUTH_DATA_VSN) ->
+  [ {fee, int}
+  , {gas_price, int}
+  , {tx_hash, binary}
+  ].

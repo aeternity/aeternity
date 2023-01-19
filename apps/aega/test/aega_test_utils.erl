@@ -42,7 +42,15 @@ ga_attach_tx_default(PubKey) ->
 
 ga_meta_tx(PubKey, Spec0) ->
     Spec = maps:merge(ga_meta_tx_default(PubKey), Spec0),
-    {ok, Tx} = aega_meta_tx:new(Spec),
+    Spec1 = case maps:get(tamper_fee, Spec0, false) of
+                true -> maps:put(fee, maps:get(fee, Spec) + 100, Spec);
+                false -> Spec
+            end,
+    Spec2 = case maps:get(tamper_gas_price, Spec0, false) of
+                true -> maps:put(gas_price, maps:get(gas_price, Spec1) + 100, Spec1);
+                false -> Spec1
+            end,
+    {ok, Tx} = aega_meta_tx:new(Spec2),
     Tx.
 
 ga_meta_tx_default(PubKey) ->
@@ -160,12 +168,23 @@ sign_tx(STx, [Sig | Sigs], S) ->
                     sign_tx(STx1, Sigs, S);
                 {PK, {basic, Nonce}} ->
                     PrivKey = aect_test_utils:priv_key(PK, S),
-                    TxHash = aec_hash:hash(tx, BinForNetwork),
+                    TxHash = auth_data_hash(#{}, BinForNetwork),
                     SignBin = basic_auth_sign(list_to_integer(Nonce), TxHash, PrivKey),
                     AuthData = make_calldata("basic_auth", "authorize", [Nonce, to_hex_lit(64, SignBin)]),
                     MetaTx = ga_meta_tx(PK, #{auth_data => AuthData, tx => STx}),
                     sign_tx(aetx_sign:new(MetaTx, []), Sigs, S)
             end
+    end.
+
+auth_data_hash(Opts, TxBin) ->
+    Fee      = maps:get(fee, Opts, maps:get(fee, ga_meta_tx_default(<<0:256>>))),
+    GasPrice = maps:get(gas_price, Opts, maps:get(gas_price, ga_meta_tx_default(<<0:256>>))),
+    auth_data_hash(Fee, GasPrice, TxBin).
+
+auth_data_hash(Fee, GasPrice, TxBin) ->
+    case aect_test_utils:latest_protocol_version() >= ?CERES_PROTOCOL_VSN of
+        true  -> aec_hash:hash(tx, aega_meta_tx:serialize_auth_data(Fee, GasPrice, TxBin));
+        false -> aec_hash:hash(tx, TxBin)
     end.
 
 basic_auth_sign(Nonce, TxHash, PrivKey) ->
