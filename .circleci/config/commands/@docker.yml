@@ -62,14 +62,14 @@ docker_buildx:
     #       url="${baseUrl}/v<< pipeline.parameters.buildx_version >>/${fileName}"
     #       curl -sSL -o ~/.docker/cli-plugins/docker-buildx $url
     #       chmod a+x ~/.docker/cli-plugins/docker-buildx
-    # - run:
-    #     name: Setup buildx
-    #     command: |
-    #       docker buildx install
-    #       docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
-    #       docker context create aeternity
-    #       docker buildx create --use --platform << pipeline.parameters.buildx_platforms >> aeternity
-    #       docker buildx inspect --builder aeternity --bootstrap
+    - run:
+        name: Setup buildx
+        command: |
+          docker buildx install
+          docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
+          docker context create aeternity
+          docker buildx create --use --platform << pipeline.parameters.buildx_platforms >> aeternity
+          docker buildx inspect --builder aeternity --bootstrap
     - docker_login
     - run:
         name: Build and push docker image to docker.io registry
