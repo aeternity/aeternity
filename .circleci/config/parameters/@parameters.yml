@@ -61,3 +61,7 @@ buildx_version:
 buildx_platforms:
   type: string
   default: "linux/arm64,linux/amd64"
+
+docker_builder_image:
+  type: string
+  default: "aeternity/builder:ci-bionic-otp23-buildx"
