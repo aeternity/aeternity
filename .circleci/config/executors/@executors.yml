@@ -53,5 +53,5 @@ machine_2004:
 buildx:
   docker:
     - image: cimg/base:stable
-      resource_class: xlarge
+  resource_class: xlarge
   working_directory: /home/circleci/aeternity
