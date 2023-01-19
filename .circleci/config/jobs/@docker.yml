@@ -29,6 +29,7 @@ docker-buildx:
       type: string
   steps:
     - fixed_checkout
+    - setup_docker
     - when:
         condition: << parameters.aeplugin_devmode >>
         steps:
