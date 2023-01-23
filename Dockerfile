@@ -1,4 +1,4 @@
-FROM aeternitybot/docker-builder:bionic-otp23-1 as builder
+FROM aeternity/aeternity:ci-bionic-otp23-${TARGETARCH}-buildx as builder
 
 # Add required files to download and compile only the dependencies
 ADD rebar.config rebar.lock Makefile rebar3 rebar.config.script /app/
