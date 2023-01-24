@@ -78,7 +78,6 @@ docker_buildx:
         command: |
           docker buildx build --progress=plain --push \
           --platform << pipeline.parameters.buildx_platforms >> \
-          -f Dockerfile-2204 \
           -t << pipeline.parameters.docker_repo >>:<< parameters.tag >> .
 
 docker_tag:
