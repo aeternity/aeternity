@@ -1,46 +1,34 @@
 docker-image:
-  executor: infrastructure_container_stable
+  executor: machine_<< parameters.platform >>
   parameters:
+    platform:
+      type: string
+      default: amd64
     aeplugin_devmode:
       type: boolean
       default: false
     tag:
       type: string
+    push:
+      type: boolean
+      default: true
   steps:
     - fixed_checkout
     - when:
         condition: << parameters.aeplugin_devmode >>
         steps:
           - aeplugin_install_devmode
-    - setup_docker
     - docker_build:
         tag: << parameters.tag >>
-    - docker_push:
-        tag: << parameters.tag >>
-    - fail_notification
-
-docker-buildx:
-  executor: buildx
-  parameters:
-    aeplugin_devmode:
-      type: boolean
-      default: false
-    tag:
-      type: string
-  steps:
-    - fixed_checkout
-    - setup_docker
     - when:
-        condition: << parameters.aeplugin_devmode >>
+        condition: << parameters.push >>
         steps:
-          - aeplugin_install_devmode
-    # - setup_docker
-    - docker_buildx:
-        tag: << parameters.tag >>
+          - docker_push:
+              tag: << parameters.tag >>
     - fail_notification
 
 docker-tag:
-  executor: infrastructure_container_stable
+  executor: base
   parameters:
     src:
       type: string
@@ -55,3 +43,15 @@ docker-tag:
     - docker_push:
         tag: << parameters.tag >>
     - fail_notification
+
+docker-manifest:
+  executor: base
+  parameters:
+    manifest_list:
+      type: string
+    tag:
+      type: string
+  steps:
+    - docker_manifest:
+        manifest_list: << parameters.manifest_list >>
+        tag: << parameters.tag >>

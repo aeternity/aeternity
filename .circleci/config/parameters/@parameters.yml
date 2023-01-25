@@ -54,14 +54,6 @@ run_integration_sync:
   type: boolean
   default: false
 
-buildx_version:
-  type: string
-  default: "0.10.0"
-
-buildx_platforms:
-  type: string
-  default: "linux/arm64,linux/amd64"
-
 docker_builder_image:
   type: string
   default: "aeternity/builder:ci-bionic-otp23-buildx"

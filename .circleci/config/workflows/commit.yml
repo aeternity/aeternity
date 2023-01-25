@@ -334,12 +334,12 @@ jobs:
         branches:
           only: << pipeline.parameters.master_branch >>
 
-  - docker-buildx:
-      name: docker-buildx-mainline
+  - docker-image:
+      name: docker-image-mainline-amd64
       context:
         - ae-slack
         - ae-dockerhub
-      tag: ${CIRCLE_BRANCH/\//_}
+      tag: ${CIRCLE_BRANCH/\//_}-amd64
       # requires:
       #   - test
       #   - eunit
@@ -352,21 +352,35 @@ jobs:
       #       - << pipeline.parameters.master_branch >>
 
   - docker-image:
+      name: docker-image-mainline-arm64
+      context:
+        - ae-slack
+        - ae-dockerhub
+      tag: ${CIRCLE_BRANCH/\//_}-arm64
+      # requires:
+      #   - test
+      #   - eunit
+      #   - aevm-test
+      #   - static-analysis
+      #   - rebar_lock_check
+      # filters:
+      #   branches:
+      #     only:
+      #       - << pipeline.parameters.master_branch >>
+
+  - docker-manifest:
       name: docker-image-mainline
       context:
         - ae-slack
         - ae-dockerhub
       tag: ${CIRCLE_BRANCH/\//_}
       requires:
-        - test
-        - eunit
-        - aevm-test
-        - static-analysis
-        - rebar_lock_check
-      filters:
-        branches:
-          only:
-            - << pipeline.parameters.master_branch >>
+        - docker-image-mainline-amd64
+        - docker-image-mainline-arm64
+      # filters:
+      #   branches:
+      #     only:
+      #       - << pipeline.parameters.master_branch >>
 
   - docker-image:
       name: docker-image-mainline-bundle
