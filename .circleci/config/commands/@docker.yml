@@ -44,41 +44,26 @@ docker_build:
               sleep 1;
           done;
 
-docker_buildx:
+docker_manifest:
   parameters:
+    manifest_list:
+      type: string
     tag:
       type: string
   steps:
-    # - run:
-    #     name: Install emulation dependencies
-    #     command: |
-    #       sudo apt-get update && sudo apt-get install -y qemu binfmt-support qemu-user-static
-    # - run:
-    #     name: Install buildx
-    #     command: |
-    #       mkdir -p ~/.docker/cli-plugins
-    #       baseUrl="https://github.com/docker/buildx/releases/download"
-    #       fileName="buildx-v<< pipeline.parameters.buildx_version >>.linux-amd64"
-    #       url="${baseUrl}/v<< pipeline.parameters.buildx_version >>/${fileName}"
-    #       curl -sSL -o ~/.docker/cli-plugins/docker-buildx $url
-    #       chmod a+x ~/.docker/cli-plugins/docker-buildx
     - run:
-        name: Setup buildx
+        name: Create docker manifest
         command: |
-          docker buildx install
-          docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
-          docker context create aeternity
-          docker buildx create --use --platform << pipeline.parameters.buildx_platforms >> aeternity
-          docker buildx inspect --builder aeternity --bootstrap
-    - docker_login
+          read -a MANIFEST_LIST_ARRAY \<<< "<< parameters.manifest_list >>"
+          PREFIX="<< pipeline.parameters.docker_repo >>:"
+          MANIFEST_LIST="${MANIFEST_LIST_ARRAY[@]/#/$PREFIX}"
+          docker manifest create \
+            << pipeline.parameters.docker_repo >>:<< parameters.tag >> \
+            $MANIFEST_LIST
     - run:
-        name: Build and push docker image to docker.io registry
-        environment:
-          DOCKER_CLI_EXPERIMENTAL: enabled
+        name: Push docker manifest
         command: |
-          docker buildx build --progress=plain --push \
-          --platform << pipeline.parameters.buildx_platforms >> \
-          -t << pipeline.parameters.docker_repo >>:<< parameters.tag >> .
+          docker manifest push << pipeline.parameters.docker_repo >>:<< parameters.tag >>
 
 docker_tag:
   parameters:
