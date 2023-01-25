@@ -356,6 +356,7 @@ jobs:
       context:
         - ae-slack
         - ae-dockerhub
+      platform: arm64
       tag: ${CIRCLE_BRANCH/\//_}-arm64
       # requires:
       #   - test
