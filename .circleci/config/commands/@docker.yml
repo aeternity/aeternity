@@ -60,6 +60,7 @@ docker_manifest:
           docker manifest create \
             << pipeline.parameters.docker_repo >>:<< parameters.tag >> \
             $MANIFEST_LIST
+    - docker_login
     - run:
         name: Push docker manifest
         command: |
