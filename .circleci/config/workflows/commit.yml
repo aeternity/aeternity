@@ -374,6 +374,9 @@ jobs:
         - ae-slack
         - ae-dockerhub
       tag: ${CIRCLE_BRANCH/\//_}
+      manifest_list: >-
+        ${CIRCLE_BRANCH/\//_}-amd64
+        ${CIRCLE_BRANCH/\//_}-arm64
       requires:
         - docker-image-mainline-amd64
         - docker-image-mainline-arm64
