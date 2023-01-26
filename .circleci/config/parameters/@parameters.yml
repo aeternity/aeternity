@@ -56,4 +56,4 @@ run_integration_sync:
 
 docker_builder_image:
   type: string
-  default: "aeternity/builder:ci-bionic-otp23-buildx"
+  default: "aeternity/builder:bionic-otp23"

@@ -339,17 +339,18 @@ jobs:
       context:
         - ae-slack
         - ae-dockerhub
+      platform: amd64
       tag: ${CIRCLE_BRANCH/\//_}-amd64
-      # requires:
-      #   - test
-      #   - eunit
-      #   - aevm-test
-      #   - static-analysis
-      #   - rebar_lock_check
-      # filters:
-      #   branches:
-      #     only:
-      #       - << pipeline.parameters.master_branch >>
+      requires:
+        - test
+        - eunit
+        - aevm-test
+        - static-analysis
+        - rebar_lock_check
+      filters:
+        branches:
+          only:
+            - << pipeline.parameters.master_branch >>
 
   - docker-image:
       name: docker-image-mainline-arm64
@@ -358,16 +359,16 @@ jobs:
         - ae-dockerhub
       platform: arm64
       tag: ${CIRCLE_BRANCH/\//_}-arm64
-      # requires:
-      #   - test
-      #   - eunit
-      #   - aevm-test
-      #   - static-analysis
-      #   - rebar_lock_check
-      # filters:
-      #   branches:
-      #     only:
-      #       - << pipeline.parameters.master_branch >>
+      requires:
+        - test
+        - eunit
+        - aevm-test
+        - static-analysis
+        - rebar_lock_check
+      filters:
+        branches:
+          only:
+            - << pipeline.parameters.master_branch >>
 
   - docker-manifest:
       name: docker-image-mainline
@@ -381,24 +382,61 @@ jobs:
       requires:
         - docker-image-mainline-amd64
         - docker-image-mainline-arm64
-      # filters:
-      #   branches:
-      #     only:
-      #       - << pipeline.parameters.master_branch >>
+      filters:
+        branches:
+          only:
+            - << pipeline.parameters.master_branch >>
 
   - docker-image:
-      name: docker-image-mainline-bundle
+      name: docker-image-mainline-bundle-amd64
       context:
         - ae-slack
         - ae-dockerhub
       aeplugin_devmode: true
-      tag: ${CIRCLE_BRANCH/\//_}-bundle
+      platform: amd64
+      tag: ${CIRCLE_BRANCH/\//_}-bundle-amd64
       requires:
         - test
         - eunit
         - aevm-test
         - static-analysis
         - rebar_lock_check
+      filters:
+        branches:
+          only:
+            - << pipeline.parameters.master_branch >>
+
+  - docker-image:
+      name: docker-image-mainline-bundle-arm64
+      context:
+        - ae-slack
+        - ae-dockerhub
+      aeplugin_devmode: true
+      platform: arm64
+      tag: ${CIRCLE_BRANCH/\//_}-bundle-arm64
+      requires:
+        - test
+        - eunit
+        - aevm-test
+        - static-analysis
+        - rebar_lock_check
+      filters:
+        branches:
+          only:
+            - << pipeline.parameters.master_branch >>
+
+  - docker-manifest:
+      name: docker-image-mainline
+      context:
+        - ae-slack
+        - ae-dockerhub
+      tag: ${CIRCLE_BRANCH/\//_}-bundle
+      manifest_list: >-
+        ${CIRCLE_BRANCH/\//_}-bundle-amd64
+        ${CIRCLE_BRANCH/\//_}-bundle-arm64
+      requires:
+        - docker-image-mainline-bundle-amd64
+        - docker-image-mainline-bundle-arm64
       filters:
         branches:
           only:
