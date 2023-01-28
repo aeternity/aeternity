@@ -174,29 +174,29 @@
 new(Gas, Value, Spec, Stores, APIState, CodeCache, VMVersion) ->
     [error({bad_init_arg, X, Y}) || {X, Y} <- [{gas, Gas}, {value, Value}],
                                     not (is_integer(Y) andalso Y >= 0)],
-    #es{ accumulator         = ?FATE_VOID
-       , accumulator_stack   = []
-       , bbs                 = #{}
-       , call_stack          = []
-       , caller              = aeb_fate_data:make_address(maps:get(caller, Spec))
-       , call_value          = Value
-       , chain_api           = APIState
-       , code_cache          = CodeCache
-       , creator_cache       = #{}
-       , created_cells       = 0
-       , current_bb          = 0
-       , current_contract    = ?FATE_VOID
-       , current_function    = ?FATE_VOID
-       , current_tvars       = #{}
-       , functions           = #{}
-       , gas                 = Gas
-       , logs                = []
-       , memory              = #{}
-       , seen_contracts      = []
-       , stores              = Stores
-       , trace               = []
-       , vm_version          = VMVersion
-       , debug_info          = disabled
+    #es{ accumulator       = ?FATE_VOID
+       , accumulator_stack = []
+       , bbs               = #{}
+       , call_stack        = []
+       , caller            = aeb_fate_data:make_address(maps:get(caller, Spec))
+       , call_value        = Value
+       , chain_api         = APIState
+       , code_cache        = CodeCache
+       , creator_cache     = #{}
+       , created_cells     = 0
+       , current_bb        = 0
+       , current_contract  = ?FATE_VOID
+       , current_function  = ?FATE_VOID
+       , current_tvars     = #{}
+       , functions         = #{}
+       , gas               = Gas
+       , logs              = []
+       , memory            = #{}
+       , seen_contracts    = []
+       , stores            = Stores
+       , trace             = []
+       , vm_version        = VMVersion
+       , debug_info        = disabled
        }.
 
 new_dbg(Gas, Value, Spec, Stores, APIState, CodeCache, VMVersion, Breakpoints) ->
