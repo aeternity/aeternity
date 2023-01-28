@@ -33,12 +33,6 @@
         , trace/1
         , vm_version/1
         , consensus_version/1
-        , breakpoints/1
-        , breakpoint_stop/1
-        , skip_instructions/1
-        , debugger_status/1
-        , debugger_location/1
-        , dbg_call_stack/1
         ]).
 
 %% Setters
@@ -61,10 +55,6 @@
         , set_memory/2
         , set_stores/2
         , set_trace/2
-        , set_breakpoint_stop/2
-        , set_skip_instructions/2
-        , set_debugger_status/2
-        , set_debugger_location/2
         ]).
 
 %% More complex stuff
@@ -95,7 +85,26 @@
         , spend_gas_for_traversal/3
         , spend_gas_for_traversal/4
         , update_for_remote_call/5
-        , add_variable_register/3
+        ]).
+
+%% Debug info getters
+-export([ breakpoints/1
+        , breakpoint_stop/1
+        , skip_instructions/1
+        , debugger_status/1
+        , debugger_location/1
+        , dbg_call_stack/1
+        ]).
+
+%% Debug info setters
+-export([ set_breakpoint_stop/2
+        , set_skip_instructions/2
+        , set_debugger_status/2
+        , set_debugger_location/2
+        ]).
+
+%% Debug info functions
+-export([ add_variable_register/3
         , del_variable_register/3
         , get_variable_register/2
         ]).
@@ -120,36 +129,41 @@
 -type void_or_fate() :: ?FATE_VOID | aeb_fate_data:fate_type().
 -type pubkey() :: <<_:256>>.
 
--record(es, { accumulator         :: void_or_fate()
-            , accumulator_stack   :: [aeb_fate_data:fate_type()]
-            , bbs                 :: map()
-            , call_stack          :: [tuple()] %% TODO: Better type
-            , caller              :: aeb_fate_data:fate_address()
-            , call_value          :: non_neg_integer()
-            , chain_api           :: aefa_chain_api:state()
-            , code_cache          :: map() %% Cache for loaded contracts.
-            , creator_cache       :: map() %% Cache for creators of contracts
-            , created_cells       :: integer() %% Heap memory used
-            , current_bb          :: non_neg_integer()
-            , current_contract    :: ?FATE_VOID | pubkey()
-            , current_function    :: ?FATE_VOID | binary()
-            , current_tvars       :: map()    %% Instantiations for type variables in the current call (needed when type checking return value)
-            , functions           :: map()    %% Cache for current contract.
-            , gas                 :: integer()
-            , logs                :: [term()]
-            , memory              :: map()    %% Environment #{name => val}
-            , seen_contracts      :: [pubkey()]
-                                     %% Call stack of contracts (including tail calls)
-            , stores              :: aefa_stores:store()
-            , trace               :: list()
-            , vm_version          :: non_neg_integer()
-            , breakpoints         :: list()
-            , breakpoint_stop     :: boolean()
-            , skip_instructions   :: integer()
-            , variables_registers :: map()
-            , debugger_status     :: debugger_status()
-            , debugger_location   :: debugger_location()
-            , dbg_call_stack      :: [{string(), pos_integer()}]
+-record(debug_info, { status = continue       :: debugger_status()
+                    , location = none         :: debugger_location()
+                    , breakpoints = []        :: list()
+                    , breakpoint_stop = false :: boolean()
+                    , skip_instructions = 0   :: integer()
+                    , vars_registers = #{}    :: map()
+                    , call_stack = []         :: [{string(), pos_integer()}]
+                    }).
+
+-type debug_info() :: #debug_info{}.
+
+-record(es, { accumulator       :: void_or_fate()
+            , accumulator_stack :: [aeb_fate_data:fate_type()]
+            , bbs               :: map()
+            , call_stack        :: [tuple()] %% TODO: Better type
+            , caller            :: aeb_fate_data:fate_address()
+            , call_value        :: non_neg_integer()
+            , chain_api         :: aefa_chain_api:state()
+            , code_cache        :: map() %% Cache for loaded contracts.
+            , creator_cache     :: map() %% Cache for creators of contracts
+            , created_cells     :: integer() %% Heap memory used
+            , current_bb        :: non_neg_integer()
+            , current_contract  :: ?FATE_VOID | pubkey()
+            , current_function  :: ?FATE_VOID | binary()
+            , current_tvars     :: map()    %% Instantiations for type variables in the current call (needed when type checking return value)
+            , functions         :: map()    %% Cache for current contract.
+            , gas               :: integer()
+            , logs              :: [term()]
+            , memory            :: map()    %% Environment #{name => val}
+            , seen_contracts    :: [pubkey()]
+                                   %% Call stack of contracts (including tail calls)
+            , stores            :: aefa_stores:store()
+            , trace             :: list()
+            , vm_version        :: non_neg_integer()
+            , debug_info        :: disabled | debug_info()
             }).
 
 -opaque state() :: #es{}.
@@ -182,18 +196,12 @@ new(Gas, Value, Spec, Stores, APIState, CodeCache, VMVersion) ->
        , stores              = Stores
        , trace               = []
        , vm_version          = VMVersion
-       , breakpoints         = []
-       , breakpoint_stop     = false
-       , skip_instructions   = 0
-       , variables_registers = #{}
-       , debugger_status     = disabled
-       , debugger_location   = none
-       , dbg_call_stack      = []
+       , debug_info          = disabled
        }.
 
 new_dbg(Gas, Value, Spec, Stores, APIState, CodeCache, VMVersion, Breakpoints) ->
     ES = new(Gas, Value, Spec, Stores, APIState, CodeCache, VMVersion),
-    ES#es{ breakpoints = Breakpoints }.
+    ES#es{ debug_info = #debug_info{ breakpoints = Breakpoints } }.
 
 aefa_stores(#es{ chain_api = APIState }) ->
     Protocol = aetx_env:consensus_version(aefa_chain_api:tx_env(APIState)),
@@ -316,13 +324,19 @@ push_call_stack(#es{ current_bb = BB
                    , call_value = Value
                    , caller = Caller
                    , memory = Mem
-                   , debugger_location = Loc
-                   , dbg_call_stack = DbgStack} = ES) ->
+                   , debug_info = DbgInfo} = ES) ->
     AccS1 = [Acc || Acc /= void] ++ AccS,
+    NewDbgInfo =
+        case DbgInfo of
+            #debug_info{location = DbgLoc, call_stack = DbgStack} ->
+                DbgInfo#debug_info{call_stack = [DbgLoc | DbgStack]};
+            disabled ->
+                disabled
+        end,
     ES#es{accumulator       = void,
           accumulator_stack = [],
           call_stack        = [{Caller, Contract, VmVersion, Function, TVars, BB + 1, AccS1, Mem, Value}|Stack],
-          dbg_call_stack    = [Loc|DbgStack]}.
+          debug_info        = NewDbgInfo}.
 
 %% TODO: Make better types for all these things
 -spec pop_call_stack(state()) ->
@@ -335,12 +349,16 @@ push_call_stack(#es{ current_bb = BB
                                        _, map(), non_neg_integer(), state()}.
 pop_call_stack(#es{accumulator = ReturnValue,
                    call_stack = Stack,
-                   dbg_call_stack = DbgStack,
+                   debug_info = DbgInfo,
                    current_contract = Current} = ES) ->
-    DbgStackRest =
-        case DbgStack of
-            []              -> [];
-            [_ | StackRest] -> StackRest
+    NewDbgInfo =
+        case DbgInfo of
+            #debug_info{call_stack = []} ->
+                DbgInfo#debug_info{call_stack = []};
+            #debug_info{call_stack = [_ | StackRest]} ->
+                DbgInfo#debug_info{call_stack = StackRest};
+            disabled ->
+                disabled
         end,
     case Stack of
         [] -> {empty, ES};
@@ -360,7 +378,7 @@ pop_call_stack(#es{accumulator = ReturnValue,
                   , accumulator_stack = AccS
                   , memory = Mem
                   , call_stack = Rest
-                  , dbg_call_stack = DbgStackRest
+                  , debug_info = NewDbgInfo
                   }};
         [{Caller, Pubkey, VmVersion, Function, TVars, BB, AccS, Mem, Value}| Rest] ->
             Seen = pop_seen_contracts(Pubkey, ES),
@@ -381,7 +399,7 @@ pop_call_stack(#es{accumulator = ReturnValue,
                   , seen_contracts = Seen
                   , current_contract = NewCurrent
                   , vm_version = VmVersion
-                  , dbg_call_stack = DbgStackRest
+                  , debug_info = NewDbgInfo
                   }}
     end.
 
@@ -900,16 +918,6 @@ set_trace(X, ES) ->
     ES#es{trace = X}.
 
 %%%------------------
-
--spec breakpoint_stop(state()) -> boolean().
-breakpoint_stop(#es{breakpoint_stop = BS}) ->
-    BS.
-
--spec set_breakpoint_stop(boolean(), state()) -> state().
-set_breakpoint_stop(Val, ES) ->
-    ES#es{breakpoint_stop = Val}.
-
-%%%------------------
 -spec vm_version(state()) -> non_neg_integer().
 vm_version(#es{vm_version = X}) ->
     X.
@@ -920,62 +928,77 @@ consensus_version(#es{chain_api = Api}) ->
     TxEnv = aefa_chain_api:tx_env(Api),
     aetx_env:consensus_version(TxEnv).
 
-%%%------------------
+%%% Debugger functions
+
 -spec breakpoints(state()) -> list().
-breakpoints(#es{breakpoints = Breakpoints}) ->
+breakpoints(#es{debug_info = #debug_info{breakpoints = Breakpoints}}) ->
     Breakpoints.
 
 %%%------------------
 
+-spec breakpoint_stop(state()) -> boolean().
+breakpoint_stop(#es{debug_info = #debug_info{breakpoint_stop = BS}}) ->
+    BS.
+
+-spec set_breakpoint_stop(boolean(), state()) -> state().
+set_breakpoint_stop(Val, ES = #es{debug_info = DbgInfo}) ->
+    ES#es{debug_info = DbgInfo#debug_info{breakpoint_stop = Val}}.
+
+%%%------------------
+
 -spec skip_instructions(state()) -> integer().
-skip_instructions(#es{skip_instructions = Skip}) ->
+skip_instructions(#es{debug_info = #debug_info{skip_instructions = Skip}}) ->
     Skip.
 
 -spec set_skip_instructions(integer(), state()) -> state().
-set_skip_instructions(Skip, ES) ->
-    ES#es{skip_instructions = Skip}.
+set_skip_instructions(Skip, ES = #es{debug_info = DbgInfo}) ->
+    ES#es{debug_info = DbgInfo#debug_info{skip_instructions = Skip}}.
 
 %%%------------------
 
 -spec debugger_status(state()) -> debugger_status().
-debugger_status(#es{debugger_status = Status}) ->
+debugger_status(#es{debug_info = #debug_info{status = Status}}) ->
     Status.
 
 -spec set_debugger_status(debugger_status(), state()) -> state().
-set_debugger_status(Status, ES) ->
-    ES#es{debugger_status = Status}.
+set_debugger_status(Status, ES = #es{debug_info = DbgInfo}) ->
+    ES#es{debug_info = DbgInfo#debug_info{status = Status}}.
 
 %%%------------------
 
 -spec debugger_location(state()) -> debugger_location().
-debugger_location(#es{debugger_location = Location}) ->
+debugger_location(#es{debug_info = #debug_info{location = Location}}) ->
     Location.
 
 -spec set_debugger_location(debugger_location(), state()) -> state().
-set_debugger_location(Location, ES) ->
-    ES#es{debugger_location = Location}.
+set_debugger_location(Location, ES = #es{debug_info = DbgInfo}) ->
+    ES#es{debug_info = DbgInfo#debug_info{location = Location}}.
 
 %%%------------------
 
 -spec dbg_call_stack(state()) -> [{string(), pos_integer()}].
-dbg_call_stack(#es{dbg_call_stack = Stack}) ->
+dbg_call_stack(#es{debug_info = #debug_info{call_stack = Stack}}) ->
     Stack.
 
 %%%------------------
 
 -spec add_variable_register(string(), tuple(), state()) -> state().
-add_variable_register(Var, Reg, ES = #es{variables_registers = VarsRegs}) ->
+add_variable_register(Var, Reg, ES = #es{debug_info = DbgInfo}) ->
+    VarsRegs = DbgInfo#debug_info.vars_registers,
     Old = maps:get(Var, VarsRegs, []),
     New = [Reg | Old],
-    ES#es{variables_registers = VarsRegs#{Var => New}}.
+    NewDbgInfo = DbgInfo#debug_info{vars_registers = VarsRegs#{Var => New}},
+    ES#es{debug_info = NewDbgInfo}.
 
 -spec del_variable_register(string(), tuple(), state()) -> state().
-del_variable_register(Var, Reg, ES = #es{variables_registers = VarsRegs}) ->
+del_variable_register(Var, Reg, ES = #es{debug_info = DbgInfo}) ->
+    VarsRegs = DbgInfo#debug_info.vars_registers,
     New = lists:delete(Reg, maps:get(Var, VarsRegs, [])),
-    ES#es{variables_registers = VarsRegs#{Var => New}}.
+    NewDbgInfo = DbgInfo#debug_info{vars_registers = VarsRegs#{Var => New}},
+    ES#es{debug_info = NewDbgInfo}.
 
 -spec get_variable_register(string(), state()) -> tuple().
-get_variable_register(Var, #es{variables_registers = VarsRegs}) ->
+get_variable_register(Var, #es{debug_info = #debug_info{vars_registers = VarsRegs}}) ->
     case maps:get(Var, VarsRegs, [undefined]) of
         []        -> undefined;
         [Reg | _] -> Reg
