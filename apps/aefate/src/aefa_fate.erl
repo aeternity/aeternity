@@ -259,10 +259,17 @@ abort({auth_tx_type_not_handled, TxType}, ES) ->
 abort(E) -> throw({add_engine_state, E}).
 
 execute(EngineState) ->
-    Skip = aefa_engine_state:skip_instructions(EngineState),
-    AllInstructions = aefa_engine_state:current_bb_instructions(EngineState),
-    Instructions = lists:nthtail(Skip, AllInstructions),
-    loop(Instructions, aefa_engine_state:set_skip_instructions(0, EngineState)).
+    Instructions = aefa_engine_state:current_bb_instructions(EngineState),
+    case aefa_engine_state:debugger_status(EngineState) of
+        disabled ->
+            loop(Instructions, EngineState);
+        _ ->
+            %% Skip the instructions that were executed before the break
+            Skip            = aefa_engine_state:skip_instructions(EngineState),
+            DbgInstructions = lists:nthtail(Skip, Instructions),
+            DbgEngineState  = aefa_engine_state:set_skip_instructions(0, EngineState),
+            loop(DbgInstructions, DbgEngineState)
+    end.
 
 loop(Instructions, EngineState) ->
     case step(Instructions, EngineState) of

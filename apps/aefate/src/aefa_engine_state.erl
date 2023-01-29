@@ -127,12 +127,12 @@
 -type void_or_fate() :: ?FATE_VOID | aeb_fate_data:fate_type().
 -type pubkey() :: <<_:256>>.
 
--record(debug_info, { status = continue       :: debugger_status()
-                    , location = none         :: debugger_location()
-                    , breakpoints = []        :: list()
-                    , skip_instructions = 0   :: integer()
-                    , vars_registers = #{}    :: map()
-                    , call_stack = []         :: [{string(), pos_integer()}]
+-record(debug_info, { status = continue     :: debugger_status()
+                    , location = none       :: debugger_location()
+                    , breakpoints = []      :: list()
+                    , skip_instructions = 0 :: integer()
+                    , vars_registers = #{}  :: map()
+                    , call_stack = []       :: [{string(), pos_integer()}]
                     }).
 
 -type debug_info() :: #debug_info{}.
