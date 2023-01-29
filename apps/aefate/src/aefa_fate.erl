@@ -276,7 +276,7 @@ loop(Instructions, EngineState) ->
                 {error, What} -> abort(What, FinalState)
             end;
         {break, BreakState} ->
-            aefa_engine_state:set_breakpoint_stop(true, BreakState);
+            BreakState;
         {jump, BB, NewState} ->
             {NewInstructions, State2} = jump(BB, NewState),
             loop(NewInstructions, State2)
@@ -288,22 +288,25 @@ step([], EngineState) ->
     {jump, BB, EngineState};
 step([I|Is], EngineState0) ->
     ES = ?trace(I, EngineState0),
-    case aefa_engine_state:breakpoint_stop(ES) of
-        true ->
+    try aefa_fate_eval:eval(I, ES) of
+        {next, NewState} -> break_or_step(Is, NewState);
+        {jump,_BB,_NewState} = Res -> Res;
+        {stop, _NewState} = Res -> Res
+    catch
+        throw:{?MODULE, _, _} = Err ->
+            catch_protected(Err, EngineState0);
+        throw:{?MODULE, revert, _, _} = Err ->
+            catch_protected(Err, EngineState0)
+    end.
+
+break_or_step(Is, ES) ->
+    case aefa_engine_state:debugger_status(ES) of
+        break ->
             InstructionsCount = length(aefa_engine_state:current_bb_instructions(ES)),
-            InstructionsSkip = InstructionsCount - length(Is) - 1,
+            InstructionsSkip = InstructionsCount - length(Is),
             {break, aefa_engine_state:set_skip_instructions(InstructionsSkip, ES)};
-        false ->
-            try aefa_fate_eval:eval(I, ES) of
-                {next, NewState} -> step(Is, NewState);
-                {jump,_BB,_NewState} = Res -> Res;
-                {stop, _NewState} = Res -> Res
-            catch
-                throw:{?MODULE, _, _} = Err ->
-                    catch_protected(Err, EngineState0);
-                throw:{?MODULE, revert, _, _} = Err ->
-                    catch_protected(Err, EngineState0)
-            end
+        _ ->
+            step(Is, ES)
     end.
 
 catch_protected(Err, ES) ->

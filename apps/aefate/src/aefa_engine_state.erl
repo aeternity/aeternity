@@ -89,7 +89,6 @@
 
 %% Debug info getters
 -export([ breakpoints/1
-        , breakpoint_stop/1
         , skip_instructions/1
         , debugger_status/1
         , debugger_location/1
@@ -97,8 +96,7 @@
         ]).
 
 %% Debug info setters
--export([ set_breakpoint_stop/2
-        , set_skip_instructions/2
+-export([ set_skip_instructions/2
         , set_debugger_status/2
         , set_debugger_location/2
         ]).
@@ -123,7 +121,7 @@
 -include_lib("aecontract/include/aecontract.hrl").
 -include_lib("aecontract/include/hard_forks.hrl").
 
--type debugger_status() :: disabled | next | step | continue.
+-type debugger_status() :: break | next | step | continue.
 -type debugger_location() :: none | {string(), integer()}.
 
 -type void_or_fate() :: ?FATE_VOID | aeb_fate_data:fate_type().
@@ -132,7 +130,6 @@
 -record(debug_info, { status = continue       :: debugger_status()
                     , location = none         :: debugger_location()
                     , breakpoints = []        :: list()
-                    , breakpoint_stop = false :: boolean()
                     , skip_instructions = 0   :: integer()
                     , vars_registers = #{}    :: map()
                     , call_stack = []         :: [{string(), pos_integer()}]
@@ -936,16 +933,6 @@ breakpoints(#es{debug_info = #debug_info{breakpoints = Breakpoints}}) ->
 
 %%%------------------
 
--spec breakpoint_stop(state()) -> boolean().
-breakpoint_stop(#es{debug_info = #debug_info{breakpoint_stop = BS}}) ->
-    BS.
-
--spec set_breakpoint_stop(boolean(), state()) -> state().
-set_breakpoint_stop(Val, ES = #es{debug_info = DbgInfo}) ->
-    ES#es{debug_info = DbgInfo#debug_info{breakpoint_stop = Val}}.
-
-%%%------------------
-
 -spec skip_instructions(state()) -> integer().
 skip_instructions(#es{debug_info = #debug_info{skip_instructions = Skip}}) ->
     Skip.
@@ -956,7 +943,9 @@ set_skip_instructions(Skip, ES = #es{debug_info = DbgInfo}) ->
 
 %%%------------------
 
--spec debugger_status(state()) -> debugger_status().
+-spec debugger_status(state()) -> debugger_status() | disabled.
+debugger_status(#es{debug_info = disabled}) ->
+    disabled;
 debugger_status(#es{debug_info = #debug_info{status = Status}}) ->
     Status.
 
