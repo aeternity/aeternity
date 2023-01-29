@@ -3025,31 +3025,15 @@ gt_to_emcl(X1, X2, X3, X4, X5, X6, X7, X8, X9, X10, X11, X12) ->
                emcl:mk_Fp(X5), emcl:mk_Fp(X6), emcl:mk_Fp(X7), emcl:mk_Fp(X8),
                emcl:mk_Fp(X9), emcl:mk_Fp(X10), emcl:mk_Fp(X11), emcl:mk_Fp(X12)).
 
-dbg_loc({immediate, File}, {immediate, Line}, EngineState) ->
-    case aefa_engine_state:debugger_status(EngineState) of
+dbg_loc({immediate, File}, {immediate, Line}, EngineState0) ->
+    case aefa_engine_state:debugger_status(EngineState0) of
         disabled ->
-            EngineState;
+            EngineState0;
         _ ->
-            EngineState1 = aefa_engine_state:set_debugger_location({File, Line}, EngineState),
-            case lists:member({File, Line}, aefa_engine_state:breakpoints(EngineState1)) of
-                true  -> aefa_engine_state:set_debugger_status(break, EngineState1);
-                false ->
-                    case aefa_engine_state:debugger_status(EngineState1) of
-                        step -> aefa_engine_state:set_debugger_status(break, EngineState1);
-                        {next, Fun} ->
-                            Current = aefa_engine_state:current_function(EngineState1),
-                            case Fun == Current of
-                                true  -> aefa_engine_state:set_debugger_status(break, EngineState1);
-                                false -> EngineState1
-                            end;
-                        {finish, Fun} ->
-                            Current = aefa_engine_state:current_function(EngineState1),
-                            case Fun =/= Current of
-                                true  -> aefa_engine_state:set_debugger_status(break, EngineState1);
-                                false -> EngineState1
-                            end;
-                        _ -> EngineState1
-                    end
+            EngineState = aefa_engine_state:set_debugger_location({File, Line}, EngineState0),
+            case lists:member({File, Line}, aefa_engine_state:breakpoints(EngineState)) of
+                true  -> aefa_engine_state:set_debugger_status(break, EngineState);
+                false -> aefa_engine_state:debugger_resume(EngineState)
             end
     end.
 

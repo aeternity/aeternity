@@ -105,6 +105,7 @@
 -export([ add_variable_register/3
         , del_variable_register/3
         , get_variable_register/2
+        , debugger_resume/1
         ]).
 
 -ifdef(TEST).
@@ -992,3 +993,20 @@ get_variable_register(Var, #es{debug_info = #debug_info{vars_registers = VarsReg
         []        -> undefined;
         [Reg | _] -> Reg
     end.
+
+%%%------------------
+
+debugger_resume(ES = #es{debug_info = Info = #debug_info{status = step}}) ->
+    ES#es{debug_info = Info#debug_info{status = break}};
+debugger_resume(ES = #es{debug_info = Info = #debug_info{status = {next, From}}}) ->
+    case ES#es.current_function == From of
+        true  -> ES#es{debug_info = Info#debug_info{status = break}};
+        false -> ES
+    end;
+debugger_resume(ES = #es{debug_info = Info = #debug_info{status = {finish, From}}}) ->
+    case ES#es.current_function =/= From of
+        true  -> ES#es{debug_info = Info#debug_info{status = break}};
+        false -> ES
+    end;
+debugger_resume(ES) ->
+    ES.
