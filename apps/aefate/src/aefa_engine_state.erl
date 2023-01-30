@@ -7,7 +7,6 @@
 -module(aefa_engine_state).
 
 -export([ new/7
-        , new_dbg/8
         , finalize/1
         ]).
 
@@ -102,7 +101,8 @@
         ]).
 
 %% Debug info functions
--export([ add_variable_register/3
+-export([ new_dbg/8
+        , add_variable_register/3
         , del_variable_register/3
         , get_variable_register/2
         , debugger_resume/1
