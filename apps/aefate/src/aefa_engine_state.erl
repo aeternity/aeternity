@@ -324,17 +324,16 @@ push_call_stack(#es{ current_bb = BB
                    , memory = Mem
                    , debug_info = DbgInfo} = ES) ->
     AccS1 = [Acc || Acc /= void] ++ AccS,
-    NewDbgInfo =
-        case DbgInfo of
-            #debug_info{location = DbgLoc, call_stack = DbgStack} ->
-                DbgInfo#debug_info{call_stack = [DbgLoc | DbgStack]};
-            disabled ->
-                disabled
-        end,
     ES#es{accumulator       = void,
           accumulator_stack = [],
           call_stack        = [{Caller, Contract, VmVersion, Function, TVars, BB + 1, AccS1, Mem, Value}|Stack],
-          debug_info        = NewDbgInfo}.
+          debug_info        = push_debug_call_stack(DbgInfo)}.
+
+-spec push_debug_call_stack(debug_info()) -> debug_info().
+push_debug_call_stack(disabled) ->
+    disabled;
+push_debug_call_stack(Info = #debug_info{location = Loc, call_stack = Stack}) ->
+    Info#debug_info{call_stack = [Loc | Stack]}.
 
 %% TODO: Make better types for all these things
 -spec pop_call_stack(state()) ->
@@ -349,15 +348,6 @@ pop_call_stack(#es{accumulator = ReturnValue,
                    call_stack = Stack,
                    debug_info = DbgInfo,
                    current_contract = Current} = ES) ->
-    NewDbgInfo =
-        case DbgInfo of
-            #debug_info{call_stack = []} ->
-                DbgInfo#debug_info{call_stack = []};
-            #debug_info{call_stack = [_ | StackRest]} ->
-                DbgInfo#debug_info{call_stack = StackRest};
-            disabled ->
-                disabled
-        end,
     case Stack of
         [] -> {empty, ES};
         [{modify, Continuation}| Rest] ->
@@ -376,7 +366,7 @@ pop_call_stack(#es{accumulator = ReturnValue,
                   , accumulator_stack = AccS
                   , memory = Mem
                   , call_stack = Rest
-                  , debug_info = NewDbgInfo
+                  , debug_info = pop_debug_call_stack(DbgInfo)
                   }};
         [{Caller, Pubkey, VmVersion, Function, TVars, BB, AccS, Mem, Value}| Rest] ->
             Seen = pop_seen_contracts(Pubkey, ES),
@@ -397,9 +387,17 @@ pop_call_stack(#es{accumulator = ReturnValue,
                   , seen_contracts = Seen
                   , current_contract = NewCurrent
                   , vm_version = VmVersion
-                  , debug_info = NewDbgInfo
+                  , debug_info = pop_debug_call_stack(DbgInfo)
                   }}
     end.
+
+-spec pop_debug_call_stack(debug_info()) -> debug_info().
+pop_debug_call_stack(disabled) ->
+    disabled;
+pop_debug_call_stack(Info = #debug_info{call_stack = []}) ->
+    Info;
+pop_debug_call_stack(Info = #debug_info{call_stack = [_ | Rest]}) ->
+    Info#debug_info{call_stack = Rest}.
 
 -spec collect_gas_stores_on_error(state()) -> integer().
 collect_gas_stores_on_error(#es{call_stack = Stack}) ->
