@@ -53,3 +53,7 @@ run_system_tests:
 run_integration_sync:
   type: boolean
   default: false
+
+docker_builder_image:
+  type: string
+  default: "aeternity/builder:bionic-otp23"
