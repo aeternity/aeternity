@@ -493,7 +493,7 @@ create_config(Node, CTConfig, CustomConfig, Options) ->
                                                 #{
                                                     <<"0">> =>
                                                         #{
-                                                            <<"name">> => <<"ct_tests">>
+                                                            <<"type">> => <<"ct_tests">>
                                                         }
                                                 }
                                             }
