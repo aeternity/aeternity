@@ -629,8 +629,12 @@ paths:
           description: Dry-run result
           schema:
             $ref: '#/definitions/DryRunResults'
-        '403':
+        '400':
           description: Invalid input
+          schema:
+            $ref: '#/definitions/Error'
+        '403':
+          description: Over the gas limit
           schema:
             $ref: '#/definitions/Error'
   /transactions/{hash}:
@@ -1819,8 +1823,12 @@ paths:
           description: Dry-run result
           schema:
             $ref: '#/definitions/DryRunResults'
-        '403':
+        '400':
           description: Invalid input
+          schema:
+            $ref: '#/definitions/Error'
+        '403':
+          description: Over the gas limit
           schema:
             $ref: '#/definitions/Error'
   /debug/transactions/paying-for:

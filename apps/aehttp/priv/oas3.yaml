@@ -592,8 +592,14 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/DryRunResults"
-        "403":
+        "400":
           description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Over the gas limit
           content:
             application/json:
               schema:
@@ -1906,8 +1912,14 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/DryRunResults"
-        "403":
+        "400":
           description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Over the gas limit
           content:
             application/json:
               schema:
