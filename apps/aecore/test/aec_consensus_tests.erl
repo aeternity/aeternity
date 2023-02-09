@@ -10,13 +10,13 @@
 
 -include_lib("eunit/include/eunit.hrl").
 
-consensus_one() -> #{<<"name">> => <<"eunit_one">>}.
-consensus_one(Config) -> #{<<"name">> => <<"eunit_one">>, <<"config">> => Config}.
-consensus_two() -> #{<<"name">> => <<"eunit_two">>}.
-consensus_two(Config) -> #{<<"name">> => <<"eunit_two">>, <<"config">> => Config}.
-consensus_three() -> #{<<"name">> => <<"eunit_three">>}.
-consensus_three(Config) -> #{<<"name">> => <<"eunit_three">>, <<"config">> => Config}.
-consensus_unknown() -> #{<<"name">> => <<"consensus_unknown">>}.
+consensus_one() -> #{<<"type">> => <<"eunit_one">>}.
+consensus_one(Config) -> #{<<"type">> => <<"eunit_one">>, <<"config">> => Config}.
+consensus_two() -> #{<<"type">> => <<"eunit_two">>}.
+consensus_two(Config) -> #{<<"type">> => <<"eunit_two">>, <<"config">> => Config}.
+consensus_three() -> #{<<"type">> => <<"eunit_three">>}.
+consensus_three(Config) -> #{<<"type">> => <<"eunit_three">>, <<"config">> => Config}.
+consensus_unknown() -> #{<<"type">> => <<"consensus_unknown">>}.
 
 setup_module(Name, CanBeTurnedOff) ->
     meck:expect(Name, can_be_turned_off, fun() -> CanBeTurnedOff end),

@@ -127,7 +127,7 @@ init_per_suite(Config0) ->
                                     integer_to_binary(?CERES_PROTOCOL_VSN) => 1
                                 },
                             <<"consensus">> =>
-                                #{ <<"0">> => #{<<"name">> => <<"ct_tests">>}}
+                                #{ <<"0">> => #{<<"type">> => <<"ct_tests">>}}
                          },
                     <<"fork_management">> =>
                         #{<<"network_id">> => ?PARENT_CHAIN_NETWORK_ID},
@@ -1016,7 +1016,7 @@ node_config(PotentialStakers, Consensus) ->
                     end,
                     PotentialStakers)
         end,
-    ConsensusName =
+    ConsensusType =
         case Consensus of
             ?CONSENSUS_HC -> <<"hyper_chain">>;
             ?CONSENSUS_POS -> <<"smart_contract">>
@@ -1052,7 +1052,7 @@ node_config(PotentialStakers, Consensus) ->
             #{  <<"persist">> => false,
                 <<"hard_forks">> => #{integer_to_binary(Protocol) => 0},
                 <<"consensus">> =>
-                    #{<<"0">> => #{<<"name">> => ConsensusName,
+                    #{<<"0">> => #{<<"type">> => ConsensusType,
                                 <<"config">> =>
                                 maps:merge(
                                     #{  <<"election_contract">> => aeser_api_encoder:encode(contract_pubkey, election_contract_address()),

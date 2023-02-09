@@ -621,7 +621,7 @@ init_per_suite(Config) ->
     DefCfg = #{<<"chain">> =>
                    #{<<"persist">> => false,
                      <<"consensus">> =>
-                         #{<<"0">> => #{<<"name">> => <<"on_demand">>}}},
+                         #{<<"0">> => #{<<"type">> => <<"on_demand">>}}},
                <<"fork_management">> =>
                    #{<<"network_id">> => NwId},
                <<"mining">> =>

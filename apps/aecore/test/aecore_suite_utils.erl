@@ -493,7 +493,7 @@ create_config(Node, CTConfig, CustomConfig, Options) ->
                                                 #{
                                                     <<"0">> =>
                                                         #{
-                                                            <<"name">> => <<"ct_tests">>
+                                                            <<"type">> => <<"ct_tests">>
                                                         }
                                                 }
                                             }
@@ -603,7 +603,7 @@ stop_node(N, Config) ->
 reinit_with_bitcoin_ng(N) ->
     ct:log("Reinitializing chain on ~p with bitcoin ng consensus", [N]),
     Node = node_name(N),
-    ok = set_env(Node, aecore, consensus, #{<<"0">> => #{<<"name">> => <<"pow_cuckoo">>}}),
+    ok = set_env(Node, aecore, consensus, #{<<"0">> => #{<<"type">> => <<"pow_cuckoo">>}}),
     ok = rpc:call(Node, aec_conductor, reinit_chain, []).
 
 reinit_nodes_with_ct_consensus(Nodes) ->
@@ -612,7 +612,7 @@ reinit_nodes_with_ct_consensus(Nodes) ->
     Timeout = 5000,
     [{ok, maintenance} = rpc:call(NN, app_ctrl, set_and_await_mode, [maintenance, Timeout])
      || NN <- NodeNames],
-    [ok = set_env(NN, aecore, consensus, #{<<"0">> => #{<<"name">> => <<"ct_tests">>}})
+    [ok = set_env(NN, aecore, consensus, #{<<"0">> => #{<<"type">> => <<"ct_tests">>}})
      || NN <- NodeNames],
     [ok = rpc:call(NN, aec_conductor, reinit_chain, []) || NN <- NodeNames],
     [{ok, normal} = rpc:call(NN, app_ctrl, set_and_await_mode, [normal, Timeout])
