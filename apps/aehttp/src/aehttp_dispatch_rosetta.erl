@@ -129,8 +129,17 @@ handle_request_(networkOptions, _, _Context) ->
                 <<"balance_exemptions">> => [],
                 <<"mempool_coins">> => false}},
     {200, [], Resp};
-handle_request_(networkStatus, _, _Context) ->
+handle_request_(networkStatus, #{'NetworkRequest' :=
+                                #{<<"network_identifier">> :=
+                                    #{<<"blockchain">> := <<"aeternity">>,
+                                      <<"network">> := Network}}}, _Context) ->
     try
+        case aec_governance:get_network_id() of
+            Network ->
+                ok;
+            _ ->
+                throw(invalid_network)
+        end,
         {ok, TopBlock} = aeapi:top_key_block(),
         CurrentBlock =
             case aec_blocks:height(TopBlock) of
@@ -177,6 +186,8 @@ handle_request_(networkStatus, _, _Context) ->
               <<"peers">> => PeersFormatted},
         {200, [], Resp}
     catch
+        invalid_network ->
+            {500, [], rosetta_error_response(?ROSETTA_ERR_INVALID_NETWORK)};
         Class:Rsn:Stacktrace ->
             lager:error(">>> Error determining networkStatus: ~p, ~p~n~p~n",
                         [Class, Rsn, Stacktrace]),
@@ -202,13 +213,16 @@ handle_request_(accountBalance,
             {ok, Id} ->
                 Pubkey = aeapi:id_value(Id),
                 %% Request might specify a block. If absent use top block
-                {Block, Account} =
-                    retrieve_block_and_account_from_partial_block_identifier(Pubkey, Req),
-                Balance = aec_accounts:balance(Account),
-                Resp =
-                    #{<<"balances">> => [amount(Balance)],
-                      <<"block_identifier">> => format_block_identifier(Block)},
-                {200, [], Resp};
+                case catch retrieve_block_and_account_from_partial_block_identifier(Pubkey, Req) of
+                    {'EXIT', _} ->
+                        throw(invalid_pubkey);
+                    {Block, Account} ->
+                        Balance = aec_accounts:balance(Account),
+                        Resp =
+                            #{<<"balances">> => [amount(Balance)],
+                              <<"block_identifier">> => format_block_identifier(Block)},
+                        {200, [], Resp}
+                end;
             _ ->
                 throw(invalid_pubkey)
         end
