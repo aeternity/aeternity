@@ -26,12 +26,13 @@ The contents of the config file will be validated against a JSON-Schema, located
 It is possible to set configuration values from the command line or shell scripts using
 OS environment variables. The variable names correspond to a path in the config schema,
 using the name prefix `AE__` and with each level name, converted to uppercase, separated
-by two underscores.
+by two underscores. Any hyphen (`"-"`) is replaced by an underscore (`"_"`).
 
 Examples:
 
 `AE__PEERS` corresponds to `{"peers": ...}`
 `AE__HTTP__CORS__MAX_AGE` corresponds to `{"http": {"cors": {"max_age": ...}}}`
+`AE__HTTP__ENDPOINTS__DRY_RUN` corresponds to `{"http": {"endpoints": {"dry-run": ...}}}`
 
 Simple configuration values (integers, strings, booleans) are given as-is. Structured values
 (arrays, objects) need to be encoded as JSON data.
