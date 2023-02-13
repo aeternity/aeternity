@@ -253,10 +253,10 @@ read_preset_contracts(?LIMA_PROTOCOL_VSN = Release) ->
     end.
 
 accounts_file_name(Release) ->
-    case os:getenv("AE__SYSTEM__CUSTOM_PREFUNDED_ACCS_FILE") of
-        false ->
+    case aeu_env:find_config([<<"system">>, <<"custom_prefunded_accs_file">>], [user_config]) of
+        undefined ->
             filename:join([dir(Release), accounts_json_file()]);
-        CustomAccsFilePath -> 
+        {ok, CustomAccsFilePath} ->
             case filelib:is_file(CustomAccsFilePath) of 
                 true ->
                     lager:info("Custom file for prefunded accounts provided: ~p ~n", [CustomAccsFilePath]),

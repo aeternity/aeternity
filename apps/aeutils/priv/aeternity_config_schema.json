@@ -47,6 +47,10 @@
                         }
                     },
                     "default": []
+                },
+                "custom_prefunded_accs_file" : {
+                    "description" : "Overrides the automatically derived file name for prefunded accounts. No default value",
+                    "type" : "string"
                 }
             }
         },
