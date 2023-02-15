@@ -319,7 +319,7 @@ valid_kv_pair(_) ->
 read_config() ->
     read_config(report).
 
-read_config(Mode) when Mode =:= check; Mode =:= report ->
+read_config(Mode) when Mode =:= check; Mode =:= silent; Mode =:= report ->
     case config_file() of
         undefined ->
             info_msg(Mode, "No config file specified; using default settings~n", []),
@@ -576,6 +576,9 @@ pp_error_({error, [{schema_invalid, Section, Description}]}, Mode) ->
                  "Section: ~n~s~n"
                  "Reason: ~p~n", [SchemaStr, Description], Mode).
 
+silent_as_report(silent) -> report;
+silent_as_report(Mode  ) -> Mode.
+
 schema_string(Schema, Mode) ->
     JSONSchema = jsx:encode(Schema),
     case Mode of
@@ -696,6 +699,7 @@ notify_update_config(Map) ->
     aec_events:publish(update_config, Map).
 
 update_config_(Map, ConfigMap, Schema, Mode) when Mode =:= check;
+                                                  Mode =:= silent;
                                                   Mode =:= report ->
     check_validation([jesse:validate_with_schema(Schema, Map, [])],
                      [Map], update_config, Mode),
@@ -766,21 +770,25 @@ vinfo(Mode, Res, F) ->
             info_report(Mode, [{validation, F},
                                {result, Res}]);
         {error, Errors} ->
-            [pp_error_(E, Mode) || E <- Errors],
+            Mode1 = silent_as_report(Mode),
+            [pp_error_(E, Mode1) || E <- Errors],
             ok
     end.
 
-info_report(check, _) -> ok;
-info_report(_, Info) -> 
-    error_logger:info_report(Info).
+info_report(report, Info) ->
+    error_logger:info_report(Info);
+info_report(_, _) ->
+    ok.
 
-info_msg(check, _, _) -> ok;
 info_msg(report, Fmt, Args) ->
-    error_logger:info_msg(Fmt, Args).
+    error_logger:info_msg(Fmt, Args);
+info_msg(_, _,_ ) ->
+    ok.
 
-error_msg(check, _, _) -> ok;
 error_msg(report, Fmt, Args) ->
-    error_logger:error_msg(Fmt, Args).
+    error_logger:error_msg(Fmt, Args);
+error_msg(_, _, _) ->
+    ok.
 
 check_validation(Res, JSON, F) ->
     check_validation(Res, JSON, F, report).
