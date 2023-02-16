@@ -274,7 +274,8 @@ contracts_file_name(Release) ->
     filename:join([dir(Release), contracts_json_file()]).
 
 seed_contracts_file_name(Release, NetworkId) ->
-    filename:join([dir(Release), <<NetworkId/binary, "_contracts.json">>]).
+    lager:info("seed_contracts_file_name: ~p ~n", [Release]),
+    filename:join([dir(?IRIS_PROTOCOL_VSN), <<NetworkId/binary, "_contracts.json">>]).
 
 -ifdef(TEST).
 accounts_json_file() ->
