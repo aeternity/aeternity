@@ -20,6 +20,8 @@ It:
 * Validation errors due to invalid data in OS environment config variables were ignored. Now, startup is terminated.
 * Fixes a bug in the node settings: `cors` configs were not processed
   correctly.
+* Updated minimum supported version for tarball and standalone packages to MacOS 11.6.2 (Big Sur)  **:warning: This is a backwards
+  incompatible change :warning:**
 
 With regards of HyperChains it:
 * Introduces posting of commitments on the parent chain. Each commitment
