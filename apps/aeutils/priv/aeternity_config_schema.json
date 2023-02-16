@@ -1552,10 +1552,10 @@
                         "^[1-9][0-9]*$" : {
                             "description" : "Minimum height at which the given consensus algorithm gets activated. By default from genesis Cuckoo cycle based BitcoinNG is used.",
                             "type" : "object",
-                            "required": ["name"],
+                            "required": ["type"],
                             "properties": {
-                                "name": {
-                                    "description": "The name of the consensus algorithm used at the given height",
+                                "type": {
+                                    "description": "The type of the consensus algorithm used at the given height (ex. pow_cuckoo, smart_contract or hyper_chain)",
                                     "type": "string"
                                 },
                                 "config": {
