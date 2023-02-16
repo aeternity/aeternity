@@ -319,7 +319,7 @@ valid_kv_pair(_) ->
 read_config() ->
     read_config(report).
 
-read_config(Mode) when Mode =:= silent; Mode =:= report ->
+read_config(Mode) when Mode =:= check; Mode =:= silent; Mode =:= report ->
     case config_file() of
         undefined ->
             info_msg(Mode, "No config file specified; using default settings~n", []),
@@ -365,7 +365,7 @@ apply_os_env(Pfx, Schema, ConfigMap) ->
     catch
         error:E:ST ->
             error_logger:info_msg("CAUGHT error:~p / ~p~n", [E, ST]),
-            {error, E}
+            error(E)
     end.
 
 to_map(K, V) ->
@@ -466,10 +466,10 @@ maybe_set_env(F, V, _, MMode) when is_function(F, 2) ->
 
 
 check_config(F) ->
-    do_read_config(F, schema_filename(), check, silent).
+    do_read_config(F, schema_filename(), check, check).
 
 check_config(F, Schema) ->
-    do_read_config(F, Schema, check, silent).
+    do_read_config(F, Schema, check, check).
 
 data_dir(Name) when is_atom(Name) ->
     filename:join([setup:data_dir(), Name]).
@@ -544,29 +544,58 @@ check_config_({'EXIT', Reason}) ->
 check_config_([Vars]) ->
     {ok, {Vars, to_tree(Vars)}}.
 
-pp_error({{validation_failed, Errors}, _}) ->
-    [pp_error_(E) || E <- Errors],
+pp_error({validation_failed, _}) ->
     validation_failed;
 pp_error(Other) ->
     Other.
 
-pp_error_({error, {schema_file_not_found, Schema}}) ->
-    io:fwrite("Schema not found : ~s~n", [Schema]);
-pp_error_({error, [{data_invalid, Schema, Type, Value, Pos}]}) ->
-    SchemaStr = jsx:prettify(jsx:encode(Schema)),
+pp_error_({error, {schema_file_not_found, Schema}}, Mode) ->
+    error_format("Schema not found : ~s", [Schema], Mode);
+pp_error_({error, [{data_invalid, Schema, Type, Value, Pos}]}, Mode) ->
+    SchemaStr = schema_string(Schema, Mode),
     PosStr = pp_pos(Pos),
     ValStr = pp_val(Value),
     TypeStr = pp_type(Type),
-    io:fwrite("Validation failed~n"
-              "Position: ~s~n"
-              "Value   : ~s~n"
-              "Schema  :~n~s~n"
-              "Reason  : ~s~n", [PosStr, ValStr, SchemaStr, TypeStr]);
-pp_error_({error, [{schema_invalid, Section, Description}]}) ->
-    SchemaStr = jsx:prettify(jsx:encode(Section)),
-    io:fwrite("Reading schema failed~n"
-              "Section: ~n~s~n"
-              "Reason: ~p~n", [SchemaStr, Description]).
+    case Mode of
+        check ->
+            io:format("Validation failed~n"
+                      "Position: ~s~n"
+                      "Value   : ~s~n"
+                      "Schema  :~n~s~n"
+                      "Reason  : ~s~n",
+                      [PosStr, ValStr, SchemaStr, TypeStr]);
+        report ->
+            error_format("Validation failed, Pos: ~s~n"
+                         "Value: ~s~n"
+                         "Schema: ~s~n"
+                         "Reason: ~s", [PosStr, ValStr, SchemaStr, TypeStr], Mode)
+    end;
+pp_error_({error, [{schema_invalid, Section, Description}]}, Mode) ->
+    SchemaStr = schema_string(Section, Mode),
+    error_format("Reading schema failed~n"
+                 "Section: ~n~s~n"
+                 "Reason: ~p~n", [SchemaStr, Description], Mode).
+
+silent_as_report(silent) -> report;
+silent_as_report(Mode  ) -> Mode.
+
+schema_string(Schema, Mode) ->
+    JSONSchema = jsx:encode(Schema),
+    case Mode of
+        check  -> jsx:prettify(JSONSchema);
+        report -> jsx:minify(JSONSchema)
+    end.
+
+error_format(Fmt, Args, check) ->
+    io:format(Fmt, Args);
+error_format(Fmt, Args, report) ->
+    Str = io_lib:format(Fmt, Args),
+    Parts = re:split(Str, <<"\n">>),
+    Out = iolist_to_binary(
+            [hd(Parts) |
+             [[" | ", P] || P <- tl(Parts)]]),
+    Out = re:replace(Str, <<"\n">>, <<" | ">>, [global, {return, binary}]),
+    lager:error("~s", [Out]).
 
 pp_pos([A,B|T]) when is_integer(B) ->
     [pp_pos_(A), pp_pos_(B) | pp_pos(T)];
@@ -669,8 +698,9 @@ kv_to_config_map([H|T], V) ->
 notify_update_config(Map) ->
     aec_events:publish(update_config, Map).
 
-update_config_(Map, ConfigMap, Schema, Mode) when Mode =:= silent;
-                                                 Mode =:= report ->
+update_config_(Map, ConfigMap, Schema, Mode) when Mode =:= check;
+                                                  Mode =:= silent;
+                                                  Mode =:= report ->
     check_validation([jesse:validate_with_schema(Schema, Map, [])],
                      [Map], update_config, Mode),
     NewConfig = update_map(Map, ConfigMap),
@@ -734,25 +764,36 @@ validate(JSON, F, Schema, Mode) when is_list(JSON) ->
 validate(JSON, F, Schema, Mode) when is_map(JSON) ->
     validate([JSON], F, Schema, Mode).
 
-vinfo(silent, _, _) ->
-    ok;
-vinfo(_, Res, F) ->
-    error_logger:info_report([{validation, F},
-                              {result, Res}]).
+vinfo(Mode, Res, F) ->
+    case Res of
+        {ok, _} ->
+            info_report(Mode, [{validation, F},
+                               {result, Res}]);
+        {error, Errors} ->
+            Mode1 = silent_as_report(Mode),
+            [pp_error_(E, Mode1) || E <- Errors],
+            ok
+    end.
 
-info_msg(silent, _, _) -> ok;
+info_report(report, Info) ->
+    error_logger:info_report(Info);
+info_report(_, _) ->
+    ok.
+
 info_msg(report, Fmt, Args) ->
-    error_logger:info_msg(Fmt, Args).
+    error_logger:info_msg(Fmt, Args);
+info_msg(_, _,_ ) ->
+    ok.
 
-error_msg(silent, _, _) -> ok;
 error_msg(report, Fmt, Args) ->
-    error_logger:error_msg(Fmt, Args).
+    error_logger:error_msg(Fmt, Args);
+error_msg(_, _, _) ->
+    ok.
 
 check_validation(Res, JSON, F) ->
     check_validation(Res, JSON, F, report).
 
 check_validation(Res, _JSON, F, Mode) ->
-    vinfo(Mode, Res, F),
     case lists:foldr(
            fun({ok, M}, {Ok,Err}) when is_map(M) ->
                    {[M|Ok], Err};
@@ -760,9 +801,11 @@ check_validation(Res, _JSON, F, Mode) ->
                    {Ok, [Other|Err]}
            end, {[], []}, Res) of
         {Ok, []} ->
+            vinfo(Mode, {ok, Ok}, F),
             Ok;
         {_, Errors} ->
-            erlang:error({validation_failed, Errors})
+            vinfo(Mode, {error, Errors}, F),
+            erlang:error(validation_failed)
     end.
 
 validate_(Schema, JSON) ->
