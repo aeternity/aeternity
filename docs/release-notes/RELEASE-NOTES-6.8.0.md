@@ -14,8 +14,8 @@ It:
   possible to specify `node-operator` even before, and this is the only thing that would have worked.
   With the corrected structure and name change, such a setting will also be properly validated.
 * Changes the key that defines the consensus in the config: it used to be
-  called `name` and now it is renamed to `type`. *:warning: *This is backwards
-  incompatible change** :warning:
+  called `name` and now it is renamed to `type`. **:warning: This is a backwards
+  incompatible change :warning:**
 * Error reporting due to invalid configuration data during startup has been cleaned up significantly
 * Validation errors due to invalid data in OS environment config variables were ignored. Now, startup is terminated.
 * Fixes a bug in the node settings: `cors` configs were not processed
