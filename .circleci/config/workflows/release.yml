@@ -42,14 +42,13 @@ jobs:
 
   - macos-tarball:
       name: macos-release-tarball
-      package_name: aeternity-test-macos-x86_64.tar.gz
+      package_name: aeternity-$CIRCLE_TAG-macos-x86_64.tar.gz
       context: ae-slack
       filters:
         branches:
-          ignore:
-            - env/dev1
-            - env/dev2
-            - system-tests
+          ignore: /.*/
+        tags:
+          only: << pipeline.parameters.tag_regex >>
 
   - macos-tarball:
       name: macos-release-tarball-bundle
@@ -64,14 +63,13 @@ jobs:
 
   - macos-standalone:
       name: macos-release-standalone
-      package_name: aeternity-test-macos-x86_64-standalone
+      package_name: aeternity-$CIRCLE_TAG-macos-x86_64-standalone
       context: ae-slack
       filters:
         branches:
-          ignore:
-            - env/dev1
-            - env/dev2
-            - system-tests
+          ignore: /.*/
+        tags:
+          only: << pipeline.parameters.tag_regex >>
 
   - slack/on-hold:
       name: hodl-artifact-upload-notification
