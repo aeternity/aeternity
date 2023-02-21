@@ -31,6 +31,7 @@
 
 -define(DEFAULT_GAS_PRICE, aec_test_utils:min_gas_price()).
 
+-define(STRATUM_KEYS_DIR, filename:join(["data", "stratum", "keys"])).
 -define(STRATUM_PUBKEY_FILE, "sign_key.pub").
 -define(STRATUM_PRIVKEY_FILE, "sign_key").
 
@@ -72,7 +73,7 @@ init_per_suite_(Cfg) ->
     aecore_suite_utils:create_config(?MINING_NODE, Cfg1, mining_node_config(maps:get(pubkey, new_keypair())),
                                      [{add_peers, true}]),
     aecore_suite_utils:make_multi(Cfg1, [?STRATUM_SERVER_NODE, ?MINING_NODE]),
-    Cfg2 = write_stratum_keys("stratum_test_keys", [{stratum_keypair, new_keypair()} | Cfg1]),
+    Cfg2 = write_stratum_keys([{stratum_keypair, new_keypair()} | Cfg1]),
 
     %% Setup stratum client node.
     Client1NodeCfg = client_node_config(?CLIENT1_ACCOUNT),
@@ -418,7 +419,7 @@ stratum_server_node_config(StratumEnabled) ->
                       <<"beneficiaries">> =>
                           [<<?POOL_BENEFICIARY1_ACCOUNT/binary, ":3.3">>,
                            <<?POOL_BENEFICIARY2_ACCOUNT/binary, ":2.2">>],
-                      <<"keys">> => #{<<"dir">> => <<"stratum_test_keys">>}}
+                <<"keys">> => #{<<"dir">> => list_to_binary(?STRATUM_KEYS_DIR)}}
                }
      }.
 
@@ -454,37 +455,15 @@ make_shortcut(Cfg) ->
     aecore_suite_utils:make_shortcut(Cfg1),
     Cfg1.
 
-write_stratum_keys(Dir, Cfg) ->
+write_stratum_keys(Cfg) ->
     #{pubkey := PubKey, privkey := PrivKey} = ?config(stratum_keypair, Cfg),
     MNodeTopDir = aecore_suite_utils:node_shortcut(?STRATUM_SERVER_NODE, Cfg),
-    StratumTopDir = latest_version(MNodeTopDir),
-    ct:log("StratumTopDir = ~p", [StratumTopDir]),
-    StratumKeysDir = filename:join([StratumTopDir, "priv", Dir]),
-    filelib:ensure_dir(filename:join([StratumKeysDir, "foo"])),
-    file:write_file(filename:join(StratumKeysDir, ?STRATUM_PRIVKEY_FILE), PrivKey),
-    file:write_file(filename:join(StratumKeysDir, ?STRATUM_PUBKEY_FILE), PubKey),
-    [{stratum_top_dir, StratumTopDir},
-     {stratum_keys_dir, StratumKeysDir} | Cfg].
-
-latest_version(Top) ->
-    Vsns = filelib:wildcard(filename:join([Top, "lib", "aestratum-*"])),
-    lists:last(lists:sort(fun vsn_cmp/2, Vsns)).
-
-vsn_cmp(A, B) ->
-    sortable_vsn(A) =< sortable_vsn(B).
-
-sortable_vsn(Path) ->
-    {match, VsnStr} = re:run(Path, "-([a-zA-Z0-9\\.]+)$", [{capture,[1],list}]),
-    Parts = re:split(VsnStr, "\\.", [{return, list}]),
-    [leading_num(V) || V <- Parts].
-
-leading_num(V) ->
-    case re:run(V, "([0-9]+)([^0-9].*)", [{capture,[1,2],list}]) of
-        nomatch ->
-            [list_to_integer(V)];
-        {match, [N,A]} ->
-            [list_to_integer(N), A]
-    end.
+    StratumKeysDir = filename:join([MNodeTopDir, ?STRATUM_KEYS_DIR]),
+    ok = filelib:ensure_dir(filename:join([StratumKeysDir, "foo"])),
+    ct:log("Writing stratum keys to ~p", [StratumKeysDir]),
+    ok = file:write_file(filename:join(StratumKeysDir, ?STRATUM_PRIVKEY_FILE), PrivKey),
+    ok = file:write_file(filename:join(StratumKeysDir, ?STRATUM_PUBKEY_FILE), PubKey),
+    [{stratum_keys_dir, StratumKeysDir} | Cfg].
 
 del_stratum_keys(Cfg) ->
     StratumKeysDir = ?config(stratum_keys_dir, Cfg),
