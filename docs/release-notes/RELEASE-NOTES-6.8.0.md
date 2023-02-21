@@ -23,7 +23,7 @@ It:
 * Changes the default directory to store Stratum keys. It used to be in the
   lib's priv directory which is rather unconvinient to use. Now the keys are
   configured according to the root of the project (suggestion is to keep them
-  iin `data/stratum/keys` but this is up to the user to decide). **:warning: This is a backwards
+  in `data/stratum/keys` but this is up to the user to decide). **:warning: This is a backwards
   incompatible change :warning:**
 
 With regards of HyperChains it:
