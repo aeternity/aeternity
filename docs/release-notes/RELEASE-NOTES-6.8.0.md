@@ -20,11 +20,6 @@ It:
 * Validation errors due to invalid data in OS environment config variables were ignored. Now, startup is terminated.
 * Fixes a bug in the node settings: `cors` configs were not processed
   correctly.
-* Changes the default directory to store Stratum keys. It used to be in the
-  lib's priv directory which is rather unconvinient to use. Now the keys are
-  configured according to the root of the project (suggestion is to keep them
-  in `data/stratum/keys` but this is up to the user to decide). **:warning: This is a backwards
-  incompatible change :warning:**
 
 With regards of HyperChains it:
 * Introduces posting of commitments on the parent chain. Each commitment

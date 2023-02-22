@@ -153,7 +153,7 @@ check_keypair_roundtrips({PK, SK}) ->
 
 read_keys(Dir) ->
     AbsDir = case filename:pathtype(Dir) of
-                 relative -> filename:join(setup:home(), Dir);
+                 relative -> filename:join(code:priv_dir(aestratum), Dir);
                  absolute -> Dir
              end,
     PKPath = filename:join(AbsDir, <<"sign_key.pub">>),
