@@ -499,7 +499,7 @@ format_txs(Txs, MBHash) ->
     end.
 
 format_block_txs(KeyBlock) ->
-    RewardTxs = reward_txs(KeyBlock),
+    RewardTxs = reward_txs(KeyBlock, aec_consensus:get_genesis_consensus_module()),
     PreTxs = expiry_txs(KeyBlock),
     ForkTxs = hardfork_txs(aec_blocks:height(KeyBlock)),
     case RewardTxs ++ PreTxs ++ ForkTxs of
@@ -533,8 +533,9 @@ expiry_txs(KeyBlock0) ->
             aetx_env:events(TxEnv2)
     end.
 
-
-reward_txs(Block) ->
+reward_txs(_Block, aec_consensus_hc) -> 
+    [];
+reward_txs(Block, _Consensus) ->
     %% Block rewards.
     %% In this block the reward for the beneficiary 180 blocks earlier will be paid
     %% We don't store the amount on chain, so need to re-calculate
