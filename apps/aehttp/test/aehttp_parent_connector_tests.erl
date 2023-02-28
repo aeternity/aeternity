@@ -110,7 +110,7 @@ ae_sim_test_() ->
                     {ok, KB2} = PostPCBlock(Spec1),
 
                     {ok, KB2} = PostPCBlock(Spec2),
-                    {ok, KBr} = PostPCBlock(Spec2),
+                    {ok, KB3} = PostPCBlock(Spec2),
 
                     {ok, KB2} = PostPCBlock(Spec3),
                     {ok, KB3} = PostPCBlock(Spec3),
