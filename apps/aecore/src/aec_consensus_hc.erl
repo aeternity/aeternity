@@ -185,13 +185,9 @@ dirty_validate_micro_node_with_ctx(_Node, _Block, _Ctx) -> ok.
 state_pre_transform_key_node_consensus_switch(_Node, Trees) -> Trees.
 state_pre_transform_key_node(_Node, Trees) ->
     {TxEnv, _Trees} = aetx_env:tx_env_and_trees_from_top(aetx_transaction),
-%%    TxEnv0 = aetx_env:tx_env_from_key_header(
-%%              Header, aec_block_insertion:node_hash(Node),
-%%              aec_block_insertion:node_time(Node), aec_block_insertion:node_prev_hash(Node)),
     %% TODO: discuss which is the correct height to pass: the new or the
     %% previous one. At this point since there is no key block hash yet, it
     %% makes sense to base the tx call on the previous height altogether
-%%    TxEnv = aetx_env:set_height(TxEnv0, aec_headers:height(Header) - 1),
     Height = aetx_env:height(TxEnv),
     PCHeight = pc_height(Height + 1), %% next parent chain block!
     case aec_parent_chain_cache:get_block_by_height(PCHeight) of

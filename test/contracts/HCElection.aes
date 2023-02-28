@@ -43,7 +43,7 @@ main contract HCElection =
             (sorted0, state.main_staking_ct.total_stake())
         else
             let accepted_commitments = commitments[current_hash]
-            let (sorted1, total_s, _)  = List.foldl(filter_posted_commitmens, ([], 0, accepted_commitments), sorted0)
+            let (sorted1, total_s, _)  = List.foldl(filter_posted_commitments, ([], 0, accepted_commitments), sorted0)
             (sorted1, total_s)
     let shot = Bytes.to_int(entropy) mod total_stake
     switch(find_validator(sorted, shot))
@@ -69,7 +69,7 @@ main contract HCElection =
   function assert_protocol_call() =
       require(Call.caller == Contract.creator, "Must be called by the protocol")
 
-  function filter_posted_commitmens((accum, total_s, commitments), (addr, stake)) =
+  function filter_posted_commitments((accum, total_s, commitments), (addr, stake)) =
     if (List.contains(addr, commitments))
         ((addr, stake) :: accum, stake + total_s, commitments)
     else
