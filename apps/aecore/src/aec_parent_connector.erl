@@ -303,8 +303,8 @@ responses_consensus(Good0, _Errors, TotalCount) ->
         false ->
             {MostReturnedResult, Qty} =
                 maps:fold(
-                    fun(K, V, {_,Max} = Acc) when V > Max -> {K,V};
-                       (_K, V, Acc) -> Acc
+                    fun(K, V, {_,Max}) when V > Max -> {K,V};
+                       (_K, _V, Acc) -> Acc
                     end,
                     {undefined, 0},
                     Counts),

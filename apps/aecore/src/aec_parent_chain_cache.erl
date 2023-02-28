@@ -303,7 +303,6 @@ post_block(Block, #state{max_size = MaxSize,
                          top_height = TopHeight} = State0) ->
     TargetHeight = target_parent_height(State0),
     BlockHeight = aec_parent_chain_block:height(Block),
-    BlockHash = aec_parent_chain_block:hash(Block),
     MaxBlockToRequest = TargetHeight + MaxSize - 1,
     GCHeight = min_cachable_parent_height(State0),
     case BlockHeight < GCHeight of
