@@ -286,7 +286,8 @@ calculate_state_for_new_keyblock(PrevHash, Miner, Beneficiary, Protocol) ->
                 case get_state_trees_in(Node, true) of
                     error -> error;
                     {ok, TreesIn, ForkInfoIn} ->
-                        {Trees,_Fees,_Events} = apply_node_transactions(Node, TreesIn,
+                        {Trees,_Fees,_Events} = apply_node_transactions(Node,
+                                                                        PrevNode, TreesIn,
                                                                         ForkInfoIn, State),
                         {ok, Trees}
                 end
@@ -635,8 +636,9 @@ internal_repair_block_state_(Block) ->
         TopNode ->
             case hash_is_in_main_chain(BlockHash, node_hash(TopNode)) of
                 true ->
+                    PrevNode = db_get_node(node_prev_hash(Node)),
                     State = build_repair_state(Node, TopNode),
-                    repair_state_tree(Node, State);
+                    repair_state_tree(Node, PrevNode, State);
                 false ->
                     {error, not_in_main_chain}
             end
@@ -730,14 +732,15 @@ update_state_tree(Node, State, Ctx) ->
     OldTopNode = get_top_block_node(State),
     handle_top_block_change(OldTopNode, NewTopDifficulty, Node, Events, State3).
 
-repair_state_tree(Node, State) ->
+repair_state_tree(Node, PrevNode, State) ->
     {ok, TreesIn, ForkInfoIn} = get_state_trees_in(Node, true),
-    apply_and_repair_trees(Node, TreesIn, ForkInfoIn, State).
+    apply_and_repair_trees(Node, PrevNode, TreesIn, ForkInfoIn, State).
 
 update_state_tree(Node, TreesIn, ForkInfo, State) ->
+    PrevNode = db_get_node(node_prev_hash(Node)),
     case db_find_state(node_hash(Node), true) of
         {ok, FoundTrees, FoundForkInfo} ->
-            {Trees, _Fees, Events} = apply_node_transactions(Node, TreesIn,
+            {Trees, _Fees, Events} = apply_node_transactions(Node, PrevNode, TreesIn,
                                                              ForkInfo, State),
             case aec_trees:hash(Trees) =:= aec_trees:hash(FoundTrees) of
                 true -> %% race condition, we've already inserted this block
@@ -752,7 +755,8 @@ update_state_tree(Node, TreesIn, ForkInfo, State) ->
                     error({found_already_calculated_state, node_hash(Node)})
             end;
         error ->
-            {DifficultyOut, Events} = apply_and_store_state_trees(Node, TreesIn,
+            {DifficultyOut, Events} = apply_and_store_state_trees(Node,
+                                                                  PrevNode, TreesIn,
                                                                   ForkInfo, State),
             State1 = set_top_block_node(Node, State),
             {State1, DifficultyOut, Events}
@@ -800,14 +804,14 @@ get_state_trees_in(Node, PrevNode, DirtyBackend) ->
 %% to update pof, not risk invalidating the cache, and only touch up the trees
 %% value of the block state.
 %%
-apply_and_repair_trees(Node, TreesIn, ForkInfoIn, State) ->
-    {Trees, _Fees, _Events} = apply_node_transactions(Node, TreesIn, ForkInfoIn, State),
+apply_and_repair_trees(Node, PrevNode, TreesIn, ForkInfoIn, State) ->
+    {Trees, _Fees, _Events} = apply_node_transactions(Node, PrevNode, TreesIn, ForkInfoIn, State),
     assert_state_hash_valid(Trees, Node),
     aec_db:update_trees_and_block_state(node_hash(Node), Trees),
     ok.
 
-apply_and_store_state_trees(Node, TreesIn, ForkInfoIn, State) ->
-    {Trees, Fees, Events} = apply_node_transactions(Node, TreesIn, ForkInfoIn, State),
+apply_and_store_state_trees(Node, PrevNode, TreesIn, ForkInfoIn, State) ->
+    {Trees, Fees, Events} = apply_node_transactions(Node, PrevNode, TreesIn, ForkInfoIn, State),
     assert_state_hash_valid(Trees, Node),
     DifficultyOut = ForkInfoIn#fork_info.difficulty + node_difficulty(Node),
     Fraud = update_fraud_info(ForkInfoIn, Node, State),
@@ -893,6 +897,15 @@ add_locations(StopHash, CurrentHash) ->
 assert_state_hash_valid(Trees, Node) ->
     RootHash = aec_trees:hash(Trees),
     Expected = node_root_hash(Node),
+    %% TODO: delete the folllowing few lines with regards of logging
+    case node_is_key_block(Node) of
+        true ->
+            ExpectedBeneficiary = node_beneficiary(Node),
+            Height = node_height(Node),
+            Mod = aec_consensus:get_genesis_consensus_module(),
+            ActualBeneficiary = Mod:beneficiary();
+        false -> pass
+    end,
     case RootHash =:= Expected of
         true -> ok;
         false -> aec_block_insertion:abort_state_transition({root_hash_mismatch, RootHash, Expected})
@@ -902,7 +915,8 @@ validate_generation_leader(Node, Trees, Env) ->
     case node_is_key_block(Node) of
         true  ->
             ConsensusModule = aec_block_insertion:node_consensus(Node),
-            case ConsensusModule:is_leader_valid(Node, Trees, Env) of
+            PrevKeyNode = db_get_node(node_prev_key_hash(Node)),
+            case ConsensusModule:is_leader_valid(Node, Trees, Env, PrevKeyNode) of
                 true -> ok;
                 false -> {error, invalid_leader}
             end;
@@ -910,7 +924,7 @@ validate_generation_leader(Node, Trees, Env) ->
             ok
     end.
     
-apply_node_transactions(Node, Trees, ForkInfo, State) ->
+apply_node_transactions(Node, PrevNode, Trees, ForkInfo, State) ->
     Consensus = aec_block_insertion:node_consensus(Node),
     case node_is_micro_block(Node) of
         true ->
@@ -932,7 +946,7 @@ apply_node_transactions(Node, Trees, ForkInfo, State) ->
             Trees2 = if Consensus =:= PrevConsensus -> Trees1;
                         true -> Consensus:state_pre_transform_key_node_consensus_switch(Node, Trees1)
                      end,
-            Trees3 = Consensus:state_pre_transform_key_node(Node, Trees2),
+            Trees3 = Consensus:state_pre_transform_key_node(Node, PrevNode, Trees2),
             %% leader generation happens after pre_transformations
             case validate_generation_leader(Node, Trees3, Env) of
                 ok ->

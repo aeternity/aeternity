@@ -56,6 +56,7 @@ forbidden(_Mod, _OpId) -> false.
 handle_request(OperationID, Req, Context) ->
     run(queue(OperationID),
         fun() ->
+                lager:debug("operationId: ~p", [OperationID]),
                 ?TC(handle_request_(OperationID, Req, Context), Req)
         end).
 
@@ -67,6 +68,7 @@ run(Queue, F) ->
           end)
     catch
         error:{rejected, _} ->
+            lager:error("AAAAAAAAA Temporary overload", []),
             {503, [], #{reason => <<"Temporary overload">>}};
         error:timeout ->
             {503, [], #{reason => <<"Not yet started">>}};
@@ -171,19 +173,23 @@ handle_request_('GetCurrentKeyBlock', _Req, _Context) ->
             case aec_blocks:height(Block) of
                 0 ->
                     Header = aec_blocks:to_header(Block),
+                    lager:error("GetCurrrentKeyBlock OK ~p", [0]),
                     {200, [], aec_headers:serialize_for_client(Header, key)};
-                _ ->
+                Height ->
                     PrevBlockHash = aec_blocks:prev_hash(Block),
                     case aec_chain:get_block(PrevBlockHash) of
                         {ok, PrevBlock} ->
                             PrevBlockType = aec_blocks:type(PrevBlock),
                             Header = aec_blocks:to_header(Block),
+                            lager:error("GetCurrrentKeyBlock OK ~p", [Height]),
                             {200, [], aec_headers:serialize_for_client(Header, PrevBlockType)};
                         error ->
+                            lager:error("PREV KEYBLOCK NOT FOUND !?!?, height ~p", [Height]),
                             {404, [], #{reason => <<"Block not found">>}}
                     end
             end;
         error ->
+            lager:error("CURRENT KEYBLOCK NOT FOUND !?!?", []),
             {404, [], #{reason => <<"Block not found">>}}
     end;
 

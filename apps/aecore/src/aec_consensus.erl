@@ -167,7 +167,7 @@
 %% Performs initial state transformation when the previous block used a different consensus algorithm
 -callback state_pre_transform_key_node_consensus_switch(#node{}, aec_trees:trees()) -> aec_trees:trees() | no_return().
 %% State pre transformations on every keyblock
--callback state_pre_transform_key_node(#node{}, aec_trees:trees()) -> aec_trees:trees() | no_return().
+-callback state_pre_transform_key_node(#node{}, #node{}, aec_trees:trees()) -> aec_trees:trees() | no_return().
 %% State pre transformations on every microblock
 -callback state_pre_transform_micro_node(#node{}, aec_trees:trees()) -> aec_trees:trees() | no_return().
 
@@ -186,10 +186,12 @@
 %% rewards and signing
 -callback beneficiary() -> {ok, binary() | fun(() -> binary())} | {error, atom()}.
 -callback next_beneficiary() -> {ok, binary() | fun(() -> binary())} | {error, atom()}.
+-callback allow_lazy_leader() -> false | {true, integer()}.
+-callback pick_lazy_leader() -> error | {ok, aec_keys:pubkey()}.
 -callback get_sign_module() -> sign_module().
 -callback get_type() -> pow | pos.
 -callback get_block_producer_configs() -> list().
--callback is_leader_valid(#node{}, aec_trees:trees(), aetx_env:env()) -> boolean().
+-callback is_leader_valid(#node{}, aec_trees:trees(), aetx_env:env(), #node{}) -> boolean().
 
 %% -------------------------------------------------------------------
 %% Block sealing

@@ -80,7 +80,9 @@ node_prev_key_hash(#node{header = H}) -> aec_headers:prev_key_hash(H).
 node_height(#node{header = H}) -> aec_headers:height(H).
 
 node_difficulty(#node{type = micro}) -> 0;
-node_difficulty(#node{header = H}) -> aec_headers:difficulty(H).
+node_difficulty(#node{header = H}) ->
+    D = aec_headers:difficulty(H),
+    D. 
 
 node_target(#node{header = H}) -> aec_headers:target(H).
 

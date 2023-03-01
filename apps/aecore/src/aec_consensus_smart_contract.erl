@@ -41,7 +41,7 @@
         , dirty_validate_micro_node_with_ctx/3
         %% State transition
         , state_pre_transform_key_node_consensus_switch/2
-        , state_pre_transform_key_node/2
+        , state_pre_transform_key_node/3
         , state_pre_transform_micro_node/2
         %% Block rewards
         , state_grant_reward/4
@@ -66,10 +66,12 @@
         %% rewards and signing
         , beneficiary/0
         , next_beneficiary/0
+        , allow_lazy_leader/0
+        , pick_lazy_leader/0
         , get_sign_module/0
         , get_type/0
         , get_block_producer_configs/0
-        , is_leader_valid/3
+        , is_leader_valid/4
         ]).
 
 -include_lib("aecontract/include/hard_forks.hrl").
@@ -128,7 +130,7 @@ dirty_validate_micro_node_with_ctx(_Node, _Block, _Ctx) -> ok.
 %% -------------------------------------------------------------------
 %% Custom state transitions
 state_pre_transform_key_node_consensus_switch(_Node, Trees) -> Trees.
-state_pre_transform_key_node(Node, Trees) ->
+state_pre_transform_key_node(Node, _PrevNode, Trees) ->
     {ok, CD} = aeb_fate_abi:create_calldata("elect", []),
     CallData = aeser_api_encoder:encode(contract_bytearray, CD),
     case call_consensus_contract(?ELECTION_CONTRACT, Node, Trees, CallData, "elect()") of
@@ -425,12 +427,21 @@ next_beneficiary() ->
         {ok, _Trees1, Call} ->
             {tuple, {{address, Leader}, _}} = aeb_fate_encoding:deserialize(aect_call:return_value(Call)),
             SignModule = get_sign_module(),
-            SignModule:set_candidate(Leader),
-            {ok, Leader};
+            case SignModule:set_candidate(Leader) of
+                {error, key_not_found} ->
+                    timer:sleep(1000),
+                    {error, not_leader};
+                ok ->
+                    {ok, Leader}
+            end;
         {error, What} ->
             %% maybe a softer approach than crash and burn?
             error({failed_to_elect_new_leader, What})
     end.
+
+allow_lazy_leader() -> false.
+
+pick_lazy_leader() -> error.
 
 get_sign_module() -> aec_preset_keys.
 
@@ -439,7 +450,7 @@ get_type() -> pos.
 get_block_producer_configs() -> [{instance_not_used,
                                   #{expected_key_block_rate => expected_key_block_rate()}}].
 
-is_leader_valid(Node, Trees, TxEnv) ->
+is_leader_valid(Node, Trees, TxEnv, _PrevNode) ->
     Header = aec_block_insertion:node_header(Node),
     {ok, CD} = aeb_fate_abi:create_calldata("leader", []),
     CallData = aeser_api_encoder:encode(contract_bytearray, CD),

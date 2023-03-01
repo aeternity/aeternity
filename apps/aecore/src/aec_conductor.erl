@@ -534,7 +534,33 @@ get_beneficiary(Consensus) ->
     Consensus:beneficiary().
 
 get_next_beneficiary(Consensus) ->
-    Consensus:next_beneficiary().
+    TopHeader = aec_chain:top_header(),
+    get_next_beneficiary(Consensus, TopHeader).
+
+get_next_beneficiary(Consensus, TopHeader) ->
+    case Consensus:next_beneficiary() of
+        {ok, _L} = OK -> OK;
+        {error, not_in_cache} = Err ->
+            %%timer:sleep(1000), %% TODO: make this configurable
+            Err;
+        {error, not_leader} = NotLeader ->
+            case Consensus:allow_lazy_leader() of
+                {true, LazyLeaderTimeDelta} ->
+                    LastBlockTime = aec_headers:time_in_msecs(TopHeader),
+                    Now = aeu_time:now_in_msecs(),
+                    TimeDelta = Now - LastBlockTime,
+                    case TimeDelta > LazyLeaderTimeDelta of
+                        true ->
+                            case Consensus:pick_lazy_leader() of
+                                error -> NotLeader;
+                                {ok, _L} = OK -> OK
+                            end;
+                        false ->
+                            NotLeader
+                    end;
+                false -> NotLeader
+            end
+    end.
 
 get_beneficiary() ->
     TopHeader = aec_chain:top_header(),
@@ -544,7 +570,7 @@ get_beneficiary() ->
 get_next_beneficiary() ->
     TopHeader = aec_chain:top_header(),
     Consensus = aec_consensus:get_consensus_module_at_height(aec_headers:height(TopHeader) + 1),
-    get_next_beneficiary(Consensus).
+    get_next_beneficiary(Consensus, TopHeader).
 
 note_rollback(Info) ->
     gen_server:call(?SERVER, {note_rollback, Info}).
@@ -1060,7 +1086,7 @@ start_block_production_(#state{ mode = stratum,
 start_block_production_(#state{mode = pos, key_block_candidates = [{ForSealing, Candidate} | Candidates]} = State) ->
     case available_instance(State) of
         none ->
-            epoch_mining:debug("No available instance", []),
+            epoch_mining:debug("No available instance ~p", [State#state.instances]),
             State;
         Instance ->
             epoch_mining:info("Starting PoS block generator on top of ~p", [State#state.top_block_hash]),

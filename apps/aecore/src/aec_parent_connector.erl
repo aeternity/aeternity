@@ -218,6 +218,9 @@ handle_info(check_parent, #state{parent_hosts = ParentNodes,
                 %% - Call the smart contract to elect new leader.
                 %% - Notify conductor of new status
                 NewParentTop;
+            {error, not_found} ->
+                lager:warning("Parent nodes did not respond?", []),
+                ParentTop;
             {error, no_parent_chain_agreement} ->
                 lager:warning("Parent nodes are unable to reach consensus", []),
                 ParentTop
@@ -325,10 +328,6 @@ responses_consensus(Good0, _Errors, TotalCount) ->
                 end
         end
     end.
-
-%%fetch_commitments(Mod, #{host := Host, port := Port,
-%%                        user := User, password := Password}, Seed, NewParentHash) ->
-%%    Mod:get_commitment_tx_in_block(Host, Port, User, Password, Seed, NewParentHash).
 
 increment_seed(<<Num:?SEED_BYTES/unsigned-integer-unit:8>>) ->
     <<(Num + 1):?SEED_BYTES/unsigned-integer-unit:8>>;

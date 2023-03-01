@@ -13,7 +13,8 @@
          is_key_present/1
         ]).
 
--export([set_candidate/1
+-export([set_candidate/1,
+         set_random_candidate/0
         ]).
 
 
@@ -68,6 +69,13 @@ promote_candidate(Pubkey) ->
 set_candidate(Pubkey) ->
     case gen_server:call(?SERVER, {set_candidate, Pubkey}) of
         ok -> ok;
+        {error, not_found} -> {error, key_not_found}
+    end.
+
+-spec set_random_candidate() -> {ok, aec_keys:pubkey()} | {error, key_not_found}.
+set_random_candidate() ->
+    case gen_server:call(?SERVER, set_random_candidate) of
+        {ok, Pubkey} -> {ok, Pubkey};
         {error, not_found} -> {error, key_not_found}
     end.
 
@@ -152,6 +160,13 @@ handle_call({set_candidate, Pubkey}, _From, #state{} = State) ->
         false ->
             {reply, {error, not_found}, State}
     end;
+handle_call(set_random_candidate, _From, #state{} = State) ->
+    case get_random_pubkey(State) of
+        {ok, Pubkey} ->
+            {reply, {ok, Pubkey}, State#state{candidate = Pubkey}};
+        error ->
+            {reply, {error, not_found}, State}
+    end;
 handle_call({sign, Bin, ByWho}, _From, #state{} = State) ->
     case privkey(ByWho, State) of
         {ok, Privkey} ->
@@ -208,5 +223,13 @@ privkey(Pubkey, #state{keys = Keys}) ->
 
 -spec is_known_pubkey(aec_keys:pubkey(), #state{}) -> boolean().
 is_known_pubkey(Pubkey, #state{keys = Keys}) ->
+    epoch_mining:warning("ASDF looking for key ~p, all keys ~p", [Pubkey, Keys]),
     maps:is_key(Pubkey, Keys).
 
+get_random_pubkey(#state{keys = Keys}) ->
+    Pubkeys = maps:keys(Keys),
+    case length(Pubkeys) of
+        0 -> error;
+        Len -> 
+            {ok, lists:nth(rand:uniform(Len), Pubkeys)}
+    end.
