@@ -320,10 +320,15 @@ get_candidate(MaxGas, BlockHash) ->
     get_candidate(MaxGas, [], BlockHash).
 
 -spec get_candidate(pos_integer(), [binary()], binary()) -> {ok, [aetx_sign:signed_tx()]}.
-get_candidate(MaxGas, IgnoreTxHashes, BlockHash) when is_integer(MaxGas), MaxGas > 0,
+get_candidate(MaxGas, IgnoreTxHashes, BlockHash) when is_integer(MaxGas),
                                                       is_binary(BlockHash) ->
-    ?TC(int_get_candidate(MaxGas, IgnoreTxHashes, BlockHash, dbs()),
-        {get_candidate, MaxGas, IgnoreTxHashes, BlockHash}).
+    case MaxGas >= aec_governance:min_tx_gas() of
+        true ->
+            ?TC(int_get_candidate(MaxGas, IgnoreTxHashes, BlockHash, dbs()),
+                {get_candidate, MaxGas, IgnoreTxHashes, BlockHash});
+        false ->
+            {ok, []}
+    end.
 
 %% It assumes that the persisted mempool has been updated.
 -spec top_change(top_change_info()) -> ok.
