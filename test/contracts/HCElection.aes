@@ -10,29 +10,34 @@ main contract HCElection =
   record state =
     { main_staking_ct       : MainStaking,
       entropy               : string,
-      leader                : address
+      leader                : address,
+      added_stake           : int
     }
 
   record get_state_response =
     { main_staking_ct       : MainStaking,
       entropy               : string,
-      leader                : address
+      leader                : address,
+      added_stake           : int
     }
 
   entrypoint init(main_staking_ct : MainStaking, entropy_str : string) =
     { main_staking_ct       = main_staking_ct,
       leader                = Contract.address,
-      entropy               = entropy_str
+      entropy               = entropy_str,
+      added_stake           = 0
       }
 
   stateful entrypoint elect(entropy_str : string, commitments : map(hash, list(address))) =
     assert_protocol_call()
-    let new_leader = elect_(entropy_str, commitments)
+    let (new_leader, added_staking_power) = elect_(entropy_str, commitments)
     state.main_staking_ct.post_elect()
-    put(state{ leader = new_leader, entropy = entropy_str})
+    put(state{ leader = new_leader, entropy = entropy_str, added_stake = added_staking_power})
+    (new_leader, added_staking_power)
 
   entrypoint elect_next(entropy_str : string, commitments : map(hash, list(address))) =
-    elect_(entropy_str, commitments)
+    let (leader, staking_power) = elect_(entropy_str, commitments)
+    (leader, staking_power)
 
   function elect_(entropy_str : string, commitments : map(hash, list(address))) =
     let Some(current_hash : hash) = Chain.block_hash(Chain.block_height) // current hash!
@@ -48,15 +53,19 @@ main contract HCElection =
     let shot = Bytes.to_int(entropy) mod total_stake
     switch(find_validator(sorted, shot))
       None => abort("NO CANDIDATE") // should not be possible
-      Some(new_leader) => new_leader
+      Some(new_leader) => (new_leader, total_stake)
 
   entrypoint leader() =
     state.leader
 
+  entrypoint added_stake() =
+    state.added_stake
+
   entrypoint get_state() : get_state_response =
-    { main_staking_ct = state.main_staking_ct,
-      entropy         = state.entropy,
-      leader          = state.leader
+    { main_staking_ct   = state.main_staking_ct,
+      entropy           = state.entropy,
+      leader            = state.leader,
+      added_stake       = state.added_stake
       }
 
   function find_validator(validators, shot) =

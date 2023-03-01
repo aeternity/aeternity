@@ -423,7 +423,7 @@ next_beneficiary() ->
     CallData = aeser_api_encoder:encode(contract_bytearray, CD),
     case call_consensus_contract_(?ELECTION_CONTRACT, TxEnv, Trees, CallData, "elect_next()", 0) of
         {ok, _Trees1, Call} ->
-            {address, Leader} = aeb_fate_encoding:deserialize(aect_call:return_value(Call)),
+            {tuple, {{address, Leader}, _}} = aeb_fate_encoding:deserialize(aect_call:return_value(Call)),
             SignModule = get_sign_module(),
             SignModule:set_candidate(Leader),
             {ok, Leader};
