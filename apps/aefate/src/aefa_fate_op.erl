@@ -2220,8 +2220,9 @@ check_delegation_signature(Type, Data, SignBin, Current, ES0) ->
             end
     end.
 
-delegation_signature_data(Type, Pubkey, Current) when Type =:= aens_preclaim;
-                                                      Type =:= oracle_register;
+delegation_signature_data(aens_preclaim, Pubkey, Current) ->
+    {{<<Pubkey/binary, Current/binary>>, aens_wildcard_signature_data(Pubkey, Current)}, Pubkey};
+delegation_signature_data(Type, Pubkey, Current) when Type =:= oracle_register;
                                                       Type =:= oracle_extend ->
     {<<Pubkey/binary, Current/binary>>, Pubkey};
 delegation_signature_data(oracle_respond, {Pubkey, QueryId}, Current) ->
@@ -2230,7 +2231,10 @@ delegation_signature_data(Type, {Pubkey, Hash}, Current) when Type =:= aens_clai
                                                               Type =:= aens_update;
                                                               Type =:= aens_transfer;
                                                               Type =:= aens_revoke ->
-    {<<Pubkey/binary, Hash/binary, Current/binary>>, Pubkey}.
+    {{<<Pubkey/binary, Hash/binary, Current/binary>>, aens_wildcard_signature_data(Pubkey, Current)}, Pubkey}.
+
+aens_wildcard_signature_data(Pubkey, ContractPubkey) ->
+    <<Pubkey/binary, "AENS"/utf8, ContractPubkey/binary>>.
 
 spend_gas(Delta, ES) when is_integer(Delta), Delta > 0 ->
     aefa_engine_state:spend_gas(Delta, ES).
