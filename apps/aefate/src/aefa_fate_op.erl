@@ -1931,9 +1931,9 @@ aens_resolve_(Arg0, ?FATE_STRING(NameString), ?FATE_STRING(Key), ?FATE_TYPEREP(T
     case aefa_chain_api:aens_resolve(NameString, Key, API) of
         none ->
             write(Arg0, make_none(), ES);
-        {ok, Tag, Pubkey, API1} ->
+        {ok, Tag, Value, API1} ->
             ES1 = aefa_engine_state:set_chain_api(API1, ES),
-            case aens_tag_to_val(Type, Tag, Pubkey) of
+            case aens_tag_to_val(Type, Tag, Value) of
                 none ->
                     write(Arg0, make_none(), ES1);
                 {error, What} ->
@@ -1952,14 +1952,14 @@ aens_resolve_(Arg0, ?FATE_STRING(NameString), ?FATE_STRING(Key), ?FATE_TYPEREP(T
             write(Arg0, make_none(), ES)
     end.
 
-aens_tag_to_val({variant, [{tuple, []}, {tuple, [Type]}]}, Tag, Pubkey) ->
+aens_tag_to_val({variant, [{tuple, []}, {tuple, [Type]}]}, Tag, Value) ->
     case Type =:= string of
-        true  -> {ok, ?FATE_STRING(Pubkey)};
+        true  -> {ok, ?FATE_STRING(Value)};
         false ->
             case Tag of
-                account  -> {ok, ?FATE_ADDRESS(Pubkey)};
-                oracle   -> {ok, ?FATE_ORACLE(Pubkey)};
-                contract -> {ok, ?FATE_CONTRACT(Pubkey)};
+                account  -> {ok, ?FATE_ADDRESS(Value)};
+                oracle   -> {ok, ?FATE_ORACLE(Value)};
+                contract -> {ok, ?FATE_CONTRACT(Value)};
                 _        -> none
             end
     end;
@@ -2056,7 +2056,7 @@ aens_lookup(Arg0, Arg1, EngineState) ->
             %% Pointers are serialized as a list, pre-Iris pointers might not
             %% necessarily be valid, so explicitly sanitize the pointers
             Pointers = maps:from_list(
-                         [ {MkKey(Pt), mk_fate_pointee(Pt)}
+                         [ {MkKey(Pt), mk_fate_pointee(Pt, ES2)}
                            || Pt <- aens_pointer:sanitize_pointers(maps:get(pointers, NameObj)) ]),
             Res = make_some(aeb_fate_data:make_variant([3], 0, {Owner, TTL, Pointers})),
             write(Arg0, Res, ES2);
@@ -2066,13 +2066,33 @@ aens_lookup(Arg0, Arg1, EngineState) ->
             write(Arg0, make_none(), ES1)
     end.
 
-mk_fate_pointee(Pt) ->
+mk_fate_pointee(Pt, ES) ->
     Id = aens_pointer:id(Pt),
+    case aefa_engine_state:vm_version(ES) of %% >= ?VM_FATE_SOPHIA_2 since aens_lookup
+        ?VM_FATE_SOPHIA_2 ->
+            mk_fate_pointee_v1(Id, ES);
+        VM when VM > ?VM_FATE_SOPHIA_2 ->
+            mk_fate_pointee_v2(Id)
+    end.
+
+mk_fate_pointee_v1({data, Data}, ES) when is_binary(Data) ->
+    aefa_fate:abort({primop_error, aens_lookup, data_pointer_not_in_fate_vm_2}, ES);
+mk_fate_pointee_v1(Id, _ES) ->
     case aeser_id:specialize(Id) of
         {account, PK}  -> aeb_fate_data:make_variant([1, 1, 1, 1], 0, {?FATE_ADDRESS(PK)});
         {oracle, PK}   -> aeb_fate_data:make_variant([1, 1, 1, 1], 1, {?FATE_ADDRESS(PK)});
         {contract, PK} -> aeb_fate_data:make_variant([1, 1, 1, 1], 2, {?FATE_ADDRESS(PK)});
         {channel, PK}  -> aeb_fate_data:make_variant([1, 1, 1, 1], 3, {?FATE_ADDRESS(PK)})
+    end.
+
+mk_fate_pointee_v2({data, Data}) when is_binary(Data) ->
+    aeb_fate_data:make_variant([1, 1, 1, 1, 1], 4, {?FATE_STRING(Data)});
+mk_fate_pointee_v2(Id) ->
+    case aeser_id:specialize(Id) of
+        {account, PK}  -> aeb_fate_data:make_variant([1, 1, 1, 1, 1], 0, {?FATE_ADDRESS(PK)});
+        {oracle, PK}   -> aeb_fate_data:make_variant([1, 1, 1, 1, 1], 1, {?FATE_ADDRESS(PK)});
+        {contract, PK} -> aeb_fate_data:make_variant([1, 1, 1, 1, 1], 2, {?FATE_ADDRESS(PK)});
+        {channel, PK}  -> aeb_fate_data:make_variant([1, 1, 1, 1, 1], 3, {?FATE_ADDRESS(PK)})
     end.
 
 aens_update(Arg0, Arg1, Arg2, Arg3, Arg4, Arg5, EngineState) ->
@@ -2113,16 +2133,14 @@ aens_update(Arg0, Arg1, Arg2, Arg3, Arg4, Arg5, EngineState) ->
         case OptPointers of
             ?FATE_VARIANT([_,_], 0, {}) -> undefined;
             ?FATE_VARIANT([_,_], 1, {Pointers_}) ->
-                maps:fold(
-                  fun (PtrKey, ?FATE_VARIANT([1, 1, 1, 1], AddrTag, {{address, Addr}}), Acc) ->
-                          IdType = case AddrTag of    % type pointee =
-                                      0 -> account;   %   | AccountPt(address)
-                                      1 -> oracle;    %   | OraclePt(address)
-                                      2 -> contract;  %   | ContractPt(address)
-                                      3 -> channel    %   | ChannelPt(address)
-                                   end,
-                          [aens_pointer:new(PtrKey, aeser_id:create(IdType, Addr)) | Acc]
-                  end, [], Pointers_)
+                try
+                    maps:fold(
+                        fun (PtrKey, PtrId, Acc) ->
+                            [aens_pointer:new(PtrKey, mk_pointer_id(PtrId, ES1)) | Acc]
+                        end, [], Pointers_)
+                catch error:function_clause ->
+                    aefa_fate:abort({primop_error, aens_update, bad_pointer}, ES1)
+                end
         end,
     HashBin = hash_name(aens_update, NameBin, ES1),
     ES2 = check_delegation_signature(aens_update, {Pubkey, HashBin}, SignBin, ES1),
@@ -2133,6 +2151,29 @@ aens_update(Arg0, Arg1, Arg2, Arg3, Arg4, Arg5, EngineState) ->
         {error, What} ->
             aefa_fate:abort({primop_error, aens_update, What}, ES2)
     end.
+
+mk_pointer_id(Pointee, ES) ->
+    case aefa_engine_state:vm_version(ES) of %% >= ?VM_FATE_SOPHIA_2 since aens_update
+        ?VM_FATE_SOPHIA_2 ->
+            mk_pointer_id_v1(Pointee);
+        VM when VM > ?VM_FATE_SOPHIA_2 ->
+            mk_pointer_id_v2(Pointee)
+    end.
+
+mk_pointer_id_v1(?FATE_VARIANT([1, 1, 1, 1], AddrTag, {?FATE_ADDRESS(Addr)})) ->
+    mk_id(AddrTag, Addr).
+
+mk_pointer_id_v2(?FATE_VARIANT([1, 1, 1, 1, 1], AddrTag, {?FATE_ADDRESS(Addr)})) ->
+    mk_id(AddrTag, Addr);
+mk_pointer_id_v2(?FATE_VARIANT([1, 1, 1, 1, 1], 4, {?FATE_STRING(Data)})) ->
+    Data.
+
+%% type pointee = Account | Oracle | Contract | Channel
+mk_id(0, Address) -> aeser_id:create(account,  Address);
+mk_id(1, Address) -> aeser_id:create(oracle,   Address);
+mk_id(2, Address) -> aeser_id:create(contract, Address);
+mk_id(3, Address) -> aeser_id:create(channel,  Address).
+
 
 aens_transfer(Arg0, Arg1, Arg2, Arg3, EngineState) ->
     {[Signature, From, To, NameString], ES1} =

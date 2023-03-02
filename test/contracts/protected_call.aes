@@ -51,7 +51,7 @@ contract ProtectedCall =
       n
 
   payable stateful entrypoint
-    hacked(n : int) =    // We'll hack the byte code to change the stated type to int => int
+    hacked(_ : int) =    // We'll hack the byte code to change the stated type to int => int
       side_effects()
       false
 
@@ -111,7 +111,7 @@ contract ProtectedCall =
   payable stateful entrypoint
     call_nonpayable (r : Remote) : int  = r.nonpayable(value = 70)
   payable stateful entrypoint
-    call_missing_con() : int = ct_1111111111111111111111111111112JF6Dz72.id(value = 70, 0)
+    call_missing_con() : int = (ct_1111111111111111111111111111112JF6Dz72 : Remote).id(value = 70, 0)
 
   stateful entrypoint
     test_wrong_ret   (r : Remote) : option(bool) = r.wrong_ret  (protected = true, value = 100, 0)
@@ -134,7 +134,7 @@ contract ProtectedCall =
   stateful entrypoint
     test_out_of_funds(r : Remote) : option(int)  = r.id         (protected = true, value = 1_000_000_000_000_000_000_000_000_000, 0)
   stateful entrypoint
-    test_missing_con (r : Remote) : option(int)  = ct_1111111111111111111111111111112JF6Dz72.id(protected = true, value = 100, 0)
+    test_missing_con (_ : Remote) : option(int)  = (ct_1111111111111111111111111111112JF6Dz72 : Remote).id(protected = true, value = 100, 0)
 
   stateful entrypoint
     test_wrong_ret_r  (r : Remote, p : ProxyRemote) : option(bool) = p.call_wrong_ret  (protected = true, value = 100, r)
@@ -155,4 +155,4 @@ contract ProtectedCall =
   stateful entrypoint
     test_nonpayable_r (r : Remote, p : ProxyRemote) : option(int)  = p.call_nonpayable (protected = true, value = 100, r)
   stateful entrypoint
-    test_missing_con_r(r : Remote, p : ProxyRemote) : option(int)  = p.call_missing_con(protected = true, value = 100)
+    test_missing_con_r(_ : Remote, p : ProxyRemote) : option(int)  = p.call_missing_con(protected = true, value = 100)

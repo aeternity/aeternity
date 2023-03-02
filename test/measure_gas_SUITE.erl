@@ -23,6 +23,7 @@
 -include_lib("aecontract/include/aecontract.hrl").
 -include_lib("aecontract/include/hard_forks.hrl").
 -include_lib("common_test/include/ct.hrl").
+-include_lib("aecontract/test/include/aect_sophia_vsn.hrl").
 
 -define(SAMPLE, 100).
 
@@ -207,11 +208,12 @@ compile(File) ->
     CodeDir = filename:join(code:lib_dir(aecore), "../../extras/test/contracts"),
     FileName = filename:join(CodeDir, File),
     {ok, Cwd} = file:get_cwd(),
-    {ok, Aevm} = aeso_compiler:file(FileName, [{backend, aevm}, {include, {file_system, [Cwd, CodeDir]}}]),
-    {ok, Fate} =  aeso_compiler:file(FileName, [{backend, fate}, {include, {file_system, [Cwd, CodeDir]}}]),
-    ct:pal("Size aevm: ~p\n     fate: ~p\n", [byte_size(aect_sophia:serialize(Aevm, aect_test_utils:latest_sophia_contract_version())),
+    {ok, BinCode} = aect_test_utils:read_contract(?SOPHIA_LIMA_AEVM, File),
+    {ok, Aevm} = aect_test_utils:compile_contract(?SOPHIA_LIMA_AEVM, File),
+    {ok, Fate} = aeso_compiler:file(FileName, [{backend, fate}, {include, {file_system, [Cwd, CodeDir]}}]),
+    ct:pal("Size aevm: ~p\n     fate: ~p\n", [byte_size(Aevm),
                                               byte_size(aect_sophia:serialize(Fate, aect_test_utils:latest_sophia_contract_version()))]),
-    {Aevm, Fate}.
+    {(aect_sophia:deserialize(Aevm))#{contract_source => binary_to_list(BinCode)}, Fate}.
 
 init() ->
     init([{account, account(N), 20000000000000000} || N<-lists:seq(1,9)]).
@@ -271,7 +273,11 @@ contract_call(Trees, Sender, ContractId, CompiledContract, Fun, Args, Backend) -
 
 
 encode_call_data(Code, Fun, Args, Backend) ->
-    aeso_compiler:create_calldata(Code, Fun, Args, [{backend, Backend}]).
+    case Backend of
+        aevm -> put('$sophia_version', ?SOPHIA_LIMA_AEVM), put('$abi_version', ?ABI_AEVM_SOPHIA_1);
+        fate -> put('$sophia_version', ?SOPHIA_CERES_FATE), put('$abi_version', ?ABI_FATE_SOPHIA_1)
+    end,
+    aect_test_utils:encode_call_data(Code, Fun, Args).
 
 tx_timer(N, Backend, Trees, Env, F) ->
     {NewTrees, NewEnv, AllTimes} =

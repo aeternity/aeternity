@@ -4175,7 +4175,7 @@ assert_cache_is_gone_after_on_disk(ChannelId) ->
     try
         retry(5, 20, fun() -> assert_cache_is_on_disk(ChannelId) end),
         mine_blocks(dev1),
-        assert_cache_is_gone(ChannelId)
+        retry(5, 20, fun() -> assert_cache_is_gone(ChannelId) end)
     catch
         error:{badmatch, []} ->
             % At this point the cache could already be gone

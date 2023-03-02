@@ -19,11 +19,11 @@ payable contract SpendTest =
   stateful entrypoint withdraw(amount) : int =
     spend(Call.caller, amount)
 
-  stateful entrypoint withdraw_from(account, amount) =
+  stateful entrypoint withdraw_from(account : SpendContract, amount) =
     account.withdraw(amount)
     withdraw(amount)
 
-  stateful entrypoint spend_from(from, to, amount) =
+  stateful entrypoint spend_from(from : SpendContract, to, amount) =
     from.withdraw(amount)
     Chain.spend(to, amount)
     Chain.balance(to)

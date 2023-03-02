@@ -1,7 +1,7 @@
 contract ChannelOnChainContractNameResolution =
 
   payable entrypoint can_resolve(name: string, key: string) : bool =
-    switch(AENSv2.resolve(name, key) : option(string))
+    switch(AENS.resolve(name, key) : option(string))
       None           => false
       Some(_address) => true
 

@@ -101,12 +101,6 @@
 
 -include("../../aecontract/test/include/aect_sophia_vsn.hrl").
 
--define(assertMatchABI(AEVM, FATE, Res),
-    case abi_version() of
-        ?ABI_AEVM_SOPHIA_1 -> ?assertMatch(AEVM, Res);
-        ?ABI_FATE_SOPHIA_1 -> ?assertMatch(FATE, Res)
-    end).
-
 -define(INNER_ERROR(_Orig), <<"inner_transaction_failed">>).
 
 %%%===================================================================
@@ -358,7 +352,7 @@ simple_contract_call(_Cfg) ->
     AuthOpts2 = #{ prep_fun => fun(_) -> simple_auth(["123", "2"]) end },
     {ok, #{tx_res := ok, call_res := ok, call_val := Val}} =
         ?call(ga_call, Acc1, AuthOpts2, Ct, "identity", "main_", ["42"]),
-    ?assertMatchABI("42", 42, decode_call_result("identity", "main_", ok, Val)),
+    ?assertMatch(42, decode_call_result("identity", "main_", ok, Val)),
 
     ok.
 
@@ -441,7 +435,7 @@ basic_contract_call(_Cfg) ->
     AuthOpts2 = #{ prep_fun => fun(TxHash) -> ?call(basic_auth, Acc1, "2", TxHash) end },
     {ok, #{call_res := ok, call_val := Val}} =
         ?call(ga_call, Acc1, AuthOpts2, Ct, "identity", "main_", ["42"]),
-    ?assertMatchABI("42", 42, decode_call_result("identity", "main_", ok, Val)),
+    ?assertMatch(42, decode_call_result("identity", "main_", ok, Val)),
 
     ok.
 
@@ -522,7 +516,7 @@ tx_check(_Cfg) ->
 
     {ok, #{call_res := ok, call_val := Val}} =
         ?call(ga_call, Acc1, Auth("2"), Ct, "identity", "main_", ["42"]),
-    ?assertMatchABI("42", 42, decode_call_result("identity", "main_", ok, Val)),
+    ?assertMatch(42, decode_call_result("identity", "main_", ok, Val)),
 
     PreBalance  = ?call(account_balance, Acc2),
     {ok, #{tx_res := ok}} =
@@ -585,7 +579,7 @@ tx_auth_name_resolution_(_Cfg) ->
     {ok, #{call_res := ok, call_val := Val}} =
         ?call(ga_call, Acc1, Auth("2", Ct), Ct, "identity", "main_", ["42"], #{contract_id => CtNameId}),
 
-    ?assertMatchABI("42", 42, decode_call_result("identity", "main_", ok, Val)),
+    ?assertMatch(42, decode_call_result("identity", "main_", ok, Val)),
 
     CtNameId3 = aeser_id:create(name, <<1:256>>),
     {failed, authentication_failed} =
@@ -654,7 +648,7 @@ bitcoin_contract_call(_Cfg) ->
     AuthOpts2 = #{ prep_fun => fun(TxHash) -> ?call(bitcoin_auth, Acc1, "2", TxHash) end },
     {ok, #{call_res := ok, call_val := Val}} =
         ?call(ga_call, Acc1, AuthOpts2, Ct, "identity", "main_", ["42"]),
-    ?assertMatchABI("42", 42, decode_call_result("identity", "main_", ok, Val)),
+    ?assertMatch(42, decode_call_result("identity", "main_", ok, Val)),
 
     ok.
 
@@ -735,7 +729,7 @@ ethereum_contract_call(_Cfg) ->
     AuthOpts2 = #{ prep_fun => fun(TxHash) -> ?call(ethereum_auth, Acc1, "2", TxHash) end },
     {ok, #{call_res := ok, call_val := Val}} =
         ?call(ga_call, Acc1, AuthOpts2, Ct, "identity", "main_", ["42"]),
-    ?assertMatchABI("42", 42, decode_call_result("identity", "main_", ok, Val)),
+    ?assertMatch(42, decode_call_result("identity", "main_", ok, Val)),
 
     ok.
 
@@ -1996,9 +1990,9 @@ decode_call_result(Name0, Fun, Type, Val) ->
         ?ABI_AEVM_SOPHIA_1 ->
             Name = filename:join("contracts", Name0),
             {ok, BinSrc} = aect_test_utils:read_contract(Name),
-            %% TODO: Use a memoized version
-            {ok, AST} = aeso_compiler:to_sophia_value(binary_to_list(BinSrc), Fun, Type, Val),
-            prettypr:format(aeso_pretty:expr(AST));
+            ct:pal("BinSrc: ~ts", [BinSrc]),
+            ct:pal("Value: ~p", [Val]),
+            aect_test_utils:decode_call_result(BinSrc, Fun, Type, Val);
         ?ABI_FATE_SOPHIA_1 ->
             aeb_fate_encoding:deserialize(Val)
     end.
