@@ -143,7 +143,7 @@ common_tests() ->
     ].
 
 hc_specific_tests() ->
-    [ 
+    [
      verify_commitments,
      genesis_has_commitments,
      block_difficulty
@@ -192,7 +192,7 @@ init_per_suite(Config0) ->
             ParentPatronPubEnc = aeser_api_encoder:encode(account_pubkey, ParentPatronPub),
             aecore_suite_utils:create_seed_file([?PARENT_CHAIN_NODE1],
                 Config1,
-                "genesis", "accounts_test.json", 
+                "genesis", "accounts_test.json",
                 #{  ParentPatronPubEnc =>
                     100000000000000000000000000000000000000000000000000000000000000000000000,
                     encoded_pubkey(?DWIGHT) => 2100000000000000000000000000,
@@ -458,7 +458,7 @@ rpcport=" ++ integer_to_list(?BTC_PARENT_CHAIN_PORT),
 end_per_group(pos, Config) ->
     aecore_suite_utils:stop_node(?NODE1, Config),
     aecore_suite_utils:stop_node(?NODE2, Config);
-end_per_group(hc, Config) -> 
+end_per_group(hc, Config) ->
     aecore_suite_utils:stop_node(?NODE1, Config),
     aecore_suite_utils:stop_node(?NODE2, Config),
     aecore_suite_utils:stop_node(?PARENT_CHAIN_NODE1, Config);
@@ -1061,11 +1061,6 @@ seed_account(Node, NodeName, RecpipientPubkey, Amount, NetworkId) ->
     MineFun = fun(Tx) -> mine_tx_no_cheating(Node, Tx) end,
     seed_account(Node, NodeName, RecpipientPubkey, Amount, NetworkId, MineFun).
 
-seed_account_pow(Node, NodeName, RecpipientPubkey, Amount, NetworkId) ->
-    MineFun = fun(Tx) -> mine_tx(NodeName, Tx) end,
-    seed_account(Node, NodeName, RecpipientPubkey, Amount, NetworkId, MineFun).
-
-
 seed_account(Node, NodeName, RecipientPubkey, Amount, NetworkId, MineFun) ->
     %% precondition
     {ok, []} = rpc:call(NodeName, aec_tx_pool, peek, [infinity]),
@@ -1088,12 +1083,6 @@ seed_account(Node, NodeName, RecipientPubkey, Amount, NetworkId, MineFun) ->
     MineFun(SignedTx),
     {ok, SignedTx}.
 
-mine_tx(NodeName, SignedTx) ->
-    TxHash = aeser_api_encoder:encode(tx_hash, aetx_sign:hash(SignedTx)),
-    aecore_suite_utils:mine_blocks_until_txs_on_chain(NodeName,
-                                                      [TxHash],
-                                                      10). %% max keyblocks
-
 mine_tx_no_cheating(Node, SignedTx) ->
     mine_tx_no_cheating(Node, SignedTx, 100).
 
@@ -1113,7 +1102,7 @@ mine_tx_no_cheating(Node, SignedTx, Attempts) ->
     Retry = fun() -> timer:sleep(100), mine_tx_no_cheating(Node, SignedTx, Attempts - 1) end,
     TxHash = aetx_sign:hash(SignedTx),
     case rpc(Node, aec_chain, find_tx_location, [TxHash]) of
-        mempool -> Retry(); 
+        mempool -> Retry();
         none ->
             error({could_not_mine_tx, garbage_collected, SignedTx});
         not_found ->
@@ -1423,7 +1412,6 @@ node_config(PotentialStakers, ReceiveAddress, Consensus) ->
                                     ]
                             }
                         }
-                        
                  };
             _ when Consensus == ?CONSENSUS_HC_BTC; Consensus == ?CONSENSUS_HC_DOGE ->
                 PCType = case Consensus of
@@ -1649,25 +1637,6 @@ btc_get_blockhash(BitcoinCli, Height) ->
 get_doge_raw_tx(BitcoinCli, TxId) ->
     Tx = list_to_binary(string:trim(os:cmd(BitcoinCli ++ "getrawtransaction " ++ binary_to_list(TxId) ++ " true"))),
     {ok, jsx:decode(Tx, [return_maps])}.
-
-produce_validator_tx() ->
-    Who = ?BOB,
-    SCId = staking_contract_address(),
-    Tx =
-        contract_call(SCId, ?STAKING_CONTRACT,
-                            "set_validator_avatar_url",
-                            ["\"https://pbs.twimg.com/profile_images/1338340549804380160/A3oKPQuq_400x400.jpg\""], 0,
-                            pubkey(Who), 4),
-    Bin0 = aetx:serialize_to_binary(Tx),
-    Bin = aec_hash:hash(signed_tx, Bin0), %% since we are in IRIS or CERES context, we sign th hash
-    NetworkId = <<"ae_smart_contract_test">>,
-    BinForNetwork = <<NetworkId/binary, Bin/binary>>,
-    Signatures = [ enacl:sign_detached(BinForNetwork, privkey(Who))],
-    SignedTx = aetx_sign:new(Tx, Signatures),
-    aeser_api_encoder:encode(transaction, aetx_sign:serialize_to_binary(SignedTx)).
-
-get_commitments(GenerationHeight) ->
-    get_commitments(GenerationHeight, GenerationHeight).
 
 get_commitments(From, To) ->
     {ok, Blocks} = get_generations(?PARENT_CHAIN_NODE1, From, To + 1),

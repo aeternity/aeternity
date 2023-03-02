@@ -458,7 +458,6 @@ make_shortcut(Cfg) ->
 
 write_stratum_keys(AbsoluteKeysPath, Cfg) ->
     #{pubkey := PubKey, privkey := PrivKey} = ?config(stratum_keypair, Cfg),
-    MNodeTopDir = aecore_suite_utils:node_shortcut(?STRATUM_SERVER_NODE, Cfg),
     ct:log("AbsoluteKeysPath = ~p", [AbsoluteKeysPath]),
     filelib:ensure_dir(filename:join([AbsoluteKeysPath, "foo"])),
     file:write_file(filename:join(AbsoluteKeysPath, ?STRATUM_PRIVKEY_FILE), PrivKey),

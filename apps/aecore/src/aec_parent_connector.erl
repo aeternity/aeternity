@@ -94,7 +94,7 @@ start_link() ->
 %% ParentConnMod :: atom() - module name of the http client module aehttpc_btc | aehttpc_aeternity
 %% FetchInterval :: integer() | on_demand - millisecs between parent chain checks or when asked (useful for test)
 %% ParentHosts :: [#{host => Host, port => Port, user => User, password => Pass}]
-%% NetworkID :: binary() - the parent chain's network id 
+%% NetworkID :: binary() - the parent chain's network id
 %% SignModule :: atom() - module name of the module that keeps the keys for the parent chain transactions to be signed
 %% HCPCPairs :: [{binary(), binary()}] - mapping from hyperchain address to child chain address
 %% Recipient :: binary() - the parent chain address to which the commitments must be sent to
@@ -210,7 +210,7 @@ handle_info(check_parent, #state{parent_hosts = ParentNodes,
                 aec_parent_chain_cache:post_block(NewParentTop),
                 %_Commitments = fetch_commitments(Mod, Node, Seed,
                 %                                 aec_parent_chain_block:hash(NewParentTop))
-                %% Commitments may include varying view on what is the latest 
+                %% Commitments may include varying view on what is the latest
                 %%   block.
                 %% Commitments include:
                 %%   [{Committer, Committers view of child chain top hash}]
