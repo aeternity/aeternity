@@ -26,6 +26,8 @@
 -define(DEFAULT_CHANNEL_WEBSOCKET_LISTEN_ADDRESS, <<"127.0.0.1">>).
 -define(DEFAULT_CHANNEL_ACCEPTORS, 10).
 
+-define(MAX_REQUEST_LINE_LENGTH, 1024).
+
 %% Application callbacks
 -export([start/2, stop/1]).
 
@@ -145,6 +147,7 @@ start_http_api(Target, LogicHandler) ->
             },
     Env = #{env => #{dispatch => Dispatch},
             idle_timeout => 480000,
+            max_request_line_length => ?MAX_REQUEST_LINE_LENGTH,
             middlewares => [aehttp_cors_middleware,
                             cowboy_router,
                             cowboy_handler]},
@@ -165,7 +168,8 @@ start_channel_websocket() ->
             , socket_opts => [ {port, Port}
                              , {ip, ListenAddress} ]
             },
-    Env = #{env => #{dispatch => Dispatch}},
+    Env = #{ env => #{dispatch => Dispatch}
+           , max_request_line_length => ?MAX_REQUEST_LINE_LENGTH},
     lager:debug("Opts = ~p", [Opts]),
     {ok, _} = cowboy:start_clear(channels_socket, Opts, Env),
     ok.
