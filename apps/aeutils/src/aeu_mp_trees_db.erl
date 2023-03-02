@@ -129,6 +129,7 @@ get_handle(DB) ->
     #db{handle = Handle} = to_new_db(DB),
     Handle.
 
+-spec get_module(db()) -> atom().
 get_module(DB) ->
     #db{module = Module} = to_new_db(DB),
     Module.

@@ -153,6 +153,7 @@ tree_no_cache(MPT = #mpt{}) ->
 db(#mpt{ db = DB}) ->
     DB.
 
+-spec has_backend(tree()) -> boolean().
 has_backend(#mpt{ db = DB }) ->
     ?MODULE =/= aeu_mp_trees_db:get_module(DB).
 

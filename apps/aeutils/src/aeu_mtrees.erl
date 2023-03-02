@@ -218,6 +218,7 @@ root_hash(Tree) ->
 db(Tree) ->
     {ok, aeu_mp_trees:db(Tree)}.
 
+-spec has_backend(mtree()) -> boolean().
 has_backend(Tree) ->
     aeu_mp_trees:has_backend(Tree).
 
