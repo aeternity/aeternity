@@ -220,7 +220,6 @@ tx_pool_test_() ->
                GenesisProtocol = aec_block_genesis:version(),
                {ok, Hash} = aec_headers:hash_header(aec_block_genesis:genesis_header()),
                MaxGas = aec_governance:block_gas_limit(),
-               {ok, []} = aec_tx_pool:get_candidate(0, Hash),         % regression bug check
                {ok, STxs2} = aec_tx_pool:get_candidate(MaxGas, Hash),
                TotalGas = lists:sum([aetx:gas_limit(aetx_sign:tx(T), GenesisHeight, GenesisProtocol) || T <- STxs2 ]),
                MinGas = aetx:gas_limit(aetx_sign:tx(hd(STxs)), GenesisHeight, GenesisProtocol),

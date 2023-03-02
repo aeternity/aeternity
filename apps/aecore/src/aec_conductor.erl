@@ -1409,7 +1409,7 @@ handle_successfully_added_block(Block, Hash, true, PrevKeyHeader, Events, State,
                     ok; %% Don't spend time when we are the leader.
                 false ->
                     aec_tx_pool:garbage_collect(),
-                    [ maybe_garbage_collect_accounts() || BlockType == key ]
+                    [ maybe_garbage_collect(NewTopBlock) || BlockType == key ]
             end,
             {ok, setup_loop(State2, true, IsLeader, Origin)}
     end.
@@ -1506,13 +1506,18 @@ get_pending_key_block(TopHash, State) ->
 %%
 %% To avoid starting of the GC process just for EUNIT
 -ifdef(EUNIT).
-maybe_garbage_collect_accounts() -> nop.
+maybe_garbage_collect(_) -> nop.
 -else.
 
 %% This should be called when there are no processes modifying the block state
 %% (e.g. aec_conductor on specific places)
-maybe_garbage_collect_accounts() ->
-    gen_statem:call(aec_db_gc, maybe_garbage_collect).
+maybe_garbage_collect(Block) ->
+    T0 = erlang:system_time(microsecond),
+    Header = aec_blocks:to_header(Block),
+    Res = aec_db_gc:maybe_garbage_collect(Header),
+    T1 = erlang:system_time(microsecond),
+    lager:debug("Result -> ~p (time: ~p us)", [Res, T1-T0]),
+    Res.
 -endif.
 
 consensus_module(#state{ consensus = #consensus{consensus_module =

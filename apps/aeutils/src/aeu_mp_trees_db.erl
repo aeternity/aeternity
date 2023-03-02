@@ -21,6 +21,7 @@
         , is_db/1
         , get_cache/1
         , get_handle/1
+        , get_module/1
         , unsafe_write_to_backend/3
         ]).
 
@@ -127,6 +128,10 @@ get_cache(DB) ->
 get_handle(DB) ->
     #db{handle = Handle} = to_new_db(DB),
     Handle.
+
+get_module(DB) ->
+    #db{module = Module} = to_new_db(DB),
+    Module.
 
 %%%===================================================================
 %%% Cache

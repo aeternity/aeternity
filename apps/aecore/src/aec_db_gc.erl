@@ -22,57 +22,60 @@
 %% - writing of the reachable nodes from cache to disk
 %% - subsequent restart of the node
 %% - removing all old nodes and copying only reachable ones
-%%
-%% If uses wishes to keep GC off by default (as is in default config) but invoke it manually,
-%% that is possible with calling of aec_db_gc:run() or aec_db_gc:run(HistoryLength).
 
--behaviour(gen_statem).
+-behaviour(gen_server).
 
 %% API
--export([start_link/0,
-         start_link/3,
-         run/0,
-         run/1,
-         stop/0]).
+-export([start_link/0]).
 
-%% for internal use only
-%% -export([maybe_swap_nodes/0]).
+-export([ height_of_last_gc/0
+        , info/0
+        , info/1
+        ]).
 
-%% gen_statem callbacks
--export([callback_mode/0, init/1, terminate/3, code_change/4]).
--export([handle_event/4]).
+-export([maybe_garbage_collect/1]).
+
+%% gen_server callbacks
+-export([ init/1
+        , handle_call/3
+        , handle_cast/2
+        , handle_info/2
+        , terminate/2
+        , code_change/3
+        ]).
 
 -export([config/0]).
 
--record(data,
-        {enabled    :: boolean(),                         % do we garbage collect?
-         interval   :: non_neg_integer(),                 % how often (every `interval` blocks) GC runs
-         history    :: non_neg_integer(),                 % how many block state back from top to keep
-         min_height :: undefined | non_neg_integer(),     % if hash_not_found error, try GC from this height
-         synced     :: boolean(),                         % we only run GC (repeatedly) if chain is synced
-         height     :: undefined | non_neg_integer(),     % latest height of MPT hashes stored in tab
-         last_swap  :: undefined | non_neg_integer(),     % last swap height. Not undefined means secondary needs clearing
-         hashes     :: undefined | pid() | reference()}). % hashes tab (or process filling the tab 1st time)
+-type tree_name() :: aec_trees:tree_name().
+
+-type pid_ref() :: {pid(), reference()}.
+
+-record(scanner,
+        { tree   :: tree_name()
+        , height :: non_neg_integer()
+        , pid    :: pid_ref() }).
+
+-record(st,
+        {enabled       :: boolean(),                     % do we garbage collect?
+         history       :: non_neg_integer(),             % how many block state back from top to keep
+         min_height    :: undefined | non_neg_integer(), % if hash_not_found error, try GC from this height
+         from_start    :: boolean(),                     % run GC from the beginning
+         synced        :: boolean(),                     % we only run GC if chain is synced
+         last_switch   :: non_neg_integer(),             % height at last switch
+         trees = []    :: [tree_name()],                 % State trees being GC:ed
+         scanners = [] :: [#scanner{}]                   % ongoing scans
+        }).
 
 -include_lib("aecore/include/aec_db.hrl").
 
 -define(DEFAULT_HISTORY, 500).
--define(DEFAULT_INTERVAL, 50000).
-
-%% interval from config +- random offset to avoid situation where large
-%% majority of nodes become unresponsive due to node restart invoked by GC
--define(INTERVAL_VARIANCE_PERCENT, 10).
--define(INTERVAL_VARIANCE, true). % comment this out for development only!
-
--define(GCED_TABLE_NAME, aec_account_state_gced).
--define(TABLE_NAME, aec_account_state).
 
 -define(TIMED(Expr), timer:tc(fun () -> Expr end)).
 -define(LOG(Fmt), lager:info(Fmt, [])).         % io:format(Fmt"~n")
 -define(LOG(Fmt, Args), lager:info(Fmt, Args)). % io:format(Fmt"~n", Args)
 -define(LOGERR(Fmt, Args), lager:error(Fmt, Args)). % io:format("ERROR:"Fmt"~n", Args)
 
--define(PROTECT(Expr, OkFun), ?PROTECT(Expr, OkFun, fun signal_scanning_failed/1)).
+%% -define(PROTECT(Expr, OkFun), ?PROTECT(Expr, OkFun, fun signal_scanning_failed/1)).
 -define(PROTECT(Expr, OkFun, ErrHeightFun),
         (try Expr of
              Res -> (OkFun)(Res)
@@ -83,28 +86,43 @@
                  (ErrHeightFun)(ErrHeight)
          end)).
 
+-define(JOBS_QUEUE, gc_scan).
+-define(SCAN_SLICE, 100).
+
 %%%===================================================================
 %%% API
 %%%===================================================================
 
+
 %% We don't support reconfiguration of config parameters when the GC is already up,
 %% doesn't seem to have practical utility.
 start_link() ->
-    #{enabled := Enabled, interval := Interval, history := History} = config(),
-    start_link(Enabled, Interval, History).
+    #{<<"enabled">> := _, <<"trees">> := _, <<"history">> := _} = Config = config(),
+    gen_server:start_link({local, ?MODULE}, ?MODULE, Config, []).
 
-start_link(Enabled, Interval, History) ->
-    gen_statem:start_link({local, ?MODULE}, ?MODULE, [Enabled, Interval, History], []).
+-spec maybe_garbage_collect(aec_headers:header()) -> ok | nop.
+maybe_garbage_collect(Header) ->
+    gen_server:call(
+      ?MODULE, {maybe_garbage_collect, aec_headers:height(Header), Header}).
 
-run() ->
-    #{history := History} = config(),
-    run(History).
+%% If GC is disabled, or there hasn't yet been a GC, this function returns 0.
+-spec height_of_last_gc() -> non_neg_integer().
+height_of_last_gc() ->
+    aec_db:ensure_activity(async_dirty, fun aec_db:read_last_gc_switch/0).
 
-run(History) when is_integer(History), History > 0 ->
-    gen_statem:call(?MODULE, {run, History}).
+info() ->
+    info(info_keys()).
 
-stop() ->
-    gen_statem:stop(?MODULE).
+info(Keys) when is_list(Keys) ->
+    case Keys -- info_keys() of
+        [] ->
+            gen_server:call(?MODULE, {info, Keys});
+        Invalid ->
+            error({invalid_info_keys, Invalid})
+    end.
+
+info_keys() ->
+    [enabled, history, last_gc, active_sweeps, from_start, trees].
 
 %% called from aec_db on startup
 %% maybe_swap_nodes() ->
@@ -115,318 +133,295 @@ stop() ->
 %%%===================================================================
 
 %% Change of configuration parameters requires restart of the node.
-init([Enabled, Interval, History])
-  when is_integer(Interval), Interval > 0, is_integer(History), History > 0 ->
-    Interval1 =
-        if Enabled ->
-                aec_events:subscribe(top_changed),
-                aec_events:subscribe(chain_sync),
-                interval(Interval);
-           true ->
-                Interval
-        end,
-    Data = #data{enabled    = Enabled,
-                 interval   = Interval1,
-                 history    = History,
-                 min_height = undefined,
-                 synced     = false,
-                 height     = undefined,
-                 hashes     = undefined},
-    {ok, idle, Data}.
-
-
-handle_event({call, From}, {run, History}, idle, #data{enabled = false} = Data) ->
-    aec_events:subscribe(top_changed),
-    Data1 = Data#data{synced = true, enabled = true, interval = 1, history = History},
-    {keep_state, Data1, {reply, From, {ok, run_next_scan_height(Data1)}}};
-
-handle_event({call, From}, {run, History}, idle, #data{history = History, hashes = Hashes} = Data)
-  when is_pid(Hashes) -> % initial scanner pid already runs with the same history length, keep it
-    {keep_state, Data, {reply, From, {ok, run_next_scan_height(Data)}}};
-handle_event({call, From}, {run, History}, idle, #data{hashes = Hashes} = Data) ->
-    is_pid(Hashes) andalso exit(Hashes, kill),
-    Data1 = Data#data{synced = true, interval = 1, history = History,
-                      height = undefined, hashes = undefined},
-    {keep_state, Data1, {reply, From, {ok, run_next_scan_height(Data1)}}};
-
-handle_event({call, From}, {run, History}, ready, #data{history = History} = Data) -> % same history length, keep it
-    {keep_state, Data, {reply, From, {ok, run_next_scan_height(Data)}}};
-handle_event({call, From}, {run, History}, ready, #data{} = Data) ->
-    Data1 = Data#data{interval = 1, history = History,
-                      height = undefined, hashes = undefined},
-    {next_state, idle, Data1, {reply, From, {ok, run_next_scan_height(Data1)}}};
+init(#{ <<"enabled">>    := Enabled
+      , <<"trees">>      := Trees
+      , <<"from_start">> := FromStart
+      , <<"history">>    := History
+      , <<"minimum_height">> := MinHeight
+      } = Cfg) when is_integer(History), History > 0 ->
+    lager:debug("Cfg = ~p", [Cfg]),
+    LastSwitch = case Enabled of
+                     true ->
+                         aec_events:subscribe(chain_sync),
+                         aec_db:read_last_gc_switch();
+                     false ->
+                         0
+                 end,
+    lager:debug("LastSwitch = ~p", [LastSwitch]),
+    %% TODO: Make min_height configurable
+    Data = #st{enabled     = Enabled,
+               from_start  = FromStart,
+               trees       = Trees,
+               history     = History,
+               min_height  = MinHeight,
+               last_switch = LastSwitch,
+               synced      = false},
+    {ok, Data}.
 
 %% once the chain is synced, there's no way to "unsync"
-handle_event(info, {_, chain_sync, #{info := {chain_sync_done, _}}}, idle,
-             #data{enabled = true} = Data) ->
+handle_info({_, chain_sync, #{info := {chain_sync_done, _}}}, St) ->
     case aec_sync:sync_progress() of
         {false, _, _} ->
-            {keep_state, Data#data{synced = true}};
+            {noreply, St#st{synced = true}};
         _ ->
-            {keep_state, Data}
+            {noreply, St}
     end;
 
-%% starting collection when the *interval* matches, and don't have a GC state (hashes = undefined)
-%% OR some MPT was missing previously so we try again later
-handle_event(info, {_, top_changed, #{info := #{height := Height}}}, idle,
-             #data{interval = Interval, history = History,
-                   enabled = true, synced = true, min_height = MinHeight,
-                   height = undefined, hashes = undefined} = Data)
-  when ((Height rem Interval) == 0 andalso MinHeight == undefined) orelse
-       (is_integer(MinHeight) andalso Height - History > MinHeight) ->
-    Parent = self(),
-    Pid = spawn_link(
-            fun () ->
-                    FromHeight = max(Height - History, 0),
-                    ?PROTECT(?TIMED(collect_reachable_hashes(FromHeight, Height)),
-                             fun ({Time, {ok, Hashes}}) ->
-                                     store_cache_and_give_away(Hashes, Parent, FromHeight, Height, Time)
-                             end)
-            end),
-    {keep_state, Data#data{height = Height, hashes = Pid}};
-
-%% the initial scan failed due to hash_not_present_in_db, reschedule it for later
-handle_event(info, {scanning_failed, ErrHeight}, idle,
-             #data{enabled = true, hashes = Pid} = Data)
-  when is_pid(Pid) ->
-    {keep_state, Data#data{height = undefined,
-                           hashes = undefined,
-                           min_height = ErrHeight}};
-%% later incremental scan failed due to hash_not_present_in_db, reschedule it for later
-handle_event(info, {scanning_failed, ErrHeight}, ready, #data{enabled = true} = Data) ->
-    {next_state, idle, Data#data{height = undefined,
-                                 hashes = undefined,
-                                 min_height = ErrHeight}};
-
-%% happens when scanning process is killed after it transfers hashes table, we ignore it
-%% (when we manually invoke GC via 'run')
-handle_event(info, {'ETS-TRANSFER', _, _, _}, idle,
-             #data{enabled = true, hashes = undefined} = Data) ->
-    {keep_state, Data};
-
-%% received GC state from the phase above
-handle_event(info, {'ETS-TRANSFER', Hashes, _, {{FromHeight, ToHeight}, Time}}, idle,
-             #data{enabled = true, hashes = Pid} = Data)
-  when is_pid(Pid) ->
-    ?LOG("Scanning of ~p reachable hashes in range <~p, ~p> took ~p seconds",
-         [ets:info(Hashes, size), FromHeight, ToHeight, Time / 1000000]),
-    {next_state, ready, Data#data{hashes = Hashes}};
-
-%% with valid GC state (reachable hashes in ETS cache), follow up on keeping that cache
-%% synchronized with Merkle-Patricia Trie on disk keeping the latest changes in accounts
-handle_event(info, {_, top_changed, #{info := #{block_type := key, height := Height}}}, ready,
-             #data{enabled = true, synced = true, height = LastHeight, hashes = Hashes} = Data)
-  when is_reference(Hashes) ->
-    if Height > LastHeight ->
-            ?PROTECT(range_collect_reachable_hashes(Height, Data, both),
-                     fun ({ok, _}) -> {keep_state, Data#data{height = Height}} end,
-                     signal_scanning_failed_keep_state(Data));
-       true ->
-            %% in case previous key block was a fork, we can receive top_changed event
-            %% with the same or lower height as seen last time
-            ?LOG("GC diffscan of accounts at height ~p", [Height]),
-            ?PROTECT(collect_reachable_hashes_delta(Height, Hashes, both),
-                     fun ({ok, _}) -> {keep_state, Data} end,
-                     (signal_scanning_failed_keep_state(Data)))
-    end;
-handle_event(info, {_, top_changed, #{info := #{block_type := key, height := Height}}}, idle,
-             #data{last_swap = LastSwap} = Data) ->
-    if is_integer(LastSwap),
-       Height > LastSwap ->
-            Secondary = aec_db:secondary_state_tab(?TABLE_NAME),
-            lager:debug("Will clear secondary (~p)", [Secondary]),
-            aec_db:clear_table(Secondary),
-            {keep_state, Data#data{last_swap = undefined}};
-       true ->
-            {keep_state, Data}
+handle_info({'DOWN', MRef, process, Pid, Reason}, #st{scanners = Scanners} = St) ->
+    case lists:keyfind({Pid, MRef}, #scanner.pid, Scanners) of
+        false ->
+            {noreply, St};
+        #scanner{tree = Tree, height = Height} = S ->
+            lager:error("GC Scanner process for ~p died: ~p", [Tree, Reason]),
+            signal_scanning_failed(Height),
+            {noreply, St#st{scanners = Scanners -- [S]}}
     end;
 
-%% with valid GC state, if we are on key block boundary, we can
-%% clear the table and insert reachable hashes back
-handle_event({call, From}, maybe_garbage_collect, ready,
-             #data{enabled = true, synced = true, hashes = Hashes} = Data)
-  when Hashes /= undefined, not is_pid(Hashes) ->
-    Header = aec_chain:top_header(),
+handle_info(_, St) ->
+    {noreply, St}.
+
+handle_call({maybe_garbage_collect, TopHeight, Header}, _From,
+            #st{enabled = true, synced = Synced, from_start = FromStart,
+                history = History, min_height = MinHeight,
+                trees = Trees, scanners = [], last_switch = Last} = St)
+  when (Synced orelse FromStart), TopHeight >= MinHeight, TopHeight > Last + History ->
+    %% Double-check that the GC hasn't been requested on a microblock.
+    %% This would be a bug, since aec_conductor should only ask for keyblocks.
     case aec_headers:type(Header) of
         key ->
-            Height  = aec_headers:height(Header),
-            T0 = erlang:system_time(millisecond),
-            ?PROTECT(range_collect_reachable_hashes(Height, Data, both),
-                     fun ({ok, _}) ->
-                             Secondary = aec_db:secondary_state_tab(?TABLE_NAME),
-                             aec_db:make_primary_state_tab(?TABLE_NAME, Secondary),
-                             ?LOG("GC swap, time: ~p ms", [erlang:system_time(millisecond) - T0]),
-                             ets:delete(Hashes),
-                             {next_state, idle, Data#data{hashes = undefined,
-                                                          height = undefined,
-                                                          last_swap = Height},
-                              {reply, From, ok}}
+            ?PROTECT(perform_switch(Trees, TopHeight),
+                     fun(Scanners1) ->
+                             {reply, ok, St#st{ scanners = Scanners1
+                                              , last_switch = TopHeight}}
                      end,
-                     signal_scanning_failed_keep_state(Data));
+                     signal_switching_failed_and_reply(St, nop));
         micro ->
-            {keep_state, Data, {reply, From, nop}}
+            lager:warning("GC called on microblock - ignoring", []),
+            {reply, nop, St}
     end;
-handle_event({call, From}, maybe_garbage_collect, _, Data) ->
-    {keep_state, Data, {reply, From, nop}};
+handle_call({maybe_garbage_collect, _, _}, _From, St) ->
+    {reply, nop, St};
+handle_call({info, Keys}, _, St) ->
+    {reply, info_(Keys, St), St}.
 
-handle_event(_, _, _, Data) ->
-    {keep_state, Data}.
+%% the initial scan failed due to hash_not_present_in_db, reschedule it for later
+handle_cast({scanning_failed, ErrHeight}, St) ->
+    {noreply, St#st{min_height = ErrHeight}};
 
+handle_cast({scan_complete, Name}, #st{scanners = Scanners} = St) ->
+    Scanners1 = lists:keydelete(Name, #scanner.tree, Scanners),
+    {noreply, St#st{scanners = Scanners1}};
 
-terminate(_Reason, _State, _Data) -> void.
+handle_cast(_, St) ->
+    {noreply, St}.
 
-code_change(_, State, Data, _) -> {ok, State, Data}.
+terminate(_Reason, _St) -> ok.
 
-callback_mode() -> handle_event_function.
+code_change(_FromVsn, St, _Extra) ->
+    {ok, St}.
 
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
 
+info_(Keys, St) ->
+    maps:from_list(
+      [{K, info_item(K, St)} || K <- Keys]).
 
-%% From - To (inclusive)
-collect_reachable_hashes(FromHeight, ToHeight) when FromHeight < ToHeight ->
-    {ok, Hashes} = collect_reachable_hashes_fullscan(FromHeight),     % table is created here
-    {ok, Hashes} = range_collect_reachable_hashes_(FromHeight, ToHeight, Hashes, ets), % and reused
-    {ok, Hashes}.
+info_item(history, #st{history = H}) ->
+    H;
+info_item(last_gc, #st{last_switch = L}) ->
+    L;
+info_item(active_sweeps, #st{scanners = Scanners}) ->
+    [#{tree => T, pid => P, height => H} ||
+        #scanner{tree = T, height = H, pid = P} <- Scanners];
+info_item(from_start, #st{from_start = Flag}) ->
+    Flag;
+info_item(trees, #st{trees = Trees}) ->
+    Trees;
+info_item(enabled, #st{enabled = Bool}) ->
+    Bool.
 
-collect_reachable_hashes_fullscan(Height) ->
-    Tab = ets:new(gc_reachable_hashes, [public]),
-    MPT = get_mpt(Height),
-    ?LOG("GC fullscan at height ~p of accounts with hash ~w",
-         [Height, aeu_mp_trees:root_hash(MPT)]),
-    {ok, aeu_mp_trees:visit_reachable_hashes(MPT, Tab, fun store_hash/3)}.
+perform_switch(Trees, Height) ->
+    clear_secondary_tables(Trees),
+    ok = aec_db:ensure_transaction(
+           fun() ->
+                   switch_tables(Trees),
+                   aec_db:write_last_gc_switch(Height)
+           end),
+    [start_scanner(T, Height) || T <- Trees].
 
-%% assumes Height - 1, Height - 2, ... down to Height - History
-%% are in Hashes from previous runs
--spec collect_reachable_hashes_delta(non_neg_integer(), _, 'both' | 'ets') -> {'ok', _}.
-collect_reachable_hashes_delta(Height, Hashes, Tgt) ->
-    MPT = get_mpt(Height),
-    Acc0 = case Tgt of
-               ets -> Hashes;
-               both -> {Hashes, aec_db:secondary_state_tab(?TABLE_NAME)}
-           end,
-    {ok, aeu_mp_trees:visit_reachable_hashes(MPT, Acc0, fun store_unseen_hash/3)}.
+clear_secondary_tables(Trees) ->
+    [clear_secondary(T) || T <- Trees].
 
-range_collect_reachable_hashes(ToHeight, #data{height = LastHeight, hashes = Hashes}, Tgt) ->
-    range_collect_reachable_hashes_(LastHeight, ToHeight, Hashes, Tgt).
+clear_secondary(Name) ->
+    Secondary = aec_db:secondary_state_tab(Name),
+    lager:debug("Clearing secondary for ~p (~p)", [Name, Secondary]),
+    aec_db:clear_table(Secondary).
 
-range_collect_reachable_hashes_(LastHeight, ToHeight, Hashes, Tgt) ->
-    StartHeight = LastHeight + 1,
-    if StartHeight > ToHeight ->
-            {ok, Hashes};
-       true ->
-            ?LOG("GC diffscan of accounts at heights ~p to ~p", [StartHeight, ToHeight]),
-            [collect_reachable_hashes_delta(H, Hashes, Tgt)
-             || H <- lists:seq(StartHeight, ToHeight)],
-            {ok, Hashes}
+switch_tables(Trees) ->
+    [switch(T) || T <- Trees].
+
+switch(Name) ->
+    Secondary = aec_db:secondary_state_tab(Name),
+    lager:debug("Making ~p the primary for ~p", [Secondary, Name]),
+    aec_db:make_primary_state_tab(Name, Secondary),
+    ok.
+
+start_scanner(Name, Height) ->
+    Parent = self(),
+    S = spawn_monitor(fun() ->
+                              scan_tree(Name, Height, Parent)
+                      end),
+    #scanner{tree = Name, height = Height, pid = S}.
+
+scan_tree(Name, Height, Parent) ->
+    T0 = erlang:system_time(millisecond),
+    {ok, Count} = collect_reachable_hashes_fullscan(Name, Height),
+    T1 = erlang:system_time(millisecond),
+    lager:info("GC fullscan done for ~p, Height = ~p, Count = ~p, Time = ~p ms",
+               [Name, Height, Count, T1 - T0]),
+    gen_server:cast(Parent, {scan_complete, Name}),
+    ok.
+
+collect_reachable_hashes_fullscan(Tree, Height) ->
+    case get_mpt(Tree, Height) of
+        empty ->
+            lager:debug("Tree ~p empty - skipping scan", [Tree]),
+            {ok, 0};
+        MPT ->
+            lager:debug("GC fullscan for ~p at height ~p of accounts with hash ~w",
+                 [Tree, Height, aeu_mp_trees:root_hash(MPT)]),
+            {ok, visit_reachable(MPT)}
     end.
 
-    %% aec_db:make_primary_state_tab(aec_account_state, Secondary).
+visit_reachable(MPT) ->
+    {_, Count} = aeu_mp_trees:visit_reachable_hashes(MPT, init_acc(0), fun visit_count/3),
+    Count.
 
-store_cache_and_give_away(Hashes, Parent, FromHeight, Height, Time) ->
-    {Time1, {ok, _}} = ?TIMED(store_cache(Hashes)),
-    ets:give_away(Hashes, Parent, {{FromHeight, Height}, Time + Time1}).
+visit_count(_, _, {Ref, N}) ->
+    Acc1 = maybe_ask_jobs({Ref, N+1}),
+    {continue, Acc1}.
 
-store_cache(Hashes) ->
-    Secondary = aec_db:secondary_state_tab(?TABLE_NAME),
-    aec_db:clear_table(Secondary),
-    store_cache(Hashes, Secondary).
+init_acc(N) ->
+    case jobs:ask(?JOBS_QUEUE) of
+        {ok, NewRef} ->
+            {NewRef, N};
+        {error, Reason} ->
+            lager:error("Jobs return error: ~p", [Reason]),
+            signal_scanning_failed(0),
+            error(jobs_error)
+    end.
 
-iter(Fun, Tab) ->
-    ets:foldl(fun ({Hash, Node}, ok) -> Fun(Hash, Node), ok end, ok, Tab).
+maybe_ask_jobs({OldRef, N} = Acc) ->
+    case N rem ?SCAN_SLICE of
+        0 ->
+            jobs:done(OldRef),
+            init_acc(N);
+        _ ->
+            Acc
+    end.
 
-write_nodes(SrcTab, TgtTab) ->
-    ?TIMED(aec_db:ensure_transaction(
-             fun () ->
-                     iter(fun (Hash, Node) ->
-                                  aec_db:write_accounts_node(TgtTab, Hash, Node)
-                          end, SrcTab)
-             end)).
-
-store_cache(SrcHashes, TgtTab) ->
-    NodesCount = ets:info(SrcHashes, size),
-    ?LOG("Writing ~p reachable account nodes to table ~p ...", [NodesCount, TgtTab]),
-    {WriteTime, ok} = write_nodes(SrcHashes, TgtTab),
-    ?LOG("Writing reachable account nodes took ~p seconds", [WriteTime / 1000000]),
-    DBCount = length(aec_db:dirty_select(TgtTab, [{'_', [], [1]}])),
-    ?LOG("GC cache has ~p aec_account_state records", [DBCount]),
-    {ok, NodesCount}.
-
--spec get_mpt(non_neg_integer()) -> aeu_mp_trees:tree().
-get_mpt(Height) ->
+-spec get_mpt(tree_name(), non_neg_integer()) -> aeu_mp_trees:tree() | empty.
+get_mpt(Tree, Height) ->
     {ok, Hash} = aec_chain_state:get_key_block_hash_at_height(Height),
-    try get_mpt_from_hash(Hash) of
-        MPT -> MPT
-    catch
-        error:{hash_not_present_in_db, MissingHash}:Stacktrace ->
-            error({hash_not_present_in_db_at_height, Height, MissingHash, Stacktrace})
+    get_mpt_from_hash(Tree, Hash).
+
+get_mpt_from_hash(Tree, Hash) ->
+    {value, Trees} = aec_db:find_block_state(Hash, _DirtyBackend = true),
+    case tree_hash(Tree, Trees) of
+        {error, empty} ->
+            empty;
+        {ok, RootHash} ->
+            aeu_mp_trees:new(RootHash, db(Tree, Trees))
     end.
 
-get_mpt_from_hash(Hash) ->
-    {ok, Trees} = aec_chain:get_block_state(Hash),
-    AccountTree = aec_trees:accounts(Trees),
-    {ok, RootHash} = aec_accounts_trees:root_hash(AccountTree),
-    {ok, DB}       = aec_accounts_trees:db(AccountTree),
-    aeu_mp_trees:new(RootHash, DB).
-
-
-store_hash(Hash, Node, Tab) ->
-    ets:insert_new(Tab, {Hash, Node}),
-    {continue, Tab}.
-
-store_unseen_hash(Hash, Node, {Ets, Tab} = Acc) ->
-    case ets:lookup(Ets, Hash) of
-        [_] -> stop;
-        [] ->
-            ets:insert_new(Ets, {Hash, Node}),
-            aec_db:write_accounts_node(Tab, Hash, Node),
-            {continue, Acc}
-    end;
-store_unseen_hash(Hash, Node, Tab) ->
-    case ets:lookup(Tab, Hash) of
-        [_] -> stop;
-        []  -> store_hash(Hash, Node, Tab)
+tree_hash(Tree, Trees) ->
+    case Tree of
+        accounts      -> aec_trees:accounts_hash(Trees);
+        calls         -> aec_trees:calls_hash(Trees);
+        contracts     -> aec_trees:contracts_hash(Trees);
+        oracles       -> aec_trees:oracles_hash(Trees);
+        oracles_cache -> aec_trees:oracles_cache_hash(Trees);
+        channels      -> aec_trees:channels_hash(Trees);
+        ns            -> aec_trees:ns_hash(Trees);
+        ns_cache      -> aec_trees:ns_cache_hash(Trees)
     end.
+
+db(Tree, Trees) ->
+    {ok, DB} = case Tree of
+                   accounts ->
+                       aec_accounts_trees:db(aec_trees:accounts(Trees));
+                   calls ->
+                       aect_call_state_tree:db(aec_trees:calls(Trees));
+                   contracts ->
+                       aect_state_tree:db(aec_trees:contracts(Trees));
+                   oracles ->
+                       aeo_state_tree:oracles_db(aec_trees:oracles(Trees));
+                   oracles_cache ->
+                       aeo_state_tree:cache_db(aec_trees:oracles(Trees));
+                   channels ->
+                       aesc_state_tree:db(aec_trees:channels(Trees));
+                   ns ->
+                       aens_state_tree:ns_db(aec_trees:ns(Trees));
+                   ns_cache ->
+                       aens_state_tree:cache_db(aec_trees:ns(Trees))
+               end,
+    DB.
 
 signal_scanning_failed(ErrHeight) ->
-    ?MODULE ! {scanning_failed, ErrHeight}.
+    gen_server:cast(?MODULE, {scanning_failed, ErrHeight}).
 
-signal_scanning_failed_keep_state(Data) ->
+signal_switching_failed_and_reply(St, Reply) ->
     fun (ErrHeight) ->
             signal_scanning_failed(ErrHeight),
-            {keep_state, Data}
+            {reply, Reply, St}
     end.
-
-run_next_scan_height(#data{min_height = undefined}) ->
-    aec_headers:height(aec_chain:top_header()) + 1;
-run_next_scan_height(#data{min_height = MinHeight, history = History})
-  when is_integer(MinHeight) ->
-    MinHeight + History + 1.
-
--ifdef(TEST).
-interval(ConfigInterval) -> ConfigInterval. % for common test
--else.
-
--ifdef(INTERVAL_VARIANCE).
-interval(ConfigInterval) ->
-    case trunc(ConfigInterval * ?INTERVAL_VARIANCE_PERCENT / 100.0) of
-        0 ->
-            ConfigInterval;
-        Variance when Variance > 0 ->
-            Delta = rand:uniform(Variance) - (Variance div 2),
-            max(3, ConfigInterval + Delta)
-    end.
--else.
-interval(ConfigInterval) -> ConfigInterval.
--endif.
-
--endif. %% ifdef TEST
 
 config() ->
-    maps:from_list(
-      [{binary_to_atom(Key, utf8),
-        aeu_env:user_config([<<"chain">>, <<"garbage_collection">>, Key], Default)} ||
-          {Key, Default} <- [{<<"enabled">>, false},
-                             {<<"interval">>, ?DEFAULT_INTERVAL},
-                             {<<"history">>, ?DEFAULT_HISTORY}]]).
+    Trees = get_trees(),
+    %% In the LC below, we rely on the schema to provide default values.
+    M = maps:from_list(
+          [{Key, ok(aeu_env:find_config([<<"chain">>, <<"garbage_collection">>, Key],
+                                        [user_config, schema_default]))} ||
+              Key <- [<<"enabled">>,
+                      <<"history">>,
+                      <<"minimum_height">>,
+                      <<"from_start">>]]),
+    M#{<<"trees">> => Trees}.
+
+ok({ok, Value}) -> Value.
+
+get_trees() ->
+    {ok, Trees} = aeu_env:find_config([<<"chain">>, <<"garbage_collection">>, <<"trees">>],
+                                      [user_config, schema_default]),
+    expand_trees(Trees).
+
+expand_trees(Trees) ->
+    Map = aec_trees:tree_map(),
+    binaries_to_atoms(Trees, Map).
+
+binaries_to_atoms(Bins, TreeMap) ->
+    binaries_to_atoms(Bins, TreeMap, {[], []}).
+
+binaries_to_atoms([], _, {Good, Bad}) ->
+    case Bad of
+        [] ->
+            lists:reverse(Good);
+        _ ->
+            error({invalid_tree_names, Bad})
+    end;
+binaries_to_atoms([B|Bins], TreeMap, {Good, Bad}) ->
+    Acc1 = try binary_to_existing_atom(B, utf8) of
+               A ->
+                   case maps:find(A, TreeMap) of
+                       {ok, Subs} ->
+                           {[A|Subs] ++ Good, Bad};
+                       error ->
+                           {Good, [B|Bad]}
+                   end
+           catch
+               error:_ ->
+                   {Good, [B|Bad]}
+           end,
+    binaries_to_atoms(Bins, TreeMap, Acc1).

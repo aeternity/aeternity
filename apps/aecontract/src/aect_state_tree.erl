@@ -28,7 +28,8 @@
         , new_with_backend/1
         , new_with_dirty_backend/1
         , gc_cache/1
-        , root_hash/1]).
+        , root_hash/1
+        , db/1 ]).
 
 %% API - Proof of inclusion
 -export([ add_poi/3
@@ -264,6 +265,10 @@ lookup_contract_with_code(Pubkey, Tree, Options) ->
 -spec root_hash(tree()) -> {ok, aeu_mtrees:root_hash()} | {error, empty}.
 root_hash(#contract_tree{contracts = CtTree}) ->
     aeu_mtrees:root_hash(CtTree).
+
+-spec db(tree()) -> {ok, aeu_mp_trees:db()}.
+db(#contract_tree{contracts = CtTree}) ->
+    aeu_mtrees:db(CtTree).
 
 -spec add_poi(aect_contracts:pubkey(), aect_state_tree:tree(), aec_poi:poi()) ->
                      {'ok', aec_poi:poi()}

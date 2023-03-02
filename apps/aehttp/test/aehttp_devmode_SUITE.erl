@@ -1536,14 +1536,12 @@ repeated_rollbacks_to_micro_hash(Config0) ->
 
 rollback_when_gc_enabled(Config) ->
     [{_, Node}] = ?config(nodes, Config), % important that there is only one
-    #{enabled  := false
-    , interval := Interval
-    , history  := History} = rpc:call(Node, aec_db_gc, config, []),
+    #{ <<"enabled">>  := false
+     , <<"history">>  := History} = rpc:call(Node, aec_db_gc, config, []),
     ShortHistory = 51,
     enable_gc(Node, ShortHistory),
-    #{enabled  := true 
-    , interval := Interval
-    , history  := ShortHistory} = rpc:call(Node, aec_db_gc, config, []),
+    #{ <<"enabled">>  := true
+     , <<"history">>  := ShortHistory} = rpc:call(Node, aec_db_gc, config, []),
     Height= rpc:call(Node, aec_chain, top_height, []),
     BlocksCnt = 3,
     true = BlocksCnt < ShortHistory,
@@ -1551,31 +1549,28 @@ rollback_when_gc_enabled(Config) ->
     ok = do_rollback(Node, Height),
     ct:log("Top height ~p", [Height]),
     disable_gc(Node, History),
-    #{enabled  := false
-    , interval := Interval
-    , history  := History} = rpc:call(Node, aec_db_gc, config, []),
+    #{ <<"enabled">>  := false
+     , <<"history">>  := History} = rpc:call(Node, aec_db_gc, config, []),
     ok.
 
 rollback_when_gc_enabled_and_beyond_kept_history(Config) ->
     [{_, Node}] = ?config(nodes, Config), % important that there is only one
-    #{enabled  := false
-    , interval := Interval
-    , history  := History} = rpc:call(Node, aec_db_gc, config, []),
+    #{ <<"enabled">>  := false
+     , <<"history">>  := History} = rpc:call(Node, aec_db_gc, config, []),
     ShortHistory = 51,
     enable_gc(Node, ShortHistory),
-    #{enabled  := true 
-    , interval := Interval
-    , history  := ShortHistory} = rpc:call(Node, aec_db_gc, config, []),
+    #{ <<"enabled">>  := true
+     , <<"history">>  := ShortHistory} = rpc:call(Node, aec_db_gc, config, []),
     Height= rpc:call(Node, aec_chain, top_height, []),
+    ct:log("TopHeight = ~p", [Height]),
     BlocksCnt = 53,
     true = BlocksCnt > ShortHistory,
     {ok, _} = aecore_suite_utils:mine_key_blocks(Node, BlocksCnt),
     ok = fail_rollback(Node, Height),
     ct:log("Top height ~p", [Height]),
     disable_gc(Node, History),
-    #{enabled  := false
-    , interval := Interval
-    , history  := History} = rpc:call(Node, aec_db_gc, config, []),
+    #{ <<"enabled">>  := false
+     , <<"history">>  := History} = rpc:call(Node, aec_db_gc, config, []),
     ok.
 
 

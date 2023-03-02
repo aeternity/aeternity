@@ -13,6 +13,7 @@
         , commit_reachable_to_db/1
         , construct_proof/3
         , db/1
+        , has_backend/1
         , delete/2
         , gc_cache/1
         , get/2
@@ -62,7 +63,7 @@
              }).
 
 -record(db_mpt, { hash :: <<>> | hash()
-                , db   = aeu_mp_trees_db:db()
+                , db   :: aeu_mp_trees_db:db()
                 }).
 
 -record(iter, { key  = <<>>          :: <<>> | key()
@@ -151,6 +152,9 @@ tree_no_cache(MPT = #mpt{}) ->
 -spec db(tree()) -> db().
 db(#mpt{ db = DB}) ->
     DB.
+
+has_backend(#mpt{ db = DB }) ->
+    ?MODULE =/= aeu_mp_trees_db:get_module(DB).
 
 -spec from_db_format(tree() | tuple()) -> tree().
 from_db_format(Tree = #mpt{}) -> Tree;

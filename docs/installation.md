@@ -35,7 +35,7 @@ sudo service aeternity-node start
 
 ### macOS
 
-Minimum required version is macOS Big Sur 11.6.2 (x86-64).
+Minimum required version is macOS Mojave 10.14 (x86-64).
 
 ```bash
 brew tap aeternity/aeternity
@@ -55,7 +55,7 @@ In order to install an Aeternity node from a tarball, you need to:
 The release binaries are published on [GitHub][releases] and are tested on the following platforms:
 
 * Ubuntu 18.04 LTS (x86-64);
-* macOS Big Sur 11.6.2 (x86-64).
+* macOS Mojave 10.14 (x86-64).
 
 [releases]: https://github.com/aeternity/aeternity/releases
 

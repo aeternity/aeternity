@@ -33,6 +33,7 @@
 %% API - Merkle tree
 -export([root_hash/1,
          db/1,
+         has_backend/1,
          lookup_with_proof/2,
          lookup_with_proof/3,
          verify_proof/4,
@@ -216,6 +217,9 @@ root_hash(Tree) ->
 -spec db(mtree()) -> {ok, db()}.
 db(Tree) ->
     {ok, aeu_mp_trees:db(Tree)}.
+
+has_backend(Tree) ->
+    aeu_mp_trees:has_backend(Tree).
 
 -spec lookup_with_proof(key(), mtree()) -> none |
                                            {value_and_proof, value(), proof()}.
