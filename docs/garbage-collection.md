@@ -32,7 +32,7 @@ Garbage collection can be customized with the following configuration options:
 
 This is the master switch, controlling whether or not garbage collection is active.
 
-### `chain:garbage_collection:from_start`
+### `chain:garbage_collection:during_sync`
 
 **type: `boolean`**
 **default: `false`**
@@ -41,6 +41,11 @@ If `true`, garbage collection will not wait for chain sync to complete.
 Garbage-collecting during chain sync will slow down the sync process - exactly how much
 depends on the settings, but around 30 % is a reasonable expectation. The upside is that
 the on-disk footprint stays small.
+
+Note that the node cannot be sure when sync is fully completed. Garbage collection will
+wait (if `during_sync: false`) for the first indication that sync has completed
+_given the information available_. New information may arrive when other peers are
+found, but the garbage collector will not go back to waiting, once activated.
 
 ### `chain:garbage_collection:minimum_height`
 

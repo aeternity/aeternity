@@ -1593,7 +1593,7 @@
                             "type": "boolean",
                             "default": false
                         },
-                        "from_start" : {
+                        "during_sync" : {
                             "description" : "If true, node will start garbage-collecting immediately, without waiting for sync to complete",
                             "type" : "boolean",
                             "default" : false

@@ -59,7 +59,7 @@
         {enabled       :: boolean(),                     % do we garbage collect?
          history       :: non_neg_integer(),             % how many block state back from top to keep
          min_height    :: undefined | non_neg_integer(), % if hash_not_found error, try GC from this height
-         from_start    :: boolean(),                     % run GC from the beginning
+         during_sync    :: boolean(),                     % run GC from the beginning
          synced        :: boolean(),                     % we only run GC if chain is synced
          last_switch   :: non_neg_integer(),             % height at last switch
          trees = []    :: [tree_name()],                 % State trees being GC:ed
@@ -122,7 +122,7 @@ info(Keys) when is_list(Keys) ->
     end.
 
 info_keys() ->
-    [enabled, history, last_gc, active_sweeps, from_start, trees].
+    [enabled, history, last_gc, active_sweeps, during_sync, trees].
 
 %% called from aec_db on startup
 %% maybe_swap_nodes() ->
@@ -135,7 +135,7 @@ info_keys() ->
 %% Change of configuration parameters requires restart of the node.
 init(#{ <<"enabled">>    := Enabled
       , <<"trees">>      := Trees
-      , <<"from_start">> := FromStart
+      , <<"during_sync">> := DuringSync
       , <<"history">>    := History
       , <<"minimum_height">> := MinHeight
       } = Cfg) when is_integer(History), History > 0 ->
@@ -150,7 +150,7 @@ init(#{ <<"enabled">>    := Enabled
     lager:debug("LastSwitch = ~p", [LastSwitch]),
     %% TODO: Make min_height configurable
     Data = #st{enabled     = Enabled,
-               from_start  = FromStart,
+               during_sync  = DuringSync,
                trees       = Trees,
                history     = History,
                min_height  = MinHeight,
@@ -181,10 +181,10 @@ handle_info(_, St) ->
     {noreply, St}.
 
 handle_call({maybe_garbage_collect, TopHeight, Header}, _From,
-            #st{enabled = true, synced = Synced, from_start = FromStart,
+            #st{enabled = true, synced = Synced, during_sync = DuringSync,
                 history = History, min_height = MinHeight,
                 trees = Trees, scanners = [], last_switch = Last} = St)
-  when (Synced orelse FromStart), TopHeight >= MinHeight, TopHeight > Last + History ->
+  when (Synced orelse DuringSync), TopHeight >= MinHeight, TopHeight > Last + History ->
     %% Double-check that the GC hasn't been requested on a microblock.
     %% This would be a bug, since aec_conductor should only ask for keyblocks.
     case aec_headers:type(Header) of
@@ -235,7 +235,7 @@ info_item(last_gc, #st{last_switch = L}) ->
 info_item(active_sweeps, #st{scanners = Scanners}) ->
     [#{tree => T, pid => P, height => H} ||
         #scanner{tree = T, height = H, pid = P} <- Scanners];
-info_item(from_start, #st{from_start = Flag}) ->
+info_item(during_sync, #st{during_sync = Flag}) ->
     Flag;
 info_item(trees, #st{trees = Trees}) ->
     Trees;
@@ -387,7 +387,7 @@ config() ->
               Key <- [<<"enabled">>,
                       <<"history">>,
                       <<"minimum_height">>,
-                      <<"from_start">>]]),
+                      <<"during_sync">>]]),
     M#{<<"trees">> => Trees}.
 
 ok({ok, Value}) -> Value.
