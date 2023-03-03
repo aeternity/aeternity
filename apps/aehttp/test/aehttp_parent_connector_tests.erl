@@ -62,6 +62,17 @@ ae_sim_test_() ->
         #{pubkey := StakerPubKey, privkey := StakerPrivKey} = StakerKeyPair,
         [{"Basic http api operational to each child simulator",
             fun() ->
+                    [Spec1, Spec2, Spec3] = ae_parent_http_specs(),
+                    PostPCBlock =
+                        fun() ->
+                            lists:foreach(
+                                fun(#{port := Port}) ->
+                                    SimName = sim_name(Port),
+                                    aec_chain_sim:add_keyblock(SimName)
+                                end,
+                                [Spec1, Spec2, Spec3])
+                        end,
+                    PostPCBlock(),
                     Responses =
                         get_results(
                             fun(Host, Port, User, Password, Seed) ->
@@ -96,17 +107,20 @@ ae_sim_test_() ->
                             aec_chain_sim:add_keyblock(SimName)
                         end,
                     %% post a different amount of blocks on different sims
-                    {ok, KB1} = PostPCBlock(Spec1),
+                    {ok, KB2} = PostPCBlock(Spec1),
 
-                    {ok, KB1} = PostPCBlock(Spec2),
                     {ok, KB2} = PostPCBlock(Spec2),
+                    {ok, KB3} = PostPCBlock(Spec2),
 
-                    {ok, KB1} = PostPCBlock(Spec3),
                     {ok, KB2} = PostPCBlock(Spec3),
                     {ok, KB3} = PostPCBlock(Spec3),
-                    Block1 = keyblock_to_pc_block(KB1),
-                    Block2 = keyblock_to_pc_block(KB2),
-                    Block3 = keyblock_to_pc_block(KB3),
+                    {ok, KB4} = PostPCBlock(Spec3),
+                    Block2 =
+                        aec_parent_chain_block:set_commitments(keyblock_to_pc_block(KB2), []),
+                    Block3 =
+                        aec_parent_chain_block:set_commitments(keyblock_to_pc_block(KB3), []),
+                    Block4 =
+                        aec_parent_chain_block:set_commitments(keyblock_to_pc_block(KB4), []),
                     Responses =
                         get_results(
                             fun(Host, Port, User, Password, Seed) ->
@@ -128,31 +142,31 @@ ae_sim_test_() ->
                             {post_block, _B} -> error(should_not_happen)
                         after 100 -> ok
                         end,
-                    {ok, Block1} =
-                        aec_parent_connector:fetch_block_by_height(1),
-                    {ok, Block1} =
-                        aec_parent_connector:fetch_block_by_hash(
-                            aec_parent_chain_block:hash(Block1)),
                     {ok, Block2} =
                         aec_parent_connector:fetch_block_by_height(2),
                     {ok, Block2} =
                         aec_parent_connector:fetch_block_by_hash(
                             aec_parent_chain_block:hash(Block2)),
-                    {error, no_parent_chain_agreement} =
-                        aec_parent_connector:fetch_block_by_height(3),
-                    {error, no_parent_chain_agreement} =
-                        aec_parent_connector:fetch_block_by_hash(
-                            aec_parent_chain_block:hash(Block3)),
-                    %% get node2 to the same top as node3
-                    {ok, KB3} = PostPCBlock(Spec2),
                     {ok, Block3} =
                         aec_parent_connector:fetch_block_by_height(3),
+                    {ok, Block3} =
+                        aec_parent_connector:fetch_block_by_hash(
+                            aec_parent_chain_block:hash(Block3)),
+                    {error, no_parent_chain_agreement} =
+                        aec_parent_connector:fetch_block_by_height(4),
+                    {error, no_parent_chain_agreement} =
+                        aec_parent_connector:fetch_block_by_hash(
+                            aec_parent_chain_block:hash(Block4)),
+                    %% get node2 to the same top as node3
+                    {ok, KB4} = PostPCBlock(Spec2),
+                    {ok, Block4} =
+                        aec_parent_connector:fetch_block_by_height(4),
                     %% trigger fetch again - 2 out 3 nodes should agree on block3
                     aec_parent_connector:trigger_fetch(),
                     %% no consensus
-                    {ok, Block3} =
+                    {ok, Block4} =
                         receive
-                            {post_block, B3} -> {ok, B3}
+                            {post_block, B4} -> {ok, B4}
                         end,
                     ok
             end},
@@ -166,8 +180,8 @@ ae_sim_test_() ->
                             aec_chain_sim:add_keyblock(SimName),
                             aec_chain_sim:add_keyblock(SimName),
                             %% Post our local top hash as the commitment
-                            Commitment = <<"kh_deadbeef">>,
-                            {ok, TopHash, _PrevHash, Height} = aehttpc_aeternity:get_latest_block(Host, Port, User, Password, <<"Seed">>),
+                            Val = <<42:32/unit:8>>,
+                            Commitment = aeser_api_encoder:encode(key_block_hash, Val),
                             Fee = 20000 * aec_test_utils:min_gas_price(),
                             {ok, #{<<"tx_hash">> := _}} =
                                 aehttpc_aeternity:post_commitment(Host, Port,
@@ -183,17 +197,18 @@ ae_sim_test_() ->
                             ?assertMatch({ok, #{micro_blocks := []}}, aec_chain_sim:get_current_generation(SimName)),
                             %% And create a keyblock
                             aec_chain_sim:add_keyblock(SimName),
+                            {ok, TopHash, PrevHash, Height} = aehttpc_aeternity:get_latest_block(Host, Port, User, Password, <<"Seed">>),
                             ?assertMatch({ok, #{micro_blocks := []}}, aec_chain_sim:get_current_generation(SimName)),
-                            {ok, [{Acct, Payload}]} = aehttpc_aeternity:get_commitment_tx_in_block(Host, Port, User, Password, <<"Seed">>, TopHash, CommitmentPubKey),
+                            {ok, [{Acct, Payload}]} =
+                                aehttpc_aeternity:get_commitment_tx_in_block(Host, Port, User, Password, <<"Seed">>, TopHash, PrevHash, CommitmentPubKey),
                             ?assertMatch(Acct, aeser_api_encoder:encode(account_pubkey, StakerPubKey)),
                             {_Type, Val} =  aeser_api_encoder:decode(Payload),
-                            ?assertEqual(<<"kh_deadbeef">>, Val),
                             %% Test we can also get the same commitments by height
                             TopHeight = aec_chain_sim:get_height(SimName),
                             %% Top here is the keyblock we added after the microblock with our Txs, so
                             %% we need to look in the height one below top
-                            ?assertEqual(TopHeight, Height + 2),
-                            {ok, [{Acct, Payload}]} = aehttpc_aeternity:get_commitment_tx_at_height(Host, Port, User, Password, <<"Seed">>, TopHeight - 2, CommitmentPubKey)
+                            ?assertEqual(TopHeight, Height + 1),
+                            {ok, [{Acct, Payload}]} = aehttpc_aeternity:get_commitment_tx_at_height(Host, Port, User, Password, <<"Seed">>, TopHeight - 1, CommitmentPubKey)
                         end, ae_parent_http_specs()),
                     ok
             end}]

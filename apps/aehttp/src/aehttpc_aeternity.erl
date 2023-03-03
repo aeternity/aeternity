@@ -7,7 +7,7 @@
 -export([get_latest_block/5,
          get_header_by_hash/6,
          get_header_by_height/6,
-         get_commitment_tx_in_block/7,
+         get_commitment_tx_in_block/8,
          get_commitment_tx_at_height/7,
          post_commitment/9]).
 
@@ -21,13 +21,16 @@ get_header_by_hash(Hash, Host, Port, _User, _Password, _Seed) ->
 get_header_by_height(Height, Host, Port, _User, _Password, _Seed) ->
     get_key_block_header_by_height(Height, Host, Port).
 
-get_commitment_tx_in_block(Host, Port, _User, _Password, _Seed, BlockHash, ParentHCAccountPubKey) ->
-    {ok, #{<<"micro_blocks">> := MBs}} = get_generation(Host, Port, BlockHash),
-    get_transactions(Host, Port, MBs, ParentHCAccountPubKey).
+get_commitment_tx_in_block(Host, Port, _User, _Password, _Seed, _BlockHash,
+                           PrevHash, ParentHCAccountPubKey) ->
+    %% TODO: handle hash not in the main chain
+    {ok, #{<<"micro_blocks">> := MBs}} = get_generation(Host, Port, PrevHash),
+    get_commitments(Host, Port, MBs, ParentHCAccountPubKey).
 
 get_commitment_tx_at_height(Host, Port, _User, _Password, _Seed, Height, ParentHCAccountPubKey) ->
+    %% TODO: handle height not in the main chain
     {ok, #{<<"micro_blocks">> := MBs}} = get_generation_by_height(Host, Port, Height),
-    get_transactions(Host, Port, MBs, ParentHCAccountPubKey).
+    get_commitments(Host, Port, MBs, ParentHCAccountPubKey).
 
 %% @doc Post commitment to AE parent chain.
 post_commitment(Host, Port, StakerPubkey, HCCollectPubkey, Amount, Fee, CurrentTop,
@@ -85,12 +88,12 @@ get_generation(Host, Port, Hash) ->
 
 -spec get_generation_by_height(binary(), integer(), integer()) -> {ok, map()} | {error, term()}.
 get_generation_by_height(Host, Port, Height) ->
-    HeightBin = list_to_binary(integer_to_list(Height)),
+    HeightBin = list_to_binary(integer_to_list(Height - 1 )), %% previous generation!!!
     Path = <<"/v3/generations/height/", HeightBin/binary>>,
     get_request(Path, Host, Port, 5000).
 
--spec get_transactions(binary(), integer(), [binary()], binary()) -> {ok, list()} | {error, term()}.
-get_transactions(Host, Port, MBs, ParentHCAccountPubKey) ->
+-spec get_commitments(binary(), integer(), [binary()], binary()) -> {ok, list()} | {error, term()}.
+get_commitments(Host, Port, MBs, ParentHCAccountPubKey) ->
     Txs = lists:flatmap(
         fun(MB) ->
             get_hc_commitments(Host, Port, MB, ParentHCAccountPubKey)
@@ -111,8 +114,9 @@ get_hc_commitments(Host, Port, MB, ParentHCAccountPubKey) ->
                         #{<<"type">> := <<"SpendTx">>,
                           <<"recipient_id">> := ExpectedRecipient,
                           <<"sender_id">> := SenderId,
-                          <<"payload">> := Commitment} ->
-                            [{SenderId, Commitment} | Acc];
+                          <<"payload">> := CommitmentEnc} ->
+                                {ok, Commitment} = aeser_api_encoder:safe_decode(bytearray, CommitmentEnc),
+                                [{SenderId, Commitment} | Acc];
                         _ ->
                             Acc
                     end

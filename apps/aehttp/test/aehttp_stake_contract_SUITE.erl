@@ -31,7 +31,7 @@
 -define(CONSENSUS_HC, hc).
 -define(CONSENSUS_POS, pos).
 -define(CHILD_START_HEIGHT, 10).
--define(CHILD_CONFIRMATIONS, 7).
+-define(CHILD_CONFIRMATIONS, 0).
 -define(REWARD_DELAY, 2).
 -define(NODE1, dev1).
 -define(NODE1_NAME, aecore_suite_utils:node_name(?NODE1)).
@@ -214,15 +214,16 @@ init_per_group_custom(NetworkId, ?CONSENSUS_HC, Config) ->
     NumberOfCommitments = 2,
     %% mine blocks on the parent chain and include commitments; stop right
     %% before the child chain produces a block
-    lists:foreach(
-        fun(Idx) ->
-            PCTopHeight = rpc(?PARENT_CHAIN_NODE1, aec_chain, top_height, []),
-            ct:log("Mining commitment on the parent chain, idx ~p, parent height ~p", [Idx, PCTopHeight]),
-            wait_for_commitments_in_pool(?PARENT_CHAIN_NODE1, NumberOfCommitments),
-            {ok, _} = aecore_suite_utils:mine_micro_blocks(?PARENT_CHAIN_NODE1_NAME, 1),
-            {ok, _} = aecore_suite_utils:mine_key_blocks(?PARENT_CHAIN_NODE1_NAME, 1)
-        end,
-        lists:seq(1, ?CHILD_CONFIRMATIONS - 1)),
+%%
+%%    lists:foreach(
+%%        fun(Idx) ->
+%%            PCTopHeight = rpc(?PARENT_CHAIN_NODE1, aec_chain, top_height, []),
+%%            ct:log("Mining commitment on the parent chain, idx ~p, parent height ~p", [Idx, PCTopHeight]),
+%%            wait_for_commitments_in_pool(?PARENT_CHAIN_NODE1, NumberOfCommitments),
+%%            {ok, _} = aecore_suite_utils:mine_micro_blocks(?PARENT_CHAIN_NODE1_NAME, 1),
+%%            {ok, _} = aecore_suite_utils:mine_key_blocks(?PARENT_CHAIN_NODE1_NAME, 1)
+%%        end,
+%%       lists:seq(1, ?CHILD_CONFIRMATIONS - 1)),
     ct:log("Mining last initial commitment on the parent chain", []),
     wait_for_commitments_in_pool(?PARENT_CHAIN_NODE1, NumberOfCommitments),
     {ok, _} = aecore_suite_utils:mine_micro_blocks(?PARENT_CHAIN_NODE1_NAME, 1),
@@ -1081,7 +1082,7 @@ election_contract_address() ->
 election_contract_by_consensus(?CONSENSUS_HC) -> ?HC_ELECTION_CONTRACT;
 election_contract_by_consensus(?CONSENSUS_POS) -> ?POS_ELECTION_CONTRACT.
 
-produce_blocks(Node, NodeName, parent = _NodeType, BlocksCnt, _Consensus) ->
+produce_blocks(_Node, NodeName, parent = _NodeType, BlocksCnt, _Consensus) ->
     {ok, _} = aecore_suite_utils:mine_key_blocks(NodeName, BlocksCnt);
 produce_blocks(Node, NodeName, child = _NodeType, BlocksCnt, ?CONSENSUS_POS) ->
     TopHeight = rpc(Node, aec_chain, top_height, []),
@@ -1110,7 +1111,7 @@ get_generations(Node, FromHeight, ToHeight) ->
     {ok, lists:reverse(ReversedBlocks)}.
 
 
-produce_blocks_hc(Node, NodeName, BlocksCnt) when BlocksCnt < 1 ->
+produce_blocks_hc(_Node, _NodeName, BlocksCnt) when BlocksCnt < 1 ->
     ok;
 produce_blocks_hc(Node, NodeName, BlocksCnt) ->
     ParentNode = ?PARENT_CHAIN_NODE1,
@@ -1137,8 +1138,13 @@ wait_for_commitments_in_pool(Node, Cnt, Attempts) when Attempts < 1 ->
     TxsCnt = length(Pool),
     error({run_out_of_attempts, Cnt, TxsCnt});
 wait_for_commitments_in_pool(Node, Cnt, Attempts) ->
+    TopHeader = rpc(?NODE1, aec_chain, top_header, []),
+    {ok, TopHash} = aec_headers:hash_header(TopHeader),
+    TopHeight = aec_headers:height(TopHeader),
     {ok, Pool} = rpc(Node, aec_tx_pool, peek, [infinity]),
     TxsCnt = length(Pool),
+    ct:log("Height ~p, hash ~p, commitments in pool ~p",
+           [TopHeight, aeser_api_encoder:encode(key_block_hash, TopHash), Pool]),
     case TxsCnt =:= Cnt of
         true -> ok;
         false when TxsCnt > Cnt -> error(more_tx_in_pool);

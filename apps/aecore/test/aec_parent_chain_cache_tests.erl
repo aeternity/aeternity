@@ -236,10 +236,10 @@ no_commitments_before_start() ->
             {ok, #{ child_start_height := StartHeight,
                     top_height         := ParentHeight,
                     child_top_height   := ChildTop0} = _Res} = ?TEST_MODULE:get_state(),
-            [] = get_commitments(?ALICE),
-            [] = get_commitments(?BOB),
-            [] = get_commitments(?CAROL),
-            [] = get_commitments(?DAVE),
+            [] = collect_commitments(?ALICE),
+            [] = collect_commitments(?BOB),
+            [] = collect_commitments(?CAROL),
+            [] = collect_commitments(?DAVE),
             meck:reset(aec_parent_connector),
             ok
         end,
@@ -271,10 +271,10 @@ post_initial_commitments() ->
             {ok, #{ child_start_height := StartHeight,
                     top_height         := ParentHeight,
                     child_top_height   := ChildTop0}} = ?TEST_MODULE:get_state(),
-            [GenesisHash] = get_commitments(?ALICE),
-            [GenesisHash] = get_commitments(?BOB),
-            [] = get_commitments(?CAROL),
-            [] = get_commitments(?DAVE),
+            [GenesisHash] = collect_commitments(?ALICE),
+            [GenesisHash] = collect_commitments(?BOB),
+            [] = collect_commitments(?CAROL),
+            [] = collect_commitments(?DAVE),
             meck:reset(aec_parent_connector),
             ok
         end,
@@ -310,10 +310,10 @@ post_commitments() ->
                     top_height         := ParentHeight,
                     child_top_height   := ChildTop1}} = ?TEST_MODULE:get_state(),
             Hash = aeser_api_encoder:encode(key_block_hash, height_to_hash(ChildTop1)),
-            [Hash] = get_commitments(?ALICE),
-            [Hash] = get_commitments(?BOB),
-            [] = get_commitments(?CAROL),
-            [] = get_commitments(?DAVE),
+            [Hash] = collect_commitments(?ALICE),
+            [Hash] = collect_commitments(?BOB),
+            [] = collect_commitments(?CAROL),
+            [] = collect_commitments(?DAVE),
             ok
         end,
         lists:seq(0, 20)),
@@ -347,10 +347,10 @@ no_commitments_if_stopped() ->
             {ok, #{ child_start_height := StartHeight,
                     top_height         := ParentHeight,
                     child_top_height   := ChildTop1}} = ?TEST_MODULE:get_state(),
-            [] = get_commitments(?ALICE),
-            [] = get_commitments(?BOB),
-            [] = get_commitments(?CAROL),
-            [] = get_commitments(?DAVE),
+            [] = collect_commitments(?ALICE),
+            [] = collect_commitments(?BOB),
+            [] = collect_commitments(?CAROL),
+            [] = collect_commitments(?DAVE),
             ok
         end,
         lists:seq(0, 20)),
@@ -385,10 +385,10 @@ block_production_dictates_commitments() ->
                     top_height         := ParentHeight,
                     child_top_height   := ChildTop1}} = ?TEST_MODULE:get_state(),
             Hash = aeser_api_encoder:encode(key_block_hash, height_to_hash(ChildTop1)),
-            [Hash] = get_commitments(?ALICE),
-            [Hash] = get_commitments(?BOB),
-            [] = get_commitments(?CAROL),
-            [] = get_commitments(?DAVE),
+            [Hash] = collect_commitments(?ALICE),
+            [Hash] = collect_commitments(?BOB),
+            [] = collect_commitments(?CAROL),
+            [] = collect_commitments(?DAVE),
             ok
         end,
         lists:seq(0, 20)),
@@ -410,10 +410,10 @@ block_production_dictates_commitments() ->
             {ok, #{ child_start_height := StartHeight,
                     top_height         := ParentHeight,
                     child_top_height   := _ChildTop1}} = ?TEST_MODULE:get_state(),
-            [] = get_commitments(?ALICE),
-            [] = get_commitments(?BOB),
-            [] = get_commitments(?CAROL),
-            [] = get_commitments(?DAVE),
+            [] = collect_commitments(?ALICE),
+            [] = collect_commitments(?BOB),
+            [] = collect_commitments(?CAROL),
+            [] = collect_commitments(?DAVE),
             ok
         end,
         lists:seq(0, 20)),
@@ -436,10 +436,10 @@ block_production_dictates_commitments() ->
                     top_height         := ParentHeight,
                     child_top_height   := ChildTop1}} = ?TEST_MODULE:get_state(),
             Hash = aeser_api_encoder:encode(key_block_hash, height_to_hash(ChildTop1)),
-            [Hash] = get_commitments(?ALICE),
-            [Hash] = get_commitments(?BOB),
-            [] = get_commitments(?CAROL),
-            [] = get_commitments(?DAVE),
+            [Hash] = collect_commitments(?ALICE),
+            [Hash] = collect_commitments(?BOB),
+            [] = collect_commitments(?CAROL),
+            [] = collect_commitments(?DAVE),
             ok
         end,
         lists:seq(0, 20)),
@@ -471,6 +471,10 @@ height_to_hash(Height) when is_integer(Height) -> <<Height:32/unit:8>>.
 %%             {0, 0},
 %%             MeaningfulBytes),
 %%     Height.
+block_by_height(Height, Commitments) ->
+    B0 = block_by_height(Height),
+    aec_parent_chain_block:set_commitments(B0, Commitments).
+
 
 block_by_height(Height) ->
     Hash = height_to_hash(Height),
@@ -588,7 +592,7 @@ assert_child_cache_consistency(#{ child_start_height := StartHeight,
         lists:seq(CacheExpectedEnd, CacheExpectedEnd)),
     ok.
 
-get_commitments(Staker) ->
+collect_commitments(Staker) ->
     AllCommitments =
         lists:filter(
             fun({_Pid, {_M, _F, [Who, _Hash]}, _Res}) ->
@@ -606,3 +610,23 @@ filter_meck_events(Module, Function) ->
         end,
         meck:history(Module)).
 
+mock_commitments_list(_BlockHashesMap) ->
+    meck:expect(aec_parent_connector, request_block_by_height,
+                fun(Height) ->
+                    spawn(
+                        fun() ->
+                            Block = block_by_height(Height),
+                            ?TEST_MODULE:post_block(Block)
+                        end)
+            end).
+
+mock_commitments_list(all, L) ->
+    meck:expect(aec_parent_connector, request_block_by_height,
+                fun(Height) ->
+                    spawn(
+                        fun() ->
+                            Block0 = block_by_height(Height),
+                            Block = aec_parent_chain_block:set_commitments(Block0, L),
+                            ?TEST_MODULE:post_block(Block)
+                        end)
+            end).

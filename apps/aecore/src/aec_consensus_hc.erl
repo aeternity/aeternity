@@ -183,30 +183,32 @@ dirty_validate_micro_node_with_ctx(_Node, _Block, _Ctx) -> ok.
 %% -------------------------------------------------------------------
 %% Custom state transitions
 state_pre_transform_key_node_consensus_switch(_Node, Trees) -> Trees.
-state_pre_transform_key_node(Node, Trees) ->
-    Header = aec_block_insertion:node_header(Node),
-    TxEnv = aetx_env:tx_env_from_key_header(
-              Header, aec_block_insertion:node_hash(Node),
-              aec_block_insertion:node_time(Node), aec_block_insertion:node_prev_hash(Node)),
+state_pre_transform_key_node(_Node, Trees) ->
+    {TxEnv, _Trees} = aetx_env:tx_env_and_trees_from_top(aetx_transaction),
+    %% TODO: discuss which is the correct height to pass: the new or the
+    %% previous one. At this point since there is no key block hash yet, it
+    %% makes sense to base the tx call on the previous height altogether
     Height = aetx_env:height(TxEnv),
-    PCHeight = pc_height(Height),
+    PCHeight = pc_height(Height + 1), %% next parent chain block!
     case aec_parent_chain_cache:get_block_by_height(PCHeight) of
         {error, not_in_cache} ->
             aec_conductor:throw_error(parent_chain_block_not_synced);
         {error, {not_enough_confirmations, Block}} ->
             aec_conductor:throw_error({not_enough_confirmations, aec_parent_chain_block:height(Block)});
         {ok, Block} ->
-            Hash = aec_parent_chain_block:hash(Block),
-            HashStr = binary_to_list(Hash),
+            Entropy = aec_parent_chain_block:hash(Block),
+            CommitmentsSophia = encode_commtiments(Block),
             {ok, CD} = aeb_fate_abi:create_calldata("elect",
-                                                    [aefa_fate_code:encode_arg({string, Hash})]),
+                                                    [aefa_fate_code:encode_arg({string, Entropy}),
+                                                     CommitmentsSophia
+                                                    ]),
             CallData = aeser_api_encoder:encode(contract_bytearray, CD),
-            case call_consensus_contract(?ELECTION_CONTRACT, Node, Trees, CallData, ["elect(", HashStr,  ")"]) of
+            case call_consensus_contract_(?ELECTION_CONTRACT, TxEnv, Trees, CallData, "elect", 0) of
                 {ok, Trees1, _} ->
-                aeu_ets_cache:reinit(
-                    ?ETS_CACHE_TABLE,
-                    current_leader,
-                    fun beneficiary_/0),
+                    aeu_ets_cache:reinit(
+                        ?ETS_CACHE_TABLE,
+                        current_leader,
+                        fun () -> beneficiary_(TxEnv, Trees1) end),
                     Trees1;
                 {error, What} ->
                     %% maybe a softer approach than crash and burn?
@@ -305,21 +307,18 @@ seal_correct_signature(Header, Signature, _Padding) ->
 generate_key_header_seal(_, Candidate, PCHeight, #{expected_key_block_rate := _Expected} = _Config, _) ->
     case aec_parent_chain_cache:get_block_by_height(PCHeight) of
         {ok, Block} ->
-            Hash = aec_parent_chain_block:hash(Block),
-            ParentHash = binary_to_list(Hash),
-            {TxEnv0, Trees} = aetx_env:tx_env_and_trees_from_top(aetx_transaction),
-            Height0 = aetx_env:height(TxEnv0),
-            Height = Height0 + 1,
-            TxEnv = aetx_env:set_height(TxEnv0, Height),
-            {ok, CD} = aeb_fate_abi:create_calldata("elect_at_height",
-                                                    [aefa_fate_code:encode_arg({integer, Height}),
-                                                    aefa_fate_code:encode_arg({string, list_to_binary(ParentHash)})]),
+            Entropy = aec_parent_chain_block:hash(Block),
+            CommitmentsSophia = encode_commtiments(Block),
+            {TxEnv, Trees} = aetx_env:tx_env_and_trees_from_top(aetx_transaction),
+            {ok, CD} = aeb_fate_abi:create_calldata("elect_next",
+                                                    [aefa_fate_code:encode_arg({string, Entropy}),
+                                                     CommitmentsSophia
+                                                    ]),
             CallData = aeser_api_encoder:encode(contract_bytearray, CD),
             {ok, _Trees1, Call} = call_consensus_contract_(?ELECTION_CONTRACT,
                                                            TxEnv, Trees,
                                                            CallData,
-                                                           ["elect_at_height(", integer_to_list(Height),
-                                                            ", " , ParentHash , ")"],
+                                                           "elect_next",
                                                            0),
             {address, Leader} = aeb_fate_encoding:deserialize(aect_call:return_value(Call)),
             SignModule = get_sign_module(),
@@ -344,23 +343,22 @@ generate_key_header_seal(_, Candidate, PCHeight, #{expected_key_block_rate := _E
     end.
 
 set_key_block_seal(KeyBlock0, Seal) ->
-    {TxEnv0, Trees} = aetx_env:tx_env_and_trees_from_top(aetx_transaction),
-    Height0 = aetx_env:height(TxEnv0),
+    {TxEnv, Trees} = aetx_env:tx_env_and_trees_from_top(aetx_transaction),
+    Height0 = aetx_env:height(TxEnv),
     Height = Height0 + 1,
     PCHeight = pc_height(Height),
     {ok, Block} = aec_parent_chain_cache:get_block_by_height(PCHeight),
-    Hash = aec_parent_chain_block:hash(Block),
-    ParentHash = binary_to_list(Hash),
-    TxEnv = aetx_env:set_height(TxEnv0, Height),
-    {ok, CD} = aeb_fate_abi:create_calldata("elect_at_height",
-                                            [aefa_fate_code:encode_arg({integer, Height}),
-                                            aefa_fate_code:encode_arg({string, list_to_binary(ParentHash)})]),
+    Entropy = aec_parent_chain_block:hash(Block),
+    CommitmentsSophia = encode_commtiments(Block),
+    {ok, CD} = aeb_fate_abi:create_calldata("elect_next",
+                                            [aefa_fate_code:encode_arg({string, Entropy}),
+                                             CommitmentsSophia
+                                            ]),
     CallData = aeser_api_encoder:encode(contract_bytearray, CD),
     {ok, _Trees1, Call} = call_consensus_contract_(?ELECTION_CONTRACT,
                                                     TxEnv, Trees,
                                                     CallData,
-                                                    ["elect_at_height(", integer_to_list(Height),
-                                                     ", ", ParentHash,  ")"],
+                                                    "elect_next",
                                                     0),
     {address, Leader} = aeb_fate_encoding:deserialize(aect_call:return_value(Call)),
     KeyBlock1 = aec_blocks:set_beneficiary(KeyBlock0, Leader),
@@ -467,9 +465,11 @@ genesis_protocol_version() ->
             hd(lists:sort(maps:keys(aec_hard_forks:protocols())))
       end).
 
-
-call_consensus_contract(Contract, Node, Trees, EncodedCallData, Keyword) ->
-    call_consensus_contract(Contract, Node, Trees, EncodedCallData, Keyword, 0).
+log_consensus_call(TxEnv, FunName, EncodedCallData, Amount) ->
+    Height = aetx_env:height(TxEnv),
+    lager:debug("Height ~p, calling ~s with amount ~p aettos, encoded ~p",
+               [Height, FunName, Amount, EncodedCallData]),
+    ok.
 
 call_consensus_contract(Contract, Node, Trees, EncodedCallData, Keyword, Amount) ->
     Header = aec_block_insertion:node_header(Node),
@@ -479,9 +479,7 @@ call_consensus_contract(Contract, Node, Trees, EncodedCallData, Keyword, Amount)
     call_consensus_contract_(Contract, TxEnv, Trees, EncodedCallData, Keyword, Amount).
 
 call_consensus_contract_(ContractType, TxEnv, Trees, EncodedCallData, Keyword, Amount) ->
-    Height = aetx_env:height(TxEnv),
-    lager:debug("Height ~p, calling ~s with amount ~p aettos, encoded ~p",
-               [Height, Keyword, Amount, EncodedCallData]),
+    log_consensus_call(TxEnv, Keyword, EncodedCallData, Amount),
     ContractPubkey =
         case ContractType of
             ?ELECTION_CONTRACT -> election_contract_pubkey();
@@ -520,8 +518,10 @@ call_consensus_contract_(ContractType, TxEnv, Trees, EncodedCallData, Keyword, A
             ok = aect_call:return_type(Call),
             %% prune the call being produced. If not done, the fees for it
             %% would be redistributed to the corresponding leaders
+            Height = aetx_env:height(TxEnv),
             {ok, aect_call_state_tree:prune(Height, Trees2), Call};
-        {error, _What} = Err -> Err
+        {error, _What} = Err ->
+            Err
     end.
 
 beneficiary() ->
@@ -531,11 +531,13 @@ beneficiary() ->
         fun beneficiary_/0).
 
 beneficiary_() ->
-    %% TODO: cache this
     {TxEnv, Trees} = aetx_env:tx_env_and_trees_from_top(aetx_transaction),
+    beneficiary_(TxEnv, Trees).
+
+beneficiary_(TxEnv, Trees) ->
     {ok, CD} = aeb_fate_abi:create_calldata("leader", []),
     CallData = aeser_api_encoder:encode(contract_bytearray, CD),
-    case call_consensus_contract_(?ELECTION_CONTRACT, TxEnv, Trees, CallData, "leader()", 0) of
+    case call_consensus_contract_(?ELECTION_CONTRACT, TxEnv, Trees, CallData, "leader", 0) of
         {ok, _Trees1, Call} ->
             {address, Leader} = aeb_fate_encoding:deserialize(aect_call:return_value(Call)),
             {ok, Leader};
@@ -545,25 +547,24 @@ beneficiary_() ->
     end.
 
 next_beneficiary() ->
-    {TxEnv0, Trees} = aetx_env:tx_env_and_trees_from_top(aetx_transaction),
-    Height0 = aetx_env:height(TxEnv0),
+    {TxEnv, Trees} = aetx_env:tx_env_and_trees_from_top(aetx_transaction),
+    Height0 = aetx_env:height(TxEnv),
     Height = Height0 + 1,
     PCHeight = pc_height(Height), 
     case aec_parent_chain_cache:get_block_by_height(PCHeight) of
         {ok, Block} ->
-            Hash = aec_parent_chain_block:hash(Block),
-            ParentHash = binary_to_list(Hash),
-            TxEnv = aetx_env:set_height(TxEnv0, Height),
-            {ok, CD} = aeb_fate_abi:create_calldata("elect_at_height",
-                                                    [aefa_fate_code:encode_arg({integer, Height}),
-                                                    aefa_fate_code:encode_arg({string, list_to_binary(ParentHash)})]),
+
+            Entropy = aec_parent_chain_block:hash(Block),
+            CommitmentsSophia = encode_commtiments(Block),
+            {ok, CD} = aeb_fate_abi:create_calldata("elect_next",
+                                                    [aefa_fate_code:encode_arg({string, Entropy}),
+                                                     CommitmentsSophia
+                                                    ]),
             CallData = aeser_api_encoder:encode(contract_bytearray, CD),
             {ok, _Trees1, Call} = call_consensus_contract_(?ELECTION_CONTRACT,
                                                             TxEnv, Trees,
                                                             CallData,
-                                                            ["elect_at_height(", integer_to_list(Height),
-                                                             ", ", ParentHash, ")"],
-                                                            0),
+                                                            "elect_next", 0),
             {address, Leader} = aeb_fate_encoding:deserialize(aect_call:return_value(Call)),
             SignModule = get_sign_module(),
             case SignModule:set_candidate(Leader) of
@@ -591,7 +592,7 @@ is_leader_valid(Node, Trees, TxEnv) ->
     Header = aec_block_insertion:node_header(Node),
     {ok, CD} = aeb_fate_abi:create_calldata("leader", []),
     CallData = aeser_api_encoder:encode(contract_bytearray, CD),
-    case call_consensus_contract_(?ELECTION_CONTRACT, TxEnv, Trees, CallData, "leader()", 0) of
+    case call_consensus_contract_(?ELECTION_CONTRACT, TxEnv, Trees, CallData, "leader", 0) of
         {ok, _Trees1, Call} ->
             {address, ExpectedLeader} = aeb_fate_encoding:deserialize(aect_call:return_value(Call)),
             Leader = aec_headers:miner(Header),
@@ -608,7 +609,7 @@ parent_chain_validators(TxEnv, Trees) ->
     {ok, CD} = aeb_fate_abi:create_calldata("sorted_validators", []),
     CallData = aeser_api_encoder:encode(contract_bytearray, CD),
     case call_consensus_contract_(?STAKING_CONTRACT, TxEnv, Trees, CallData,
-                                  "sorted_validators()", 0) of
+                                  "sorted_validators", 0) of
         {ok, _Trees1, Call} ->
             SortedValidators =
                 lists:map(
@@ -699,3 +700,17 @@ seal_padding_size() ->
 
 pc_height(ChildHeight) ->
     ChildHeight + pc_start_height() - 1.%% child starts pinning from height 1, not genesis
+
+encode_commtiments(Block) ->
+    {ok, Commitments} = aec_parent_chain_block:commitments(Block),
+    Commitments1 =
+        lists:foldl(
+            fun({From0, Commitment0}, Accum) ->
+                {ok, Commitment} = aeser_api_encoder:safe_decode(key_block_hash, Commitment0),
+                {ok, From1} = aeser_api_encoder:safe_decode(account_pubkey, From0),
+                From = aefa_fate_code:encode_arg({address, From1}),
+                maps:update_with(aefa_fate_code:encode_arg({hash, Commitment}), fun(Fs) -> [From | Fs] end, [From], Accum)
+            end,
+            #{},
+            Commitments),
+    aeb_fate_data:make_map(Commitments1).

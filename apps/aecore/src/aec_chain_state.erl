@@ -871,7 +871,8 @@ apply_node_transactions(Node, Trees, ForkInfo, State) ->
                         true  -> {grant_fees(Node, Trees3, Delay, FraudStatus, State), TotalFees, no_events()};
                         false -> {Trees3, TotalFees, no_events()}
                     end;
-                {error, Reason} -> error({leader_validation_failed, Reason})
+                {error, Reason} ->
+                    error({leader_validation_failed, Reason})
             end
     end.
 
