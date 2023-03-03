@@ -5,6 +5,6 @@
   names with one signature. See [Issue
   #4080](https://github.com/aeternity/aeternity/issues/4080) for details.
 
-  BEWARE: This gives the contrac authority to handle all current _and future_
+  BEWARE: This gives the contract authority to handle all current _and future_
   names on your behalf, so it should be used with extreme care and only for
-  wellknown (and well understood!!) contracts.
+  well-known (and well understood!!) contracts.
