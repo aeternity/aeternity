@@ -910,10 +910,9 @@ name_claim({AccountPubkey, PlainName, NameSalt, NameFee, PreclaimDelta}, S) ->
     AuctionHash = aens_hash:to_auction_hash(NameHash),
     %% Cannot compute CommitmentHash before we know whether in auction
     BidTimeout = aec_governance:name_claim_bid_timeout(NameAscii, S#state.protocol),
-    S0 = lock_namefee(if BidTimeout == 0 -> lock;
-                        true -> spend
-                     end, AccountPubkey, NameFee, S),
-    case aec_governance:name_claim_bid_timeout(NameAscii, S#state.protocol) of
+    LockOrSpend = if BidTimeout == 0 -> lock; true -> spend end,
+    S0 = lock_namefee(LockOrSpend, AccountPubkey, NameFee, S),
+    case BidTimeout of
         0 ->
             %% No auction for this name, preclaim delta suffices
             %% For clarity DeltaTTL for name computed here
@@ -924,15 +923,16 @@ name_claim({AccountPubkey, PlainName, NameSalt, NameFee, PreclaimDelta}, S) ->
             Name = aens_names:new(NameHash, AccountPubkey, S1#state.height + DeltaTTL),
             S2 = delete_x(commitment, CommitmentHash, S1),
             put_name(Name, S2);
-        Timeout when NameSalt == 0  ->
-            %% Auction should be running, new bid comes in
+        _Timeout when NameSalt == 0  ->
+            %% Auction should be running, this is a new bid
             assert_not_name(NameHash, S0), %% just to be sure
             {Auction, S1} = get_name_auction(AuctionHash, name_not_in_auction, S0),
             PreviousBidderPubkey = aens_auctions:bidder_pubkey(Auction),
             PreviousBid = aens_auctions:name_fee(Auction),
             assert_name_bid_fee(NameAscii, NameFee, S#state.protocol), %% just in case, consensus may have changed
             assert_valid_overbid(NameFee, aens_auctions:name_fee(Auction)),
-            NewAuction = aens_auctions:new(AuctionHash, AccountPubkey, NameFee, Timeout, S1#state.height),
+            ExtendTime = aec_governance:name_claim_bid_extension(NameAscii, S#state.protocol),
+            NewAuction = aens_auctions:extend(AuctionHash, AccountPubkey, NameFee, aens_auctions:ttl(Auction), ExtendTime, S1#state.height),
             %% Return the tokens hold in the previous bid
             {PreviousBidderAccount, S2} = get_account(PreviousBidderPubkey, S1),
             S3 = account_earn(PreviousBidderAccount, PreviousBid, S2),

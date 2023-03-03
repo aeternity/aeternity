@@ -17,6 +17,7 @@
          name_claim_locked_fee/0,
          name_claim_fee/2,
          name_claim_bid_timeout/2,
+         name_claim_bid_extension/2,
          name_claim_bid_increment/0,
          name_claim_max_expiration/1,
          name_protection_period/0,
@@ -73,6 +74,7 @@
 -define(MICRO_BLOCK_CYCLE, 3000). %% in msecs
 -define(MULTIPLIER_14, 100000000000000).
 -define(MULTIPLIER_DAY, 480).
+-define(MULTIPLIER_HOUR, 20).
 
 -define(ACCEPTED_FUTURE_BLOCK_TIME_SHIFT, (?EXPECTED_BLOCK_MINE_RATE_MINUTES * 3 * 60 * 1000)). %% 9 min
 
@@ -303,23 +305,44 @@ name_max_length_starting_auction() ->
 
 %% Give possibility to have the actual name under consensus,
 %% possible to define different bid times for different names.
-%% No auction for names of 32 characters or longer
+%% No auction for names of 12 characters or longer
+name_claim_bid_initial_timeout(_NameSize, Protocol) when Protocol < ?LIMA_PROTOCOL_VSN -> 0;
+name_claim_bid_initial_timeout(NameSize, Protocol) when Protocol < ?CERES_PROTOCOL_VSN ->
+    MaxAuctionName = name_max_length_starting_auction(),
+    if NameSize < 5               -> 62 * ?MULTIPLIER_DAY;  %% 29760 blocks
+       NameSize < 9               -> 31 * ?MULTIPLIER_DAY;  %% 14880 blocks
+       NameSize =< MaxAuctionName ->  1 * ?MULTIPLIER_DAY;  %% 480 blocks
+       true                       ->  0
+    end;
+name_claim_bid_initial_timeout(NameSize, _Protocol) ->
+    MaxAuctionName = name_max_length_starting_auction(),
+    if NameSize < 5               ->  5 * ?MULTIPLIER_DAY;  %% 2400 blocks
+       NameSize < 9               ->  2 * ?MULTIPLIER_DAY;  %% 960 blocks
+       NameSize =< MaxAuctionName ->  1 * ?MULTIPLIER_DAY;  %% 480 blocks
+       true                       ->  0
+    end.
+
 -spec name_claim_bid_timeout(binary(), non_neg_integer()) -> non_neg_integer().
 name_claim_bid_timeout(Name, Protocol) when Protocol >= ?LIMA_PROTOCOL_VSN ->
     NameSize = name_claim_size(Name),
-    MaxAuctionName = name_max_length_starting_auction(),
-    BidTimeout =
-        if NameSize > MaxAuctionName -> 0;
-           NameSize > 8  -> 1 * ?MULTIPLIER_DAY;  %% 480 blocks
-           NameSize > 4  -> 31 * ?MULTIPLIER_DAY; %% 14880 blocks
-           true          -> 62 * ?MULTIPLIER_DAY  %% 29760 blocks
-        end,
+    BidTimeout = name_claim_bid_initial_timeout(NameSize, Protocol),
     %% allow overwrite by configuration for test
     aeu_env:user_config_or_env([<<"mining">>, <<"name_claim_bid_timeout">>],
                                    aecore, name_claim_bid_timeout, BidTimeout);
 name_claim_bid_timeout(_Name, _Protocol) ->
     0.
 
+-spec name_claim_bid_extension(binary(), non_neg_integer()) -> non_neg_integer().
+name_claim_bid_extension(Name, Protocol) when Protocol < ?CERES_PROTOCOL_VSN ->
+    name_claim_bid_timeout(Name, Protocol);
+name_claim_bid_extension(Name, _Protocol) ->
+    NameSize = name_claim_size(Name),
+    MaxAuctionName = name_max_length_starting_auction(),
+    if NameSize =< MaxAuctionName ->  12 * ?MULTIPLIER_HOUR;  %% 240 blocks
+       true                       ->  0
+    end.
+
+%% New/Higher bid has to be at least `name_claim_bid_increment()`% larger
 name_claim_bid_increment() ->
     5. %% 5%
 
