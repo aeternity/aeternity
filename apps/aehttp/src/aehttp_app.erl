@@ -19,14 +19,14 @@
 
 -define(DEFAULT_HTTP_ACCEPTORS, 10).
 
--define(DEFAULT_WEBSOCKET_INTERNAL_PORT, 8144).
--define(DEFAULT_WEBSOCKET_LISTEN_ADDRESS, <<"127.0.0.1">>).
-
 -define(DEFAULT_CHANNEL_WEBSOCKET_PORT, 8044).
 -define(DEFAULT_CHANNEL_WEBSOCKET_LISTEN_ADDRESS, <<"127.0.0.1">>).
 -define(DEFAULT_CHANNEL_ACCEPTORS, 10).
 
 -define(MAX_REQUEST_LINE_LENGTH, 1024).
+% 6M gas per microblock/tx / 20 gas per byte = 300kB
+% 400k after encoding
+-define(DEFAULT_MAX_SKIP_BODY_LENGTH, 440000).
 
 %% Application callbacks
 -export([start/2, stop/1]).
@@ -140,7 +140,6 @@ start_http_api(Target, LogicHandler) ->
 
     Paths = aehttp_api_router:get_paths(Target, LogicHandler),
     Dispatch = cowboy_router:compile([{'_', Paths}]),
-
     Opts = #{ num_acceptors => PoolSize
             , socket_opts => [ {port, Port}
                              , {ip, ListenAddress} ]
@@ -148,6 +147,7 @@ start_http_api(Target, LogicHandler) ->
     Env = #{env => #{dispatch => Dispatch},
             idle_timeout => 480000,
             max_request_line_length => ?MAX_REQUEST_LINE_LENGTH,
+            max_skip_body_length => get_http_max_skip_body_length(),
             middlewares => [aehttp_cors_middleware,
                             cowboy_router,
                             cowboy_handler]},
@@ -169,7 +169,8 @@ start_channel_websocket() ->
                              , {ip, ListenAddress} ]
             },
     Env = #{ env => #{dispatch => Dispatch}
-           , max_request_line_length => ?MAX_REQUEST_LINE_LENGTH},
+           , max_request_line_length => ?MAX_REQUEST_LINE_LENGTH
+           , max_skip_body_length => get_http_max_skip_body_length()},
     lager:debug("Opts = ~p", [Opts]),
     {ok, _} = cowboy:start_clear(channels_socket, Opts, Env),
     ok.
@@ -178,6 +179,10 @@ get_and_parse_ip_address_from_config_or_env(CfgKey, App, EnvKey, Default) ->
     Config = aeu_env:config_value(CfgKey, App, EnvKey, Default),
     {ok, IpAddress} = inet:parse_address(binary_to_list(Config)),
     IpAddress.
+
+get_http_max_skip_body_length() ->
+    aeu_env:config_value([<<"http">>, <<"protocol_options">>, <<"max_skip_body_length">>],
+                         aehttp, [protocol_options, max_skip_body_length], ?DEFAULT_MAX_SKIP_BODY_LENGTH).
 
 get_http_api_acceptors(external) ->
     aeu_env:config_value([<<"http">>, <<"external">>, <<"acceptors">>],
