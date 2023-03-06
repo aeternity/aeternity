@@ -23,7 +23,6 @@
 -define(DEFAULT_CHANNEL_WEBSOCKET_LISTEN_ADDRESS, <<"127.0.0.1">>).
 -define(DEFAULT_CHANNEL_ACCEPTORS, 10).
 
--define(MAX_REQUEST_LINE_LENGTH, 1024).
 % 6M gas per microblock/tx / 20 gas per byte = 300kB
 % 400k after encoding
 -define(DEFAULT_MAX_SKIP_BODY_LENGTH, 440000).
@@ -146,7 +145,6 @@ start_http_api(Target, LogicHandler) ->
             },
     Env = #{env => #{dispatch => Dispatch},
             idle_timeout => 480000,
-            max_request_line_length => ?MAX_REQUEST_LINE_LENGTH,
             max_skip_body_length => get_http_max_skip_body_length(),
             middlewares => [aehttp_cors_middleware,
                             cowboy_router,
@@ -169,7 +167,6 @@ start_channel_websocket() ->
                              , {ip, ListenAddress} ]
             },
     Env = #{ env => #{dispatch => Dispatch}
-           , max_request_line_length => ?MAX_REQUEST_LINE_LENGTH
            , max_skip_body_length => get_http_max_skip_body_length()},
     lager:debug("Opts = ~p", [Opts]),
     {ok, _} = cowboy:start_clear(channels_socket, Opts, Env),

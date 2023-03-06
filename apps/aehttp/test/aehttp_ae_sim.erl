@@ -37,7 +37,6 @@ start_cowboy(Name, Port) ->
             {ip, {127,0,0,1}},
             {num_acceptors, 3}],
     Env = #{env => #{dispatch => Dispatch},
-            max_request_line_length => 1024,
             max_skip_body_length => 440000,
             middlewares => [aehttp_cors_middleware,
                             cowboy_router,
