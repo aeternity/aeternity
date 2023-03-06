@@ -403,7 +403,7 @@ jobs:
       context:
         - ae-slack
         - ae-dockerhub
-      tag: latest
+      tag: latest-bundle
       manifest_list: >-
         $CIRCLE_TAG-bundle-amd64
         $CIRCLE_TAG-bundle-arm64
