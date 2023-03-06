@@ -23,9 +23,8 @@
 -define(DEFAULT_CHANNEL_WEBSOCKET_LISTEN_ADDRESS, <<"127.0.0.1">>).
 -define(DEFAULT_CHANNEL_ACCEPTORS, 10).
 
-% 6M gas per microblock/tx / 20 gas per byte = 300kB
-% 400k after encoding
--define(DEFAULT_MAX_SKIP_BODY_LENGTH, 440000).
+% cowboy default
+-define(DEFAULT_MAX_SKIP_BODY_LENGTH, 1000000).
 
 %% Application callbacks
 -export([start/2, stop/1]).
