@@ -703,8 +703,8 @@ wait_for_tx_in_pool(Node, Tx) ->
     wait_for_tx_in_pool(Node, Tx, 5000).
 
 wait_for_tx_in_pool(Node, SignedTx, Timeout) ->
-    true = rpc:call(Node, aec_events, subscribe , [tx_created]),
-    true = rpc:call(Node, aec_events, subscribe , [tx_received]),
+    ok = subscribe(Node, tx_created),
+    ok = subscribe(Node, tx_received),
     Hash = aetx_sign:hash(SignedTx),
     case rpc:call(Node, aec_chain, find_tx_location, [Hash]) of
         mempool -> ok;
@@ -720,8 +720,8 @@ wait_for_tx_in_pool(Node, SignedTx, Timeout) ->
                             "~p", [SignedTx, process_info(self(), messages)]),
                     error({timeout_waiting_for_tx, SignedTx})
             end,
-            rpc:call(Node, aec_events, unsubscribe , [tx_created]),
-            rpc:call(Node, aec_events, unsubscribe , [tx_received])
+	    ok = unsubscribe(Node, tx_created),
+	    ok = unsubscribe(Node, tx_received)
     end.
 
 mine_blocks_until_txs_on_chain(Node, TxHashes, MaxBlocks) ->
@@ -897,9 +897,9 @@ wait_for_height(Node, Height) ->
 
 wait_for_height(Node, Height, TimeoutPerBlock) ->
     flush_new_blocks_produced(),
-    subscribe(Node, top_changed),
+    ok = subscribe(Node, top_changed),
     ok = wait_for_height_(Node, Height, TimeoutPerBlock),
-    unsubscribe(Node, top_changed),
+    ok = unsubscribe(Node, top_changed),
     ok.
 
 wait_for_height_(Node, Height, TimeoutPerBlock) ->
@@ -1216,7 +1216,7 @@ await_aehttp(N) ->
     await_app(N, aehttp).
 
 await_app(N, App) ->
-    subscribe(N, app_started),
+    ok = subscribe(N, app_started),
     Events = events_since(N, app_started, 0),
     ct:log("`app_started` Events since 0: ~p", [Events]),
     case [true || #{info := A} <- Events, A == App] of
@@ -1232,7 +1232,7 @@ await_app(N, App) ->
             ct:log("~p already started", [App]),
             ok
     end,
-    unsubscribe(N, app_started),
+    ok = unsubscribe(N, app_started),
     ok.
 
 setup_node(N, Top, Root, Config) ->
@@ -1643,7 +1643,7 @@ proxy_loop(Subs, Events) ->
                             proxy_loop([{From, Event}|Subs], Events);
                         false ->
                             case catch aec_events:subscribe(Event) of
-                                ok ->
+                                true ->
                                     From ! {Ref, ok},
                                     proxy_loop(
                                       [{From, Event}|
@@ -1936,8 +1936,8 @@ mine_safe_setup(Node, MiningRate, Opts, LoopFun) ->
     _ = flush_new_blocks(), %% flush potential hanging message queue messages
 
     %% Start mining
-    subscribe(Node, block_created),
-    subscribe(Node, micro_block_created),
+    ok = subscribe(Node, block_created),
+    ok = subscribe(Node, micro_block_created),
     StartRes = rpc:call(Node, aec_conductor, start_mining, [Opts], 5000),
     ct:log("aec_conductor:start_mining(~p) (~p) -> ~p", [Opts, Node, StartRes]),
 
@@ -1947,8 +1947,8 @@ mine_safe_setup(Node, MiningRate, Opts, LoopFun) ->
     %% Stop mining
     StopRes = rpc:call(Node, aec_conductor, stop_mining, [], 5000),
     ct:log("aec_conductor:stop_mining() (~p) -> ~p", [Node, StopRes]),
-    unsubscribe(Node, block_created),
-    unsubscribe(Node, micro_block_created),
+    ok = unsubscribe(Node, block_created),
+    ok = unsubscribe(Node, micro_block_created),
 
     %% Ensure we are not mining after we've stopped
     stopped = rpc:call(Node, aec_conductor, get_mining_state, [], 5000),
