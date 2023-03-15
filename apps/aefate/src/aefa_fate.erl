@@ -290,23 +290,13 @@ loop(Instructions, EngineState) ->
             loop(NewInstructions, State2)
     end.
 
-step([], EngineState) ->
-    %% TODO check BB + 1 exists.
-    BB = aefa_engine_state:current_bb(EngineState) + 1,
-    {jump, BB, EngineState};
-step([I|Is], EngineState0) ->
-    ES = ?trace(I, EngineState0),
-    try aefa_fate_eval:eval(I, ES) of
-        {next, NewState} -> break_or_step(Is, NewState);
-        {jump,_BB,_NewState} = Res -> Res;
-        {stop, _NewState} = Res -> Res
-    catch
-        throw:{?MODULE, _, _} = Err ->
-            catch_protected(Err, EngineState0);
-        throw:{?MODULE, revert, _, _} = Err ->
-            catch_protected(Err, EngineState0)
-    end.
+-ifdef(DEBUG_INFO).
+-define(STEP(Is, ES), break_or_step(Is, ES)).
+-else.
+-define(STEP(Is, ES), step(Is, ES)).
+-endif.
 
+-ifdef(DEBUG_INFO).
 break_or_step(Is, ES) ->
     case aefa_engine_state:debugger_status(ES) of
         break ->
@@ -315,6 +305,24 @@ break_or_step(Is, ES) ->
             {break, aefa_engine_state:set_skip_instructions(InstructionsSkip, ES)};
         _ ->
             step(Is, ES)
+    end.
+-endif.
+
+step([], EngineState) ->
+    %% TODO check BB + 1 exists.
+    BB = aefa_engine_state:current_bb(EngineState) + 1,
+    {jump, BB, EngineState};
+step([I|Is], EngineState0) ->
+    ES = ?trace(I, EngineState0),
+    try aefa_fate_eval:eval(I, ES) of
+        {next, NewState} -> ?STEP(Is, NewState);
+        {jump,_BB,_NewState} = Res -> Res;
+        {stop, _NewState} = Res -> Res
+    catch
+        throw:{?MODULE, _, _} = Err ->
+            catch_protected(Err, EngineState0);
+        throw:{?MODULE, revert, _, _} = Err ->
+            catch_protected(Err, EngineState0)
     end.
 
 catch_protected(Err, ES) ->
