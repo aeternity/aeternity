@@ -3025,6 +3025,7 @@ gt_to_emcl(X1, X2, X3, X4, X5, X6, X7, X8, X9, X10, X11, X12) ->
                emcl:mk_Fp(X5), emcl:mk_Fp(X6), emcl:mk_Fp(X7), emcl:mk_Fp(X8),
                emcl:mk_Fp(X9), emcl:mk_Fp(X10), emcl:mk_Fp(X11), emcl:mk_Fp(X12)).
 
+-ifdef(DEBUG).
 dbg_loc({immediate, File}, {immediate, Line}, EngineState0) ->
     case aefa_engine_state:debugger_status(EngineState0) of
         disabled ->
@@ -3042,3 +3043,4 @@ dbg_def({immediate, VarName}, Reg, EngineState) ->
 
 dbg_undef({immediate, VarName}, Reg, EngineState) ->
     aefa_engine_state:del_variable_register(VarName, Reg, EngineState).
+-endif.
