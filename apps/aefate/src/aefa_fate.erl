@@ -258,7 +258,7 @@ abort({auth_tx_type_not_handled, TxType}, ES) ->
 
 abort(E) -> throw({add_engine_state, E}).
 
--ifdef(DEBUG).
+-ifdef(DEBUG_INFO).
 execute(EngineState) ->
     Instructions = aefa_engine_state:current_bb_instructions(EngineState),
     %% Skip the instructions that were executed before the break
