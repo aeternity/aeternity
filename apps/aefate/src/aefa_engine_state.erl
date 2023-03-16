@@ -88,15 +88,14 @@
 
 %% Debug info getters
 -export([ breakpoints/1
-        , skip_instructions/1
+        , current_instruction/1
         , debugger_status/1
         , debugger_location/1
         , dbg_call_stack/1
         ]).
 
 %% Debug info setters
--export([ set_skip_instructions/2
-        , set_debugger_status/2
+-export([ set_debugger_status/2
         , set_debugger_location/2
         ]).
 
@@ -105,6 +104,8 @@
         , add_variable_register/3
         , del_variable_register/3
         , get_variable_register/2
+        , inc_current_instruction/1
+        , reset_current_instruction/1
         , debugger_resume/1
         ]).
 
@@ -128,12 +129,12 @@
 -type void_or_fate() :: ?FATE_VOID | aeb_fate_data:fate_type().
 -type pubkey() :: <<_:256>>.
 
--record(debug_info, { status = continue     :: debugger_status()
-                    , location = none       :: debugger_location()
-                    , breakpoints = []      :: list()
-                    , skip_instructions = 0 :: integer()
-                    , vars_registers = #{}  :: map()
-                    , call_stack = []       :: [{string(), pos_integer()}]
+-record(debug_info, { status = continue       :: debugger_status()
+                    , location = none         :: debugger_location()
+                    , breakpoints = []        :: list()
+                    , current_instruction = 0 :: integer()
+                    , vars_registers = #{}    :: map()
+                    , call_stack = []         :: [{string(), pos_integer()}]
                     }).
 
 -type debug_info() :: #debug_info{}.
@@ -932,13 +933,17 @@ breakpoints(#es{debug_info = #debug_info{breakpoints = Breakpoints}}) ->
 
 %%%------------------
 
--spec skip_instructions(state()) -> integer().
-skip_instructions(#es{debug_info = #debug_info{skip_instructions = Skip}}) ->
-    Skip.
+-spec current_instruction(state()) -> integer().
+current_instruction(#es{debug_info = #debug_info{current_instruction = Current}}) ->
+    Current.
 
--spec set_skip_instructions(integer(), state()) -> state().
-set_skip_instructions(Skip, ES = #es{debug_info = DbgInfo}) ->
-    ES#es{debug_info = DbgInfo#debug_info{skip_instructions = Skip}}.
+-spec inc_current_instruction(state()) -> state().
+inc_current_instruction(ES = #es{debug_info = DbgInfo}) ->
+    ES#es{debug_info = DbgInfo#debug_info{current_instruction = DbgInfo#debug_info.current_instruction + 1}}.
+
+-spec reset_current_instruction(state()) -> state().
+reset_current_instruction(ES = #es{debug_info = DbgInfo}) ->
+    ES#es{debug_info = DbgInfo#debug_info{current_instruction = 0}}.
 
 %%%------------------
 

@@ -262,10 +262,9 @@ abort(E) -> throw({add_engine_state, E}).
 execute(EngineState) ->
     Instructions = aefa_engine_state:current_bb_instructions(EngineState),
     %% Skip the instructions that were executed before the break
-    Skip            = aefa_engine_state:skip_instructions(EngineState),
+    Skip            = aefa_engine_state:current_instruction(EngineState),
     DbgInstructions = lists:nthtail(Skip, Instructions),
-    DbgEngineState  = aefa_engine_state:set_skip_instructions(0, EngineState),
-    loop(DbgInstructions, DbgEngineState).
+    loop(DbgInstructions, EngineState).
 -else.
 execute(EngineState) ->
     Instructions = aefa_engine_state:current_bb_instructions(EngineState),
@@ -292,19 +291,18 @@ loop(Instructions, EngineState) ->
 
 -ifdef(DEBUG_INFO).
 -define(STEP(Is, ES), break_or_step(Is, ES)).
+-define(RESET_CURRENT_INSTRUCTION(State), aefa_engine_state:reset_current_instruction(State)).
 -else.
 -define(STEP(Is, ES), step(Is, ES)).
+-define(RESET_CURRENT_INSTRUCTION(State), State).
 -endif.
 
 -ifdef(DEBUG_INFO).
-break_or_step(Is, ES) ->
+break_or_step(Is, ES0) ->
+    ES = aefa_engine_state:inc_current_instruction(ES0),
     case aefa_engine_state:debugger_status(ES) of
-        break ->
-            InstructionsCount = length(aefa_engine_state:current_bb_instructions(ES)),
-            InstructionsSkip = InstructionsCount - length(Is),
-            {break, aefa_engine_state:set_skip_instructions(InstructionsSkip, ES)};
-        _ ->
-            step(Is, ES)
+        break -> {break, ES};
+        _     -> step(Is, ES)
     end.
 -endif.
 
@@ -315,9 +313,9 @@ step([], EngineState) ->
 step([I|Is], EngineState0) ->
     ES = ?trace(I, EngineState0),
     try aefa_fate_eval:eval(I, ES) of
-        {next, NewState} -> ?STEP(Is, NewState);
-        {jump,_BB,_NewState} = Res -> Res;
-        {stop, _NewState} = Res -> Res
+        {next,     NewState} -> ?STEP(Is, NewState);
+        {jump, BB, NewState} -> {jump, BB, ?RESET_CURRENT_INSTRUCTION(NewState)};
+        {stop,     NewState} -> {stop,     ?RESET_CURRENT_INSTRUCTION(NewState)}
     catch
         throw:{?MODULE, _, _} = Err ->
             catch_protected(Err, EngineState0);
