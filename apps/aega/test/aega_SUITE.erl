@@ -737,8 +737,8 @@ ethereum_contract_call(_Cfg) ->
 %%% More realistic GA contract with a main/master account and
 %%% temporary signers
 %%%===================================================================
-mwt_auth_opts(Acc, Nonce) ->
-    #{ prep_fun => fun(TxHash) -> ?call(main_w_temp_auth, Acc, Nonce, TxHash) end }.
+mwt_auth_opts(Acc, Nonce, Prefix) ->
+    #{ prep_fun => fun(TxHash) -> ?call(main_w_temp_auth, Acc, Nonce, Prefix, TxHash) end }.
 
 account_lit(Acc) ->
     binary_to_list(aeser_api_encoder:encode(account_pubkey, Acc)).
@@ -747,14 +747,16 @@ account_lit(Acc) ->
 mwt_spend(_Cfg) ->
     state(aect_test_utils:new_state()),
     MinGP = aec_test_utils:min_gas_price(),
+    Prefix = <<"ASDF">>,
+    FatePrefix = "\"" ++ binary_to_list(Prefix) ++ "\"",
     GAAcc    = ?call(new_account, 1000000000 * MinGP),
     MainAcc  = ?call(new_account, 1000000000 * MinGP),
     OtherAcc = ?call(new_account, 1000000000 * MinGP),
-    {ok, _}  = ?call(attach, GAAcc, "ga_main_w_temporary", "authorize", [account_lit(MainAcc)]),
+    {ok, _}  = ?call(attach, GAAcc, "ga_main_w_temporary", "authorize", [account_lit(MainAcc), FatePrefix]),
 
     PreBalance = ?call(account_balance, OtherAcc),
     {ok, #{tx_res := ok}} =
-        ?call(ga_spend, GAAcc, mwt_auth_opts(MainAcc, "1"), OtherAcc, 500, 20000 * MinGP),
+        ?call(ga_spend, GAAcc, mwt_auth_opts(MainAcc, "1", Prefix), OtherAcc, 500, 20000 * MinGP),
     PostBalance = ?call(account_balance, OtherAcc),
     ?assertMatch({X, Y} when X + 500 == Y, {PreBalance, PostBalance}),
 
@@ -764,18 +766,31 @@ mwt_spend(_Cfg) ->
 mwt_temp_spend(_Cfg) ->
     state(aect_test_utils:new_state()),
     MinGP = aec_test_utils:min_gas_price(),
+    Prefix = <<"ASDF">>,
+    FatePrefix = "\"" ++ binary_to_list(Prefix) ++ "\"",
     GAAcc    = ?call(new_account, 1000000000 * MinGP),
     MainAcc  = ?call(new_account, 1000000000 * MinGP),
     TempAcc  = ?call(new_account, 1000000000 * MinGP),
     OtherAcc = ?call(new_account, 1000000000 * MinGP),
-    {ok, #{ct := GACt}}  = ?call(attach, GAAcc, "ga_main_w_temporary", "authorize", [account_lit(MainAcc)]),
+    {ok, #{ct := GACt}} = ?call(attach, GAAcc, "ga_main_w_temporary", "authorize", [account_lit(MainAcc), FatePrefix]),
 
     {ok, #{call_res := ok}} =
-        ?call(ct_call, MainAcc, GACt, "ga_main_w_temporary", "add_validator", [account_lit(TempAcc), "Plain"], #{}),
+        ?call(ct_call, MainAcc, GACt, "ga_main_w_temporary", "add_trustee", [account_lit(TempAcc), "Plain"], #{}),
+
+    {ok, #{call_res := ok,
+           call_val := Val}} =
+        ?call(ct_call, MainAcc, GACt, "ga_main_w_temporary", "get_state", [], #{}),
+    {tuple,{{address, MainAcc},
+            #{{address, TempAcc} := {variant,[0,1,1],0,{}}}, %% Trustees
+            {variant,[0,1], 1, {{tuple,{2000000000000000,1000000000000}}}}, %% fee protection
+            1, %% Nonce
+            Prefix
+            }} = 
+        decode_call_result("ga_main_w_temporary", "get_state", ok, Val),
 
     PreBalance = ?call(account_balance, OtherAcc),
     {ok, #{tx_res := ok}} =
-        ?call(ga_spend, GAAcc, mwt_auth_opts(TempAcc, "1"), OtherAcc, 500, 20000 * MinGP),
+        ?call(ga_spend, GAAcc, mwt_auth_opts(TempAcc, "1", Prefix), OtherAcc, 500, 20000 * MinGP),
     PostBalance = ?call(account_balance, OtherAcc),
     ?assertMatch({X, Y} when X + 500 == Y, {PreBalance, PostBalance}),
 
@@ -785,23 +800,25 @@ mwt_temp_spend(_Cfg) ->
 mwt_neg_temp_spend(_Cfg) ->
     state(aect_test_utils:new_state()),
     MinGP = aec_test_utils:min_gas_price(),
+    Prefix = <<"ASDF">>,
+    FatePrefix = "\"" ++ binary_to_list(Prefix) ++ "\"",
     GAAcc    = ?call(new_account, 1000000000 * MinGP),
     MainAcc  = ?call(new_account, 1000000000 * MinGP),
     TempAcc  = ?call(new_account, 1000000000 * MinGP),
     OtherAcc = ?call(new_account, 1000000000 * MinGP),
-    {ok, #{ct := GACt}}  = ?call(attach, GAAcc, "ga_main_w_temporary", "authorize", [account_lit(MainAcc)]),
+    {ok, #{ct := GACt}} = ?call(attach, GAAcc, "ga_main_w_temporary", "authorize", [account_lit(MainAcc), FatePrefix]),
 
     {ok, #{call_res := ok}} =
-        ?call(ct_call, MainAcc, GACt, "ga_main_w_temporary", "add_validator", [account_lit(TempAcc), "Plain"], #{}),
+        ?call(ct_call, MainAcc, GACt, "ga_main_w_temporary", "add_trustee", [account_lit(TempAcc), "Plain"], #{}),
 
     {ok, #{tx_res := ok}} =
-        ?call(ga_spend, GAAcc, mwt_auth_opts(TempAcc, "1"), OtherAcc, 500, 20000 * MinGP),
+        ?call(ga_spend, GAAcc, mwt_auth_opts(TempAcc, "1", Prefix), OtherAcc, 500, 20000 * MinGP),
 
     {ok, #{call_res := ok}} =
-        ?call(ct_call, MainAcc, GACt, "ga_main_w_temporary", "remove_validator", [account_lit(TempAcc)], #{}),
+        ?call(ct_call, MainAcc, GACt, "ga_main_w_temporary", "remove_trustee", [account_lit(TempAcc)], #{}),
 
     {failed, authentication_failed} =
-        ?call(ga_spend, GAAcc, mwt_auth_opts(TempAcc, "2"), OtherAcc, 500, 20000 * MinGP, #{fail => true}),
+        ?call(ga_spend, GAAcc, mwt_auth_opts(TempAcc, "2", Prefix), OtherAcc, 500, 20000 * MinGP, #{fail => true}),
 
     ok.
 
@@ -809,24 +826,26 @@ mwt_neg_temp_spend(_Cfg) ->
 mwt_temp_multi_spend(_Cfg) ->
     state(aect_test_utils:new_state()),
     MinGP = aec_test_utils:min_gas_price(),
+    Prefix = <<"ASDF">>,
+    FatePrefix = "\"" ++ binary_to_list(Prefix) ++ "\"",
     GAAcc    = ?call(new_account, 1000000000 * MinGP),
     MainAcc  = ?call(new_account, 1000000000 * MinGP),
     TempAcc1 = ?call(new_account, 1000000000 * MinGP),
     TempAcc2 = ?call(new_account, 1000000000 * MinGP),
     OtherAcc = ?call(new_account, 1000000000 * MinGP),
-    {ok, #{ct := GACt}}  = ?call(attach, GAAcc, "ga_main_w_temporary", "authorize", [account_lit(MainAcc)]),
+    {ok, #{ct := GACt}} = ?call(attach, GAAcc, "ga_main_w_temporary", "authorize", [account_lit(MainAcc), FatePrefix]),
 
     {ok, #{call_res := ok}} =
-        ?call(ct_call, MainAcc, GACt, "ga_main_w_temporary", "add_validator", [account_lit(TempAcc1), "Plain"], #{}),
+        ?call(ct_call, MainAcc, GACt, "ga_main_w_temporary", "add_trustee", [account_lit(TempAcc1), "Plain"], #{}),
     {ok, #{call_res := ok}} =
-        ?call(ct_call, MainAcc, GACt, "ga_main_w_temporary", "add_validator", [account_lit(TempAcc2), "Plain"], #{}),
+        ?call(ct_call, MainAcc, GACt, "ga_main_w_temporary", "add_trustee", [account_lit(TempAcc2), "Plain"], #{}),
 
     {ok, #{tx_res := ok}} =
-        ?call(ga_spend, GAAcc, mwt_auth_opts(TempAcc2, "1"), OtherAcc, 500, 20000 * MinGP),
+        ?call(ga_spend, GAAcc, mwt_auth_opts(TempAcc2, "1", Prefix), OtherAcc, 500, 20000 * MinGP),
     {ok, #{tx_res := ok}} =
-        ?call(ga_spend, GAAcc, mwt_auth_opts(TempAcc1, "2"), OtherAcc, 500, 20000 * MinGP),
+        ?call(ga_spend, GAAcc, mwt_auth_opts(TempAcc1, "2", Prefix), OtherAcc, 500, 20000 * MinGP),
     {ok, #{tx_res := ok}} =
-        ?call(ga_spend, GAAcc, mwt_auth_opts(TempAcc2, "3"), OtherAcc, 500, 20000 * MinGP),
+        ?call(ga_spend, GAAcc, mwt_auth_opts(TempAcc2, "3", Prefix), OtherAcc, 500, 20000 * MinGP),
 
     ok.
 
@@ -834,21 +853,23 @@ mwt_temp_multi_spend(_Cfg) ->
 mwt_temp_n_spend(_Cfg) ->
     state(aect_test_utils:new_state()),
     MinGP = aec_test_utils:min_gas_price(),
+    Prefix = <<"ASDF">>,
+    FatePrefix = "\"" ++ binary_to_list(Prefix) ++ "\"",
     GAAcc    = ?call(new_account, 1000000000 * MinGP),
     MainAcc  = ?call(new_account, 1000000000 * MinGP),
     TempAcc = ?call(new_account, 1000000000 * MinGP),
     OtherAcc = ?call(new_account, 1000000000 * MinGP),
-    {ok, #{ct := GACt}}  = ?call(attach, GAAcc, "ga_main_w_temporary", "authorize", [account_lit(MainAcc)]),
+    {ok, #{ct := GACt}} = ?call(attach, GAAcc, "ga_main_w_temporary", "authorize", [account_lit(MainAcc), FatePrefix]),
 
     {ok, #{call_res := ok}} =
-        ?call(ct_call, MainAcc, GACt, "ga_main_w_temporary", "add_validator", [account_lit(TempAcc), "NBound(2)"], #{}),
+        ?call(ct_call, MainAcc, GACt, "ga_main_w_temporary", "add_trustee", [account_lit(TempAcc), "NBound(2)"], #{}),
 
     {ok, #{tx_res := ok}} =
-        ?call(ga_spend, GAAcc, mwt_auth_opts(TempAcc, "1"), OtherAcc, 500, 20000 * MinGP),
+        ?call(ga_spend, GAAcc, mwt_auth_opts(TempAcc, "1", Prefix), OtherAcc, 500, 20000 * MinGP),
     {ok, #{tx_res := ok}} =
-        ?call(ga_spend, GAAcc, mwt_auth_opts(TempAcc, "2"), OtherAcc, 500, 20000 * MinGP),
+        ?call(ga_spend, GAAcc, mwt_auth_opts(TempAcc, "2", Prefix), OtherAcc, 500, 20000 * MinGP),
     {failed, authentication_failed} =
-        ?call(ga_spend, GAAcc, mwt_auth_opts(TempAcc, "3"), OtherAcc, 500, 20000 * MinGP, #{fail => true}),
+        ?call(ga_spend, GAAcc, mwt_auth_opts(TempAcc, "3", Prefix), OtherAcc, 500, 20000 * MinGP, #{fail => true}),
 
     ok.
 
@@ -856,21 +877,23 @@ mwt_temp_n_spend(_Cfg) ->
 mwt_temp_height_spend(_Cfg) ->
     state(aect_test_utils:new_state()),
     MinGP = aec_test_utils:min_gas_price(),
+    Prefix = <<"\"ASDF\"">>,
+    FatePrefix = "\"" ++ binary_to_list(Prefix) ++ "\"",
     GAAcc    = ?call(new_account, 1000000000 * MinGP),
     MainAcc  = ?call(new_account, 1000000000 * MinGP),
     TempAcc = ?call(new_account, 1000000000 * MinGP),
     OtherAcc = ?call(new_account, 1000000000 * MinGP),
-    {ok, #{ct := GACt}}  = ?call(attach, GAAcc, "ga_main_w_temporary", "authorize", [account_lit(MainAcc)]),
+    {ok, #{ct := GACt}} = ?call(attach, GAAcc, "ga_main_w_temporary", "authorize", [account_lit(MainAcc), FatePrefix]),
 
     {ok, #{call_res := ok}} =
-        ?call(ct_call, MainAcc, GACt, "ga_main_w_temporary", "add_validator", [account_lit(TempAcc), "TimeBound(10)"], #{}),
+        ?call(ct_call, MainAcc, GACt, "ga_main_w_temporary", "add_trustee", [account_lit(TempAcc), "TimeBound(10)"], #{}),
 
     {ok, #{tx_res := ok}} =
-        ?call(ga_spend, GAAcc, mwt_auth_opts(TempAcc, "1"), OtherAcc, 500, 20000 * MinGP),
+        ?call(ga_spend, GAAcc, mwt_auth_opts(TempAcc, "1", Prefix), OtherAcc, 500, 20000 * MinGP),
     {ok, #{tx_res := ok}} =
-        ?call(ga_spend, GAAcc, mwt_auth_opts(TempAcc, "2"), OtherAcc, 500, 20000 * MinGP),
+        ?call(ga_spend, GAAcc, mwt_auth_opts(TempAcc, "2", Prefix), OtherAcc, 500, 20000 * MinGP),
     {failed, authentication_failed} =
-        ?call(ga_spend, GAAcc, mwt_auth_opts(TempAcc, "3"), OtherAcc, 500, 20000 * MinGP, #{height => 11, fail => true}),
+        ?call(ga_spend, GAAcc, mwt_auth_opts(TempAcc, "3", Prefix), OtherAcc, 500, 20000 * MinGP, #{height => 11, fail => true}),
 
     ok.
 
@@ -878,20 +901,22 @@ mwt_temp_height_spend(_Cfg) ->
 mwt_neg_master_actions(_Cfg) ->
     state(aect_test_utils:new_state()),
     MinGP = aec_test_utils:min_gas_price(),
+    Prefix = <<"ASDF">>,
+    FatePrefix = "\"" ++ binary_to_list(Prefix) ++ "\"",
     GAAcc    = ?call(new_account, 1000000000 * MinGP),
     MainAcc  = ?call(new_account, 1000000000 * MinGP),
     TempAcc  = ?call(new_account, 1000000000 * MinGP),
     OtherAcc = ?call(new_account, 1000000000 * MinGP),
-    {ok, #{ct := GACt}}  = ?call(attach, GAAcc, "ga_main_w_temporary", "authorize", [account_lit(MainAcc)]),
+    {ok, #{ct := GACt}} = ?call(attach, GAAcc, "ga_main_w_temporary", "authorize", [account_lit(MainAcc), FatePrefix]),
 
     {ok, #{call_res := ok}} =
-        ?call(ct_call, MainAcc, GACt, "ga_main_w_temporary", "add_validator", [account_lit(TempAcc), "TimeBound(10)"], #{}),
+        ?call(ct_call, MainAcc, GACt, "ga_main_w_temporary", "add_trustee", [account_lit(TempAcc), "TimeBound(10)"], #{}),
 
     {ok, #{call_res := revert, call_val := <<"=Only for master">>}} =
-        ?call(ct_call, TempAcc, GACt, "ga_main_w_temporary", "add_validator", [account_lit(OtherAcc), "TimeBound(10)"]),
+        ?call(ct_call, TempAcc, GACt, "ga_main_w_temporary", "add_trustee", [account_lit(OtherAcc), "TimeBound(10)"]),
 
     {ok, #{call_res := revert, call_val := <<"=Only for master">>}} =
-        ?call(ct_call, TempAcc, GACt, "ga_main_w_temporary", "remove_validator", [account_lit(OtherAcc)]),
+        ?call(ct_call, TempAcc, GACt, "ga_main_w_temporary", "remove_trustee", [account_lit(OtherAcc)]),
 
     {ok, #{call_res := revert, call_val := <<"=Only for master">>}} =
         ?call(ct_call, TempAcc, GACt, "ga_main_w_temporary", "set_fee_protection", ["None"]),
@@ -1875,7 +1900,7 @@ call_tx_default() ->
      , abi_version => abi_version()
      , fee         => 500000 * aec_test_utils:min_gas_price()
      , amount      => 0
-     , gas         => 10000 }.
+     , gas         => 30000 }.
 
 paying_for_tx(Payer, Nonce, Fee, Tx) ->
     {ok, PayingTx} =
@@ -2044,9 +2069,15 @@ ethereum_auth(_GA, Nonce, TxHash, S) ->
     Sig  = aega_test_utils:to_hex_lit(65, Sig2),
     {aega_test_utils:make_calldata("ethereum_auth", "authorize", [Nonce, Sig]), S}.
 
-main_w_temp_auth(Acc, Nonce, TxHash, S) ->
+main_w_temp_auth(Acc, NonceStr, Prefix, TxHash, S) when is_list(NonceStr) ->
+    main_w_temp_auth(Acc, list_to_integer(NonceStr), Prefix, TxHash, S);
+main_w_temp_auth(Acc, Nonce, Prefix, TxHash, S) ->
     AccPrivKey = aect_test_utils:priv_key(Acc, S),
-    Sign = aega_test_utils:basic_auth_sign(list_to_integer(Nonce), TxHash, AccPrivKey),
-
-    Args = [Nonce, account_lit(Acc), aega_test_utils:to_hex_lit(64, Sign)],
+    Val = case aega_SUITE:abi_version() of
+              ?ABI_AEVM_SOPHIA_1 -> <<32:256, Prefix/binary, TxHash/binary, Nonce:256>>;
+              ?ABI_FATE_SOPHIA_1 -> aeb_fate_encoding:serialize({tuple,
+                                                                 {Prefix, {bytes, TxHash}, Nonce}})
+          end,
+    Sign = enacl:sign_detached(aec_hash:hash(tx, Val), AccPrivKey),
+    Args = [integer_to_list(Nonce), account_lit(Acc), aega_test_utils:to_hex_lit(64, Sign)],
     {aega_test_utils:make_calldata("ga_main_w_temporary", "authorize", Args), S}.

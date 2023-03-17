@@ -7,7 +7,7 @@
 @compiler >= 5
 
 main contract GAMainWTemporary =
-  datatype validator
+  datatype trustee
     = Plain
     | TimeBound(int)
     | NBound(int)
@@ -18,15 +18,17 @@ main contract GAMainWTemporary =
 
   record state =
     { master : address,
-      validators : map(address, validator),
+      trustees : map(address, trustee),
       fee_protection : option(meta_tx_protection),
-      nonce : int }
+      nonce : int,
+      prefix : string }
 
-  entrypoint init(master : address) =
+  entrypoint init(master : address, prefix : string) =
     { master = master,
-      validators = {},
+      trustees = {},
       fee_protection = Some({max_fee = 2_000_000_000_000_000, max_gasprice = 1_000_000_000_000}),
-      nonce = 1 }
+      nonce = 1,
+      prefix = prefix }
 
   stateful entrypoint authorize(n : int, signer : address, sig : signature) : bool =
     require(n >= state.nonce, "Nonce too low")
@@ -40,22 +42,25 @@ main contract GAMainWTemporary =
       Some(tx_hash) =>
         Crypto.verify_sig(to_sign(tx_hash, n), signer, sig)
 
-  stateful entrypoint add_validator(signer : address, validator : validator) =
+  stateful entrypoint add_trustee(signer : address, trustee : trustee) =
     require(Call.caller == state.master, "Only for master")
-    put(state{ validators[signer] = validator })
+    put(state{ trustees[signer] = trustee })
 
-  stateful entrypoint remove_validator(signer : address) =
+  stateful entrypoint remove_trustee(signer : address) =
     require(Call.caller == state.master, "Only for master")
-    put(state{ validators = Map.delete(signer, state.validators) })
+    put(state{ trustees = Map.delete(signer, state.trustees) })
 
-  entrypoint get_signer(signer) : option(validator) =
-    Map.lookup(signer, state.validators)
+  entrypoint get_signer(signer) : option(trustee) =
+    Map.lookup(signer, state.trustees)
 
   entrypoint get_nonce() : int =
     state.nonce
 
-  entrypoint get_validators() : list(address * validator) =
-    Map.to_list(state.validators)
+  entrypoint get_trustees() : list(address * trustee) =
+    Map.to_list(state.trustees)
+
+  entrypoint get_state(): state =
+    state
 
   stateful entrypoint set_fee_protection(fee_protection : option(meta_tx_protection)) =
     require(Call.caller == state.master, "Only for master")
@@ -65,27 +70,27 @@ main contract GAMainWTemporary =
     if (signer == state.master)
       true
     else
-      switch(Map.lookup(signer, state.validators))
+      switch(Map.lookup(signer, state.trustees))
         Some(Plain) =>
           true
         Some(TimeBound(height)) =>
           if(height < Chain.block_height)
-            put(state{ validators = Map.delete(signer, state.validators) })
+            put(state{ trustees = Map.delete(signer, state.trustees) })
             false
           else
             true
         Some(NBound(n)) | n > 1 =>
-          put(state{ validators[signer] = NBound(n - 1) })
+          put(state{ trustees[signer] = NBound(n - 1) })
           true
         Some(NBound(_)) =>
-          put(state{ validators = Map.delete(signer, state.validators) })
+          put(state{ trustees = Map.delete(signer, state.trustees) })
           true
         _ =>
           false
 
   // Static function, but useful with dry-run to create signing material
   entrypoint to_sign(tx_hash : hash, nonce : int) : hash =
-    Crypto.blake2b((tx_hash, nonce))
+    Crypto.blake2b((state.prefix, tx_hash, nonce))
 
   function fee_ok() =
     switch(state.fee_protection)
