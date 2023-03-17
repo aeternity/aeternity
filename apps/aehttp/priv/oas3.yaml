@@ -286,6 +286,7 @@ paths:
           required: true
           schema:
             type: integer
+            format: "bigint"
             minimum: 1
             example: 1
       responses:
@@ -819,6 +820,7 @@ paths:
           required: false
           schema:
             type: integer
+            format: "bigint"
             default: 20
             minimum: 1
             maximum: 1000
@@ -1801,6 +1803,7 @@ paths:
           required: true
           schema:
             type: integer
+            format: "bigint"
             minimum: 0
       responses:
         "200":
@@ -2066,29 +2069,34 @@ paths:
 components:
   schemas:
     UInt:
+      format: "bigint"
       oneOf:
         - type: integer
           minimum: 0
         - type: string
     UInt16:
+      format: "bigint"
       oneOf:
         - type: integer
           minimum: 0
           maximum: 65535
         - type: string
     UInt32:
+      format: "bigint"
       oneOf:
         - type: integer
           minimum: 0
           maximum: 4294967295
         - type: string
     UInt64:
+      format: "bigint"
       oneOf:
         - type: integer
           minimum: 0
           maximum: 18446744073709552000
         - type: string
     TxBlockHeight:
+      format: "bigint"
       oneOf:
         - type: integer
           minimum: -1
@@ -3784,6 +3792,7 @@ components:
       required: true
       schema:
         type: integer
+        format: "bigint"
         minimum: 0
         maximum: 18446744073709552000
         example: 42
