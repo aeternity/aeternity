@@ -309,7 +309,7 @@ break_or_step(Is, ES0) ->
 step([], EngineState) ->
     %% TODO check BB + 1 exists.
     BB = aefa_engine_state:current_bb(EngineState) + 1,
-    {jump, BB, EngineState};
+    {jump, BB, ?RESET_CURRENT_INSTRUCTION(EngineState)};
 step([I|Is], EngineState0) ->
     ES = ?trace(I, EngineState0),
     try aefa_fate_eval:eval(I, ES) of
