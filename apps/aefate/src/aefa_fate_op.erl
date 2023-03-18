@@ -3037,7 +3037,11 @@ dbg_loc({immediate, File}, {immediate, Line}, EngineState0) ->
         _ ->
             EngineState = aefa_engine_state:set_debugger_location({File, Line}, EngineState0),
             case lists:member({File, Line}, aefa_engine_state:breakpoints(EngineState)) of
-                true  -> aefa_engine_state:set_debugger_status(break, EngineState);
+                true  ->
+                    case aefa_engine_state:debugger_status(EngineState) of
+                        continue -> aefa_engine_state:set_debugger_status(break, EngineState);
+                        _        -> aefa_engine_state:debugger_resume(EngineState)
+                    end;
                 false -> aefa_engine_state:debugger_resume(EngineState)
             end
     end.
