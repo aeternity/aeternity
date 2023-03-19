@@ -193,6 +193,7 @@
 -export([ dbg_loc/3
         , dbg_def/3
         , dbg_undef/3
+        , dbg_contract/2
         ]).
 -endif.
 
@@ -3051,4 +3052,7 @@ dbg_def({immediate, VarName}, Reg, EngineState) ->
 
 dbg_undef({immediate, VarName}, Reg, EngineState) ->
     aefa_engine_state:del_variable_register(VarName, Reg, EngineState).
+
+dbg_contract({immediate, ContractName}, EngineState) ->
+    aefa_engine_state:name_current_contract(ContractName, EngineState).
 -endif.

@@ -107,6 +107,8 @@
         , inc_current_instruction/1
         , reset_current_instruction/1
         , debugger_resume/1
+        , get_contract_name/2
+        , name_current_contract/2
         ]).
 
 -ifdef(TEST).
@@ -135,6 +137,7 @@
                     , current_instruction = 0 :: integer()
                     , vars_registers = #{}    :: #{string() => list(tuple())}
                     , call_stack = []         :: [{string(), pos_integer()}]
+                    , contract_names = #{}    :: #{pubkey() => string()}
                     }).
 
 -type debug_info() :: #debug_info{}.
@@ -1014,3 +1017,12 @@ debugger_resume(ES = #es{debug_info = Info = #debug_info{status = {finish, Stack
     end;
 debugger_resume(ES) ->
     ES.
+
+%%%------------------
+
+get_contract_name(ContractPK, #es{debug_info = #debug_info{contract_names = ContractNames}}) ->
+    maps:get(ContractPK, ContractNames, ContractPK).
+
+name_current_contract(ContractName, ES = #es{debug_info = Info = #debug_info{contract_names = OldNames}}) ->
+    NewNames = OldNames#{current_contract(ES) => ContractName},
+    ES#es{debug_info = Info#debug_info{contract_names = NewNames}}.
