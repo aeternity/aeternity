@@ -125,7 +125,7 @@
 -include_lib("aecontract/include/aecontract.hrl").
 -include_lib("aecontract/include/hard_forks.hrl").
 
--type debugger_status() :: break | next | step | continue.
+-type debugger_status() :: break | stepover | stepin | continue.
 -type debugger_location() :: none | {string(), integer()}.
 
 -type void_or_fate() :: ?FATE_VOID | aeb_fate_data:fate_type().
@@ -1002,14 +1002,14 @@ get_variable_register(Var, #es{debug_info = #debug_info{vars_registers = VarsReg
 
 %%%------------------
 
-debugger_resume(ES = #es{debug_info = Info = #debug_info{status = step}}) ->
+debugger_resume(ES = #es{debug_info = Info = #debug_info{status = stepin}}) ->
     ES#es{debug_info = Info#debug_info{status = break}};
-debugger_resume(ES = #es{debug_info = Info = #debug_info{status = {next, Stack}}}) ->
+debugger_resume(ES = #es{debug_info = Info = #debug_info{status = {stepover, Stack}}}) ->
     case length(ES#es.call_stack) =< length(Stack) of
         true  -> ES#es{debug_info = Info#debug_info{status = break}};
         false -> ES
     end;
-debugger_resume(ES = #es{debug_info = Info = #debug_info{status = {finish, Stack}}}) ->
+debugger_resume(ES = #es{debug_info = Info = #debug_info{status = {stepout, Stack}}}) ->
     case length(ES#es.call_stack) < length(Stack) of
         true  ->
             ES#es{debug_info = Info#debug_info{status = break}};
