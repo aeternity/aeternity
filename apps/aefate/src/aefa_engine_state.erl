@@ -133,7 +133,7 @@
                     , location = none         :: debugger_location()
                     , breakpoints = []        :: list()
                     , current_instruction = 0 :: integer()
-                    , vars_registers = #{}    :: map()
+                    , vars_registers = #{}    :: #{string() => list(tuple())}
                     , call_stack = []         :: [{string(), pos_integer()}]
                     }).
 
