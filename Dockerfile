@@ -30,7 +30,7 @@ RUN ln -fs librocksdb.so.6.13.3 /usr/local/lib/librocksdb.so.6.13 \
 COPY --from=builder /app/_build/prod/rel/aeternity /home/aeternity/node
 
 # Aeternity app won't run as root for security reasons
-RUN useradd --shell /bin/bash aeternity \
+RUN useradd --uid 1000 --shell /bin/bash aeternity \
     && chown -R aeternity:aeternity /home/aeternity
 
 # Switch to non-root user
