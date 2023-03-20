@@ -262,7 +262,8 @@ abort(E) -> throw({add_engine_state, E}).
 execute(EngineState) ->
     Instructions = aefa_engine_state:current_bb_instructions(EngineState),
     %% Skip the instructions that were executed before the break
-    Skip            = aefa_engine_state:current_instruction(EngineState),
+    Info            = aefa_engine_state:debug_info(EngineState),
+    Skip            = aefa_debug:current_instruction(Info),
     DbgInstructions = lists:nthtail(Skip, Instructions),
     loop(DbgInstructions, EngineState).
 -else.
@@ -291,7 +292,7 @@ loop(Instructions, EngineState) ->
 
 -ifdef(DEBUG_INFO).
 -define(STEP(Is, ES), break_or_step(Is, ES)).
--define(RESET_CURRENT_INSTRUCTION(State), aefa_engine_state:reset_current_instruction(State)).
+-define(RESET_CURRENT_INSTRUCTION(State), reset_current_instruction(State)).
 -else.
 -define(STEP(Is, ES), step(Is, ES)).
 -define(RESET_CURRENT_INSTRUCTION(State), State).
@@ -299,11 +300,16 @@ loop(Instructions, EngineState) ->
 
 -ifdef(DEBUG_INFO).
 break_or_step(Is, ES0) ->
-    ES = aefa_engine_state:inc_current_instruction(ES0),
-    case aefa_engine_state:debugger_status(ES) of
+    Info = aefa_debug:inc_current_instruction(aefa_engine_state:debug_info(ES0)),
+    ES   = aefa_engine_state:set_debug_info(Info, ES0),
+    case aefa_debug:debugger_status(Info) of
         break -> {break, ES};
         _     -> step(Is, ES)
     end.
+
+reset_current_instruction(State) ->
+    Info = aefa_debug:reset_current_instruction(aefa_engine_state:debug_info(State)),
+    aefa_engine_state:set_debug_info(Info, State).
 -endif.
 
 step([], EngineState) ->

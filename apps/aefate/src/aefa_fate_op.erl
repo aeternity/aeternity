@@ -3031,28 +3031,32 @@ gt_to_emcl(X1, X2, X3, X4, X5, X6, X7, X8, X9, X10, X11, X12) ->
                emcl:mk_Fp(X9), emcl:mk_Fp(X10), emcl:mk_Fp(X11), emcl:mk_Fp(X12)).
 
 -ifdef(DEBUG_INFO).
-dbg_loc({immediate, File}, {immediate, Line}, EngineState0) ->
-    case aefa_engine_state:debugger_status(EngineState0) of
-        disabled ->
-            EngineState0;
-        _ ->
-            EngineState = aefa_engine_state:set_debugger_location({File, Line}, EngineState0),
-            case lists:member({File, Line}, aefa_engine_state:breakpoints(EngineState)) of
-                true  ->
-                    case aefa_engine_state:debugger_status(EngineState) of
-                        continue -> aefa_engine_state:set_debugger_status(break, EngineState);
-                        _        -> aefa_engine_state:debugger_resume(EngineState)
-                    end;
-                false -> aefa_engine_state:debugger_resume(EngineState)
-            end
-    end.
+dbg_loc({immediate, File}, {immediate, Line}, EngineState) ->
+    Info  = aefa_debug:set_debugger_location({File, Line}, aefa_engine_state:debug_info(EngineState)),
+    Stack = aefa_engine_state:call_stack(EngineState),
+    UpdatedStatus = 
+    case lists:member({File, Line}, aefa_debug:breakpoints(Info)) of
+        true  ->
+            case aefa_debug:debugger_status(Info) of
+                continue -> aefa_debug:set_debugger_status(break, Info);
+                _        -> aefa_debug:debugger_resume(Stack, Info)
+            end;
+        false ->
+            aefa_debug:debugger_resume(Stack, Info)
+    end,
+    aefa_engine_state:set_debug_info(UpdatedStatus, EngineState).
 
 dbg_def({immediate, VarName}, Reg, EngineState) ->
-    aefa_engine_state:add_variable_register(VarName, Reg, EngineState).
+    Info = aefa_debug:add_variable_register(VarName, Reg, aefa_engine_state:debug_info(EngineState)),
+    aefa_engine_state:set_debug_info(Info, EngineState).
 
 dbg_undef({immediate, VarName}, Reg, EngineState) ->
-    aefa_engine_state:del_variable_register(VarName, Reg, EngineState).
+    Info = aefa_debug:del_variable_register(VarName, Reg, aefa_engine_state:debug_info(EngineState)),
+    aefa_engine_state:set_debug_info(Info, EngineState).
 
 dbg_contract({immediate, ContractName}, EngineState) ->
-    aefa_engine_state:name_current_contract(ContractName, EngineState).
+    OldInfo    = aefa_engine_state:debug_info(EngineState),
+    ContractPK = aefa_engine_state:current_contract(EngineState),
+    Info       = aefa_debug:set_contract_name(ContractPK, ContractName, OldInfo),
+    aefa_engine_state:set_debug_info(Info, EngineState).
 -endif.

@@ -86,35 +86,16 @@
         , update_for_remote_call/5
         ]).
 
-%% Debug info getters
--export([ breakpoints/1
-        , current_instruction/1
-        , debugger_status/1
-        , debugger_location/1
-        , dbg_call_stack/1
-        ]).
-
-%% Debug info setters
--export([ set_debugger_status/2
-        , set_debugger_location/2
-        ]).
-
-%% Debug info functions
--export([ new_dbg/8
-        , add_variable_register/3
-        , del_variable_register/3
-        , get_variable_register/2
-        , inc_current_instruction/1
-        , reset_current_instruction/1
-        , debugger_resume/1
-        , get_contract_name/2
-        , name_current_contract/2
-        ]).
-
 -ifdef(TEST).
 -export([ add_trace/2
         , gas_traversal/4
         , cost/1
+        ]).
+-endif.
+
+-ifdef(DEBUG_INFO).
+-export([ debug_info/1
+        , set_debug_info/2
         ]).
 -endif.
 
@@ -125,22 +106,8 @@
 -include_lib("aecontract/include/aecontract.hrl").
 -include_lib("aecontract/include/hard_forks.hrl").
 
--type debugger_status() :: break | stepover | stepin | continue.
--type debugger_location() :: none | {string(), integer()}.
-
 -type void_or_fate() :: ?FATE_VOID | aeb_fate_data:fate_type().
 -type pubkey() :: <<_:256>>.
-
--record(debug_info, { status = continue       :: debugger_status()
-                    , location = none         :: debugger_location()
-                    , breakpoints = []        :: list()
-                    , current_instruction = 0 :: integer()
-                    , vars_registers = #{}    :: #{string() => list(tuple())}
-                    , call_stack = []         :: [{string(), pos_integer()}]
-                    , contract_names = #{}    :: #{pubkey() => string()}
-                    }).
-
--type debug_info() :: #debug_info{}.
 
 -record(es, { accumulator       :: void_or_fate()
             , accumulator_stack :: [aeb_fate_data:fate_type()]
@@ -165,7 +132,7 @@
             , stores            :: aefa_stores:store()
             , trace             :: list()
             , vm_version        :: non_neg_integer()
-            , debug_info        :: disabled | debug_info()
+            , debug_info        :: disabled | aefa_debug:debug_info()
             }).
 
 -opaque state() :: #es{}.
@@ -200,10 +167,6 @@ new(Gas, Value, Spec, Stores, APIState, CodeCache, VMVersion) ->
        , vm_version        = VMVersion
        , debug_info        = disabled
        }.
-
-new_dbg(Gas, Value, Spec, Stores, APIState, CodeCache, VMVersion, Breakpoints) ->
-    ES = new(Gas, Value, Spec, Stores, APIState, CodeCache, VMVersion),
-    ES#es{ debug_info = #debug_info{ breakpoints = Breakpoints } }.
 
 aefa_stores(#es{ chain_api = APIState }) ->
     Protocol = aetx_env:consensus_version(aefa_chain_api:tx_env(APIState)),
@@ -314,6 +277,14 @@ push_arguments([], Acc, Stack, ES) ->
 push_arguments([A|As], Acc, Stack, ES) ->
     push_arguments(As, A, [Acc | Stack], ES).
 
+-ifdef(DEBUG_INFO).
+-define(PUSH_DEBUG_CALL_STACK(Info), aefa_debug:push_call_stack(Info)).
+-define(POP_DEBUG_CALL_STACK(Info), aefa_debug:pop_call_stack(Info)).
+-else.
+-define(PUSH_DEBUG_CALL_STACK(Info), Info).
+-define(POP_DEBUG_CALL_STACK(Info), Info).
+-endif.
+
 -spec push_call_stack(state()) -> state().
 push_call_stack(#es{ current_bb = BB
                    , current_function = Function
@@ -331,13 +302,7 @@ push_call_stack(#es{ current_bb = BB
     ES#es{accumulator       = void,
           accumulator_stack = [],
           call_stack        = [{Caller, Contract, VmVersion, Function, TVars, BB + 1, AccS1, Mem, Value}|Stack],
-          debug_info        = push_debug_call_stack(DbgInfo)}.
-
--spec push_debug_call_stack(debug_info()) -> debug_info().
-push_debug_call_stack(disabled) ->
-    disabled;
-push_debug_call_stack(Info = #debug_info{location = Loc, call_stack = Stack}) ->
-    Info#debug_info{call_stack = [Loc | Stack]}.
+          debug_info        = ?PUSH_DEBUG_CALL_STACK(DbgInfo)}.
 
 %% TODO: Make better types for all these things
 -spec pop_call_stack(state()) ->
@@ -370,7 +335,7 @@ pop_call_stack(#es{accumulator = ReturnValue,
                   , accumulator_stack = AccS
                   , memory = Mem
                   , call_stack = Rest
-                  , debug_info = pop_debug_call_stack(DbgInfo)
+                  , debug_info = ?POP_DEBUG_CALL_STACK(DbgInfo)
                   }};
         [{Caller, Pubkey, VmVersion, Function, TVars, BB, AccS, Mem, Value}| Rest] ->
             Seen = pop_seen_contracts(Pubkey, ES),
@@ -391,17 +356,9 @@ pop_call_stack(#es{accumulator = ReturnValue,
                   , seen_contracts = Seen
                   , current_contract = NewCurrent
                   , vm_version = VmVersion
-                  , debug_info = pop_debug_call_stack(DbgInfo)
+                  , debug_info = ?POP_DEBUG_CALL_STACK(DbgInfo)
                   }}
     end.
-
--spec pop_debug_call_stack(debug_info()) -> debug_info().
-pop_debug_call_stack(disabled) ->
-    disabled;
-pop_debug_call_stack(Info = #debug_info{call_stack = []}) ->
-    Info;
-pop_debug_call_stack(Info = #debug_info{call_stack = [_ | Rest]}) ->
-    Info#debug_info{call_stack = Rest}.
 
 -spec collect_gas_stores_on_error(state()) -> integer().
 collect_gas_stores_on_error(#es{call_stack = Stack}) ->
@@ -928,101 +885,12 @@ consensus_version(#es{chain_api = Api}) ->
     TxEnv = aefa_chain_api:tx_env(Api),
     aetx_env:consensus_version(TxEnv).
 
-%%% Debugger functions
-
--spec breakpoints(state()) -> list().
-breakpoints(#es{debug_info = #debug_info{breakpoints = Breakpoints}}) ->
-    Breakpoints.
-
 %%%------------------
 
--spec current_instruction(state()) -> integer().
-current_instruction(#es{debug_info = #debug_info{current_instruction = Current}}) ->
-    Current.
+-ifdef(DEBUG_INFO).
+debug_info(#es{debug_info = Info}) ->
+    Info.
 
--spec inc_current_instruction(state()) -> state().
-inc_current_instruction(ES = #es{debug_info = DbgInfo}) ->
-    ES#es{debug_info = DbgInfo#debug_info{current_instruction = DbgInfo#debug_info.current_instruction + 1}}.
-
--spec reset_current_instruction(state()) -> state().
-reset_current_instruction(ES = #es{debug_info = DbgInfo}) ->
-    ES#es{debug_info = DbgInfo#debug_info{current_instruction = 0}}.
-
-%%%------------------
-
--spec debugger_status(state()) -> debugger_status() | disabled.
-debugger_status(#es{debug_info = disabled}) ->
-    disabled;
-debugger_status(#es{debug_info = #debug_info{status = Status}}) ->
-    Status.
-
--spec set_debugger_status(debugger_status(), state()) -> state().
-set_debugger_status(Status, ES = #es{debug_info = DbgInfo}) ->
-    ES#es{debug_info = DbgInfo#debug_info{status = Status}}.
-
-%%%------------------
-
--spec debugger_location(state()) -> debugger_location().
-debugger_location(#es{debug_info = #debug_info{location = Location}}) ->
-    Location.
-
--spec set_debugger_location(debugger_location(), state()) -> state().
-set_debugger_location(Location, ES = #es{debug_info = DbgInfo}) ->
-    ES#es{debug_info = DbgInfo#debug_info{location = Location}}.
-
-%%%------------------
-
--spec dbg_call_stack(state()) -> [{string(), pos_integer()}].
-dbg_call_stack(#es{debug_info = #debug_info{call_stack = Stack}}) ->
-    Stack.
-
-%%%------------------
-
--spec add_variable_register(string(), tuple(), state()) -> state().
-add_variable_register(Var, Reg, ES = #es{debug_info = DbgInfo}) ->
-    VarsRegs = DbgInfo#debug_info.vars_registers,
-    Old = maps:get(Var, VarsRegs, []),
-    New = [Reg | Old],
-    NewDbgInfo = DbgInfo#debug_info{vars_registers = VarsRegs#{Var => New}},
-    ES#es{debug_info = NewDbgInfo}.
-
--spec del_variable_register(string(), tuple(), state()) -> state().
-del_variable_register(Var, Reg, ES = #es{debug_info = DbgInfo}) ->
-    VarsRegs = DbgInfo#debug_info.vars_registers,
-    New = lists:delete(Reg, maps:get(Var, VarsRegs, [])),
-    NewDbgInfo = DbgInfo#debug_info{vars_registers = VarsRegs#{Var => New}},
-    ES#es{debug_info = NewDbgInfo}.
-
--spec get_variable_register(string(), state()) -> tuple().
-get_variable_register(Var, #es{debug_info = #debug_info{vars_registers = VarsRegs}}) ->
-    case maps:get(Var, VarsRegs, [undefined]) of
-        []        -> undefined;
-        [Reg | _] -> Reg
-    end.
-
-%%%------------------
-
-debugger_resume(ES = #es{debug_info = Info = #debug_info{status = stepin}}) ->
-    ES#es{debug_info = Info#debug_info{status = break}};
-debugger_resume(ES = #es{debug_info = Info = #debug_info{status = {stepover, Stack}}}) ->
-    case length(ES#es.call_stack) =< length(Stack) of
-        true  -> ES#es{debug_info = Info#debug_info{status = break}};
-        false -> ES
-    end;
-debugger_resume(ES = #es{debug_info = Info = #debug_info{status = {stepout, Stack}}}) ->
-    case length(ES#es.call_stack) < length(Stack) of
-        true  ->
-            ES#es{debug_info = Info#debug_info{status = break}};
-        false -> ES
-    end;
-debugger_resume(ES) ->
-    ES.
-
-%%%------------------
-
-get_contract_name(ContractPK, #es{debug_info = #debug_info{contract_names = ContractNames}}) ->
-    maps:get(ContractPK, ContractNames, ContractPK).
-
-name_current_contract(ContractName, ES = #es{debug_info = Info = #debug_info{contract_names = OldNames}}) ->
-    NewNames = OldNames#{current_contract(ES) => ContractName},
-    ES#es{debug_info = Info#debug_info{contract_names = NewNames}}.
+set_debug_info(Info, ES) ->
+    ES#es{debug_info = Info}.
+-endif.
