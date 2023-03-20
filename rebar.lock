@@ -124,7 +124,7 @@
   1},
  {<<"setup">>,
   {git,"https://github.com/uwiger/setup.git",
-      {ref,"495a4d94132e5619d12960f7f022493007981a30"}},
+      {ref,"28513fdb09b62d94cf754832c83399869dcf222c"}},
   0},
  {<<"sext">>,{pkg,<<"sext">>,<<"1.8.0">>},0},
  {<<"sha3">>,
