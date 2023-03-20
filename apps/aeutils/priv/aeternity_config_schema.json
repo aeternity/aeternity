@@ -1235,6 +1235,18 @@
                         }
                     }
                 },
+                "protocol_options" : {
+                    "type" : "object",
+                    "additionalProperties" : false,
+                    "properties" : {
+                        "max_skip_body_length": {
+                          "description": "Cowboy limit to request body size",
+                          "type": "integer",
+                          "example": 400000,
+                          "default": 1000000
+                        }
+                    }
+                },
                 "external" : {
                     "type" : "object",
                     "additionalProperties" : false,
