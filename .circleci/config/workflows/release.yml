@@ -65,11 +65,11 @@ jobs:
       name: macos-release-standalone
       package_name: aeternity-$CIRCLE_TAG-macos-x86_64-standalone
       context: ae-slack
-      filters:
-        branches:
-          ignore: /.*/
-        tags:
-          only: << pipeline.parameters.tag_regex >>
+      # filters:
+      #   branches:
+      #     ignore: /.*/
+      #   tags:
+      #     only: << pipeline.parameters.tag_regex >>
 
   - slack/on-hold:
       name: hodl-artifact-upload-notification

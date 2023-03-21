@@ -16,10 +16,10 @@ jobs:
 
   - build_nix:
       context: ae-slack
-      filters:
-        branches:
-          only:
-            - << pipeline.parameters.master_branch >>
+      # filters:
+      #   branches:
+      #     only:
+      #       - << pipeline.parameters.master_branch >>
 
   - test:
       context: ae-slack
