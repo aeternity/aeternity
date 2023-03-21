@@ -48,7 +48,7 @@ forbidden(_Mod, _OperationId) ->
     false.
 
 %% Simulator compatible callbacks for a subset of the API required
-handle_request('GetCurrentKeyBlock',_,#{sim_name := SimName}) ->
+handle_request('GetCurrentKeyBlock', _, #{sim_name := SimName}) ->
     KB = aec_chain_sim:top_key_block(SimName),
     case encode_keyblock(KB, SimName) of
         {error, Reason} ->
@@ -56,11 +56,11 @@ handle_request('GetCurrentKeyBlock',_,#{sim_name := SimName}) ->
         {ok, EncodedKB} ->
             {200, [], EncodedKB}
     end;
-handle_request('GetCurrentKeyBlockHash',_,#{sim_name := SimName}) ->
+handle_request('GetCurrentKeyBlockHash', _, #{sim_name := SimName}) ->
     Hash = aec_chain_sim:top_key_block_hash(SimName),
     EncodedHash = aeser_api_encoder:encode(key_block_hash, Hash),
     {200, [], #{hash => EncodedHash}};
-handle_request('GetKeyBlockByHash',#{hash := EncHash},#{sim_name := SimName}) ->
+handle_request('GetKeyBlockByHash', #{hash := EncHash}, #{sim_name := SimName}) ->
     case aeser_api_encoder:safe_decode(key_block_hash, EncHash) of
         {error, _} -> {400, [], #{reason => <<"Invalid hash">>}};
         {ok, Hash} ->
@@ -75,7 +75,7 @@ handle_request('GetKeyBlockByHash',#{hash := EncHash},#{sim_name := SimName}) ->
                 error         -> {400, [], #{reason => <<"Hash not on main chain">>}}
             end
     end;
-handle_request('GetKeyBlockByHeight',#{height := Height},#{sim_name := SimName}) ->
+handle_request('GetKeyBlockByHeight', #{height := Height}, #{sim_name := SimName}) ->
     case aec_chain_sim:block_by_height(SimName, Height) of
         {ok, KB} ->
             case encode_keyblock(KB, SimName) of
@@ -88,7 +88,7 @@ handle_request('GetKeyBlockByHeight',#{height := Height},#{sim_name := SimName})
     end;
 handle_request('GetCurrentGeneration', _, #{sim_name := SimName}) ->
     generation_rsp(SimName, aec_chain_sim:get_current_generation());
-handle_request('GetGenerationByHash',#{hash := EncHash},#{sim_name := SimName}) ->
+handle_request('GetGenerationByHash', #{hash := EncHash = <<"kh_"/utf8, _/binary>>}, #{sim_name := SimName}) ->
     case aeser_api_encoder:safe_decode(key_block_hash, EncHash) of
         {error, _} -> {400, [], #{reason => <<"Invalid hash">>}};
         {ok, Hash} ->
@@ -98,14 +98,14 @@ handle_request('GetGenerationByHash',#{hash := EncHash},#{sim_name := SimName}) 
                 error         -> {400, [], #{reason => <<"Hash not on main chain">>}}
             end
     end;
-handle_request('GetGenerationByHash',#{hash := EncHash},#{sim_name := SimName}) ->
+handle_request('GetGenerationByHash', #{hash := EncHash}, #{sim_name := SimName}) ->
     case aeser_api_encoder:safe_decode(micro_block_hash, EncHash) of
         {ok, Hash} ->
             generation_rsp(SimName, aec_chain_sim:get_generation_by_hash(SimName, Hash, forward));
         {error, _} ->
             {400, [], #{reason => <<"Invalid hash">>}}
     end;
-handle_request('GetGenerationByHeight',#{height := HeightStr},#{sim_name := SimName}) ->
+handle_request('GetGenerationByHeight', #{height := HeightStr}, #{sim_name := SimName}) ->
     Height = aehttp_helpers:to_int(HeightStr),
     case aec_chain_sim:get_key_block_hash_at_height(SimName, Height) of
         error -> {404, [], #{reason => <<"Chain too short">>}};
@@ -126,7 +126,7 @@ handle_request('GetMicroBlockTransactionsByHash', #{hash := EncHash}, #{sim_name
         {error, _} ->
             {400, [], #{reason => <<"Invalid hash">>}}
     end;
-handle_request('GetAccountNextNonce',#{pubkey := EncPubkey}, #{sim_name := SimName}) ->
+handle_request('GetAccountNextNonce', #{pubkey := EncPubkey}, #{sim_name := SimName}) ->
     case aeser_api_encoder:safe_decode(account_pubkey, EncPubkey) of
         {ok, Pubkey} ->
             case aec_chain_sim:get_next_nonce(SimName, Pubkey) of
