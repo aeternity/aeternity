@@ -11,6 +11,8 @@ main contract GAMainWTemporary =
     = Plain
     | TimeBound(int)
     | NBound(int)
+    
+  type prefix_t = bytes(19)
 
   record meta_tx_protection =
     { max_fee : int,
@@ -21,9 +23,10 @@ main contract GAMainWTemporary =
       trustees : map(address, trustee),
       fee_protection : option(meta_tx_protection),
       nonce : int,
-      prefix : string }
+      prefix : prefix_t}
 
-  entrypoint init(master : address, prefix : string) =
+  entrypoint init(master : address, prefix : prefix_t) =
+    require(master != Call.caller, "Master not allowed to be the account itself")
     { master = master,
       trustees = {},
       fee_protection = Some({max_fee = 2_000_000_000_000_000, max_gasprice = 1_000_000_000_000}),
@@ -90,7 +93,10 @@ main contract GAMainWTemporary =
 
   // Static function, but useful with dry-run to create signing material
   entrypoint to_sign(tx_hash : hash, nonce : int) : hash =
-    Crypto.blake2b((state.prefix, tx_hash, nonce))
+    Crypto.blake2b(Bytes.concat(state.prefix, to_sign_unprefixed(tx_hash, nonce)))
+
+  function to_sign_unprefixed(tx_hash : hash, nonce : int) : hash =
+    Crypto.blake2b((tx_hash, nonce))
 
   function fee_ok() =
     switch(state.fee_protection)
@@ -98,3 +104,4 @@ main contract GAMainWTemporary =
         true
       Some(fp) =>
         fp.max_fee >= Call.fee && fp.max_gasprice >= Call.gas_price
+
