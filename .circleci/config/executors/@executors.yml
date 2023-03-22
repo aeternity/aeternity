@@ -30,7 +30,7 @@ builder_container_otp24:
 
 builder_container_nix_alpine:
   docker:
-    - image: nixorg/nix:circleci
+    - image: nixos/nix:2.13.3
   working_directory: /home/circleci/aeternity
   environment:
     ERLANG_ROCKSDB_BUILDOPTS: "-j2"

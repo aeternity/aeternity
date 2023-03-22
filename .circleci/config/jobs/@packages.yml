@@ -116,6 +116,7 @@ macos-standalone:
       type: string
   macos:
     xcode: "13.2.1" # macOS 11.6.2 (Big Sur)
+  resource_class: macos.x86.medium.gen2
   working_directory: /Users/distiller/aeternity
   steps:
     - fixed_checkout
