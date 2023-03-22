@@ -135,7 +135,7 @@ main_test(_Config) ->
 
     true = has_key(N1, ?DUMMY_HASH, Primary1),
 
-    %% Mining of another keyblock starts second GC phase - storing cache to mnesia table and restart
+    %% Mining of another keyblock starts second GC phase
     mine_until_height(N1, N2, ?GC_HISTORY + 2),
 
     Primary2 = primary(N1),
@@ -248,7 +248,9 @@ new_pubkey() ->
     PubKey.
 
 calls_test(_Config) ->
+    aecore_suite_utils:use_swagger(oas3),   % GC-related return codes only in OAS3 for now
     [N1] = [aecore_suite_utils:node_name(X) || X <- [dev1]],
+    ok = aecore_suite_utils:subscribe(N1, gc),
     H0 = aec_headers:height(rpc:call(N1, aec_chain, top_header, [])),
     ct:log("Current height is ~p", [H0]),
     %% create a new account and seed it with tokens
@@ -333,16 +335,26 @@ calls_test(_Config) ->
     Spend(OwnerPubkey, OwnerPrivkey),
     Spend(OwnerPubkey, OwnerPrivkey),
     %% mine beyond the GC
-    aecore_suite_utils:mine_key_blocks(N1, ?GC_HISTORY + 1),
+    ct:log("Mining beyond the GC point"),
+    ct:log("GC server state: ~p", [rpc:call(N1, sys, get_state, [aec_db_gc])]),
+    {ok, Mined1} = aecore_suite_utils:mine_key_blocks(N1, ?GC_HISTORY + 1),
+    ct:log("Blocks mined: ~p", [length(Mined1)]),
+    _GcSwitch1 = await_gc_switch(),
+    await_scans_complete(),
     H1 = aec_headers:height(rpc:call(N1, aec_chain, top_header, [])),
     ct:log("Current height is ~p", [H1]),
-    {ok, 200, _} = aehttp_integration_SUITE:get_contract_call_object(ContractCreateTxHash),
-    {ok, 200, _} = aehttp_integration_SUITE:get_contract_call_object(ContractCallTxHash),
+    ct:log("Last GC switch: ~p", [rpc:call(N1, aec_db_gc, info, [[last_gc]])]),
+    {ok, Mined2} = aecore_suite_utils:mine_key_blocks(N1, ?GC_HISTORY),
+    ct:log("Mined ~p keyblocks", [length(Mined2)]),
+    await_gc_switch(),
+    ct:log("Second GC switch (and clearing tables)", []),
+    {ok, 410, _} = aehttp_integration_SUITE:get_contract_call_object(ContractCreateTxHash),
+    {ok, 410, _} = aehttp_integration_SUITE:get_contract_call_object(ContractCallTxHash),
     {ok, 200, _} =
         aehttp_integration_SUITE:get_accounts_by_pubkey_sut(OwnerAddress),
-    %% this should fail:
-    {ok, 200, _} =
+    {ok, 410, _} =
         aehttp_integration_SUITE:get_accounts_by_pubkey_and_height_sut(OwnerAddress, ContractCreateHeight),
+    aecore_suite_utils:unsubscribe(N1, gc),
     ok.
 
 latest_sophia_abi() ->
@@ -359,3 +371,21 @@ sign_and_post_tx(EncodedUnsignedTx, SenderPrivkey, Node) ->
     {Res, aeser_api_encoder:encode(tx_hash, aetx_sign:hash(SignedTx))}.
 
 
+await_scans_complete() ->
+    receive
+        {gproc_ps_event, gc, #{info := scans_complete}} ->
+            ok;
+        OtherMsg ->
+            ct:log("Got OTHER: ~p", [OtherMsg]),
+            error({unexpected_msg, OtherMsg})
+    after 10000 ->
+            error({timeout, waiting_for_scans_complete})
+    end.
+
+await_gc_switch() ->
+    receive
+        {gproc_ps_event, gc, #{info := {gc_switch, AtHeight}}} ->
+            ct:log("Got GC switch notification for height ~p", [AtHeight])
+    after 10000 ->
+            error({timeout, waiting_for_gc_switch})
+    end.

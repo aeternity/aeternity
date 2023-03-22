@@ -217,7 +217,9 @@ handle_request_('GetTokenSupplyByHeight', Req, _Context) ->
         {ok, Result} ->
             {200, [], Result};
         {error, chain_too_short} ->
-            {400, [], #{reason => <<"Chain too short">>}}
+            {400, [], #{reason => <<"Chain too short">>}};
+        {error, garbage_collected} ->
+            {410, [], #{reason => <<"State data at the requested height has been garbage-collected">>}}
     end;
 
 handle_request_('GetCrashRequest', Req, _Context) ->
