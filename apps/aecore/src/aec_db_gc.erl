@@ -29,6 +29,7 @@
 -export([start_link/0]).
 
 -export([ height_of_last_gc/0
+        , state_at_height_still_reachable/1
         , info/0
         , info/1
         ]).
@@ -102,13 +103,32 @@ start_link() ->
 
 -spec maybe_garbage_collect(aec_headers:header()) -> ok | nop.
 maybe_garbage_collect(Header) ->
-    gen_server:call(
-      ?MODULE, {maybe_garbage_collect, aec_headers:height(Header), Header}).
+    case get_cached_enabled_status() of
+        true ->
+            gen_server:call(
+              ?MODULE, {maybe_garbage_collect, aec_headers:height(Header), Header});
+        false ->
+            nop
+    end.
 
 %% If GC is disabled, or there hasn't yet been a GC, this function returns 0.
 -spec height_of_last_gc() -> non_neg_integer().
 height_of_last_gc() ->
-    aec_db:ensure_activity(async_dirty, fun aec_db:read_last_gc_switch/0).
+    case get_cached_enabled_status() of
+        true ->
+            aec_db:ensure_activity(async_dirty, fun aec_db:read_last_gc_switch/0);
+        false ->
+            0
+    end.
+
+state_at_height_still_reachable(Height) ->
+    case get_cached_enabled_status() of
+        true ->
+            #{last_gc := LastGC} = info([last_gc]),
+            LastGC =< Height;
+        false ->
+            true
+    end.
 
 info() ->
     info(info_keys()).
@@ -129,7 +149,7 @@ info_keys() ->
 %%     maybe_swap_nodes(?GCED_TABLE_NAME, ?TABLE_NAME).
 
 %%%===================================================================
-%%% gen_statem callbacks
+%%% gen_server callbacks
 %%%===================================================================
 
 %% Change of configuration parameters requires restart of the node.
@@ -140,6 +160,7 @@ init(#{ <<"enabled">>     := Enabled
       , <<"minimum_height">> := MinHeight
       } = Cfg) when is_integer(History), History > 0 ->
     lager:debug("Cfg = ~p", [Cfg]),
+    cache_enabled_status(Enabled),
     LastSwitch = case Enabled of
                      true ->
                          aec_events:subscribe(chain_sync),
@@ -185,6 +206,7 @@ handle_call({maybe_garbage_collect, TopHeight, Header}, _From,
                 history = History, min_height = MinHeight,
                 trees = Trees, scanners = [], last_switch = Last} = St)
   when (Synced orelse DuringSync), TopHeight >= MinHeight, TopHeight > Last + History ->
+    lager:debug("WILL collect. St = ~p", [lager:pr(St, ?MODULE)]),
     %% Double-check that the GC hasn't been requested on a microblock.
     %% This would be a bug, since aec_conductor should only ask for keyblocks.
     case aec_headers:type(Header) of
@@ -200,6 +222,7 @@ handle_call({maybe_garbage_collect, TopHeight, Header}, _From,
             {reply, nop, St}
     end;
 handle_call({maybe_garbage_collect, _, _}, _From, St) ->
+    lager:debug("Won't collect. St = ~p", [lager:pr(St, ?MODULE)]),
     {reply, nop, St};
 handle_call({info, Keys}, _, St) ->
     {reply, info_(Keys, St), St}.
@@ -210,6 +233,12 @@ handle_cast({scanning_failed, ErrHeight}, St) ->
 
 handle_cast({scan_complete, Name}, #st{scanners = Scanners} = St) ->
     Scanners1 = lists:keydelete(Name, #scanner.tree, Scanners),
+    case Scanners1 of
+        [] ->
+            aec_events:publish(gc, scans_complete);
+        _ ->
+            ok
+    end,
     {noreply, St#st{scanners = Scanners1}};
 
 handle_cast(_, St) ->
@@ -249,6 +278,7 @@ perform_switch(Trees, Height) ->
                    switch_tables(Trees),
                    aec_db:write_last_gc_switch(Height)
            end),
+    aec_events:publish(gc, {gc_switch, Height}),
     [start_scanner(T, Height) || T <- Trees].
 
 clear_secondary_tables(Trees) ->
@@ -377,6 +407,12 @@ signal_switching_failed_and_reply(St, Reply) ->
             signal_scanning_failed(ErrHeight),
             {reply, Reply, St}
     end.
+
+cache_enabled_status(Bool) when is_boolean(Bool) ->
+    persistent_term:put({?MODULE, gc_enabled}, Bool).
+
+get_cached_enabled_status() ->
+    persistent_term:get({?MODULE, gc_enabled}).
 
 config() ->
     Trees = get_trees(),
