@@ -354,7 +354,7 @@ next_nonce(Pubkey, #state{primop_state = PState0,
             end
     end.
 
--spec check_delegation_signature(pubkey(), binary(), binary(), aect_contracts:vm_version(), state()) ->
+-spec check_delegation_signature(pubkey(), binary() | {binary(), binary()}, binary(), aect_contracts:vm_version(), state()) ->
                                         {'ok', state()} | 'error'.
 check_delegation_signature(Pubkey, Binary, Signature, VmVersion,
                            #state{ primop_state = PState} = State) ->
@@ -365,13 +365,23 @@ check_delegation_signature(Pubkey, Binary, Signature, VmVersion,
                     error;
                 basic ->
                     State1 = State#state{primop_state = PState1},
-                    verify_delegation_signature(Pubkey, Binary, Signature, State1)
+                    verify_delegation_signature_(Pubkey, Binary, Signature, VmVersion, State1)
             end;
         none when VmVersion >= ?VM_FATE_SOPHIA_3 ->
-            verify_delegation_signature(Pubkey, Binary, Signature, State);
+            verify_delegation_signature_(Pubkey, Binary, Signature, VmVersion, State);
         none ->
             error
     end.
+
+verify_delegation_signature_(Pubkey, {Binary1, _}, Signature, VmVersion, State) when VmVersion < ?VM_FATE_SOPHIA_3 ->
+    verify_delegation_signature(Pubkey, Binary1, Signature, State);
+verify_delegation_signature_(Pubkey, {Binary1, Binary2}, Signature, _VmVersion, State) ->
+    case verify_delegation_signature(Pubkey, Binary1, Signature, State) of
+        {ok, State} -> {ok, State};
+        error       -> verify_delegation_signature(Pubkey, Binary2, Signature, State)
+    end;
+verify_delegation_signature_(Pubkey, Binary, Signature, _VmVersion, State) ->
+    verify_delegation_signature(Pubkey, Binary, Signature, State).
 
 verify_delegation_signature(Pubkey, Binary, Signature, State) ->
     BinaryForNetwork = aec_governance:add_network_id(Binary),

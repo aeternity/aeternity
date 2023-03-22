@@ -127,6 +127,7 @@
         , sophia_signatures_oracles/1
         , sophia_signature_check_gas_cost/1
         , sophia_signatures_aens/1
+        , sophia_all_signatures_aens/1
         , sophia_fate_signatures_aens/1
         , sophia_maps/1
         , sophia_map_benchmark/1
@@ -294,7 +295,7 @@
         ?VM_AEVM_SOPHIA_4 -> ok;
         ?VM_FATE_SOPHIA_1 -> ?assertMatch(__ExpVm1, __Res);
         ?VM_FATE_SOPHIA_2 -> ?assertMatch(__ExpVm2, __Res);
-        ?VM_FATE_SOPHIA_3 -> ?assertMatch(__ExpVm3, __Res) %% For now :-)
+        ?VM_FATE_SOPHIA_3 -> ?assertMatch(__ExpVm3, __Res)
     end).
 
 -define(assertMatchVM(AEVM, FATE, Res),
@@ -438,6 +439,7 @@ groups() ->
                                  sophia_signatures_oracles,
                                  sophia_signature_check_gas_cost,
                                  sophia_signatures_aens,
+                                 sophia_all_signatures_aens,
                                  sophia_fate_signatures_aens,
                                  sophia_maps,
                                  sophia_map_benchmark,
@@ -689,6 +691,7 @@ init_per_testcase(fate_environment, Config) ->
     init_per_testcase_common(fate_environment, Config);
 init_per_testcase(TC, Config) when TC == sophia_aens_resolve;
                                    TC == sophia_signatures_aens;
+                                   TC == sophia_all_signatures_aens;
                                    TC == sophia_fate_signatures_aens;
                                    TC == sophia_aens_transactions ->
     %% Disable name auction
@@ -769,6 +772,7 @@ end_per_testcase(fate_environment, _Config) ->
 end_per_testcase(TC, _Config) when TC == sophia_aens_resolve;
                                    TC == sophia_aens_lookup;
                                    TC == sophia_signatures_aens;
+                                   TC == sophia_all_signatures_aens;
                                    TC == sophia_fate_signatures_aens;
                                    TC == sophia_aens_transactions;
                                    TC == sophia_aens_update_transaction;
@@ -4360,6 +4364,56 @@ sophia_signatures_aens(Cfg) ->
     ?assertMatchProtocol(NonceAfterClaim, ExpectedNonceAfterClaimRoma, NonceBeforePreclaim),
     ?assertMatchProtocol(NonceAfterTransfer, ExpectedNonceAfterTransferRoma, NonceBeforeTransfer),
     ?assertMatchProtocol(NonceAfterRevoke, ExpectedNonceAfterRevokeRoma, NonceBeforeRevoke),
+    ok.
+
+sophia_all_signatures_aens(Cfg) ->
+    case ?config(vm_version, Cfg) of
+        VMVersion when VMVersion < ?VM_FATE_SOPHIA_2 -> ok;
+        _ -> sophia_all_signatures_aens_(Cfg)
+    end.
+
+sophia_all_signatures_aens_(Cfg) ->
+    init_new_state(),
+    Acc             = ?call(new_account, 40000000000000 * aec_test_utils:min_gas_price()),
+    NameAcc         = ?call(new_account, 40000000000000 * aec_test_utils:min_gas_price()),
+    Ct              = ?call(create_contract, NameAcc, aens, {}, #{ amount => 100000 }),
+    Name1           = aens_test_utils:fullname(<<"bla">>),
+    Salt1           = rand:uniform(10000),
+    {ok, NameAscii} = aens_utils:to_ascii(Name1),
+    CHash           = ?hsh(aens_hash:commitment_hash(NameAscii, Salt1)),
+    NHash           = aens_hash:name_hash(NameAscii),
+    NameArg         = Name1,
+    NameAccSigAll   = sign(<<NameAcc/binary, "AENS"/utf8, Ct/binary>>, NameAcc),
+    AccSigAll       = sign(<<Acc/binary, "AENS"/utf8, Ct/binary>>, Acc),
+    APubkey  = 1,
+    OPubkey  = 2,
+
+    %% PreClaim
+    Res1 = ?call(call_contract, Acc, Ct, signedPreclaim, {tuple, []}, {NameAcc, CHash, NameAccSigAll}, #{ height => 10 }),
+    ?assertMatchFATE(unused, {error, <<"Error in aens_preclaim: bad_signature">>}, {}, Res1),
+
+    %% Claim
+    Res2 = ?call(call_contract, Acc, Ct, signedClaim, {tuple, []}, {NameAcc, Name1, Salt1, NameAccSigAll}, #{ height => 11 }),
+    ?assertMatchFATE(unused, {error, <<"Error in aens_claim: bad_signature">>}, {}, Res2),
+
+    Pointers = #{},
+    None = none,
+    Some = fun (X) -> {some, X} end,
+
+    Res3 = ?call(call_contract, Acc, Ct, signedUpdate, {tuple, []}, {NameAcc, NameArg, None, None, Some(Pointers), NameAccSigAll}, #{height => 12}),
+    ?assertMatchFATE(unused, {error, <<"Error in aens_update: bad_signature">>}, {}, Res3),
+
+    %% Transfer
+    Res4 = ?call(call_contract, Acc, Ct, signedTransfer, {tuple, []}, {NameAcc, Acc, NameArg, NameAccSigAll}, #{ height => 12 }),
+    ?assertMatchFATE(unused, {error, <<"Error in aens_transfer: bad_signature">>}, {}, Res4),
+
+    %% Revoke
+    BadRevoke = ?call(call_contract, Acc, Ct, signedRevoke, {tuple, []}, {NameAcc, NameArg, NameAccSigAll}, #{ height => 13 }),
+    ?assertMatchFATE(unused, {error, <<"Error in aens_revoke: bad_signature">>}, {error,<<"Error in aens_revoke: name_not_owned">>}, BadRevoke),
+
+    Res5 = ?call(call_contract, NameAcc, Ct, signedRevoke, {tuple, []}, {Acc, NameArg, AccSigAll}, #{ height => 13 }),
+    ?assertMatchFATE(unused, {error, <<"Error in aens_revoke: bad_signature">>}, {}, Res5),
+
     ok.
 
 %% Delegated signatures did not work for non-existing accounts pre-CERES, this test checks that this
