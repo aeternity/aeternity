@@ -1537,9 +1537,11 @@ initialize_db(ram) ->
 
 install_test_env() ->
     ensure_backend_module(),
+    aec_db_gc:install_test_env(),
     ok.
 
 uninstall_test_env() ->
+    aec_db_gc:cleanup(),
     remove_added_pts().
 
 ensure_backend_module() ->

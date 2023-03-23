@@ -26,7 +26,8 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/0]).
+-export([start_link/0,
+         cleanup/0]).
 
 -export([ height_of_last_gc/0
         , state_at_height_still_reachable/1
@@ -46,6 +47,10 @@
         ]).
 
 -export([config/0]).
+
+-ifdef(TEST).
+-export([install_test_env/0]).
+-endif.
 
 -type tree_name() :: aec_trees:tree_name().
 
@@ -101,6 +106,9 @@ start_link() ->
     #{<<"enabled">> := _, <<"trees">> := _, <<"history">> := _} = Config = config(),
     gen_server:start_link({local, ?MODULE}, ?MODULE, Config, []).
 
+cleanup() ->
+    erase_cached_enabled_status().
+
 -spec maybe_garbage_collect(aec_headers:header()) -> ok | nop.
 maybe_garbage_collect(Header) ->
     case get_cached_enabled_status() of
@@ -144,9 +152,10 @@ info(Keys) when is_list(Keys) ->
 info_keys() ->
     [enabled, history, last_gc, active_sweeps, during_sync, trees].
 
-%% called from aec_db on startup
-%% maybe_swap_nodes() ->
-%%     maybe_swap_nodes(?GCED_TABLE_NAME, ?TABLE_NAME).
+-ifdef(TEST).
+install_test_env() ->
+    cache_enabled_status(false).
+-endif.
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -413,6 +422,9 @@ cache_enabled_status(Bool) when is_boolean(Bool) ->
 
 get_cached_enabled_status() ->
     persistent_term:get({?MODULE, gc_enabled}).
+
+erase_cached_enabled_status() ->
+    persistent_term:erase({?MODULE, gc_enabled}).
 
 config() ->
     Trees = get_trees(),
