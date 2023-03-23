@@ -144,8 +144,10 @@
 
 -export([backend_mode/0]).
 
+-ifdef(TEST).
 -export([ install_test_env/0
         , uninstall_test_env/0 ]).
+-endif.
 
 -include("blocks.hrl").
 -include("aec_db.hrl").
@@ -1535,6 +1537,7 @@ initialize_db(ram) ->
 %% == Test setup env
 %% Ensures that e.g. persistent terms are present, logging which ones had to be added.
 
+-ifdef(TEST).
 install_test_env() ->
     ensure_backend_module(),
     aec_db_gc:install_test_env(),
@@ -1557,7 +1560,6 @@ ensure_backend_module() ->
 get_test_backend_module() ->
     Str = os:getenv("AETERNITY_TESTCONFIG_DB_BACKEND", "mnesia"),
     list_to_existing_atom(Str).
-
 note_added_pt(Key) ->
     Var = ?PT_ADDED_PTS,
     Set = persistent_term:get(Var, ordsets:new()),
@@ -1567,6 +1569,7 @@ remove_added_pts() ->
     Keys = persistent_term:get(?PT_ADDED_PTS, ordsets:new()),
     [persistent_term:erase(K) || K <- Keys],
     persistent_term:erase(?PT_ADDED_PTS).
+-endif.
 
 %% == End Test setup env
 
