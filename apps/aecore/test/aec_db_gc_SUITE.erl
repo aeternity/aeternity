@@ -16,7 +16,7 @@
 -define(NUM_ACCOUNTS, 20).
 -define(NUM_GCED_NODES, 20).
 -define(DUMMY_HASH, <<0:256>>).
--define(GC_INTERVAL, 50).
+-define(GC_HISTORY, 50).
 
 all() ->
     [{group, all_nodes}].
@@ -39,8 +39,7 @@ init_per_suite(Config0) ->
                    #{<<"persist">> => true,
                      <<"hard_forks">> => Forks,
                      <<"garbage_collection">> => #{<<"enabled">> => true,
-                                                   <<"interval">> => ?GC_INTERVAL,
-                                                   <<"history">> => ?GC_INTERVAL + 10}},
+                                                   <<"history">> => ?GC_HISTORY}},
                <<"sync">> => #{<<"single_outbound_per_group">> => false},
                <<"mempool">> => #{<<"tx_ttl">> => 100},
                <<"mining">> => #{<<"micro_block_cycle">> => 100,
@@ -77,10 +76,8 @@ init_per_suite(Config0) ->
 
     node_log_details(N1, accounts_on_chain),
 
-    N1Primary = primary(N1),
-
-    ok = rpc:call(N1, mnesia, dirty_write,
-                  [{N1Primary, ?DUMMY_HASH, lists:duplicate(17, <<>>)}]),
+    Ctxt = rpc:call(N1, aec_db, new_tree_context, [dirty, accounts]),
+    ok = rpc:call(N1, aec_db, enter_tree_node, [?DUMMY_HASH, lists:duplicate(17, <<>>), Ctxt]),
 
     aecore_suite_utils:start_node(dev2, Config2),
     aecore_suite_utils:connect(N2),
@@ -131,47 +128,23 @@ end_per_testcase(_Case, Config) ->
 main_test(_Config) ->
     [N1, N2] = [aecore_suite_utils:node_name(X) || X <- [dev1, dev2]],
     H1 = aec_headers:height(rpc:call(N1, aec_chain, top_header, [])),
-    true = H1 < ?GC_INTERVAL,
+    ct:log("Height = ~p", [H1]),
+    true = H1 < ?GC_HISTORY,
     Primary1 = primary(N1),
+    ct:log("Primary1 = ~p", [Primary1]),
+
     true = has_key(N1, ?DUMMY_HASH, Primary1),
 
-    %% we mine just enough to start first GC phase - collection of reachable hashes
-    mine_until_height(N1, N2, ?GC_INTERVAL), % aecore_suite_utils:mine_key_blocks(N2, ?GC_INTERVAL - H1),
-
-    node_log_details(N1, after_mining_0),
-
-    block_while(fun () ->
-                        case gc_state(N1) of
-                            {ready, Data} ->
-                                HashesTab = element(size(Data), Data),
-                                true = is_reference(HashesTab),
-                                self() ! {n1_hashes, rpc:call(N1, ets, tab2list, [HashesTab])},
-                                false;
-                            X ->
-                                ct:log("////////// GC STATE = ~p~n", [X]),
-                                true
-                        end
-                end, 20, 500),
-
-    GCedHashes = receive {n1_hashes, Xs} -> Xs end,
-
-    ct:log("////////// HASHES count = ~p~n", [length(GCedHashes)]),
-    node_log_details(N1, gc_ready),
-
-    monitor_node(N1, true),
     %% Mining of another keyblock starts second GC phase - storing cache to mnesia table and restart
-    mine_until_height(N1, N2, ?GC_INTERVAL + 1),
-
-    block_while(fun () -> is_primary(N1, Primary1) end, 500, 100),
+    mine_until_height(N1, N2, ?GC_HISTORY + 2),
 
     Primary2 = primary(N1),
+    ct:log("Primary2 = ~p", [Primary2]),
 
-    ct:log("Primary2 = ~p (Primary1 = ~p)", [Primary2, Primary1]),
+    {false, _} = {is_primary(N1, Primary1), Primary1},
+
 
     false = has_key(N1, ?DUMMY_HASH, Primary2),
-
-    Hashes = rpc:call(N1, mnesia, dirty_select, [Primary2, [{{'_','$1','$2'},[],[{{'$1','$2'}}]}]]),
-    [] = GCedHashes -- Hashes,
 
     ok.
 
@@ -181,13 +154,10 @@ main_test(_Config) ->
 %% ==================================================
 
 primary(N) ->
-    rpc:call(N, aec_db, state_tab, [aec_account_state]).
+    rpc:call(N, aec_db, primary_state_tab, [accounts]).
 
 is_primary(N, P) ->
     primary(N) =:= P.
-
-gc_state(N) ->
-    rpc:call(N, sys, get_state, [aec_db_gc]).
 
 has_key(N, Key, Tab) ->
     case rpc:call(N, mnesia, dirty_read, [Tab, Key]) of
@@ -363,7 +333,7 @@ calls_test(_Config) ->
     Spend(OwnerPubkey, OwnerPrivkey),
     Spend(OwnerPubkey, OwnerPrivkey),
     %% mine beyond the GC
-    aecore_suite_utils:mine_key_blocks(N1, ?GC_INTERVAL + 1),
+    aecore_suite_utils:mine_key_blocks(N1, ?GC_HISTORY + 1),
     H1 = aec_headers:height(rpc:call(N1, aec_chain, top_header, [])),
     ct:log("Current height is ~p", [H1]),
     {ok, 200, _} = aehttp_integration_SUITE:get_contract_call_object(ContractCreateTxHash),

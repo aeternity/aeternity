@@ -29,6 +29,8 @@
         , prune/2
         , prune/3
         , root_hash/1
+        , oracles_db/1
+        , cache_db/1
         ]).
 
 -export([ from_binary_without_backend/1
@@ -205,6 +207,14 @@ is_oracle(Pubkey, #oracle_tree{ otree = OTree }) ->
 -spec root_hash(tree()) -> {ok, aeu_mtrees:root_hash()} | {error, empty}.
 root_hash(#oracle_tree{otree = OTree}) ->
     aeu_mtrees:root_hash(OTree).
+
+-spec oracles_db(tree()) -> {'ok', aeu_mp_trees:db()}.
+oracles_db(#oracle_tree{otree = OTree}) ->
+    aeu_mtrees:db(OTree).
+
+-spec cache_db(tree()) -> {'ok', aeu_mp_trees:db()}.
+cache_db(#oracle_tree{cache = CTree}) ->
+    aeu_mtrees:db(CTree).
 
 -spec cache_root_hash(tree()) -> {ok, aeu_mtrees:root_hash()} | {error, empty}.
 cache_root_hash(#oracle_tree{cache = CTree}) ->

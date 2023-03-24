@@ -26,6 +26,8 @@
          new_with_backend/2,
          new_with_dirty_backend/2,
          root_hash/1,
+         ns_db/1,
+         cache_db/1,
          auction_iterator/1,
          auction_iterator_next/1]).
 
@@ -219,6 +221,14 @@ lookup_name(Id, Tree) ->
 -spec root_hash(tree()) -> {ok, aeu_mtrees:root_hash()} | {error, empty}.
 root_hash(#ns_tree{mtree = MTree}) ->
     aeu_mtrees:root_hash(MTree).
+
+-spec ns_db(tree()) -> {'ok', aeu_mp_trees:db()}.
+ns_db(#ns_tree{mtree = MTree}) ->
+    aeu_mtrees:db(MTree).
+
+-spec cache_db(tree()) -> {'ok', aeu_mp_trees:db()}.
+cache_db(#ns_tree{cache = CTree}) ->
+    aeu_mtrees:db(CTree).
 
 -spec cache_root_hash(tree()) -> {ok, aeu_mtrees:root_hash()} | {error, empty}.
 cache_root_hash(#ns_tree{cache = MTree}) ->

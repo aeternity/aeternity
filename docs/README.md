@@ -16,4 +16,5 @@ There is also additional documentation on mining with CUDA and build and/or join
 - [Stratum](stratum.md)
 - [Network Monitoring](monitoring.md)
 - [Fork Resistance](fork-resistance.md)
+- [Garbage Collection](garbage-collection.md)
 - [Node API](api.md)

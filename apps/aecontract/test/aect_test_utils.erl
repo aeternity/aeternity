@@ -77,7 +77,7 @@ new_state() ->
     #{}.
 
 trees(#{} = S) ->
-    maps:get(trees, S, aec_trees:new()).
+    maps:get(trees, S, aec_trees:new_without_backend()).
 
 set_trees(Trees, S) ->
     S#{trees => Trees}.

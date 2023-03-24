@@ -47,8 +47,8 @@ set_mode(Mode, Node, Timeout) ->
 get_mode(Node) ->
     Res = rpc:call(Node, app_ctrl, get_mode, []),
     Output = case Res of
-                 maintenance -> on
-                 _ -> off;
+                 maintenance -> on;
+                 _ -> off
              end,
     io:fwrite("~p~n", [Output]),
     erlang:halt(0).

@@ -1484,7 +1484,5 @@ key_headers_height_store_migration_step(Time, N, {TimeRead, {Headers, Cont}}) ->
     ).
 
 is_gc_disabled() ->
-    case aec_db_gc:config() of
-        #{enabled := Bool} when is_boolean(Bool) ->
-            Bool
-    end.
+    [Bool] = aec_db_gc:info([enabled]),
+    Bool.

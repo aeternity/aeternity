@@ -1600,22 +1600,50 @@
                     "type" : "object",
                     "additionalProperties" : false,
                     "properties" : {
-                        "enabled": {
-                            "description": "If true, node will perform garbage collection of account state, removing unreachable merkle patricia nodes and free some disk space",
+                        "enabled" : {
+                            "description": "If true, node will perform garbage collection of state trees, removing unreachable merkle patricia nodes and free some disk space",
                             "type": "boolean",
                             "default": false
                         },
+                        "during_sync" : {
+                            "description" : "If true, node will start garbage-collecting immediately, without waiting for sync to complete",
+                            "type" : "boolean",
+                            "default" : false
+                        },
+                        "minimum_height" : {
+                            "description" : "Minimum height at which to trigger garbage collection",
+                            "type" : "integer",
+                            "minimum" : 0,
+                            "default" : 0
+                        },
                         "interval" : {
-                            "description": "How often (every `interval` block) should garbage collection run",
-                            "type": "integer",
-                            "minimum": 3,
-                            "default": 50000
+                            "description" : "DEPRECATED. How often (every `interval` block) should garbage collection run",
+                            "type" : "integer",
+                            "minimum" : 3,
+                            "default" : 50000
                         },
                         "history" : {
-                            "description": "How many blocks (back from the top) should be scanned for reachable hashes",
-                            "type": "integer",
-                            "minimum": 50,
-                            "default": 500
+                            "description" : "How many blocks (back from the top) should be scanned for reachable hashes",
+                            "type" : "integer",
+                            "minimum" : 50,
+                            "default" : 15000
+                        },
+                        "trees" : {
+                            "description": "Which state trees to scan. Default: all of them",
+                            "type" : "array",
+                            "items" : {
+                                "description" : "Tree name",
+                                "type" : "string",
+                                "enum" : ["accounts", "calls", "channels",
+                                          "contracts", "ns", "oracles"]
+                            },
+                            "minItems" : 1,
+                            "default" : ["accounts",
+                                         "calls",
+                                         "channels",
+                                         "contracts",
+                                         "ns",
+                                         "oracles"]
                         }
                     }
                 }
@@ -2125,6 +2153,21 @@
                         "max_time" : {
                             "type" : "integer",
                             "default" : 0
+                        }
+                    }
+                },
+                "gc_scan" : {
+                    "description" : "DB Garbage collection scan chunks",
+                    "type" : "object",
+                    "additionalProperties" : false,
+                    "properties" : {
+                        "counter" : {
+                            "type" : "integer",
+                            "default" : 1
+                        },
+                        "rate" : {
+                            "type" : "integer",
+                            "default" : 50
                         }
                     }
                 }
