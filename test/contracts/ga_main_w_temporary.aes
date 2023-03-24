@@ -12,8 +12,6 @@ main contract GAMainWTemporary =
     | TimeBound(int)
     | NBound(int)
     
-  type prefix_t = bytes(19)
-
   record meta_tx_protection =
     { max_fee : int,
       max_gasprice : int }
@@ -22,16 +20,14 @@ main contract GAMainWTemporary =
     { master : address,
       trustees : map(address, trustee),
       fee_protection : option(meta_tx_protection),
-      nonce : int,
-      prefix : prefix_t}
+      nonce : int}
 
-  entrypoint init(master : address, prefix : prefix_t) =
+  entrypoint init(master : address) =
     require(master != Call.caller, "Master not allowed to be the account itself")
     { master = master,
       trustees = {},
       fee_protection = Some({max_fee = 2_000_000_000_000_000, max_gasprice = 1_000_000_000_000}),
-      nonce = 1,
-      prefix = prefix }
+      nonce = 1}
 
   stateful entrypoint authorize(n : int, signer : address, sig : signature) : bool =
     require(n >= state.nonce, "Nonce too low")
@@ -93,7 +89,7 @@ main contract GAMainWTemporary =
 
   // Static function, but useful with dry-run to create signing material
   entrypoint to_sign(tx_hash : hash, nonce : int) : hash =
-    Crypto.blake2b(Bytes.concat(state.prefix, to_sign_unprefixed(tx_hash, nonce)))
+    Crypto.blake2b(Bytes.concat(superhero_wallet_prefix(), to_sign_unprefixed(tx_hash, nonce)))
 
   function to_sign_unprefixed(tx_hash : hash, nonce : int) : hash =
     Crypto.blake2b((tx_hash, nonce))
@@ -105,3 +101,12 @@ main contract GAMainWTemporary =
       Some(fp) =>
         fp.max_fee >= Call.fee && fp.max_gasprice >= Call.gas_price
 
+  // the SuperHero wallet protects its users of accidently signing a hash that
+  // could have a corresponding transaction. Instead it treats all hashes as
+  // messages and in order to keep its user safe - it prefixes them, so what
+  // is signed is:
+  // hash("aeternity Signed Message:\n" + message.length + message)
+  // the bytes below is the representation of the prefix above, message length
+  // included
+  function superhero_wallet_prefix() : bytes(28) =
+    #61657465726e697479205369676e6564204d6573736167653a0a3332

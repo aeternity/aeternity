@@ -109,8 +109,7 @@
 %% hash("ae signed message" + payload_size + payload)
 %% in the context of ga_main_w_temporary the payload is a hash, so its size is
 %% known in advance
--define(WALLET_MESSAGE_PREFIX, <<"ae signed message32">>).
--define(WALLET_MESSAGE_PREFIX_FATE, aega_test_utils:to_hex_lit(19, ?WALLET_MESSAGE_PREFIX)).
+-define(WALLET_MESSAGE_PREFIX, <<"aeternity Signed Message:\n32">>).
 
 %%%===================================================================
 %%% Common test framework
@@ -760,7 +759,7 @@ mwt_spend(_Cfg) ->
     GAAcc    = ?call(new_account, 1000000000 * MinGP),
     MainAcc  = ?call(new_account, 1000000000 * MinGP),
     OtherAcc = ?call(new_account, 1000000000 * MinGP),
-    {ok, _}  = ?call(attach, GAAcc, "ga_main_w_temporary", "authorize", [account_lit(MainAcc), ?WALLET_MESSAGE_PREFIX_FATE]),
+    {ok, _}  = ?call(attach, GAAcc, "ga_main_w_temporary", "authorize", [account_lit(MainAcc)]),
 
     PreBalance = ?call(account_balance, OtherAcc),
     {ok, #{tx_res := ok}} =
@@ -778,7 +777,7 @@ mwt_temp_spend(_Cfg) ->
     MainAcc  = ?call(new_account, 1000000000 * MinGP),
     TempAcc  = ?call(new_account, 1000000000 * MinGP),
     OtherAcc = ?call(new_account, 1000000000 * MinGP),
-    {ok, #{ct := GACt}} = ?call(attach, GAAcc, "ga_main_w_temporary", "authorize", [account_lit(MainAcc), ?WALLET_MESSAGE_PREFIX_FATE]),
+    {ok, #{ct := GACt}} = ?call(attach, GAAcc, "ga_main_w_temporary", "authorize", [account_lit(MainAcc)]),
 
     {ok, #{call_res := ok}} =
         ?call(ct_call, MainAcc, GACt, "ga_main_w_temporary", "add_trustee", [account_lit(TempAcc), "Plain"], #{}),
@@ -789,8 +788,7 @@ mwt_temp_spend(_Cfg) ->
     {tuple,{{address, MainAcc},
             #{{address, TempAcc} := {variant,[0,1,1],0,{}}}, %% Trustees
             {variant,[0,1], 1, {{tuple,{2000000000000000,1000000000000}}}}, %% fee protection
-            1, %% Nonce
-            {bytes, ?WALLET_MESSAGE_PREFIX}
+            1 %% Nonce
             }} = 
         decode_call_result("ga_main_w_temporary", "get_state", ok, Val),
 
@@ -810,7 +808,7 @@ mwt_neg_temp_spend(_Cfg) ->
     MainAcc  = ?call(new_account, 1000000000 * MinGP),
     TempAcc  = ?call(new_account, 1000000000 * MinGP),
     OtherAcc = ?call(new_account, 1000000000 * MinGP),
-    {ok, #{ct := GACt}} = ?call(attach, GAAcc, "ga_main_w_temporary", "authorize", [account_lit(MainAcc), ?WALLET_MESSAGE_PREFIX_FATE]),
+    {ok, #{ct := GACt}} = ?call(attach, GAAcc, "ga_main_w_temporary", "authorize", [account_lit(MainAcc)]),
 
     {ok, #{call_res := ok}} =
         ?call(ct_call, MainAcc, GACt, "ga_main_w_temporary", "add_trustee", [account_lit(TempAcc), "Plain"], #{}),
@@ -835,7 +833,7 @@ mwt_temp_multi_spend(_Cfg) ->
     TempAcc1 = ?call(new_account, 1000000000 * MinGP),
     TempAcc2 = ?call(new_account, 1000000000 * MinGP),
     OtherAcc = ?call(new_account, 1000000000 * MinGP),
-    {ok, #{ct := GACt}} = ?call(attach, GAAcc, "ga_main_w_temporary", "authorize", [account_lit(MainAcc), ?WALLET_MESSAGE_PREFIX_FATE]),
+    {ok, #{ct := GACt}} = ?call(attach, GAAcc, "ga_main_w_temporary", "authorize", [account_lit(MainAcc)]),
 
     {ok, #{call_res := ok}} =
         ?call(ct_call, MainAcc, GACt, "ga_main_w_temporary", "add_trustee", [account_lit(TempAcc1), "Plain"], #{}),
@@ -859,7 +857,7 @@ mwt_temp_n_spend(_Cfg) ->
     MainAcc  = ?call(new_account, 1000000000 * MinGP),
     TempAcc = ?call(new_account, 1000000000 * MinGP),
     OtherAcc = ?call(new_account, 1000000000 * MinGP),
-    {ok, #{ct := GACt}} = ?call(attach, GAAcc, "ga_main_w_temporary", "authorize", [account_lit(MainAcc), ?WALLET_MESSAGE_PREFIX_FATE]),
+    {ok, #{ct := GACt}} = ?call(attach, GAAcc, "ga_main_w_temporary", "authorize", [account_lit(MainAcc)]),
 
     {ok, #{call_res := ok}} =
         ?call(ct_call, MainAcc, GACt, "ga_main_w_temporary", "add_trustee", [account_lit(TempAcc), "NBound(2)"], #{}),
@@ -881,7 +879,7 @@ mwt_temp_height_spend(_Cfg) ->
     MainAcc  = ?call(new_account, 1000000000 * MinGP),
     TempAcc = ?call(new_account, 1000000000 * MinGP),
     OtherAcc = ?call(new_account, 1000000000 * MinGP),
-    {ok, #{ct := GACt}} = ?call(attach, GAAcc, "ga_main_w_temporary", "authorize", [account_lit(MainAcc), ?WALLET_MESSAGE_PREFIX_FATE]),
+    {ok, #{ct := GACt}} = ?call(attach, GAAcc, "ga_main_w_temporary", "authorize", [account_lit(MainAcc)]),
 
     {ok, #{call_res := ok}} =
         ?call(ct_call, MainAcc, GACt, "ga_main_w_temporary", "add_trustee", [account_lit(TempAcc), "TimeBound(10)"], #{}),
@@ -903,7 +901,7 @@ mwt_neg_master_actions(_Cfg) ->
     MainAcc  = ?call(new_account, 1000000000 * MinGP),
     TempAcc  = ?call(new_account, 1000000000 * MinGP),
     OtherAcc = ?call(new_account, 1000000000 * MinGP),
-    {ok, #{ct := GACt}} = ?call(attach, GAAcc, "ga_main_w_temporary", "authorize", [account_lit(MainAcc), ?WALLET_MESSAGE_PREFIX_FATE]),
+    {ok, #{ct := GACt}} = ?call(attach, GAAcc, "ga_main_w_temporary", "authorize", [account_lit(MainAcc)]),
 
     {ok, #{call_res := ok}} =
         ?call(ct_call, MainAcc, GACt, "ga_main_w_temporary", "add_trustee", [account_lit(TempAcc), "TimeBound(10)"], #{}),
@@ -925,7 +923,7 @@ mwt_can_not_attach_itself_as_master(_Cfg) ->
     MinGP = aec_test_utils:min_gas_price(),
     GAAcc    = ?call(new_account, 1000000000 * MinGP),
     {error, #{call_val := Val}} =
-        ?call(attach, GAAcc, "ga_main_w_temporary", "authorize", [account_lit(GAAcc), ?WALLET_MESSAGE_PREFIX_FATE]),
+        ?call(attach, GAAcc, "ga_main_w_temporary", "authorize", [account_lit(GAAcc)]),
     ?assertMatch(<<"Master not allowed to be the account itself">>, decode_call_result("ga_main_w_temporary", "init", revert, Val)),
     ok.
 
