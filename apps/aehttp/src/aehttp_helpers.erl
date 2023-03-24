@@ -337,21 +337,17 @@ get_info_object_signed_tx(BlockHash, STx) ->
     get_info_object_signed_tx(BlockHash, STx, #{}, STx).
 
 get_info_object_signed_tx(BlockHash, STx, GAIds, OrigTx) ->
-    Tx = aetx_sign:tx(STx),
-    case aetx:specialize_type(Tx) of
-        {contract_call_tx, _} ->
-            {CB, CTx} = aetx:specialize_callback(Tx),
-            CtCallId  = CB:ct_call_id(CTx),
-            CallId    = CB:call_id(CTx),
-            aec_chain:get_contract_call(CtCallId, CallId, BlockHash);
+    AeTx = aetx_sign:tx(STx),
+
+    case aetx:specialize_type(AeTx) of
         {TxType, _} when TxType =:= contract_create_tx;
+                         TxType =:= contract_call_tx;
                          TxType =:= ga_attach_tx ->
-            {CB, CTx} = aetx:specialize_callback(Tx),
-            Contract  = CB:contract_pubkey(CTx),
-            CallId    = CB:call_id(CTx),
-            aec_chain:get_contract_call(Contract, CallId, BlockHash);
+
+            {ID1, ID2} = innermost_tx_call_ids(TxType, AeTx, OrigTx),
+            aec_chain:get_contract_call(ID1, ID2, BlockHash);
         {ga_meta_tx, _} ->
-            {CB, CTx} = aetx:specialize_callback(Tx),
+            {CB, CTx} = aetx:specialize_callback(AeTx),
             get_ga_meta_tx_info(BlockHash, CB, CTx, GAIds, OrigTx);
         {channel_force_progress_tx, FPTx} ->
             {_Contract, Caller} =
@@ -368,6 +364,9 @@ get_info_object_signed_tx(BlockHash, STx, GAIds, OrigTx) ->
                         aect_call:ga_id(GAId, TxHashUsedInsteadOfContract)
                 end,
             aec_chain:get_contract_call(TxHashUsedInsteadOfContract, CallId, BlockHash);
+        {paying_for_tx, PayingFor} ->
+            InnerTx = aec_paying_for_tx:tx(PayingFor),
+            get_info_object_signed_tx(BlockHash, InnerTx, GAIds, OrigTx);
         {_TxType, _} ->
             {error, transaction_without_info}
     end.
@@ -1009,4 +1008,50 @@ safe_get_txs(Block) ->
 to_int(I) when is_integer(I) -> I;
 to_int(Str) when is_list(Str) -> list_to_integer(Str);
 to_int(Bin) when is_binary(Bin) -> binary_to_integer(Bin).
+
+innermost_tx_call_ids(Type, Tx, OrigTx) when Type =:= contract_create_tx;
+                                             Type =:= contract_call_tx;
+                                             Type =:= ga_attach_tx ->
+    case meta_auth_id(OrigTx) of
+        not_ga ->
+            case Type of
+                contract_call_tx ->
+                    {CB, CTx} = aetx:specialize_callback(Tx),
+                    CtCallId  = CB:ct_call_id(CTx),
+                    CallId    = CB:call_id(CTx),
+                    {CtCallId, CallId};
+                Call when Call =:= contract_create_tx;
+                          Call =:= ga_attach_tx ->
+                    {CB, CTx} = aetx:specialize_callback(Tx),
+                    Contract  = CB:contract_pubkey(CTx),
+                    CallId    = CB:call_id(CTx),
+                    {Contract, CallId}
+            end;
+        {ok, AuthId} ->
+            {_CB, CTx} = aetx:specialize_callback(Tx),
+            case Type of
+                contract_create_tx ->
+                    Owner = aect_create_tx:owner_pubkey(CTx),
+                    NewContractId = aect_contracts:compute_contract_pubkey(Owner, AuthId),
+                    InitCallId  = aect_call:ga_id(AuthId, NewContractId),
+                    {NewContractId, InitCallId};
+                contract_call_tx ->
+                    CtCallId    = aect_call_tx:ct_call_id(CTx),
+                    InnerCallId = aect_call:ga_id(AuthId, CtCallId),
+                    {CtCallId, InnerCallId}
+            end
+    end.
+
+meta_auth_id(OrigTx) ->
+    Tx = aetx_sign:tx(OrigTx),
+    case aetx:specialize_type(Tx) of
+        {ga_meta_tx, MetaTx} ->
+            AuthData = aega_meta_tx:auth_data(MetaTx),
+            Owner = aega_meta_tx:origin(MetaTx),
+            {ok, aega_meta_tx:auth_id(Owner, AuthData)};
+        {paying_for, PayingFor} ->
+            InnerTx = aec_paying_for_tx:tx(PayingFor),
+            meta_auth_id(InnerTx);
+        _ -> not_ga
+    end.
 

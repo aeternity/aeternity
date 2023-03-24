@@ -42,6 +42,8 @@
         , attach_second/1
         , meta_sc_create/1
         , meta_sc_create_fail/1
+        , meta_contract_create/1
+        , meta_contract_call/1
         , meta_4_fail/1
         , mempool/1
         , mempool_rejects_normal_tx/1
@@ -53,6 +55,7 @@
 -define(MAX_MINED_BLOCKS, 20).
 -define(MINE_BLOCKS(N), aecore_suite_utils:mine_key_blocks(?NODENAME, N)).
 -define(MINE_TXS(Txs), aecore_suite_utils:mine_blocks_until_txs_on_chain(?NODENAME, Txs, ?MAX_MINED_BLOCKS)).
+-define(START_AMT, 1000 * 1000 * 10000000000 * ?DEFAULT_GAS_PRICE).
 
 -define(assertMatchABI(AEVM, FATE, Res),
     case abi_version() of
@@ -86,6 +89,8 @@ groups() ->
       , attach_second
       , meta_sc_create
       , meta_sc_create_fail
+      , meta_contract_create
+      , meta_contract_call
       ]},
 
      {ga_info, [sequence],
@@ -142,15 +147,14 @@ init_per_group(_GAGroup, Config) ->
     [ ?MINE_BLOCKS(ToMine) || ToMine > 0 ],
 
     %% Prepare accounts
-    StartAmt = 1000 * 1000 * 1000000 * ?DEFAULT_GAS_PRICE,
-    {APK, ASK, STx1} = new_account(StartAmt),
-    {BPK, BSK, STx2} = new_account(StartAmt),
+    {APK, ASK, STx1} = new_account(?START_AMT),
+    {BPK, BSK, STx2} = new_account(?START_AMT),
 
     {ok, _} = ?MINE_TXS([STx1, STx2]),
 
     %% Save account information
-    Accounts = #{acc_a => #{pub_key => APK, priv_key => ASK, start_amt => StartAmt},
-                 acc_b => #{pub_key => BPK, priv_key => BSK, start_amt => StartAmt}},
+    Accounts = #{acc_a => #{pub_key => APK, priv_key => ASK, start_amt => ?START_AMT},
+                 acc_b => #{pub_key => BPK, priv_key => BSK, start_amt => ?START_AMT}},
     [{accounts, Accounts} | Config].
 
 end_per_group(_VMGroup, _Config) ->
@@ -295,7 +299,7 @@ meta_fail(Config) ->
 
     %% Fail inner tx by spending (far) too much
     #{tx_hash := MetaTx} =
-        post_ga_spend_tx(APub, APriv, ["1"], BPub, 1000 * MGP * MGP, MGP * 20000, MetaFee),
+        post_ga_spend_tx(APub, APriv, ["1"], BPub, ?START_AMT + 1, MGP * 20000, MetaFee),
 
     ?MINE_TXS([MetaTx]),
 
@@ -305,7 +309,8 @@ meta_fail(Config) ->
     {ok, 200, #{<<"tx">> := #{<<"type">> := <<"GAMetaTx">>}}} = get_tx(MetaTx),
 
     {ok, 200, #{<<"ga_info">> := #{<<"return_type">> := <<"error">>,
-                                  <<"gas_used">> := Gas}}} = get_contract_call_object(MetaTx),
+                                   <<"inner_object">> := #{<<"tx_info">> := <<"spend_tx">>},
+                                   <<"gas_used">> := Gas}}} = get_contract_call_object(MetaTx),
 
     ct:pal("Cost failing inner: ~p", [ABal0 - ABal1]),
     ExpBal = ABal0 - (MetaFee + Gas * 1000 * MGP),
@@ -330,6 +335,7 @@ meta_spend(Config) ->
     {ok, 200, #{<<"tx">> := #{<<"type">> := <<"GAMetaTx">>}}} = get_tx(MetaTx),
 
     {ok, 200, #{<<"ga_info">> := #{<<"return_type">> := <<"ok">>,
+                                   <<"inner_object">> := #{<<"tx_info">> := <<"spend_tx">>},
                                    <<"gas_used">> := Gas}}} =
         get_contract_call_object(MetaTx),
 
@@ -371,7 +377,8 @@ meta_meta_fail_auth(Config) ->
     {ok, 200, #{<<"tx">> := #{<<"type">> := <<"GAMetaTx">>}}} = get_tx(MetaTx),
 
     {ok, 200, #{<<"ga_info">> := #{<<"return_type">> := <<"error">>,
-                                  <<"gas_used">> := Gas}}} =
+                                   <<"inner_object">> := #{<<"tx_info">> := <<"ga_meta_tx">>},
+                                   <<"gas_used">> := Gas}}} =
         get_contract_call_object(MetaTx),
 
     ct:pal("Cost1: ~p", [ABal0 - ABal1]),
@@ -387,7 +394,7 @@ meta_meta_fail(Config) ->
     MGP = aec_test_utils:min_gas_price(),
     MetaFee = (5 * 15000 + 30000) * MGP,
 
-    #{tx_hash := MetaTx} = post_ga_spend_tx(APub, APriv, ["4", "5"], BPub, 1000 * MGP * MGP, 20000 * MGP, MetaFee),
+    #{tx_hash := MetaTx} = post_ga_spend_tx(APub, APriv, ["4", "5"], BPub, ?START_AMT + 1, 20000 * MGP, MetaFee),
 
     ?MINE_TXS([MetaTx]),
 
@@ -435,7 +442,14 @@ meta_meta_spend(Config) ->
         get_contract_call_object(MetaTx),
 
     ct:log("Transaction info: ~p", [GAInfo]),
-    #{<<"return_type">> := <<"ok">>} = GAInfo,
+    #{<<"return_type">> := <<"ok">>,
+      <<"inner_object">> := #{<<"ga_info">> := #{<<"caller_id">> := _,
+                                                 <<"gas_price">> := _,
+                                                 <<"gas_used">> := _,
+                                                 <<"return_type">> := <<"ok">>,
+                                                 <<"inner_object">> := #{<<"tx_info">> := <<"spend_tx">>}
+                                                }}
+      } = GAInfo,
 
     ct:pal("Cost1: ~p", [ABal0 - ABal1]),
     ExpBal = ABal0 - (2 * (MetaFee + Gas * 1000 * MGP) + 20000 * MGP + 10000),
@@ -490,9 +504,14 @@ meta_sc_create(Config) ->
     {ok, 200, #{<<"tx">> := #{<<"type">> := <<"GAMetaTx">>}}} = get_tx(MetaTx),
 
     {ok, 200, #{<<"ga_info">> := #{<<"return_type">> := <<"ok">>,
+                                   <<"inner_object">> := InnerGAInfo,
                                    <<"gas_used">> := Gas} = GI}} =
         get_contract_call_object(MetaTx),
 
+    #{<<"ga_info">> := #{<<"return_type">> := <<"ok">>,
+                         <<"gas_used">> := _,
+                         <<"inner_object">> := #{<<"tx_info">> := <<"channel_create_tx">>}}} =
+        InnerGAInfo,
     ct:pal("GAS: ~p\n", [Gas]),
     ct:pal("Cost1: ~p", [ABal0 - ABal1]),
     ct:pal("~p + ~p + ~p", [100000 * MGP, Gas * MGP, 20000 * MGP]),
@@ -513,7 +532,8 @@ meta_sc_create_fail(Config) ->
     %% test that we can return GAMetaTx via http interface
     {ok, 200, #{<<"tx">> := #{<<"type">> := <<"GAMetaTx">>}}} = get_tx(MetaTx),
 
-    {ok, 200, #{<<"ga_info">> := #{<<"return_type">> := ReturnType}}} =
+    {ok, 200, #{<<"ga_info">> := #{<<"return_type">> := ReturnType,
+                                   <<"inner_object">> := #{<<"tx_info">> := <<"channel_create_tx">>}}}} =
         get_contract_call_object(MetaTx),
 
     %% Until LIMA it was possible to use a GA account (as responder)
@@ -526,6 +546,65 @@ meta_sc_create_fail(Config) ->
     end,
 
     ok.
+
+meta_contract_create(Config) ->
+    %% Get account information.
+    #{acc_a := #{pub_key := Pub, priv_key := Priv}} = proplists:get_value(accounts, Config),
+    MGP = aec_test_utils:min_gas_price(),
+    MetaFee = (5 * 15000 + 30000) * MGP,
+    #{tx_hash := MetaTx} = post_ga_contract_create_tx(Pub, Priv, "13", "arithm", ["10"], MetaFee),
+    ?MINE_TXS([MetaTx]),
+    %% test that we can return GAMetaTx via http interface
+    {ok, 200, #{<<"tx">> := #{<<"type">> := <<"GAMetaTx">>}}} = get_tx(MetaTx),
+    {ok, 200, #{<<"ga_info">> := #{<<"return_type">> := <<"ok">>,
+                                   <<"inner_object">> := InnerGAInfo,
+                                   <<"gas_used">> := _} = _}} =
+        get_contract_call_object(MetaTx),
+    #{<<"call_info">> :=
+        #{  <<"caller_id">> := _,
+            <<"caller_nonce">> := 0,
+            <<"contract_id">> := _,
+            <<"gas_price">> := _,
+            <<"gas_used">> := _,
+            <<"height">> := _,
+            <<"log">> := _,
+            <<"return_type">> := <<"ok">>,
+            <<"return_value">> := _}} = InnerGAInfo,
+    ok.
+
+meta_contract_call(Config) ->
+    %% Get account information.
+    #{acc_a := #{pub_key := Pub, priv_key := Priv},
+      acc_b := #{pub_key := BasicPub, priv_key := BasicPriv}} = proplists:get_value(accounts, Config),
+    MGP = aec_test_utils:min_gas_price(),
+    MetaFee = (5 * 15000 + 30000) * MGP,
+    #{tx_hash := MetaTxCreate, sign_tx := SignedTx} = post_ga_contract_create_tx(Pub, Priv, "14", "arithm", ["10"], MetaFee),
+    ?MINE_TXS([MetaTxCreate]),
+    {contract_create_tx, CreateTx} = aetx:specialize_type(aetx_sign:innermost_tx(SignedTx)),
+    Owner = aect_create_tx:owner_pubkey(CreateTx),
+    Contract = aect_contracts:compute_contract_pubkey(Owner, auth_id(SignedTx)),
+    
+    #{tx_hash := MetaTxCall} = post_ga_contract_call_tx(Pub, Priv, "15", Contract, "arithm", "pow", ["2"], MetaFee),
+
+    ?MINE_TXS([MetaTxCall]),
+    %% test that we can return GAMetaTx via http interface
+    {ok, 200, #{<<"tx">> := #{<<"type">> := <<"GAMetaTx">>}}} = get_tx(MetaTxCall),
+    {ok, 200, #{<<"ga_info">> := #{<<"return_type">> := <<"ok">>,
+                                   <<"inner_object">> := InnerGAInfo,
+                                   <<"gas_used">> := _} = _}} =
+        get_contract_call_object(MetaTxCall),
+    #{<<"call_info">> :=
+        #{  <<"caller_id">> := _,
+            <<"caller_nonce">> := 0,
+            <<"contract_id">> := _,
+            <<"gas_price">> := _,
+            <<"gas_used">> := _,
+            <<"height">> := _,
+            <<"log">> := _,
+            <<"return_type">> := <<"ok">>,
+            <<"return_value">> := _}} = InnerGAInfo,
+    ok.
+
 
 %% Test the minimum gas price check
 mempool(Config) ->
@@ -625,6 +704,58 @@ make_attach_tx_map(AccPK) ->
     {ok, AuthFun} = aega_test_utils:auth_fun_hash(<<"authorize">>, TI),
 
     #{ nonce => Nonce, code => Code, auth_fun => AuthFun, call_data => CallData }.
+
+%% Contract create
+make_contract_create_tx(Owner, Nonce, ContractName, InitArgs) ->
+    {ok, #{bytecode := Code, src := Src, map := #{type_info := _TI}}} =
+        aega_test_utils:get_contract(ContractName),
+    CallData = aega_test_utils:make_calldata(Src, "init", InitArgs),
+    CreateMap =
+        #{ fee         => 1000000 * aec_test_utils:min_gas_price()
+         , owner_id    => aeser_id:create(account, Owner)
+         , nonce       => Nonce
+         , code        => Code
+         , vm_version  => aect_test_utils:vm_version()
+         , abi_version => aect_test_utils:abi_version()
+         , deposit     => 0
+         , amount      => 0
+         , gas         => 1000000
+         , gas_price   => 1 * aec_test_utils:min_gas_price()
+         , call_data   => CallData 
+         , ttl         => 0
+        },
+    {ok, _Tx} = aect_create_tx:new(CreateMap).
+
+post_ga_contract_create_tx(AccPK, AccSK, Nonce, ContractName, InitArgs, MetaFee) ->
+    AutGas = 20000,
+    {ok, InnerTx} = make_contract_create_tx(AccPK, 0, ContractName, InitArgs),
+    SMetaTx = ga_meta_tx([Nonce], AccPK, AccSK, InnerTx, MetaFee, AutGas),
+    post_aetx(SMetaTx).
+
+%% Contract call
+make_contract_call_tx(Contract, Caller, Nonce, ContractName, FunName, FunArgs) ->
+    {ok, #{bytecode := _Code, src := Src, map := #{type_info := _TI}}} =
+        aega_test_utils:get_contract(ContractName),
+    CallData = aega_test_utils:make_calldata(Src, FunName, FunArgs),
+    CallMap =
+        #{fee         => 600000 * aec_test_utils:min_gas_price()
+        , contract_id => aeser_id:create(contract, Contract)
+        , caller_id   => aeser_id:create(account, Caller)
+        , nonce       => Nonce
+        , abi_version => aect_test_utils:abi_version()
+        , amount      => 0
+        , gas         => 1000000
+        , gas_price   => aec_test_utils:min_gas_price()
+        , call_data   => CallData
+        , ttl         => 0
+        },
+    {ok, _Tx} = aect_call_tx:new(CallMap).
+
+post_ga_contract_call_tx(AccPK, AccSK, Nonce, Contract, ContractName, Fun, Args, MetaFee) ->
+    AutGas = 20000,
+    {ok, InnerTx} = make_contract_call_tx(Contract, AccPK, 0, ContractName, Fun, Args),
+    SMetaTx = ga_meta_tx([Nonce], AccPK, AccSK, InnerTx, MetaFee, AutGas),
+    post_aetx(SMetaTx).
 
 %% GA spend
 spend_tx(AccPK, _AccSK, Nonce, Recipient, Amount, Fee) ->
@@ -797,3 +928,11 @@ do_dry_run(STx, ExpRes) ->
             ct:pal("Dry-run call failed with reason: ~s", [Reason]),
             ?assertMatch(ExpRes, error)
     end.
+
+auth_id(SignedMetaTx) ->
+    Tx = aetx_sign:tx(SignedMetaTx),
+    {ga_meta_tx, MetaTx} = aetx:specialize_type(Tx),
+    AuthData = aega_meta_tx:auth_data(MetaTx),
+    Owner = aega_meta_tx:origin(MetaTx),
+    aega_meta_tx:auth_id(Owner, AuthData).
+

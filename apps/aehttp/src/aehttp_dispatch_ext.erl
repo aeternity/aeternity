@@ -483,6 +483,7 @@ handle_request_('GetTransactionInfoByHash', Params, _Config) ->
                        (#{info := Info, tx_type := TxType}) when TxType =:= contract_create_tx;
                                                                  TxType =:= contract_call_tx;
                                                                  TxType =:= ga_attach_tx;
+                                                                 TxType =:= paying_for_tx;
                                                                  TxType =:= channel_force_progress_tx ->
                             #{<<"call_info">> => aect_call:serialize_for_client(Info)};
                        (#{info := Info, tx_type := _}) ->
