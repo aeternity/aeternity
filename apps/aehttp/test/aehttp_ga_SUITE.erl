@@ -57,12 +57,6 @@
 -define(MINE_TXS(Txs), aecore_suite_utils:mine_blocks_until_txs_on_chain(?NODENAME, Txs, ?MAX_MINED_BLOCKS)).
 -define(START_AMT, 1000 * 1000 * 10000000000 * ?DEFAULT_GAS_PRICE).
 
--define(assertMatchABI(AEVM, FATE, Res),
-    case abi_version() of
-        ?ABI_AEVM_SOPHIA_1 -> ?assertMatch(AEVM, Res);
-        ?ABI_FATE_SOPHIA_1 -> ?assertMatch(FATE, Res)
-    end).
-
 all() ->
     [{group, swagger2},
      {group, oas3}
@@ -715,8 +709,8 @@ make_contract_create_tx(Owner, Nonce, ContractName, InitArgs) ->
          , owner_id    => aeser_id:create(account, Owner)
          , nonce       => Nonce
          , code        => Code
-         , vm_version  => aect_test_utils:vm_version()
-         , abi_version => aect_test_utils:abi_version()
+         , vm_version  => aega_SUITE:vm_version()
+         , abi_version => aega_SUITE:abi_version()
          , deposit     => 0
          , amount      => 0
          , gas         => 1000000
@@ -742,7 +736,7 @@ make_contract_call_tx(Contract, Caller, Nonce, ContractName, FunName, FunArgs) -
         , contract_id => aeser_id:create(contract, Contract)
         , caller_id   => aeser_id:create(account, Caller)
         , nonce       => Nonce
-        , abi_version => aect_test_utils:abi_version()
+        , abi_version => aega_SUITE:abi_version()
         , amount      => 0
         , gas         => 1000000
         , gas_price   => aec_test_utils:min_gas_price()
