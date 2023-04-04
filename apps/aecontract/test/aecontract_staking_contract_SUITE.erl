@@ -1865,19 +1865,13 @@ entropy_impacts_leader_election(_Config) ->
             {Carol, ?VALIDATOR_MIN}]),
     {ok, Trees2, {tuple, {}}} = set_validator_online_(Alice, TxEnv, Trees1),
     {ok, Trees3, {tuple, {}}} = set_validator_online_(Bob, TxEnv, Trees2),
-    Hash =
-        fun([C]) ->
-            list_to_binary(lists:duplicate(32, C));
-           (S) when length(S) =:= 32 ->
-            list_to_binary(S)
-        end,
-    Entropy1 = Hash("A"),
+    Entropy1 = hash($A),
     TopHash = aetx_env:key_hash(TxEnv),
     Commitments = commitments(#{TopHash => [pubkey(?ALICE), pubkey(?BOB)]}),
     {ok, Trees4, {tuple, {{address, Bob}, _}}} = hc_elect_(Entropy1, Commitments, ?OWNER_PUBKEY, TxEnv, Trees3),
     {ok, _, {address, Bob}} = leader_(?OWNER_PUBKEY, TxEnv, Trees4),
     %% same context, different entropy leads to different leader
-    Entropy2 = Hash("a"),
+    Entropy2 = hash($a),
     {ok, Trees5, {tuple, {{address, Alice}, _}}} = hc_elect_(Entropy2, Commitments, ?OWNER_PUBKEY, TxEnv, Trees3),
     {ok, _, {address, Alice}} = leader_(?OWNER_PUBKEY, TxEnv, Trees5),
     ok.
@@ -1901,18 +1895,12 @@ commitments_determine_who_participates(_Config) ->
             {Carol, ?VALIDATOR_MIN}]),
     {ok, Trees2, {tuple, {}}} = set_validator_online_(Alice, TxEnv, Trees1),
     {ok, Trees3, {tuple, {}}} = set_validator_online_(Bob, TxEnv, Trees2),
-    Hash =
-        fun([C]) ->
-            list_to_binary(lists:duplicate(32, C));
-           (S) when length(S) =:= 32 ->
-            list_to_binary(S)
-        end,
     TopHash = aetx_env:key_hash(TxEnv),
     Test =
         fun(Pubkey) ->
             lists:foreach(
                 fun(Char) ->
-                    Entropy = Hash([Char]),
+                    Entropy = hash(Char),
                     Commitments = commitments(#{TopHash => [Pubkey]}),
                     {ok, Trees4, {tuple, {{address, Pubkey}, _}}} = hc_elect_(Entropy, Commitments, ?OWNER_PUBKEY, TxEnv, Trees3),
                     {ok, _, {address, Pubkey}} = leader_(?OWNER_PUBKEY, TxEnv, Trees4),
@@ -1935,8 +1923,7 @@ added_stake_power(_Config) ->
     Trees1 =
         lists:foldl(
             fun({Pubkey,  Amount}, TreesAccum) ->
-                {ok, TreesAccum1, _} = new_validator_(Pubkey, Amount, TxEnv,
-                                                      TreesAccum),
+                {ok, TreesAccum1, _} = new_validator_(Pubkey, Amount, TxEnv, TreesAccum),
                 TreesAccum1
             end,
             Trees0,
@@ -1945,18 +1932,12 @@ added_stake_power(_Config) ->
             {Carol, CarolAmt}]),
     {ok, Trees2, {tuple, {}}} = set_validator_online_(Alice, TxEnv, Trees1),
     {ok, Trees3, {tuple, {}}} = set_validator_online_(Bob, TxEnv, Trees2),
-    Hash =
-        fun([C]) ->
-            list_to_binary(lists:duplicate(32, C));
-           (S) when length(S) =:= 32 ->
-            list_to_binary(S)
-        end,
     TopHash = aetx_env:key_hash(TxEnv),
     TestOnlyOneCommiter =
         fun(Pubkey) ->
             lists:foreach(
                 fun(Char) ->
-                    Entropy = Hash([Char]),
+                    Entropy = hash(Char),
                     TopHash = aetx_env:key_hash(TxEnv),
                     Commitments = commitments(#{TopHash => [Pubkey]}),
                     Expected = [{tuple, {{address, Bob}, BobAmt}}, {tuple, {{address, Alice}, AliceAmt}}],
@@ -1978,7 +1959,7 @@ added_stake_power(_Config) ->
     %% test two commiters
     lists:foreach(
         fun(Char) ->
-            Entropy = Hash([Char]),
+            Entropy = hash(Char),
             TopHash = aetx_env:key_hash(TxEnv),
             Commitments = commitments(#{TopHash => [Alice, Bob]}),
             Expected = [{tuple, {{address, Bob}, BobAmt}}, {tuple, {{address, Alice}, AliceAmt}}],
@@ -2373,3 +2354,8 @@ commitments(CommitmentsMap) ->
             #{},
             CommitmentsMap),
     aeb_fate_data:make_map(Commitments).
+
+hash(Str) when is_list(Str) and length(Str) =:= 32 ->
+    list_to_binary(Str);
+hash(C) when is_integer(C) and C < 255 ->
+    list_to_binary(lists:duplicate(32, C)).
