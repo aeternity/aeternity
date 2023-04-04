@@ -9,21 +9,21 @@ main contract PoSElection =
     { main_staking_ct       : MainStaking,
       entropy               : hash,
       leader                : address,
-      added_stake      : int
+      added_stake           : int
     }
 
   record get_state_response =
     { main_staking_ct       : MainStaking,
       entropy               : hash,
       leader                : address,
-      added_stake      : int
+      added_stake           : int
     }
 
   entrypoint init(main_staking_ct : MainStaking, entropy_str : string) =
     { main_staking_ct       = main_staking_ct,
       leader                = Contract.address,
       entropy               = Crypto.sha256(entropy_str),
-      added_stake      = 0
+      added_stake           = 0
       }
 
   stateful entrypoint elect() =
@@ -48,8 +48,8 @@ main contract PoSElection =
   entrypoint get_state() : get_state_response =
     { main_staking_ct = state.main_staking_ct,
       entropy         = state.entropy,
-      leader            = state.leader,
-      added_stake  = state.added_stake
+      leader          = state.leader,
+      added_stake     = state.added_stake
       }
 
   function find_validator(validators, shot) =

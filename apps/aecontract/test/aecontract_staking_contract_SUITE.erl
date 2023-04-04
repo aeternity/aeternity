@@ -558,7 +558,7 @@ single_validator_gets_elected_every_time(_Config) ->
             %% Alice is expected to be next
             TxEnvPrev = aetx_env:set_height(TxEnv, Height - 1),
             {ok, _ , {tuple, {{address, Alice}, _}}} = elect_next_(Alice, TxEnvPrev,
-                                                     TreesAccum),
+                                                                   TreesAccum),
             TxEnv1 = aetx_env:set_height(TxEnv, Height),
             {ok, TreesAccum1, {tuple, {}}} = elect_(?OWNER_PUBKEY, TxEnv1, TreesAccum),
             {ok, _, {address, Alice}} = leader_(Alice, TxEnv1, TreesAccum1),
