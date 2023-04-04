@@ -388,7 +388,9 @@ handle_request_('GetAccountByPubkeyAndHeight', Params, _Context) ->
                 none ->
                     {404, [], #{reason => <<"Account not found">>}};
                 {error, chain_too_short} ->
-                    {404, [], #{reason => <<"Height not available">>}}
+                    {404, [], #{reason => <<"Height not available">>}};
+                {error, garbage_collected} ->
+                    {410, [], #{reason => <<"State data at the requested height has been garbage-collected">>}}
             end;
         {error, _} ->
             {400, [], #{reason => <<"Invalid public key">>}}

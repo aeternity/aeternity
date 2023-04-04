@@ -1403,13 +1403,13 @@ handle_successfully_added_block(Block, Hash, true, PrevKeyHeader, Events, State,
             (BlockType == key) andalso
                 aec_metrics:try_update(
                   [ae,epoch,aecore,blocks,key,info], info_value(NewTopBlock)),
+            [ maybe_garbage_collect(NewTopBlock) || BlockType == key ],
             IsLeader = is_leader(NewTopBlock, PrevKeyHeader, ConsensusModule),
             case IsLeader of
                 true ->
                     ok; %% Don't spend time when we are the leader.
                 false ->
-                    aec_tx_pool:garbage_collect(),
-                    [ maybe_garbage_collect(NewTopBlock) || BlockType == key ]
+                    aec_tx_pool:garbage_collect()
             end,
             {ok, setup_loop(State2, true, IsLeader, Origin)}
     end.

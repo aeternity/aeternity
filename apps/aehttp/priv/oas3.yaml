@@ -470,6 +470,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "410":
+          description: State data at the requested height has been garbage-collected
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   "/accounts/{pubkey}/hash/{hash}":
     get:
       tags:
@@ -657,6 +663,12 @@ paths:
                 $ref: "#/components/schemas/Error"
         "404":
           description: Transaction not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "410":
+          description: State data at the requested height has been garbage-collected
           content:
             application/json:
               schema:
@@ -2002,6 +2014,12 @@ paths:
                 $ref: "#/components/schemas/TokenSupply"
         "400":
           description: Height not available
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "410":
+          description: State data at the requested height has been garbage-collected
           content:
             application/json:
               schema:

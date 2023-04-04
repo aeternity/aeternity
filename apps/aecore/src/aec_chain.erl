@@ -115,9 +115,14 @@ get_account_at_hash(PubKey, Hash) ->
     end.
 
 get_account_at_height(PubKey, Height) ->
-    case aec_chain_state:get_key_block_hash_at_height(Height) of
-        error -> {error, chain_too_short};
-        {ok, Hash} -> get_account_at_hash(PubKey, Hash)
+    case aec_db_gc:state_at_height_still_reachable(Height) of
+        true ->
+            case aec_chain_state:get_key_block_hash_at_height(Height) of
+                error -> {error, chain_too_short};
+                {ok, Hash} -> get_account_at_hash(PubKey, Hash)
+            end;
+        false ->
+            {error, garbage_collected}
     end.
 
 -spec all_accounts_balances_at_hash(binary()) ->
@@ -315,15 +320,26 @@ get_contract_with_code(PubKey) ->
                                {'ok', aect_call:call()} |
                                {'error', atom()}.
 get_contract_call(ContractId, CallId, BlockHash) ->
-    case get_block_state_partial(BlockHash, [calls]) of
-        error -> {error, no_state_trees};
-        {ok, Trees} ->
-            CallTree = aec_trees:calls(Trees),
-            case aect_call_state_tree:lookup_call(ContractId, CallId, CallTree) of
-                none -> {error, call_not_found};
-                {value, Call} -> {ok, Call}
-            end
+    case state_reachable_by_blockhash(BlockHash) of
+        true ->
+            case get_block_state_partial(BlockHash, [calls]) of
+                error -> {error, no_state_trees};
+                {ok, Trees} ->
+                    CallTree = aec_trees:calls(Trees),
+                    case aect_call_state_tree:lookup_call(ContractId, CallId, CallTree) of
+                        none -> {error, call_not_found};
+                        {value, Call} -> {ok, Call}
+                    end
+            end;
+        false ->
+            {error, garbage_collected}
     end.
+
+state_reachable_by_blockhash(BlockHash) ->
+    %% For now, let's assume that at least the block header exists
+    {ok, Header} = get_header(BlockHash),
+    Height = aec_headers:height(Header),
+    aec_db_gc:state_at_height_still_reachable(Height).
 
 %%%===================================================================
 %%% Generalized Accounts
@@ -777,6 +793,7 @@ get_key_header_by_height(Height) when is_integer(Height), Height >= 0 ->
 
 -spec sum_tokens_at_height(aec_blocks:height()) ->
                                   {error, 'chain_too_short'}
+                                | {error, 'garbage_collected'}
                                 | {ok, #{ 'accounts'         => non_neg_integer()
                                         , 'contracts'        => non_neg_integer()
                                         , 'contract_oracles' => non_neg_integer()
@@ -791,7 +808,12 @@ get_key_header_by_height(Height) when is_integer(Height), Height >= 0 ->
 sum_tokens_at_height(Height) ->
     %% Wrap in transaction for speed.
     %% TODO: This could be done dirty
-    aec_db:ensure_transaction(fun() -> int_sum_tokens_at_height(Height) end).
+    case aec_db_gc:state_at_height_still_reachable(Height) of
+        true ->
+            aec_db:ensure_transaction(fun() -> int_sum_tokens_at_height(Height) end);
+        false ->
+            {error, garbage_collected}
+    end.
 
 int_sum_tokens_at_height(Height) ->
     case aec_chain_state:get_key_block_hash_at_height(Height) of
