@@ -314,14 +314,6 @@ seal_correct_signature(Header, Signature, _Padding) ->
             {error, signature_verification_failed}
     end.
 
-validate_header_target(Header) ->
-    {ok, AddedStake} = aeu_ets_cache:lookup(
-                        ?ETS_CACHE_TABLE,
-                        added_stake),
-    ExpectedTarget = aeminer_pow:integer_to_scientific(AddedStake),
-    Target = aec_headers:target(Header),
-    ExpectedTarget =:= Target.
-
 generate_key_header_seal(_, Candidate, PCHeight, #{expected_key_block_rate := _Expected} = _Config, _) ->
     case aec_parent_chain_cache:get_block_by_height(PCHeight) of
         {ok, Block} ->
