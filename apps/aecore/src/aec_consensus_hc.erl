@@ -171,7 +171,10 @@ recent_cache_n() -> 1.
 recent_cache_trim_key_header(_) -> ok.
 
 keyblocks_for_target_calc() -> 0.
-keyblock_create_adjust_target(Block, []) -> {ok, Block}.
+keyblock_create_adjust_target(Block0, []) ->
+    {ok, Stake} = aeu_ets_cache:lookup(?ETS_CACHE_TABLE, added_stake),
+    Block = aec_blocks:set_target(Block0, aeminer_pow:integer_to_scientific(Stake)),
+    {ok, Block}.
 
 dirty_validate_block_pre_conductor(_) -> ok.
 dirty_validate_header_pre_conductor(_) -> ok.
@@ -205,11 +208,15 @@ state_pre_transform_key_node(_Node, Trees) ->
             CallData = aeser_api_encoder:encode(contract_bytearray, CD),
             case call_consensus_contract_(?ELECTION_CONTRACT, TxEnv, Trees, CallData, "elect", 0) of
                 {ok, Trees1, Call} ->
-                    {tuple, {{address, Leader}, _TotalStake}}  = aeb_fate_encoding:deserialize(aect_call:return_value(Call)),
+                    {tuple, {{address, Leader}, AddedStake}}  = aeb_fate_encoding:deserialize(aect_call:return_value(Call)),
                     aeu_ets_cache:reinit(
                         ?ETS_CACHE_TABLE,
                         current_leader,
                         fun () -> Leader end ),
+                    aeu_ets_cache:reinit(
+                        ?ETS_CACHE_TABLE,
+                        added_stake,
+                        fun () -> AddedStake end ),
                     Trees1;
                 {error, What} ->
                     %% maybe a softer approach than crash and burn?
@@ -285,8 +292,10 @@ validate_key_header_seal(Header, _Protocol) ->
     Validators = [ fun seal_correct_padding/3
                  , fun seal_correct_signature/3
                  ],
-    Res = aeu_validation:run(Validators, [Header, Signature, Padding]),
-    Res.
+    case aeu_validation:run(Validators, [Header, Signature, Padding]) of
+        {error, _} = Err -> Err;
+        ok -> ok
+    end.
 
 seal_correct_padding(_Header, _Signature, Padding) ->
     PaddingSize = seal_padding_size(),
@@ -305,6 +314,14 @@ seal_correct_signature(Header, Signature, _Padding) ->
             {error, signature_verification_failed}
     end.
 
+validate_header_target(Header) ->
+    {ok, AddedStake} = aeu_ets_cache:lookup(
+                        ?ETS_CACHE_TABLE,
+                        added_stake),
+    ExpectedTarget = aeminer_pow:integer_to_scientific(AddedStake),
+    Target = aec_headers:target(Header),
+    ExpectedTarget =:= Target.
+
 generate_key_header_seal(_, Candidate, PCHeight, #{expected_key_block_rate := _Expected} = _Config, _) ->
     case aec_parent_chain_cache:get_block_by_height(PCHeight) of
         {ok, Block} ->
@@ -321,7 +338,7 @@ generate_key_header_seal(_, Candidate, PCHeight, #{expected_key_block_rate := _E
                                                            CallData,
                                                            "elect_next",
                                                            0),
-            {tuple, {{address, Leader}, Stake}}  = aeb_fate_encoding:deserialize(aect_call:return_value(Call)),
+            {tuple, {{address, Leader}, _Stake}}  = aeb_fate_encoding:deserialize(aect_call:return_value(Call)),
             SignModule = get_sign_module(),
             case SignModule:set_candidate(Leader) of
                 {error, key_not_found} ->
@@ -330,8 +347,7 @@ generate_key_header_seal(_, Candidate, PCHeight, #{expected_key_block_rate := _E
                 ok ->
                     Candidate1 = aec_headers:set_beneficiary(Candidate, Leader),
                     Candidate2 = aec_headers:set_miner(Candidate1, Leader),
-                    Candidate3 = aec_headers:set_target(Candidate2, aeminer_pow:integer_to_scientific(Stake)),
-                    {ok, Signature} = SignModule:produce_key_header_signature(Candidate3, Leader),
+                    {ok, Signature} = SignModule:produce_key_header_signature(Candidate2, Leader),
                     %% the signature is 64 bytes. The seal is 168 bytes. We add 104 bytes at
                     %% the end of the signature
                     PaddingSize = seal_padding_size(),
@@ -380,7 +396,7 @@ trim_sealing_nonce(PCHeight, _) ->
     PCHeight.
 
 default_target() ->
-    ?TAG.
+    -1. %% this is an impossible value will be rewritten later on
 
 assert_key_target_range(_) ->
     ok.
@@ -603,7 +619,19 @@ is_leader_valid(Node, Trees, TxEnv) ->
         {ok, _Trees1, Call} ->
             {address, ExpectedLeader} = aeb_fate_encoding:deserialize(aect_call:return_value(Call)),
             Leader = aec_headers:miner(Header),
-            ExpectedLeader =:= Leader;
+            Target = aec_headers:target(Header),
+            IsDefaultT = Target =:= default_target(),
+            case ExpectedLeader =:= Leader of
+                true when IsDefaultT -> true;
+                true ->
+                    {ok, CD2} = aeb_fate_abi:create_calldata("added_stake", []),
+                    CallData2 = aeser_api_encoder:encode(contract_bytearray, CD2),
+                    {ok, _, Call2} = call_consensus_contract_(?ELECTION_CONTRACT, TxEnv, Trees, CallData2, "added_stake", 0),
+                    AddedStake = aeb_fate_encoding:deserialize(aect_call:return_value(Call2)),
+                    ExpectedTarget = aeminer_pow:integer_to_scientific(AddedStake),
+                    ExpectedTarget =:= Target;
+                false -> false
+            end;
         {error, What} ->
             lager:info("Block validation failed with a reason ~p", [What]),
             false

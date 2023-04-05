@@ -2355,7 +2355,7 @@ commitments(CommitmentsMap) ->
             CommitmentsMap),
     aeb_fate_data:make_map(Commitments).
 
-hash(Str) when is_list(Str) and length(Str) =:= 32 ->
+hash(Str) when is_list(Str), length(Str) =:= 32 ->
     list_to_binary(Str);
-hash(C) when is_integer(C) and C < 255 ->
+hash(C) when is_integer(C), C < 255 ->
     list_to_binary(lists:duplicate(32, C)).
