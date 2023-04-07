@@ -17,7 +17,8 @@
          change_leaders/1,
          verify_fees/1,
          verify_commitments/1,
-         genesis_has_commitments/1
+         genesis_has_commitments/1,
+         block_difficulty/1
         ]).
 
 -include_lib("stdlib/include/assert.hrl").
@@ -104,7 +105,8 @@ common_tests() ->
 hc_specific_tests() ->
     [ 
      verify_commitments,
-     genesis_has_commitments
+     genesis_has_commitments,
+     block_difficulty
     ].
 
 suite() -> [].
@@ -620,17 +622,7 @@ verify_commitments(Config) ->
 genesis_has_commitments(_Config) ->
     PCStartHeight = ?CHILD_START_HEIGHT,
     PCConfirmationsEndHeight = ?CHILD_START_HEIGHT + ?CHILD_CONFIRMATIONS - 1,
-    GetCommitments =
-        fun(From, To) ->
-            {ok, Blocks} = get_generations(?PARENT_CHAIN_NODE1, From, To + 1),
-            MicroBlocks =
-                lists:filter(fun(B) -> aec_blocks:type(B) =:= micro end, Blocks),
-            maps:from_list(
-                lists:map(
-                    fun(MB) -> {aec_blocks:height(MB), aec_blocks:txs(MB)} end,
-                    MicroBlocks))
-        end,
-    InitialCommitments = GetCommitments(PCStartHeight, PCConfirmationsEndHeight),
+    InitialCommitments = get_commitments(PCStartHeight, PCConfirmationsEndHeight),
     GenesisHash = aeser_api_encoder:encode(key_block_hash, rpc(?NODE1, aec_chain, genesis_hash, [])),
     lists:foreach(
         fun(Height) ->
@@ -645,9 +637,19 @@ genesis_has_commitments(_Config) ->
             ok
         end,
         lists:seq(PCStartHeight, PCConfirmationsEndHeight)),
-
     ok.
-    
+
+block_difficulty(Config) ->
+    lists:foreach(
+        fun(_) ->
+            {ok, [KB]} = produce_blocks(?NODE1, ?NODE1_NAME, child, 1, ?config(consensus, Config)),
+            {ok, AddedStakingPower} = inspect_election_contract(?ALICE, current_added_staking_power, Config),
+            Target = aec_blocks:target(KB),
+            {Target, Target} = {Target, aeminer_pow:integer_to_scientific(AddedStakingPower)}
+        end,
+        lists:seq(1, 20)), %% test with 20 elections
+    ok.
+
 pubkey({Pubkey, _, _}) -> Pubkey.
 
 privkey({_, Privkey, _}) -> Privkey.
@@ -789,7 +791,8 @@ inspect_election_contract(OriginWho, WhatToInspect, Config) ->
 inspect_election_contract(OriginWho, WhatToInspect, Config, TopHash) ->
     {Fun, Args} =
         case WhatToInspect of
-            current_leader -> {"leader", []}
+            current_leader -> {"leader", []};
+            current_added_staking_power -> {"added_stake", []}
         end,
     ContractPubkey = ?config(election_contract, Config),
     ElectionContract = election_contract_by_consensus(?config(consensus, Config)),
@@ -1168,4 +1171,17 @@ produce_validator_tx() ->
     Signatures = [ enacl:sign_detached(BinForNetwork, privkey(Who))],
     SignedTx = aetx_sign:new(Tx, Signatures),
     aeser_api_encoder:encode(transaction, aetx_sign:serialize_to_binary(SignedTx)).
+
+get_commitments(GenerationHeight) ->
+    get_commitments(GenerationHeight, GenerationHeight).
+
+get_commitments(From, To) ->
+    {ok, Blocks} = get_generations(?PARENT_CHAIN_NODE1, From, To + 1),
+    MicroBlocks =
+        lists:filter(fun(B) -> aec_blocks:type(B) =:= micro end, Blocks),
+    maps:from_list(
+        lists:map(
+            fun(MB) -> {aec_blocks:height(MB), aec_blocks:txs(MB)} end,
+            MicroBlocks)).
+
 

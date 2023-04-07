@@ -8,26 +8,29 @@ main contract PoSElection =
   record state =
     { main_staking_ct       : MainStaking,
       entropy               : hash,
-      leader                : address
+      leader                : address,
+      added_stake           : int
     }
 
   record get_state_response =
     { main_staking_ct       : MainStaking,
       entropy               : hash,
-      leader                : address
+      leader                : address,
+      added_stake           : int
     }
 
   entrypoint init(main_staking_ct : MainStaking, entropy_str : string) =
     { main_staking_ct       = main_staking_ct,
       leader                = Contract.address,
-      entropy               = Crypto.sha256(entropy_str)
+      entropy               = Crypto.sha256(entropy_str),
+      added_stake           = 0
       }
 
   stateful entrypoint elect() =
     assert_protocol_call()
-    let new_leader = elect_at_height(Chain.block_height)
+    let (new_leader, added_staking_power) = elect_at_height(Chain.block_height)
     state.main_staking_ct.post_elect()
-    put(state{ leader = new_leader})
+    put(state{ leader = new_leader, added_stake = added_staking_power})
 
   entrypoint elect_next() =
     elect_at_height(Chain.block_height + 1)
@@ -37,7 +40,7 @@ main contract PoSElection =
     let shot = Bytes.to_int(state.entropy) * height mod state.main_staking_ct.total_stake()
     switch(find_validator(sorted, shot))
       None => abort("NO CANDIDATE") // should not be possible
-      Some(new_leader) => new_leader
+      Some(new_leader) => (new_leader, state.main_staking_ct.total_stake())
 
   entrypoint leader() =
     state.leader
@@ -45,7 +48,8 @@ main contract PoSElection =
   entrypoint get_state() : get_state_response =
     { main_staking_ct = state.main_staking_ct,
       entropy         = state.entropy,
-      leader          = state.leader
+      leader          = state.leader,
+      added_stake     = state.added_stake
       }
 
   function find_validator(validators, shot) =

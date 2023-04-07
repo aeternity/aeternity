@@ -96,7 +96,9 @@
          internal_address/0,
          external_address/0,
          rosetta_address/0,
-         rosetta_offline_address/0
+         rosetta_offline_address/0,
+         block_peer/2,
+         unblock_peer/2
         ]).
 
 -export([generate_key_pair/0]).
@@ -1919,6 +1921,13 @@ meta_tx(Owner, AuthOpts, AuthData, InnerTx0) ->
     Options1 = maps:merge(#{auth_data => AuthData, tx => InnerSTx}, AuthOpts),
     MetaTx   = aega_test_utils:ga_meta_tx(Owner, Options1),
     aetx_sign:new(MetaTx, []).
+
+block_peer(Node, PeerNode) ->
+    {ok, PeerInfo} = aec_peers:parse_peer_address(peer_info(PeerNode)),
+    rpc(Node, aec_peers, block_peer, [PeerInfo]).
+
+unblock_peer(Node, PeerNode) ->
+    rpc(Node, aec_peers, unblock_peer, [pubkey(PeerNode)]).
 
 get_key_hash_by_delta(Node, Delta) ->
     TopHeader = rpc(Node, aec_chain, top_header, []),
