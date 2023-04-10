@@ -9,7 +9,7 @@
          get_header_by_height/6,
          get_commitment_tx_in_block/8,
          get_commitment_tx_at_height/7,
-         post_commitment/9]).
+         post_commitment/11]).
 
 %% @doc fetch latest top hash
 get_latest_block(Host, Port, _User, _Password, _Seed) ->
@@ -33,7 +33,7 @@ get_commitment_tx_at_height(Host, Port, _User, _Password, _Seed, Height, ParentH
     get_commitments(Host, Port, MBs, ParentHCAccountPubKey).
 
 %% @doc Post commitment to AE parent chain.
-post_commitment(Host, Port, StakerPubkey, HCCollectPubkey, Amount, Fee, CurrentTop,
+post_commitment(Host, Port, _User, _Password, StakerPubkey, HCCollectPubkey, Amount, Fee, CurrentTop,
                 NetworkId, SignModule) ->
     post_commitment_tx(Host, Port, StakerPubkey, HCCollectPubkey, Amount,
                        Fee, CurrentTop,

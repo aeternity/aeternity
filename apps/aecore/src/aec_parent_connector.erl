@@ -356,8 +356,8 @@ post_commitment(Who, Commitment,
         amount = Amount,
         fee = Fee} = CDetails,
     Fun =
-        fun(#{host := Host, port := Port, user := _User, password := _Password} = Node) ->
-            case Mod:post_commitment(Host, Port, Who, Receiver, Amount, Fee,
+        fun(#{host := Host, port := Port, user := User, password := Password} = Node) ->
+            case Mod:post_commitment(Host, Port, User, Password, Who, Receiver, Amount, Fee,
                                      Commitment, PCNetworkId, SignModule) of
                 {ok, #{<<"tx_hash">> := TxHash}} -> {ok, {TxHash, Node}};
                 {error, 400, _E} ->
