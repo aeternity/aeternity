@@ -1623,10 +1623,16 @@
                             "default" : 50000
                         },
                         "history" : {
-                            "description" : "How many blocks (back from the top) should be scanned for reachable hashes",
+                            "description" : "How many generations (at least) should pass between garbage collections",
                             "type" : "integer",
                             "minimum" : 50,
                             "default" : 15000
+                        },
+                        "depth" : {
+                            "description" : "How far below the top to perform collection scans (default: 0 = fork resistance depth)",
+                            "type" : "integer",
+                            "minimum" : 0,
+                            "default" : 0
                         },
                         "trees" : {
                             "description": "Which state trees to scan. Default: all of them",

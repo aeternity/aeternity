@@ -65,6 +65,7 @@
         {enabled        :: boolean(),                     % do we garbage collect?
          history        :: non_neg_integer(),             % how many block state back from top to keep
          min_height     :: undefined | non_neg_integer(), % if hash_not_found error, try GC from this height
+         depth          :: non_neg_integer(),             % how far below the top to perform scans (0: fork resistance height)
          during_sync    :: boolean(),                     % run GC from the beginning
          synced         :: boolean(),                     % we only run GC if chain is synced
          last_switch    :: non_neg_integer(),             % height at last switch
@@ -167,6 +168,7 @@ init(#{ <<"enabled">>     := Enabled
       , <<"during_sync">> := DuringSync
       , <<"history">>     := History
       , <<"minimum_height">> := MinHeight
+      , <<"depth">>       := Depth
       } = Cfg) when is_integer(History), History > 0 ->
     lager:debug("Cfg = ~p", [Cfg]),
     cache_enabled_status(Enabled),
@@ -184,6 +186,7 @@ init(#{ <<"enabled">>     := Enabled
                trees        = Trees,
                history      = History,
                min_height   = MinHeight,
+               depth        = Depth,
                last_switch  = LastSwitch,
                synced       = false},
     {ok, Data}.
@@ -212,26 +215,30 @@ handle_info(_, St) ->
 
 handle_call({maybe_garbage_collect, TopHeight, Header}, _From,
             #st{enabled = true, synced = Synced, during_sync = DuringSync,
-                history = History, min_height = MinHeight,
-                trees = Trees, scanners = [], last_switch = Last} = St)
-  when (Synced orelse DuringSync), TopHeight >= MinHeight, TopHeight > Last + History ->
-    lager:debug("WILL collect. St = ~p", [lager:pr(St, ?MODULE)]),
-    %% Double-check that the GC hasn't been requested on a microblock.
-    %% This would be a bug, since aec_conductor should only ask for keyblocks.
-    case aec_headers:type(Header) of
-        key ->
-            ?PROTECT(perform_switch(Trees, TopHeight),
-                     fun(Scanners1) ->
-                             {reply, ok, St#st{ scanners = Scanners1
-                                              , last_switch = TopHeight}}
-                     end,
-                     signal_switching_failed_and_reply(St, nop));
-        micro ->
-            lager:warning("GC called on microblock - ignoring", []),
+                history = History, min_height = MinHeight, depth = Depth,
+                trees = Trees, scanners = [], last_switch = Last} = St) ->
+    SafeHeight = safe_height(TopHeight, Depth),
+    if (Synced orelse DuringSync), SafeHeight >= MinHeight, SafeHeight >= Last + History ->
+            lager:debug("WILL collect at height ~p (Top = ~p). St = ~p",
+                        [SafeHeight, TopHeight, lager:pr(St, ?MODULE)]),
+            %% Double-check that the GC hasn't been requested on a microblock.
+            %% This would be a bug, since aec_conductor should only ask for keyblocks.
+            case aec_headers:type(Header) of
+                key ->
+                    ?PROTECT(perform_switch(Trees, SafeHeight),
+                             fun(Scanners1) ->
+                                     {reply, ok, St#st{ scanners = Scanners1
+                                                      , last_switch = SafeHeight}}
+                             end,
+                             signal_switching_failed_and_reply(St, nop));
+                micro ->
+                    lager:warning("GC called on microblock - ignoring", []),
+                    {reply, nop, St}
+            end;
+       true ->
             {reply, nop, St}
     end;
 handle_call({maybe_garbage_collect, _, _}, _From, St) ->
-    lager:debug("Won't collect. St = ~p", [lager:pr(St, ?MODULE)]),
     {reply, nop, St};
 handle_call({info, Keys}, _, St) ->
     {reply, info_(Keys, St), St}.
@@ -261,6 +268,14 @@ code_change(_FromVsn, St, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+
+safe_height(TopHeight, 0) ->
+    case aec_resilience:fork_resistance_active() of
+        no -> TopHeight;
+        {yes, FRHeight} -> TopHeight - FRHeight - 1
+    end;
+safe_height(TopHeight, Depth) when Depth > 0 ->
+    TopHeight - Depth.
 
 info_(Keys, St) ->
     maps:from_list(
@@ -435,6 +450,7 @@ config() ->
               Key <- [<<"enabled">>,
                       <<"history">>,
                       <<"minimum_height">>,
+                      <<"depth">>,
                       <<"during_sync">>]]),
     M#{<<"trees">> => Trees}.
 

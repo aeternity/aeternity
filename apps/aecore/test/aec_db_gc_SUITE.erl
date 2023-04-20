@@ -17,6 +17,7 @@
 -define(NUM_GCED_NODES, 20).
 -define(DUMMY_HASH, <<0:256>>).
 -define(GC_HISTORY, 50).
+-define(FORK_RESISTANCE, 5).
 
 all() ->
     [{group, all_nodes}].
@@ -40,7 +41,8 @@ init_per_suite(Config0) ->
                      <<"hard_forks">> => Forks,
                      <<"garbage_collection">> => #{<<"enabled">> => true,
                                                    <<"history">> => ?GC_HISTORY}},
-               <<"sync">> => #{<<"single_outbound_per_group">> => false},
+               <<"sync">> => #{<<"single_outbound_per_group">> => false,
+                               <<"sync_allowed_height_from_top">> => ?FORK_RESISTANCE},
                <<"mempool">> => #{<<"tx_ttl">> => 100},
                <<"mining">> => #{<<"micro_block_cycle">> => 100,
                                  <<"expected_mine_rate">> => 100}},
@@ -129,14 +131,14 @@ main_test(_Config) ->
     [N1, N2] = [aecore_suite_utils:node_name(X) || X <- [dev1, dev2]],
     H1 = aec_headers:height(rpc:call(N1, aec_chain, top_header, [])),
     ct:log("Height = ~p", [H1]),
-    true = H1 < ?GC_HISTORY,
+    true = H1 < ?GC_HISTORY + ?FORK_RESISTANCE,
     Primary1 = primary(N1),
     ct:log("Primary1 = ~p", [Primary1]),
 
     true = has_key(N1, ?DUMMY_HASH, Primary1),
 
     %% Mining of another keyblock starts second GC phase
-    mine_until_height(N1, N2, ?GC_HISTORY + 2),
+    mine_until_height(N1, N2, ?GC_HISTORY + ?FORK_RESISTANCE + 2),
 
     Primary2 = primary(N1),
     ct:log("Primary2 = ~p", [Primary2]),
@@ -337,16 +339,18 @@ calls_test(_Config) ->
     %% mine beyond the GC
     ct:log("Mining beyond the GC point"),
     ct:log("GC server state: ~p", [rpc:call(N1, sys, get_state, [aec_db_gc])]),
-    {ok, Mined1} = aecore_suite_utils:mine_key_blocks(N1, ?GC_HISTORY + 1),
+    {ok, Mined1} = aecore_suite_utils:mine_key_blocks(N1, ?GC_HISTORY + ?FORK_RESISTANCE + 1),
     ct:log("Blocks mined: ~p", [length(Mined1)]),
-    _GcSwitch1 = await_gc_switch(),
+    GcSwitch1 = await_gc_switch(),
+    0 = GcSwitch1 rem ?GC_HISTORY,
     await_scans_complete(),
     H1 = aec_headers:height(rpc:call(N1, aec_chain, top_header, [])),
     ct:log("Current height is ~p", [H1]),
     ct:log("Last GC switch: ~p", [rpc:call(N1, aec_db_gc, info, [[last_gc]])]),
     {ok, Mined2} = aecore_suite_utils:mine_key_blocks(N1, ?GC_HISTORY),
     ct:log("Mined ~p keyblocks", [length(Mined2)]),
-    await_gc_switch(),
+    GcSwitch2 = await_gc_switch(),
+    0 = GcSwitch2 rem ?GC_HISTORY,
     ct:log("Second GC switch (and clearing tables)", []),
     {ok, 410, _} = aehttp_integration_SUITE:get_contract_call_object(ContractCreateTxHash),
     {ok, 410, _} = aehttp_integration_SUITE:get_contract_call_object(ContractCallTxHash),
@@ -385,7 +389,8 @@ await_scans_complete() ->
 await_gc_switch() ->
     receive
         {gproc_ps_event, gc, #{info := {gc_switch, AtHeight}}} ->
-            ct:log("Got GC switch notification for height ~p", [AtHeight])
+            ct:log("Got GC switch notification for height ~p", [AtHeight]),
+            AtHeight
     after 10000 ->
             error({timeout, waiting_for_gc_switch})
     end.
