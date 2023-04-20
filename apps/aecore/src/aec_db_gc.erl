@@ -68,7 +68,8 @@
          depth          :: non_neg_integer(),             % how far below the top to perform scans (0: fork resistance height)
          during_sync    :: boolean(),                     % run GC from the beginning
          synced         :: boolean(),                     % we only run GC if chain is synced
-         last_switch    :: non_neg_integer(),             % height at last switch
+         last_switch = 0 :: non_neg_integer(),            % height at last switch
+         last_complete_scan = 0 :: non_neg_integer(),     % height of last complete scan
          trees = []     :: [tree_name()],                 % State trees being GC:ed
          scanners = []  :: [#scanner{}]                   % ongoing scans
         }).
@@ -151,7 +152,7 @@ info(Keys) when is_list(Keys) ->
     end.
 
 info_keys() ->
-    [enabled, history, last_gc, active_sweeps, during_sync, trees].
+    [enabled, history, depth, last_gc, last_scan, active_sweeps, during_sync, trees].
 
 -ifdef(TEST).
 install_test_env() ->
@@ -172,14 +173,21 @@ init(#{ <<"enabled">>     := Enabled
       } = Cfg) when is_integer(History), History > 0 ->
     lager:debug("Cfg = ~p", [Cfg]),
     cache_enabled_status(Enabled),
-    LastSwitch = case Enabled of
-                     true ->
-                         aec_events:subscribe(chain_sync),
-                         aec_db:read_last_gc_switch();
-                     false ->
-                         0
-                 end,
+    {LastSwitch, LastScan} =
+        case Enabled of
+            true ->
+                aec_events:subscribe(chain_sync),
+                aec_db:ensure_activity(
+                  async_dirty,
+                  fun() ->
+                          {aec_db:read_last_gc_switch(),
+                           aec_db:read_last_gc_scan()}
+                  end);
+            false ->
+                {0, 0}
+        end,
     lager:debug("LastSwitch = ~p", [LastSwitch]),
+    Scanners = maybe_restart_scanners(LastSwitch, LastScan, Trees),
     %% TODO: Make min_height configurable
     Data = #st{enabled      = Enabled,
                during_sync  = DuringSync,
@@ -188,8 +196,17 @@ init(#{ <<"enabled">>     := Enabled
                min_height   = MinHeight,
                depth        = Depth,
                last_switch  = LastSwitch,
+               last_complete_scan = LastScan,
+               scanners     = Scanners,
                synced       = false},
     {ok, Data}.
+
+maybe_restart_scanners(LastSwitch, LastScan, Trees) ->
+    if LastSwitch > 0, LastScan < LastSwitch ->
+            [start_scanner(T, LastSwitch) || T <- Trees];
+       true ->
+            []
+    end.
 
 %% once the chain is synced, there's no way to "unsync"
 handle_info({_, chain_sync, #{info := {chain_sync_done, _}}}, St) ->
@@ -207,7 +224,14 @@ handle_info({'DOWN', MRef, process, Pid, Reason}, #st{scanners = Scanners} = St)
         #scanner{tree = Tree, height = Height} = S ->
             lager:error("GC Scanner process for ~p died: ~p", [Tree, Reason]),
             signal_scanning_failed(Height),
-            {noreply, St#st{scanners = Scanners -- [S]}}
+            Scanners1 = Scanners -- [S],
+            NewSt = if Reason =/= normal ->
+                            NewS = start_scanner(Tree, Height),
+                            St#st{scanners = [NewS | Scanners1]};
+                       true ->
+                            St#st{scanners = Scanners1}
+                    end,
+            {noreply, NewSt}
     end;
 
 handle_info(_, St) ->
@@ -247,15 +271,16 @@ handle_call({info, Keys}, _, St) ->
 handle_cast({scanning_failed, ErrHeight}, St) ->
     {noreply, St#st{min_height = ErrHeight}};
 
-handle_cast({scan_complete, Name}, #st{scanners = Scanners} = St) ->
+handle_cast({scan_complete, Name, Height}, #st{scanners = Scanners} = St) ->
     Scanners1 = lists:keydelete(Name, #scanner.tree, Scanners),
     case Scanners1 of
         [] ->
-            aec_events:publish(gc, scans_complete);
+            aec_db:write_last_gc_scan(Height),
+            aec_events:publish(gc, scans_complete),
+            {noreply, St#st{last_complete_scan = Height}};
         _ ->
-            ok
-    end,
-    {noreply, St#st{scanners = Scanners1}};
+            {noreply, St#st{scanners = Scanners1}}
+    end;
 
 handle_cast(_, St) ->
     {noreply, St}.
@@ -285,6 +310,8 @@ info_item(history, #st{history = H}) ->
     H;
 info_item(last_gc, #st{last_switch = L}) ->
     L;
+info_item(last_scan, #st{last_complete_scan = L}) ->
+    L;
 info_item(active_sweeps, #st{scanners = Scanners}) ->
     [#{tree => T, pid => P, height => H} ||
         #scanner{tree = T, height = H, pid = P} <- Scanners];
@@ -292,6 +319,8 @@ info_item(during_sync, #st{during_sync = Flag}) ->
     Flag;
 info_item(trees, #st{trees = Trees}) ->
     Trees;
+info_item(depth, #st{depth = D}) ->
+    D;
 info_item(enabled, #st{enabled = Bool}) ->
     Bool.
 
@@ -335,7 +364,7 @@ scan_tree(Name, Height, Parent) ->
     T1 = erlang:system_time(millisecond),
     lager:info("GC fullscan done for ~p, Height = ~p, Count = ~p, Time = ~p ms",
                [Name, Height, Count, T1 - T0]),
-    gen_server:cast(Parent, {scan_complete, Name}),
+    gen_server:cast(Parent, {scan_complete, Name, Height}),
     ok.
 
 collect_reachable_hashes_fullscan(Tree, Height) ->
