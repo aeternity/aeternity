@@ -6,6 +6,9 @@ It:
 * Garbage collection has been rewritten, and now operates on all state trees. It is also
   capable of running during chain sync.
   See the documentation, garbage_collection.md, for information on how to configure it.
+* To eliminate the risk of garbage-collecting a competing fork, which is later evicted,
+  the garbage collector sweeps start below the fork resistance depth (or a user-configured depth)
+  below the top.
 * API requests that try to retrieve state from heights below the latest GC height will now receive a 410 ("gone")
   return code, instead of a 500 ("internal error"). **Potential incompatibility**: applications that depended on
   the past behavior will need to adapt.
