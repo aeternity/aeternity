@@ -28,7 +28,7 @@
         , ensure_contract_store/2
         , unfold_store_maps/3
         , unfold_store_maps_in_args/2
-        , check_type/2
+        , check_type/3
         , get_function_signature/2
         , push_gas_cap/2
         , push_continuation/2
@@ -71,6 +71,7 @@
 
 -include_lib("aebytecode/include/aeb_fate_data.hrl").
 -include_lib("aecontract/include/hard_forks.hrl").
+-include_lib("aecontract/include/aecontract.hrl").
 
 -ifdef(TEST).
 -define(trace(I,S), aefa_engine_state:add_trace(I, S)).
@@ -484,7 +485,8 @@ check_return_type(ES) ->
 check_return_type(RetType, TVars, ES) ->
     Acc = aefa_engine_state:accumulator(ES),
     ES1 = aefa_engine_state:spend_gas_for_traversal(Acc, simple, ES),
-    case check_type(RetType, Acc) of
+    VMVersion = aefa_engine_state:vm_version(ES),
+    case check_type(RetType, Acc, VMVersion) of
         false -> abort({bad_return_type, Acc, RetType}, ES1);
         Inst  ->
             case merge_match(Inst, TVars) of
@@ -496,7 +498,8 @@ check_return_type(RetType, TVars, ES) ->
 check_signature(Args, {ArgTypes, _RetSignature}, ES) when length(ArgTypes) /= length(Args) ->
     abort({function_arity_mismatch, length(Args), length(ArgTypes)}, ES);
 check_signature(Args, {ArgTypes, _RetSignature}, ES) ->
-    case check_arg_types(ArgTypes, Args) of
+    VMVersion = aefa_engine_state:vm_version(ES),
+    case check_arg_types(ArgTypes, Args, VMVersion) of
         {ok, Inst} ->
             aefa_engine_state:set_current_tvars(Inst, ES);
         {error, T, V}  ->
@@ -521,9 +524,9 @@ pop_args(N, ES) ->
 bind_args(Args, ES) ->
     bind_args(0, Args, #{}, ES).
 
-check_arg_types(Ts, As0) ->
+check_arg_types(Ts, As0, VMVersion) ->
     As = lists:sublist(As0, length(Ts)),
-    case check_type({tuple, Ts}, {tuple, list_to_tuple(As)}) of
+    case check_type({tuple, Ts}, {tuple, list_to_tuple(As)}, VMVersion) of
         false -> {error, Ts, As};
         Inst  -> {ok, Inst}
     end.
@@ -533,9 +536,10 @@ bind_args(_, [], Mem, EngineState) ->
 bind_args(N, [Arg|Args], Mem, EngineState) ->
     bind_args(N + 1, Args, Mem#{{arg, N} => {val, Arg}}, EngineState).
 
-check_type(T, V) ->
+check_type(T, V, VMVersion) ->
+    io:format("Check type: ~100p =?= ~140p\n", [T, V]),
     try
-        match_type(T, infer_type(V))
+        match_type(T, infer_type(V), VMVersion)
     catch throw:_Err ->
         false
     end.
@@ -600,22 +604,28 @@ intersect_types({variant, Ss}, {variant, Ts}) when length(Ss) == length(Ts) ->
     {variant, lists:zipwith(Isect, Ss, Ts)};
 intersect_types(S, T) -> throw({not_compatible, S, T}).
 
-match_type(T, T) -> yes_match();
-match_type(any, _) -> yes_match();
-match_type(_, any) -> yes_match();
-match_type({tvar, X}, T) -> #{ X => T };
-match_type({list, T}, {list, S}) -> match_type(T, S);
-match_type({tuple, Ts}, {tuple, Ss}) when length(Ts) == length(Ss) ->
-    merge_match(lists:zipwith(fun match_type/2, Ts, Ss));
-match_type({map, TK, TV}, {map, SK, SV}) ->
-    merge_match(match_type(TK, SK), match_type(TV, SV));
-match_type({variant, Ts}, {variant, Ss}) when length(Ts) == length(Ss) ->
+match_type(T1, T2, V) ->
+    io:format("Match type: ~100p =?= ~140p\n", [T1, T2]),
+    match_type_(T1, T2, V).
+
+match_type_(T, T, _) -> yes_match();
+match_type_(any, _, _) -> yes_match();
+match_type_(_, any, _) -> yes_match();
+match_type_({bytes, any}, {bytes, _}, V) when V >= ?VM_FATE_SOPHIA_3-> yes_match();
+match_type_({bytes, any}, _, _) -> no_match();
+match_type_({tvar, X}, T, _) -> #{ X => T };
+match_type_({list, T}, {list, S}, V) -> match_type_(T, S, V);
+match_type_({tuple, Ts}, {tuple, Ss}, V) when length(Ts) == length(Ss) ->
+    merge_match(lists:zipwith(fun(T, S) -> match_type_(T, S, V) end, Ts, Ss));
+match_type_({map, TK, TV}, {map, SK, SV}, V) ->
+    merge_match(match_type_(TK, SK, V), match_type_(TV, SV, V));
+match_type_({variant, Ts}, {variant, Ss}, V) when length(Ts) == length(Ss) ->
     %% Second argument can be partial variant type
     Match = fun({tuple, Us}, N) when length(Us) == N -> yes_match();
-               (T = {tuple, _}, S = {tuple, _})      -> match_type(T, S);
+               (T = {tuple, _}, S = {tuple, _})      -> match_type_(T, S, V);
                (_, _)                                -> no_match() end,
     merge_match(lists:zipwith(Match, Ts, Ss));
-match_type(_, _) -> no_match().
+match_type_(_, _, _) -> no_match().
 
 yes_match() -> #{}.
 no_match() -> false.
@@ -680,7 +690,8 @@ push_return_type_check({CalleeArgs, CalleeRet}, {CallerArgs, CallerRet}, CalleeT
     %% unify CalleeSig and CallerSig to get the instantiation for the Caller
     %% tvars.
     InstCalleeSig = instantiate_type(CalleeTVars, CalleeSig),
-    case match_type(CallerSig, InstCalleeSig) of
+    VMVersion = aefa_engine_state:vm_version(ES),
+    case match_type(CallerSig, InstCalleeSig, VMVersion) of
         false       -> abort(remote_type_mismatch, ES);
         CallerTVars -> aefa_engine_state:push_return_type_check(CallerRet, CallerTVars, Protected, ES)
     end.

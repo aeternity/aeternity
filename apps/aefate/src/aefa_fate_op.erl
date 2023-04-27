@@ -1951,7 +1951,8 @@ aens_resolve(Arg0, Arg1, Arg2, Arg3, EngineState) ->
 aens_resolve_(Arg0, ?FATE_STRING(NameString), ?FATE_STRING(Key), ?FATE_TYPEREP(Type),
               ES) ->
     API = aefa_engine_state:chain_api(ES),
-    DontCrashOnBadName = aefa_engine_state:vm_version(ES) >= ?VM_FATE_SOPHIA_2,
+    VMVersion = aefa_engine_state:vm_version(ES),
+    DontCrashOnBadName = VMVersion >= ?VM_FATE_SOPHIA_2,
     case aefa_chain_api:aens_resolve(NameString, Key, API) of
         none ->
             write(Arg0, make_none(), ES);
@@ -1964,7 +1965,7 @@ aens_resolve_(Arg0, ?FATE_STRING(NameString), ?FATE_STRING(Key), ?FATE_TYPEREP(T
                     aefa_fate:abort({primop_error, aens_resolve, What}, ES1);
                 {ok, InnerVal} ->
                     Val = aeb_fate_data:make_variant([0,1], 1, {InnerVal}),
-                    case aefa_fate:check_type(Type, Val) of
+                    case aefa_fate:check_type(Type, Val, VMVersion) of
                         #{} ->
                             write(Arg0, Val, ES1);
                         false ->
