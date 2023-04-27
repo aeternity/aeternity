@@ -1529,16 +1529,16 @@
                     "type" : "string",
                     "default" : "data"
                 },
-                "db_direct_access" : {
-                    "description" : "Use Db backend API rather than the Mnesia API",
-                    "type" : "boolean",
-                    "default" : false
-                },
-                "db_commit_bypass" : {
-                    "description" : "Use Rocksdb tricks to bypass Mnesia's default update logic at tx commit",
-                    "type" : "boolean",
-                    "default" : true
-                },
+		"db_direct_access" : {
+		    "description" : "Use Db backend API rather than the Mnesia API",
+		    "type" : "boolean",
+		    "default" : true
+		},
+		"db_commit_bypass" : {
+		    "description" : "Use Rocksdb tricks to bypass Mnesia's default update logic at tx commit",
+		    "type" : "boolean",
+		    "default" : true
+		},
                 "db_write_max_retries" : {
                     "deprecated" : true,
                     "description" : "OBSOLETE/ignored: Maximum number of retries for failing database write operations.",
