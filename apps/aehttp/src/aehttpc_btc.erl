@@ -163,7 +163,7 @@ getblockhash(Host, Port, User, Password, Seed, SSL, Height) ->
       {error, {E, R, S}}
     end.
 
--spec getblock(binary(), binary(), binary(), binary(), binary(), boolean(), hex(), integer()) -> {ok, tuple()} | {error, term()}.
+-spec getblock(binary(), binary(), string(), string(), binary(), boolean(), binary(), integer()) -> {ok, tuple()} | {error, term()}.
 getblock(Host, Port, User, Password, Seed, SSL, Hash, Verbosity) ->
     try
         Body = jsx:encode(request_body(<<"getblock">>, [Hash, Verbosity], seed_to_utf8(Seed))),
@@ -304,10 +304,10 @@ request_body(Method, Params, Seed) ->
 auth(User, Password) when is_binary(User), is_binary(Password) ->
     base64:encode_to_string(lists:concat([binary_to_list(User), ":", binary_to_list(Password)])).
 
-url(Host, Port, true = _SSL) when is_binary(Host), is_integer(Port) ->
-    path("https://", binary_to_list(Host), Port);
-url(Host, Port, true = _SSL) when is_list(Host), is_integer(Port) ->
-    path("https://", Host, Port);
+% url(Host, Port, true = _SSL) when is_binary(Host), is_integer(Port) ->
+%     path("https://", binary_to_list(Host), Port);
+% url(Host, Port, true = _SSL) when is_list(Host), is_integer(Port) ->
+%     path("https://", Host, Port);
 url(Host, Port, _) when is_binary(Host), is_integer(Port) ->
     path("http://", binary_to_list(Host), Port);
 url(Host, Port, _) when is_list(Host), is_integer(Port) ->
