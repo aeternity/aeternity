@@ -61,7 +61,7 @@ ae_sim_test_() ->
              ok
      end,
      [fun({ok, CommitmentPubKey, StakerKeyPair, _ParentSims}) ->
-        #{pubkey := StakerPubKey, privkey := StakerPrivKey} = StakerKeyPair,
+        #{pubkey := StakerPubKey, privkey := _StakerPrivKey} = StakerKeyPair,
         [{"Basic http api operational to each child simulator",
             fun() ->
                     [Spec1, Spec2, Spec3] = ae_parent_http_specs(),
@@ -183,11 +183,12 @@ ae_sim_test_() ->
                             aec_chain_sim:add_keyblock(SimName),
                             %% Post our local top hash as the commitment
                             Val = <<42:32/unit:8>>,
+                            StakerEnc = aeapi:format_account_pubkey(StakerPubKey),
                             Commitment = <<?HC_COMMITMENT_VSN, StakerPubKey/binary, Val/binary>>,
                             Fee = 20000 * aec_test_utils:min_gas_price(),
                             {ok, #{<<"tx_hash">> := _}} =
                                 aehttpc_aeternity:post_commitment(Host, Port, <<>>, <<>>,
-                                                                   StakerPubKey,
+                                                                   StakerEnc,
                                                                    CommitmentPubKey,
                                                                    1, Fee,
                                                                    Commitment,
@@ -248,6 +249,7 @@ btc_sim_test_() ->
             lists:foreach(fun(App) ->
                             {ok, _} = application:ensure_all_started(App)
                             end, Apps),
+            #{pubkey := _StakerPubKey, privkey := _} = StakerKeyPair = new_keypair(),
             ParentHosts = btc_parent_http_specs(),
 
             BTCAccounts = aehttp_btc_sim:btc_accounts(),
@@ -255,7 +257,7 @@ btc_sim_test_() ->
             %% simulated parent chains (there is no sync between chain simulators)
             %% Also create an account on the parent chains that represents a Staker
             %% We should will need its private key to sign staking spendTxs on the parent
-            [{CommitmentPubKey, _}, {StakerPubKey, _} | _] = BTCAccounts,
+            [{CommitmentPubKey, _}, {BTCStakerPubKey, _} | _] = BTCAccounts,
             %% Start a collection of locally simulated parent nodes.
             ParentSims = start_btc_parent_sims(ParentHosts, BTCAccounts),
 
@@ -271,9 +273,9 @@ btc_sim_test_() ->
                                             [],
                                             CommitmentPubKey),
             mock_parent_cache(),
-            {ok, CommitmentPubKey, StakerPubKey, ParentSims}
+            {ok, CommitmentPubKey, BTCStakerPubKey, StakerKeyPair, ParentSims}
         end,
-        fun({ok, _CommitmentPubKey, _StakerPubKey, ParentSims}) ->
+        fun({ok, _CommitmentPubKey, _StakerPubKey, _StakerKeyPair, ParentSims}) ->
             unmock_parent_cache(),
             aec_parent_connector:stop(),
             stop_btc_parent_sims(ParentSims),
@@ -285,7 +287,8 @@ btc_sim_test_() ->
             ok = application:stop(cowboy),
             ok
         end,
-        [fun({ok, CommitmentPubKey, StakerPubKey, _ParentSims}) ->
+        [fun({ok, CommitmentPubKey, BTCStakerPubKey, StakerKeyPair, _ParentSims}) ->
+            #{pubkey := StakerPubKey, privkey := _StakerPrivKey} = StakerKeyPair,
         [{"Basic http api operational to each BTC child simulator",
             fun() ->
                     [Spec1, Spec2, Spec3] = btc_parent_http_specs(),
@@ -408,11 +411,12 @@ btc_sim_test_() ->
                         aehttp_btc_sim:mine_on_fork(SimName, main),
                         %% Post our local top hash as the commitment
                         Val = <<42:32/unit:8>>,
-                        Commitment = list_to_binary(aeu_hex:bin_to_hex(Val)),
+                        32 = size(StakerPubKey),
+                        Commitment = <<?HC_COMMITMENT_VSN, StakerPubKey/binary, Val/binary>>,
                         Fee = 8000,
                         {ok, #{<<"tx_hash">> := _}} =
                             aehttpc_btc:post_commitment(Host, Port, User, Password,
-                                                                StakerPubKey,
+                                                                BTCStakerPubKey,
                                                                 CommitmentPubKey,
                                                                 1, Fee,
                                                                 Commitment,

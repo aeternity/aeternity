@@ -347,17 +347,18 @@ handle_createrawtransaction([Input], Outputs, State) ->
       <<"vout">> := Vout            % (numeric, required) The output number
     } = Input,
     [Acct, HCAcct, #{<<"data">> := HexPayload}] = Outputs,
+    Payload = aeu_hex:hex_to_bin(HexPayload),
+    65 = size(Payload),
+    OpRet = list_to_binary(aeu_hex:bin_to_hex(<<16#6a, 65, Payload/binary>>)),
     [{Account, Amount}] = maps:to_list(Acct),
     [{HCAccount, HCAmount}] = maps:to_list(HCAcct),
-    Tx = raw_tx(TxId, Vout, Account, Amount, HCAccount, HCAmount, HexPayload),
+    Tx = raw_tx(TxId, Vout, Account, Amount, HCAccount, HCAmount, OpRet),
     %% Any encoding will do for our purposes, so long as we know
     %% how to decode it when it is submitted to the simulated chain.
     TxStr = jsx:encode(Tx),
     {{ok, to_hex(TxStr)}, State}.
 
 raw_tx(TxId, Vout, Account, Amount, HCAccount, HCAmount, HexPayload) ->
-    Size = erlang:integer_to_binary(size(HexPayload)),
-    OpReturn = <<16#6a, Size/binary, HexPayload/binary>>,
     Tx = #{
             <<"txid">> => <<>>,
             <<"version">> => 2,
@@ -387,7 +388,7 @@ raw_tx(TxId, Vout, Account, Amount, HCAccount, HCAmount, HexPayload) ->
                             <<"value">> => Amount,
                             <<"n">> => 2,
                             <<"scriptPubKey">> =>
-                                #{<<"hex">> => OpReturn,
+                                #{<<"hex">> => HexPayload,
                                   <<"type">> => <<"nulldata">>
                                 }
                             }]
