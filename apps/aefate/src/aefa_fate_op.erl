@@ -70,7 +70,9 @@
         , str_from_list/3
         , str_to_lower/3
         , str_to_upper/3
+        , str_to_bytes/3
         , int_to_str/3
+        , int_to_bytes/4
         , addr_to_str/3
         , addr_to_bytes/3
         , str_reverse/3
@@ -185,6 +187,7 @@
         , bytes_to_int/3
         , bytes_to_str/3
         , bytes_concat/4
+        , bytes_size/3
         , bytes_split/4
         , bytes_split_any/4
         , bytes_size/3
@@ -847,6 +850,15 @@ str_length(Arg0, Arg1, EngineState) ->
             end
     end.
 
+str_to_bytes(Arg0, Arg1, EngineState) ->
+    ?AVAILABLE_FROM(?VM_FATE_SOPHIA_3, EngineState),
+    {StrValue, ES1} = get_op_arg(Arg1, EngineState),
+    Result = gop(str_to_bytes, StrValue, ES1),
+    Cells = bytes_cells(Result),
+    ES2 = aefa_engine_state:spend_gas_for_new_cells(Cells + 1, ES1),
+    write(Arg0, Result, ES2).
+
+
 str_to_list(Arg0, Arg1, EngineState) ->
     {Value, ES1} = get_op_arg(Arg1, EngineState),
     if not ?IS_FATE_STRING(Value) ->
@@ -940,6 +952,15 @@ int_to_str(Arg0, Arg1, EngineState) ->
     Cells = string_cells(Result),
     ES2 = aefa_engine_state:spend_gas_for_new_cells(Cells + 1, ES1),
     write(Arg0, Result, ES2).
+
+int_to_bytes(Arg0, Arg1, Arg2, EngineState) ->
+    ?AVAILABLE_FROM(?VM_FATE_SOPHIA_3, EngineState),
+    {IntValue, ES1} = get_op_arg(Arg1, EngineState),
+    {SizeValue, ES2} = get_op_arg(Arg2, ES1),
+    Result = gop(int_to_bytes, IntValue, SizeValue, ES2),
+    Cells = bytes_cells(Result),
+    ES3 = aefa_engine_state:spend_gas_for_new_cells(Cells + 1, ES2),
+    write(Arg0, Result, ES3).
 
 addr_to_str(Arg0, Arg1, EngineState) ->
     {Addr, ES1} = get_op_arg(Arg1, EngineState),
@@ -1302,16 +1323,40 @@ bytes_split(Arg0, Arg1, Arg2, EngineState) ->
     ES1  = bin_op(bytes_split, {Arg0, Arg1, Arg2}, EngineState),
     spend_tuple_gas(2, ES1).
 
-bytes_split_any(_Arg0, _Arg1, _Arg2, EngineState) ->
-    EngineState.
-bytes_size(_Arg0, _Arg1, EngineState) ->
-    EngineState.
-bytes_to_fixed_size(_Arg0, _Arg1, _Arg2, EngineState) ->
-    EngineState.
-int_to_bytes(_Arg0, _Arg1, _Arg2, EngineState) ->
-    EngineState.
-str_to_bytes(_Arg0, _Arg1, EngineState) ->
-    EngineState.
+bytes_size(Arg0, Arg1, EngineState) ->
+    ?AVAILABLE_FROM(?VM_FATE_SOPHIA_3, EngineState),
+    {Bytes, ES1} = get_op_arg(Arg1, EngineState),
+    Result = gop(bytes_size, Bytes, ES1),
+    ES2 = aefa_engine_state:spend_gas_for_new_cells(words_used(Result), ES1),
+    write(Arg0, Result, ES2).
+
+bytes_split_any(Arg0, Arg1, Arg2, EngineState) ->
+    ?AVAILABLE_FROM(?VM_FATE_SOPHIA_3, EngineState),
+    {Bytes, ES1} = get_op_arg(Arg1, EngineState),
+    {SplitAt, ES2} = get_op_arg(Arg2, ES1),
+    {Result, ESLast} =
+        case gop(bytes_split_any, Bytes, SplitAt, ES2) of
+            {ok, {Bytes1, Bytes2}} ->
+                Cells = bytes_cells(Bytes1) + bytes_cells(Bytes2),
+                ES3 = aefa_engine_state:spend_gas_for_new_cells(Cells, ES2),
+                {make_some(?FATE_TUPLE({Bytes1, Bytes2})), spend_tuple_gas(2, ES3)};
+            error ->
+                {make_none(), ES2}
+        end,
+    write(Arg0, Result, ESLast).
+
+bytes_to_fixed_size(Arg0, Arg1, Arg2, EngineState) ->
+    ?AVAILABLE_FROM(?VM_FATE_SOPHIA_3, EngineState),
+    {Bytes, ES1} = get_op_arg(Arg1, EngineState),
+    {Size, ES2} = get_op_arg(Arg2, ES1),
+    Result =
+        case gop(bytes_to_fixed_size, Bytes, Size, ES2) of
+            ok ->
+                make_some(Bytes);
+            error ->
+                make_none()
+        end,
+    write(Arg0, Result, ES2).
 
 balance_other(Arg0, Arg1, ES) ->
     API = aefa_engine_state:chain_api(ES),
@@ -2613,6 +2658,8 @@ op(str_reverse_unicode, A) when ?IS_FATE_STRING(A) ->
     CharListR = lists:reverse(CharList),
     BinR = unicode:characters_to_nfc_binary(CharListR),
     aeb_fate_data:make_string(BinR);
+op(str_to_bytes, A) when ?IS_FATE_STRING(A) ->
+    aeb_fate_data:make_bytes(A);
 op(bits_all, N)  when ?IS_FATE_INTEGER(N) ->
     ?FATE_BITS((1 bsl (N)) - 1);
 op(bits_sum, A)  when ?IS_FATE_BITS(A) ->
@@ -2620,6 +2667,8 @@ op(bits_sum, A)  when ?IS_FATE_BITS(A) ->
     if Bits < 0 -> aefa_fate:abort({arithmetic_error, bits_sum_on_infinite_set});
        true -> bits_sum(Bits, 0)
     end;
+op(bytes_size, ?FATE_BYTES(Bin)) ->
+    byte_size(Bin);
 op(bytes_to_int, ?FATE_BYTES(Bin)) ->
     N = byte_size(Bin),
     <<Val:N/unit:8>> = Bin,
@@ -2745,9 +2794,11 @@ op(cons, Hd, Tail) when ?IS_FATE_LIST(Tail) ->
 op(append, A, B) when ?IS_FATE_LIST(A), ?IS_FATE_LIST(B) ->
     aeb_fate_data:make_list(?FATE_LIST_VALUE(A) ++ ?FATE_LIST_VALUE(B));
 op(str_join, A, B) when ?IS_FATE_STRING(A)
-                         , ?IS_FATE_STRING(B) ->
+                      , ?IS_FATE_STRING(B) ->
     aeb_fate_data:make_string(<<?FATE_STRING_VALUE(A)/binary,
                             ?FATE_STRING_VALUE(B)/binary>>);
+op(int_to_bytes, A, B) when ?IS_FATE_INTEGER(A), ?IS_FATE_INTEGER(B) ->
+    aeb_fate_data:make_bytes(<<A:(8*B)>>);
 op(bytes_concat, ?FATE_BYTES(A), ?FATE_BYTES(B)) ->
     ?FATE_BYTES(<<A/binary, B/binary>>);
 op(bytes_split, ?FATE_BYTES(A), B) when ?IS_FATE_INTEGER(B) ->
@@ -2755,6 +2806,18 @@ op(bytes_split, ?FATE_BYTES(A), B) when ?IS_FATE_INTEGER(B) ->
     case A of
         <<L:N/binary, R/binary>> -> ?FATE_TUPLE({?FATE_BYTES(L), ?FATE_BYTES(R)});
         _                        -> aefa_fate:abort({type_error, bytes_split, [?FATE_BYTES(A), B]})
+    end;
+op(bytes_split_any, ?FATE_BYTES(A), B) when ?IS_FATE_INTEGER(B) ->
+    N = ?FATE_INTEGER_VALUE(B),
+    case A of
+        <<L:N/binary, R/binary>> -> {ok, {?FATE_BYTES(L), ?FATE_BYTES(R)}};
+        _                        -> error
+    end;
+op(bytes_to_fixed_size, ?FATE_BYTES(A), B) when ?IS_FATE_INTEGER(B) ->
+    N = ?FATE_INTEGER_VALUE(B),
+    case A of
+        <<_:N/binary>> -> ok;
+        _              -> error
     end;
 op(variant_test, A, B)  when ?IS_FATE_VARIANT(A)
                          , ?IS_FATE_INTEGER(B)
@@ -3051,7 +3114,7 @@ gt_to_emcl(X1, X2, X3, X4, X5, X6, X7, X8, X9, X10, X11, X12) ->
 dbg_loc({immediate, File}, {immediate, Line}, EngineState) ->
     Info  = aefa_debug:set_debugger_location({File, Line}, aefa_engine_state:debug_info(EngineState)),
     Stack = aefa_engine_state:call_stack(EngineState),
-    UpdatedStatus = 
+    UpdatedStatus =
         case lists:member({File, Line}, aefa_debug:breakpoints(Info)) of
             true  ->
                 case aefa_debug:debugger_status(Info) of
