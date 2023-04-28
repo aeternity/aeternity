@@ -365,7 +365,6 @@ generate_key_header_seal(_, Candidate, PCHeight, #{expected_key_block_rate := _E
             Entropy = aec_parent_chain_block:hash(Block),
             CommitmentsSophia = encode_commitments(Block),
             {TxEnv, Trees} = aetx_env:tx_env_and_trees_from_top(aetx_transaction),
-             lager:debug("Calling elect_next from generate_key_header_seal", []),
             {ok, CD} = aeb_fate_abi:create_calldata("elect_next",
                                                     [aefa_fate_code:encode_arg({string, Entropy}),
                                                      CommitmentsSophia
@@ -627,7 +626,6 @@ next_beneficiary() ->
                                                             CallData,
                                                             "elect_next", 0),
             {tuple, {{address, Leader}, _Stake}}  = aeb_fate_encoding:deserialize(aect_call:return_value(Call)),
-            lager:debug("Called elect_next from next_beneficiary newleader ~p", [Leader]),
             SignModule = get_sign_module(),
             case SignModule:set_candidate(Leader) of
                 {error, key_not_found} ->

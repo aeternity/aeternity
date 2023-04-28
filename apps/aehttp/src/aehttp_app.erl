@@ -39,11 +39,9 @@
 %%====================================================================
 
 start(_StartType, _StartArgs) ->
-    lager:info("Starting aehttp", []),
     {ok, Pid} = aehttp_sup:start_link(),
     ok = start_http_api(),
     ok = start_channel_websocket(),
-    lager:info("Started aehttp", []),
     {ok, Pid}.
 
 
