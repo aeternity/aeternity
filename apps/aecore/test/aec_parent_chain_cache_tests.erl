@@ -18,6 +18,8 @@
 
 -define(GENESIS,  <<42:32/unit:8>>).
 
+-define(HC_COMMITMENT_VSN, 1).
+
 %%%===================================================================
 %%% Test cases
 %%%===================================================================
@@ -258,7 +260,7 @@ post_initial_commitments() ->
     expect_keys([?ALICE, ?BOB]),
     set_parent_chain_top(ParentTop),
     {ok, _CachePid} = start_cache(StartHeight, CacheMaxSize, Confirmations, true),
-    GenesisHash = aeser_api_encoder:encode(key_block_hash, height_to_hash(0)),
+    GenesisHash = height_to_hash(0),
     %% populate the cache and start making commitments
     lists:foreach(
         fun(Idx) ->
@@ -271,8 +273,10 @@ post_initial_commitments() ->
             {ok, #{ child_start_height := StartHeight,
                     top_height         := ParentHeight,
                     child_top_height   := ChildTop0}} = ?TEST_MODULE:get_state(),
-            [GenesisHash] = collect_commitments(?ALICE),
-            [GenesisHash] = collect_commitments(?BOB),
+            AliceCommitment = <<?HC_COMMITMENT_VSN, ?ALICE:32/binary, GenesisHash:32/binary>>,
+            [AliceCommitment] = collect_commitments(?ALICE),
+            BobCommitment = <<?HC_COMMITMENT_VSN, ?BOB:32/binary, GenesisHash:32/binary>>,
+            [BobCommitment] = collect_commitments(?BOB),
             [] = collect_commitments(?CAROL),
             [] = collect_commitments(?DAVE),
             meck:reset(aec_parent_connector),
@@ -309,9 +313,11 @@ post_commitments() ->
             {ok, #{ child_start_height := StartHeight,
                     top_height         := ParentHeight,
                     child_top_height   := ChildTop1}} = ?TEST_MODULE:get_state(),
-            Hash = aeser_api_encoder:encode(key_block_hash, height_to_hash(ChildTop1)),
-            [Hash] = collect_commitments(?ALICE),
-            [Hash] = collect_commitments(?BOB),
+            Hash = height_to_hash(ChildTop1),
+            AliceCommitment = <<?HC_COMMITMENT_VSN, ?ALICE:32/binary, Hash:32/binary>>,
+            [AliceCommitment] = collect_commitments(?ALICE),
+            BobCommitment = <<?HC_COMMITMENT_VSN, ?BOB:32/binary, Hash:32/binary>>,
+            [BobCommitment] = collect_commitments(?BOB),
             [] = collect_commitments(?CAROL),
             [] = collect_commitments(?DAVE),
             ok
@@ -384,9 +390,11 @@ block_production_dictates_commitments() ->
             {ok, #{ child_start_height := StartHeight,
                     top_height         := ParentHeight,
                     child_top_height   := ChildTop1}} = ?TEST_MODULE:get_state(),
-            Hash = aeser_api_encoder:encode(key_block_hash, height_to_hash(ChildTop1)),
-            [Hash] = collect_commitments(?ALICE),
-            [Hash] = collect_commitments(?BOB),
+            Hash = height_to_hash(ChildTop1),
+            AliceCommitment = <<?HC_COMMITMENT_VSN, ?ALICE:32/binary, Hash:32/binary>>,
+            [AliceCommitment] = collect_commitments(?ALICE),
+            BobCommitment = <<?HC_COMMITMENT_VSN, ?BOB:32/binary, Hash:32/binary>>,
+            [BobCommitment] = collect_commitments(?BOB),
             [] = collect_commitments(?CAROL),
             [] = collect_commitments(?DAVE),
             ok
@@ -435,9 +443,11 @@ block_production_dictates_commitments() ->
             {ok, #{ child_start_height := StartHeight,
                     top_height         := ParentHeight,
                     child_top_height   := ChildTop1}} = ?TEST_MODULE:get_state(),
-            Hash = aeser_api_encoder:encode(key_block_hash, height_to_hash(ChildTop1)),
-            [Hash] = collect_commitments(?ALICE),
-            [Hash] = collect_commitments(?BOB),
+            Hash = height_to_hash(ChildTop1),
+            AliceCommitment = <<?HC_COMMITMENT_VSN, ?ALICE:32/binary, Hash:32/binary>>,
+            [AliceCommitment] = collect_commitments(?ALICE),
+            BobCommitment = <<?HC_COMMITMENT_VSN, ?BOB:32/binary, Hash:32/binary>>,
+            [BobCommitment] = collect_commitments(?BOB),
             [] = collect_commitments(?CAROL),
             [] = collect_commitments(?DAVE),
             ok
