@@ -11,10 +11,10 @@
          get_commitment_tx_at_height/7,
          post_commitment/11]).
 
--compile(export_all).
 
 -type hex() :: binary().%[byte()].
 
+-define(HC_COMMITMENT_VSN, 1).
 
 get_latest_block(Host, Port, User, Password, Seed) ->
     {ok, Hash} = getbestblockhash(Host, Port, User, Password, Seed, false),
@@ -28,10 +28,13 @@ get_header_by_hash(Hash, Host, Port, User, Password, Seed) ->
     {ok, Hash, PrevHash, Height}.
 
 get_header_by_height(Height, Host, Port, User, Password, Seed) ->
-    {ok, Hash} = getblockhash(Host, Port, User, Password, Seed, false, Height),
-    {ok, {Height, Hash, PrevHash, _Txs}}
-      = getblock(Host, Port, User, Password, Seed, false, Hash, _Verbosity = 1),
-    {ok, Hash, PrevHash, Height}.
+    case getblockhash(Host, Port, User, Password, Seed, false, Height) of
+        {ok, Hash} ->
+            {ok, {Height, Hash, PrevHash, _Txs}}
+                = getblock(Host, Port, User, Password, Seed, false, Hash, _Verbosity = 1),
+            {ok, Hash, PrevHash, Height};
+        {error, not_found} -> {error, not_found}
+    end.
 
 get_commitment_tx_in_block(Host, Port, User, Password, Seed, BlockHash, _PrevHash, ParentHCAccountPubKey) ->
     {ok, {_Height, _Hash, __PrevHash, Txs}}
@@ -56,9 +59,9 @@ get_commitment_tx_at_height(Host, Port, User, Password, Seed, Height, ParentHCAc
 %% 3. Apply signatures using signrawtransaction
 %% 4. Submit it using sendrawtransaction
 
-post_commitment(Host, Port, User, Password, StakerPubkey, HCCollectPubkey, Amount, Fee, CurrentTop,
+post_commitment(Host, Port, User, Password, StakerPubkey, HCCollectPubkey, Amount, Fee, Commitment,
                 _NetworkId, _SignModule) ->
-        post_commitment(Host, Port, User, Password, StakerPubkey, HCCollectPubkey, Amount, Fee, CurrentTop).
+        post_commitment(Host, Port, User, Password, StakerPubkey, HCCollectPubkey, Amount, Fee, Commitment).
 
 post_commitment(Host, Port, User, Password, BTCAcc, HCCollectPubkey, Amount, _Fee, Commitment) ->
     {ok, Unspent} = listunspent(Host, Port, User, Password, false),
@@ -68,7 +71,9 @@ post_commitment(Host, Port, User, Password, BTCAcc, HCCollectPubkey, Amount, _Fe
     Outputs = create_outputs(Commitment, BTCAcc, HCCollectPubkey, TotalAmount, Amount, Fee),
     {ok, Tx} = createrawtransaction(Host, Port, User, Password, false, Inputs, Outputs),
     {ok, SignedTx} = signrawtransactionwithwallet(Host, Port, User, Password, false, Tx),
-    {ok, _TxHash} = sendrawtransaction(Host, Port, User, Password, false, SignedTx).
+    {ok, TxHash} = sendrawtransaction(Host, Port, User, Password, false, SignedTx),
+    lager:debug("Posted BTC Commitment in Tx: ~p", [TxHash]),
+    {ok, #{<<"tx_hash">> => TxHash}}.
 
 select_utxo([#{<<"spendable">> := true, <<"amount">> := Amount} = Unspent | _Us], Needed) when Amount >= Needed ->
     %% For now just pick first spendable UTXO with enough funds. There is no end to how fancy this can get
@@ -106,10 +111,10 @@ create_outputs(Commitment, BTCAcc, HCCollectPubkey, TotalAmount, Amount, Fee) ->
     %% 3. to register this transaction against the common HC BTC account
     %% The "data" field gets magically turned by the bitcoind API into an output
     %% in a correctly formatted OP_RETURN
-    %% FIXME: Do proper arithmetic instead of this chaotic floating point calculation
     Refund = satoshi_to_btc(TotalAmount - Fee - Amount),
     HCAmount = satoshi_to_btc(Amount),
-    [#{BTCAcc => Refund}, #{HCCollectPubkey => HCAmount}, #{<<"data">> => Commitment}].
+    HexCommitment = to_hex(Commitment),
+    [#{BTCAcc => Refund}, #{HCCollectPubkey => HCAmount}, #{<<"data">> => HexCommitment}].
 
 satoshi_to_btc(Sats) when Sats >= 0 ->
     SatsStr = integer_to_list(Sats),
@@ -147,9 +152,13 @@ getbestblockhash(Host, Port, User, Password, Seed, SSL) ->
 getblockhash(Host, Port, User, Password, Seed, SSL, Height) ->
     try
       Body = jsx:encode(request_body(<<"getblockhash">>, [Height], seed_to_utf8(Seed))),
-      {ok, Res} = request(<<"/">>, Body, Host, Port, User, Password, SSL, 5000),
-      Hash = result(Res),
-      {ok, Hash}
+      case request(<<"/">>, Body, Host, Port, User, Password, SSL, 5000) of
+        {ok, Res} ->
+            Hash = result(Res),
+            {ok, Hash};
+        {error, not_found} ->
+            {error, not_found}
+      end
     catch E:R:S ->
       {error, {E, R, S}}
     end.
@@ -168,7 +177,7 @@ getblock(Host, Port, User, Password, Seed, SSL, Hash, Verbosity) ->
 listunspent(Host, Port, User, Password, SSL) ->
     try
         Seed = <<>>,
-        Body = jsx:encode(request_body(<<"listunspent">>, [1, 9999999], seed_to_utf8(Seed))),
+        Body = jsx:encode(request_body(<<"listunspent">>, [0, 9999999], seed_to_utf8(Seed))),
         {ok, Res} = request(<<"/">>, Body, Host, Port, User, Password, SSL, 5000),
         Unspent = result(Res),
         {ok, Unspent}
@@ -227,23 +236,34 @@ block(Obj) ->
 
     %% TODO: To analyze the size field;
     %% Txs that might be Commitments will have at least one type:nulldata entry - just do some pre-filtering
-    FilteredTxs = lists:filter(fun (Tx) -> is_nulldata(Tx) end, maps:get(<<"tx">>, Obj)),
+    %% FilteredTxs = lists:filter(fun (Tx) -> is_nulldata(Tx) end, maps:get(<<"tx">>, Obj)),
 
     PrevHash = prev_hash(Obj),
     {Height, Hash, PrevHash, maps:get(<<"tx">>, Obj)}.
+
+-define(OP_RETURN, 16#6a).
 
 -spec find_commitments(map(), binary()) -> {Pubkey :: binary(), Payload :: binary()}.
 find_commitments(Txs, ParentHCAccountPubKey) ->
     lists:foldl(fun(Tx, Acc) ->
                     case Tx of
                         #{<<"vout">> :=
-                             [#{<<"n">> := 0, <<"scriptPubKey">> := #{<<"address">> := Staker}},
-                              #{<<"n">> := 1, <<"scriptPubKey">> := #{<<"address">> := ParentHCAccountPubKey}},
-                              #{<<"n">> := 2, <<"scriptPubKey">> := #{<<"type">> := <<"nulldata">>, <<"hex">> := Commitment}}]} ->
-                            %% This Tx matched a very specific pattern for a HC commitment
+                             [#{<<"n">> := 0, <<"scriptPubKey">> := #{<<"address">> := _Staker}},
+                              #{<<"n">> := 1, <<"scriptPubKey">> := #{<<"address">> := _ParentHCAccountPubKey}},
+                              #{<<"n">> := 2, <<"scriptPubKey">> := #{<<"type">> := <<"nulldata">>, <<"hex">> := CommitmentEnc}}]} ->
+                            %% This Tx matches a very specific pattern for a HC commitment
+                            %% FIXME: Reject commitments sent to a different ParentHCAccountPubKey
                             %% FIXME: Consider being less rigid here WRT ordering or other.
-                            [{Staker, Commitment} | Acc];
-                        _ ->
+                            Commitment = from_hex(CommitmentEnc),
+                            case Commitment of
+                                <<?OP_RETURN, 65, ?HC_COMMITMENT_VSN, StakerPubkey:32/binary, TopHash:32/binary>> ->
+                                    [{StakerPubkey, TopHash} | Acc];
+                                _ ->
+                                    lager:debug("Invalid BTC Commitment, skipping ~p", [CommitmentEnc]),
+                                    Acc
+                            end;
+                        _Else ->
+                            lager:debug("Invalid BTC Tx, skipping ~p", [Tx]),
                             Acc
                     end
                 end, [], Txs).
@@ -260,9 +280,13 @@ request(Path, Body, Host, Port, User, Password, SSL, Timeout) ->
         Req = {UrlPath, Headers, "application/json", Body},
         HTTPOpt = [{timeout, Timeout}],
         Opt = [],
-        {ok, {{_, 200 = _Code, _}, _, Res}} = httpc:request(post, Req, HTTPOpt, Opt),
-        lager:debug("Req: ~p, Res: ~p with URL: ~ts", [Req, Res, Url]),
-        {ok, jsx:decode(list_to_binary(Res), [return_maps])}
+        case httpc:request(post, Req, HTTPOpt, Opt) of
+            {ok, {{_, 200 = _Code, _}, _, Res}} ->
+                lager:debug("Req: ~p, Res: ~p with URL: ~ts", [Req, Res, Url]),
+                {ok, jsx:decode(list_to_binary(Res), [return_maps])};
+             {ok, {{_, 500 = _Code, _}, _, "{\"result\":null,\"error\":{\"code\":-8,\"message\":\"Block height out of range\"}" ++ _}} ->
+                {error, not_found}
+        end
     catch E:R:S ->
         lager:info("Error: ~p Reason: ~p Stacktrace: ~p", [E, R, S]),
         {error, {E, R, S}}
@@ -280,8 +304,12 @@ request_body(Method, Params, Seed) ->
 auth(User, Password) when is_binary(User), is_binary(Password) ->
     base64:encode_to_string(lists:concat([binary_to_list(User), ":", binary_to_list(Password)])).
 
+url(Host, Port, true = _SSL) when is_binary(Host), is_integer(Port) ->
+    path("https://", binary_to_list(Host), Port);
 url(Host, Port, true = _SSL) when is_list(Host), is_integer(Port) ->
     path("https://", Host, Port);
+url(Host, Port, _) when is_binary(Host), is_integer(Port) ->
+    path("http://", binary_to_list(Host), Port);
 url(Host, Port, _) when is_list(Host), is_integer(Port) ->
     path("http://", Host, Port).
 

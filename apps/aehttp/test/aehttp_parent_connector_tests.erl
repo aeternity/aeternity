@@ -8,6 +8,7 @@
 -define(BIG_AMOUNT, 10000000000000000000000000000 * aec_test_utils:min_gas_price()).
 -define(PARENT_CHAIN_NETWORK_ID, <<"pc_network_id">>).
 -define(SIGN_MODULE, aec_preset_keys).
+-define(HC_COMMITMENT_VSN, 1).
 
 ae_sim_test_() ->
     {foreach,
@@ -37,6 +38,7 @@ ae_sim_test_() ->
                                                 ParentHosts,
                                                 ?PARENT_CHAIN_NETWORK_ID,
                                                 ?SIGN_MODULE,
+                                                [],
                                                 CommitmentPubKey),
              mock_parent_cache(),
              mock_network_id(?PARENT_CHAIN_NETWORK_ID),
@@ -181,7 +183,7 @@ ae_sim_test_() ->
                             aec_chain_sim:add_keyblock(SimName),
                             %% Post our local top hash as the commitment
                             Val = <<42:32/unit:8>>,
-                            Commitment = aeser_api_encoder:encode(key_block_hash, Val),
+                            Commitment = <<?HC_COMMITMENT_VSN, StakerPubKey/binary, Val/binary>>,
                             Fee = 20000 * aec_test_utils:min_gas_price(),
                             {ok, #{<<"tx_hash">> := _}} =
                                 aehttpc_aeternity:post_commitment(Host, Port, <<>>, <<>>,
@@ -201,8 +203,8 @@ ae_sim_test_() ->
                             ?assertMatch({ok, #{micro_blocks := []}}, aec_chain_sim:get_current_generation(SimName)),
                             {ok, [{Acct, Payload}]} =
                                 aehttpc_aeternity:get_commitment_tx_in_block(Host, Port, User, Password, <<"Seed">>, TopHash, PrevHash, CommitmentPubKey),
-                            ?assertMatch(Acct, aeser_api_encoder:encode(account_pubkey, StakerPubKey)),
-                            {_Type, Val} =  aeser_api_encoder:decode(Payload),
+                            ?assertMatch(Acct, StakerPubKey),
+                            ?assertMatch(Val, Payload),
                             %% Test we can also get the same commitments by height
                             TopHeight = aec_chain_sim:get_height(SimName),
                             %% Top here is the keyblock we added after the microblock with our Txs, so
@@ -266,6 +268,7 @@ btc_sim_test_() ->
                                             ParentHosts,
                                             ?PARENT_CHAIN_NETWORK_ID,
                                             ?SIGN_MODULE,
+                                            [],
                                             CommitmentPubKey),
             mock_parent_cache(),
             {ok, CommitmentPubKey, StakerPubKey, ParentSims}

@@ -6,6 +6,7 @@
          init_per_suite/4]).
 
 -export([top_dir/1,
+         priv_dir/1,
          make_shortcut/1,
          node_config/2,
          create_config/4,

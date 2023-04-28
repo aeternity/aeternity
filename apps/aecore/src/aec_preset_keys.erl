@@ -40,7 +40,8 @@
 -record(state, {
           keys                       :: keys_pool(),
           active         = ?NOT_SET  :: aec_keys:pubkey() | ?NOT_SET,
-          candidate      = ?NOT_SET  :: aec_keys:pubkey() | ?NOT_SET
+          candidate      = ?NOT_SET  :: aec_keys:pubkey() | ?NOT_SET,
+          extra_keys                 :: keys_pool()
          }).
 
 -spec get_pubkey() -> {ok, binary()} | {error, no_active}.
