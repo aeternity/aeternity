@@ -30,7 +30,7 @@ get_header_by_hash(Hash, Host, Port, User, Password, Seed) ->
 get_header_by_height(Height, Host, Port, User, Password, Seed) ->
     case getblockhash(Host, Port, User, Password, Seed, false, Height) of
         {ok, Hash} ->
-            {ok, {Height, Hash, PrevHash, _Txs}}
+            {ok, {_Height, Hash, PrevHash, _Txs}}
                 = getblock(Host, Port, User, Password, Seed, false, Hash, _Verbosity = 1),
             {ok, Hash, PrevHash, Height};
         {error, not_found} -> {error, not_found}
@@ -80,7 +80,7 @@ select_utxo([#{<<"spendable">> := true, <<"amount">> := Amount} = Unspent | _Us]
     %% https://bitcoin.stackexchange.com/questions/32145/what-are-the-trade-offs-between-the-different-algorithms-for-deciding-which-utxo
     #{<<"txid">> := TxId, <<"vout">> := VOut} = Unspent,
     {ok, {[#{<<"txid">> => TxId, <<"vout">> => VOut}], Amount}};
-select_utxo([U|Us], Fee) ->
+select_utxo([_U|Us], Fee) ->
     select_utxo(Us, Fee);
 select_utxo([], _Fee) ->
     {error, no_suitable_utxo}.
@@ -148,7 +148,7 @@ getbestblockhash(Host, Port, User, Password, Seed, SSL) ->
         {error, {E, R}}
     end.
 
--spec getblockhash(binary(), binary(), binary(), binary(), binary(), boolean(), hex()) -> {ok, tuple()} | {error, term()}.
+-spec getblockhash(binary(), binary(), binary(), binary(), binary(), boolean(), hex()) -> {ok, binary()} | {error, term()}.
 getblockhash(Host, Port, User, Password, Seed, SSL, Height) ->
     try
       Body = jsx:encode(request_body(<<"getblockhash">>, [Height], seed_to_utf8(Seed))),
@@ -163,7 +163,7 @@ getblockhash(Host, Port, User, Password, Seed, SSL, Height) ->
       {error, {E, R, S}}
     end.
 
--spec getblock(binary(), binary(), string(), string(), binary(), boolean(), binary(), integer()) -> {ok, tuple()} | {error, term()}.
+-spec getblock(binary(), binary(), binary(), binary(), binary(), false, binary(), integer()) -> {ok, tuple()} | {error, term()}.
 getblock(Host, Port, User, Password, Seed, SSL, Hash, Verbosity) ->
     try
         Body = jsx:encode(request_body(<<"getblock">>, [Hash, Verbosity], seed_to_utf8(Seed))),
@@ -214,7 +214,7 @@ signrawtransactionwithwallet(Host, Port, User, Password, SSL, RawTx) ->
         {error, {E, R}}
     end.
 
--spec sendrawtransaction(binary(), binary(), binary(), binary(), boolean(), binary()) -> {ok, binary()} | {error, term()}.
+-spec sendrawtransaction(binary(), integer(), binary(), binary(), boolean(), binary()) -> {ok, binary()} | {error, term()}.
 sendrawtransaction(Host, Port, User, Password, SSL, Hex) ->
     try
         Seed = <<>>,
@@ -243,13 +243,13 @@ block(Obj) ->
 
 -define(OP_RETURN, 16#6a).
 
--spec find_commitments(map(), binary()) -> {Pubkey :: binary(), Payload :: binary()}.
-find_commitments(Txs, ParentHCAccountPubKey) ->
+-spec find_commitments(list(), binary()) -> [{Pubkey :: binary(), Payload :: binary()}].
+find_commitments(Txs, _ParentHCAccountPubKey) ->
     lists:foldl(fun(Tx, Acc) ->
                     case Tx of
                         #{<<"vout">> :=
                              [#{<<"n">> := 0, <<"scriptPubKey">> := #{<<"address">> := _Staker}},
-                              #{<<"n">> := 1, <<"scriptPubKey">> := #{<<"address">> := _ParentHCAccountPubKey}},
+                              #{<<"n">> := 1, <<"scriptPubKey">> := #{<<"address">> := __ParentHCAccountPubKey}},
                               #{<<"n">> := 2, <<"scriptPubKey">> := #{<<"type">> := <<"nulldata">>, <<"hex">> := CommitmentEnc}}]} ->
                             %% This Tx matches a very specific pattern for a HC commitment
                             %% FIXME: Reject commitments sent to a different ParentHCAccountPubKey
@@ -332,13 +332,6 @@ prev_hash(Obj) ->
         true ->
             null
     end.
-
-%% Commitment TXs contain at least one output with type:nulldata - that's our 
--spec is_nulldata(map()) -> boolean().
-is_nulldata(Obj) ->
-    Outputs = maps:get(<<"vout">>, Obj),
-    Res = [Output || Output = #{ <<"scriptPubKey">> := #{ <<"type">> := T} } <- Outputs, T == <<"nulldata">>],
-    Res /= [].
 
 seed_to_utf8(Seed) when is_binary(Seed) ->
     base64:encode(Seed).
