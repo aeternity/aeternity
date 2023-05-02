@@ -1539,7 +1539,7 @@ prepare_mnesia_bypass() ->
                                                                                     , schema_default
                                                                                     , {value, true} ]) of
                         {ok, true} ->
-                            lager:debug("Enabling bypass for rocksdb", []),
+                            lager:info("Enabling bypass for rocksdb", []),
                             persistent_term:put(?PT_BYPASS, rocksdb);
                         _ ->
                             lager:debug("NOT enabling bypass logic for rocksdb", [])
@@ -1555,7 +1555,7 @@ can_enable_direct_access() ->
         {ok, true} ->
             case AllStandalone of
                 [] ->
-                    lager:debug("Enabling direct access for rocksdb", []),
+                    lager:info("Enabling direct access for rocksdb", []),
                     true;
                 [_|_] ->
                     lager:warning(
