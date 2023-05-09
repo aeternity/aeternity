@@ -92,7 +92,9 @@ start(Config, #{block_production := BlockProduction}) ->
             <<"consensus">> :=
                 #{  <<"type">> := PCType,
                     <<"network_id">> := NetworkId,
-                    <<"spend_address">> := PCSpendAddress
+                    <<"spend_address">> := PCSpendAddress,
+                    <<"fee">> := Fee,
+                    <<"amount">> := Amount
                  },
             <<"polling">> :=
                 #{  <<"fetch_interval">> := FetchInterval,
@@ -120,7 +122,7 @@ start(Config, #{block_production := BlockProduction}) ->
         end,
     start_dependency(aec_parent_connector, [ParentConnMod, FetchInterval,
                                             ParentHosts, NetworkId,
-                                            SignModule, HCPCPairs, PCSpendPubkey]),
+                                            SignModule, HCPCPairs, PCSpendPubkey, Fee, Amount]),
     start_dependency(aec_parent_chain_cache, [StartHeight, CacheSize,
                                               Confirmations, BlockProduction]),
     ok.

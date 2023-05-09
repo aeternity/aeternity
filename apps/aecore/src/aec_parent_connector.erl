@@ -30,7 +30,7 @@
 %%%=============================================================================
 
 %% External API
--export([start_link/7, stop/0]).
+-export([start_link/9, stop/0]).
 
 %% Use in test only
 -ifdef(TEST).
@@ -93,7 +93,7 @@ start_link() ->
                     }],
     ParentConnMod = aehttpc_aeternity,
     start_link(ParentConnMod, FetchInterval, ParentHosts, <<"local_testnet">>,
-              aec_preset_keys, [], <<0:32/unit:8>>).
+              aec_preset_keys, [], <<0:32/unit:8>>, 7800, 7900).
 -endif.
 
 %% Start the parent connector process
@@ -104,9 +104,9 @@ start_link() ->
 %% SignModule :: atom() - module name of the module that keeps the keys for the parent chain transactions to be signed
 %% HCPCPairs :: [{binary(), binary()}] - mapping from hyperchain address to child chain address
 %% Recipient :: binary() - the parent chain address to which the commitments must be sent to
--spec start_link(atom(), integer() | on_demand, [map()], binary(), atom(), [{binary(), binary()}], binary()) -> {ok, pid()} | {error, {already_started, pid()}} | {error, Reason::any()}.
-start_link(ParentConnMod, FetchInterval, ParentHosts, NetworkId, SignModule, HCPCPairs, Recipient) ->
-    gen_server:start_link({local, ?SERVER}, ?MODULE, [ParentConnMod, FetchInterval, ParentHosts, NetworkId, SignModule, HCPCPairs, Recipient], []).
+-spec start_link(atom(), integer() | on_demand, [map()], binary(), atom(), [{binary(), binary()}], binary(), integer(), integer()) -> {ok, pid()} | {error, {already_started, pid()}} | {error, Reason::any()}.
+start_link(ParentConnMod, FetchInterval, ParentHosts, NetworkId, SignModule, HCPCPairs, Recipient, Fee, Amount) ->
+    gen_server:start_link({local, ?SERVER}, ?MODULE, [ParentConnMod, FetchInterval, ParentHosts, NetworkId, SignModule, HCPCPairs, Recipient, Fee, Amount], []).
 
 stop() ->
     gen_server:stop(?MODULE).
@@ -145,7 +145,7 @@ post_commitment(Who, Hash) ->
 %%%=============================================================================
 
 -spec init([any()]) -> {ok, #state{}}.
-init([ParentConnMod, FetchInterval, ParentHosts, NetworkId, SignModule, HCPCPairs, Recipient]) ->
+init([ParentConnMod, FetchInterval, ParentHosts, NetworkId, SignModule, HCPCPairs, Recipient, Fee, Amount]) ->
     if is_integer(FetchInterval) ->
         erlang:send_after(FetchInterval, self(), check_parent);
         true -> ok
@@ -154,8 +154,8 @@ init([ParentConnMod, FetchInterval, ParentHosts, NetworkId, SignModule, HCPCPair
         #commitment_details{ parent_network_id  = NetworkId, %% TODO: assert all nodes are having the same network id
                              sign_module = SignModule,
                              recipient = Recipient,
-                             amount = 8000,
-                             fee = 100000000000000 %% TODO: make configurable
+                             amount = Amount,
+                             fee = Fee
                             },
     {ok, #state{parent_conn_mod = ParentConnMod,
                 fetch_interval = FetchInterval,

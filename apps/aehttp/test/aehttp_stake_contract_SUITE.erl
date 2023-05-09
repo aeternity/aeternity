@@ -781,7 +781,7 @@ verify_btc_commitments(Config) ->
                                 case Tx of
                                     #{<<"vout">> :=
                                         [#{<<"n">> := 0, <<"scriptPubKey">> := #{<<"address">> := _Staker}},
-                                        #{<<"n">> := 1, <<"scriptPubKey">> := #{<<"address">> := _ParentHCAccountPubKeyxx}},
+                                        #{<<"n">> := 1, <<"value">> := 0.00007500, <<"scriptPubKey">> := #{<<"address">> := _ParentHCAccountPubKeyxx}},
                                         #{<<"n">> := 2, <<"scriptPubKey">> := #{<<"type">> := <<"nulldata">>, <<"hex">> := CommitmentEnc}}]} ->
                                         %% This Tx matches a very specific pattern for a HC commitment
                                         %% FIXME: Consider being less rigid here WRT ordering or other.
@@ -1284,7 +1284,9 @@ node_config(PotentialStakers, ReceiveAddress, Consensus) ->
                         <<"consensus">> =>
                             #{  <<"type">> => <<"AE2AE">>,
                                 <<"network_id">> => ?PARENT_CHAIN_NETWORK_ID,
-                                <<"spend_address">> => ReceiveAddress
+                                <<"spend_address">> => ReceiveAddress,
+                                <<"fee">> => 100000000000000,
+                                <<"amount">> => 9700
                             },
                         <<"polling">> =>
                             #{  <<"fetch_interval">> => 100,
@@ -1305,7 +1307,9 @@ node_config(PotentialStakers, ReceiveAddress, Consensus) ->
                         <<"consensus">> =>
                             #{  <<"type">> => <<"AE2BTC">>,
                                 <<"network_id">> => <<"regtest">>,
-                                <<"spend_address">> => ReceiveAddress
+                                <<"spend_address">> => ReceiveAddress,
+                                <<"fee">> => 9500,
+                                <<"amount">> => 7500
                             },
                         <<"polling">> =>
                             #{  <<"fetch_interval">> => 100,
@@ -1353,7 +1357,7 @@ election_contract_by_consensus(?CONSENSUS_HC) -> ?HC_ELECTION_CONTRACT;
 election_contract_by_consensus(?CONSENSUS_HC_BTC) -> ?HC_ELECTION_CONTRACT;
 election_contract_by_consensus(?CONSENSUS_POS) -> ?POS_ELECTION_CONTRACT.
 
-produce_blocks(_Node, NodeName, parent = _NodeType, BlocksCnt, Config, ?CONSENSUS_HC_BTC) ->
+produce_blocks(_Node, _NodeName, parent = _NodeType, BlocksCnt, Config, ?CONSENSUS_HC_BTC) ->
     produce_btc_blocks(?config(bitcoin_cli, Config), ?config(btc_beneficiary, Config), BlocksCnt);
 produce_blocks(_Node, NodeName, parent = _NodeType, BlocksCnt, _Config, _Consensus) ->
     {ok, _} = aecore_suite_utils:mine_key_blocks(NodeName, BlocksCnt);
