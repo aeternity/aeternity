@@ -8,7 +8,8 @@
 
 %% test case exports
 -export([main_test/1,
-         calls_test/1]).
+         calls_test/1,
+         last_switch_test/1 ]).
 
 -include_lib("common_test/include/ct.hrl").
 
@@ -28,7 +29,8 @@ groups() ->
      {two_nodes, [sequence],
       [main_test]},
      {one_node, [sequence],
-      [calls_test]}].
+      [ calls_test
+      , last_switch_test ]}].
 
 suite() ->
     [].
@@ -359,6 +361,23 @@ calls_test(_Config) ->
     {ok, 410, _} =
         aehttp_integration_SUITE:get_accounts_by_pubkey_and_height_sut(OwnerAddress, ContractCreateHeight),
     aecore_suite_utils:unsubscribe(N1, gc),
+    ok.
+
+%% Simulate the case where we've been GC:ing with an older version, where the height of
+%% the last switch wasn't recorded persistently. The important thing is that it doesn't
+%% default to a lower height (say, zero), tricking the GC to start sweeping prematurely.
+%% The safe bet is therefore to default to the top height.
+%%
+last_switch_test(Config) ->
+    N1 = aecore_suite_utils:node_name(dev1),
+    ok = rpc:call(N1, mnesia, dirty_delete, [aec_chain_state, last_gc_switch]),
+    ok = aecore_suite_utils:stop_node(dev1, Config),
+    aecore_suite_utils:start_node(dev1, Config),
+    aecore_suite_utils:connect(N1),
+    Top = rpc:call(N1, aec_chain, top_height, []),
+    #{last_gc := LastGC} = rpc:call(N1, aec_db_gc, info, [[last_gc]]),
+    ct:log("Top = ~p, LastGC = ~p", [Top, LastGC]),
+    Top = LastGC,
     ok.
 
 latest_sophia_abi() ->

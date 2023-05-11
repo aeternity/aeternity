@@ -180,7 +180,7 @@ init(#{ <<"enabled">>     := Enabled
                 aec_db:ensure_activity(
                   async_dirty,
                   fun() ->
-                          {aec_db:read_last_gc_switch(),
+                          {last_gc_switch(),
                            aec_db:read_last_gc_scan()}
                   end);
             false ->
@@ -200,6 +200,17 @@ init(#{ <<"enabled">>     := Enabled
                scanners     = Scanners,
                synced       = false},
     {ok, Data}.
+
+last_gc_switch() ->
+    case aec_db:read_last_gc_switch(undefined) of
+        undefined ->
+            case aec_chain:top_height() of
+                undefined -> 0;
+                TopHeight -> TopHeight
+            end;
+        Height ->
+            Height
+    end.
 
 maybe_restart_scanners(LastSwitch, LastScan, Trees) ->
     if LastSwitch > 0, LastScan < LastSwitch ->

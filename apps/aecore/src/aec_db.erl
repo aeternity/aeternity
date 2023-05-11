@@ -84,6 +84,7 @@
         , secondary_state_tab/1
         , write_last_gc_switch/1
         , read_last_gc_switch/0
+        , read_last_gc_switch/1
         , write_last_gc_scan/1
         , read_last_gc_scan/0 ]).
 
@@ -956,9 +957,12 @@ write_last_gc_switch(Height) ->
     ?t(write(#aec_chain_state{key = last_gc_switch, value = Height})).
 
 read_last_gc_switch() ->
+    read_last_gc_switch(0).
+
+read_last_gc_switch(Default) ->
     R = ?t(case read(aec_chain_state, last_gc_switch) of
                [] ->
-                   0;
+                   Default;
                [#aec_chain_state{value = Height}] ->
                    Height
            end),
@@ -976,7 +980,7 @@ read_last_gc_scan() ->
                [#aec_chain_state{value = Height}] ->
                    Height
            end),
-    lager:debug("<-- last GC Height: ~p", [R]),
+    lager:debug("<-- last height of complete GC scan: ~p", [R]),
     R.
 
 -spec make_primary_state_tab(tree_name(), table_name()) -> ok.
