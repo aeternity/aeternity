@@ -67,7 +67,7 @@
 -record(st,
         {enabled        :: boolean(),                     % do we garbage collect?
          history        :: non_neg_integer(),             % how many block state back from top to keep
-         min_height     :: undefined | non_neg_integer(), % if hash_not_found error, try GC from this height
+         min_height     :: undefined | non_neg_integer(), % do not GC before this height
          depth          :: non_neg_integer(),             % how far below the top to perform scans (0: fork resistance height)
          during_sync    :: boolean(),                     % run GC from the beginning
          synced         :: boolean(),                     % we only run GC if chain is synced
@@ -231,7 +231,6 @@ handle_info({'DOWN', MRef, process, Pid, Reason}, #st{scanners = Scanners} = St)
         false ->
             {noreply, St};
         #scanner{tree = Tree, height = Height, attempt = Attempt} = S ->
-            signal_scanning_failed(Height),
             Scanners1 = Scanners -- [S],
             NewSt = if Reason =/= normal ->
                             lager:error("GC Scanner process for ~p died: ~p", [Tree, Reason]),
@@ -282,9 +281,10 @@ handle_call({set_enabled, Bool}, _From, #st{enabled = Enabled} = St) ->
 handle_call({info, Keys}, _, St) ->
     {reply, info_(Keys, St), St}.
 
-%% the initial scan failed due to hash_not_present_in_db, reschedule it for later
-handle_cast({scanning_failed, ErrHeight}, St) ->
-    {noreply, St#st{min_height = ErrHeight}};
+handle_cast({scanning_failed, _ErrHeight}, St) ->
+    %% TODO: This used to set min_height to ErrHeight. This seems wrong, but
+    %% perhaps there is something else we want to do here.
+    {noreply, St};
 
 handle_cast({scan_complete, Name, Height}, #st{scanners = Scanners} = St) ->
     Scanners1 = lists:keydelete(Name, #scanner.tree, Scanners),
@@ -418,7 +418,6 @@ init_acc(N) ->
             {NewRef, N};
         {error, Reason} ->
             lager:error("Jobs return error: ~p", [Reason]),
-            signal_scanning_failed(0),
             error(jobs_error)
     end.
 
