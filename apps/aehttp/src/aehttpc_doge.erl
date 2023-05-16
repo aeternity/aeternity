@@ -1,7 +1,7 @@
 %%% @copyright (C) 2022, Aeternity
--module(aehttpc_btc).
+-module(aehttpc_doge).
 
-%% Low level subset of bitcoin API required to interact with a hyperchain
+%% Low level subset of dogecoin API required to interact with a hyperchain
 
 %% Required exports:
 -export([get_latest_block/5,
@@ -69,9 +69,8 @@ post_commitment(Host, Port, User, Password, BTCAcc, HCCollectPubkey, Amount, Fee
     {ok, {Inputs, TotalAmount}} = select_utxo(UnspentSatoshis, Fee + Amount),
     Outputs = create_outputs(Commitment, BTCAcc, HCCollectPubkey, TotalAmount, Amount, Fee),
     {ok, Tx} = createrawtransaction(Host, Port, User, Password, false, Inputs, Outputs),
-    {ok, SignedTx} = signrawtransactionwithwallet(Host, Port, User, Password, false, Tx),
+    {ok, SignedTx} = signrawtransaction(Host, Port, User, Password, false, Tx),
     {ok, TxHash} = sendrawtransaction(Host, Port, User, Password, false, SignedTx),
-    %% lager:debug("Posted BTC Commitment in Tx: ~p", [TxHash]),
     {ok, #{<<"tx_hash">> => TxHash}}.
 
 select_utxo([#{<<"spendable">> := true, <<"amount">> := Amount} = Unspent | _Us], Needed) when Amount >= Needed ->
@@ -113,7 +112,7 @@ create_outputs(Commitment, BTCAcc, HCCollectPubkey, TotalAmount, Amount, Fee) ->
     Refund = satoshi_to_btc(TotalAmount - Fee - Amount),
     HCAmount = satoshi_to_btc(Amount),
     HexCommitment = to_hex(Commitment),
-    [#{BTCAcc => Refund}, #{HCCollectPubkey => HCAmount}, #{<<"data">> => HexCommitment}].
+    #{BTCAcc => Refund, HCCollectPubkey => HCAmount, <<"data">> => HexCommitment}.
 
 satoshi_to_btc(Sats) when Sats >= 0 ->
     SatsStr = integer_to_list(Sats),
@@ -147,7 +146,7 @@ getbestblockhash(Host, Port, User, Password, Seed, SSL) ->
         {error, {E, R}}
     end.
 
--spec getblockhash(binary(), binary(), binary(), binary(), binary(), boolean(), integer()) -> {ok, binary()} | {error, term()}.
+-spec getblockhash(binary(), binary(), binary(), binary(), binary(), boolean(), hex()) -> {ok, binary()} | {error, term()}.
 getblockhash(Host, Port, User, Password, Seed, SSL, Height) ->
     try
       Body = jsx:encode(request_body(<<"getblockhash">>, [Height], seed_to_utf8(Seed))),
@@ -162,16 +161,41 @@ getblockhash(Host, Port, User, Password, Seed, SSL, Height) ->
       {error, {E, R, S}}
     end.
 
+%% doge and bitcoin core differ here. bitcoind at Verbosity 2 will return fully detailed txs
+%% dogecoin 1.14.6 doesn't have level 2 so we must fetch all the Txs separately.
 -spec getblock(binary(), binary(), binary(), binary(), binary(), false, binary(), integer()) -> {ok, tuple()} | {error, term()}.
-getblock(Host, Port, User, Password, Seed, SSL, Hash, Verbosity) ->
+getblock(Host, Port, User, Password, Seed, SSL, Hash, 2) ->
     try
-        Body = jsx:encode(request_body(<<"getblock">>, [Hash, Verbosity], seed_to_utf8(Seed))),
+        Body = jsx:encode(request_body(<<"getblock">>, [Hash, true], seed_to_utf8(Seed))),
+        {ok, Res} = request(<<"/">>, Body, Host, Port, User, Password, SSL, 5000),
+        Obj = result(Res),
+        TxHashes = maps:get(<<"tx">>, Obj),
+        Txs = lists:flatmap(
+            fun(TxHash) ->
+                case getrawtransaction(Host, Port, User, Password, SSL, TxHash) of
+                    {ok, Tx} -> [Tx];
+                    _ -> []
+                end
+            end, TxHashes),
+        Block = block(maps:put(<<"tx">>, Txs, Obj)),
+        {ok, Block}
+    catch E:R:S ->
+        {error, {E, R, S}}
+    end;
+getblock(Host, Port, User, Password, Seed, SSL, Hash, Verbosity) ->
+    VerbosityEnc = encode_verbosity(Verbosity),
+    try
+        Body = jsx:encode(request_body(<<"getblock">>, [Hash, VerbosityEnc], seed_to_utf8(Seed))),
         {ok, Res} = request(<<"/">>, Body, Host, Port, User, Password, SSL, 5000),
         Block = block(result(Res)),
         {ok, Block}
     catch E:R:S ->
         {error, {E, R, S}}
     end.
+
+encode_verbosity(0) -> false;
+encode_verbosity(1) -> true;
+encode_verbosity(2) -> true.
 
 listunspent(Host, Port, User, Password, SSL) ->
     try
@@ -198,11 +222,11 @@ createrawtransaction(Host, Port, User, Password, SSL, Inputs, Outputs) ->
 %% Rely on the wallet embedded in the local bitcoind
 %% FIXME: Allow this to use a different host/port so users can use a separate offline bitcoind
 %% holding their commitments wallet.
--spec signrawtransactionwithwallet(binary(), integer(), binary(), binary(), boolean(), binary()) -> {ok, binary()} | {error, term()}.
-signrawtransactionwithwallet(Host, Port, User, Password, SSL, RawTx) ->
+-spec signrawtransaction(binary(), integer(), binary(), binary(), boolean(), binary()) -> {ok, binary()} | {error, term()}.
+signrawtransaction(Host, Port, User, Password, SSL, RawTx) ->
     try
         Seed = <<>>,
-        Body = jsx:encode(request_body(<<"signrawtransactionwithwallet">>, [RawTx], seed_to_utf8(Seed))),
+        Body = jsx:encode(request_body(<<"signrawtransaction">>, [RawTx], seed_to_utf8(Seed))),
         {ok, Res} = request(<<"/">>, Body, Host, Port, User, Password, SSL, 5000),
         SignedTx = result(Res),
         Complete = maps:get(<<"complete">>, SignedTx),
@@ -218,6 +242,17 @@ sendrawtransaction(Host, Port, User, Password, SSL, Hex) ->
     try
         Seed = <<>>,
         Body = jsx:encode(request_body(<<"sendrawtransaction">>, [Hex], seed_to_utf8(Seed))),
+        {ok, Res} = request(<<"/">>, Body, Host, Port, User, Password, SSL, 5000),
+        {ok, result(Res)}
+    catch E:R ->
+        {error, {E, R}}
+    end.
+
+-spec getrawtransaction(binary(), integer(), binary(), binary(), boolean(), binary()) -> {ok, binary()} | {error, term()}.
+getrawtransaction(Host, Port, User, Password, SSL, TxHash) ->
+    try
+        Seed = <<>>,
+        Body = jsx:encode(request_body(<<"getrawtransaction">>, [TxHash, true], seed_to_utf8(Seed))),
         {ok, Res} = request(<<"/">>, Body, Host, Port, User, Password, SSL, 5000),
         {ok, result(Res)}
     catch E:R ->
@@ -243,28 +278,22 @@ block(Obj) ->
 -define(OP_RETURN, 16#6a).
 
 -spec find_commitments(list(), binary()) -> [{Pubkey :: binary(), Payload :: binary()}].
-find_commitments(Txs, ParentHCAccountPubKey) ->
+find_commitments(Txs, _ParentHCAccountPubKey) ->
     lists:foldl(fun(Tx, Acc) ->
                     case Tx of
                         #{<<"vout">> :=
-                             [#{<<"n">> := 0, <<"scriptPubKey">> := #{<<"address">> := _Staker}},
-                              #{<<"n">> := 1, <<"scriptPubKey">> := #{<<"address">> := TxParentHCAccountPubKey}},
-                              #{<<"n">> := 2, <<"scriptPubKey">> := #{<<"type">> := <<"nulldata">>, <<"hex">> := CommitmentEnc}}]} ->
+                             [#{<<"n">> := 0, <<"scriptPubKey">> := #{<<"type">> := <<"nulldata">>, <<"hex">> := CommitmentEnc}},
+                              #{<<"n">> := 1, <<"scriptPubKey">> := #{<<"addresses">> := _Staker}},
+                              #{<<"n">> := 2, <<"scriptPubKey">> := #{<<"addresses">> := __ParentHCAccountPubKey}}]} ->
                             %% This Tx matches a very specific pattern for a HC commitment
                             %% FIXME: Reject commitments sent to a different ParentHCAccountPubKey
                             %% FIXME: Consider being less rigid here WRT ordering or other.
-                            case ParentHCAccountPubKey of
-                                _TxParentHCAccountPubKey ->
-                                    Commitment = from_hex(CommitmentEnc),
-                                    case Commitment of
-                                        <<?OP_RETURN, 65, ?HC_COMMITMENT_VSN, StakerPubkey:32/binary, TopHash:32/binary>> ->
-                                            [{StakerPubkey, TopHash} | Acc];
-                                        _ ->
-                                            lager:debug("Invalid BTC Commitment, skipping ~p", [CommitmentEnc]),
-                                            Acc
-                                    end;
+                            Commitment = from_hex(CommitmentEnc),
+                            case Commitment of
+                                <<?OP_RETURN, 65, ?HC_COMMITMENT_VSN, StakerPubkey:32/binary, TopHash:32/binary>> ->
+                                    [{StakerPubkey, TopHash} | Acc];
                                 _ ->
-                                    lager:debug("Wrong Parent Account BTC Commitment, skipping ~p ~p", [ParentHCAccountPubKey, ParentHCAccountPubKey]),
+                                    lager:debug("Invalid BTC Commitment, skipping ~p", [CommitmentEnc]),
                                     Acc
                             end;
                         _Else ->
@@ -287,9 +316,11 @@ request(Path, Body, Host, Port, User, Password, SSL, Timeout) ->
         Opt = [],
         case httpc:request(post, Req, HTTPOpt, Opt) of
             {ok, {{_, 200 = _Code, _}, _, Res}} ->
-                %% lager:debug("Req: ~p, Res: ~p with URL: ~ts", [Req, Res, Url]),
+                lager:debug("Req: ~p, Res: ~p with URL: ~ts", [Req, Res, Url]),
                 {ok, jsx:decode(list_to_binary(Res), [return_maps])};
              {ok, {{_, 500 = _Code, _}, _, "{\"result\":null,\"error\":{\"code\":-8,\"message\":\"Block height out of range\"}" ++ _}} ->
+                {error, not_found};
+             {ok, {{_, 500 = _Code, _}, _, "{\"result\":null,\"error\":{\"code\":-5,\"message\":\"No such mempool or blockchain" ++ _}} ->
                 {error, not_found}
         end
     catch E:R:S ->

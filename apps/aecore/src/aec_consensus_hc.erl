@@ -118,7 +118,8 @@ start(Config, #{block_production := BlockProduction}) ->
     {ParentConnMod, PCSpendPubkey, HCPCPairs, SignModule} =
         case PCType of
             <<"AE2AE">> -> start_ae(StakersEncoded, PCSpendAddress);
-            <<"AE2BTC">> -> start_btc(StakersEncoded, PCSpendAddress)
+            <<"AE2BTC">> -> start_btc(StakersEncoded, PCSpendAddress, aehttpc_btc);
+            <<"AE2DOGE">> -> start_btc(StakersEncoded, PCSpendAddress, aehttpc_doge)
         end,
     start_dependency(aec_parent_connector, [ParentConnMod, FetchInterval,
                                             ParentHosts, NetworkId,
@@ -127,7 +128,7 @@ start(Config, #{block_production := BlockProduction}) ->
                                               Confirmations, BlockProduction]),
     ok.
 
-start_btc(StakersEncoded, PCSpendAddress) ->
+start_btc(StakersEncoded, PCSpendAddress, ParentConnMod) ->
     Stakers =
         lists:map(
             fun(#{<<"hyper_chain_account">> := #{<<"pub">> := EncodedPubkey,
@@ -149,7 +150,6 @@ start_btc(StakersEncoded, PCSpendAddress) ->
                  {HCPubkey, BTCPubkey}
             end,
             StakersEncoded),
-    ParentConnMod = aehttpc_btc,
     SignModule = undefined,
     {ParentConnMod, PCSpendAddress, HCPCPairs, SignModule}.
 

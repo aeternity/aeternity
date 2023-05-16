@@ -33,6 +33,7 @@
 -define(HC_ELECTION_CONTRACT, "HCElection").
 -define(CONSENSUS_HC, hc).
 -define(CONSENSUS_HC_BTC, hc_btc).
+-define(CONSENSUS_HC_DOGE, hc_doge).
 -define(CONSENSUS_POS, pos).
 -define(CHILD_START_HEIGHT, 101).
 -define(CHILD_CONFIRMATIONS, 0).
@@ -130,7 +131,8 @@ all() -> [{group, pos},
 groups() ->
     [{pos, [sequence], common_tests()},
      {hc, [sequence], common_tests() ++ hc_specific_tests()},
-     {hc_btc, [sequence], common_tests() ++ hc_btc_specific_tests()}
+     {hc_btc, [sequence], common_tests() ++ hc_btc_specific_tests()},
+     {hc_doge, [sequence], common_tests() ++ hc_btc_specific_tests()}
     ].
 
 common_tests() ->
@@ -218,6 +220,16 @@ init_per_group(hc_btc, Config0) ->
             VM = fate,
             Config1 = aect_test_utils:init_per_group(VM, Config0),
             init_per_group_custom(<<"hc">>, ?CONSENSUS_HC_BTC, Config1)
+    end;
+init_per_group(hc_doge, Config0) ->
+    VsnStr =  os:cmd("dogecoind -version"),
+    case re:run(VsnStr, "v\\d") of
+        nomatch ->
+            {skip, dogecoind_executable_not_found};
+        {match, _} ->
+            VM = fate,
+            Config1 = aect_test_utils:init_per_group(VM, Config0),
+            init_per_group_custom(<<"hc">>, ?CONSENSUS_HC_DOGE, Config1)
     end;
 init_per_group(Group, Config0) ->
     VM = fate,
@@ -369,6 +381,79 @@ rpcport=" ++ integer_to_list(?BTC_PARENT_CHAIN_PORT),
     ChildTopHeight = rpc(?NODE1, aec_chain, top_height, []),
     {ok, ChildBlocks} = get_generations(?NODE1, 0, ChildTopHeight),
     ct:log("Child chain blocks ~p", [ChildBlocks]),
+    Config1;
+init_per_group_custom(NetworkId, ?CONSENSUS_HC_DOGE, Config) ->
+    ElectionContract = election_contract_by_consensus(?CONSENSUS_HC),
+    build_json_files(NetworkId, ElectionContract, Config),
+    %% different runs use different network ids
+    Env = [ {"AE__FORK_MANAGEMENT__NETWORK_ID", binary_to_list(NetworkId)}
+          ],
+    %% Start a clean bitcoind regtest node and mine the first 101 blocks to provide
+    %% an account with available balance.
+    PrivDir = aecore_suite_utils:priv_dir(Config),
+    DogeDataDir = filename:join(PrivDir, "dogecoin"),
+    ct:log("creating Doge dir ~p", [DogeDataDir]),
+    ok = file:make_dir(DogeDataDir),
+    ok = filelib:ensure_dir(DogeDataDir),
+    DogeConfig =
+    "regtest=1
+daemon=1
+server=1
+rpcuser=test
+rpcpassword=Pass
+rpcport=" ++ integer_to_list(?BTC_PARENT_CHAIN_PORT),
+    ok = file:write_file(filename:join(DogeDataDir, "dogecoin.conf"), DogeConfig),
+    Cmd = "dogecoind -txindex -datadir=" ++ DogeDataDir,
+    os:cmd(Cmd),
+    DogecoinCli = "dogecoin-cli -regtest -datadir="++DogeDataDir++" ",
+    %% Wait for dogecoind to become available to rpcs
+    os:cmd(DogecoinCli ++ "-rpcwait ping"),
+    %% Generate a wallet (not needed - created by default for dogecoin 1.14.6)
+    %% os:cmd(DogecoinCli ++ "createwallet testwallet"),
+    Dwight = string:trim(os:cmd(DogecoinCli ++ "getnewaddress")),
+    Edwin = string:trim(os:cmd(DogecoinCli ++ "getnewaddress")),
+    ct:log("Produce blocks on parent", []),
+    %% Create the first 101 blocks to release mining funds into our wallet for use
+    %% in posting commitments.
+    Config1 = [{network_id, NetworkId}, {consensus, ?CONSENSUS_HC_BTC}, {bitcoin_cli, DogecoinCli}, {btc_beneficiary, Dwight} | Config],
+    produce_blocks(?PARENT_CHAIN_NODE1, ?PARENT_CHAIN_NODE1_NAME,
+                    parent, ?CHILD_START_HEIGHT, Config1, ?CONSENSUS_HC_BTC),
+    ReceiveAddress = string:trim(os:cmd(DogecoinCli ++ "getnewaddress")),
+    aecore_suite_utils:create_config(?NODE1, Config,
+                                    node_config([{?ALICE, list_to_binary(Dwight)}, {?BOB, list_to_binary(Edwin)}],
+                                                list_to_binary(ReceiveAddress), ?CONSENSUS_HC_DOGE),
+                                    [{add_peers, true} ]),
+    aecore_suite_utils:create_config(?NODE2, Config,
+                                    node_config([], ReceiveAddress, ?CONSENSUS_HC_DOGE),
+                                    [{add_peers, true} ]),
+    aecore_suite_utils:start_node(?NODE1, Config, Env),
+    aecore_suite_utils:connect(?NODE1_NAME, []),
+    aecore_suite_utils:start_node(?NODE2, Config, Env),
+    aecore_suite_utils:connect(?NODE2_NAME, []),
+
+    timer:sleep(1000),
+    NumberOfCommitments = 2,
+    %% mine blocks on the parent chain and include commitments; stop right
+    %% before the child chain produces a block
+%%
+%%    lists:foreach(
+%%        fun(Idx) ->
+%%            PCTopHeight = rpc(?PARENT_CHAIN_NODE1, aec_chain, top_height, []),
+%%            ct:log("Mining commitment on the parent chain, idx ~p, parent height ~p", [Idx, PCTopHeight]),
+%%            wait_for_commitments_in_pool(?PARENT_CHAIN_NODE1, NumberOfCommitments),
+%%            {ok, _} = aecore_suite_utils:mine_micro_blocks(?PARENT_CHAIN_NODE1_NAME, 1),
+%%            {ok, _} = aecore_suite_utils:mine_key_blocks(?PARENT_CHAIN_NODE1_NAME, 1)
+%%        end,
+%%       lists:seq(1, ?CHILD_CONFIRMATIONS - 1)),
+    ct:log("Mining last initial commitment on the Dogecoin parent chain", []),
+    wait_for_btc_commitments_in_pool(DogecoinCli, NumberOfCommitments),
+    %% produce_btc_blocks(DogecoinCli, Dwight, 1),
+    {ok, _} = produce_blocks(?NODE1, ?NODE1_NAME, child, 10, Config1, ?config(consensus, Config1)),
+    ParentTopHash = string:trim(os:cmd(DogecoinCli ++ "getbestblockhash")),
+    ct:log("Parent chain blocks ~p", [ParentTopHash]),
+    ChildTopHeight = rpc(?NODE1, aec_chain, top_height, []),
+    {ok, ChildBlocks} = get_generations(?NODE1, 0, ChildTopHeight),
+    ct:log("Child chain blocks ~p", [ChildBlocks]),
     Config1.
 
 end_per_group(pos, Config) ->
@@ -383,7 +468,15 @@ end_per_group(hc_btc, Config) ->
     aecore_suite_utils:stop_node(?NODE2, Config),
     PrivDir = aecore_suite_utils:priv_dir(Config),
     BTCDataDir = filename:join(PrivDir, "bitcoin"),
-    Cmd = "bitcoin-cli -regtest -datadir="++BTCDataDir++" stop",
+    Cmd = "bitcoin-cli -datadir="++BTCDataDir++" stop",
+    os:cmd(Cmd),
+    Config;
+end_per_group(hc_doge, Config) ->
+    aecore_suite_utils:stop_node(?NODE1, Config),
+    aecore_suite_utils:stop_node(?NODE2, Config),
+    PrivDir = aecore_suite_utils:priv_dir(Config),
+    DogeDataDir = filename:join(PrivDir, "dogecoin"),
+    Cmd = "dogecoin-cli -datadir="++DogeDataDir++" stop",
     os:cmd(Cmd),
     Config;
 end_per_group(_Group, Config) ->
@@ -776,13 +869,41 @@ verify_btc_commitments(Config) ->
                     fun(B) ->
                         BHeight = maps:get(<<"height">>, B),
                         Txs = maps:get(<<"tx">>, B),
+                        ct:log("Txs ~p", [Txs]),
                         lists:map(
                             fun(Tx) ->
                                 case Tx of
-                                    #{<<"vout">> :=
+                                    TxId when is_binary(TxId) ->
+                                        %% It's a Doge Tx, get details
+                                        {ok, TxDetails} = get_doge_raw_tx(BitcoinCli, TxId),
+                                        ct:log("TxDetails ~p", [TxDetails]),
+                                        case TxDetails of
+                                            #{<<"vout">> := Vout} when length(Vout) == 3 ->
+                                                ct:log("Matching VOUT ~p", [Vout]),
+                                                [#{<<"n">> := 0, <<"scriptPubKey">> := #{<<"type">> := <<"nulldata">>, <<"hex">> := CommitmentEnc}},
+                                                 #{<<"n">> := 1, <<"value">> := Val1, <<"scriptPubKey">> := #{<<"addresses">> := _ParentHCAccountPubKeyxx}},
+                                                 #{<<"n">> := 2, <<"value">> := Val2, <<"scriptPubKey">> := #{<<"addresses">> := _Staker}}
+                                                 ] = Vout,
+                                                 %Val1 = 0.00007500,
+                                                 %Val2 = 0.00007500,
+                                                 Commitment = aeu_hex:hex_to_bin(CommitmentEnc),
+                                                 case Commitment of
+                                                    <<?OP_RETURN, 65, 1, StakerPubkey:32/binary, TopHash:32/binary>> ->
+                                                        Spender = name(who_by_pubkey(StakerPubkey)),
+                                                        {BHeight, Spender, 0, TopHash};
+                                                    _ ->
+                                                        ct:pal("Invalid BTC Commitment, skipping ~p", [CommitmentEnc]),
+                                                        []
+                                                end;
+                                            _Else ->
+                                                ct:log("Non matching Tx ~p", [TxDetails]),
+                                                []
+                                        end;
+                                    #{<<"vout">> := Vout} when length(Vout) == 3 ->
+                                        ct:log("Matching VOUT ~p", [Vout]),
                                         [#{<<"n">> := 0, <<"scriptPubKey">> := #{<<"address">> := _Staker}},
                                         #{<<"n">> := 1, <<"value">> := 0.00007500, <<"scriptPubKey">> := #{<<"address">> := _ParentHCAccountPubKeyxx}},
-                                        #{<<"n">> := 2, <<"scriptPubKey">> := #{<<"type">> := <<"nulldata">>, <<"hex">> := CommitmentEnc}}]} ->
+                                        #{<<"n">> := 2, <<"scriptPubKey">> := #{<<"type">> := <<"nulldata">>, <<"hex">> := CommitmentEnc}}] = Vout,
                                         %% This Tx matches a very specific pattern for a HC commitment
                                         %% FIXME: Consider being less rigid here WRT ordering or other.
                                         Commitment = aeu_hex:hex_to_bin(CommitmentEnc),
@@ -791,11 +912,11 @@ verify_btc_commitments(Config) ->
                                                 Spender = name(who_by_pubkey(StakerPubkey)),
                                                 {BHeight, Spender, 0, TopHash};
                                             _ ->
-                                                lager:info("Invalid BTC Commitment, skipping ~p", [CommitmentEnc]),
+                                                ct:pal("Invalid BTC Commitment, skipping ~p", [CommitmentEnc]),
                                                 []
                                         end;
                                     _Else ->
-                                        lager:info("Invalid BTC Tx, skipping ~p", [Tx]),
+                                        %% lager:info("Invalid BTC Tx, skipping ~p", [Tx]),
                                         []
                                 end
                             end,
@@ -1259,7 +1380,7 @@ node_config(PotentialStakers, ReceiveAddress, Consensus) ->
                             <<"parent_chain_account">> =>#{<<"pub">> => encoded_pubkey(PCWho), <<"priv">> => PCPriv}}
                     end,
                     PotentialStakers);
-            ?CONSENSUS_HC_BTC ->
+            _ when Consensus == ?CONSENSUS_HC_BTC; Consensus == ?CONSENSUS_HC_DOGE ->
                 lists:map(
                     fun({HCWho, PCWho}) ->
                         HCPriv = list_to_binary(aeu_hex:bin_to_hex( privkey(HCWho))),
@@ -1272,6 +1393,7 @@ node_config(PotentialStakers, ReceiveAddress, Consensus) ->
         case Consensus of
             ?CONSENSUS_HC -> <<"hyper_chain">>;
             ?CONSENSUS_HC_BTC -> <<"hyper_chain">>;
+            ?CONSENSUS_HC_DOGE -> <<"hyper_chain">>;
             ?CONSENSUS_POS -> <<"smart_contract">>
         end,
     SpecificConfig =
@@ -1300,15 +1422,19 @@ node_config(PotentialStakers, ReceiveAddress, Consensus) ->
                         }
                         
                  };
-            ?CONSENSUS_HC_BTC ->
+            _ when Consensus == ?CONSENSUS_HC_BTC; Consensus == ?CONSENSUS_HC_DOGE ->
+                PCType = case Consensus of
+                            ?CONSENSUS_HC_BTC -> <<"AE2BTC">>;
+                            ?CONSENSUS_HC_DOGE -> <<"AE2DOGE">>
+                        end,
                 #{  <<"parent_chain">> =>
                     #{  <<"start_height">> => ?CHILD_START_HEIGHT,
                         <<"confirmations">> => ?CHILD_CONFIRMATIONS,
                         <<"consensus">> =>
-                            #{  <<"type">> => <<"AE2BTC">>,
+                            #{  <<"type">> => PCType,
                                 <<"network_id">> => <<"regtest">>,
                                 <<"spend_address">> => ReceiveAddress,
-                                <<"fee">> => 9500,
+                                <<"fee">> => 95000,
                                 <<"amount">> => 7500
                             },
                         <<"polling">> =>
@@ -1507,11 +1633,19 @@ btc_get_block(BitcoinCli, Hash) ->
     btc_get_block(BitcoinCli, Hash, 1).
 
 btc_get_block(BitcoinCli, Hash, Verbosity) ->
-    Block = list_to_binary(string:trim(os:cmd(BitcoinCli ++ "getblock " ++ Hash ++ " " ++ integer_to_list(Verbosity)))),
+    VerbosityStr = case BitcoinCli of
+        "doge" ++ _ -> "true";
+        _ -> integer_to_list(Verbosity)
+    end,
+    Block = list_to_binary(string:trim(os:cmd(BitcoinCli ++ "getblock " ++ Hash ++ " " ++ VerbosityStr))),
     jsx:decode(Block, [return_maps]).
 
 btc_get_blockhash(BitcoinCli, Height) ->
     string:trim(os:cmd(BitcoinCli ++ "getblockhash " ++ integer_to_list(Height))).
+
+get_doge_raw_tx(BitcoinCli, TxId) ->
+    Tx = list_to_binary(string:trim(os:cmd(BitcoinCli ++ "getrawtransaction " ++ binary_to_list(TxId) ++ " true"))),
+    {ok, jsx:decode(Tx, [return_maps])}.
 
 produce_validator_tx() ->
     Who = ?BOB,
