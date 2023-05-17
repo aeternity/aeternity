@@ -57,6 +57,7 @@
 
 %% exports used by GC (should perhaps be in a common lib module)
 -export([ dbs_/0
+        , gc_height_and_dbs/0
         , gc_db/1
         , origins_cache/0
         , origins_cache_max_size/0
@@ -363,6 +364,9 @@ origins_cache_max_size() -> ?ORIGINS_CACHE_MAX_SIZE.
 dbs() ->
     gen_server:call(?SERVER, dbs).
 
+gc_height_and_dbs() ->
+    gen_server:call(?SERVER, gc_height_and_dbs).
+
 raw_delete(#dbs{} = Dbs, Key) ->
     pool_db_raw_delete(Dbs, Key).
 
@@ -492,6 +496,13 @@ handle_call_({failed_txs, FailedTxs}, _From, #state{dbs = Dbs} = State) ->
     {reply, ok, State};
 handle_call_(dbs, _From, #state{dbs = Dbs} = State) ->
     {reply, Dbs, State};
+handle_call_(gc_height_and_dbs, _From, #state{dbs = Dbs} = State) ->
+    case State of
+        #state{gc_height = undefined, sync_top_calc = P} when is_pid(P) ->
+            {reply, undefined, State};
+        #state{gc_height = H} when is_integer(H) ->
+            {reply, {H, Dbs}, State}
+    end;
 handle_call_(Request, From, State) ->
     lager:warning("Ignoring unknown call request from ~p: ~p", [From, Request]),
     {noreply, State}.
@@ -516,7 +527,7 @@ handle_info(Msg, St) ->
     ?TC(handle_info_(Msg, St), Msg).
 
 handle_info_({P, new_gc_height, GCHeight}, #state{sync_top_calc = P} = State) ->
-    aec_tx_pool_gc:gc(GCHeight, State#state.dbs),
+    %% aec_tx_pool_gc:gc(GCHeight, State#state.dbs),
     {noreply, State#state{sync_top_calc = undefined, gc_height = GCHeight}};
 handle_info_({'ETS-TRANSFER', _, _, _}, State) ->
     {noreply, State};

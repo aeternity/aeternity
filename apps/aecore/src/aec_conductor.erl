@@ -841,13 +841,16 @@ deregister_instance(Pid, #state{instances = MinerInstances0} = State) ->
 preempt_on_new_top(#state{ top_block_hash = OldHash,
                            top_key_block_hash = OldKeyHash,
                            top_height = OldHeight,
+                           consensus = Consensus,
                            mode = Mode
                          } = State, NewBlock, NewHash, Origin) ->
-    ConsensusModule = consensus_module(State),
+    #consensus{ consensus_module = ConsensusModule,
+                leader = IsLeader} = Consensus,
     BlockType = aec_blocks:type(NewBlock),
     PrevNewHash = aec_blocks:prev_hash(NewBlock),
     Hdr = aec_blocks:to_header(NewBlock),
     Height = aec_headers:height(Hdr),
+    maybe_gc_tx_pool(BlockType, IsLeader, Height, OldHeight),
     aec_tx_pool:top_change(#{type => BlockType,
                              old_hash => OldHash,
                              new_hash => NewHash,
@@ -1386,54 +1389,54 @@ handle_add_block(Block, Hash, Prev, #state{top_block_hash = TopBlockHash} = Stat
             {{error, Reason}, State}
     end.
 
-handle_successfully_added_block(Block, Hash, false, _, Events, State, Origin) ->
+handle_successfully_added_block(Block, Hash, false, PrevKeyHeader, Events, State, Origin) ->
     maybe_publish_tx_events(Events, Hash, Origin),
     maybe_publish_block(Origin, Block),
-    State1 = maybe_consensus_change(State, Block),
+    State1 = maybe_consensus_change(State, PrevKeyHeader, Block),
     {ok, State1};
 handle_successfully_added_block(Block, Hash, true, PrevKeyHeader, Events, State, Origin) ->
     maybe_publish_tx_events(Events, Hash, Origin),
     maybe_publish_block(Origin, Block),
-    State1 = maybe_consensus_change(State, Block),
-    ConsensusModule = consensus_module(State),
+    State1 = maybe_consensus_change(State, PrevKeyHeader, Block),
     case preempt_on_new_top(State1, Block, Hash, Origin) of
         {micro_changed, State2 = #state{ consensus = Cons }} ->
             {ok, setup_loop(State2, false, Cons#consensus.leader, Origin)};
-        {changed, BlockType, NewTopBlock, State2} ->
+        {changed, BlockType, NewTopBlock, State2 = #state{consensus = Cons}} ->
             (BlockType == key) andalso
                 aec_metrics:try_update(
                   [ae,epoch,aecore,blocks,key,info], info_value(NewTopBlock)),
             [ maybe_garbage_collect(NewTopBlock) || BlockType == key ],
-            IsLeader = is_leader(NewTopBlock, PrevKeyHeader, ConsensusModule),
-            case IsLeader of
-                true ->
-                    ok; %% Don't spend time when we are the leader.
-                false ->
-                    aec_tx_pool:garbage_collect()
-            end,
-            {ok, setup_loop(State2, true, IsLeader, Origin)}
+            {ok, setup_loop(State2, true, Cons#consensus.leader, Origin)}
     end.
 
-maybe_consensus_change(State, Block) ->
+maybe_gc_tx_pool(key, false, Height, OldHeight) when Height > OldHeight ->
+    _ = aec_tx_pool_gc:sync_gc(Height),
+    ok;
+maybe_gc_tx_pool(_, _, _, _) ->
+    ok.
+
+maybe_consensus_change(State, PrevKeyHeader, Block) ->
     %% When a new block got successfully inserted we need to check whether the next block
     %% would use different consensus algorithm - This is the point where
     %% dev mode should wreck havoc on the entire system and redirect everything
     %% to a chain simulator ;)
     ActiveConsensusModule = consensus_module(State),
     H = aec_blocks:height(Block),
-    case aec_consensus:get_consensus_module_at_height(H + 1) of
-        ActiveConsensusModule ->
-            State;
-        NewConsensus ->
-            %% It looks like dev mode needs to be activated :)
-            true = ActiveConsensusModule:can_be_turned_off(),
-            ActiveConsensusModule:stop(),
-            NewConfig = aec_consensus:get_consensus_config_at_height(H+1),
-            Mining = is_mining(State),
-            NewConsensus:start(NewConfig, #{block_production => Mining}),
-            #state{consensus = Consensus} = State,
-            State#state{ consensus = Consensus#consensus{ consensus_module = NewConsensus } }
-    end.
+    State1 =
+        case aec_consensus:get_consensus_module_at_height(H + 1) of
+            ActiveConsensusModule ->
+                State;
+            NewConsensus ->
+                %% It looks like dev mode needs to be activated :)
+                true = ActiveConsensusModule:can_be_turned_off(),
+                ActiveConsensusModule:stop(),
+                NewConfig = aec_consensus:get_consensus_config_at_height(H+1),
+                Mining = is_mining(State),
+                NewConsensus:start(NewConfig, #{block_production => Mining}),
+                #state{consensus = Consensus} = State,
+                State#state{ consensus = Consensus#consensus{ consensus_module = NewConsensus } }
+        end,
+    check_leader(Block, PrevKeyHeader, State1).
 
 info_value(Block) ->
     case aec_headers:info(aec_blocks:to_key_header(Block)) of
@@ -1442,6 +1445,12 @@ info_value(Block) ->
         undefined ->
             0
     end.
+
+check_leader(Block, PrevKeyHeader,
+             #state{consensus = Consensus} = State) ->
+    #consensus{consensus_module = CMod} = Consensus,
+    IsLeader = is_leader(Block, PrevKeyHeader, CMod),
+    State#state{consensus = Consensus#consensus{leader = IsLeader}}.
 
 is_leader(NewTopBlock, PrevKeyHeader, ConsensusModule) ->
     LeaderKey =
