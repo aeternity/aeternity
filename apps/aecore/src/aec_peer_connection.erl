@@ -55,6 +55,8 @@
 
 -import(aeu_debug, [pp/1]).
 
+-define(dirty(Fun), aec_db:ensure_activity(async_dirty, Fun)).
+
 -define(P2P_PROTOCOL_VSN, 1).
 
 -define(DEFAULT_CONNECT_TIMEOUT, 1000).
@@ -173,7 +175,7 @@ cast_or_call(PeerId, Action, CastOrCall, Timeout) ->
 accept_init(Ref, TcpSock, ranch_tcp, Opts) ->
     ok = ranch:accept_ack(Ref),
     Version = <<?P2P_PROTOCOL_VSN:64>>,
-    Genesis = aec_chain:genesis_hash(),
+    Genesis = ?dirty(fun() -> aec_chain:genesis_hash() end),
     HSTimeout = noise_hs_timeout(),
     case inet:peername(TcpSock) of
         {error, Reason} ->
@@ -802,9 +804,12 @@ ping_obj_rsp(S, RemotePingObj) ->
              [PeerId | [aec_peer:id(P) || P <- TheirPeers]]).
 
 local_ping_obj(#{ kind := ConnKind, ext_sync_port := Port }) ->
-    GHash = aec_chain:genesis_hash(),
-    TopHash = aec_chain:top_key_block_hash(),
-    {ok, Difficulty} = aec_chain:difficulty_at_top_block(),
+    {GHash, TopHash, {ok, Difficulty}} =
+        ?dirty(fun() ->
+                       {aec_chain:genesis_hash(),
+                        aec_chain:top_key_block_hash(),
+                        aec_chain:difficulty_at_top_block()}
+               end),
     #{ genesis_hash => GHash,
        best_hash    => TopHash,
        difficulty   => Difficulty,
@@ -841,7 +846,7 @@ get_header(hash, Hash) ->
 get_header(height, N) ->
     get_header(fun aec_chain:get_key_header_by_height/1, N);
 get_header(Fun, Arg) ->
-    case Fun(Arg) of
+    case ?dirty(fun() -> Fun(Arg) end) of
         {ok, Header} ->
             HH = aec_headers:serialize_to_binary(Header),
             {ok, #{ hdr => HH }};
@@ -857,8 +862,8 @@ handle_get_header_by_height(S, ?VSN_1, Msg) ->
     S;
 handle_get_header_by_height(S, ?GET_HEADER_BY_HEIGHT_VSN,
                             #{ height := H, top_hash := TopHash}) ->
-    case {aec_chain:get_key_header_by_height(H),
-          aec_chain:hash_is_in_main_chain(TopHash)} of
+    case ?dirty(fun() -> {aec_chain:get_key_header_by_height(H),
+                          aec_chain:hash_is_in_main_chain(TopHash)} end) of
         {{ok, Header}, true} ->
             SerHeader = aec_headers:serialize_to_binary(Header),
             send_response(S, header, {ok, #{ hdr => SerHeader }});
@@ -894,7 +899,7 @@ handle_get_n_successors(S, Vsn, Msg) ->
             #{ from_hash := FromHash, target_hash := TargetHash, n := N }
                 when Vsn == ?GET_N_SUCCESSORS_VSN ->
                 Res = do_get_n_successors(FromHash, N),
-                case aec_chain:hash_is_in_main_chain(TargetHash) of
+                case ?dirty(fun() -> aec_chain:hash_is_in_main_chain(TargetHash) end) of
                     true  -> Res;
                     false -> {error, not_on_chain}
                 end;
@@ -1075,13 +1080,13 @@ check_gossiped_header_height(S, Header) ->
 
 handle_light_micro_block(_S, Header, TxHashes, PoF) ->
     %% Before assembling the block, check if it is known, and valid
-    case pre_assembly_check(Header) of
+    case ?dirty(fun() -> pre_assembly_check(Header) end) of
         known ->
             ok;
         E = {error, _} ->
             {ok, HH} = aec_headers:hash_header(Header),
             epoch_sync:debug("Dropping gossiped light micro_block (~s): ~p", [pp(HH), E]),
-            case aec_chain:get_header(aec_headers:prev_key_hash(Header)) of
+            case ?dirty(fun() -> aec_chain:get_header(aec_headers:prev_key_hash(Header)) end) of
                 {ok, PrevHeader} ->
                     epoch_sync:debug("miner beneficiary: ~p", [aec_headers:beneficiary(PrevHeader)]),
                     ok;
