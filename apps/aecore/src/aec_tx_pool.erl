@@ -560,8 +560,7 @@ int_get_max_nonce(NonceDb, Sender) ->
 %% ... Unless no matching txs can be found in the regular mempool.
 %%
 int_get_candidate(MaxGas, IgnoreTxs, BlockHash, #dbs{db = Db} = DBs) ->
-    {ok, Trees} = aec_chain:get_block_state(BlockHash),
-    {ok, Header} = aec_chain:get_header(BlockHash),
+    {Trees, Header} = get_trees_and_header(BlockHash),
     lager:debug("size(Db) = ~p", [ets:info(Db, size)]),
     MinMinerGasPrice = aec_tx_pool:minimum_miner_gas_price(),
     MinTxGas = aec_governance:min_tx_gas(),
@@ -581,6 +580,14 @@ int_get_candidate(MaxGas, IgnoreTxs, BlockHash, #dbs{db = Db} = DBs) ->
             end || {DbX, KeyX, TxX} <- AllVisited ],
 
     {ok, Txs}.
+
+get_trees_and_header(BlockHash) ->
+    aec_db:ensure_dirty(
+      fun() ->
+              {ok, Trees} = aec_chain:get_block_state(BlockHash),
+              {ok, Header} = aec_chain:get_header(BlockHash),
+              {Trees, Header}
+      end).
 
 int_get_candidate(Db, Gas, MinTxGas, MinMinerGasPrice, Trees, Header, DBs, Acc)
   when Gas > MinTxGas ->
@@ -895,8 +902,11 @@ add_to_origins_cache(OriginsCache, SignedTx) ->
     ok = aec_tx_pool_gc:add_to_origins_cache(OriginsCache, Origin, Nonce).
 
 -spec check_pool_db_put(aetx_sign:signed_tx(), tx_hash(), event()) ->
-                               ignore | ok | {error, atom()}.
+          ignore | ok | {error, atom()}.
 check_pool_db_put(Tx, TxHash, Event) ->
+    aec_db:ensure_dirty(fun() -> check_pool_db_put_(Tx, TxHash, Event) end).
+
+check_pool_db_put_(Tx, TxHash, Event) ->
     AllowReentryOfDeletedTx = allow_reentry(),
     case aec_chain:find_tx_location(TxHash) of
         BlockHash when is_binary(BlockHash) ->
@@ -1070,9 +1080,12 @@ nonce_baseline_check(TxNonce, _) ->
         false -> {error, nonce_too_high}
     end.
 
-get_account(AccountKey, {account_trees, AccountsTrees}) ->
+get_account(AccountKey, How) ->
+    aec_db:ensure_dirty(fun() -> get_account_(AccountKey, How) end).
+
+get_account_(AccountKey, {account_trees, AccountsTrees}) ->
     aec_accounts_trees:lookup(AccountKey, AccountsTrees);
-get_account(AccountKey, {block_hash, BlockHash}) ->
+get_account_(AccountKey, {block_hash, BlockHash}) ->
     aec_chain:get_account_at_hash(AccountKey, BlockHash).
 
 check_minimum_fee(Tx, _TxHash, Block, _BlockHash, _Trees, _Event) ->

@@ -20,6 +20,7 @@
         ]).
 
 -export([ensure_transaction/1,
+         ensure_dirty/1,
          ensure_activity/2,
          activity/2]).
 
@@ -504,6 +505,9 @@ backend_mode(<<"mnesia">>, #{persist := true } = M) ->
 ensure_transaction(Fun) when is_function(Fun, 0) ->
     ensure_activity(get_backend_module(), transaction, Fun).
 
+ensure_dirty(Fun) when is_function(Fun, 0) ->
+    ensure_activity(get_backend_module(), async_dirty, Fun).
+
 ensure_activity(Type, Fun) when is_function(Fun, 0) ->
     ensure_activity(get_backend_module(), Type, Fun).
 
@@ -562,6 +566,8 @@ direct_api_activity(Type, Fun) ->
                     Fun()
             end;
         #{activity := #{type := tx}} ->
+            Fun();
+        #{activity := #{type := batch}} ->
             Fun();
         _ when Type == async_dirty; Type == sync_dirty ->
             Fun();
@@ -641,7 +647,15 @@ walk_tstore_({{Table, Key}, _, delete} = E, {F, NF}) ->
 %%     {K, V} = erlang:fun_info(F, K),
 %%     V.
 
-mrdb_activity(Type, Fun) ->
+mrdb_activity(T, Fun) ->
+    Type = case T of
+               _ when T == tx;
+                      T == transaction;
+                      T == sync_transaction ->
+                   {tx, #{retries => {0,50}}};
+               _  ->
+                   T
+           end,
     mrdb:activity(Type, rocksdb_copies, Fun).
 
 %% ======================================================================
@@ -1291,9 +1305,7 @@ enter_tree_node_(Hash, Value, Tab, Rec) ->
 %% and the data is immutable anyway.
 promote_tree_node(Hash, Value, Tab, Rec) ->
     Obj = mk_record(Rec, Hash, Value),
-    activity(async_dirty, fun() ->
-                                  write(Tab, Obj, write)
-                          end).
+    ok = write(Tab, Obj, write).
 
 mk_record(aec_account_state     , K, V) -> #aec_account_state{key = K, value = V};
 mk_record(aec_call_state        , K, V) -> #aec_call_state{key = K, value = V};

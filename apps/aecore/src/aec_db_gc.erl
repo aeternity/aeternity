@@ -443,6 +443,10 @@ maybe_ask_jobs({OldRef, N} = Acc) ->
 
 -spec get_mpt(tree_name(), non_neg_integer()) -> aeu_mp_trees:tree() | empty.
 get_mpt(Tree, Height) ->
+    aec_db:ensure_dirty(
+      fun() -> get_mpt_(Tree, Height) end).
+
+get_mpt_(Tree, Height) ->
     {ok, Hash} = aec_chain_state:get_key_block_hash_at_height(Height),
     get_mpt_from_hash(Tree, Hash).
 
