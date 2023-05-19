@@ -18,8 +18,6 @@
 
 -define(GENESIS,  <<42:32/unit:8>>).
 
--define(HC_COMMITMENT_VSN, 1).
-
 %%%===================================================================
 %%% Test cases
 %%%===================================================================
@@ -273,9 +271,9 @@ post_initial_commitments() ->
             {ok, #{ child_start_height := StartHeight,
                     top_height         := ParentHeight,
                     child_top_height   := ChildTop0}} = ?TEST_MODULE:get_state(),
-            AliceCommitment = <<?HC_COMMITMENT_VSN, ?ALICE:32/binary, GenesisHash:32/binary>>,
+            AliceCommitment = aec_parent_chain_block:encode_commitment(?ALICE, GenesisHash),
             [AliceCommitment] = collect_commitments(?ALICE),
-            BobCommitment = <<?HC_COMMITMENT_VSN, ?BOB:32/binary, GenesisHash:32/binary>>,
+            BobCommitment = aec_parent_chain_block:encode_commitment(?BOB, GenesisHash),
             [BobCommitment] = collect_commitments(?BOB),
             [] = collect_commitments(?CAROL),
             [] = collect_commitments(?DAVE),
@@ -314,9 +312,9 @@ post_commitments() ->
                     top_height         := ParentHeight,
                     child_top_height   := ChildTop1}} = ?TEST_MODULE:get_state(),
             Hash = height_to_hash(ChildTop1),
-            AliceCommitment = <<?HC_COMMITMENT_VSN, ?ALICE:32/binary, Hash:32/binary>>,
+            AliceCommitment =  aec_parent_chain_block:encode_commitment(?ALICE, Hash),
             [AliceCommitment] = collect_commitments(?ALICE),
-            BobCommitment = <<?HC_COMMITMENT_VSN, ?BOB:32/binary, Hash:32/binary>>,
+            BobCommitment = aec_parent_chain_block:encode_commitment(?BOB, Hash),
             [BobCommitment] = collect_commitments(?BOB),
             [] = collect_commitments(?CAROL),
             [] = collect_commitments(?DAVE),
@@ -391,9 +389,9 @@ block_production_dictates_commitments() ->
                     top_height         := ParentHeight,
                     child_top_height   := ChildTop1}} = ?TEST_MODULE:get_state(),
             Hash = height_to_hash(ChildTop1),
-            AliceCommitment = <<?HC_COMMITMENT_VSN, ?ALICE:32/binary, Hash:32/binary>>,
+            AliceCommitment = aec_parent_chain_block:encode_commitment(?ALICE, Hash),
             [AliceCommitment] = collect_commitments(?ALICE),
-            BobCommitment = <<?HC_COMMITMENT_VSN, ?BOB:32/binary, Hash:32/binary>>,
+            BobCommitment = aec_parent_chain_block:encode_commitment(?BOB, Hash),
             [BobCommitment] = collect_commitments(?BOB),
             [] = collect_commitments(?CAROL),
             [] = collect_commitments(?DAVE),
@@ -444,9 +442,9 @@ block_production_dictates_commitments() ->
                     top_height         := ParentHeight,
                     child_top_height   := ChildTop1}} = ?TEST_MODULE:get_state(),
             Hash = height_to_hash(ChildTop1),
-            AliceCommitment = <<?HC_COMMITMENT_VSN, ?ALICE:32/binary, Hash:32/binary>>,
+            AliceCommitment = aec_parent_chain_block:encode_commitment(?ALICE, Hash),
             [AliceCommitment] = collect_commitments(?ALICE),
-            BobCommitment = <<?HC_COMMITMENT_VSN, ?BOB:32/binary, Hash:32/binary>>,
+            BobCommitment = aec_parent_chain_block:encode_commitment(?BOB, Hash),
             [BobCommitment] = collect_commitments(?BOB),
             [] = collect_commitments(?CAROL),
             [] = collect_commitments(?DAVE),

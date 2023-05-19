@@ -14,8 +14,6 @@
 
 -type hex() :: binary().%[byte()].
 
--define(HC_COMMITMENT_VSN, 1).
-
 get_latest_block(Host, Port, User, Password, Seed) ->
     {ok, Hash} = getbestblockhash(Host, Port, User, Password, Seed, false),
     {ok, {Height, Hash, PrevHash, _Txs}}
@@ -255,9 +253,10 @@ find_commitments(Txs, ParentHCAccountPubKey) ->
                             %% FIXME: Consider being less rigid here WRT ordering or other.
                             case ParentHCAccountPubKey of
                                 _TxParentHCAccountPubKey ->
-                                    Commitment = from_hex(CommitmentEnc),
-                                    case Commitment of
-                                        <<?OP_RETURN, 65, ?HC_COMMITMENT_VSN, StakerPubkey:32/binary, TopHash:32/binary>> ->
+                                    CommitmentBTC = from_hex(CommitmentEnc),
+                                    case CommitmentBTC of
+                                        <<?OP_RETURN, 65, Commitment:65/binary>> ->
+                                            {StakerPubkey, TopHash} = aec_parent_chain_block:decode_commitment(Commitment),
                                             [{StakerPubkey, TopHash} | Acc];
                                         _ ->
                                             lager:debug("Invalid BTC Commitment, skipping ~p", [CommitmentEnc]),

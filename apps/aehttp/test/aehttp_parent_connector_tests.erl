@@ -8,7 +8,6 @@
 -define(BIG_AMOUNT, 10000000000000000000000000000 * aec_test_utils:min_gas_price()).
 -define(PARENT_CHAIN_NETWORK_ID, <<"pc_network_id">>).
 -define(SIGN_MODULE, aec_preset_keys).
--define(HC_COMMITMENT_VSN, 1).
 
 ae_sim_test_() ->
     {foreach,
@@ -186,7 +185,7 @@ ae_sim_test_() ->
                             %% Post our local top hash as the commitment
                             Val = <<42:32/unit:8>>,
                             StakerEnc = aeapi:format_account_pubkey(StakerPubKey),
-                            Commitment = <<?HC_COMMITMENT_VSN, StakerPubKey/binary, Val/binary>>,
+                            Commitment =  aec_parent_chain_block:encode_commitment(StakerPubKey, Val),
                             Fee = 20000 * aec_test_utils:min_gas_price(),
                             {ok, #{<<"tx_hash">> := _}} =
                                 aehttpc_aeternity:post_commitment(Host, Port, <<>>, <<>>,
@@ -416,7 +415,7 @@ btc_sim_test_() ->
                         %% Post our local top hash as the commitment
                         Val = <<42:32/unit:8>>,
                         32 = size(StakerPubKey),
-                        Commitment = <<?HC_COMMITMENT_VSN, StakerPubKey/binary, Val/binary>>,
+                        Commitment = aec_parent_chain_block:encode_commitment(StakerPubKey, Val),
                         Fee = 8000,
                         {ok, #{<<"tx_hash">> := _}} =
                             aehttpc_btc:post_commitment(Host, Port, User, Password,

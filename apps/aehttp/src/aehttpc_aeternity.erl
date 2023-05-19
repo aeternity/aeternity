@@ -2,7 +2,6 @@
 -module(aehttpc_aeternity).
 
 %% Subset of Aeternity HTTP client API required to interact with a hyperchain
--define(HC_COMMITMENT_VSN, 1).
 
 %% Required exports for hyperchain:
 -export([get_latest_block/5,
@@ -117,7 +116,7 @@ get_hc_commitments(Host, Port, MB, ParentHCAccountPubKey) ->
                           <<"sender_id">> := _SenderId,
                           <<"payload">> := CommitmentEnc} ->
                                 {ok, Commitment} = aeser_api_encoder:safe_decode(bytearray, CommitmentEnc),
-                                <<?HC_COMMITMENT_VSN, StakerPubkey:32/binary, TopHash:32/binary>> = Commitment,
+                                {StakerPubkey, TopHash} = aec_parent_chain_block:decode_commitment(Commitment),
                                 %% FIXME: Check signature
                                 [{StakerPubkey, TopHash} | Acc];
                         _ ->

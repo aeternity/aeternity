@@ -52,7 +52,6 @@
 -define(PARENT_CHAIN_NETWORK_ID, <<"local_testnet">>).
 
 -define(BTC_PARENT_CHAIN_PORT, 7013).
--define(HC_COMMITMENT_VSN, 1).
 
 -define(DEFAULT_GAS_PRICE, aec_test_utils:min_gas_price()).
 -define(INITIAL_STAKE, 1000000000000000000000000).
@@ -804,7 +803,7 @@ verify_commitments(Config) ->
                                 Nonce = aetx:nonce(Tx),
                                 {spend_tx, SpendTx} = aetx:specialize_type(Tx),
                                 Payload = aec_spend_tx:payload(SpendTx),
-                                <<?HC_COMMITMENT_VSN, Staker:32/binary, TopHash:32/binary>> = Payload,
+                                {Staker, TopHash} = aec_parent_chain_block:decode_commitment(Payload),
                                 Spender = name(who_by_pubkey(Staker)),
                                 {MBHeight, Spender, Nonce, TopHash}
                             end,

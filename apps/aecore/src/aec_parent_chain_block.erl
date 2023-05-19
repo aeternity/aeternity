@@ -8,6 +8,8 @@
 
 -module(aec_parent_chain_block).
 -define(NOT_SET, not_set).
+-define(HC_COMMITMENT_VSN, 1).
+
 -opaque hash() :: binary().
 
 %% top's state
@@ -26,7 +28,9 @@
          height/1,
          prev_hash/1,
          commitments/1,
-         set_commitments/2]).
+         set_commitments/2,
+         encode_commitment/2,
+         decode_commitment/1]).
 
 -export_type([block/0,
               hash/0]).
@@ -63,3 +67,9 @@ set_commitments(Block, Commitments) ->
 -spec commitments(block()) -> {ok, list()} | error.
 commitments(#block{commitments = ?NOT_SET}) -> error;
 commitments(#block{commitments = Commitments}) -> {ok, Commitments}.
+
+encode_commitment(StakerPubKey, TopHash) ->
+    <<?HC_COMMITMENT_VSN, StakerPubKey/binary, TopHash/binary>>.
+
+decode_commitment(<<?HC_COMMITMENT_VSN, StakerPubKey:32/binary, TopHash:32/binary>>) ->
+    {StakerPubKey, TopHash}.

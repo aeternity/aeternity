@@ -44,7 +44,6 @@
 -define(SERVER, ?MODULE).
 -define(FOLLOW_PC_TOP, follow_parent_chain_top).
 -define(FOLLOW_CHILD_TOP, sync_child_chain).
--define(HC_COMMITMENT_VSN, 1).
 
 -record(state,
     {
@@ -407,7 +406,7 @@ post_commitments(TopHash, #state{sign_module = SignModule} = State) ->
     LocalStakers = lists:filter(fun SignModule:is_key_present/1, AllStakers),
     lists:foreach(
         fun(Staker) ->
-            CommitmentBin = <<?HC_COMMITMENT_VSN, Staker/binary, TopHash/binary>>,
+            CommitmentBin = aec_parent_chain_block:encode_commitment(Staker, TopHash),
             case aec_parent_connector:post_commitment(Staker, CommitmentBin) of
                 ok ->
                     lager:debug("Posted commitment for staker ~p", [Staker]),
