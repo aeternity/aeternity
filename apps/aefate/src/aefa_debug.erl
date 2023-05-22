@@ -30,7 +30,12 @@
 
 -export_type([info/0]).
 
--type debugger_status() :: break | stepover | stepin | continue.
+-type debugger_status() :: break
+                         | continue
+                         | stepin
+                         | {stepover, any()}  %% TODO: better type here
+                         | {stepout, any()}.  %% TODO: better type here
+
 -type debugger_location() :: none | {string(), integer()}.
 -type pubkey() :: <<_:256>>.
 
