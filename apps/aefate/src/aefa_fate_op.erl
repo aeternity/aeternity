@@ -3035,15 +3035,15 @@ dbg_loc({immediate, File}, {immediate, Line}, EngineState) ->
     Info  = aefa_debug:set_debugger_location({File, Line}, aefa_engine_state:debug_info(EngineState)),
     Stack = aefa_engine_state:call_stack(EngineState),
     UpdatedStatus = 
-    case lists:member({File, Line}, aefa_debug:breakpoints(Info)) of
-        true  ->
-            case aefa_debug:debugger_status(Info) of
-                continue -> aefa_debug:set_debugger_status(break, Info);
-                _        -> aefa_debug:debugger_resume(Stack, Info)
-            end;
-        false ->
-            aefa_debug:debugger_resume(Stack, Info)
-    end,
+        case lists:member({File, Line}, aefa_debug:breakpoints(Info)) of
+            true  ->
+                case aefa_debug:debugger_status(Info) of
+                    continue -> aefa_debug:set_debugger_status(break, Info);
+                    _        -> aefa_debug:debugger_resume(Stack, Info)
+                end;
+            false ->
+                aefa_debug:debugger_resume(Stack, Info)
+        end,
     aefa_engine_state:set_debug_info(UpdatedStatus, EngineState).
 
 dbg_def({immediate, VarName}, Reg, EngineState) ->
