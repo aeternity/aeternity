@@ -28,7 +28,7 @@ rebar_cache_key:
 
 build_cache_version:
   type: string
-  default: "v5"
+  default: "v6"
 
 build_nix_cache_key:
   type: string
