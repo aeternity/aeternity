@@ -63,6 +63,10 @@
 -ifdef(TEST).
 -export([ run_with_cache/3
         ]).
+-ifdef(DEBUG_INFO).
+-export([ run_debug/4
+        ]).
+-endif.
 -endif.
 
 -include_lib("aebytecode/include/aeb_fate_data.hrl").
@@ -86,6 +90,18 @@ run_with_cache(Spec, Env, Cache) ->
         throw:{?MODULE, revert, S, ES} -> {revert, S, ES};
         throw:{?MODULE, E, ES} -> {error, E, ES}
     end.
+
+-ifdef(DEBUG_INFO).
+run_debug(Spec, Env, Cache, BPs) ->
+    Info = aefa_debug:set_breakpoints(BPs, aefa_debug:new()),
+    try execute(aefa_engine_state:set_debug_info(Info, setup_engine(Spec, Env, Cache))) of
+        Res -> {ok, Res}
+    catch
+        throw:{?MODULE, revert, S, ES} -> {revert, S, ES};
+        throw:{?MODULE, E, ES} -> {error, E, ES}
+    end.
+-endif.
+
 -endif.
 
 run(Spec, Env) ->
