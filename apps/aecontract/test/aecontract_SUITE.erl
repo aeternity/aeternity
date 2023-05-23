@@ -4372,7 +4372,7 @@ sophia_all_signatures_aens(Cfg) ->
         _ -> sophia_all_signatures_aens_(Cfg)
     end.
 
-sophia_all_signatures_aens_(Cfg) ->
+sophia_all_signatures_aens_(_Cfg) ->
     init_new_state(),
     Acc             = ?call(new_account, 40000000000000 * aec_test_utils:min_gas_price()),
     NameAcc         = ?call(new_account, 40000000000000 * aec_test_utils:min_gas_price()),
@@ -4381,12 +4381,9 @@ sophia_all_signatures_aens_(Cfg) ->
     Salt1           = rand:uniform(10000),
     {ok, NameAscii} = aens_utils:to_ascii(Name1),
     CHash           = ?hsh(aens_hash:commitment_hash(NameAscii, Salt1)),
-    NHash           = aens_hash:name_hash(NameAscii),
     NameArg         = Name1,
     NameAccSigAll   = sign(<<NameAcc/binary, "AENS"/utf8, Ct/binary>>, NameAcc),
     AccSigAll       = sign(<<Acc/binary, "AENS"/utf8, Ct/binary>>, Acc),
-    APubkey  = 1,
-    OPubkey  = 2,
 
     %% PreClaim
     Res1 = ?call(call_contract, Acc, Ct, signedPreclaim, {tuple, []}, {NameAcc, CHash, NameAccSigAll}, #{ height => 10 }),
