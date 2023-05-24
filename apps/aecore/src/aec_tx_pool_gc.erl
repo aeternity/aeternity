@@ -144,7 +144,7 @@ handle_cast({adjust_ttl, Diff, Dbs}, S) ->
     do_adjust_ttl(GCDb, Diff),
     {noreply, S};
 handle_cast({garbage_collect, Height, Dbs}, S) ->
-    ok = do_gc(Height, Dbs),
+    _ = do_gc(Height, Dbs),
     {noreply, S};
 handle_cast({add_to_origins_cache, OriginsCache, Origin, Nonce}, S) ->
     ok = do_add_to_origins_cache(OriginsCache, Origin, Nonce),

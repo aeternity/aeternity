@@ -126,10 +126,6 @@
   {git,"https://github.com/aeternity/erlang-sha3",
       {ref,"b5f27a29ba1179e5907c50d7ec7aa79b2857e981"}},
   0},
- {<<"trace_runner">>,
-  {git,"https://github.com/uwiger/trace_runner.git",
-      {ref,"1acb6e56a048909731edc5ba5ee5ba995617164a"}},
-  0},
  {<<"unicode_util_compat">>,{pkg,<<"unicode_util_compat">>,<<"0.4.1">>},1},
  {<<"yamerl">>,{pkg,<<"yamerl">>,<<"0.7.0">>},0}]}.
 [
