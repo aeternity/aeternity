@@ -33,6 +33,8 @@
         , state_at_height_still_reachable/1
         , info/0
         , info/1
+        , enable/0
+        , disable/0
         ]).
 
 -export([maybe_garbage_collect/1]).
@@ -59,12 +61,13 @@
 -record(scanner,
         { tree   :: tree_name()
         , height :: non_neg_integer()
-        , pid    :: pid_ref() }).
+        , pid    :: pid_ref()
+        , attempt = 1 :: non_neg_integer() }).
 
 -record(st,
         {enabled        :: boolean(),                     % do we garbage collect?
          history        :: non_neg_integer(),             % how many block state back from top to keep
-         min_height     :: undefined | non_neg_integer(), % if hash_not_found error, try GC from this height
+         min_height     :: undefined | non_neg_integer(), % do not GC before this height
          depth          :: non_neg_integer(),             % how far below the top to perform scans (0: fork resistance height)
          during_sync    :: boolean(),                     % run GC from the beginning
          synced         :: boolean(),                     % we only run GC if chain is synced
@@ -154,6 +157,12 @@ info(Keys) when is_list(Keys) ->
 info_keys() ->
     [enabled, history, depth, last_gc, last_scan, active_sweeps, during_sync, trees].
 
+enable() ->
+    gen_server:call(?MODULE, {set_enabled, true}).
+
+disable() ->
+    gen_server:call(?MODULE, {set_enabled, false}).
+
 -ifdef(TEST).
 install_test_env() ->
     cache_enabled_status(false).
@@ -232,13 +241,16 @@ handle_info({'DOWN', MRef, process, Pid, Reason}, #st{scanners = Scanners} = St)
     case lists:keyfind({Pid, MRef}, #scanner.pid, Scanners) of
         false ->
             {noreply, St};
-        #scanner{tree = Tree, height = Height} = S ->
-            lager:error("GC Scanner process for ~p died: ~p", [Tree, Reason]),
-            signal_scanning_failed(Height),
+        #scanner{tree = Tree, height = Height, attempt = Attempt} = S ->
             Scanners1 = Scanners -- [S],
             NewSt = if Reason =/= normal ->
-                            NewS = start_scanner(Tree, Height),
-                            St#st{scanners = [NewS | Scanners1]};
+                            lager:error("GC Scanner process for ~p died: ~p", [Tree, Reason]),
+                            if Attempt == 1 ->
+                                    NewS = start_scanner(Tree, Height, Attempt + 1),
+                                    St#st{scanners = [NewS | Scanners1]};
+                               true ->
+                                    disable_gc(St#st{scanners = Scanners1})
+                            end;
                        true ->
                             St#st{scanners = Scanners1}
                     end,
@@ -275,12 +287,15 @@ handle_call({maybe_garbage_collect, TopHeight, Header}, _From,
     end;
 handle_call({maybe_garbage_collect, _, _}, _From, St) ->
     {reply, nop, St};
+handle_call({set_enabled, Bool}, _From, #st{enabled = Enabled} = St) ->
+    {reply, Enabled, set_gc_enabled(Bool, St)};
 handle_call({info, Keys}, _, St) ->
     {reply, info_(Keys, St), St}.
 
-%% the initial scan failed due to hash_not_present_in_db, reschedule it for later
-handle_cast({scanning_failed, ErrHeight}, St) ->
-    {noreply, St#st{min_height = ErrHeight}};
+handle_cast({scanning_failed, _ErrHeight}, St) ->
+    %% TODO: This used to set min_height to ErrHeight. This seems wrong, but
+    %% perhaps there is something else we want to do here.
+    {noreply, St};
 
 handle_cast({scan_complete, Name, Height}, #st{scanners = Scanners} = St) ->
     Scanners1 = lists:keydelete(Name, #scanner.tree, Scanners),
@@ -304,6 +319,14 @@ code_change(_FromVsn, St, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+
+disable_gc(S) -> set_gc_enabled(false, S).
+%% enable_gc(S)  -> set_gc_enabled(true, S).
+
+set_gc_enabled(Bool, #st{enabled = Bool} = S) -> S;
+set_gc_enabled(Bool, #st{} = S ) when is_boolean(Bool) ->
+    lager:info("Changing GC enabled state to ~p", [Bool]),
+    S#st{enabled = Bool}.
 
 safe_height(TopHeight, 0) ->
     case aec_resilience:fork_resistance_active() of
@@ -363,11 +386,14 @@ switch(Name) ->
     ok.
 
 start_scanner(Name, Height) ->
+    start_scanner(Name, Height, 1).
+
+start_scanner(Name, Height, Attempt) ->
     Parent = self(),
     S = spawn_monitor(fun() ->
                               scan_tree(Name, Height, Parent)
                       end),
-    #scanner{tree = Name, height = Height, pid = S}.
+    #scanner{tree = Name, height = Height, pid = S, attempt = Attempt}.
 
 scan_tree(Name, Height, Parent) ->
     T0 = erlang:system_time(millisecond),
@@ -403,7 +429,6 @@ init_acc(N) ->
             {NewRef, N};
         {error, Reason} ->
             lager:error("Jobs return error: ~p", [Reason]),
-            signal_scanning_failed(0),
             error(jobs_error)
     end.
 
