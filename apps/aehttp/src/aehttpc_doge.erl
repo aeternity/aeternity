@@ -324,10 +324,6 @@ url(Host, Port, _) when is_list(Host), is_integer(Port) ->
 path(Scheme, Host, Port) ->
     lists:concat([Scheme, Host, ":", Port]).
 
--spec from_hex(hex()) -> binary().
-from_hex(HexData) ->
-    aeu_hex:hex_to_bin(HexData).
-
 -spec to_hex(binary()) -> hex().
 to_hex(Payload) ->
     list_to_binary(aeu_hex:bin_to_hex(Payload)).
