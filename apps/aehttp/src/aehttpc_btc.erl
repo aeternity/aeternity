@@ -238,32 +238,24 @@ block(Obj) ->
     PrevHash = prev_hash(Obj),
     {Height, Hash, PrevHash, maps:get(<<"tx">>, Obj)}.
 
--define(OP_RETURN, 16#6a).
-
 -spec find_commitments(list(), binary()) -> [{Pubkey :: binary(), Payload :: binary()}].
-find_commitments(Txs, ParentHCAccountPubKey) ->
+find_commitments(Txs, _ParentHCAccountPubKey) ->
     lists:foldl(fun(Tx, Acc) ->
                     case Tx of
                         #{<<"vout">> :=
                              [#{<<"n">> := 0, <<"scriptPubKey">> := #{<<"address">> := _Staker}},
-                              #{<<"n">> := 1, <<"scriptPubKey">> := #{<<"address">> := TxParentHCAccountPubKey}},
-                              #{<<"n">> := 2, <<"scriptPubKey">> := #{<<"type">> := <<"nulldata">>, <<"hex">> := CommitmentEnc}}]} ->
+                              #{<<"n">> := 1, <<"scriptPubKey">> := #{<<"address">> := _TxParentHCAccountPubKey}},
+                              #{<<"n">> := 2, <<"scriptPubKey">> := #{<<"type">> := <<"nulldata">>, <<"asm">> := <<"OP_RETURN ", CommitmentEnc/binary>>, <<"hex">> := _CommitmentEnc0}}] = VOUT} ->
                             %% This Tx matches a very specific pattern for a HC commitment
                             %% FIXME: Reject commitments sent to a different ParentHCAccountPubKey
                             %% FIXME: Consider being less rigid here WRT ordering or other.
-                            case ParentHCAccountPubKey of
-                                _TxParentHCAccountPubKey ->
-                                    CommitmentBTC = from_hex(CommitmentEnc),
-                                    case CommitmentBTC of
-                                        <<?OP_RETURN, 65, Commitment:65/binary>> ->
-                                            {StakerPubkey, TopHash} = aec_parent_chain_block:decode_commitment(Commitment),
-                                            [{StakerPubkey, TopHash} | Acc];
-                                        _ ->
-                                            lager:debug("Invalid BTC Commitment, skipping ~p", [CommitmentEnc]),
-                                            Acc
-                                    end;
+                            CommitmentBTC = from_hex(CommitmentEnc),
+                            case CommitmentBTC of
+                                <<Commitment:80/binary>> ->
+                                    {btc, Signature, StakerHash, TopKeyHash} = aec_parent_chain_block:decode_commitment(Commitment),
+                                    [{Signature, StakerHash, TopKeyHash} | Acc];
                                 _ ->
-                                    lager:debug("Wrong Parent Account BTC Commitment, skipping ~p ~p", [ParentHCAccountPubKey, ParentHCAccountPubKey]),
+                                    lager:debug("Invalid BTC Commitment, skipping ~p", [VOUT]),
                                     Acc
                             end;
                         _Else ->

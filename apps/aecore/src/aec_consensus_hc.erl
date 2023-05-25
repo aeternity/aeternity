@@ -248,9 +248,13 @@ state_pre_transform_key_node(_Node, Trees) ->
         {ok, Block} ->
             Entropy = aec_parent_chain_block:hash(Block),
             CommitmentsSophia = encode_commitments(Block),
+            NetworkId0 = aec_governance:get_network_id(),
+            BytesToPad = 15 - byte_size(NetworkId0),
+            NetworkId = <<NetworkId0/binary, 0:BytesToPad/unit:8>>,
             {ok, CD} = aeb_fate_abi:create_calldata("elect",
                                                     [aefa_fate_code:encode_arg({string, Entropy}),
-                                                     CommitmentsSophia
+                                                     CommitmentsSophia,
+                                                     aefa_fate_code:encode_arg({bytes, NetworkId})
                                                     ]),
             CallData = aeser_api_encoder:encode(contract_bytearray, CD),
             case call_consensus_contract_(?ELECTION_CONTRACT, TxEnv, Trees, CallData, "elect", 0) of
@@ -366,10 +370,14 @@ generate_key_header_seal(_, Candidate, PCHeight, #{expected_key_block_rate := _E
         {ok, Block} ->
             Entropy = aec_parent_chain_block:hash(Block),
             CommitmentsSophia = encode_commitments(Block),
+            NetworkId0 = aec_governance:get_network_id(),
+            BytesToPad = 15 - byte_size(NetworkId0),
+            NetworkId = <<NetworkId0/binary, 0:BytesToPad/unit:8>>,
             {TxEnv, Trees} = aetx_env:tx_env_and_trees_from_top(aetx_transaction),
             {ok, CD} = aeb_fate_abi:create_calldata("elect_next",
                                                     [aefa_fate_code:encode_arg({string, Entropy}),
-                                                     CommitmentsSophia
+                                                     CommitmentsSophia,
+                                                     aefa_fate_code:encode_arg({bytes, NetworkId})
                                                     ]),
             CallData = aeser_api_encoder:encode(contract_bytearray, CD),
             {ok, _Trees1, Call} = call_consensus_contract_(?ELECTION_CONTRACT,
@@ -407,9 +415,13 @@ set_key_block_seal(KeyBlock0, Seal) ->
     {ok, Block} = aec_parent_chain_cache:get_block_by_height(PCHeight),
     Entropy = aec_parent_chain_block:hash(Block),
     CommitmentsSophia = encode_commitments(Block),
+    NetworkId0 = aec_governance:get_network_id(),
+    BytesToPad = 15 - byte_size(NetworkId0),
+    NetworkId = <<NetworkId0/binary, 0:BytesToPad/unit:8>>,
     {ok, CD} = aeb_fate_abi:create_calldata("elect_next",
                                             [aefa_fate_code:encode_arg({string, Entropy}),
-                                             CommitmentsSophia
+                                             CommitmentsSophia,
+                                             aefa_fate_code:encode_arg({bytes, NetworkId})
                                             ]),
     CallData = aeser_api_encoder:encode(contract_bytearray, CD),
     {ok, _Trees1, Call} = call_consensus_contract_(?ELECTION_CONTRACT,
@@ -576,6 +588,9 @@ call_consensus_contract_(ContractType, TxEnv, Trees, EncodedCallData, Keyword, A
                                                  Calls),
             case aect_call:return_type(Call) of
                 ok -> pass;
+                revert ->
+                    lager:debug("consensus contract call failed ~s~n", [aect_call:return_value(Call)]),
+                    error({consensus_call_failed, aect_call:return_value(Call)});
                 error -> error({consensus_call_failed, aect_call:return_value(Call)})
             end,
             %% prune the call being produced. If not done, the fees for it
@@ -618,9 +633,13 @@ next_beneficiary() ->
 
             Entropy = aec_parent_chain_block:hash(Block),
             CommitmentsSophia = encode_commitments(Block),
+            NetworkId0 = aec_governance:get_network_id(),
+            BytesToPad = 15 - byte_size(NetworkId0),
+            NetworkId = <<NetworkId0/binary, 0:BytesToPad/unit:8>>,
             {ok, CD} = aeb_fate_abi:create_calldata("elect_next",
                                                     [aefa_fate_code:encode_arg({string, Entropy}),
-                                                     CommitmentsSophia
+                                                     CommitmentsSophia,
+                                                     aefa_fate_code:encode_arg({bytes, NetworkId})
                                                     ]),
             CallData = aeser_api_encoder:encode(contract_bytearray, CD),
             {ok, _Trees1, Call} = call_consensus_contract_(?ELECTION_CONTRACT,
@@ -778,11 +797,12 @@ pc_height(ChildHeight) ->
 encode_commitments(Block) ->
     {ok, Commitments} = aec_parent_chain_block:commitments(Block),
     Commitments1 =
-        lists:foldl(
-            fun({From0, Commitment}, Accum) ->
-                From = aefa_fate_code:encode_arg({address, From0}),
-                maps:update_with(aefa_fate_code:encode_arg({hash, Commitment}), fun(Fs) -> [From | Fs] end, [From], Accum)
+        lists:map(
+            fun({Signature, StakerHash, TopKeyHash}) ->
+                Sig = aefa_fate_code:encode_arg({signature, Signature}),
+                Staker = aefa_fate_code:encode_arg({bytes, StakerHash}),
+                TopHash = aefa_fate_code:encode_arg({bytes, TopKeyHash}),
+                aeb_fate_data:make_tuple({Sig, Staker, TopHash})
             end,
-            #{},
             Commitments),
-    aeb_fate_data:make_map(Commitments1).
+    aeb_fate_data:make_list(Commitments1).

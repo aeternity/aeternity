@@ -2200,9 +2200,13 @@ elect_(Caller, TxEnv, Trees0) ->
 
 hc_elect_(Entropy, Commitments, Caller, TxEnv, Trees0) ->
     ContractPubkey = election_contract_address(),
+    NetworkId0 = aec_governance:get_network_id(),
+    BytesToPad = 15 - byte_size(NetworkId0),
+    NetworkId = <<NetworkId0/binary, 0:BytesToPad/unit:8>>,
     {ok, CallData} = aeb_fate_abi:create_calldata("elect",
                                                   [aefa_fate_code:encode_arg({string, Entropy}),
-                                                   Commitments]),
+                                                   Commitments,
+                                                   aefa_fate_code:encode_arg({bytes, NetworkId})]),
     call_contract(ContractPubkey, Caller, CallData, 0, TxEnv, Trees0).
 
 leader_(Caller, TxEnv, Trees0) ->

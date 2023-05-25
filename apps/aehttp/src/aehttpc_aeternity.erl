@@ -116,9 +116,8 @@ get_hc_commitments(Host, Port, MB, ParentHCAccountPubKey) ->
                           <<"sender_id">> := _SenderId,
                           <<"payload">> := CommitmentEnc} ->
                                 {ok, Commitment} = aeser_api_encoder:safe_decode(bytearray, CommitmentEnc),
-                                {StakerPubkey, TopHash} = aec_parent_chain_block:decode_commitment(Commitment),
-                                %% FIXME: Check signature
-                                [{StakerPubkey, TopHash} | Acc];
+                                {btc, Signature, StakerHash, TopKeyHash} = aec_parent_chain_block:decode_commitment(Commitment),
+                                [{Signature, StakerHash, TopKeyHash} | Acc];
                         _ ->
                             Acc
                     end

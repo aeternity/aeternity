@@ -180,20 +180,15 @@ getblock(Host, Port, User, Password, Seed, SSL, Hash, 2) ->
     catch E:R:S ->
         {error, {E, R, S}}
     end;
-getblock(Host, Port, User, Password, Seed, SSL, Hash, Verbosity) ->
-    VerbosityEnc = encode_verbosity(Verbosity),
+getblock(Host, Port, User, Password, Seed, SSL, Hash, _Verbosity) ->
     try
-        Body = jsx:encode(request_body(<<"getblock">>, [Hash, VerbosityEnc], seed_to_utf8(Seed))),
+        Body = jsx:encode(request_body(<<"getblock">>, [Hash, true], seed_to_utf8(Seed))),
         {ok, Res} = request(<<"/">>, Body, Host, Port, User, Password, SSL, 5000),
         Block = block(result(Res)),
         {ok, Block}
     catch E:R:S ->
         {error, {E, R, S}}
     end.
-
-encode_verbosity(0) -> false;
-encode_verbosity(1) -> true;
-encode_verbosity(2) -> true.
 
 listunspent(Host, Port, User, Password, SSL) ->
     try
@@ -280,7 +275,7 @@ find_commitments(Txs, _ParentHCAccountPubKey) ->
     lists:foldl(fun(Tx, Acc) ->
                     case Tx of
                         #{<<"vout">> :=
-                             [#{<<"n">> := 0, <<"scriptPubKey">> := #{<<"type">> := <<"nulldata">>, <<"hex">> := CommitmentEnc}},
+                             [#{<<"n">> := 0, <<"scriptPubKey">> := #{<<"type">> := <<"nulldata">>, <<"asm">> := <<"OP_RETURN ", CommitmentEnc/binary>>, <<"hex">> := _CommitmentEnc}},
                               #{<<"n">> := 1, <<"scriptPubKey">> := #{<<"addresses">> := _Staker}},
                               #{<<"n">> := 2, <<"scriptPubKey">> := #{<<"addresses">> := __ParentHCAccountPubKey}}]} ->
                             %% This Tx matches a very specific pattern for a HC commitment
@@ -288,9 +283,9 @@ find_commitments(Txs, _ParentHCAccountPubKey) ->
                             %% FIXME: Consider being less rigid here WRT ordering or other.
                             CommitmentBTC = from_hex(CommitmentEnc),
                             case CommitmentBTC of
-                                <<?OP_RETURN, 65, Commitment:65/binary>> ->
-                                    {StakerPubkey, TopHash} = aec_parent_chain_block:decode_commitment(Commitment),
-                                    [{StakerPubkey, TopHash} | Acc];
+                                <<Commitment:80/binary>> ->
+                                    {btc, Signature, StakerHash, TopKeyHash} = aec_parent_chain_block:decode_commitment(Commitment),
+                                    [{Signature, StakerHash, TopKeyHash} | Acc];
                                 _ ->
                                     lager:debug("Invalid BTC Commitment, skipping ~p", [CommitmentEnc]),
                                     Acc

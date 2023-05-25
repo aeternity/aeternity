@@ -403,10 +403,11 @@ post_commitments(TopHash, #state{sign_module = SignModule} = State) ->
     %% aetx_env:tx_env_and_trees_from_top/1 could be dangerous
     {TxEnv, Trees} = aetx_env:tx_env_and_trees_from_hash(aetx_transaction, TopHash),
     {ok, AllStakers} = aec_consensus_hc:parent_chain_validators(TxEnv, Trees),
+    NetworkId = aec_governance:get_network_id(),
     LocalStakers = lists:filter(fun SignModule:is_key_present/1, AllStakers),
     lists:foreach(
         fun(Staker) ->
-            CommitmentBin = aec_parent_chain_block:encode_commitment(Staker, TopHash),
+            CommitmentBin = aec_parent_chain_block:encode_commitment_btc(Staker, TopHash, NetworkId),
             case aec_parent_connector:post_commitment(Staker, CommitmentBin) of
                 ok ->
                     lager:debug("Posted commitment for staker ~p", [Staker]),

@@ -7,6 +7,7 @@
 
 -define(BIG_AMOUNT, 10000000000000000000000000000 * aec_test_utils:min_gas_price()).
 -define(PARENT_CHAIN_NETWORK_ID, <<"pc_network_id">>).
+-define(CHILD_CHAIN_NETWORK_ID, <<"hc_network_id">>).
 -define(SIGN_MODULE, aec_preset_keys).
 
 ae_sim_test_() ->
@@ -185,7 +186,7 @@ ae_sim_test_() ->
                             %% Post our local top hash as the commitment
                             Val = <<42:32/unit:8>>,
                             StakerEnc = aeapi:format_account_pubkey(StakerPubKey),
-                            Commitment =  aec_parent_chain_block:encode_commitment(StakerPubKey, Val),
+                            Commitment =  aec_parent_chain_block:encode_commitment_btc(StakerPubKey, Val, ?CHILD_CHAIN_NETWORK_ID),
                             Fee = 20000 * aec_test_utils:min_gas_price(),
                             {ok, #{<<"tx_hash">> := _}} =
                                 aehttpc_aeternity:post_commitment(Host, Port, <<>>, <<>>,
@@ -203,16 +204,16 @@ ae_sim_test_() ->
                             aec_chain_sim:add_keyblock(SimName),
                             {ok, TopHash, PrevHash, Height} = aehttpc_aeternity:get_latest_block(Host, Port, User, Password, <<"Seed">>),
                             ?assertMatch({ok, #{micro_blocks := []}}, aec_chain_sim:get_current_generation(SimName)),
-                            {ok, [{Acct, Payload}]} =
+                            {ok, [{Signature, AcctHashPrefix, PayloadHashPrefix}]} =
                                 aehttpc_aeternity:get_commitment_tx_in_block(Host, Port, User, Password, <<"Seed">>, TopHash, PrevHash, CommitmentPubKey),
-                            ?assertMatch(Acct, StakerPubKey),
-                            ?assertMatch(Val, Payload),
+                            ?assertMatch(AcctHashPrefix, binary:part(aec_hash:sha256_hash(aeb_fate_encoding:serialize(aeb_fate_data:make_address(StakerPubKey))), 0, 8)),
+                            ?assertMatch(PayloadHashPrefix, binary:part(aec_hash:sha256_hash(Val), 0, 7)),
                             %% Test we can also get the same commitments by height
                             TopHeight = aec_chain_sim:get_height(SimName),
                             %% Top here is the keyblock we added after the microblock with our Txs, so
                             %% we need to look in the height one below top
                             ?assertEqual(TopHeight, Height + 1),
-                            {ok, [{Acct, Payload}]} = aehttpc_aeternity:get_commitment_tx_at_height(Host, Port, User, Password, <<"Seed">>, TopHeight - 1, CommitmentPubKey)
+                            {ok, [{Signature, AcctHashPrefix, PayloadHashPrefix}]} = aehttpc_aeternity:get_commitment_tx_at_height(Host, Port, User, Password, <<"Seed">>, TopHeight - 1, CommitmentPubKey)
                         end, ae_parent_http_specs()),
                     ok
             end}]
@@ -276,10 +277,12 @@ btc_sim_test_() ->
                                             7500,
                                             8500),
             mock_parent_cache(),
+            mock_sign_module(StakerKeyPair),
             {ok, CommitmentPubKey, BTCStakerPubKey, StakerKeyPair, ParentSims}
         end,
         fun({ok, _CommitmentPubKey, _StakerPubKey, _StakerKeyPair, ParentSims}) ->
             unmock_parent_cache(),
+            unmock_sign_module(),
             aec_parent_connector:stop(),
             stop_btc_parent_sims(ParentSims),
             ok = application:stop(inets),
@@ -415,7 +418,7 @@ btc_sim_test_() ->
                         %% Post our local top hash as the commitment
                         Val = <<42:32/unit:8>>,
                         32 = size(StakerPubKey),
-                        Commitment = aec_parent_chain_block:encode_commitment(StakerPubKey, Val),
+                        Commitment = aec_parent_chain_block:encode_commitment_btc(StakerPubKey, Val, ?CHILD_CHAIN_NETWORK_ID),
                         Fee = 8000,
                         {ok, #{<<"tx_hash">> := _}} =
                             aehttpc_btc:post_commitment(Host, Port, User, Password,
@@ -428,16 +431,19 @@ btc_sim_test_() ->
                         %% Call the simulator directly to force our Tx in a block
                         aehttp_btc_sim:mine_on_fork(SimName, main),
                         {ok, TopHash, PrevHash, Height} = aehttpc_btc:get_latest_block(Host, Port, User, Password, <<"Seed">>),
-                        {ok, [{Acct, Payload}]} =
-                            aehttpc_btc:get_commitment_tx_in_block(Host, Port, User, Password, <<"Seed">>, TopHash, PrevHash, CommitmentPubKey),
-                        ?assertMatch(Acct, StakerPubKey),
+
+                        {ok, [{Signature, AcctHashPrefix, PayloadHashPrefix}]} =
+                                aehttpc_btc:get_commitment_tx_in_block(Host, Port, User, Password, <<"Seed">>, TopHash, PrevHash, CommitmentPubKey),
+                        ?assertMatch(AcctHashPrefix, binary:part(aec_hash:sha256_hash(aeb_fate_encoding:serialize(aeb_fate_data:make_address(StakerPubKey))), 0, 8)),
+                        ?assertMatch(PayloadHashPrefix, binary:part(aec_hash:sha256_hash(Val), 0, 7)),
+
                         %% Test we can also get the same commitments by height
                         TopHeight = aehttp_btc_sim:get_height(SimName, main),
                         %% Top here for an ae parent is the keyblock we added after the microblock with our Txs, so
                         %% we need to look in the height one below top.
                         %% But for bitcoin transactions are included in the actual block at the height
                         ?assertEqual(TopHeight, Height),
-                        {ok, [{Acct, Payload}]} = aehttpc_btc:get_commitment_tx_at_height(Host, Port, User, Password, <<"Seed">>, TopHeight, CommitmentPubKey)
+                        {ok, [{Signature, AcctHashPrefix, PayloadHashPrefix}]} = aehttpc_btc:get_commitment_tx_at_height(Host, Port, User, Password, <<"Seed">>, TopHeight, CommitmentPubKey)
                     end, btc_parent_http_specs()),
                 ok
             end}]

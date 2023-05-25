@@ -348,8 +348,8 @@ handle_createrawtransaction([Input], Outputs, State) ->
     } = Input,
     [Acct, HCAcct, #{<<"data">> := HexPayload}] = Outputs,
     Payload = aeu_hex:hex_to_bin(HexPayload),
-    65 = size(Payload),
-    OpRet = list_to_binary(aeu_hex:bin_to_hex(<<16#6a, 65, Payload/binary>>)),
+    80 = size(Payload),
+    OpRet = list_to_binary(aeu_hex:bin_to_hex(Payload)),
     [{Account, Amount}] = maps:to_list(Acct),
     [{HCAccount, HCAmount}] = maps:to_list(HCAcct),
     Tx = raw_tx(TxId, Vout, Account, Amount, HCAccount, HCAmount, OpRet),
@@ -389,6 +389,7 @@ raw_tx(TxId, Vout, Account, Amount, HCAccount, HCAmount, HexPayload) ->
                             <<"n">> => 2,
                             <<"scriptPubKey">> =>
                                 #{<<"hex">> => HexPayload,
+                                  <<"asm">> => <<"OP_RETURN ", HexPayload/binary>>,
                                   <<"type">> => <<"nulldata">>
                                 }
                             }]
