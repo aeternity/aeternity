@@ -2,9 +2,55 @@
 
 -include_lib("eunit/include/eunit.hrl").
 
+-record(assertion,
+    { status      = none
+    , location    = none
+    , vars        = none
+    , stack       = none
+    , contract    = none
+    , breakpoints = none }).
+
+exec_assertions(ES, Asserts) ->
+    #assertion{
+        status      = Status,
+        location    = Location,
+        vars        = Vars,
+        stack       = Stack,
+        contract    = Contract,
+        breakpoints = Breakpoints } = Asserts,
+    Info = aefa_engine_state:debug_info(ES),
+    
+    Status      =/= none andalso ?assertEqual(Status, aefa_debug:debugger_status(Info)),
+    Location    =/= none andalso ?assertEqual(Location, aefa_debug:debugger_location(Info)),
+    Vars        =/= none andalso [ ?assertEqual(Reg, aefa_debug:get_variable_register(Var, Info)) || {Var, Reg} <- Vars ],
+    Stack       =/= none andalso ?assertEqual(Stack, aefa_debug:call_stack(Info)),
+    Contract    =/= none andalso ?assertEqual(Contract, aefa_debug:contract_name(aefa_engine_state:current_contract(ES), Info)),
+    Breakpoints =/= none andalso ?assertEqual(Breakpoints, aefa_debug:breakpoints(Info)).
+
 run_debug(Cache, Contract, Function, Arguments, BPs) ->
     {_, Res} = timed_run_debug(Cache, Contract, Function, Arguments, BPs),
     Res.
+
+run(Source, Entrypoint, Args, Breakpoints, Asserts) ->
+    Contracts = [Source],
+    Chain     = aefa_sophia_test:compile_contracts(Contracts, debug_options()),
+    Main      = element(1, hd(Contracts)),
+    Res       = run_debug(Chain, Main, list_to_binary(Entrypoint), Args, Breakpoints),
+    ?assertMatch({ok, _}, Res),
+    {ok, ES} = Res,
+    exec_assertions(ES, Asserts),
+    ES.
+
+resume(ES0, Asserts, ResumeKind) ->
+    Info0 = aefa_engine_state:debug_info(ES0),
+    ES = aefa_fate:execute(
+        aefa_engine_state:set_debug_info(
+            aefa_debug:set_debugger_status(ResumeKind, Info0),
+            ES0
+        )
+    ),
+    exec_assertions(ES, Asserts),
+    ES.
 
 timed_run_debug(Cache, Contract, Function, Arguments, BPs) ->
     timed_run_debug(Cache, Contract, Function, Arguments, #{}, BPs).
@@ -18,7 +64,55 @@ timed_run_debug(Cache, Contract, Function, Arguments, Store0, BPs) ->
               {0, {error, Err, []}}
     end.
 
-resume_kinds() ->
+debug_options() ->
+    aefa_sophia_test:default_options() ++ disabled_optimizations_options() ++ [debug_info].
+
+disabled_optimizations_options() ->
+    [ {optimize_inliner, false}, {optimize_inline_local_functions, false}
+    , {optimize_bind_subexpressions, false}, {optimize_let_floating, false}
+    , {optimize_simplifier, false}, {optimize_drop_unused_lets, false}
+    , {optimize_push_consume, false}, {optimize_one_shot_var, false}
+    , {optimize_write_to_dead_var, false}, {optimize_inline_switch_target, false}
+    , {optimize_swap_push, false}, {optimize_swap_pop, false}
+    , {optimize_swap_write, false}, {optimize_constant_propagation, false}
+    , {optimize_prune_impossible_branches, false}, {optimize_single_successful_branch, false}
+    , {optimize_inline_store, false}, {optimize_float_switch_bod, false} ].
+
+%% -- Tests --
+
+basic_contract_source() ->
+    {<<"basic_contract">>,
+    "contract C =\n"
+    "  entrypoint even(x) =\n"
+    "    if (x mod 2 == 0)\n"
+    "      true\n"
+    "    else\n"
+    "      false\n"
+    "  entrypoint odd(x) =\n"
+    "    !even(x)\n"
+    ""}.
+
+single_breakpoint_hit_test_() ->
+    BPs = [{"", 4}], 
+
+    Asserts = #assertion{status = break, location = {[], 4}},
+
+    {"Test single breakpoint hit",
+    fun() ->
+        _ = run(basic_contract_source(), "even", [20], BPs, Asserts)
+    end}.
+
+single_breakpoint_not_hit_test_() ->
+    BPs = [{"", 6}], 
+
+    Asserts = #assertion{status = continue, location = {[], 4}},
+
+    {"Test single breakpoint not hit",
+    fun() ->
+        _ = run(basic_contract_source(), "even", [30], BPs, Asserts)
+    end}.
+
+resume_kinds_source() ->
     {<<"resume_kinds">>,
     "contract C =\n"
     "  function h(x) =\n"
@@ -35,97 +129,24 @@ resume_kinds() ->
     ""}.
 
 resume_kinds_test_() ->
-    Contracts = [resume_kinds()],
-    Chain     = aefa_sophia_test:compile_contracts(Contracts, debug_options()),
-    Main      = element(1, hd(Contracts)),
-    case run_debug(Chain, Main, list_to_binary("f"), [2], [{"", 10}]) of
-        {ok, ES} ->
-            DbgInf = aefa_engine_state:debug_info(ES),
-            ES2 = aefa_fate:execute(
-                aefa_engine_state:set_debug_info(
-                    aefa_debug:set_debugger_status(stepin, DbgInf),
-                    ES
-                )
-            ),
-            DbgInf2 = aefa_engine_state:debug_info(ES2),
-            ES3 = aefa_fate:execute(
-                aefa_engine_state:set_debug_info(
-                    aefa_debug:set_debugger_status({stepout, aefa_engine_state:call_stack(ES2)} , DbgInf2),
-                    ES2
-                )
-            ),
-            DbgInf3 = aefa_engine_state:debug_info(ES3),
-            ES4 = aefa_fate:execute(
-                aefa_engine_state:set_debug_info(
-                    aefa_debug:set_debugger_status({stepover, aefa_engine_state:call_stack(ES3)}, DbgInf3),
-                    ES3
-                )
-            ),
-            DbgInf4 = aefa_engine_state:debug_info(ES4),
-            ES5 = aefa_fate:execute(
-                aefa_engine_state:set_debug_info(
-                    aefa_debug:set_debugger_status(continue, DbgInf4),
-                    ES4
-                )
-            ),
-            DbgInf5 = aefa_engine_state:debug_info(ES5),
-            [ ?_assertEqual(break, aefa_debug:debugger_status(DbgInf))
-            , ?_assertEqual({[], 10}, aefa_debug:debugger_location(DbgInf))
+    BPs = [{"", 10}],
 
-            , ?_assertEqual(break, aefa_debug:debugger_status(DbgInf2))
-            , ?_assertEqual({[], 5}, aefa_debug:debugger_location(DbgInf2))
+    Asserts1 = #assertion{status = break, location = {[], 10}},
+    Asserts2 = #assertion{status = break, location = {[], 5}},
+    Asserts3 = #assertion{status = break, location = {[], 11}},
+    Asserts4 = #assertion{status = break, location = {[], 12}},
+    Asserts5 = #assertion{status = continue},
 
-            , ?_assertEqual(break, aefa_debug:debugger_status(DbgInf3))
-            , ?_assertEqual({[], 11}, aefa_debug:debugger_location(DbgInf3))
+    {"Test resume kinds",
+    fun() ->
+        ES1 = run(resume_kinds_source(), "f", [2], BPs, Asserts1),
+        ES2 = resume(ES1, Asserts2, stepin),
+        ES3 = resume(ES2, Asserts3, {stepout, aefa_engine_state:call_stack(ES2)}),
+        ES4 = resume(ES3, Asserts4, {stepover, aefa_engine_state:call_stack(ES3)}),
+        _   = resume(ES4, Asserts5, continue)
+    end}.
 
-            , ?_assertEqual(break, aefa_debug:debugger_status(DbgInf4))
-            , ?_assertEqual({[], 12}, aefa_debug:debugger_location(DbgInf4))
-
-            , ?_assertEqual(continue, aefa_debug:debugger_status(DbgInf5)) ];
-        _ ->
-            ?debugMsg("Not fine")
-    end.
-
-single_breakpoint_hit_test_() ->
-    Contracts = [aefa_sophia_test:patterns()],
-    Chain     = aefa_sophia_test:compile_contracts(Contracts, debug_options()),
-    Main      = element(1, hd(Contracts)),
-    case run_debug(Chain, Main, list_to_binary("even"), [1], [{"", 25}]) of
-        {ok, ES} ->
-            DbgInf = aefa_engine_state:debug_info(ES),
-            [ ?_assertEqual(break, aefa_debug:debugger_status(DbgInf))
-            , ?_assertEqual({[], 25}, aefa_debug:debugger_location(DbgInf)) ];
-        _ ->
-            ?debugMsg("Not fine")
-    end.
-
-single_breakpoint_not_hit_test_() ->
-    Contracts = [aefa_sophia_test:patterns()],
-    Chain     = aefa_sophia_test:compile_contracts(Contracts, debug_options()),
-    Main      = element(1, hd(Contracts)),
-    case run_debug(Chain, Main, list_to_binary("even"), [1], [{"", 4}]) of
-        {ok, ES} ->
-            DbgInf = aefa_engine_state:debug_info(ES),
-            [ ?_assertEqual(continue, aefa_debug:debugger_status(DbgInf))
-            , ?_assertEqual({[], 27}, aefa_debug:debugger_location(DbgInf)) ];
-        _ ->
-            ?debugMsg("Not fine")
-    end.
-
-callstack_push_pop() ->
-    {<<"callstack_push_pop">>,
-    "contract C =\n"
-    "  function f(x) =\n"
-    "    x * 2\n"
-    "  function g(x) =\n"
-    "    f(x) * 3\n"
-    "  entrypoint calc(x) =\n"
-    "    let a = f(x)\n"
-    "    let b = g(x)\n"
-    "    a + b\n"
-    ""}.
-
-vars_regs() ->
+vars_regs_source() ->
     {<<"vars_regs">>,
     "contract C =\n"
     "  entrypoint f() =\n"
@@ -141,157 +162,82 @@ vars_regs() ->
     ""}.
 
 vars_regs_test_() ->
-    Contracts = [vars_regs()],
-    Chain     = aefa_sophia_test:compile_contracts(Contracts, debug_options()),
-    Main      = element(1, hd(Contracts)),
-    case run_debug(Chain, Main, list_to_binary("f"), [], [{"", 3}, {"", 5}, {"", 8}, {"", 11}]) of
-        {ok, ES} ->
-            DbgInf = aefa_engine_state:debug_info(ES),
-            ES2 = aefa_fate:execute(
-                aefa_engine_state:set_debug_info(
-                    aefa_debug:set_debugger_status(continue, DbgInf),
-                    ES
-                )
-            ),
-            DbgInf2 = aefa_engine_state:debug_info(ES2),
-            ES3 = aefa_fate:execute(
-                aefa_engine_state:set_debug_info(
-                    aefa_debug:set_debugger_status(continue, DbgInf2),
-                    ES2
-                )
-            ),
-            DbgInf3 = aefa_engine_state:debug_info(ES3),
-            ES4 = aefa_fate:execute(
-                aefa_engine_state:set_debug_info(
-                    aefa_debug:set_debugger_status(continue, DbgInf3),
-                    ES3
-                )
-            ),
-            DbgInf4 = aefa_engine_state:debug_info(ES4),
-            ES5 = aefa_fate:execute(
-                aefa_engine_state:set_debug_info(
-                    aefa_debug:set_debugger_status(continue, DbgInf4),
-                    ES4
-                )
-            ),
-            DbgInf5 = aefa_engine_state:debug_info(ES5),
-            [ ?_assertEqual(break, aefa_debug:debugger_status(DbgInf))
-            , ?_assertEqual({[], 3}, aefa_debug:debugger_location(DbgInf))
-            , ?_assertEqual(undefined, aefa_debug:get_variable_register("a", DbgInf))
-            , ?_assertEqual(undefined, aefa_debug:get_variable_register("b", DbgInf))
-            , ?_assertEqual(undefined, aefa_debug:get_variable_register("x", DbgInf))
+    BPs = [{"", 3}, {"", 5}, {"", 8}, {"", 11}],
 
-            , ?_assertEqual(break, aefa_debug:debugger_status(DbgInf2))
-            , ?_assertEqual({[], 5}, aefa_debug:debugger_location(DbgInf2))
-            , ?_assertEqual({var, 0}, aefa_debug:get_variable_register("a", DbgInf2))
-            , ?_assertEqual({var, 1}, aefa_debug:get_variable_register("b", DbgInf2))
-            , ?_assertEqual(undefined, aefa_debug:get_variable_register("x", DbgInf2))
+    Asserts1 = #assertion{
+        status = break,
+        location = {[], 3},
+        vars = [{"a", undefined}, {"b", undefined}, {"x", undefined}] }, 
+    Asserts2 = #assertion{
+        status = break,
+        location = {[], 5},
+        vars = [{"a", {var, 0}}, {"b", {var, 1}}, {"x", undefined}] }, 
+    Asserts3 = #assertion{
+        status = break,
+        location = {[], 8},
+        vars = [{"a", {var, 0}}, {"b", {var, 4}}, {"x", {var, 3}}] }, 
+    Asserts4 = #assertion{
+        status = break,
+        location = {[], 11},
+        vars = [{"a", {var, 0}}, {"b", {var, 1}}, {"x", undefined}] }, 
+    Asserts5 = #assertion{ status = continue },
 
-            , ?_assertEqual(break, aefa_debug:debugger_status(DbgInf3))
-            , ?_assertEqual({[], 8}, aefa_debug:debugger_location(DbgInf3))
-            , ?_assertEqual({var, 0}, aefa_debug:get_variable_register("a", DbgInf3))
-            , ?_assertEqual({var, 4}, aefa_debug:get_variable_register("b", DbgInf3))
-            , ?_assertEqual({var, 3}, aefa_debug:get_variable_register("x", DbgInf3))
+    {"Test variable to register mapping",
+    fun() ->
+        ES1 = run(vars_regs_source(), "f", [], BPs, Asserts1),
+        ES2 = resume(ES1, Asserts2, continue),
+        ES3 = resume(ES2, Asserts3, continue),
+        ES4 = resume(ES3, Asserts4, continue),
+        _   = resume(ES4, Asserts5, continue)
+    end}.
 
-            , ?_assertEqual(break, aefa_debug:debugger_status(DbgInf4))
-            , ?_assertEqual({[], 11}, aefa_debug:debugger_location(DbgInf4))
-            , ?_assertEqual({var, 0}, aefa_debug:get_variable_register("a", DbgInf4))
-            , ?_assertEqual({var, 1}, aefa_debug:get_variable_register("b", DbgInf4))
-            , ?_assertEqual(undefined, aefa_debug:get_variable_register("x", DbgInf4))
-
-            , ?_assertEqual(continue, aefa_debug:debugger_status(DbgInf5)) ];
-        _ ->
-            ?debugMsg("Not fine")
-    end.
+callstack_push_pop_source() ->
+    {<<"callstack_push_pop">>,
+    "contract C =\n"
+    "  function f(x) =\n"
+    "    x * 2\n"
+    "  function g(x) =\n"
+    "    f(x) * 3\n"
+    "  entrypoint calc(x) =\n"
+    "    let a = f(x)\n"
+    "    let b = g(x)\n"
+    "    a + b\n"
+    ""}.
 
 callstack_push_pop_test_() ->
-    Contracts = [callstack_push_pop()],
-    Chain     = aefa_sophia_test:compile_contracts(Contracts, debug_options()),
-    Main      = element(1, hd(Contracts)),
-    case run_debug(Chain, Main, list_to_binary("calc"), [5], [{"", 3}, {"", 5}, {"", 9}]) of
-        {ok, ES} ->
-            DbgInf = aefa_engine_state:debug_info(ES),
-            ES2 = aefa_fate:execute(
-                aefa_engine_state:set_debug_info(
-                    aefa_debug:set_debugger_status(continue, DbgInf),
-                    ES
-                )
-            ),
-            DbgInf2 = aefa_engine_state:debug_info(ES2),
-            ES3 = aefa_fate:execute(
-                aefa_engine_state:set_debug_info(
-                    aefa_debug:set_debugger_status(continue, DbgInf2),
-                    ES2
-                )
-            ),
-            DbgInf3 = aefa_engine_state:debug_info(ES3),
-            ES4 = aefa_fate:execute(
-                aefa_engine_state:set_debug_info(
-                    aefa_debug:set_debugger_status(continue, DbgInf3),
-                    ES3
-                )
-            ),
-            DbgInf4 = aefa_engine_state:debug_info(ES4),
-            ES5 = aefa_fate:execute(
-                aefa_engine_state:set_debug_info(
-                    aefa_debug:set_debugger_status(continue, DbgInf4),
-                    ES4
-                )
-            ),
-            DbgInf5 = aefa_engine_state:debug_info(ES5),
-            [ ?_assertEqual(break, aefa_debug:debugger_status(DbgInf))
-            , ?_assertEqual({[], 3}, aefa_debug:debugger_location(DbgInf))
-            , ?_assertMatch([{[], 7}], aefa_debug:call_stack(DbgInf))
+    BPs = [{"", 3}, {"", 5}, {"", 9}],
 
-            , ?_assertEqual(break, aefa_debug:debugger_status(DbgInf2))
-            , ?_assertEqual({[], 5}, aefa_debug:debugger_location(DbgInf2))
-            , ?_assertMatch([{[], 8}], aefa_debug:call_stack(DbgInf2))
+    Asserts1 = #assertion{
+        status = break,
+        location = {[], 3},
+        stack = [{[], 7}] },
+    Asserts2 = #assertion{
+        status = break,
+        location = {[], 5},
+        stack = [{[], 8}] },
+    Asserts3 = #assertion{
+        status = break,
+        location = {[], 3},
+        stack = [{[], 5}, {[], 8}] },
+    Asserts4 = #assertion{
+        status = break,
+        location = {[], 9},
+        stack = [] },
+    Asserts5 = #assertion{
+        status = continue,
+        location = {[], 9},
+        stack = [] },
 
-            , ?_assertEqual(break, aefa_debug:debugger_status(DbgInf3))
-            , ?_assertEqual({[], 3}, aefa_debug:debugger_location(DbgInf3))
-            , ?_assertMatch([{[], 5}, {[], 8}], aefa_debug:call_stack(DbgInf3))
+    {"Test pushing and poping from the callstack",
+    fun() ->
+        ES1 = run(callstack_push_pop_source(), "calc", [5], BPs, Asserts1),
+        ES2 = resume(ES1, Asserts2, continue),
+        ES3 = resume(ES2, Asserts3, continue),
+        ES4 = resume(ES3, Asserts4, continue),
+        _   = resume(ES4, Asserts5, continue)
+    end}.
 
-            , ?_assertEqual(break, aefa_debug:debugger_status(DbgInf4))
-            , ?_assertEqual({[], 9}, aefa_debug:debugger_location(DbgInf4))
-            , ?_assertMatch([], aefa_debug:call_stack(DbgInf5))
-
-            , ?_assertEqual(continue, aefa_debug:debugger_status(DbgInf5))
-            , ?_assertEqual({[], 9}, aefa_debug:debugger_location(DbgInf5))
-            , ?_assertMatch([], aefa_debug:call_stack(DbgInf5)) ];
-        _ ->
-            ?debugMsg("Not fine")
-    end.
-
-contract_name_test_() ->
-    Contracts = [contract_name_change()],
-    Chain     = aefa_sophia_test:compile_contracts(Contracts, debug_options()),
-    Main      = element(1, hd(Contracts)),
-    case run_debug(Chain, Main, list_to_binary("f"), [], [{"", 6}, {"", 3}]) of
-        {ok, ES} ->
-            DbgInf = aefa_engine_state:debug_info(ES),
-            ES2 = aefa_fate:execute(
-                aefa_engine_state:set_debug_info(
-                    aefa_debug:set_debugger_status(continue, DbgInf),
-                    ES
-                )
-            ),
-            DbgInf2 = aefa_engine_state:debug_info(ES2),
-            ES3 = aefa_fate:execute(
-                aefa_engine_state:set_debug_info(
-                    aefa_debug:set_debugger_status(continue, DbgInf2),
-                    ES2
-                )
-            ),
-            DbgInf3 = aefa_engine_state:debug_info(ES3),
-            [ ?_assertEqual("MC", aefa_debug:contract_name(aefa_engine_state:current_contract(ES), DbgInf))
-            , ?_assertEqual("C", aefa_debug:contract_name(aefa_engine_state:current_contract(ES2), DbgInf2))
-            , ?_assertEqual("MC", aefa_debug:contract_name(aefa_engine_state:current_contract(ES3), DbgInf3))
-            , ?_assertEqual([{"", 6}, {"", 3}], aefa_debug:breakpoints(DbgInf3))];
-        _ ->
-            ?debugMsg("Not fine")
-    end.
-
-contract_name_change() ->
+contract_name_source() ->
     {<<"contract_name_change">>,
     "contract C =\n"
     "  entrypoint f(x : int) =\n"
@@ -304,16 +250,16 @@ contract_name_change() ->
     "    b\n"
     ""}.
 
-debug_options() ->
-    aefa_sophia_test:default_options() ++ disabled_optimizations_options() ++ [debug_info].
+contract_name_test_() ->
+    BPs = [{"", 6}, {"", 3}],
 
-disabled_optimizations_options() ->
-    [ {optimize_inliner, false}, {optimize_inline_local_functions, false}
-    , {optimize_bind_subexpressions, false}, {optimize_let_floating, false}
-    , {optimize_simplifier, false}, {optimize_drop_unused_lets, false}
-    , {optimize_push_consume, false}, {optimize_one_shot_var, false}
-    , {optimize_write_to_dead_var, false}, {optimize_inline_switch_target, false}
-    , {optimize_swap_push, false}, {optimize_swap_pop, false}
-    , {optimize_swap_write, false}, {optimize_constant_propagation, false}
-    , {optimize_prune_impossible_branches, false}, {optimize_single_successful_branch, false}
-    , {optimize_inline_store, false}, {optimize_float_switch_bod, false} ].
+    Asserts1 = #assertion{ contract = "MC" },
+    Asserts2 = #assertion{ contract = "C" },
+    Asserts3 = #assertion{ contract = "MC", breakpoints = [{"", 6}, {"", 3}] },
+
+    {"Test the mapping from contract pks to contract names",
+    fun() ->
+        ES1 = run(contract_name_source(), "f", [], BPs, Asserts1),
+        ES2 = resume(ES1, Asserts2, continue),
+        _   = resume(ES2, Asserts3, continue)
+    end}.
