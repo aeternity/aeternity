@@ -2808,7 +2808,10 @@ op(bytes_split, ?FATE_BYTES(A), B) when ?IS_FATE_INTEGER(B) ->
         _                        -> aefa_fate:abort({type_error, bytes_split, [?FATE_BYTES(A), B]})
     end;
 op(bytes_split_any, ?FATE_BYTES(A), B) when ?IS_FATE_INTEGER(B) ->
-    N = ?FATE_INTEGER_VALUE(B),
+    N0 = ?FATE_INTEGER_VALUE(B),
+    N = if N0 > 0 -> N0;
+           true   -> byte_size(A) - abs(N0)
+        end,
     case A of
         <<L:N/binary, R/binary>> -> {ok, {?FATE_BYTES(L), ?FATE_BYTES(R)}};
         _                        -> error
