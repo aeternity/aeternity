@@ -11,6 +11,8 @@
          get_commitment_tx_at_height/7,
          post_commitment/11]).
 
+%% Handy for use in test suites and other BTC based chains
+-export([parse_vout/1]).
 
 -type hex() :: binary().%[byte()].
 
@@ -240,28 +242,13 @@ block(Obj) ->
 
 -spec find_commitments(list(), binary()) -> [{Pubkey :: binary(), Payload :: binary()}].
 find_commitments(Txs, _ParentHCAccountPubKey) ->
-    lists:foldl(fun(Tx, Acc) ->
-                    case Tx of
-                        #{<<"vout">> :=
-                             [#{<<"n">> := 0, <<"scriptPubKey">> := #{<<"address">> := _Staker}},
-                              #{<<"n">> := 1, <<"scriptPubKey">> := #{<<"address">> := _TxParentHCAccountPubKey}},
-                              #{<<"n">> := 2, <<"scriptPubKey">> := #{<<"type">> := <<"nulldata">>, <<"asm">> := <<"OP_RETURN ", CommitmentEnc/binary>>, <<"hex">> := _CommitmentEnc0}}] = VOUT} ->
-                            %% This Tx matches a very specific pattern for a HC commitment
-                            %% FIXME: Reject commitments sent to a different ParentHCAccountPubKey
-                            %% FIXME: Consider being less rigid here WRT ordering or other.
-                            CommitmentBTC = from_hex(CommitmentEnc),
-                            case CommitmentBTC of
-                                <<Commitment:80/binary>> ->
-                                    {btc, Signature, StakerHash, TopKeyHash} = aec_parent_chain_block:decode_commitment(Commitment),
-                                    [{Signature, StakerHash, TopKeyHash} | Acc];
-                                _ ->
-                                    lager:debug("Invalid BTC Commitment, skipping ~p", [VOUT]),
-                                    Acc
-                            end;
-                        _Else ->
-                            %% lager:debug("Invalid BTC Tx, skipping ~p", [Tx]),
-                            Acc
-                    end
+    lists:foldl(fun(#{<<"vout">> := Vout}, Acc) ->
+                        case parse_vout(Vout) of
+                            {ok, ParsedCommitment} ->
+                                [ParsedCommitment | Acc];
+                            {error, _Reason} ->
+                                Acc
+                        end
                 end, [], Txs).
 
 -spec request(binary(), binary(), binary(), integer(),binary(), binary(),boolean(),integer()) -> {ok, map()} | {error, term()}.
@@ -331,3 +318,31 @@ prev_hash(Obj) ->
 
 seed_to_utf8(Seed) when is_binary(Seed) ->
     base64:encode(Seed).
+
+parse_vout(Vout) when length(Vout) == 3 ->
+    case find_op_return(Vout) of
+        {ok, CommitmentEnc} ->
+            CommitmentBTC = from_hex(CommitmentEnc),
+            case CommitmentBTC of
+                <<Commitment:80/binary>> ->
+                    case aec_parent_chain_block:decode_commitment(Commitment) of
+                        {btc, Signature, StakerHash, TopKeyHash} ->
+                            {ok, {Signature, StakerHash, TopKeyHash}};
+                        _ ->
+                            {error, not_btc_commitment}
+                    end;
+                _ ->
+                    {error, not_commitment_op}
+            end;
+        _ ->
+            {error, no_op_return}
+    end;
+parse_vout(_Vout) ->
+    {error, not_commitment}.
+
+find_op_return([#{<<"scriptPubKey">> := #{<<"type">> := <<"nulldata">>, <<"asm">> := <<"OP_RETURN ", CommitmentEnc/binary>>}} | _]) ->
+    {ok, CommitmentEnc};
+find_op_return([_ | Vs]) ->
+    find_op_return(Vs);
+find_op_return([]) ->
+    {error, no_op_return}.

@@ -260,40 +260,18 @@ result(Response) ->
 block(Obj) ->
     Hash = maps:get(<<"hash">>, Obj), true = is_binary(Hash),
     Height = maps:get(<<"height">>, Obj), true = is_integer(Height),
-
-    %% TODO: To analyze the size field;
-    %% Txs that might be Commitments will have at least one type:nulldata entry - just do some pre-filtering
-    %% FilteredTxs = lists:filter(fun (Tx) -> is_nulldata(Tx) end, maps:get(<<"tx">>, Obj)),
-
     PrevHash = prev_hash(Obj),
     {Height, Hash, PrevHash, maps:get(<<"tx">>, Obj)}.
 
--define(OP_RETURN, 16#6a).
-
 -spec find_commitments(list(), binary()) -> [{Pubkey :: binary(), Payload :: binary()}].
 find_commitments(Txs, _ParentHCAccountPubKey) ->
-    lists:foldl(fun(Tx, Acc) ->
-                    case Tx of
-                        #{<<"vout">> :=
-                             [#{<<"n">> := 0, <<"scriptPubKey">> := #{<<"type">> := <<"nulldata">>, <<"asm">> := <<"OP_RETURN ", CommitmentEnc/binary>>, <<"hex">> := _CommitmentEnc}},
-                              #{<<"n">> := 1, <<"scriptPubKey">> := #{<<"addresses">> := _Staker}},
-                              #{<<"n">> := 2, <<"scriptPubKey">> := #{<<"addresses">> := __ParentHCAccountPubKey}}]} ->
-                            %% This Tx matches a very specific pattern for a HC commitment
-                            %% FIXME: Reject commitments sent to a different ParentHCAccountPubKey
-                            %% FIXME: Consider being less rigid here WRT ordering or other.
-                            CommitmentBTC = from_hex(CommitmentEnc),
-                            case CommitmentBTC of
-                                <<Commitment:80/binary>> ->
-                                    {btc, Signature, StakerHash, TopKeyHash} = aec_parent_chain_block:decode_commitment(Commitment),
-                                    [{Signature, StakerHash, TopKeyHash} | Acc];
-                                _ ->
-                                    lager:debug("Invalid BTC Commitment, skipping ~p", [CommitmentEnc]),
-                                    Acc
-                            end;
-                        _Else ->
-                            %% lager:debug("Invalid BTC Tx, skipping ~p", [Tx]),
-                            Acc
-                    end
+    lists:foldl(fun(#{<<"vout">> := Vout}, Acc) ->
+                        case aehttpc_btc:parse_vout(Vout) of
+                            {ok, ParsedCommitment} ->
+                                [ParsedCommitment | Acc];
+                            {error, _Reason} ->
+                                Acc
+                        end
                 end, [], Txs).
 
 -spec request(binary(), binary(), binary(), integer(),binary(), binary(),boolean(),integer()) -> {ok, map()} | {error, term()}.

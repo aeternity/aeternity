@@ -68,6 +68,7 @@ main contract HCElection =
             require(accepted_commitments != [], "No commitments found with the correct top hash")
             // Further filter based on prefix of the hash of the staker pubkey being somewhere in sorted0 and the signature being correct
             let (sorted1, total_s, _, _, _)  = List.foldl(filter_posted_commitments, ([], 0, accepted_commitments, current_hash, network_id), sorted0)
+            require(sorted1 != [], "No commitments found with valid signatures")
             (sorted1, total_s)
     let shot = Bytes.to_int(entropy) mod total_stake
     switch(find_validator(sorted, shot))
@@ -102,13 +103,11 @@ main contract HCElection =
     // There could be a collision here - multiple addresses might have the same prefix, so consider
     // all that match this address
     let matches = List.find_indices((c) => c.address_hash_prefix == addr_prefix, commitments)
-    require(matches != [], "No commitments found among staker addresses")
     let comms = List.map((idx) =>
                             let Some(commitment) = List.nth(idx, commitments)
                             (addr, stake, current_hash, network_id, commitment.sig),
                         matches)
     let with_correct_sig = List.filter(filter_by_sig, comms)
-    require(with_correct_sig != [], "No commitments found with valid signatures")
     List.foldl(accum_stake, (accum, total_s, commitments, current_hash, network_id), with_correct_sig)
 
   function filter_by_sig((addr : address, stake, current_hash : hash, network_id, sig)) =

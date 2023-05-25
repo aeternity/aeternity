@@ -851,7 +851,6 @@ verify_commitments(Config) ->
     Test(10),
     ok.
 
--define(OP_RETURN, 16#6a).
 verify_btc_commitments(Config) ->
     BitcoinCli = ?config(bitcoin_cli, Config),
     Test =
@@ -870,7 +869,6 @@ verify_btc_commitments(Config) ->
                     fun(B) ->
                         BHeight = maps:get(<<"height">>, B),
                         Txs = maps:get(<<"tx">>, B),
-                        ct:log("Txs ~p", [Txs]),
                         lists:map(
                             fun(Tx) ->
                                 case Tx of
@@ -880,42 +878,22 @@ verify_btc_commitments(Config) ->
                                         ct:log("TxDetails ~p", [TxDetails]),
                                         case TxDetails of
                                             #{<<"vout">> := Vout} when length(Vout) == 3 ->
-                                                ct:log("Matching VOUT ~p", [Vout]),
-                                                [#{<<"n">> := 0, <<"scriptPubKey">> := #{<<"type">> := <<"nulldata">>, <<"asm">> := <<"OP_RETURN ", CommitmentEnc/binary>>, <<"hex">> := _CommitmentEnc}},
-                                                 #{<<"n">> := 1, <<"value">> := _Val1, <<"scriptPubKey">> := #{<<"addresses">> := _ParentHCAccountPubKeyxx}},
-                                                 #{<<"n">> := 2, <<"value">> := _Val2, <<"scriptPubKey">> := #{<<"addresses">> := _Staker}}
-                                                 ] = Vout,
-                                                 %Val1 = 0.00007500,
-                                                 %Val2 = 0.00007500,
-                                                 Commitment = aeu_hex:hex_to_bin(CommitmentEnc),
-                                                 case Commitment of
-                                                    <<Commitment:80/binary>> ->
-                                                        {btc, _Signature, StakerHash, TopKeyHash} = aec_parent_chain_block:decode_commitment(Commitment),
+                                                case aehttpc_btc:parse_vout(Vout) of
+                                                    {ok, {_Signature, StakerHash, TopKeyHash}} ->
                                                         Spender = name(who_by_pubkeyhashprefix(StakerHash)),
                                                         {BHeight, Spender, 0, TopKeyHash};
-                                                    _ ->
-                                                        ct:pal("Invalid Doge Commitment, skipping ~p", [CommitmentEnc]),
+                                                    {error, _Reason} ->
                                                         []
-                                                 end;
+                                                end;
                                             _Else ->
-                                                ct:log("Non matching Tx ~p", [TxDetails]),
                                                 []
                                         end;
-                                    #{<<"vout">> := Vout} when length(Vout) == 3 ->
-                                        ct:log("Matching VOUT ~p", [Vout]),
-                                        [#{<<"n">> := 0, <<"scriptPubKey">> := #{<<"address">> := _Staker}},
-                                        #{<<"n">> := 1, <<"value">> := 0.00007500, <<"scriptPubKey">> := #{<<"address">> := _ParentHCAccountPubKeyxx}},
-                                        #{<<"n">> := 2, <<"scriptPubKey">> := #{<<"type">> := <<"nulldata">>, <<"asm">> := <<"OP_RETURN ", CommitmentEnc/binary>>, <<"hex">> := _CommitmentEnc}}] = Vout,
-                                        %% This Tx matches a very specific pattern for a HC commitment
-                                        %% FIXME: Consider being less rigid here WRT ordering or other.
-                                        Commitment = aeu_hex:hex_to_bin(CommitmentEnc),
-                                        case Commitment of
-                                            <<Commitment:80/binary>> ->
-                                                {btc, _Signature, StakerHash, TopKeyHash} = aec_parent_chain_block:decode_commitment(Commitment),
+                                    #{<<"vout">> := Vout}  ->
+                                        case aehttpc_btc:parse_vout(Vout) of
+                                            {ok, {_Signature, StakerHash, TopKeyHash}} ->
                                                 Spender = name(who_by_pubkeyhashprefix(StakerHash)),
                                                 {BHeight, Spender, 0, TopKeyHash};
-                                            _ ->
-                                                ct:pal("Invalid BTC Commitment, skipping ~p", [CommitmentEnc]),
+                                            {error, _Reason} ->
                                                 []
                                         end;
                                     _Else ->
