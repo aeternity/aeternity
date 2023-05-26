@@ -93,8 +93,9 @@ run_with_cache(Spec, Env, Cache) ->
 
 -ifdef(DEBUG_INFO).
 run_debug(Spec, Env, Cache, BPs) ->
-    Info = aefa_debug:set_breakpoints(BPs, aefa_debug:new()),
-    try execute(aefa_engine_state:set_debug_info(Info, setup_engine(Spec, Env, Cache))) of
+    ES0  = setup_engine(Spec, Env, Cache),
+    Info = aefa_debug:set_breakpoints(BPs, aefa_engine_state:debug_info(ES0)),
+    try execute(aefa_engine_state:set_debug_info(Info, ES0)) of
         Res -> {ok, Res}
     catch
         throw:{?MODULE, revert, S, ES} -> {revert, S, ES};
@@ -361,25 +362,36 @@ catch_protected(Err, ES) ->
 
 %% -----------------------------------------------------------
 
-setup_engine(#{ contract := <<_:256>> = ContractPubkey
-              , code := ByteCode
-              , vm_version := VMVersion} = Spec, Env) ->
+-ifdef(DEBUG_INFO).
+setup_engine(Arg1, Env) ->
+    aefa_engine_state:set_debug_info(aefa_debug:new(), setup_engine_(Arg1, Env)).
+
+setup_engine(Arg1, Env, Cache) ->
+    aefa_engine_state:set_debug_info(aefa_debug:new(), setup_engine_(Arg1, Env, Cache)).
+-else.
+setup_engine(Arg1, Env) ->
+    setup_engine_(Arg1, Env).
+-endif.
+
+setup_engine_(#{ contract := <<_:256>> = ContractPubkey
+               , code := ByteCode
+               , vm_version := VMVersion} = Spec, Env) ->
     try aeb_fate_code:deserialize(ByteCode) of
         Code ->
             Cache = #{ ContractPubkey => { Code, VMVersion } },
-            setup_engine(Spec, Env, Cache)
+            setup_engine_(Spec, Env, Cache)
     catch _:_ ->
             abort(bad_bytecode, no_state)
     end.
 
-setup_engine(#{ contract := <<_:256>> = ContractPubkey
-              , call := Call
-              , gas := Gas
-              , value := Value
-              , store := Store
-              , vm_version := VMVersion
-              , allow_init := AllowInit
-              }, Env, Cache) ->
+setup_engine_(#{ contract := <<_:256>> = ContractPubkey
+               , call := Call
+               , gas := Gas
+               , value := Value
+               , store := Store
+               , vm_version := VMVersion
+               , allow_init := AllowInit
+               }, Env, Cache) ->
     {tuple, {Function, {tuple, ArgTuple}}} =
         aeb_fate_encoding:deserialize(Call),
     Arguments = tuple_to_list(ArgTuple),
