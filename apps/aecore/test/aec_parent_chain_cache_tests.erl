@@ -17,6 +17,9 @@
 -define(DAVE,  <<123453:32/unit:8>>).
 
 -define(GENESIS,  <<42:32/unit:8>>).
+-define(NETWORK_ID, <<"hc_eunit">>).
+
+-define(SIGN_MODULE, aec_preset_keys).
 
 %%%===================================================================
 %%% Test cases
@@ -58,7 +61,9 @@ produce_commitments_test_() ->
                         fun(_, _Hash) -> {tx_env, trees} end),
             mock_parent_connector(),
             mock_stakers(),
-            mock_events()
+            mock_events(),
+            mock_network_id(?NETWORK_ID),
+            mock_sign_module()
      end,
      fun(_) ->
             unmock_events(),
@@ -66,7 +71,9 @@ produce_commitments_test_() ->
             meck:unload(aec_chain),
             meck:unload(aetx_env),
             meck:unload(aec_conductor),
-            unmock_parent_connector()
+            unmock_parent_connector(),
+            unmock_network_id(),
+            unmock_sign_module()
      end,
      [  {"No commitments before the startheight", fun no_commitments_before_start/0},
         {"Post genesis commitments before start seing blocks on the child chain", fun post_initial_commitments/0},
@@ -258,7 +265,7 @@ post_initial_commitments() ->
     expect_keys([?ALICE, ?BOB]),
     set_parent_chain_top(ParentTop),
     {ok, _CachePid} = start_cache(StartHeight, CacheMaxSize, Confirmations, true),
-    GenesisHash = aeser_api_encoder:encode(key_block_hash, height_to_hash(0)),
+    GenesisHash = height_to_hash(0),
     %% populate the cache and start making commitments
     lists:foreach(
         fun(Idx) ->
@@ -271,8 +278,10 @@ post_initial_commitments() ->
             {ok, #{ child_start_height := StartHeight,
                     top_height         := ParentHeight,
                     child_top_height   := ChildTop0}} = ?TEST_MODULE:get_state(),
-            [GenesisHash] = collect_commitments(?ALICE),
-            [GenesisHash] = collect_commitments(?BOB),
+            AliceCommitment = aec_parent_chain_block:encode_commitment_btc(?ALICE, GenesisHash, ?NETWORK_ID),
+            [AliceCommitment] = collect_commitments(?ALICE),
+            BobCommitment = aec_parent_chain_block:encode_commitment_btc(?BOB, GenesisHash, ?NETWORK_ID),
+            [BobCommitment] = collect_commitments(?BOB),
             [] = collect_commitments(?CAROL),
             [] = collect_commitments(?DAVE),
             meck:reset(aec_parent_connector),
@@ -309,9 +318,11 @@ post_commitments() ->
             {ok, #{ child_start_height := StartHeight,
                     top_height         := ParentHeight,
                     child_top_height   := ChildTop1}} = ?TEST_MODULE:get_state(),
-            Hash = aeser_api_encoder:encode(key_block_hash, height_to_hash(ChildTop1)),
-            [Hash] = collect_commitments(?ALICE),
-            [Hash] = collect_commitments(?BOB),
+            Hash = height_to_hash(ChildTop1),
+            AliceCommitment =  aec_parent_chain_block:encode_commitment_btc(?ALICE, Hash, ?NETWORK_ID),
+            [AliceCommitment] = collect_commitments(?ALICE),
+            BobCommitment = aec_parent_chain_block:encode_commitment_btc(?BOB, Hash, ?NETWORK_ID),
+            [BobCommitment] = collect_commitments(?BOB),
             [] = collect_commitments(?CAROL),
             [] = collect_commitments(?DAVE),
             ok
@@ -384,9 +395,11 @@ block_production_dictates_commitments() ->
             {ok, #{ child_start_height := StartHeight,
                     top_height         := ParentHeight,
                     child_top_height   := ChildTop1}} = ?TEST_MODULE:get_state(),
-            Hash = aeser_api_encoder:encode(key_block_hash, height_to_hash(ChildTop1)),
-            [Hash] = collect_commitments(?ALICE),
-            [Hash] = collect_commitments(?BOB),
+            Hash = height_to_hash(ChildTop1),
+            AliceCommitment = aec_parent_chain_block:encode_commitment_btc(?ALICE, Hash, ?NETWORK_ID),
+            [AliceCommitment] = collect_commitments(?ALICE),
+            BobCommitment = aec_parent_chain_block:encode_commitment_btc(?BOB, Hash, ?NETWORK_ID),
+            [BobCommitment] = collect_commitments(?BOB),
             [] = collect_commitments(?CAROL),
             [] = collect_commitments(?DAVE),
             ok
@@ -435,9 +448,11 @@ block_production_dictates_commitments() ->
             {ok, #{ child_start_height := StartHeight,
                     top_height         := ParentHeight,
                     child_top_height   := ChildTop1}} = ?TEST_MODULE:get_state(),
-            Hash = aeser_api_encoder:encode(key_block_hash, height_to_hash(ChildTop1)),
-            [Hash] = collect_commitments(?ALICE),
-            [Hash] = collect_commitments(?BOB),
+            Hash = height_to_hash(ChildTop1),
+            AliceCommitment = aec_parent_chain_block:encode_commitment_btc(?ALICE, Hash, ?NETWORK_ID),
+            [AliceCommitment] = collect_commitments(?ALICE),
+            BobCommitment = aec_parent_chain_block:encode_commitment_btc(?BOB, Hash, ?NETWORK_ID),
+            [BobCommitment] = collect_commitments(?BOB),
             [] = collect_commitments(?CAROL),
             [] = collect_commitments(?DAVE),
             ok
@@ -508,13 +523,30 @@ mock_parent_connector() ->
 
 mock_stakers() ->
     meck:new(aec_consensus_hc, []),
-    meck:new(aec_preset_keys, []),
     ok.
 
 unmock_stakers() ->
-    meck:unload(aec_preset_keys),
     meck:unload(aec_consensus_hc),
     ok.
+
+mock_sign_module() ->
+    meck:new(?SIGN_MODULE, []),
+    meck:expect(?SIGN_MODULE, sign_binary,
+        fun(_Bin, _Pubkey) ->
+            Signature = <<123453:64/unit:8>>,
+            {ok, Signature}
+        end).
+
+unmock_sign_module() ->
+    meck:unload(?SIGN_MODULE).
+
+mock_network_id(NetworkId) ->
+    meck:new(aec_governance, [passthrough]),
+    meck:expect(aec_governance, get_network_id,
+                fun() -> NetworkId end).
+
+unmock_network_id() ->
+    meck:unload(aec_governance).
 
 expect_stakers(StakerList) ->
     meck:expect(aec_consensus_hc, parent_chain_validators,

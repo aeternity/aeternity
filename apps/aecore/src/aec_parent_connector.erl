@@ -14,7 +14,9 @@
 %% - New top block from parent chain should include commitment transactions
 %%   on the parent chain.
 %% - Call consensus smart contract
-%%
+%% Parent chain commitment txs:
+%% - To AE parent - signed by a parent chain AE account hosted in the HC node via aec_keys
+%% - To BTC/Doge parent - signed by the external bitcoind/dogecoind hosted wallet
 -behaviour(gen_server).
 
 %%%=============================================================================
@@ -22,7 +24,7 @@
 %%%=============================================================================
 
 %% External API
--export([start_link/6, stop/0]).
+-export([start_link/9, stop/0]).
 
 %% Use in test only
 -ifdef(TEST).
@@ -63,6 +65,7 @@
         parent_conn_mod = aehttpc_btc,
         fetch_interval = 10000, % Interval for parent top change checks
         parent_hosts = [],
+        hcpc = #{}, % Mapping from hyperchain staker pubkey to parent chain pubkey
         parent_top = not_yet_fetched :: not_yet_fetched | aec_parent_chain_block:block(),
         rpc_seed = crypto:strong_rand_bytes(?SEED_BYTES), % BTC Api only
         c_details = #commitment_details{}
@@ -84,7 +87,7 @@ start_link() ->
                     }],
     ParentConnMod = aehttpc_aeternity,
     start_link(ParentConnMod, FetchInterval, ParentHosts, <<"local_testnet">>,
-              aec_preset_keys, <<0:32/unit:8>>).
+              aec_preset_keys, [], <<0:32/unit:8>>, 7800, 7900).
 -endif.
 
 %% Start the parent connector process
@@ -93,10 +96,11 @@ start_link() ->
 %% ParentHosts :: [#{host => Host, port => Port, user => User, password => Pass}]
 %% NetworkID :: binary() - the parent chain's network id 
 %% SignModule :: atom() - module name of the module that keeps the keys for the parent chain transactions to be signed
+%% HCPCPairs :: [{binary(), binary()}] - mapping from hyperchain address to child chain address
 %% Recipient :: binary() - the parent chain address to which the commitments must be sent to
--spec start_link(atom(), integer() | on_demand, [map()], binary(), atom(), binary()) -> {ok, pid()} | {error, {already_started, pid()}} | {error, Reason::any()}.
-start_link(ParentConnMod, FetchInterval, ParentHosts, NetworkId, SignModule, Recipient) ->
-    gen_server:start_link({local, ?SERVER}, ?MODULE, [ParentConnMod, FetchInterval, ParentHosts, NetworkId, SignModule, Recipient], []).
+-spec start_link(atom(), integer() | on_demand, [map()], binary(), atom(), [{binary(), binary()}], binary(), integer(), integer()) -> {ok, pid()} | {error, {already_started, pid()}} | {error, Reason::any()}.
+start_link(ParentConnMod, FetchInterval, ParentHosts, NetworkId, SignModule, HCPCPairs, Recipient, Fee, Amount) ->
+    gen_server:start_link({local, ?SERVER}, ?MODULE, [ParentConnMod, FetchInterval, ParentHosts, NetworkId, SignModule, HCPCPairs, Recipient, Fee, Amount], []).
 
 stop() ->
     gen_server:stop(?MODULE).
@@ -135,7 +139,7 @@ post_commitment(Who, Hash) ->
 %%%=============================================================================
 
 -spec init([any()]) -> {ok, #state{}}.
-init([ParentConnMod, FetchInterval, ParentHosts, NetworkId, SignModule, Recipient]) ->
+init([ParentConnMod, FetchInterval, ParentHosts, NetworkId, SignModule, HCPCPairs, Recipient, Fee, Amount]) ->
     if is_integer(FetchInterval) ->
         erlang:send_after(FetchInterval, self(), check_parent);
         true -> ok
@@ -144,12 +148,13 @@ init([ParentConnMod, FetchInterval, ParentHosts, NetworkId, SignModule, Recipien
         #commitment_details{ parent_network_id  = NetworkId, %% TODO: assert all nodes are having the same network id
                              sign_module = SignModule,
                              recipient = Recipient,
-                             amount = 0,
-                             fee = 100000000000000 %% TODO: make configurable
+                             amount = Amount,
+                             fee = Fee
                             },
     {ok, #state{parent_conn_mod = ParentConnMod,
                 fetch_interval = FetchInterval,
                 parent_hosts = ParentHosts,
+                hcpc = maps:from_list(HCPCPairs),
                 c_details = CDetails}}.
 
 -spec handle_call(any(), any(), state()) -> {reply, any(), state()}.
@@ -163,8 +168,9 @@ handle_call({fetch_block_by_hash, Hash}, _From, State) ->
 handle_call({fetch_block_by_height, Height}, _From, State) ->
     Reply = handle_fetch_block(fun fetch_block_by_height/5, Height, State),
     {reply, Reply, State};
-handle_call({post_commitment, Who, Hash}, _From, State) ->
-    Reply = post_commitment(Who, Hash, State),
+handle_call({post_commitment, Who, Hash}, _From, #state{hcpc = Hcpc} = State) ->
+    PCWho = maps:get(Who, Hcpc),
+    Reply = post_commitment(PCWho, Hash, State),
     {reply, Reply, State};
 handle_call(_Request, _From, State) ->
     Reply = ok,
@@ -356,8 +362,8 @@ post_commitment(Who, Commitment,
         amount = Amount,
         fee = Fee} = CDetails,
     Fun =
-        fun(#{host := Host, port := Port, user := _User, password := _Password} = Node) ->
-            case Mod:post_commitment(Host, Port, Who, Receiver, Amount, Fee,
+        fun(#{host := Host, port := Port, user := User, password := Password} = Node) ->
+            case Mod:post_commitment(Host, Port, User, Password, Who, Receiver, Amount, Fee,
                                      Commitment, PCNetworkId, SignModule) of
                 {ok, #{<<"tx_hash">> := TxHash}} -> {ok, {TxHash, Node}};
                 {error, 400, _E} ->

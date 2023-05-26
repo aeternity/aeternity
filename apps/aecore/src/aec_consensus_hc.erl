@@ -92,7 +92,9 @@ start(Config, #{block_production := BlockProduction}) ->
             <<"consensus">> :=
                 #{  <<"type">> := PCType,
                     <<"network_id">> := NetworkId,
-                    <<"spend_address">> := PCSpendAddress
+                    <<"spend_address">> := PCSpendAddress,
+                    <<"fee">> := Fee,
+                    <<"amount">> := Amount
                  },
             <<"polling">> :=
                 #{  <<"fetch_interval">> := FetchInterval,
@@ -100,32 +102,6 @@ start(Config, #{block_production := BlockProduction}) ->
                  } = Polling
           }} = Config,
     CacheSize = maps:get(<<"cache_size">>, Polling, 200),
-    Stakers =
-        lists:map(
-            fun(#{<<"hyper_chain_account">> := #{<<"pub">> := EncodedPubkey,
-                                                 <<"priv">> := EncodedPrivkey},
-                  <<"parent_chain_account">> := #{<<"pub">> := _EncodedPubkey,
-                                                  <<"priv">> := _EncodedPrivkey}
-                 }) ->
-                {ok, Pubkey} = aeser_api_encoder:safe_decode(account_pubkey,
-                                                             EncodedPubkey),
-                Privkey = aeu_hex:hex_to_bin(EncodedPrivkey),
-                case aec_keys:check_sign_keys(Pubkey, Privkey) of
-                    true -> pass;
-                    false -> throw({error, invalid_staker_pair, {EncodedPubkey, EncodedPrivkey}})
-                end,
-                {Pubkey, Privkey}
-            end,
-            StakersEncoded),
-    StakersMap = maps:from_list(Stakers),
-    %% TODO: ditch this after we move beyond OTP24
-    _Mod = aec_preset_keys,
-    start_dependency(aec_preset_keys, [StakersMap]),
-    lager:debug("Stakers: ~p", [StakersMap]),
-    ParentConnMod =
-        case PCType of
-            <<"AE2AE">> -> aehttpc_aeternity
-        end,
     ParentHosts =
         lists:map(
             fun(#{<<"host">> := Host,
@@ -139,14 +115,83 @@ start(Config, #{block_production := BlockProduction}) ->
                   password => Pass}
             end,
             Nodes0),
-    SignModule = get_sign_module(),
-    {ok, PCSpendPubkey} = aeser_api_encoder:safe_decode(account_pubkey, PCSpendAddress),
+    {ParentConnMod, PCSpendPubkey, HCPCPairs, SignModule} =
+        case PCType of
+            <<"AE2AE">> -> start_ae(StakersEncoded, PCSpendAddress);
+            <<"AE2BTC">> -> start_btc(StakersEncoded, PCSpendAddress, aehttpc_btc);
+            <<"AE2DOGE">> -> start_btc(StakersEncoded, PCSpendAddress, aehttpc_doge)
+        end,
     start_dependency(aec_parent_connector, [ParentConnMod, FetchInterval,
                                             ParentHosts, NetworkId,
-                                            SignModule, PCSpendPubkey]),
+                                            SignModule, HCPCPairs, PCSpendPubkey, Fee, Amount]),
     start_dependency(aec_parent_chain_cache, [StartHeight, CacheSize,
                                               Confirmations, BlockProduction]),
     ok.
+
+start_btc(StakersEncoded, PCSpendAddress, ParentConnMod) ->
+    Stakers =
+        lists:map(
+            fun(#{<<"hyper_chain_account">> := #{<<"pub">> := EncodedPubkey,
+                                                 <<"priv">> := EncodedPrivkey}
+                 }) ->
+                 {HCPubkey, HCPrivkey} = validate_keypair(EncodedPubkey, EncodedPrivkey),
+                 {HCPubkey, HCPrivkey}
+            end,
+            StakersEncoded),
+    StakersMap = maps:from_list(Stakers),
+    start_dependency(aec_preset_keys, [StakersMap]),
+    HCPCPairs = lists:map(
+            fun(#{<<"hyper_chain_account">> := #{<<"pub">> := EncodedPubkey},
+                  <<"parent_chain_account">> := #{<<"pub">> := BTCPubkey}
+                 }) ->
+                 {ok, HCPubkey} = aeser_api_encoder:safe_decode(account_pubkey,
+                                                                EncodedPubkey),
+                 {HCPubkey, BTCPubkey}
+            end,
+            StakersEncoded),
+    SignModule = undefined,
+    {ParentConnMod, PCSpendAddress, HCPCPairs, SignModule}.
+
+start_ae(StakersEncoded, PCSpendAddress) ->
+    Stakers =
+        lists:flatmap(
+            fun(#{<<"hyper_chain_account">> := #{<<"pub">> := HCEncodedPubkey,
+                                                 <<"priv">> := HCEncodedPrivkey},
+                  <<"parent_chain_account">> := #{<<"pub">> := PCEncodedPubkey,
+                                                  <<"priv">> := PCEncodedPrivkey}
+                 }) ->
+                {HCPubkey, HCPrivkey} = validate_keypair(HCEncodedPubkey, HCEncodedPrivkey),
+                {PCPubkey, PCPrivkey} = validate_keypair(PCEncodedPubkey, PCEncodedPrivkey),
+                [{HCPubkey, HCPrivkey}, {PCPubkey, PCPrivkey}]
+            end,
+            StakersEncoded),
+    StakersMap = maps:from_list(Stakers),
+    %% TODO: ditch this after we move beyond OTP24
+    _Mod = aec_preset_keys,
+    start_dependency(aec_preset_keys, [StakersMap]),
+    HCPCPairs = lists:map(
+            fun(#{<<"hyper_chain_account">> := #{<<"pub">> := HCEncodedPubkey},
+                  <<"parent_chain_account">> := #{<<"pub">> := PCEncodedPubkey}
+                 }) ->
+                 {ok, HCPubkey} = aeser_api_encoder:safe_decode(account_pubkey,
+                                                 HCEncodedPubkey),
+                 {HCPubkey, PCEncodedPubkey}
+            end,
+            StakersEncoded),
+    ParentConnMod = aehttpc_aeternity,
+    SignModule = get_sign_module(),
+    {ok, PCSpendPubkey} = aeser_api_encoder:safe_decode(account_pubkey, PCSpendAddress),
+    {ParentConnMod, PCSpendPubkey, HCPCPairs, SignModule}.
+
+validate_keypair(EncodedPubkey, EncodedPrivkey) ->
+    {ok, Pubkey} = aeser_api_encoder:safe_decode(account_pubkey,
+                                                 EncodedPubkey),
+    Privkey = aeu_hex:hex_to_bin(EncodedPrivkey),
+    case aec_keys:check_sign_keys(Pubkey, Privkey) of
+        true -> pass;
+        false -> throw({error, invalid_staker_pair, {EncodedPubkey, EncodedPrivkey}})
+    end,
+    {Pubkey, Privkey}.
 
 start_dependency(Mod, Args) ->
     %% TODO: ditch this after we move beyond OTP24
@@ -200,10 +245,12 @@ state_pre_transform_key_node(_Node, Trees) ->
             aec_conductor:throw_error({not_enough_confirmations, aec_parent_chain_block:height(Block)});
         {ok, Block} ->
             Entropy = aec_parent_chain_block:hash(Block),
-            CommitmentsSophia = encode_commtiments(Block),
+            CommitmentsSophia = encode_commitments(Block),
+            NetworkId = aec_parent_chain_block:encode_network_id(aec_governance:get_network_id()),
             {ok, CD} = aeb_fate_abi:create_calldata("elect",
                                                     [aefa_fate_code:encode_arg({string, Entropy}),
-                                                     CommitmentsSophia
+                                                     CommitmentsSophia,
+                                                     aefa_fate_code:encode_arg({bytes, NetworkId})
                                                     ]),
             CallData = aeser_api_encoder:encode(contract_bytearray, CD),
             case call_consensus_contract_(?ELECTION_CONTRACT, TxEnv, Trees, CallData, "elect", 0) of
@@ -318,11 +365,13 @@ generate_key_header_seal(_, Candidate, PCHeight, #{expected_key_block_rate := _E
     case aec_parent_chain_cache:get_block_by_height(PCHeight) of
         {ok, Block} ->
             Entropy = aec_parent_chain_block:hash(Block),
-            CommitmentsSophia = encode_commtiments(Block),
+            CommitmentsSophia = encode_commitments(Block),
+            NetworkId = aec_parent_chain_block:encode_network_id(aec_governance:get_network_id()),
             {TxEnv, Trees} = aetx_env:tx_env_and_trees_from_top(aetx_transaction),
             {ok, CD} = aeb_fate_abi:create_calldata("elect_next",
                                                     [aefa_fate_code:encode_arg({string, Entropy}),
-                                                     CommitmentsSophia
+                                                     CommitmentsSophia,
+                                                     aefa_fate_code:encode_arg({bytes, NetworkId})
                                                     ]),
             CallData = aeser_api_encoder:encode(contract_bytearray, CD),
             {ok, _Trees1, Call} = call_consensus_contract_(?ELECTION_CONTRACT,
@@ -359,10 +408,12 @@ set_key_block_seal(KeyBlock0, Seal) ->
     PCHeight = pc_height(Height),
     {ok, Block} = aec_parent_chain_cache:get_block_by_height(PCHeight),
     Entropy = aec_parent_chain_block:hash(Block),
-    CommitmentsSophia = encode_commtiments(Block),
+    CommitmentsSophia = encode_commitments(Block),
+    NetworkId = aec_parent_chain_block:encode_network_id(aec_governance:get_network_id()),
     {ok, CD} = aeb_fate_abi:create_calldata("elect_next",
                                             [aefa_fate_code:encode_arg({string, Entropy}),
-                                             CommitmentsSophia
+                                             CommitmentsSophia,
+                                             aefa_fate_code:encode_arg({bytes, NetworkId})
                                             ]),
     CallData = aeser_api_encoder:encode(contract_bytearray, CD),
     {ok, _Trees1, Call} = call_consensus_contract_(?ELECTION_CONTRACT,
@@ -480,7 +531,7 @@ genesis_protocol_version() ->
 log_consensus_call(TxEnv, FunName, EncodedCallData, Amount) ->
     Height = aetx_env:height(TxEnv),
     lager:debug("Height ~p, calling ~s with amount ~p aettos, encoded ~p",
-               [Height, FunName, Amount, EncodedCallData]),
+                [Height, FunName, Amount, EncodedCallData]),
     ok.
 
 call_consensus_contract(Contract, Node, Trees, EncodedCallData, Keyword, Amount) ->
@@ -529,6 +580,9 @@ call_consensus_contract_(ContractType, TxEnv, Trees, EncodedCallData, Keyword, A
                                                  Calls),
             case aect_call:return_type(Call) of
                 ok -> pass;
+                revert ->
+                    lager:debug("consensus contract call failed ~s~n", [aect_call:return_value(Call)]),
+                    error({consensus_call_failed, aect_call:return_value(Call)});
                 error -> error({consensus_call_failed, aect_call:return_value(Call)})
             end,
             %% prune the call being produced. If not done, the fees for it
@@ -570,10 +624,12 @@ next_beneficiary() ->
         {ok, Block} ->
 
             Entropy = aec_parent_chain_block:hash(Block),
-            CommitmentsSophia = encode_commtiments(Block),
+            CommitmentsSophia = encode_commitments(Block),
+            NetworkId = aec_parent_chain_block:encode_network_id(aec_governance:get_network_id()),
             {ok, CD} = aeb_fate_abi:create_calldata("elect_next",
                                                     [aefa_fate_code:encode_arg({string, Entropy}),
-                                                     CommitmentsSophia
+                                                     CommitmentsSophia,
+                                                     aefa_fate_code:encode_arg({bytes, NetworkId})
                                                     ]),
             CallData = aeser_api_encoder:encode(contract_bytearray, CD),
             {ok, _Trees1, Call} = call_consensus_contract_(?ELECTION_CONTRACT,
@@ -728,16 +784,15 @@ seal_padding_size() ->
 pc_height(ChildHeight) ->
     ChildHeight + pc_start_height() - 1.%% child starts pinning from height 1, not genesis
 
-encode_commtiments(Block) ->
+encode_commitments(Block) ->
     {ok, Commitments} = aec_parent_chain_block:commitments(Block),
     Commitments1 =
-        lists:foldl(
-            fun({From0, Commitment0}, Accum) ->
-                {ok, Commitment} = aeser_api_encoder:safe_decode(key_block_hash, Commitment0),
-                {ok, From1} = aeser_api_encoder:safe_decode(account_pubkey, From0),
-                From = aefa_fate_code:encode_arg({address, From1}),
-                maps:update_with(aefa_fate_code:encode_arg({hash, Commitment}), fun(Fs) -> [From | Fs] end, [From], Accum)
+        lists:map(
+            fun({Signature, StakerHash, TopKeyHash}) ->
+                Sig = aefa_fate_code:encode_arg({signature, Signature}),
+                Staker = aefa_fate_code:encode_arg({bytes, StakerHash}),
+                TopHash = aefa_fate_code:encode_arg({bytes, TopKeyHash}),
+                aeb_fate_data:make_tuple({Sig, Staker, TopHash})
             end,
-            #{},
             Commitments),
-    aeb_fate_data:make_map(Commitments1).
+    aeb_fate_data:make_list(Commitments1).

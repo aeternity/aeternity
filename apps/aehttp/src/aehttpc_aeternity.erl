@@ -9,7 +9,7 @@
          get_header_by_height/6,
          get_commitment_tx_in_block/8,
          get_commitment_tx_at_height/7,
-         post_commitment/9]).
+         post_commitment/11]).
 
 %% @doc fetch latest top hash
 get_latest_block(Host, Port, _User, _Password, _Seed) ->
@@ -33,10 +33,10 @@ get_commitment_tx_at_height(Host, Port, _User, _Password, _Seed, Height, ParentH
     get_commitments(Host, Port, MBs, ParentHCAccountPubKey).
 
 %% @doc Post commitment to AE parent chain.
-post_commitment(Host, Port, StakerPubkey, HCCollectPubkey, Amount, Fee, CurrentTop,
+post_commitment(Host, Port, _User, _Password, StakerPubkey, HCCollectPubkey, Amount, Fee, Commitment,
                 NetworkId, SignModule) ->
     post_commitment_tx(Host, Port, StakerPubkey, HCCollectPubkey, Amount,
-                       Fee, CurrentTop,
+                       Fee, Commitment,
                        NetworkId, SignModule).
 
 
@@ -113,20 +113,22 @@ get_hc_commitments(Host, Port, MB, ParentHCAccountPubKey) ->
                     case Tx of
                         #{<<"type">> := <<"SpendTx">>,
                           <<"recipient_id">> := ExpectedRecipient,
-                          <<"sender_id">> := SenderId,
+                          <<"sender_id">> := _SenderId,
                           <<"payload">> := CommitmentEnc} ->
                                 {ok, Commitment} = aeser_api_encoder:safe_decode(bytearray, CommitmentEnc),
-                                [{SenderId, Commitment} | Acc];
+                                {btc, Signature, StakerHash, TopKeyHash} = aec_parent_chain_block:decode_commitment(Commitment),
+                                [{Signature, StakerHash, TopKeyHash} | Acc];
                         _ ->
                             Acc
                     end
             end, [], Txs).
 
-post_commitment_tx(Host, Port, SenderPubkey, ReceiverPubkey, Amount, Fee,
-                   CurrentTopHash,
+post_commitment_tx(Host, Port, SenderEnc, ReceiverPubkey, Amount, Fee,
+                   Commitment,
                    NetworkId, SignModule) ->
     %% 1. get the next nonce for our account over at the parent chain
-    SenderEnc = aeser_api_encoder:encode(account_pubkey, SenderPubkey),
+    {ok, SenderPubkey} = aeser_api_encoder:safe_decode(account_pubkey,
+                                                        SenderEnc),
     %% FIXME consider altenrative approaches to fetching a nonce: ex. if there
     %% is a hanging transaction in the pool this would produce another hanging
     %% one
@@ -145,7 +147,7 @@ post_commitment_tx(Host, Port, SenderPubkey, ReceiverPubkey, Amount, Fee,
           %% * current gas prices
           fee          => Fee, 
           nonce        => Nonce,
-          payload      => CurrentTopHash},
+          payload      => Commitment},
     {ok, SpendTx} = aec_spend_tx:new(TxArgs),
     SignedSpendTx = sign_tx(SpendTx, NetworkId, SenderPubkey, SignModule),
     Transaction = aeser_api_encoder:encode(transaction, aetx_sign:serialize_to_binary(SignedSpendTx)),

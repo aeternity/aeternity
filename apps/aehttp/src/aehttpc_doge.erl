@@ -1,7 +1,7 @@
 %%% @copyright (C) 2022, Aeternity
--module(aehttpc_btc).
+-module(aehttpc_doge).
 
-%% Low level subset of bitcoin API required to interact with a hyperchain
+%% Low level subset of dogecoin API required to interact with a hyperchain
 
 %% Required exports:
 -export([get_latest_block/5,
@@ -11,8 +11,6 @@
          get_commitment_tx_at_height/7,
          post_commitment/11]).
 
-%% Handy for use in test suites and other BTC based chains
--export([parse_vout/1]).
 
 -type hex() :: binary().%[byte()].
 
@@ -69,9 +67,8 @@ post_commitment(Host, Port, User, Password, BTCAcc, HCCollectPubkey, Amount, Fee
     {ok, {Inputs, TotalAmount}} = select_utxo(UnspentSatoshis, Fee + Amount),
     Outputs = create_outputs(Commitment, BTCAcc, HCCollectPubkey, TotalAmount, Amount, Fee),
     {ok, Tx} = createrawtransaction(Host, Port, User, Password, false, Inputs, Outputs),
-    {ok, SignedTx} = signrawtransactionwithwallet(Host, Port, User, Password, false, Tx),
+    {ok, SignedTx} = signrawtransaction(Host, Port, User, Password, false, Tx),
     {ok, TxHash} = sendrawtransaction(Host, Port, User, Password, false, SignedTx),
-    %% lager:debug("Posted BTC Commitment in Tx: ~p", [TxHash]),
     {ok, #{<<"tx_hash">> => TxHash}}.
 
 select_utxo([#{<<"spendable">> := true, <<"amount">> := Amount} = Unspent | _Us], Needed) when Amount >= Needed ->
@@ -113,7 +110,7 @@ create_outputs(Commitment, BTCAcc, HCCollectPubkey, TotalAmount, Amount, Fee) ->
     Refund = satoshi_to_btc(TotalAmount - Fee - Amount),
     HCAmount = satoshi_to_btc(Amount),
     HexCommitment = to_hex(Commitment),
-    [#{BTCAcc => Refund}, #{HCCollectPubkey => HCAmount}, #{<<"data">> => HexCommitment}].
+    #{BTCAcc => Refund, HCCollectPubkey => HCAmount, <<"data">> => HexCommitment}.
 
 satoshi_to_btc(Sats) when Sats >= 0 ->
     SatsStr = integer_to_list(Sats),
@@ -147,7 +144,7 @@ getbestblockhash(Host, Port, User, Password, Seed, SSL) ->
         {error, {E, R}}
     end.
 
--spec getblockhash(binary(), binary(), binary(), binary(), binary(), boolean(), integer()) -> {ok, binary()} | {error, term()}.
+-spec getblockhash(binary(), binary(), binary(), binary(), binary(), boolean(), hex()) -> {ok, binary()} | {error, term()}.
 getblockhash(Host, Port, User, Password, Seed, SSL, Height) ->
     try
       Body = jsx:encode(request_body(<<"getblockhash">>, [Height], seed_to_utf8(Seed))),
@@ -162,10 +159,30 @@ getblockhash(Host, Port, User, Password, Seed, SSL, Height) ->
       {error, {E, R, S}}
     end.
 
+%% doge and bitcoin core differ here. bitcoind at Verbosity 2 will return fully detailed txs
+%% dogecoin 1.14.6 doesn't have level 2 so we must fetch all the Txs separately.
 -spec getblock(binary(), binary(), binary(), binary(), binary(), false, binary(), integer()) -> {ok, tuple()} | {error, term()}.
-getblock(Host, Port, User, Password, Seed, SSL, Hash, Verbosity) ->
+getblock(Host, Port, User, Password, Seed, SSL, Hash, 2) ->
     try
-        Body = jsx:encode(request_body(<<"getblock">>, [Hash, Verbosity], seed_to_utf8(Seed))),
+        Body = jsx:encode(request_body(<<"getblock">>, [Hash, true], seed_to_utf8(Seed))),
+        {ok, Res} = request(<<"/">>, Body, Host, Port, User, Password, SSL, 5000),
+        Obj = result(Res),
+        TxHashes = maps:get(<<"tx">>, Obj),
+        Txs = lists:flatmap(
+            fun(TxHash) ->
+                case getrawtransaction(Host, Port, User, Password, SSL, TxHash) of
+                    {ok, Tx} -> [Tx];
+                    _ -> []
+                end
+            end, TxHashes),
+        Block = block(maps:put(<<"tx">>, Txs, Obj)),
+        {ok, Block}
+    catch E:R:S ->
+        {error, {E, R, S}}
+    end;
+getblock(Host, Port, User, Password, Seed, SSL, Hash, _Verbosity) ->
+    try
+        Body = jsx:encode(request_body(<<"getblock">>, [Hash, true], seed_to_utf8(Seed))),
         {ok, Res} = request(<<"/">>, Body, Host, Port, User, Password, SSL, 5000),
         Block = block(result(Res)),
         {ok, Block}
@@ -198,11 +215,11 @@ createrawtransaction(Host, Port, User, Password, SSL, Inputs, Outputs) ->
 %% Rely on the wallet embedded in the local bitcoind
 %% FIXME: Allow this to use a different host/port so users can use a separate offline bitcoind
 %% holding their commitments wallet.
--spec signrawtransactionwithwallet(binary(), integer(), binary(), binary(), boolean(), binary()) -> {ok, binary()} | {error, term()}.
-signrawtransactionwithwallet(Host, Port, User, Password, SSL, RawTx) ->
+-spec signrawtransaction(binary(), integer(), binary(), binary(), boolean(), binary()) -> {ok, binary()} | {error, term()}.
+signrawtransaction(Host, Port, User, Password, SSL, RawTx) ->
     try
         Seed = <<>>,
-        Body = jsx:encode(request_body(<<"signrawtransactionwithwallet">>, [RawTx], seed_to_utf8(Seed))),
+        Body = jsx:encode(request_body(<<"signrawtransaction">>, [RawTx], seed_to_utf8(Seed))),
         {ok, Res} = request(<<"/">>, Body, Host, Port, User, Password, SSL, 5000),
         SignedTx = result(Res),
         Complete = maps:get(<<"complete">>, SignedTx),
@@ -224,6 +241,17 @@ sendrawtransaction(Host, Port, User, Password, SSL, Hex) ->
         {error, {E, R}}
     end.
 
+-spec getrawtransaction(binary(), integer(), binary(), binary(), boolean(), binary()) -> {ok, binary()} | {error, term()}.
+getrawtransaction(Host, Port, User, Password, SSL, TxHash) ->
+    try
+        Seed = <<>>,
+        Body = jsx:encode(request_body(<<"getrawtransaction">>, [TxHash, true], seed_to_utf8(Seed))),
+        {ok, Res} = request(<<"/">>, Body, Host, Port, User, Password, SSL, 5000),
+        {ok, result(Res)}
+    catch E:R ->
+        {error, {E, R}}
+    end.
+
 -spec result(map()) -> term().
 result(Response) ->
     maps:get(<<"result">>, Response).
@@ -232,18 +260,13 @@ result(Response) ->
 block(Obj) ->
     Hash = maps:get(<<"hash">>, Obj), true = is_binary(Hash),
     Height = maps:get(<<"height">>, Obj), true = is_integer(Height),
-
-    %% TODO: To analyze the size field;
-    %% Txs that might be Commitments will have at least one type:nulldata entry - just do some pre-filtering
-    %% FilteredTxs = lists:filter(fun (Tx) -> is_nulldata(Tx) end, maps:get(<<"tx">>, Obj)),
-
     PrevHash = prev_hash(Obj),
     {Height, Hash, PrevHash, maps:get(<<"tx">>, Obj)}.
 
 -spec find_commitments(list(), binary()) -> [{Pubkey :: binary(), Payload :: binary()}].
 find_commitments(Txs, _ParentHCAccountPubKey) ->
     lists:foldl(fun(#{<<"vout">> := Vout}, Acc) ->
-                        case parse_vout(Vout) of
+                        case aehttpc_btc:parse_vout(Vout) of
                             {ok, ParsedCommitment} ->
                                 [ParsedCommitment | Acc];
                             {error, _Reason} ->
@@ -265,9 +288,11 @@ request(Path, Body, Host, Port, User, Password, SSL, Timeout) ->
         Opt = [],
         case httpc:request(post, Req, HTTPOpt, Opt) of
             {ok, {{_, 200 = _Code, _}, _, Res}} ->
-                %% lager:debug("Req: ~p, Res: ~p with URL: ~ts", [Req, Res, Url]),
+                lager:debug("Req: ~p, Res: ~p with URL: ~ts", [Req, Res, Url]),
                 {ok, jsx:decode(list_to_binary(Res), [return_maps])};
              {ok, {{_, 500 = _Code, _}, _, "{\"result\":null,\"error\":{\"code\":-8,\"message\":\"Block height out of range\"}" ++ _}} ->
+                {error, not_found};
+             {ok, {{_, 500 = _Code, _}, _, "{\"result\":null,\"error\":{\"code\":-5,\"message\":\"No such mempool or blockchain" ++ _}} ->
                 {error, not_found}
         end
     catch E:R:S ->
@@ -299,10 +324,6 @@ url(Host, Port, _) when is_list(Host), is_integer(Port) ->
 path(Scheme, Host, Port) ->
     lists:concat([Scheme, Host, ":", Port]).
 
--spec from_hex(hex()) -> binary().
-from_hex(HexData) ->
-    aeu_hex:hex_to_bin(HexData).
-
 -spec to_hex(binary()) -> hex().
 to_hex(Payload) ->
     list_to_binary(aeu_hex:bin_to_hex(Payload)).
@@ -318,31 +339,3 @@ prev_hash(Obj) ->
 
 seed_to_utf8(Seed) when is_binary(Seed) ->
     base64:encode(Seed).
-
-parse_vout(Vout) when length(Vout) == 3 ->
-    case find_op_return(Vout) of
-        {ok, CommitmentEnc} ->
-            CommitmentBTC = from_hex(CommitmentEnc),
-            case CommitmentBTC of
-                <<Commitment:80/binary>> ->
-                    case aec_parent_chain_block:decode_commitment(Commitment) of
-                        {btc, Signature, StakerHash, TopKeyHash} ->
-                            {ok, {Signature, StakerHash, TopKeyHash}};
-                        _ ->
-                            {error, not_btc_commitment}
-                    end;
-                _ ->
-                    {error, not_commitment_op}
-            end;
-        _ ->
-            {error, no_op_return}
-    end;
-parse_vout(_Vout) ->
-    {error, not_commitment}.
-
-find_op_return([#{<<"scriptPubKey">> := #{<<"type">> := <<"nulldata">>, <<"asm">> := <<"OP_RETURN ", CommitmentEnc/binary>>}} | _]) ->
-    {ok, CommitmentEnc};
-find_op_return([_ | Vs]) ->
-    find_op_return(Vs);
-find_op_return([]) ->
-    {error, no_op_return}.

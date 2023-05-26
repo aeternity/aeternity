@@ -21,6 +21,12 @@ main contract HCElection =
       added_stake           : int
     }
 
+  record commitment =
+    { sig                   : signature,
+      address_hash_prefix   : bytes(8),
+      top_hash_prefix       : bytes(7)
+    }
+
   entrypoint init(main_staking_ct : MainStaking, entropy_str : string) =
     { main_staking_ct       = main_staking_ct,
       leader                = Contract.address,
@@ -28,18 +34,25 @@ main contract HCElection =
       added_stake           = 0
       }
 
-  stateful entrypoint elect(entropy_str : string, commitments : map(hash, list(address))) =
+  stateful entrypoint elect(entropy_str : string, commitments : list((signature * bytes(8) * bytes(7))), network_id : bytes(15)) =
     assert_protocol_call()
-    let (new_leader, added_staking_power) = elect_(entropy_str, commitments)
+    let comms = List.map(mk_commitment, commitments)
+    let (new_leader, added_staking_power) = elect_(entropy_str, comms, network_id)
     state.main_staking_ct.post_elect()
     put(state{ leader = new_leader, entropy = entropy_str, added_stake = added_staking_power})
     (new_leader, added_staking_power)
 
-  entrypoint elect_next(entropy_str : string, commitments : map(hash, list(address))) =
-    let (leader, staking_power) = elect_(entropy_str, commitments)
+  entrypoint elect_next(entropy_str : string, commitments : list((signature * bytes(8) * bytes(7))), network_id : bytes(15)) =
+    let comms =  List.map(mk_commitment, commitments)
+    let (leader, staking_power) = elect_(entropy_str, comms, network_id)
     (leader, staking_power)
 
-  function elect_(entropy_str : string, commitments : map(hash, list(address))) =
+  // Possible commitment formats:
+  // basic commitment format - we get map(hash, list(address))
+  // full commitment - we get list(signature, hash, address)
+  // btc commitment - we get list(signature, hash_prefix, address_hash_prefix)
+  //    Only btc supported for now
+  function elect_(entropy_str : string, commitments : list(commitment), network_id) =
     let Some(current_hash : hash) = Chain.block_hash(Chain.block_height) // current hash!
     let entropy : hash = Crypto.sha256(entropy_str)
     let sorted0 = state.main_staking_ct.sorted_validators() 
@@ -47,8 +60,15 @@ main contract HCElection =
         if (Chain.block_height == 0)
             (sorted0, state.main_staking_ct.total_stake())
         else
-            let accepted_commitments = commitments[current_hash]
-            let (sorted1, total_s, _)  = List.foldl(filter_posted_commitments, ([], 0, accepted_commitments), sorted0)
+            require(commitments != [], "Commitments list cannot be empty")
+            // accepted here includes those that are plausible matches based on the first 7 bytes of the hash of the parent top hash
+            let (current_hash_prefix : bytes(7), _) = Bytes.split(Crypto.sha256(current_hash))
+            let filter_accepted_commitments = (c) => c.top_hash_prefix == current_hash_prefix
+            let accepted_commitments = List.filter(filter_accepted_commitments, commitments)
+            require(accepted_commitments != [], "No commitments found with the correct top hash")
+            // Further filter based on prefix of the hash of the staker pubkey being somewhere in sorted0 and the signature being correct
+            let (sorted1, total_s, _, _, _)  = List.foldl(filter_posted_commitments, ([], 0, accepted_commitments, current_hash, network_id), sorted0)
+            require(sorted1 != [], "No commitments found with valid signatures")
             (sorted1, total_s)
     let shot = Bytes.to_int(entropy) mod total_stake
     switch(find_validator(sorted, shot))
@@ -78,9 +98,24 @@ main contract HCElection =
   function assert_protocol_call() =
       require(Call.caller == Contract.creator, "Must be called by the protocol")
 
-  function filter_posted_commitments((accum, total_s, commitments), (addr, stake)) =
-    if (List.contains(addr, commitments))
-        ((addr, stake) :: accum, stake + total_s, commitments)
-    else
-        (accum, total_s, commitments)
+  function filter_posted_commitments((accum, total_s, commitments, current_hash, network_id), (addr, stake)) =
+    let (addr_prefix : bytes(8), _) = Bytes.split(Crypto.sha256(addr))
+    // There could be a collision here - multiple addresses might have the same prefix, so consider
+    // all that match this address
+    let matches = List.find_indices((c) => c.address_hash_prefix == addr_prefix, commitments)
+    let comms = List.map((idx) =>
+                            let Some(commitment) = List.nth(idx, commitments)
+                            (addr, stake, current_hash, network_id, commitment.sig),
+                        matches)
+    let with_correct_sig = List.filter(filter_by_sig, comms)
+    List.foldl(accum_stake, (accum, total_s, commitments, current_hash, network_id), with_correct_sig)
 
+  function filter_by_sig((addr : address, stake, current_hash : hash, network_id, sig)) =
+    let msg : bytes(47) = Bytes.concat(current_hash, network_id)
+    Crypto.verify_sig(Crypto.sha256(msg), addr, sig)
+
+  function accum_stake((accum, total_s, commitments, current_hash, network_id), (addr, stake, _current_hash, _network_id, sig)) =
+    ((addr, stake) :: accum, stake + total_s, commitments, current_hash, network_id)
+
+  function mk_commitment((sig : signature, address_hash_prefix : bytes(8), top_hash_prefix : bytes(7))) =
+    { sig = sig, top_hash_prefix = top_hash_prefix, address_hash_prefix = address_hash_prefix}

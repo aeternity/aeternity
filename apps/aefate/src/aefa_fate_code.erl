@@ -80,7 +80,7 @@ make_signature(<<"sg_", _/binary>> = S) ->
     aeb_fate_data:make_signature(encode_address(signature, S));
 make_signature("sg_" ++ _ = S) ->
     aeb_fate_data:make_signature(encode_address(signature, S));
-make_signature(B) when bit_size(B) =:= 256 ->
+make_signature(B) when bit_size(B) =:= 512 ->
     aeb_fate_data:make_signature(B).
 
 make_oracle(<<"ok_", _/binary>> = O) ->

@@ -73,6 +73,8 @@
 
 -define(GENESIS_HEIGHT, 5).
 
+-define(NETWORK_ID, <<"hc_stake_test">>).
+
 -define(ALICE, {
     <<177,181,119,188,211,39,203,57,229,94,108,2,107,214, 167,74,27,
       53,222,108,6,80,196,174,81,239,171,117,158,65,91,102>>,
@@ -1867,7 +1869,7 @@ entropy_impacts_leader_election(_Config) ->
     {ok, Trees3, {tuple, {}}} = set_validator_online_(Bob, TxEnv, Trees2),
     Entropy1 = hash($A),
     TopHash = aetx_env:key_hash(TxEnv),
-    Commitments = commitments(#{TopHash => [pubkey(?ALICE), pubkey(?BOB)]}),
+    Commitments = commitments([{TopHash, ?ALICE}, {TopHash, ?BOB}]),
     {ok, Trees4, {tuple, {{address, Bob}, _}}} = hc_elect_(Entropy1, Commitments, ?OWNER_PUBKEY, TxEnv, Trees3),
     {ok, _, {address, Bob}} = leader_(?OWNER_PUBKEY, TxEnv, Trees4),
     %% same context, different entropy leads to different leader
@@ -1897,19 +1899,19 @@ commitments_determine_who_participates(_Config) ->
     {ok, Trees3, {tuple, {}}} = set_validator_online_(Bob, TxEnv, Trees2),
     TopHash = aetx_env:key_hash(TxEnv),
     Test =
-        fun(Pubkey) ->
+        fun({Pubkey, PrivKey}) ->
             lists:foreach(
                 fun(Char) ->
                     Entropy = hash(Char),
-                    Commitments = commitments(#{TopHash => [Pubkey]}),
+                    Commitments = commitments([{TopHash, {Pubkey, PrivKey}}]),
                     {ok, Trees4, {tuple, {{address, Pubkey}, _}}} = hc_elect_(Entropy, Commitments, ?OWNER_PUBKEY, TxEnv, Trees3),
                     {ok, _, {address, Pubkey}} = leader_(?OWNER_PUBKEY, TxEnv, Trees4),
                     ok
                 end,
                 lists:seq(65, 122)) %% A to z
         end,
-    Test(pubkey(?ALICE)),
-    Test(pubkey(?BOB)),
+    Test(?ALICE),
+    Test(?BOB),
     ok.
 
 added_stake_power(_Config) ->
@@ -1934,12 +1936,12 @@ added_stake_power(_Config) ->
     {ok, Trees3, {tuple, {}}} = set_validator_online_(Bob, TxEnv, Trees2),
     TopHash = aetx_env:key_hash(TxEnv),
     TestOnlyOneCommiter =
-        fun(Pubkey) ->
+        fun({Pubkey, PrivKey}) ->
             lists:foreach(
                 fun(Char) ->
                     Entropy = hash(Char),
                     TopHash = aetx_env:key_hash(TxEnv),
-                    Commitments = commitments(#{TopHash => [Pubkey]}),
+                    Commitments = commitments([{TopHash, {Pubkey, PrivKey}}]),
                     Expected = [{tuple, {{address, Bob}, BobAmt}}, {tuple, {{address, Alice}, AliceAmt}}],
                     {ok, _, Expected} = sorted_validators_(Alice, TxEnv, Trees3),
                     {ok, Trees4, {tuple, {{address, Pubkey}, StakePower}}} = hc_elect_(Entropy, Commitments, ?OWNER_PUBKEY, TxEnv, Trees3),
@@ -1954,14 +1956,14 @@ added_stake_power(_Config) ->
                 end,
                 lists:seq(65, 122)) %% A to z
         end,
-    TestOnlyOneCommiter(pubkey(?ALICE)),
-    TestOnlyOneCommiter(pubkey(?BOB)),
+    TestOnlyOneCommiter(?ALICE),
+    TestOnlyOneCommiter(?BOB),
     %% test two commiters
     lists:foreach(
         fun(Char) ->
             Entropy = hash(Char),
             TopHash = aetx_env:key_hash(TxEnv),
-            Commitments = commitments(#{TopHash => [Alice, Bob]}),
+            Commitments = commitments([{TopHash, ?ALICE}, {TopHash, ?BOB}]),
             Expected = [{tuple, {{address, Bob}, BobAmt}}, {tuple, {{address, Alice}, AliceAmt}}],
             {ok, _, Expected} = sorted_validators_(Alice, TxEnv, Trees3),
             {ok, Trees4, {tuple, {{address, Pubkey}, StakePower}}} = hc_elect_(Entropy, Commitments, ?OWNER_PUBKEY, TxEnv, Trees3),
@@ -2200,9 +2202,11 @@ elect_(Caller, TxEnv, Trees0) ->
 
 hc_elect_(Entropy, Commitments, Caller, TxEnv, Trees0) ->
     ContractPubkey = election_contract_address(),
+    NetworkId = aec_parent_chain_block:encode_network_id(?NETWORK_ID),
     {ok, CallData} = aeb_fate_abi:create_calldata("elect",
                                                   [aefa_fate_code:encode_arg({string, Entropy}),
-                                                   Commitments]),
+                                                   Commitments,
+                                                   aefa_fate_code:encode_arg({bytes, NetworkId})]),
     call_contract(ContractPubkey, Caller, CallData, 0, TxEnv, Trees0).
 
 leader_(Caller, TxEnv, Trees0) ->
@@ -2341,19 +2345,23 @@ assert_equal_states(State1, State2) ->
     ?assertEqual(Shares1, Shares2),
     ok.
 
-commitments(CommitmentsMap) ->
+commitments(CommitmentsList) ->
     Commitments =
-        maps:fold(
-            fun(Commitment, Froms, Accum) ->
-                Froms1 = 
-                    lists:map(
-                        fun(F) -> aefa_fate_code:encode_arg({address, F}) end,
-                        Froms),
-                maps:put(aefa_fate_code:encode_arg({hash, Commitment}), Froms1, Accum)
+        lists:map(
+            fun({TopHash, {PubKey, PrivKey}}) ->
+                StakerPubKeyFate = aeb_fate_encoding:serialize(aeb_fate_data:make_address(PubKey)),
+                <<StakerHash:8/binary, _/binary>> = aec_hash:sha256_hash(StakerPubKeyFate),
+                <<TopKeyHash:7/binary, _/binary>> = aec_hash:sha256_hash(TopHash),
+                NetworkId = aec_parent_chain_block:encode_network_id(?NETWORK_ID),
+                Msg = aec_hash:sha256_hash(<<TopHash/binary, NetworkId/binary>>),
+                <<Signature:64/binary>> = enacl:sign_detached(Msg, PrivKey),
+                Sig = aefa_fate_code:encode_arg({signature, Signature}),
+                Staker = aefa_fate_code:encode_arg({bytes, StakerHash}),
+                TopHashEnc = aefa_fate_code:encode_arg({bytes, TopKeyHash}),
+                aeb_fate_data:make_tuple({Sig, Staker, TopHashEnc})
             end,
-            #{},
-            CommitmentsMap),
-    aeb_fate_data:make_map(Commitments).
+            CommitmentsList),
+    aeb_fate_data:make_list(Commitments).
 
 hash(Str) when is_list(Str), length(Str) =:= 32 ->
     list_to_binary(Str);

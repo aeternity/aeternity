@@ -184,7 +184,7 @@ handle_cast(_Msg, State) ->
 -spec handle_info(any(), state()) -> {noreply, state()}.
 handle_info(initialize_cache, State) ->
     TargetHeight = target_parent_height(State),
-    case aec_parent_connector:fetch_block_by_height(TargetHeight) of
+    case catch aec_parent_connector:fetch_block_by_height(TargetHeight) of
         {ok, B} ->
             aec_parent_connector:request_top(),
             State1 = post_block(B, State),
@@ -196,6 +196,10 @@ handle_info(initialize_cache, State) ->
             {noreply, State};
         {error, no_parent_chain_agreement} ->
             lager:warning("Failed to initialize cache for height ~p", [TargetHeight]),
+            timer:send_after(1000, initialize_cache),
+            {noreply, State};
+        {'EXIT', _} ->
+            lager:warning("Failed to initialize cache for height EXIT ~p", [TargetHeight]),
             timer:send_after(1000, initialize_cache),
             {noreply, State}
     end;
@@ -399,12 +403,12 @@ post_commitments(TopHash, #state{sign_module = SignModule} = State) ->
     %% aetx_env:tx_env_and_trees_from_top/1 could be dangerous
     {TxEnv, Trees} = aetx_env:tx_env_and_trees_from_hash(aetx_transaction, TopHash),
     {ok, AllStakers} = aec_consensus_hc:parent_chain_validators(TxEnv, Trees),
-    LocalStakers =
-        lists:filter(fun SignModule:is_key_present/1, AllStakers),
-    Commitment = aeser_api_encoder:encode(key_block_hash, TopHash),
+    NetworkId = aec_governance:get_network_id(),
+    LocalStakers = lists:filter(fun SignModule:is_key_present/1, AllStakers),
     lists:foreach(
         fun(Staker) ->
-            case aec_parent_connector:post_commitment(Staker, Commitment) of
+            CommitmentBin = aec_parent_chain_block:encode_commitment_btc(Staker, TopHash, NetworkId),
+            case aec_parent_connector:post_commitment(Staker, CommitmentBin) of
                 ok ->
                     lager:debug("Posted commitment for staker ~p", [Staker]),
                     ok;
@@ -417,7 +421,6 @@ post_commitments(TopHash, #state{sign_module = SignModule} = State) ->
         end,
         LocalStakers),
     State.
-
 
 %% we post commitments when there is a new block on the child chain
 %% the situation is a bit different for commitments right after the
