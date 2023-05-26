@@ -57,14 +57,10 @@ new() ->
 
 
 -spec push_call_stack(info()) -> info().
-push_call_stack(disabled) ->
-    disabled;
 push_call_stack(Info = #dbginf{location = Loc, call_stack = Stack}) ->
     Info#dbginf{call_stack = [Loc | Stack]}.
 
 -spec pop_call_stack(info()) -> info().
-pop_call_stack(disabled) ->
-    disabled;
 pop_call_stack(Info = #dbginf{call_stack = []}) ->
     Info;
 pop_call_stack(Info = #dbginf{call_stack = [_ | Rest]}) ->

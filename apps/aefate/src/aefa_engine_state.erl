@@ -109,6 +109,12 @@
 -type void_or_fate() :: ?FATE_VOID | aeb_fate_data:fate_type().
 -type pubkey() :: <<_:256>>.
 
+-ifdef(DEBUG_INFO).
+-type debug_info() :: aefa_debug:info().
+-else.
+-type debug_info() :: disabled.
+-endif.
+
 -record(es, { accumulator       :: void_or_fate()
             , accumulator_stack :: [aeb_fate_data:fate_type()]
             , bbs               :: map()
@@ -132,7 +138,7 @@
             , stores            :: aefa_stores:store()
             , trace             :: list()
             , vm_version        :: non_neg_integer()
-            , debug_info        :: disabled | aefa_debug:debug_info()
+            , debug_info        :: debug_info()
             }).
 
 -opaque state() :: #es{}.
