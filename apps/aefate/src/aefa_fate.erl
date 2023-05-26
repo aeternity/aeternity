@@ -289,6 +289,8 @@ execute(EngineState) ->
     loop(Instructions, EngineState).
 -endif.
 
+-dialyzer({nowarn_function, loop/2}).
+
 loop(Instructions, EngineState) ->
     case step(Instructions, EngineState) of
         {stop, FinalState} ->

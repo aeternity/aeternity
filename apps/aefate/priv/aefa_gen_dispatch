@@ -28,9 +28,18 @@ maybe_show_help(true) ->
 maybe_show_help(false) ->
     ok.
 
+-ifndef(DEBUG_INFO).
+filter_out_ops(Ops, Remove) ->
+    [Op || Op = #{constructor := C} <- Ops, not lists:member(C, Remove)].
+
+-define(FILTER_OPS(Ops), filter_out_ops(Ops, [dbg_loc, dbg_contract, dbg_def, dbg_undef])).
+-else.
+-define(FILTER_OPS(Ops), Ops).
+-endif.
+
 do_main(Filename) ->
     {ok, File} = file:open(Filename, [write]),
-    Ops = aeb_fate_generate_ops:get_ops(),
+    Ops = ?FILTER_OPS(aeb_fate_generate_ops:get_ops()),
     Instructions = lists:flatten([gen_eval(Op)++"\n" || Op <- Ops]),
     io:format(File,
 	      "%%\n%% This file is generated. Any modifications will be overwritten.\n%%\n"
