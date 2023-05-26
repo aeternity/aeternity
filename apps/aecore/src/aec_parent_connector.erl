@@ -16,13 +16,7 @@
 %% - Call consensus smart contract
 %% Parent chain commitment txs:
 %% - To AE parent - signed by a parent chain AE account hosted in the HC node via aec_keys
-%% - To BTC parent - signed by the external bitcoind hosted wallet
-%% - Containing a commitment of <<1 = Vsn, HCTopHash, HCStakerPubkey>> signed by the
-%%   HC Staker account. Sent as <<HCTopHash, HCStakerPubkey, Signature>>
-%%   FIXME: add some nonce here?? Attack vectors?? Child chain network Id??
-%%   Goal is to prove that the commitment TX was genuinely created by the potential leader account
-%%   on the child chain.
-%%   FIXME: BTC only gives us 80 bytes so we can't include the signature. Dropped sig for now
+%% - To BTC/Doge parent - signed by the external bitcoind/dogecoind hosted wallet
 -behaviour(gen_server).
 
 %%%=============================================================================

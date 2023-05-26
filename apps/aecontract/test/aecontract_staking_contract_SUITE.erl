@@ -1870,7 +1870,6 @@ entropy_impacts_leader_election(_Config) ->
     Entropy1 = hash($A),
     TopHash = aetx_env:key_hash(TxEnv),
     Commitments = commitments([{TopHash, ?ALICE}, {TopHash, ?BOB}]),
-    ct:pal("hc_elect entropy_impacts_leader_election"),
     {ok, Trees4, {tuple, {{address, Bob}, _}}} = hc_elect_(Entropy1, Commitments, ?OWNER_PUBKEY, TxEnv, Trees3),
     {ok, _, {address, Bob}} = leader_(?OWNER_PUBKEY, TxEnv, Trees4),
     %% same context, different entropy leads to different leader
@@ -1905,7 +1904,6 @@ commitments_determine_who_participates(_Config) ->
                 fun(Char) ->
                     Entropy = hash(Char),
                     Commitments = commitments([{TopHash, {Pubkey, PrivKey}}]),
-                    ct:pal("hc_elect commitments_determine_who_participates"),
                     {ok, Trees4, {tuple, {{address, Pubkey}, _}}} = hc_elect_(Entropy, Commitments, ?OWNER_PUBKEY, TxEnv, Trees3),
                     {ok, _, {address, Pubkey}} = leader_(?OWNER_PUBKEY, TxEnv, Trees4),
                     ok
@@ -2203,11 +2201,8 @@ elect_(Caller, TxEnv, Trees0) ->
     call_contract(ContractPubkey, Caller, CallData, 0, TxEnv, Trees0).
 
 hc_elect_(Entropy, Commitments, Caller, TxEnv, Trees0) ->
-    ct:pal("Doing hc_elect"),
     ContractPubkey = election_contract_address(),
-    NetworkId0 = ?NETWORK_ID,
-    BytesToPad = 15 - byte_size(NetworkId0),
-    NetworkId = <<NetworkId0/binary, 0:BytesToPad/unit:8>>,
+    NetworkId = aec_parent_chain_block:encode_network_id(?NETWORK_ID),
     {ok, CallData} = aeb_fate_abi:create_calldata("elect",
                                                   [aefa_fate_code:encode_arg({string, Entropy}),
                                                    Commitments,
@@ -2357,9 +2352,8 @@ commitments(CommitmentsList) ->
                 StakerPubKeyFate = aeb_fate_encoding:serialize(aeb_fate_data:make_address(PubKey)),
                 <<StakerHash:8/binary, _/binary>> = aec_hash:sha256_hash(StakerPubKeyFate),
                 <<TopKeyHash:7/binary, _/binary>> = aec_hash:sha256_hash(TopHash),
-                BytesToPad = 15 - byte_size(?NETWORK_ID),
-                NetworkIdPadded = <<?NETWORK_ID/binary, 0:BytesToPad/unit:8>>,
-                Msg = aec_hash:sha256_hash(<<TopHash/binary, NetworkIdPadded/binary>>),
+                NetworkId = aec_parent_chain_block:encode_network_id(?NETWORK_ID),
+                Msg = aec_hash:sha256_hash(<<TopHash/binary, NetworkId/binary>>),
                 <<Signature:64/binary>> = enacl:sign_detached(Msg, PrivKey),
                 Sig = aefa_fate_code:encode_arg({signature, Signature}),
                 Staker = aefa_fate_code:encode_arg({bytes, StakerHash}),

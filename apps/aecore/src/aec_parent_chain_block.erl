@@ -31,6 +31,7 @@
          prev_hash/1,
          commitments/1,
          set_commitments/2,
+         encode_network_id/1,
          encode_commitment_basic/3,
          encode_commitment_full/3,
          encode_commitment_btc/3,
@@ -77,7 +78,7 @@ commitments(#block{commitments = Commitments}) -> {ok, Commitments}.
 %%  - Anonymously
 %%  - So we can verify the staking account was the originator of this commitment
 %%  - Be sure that it is for the right hyperchain
-%% So, we store the signature of the (StakerPubKey, TopHash, NetworkId), signed by the Staker
+%% So, we store the signature of the (TopHash, NetworkId), signed by the Staker
 %% together with enough of the hash of StakerPubKey and TopHash to limit the search for these entries
 %% in the smart contract election
 
@@ -96,8 +97,7 @@ encode_commitment_btc(StakerPubKey, TopHash, NetworkId) ->
     StakerPubKeyFate = aeb_fate_encoding:serialize(aeb_fate_data:make_address(StakerPubKey)),
     <<StakerHash:8/binary, _/binary>> = aec_hash:sha256_hash(StakerPubKeyFate),
     <<TopKeyHash:7/binary, _/binary>> = aec_hash:sha256_hash(TopHash),
-    BytesToPad = 15 - byte_size(NetworkId),
-    NetworkIdPadded = <<NetworkId/binary, 0:BytesToPad/unit:8>>,
+    NetworkIdPadded = encode_network_id(NetworkId),
     Msg = aec_hash:sha256_hash(<<TopHash/binary, NetworkIdPadded/binary>>), %% FIXME: Add some Nonce?
     {ok, <<Signature:64/binary>>} = aec_preset_keys:sign_binary(Msg, StakerPubKey),
     <<?HC_COMMITMENT_BTC, Signature/binary, StakerHash/binary, TopKeyHash/binary>>.
@@ -109,3 +109,12 @@ decode_commitment(<<?HC_COMMITMENT_FULL, Signature:64/binary, StakerPubKey:32/bi
     {full, Signature, StakerPubKey, TopHash};
 decode_commitment(<<?HC_COMMITMENT_BTC, Signature:64/binary, StakerHash:8/binary, TopKeyHash:7/binary>>) ->
     {btc, Signature, StakerHash, TopKeyHash}.
+
+encode_network_id(NetworkId) when is_binary(NetworkId), size(NetworkId) =< 15 ->
+    BytesToPad = 15 - byte_size(NetworkId),
+    <<NetworkId/binary, 0:BytesToPad/unit:8>>;
+encode_network_id(NetworkId) when is_binary(NetworkId) ->
+    <<NetworkId:15/binary>> = NetworkId,
+    NetworkId;
+encode_network_id(_) ->
+    <<0:15/unit:8>>.

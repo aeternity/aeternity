@@ -139,7 +139,6 @@ start_btc(StakersEncoded, PCSpendAddress, ParentConnMod) ->
             end,
             StakersEncoded),
     StakersMap = maps:from_list(Stakers),
-    lager:debug("Stakers: ~p", [StakersMap]),
     start_dependency(aec_preset_keys, [StakersMap]),
     HCPCPairs = lists:map(
             fun(#{<<"hyper_chain_account">> := #{<<"pub">> := EncodedPubkey},
@@ -170,7 +169,6 @@ start_ae(StakersEncoded, PCSpendAddress) ->
     %% TODO: ditch this after we move beyond OTP24
     _Mod = aec_preset_keys,
     start_dependency(aec_preset_keys, [StakersMap]),
-    lager:debug("Stakers: ~p", [StakersMap]),
     HCPCPairs = lists:map(
             fun(#{<<"hyper_chain_account">> := #{<<"pub">> := HCEncodedPubkey},
                   <<"parent_chain_account">> := #{<<"pub">> := PCEncodedPubkey}
@@ -248,9 +246,7 @@ state_pre_transform_key_node(_Node, Trees) ->
         {ok, Block} ->
             Entropy = aec_parent_chain_block:hash(Block),
             CommitmentsSophia = encode_commitments(Block),
-            NetworkId0 = aec_governance:get_network_id(),
-            BytesToPad = 15 - byte_size(NetworkId0),
-            NetworkId = <<NetworkId0/binary, 0:BytesToPad/unit:8>>,
+            NetworkId = aec_parent_chain_block:encode_network_id(aec_governance:get_network_id()),
             {ok, CD} = aeb_fate_abi:create_calldata("elect",
                                                     [aefa_fate_code:encode_arg({string, Entropy}),
                                                      CommitmentsSophia,
@@ -370,9 +366,7 @@ generate_key_header_seal(_, Candidate, PCHeight, #{expected_key_block_rate := _E
         {ok, Block} ->
             Entropy = aec_parent_chain_block:hash(Block),
             CommitmentsSophia = encode_commitments(Block),
-            NetworkId0 = aec_governance:get_network_id(),
-            BytesToPad = 15 - byte_size(NetworkId0),
-            NetworkId = <<NetworkId0/binary, 0:BytesToPad/unit:8>>,
+            NetworkId = aec_parent_chain_block:encode_network_id(aec_governance:get_network_id()),
             {TxEnv, Trees} = aetx_env:tx_env_and_trees_from_top(aetx_transaction),
             {ok, CD} = aeb_fate_abi:create_calldata("elect_next",
                                                     [aefa_fate_code:encode_arg({string, Entropy}),
@@ -415,9 +409,7 @@ set_key_block_seal(KeyBlock0, Seal) ->
     {ok, Block} = aec_parent_chain_cache:get_block_by_height(PCHeight),
     Entropy = aec_parent_chain_block:hash(Block),
     CommitmentsSophia = encode_commitments(Block),
-    NetworkId0 = aec_governance:get_network_id(),
-    BytesToPad = 15 - byte_size(NetworkId0),
-    NetworkId = <<NetworkId0/binary, 0:BytesToPad/unit:8>>,
+    NetworkId = aec_parent_chain_block:encode_network_id(aec_governance:get_network_id()),
     {ok, CD} = aeb_fate_abi:create_calldata("elect_next",
                                             [aefa_fate_code:encode_arg({string, Entropy}),
                                              CommitmentsSophia,
@@ -633,9 +625,7 @@ next_beneficiary() ->
 
             Entropy = aec_parent_chain_block:hash(Block),
             CommitmentsSophia = encode_commitments(Block),
-            NetworkId0 = aec_governance:get_network_id(),
-            BytesToPad = 15 - byte_size(NetworkId0),
-            NetworkId = <<NetworkId0/binary, 0:BytesToPad/unit:8>>,
+            NetworkId = aec_parent_chain_block:encode_network_id(aec_governance:get_network_id()),
             {ok, CD} = aeb_fate_abi:create_calldata("elect_next",
                                                     [aefa_fate_code:encode_arg({string, Entropy}),
                                                      CommitmentsSophia,
