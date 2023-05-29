@@ -332,6 +332,7 @@ start_chain_db(ram) ->
     ok = aec_db:initialize_db(ram),
     Tabs = [Tab || {Tab, _} <- aec_db:tables(ram)],
     ok = mnesia:wait_for_tables(Tabs, 5000),
+    aec_db_gc:install_test_env(),
     ok;
 
 start_chain_db(disc) ->
@@ -344,8 +345,10 @@ start_chain_db(disc) ->
 stop_chain_db() ->
     stop_chain_db(persistent_term:get({?MODULE, db_mode})).
 stop_chain_db(ram) ->
+    aec_db_gc:cleanup(),
     application:stop(mnesia);
 stop_chain_db({disc, Persist}) ->
+    aec_db_gc:cleanup(),
     application:stop(mnesia),
     application:set_env(aecore, persist, Persist),
     ok = mnesia:delete_schema([node()]).

@@ -75,7 +75,7 @@ macos-tarball:
     package_name:
       type: string
   macos:
-    xcode: "11.7.0" # macOS 10.15.5 (Catalina)
+    xcode: "13.2.1" # macOS 11.6.2 (Big Sur)
   resource_class: macos.x86.medium.gen2
   working_directory: /Users/distiller/aeternity
   environment:
@@ -115,7 +115,8 @@ macos-standalone:
     package_name:
       type: string
   macos:
-    xcode: "11.7.0" # macOS 10.15.5 (Catalina)
+    xcode: "13.2.1" # macOS 11.6.2 (Big Sur)
+  resource_class: macos.x86.medium.gen2
   working_directory: /Users/distiller/aeternity
   steps:
     - fixed_checkout

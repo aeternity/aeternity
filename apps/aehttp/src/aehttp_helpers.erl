@@ -324,6 +324,8 @@ get_info_object_from_tx(TxKey, TypeKey, CallKey) ->
                             %% {ok, maps:put(TypeKey, TxType, maps:put(CallKey, atom_to_binary(TxType, utf8), State))};
                             %% That is not backward compatible, but consistent with inner Txs
                             {error, {400, [], #{<<"reason">> => <<"Tx has no info">>}}};
+                        {error, garbage_collected} ->
+                            {error, {410, [], #{<<"reason">> => <<"State data at the requested height has been garbage-collected">>}}};
                         {error, Why} ->
                             Msg = atom_to_binary(Why, utf8),
                             {error, {400, [], #{<<"reason">> => Msg}}}

@@ -77,36 +77,23 @@
 -export([ fold_mempool/2
         ]).
 
--export([ state_tab/1
+%% GC-related
+-export([ gced_tables/0
+        , primary_state_tab/1
         , make_primary_state_tab/2
-        , secondary_state_tab/1 ]).
+        , secondary_state_tab/1
+        , write_last_gc_switch/1
+        , read_last_gc_switch/0
+        , read_last_gc_switch/1
+        , write_last_gc_scan/1
+        , read_last_gc_scan/0 ]).
 
 %% MP trees backend
--export([ find_accounts_node/1
-        , find_calls_node/1
-        , find_channels_node/1
-        , find_contracts_node/1
-        , find_ns_node/1
-        , find_ns_cache_node/1
-        , find_oracles_node/1
-        , find_oracles_cache_node/1
-        , dirty_find_accounts_node/1
-        , dirty_find_calls_node/1
-        , dirty_find_channels_node/1
-        , dirty_find_contracts_node/1
-        , dirty_find_ns_node/1
-        , dirty_find_ns_cache_node/1
-        , dirty_find_oracles_node/1
-        , dirty_find_oracles_cache_node/1
-        , write_accounts_node/2
-        , write_accounts_node/3
-        , write_calls_node/2
-        , write_channels_node/2
-        , write_contracts_node/2
-        , write_ns_node/2
-        , write_ns_cache_node/2
-        , write_oracles_node/2
-        , write_oracles_cache_node/2
+-export([ tree_table_name/1
+        , new_tree_context/2
+        , lookup_tree_node/2
+        , enter_tree_node/3
+        , node_is_in_primary/2
         ]).
 
 -export([ find_block_state/1
@@ -156,10 +143,14 @@
         , dirty_first/1
         , clear_table/1 ]).
 
+-export([cleanup/0]).
+
 -export([backend_mode/0]).
 
+-ifdef(TEST).
 -export([ install_test_env/0
         , uninstall_test_env/0 ]).
+-endif.
 
 -include("blocks.hrl").
 -include("aec_db.hrl").
@@ -183,8 +174,16 @@
 %% - one per state tree
 %% - untrusted peers
 
--define(BYPASS, {?MODULE, mnesia_bypass}).
--define(DIRECT_API, {?MODULE, direct_api}).
+%% Persistent-term keys.
+%% For cleanup purposes, we ensure that element(1,Key) == ?MODULE
+-define(PT_BYPASS,                  {?MODULE, mnesia_bypass}).
+-define(PT_DIRECT_API,              {?MODULE, direct_api}).
+-define(PT_ADDED_PTS,               {?MODULE, added_pts}).
+-define(PT_BACKEND_MODULE,          {?MODULE, backend_module}).
+-define(PT_CHAIN_MIGRATION(Key),    {?MODULE, chain_migration, Key}).
+-define(PT_MIGRATION_KEY_HEADERS,   {?MODULE, chain_migration, key_headers}).
+-define(PT_PRIMARY_STATE_TAB(Tree), {?MODULE, primary_state_tab, Tree}).
+
 
 -define(TAB(Record),
         {Record, tab(Mode, Record, record_info(fields, Record), [])}).
@@ -196,6 +195,38 @@
 
 -define(TX_IN_MEMPOOL, []).
 -define(PERSIST, true).
+
+%% As table names are to some extent dynamic, it's cumbersome to
+%% define a very specific type.
+-type table_name() :: atom().
+
+%% With tree names, we do have a specific type.
+%% This should be enough for Dialyzer to determine if we're mixing
+%% tree names and table names.
+-type tree_name() :: aec_trees:tree_name().
+
+-record(tree, { table              :: atom()
+              , mode = transaction :: dirty | transaction
+            }).
+
+-record(tree_gc, { primary            :: atom()
+                 , secondary          :: atom()
+                 , record             :: atom()
+                 , mode = transaction :: atom()
+                }).
+-type tree_context() :: #tree{} | #tree_gc{}.
+-type value() :: aeu_mp_trees:value().
+-type hash() :: aeu_mp_trees:key().
+
+-type gc_table_spec() :: #{ tree := tree_name()
+                          , copies := [table_name()] }.
+-type map_of_gced_tables() :: #{ table_name() := gc_table_spec() }.
+
+cleanup() ->
+    PTs = persistent_term:get(),
+    [persistent_term:erase(K) || {K,_} <- PTs,
+                                 element(1, K) == ?MODULE],
+    ok.
 
 tables(Mode0) ->
     Mode = expand_mode(Mode0),
@@ -230,7 +261,8 @@ add_gc_extra_tabs(Tabs) ->
 
 maybe_add_gc_tab({Tab, Spec0} = Entry, Acc) ->
     case maps:get(Tab, gced_tables(), undefined) of
-        #{copies := Tabs} when is_list(Tabs) ->
+        #{copies := Cs} when is_list(Cs) ->
+            Tabs = [Tab|Cs],
             Spec = ensure_record_name(Tab, Spec0),
             [{T, note_other_tabs(Tabs -- [T], Spec)} || T <- Tabs] ++ Acc;
         undefined -> [Entry | Acc]
@@ -244,8 +276,66 @@ ensure_record_name(T, Spec) ->
             [{record_name, T}|Spec]
     end.
 
+%% Some mapping code for TreeName -> TableName.
+%% For users of state trees, we want the API functions (with a few exceptions)
+%% to take the tree name (as in aec_trees:tree_name()). This module then needs to
+%% keep track of whether GC is enabled, and if so, which physical table is the
+%% current primary.
+%% The main exception is the make_primary_state_tab/2 function, called by
+%% the aec_db_gc module.
+%%
+%% An unfortunate legacy artifact is that the tree name oracles_cache is fixed
+%% in the serialization API, whereas the DB tables name is aec_oracle_cache.
+%% outside the aec_db module, it's always oracles_cache.
+%%
+-spec tree_table_name(binary() | table_name()) -> table_name().
+tree_table_name(T) when is_atom(T) ->
+    tree_table_name_a(T);
+tree_table_name(T) when is_list(T); is_binary(T) ->
+    tree_table_name_s(T).
+
+tree_table_name_s(Tree) ->
+    S = to_binary(Tree),
+    case S of
+        <<"accounts">>      -> aec_account_state;
+        <<"calls">>         -> aec_call_state;
+        <<"channels">>      -> aec_channel_state;
+        <<"contracts">>     -> aec_contract_state;
+        <<"ns">>            -> aec_name_service_state;
+        <<"ns_cache">>      -> aec_name_service_cache;
+        <<"oracles">>       -> aec_oracle_state;
+        <<"oracles_cache">> -> aec_oracle_cache
+    end.
+
+-spec tree_table_name_a(tree_name()) -> table_name().
+tree_table_name_a(A) ->
+    case A of
+        accounts      -> aec_account_state;
+        calls         -> aec_call_state;
+        channels      -> aec_channel_state;
+        contracts     -> aec_contract_state;
+        ns            -> aec_name_service_state;
+        ns_cache      -> aec_name_service_cache;
+        oracles       -> aec_oracle_state;
+        oracles_cache -> aec_oracle_cache
+    end.
+
+to_binary(B) when is_binary(B) -> B;
+to_binary(L) when is_list(L)   -> iolist_to_binary(L).
+
+%% We do not duplicate the canonical table name in the 'copies'
+-spec gced_tables() -> map_of_gced_tables().
 gced_tables() ->
-    #{aec_account_state => #{copies => [aec_account_state, aec_account_state_1]}}.
+    #{
+       aec_account_state      => #{tree => accounts , copies => [aec_account_state_1]}
+     , aec_call_state         => #{tree => calls    , copies => [aec_call_state_1]}
+     , aec_channel_state      => #{tree => channels , copies => [aec_channel_state_1]}
+     , aec_contract_state     => #{tree => contracts, copies => [aec_contract_state_1]}
+     , aec_name_service_state => #{tree => ns       , copies => [aec_name_service_state_1]}
+     , aec_name_service_cache => #{tree => ns_cache , copies => [aec_name_service_cache_1]}
+     , aec_oracle_state       => #{tree => oracles  , copies => [aec_oracle_state_1]}
+     , aec_oracle_cache       => #{tree => oracles_cache, copies => [aec_oracle_cache_1]}
+     }.
 
 note_other_tabs(Ts, Props) ->
     UPs = proplists:get_value(user_properties, Props, []),
@@ -427,7 +517,7 @@ activity(Type, Fun) when Type == async_dirty;
     end.
 
 use_mrdb_api() ->
-    persistent_term:get(?DIRECT_API, false).
+    persistent_term:get(?PT_DIRECT_API, false).
 
 ensure_activity(mnesia_rocksdb, Type, Fun) ->
     %% lager:debug("Backend = mnesia_rocksdb, Type = ~p, F = ~p:~p/0",
@@ -491,7 +581,7 @@ do_transaction(_BackendMod, Type, Fun) ->
     mnesia:activity(Type, Fun).
 
 bypass_on_commit(R) ->
-    case persistent_term:get(?BYPASS, no_bypass) of
+    case persistent_term:get(?PT_BYPASS, no_bypass) of
         rocksdb ->
             {mnesia, _, {tidstore, TStore, _, _}} = get(mnesia_activity_state),
             try mrdb:activity(
@@ -521,7 +611,7 @@ bypass_on_commit(R) ->
                     exit(Reason)
             end;
         Other ->
-            lager:debug("?BYPASS -> ~p", [Other]),
+            lager:debug("?PT_BYPASS -> ~p", [Other]),
             R
     end.
 
@@ -767,7 +857,7 @@ find_headers_and_hash_at_height(Height) when is_integer(Height), Height >= 0 ->
 %% When benchmarked on an cloud SSD it is faster then mnesia:index_read followed by filter
 -spec find_key_headers_and_hash_at_height(pos_integer()) -> [{binary(), aec_headers:key_header()}].
 find_key_headers_and_hash_at_height(Height) when is_integer(Height), Height >= 0 ->
-    case persistent_term:get({?MODULE, chain_migration, key_headers}, done) of
+    case persistent_term:get(?PT_MIGRATION_KEY_HEADERS, done) of
         in_progress ->
             R = dirty_select(aec_headers, [{ #aec_headers{key = '_',
                                                           value = '$1',
@@ -832,76 +922,104 @@ write_block_state(Hash, Trees, AccDifficulty, ForkId, Fees, Fraud) ->
            write(BlockState)
        end).
 
-state_tab(T) ->
-    persistent_term:get({primary_state_tab, T}, T).
+-spec secondary_state_tab(tree_name()) -> table_name().
+secondary_state_tab(Tree) ->
+    Tab = tree_table_name(Tree),
+    Prim = primary_state_tab(Tree),
+    secondary_state_tab_(Tab, Prim).
 
-secondary_state_tab(T) ->
-    Prim = persistent_term:get({primary_state_tab, T}),
-    #{copies := Tabs} = maps:get(T, gced_tables()),
-    [Secondary] = Tabs -- [Prim],
+secondary_state_tab_(Tab, Prim) ->
+    #{copies := Cs} = maps:get(Tab, gced_tables()),
+    [Secondary] = [Tab|Cs] -- [Prim],
     Secondary.
 
-make_primary_state_tab(T, P) ->
-    lager:debug("New primary for ~p: ~p", [T, P]),
-    case maps:find(T, gced_tables()) of
+-spec primary_state_tab(tree_name()) -> table_name().
+primary_state_tab(Tree) ->
+    persistent_term:get(?PT_PRIMARY_STATE_TAB(Tree)).
+
+set_primary_state_tab(Tree, Tab) ->
+    lager:debug("Set Primary (~p) -> ~p", [Tree, Tab]),
+    persistent_term:put(?PT_PRIMARY_STATE_TAB(Tree), Tab).
+
+-spec gc_enabled(tree_name()) -> false | {true, {table_name(), table_name()}}.
+gc_enabled(Tree) ->
+    try primary_state_tab(Tree) of
+        Prim ->
+            Tab = tree_table_name(Tree),
+            {true, {Prim, secondary_state_tab_(Tab, Prim)}}
+    catch
+        error:_ ->
+            false
+    end.
+
+write_last_gc_switch(Height) ->
+    lager:debug("Last GC height: ~p", [Height]),
+    ?t(write(#aec_chain_state{key = last_gc_switch, value = Height})).
+
+read_last_gc_switch() ->
+    read_last_gc_switch(0).
+
+read_last_gc_switch(Default) ->
+    R = ?t(case read(aec_chain_state, last_gc_switch) of
+               [] ->
+                   Default;
+               [#aec_chain_state{value = Height}] ->
+                   Height
+           end),
+    lager:debug("<-- last GC Height: ~p", [R]),
+    R.
+
+write_last_gc_scan(Height) ->
+    lager:debug("Last complete GC scan: ~p", [Height]),
+    ?t(write(#aec_chain_state{key = last_gc_scan, value = Height})).
+
+read_last_gc_scan() ->
+    R = ?t(case read(aec_chain_state, last_gc_scan) of
+               [] ->
+                   0;
+               [#aec_chain_state{value = Height}] ->
+                   Height
+           end),
+    lager:debug("<-- last height of complete GC scan: ~p", [R]),
+    R.
+
+-spec make_primary_state_tab(tree_name(), table_name()) -> ok.
+make_primary_state_tab(Tree, P) ->
+    lager:debug("New primary for ~p: ~p", [Tree, P]),
+    Tab = tree_table_name(Tree),
+    case maps:find(Tab, gced_tables()) of
         {ok, #{copies := Tabs}} ->
-            case lists:member(P, Tabs) of
+            case P =:= Tab orelse lists:member(P, Tabs) of
                 true ->
-                    ?t(write(#aec_chain_state{key = {primary_state_tab, T}, value = P}));
+                    ?t(write(#aec_chain_state{key = {primary_state_tab, Tree}, value = P}));
                 false ->
-                    error({not_a_state_tab_candidate, {T, P}})
+                    error({not_a_state_tab_candidate, {Tree, P}})
             end,
-            cache_primary_state_tab(T, P);
+            cache_primary_state_tab(Tree, P),
+            lager:debug("cached primary (~p): ~p", [Tree, primary_state_tab(Tree)]);
         error ->
-            error({not_a_gced_state_tab, T})
+            error({not_a_gced_state_tab, Tree})
     end.
 
 cache_primary_state_tabs() ->
     lager:debug("Caching primary for gced tabs", []),
     maps:fold(
-      fun(T, #{copies := Ts}, _) ->
-              Key = {primary_state_tab, T},
+      fun(T, #{tree := Tree, copies := _}, _) ->
+              Key = {primary_state_tab, Tree},
               case dirty_get_chain_state_value(Key) of
                   undefined ->
-                      P = hd(Ts),
-                      ?t(write(#aec_chain_state{key = Key, value = P})),
-                      cache_primary_state_tab(T, P);
+                      ?t(write(#aec_chain_state{key = Key, value = T})),
+                      cache_primary_state_tab(Tree, T);
                   P ->
-                      cache_primary_state_tab(T, P)
+                      cache_primary_state_tab(Tree, P)
               end,
               ok
       end, ok, gced_tables()).
 
+-spec cache_primary_state_tab(tree_name(), table_name()) -> ok.
 cache_primary_state_tab(T, P) ->
     lager:debug("Caching primary for ~p: ~p", [T, P]),
-    persistent_term:put({primary_state_tab, T}, P).
-
-write_accounts_node(Hash, Node) ->
-    ?t(write(state_tab(aec_account_state), #aec_account_state{key = Hash, value = Node}, write)).
-
-write_accounts_node(Table, Hash, Node) ->
-    ?t(write(Table, #aec_account_state{key = Hash, value = Node}, write)).
-
-write_calls_node(Hash, Node) ->
-    ?t(write(#aec_call_state{key = Hash, value = Node})).
-
-write_channels_node(Hash, Node) ->
-    ?t(write(#aec_channel_state{key = Hash, value = Node})).
-
-write_contracts_node(Hash, Node) ->
-    ?t(write(#aec_contract_state{key = Hash, value = Node})).
-
-write_ns_node(Hash, Node) ->
-    ?t(write(#aec_name_service_state{key = Hash, value = Node})).
-
-write_ns_cache_node(Hash, Node) ->
-    ?t(write(#aec_name_service_cache{key = Hash, value = Node})).
-
-write_oracles_node(Hash, Node) ->
-    ?t(write(#aec_oracle_state{key = Hash, value = Node})).
-
-write_oracles_cache_node(Hash, Node) ->
-    ?t(write(#aec_oracle_cache{key = Hash, value = Node})).
+    set_primary_state_tab(T, P).
 
 write_genesis_hash(Hash) when is_binary(Hash) ->
     ?t(write(#aec_chain_state{key = genesis_hash, value = Hash})).
@@ -930,11 +1048,11 @@ start_chain_migration(Key) ->
     %% Writes occur before the error store is initialized - if error keys are present then this will crash
     %% Fortunately this write will be correctly handled by the rocksdb bypass logic
     ?t(write(#aec_chain_state{key = {chain_migration_lock, Key}, value = lock})),
-    persistent_term:put({?MODULE, chain_migration, Key}, in_progress).
+    persistent_term:put(?PT_CHAIN_MIGRATION(Key), in_progress).
 
 finish_chain_migration(Key) ->
     ?t(delete(aec_chain_state, {chain_migration_lock, Key}, write)),
-    persistent_term:erase({?MODULE, chain_migration, Key}).
+    persistent_term:erase(?PT_CHAIN_MIGRATION(Key)).
 
 -spec chain_migration_status(atom()) -> in_progress | done.
 chain_migration_status(Key) ->
@@ -1082,101 +1200,110 @@ find_block_state_and_data(Hash, DirtyBackend) ->
         [] -> none
     end.
 
-find_oracles_node(Hash) ->
-    case ?t(read(aec_oracle_state, Hash)) of
-        [#aec_oracle_state{value = Node}] -> {value, Node};
-        [] -> none
+new_tree_context(Mode, Tree) when Mode == dirty;
+                                  Mode == transaction ->
+    ActivityType = case Mode of
+                       dirty -> async_dirty;
+                       transaction -> transaction
+                   end,
+    Res = case gc_enabled(Tree) of
+              {true, {Primary, Secondary}} ->
+                  Record = mnesia:table_info(Primary, record_name),
+                  #tree_gc{ primary   = Primary
+                          , secondary = Secondary
+                          , record    = Record
+                          , mode      = ActivityType };
+              false ->
+                  Tab = tree_table_name(Tree),
+                  #tree{ table = Tab
+                       , mode  = ActivityType }
+          end,
+    Res.
+
+%% Behaves like gb_trees:lookup(Key, Tree).
+-spec lookup_tree_node(hash(), tree_context()) -> none | {value, value()}.
+lookup_tree_node(Hash, #tree{table = T, mode = ActivityType}) ->
+    ensure_activity(ActivityType,
+                    fun() ->
+                            lookup_tree_node_(Hash, T, T)
+                    end);
+lookup_tree_node(Hash, #tree_gc{ primary   = Prim
+                               , secondary = Sec
+                               , record    = Rec
+                               , mode      = ActivityType }) ->
+    ensure_activity(ActivityType,
+                    fun() ->
+                            case lookup_tree_node_(Hash, Prim, Rec) of
+                                {value, _} = Res ->
+                                    Res;
+                                none ->
+                                    case lookup_tree_node_(Hash, Sec, Rec) of
+                                        none ->
+                                            none;
+                                        {value, V} = Res ->
+                                            promote_tree_node(Hash, V, Prim, Rec),
+                                            Res
+                                    end
+                            end
+                    end).
+
+lookup_tree_node_(Hash, T, Rec) ->
+    case read(T, Hash) of
+        [Obj] -> {value, get_tree_value(Rec, Obj)};
+        []    -> none
     end.
 
-dirty_find_oracles_node(Hash) ->
-    case ?dirty_dirty_read(aec_oracle_state, Hash) of
-        [#aec_oracle_state{value = Node}] -> {value, Node};
-        [] -> none
-    end.
+get_tree_value(Rec, {Rec, _, Value}) ->
+    Value.
 
-find_oracles_cache_node(Hash) ->
-    case ?t(read(aec_oracle_cache, Hash)) of
-        [#aec_oracle_cache{value = Node}] -> {value, Node};
-        [] -> none
-    end.
+node_is_in_primary(Hash, #tree_gc{ primary = Prim
+                                 , mode = ActivityType }) ->
+    ensure_activity(ActivityType,
+                    fun() ->
+                            case read(Prim, Hash) of
+                                [_] ->
+                                    true;
+                                [] ->
+                                    false
+                            end
+                    end).
 
-dirty_find_oracles_cache_node(Hash) ->
-    case ?dirty_dirty_read(aec_oracle_cache, Hash) of
-        [#aec_oracle_cache{value = Node}] -> {value, Node};
-        [] -> none
-    end.
+%% Behaves similary to gb_trees:enter(Key, Value, Tree) (but different return value)
+-spec enter_tree_node(hash(), binary(), tree_context()) -> ok.
+enter_tree_node(Hash, Value, #tree{table = T, mode = ActivityType}) ->
+    ensure_activity(ActivityType,
+                    fun() ->
+                            enter_tree_node_(Hash, Value, T, T)
+                    end);
+enter_tree_node(Hash, Value, #tree_gc{ primary = Prim
+                                     , record  = Rec
+                                     , mode    = ActivityType }) ->
+    ensure_activity(ActivityType,
+                    fun() ->
+                            enter_tree_node_(Hash, Value, Prim, Rec)
+                    end).
 
-find_calls_node(Hash) ->
-    case ?t(read(aec_call_state, Hash)) of
-        [#aec_call_state{value = Node}] -> {value, Node};
-        [] -> none
-    end.
+enter_tree_node_(Hash, Value, Tab, Rec) ->
+    Obj = mk_record(Rec, Hash, Value),
+    ?t(write(Tab, Obj, write)).
 
-dirty_find_calls_node(Hash) ->
-    case ?dirty_dirty_read(aec_call_state, Hash) of
-        [#aec_call_state{value = Node}] -> {value, Node};
-        [] -> none
-    end.
+%% Promotion is always dirty. For one thing, we don't want to ever roll back,
+%% and the data is immutable anyway.
+promote_tree_node(Hash, Value, Tab, Rec) ->
+    Obj = mk_record(Rec, Hash, Value),
+    activity(async_dirty, fun() ->
+                                  write(Tab, Obj, write)
+                          end).
 
-find_channels_node(Hash) ->
-    case ?t(read(aec_channel_state, Hash)) of
-        [#aec_channel_state{value = Node}] -> {value, Node};
-        [] -> none
-    end.
+mk_record(aec_account_state     , K, V) -> #aec_account_state{key = K, value = V};
+mk_record(aec_call_state        , K, V) -> #aec_call_state{key = K, value = V};
+mk_record(aec_channel_state     , K, V) -> #aec_channel_state{key = K, value = V};
+mk_record(aec_contract_state    , K, V) -> #aec_contract_state{key = K, value = V};
+mk_record(aec_name_service_state, K, V) -> #aec_name_service_state{key = K, value = V};
+mk_record(aec_name_service_cache, K, V) -> #aec_name_service_cache{key = K, value = V};
+mk_record(aec_oracle_state      , K, V) -> #aec_oracle_state{key = K, value = V};
+mk_record(aec_oracle_cache      , K, V) -> #aec_oracle_cache{key = K, value = V}.
 
-dirty_find_channels_node(Hash) ->
-    case ?dirty_dirty_read(aec_channel_state, Hash) of
-        [#aec_channel_state{value = Node}] -> {value, Node};
-        [] -> none
-    end.
-
-find_contracts_node(Hash) ->
-    case ?t(read(aec_contract_state, Hash)) of
-        [#aec_contract_state{value = Node}] -> {value, Node};
-        [] -> none
-    end.
-
-dirty_find_contracts_node(Hash) ->
-    case ?dirty_dirty_read(aec_contract_state, Hash) of
-        [#aec_contract_state{value = Node}] -> {value, Node};
-        [] -> none
-    end.
-
-find_ns_node(Hash) ->
-    case ?t(read(aec_name_service_state, Hash)) of
-        [#aec_name_service_state{value = Node}] -> {value, Node};
-        [] -> none
-    end.
-
-dirty_find_ns_node(Hash) ->
-    case ?dirty_dirty_read(aec_name_service_state, Hash) of
-        [#aec_name_service_state{value = Node}] -> {value, Node};
-        [] -> none
-    end.
-
-find_ns_cache_node(Hash) ->
-    case ?t(read(aec_name_service_cache, Hash)) of
-        [#aec_name_service_cache{value = Node}] -> {value, Node};
-        [] -> none
-    end.
-
-dirty_find_ns_cache_node(Hash) ->
-    case ?dirty_dirty_read(aec_name_service_cache, Hash) of
-        [#aec_name_service_cache{value = Node}] -> {value, Node};
-        [] -> none
-    end.
-
-find_accounts_node(Hash) ->
-    case ?t(read(state_tab(aec_account_state), Hash)) of
-        [#aec_account_state{value = Node}] -> {value, Node};
-        [] -> none
-    end.
-
-dirty_find_accounts_node(Hash) ->
-    case ?dirty_dirty_read(state_tab(aec_account_state), Hash) of
-        [#aec_account_state{value = Node}] -> {value, Node};
-        [] -> none
-    end.
 
 get_chain_state_value(Key) ->
     ?t(case read(aec_chain_state, Key) of
@@ -1354,21 +1481,21 @@ prepare_mnesia_bypass() ->
         [] ->
             lager:debug("No bypass", []),
             %% Check whether we can bypass mnesia in some cases
-            persistent_term:erase(?BYPASS); %% TODO: add leveled backend here
+            persistent_term:erase(?PT_BYPASS); %% TODO: add leveled backend here
         [_|_] ->
             case aeu_env:find_config([<<"chain">>, <<"db_direct_access">>], [ user_config
                                                                             , schema_default
                                                                             , {value, false} ]) of
                 {ok, true} ->
                     lager:debug("Enabling direct access for rocksdb", []),
-                    persistent_term:put(?DIRECT_API, true);
+                    persistent_term:put(?PT_DIRECT_API, true);
                 _ ->
                     case aeu_env:find_config([<<"chain">>, <<"db_commit_bypass">>], [ user_config
                                                                                     , schema_default
                                                                                     , {value, true} ]) of
                         {ok, true} ->
                             lager:debug("Enabling bypass for rocksdb", []),
-                            persistent_term:put(?BYPASS, rocksdb);
+                            persistent_term:put(?PT_BYPASS, rocksdb);
                         _ ->
                             lager:debug("NOT enabling bypass logic for rocksdb", [])
                     end
@@ -1415,10 +1542,10 @@ start_db() ->
     end.
 
 put_backend_module(#{module := M}) ->
-    persistent_term:put({?MODULE, backend_module}, M).
+    persistent_term:put(?PT_BACKEND_MODULE, M).
 
 get_backend_module() ->
-    persistent_term:get({?MODULE, backend_module}).
+    persistent_term:get(?PT_BACKEND_MODULE).
 
 mrdb_get_ref(Tab) ->
     mnesia_rocksdb_admin:get_ref(Tab, undefined).
@@ -1430,15 +1557,18 @@ initialize_db(ram) ->
 %% == Test setup env
 %% Ensures that e.g. persistent terms are present, logging which ones had to be added.
 
+-ifdef(TEST).
 install_test_env() ->
     ensure_backend_module(),
+    aec_db_gc:install_test_env(),
     ok.
 
 uninstall_test_env() ->
+    aec_db_gc:cleanup(),
     remove_added_pts().
 
 ensure_backend_module() ->
-    Key = {aec_db, backend_module},
+    Key = ?PT_BACKEND_MODULE,
     case persistent_term:get(Key, error) of
         error ->
             note_added_pt(Key),
@@ -1450,15 +1580,16 @@ ensure_backend_module() ->
 get_test_backend_module() ->
     Str = os:getenv("AETERNITY_TESTCONFIG_DB_BACKEND", "mnesia"),
     list_to_existing_atom(Str).
-
 note_added_pt(Key) ->
-    Var = {?MODULE, added_pts},
+    Var = ?PT_ADDED_PTS,
     Set = persistent_term:get(Var, ordsets:new()),
     persistent_term:put(Var, ordsets:add_element(Key, Set)).
 
 remove_added_pts() ->
-    Keys = persistent_term:get({?MODULE, added_pts}, ordsets:new()),
-    [persistent_term:erase(K) || K <- Keys].
+    Keys = persistent_term:get(?PT_ADDED_PTS, ordsets:new()),
+    [persistent_term:erase(K) || K <- Keys],
+    persistent_term:erase(?PT_ADDED_PTS).
+-endif.
 
 %% == End Test setup env
 

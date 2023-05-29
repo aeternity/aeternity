@@ -90,6 +90,9 @@ http:
         allow_methods: ["DELETE, GET, HEAD, OPTIONS, PATCH, POST, PUT"]
         # Indicates for how many seconds the results of a preflight request can be cached
         max_age: 1800
+    protocol_options:
+        # Cowboy limit to the body size of requests (in bytes)
+        max_skip_body_length: 1000000
     external:
         # Port used for external HTTP API
         port: 3013

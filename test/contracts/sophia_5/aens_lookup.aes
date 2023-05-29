@@ -1,0 +1,53 @@
+contract Test =
+  stateful entrypoint preclaim(addr  : address, chash : hash) : unit =
+    AENS.preclaim(addr, chash)
+
+  stateful entrypoint claim(addr : address, name : string, salt : int, name_fee : int) : unit =
+    AENS.claim(addr, name, salt, name_fee)
+
+  stateful entrypoint test(addr : address, name : string) =
+    let p1 = AENS.AccountPt(addr)
+    let p2 = AENS.ContractPt(addr)
+    let p3 = AENS.OraclePt(Call.caller)
+    let p4 = AENS.ChannelPt(addr)
+    let pts = {["account_pubkey"] = p1, ["contract_pubkey"] = p2,
+               ["misc1"] = p3, ["misc2"] = p4}
+
+    AENS.update(addr, name, Some(RelativeTTL(1000)), None, Some(pts))
+
+    // Check that we can't lookup things that isn't there
+    let None = AENS.lookup("not-there.chain")
+
+    // Check that we can't lookup invalid labels
+    let None = AENS.lookup("not_there.chain")
+
+    // Check that we can lookup existing name
+    let Some(AENS.Name(owner, ttl, pts2)) = AENS.lookup(name)
+
+    require(pts2 == pts, "Pointers not ok")
+    require(owner == addr, "Owner not ok")
+
+    // Do another update, but don't change anything
+    AENS.update(addr, name, None, None, None)
+    let Some(AENS.Name(_, _, pts2)) = AENS.lookup(name)
+    require(pts2 == pts, "Pointers not ok 2")
+
+    // Check TTL update
+    let h = Chain.block_height
+    AENS.update(addr, name, Some(RelativeTTL(2000)), None, None)
+    let Some(AENS.Name(_, FixedTTL(ttl), pts2)) = AENS.lookup(name)
+    require(ttl == h + 2000, "TTL not ok")
+    require(pts2 == pts, "Pointers not ok 3")
+
+    let ax  = ak_pbtwgLrNu23k9PA6XCZnUbtsvEFeQGgavY4FS2do3QP8kcp2z
+    let pts = {["account_pubkey"] = AENS.AccountPt(ax), ["blafoo"] = AENS.AccountPt(ax)}
+    AENS.update(addr, name, None, None, Some(pts))
+    let Some(AENS.Name(_, _, pts2)) = AENS.lookup(name)
+    require(pts2 == pts, "Pointers not ok 4")
+
+    let Some(a1) : option(address) = AENS.resolve(name, "account_pubkey")
+    let Some(a2) : option(address) = AENS.resolve(name, "blafoo")
+    require(ax == a1, "Address not ok 1")
+    require(ax == a2, "Address not ok 2")
+
+    true

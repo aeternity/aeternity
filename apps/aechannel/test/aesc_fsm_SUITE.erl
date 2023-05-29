@@ -3619,7 +3619,8 @@ meta(Owner, AuthOpts, SignedTx) ->
     TxBin    = aec_governance:add_network_id(aetx:serialize_to_binary(Aetx)),
     %% authenticate the inner tx, that could be a transaction instance or yet
     %% another meta
-    AuthData = make_authdata(AuthOpts, Nonce, aec_hash:hash(tx, TxBin)),
+    TxHash   = aega_test_utils:auth_data_hash(AuthOpts, TxBin),
+    AuthData = make_authdata(AuthOpts, Nonce, TxHash),
     %% produce the new layer of meta authenticating the inner tx and not the
     %% innermost one, but include the inner tx
     aecore_suite_utils:meta_tx(Owner, AuthOpts, AuthData, SignedTx).
@@ -4174,7 +4175,7 @@ assert_cache_is_gone_after_on_disk(ChannelId) ->
     try
         retry(5, 20, fun() -> assert_cache_is_on_disk(ChannelId) end),
         mine_blocks(dev1),
-        assert_cache_is_gone(ChannelId)
+        retry(5, 20, fun() -> assert_cache_is_gone(ChannelId) end)
     catch
         error:{badmatch, []} ->
             % At this point the cache could already be gone

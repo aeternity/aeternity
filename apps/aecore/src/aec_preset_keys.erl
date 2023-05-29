@@ -178,7 +178,7 @@ handle_call({sign, Bin}, _From, #state{active = Active} = State) ->
         error ->
             {reply, {error, not_found}, State}
     end;
-handle_call({is_present, Pubkey}, _From, #state{active = Active} = State) ->
+handle_call({is_present, Pubkey}, _From, #state{} = State) ->
     Res =
         case privkey(Pubkey, State) of
             {ok, _Privkey} ->

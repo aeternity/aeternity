@@ -2240,11 +2240,15 @@ sc_ws_nameservice_contract_(Owner, GetVolley, CreateContract, ConnPid1, ConnPid2
     register_name(NamePubkey, NamePrivkey, Name, NameFee,
                   [{<<"account_pubkey">>, aeser_id:create(account, <<1:256>>)},
                    {<<"oracle">>, aeser_id:create(oracle, <<2:256>>)},
-                   {<<"unexpected_key">>, aeser_id:create(account, <<3:256>>)}]),
+                   {<<"unexpected_key">>, aeser_id:create(account, <<3:256>>)}]
+                  ++ [{<<"raw data key">>, <<"raw data pointer">>}
+                      || aect_test_utils:latest_protocol_version() >= ?CERES_PROTOCOL_VSN ]),
     Test(Name, <<"account_pubkey">>, true),
     Test(Name, <<"oracle">>, true),
     Test(Name, <<"unexpected_key">>, true),
     Test(Name, <<"missing_key">>, false),
+    [ Test(Name, <<"raw data key">>, true)
+      || aect_test_utils:latest_protocol_version() >= ?CERES_PROTOCOL_VSN ],
     ok.
 
 sc_ws_environment_contract_(Owner, GetVolley, CreateContract, ConnPid1, ConnPid2,
@@ -4359,7 +4363,10 @@ ws_get_decoded_result_(ConnPid1, ConnPid2, Contract, Function, [Update], Unsigne
     decode_call_result(Contract, Function, ok, ReturnValue).
 
 decode_call_result(ContractName, Fun, ResType, ResValue) ->
-    {ok, BinCode} = aect_test_utils:read_contract(?SOPHIA_IRIS_FATE, ContractName),
+    {ok, BinCode} = case aect_test_utils:backend() of
+                        fate -> aect_test_utils:read_contract(?SOPHIA_CERES_FATE, ContractName);
+                        aevm -> aect_test_utils:read_contract(?SOPHIA_LIMA_AEVM, ContractName)
+                    end,
     aect_test_utils:decode_call_result(binary_to_list(BinCode), Fun, ResType, ResValue).
 
 

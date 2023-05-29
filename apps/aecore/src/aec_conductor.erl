@@ -242,7 +242,12 @@ init(Options) ->
     lager:debug("Options = ~p", [Options]),
     process_flag(trap_exit, true),
     ok     = init_chain_state(),
-    State1 = acquire_top_and_consensus(),
+    IsProducingBlocks =
+        case get_option(autostart, Options) of
+            undefined   -> false;
+            {ok, R}  -> R
+        end,
+    State1 = acquire_top_and_consensus(IsProducingBlocks),
     State2 = set_option(autostart, Options, State1),
     State3 = set_option(strictly_follow_top, Options, State2),
     State4 = set_mode(State3),
@@ -256,14 +261,14 @@ init(Options) ->
     self() ! init_continue,
     {ok, State5}.
 
-acquire_top_and_consensus() ->
+acquire_top_and_consensus(BlockProducing) ->
     TopBlockHash0 = aec_chain:top_block_hash(),
     {ok, TopHeader0} = aec_chain:get_header(TopBlockHash0),
     ConsensusModule = aec_headers:consensus_module(TopHeader0),
     ConsensusConfig = aec_consensus:get_consensus_config_at_height(aec_headers:height(TopHeader0)),
 
     %% Might mutate the DB in some cases
-    ConsensusModule:start(ConsensusConfig), %% Might do nothing or it might spawn a genserver :P
+    ConsensusModule:start(ConsensusConfig, #{block_production => BlockProducing}), %% Might do nothing or it might spawn a genserver :P
 
     Consensus = #consensus{ micro_block_cycle = aec_governance:micro_block_cycle()
                           , leader = false
@@ -333,7 +338,8 @@ reinit_chain_impl(State1 = #state{ consensus = #consensus{consensus_module = Act
     TopHeight = aec_headers:height(TopHeader),
     ConsensusModule = aec_headers:consensus_module(TopHeader),
     ConsensusConfig = aec_consensus:get_consensus_config_at_height(aec_headers:height(TopHeader)),
-    ConsensusModule:start(ConsensusConfig), %% Might do nothing or it might spawn a genserver :P
+    BlockProducing = is_mining(State1),
+    ConsensusModule:start(ConsensusConfig, #{block_production => BlockProducing}), %% Might do nothing or it might spawn a genserver :P
     State2 = State1#state{top_block_hash = TopBlockHash,
                           top_key_block_hash = TopKeyBlockHash,
                           top_height = TopHeight},
@@ -390,6 +396,7 @@ handle_call(stop_block_production,_From, State = #state{ consensus = Cons }) ->
     epoch_mining:info("Mining stopped"),
     aec_block_generator:stop_generation(),
     [ aec_tx_pool:garbage_collect() || is_record(Cons, consensus) andalso Cons#consensus.leader ],
+    aec_events:publish(stop_mining, []),
     State1 = kill_all_workers(State),
     State2 = State1#state{block_producing_state = 'stopped',
                           consensus = Cons#consensus{leader = false},
@@ -418,7 +425,7 @@ handle_call({note_rollback, Info}, _From, State) ->
     #state{ top_block_hash = TBHash
 	  , top_key_block_hash = TopKeyBlockHash
 	  , top_height = TopHeight
-	  , consensus = Consensus } = acquire_top_and_consensus(),
+	  , consensus = Consensus } = acquire_top_and_consensus(is_mining(State)),
     State1 = State#state{ top_block_hash = TBHash
 			, top_key_block_hash = TopKeyBlockHash
 			, top_height = TopHeight
@@ -1396,13 +1403,13 @@ handle_successfully_added_block(Block, Hash, true, PrevKeyHeader, Events, State,
             (BlockType == key) andalso
                 aec_metrics:try_update(
                   [ae,epoch,aecore,blocks,key,info], info_value(NewTopBlock)),
+            [ maybe_garbage_collect(NewTopBlock) || BlockType == key ],
             IsLeader = is_leader(NewTopBlock, PrevKeyHeader, ConsensusModule),
             case IsLeader of
                 true ->
                     ok; %% Don't spend time when we are the leader.
                 false ->
-                    aec_tx_pool:garbage_collect(),
-                    [ maybe_garbage_collect_accounts() || BlockType == key ]
+                    aec_tx_pool:garbage_collect()
             end,
             {ok, setup_loop(State2, true, IsLeader, Origin)}
     end.
@@ -1422,7 +1429,8 @@ maybe_consensus_change(State, Block) ->
             true = ActiveConsensusModule:can_be_turned_off(),
             ActiveConsensusModule:stop(),
             NewConfig = aec_consensus:get_consensus_config_at_height(H+1),
-            NewConsensus:start(NewConfig),
+            Mining = is_mining(State),
+            NewConsensus:start(NewConfig, #{block_production => Mining}),
             #state{consensus = Consensus} = State,
             State#state{ consensus = Consensus#consensus{ consensus_module = NewConsensus } }
     end.
@@ -1498,15 +1506,23 @@ get_pending_key_block(TopHash, State) ->
 %%
 %% To avoid starting of the GC process just for EUNIT
 -ifdef(EUNIT).
-maybe_garbage_collect_accounts() -> nop.
+maybe_garbage_collect(_) -> nop.
 -else.
 
 %% This should be called when there are no processes modifying the block state
 %% (e.g. aec_conductor on specific places)
-maybe_garbage_collect_accounts() ->
-    gen_statem:call(aec_db_gc, maybe_garbage_collect).
+maybe_garbage_collect(Block) ->
+    T0 = erlang:system_time(microsecond),
+    Header = aec_blocks:to_header(Block),
+    Res = aec_db_gc:maybe_garbage_collect(Header),
+    T1 = erlang:system_time(microsecond),
+    lager:debug("Result -> ~p (time: ~p us)", [Res, T1-T0]),
+    Res.
 -endif.
 
 consensus_module(#state{ consensus = #consensus{consensus_module =
                                                 ConsensusModule}}) ->
     ConsensusModule.
+
+is_mining(#state{block_producing_state = running}) -> true;
+is_mining(#state{block_producing_state = stopped}) -> false.

@@ -20,7 +20,7 @@
 %% API
 -export([ can_be_turned_off/0
         , assert_config/1
-        , start/1
+        , start/2
         , stop/0
         , is_providing_extra_http_endpoints/0
         , client_request/1
@@ -79,7 +79,7 @@
 can_be_turned_off() -> false.
 assert_config(_Config) -> ok.
 
-start(Config) ->
+start(Config, _) ->
     #{<<"stakers">> := StakersEncoded} = Config,
     Stakers =
         lists:map(
@@ -423,7 +423,7 @@ next_beneficiary() ->
     CallData = aeser_api_encoder:encode(contract_bytearray, CD),
     case call_consensus_contract_(?ELECTION_CONTRACT, TxEnv, Trees, CallData, "elect_next()", 0) of
         {ok, _Trees1, Call} ->
-            {address, Leader} = aeb_fate_encoding:deserialize(aect_call:return_value(Call)),
+            {tuple, {{address, Leader}, _}} = aeb_fate_encoding:deserialize(aect_call:return_value(Call)),
             SignModule = get_sign_module(),
             SignModule:set_candidate(Leader),
             {ok, Leader};

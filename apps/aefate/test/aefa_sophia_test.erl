@@ -96,9 +96,10 @@ compile_contract(Code, Options) ->
     try
         Ast       = aeso_parser:string(Code, Options),
         {_, TypedAst, [] = _Warnings} = aeso_ast_infer_types:infer(Ast, Options),
-        {#{child_con_env := ChildContracts}, FCode}
-                       = aeso_ast_to_fcode:ast_to_fcode(TypedAst, Options),
-        Fate      = aeso_fcode_to_fate:compile(ChildContracts, FCode, Options),
+        {FCodeEnv, FCode} = aeso_ast_to_fcode:ast_to_fcode(TypedAst, Options),
+        ChildContracts = maps:get(child_con_env, FCodeEnv),
+        SavedFreshNames = maps:get(saved_fresh_names, FCodeEnv, #{}),
+        {Fate, _VarsRegs} = aeso_fcode_to_fate:compile(ChildContracts, FCode, SavedFreshNames, Options),
         case aeb_fate_code:deserialize(aeb_fate_code:serialize(Fate)) of
             Fate  -> Fate;
             Other -> {error, {Other, '/=', Fate}}
@@ -135,7 +136,7 @@ make_call_spec(Contract, Function0, Arguments, Store) ->
        value      => 0,
        call       => aeb_fate_encoding:serialize(Calldata),
        store      => CtStore,
-       vm_version => ?VM_FATE_SOPHIA_2,
+       vm_version => ?VM_FATE_SOPHIA_3,
        allow_init => true
      }.
 

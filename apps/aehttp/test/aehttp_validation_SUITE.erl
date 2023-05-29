@@ -228,7 +228,7 @@ channel_close_mutual_tx_opts() ->
     #{channel_id => aeser_id:create(channel, ?PUBKEY),
       from_id => aeser_id:create(account, ?PUBKEY),
       initiator_amount_final => 1,
-      responder_amount_final => 1, 
+      responder_amount_final => 1,
       fee => ?FEE,
       nonce => 1}.
 
@@ -413,12 +413,14 @@ name_update_tx(Config) ->
     ContractPointer = aens_pointer:new(<<"contract_pubkey">>, aeser_id:create(contract, ?PUBKEY)),
     OraclePointer = aens_pointer:new(<<"oracle_pubkey">>, aeser_id:create(oracle, ?PUBKEY)),
     CustomPointer = aens_pointer:new(<<"my custom account">>, aeser_id:create(account, ?PUBKEY)),
+    DataPointer = aens_pointer:new(<<"foobarbaz">>, <<"randombinary">>),
     test_transaction_validation(Config, aens_update_tx,
                                 Opts#{pointers => [AccountPointer,
                                                    ChannelPointer,
                                                    ContractPointer,
                                                    OraclePointer,
-                                                   CustomPointer ]}),
+                                                   CustomPointer,
+                                                   DataPointer]}),
     ok.
 
 name_update_tx_opts() ->
@@ -527,7 +529,7 @@ paying_for_tx(Config) ->
                       meta(aetx_sign:tx(meta(Aetx))) ]
             end
         end,
-        
+
     lists:foreach(
       fun(Tx) ->
           test_transaction_validation(Config, aec_paying_for_tx, Opts0#{tx => Tx})
@@ -575,7 +577,7 @@ test_transaction_validation(Config, TxModule, Opts) ->
             lists:foreach(Test, [fun sign/1, fun meta/1,
                                  fun(Tx) -> meta(aetx_sign:tx(meta(Tx))) end])
     end.
-    
+
 mutual_auth_modules() ->
     [ aesc_create_tx, aesc_deposit_tx, aesc_withdraw_tx,
       aesc_close_mutual_tx, aesc_set_delegates_tx].

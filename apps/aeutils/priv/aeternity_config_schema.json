@@ -47,6 +47,10 @@
                         }
                     },
                     "default": []
+                },
+                "custom_prefunded_accs_file" : {
+                    "description" : "Overrides the automatically derived file name for prefunded accounts. No default value",
+                    "type" : "string"
                 }
             }
         },
@@ -1231,6 +1235,18 @@
                         }
                     }
                 },
+                "protocol_options" : {
+                    "type" : "object",
+                    "additionalProperties" : false,
+                    "properties" : {
+                        "max_skip_body_length": {
+                          "description": "Cowboy limit to request body size",
+                          "type": "integer",
+                          "example": 400000,
+                          "default": 1000000
+                        }
+                    }
+                },
                 "external" : {
                     "type" : "object",
                     "additionalProperties" : false,
@@ -1340,42 +1356,46 @@
                     }
                 },
                 "endpoints" : {
-                    "gossip" : {
-                        "description" : "Gossip protocol API",
-                        "type" : "boolean"
-                    },
-                    "name_service" : {
-                        "description" : "Name resolution API",
-                        "type" : "boolean"
-                    },
-                    "chain" : {
-                        "description" : "Chain state inspection endpoints",
-                        "type" : "boolean"
-                    },
-                    "transactions" : {
-                        "description" : "Transactions insection endpoints",
-                        "type" : "boolean"
-                    },
-                    "node_operator" : {
-                        "description" : "Node operator endpoints",
-                        "type" : "boolean",
-                        "default" : false
-                    },
-                    "dev" : {
-                        "description" : "Development only API - for validation of client implementations. Should not be used in real life scenarios",
-                        "type" : "boolean"
-                    },
-                    "debug" : {
-                        "description" : "Deprecated. See also 'http > internal > debug_endpoints'",
-                        "type" : "boolean"
-                    },
-                    "obsolete" : {
-                        "description" : "Old endpoints that will be removed",
-                        "type" : "boolean"
-                    },
-                    "dry-run" : {
-                        "description" : "External protected dry run endpoint",
-                        "type" : "boolean"
+                    "type" : "object",
+                    "additionalProperties" : false,
+                    "properties" : {
+                        "gossip" : {
+                            "description" : "Gossip protocol API",
+                            "type" : "boolean"
+                        },
+                        "name_service" : {
+                            "description" : "Name resolution API",
+                            "type" : "boolean"
+                        },
+                        "chain" : {
+                            "description" : "Chain state inspection endpoints",
+                            "type" : "boolean"
+                        },
+                        "transactions" : {
+                            "description" : "Transactions insection endpoints",
+                            "type" : "boolean"
+                        },
+                        "node-operator" : {
+                            "description" : "Node operator endpoints",
+                            "type" : "boolean",
+                            "default" : false
+                        },
+                        "dev" : {
+                            "description" : "Development only API - for validation of client implementations. Should not be used in real life scenarios",
+                            "type" : "boolean"
+                        },
+                        "debug" : {
+                            "description" : "Deprecated. See also 'http > internal > debug_endpoints'",
+                            "type" : "boolean"
+                        },
+                        "obsolete" : {
+                            "description" : "Old endpoints that will be removed",
+                            "type" : "boolean"
+                        },
+                        "dry-run" : {
+                            "description" : "External protected dry run endpoint",
+                            "type" : "boolean"
+                        }
                     }
                 },
                 "debug" : {
@@ -1544,10 +1564,10 @@
                         "^[1-9][0-9]*$" : {
                             "description" : "Minimum height at which the given consensus algorithm gets activated. By default from genesis Cuckoo cycle based BitcoinNG is used.",
                             "type" : "object",
-                            "required": ["name"],
+                            "required": ["type"],
                             "properties": {
-                                "name": {
-                                    "description": "The name of the consensus algorithm used at the given height",
+                                "type": {
+                                    "description": "The type of the consensus algorithm used at the given height (ex. pow_cuckoo, smart_contract or hyper_chain)",
                                     "type": "string"
                                 },
                                 "config": {
@@ -1580,22 +1600,56 @@
                     "type" : "object",
                     "additionalProperties" : false,
                     "properties" : {
-                        "enabled": {
-                            "description": "If true, node will perform garbage collection of account state, removing unreachable merkle patricia nodes and free some disk space",
+                        "enabled" : {
+                            "description": "If true, node will perform garbage collection of state trees, removing unreachable merkle patricia nodes and free some disk space",
                             "type": "boolean",
                             "default": false
                         },
+                        "during_sync" : {
+                            "description" : "If true, node will start garbage-collecting immediately, without waiting for sync to complete",
+                            "type" : "boolean",
+                            "default" : false
+                        },
+                        "minimum_height" : {
+                            "description" : "Minimum height at which to trigger garbage collection",
+                            "type" : "integer",
+                            "minimum" : 0,
+                            "default" : 0
+                        },
                         "interval" : {
-                            "description": "How often (every `interval` block) should garbage collection run",
-                            "type": "integer",
-                            "minimum": 3,
-                            "default": 50000
+                            "description" : "DEPRECATED. How often (every `interval` block) should garbage collection run",
+                            "type" : "integer",
+                            "minimum" : 3,
+                            "default" : 50000
                         },
                         "history" : {
-                            "description": "How many blocks (back from the top) should be scanned for reachable hashes",
-                            "type": "integer",
-                            "minimum": 50,
-                            "default": 500
+                            "description" : "How many generations (at least) should pass between garbage collections",
+                            "type" : "integer",
+                            "minimum" : 50,
+                            "default" : 15000
+                        },
+                        "depth" : {
+                            "description" : "How far below the top to perform collection scans (default: 0 = fork resistance depth)",
+                            "type" : "integer",
+                            "minimum" : 0,
+                            "default" : 0
+                        },
+                        "trees" : {
+                            "description": "Which state trees to scan. Default: all of them",
+                            "type" : "array",
+                            "items" : {
+                                "description" : "Tree name",
+                                "type" : "string",
+                                "enum" : ["accounts", "calls", "channels",
+                                          "contracts", "ns", "oracles"]
+                            },
+                            "minItems" : 1,
+                            "default" : ["accounts",
+                                         "calls",
+                                         "channels",
+                                         "contracts",
+                                         "ns",
+                                         "oracles"]
                         }
                     }
                 }
@@ -2105,6 +2159,21 @@
                         "max_time" : {
                             "type" : "integer",
                             "default" : 0
+                        }
+                    }
+                },
+                "gc_scan" : {
+                    "description" : "DB Garbage collection scan chunks",
+                    "type" : "object",
+                    "additionalProperties" : false,
+                    "properties" : {
+                        "counter" : {
+                            "type" : "integer",
+                            "default" : 1
+                        },
+                        "rate" : {
+                            "type" : "integer",
+                            "default" : 50
                         }
                     }
                 }

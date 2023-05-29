@@ -67,6 +67,7 @@
         , sophia_remote_identity/1
         , fate_vm_interaction/1
         , fate_vm_version_switching/1
+        , fate_vm_new_data_pointers/1
         , contract_init_on_chain_fate/1
         , aevm_version_interaction/1
         , sophia_state/1
@@ -126,6 +127,7 @@
         , sophia_signatures_oracles/1
         , sophia_signature_check_gas_cost/1
         , sophia_signatures_aens/1
+        , sophia_all_signatures_aens/1
         , sophia_fate_signatures_aens/1
         , sophia_maps/1
         , sophia_map_benchmark/1
@@ -293,7 +295,7 @@
         ?VM_AEVM_SOPHIA_4 -> ok;
         ?VM_FATE_SOPHIA_1 -> ?assertMatch(__ExpVm1, __Res);
         ?VM_FATE_SOPHIA_2 -> ?assertMatch(__ExpVm2, __Res);
-        ?VM_FATE_SOPHIA_3 -> ?assertMatch(__ExpVm3, __Res) %% For now :-)
+        ?VM_FATE_SOPHIA_3 -> ?assertMatch(__ExpVm3, __Res)
     end).
 
 -define(assertMatchVM(AEVM, FATE, Res),
@@ -333,6 +335,7 @@
 
 all() ->
     [{group, protocol_interaction},
+     {group, protocol_interaction_fate},
      {group, aevm},
      {group, fate},
      {group, fate_named}
@@ -367,6 +370,7 @@ groups() ->
                                  ]}
     , {protocol_interaction_fate, [], [ fate_vm_interaction
                                       , fate_vm_version_switching
+                                      , fate_vm_new_data_pointers
                                       , fate_vm_cross_protocol_store_big
                                       , fate_vm_cross_protocol_store_multi_small
                                       , contract_init_on_chain_fate
@@ -435,6 +439,7 @@ groups() ->
                                  sophia_signatures_oracles,
                                  sophia_signature_check_gas_cost,
                                  sophia_signatures_aens,
+                                 sophia_all_signatures_aens,
                                  sophia_fate_signatures_aens,
                                  sophia_maps,
                                  sophia_map_benchmark,
@@ -626,6 +631,19 @@ init_per_group(protocol_interaction, Cfg) ->
     end;
 init_per_group(protocol_interaction_fate, Cfg) ->
     case aect_test_utils:latest_protocol_version() of
+        ?CERES_PROTOCOL_VSN ->
+            IHeight = 20,
+            CHeight = 25,
+            Fun = fun(H) when H <  IHeight -> ?LIMA_PROTOCOL_VSN;
+                     (H) when H <  CHeight -> ?IRIS_PROTOCOL_VSN;
+                     (H) when H >= CHeight -> ?CERES_PROTOCOL_VSN
+                  end,
+            meck:expect(aec_hard_forks, protocol_effective_at_height, Fun),
+            [{sophia_version, ?SOPHIA_CERES_FATE},
+             {vm_version, ?VM_FATE_SOPHIA_3},
+             {abi_version, ?ABI_FATE_SOPHIA_1},
+             {fork_heights, [{iris, IHeight, ?VM_FATE_SOPHIA_2}, {ceres, CHeight, ?VM_FATE_SOPHIA_3}]},
+             {protocol, ceres} | Cfg];
         ?IRIS_PROTOCOL_VSN ->
             LHeight = 20,
             IHeight = 25,
@@ -637,12 +655,10 @@ init_per_group(protocol_interaction_fate, Cfg) ->
             [{sophia_version, ?SOPHIA_IRIS_FATE},
              {vm_version, ?VM_FATE_SOPHIA_2},
              {abi_version, ?ABI_FATE_SOPHIA_1},
-             {fork_heights, #{ lima    => LHeight,
-                               iris    => IHeight
-                             }},
+             {fork_heights, [{lima, LHeight, ?VM_FATE_SOPHIA_1}, {iris, IHeight, ?VM_FATE_SOPHIA_2}]},
              {protocol, iris} | Cfg];
         _ ->
-            {skip, only_test_protocol_interaction_on_latest_protocol}
+            {skip, only_test_fate_protocol_interaction_on_recent_protocols}
     end;
 init_per_group(_Group, Cfg) ->
     Cfg.
@@ -675,10 +691,15 @@ init_per_testcase(fate_environment, Config) ->
     init_per_testcase_common(fate_environment, Config);
 init_per_testcase(TC, Config) when TC == sophia_aens_resolve;
                                    TC == sophia_signatures_aens;
+                                   TC == sophia_all_signatures_aens;
                                    TC == sophia_fate_signatures_aens;
                                    TC == sophia_aens_transactions ->
     %% Disable name auction
     meck:expect(aec_governance, name_claim_bid_timeout, fun(_, _) -> 0 end),
+    init_per_testcase_common(TC, Config);
+init_per_testcase(TC, Config) when TC == fate_vm_new_data_pointers ->
+    %% Disable name auction
+    meck:expect(aec_governance, name_claim_preclaim_delta, fun() -> 0 end),
     init_per_testcase_common(TC, Config);
 init_per_testcase(TC, Config) when TC == sophia_aens_update_transaction;
                                    TC == sophia_aens_lookup ->
@@ -751,9 +772,11 @@ end_per_testcase(fate_environment, _Config) ->
 end_per_testcase(TC, _Config) when TC == sophia_aens_resolve;
                                    TC == sophia_aens_lookup;
                                    TC == sophia_signatures_aens;
+                                   TC == sophia_all_signatures_aens;
                                    TC == sophia_fate_signatures_aens;
                                    TC == sophia_aens_transactions;
-                                   TC == sophia_aens_update_transaction ->
+                                   TC == sophia_aens_update_transaction;
+                                   TC == fate_vm_new_data_pointers ->
     meck:unload(aec_governance),
     ok;
 end_per_testcase(bad_aens_pointer_handling_lima_to_iris, _Config) ->
@@ -1602,7 +1625,7 @@ call_contract_with_calldata(Caller, ContractKey, Type, Calldata, Options, S) ->
     {CtId, CtCallId} =
         case get('$ct_named_calls') of
             true ->
-                ct:pal("Doing named call!", []),
+                ct:log("Doing named call!", []),
                 {ok, NHash} = aens:get_name_hash(?CT_NAMED_CALL_NAME),
                 meck:expect(aens, resolve_from_name_object,
                             fun(Key, NameObj) ->
@@ -1616,7 +1639,7 @@ call_contract_with_calldata(Caller, ContractKey, Type, Calldata, Options, S) ->
                             end),
                 {aeser_id:create(name, NHash), NHash};
             _ ->
-                ct:pal("Not doing named call!", []),
+                ct:log("Not doing named call!", []),
                 {aeser_id:create(contract, ContractKey), ContractKey}
         end,
 
@@ -4243,10 +4266,11 @@ sophia_signatures_aens(Cfg) ->
     {ok, NameAscii} = aens_utils:to_ascii(Name1),
     CHash           = ?hsh(aens_hash:commitment_hash(NameAscii, Salt1)),
     NHash           = aens_hash:name_hash(NameAscii),
-    NameArg = case ?config(vm_version, Cfg) of
-                  VMVersion when ?IS_AEVM_SOPHIA(VMVersion), VMVersion >= ?VM_AEVM_SOPHIA_4 -> Name1;
-                  VMVersion when ?IS_AEVM_SOPHIA(VMVersion), VMVersion < ?VM_AEVM_SOPHIA_4 -> ?hsh(NHash);
-                  VMVersion when ?IS_FATE_SOPHIA(VMVersion) -> Name1
+    VMVersion       = ?config(vm_version, Cfg),
+    NameArg = if
+                  ?IS_AEVM_SOPHIA(VMVersion), VMVersion >= ?VM_AEVM_SOPHIA_4 -> Name1;
+                  ?IS_AEVM_SOPHIA(VMVersion), VMVersion < ?VM_AEVM_SOPHIA_4 -> ?hsh(NHash);
+                  ?IS_FATE_SOPHIA(VMVersion) -> Name1
               end,
     NameAccSig      = sign(<<NameAcc/binary, Ct/binary>>, NameAcc),
     NameSig         = sign(<<NameAcc/binary, NHash/binary, Ct/binary>>, NameAcc),
@@ -4276,8 +4300,13 @@ sophia_signatures_aens(Cfg) ->
     %% Update - Only in FATE > v1
     case protocol_version() of
         P when P >= ?IRIS_PROTOCOL_VSN ->
-            AccountPointee  = fun (A) -> {variant, [1, 1, 1, 1], 0, {A}} end,
-            OraclePointee   = fun (A) -> {variant, [1, 1, 1, 1], 1, {A}} end,
+            PointeeVariantArities =
+                case VMVersion of
+                    ?VM_FATE_SOPHIA_2 -> [1, 1, 1, 1];
+                    _                 -> [1, 1, 1, 1, 1]
+                end,
+            AccountPointee  = fun (A) -> {variant, PointeeVariantArities, 0, {A}} end,
+            OraclePointee   = fun (A) -> {variant, PointeeVariantArities, 1, {A}} end,
             Pointers = #{<<"account_pubkey">> => AccountPointee(<<APubkey:256>>),
                          <<"oracle_pubkey">>  => OraclePointee(<<OPubkey:256>>)},
             None = none,
@@ -4337,10 +4366,60 @@ sophia_signatures_aens(Cfg) ->
     ?assertMatchProtocol(NonceAfterRevoke, ExpectedNonceAfterRevokeRoma, NonceBeforeRevoke),
     ok.
 
+sophia_all_signatures_aens(Cfg) ->
+    case ?config(vm_version, Cfg) of
+        VMVersion when VMVersion < ?VM_FATE_SOPHIA_2 -> ok;
+        _ -> sophia_all_signatures_aens_(Cfg)
+    end.
+
+sophia_all_signatures_aens_(Cfg) ->
+    init_new_state(),
+    Acc             = ?call(new_account, 40000000000000 * aec_test_utils:min_gas_price()),
+    NameAcc         = ?call(new_account, 40000000000000 * aec_test_utils:min_gas_price()),
+    Ct              = ?call(create_contract, NameAcc, aens, {}, #{ amount => 100000 }),
+    Name1           = aens_test_utils:fullname(<<"bla">>),
+    Salt1           = rand:uniform(10000),
+    {ok, NameAscii} = aens_utils:to_ascii(Name1),
+    CHash           = ?hsh(aens_hash:commitment_hash(NameAscii, Salt1)),
+    NHash           = aens_hash:name_hash(NameAscii),
+    NameArg         = Name1,
+    NameAccSigAll   = sign(<<NameAcc/binary, "AENS"/utf8, Ct/binary>>, NameAcc),
+    AccSigAll       = sign(<<Acc/binary, "AENS"/utf8, Ct/binary>>, Acc),
+    APubkey  = 1,
+    OPubkey  = 2,
+
+    %% PreClaim
+    Res1 = ?call(call_contract, Acc, Ct, signedPreclaim, {tuple, []}, {NameAcc, CHash, NameAccSigAll}, #{ height => 10 }),
+    ?assertMatchFATE(unused, {error, <<"Error in aens_preclaim: bad_signature">>}, {}, Res1),
+
+    %% Claim
+    Res2 = ?call(call_contract, Acc, Ct, signedClaim, {tuple, []}, {NameAcc, Name1, Salt1, NameAccSigAll}, #{ height => 11 }),
+    ?assertMatchFATE(unused, {error, <<"Error in aens_claim: bad_signature">>}, {}, Res2),
+
+    Pointers = #{},
+    None = none,
+    Some = fun (X) -> {some, X} end,
+
+    Res3 = ?call(call_contract, Acc, Ct, signedUpdate, {tuple, []}, {NameAcc, NameArg, None, None, Some(Pointers), NameAccSigAll}, #{height => 12}),
+    ?assertMatchFATE(unused, {error, <<"Error in aens_update: bad_signature">>}, {}, Res3),
+
+    %% Transfer
+    Res4 = ?call(call_contract, Acc, Ct, signedTransfer, {tuple, []}, {NameAcc, Acc, NameArg, NameAccSigAll}, #{ height => 12 }),
+    ?assertMatchFATE(unused, {error, <<"Error in aens_transfer: bad_signature">>}, {}, Res4),
+
+    %% Revoke
+    BadRevoke = ?call(call_contract, Acc, Ct, signedRevoke, {tuple, []}, {NameAcc, NameArg, NameAccSigAll}, #{ height => 13 }),
+    ?assertMatchFATE(unused, {error, <<"Error in aens_revoke: bad_signature">>}, {error,<<"Error in aens_revoke: name_not_owned">>}, BadRevoke),
+
+    Res5 = ?call(call_contract, NameAcc, Ct, signedRevoke, {tuple, []}, {Acc, NameArg, AccSigAll}, #{ height => 13 }),
+    ?assertMatchFATE(unused, {error, <<"Error in aens_revoke: bad_signature">>}, {}, Res5),
+
+    ok.
+
 %% Delegated signatures did not work for non-existing accounts pre-CERES, this test checks that this
 %% continues to be true :-)
 %% Note that Claim can't be done by a non-existing account since it require funds!
-sophia_fate_signatures_aens(_Cfg) ->
+sophia_fate_signatures_aens(Cfg) ->
     ?skipRest(not ?IS_FATE_SOPHIA(vm_version()), only_valid_for_fate),
     init_new_state(),
     %% AENS transactions from contract - using non-existing/not-funded 3rd party account(s)
@@ -4376,8 +4455,13 @@ sophia_fate_signatures_aens(_Cfg) ->
                      {}, TransferRes),
 
     %% Update (did not exist in Lima!)
-    AccountPointee  = fun (A) -> {variant, [1, 1, 1, 1], 0, {A}} end,
-    OraclePointee   = fun (A) -> {variant, [1, 1, 1, 1], 1, {A}} end,
+    PointeeVariantArities =
+        case ?config(vm_version, Cfg) of
+            VM when VM >= ?VM_FATE_SOPHIA_3 -> [1, 1, 1, 1, 1];
+            _                               -> [1, 1, 1, 1]
+        end,
+    AccountPointee  = fun (A) -> {variant, PointeeVariantArities, 0, {A}} end,
+    OraclePointee   = fun (A) -> {variant, PointeeVariantArities, 1, {A}} end,
     Pointers = #{<<"account_pubkey">> => AccountPointee(<<2:256>>),
                  <<"oracle_pubkey">>  => OraclePointee(<<3:256>>)},
     None = none,
@@ -5796,7 +5880,7 @@ sophia_compiler_version(_Cfg) ->
     {code, Code} = aect_contracts:code(C),
     CMap = aeser_contract_code:deserialize(Code),
     ?assertMatchProtocol(maps:get(compiler_version, CMap, undefined),
-                         undefined, <<"2.1.0">>, <<"3.2.0">>, <<"unknown">>, <<"6.1.0">>, <<"7.0.0">>),
+                         undefined, <<"2.1.0">>, <<"3.2.0">>, <<"unknown">>, <<"6.1.0">>, <<"8.0.0">>),
     ok.
 
 sophia_protected_call(_Cfg) ->
@@ -6311,7 +6395,7 @@ aens_update(PubKey, NameHash, Pointers, S) ->
 aens_update(PubKey, NameHash, Pointers, Options, S) ->
     Nonce     = aect_test_utils:next_nonce(PubKey, S),
     Height    = maps:get(height, Options, 2),
-    Fee    = maps:get(fee, Options, 50000 * aec_test_utils:min_gas_price()),
+    Fee       = maps:get(fee, Options, 50000 * aec_test_utils:min_gas_price()),
     TTL       = maps:get(ttl, Options, 1000),
     ClientTTL = maps:get(client_ttl, Options, 1000),
     NameTTL   = maps:get(name_ttl, Options, 1000),
@@ -6329,24 +6413,24 @@ aens_update(PubKey, NameHash, Pointers, Options, S) ->
 
 sophia_aens_resolve(Cfg) ->
     init_new_state(),
-    Acc      = ?call(new_account, 400000000000000000000 * aec_test_utils:min_gas_price()),
-    Ct       = ?call(create_contract, Acc, aens, {}, #{ amount => 100000 }),
-    Name     = aens_test_utils:fullname(<<"foo">>),
-    APubkey  = 1,
-    OPubkey  = 2,
-    CPubkey  = 3,
-    %% TODO: Improve checks in aens_update_tx
-    Pointers = [aens_pointer:new(<<"account_pubkey">>, aeser_id:create(account, <<APubkey:256>>)),
-                aens_pointer:new(<<"oracle_pubkey">>, aeser_id:create(oracle, <<OPubkey:256>>)),
-                aens_pointer:new(<<"contract_pubkey">>, aeser_id:create(contract, <<CPubkey:256>>))
-               ],
+    VMVersion = ?config(vm_version, Cfg),
+    Acc       = ?call(new_account, 400000000000000000000 * aec_test_utils:min_gas_price()),
+    Ct        = ?call(create_contract, Acc, aens, {}, #{ amount => 100000 }),
+    Name      = aens_test_utils:fullname(<<"foo">>),
+    APubkey   = 1,
+    OPubkey   = 2,
+    CPubkey   = 3,
+    Pointers  = [aens_pointer:new(<<"account_pubkey">>, aeser_id:create(account, <<APubkey:256>>)),
+                 aens_pointer:new(<<"oracle_pubkey">>, aeser_id:create(oracle, <<OPubkey:256>>)),
+                 aens_pointer:new(<<"contract_pubkey">>, aeser_id:create(contract, <<CPubkey:256>>))]
+                ++ [ aens_pointer:new(<<"raw_data_pointer">>, <<"raw data value">>)
+                     || VMVersion >= ?VM_FATE_SOPHIA_3 ],
 
     Salt  = ?call(aens_preclaim, Acc, Name),
     NameFee = aec_governance:name_claim_fee(Name, ?config(protocol, Cfg)),
-    Hash  = case ?config(vm_version, Cfg) of
-                  VMVersion when ?IS_AEVM_SOPHIA(VMVersion), VMVersion >= ?VM_AEVM_SOPHIA_4 -> ?call(aens_claim, Acc, Name, Salt, NameFee);
-                  VMVersion when ?IS_AEVM_SOPHIA(VMVersion), VMVersion < ?VM_AEVM_SOPHIA_4 -> ?call(aens_claim, Acc, Name, Salt);
-                  VMVersion when ?IS_FATE_SOPHIA(VMVersion) -> ?call(aens_claim, Acc, Name, Salt, NameFee)
+    Hash  = if ?IS_AEVM_SOPHIA(VMVersion), VMVersion >= ?VM_AEVM_SOPHIA_4 -> ?call(aens_claim, Acc, Name, Salt, NameFee);
+               ?IS_AEVM_SOPHIA(VMVersion), VMVersion < ?VM_AEVM_SOPHIA_4 -> ?call(aens_claim, Acc, Name, Salt);
+               ?IS_FATE_SOPHIA(VMVersion) -> ?call(aens_claim, Acc, Name, Salt, NameFee)
             end,
     ok    = ?call(aens_update, Acc, Hash, Pointers),
 
@@ -6362,6 +6446,13 @@ sophia_aens_resolve(Cfg) ->
     ?assertMatch(<<APubkey:256>>, AString),
     ?assertMatch(<<OPubkey:256>>, OString),
     ?assertMatch(<<CPubkey:256>>, CString),
+
+    if VMVersion >= ?VM_FATE_SOPHIA_3 ->
+        {some, Data} = ?call(call_contract, Acc, Ct, resolve_string, {option, string}, {Name, <<"raw_data_pointer">>}),
+        ?assertEqual(<<"raw data value">>, Data);
+       true ->
+        ok
+    end,
 
     %% Test that resolving to the wrong type will give 'none' in FATE.
     BadContract1 = ?call(call_contract, Acc, Ct, resolve_account, {option, word},   {Name, <<"contract_pubkey">>}),
@@ -6409,7 +6500,6 @@ sophia_aens_transactions(Cfg) ->
     APubkey  = 1,
     OPubkey  = 2,
     CPubkey  = 3,
-    %% TODO: Improve checks in aens_unpdate_tx
     Pointers = [aens_pointer:new(<<"account_pubkey">>, aeser_id:create(account, <<APubkey:256>>)),
                 aens_pointer:new(<<"oracle_pubkey">>, aeser_id:create(oracle, <<OPubkey:256>>)),
                 aens_pointer:new(<<"contract_pubkey">>, aeser_id:create(contract, <<CPubkey:256>>))
@@ -6469,7 +6559,9 @@ sophia_aens_transactions(Cfg) ->
 
     ok.
 
-sophia_aens_update_transaction(_Cfg) ->
+sophia_aens_update_transaction(Cfg) ->
+    VMVersion = ?config(vm_version, Cfg),
+
     %% AENS transactions from contract
     init_new_state(),
     Acc      = ?call(new_account, 40000000000000 * aec_test_utils:min_gas_price()),
@@ -6496,9 +6588,15 @@ sophia_aens_update_transaction(_Cfg) ->
     Some = fun (X) -> {some, X} end,
     RelTTL = fun (I) -> {variant, [1, 1], 0, {I}} end,
     FixTTL = fun (I) -> {variant, [1, 1], 1, {I}} end,
-    AccountPointee  = fun (A) -> {variant, [1, 1, 1, 1], 0, {A}} end,
-    OraclePointee   = fun (A) -> {variant, [1, 1, 1, 1], 1, {A}} end,
-    ContractPointee = fun (A) -> {variant, [1, 1, 1, 1], 2, {A}} end,
+    PointeeVariantArities =
+        case VMVersion of
+            ?VM_FATE_SOPHIA_2 -> [1, 1, 1, 1];
+            _                 -> [1, 1, 1, 1, 1]
+        end,
+    AccountPointee  = fun (A) -> {variant, PointeeVariantArities, 0, {A}} end,
+    OraclePointee   = fun (A) -> {variant, PointeeVariantArities, 1, {A}} end,
+    ContractPointee = fun (A) -> {variant, PointeeVariantArities, 2, {A}} end,
+    DataPointee     = fun (A) -> {variant, PointeeVariantArities, 4, {A}} end,
 
     Rec0 = GetNameRecord(),
     {} = ?call(call_contract, Acc, Ct, update, {tuple, []},
@@ -6526,13 +6624,18 @@ sophia_aens_update_transaction(_Cfg) ->
     ?assertEqual(23456, aens_names:ttl(Rec3)),
     ?assertEqual(23456, aens_names:client_ttl(Rec3)),
 
+    RawPointers = if VMVersion >= ?VM_FATE_SOPHIA_3 -> #{<<"raw_pointer">> => DataPointee(<<"data">>)};
+                     true                           -> #{}
+                  end,
+
     {} = ?call(call_contract, Acc, Ct, update, {tuple, []},
                {Ct, Name1,
                 Some(RelTTL(13131)),
                 Some(34567),
-                Some(#{<<"account_pubkey">> => AccountPointee(<<APubkey:256>>),
-                       <<"oracle_pubkey">> => OraclePointee(<<OPubkey:256>>),
-                       <<"contract_pubkey">> => ContractPointee(<<CPubkey:256>>)})},
+                Some(maps:merge(#{<<"account_pubkey">> => AccountPointee(<<APubkey:256>>),
+                                  <<"oracle_pubkey">> => OraclePointee(<<OPubkey:256>>),
+                                  <<"contract_pubkey">> => ContractPointee(<<CPubkey:256>>)},
+                                RawPointers))},
                #{ height => 16 }),
     Rec4 = GetNameRecord(),
     ?assertEqual(13131 + 16, aens_names:ttl(Rec4)),
@@ -6540,7 +6643,8 @@ sophia_aens_update_transaction(_Cfg) ->
     ?assertEqual(lists:sort(
                    [aens_pointer:new(<<(atom_to_binary(T, utf8))/binary, "_pubkey">>,
                                      aeser_id:create(T, <<A:256>>)) ||
-                       {T, A} <- [{account, APubkey}, {oracle, OPubkey}, {contract, CPubkey}]]),
+                       {T, A} <- [{account, APubkey}, {oracle, OPubkey}, {contract, CPubkey}]]
+                   ++ [aens_pointer:new(K, V) || {K, {variant, _, _, {V}}} <- maps:to_list(RawPointers)]),
                  lists:sort(aens_names:pointers(Rec4))),
 
     {} = ?call(call_contract, Acc, Ct, update, {tuple, []},
@@ -6964,89 +7068,89 @@ lima_migration(_Config) ->
 fate_vm_interaction(Cfg) ->
     init_new_state(),
     ForkHeights = ?config(fork_heights, Cfg),
-    LimaHeight = maps:get(lima, ForkHeights),
-    IrisHeight = maps:get(iris, ForkHeights),
-    Protocol = aec_hard_forks:protocol_effective_at_height(LimaHeight),
+    [{_ProtoA, HeightA, VMA}, {_ProtoB, HeightB, VMB}] = ForkHeights,
+    Protocol = aec_hard_forks:protocol_effective_at_height(HeightA),
     GasPrice = aec_governance:minimum_gas_price(Protocol),
     MinerMinGasPrice = aec_tx_pool:minimum_miner_gas_price(),
     MinGasPrice = max(GasPrice, MinerMinGasPrice),
     Acc = ?call(new_account, 10000000000 * MinGasPrice),
-    LimaSpec = #{height => LimaHeight,
-                 vm_version => ?VM_FATE_SOPHIA_1,
-                 amount => 100,
-                 gas_price => MinGasPrice,
-                 fee => 1000000 * MinGasPrice},
-    IrisSpec = #{height => IrisHeight,
-                 vm_version => ?VM_FATE_SOPHIA_2,
-                 amount => 100,
-                 gas_price => MinGasPrice,
-                 fee => 1000000 * MinGasPrice},
+    SpecA = #{height => HeightA,
+              vm_version => VMA,
+              amount => 100,
+              gas_price => MinGasPrice,
+              fee => 1000000 * MinGasPrice},
+    SpecB = #{height => HeightB,
+              vm_version => VMB,
+              amount => 100,
+              gas_price => MinGasPrice,
+              fee => 1000000 * MinGasPrice},
     {ok, IdCode}  = compile_contract(identity),
     {ok, RemCode} = compile_contract(remote_call),
 
     %% Create contracts on both sides of the fork
-    IdCLima   = ?call(create_contract_with_code, Acc, IdCode, {}, LimaSpec),
-    RemCLima  = ?call(create_contract_with_code, Acc, RemCode, {}, LimaSpec),
-    Rem2CLima = ?call(create_contract_with_code, Acc, RemCode, {}, LimaSpec),
-    IdCIris   = ?call(create_contract_with_code, Acc, IdCode, {}, IrisSpec),
-    RemCIris  = ?call(create_contract_with_code, Acc, RemCode, {}, IrisSpec),
-    Rem2CIris = ?call(create_contract_with_code, Acc, RemCode, {}, IrisSpec),
+    IdCA   = ?call(create_contract_with_code, Acc, IdCode, {}, SpecA),
+    RemCA  = ?call(create_contract_with_code, Acc, RemCode, {}, SpecA),
+    Rem2CA = ?call(create_contract_with_code, Acc, RemCode, {}, SpecA),
+    IdCB   = ?call(create_contract_with_code, Acc, IdCode, {}, SpecB),
+    RemCB  = ?call(create_contract_with_code, Acc, RemCode, {}, SpecB),
+    Rem2CB = ?call(create_contract_with_code, Acc, RemCode, {}, SpecB),
 
     %% Check that we cannot create contracts with old vms after the forks
-    BadSpec = LimaSpec#{height => IrisHeight},
+    BadSpec = SpecA#{height => HeightB},
     {error, illegal_vm_version} = ?call(tx_fail_create_contract_with_code, Acc, IdCode, {}, BadSpec),
 
-    LatestCallSpec = #{height => IrisHeight,
+    LatestCallSpec = #{height => HeightB,
                        gas_price => MinGasPrice,
                        fee => 1000000 * MinGasPrice},
 
     %% Call directly old VMs
     [?assertEqual(42, ?call(call_contract, Acc, Id, main_, word, 42, LatestCallSpec))
-        || Id <- [ IdCLima
-                 , IdCIris
+        || Id <- [ IdCA
+                 , IdCB
                  ]],
 
     %% Call new/oldVM -> old/newVM
     [?assertEqual(98, ?call(call_contract, Acc, Rem, call, word, {?cid(Id), 98},
         LatestCallSpec))
-        || {Rem, Id} <- [ {RemCLima, IdCLima}
-                        , {RemCIris, IdCLima}
-                        , {RemCLima, IdCIris}
-                        , {RemCIris, IdCIris}
+        || {Rem, Id} <- [ {RemCA, IdCA}
+                        , {RemCB, IdCA}
+                        , {RemCA, IdCB}
+                        , {RemCB, IdCB}
                         ]],
 
     %% Call new/oldVM -> new/oldVM -> new/oldVM in different orders
     [?assertEqual(77, ?call(call_contract, Acc, Rem1, staged_call, word,
         {?cid(Id), ?cid(Rem2), 77}, LatestCallSpec))
-        || {Rem1, Id, Rem2} <- [ {RemCIris, IdCIris, Rem2CLima}
-                               , {RemCIris, IdCIris, Rem2CIris}
-                               , {RemCIris, IdCLima, Rem2CIris}
-                               , {RemCIris, IdCLima, Rem2CLima}
-                               , {RemCLima, IdCIris, Rem2CLima}
-                               , {RemCLima, IdCIris, Rem2CIris}
-                               , {RemCLima, IdCLima, Rem2CLima}
-                               , {RemCLima, IdCLima, Rem2CIris}
+        || {Rem1, Id, Rem2} <- [ {RemCB, IdCB, Rem2CA}
+                               , {RemCB, IdCB, Rem2CB}
+                               , {RemCB, IdCA, Rem2CB}
+                               , {RemCB, IdCA, Rem2CA}
+                               , {RemCA, IdCB, Rem2CA}
+                               , {RemCA, IdCB, Rem2CB}
+                               , {RemCA, IdCA, Rem2CA}
+                               , {RemCA, IdCA, Rem2CB}
                                ]],
     ok.
 
 
 fate_vm_version_switching(Cfg) ->
+    %% TODO: Can we detect the difference between VM2 and VM3
+    ?skipRest(sophia_version() /= ?SOPHIA_IRIS_FATE, vm_auto_detect_only_between_fate_and_iris),
     init_new_state(),
     ForkHeights = ?config(fork_heights, Cfg),
-    LimaHeight = maps:get(lima, ForkHeights),
-    IrisHeight = maps:get(iris, ForkHeights),
+    [{lima, LimaHeight, LimaVM}, {iris, IrisHeight, IrisVM}] = ForkHeights,
     Protocol = aec_hard_forks:protocol_effective_at_height(LimaHeight),
     GasPrice = aec_governance:minimum_gas_price(Protocol),
     MinerMinGasPrice = aec_tx_pool:minimum_miner_gas_price(),
     MinGasPrice = max(GasPrice, MinerMinGasPrice),
     Acc = ?call(new_account, 10000000000 * MinGasPrice),
     LimaSpec = #{height => LimaHeight,
-                 vm_version => ?VM_FATE_SOPHIA_1,
+                 vm_version => LimaVM,
                  amount => 100,
                  gas_price => MinGasPrice,
                  fee => 1000000 * MinGasPrice},
     IrisSpec = #{height => IrisHeight,
-                 vm_version => ?VM_FATE_SOPHIA_2,
+                 vm_version => IrisVM,
                  amount => 100,
                  gas_price => MinGasPrice,
                  fee => 1000000 * MinGasPrice},
@@ -7086,24 +7190,126 @@ fate_vm_version_switching(Cfg) ->
     ],
     ok.
 
+%% Test interaction and feasability of data pointers with an old AENS contract and
+%% a new AENSv2 contract.
 
-contract_init_on_chain_fate(Cfg) ->
+
+fate_vm_new_data_pointers(Cfg) ->
+    ?skipRest(sophia_version() /= ?SOPHIA_CERES_FATE, data_pointers_new_in_ceres),
     init_new_state(),
     ForkHeights = ?config(fork_heights, Cfg),
-    LimaHeight = maps:get(lima, ForkHeights),
-    IrisHeight = maps:get(iris, ForkHeights),
+    [{iris, IrisHeight, IrisVM}, {ceres, CeresHeight, CeresVM}] = ForkHeights,
+    Protocol         = aec_hard_forks:protocol_effective_at_height(IrisHeight),
+    GasPrice         = aec_governance:minimum_gas_price(Protocol),
+    MinerMinGasPrice = aec_tx_pool:minimum_miner_gas_price(),
+    MinGasPrice      = max(GasPrice, MinerMinGasPrice),
+    Acc              = ?call(new_account, 1_000_000_000_000 * MinGasPrice),
+
+    IrisSpec = #{height     => IrisHeight,
+                 vm_version => IrisVM,
+                 amount     => 100_000_000_000_000_000_000,
+                 gas_price  => MinGasPrice,
+                 fee        => 1000000 * MinGasPrice},
+    CeresSpec = #{height    => CeresHeight,
+                 vm_version => CeresVM,
+                 amount     => 100_000_000_000_000_000_000,
+                 gas_price  => MinGasPrice,
+                 fee        => 1000000 * MinGasPrice},
+
+    {ok, AENSv1Contract} = aect_test_utils:compile_contract(?SOPHIA_IRIS_FATE, aens_update),
+    {ok, AENSv2Contract} = aect_test_utils:compile_contract(aens_update),
+
+    %% Create contracts on both sides of the fork
+    %% Create A1 and A2 contracts
+    CtIris = ?call(create_contract_with_code, Acc, AENSv1Contract, {}, IrisSpec),
+    CtCeres = ?call(create_contract_with_code, Acc, AENSv2Contract, {}, CeresSpec),
+
+    CallSpec = #{height    => CeresHeight,
+                 gas_price => MinGasPrice,
+                 fee       => 1000000 * MinGasPrice},
+
+    %% CIris should register the name
+    Name1           = aens_test_utils:fullname(<<"longnamemeansnoauction">>),
+    Salt1           = rand:uniform(10000),
+    {ok, NameAscii} = aens_utils:to_ascii(Name1),
+    CHash           = aens_hash:commitment_hash(NameAscii, Salt1),
+
+    AccountPointeeV2 = fun (A) -> {variant, [1, 1, 1, 1, 1], 0, {A}} end,
+    PointeeV2Type = {variant_t, [{acc_pt, [word]}, {orc_pt, [word]}, {con_pt, [word]}, {cha_pt, [word]}, {dat_pt, [string]}]},
+
+    %%  A1 register a name N
+    {} = ?call(call_contract, Acc, CtIris, reg, {tuple, []}, {Name1, ?hsh(CHash), Salt1, 1_000_000_000_000_000_000}, CallSpec),
+
+    %%  A2 adds key1 -> account to N through A1
+    {} = ?call(call_contract, Acc, CtCeres, remote_set, {tuple, []}, {?cid(CtIris), Name1, <<"key1">>, AccountPointeeV2(<<42:256>>)}, CallSpec),
+
+    %%  A2 lookup key1 through A1 (testing AENSCompat + conversion)
+    Res = ?call(call_contract, Acc, CtCeres, remote_lookup, PointeeV2Type, {?cid(CtIris), Name1, <<"key1">>}, CallSpec),
+    ct:pal("Res: ~p", [Res]),
+
+    %%  A1 transfer N to A2
+    {} = ?call(call_contract, Acc, CtIris, trf, {tuple, []}, {Name1, CtCeres}, CallSpec),
+
+    %%  A2 lookup key1 through A1
+    Res = ?call(call_contract, Acc, CtCeres, remote_lookup, PointeeV2Type, {?cid(CtIris), Name1, <<"key1">>}, CallSpec),
+
+    %%  A2 add key2 -> data
+    {} = ?call(call_contract, Acc, CtCeres, add_data_ptr, {tuple, []}, {Name1, <<"key2">>, <<"ptr1">>}, CallSpec),
+
+    %%  A2 tries to lookup key2 through A1 -> fail
+    {error,<<"Error in aens_lookup: data_pointer_not_in_fate_vm_2">>} =
+        ?call(call_contract, Acc, CtCeres, remote_lookup, PointeeV2Type, {?cid(CtIris), Name1, <<"key2">>}, CallSpec),
+
+    %%  A2 tries to lookup key1 through A1 -> fail
+    {error,<<"Error in aens_lookup: data_pointer_not_in_fate_vm_2">>} =
+        ?call(call_contract, Acc, CtCeres, remote_lookup, PointeeV2Type, {?cid(CtIris), Name1, <<"key1">>}, CallSpec),
+
+    %%  A2 tries to resolve key1 through A1 -> ok
+%%     {address, <<42:256>>} = ?call(call_contract, Acc, CtCeres, remote_resolve, word, {?cid(CtIris), Name1, <<"key1">>}, CallSpec),
+
+    %%  A2 transfer N to A1
+    {} = ?call(call_contract, Acc, CtCeres, trf, {tuple, []}, {Name1, CtIris}, CallSpec),
+
+    %%  A2 adds key3 -> account to N through A1 -> fail
+    {error,<<"Error in aens_lookup: data_pointer_not_in_fate_vm_2">>} =
+        ?call(call_contract, Acc, CtIris, add_account, {tuple, []}, {Name1, <<"key3">>, <<43:256>>}, CallSpec),
+
+    %%  A1 transfer N to A2
+    {} = ?call(call_contract, Acc, CtIris, trf, {tuple, []}, {Name1, CtCeres}, CallSpec),
+
+    %%  A2 remove key2
+    {} = ?call(call_contract, Acc, CtCeres, remove_ptr, {tuple, []}, {Name1, <<"key2">>}, CallSpec),
+
+    %%  A2 add key2 -> too long -> fail
+    {error,<<"Error in aens_update: bad_pointer">>} =
+        ?call(call_contract, Acc, CtCeres, add_data_ptr, {tuple, []}, {Name1, <<"key2">>, <<0:(1025*8)>>}, CallSpec),
+
+    %%  A2 transfer N to A1
+    {} = ?call(call_contract, Acc, CtCeres, trf, {tuple, []}, {Name1, CtIris}, CallSpec),
+
+    %%  A2 adds key3 -> account to N through A1
+    {} = ?call(call_contract, Acc, CtCeres, remote_set, {tuple, []}, {?cid(CtIris), Name1, <<"key1">>, AccountPointeeV2(<<43:256>>)}, CallSpec),
+
+    ok.
+
+
+contract_init_on_chain_fate(Cfg) ->
+    ?skipRest(sophia_version() /= ?SOPHIA_IRIS_FATE, init_on_chain_only_diff_between_fate_and_iris),
+    init_new_state(),
+    ForkHeights = ?config(fork_heights, Cfg),
+    [{lima, LimaHeight, LimaVM}, {iris, IrisHeight, IrisVM}] = ForkHeights,
     Protocol = aec_hard_forks:protocol_effective_at_height(LimaHeight),
     GasPrice = aec_governance:minimum_gas_price(Protocol),
     MinerMinGasPrice = aec_tx_pool:minimum_miner_gas_price(),
     MinGasPrice = max(GasPrice, MinerMinGasPrice),
     Acc = ?call(new_account, 10000000000 * MinGasPrice),
     LimaSpec = #{height => LimaHeight,
-                 vm_version => ?VM_FATE_SOPHIA_1,
+                 vm_version => LimaVM,
                  amount => 100,
                  gas_price => MinGasPrice,
                  fee => 1000000 * MinGasPrice},
     IrisSpec = #{height => IrisHeight,
-                 vm_version => ?VM_FATE_SOPHIA_2,
+                 vm_version => IrisVM,
                  amount => 100,
                  gas_price => MinGasPrice,
                  fee => 1000000 * MinGasPrice},
@@ -7113,9 +7319,9 @@ contract_init_on_chain_fate(Cfg) ->
         fun(CallSpec) ->
             Id = ?call(create_contract_with_code, Acc, IdCode, {}, CallSpec),
             {value, Contract} = ?call(lookup_contract_by_id, Id),
-            aeb_fate_code:functions(
-                aeb_fate_code:deserialize(
-                    aect_contracts:code(Contract)))
+            {code, Code} = aect_contracts:code(Contract),
+            #{byte_code := ByteCode} = aect_sophia:deserialize(Code),
+            aeb_fate_code:functions(aeb_fate_code:deserialize(ByteCode))
         end,
 
     HasInit =
@@ -7418,24 +7624,23 @@ fate_vm_cross_protocol_store_big(Cfg) ->
     Dim={5,5,5},
     InitialState = store_rand_initial_state(Dim),
     ForkHeights   = ?config(fork_heights, Cfg),
-    LimaHeight = maps:get(lima, ForkHeights),
-    IrisHeight = maps:get(iris, ForkHeights),
+    [{_ProtoA, HeightA, VMA}, {_ProtoB, HeightB, VMB}] = ForkHeights,
     Acc = ?call(new_account, 1000000000000000000000000000000000000000 * aec_test_utils:min_gas_price()),
-    LimaSpec      = #{height => LimaHeight, vm_version => ?VM_FATE_SOPHIA_1, gas => 10000000000},
-    IrisSpec      = #{height => IrisHeight, vm_version => ?VM_FATE_SOPHIA_2, gas => 10000000000},
+    SpecA = #{height => HeightA, vm_version => VMA, gas => 10000000000},
+    SpecB = #{height => HeightB, vm_version => VMB, gas => 10000000000},
     {ok, TesterContract} = compile_contract(storage_tester),
-    Tester = ?call(create_contract_with_code, Acc, TesterContract, {}, LimaSpec),
+    Tester = ?call(create_contract_with_code, Acc, TesterContract, {}, SpecA),
     TestOps = fun(Ops, State, Spec) -> store_rand_exe_oplist(Ops, State, Dim, Tester, Acc, Spec) end,
 
-    % Do a bunch of operations on Lima
+    % Do a bunch of operations on A
     State2 = lists:foldl(
-        fun(_, State) -> TestOps([store_rand_random_op(Dim) || _ <- lists:seq(1,5)], State, LimaSpec) end,
+        fun(_, State) -> TestOps([store_rand_random_op(Dim) || _ <- lists:seq(1,5)], State, SpecA) end,
         InitialState,
         lists:seq(1,50)
     ),
-    % Do operations on Iris
+    % Do operations on B
     lists:foldl(
-        fun(_, State) -> TestOps([store_rand_random_op(Dim) || _ <- lists:seq(1,5)], State, IrisSpec) end,
+        fun(_, State) -> TestOps([store_rand_random_op(Dim) || _ <- lists:seq(1,5)], State, SpecB) end,
         State2,
         lists:seq(1,50)
     ),
@@ -7446,25 +7651,24 @@ fate_vm_cross_protocol_store_multi_small(Cfg) ->
     Dim={5,5,5},
     InitialState = store_rand_initial_state(Dim),
     ForkHeights   = ?config(fork_heights, Cfg),
-    LimaHeight = maps:get(lima, ForkHeights),
-    IrisHeight = maps:get(iris, ForkHeights),
+    [{_ProtoA, HeightA, VMA}, {_ProtoB, HeightB, VMB}] = ForkHeights,
     Acc = ?call(new_account, 1000000000000000000000000000000000000000 * aec_test_utils:min_gas_price()),
-    LimaSpec      = #{height => LimaHeight, vm_version => ?VM_FATE_SOPHIA_1, gas => 10000000000},
-    IrisSpec      = #{height => IrisHeight, vm_version => ?VM_FATE_SOPHIA_2, gas => 10000000000},
+    SpecA = #{height => HeightA, vm_version => VMA, gas => 10000000000},
+    SpecB = #{height => HeightB, vm_version => VMB, gas => 10000000000},
     {ok, TesterContract} = compile_contract(storage_tester),
 
     DoTest = fun() ->
-        Tester = ?call(create_contract_with_code, Acc, TesterContract, {}, LimaSpec),
+        Tester = ?call(create_contract_with_code, Acc, TesterContract, {}, SpecA),
         TestOps = fun(Ops, State, Spec) -> store_rand_exe_oplist(Ops, State, Dim, Tester, Acc, Spec) end,
-        % Do a bunch of operations on Lima
+        % Do a bunch of operations on A
         State2 = lists:foldl(
-            fun(_, State) -> TestOps([store_rand_random_op(Dim) || _ <- lists:seq(1,5)], State, LimaSpec) end,
+            fun(_, State) -> TestOps([store_rand_random_op(Dim) || _ <- lists:seq(1,5)], State, SpecA) end,
             InitialState,
             lists:seq(1,3)
         ),
-        % Do operations on Iris
+        % Do operations on B
         lists:foldl(
-            fun(_, State) -> TestOps([store_rand_random_op(Dim) || _ <- lists:seq(1,5)], State, IrisSpec) end,
+            fun(_, State) -> TestOps([store_rand_random_op(Dim) || _ <- lists:seq(1,5)], State, SpecB) end,
             State2,
             lists:seq(1,3)
         )

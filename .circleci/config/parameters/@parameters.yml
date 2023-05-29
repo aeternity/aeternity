@@ -4,7 +4,7 @@ docker_repo:
 
 aeplugin_devmode_version:
   type: string
-  default: "0.4.1"
+  default: "0.5.1"
 
 tag_regex:
   type: string
@@ -53,3 +53,7 @@ run_system_tests:
 run_integration_sync:
   type: boolean
   default: false
+
+docker_builder_image:
+  type: string
+  default: "aeternity/builder:bionic-otp23"

@@ -871,7 +871,8 @@ apply_node_transactions(Node, Trees, ForkInfo, State) ->
                         true  -> {grant_fees(Node, Trees3, Delay, FraudStatus, State), TotalFees, no_events()};
                         false -> {Trees3, TotalFees, no_events()}
                     end;
-                {error, Reason} -> error({leader_validation_failed, Reason})
+                {error, Reason} ->
+                    error({leader_validation_failed, Reason})
             end
     end.
 
@@ -1483,7 +1484,5 @@ key_headers_height_store_migration_step(Time, N, {TimeRead, {Headers, Cont}}) ->
     ).
 
 is_gc_disabled() ->
-    case aec_db_gc:config() of
-        #{enabled := Bool} when is_boolean(Bool) ->
-            Bool
-    end.
+    [Bool] = aec_db_gc:info([enabled]),
+    Bool.

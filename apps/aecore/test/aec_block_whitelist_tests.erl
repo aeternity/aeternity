@@ -99,7 +99,7 @@ test_start_mining_add_block() ->
     [_GB, B1, B2] = aec_test_utils:gen_blocks_only_chain(3, preset_accounts(Keys)),
     BH2 = aec_blocks:to_header(B2),
     meck:expect(aec_fork_block_settings, block_whitelist, 0, #{2 => <<"AAA">>}),
-    aec_consensus_bitcoin_ng:start(#{}),
+    aec_consensus_bitcoin_ng:start(#{}, #{}),
     ?assertEqual(ok, aec_conductor:post_block(B1)),
     %% Does not go pass conductor checks
     ?assertEqual({error,blocked_by_whitelist}, aec_conductor:post_block(B2)),
@@ -108,7 +108,7 @@ test_start_mining_add_block() ->
 
     %% Whitelisted blocks make it to the DB
     meck:expect(aec_fork_block_settings, block_whitelist, 0, #{2 => header_hash(BH2)}),
-    aec_consensus_bitcoin_ng:start(#{}),
+    aec_consensus_bitcoin_ng:start(#{}, #{}),
     ?assertEqual(ok, aec_conductor:post_block(B2)),
 
     aec_test_utils:wait_for_it(

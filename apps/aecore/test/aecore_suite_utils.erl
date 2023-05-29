@@ -6,6 +6,7 @@
          init_per_suite/4]).
 
 -export([top_dir/1,
+         priv_dir/1,
          make_shortcut/1,
          node_config/2,
          create_config/4,
@@ -96,7 +97,9 @@
          internal_address/0,
          external_address/0,
          rosetta_address/0,
-         rosetta_offline_address/0
+         rosetta_offline_address/0,
+         block_peer/2,
+         unblock_peer/2
         ]).
 
 -export([generate_key_pair/0]).
@@ -468,47 +471,53 @@ create_config(Node, CTConfig, CustomConfig, Options) ->
         Backend ->
             #{<<"chain">> => #{<<"db_backend">> => binary:list_to_bin(Backend)}}
     end,
-    Forks =
-        case CustomConfig of
-            #{ <<"chain">> := #{<<"hard_forks">> := _ }} -> #{}; %% already set
-            _ -> #{ <<"chain">> => #{<<"hard_forks">> => forks()}}
+    FinalConfig =
+        case ?config(use_config_defaults, CTConfig) of
+            false ->
+                CustomConfig;
+            _ -> %% true or undefined
+                Forks =
+                    case CustomConfig of
+                        #{ <<"chain">> := #{<<"hard_forks">> := _ }} -> #{}; %% already set
+                        _ -> #{ <<"chain">> => #{<<"hard_forks">> => forks()}}
+                    end,
+                MergedCfg = maps_merge(default_config(Node, CTConfig), CustomConfig),
+                MergedCfg1 = aec_metrics_test_utils:maybe_set_statsd_port_in_user_config(Node, MergedCfg, CTConfig),
+                MergedCfg2 = maps_merge(MergedCfg1, DbBackendConfig),
+                MergedCfg3 = case proplists:get_value(instant_mining, CTConfig) of
+                                undefined ->
+                                    ct:log("Instant mining consensus disabled in node"),
+                                    MergedCfg2;
+                                _ ->
+                                    ct:log("Instant mining consensus enabled in node"),
+                                    maps_merge(MergedCfg2,
+                                        #{<<"chain">> =>
+                                            #{<<"consensus">> =>
+                                                #{
+                                                    <<"0">> =>
+                                                        #{
+                                                            <<"type">> => <<"ct_tests">>
+                                                        }
+                                                }
+                                            }
+                                        })
+                            end,
+                MergedCfg4 = maps_merge(MergedCfg3, Forks),
+                Ports =
+                    #{ <<"sync">> => #{ <<"port">> => sync_port(Node)},
+                    <<"http">> => #{ <<"external">> => #{<<"port">> => external_api_port(Node)},
+                                        <<"internal">> => #{<<"port">> => internal_api_port(Node)},
+                                        <<"rosetta">> => #{<<"port">> => rosetta_api_port(Node)},
+                                        <<"rosetta_offline">> => #{<<"port">> => rosetta_offline_api_port(Node)}},
+                    <<"websocket">> => #{<<"channel">> => #{<<"port">> => ws_port(Node)}}},
+                MergedCfg5 = maps_merge(MergedCfg4, Ports),
+                FConfig = config_apply_options(Node, MergedCfg5, Options),
+                write_keys(Node, FConfig),
+                FConfig
         end,
     NodeCfgPath = node_config_dir(Node, CTConfig),
     ok = filelib:ensure_dir(NodeCfgPath),
-    MergedCfg = maps_merge(default_config(Node, CTConfig), CustomConfig),
-    MergedCfg1 = aec_metrics_test_utils:maybe_set_statsd_port_in_user_config(Node, MergedCfg, CTConfig),
-    MergedCfg2 = maps_merge(MergedCfg1, DbBackendConfig),
-    MergedCfg3 = case proplists:get_value(instant_mining, CTConfig) of
-                     undefined ->
-                         ct:log("Instant mining consensus disabled in node"),
-                         MergedCfg2;
-                     _ ->
-                         ct:log("Instant mining consensus enabled in node"),
-                         maps_merge(MergedCfg2,
-                             #{<<"chain">> =>
-                                #{<<"consensus">> =>
-                                    #{
-                                        <<"0">> =>
-                                            #{
-                                                <<"name">> => <<"ct_tests">>
-                                             }
-                                    }
-                                 }
-                              })
-                 end,
-    MergedCfg4 = maps_merge(MergedCfg3, Forks),
-    Ports =
-        #{ <<"sync">> => #{ <<"port">> => sync_port(Node)},
-           <<"http">> => #{ <<"external">> => #{<<"port">> => external_api_port(Node)},
-                            <<"internal">> => #{<<"port">> => internal_api_port(Node)},
-                            <<"rosetta">> => #{<<"port">> => rosetta_api_port(Node)},
-                            <<"rosetta_offline">> => #{<<"port">> => rosetta_offline_api_port(Node)}},
-           <<"websocket">> => #{<<"channel">> => #{<<"port">> => ws_port(Node)}}},
-    MergedCfg5 = maps_merge(MergedCfg4, Ports),
-
-    Config = config_apply_options(Node, MergedCfg5, Options),
-    write_keys(Node, Config),
-    write_config(NodeCfgPath, Config).
+    write_config(NodeCfgPath, FinalConfig).
 
 create_seed_file(Nodes, CTConfig, Consensus, FileName, Data) when
     is_list(Nodes) ->
@@ -552,13 +561,29 @@ start_node(N, Config) ->
 start_node(N, Config, ExtraEnv) ->
     MyDir = filename:dirname(code:which(?MODULE)),
     ConfigFilename = proplists:get_value(config_name, Config, "default"),
-    Flags = ["-pa ", MyDir, " -config ./" ++ ConfigFilename],
-    Env0 = [
-            {"ERL_FLAGS", Flags},
-            {"AETERNITY_CONFIG", "data/aeternity.json"},
-            {"RUNNER_LOG_DIR","log"},
-            {"CODE_LOADING_MODE", "interactive"}
-           ],
+    Flags =
+        case ?config(build_to_connect_to_mainnet, Config) of
+            true -> %% no proxy!
+                ["-pa ", MyDir];
+            _ ->
+                ["-pa ", MyDir, " -config ./" ++ ConfigFilename]
+        end,
+    Env0 = 
+        case ?config(build_to_connect_to_mainnet, Config) of
+            true ->
+                [
+                    {"ERL_FLAGS", Flags},
+                    {"AETERNITY_CONFIG", "data/aeternity.json"},
+                    {"RUNNER_LOG_DIR","log"}
+                ];
+            _ ->
+                [
+                    {"ERL_FLAGS", Flags},
+                    {"AETERNITY_CONFIG", "data/aeternity.json"},
+                    {"RUNNER_LOG_DIR","log"},
+                    {"CODE_LOADING_MODE", "interactive"}
+                ]
+        end,
     Env = maybe_override(ExtraEnv, Env0),
     cmd(?OPS_BIN, node_shortcut(N, Config), "bin", ["daemon"], Env).
 
@@ -567,28 +592,21 @@ maybe_override([{K,_} = H|T], L0) ->
 maybe_override([], L0) ->
     L0.
 
-stop_node(N, _Config) ->
+stop_node(N, Config) ->
     ct:log("Stopping node ~p", [N]),
-    Node = node_name(N),
-    monitor_node(Node, true),
-    case rpc:call(Node, init, stop, []) of
-        ok ->
-            ct:log("Stop request to node ~p was sent successfully", [N]),
-            receive
-                {nodedown, Node} ->
-                    ct:log("Node ~p stopped", [N]),
-                    ok
-            after 30000 ->
-                error(stop_failed)
-            end;
-        {badrpc, nodedown} ->
-            ct:log("Not stopping node ~p as it's stopped", [N])
+    case cmd(?OPS_BIN, node_shortcut(N, Config), "bin", ["stop"]) of
+        {ok, 0, _Res} ->
+            ct:log("Node ~p stopped", [N]),
+            ok;
+        Else ->
+            ct:log("Failed stopping node ~p, Reason: ~p", [N, Else]),
+            Else
     end.
 
 reinit_with_bitcoin_ng(N) ->
     ct:log("Reinitializing chain on ~p with bitcoin ng consensus", [N]),
     Node = node_name(N),
-    ok = set_env(Node, aecore, consensus, #{<<"0">> => #{<<"name">> => <<"pow_cuckoo">>}}),
+    ok = set_env(Node, aecore, consensus, #{<<"0">> => #{<<"type">> => <<"pow_cuckoo">>}}),
     ok = rpc:call(Node, aec_conductor, reinit_chain, []).
 
 reinit_nodes_with_ct_consensus(Nodes) ->
@@ -597,7 +615,7 @@ reinit_nodes_with_ct_consensus(Nodes) ->
     Timeout = 5000,
     [{ok, maintenance} = rpc:call(NN, app_ctrl, set_and_await_mode, [maintenance, Timeout])
      || NN <- NodeNames],
-    [ok = set_env(NN, aecore, consensus, #{<<"0">> => #{<<"name">> => <<"ct_tests">>}})
+    [ok = set_env(NN, aecore, consensus, #{<<"0">> => #{<<"type">> => <<"ct_tests">>}})
      || NN <- NodeNames],
     [ok = rpc:call(NN, aec_conductor, reinit_chain, []) || NN <- NodeNames],
     [{ok, normal} = rpc:call(NN, app_ctrl, set_and_await_mode, [normal, Timeout])
@@ -688,8 +706,8 @@ wait_for_tx_in_pool(Node, Tx) ->
     wait_for_tx_in_pool(Node, Tx, 5000).
 
 wait_for_tx_in_pool(Node, SignedTx, Timeout) ->
-    true = rpc:call(Node, aec_events, subscribe , [tx_created]),
-    true = rpc:call(Node, aec_events, subscribe , [tx_received]),
+    ok = subscribe(Node, tx_created),
+    ok = subscribe(Node, tx_received),
     Hash = aetx_sign:hash(SignedTx),
     case rpc:call(Node, aec_chain, find_tx_location, [Hash]) of
         mempool -> ok;
@@ -705,8 +723,8 @@ wait_for_tx_in_pool(Node, SignedTx, Timeout) ->
                             "~p", [SignedTx, process_info(self(), messages)]),
                     error({timeout_waiting_for_tx, SignedTx})
             end,
-            rpc:call(Node, aec_events, unsubscribe , [tx_created]),
-            rpc:call(Node, aec_events, unsubscribe , [tx_received])
+	    ok = unsubscribe(Node, tx_created),
+	    ok = unsubscribe(Node, tx_received)
     end.
 
 mine_blocks_until_txs_on_chain(Node, TxHashes, MaxBlocks) ->
@@ -882,9 +900,9 @@ wait_for_height(Node, Height) ->
 
 wait_for_height(Node, Height, TimeoutPerBlock) ->
     flush_new_blocks_produced(),
-    subscribe(Node, top_changed),
+    ok = subscribe(Node, top_changed),
     ok = wait_for_height_(Node, Height, TimeoutPerBlock),
-    unsubscribe(Node, top_changed),
+    ok = unsubscribe(Node, top_changed),
     ok.
 
 wait_for_height_(Node, Height, TimeoutPerBlock) ->
@@ -1201,7 +1219,7 @@ await_aehttp(N) ->
     await_app(N, aehttp).
 
 await_app(N, App) ->
-    subscribe(N, app_started),
+    ok = subscribe(N, app_started),
     Events = events_since(N, app_started, 0),
     ct:log("`app_started` Events since 0: ~p", [Events]),
     case [true || #{info := A} <- Events, A == App] of
@@ -1217,24 +1235,27 @@ await_app(N, App) ->
             ct:log("~p already started", [App]),
             ok
     end,
-    unsubscribe(N, app_started),
+    ok = unsubscribe(N, app_started),
     ok.
 
 setup_node(N, Top, Root, Config) ->
     ct:log("setup_node(~p,Config)", [N]),
-    DDir = node_shortcut(N, Config),
-    filelib:ensure_dir(filename:join(DDir, "foo")),
-    cp_dir(filename:join(Root, "releases"), DDir ++ "/"),
-    cp_dir(filename:join(Root, "bin"), DDir ++ "/"),
-    symlink(filename:join(Root, "lib"), filename:join(DDir, "lib"), true),
-    symlink(filename:join(Root, "patches"), filename:join(DDir, "patches"), true),
     {ok, VerContents} = file:read_file(filename:join(Root, "VERSION")),
     [VerB |_ ] = binary:split(VerContents, [<<"\n">>, <<"\r">>], [global]),
     Version = binary_to_list(VerB),
+    DDir = node_shortcut(N, Config),
+    filelib:ensure_dir(filename:join(DDir, "foo")),
+    ok = cp_dir(filename:join([Root, "releases", Version]),
+                filename:join([DDir, "releases", Version])),
+    cp_dir(filename:join(Root, "bin"), DDir ++ "/"),
+    symlink(filename:join(Root, "lib"), filename:join(DDir, "lib"), true),
+    symlink(filename:join(Root, "patches"), filename:join(DDir, "patches"), true),
     %%
-    CfgD = config_dir(Top, N),
+    SysCfgD = sys_config_dir(Top, N, Config),
+    VMCfgD = vm_config_dir(Top, N, Config),
     RelD = filename:dirname(filename:join([DDir, "releases", Version, "aeternity.rel"])),
-    [cp_file(filename:join(CfgD, F), filename:join(RelD, F)) || F <- ["vm.args", "sys.config"]],
+    [cp_file(filename:join(VMCfgD, F), filename:join(RelD, F)) || F <- ["vm.args"]],
+    [cp_file(filename:join(SysCfgD, F), filename:join(RelD, F)) || F <- ["sys.config"]],
     [cp_file(filename:join(Root, F), filename:join(DDir, F)) || F <- ["VERSION", "REVISION"]],
     delete_file(filename:join(RelD, "vm.args.orig")),
     delete_file(filename:join(RelD, "sys.config.orig")),
@@ -1247,7 +1268,21 @@ setup_node(N, Top, Root, Config) ->
     aec_test_utils:copy_forks_dir(Root, DDir).
 
 %% Take the node specific config if it exists, otherwise just use dev1
-config_dir(Top, N) ->
+sys_config_dir(Top, N, Config) ->
+    case ?config(build_to_connect_to_mainnet, Config) of
+        true ->
+            filename:join([Top, "config"]);
+        _ ->
+            Dir = filename:join([Top, "config/", N]),
+            case filelib:is_dir(Dir) of
+                true ->
+                    Dir;
+                false ->
+                    filename:join([Top, "config/", "dev1"])
+            end
+    end.
+
+vm_config_dir(Top, N, _Config) ->
     Dir = filename:join([Top, "config/", N]),
     case filelib:is_dir(Dir) of
         true ->
@@ -1611,7 +1646,7 @@ proxy_loop(Subs, Events) ->
                             proxy_loop([{From, Event}|Subs], Events);
                         false ->
                             case catch aec_events:subscribe(Event) of
-                                ok ->
+                                true ->
                                     From ! {Ref, ok},
                                     proxy_loop(
                                       [{From, Event}|
@@ -1770,7 +1805,6 @@ http_request(Host, post, Path, Params) ->
                            {"application/x-www-form-urlencoded",
                             aeu_uri:encode(Path)}
                    end,
-    %% lager:debug("Type = ~p; Body = ~p", [Type, Body]),
     ct:log("POST ~p, type ~p, Body ~p", [URL, Type, Body]),
     R = httpc_request(post, {URL, [], Type, Body}, [], []),
     process_http_return(R);
@@ -1889,6 +1923,13 @@ meta_tx(Owner, AuthOpts, AuthData, InnerTx0) ->
     MetaTx   = aega_test_utils:ga_meta_tx(Owner, Options1),
     aetx_sign:new(MetaTx, []).
 
+block_peer(Node, PeerNode) ->
+    {ok, PeerInfo} = aec_peers:parse_peer_address(peer_info(PeerNode)),
+    rpc(Node, aec_peers, block_peer, [PeerInfo]).
+
+unblock_peer(Node, PeerNode) ->
+    rpc(Node, aec_peers, unblock_peer, [pubkey(PeerNode)]).
+
 get_key_hash_by_delta(Node, Delta) ->
     TopHeader = rpc(Node, aec_chain, top_header, []),
     TopHeight = aec_headers:height(TopHeader),
@@ -1905,8 +1946,8 @@ mine_safe_setup(Node, MiningRate, Opts, LoopFun) ->
     _ = flush_new_blocks(), %% flush potential hanging message queue messages
 
     %% Start mining
-    subscribe(Node, block_created),
-    subscribe(Node, micro_block_created),
+    ok = subscribe(Node, block_created),
+    ok = subscribe(Node, micro_block_created),
     StartRes = rpc:call(Node, aec_conductor, start_mining, [Opts], 5000),
     ct:log("aec_conductor:start_mining(~p) (~p) -> ~p", [Opts, Node, StartRes]),
 
@@ -1916,8 +1957,8 @@ mine_safe_setup(Node, MiningRate, Opts, LoopFun) ->
     %% Stop mining
     StopRes = rpc:call(Node, aec_conductor, stop_mining, [], 5000),
     ct:log("aec_conductor:stop_mining() (~p) -> ~p", [Node, StopRes]),
-    unsubscribe(Node, block_created),
-    unsubscribe(Node, micro_block_created),
+    ok = unsubscribe(Node, block_created),
+    ok = unsubscribe(Node, micro_block_created),
 
     %% Ensure we are not mining after we've stopped
     stopped = rpc:call(Node, aec_conductor, get_mining_state, [], 5000),
@@ -2013,6 +2054,7 @@ win32_delete_junction(Target) ->
 
 set_node_name(Node, Path) ->
     Name = atom_to_binary(node_name(Node), utf8),
+    ct:log("Setting name ~p to ~p", [Name, Path]),
     {ok, Data} = file:read_file(Path),
     Lines = binary:split(Data, [<<"\n">>], [global]),
     Lines1 =

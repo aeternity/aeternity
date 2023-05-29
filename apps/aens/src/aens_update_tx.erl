@@ -34,11 +34,14 @@
          pointers/1,
          client_ttl/1]).
 
+-include_lib("aecontract/include/hard_forks.hrl").
+
 %%%===================================================================
 %%% Types
 %%%===================================================================
 
--define(NAME_UPDATE_TX_VSN, 1).
+-define(NAME_UPDATE_TX_VSN_1, 1).
+-define(NAME_UPDATE_TX_VSN_2, 2).
 -define(NAME_UPDATE_TX_TYPE, name_update_tx).
 
 -record(ns_update_tx, {
@@ -136,19 +139,25 @@ serialize(#ns_update_tx{account_id = AccountId,
                         client_ttl = ClientTTL,
                         fee        = Fee,
                         ttl        = TTL} = Tx) ->
-    {version(Tx),
+    Vsn = version(Tx),
+    SerializePtrFun =
+        case Vsn of
+            ?NAME_UPDATE_TX_VSN_1 -> fun aens_pointer:serialize_pointer_vsn1/1;
+            ?NAME_UPDATE_TX_VSN_2 -> fun aens_pointer:serialize_pointer_vsn2/1
+        end,
+    {Vsn,
      [ {account_id, AccountId}
      , {nonce, Nonce}
      , {name_id, NameId}
      , {name_ttl, NameTTL}
-     , {pointers, [{aens_pointer:key(P), aens_pointer:id(P)} || P <- Pointers]}
+     , {pointers, [SerializePtrFun(P) || P <- Pointers]}
      , {client_ttl, ClientTTL}
      , {fee, Fee}
      , {ttl, TTL}
      ]}.
 
 -spec deserialize(Vsn :: integer(), list({atom(), term()})) -> tx().
-deserialize(?NAME_UPDATE_TX_VSN,
+deserialize(Vsn,
             [ {account_id, AccountId}
             , {nonce, Nonce}
             , {name_id, NameId}
@@ -159,21 +168,36 @@ deserialize(?NAME_UPDATE_TX_VSN,
             , {ttl, TTL}]) ->
     account = aeser_id:specialize_type(AccountId),
     name = aeser_id:specialize_type(NameId),
+    DeserializePtrFun =
+        case Vsn of
+            ?NAME_UPDATE_TX_VSN_1 -> fun aens_pointer:deserialize_pointer_vsn1/1;
+            ?NAME_UPDATE_TX_VSN_2 -> fun aens_pointer:deserialize_pointer_vsn2/1
+        end,
     #ns_update_tx{account_id = AccountId,
                   nonce      = Nonce,
                   name_id    = NameId,
                   name_ttl   = NameTTL,
-                  pointers   = [aens_pointer:new(Key, Id) || {Key, Id} <- Pointers],
+                  pointers   = [DeserializePtrFun(P) || P <- Pointers],
                   client_ttl = ClientTTL,
                   fee        = Fee,
                   ttl        = TTL}.
 
-serialization_template(?NAME_UPDATE_TX_VSN) ->
+serialization_template(?NAME_UPDATE_TX_VSN_1) ->
     [ {account_id, id}
     , {nonce, int}
     , {name_id, id}
     , {name_ttl, int}
     , {pointers, [{binary, id}]}
+    , {client_ttl, int}
+    , {fee, int}
+    , {ttl, int}
+    ];
+serialization_template(?NAME_UPDATE_TX_VSN_2) ->
+    [ {account_id, id}
+    , {nonce, int}
+    , {name_id, id}
+    , {name_ttl, int}
+    , {pointers, [{binary, binary}]}
     , {client_ttl, int}
     , {fee, int}
     , {ttl, int}
@@ -213,22 +237,25 @@ pointers(#ns_update_tx{pointers = Pointers}) ->
 client_ttl(#ns_update_tx{client_ttl = ClientTTL}) ->
     ClientTTL.
 
+-spec name_hash(tx()) -> binary().
+name_hash(#ns_update_tx{name_id = NameId}) ->
+    aeser_id:specialize(NameId, name).
+
+-spec version(tx()) -> non_neg_integer().
+version(#ns_update_tx{pointers = Pointers}) ->
+    case aens_pointer:has_raw_data_pointer(Pointers) of
+        false -> ?NAME_UPDATE_TX_VSN_1;
+        true  -> ?NAME_UPDATE_TX_VSN_2
+    end.
+
+-spec valid_at_protocol(aec_hard_forks:protocol_vsn(), tx()) -> boolean().
+valid_at_protocol(Protocol, #ns_update_tx{pointers = Pointers}) ->
+    Protocol >= ?CERES_PROTOCOL_VSN
+        orelse not aens_pointer:has_raw_data_pointer(Pointers).
+
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
 
 account_pubkey(#ns_update_tx{account_id = AccountId}) ->
     aeser_id:specialize(AccountId, account).
-
--spec name_hash(tx()) -> binary().
-name_hash(#ns_update_tx{name_id = NameId}) ->
-    aeser_id:specialize(NameId, name).
-
--spec version(tx()) -> non_neg_integer().
-version(_) ->
-    ?NAME_UPDATE_TX_VSN.
-
--spec valid_at_protocol(aec_hard_forks:protocol_vsn(), tx()) -> boolean().
-valid_at_protocol(_, _) ->
-    true.
-

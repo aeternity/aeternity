@@ -17,6 +17,7 @@
          nonce/1,
          origin/1,
          check/3,
+         payload/1,
          process/3,
          signers/2,
          version/1,
@@ -111,6 +112,10 @@ channel_pubkey(#channel_close_solo_tx{channel_id = ChannelId}) ->
 
 channel_id(#channel_close_solo_tx{channel_id = ChannelId}) ->
     ChannelId.
+
+-spec payload(tx()) -> binary().
+payload(#channel_close_solo_tx{payload = Payload}) ->
+    Payload.
 
 from_pubkey(#channel_close_solo_tx{from_id = FromPubKey}) ->
     aeser_id:specialize(FromPubKey, account).

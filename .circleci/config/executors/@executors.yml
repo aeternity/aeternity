@@ -30,7 +30,7 @@ builder_container_otp24:
 
 builder_container_nix_alpine:
   docker:
-    - image: nixorg/nix:circleci
+    - image: nixos/nix:2.13.3
   working_directory: /home/circleci/aeternity
   environment:
     ERLANG_ROCKSDB_BUILDOPTS: "-j2"
@@ -49,3 +49,22 @@ machine_2004:
   environment:
     OTP_VERSION: 23.3.4.5
     LIBSODIUM_VERSION: "1.0.16"
+
+base:
+  docker:
+    - image: cimg/base:current
+  working_directory: /home/circleci/aeternity
+
+machine_amd64:
+  machine:
+    image: ubuntu-2004:current
+    docker_layer_caching: true
+  working_directory: /home/circleci/aeternity
+  resource_class: xlarge
+
+machine_arm64:
+  machine:
+    image: ubuntu-2004:current
+    docker_layer_caching: true
+  working_directory: /home/circleci/aeternity
+  resource_class: arm.xlarge

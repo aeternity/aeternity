@@ -253,10 +253,10 @@ read_preset_contracts(?LIMA_PROTOCOL_VSN = Release) ->
     end.
 
 accounts_file_name(Release) ->
-    case os:getenv("AE__SYSTEM__CUSTOM_PREFUNDED_ACCS_FILE") of
-        false ->
+    case aeu_env:find_config([<<"system">>, <<"custom_prefunded_accs_file">>], [user_config]) of
+        undefined ->
             filename:join([dir(Release), accounts_json_file()]);
-        CustomAccsFilePath -> 
+        {ok, CustomAccsFilePath} ->
             case filelib:is_file(CustomAccsFilePath) of 
                 true ->
                     lager:info("Custom file for prefunded accounts provided: ~p ~n", [CustomAccsFilePath]),
@@ -278,14 +278,20 @@ seed_contracts_file_name(Release, NetworkId) ->
 
 -ifdef(TEST).
 accounts_json_file() ->
+    NetworkId = aec_governance:get_network_id(),
     ConsensusModule = aec_consensus:get_consensus_module_at_height(0),
-    case ConsensusModule:get_type() of
-        pos ->
-            NetworkId = aec_governance:get_network_id(),
-            NetworkIdStr = binary_to_list(NetworkId),
-            NetworkIdStr ++ "_accounts.json";
-        pow ->
-            "accounts_test.json"
+    case NetworkId of
+        <<"ae_mainnet">>                  -> "accounts.json";
+        <<"ae_uat">>                      -> "accounts_uat.json";
+        _ ->
+            case ConsensusModule:get_type() of
+                pos ->
+                    NetworkId = aec_governance:get_network_id(),
+                    NetworkIdStr = binary_to_list(NetworkId),
+                    NetworkIdStr ++ "_accounts.json";
+                pow ->
+                    "accounts_test.json"
+            end
     end.
 
 extra_accounts_json_file() ->
