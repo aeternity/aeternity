@@ -40,7 +40,7 @@ resolve(Key, Name, NSTree) when is_binary(Key), is_binary(Name) ->
     end.
 
 -spec resolve_hash(binary(), binary(), aens_state_tree:tree()) ->
-    {ok, aeser_id:id()} | {error, atom()}.
+    {ok, aens_pointer:id_type()} | {error, atom()}.
 resolve_hash(Key, NameHash, NSTree) when is_binary(Key), is_binary(NameHash) ->
     case name_hash_to_name_entry(NameHash, NSTree) of
         {ok, #{pointers := Pointers}} -> find_pointer_id(Key, Pointers);
@@ -48,7 +48,7 @@ resolve_hash(Key, NameHash, NSTree) when is_binary(Key), is_binary(NameHash) ->
     end.
 
 -spec resolve_from_name_object(binary(), aens_names:name()) ->
-    {ok, aeser_id:id()} | {error, atom()}.
+    {ok, aens_pointer:id_type()} | {error, atom()}.
 resolve_from_name_object(Key, Name) when is_binary(Key) ->
     case name_entry(Name) of
         {ok, #{pointers := Pointers}} -> find_pointer_id(Key, Pointers);

@@ -10,6 +10,7 @@
          empty_with_backend/0,
          get/2,
          lookup/2,
+         to_list/1,
          new_with_backend/1,
          new_with_dirty_backend/1,
          gc_cache/1,
@@ -74,6 +75,10 @@ new_with_dirty_backend(Hash) ->
 -spec gc_cache(tree()) -> tree().
 gc_cache(Tree) ->
     aeu_mtrees:gc_cache(Tree).
+
+-spec to_list(tree()) -> [{binary(), binary()}].
+to_list(Tree) ->
+    aeu_mtrees:to_list(Tree).
 
 -spec get(aec_keys:pubkey(), tree()) -> aec_accounts:account().
 get(Pubkey, Tree) ->

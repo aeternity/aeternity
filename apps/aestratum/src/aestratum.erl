@@ -233,7 +233,7 @@ handle_cast({submit_solution, CandidateBlockHash, Nonce, Pow}, State) ->
     case ?TXN(aestratum_db:get_candidate(CandidateBlockHash)) of
         {ok, #aestratum_candidate{header = HeaderBin,
                                   record = #candidate{block = CandidateBlock}}} ->
-            KeyBlock        = aec_blocks:set_nonce_and_pow(CandidateBlock, Nonce, Pow),
+            KeyBlock        = aec_blocks:set_nonce_and_key_seal(CandidateBlock, Nonce, Pow),
             KeyBlockHeader  = aec_blocks:to_header(KeyBlock),
             {ok, BlockHash} = aec_headers:hash_header(KeyBlockHeader),
             ok = ?TXN(aestratum_db:mark_share_as_solution(CandidateBlockHash, BlockHash)),

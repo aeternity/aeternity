@@ -20,7 +20,8 @@
         , iterator/1
         , prune/2
         , prune_without_backend/1
-        , root_hash/1]).
+        , root_hash/1
+        , db/1 ]).
 
 -export([ from_binary_without_backend/1
         , to_binary_without_backend/1
@@ -85,24 +86,32 @@ new_with_dirty_backend(Hash) ->
     #call_tree{calls = CtTree}.
 
 %% A new block always starts with an empty calls tree.
-%% Calls and return values are only keept for one block.
+%% Calls and return values are only kept for one block.
 -spec prune(aec_blocks:height(), aec_trees:trees()) -> aec_trees:trees().
 prune(_,Trees) ->
-    aec_trees:set_calls(Trees, empty_with_backend()).
+    CTree = aec_trees:calls(Trees),
+    Empty = case has_backend(CTree) of
+                true  -> empty_with_backend();
+                false -> empty()
+            end,
+    aec_trees:set_calls(Trees, Empty).
 
 -spec prune_without_backend(aec_trees:trees()) -> aec_trees:trees().
 prune_without_backend(Trees) ->
     aec_trees:set_calls(Trees, empty()).
 
+has_backend(#call_tree{calls = CtTree}) ->
+    aeu_mtrees:has_backend(CtTree).
+
 -spec insert_call(aect_call:call(), tree()) -> tree().
 insert_call(Call, Tree) ->
-    CtId = aect_call:contract_pubkey(Call),
-    add_call(insert, CtId, Call, Tree).
+    CtCallId = aect_call:ct_call_id(Call),
+    add_call(insert, CtCallId, Call, Tree).
 
 -spec enter_auth_call(aect_call:call(), tree()) -> tree().
 enter_auth_call(Call, Tree) ->
-    CtId       = aect_call:caller_pubkey(Call),
-    add_call(enter, CtId, Call, Tree).
+    CallerId = aect_call:caller_pubkey(Call),
+    add_call(enter, CallerId, Call, Tree).
 
 -spec lookup_call(aect_contracts:pubkey(), aect_call:id(), tree()) ->
     {value, aect_call:call()} | none.
@@ -137,6 +146,10 @@ call_id(<<_:?PUB_SIZE/unit:8, CallId/binary>> = _CallTreeId) ->
 -spec root_hash(tree()) -> {ok, aeu_mtrees:root_hash()} | {error, empty}.
 root_hash(#call_tree{calls = CtTree}) ->
     aeu_mtrees:root_hash(CtTree).
+
+-spec db(tree()) -> {ok, aeu_mp_trees:db()}.
+db(#call_tree{calls = CtTree}) ->
+    aeu_mtrees:db(CtTree).
 
 %% -- Commit to db --
 

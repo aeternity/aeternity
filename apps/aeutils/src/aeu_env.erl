@@ -13,7 +13,8 @@
 
 -export([user_config/0, user_config/1, user_config/2]).
 -export([user_map/0, user_map/1]).
--export([schema/0, schema/1]).
+-export([schema/0, schema/1, schema/2]).
+-export([schema_default/1, schema_default/2]).
 -export([schema_default_values/1]).
 -export([user_config_or_env/3, user_config_or_env/4]).
 -export([user_map_or_env/4]).
@@ -31,7 +32,8 @@
 
 -export([update_config/1,
          update_config/2,
-         update_config/3]).
+         update_config/3,
+         suggest_config/2]).
 
 -type basic_type() :: number() | binary() | boolean().
 -type basic_or_list()  :: basic_type() | [basic_type()].
@@ -84,7 +86,7 @@ user_config() ->
 
 -spec user_config(list() | binary()) -> undefined | {ok, any()}.
 user_config(Key) when is_list(Key) ->
-    get_env(aeutils, ['$user_config'|Key]);
+    find_config(Key, [user_config]);
 user_config(Key) when is_binary(Key) ->
     get_env(aeutils, ['$user_config',Key]).
 
@@ -152,7 +154,7 @@ find_config(_, []) ->
 
 find_config_(K, user_config       ) -> user_map(K);
 find_config_(_, {env, App, EnvKey}) -> get_env(App, EnvKey);
-find_config_(K, schema_default    ) -> default(K);
+find_config_(K, schema_default    ) -> schema_default(K);
 find_config_(_, {value, V}        ) -> {ok, V}.
 
 
@@ -196,6 +198,13 @@ nested_map_get([H|T], L) when is_list(L) ->
             undefined
     end.
 
+lists_map_key_find({K,V,Then} = Pat, [#{} = H|T]) ->
+    case maps:find(K, H) of
+        {ok, V} ->
+            maps:find(Then, H);
+        error ->
+            lists_map_key_find(Pat, T)
+    end;
 lists_map_key_find(K, [#{} = H|T]) ->
     case maps:find(K, H) of
         {ok, _} = Ok ->
@@ -219,9 +228,9 @@ schema() ->
     end.
 
 schema(Key) ->
-    schema_(Key, schema()).
+    schema(Key, schema()).
 
-schema_([H|T], Schema) ->
+schema([H|T], Schema) ->
     case Schema of
         #{<<"$schema">> := _, <<"properties">> := #{H := Tree}} ->
             schema_find(T, Tree);
@@ -230,9 +239,9 @@ schema_([H|T], Schema) ->
         _ ->
             undefined
     end;
-schema_([], Schema) ->
+schema([], Schema) ->
     {ok, Schema};
-schema_(Key, Schema) ->
+schema(Key, Schema) ->
     case maps:find(Key, Schema) of
         {ok, _} = Ok -> Ok;
         error        -> undefined
@@ -250,8 +259,11 @@ schema_find([H|T], S) ->
 schema_find([], S) ->
     {ok, S}.
 
-default(Key) when is_list(Key) ->
+schema_default(Key) when is_list(Key) ->
     schema(Key ++ [<<"default">>]).
+
+schema_default(Key, Schema) when is_list(Key) ->
+    schema(Key ++ [<<"default">>], Schema).
 
 schema_default_values(Path) ->
     case schema(Path) of
@@ -260,11 +272,20 @@ schema_default_values(Path) ->
             RecursiveDefault =
                 fun R(_PName,
                       #{<<"type">> := <<"object">>, <<"properties">> := Props}) ->
-                          maps:map(fun(PN, #{<<"type">> := <<"object">>} = PP) -> R(PN, PP);
-                                      (_PN, #{<<"default">> := Def}) -> Def
-                                    end, Props);
+                        maps:map(fun(PN, #{<<"type">> := <<"object">>} = PP) ->
+                                         R(PN, PP);
+                                    (PN, #{<<"type">> := <<"array">>, <<"items">> := Items}) ->
+                                         [R(PN, Items)];
+                                    (_PN, #{<<"default">> := Def}) -> Def;
+                                    (_PN, _) -> undefined
+                                 end, Props);
+                    R(PName,
+                     #{<<"type">> := <<"array">>, <<"items">> := Items}) ->
+                        [R(PName, Items)];
                     R(_PName, #{<<"default">> := Def}) ->
-                        Def
+                        Def;
+                    R(_PName, _) ->
+                        undefined
                 end,
             Res = RecursiveDefault(<<"root">>, Tree),
             {ok, Res}
@@ -298,7 +319,7 @@ valid_kv_pair(_) ->
 read_config() ->
     read_config(report).
 
-read_config(Mode) when Mode =:= silent; Mode =:= report ->
+read_config(Mode) when Mode =:= check; Mode =:= silent; Mode =:= report ->
     case config_file() of
         undefined ->
             info_msg(Mode, "No config file specified; using default settings~n", []),
@@ -335,7 +356,7 @@ apply_os_env(Pfx, Schema, ConfigMap) ->
                     Value1 = coerce_type(Key, Value, Schema),
                     update_map(to_map(Key, Value1), Acc)
             end, #{}, Names),
-    error_logger:info_msg("Map fr OS env config: ~p~n", [Map]),
+    error_logger:info_msg("Map for OS env config: ~p~n", [Map]),
     if map_size(Map) > 0 ->
             update_config_(Map, ConfigMap, Schema, report);
        true ->
@@ -344,7 +365,7 @@ apply_os_env(Pfx, Schema, ConfigMap) ->
     catch
         error:E:ST ->
             error_logger:info_msg("CAUGHT error:~p / ~p~n", [E, ST]),
-            {error, E}
+            error(E)
     end.
 
 to_map(K, V) ->
@@ -355,10 +376,9 @@ to_map([K], Val, M) ->
 to_map([H|T], Val, M) ->
     SubMap = maps:get(H, M, #{}),
     M#{H => to_map(T, Val, SubMap)}.
-            
 
 coerce_type(Key, Value, Schema) ->
-    case schema_(Key, Schema) of
+    case schema(Key, Schema) of
         {ok, #{<<"type">> := Type}} ->
             case Type of
                 <<"integer">> -> to_integer(Value);
@@ -401,10 +421,11 @@ schema_key_names(NamePfx, KeyPfx, Map, Acc0) when is_map(Map) ->
       fun(SubKey, SubMap, Acc) ->
               NamePfx1 = NamePfx ++ "__" ++ string:to_upper(binary_to_list(SubKey)),
               KeyPfx1 = KeyPfx ++ [SubKey],
-              Acc1 = case os:getenv(NamePfx1) of
+              EnvKey = unhyphenate(NamePfx1),
+              Acc1 = case os:getenv(EnvKey) of
                          false -> Acc;
                          Value ->
-                             [{NamePfx1, KeyPfx1, Value} | Acc]
+                             [{EnvKey, KeyPfx1, Value} | Acc]
                      end,
               case maps:find(<<"properties">>, SubMap) of
                   error ->
@@ -413,6 +434,12 @@ schema_key_names(NamePfx, KeyPfx, Map, Acc0) when is_map(Map) ->
                       schema_key_names(NamePfx1, KeyPfx1, Props, Acc1)
               end
       end, Acc0, Map).
+
+%% Unfortunately, the config schema contains some names with hyphens in them.
+%% Since hyphens aren't allowed in OS environment names, we replace them with underscores.
+%% This should be safe, since we DO NOT stupidly have names that differ only on '-' v '_'.
+unhyphenate(Str) ->
+    re:replace(Str, <<"\\-">>, <<"_">>, [global, {return, list}]).
 
 %% ======================================================================
 
@@ -428,7 +455,7 @@ check_env(App, Spec) ->
       end, Spec).
 
 maybe_set_env({set_env, K}, V, App, _MMode) when is_atom(K) ->
-    io:fwrite("setenv A=~p: K=~p, V=~p~n", [App, K, V]),
+    lager:debug("setenv A=~p: K=~p, V=~p~n", [App, K, V]),
     application:set_env(App, K, V);
 maybe_set_env(F, V, _, _MMode) when is_function(F, 1) ->
     F(V);
@@ -439,10 +466,10 @@ maybe_set_env(F, V, _, MMode) when is_function(F, 2) ->
 
 
 check_config(F) ->
-    do_read_config(F, schema_filename(), check, silent).
+    do_read_config(F, schema_filename(), check, check).
 
 check_config(F, Schema) ->
-    do_read_config(F, Schema, check, silent).
+    do_read_config(F, Schema, check, check).
 
 data_dir(Name) when is_atom(Name) ->
     filename:join([setup:data_dir(), Name]).
@@ -517,29 +544,58 @@ check_config_({'EXIT', Reason}) ->
 check_config_([Vars]) ->
     {ok, {Vars, to_tree(Vars)}}.
 
-pp_error({{validation_failed, Errors}, _}) ->
-    [pp_error_(E) || E <- Errors],
+pp_error({validation_failed, _}) ->
     validation_failed;
 pp_error(Other) ->
     Other.
 
-pp_error_({error, {schema_file_not_found, Schema}}) ->
-    io:fwrite("Schema not found : ~s~n", [Schema]);
-pp_error_({error, [{data_invalid, Schema, Type, Value, Pos}]}) ->
-    SchemaStr = jsx:prettify(jsx:encode(Schema)),
+pp_error_({error, {schema_file_not_found, Schema}}, Mode) ->
+    error_format("Schema not found : ~s", [Schema], Mode);
+pp_error_({error, [{data_invalid, Schema, Type, Value, Pos}]}, Mode) ->
+    SchemaStr = schema_string(Schema, Mode),
     PosStr = pp_pos(Pos),
     ValStr = pp_val(Value),
     TypeStr = pp_type(Type),
-    io:fwrite("Validation failed~n"
-              "Position: ~s~n"
-              "Value   : ~s~n"
-              "Schema  :~n~s~n"
-              "Reason  : ~s~n", [PosStr, ValStr, SchemaStr, TypeStr]);
-pp_error_({error, [{schema_invalid, Section, Description}]}) ->
-    SchemaStr = jsx:prettify(jsx:encode(Section)),
-    io:fwrite("Reading schema failed~n"
-              "Section: ~n~s~n"
-              "Reason: ~p~n", [SchemaStr, Description]).
+    case Mode of
+        check ->
+            io:format("Validation failed~n"
+                      "Position: ~s~n"
+                      "Value   : ~s~n"
+                      "Schema  :~n~s~n"
+                      "Reason  : ~s~n",
+                      [PosStr, ValStr, SchemaStr, TypeStr]);
+        report ->
+            error_format("Validation failed, Pos: ~s~n"
+                         "Value: ~s~n"
+                         "Schema: ~s~n"
+                         "Reason: ~s", [PosStr, ValStr, SchemaStr, TypeStr], Mode)
+    end;
+pp_error_({error, [{schema_invalid, Section, Description}]}, Mode) ->
+    SchemaStr = schema_string(Section, Mode),
+    error_format("Reading schema failed~n"
+                 "Section: ~n~s~n"
+                 "Reason: ~p~n", [SchemaStr, Description], Mode).
+
+silent_as_report(silent) -> report;
+silent_as_report(Mode  ) -> Mode.
+
+schema_string(Schema, Mode) ->
+    JSONSchema = jsx:encode(Schema),
+    case Mode of
+        check  -> jsx:prettify(JSONSchema);
+        report -> jsx:minify(JSONSchema)
+    end.
+
+error_format(Fmt, Args, check) ->
+    io:format(Fmt, Args);
+error_format(Fmt, Args, report) ->
+    Str = io_lib:format(Fmt, Args),
+    Parts = re:split(Str, <<"\n">>),
+    Out = iolist_to_binary(
+            [hd(Parts) |
+             [[" | ", P] || P <- tl(Parts)]]),
+    Out = re:replace(Str, <<"\n">>, <<" | ">>, [global, {return, binary}]),
+    lager:error("~s", [Out]).
 
 pp_pos([A,B|T]) when is_integer(B) ->
     [pp_pos_(A), pp_pos_(B) | pp_pos(T)];
@@ -622,11 +678,29 @@ update_config(Map, Notify, Mode) when is_map(Map), is_boolean(Notify) ->
     end,
     ok.
 
+%% Checks if a given config key (list of binary keys corresponding to the AE
+%% config schema) is already configured. If not, the suggested value is used.
+suggest_config(Key, Value) ->
+    case user_config(Key) of
+        {ok, _} ->
+            {error, already_configured};
+        undefined ->
+            Map = kv_to_config_map(Key, Value),
+            update_config(Map, false),
+            ok
+    end.
+
+kv_to_config_map([H], V) ->
+    #{H => V};
+kv_to_config_map([H|T], V) ->
+    #{H => kv_to_config_map(T, V)}.
+
 notify_update_config(Map) ->
     aec_events:publish(update_config, Map).
 
-update_config_(Map, ConfigMap, Schema, Mode) when Mode =:= silent;
-                                                 Mode =:= report ->
+update_config_(Map, ConfigMap, Schema, Mode) when Mode =:= check;
+                                                  Mode =:= silent;
+                                                  Mode =:= report ->
     check_validation([jesse:validate_with_schema(Schema, Map, [])],
                      [Map], update_config, Mode),
     NewConfig = update_map(Map, ConfigMap),
@@ -690,25 +764,36 @@ validate(JSON, F, Schema, Mode) when is_list(JSON) ->
 validate(JSON, F, Schema, Mode) when is_map(JSON) ->
     validate([JSON], F, Schema, Mode).
 
-vinfo(silent, _, _) ->
-    ok;
-vinfo(_, Res, F) ->
-    error_logger:info_report([{validation, F},
-                              {result, Res}]).
+vinfo(Mode, Res, F) ->
+    case Res of
+        {ok, _} ->
+            info_report(Mode, [{validation, F},
+                               {result, Res}]);
+        {error, Errors} ->
+            Mode1 = silent_as_report(Mode),
+            [pp_error_(E, Mode1) || E <- Errors],
+            ok
+    end.
 
-info_msg(silent, _, _) -> ok;
+info_report(report, Info) ->
+    error_logger:info_report(Info);
+info_report(_, _) ->
+    ok.
+
 info_msg(report, Fmt, Args) ->
-    error_logger:info_msg(Fmt, Args).
+    error_logger:info_msg(Fmt, Args);
+info_msg(_, _,_ ) ->
+    ok.
 
-error_msg(silent, _, _) -> ok;
 error_msg(report, Fmt, Args) ->
-    error_logger:error_msg(Fmt, Args).
+    error_logger:error_msg(Fmt, Args);
+error_msg(_, _, _) ->
+    ok.
 
 check_validation(Res, JSON, F) ->
     check_validation(Res, JSON, F, report).
 
 check_validation(Res, _JSON, F, Mode) ->
-    vinfo(Mode, Res, F),
     case lists:foldr(
            fun({ok, M}, {Ok,Err}) when is_map(M) ->
                    {[M|Ok], Err};
@@ -716,9 +801,11 @@ check_validation(Res, _JSON, F, Mode) ->
                    {Ok, [Other|Err]}
            end, {[], []}, Res) of
         {Ok, []} ->
+            vinfo(Mode, {ok, Ok}, F),
             Ok;
         {_, Errors} ->
-            erlang:error({validation_failed, Errors})
+            vinfo(Mode, {error, Errors}, F),
+            erlang:error(validation_failed)
     end.
 
 validate_(Schema, JSON) ->

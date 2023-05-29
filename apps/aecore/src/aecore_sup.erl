@@ -10,6 +10,10 @@
 %%%     (one_for_one)
 %%%           |
 %%%           -----------------------------------------
+%%%           |                  |                    |
+%%%           |             aec_worker_sup            |
+%%%           |                  |                    |
+%%%           |         -----------------------       |
 %%%           |         |         |           |       |
 %%%           |   aec_metrics  aec_keys  aec_tx_pool  |
 %%%           |                                       |
@@ -61,25 +65,8 @@ start_link() ->
 
 init([]) ->
     ChildSpecs =
-        maybe_upnp_worker()
-        ++ [?CHILD(aec_metrics_rpt_dest, 5000, worker),
-            ?CHILD(aec_keys, 5000, worker),
-            ?CHILD(aec_tx_pool, 5000, worker),
-            ?CHILD(aec_peer_analytics, 5000, worker),
-            ?CHILD(aec_tx_pool_gc, 5000, worker),
-            ?CHILD(aec_db_error_store, 5000, worker),
-            ?CHILD(aec_resilience, 5000, worker),
-            ?CHILD(aec_db_gc, 5000, worker),
-            ?CHILD(aec_conductor_sup, 5000, supervisor) ],
+        [?CHILD(aec_worker_sup, 5000, worker),
+         ?CHILD(aec_consensus_sup, 5000, supervisor),
+         ?CHILD(aec_conductor_sup, 5000, supervisor) ],
 
-    {ok, {{one_for_one, 5, 10}, ChildSpecs}}.
-
-%%%===================================================================
-%%% Internal functions
-%%%===================================================================
-
-maybe_upnp_worker() ->
-    case aec_upnp:is_enabled() of
-        true  -> [?CHILD(aec_upnp, 5000, worker)];
-        false -> []
-    end.
+    {ok, {{one_for_one, 0, 10}, ChildSpecs}}.

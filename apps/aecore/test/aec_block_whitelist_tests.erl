@@ -14,7 +14,6 @@
 
 setup_minimal() ->
     ok = application:ensure_started(gproc),
-    {ok, _} = aec_db_error_store:start_link(),
     ok = aec_test_utils:start_chain_db(),
     aec_block_generator:start_link(),
 
@@ -24,7 +23,7 @@ setup_minimal() ->
                         meck:passthrough([]) div 2560
                 end),
     TmpKeysDir = aec_test_utils:aec_keys_setup(),
-    {ok, PubKey} = aec_keys:pubkey(),
+    {ok, PubKey} = aec_keys:get_pubkey(),
     ok = application:set_env(aecore, beneficiary, aeser_api_encoder:encode(account_pubkey, PubKey)),
     aec_test_utils:mock_genesis_and_forks(preset_accounts(PubKey), #{}),
     aec_test_utils:mock_time(),
@@ -44,7 +43,6 @@ teardown_minimal(TmpKeysDir) ->
     aec_test_utils:unmock_genesis_and_forks(),
     aec_test_utils:unmock_time(),
     ok = aec_test_utils:stop_chain_db(),
-    ok = aec_db_error_store:stop(),
     aec_test_utils:aec_keys_cleanup(TmpKeysDir),
     ok.
 
@@ -101,7 +99,7 @@ test_start_mining_add_block() ->
     [_GB, B1, B2] = aec_test_utils:gen_blocks_only_chain(3, preset_accounts(Keys)),
     BH2 = aec_blocks:to_header(B2),
     meck:expect(aec_fork_block_settings, block_whitelist, 0, #{2 => <<"AAA">>}),
-    aec_consensus_bitcoin_ng:start(#{}),
+    aec_consensus_bitcoin_ng:start(#{}, #{}),
     ?assertEqual(ok, aec_conductor:post_block(B1)),
     %% Does not go pass conductor checks
     ?assertEqual({error,blocked_by_whitelist}, aec_conductor:post_block(B2)),
@@ -110,7 +108,7 @@ test_start_mining_add_block() ->
 
     %% Whitelisted blocks make it to the DB
     meck:expect(aec_fork_block_settings, block_whitelist, 0, #{2 => header_hash(BH2)}),
-    aec_consensus_bitcoin_ng:start(#{}),
+    aec_consensus_bitcoin_ng:start(#{}, #{}),
     ?assertEqual(ok, aec_conductor:post_block(B2)),
 
     aec_test_utils:wait_for_it(
@@ -126,7 +124,7 @@ assert_stopped_and_genesis_at_top() ->
                  header_hash( aec_blocks:to_header( Genesis ))).
 
 beneficiary_keys() ->
-    {ok, Pub} = aec_keys:pubkey(),
+    {ok, Pub} = aec_keys:get_pubkey(),
     {ok, Priv} = aec_keys:sign_privkey(),
     {Pub, Priv}.
 

@@ -64,7 +64,7 @@ docker-db-smoke-test:
     - run:
         name: Build branch docker image
         command: |
-          docker pull aeternity/builder:bionic-otp22
+          docker pull << pipeline.parameters.docker_builder_image >>
           docker build -t << pipeline.parameters.docker_repo >>:${CIRCLE_BRANCH/\//_} .
     - run:
         name: Start container

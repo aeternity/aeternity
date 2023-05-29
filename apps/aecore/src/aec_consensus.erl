@@ -70,6 +70,7 @@
 %% Global config
 %% Height => {ConsensusName, ConsensusConfiguration}
 -type consensus_module() :: atom().
+-type sign_module() :: atom().
 -type consensus_config() :: #{binary() => term()}.
 -type global_consensus_config() :: [{non_neg_integer(), {consensus_module(), consensus_config()}}].
 
@@ -101,7 +102,7 @@
 %% Some consensus implementations should ensure that it can be enabled at the given point in time
 %% for instance by killing the peer pool, bypassing the mining conductor etc...
 %% gets the configuration previously validated by assert_config/1
--callback start(consensus_config()) -> ok.
+-callback start(consensus_config(), map()) -> ok.
 %% Stops the given consensus
 %% Only required for consensuses for which can_be_turned_off() =:= true
 -callback stop() -> ok.
@@ -171,7 +172,7 @@
 -callback state_pre_transform_micro_node(#node{}, aec_trees:trees()) -> aec_trees:trees() | no_return().
 
 %% Block rewards :)
--callback state_grant_reward(aec_keys:pubkey(), aec_trees:trees(), non_neg_integer()) -> aec_trees:trees() | no_return().
+-callback state_grant_reward(aec_keys:pubkey(), #node{}, aec_trees:trees(), non_neg_integer()) -> aec_trees:trees() | no_return().
 
 %% PoGF - called just before exiting the DB transaction and fully validating the node in question
 -callback pogf_detected(aec_headers:key_header(), aec_headers:key_header()) -> ok.
@@ -181,6 +182,14 @@
 -callback genesis_transform_trees(aec_trees:trees(), consensus_config()) -> aec_trees:trees().
 -callback genesis_raw_header() -> aec_headers:key_header().
 -callback genesis_difficulty() -> key_difficulty().
+
+%% rewards and signing
+-callback beneficiary() -> {ok, binary() | fun(() -> binary())} | {error, atom()}.
+-callback next_beneficiary() -> {ok, binary() | fun(() -> binary())} | {error, atom()}.
+-callback get_sign_module() -> sign_module().
+-callback get_type() -> pow | pos.
+-callback get_block_producer_configs() -> list().
+-callback is_leader_valid(#node{}, aec_trees:trees(), aetx_env:env()) -> boolean().
 
 %% -------------------------------------------------------------------
 %% Block sealing
@@ -316,30 +325,35 @@ consensus_config_or_default(Default) ->
             Default;
         M when is_map(M) ->
             Conf = maps:fold(
-                     fun(H, #{<<"name">> := ConsensusName} = V, Acc) ->
+                     fun(H, #{<<"type">> := ConsensusName} = V, Acc) ->
                              ConsensusConfig = maps:get(<<"config">>, V, #{}),
                              Acc#{binary_to_integer(H) =>
-                                      {consensus_module_from_name(ConsensusName),
+                                      {consensus_module_from_type(ConsensusName),
                                        ConsensusConfig}}
                      end, #{}, M),
             maps:to_list(Conf)
     end.
 
 %% Don't crash here as config validation is performed during node startup in the consensus module
--spec consensus_module_from_name(binary()) -> consensus_module().
+-spec consensus_module_from_type(binary()) -> consensus_module().
 
 -ifdef(TEST).
-consensus_module_from_name(<<"pow_cuckoo">>) -> aec_consensus_bitcoin_ng;
-consensus_module_from_name(<<"on_demand">>) -> aec_consensus_on_demand;
-consensus_module_from_name(<<"ct_tests">>) -> aec_consensus_common_tests;
-consensus_module_from_name(<<"eunit_one">>) -> module_eunit_one;
-consensus_module_from_name(<<"eunit_two">>) -> module_eunit_two;
-consensus_module_from_name(<<"eunit_three">>) -> module_eunit_three;
-consensus_module_from_name(_) -> undefined.
+consensus_module_from_type(<<"pow_cuckoo">>) -> aec_consensus_bitcoin_ng;
+consensus_module_from_type(<<"on_demand">>) -> aec_consensus_on_demand;
+consensus_module_from_type(<<"ct_tests">>) -> aec_consensus_common_tests;
+consensus_module_from_type(<<"smart_contract">>) ->
+  aec_consensus_smart_contract;
+consensus_module_from_type(<<"hyper_chain">>) -> aec_consensus_hc;
+consensus_module_from_type(<<"eunit_one">>) -> module_eunit_one;
+consensus_module_from_type(<<"eunit_two">>) -> module_eunit_two;
+consensus_module_from_type(<<"eunit_three">>) -> module_eunit_three;
+consensus_module_from_type(_) -> undefined.
 -else.
-consensus_module_from_name(<<"pow_cuckoo">>) -> aec_consensus_bitcoin_ng;
-consensus_module_from_name(<<"on_demand">>) -> aec_consensus_on_demand;
-consensus_module_from_name(_) -> undefined.
+consensus_module_from_type(<<"pow_cuckoo">>) -> aec_consensus_bitcoin_ng;
+consensus_module_from_type(<<"on_demand">>) -> aec_consensus_on_demand;
+consensus_module_from_type(<<"smart_contract">>) -> aec_consensus_smart_contract;
+consensus_module_from_type(<<"hyper_chain">>) -> aec_consensus_hc;
+consensus_module_from_type(_) -> undefined.
 -endif.
 
 calc_genesis_hash() ->

@@ -24,6 +24,7 @@
                         , unsigned_tx_response/1
                         , get_transaction/2
                         , encode_transaction/2
+                        , encode_generation/3
                         , when_stable/1
                         , ok_response/1
                         , read_optional_param/3
@@ -387,7 +388,9 @@ handle_request_('GetAccountByPubkeyAndHeight', Params, _Context) ->
                 none ->
                     {404, [], #{reason => <<"Account not found">>}};
                 {error, chain_too_short} ->
-                    {404, [], #{reason => <<"Height not available">>}}
+                    {404, [], #{reason => <<"Height not available">>}};
+                {error, garbage_collected} ->
+                    {410, [], #{reason => <<"State data at the requested height has been garbage-collected">>}}
             end;
         {error, _} ->
             {400, [], #{reason => <<"Invalid public key">>}}
@@ -646,7 +649,7 @@ handle_request_('GetStatus', _Params, _Context) ->
     GenesisBlockHash = aec_consensus:get_genesis_hash(),
     Solutions = 0, %% TODO
     Difficulty = aec_blocks:difficulty(TopKeyBlock),
-    {Syncing, SyncProgress} = aec_sync:sync_progress(),
+    {Syncing, SyncProgress, _} = aec_sync:sync_progress(),
     Listening = true, %% TODO
     Protocols =
         maps:fold(fun(Vsn, Height, Acc) ->
@@ -750,14 +753,6 @@ generation_rsp({ok, #{ key_block := KeyBlock, micro_blocks := MicroBlocks }}) ->
                     {404, [], #{reason => <<"Block not found">>}}
             end
     end.
-
-encode_generation(KeyBlock, MicroBlocks, PrevBlockType) ->
-    Header = aec_blocks:to_header(KeyBlock),
-    #{key_block => aec_headers:serialize_for_client(Header, PrevBlockType),
-      micro_blocks => [begin
-                           {ok, Hash} = aec_blocks:hash_internal_representation(M),
-                           aeser_api_encoder:encode(micro_block_hash, Hash)
-                       end || M <- MicroBlocks]}.
 
 deserialize_transaction(Tx) ->
     try

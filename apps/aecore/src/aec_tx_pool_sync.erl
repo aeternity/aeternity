@@ -226,7 +226,7 @@ handle_local_action(State = #state{ local = {active, Sync} }, Action, Res) ->
             State#state{ local = {active, Sync#sync{ data = [] }} };
         {unfold, {ok, tree_not_ready, OldUnfolds, Delay}} when Delay < 10000 ->
             %% Remote tree is not computed, retry with delay
-            epoch_sync:debug("Remote tree temporay failure, retrying in ~p ms",
+            epoch_sync:debug("Remote tree temporary failure, retrying in ~p ms",
                              [Delay + 1000]),
             do_local_action(Sync, {unfold, OldUnfolds, Delay + 1000}),
             State;
@@ -241,7 +241,7 @@ handle_local_action(State = #state{ local = {active, Sync} }, Action, Res) ->
             case NewUnfolds1 of
                 [] ->
                     %% TODO - maybe chunkify
-                    epoch_sync:info("TX-pool sync requries getting ~p TXs",
+                    epoch_sync:info("TX-pool sync requires getting ~p TXs",
                                     [length(NewGets1)]),
                     do_local_action(Sync, {get, NewGets1}),
                     State#state{ local = {active, Sync#sync{ data = [] }} };
@@ -359,7 +359,7 @@ do_local_action(Sync = #sync{ peer_id = PeerId }, {finish, Done}) ->
 %% To avoid locking up main process (and deadlock in the interaction with
 %% aec_peer_connection) we do all requests in a worker process. The worker
 %% is linked, and we also start a timer when spawning it. The timeout is
-%% 10s which should be sufficently more than the request timeout (7s) in
+%% 10s which should be sufficiently more than the request timeout (7s) in
 %% aec_peer_connection.
 do_local_action(#sync{ id = Ref }, Action, ActionFun, Timeout) ->
     Self = self(),

@@ -27,7 +27,10 @@
         , new_with_backend/2
         , new_with_dirty_backend/2
         , prune/2
+        , prune/3
         , root_hash/1
+        , oracles_db/1
+        , cache_db/1
         ]).
 
 -export([ from_binary_without_backend/1
@@ -130,7 +133,14 @@ new_with_dirty_backend(RootHash, CacheRootHash) ->
 prune(Height, Trees) ->
     %% Oracle information should be around for the expiry block
     %% since we prune before the block, use Height - 1 for pruning.
-    int_prune(Height - 1, Trees).
+    {Trees1, _} = int_prune(Height - 1, Trees, undefined),
+    Trees1.
+
+-spec prune(block_height(), aec_trees:trees(), aetx_env:env()) -> {aec_trees:trees(), aetx_env:env()}.
+prune(Height, Trees, TxEnv) ->
+    %% Oracle information should be around for the expiry block
+    %% since we prune before the block, use Height - 1 for pruning.
+    int_prune(Height - 1, Trees, TxEnv).
 
 -spec enter_query(query(), tree()) -> tree().
 enter_query(I, Tree) ->
@@ -198,6 +208,14 @@ is_oracle(Pubkey, #oracle_tree{ otree = OTree }) ->
 root_hash(#oracle_tree{otree = OTree}) ->
     aeu_mtrees:root_hash(OTree).
 
+-spec oracles_db(tree()) -> {'ok', aeu_mp_trees:db()}.
+oracles_db(#oracle_tree{otree = OTree}) ->
+    aeu_mtrees:db(OTree).
+
+-spec cache_db(tree()) -> {'ok', aeu_mp_trees:db()}.
+cache_db(#oracle_tree{cache = CTree}) ->
+    aeu_mtrees:db(CTree).
+
 -spec cache_root_hash(tree()) -> {ok, aeu_mtrees:root_hash()} | {error, empty}.
 cache_root_hash(#oracle_tree{cache = CTree}) ->
     aeu_mtrees:root_hash(CTree).
@@ -256,22 +274,22 @@ add_query(How, I, #oracle_tree{otree = OTree} = Tree) ->
                     , cache  = Cache
                     }.
 
-int_prune(Height, Trees) ->
+int_prune(Height, Trees, TxEnv) ->
     OTree = #oracle_tree{ cache = Cache } = aec_trees:oracles(Trees),
     ATree = aec_trees:accounts(Trees),
-    {OTree1, ATree1} = int_prune(cache_safe_peek(Cache), Height, OTree, ATree),
-    aec_trees:set_accounts(aec_trees:set_oracles(Trees, OTree1), ATree1).
+    {OTree1, ATree1, TxEnv1} = int_prune(cache_safe_peek(Cache), Height, OTree, ATree, TxEnv),
+    {aec_trees:set_accounts(aec_trees:set_oracles(Trees, OTree1), ATree1), TxEnv1}.
 
-int_prune(none, _Height, OTree, ATree) ->
-    {OTree, ATree};
-int_prune({Height, Id}, Height, #oracle_tree{ cache = Cache } = OTree, ATree) ->
+int_prune(none, _Height, OTree, ATree, TxEnv) ->
+    {OTree, ATree, TxEnv};
+int_prune({Height, Id}, Height, #oracle_tree{ cache = Cache } = OTree, ATree, TxEnv) ->
     {{Height, Id}, Cache1} = cache_pop(Cache),
-    {OTree1, ATree1} = delete(Id, Height, OTree#oracle_tree{ cache = Cache1 }, ATree),
-    int_prune(cache_safe_peek(Cache1), Height, OTree1, ATree1);
-int_prune({Height1,_Id}, Height2, OTree, ATree) when Height2 < Height1 ->
-    {OTree, ATree}.
+    {OTree1, ATree1, TxEnv1} = delete(Id, Height, OTree#oracle_tree{ cache = Cache1 }, ATree, TxEnv),
+    int_prune(cache_safe_peek(Cache1), Height, OTree1, ATree1, TxEnv1);
+int_prune({Height1,_Id}, Height2, OTree, ATree, TxEnv) when Height2 < Height1 ->
+    {OTree, ATree, TxEnv}.
 
-delete({oracle, Id}, H, OTree, ATree) ->
+delete({oracle, Id}, H, OTree, ATree, TxEnv) ->
     {OTree1, ATree1} =
         %% If oracle was extended the cache might be stale
         case oracle_expired(Id, H, OTree) of
@@ -282,18 +300,18 @@ delete({oracle, Id}, H, OTree, ATree) ->
             false ->
                 {OTree#oracle_tree.otree, ATree}
         end,
-    {OTree#oracle_tree{otree = OTree1}, ATree1};
-delete({query, OracleId, Id}, H, OTree, ATree) ->
-    {OTree1, ATree1} =
+    {OTree#oracle_tree{otree = OTree1}, ATree1, TxEnv};
+delete({query, OracleId, Id}, H, OTree, ATree, TxEnv) ->
+    {OTree1, ATree1, TxEnv1} =
         %% When responded to we get a stale cache entry
         case oracle_query_expired(OracleId, Id, H, OTree) of
             true ->
                 TreeId = <<OracleId/binary, Id/binary>>,
-                int_delete_query(TreeId, {OTree#oracle_tree.otree, ATree});
+                int_delete_query(TreeId, {OTree#oracle_tree.otree, ATree}, TxEnv);
             false ->
-                {OTree#oracle_tree.otree, ATree}
+                {OTree#oracle_tree.otree, ATree, TxEnv}
         end,
-    {OTree#oracle_tree{otree = OTree1}, ATree1}.
+    {OTree#oracle_tree{otree = OTree1}, ATree1, TxEnv1}.
 
 oracle_expired(Id, H, OTree) ->
     case lookup_oracle(Id, OTree) of
@@ -312,33 +330,45 @@ int_delete([Id|Left], Trees) ->
 int_delete([], Trees) ->
     Trees.
 
-int_delete_query(Id, {OTree, ATree}) ->
-    ATree1 =
+int_delete_query(Id, Trees) ->
+    {OTree, ATree, _} = int_delete_query(Id, Trees, undefined),
+    {OTree, ATree}.
+
+int_delete_query(Id, {OTree, ATree}, TxEnv) ->
+    {ATree1, TxEnv1} =
         case aeu_mtrees:lookup(Id, OTree) of
             {value, Val} ->
                 <<_:?PUB_SIZE/unit:8, QId/binary>> = Id,
                 Q = aeo_query:deserialize(QId, Val),
-                oracle_refund(Q, ATree);
+                oracle_refund(Q, ATree, TxEnv);
             none ->
-                ATree
+                {ATree, TxEnv}
         end,
-    {aeu_mtrees:delete(Id, OTree), ATree1}.
+    {aeu_mtrees:delete(Id, OTree), ATree1, TxEnv1}.
 
-oracle_refund(Q, ATree) ->
+oracle_refund(Q, ATree, TxEnv) ->
     case aeo_query:is_closed(Q) of
         false ->
-            case aec_accounts_trees:lookup(aeo_query:sender_pubkey(Q), ATree) of
+            PubKey = aeo_query:sender_pubkey(Q),
+            case aec_accounts_trees:lookup(PubKey, ATree) of
                 {value, Account} ->
-                    {ok, Account1} = aec_accounts:earn(Account, aeo_query:fee(Q)),
-                    aec_accounts_trees:enter(Account1, ATree);
+                    Fee = aeo_query:fee(Q),
+                    {ok, Account1} = aec_accounts:earn(Account, Fee),
+                    TxEnv1 = oracle_refund_tx_event(PubKey, Fee, TxEnv),
+                    {aec_accounts_trees:enter(Account1, ATree), TxEnv1};
                 none ->
                     lager:error("Account ~p could not be found for refunding oracle query ~p",
                                 [aeo_query:sender_pubkey(Q), aeo_query:id(Q)]),
                     error({account_disappeared, aeo_query:sender_pubkey(Q)})
             end;
         true ->
-            ATree
+            {ATree, TxEnv}
     end.
+
+oracle_refund_tx_event(_PubKey, _Fee, undefined) ->
+    undefined;
+oracle_refund_tx_event(PubKey, Fee, TxEnv) ->
+    aetx_env:tx_event(delta, {PubKey, Fee}, <<"Oracle.refund">>, TxEnv).
 
 %%%===================================================================
 %%% Iterator for finding all oracle queries

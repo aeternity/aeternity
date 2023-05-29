@@ -31,6 +31,17 @@
          sum_total_coin/1
         ]).
 
+-export([tree_map/0]).
+
+-export([accounts_hash/1,
+         contracts_hash/1,
+         calls_hash/1,
+         channels_hash/1,
+         ns_hash/1,
+         ns_cache_hash/1,
+         oracles_hash/1,
+         oracles_cache_hash/1]).
+
 -export([ deserialize_from_db/2
         , serialize_for_db/1
         % could get big, used in force progress
@@ -98,8 +109,20 @@
                    | 'ns'
                    | 'oracles'.
 
+-type supporting_tree_type() :: 'ns_cache'
+                              | 'oracles_cache'.
+
+-type tree_name() :: tree_type() | supporting_tree_type().
+
+-type supporting_trees() :: [supporting_tree_type()].
+-type tree_map() :: #{ tree_type() := supporting_trees() }.
+
 -export_type([ trees/0
              , poi/0
+             , tree_type/0
+             , supporting_tree_type/0
+             , tree_map/0
+             , tree_name/0
              ]).
 
 -define(VERSION, 1).
@@ -151,6 +174,18 @@ from_db_format(#trees{accounts = Accounts, calls = Calls, channels = Channels,
            ns        = aens_state_tree:from_db_format(Names),
            oracles   = aeo_state_tree:from_db_format(Oracles)
           }.
+
+%% This API function returns the (atom) names of the main trees,
+%% including possible supporting trees (e.g. caches).
+-spec tree_map() -> tree_map().
+tree_map() ->
+    #{ accounts  => []
+     , calls     => []
+     , channels  => []
+     , contracts => []
+     , ns        => [ns_cache]
+     , oracles   => [oracles_cache]
+     }.
 
 -spec new_poi(trees()) -> poi().
 new_poi(Trees) ->
@@ -265,8 +300,8 @@ perform_pre_transformations(Trees, TxEnv, PrevProtocol) ->
     Height = aetx_env:height(TxEnv),
     Protocol = aetx_env:consensus_version(TxEnv),
     Trees0 = aect_call_state_tree:prune(Height, Trees),
-    Trees1 = aeo_state_tree:prune(Height, Trees0),
-    Trees2 = aens_state_tree:prune(Height, Protocol, Trees1),
+    {Trees1, _} = aeo_state_tree:prune(Height, Trees0, TxEnv),
+    {Trees2, _} = aens_state_tree:prune(Height, Protocol, Trees1, TxEnv),
     perform_pre_transformations(Trees2, TxEnv, Protocol, PrevProtocol).
 
 perform_pre_transformations(Trees, _TxEnv, _Protocol, undefined) ->
@@ -651,7 +686,7 @@ apply_txs_on_state_trees([], ValidTxs, InvalidTxs, Trees,Env,Opts) ->
                  true -> aetx_env:events(Env);
                  false -> []
              end,
-    {ok, lists:reverse(ValidTxs), lists:reverse(InvalidTxs), Trees, Events};
+    {ok, lists:reverse(ValidTxs), lists:reverse(InvalidTxs), Trees, lists:reverse(Events)};
 apply_txs_on_state_trees([SignedTx | Rest], ValidTxs, InvalidTxs, Trees, Env, Opts) ->
     Strict     = proplists:get_value(strict, Opts, false),
     DontVerify = proplists:get_value(dont_verify_signature, Opts, false),

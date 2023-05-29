@@ -6,7 +6,7 @@ PROTOCOLS = roma minerva fortuna lima iris ceres
 CT_TARGETS = $(patsubst %,ct-%,$(PROTOCOLS))
 LATEST_PROTOCOL = $(lastword $(PROTOCOLS))
 
-DB_BACKENDS = mnesia-rocksdb mnesia-leveled
+DB_BACKENDS = mnesia-rocksdb
 CT_DB_TARGETS = $(patsubst %,ct-%,$(DB_BACKENDS))
 
 EUNIT_VM_ARGS = $(CURDIR)/config/eunit.vm.args
@@ -25,6 +25,8 @@ EQC_EUNIT_TEST_FLAGS_FINAL = $(EQC_EUNIT_TEST_FLAGS)
 SWAGGER_ENDPOINTS_SPEC = apps/aeutils/src/endpoints.erl
 OAS_ENDPOINTS_SPEC = apps/aeutils/src/oas_endpoints.erl
 OAS_YAML = apps/aehttp/priv/oas3.yaml
+
+export ERLANG_ROCKSDB_OPTS ?= -DWITH_BUNDLE_LZ4=ON -DWITH_BUNDLE_SNAPPY=ON
 
 # Packages from master MUST be pre-releases. Git master version
 # usually is higher then the last stable release. However
@@ -236,7 +238,8 @@ $(CT_TARGETS):
 ct-latest: ct-$(LATEST_PROTOCOL)
 ct-latest-no-aci:
 	$(MAKE) SOPHIA_NO_ACI=true CT_TEST_FLAGS=--suite=apps/aehttp/test/aehttp_contracts_SUITE,apps/aehttp/test/aehttp_coin_toss_SUITE ct-latest
-
+ct-mnesia-mrdb:
+	AE__CHAIN__DB_DIRECT_ACCESS=true $(MAKE) ct-mnesia-rocksdb
 $(CT_DB_TARGETS):
 	KIND=test \
 	SYSCONFIG=config/test-$(LATEST_PROTOCOL).config \
@@ -283,7 +286,7 @@ smoke-test: docker smoke-test-run
 
 smoke-test-run: KIND=system_test
 smoke-test-run: internal-build
-	@$(REBAR) as $(KIND),test do upgrade, ct $(ST_CT_DIR) $(ST_CT_FLAGS) --suite=aest_sync_SUITE,aest_commands_SUITE,aest_peers_SUITE
+	@$(REBAR) as $(KIND),test do upgrade --all, ct $(ST_CT_DIR) $(ST_CT_FLAGS) --suite=aest_sync_SUITE,aest_commands_SUITE,aest_peers_SUITE
 
 system-smoke-test-deps:
 	$(MAKE) docker

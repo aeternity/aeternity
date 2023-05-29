@@ -104,13 +104,15 @@ info(PK, Host, Port) when is_list(Host) ->
 info(PK, Host, Port) when is_binary(Host) ->
     #{ host => Host, port => Port, pubkey => PK }.
 
--spec format_address(peer() | inet:ip_address() | {inet:ip_address(), inet:port_number()})
+-spec format_address(peer() | info() | inet:ip_address() | {inet:ip_address(), inet:port_number()})
     -> binary().
 format_address({A, B, C, D}) ->
     iolist_to_binary(io_lib:format("~b.~b.~b.~b", [A, B, C, D]));
 format_address({{A, B, C, D}, P}) ->
     iolist_to_binary(io_lib:format("~b.~b.~b.~b:~b", [A, B, C, D, P]));
 format_address(#peer{ address = Addr, port = Port }) ->
+    format_address({Addr, Port});
+format_address(#{host := Addr, port := Port}) ->
     format_address({Addr, Port}).
 
 -spec pubkey(peer() | info()) -> aec_keys:pubkey().
@@ -119,7 +121,7 @@ pubkey(#{ pubkey := Pubkey }) -> Pubkey.
 
 -spec ip(peer() | info()) -> inet:ip_address().
 ip(#peer{ address = Address }) -> Address;
-ip(#{ address := Address }) -> Address.
+ip(#{ host := Address }) -> Address.
 
 -spec host(peer()) -> host().
 host(#peer{ host = Host }) -> Host.

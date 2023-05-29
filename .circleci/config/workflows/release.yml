@@ -102,7 +102,7 @@ jobs:
       bucket: << pipeline.parameters.s3_releases_bucket >>
       context:
         - ae-slack
-        - ae-node-builds
+        - ae-vault-node
       requires:
         - linux-release-tarball
         - macos-release-tarball
@@ -120,7 +120,7 @@ jobs:
   - upload-artifacts-github-release:
       context:
         - ae-slack
-        - ae-node-builds
+        - ae-github
       requires:
         - linux-release-tarball
         - macos-release-tarball
@@ -164,7 +164,7 @@ jobs:
       downtime: 1800 #30m
       context:
         - ae-slack
-        - ae-node-builds
+        - ae-vault-node
       requires:
         - linux-release-tarball
         - hodl_blue
@@ -179,7 +179,7 @@ jobs:
       context: ae-slack
       requires:
         - linux-release-tarball
-        - deploy-uat-blue
+        # - deploy-uat-blue
       filters:
         branches:
           ignore: /.*/
@@ -204,10 +204,10 @@ jobs:
       downtime: 1800 #30m
       context:
         - ae-slack
-        - ae-node-builds
+        - ae-vault-node
       requires:
         - linux-release-tarball
-        - deploy-uat-blue
+        # - deploy-uat-blue
         - hodl_green
       filters:
         branches:
@@ -244,7 +244,7 @@ jobs:
       uri: s3://<< pipeline.parameters.s3_releases_bucket >>/aeternity-$CIRCLE_TAG-ubuntu-x86_64.tar.gz
       context:
         - ae-slack
-        - ae-node-builds
+        - ae-vault-node
       requires:
         - upload-release-tarballs-s3
         - hodl_latest
@@ -259,7 +259,7 @@ jobs:
       uri: s3://<< pipeline.parameters.s3_releases_bucket >>/aeternity-$CIRCLE_TAG-macos-x86_64.tar.gz
       context:
         - ae-slack
-        - ae-node-builds
+        - ae-vault-node
       requires:
         - upload-release-tarballs-s3
         - hodl_latest
@@ -283,11 +283,12 @@ jobs:
           only: << pipeline.parameters.tag_regex >>
 
   - docker-image:
-      name: docker-image-tag
-      tag: $CIRCLE_TAG
+      name: docker-image-tag-amd64
+      tag: $CIRCLE_TAG-amd64
+      platform: amd64
       context:
         - ae-slack
-        - ae-node-builds
+        - ae-dockerhub
       requires:
         - hodl_artifact_upload
       filters:
@@ -297,12 +298,12 @@ jobs:
           only: << pipeline.parameters.tag_regex >>
 
   - docker-image:
-      name: docker-image-tag-bundle
-      aeplugin_devmode: true
-      tag: $CIRCLE_TAG-bundle
+      name: docker-image-tag-arm64
+      tag: $CIRCLE_TAG-arm64
+      platform: arm64
       context:
         - ae-slack
-        - ae-node-builds
+        - ae-dockerhub
       requires:
         - hodl_artifact_upload
       filters:
@@ -311,13 +312,83 @@ jobs:
         tags:
           only: << pipeline.parameters.tag_regex >>
 
-  - docker-tag:
-      name: docker-image-latest
-      src: $CIRCLE_TAG
-      tag: latest
+  - docker-manifest:
+      name: docker-image-tag
       context:
         - ae-slack
-        - ae-node-builds
+        - ae-dockerhub
+      tag: $CIRCLE_TAG
+      manifest_list: >-
+        $CIRCLE_TAG-amd64
+        $CIRCLE_TAG-arm64
+      requires:
+        - docker-image-tag-amd64
+        - docker-image-tag-arm64
+      filters:
+        branches:
+          ignore: /.*/
+        tags:
+          only: << pipeline.parameters.tag_regex >>
+
+  - docker-image:
+      name: docker-image-tag-bundle-amd64
+      tag: $CIRCLE_TAG-bundle-amd64
+      platform: amd64
+      aeplugin_devmode: true
+      context:
+        - ae-slack
+        - ae-dockerhub
+      requires:
+        - hodl_artifact_upload
+      filters:
+        branches:
+          ignore: /.*/
+        tags:
+          only: << pipeline.parameters.tag_regex >>
+
+  - docker-image:
+      name: docker-image-tag-bundle-arm64
+      tag: $CIRCLE_TAG-bundle-arm64
+      platform: arm64
+      aeplugin_devmode: true
+      context:
+        - ae-slack
+        - ae-dockerhub
+      requires:
+        - hodl_artifact_upload
+      filters:
+        branches:
+          ignore: /.*/
+        tags:
+          only: << pipeline.parameters.tag_regex >>
+
+  - docker-manifest:
+      name: docker-image-tag-bundle
+      context:
+        - ae-slack
+        - ae-dockerhub
+      tag: $CIRCLE_TAG-bundle
+      manifest_list: >-
+        $CIRCLE_TAG-bundle-amd64
+        $CIRCLE_TAG-bundle-arm64
+      requires:
+        - docker-image-tag-bundle-amd64
+        - docker-image-tag-bundle-arm64
+      filters:
+        branches:
+          ignore: /.*/
+        tags:
+          only: << pipeline.parameters.tag_regex >>
+
+  - docker-manifest:
+      name: docker-image-latest
+      context:
+        - ae-slack
+        - ae-dockerhub
+      tag: latest
+      manifest_list: >-
+        $CIRCLE_TAG-amd64
+        $CIRCLE_TAG-arm64
       requires:
         - docker-image-tag
         - hodl_latest
@@ -327,15 +398,17 @@ jobs:
         tags:
           only: << pipeline.parameters.tag_regex >>
 
-  - docker-tag:
+  - docker-manifest:
       name: docker-image-latest-bundle
-      src: $CIRCLE_TAG-bundle
-      tag: latest-bundle
       context:
         - ae-slack
-        - ae-node-builds
+        - ae-dockerhub
+      tag: latest-bundle
+      manifest_list: >-
+        $CIRCLE_TAG-bundle-amd64
+        $CIRCLE_TAG-bundle-arm64
       requires:
-        - docker-image-tag
+        - docker-image-tag-bundle
         - hodl_latest
       filters:
         branches:
@@ -346,7 +419,7 @@ jobs:
   - finalize-release:
       context:
         - ae-slack
-        - ae-node-builds
+        - ae-dockerhub
       requires:
         - upload-release-tarballs-s3
         - promote-release-linux-tarball-s3

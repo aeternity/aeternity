@@ -20,7 +20,6 @@ tx_pool_test_() ->
              application:ensure_started(gproc),
              ok = application:ensure_started(crypto),
              TmpKeysDir = aec_test_utils:aec_keys_setup(),
-             {ok, _} = aec_db_error_store:start_link(),
              aec_test_utils:start_chain_db(),
              aec_test_utils:mock_genesis_and_forks(),
              GB = aec_test_utils:genesis_block(),
@@ -48,7 +47,6 @@ tx_pool_test_() ->
              ok = application:stop(gproc),
              ets:delete(?TAB),
              aec_test_utils:stop_chain_db(),
-             ok = aec_db_error_store:stop(),
              aec_test_utils:unmock_genesis_and_forks(),
              aec_test_utils:unmock_governance(), %% Unloads aec_governance mock.
              ok = aec_tx_pool:stop(),
@@ -128,10 +126,12 @@ tx_pool_test_() ->
             ?assertMatch({ok, [_, _, _]}, aec_tx_pool:peek(infinity)),
 
             %% The first block needs to be a key-block
-            {ok, KeyBlock1} = aec_block_key_candidate:create(aec_chain:top_block(), PK),
+            {ok, Miner} = aec_keys:candidate_pubkey(),
+            {ok, KeyBlock1} = aec_block_key_candidate:create(aec_chain:top_block(), PK, Miner),
             {ok, KeyHash1} = aec_blocks:hash_internal_representation(KeyBlock1),
             {ok,_} = aec_chain_state:insert_block(KeyBlock1),
             ?assertEqual(KeyHash1, aec_chain:top_block_hash()),
+            ?assertEqual(Miner, aec_blocks:miner(KeyBlock1)),
             ok = aec_keys:promote_candidate(aec_blocks:miner(KeyBlock1)),
 
             TopBlock = aec_chain:top_block(),
@@ -175,9 +175,9 @@ tx_pool_test_() ->
             ?assertEqual(ok, aec_tx_pool:push( a_signed_tx(PK1, me, 6, 20000), tx_received )),
 
             ?assertMatch({ok, [_, _, _, _, _, _]}, aec_tx_pool:peek(infinity)),
-
             %% The first block needs to be a key-block
-            {ok, KeyBlock1} = aec_block_key_candidate:create(aec_chain:top_block(), PK1),
+            {ok, Miner} = aec_keys:candidate_pubkey(),
+            {ok, KeyBlock1} = aec_block_key_candidate:create(aec_chain:top_block(), PK1, Miner),
             {ok, KeyHash1} = aec_blocks:hash_internal_representation(KeyBlock1),
             {ok,_} = aec_chain_state:insert_block(KeyBlock1),
             ?assertEqual(KeyHash1, aec_chain:top_block_hash()),
@@ -220,6 +220,7 @@ tx_pool_test_() ->
                GenesisProtocol = aec_block_genesis:version(),
                {ok, Hash} = aec_headers:hash_header(aec_block_genesis:genesis_header()),
                MaxGas = aec_governance:block_gas_limit(),
+               {ok, []} = aec_tx_pool:get_candidate(0, Hash),         % regression bug check
                {ok, STxs2} = aec_tx_pool:get_candidate(MaxGas, Hash),
                TotalGas = lists:sum([aetx:gas_limit(aetx_sign:tx(T), GenesisHeight, GenesisProtocol) || T <- STxs2 ]),
                MinGas = aetx:gas_limit(aetx_sign:tx(hd(STxs)), GenesisHeight, GenesisProtocol),
@@ -233,7 +234,6 @@ tx_pool_test_() ->
        {timeout, 10, fun() ->
                ok = application:set_env(aecore, mempool_nonce_offset, 600),
                aec_test_utils:stop_chain_db(),
-               {ok, MinerPubKey} = aec_keys:pubkey(),
                PubKey1 = new_pubkey(),
                PubKey2 = new_pubkey(),
                meck:expect(aec_fork_block_settings, genesis_accounts, 0,
@@ -244,7 +244,8 @@ tx_pool_test_() ->
                {ok,_} = aec_chain_state:insert_block(Block0),
 
                %% The first block needs to be a key-block
-               {ok, KeyBlock} = aec_block_key_candidate:create(aec_chain:top_block(), MinerPubKey),
+               {ok, Miner} = aec_keys:candidate_pubkey(),
+               {ok, KeyBlock} = aec_block_key_candidate:create(aec_chain:top_block(), Miner, Miner),
                {ok,_} = aec_chain_state:insert_block(KeyBlock),
                ok = aec_keys:promote_candidate(aec_blocks:miner(KeyBlock)),
                {ok, KeyHash} = aec_blocks:hash_internal_representation(KeyBlock),
@@ -329,7 +330,8 @@ tx_pool_test_() ->
                {ok,_} = aec_chain_state:insert_block(GenesisBlock),
 
                %% The first block needs to be a key-block
-               {ok, KeyBlock1} = aec_block_key_candidate:create(aec_chain:top_block(), PubKey1),
+               {ok, Miner} = aec_keys:candidate_pubkey(),
+               {ok, KeyBlock1} = aec_block_key_candidate:create(aec_chain:top_block(), PubKey1, Miner),
                {ok, KeyHash1} = aec_blocks:hash_internal_representation(KeyBlock1),
                {ok,_} = aec_chain_state:insert_block(KeyBlock1),
                ?assertEqual(KeyHash1, aec_chain:top_block_hash()),
@@ -377,7 +379,7 @@ tx_pool_test_() ->
 
                {ok,_} = aec_chain_state:insert_block(Candidate3),
                TopBlockFork1 = aec_chain:top_block(),
-               {ok, KeyBlock2} = aec_block_key_candidate:create(TopBlockFork1, PubKey1),
+               {ok, KeyBlock2} = aec_block_key_candidate:create(TopBlockFork1, PubKey1, PubKey1),
                {ok, CHashFork1} = aec_blocks:hash_internal_representation(KeyBlock2),
 
                meck:expect(aeu_time, now_in_msecs, fun() -> meck:passthrough([]) + 6000 end),
@@ -388,7 +390,7 @@ tx_pool_test_() ->
 
                {ok,_} = aec_chain_state:insert_block(Candidate4),
                TopBlockFork2 = aec_chain:top_block(),
-               {ok, KeyBlock3} = aec_block_key_candidate:create(TopBlockFork2, PubKey1),
+               {ok, KeyBlock3} = aec_block_key_candidate:create(TopBlockFork2, PubKey1, PubKey1),
                {ok, CHashFork2} = aec_blocks:hash_internal_representation(KeyBlock3),
 
                %% Push the keyblock with the longest chain of micro blocks
@@ -449,7 +451,7 @@ tx_pool_test_() ->
                  {ok,_} = aec_chain_state:insert_block(GenesisBlock),
 
                  %% Bring the chain to height 1
-                 {ok, KeyBlock1} = aec_block_key_candidate:create(aec_chain:top_block(), PK1),
+                 {ok, KeyBlock1} = aec_block_key_candidate:create(aec_chain:top_block(), PK1, PK1),
                  {ok,_} = aec_chain_state:insert_block(KeyBlock1),
                  WithMetaTx = aec_hard_forks:protocol_effective_at_height(1) >= ?FORTUNA_PROTOCOL_VSN,
 
@@ -521,7 +523,7 @@ tx_pool_test_() ->
                {ok,_} = aec_chain_state:insert_block(GenesisBlock),
 
                %% Bring the chain to height 1
-               {ok, KeyBlock1} = aec_block_key_candidate:create(aec_chain:top_block(), PK),
+               {ok, KeyBlock1} = aec_block_key_candidate:create(aec_chain:top_block(), PK, PK),
                {ok,_} = aec_chain_state:insert_block(KeyBlock1),
 
                MaxGas = aec_governance:block_gas_limit(),
@@ -693,7 +695,8 @@ tx_pool_test_() ->
                {ok,_} = aec_chain_state:insert_block(GenesisBlock),
 
                %% The first block needs to be a key-block
-               {ok, KeyBlock1} = aec_block_key_candidate:create(aec_chain:top_block(), PubKey1),
+               {ok, Miner} = aec_keys:candidate_pubkey(),
+               {ok, KeyBlock1} = aec_block_key_candidate:create(aec_chain:top_block(), PubKey1, Miner),
                {ok, KeyHash1} = aec_blocks:hash_internal_representation(KeyBlock1),
                {ok,_} = aec_chain_state:insert_block(KeyBlock1),
                ?assertEqual(KeyHash1, aec_chain:top_block_hash()),
@@ -752,7 +755,7 @@ tx_pool_test_() ->
                %% A transaction with too low ttl should be rejected
                %% First add another block to make the chain high enough to
                %% fail on TTL
-               {ok, Candidate2} = aec_block_key_candidate:create(aec_chain:top_block(), PubKey1),
+               {ok, Candidate2} = aec_block_key_candidate:create(aec_chain:top_block(), PubKey1, PubKey1),
                {ok, Top2} = aec_blocks:hash_internal_representation(Candidate2),
                {ok,_} = aec_chain_state:insert_block(Candidate2),
                ?assertEqual(Top2, aec_chain:top_block_hash()),
@@ -821,7 +824,8 @@ tx_pool_test_() ->
                {ok,_} = aec_chain_state:insert_block(GenesisBlock),
 
                %% The first block needs to be a key-block
-               {ok, KeyBlock1} = aec_block_key_candidate:create(aec_chain:top_block(), PubKey),
+               {ok, Miner} = aec_keys:candidate_pubkey(),
+               {ok, KeyBlock1} = aec_block_key_candidate:create(aec_chain:top_block(), PubKey, Miner),
                {ok, KeyHash1} = aec_blocks:hash_internal_representation(KeyBlock1),
                {ok,_} = aec_chain_state:insert_block(KeyBlock1),
                ?assertEqual(KeyHash1, aec_chain:top_block_hash()),
@@ -968,7 +972,7 @@ sign(PubKey, Tx) ->
     end.
 
 acct(me) ->
-    {ok, Key} = aec_keys:pubkey(),
+    {ok, Key} = aec_keys:get_pubkey(),
     aeser_id:create(account, Key);
 acct(A) when is_binary(A) ->
     aeser_id:create(account, A).

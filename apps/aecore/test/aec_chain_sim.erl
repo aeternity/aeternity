@@ -22,7 +22,7 @@
 %%%   txs
 %%% - Nonces: a map of `Acct => Nonce' pairs + support for incrementing an acct
 %%%   nonce
-%%% - Dictionary: for storing and retreiving (mainly) test-related state
+%%% - Dictionary: for storing and retrieving (mainly) test-related state
 %%% - Event reporting: the simulator uses the standard aec_events reporting
 %%%   mechanism.
 %%%
@@ -32,39 +32,48 @@
 %%%
 %%% ======================================================================
 
--export([ start/0                      %% () -> {ok, pid()}
-        , start/1                      %% (Opts :: map()) -> {ok, pid()}
-        , stop/0 ]).                   %% () -> ok
+-export([ start/1                      %% (Opts :: map()) -> {ok, pid()}
+        , stop/1]).                    %% (Name :: atom()) -> ok
 
--export([ next_nonce/1                 %% (Acct) -> integer()
-        , new_account/1                %% (Balance) -> KeyPair
-        , new_account/2                %% (ForkId, Balance) -> KeyPair
-        , get_balance/1                %% (Acct) -> Balance
-        , get_balance/2                %% (ForkId, Acct) -> Balance
-        , get_height/0                 %% () -> Int
-        , get_height/1                 %% (ForkId) -> Int
-        , push/1                       %% (Tx) -> ok
-        , find_signed_tx/1             %% (TxHash) -> {value, STx)} | none
-        , top_block_hash/0             %% () -> Hash
-        , block_by_hash/1              %% (BlockHash) -> {ok, Block}
-        , sign_and_push/2              %% (Acct, Tx) -> ok
-        , get_call/2                   %% (ContractKey, CallKey) -> Call
-        , get_call/3                   %% (ForkId, ContractKey, CallKey) -> Call
-        , get_trees/0                  %% () -> Trees
-        , get_trees/1                  %% (ForkId) -> {ok, Trees} | error
-        , add_keyblock/0               %% () -> {ok, Block}
-        , add_keyblock/1               %% (ForkId) -> {ok, Block}
-        , add_microblock/0             %% () -> {ok, Block}
-        , add_microblock/1             %% (ForkId) -> {ok, Block}
-        , clone_microblock_on_fork/2   %% (BlockHash, ForkId) -> {ok, Block}
-        , fork_from_hash/2             %% (ForkId, FromHash) -> {ok, Block}
-        , fork_switch/1                %% (ForkId) -> ok
-        , dict_set/2                   %% (Key, Value) -> ok
-        , dict_get/2 ]).               %% (Key, Default) -> Value
+-export([ next_nonce/2                 %% (Name, Acct) -> integer()
+        , new_account/2                %% (Name, Balance) -> KeyPair
+        , new_account/3                %% (Name, ForkId, Balance) -> KeyPair
+        , add_existing_account/3       %% (Name, KeyPair, Balance) -> ok
+        , add_existing_account/4       %% (Name, ForkId, KeyPair, Balance) -> ok
+        , get_balance/2                %% (Name, Acct) -> Balance
+        , get_balance/3                %% (Name, ForkId, Acct) -> Balance
+        , get_next_nonce/2             %% (Name, Acct) -> integer()
+        , get_next_nonce/3             %% (Name, ForkId, Acct) -> integer()
+        , get_height/1                 %% (Name) -> Int
+        , get_height/2                 %% (Name, ForkId) -> Int
+        , push/2                       %% (Name, Tx) -> ok
+        , find_signed_tx/2             %% (Name, TxHash) -> {value, STx)} | none
+        , top_block_hash/1             %% (Name) -> Hash
+        , top_key_block_hash/1         %% (Name) -> Hash
+        , top_key_block/1              %% (Name) -> Block
+        , block_by_hash/2              %% (Name, BlockHash) -> {ok, Block}
+        , block_by_height/2            %% (Name, BlockHeight) -> {ok, Block}
+        , get_key_block_hash_at_height/2
+        , get_current_generation/1     %% (Name) -> {ok, Generation}
+        , get_generation_by_hash/3     %% (Name, BlockHash, Direction) -> {ok, Generation}
+        , sign_and_push/3              %% (Name, Acct, Tx) -> ok
+        , get_call/3                   %% (Name, ContractKey, CallKey) -> Call
+        , get_call/4                   %% (Name, ForkId, ContractKey, CallKey) -> Call
+        , get_trees/1                  %% (Name) -> Trees
+        , get_trees/2                  %% (Name, ForkId) -> {ok, Trees} | error
+        , add_keyblock/1               %% (Name) -> {ok, Block}
+        , add_keyblock/2               %% (Name, ForkId) -> {ok, Block}
+        , add_microblock/1             %% (Name) -> {ok, Block}
+        , add_microblock/2             %% (Name, ForkId) -> {ok, Block}
+        , clone_microblock_on_fork/3   %% (Name, BlockHash, ForkId) -> {ok, Block}
+        , fork_from_hash/3             %% (Name, ForkId, FromHash) -> {ok, Block}
+        , fork_switch/2                %% (Name, ForkId) -> ok
+        , dict_set/3                   %% (Name, Key, Value) -> ok
+        , dict_get/3 ]).               %% (Name, Key, Default) -> Value
 
--export([ setup_meck/0                 %% () -> ok
+-export([ setup_meck/1                 %% (Name :: atom()) -> ok
         , remove_meck/0                %% () -> ok
-        , get_chain_process/0          %% () -> pid() | undefined
+        , get_chain_process/1          %% (Name :: atom()) -> pid() | undefined
         ]).
 
 %% Gen_server callbacks
@@ -90,15 +99,14 @@
 
 -type fork_id()    :: main | term().
 -type block_hash() :: aec_blocks:block_header_hash().
+-type generation() :: #{ key_block => aec_blocks:key_block(),
+                         micro_blocks := [aec_blocks:micro_block()],
+                         dir := backward | forward }.
 
 
 %% TODO: Use CT logging or system logging - possibly configurable
 -define(LOG(Fmt, Args), io:format("~w:~w/~w -\n" ++ Fmt ++ "\n\n", [?MODULE, ?FUNCTION_NAME, ?LINE | Args])).
 
-%%% @equiv start(#{}).
-%%
-start() ->
-    start(#{}).
 
 -spec start(map()) -> {ok, pid()}.
 %%
@@ -106,16 +114,17 @@ start() ->
 %% Supported options:
 %% - monitor => pid(): The simulator will terminate if the monitored process dies
 %% - sim_type => sim_type(): The simulator mode (parent chain for Hyperchains or default)
+%% - name => gproc name for the simulator
 %%
-start(Opts) when is_map(Opts) ->
+start(#{name := _} = Opts) when is_map(Opts) ->
     gen_server:start(?MODULE, Opts, []).
 
--spec stop() -> ok.
+-spec stop(Name :: atom()) -> ok.
 %%
 %% Stops the simulator
 %%
-stop() ->
-    case get_chain_process() of
+stop(Name) ->
+    case get_chain_process(Name) of
         undefined ->
             ?LOG("No chain process running!!", []),
             ok;
@@ -146,232 +155,284 @@ genesis_state_param(Opts) ->
 %%%===================================================================
 %% Chain simulator requests
 
--spec next_nonce(Acct :: aec_keys:pubkey()) -> integer().
+-spec next_nonce(Name :: atom(), Acct :: aec_keys:pubkey()) -> integer().
 %%
 %% Increments the nonce of Acct
 %%
-next_nonce(Acct) ->
-    chain_req({next_nonce, Acct}).
+next_nonce(Name, Acct) ->
+    chain_req(Name, {next_nonce, Acct}).
 
--spec new_account(Balance :: non_neg_integer()) -> {ok, map()}.
+-spec new_account(Name :: atom(), Balance :: non_neg_integer()) -> {ok, map()}.
 %%
 %% Equivalent to new_account(main, Balance)
 %%
-new_account(Balance) ->
-    new_account(main, Balance).
+new_account(Name, Balance) ->
+    new_account(Name, main, Balance).
 
--spec new_account(fork_id(), Balance :: non_neg_integer()) -> {ok, map()}.
+-spec new_account(Name :: atom(), fork_id(), Balance :: non_neg_integer()) -> {ok, map()}.
 %%
 %% Creates new account with given balance
 %%
-new_account(ForkId, Balance) ->
-    chain_req({new_account, ForkId, Balance}).
+new_account(Name, ForkId, Balance) ->
+    chain_req(Name, {new_account, ForkId, Balance}).
 
--spec get_balance(Acct :: non_neg_integer()) -> integer().
+-spec add_existing_account(Name :: atom(), PK :: map(), Balance :: non_neg_integer()) -> {ok, map()}.
+%%
+%% Adds an account with a known private . public key pair
+%%
+add_existing_account(Name, Acct, Balance) ->
+    add_existing_account(Name, main, Acct, Balance).
+
+-spec add_existing_account(Name :: atom(), fork_id(), Acct :: map(), Balance :: non_neg_integer()) -> {ok, map()}.
+%%
+%% Creates new account with given balance
+%%
+add_existing_account(Name, ForkId, Acct, Balance) ->
+    chain_req(Name, {add_existing_account, ForkId, Acct, Balance}).
+
+-spec get_balance(Name :: atom(), Acct :: non_neg_integer()) -> integer().
 %%
 %% Equivalent to get_balance(main, Acct)
 %%
-get_balance(Acct) ->
-    get_balance(main, Acct).
+get_balance(Name, Acct) ->
+    get_balance(Name, main, Acct).
 
--spec get_balance(fork_id(), Acct :: non_neg_integer()) -> integer().
+-spec get_balance(Name :: atom(), fork_id(), Acct :: non_neg_integer()) -> integer().
 %%
 %% Queries the chain for account's balance
 %%
-get_balance(ForkId, Acct) ->
-    chain_req({get_balance, ForkId, Acct}).
+get_balance(Name, ForkId, Acct) ->
+    chain_req(Name, {get_balance, ForkId, Acct}).
 
+get_next_nonce(Name, Acct) ->
+    get_next_nonce(Name, main, Acct).
 
--spec get_height() -> integer().
+get_next_nonce(Name, ForkId, Acct) ->
+    chain_req(Name, {get_next_nonce, ForkId, Acct}).
+
+-spec get_height(Name :: atom()) -> integer().
 %%
 %% Equivalent to get_height(main)
 %%
-get_height() ->
-    get_height(main).
+get_height(Name) ->
+    get_height(Name, main).
 
--spec get_height(fork_id()) -> integer().
+-spec get_height(Name :: atom(), fork_id()) -> integer().
 %%
 %% Queries the chain for account's balance
 %%
-get_height(ForkId) ->
-    chain_req({get_height, ForkId}).
+get_height(Name, ForkId) ->
+    chain_req(Name, {get_height, ForkId}).
 
--spec push(aetx_sign:signed_tx()) -> ok.
+-spec push(Name :: atom(), aetx_sign:signed_tx()) -> ok.
 %%
 %% Pushes the signed tx to the simulated mempool
 %%
-push(Tx) ->
-    chain_req({push, Tx}).
+push(Name, Tx) ->
+    chain_req(Name, {push, Tx}).
 
--spec sign_and_push(aec_keys:pubkey(), aetx:tx()) -> ok | {error, unknown_privkey}.
+-spec sign_and_push(Name :: atom(), aec_keys:pubkey(), aetx:tx()) -> ok | {error, unknown_privkey}.
 %%
 %% Signs and pushes tx to the simulated mempool
 %%
-sign_and_push(Account, Tx) ->
-    chain_req({sign_and_push, Account, Tx}).
+sign_and_push(Name, Account, Tx) ->
+    chain_req(Name, {sign_and_push, Account, Tx}).
 
--spec get_call(Contract :: aect_contracts:id(), Call :: aect_call:id()) -> aect_call:call().
+-spec get_call(Name :: atom(), Contract :: aect_contracts:id(), Call :: aect_call:id()) -> aect_call:call().
 %%
 %% Equivalent to get_call(main, Contract, Call)
 %%
-get_call(Contract, Call) ->
-    get_call(main, Contract, Call).
+get_call(Name, Contract, Call) ->
+    get_call(Name, main, Contract, Call).
 
--spec get_call(ForkId :: fork_id(), Contract :: aect_contracts:id(), Call :: aect_call:id()) -> aect_call:call().
+-spec get_call(Name :: atom(), ForkId :: fork_id(), Contract :: aect_contracts:id(), Call :: aect_call:id()) -> aect_call:call().
 %%
 %% Equivalent to get_call(main, Contract, Call)
 %%
-get_call(ForkId, Contract, Call) ->
-    chain_req({get_call, ForkId, Contract, Call}).
+get_call(Name, ForkId, Contract, Call) ->
+    chain_req(Name, {get_call, ForkId, Contract, Call}).
 
--spec get_trees() -> {ok, aec_trees:trees()} | error.
+-spec get_trees(Name :: atom()) -> {ok, aec_trees:trees()} | error.
 %%
 %% Equivalent to get_trees(main)
 %%
-get_trees() ->
-    get_trees(main).
+get_trees(Name) ->
+    get_trees(Name, main).
 
--spec get_trees(fork_id()) -> {ok, aec_trees:trees()} | error.
+-spec get_trees(Name :: atom(), fork_id()) -> {ok, aec_trees:trees()} | error.
 %%
 %% Returns state trees from the top of a given fork
 %%
-get_trees(ForkId) ->
-    chain_req({get_trees, ForkId}).
+get_trees(Name, ForkId) ->
+    chain_req(Name, {get_trees, ForkId}).
 
--spec add_keyblock() -> aec_blocks:key_block().
+-spec add_keyblock(Name :: atom()) -> aec_blocks:key_block().
 %%
 %% Equivalent to add_keyblock(main)
 %%
-add_keyblock() ->
-    add_keyblock(main).
+add_keyblock(Name) ->
+    add_keyblock(Name, main).
 
--spec block_by_hash(block_hash()) -> {ok, aec_blocks:block()}.
-block_by_hash(BlockHash) ->
-    chain_req({block_by_hash, BlockHash}).
+-spec block_by_hash(Name :: atom(), block_hash()) -> {ok, aec_blocks:block()}.
+block_by_hash(Name, BlockHash) ->
+    chain_req(Name, {block_by_hash, BlockHash}).
 
--spec top_block_hash() -> binary().
-top_block_hash() ->
-    chain_req(top_block_hash).
+-spec block_by_height(Name :: atom(), non_neg_integer()) -> {ok, aec_blocks:block()}.
+block_by_height(Name, BlockHeight) ->
+    chain_req(Name, {block_by_height, BlockHeight}).
 
--spec add_keyblock( ForkId :: fork_id() ) -> {ok, aec_blocks:key_block()}.
+-spec top_block_hash(Name :: atom()) -> binary().
+top_block_hash(Name) ->
+    chain_req(Name, top_block_hash).
+
+-spec top_key_block_hash(Name :: atom()) -> binary().
+top_key_block_hash(Name) ->
+    chain_req(Name, top_key_block_hash).
+
+-spec top_key_block(Name :: atom()) -> binary().
+top_key_block(Name) ->
+    chain_req(Name, top_key_block).
+
+-spec get_key_block_hash_at_height(Name :: atom(), Height :: integer()) -> binary().
+get_key_block_hash_at_height(Name, Height) ->
+    chain_req(Name, {get_key_block_hash_at_height, Height}).
+
+-spec get_current_generation(Name :: atom()) -> error | {'ok', generation()}.
+get_current_generation(Name) ->
+    chain_req(Name, get_current_generation).
+
+-spec get_generation_by_hash(Name :: atom(), block_hash(), forward | backward) -> error | {'ok', generation()}.
+get_generation_by_hash(Name, Hash, Dir) ->
+    chain_req(Name, {get_generation_by_hash, Hash, Dir}).
+
+-spec add_keyblock(Name :: atom(), ForkId :: fork_id() ) -> {ok, aec_blocks:key_block()}.
 %%
 %% Adds a keyblock. If ForkId == main, the keyblock is added to the main fork.
 %% If ForkId is the id of an existing fork, created previously with
 %% fork_from_hash/2, the keyblock is added to that fork. If the given ForkId
 %% is not known, the simulator terminates.
 %%
-add_keyblock(ForkId) ->
-    chain_req({add_key, ForkId}).
+add_keyblock(Name, ForkId) ->
+    chain_req(Name, {add_key, ForkId}).
 
--spec add_microblock() -> {ok, aec_blocks:micro_block()}.
+-spec add_microblock(Name :: atom()) -> {ok, aec_blocks:micro_block()}.
 %%
 %% Equivalent to add_microblock(main)
 %%
-add_microblock() ->
-    add_microblock(main).
+add_microblock(Name) ->
+    add_microblock(Name, main).
 
--spec add_microblock(ForkId :: fork_id()) -> {ok, aec_blocks:micro_block()}.
+-spec add_microblock(Name :: atom(), ForkId :: fork_id()) -> {ok, aec_blocks:micro_block()}.
 %%
 %% Adds a microblock to the given ForkId (the main fork if ForkId == main).
 %% All transactions in the mempool are added to the block.
 %%
-add_microblock(ForkId) ->
-    chain_req({add_micro, ForkId}).
+add_microblock(Name, ForkId) ->
+    chain_req(Name, {add_micro, ForkId}).
 
--spec clone_microblock_on_fork(block_hash(), fork_id()) -> {ok, aec_blocks:micro_block()}.
+-spec clone_microblock_on_fork(Name :: atom(), block_hash(), fork_id()) -> {ok, aec_blocks:micro_block()}.
 %%
 %% This is a cheating way of simulating transactions being evicted from the main chain and
 %% picked up in a new microblock. The cheat is that the original block remains on the chain.
 %% This function should be used with care, and ideally replaced by a better solution.
 %%
-clone_microblock_on_fork(Hash, ForkId) ->
-    chain_req({clone_micro_on_fork, Hash, ForkId}).
+clone_microblock_on_fork(Name, Hash, ForkId) ->
+    chain_req(Name, {clone_micro_on_fork, Hash, ForkId}).
 
--spec fork_from_hash(ForkId :: fork_id(), FromHash :: block_hash()) -> {ok, aec_blocks:key_block()}.
+-spec fork_from_hash(Name :: atom(), ForkId :: fork_id(), FromHash :: block_hash()) -> {ok, aec_blocks:key_block()}.
 %%
 %% Creates a new ForkId and adds a keyblock to FromHash
 %% Fails (simulator terminates) if ForkId exists, or if FromHash is not a block
 %% on the main fork.
 %%
-fork_from_hash(ForkId, FromHash) when is_binary(FromHash) ->
-    chain_req({fork_from_hash, ForkId, FromHash}).
+fork_from_hash(Name, ForkId, FromHash) when is_binary(FromHash) ->
+    chain_req(Name, {fork_from_hash, ForkId, FromHash}).
 
--spec fork_switch(ForkId :: fork_id()) -> ok.
+-spec fork_switch(Name :: atom(), ForkId :: fork_id()) -> ok.
 %%
 %% Makes the existing fork ForkId the new main fork, evicting all blocks
 %% succeeding the common ancestor. The evicted transactions are returned to the
 %% simulated mempool.
 %%
-fork_switch(ForkId) ->
-    chain_req({fork_switch, ForkId}).
+fork_switch(Name, ForkId) ->
+    chain_req(Name, {fork_switch, ForkId}).
 
--spec dict_set(Key :: term(), Value :: term()) -> ok.
+-spec dict_set(Name :: atom(), Key :: term(), Value :: term()) -> ok.
 %%
 %% Stores `Key => Value' in the "user dictionary" managed by the chain simulator.
 %%
-dict_set(Key, Value) ->
-    chain_req({dict_set, Key, Value}).
+dict_set(Name, Key, Value) ->
+    chain_req(Name, {dict_set, Key, Value}).
 
--spec dict_get(Key :: term(), Default :: term()) -> term().
+-spec dict_get(Name :: atom(), Key :: term(), Default :: term()) -> term().
 %%
 %% Returns the value associated with Key in the user dictionary, or Default if
 %% the key is not found.
 %%
-dict_get(Key, Default) ->
-    chain_req({dict_get, Key, Default}).
+dict_get(Name, Key, Default) ->
+    chain_req(Name, {dict_get, Key, Default}).
 
--spec find_signed_tx(binary()) -> {value, binary()} | none.
+-spec find_signed_tx(Name :: atom(), binary()) -> {value, binary()} | none.
 %%
 %% Returns the transaction hash associated with Key
 %%
-find_signed_tx(TxHash) ->
-    chain_req({find_signed_tx, TxHash}).
+find_signed_tx(Name, TxHash) ->
+    chain_req(Name, {find_signed_tx, TxHash}).
 
--spec setup_meck() -> ok.
+-spec setup_meck(Name :: atom()) -> ok.
 %%
 %% Installs the mocks needed for the simulator. The assumption is that the mocks
 %% are not already installed.
 %%
-setup_meck() ->
+setup_meck(Name) ->
+    aec_db:install_test_env(),
     meck:expect(aec_chain_state, hash_is_in_main_chain, 2,
                 fun(Hash, TopHash) ->
-                        chain_req({hash_is_in_main_chain, Hash, TopHash})
+                        chain_req(Name, {hash_is_in_main_chain, Hash, TopHash})
                 end),
     meck:expect(aec_chain_state, find_common_ancestor, 2,
                 fun(Hash1, Hash2) ->
-                        chain_req({find_common_ancestor, Hash1, Hash2})
+                        chain_req(Name, {find_common_ancestor, Hash1, Hash2})
                 end),
     meck:expect(aec_chain, get_top_state, 0,
                 fun() ->
-                        chain_req(get_top_state)
+                        chain_req(Name, get_top_state)
                 end),
     meck:expect(aec_chain, find_tx_with_location, 1,
                 fun(Hash) ->
-                        chain_req({find_tx_with_location, Hash})
+                        chain_req(Name, {find_tx_with_location, Hash})
                 end),
     meck:expect(aec_chain, get_block_state, 1,
                 fun(Hash) ->
-                        chain_req({get_block_state, Hash})
+                        chain_req(Name, {get_block_state, Hash})
                 end),
     meck:expect(aec_chain, get_channel, 1,
                 fun(Id) ->
-                        chain_req({get_channel, Id})
+                        chain_req(Name, {get_channel, Id})
                 end),
     meck:expect(aec_chain, top_block_hash, 0,
                 fun() ->
-                        chain_req(top_block_hash)
+                        chain_req(Name, top_block_hash)
+                end),
+    meck:expect(aec_chain, top_key_block_hash, 0,
+                fun() ->
+                        chain_req(Name, top_key_block_hash)
+                end),
+    meck:expect(aec_chain, top_key_block, 0,
+                fun() ->
+                        chain_req(Name, top_key_block)
                 end),
     meck:expect(aec_chain, get_header, 1,
                 fun(BHash) ->
-                        chain_req({get_header, BHash})
+                        chain_req(Name, {get_header, BHash})
                 end),
     meck:expect(aec_db, find_block_tx_hashes, 1,
                 fun(Hash) ->
-                        chain_req({find_block_tx_hashes, Hash})
+                        chain_req(Name, {find_block_tx_hashes, Hash})
                 end),
     meck:expect(aec_db, find_signed_tx, 1,
                 fun(TxHash) ->
-                        chain_req({find_signed_tx, TxHash})
+                        chain_req(Name, {find_signed_tx, TxHash})
                 end),
     ok.
 
@@ -380,18 +441,18 @@ setup_meck() ->
 %% Removes the mocks installed by the simulator.
 %%
 remove_meck() ->
+    aec_db:uninstall_test_env(),
     meck:unload([ aec_chain
                 , aec_chain_state
-                , aec_db ]),
+                , aec_db]),
     ok.
-
 
 %%%===================================================================
 %$% gen_server implementation
 %%%===================================================================
 
-init(Opts) when is_map(Opts) ->
-    gproc:reg({n,l,{?MODULE, chain_process}}),
+init(#{name := Name} = Opts) when is_map(Opts) ->
+    gproc:reg({n,l,{Name, chain_process}}),
     Chain = new_chain(Opts),
     ?LOG("Initial chain (~p sim_type_param): ~p", [sim_type_param(Opts), Chain]),
     {ok, maybe_monitor(#st{opts = Opts, chain = Chain})}.
@@ -411,11 +472,17 @@ handle_call({clone_micro_on_fork, Hash, ForkId}, _From, #st{opts = Opts, chain =
 handle_call({new_account, ForkId, Balance}, _From, #st{chain = Chain} = St) ->
     {Res, Chain1} = new_account_(ForkId, Balance, Chain),
     {reply, Res, St#st{chain = Chain1}};
+handle_call({add_existing_account, ForkId, Acct, Balance}, _From, #st{chain = Chain} = St) ->
+    {Res, Chain1} = add_account_keypair_(ForkId, Acct, Balance, Chain),
+    {reply, Res, St#st{chain = Chain1}};
 handle_call({add_key, ForkId}, _From, #st{opts = Opts, chain = Chain} = St) ->
     {Res, Chain1} = add_keyblock_(ForkId, Chain, Opts),
     {reply, Res, St#st{chain = Chain1}};
 handle_call({get_balance, ForkId, Acct}, _From, #st{chain = Chain} = St) ->
     Res = get_balance_(ForkId, Acct, Chain),
+    {reply, Res, St};
+handle_call({get_next_nonce, ForkId, Acct}, _From, #st{chain = Chain} = St) ->
+    Res = get_next_nonce_(ForkId, Acct, Chain),
     {reply, Res, St};
 handle_call({get_height, ForkId}, _From, #st{chain = Chain} = St) ->
     Res = get_height_(ForkId, Chain),
@@ -449,8 +516,20 @@ handle_call({next_nonce, Acct}, _From, #st{chain = #{nonces := Nonces} = Chain} 
     {reply, NewN, St#st{chain = Chain#{nonces => Nonces#{ Acct => NewN }}}};
 handle_call(top_block_hash, _From, #st{chain = Chain} = St) ->
     {reply, top_block_hash_(Chain), St};
+handle_call(top_key_block_hash, _From, #st{chain = Chain} = St) ->
+    {reply, top_key_block_hash_(Chain), St};
+handle_call(top_key_block, _From, #st{chain = Chain} = St) ->
+    {reply, top_key_block_(Chain), St};
 handle_call({block_by_hash, Hash},_From, #st{chain = Chain} = St) ->
     {reply, get_block_(Hash, Chain), St};
+handle_call({block_by_height, Height},_From, #st{chain = Chain} = St) ->
+    {reply, get_block__by_height_(Height, Chain), St};
+handle_call(get_current_generation,  _From, #st{chain = Chain} = St) ->
+    {reply, get_current_generation_(Chain), St};
+handle_call({get_generation_by_hash, Hash, Dir},  _From, #st{chain = Chain} = St) ->
+    {reply, get_generation_by_hash_(Hash, Dir, Chain), St};
+handle_call({get_key_block_hash_at_height, Height}, _From, #st{chain = Chain} = St) ->
+    {reply, get_key_block_hash_at_height_(Height, Chain), St};
 handle_call({get_block_state, Hash}, _From, #st{chain = Chain} = St) ->
     {reply, get_block_state_(Hash, Chain), St};
 handle_call(get_top_state, _From, #st{chain = Chain} = St) ->
@@ -495,8 +574,11 @@ code_change(_FromVsn, C, _Extra) ->
 %%% gen_server requests implementations
 %%%===================================================================
 
-new_account_(ForkId, Balance, #{forks := Forks} = Chain) ->
-    #{pubkey := PK} = KP = new_keypair(),
+new_account_(ForkId, Balance, Chain) ->
+    #{pubkey := _PK} = KP = new_keypair(),
+    add_account_keypair_(ForkId, KP, Balance, Chain).
+
+add_account_keypair_(ForkId, #{pubkey := PK} = KP, Balance, #{forks := Forks} = Chain) ->
     Acct = aec_accounts:new(PK, Balance),
     #{ ForkId := #{blocks := [TopBlock|RestBlocks] = Blocks} = F } = Forks,
     Trees = case trees(Blocks) of
@@ -521,6 +603,19 @@ get_balance_(ForkId, PK, Chain) ->
         none -> 0;
         {value, Acct} ->
             aec_accounts:balance(Acct)
+    end.
+
+get_next_nonce_(ForkId, PK, Chain) ->
+    case trees(blocks(ForkId, Chain)) of
+        {ok, Ts} ->
+            case aec_accounts_trees:lookup(PK, aec_trees:accounts(Ts)) of
+                {value, Account} ->
+                     {ok, aec_accounts:nonce(Account) + 1};
+                none ->
+                    {error, account_not_found}
+            end;
+        error ->
+            {error, no_state_trees}
     end.
 
 get_height_(ForkId, #{forks := Forks}) ->
@@ -647,7 +742,7 @@ origin(micro) ->
 %% wrapped inside a #{blocks, miner => #{privkey,pubkey}} map
 new_chain(Opt) ->
     {Gen, Tre} = genesis_state_param(Opt),
-    Miner = new_keypair(),
+    Miner = deterministic_keypair(),
     {ok, Hash} = aec_headers:hash_header(aec_blocks:to_header(Gen)),
     Chain0 =
         #{ miner     => Miner
@@ -666,7 +761,11 @@ add_keyblock_(ForkId, #{forks := Forks, miner := #{pubkey := Miner}} = Chain, Op
     #{block := Block} = hd(Blocks),
     TopHdr = aec_blocks:to_header(Block),
     {ok, PrevHash} = aec_headers:hash_header(TopHdr),
-    PrevKeyHash = aec_headers:prev_key_hash(TopHdr),
+    PrevKeyHash =
+    case aec_headers:type(TopHdr) of
+        key -> PrevHash;
+        micro -> aec_headers:prev_key_hash(TopHdr)
+    end,
     Height = aec_headers:height(TopHdr),
     NewHdr = aec_headers:new_key_header(
                Height+1, PrevHash, PrevKeyHash, root_hash(),
@@ -723,10 +822,168 @@ blocks_until_hash(Hash, Blocks) ->
               H =/= Hash
       end, Blocks).
 
+blocks_until_key(Blocks) ->
+    lists:dropwhile(
+      fun(#{block := B}) ->
+              Type = aec_headers:type(aec_blocks:to_header(B)),
+              Type =/= key
+      end, Blocks).
+
+blocks_until_height(Height, Blocks) ->
+    lists:dropwhile(
+      fun(#{block := B}) ->
+              H = aec_blocks:height(B),
+              H =/= Height
+      end, Blocks).
+
+blocks_at_height(Height, Blocks) ->
+    SkippedHigher = lists:dropwhile(
+      fun(#{block := B}) ->
+              Height =/= aec_headers:height(aec_blocks:to_header(B))
+      end, Blocks),
+    lists:takewhile(
+        fun(#{block := B}) ->
+              Height == aec_headers:height(aec_blocks:to_header(B))
+        end, SkippedHigher).
+
 top_block_hash_(Chain) ->
     [#{block := B}|_] = blocks(main, Chain),
     {ok, H} = aec_headers:hash_header(aec_blocks:to_header(B)),
     H.
+
+top_key_block_hash_(Chain) ->
+    [#{block := B}|_] = blocks_until_key(blocks(main, Chain)),
+    {ok, H} = aec_headers:hash_header(aec_blocks:to_header(B)),
+    H.
+
+top_key_block_(Chain) ->
+    [#{block := B}|_] = blocks_until_key(blocks(main, Chain)),
+    B.
+
+
+top_block_node(Chain) ->
+    [#{block := B}|_] = blocks_until_key(blocks(main, Chain)),
+    Header = aec_blocks:to_header(B),
+    {ok, Hash} = aec_headers:hash_header(Header),
+    #{hash => Hash, header => Header}.
+
+%%%===================================================================
+%%% Generations
+%%%===================================================================
+
+-spec get_current_generation_(Chain :: term()) -> 'error' | {'ok', generation()}.
+get_current_generation_(Chain) ->
+    get_generation_(top_block_node(Chain), Chain).
+
+get_generation_(#{hash := Hash, header := Header}, Chain) ->
+    case aec_headers:type(Header) of
+        key ->
+            {ok, #{ key_block => aec_blocks:new_key_from_header(Header), micro_blocks => [], dir => forward }};
+        micro ->
+            Index = find_headers_and_hash_at_height_(aec_headers:height(Header), Chain),
+            get_generation_with_header_index(Hash, Index, Chain)
+    end;
+get_generation_(Hash, Chain) when is_binary(Hash) ->
+    case get_header_(Hash, Chain) of
+        error -> error;
+        {ok, Header} ->
+            get_generation_(#{hash => Hash, header => Header}, Chain)
+    end;
+get_generation_(_,_) ->
+    error.
+
+get_generation_with_header_index(TopHash, Index, Chain) ->
+    get_generation_with_header_index(TopHash, Index, [], Chain).
+
+get_generation_with_header_index(TopHash, Index, MBs, Chain) ->
+    H = maps:get(TopHash, Index),
+    case aec_headers:type(H) of
+        key -> {ok, #{ key_block => aec_blocks:new_key_from_header(H), micro_blocks => MBs, dir => forward }};
+        micro ->
+            Block = get_block_from_micro_header(TopHash, H, Chain),
+            get_generation_with_header_index(aec_headers:prev_hash(H), Index, [Block | MBs], Chain)
+    end.
+
+-spec get_generation_by_hash_(binary(), forward | backward, map()) ->
+        'error' | {'ok', generation()}.
+get_generation_by_hash_(KeyBlockHash, Dir, Chain) ->
+    [#{block := KeyBlock}|_] = blocks_until_hash(KeyBlockHash, blocks(Chain)),
+    Hdr = aec_blocks:to_header(KeyBlock),
+    case aec_headers:type(Hdr) of
+        micro -> error;
+        key when Dir == backward ->
+            case get_generation_(aec_blocks:prev_hash(KeyBlock), Chain) of
+                error         -> error;
+                {ok, G = #{}} -> {ok, G#{ key_block => KeyBlock, dir => Dir }}
+            end;
+        key when Dir == forward ->
+            case get_generation_by_height(aec_blocks:height(KeyBlock), forward, Chain) of
+                {ok, G = #{ key_block := KeyBlock }} -> {ok, G};
+                {ok, _G}                             -> error; %% KeyBlockHash not on chain!!
+                error                                -> error
+            end
+    end.
+
+-spec get_generation_by_height(aec_blocks:height(), forward | backward, map()) ->
+        'error' | {'ok', generation()}.
+get_generation_by_height(Height, backward, Chain) ->
+    case get_key_block_by_height_(Height, Chain) of
+        {error, _Reason} -> error;
+        {ok, KeyBlock} ->
+            case get_generation_(aec_blocks:prev_hash(KeyBlock), Chain) of
+                error         -> error;
+                {ok, G = #{}} -> {ok, G#{ key_block => KeyBlock, dir => backward }}
+            end
+    end;
+get_generation_by_height(Height, forward, Chain) ->
+    #{header := TopHeader} = TopNode = top_block_node(Chain),
+    TopHeight = aec_headers:height(TopHeader),
+    if TopHeight < Height  -> error;
+       TopHeight == Height -> get_generation_(TopNode, Chain);
+       true                ->
+           case get_key_block_by_height_(Height + 1, Chain) of
+               {error, _Reason} -> error;
+               {ok, KeyBlock}   -> get_generation_(aec_blocks:prev_hash(KeyBlock), Chain)
+           end
+    end.
+
+get_block_from_micro_header(Hash, MicroHeader, Chain) ->
+    aec_headers:assert_micro_header(MicroHeader),
+    case find_block_txs_(Hash, Chain) of
+        {value, Txs} ->
+            aec_blocks:new_micro_from_header(MicroHeader, Txs, no_fraud);
+        not_found ->
+            aec_blocks:new_micro_from_header(MicroHeader, [], no_fraud)
+    end.
+
+%% Only return nodes in the main chain. This reflects the behaviour of the same
+%% function in aec_chain_state.erl
+get_key_block_by_height_(Height, Chain) ->
+    [_|_] = BlocksAtHeight = blocks_until_height(Height, blocks(main, Chain)),
+    [#{block := KeyBlock}|_] = blocks_until_key(BlocksAtHeight),
+    {ok, KeyBlock}.
+
+get_key_block_hash_at_height_(Height, Chain) ->
+    [_|_] = BlocksAtHeight = blocks_until_height(Height, blocks(main, Chain)),
+    [#{block := KeyBlock}|_] = blocks_until_key(BlocksAtHeight),
+    Header = aec_blocks:to_header(KeyBlock),
+    aec_headers:hash_header(Header).
+
+%% Search all forks at a height
+find_headers_and_hash_at_height_(Height, #{forks := Forks}) ->
+    maps:fold(fun(_ForkId, #{blocks := Blocks}, Acc) ->
+                case blocks_at_height(Height, Blocks) of
+                    [#{block := _Block}|_] = Bs ->
+                        lists:foldl(fun(#{block := Block}, Acc1) ->
+                                        Header = aec_blocks:to_header(Block),
+                                        {ok, Hash} = aec_headers:hash_header(Header),
+                                        maps:put(Hash, Header, Acc1)
+                                    end, Acc, Bs);
+                    _ ->
+                        Acc
+                end
+              end, #{}, Forks).
+
 
 get_block_state_(Hash, Chain) ->
     trees(blocks_until_hash(Hash, blocks(Chain))).
@@ -825,6 +1082,14 @@ get_block_(Hash, Chain) ->
             error
     end.
 
+get_block__by_height_(Height, Chain) ->
+    case blocks_until_height(Height, blocks(Chain)) of
+        [BlockEntry|_] ->
+            {ok, maps:get(block, BlockEntry)};
+        [] ->
+            error
+    end.
+
 get_channel_(ChId, Chain) ->
     case trees(blocks(Chain)) of
         {ok, Trees} ->
@@ -842,6 +1107,18 @@ find_block_tx_hashes_(Hash, Chain) ->
                   end,
             TxHashes = [ aetx_sign:hash(Tx) || Tx <- Txs ],
             {value, TxHashes};
+        [] ->
+            not_found
+    end.
+
+find_block_txs_(Hash, Chain) ->
+    case blocks_until_hash(Hash, blocks(Chain)) of
+        [#{block := Block}|_] ->
+            Txs = case aec_blocks:is_key_block(Block) of
+                      true -> [];
+                      false -> aec_blocks:txs(Block)
+                  end,
+            {value, Txs};
         [] ->
             not_found
     end.
@@ -907,13 +1184,13 @@ txs_hash() ->
 pof_hash() ->
     <<"pof-hash........................">>.
 
-chain_req(Req) ->
-    chain_req_(Req, get_chain_process()).
+chain_req(Name, Req) ->
+    chain_req_(get_chain_process(Name), Req).
 
-get_chain_process() ->
-    gproc:where({n, l, {?MODULE, chain_process}}).
+get_chain_process(Name) ->
+    gproc:where({n, l, {Name, chain_process}}).
 
-chain_req_(Req, ChainP) when is_pid(ChainP) ->
+chain_req_(ChainP, Req) when is_pid(ChainP) ->
     gen_server:call(ChainP, Req).
 
 %% like lists:keyfind/3, but comparing map keys
@@ -927,7 +1204,10 @@ lists_funfind(Val, Fun, [H|T]) ->
 lists_funfind(_, _, []) ->
     false.
 
+deterministic_keypair() ->
+    #{public := PK, secret := SK} = enacl:sign_seed_keypair(<<"asdf">>),
+    #{pubkey => PK, privkey => SK}.
+
 new_keypair() ->
     #{public := PK, secret := SK} = enacl:sign_keypair(),
     #{pubkey => PK, privkey => SK}.
-

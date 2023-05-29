@@ -1,8 +1,6 @@
-
 contract interface Remote =
-  type state = string
-  entrypoint set_state : state => unit
-  entrypoint get_state : () => state
+  entrypoint set_state : string => unit
+  entrypoint get_state : () => string
 
 contract Main =
 

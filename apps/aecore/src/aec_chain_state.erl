@@ -92,6 +92,7 @@
         , ensure_chain_ends/0
         , ensure_key_headers_height_store/0
         , grant_fees/5
+        , wrap_block/1
         ]).
 
 -import(aetx_env, [no_events/0]).
@@ -123,7 +124,6 @@
 
 -ifdef(TEST).
 -export([calc_rewards/6,
-         wrap_block/1,
          internal_insert_transaction/4
         ]).
 -endif.
@@ -345,11 +345,11 @@ do_rollback_to_hash(Hash, TopHash) ->
     [begin
          [begin
               Del = element(2, T),
-              ok = mnesia:delete(aec_headers, Del, write),
-              ok = mnesia:delete(aec_blocks, Del, write),
-              ok = mnesia:delete(aec_block_state, Del, write)
+              ok = aec_db:delete(aec_headers, Del, write),
+              ok = aec_db:delete(aec_blocks, Del, write),
+              ok = aec_db:delete(aec_block_state, Del, write)
               %% TODO: we really should also delete state tree objects
-          end || T <- mnesia:index_read(aec_headers, H, height)]
+          end || T <- aec_db:index_read(aec_headers, H, height)]
      end || H <- lists:seq(Height+1, TopHeight+SafetyMargin)],
     aec_db:write_top_block_node(Hash, Header).
 
@@ -828,6 +828,18 @@ assert_state_hash_valid(Trees, Node) ->
         false -> aec_block_insertion:abort_state_transition({root_hash_mismatch, RootHash, Expected})
     end.
 
+validate_generation_leader(Node, Trees, Env) ->
+    case node_is_key_block(Node) of
+        true  ->
+            ConsensusModule = aec_block_insertion:node_consensus(Node),
+            case ConsensusModule:is_leader_valid(Node, Trees, Env) of
+                true -> ok;
+                false -> {error, invalid_leader}
+            end;
+        false ->
+            ok
+    end.
+    
 apply_node_transactions(Node, Trees, ForkInfo, State) ->
     Consensus = aec_block_insertion:node_consensus(Node),
     case node_is_micro_block(Node) of
@@ -851,10 +863,16 @@ apply_node_transactions(Node, Trees, ForkInfo, State) ->
                         true -> Consensus:state_pre_transform_key_node_consensus_switch(Node, Trees1)
                      end,
             Trees3 = Consensus:state_pre_transform_key_node(Node, Trees2),
-            Delay  = aec_governance:beneficiary_reward_delay(),
-            case Height > aec_block_genesis:height() + Delay of
-                true  -> {grant_fees(Node, Trees3, Delay, FraudStatus, State), TotalFees, no_events()};
-                false -> {Trees3, TotalFees, no_events()}
+            %% leader generation happens after pre_transformations
+            case validate_generation_leader(Node, Trees3, Env) of
+                ok ->
+                    Delay  = aec_governance:beneficiary_reward_delay(),
+                    case Height > aec_block_genesis:height() + Delay of
+                        true  -> {grant_fees(Node, Trees3, Delay, FraudStatus, State), TotalFees, no_events()};
+                        false -> {Trees3, TotalFees, no_events()}
+                    end;
+                {error, Reason} ->
+                    error({leader_validation_failed, Reason})
             end
     end.
 
@@ -869,7 +887,7 @@ find_predecessor_at_height(Node, Height) ->
             case db_find_key_nodes_at_height(Height) of
                 {ok, [KeyNode]} -> KeyNode;
                 {ok, KeyNodes} ->
-                    %% Use the preceeding key node since fork info might not be known
+                    %% Use the preceding key node since fork info might not be known
                     %% for Node (i.e., in candidate generation).
                     %% The clause for Height + 1 above will catch the case of the
                     %% immediate previous key hash.
@@ -919,15 +937,13 @@ grant_fees(Node, Trees, Delay, FraudStatus, _State) ->
     {BeneficiaryReward1, BeneficiaryReward2, LockAmount} =
         calc_rewards(FraudStatus1, FraudStatus2, KeyFees, MineReward2,
                      FraudReward1, node_is_genesis(KeyNode1)),
-
     OldestBeneficiaryVersion = node_version(KeyNode1),
     {{AdjustedReward1, AdjustedReward2}, DevRewards} =
         aec_dev_reward:split(BeneficiaryReward1, BeneficiaryReward2,
                              OldestBeneficiaryVersion),
-
     Trees1 = lists:foldl(
                fun({K, Amt}, TreesAccum) when Amt > 0 ->
-                       Consensus:state_grant_reward(K, TreesAccum, Amt);
+                       Consensus:state_grant_reward(K, Node, TreesAccum, Amt);
                   (_, TreesAccum) -> TreesAccum
                end,
                Trees,
@@ -1198,8 +1214,8 @@ maybe_pogf(Node, [Sibling|T]) ->
 % instead.
 % if a miner reports a fraudulent previous miner - the reporter receives a
 % as a bonus a fraction of the previous miner's reward, the rest is locked.
-% Mining reward is awared with the previous generation (K2 mining reward is
-% awared with GenerationK1's fees) and thus when a miner is fraudulent we
+% Mining reward is awarded with the previous generation (K2 mining reward is
+% awarded with GenerationK1's fees) and thus when a miner is fraudulent we
 % don't award her with mining reward but we lock the excess of coins on the
 % next granting of fees. This way we can compute properly the locked amount.
 calc_rewards(FraudStatus1, FraudStatus2, GenerationFees,
@@ -1260,7 +1276,7 @@ count_blocks_with_signal(Block, Fork) ->
                     Count1 = Count + count_inc(is_matching_info_present(Block, Fork)),
                     {ok, Count1};
                 error ->
-                    %% No count stored for the previus block, it must be
+                    %% No count stored for the previous block, it must be
                     %% computed by traversing to the first signalling block.
                     {ok, count_blocks_with_signal(Block, Fork, 0)}
             end;
@@ -1340,7 +1356,7 @@ start_chain_ends_migration() ->
             %% Retrieves tuples {hash, prev_key_hash, height} and should work for legacy header formats
             %% Takes up at most a few MB of RAM
             {Time, R0} = timer:tc(fun() ->
-                mnesia:dirty_select(aec_headers, [{ {aec_headers, '$1', '$2', '$3'}
+                aec_db:dirty_select(aec_headers, [{ {aec_headers, '$1', '$2', '$3'}
                                                   , [{'=:=', {element, 1, '$2'}, key_header}]
                                                   , [{{'$1', {element, 4, '$2'}, '$3'}}]
                                                   }])
@@ -1416,13 +1432,13 @@ ensure_key_headers_height_store() ->
     end.
 
 start_key_headers_height_store_migration() ->
-    lager:info("[Key headers migrations scan] Retriving all key headers"),
+    lager:info("[Key headers migrations scan] Retrieving all key headers"),
     spawn(fun() -> %% Don't use spawn_link here - we can't be killed by the setup process
         %% An error here should bring down the entire node with it!
         try
-            mnesia:activity(async_dirty, fun () ->
+            aec_db:activity(async_dirty, fun () ->
                 Res = timer:tc(fun() ->
-                    mnesia:select(aec_headers,
+                    aec_db:select(aec_headers,
                                   [{ {aec_headers, '$1', '$2', '$3'}
                                   , [{'=:=', {element, 1, '$2'}, key_header}]
                                   , [{{'$1', '$2', '$3'}}]
@@ -1452,7 +1468,7 @@ key_headers_height_store_migration_step(Time, N, {TimeRead, {Headers, Cont}}) ->
         aec_db:ensure_transaction(fun() ->
             lists:foldl(
                 fun({Hash, Header, Height}, Count) ->
-                    mnesia:write(#aec_chain_state{key = {key_header, Height, Hash}, value = Header}),
+                    aec_db:write(#aec_chain_state{key = {key_header, Height, Hash}, value = Header}),
                     Count+1
                 end,
                 0,
@@ -1464,11 +1480,9 @@ key_headers_height_store_migration_step(Time, N, {TimeRead, {Headers, Cont}}) ->
     key_headers_height_store_migration_step(
         Time + TimeRead + TimeWrite,
         N + Count,
-        timer:tc(fun() -> mnesia:select(Cont) end)
+        timer:tc(fun() -> aec_db:select(Cont) end)
     ).
 
 is_gc_disabled() ->
-    case aec_db_gc:config() of
-        #{enabled := Bool} when is_boolean(Bool) ->
-            Bool
-    end.
+    [Bool] = aec_db_gc:info([enabled]),
+    Bool.

@@ -14,6 +14,9 @@
       Config :: logger:handler_config(),
       Reason :: term().
 adding_handler(Config) ->
+    %% lager_log(debug, [{module, ?MODULE},{function, ?FUNCTION_NAME},{line, ?LINE},
+    %%                   {pid, self()}, {node, node()}], "Adding lager_logger_handler", []),
+    io:fwrite("Adding lager_logger_handler~n", []),
     {ok, Config#{ filters => []
                 , level => debug
                 , filter_default => log}}.

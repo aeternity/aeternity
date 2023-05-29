@@ -1,4 +1,4 @@
-FROM aeternity/builder:1804 as builder
+FROM aeternity/builder:bionic-otp23 as builder
 
 # Add required files to download and compile only the dependencies
 ADD rebar.config rebar.lock Makefile rebar3 rebar.config.script /app/
@@ -30,7 +30,7 @@ RUN ln -fs librocksdb.so.6.13.3 /usr/local/lib/librocksdb.so.6.13 \
 COPY --from=builder /app/_build/prod/rel/aeternity /home/aeternity/node
 
 # Aeternity app won't run as root for security reasons
-RUN useradd --shell /bin/bash aeternity \
+RUN useradd --uid 1000 --shell /bin/bash aeternity \
     && chown -R aeternity:aeternity /home/aeternity
 
 # Switch to non-root user
@@ -44,7 +44,7 @@ RUN mkdir -p /home/aeternity/node/data/mnesia \
 
 WORKDIR /home/aeternity/node
 
-EXPOSE 3013 3014 3015 3113
+EXPOSE 3013 3014 3015 3113 3213 3413
 
 COPY ./docker/healthcheck.sh /healthcheck.sh
 HEALTHCHECK --timeout=3s CMD /healthcheck.sh

@@ -42,7 +42,7 @@ stop() ->
 get_candidate() ->
     try
         gen_server:call(?MODULE, get_candidate, 100)
-    catch _:_ ->
+    catch _E:_R:_Stack ->
         {error, no_candidate}
     end.
 

@@ -60,8 +60,11 @@
 %%% Oracles API
 -export([ get_oracles/2
         , get_oracle/1
+        , get_oracle_at_hash/2
         , get_oracle_queries/4
+        , get_oracle_queries_at_hash/5
         , get_oracle_query/2
+        , get_oracle_query_at_hash/3
         ]).
 
 %%% Contracts API
@@ -112,9 +115,14 @@ get_account_at_hash(PubKey, Hash) ->
     end.
 
 get_account_at_height(PubKey, Height) ->
-    case aec_chain_state:get_key_block_hash_at_height(Height) of
-        error -> {error, chain_too_short};
-        {ok, Hash} -> get_account_at_hash(PubKey, Hash)
+    case aec_db_gc:state_at_height_still_reachable(Height) of
+        true ->
+            case aec_chain_state:get_key_block_hash_at_height(Height) of
+                error -> {error, chain_too_short};
+                {ok, Hash} -> get_account_at_hash(PubKey, Hash)
+            end;
+        false ->
+            {error, garbage_collected}
     end.
 
 -spec all_accounts_balances_at_hash(binary()) ->
@@ -151,13 +159,30 @@ get_oracle(Pubkey) ->
         error -> {error, no_state_trees}
     end.
 
+-spec get_oracle_at_hash(aec_keys:pubkey(), binary()) ->
+    {ok, aeo_oracles:oracle()} | {error, not_found} | {error, no_state_trees}.
+get_oracle_at_hash(PubKey, Hash) ->
+    case get_block_state_partial(Hash, [oracles]) of
+        {ok, Trees} ->
+            get_oracle(PubKey, aec_trees:oracles(Trees));
+        error -> {error, no_state_trees}
+    end.
+
 -spec get_oracle_queries(aec_keys:pubkey(), binary() | '$first', open | closed | all, non_neg_integer()) ->
     {ok, [aeo_query:query()]} | {error, no_state_trees}.
 get_oracle_queries(Oracle, From, QueryType, Max) ->
     case get_top_state() of
         {ok, Trees} ->
-            OT = aec_trees:oracles(Trees),
-            {ok, aeo_state_tree:get_oracle_queries(Oracle, From, QueryType, Max, OT)};
+            get_oracle_queries(Oracle, From, QueryType, Max, aec_trees:oracles(Trees));
+        error -> {error, no_state_trees}
+    end.
+
+-spec get_oracle_queries_at_hash(aec_keys:pubkey(), binary() | '$first', open | closed | all, non_neg_integer(), binary()) ->
+    {ok, [aeo_query:query()]} | {error, no_state_trees}.
+get_oracle_queries_at_hash(Oracle, From, QueryType, Max, Hash) ->
+    case get_block_state_partial(Hash, [oracles]) of
+        {ok, Trees} ->
+            get_oracle_queries(Oracle, From, QueryType, Max, aec_trees:oracles(Trees));
         error -> {error, no_state_trees}
     end.
 
@@ -165,6 +190,14 @@ get_oracle_queries(Oracle, From, QueryType, Max) ->
     {ok, aeo_query:query()} | {error, not_found} | {error, no_state_trees}.
 get_oracle_query(Pubkey, Id) ->
     case get_top_state() of
+        {ok, Trees} -> get_oracle_query(Pubkey, Id, aec_trees:oracles(Trees));
+        error -> {error, no_state_trees}
+    end.
+
+-spec get_oracle_query_at_hash(aec_keys:pubkey(), aeo_query:id(), binary()) ->
+    {ok, aeo_query:query()} | {error, not_found} | {error, no_state_trees}.
+get_oracle_query_at_hash(Pubkey, Id, Hash) ->
+    case get_block_state_partial(Hash, [oracles]) of
         {ok, Trees} -> get_oracle_query(Pubkey, Id, aec_trees:oracles(Trees));
         error -> {error, no_state_trees}
     end.
@@ -180,6 +213,9 @@ get_oracle_query(Pubkey, Id, Trees) ->
         {value, Query} -> {ok, Query};
         none -> {error, not_found}
     end.
+
+get_oracle_queries(Oracle, From, QueryType, Max, Trees) ->
+    {ok, aeo_state_tree:get_oracle_queries(Oracle, From, QueryType, Max, Trees)}.
 
 %%%===================================================================
 %%% State channels
@@ -284,15 +320,26 @@ get_contract_with_code(PubKey) ->
                                {'ok', aect_call:call()} |
                                {'error', atom()}.
 get_contract_call(ContractId, CallId, BlockHash) ->
-    case get_block_state_partial(BlockHash, [calls]) of
-        error -> {error, no_state_trees};
-        {ok, Trees} ->
-            CallTree = aec_trees:calls(Trees),
-            case aect_call_state_tree:lookup_call(ContractId, CallId, CallTree) of
-                none -> {error, call_not_found};
-                {value, Call} -> {ok, Call}
-            end
+    case state_reachable_by_blockhash(BlockHash) of
+        true ->
+            case get_block_state_partial(BlockHash, [calls]) of
+                error -> {error, no_state_trees};
+                {ok, Trees} ->
+                    CallTree = aec_trees:calls(Trees),
+                    case aect_call_state_tree:lookup_call(ContractId, CallId, CallTree) of
+                        none -> {error, call_not_found};
+                        {value, Call} -> {ok, Call}
+                    end
+            end;
+        false ->
+            {error, garbage_collected}
     end.
+
+state_reachable_by_blockhash(BlockHash) ->
+    %% For now, let's assume that at least the block header exists
+    {ok, Header} = get_header(BlockHash),
+    Height = aec_headers:height(Header),
+    aec_db_gc:state_at_height_still_reachable(Height).
 
 %%%===================================================================
 %%% Generalized Accounts
@@ -746,6 +793,7 @@ get_key_header_by_height(Height) when is_integer(Height), Height >= 0 ->
 
 -spec sum_tokens_at_height(aec_blocks:height()) ->
                                   {error, 'chain_too_short'}
+                                | {error, 'garbage_collected'}
                                 | {ok, #{ 'accounts'         => non_neg_integer()
                                         , 'contracts'        => non_neg_integer()
                                         , 'contract_oracles' => non_neg_integer()
@@ -760,7 +808,12 @@ get_key_header_by_height(Height) when is_integer(Height), Height >= 0 ->
 sum_tokens_at_height(Height) ->
     %% Wrap in transaction for speed.
     %% TODO: This could be done dirty
-    aec_db:ensure_transaction(fun() -> int_sum_tokens_at_height(Height) end).
+    case aec_db_gc:state_at_height_still_reachable(Height) of
+        true ->
+            aec_db:ensure_transaction(fun() -> int_sum_tokens_at_height(Height) end);
+        false ->
+            {error, garbage_collected}
+    end.
 
 int_sum_tokens_at_height(Height) ->
     case aec_chain_state:get_key_block_hash_at_height(Height) of

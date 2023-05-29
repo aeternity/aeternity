@@ -93,7 +93,7 @@ account_for_locking_test() ->
     ?assertEqual(Bal3, Amt1 + Amt2 + Amt3),
     ok.
 
-% channels' rely on accounts with a dict backend being reproducable with
+% channels' rely on accounts with a dict backend being reproducible with
 % only the latest state
 trunc_test() ->
     T0 = aec_accounts_trees:empty(),

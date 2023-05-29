@@ -1,7 +1,7 @@
 %%%=============================================================================
 %%% @copyright 2017, Aeternity Anstalt
 %%% @doc
-%%%    Module storing peers list and providing funtions for peer interaction
+%%%    Module storing peers list and providing functions for peer interaction
 %%% @end
 %%%=============================================================================
 -module(aec_sync).
@@ -67,7 +67,7 @@ ask_all_for_node_info() ->
     ask_all_for_node_info(8500).
 
 %% there are a bunch of processes adding their own overhead for this timer.
-%% While this function will timeout in Timeout milliseconds, the acutal
+%% While this function will timeout in Timeout milliseconds, the actual
 %% timeout for the peer to respond is Timeout - 3000
 ask_all_for_node_info(Timeout) when Timeout > 3000 ->
     opt_call({ask_all_for_node_info, Timeout - 500}, Timeout,
@@ -88,9 +88,9 @@ gossip_txs(GossipTxs) ->
 sync_in_progress(PeerId) ->
     opt_call({sync_in_progress, PeerId}, false).
 
--spec sync_progress() -> {boolean(), float()}.
+-spec sync_progress() -> {boolean(), float(), aec_blocks:height()}.
 sync_progress() ->
-    opt_call(sync_progress, {false, 100.0}).
+    opt_call(sync_progress, {false, 100.0, 0}).
 
 -spec is_syncing() -> boolean().
 is_syncing() ->
@@ -352,7 +352,7 @@ handle_info({'EXIT', Pid, Reason}, State) ->
     end,
     {noreply, do_terminate_worker(Pid, State, Reason)};
 handle_info(update_sync_progress_metric, State) ->
-    {_, SyncProgress} = sync_progress(State),
+    {_, SyncProgress, _} = sync_progress(State),
     aec_metrics:try_update([ae,epoch,aecore,sync,progress], SyncProgress),
     log_sync_status(State),
 
@@ -925,7 +925,6 @@ agree_on_height(PeerId, RemoteTop, MinH, MaxH, Hash) ->
         false ->
             agree_on_height(PeerId, RemoteTop, MinH, H, Hash)
     end.
-
 get_header_by_height(PeerId, Height, RemoteTop) ->
     case Height == aec_block_genesis:height() of
         true  -> aec_chain:genesis_hash(); %% Handshake ensure we agree on genesis
@@ -981,7 +980,7 @@ pp_stats(#{t0 := T0, gs := Gs, mbs := MBs, txs := Txs}) ->
                   [Gs, Avg, MBs, Txs]).
 
 %% In order not to timeout the conductor, large generations are added in
-%% smaller chuncks, one micro block at the time.
+%% smaller chunks, one micro block at the time.
 %% Each micro block has a fixed maximum gas, by limiting the number of micro
 %% blocks we limit the total amount of work the conductor has to perform in
 %% each synchronous call.
@@ -1193,10 +1192,10 @@ max_gossip() ->
 is_syncing(#state{sync_tasks = SyncTasks}) ->
     [1 || #sync_task{suspect = false} <- SyncTasks] =/= [].
 
--spec sync_progress(#state{}) -> {boolean(), float()}.
-sync_progress(#state{sync_tasks = SyncTasks} = State) ->
+-spec sync_progress(#state{}) -> {boolean(), float(), aec_blocks:height()}.
+sync_progress(#state{sync_tasks = SyncTasks, top_target = TopTarget} = State) ->
     case is_syncing(State) of
-        false -> {false, 100.0};
+        false -> {false, 100.0, TopTarget};
         true ->
             TargetHeight =
                 lists:foldl(
@@ -1218,7 +1217,7 @@ sync_progress(#state{sync_tasks = SyncTasks} = State) ->
                     true -> 99.9;
                     false -> SyncProgress0
                 end,
-            {true, SyncProgress}
+            {true, SyncProgress, TargetHeight}
     end.
 
 peer_get_header_by_hash(PeerId, RemoteHash) ->
@@ -1306,7 +1305,7 @@ validate_block(Block) ->
 
 log_sync_status(#state{is_syncing = false}) -> ok;
 log_sync_status(#state{sync_tasks = STs} = S) ->
-    {_, SyncProgress} = sync_progress(S),
+    {_, SyncProgress, _} = sync_progress(S),
     epoch_sync:info("Sync progress: ~.4f%", [SyncProgress]),
     [log_sync_task(ST) || ST <- STs].
 
@@ -1410,49 +1409,11 @@ collect_infos(Timeout) ->
         fun(PeerInfo) ->
             PeerId = aec_peer:id(PeerInfo),
             %% this timeouts in Timeout milliseconds but there is a second
-            %% outher timeout in the gen_server:call to the connection itself
+            %% other timeout in the gen_server:call to the connection itself
             %% so we call the aec_peer_connection:get_node_info/2 with
             %% Timeout - 2000 - TimerOffset
             aec_peer_connection:get_node_info(PeerId, Timeout - 2000 -
                                               TimerOffset)
         end,
-    pmap(Fun, ConnectedPeers, Timeout + 2000 + TimerOffset).
-
-pmap(Fun, L, Timeout) ->
-    Workers =
-        lists:map(
-            fun(E) ->
-                spawn_monitor(
-                    fun() ->
-                        {WorkerPid, WorkerMRef} =
-                            spawn_monitor(
-                                fun() ->
-                                    Res = Fun(E),
-                                    exit({ok, Res})
-                                end),
-                        Result =
-                            receive
-                                {'DOWN', WorkerMRef, process, WorkerPid, Res} ->
-                                    case Res of
-                                        {ok, R} -> {ok, R};
-                                        _       -> {error, failed}
-                                    end
-                            after Timeout -> {error, request_timeout}
-                            end,
-                        exit(Result)
-                    end)
-            end,
-            L),
-    pmap_gather(Workers, []).
-
-pmap_gather([], Acc) ->
-    Acc;
-pmap_gather([{Pid, MRef} | Pids], Acc) ->
-    receive
-        {'DOWN', MRef, process, Pid, Res} ->
-            case Res of
-                {ok, GoodRes} -> pmap_gather(Pids, [GoodRes | Acc]);
-                {error, _} = Err -> pmap_gather(Pids, [Err | Acc])
-            end
-    end.
-
+    {Good, _Bad} = aeu_lib:pmap(Fun, ConnectedPeers, Timeout + 2000 + TimerOffset),
+    Good.

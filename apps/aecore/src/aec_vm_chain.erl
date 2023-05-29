@@ -800,9 +800,10 @@ apply_call_transaction(Tx, Gas, #state{tx_env = Env} = State) ->
 apply_transaction(Tx, #state{tx_env = Env } = State) ->
     Trees = get_top_trees(State),
     case aetx:process(Tx, Trees, Env) of
-        {ok, Trees1, _} ->
+        {ok, Trees1, Env1} ->
             State1 = set_top_trees(State, Trees1),
-            {ok, State1};
+            State2 = set_tx_env(State1, Env1),
+            {ok, State2};
         {error, _} = E -> E
     end.
 
@@ -860,6 +861,9 @@ get_top_trees(#state{trees = #trees{trees = Trees}}) ->
 
 set_top_trees(#state{trees = T} = State, Trees) ->
     State#state{trees = T#trees{trees = Trees}}.
+
+set_tx_env(State, Env) ->
+    State#state{tx_env = Env}.
 
 get_on_chain_trees(#trees{is_onchain = true, trees = Trees}) ->
     Trees;

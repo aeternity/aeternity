@@ -1,3 +1,4 @@
+%% -*- mode: erlang; erlang-indent-level: 4; indent-tabs-mode: nil -*-
 %% @doc This modules implements the State Channel FSM and its external API. The
 %% FSM is used for both state channel roles, 'responder' and 'initiator',
 %% because most logic is shared with the initialization being specific to the
@@ -39,7 +40,8 @@
         , get_contract_call/4     %% (fsm(), contract_id(), caller(), round())
         , get_offchain_state/1
         , get_poi/2
-        , inband_msg/3
+        , inband_msg/3            %% (fsm(), To, Msg)
+        , inband_msg/4            %% (fsm(), From, To, Msg)
         , leave/1
         , settle/2                %% (fsm(), map())
         , shutdown/2              %% (fsm(), map())
@@ -86,6 +88,11 @@
         , channel_closed_on_chain/2     %% (Fsm, Info)
         , channel_unlocked/2
         ]). %% (Fsm, Info)
+
+%% Used by GetStatus API
+-export([ init_active_fsm_counter/0
+        , unreg_active_fsm_counter/0 ]).
+-export([ count_active_fsms/0 ]).
 
 %% gen_statem callbacks
 -export([ init/1
@@ -202,11 +209,15 @@ get_state(Fsm) ->
 -endif.
 
 inband_msg(Fsm, To, Msg) ->
+    inband_msg(Fsm, me, To, Msg).
+
+-spec inband_msg(pid(), me | aec_keys:pubkey(), aec_keys:pubkey(), binary()) -> ok | {error, any()}.
+inband_msg(Fsm, From, To, Msg) ->
     MaxSz = aesc_codec:max_inband_msg_size(),
     try iolist_to_binary(Msg) of
         MsgBin when byte_size(MsgBin) =< MaxSz ->
-            lager:debug("inband_msg(~p, ~p, ~p)", [Fsm, To, Msg]),
-            gen_statem:call(Fsm, {inband_msg, To, MsgBin});
+            lager:debug("inband_msg(~p, ~p, ~p, ~p)", [Fsm, From, To, Msg]),
+            gen_statem:call(Fsm, {inband_msg, From, To, MsgBin});
         MsgBin ->
             lager:debug("INVALID inband_msg(~p): ~p", [Fsm, byte_size(MsgBin)]),
             {error, invalid_request}
@@ -337,7 +348,7 @@ change_config(Fsm, Key, Value) ->
 %% @doc Returns a list of [{Pubkey, Balance}], where keys are ordered the same
 %% way as in Accounts. If a key doesn't correspond to an existing account, it
 %% doesn't show up in the result. Thus, unknown accounts are recognized by
-%% their absense in the response.
+%% their absence in the response.
 get_balances(Fsm, Accounts) ->
     gen_statem:call(Fsm, {get_balances, Accounts}).
 
@@ -357,7 +368,7 @@ dry_run_contract(Fsm, #{ contract    := _
 %% Used by noise session
 
 message(Fsm, {T, _} = Msg) when ?KNOWN_MSG_TYPE(T) ->
-    lager:debug("message(~p, ~p)", [Fsm, Msg]),
+    lager:debug("message(~p, ~p)", [Fsm, aesc_session_noise:pp_msg(Msg)]),
     gen_statem:cast(Fsm, Msg).
 
 noise_connected(Fsm) ->
@@ -1917,7 +1928,7 @@ new_onchain_tx_(Mod, Opts, CurrHeight, D) when Mod =:= aesc_create_tx;
 
 %% @doc A valid transaction fee is a function on gas required and gas price used
 %% the following function uses the gas price the node would be using if it
-%% were mining gas required is a funcion of:
+%% were mining gas required is a function of:
 %%
 %%   * transaction type (base_gas)
 %%   * transaction size (size_gas)
@@ -2923,9 +2934,12 @@ check_shutdown_ack_msg(#{ data       := #{tx := TxBin}
         {error, invalid_shutdown}
     end.
 
-send_inband_msg(To, Info, #data{session = Session} = D) ->
+send_inband_msg(From0, To, Info, #data{session = Session} = D) ->
     ChanId = cur_channel_id(D),
-    From = my_account(D),
+    From = case From0 of
+                me -> my_account(D);
+                _ when is_binary(From0) -> From0
+            end,
     M = #{ channel_id => ChanId
          , from       => From
          , to         => To
@@ -2941,8 +2955,12 @@ check_inband_msg(#{ channel_id := ChanId
                   , from       := From
                   , to         := To } = Msg,
                  #data{on_chain_id = ChanId} = D) ->
+    Forwarding = maps:get(msg_forwarding, D#data.opts, false),
+    NewD = fun() -> log(rcv, ?INBAND_MSG, Msg, D) end,
     case {my_account(D), other_account(D)} of
-        {To, From}     ->  {ok, log(rcv, ?INBAND_MSG, Msg, D)};
+        {To, From}                -> {ok, {direct        , NewD()}};
+        {To, _} when Forwarding   -> {ok, {forwarded     , NewD()}};
+        {_, From} when Forwarding -> {ok, {please_forward, NewD()}};
         {To, _Other}   ->  {error, invalid_sender};
         {_Other, From} ->  {error, invalid_recipient};
         _ ->
@@ -3750,23 +3768,17 @@ check_attach_info(Info, #data{opts = Opts} = D) ->
     #{initiator := I, responder := R} = Opts,
     check_attach_info(Info, I, R, D).
 
-check_attach_info(#{reestablish := true} = Info, _I, R, #data{on_chain_id = ChannelId}) ->
+check_attach_info(#{reestablish := true} = Info, _I, _R, #data{on_chain_id = ChannelId}) ->
+    %% The 'reestablish' message in the SC protocol only includes the chain hash and
+    %% the channel_id, so these are the only things it makes sense to check.
     ChainHash = aec_chain:genesis_hash(),
     lager:debug("Info = ~p, ChainHash = ~p, ChannelId = ~p", [Info, ChainHash, ChannelId]),
     case Info of
         #{ chain_hash := ChainHash
-         , channel_id := ChannelId
-         , responder  := R
-         , port       := _Port
-         , gproc_key  := _K } ->
+         , channel_id := ChannelId } ->
             ok;
         _ ->
-            case maps:find(responder, Info) of
-                {ok, R1} when R1 =/= R ->
-                    {error, responder_key_mismatch};
-                _Other ->
-                    {error, unrecognized_attach_info}
-            end
+            {error, unrecognized_attach_info}
     end;
 check_attach_info(#{ initiator := I1
                    , responder := R1
@@ -3823,7 +3835,6 @@ check_limits(Opts) ->
     end.
 
 init_(#{opts := Opts0} = Arg) ->
-    
     {ReestablishOpts, ConnectOpts, Opts1} =
         { maps:with(?REESTABLISH_OPTS_KEYS, Opts0)
         , connection_opts(Arg)
@@ -3837,6 +3848,7 @@ init_(#{opts := Opts0} = Arg) ->
               , fun check_log_opt/1
               , fun check_block_hash_deltas/1
               , fun check_keep_running_opt/1
+              , fun check_msg_forwarding_opt/1
               ], Opts1),
     Initiator = maps:get(initiator, Opts2),
     Opts3 = Opts2#{connection => ConnectOpts},
@@ -4131,6 +4143,17 @@ check_keep_running_opt(#{role := Role} = Opts) ->
             Opts
     end.
 
+check_msg_forwarding_opt(Opts) ->
+    case maps:find(msg_forwarding, Opts) of
+        {ok, Bool} when is_boolean(Bool) ->
+            Opts;
+        {ok, Other} ->
+            lager:debug("Invalid 'msg_forwarding' option (~p) - ignoring", [Other]),
+            maps:remove(msg_forwarding, Opts);
+        error ->
+            Opts
+    end.
+
 check_opts([], Opts) ->
     Opts;
 check_opts([H|T], Opts) ->
@@ -4142,10 +4165,9 @@ invalid(What) ->
 prepare_for_reestablish(#data{ opts = Opts
                              , on_chain_id = ChanId } = D) ->
     try
-        {ok, _SessionPid} = start_noise_session(#{existing_channel_id => ChanId},
-                                                Opts#{role => responder}),
-        %% We don't save the session pid here
-        D
+        {ok, SessionPid} = start_noise_session(#{existing_channel_id => ChanId},
+                                               Opts#{role => responder}),
+        D#data{session = #prelim_session{pid = SessionPid}}
     ?CATCH_LOG(_E)
             D
     end.
@@ -4192,8 +4214,9 @@ noise_accept(_SessionOpts, _NoiseOpts, Attempts, #{ responder := Responder
     {error, Error};
 noise_accept(SessionOpts, NoiseOpts, Attempts, COpts) ->
     case aesc_session_noise:accept(SessionOpts, NoiseOpts) of
-        {ok, Pid} ->
-            {ok, Pid};
+        ok ->
+            %% We don't get a pid yet. Albeit unelegant, return an 'undefined' pid
+            {ok, undefined};
         {error, Err} ->
             lager:warning("Noise accept failed with ~p", [Err]),
             noise_accept(SessionOpts, NoiseOpts, Attempts - 1, COpts)
@@ -4277,6 +4300,7 @@ cur_channel_id(#data{on_chain_id = undefined, channel_id = ChId}) -> ChId;
 cur_channel_id(#data{on_chain_id = ChId}) -> ChId.
 
 gproc_register(#data{role = Role, channel_id = ChanId} = D) ->
+    gproc:reg({c,l,?MODULE}, 1),
     gproc_register_(ChanId, Role, D).
 
 gproc_register_on_chain_id(#data{role = Role, on_chain_id = Id} = D)
@@ -4309,6 +4333,19 @@ gproc_name_by_role(Id, Role) ->
 
 gproc_name_by_pubkey(Id, Pubkey) ->
     {n, l, {aesc_channel, {Id, key, Pubkey}}}.
+
+init_active_fsm_counter() ->
+    gproc:reg_shared({a,l,?MODULE}).
+
+unreg_active_fsm_counter() ->
+    gproc:unreg_shared({a,l,?MODULE}).
+
+count_active_fsms() ->
+    try gproc:get_value_shared({a,l,?MODULE})
+    catch
+        error:badarg ->
+            0
+    end.
 
 evt(_Msg) ->
     ok.
@@ -4541,10 +4578,18 @@ handle_call_(_NonSigningState, {abort_update, _, _Tag}, From, #data{} = D) ->
     lager:debug("update can not be aborted while ~p with tag ~p",
                 [_NonSigningState, _Tag]),
     keep_state(D, [{reply, From, {error, not_allowed_now}}]);
-handle_call_(_AnyState, {inband_msg, ToPub, Msg}, From, #data{} = D) ->
-    case {ToPub, other_account(D)} of
-        {X, X} ->
-            keep_state(send_inband_msg(ToPub, Msg, D), [{reply, From, ok}]);
+handle_call_(_AnyState, {inband_msg, FromId, ToPub, Msg}, From, #data{} = D) ->
+    FromMe = (FromId == me) orelse (FromId == my_account(D)),
+    IsForwarding = maps:get(msg_forwarding, D#data.opts, false),
+    DoSend = case {FromMe, ToPub, other_account(D)} of
+                {true, X, X} ->
+                    true;
+                _->
+                    IsForwarding
+            end,
+    case DoSend of
+        true ->
+            keep_state(send_inband_msg(FromId, ToPub, Msg, D), [{reply, From, ok}]);
         _ ->
             keep_state(D, [{reply, From, {error, unknown_recipient}}])
     end;
@@ -4979,7 +5024,13 @@ handle_info(Msg, #data{cur_statem_state = St} = D) ->
 %% * discard   - handle calls, but drop unknown casts (could be e.g. a stray
 %%               signing reply in the open state).
 handle_common_event(E, Msg, M, #data{cur_statem_state = St} = D) ->
-    lager:debug("handle_common_event(~p, ~p, ~p, ~p, D)", [E, Msg, St, M]),
+    case M of
+        discard ->
+            %% Don't log debug as it risks flooding logs
+            ok;
+        _ ->
+            lager:debug("handle_common_event(~p, ~p, ~p, ~p, D)", [E, Msg, St, M])
+    end,
     handle_common_event_(E, Msg, St, M, D).
 
 handle_common_event_(timeout, Info, _St, _M, D) when D#data.ongoing_update == true ->
@@ -5017,8 +5068,8 @@ handle_common_event_(cast, ?DISCONNECT = Msg, _St, _, #data{ channel_status = St
     end;
 handle_common_event_(cast, {?INBAND_MSG, Msg}, _St, _, D) ->
     NewD = case check_inband_msg(Msg, D) of
-               {ok, D1} ->
-                   D2 = report(message, Msg, D1),
+               {ok, {Type, D1}} ->
+                   D2 = report_with_notice(message, Msg, Type, D1),
                    D2;
                {error, _} = Err ->
                    lager:warning("Error in inband_msg: ~p", [Err]),
@@ -5064,7 +5115,7 @@ handle_common_event_(cast, {?CHANNEL_CLOSING, #{tx_hash := TxHash} = Info} = Msg
         {error, not_solo_closing} ->
             %% the min depth watcher reported a channel object that is not
             %% closing, this could be due to a (micro) fork that rejected the
-            %% channel_close_solo_tx that had been initally detected
+            %% channel_close_solo_tx that had been initially detected
             lager:debug("Received a channel closing event for not closing channel", []),
             keep_state(D1)
     end;
@@ -5576,7 +5627,7 @@ process_incoming_forced_progress_(#{ tx := SignedTx
          CorrectFPPayload =
              case FirstSoloRound =:= LatestFSMRound + 1 of
                  true ->
-                     %% FP had been based on the lastest state known to the
+                     %% FP had been based on the latest state known to the
                      %% FSM. This is the expected scenario
                      true;
                  false ->
@@ -5607,7 +5658,7 @@ process_incoming_forced_progress_(#{ tx := SignedTx
              true ->
                  case FPRound - LatestFSMRound of
                      1 = _OkDiff ->
-                         lager:debug("Accomodate incoming forced progress", []),
+                         lager:debug("Accommodate incoming forced progress", []),
                          {OnChainEnv, OnChainTrees} = load_pinned_env(BlockHash),
                          Update = aesc_force_progress_tx:update(Tx),
                          State1 =
@@ -5730,7 +5781,7 @@ apply_non_malicious_txs_([], #data{} = Data) -> %% applied all
     {ok, Data};
 apply_non_malicious_txs_([{BlockHash, SignedTx} | Rest],
                          #data{state = State0, opts = Opts} = Data) when
-is_binary(BlockHash) -> 
+is_binary(BlockHash) ->
     Aetx = aetx_sign:innermost_tx(SignedTx),
     {Mod, Tx} = aetx:specialize_callback(Aetx),
     State =
@@ -5801,4 +5852,3 @@ is_onchain_tx_malicious(Mod, Tx, State, BlockHash) when is_binary(BlockHash) ->
             when UnexpectedRound < LastValidRound + 1 -> true;
         _ -> false
     end.
-

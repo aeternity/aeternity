@@ -5,7 +5,7 @@ linux-tarball:
       default: false
     package_name:
       type: string
-  executor: builder_container_otp22
+  executor: builder_container_otp23
   steps:
     - fixed_checkout
     - when:
@@ -30,7 +30,7 @@ linux-tarball:
     - fail_notification
 
 ubuntu_package:
-  executor: builder_container_otp22
+  executor: builder_container_otp23
   working_directory: /home/builder/aeternity_deb
   steps:
     - fixed_checkout
@@ -50,7 +50,7 @@ linux-standalone:
       default: false
     package_name:
       type: string
-  executor: builder_container_otp22
+  executor: builder_container_otp23
   steps:
     - fixed_checkout
     - when:
@@ -75,8 +75,11 @@ macos-tarball:
     package_name:
       type: string
   macos:
-    xcode: "11.7.0" # macOS 10.15.5 (Catalina)
+    xcode: "13.2.1" # macOS 11.6.2 (Big Sur)
+  resource_class: macos.x86.medium.gen2
   working_directory: /Users/distiller/aeternity
+  environment:
+    HOMEBREW_NO_AUTO_UPDATE: 1
   steps:
     - fixed_checkout
     - when:
@@ -86,8 +89,8 @@ macos-tarball:
     - run:
         name: Install required tools
         command: |
-          brew install gmp libsodium erlang@22 cmake
-          brew link erlang@22
+          brew install gmp libsodium erlang@23 cmake
+          brew link erlang@23
     - test_arch_os_dependencies
     - build_tarball:
         output: << pipeline.parameters.packages_workspace >>/<< parameters.package_name >>
@@ -112,7 +115,8 @@ macos-standalone:
     package_name:
       type: string
   macos:
-    xcode: "11.7.0" # macOS 10.15.5 (Catalina)
+    xcode: "13.2.1" # macOS 11.6.2 (Big Sur)
+  resource_class: macos.x86.medium.gen2
   working_directory: /Users/distiller/aeternity
   steps:
     - fixed_checkout
@@ -123,8 +127,8 @@ macos-standalone:
     - run:
         name: Install required tools
         command: |
-          brew install gmp libsodium erlang@22 cmake
-          brew link erlang@22
+          brew install gmp libsodium erlang@23 cmake
+          brew link erlang@23
     - build_standalone:
         arch: macos-x64
         output: << pipeline.parameters.packages_workspace >>/<< parameters.package_name >>

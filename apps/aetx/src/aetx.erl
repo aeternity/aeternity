@@ -37,12 +37,13 @@
         , valid_at_protocol/2
         , check_protocol/2
         , swagger_name_to_type/1
+        , type_to_swagger_name/1
         , tx_min_gas/2
+        , tx_type/1
         ]).
 
 -ifdef(TEST).
 -export([tx/1]).
--export([type_to_swagger_name/1]).
 -endif.
 
 -define(IS_CONTRACT_TX(T), ((T =:= contract_create_tx) or (T =:= contract_call_tx)
@@ -325,9 +326,13 @@ used_gas(#aetx{type = contract_create_tx, cb = CB, size = Size, tx = Tx}, _Heigh
     CallId = aect_call:ga_id(GANonce, ContractPubkey),
     base_gas(contract_create_tx, Version, CB:abi_version(Tx)) + size_gas(Size) + call_gas_used(Trees, ContractPubkey, CallId);
 used_gas(#aetx{type = contract_call_tx, cb = CB, size = Size, tx = Tx}, _Height, Version, Trees, #{ga_nonce := GANonce}) ->
-    ContractPubkey = CB:contract_pubkey(Tx),
-    CallId = aect_call:ga_id(GANonce, ContractPubkey),
-    base_gas(contract_call_tx, Version, CB:abi_version(Tx)) + size_gas(Size) + call_gas_used(Trees, ContractPubkey, CallId);
+    CtCallId = CB:ct_call_id(Tx),
+    CallId = aect_call:ga_id(GANonce, CtCallId),
+    base_gas(contract_call_tx, Version, CB:abi_version(Tx)) + size_gas(Size) + call_gas_used(Trees, CtCallId, CallId);
+used_gas(#aetx{type = contract_call_tx, cb = CB, size = Size, tx = Tx}, _Height, Version, Trees, _Ctx) ->
+    CtCallId = CB:ct_call_id(Tx),
+    CallId = CB:call_id(Tx),
+    base_gas(contract_call_tx, Version, CB:abi_version(Tx)) + size_gas(Size) + call_gas_used(Trees, CtCallId, CallId);
 used_gas(#aetx{type = Type, cb = CB, size = Size, tx = Tx}, _Height, Version, Trees, _Ctx) when ?IS_CONTRACT_TX(Type) ->
     ContractPubkey = CB:contract_pubkey(Tx),
     CallId = CB:call_id(Tx),
@@ -726,3 +731,7 @@ ttl_delta(Height, {block, _H} = TTL) ->
 tx(Tx) ->
     Tx#aetx.tx.
 -endif.
+
+-spec tx_type(tx()) -> tx_type().
+tx_type(Tx) ->
+    Tx#aetx.type.

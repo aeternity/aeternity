@@ -166,6 +166,8 @@
 
 -define(ARBITRARY_BIG_FEE, 123456789876543).
 
+-define(HTTP_ROS, aehttp_rosetta_SUITE).
+
 all() -> [{group, plain}, {group, assume_min_depth}, {group, aevm}, {group, fate}].
 
 groups() ->
@@ -236,7 +238,7 @@ groups() ->
         sc_ws_environment_contract,
         %% both can call a remote contract
         sc_ws_remote_call_contract,
-        %% both can call a remote contract refering on-chain data
+        %% both can call a remote contract referring on-chain data
         sc_ws_remote_call_contract_refering_onchain_data,
         sc_ws_wrong_call_data,
         sc_ws_wrong_abi
@@ -573,6 +575,7 @@ start_node(Config) ->
     [{node, Node} | Config1].
 
 reset_participants(Grp, Config) ->
+    ct:log("~p:reset_participants(Grp = ~p, Config)", [?MODULE, Grp]),
     Node = ?config(node, Config),
 
     StartAmt = 7000000000 * min_gas_price(),
@@ -597,7 +600,9 @@ reset_participants(Grp, Config) ->
                                     start_amt => StartAmt}},
     %% New participants need to bump the port to not risk colliding.
     Config1 = [{participants, Participants} | proplists:delete(participants, Config)],
-    inc_group_port(Grp, Config1).
+    Res = inc_group_port(Grp, Config1),
+    ct:log("~p:reset_participants(~p, Config) DONE", [?MODULE, Grp]),
+    Res.
 
 inc_group_port(Grp, Config) ->
     %% Note that we are dealing with a group hierarchy that will add different
@@ -747,6 +752,10 @@ sc_ws_open_(Config, ChannelOpts0, MinBlocksToMine, LogDir) ->
            "RChanOpts = ~p~n", [IChanOpts, RChanOpts]),
     %% We need to register for some events as soon as possible - otherwise a race may occur where
     %% some fsm messages are missed
+
+    CountBefore = get_channels_count(),
+    ct:log("CountBefore = ~p", [CountBefore]),
+
     {ok, IConnPid, IFsmId} = channel_ws_start(initiator,
                                               maps:put(host, <<"localhost">>, IChanOpts),
                                               Config, TestEvents, LogDir),
@@ -791,6 +800,12 @@ sc_ws_open_(Config, ChannelOpts0, MinBlocksToMine, LogDir) ->
             ok = ?WS:unregister_test_for_channel_events(IConnPid, TestEvents),
             ok = ?WS:unregister_test_for_channel_events(RConnPid, TestEvents)
     end,
+
+    CountAfter = get_channels_count(),
+    ct:log("CountAfter = ~p", [CountAfter]),
+    %% Unfortunately, we can't assert that CountAfter - CountBefore = 2,
+    %% I believe because some channels linger past their test cases and terminate in the background.
+
     Config1.
 
 optionally_ping_pong(Config) ->
@@ -855,6 +870,43 @@ finish_sc_ws_open(Config, MinBlocksToMine, Register) ->
     %% ensure new balances
     assert_balance_at_most(IPubkey, IStartAmt - IAmt - ChannelCreateFee),
     assert_balance_at_most(RPubkey, RStartAmt - RAmt),
+
+    %% assert Rosetta API balance change operations
+    TxHash = aetx_sign:hash(SignedCrTx),
+    TxHashExt = aeser_api_encoder:encode(tx_hash, TxHash),
+    Initiator = aeser_api_encoder:encode(account_pubkey,IPubkey),
+    Responder = aeser_api_encoder:encode(account_pubkey,RPubkey),
+    case aetx:tx_type(aetx_sign:tx(SignedCrTx)) of
+        channel_create_tx ->
+            assert_balance(IPubkey, IStartAmt - IAmt - ChannelCreateFee),
+            assert_balance(RPubkey, RStartAmt - RAmt),
+            ?HTTP_ROS:assertBalanceChanges(TxHashExt, [{Initiator, -(IAmt + ChannelCreateFee)},
+                                                       {Responder, -RAmt}] );
+        ga_meta_tx ->
+             %% GA Account sometimes held by Initiator, othertimes Responder,
+             %% And in the ga_both case, both.
+             {aega_meta_tx, ITx} = aetx:specialize_callback(aetx_sign:tx(SignedCrTx)),
+             InnerTx = aega_meta_tx:tx(ITx),
+             case aetx:tx_type(aetx_sign:tx(InnerTx)) of
+                ga_meta_tx ->
+                    ?HTTP_ROS:assertBalanceChanges(TxHashExt,
+                                [{Responder, variable},
+                                 {Responder, variable},
+                                 {Initiator, variable},
+                                 {Initiator, variable},
+                                 {Initiator, -(IAmt + ChannelCreateFee)},
+                                 {Responder, -RAmt}] );
+                _ ->
+                    Owner = aetx:origin(aetx_sign:tx(SignedCrTx)),
+                    OwnerEnc = aeser_api_encoder:encode(account_pubkey, Owner),
+                    %% A bit painful to figure out the fee and refund at this point
+                    %% The values will be validated by running rosetta-cli
+                    ?HTTP_ROS:assertBalanceChanges(TxHashExt, [{OwnerEnc, variable},
+                                                               {OwnerEnc, variable},
+                                                               {Initiator, -(IAmt + ChannelCreateFee)},
+                                                               {Responder, -RAmt}] )
+            end
+    end,
 
     %% mine min depth
     case proplists:get_bool(assume_min_depth, Config) of
@@ -1293,7 +1345,7 @@ sc_ws_close_(ConfigList) ->
                            Pid, #{ <<"method">> => <<"channels.system">>
                                  , <<"params">> => #{<<"action">> => <<"stop">>}})
                     catch
-                        %% when the WebSocket process dies, it emmits a
+                        %% when the WebSocket process dies, it emits a
                         %% {connpid_died, Reason} message
                         error:{connpid_died, Reason} when Reason == {error, closed}
                                                         ; Reason == {error, einval}
@@ -2188,11 +2240,15 @@ sc_ws_nameservice_contract_(Owner, GetVolley, CreateContract, ConnPid1, ConnPid2
     register_name(NamePubkey, NamePrivkey, Name, NameFee,
                   [{<<"account_pubkey">>, aeser_id:create(account, <<1:256>>)},
                    {<<"oracle">>, aeser_id:create(oracle, <<2:256>>)},
-                   {<<"unexpected_key">>, aeser_id:create(account, <<3:256>>)}]),
+                   {<<"unexpected_key">>, aeser_id:create(account, <<3:256>>)}]
+                  ++ [{<<"raw data key">>, <<"raw data pointer">>}
+                      || aect_test_utils:latest_protocol_version() >= ?CERES_PROTOCOL_VSN ]),
     Test(Name, <<"account_pubkey">>, true),
     Test(Name, <<"oracle">>, true),
     Test(Name, <<"unexpected_key">>, true),
     Test(Name, <<"missing_key">>, false),
+    [ Test(Name, <<"raw data key">>, true)
+      || aect_test_utils:latest_protocol_version() >= ?CERES_PROTOCOL_VSN ],
     ok.
 
 sc_ws_environment_contract_(Owner, GetVolley, CreateContract, ConnPid1, ConnPid2,
@@ -2292,7 +2348,7 @@ sc_ws_remote_call_contract_(Owner, GetVolley, CreateContract, ConnPid1, ConnPid2
             ValB = integer_to_list(Val),
             ContractCall(Who, RemoteCallCPubKey, remote_call, <<"call">>,
                          [EncIdPubkey, ValB], Val,
-                         % beacuse of hardcoded value=10 in the
+                         % because of hardcoded value=10 in the
                          % remote_call.aes -> amount in the call must be > 10
                          _Amount = 20)
         end,
@@ -2359,7 +2415,7 @@ sc_ws_remote_call_contract_refering_onchain_data_(Owner, GetVolley, CreateContra
             ContractCall(Who, RemoteCallCPubKey,
                          channel_remote_on_chain_contract_name_resolution,
                          <<"remote_resolve">>, Args, IsResolvable,
-                         % beacuse of hardcoded value=10 in the
+                         % because of hardcoded value=10 in the
                          % remote_call.aes -> amount in the call must be > 10
                          _Amount = 20)
         end,
@@ -2500,8 +2556,7 @@ initialize_account(Amount, {Pubkey, _Privkey}, Check) ->
     Node = aecore_suite_utils:node_name(?NODE),
     MaxMined = ?MAX_MINED_BLOCKS + (Amount div aec_governance:block_mine_reward(1)),
     ct:pal("Mining ~p blocks at most for ~p tokens", [MaxMined, Amount]),
-
-    {_, MinerPubkey} = proplists:get_value(?NODE, aecore_suite_utils:sign_keys()),
+    {_, MinerPubkey} = aecore_suite_utils:sign_keys(?NODE),
     MinerAddress = aeser_api_encoder:encode(account_pubkey, MinerPubkey),
     {ok, 200, #{<<"balance">> := _ActualBalance}} =
         get_accounts_by_pubkey_sut(MinerAddress),
@@ -4308,7 +4363,10 @@ ws_get_decoded_result_(ConnPid1, ConnPid2, Contract, Function, [Update], Unsigne
     decode_call_result(Contract, Function, ok, ReturnValue).
 
 decode_call_result(ContractName, Fun, ResType, ResValue) ->
-    {ok, BinCode} = aect_test_utils:read_contract(?SOPHIA_IRIS_FATE, ContractName),
+    {ok, BinCode} = case aect_test_utils:backend() of
+                        fate -> aect_test_utils:read_contract(?SOPHIA_CERES_FATE, ContractName);
+                        aevm -> aect_test_utils:read_contract(?SOPHIA_LIMA_AEVM, ContractName)
+                    end,
     aect_test_utils:decode_call_result(binary_to_list(BinCode), Fun, ResType, ResValue).
 
 
@@ -4561,7 +4619,7 @@ sc_ws_broken_call_code_(Owner, GetVolley, _CreateContract, _ConnPid1, _ConnPid2,
                      code        => EncodedCode,
                      call_data   => EncodedInitData}, Config),
     #{tx := UnsignedCreateTx, updates := _Updates} = SignVolley(),
-    % contract is succesfully created
+    % contract is successfully created
     ContractPubKey = contract_id_from_create_update(OwnerPubKey,
                                                     UnsignedCreateTx),
 
@@ -4596,7 +4654,7 @@ sc_ws_wrong_abi_(Owner, GetVolley, _CreateContract, _ConnPid1, _ConnPid2,
                      code        => EncodedCode,
                      call_data   => EncodedInitData}, Config),
     #{tx := UnsignedCreateTx, updates := _Updates} = SignVolley(),
-    % contract is succesfully created
+    % contract is successfully created
     ContractPubKey = contract_id_from_create_update(OwnerPubKey,
                                                     UnsignedCreateTx),
     {ok, EncodedCalcCallData} = encode_call_data(safe_math, "add", ["1", "2"]),
@@ -5888,3 +5946,9 @@ sc_ws_leave_responder_does_not_timeout(Config0) ->
 
 min_gas_price() ->
     rpc(aec_test_utils, min_gas_price, []).
+
+get_channels_count() ->
+    Host = internal_address(),
+    {ok, 200, #{ <<"count">> := Count }} =
+        http_request(Host, get, "debug/channels/fsm-count", []),
+    Count.

@@ -1,6 +1,6 @@
 -module(aecore_pof_SUITE).
 
-%% This code is brutaly copied form aecore_sync_SUITE and should use joined code base.
+%% This code is brutally copied form aecore_sync_SUITE and should use joined code base.
 
 %% common_test exports
 -export(
@@ -199,7 +199,7 @@ siblings_common(TopBlock, N1, N2, Account1, Account2) ->
             Header2 = aec_blocks:to_header(Micro2S),
             ?assertEqual(lists:sort([Header1, Header2]),
                          lists:sort([aec_pof:header1(PoF), aec_pof:header2(PoF)])),
-            ?assertEqual(rpc:call(N1, aec_keys, pubkey, []),
+            ?assertEqual(rpc:call(N1, aec_keys, get_pubkey, []),
                          {ok, aec_pof:pubkey(PoF)})
     end,
 

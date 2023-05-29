@@ -8,73 +8,73 @@ contract AENSTest =
   // Name resolution
 
   entrypoint resolve_account(name : string, key : string) : option(address) =
-    AENS.resolve(name, key)
+    AENSv2.resolve(name, key)
 
   entrypoint resolve_string(name : string, key : string) : option(string) =
-    AENS.resolve(name, key)
+    AENSv2.resolve(name, key)
 
   entrypoint resolve_oracle(name : string, key : string) : option(oracle(string, string)) =
-    AENS.resolve(name, key)
+    AENSv2.resolve(name, key)
 
   entrypoint resolve_contract(name : string, key : string) : option(Remote) =
-    AENS.resolve(name, key)
+    AENSv2.resolve(name, key)
 
   // Transactions
 
   stateful entrypoint preclaim(addr  : address,          // Claim on behalf of this account (can be Contract.address)
                              chash : hash) : unit =      // Commitment hash
-    AENS.preclaim(addr, chash)
+    AENSv2.preclaim(addr, chash)
 
   stateful payable entrypoint signedPreclaim(addr  : address,          // Claim on behalf of this account (can be Contract.address)
                                              chash : hash,             // Commitment hash
                                              sign  : signature) : unit = // Signed by addr (if not Contract.address)
-    AENS.preclaim(addr, chash, signature = sign)
+    AENSv2.preclaim(addr, chash, signature = sign)
 
   stateful entrypoint claim(addr : address,
                             name : string,
                             salt : int,
                             name_fee : int) : unit =
-    AENS.claim(addr, name, salt, name_fee)
+    AENSv2.claim(addr, name, salt, name_fee)
 
   stateful entrypoint signedClaim(addr : address,
                                 name : string,
                                 salt : int,
                                 sign : signature) : unit =
-    AENS.claim(addr, name, salt, 360000000000000000000, signature = sign)
+    AENSv2.claim(addr, name, salt, 360000000000000000000, signature = sign)
 
 
   stateful entrypoint update(owner      : address,
                              name       : string,
                              ttl        : option(Chain.ttl),
                              client_ttl : option(int),
-                             pointers   : option(map(string, AENS.pointee))) : unit =
-    AENS.update(owner, name, ttl, client_ttl, pointers)
+                             pointers   : option(map(string, AENSv2.pointee))) : unit =
+    AENSv2.update(owner, name, ttl, client_ttl, pointers)
 
   stateful entrypoint signedUpdate(owner      : address,
                                    name       : string,
                                    ttl        : option(Chain.ttl),
                                    client_ttl : option(int),
-                                   pointers   : option(map(string, AENS.pointee)),
+                                   pointers   : option(map(string, AENSv2.pointee)),
                                    sign       : signature) : unit =
-    AENS.update(owner, name, ttl, client_ttl, pointers, signature = sign)
+    AENSv2.update(owner, name, ttl, client_ttl, pointers, signature = sign)
 
 
   stateful entrypoint transfer(owner     : address,
                              new_owner : address,
                              name      : string) : unit =
-    AENS.transfer(owner, new_owner, name)
+    AENSv2.transfer(owner, new_owner, name)
 
   stateful entrypoint signedTransfer(owner     : address,
                                    new_owner : address,
                                    name      : string,
                                    sign      : signature) : unit =
-    AENS.transfer(owner, new_owner, name, signature = sign)
+    AENSv2.transfer(owner, new_owner, name, signature = sign)
 
   stateful entrypoint revoke(owner     : address,
                            name      : string) : unit =
-    AENS.revoke(owner, name)
+    AENSv2.revoke(owner, name)
 
   stateful entrypoint signedRevoke(owner     : address,
                                    name      : string,
                                    sign      : signature) : unit =
-    AENS.revoke(owner, name, signature = sign)
+    AENSv2.revoke(owner, name, signature = sign)

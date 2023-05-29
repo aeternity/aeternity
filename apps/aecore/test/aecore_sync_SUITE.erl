@@ -184,7 +184,7 @@ groups() ->
        start_third_node,
        first_fetch_node_infos_1_success_1_failure,
        stop_three_nodes,
-       %% noone responded 
+       %% no one responded 
        start_first_node,
        mine_on_first,
        start_second_with_disabled_node_info_no_analytics,
@@ -582,7 +582,7 @@ check_no_system_metrics_sent() ->
 
 %% It takes about 300 ms to fetch the blocks from the other chain.
 %% In that interval we need to have the sync process crash
-%% We agressively look whether sync has started and kill a.s.a.p.
+%% We aggressively look whether sync has started and kill a.s.a.p.
 crash_syncing_worker(Config) ->
     [ Dev1, Dev2 | _ ] = proplists:get_value(devs, Config),
     N1 = aecore_suite_utils:node_name(Dev1),
@@ -812,8 +812,8 @@ inject_long_chain(Config) ->
 inject_generation(Node, NMicro, NTx) ->
     %% Start a generation
     TopHash = rpc:call(Node, aec_chain, top_block_hash, []),
-    {ok, Pub} = rpc:call(Node, aec_keys, pubkey, []),
-    {ok, Block} = rpc:call(Node, aec_block_key_candidate, create, [TopHash, Pub]),
+    {ok, Pub} = rpc:call(Node, aec_keys, get_pubkey, []),
+    {ok, Block} = rpc:call(Node, aec_block_key_candidate, create, [TopHash, Pub, Pub]),
     ok = rpc:call(Node, aec_conductor, post_block, [Block]),
     %% Add microblocks
     [inject_microblock(Node, NTx) || _ <- lists:seq(1, NMicro)].

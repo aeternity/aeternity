@@ -43,7 +43,8 @@
     aega,
     aefate,
     aeserialization,
-    ranch
+    ranch,
+    aecli
   ]},
   {runtime_dependencies, ["app_ctrl-0.1.0"]},
   {env, [
@@ -51,12 +52,14 @@
           [
             {roles,
              [ {basic, []}
+             , {nosync, [aehttp, aemon]}
              , {active, [aesync, aehttp, aemon, aestratum]}
-             , {dev, [aehttp]}
+             , {dev, [aehttp, aedevmode]}
              ]}
           , {mode, normal}
           , {modes,
              [ {normal, [basic, active]}
+             , {offline, [basic, nosync]}
              , {maintenance, [basic]}
              , {dev_mode, [basic, dev]}
              ]}

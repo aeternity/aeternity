@@ -21,6 +21,7 @@
 %% test case exports
 -export([
           create_3_party/1
+        , simple_msg_relay/1
         , alice_pays_bob/1
         , alice_tries_early_refund/1
         , alice_gets_refund_after_timeout/1
@@ -95,6 +96,7 @@ groups() ->
                               ]}
     , {happy_path, [sequence],
        [ create_3_party
+       , simple_msg_relay
        , alice_pays_bob
        , alice_tries_early_refund
        , alice_gets_refund_after_timeout
@@ -107,10 +109,11 @@ suite() ->
 
 init_per_suite(Config) ->
     case aec_governance:get_network_id() of
-        <<"local_iris_testnet">> ->
+        Id when Id == <<"local_iris_testnet">>;
+                Id == <<"local_ceres_testnet">> ->
             aesc_fsm_SUITE:init_per_suite([{symlink, "latest.aesc_htlc"} | Config]);
-        _ ->
-            {skip, only_on_iris}
+        Other ->
+            {skip, {only_on_iris, Other}}
     end.
 
 end_per_suite(Config) ->
@@ -139,7 +142,9 @@ end_per_group(_Grp, Config) ->
     proxy_stop(Config),
     ok.
 
-init_per_testcase(TC, Config) ->
+init_per_testcase(TC, Config0) ->
+    Debug = get_debug(Config0) orelse (os:getenv("CT_DEBUG") == "1"),
+    Config = [{debug, Debug} | init_encrypt_nonce(Config0)],
     Config1 = case ?config(saved_config, Config) of
                   undefined ->
                       Config;
@@ -152,6 +157,10 @@ init_per_testcase(TC, Config) ->
 end_per_testcase(_Case, Config) ->
     proxy_unregister(Config),
     ok.
+
+init_encrypt_nonce(Cfg) ->
+    Nonce = crypto:strong_rand_bytes(enacl:box_NONCEBYTES()),
+    lists:keystore(encrypt_nonce, 1, Cfg, {encrypt_nonce, Nonce}).
 
 %%%===================================================================
 %%% Test state
@@ -170,12 +179,12 @@ create_3_party(Cfg) ->
     CfgA = set_configs([{responder, Ah}, {initiator, Alice}], Cfg),
 
     #{i := Ca, r := Ha} = _ChannelA =
-        proxy_do(fun() -> create_channel_(CfgA, #{}, Debug) end, CfgA),
+        proxy_do(fun() -> create_channel_(CfgA, #{msg_forwarding => true}, Debug) end, CfgA),
     %%
     %% Bob side of the market
     CfgB = set_configs([{responder, Bh}, {initiator, Bob}], Cfg),
     #{i := Cb, r := Hb} = _ChannelB =
-        proxy_do(fun() -> create_channel_(CfgB, #{}, Debug) end, CfgB),
+        proxy_do(fun() -> create_channel_(CfgB, #{msg_forwarding => true}, Debug) end, CfgB),
     ?LOG("3-way Channel Market set up (no contract yet).", []),
     %%
     {Time, CompileRes} = timer:tc(fun compile_contract/0),
@@ -205,6 +214,31 @@ create_3_party(Cfg) ->
                                                   , hub      => Hb1
                                                   , contract => ContractPubKeyB } }}
                   ]}.
+
+simple_msg_relay(Cfg) ->
+    #{pub := A, priv := Apriv, encoded_pub := Ae} = ?config(alice, Cfg),
+    #{pub := B, priv := Bpriv, encoded_pub := Be} = ?config(bob, Cfg),
+    Msg = <<"hello there!!!">>,
+    #{Ae := #{client := Ac, hub := Ah} = _ChA,
+      Be := #{client := Bc, hub := Bh} = _ChB} = _Market = ?config(market, Cfg),
+    EncryptedMsg = encrypt_msg(Msg, B, Apriv, Cfg),
+    send_inband(Ac, A, B, EncryptedMsg, Cfg),
+    relay_msg(Ah, Bh, Cfg),
+    receive_inband(Bc, EncryptedMsg, Cfg),
+    {ok, Msg} = decrypt_msg(EncryptedMsg, A, Bpriv, Cfg),
+    save_config(Cfg).
+
+encrypt_msg(Msg, TheirPub, MyPriv, Cfg) ->
+    Nonce = ?config(encrypt_nonce, Cfg),
+    EncPub = enacl:crypto_sign_ed25519_public_to_curve25519(TheirPub),
+    EncPriv = enacl:crypto_sign_ed25519_secret_to_curve25519(MyPriv),
+    enacl:box(Msg, Nonce, EncPub, EncPriv).
+
+decrypt_msg(Msg, TheirPub, MyPriv, Cfg) ->
+    Nonce = ?config(encrypt_nonce, Cfg),
+    EncPub = enacl:crypto_sign_ed25519_public_to_curve25519(TheirPub),
+    EncPriv = enacl:crypto_sign_ed25519_secret_to_curve25519(MyPriv),
+    enacl:box_open(Msg, Nonce, EncPub, EncPriv).
 
 alice_pays_bob(Cfg) ->
     #{encoded_pub := AlicePub} = ?config(alice, Cfg),
@@ -425,26 +459,43 @@ refund_receive(B, Id, Cfg) ->
 
 inband_msg_via_hub(Msg0, ChA, ChB, Cfg) ->
     Msg = jsx:encode(Msg0),
-    #{ client := #{fsm := FsmC}, hub := #{pub := HubPub} = Ah } = ChA,
-    #{ hub := #{fsm := FsmH}, client := #{pub := BPub} = Bc } = ChB,
-    ok = send_inband(FsmC, HubPub, Msg, Cfg),
-    ok = receive_inband(Msg, Ah),
-    ok = send_inband(FsmH, BPub, Msg, Cfg),
-    ok = receive_inband(Msg, Bc).
+    #{ client := #{fsm := _FsmC} = Ac, hub := #{pub := HubPub} = Ah } = ChA,
+    #{ hub := #{fsm := _FsmH} = Bh, client := #{pub := BPub} = Bc } = ChB,
+    ok = send_inband(Ac, HubPub, Msg, Cfg),
+    ok = receive_inband(Ah, Msg, Cfg),
+    ok = send_inband(Bh, BPub, Msg, Cfg),
+    ok = receive_inband(Bc, Msg, Cfg).
 
-send_inband(Fsm, Pub, Msg, Cfg) ->
+send_inband(#{fsm := Fsm}, Pub, Msg, Cfg) ->
     ok = proxy_do(fun() ->
                           rpc(dev1, aesc_fsm, inband_msg,
                               [Fsm, Pub, Msg])
                   end, Cfg),
     ok.
 
-receive_inband(Msg, R) ->
-    {ok, _} = 
+send_inband(#{fsm := Fsm}, From, To, Msg, Cfg) ->
+    ok = proxy_do(fun() ->
+                        rpc(dev1, aesc_fsm, inband_msg,
+                            [Fsm, From, To, Msg])
+                    end, Cfg).
+
+receive_inband(R, Msg, Cfg) ->
+    {ok, Res} =
         receive_from_fsm(
           message, R, fun(#{info := #{info := M}}) when M == Msg ->
                               ok
                       end, 1000),
+    ?LOG(get_debug(Cfg), "received inband: ~p", [Res]),
+    ok.
+
+relay_msg(Ah, Bh, Cfg) ->
+    {ok, Res} =
+        receive_from_fsm(
+            message, Ah, fun(#{notice := please_forward}) -> ok
+                         end, 1000),
+    ?LOG(get_debug(Cfg), "relay got ~p", [Res]),
+    #{info := #{from := From, to := To, info := Msg}} = Res,
+    send_inband(Bh, From, To, Msg, Cfg),
     ok.
 
 client_calls_contract(ChId, F, Args, Deposit, Cfg) ->
@@ -529,7 +580,7 @@ shutdown(I, R, Cfg, Debug) ->
 %%%===================================================================
 %%% Proxy process
 %%%===================================================================
-    
+
 spawn_proxy() ->
     Parent = self(),
     spawn(fun() ->

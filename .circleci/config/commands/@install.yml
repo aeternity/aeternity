@@ -4,13 +4,13 @@ aeplugin_install_devmode:
         name: Download devmode plugin
         command: |
           export PLUGIN_VERSION=<< pipeline.parameters.aeplugin_devmode_version >>
-          curl -fsSLOJ https://github.com/aeternity/aeplugin_dev_mode/releases/download/v$PLUGIN_VERSION/aeplugin_dev_mode.tar.gz
-          tar -zxf aeplugin_dev_mode.tar.gz -C plugins/
+          curl -fsSLOJ https://github.com/aeternity/aeplugin_dev_mode/releases/download/v$PLUGIN_VERSION/aeplugin_dev_mode.ez
+          cp aeplugin_dev_mode.ez plugins/
 
 install_os_deps:
   steps:
     - run:
-        name: Install OS dependancies
+        name: Install OS dependencies
         command: |
           sudo apt-get update
           sudo apt-get -qq -y install git curl \

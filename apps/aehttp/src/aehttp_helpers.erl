@@ -20,6 +20,7 @@
         , print_state/0
         , get_contract_code/2
         , get_info_object_from_tx/3
+        , get_info_object_signed_tx/2
         , verify_oracle_existence/1
         , verify_oracle_query_existence/2
         , verify_name/1
@@ -28,6 +29,8 @@
         , get_block_from_chain/1
         , get_block_hash_optionally_by_hash_or_height/1
         , safe_get_txs/1
+        , encode_keyblock/2
+        , encode_generation/3
         , do_dry_run/0
         , dry_run_results/1
         , to_int/1
@@ -272,20 +275,37 @@ print_state() ->
         lager:info("State: ~p", [State])
     end.
 
-get_contract_code(ContractKey, CodeKey) ->
+
+get_contract_code(CtIdKey, CodeKey) ->
     fun(_Req, State) ->
-        ContractId = maps:get(ContractKey, State),
-        ContractPubKey = aeser_id:specialize(ContractId, contract),
-        TopBlockHash = aec_chain:top_block_hash(),
-        {ok, Trees} = aec_chain:get_block_state(TopBlockHash),
-        Tree = aec_trees:contracts(Trees),
-        case aect_state_tree:lookup_contract_with_code(ContractPubKey, Tree) of
-            none ->
-                Msg = "Contract address for key " ++ atom_to_list(ContractKey) ++ " not found",
-                {error, {404, [], #{<<"reason">> => list_to_binary(Msg)}}};
-            {value, _Contract, Code} ->
-                {ok, maps:put(CodeKey, Code, State)}
+        ContractId = maps:get(CtIdKey, State),
+        case aeser_id:specialize(ContractId) of
+            {contract, _} -> get_contract_code_(ContractId, CodeKey, State);
+            {name, NameHash} ->
+                TopBlockHash = aec_chain:top_block_hash(),
+                {ok, Trees}  = aec_chain:get_block_state(TopBlockHash),
+                case aens:resolve_hash(<<"contract_pubkey">>, NameHash, aec_trees:ns(Trees)) of
+                    {ok, ContractId1} -> get_contract_code_(ContractId1, CodeKey, State);
+                    {error, _} ->
+                        Msg = io_lib:format("Could not resolve contract address for '~ts'",
+                                            [aeser_api_encoder:encode(name, NameHash)]),
+                        {error, {404, [], #{<<"reason">> => iolist_to_binary(Msg)}}}
+                end
         end
+    end.
+
+get_contract_code_(ContractId, CodeKey, State) ->
+    TopBlockHash   = aec_chain:top_block_hash(),
+    {ok, Trees}    = aec_chain:get_block_state(TopBlockHash),
+    ContractPubKey = aeser_id:specialize(ContractId, contract),
+    Tree           = aec_trees:contracts(Trees),
+    case aect_state_tree:lookup_contract_with_code(ContractPubKey, Tree) of
+        none ->
+            Msg = io_lib:format("Contract code for '~ts' not found",
+                                [aeser_api_encoder:encode(contract_pubkey, ContractPubKey)]),
+            {error, {404, [], #{<<"reason">> => iolist_to_binary(Msg)}}};
+        {value, _Contract, Code} ->
+            {ok, maps:put(CodeKey, Code, State)}
     end.
 
 get_info_object_from_tx(TxKey, TypeKey, CallKey) ->
@@ -300,10 +320,12 @@ get_info_object_from_tx(TxKey, TypeKey, CallKey) ->
                         {ok, InfoObject} ->
                             {ok, maps:put(TypeKey, TxType, maps:put(CallKey, InfoObject, State))};
                         {error, transaction_without_info} ->
-                            %% Potentialluy one could return
+                            %% Potentially one could return
                             %% {ok, maps:put(TypeKey, TxType, maps:put(CallKey, atom_to_binary(TxType, utf8), State))};
                             %% That is not backward compatible, but consistent with inner Txs
                             {error, {400, [], #{<<"reason">> => <<"Tx has no info">>}}};
+                        {error, garbage_collected} ->
+                            {error, {410, [], #{<<"reason">> => <<"State data at the requested height has been garbage-collected">>}}};
                         {error, Why} ->
                             Msg = atom_to_binary(Why, utf8),
                             {error, {400, [], #{<<"reason">> => Msg}}}
@@ -317,8 +339,12 @@ get_info_object_signed_tx(BlockHash, STx) ->
 get_info_object_signed_tx(BlockHash, STx, GAIds, OrigTx) ->
     Tx = aetx_sign:tx(STx),
     case aetx:specialize_type(Tx) of
+        {contract_call_tx, _} ->
+            {CB, CTx} = aetx:specialize_callback(Tx),
+            CtCallId  = CB:ct_call_id(CTx),
+            CallId    = CB:call_id(CTx),
+            aec_chain:get_contract_call(CtCallId, CallId, BlockHash);
         {TxType, _} when TxType =:= contract_create_tx;
-                         TxType =:= contract_call_tx;
                          TxType =:= ga_attach_tx ->
             {CB, CTx} = aetx:specialize_callback(Tx),
             Contract  = CB:contract_pubkey(CTx),
@@ -671,7 +697,7 @@ dry_run_accounts_([Account | Accounts], Acc) ->
         #{ <<"pub_key">> := EPK, <<"amount">> := Amount } ->
             case aeser_api_encoder:safe_decode(account_pubkey, EPK) of
                 {ok, PK} ->
-                    dry_run_accounts_(Accounts, [#{ pub_key => PK, amount => Amount } | Acc]);
+                    dry_run_accounts_(Accounts, [#{ pub_key => PK, amount => to_int(Amount) } | Acc]);
                 Err = {error, _Reason} ->
                     Err
             end;
@@ -709,11 +735,17 @@ dry_run_result(_Type, {error, Reason}, Res) when is_binary(Reason) ->
     Res#{ reason => list_to_binary(lists:concat(["Error: ", Reason])) };
 dry_run_result(_Type, {error, Reason}, Res) ->
     Res#{ reason => iolist_to_binary(io_lib:format("Internal error:\n  ~120p\n", [Reason])) };
+dry_run_result(Type, {ok, _Events, CallObj}, Res) when Type =:= contract_call_tx;
+                                                       Type =:= contract_create_tx;
+                                                       Type =:= ga_attach_tx ->
+    Res#{ call_obj => aect_call:serialize_for_client(CallObj) };
 dry_run_result(Type, {ok, CallObj}, Res) when Type =:= contract_call_tx;
                                               Type =:= contract_create_tx;
                                               Type =:= ga_attach_tx ->
     Res#{ call_obj => aect_call:serialize_for_client(CallObj) };
 dry_run_result(_Type, ok, Res) ->
+    Res;
+dry_run_result(_Type, {ok, _Events}, Res) ->
     Res.
 
 tx_event_result({EventKey, EventVal} = E, Acc) ->
@@ -800,6 +832,18 @@ encode_transaction(TxKey, EncodedTxKey) ->
             end,
         {ok, maps:put(EncodedTxKey, #{tx => T}, State)}
     end.
+
+encode_keyblock(KeyBlock, PrevBlockType) ->
+    Header = aec_blocks:to_header(KeyBlock),
+    aec_headers:serialize_for_client(Header, PrevBlockType).
+
+encode_generation(KeyBlock, MicroBlocks, PrevBlockType) ->
+    Header = aec_blocks:to_header(KeyBlock),
+    #{key_block => aec_headers:serialize_for_client(Header, PrevBlockType),
+      micro_blocks => [begin
+                           {ok, Hash} = aec_blocks:hash_internal_representation(M),
+                           aeser_api_encoder:encode(micro_block_hash, Hash)
+                       end || M <- MicroBlocks]}.
 
 -spec read_optional_param(atom(), map(), term()) -> term().
 read_optional_param(Key, Req, Default) ->
@@ -947,7 +991,7 @@ decode_transaction(ParamName) ->
                 {error, _} -> error;
                 {ok, TxDec} ->
                     try {ok, aetx_sign:deserialize_from_binary(TxDec)}
-                    catch 
+                    catch
                         _:_ -> error
                     end
             end

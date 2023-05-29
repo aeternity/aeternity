@@ -6,7 +6,7 @@ jobs:
       context: ae-slack
       matrix:
         parameters:
-          otp: ["otp22", "otp23", "otp24"]
+          otp: ["otp23", "otp24"]
       filters:
         branches:
           ignore:
@@ -25,7 +25,7 @@ jobs:
       context: ae-slack
       matrix:
         parameters:
-          otp: ["otp22", "otp23", "otp24"]
+          otp: ["otp23", "otp24"]
           target:
             - "ct-roma"
             - "ct-minerva"
@@ -34,25 +34,17 @@ jobs:
             - "ct-iris"
             - "ct-latest"
             - "ct-latest-no-aci"
-            - "ct-mnesia-leveled"
             - "ct-mnesia-rocksdb"
+            - "ct-mnesia-mrdb"
         exclude:
-          - {otp: "otp23", target: "ct-roma"}
-          - {otp: "otp23", target: "ct-minerva"}
-          - {otp: "otp23", target: "ct-fortuna"}
-          - {otp: "otp23", target: "ct-lima"}
-          - {otp: "otp23", target: "ct-iris"}
-          - {otp: "otp23", target: "ct-latest-no-aci"}
-          - {otp: "otp23", target: "ct-mnesia-leveled"}
-          - {otp: "otp23", target: "ct-mnesia-rocksdb"}
           - {otp: "otp24", target: "ct-roma"}
           - {otp: "otp24", target: "ct-minerva"}
           - {otp: "otp24", target: "ct-fortuna"}
           - {otp: "otp24", target: "ct-lima"}
           - {otp: "otp24", target: "ct-iris"}
           - {otp: "otp24", target: "ct-latest-no-aci"}
-          - {otp: "otp24", target: "ct-mnesia-leveled"}
           - {otp: "otp24", target: "ct-mnesia-rocksdb"}
+          - {otp: "otp24", target: "ct-mnesia-mrdb"}
       requires:
         - build-<< matrix.otp >>
       filters:
@@ -66,7 +58,7 @@ jobs:
       context: ae-slack
       matrix:
         parameters:
-          otp: ["otp22"]
+          otp: ["otp23"]
           target:
             - "roma"
             - "minerva"
@@ -86,7 +78,7 @@ jobs:
   - aevm-test:
       context: ae-slack
       requires:
-        - build-otp22
+        - build-otp23
       filters:
         branches:
           ignore:
@@ -98,7 +90,7 @@ jobs:
       context: ae-slack
       matrix:
         parameters:
-          otp: ["otp22", "otp23", "otp24"]
+          otp: ["otp23", "otp24"]
       requires:
         - build-<< matrix.otp >>
       filters:
@@ -111,7 +103,6 @@ jobs:
   - docker-smoke-test:
       context:
         - ae-slack
-        - ae-node-builds
       filters:
         branches:
           ignore:
@@ -139,7 +130,6 @@ jobs:
   - docker-js-sdk-smoke-test:
       context:
         - ae-slack
-        - ae-node-builds
       requires:
         - docker-smoke-test
       filters:
@@ -154,7 +144,6 @@ jobs:
   - docker-db-smoke-test:
       context:
         - ae-slack
-        - ae-node-builds
       requires:
         - docker-smoke-test
       filters:
@@ -191,7 +180,7 @@ jobs:
   - rebar_lock_check:
       context: ae-slack
       requires:
-        - build-otp22
+        - build-otp23
       filters:
         branches:
           ignore:
@@ -244,7 +233,7 @@ jobs:
       bucket: << pipeline.parameters.s3_builds_bucket >>
       context:
         - ae-slack
-        - ae-node-builds
+        - ae-vault-node
       requires:
         - linux-tarball
         - linux-tarball-bundle
@@ -262,7 +251,7 @@ jobs:
       uri: s3://<< pipeline.parameters.s3_builds_bucket >>/aeternity-$CIRCLE_SHA1-ubuntu-x86_64.tar.gz
       context:
         - ae-slack
-        - ae-node-builds
+        - ae-vault-node
       requires:
         - upload-artifacts-s3
       filters:
@@ -310,7 +299,28 @@ jobs:
       downtime: 900 #15m
       context:
         - ae-slack
-        - ae-node-builds
+        - ae-vault-node
+      requires:
+        - test
+        - eunit
+        - docker-db-smoke-test
+        - db-smoke-test
+        - aevm-test
+        - static-analysis
+        - rebar_lock_check
+        - linux-tarball
+      filters:
+        branches:
+          only: << pipeline.parameters.master_branch >>
+
+  - deploy:
+      name: deploy-integration-sync
+      version: $CIRCLE_SHA1
+      env: integration_sync
+      downtime: 900 #15m
+      context:
+        - ae-slack
+        - ae-vault-node
       requires:
         - test
         - eunit
@@ -325,11 +335,12 @@ jobs:
           only: << pipeline.parameters.master_branch >>
 
   - docker-image:
-      name: docker-image-mainline
+      name: docker-image-mainline-amd64
       context:
         - ae-slack
-        - ae-node-builds
-      tag: ${CIRCLE_BRANCH/\//_}
+        - ae-dockerhub
+      platform: amd64
+      tag: ${CIRCLE_BRANCH/\//_}-amd64
       requires:
         - test
         - eunit
@@ -342,18 +353,90 @@ jobs:
             - << pipeline.parameters.master_branch >>
 
   - docker-image:
-      name: docker-image-mainline-bundle
+      name: docker-image-mainline-arm64
       context:
         - ae-slack
-        - ae-node-builds
-      aeplugin_devmode: true
-      tag: ${CIRCLE_BRANCH/\//_}-bundle
+        - ae-dockerhub
+      platform: arm64
+      tag: ${CIRCLE_BRANCH/\//_}-arm64
       requires:
         - test
         - eunit
         - aevm-test
         - static-analysis
         - rebar_lock_check
+      filters:
+        branches:
+          only:
+            - << pipeline.parameters.master_branch >>
+
+  - docker-manifest:
+      name: docker-image-mainline
+      context:
+        - ae-slack
+        - ae-dockerhub
+      tag: ${CIRCLE_BRANCH/\//_}
+      manifest_list: >-
+        ${CIRCLE_BRANCH/\//_}-amd64
+        ${CIRCLE_BRANCH/\//_}-arm64
+      requires:
+        - docker-image-mainline-amd64
+        - docker-image-mainline-arm64
+      filters:
+        branches:
+          only:
+            - << pipeline.parameters.master_branch >>
+
+  - docker-image:
+      name: docker-image-mainline-bundle-amd64
+      context:
+        - ae-slack
+        - ae-dockerhub
+      aeplugin_devmode: true
+      platform: amd64
+      tag: ${CIRCLE_BRANCH/\//_}-bundle-amd64
+      requires:
+        - test
+        - eunit
+        - aevm-test
+        - static-analysis
+        - rebar_lock_check
+      filters:
+        branches:
+          only:
+            - << pipeline.parameters.master_branch >>
+
+  - docker-image:
+      name: docker-image-mainline-bundle-arm64
+      context:
+        - ae-slack
+        - ae-dockerhub
+      aeplugin_devmode: true
+      platform: arm64
+      tag: ${CIRCLE_BRANCH/\//_}-bundle-arm64
+      requires:
+        - test
+        - eunit
+        - aevm-test
+        - static-analysis
+        - rebar_lock_check
+      filters:
+        branches:
+          only:
+            - << pipeline.parameters.master_branch >>
+
+  - docker-manifest:
+      name: docker-image-mainline
+      context:
+        - ae-slack
+        - ae-dockerhub
+      tag: ${CIRCLE_BRANCH/\//_}-bundle
+      manifest_list: >-
+        ${CIRCLE_BRANCH/\//_}-bundle-amd64
+        ${CIRCLE_BRANCH/\//_}-bundle-arm64
+      requires:
+        - docker-image-mainline-bundle-amd64
+        - docker-image-mainline-bundle-arm64
       filters:
         branches:
           only:
@@ -366,7 +449,7 @@ jobs:
       downtime: 900 #15m
       context:
         - ae-slack
-        - ae-node-builds
+        - ae-vault-node
       requires:
         - test
         - eunit
@@ -384,7 +467,7 @@ jobs:
       env: dev1
       context:
         - ae-slack
-        - ae-node-builds
+        - ae-vault-node
       requires:
         - linux-tarball
       filters:
@@ -397,7 +480,7 @@ jobs:
       env: dev2
       context:
         - ae-slack
-        - ae-node-builds
+        - ae-vault-node
       requires:
         - linux-tarball
       filters:

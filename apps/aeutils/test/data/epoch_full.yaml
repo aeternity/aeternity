@@ -27,11 +27,11 @@ sync:
     ping_interval: 30000
     # Number of acceptors in listening pool
     acceptors: 10
-    # Connection timeout in miliseconds
+    # Connection timeout in milliseconds
     connect_timeout: 1000
-    # Maximum time for receiving a ping in miliseconds
+    # Maximum time for receiving a ping in milliseconds
     first_ping_timeout: 30000
-    # Maximum time for noise handshake in miliseconds
+    # Maximum time for noise handshake in milliseconds
     noise_hs_timeout: 5000
     # Maximum time for the peer to close a connection cleanly
     close_timeout: 3000
@@ -90,6 +90,9 @@ http:
         allow_methods: ["DELETE, GET, HEAD, OPTIONS, PATCH, POST, PUT"]
         # Indicates for how many seconds the results of a preflight request can be cached
         max_age: 1800
+    protocol_options:
+        # Cowboy limit to the body size of requests (in bytes)
+        max_skip_body_length: 1000000
     external:
         # Port used for external HTTP API
         port: 3013

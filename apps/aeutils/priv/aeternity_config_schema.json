@@ -12,6 +12,11 @@
                     "type" : "boolean",
                     "default" : false
                 },
+                "offline_mode" : {
+                    "description" : "When true, the node disables sync, mining, but keeps http endpoints open",
+                    "type" : "boolean",
+                    "default" : false
+                },
                 "dev_mode" : {
                     "description" : "When true, the node sets up for development (default netw id: ae_dev, default consensus: on_demand)",
                     "type" : "boolean",
@@ -42,6 +47,10 @@
                         }
                     },
                     "default": []
+                },
+                "custom_prefunded_accs_file" : {
+                    "description" : "Overrides the automatically derived file name for prefunded accounts. No default value",
+                    "type" : "string"
                 }
             }
         },
@@ -1038,17 +1047,17 @@
                     "default": 10
                 },
                 "connect_timeout" : {
-                    "description" : "Connection timeout in miliseconds",
+                    "description" : "Connection timeout in milliseconds",
                     "type" : "integer",
                     "default": 1000
                 },
                 "first_ping_timeout" : {
-                    "description" : "Maximum time for receiving a ping in miliseconds",
+                    "description" : "Maximum time for receiving a ping in milliseconds",
                     "type" : "integer",
                     "default": 30000
                 },
                 "noise_hs_timeout" : {
-                    "description" : "Maximum time for noise handshake in miliseconds",
+                    "description" : "Maximum time for noise handshake in milliseconds",
                     "type" : "integer",
                     "default": 5000
                 },
@@ -1233,6 +1242,18 @@
                         }
                     }
                 },
+                "protocol_options" : {
+                    "type" : "object",
+                    "additionalProperties" : false,
+                    "properties" : {
+                        "max_skip_body_length": {
+                          "description": "Cowboy limit to request body size",
+                          "type": "integer",
+                          "example": 400000,
+                          "default": 1000000
+                        }
+                    }
+                },
                 "external" : {
                     "type" : "object",
                     "additionalProperties" : false,
@@ -1297,43 +1318,91 @@
                         }
                     }
                 },
+                "rosetta" : {
+                    "type" : "object",
+                    "additionalProperties" : false,
+                    "properties" : {
+                        "listen_address": {
+                          "description": "Listen address for rosetta interface. This can be publicly accessible, but defaults to private",
+                          "type": "string",
+                          "example": "127.0.0.1",
+                          "default" : "127.0.0.1"
+                        },
+                        "port" : {
+                            "description" : "Listen port for rosetta online HTTP interface.",
+                            "type" : "integer",
+                            "default" : 3213
+                        },
+                        "acceptors" : {
+                            "description" : "Number of acceptors in rosetta pool",
+                            "type" : "integer",
+                            "default" : 10
+                        }
+                    }
+                },
+                "rosetta_offline" : {
+                    "type" : "object",
+                    "additionalProperties" : false,
+                    "properties" : {
+                        "listen_address": {
+                          "description": "Listen address for the offline rosetta interface. This can be publicly accessible, but defaults to private",
+                          "type": "string",
+                          "example": "127.0.0.1",
+                          "default" : "127.0.0.1"
+                        },
+                        "port" : {
+                            "description" : "Listen port for the rosetta offline HTTP interface.",
+                            "type" : "integer",
+                            "default" : 3413
+                        },
+                        "acceptors" : {
+                            "description" : "Number of acceptors in rosetta offline HTTP pool",
+                            "type" : "integer",
+                            "default" : 10
+                        }
+                    }
+                },
                 "endpoints" : {
-                    "gossip" : {
-                        "description" : "Gossip protocol API",
-                        "type" : "boolean"
-                    },
-                    "name_service" : {
-                        "description" : "Name resolution API",
-                        "type" : "boolean"
-                    },
-                    "chain" : {
-                        "description" : "Chain state inspection endpoints",
-                        "type" : "boolean"
-                    },
-                    "transactions" : {
-                        "description" : "Transactions insection endpoints",
-                        "type" : "boolean"
-                    },
-                    "node_operator" : {
-                        "description" : "Node operator endpoints",
-                        "type" : "boolean",
-                        "default" : false
-                    },
-                    "dev" : {
-                        "description" : "Development only API - for validation of client implementations. Should not be used in real life scenarios",
-                        "type" : "boolean"
-                    },
-                    "debug" : {
-                        "description" : "Deprecated. See also 'http > internal > debug_endpoints'",
-                        "type" : "boolean"
-                    },
-                    "obsolete" : {
-                        "description" : "Old endpoints that will be removed",
-                        "type" : "boolean"
-                    },
-                    "dry-run" : {
-                        "description" : "External protected dry run endpoint",
-                        "type" : "boolean"
+                    "type" : "object",
+                    "additionalProperties" : false,
+                    "properties" : {
+                        "gossip" : {
+                            "description" : "Gossip protocol API",
+                            "type" : "boolean"
+                        },
+                        "name_service" : {
+                            "description" : "Name resolution API",
+                            "type" : "boolean"
+                        },
+                        "chain" : {
+                            "description" : "Chain state inspection endpoints",
+                            "type" : "boolean"
+                        },
+                        "transactions" : {
+                            "description" : "Transactions insection endpoints",
+                            "type" : "boolean"
+                        },
+                        "node-operator" : {
+                            "description" : "Node operator endpoints",
+                            "type" : "boolean",
+                            "default" : false
+                        },
+                        "dev" : {
+                            "description" : "Development only API - for validation of client implementations. Should not be used in real life scenarios",
+                            "type" : "boolean"
+                        },
+                        "debug" : {
+                            "description" : "Deprecated. See also 'http > internal > debug_endpoints'",
+                            "type" : "boolean"
+                        },
+                        "obsolete" : {
+                            "description" : "Old endpoints that will be removed",
+                            "type" : "boolean"
+                        },
+                        "dry-run" : {
+                            "description" : "External protected dry run endpoint",
+                            "type" : "boolean"
+                        }
                     }
                 },
                 "debug" : {
@@ -1372,7 +1441,34 @@
                     "description" : "Max number of active state channel clients allowed on node",
                     "type" : "integer",
                     "default" : 1000
-                }
+                },
+		"ad_hoc_listen_ports" : {
+		    "type" : "boolean",
+		    "description" : "Whether to allow responders to listen on any ports other than preconfigured ones",
+		    "default" : true
+		},
+		"listeners" : {
+		    "description" : "Pre-configured responder listen ports",
+		    "type" : "array",
+		    "items" : {
+			"type" : "object",
+			"additionalProperties" : false,
+			"required" : [
+			    "port"
+			],
+			"properties" : {
+			    "port" : {
+				"type" : "integer",
+				"description" : "Listen port number"
+			    },
+			    "acceptors" : {
+				"type" : "integer",
+				"description" : "Number of concurrent acceptors on port (default: 1)",
+				"default" : 1
+			    }
+			}
+		    }
+		}
             }
         },
         "websocket" : {
@@ -1432,7 +1528,7 @@
                     "description" : "Choice of database backend.",
                     "type" : "string",
                     "pattern" : "^([a-z]+|([a-z0-9\\*]+:[a-z]+)|([a-z0-9\\*]+:[a-z]+(\\h*\\|\\h*[a-z0-9\\*]+:[a-z]+))+)$",
-                    "example" : "'rocksdb' OR 'unix:rocksdb' OR 'unix:rocksdb|*:mnesia' OR (EXPERIMENTAL) 'leveled'",
+                    "example" : "'rocksdb' OR 'unix:rocksdb' OR 'unix:rocksdb|*:mnesia'",
                     "default" : "unix:rocksdb|*:mnesia"
                 },
                 "db_path" : {
@@ -1440,8 +1536,19 @@
                     "type" : "string",
                     "default" : "data"
                 },
+		"db_direct_access" : {
+		    "description" : "Use Db backend API rather than the Mnesia API",
+		    "type" : "boolean",
+		    "default" : false
+		},
+		"db_commit_bypass" : {
+		    "description" : "Use Rocksdb tricks to bypass Mnesia's default update logic at tx commit",
+		    "type" : "boolean",
+		    "default" : true
+		},
                 "db_write_max_retries" : {
-                    "description" : "Maximum number of retries for failing database write operations.",
+		    "deprecated" : true,
+                    "description" : "OBSOLETE/ignored: Maximum number of retries for failing database write operations.",
                     "type" : "integer",
                     "default" : 3
                 },
@@ -1464,10 +1571,10 @@
                         "^[1-9][0-9]*$" : {
                             "description" : "Minimum height at which the given consensus algorithm gets activated. By default from genesis Cuckoo cycle based BitcoinNG is used.",
                             "type" : "object",
-                            "required": ["name"],
+                            "required": ["type"],
                             "properties": {
-                                "name": {
-                                    "description": "The name of the consensus algorithm used at the given height",
+                                "type": {
+                                    "description": "The type of the consensus algorithm used at the given height (ex. pow_cuckoo, smart_contract or hyper_chain)",
                                     "type": "string"
                                 },
                                 "config": {
@@ -1500,22 +1607,56 @@
                     "type" : "object",
                     "additionalProperties" : false,
                     "properties" : {
-                        "enabled": {
-                            "description": "If true, node will perform garbage collection of account state, removing unrechable merkle patricia nodes and free some disk space",
+                        "enabled" : {
+                            "description": "If true, node will perform garbage collection of state trees, removing unreachable merkle patricia nodes and free some disk space",
                             "type": "boolean",
                             "default": false
                         },
+                        "during_sync" : {
+                            "description" : "If true, node will start garbage-collecting immediately, without waiting for sync to complete",
+                            "type" : "boolean",
+                            "default" : false
+                        },
+                        "minimum_height" : {
+                            "description" : "Minimum height at which to trigger garbage collection",
+                            "type" : "integer",
+                            "minimum" : 0,
+                            "default" : 0
+                        },
                         "interval" : {
-                            "description": "How often (every `interval` block) should garbage collection run",
-                            "type": "integer",
-                            "minimum": 3,
-                            "default": 50000
+                            "description" : "DEPRECATED. How often (every `interval` block) should garbage collection run",
+                            "type" : "integer",
+                            "minimum" : 3,
+                            "default" : 50000
                         },
                         "history" : {
-                            "description": "How many blocks (back from the top) should be scanned for reachable hashes",
-                            "type": "integer",
-                            "minimum": 50,
-                            "default": 500
+                            "description" : "How many generations (at least) should pass between garbage collections",
+                            "type" : "integer",
+                            "minimum" : 50,
+                            "default" : 15000
+                        },
+                        "depth" : {
+                            "description" : "How far below the top to perform collection scans (default: 0 = fork resistance depth)",
+                            "type" : "integer",
+                            "minimum" : 0,
+                            "default" : 0
+                        },
+                        "trees" : {
+                            "description": "Which state trees to scan. Default: all of them",
+                            "type" : "array",
+                            "items" : {
+                                "description" : "Tree name",
+                                "type" : "string",
+                                "enum" : ["accounts", "calls", "channels",
+                                          "contracts", "ns", "oracles"]
+                            },
+                            "minItems" : 1,
+                            "default" : ["accounts",
+                                         "calls",
+                                         "channels",
+                                         "contracts",
+                                         "ns",
+                                         "oracles"]
                         }
                     }
                 }
@@ -2027,6 +2168,21 @@
                             "default" : 0
                         }
                     }
+                },
+                "gc_scan" : {
+                    "description" : "DB Garbage collection scan chunks",
+                    "type" : "object",
+                    "additionalProperties" : false,
+                    "properties" : {
+                        "counter" : {
+                            "type" : "integer",
+                            "default" : 1
+                        },
+                        "rate" : {
+                            "type" : "integer",
+                            "default" : 50
+                        }
+                    }
                 }
             }
         },
@@ -2203,8 +2359,29 @@
                     }
                 }
             }
+        },
+        "dev_mode" : {
+            "type" : "object",
+            "description" : "Settings for when dev mode consensus is activated",
+            "additionalProperties" : false,
+            "properties" : {
+                "keyblock_interval" : {
+                    "type" : "integer",
+                    "default" : 0,
+                    "description" : "Interval, in seconds, between keyblocks. If 0, keyblocks are only produced on-demand"
+                },
+                "microblock_interval" : {
+                    "type" : "integer",
+                    "default" : 0,
+                    "description" : "Interval, in seconds, between microblocks. If 0, microblocks are only produced on-demand"
+                },
+                "auto_emit_microblocks" : {
+                    "type" : "boolean",
+                    "default" : false,
+                    "description" : "Emit microblocks as soon as transactions have been pushed to the mempool"
+                }
+            }
         }
-
     },
     "definitions" : {
         "key_value_pattern": {

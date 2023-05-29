@@ -452,7 +452,7 @@ query_oracle_negative(Cfg) ->
     Q1 = aeo_test_utils:query_tx(BadSenderKey, OracleId, S2),
     {error, account_not_found} = aetx:process(Q1, Trees, Env),
 
-    %% Test unsufficient funds.
+    %% Test insufficient funds.
     S3     = aeo_test_utils:set_account_balance(SenderKey, 0, S2),
     Trees1 = aeo_test_utils:trees(S3),
     Q2     = aeo_test_utils:query_tx(SenderKey, OracleId, S2),
@@ -893,9 +893,10 @@ prune_response(Cfg, QueryOpts = #{ response_ttl := {delta, RTTL} }) ->
 prune_from_until(From, Until, Trees) when is_integer(From),
                                           is_integer(Until),
                                           From < Until ->
-    do_prune_until(From, Until, Trees).
+    {Trees1, _} = do_prune_until(From, Until, {Trees, undefined}),
+    Trees1.
 
-do_prune_until(N1, N1, Trees) ->
-    aeo_state_tree:prune(N1, Trees);
-do_prune_until(N1, N2, Trees) ->
-    do_prune_until(N1 + 1, N2, aeo_state_tree:prune(N1, Trees)).
+do_prune_until(N1, N1, {Trees, TxEnv}) ->
+    aeo_state_tree:prune(N1, Trees, TxEnv);
+do_prune_until(N1, N2, {Trees, TxEnv}) ->
+    do_prune_until(N1 + 1, N2, aeo_state_tree:prune(N1, Trees, TxEnv)).

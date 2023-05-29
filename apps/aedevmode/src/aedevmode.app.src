@@ -1,0 +1,28 @@
+%% -*- mode: erlang; erlang-indent-level: 4; indent-tabs-mode: nil -*-
+{application, aedevmode,
+ [{description, "Helpers for Aeternity dev mode consensus"},
+  {vsn, {cmd, "cat ../../VERSION"}},
+  {registered, []},
+  {mod, {aedevmode_app, []}},
+  {start_phases, []},
+  {applications,
+   [kernel,
+    stdlib,
+    aeutils,
+    aecore
+  ]},
+  {runtime_dependencies, []},
+  {env, [
+         {'$setup_hooks',
+          [
+           {normal, [
+                     {300, {aedevmode_app, post_check, []}}
+                    ]}
+          ]}
+        ]},
+  {modules, []},
+
+  {maintainers, []},
+  {licenses, []},
+  {links, []}
+ ]}.

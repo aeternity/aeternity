@@ -10,7 +10,7 @@ contract Environment =
 
   // Address
   entrypoint contract_address() : address = Contract.address
-  entrypoint remote_address(who) : address =
+  entrypoint remote_address(who : Interface) : address =
     who.contract_address(gas = 1000)
 
   // Balance

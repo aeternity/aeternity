@@ -5,7 +5,9 @@
         , connect_node/1
         , ensure_mode/1
         , restore_mode/1
-        , aecore_apps/0 ]).
+        , aecore_apps/0
+	, reporter/0
+	, stop_reporter/1 ]).
 
 -type mode() :: atom().
 
@@ -140,6 +142,37 @@ aecore_apps(AppsDeps) ->
         false ->
             []
     end.
+
+reporter() ->
+    Parent = self(),
+    spawn_link(fun() -> reporter_(Parent) end).
+
+reporter_(Parent) ->
+    receive
+	{_Module, report, progress} ->
+	    io:fwrite(".", []);
+	{_Module, report, #{fmt := Fmt, args := Args} = R} ->
+	    {Fmt1, Args1} = case maps:get(time, R, error) of
+				error -> {Fmt, Args};
+				T ->
+				    Unit = maps:get(unit, R, millisecond),
+				    Ts = calendar:system_time_to_rfc3339(
+					   T, [{unit, Unit}]),
+				    {"~s " ++ Fmt, [Ts|Args]}
+			    end,
+	    io:fwrite(Fmt1, Args1)
+    after 0 ->
+	    receive
+		{Parent, done} ->
+		    exit(normal)
+	    after 0 ->
+		    ok
+	    end
+    end,
+    reporter_(Parent).
+
+stop_reporter(R) ->
+    R ! {self(), done}.
 
 transitive_deps(Apps, AppsDeps) ->
     case [A || {A, Ds} <- AppsDeps,

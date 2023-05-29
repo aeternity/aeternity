@@ -66,7 +66,7 @@ contract TokenMigration =
 
         let root = calculate_root(siblings, leaf_index, leaf_data_hashed)
 
-        // genarated merkle tree hash should be same as inited one
+        // generated merkle tree hash should be same as inited one
         root == state.root_hash
 
     function calculate_root(els : list(string), index : int, root : string) =

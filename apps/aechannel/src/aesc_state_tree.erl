@@ -17,7 +17,8 @@
          mtree_iterator/1,
          new_with_backend/1,
          new_with_dirty_backend/1,
-         root_hash/1]).
+         root_hash/1,
+         db/1]).
 
 -export([ from_binary_without_backend/1
         , to_binary_without_backend/1
@@ -90,6 +91,10 @@ lookup(PubKey, Tree) ->
 -spec root_hash(tree()) -> {ok, aeu_mtrees:root_hash()} | {error, empty}.
 root_hash(Tree) ->
     aeu_mtrees:root_hash(Tree).
+
+-spec db(tree()) -> {'ok', aeu_mp_trees:db()}.
+db(Tree) ->
+    aeu_mtrees:db(Tree).
 
 -spec to_binary_without_backend(tree()) -> binary().
 to_binary_without_backend(Tree) ->

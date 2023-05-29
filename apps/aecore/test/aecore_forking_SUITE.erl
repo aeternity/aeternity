@@ -1,6 +1,6 @@
 -module(aecore_forking_SUITE).
 
-%% This code is brutaly copied form aecore_sync_SUITE and should use joined code base.
+%% This code is brutally copied form aecore_sync_SUITE and should use joined code base.
 
 %% common_test exports
 -export(
@@ -30,7 +30,8 @@
     start_nodes_and_wait_sync_dev1_chain_wins/1,
     start_nodes_and_wait_sync_dev2_chain_wins/1,
     assert_orphaned_tx_in_pool_dev1_receives/1,
-    assert_orphaned_tx_in_pool_dev2_receives/1
+    assert_orphaned_tx_in_pool_dev2_receives/1,
+    wait_dev1_txpool_empty/1
    ]).
 
 %% tr_ttb behavior callbacks
@@ -98,6 +99,7 @@ groups() ->
        start_nodes_and_wait_sync_dev2_chain_wins,
        assert_orphaned_tx_in_pool_dev2_receives,
        mine_a_micro_block_on_dev2,
+       wait_dev1_txpool_empty,
        stop_dev1,
        stop_dev2
        ]},
@@ -138,7 +140,8 @@ init_per_suite(Config) ->
                                       #{ <<"sync">> =>
                                              #{<<"sync_allowed_height_from_top">> => 0}
                                        , <<"mempool">> =>
-                                             #{ <<"sync_interval">> => 1000} %% every second
+                                             #{ <<"sync_interval">> => 1000 %% every second
+                                              , <<"tx_ttl">> => 1000 }
                                        , <<"mining">> =>
                                              #{ <<"expected_mine_rate">> => ?MINE_RATE,
                                                 %% this is important so beneficiary can spend
@@ -432,6 +435,7 @@ mine_a_micro_block(Node) ->
 spend(Node) ->
     {_, Pub} = aecore_suite_utils:sign_keys(Node),
     NName = aecore_suite_utils:node_name(Node),
+    {ok, []} = rpc:call(NName, aec_tx_pool, peek, [infinity]),
     {ok, Tx} = aecore_suite_utils:spend(NName, Pub, Pub, 1, ?SPEND_FEE),
     {ok, [Tx]} = rpc:call(NName, aec_tx_pool, peek, [infinity]),
     ct:log("Spend tx ~p", [Tx]),
@@ -439,6 +443,16 @@ spend(Node) ->
 
 spend_on_dev1(_Config) -> spend(dev1).
 spend_on_dev2(_Config) -> spend(dev2).
+
+wait_dev1_txpool_empty(_Config) ->
+    wait_txpool_empty(dev1).
+
+wait_txpool_empty(Node) ->
+     NName = aecore_suite_utils:node_name(Node),
+      aec_test_utils:wait_for_it(
+        fun() -> rpc:call(NName, aec_tx_pool, peek, [infinity], 1000) end,
+        {ok, []}),
+    ok.
 
 wait_nodes_to_sync(ExpectedTop, WrongForkNode, T0) ->
     WFNName = aecore_suite_utils:node_name(WrongForkNode),
@@ -468,7 +482,7 @@ start_nodes_and_wait_sync(CorrectForkNode, OtherNode, Config) ->
 
     false = (ForkTop == CFTop),
     timer:sleep(100),
-    %% unexepctedly last block of dev1 arrives before rest of the chain
+    %% unexpectedly last block of dev1 arrives before rest of the chain
     %% This is no longer allowed, so it should fail.
     ?assertMatch({error, {illegal_orphan, _}},
                   rpc:call(ForkNName, aec_conductor, post_block, [CFTop], 5000)),
@@ -486,13 +500,38 @@ assert_orphaned_tx_in_pool_dev2_receives(Config) ->
 
 assert_orphaned_tx_in_pool(CorrectForkNode, OtherNode, _Config) ->
     NName = aecore_suite_utils:node_name(OtherNode),
-    {ok, [SignedTx]} = rpc:call(NName, aec_tx_pool, peek, [infinity], 5000),
+    SignedTx = peek_or_await_tx(NName),
+    % {ok, [SignedTx]} = rpc:call(NName, aec_tx_pool, peek, [infinity], 5000),
     TxHash = aetx_sign:hash(SignedTx),
 
     timer:sleep(100),
     N2Name = aecore_suite_utils:node_name(CorrectForkNode),
     TxLocation = rpc:call(N2Name, aec_chain, find_tx_location, [TxHash], 5000),
+    ct:log("TxLocation (~p): ~p", [OtherNode, TxLocation]),
     {true, _} = {(TxLocation =/= none), none}, %% tx had been GCed
     {true, _} = {(TxLocation =/= not_found), not_found},%% tx had not been seen on the node yet
     {ok, [SignedTx]} = rpc:call(N2Name, aec_tx_pool, peek, [infinity], 5000),
     ok.
+
+peek_or_await_tx(Node) ->
+    with_tx_subscription(
+        Node, [tx_received],
+        fun() ->
+            case rpc:call(Node, aec_tx_pool, peek, [infinity], 5000) of
+                {ok, []} ->
+                    receive
+                        {gproc_ps_event, tx_received, #{info := STx}} -> STx
+                    after 5000 ->
+                        error(receive_tx_timeout)
+                    end;
+                {ok, [STx]} ->
+                    STx
+            end
+        end).
+
+with_tx_subscription(Node, Events, F) ->
+    [true = rpc:call(Node, aec_events, subscribe, [E]) || E <- Events],
+    try F()
+    after
+        [rpc:call(Node, aec_events, unsubscribe, [E]) || E <- Events]
+    end.

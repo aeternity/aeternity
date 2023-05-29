@@ -18,23 +18,29 @@
     allowed_method :: binary(),
     logic_handler :: atom(),
     validator :: jesse_state:state(),
-    endpoints :: module()
+    endpoints :: module(),
+    context :: undefined | map()
 }).
 
 -define(DEFAULT_HTTP_CACHE_ENABLED, false).
 
-init(Req, {SpecVsn, OperationId, AllowedMethod, LogicHandler}) ->
-    Mod =
-        case SpecVsn of
-            oas3 -> oas_endpoints;
-            swagger2 -> endpoints
-        end,
+init(Req, {SpecVsn, OperationId, AllowedMethod, LogicHandler, Context}) ->
+    Mod = case LogicHandler of
+              aehttp_dispatch_rosetta ->
+                  rosetta_endpoints;
+              _ ->
+                  case SpecVsn of
+                      oas3 -> oas_endpoints;
+                      swagger2 -> endpoints
+                  end
+          end,
     State = #state{
         operation_id = OperationId,
         allowed_method = AllowedMethod,
         logic_handler = LogicHandler,
         validator = aehttp_api_validate:validator(SpecVsn),
-        endpoints = Mod
+        endpoints = Mod,
+        context = Context
     },
     {cowboy_rest, Req, State}.
 
@@ -75,12 +81,12 @@ handle_request_json(Req0, State = #state{
         operation_id = OperationId,
         logic_handler = LogicHandler,
         validator = Validator,
-        endpoints = Mod
+        endpoints = Mod,
+        context = Context
     }) ->
     Method = cowboy_req:method(Req0),
     try aehttp_api_validate:request(OperationId, Method, Req0, Validator, Mod) of
         {ok, Params, Req1} ->
-            Context = #{},
             {Code, Headers, Body0} = LogicHandler:handle_request(OperationId, Params, Context),
             Body =
                 case maps:get('int-as-string', Params, false) of
@@ -125,10 +131,10 @@ cache_enabled() ->
     aeu_env:user_config_or_env([<<"http">>, <<"cache">>, <<"enabled">>],
                                aehttp, [cache, enabled], ?DEFAULT_HTTP_CACHE_ENABLED).
 
-convert_all_ints_to_string(Map) ->
-   maps:map(
-      fun(_, I) when is_integer(I) -> integer_to_binary(I);
-         (_, M) when is_map(M) -> convert_all_ints_to_string(M);
-         (_, Other) -> Other
-      end,
-      Map).
+convert_all_ints_to_string(Val) ->
+   case Val of
+      _ when is_integer(Val) -> integer_to_binary(Val);
+      _ when is_map(Val) -> maps:map(fun(_, V) -> convert_all_ints_to_string(V) end, Val);
+      _ when is_list(Val) -> lists:map(fun(I) -> convert_all_ints_to_string(I) end, Val);
+      Other -> Other
+   end.

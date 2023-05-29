@@ -10,13 +10,13 @@
 
 -include_lib("eunit/include/eunit.hrl").
 
-consensus_one() -> #{<<"name">> => <<"eunit_one">>}.
-consensus_one(Config) -> #{<<"name">> => <<"eunit_one">>, <<"config">> => Config}.
-consensus_two() -> #{<<"name">> => <<"eunit_two">>}.
-consensus_two(Config) -> #{<<"name">> => <<"eunit_two">>, <<"config">> => Config}.
-consensus_three() -> #{<<"name">> => <<"eunit_three">>}.
-consensus_three(Config) -> #{<<"name">> => <<"eunit_three">>, <<"config">> => Config}.
-consensus_unknown() -> #{<<"name">> => <<"consensus_unknown">>}.
+consensus_one() -> #{<<"type">> => <<"eunit_one">>}.
+consensus_one(Config) -> #{<<"type">> => <<"eunit_one">>, <<"config">> => Config}.
+consensus_two() -> #{<<"type">> => <<"eunit_two">>}.
+consensus_two(Config) -> #{<<"type">> => <<"eunit_two">>, <<"config">> => Config}.
+consensus_three() -> #{<<"type">> => <<"eunit_three">>}.
+consensus_three(Config) -> #{<<"type">> => <<"eunit_three">>, <<"config">> => Config}.
+consensus_unknown() -> #{<<"type">> => <<"consensus_unknown">>}.
 
 setup_module(Name, CanBeTurnedOff) ->
     meck:expect(Name, can_be_turned_off, fun() -> CanBeTurnedOff end),
@@ -209,14 +209,14 @@ test_inject_account_at_genesis() ->
     meck:expect(module_eunit_one, genesis_raw_header, fun() -> aec_consensus_common_tests:genesis_raw_header() end),
     meck:expect(module_eunit_one, assert_key_target_range, fun(T) -> aec_consensus_common_tests:assert_key_target_range(T) end),
     G1 = aec_consensus:get_genesis_hash(),
-    [{PK1, _}] = aeu_mtrees:to_list(aec_trees:accounts(aec_block_genesis:populated_trees())),
+    [{PK1, _}] = aec_accounts_trees:to_list(aec_trees:accounts(aec_block_genesis:populated_trees())),
 
     %% Try inserting another account at genesis
     meck:expect(module_eunit_one, genesis_transform_trees, fun(Trees, a) ->
                                                            aec_trees:grant_fee(PK2, Trees, 400)
                                                            end),
-    [{PK2, _}, {PK1, _}] = aeu_mtrees:to_list(aec_trees:accounts(aec_block_genesis:populated_trees())),
-    %% Changes to the genesis block need to be explicitly persisited
+    [{PK2, _}, {PK1, _}] = aec_accounts_trees:to_list(aec_trees:accounts(aec_block_genesis:populated_trees())),
+    %% Changes to the genesis block need to be explicitly persisted
     G1 = aec_consensus:get_genesis_hash(),
     aec_consensus:set_genesis_hash(),
     G2 = aec_consensus:get_genesis_hash(),

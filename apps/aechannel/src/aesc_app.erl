@@ -9,6 +9,7 @@
         ]).
 
 start(_StartType, _StartArgs) ->
+    aesc_fsm:init_active_fsm_counter(),
     aesc_sup:start_link().
 
 start_phase(_Phase, _StartType, _PhaseArgs) ->
@@ -18,4 +19,5 @@ prep_stop(_State) ->
     ok.
 
 stop(_State) ->
+    catch aesc_fsm:unreg_active_fsm_counter(),
     ok.

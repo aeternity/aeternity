@@ -5,7 +5,7 @@
 
 -define(TESTED_MODULE, aect_state_tree).
 
-% channels' rely on contracts with a dict backend being reproducable with
+% channels' rely on contracts with a dict backend being reproducible with
 % only the latest state
 trunc_test() ->
     T0 = ?TESTED_MODULE:empty(),

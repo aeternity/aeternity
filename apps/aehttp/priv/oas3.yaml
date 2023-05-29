@@ -34,7 +34,7 @@ tags:
   - name: dry-run
     description: External dry run endpoint.
   - name: node-operator
-    description: Endpoints to help the node oprator interract with the node
+    description: Endpoints to help the node operator interact with the node
 externalDocs:
   description: Find out more about Aeternity
   url: http://www.aeternity.com
@@ -470,6 +470,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "410":
+          description: State data at the requested height has been garbage-collected
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   "/accounts/{pubkey}/hash/{hash}":
     get:
       tags:
@@ -592,8 +598,14 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/DryRunResults"
-        "403":
+        "400":
           description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Over the gas limit
           content:
             application/json:
               schema:
@@ -651,6 +663,12 @@ paths:
                 $ref: "#/components/schemas/Error"
         "404":
           description: Transaction not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "410":
+          description: State data at the requested height has been garbage-collected
           content:
             application/json:
               schema:
@@ -1747,6 +1765,21 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /debug/channels/fsm-count:
+    get:
+      tags:
+        - internal
+        - node_info
+        - debug
+      operationId: GetChannelsFsmCount
+      description: Get the number of currently active State Channel FSMs
+      responses:
+        "200":
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CountResponse"
   /debug/transactions/pending:
     get:
       tags:
@@ -1891,8 +1924,14 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/DryRunResults"
-        "403":
+        "400":
           description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Over the gas limit
           content:
             application/json:
               schema:
@@ -1979,6 +2018,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "410":
+          description: State data at the requested height has been garbage-collected
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   "/debug/crash":
     get:
       tags:
@@ -2038,7 +2083,7 @@ paths:
         - internal
         - node-operator
       operationId: GetPeerCount
-      description: Get the number of peers in the different pools. This is to be used to catch if a node loses connectivity 
+      description: Get the number of peers in the different pools. This is to be used to catch if a node loses connectivity
       parameters:
         - $ref: '#/components/parameters/intAsString'
       responses:
@@ -3711,7 +3756,7 @@ components:
       type: object
       properties:
         next_nonce:
-          type: integer
+          $ref: "#/components/schemas/UInt64"
       required:
         - next_nonce
     CheckTxInPoolResponse:

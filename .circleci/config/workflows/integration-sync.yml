@@ -1,0 +1,8 @@
+when: << pipeline.parameters.run_integration_sync >>
+jobs:
+  - reset-single-node:
+      name: reset-integration-sync
+      env: integration_sync
+      context:
+        - ae-slack
+        - ae-vault-node

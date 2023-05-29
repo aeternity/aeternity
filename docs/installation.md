@@ -14,7 +14,7 @@ Run below command to install latest version of aeternity node and follow the ins
 bash <(curl -s https://install.aeternity.io/install.sh)
 ```
 
-While this method is the easiest one it is not recomended for production systems.
+While this method is the easiest one it is not recommended for production systems.
 
 ## Package Install
 
@@ -35,7 +35,7 @@ sudo service aeternity-node start
 
 ### macOS
 
-Minimum required version is macOS Mojave 10.14 (x86-64).
+Minimum required version is macOS Big Sur 11.6.2 (x86-64).
 
 ```bash
 brew tap aeternity/aeternity
@@ -55,7 +55,7 @@ In order to install an Aeternity node from a tarball, you need to:
 The release binaries are published on [GitHub][releases] and are tested on the following platforms:
 
 * Ubuntu 18.04 LTS (x86-64);
-* macOS Mojave 10.14 (x86-64).
+* macOS Big Sur 11.6.2 (x86-64).
 
 [releases]: https://github.com/aeternity/aeternity/releases
 
@@ -64,23 +64,17 @@ The release binaries are published on [GitHub][releases] and are tested on the f
 Package dependencies are:
 
 * [Libsodium](https://download.libsodium.org/doc/) v1.0.16
-* [Openssl](https://www.openssl.org)
+* [Openssl](https://www.openssl.org) v1.1
 
 #### Ubuntu dependencies
 
 Supported Ubuntu version is 18.04.
 
-The package requires a libsodium v1.0.16 as `libsodium.so.23` shared object/library.
-Ubuntu 18.04 ships with libsodium 1.0.16, thus it can be installed with `apt` package manager:
+The package requires libssl and libsodium v1.0.16 as `libsodium.so.23` shared object/library.
+Ubuntu 18.04 ships with libssl 1.1 and libsodium 1.0.16, thus it can be installed with `apt` package manager:
 
 ```bash
-sudo apt-get install libsodium23
-```
-
-The Ubuntu release binaries are built with `libssl1.0.0` (default Ubuntu 18.04 version is 1.1) requirement that can be installed with:
-
-```bash
-sudo apt-get install libssl1.0.0
+sudo apt-get install libsodium23 libssl1.1
 ```
 
 #### macOS dependencies

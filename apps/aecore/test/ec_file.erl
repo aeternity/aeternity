@@ -167,7 +167,7 @@ remove(Path, Options) ->
 remove(Path) ->
     remove(Path, []).
 
-%% @doc indicates witha boolean if the path supplied refers to symlink.
+%% @doc indicates with a boolean if the path supplied refers to symlink.
 -spec is_symlink(file:name()) -> boolean().
 is_symlink(Path) ->
     case file:read_link_info(Path) of
@@ -245,7 +245,7 @@ mkdir_path(Path) ->
     mkdir_p(Path).
 
 
-%% @doc read a file from the file system. Provide UEX exeption on failure.
+%% @doc read a file from the file system. Provide UEX exception on failure.
 -spec read(FilePath::file:filename()) -> {ok, binary()} | {error, Reason::term()}.
 read(FilePath) ->
     %% Now that we are moving away from exceptions again this becomes
@@ -254,7 +254,7 @@ read(FilePath) ->
     file:read_file(FilePath).
 
 
-%% @doc write a file to the file system. Provide UEX exeption on failure.
+%% @doc write a file to the file system. Provide UEX exception on failure.
 -spec write(FileName::file:filename(), Contents::string()) -> ok | {error, Reason::term()}.
 write(FileName, Contents) ->
     %% Now that we are moving away from exceptions again this becomes

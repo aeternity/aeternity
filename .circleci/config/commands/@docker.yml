@@ -2,15 +2,14 @@ setup_docker:
   steps:
     - setup_remote_docker:
         docker_layer_caching: true
-        version: "17.09.0-ce"
+        version: "20.10.18"
 
 docker_login:
   steps:
-    - setup_secrets
     - run:
         name: Login to Docker Hub
         command: |
-          docker login -u $(</secrets/DOCKER_USER) -p $(</secrets/DOCKER_PASS)
+          docker login -u $DOCKER_USER -p $DOCKER_PASS
 
 docker_build:
   parameters:
@@ -20,7 +19,7 @@ docker_build:
     - run:
         name: Build docker image
         command: |
-          docker pull aeternity/builder:bionic-otp22
+          docker pull << pipeline.parameters.docker_builder_image >>
           docker build -t << pipeline.parameters.docker_repo >>:<< parameters.tag >> .
     - run:
         name: Start docker image
@@ -44,6 +43,28 @@ docker_build:
           until [ "`docker inspect -f {{.State.Health.Status}} ae_<< pipeline.git.revision >>`"=="healthy" ]; do
               sleep 1;
           done;
+
+docker_manifest:
+  parameters:
+    manifest_list:
+      type: string
+    tag:
+      type: string
+  steps:
+    - run:
+        name: Create docker manifest
+        command: |
+          read -a MANIFEST_LIST_ARRAY \<<< "<< parameters.manifest_list >>"
+          PREFIX="<< pipeline.parameters.docker_repo >>:"
+          MANIFEST_LIST="${MANIFEST_LIST_ARRAY[@]/#/$PREFIX}"
+          docker manifest create \
+            << pipeline.parameters.docker_repo >>:<< parameters.tag >> \
+            $MANIFEST_LIST
+    - docker_login
+    - run:
+        name: Push docker manifest
+        command: |
+          docker manifest push << pipeline.parameters.docker_repo >>:<< parameters.tag >>
 
 docker_tag:
   parameters:

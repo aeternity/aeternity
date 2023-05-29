@@ -39,7 +39,6 @@ write_chain_test_() ->
     {foreach,
      fun() ->
              ok = application:ensure_started(gproc),
-             {ok, _} = aec_db_error_store:start_link(),
              aec_test_utils:start_chain_db(),
              meck:new(aec_mining, [passthrough]),
              meck:expect(aec_mining, verify, fun(_, _, _, _) -> true end),
@@ -47,7 +46,7 @@ write_chain_test_() ->
              meck:expect(aec_events, publish, fun(_, _) -> ok end),
              aec_test_utils:mock_genesis_and_forks(),
              TmpDir = aec_test_utils:aec_keys_setup(),
-             {ok, PubKey} = aec_keys:pubkey(),
+             {ok, PubKey} = aec_keys:get_pubkey(),
              ok = application:set_env(aecore, beneficiary, aeser_api_encoder:encode(account_pubkey, PubKey)),
              {ok, _} = aec_tx_pool:start_link(),
              {ok, _} = aec_conductor:start_link([{autostart, false}]),
@@ -62,7 +61,6 @@ write_chain_test_() ->
              meck:unload(aec_events),
              aec_test_utils:unmock_genesis_and_forks(),
              aec_test_utils:stop_chain_db(),
-             ok = aec_db_error_store:stop(),
              aec_test_utils:aec_keys_cleanup(TmpDir)
      end,
      [{"Write a block to chain and read it back.",
@@ -132,7 +130,7 @@ restart_test_() ->
      fun() ->
              ok = application:ensure_started(gproc),
              TmpDir = aec_test_utils:aec_keys_setup(),
-             {ok, PubKey} = aec_keys:pubkey(),
+             {ok, PubKey} = aec_keys:get_pubkey(),
              ok = application:set_env(aecore, beneficiary, aeser_api_encoder:encode(account_pubkey, PubKey)),
              aec_test_utils:start_chain_db(),
              meck:new(aec_events, [passthrough]),
@@ -239,12 +237,9 @@ persisted_database_write_error_test_() ->
      fun() ->
              Persist = application:get_env(aecore, persist),
              application:set_env(aecore, persist, true),
-             {ok, _} = aec_db_error_store:start_link(),
              aec_db:check_db(),
-             aec_db:prepare_mnesia_bypass(),
              aec_db:clear_db(),
              TmpDir = aec_test_utils:aec_keys_setup(),
-             ok = meck:new(aec_db_lib, [passthrough]),
              aec_test_utils:mock_genesis_and_forks(),
              {TmpDir, Persist}
      end,
@@ -253,23 +248,9 @@ persisted_database_write_error_test_() ->
              aec_test_utils:unmock_genesis_and_forks(),
              aec_test_utils:aec_keys_cleanup(TmpDir),
              application:set_env(aecore, persist, Persist),
-             ok = aec_db_error_store:stop(),
-             ok = meck:unload(aec_db_lib),
              ok = mnesia:delete_schema([node()])
      end,
-     [{"Failed database write will be reported to caller",
-       fun() ->
-               %% Setup
-               Res = {error, bad_thing_happened},
-               ok = meck:expect(aec_db_lib, rocksdb_write, fun(_, _, _) -> Res end),
-               [_GB, B1] = aec_test_utils:gen_blocks_only_chain(2),
-
-               %% Try writing a block
-               ?assertMatch({error, {io_error, {_, bad_thing_happened}}}, aec_db:write_block(B1)),
-
-               %% Cleanup
-               ok
-       end},
+     [
       {"Throughput test building chain with 10 blocks on disc",
        fun() ->
                %% Setup
@@ -289,9 +270,7 @@ peers_test_() ->
      fun() ->
           Persist = application:get_env(aecore, persist),
           application:set_env(aecore, persist, true),
-          {ok, _} = aec_db_error_store:start_link(),
           aec_db:check_db(),
-          aec_db:prepare_mnesia_bypass(),
           aec_db:clear_db(),
           Persist
 
@@ -299,7 +278,6 @@ peers_test_() ->
      fun(Persist) ->
           application:stop(mnesia),
           application:set_env(aecore, persist, Persist),
-          ok = aec_db_error_store:stop(),
           ok = mnesia:delete_schema([node()])
      end,
      [{"Write and retrieve a peer",

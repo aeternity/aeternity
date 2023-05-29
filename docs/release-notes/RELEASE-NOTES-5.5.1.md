@@ -4,7 +4,7 @@
 
 * Adds support in the State Channel FSM to detect and properly act upon
   unexpected channel_force_progress_tx on-chain
-* Fix check of contracts which prevented new nodes from synching from scratch
+* Fix check of contracts which prevented new nodes from syncing from scratch
 * When a State Channel responder acceptor times out (accept_timeout), it checks to see whether it should give up or keep trying. This logic was faulty and has now been fixed.
 
 Please join the **mainnet** by following the instructions in the documentation below,

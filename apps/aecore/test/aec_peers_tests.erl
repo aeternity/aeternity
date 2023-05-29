@@ -1030,7 +1030,7 @@ test_ping() ->
     {ok, Conn} = ?assertCalled(connect, [#{ conn_type := noise, r_pubkey := PubKey }], {ok, _}, 200),
     ok = conn_peer_connected(Conn),
 
-    % Check we are sheduling a ping right away.
+    % Check we are scheduling a ping right away.
     ?assertCalled(schedule_ping, [Id], ok, 200),
     ok = conn_log_ping(Conn, ok),
 
@@ -1288,9 +1288,7 @@ global_setup() ->
                 fun() -> {ok, <<"70000000000000000000000000000000">>} end),
     Persist = application:get_env(aecore, persist),
     application:set_env(aecore, persist, false),
-    {ok, _} = aec_db_error_store:start_link(),
     aec_db:check_db(),
-    aec_db:prepare_mnesia_bypass(),
     aec_db:clear_db(),
     Persist.
 
@@ -1300,7 +1298,6 @@ global_teardown(Persist) ->
     crypto:stop(),
     application:stop(mnesia),
     application:set_env(aecore, persist, Persist),
-    ok = aec_db_error_store:stop(),
     ok = mnesia:delete_schema([node()]).
 
 setup() ->
@@ -1459,7 +1456,7 @@ conn_kill(Pid) ->
     receive
         {'DOWN', Ref, _Type, Pid, _Info} -> ok
     after
-        5000 -> ?fail("timout waiting for connection to get killed", [])
+        5000 -> ?fail("timeout waiting for connection to get killed", [])
     end.
 
 conn_peer_connected(Pid) ->

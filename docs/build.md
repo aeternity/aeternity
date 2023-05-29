@@ -17,7 +17,7 @@ The commands below assume you are logged in with `sudo` user.
 
 The node have couple of main dependencies that have to be installed to build it from source:
 
-- [Erlang/OTP 22.3.4.9](http://erlang.org/doc/installation_guide/INSTALL.html)
+- [Erlang/OTP 23.3.4.5](http://erlang.org/doc/installation_guide/INSTALL.html)
 - [Libsodium](https://download.libsodium.org/doc/installation/)
 - [Libgmp](https://gmplib.org)
 
@@ -44,7 +44,7 @@ The easiest way to install package on MacOS is Homebrew, it can be installed by 
 Then install the build dependencies using the `brew` command:
 ```
 brew update
-brew install erlang@22 openssl libsodium autoconf gmp cmake
+brew install erlang@23 openssl libsodium autoconf gmp cmake
 ```
 
 If building on an m1 Mac homebrew does not automatically set up symlinks to system directories, so before running `make` set up the build path with:
@@ -61,7 +61,7 @@ Update package database, packages and install the common tools and libraries:
 
 ```bash
 sudo pacman -Sy
-sudo pacman -S git base-devel cmake ncurses erlang22-nox libsodium gmp
+sudo pacman -S git base-devel cmake ncurses erlang23-nox libsodium gmp
 ```
 
 ### openSUSE Leap 15.2

@@ -40,13 +40,13 @@ It:
 
 * Improved the functionality of State Channel delegates: now they can provide
   `channel_solo_snapshot_tx` as well. This is really handy in cases one party
-  is missing and the other is doing malicious force progess on-chain while the
+  is missing and the other is doing malicious force progress on-chain while the
   channel is still open.
 
 * Revisited the State Channel delegates: so far they were a shared list for
   both participants. From Iris on, delegates are per peer: there is a list of
   delegates for the `initiator` and another one for the `responder`. Old
-  channel objects can still be used but users are strongly recomended to reset
+  channel objects can still be used but users are strongly recommended to reset
   their `delegates` list if they had any. Note that the HTTP representations
   are changed accordingly.
 
@@ -134,7 +134,7 @@ switch(Auth.tx)
   been calibrated.
 
 * Introduced a new HTTP endpoint: `/dry-run`. It is part of the `external`
-  interface and should be prefered over the existing `debug` endpoint. It
+  interface and should be preferred over the existing `debug` endpoint. It
   comes with some protections for the node: all transactions/calls provided
   are limited to a total amount of `gas` that they can consume. There is a new
   setting in the config where the node operator can change this according to

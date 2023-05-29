@@ -331,8 +331,9 @@ process_set_delegates(ChannelPubKey, FromPubKey, IDelegates,
                 Channel1
         end,
     Trees1 = set_channel(Channel, Trees),
-    Trees2 = spend(FromPubKey, Fee, Nonce, Trees1, Env),
-    add_event(Trees2, ChannelPubKey, Env).
+    {Payer, Trees2} = spend(FromPubKey, Fee, Nonce, Trees1, Env),
+    Env1 = aetx_env:tx_event(delta, {Payer, -Fee}, <<"Channel.fee">>, Env),
+    add_event(Trees2, ChannelPubKey, Env1).
 
 -spec check_slash_payload(aesc_channels:pubkey(), aec_keys:pubkey(),
                           non_neg_integer(), non_neg_integer(), binary(),
@@ -701,7 +702,7 @@ verify_meta_tx(SignerId, StoreKey, AuthContractId, MetaTx, Trees, Env, TxType)
                        , store       => Store
                        , call        => Call
                        , trees       => Trees
-                       , tx_env      => set_auth_tx_hash(aega_meta_tx:tx(MetaTx), Env, TxType)
+                       , tx_env      => set_auth_tx_hash(MetaTx, Env, TxType)
                        , off_chain   => false
                        , origin      => SignerPK
                        , creator     => aect_contracts:owner_pubkey(Contract)
@@ -762,14 +763,25 @@ check_auth_result(#{ abi := ABIVersion }, Call) ->
             {error, signature_verification_failed_contract_error}
     end.
 
-set_auth_tx_hash(STx, Env, TxType) ->
+set_auth_tx_hash(MetaTx, Env, TxType) ->
+    STx = aega_meta_tx:tx(MetaTx),
+    Protocol = aetx_env:consensus_version(Env),
     Tx =
         case TxType of
             onchain -> aetx_sign:tx(STx);
             offchain -> aetx_sign:innermost_tx(STx)
         end,
     BinForNetwork = aec_governance:add_network_id(aetx:serialize_to_binary(Tx)),
-    aetx_env:set_ga_tx_hash(Env, aec_hash:hash(tx, BinForNetwork)).
+    Hash =
+        case Protocol < ?CERES_PROTOCOL_VSN of
+            true ->
+                aec_hash:hash(tx, BinForNetwork);
+            false ->
+                Fee =  aega_meta_tx:fee(MetaTx),
+                GasPrice = aega_meta_tx:gas_price(MetaTx),
+                aec_hash:hash(tx, aega_meta_tx:serialize_auth_data(Fee, GasPrice, BinForNetwork))
+        end,
+    aetx_env:set_ga_tx_hash(Env, Hash).
 
 is_delegatable_tx_type(Type, Protocol) ->
     lists:member(Type, delegatable_tx_types(Protocol)).
@@ -896,18 +908,17 @@ establish_payer(NormalPayer, TxEnv) ->
 
 process_solo_close(ChannelPubKey, FromPubKey, Nonce, Fee,
                    Payload, PoI, Height, Trees, Env) ->
-    add_event(
-      process_solo_close_slash(ChannelPubKey, FromPubKey, Nonce, Fee,
-                               Payload, PoI, Height, Trees, Env),
-      ChannelPubKey, Env).
-
+    Trees1 = process_solo_close_slash(ChannelPubKey, FromPubKey, Nonce, Fee,
+                                      Payload, PoI, Height, Trees, Env),
+    Env1 = aetx_env:tx_event(delta, {FromPubKey, -Fee}, <<"Channel.fee">>, Env),
+    add_event(Trees1, ChannelPubKey, Env1).
 
 process_slash(ChannelPubKey, FromPubKey, Nonce, Fee,
               Payload, PoI, Height, Trees, Env) ->
-    add_event(
-      process_solo_close_slash(ChannelPubKey, FromPubKey, Nonce, Fee,
-                               Payload, PoI, Height, Trees, Env),
-      ChannelPubKey, Env).
+    Trees1 = process_solo_close_slash(ChannelPubKey, FromPubKey, Nonce, Fee,
+                                    Payload, PoI, Height, Trees, Env),
+    Env1 = aetx_env:tx_event(delta, {FromPubKey, -Fee}, <<"Channel.fee">>, Env),
+    add_event(Trees1, ChannelPubKey, Env1).
 
 process_solo_snapshot(ChannelPubKey, FromPubKey, Nonce, Fee, Payload, Trees, Env) ->
     ChannelsTree0 = aec_trees:channels(Trees),
@@ -915,12 +926,13 @@ process_solo_snapshot(ChannelPubKey, FromPubKey, Nonce, Fee, Payload, Trees, Env
     {ok, _SignedOffchainTx, PayloadTx} = deserialize_payload(Payload),
     Channel = aesc_channels:snapshot_solo(Channel0, PayloadTx),
     Trees1 = set_channel(Channel, Trees),
-    Trees2 = spend(FromPubKey, Fee, Nonce, Trees1, Env),
-    add_event(Trees2, ChannelPubKey, Env).
+    {Payer, Trees2} = spend(FromPubKey, Fee, Nonce, Trees1, Env),
+    Env1 = aetx_env:tx_event(delta, {Payer, -Fee}, <<"Channel.fee">>, Env),
+    add_event(Trees2, ChannelPubKey, Env1).
 
 process_solo_close_slash(ChannelPubKey, FromPubKey, Nonce, Fee,
                          Payload, PoI, Height, Trees, Env) ->
-    Trees1        = spend(FromPubKey, Fee, Nonce, Trees, Env),
+    {_Payer, Trees1} = spend(FromPubKey, Fee, Nonce, Trees, Env),
     ChannelsTree0 = aec_trees:channels(Trees1),
 
     Channel0 = aesc_state_tree:get(ChannelPubKey, ChannelsTree0),
@@ -982,10 +994,13 @@ process_force_progress(Tx, OffChainTrees, Payload, TxHash, Height, Trees, Env) -
 
 
     % consume gas from sender
-    Trees1 = consume_gas_and_fee(Call, Fee, FromPubKey, Nonce, Trees, Env),
+    UsedAmount = aect_call:gas_used(Call) * aect_call:gas_price(Call),
+    {Payer, Trees1} = consume_gas_and_fee(UsedAmount, Fee, FromPubKey, Nonce, Trees, Env),
+    Env1 = aetx_env:tx_event(delta, {Payer, -Fee}, <<"Channel.fee">>, Env),
+    Env2 = aetx_env:tx_event(delta, {Payer, -UsedAmount}, <<"Channel.amount">>, Env1),
 
     % add a receipt call in the calls state tree
-    Trees2 = add_call(Call, TxHash, Trees1, Env),
+    Trees2 = add_call(Call, TxHash, Trees1, Env2),
 
     ?TEST_LOG("Expected hash ~p", [ExpectedHash]),
     ?TEST_LOG("Computed hash ~p", [ComputedHash]),
@@ -1024,7 +1039,7 @@ process_force_progress(Tx, OffChainTrees, Payload, TxHash, Height, Trees, Env) -
                 ?TEST_LOG("Expected and computed values DO NOT MATCH. Channel object is NOT being updated", []),
                 Trees2
         end,
-    add_event(Trees3, ChannelPubKey, Env).
+    add_event(Trees3, ChannelPubKey, Env2).
 
 
 get_vals(List) ->
@@ -1067,7 +1082,7 @@ spend_(From, From, Amount, Nonce, Trees) ->
     Acc0 = aec_accounts_trees:get(From, ATree0),
     {ok, Acc} = aec_accounts:spend(Acc0, Amount, Nonce),
     ATree1 = aec_accounts_trees:enter(Acc, ATree0),
-    aec_trees:set_accounts(Trees, ATree1);
+    {From, aec_trees:set_accounts(Trees, ATree1)};
 spend_(From, Payer, Amount, Nonce, Trees) ->
     ATree0 = aec_trees:accounts(Trees),
     AccF0 = aec_accounts_trees:get(From, ATree0),
@@ -1076,16 +1091,15 @@ spend_(From, Payer, Amount, Nonce, Trees) ->
     {ok, AccP1} = aec_accounts:spend_without_nonce_bump(AccP0, Amount),
     ATree1 = aec_accounts_trees:enter(AccF1, ATree0),
     ATree2 = aec_accounts_trees:enter(AccP1, ATree1),
-    aec_trees:set_accounts(Trees, ATree2).
+    {Payer, aec_trees:set_accounts(Trees, ATree2)}.
 
--spec consume_gas_and_fee(aect_call:call(),
+-spec consume_gas_and_fee(integer(),
                           integer(),
                           aec_keys:pubkey(),
                           non_neg_integer(),
                           aec_trees:trees(),
-                          aetx_env:env()) -> aec_trees:trees().
-consume_gas_and_fee(Call, Fee, From, Nonce, Trees, Env) ->
-    UsedAmount = aect_call:gas_used(Call) * aect_call:gas_price(Call),
+                          aetx_env:env()) -> {aec_keys:pubkey(), aec_trees:trees()}.
+consume_gas_and_fee(UsedAmount, Fee, From, Nonce, Trees, Env) ->
     spend(From, UsedAmount + Fee, Nonce, Trees, Env).
 
 set_channel(Channel, Trees) ->
@@ -1106,18 +1120,19 @@ tx_hash_to_contract_pubkey(TxHash) ->
 
 add_call(Call0, TxHash, Trees, Env) ->
     ContractPubkey = tx_hash_to_contract_pubkey(TxHash),
-    Call1          = aect_call:set_contract(ContractPubkey, Call0),
-    Caller         = aect_call:caller_pubkey(Call1),
+    Caller         = aect_call:caller_pubkey(Call0),
     NewId =
         case aetx_env:ga_nonce(Env, Caller) of
             {value, Nonce} ->
                 aect_call:ga_id(Nonce, ContractPubkey);
             none ->
-                aect_call:id(Caller, aect_call:caller_nonce(Call1), ContractPubkey)
+                aect_call:id(Caller, aect_call:caller_nonce(Call0), ContractPubkey)
         end,
 
-    Call = aect_call:set_id(NewId, Call1),
-    aect_utils:insert_call_in_trees(Call, Trees).
+    Call1 = aect_call:set_contract(ContractPubkey, Call0),
+    Call2 = aect_call:set_ct_call_id(undefined, Call1),
+    Call3 = aect_call:set_id(NewId, Call2),
+    aect_utils:insert_call_in_trees(Call3, Trees).
 
 -spec add_event(aec_trees:trees(), binary(), aetx_env:env()) ->
                        {ok, aec_trees:trees(), aetx_env:env()}.

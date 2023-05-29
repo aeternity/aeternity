@@ -26,12 +26,13 @@ The contents of the config file will be validated against a JSON-Schema, located
 It is possible to set configuration values from the command line or shell scripts using
 OS environment variables. The variable names correspond to a path in the config schema,
 using the name prefix `AE__` and with each level name, converted to uppercase, separated
-by two underscores.
+by two underscores. Any hyphen (`"-"`) is replaced by an underscore (`"_"`).
 
 Examples:
 
 `AE__PEERS` corresponds to `{"peers": ...}`
 `AE__HTTP__CORS__MAX_AGE` corresponds to `{"http": {"cors": {"max_age": ...}}}`
+`AE__HTTP__ENDPOINTS__DRY_RUN` corresponds to `{"http": {"endpoints": {"dry-run": ...}}}`
 
 Simple configuration values (integers, strings, booleans) are given as-is. Structured values
 (arrays, objects) need to be encoded as JSON data.
@@ -311,24 +312,11 @@ Aeternity nodes support several types of database persistence backends:
 
  - RocksDB (default for Unix, supported by Unix)
  - Mnesia (default for Win32, supported by all OS'es)
- - Leveled (experimental, supported by all OS'es)
 
-You may choose the database backend by setting `chain.db_backend` to the corresponding value `rocksdb`, `mnesia`, `leveled`
-
-Example (switch to Leveled):
-
-```yaml
-chain:
-    persist: true
-    db_path: ./my_db
-    db_backend: leveled
-```
+You may choose the database backend by setting `chain.db_backend` to the corresponding value `rocksdb`, `mnesia`
 
 **RocksDB** is only available under Unix compatible systems (including OS X and WSL) and is used there by default.
 RocksDB does not work with NTFS volumes.
-
-**Leveled** is designed to be a better alternative to RocksDB and is available for all OS'es.
-However currently it has an experimental support.
 
 **Mnesia** is the DB backend that is distributed with Erlang/OTP but is considered less performant than the other two.
 It is currently the default database when RocksDB is not available (i.e. Win32)
@@ -344,3 +332,28 @@ Notes:
   However it is possible to make snapshots which could be used to speed up syncing of new nodes. 
  - Initial sync might take a lot of time and that heavily depends on the available CPU/IOPS.
  - Restarting a node might be slow on certain configurations due to intensive DB consistency checks.
+
+### RocksDB-related settings
+
+Two configuration settings modify how the RocksDB backend operates, shown below with their default values:
+
+```yaml
+chain:
+    db_commit_bypass: true
+    db_direct_access: false
+```
+
+The `chain:db_commit_bypass` option allows for turning off a special optimization used to speed up and make atomic updates to rocksdb tables from a mnesia transaction commit. This optimization is active by default, and should only be turned off if it's suspected to cause problems.
+
+The `chain:db_direct_access` option makes the Aeternity node use a different API, `mrdb`, for all database accesses. This API is faster and should have better safety properties, but since it is new, it isn't yet the default when using the RocksdbDB backend.
+
+### The `db_migrate` script
+
+When initializing a new node using the RocksDB backend in current or future releases, mnesia tables are created as 'column families' - a form of logical tables supported by recent versions of RocksDB. This should improve both speed and consistency, as well as drastically lower the number of open file descriptors.
+
+If using an existing database, the old model with one database instance per table will be kept, until the `bin/aeternity db_migrate` script is executed. This script, which will activate maintenance mode during its operation, will convert all tables to column families. It will take a while, but should complete within ca 2 hours.
+
+#### Troubleshooting
+
+If an error occurs during migration, you will need to address the error and try to complete the migration, as the system is unlikely to work correctly after a partial migration.
+The script should leave the node in 'maintenance mode' after a failed migration. If the node died, try starting the node using e.g. `AE__SYSTEM__MAINTENANCE_MODE=true bin/aeternity console` and re-run the `db_migrate` script. If this doesn't work, fall back to synching the node from scratch, or download a good database snaphot and restart from there.

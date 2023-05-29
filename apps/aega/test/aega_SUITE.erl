@@ -36,16 +36,26 @@
         , basic_minimum_fee/1
 
         , tx_check/1
+        , tx_auth_name_resolution/1
 
         , bitcoin_attach/1
         , bitcoin_spend_from/1
         , bitcoin_contract_create/1
         , bitcoin_contract_call/1
+        , bitcoin_tamper_proof/1
 
         , ethereum_attach/1
         , ethereum_spend_from/1
         , ethereum_contract_create/1
         , ethereum_contract_call/1
+
+        , mwt_spend/1
+        , mwt_temp_spend/1
+        , mwt_neg_temp_spend/1
+        , mwt_temp_multi_spend/1
+        , mwt_temp_n_spend/1
+        , mwt_temp_height_spend/1
+        , mwt_neg_master_actions/1
 
         , oracle_register/1
         , oracle_query/1
@@ -91,12 +101,6 @@
 
 -include("../../aecontract/test/include/aect_sophia_vsn.hrl").
 
--define(assertMatchABI(AEVM, FATE, Res),
-    case abi_version() of
-        ?ABI_AEVM_SOPHIA_1 -> ?assertMatch(AEVM, Res);
-        ?ABI_FATE_SOPHIA_1 -> ?assertMatch(FATE, Res)
-    end).
-
 -define(INNER_ERROR(_Orig), <<"inner_transaction_failed">>).
 
 %%%===================================================================
@@ -117,11 +121,13 @@ groups() ->
                  , {group, paying_for}
                  , {group, negative}
                  ]}
+
     , {fate, [], [ {group, simple}
                  , {group, basic}
                  , {group, tx}
                  , {group, bitcoin}
                  , {group, ethereum}
+                 , {group, mwt}
                  , {group, oracle}
                  , {group, channel}
                  , {group, multi_wrap}
@@ -147,13 +153,24 @@ groups() ->
                   , basic_minimum_fee
                   ]}
 
-    , {tx, [], [tx_check
+    , {mwt, [], [ mwt_spend
+                , mwt_temp_spend
+                , mwt_neg_temp_spend
+                , mwt_temp_multi_spend
+                , mwt_temp_n_spend
+                , mwt_temp_height_spend
+                , mwt_neg_master_actions
+                ]}
+
+    , {tx, [], [ tx_check
+               , tx_auth_name_resolution
                ]}
 
     , {bitcoin, [], [ bitcoin_attach
                     , bitcoin_spend_from
                     , bitcoin_contract_create
                     , bitcoin_contract_call
+                    , bitcoin_tamper_proof
                     ]}
 
     , {ethereum, [], [ ethereum_attach
@@ -211,6 +228,11 @@ init_per_group(ethereum, Cfg) ->
 init_per_group(paying_for, Cfg) ->
     case aect_test_utils:latest_protocol_version() of
         Vsn when Vsn < ?IRIS_PROTOCOL_VSN -> {skip, paying_for_not_pre_iris};
+        _Vsn -> Cfg
+    end;
+init_per_group(mwt, Cfg) ->
+    case aect_test_utils:latest_protocol_version() of
+        Vsn when Vsn < ?IRIS_PROTOCOL_VSN -> {skip, mwt_not_pre_iris};
         _Vsn -> Cfg
     end;
 init_per_group(tx, Cfg) ->
@@ -330,7 +352,7 @@ simple_contract_call(_Cfg) ->
     AuthOpts2 = #{ prep_fun => fun(_) -> simple_auth(["123", "2"]) end },
     {ok, #{tx_res := ok, call_res := ok, call_val := Val}} =
         ?call(ga_call, Acc1, AuthOpts2, Ct, "identity", "main_", ["42"]),
-    ?assertMatchABI("42", 42, decode_call_result("identity", "main_", ok, Val)),
+    ?assertMatch(42, decode_call_result("identity", "main_", ok, Val)),
 
     ok.
 
@@ -366,6 +388,7 @@ simple_spend_from_fail(_Cfg) ->
 %%%===================================================================
 %%% Basic GA tests
 %%%===================================================================
+
 basic_attach(_Cfg) ->
     state(aect_test_utils:new_state()),
     Acc1 = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
@@ -412,7 +435,7 @@ basic_contract_call(_Cfg) ->
     AuthOpts2 = #{ prep_fun => fun(TxHash) -> ?call(basic_auth, Acc1, "2", TxHash) end },
     {ok, #{call_res := ok, call_val := Val}} =
         ?call(ga_call, Acc1, AuthOpts2, Ct, "identity", "main_", ["42"]),
-    ?assertMatchABI("42", 42, decode_call_result("identity", "main_", ok, Val)),
+    ?assertMatch(42, decode_call_result("identity", "main_", ok, Val)),
 
     ok.
 
@@ -479,6 +502,7 @@ basic_minimum_fee(_Cfg) ->
 %%%===================================================================
 %%% Transaction introspection in authorization function
 %%%===================================================================
+
 tx_check(_Cfg) ->
     state(aect_test_utils:new_state()),
     MinGP = aec_test_utils:min_gas_price(),
@@ -492,7 +516,7 @@ tx_check(_Cfg) ->
 
     {ok, #{call_res := ok, call_val := Val}} =
         ?call(ga_call, Acc1, Auth("2"), Ct, "identity", "main_", ["42"]),
-    ?assertMatchABI("42", 42, decode_call_result("identity", "main_", ok, Val)),
+    ?assertMatch(42, decode_call_result("identity", "main_", ok, Val)),
 
     PreBalance  = ?call(account_balance, Acc2),
     {ok, #{tx_res := ok}} =
@@ -506,9 +530,70 @@ tx_check(_Cfg) ->
     ok.
 
 
+-define(CT_NAMED_CALL_NAME, <<"contractpointer.chain">>).
+-define(CT_NAMED_CALL_NHASH, element(2, aens:get_name_hash(?CT_NAMED_CALL_NAME))).
+-define(CT_NAMED_CALL_NOBJ, aens_names:new(?CT_NAMED_CALL_NHASH, <<0:256>>, 50000)).
+-define(CT_NAMED_CALL_NAME2, <<"contractpointer2.chain">>).
+-define(CT_NAMED_CALL_NHASH2, element(2, aens:get_name_hash(?CT_NAMED_CALL_NAME2))).
+-define(CT_NAMED_CALL_NOBJ2, aens_names:new(?CT_NAMED_CALL_NHASH2, <<0:256>>, 50000)).
+tx_auth_name_resolution(Cfg) ->
+    case aect_test_utils:latest_protocol_version() of
+        Vsn when Vsn =< ?IRIS_PROTOCOL_VSN -> {skip, named_contract_calls_not_pre_ceres};
+        _Vsn -> tx_auth_name_resolution_(Cfg)
+    end.
+
+tx_auth_name_resolution_(_Cfg) ->
+    S0 = aect_test_utils:new_state(),
+    Trees   = aect_test_utils:trees(S0),
+    NTrees  = aec_trees:ns(Trees),
+    NTrees1 = aens_state_tree:enter_name(?CT_NAMED_CALL_NOBJ, NTrees),
+    NTrees2 = aens_state_tree:enter_name(?CT_NAMED_CALL_NOBJ2, NTrees1),
+    S1 = aect_test_utils:set_trees(aec_trees:set_ns(Trees, NTrees2), S0),
+    state(S1),
+
+
+    MinGP = aec_test_utils:min_gas_price(),
+    Acc1 = ?call(new_account, 1000000000 * MinGP),
+    {ok, _} = ?call(attach, Acc1, "tx_auth", "authorize_named_call", []),
+
+    Auth = fun(N, CtAddr) -> #{ prep_fun => fun(_Tx) -> ?call(tx_auth_named, Acc1, N, CtAddr) end } end,
+    {ok, #{init_res := ok, ct_pubkey := Ct}} =
+        ?call(ga_create, Acc1, Auth("1", <<0:256>>), "identity", []),
+
+    CtNameId = aeser_id:create(name, ?CT_NAMED_CALL_NHASH),
+    CtNameId2 = aeser_id:create(name, ?CT_NAMED_CALL_NHASH2),
+    meck:new(aens, [passthrough]),
+    meck:expect(aens, resolve_from_name_object,
+                fun(Key, NameObj) ->
+                    NameId = aens_names:id(NameObj),
+                    case (Key == <<"contract_pubkey">>) of
+                        true when NameId == CtNameId ->
+                            {ok, aeser_id:create(contract, Ct)};
+                        true when NameId == CtNameId2 ->
+                            {error, pointer_id_not_found};
+                        _ ->
+                            meck:passthrough([Key, NameObj])
+                    end
+                end),
+
+    {ok, #{call_res := ok, call_val := Val}} =
+        ?call(ga_call, Acc1, Auth("2", Ct), Ct, "identity", "main_", ["42"], #{contract_id => CtNameId}),
+
+    ?assertMatch(42, decode_call_result("identity", "main_", ok, Val)),
+
+    CtNameId3 = aeser_id:create(name, <<1:256>>),
+    {failed, authentication_failed} =
+        ?call(ga_call, Acc1, Auth("3", Ct), Ct, "identity", "main_", ["42"], #{contract_id => CtNameId2, fail => true}),
+    {failed, authentication_failed} =
+        ?call(ga_call, Acc1, Auth("3", Ct), Ct, "identity", "main_", ["42"], #{contract_id => CtNameId3, fail => true}),
+
+    meck:unload(aens),
+    ok.
+
 %%%===================================================================
 %%% Bitcoin GA tests
 %%%===================================================================
+
 -define(SECP256K1_PRIV, <<129,67,4,165,74,42,181,117,141,36,184,24,52,32,144,252,
                           23,236,21,76,171,79,8,23,32,235,57,139,176,168,252,102>>).
 -define(SECP256K1_PUB,  <<80,178,23,109,30,43,94,53,192,188,114,212,49,16,33,
@@ -563,13 +648,38 @@ bitcoin_contract_call(_Cfg) ->
     AuthOpts2 = #{ prep_fun => fun(TxHash) -> ?call(bitcoin_auth, Acc1, "2", TxHash) end },
     {ok, #{call_res := ok, call_val := Val}} =
         ?call(ga_call, Acc1, AuthOpts2, Ct, "identity", "main_", ["42"]),
-    ?assertMatchABI("42", 42, decode_call_result("identity", "main_", ok, Val)),
+    ?assertMatch(42, decode_call_result("identity", "main_", ok, Val)),
 
+    ok.
+
+bitcoin_tamper_proof(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    MinGP = aec_test_utils:min_gas_price(),
+    Acc1 = ?call(new_account, 1000000000 * MinGP),
+    Acc2 = ?call(new_account, 1000000000 * MinGP),
+    {ok, _} = ?call(attach, Acc1, "bitcoin_auth", "authorize", [?B_OWNER]),
+
+    AuthOpts    = #{ prep_fun => fun(TxHash) -> ?call(bitcoin_auth, Acc1, "1", TxHash) end },
+    PreBalance  = ?call(account_balance, Acc2),
+    case aect_test_utils:latest_protocol_version() >= ?CERES_PROTOCOL_VSN  of
+        true ->
+            {failed, authentication_failed} =
+                ?call(ga_spend, Acc1, AuthOpts, Acc2, 500, 20000 * MinGP, #{tamper_fee => true}),
+            {failed, authentication_failed} =
+                ?call(ga_spend, Acc1, AuthOpts, Acc2, 500, 20000 * MinGP, #{tamper_gas_price => true});
+        false ->
+            %% before CERES we could tamper with the fee
+            {ok, #{tx_res := ok}} =
+                ?call(ga_spend, Acc1, AuthOpts, Acc2, 500, 20000 * MinGP, #{tamper_fee => true}),
+            PostBalance = ?call(account_balance, Acc2),
+            ?assertMatch({X, Y} when X + 500 == Y, {PreBalance, PostBalance})
+    end,
     ok.
 
 %%%===================================================================
 %%% Ethereum GA tests
 %%%===================================================================
+
 -define(SECP256K1_ADDR, binary:part(sha3:hash(256, ?SECP256K1_PUB), 32, -20)).
 -define(E_OWNER, aega_test_utils:to_hex_lit(20, ?SECP256K1_ADDR)).
 
@@ -619,13 +729,179 @@ ethereum_contract_call(_Cfg) ->
     AuthOpts2 = #{ prep_fun => fun(TxHash) -> ?call(ethereum_auth, Acc1, "2", TxHash) end },
     {ok, #{call_res := ok, call_val := Val}} =
         ?call(ga_call, Acc1, AuthOpts2, Ct, "identity", "main_", ["42"]),
-    ?assertMatchABI("42", 42, decode_call_result("identity", "main_", ok, Val)),
+    ?assertMatch(42, decode_call_result("identity", "main_", ok, Val)),
+
+    ok.
+
+%%%===================================================================
+%%% More realistic GA contract with a main/master account and
+%%% temporary signers
+%%%===================================================================
+mwt_auth_opts(Acc, Nonce) ->
+    #{ prep_fun => fun(TxHash) -> ?call(main_w_temp_auth, Acc, Nonce, TxHash) end }.
+
+account_lit(Acc) ->
+    binary_to_list(aeser_api_encoder:encode(account_pubkey, Acc)).
+
+%% Test that the main/master account can sign a transaction
+mwt_spend(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    MinGP = aec_test_utils:min_gas_price(),
+    GAAcc    = ?call(new_account, 1000000000 * MinGP),
+    MainAcc  = ?call(new_account, 1000000000 * MinGP),
+    OtherAcc = ?call(new_account, 1000000000 * MinGP),
+    {ok, _}  = ?call(attach, GAAcc, "ga_main_w_temporary", "authorize", [account_lit(MainAcc)]),
+
+    PreBalance = ?call(account_balance, OtherAcc),
+    {ok, #{tx_res := ok}} =
+        ?call(ga_spend, GAAcc, mwt_auth_opts(MainAcc, "1"), OtherAcc, 500, 20000 * MinGP),
+    PostBalance = ?call(account_balance, OtherAcc),
+    ?assertMatch({X, Y} when X + 500 == Y, {PreBalance, PostBalance}),
+
+    ok.
+
+%% Test that a temporary signer can sign a transaction
+mwt_temp_spend(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    MinGP = aec_test_utils:min_gas_price(),
+    GAAcc    = ?call(new_account, 1000000000 * MinGP),
+    MainAcc  = ?call(new_account, 1000000000 * MinGP),
+    TempAcc  = ?call(new_account, 1000000000 * MinGP),
+    OtherAcc = ?call(new_account, 1000000000 * MinGP),
+    {ok, #{ct := GACt}}  = ?call(attach, GAAcc, "ga_main_w_temporary", "authorize", [account_lit(MainAcc)]),
+
+    {ok, #{call_res := ok}} =
+        ?call(ct_call, MainAcc, GACt, "ga_main_w_temporary", "add_validator", [account_lit(TempAcc), "Plain"], #{}),
+
+    PreBalance = ?call(account_balance, OtherAcc),
+    {ok, #{tx_res := ok}} =
+        ?call(ga_spend, GAAcc, mwt_auth_opts(TempAcc, "1"), OtherAcc, 500, 20000 * MinGP),
+    PostBalance = ?call(account_balance, OtherAcc),
+    ?assertMatch({X, Y} when X + 500 == Y, {PreBalance, PostBalance}),
+
+    ok.
+
+%% Test that a removed temporary signer can't sign a transaction
+mwt_neg_temp_spend(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    MinGP = aec_test_utils:min_gas_price(),
+    GAAcc    = ?call(new_account, 1000000000 * MinGP),
+    MainAcc  = ?call(new_account, 1000000000 * MinGP),
+    TempAcc  = ?call(new_account, 1000000000 * MinGP),
+    OtherAcc = ?call(new_account, 1000000000 * MinGP),
+    {ok, #{ct := GACt}}  = ?call(attach, GAAcc, "ga_main_w_temporary", "authorize", [account_lit(MainAcc)]),
+
+    {ok, #{call_res := ok}} =
+        ?call(ct_call, MainAcc, GACt, "ga_main_w_temporary", "add_validator", [account_lit(TempAcc), "Plain"], #{}),
+
+    {ok, #{tx_res := ok}} =
+        ?call(ga_spend, GAAcc, mwt_auth_opts(TempAcc, "1"), OtherAcc, 500, 20000 * MinGP),
+
+    {ok, #{call_res := ok}} =
+        ?call(ct_call, MainAcc, GACt, "ga_main_w_temporary", "remove_validator", [account_lit(TempAcc)], #{}),
+
+    {failed, authentication_failed} =
+        ?call(ga_spend, GAAcc, mwt_auth_opts(TempAcc, "2"), OtherAcc, 500, 20000 * MinGP, #{fail => true}),
+
+    ok.
+
+%% Test that two temporary signers can sign transactions overlapping
+mwt_temp_multi_spend(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    MinGP = aec_test_utils:min_gas_price(),
+    GAAcc    = ?call(new_account, 1000000000 * MinGP),
+    MainAcc  = ?call(new_account, 1000000000 * MinGP),
+    TempAcc1 = ?call(new_account, 1000000000 * MinGP),
+    TempAcc2 = ?call(new_account, 1000000000 * MinGP),
+    OtherAcc = ?call(new_account, 1000000000 * MinGP),
+    {ok, #{ct := GACt}}  = ?call(attach, GAAcc, "ga_main_w_temporary", "authorize", [account_lit(MainAcc)]),
+
+    {ok, #{call_res := ok}} =
+        ?call(ct_call, MainAcc, GACt, "ga_main_w_temporary", "add_validator", [account_lit(TempAcc1), "Plain"], #{}),
+    {ok, #{call_res := ok}} =
+        ?call(ct_call, MainAcc, GACt, "ga_main_w_temporary", "add_validator", [account_lit(TempAcc2), "Plain"], #{}),
+
+    {ok, #{tx_res := ok}} =
+        ?call(ga_spend, GAAcc, mwt_auth_opts(TempAcc2, "1"), OtherAcc, 500, 20000 * MinGP),
+    {ok, #{tx_res := ok}} =
+        ?call(ga_spend, GAAcc, mwt_auth_opts(TempAcc1, "2"), OtherAcc, 500, 20000 * MinGP),
+    {ok, #{tx_res := ok}} =
+        ?call(ga_spend, GAAcc, mwt_auth_opts(TempAcc2, "3"), OtherAcc, 500, 20000 * MinGP),
+
+    ok.
+
+%% Test that temporary signer with NBound can sign transactions
+mwt_temp_n_spend(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    MinGP = aec_test_utils:min_gas_price(),
+    GAAcc    = ?call(new_account, 1000000000 * MinGP),
+    MainAcc  = ?call(new_account, 1000000000 * MinGP),
+    TempAcc = ?call(new_account, 1000000000 * MinGP),
+    OtherAcc = ?call(new_account, 1000000000 * MinGP),
+    {ok, #{ct := GACt}}  = ?call(attach, GAAcc, "ga_main_w_temporary", "authorize", [account_lit(MainAcc)]),
+
+    {ok, #{call_res := ok}} =
+        ?call(ct_call, MainAcc, GACt, "ga_main_w_temporary", "add_validator", [account_lit(TempAcc), "NBound(2)"], #{}),
+
+    {ok, #{tx_res := ok}} =
+        ?call(ga_spend, GAAcc, mwt_auth_opts(TempAcc, "1"), OtherAcc, 500, 20000 * MinGP),
+    {ok, #{tx_res := ok}} =
+        ?call(ga_spend, GAAcc, mwt_auth_opts(TempAcc, "2"), OtherAcc, 500, 20000 * MinGP),
+    {failed, authentication_failed} =
+        ?call(ga_spend, GAAcc, mwt_auth_opts(TempAcc, "3"), OtherAcc, 500, 20000 * MinGP, #{fail => true}),
+
+    ok.
+
+%% Test that temporary signer with TimeBound can sign transactions
+mwt_temp_height_spend(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    MinGP = aec_test_utils:min_gas_price(),
+    GAAcc    = ?call(new_account, 1000000000 * MinGP),
+    MainAcc  = ?call(new_account, 1000000000 * MinGP),
+    TempAcc = ?call(new_account, 1000000000 * MinGP),
+    OtherAcc = ?call(new_account, 1000000000 * MinGP),
+    {ok, #{ct := GACt}}  = ?call(attach, GAAcc, "ga_main_w_temporary", "authorize", [account_lit(MainAcc)]),
+
+    {ok, #{call_res := ok}} =
+        ?call(ct_call, MainAcc, GACt, "ga_main_w_temporary", "add_validator", [account_lit(TempAcc), "TimeBound(10)"], #{}),
+
+    {ok, #{tx_res := ok}} =
+        ?call(ga_spend, GAAcc, mwt_auth_opts(TempAcc, "1"), OtherAcc, 500, 20000 * MinGP),
+    {ok, #{tx_res := ok}} =
+        ?call(ga_spend, GAAcc, mwt_auth_opts(TempAcc, "2"), OtherAcc, 500, 20000 * MinGP),
+    {failed, authentication_failed} =
+        ?call(ga_spend, GAAcc, mwt_auth_opts(TempAcc, "3"), OtherAcc, 500, 20000 * MinGP, #{height => 11, fail => true}),
+
+    ok.
+
+%% Assert that only master account can manipulate contract
+mwt_neg_master_actions(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    MinGP = aec_test_utils:min_gas_price(),
+    GAAcc    = ?call(new_account, 1000000000 * MinGP),
+    MainAcc  = ?call(new_account, 1000000000 * MinGP),
+    TempAcc  = ?call(new_account, 1000000000 * MinGP),
+    OtherAcc = ?call(new_account, 1000000000 * MinGP),
+    {ok, #{ct := GACt}}  = ?call(attach, GAAcc, "ga_main_w_temporary", "authorize", [account_lit(MainAcc)]),
+
+    {ok, #{call_res := ok}} =
+        ?call(ct_call, MainAcc, GACt, "ga_main_w_temporary", "add_validator", [account_lit(TempAcc), "TimeBound(10)"], #{}),
+
+    {ok, #{call_res := revert, call_val := <<"=Only for master">>}} =
+        ?call(ct_call, TempAcc, GACt, "ga_main_w_temporary", "add_validator", [account_lit(OtherAcc), "TimeBound(10)"]),
+
+    {ok, #{call_res := revert, call_val := <<"=Only for master">>}} =
+        ?call(ct_call, TempAcc, GACt, "ga_main_w_temporary", "remove_validator", [account_lit(OtherAcc)]),
+
+    {ok, #{call_res := revert, call_val := <<"=Only for master">>}} =
+        ?call(ct_call, TempAcc, GACt, "ga_main_w_temporary", "set_fee_protection", ["None"]),
 
     ok.
 
 %%%===================================================================
 %%% Oracle GA tests
 %%%===================================================================
+
 oracle_register(_Cfg) ->
     state(aect_test_utils:new_state()),
     Acc1 = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
@@ -1185,6 +1461,26 @@ paying_for(Payer, Tx, Fee, S) ->
     S1 = sign_and_apply_tx(false, Payer, PayingTx, #{}, S),
     {ok, S1}.
 
+ct_call(Caller, Contract, ContractName, Fun, Args, S) ->
+    ct_call(Caller, Contract, ContractName, Fun, Args, #{}, S).
+
+ct_call(Caller, Contract, ContractName, Fun, Args, Opts, S) ->
+    Fail  = maps:get(fail, Opts, false),
+    Nonce = aect_test_utils:next_nonce(Caller, S),
+    CallData = aega_test_utils:make_calldata(ContractName, Fun, Args),
+    Options1 = maps:merge(#{nonce => Nonce, call_data => CallData}, maps:without([height, fail], Opts)),
+    CallTx   = call_tx(Caller, Contract, Options1, S),
+
+    S1 = sign_and_apply_tx(Fail, Caller, CallTx, Opts, S),
+
+    CallTree = aect_test_utils:calls(S1),
+    {_, CTx} = aetx:specialize_type(CallTx),
+    CallId   = aect_call_tx:call_id(CTx),
+    Call     = aect_call_state_tree:get_call(Contract, CallId, CallTree),
+    {{ok, #{ call_res => aect_call:return_type(Call),
+             call_val => aect_call:return_value(Call),
+             call_gas => aect_call:gas_used(Call) }}, S1}.
+
 ga_spend(From, AuthOpts, To, Amount, Fee, S) ->
     ga_spend(From, AuthOpts, To, Amount, Fee, #{}, S).
 
@@ -1404,7 +1700,8 @@ ga_channel_force_progress(Acc1, AuthOpts, CId, OffState, CtId, Contract, Fun, Ar
 
 
 meta(Owner, AuthOpts, InnerTx0, Opts, S) ->
-    {AuthData, InnerTx, MetaTx} = prep_meta(Owner, AuthOpts, InnerTx0),
+    {AuthData, InnerTx, MetaTx} =
+        prep_meta(Owner, maps:merge(AuthOpts, maps:with([tamper_fee, tamper_gas_price], Opts)), InnerTx0),
     do_meta(Owner, AuthData, InnerTx, MetaTx, Opts, S).
 
 prep_meta(Owner, AuthOpts, InnerTx0) ->
@@ -1415,13 +1712,17 @@ prep_meta(Owner, AuthOpts, InnerTx0) ->
             {InnerTx0, aetx_sign:new(InnerTx0, [])}
         end,
     TxBin    = aec_governance:add_network_id(aetx:serialize_to_binary(InnerTx)),
-    AuthData = make_authdata(AuthOpts, aec_hash:hash(tx, TxBin)),
+    TxHash   = aega_test_utils:auth_data_hash(AuthOpts, TxBin),
+    AuthData = make_authdata(AuthOpts, TxHash),
     Options1 = maps:merge(#{auth_data => AuthData, tx => InnerSTx}, AuthOpts),
-    MetaTx   = aega_test_utils:ga_meta_tx(Owner, Options1),
+    MetaTx   = aega_test_utils:ga_meta_tx(Owner, Options1),  %% here we can tamper the fee and gas_price
     {AuthData, InnerTx, MetaTx}.
 
 do_meta(Owner, AuthData, InnerTx, MetaTx, Opts, S) ->
-    Fail     = maps:get(fail, Opts, false),
+    TamperFee = maps:get(tamper_fee, Opts, false),
+    TamperGasPrice = maps:get(tamper_gas_price, Opts, false),
+    Fail     = maps:get(fail, Opts, (TamperFee orelse TamperGasPrice)
+                                    andalso aect_test_utils:latest_protocol_version() >= ?CERES_PROTOCOL_VSN),
     Height   = maps:get(height, Opts, 1),
     SMetaTx  = aetx_sign:new(MetaTx, []),
     S1       = case apply_transaction(SMetaTx, S, Height) of
@@ -1470,9 +1771,9 @@ do_meta(Owner, AuthData, InnerTx, MetaTx, Opts, S) ->
                 {ok, Res0#{ ct_pubkey => NewContract
                           , init_res  => aect_call:return_type(InitCall) }};
             {contract_call_tx, CCTx} ->
-                Contract    = aect_call_tx:contract_pubkey(CCTx),
-                InnerCallId = aect_call:ga_id(AuthId, Contract),
-                InnerCall   = aect_call_state_tree:get_call(Contract, InnerCallId, CallTree),
+                CtCallId    = aect_call_tx:ct_call_id(CCTx),
+                InnerCallId = aect_call:ga_id(AuthId, CtCallId),
+                InnerCall   = aect_call_state_tree:get_call(CtCallId, InnerCallId, CallTree),
                 {ok, Res0#{ call_res => aect_call:return_type(InnerCall),
                             call_val => aect_call:return_value(InnerCall),
                             call_gas => aect_call:gas_used(InnerCall) }};
@@ -1597,7 +1898,8 @@ sign_tx(Pubkey, plain, Tx, S) ->
     aec_test_utils:sign_tx(Tx, PrivKey);
 sign_tx(Pubkey, AuthOpts, Tx, _S) ->
     TxBin    = aec_governance:add_network_id(aetx:serialize_to_binary(Tx)),
-    AuthData = make_authdata(AuthOpts, aec_hash:hash(tx, TxBin)),
+    TxHash   = aega_test_utils:auth_data_hash(AuthOpts, TxBin),
+    AuthData = make_authdata(AuthOpts, TxHash),
     Options1 = #{auth_data => AuthData, tx => aetx_sign:new(Tx, [])},
     MetaTx   = aega_test_utils:ga_meta_tx(Pubkey, Options1),
     aetx_sign:new(MetaTx, []).
@@ -1688,9 +1990,9 @@ decode_call_result(Name0, Fun, Type, Val) ->
         ?ABI_AEVM_SOPHIA_1 ->
             Name = filename:join("contracts", Name0),
             {ok, BinSrc} = aect_test_utils:read_contract(Name),
-            %% TODO: Use a memoized version
-            {ok, AST} = aeso_compiler:to_sophia_value(binary_to_list(BinSrc), Fun, Type, Val),
-            prettypr:format(aeso_pretty:expr(AST));
+            ct:pal("BinSrc: ~ts", [BinSrc]),
+            ct:pal("Value: ~p", [Val]),
+            aect_test_utils:decode_call_result(BinSrc, Fun, Type, Val);
         ?ABI_FATE_SOPHIA_1 ->
             aeb_fate_encoding:deserialize(Val)
     end.
@@ -1700,6 +2002,10 @@ simple_auth(Args) ->
 
 tx_auth(_GA, Nonce, S) ->
     {aega_test_utils:make_calldata("tx_auth", "authorize", [Nonce]), S}.
+
+tx_auth_named(_GA, Nonce, CtAddr, S) ->
+    Enc = lists:flatten(io_lib:format("~s", [aeser_api_encoder:encode(account_pubkey, CtAddr)])),
+    {aega_test_utils:make_calldata("tx_auth", "authorize_named_call", [Nonce, Enc]), S}.
 
 
 basic_auth(GA, Nonce, TxHash, S) ->
@@ -1737,3 +2043,10 @@ ethereum_auth(_GA, Nonce, TxHash, S) ->
     Sig2 = aeu_crypto:ecdsa_recoverable_from_ecdsa(Msg, Sig1, ?SECP256K1_ADDR),
     Sig  = aega_test_utils:to_hex_lit(65, Sig2),
     {aega_test_utils:make_calldata("ethereum_auth", "authorize", [Nonce, Sig]), S}.
+
+main_w_temp_auth(Acc, Nonce, TxHash, S) ->
+    AccPrivKey = aect_test_utils:priv_key(Acc, S),
+    Sign = aega_test_utils:basic_auth_sign(list_to_integer(Nonce), TxHash, AccPrivKey),
+
+    Args = [Nonce, account_lit(Acc), aega_test_utils:to_hex_lit(64, Sign)],
+    {aega_test_utils:make_calldata("ga_main_w_temporary", "authorize", Args), S}.

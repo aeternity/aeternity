@@ -1,0 +1,130 @@
+include "List.aes"
+main contract StakingValidator =
+  record pending_transfer =
+    { staker : address, stake : int }
+
+  record state =
+    { main_staking_ct : address,
+      unstake_delay : int,
+      pending_unstake_amount : int,
+      pending_unstake : map(int, list(pending_transfer)),
+      name : string,
+      description : string,
+      avatar_url : string,
+      delegates : map(address, int),
+      shares : int }
+
+  entrypoint init(main_staking_ct : address, unstake_delay : int) =
+    { main_staking_ct = main_staking_ct,
+      unstake_delay = unstake_delay,
+      pending_unstake_amount = 0,
+      pending_unstake = {},
+      name = "",
+      description = "",
+      avatar_url = "",
+      delegates = {},
+      shares = 0 }
+
+  payable stateful entrypoint stake(staker : address) =
+    assert_caller()
+    require(Call.value > 0, "Stake must be > 0")
+    let new_shares = calculate_shares(Call.value)
+    add_shares(staker, new_shares)
+    put(state{shares @ s = s + new_shares})
+    new_shares
+
+  entrypoint estimate_stake_shares(value : int) =
+    estimate_shares(value)
+
+  payable entrypoint profit() =
+    assert_caller()
+    ()
+
+  stateful entrypoint distribute_unstake() =
+    assert_caller()
+    let height = Chain.block_height
+    switch(Map.member(height, state.pending_unstake))
+      false => ()
+      true =>
+        let payouts = state.pending_unstake[height]
+        List.foreach(payouts, distribute_payout)
+        let new_pus = Map.delete(height, state.pending_unstake)
+        put(state{pending_unstake = new_pus})
+
+  stateful function distribute_payout(payout) =
+    Chain.spend(payout.staker, payout.stake)
+    put(state{pending_unstake_amount @ pua = pua - payout.stake})
+
+  stateful entrypoint unstake(staker : address, withdraw_shares : int) : int =
+    assert_caller()
+    let staker_shares = state.delegates[staker = 0]
+    require(staker_shares >= withdraw_shares, "Not enough shares")
+    let payout_amt = shares_to_ae(withdraw_shares)
+    switch(state.unstake_delay)
+      0 => Chain.spend(staker, payout_amt)
+      _ =>
+        let height  = Chain.block_height + state.unstake_delay
+        let pending_transfer = { staker = staker, stake = payout_amt}
+        let pu = switch(Map.member(height, state.pending_unstake))
+            false => []
+            true => state.pending_unstake[height]
+        put(state{pending_unstake[height] = pending_transfer::pu,
+                  pending_unstake_amount @ pua = pua + payout_amt })
+    let remaining_shares = staker_shares - withdraw_shares
+    switch(remaining_shares == 0)
+      true =>
+        put(state{ shares @ s = s - withdraw_shares,
+                  delegates @ ds = Map.delete(staker, ds) })
+      false =>
+        put(state{ shares @ s = s - withdraw_shares,
+                  delegates[staker] @ balance = remaining_shares })
+    payout_amt
+
+  entrypoint get_state() =
+    assert_caller()
+    state
+
+  entrypoint shares(who : address) =
+    assert_caller()
+    state.delegates[who = 0]
+
+  entrypoint all_shares() =
+    assert_caller()
+    state.shares
+
+  entrypoint balance(who : address) =
+    assert_caller()
+    shares_to_ae(state.delegates[who = 0])
+
+  stateful entrypoint set_name(name : string) =
+    assert_caller()
+    put(state{name = name})
+
+  stateful entrypoint set_description(description : string) =
+    assert_caller()
+    put(state{description = description})
+
+  stateful entrypoint set_avatar_url(avatar_url : string) =
+    assert_caller()
+    put(state{avatar_url = avatar_url})
+
+  stateful function add_shares(staker : address, shares : int) =
+    put(state{ delegates[staker = 0] @ dshares = dshares + shares })
+
+  function calculate_shares(stake_size : int) =
+    if (state.shares == 0)
+      stake_size
+    else
+      (stake_size * state.shares) / (contract_balance() - stake_size)
+
+  function estimate_shares(stake_size : int) =
+      (stake_size * state.shares) / contract_balance()
+
+  function assert_caller() =
+    require(Call.caller == state.main_staking_ct, "Only allowed through MainStaking")
+
+  function shares_to_ae(shares : int) =
+    (shares * contract_balance()) / state.shares
+
+  function contract_balance() : int =
+    Contract.balance - state.pending_unstake_amount

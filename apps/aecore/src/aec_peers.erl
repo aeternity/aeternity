@@ -160,14 +160,21 @@
 opt_call(Req, Else) ->
     case peers_running() of
         false ->
-            else(Else);
+            do_else(Else);
         true ->
-            gen_server:call(?MODULE, Req)
+            try_call(Req, Else)
     end.
 
-else(F) when is_function(F, 0) ->
+try_call(Req, Else) ->
+    try gen_server:call(?MODULE, Req)
+    catch
+        exit:{shutdown, _} ->
+            do_else(Else)
+    end.
+
+do_else(F) when is_function(F, 0) ->
     F();
-else(Else) ->
+do_else(Else) ->
     Else.
 
 opt_cast(Msg) ->
@@ -178,6 +185,7 @@ opt_cast(Msg) ->
             gen_server:cast(?MODULE, Msg)
     end.
 
+%% Not to clutter up the crash log (causes trouble during system test)
 peers_running() ->
     case whereis(?MODULE) of
         undefined ->
@@ -193,7 +201,7 @@ peers_running() ->
 err_not_running() ->
     {error, not_running}.
 
-%--- PEER MANAGMENT FUNCTIONS --------------------------------------------------
+%--- PEER MANAGEMENT FUNCTIONS --------------------------------------------------
 
 %% @doc Adds a trusted peer or a list of trusted peers.
 -spec add_trusted(aec_peer:info() | [aec_peer:info()]) -> ok.
@@ -203,8 +211,9 @@ add_trusted(PeerInfo) ->
     async_add_peer(undefined, PeerInfo, true).
 
 %% @doc Adds a normal peer or a list of normal peers.
-%% The IP address of the node that gave us this peer must be specified.
--spec add_peers(inet:ip_address(), aec_peer:info() | [aec_peer:info()]) -> ok.
+%% The IP address of the node that gave us this peer must be specified
+%% except when manually added
+-spec add_peers(inet:ip_address() | undefined, aec_peer:info() | [aec_peer:info()]) -> ok.
 add_peers(SourceAddr, PeerInfos) when is_list(PeerInfos) ->
     lists:foreach(fun(I) -> add_peers(SourceAddr, I) end, PeerInfos);
 add_peers(SourceAddr, PeerInfo) ->
@@ -349,7 +358,7 @@ encode_peer_address(#{ pubkey := PubKey, host := Host, port := Port }) ->
     list_to_binary(["aenode://", aeser_api_encoder:encode(peer_pubkey, PubKey), "@",
                     Host, ":", integer_to_list(Port)]).
 
-%--- CONNECTION MANAGMENT FUNCTIONS FOR aec_peer_connection ONLY ---------------
+%--- CONNECTION MANAGEMENT FUNCTIONS FOR aec_peer_connection ONLY ---------------
 
 %% @doc Informs that an outbound connection successfully connected.
 -spec peer_connected(aec_peer:id(), pid()) -> ok | {error, term()}.
@@ -1115,7 +1124,7 @@ on_peer_suspect(PeerId, State) ->
             State
     end.
 
-%% Handles outbound connection being successfully estabished.
+%% Handles outbound connection being successfully established.
 -spec on_peer_connected(aec_peer:id(), pid(), state())
     -> {ok, state()} | {{error, term()}, state()}.
 on_peer_connected(PeerId, Pid, State) ->
@@ -1233,7 +1242,7 @@ new_inbound_resolve_conflicts(Peer, Pid, State) ->
         {ok, #conn{ pid = OldPid }}
           when Pid =/= OldPid, LocalId > PeerId, WouldBeTemporary ->
             %% We would have slashed the outbound connection but that
-            %% would make the inbound connetion temporary.
+            %% would make the inbound connection temporary.
             epoch_sync:debug("Peer ~p - rejecting second connection from "
                              "process ~p because it would be temporary; keep "
                              "using the old one from process ~p",
@@ -1450,7 +1459,7 @@ on_process_down(Pid, MonitorRef, State) ->
         {PeerId, MonitorRef, State2} ->
             case conn_take(PeerId, State2) of
                 error ->
-                    epoch_sync:info("Peer ~p - process down for unknwon "
+                    epoch_sync:info("Peer ~p - process down for unknown "
                                     "connection", [aec_peer:ppp(PeerId)]),
                     State2;
                 {Conn, State3} ->
@@ -1496,7 +1505,7 @@ group_del(#conn{ peer = Peer, type = outbound, tcp_probe = false }, State) ->
 group_del(_Conn, State) ->
     State.
 
-%--- POOL MANAGMENT FUNCTIONS --------------------------------------------------
+%--- POOL MANAGEMENT FUNCTIONS --------------------------------------------------
 
 %% Logs the pooling changes of a peer.
 -spec pool_log_changes(aec_peer:id(), undefined | unverified | verified,
@@ -1566,7 +1575,7 @@ pool_select(PeerId, State) ->
     Pool2 = aec_peers_pool:select(Pool, Now, PeerId),
     State#state{ pool = Pool2 }.
 
-%% Trys to move given peer to the verified pool.
+%% Tries to move given peer to the verified pool.
 -spec pool_verify(aec_peer:id(), state()) -> state().
 pool_verify(PeerId, State) ->
     #state{ pool = Pool } = State,

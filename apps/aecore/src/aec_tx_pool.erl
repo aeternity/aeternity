@@ -69,6 +69,7 @@
         ]).
 
 -export([ await_tx_pool/0 ]).
+-export([ note_rollback/1 ]).
 
 -include("aec_tx_pool.hrl").
 -include_lib("aecontract/include/hard_forks.hrl").
@@ -272,6 +273,9 @@ peek_nonces() ->
 await_tx_pool() ->
     gproc:await({n,l,?MODULE}, 5000).
 
+note_rollback(Result) ->
+    gen_server:call(?SERVER, {note_rollback, Result}).
+
 gproc_reg() ->
     gproc:reg({n,l,?MODULE}).
 
@@ -316,10 +320,15 @@ get_candidate(MaxGas, BlockHash) ->
     get_candidate(MaxGas, [], BlockHash).
 
 -spec get_candidate(pos_integer(), [binary()], binary()) -> {ok, [aetx_sign:signed_tx()]}.
-get_candidate(MaxGas, IgnoreTxHashes, BlockHash) when is_integer(MaxGas), MaxGas > 0,
+get_candidate(MaxGas, IgnoreTxHashes, BlockHash) when is_integer(MaxGas),
                                                       is_binary(BlockHash) ->
-    ?TC(int_get_candidate(MaxGas, IgnoreTxHashes, BlockHash, dbs()),
-        {get_candidate, MaxGas, IgnoreTxHashes, BlockHash}).
+    case MaxGas >= aec_governance:min_tx_gas() of
+        true ->
+            ?TC(int_get_candidate(MaxGas, IgnoreTxHashes, BlockHash, dbs()),
+                {get_candidate, MaxGas, IgnoreTxHashes, BlockHash});
+        false ->
+            {ok, []}
+    end.
 
 %% It assumes that the persisted mempool has been updated.
 -spec top_change(top_change_info()) -> ok.
@@ -401,6 +410,9 @@ handle_call_({push, Tx, Hash, Event}, _From, State) ->
 handle_call_({top_change, Info}, _From, State) ->
     {_, State1} = do_top_change(Info, State),
     {reply, ok, State1};
+handle_call_({note_rollback, #{ new_top_header := NewTopHdr } = Info}, _From, State) ->
+    lager:debug("note_rollback - Info = ~p, State = ~p", [Info, State]),
+    {reply, ok, do_update_sync_top_target(aec_headers:height(NewTopHdr), State)};
 handle_call_({peek, MaxNumberOfTxs, Account}, _From, #state{dbs = Dbs} = State)
   when is_integer(MaxNumberOfTxs), MaxNumberOfTxs >= 0;
        MaxNumberOfTxs =:= infinity ->
@@ -864,13 +876,13 @@ update_pool_on_tx_hash(TxHash, {#dbs{gc_db = GCDb} = Dbs, OriginsCache, GCHeight
             ets:insert(Handled, {TxHash}),
             {ok, Tx} = aec_db:dirty_get_signed_tx(TxHash),
             case aec_db:is_in_tx_pool(TxHash) of
-                true ->
+                false ->
                     %% Added to chain
                     Key = pool_db_key(Tx),
                     pool_db_raw_delete(Dbs, Key),
                     aec_tx_pool_gc:delete_hash(GCDb, TxHash),
                     add_to_origins_cache(OriginsCache, Tx);
-                false ->
+                true ->
                     Key = pool_db_key(Tx),
                     pool_db_raw_put(Dbs, GCHeight, Key, Tx, TxHash)
             end

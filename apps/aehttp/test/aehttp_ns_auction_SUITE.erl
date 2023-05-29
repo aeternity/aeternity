@@ -25,6 +25,7 @@
 
 
 -define(HTTP_INT, aehttp_integration_SUITE).
+-define(HTTP_ROS, aehttp_rosetta_SUITE).
 -define(NODE, dev1).
 -define(BID_TIMEOUT, 2).
 
@@ -120,6 +121,8 @@ naming_system_auction(Config) ->
 
     FirstNameFee = rpc(aec_governance, name_claim_fee, [Name, ?config(protocol_vsn, Config)]),
 
+    ?HTTP_ROS:assertBalanceChanges(PreclaimTxHash, [{PubKey1Enc, -Fee}] ),
+
     ct:log("Balance PubKey1 before init bid: ~p", [PubKey1BalPreClaim]),
     ct:log("Price for the init bid and tx fee: ~p ~p", [FirstNameFee, Fee]),
 
@@ -151,11 +154,14 @@ naming_system_auction(Config) ->
     {ok, 200, #{<<"balance">> := PubKey2BalPreAuction}} = ?HTTP_INT:get_accounts_by_pubkey_sut(PubKey2Enc),
     ct:log("Balance PubKey2 before counter bid: ~p", [PubKey2BalPreAuction]),
 
-    %% Figure out minimal couter bid price
+    ?HTTP_ROS:assertBalanceChanges(ClaimTxHash1, [{PubKey1Enc, -Fee},
+                                                  {PubKey1Enc, -FirstNameFee}] ),
+
+    %% Figure out minimal counter bid price
     NextMinPrice = FirstNameFee + FirstNameFee *
         aec_governance:name_claim_bid_increment() div 100,
 
-    %% Submit couter bid with name claim tx and check it is in mempool
+    %% Submit counter bid with name claim tx and check it is in mempool
     ClaimData2 = #{account_id => PubKey2Enc,
                    name       => NameEnc,
                    name_salt  => 0,
@@ -179,6 +185,10 @@ naming_system_auction(Config) ->
     ?assertEqual(PubKey1BalPostAuction, PubKey1BalPreAuction + FirstNameFee),
     %% The second bidder, PubKey2, is now charged
     ?assertEqual(PubKey2BalPostAuction, PubKey2BalPreAuction - Fee - NextMinPrice),
+
+    ?HTTP_ROS:assertBalanceChanges(ClaimTxHash2, [{PubKey2Enc, -Fee},
+                                                  {PubKey2Enc, -NextMinPrice},
+                                                  {PubKey1Enc, FirstNameFee}] ),
 
     {ok, 404, #{<<"reason">> := <<"Name not found">>}} = ?HTTP_INT:get_names_entry_by_name_sut(Name),
     aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE), ?BID_TIMEOUT),

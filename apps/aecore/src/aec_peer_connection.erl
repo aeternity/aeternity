@@ -61,6 +61,7 @@
 -define(DEFAULT_FIRST_PING_TIMEOUT, 30000).
 -define(DEFAULT_NOISE_HS_TIMEOUT, 5000).
 -define(DEFAULT_CLOSE_TIMEOUT, 3000).
+-define(GET_GENERATION_TIMEOUT, 60000).
 %% The number of peers sent in ping message.
 -define(DEFAULT_GOSSIPED_PEERS_COUNT, 32).
 %% perecentage of connected peers to validated peers to send in a ping 
@@ -109,7 +110,7 @@ get_generation(PeerId, Hash) ->
     get_generation(PeerId, Hash, backward).
 
 get_generation(PeerId, Hash, Dir) ->
-    call(PeerId, {get_generation, [Hash, Dir]}).
+    call(PeerId, {get_generation, [Hash, Dir]}, ?GET_GENERATION_TIMEOUT).
 
 tx_pool_sync_init(PeerId) ->
     call(PeerId, {tx_pool, [sync_init]}).

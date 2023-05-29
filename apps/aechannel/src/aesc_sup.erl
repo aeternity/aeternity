@@ -20,5 +20,6 @@ init([]) ->
                                 , ?CHILD(aesc_limits, 5000, worker)
                                 , ?CHILD(aesc_fsm_sup, 5000, supervisor)
                                 , ?CHILD(aesc_session_noise_sup, 5000, supervisor)
+                                , ?CHILD(aesc_acceptors, 5000, worker)
                                 , ?CHILD(aesc_listeners, 5000, worker)
                                 ]}}.

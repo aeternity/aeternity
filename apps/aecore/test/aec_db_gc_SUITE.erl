@@ -8,7 +8,8 @@
 
 %% test case exports
 -export([main_test/1,
-         calls_test/1]).
+         calls_test/1,
+         last_switch_test/1 ]).
 
 -include_lib("common_test/include/ct.hrl").
 
@@ -16,7 +17,8 @@
 -define(NUM_ACCOUNTS, 20).
 -define(NUM_GCED_NODES, 20).
 -define(DUMMY_HASH, <<0:256>>).
--define(GC_INTERVAL, 50).
+-define(GC_HISTORY, 50).
+-define(FORK_RESISTANCE, 5).
 
 all() ->
     [{group, all_nodes}].
@@ -27,7 +29,8 @@ groups() ->
      {two_nodes, [sequence],
       [main_test]},
      {one_node, [sequence],
-      [calls_test]}].
+      [ calls_test
+      , last_switch_test ]}].
 
 suite() ->
     [].
@@ -39,9 +42,9 @@ init_per_suite(Config0) ->
                    #{<<"persist">> => true,
                      <<"hard_forks">> => Forks,
                      <<"garbage_collection">> => #{<<"enabled">> => true,
-                                                   <<"interval">> => ?GC_INTERVAL,
-                                                   <<"history">> => ?GC_INTERVAL + 10}},
-               <<"sync">> => #{<<"single_outbound_per_group">> => false},
+                                                   <<"history">> => ?GC_HISTORY}},
+               <<"sync">> => #{<<"single_outbound_per_group">> => false,
+                               <<"sync_allowed_height_from_top">> => ?FORK_RESISTANCE},
                <<"mempool">> => #{<<"tx_ttl">> => 100},
                <<"mining">> => #{<<"micro_block_cycle">> => 100,
                                  <<"expected_mine_rate">> => 100}},
@@ -77,8 +80,8 @@ init_per_suite(Config0) ->
 
     node_log_details(N1, accounts_on_chain),
 
-    ok = rpc:call(N1, mnesia, dirty_write,
-                  [{aec_account_state, ?DUMMY_HASH, lists:duplicate(17, <<>>)}]),
+    Ctxt = rpc:call(N1, aec_db, new_tree_context, [dirty, accounts]),
+    ok = rpc:call(N1, aec_db, enter_tree_node, [?DUMMY_HASH, lists:duplicate(17, <<>>), Ctxt]),
 
     aecore_suite_utils:start_node(dev2, Config2),
     aecore_suite_utils:connect(N2),
@@ -129,53 +132,23 @@ end_per_testcase(_Case, Config) ->
 main_test(_Config) ->
     [N1, N2] = [aecore_suite_utils:node_name(X) || X <- [dev1, dev2]],
     H1 = aec_headers:height(rpc:call(N1, aec_chain, top_header, [])),
-    true = H1 < ?GC_INTERVAL,
-    true = has_key(N1, ?DUMMY_HASH, aec_account_state),
+    ct:log("Height = ~p", [H1]),
+    true = H1 < ?GC_HISTORY + ?FORK_RESISTANCE,
+    Primary1 = primary(N1),
+    ct:log("Primary1 = ~p", [Primary1]),
 
-    %% we mine just enough to start first GC phase - collection of reachable hashes
-    mine_until_height(N1, N2, ?GC_INTERVAL), % aecore_suite_utils:mine_key_blocks(N2, ?GC_INTERVAL - H1),
+    true = has_key(N1, ?DUMMY_HASH, Primary1),
 
-    node_log_details(N1, after_mining_0),
+    %% Mining of another keyblock starts second GC phase
+    mine_until_height(N1, N2, ?GC_HISTORY + ?FORK_RESISTANCE + 2),
 
-    block_while(fun () ->
-                        case gc_state(N1) of
-                            {ready, Data} ->
-                                HashesTab = element(size(Data), Data),
-                                true = is_reference(HashesTab),
-                                self() ! {n1_hashes, rpc:call(N1, ets, tab2list, [HashesTab])},
-                                false;
-                            X ->
-                                ct:log("////////// GC STATE = ~p~n", [X]),
-                                true
-                        end
-                end, 20, 500),
+    Primary2 = primary(N1),
+    ct:log("Primary2 = ~p", [Primary2]),
 
-    GCedHashes = receive {n1_hashes, Xs} -> Xs end,
+    {false, _} = {is_primary(N1, Primary1), Primary1},
 
-    ct:log("////////// HASHES count = ~p~n", [length(GCedHashes)]),
-    node_log_details(N1, gc_ready),
 
-    monitor_node(N1, true),
-    %% Mining of another keyblock starts second GC phase - storing cache to mnesia table and restart
-    mine_until_height(N1, N2, ?GC_INTERVAL + 1),
-    receive
-        {nodedown, N1} -> ct:log("////////// ~p restarted~n", [N1])
-    after 30000 ->
-        %% Successful runs in CI take about 10 secs for the restart
-        ct:log("Timed out waiting for gc node restart")
-    end,
-
-    block_while(fun () -> not net_kernel:hidden_connect_node(N1) end, 300, 300),
-
-    block_while(fun () -> not started(N1) end, 300, 300),
-
-    block_while(fun () -> has_table(N1, aec_account_state_gced) end, 500, 100),
-
-    false = has_table(N1, aec_account_state_gced),
-    false = has_key(N1, ?DUMMY_HASH, aec_account_state),
-
-    Hashes = rpc:call(N1, mnesia, dirty_select, [aec_account_state, [{{'_','$1','$2'},[],[{{'$1','$2'}}]}]]),
-    [] = GCedHashes -- Hashes,
+    false = has_key(N1, ?DUMMY_HASH, Primary2),
 
     ok.
 
@@ -184,30 +157,17 @@ main_test(_Config) ->
 %% Private functions
 %% ==================================================
 
-gc_state(N) ->
-    rpc:call(N, sys, get_state, [aec_db_gc]).
+primary(N) ->
+    rpc:call(N, aec_db, primary_state_tab, [accounts]).
 
-started(N) ->
-    case rpc:call(N, init, get_status, []) of
-        {started, _} ->
-            ct:log("////////// Node started ~p", [N]),
-            true;
-        _ ->
-            false
-    end.
-
-mnesia_system_info(N, X) ->
-    rpc:call(N, mnesia, system_info, [X]).
+is_primary(N, P) ->
+    primary(N) =:= P.
 
 has_key(N, Key, Tab) ->
     case rpc:call(N, mnesia, dirty_read, [Tab, Key]) of
         [_|_] -> true;
         _     -> false
     end.
-
-has_table(N, Tab) ->
-    Ts = mnesia_system_info(N, tables),
-    is_list(Ts) andalso lists:member(Tab, Ts).
 
 node_log_details(N, Prefix) ->
     ct:log("////////// ~p | ~p S = ~p~n", [N, Prefix, catch rpc:call(N, sys, get_state, [aec_db_gc])]),
@@ -229,10 +189,12 @@ block_while_(X, Test, Repeats, MilliSecs) ->
     end.
 
 mine_until_height(ControlNode, MinerNode, TargetHeight) ->
-    timer:sleep(500),
+    timer:sleep(200),
     H = aec_headers:height(rpc:call(ControlNode, aec_chain, top_header, [])),
     if H < TargetHeight ->
             aecore_suite_utils:mine_key_blocks(MinerNode, 1),
+            %% If there was a sync delay we might overshoot, so explicitly wait until each block is mined and synced
+            block_while(fun () -> aec_headers:height(rpc:call(ControlNode, aec_chain, top_header, [])) == H end, 300, 100),
             mine_until_height(ControlNode, MinerNode, TargetHeight);
        true ->
             ok
@@ -290,7 +252,9 @@ new_pubkey() ->
     PubKey.
 
 calls_test(_Config) ->
+    aecore_suite_utils:use_swagger(oas3),   % GC-related return codes only in OAS3 for now
     [N1] = [aecore_suite_utils:node_name(X) || X <- [dev1]],
+    ok = aecore_suite_utils:subscribe(N1, gc),
     H0 = aec_headers:height(rpc:call(N1, aec_chain, top_header, [])),
     ct:log("Current height is ~p", [H0]),
     %% create a new account and seed it with tokens
@@ -375,16 +339,45 @@ calls_test(_Config) ->
     Spend(OwnerPubkey, OwnerPrivkey),
     Spend(OwnerPubkey, OwnerPrivkey),
     %% mine beyond the GC
-    aecore_suite_utils:mine_key_blocks(N1, ?GC_INTERVAL + 1),
+    ct:log("Mining beyond the GC point"),
+    ct:log("GC server state: ~p", [rpc:call(N1, sys, get_state, [aec_db_gc])]),
+    {ok, Mined1} = aecore_suite_utils:mine_key_blocks(N1, ?GC_HISTORY + ?FORK_RESISTANCE + 1),
+    ct:log("Blocks mined: ~p", [length(Mined1)]),
+    GcSwitch1 = await_gc_switch(),
+    0 = GcSwitch1 rem ?GC_HISTORY,
+    await_scans_complete(),
     H1 = aec_headers:height(rpc:call(N1, aec_chain, top_header, [])),
     ct:log("Current height is ~p", [H1]),
-    {ok, 200, _} = aehttp_integration_SUITE:get_contract_call_object(ContractCreateTxHash),
-    {ok, 200, _} = aehttp_integration_SUITE:get_contract_call_object(ContractCallTxHash),
+    ct:log("Last GC switch: ~p", [rpc:call(N1, aec_db_gc, info, [[last_gc]])]),
+    {ok, Mined2} = aecore_suite_utils:mine_key_blocks(N1, ?GC_HISTORY),
+    ct:log("Mined ~p keyblocks", [length(Mined2)]),
+    GcSwitch2 = await_gc_switch(),
+    0 = GcSwitch2 rem ?GC_HISTORY,
+    ct:log("Second GC switch (and clearing tables)", []),
+    {ok, 410, _} = aehttp_integration_SUITE:get_contract_call_object(ContractCreateTxHash),
+    {ok, 410, _} = aehttp_integration_SUITE:get_contract_call_object(ContractCallTxHash),
     {ok, 200, _} =
         aehttp_integration_SUITE:get_accounts_by_pubkey_sut(OwnerAddress),
-    %% this should fail:
-    {ok, 200, _} =
+    {ok, 410, _} =
         aehttp_integration_SUITE:get_accounts_by_pubkey_and_height_sut(OwnerAddress, ContractCreateHeight),
+    aecore_suite_utils:unsubscribe(N1, gc),
+    ok.
+
+%% Simulate the case where we've been GC:ing with an older version, where the height of
+%% the last switch wasn't recorded persistently. The important thing is that it doesn't
+%% default to a lower height (say, zero), tricking the GC to start sweeping prematurely.
+%% The safe bet is therefore to default to the top height.
+%%
+last_switch_test(Config) ->
+    N1 = aecore_suite_utils:node_name(dev1),
+    ok = rpc:call(N1, mnesia, dirty_delete, [aec_chain_state, last_gc_switch]),
+    ok = aecore_suite_utils:stop_node(dev1, Config),
+    aecore_suite_utils:start_node(dev1, Config),
+    aecore_suite_utils:connect(N1),
+    Top = rpc:call(N1, aec_chain, top_height, []),
+    #{last_gc := LastGC} = rpc:call(N1, aec_db_gc, info, [[last_gc]]),
+    ct:log("Top = ~p, LastGC = ~p", [Top, LastGC]),
+    Top = LastGC,
     ok.
 
 latest_sophia_abi() ->
@@ -401,3 +394,22 @@ sign_and_post_tx(EncodedUnsignedTx, SenderPrivkey, Node) ->
     {Res, aeser_api_encoder:encode(tx_hash, aetx_sign:hash(SignedTx))}.
 
 
+await_scans_complete() ->
+    receive
+        {gproc_ps_event, gc, #{info := scans_complete}} ->
+            ok;
+        OtherMsg ->
+            ct:log("Got OTHER: ~p", [OtherMsg]),
+            error({unexpected_msg, OtherMsg})
+    after 10000 ->
+            error({timeout, waiting_for_scans_complete})
+    end.
+
+await_gc_switch() ->
+    receive
+        {gproc_ps_event, gc, #{info := {gc_switch, AtHeight}}} ->
+            ct:log("Got GC switch notification for height ~p", [AtHeight]),
+            AtHeight
+    after 10000 ->
+            error({timeout, waiting_for_gc_switch})
+    end.

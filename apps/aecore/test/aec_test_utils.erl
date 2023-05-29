@@ -223,12 +223,12 @@ wait_for_pubkey() ->
     wait_for_pubkey(1).
 
 wait_for_pubkey(Sleep) ->
-    case aec_keys:pubkey() of
+    case aec_keys:get_pubkey() of %% this is OK for both HC and not HC tests
         {error, key_not_found} ->
             timer:sleep(Sleep),
             wait_for_pubkey(Sleep+10);
         {ok, Pub} ->
-            {ok, Priv} = aec_keys:sign_privkey(),
+            {ok, Priv} = aec_keys:sign_privkey(), %% this is OK for both HC and not HC tests
             {ok, Pub, Priv}
     end.
 
@@ -332,28 +332,25 @@ start_chain_db(ram) ->
     ok = aec_db:initialize_db(ram),
     Tabs = [Tab || {Tab, _} <- aec_db:tables(ram)],
     ok = mnesia:wait_for_tables(Tabs, 5000),
-    aec_db:prepare_mnesia_bypass(),
+    aec_db_gc:install_test_env(),
     ok;
 
 start_chain_db(disc) ->
     Persist = application:get_env(aecore, persist),
     persistent_term:put({?MODULE, db_mode}, {disc, Persist}),
     application:set_env(aecore, persist, true),
-    {ok, _} = aec_db_error_store:start_link(),
     aec_db:check_db(),
-    aec_db:prepare_mnesia_bypass(),
-    aec_db:clear_db(),
-    ok = meck:new(mnesia_rocksdb_lib, [passthrough]).
+    aec_db:clear_db().
 
 stop_chain_db() ->
     stop_chain_db(persistent_term:get({?MODULE, db_mode})).
 stop_chain_db(ram) ->
+    aec_db_gc:cleanup(),
     application:stop(mnesia);
 stop_chain_db({disc, Persist}) ->
+    aec_db_gc:cleanup(),
     application:stop(mnesia),
     application:set_env(aecore, persist, Persist),
-    ok = aec_db_error_store:stop(),
-    ok = meck:unload(mnesia_rocksdb_lib),
     ok = mnesia:delete_schema([node()]).
 
 genesis_block() ->
@@ -590,6 +587,7 @@ extend_block_chain_with_state(Chain,
     extend_block_chain_with_state(NewChain, Tgts, Tss, Miners, Beneficiaries, TxsFun, Nonce).
 
 extend_block_chain_with_key_blocks(Chain, Length) ->
+    %% TODO: make suitable for HC
     {ok, MinerAccount, _} = wait_for_pubkey(),
     extend_block_chain_with_key_blocks(Chain, Length, MinerAccount, MinerAccount, #{}).
 
@@ -610,7 +608,7 @@ extend_block_chain_with_micro_blocks(Chain, Txs) ->
     extend_block_chain_with_micro_blocks(Chain, Txs, 0).
 
 extend_block_chain_with_micro_blocks(Chain, Txs, PrevMicroBlocksCount) ->
-    {ok, PrivKey} = aec_keys:sign_privkey(),
+    {ok, PrivKey} = aec_keys:sign_privkey(), %% TODO: make suitable for HC
     Delay = 1 + PrevMicroBlocksCount * aec_governance:micro_block_cycle(),
     RevChain = lists:reverse(Chain),
     [{PrevKeyBlock, _}|_] = lists:dropwhile(fun({B, _}) -> aec_blocks:type(B) =:= micro end,
@@ -732,7 +730,7 @@ modify_innermost_tx(SignedTx, ModFun) ->
         {aega_meta_tx, Meta} ->
             NewInnerTx =
                 % recursively go to inner layers until the innermost tx is
-                % reached so its singed transaction is updated
+                % reached so its signed transaction is updated
                 % note: not tail recursive
                 modify_innermost_tx(aega_meta_tx:tx(Meta),
                                     ModFun),
@@ -755,7 +753,8 @@ copy_forks_dir(SourceRelDir, DestRelDir) ->
     copy_fork_dir(SourceRelDir, DestRelDir, ?ROMA_PROTOCOL_VSN),
     copy_fork_dir(SourceRelDir, DestRelDir, ?MINERVA_PROTOCOL_VSN),
     copy_fork_dir(SourceRelDir, DestRelDir, ?FORTUNA_PROTOCOL_VSN),
-    copy_fork_dir(SourceRelDir, DestRelDir, ?LIMA_PROTOCOL_VSN).
+    copy_fork_dir(SourceRelDir, DestRelDir, ?LIMA_PROTOCOL_VSN),
+    copy_fork_dir(SourceRelDir, DestRelDir, ?CERES_PROTOCOL_VSN).
 
 
 copy_fork_dir(SourceRelDir, DestRelDir, Release) ->
@@ -806,6 +805,7 @@ aec_keys_bare_setup() ->
     TmpKeysDir.
 
 aec_keys_bare_cleanup(TmpKeysDir) ->
+    %% this should be suitable for HCs
     ok = aec_keys:stop(),
     remove_temp_key_dir(TmpKeysDir).
 

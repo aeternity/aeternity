@@ -19,6 +19,7 @@
 -include("blocks.hrl").
 
 -type event() :: start_mining
+               | stop_mining
                | block_created
                | micro_block_created
                | start_micro_mining
@@ -32,6 +33,7 @@
                | peers
                | metric
                | chain_sync
+               | gc
                | oracle_query_tx_created
                | oracle_response_tx_created
                | {tx_event, any()}.

@@ -1,3 +1,4 @@
+%%% -*- erlang-indent-level: 4; indent-tabs-mode: nil -*-
 %%%-------------------------------------------------------------------
 %%% @copyright (C) 2017, Aeternity Anstalt
 %%% @doc Test utils for contracts
@@ -45,6 +46,7 @@
         , latest_protocol_version/0
         , latest_sophia_version/0
         , latest_sophia_contract_version/0
+        , require_at_least_protocol/1
         ]).
 
 -export([ abi_version/0
@@ -60,6 +62,7 @@
         ]).
 
 -include_lib("common_test/include/ct.hrl").
+-include_lib("kernel/include/file.hrl").
 -include_lib("aecontract/include/aecontract.hrl").
 -include_lib("aecontract/include/hard_forks.hrl").
 -include_lib("aecontract/test/include/aect_sophia_vsn.hrl").
@@ -74,7 +77,7 @@ new_state() ->
     #{}.
 
 trees(#{} = S) ->
-    maps:get(trees, S, aec_trees:new()).
+    maps:get(trees, S, aec_trees:new_without_backend()).
 
 set_trees(Trees, S) ->
     S#{trees => Trees}.
@@ -154,6 +157,22 @@ latest_sophia_contract_version() ->
 
 latest_protocol_version() ->
     lists:max(maps:keys(aec_hard_forks:protocols())).
+
+require_at_least_protocol(Protocol) ->
+    case latest_protocol_version() of
+	V when V >= Protocol ->
+	    ok;
+	Other ->
+	    Msg = case Other of
+		      ?ROMA_PROTOCOL_VSN    -> not_in_roma;
+		      ?MINERVA_PROTOCOL_VSN -> not_in_minerva;
+		      ?FORTUNA_PROTOCOL_VSN -> not_in_fortuna;
+		      ?LIMA_PROTOCOL_VSN    -> not_in_lima;
+		      ?IRIS_PROTOCOL_VSN    -> not_in_iris;
+		      ?CERES_PROTOCOL_VSN   -> not_in_ceres
+		  end,
+	    {skip, Msg}
+    end.
 
 calls(State) ->
     aec_trees:calls(trees(State)).
@@ -400,7 +419,7 @@ new_key_pair() ->
 
 legacy_compile(Vsn, SrcFile) ->
     Compiler = compiler_cmd(Vsn),
-    OutFile  = tempfile_name("tmp_sophia_", [{ext, ".aeb"}]),
+    OutFile  = tempfile_name("tmp_sophia_", ".aeb"),
     Cmd = Compiler ++ " " ++ SrcFile ++ " -o " ++ OutFile,
     _Output = os:cmd(Cmd),
     try
@@ -432,13 +451,61 @@ aci_json_enabled(Vsn) ->
         _                                -> yes_automatic
     end.
 
-tempfile_name(Prefix, Opts) ->
-    File = tempfile:name(Prefix, Opts),
+tempfile_name(Prefix, Extension) ->
+    File = temp_filename(Prefix, Extension),
     case get('$tmp_files') of
         undefined -> put('$tmp_files', [File]);
         Files     -> put('$tmp_files', [File | Files])
     end,
     File.
+
+%% A few functions mostly lifted / adapted from the bucs lib
+temp_filename(Prefix, Extension) ->
+    Path = temp_dir(),
+    filename:join([Path, Prefix ++ randstr(20) ++ Extension]).
+
+-define(CHARS, <<"azertyuiopqsdfghjklmwxcvbn"
+                 "AZERTYUIOPQSDFGHJKLMWXCVBN1234567890">>).
+randstr(Size) ->
+    PoolSize = byte_size(?CHARS),
+    [binary:at(?CHARS, rand:uniform(PoolSize) - 1)
+     || _ <- lists:seq(1, Size)].
+
+%% Yes, this might be a dreaded nested case, but it is extremely obvious
+%% what it does at a glance.
+temp_dir() ->
+    case os:getenv("TMPDIR") of
+    false ->
+      case os:getenv("TEMP") of
+        false ->
+          case os:getenv("TMP") of
+            false ->
+              case writeable_dir("/tmp") of
+                false ->
+                  Cwd = case file:get_cwd() of
+                          {ok, Dir} -> Dir;
+                          _ -> "."
+                        end,
+                  case writeable_dir(Cwd) of
+                    false -> false;
+                    LTmp -> LTmp
+                  end;
+                STmp -> STmp
+              end;
+            Tmp -> Tmp
+          end;
+        Temp -> Temp
+      end;
+    Tmpdir -> Tmpdir
+  end.
+
+writeable_dir(Path) ->
+  case file:read_file_info(Path) of
+    {ok, #file_info{type = directory, access = Access}}
+        when Access =:= read_write; Access =:= write ->
+      Path;
+    _ -> false
+  end.
 
 cleanup_tempfiles() ->
     case get('$tmp_files') of
@@ -503,7 +570,7 @@ slow_encode_call_data_(Vsn, Code, Fun, Args, Backend) when Vsn == ?SOPHIA_CERES_
         {error, <<"bad argument">>}
     end;
 slow_encode_call_data_(Vsn, Code, Fun, Args0, _Backend) ->
-    SrcFile = tempfile_name("sophia_code", [{ext, ".aes"}]),
+    SrcFile = tempfile_name("sophia_code", ".aes"),
     Args    = legacy_args(Vsn, Args0),
     ok = file:write_file(SrcFile, Code),
     Compiler = compiler_cmd(max(Vsn, ?SOPHIA_MINERVA)),
@@ -544,17 +611,84 @@ decode_call_result(Code, Fun, Res, Value) ->
             Result
     end.
 
-decode_call_result(Backend, Code, Fun, Res, EValue = <<"cb_", _/binary>>) ->
+
+decode_call_result(aevm, Code, Fun, Res, Value) ->
+    decode_call_result_aevm(Code, Fun, Res, Value);
+decode_call_result(fate, Code, Fun, Res, Value) ->
+    decode_call_result_fate(Code, Fun, Res, Value).
+
+decode_call_result_aevm(Code, Fun, Res, EValue = <<"cb_", _/binary>>) ->
+    SrcFile = tempfile_name("sophia_code", ".aes"),
+    ok = file:write_file(SrcFile, Code),
+    Compiler = compiler_cmd(?SOPHIA_LIMA_AEVM),
+    Args = lists:flatten(io_lib:format(" ~s --call_result_type ~p --call_result ~s --call_result_fun ~s",
+                                       [SrcFile, Res, EValue, Fun])),
+
+    Cmd = Compiler ++ Args,
+    Output = os:cmd(Cmd),
+    try
+        [_ | CallRes] = string:lexemes(Output, "\n"),
+        simple_encode_expr(string:join(CallRes, ""))
+    catch _:Err:StackTrace ->
+        {error, {<<"Compiler error">>, Err, StackTrace}}
+    after
+        cleanup_tempfiles()
+    end;
+decode_call_result_aevm(Code, Fun, Res, Value) ->
+    decode_call_result_aevm(Code, Fun, Res, aeser_api_encoder:encode(contract_bytearray, Value)).
+
+decode_call_result_fate(Code, Fun, Res, EValue = <<"cb_", _/binary>>) ->
     case aeser_api_encoder:safe_decode(contract_bytearray, EValue) of
         {ok, Value} ->
-            decode_call_result(Backend, Code, Fun, Res, Value);
+            decode_call_result_fate(Code, Fun, Res, Value);
         Err = {error, _} ->
             Err
     end;
-decode_call_result(Backend, Code, Fun, Res, Value) ->
-    {ok, ValExpr} = aeso_compiler:to_sophia_value(to_str(Code), to_str(Fun),
-                                                  Res, Value, [{backend, Backend}]),
+decode_call_result_fate(Code, Fun, Res, Value) ->
+    {ok, ValExpr} = aeso_compiler:to_sophia_value(to_str(Code), to_str(Fun), Res, Value),
     aeso_aci:json_encode_expr(ValExpr).
+
+
+simple_encode_expr(E = [C | _]) when C == $[; C == $( ->
+    [ simple_encode_expr(E0) || E0 <- split_at_top_expr([$,], trim_outer(E)) ];
+simple_encode_expr(E = [${ | _]) ->
+    maps:from_list([ simple_encode_map_expr(string:trim(E0, both)) || E0 <- split_at_top_expr([$,], trim_outer(E)) ]);
+simple_encode_expr("false") -> false;
+simple_encode_expr("true") -> true;
+simple_encode_expr("None") -> <<"None">>;
+simple_encode_expr("Some" ++ SomeVal) -> #{<<"Some">> => [simple_encode_expr(trim_outer(SomeVal))]};
+simple_encode_expr("abort" ++ SomeVal) -> #{<<"abort">> => [simple_encode_expr(trim_outer(SomeVal))]};
+simple_encode_expr([$" | _] = Str) ->
+    list_to_binary(string:trim(Str, both, "\""));
+simple_encode_expr([D | _] = Int) when D >= $0, D =< $9 ->
+    list_to_integer(Int);
+simple_encode_expr([$# | _] = Enc) ->
+    list_to_binary(Enc);
+simple_encode_expr([_, _, $_ | _] = Enc) ->
+    list_to_binary(Enc);
+simple_encode_expr(E) ->
+    E.
+
+simple_encode_map_expr(E) ->
+    [Key, Val] = split_at_top_expr(E),
+    {list_to_binary(Key), simple_encode_expr(Val)}.
+
+trim_outer(S) ->
+    lists:droplast(tl(string:trim(S, both))).
+
+
+split_at_top_expr(Str) -> split_at(Str, [$,, $=], [$(, $[, ${], [$), $], $}], 0, []).
+split_at_top_expr(At, Str) -> split_at(Str, At, [$(, $[, ${], [$), $], $}], 0, []).
+
+split_at([], _, _, _, _, [])                -> [];
+split_at([], _, _, _, _, Acc)               -> [string:trim(lists:reverse(Acc), both)];
+split_at([C | Rest], At, In, Out, N, Acc)   ->
+  case {lists:member(C, At) andalso N == 0, lists:member(C, In), lists:member(C, Out)} of
+        {true, _, _} -> [string:trim(lists:reverse(Acc), both) | split_at(Rest, At, In, Out, N, [])];
+        {_, true, _} -> split_at(Rest, At, In, Out, N + 1, [C | Acc]);
+        {_, _, true} -> split_at(Rest, At, In, Out, N - 1, [C | Acc]);
+        _            -> split_at(Rest, At, In, Out, N, [C | Acc])
+    end.
 
 generate_json_aci(Vsn, Code) ->
     Backend = backend(),
@@ -573,7 +707,7 @@ generate_json_aci(Vsn, Code) ->
             Result
     end.
 
-generate_json_aci_(Vsn, Backend, Code) when Vsn == ?SOPHIA_IRIS_FATE ->
+generate_json_aci_(Vsn, Backend, Code) when Vsn == ?SOPHIA_CERES_FATE ->
     try
         {ok, JAci} = aeso_aci:contract_interface(json, to_str(Code), [{backend, Backend}]),
         aeaci_aci:from_string(jsx:encode(JAci), #{backend => Backend})
@@ -582,7 +716,7 @@ generate_json_aci_(Vsn, Backend, Code) when Vsn == ?SOPHIA_IRIS_FATE ->
         {error, <<"bad argument">>}
     end;
 generate_json_aci_(Vsn, Backend, Code) ->
-    SrcFile = tempfile_name("sophia_code", [{ext, ".aes"}]),
+    SrcFile = tempfile_name("sophia_code", ".aes"),
     ok = file:write_file(SrcFile, Code),
     Compiler = compiler_cmd(max(Vsn, ?SOPHIA_MINERVA)),
     Cmd = Compiler ++ " --create_json_aci " ++ SrcFile,
@@ -627,20 +761,37 @@ decode_data_(fate, _Type, Data) ->
     try {ok, aefa_test_utils:decode(aeb_fate_encoding:deserialize(Data))}
     catch _:_ -> {error, <<"bad fate data">>}
     end;
-decode_data_(aevm, Type, Data) ->
-    case get_type(Type) of
-        {ok, SophiaType} ->
-            try aeb_heap:from_binary(SophiaType, Data) of
-                {ok, Term} ->
-                    try aect_sophia:prepare_for_json(SophiaType, Term) of
-                        R -> {ok, R}
-                    catch throw:R -> R
-                    end;
-                {error, _} -> {error, <<"bad type/data">>}
-            catch _T:_E ->    {error, <<"bad argument">>}
-            end;
-        {error, _} = E -> E
+decode_data_(aevm, Type, Data0) ->
+    Data = case Data0 of
+               <<"cb_", _/binary>> -> Data0;
+               _ -> aeser_api_encoder:encode(contract_bytearray, Data0)
+           end,
+
+    Compiler = compiler_cmd(?SOPHIA_LIMA_AEVM),
+    Args = lists:flatten(io_lib:format(" -b aevm --decode_data ~s --decode_type ~s", [Data, Type])),
+    Cmd = Compiler ++ Args,
+    Output = os:cmd(Cmd),
+    try
+        [_ | ValueStr] = string:lexemes(Output, "\n"),
+        {ok, simple_encode_expr(string:join(ValueStr, ""))}
+    catch _:Err:StackTrace ->
+        {error, {<<"Compiler error">>, Err, StackTrace}}
+    after
+        cleanup_tempfiles()
     end.
+%%     case get_type(Type) of
+%%         {ok, SophiaType} ->
+%%             try aeb_heap:from_binary(SophiaType, Data) of
+%%                 {ok, Term} ->
+%%                     try aect_sophia:prepare_for_json(SophiaType, Term) of
+%%                         R -> {ok, R}
+%%                     catch throw:R -> R
+%%                     end;
+%%                 {error, _} -> {error, <<"bad type/data">>}
+%%             catch _T:_E ->    {error, <<"bad argument">>}
+%%             end;
+%%         {error, _} = E -> E
+%%     end.
 
 get_type(Type) ->
     case aeso_compiler:sophia_type_to_typerep(to_str(Type)) of
@@ -679,6 +830,7 @@ get_oracle_queries(OracleId, Max, State) ->
 %%%===================================================================
 init_per_group(Vm, Cfg) ->
     init_per_group(Vm, Cfg, fun(X) -> X end).
+
 
 sophia_version(aevm, ?ROMA_PROTOCOL_VSN) -> ?SOPHIA_ROMA;
 sophia_version(aevm, ?MINERVA_PROTOCOL_VSN) -> ?SOPHIA_MINERVA;

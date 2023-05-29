@@ -194,6 +194,7 @@
 -include_lib("aecore/include/blocks.hrl").
 -include_lib("aecontract/include/hard_forks.hrl").
 
+-define(AENS_RESOLVE_GAS_COST, 2000). %% TODO: make gas costs generally available?!
 -define(AVAILABLE_FROM(When, ES),
         aefa_engine_state:vm_version(ES) >= When
         orelse aefa_fate:abort({primop_error, ?FUNCTION_NAME, not_supported}, ES)).
@@ -977,7 +978,7 @@ bytes_cells(B) when ?IS_FATE_BYTES(B) ->
 %% A Variant also has a tag.
 %% A Variant has a tuple of values which size and types
 %%   are decided by the tag.
-%% Note: At the momement the types of the values are not
+%% Note: At the moment the types of the values are not
 %%       specified.
 %%       Also, tags are only numbers (in Sophia tags will
 %%       correspond to names)
@@ -1230,9 +1231,24 @@ make_fate_base_tx(BaseTxType, BaseTx, ES) ->
             Amount = aect_create_tx:amount(BaseTx),
             {VarGas(1) + AmtGas, MkVar(19, {Amount})};
         contract_call_tx ->
-            Ct     = aect_call_tx:contract_pubkey(BaseTx),
+            CtId   = aect_call_tx:contract_id(BaseTx),
             Amount = aect_call_tx:amount(BaseTx),
-            {VarGas(2) + AddrGas + AmtGas, MkVar(20, {?FATE_ADDRESS(Ct), Amount})};
+            case aeser_id:specialize(CtId) of
+                {contract, CtPubkey} ->
+                    {VarGas(2) + AddrGas + AmtGas,
+                     MkVar(20, {?FATE_ADDRESS(CtPubkey), Amount})};
+                {name, NameHash} ->
+                    ?AVAILABLE_FROM(?VM_FATE_SOPHIA_3, ES),
+                    API = aefa_engine_state:chain_api(ES),
+                    case aefa_chain_api:aens_resolve_name_hash(NameHash, <<"contract_pubkey">>, API) of
+                        {ok, _Tag, CtPubkey, _API1} ->
+                            {VarGas(2) + AddrGas + AmtGas + ?AENS_RESOLVE_GAS_COST,
+                             MkVar(20, {?FATE_ADDRESS(CtPubkey), Amount})};
+                        _ ->
+                            aefa_fate:abort({primop_error, aens_resolve, no_contract_pubkey}, ES)
+                    end
+            end;
+
 
         ga_attach_tx ->
             {VarGas(0), MkVar(21, {})};
@@ -1501,9 +1517,9 @@ deploy_contract(CodeOrPK, InitArgsTypes, Value, GasCap, Prot, ES0) ->
                 {ok, API} = aefa_chain_api:eval_primops(
                   [ case CodeOrPK of
                         {ref, Ref} ->
-                            aefa_chain_api:tx_event_op(clone, {Ref, Value, GasCap, ContractPK}, <<"Chain.clone">>);
+                            aefa_chain_api:tx_event_op(clone, {Ref, Value, GasCap, ContractPK}, <<"Call.clone">>);
                         {code, _} ->
-                            aefa_chain_api:tx_event_op(create, {Value, GasCap, ContractPK}, <<"Chain.create">>)
+                            aefa_chain_api:tx_event_op(create, {Value, GasCap, ContractPK}, <<"Call.create">>)
                     end
                   ], aefa_engine_state:chain_api(ES2)),
                 API
@@ -1915,9 +1931,9 @@ aens_resolve_(Arg0, ?FATE_STRING(NameString), ?FATE_STRING(Key), ?FATE_TYPEREP(T
     case aefa_chain_api:aens_resolve(NameString, Key, API) of
         none ->
             write(Arg0, make_none(), ES);
-        {ok, Tag, Pubkey, API1} ->
+        {ok, Tag, Value, API1} ->
             ES1 = aefa_engine_state:set_chain_api(API1, ES),
-            case aens_tag_to_val(Type, Tag, Pubkey) of
+            case aens_tag_to_val(Type, Tag, Value) of
                 none ->
                     write(Arg0, make_none(), ES1);
                 {error, What} ->
@@ -1936,14 +1952,14 @@ aens_resolve_(Arg0, ?FATE_STRING(NameString), ?FATE_STRING(Key), ?FATE_TYPEREP(T
             write(Arg0, make_none(), ES)
     end.
 
-aens_tag_to_val({variant, [{tuple, []}, {tuple, [Type]}]}, Tag, Pubkey) ->
+aens_tag_to_val({variant, [{tuple, []}, {tuple, [Type]}]}, Tag, Value) ->
     case Type =:= string of
-        true  -> {ok, ?FATE_STRING(Pubkey)};
+        true  -> {ok, ?FATE_STRING(Value)};
         false ->
             case Tag of
-                account  -> {ok, ?FATE_ADDRESS(Pubkey)};
-                oracle   -> {ok, ?FATE_ORACLE(Pubkey)};
-                contract -> {ok, ?FATE_CONTRACT(Pubkey)};
+                account  -> {ok, ?FATE_ADDRESS(Value)};
+                oracle   -> {ok, ?FATE_ORACLE(Value)};
+                contract -> {ok, ?FATE_CONTRACT(Value)};
                 _        -> none
             end
     end;
@@ -2040,7 +2056,7 @@ aens_lookup(Arg0, Arg1, EngineState) ->
             %% Pointers are serialized as a list, pre-Iris pointers might not
             %% necessarily be valid, so explicitly sanitize the pointers
             Pointers = maps:from_list(
-                         [ {MkKey(Pt), mk_fate_pointee(Pt)}
+                         [ {MkKey(Pt), mk_fate_pointee(Pt, ES2)}
                            || Pt <- aens_pointer:sanitize_pointers(maps:get(pointers, NameObj)) ]),
             Res = make_some(aeb_fate_data:make_variant([3], 0, {Owner, TTL, Pointers})),
             write(Arg0, Res, ES2);
@@ -2050,13 +2066,33 @@ aens_lookup(Arg0, Arg1, EngineState) ->
             write(Arg0, make_none(), ES1)
     end.
 
-mk_fate_pointee(Pt) ->
+mk_fate_pointee(Pt, ES) ->
     Id = aens_pointer:id(Pt),
+    case aefa_engine_state:vm_version(ES) of %% >= ?VM_FATE_SOPHIA_2 since aens_lookup
+        ?VM_FATE_SOPHIA_2 ->
+            mk_fate_pointee_v1(Id, ES);
+        VM when VM > ?VM_FATE_SOPHIA_2 ->
+            mk_fate_pointee_v2(Id)
+    end.
+
+mk_fate_pointee_v1({data, Data}, ES) when is_binary(Data) ->
+    aefa_fate:abort({primop_error, aens_lookup, data_pointer_not_in_fate_vm_2}, ES);
+mk_fate_pointee_v1(Id, _ES) ->
     case aeser_id:specialize(Id) of
         {account, PK}  -> aeb_fate_data:make_variant([1, 1, 1, 1], 0, {?FATE_ADDRESS(PK)});
         {oracle, PK}   -> aeb_fate_data:make_variant([1, 1, 1, 1], 1, {?FATE_ADDRESS(PK)});
         {contract, PK} -> aeb_fate_data:make_variant([1, 1, 1, 1], 2, {?FATE_ADDRESS(PK)});
         {channel, PK}  -> aeb_fate_data:make_variant([1, 1, 1, 1], 3, {?FATE_ADDRESS(PK)})
+    end.
+
+mk_fate_pointee_v2({data, Data}) when is_binary(Data) ->
+    aeb_fate_data:make_variant([1, 1, 1, 1, 1], 4, {?FATE_STRING(Data)});
+mk_fate_pointee_v2(Id) ->
+    case aeser_id:specialize(Id) of
+        {account, PK}  -> aeb_fate_data:make_variant([1, 1, 1, 1, 1], 0, {?FATE_ADDRESS(PK)});
+        {oracle, PK}   -> aeb_fate_data:make_variant([1, 1, 1, 1, 1], 1, {?FATE_ADDRESS(PK)});
+        {contract, PK} -> aeb_fate_data:make_variant([1, 1, 1, 1, 1], 2, {?FATE_ADDRESS(PK)});
+        {channel, PK}  -> aeb_fate_data:make_variant([1, 1, 1, 1, 1], 3, {?FATE_ADDRESS(PK)})
     end.
 
 aens_update(Arg0, Arg1, Arg2, Arg3, Arg4, Arg5, EngineState) ->
@@ -2097,16 +2133,14 @@ aens_update(Arg0, Arg1, Arg2, Arg3, Arg4, Arg5, EngineState) ->
         case OptPointers of
             ?FATE_VARIANT([_,_], 0, {}) -> undefined;
             ?FATE_VARIANT([_,_], 1, {Pointers_}) ->
-                maps:fold(
-                  fun (PtrKey, ?FATE_VARIANT([1, 1, 1, 1], AddrTag, {{address, Addr}}), Acc) ->
-                          IdType = case AddrTag of    % type pointee =
-                                      0 -> account;   %   | AccountPt(address)
-                                      1 -> oracle;    %   | OraclePt(address)
-                                      2 -> contract;  %   | ContractPt(address)
-                                      3 -> channel    %   | ChannelPt(address)
-                                   end,
-                          [aens_pointer:new(PtrKey, aeser_id:create(IdType, Addr)) | Acc]
-                  end, [], Pointers_)
+                try
+                    maps:fold(
+                        fun (PtrKey, PtrId, Acc) ->
+                            [aens_pointer:new(PtrKey, mk_pointer_id(PtrId, ES1)) | Acc]
+                        end, [], Pointers_)
+                catch error:function_clause ->
+                    aefa_fate:abort({primop_error, aens_update, bad_pointer}, ES1)
+                end
         end,
     HashBin = hash_name(aens_update, NameBin, ES1),
     ES2 = check_delegation_signature(aens_update, {Pubkey, HashBin}, SignBin, ES1),
@@ -2117,6 +2151,29 @@ aens_update(Arg0, Arg1, Arg2, Arg3, Arg4, Arg5, EngineState) ->
         {error, What} ->
             aefa_fate:abort({primop_error, aens_update, What}, ES2)
     end.
+
+mk_pointer_id(Pointee, ES) ->
+    case aefa_engine_state:vm_version(ES) of %% >= ?VM_FATE_SOPHIA_2 since aens_update
+        ?VM_FATE_SOPHIA_2 ->
+            mk_pointer_id_v1(Pointee);
+        VM when VM > ?VM_FATE_SOPHIA_2 ->
+            mk_pointer_id_v2(Pointee)
+    end.
+
+mk_pointer_id_v1(?FATE_VARIANT([1, 1, 1, 1], AddrTag, {?FATE_ADDRESS(Addr)})) ->
+    mk_id(AddrTag, Addr).
+
+mk_pointer_id_v2(?FATE_VARIANT([1, 1, 1, 1, 1], AddrTag, {?FATE_ADDRESS(Addr)})) ->
+    mk_id(AddrTag, Addr);
+mk_pointer_id_v2(?FATE_VARIANT([1, 1, 1, 1, 1], 4, {?FATE_STRING(Data)})) ->
+    Data.
+
+%% type pointee = Account | Oracle | Contract | Channel
+mk_id(0, Address) -> aeser_id:create(account,  Address);
+mk_id(1, Address) -> aeser_id:create(oracle,   Address);
+mk_id(2, Address) -> aeser_id:create(contract, Address);
+mk_id(3, Address) -> aeser_id:create(channel,  Address).
+
 
 aens_transfer(Arg0, Arg1, Arg2, Arg3, EngineState) ->
     {[Signature, From, To, NameString], ES1} =
@@ -2195,7 +2252,8 @@ check_delegation_signature(Type, Data, SignBin, Current, ES0) ->
             VerifyOp = aeb_fate_opcodes:m_to_op('VERIFY_SIG'),
             ES = spend_gas(aeb_fate_opcodes:gas_cost(VerifyOp), ES0),
             API = aefa_engine_state:chain_api(ES),
-            case aefa_chain_api:check_delegation_signature(Pubkey, Bin, SignBin, API) of
+            VmVersion = aefa_engine_state:vm_version(ES),
+            case aefa_chain_api:check_delegation_signature(Pubkey, Bin, SignBin, VmVersion, API) of
                 {ok, API1} ->
                     aefa_engine_state:set_chain_api(API1, ES);
                 error ->
@@ -2203,8 +2261,9 @@ check_delegation_signature(Type, Data, SignBin, Current, ES0) ->
             end
     end.
 
-delegation_signature_data(Type, Pubkey, Current) when Type =:= aens_preclaim;
-                                                      Type =:= oracle_register;
+delegation_signature_data(aens_preclaim, Pubkey, Current) ->
+    {{<<Pubkey/binary, Current/binary>>, aens_wildcard_signature_data(Pubkey, Current)}, Pubkey};
+delegation_signature_data(Type, Pubkey, Current) when Type =:= oracle_register;
                                                       Type =:= oracle_extend ->
     {<<Pubkey/binary, Current/binary>>, Pubkey};
 delegation_signature_data(oracle_respond, {Pubkey, QueryId}, Current) ->
@@ -2213,7 +2272,10 @@ delegation_signature_data(Type, {Pubkey, Hash}, Current) when Type =:= aens_clai
                                                               Type =:= aens_update;
                                                               Type =:= aens_transfer;
                                                               Type =:= aens_revoke ->
-    {<<Pubkey/binary, Hash/binary, Current/binary>>, Pubkey}.
+    {{<<Pubkey/binary, Hash/binary, Current/binary>>, aens_wildcard_signature_data(Pubkey, Current)}, Pubkey}.
+
+aens_wildcard_signature_data(Pubkey, ContractPubkey) ->
+    <<Pubkey/binary, "AENS"/utf8, ContractPubkey/binary>>.
 
 spend_gas(Delta, ES) when is_integer(Delta), Delta > 0 ->
     aefa_engine_state:spend_gas(Delta, ES).

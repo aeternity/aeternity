@@ -59,6 +59,7 @@ set_level(L) when is_binary(L) ->
             logger:set_primary_config(level, Level),
             if_running(lager, fun() -> live_set_level(Level) end),
             set_app_log_level(app_ctrl, Level),
+            set_app_log_level(mnesia, Level),
             set_app_log_level(exometer_core, Level);
         false ->
             lager:error("Unknown log level: ~p", [Level]),
@@ -107,6 +108,16 @@ levels() ->
     [debug, info, notice, warning, error, critical, alert, emergency, none].
 
 %% This is to enable silencing of apps that can be very chatty at debug level
+set_app_log_level(mnesia, debug) ->
+    case os:getenv("AE_MNESIA_TRACE") of
+        "true" ->
+            mnesia:set_debug_level(trace);
+        _ ->
+            case os:getenv("AE_MNESIA_DEBUG") of
+                "true" -> mnesia:set_debug_level(debug);
+                _ -> ok
+            end
+    end;
 set_app_log_level(App, debug) ->
     Key = "AE_" ++ string:to_upper(atom_to_list(App)) ++ "_DEBUG",
     case os:getenv(Key, "false") of

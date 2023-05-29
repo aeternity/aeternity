@@ -744,9 +744,17 @@ t_create_channel_(Cfg) ->
     Cfg1 = [?SLOGAN | set_expected_fsm_logs(?FUNCTION_NAME, Cfg)],
     assert_empty_msgq(Debug),
 
+    PrevCount = rpc(dev1, aesc_fsm, count_active_fsms, []),
+    ?LOG("Active FSMs before: ~p", [PrevCount]),
+
     #{ i := #{channel_id := ChannelId} = I
      , r := #{} = R} = create_channel_(Cfg1, #{}, Debug),
     assert_empty_msgq(Debug),
+
+    CountAfter = rpc(dev1, aesc_fsm, count_active_fsms, []),
+    ?LOG("Active FSMs after create: ~p", [CountAfter]),
+
+    2 = CountAfter - PrevCount,
 
     {ok, _} = rpc(dev1, aec_chain, get_channel, [ChannelId]),
 
@@ -754,6 +762,10 @@ t_create_channel_(Cfg) ->
                                                          #{n => 5, type => [rpt]}])]),
 
     shutdown_(I, R, Cfg1),
+
+    CountAfterShutdown = rpc(dev1, aesc_fsm, count_active_fsms, []),
+    ?LOG("Active FSMs after shutdown: ~p", [CountAfterShutdown]),
+    CountAfterShutdown = PrevCount,
 
     {ok, #{info := {log, ILog}}} = receive_log(I, Debug),
     {ok, #{info := {log, RLog}}} = receive_log(R, Debug),
@@ -1216,7 +1228,7 @@ withdraw_high_amount_short_confirmation_time(Cfg) ->
     ok = withdraw_full_cycle_(Amount, #{}, Round, Cfg1).
 
 withdraw_low_amount_long_confirmation_time(Cfg) ->
-    % Low amount and low factor should lead to comparitively long confirmation time
+    % Low amount and low factor should lead to comparatively long confirmation time
     Cfg1 = set_configs([?SLOGAN, {minimum_depth_factor, 8}], Cfg),
     Amount = 1,
     Round = 1,
@@ -1234,7 +1246,7 @@ withdraw_low_amount_long_confirmation_time(Cfg) ->
     ok = withdraw_full_cycle_(Amount, #{}, Round, Cfg2).
 
 withdraw_low_amount_long_confirmation_time_negative_test(Cfg) ->
-    % Low amount and low factor should lead to comparitively long confirmation time
+    % Low amount and low factor should lead to comparatively long confirmation time
     Cfg1 = set_configs([ ?SLOGAN
                        , {minimum_depth, 3}
                        , {minimum_depth_channel, 10}
@@ -2069,7 +2081,7 @@ wrong_create_({I, R, #{initiator_amount := IAmt0, responder_amount := RAmt0,
             {_, WrongTx} = TryCheating(create_tx, I1, Debug),
             {ok, _} = receive_from_fsm(error, I1, ErrResponse, ?TIMEOUT, Debug),
 
-            % turn default behavior off, the initator deliberatly had sent
+            % turn default behavior off, the initator deliberately had sent
             % invalid tx, the responder must reject it
             ok = rpc(dev1, aesc_fsm, strict_checks, [FsmI, false], Debug),
 
@@ -2091,7 +2103,7 @@ wrong_create_({I, R, #{initiator_amount := IAmt0, responder_amount := RAmt0,
             %% new tx
             {ok, _} = receive_from_fsm(error, R1, bad_signature, ?TIMEOUT, Debug),
 
-            % turn default behavior off, the responder deliberatly had sent
+            % turn default behavior off, the responder deliberately had sent
             % invalid tx, the initiator must reject it
             ok = rpc(dev1, aesc_fsm, strict_checks, [FsmR, false], Debug),
 
@@ -2165,7 +2177,7 @@ wrong_action({I, R, _Spec, _Port, Debug}, Poster, Malicious,
             {ok, _} = receive_from_fsm(error, D, ErrMsg, ?TIMEOUT, Debug),
             wait_for_open(FsmD, Debug),
 
-            % turn default behavior off, the poster deliberatly had sent
+            % turn default behavior off, the poster deliberately had sent
             % invalid tx, the acknowledger must reject it
             ok = rpc(dev1, aesc_fsm, strict_checks, [FsmD, false], Debug),
 
@@ -2188,7 +2200,7 @@ wrong_action({I, R, _Spec, _Port, Debug}, Poster, Malicious,
             %% that the transaction was valid so it is rightfully in an `open`
             %% state when one receives the conflict message by the other party
             %% since this test is checking if the starting party (D) is
-            %% reporting the conflict, we don't exepect the malicious
+            %% reporting the conflict, we don't expect the malicious
             %% acknowledger to report anything
             ok = rpc(dev1, aesc_fsm, strict_checks, [FsmA, true], Debug)
     end,
@@ -3607,7 +3619,8 @@ meta(Owner, AuthOpts, SignedTx) ->
     TxBin    = aec_governance:add_network_id(aetx:serialize_to_binary(Aetx)),
     %% authenticate the inner tx, that could be a transaction instance or yet
     %% another meta
-    AuthData = make_authdata(AuthOpts, Nonce, aec_hash:hash(tx, TxBin)),
+    TxHash   = aega_test_utils:auth_data_hash(AuthOpts, TxBin),
+    AuthData = make_authdata(AuthOpts, Nonce, TxHash),
     %% produce the new layer of meta authenticating the inner tx and not the
     %% innermost one, but include the inner tx
     aecore_suite_utils:meta_tx(Owner, AuthOpts, AuthData, SignedTx).
@@ -4162,7 +4175,7 @@ assert_cache_is_gone_after_on_disk(ChannelId) ->
     try
         retry(5, 20, fun() -> assert_cache_is_on_disk(ChannelId) end),
         mine_blocks(dev1),
-        assert_cache_is_gone(ChannelId)
+        retry(5, 20, fun() -> assert_cache_is_gone(ChannelId) end)
     catch
         error:{badmatch, []} ->
             % At this point the cache could already be gone

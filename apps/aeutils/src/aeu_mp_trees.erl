@@ -13,6 +13,7 @@
         , commit_reachable_to_db/1
         , construct_proof/3
         , db/1
+        , has_backend/1
         , delete/2
         , gc_cache/1
         , get/2
@@ -62,7 +63,7 @@
              }).
 
 -record(db_mpt, { hash :: <<>> | hash()
-                , db   = aeu_mp_trees_db:db()
+                , db   :: aeu_mp_trees_db:db()
                 }).
 
 -record(iter, { key  = <<>>          :: <<>> | key()
@@ -151,6 +152,10 @@ tree_no_cache(MPT = #mpt{}) ->
 -spec db(tree()) -> db().
 db(#mpt{ db = DB}) ->
     DB.
+
+-spec has_backend(tree()) -> boolean().
+has_backend(#mpt{ db = DB }) ->
+    ?MODULE =/= aeu_mp_trees_db:get_module(DB).
 
 -spec from_db_format(tree() | tuple()) -> tree().
 from_db_format(Tree = #mpt{}) -> Tree;
@@ -1072,7 +1077,7 @@ force_encoded_node_to_hash(Rlp, DB) when byte_size(Rlp) < 32 ->
     Hash = node_hash(Rlp),
     {Hash, db_put(Hash, Node, DB)}.
 
-%% A hash might have been forced for being refered in an extension.
+%% A hash might have been forced for being referred in an extension.
 %% Resolve the hash and find out if we should use the encoded node instead.
 maybe_resolve_hash(<<>> = X,_DB) -> X;
 maybe_resolve_hash(Bin,_DB) when byte_size(Bin) < 32 -> Bin;
@@ -1110,7 +1115,7 @@ extension(Path, Node, DB) when Path =/= <<>> ->
 update_extension_path({ext,_OldPath, Hash}, NewPath, DB) ->
     case NewPath =:= <<>> of
         true ->
-            %% Fall through to the refered value
+            %% Fall through to the referred value
             {maybe_resolve_hash(Hash, DB), DB};
         false ->
             encode_node([encode_path_ext(NewPath), Hash], DB)

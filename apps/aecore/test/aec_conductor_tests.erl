@@ -16,7 +16,6 @@
 
 setup_minimal() ->
     ok = application:ensure_started(gproc),
-    {ok, _} = aec_db_error_store:start_link(),
     ok = aec_test_utils:start_chain_db(),
     aec_block_generator:start_link(),
 
@@ -26,7 +25,7 @@ setup_minimal() ->
                         meck:passthrough([]) div 2560
                 end),
     TmpKeysDir = aec_test_utils:aec_keys_setup(),
-    {ok, PubKey} = aec_keys:pubkey(),
+    {ok, PubKey} = aec_keys:get_pubkey(),
     ok = application:set_env(aecore, beneficiary, aeser_api_encoder:encode(account_pubkey, PubKey)),
     aec_test_utils:mock_genesis_and_forks(preset_accounts(PubKey)),
     aec_test_utils:mock_time(),
@@ -46,7 +45,6 @@ teardown_minimal(TmpKeysDir) ->
     aec_test_utils:unmock_genesis_and_forks(),
     aec_test_utils:unmock_time(),
     ok = aec_test_utils:stop_chain_db(),
-    ok = aec_db_error_store:stop(),
     aec_test_utils:aec_keys_cleanup(TmpKeysDir),
     ok.
 
@@ -640,9 +638,7 @@ throughput_ram_test_() ->
                  accepted_future_block_time_shift, fun() -> 352 * 24 * 60 * 60 * 1000 end),
              Persist = application:get_env(aecore, persist),
              application:set_env(aecore, persist, true),
-             {ok, _} = aec_db_error_store:start_link(),
              aec_db:check_db(),
-             aec_db:prepare_mnesia_bypass(),
              aec_db:clear_db(),
              TmpDir = aec_test_utils:aec_keys_setup(),
              ok = meck:new(mnesia_rocksdb_lib, [passthrough]),
@@ -665,7 +661,6 @@ throughput_ram_test_() ->
              aec_test_utils:unmock_genesis_and_forks(),
              aec_test_utils:aec_keys_cleanup(TmpDir),
              application:set_env(aecore, persist, Persist),
-             ok = aec_db_error_store:stop(),
              ok = meck:unload(mnesia_rocksdb_lib),
              meck:unload(aeminer_pow_cuckoo),
              ok = mnesia:delete_schema([node()]),
@@ -712,9 +707,7 @@ throughput_disc_test_() ->
                  accepted_future_block_time_shift, fun() -> 352 * 24 * 60 * 60 * 1000 end),
              Persist = application:get_env(aecore, persist),
              application:set_env(aecore, persist, true),
-             {ok, _} = aec_db_error_store:start_link(),
              aec_db:check_db(),
-             aec_db:prepare_mnesia_bypass(),
              aec_db:clear_db(),
              TmpDir = aec_test_utils:aec_keys_setup(),
              ok = meck:new(mnesia_rocksdb_lib, [passthrough]),
@@ -737,7 +730,6 @@ throughput_disc_test_() ->
              aec_test_utils:unmock_genesis_and_forks(),
              aec_test_utils:aec_keys_cleanup(TmpDir),
              application:set_env(aecore, persist, Persist),
-             ok = aec_db_error_store:stop(),
              ok = meck:unload(mnesia_rocksdb_lib),
              meck:unload(aeminer_pow_cuckoo),
              ok = mnesia:delete_schema([node()]),
@@ -825,7 +817,7 @@ sign_tx(Tx, PrivKey) ->
     aec_test_utils:sign_tx(Tx, PrivKey).
 
 beneficiary_keys() ->
-    {ok, Pub} = aec_keys:pubkey(),
+    {ok, Pub} = aec_keys:get_pubkey(),
     {ok, Priv} = aec_keys:sign_privkey(),
     {Pub, Priv}.
 

@@ -53,6 +53,7 @@
         , aens_claim/5
         , aens_preclaim/4
         , aens_resolve/3
+        , aens_resolve_name_hash/3
         , aens_revoke/3
         , aens_transfer/4
         , aens_update/6
@@ -60,7 +61,7 @@
         , eval_primops/2
         ]).
 
--export([ check_delegation_signature/4
+-export([ check_delegation_signature/5
         , is_onchain/1
         ]).
 
@@ -353,9 +354,9 @@ next_nonce(Pubkey, #state{primop_state = PState0,
             end
     end.
 
--spec check_delegation_signature(pubkey(), binary(), binary(), state()) ->
+-spec check_delegation_signature(pubkey(), binary() | {binary(), binary()}, binary(), aect_contracts:vm_version(), state()) ->
                                         {'ok', state()} | 'error'.
-check_delegation_signature(Pubkey, Binary, Signature,
+check_delegation_signature(Pubkey, Binary, Signature, VmVersion,
                            #state{ primop_state = PState} = State) ->
     case aeprimop_state:find_account(Pubkey, PState) of
         {Account, PState1} ->
@@ -363,14 +364,30 @@ check_delegation_signature(Pubkey, Binary, Signature,
                 generalized ->
                     error;
                 basic ->
-                    BinaryForNetwork = aec_governance:add_network_id(Binary),
-                    case enacl:sign_verify_detached(Signature, BinaryForNetwork, Pubkey) of
-                        true  -> {ok, State#state{primop_state = PState1}};
-                        false -> error
-                    end
+                    State1 = State#state{primop_state = PState1},
+                    verify_delegation_signature_(Pubkey, Binary, Signature, VmVersion, State1)
             end;
+        none when VmVersion >= ?VM_FATE_SOPHIA_3 ->
+            verify_delegation_signature_(Pubkey, Binary, Signature, VmVersion, State);
         none ->
             error
+    end.
+
+verify_delegation_signature_(Pubkey, {Binary1, _}, Signature, VmVersion, State) when VmVersion < ?VM_FATE_SOPHIA_3 ->
+    verify_delegation_signature(Pubkey, Binary1, Signature, State);
+verify_delegation_signature_(Pubkey, {Binary1, Binary2}, Signature, _VmVersion, State) ->
+    case verify_delegation_signature(Pubkey, Binary1, Signature, State) of
+        {ok, State} -> {ok, State};
+        error       -> verify_delegation_signature(Pubkey, Binary2, Signature, State)
+    end;
+verify_delegation_signature_(Pubkey, Binary, Signature, _VmVersion, State) ->
+    verify_delegation_signature(Pubkey, Binary, Signature, State).
+
+verify_delegation_signature(Pubkey, Binary, Signature, State) ->
+    BinaryForNetwork = aec_governance:add_network_id(Binary),
+    case enacl:sign_verify_detached(Signature, BinaryForNetwork, Pubkey) of
+        true  -> {ok, State};
+        false -> error
     end.
 
 %%%-------------------------------------------------------------------
@@ -382,6 +399,8 @@ check_delegation_signature(Pubkey, Binary, Signature,
 %% SpendTx = aec_spend_tx:new(#{sender_id => aeser_id:create(account, FromPubkey), ...})
 spend(FromPubkey, ToPubkey, Amount, State) ->
     eval_primops([ aeprimop:spend_op(FromPubkey, ToPubkey, Amount)
+                 , aeprimop:tx_event_op(delta, {FromPubkey, -Amount}, <<"Spend.amount">>)
+                 , aeprimop:tx_event_op(delta, {ToPubkey, Amount}, <<"Spend.amount">>)
                  , tx_event_op(spend, {FromPubkey, ToPubkey, Amount}, <<"Chain.spend">>)
                  ], State).
 
@@ -391,6 +410,8 @@ spend(FromPubkey, ToPubkey, Amount, State) ->
 %% transfer_value might be needed.
 transfer_value(FromPubkey, ToPubkey, Amount, State) ->
     eval_primops([ aeprimop:transfer_value_op(FromPubkey, ToPubkey, Amount)
+                 , aeprimop:tx_event_op(delta, {FromPubkey, -Amount}, <<"Spend.amount">>)
+                 , aeprimop:tx_event_op(delta, {ToPubkey, Amount}, <<"Spend.amount">>)
                  , tx_event_op(spend, {FromPubkey, ToPubkey, Amount}, <<"Call.amount">>)
                  ], State).
 
@@ -419,14 +440,14 @@ tx_event_data(oracle_extend, {Pubkey, RelTTL}, _Type) ->
                           , nonce      => 0
                           , oracle_ttl => {delta, RelTTL}
                           , fee        => 0 }));
-tx_event_data(oracle_query, {OraclePubkey, SenderPubkey, Query, QFee, QTTL, RTTL}, _Type) ->
+tx_event_data(oracle_query, {OraclePubkey, SenderPubkey, Nonce, Query, QFee, QTTL, RTTL}, _Type) ->
     ok(aeo_query_tx:new(#{ sender_id    => acct_id(SenderPubkey)
                          , oracle_id    => ora_id(OraclePubkey)
                          , query        => Query
                          , query_fee    => QFee
                          , query_ttl    => ora_ttl(QTTL)
                          , response_ttl => {delta, RTTL}
-                         , nonce        => 0
+                         , nonce        => Nonce
                          , fee          => 0
                          , ttl          => 0 }));
 tx_event_data(oracle_response, {OraclePubkey, QueryId, Response, RTTL}, _Type) ->
@@ -556,9 +577,8 @@ oracle_query(OraclePubkey, SenderPubkey, Question, QFee, QTTLType, QTTL, RTTL,
                     Gas = ttl_gas(oracle_query_tx, QTTL1) + size_gas([Question1]),
                     Ins   = [ aeprimop:force_inc_account_nonce_op(SenderPubkey, Nonce)
                             , aeprimop:spend_fee_op(SenderPubkey, QFee)
-                              %% TODO: Should we add a tx event for spend_fee?
                             , tx_event_op(oracle_query, {OraclePubkey, SenderPubkey,
-                                                         Question1, QFee,
+                                                         Nonce, Question1, QFee,
                                                          ora_ttl(QTTLType, QTTL),
                                                          RTTL}, <<"Oracle.query">>)
                             , aeprimop:oracle_query_op_with_return(
@@ -812,26 +832,39 @@ aens_resolve(NameString, Key, S) ->
             Err
     end.
 
+aens_resolve_name_hash(NameHash, Key, S) ->
+    case aens_resolve_name_hash_from_pstate(NameHash, Key, get_pstate(S)) of
+        {ok, Tag, Pubkey, PState1} ->
+            {ok, Tag, Pubkey, set_pstate(PState1, S)};
+        none ->
+            none
+    end.
+
 aens_resolve_from_pstate(NameString, Key, PState) ->
     case aens_utils:to_ascii(NameString) of
         {ok, NameAscii} ->
             NameHash = aens_hash:name_hash(NameAscii),
-            case aeprimop_state:find_name(NameHash, PState) of
-                {Name, PState1} ->
-                    case aens:resolve_from_name_object(Key, Name) of
-                        {ok, Id} ->
-                            {Tag, Pubkey} = aeser_id:specialize(Id),
-                            {ok, Tag, Pubkey, PState1};
-                        {error, name_revoked} ->
-                            none;
-                        {error, pointer_id_not_found} ->
-                            none
-                    end;
-                none ->
-                    none
-            end;
+            aens_resolve_name_hash_from_pstate(NameHash, Key, PState);
         {error, _} = Err ->
             Err
+    end.
+
+aens_resolve_name_hash_from_pstate(NameHash, Key, PState) ->
+    case aeprimop_state:find_name(NameHash, PState) of
+        {Name, PState1} ->
+            case aens:resolve_from_name_object(Key, Name) of
+                {ok, {data, Data}} ->
+                    {ok, data, Data, PState1};
+                {ok, Id} ->
+                    {Tag, Pubkey} = aeser_id:specialize(Id),
+                    {ok, Tag, Pubkey, PState1};
+                {error, name_revoked} ->
+                    none;
+                {error, pointer_id_not_found} ->
+                    none
+            end;
+        none ->
+            none
     end.
 
 aens_preclaim(Pubkey, Hash, #state{} = S, VmVersion) when ?IS_ONCHAIN(S) ->

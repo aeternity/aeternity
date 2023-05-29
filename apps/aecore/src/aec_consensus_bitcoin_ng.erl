@@ -1,4 +1,4 @@
-%%% -*- erlang-indent-level: 4 -*-
+%%% -*- erlang-indent-level: 4; indent-tabs-mode: nil -*-
 %%% -------------------------------------------------------------------
 %%% @copyright (C) 2020, Aeternity Anstalt
 %%% @doc BitcoinNG consensus module
@@ -10,7 +10,7 @@
 %% API
 -export([ can_be_turned_off/0
         , assert_config/1
-        , start/1
+        , start/2
         , stop/0
         , is_providing_extra_http_endpoints/0
         , client_request/1
@@ -34,7 +34,7 @@
         , state_pre_transform_key_node/2
         , state_pre_transform_micro_node/2
         %% Block rewards
-        , state_grant_reward/3
+        , state_grant_reward/4
         %% PoGF
         , pogf_detected/2
         %% Genesis block
@@ -52,7 +52,15 @@
         %% Block target and difficulty
         , default_target/0
         , assert_key_target_range/1
-        , key_header_difficulty/1 ]).
+        , key_header_difficulty/1
+        %% rewards and signing
+        , beneficiary/0
+        , next_beneficiary/0
+        , get_sign_module/0
+        , get_type/0
+        , get_block_producer_configs/0
+        , is_leader_valid/3
+        ]).
 
 -export([ get_whitelist/0
         , rollback/1
@@ -73,7 +81,7 @@
 %% Configuration and extra features/http endpoints
 can_be_turned_off() -> true.
 assert_config(_Config) -> ok.
-start(_Config) ->
+start(_Config, _) ->
     load_whitelist(),
     case aec_governance:get_network_id() of
         <<"ae_mainnet">> -> force_community_fork();
@@ -122,10 +130,11 @@ force_community_fork() ->
 rollback(Height) ->
     F = fun() ->
                 TopHeight = aec_chain:top_height(),
+                lager:debug("Rolling back from height ~p to ~p", [TopHeight, Height]),
                 {ok, ForkPoint} = aec_chain_state:get_key_block_hash_at_height(Height),
                 do_rollback_(ForkPoint, height, key, Height, TopHeight)
         end,
-    aec_db:ensure_activity(sync_dirty, F).
+    rollback_result(aec_db:ensure_activity(sync_dirty, F)).
 
 rollback_to_hash(Type, Hash) ->
     F = fun() ->
@@ -140,7 +149,11 @@ rollback_to_hash(Type, Hash) ->
                         do_rollback_(Hash, hash, Type, Height, TopHeight)
                 end
         end,
-    aec_db:ensure_activity(sync_dirty, F).
+    rollback_result(aec_db:ensure_activity(sync_dirty, F)).
+
+rollback_result({ok, Map}) when is_map(Map) ->
+    aec_conductor:note_rollback(Map),
+    ok.
 
 do_rollback(ForkPoint, Height, TopHeight) ->
     lager:info("Perform rollback from ~p to ~p", [TopHeight, Height]),
@@ -161,7 +174,8 @@ do_rollback_(ForkPoint, Mode, Type, Height, TopHeight) ->
               roll_back_height_(H, Height, ForkPoint, Mode, Type)
       end, lists:seq(FromHeight, TopHeight+SafetyMargin)),
       aec_db:write_top_block_node(ForkPoint, FPHeader),
-    ok.
+    {ok, #{new_top_hash => ForkPoint,
+	   new_top_header => FPHeader}}.
 
 roll_back_height_(H, H, Hash, hash, Type) ->
     %% We know that Hash is at this height, and that Type is correct
@@ -183,7 +197,7 @@ roll_back_height_(CurH, _Height, _ForkPoint, _Mode, _Type) ->
 
 hashes_at_height(Height) ->
     [Hash || #aec_headers{key = Hash}
-                 <- mnesia:index_read(aec_headers, Height, height)].
+                 <- aec_db:index_read(aec_headers, Height, height)].
 
 ok({ok, Res}) -> Res.
 
@@ -194,9 +208,9 @@ micros_after_hash([_|T], H) ->
 
 remove_block(Hash) ->
     ok = remove_tx_locations(Hash),
-    ok = mnesia:delete(aec_headers, Hash, write),
-    ok = mnesia:delete(aec_blocks, Hash, write),
-    ok = mnesia:delete(aec_block_state, Hash, write).
+    ok = aec_db:delete(aec_headers, Hash, write),
+    ok = aec_db:delete(aec_blocks, Hash, write),
+    ok = aec_db:delete(aec_block_state, Hash, write).
 
 remove_tx_locations(Hash) ->
     case aec_db:find_block_tx_hashes(Hash) of
@@ -408,7 +422,7 @@ state_pre_transform_micro_node(_Node, Trees) -> Trees.
 
 %% -------------------------------------------------------------------
 %% Block rewards
-state_grant_reward(Beneficiary, Trees, Amount) -> aec_trees:grant_fee(Beneficiary, Trees, Amount).
+state_grant_reward(Beneficiary, _Node, Trees, Amount) -> aec_trees:grant_fee(Beneficiary, Trees, Amount).
 
 %% -------------------------------------------------------------------
 %% PoGF
@@ -472,7 +486,7 @@ generate_key_header_seal(HeaderBin, Header, Nonce, MinerConfig, AddressedInstanc
     }.
 
 set_key_block_seal(Block, {Nonce, Evd}) ->
-    aec_blocks:set_nonce_and_pow(Block, Nonce, Evd).
+    aec_blocks:set_nonce_and_key_seal(Block, Nonce, Evd).
 
 nonce_for_sealing(_Header) ->
     aeminer_pow:pick_nonce().
@@ -494,6 +508,29 @@ assert_key_target_range(_Target) ->
 key_header_difficulty(Header) ->
     aeminer_pow:target_to_difficulty(aec_headers:target(Header)).
 
+beneficiary() ->
+    case aeu_env:user_config_or_env([<<"mining">>, <<"beneficiary">>], aecore, beneficiary) of
+        {ok, EncodedBeneficiary} ->
+            case aeser_api_encoder:safe_decode(account_pubkey, EncodedBeneficiary) of
+                {ok, _Beneficiary} = Result ->
+                    Result;
+                {error, Reason} ->
+                    {error, {beneficiary_error, Reason}}
+            end;
+        undefined ->
+            {error, beneficiary_not_configured}
+    end.
+
+next_beneficiary() -> beneficiary().
+
+get_sign_module() -> aec_keys.
+
+get_type() -> pow.
+
+get_block_producer_configs() -> aec_mining:get_miner_configs().
+
+is_leader_valid(_Node, _Trees, _TxEnv) ->
+    true.
 
 load_whitelist() ->
     W = aec_fork_block_settings:block_whitelist(),

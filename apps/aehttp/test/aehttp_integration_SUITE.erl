@@ -22,6 +22,7 @@
 %% Exports for other tests
 -export(
    [ initialize_account/1
+   , initialize_account/2
    , get_name_preclaim/1
    , get_name_claim/1
    , get_names_entry_by_name_sut/1
@@ -30,6 +31,7 @@
    , get_accounts_by_pubkey_and_height_sut/2
    , get_accounts_next_nonce_sut/1
    , get_transactions_by_hash_sut/1
+   , get_micro_blocks_header_by_hash_sut/1
    , check_transaction_in_pool_sut/1
    , get_contract_call_object/1
    , get_top_block/1
@@ -44,6 +46,7 @@
    , delete_tx_from_mempool_sut/1
    , get_peer_count_sut/0
    , get_key_blocks_current_height_sut/0
+   , get_status_sut/0
    ]).
 
 -export(
@@ -88,6 +91,7 @@
     post_spend_tx_w_hash_sig/1,
     post_contract_and_call_tx/1,
     nonce_limit/1,
+    get_name_update/1,
     get_contract_create/1,
     get_contract_call/1,
     get_contract_bytecode/1,
@@ -193,14 +197,6 @@
 
     ]).
 
-%% test case exports
-%% for CORS headers
--export([
-    cors_not_returned_when_origin_not_sent/1,
-    cors_returned_on_preflight_request/1,
-    cors_returned_on_get_request/1,
-    cors_returned_on_error/1]).
-
 %% test case exports for HTTP cache headers
 -export([
     expires_cache_header/1,
@@ -245,6 +241,7 @@
 -define(DEFAULT_TESTS_COUNT, 5).
 -define(BOGUS_STATE_HASH, <<42:32/unit:8>>).
 -define(SPEND_FEE, 20000 * aec_test_utils:min_gas_price()).
+-define(HTTP_ROS, aehttp_rosetta_SUITE).
 
 -define(MAX_MINED_BLOCKS, 20).
 
@@ -494,12 +491,6 @@ groups() ->
         swagger_validation_schema
         %%swagger_validation_types
       ]},
-     {cors_headers, [],
-      [cors_not_returned_when_origin_not_sent,
-       cors_returned_on_preflight_request,
-       cors_returned_on_get_request,
-       cors_returned_on_error]},
-
      {http_cache, [],
       [expires_cache_header,
        etag_cache_header]},
@@ -830,10 +821,14 @@ init_per_testcase(named_oracle_transactions, Config) ->
         false -> {skip, requires_iris_or_newer}
     end;
 init_per_testcase(post_oracle_register, Config) ->
-    %% TODO: assert there is enought balance
+    %% TODO: assert there is enough balance
     {_, Pubkey} = aecore_suite_utils:sign_keys(?NODE),
+    {OraPubkey, OraPrivkey} = initialize_account(100000000 * aec_test_utils:min_gas_price()),
+    ok = give_tokens(OraPubkey, 8000000000000000000),
     [{account_id, aeser_api_encoder:encode(account_pubkey, Pubkey)},
-     {oracle_id, aeser_api_encoder:encode(oracle_pubkey, Pubkey)},
+     {ora_account_id, aeser_api_encoder:encode(account_pubkey, OraPubkey)},
+     {ora_account, {OraPubkey, OraPrivkey}},
+     {oracle_id, aeser_api_encoder:encode(oracle_pubkey, OraPubkey)},
      {query_format, <<"something">>},
      {response_format, <<"something else">>},
      {query_fee, 1},
@@ -844,6 +839,8 @@ init_per_testcase(post_oracle_extend, Config) ->
     {post_oracle_register, SavedConfig} = ?config(saved_config, Config),
     OracleTtlDelta = 500,
     [{account_id, ?config(account_id, SavedConfig)},
+     {ora_account_id, ?config(ora_account_id, SavedConfig)},
+     {ora_account, ?config(ora_account, SavedConfig)},
      {oracle_id, ?config(oracle_id, SavedConfig)},
      {fee, 100000 * aec_test_utils:min_gas_price()},
      {oracle_ttl_value_final, ?config(oracle_ttl_value, SavedConfig) + OracleTtlDelta},
@@ -851,7 +848,11 @@ init_per_testcase(post_oracle_extend, Config) ->
      {oracle_ttl_value, OracleTtlDelta} | init_per_testcase_all(Config)];
 init_per_testcase(post_oracle_query, Config) ->
     {post_oracle_extend, SavedConfig} = ?config(saved_config, Config),
-    [{sender_id, ?config(account_id, SavedConfig)},
+    {SenderPubkey, SenderPrivkey} = initialize_account(100000000 * aec_test_utils:min_gas_price()),
+    [{sender_id, aeser_api_encoder:encode(account_pubkey, SenderPubkey)},
+     {sender_account, {SenderPubkey, SenderPrivkey}},
+     {ora_account_id, ?config(ora_account_id, SavedConfig)},
+     {ora_account, ?config(ora_account, SavedConfig)},
      {oracle_id, ?config(oracle_id, SavedConfig)},
      {query, <<"Hejsan Svejsan">>},
      {query_fee, 2},
@@ -864,8 +865,11 @@ init_per_testcase(post_oracle_response, Config) ->
     {post_oracle_query, SavedConfig} = ?config(saved_config, Config),
     [{sender_id, ?config(sender_id, SavedConfig)},
      {oracle_id, ?config(oracle_id, SavedConfig)},
+     {ora_account_id, ?config(ora_account_id, SavedConfig)},
+     {ora_account, ?config(ora_account, SavedConfig)},
      {query, ?config(query, SavedConfig)},
      {query_id, ?config(query_id, SavedConfig)},
+     {query_fee, ?config(query_fee, SavedConfig)},
      {fee, 100000 * aec_test_utils:min_gas_price()},
      {response_ttl_type, <<"delta">>},
      {response_ttl_value, 20},
@@ -1062,7 +1066,7 @@ get_key_block_by_height(Config) ->
     get_key_block_by_height(?config(current_block_type, Config), Config).
 
 get_key_block_by_height(CurrentBlockType, Config) when
-      CurrentBlockType =:= genesis_block; CurrentBlockType =:= key_block ->
+    CurrentBlockType =:= genesis_block; CurrentBlockType =:= key_block ->
     CurrentBlockHash = ?config(current_block_hash, Config),
     CurrentBlockHeight = ?config(current_block_height, Config),
     {ok, 200, Block} = get_key_blocks_by_height_sut(CurrentBlockHeight),
@@ -1162,7 +1166,7 @@ get_micro_block_header_by_hash(micro_block, Config) ->
     PrevKeyBlockHash = ?config(prev_key_block_hash, Config),
     CurrentBlockHash = ?config(current_block_hash, Config),
     {ok, 200, Header} = get_micro_blocks_header_by_hash_sut(CurrentBlockHash),
-    ?assertEqual(PrevKeyBlockHash, maps:get(<<"prev_hash">>, Header)),
+    ?assertEqual(PrevKeyBlockHash, maps:get(<<"prev_key_hash">>, Header)),
     ?assertEqual(CurrentBlockHash, maps:get(<<"hash">>, Header)),
     ok.
 
@@ -1170,7 +1174,7 @@ get_micro_block_transactions_by_hash(Config) ->
     get_micro_block_transactions_by_hash(?config(current_block_type, Config), Config).
 
 get_micro_block_transactions_by_hash(CurrentBlockType, Config) when
-      CurrentBlockType =:= genesis_block; CurrentBlockType =:= key_block ->
+    CurrentBlockType =:= genesis_block; CurrentBlockType =:= key_block ->
     CurrentBlockHash = ?config(current_block_hash, Config),
     CurrentBlockHashWrongType = ?config(current_block_hash_wrong_type, Config),
     {ok, 400, Error} = get_micro_blocks_transactions_by_hash_sut(CurrentBlockHash),
@@ -1192,7 +1196,7 @@ get_micro_block_transactions_count_by_hash(Config) ->
     get_micro_block_transactions_count_by_hash(?config(current_block_type, Config), Config).
 
 get_micro_block_transactions_count_by_hash(CurrentBlockType, Config) when
-      CurrentBlockType =:= genesis_block; CurrentBlockType =:= key_block ->
+    CurrentBlockType =:= genesis_block; CurrentBlockType =:= key_block ->
     CurrentBlockHash = ?config(current_block_hash, Config),
     CurrentBlockHashWrongType = ?config(current_block_hash_wrong_type, Config),
     {ok, 400, Error} = get_micro_blocks_transactions_count_by_hash_sut(CurrentBlockHash),
@@ -1212,7 +1216,7 @@ get_micro_block_transaction_by_hash_and_index(Config) ->
     get_micro_block_transaction_by_hash_and_index(?config(current_block_type, Config), Config).
 
 get_micro_block_transaction_by_hash_and_index(CurrentBlockType, Config) when
-      CurrentBlockType =:= genesis_block; CurrentBlockType =:= key_block ->
+    CurrentBlockType =:= genesis_block; CurrentBlockType =:= key_block ->
     CurrentBlockHash = ?config(current_block_hash, Config),
     CurrentBlockHashWrongType = ?config(current_block_hash_wrong_type, Config),
     {ok, 400, Error} = get_micro_blocks_transactions_count_by_hash_sut(CurrentBlockHash),
@@ -1431,6 +1435,10 @@ get_accounts_by_pubkey_sut(Id) ->
 get_accounts_next_nonce_sut(Id) ->
     Host = external_address(),
     http_request(Host, get, "accounts/" ++ binary_to_list(Id) ++ "/next-nonce", []).
+
+get_accounts_next_nonce_sut_(Id) ->
+    Host = external_address(),
+    http_request(Host, get, "accounts/" ++ binary_to_list(Id) ++ "/next-nonce?int-as-string", []).
 
 get_accounts_next_nonce_sut(Id, Strategy) when Strategy =:= max; Strategy =:= continuity ->
     StrategyL = atom_to_list(Strategy),
@@ -1711,84 +1719,120 @@ get_oracle_by_pubkey(_Config) ->
 
 post_oracle_register(Config) ->
     OracleId = ?config(oracle_id, Config),
+    AccountId = ?config(ora_account_id, Config),
+    {_OraPubkey, OraPrivkey} = ?config(ora_account, Config),
+    QueryFee = ?config(query_fee, Config),
+    Fee = ?config(fee, Config),
+    %% Starting balance
+    {ok, 200, #{<<"balance">> := AccountIdBalance}} = get_accounts_by_pubkey_sut(AccountId),
     TxArgs =
-        #{account_id      => ?config(account_id, Config),
+        #{account_id      => AccountId,
           query_format    => ?config(query_format, Config),
           response_format => ?config(response_format, Config),
-          query_fee       => ?config(query_fee, Config),
-          fee             => ?config(fee, Config),
+          query_fee       => QueryFee,
+          fee             => Fee,
           oracle_ttl      => #{type  => ?config(oracle_ttl_type, Config),
                                value => ?config(oracle_ttl_value, Config)}},
-    {TxHash, Tx} = prepare_tx(oracle_register_tx, TxArgs),
-    ok = post_tx(TxHash, Tx),
+    {ok, 200, #{<<"tx">> := RegisterTx}} = get_oracle_register(TxArgs),
+    TxHash = sign_and_post_tx(RegisterTx, OraPrivkey),
     ok = wait_for_tx_hash_on_chain(TxHash),
+    %% Check balance
+    {ok, 200, #{<<"balance">> := AccountIdBalanceAfter}} = get_accounts_by_pubkey_sut(AccountId),
+    ?assertEqual(AccountIdBalanceAfter, AccountIdBalance - Fee),
+    ?HTTP_ROS:assertBalanceChanges(TxHash, [ {AccountId, -Fee}] ),
     {ok, 200, Resp} = get_oracles_by_pubkey_sut(OracleId),
     {ok, 200, #{<<"oracle_queries">> := []}} = get_oracles_queries_by_pubkey_sut(OracleId, #{type => "all"}),
     {ok, 200, #{<<"oracle_queries">> := []}} = get_oracles_queries_by_pubkey_sut(OracleId, #{}),
     {ok, 200, #{<<"oracle_queries">> := []}} = get_oracles_queries_by_pubkey_sut(OracleId, #{type => "open"}),
     {ok, 200, #{<<"oracle_queries">> := []}} = get_oracles_queries_by_pubkey_sut(OracleId, #{type => "closed"}),
     ?assertEqual(OracleId, maps:get(<<"id">>, Resp)),
-    {save_config, save_config([account_id, oracle_id, oracle_ttl_value], Config)}.
+    {save_config, save_config([account_id, ora_account_id, ora_account, oracle_id, oracle_ttl_value, query_fee], Config)}.
 
 post_oracle_extend(Config) ->
     OracleId = ?config(oracle_id, Config),
+    AccountId = ?config(ora_account_id, Config),
+    {_OraPubkey, OraPrivkey} = ?config(ora_account, Config),
+    Fee = ?config(fee, Config),
+    {ok, 200, #{<<"balance">> := AccountIdBalance}} = get_accounts_by_pubkey_sut(AccountId),
     TxArgs =
         #{oracle_id  => OracleId,
-          fee        => ?config(fee, Config),
+          fee        => Fee,
           oracle_ttl => #{type  => ?config(oracle_ttl_type, Config),
                           value => ?config(oracle_ttl_value, Config)}},
-    {TxHash, Tx} = prepare_tx(oracle_extend_tx, TxArgs),
-    ok = post_tx(TxHash, Tx),
+    {ok, 200, #{<<"tx">> := ExtendTx}} = get_oracle_extend(TxArgs),
+    TxHash = sign_and_post_tx(ExtendTx, OraPrivkey),
     ok = wait_for_tx_hash_on_chain(TxHash),
     {ok, 200, Resp} = get_oracles_by_pubkey_sut(OracleId),
     ?assertEqual(OracleId, maps:get(<<"id">>, Resp)),
     ?assertEqual(?config(oracle_ttl_value_final, Config), maps:get(<<"ttl">>, Resp)),
+    {ok, 200, #{<<"balance">> := AccountIdBalanceAfter}} = get_accounts_by_pubkey_sut(AccountId),
+    ?assertEqual(AccountIdBalanceAfter, AccountIdBalance - Fee),
+    ?HTTP_ROS:assertBalanceChanges(TxHash, [ {AccountId, -Fee}] ),
     {ok, 200, Resp1} = get_oracles_queries_by_pubkey_sut(OracleId, #{type => "all"}),
     ?assertEqual([], maps:get(<<"oracle_queries">>, Resp1)),
-    {save_config, save_config([account_id, oracle_id], Config)}.
+    {save_config, save_config([account_id, ora_account_id, ora_account, oracle_id], Config)}.
 
 post_oracle_query(Config) ->
     SenderId = ?config(sender_id, Config),
     OracleId = ?config(oracle_id, Config),
+    AccountId = ?config(ora_account_id, Config),
+    {_SenderPubkey, SenderPrivkey} = ?config(sender_account, Config),
+    QueryFee = ?config(query_fee, Config),
+    Fee = ?config(fee, Config),
+    {ok, 200, #{<<"balance">> := AccountIdBalance}} = get_accounts_by_pubkey_sut(AccountId),
+    {ok, 200, #{<<"balance">> := SenderIdBalance}} = get_accounts_by_pubkey_sut(SenderId),
     TxArgs =
         #{sender_id    => SenderId,
           oracle_id    => OracleId,
           query        => ?config(query, Config),
-          query_fee    => ?config(query_fee, Config),
-          fee          => ?config(fee, Config),
+          query_fee    => QueryFee,
+          fee          => Fee,
           query_ttl    => #{type  => ?config(query_ttl_type, Config),
                             value => ?config(query_ttl_value, Config)},
           response_ttl => #{type  => ?config(response_ttl_type, Config),
                             value => ?config(response_ttl_value, Config)}},
-    {TxHash, Tx} = prepare_tx(oracle_query_tx, TxArgs),
-    ok = post_tx(TxHash, Tx),
+    {ok, 200, #{<<"tx">> := QueryTx}} = get_oracle_query(TxArgs),
+    TxHash = sign_and_post_tx(QueryTx, SenderPrivkey),
     ok = wait_for_tx_hash_on_chain(TxHash),
     {ok, 200, Resp} = get_oracles_queries_by_pubkey_sut(OracleId, #{type => "closed"}),
     ?assertEqual([], maps:get(<<"oracle_queries">>, Resp)),
     {ok, 200, Resp1} = get_oracles_queries_by_pubkey_sut(OracleId, #{type => "all"}),
     ?assertEqual(1, length(maps:get(<<"oracle_queries">>, Resp1))),
+    {ok, 200, #{<<"balance">> := SenderIdBalanceAfter}} = get_accounts_by_pubkey_sut(SenderId),
+    ?assertEqual(SenderIdBalanceAfter, SenderIdBalance - Fee - QueryFee),
+    {ok, 200, #{<<"balance">> := AccountIdBalanceAfter}} = get_accounts_by_pubkey_sut(AccountId),
+    ?assertEqual(AccountIdBalanceAfter, AccountIdBalance),
+    ?HTTP_ROS:assertBalanceChanges(TxHash, [ {SenderId, -(Fee + QueryFee)}] ),
     [Query] = maps:get(<<"oracle_queries">>, Resp1),
     ?assertEqual(SenderId, maps:get(<<"sender_id">>, Query)),
     ?assertEqual(OracleId, maps:get(<<"oracle_id">>, Query)),
     QueryId = maps:get(<<"id">>, Query),
     Config1 = [{query, ?config(query, Config)}, {query_id, QueryId} | Config],
-    {save_config, save_config([sender_id, oracle_id, query, query_id], Config1)}.
+    {save_config, save_config([sender_id, oracle_id, ora_account_id, ora_account, query, query_id, query_fee], Config1)}.
 
 post_oracle_response(Config) ->
     OracleId = ?config(oracle_id, Config),
+    AccountId = ?config(ora_account_id, Config),
     Query = ?config(query, Config),
     QueryId = ?config(query_id, Config),
     Response = ?config(response, Config),
+    Fee = ?config(fee, Config),
+    QueryFee = ?config(query_fee, Config),
+    {_OraPubkey, OraPrivkey} = ?config(ora_account, Config),
+    {ok, 200, #{<<"balance">> := AccountIdBalance}} = get_accounts_by_pubkey_sut(AccountId),
     TxArgs =
         #{oracle_id    => OracleId,
           query_id     => QueryId,
           response     => Response,
           response_ttl => #{type  => ?config(response_ttl_type, Config),
                             value => ?config(response_ttl_value, Config)},
-          fee          => ?config(fee, Config)},
-    {TxHash, Tx} = prepare_tx(oracle_response_tx, TxArgs),
-    ok = post_tx(TxHash, Tx),
+          fee          => Fee},
+    {ok, 200, #{<<"tx">> := QueryTx}} = get_oracle_response(TxArgs),
+    TxHash = sign_and_post_tx(QueryTx, OraPrivkey),
     ok = wait_for_tx_hash_on_chain(TxHash),
+    {ok, 200, #{<<"balance">> := AccountIdBalanceAfter}} = get_accounts_by_pubkey_sut(AccountId),
+    ?assertEqual(AccountIdBalanceAfter, AccountIdBalance - Fee + QueryFee),
+    ?HTTP_ROS:assertBalanceChanges(TxHash, [{AccountId, -Fee}, {AccountId, QueryFee}] ),
     {ok, 200, Resp} = get_oracles_queries_by_pubkey_sut(OracleId, #{type => "open"}),
     ?assertEqual([], maps:get(<<"oracle_queries">>, Resp)),
     {ok, 200, Resp1} = get_oracles_query_by_pubkey_and_query_id(OracleId, QueryId),
@@ -1845,6 +1889,10 @@ get_channel_by_pubkey(_Config) ->
      } = aesc_fsm_SUITE:create_channel_on_port(9311),
     ChannelId = aeser_api_encoder:encode(channel, ChannelId0),
 
+    {ok, 200, #{
+        <<"count">> := _Count
+     }} = get_channels_fsm_count_sut(),   %% verify that the endpoint works
+
     NoDelegates = no_delegates(),
     {ok, 200, #{
         <<"id">> := ChannelId,
@@ -1863,6 +1911,10 @@ get_channel_by_pubkey_sut(PubKey) ->
     Host = external_address(),
     PubKey1 = binary_to_list(PubKey),
     http_request(Host, get, "channels/" ++ aeu_uri:encode(PubKey1), []).
+
+get_channels_fsm_count_sut() ->
+    Host = internal_address(),
+    http_request(Host, get, "debug/channels/fsm-count", []).
 
 %% /peers/*
 
@@ -1924,11 +1976,25 @@ get_status(_Config) ->
         _ -> ct:fail("Node version is not semver")
     end,
     ?assertEqual(40, byte_size(NodeRevision)),
+
+    case proplists:get_value(swagger_version, _Config) of
+        oas3 ->
+            {ok, 200, #{ <<"protocols">> := ProtocolsStr }} = get_status_sut(true),
+            lists:foreach(fun(P) ->
+                                  ?assertMatch(X when is_binary(X), maps:get(<<"version">>, P)),
+                                  ?assertMatch(X when is_binary(X), maps:get(<<"effective_at_height">>, P))
+                          end, ProtocolsStr);
+        swagger2 -> none
+    end,
+
     ok.
 
 get_status_sut() ->
+    get_status_sut(false).
+get_status_sut(IntAsString) ->
     Host = external_address(),
-    http_request(Host, get, "status", []).
+    Parameters = case IntAsString of true -> "?int-as-string"; false -> "" end,
+    http_request(Host, get, "status" ++ Parameters, []).
 
 prepare_tx(TxType, Args) ->
     SignHash = lists:last(aec_hard_forks:sorted_protocol_versions()) >= ?LIMA_PROTOCOL_VSN,
@@ -2171,7 +2237,7 @@ contract_transactions(_Config) ->    % miner has an account
     {ok, 404, #{<<"reason">> := <<"Account of caller_id not found">>}} =
         get_contract_call(maps:put(caller_id, RandAddress, ContractCallEncoded)),
     %% contract not found
-    {ok, 404, #{<<"reason">> := <<"Contract address for key contract_id not found">>}} =
+    {ok, 404, #{<<"reason">> := <<"Contract code for", _/binary>>}} =
         get_contract_call(maps:put(contract_id, RandContractAddress,
                                    ContractCallEncoded)),
 
@@ -2993,6 +3059,12 @@ spend_transaction(_Config) ->
     {ok, 200, #{<<"next_nonce">> := NextNonce}} = get_accounts_next_nonce_sut(MinerID),
     {ok, 200, #{<<"next_nonce">> := NextNonce}} = get_accounts_next_nonce_sut(MinerID, max),
     {ok, 200, #{<<"next_nonce">> := NextNonce}} = get_accounts_next_nonce_sut(MinerID, continuity),
+    case aecore_suite_utils:http_api_version() of
+        oas3 ->
+            {ok, 200, #{<<"next_nonce">> := NextNonceBin}} = get_accounts_next_nonce_sut_(MinerID),
+            NextNonce = binary_to_integer(NextNonceBin);
+        _ -> pass
+    end,
     RandAddress = random_hash(),
     Payload = <<"hejsan svejsan">>,
     Encoded = #{sender_id => MinerAddress,
@@ -3469,7 +3541,7 @@ broken_spend_tx(_Config) ->
     ok.
 
 node_pubkey(_Config) ->
-    {ok, MinerPubKey} = rpc(aec_keys, pubkey, []),
+    {ok, MinerPubKey} = rpc(aec_keys, get_pubkey, []),
     {ok, 200, #{<<"pub_key">> := EncodedPubKey}} = get_node_pubkey(),
     ct:log("MinerPubkey = ~p~nEncodedPubKey = ~p", [MinerPubKey,
                                                     EncodedPubKey]),
@@ -3508,7 +3580,7 @@ naming_system_manage_name(_Config) ->
 
     {ok, 200, #{<<"top_block_height">> := Height}} = get_status_sut(),
 
-    %% TODO: find out how to craete HTTP path with unicode chars
+    %% TODO: find out how to create HTTP path with unicode chars
     %%Name        = <<"詹姆斯詹姆斯.test"/utf8>>,
     Name        = aens_test_utils:fullname(<<"without-unicode">>, Height),
     NameSalt    = 12345,
@@ -3597,6 +3669,8 @@ naming_system_manage_name(_Config) ->
     {ok, 200, #{<<"balance">> := Balance3}} = get_accounts_by_pubkey_sut(PubKeyEnc),
     ?assertEqual(Balance3, Balance2 - Fee),
 
+    ?HTTP_ROS:assertBalanceChanges(UpdateTxHash, [{PubKeyEnc, -Fee}] ),
+
     %% Check that TTL and pointers got updated in name entry
     {ok, 200, #{<<"height">> := Height31}} = get_key_blocks_current_sut(),
     ExpectedTTL2 = (Height31 - 1) + NameTTL,
@@ -3632,6 +3706,8 @@ naming_system_manage_name(_Config) ->
     {ok, 200, #{<<"balance">> := Balance5}} = get_accounts_by_pubkey_sut(PubKeyEnc),
     ?assertEqual(Balance5, Balance4 - Fee),
 
+    ?HTTP_ROS:assertBalanceChanges(TransferTxHash, [{PubKeyEnc, -Fee}] ),
+
     %% Submit name revoke tx and check it is in mempool
     RevokeData = #{account_id => PubKeyEnc,
                    name_id => aeser_api_encoder:encode(name, NHash),
@@ -3646,6 +3722,8 @@ naming_system_manage_name(_Config) ->
     %% Check balance
     {ok, 200, #{<<"balance">> := Balance6}} = get_accounts_by_pubkey_sut(PubKeyEnc),
     ?assertEqual(Balance6, Balance5 - Fee),
+
+    ?HTTP_ROS:assertBalanceChanges(RevokeTxHash, [{PubKeyEnc, -Fee}] ),
 
     %% Check the name got expired
     {ok, 404, #{<<"reason">> := <<"Name revoked">>}} = get_names_entry_by_name_sut(Name),
@@ -4079,49 +4157,6 @@ swagger_validation_schema(_Config) ->
 
 
 %% ============================================================
-%% Test CORS headers
-%% ============================================================
-
-cors_not_returned_when_origin_not_sent(_Config) ->
-    Host = external_address(),
-    {ok, {{_, 200, _}, Headers, _Body}} =
-        httpc_request(get, {Host ++ "/v2/blocks/top", []}, [], []),
-
-    undefined = proplists:get_value(<<"access-control-allow-origin">>, Headers),
-    ok.
-
-cors_returned_on_preflight_request(_Config) ->
-    Host = external_address(),
-    {ok, {{_, 200, _}, Headers, _Body}} =
-        httpc_request(options, {Host ++ "/v2/blocks/top", [{"origin", "example.com"}]}, [], []),
-
-    "example.com" = proplists:get_value("access-control-allow-origin", Headers),
-    "DELETE, GET, HEAD, OPTIONS, PATCH, POST, PUT" = proplists:get_value("access-control-allow-methods", Headers),
-    "1800" = proplists:get_value("access-control-max-age", Headers),
-    "true" = proplists:get_value("access-control-allow-credentials", Headers),
-    ok.
-
-cors_returned_on_get_request(_Config) ->
-    Host = external_address(),
-    {ok, {{_, 200, _}, Headers, _Body}} =
-        httpc_request(get, {Host ++ "/v2/blocks/top", [{"origin", "example.com"}]}, [], []),
-
-    "example.com" = proplists:get_value("access-control-allow-origin", Headers),
-    ok.
-
-cors_returned_on_error(_Config) ->
-    Host = external_address(),
-    {ok, {{_, 404, _}, Headers1, _}} =
-        httpc_request(get, {Host ++ "/v3/names/nonExistentName.chain", [{"origin", "example.com"}]}, [], []),
-
-    InternalHost = internal_address(),
-    {ok, {{_, 500, _}, Headers2, _}} =
-        httpc_request(get, {InternalHost ++ "/v3/debug/crash", [{"origin", "example.com"}]}, [], []),
-    "example.com" = proplists:get_value("access-control-allow-origin", Headers2),
-
-    ok.
-
-%% ============================================================
 %% Test HTTP cache headers
 %% ============================================================
 
@@ -4269,7 +4304,7 @@ prepare_for_spending(BlocksToMine) ->
 add_spend_txs() ->
     MineReward = rpc(aec_governance, block_mine_reward, [1]),
     Fee = ?SPEND_FEE,
-    %% For now. Mining is severly slowed down by having too many Tx:s in
+    %% For now. Mining is severely slowed down by having too many Tx:s in
     %% the tx pool
     MaxSpendTxsInBlock = 20,
     MinimalAmount = 1,
@@ -4515,10 +4550,12 @@ post_paying_for_tx(Config) ->
     {BobPubKey, BobPrivKey} = initialize_account(100000000 * aec_test_utils:min_gas_price()),
 
     {ok, Nonce} = rpc(aec_next_nonce, pick_for_account, [AlicePubKey]),
+    RecipientId = aeser_id:create(account, random_hash()),
+    RecipientPubkey = aeapi:format_id(RecipientId),
     {ok, SpendTx} =
         aec_spend_tx:new(
           #{sender_id => aeser_id:create(account, AlicePubKey),
-            recipient_id => aeser_id:create(account, random_hash()),
+            recipient_id => RecipientId,
             amount => 1,
             fee => ?SPEND_FEE,
             nonce => Nonce,
@@ -4554,6 +4591,11 @@ post_paying_for_tx(Config) ->
                 <<"signatures">> := EncSigs,
                 <<"block_hash">> := BlockHash } = MinedPayingForTx} = get_transactions_by_hash_sut(TxHash),
     {ok, 200, #{<<"transactions">> := [MinedPayingForTx]}} = get_micro_blocks_transactions_by_hash_sut(BlockHash),
+
+    ?HTTP_ROS:assertBalanceChanges(TxHash, [ {aeapi:format_account_pubkey(BobPubKey), -?SPEND_FEE * 3},
+                                             {aeapi:format_account_pubkey(BobPubKey), -?SPEND_FEE},
+                                             {aeapi:format_account_pubkey(AlicePubKey), -1},
+                                             {RecipientPubkey, 1} ] ),
 
     %% lets test that we get a proper message when inner tx is wrongly signed
     WronglySignedInnerTx = aec_test_utils:sign_tx(SpendTx, AlicePrivKey, true, <<"some other network id suffix">>),
