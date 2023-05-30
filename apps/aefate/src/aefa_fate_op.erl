@@ -3051,8 +3051,15 @@ dbg_def({immediate, VarName}, Reg, EngineState) ->
     aefa_engine_state:set_debug_info(Info, EngineState).
 
 dbg_undef({immediate, VarName}, Reg, EngineState) ->
-    Info = aefa_debug:del_variable_register(VarName, Reg, aefa_engine_state:debug_info(EngineState)),
-    aefa_engine_state:set_debug_info(Info, EngineState).
+    case lists:last(aefa_engine_state:current_bb_instructions(EngineState)) of
+        {C, _} when C =:= 'ABORT'; C =:= 'EXIT' ->
+            %% We want to be able to print variables after breaking on aborts.
+            EngineState;
+        _ ->
+            OldInfo = aefa_engine_state:debug_info(EngineState),
+            NewInfo = aefa_debug:del_variable_register(VarName, Reg, OldInfo),
+            aefa_engine_state:set_debug_info(NewInfo, EngineState)
+    end.
 
 dbg_contract({immediate, ContractName}, EngineState) ->
     OldInfo    = aefa_engine_state:debug_info(EngineState),
