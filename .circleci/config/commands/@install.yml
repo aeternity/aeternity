@@ -14,7 +14,7 @@ install_os_deps:
         command: |
           sudo apt-get update
           sudo apt-get -qq -y install git curl \
-            autoconf build-essential ncurses-dev libssl-dev libgmp-dev
+            autoconf automake libtool build-essential ncurses-dev libssl-dev libgmp-dev
 
 install_otp:
   steps:

@@ -89,7 +89,7 @@ macos-tarball:
     - run:
         name: Install required tools
         command: |
-          brew install gmp libsodium erlang@23 cmake
+          brew install autoconf automake libtool gmp libsodium erlang@23 cmake
           brew link erlang@23
     - test_arch_os_dependencies
     - build_tarball:
@@ -127,7 +127,7 @@ macos-standalone:
     - run:
         name: Install required tools
         command: |
-          brew install gmp libsodium erlang@23 cmake
+          brew install autoconf automake libtool gmp libsodium erlang@23 cmake
           brew link erlang@23
     - build_standalone:
         arch: macos-x64
