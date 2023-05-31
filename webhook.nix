@@ -8,6 +8,9 @@ in {
       pkgs.stdenv
       ## curl
       pkgs.curl
+      pkgs.libtool
+      pkgs.autoconf
+      pkgs.automake
     ];
   };
 }
