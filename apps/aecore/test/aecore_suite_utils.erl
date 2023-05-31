@@ -568,7 +568,7 @@ start_node(N, Config, ExtraEnv) ->
             _ ->
                 ["-pa ", MyDir, " -config ./" ++ ConfigFilename]
         end,
-    Env0 = 
+    Env0 =
         case ?config(build_to_connect_to_mainnet, Config) of
             true ->
                 [
@@ -853,9 +853,6 @@ wait_for_new_block_mined(T) when is_integer(T), T >= 0 ->
             end,
             {error, timeout_waiting_for_block}
     end.
-
-wait_for_new_block() ->
-    wait_for_new_block(30000).
 
 wait_for_new_block(T) when is_integer(T), T >= 0 ->
     receive

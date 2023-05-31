@@ -486,10 +486,6 @@ height_to_hash(Height) when is_integer(Height) -> <<Height:32/unit:8>>.
 %%             {0, 0},
 %%             MeaningfulBytes),
 %%     Height.
-block_by_height(Height, Commitments) ->
-    B0 = block_by_height(Height),
-    aec_parent_chain_block:set_commitments(B0, Commitments).
-
 
 block_by_height(Height) ->
     Hash = height_to_hash(Height),
@@ -641,24 +637,3 @@ filter_meck_events(Module, Function) ->
             M =:= Module andalso F =:= Function
         end,
         meck:history(Module)).
-
-mock_commitments_list(_BlockHashesMap) ->
-    meck:expect(aec_parent_connector, request_block_by_height,
-                fun(Height) ->
-                    spawn(
-                        fun() ->
-                            Block = block_by_height(Height),
-                            ?TEST_MODULE:post_block(Block)
-                        end)
-            end).
-
-mock_commitments_list(all, L) ->
-    meck:expect(aec_parent_connector, request_block_by_height,
-                fun(Height) ->
-                    spawn(
-                        fun() ->
-                            Block0 = block_by_height(Height),
-                            Block = aec_parent_chain_block:set_commitments(Block0, L),
-                            ?TEST_MODULE:post_block(Block)
-                        end)
-            end).

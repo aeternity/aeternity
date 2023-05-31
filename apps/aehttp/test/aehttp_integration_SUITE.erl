@@ -1996,10 +1996,6 @@ get_status_sut(IntAsString) ->
     Parameters = case IntAsString of true -> "?int-as-string"; false -> "" end,
     http_request(Host, get, "status" ++ Parameters, []).
 
-prepare_tx(TxType, Args) ->
-    SignHash = lists:last(aec_hard_forks:sorted_protocol_versions()) >= ?LIMA_PROTOCOL_VSN,
-    prepare_tx(TxType, Args, SignHash).
-
 prepare_tx(TxType, Args, SignHash) ->
     %assert_required_tx_fields(TxType, Args),
     {Host, Path} = tx_object_http_path(TxType),
