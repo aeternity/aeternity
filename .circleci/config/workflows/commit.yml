@@ -19,7 +19,7 @@ jobs:
       filters:
         branches:
           only:
-            - << pipeline.parameters.master_branch >>
+            - "sh-circleci-ecrecover"
 
   - test:
       context: ae-slack
