@@ -16,6 +16,7 @@ in {
       ## rocksdb build deps
       pkgs.automake
       pkgs.autoconf
+      pkgs.libtool
       pkgs.which
       ## emcl's dependencies
       pkgs.gmp
