@@ -24,6 +24,8 @@
          claim/1,
          claim_auction/1,
          ongoing_auction/1,
+         second_claim_auction/1,
+         second_claim_extend_auction/1,
          claim_locked_coins_holder_gets_locked_fee/1,
          claim_negative/1,
          claim_empty_name/1,
@@ -52,7 +54,8 @@
 all() ->
     [{group, transactions},
      {group, auction},
-     {group, no_auction_long_names}].
+     {group, no_auction_long_names},
+     {group, auction_protocol_update}].
 
 groups() ->
     [
@@ -85,8 +88,13 @@ groups() ->
        preclaim,
        claim_auction,
        ongoing_auction,
+       second_claim_auction,
+       second_claim_extend_auction,
        claim_locked_coins_holder_gets_locked_fee,
-       claim_race_negative_auction]}
+       claim_race_negative_auction]},
+     {auction_protocol_update,
+      [second_claim_auction,
+       second_claim_extend_auction]}
     ].
 
 -define(NAME, <<"詹姆斯詹姆斯"/utf8>>).
@@ -108,15 +116,47 @@ init_per_group(transactions, Cfg) ->
 init_per_group(no_auction_long_names, Cfg) ->
     Protocol = aec_hard_forks:protocol_effective_at_height(1),
     [{protocol, Protocol}, {name, gen_name(aec_governance:name_max_length_starting_auction()+1)} | Cfg];
+init_per_group(auction_protocol_update, Cfg) ->
+    Protocol = aec_hard_forks:protocol_effective_at_height(1),
+    if Protocol < ?LIMA_PROTOCOL_VSN -> {skip, no_auction_before_lima};
+       Protocol =< ?IRIS_PROTOCOL_VSN ->
+          SwitchHeight = 10,  %% first claim within those SwitchHeight blocks
+          meck:expect(aec_hard_forks, protocol_effective_at_height,
+                      fun(H) -> case H of
+                                  0 -> 0;
+                                  _ when H < SwitchHeight  -> Protocol;
+                                  _ when H >= SwitchHeight -> Protocol + 1
+                               end
+                      end),
+        [{next_protocol, SwitchHeight}, {protocol, Protocol},
+         {claim_delta, fun(Extension, undefined) when SwitchHeight < Extension div 2 ->
+                           Extension div 2;
+                          (_Extension, undefined) ->
+                           SwitchHeight + 1;
+                          (Extension, TTL) ->
+                           TTL - (Extension div 2)
+                        end},
+         {name, gen_name(aec_governance:name_max_length_starting_auction())} | Cfg];
+       Protocol >= ?CERES_PROTOCOL_VSN -> {skip, no_protocol_after_ceres}
+    end;
 init_per_group(_, Cfg) ->
     Protocol = aec_hard_forks:protocol_effective_at_height(1),
     %% One day auction open with cheapest possible name (31 char)
     if Protocol < ?LIMA_PROTOCOL_VSN -> {skip, no_auction_before_lima};
-       true -> [{protocol, Protocol}, {name, gen_name(aec_governance:name_max_length_starting_auction())} | Cfg]
+       true -> [{protocol, Protocol},
+                {claim_delta, fun(Extension, undefined) ->
+                                  (Extension div 2);
+                                 (Extension, TTL) ->
+                                  TTL - (Extension div 2)
+                              end},
+                {name, gen_name(aec_governance:name_max_length_starting_auction())} | Cfg]
     end.
 
 end_per_group(transactions, Cfg) ->
     meck:unload(aec_governance),
+    Cfg;
+end_per_group(auction_protocol_update, Cfg) ->
+    meck:unload(aec_hard_forks),
     Cfg;
 end_per_group(_, Cfg) ->
     Cfg.
@@ -256,6 +296,7 @@ claim_auction(Cfg) ->
     {ok, Tx} = aens_claim_tx:new(TxSpec),
     SignedTx = aec_test_utils:sign_tx(Tx, PrivKey),
     Env      = aetx_env:tx_env(Height),
+    ct:pal("TxSpec ~p\n", [TxSpec]),
 
     {ok, [SignedTx], Trees1, _} =
         aec_block_micro_candidate:apply_block_txs([SignedTx], Trees, Env),
@@ -308,6 +349,112 @@ ongoing_auction(Cfg) ->
     BalanceWithoutNameFee = aec_accounts:balance(NewAccount1) - namefee(Name, Cfg),
 
     {PubKey2, NHash, S2}.
+
+%% This test is only run from IRIS onward.
+%% If {next_protocol, Height} in Cfg, then protocol change
+second_claim_auction(Cfg) ->
+    {PubKey1, _, S1} = claim([{name, <<"a-very-long-name-to-make-sure-lock-account-exists-in-tree">>}|Cfg]),
+    PrivKey1 = aens_test_utils:priv_key(PubKey1, S1),
+    {PubKey, NHash, S2} = claim_auction([{state, S1} | Cfg]),
+    %% Auction has now started
+
+    FullName = aens_test_utils:fullname(?config(name, Cfg)),
+    Protocol = ?config(protocol, Cfg),
+    NextProtocol = proplists:get_value(next_protocol, Cfg),
+    ClaimDeltaFun = ?config(claim_delta, Cfg),
+
+    FirstClaimTimeout =
+      aec_governance:name_claim_bid_timeout(FullName, Protocol),
+    ExtensionClaimTimeout =
+      case NextProtocol of
+          undefined ->
+              aec_governance:name_claim_bid_extension(FullName, Protocol);
+          _ ->
+              aec_governance:name_claim_bid_extension(FullName, NextProtocol)
+      end,
+
+    %% Re-pull values for this test
+    Height = ?PRE_CLAIM_HEIGHT + 1,  %% height of the claim
+    Trees2 = aens_test_utils:trees(S2),
+    NTrees = aec_trees:ns(Trees2),
+    {value, A} = aens_state_tree:lookup_name_auction(aens_hash:to_auction_hash(NHash), NTrees),
+    ct:pal("ongoing auction ~p for name ~p", [A, ?config(name, Cfg)]),
+
+    PubKey   = aens_auctions:bidder_pubkey(A),
+    TTL1     = Height + FirstClaimTimeout,
+    TTL1     = aens_auctions:ttl(A),
+    Delta    = ClaimDeltaFun(ExtensionClaimTimeout, proplists:get_value(extend, Cfg)),
+    %% Delta such that either extends a little (after possible protocol change)
+    %% or extends to just before TTL kicks in and therefore guarantees to really extend
+    ?assert(FirstClaimTimeout > Height + Delta, "Auction must be ongoing during second claim"),
+
+    Trees3   = perform_pre_transformations(Trees2, Height + Delta), %% progress Delta before doing a second claim
+    NTree2   = aec_trees:ns(Trees3),
+    none     = aens_state_tree:lookup_name(NHash, NTree2),
+
+    if NextProtocol == undefined -> ct:pal("second claim at height ~p", [Height + Delta]);
+       true -> ct:pal("second claim at height ~p (protocol updated at height ~p)", [Height + Delta, NextProtocol])
+    end,
+
+    %% Create Claim tx and apply it on Trees3
+    {ok, NameAscii} = aens_utils:to_ascii(FullName),
+
+    %% increased name fee
+    TxSpec = aens_test_utils:claim_tx_spec(PubKey1, FullName, 0, 2*namefee(NameAscii, Cfg), S2),
+    {ok, Tx} = aens_claim_tx:new(TxSpec),
+    SignedTx = aec_test_utils:sign_tx(Tx, PrivKey1),
+    Env      = aetx_env:tx_env(Height + Delta + 1),
+    ct:pal("TxSpec ~p", [TxSpec]),
+
+    {ok, [SignedTx], TreesN, _} =
+        aec_block_micro_candidate:apply_block_txs([SignedTx], Trees3, Env),
+    S3 = aens_test_utils:set_trees(TreesN, S2),
+
+    Trees4 = aens_test_utils:trees(S3),
+
+    NTree4 = aec_trees:ns(Trees4),
+    {value, A2} = aens_state_tree:lookup_name_auction(aens_hash:to_auction_hash(NHash), NTree4),
+    PubKey1  = aens_auctions:bidder_pubkey(A2),
+    TTL2     = aens_auctions:ttl(A2),  %% absolute TTLs
+
+    ct:pal("ongoing auction ~p", [A2]),
+    TTL2 =
+        case Protocol of
+            ?LIMA_PROTOCOL_VSN ->
+                Height + Delta + 1 + FirstClaimTimeout;
+            ?IRIS_PROTOCOL_VSN when NextProtocol == undefined ->
+                Height + Delta + 1 + FirstClaimTimeout;
+            _ ->
+                NewTTL = Height + Delta + 1 + ExtensionClaimTimeout,
+                if NewTTL =< TTL1 -> TTL1;
+                   true -> NewTTL
+                end
+        end,
+
+    %% Check auction not prematurly ended
+    Trees5   = perform_pre_transformations(Trees4, TTL2),
+    NTree5   = aec_trees:ns(Trees5),
+    none     = aens_state_tree:lookup_name(NHash, NTree5),
+
+    Trees6   = perform_pre_transformations(Trees4, TTL2 + 1),
+    NTree6   = aec_trees:ns(Trees6),
+
+    ct:pal("check auction ready at height ~p", [TTL2 + 1]),
+
+    none = aens_state_tree:lookup_name_auction(aens_hash:to_auction_hash(NHash), NTree6),
+    {value, N} = aens_state_tree:lookup_name(NHash, NTree6),
+    NHash    = aens_names:hash(N),
+    PubKey1   = aens_names:owner_pubkey(N),
+    claimed  = aens_names:status(N),
+    ok.
+
+second_claim_extend_auction(Cfg) ->
+    FullName = aens_test_utils:fullname(?config(name, Cfg)),
+    Protocol = ?config(protocol, Cfg),
+    %% By taking a height just before expiry, the next claim must extend the expiry TTL
+
+    FirstClaimTimeout = aec_governance:name_claim_bid_timeout(FullName, Protocol),
+    second_claim_auction([{extend, FirstClaimTimeout} | Cfg]).
 
 
 claim_locked_coins_holder_gets_locked_fee(Cfg) ->
@@ -892,6 +1039,7 @@ prune_claim_auction(Cfg) ->
     Trees2 = aens_test_utils:trees(S2),
     NTrees = aec_trees:ns(Trees2),
     {value, A} = aens_state_tree:lookup_name_auction(aens_hash:to_auction_hash(NHash), NTrees),
+    ct:pal("ongoing auction ~p for name ~p", [A, aens_test_utils:fullname(?config(name, Cfg))]),
 
     PubKey   = aens_auctions:bidder_pubkey(A),
     TTL1     = aens_auctions:ttl(A),

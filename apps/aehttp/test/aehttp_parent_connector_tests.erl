@@ -503,7 +503,7 @@ mock_sign_module(#{pubkey := ExpectedPubKey, privkey := PrivKey}) ->
     meck:new(?SIGN_MODULE, []),
     meck:expect(?SIGN_MODULE, sign_binary,
         fun(Bin, Pubkey) when Pubkey =:= ExpectedPubKey ->
-            Signature = enacl:sign_detached(Bin, PrivKey), 
+            Signature = enacl:sign_detached(Bin, PrivKey),
             {ok, Signature}
         end).
 

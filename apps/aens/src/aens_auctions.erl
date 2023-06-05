@@ -19,6 +19,7 @@
 
 %% API
 -export([new/5,
+         extend/6,
          serialize/1,
          deserialize/2,
          deserialize_from_fields/3,
@@ -73,6 +74,20 @@ new(AuctionHash, Bidder, NameFee, DeltaTTL, BlockHeight) ->
              started   = BlockHeight,
              bid       = NameFee,
              ttl       = BlockHeight + DeltaTTL}.
+
+%% NOTE: Pre-Ceres this always hold: OldTTL =< BlockHeight + DeltaTTL
+-spec extend(aens_hash:auction_hash(), aec_keys:pubkey(), non_neg_integer(),
+             non_neg_integer(), non_neg_integer(), aec_blocks:height()) -> auction().
+extend(AuctionHash, Bidder, NameFee, OldTTL, DeltaTTL, BlockHeight) ->
+    NameHash = aens_hash:from_auction_hash(AuctionHash),
+    TTL = if OldTTL > BlockHeight + DeltaTTL -> OldTTL;
+             true                            -> BlockHeight + DeltaTTL
+          end,
+    #auction{id        = aeser_id:create(name, NameHash),
+             bidder_id = aeser_id:create(account, Bidder),
+             started   = BlockHeight,
+             bid       = NameFee,
+             ttl       = TTL}.
 
 -spec serialize(auction()) -> serialized().
 serialize(#auction{bidder_id = BidderId,
