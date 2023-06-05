@@ -33,6 +33,7 @@
 -export([current_block_height/0,
          top_block/0,
          top_block_header/0,
+         top_block_hash/0,
          top_key_block/0,
          top_key_block_header/0,
          top_key_block_hash/0,
@@ -317,7 +318,7 @@ prev_key_block(Block) ->
             PrevBlockHash = aec_blocks:prev_key_hash(Block),
             aec_chain:get_block(PrevBlockHash);
         true ->
-            {ok, Block};
+            {ok, Block}
     end.
 
 
@@ -385,6 +386,102 @@ generation_at_height(Height) when is_integer(Height) ->
     end.
 
 
+-spec balance_at_height(Address, Height) -> Result
+    when Address :: binary(),
+         Height  :: aec_blocks:height(),
+         Result  :: {ok, Balance :: non_neg_integer()}
+                  | {error, Reason},
+         Reason  :: invalid_pubkey
+                  | invalid_encoding
+                  | invalid_prefix
+                  | chain_too_short
+                  | garbage_collected
+                  | account_not_found
+                  | contract_not_found.
+
+%% @doc Lookup the opening balance of an account or contract at the keyblock with
+%% the given height.
+%% Example (on testnet, AKA the "ae_uat" chain):
+%% ```
+%%   Account = <<"ak_2W2NjVgAo6pkj96R71JHsTK5h2UVvmot7hYrqVfhzAqHGGU5ea">>,
+%%   Height = 750000,
+%%   balance_at_height(Account, Height) -> {ok, 9999346828000000000}.
+%% '''
+
+balance_at_height(Address, Height) ->
+    AllowedTypes = [account_pubkey, contract_pubkey],
+    case create_id(Address, AllowedTypes) of
+        {ok, ID} ->
+            PubKey = id_value(ID),
+            balance_at_height(element(2, ID), PubKey, Height);
+        Error ->
+            Error
+    end.
+
+balance_at_height(Type, PubKey, Height) ->
+    case aec_chain:get_account_at_height(PubKey, Height) of
+        {value, Account} ->
+            {ok, aec_accounts:balance(Account)};
+        none ->
+            case Type of
+                account  -> {error, account_not_found};
+                contract -> {error, contract_not_found}
+            end;
+        Error ->
+            Error
+    end.
+
+
+-spec balance_at_block(Address, BlockHash) -> Result
+    when Address   :: binary(),
+         BlockHash :: binary(),
+         Result    :: {ok, Balance :: non_neg_integer()}
+                    | {error, Reason},
+         Reason    :: invalid_block_hash
+                    | invalid_address
+                    | block_not_found
+                    | garbage_collected
+                    | account_not_found
+                    | contract_not_found.
+%% @doc
+%% Return the given account's balance at the height of the block ID provided.
+
+balance_at_block(Address, BlockHash) ->
+    case decode_catcher(BlockHash) of
+        {ok, Hash} -> balance_at_block2(Address, Hash);
+        Error      -> Error
+    end.
+
+balance_at_block2(Address, Hash) ->
+    AllowedTypes = [account_pubkey, contract_pubkey],
+    case create_id(Address, AllowedTypes) of
+        {ok, ID} ->
+            PubKey = id_value(ID),
+            balance_at_block3(element(2, ID), PubKey, Hash);
+        {error, invalid_encoding} ->
+            {error, invalid_address}
+    end.
+
+balance_at_block3(Type, PubKey, Hash) ->
+    case aec_db:get_block(Hash) of
+        undefined ->
+            {error, block_not_found};
+        Block ->
+            Height = aec_blocks:height(Block),
+            balance_at_height(Type, PubKey, Height)
+    end.
+
+decode_catcher(BlockHash) ->
+    try
+        case aeser_api_encoder:decode(BlockHash) of
+            {micro_block_hash, Hash} -> {ok, Hash};
+            {key_block_hash, Hash}   -> {ok, Hash};
+            _                        -> {error, invalid_block_hash}
+        end
+    catch
+        error -> {error, invalid_block_hash}
+    end.
+
 
 
 %%% Block Inspection API
@@ -417,53 +514,6 @@ block_time_in_msecs(Block) ->
 
 micro_block_txs(MicroBlock) ->
     aec_blocks:txs(MicroBlock).
-
-
--spec balance_at_height(Address, Height) -> Result
-    when Address :: binary(),
-         Height  :: aec_blocks:height(),
-         Result  :: {ok, Balance :: non_neg_integer()}
-                  | {error, Reason},
-         Reason  :: invalid_pubkey
-                  | invalid_encoding
-                  | invalid_prefix.
-
-%% @doc Lookup the opening balance of an account or contract at the keyblock with
-%% the given height.
-%% Example (on testnet, AKA the "ae_uat" chain):
-%% ```
-%%   Account = <<"ak_2W2NjVgAo6pkj96R71JHsTK5h2UVvmot7hYrqVfhzAqHGGU5ea">>,
-%%   Height = 750000,
-%%   balance_at_height(Account, Height) -> {ok, 9999346828000000000}.
-%% '''
-
-balance_at_height(Address, Height) ->
-    AllowedTypes = [account_pubkey, contract_pubkey],
-    case create_id(Address, AllowedTypes) of
-        {ok, Id} ->
-            PubKey = id_value(Id),
-            balance_at_height_(PubKey, Height);
-        Error ->
-            Error
-    end.
-
-balance_at_height_(PubKey, Height) ->
-    case aec_chain:get_account_at_height(PubKey, Height) of
-        {value, Account} -> {ok, aec_accounts:balance(Account)};
-        none             -> {ok, 0}
-    end.
-
-
--spec balance_at_block(Address, BlockHash) ->
-    when Address :: 
-
-balance_at_block(AccountAddress, BlockHash) ->
-    AllowedTypes = [account_pubkey, contract_pubkey],
-    {ok, Id} = create_id(AccountAddress, AllowedTypes),
-    PubKey = id_value(Id),
-    {_BlockType, Hash} = aeser_api_encoder:decode(BlockHash),
-    {value, Account} = aec_chain:get_account_at_hash(PubKey, Hash),
-    {ok, aec_accounts:balance(Account)}.
 
 %% HERE
 
