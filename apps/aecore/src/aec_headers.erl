@@ -46,7 +46,7 @@
          set_prev_key_hash/2,
          set_root_hash/2,
          set_signature/2,
-         serialize_for_client/2,
+         serialize_for_client/1,
          set_target/2,
          set_time_in_msecs/2,
          set_txs_hash/2,
@@ -505,8 +505,10 @@ consensus_module(Header) ->
 %%% Serialization
 %%%===================================================================
 
--spec serialize_for_client(header(), block_type()) -> map().
-serialize_for_client(#key_header{} = Header, PrevBlockType) ->
+
+-spec serialize_for_client(header()) -> map().
+serialize_for_client(#key_header{} = Header) ->
+    PrevBlockType = check_prev_block_type(Header),
     {ok, Hash} = hash_header(Header),
     Res =
         #{<<"hash">>          => encode_block_hash(key, Hash),
@@ -519,8 +521,7 @@ serialize_for_client(#key_header{} = Header, PrevBlockType) ->
           <<"target">>        => Header#key_header.target,
           <<"time">>          => Header#key_header.time,
           <<"version">>       => Header#key_header.version,
-          <<"info">>          => aeser_api_encoder:encode(contract_bytearray, Header#key_header.info)
-         },
+          <<"info">>          => aeser_api_encoder:encode(contract_bytearray, Header#key_header.info)},
     case Header#key_header.key_seal of
         no_value ->
             Res;
@@ -528,7 +529,8 @@ serialize_for_client(#key_header{} = Header, PrevBlockType) ->
             Res#{<<"pow">>   => serialize_pow_evidence(Header#key_header.key_seal),
                  <<"nonce">> => Header#key_header.nonce}
     end;
-serialize_for_client(#mic_header{} = Header, PrevBlockType) ->
+serialize_for_client(#mic_header{} = Header) ->
+    PrevBlockType = check_prev_block_type(Header),
     {ok, Hash} = hash_header(Header),
     #{<<"hash">>       => encode_block_hash(micro, Hash),
       <<"height">>     => Header#mic_header.height,
@@ -539,8 +541,16 @@ serialize_for_client(#mic_header{} = Header, PrevBlockType) ->
       <<"state_hash">> => aeser_api_encoder:encode(block_state_hash, Header#mic_header.root_hash),
       <<"time">>       => Header#mic_header.time,
       <<"txs_hash">>   => aeser_api_encoder:encode(block_tx_hash, Header#mic_header.txs_hash),
-      <<"version">>    => Header#mic_header.version
-     }.
+      <<"version">>    => Header#mic_header.version}.
+
+check_prev_block_type(#key_header{height = 0}) ->
+    key;
+check_prev_block_type(#key_header{prev_hash = PrevHash}) ->
+    {ok, PrevBlock} = aec_chain:get_block(PrevHash),
+    aec_blocks:type(PrevBlock);
+check_prev_block_type(#mic_header{prev_hash = PrevHash}) ->
+    {ok, PrevBlock} = aec_chain:get_block(PrevHash),
+    aec_blocks:type(PrevBlock).
 
 encode_block_hash(key, Hash) ->
     aeser_api_encoder:encode(key_block_hash, Hash);

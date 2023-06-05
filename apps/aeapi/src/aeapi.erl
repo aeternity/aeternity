@@ -7,172 +7,344 @@
 %%% Brings together in one place a useful subset of internal APIs for looking
 %%% up blocks, accounts etc, and provides routines to convert between internal 
 %%% and internal forms of hashes, keys etc.
+%%%
+%%% TODOs (2023-06-05 zxq9 <ceverett@tsuriai.jp>):
+%%% - Possibly re-think naming conventions.
+%%% - Add specific error values for garbage collection cases.
+%%% - Decide whether three modules might make more sense:
+%%%     1. Retrieval from key values (hashes, heights, names, etc.)
+%%%     2. Block inspection
+%%%     3. Encoding/Decoding (that is, human/JSON-friendly VS internal forms)
 %%% @end
 %%%-------------------------------------------------------------------
 -module(aeapi).
 
 -include_lib("aecontract/include/hard_forks.hrl").
 
--export([
-         blockchain_name/0
-        , network_id/0
-        , node_revision/0
-        , node_version/0
-        , sync_progress/0
-        , connected_peers/0
+%% Node Info API
+-export([blockchain_name/0,
+         network_id/0,
+         node_revision/0,
+         node_version/0,
+         sync_progress/0,
+         connected_peers/0]).
 
-        %% API to blocks
-        , top_key_block/0
-        , block_height/1
-        , block_time_in_msecs/1
-        , key_block_at_height/1
-        , key_block_at_hash/1
-        , key_block_txs/1
-        , micro_blocks_at_key_block/1
-        , micro_block_txs/1
-        , prev_key_block/1
-        , prev_block/1
-        , generation_at_height/1
+%% Chain Data API
+-export([current_block_height/0,
+         top_block/0,
+         top_block_header/0,
+         top_key_block/0,
+         top_key_block_header/0,
+         top_key_block_hash/0,
+         key_block_at_height/1,
+         key_block_at_hash/1,
+         key_block_txs/1,
+         prev_key_block/1,
+         prev_block/1,
+         micro_blocks_at_key_block/1,
+         generation_at_height/1,
+         balance_at_height/2,
+         balance_at_block/2]).
 
-        , balance_at_height/2
-        , balance_at_block/2
-        , balance_change_events_in_tx/2
-        , balance_change_events_in_block/1
-        , next_nonce/1
+%% Block Inspection API
+-export([block_height/1,
+         block_time_in_msecs/1,
+         micro_block_txs/1,
 
-        , oracle_at_block/2
-        , oracle_at_height/2
-        , oracle_queries_at_block/5
-        , oracle_queries_at_height/5
-        , oracle_query_at_block/3
-        , oracle_query_at_height/3
+         balance_change_events_in_tx/2,
+         balance_change_events_in_block/1,
+         next_nonce/1,
 
-        %% Dealing with id records
-        , create_id/2
-        , id_type/1
-        , id_value/1
-        , format_id/1
+         oracle_at_block/2,
+         oracle_at_height/2,
+         oracle_queries_at_block/5,
+         oracle_queries_at_height/5,
+         oracle_query_at_block/3,
+         oracle_query_at_height/3,
 
-        %% Formatting and decoding hashes and keys
-        , format_key_block_hash/1
-        , format_micro_block_hash/1
-        , format_block_pof_hash/1
-        , format_block_tx_hash/1
-        , format_block_state_hash/1
-        , format_channel/1
-        , format_contract_bytearray/1
-        , format_contract_pubkey/1
-        , format_contract_store_key/1
-        , format_transaction/1
-        , format_tx_hash/1
-        , format_oracle_pubkey/1
-        , format_oracle_query/1
-        , format_oracle_query_id/1
-        , format_oracle_response/1
-        , format_account_pubkey/1
-        , format_signature/1
-        , format_name/1
-        , format_commitment/1
-        , format_peer_pubkey/1
-        , format_state/1
-        , format_poi/1
-        , format_state_trees/1
-        , format_call_state_tree/1
-        , format_bytearray/1
+         %% Dealing with id records
+         create_id/2,
+         id_type/1,
+         id_value/1,
+         format_id/1,
 
-        , decode/1
-        , decode_key_block_hash/1
-        , decode_micro_block_hash/1
-        , decode_block_pof_hash/1
-        , decode_block_tx_hash/1
-        , decode_block_state_hash/1
-        , decode_channel/1
-        , decode_contract_bytearray/1
-        , decode_contract_pubkey/1
-        , decode_contract_store_key/1
-        , decode_transaction/1
-        , decode_tx_hash/1
-        , decode_oracle_pubkey/1
-        , decode_oracle_query/1
-        , decode_oracle_query_id/1
-        , decode_oracle_response/1
-        , decode_account_pubkey/1
-        , decode_signature/1
-        , decode_name/1
-        , decode_commitment/1
-        , decode_peer_pubkey/1
-        , decode_state/1
-        , decode_poi/1
-        , decode_state_trees/1
-        , decode_call_state_tree/1
-        , decode_bytearray/1
-        ]).
+         %% Formatting and decoding hashes and keys
+         format_key_block_hash/1,
+         format_micro_block_hash/1,
+         format_block_pof_hash/1,
+         format_block_tx_hash/1,
+         format_block_state_hash/1,
+         format_channel/1,
+         format_contract_bytearray/1,
+         format_contract_pubkey/1,
+         format_contract_store_key/1,
+         format_transaction/1,
+         format_tx_hash/1,
+         format_oracle_pubkey/1,
+         format_oracle_query/1,
+         format_oracle_query_id/1,
+         format_oracle_response/1,
+         format_account_pubkey/1,
+         format_signature/1,
+         format_name/1,
+         format_commitment/1,
+         format_peer_pubkey/1,
+         format_state/1,
+         format_poi/1,
+         format_state_trees/1,
+         format_call_state_tree/1,
+         format_bytearray/1,
 
+         decode/1,
+         decode_key_block_hash/1,
+         decode_micro_block_hash/1,
+         decode_block_pof_hash/1,
+         decode_block_tx_hash/1,
+         decode_block_state_hash/1,
+         decode_channel/1,
+         decode_contract_bytearray/1,
+         decode_contract_pubkey/1,
+         decode_contract_store_key/1,
+         decode_transaction/1,
+         decode_tx_hash/1,
+         decode_oracle_pubkey/1,
+         decode_oracle_query/1,
+         decode_oracle_query_id/1,
+         decode_oracle_response/1,
+         decode_account_pubkey/1,
+         decode_signature/1,
+         decode_name/1,
+         decode_commitment/1,
+         decode_peer_pubkey/1,
+         decode_state/1,
+         decode_poi/1,
+         decode_state_trees/1,
+         decode_call_state_tree/1,
+         decode_bytearray/1]).
+
+
+
+%%% Node Info API
+
+-spec blockchain_name() -> Name
+    when Name :: binary().
+%% @doc
+%% Return the name of the chain served by this node as a binary string.
+%% e.g.
+%% ```aeapi:blockchain_name() -> <<"aeternity">>'''
 
 blockchain_name() ->
-    <<"aeternity">>. %% TODO: check hardcoding
+    %% TODO: Check whether this should be hardcoded or retrieved from settings (?)
+    <<"aeternity">>.
 
-%% @doc Retrieve the configured network id of this node.
+
+-spec network_id() -> binary().
+%% @doc
+%% Retrieve the configured network id of this node.
 %% e.g.
 %% ```aeapi:network_id() -> <<"ae_mainnet">>'''
--spec network_id() -> binary().
+
 network_id() ->
     aec_governance:get_network_id().
 
-%% @doc Retrieve the git sha1 of the code version running in this node.
+
+-spec node_revision() -> binary().
+%% @doc
+%% Retrieve the git sha1 of the code version running in this node.
 %% e.g.
 %% ```aeapi:node_revision() -> <<"6051fc946d17e276b1b1dbe4436b5fd52ea5ae0a">>'''
--spec node_revision() -> binary().
+
 node_revision() ->
     aeu_info:get_revision().
 
-%% @doc Retrieve the code version running in this node.
-%% e.g.
-%% ```aeapi:node_revision() -> <<"6.4.0+46.6051fc94">>'''
+
 -spec node_version() -> binary().
+%% @doc
+%% Retrieve the code version running in this node.
+%% e.g.
+%% ```aeapi:node_version() -> <<"6.4.0+46.6051fc94">>'''
+
 node_version() ->
     aeu_info:get_version().
 
-%% @doc Retrieve the keyblock that is currently
-%% accumulating microblocks at its height.
--spec top_key_block() -> 'error' | {ok, aec_blocks:block()}.
-top_key_block() ->
-    aec_chain:top_key_block().
 
-%% @doc Get the current sync status, percent complete and height reached.
 -spec sync_progress() -> {boolean(), float(), aec_blocks:height()}.
+%% @doc
+%% Get the current sync status, percent complete and height reached.
+
 sync_progress() ->
     aec_sync:sync_progress().
+
+
+-spec connected_peers() -> [Peer]
+    when Peer :: #{host   => binary(),           % e.g. <<"1.2.3.4">>
+                   port   => inet:port_number(),
+                   pubkey => binary()}.
+%% @doc
+%% Retrieve the list of currently connected peers formatted as annoyingly
+%% structured maps. This list is flat and does not indicate whether a given
+%% peer is an inbound or outbound connection.
 
 connected_peers() ->
     aec_peers:connected_peers().
 
-prev_key_block(Block) ->
-    PrevBlockHash = aec_blocks:prev_key_hash(Block),
-    Height = aec_blocks:height(Block),
-    case aec_chain:get_block(PrevBlockHash) of
-        {ok, _} = PrevBlock ->
-            PrevBlock;
-        error when Height == 0 ->
-            {ok, Block};
-        error ->
-            {error, block_not_found}
+
+%%% Chain Data API
+
+-spec current_block_height() -> error | {ok, integer()}.
+%% @doc
+%% Retrieve the current top block height
+
+current_block_height() ->
+    case aec_chain:top_block() of
+        undefined -> error;
+        Block     -> {ok, aec_blocks:height(Block)}
     end.
+
+
+-spec top_block() -> error | {ok, aec_blocks:block()}.
+%% @doc
+%% Retrieve the top block (whether it is a key or micro block).
+
+top_block() ->
+    case aec_chain:top_block() of
+        undefined -> error;
+        Block     -> {ok, Block}
+    end.
+
+
+-spec top_block_header() -> error | {ok, aec_headers:header()}.
+%% @doc
+%% Retrieve the current top block header.
+
+top_block_header() ->
+    case aec_chain:top_block() of
+        undefined -> error;
+        Block     -> {ok, aec_blocks:to_header(Block)}
+    end.
+
+
+-spec top_block_hash() -> error | {ok, binary()}.
+%% @doc
+%% Rerieve the current top block hash.
+
+top_block_hash() ->
+    case aec_chain:top_block_hash() of
+        undefined -> error;
+        Hash      -> {ok, Hash}
+    end.
+
+
+-spec top_key_block() -> error | {ok, aec_blocks:key_block()}.
+%% @doc
+%% Retrieve the current top keyblock.
+
+top_key_block() ->
+    aec_chain:top_key_block().
+
+
+-spec top_key_block_header() -> error | {ok, aec_headers:header()}.
+%% @doc
+%% Retrieve the current top keyblock header.
+
+top_key_block_header() ->
+    case aec_chain:top_key_block() of
+        {ok, Block} -> {ok, aec_blocks:to_header(Block)};
+        error       -> error
+    end.
+
+-spec top_key_block_hash() -> error | {ok, binary()}.
+%% @doc
+%% Retrieve the top key block hash.
+
+top_key_block_hash() ->
+    case aec_chain:top_key_block_hash() of
+        undefined -> error;
+        Hash      -> {ok, Hash}
+    end.
+
+
+-spec key_block_at_height(Height) -> Result
+    when Height :: aec_blocks:height(),
+         Result :: {ok, aec_blocks:key_block()}
+                 | {error, chain_too_short}
+                 | error.
+%% @doc
+%% Retrieve the keyblock that applies to a given height.
+
+key_block_at_height(Height) when is_integer(Height) ->
+    aec_chain:get_key_block_by_height(Height).
+
+
+-spec key_block_at_hash(Hash) -> Result
+    when Hash   :: aeser_api_encoder:encoded(),
+         Result :: {ok, aec_blocks:key_block()}
+                 | error.
+%% @doc
+%% Retrieve the keyblock that applies to a given block hash.
+
+key_block_at_hash(Hash) when is_binary(Hash) ->
+    {key_block_hash, DecodedHash} = aeser_api_encoder:decode(Hash),
+    aec_chain:get_block(DecodedHash).
+
+
+-spec key_block_txs(Block) -> Result
+    when Block  :: aec_blocks:block(),
+         Result :: [aetx_sign:signed_tx()].
+%% @doc
+%% Given a keyblock, retrieve the signed transactions contained in its generation.
+
+key_block_txs(Block) ->
+    {ok, BlockHash} = aec_headers:hash_header(aec_blocks:to_key_header(Block)),
+    case aec_chain:get_generation_by_hash(BlockHash, forward) of
+        {ok, #{micro_blocks := MBs}} ->
+            lists:flatten(lists:map(fun aec_blocks:txs/1, MBs));
+        error ->
+            error
+    end.
+
+
+-spec prev_key_block(Block) -> Result
+    when Block  :: aec_blocks:block(),
+         Result :: {ok, aec_blocks:key_block()}
+                 | error.
+%% @doc
+%% Given a block, retrieve the previous keyblock.
+
+prev_key_block(Block) ->
+    case aec_blocks:height(Block) =:= 0 of
+        false ->
+            PrevBlockHash = aec_blocks:prev_key_hash(Block),
+            aec_chain:get_block(PrevBlockHash);
+        true ->
+            {ok, Block};
+    end.
+
+
+-spec prev_block(Block) -> Result
+    when Block  :: aec_blocks:block(),
+         Result :: {ok, aec_blocks:block()}
+                 | {error, genesis}
+                 | error.
+%% @doc
+%% Given a block, retrieve the previous block.
 
 prev_block(Block) ->
-    PrevHash = aec_blocks:prev_hash(Block),
-    case aec_chain:get_block(PrevHash) of
-        {ok, _} = PrevBlock ->
-            PrevBlock;
-        error ->
-            {error, block_not_found}
+    case aec_blocks:height(Block) =:= 0 of
+        false ->
+            PrevHash = aec_blocks:prev_hash(Block),
+            aec_chain:get_block(PrevHash);
+        true ->
+            {error, genesis}
     end.
 
-block_height(Block) ->
-    aec_blocks:height(Block).
 
-block_time_in_msecs(Block) ->
-    aec_blocks:time_in_msecs(Block).
+-spec micro_blocks_at_key_block(KeyBlock) -> Result
+    when KeyBlock :: aec_blocks:key_block(),
+         Result   :: {ok, [aec_blocks:micro_block()]}
+                   | error.
+%% @doc
+%% Given a key block, retrieve the microblocks included in its generation.
 
 micro_blocks_at_key_block(KeyBlock) ->
     {ok, BlockHash} = aec_headers:hash_header(aec_blocks:to_key_header(KeyBlock)),
@@ -183,21 +355,117 @@ micro_blocks_at_key_block(KeyBlock) ->
             error
     end.
 
-key_block_txs(Block) ->
-    {ok, BlockHash} = aec_headers:hash_header(aec_blocks:to_key_header(Block)),
-    case aec_chain:get_generation_by_hash(BlockHash, forward) of
-        {ok, #{micro_blocks := MicroBlocks}} ->
-            Txs = lists:foldl(
-              fun(MicBlock, Acc) ->
-                      [aec_blocks:txs(MicBlock) | Acc]
-              end, [], MicroBlocks),
-            lists:flatten(lists:reverse(Txs));
+
+-spec generation_at_height(Height) -> Result
+    when Height :: aec_blocks:height(),
+         Result :: {ok, EncodedGeneration :: map()}
+                 | error.
+%% @doc
+%% Retrieve the generation at the given height.
+%% The encoded generation will appear as a map of the form
+%% ```
+%%  #{<<"key_block">>    => KeyBlock,
+%%    <<"micro_blocks">> => MicroBlockHashes}
+%% '''
+%% where `KeyBlock' is the form returned by `aec_headers:serialize_for_client/1'
+%% and `MicroBlockHashes' are microblock hashes encoded in the `<<"mh_...">>'
+%% external form.
+
+generation_at_height(Height) when is_integer(Height) ->
+    case aec_chain_state:get_key_block_hash_at_height(Height) of
+        {ok, Hash} ->
+            case aec_chain:get_generation_by_hash(Hash, forward) of
+                {ok, #{key_block := KeyBlock, micro_blocks := MicroBlocks}} ->
+                    {ok, encode_generation(KeyBlock, MicroBlocks)};
+                error ->
+                    error
+            end;
         error ->
             error
     end.
 
+
+
+
+%%% Block Inspection API
+
+-spec block_height(Block) -> Height
+    when Block  :: aec_blocks:block(),
+         Height :: aec_blocks:height().
+%% @doc
+%% Given a block, return its height as an integer.
+
+block_height(Block) ->
+    aec_blocks:height(Block).
+
+
+-spec block_time_in_msecs(Block) -> TimeMS
+    when Block  :: aec_blocks:block(),
+         TimeMS :: non_neg_integer().
+%% @doc
+%% Given a block, return its timestamp in milliseconds.
+
+block_time_in_msecs(Block) ->
+    aec_blocks:time_in_msecs(Block).
+
+
+-spec micro_block_txs(Block) -> TXs
+    when Block :: aec_blocks:micro_block(),
+         TXs   :: [aetx_sign:signed_tx()].
+%% @doc
+%% Given a microblock, extract the signed transactions and return them.
+
 micro_block_txs(MicroBlock) ->
     aec_blocks:txs(MicroBlock).
+
+
+-spec balance_at_height(Address, Height) -> Result
+    when Address :: binary(),
+         Height  :: aec_blocks:height(),
+         Result  :: {ok, Balance :: non_neg_integer()}
+                  | {error, Reason},
+         Reason  :: invalid_pubkey
+                  | invalid_encoding
+                  | invalid_prefix.
+
+%% @doc Lookup the opening balance of an account or contract at the keyblock with
+%% the given height.
+%% Example (on testnet, AKA the "ae_uat" chain):
+%% ```
+%%   Account = <<"ak_2W2NjVgAo6pkj96R71JHsTK5h2UVvmot7hYrqVfhzAqHGGU5ea">>,
+%%   Height = 750000,
+%%   balance_at_height(Account, Height) -> {ok, 9999346828000000000}.
+%% '''
+
+balance_at_height(Address, Height) ->
+    AllowedTypes = [account_pubkey, contract_pubkey],
+    case create_id(Address, AllowedTypes) of
+        {ok, Id} ->
+            PubKey = id_value(Id),
+            balance_at_height_(PubKey, Height);
+        Error ->
+            Error
+    end.
+
+balance_at_height_(PubKey, Height) ->
+    case aec_chain:get_account_at_height(PubKey, Height) of
+        {value, Account} -> {ok, aec_accounts:balance(Account)};
+        none             -> {ok, 0}
+    end.
+
+
+-spec balance_at_block(Address, BlockHash) ->
+    when Address :: 
+
+balance_at_block(AccountAddress, BlockHash) ->
+    AllowedTypes = [account_pubkey, contract_pubkey],
+    {ok, Id} = create_id(AccountAddress, AllowedTypes),
+    PubKey = id_value(Id),
+    {_BlockType, Hash} = aeser_api_encoder:decode(BlockHash),
+    {value, Account} = aec_chain:get_account_at_hash(PubKey, Hash),
+    {ok, aec_accounts:balance(Account)}.
+
+%% HERE
 
 %%
 %% Converting Ids between internal and printable forms
@@ -400,40 +668,6 @@ decode_bytearray(Binary) ->
     aeser_api_encoder:safe_decode(bytearray, Binary).
 
 
--spec key_block_at_height(aec_blocks:height()) -> {ok, aec_blocks:key_block()} | {error, chain_too_short} | error.
-
-key_block_at_height(Height) when is_integer(Height) ->
-    aec_chain:get_key_block_by_height(Height).
-
--spec key_block_at_hash(aeser_api_encoder:encoded()) -> {ok, aec_blocks:key_block()} | error.
-key_block_at_hash(Hash) when is_binary(Hash) ->
-    {key_block_hash, DecodedHash} = aeser_api_encoder:decode(Hash),
-    aec_chain:get_block(DecodedHash).
-
-generation_at_height(Height) when is_integer(Height) ->
-    case aec_chain_state:get_key_block_hash_at_height(Height) of
-        error -> {error, "Block not found"};
-        {ok, Hash} ->
-            case aec_chain:get_generation_by_hash(Hash, forward) of
-                {ok, #{ key_block := KeyBlock, micro_blocks := MicroBlocks }} ->
-                    case aec_blocks:height(KeyBlock) of
-                        0 ->
-                            {ok, encode_generation(KeyBlock, MicroBlocks, key)};
-                        _ ->
-                            PrevBlockHash = aec_blocks:prev_hash(KeyBlock),
-                            case aec_chain:get_block(PrevBlockHash) of
-                                {ok, PrevBlock} ->
-                                    PrevBlockType = aec_blocks:type(PrevBlock),
-                                    {ok, encode_generation(KeyBlock, MicroBlocks, PrevBlockType)};
-                                error ->
-                                    {error, "Block not found"}
-                            end
-                    end;
-                _ ->
-                    {error, "Block not found"}
-            end
-    end.
-
 %% Format a single Tx in a block. We need to dry run all the Txs in the microblock
 %% up to and including the one we want to know about. dry run works on dummy signed
 %% Txs so the tx_hash included in the results is not the same as the one requested.
@@ -604,13 +838,14 @@ hardfork_contract_ops(Contracts, Acc0) ->
         [{fork, {PubKey, Amount}} | Acc]
     end, Acc0, Contracts).
 
-encode_generation(KeyBlock, MicroBlocks, PrevBlockType) ->
+encode_generation(KeyBlock, MicroBlocks) ->
     Header = aec_blocks:to_header(KeyBlock),
-    #{<<"key_block">> => aec_headers:serialize_for_client(Header, PrevBlockType),
-      <<"micro_blocks">> => [begin
-                           {ok, Hash} = aec_blocks:hash_internal_representation(M),
-                           aeser_api_encoder:encode(micro_block_hash, Hash)
-                       end || M <- MicroBlocks]}.
+    #{<<"key_block">>    => aec_headers:serialize_for_client(Header),
+      <<"micro_blocks">> => lists:map(fun encode_microblock/1, MicroBlocks)}.
+
+encode_microblock(MB) ->
+    {ok, Hash} = aec_blocks:hash_internal_representation(MB),
+    aeser_api_encoder:encode(micro_block_hash, Hash).
 
 
 tx_spend_operations(Results) ->
@@ -671,28 +906,6 @@ spend_tx_op(Index, Type, Address, Amount) ->
 amount(Amount) ->
     #{<<"value">> => integer_to_binary(Amount),
         <<"currency">> => #{<<"symbol">> => <<"AE">>, <<"decimals">> => 18}}.
-
-%% @doc Lookup the opening balance of an account or contract at the keyblock with the given height.
-%% Example:
-%% ```balance_at_height(<<"ak_2HuVfa8qJmYeJPb5ntE5dXre9e4pmFEq9FYthvemB7idvbjUbE">>, ) -> {ok, 200}.'''
-balance_at_height(Address, Height) ->
-    AllowedTypes = [account_pubkey, contract_pubkey],
-    case create_id(Address, AllowedTypes) of
-        {ok, Id} ->
-            PubKey = id_value(Id),
-            {value, Account} = aec_chain:get_account_at_height(PubKey, Height),
-            {ok, aec_accounts:balance(Account)};
-        _ ->
-            {error, invalid_pubkey}
-    end.
-
-balance_at_block(AccountAddress, BlockHash) ->
-    AllowedTypes = [account_pubkey, contract_pubkey],
-    {ok, Id} = create_id(AccountAddress, AllowedTypes),
-    PubKey = id_value(Id),
-    {_BlockType, Hash} = aeser_api_encoder:decode(BlockHash),
-    {value, Account} = aec_chain:get_account_at_hash(PubKey, Hash),
-    {ok, aec_accounts:balance(Account)}.
 
 -spec next_nonce(aeser_api_encoder:encoded()) -> {ok, non_neg_integer()} | {error, account_not_found}.
 next_nonce(AccountAddress) ->

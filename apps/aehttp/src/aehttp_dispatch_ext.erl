@@ -24,7 +24,7 @@
                         , unsigned_tx_response/1
                         , get_transaction/2
                         , encode_transaction/2
-                        , encode_generation/3
+                        , encode_generation/2
                         , when_stable/1
                         , ok_response/1
                         , read_optional_param/3
@@ -113,102 +113,42 @@ queue('GetChainEnds')                           -> ?READ_Q;
 queue('PostTransaction')                        -> ?WRITE_Q;
 queue(_)                                        -> ?WRITE_Q.
 
-handle_request_('GetTopBlock', _, _Context) ->
-    case aec_chain:top_block() of
-        Block when Block =/= undefined ->
-            case aec_blocks:height(Block) of
-                0 ->
-                    Header = aec_blocks:to_header(Block),
-                    {200, [], #{key_block => aec_headers:serialize_for_client(Header, key)}};
-                _ ->
-                    PrevBlockHash = aec_blocks:prev_hash(Block),
-                    case aec_chain:get_block(PrevBlockHash) of
-                        {ok, PrevBlock} ->
-                            PrevBlockType = aec_blocks:type(PrevBlock),
-                            Header = aec_blocks:to_header(Block),
-                            Type =
-                                case aec_headers:type(Header) of
-                                    key -> key_block;
-                                    micro -> micro_block
-                                end,
-                            SerializedHeader = aec_headers:serialize_for_client(Header, PrevBlockType),
-                            {200, [], #{Type => SerializedHeader}};
-                        error ->
-                            {404, [], #{reason => <<"Block not found">>}}
-                    end
-            end;
-        undefined ->
-            {404, [], #{reason => <<"Block not found">>}}
-    end;
+map_key(micro) -> micro_block;
+map_key(key)   -> key_block.
 
-handle_request_('GetTopHeader', _, _Context) ->
-    case aec_chain:top_block() of
-        Block when Block =/= undefined ->
-            case aec_blocks:height(Block) of
-                0 ->
-                    Header = aec_blocks:to_header(Block),
-                    {200, [], aec_headers:serialize_for_client(Header, key)};
-                _ ->
-                    PrevBlockHash = aec_blocks:prev_hash(Block),
-                    case aec_chain:get_block(PrevBlockHash) of
-                        {ok, PrevBlock} ->
-                            PrevBlockType = aec_blocks:type(PrevBlock),
-                            Header = aec_blocks:to_header(Block),
-                            SerHeader = aec_headers:serialize_for_client(Header, PrevBlockType),
-                            {200, [], SerHeader};
-                        error ->
-                            {404, [], #{reason => <<"Block not found">>}}
-                    end
-            end;
-        undefined ->
-            {404, [], #{reason => <<"Block not found">>}}
-    end;
-
-
-handle_request_('GetCurrentKeyBlock', _Req, _Context) ->
-    case aec_chain:top_key_block() of
-        {ok, Block} ->
-            case aec_blocks:height(Block) of
-                0 ->
-                    Header = aec_blocks:to_header(Block),
-                    {200, [], aec_headers:serialize_for_client(Header, key)};
-                _ ->
-                    PrevBlockHash = aec_blocks:prev_hash(Block),
-                    case aec_chain:get_block(PrevBlockHash) of
-                        {ok, PrevBlock} ->
-                            PrevBlockType = aec_blocks:type(PrevBlock),
-                            Header = aec_blocks:to_header(Block),
-                            {200, [], aec_headers:serialize_for_client(Header, PrevBlockType)};
-                        error ->
-                            {404, [], #{reason => <<"Block not found">>}}
-                    end
-            end;
+handle_request_('GetTopBlock', _, _) ->
+    case aeapi:top_block_header() of
+        {ok, Header} ->
+            MapKey = map_key(aec_headers:type(Header)),
+            {200, [], #{MapKey => aec_headers:serialize_for_client(Header)}};
         error ->
             {404, [], #{reason => <<"Block not found">>}}
     end;
-
-handle_request_('GetCurrentKeyBlockHash', _, _Context) ->
-    Hash = aec_chain:top_key_block_hash(),
-    EncodedHash = aeser_api_encoder:encode(key_block_hash, Hash),
-    {200, [], #{hash => EncodedHash}};
-
+handle_request_('GetTopHeader', _, _) ->
+    case aeapi:top_block_header() of
+        {ok, Header} -> {200, [], aec_headers:serialize_for_client(Header)};
+        error        -> {404, [], #{reason => <<"Block not found">>}}
+    end;
+handle_request_('GetCurrentKeyBlock', _, _) ->
+    case aeapi:top_key_block_header() of
+        {ok, Header} -> {200, [], aec_headers:serialize_for_client(Header)};
+        error        -> {404, [], #{reason => <<"Block not found">>}}
+    end;
+handle_request_('GetCurrentKeyBlockHash', _, _) ->
+    case aeapi:top_key_block_hash() of
+        {ok, Hash} -> {200, [], aeser_api_encoder:encode(key_block_hash, Hash)};
+        error      -> {404, [], #{reason => <<"Block not found">>}}
+    end;
 handle_request_('GetCurrentKeyBlockHeight', _, _Context) ->
-    TopBlock = aec_chain:top_block(),
-    Height = aec_blocks:height(TopBlock),
-    {200, [], #{height => Height}};
-
+    case aeapi:current_block_height() of
+        {ok, Height} -> {200, [], Height};
+        error        -> {404, [], #{reason => <<"Block not found">>}}
+    end;
 handle_request_('GetPendingKeyBlock', _Req, _Context) ->
     case aec_conductor:get_key_block_candidate() of
         {ok, Block} ->
-            PrevBlockHash = aec_blocks:prev_hash(Block),
-            case aec_chain:get_block(PrevBlockHash) of
-                {ok, PrevBlock} ->
-                    PrevBlockType = aec_blocks:type(PrevBlock),
-                    Header = aec_blocks:to_header(Block),
-                    {200, [], aec_headers:serialize_for_client(Header, PrevBlockType)};
-                error ->
-                    {404, [], #{reason => <<"Block not found">>}}
-            end;
+            Header = aec_blocks:to_header(Block),
+            {200, [], aec_headers:serialize_for_client(Header)};
         {error, beneficiary_not_configured} ->
             {400, [], #{reason => <<"Beneficiary not configured">>}};
         {error, _} ->
@@ -224,19 +164,7 @@ handle_request_('GetKeyBlockByHash', Params, _Context) ->
                     case aec_blocks:is_key_block(Block) of
                         true ->
                             Header = aec_blocks:to_header(Block),
-                            case aec_blocks:height(Block) of
-                                0 ->
-                                    {200, [], aec_headers:serialize_for_client(Header, key)};
-                                _ ->
-                                    PrevBlockHash = aec_blocks:prev_hash(Block),
-                                    case aec_chain:get_block(PrevBlockHash) of
-                                        {ok, PrevBlock} ->
-                                            PrevBlockType = aec_blocks:type(PrevBlock),
-                                            {200, [], aec_headers:serialize_for_client(Header, PrevBlockType)};
-                                        error ->
-                                            {404, [], #{reason => <<"Block not found">>}}
-                                    end
-                            end;
+                            {200, [], aec_headers:serialize_for_client(Header)};
                         false ->
                             {404, [], #{reason => <<"Block not fond">>}}
                     end;
@@ -250,19 +178,7 @@ handle_request_('GetKeyBlockByHeight', Params, _Context) ->
     case aec_chain:get_key_block_by_height(Height) of
         {ok, Block} ->
             Header = aec_blocks:to_header(Block),
-            case aec_blocks:height(Block) of
-                0 ->
-                    {200, [], aec_headers:serialize_for_client(Header, key)};
-                _ ->
-                    PrevBlockHash = aec_blocks:prev_hash(Block),
-                    case aec_chain:get_block(PrevBlockHash) of
-                        {ok, PrevBlock} ->
-                            PrevBlockType = aec_blocks:type(PrevBlock),
-                            {200, [], aec_headers:serialize_for_client(Header, PrevBlockType)};
-                        error ->
-                            {404, [], #{reason => <<"Block not found">>}}
-                    end
-            end;
+            {200, [], aec_headers:serialize_for_client(Header)};
         {error, _Rsn} ->
             {404, [], #{reason => <<"Block not found">>}}
     end;
@@ -272,15 +188,8 @@ handle_request_('GetMicroBlockHeaderByHash', Params, _Context) ->
         {ok, Hash} ->
             case aehttp_logic:get_micro_block_by_hash(Hash) of
                 {ok, Block} ->
-                    PrevBlockHash = aec_blocks:prev_hash(Block),
-                    case aec_chain:get_block(PrevBlockHash) of
-                        {ok, PrevBlock} ->
-                            PrevBlockType = aec_blocks:type(PrevBlock),
-                            Header = aec_blocks:to_header(Block),
-                            {200, [], aec_headers:serialize_for_client(Header, PrevBlockType)};
-                        error ->
-                            {404, [], #{reason => <<"Block not found">>}}
-                    end;
+                    Header = aec_blocks:to_header(Block),
+                    {200, [], aec_headers:serialize_for_client(Header)};
                 {error, block_not_found} ->
                     {404, [], #{reason => <<"Block not found">>}}
             end;
@@ -739,20 +648,8 @@ handle_request_(OperationID, Req, Context) ->
 
 generation_rsp(error) ->
     {404, [], #{reason => <<"Block not found">>}};
-generation_rsp({ok, #{ key_block := KeyBlock, micro_blocks := MicroBlocks }}) ->
-    case aec_blocks:height(KeyBlock) of
-        0 ->
-            {200, [], encode_generation(KeyBlock, MicroBlocks, key)};
-        _ ->
-            PrevBlockHash = aec_blocks:prev_hash(KeyBlock),
-            case aec_chain:get_block(PrevBlockHash) of
-                {ok, PrevBlock} ->
-                    PrevBlockType = aec_blocks:type(PrevBlock),
-                    {200, [], encode_generation(KeyBlock, MicroBlocks, PrevBlockType)};
-                error ->
-                    {404, [], #{reason => <<"Block not found">>}}
-            end
-    end.
+generation_rsp({ok, #{key_block := KeyBlock, micro_blocks := MicroBlocks}}) ->
+    {200, [], encode_generation(KeyBlock, MicroBlocks)}.
 
 deserialize_transaction(Tx) ->
     try
