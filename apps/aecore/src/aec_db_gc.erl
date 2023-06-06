@@ -485,7 +485,7 @@ scan_tree(Name, Height, Hash, Parent) ->
     T0 = erlang:system_time(millisecond),
     {ok, Count} = collect_reachable_hashes_fullscan(Name, Height, Hash),
     T1 = erlang:system_time(millisecond),
-    ?INFO("GC scan done at ~p (~p), Count = ~p, Time = ~p, hash = ~p",
+    ?INFO("GC scan done at ~p (~-13w), Count: ~-9w, Time (ms): ~-8w, hash: ~p",
           [Height, Name, Count, T1 - T0, aeu_debug:pp(Hash)]),
     gen_server:cast(Parent, #scanner_done{ tree = Name
                                          , height = Height
