@@ -48,6 +48,7 @@
 -behavior(aeu_mp_trees_db).
 -export([ mpt_db_drop_cache/1
         , mpt_db_get/2
+        , mpt_db_get/3
         , mpt_db_put/3
         ]).
 
@@ -271,19 +272,22 @@ new_proof_db() ->
     aeu_mp_trees_db:new(proof_db_spec()).
 
 proof_db_spec() ->
-    #{ handle => dict:new()
-     , cache  => dict:new()
+    #{ handle => #{}
+     , cache  => #{}
      , module => ?MODULE
      }.
 
 mpt_db_get(Key, Proof) ->
-    {value, dict:fetch(Key, Proof)}.
+    {value, maps:get(Key, Proof)}.
+
+mpt_db_get(Key, Proof, Map) when is_map(Map) ->
+    Map#{result => {value, maps:get(Key, Proof)}}.
 
 mpt_db_put(Key, Val, Proof) ->
-    dict:store(Key, Val, Proof).
+    Proof#{Key => Val}.
 
 mpt_db_drop_cache(_Cache) ->
-    dict:new().
+    #{}.
 
 %%%===================================================================
 %%% serialization

@@ -14,6 +14,7 @@
 -module(aeu_mp_trees_db).
 
 -export([ get/2
+        , get/3
         , put/3
         , cache_get/2
         , drop_cache/1
@@ -89,6 +90,15 @@ get(Key, DB0) ->
         {value, _} = Res -> Res
     end.
 
+get(Key, DB0, Map) when is_map(Map) ->
+    DB = to_new_db(DB0),
+    case int_cache_get(Key, DB) of
+        'none' -> int_db_get(Key, DB, Map);
+        {value, _} = Res ->
+            Map#{result => Res,
+                 source => cache}
+    end.
+
 -spec cache_get(key(), db()) -> {'value', value()} | 'none'.
 cache_get(Key, DB0) ->
     DB = to_new_db(DB0),
@@ -153,6 +163,9 @@ int_drop_cache(#db{cache = Cache, module = M} = DB) ->
 
 int_db_get(Key, #db{handle = Handle, module = M}) ->
     M:mpt_db_get(Key, Handle).
+
+int_db_get(Key, #db{handle = Handle, module = M}, Map) ->
+    M:mpt_db_get(Key, Handle, Map).
 
 int_db_put(Key, Val, #db{handle = Handle, module = M} = DB) ->
     DB#db{handle = M:mpt_db_put(Key, Val, Handle)}.
