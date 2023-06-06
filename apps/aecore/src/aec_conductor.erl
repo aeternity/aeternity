@@ -1389,24 +1389,34 @@ handle_add_block(Block, Hash, Prev, #state{top_block_hash = TopBlockHash} = Stat
             {{error, Reason}, State}
     end.
 
-handle_successfully_added_block(Block, Hash, false, PrevKeyHeader, Events, State, Origin) ->
+handle_successfully_added_block(Block, Hash, false, _, Events, State, Origin) ->
     maybe_publish_tx_events(Events, Hash, Origin),
     maybe_publish_block(Origin, Block),
-    State1 = maybe_consensus_change(State, PrevKeyHeader, Block),
+    State1 = maybe_consensus_change(State, Block),
+    [ maybe_garbage_collect(Block, Hash, false) || aec_blocks:type(Block) == key ],
     {ok, State1};
 handle_successfully_added_block(Block, Hash, true, PrevKeyHeader, Events, State, Origin) ->
     maybe_publish_tx_events(Events, Hash, Origin),
     maybe_publish_block(Origin, Block),
-    State1 = maybe_consensus_change(State, PrevKeyHeader, Block),
+    State1 = maybe_consensus_change(State, Block),
+    ConsensusModule = consensus_module(State1),
     case preempt_on_new_top(State1, Block, Hash, Origin) of
         {micro_changed, State2 = #state{ consensus = Cons }} ->
             {ok, setup_loop(State2, false, Cons#consensus.leader, Origin)};
-        {changed, BlockType, NewTopBlock, State2 = #state{consensus = Cons}} ->
+        {changed, BlockType, NewTopBlock, State2} ->
             (BlockType == key) andalso
                 aec_metrics:try_update(
                   [ae,epoch,aecore,blocks,key,info], info_value(NewTopBlock)),
-            [ maybe_garbage_collect(NewTopBlock) || BlockType == key ],
-            {ok, setup_loop(State2, true, Cons#consensus.leader, Origin)}
+            [ maybe_garbage_collect(NewTopBlock, Hash, true)
+              || BlockType == key ],
+            IsLeader = is_leader(NewTopBlock, PrevKeyHeader, ConsensusModule),
+            case IsLeader of
+                true ->
+                    ok; %% Don't spend time when we are the leader.
+                false ->
+                    aec_tx_pool:garbage_collect()
+            end,
+            {ok, setup_loop(State2, true, IsLeader, Origin)}
     end.
 
 maybe_gc_tx_pool(key, false, Height, OldHeight) when Height > OldHeight ->
@@ -1415,28 +1425,26 @@ maybe_gc_tx_pool(key, false, Height, OldHeight) when Height > OldHeight ->
 maybe_gc_tx_pool(_, _, _, _) ->
     ok.
 
-maybe_consensus_change(State, PrevKeyHeader, Block) ->
+maybe_consensus_change(State, Block) ->
     %% When a new block got successfully inserted we need to check whether the next block
     %% would use different consensus algorithm - This is the point where
     %% dev mode should wreck havoc on the entire system and redirect everything
     %% to a chain simulator ;)
     ActiveConsensusModule = consensus_module(State),
     H = aec_blocks:height(Block),
-    State1 =
-        case aec_consensus:get_consensus_module_at_height(H + 1) of
-            ActiveConsensusModule ->
-                State;
-            NewConsensus ->
-                %% It looks like dev mode needs to be activated :)
-                true = ActiveConsensusModule:can_be_turned_off(),
-                ActiveConsensusModule:stop(),
-                NewConfig = aec_consensus:get_consensus_config_at_height(H+1),
-                Mining = is_mining(State),
-                NewConsensus:start(NewConfig, #{block_production => Mining}),
-                #state{consensus = Consensus} = State,
-                State#state{ consensus = Consensus#consensus{ consensus_module = NewConsensus } }
-        end,
-    check_leader(Block, PrevKeyHeader, State1).
+    case aec_consensus:get_consensus_module_at_height(H + 1) of
+        ActiveConsensusModule ->
+            State;
+        NewConsensus ->
+            %% It looks like dev mode needs to be activated :)
+            true = ActiveConsensusModule:can_be_turned_off(),
+            ActiveConsensusModule:stop(),
+            NewConfig = aec_consensus:get_consensus_config_at_height(H+1),
+            Mining = is_mining(State),
+            NewConsensus:start(NewConfig, #{block_production => Mining}),
+            #state{consensus = Consensus} = State,
+            State#state{ consensus = Consensus#consensus{ consensus_module = NewConsensus } }
+    end.
 
 info_value(Block) ->
     case aec_headers:info(aec_blocks:to_key_header(Block)) of
@@ -1445,12 +1453,6 @@ info_value(Block) ->
         undefined ->
             0
     end.
-
-check_leader(Block, PrevKeyHeader,
-             #state{consensus = Consensus} = State) ->
-    #consensus{consensus_module = CMod} = Consensus,
-    IsLeader = is_leader(Block, PrevKeyHeader, CMod),
-    State#state{consensus = Consensus#consensus{leader = IsLeader}}.
 
 is_leader(NewTopBlock, PrevKeyHeader, ConsensusModule) ->
     LeaderKey =
@@ -1515,15 +1517,15 @@ get_pending_key_block(TopHash, State) ->
 %%
 %% To avoid starting of the GC process just for EUNIT
 -ifdef(EUNIT).
-maybe_garbage_collect(_) -> nop.
+maybe_garbage_collect(_, _, _) -> nop.
 -else.
 
 %% This should be called when there are no processes modifying the block state
 %% (e.g. aec_conductor on specific places)
-maybe_garbage_collect(Block) ->
+maybe_garbage_collect(Block, Hash, TopChange) ->
     T0 = erlang:system_time(microsecond),
     Header = aec_blocks:to_header(Block),
-    Res = aec_db_gc:maybe_garbage_collect(Header),
+    Res = aec_db_gc:maybe_garbage_collect(Header, Hash, TopChange),
     T1 = erlang:system_time(microsecond),
     lager:debug("Result -> ~p (time: ~p us)", [Res, T1-T0]),
     Res.
