@@ -263,6 +263,7 @@ maybe_restart_scanners(LastSwitch, LastScan, Trees) ->
         {true, Hashes} ->
             ?INFO("Scan incomplete at height ~p; restarting scan of ~p siblings",
                   [LastSwitch, length(Hashes)]),
+            [?INFO("Sibling hash: ~s", [enc_keyblock_hash(H)]) || H <- Hashes],
             {[start_scanner(T, LastSwitch, Hash)
               || T <- Trees,
                  Hash <- Hashes],
@@ -327,7 +328,7 @@ handle_call(#maybe_garbage_collect{ height = Height
     %% A sibling appears at the last_switch height. We need to scan this block
     %% to make sure that all the live state is promoted.
     %%
-    ?INFO("Sibling appeared at scan height ~p. Starting scanners", [Height]),
+    ?INFO("Sibling at scan height ~p. Hash: ~s", [Height, enc_keyblock_hash(Hash)]),
     NewScanners = [start_scanner(T, Height, Hash) || T <- Trees],
     %%
     %% The return value here isn't optimal. I guess what we're saying is that
@@ -440,7 +441,8 @@ info_item(enabled, #st{enabled = Bool}) ->
     Bool.
 
 perform_switch(Trees, Height, Hash) ->
-    ?INFO("Performing GC switch at height ~p", [Height]),
+    ?INFO("GC switch at height ~p, Hash: ~s",
+          [Height, aeser_api_encoder:encode(key_block_hash, Hash)]),
     clear_secondary_tables(Trees),
     ok = aec_db:ensure_transaction(
            fun() ->
@@ -485,12 +487,21 @@ scan_tree(Name, Height, Hash, Parent) ->
     T0 = erlang:system_time(millisecond),
     {ok, Count} = collect_reachable_hashes_fullscan(Name, Height, Hash),
     T1 = erlang:system_time(millisecond),
-    ?INFO("GC scan done at ~p (~-13w), Count: ~-9w, Time (ms): ~-8w, hash: ~p",
-          [Height, Name, Count, T1 - T0, aeu_debug:pp(Hash)]),
+    ?INFO("GC scan done at ~p (~-13w), Count: ~-9w, Time (ms): ~-8w, hash: ~s",
+          [Height, Name, Count, T1 - T0, pp_hash(Hash)]),
     gen_server:cast(Parent, #scanner_done{ tree = Name
                                          , height = Height
                                          , block_hash = Hash }),
     ok.
+
+pp_hash(Hash) ->
+    Enc = enc_keyblock_hash(Hash),
+    Start = binary:part(Enc, 0, 8),
+    End = binary:part(Enc, byte_size(Enc), -4),
+    <<Start/binary, "...", End/binary>>.
+
+enc_keyblock_hash(Hash) ->
+    aeser_api_encoder:encode(key_block_hash, Hash).
 
 collect_reachable_hashes_fullscan(Tree, Height, Hash) ->
     case get_mpt(Tree, Hash) of
