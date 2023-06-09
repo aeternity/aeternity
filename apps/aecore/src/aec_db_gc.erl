@@ -483,7 +483,10 @@ start_scanner(Name, Height, Hash, Attempt) ->
             , pid = S
             , attempt = Attempt}.
 
-scan_tree(Name, Height, Hash, Parent) ->
+scan_tree(Name, Height, Hash, Parent) when is_atom(Name)
+                                         , is_integer(Height)
+                                         , is_binary(Hash)
+                                         , is_pid(Parent) ->
     T0 = erlang:system_time(millisecond),
     {ok, Count} = collect_reachable_hashes_fullscan(Name, Height, Hash),
     T1 = erlang:system_time(millisecond),
@@ -494,7 +497,7 @@ scan_tree(Name, Height, Hash, Parent) ->
                                          , block_hash = Hash }),
     ok.
 
-pp_hash(Hash) ->
+pp_hash(Hash) when is_binary(Hash) ->
     Enc = enc_keyblock_hash(Hash),
     Start = binary:part(Enc, 0, 8),
     End = binary:part(Enc, byte_size(Enc), -4),
@@ -601,7 +604,7 @@ update_current_scan(Hash, Scanners, #st{current_scan = #{hashes := Hashes} = Sca
 %%                 [aec_blocks:height(MicroBlock), N, Res]),
 %%     Res.
 
--spec get_mpt(tree_name(), non_neg_integer()) -> aeu_mp_trees:tree() | empty.
+-spec get_mpt(tree_name(), block_hash()) -> aeu_mp_trees:tree() | empty.
 get_mpt(Tree, Hash) ->
     get_mpt_from_hash(Tree, Hash).
 
