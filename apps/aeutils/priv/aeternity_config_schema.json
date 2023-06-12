@@ -1529,18 +1529,18 @@
                     "type" : "string",
                     "default" : "data"
                 },
-		"db_direct_access" : {
-		    "description" : "Use Db backend API rather than the Mnesia API",
-		    "type" : "boolean",
-		    "default" : false
-		},
-		"db_commit_bypass" : {
-		    "description" : "Use Rocksdb tricks to bypass Mnesia's default update logic at tx commit",
-		    "type" : "boolean",
-		    "default" : true
-		},
+                "db_direct_access" : {
+                    "description" : "Use Db backend API rather than the Mnesia API",
+                    "type" : "boolean",
+                    "default" : false
+                },
+                "db_commit_bypass" : {
+                    "description" : "Use Rocksdb tricks to bypass Mnesia's default update logic at tx commit",
+                    "type" : "boolean",
+                    "default" : true
+                },
                 "db_write_max_retries" : {
-		    "deprecated" : true,
+                    "deprecated" : true,
                     "description" : "OBSOLETE/ignored: Maximum number of retries for failing database write operations.",
                     "type" : "integer",
                     "default" : 3
@@ -1568,14 +1568,162 @@
                             "properties": {
                                 "type": {
                                     "description": "The type of the consensus algorithm used at the given height (ex. pow_cuckoo, smart_contract or hyper_chain)",
-                                    "type": "string"
+                                    "type": "string",
+                                    "default": "hyper_chain"
                                 },
                                 "config": {
                                     "description": "Configuration for the given consensus algorithm",
                                     "type": "object",
-                                    "oneOf": [
-                                        {"properties": {}}
-                                    ]
+                                    "properties": {
+                                        "contract_owner": {
+                                            "description": "Owner of the smart contracts that controls the consensus.",
+                                            "default": "ak_11111111111111111111111111111115rHyByZ",
+                                            "type": "string"
+                                        },
+                                        "election_contract": {
+                                            "description": "The address of the smart contract that will be used for leader elections. For a new chain this contract should be loaded at genesis",
+                                            "default": "",
+                                            "type": "string"
+                                        },
+                                        "rewards_contract": {
+                                            "description": "The address of the smart contract that will be used for reward distributions. For a new chain this contract should be loaded at genesis",
+                                            "default": "",
+                                            "type": "string"
+                                        },
+                                        "expected_key_block_rate": {
+                                            "description": "Something about rates.. FIXME",
+                                            "default": 2000,
+                                            "type": "integer"
+                                        },
+                                        "parent_chain": {
+                                            "description" : "Details of how this node will connect to a parent chain if this is a hyperchain.",
+                                            "type" : "object",
+                                            "additionalProperties" : false,
+                                            "properties": {
+                                                "confirmations": {
+                                                    "description": "Minimum number of block confirmations required when selecting a UTXO for sending parent chain commitment transactions",
+                                                    "default": 6,
+                                                    "type": "integer"
+                                                },
+                                                "start_height": {
+                                                    "description": "Height on the parent chain that this hyperchain will start posting commitments and start creating blocks",
+                                                    "default": 0,
+                                                    "type": "integer"
+                                                },
+                                                "consensus": {
+                                                    "description" : "Details of the parent chain",
+                                                    "type" : "object",
+                                                    "additionalProperties" : false,
+                                                    "properties": {
+                                                        "network_id": {
+                                                            "description" : "The network Id of the parent chain if it has one",
+                                                            "type": "string",
+                                                            "default": "ae_mainnet"
+                                                        },
+                                                        "spend_address": {
+                                                            "description" : "The address on the parent chain where commitment transactions will be sent. e.g. for a bitcoin parent chain this might start 'bcrt1'...",
+                                                            "type": "string",
+                                                            "default": ""
+                                                        },
+                                                        "type": {
+                                                             "description" : "The type of parent network connection. Possible values are 'AE2AE', 'AE2BTC', 'AE2DOGE'",
+                                                            "type": "string",
+                                                            "default": "AE2AE"
+                                                        }
+                                                    }
+                                                },
+                                                "polling": {
+                                                    "description" : "Parent chain connection",
+                                                    "type" : "object",
+                                                    "additionalProperties" : false,
+                                                    "properties": {
+                                                        "fetch_interval": {
+                                                            "description" : "The interval between polls of the parent chain looking for a new block (millisec)",
+                                                            "type": "integer",
+                                                            "default": 500
+                                                        },
+                                                        "nodes": {
+                                                            "description" : "List of parent chain nodes to poll for new blocks",
+                                                            "type" : "array",
+                                                            "items" : {
+                                                                "type" : "object",
+                                                                "description" : "Host name and login details",
+                                                                "additionalProperties" : false,
+                                                                "properties": {
+                                                                    "host": {
+                                                                        "description": "Host name of IP address",
+                                                                        "type": "string",
+                                                                        "default": "localhost"
+                                                                    },
+                                                                    "port": {
+                                                                        "description": "Port number of HTTP API server on parent node",
+                                                                        "type": "integer",
+                                                                        "default": 3013
+                                                                    },
+                                                                    "user": {
+                                                                        "description": "Username for HTTP API login if needed",
+                                                                        "type": "string",
+                                                                        "default": ""
+                                                                    },
+                                                                    "password": {
+                                                                        "description": "Password for HTTP API login if needed",
+                                                                        "type": "string",
+                                                                        "default": ""
+                                                                    }
+                                                                }
+                                                            },
+                                                            "default": []
+                                                        }
+                                                    }
+                                                },
+                                                "stakers": {
+                                                    "description" : "List of hyperchain accounts and associated parent chain accounts that this node should post commitments for",
+                                                    "type" : "array",
+                                                    "items" : {
+                                                        "type" : "object",
+                                                        "additionalProperties" : false,
+                                                        "description" : "Hyperchain and parent chain account pair",
+                                                        "properties": {
+                                                            "hyper_chain_account": {
+                                                                "description": "Child chain staking account",
+                                                                "type" : "object",
+                                                                "properties": {
+                                                                    "pub": {
+                                                                        "description": "Public key",
+                                                                        "type": "string",
+                                                                        "default": ""
+                                                                    },
+                                                                    "priv": {
+                                                                        "description": "Private key",
+                                                                        "type": "string",
+                                                                        "default": ""
+                                                                    }
+                                                                }
+                                                            },
+                                                            "parent_chain_account": {
+                                                                "description": "Parent chain commitment account",
+                                                                "type" : "object",
+                                                                "additionalProperties" : false,
+                                                                "properties": {
+                                                                    "pub": {
+                                                                        "description": "Public key",
+                                                                        "type": "string",
+                                                                        "default": ""
+                                                                    },
+                                                                    "priv": {
+                                                                        "description": "Private key",
+                                                                        "type": "string",
+                                                                        "default": ""
+                                                                    }
+                                                                }
+                                                            }
+                                                        },
+                                                        "default": []
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
