@@ -52,8 +52,7 @@
 process_request(FunsList, Req) ->
     process_request(FunsList, Req, #{}).
 
-process_request([], _Req, {Code, _, _Response} = Result)
-    when is_integer(Code) ->
+process_request([], _, Result = {Code, _, _}) when is_integer(Code) ->
     Result;
 process_request([Fun | T], Req, Result0) ->
     Res = Fun(Req, Result0),

@@ -708,15 +708,15 @@ account_at_height2(PubKey, Height) ->
     end.
 
 
--spec account_at_block(Address, BlockHash) -> Result
-    when Address   :: binary(), % <<"ak_...">>
-         BlockHash :: binary(), % <<"kh_...">> or <<"mh_...">>
-         Result    :: {ok, Balance :: non_neg_integer()}
-                    | {error, Reason},
-         Reason    :: garbage_collected
-                    | account_not_found
-                    | {Element :: pubkey | block,
-                       Info    :: invalid_encoding | invalid_prefix}.
+-spec account_at_block(Address, BlockID) -> Result
+    when Address :: binary(), % <<"ak_...">>
+         BlockID :: binary(), % <<"kh_...">> or <<"mh_...">>
+         Result  :: {ok, Balance :: non_neg_integer()}
+                  | {error, Reason},
+         Reason  :: garbage_collected
+                  | account_not_found
+                  | {Element :: pubkey | block,
+                     Info    :: invalid_encoding | invalid_prefix}.
 %% @doc
 %% Retrieve an account as it appeared at the point in the chain's history that it
 %% appeared at the given block's height.
@@ -724,18 +724,18 @@ account_at_height2(PubKey, Height) ->
 %% Note that this can fail in the event that the node being queried has garbage
 %% collection enabled and the account at this height has been removed.
 
-account_at_block(Address, BlockHash) ->
+account_at_block(Address, BlockID) ->
     AllowedTypes = [account_pubkey, contract_pubkey],
     case aeser_api_encoder:safe_decode({id_hash, AllowedTypes}, Address) of
         {ok, ID} ->
             {_, PubKey} = aeser_id:specialize(ID),
-            account_at_block2(PubKey, BlockHash);
+            account_at_block2(PubKey, BlockID);
         {error, Info} ->
             {error, {pubkey, Info}}
     end.
 
-account_at_block2(PubKey, BlockHash) ->
-    case aeser_api_encoder:safe_decode(block_hash, BlockHash) of
+account_at_block2(PubKey, BlockID) ->
+    case aeser_api_encoder:safe_decode(block_hash, BlockID) of
         {ok, Hash}    -> account_at_block3(PubKey, Hash);
         {error, Info} -> {error, {block, Info}}
     end.
@@ -850,29 +850,29 @@ balance_at_height(Type, PubKey, Height) ->
     end.
 
 
--spec balance_at_block(Address, BlockHash) -> Result
-    when Address   :: binary(), % <<"ak_...">> or <<"ct_...">>
-         BlockHash :: binary(), % <<"kh_...">> or <<"mh_...">>
-         Result    :: {ok, Balance :: non_neg_integer()}
-                    | {error, Reason},
-         Reason    :: invalid_block_hash
-                    | invalid_address
-                    | block_not_found
-                    | garbage_collected
-                    | account_not_found
-                    | contract_not_found.
+-spec balance_at_block(Address, BlockID) -> Result
+    when Address :: binary(), % <<"ak_...">> or <<"ct_...">>
+         BlockID :: binary(), % <<"kh_...">> or <<"mh_...">>
+         Result  :: {ok, Balance :: non_neg_integer()}
+                  | {error, Reason},
+         Reason  :: invalid_block_hash
+                  | invalid_address
+                  | block_not_found
+                  | garbage_collected
+                  | account_not_found
+                  | contract_not_found.
 %% @doc
 %% Return the given account's balance at the height of the block ID provided.
 %% `Address' should be an externally serialized binary form with the prefix
 %% `<<"ak_...">>' or `<<"ct_...">>'.
-%% `BlockHash' shhould be an externally serialized binary form with the prefix
+%% `BlockID' shhould be an externally serialized binary form with the prefix
 %% `<<"kh_...">>' or `<<"mh_...">>'.
 %%
 %% Note that this can fail in the event that the node being queried has garbage
 %% collection enabled and the account at this height has been removed.
 
-balance_at_block(Address, BlockHash) ->
-    case decode_catcher(BlockHash) of
+balance_at_block(Address, BlockID) ->
+    case decode_catcher(BlockID) of
         {ok, Hash} -> balance_at_block2(Address, Hash);
         Error      -> Error
     end.
@@ -896,9 +896,9 @@ balance_at_block3(Type, PubKey, Hash) ->
             balance_at_height(Type, PubKey, Height)
     end.
 
-decode_catcher(BlockHash) ->
+decode_catcher(BlockID) ->
     try
-        case aeser_api_encoder:decode(BlockHash) of
+        case aeser_api_encoder:decode(BlockID) of
             {micro_block_hash, Hash} -> {ok, Hash};
             {key_block_hash, Hash}   -> {ok, Hash};
             _                        -> {error, invalid_block_hash}
@@ -1146,39 +1146,94 @@ decode(Binary) ->
 %% @end
 
 %% TODO: Maybe add variants to decode further.
-%%    Example: aeapi:decode(contract, <<"cb_..">>, [decompile]).
+%%    Example: `aeapi:decode(contract, <<"cb_..">>, [decompile]).'
 
 decode(Type, Data) ->
     aeser_api_encoder:safe_decode(Type, Data).
 
 
-oracle_at_height(OracleAddress, Height) ->
-    {oracle_pubkey, OraclePubkey} = decode(OracleAddress),
+-spec oracle_at_height(OracleID, Height) -> Result
+    when OracleID :: aec_keys:pubkey(),
+         Height   :: non_neg_integer(),
+         Result   :: {ok, aeo_oracles:oracle()}
+                   | {error, Reason},
+         Reason   :: not_found
+                   | no_state_trees.
+%% @doc
+%% Retrieve an oracle's state at the given height.
+
+oracle_at_height(OracleID, Height) ->
+    {oracle_pubkey, OraclePubkey} = decode(OracleID),
     {ok, KeyBlock} = key_block_at_height(Height),
     Header = aec_blocks:to_header(KeyBlock),
     {ok, Hash} = aec_headers:hash_header(Header),
     aec_chain:get_oracle_at_hash(OraclePubkey, Hash).
 
-oracle_at_block(OracleAddress, BlockHash) ->
-    {oracle_pubkey, OraclePubkey} = decode(OracleAddress),
-    {_BlockType, Hash} = aeser_api_encoder:decode(BlockHash),
+
+-spec oracle_at_block(OracleID, BlockID) -> Result
+    when OracleID :: aec_keys:pubkey(),
+         BlockID  :: binary(), % <<"kh_...">> or <<"mh_...">>
+         Result   :: {ok, aeo_oracle:oracle()}
+                   | {error, Reason},
+         Reason   :: not_found
+                   | no_state_trees.
+%% @doc
+%% Retrieve an oracle's state at the height of the given block's height.
+
+oracle_at_block(OracleID, BlockID) ->
+    {oracle_pubkey, OraclePubkey} = decode(OracleID),
+    {_BlockType, Hash} = aeser_api_encoder:decode(BlockID),
     aec_chain:get_oracle_at_hash(OraclePubkey, Hash).
 
-%% @doc Lookup the state of an oracle query against a specific oracle at height.
+
+-spec oracle_query_at_height(OracleID, QueryID, Height) -> Result
+    when OracleID :: aec_keys:pubkey(),
+         QueryID  :: aec_keys:pubkey(),
+         Height   :: non_neg_integer(),
+         Result   :: {ok, aeo_query:query()}
+                   | {error, Reason},
+         Reason   :: no_state_trees.
+%% @doc
+%% Lookup the state of an oracle query against a specific oracle the given height.
 %% Example:
-%% ```aeapi:oracle_query_at_height(<<"ok_AFbLSrppnBFgbKPo4GykK5XEwdq15oXgosgcdL7ud6Vo2YPsH">>, <<"oq_2SkZv9hyJTbocBtHdk36yMXXrycWURyB2zjXXh8CaNaPC4RFvG">>, 248940).'''
-oracle_query_at_height(OracleAddress, QueryId, Height) ->
-    {oracle_pubkey, OraclePubkey} = decode(OracleAddress),
-    {oracle_query_id, Query} = decode(QueryId),
+%% ```
+%% Oracle = <<"ok_AFbLSrppnBFgbKPo4GykK5XEwdq15oXgosgcdL7ud6Vo2YPsH">>,
+%% QueryID = <<"oq_2SkZv9hyJTbocBtHdk36yMXXrycWURyB2zjXXh8CaNaPC4RFvG">>,
+%% aeapi:oracle_query_at_height(Oracle, QueryID, 248940).
+%% '''
+
+oracle_query_at_height(OracleID, QueryID, Height) ->
+    {oracle_pubkey, OraclePubkey} = decode(OracleID),
+    {oracle_query_id, Query} = decode(QueryID),
     {ok, KeyBlock} = key_block_at_height(Height),
     Header = aec_blocks:to_header(KeyBlock),
     {ok, Hash} = aec_headers:hash_header(Header),
     get_oracle_query_at_hash(OraclePubkey, Query, Hash).
 
-oracle_query_at_block(OracleAddress, QueryId, BlockHash) ->
-    {oracle_pubkey, OraclePubkey} = decode(OracleAddress),
-    {oracle_query_id, Query} = decode(QueryId),
-    {_BlockType, Hash} = aeser_api_encoder:decode(BlockHash),
+
+-spec oracle_query_at_block(OracleID, QueryID, BlockID) -> Result
+    when OracleID :: aec_keys:pubkey(),
+         QueryID  :: aec_keys:pubkey(),
+         BlockID  :: binary(), % <<"kh_...">> or <<"mh_...">>
+         Result   :: {ok, aeo_oracle:oracle()}
+                   | {error, Reason},
+         Reason   :: not_found
+                   | no_state_trees.
+%% @doc
+%% Lookup the state of an oracle query at the given oracle at the height of the
+%% given block.
+%% Example:
+%% ```
+%% OracleID = <<"ok_4HGhEdjeRtpsWzfSEJZnBKNmjgHALAifcBUey8EvRAdDfRsqc">>,
+%% QueryID = <<"oq_2SkZv9hyJTbocBtHdk36yMXXrycWURyB2zjXXh8CaNaPC4RFvG">>,
+%% BlockID = <<"kh_2hWHCGRcrYoZkuwD4GZ4DdZfyYY7PTrvf7SKT9ugjhh9NLVF19">>,
+%% {ok, Query} = aeapi:oracle_query_at_block(OracleID, QueryID, BlockID).
+%% '''
+
+oracle_query_at_block(OracleID, QueryID, BlockID) ->
+    {oracle_pubkey, OraclePubkey} = decode(OracleID),
+    {oracle_query_id, Query} = decode(QueryID),
+    {_BlockType, Hash} = aeser_api_encoder:decode(BlockID),
     get_oracle_query_at_hash(OraclePubkey, Query, Hash).
 
 get_oracle_query_at_hash(OraclePubkey, Query, Hash) ->
@@ -1189,27 +1244,46 @@ get_oracle_query_at_hash(OraclePubkey, Query, Hash) ->
             Else
     end.
 
+-spec oracle_queries_at_height(OracleID, From, Type, Max, Height) -> Result
+    when OracleID :: aec_keys:pubkey(),
+         From     :: binary() | '$first',
+         Type     :: open | closed | all,
+         Max      :: non_neg_integer(),
+         Height   :: non_neg_integer(),
+         Result   :: {ok, [aeo_query:query()]} | {error, no_state_trees}.
 %% @doc Lookup oracle queries against an oracle at a given height.
 %% Example:
-%% ```{ok, Qs} = aeapi:oracle_queries_at_height(<<"ok_4HGhEdjeRtpsWzfSEJZnBKNmjgHALAifcBUey8EvRAdDfRsqc">>,'$first', all, 100, 248940).'''
--spec oracle_queries_at_height(aec_keys:pubkey(), binary() | '$first', open | closed | all, non_neg_integer(), non_neg_integer()) ->
-    {ok, [aeo_query:query()]} | {error, no_state_trees}.
-oracle_queries_at_height(OracleAddress, From, QueryType, Max, Height) ->
-    {oracle_pubkey, OraclePubkey} = decode(OracleAddress),
+%% ```
+%% OracleID = <<"ok_4HGhEdjeRtpsWzfSEJZnBKNmjgHALAifcBUey8EvRAdDfRsqc">>,
+%% {ok, Qs} = aeapi:oracle_queries_at_height(OracleID, '$first', all, 100, 248940).
+%% '''
+oracle_queries_at_height(OracleID, From, QueryType, Max, Height) ->
+    {oracle_pubkey, OraclePubkey} = decode(OracleID),
     {ok, KeyBlock} = key_block_at_height(Height),
     Header = aec_blocks:to_header(KeyBlock),
     {ok, Hash} = aec_headers:hash_header(Header),
     aec_chain:get_oracle_queries_at_hash(OraclePubkey, From, QueryType, Max, Hash).
 
 
+-spec oracle_queries_at_block(OracleID, From, QueryType, Max, BlockID) -> Result
+    when OracleID  :: aec_keys:pubkey(),
+         From      :: binary() | '$first',
+         QueryType :: open | closed | all,
+         Max       :: non_neg_integer(),
+         BlockID   :: aeser_api_encoder:encoded(),
+         Result    :: {ok, [aeo_query:query()]}
+                    | {error, Reason},
+         Reason    :: not_found
+                    | no_state_trees.
 %% @doc Lookup oracle queries against an oracle at a given blockhash.
 %% Example:
-%% ```{ok, Qs} = aeapi:oracle_queries_at_height(<<"ok_4HGhEdjeRtpsWzfSEJZnBKNmjgHALAifcBUey8EvRAdDfRsqc">>,'$first', all, 100, <<"kh_2hWHCGRcrYoZkuwD4GZ4DdZfyYY7PTrvf7SKT9ugjhh9NLVF19">>).'''
--spec oracle_queries_at_block(aec_keys:pubkey(), binary() | '$first', open | closed | all, non_neg_integer(), aeser_api_encoder:encoded()) ->
-    {ok, [aeo_query:query()]} | {error, no_state_trees}.
-oracle_queries_at_block(OracleAddress, From, QueryType, Max, BlockHash) ->
-    {oracle_pubkey, OraclePubkey} = decode(OracleAddress),
-    {_BlockType, Hash} = aeser_api_encoder:decode(BlockHash),
+%% ```
+%% Oracle = <<"ok_4HGhEdjeRtpsWzfSEJZnBKNmjgHALAifcBUey8EvRAdDfRsqc">>
+%% Block = <<"kh_2hWHCGRcrYoZkuwD4GZ4DdZfyYY7PTrvf7SKT9ugjhh9NLVF19">>,
+%% {ok, Qs} = aeapi:oracle_queries_at_height(Oracle,'$first', all, 100, Block).
+%% '''
+
+oracle_queries_at_block(OracleID, From, QueryType, Max, BlockID) ->
+    {oracle_pubkey, OraclePubkey} = decode(OracleID),
+    {_BlockType, Hash} = aeser_api_encoder:decode(BlockID),
     aec_chain:get_oracle_queries_at_hash(OraclePubkey, From, QueryType, Max, Hash).
-
-
