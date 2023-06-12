@@ -757,7 +757,7 @@ account_at_block3(PubKey, Hash) ->
                    | invalid_encoding
                    | account_not_found.
 %% @doc
-%% Given an account ID< return its next nonce.
+%% Given an account ID, return its next nonce.
 %% The same as calling `next_nonce(Address, max)'.
 
 next_nonce(Address) ->
