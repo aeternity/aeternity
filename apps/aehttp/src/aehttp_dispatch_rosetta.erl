@@ -881,8 +881,8 @@ retrieve_block_and_account_from_partial_block_identifier(PubKey, Req) ->
             {Block, Account};
         #{<<"block_identifier">> := #{<<"hash">> := Hash}} ->
             case aeapi:key_block_at_hash(Hash) of
-                error ->
-                    throw(block_not_found);
+                {error, Reason} ->
+                    throw(Reason);
                 {ok, Block} ->
                     Height =
                         aec_headers:height(

@@ -708,7 +708,7 @@ account_at_height2(PubKey, Height) ->
 -spec account_at_block(Address, BlockID) -> Result
     when Address :: binary(), % <<"ak_...">>
          BlockID :: binary(), % <<"kh_...">> or <<"mh_...">>
-         Result  :: {ok, Balance :: non_neg_integer()}
+         Result  :: {ok, aec_accounts:account()}
                   | {error, Reason},
          Reason  :: account_not_found
                   | {Element :: pubkey | block,
@@ -783,7 +783,8 @@ next_nonce(Address, Strategy) ->
 
 -spec contract(Address) -> Result
     when Address :: binary(), % <<"ct_...">>
-         Result  :: {error, Reason},
+         Result  :: {ok, aect_contracts:contract()}
+                  | {error, Reason},
          Reason  :: invalid_prefix
                   | invalid_encoding
                   | contract_not_found.
