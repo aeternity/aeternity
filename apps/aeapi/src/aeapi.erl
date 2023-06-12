@@ -37,91 +37,53 @@
          top_key_block/0,
          top_key_block_header/0,
          top_key_block_hash/0,
+         key_block_candidate_header/0,
          key_block_at_height/1,
+         key_block_header_at_height/1,
          key_block_at_hash/1,
+         key_block_header_at_hash/1,
          key_block_txs/1,
          prev_key_block/1,
          prev_block/1,
          micro_blocks_at_key_block/1,
          generation_at_height/1,
+         balance_change_events_in_tx/2,
+         balance_change_events_in_block/1]).
+
+%%% Accounts, Contracts and Transactions API
+-export([account/1,
+         account_at_height/2,
+         account_at_block/2,
+         next_nonce/1,
+         contract/1,
+%        contract_at_height/2,
+%        contract_at_block/2,
          balance_at_height/2,
          balance_at_block/2]).
 
 %% Block Inspection API
 -export([block_height/1,
          block_time_in_msecs/1,
-         micro_block_txs/1,
+         micro_block_txs/1]).
 
-         balance_change_events_in_tx/2,
-         balance_change_events_in_block/1,
-         next_nonce/1,
+%%% ID Record API
+-export([create_id/2,
+         id_type/1,
+         id_value/1]).
 
-         oracle_at_block/2,
+%%% Oracle API
+-export([oracle_at_block/2,
          oracle_at_height/2,
          oracle_queries_at_block/5,
          oracle_queries_at_height/5,
          oracle_query_at_block/3,
-         oracle_query_at_height/3,
+         oracle_query_at_height/3]).
 
-         %% Dealing with id records
-         create_id/2,
-         id_type/1,
-         id_value/1,
-         format_id/1,
-
-         %% Formatting and decoding hashes and keys
-         format_key_block_hash/1,
-         format_micro_block_hash/1,
-         format_block_pof_hash/1,
-         format_block_tx_hash/1,
-         format_block_state_hash/1,
-         format_channel/1,
-         format_contract_bytearray/1,
-         format_contract_pubkey/1,
-         format_contract_store_key/1,
-         format_transaction/1,
-         format_tx_hash/1,
-         format_oracle_pubkey/1,
-         format_oracle_query/1,
-         format_oracle_query_id/1,
-         format_oracle_response/1,
-         format_account_pubkey/1,
-         format_signature/1,
-         format_name/1,
-         format_commitment/1,
-         format_peer_pubkey/1,
-         format_state/1,
-         format_poi/1,
-         format_state_trees/1,
-         format_call_state_tree/1,
-         format_bytearray/1,
-
+%%% Formatting and decoding hashes and keys
+-export([format_id/1,
+         format/2,
          decode/1,
-         decode_key_block_hash/1,
-         decode_micro_block_hash/1,
-         decode_block_pof_hash/1,
-         decode_block_tx_hash/1,
-         decode_block_state_hash/1,
-         decode_channel/1,
-         decode_contract_bytearray/1,
-         decode_contract_pubkey/1,
-         decode_contract_store_key/1,
-         decode_transaction/1,
-         decode_tx_hash/1,
-         decode_oracle_pubkey/1,
-         decode_oracle_query/1,
-         decode_oracle_query_id/1,
-         decode_oracle_response/1,
-         decode_account_pubkey/1,
-         decode_signature/1,
-         decode_name/1,
-         decode_commitment/1,
-         decode_peer_pubkey/1,
-         decode_state/1,
-         decode_poi/1,
-         decode_state_trees/1,
-         decode_call_state_tree/1,
-         decode_bytearray/1]).
+         decode/2]).
 
 
 
@@ -265,28 +227,88 @@ top_key_block_hash() ->
     end.
 
 
+-spec key_block_candidate_header() -> Result
+    when Result :: {ok, aec_headers:header()}
+                 | {error, Reason},
+         Reason :: beneficiary_not_configured
+                 | not_found.
+%% @doc
+%% Retrieve the current key block candidate header.
+
+key_block_candidate_header() ->
+    case aec_conductor:get_key_block_candidate() of
+        {ok, Block} -> {ok, aec_blocks:to_header(Block)};
+        Error       -> Error
+    end.
+
+
 -spec key_block_at_height(Height) -> Result
     when Height :: aec_blocks:height(),
          Result :: {ok, aec_blocks:key_block()}
-                 | {error, chain_too_short}
-                 | error.
+                 | {error, Reason},
+         Reason :: chain_too_short
+                 | block_not_found.
 %% @doc
 %% Retrieve the keyblock that applies to a given height.
 
-key_block_at_height(Height) when is_integer(Height) ->
-    aec_chain:get_key_block_by_height(Height).
+key_block_at_height(Height) ->
+    case aec_chain:get_key_block_by_height(Height) of
+        {ok, Block} -> {ok, aec_blocks:to_header(Block)};
+        Error       -> Error
+    end.
+
+
+-spec key_block_header_at_height(Height) -> Result
+    when Height :: aec_blocks:height(),
+         Result :: {ok, aec_headers:key_header()}
+                 | {error, Reason},
+         Reason :: chain_too_short
+                 | block_not_found.
+%% @doc
+%% Retrieve the header of the keyblock that applies to a given height.
+
+key_block_header_at_height(Height) when is_integer(Height) ->
+    case key_block_at_height(Height) of
+        {ok, Block} -> {ok, aec_blocks:to_header(Block)};
+        Error       -> Error
+    end.
 
 
 -spec key_block_at_hash(Hash) -> Result
     when Hash   :: aeser_api_encoder:encoded(),
          Result :: {ok, aec_blocks:key_block()}
-                 | error.
+                 | {error, Reason},
+         Reason :: invalid_block_hash
+                 | block_not_found.
 %% @doc
 %% Retrieve the keyblock that applies to a given block hash.
 
-key_block_at_hash(Hash) when is_binary(Hash) ->
-    {key_block_hash, DecodedHash} = aeser_api_encoder:decode(Hash),
-    aec_chain:get_block(DecodedHash).
+key_block_at_hash(Hash) ->
+    try
+        {key_block_hash, DecodedHash} = aeser_api_encoder:decode(Hash),
+        case aec_chain:get_block(DecodedHash) of
+            {ok, Block} -> {ok, Block};
+            error       -> {error, block_not_found}
+        end
+    catch
+        error -> {error, invalid_hash}
+    end.
+
+
+-spec key_block_header_at_hash(Hash) -> Result
+    when Hash   :: aeser_api_encoder:encoded(),
+         Result :: {ok, aec_headers:key_header()}
+                 | {error, Reason},
+         Reason :: invalid_block_hash
+                 | block_not_found.
+%% @doc
+%% Retrieve the keyblock header that applies to a given block hash.
+
+key_block_header_at_hash(Hash) ->
+    case key_block_at_hash(Hash) of
+        {ok, Block} -> {ok, aec_blocks:to_header(Block)};
+        Error       -> Error
+    end.
 
 
 -spec key_block_txs(Block) -> Result
@@ -365,12 +387,11 @@ micro_blocks_at_key_block(KeyBlock) ->
 %% Retrieve the generation at the given height.
 %% The encoded generation will appear as a map of the form
 %% ```
-%%  #{<<"key_block">>    => KeyBlock,
-%%    <<"micro_blocks">> => MicroBlockHashes}
+%% #{<<"key_block">>    => KeyBlock,
+%%   <<"micro_blocks">> => MicroBlockHashes}
 %% '''
 %% where `KeyBlock' is the form returned by `aec_headers:serialize_for_client/1'
-%% and `MicroBlockHashes' are microblock hashes encoded in the `<<"mh_...">>'
-%% external form.
+%% and `MicroBlockHashes' are microblock hashes encoded in the `<<"mh_...">>' form.
 
 generation_at_height(Height) when is_integer(Height) ->
     case aec_chain_state:get_key_block_hash_at_height(Height) of
@@ -385,6 +406,453 @@ generation_at_height(Height) when is_integer(Height) ->
             error
     end.
 
+encode_generation(KeyBlock, MicroBlocks) ->
+    Header = aec_blocks:to_header(KeyBlock),
+    #{<<"key_block">>    => aec_headers:serialize_for_client(Header),
+      <<"micro_blocks">> => lists:map(fun encode_microblock/1, MicroBlocks)}.
+
+encode_microblock(MB) ->
+    {ok, Hash} = aec_blocks:hash_internal_representation(MB),
+    aeser_api_encoder:encode(micro_block_hash, Hash).
+
+
+-spec balance_change_events_in_tx(SignedTX, MicroBlock) -> Events
+    when SignedTX   :: term(), % FIXME
+         MicroBlock :: aec_blocks:micro_block(),
+         Events     :: term(). % FIXME
+%% @doc
+%% Given a signed transaction and a microblock, extract the balance change events
+%% that occur as a consequence of executing the transaction. This requires replaying
+%% the entire microblock up to the point of this transaction and the transaction
+%% itself may have arbitrary side effects (it may be a conract call, for example),
+%% so this operation can be quite involved.
+
+balance_change_events_in_tx(SignedTX, MicroBlock) ->
+    % Format a single TX in a block. We need to dry run all the TXs in the microblock
+    % up to and including the one we want to know about. dry run works on dummy signed
+    % TXs so the tx_hash included in the results is not the same as the one requested.
+    % Solve this by pre-filtering, then patching in the correct hash values afterwards.
+    {ok, MBHash} = aec_headers:hash_header(aec_blocks:to_header(MicroBlock)),
+    BlockTXs = micro_block_txs(MicroBlock),
+    NeededTXs = keep_tx_until(BlockTXs, aetx_sign:hash(SignedTX)),
+    Ops = format_txs(NeededTXs, MBHash),
+    SpendOps = tx_spend_operations(Ops),
+    lists:last(SpendOps).
+
+keep_tx_until(TXs, TXHash) ->
+    keep_tx_until(TXs, TXHash, []).
+
+keep_tx_until([], _UntilTXHash, _Acc) ->
+    [];
+keep_tx_until([SignedTX | TXs], UntilTXHash, Acc) ->
+    TXHash = aetx_sign:hash(SignedTX),
+    if TXHash == UntilTXHash ->
+           lists:reverse([SignedTX | Acc]);
+       true ->
+           keep_tx_until(TXs, UntilTXHash, [SignedTX | Acc])
+    end.
+
+
+-spec balance_change_events_in_block(Block) -> Events
+    when Block  :: aec_blocks:block(),
+         Events :: term(). % FIXME
+%% @doc
+%% Given a block, extract the balance change events that occur within it.
+%% If a keyblock is passed as the argument the balance events from the entire
+%% generation are returned. If a microblock is passed as the argument then only
+%% the balance change events within that microblock are returned.
+
+balance_change_events_in_block(Block) ->
+    case aec_blocks:type(Block) of
+        micro ->
+            BlockTXs = micro_block_txs(Block),
+            {ok, MBHash} = aec_headers:hash_header(aec_blocks:to_header(Block)),
+            TXs = format_txs(BlockTXs, MBHash),
+            tx_spend_operations(TXs);
+        key ->
+            {ok, MicroBlocks} = micro_blocks_at_key_block(Block),
+            FormatTXs =
+                fun(MB) ->
+                    BlockTXs = micro_block_txs(MB),
+                    {ok, MBHash} = aec_headers:hash_header(aec_blocks:to_header(MB)),
+                    format_txs(BlockTXs, MBHash)
+                end,
+            {BlockTXs, []} = aeu_lib:pmap(FormatTXs, MicroBlocks, 600000),
+            BlockTXs1 = lists:flatten(lists:reverse(BlockTXs)),
+            KeyBlockTXs = format_block_txs(Block),
+            tx_spend_operations(KeyBlockTXs ++ BlockTXs1)
+    end.
+
+format_txs(TXs, MBHash) ->
+    DryTXs = [{tx, aetx_sign:tx(TX)} || TX <- TXs],
+    case aec_dry_run:dry_run({in, MBHash}, [], DryTXs, [tx_events]) of
+        {ok, {Results, _Events}} ->
+            lists:zip(lists:map(fun aetx_sign:hash/1, TXs), Results);
+        {error, Reason} ->
+            lager:debug("dry_run_error: ~p", [Reason]),
+            throw({dry_run_err, Reason})
+    end.
+
+format_block_txs(KeyBlock) ->
+    RewardTXs =
+        case aec_consensus:get_genesis_consensus_module() =:= aec_consensus_hc of
+            false -> reward_txs(KeyBlock);
+            true  -> []
+        end,
+    PreTXs = expiry_txs(KeyBlock),
+    ForkTXs = hardfork_txs(aec_blocks:height(KeyBlock)),
+    case RewardTXs ++ PreTXs ++ ForkTXs of
+        [] ->
+            [];
+        KBTXs ->
+            %% Supply empty TX hash. Could invent one??
+            [{<<"">>, {block, KBTXs}}]
+    end.
+
+expiry_txs(KeyBlock0) ->
+    Height = aec_blocks:height(KeyBlock0),
+    NextHeight = Height + 1,
+    case key_block_at_height(NextHeight) of
+        {error, chain_too_short} ->
+            [];
+        {ok, KeyBlock} ->
+            Header = aec_blocks:to_header(KeyBlock),
+            {ok, Hash} = aec_headers:hash_header(Header),
+            TS = aec_headers:time_in_msecs(Header),
+            PrevHash = aec_headers:prev_hash(Header),
+            TXEnv = aetx_env:tx_env_from_key_header(Header, Hash, TS, PrevHash),
+            % Take the trees from the end of the last microblock of the prev TX
+            {ok, Trees} = aec_chain:get_block_state(PrevHash),
+            Protocol = aetx_env:consensus_version(TXEnv),
+            {Trees1, TXEnv1} = aeo_state_tree:prune(NextHeight, Trees, TXEnv),
+            {_, TXEnv2} = aens_state_tree:prune(NextHeight, Protocol, Trees1, TXEnv1),
+            % Could possibly just use this call to take care of everything
+            % including hard fork accounts:
+            % {_, Env1} =
+            %     aec_trees:perform_pre_transformations(Trees, TXEnv, PrevVersion),
+            % Possibly later
+            aetx_env:events(TXEnv2)
+    end.
+
+% Block rewards.
+% In this block the reward for the beneficiary 180 blocks earlier will be paid
+% We don't store the amount on chain, so need to re-calculate
+reward_txs(Block) ->
+    Delay = aec_governance:beneficiary_reward_delay(),
+    {ok, TopBlock} = top_key_block(),
+    TopHeight = aec_blocks:height(TopBlock),
+    Height = aec_blocks:height(Block),
+    if Height >= Delay, Height < TopHeight ->
+            % For Rosetta the reward TXs need to be in the block before the Beneficiary
+            % account has their updated balance. No rewards yet at the top
+            {ok, NextBlock} = key_block_at_height(Height + 1),
+            Node = aec_chain_state:wrap_block(NextBlock),
+            NewTree = aec_trees:new(),
+            Trees = aec_chain_state:grant_fees(Node, NewTree, Delay, false, nil),
+            Accounts = aec_accounts_trees:to_list(aec_trees:accounts(Trees)),
+            lists:map(fun form_reward/1, Accounts);
+       true ->
+            []
+    end.
+
+form_reward({K, V}) ->
+    Acct = aec_accounts:deserialize(K, V),
+    {reward, {aec_accounts:pubkey(Acct), aec_accounts:balance(Acct)}}.
+
+% Inject balance change operations at each of our historical hard forks
+% The balance changes need to be in the block before the fork to keep Rosetta happy
+hardfork_txs(Height) ->
+    Forks =  maps:to_list(aec_hard_forks:protocols()),
+    case lists:keyfind(Height + 1, 2, Forks) of
+        false ->
+            [];
+        {?MINERVA_PROTOCOL_VSN, _} ->
+            Deltas = aec_fork_block_settings:minerva_accounts(),
+            hardfork_ops(Deltas);
+        {?FORTUNA_PROTOCOL_VSN, _} ->
+            Deltas = aec_fork_block_settings:fortuna_accounts(),
+            hardfork_ops(Deltas);
+        {?LIMA_PROTOCOL_VSN, _} ->
+            Deltas = aec_fork_block_settings:lima_accounts(),
+            Ops = hardfork_ops(Deltas, []),
+            ExtraDeltas = aec_fork_block_settings:lima_extra_accounts(),
+            Ops1 = hardfork_ops(ExtraDeltas, Ops),
+            Contracts = aec_fork_block_settings:lima_contracts(),
+            Ops2 = hardfork_contract_ops(Contracts, Ops1),
+            lists:reverse(Ops2);
+        {?IRIS_PROTOCOL_VSN, _} ->
+            [];
+        _ ->
+            []
+    end.
+
+hardfork_ops(Deltas) ->
+    [{fork, {K, V}} || {K, V} <- Deltas].
+
+hardfork_ops(Deltas, Acc) ->
+    lists:foldl(fun form_fork_t/2, Acc, Deltas).
+
+form_fork_t({PubKey, Amount}, Acc) ->
+    [{fork, {PubKey, Amount}} | Acc].
+
+hardfork_contract_ops(Contracts, Acc) ->
+    lists:foldl(fun form_fork_m/2, Acc, Contracts).
+
+form_fork_m(#{pubkey := PubKey, amount := Amount}, Acc) ->
+    [{fork, {PubKey, Amount}} | Acc].
+
+tx_spend_operations(Results) ->
+    lists:map(fun(TX) -> format(spend_txs, TX) end, Results).
+
+format_spend_txs({TXHash, Result}) ->
+    {Res, _} = tx_spend_ops(Result),
+    #{<<"transaction_identifier">> => #{<<"hash">> => format(tx_hash, TXHash)},
+      <<"operations">> => lists:reverse(Res)}.
+
+tx_spend_ops({_, {ok, Events}}) ->
+    lists:foldl(fun tx_spend_op/2, {[], 0}, Events);
+tx_spend_ops({_, {ok, Events, _}}) ->
+    lists:foldl(fun tx_spend_op/2, {[], 0}, Events);
+tx_spend_ops({block, BlockOps}) ->
+    lists:foldl(fun tx_spend_op/2, {[], 0}, BlockOps).
+
+tx_spend_op({{internal_call_tx, _Key}, _}, {Acc, Ix}) ->
+    %% Balance change ops with contract calls 
+    {Acc, Ix};
+tx_spend_op({{spend, {SenderPubkey, RecipientPubkey, Amount}}, #{type := _Type}},
+            {Acc, Ix}) ->
+    From = format(account_pubkey, SenderPubkey),
+    To = format(account_pubkey, RecipientPubkey),
+    FromOp = spend_tx_op(Ix, <<"Spend.amount">>, From, -Amount),
+    ToOp = spend_tx_op(Ix + 1, <<"Spend.amount">>, To, Amount),
+    {[ToOp, FromOp | Acc], Ix + 2};
+tx_spend_op({{delta, {Pubkey, Amount}}, #{info := Info}}, {Acc, Ix}) ->
+    From = format(account_pubkey, Pubkey),
+    DeltaOp = spend_tx_op(Ix, Info, From, Amount),
+    {[DeltaOp | Acc], Ix + 1};
+tx_spend_op({reward, {Pubkey, Amount}}, {Acc, Ix}) ->
+    To = format(account_pubkey, Pubkey),
+    Op = spend_tx_op(Ix, <<"Chain.reward">>, To, Amount),
+    {[Op | Acc], Ix + 1};
+tx_spend_op({fork, {Pubkey, Amount}}, {Acc, Ix}) ->
+    To = format(account_pubkey, Pubkey),
+    Op = spend_tx_op(Ix, <<"Chain.amount">>, To, Amount),
+    {[Op | Acc], Ix + 1};
+tx_spend_op({{channel, _Pubkey}, #{}}, {Acc, Ix}) ->
+    {Acc, Ix}.
+
+spend_tx_op(Index, Type, Address, Amount) ->
+    #{<<"operation_identifier">> => #{<<"index">> => Index},
+        <<"type">> => Type,
+        <<"status">> => <<"SUCCESS">>,
+        <<"account">> => #{<<"address">> => Address},
+        <<"amount">> => amount(Amount)}.
+
+amount(Amount) ->
+    #{<<"value">> => integer_to_binary(Amount),
+        <<"currency">> => #{<<"symbol">> => <<"AE">>, <<"decimals">> => 18}}.
+
+
+
+%%% Accounts, Contracts and Transactions API
+
+-spec account(Address) -> Result
+    when Address :: binary(), % <<"ak_...">>
+         Result  :: {ok, aec_accounts:account()}
+                  | {error, Reason},
+         Reason  :: account_not_found
+                  | invalid_address.
+%% @doc
+%% Retrieve an account by its address at the current chain height.
+
+account(Address) ->
+    AllowedTypes = [account_pubkey, contract_pubkey],
+    case aeser_api_encoder:safe_decode({id_hash, AllowedTypes}, Address) of
+        {ok, ID} ->
+            {_, PubKey} = aeser_id:specialize(ID),
+            account2(PubKey);
+        Error ->
+            Error
+    end.
+
+account2(PubKey) ->
+    case aec_chain:get_account(PubKey) of
+        {value, Account} -> {ok, Account};
+        none             -> {error, account_not_found}
+    end.
+
+
+-spec account_at_height(Address, Height) -> Result
+    when Address :: binary(), % <<"ak_...">>
+         Height  :: aec_blocks:height(),
+         Result  :: {ok, aec_accounts:account()}
+                  | {error, Reason},
+         Reason  :: invalid_pubkey
+                  | invalid_encoding
+                  | invalid_prefix
+                  | invalid_height
+                  | chain_too_short
+                  | garbage_collected
+                  | account_not_found.
+%% @doc
+%% Retrieve an account as it appeared on the chain at the given height.
+%%
+%% Note that this can fail in the event that the node being queried has garbage
+%% collection enabled and the account at this height has been removed.
+
+account_at_height(Address, Height) ->
+    AllowedTypes = [account_pubkey, contract_pubkey],
+    case aeser_api_encoder:safe_decode({id_hash, AllowedTypes}, Address) of
+        {ok, ID} ->
+            {_, PubKey} = aeser_id:specialize(ID),
+            account_at_height2(PubKey, Height);
+        Error ->
+            Error
+    end.
+
+account_at_height2(PubKey, Height) ->
+    case aec_chain:get_account_at_height(PubKey, Height) of
+        {value, Account} -> {ok, Account};
+        none             -> {error, account_not_found};
+        Error            -> Error
+    end.
+
+
+-spec account_at_block(Address, BlockHash) -> Result
+    when Address   :: binary(), % <<"ak_...">>
+         BlockHash :: binary(), % <<"kh_...">> or <<"mh_...">>
+         Result    :: {ok, Balance :: non_neg_integer()}
+                    | {error, Reason},
+         Reason    :: garbage_collected
+                    | account_not_found
+                    | {Element :: pubkey | block,
+                       Info    :: invalid_encoding | invalid_prefix}.
+%% @doc
+%% Retrieve an account as it appeared at the point in the chain's history that it
+%% appeared at the given block's height.
+%%
+%% Note that this can fail in the event that the node being queried has garbage
+%% collection enabled and the account at this height has been removed.
+
+account_at_block(Address, BlockHash) ->
+    AllowedTypes = [account_pubkey, contract_pubkey],
+    case aeser_api_encoder:safe_decode({id_hash, AllowedTypes}, Address) of
+        {ok, ID} ->
+            {_, PubKey} = aeser_id:specialize(ID),
+            account_at_block2(PubKey, BlockHash);
+        {error, Info} ->
+            {error, {pubkey, Info}}
+    end.
+
+account_at_block2(PubKey, BlockHash) ->
+    case aeser_api_encoder:safe_decode(block_hash, BlockHash) of
+        {ok, Hash}    -> account_at_block3(PubKey, Hash);
+        {error, Info} -> {error, {block, Info}}
+    end.
+
+account_at_block3(PubKey, Hash) ->
+    case aec_chain:get_account_at_hash(PubKey, Hash) of
+        {value, Account} -> {ok, Account};
+        none             -> {error, account_not_found};
+        Error            -> Error
+    end.
+
+
+-spec next_nonce(Address) -> Result
+    when Address  :: binary(), % <<"ak_...">>
+         Result   :: {error, Reason},
+         Reason   :: invalid_prefix
+                   | invalid_encoding
+                   | account_not_found.
+%% @doc
+%% Given an account ID< return its next nonce.
+%% The same as calling `next_nonce(Address, max)'.
+
+next_nonce(Address) ->
+    next_nonce(max).
+
+
+%-spec next_nonce(aeser_api_encoder:encoded()) -> Result
+%    when Result :: {ok, non_neg_integer()} | {error, account_not_found}.
+%
+%next_nonce(AccountAddress) ->
+%    AllowedTypes = [account_pubkey, contract_pubkey],
+%    {ok, Id} = create_id(AccountAddress, AllowedTypes),
+%    PubKey = id_value(Id),
+%    aec_next_nonce:pick_for_account(PubKey).
+
+
+
+-spec next_nonce(Address, Strategy) -> Result
+    when Address  :: binary(), % <<"ak_...">>
+         Strategy :: max | continuity,
+         Result   :: {error, Reason},
+         Reason   :: invalid_prefix
+                   | invalid_encoding
+                   | account_not_found.
+%% @doc
+%% Given an account ID, return its next nonce.
+
+next_nonce(Address, Strategy) ->
+    AllowedTypes = [account_pubkey, contract_pubkey],
+    case aeser_api_encoder:safe_decode(account_pubkey, Address) of
+        {ok, PubKey} -> aec_next_nonce:pick_for_accoun(PubKey, Strategy);
+        Error        -> Error
+    end.
+
+
+-spec contract(Address) -> Result
+    when Address :: binary(), % <<"ct_...">>
+         Result  :: {error, Reason},
+         Reason  :: invalid_prefix
+                  | invalid_encoding
+                  | contract_not_found.
+%% @doc
+%% Given a contract public address, retrieve the contract-specific details of
+%% it. To retrieve the account-style information about the contract (it's balance,
+%% for example) call address/1 with the same address.
+
+contract(Address) ->
+    case aeser_api_encoder:safe_decode(contract_pubkey, Address) of
+        {ok, PubKey} -> aec_chain:get_contract(PubKey);
+        Error        -> Error
+    end.
+
+
+%-spec contract_at_height(Address, Height) -> Result
+%    when Address :: binary(), % <<"ct_...">>
+%         Height  :: aec_blocks:height(),
+%         Result  :: {ok, aec_accounts:account()}
+%                  | {error, Reason},
+%         Reason  :: invalid_pubkey
+%                  | invalid_encoding
+%                  | invalid_prefix
+%                  | invalid_height
+%                  | chain_too_short
+%                  | garbage_collected
+%                  | contract_not_found.
+%% @doc
+%% Retrieve a contract as it appeared on the chain at the given height.
+%%
+%% Note that this can fail in the event that the node being queried has garbage
+%% collection enabled and the account at this height has been removed.
+
+%-spec contract_at_block(Address, BlockHash) ->
+%    when Address   :: binary(), % <<"ct_...">>
+%         BlockHash :: binary(), % <<"kh_...">> or <<"mh_...">>
+%         Result    :: {ok, Balance :: non_neg_integer()}
+%                    | {error, Reason},
+%         Reason    :: invalid_block_hash
+%                    | invalid_address
+%                    | block_not_found
+%                    | garbage_collected
+%                    | contract_not_found.
+%% @doc
+%% Retrieve an account as it appeared at the point in the chain's history that it
+%% appeared at the given block's height.
+%%
+%% Note that this can fail in the event that the node being queried has garbage
+%% collection enabled and the account at this height has been removed.
 
 -spec balance_at_height(Address, Height) -> Result
     when Address :: binary(),
@@ -394,21 +862,24 @@ generation_at_height(Height) when is_integer(Height) ->
          Reason  :: invalid_pubkey
                   | invalid_encoding
                   | invalid_prefix
+                  | invalid_height
                   | chain_too_short
                   | garbage_collected
                   | account_not_found
                   | contract_not_found.
-
 %% @doc Lookup the opening balance of an account or contract at the keyblock with
 %% the given height.
 %% Example (on testnet, AKA the "ae_uat" chain):
 %% ```
-%%   Account = <<"ak_2W2NjVgAo6pkj96R71JHsTK5h2UVvmot7hYrqVfhzAqHGGU5ea">>,
-%%   Height = 750000,
-%%   balance_at_height(Account, Height) -> {ok, 9999346828000000000}.
+%% Account = <<"ak_2W2NjVgAo6pkj96R71JHsTK5h2UVvmot7hYrqVfhzAqHGGU5ea">>,
+%% Height = 750000,
+%% balance_at_height(Account, Height) -> {ok, 9999346828000000000}.
 %% '''
+%%
+%% Note that this can fail in the event that the node being queried has garbage
+%% collection enabled and the account at this height has been removed.
 
-balance_at_height(Address, Height) ->
+balance_at_height(Address, Height) when Height >= 0 ->
     AllowedTypes = [account_pubkey, contract_pubkey],
     case create_id(Address, AllowedTypes) of
         {ok, ID} ->
@@ -416,7 +887,9 @@ balance_at_height(Address, Height) ->
             balance_at_height(element(2, ID), PubKey, Height);
         Error ->
             Error
-    end.
+    end;
+balance_at_height(_, _) ->
+    {error, invalid_height}.
 
 balance_at_height(Type, PubKey, Height) ->
     case aec_chain:get_account_at_height(PubKey, Height) of
@@ -433,8 +906,8 @@ balance_at_height(Type, PubKey, Height) ->
 
 
 -spec balance_at_block(Address, BlockHash) -> Result
-    when Address   :: binary(),
-         BlockHash :: binary(),
+    when Address   :: binary(), % <<"ak_...">> or <<"ct_...">>
+         BlockHash :: binary(), % <<"kh_...">> or <<"mh_...">>
          Result    :: {ok, Balance :: non_neg_integer()}
                     | {error, Reason},
          Reason    :: invalid_block_hash
@@ -445,6 +918,13 @@ balance_at_height(Type, PubKey, Height) ->
                     | contract_not_found.
 %% @doc
 %% Return the given account's balance at the height of the block ID provided.
+%% `Address' should be an externally serialized binary form with the prefix
+%% `<<"ak_...">>' or `<<"ct_...">>'.
+%% `BlockHash' shhould be an externally serialized binary form with the prefix
+%% `<<"kh_...">>' or `<<"mh_...">>'.
+%%
+%% Note that this can fail in the event that the node being queried has garbage
+%% collection enabled and the account at this height has been removed.
 
 balance_at_block(Address, BlockHash) ->
     case decode_catcher(BlockHash) of
@@ -515,454 +995,219 @@ block_time_in_msecs(Block) ->
 micro_block_txs(MicroBlock) ->
     aec_blocks:txs(MicroBlock).
 
-%% HERE
 
-%%
-%% Converting Ids between internal and printable forms
-%%
 
+%% ID Records API
+
+-spec create_id(Key, AcceptableTypes) -> Result
+    when Key             :: aeser_api_encoder:encoded(),
+         AcceptableTypes :: [Type],
+         Type            :: account_pubkey
+                          | oracle_pubkey
+                          | name 
+                          | commitment
+                          | contract_pubkey
+                          | channel,
+         Result          :: {ok, aeser_id:id()} | {error, Reason},
+         Reason          :: any(). %% FIXME
 %% @doc Convert a formatted pubkey to an internal #id{} record.
-%% Ids are supported for these types: account_pubkey | oracle_pubkey | name
-%% | commitment | contract_pubkey | channel
-%%
 %% For example:
-%% ```create_id(<<"ak_2HuVfa8qJmYeJPb5ntE5dXre9e4pmFEq9FYthvemB7idvbjUbE">>, [account_pubkey]) ->
-%%    {ok, #id{tag = account,
-%%             val = <<170,20,197,4,89,131,91,158,24,63,28,200,44,49,35,88,224,211,211,30,
-%%                     29,108,91,130,93,230,47,111,34,172,124,50>>}}'''
--spec create_id(aeser_api_encoder:encoded(),
-                [account_pubkey | oracle_pubkey | name 
-                 | commitment | contract_pubkey
-                 | channel]) -> {'ok', aeser_id:id()} | {'error', atom()}.
+%% ```
+%% Address = <<"ak_2HuVfa8qJmYeJPb5ntE5dXre9e4pmFEq9FYthvemB7idvbjUbE">>,
+%% create_id(Address, [account_pubkey]) ->
+%%     {ok,
+%%      #id{tag = account,
+%%          val = <<170,20,197,4,89,131,91,158,24,63,28,200,44,49,35,88,224,211,211,30,
+%%                  29,108,91,130,93,230,47,111,34,172,124,50>>}}
+%% '''
+
 create_id(Binary, AllowedTypes) ->
     aeser_api_encoder:safe_decode({id_hash, AllowedTypes}, Binary).
 
-%% @doc Get the internal type of an Id.
+
+-spec id_type(aeser_id:id()) -> aeser_id:tag().
+%% @doc Get the internal type of an ID.
 %% Note that this is not the same as the type outside of the id realm
 %%
 %% For example:
 %% ``id_type(Id :: aeser_id:id()) -> account.''
--spec id_type(aeser_id:id()) -> aeser_id:tag().
-id_type(Id) ->
-    case aeser_id:is_id(Id) of
+
+id_type(ID) ->
+    case aeser_id:is_id(ID) of
         true ->
-            aeser_id:specialize_type(Id);
+            aeser_id:specialize_type(ID);
         false ->
             {error, not_id}
     end.
 
-%% @doc Get the internal value of an Id.
+
+-spec id_value(ID) -> Result
+    when ID     :: binary(),
+         Result :: {ok, Value :: binary()}
+                 | {error, bad_id}.
+%% @doc Get the internal value of an ID.
 %% Example:
 %% ```id_value(Id :: aeser_id:id()) ->
 %%            <<170,20,197,4,89,131,91,158,24,63,28,200,44,49,35,88,224,211,211,30,
 %%              29,108,91,130,93,230,47,111,34,172,124,50>>.'''
-id_value(Id) ->
-    case aeser_id:is_id(Id) of
+
+id_value(ID) ->
+    case aeser_id:is_id(ID) of
         true ->
-            {_Tag, Val} = aeser_id:specialize(Id),
-            Val;
+            {_Tag, Val} = aeser_id:specialize(ID),
+            {ok, Val};
         false ->
-            {error, not_id}
+            {error, bad_id}
     end.
 
-%% @doc Format an aeser_id:id() to its printable / external form.
+
+-spec format_id(ID) -> Result
+    when ID     :: aeser_id:id(),
+         Result :: {ok, binary()}
+                 | {error, not_id}.
+%% @doc
+%% A safe way to Format an aeser_id:id() to its printable / external form.
+%% This function tests the provided ID for validity before serialization and
+%% returns an `ok | error' tuple instead of throwing an exception on bad data.
+%% For the unsafe version, call `aeser:format(account_pubkey, ID)' instead.
+%%
 %% Example:
-%% ```format_id(Id :: aeser_id:id()) -> <<"ak_2HuVfa8qJmYeJPb5ntE5dXre9e4pmFEq9FYthvemB7idvbjUbE">>.'''
--spec format_id(aeser_id:id()) -> binary().
-format_id(Id) ->
-     case aeser_id:is_id(Id) of
-        true ->
-            aeser_api_encoder:encode(id_hash, Id);
-        false ->
-            {error, not_id}
+%% ```
+%% format_id(ID :: aeser_id:id()) ->
+%%     {ok, <<"ak_2HuVfa8qJmYeJPb5ntE5dXre9e4pmFEq9FYthvemB7idvbjUbE">>}.
+%% '''
+
+format_id(ID) ->
+    case aeser_id:is_id(ID) of
+        true  -> aeser_api_encoder:encode(id_hash, ID);
+        false -> {error, not_id}
     end.
 
+
+-spec format(Type, Data) -> Formatted
+    when Type      :: key_block_hash
+                    | micro_block_hash
+                    | block_pof_hash
+                    | block_tx_hash
+                    | block_state_hash
+                    | channel
+                    | contract_bytearray
+                    | contract_pubkey
+                    | contract_store_key
+                    | transaction
+                    | tx_hash
+                    | oracle_pubkey
+                    | oracle_query
+                    | oracle_query_id
+                    | oracle_response
+                    | account_pubkey
+                    | signature
+                    | name
+                    | commitment
+                    | peer_pubkey
+                    | state
+                    | poi
+                    | state_trees
+                    | call_state_tree
+                    | bytearray,
+         Data      :: term(), % FIXME
+         Formatted :: binary().
 %% @doc Format internal hash and key types to their external / printable form.
-%% Takes the internal binary form of the key/hash and formats it
-%% into the printable form of the specified type.
+%% Takes the internal binary form of the key/hash and formats it into the printable
+%% form of the specified type.
 %%
 %% For example an internal pubkey might be formatted as either a
 %% normal account or oracle depending on context.
 %%
 %% Format as normal account:
-%% ```aeapi:format_account_pubkey(<<170,20,197,4,89,131,91,158,24,63,28,200,44,49,35,88,224,211,211,30,
-%%                     29,108,91,130,93,230,47,111,34,172,124,50>>) ->
-%%      <<"ak_2HuVfa8qJmYeJPb5ntE5dXre9e4pmFEq9FYthvemB7idvbjUbE">>.'''
+%% ```
+%% Data =
+%%     <<170,20,197,4,89,131,91,158,24,63,28,200,44,49,35,88,224,
+%%       211,211,30, 29,108,91,130,93,230,47,111,34,172,124,50>>,
+%% aeapi:format(account_pubkey, Data) ->
+%%      <<"ak_2HuVfa8qJmYeJPb5ntE5dXre9e4pmFEq9FYthvemB7idvbjUbE">>.
+%% '''
 %%
 %% Format as an Oracle linked to the same account:
-%% ```aeapi:format_oracle_pubkey(<<170,20,197,4,89,131,91,158,24,63,28,200,44,49,35,88,224,211,211,30,
-%%                     29,108,91,130,93,230,47,111,34,172,124,50>>) ->
-%%      <<"ok_2HuVfa8qJmYeJPb5ntE5dXre9e4pmFEq9FYthvemB7idvbjUbE">>.'''
-format_key_block_hash(Payload) ->
-    aeser_api_encoder:encode(key_block_hash, Payload).
-format_micro_block_hash(Payload) ->
-    aeser_api_encoder:encode(micro_block_hash, Payload).
-format_block_pof_hash(Payload) ->
-    aeser_api_encoder:encode(block_pof_hash, Payload).
-format_block_tx_hash(Payload) ->
-    aeser_api_encoder:encode(block_tx_hash, Payload).
-format_block_state_hash(Payload) ->
-    aeser_api_encoder:encode(block_state_hash, Payload).
-format_channel(Payload) ->
-    aeser_api_encoder:encode(channel, Payload).
-format_contract_bytearray(Payload) ->
-    aeser_api_encoder:encode(contract_bytearray, Payload).
-format_contract_pubkey(Payload) ->
-    aeser_api_encoder:encode(contract_pubkey, Payload).
-format_contract_store_key(Payload) ->
-    aeser_api_encoder:encode(contract_store_key, Payload).
-format_transaction(Payload) ->
-    aeser_api_encoder:encode(transaction, Payload).
-format_tx_hash(Payload) ->
-    aeser_api_encoder:encode(tx_hash, Payload).
-format_oracle_pubkey(Payload) ->
-    aeser_api_encoder:encode(oracle_pubkey, Payload).
-format_oracle_query(Payload) ->
-    aeser_api_encoder:encode(oracle_query, Payload).
-format_oracle_query_id(Payload) ->
-    aeser_api_encoder:encode(oracle_query_id, Payload).
-format_oracle_response(Payload) ->
-    aeser_api_encoder:encode(oracle_response, Payload).
-format_account_pubkey(Payload) ->
-    aeser_api_encoder:encode(account_pubkey, Payload).
-format_signature(Payload) ->
-    aeser_api_encoder:encode(signature, Payload).
-format_name(Payload) ->
-    aeser_api_encoder:encode(name, Payload).
-format_commitment(Payload) ->
-    aeser_api_encoder:encode(commitment, Payload).
-format_peer_pubkey(Payload) ->
-    aeser_api_encoder:encode(peer_pubkey, Payload).
-format_state(Payload) ->
-    aeser_api_encoder:encode(state, Payload).
-format_poi(Payload) ->
-    aeser_api_encoder:encode(poi, Payload).
-format_state_trees(Payload) ->
-    aeser_api_encoder:encode(state_trees, Payload).
-format_call_state_tree(Payload) ->
-    aeser_api_encoder:encode(call_state_tree, Payload).
-format_bytearray(Payload) ->
-    aeser_api_encoder:encode(bytearray, Payload).
+%% ```
+%% Data =
+%%     <<170,20,197,4,89,131,91,158,24,63,28,200,44,49,35,88,224,
+%%       211,211,30,29,108,91,130,93,230,47,111,34,172,124,50>>,
+%% aeapi:format(oracle_pubkey, Data) ->
+%%      <<"ok_2HuVfa8qJmYeJPb5ntE5dXre9e4pmFEq9FYthvemB7idvbjUbE">>.
+%% '''
 
+format(Type, Data) ->
+    aeser_api_encoder:encode(Type, Data).
+
+
+-spec decode(binary()) -> {atom(), binary()}.
 %% @doc Decode the external / printable form of a key / hash.
 %% Returns its type and internal binary value.
 %%
 %% For example:
-%% ```aeapi:decode(<<"ct_2HuVfa8qJmYeJPb5ntE5dXre9e4pmFEq9FYthvemB7idvbjUbE">>) ->
+%% ```
+%% aeapi:decode(<<"ct_2HuVfa8qJmYeJPb5ntE5dXre9e4pmFEq9FYthvemB7idvbjUbE">>) ->
 %%       {contract_pubkey,<<170,20,197,4,89,131,91,158,24,63,28,
-%%                  200,44,49,35,88,224,211,211,30,29,108,
-%%                   91,130,93,230,47,...>>}'''
--spec decode(binary()) -> {atom(), binary()}.
+%%                          200,44,49,35,88,224,211,211,30,29,108,
+%%                          91,130,93,230,47,...>>}
+%% '''
+
 decode(Binary) ->
     aeser_api_encoder:decode(Binary).
 
-%% FIXME: Maybe add variants to decode further - aeapi:decode_contract(<<"cb_..">>, [decompile]).
 
-%% @doc Decode the external / printable form of a key / hash, returning an error it is not of the specified type.
-%% Returns the internal binary value or {error,Reason}
+
+-spec decode(Type, Data) -> Result
+    when Type   :: key_block_hash
+                 | micro_block_hash
+                 | block_pof_hash
+                 | block_tx_hash
+                 | block_state_hash
+                 | channel
+                 | contract_bytearray
+                 | contract_pubkey
+                 | contract_store_key
+                 | transaction
+                 | tx_hash
+                 | oracle_pubkey
+                 | oracle_query
+                 | oracle_query_id
+                 | oracle_response
+                 | account_pubkey
+                 | signature
+                 | name
+                 | commitment
+                 | peer_pubkey
+                 | state
+                 | poi
+                 | state_trees
+                 | call_state_tree
+                 | bytearray,
+         Data   :: aeser_api_encoder:encoded(),
+         Result :: {ok, aeser_api_encoder:payload() | aeser_id:id()}
+                 | {error, Reason :: atom()}.
+%% @doc
+%% A safe way to convert an external form of a key or hash to its internal
+%% representation.
 %%
 %% For example:
-%% ```aeapi:decode_contract_pubkey(<<"ct_2HuVfa8qJmYeJPb5ntE5dXre9e4pmFEq9FYthvemB7idvbjUbE">>) ->
+%% ```
+%% Address = <<"ct_2HuVfa8qJmYeJPb5ntE5dXre9e4pmFEq9FYthvemB7idvbjUbE">>,
+%% aeapi:decode(contract_pubkey, Address) ->
 %%       {ok, <<170,20,197,4,89,131,91,158,24,63,28,
-%%                  200,44,49,35,88,224,211,211,30,29,108,
-%%                   91,130,93,230,47,...>>}'''
-decode_key_block_hash(Binary) ->
-    aeser_api_encoder:safe_decode(key_block_hash, Binary).
-decode_micro_block_hash(Binary) ->
-    aeser_api_encoder:safe_decode(micro_block_hash, Binary).
-decode_block_pof_hash(Binary) ->
-    aeser_api_encoder:safe_decode(block_pof_hash, Binary).
-decode_block_tx_hash(Binary) ->
-    aeser_api_encoder:safe_decode(block_tx_hash, Binary).
-decode_block_state_hash(Binary) ->
-    aeser_api_encoder:safe_decode(block_state_hash, Binary).
-decode_channel(Binary) ->
-    aeser_api_encoder:safe_decode(channel, Binary).
-decode_contract_bytearray(Binary) ->
-    aeser_api_encoder:safe_decode(contract_bytearray, Binary).
-decode_contract_pubkey(Binary) ->
-    aeser_api_encoder:safe_decode(contract_pubkey, Binary).
-decode_contract_store_key(Binary) ->
-    aeser_api_encoder:safe_decode(contract_store_key, Binary).
-decode_transaction(Binary) ->
-    aeser_api_encoder:safe_decode(transaction, Binary).
-decode_tx_hash(Binary) ->
-    aeser_api_encoder:safe_decode(tx_hash, Binary).
-decode_oracle_pubkey(Binary) ->
-    aeser_api_encoder:safe_decode(oracle_pubkey, Binary).
-decode_oracle_query(Binary) ->
-    aeser_api_encoder:safe_decode(oracle_query, Binary).
-decode_oracle_query_id(Binary) ->
-    aeser_api_encoder:safe_decode(oracle_query_id, Binary).
-decode_oracle_response(Binary) ->
-    aeser_api_encoder:safe_decode(oracle_response, Binary).
-decode_account_pubkey(Binary) ->
-    aeser_api_encoder:safe_decode(account_pubkey, Binary).
-decode_signature(Binary) ->
-    aeser_api_encoder:safe_decode(signature, Binary).
-decode_name(Binary) ->
-    aeser_api_encoder:safe_decode(name, Binary).
-decode_commitment(Binary) ->
-    aeser_api_encoder:safe_decode(commitment, Binary).
-decode_peer_pubkey(Binary) ->
-    aeser_api_encoder:safe_decode(peer_pubkey, Binary).
-decode_state(Binary) ->
-    aeser_api_encoder:safe_decode(state, Binary).
-decode_poi(Binary) ->
-    aeser_api_encoder:safe_decode(poi, Binary).
-decode_state_trees(Binary) ->
-    aeser_api_encoder:safe_decode(state_trees, Binary).
-decode_call_state_tree(Binary) ->
-    aeser_api_encoder:safe_decode(call_state_tree, Binary).
-decode_bytearray(Binary) ->
-    aeser_api_encoder:safe_decode(bytearray, Binary).
+%%              200,44,49,35,88,224,211,211,30,29,108,
+%%              91,130,93,230,47,...>>}
+%% '''
+%% @end
+
+%% FIXME: Maybe add variants to decode further.
+%%    Example: aeapi:decode(contract, <<"cb_..">>, [decompile]).
+
+decode(Type, Data) ->
+    aeser_api_encoder:safe_decode(Type, Data).
 
 
-%% Format a single Tx in a block. We need to dry run all the Txs in the microblock
-%% up to and including the one we want to know about. dry run works on dummy signed
-%% Txs so the tx_hash included in the results is not the same as the one requested.
-%% Solve this by pre-filtering, then patching in the correct hash values afterwards.
-balance_change_events_in_tx(SignedTx, MicroBlock) ->
-    {ok, MBHash} =
-        aec_headers:hash_header(
-            aec_blocks:to_header(MicroBlock)),
-    BlockTxs = micro_block_txs(MicroBlock),
-    NeededTxs = keep_tx_until(BlockTxs, aetx_sign:hash(SignedTx)),
-    Ops = format_txs(NeededTxs, MBHash),
-    SpendOps = tx_spend_operations(Ops),
-    lists:last(SpendOps).
-
-keep_tx_until(Txs, TxHash) ->
-    keep_tx_until(Txs, TxHash, []).
-
-keep_tx_until([], _UntilTxHash, _Acc) ->
-    [];
-keep_tx_until([SignedTx | Txs], UntilTxHash, Acc) ->
-    TxHash = aetx_sign:hash(SignedTx),
-    if TxHash == UntilTxHash ->
-           lists:reverse([SignedTx | Acc]);
-       true ->
-           keep_tx_until(Txs, UntilTxHash, [SignedTx | Acc])
-    end.
-
-balance_change_events_in_block(Block) ->
-    case aec_blocks:type(Block) of
-        micro ->
-            BlockTxs = micro_block_txs(Block),
-            {ok, MBHash} =
-                aec_headers:hash_header(
-                    aec_blocks:to_header(Block)),
-            Txs = format_txs(BlockTxs, MBHash),
-            tx_spend_operations(Txs);
-        key ->
-            {ok, MicroBlocks} = micro_blocks_at_key_block(Block),
-
-            {BlockTxs, []} = aeu_lib:pmap(
-                fun(MicroBlock) ->
-                    BlockTxs = micro_block_txs(MicroBlock),
-                    {ok, MBHash} =
-                        aec_headers:hash_header(
-                            aec_blocks:to_header(MicroBlock)),
-                    format_txs(BlockTxs, MBHash)
-                end,
-                MicroBlocks, 600000),
-            BlockTxs1 = lists:flatten(lists:reverse(BlockTxs)),
-            KeyBlockTxs = format_block_txs(Block),
-            tx_spend_operations(KeyBlockTxs ++ BlockTxs1)
-    end.
-
-format_txs(Txs, MBHash) ->
-    DryTxs = [{tx, aetx_sign:tx(Tx)} || Tx <- Txs],
-    case aec_dry_run:dry_run({in, MBHash}, [], DryTxs, [tx_events]) of
-        {ok, {Results, _Events}} ->
-            TxHashes = [aetx_sign:hash(Tx) || Tx <- Txs],
-            lists:zip(TxHashes, Results);
-        {error, Reason} ->
-            lager:debug("dry_run_error: ~p", [Reason]),
-            throw({dry_run_err, Reason})
-    end.
-
-format_block_txs(KeyBlock) ->
-    RewardTxs = reward_txs(KeyBlock, aec_consensus:get_genesis_consensus_module()),
-    PreTxs = expiry_txs(KeyBlock),
-    ForkTxs = hardfork_txs(aec_blocks:height(KeyBlock)),
-    case RewardTxs ++ PreTxs ++ ForkTxs of
-        [] ->
-            [];
-        KBTxs ->
-            %% Supply empty tx hash. Could invent one??
-            [{<<"">>,
-                {block, KBTxs}}]
-    end.
-
-expiry_txs(KeyBlock0) ->
-    Height = aec_blocks:height(KeyBlock0),
-    case key_block_at_height(Height + 1) of
-        {error,chain_too_short} ->
-            [];
-        {ok, KeyBlock} ->
-            Header = aec_blocks:to_header(KeyBlock),
-            {ok, Hash} = aec_headers:hash_header(Header),
-            TxEnv = aetx_env:tx_env_from_key_header(Header, Hash, aec_headers:time_in_msecs(Header), aec_headers:prev_hash(Header)),
-
-            %% Take the trees from the end of the last microblock of the prev tx
-            PrevHash = aec_headers:prev_hash(Header),
-            {ok, Trees} = aec_chain:get_block_state(PrevHash),
-            Protocol = aetx_env:consensus_version(TxEnv),
-            {Trees1, TxEnv1} = aeo_state_tree:prune(Height + 1, Trees, TxEnv),
-            {_, TxEnv2} = aens_state_tree:prune(Height + 1, Protocol, Trees1, TxEnv1),
-            %% Could possibly just use this call to take care of everything including hard fork accounts:
-            %% {_Trees1, Env1} = aec_trees:perform_pre_transformations(Trees, TxEnv, PrevVersion),
-            %% Possibly later
-            aetx_env:events(TxEnv2)
-    end.
-
-reward_txs(_Block, aec_consensus_hc) -> 
-    [];
-reward_txs(Block, _Consensus) ->
-    %% Block rewards.
-    %% In this block the reward for the beneficiary 180 blocks earlier will be paid
-    %% We don't store the amount on chain, so need to re-calculate
-    Delay = aec_governance:beneficiary_reward_delay(),
-    {ok, TopBlock} = top_key_block(),
-    TopHeight = aec_blocks:height(TopBlock),
-    Height = aec_blocks:height(Block),
-    if Height >= Delay, Height < TopHeight ->
-           %% For Rosetta the reward Txs need to be in the block before the Beneficiary
-           %% account has their updated balance. No rewards yet at the top
-           {ok, NextBlock} = key_block_at_height(Height + 1),
-           Node = aec_chain_state:wrap_block(NextBlock),
-           Trees = aec_chain_state:grant_fees(Node, aec_trees:new(), Delay, false, nil),
-           Accounts =
-               aec_accounts_trees:to_list(
-                    aec_trees:accounts(Trees)),
-             lists:map(fun({K, V}) ->
-                          Acct = aec_accounts:deserialize(K, V),
-                          {reward, {aec_accounts:pubkey(Acct), aec_accounts:balance(Acct)}}
-                       end,
-                       Accounts);
-       true ->
-           []
-    end.
-
-%% Inject balance change operations at each of our historical hard forks
-%% The balance changes need to be in the block before the fork to keep Rosetta happy
-hardfork_txs(Height) ->
-    Forks =  maps:to_list(aec_hard_forks:protocols()),
-    case lists:keyfind(Height + 1, 2, Forks) of
-        false ->
-            [];
-        {?MINERVA_PROTOCOL_VSN, _} ->
-            Deltas = aec_fork_block_settings:minerva_accounts(),
-            hardfork_ops(Deltas);
-        {?FORTUNA_PROTOCOL_VSN, _} ->
-            Deltas = aec_fork_block_settings:fortuna_accounts(),
-            hardfork_ops(Deltas);
-        {?LIMA_PROTOCOL_VSN, _} ->
-            Deltas = aec_fork_block_settings:lima_accounts(),
-            Ops = hardfork_ops(Deltas, []),
-            ExtraDeltas = aec_fork_block_settings:lima_extra_accounts(),
-            Ops1 = hardfork_ops(ExtraDeltas, Ops),
-            Contracts = aec_fork_block_settings:lima_contracts(),
-            Ops2 = hardfork_contract_ops(Contracts, Ops1),
-            lists:reverse(Ops2);
-        {?IRIS_PROTOCOL_VSN, _} ->
-            [];
-        _ ->
-            []
-    end.
-
-hardfork_ops(Deltas) ->
-    lists:map(fun({K, V}) ->
-                          {fork, {K, V}}
-                       end,
-                       Deltas).
-
-hardfork_ops(Deltas, Acc0) ->
-    lists:foldl(fun({PubKey, Amount}, Acc) ->
-        [{fork, {PubKey, Amount}} | Acc]
-    end, Acc0, Deltas).
-
-hardfork_contract_ops(Contracts, Acc0) ->
-    lists:foldl(fun(#{pubkey := PubKey, amount := Amount}, Acc) ->
-        [{fork, {PubKey, Amount}} | Acc]
-    end, Acc0, Contracts).
-
-encode_generation(KeyBlock, MicroBlocks) ->
-    Header = aec_blocks:to_header(KeyBlock),
-    #{<<"key_block">>    => aec_headers:serialize_for_client(Header),
-      <<"micro_blocks">> => lists:map(fun encode_microblock/1, MicroBlocks)}.
-
-encode_microblock(MB) ->
-    {ok, Hash} = aec_blocks:hash_internal_representation(MB),
-    aeser_api_encoder:encode(micro_block_hash, Hash).
-
-
-tx_spend_operations(Results) ->
-    lists:map(fun({TxHash, Result}) ->
-                    {Res, _} = tx_spend_ops(Result),
-                    #{<<"transaction_identifier">> => #{<<"hash">> => format_tx_hash(TxHash)},
-                    <<"operations">> => lists:reverse(Res)}
-                end,
-                Results).
-
-tx_spend_ops({_Type, {ok, Events}}) ->
-    lists:foldl(fun tx_spend_op/2, {[], 0}, Events);
-tx_spend_ops({_Type, {ok, Events, CallObj}}) ->
-    Call = aect_call:serialize_for_client(CallObj),
-    #{<<"return_type">> := ReturnType} = Call,
-    case ReturnType of
-        <<"ok">> ->
-            lists:foldl(fun tx_spend_op/2, {[], 0}, Events);
-        Fail when Fail == <<"error">>; Fail == <<"revert">> ->
-            %% Just take the fees
-            lists:foldl(fun tx_spend_op/2, {[], 0}, Events)
-    end;
-tx_spend_ops({block, BlockOps}) ->
-    lists:foldl(fun tx_spend_op/2, {[], 0}, BlockOps).
-
-tx_spend_op({{internal_call_tx, _Key}, _}, {Acc, Ix}) ->
-    %% Balance change ops with contract calls 
-    {Acc, Ix};
-tx_spend_op({{spend, {SenderPubkey, RecipientPubkey, Amount}}, #{type := _Type}},
-            {Acc, Ix}) ->
-    From = format_account_pubkey(SenderPubkey),
-    To = format_account_pubkey(RecipientPubkey),
-    FromOp = spend_tx_op(Ix, <<"Spend.amount">>, From, -Amount),
-    ToOp = spend_tx_op(Ix + 1, <<"Spend.amount">>, To, Amount),
-    {[ToOp, FromOp | Acc], Ix + 2};
-tx_spend_op({{delta, {Pubkey, Amount}}, #{info := Info}}, {Acc, Ix}) ->
-    From = format_account_pubkey(Pubkey),
-    DeltaOp = spend_tx_op(Ix, Info, From, Amount),
-    {[DeltaOp | Acc], Ix + 1};
-tx_spend_op({reward, {Pubkey, Amount}}, {Acc, Ix}) ->
-    To = format_account_pubkey(Pubkey),
-    Op = spend_tx_op(Ix, <<"Chain.reward">>, To, Amount),
-    {[Op | Acc], Ix + 1};
-tx_spend_op({fork, {Pubkey, Amount}}, {Acc, Ix}) ->
-    To = format_account_pubkey(Pubkey),
-    Op = spend_tx_op(Ix, <<"Chain.amount">>, To, Amount),
-    {[Op | Acc], Ix + 1};
-tx_spend_op({{channel, _Pubkey}, #{}}, {Acc, Ix}) ->
-    {Acc, Ix}.
-
-spend_tx_op(Index, Type, Address, Amount) ->
-    #{<<"operation_identifier">> => #{<<"index">> => Index},
-        <<"type">> => Type,
-        <<"status">> => <<"SUCCESS">>,
-        <<"account">> => #{<<"address">> => Address},
-        <<"amount">> => amount(Amount)}.
-
-amount(Amount) ->
-    #{<<"value">> => integer_to_binary(Amount),
-        <<"currency">> => #{<<"symbol">> => <<"AE">>, <<"decimals">> => 18}}.
-
--spec next_nonce(aeser_api_encoder:encoded()) -> {ok, non_neg_integer()} | {error, account_not_found}.
-next_nonce(AccountAddress) ->
-    AllowedTypes = [account_pubkey, contract_pubkey],
-    {ok, Id} = create_id(AccountAddress, AllowedTypes),
-    PubKey = id_value(Id),
-    aec_next_nonce:pick_for_account(PubKey).
 
 oracle_at_height(OracleAddress, Height) ->
     {oracle_pubkey, OraclePubkey} = decode(OracleAddress),

@@ -172,8 +172,7 @@ handle_request_(networkStatus, #{'NetworkRequest' :=
         PeersFormatted =
             lists:map(fun(Peer) ->
                          #{<<"peer_id">> =>
-                               aeapi:format_peer_pubkey(
-                                   aec_peer:id(Peer)),
+                               aeapi:format(peer_pubkey, aec_peer:id(Peer)),
                            <<"metadata">> =>
                                #{<<"ip">> => aec_peer:ip(Peer), <<"port">> => aec_peer:port(Peer)}}
                       end,
@@ -211,7 +210,7 @@ handle_request_(accountBalance,
         AllowedTypes = [account_pubkey, contract_pubkey],
         case aeapi:create_id(Address, AllowedTypes) of
             {ok, Id} ->
-                Pubkey = aeapi:id_value(Id),
+                {ok, Pubkey} = aeapi:id_value(Id),
                 %% Request might specify a block. If absent use top block
                 case catch retrieve_block_and_account_from_partial_block_identifier(Pubkey, Req) of
                     {'EXIT', _} ->
@@ -268,9 +267,9 @@ handle_request_(block,
     end;
 handle_request_(blockTransaction,
                 #{'BlockTransactionRequest' :=
-                      #{<<"block_identifier">> := BlockIdentifier,
-                        <<"network_identifier">> := #{<<"blockchain">> := <<"aeternity">>},
-                        <<"transaction_identifier">> := #{<<"hash">> := TxHash}}},
+                   #{<<"block_identifier">> := BlockIdentifier,
+                     <<"network_identifier">> := #{<<"blockchain">> := <<"aeternity">>},
+                     <<"transaction_identifier">> := #{<<"hash">> := TxHash}}},
                 _Context) ->
     try
         %%
@@ -338,7 +337,7 @@ handle_request_(constructionDerive, #{'ConstructionDeriveRequest' := Req}, _Cont
         case CurveType of
             <<"edwards25519">> ->
                 PKBytes = aeu_hex:hex_to_bin(HexBytes),
-                Account = aeapi:format_account_pubkey(PKBytes),
+                Account = aeapi:format(account_pubkey, PKBytes),
                 case aeapi:create_id(Account, [account_pubkey]) of
                     {ok, _} ->
                         ok;
@@ -483,7 +482,7 @@ handle_request_(constructionPayloads,
               payload => <<"">>},
         {ok, Tx} = aec_spend_tx:new(TxArgs),
         TxSer = aetx:serialize_to_binary(Tx),
-        TxBin = aeapi:format_transaction(TxSer),
+        TxBin = aeapi:format(transaction, TxSer),
         UnsignedBin = aec_hash:hash(tx, TxSer),
         %% FIXME: check network id is same as provided in the request?
         BinForNetwork = aec_governance:add_network_id(UnsignedBin),
@@ -517,7 +516,7 @@ handle_request_(constructionParse, #{'ConstructionParseRequest' := Req}, _Contex
                     throw(invalid_input)
             end,
 
-        {ok, TxBin} = aeapi:decode_transaction(Tx),
+        {ok, TxBin} = aeapi:decode(transaction, Tx),
         AeTx =
             case Signed of
                 true ->
@@ -583,11 +582,11 @@ handle_request_(constructionCombine, #{'ConstructionCombineRequest' := Req}, _Co
             end,
 
         SigBin = aeu_hex:hex_to_bin(HexBytesSignature),
-        {ok, UnsignedBin} = aeapi:decode_transaction(UnsignedTx),
+        {ok, UnsignedBin} = aeapi:decode(transaction, UnsignedTx),
         AeTx = aetx:deserialize_from_binary(UnsignedBin),
         SignedTx = aetx_sign:new(AeTx, [SigBin]),
         TxSer = aetx_sign:serialize_to_binary(SignedTx),
-        SignedTxBin = aeapi:format_transaction(TxSer),
+        SignedTxBin = aeapi:format(transaction, TxSer),
         Resp = #{<<"signed_transaction">> => SignedTxBin},
         {200, [], Resp}
     catch
@@ -607,10 +606,11 @@ handle_request_(constructionHash, #{'ConstructionHashRequest' := Req}, _Context)
                 _ ->
                     throw(invalid_input)
             end,
-        {ok, SignedTx} = aeapi:decode_transaction(SignedTxBin),
+        {ok, SignedTx} = aeapi:decode(transaction, SignedTxBin),
         Deser = aetx_sign:deserialize_from_binary(SignedTx),
         Hash = aetx_sign:hash(Deser),
-        Resp = #{<<"transaction_identifier">> => #{<<"hash">> => aeapi:format_tx_hash(Hash)}},
+        Resp = #{<<"transaction_identifier">> =>
+                    #{<<"hash">> => aeapi:format(tx_hash, Hash)}},
         {200, [], Resp}
     catch
         invalid_input ->
@@ -625,12 +625,13 @@ handle_request_(constructionSubmit,
                         <<"signed_transaction">> := SignedTxBin}},
                 _Context) ->
     %% Woohoo. Finally get to post the Tx
-    {ok, SignedTx} = aeapi:decode_transaction(SignedTxBin),
+    {ok, SignedTx} = aeapi:decode(transaction, SignedTxBin),
     Deser = aetx_sign:deserialize_from_binary(SignedTx),
     case aec_tx_pool:push(Deser) of
         ok ->
             Hash = aetx_sign:hash(Deser),
-            Resp = #{<<"transaction_identifier">> => #{<<"hash">> => aeapi:format_tx_hash(Hash)}},
+            Resp = #{<<"transaction_identifier">> =>
+                        #{<<"hash">> => aeapi:format(tx_hash, Hash)}},
             {200, [], Resp};
         {error, E} ->
             lager:debug("Transaction ~p failed to be pushed to pool because: ~p", [SignedTx, E]),
@@ -645,8 +646,7 @@ handle_request_(mempool,
     {ok, SignedTxList} = aec_tx_pool:peek(infinity),
     SignedTxHashList =
         [#{<<"hash">> =>
-               aeapi:format_tx_hash(
-                   aetx_sign:hash(X))}
+               aeapi:format(tx_hash, aetx_sign:hash(X))}
          || X <- SignedTxList],
     Resp = #{<<"transaction_identifiers">> => SignedTxHashList},
     {200, [], Resp};
@@ -745,7 +745,7 @@ format_block_identifier(Block) ->
         aec_headers:hash_header(
             aec_blocks:to_header(Block)),
     #{<<"index">> => aeapi:block_height(Block),
-      <<"hash">> => aeapi:format_key_block_hash(Hash)}.
+      <<"hash">> => aeapi:format(key_block_hash, Hash)}.
 
 format_keyblock_txs(KeyBlock) ->
     aeapi:balance_change_events_in_block(KeyBlock).

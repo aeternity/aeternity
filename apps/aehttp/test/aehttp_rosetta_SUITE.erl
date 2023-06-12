@@ -276,11 +276,11 @@ network_status(Config) ->
        <<"peers">> := PeersFormatted}} =
         get_status_sut(),
 
-    ?assertMatch({ok, _}, aeapi:decode_key_block_hash(GenesisKeyBlockHash)),
+    ?assertMatch({ok, _}, aeapi:decode(key_block_hash, GenesisKeyBlockHash)),
     ?assertMatch(X when is_boolean(X), Synced),
     ?assertMatch(true, is_integer(CurrentBlockTimestamp)),
     ?assertMatch([], PeersFormatted),
-    ?assertMatch({ok, _}, aeapi:decode_key_block_hash(TopKeyBlockHash)),
+    ?assertMatch({ok, _}, aeapi:decode(key_block_hash, TopKeyBlockHash)),
     ok.
 
 get_status_sut() ->
@@ -311,7 +311,7 @@ block_key_only(Config) ->
     {ok, Hash} =
         aec_headers:hash_header(
             aec_blocks:to_header(KeyBlock)),
-    KeyHash = aeapi:format_key_block_hash(Hash),
+    KeyHash = aeapi:format(key_block_hash, Hash),
     {ok,
      200,
      #{<<"block">> :=
@@ -320,11 +320,11 @@ block_key_only(Config) ->
              <<"parent_block_identifier">> := #{<<"hash">> := ParentKeyBlockHash},
              <<"transactions">> := Transactions}}} =
         get_block_sut(KeyHash),
-    ?assertMatch({ok, _}, aeapi:decode_key_block_hash(KeyBlockHash)),
+    ?assertMatch({ok, _}, aeapi:decode(key_block_hash, KeyBlockHash)),
     ?assertMatch(KeyHash, KeyBlockHash),
     ?assertMatch(true, is_integer(CurrentBlockTimestamp)),
     ?assertMatch([], Transactions),
-    ?assertMatch({ok, _}, aeapi:decode_key_block_hash(ParentKeyBlockHash)),
+    ?assertMatch({ok, _}, aeapi:decode(key_block_hash, ParentKeyBlockHash)),
     ok.
 
 %% Test fetch of SpendTx
@@ -366,8 +366,8 @@ block_spend_tx(Config) ->
 
     aecore_suite_utils:use_rosetta(),
 
-    FromPubKeyEnc = aeapi:format_account_pubkey(FromPubKey),
-    ToPubKeyEnc = aeapi:format_account_pubkey(ToPubKey),
+    FromPubKeyEnc = aeapi:format(account_pubkey, FromPubKey),
+    ToPubKeyEnc = aeapi:format(account_pubkey, ToPubKey),
 
     %% Test Rosetta /account/balance API
     {ok,
@@ -429,14 +429,14 @@ block_spend_tx(Config) ->
     ?assertEqual(ToOp, ToOp1),
     ?assertEqual(FeeOp, FeeOp1),
 
-    FromPubKeyEnc = aeapi:format_account_pubkey(FromPubKey),
-    ToPubKeyEnc = aeapi:format_account_pubkey(ToPubKey),
+    FromPubKeyEnc = aeapi:format(account_pubkey, FromPubKey),
+    ToPubKeyEnc = aeapi:format(account_pubkey, ToPubKey),
     assertBalanceChanges(SpendTxHash,
                          [{FromPubKeyEnc, -?SPEND_FEE}, {FromPubKeyEnc, -1}, {ToPubKeyEnc, 1}]),
 
-    ?assertMatch({ok, _}, aeapi:decode_key_block_hash(KeyBlockHash)),
+    ?assertMatch({ok, _}, aeapi:decode(key_block_hash, KeyBlockHash)),
     ?assertMatch(true, is_integer(CurrentBlockTimestamp)),
-    ?assertMatch({ok, _}, aeapi:decode_key_block_hash(ParentKeyBlockHash)),
+    ?assertMatch({ok, _}, aeapi:decode(key_block_hash, ParentKeyBlockHash)),
     ok.
 
 block_create_contract_tx(Config) ->
@@ -456,10 +456,10 @@ block_create_contract_tx(Config) ->
     {ToPubKey, _ToPrivKey} =
         aehttp_integration_SUITE:initialize_account(200000000 * aec_test_utils:min_gas_price()),
 
-    OwnerAccountPubKey = aeapi:format_account_pubkey(OwnerPubKey),
+    OwnerAccountPubKey = aeapi:format(account_pubkey, OwnerPubKey),
     {ok, 200, #{<<"balance">> := OwnerBalance}} =
         aehttp_integration_SUITE:get_accounts_by_pubkey_sut(OwnerAccountPubKey),
-    ToAccountPubKey = aeapi:format_account_pubkey(ToPubKey),
+    ToAccountPubKey = aeapi:format(account_pubkey, ToPubKey),
     {ok, 200, #{<<"balance">> := ToBalance}} =
         aehttp_integration_SUITE:get_accounts_by_pubkey_sut(ToAccountPubKey),
     %% ------------------ Contract Create ---------------------------
@@ -477,7 +477,7 @@ block_create_contract_tx(Config) ->
     CreateGasPrice = aec_test_utils:min_gas_price(),
     CreateFee = 400000 * aec_test_utils:min_gas_price(),
     ValidEncoded =
-        #{owner_id => aeapi:format_account_pubkey(OwnerPubKey),
+        #{owner_id => aeapi:format(account_pubkey, OwnerPubKey),
           nonce => Nonce,
           code => EncodedCode,
           vm_version => aect_test_utils:latest_sophia_vm_version(),
@@ -542,7 +542,7 @@ block_create_contract_tx(Config) ->
 
     %% Convert the contract id into the matching account id
     {_, ContractPubKey} = aeapi:decode(ContractPubKeyEnc),
-    ContractAccountPubKey = aeapi:format_account_pubkey(ContractPubKey),
+    ContractAccountPubKey = aeapi:format(account_pubkey, ContractPubKey),
 
     %% Fetch the contract Balance
     %% Temp switch to the native http api until we have the balance Rosetta Op
@@ -562,10 +562,10 @@ block_create_contract_tx(Config) ->
     aecore_suite_utils:use_swagger(SwaggerVsn),
     %% Call the contract, sending 15000 of the 20000 balance to the To Account
     %% This should generate a Chain.spend trace within the contract execution
-    Args = [aeapi:format_account_pubkey(ToPubKey), "15000"],
+    Args = [aeapi:format(account_pubkey, ToPubKey), "15000"],
     {ok, CallData} = encode_call_data(spend_test, "spend", Args),
     ContractCallEncoded =
-        #{caller_id => aeapi:format_account_pubkey(OwnerPubKey),
+        #{caller_id => aeapi:format(account_pubkey, OwnerPubKey),
           contract_id => ContractPubKeyEnc,
           call_data => CallData,
           abi_version => aect_test_utils:latest_sophia_abi_version(),
@@ -641,10 +641,10 @@ block_create_contract_tx(Config) ->
     aecore_suite_utils:use_swagger(SwaggerVsn),
     %% Call the contract, attempting to send amount 500 to a non payable entry point
     %% This should just consume all the fees but not take the amount
-    ErrArgs = [aeapi:format_account_pubkey(ToPubKey), "2000"],
+    ErrArgs = [aeapi:format(account_pubkey, ToPubKey), "2000"],
     {ok, CallDataErr} = encode_call_data(spend_test, "spend", ErrArgs),
     ContractCallErrEncoded =
-        #{caller_id => aeapi:format_account_pubkey(OwnerPubKey),
+        #{caller_id => aeapi:format(account_pubkey, OwnerPubKey),
           contract_id => ContractPubKeyEnc,
           call_data => CallDataErr,
           abi_version => aect_test_utils:latest_sophia_abi_version(),
@@ -701,10 +701,10 @@ block_create_channel_tx(Config) ->
     {ResponderPubKey, ResponderPrivKey} =
         aehttp_integration_SUITE:initialize_account(2000000000 * aec_test_utils:min_gas_price()),
 
-    InitiatorAccountPubKey = aeapi:format_account_pubkey(InitiatorPubKey),
+    InitiatorAccountPubKey = aeapi:format(account_pubkey, InitiatorPubKey),
     {ok, 200, #{<<"balance">> := InitiatorBalance}} =
         aehttp_integration_SUITE:get_accounts_by_pubkey_sut(InitiatorAccountPubKey),
-    ResponderAccountPubKey = aeapi:format_account_pubkey(ResponderPubKey),
+    ResponderAccountPubKey = aeapi:format(account_pubkey, ResponderPubKey),
     {ok, 200, #{<<"balance">> := ResponderBalance}} =
         aehttp_integration_SUITE:get_accounts_by_pubkey_sut(ResponderAccountPubKey),
 
@@ -745,12 +745,11 @@ block_create_channel_tx(Config) ->
             aetx:tx(ChannelCreateTx)),
     % ChannelPubKeyEnc = aeapi:format_id(ChannelId),
     % {_, ChannelPubKey} = aeapi:decode(ChannelPubKeyEnc),
-    % ChannelAccountPubKey = aeapi:format_account_pubkey(ChannelPubKey),
+    % ChannelAccountPubKey = aeapi:format(account_pubkey, ChannelPubKey),
     SignedChannelCreateTx =
         aec_test_utils:sign_tx(ChannelCreateTx, [InitiatorPrivKey, ResponderPrivKey]),
     EncTx =
-        aeapi:format_transaction(
-            aetx_sign:serialize_to_binary(SignedChannelCreateTx)),
+        aeapi:format(transaction, aetx_sign:serialize_to_binary(SignedChannelCreateTx)),
     {ok, 200, #{<<"tx_hash">> := ChannelCreateTxHash}} = post_tx(EncTx),
 
     {ok, [_]} = rpc(aec_tx_pool, peek, [infinity]),
@@ -808,8 +807,7 @@ block_create_channel_tx(Config) ->
     SignedChannelDepositTx =
         aec_test_utils:sign_tx(ChannelDepositTx, [InitiatorPrivKey, ResponderPrivKey]),
     EncDTx =
-        aeapi:format_transaction(
-            aetx_sign:serialize_to_binary(SignedChannelDepositTx)),
+        aeapi:format(transaction, aetx_sign:serialize_to_binary(SignedChannelDepositTx)),
     {ok, 200, #{<<"tx_hash">> := ChannelDepositTxHash}} = post_tx(EncDTx),
 
     {ok, [_]} = rpc(aec_tx_pool, peek, [infinity]),
@@ -857,8 +855,8 @@ block_create_channel_tx(Config) ->
     SignedChannelWithdrawTx =
         aec_test_utils:sign_tx(ChannelWithdrawTx, [InitiatorPrivKey, ResponderPrivKey]),
     EncWTx =
-        aeapi:format_transaction(
-            aetx_sign:serialize_to_binary(SignedChannelWithdrawTx)),
+        aeapi:format(transaction,
+                     aetx_sign:serialize_to_binary(SignedChannelWithdrawTx)),
     {ok, 200, #{<<"tx_hash">> := ChannelWithdrawTxHash}} = post_tx(EncWTx),
 
     {ok, [_]} = rpc(aec_tx_pool, peek, [infinity]),
@@ -905,8 +903,8 @@ block_create_channel_tx(Config) ->
     SignedChannelCloseMutualTx =
         aec_test_utils:sign_tx(ChannelCloseMutualTx, [InitiatorPrivKey, ResponderPrivKey]),
     EncFPTx =
-        aeapi:format_transaction(
-            aetx_sign:serialize_to_binary(SignedChannelCloseMutualTx)),
+        aeapi:format(transaction, 
+                     aetx_sign:serialize_to_binary(SignedChannelCloseMutualTx)),
     {ok, 200, #{<<"tx_hash">> := ChannelCloseMutualTxHash}} = post_tx(EncFPTx),
 
     {ok, [_]} = rpc(aec_tx_pool, peek, [infinity]),
@@ -959,11 +957,11 @@ construction_flow(Config) ->
     {FromPubKey, FromPrivKey} =
         aehttp_integration_SUITE:initialize_account(1000000000 * aec_test_utils:min_gas_price()),
     FromHexKey = list_to_binary(aeu_hex:bin_to_hex(FromPubKey)),
-    FromPubKeyExt = aeapi:format_account_pubkey(FromPubKey),
+    FromPubKeyExt = aeapi:format(account_pubkey, FromPubKey),
 
     {ToPubKey, _ToPrivKey} =
         aehttp_integration_SUITE:initialize_account(2000000000 * aec_test_utils:min_gas_price()),
-    ToPubKeyExt = aeapi:format_account_pubkey(ToPubKey),
+    ToPubKeyExt = aeapi:format(account_pubkey, ToPubKey),
 
     aecore_suite_utils:use_rosetta(),
 
@@ -1238,15 +1236,14 @@ rosetta_ops(From, To, Amount) ->
 
 sign_tx(Tx, Privkey) ->
     STx = aec_test_utils:sign_tx(Tx, [Privkey]),
-    aeapi:format_transaction(
-        aetx_sign:serialize_to_binary(STx)).
+    aeapi:format(transaction, aetx_sign:serialize_to_binary(STx)).
 
 post_tx(Tx) ->
     aehttp_integration_SUITE:post_transactions_sut(Tx).
 
 contract_byte_code(ContractName) ->
     {ok, BinCode} = aect_test_utils:compile_contract(ContractName),
-    aeapi:format_contract_bytearray(BinCode).
+    aeapi:format(contract_bytearray, BinCode).
 
 contract_code(ContractName) ->
     {ok, BinSrc} = aect_test_utils:read_contract(ContractName),
@@ -1256,7 +1253,7 @@ encode_call_data(Name, Fun, Args) when is_atom(Name) ->
     encode_call_data(contract_code(Name), Fun, Args);
 encode_call_data(Src, Fun, Args) ->
     {ok, CallData} = aect_test_utils:encode_call_data(Src, Fun, Args),
-    {ok, aeapi:format_contract_bytearray(CallData)}.
+    {ok, aeapi:format(contract_bytearray, CallData)}.
 
 %% NOTES from a real world Tx
 %% Balance of SpendTx to self of 20000 aettos at height.

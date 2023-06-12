@@ -185,7 +185,7 @@ ae_sim_test_() ->
                             aec_chain_sim:add_keyblock(SimName),
                             %% Post our local top hash as the commitment
                             Val = <<42:32/unit:8>>,
-                            StakerEnc = aeapi:format_account_pubkey(StakerPubKey),
+                            StakerEnc = aeapi:format(account_pubkey, StakerPubKey),
                             Commitment =  aec_parent_chain_block:encode_commitment_btc(StakerPubKey, Val, ?CHILD_CHAIN_NETWORK_ID),
                             Fee = 20000 * aec_test_utils:min_gas_price(),
                             {ok, #{<<"tx_hash">> := _}} =

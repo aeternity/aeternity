@@ -139,40 +139,77 @@ handle_request_('GetCurrentKeyBlockHash', _, _) ->
         {ok, Hash} -> {200, [], aeser_api_encoder:encode(key_block_hash, Hash)};
         error      -> {404, [], #{reason => <<"Block not found">>}}
     end;
-handle_request_('GetCurrentKeyBlockHeight', _, _Context) ->
+handle_request_('GetCurrentKeyBlockHeight', _, _) ->
     case aeapi:current_block_height() of
         {ok, Height} -> {200, [], Height};
         error        -> {404, [], #{reason => <<"Block not found">>}}
     end;
-handle_request_('GetPendingKeyBlock', _Req, _Context) ->
-    case aec_conductor:get_key_block_candidate() of
-        {ok, Block} ->
-            Header = aec_blocks:to_header(Block),
+handle_request_('GetPendingKeyBlock', _, _) ->
+    case aeapi:key_block_candidate_header() of
+        {ok, Header} ->
             {200, [], aec_headers:serialize_for_client(Header)};
         {error, beneficiary_not_configured} ->
             {400, [], #{reason => <<"Beneficiary not configured">>}};
-        {error, _} ->
+        {error, not_found} ->
             {404, [], #{reason => <<"Block not found">>}}
     end;
-
-handle_request_('GetKeyBlockByHash', Params, _Context) ->
-    case aeser_api_encoder:safe_decode(key_block_hash, maps:get('hash', Params)) of
-        {error, _} -> {400, [], #{reason => <<"Invalid hash">>}};
-        {ok, Hash} ->
-            case aec_chain:get_block(Hash) of
-                {ok, Block} ->
-                    case aec_blocks:is_key_block(Block) of
-                        true ->
-                            Header = aec_blocks:to_header(Block),
-                            {200, [], aec_headers:serialize_for_client(Header)};
-                        false ->
-                            {404, [], #{reason => <<"Block not fond">>}}
-                    end;
-                error ->
-                    {404, [], #{reason => <<"Block not fond">>}}
-            end
+handle_request_('GetKeyBlockByHash', Params, _) ->
+    Hash = maps:get(hash, Params),
+    case aeapi:key_block_header_at_hash(Hash) of
+        {ok, Header} ->
+            {200, [], aec_headers:serialize_for_client(Header)};
+        {error, invalid_block_hash} ->
+            {400, [], #{reason => <<"Invalid hash">>}};
+        {error, block_not_found} ->
+            {404, [], #{reason => <<"Block not fond">>}}
     end;
+handle_request_('GetAccountByPubkey', Params, _) ->
+    PubKey = maps:get(pubkey, Params),
+    case aeapi:account(PubKey) of
+        {ok, Account} ->
+            {200, [], aec_accounts:serialize_for_client(Account)};
+        {error, account_not_found} ->
+            {404, [], #{reason => <<"Account not found">>}};
+        {error, invalid_address} ->
+            {400, [], #{reason => <<"Invalid public key">>}}
+    end;
+handle_request_('GetAccountByPubkeyAndHeight', Params, _) ->
+    PubKey = maps:get(pubkey, Params),
+    Height = aehttp_helpers:to_int(maps:get(height, Params)),
+    case aeapi:account_at_height(PubKey, Height) of
+        {ok, Account} ->
+            {200, [], aec_accounts:serialize_for_client(Account)};
+        {error, invalid_pubkey} ->
+            {400, [], #{reason => <<"Invalid public key">>}};
+        {error, invalid_encoding} ->
+            {400, [], #{reason => <<"Invalid public key">>}};
+        {error, invalid_prefix} ->
+            {400, [], #{reason => <<"Invalid public key">>}};
+        {error, invalid_height} ->
+            {400, [], #{reason => <<"Height not available">>}};
+        {error, chain_too_short} ->
+            {400, [], #{reason => <<"Height not available">>}};
+        {error, garbage_collected} ->
+            {410, [], #{reason => gc_error_message()}};
+        {error, account_not_found} ->
+            {404, [], #{reason => <<"Account not found">>}}
+    end;
+handle_request_('GetAccountByPubkeyAndHash', Params, _) ->
+    PubKey = maps:get(pubkey, Params),
+    Hash = maps:get(hash, Params),
+    case aeapi:account_at_block(PubKey, Hash) of
+        {ok, Account} ->
+            {200, [], aec_accounts:serialize_for_client(Account)};
 
+        {error, {pubky, _}} ->
+            {400, [], #{reason => <<"Invalid public key">>}};
+        {error, {block, _}} ->
+            {400, [], #{reason => <<"Invalid block hash">>}};
+        {error, garbage_collected} ->
+            {410, [], #{reason => gc_error_message()}};
+        {error, account_not_found} ->
+            {404, [], #{reason => <<"Account not found">>}}
+    end;
 handle_request_('GetKeyBlockByHeight', Params, _Context) ->
     Height =  aehttp_helpers:to_int(maps:get(height, Params)),
     case aec_chain:get_key_block_by_height(Height) of
@@ -182,7 +219,19 @@ handle_request_('GetKeyBlockByHeight', Params, _Context) ->
         {error, _Rsn} ->
             {404, [], #{reason => <<"Block not found">>}}
     end;
-
+handle_request_('GetAccountNextNonce', Params, _) ->
+    PubKey = maps:get(pubkey, Params),
+    Strategy = maps:get(strategy, Params),
+    case aeapi:next_nonce(PubKey, Strategy) of
+        {ok, NextNonce} ->
+            {200, [], #{next_nonce => NextNonce}};
+        {error, invalid_prefix} ->
+            {400, [], #{reason => <<"Invalid public key">>}};
+        {error, invalid_encoding} ->
+            {400, [], #{reason => <<"Invalid public key">>}};
+        {error, account_not_found} ->
+            {404, [], #{reason => <<"Account not found">>}}
+    end;
 handle_request_('GetMicroBlockHeaderByHash', Params, _Context) ->
     case aeser_api_encoder:safe_decode(micro_block_hash, maps:get(hash, Params)) of
         {ok, Hash} ->
@@ -270,65 +319,6 @@ handle_request_('GetGenerationByHeight', Params, _Context) ->
         {ok, Hash} -> generation_rsp(aec_chain:get_generation_by_hash(Hash, forward))
     end;
 
-handle_request_('GetAccountByPubkey', Params, _Context) ->
-    AllowedTypes = [account_pubkey, contract_pubkey],
-    case aeser_api_encoder:safe_decode({id_hash, AllowedTypes}, maps:get(pubkey, Params)) of
-        {ok, Id} ->
-            {_IdType, Pubkey} = aeser_id:specialize(Id),
-            case aec_chain:get_account(Pubkey) of
-                {value, Account} ->
-                    {200, [], aec_accounts:serialize_for_client(Account)};
-                none ->
-                    {404, [], #{reason => <<"Account not found">>}}
-            end;
-        {error, _} ->
-            {400, [], #{reason => <<"Invalid public key">>}}
-    end;
-
-handle_request_('GetAccountByPubkeyAndHeight', Params, _Context) ->
-    AllowedTypes = [account_pubkey, contract_pubkey],
-    case aeser_api_encoder:safe_decode({id_hash, AllowedTypes}, maps:get(pubkey, Params)) of
-        {ok, Id} ->
-            {_IdType, Pubkey} = aeser_id:specialize(Id),
-            Height = aehttp_helpers:to_int(maps:get(height, Params)),
-            case aec_chain:get_account_at_height(Pubkey, Height) of
-                {value, Account} ->
-                    {200, [], aec_accounts:serialize_for_client(Account)};
-                none ->
-                    {404, [], #{reason => <<"Account not found">>}};
-                {error, chain_too_short} ->
-                    {404, [], #{reason => <<"Height not available">>}};
-                {error, garbage_collected} ->
-                    {410, [], #{reason => <<"State data at the requested height has been garbage-collected">>}}
-            end;
-        {error, _} ->
-            {400, [], #{reason => <<"Invalid public key">>}}
-    end;
-
-handle_request_('GetAccountByPubkeyAndHash', Params, _Context) ->
-    AllowedTypes = [account_pubkey, contract_pubkey],
-    case aeser_api_encoder:safe_decode({id_hash, AllowedTypes}, maps:get(pubkey, Params)) of
-        {ok, Id} ->
-            {_IdType, Pubkey} = aeser_id:specialize(Id),
-            EncodedHash = maps:get(hash, Params),
-            case aeser_api_encoder:safe_decode(block_hash, EncodedHash) of
-                {error, What} ->
-                    BinWhat = atom_to_binary(What, utf8),
-                    {400, [], #{reason => <<"Illegal hash: ", BinWhat/binary>>}};
-                {ok, Hash} ->
-                    case aec_chain:get_account_at_hash(Pubkey, Hash) of
-                        {value, Account} ->
-                            {200, [], aec_accounts:serialize_for_client(Account)};
-                        none ->
-                            {404, [], #{reason => <<"Account not found">>}};
-                        {error, no_state_trees} ->
-                            {404, [], #{reason => <<"Hash not available">>}}
-                    end
-            end;
-        {error, _} ->
-            {400, [], #{reason => <<"Invalid public key">>}}
-    end;
-
 handle_request_('GetPendingAccountTransactionsByPubkey', Params, _Context) ->
     case aeser_api_encoder:safe_decode(account_pubkey, maps:get(pubkey, Params)) of
         {ok, Pubkey} ->
@@ -344,23 +334,6 @@ handle_request_('GetPendingAccountTransactionsByPubkey', Params, _Context) ->
             {400, [], #{reason => <<"Invalid public key">>}}
     end;
 
-handle_request_('GetAccountNextNonce', Params, _Context) ->
-    case aeser_api_encoder:safe_decode(account_pubkey, maps:get(pubkey, Params)) of
-        {ok, Pubkey} ->
-            Strategy =
-                case maps:get(strategy, Params) of
-                    max -> max;
-                    continuity -> continuity
-                end,
-            case aec_next_nonce:pick_for_account(Pubkey, Strategy) of
-                {ok, NextNonce} ->
-                    {200, [], #{next_nonce => NextNonce}};
-                {error, account_not_found} ->
-                    {404, [], #{reason => <<"Account not found">>}}
-            end;
-        {error, _} ->
-            {400, [], #{reason => <<"Invalid public key">>}}
-    end;
 
 handle_request_('GetTransactionByHash', Params, _Config) ->
     case aeser_api_encoder:safe_decode(tx_hash, maps:get(hash, Params)) of
@@ -379,28 +352,14 @@ handle_request_('GetTransactionByHash', Params, _Config) ->
         {error, _} ->
             {400, [], #{reason => <<"Invalid hash">>}}
     end;
-
-handle_request_('GetTransactionInfoByHash', Params, _Config) ->
-    ParseFuns = [read_required_params([hash]),
-                 api_decode([{hash, tx_hash, tx_hash}]),
-                 get_transaction(tx_hash, tx),
-                 get_info_object_from_tx(tx, tx_type, info),
-                 ok_response(
-                    fun(#{info := Info, tx_type := ga_meta_tx}) ->
-                            #{<<"ga_info">> => aega_call:serialize_for_client(Info)};
-                       (#{info := Info, tx_type := TxType}) when TxType =:= contract_create_tx;
-                                                                 TxType =:= contract_call_tx;
-                                                                 TxType =:= ga_attach_tx;
-                                                                 TxType =:= channel_force_progress_tx ->
-                            #{<<"call_info">> => aect_call:serialize_for_client(Info)};
-                       (#{info := Info, tx_type := _}) ->
-                            %% info is assumed to be a binary
-                            #{<<"tx_info">> => Info}
-                    end)
-                ],
+handle_request_('GetTransactionInfoByHash', Params, _) ->
+    ParseFuns =
+        [read_required_params([hash]),
+         api_decode([{hash, tx_hash, tx_hash}]),
+         get_transaction(tx_hash, tx),
+         get_info_object_from_tx(tx, tx_type, info),
+         ok_response(fun parse_fun/1)],
     process_request(ParseFuns, Params);
-
-
 handle_request_('PostTransaction', #{'Tx' := Tx}, _Context) -> %% swagger2
     handle_request_('PostTransaction', Tx, _Context);
 handle_request_('PostTransaction', #{'EncodedTx' := Tx}, _Context) -> %% oas3
@@ -425,16 +384,18 @@ handle_request_('PostTransaction', #{<<"tx">> := Tx}, _Context) ->
             {400, [], #{reason => <<"Invalid api encoding">>}}
     end;
 
-handle_request_('GetContract', Req, _Context) ->
-    case aeser_api_encoder:safe_decode(contract_pubkey, maps:get(pubkey, Req)) of
-        {error, _} -> {400, [], #{reason => <<"Invalid public key">>}};
-        {ok, PubKey} ->
-            case aec_chain:get_contract(PubKey) of
-                {error, _} -> {404, [], #{reason => <<"Contract not found">>}};
-                {ok, Contract} ->
-                    Response = aect_contracts:serialize_for_client(Contract),
-                    {200, [], Response}
-            end
+handle_request_('GetContract', Params, _) ->
+    PubKey = maps:get(pubkey, Params),
+    case aeapi:contract(PubKey) of
+        {ok, Contract} ->
+            Response = aect_contracts:serialize_for_client(Contract),
+            {200, [], Response};
+        {error, invalid_prefix} ->
+            {400, [], #{reason => <<"Invalid pubkey">>}};
+        {error, invalid_encoding} ->
+            {400, [], #{reason => <<"Invalid pubkey">>}};
+        {error, contract_not_found} ->
+            {404, [], #{reason => <<"Contract not found">>}}
     end;
 
 handle_request_('GetContractCode', Req, _Context) ->
@@ -449,14 +410,11 @@ handle_request_('GetContractCode', Req, _Context) ->
     end;
 
 handle_request_('GetContractPoI', Req, _Context) ->
-    ParseFuns = [read_required_params([pubkey]),
-                 api_decode([{pubkey, pubkey, contract_pubkey}]),
-                 get_poi(contract, pubkey, poi),
-                 ok_response(
-                    fun(#{poi := PoI}) ->
-                        #{poi => aeser_api_encoder:encode(poi, aec_trees:serialize_poi(PoI))}
-                    end)
-                ],
+    ParseFuns =
+        [read_required_params([pubkey]),
+         api_decode([{pubkey, pubkey, contract_pubkey}]),
+         get_poi(contract, pubkey, poi),
+         ok_response(fun poi_parse_fun/1)],
     process_request(ParseFuns, Req);
 
 handle_request_('GetOracleByPubkey', Params, _Context) ->
@@ -549,28 +507,28 @@ handle_request_('GetChannelByPubkey', Params, _Context) ->
             {400, [], #{reason => <<"Invalid public key">>}}
     end;
 
-handle_request_('GetPeerPubkey', _Params, _Context) ->
+handle_request_('GetPeerPubkey', _, _) ->
     {ok, Pubkey} = aec_keys:peer_pubkey(),
     {200, [], #{pubkey => aeser_api_encoder:encode(peer_pubkey, Pubkey)}};
-
-handle_request_('GetStatus', _Params, _Context) ->
+handle_request_('GetStatus', _, _) ->
     {ok, TopKeyBlock} = aec_chain:top_key_block(),
     GenesisBlockHash = aec_consensus:get_genesis_hash(),
+    EncodedGenesisHash = aeser_api_encoder:encode(key_block_hash, GenesisBlockHash),
     Solutions = 0, %% TODO
     Difficulty = aec_blocks:difficulty(TopKeyBlock),
     {Syncing, SyncProgress, _} = aec_sync:sync_progress(),
     Listening = true, %% TODO
-    Protocols =
-        maps:fold(fun(Vsn, Height, Acc) ->
-                          [#{<<"version">> => Vsn, <<"effective_at_height">> => Height} | Acc]
-                  end, [], aec_hard_forks:protocols()),
+    Protocols = maps:fold(fun format_protocol/3, [], aec_hard_forks:protocols()),
     Version = aec_blocks:version(TopKeyBlock),
     Protocols2 =
         case aeu_env:get_env(aecore, fork, undefined) of
             #{version := Version, signalling_end_height := SigEndHeight} ->
                 %% The version is the same as in miner signalling config so the
                 %% new protocol was activated.
-                [#{<<"version">> => Version, <<"effective_at_height">> => SigEndHeight} | Protocols];
+                NextProtocol =
+                    #{<<"version">>             => Version,
+                      <<"effective_at_height">> => SigEndHeight} ,
+                [NextProtocol | Protocols];
             Fork when is_map(Fork) ->
                 Protocols;
             undefined ->
@@ -583,11 +541,13 @@ handle_request_('GetStatus', _Params, _Context) ->
                   <<"outbound">> => aec_peers:count(outbound)},
     PendingTxsCount = aec_tx_pool:size(),
     {ok, PeerPubkey} = aec_keys:peer_pubkey(),
+    EncodedPeerPK = aeser_api_encoder:encode(peer_pubkey, PeerPubkey),
     TopBlock = aec_chain:top_block(),
     TopBlockHeight = aec_blocks:height(TopBlock),
     TopBlockHash = aec_chain:top_key_block_hash(),
+    EncodedTopBlockHash = aeser_api_encoder:encode(key_block_hash, TopBlockHash),
     {200, [],
-     #{<<"genesis_key_block_hash">>     => aeser_api_encoder:encode(key_block_hash, GenesisBlockHash),
+     #{<<"genesis_key_block_hash">>     => EncodedGenesisHash,
        <<"solutions">>                  => Solutions,
        <<"difficulty">>                 => Difficulty,
        <<"syncing">>                    => Syncing,
@@ -600,51 +560,76 @@ handle_request_('GetStatus', _Params, _Context) ->
        <<"peer_connections">>           => PeerConns,
        <<"pending_transactions_count">> => PendingTxsCount,
        <<"network_id">>                 => aec_governance:get_network_id(),
-       <<"peer_pubkey">>                => aeser_api_encoder:encode(peer_pubkey, PeerPubkey),
-       <<"top_key_block_hash">>         => aeser_api_encoder:encode(key_block_hash, TopBlockHash),
+       <<"peer_pubkey">>                => EncodedPeerPK,
+       <<"top_key_block_hash">>         => EncodedTopBlockHash,
        <<"top_block_height">>           => TopBlockHeight}};
-
-handle_request_('GetChainEnds', _Params, _Context) ->
-    {200, [], [aeser_api_encoder:encode(key_block_hash, H) || H <- aec_db:find_chain_end_hashes()]};
-
-handle_request_('ProtectedDryRunTxs', #{ 'DryRunInput' := Req }, _Context) ->
-    ParseFuns = [ parse_map_to_atom_keys(),
-                  read_required_params([txs]),
-                  read_optional_params([{top, top, top}, {accounts, accounts, []},
-                                        {tx_events, tx_events, false}]),
-                  fun(_Req, #{txs := Txs} = State) ->
-                      TopBlock = aec_chain:top_block(),
-                      Height = aec_blocks:height(TopBlock),
-                      Protocol = aec_hard_forks:protocol_effective_at_height(Height),
-                      TxGasLimit= lists:sum(
-                          lists:map(
-                              fun(#{<<"tx">> := ETx}) ->
-                                  case aeser_api_encoder:safe_decode(transaction, ETx) of
-                                      {ok, DTx} ->
-                                          Tx = aetx:deserialize_from_binary(DTx),
-                                          aetx:gas_limit(Tx, Height, Protocol);
-                                      {error, _Err} -> 0 %% this is handled later on
-                                  end;
-                                 (#{<<"call_req">> := CallReq}) ->
-                                    maps:get(<<"gas">>, CallReq, ?DEFAULT_CALL_REQ_GAS_LIMIT)
-                              end,
-                              Txs)),
-                      MaxGas = aeu_env:config_value([<<"http">>, <<"external">>, <<"gas_limit">>],
-                                                    aehttp, [external, gas_limit], ?DEFAULT_GAS_LIMIT),
-                      case TxGasLimit =< MaxGas of
-                          true -> {ok, State};
-                          false -> {error, {403, [], #{<<"reason">> => <<"Over the gas limit">>}}}
-                      end
-                  end,
-                  do_dry_run()],
+handle_request_('GetChainEnds', _, _) ->
+    EndHashes = aec_db:find_chain_end_hashes(),
+    {200, [], [aeser_api_encoder:encode(key_block_hash, H) || H <- EndHashes]};
+handle_request_('ProtectedDryRunTxs', #{'DryRunInput' := Req}, _) ->
+    ParseFuns =
+        [parse_map_to_atom_keys(),
+         read_required_params([txs]),
+         read_optional_params([{top, top, top},
+                               {accounts, accounts, []},
+                               {tx_events, tx_events, false}]),
+         fun parse_fun/2,
+         do_dry_run()],
     process_request(ParseFuns, Req);
-
 handle_request_(OperationID, Req, Context) ->
     error_logger:error_msg(
       ">>> Got not implemented request to process: ~p~n",
       [{OperationID, Req, Context}]
      ),
     {501, [], #{}}.
+
+parse_fun(#{info := Info, tx_type := ga_meta_tx}) ->
+    #{<<"ga_info">> => aega_call:serialize_for_client(Info)};
+parse_fun(#{info := Info, tx_type := TxType})
+        when TxType =:= contract_create_tx;
+             TxType =:= contract_call_tx;
+             TxType =:= ga_attach_tx;
+             TxType =:= channel_force_progress_tx ->
+    #{<<"call_info">> => aect_call:serialize_for_client(Info)};
+parse_fun(#{info := Info, tx_type := _}) ->
+    %% info is assumed to be a binary
+    #{<<"tx_info">> => Info}.
+
+parse_fun(_, #{txs := TXs} = State) ->
+    TopBlock = aec_chain:top_block(),
+    Height = aec_blocks:height(TopBlock),
+    Protocol = aec_hard_forks:protocol_effective_at_height(Height),
+    Encode =
+        fun
+            (#{<<"tx">> := ETX}) ->
+                case aeser_api_encoder:safe_decode(transaction, ETX) of
+                    {ok, DTX} ->
+                        TX = aetx:deserialize_from_binary(DTX),
+                        aetx:gas_limit(TX, Height, Protocol);
+                    {error, _} ->
+                        0 % this is handled later on
+                end;
+            (#{<<"call_req">> := CallReq}) ->
+                maps:get(<<"gas">>, CallReq, ?DEFAULT_CALL_REQ_GAS_LIMIT)
+         end,
+    TXGasLimit = lists:sum(lists:map(Encode, TXs)),
+    MaxGas = aeu_env:config_value([<<"http">>, <<"external">>, <<"gas_limit">>],
+                                  aehttp,
+                                  [external, gas_limit],
+                                  ?DEFAULT_GAS_LIMIT),
+    case TXGasLimit =< MaxGas of
+        true  -> {ok, State};
+        false -> {error, {403, [], #{<<"reason">> => <<"Over the gas limit">>}}}
+    end.
+
+poi_parse_fun(#{poi := PoI}) ->
+    #{poi => aeser_api_encoder:encode(poi, aec_trees:serialize_poi(PoI))}.
+
+gc_error_message() ->
+    <<"State data at the requested height has been garbage-collected">>.
+
+format_protocol(Vsn, Height, Acc) ->
+    [#{<<"version">> => Vsn, <<"effective_at_height">> => Height} | Acc].
 
 generation_rsp(error) ->
     {404, [], #{reason => <<"Block not found">>}};
