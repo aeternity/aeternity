@@ -7,14 +7,6 @@
 %%% Brings together in one place a useful subset of internal APIs for looking
 %%% up blocks, accounts etc, and provides routines to convert between internal 
 %%% and internal forms of hashes, keys etc.
-%%%
-%%% TODOs (2023-06-05 zxq9 <ceverett@tsuriai.jp>):
-%%% - Possibly re-think naming conventions.
-%%% - Add specific error values for garbage collection cases.
-%%% - Decide whether three modules might make more sense:
-%%%     1. Retrieval from key values (hashes, heights, names, etc.)
-%%%     2. Block inspection
-%%%     3. Encoding/Decoding (that is, human/JSON-friendly VS internal forms)
 %%% @end
 %%%-------------------------------------------------------------------
 -module(aeapi).

@@ -537,7 +537,7 @@ handle_request_('GetStatus', _, _) ->
     NodeVersion = aeu_info:get_version(),
     NodeRevision = aeu_info:get_revision(),
     PeerCount = aec_peers:count(peers),
-    PeerConns = #{<<"inbound">> => aec_peers:count(inbound),
+    PeerConns = #{<<"inbound">>  => aec_peers:count(inbound),
                   <<"outbound">> => aec_peers:count(outbound)},
     PendingTxsCount = aec_tx_pool:size(),
     {ok, PeerPubkey} = aec_keys:peer_pubkey(),
