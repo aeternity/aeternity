@@ -242,10 +242,7 @@ key_block_candidate_header() ->
 %% Retrieve the keyblock that applies to a given height.
 
 key_block_at_height(Height) ->
-    case aec_chain:get_key_block_by_height(Height) of
-        {ok, Block} -> {ok, aec_blocks:to_header(Block)};
-        Error       -> Error
-    end.
+    aec_chain:get_key_block_by_height(Height).
 
 
 -spec key_block_header_at_height(Height) -> Result
@@ -592,7 +589,7 @@ form_fork_m(#{pubkey := PubKey, amount := Amount}, Acc) ->
     [{fork, {PubKey, Amount}} | Acc].
 
 tx_spend_operations(Results) ->
-    lists:map(fun(TX) -> format(spend_txs, TX) end, Results).
+    lists:map(fun format_spend_txs/1, Results).
 
 format_spend_txs({TXHash, Result}) ->
     {Res, _} = tx_spend_ops(Result),
@@ -759,7 +756,7 @@ account_at_block3(PubKey, Hash) ->
 %% The same as calling `next_nonce(Address, max)'.
 
 next_nonce(Address) ->
-    next_nonce(max).
+    next_nonce(Address, max).
 
 
 -spec next_nonce(Address, Strategy) -> Result
@@ -775,7 +772,7 @@ next_nonce(Address) ->
 next_nonce(Address, Strategy) ->
     AllowedTypes = [account_pubkey, contract_pubkey],
     case aeser_api_encoder:safe_decode(account_pubkey, Address) of
-        {ok, PubKey} -> aec_next_nonce:pick_for_accoun(PubKey, Strategy);
+        {ok, PubKey} -> aec_next_nonce:pick_for_account(PubKey, Strategy);
         Error        -> Error
     end.
 
@@ -1129,7 +1126,7 @@ decode(Binary) ->
                  | call_state_tree
                  | bytearray,
          Data   :: aeser_api_encoder:encoded(),
-         Result :: {ok, aeser_api_encoder:payload() | aeser_id:id()}
+         Result :: {ok, binary() | aeser_id:id()}
                  | {error, Reason :: atom()}.
 %% @doc
 %% A safe way to convert an external form of a key or hash to its internal
@@ -1173,7 +1170,7 @@ oracle_at_height(OracleID, Height) ->
 -spec oracle_at_block(OracleID, BlockID) -> Result
     when OracleID :: aec_keys:pubkey(),
          BlockID  :: binary(), % <<"kh_...">> or <<"mh_...">>
-         Result   :: {ok, aeo_oracle:oracle()}
+         Result   :: {ok, aeo_oracles:oracle()}
                    | {error, Reason},
          Reason   :: not_found
                    | no_state_trees.
@@ -1215,7 +1212,7 @@ oracle_query_at_height(OracleID, QueryID, Height) ->
     when OracleID :: aec_keys:pubkey(),
          QueryID  :: aec_keys:pubkey(),
          BlockID  :: binary(), % <<"kh_...">> or <<"mh_...">>
-         Result   :: {ok, aeo_oracle:oracle()}
+         Result   :: {ok, aeo_oracles:oracle()}
                    | {error, Reason},
          Reason   :: not_found
                    | no_state_trees.
