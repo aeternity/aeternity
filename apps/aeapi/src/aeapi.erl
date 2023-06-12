@@ -48,8 +48,6 @@
          account_at_block/2,
          next_nonce/1,
          contract/1,
-%        contract_at_height/2,
-%        contract_at_block/2,
          balance_at_height/2,
          balance_at_block/2]).
 
@@ -635,14 +633,14 @@ tx_spend_op({{channel, _Pubkey}, #{}}, {Acc, Ix}) ->
 
 spend_tx_op(Index, Type, Address, Amount) ->
     #{<<"operation_identifier">> => #{<<"index">> => Index},
-        <<"type">> => Type,
-        <<"status">> => <<"SUCCESS">>,
-        <<"account">> => #{<<"address">> => Address},
-        <<"amount">> => amount(Amount)}.
+      <<"type">>                 => Type,
+      <<"status">>               => <<"SUCCESS">>,
+      <<"account">>              => #{<<"address">> => Address},
+      <<"amount">>               => amount(Amount)}.
 
 amount(Amount) ->
-    #{<<"value">> => integer_to_binary(Amount),
-        <<"currency">> => #{<<"symbol">> => <<"AE">>, <<"decimals">> => 18}}.
+    #{<<"value">>    => integer_to_binary(Amount),
+      <<"currency">> => #{<<"symbol">> => <<"AE">>, <<"decimals">> => 18}}.
 
 
 
@@ -764,17 +762,6 @@ next_nonce(Address) ->
     next_nonce(max).
 
 
-%-spec next_nonce(aeser_api_encoder:encoded()) -> Result
-%    when Result :: {ok, non_neg_integer()} | {error, account_not_found}.
-%
-%next_nonce(AccountAddress) ->
-%    AllowedTypes = [account_pubkey, contract_pubkey],
-%    {ok, Id} = create_id(AccountAddress, AllowedTypes),
-%    PubKey = id_value(Id),
-%    aec_next_nonce:pick_for_account(PubKey).
-
-
-
 -spec next_nonce(Address, Strategy) -> Result
     when Address  :: binary(), % <<"ak_...">>
          Strategy :: max | continuity,
@@ -811,41 +798,6 @@ contract(Address) ->
     end.
 
 
-%-spec contract_at_height(Address, Height) -> Result
-%    when Address :: binary(), % <<"ct_...">>
-%         Height  :: aec_blocks:height(),
-%         Result  :: {ok, aec_accounts:account()}
-%                  | {error, Reason},
-%         Reason  :: invalid_pubkey
-%                  | invalid_encoding
-%                  | invalid_prefix
-%                  | invalid_height
-%                  | chain_too_short
-%                  | garbage_collected
-%                  | contract_not_found.
-%% @doc
-%% Retrieve a contract as it appeared on the chain at the given height.
-%%
-%% Note that this can fail in the event that the node being queried has garbage
-%% collection enabled and the account at this height has been removed.
-
-%-spec contract_at_block(Address, BlockHash) ->
-%    when Address   :: binary(), % <<"ct_...">>
-%         BlockHash :: binary(), % <<"kh_...">> or <<"mh_...">>
-%         Result    :: {ok, Balance :: non_neg_integer()}
-%                    | {error, Reason},
-%         Reason    :: invalid_block_hash
-%                    | invalid_address
-%                    | block_not_found
-%                    | garbage_collected
-%                    | contract_not_found.
-%% @doc
-%% Retrieve an account as it appeared at the point in the chain's history that it
-%% appeared at the given block's height.
-%%
-%% Note that this can fail in the event that the node being queried has garbage
-%% collection enabled and the account at this height has been removed.
-
 -spec balance_at_height(Address, Height) -> Result
     when Address :: binary(),
          Height  :: aec_blocks:height(),
@@ -859,7 +811,8 @@ contract(Address) ->
                   | garbage_collected
                   | account_not_found
                   | contract_not_found.
-%% @doc Lookup the opening balance of an account or contract at the keyblock with
+%% @doc
+%% Lookup the opening balance of an account or contract at the keyblock with
 %% the given height.
 %% Example (on testnet, AKA the "ae_uat" chain):
 %% ```
@@ -1149,7 +1102,6 @@ decode(Binary) ->
     aeser_api_encoder:decode(Binary).
 
 
-
 -spec decode(Type, Data) -> Result
     when Type   :: key_block_hash
                  | micro_block_hash
@@ -1193,12 +1145,11 @@ decode(Binary) ->
 %% '''
 %% @end
 
-%% FIXME: Maybe add variants to decode further.
+%% TODO: Maybe add variants to decode further.
 %%    Example: aeapi:decode(contract, <<"cb_..">>, [decompile]).
 
 decode(Type, Data) ->
     aeser_api_encoder:safe_decode(Type, Data).
-
 
 
 oracle_at_height(OracleAddress, Height) ->
