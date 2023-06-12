@@ -825,14 +825,12 @@ contract(Address) ->
 balance_at_height(Address, Height) ->
     AllowedTypes = [account_pubkey, contract_pubkey],
     case create_id(Address, AllowedTypes) of
-        {ok, ID} ->
-            PubKey = id_value(ID),
-            balance_at_height(element(2, ID), PubKey, Height);
-        Error ->
-            Error
+        {ok, ID} -> balance_at_height2(ID, Height);
+        Error    -> Error
     end.
 
-balance_at_height(Type, PubKey, Height) ->
+balance_at_height2(ID, Height) ->
+    {Type, PubKey} = aeser_id:specialize(ID),
     case aec_chain:get_account_at_height(PubKey, Height) of
         {value, Account} ->
             {ok, aec_accounts:balance(Account)};
@@ -876,20 +874,17 @@ balance_at_block(Address, BlockID) ->
 balance_at_block2(Address, Hash) ->
     AllowedTypes = [account_pubkey, contract_pubkey],
     case create_id(Address, AllowedTypes) of
-        {ok, ID} ->
-            PubKey = id_value(ID),
-            balance_at_block3(element(2, ID), PubKey, Hash);
-        {error, invalid_encoding} ->
-            {error, invalid_address}
+        {ok, ID}                  -> balance_at_block3(ID, Hash);
+        {error, invalid_encoding} -> {error, invalid_address}
     end.
 
-balance_at_block3(Type, PubKey, Hash) ->
+balance_at_block3(ID, Hash) ->
     case aec_db:get_block(Hash) of
         undefined ->
             {error, block_not_found};
         Block ->
             Height = aec_blocks:height(Block),
-            balance_at_height(Type, PubKey, Height)
+            balance_at_height2(ID, Height)
     end.
 
 decode_catcher(BlockID) ->
