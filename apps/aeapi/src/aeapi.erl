@@ -771,9 +771,12 @@ next_nonce(Address) ->
 
 next_nonce(Address, Strategy) ->
     AllowedTypes = [account_pubkey, contract_pubkey],
-    case aeser_api_encoder:safe_decode(account_pubkey, Address) of
-        {ok, PubKey} -> aec_next_nonce:pick_for_account(PubKey, Strategy);
-        Error        -> Error
+    case aeser_api_encoder:safe_decode({id_hash, AllowedTypes}, Address) of
+        {ok, ID} ->
+            {_, PubKey} = aeser_id:specialize(ID),
+            aec_next_nonce:pick_for_account(PubKey, Strategy);
+        Error ->
+            Error
     end.
 
 
