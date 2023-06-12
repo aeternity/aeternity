@@ -202,8 +202,6 @@ handle_request_('GetAccountByPubkeyAndHash', Params, _) ->
             {400, [], #{reason => <<"Invalid public key">>}};
         {error, {block, _}} ->
             {400, [], #{reason => <<"Invalid block hash">>}};
-        {error, garbage_collected} ->
-            {410, [], #{reason => gc_error_message()}};
         {error, account_not_found} ->
             {404, [], #{reason => <<"Account not found">>}}
     end;

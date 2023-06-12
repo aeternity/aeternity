@@ -266,7 +266,7 @@ key_block_header_at_height(Height) when is_integer(Height) ->
     when Hash   :: aeser_api_encoder:encoded(),
          Result :: {ok, aec_blocks:key_block()}
                  | {error, Reason},
-         Reason :: invalid_block_hash
+         Reason :: invalid_hash
                  | block_not_found.
 %% @doc
 %% Retrieve the keyblock that applies to a given block hash.
@@ -287,7 +287,7 @@ key_block_at_hash(Hash) ->
     when Hash   :: aeser_api_encoder:encoded(),
          Result :: {ok, aec_headers:key_header()}
                  | {error, Reason},
-         Reason :: invalid_block_hash
+         Reason :: invalid_hash
                  | block_not_found.
 %% @doc
 %% Retrieve the keyblock header that applies to a given block hash.
@@ -710,8 +710,7 @@ account_at_height2(PubKey, Height) ->
          BlockID :: binary(), % <<"kh_...">> or <<"mh_...">>
          Result  :: {ok, Balance :: non_neg_integer()}
                   | {error, Reason},
-         Reason  :: garbage_collected
-                  | account_not_found
+         Reason  :: account_not_found
                   | {Element :: pubkey | block,
                      Info    :: invalid_encoding | invalid_prefix}.
 %% @doc
@@ -747,7 +746,8 @@ account_at_block3(PubKey, Hash) ->
 
 -spec next_nonce(Address) -> Result
     when Address  :: binary(), % <<"ak_...">>
-         Result   :: {error, Reason},
+         Result   :: {ok, non_neg_integer()}
+                   | {error, Reason},
          Reason   :: invalid_prefix
                    | invalid_encoding
                    | account_not_found.
@@ -762,7 +762,8 @@ next_nonce(Address) ->
 -spec next_nonce(Address, Strategy) -> Result
     when Address  :: binary(), % <<"ak_...">>
          Strategy :: max | continuity,
-         Result   :: {error, Reason},
+         Result   :: {ok, non_neg_integer()}
+                   | {error, Reason},
          Reason   :: invalid_prefix
                    | invalid_encoding
                    | account_not_found.
@@ -793,8 +794,13 @@ next_nonce(Address, Strategy) ->
 
 contract(Address) ->
     case aeser_api_encoder:safe_decode(contract_pubkey, Address) of
-        {ok, PubKey} -> aec_chain:get_contract(PubKey);
-        Error        -> Error
+        {ok, PubKey} ->
+            case aec_chain:get_contract(PubKey) of
+                {ok, Con}  -> {ok, Con};
+                {error, _} -> {error, contract_not_found}
+            end;
+        Error ->
+            Error
     end.
 
 

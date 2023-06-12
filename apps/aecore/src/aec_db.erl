@@ -733,11 +733,10 @@ write_block(Block, Hash) ->
                end)
     end.
 
--spec get_block(binary()) -> aec_blocks:block().
+-spec get_block(binary()) -> aec_blocks:block() | undefined.
 get_block(Hash) ->
     ?t(begin
-           [#aec_headers{value = DBHeader}] =
-               read(aec_headers, Hash),
+           [#aec_headers{value = DBHeader}] = read(aec_headers, Hash),
            Header = aec_headers:from_db_header(DBHeader),
            case aec_headers:type(Header) of
                key ->
