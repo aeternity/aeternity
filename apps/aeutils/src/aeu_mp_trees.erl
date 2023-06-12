@@ -58,7 +58,7 @@
              ]).
 
 -record(mpt, { hash = <<>>          :: <<>> | hash() %% <<>> for the empty tree
-             , db   = new_dict_db() :: aeu_mp_trees_db:db()
+             , db   = new_map_db()  :: aeu_mp_trees_db:db()
              , node_cache = none    :: none | node_cache()
              }).
 
@@ -70,7 +70,7 @@
               , root = <<>>          :: <<>> | hash()
               , max_length           :: pos_integer() | 'undefined'
               , with_prefix = <<>>   :: <<>> | key()
-              , db   = new_dict_db() :: aeu_mp_trees_db:db()
+              , db   = new_map_db()  :: aeu_mp_trees_db:db()
               , node_cache = #{}     :: node_cache()
               }).
 
@@ -635,55 +635,103 @@ int_has_node(<<>>, _, {branch, _Branch}, _DB) ->
 %%%===================================================================
 %%% Reachable store nodes (useful for implementing GC).
 
-int_visit_reachable_hashes_in_cache(Hashes, DB, Visited, VisitFun) ->
+int_visit_reachable_hashes_in_cache(Hashes, DB, Visited, VisitFun)
+  when is_function(VisitFun, 3) ->
+    %% We don't yet support calling this function with a context map (VisitFun/4)
     DBGetFun = fun db_find_in_cache/2,
     int_visit_reachable_hashes(Hashes, DB, Visited, VisitFun, DBGetFun).
 
 int_visit_reachable_hashes_both(Hashes, DB, Visited, VisitFun) ->
-    DBGetFun = fun(Key, DB_) -> {value, db_get(Key, DB_)}end,
+    DBGetFun = choose_db_get_fun(VisitFun),
     int_visit_reachable_hashes(Hashes, DB, Visited, VisitFun, DBGetFun).
 
 int_visit_reachable_hashes([Hash|Left], DB, Visited, VisitFun, DBGetFun) ->
-    Visited1 = visit_reachable_raw(Hash, DB, Visited, VisitFun, DBGetFun),
+    Visited1 = visit_reachable_raw(Hash, DB, Visited, VisitFun, DBGetFun, <<>>),
     int_visit_reachable_hashes(Left, DB, Visited1, VisitFun, DBGetFun);
 int_visit_reachable_hashes([],_DB, Visited,_VisitFun,_DBGetFun) ->
     Visited.
 
-visit_reachable_raw(Next, DB, Visited, VisitFun, DBGetFun) ->
+choose_db_get_fun(VisitFun) when is_function(VisitFun, 3) ->
+    fun(Key, DB) ->
+            {value, db_get(Key, DB)}
+    end;
+choose_db_get_fun(VisitFun) when is_function(VisitFun, 4) ->
+    fun(Key, DB) ->
+            db_get_map(Key, DB)
+    end.
+
+visit_reachable_raw(Next, DB, Visited, VisitFun, DBGetFun, PathAcc) ->
     case byte_size(Next) < 32 of
         true  ->
             %% Too small to contain a hash
             Visited;
         false ->
             case DBGetFun(Next, DB) of
-                {value, RawNode} ->
-                    case VisitFun(Next, RawNode, Visited) of
+                Res when is_function(VisitFun, 3) ->
+                    case Res of
+                        {value, RawNode} ->
+                            case VisitFun(Next, RawNode, Visited) of
+                                stop ->
+                                    Visited;
+                                {continue, Visited1} ->
+                                    NextNode = decode_node(Next, DB),
+                                    visit_reachable_node(
+                                      NextNode, DB, Visited1, VisitFun, DBGetFun, PathAcc)
+                            end;
+                        none ->
+                            Visited
+                    end;
+                #{result := Res} = Map when is_function(VisitFun, 4) ->
+                    {Map1, Path1, Raw, NextNode} =
+                        case Res of
+                            {value, RawNode} ->
+                                NextNode0 = decode_node(Next, DB),
+                                {Path, Val} =
+                                    case NextNode0 of
+                                        <<>>         -> {PathAcc, <<>>};
+                                        {ext, P, _V} -> {<<PathAcc/bits, P/bits>>, <<>>};
+                                        {leaf, P, V} -> {<<PathAcc/bits, P/bits>>, V};
+                                        {branch, Branch}  ->
+                                            {PathAcc, branch_value(Branch)}
+                                    end,
+                                {Map#{path => Path,
+                                      value => Val}, Path, RawNode, NextNode0};
+                            none ->
+                                {Map#{path => PathAcc}, PathAcc, <<>>, <<>>}
+                        end,
+                    %% In the case of 'none', we call VisitFun to allow it to
+                    %% react, perhaps with repair or reporting.
+                    %% To be clear, when VisitFun/4 is called with result := none,
+                    %% something unexpected has happened.
+                    case VisitFun(Map1, Next, Raw, Visited) of
                         stop ->
                             Visited;
                         {continue, Visited1} ->
-                            NextNode = decode_node(Next, DB),
-                            visit_reachable_node(NextNode, DB, Visited1, VisitFun, DBGetFun)
-                    end;
-                none ->
-                    Visited
+                            visit_reachable_node(
+                              NextNode, DB, Visited1, VisitFun, DBGetFun, Path1)
+                    end
             end
     end.
 
-visit_reachable_node(<<>>,_DB, Visited,_VisitFun,_DBGetFun) ->
+visit_reachable_node(<<>>,_DB, Visited,_VisitFun,_DBGetFun, _) ->
     Visited;
-visit_reachable_node({branch, Branch}, DB, Visited, VisitFun, DBGetFun) ->
-    visit_reachable_branch(Branch, 0, DB, Visited, VisitFun, DBGetFun);
-visit_reachable_node({ext, _, Next}, DB, Visited, VisitFun, DBGetFun) ->
-    visit_reachable_raw(Next, DB, Visited, VisitFun, DBGetFun);
-visit_reachable_node({leaf, _, _},_DB, Visited,_VisitFun,_DBGetFun) ->
+visit_reachable_node({branch, Branch}, DB, Visited, VisitFun, DBGetFun, Path) ->
+    visit_reachable_branch(Branch, 0, DB, Visited, VisitFun, DBGetFun, Path);
+visit_reachable_node({ext, _, Next}, DB, Visited, VisitFun, DBGetFun, Path) ->
+    visit_reachable_raw(Next, DB, Visited, VisitFun, DBGetFun, Path);
+visit_reachable_node({leaf, _, _},_DB, Visited,_VisitFun,_DBGetFun, _) ->
     Visited.
 
-visit_reachable_branch(_Branch, 16,_DB, Visited,_VisitFun,_DBGetFun) ->
+visit_reachable_branch(_Branch, 16,_DB, Visited,_VisitFun,_DBGetFun, _) ->
     Visited;
-visit_reachable_branch(Branch, N, DB, Visited, VisitFun, DBGetFun) ->
+visit_reachable_branch(Branch, N, DB, Visited, VisitFun, DBGetFun, Path) ->
     Next = branch_next(N, Branch),
-    Visited1 = visit_reachable_raw(Next, DB, Visited, VisitFun, DBGetFun),
-    visit_reachable_branch(Branch, N + 1, DB, Visited1, VisitFun, DBGetFun).
+    NextPath = case Next of
+                   <<>> -> Path;
+                   K when is_binary(K) -> <<Path/bits, N:4>>
+               end,
+    Visited1 = visit_reachable_raw(Next, DB, Visited, VisitFun, DBGetFun, NextPath),
+    visit_reachable_branch(Branch, N + 1, DB, Visited1, VisitFun, DBGetFun, Path).
 
 
 %%%===================================================================
@@ -1161,6 +1209,9 @@ db_get(Hash, DB) ->
         none -> error({hash_not_present_in_db, Hash})
     end.
 
+db_get_map(Hash, DB) ->
+    aeu_mp_trees_db:get(Hash, DB, #{}).
+
 db_find_in_cache(Hash, DB) ->
     aeu_mp_trees_db:cache_get(Hash, DB).
 
@@ -1174,28 +1225,28 @@ db_drop_cache(DB) ->
     aeu_mp_trees_db:drop_cache(DB).
 
 %%%===================================================================
-%%% Dict db backend (default if nothing else was given in new/2)
+%%% Map db backend (default if nothing else was given in new/2)
 
-new_dict_db() ->
-    aeu_mp_trees_db:new(dict_db_spec()).
+new_map_db() ->
+    aeu_mp_trees_db:new(map_db_spec()).
 
-dict_db_spec() ->
-    #{ handle => dict:new()
-     , cache  => dict:new()
+map_db_spec() ->
+    #{ handle => #{}
+     , cache  => #{}
      , module => ?MODULE
      }.
 
-mpt_db_get(Key, Dict) ->
-    case dict:find(Key, Dict) of
+mpt_db_get(Key, Map) ->
+    case maps:find(Key, Map) of
         {ok, Val} -> {value, Val};
         error -> none
     end.
 
-mpt_db_put(Key, Val, Dict) ->
-    dict:store(Key, Val, Dict).
+mpt_db_put(Key, Val, Map) ->
+    Map#{Key => Val}.
 
 mpt_db_drop_cache(_Cache) ->
-    dict:new().
+    #{}.
 
 %%%===================================================================
 %%% Compact encoding of hex sequence with optional terminator

@@ -28,6 +28,7 @@
          write_block/1,
          write_block/2,
          write_block_state/6,
+         update_trees_and_block_state/2,
          write_discovered_pof/2,
          write_genesis_hash/1,
          write_top_block_node/2,
@@ -92,6 +93,7 @@
 -export([ tree_table_name/1
         , new_tree_context/2
         , lookup_tree_node/2
+        , lookup_tree_node/3
         , enter_tree_node/3
         , node_is_in_primary/2
         ]).
@@ -922,6 +924,17 @@ write_block_state(Hash, Trees, AccDifficulty, ForkId, Fees, Fraud) ->
            write(BlockState)
        end).
 
+update_trees_and_block_state(Hash, Trees) ->
+    ensure_transaction(
+      fun() ->
+              [#aec_block_state{} = St] =
+                  read(aec_block_state, Hash),
+              Trees1 = aec_trees:serialize_for_db(
+                         aec_trees:commit_to_db(Trees)),
+              BlockState = St#aec_block_state{ value = Trees1 },
+              write(BlockState)
+      end).
+
 -spec secondary_state_tab(tree_name()) -> table_name().
 secondary_state_tab(Tree) ->
     Tab = tree_table_name(Tree),
@@ -969,16 +982,16 @@ read_last_gc_switch(Default) ->
     lager:debug("<-- last GC Height: ~p", [R]),
     R.
 
-write_last_gc_scan(Height) ->
-    lager:debug("Last complete GC scan: ~p", [Height]),
-    ?t(write(#aec_chain_state{key = last_gc_scan, value = Height})).
+write_last_gc_scan(Value) ->
+    lager:debug("Last complete GC scan: ~p", [Value]),
+    ?t(write(#aec_chain_state{key = last_gc_scan, value = Value})).
 
 read_last_gc_scan() ->
     R = ?t(case read(aec_chain_state, last_gc_scan) of
                [] ->
-                   0;
-               [#aec_chain_state{value = Height}] ->
-                   Height
+                   error;
+               [#aec_chain_state{value = Value}] ->
+                   {ok, Value}
            end),
     lager:debug("<-- last height of complete GC scan: ~p", [R]),
     R.
@@ -1222,15 +1235,18 @@ new_tree_context(Mode, Tree) when Mode == dirty;
 
 %% Behaves like gb_trees:lookup(Key, Tree).
 -spec lookup_tree_node(hash(), tree_context()) -> none | {value, value()}.
-lookup_tree_node(Hash, #tree{table = T, mode = ActivityType}) ->
+lookup_tree_node(Hash, Ctxt) ->
+    lookup_tree_node_legacy(Hash, Ctxt).
+
+lookup_tree_node_legacy(Hash, #tree{table = T, mode = ActivityType}) ->
     ensure_activity(ActivityType,
                     fun() ->
                             lookup_tree_node_(Hash, T, T)
                     end);
-lookup_tree_node(Hash, #tree_gc{ primary   = Prim
-                               , secondary = Sec
-                               , record    = Rec
-                               , mode      = ActivityType }) ->
+lookup_tree_node_legacy(Hash, #tree_gc{ primary   = Prim
+                                      , secondary = Sec
+                                      , record    = Rec
+                                      , mode      = ActivityType }) ->
     ensure_activity(ActivityType,
                     fun() ->
                             case lookup_tree_node_(Hash, Prim, Rec) of
@@ -1243,6 +1259,38 @@ lookup_tree_node(Hash, #tree_gc{ primary   = Prim
                                         {value, V} = Res ->
                                             promote_tree_node(Hash, V, Prim, Rec),
                                             Res
+                                    end
+                            end
+                    end).
+
+%% This version takes a map (context) as 3rd argument and returns the result as part
+%% of that map, together with information on whether the node was promoted.
+lookup_tree_node(Hash, #tree{table = T, mode = ActivityType}, Map) when is_map(Map) ->
+    ensure_activity(ActivityType,
+                    fun() ->
+                            Map#{result => lookup_tree_node_(Hash, T, T),
+                                 source => T}
+                    end);
+lookup_tree_node(Hash, #tree_gc{ primary   = Prim
+                               , secondary = Sec
+                               , record    = Rec
+                               , mode      = ActivityType }, Map) when is_map(Map) ->
+    ensure_activity(ActivityType,
+                    fun() ->
+                            case lookup_tree_node_(Hash, Prim, Rec) of
+                                {value, _} = Res ->
+                                    Map#{result => Res, source => Prim, promoted => false};
+                                none ->
+                                    case lookup_tree_node_(Hash, Sec, Rec) of
+                                        none ->
+                                            Map#{result => none,
+                                                 source => Sec,
+                                                 promoted => false};
+                                        {value, V} = Res ->
+                                            promote_tree_node(Hash, V, Prim, Rec),
+                                            Map#{result => Res,
+                                                 source => Prim,
+                                                 promoted => true}
                                     end
                             end
                     end).
