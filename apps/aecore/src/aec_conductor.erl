@@ -1396,7 +1396,7 @@ handle_successfully_added_block(Block, Hash, true, PrevKeyHeader, Events, State,
     maybe_publish_tx_events(Events, Hash, Origin),
     maybe_publish_block(Origin, Block),
     State1 = maybe_consensus_change(State, Block),
-    ConsensusModule = consensus_module(State),
+    ConsensusModule = consensus_module(State1),
     case preempt_on_new_top(State1, Block, Hash, Origin) of
         {micro_changed, State2 = #state{ consensus = Cons }} ->
             {ok, setup_loop(State2, false, Cons#consensus.leader, Origin)};
