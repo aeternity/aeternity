@@ -47,6 +47,7 @@
          account_at_height/2,
          account_at_block/2,
          next_nonce/1,
+         next_nonce/2,
          contract/1,
          balance_at_height/2,
          balance_at_block/2]).
@@ -648,7 +649,8 @@ amount(Amount) ->
          Result  :: {ok, aec_accounts:account()}
                   | {error, Reason},
          Reason  :: account_not_found
-                  | invalid_address.
+                  | invalid_prefix
+                  | invalid_encoding.
 %% @doc
 %% Retrieve an account by its address at the current chain height.
 
@@ -674,10 +676,8 @@ account2(PubKey) ->
          Height  :: aec_blocks:height(),
          Result  :: {ok, aec_accounts:account()}
                   | {error, Reason},
-         Reason  :: invalid_pubkey
-                  | invalid_encoding
+         Reason  :: invalid_encoding
                   | invalid_prefix
-                  | invalid_height
                   | chain_too_short
                   | garbage_collected
                   | account_not_found.
@@ -803,10 +803,8 @@ contract(Address) ->
          Height  :: aec_blocks:height(),
          Result  :: {ok, Balance :: non_neg_integer()}
                   | {error, Reason},
-         Reason  :: invalid_pubkey
-                  | invalid_encoding
+         Reason  :: invalid_encoding
                   | invalid_prefix
-                  | invalid_height
                   | chain_too_short
                   | garbage_collected
                   | account_not_found
@@ -824,7 +822,7 @@ contract(Address) ->
 %% Note that this can fail in the event that the node being queried has garbage
 %% collection enabled and the account at this height has been removed.
 
-balance_at_height(Address, Height) when Height >= 0 ->
+balance_at_height(Address, Height) ->
     AllowedTypes = [account_pubkey, contract_pubkey],
     case create_id(Address, AllowedTypes) of
         {ok, ID} ->
@@ -832,9 +830,7 @@ balance_at_height(Address, Height) when Height >= 0 ->
             balance_at_height(element(2, ID), PubKey, Height);
         Error ->
             Error
-    end;
-balance_at_height(_, _) ->
-    {error, invalid_height}.
+    end.
 
 balance_at_height(Type, PubKey, Height) ->
     case aec_chain:get_account_at_height(PubKey, Height) of
@@ -987,12 +983,12 @@ id_type(ID) ->
 
 
 -spec id_value(ID) -> Result
-    when ID     :: binary(),
+    when ID     :: aeser_id:id(),
          Result :: {ok, Value :: binary()}
                  | {error, bad_id}.
 %% @doc Get the internal value of an ID.
 %% Example:
-%% ```id_value(Id :: aeser_id:id()) ->
+%% ```id_value(ID :: aeser_id:id()) ->
 %%            <<170,20,197,4,89,131,91,158,24,63,28,200,44,49,35,88,224,211,211,30,
 %%              29,108,91,130,93,230,47,111,34,172,124,50>>.'''
 

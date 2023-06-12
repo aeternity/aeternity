@@ -158,7 +158,7 @@ handle_request_('GetKeyBlockByHash', Params, _) ->
     case aeapi:key_block_header_at_hash(Hash) of
         {ok, Header} ->
             {200, [], aec_headers:serialize_for_client(Header)};
-        {error, invalid_block_hash} ->
+        {error, invalid_hash} ->
             {400, [], #{reason => <<"Invalid hash">>}};
         {error, block_not_found} ->
             {404, [], #{reason => <<"Block not fond">>}}
@@ -170,7 +170,9 @@ handle_request_('GetAccountByPubkey', Params, _) ->
             {200, [], aec_accounts:serialize_for_client(Account)};
         {error, account_not_found} ->
             {404, [], #{reason => <<"Account not found">>}};
-        {error, invalid_address} ->
+        {error, invalid_prefix} ->
+            {400, [], #{reason => <<"Invalid public key">>}};
+        {error, invalid_encoding} ->
             {400, [], #{reason => <<"Invalid public key">>}}
     end;
 handle_request_('GetAccountByPubkeyAndHeight', Params, _) ->
@@ -179,14 +181,10 @@ handle_request_('GetAccountByPubkeyAndHeight', Params, _) ->
     case aeapi:account_at_height(PubKey, Height) of
         {ok, Account} ->
             {200, [], aec_accounts:serialize_for_client(Account)};
-        {error, invalid_pubkey} ->
-            {400, [], #{reason => <<"Invalid public key">>}};
         {error, invalid_encoding} ->
             {400, [], #{reason => <<"Invalid public key">>}};
         {error, invalid_prefix} ->
             {400, [], #{reason => <<"Invalid public key">>}};
-        {error, invalid_height} ->
-            {400, [], #{reason => <<"Height not available">>}};
         {error, chain_too_short} ->
             {400, [], #{reason => <<"Height not available">>}};
         {error, garbage_collected} ->
@@ -200,8 +198,7 @@ handle_request_('GetAccountByPubkeyAndHash', Params, _) ->
     case aeapi:account_at_block(PubKey, Hash) of
         {ok, Account} ->
             {200, [], aec_accounts:serialize_for_client(Account)};
-
-        {error, {pubky, _}} ->
+        {error, {pubkey, _}} ->
             {400, [], #{reason => <<"Invalid public key">>}};
         {error, {block, _}} ->
             {400, [], #{reason => <<"Invalid block hash">>}};

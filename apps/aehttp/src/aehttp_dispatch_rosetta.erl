@@ -855,7 +855,7 @@ retrieve_block_from_partial_block_identifier(Req) ->
             Block;
         #{<<"hash">> := Hash} ->
             case aeapi:key_block_at_hash(Hash) of
-                error ->
+                {error, block_not_found} ->
                     throw(block_not_found);
                 {ok, Block} ->
                     Block
