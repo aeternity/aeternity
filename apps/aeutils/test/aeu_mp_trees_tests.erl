@@ -49,6 +49,7 @@ proof_test_() ->
 
 reachability_test_() ->
     [ {"Visit reachable hashes", fun test_visit_reachable/0}
+    , {"Visit reachable hashes (ext)", fun test_visit_reachable_ext/0}
     , {"Commit reachable cache", {timeout, 30, fun test_commit_reachable/0}}
     , {"GC of cache",            {timeout, 30, fun test_gc_cache/0}}
     ].
@@ -344,7 +345,7 @@ test_proofs() ->
     test_create_proofs(Vals, T).
 
 test_create_proofs([{Key, Val}|Left], T) ->
-    {Val, ProofDB} = aeu_mp_trees:construct_proof(Key, new_dict_db(), T),
+    {Val, ProofDB} = aeu_mp_trees:construct_proof(Key, new_map_db(), T),
     Hash = aeu_mp_trees:root_hash(T),
     ?assertEqual(ok, aeu_mp_trees:verify_proof(Key, Val, Hash, ProofDB)),
     test_create_proofs(Left, T);
@@ -356,7 +357,7 @@ test_bogus_proofs() ->
     test_bogus_proofs(Vals, T).
 
 test_bogus_proofs([{Key, Val}|Left], T) ->
-    {Val, ProofDB} = aeu_mp_trees:construct_proof(Key, new_dict_db(), T),
+    {Val, ProofDB} = aeu_mp_trees:construct_proof(Key, new_map_db(), T),
     Hash = aeu_mp_trees:root_hash(T),
     BogusHash = case Hash of
                     <<1, Rest/binary>> -> <<2, Rest/binary>>;
@@ -375,10 +376,10 @@ test_bogus_proofs([],_T) ->
     ok.
 
 alter_one_hash_value(DB) ->
-    Dict = aeu_mp_trees_db:get_cache(DB),
-    Size = dict:size(Dict),
+    Map = aeu_mp_trees_db:get_cache(DB),
+    Size = map_size(Map),
     Pos  = rand:uniform(Size),
-    {Hash, Node} = lists:nth(Pos, dict:to_list(Dict)),
+    {Hash, Node} = lists:nth(Pos, maps:to_list(Map)),
     NewNode =
         case Node of
             [X, Y] ->
@@ -397,9 +398,9 @@ alter_one_hash_value(DB) ->
 
 test_subtrees() ->
     {Tree, Vals} = gen_mp_tree({1542,713829,704664}, 1000),
-    ValDict = dict:from_list(Vals),
-    ?assertEqual(length(Vals), dict:size(ValDict)),
-    %% Fenerate nodes for subtree roots
+    ValMap = maps:from_list(Vals),
+    ?assertEqual(length(Vals), map_size(ValMap)),
+    %% Generate nodes for subtree roots
     Roots = lists:usort([R || {<<R:16/binary, _/bits>>, _}  <- Vals]),
     Tree1 = insert_vals([{R, <<1>>} || R <- Roots], Tree),
 
@@ -414,29 +415,29 @@ test_subtrees() ->
 
     %% Check that iterating through all unique subtrees also iterate
     %% through all keys exactly once
-    iterate_subtrees(Roots, Tree1, ValDict),
+    iterate_subtrees(Roots, Tree1, ValMap),
     ok.
 
-iterate_subtrees([Root|Left], Tree, ValDict) ->
+iterate_subtrees([Root|Left], Tree, ValMap) ->
     {ok, Subtree} = aeu_mp_trees:read_only_subtree(Root, Tree),
     Iterator = aeu_mp_trees:iterator(Subtree),
-    NewValDict = iterate_one_subtree(aeu_mp_trees:iterator_next(Iterator), Root, ValDict),
-    iterate_subtrees(Left, Tree, NewValDict);
-iterate_subtrees([],_Tree, ValDict) ->
-    case dict:size(ValDict) of
+    NewValMap = iterate_one_subtree(aeu_mp_trees:iterator_next(Iterator), Root, ValMap),
+    iterate_subtrees(Left, Tree, NewValMap);
+iterate_subtrees([],_Tree, ValMap) ->
+    case map_size(ValMap) of
         0 -> ok;
         Other -> error({not_traversed, Other})
     end.
 
-iterate_one_subtree('$end_of_table',_Root,ValDict) ->
-    ValDict;
-iterate_one_subtree({Key0, Val, Iterator}, Root, ValDict) ->
+iterate_one_subtree('$end_of_table',_Root,ValMap) ->
+    ValMap;
+iterate_one_subtree({Key0, Val, Iterator}, Root, ValMap) ->
     Key = <<Root/bits, Key0/bits>>,
-    case dict:find(Key, ValDict) of
+    case maps:find(Key, ValMap) of
         {ok, Val} ->
-            NewValDict = dict:erase(Key, ValDict),
+            NewValMap = maps:remove(Key, ValMap),
             Next = aeu_mp_trees:iterator_next(Iterator),
-            iterate_one_subtree(Next, Root, NewValDict);
+            iterate_one_subtree(Next, Root, NewValMap);
         {ok, Other} ->
             error({wrong_value, Key, Val, Other});
         error ->
@@ -458,16 +459,43 @@ test_visit_reachable() ->
                                stop
                        end
                end,
-    DB = aeu_mp_trees:visit_reachable_hashes(Tree, new_dict_db(), VisitFun),
+    DB = aeu_mp_trees:visit_reachable_hashes(Tree, new_map_db(), VisitFun),
     NewTree = aeu_mp_trees:new(RootHash, DB),
     Sorted = lists:keysort(1, Vals),
     Iterator = aeu_mp_trees:iterator(NewTree),
     test_iterator(Iterator, NewTree, Sorted),
     OldCache = aeu_mp_trees_db:get_cache(aeu_mp_trees:db(Tree)),
     NewCache = aeu_mp_trees_db:get_cache(aeu_mp_trees:db(NewTree)),
-    io:format("OldCache size: ~p\n", [dict:size(OldCache)]),
-    io:format("NewCache size: ~p\n", [dict:size(NewCache)]),
+    io:format("OldCache size: ~p\n", [map_size(OldCache)]),
+    io:format("NewCache size: ~p\n", [map_size(NewCache)]),
     ok.
+
+test_visit_reachable_ext() ->
+    {Tree, Vals} = gen_mp_tree({1681,802933,303061}, 1000),
+    ValsMap = maps:from_list(Vals),
+    VisitFun = fun(#{path := Key, value := Val}, Next, RawNode, Acc) ->
+                       case Val of
+                           <<>> ->
+                               {continue, Acc};
+                           Val ->
+                               try
+                                   Val = maps:get(Key, Acc),
+                                   {continue, maps:remove(Key, Acc)}
+                               catch
+                                   error:Err ->
+                                       error({Err, #{key => Key,
+                                                     val => Val,
+                                                     next => Next,
+                                                     raw => RawNode}})
+                               end
+                       end;
+                  (#{result := {value, _}}, _, _, Acc) ->
+                       {continue, Acc}
+               end,
+    Res = aeu_mp_trees:visit_reachable_hashes(Tree, ValsMap, VisitFun),
+    0 = map_size(Res),
+    ok.
+
 
 %%%=============================================================================
 %%% Minimal cache commit tests
@@ -478,12 +506,12 @@ test_commit_reachable() ->
     Tree1 = aeu_mp_trees:commit_reachable_to_db(Tree),
 
     %% Check that we are not committing the full cache
-    CacheSize = dict:size(aeu_mp_trees_db:get_cache(aeu_mp_trees:db(Tree))),
-    DBSize1   = dict:size(aeu_mp_trees_db:get_handle(aeu_mp_trees:db(Tree1))),
+    CacheSize = map_size(aeu_mp_trees_db:get_cache(aeu_mp_trees:db(Tree))),
+    DBSize1   = map_size(aeu_mp_trees_db:get_handle(aeu_mp_trees:db(Tree1))),
     ?assert(DBSize1 < CacheSize),
 
     %% Check that we now have an empty cache.
-    CacheSize1 = dict:size(aeu_mp_trees_db:get_cache(aeu_mp_trees:db(Tree1))),
+    CacheSize1 = map_size(aeu_mp_trees_db:get_cache(aeu_mp_trees:db(Tree1))),
     ?assertEqual(0, CacheSize1),
 
     %% Check that we didn't lose any keys.
@@ -495,7 +523,7 @@ test_commit_reachable() ->
     {Tree2, Vals2} = extend_mp_tree(Tree1, 1000),
 
     %% The db size should be unchanged.
-    DBSize2   = dict:size(aeu_mp_trees_db:get_handle(aeu_mp_trees:db(Tree2))),
+    DBSize2   = map_size(aeu_mp_trees_db:get_handle(aeu_mp_trees:db(Tree2))),
     ?assertEqual(DBSize1, DBSize2),
 
     %% Commit the reachable from the cache.
@@ -503,8 +531,8 @@ test_commit_reachable() ->
 
     %% The size of the new db should contain all old nodes, plus a
     %% subset of the cache size before commit.
-    CacheSize2 = dict:size(aeu_mp_trees_db:get_cache(aeu_mp_trees:db(Tree2))),
-    DBSize3   = dict:size(aeu_mp_trees_db:get_handle(aeu_mp_trees:db(Tree3))),
+    CacheSize2 = map_size(aeu_mp_trees_db:get_cache(aeu_mp_trees:db(Tree2))),
+    DBSize3   = map_size(aeu_mp_trees_db:get_handle(aeu_mp_trees:db(Tree3))),
     ?assert(DBSize3 < DBSize2 + CacheSize2),
 
     %% We should have all values in the final tree
@@ -529,8 +557,8 @@ test_commit_reachable() ->
 test_gc_cache() ->
     {Tree, Vals}  = gen_mp_tree({1545,59644,821050}, 1000),
     GCTree = aeu_mp_trees:gc_cache(Tree),
-    CacheSize1 = dict:size(aeu_mp_trees_db:get_cache(aeu_mp_trees:db(Tree))),
-    CacheSize2 = dict:size(aeu_mp_trees_db:get_cache(aeu_mp_trees:db(GCTree))),
+    CacheSize1 = map_size(aeu_mp_trees_db:get_cache(aeu_mp_trees:db(Tree))),
+    CacheSize2 = map_size(aeu_mp_trees_db:get_cache(aeu_mp_trees:db(GCTree))),
 
     %% Assert the GC was effective, but the new tree contains all values.
     ?assert(CacheSize2 < CacheSize1),
@@ -541,7 +569,7 @@ test_gc_cache() ->
     %% Traverse all reachable nodes, and make sure the cache contains only these.
     VisitFun = fun(Hash, Val, Acc) -> {continue, [{Hash, Val}|Acc]} end,
     Visited = aeu_mp_trees:visit_reachable_hashes(GCTree, [], VisitFun),
-    CacheVals = dict:to_list(aeu_mp_trees_db:get_cache(aeu_mp_trees:db(GCTree))),
+    CacheVals = maps:to_list(aeu_mp_trees_db:get_cache(aeu_mp_trees:db(GCTree))),
     ?assertEqual(lists:sort(Visited), lists:sort(CacheVals)).
 
 %%%=============================================================================
@@ -557,7 +585,7 @@ extend_mp_tree(Tree, NofNodes) ->
     {insert_vals(Vals, Tree), Vals}.
 
 gen_vals(NofNodes) ->
-    [{random_hexstring(65), random_hexstring(8)}
+    [{random_hexstring(65), random_value()}
      || _ <- lists:seq(1, NofNodes)].
 
 apply_ops([{put, Key, Val}|Left], T) ->
@@ -566,6 +594,15 @@ apply_ops([{delete, Key}|Left], T) ->
     apply_ops(Left, aeu_mp_trees:delete(Key, T));
 apply_ops([], T) ->
     T.
+
+random_value() ->
+    case rand:uniform(10) rem 4 of
+        0 ->
+            %% Occasionally use a larger value
+            random_hexstring(64);
+        _ ->
+            random_hexstring(8)
+    end.
 
 insert_vals([{X, Y}|Left], T) ->
     insert_vals(Left, aeu_mp_trees:put(X, Y, T));
@@ -580,23 +617,23 @@ delete_vals([], T) ->
 random_hexstring(N) when N >= 1 ->
     << <<(rand:uniform(16) - 1):4>> || _ <- lists:seq(1, N) >>.
 
-new_dict_db() ->
-    aeu_mp_trees_db:new(dict_db_spec()).
+new_map_db() ->
+    aeu_mp_trees_db:new(map_db_spec()).
 
-dict_db_spec() ->
-    #{ handle => dict:new()
-     , cache  => dict:new()
+map_db_spec() ->
+    #{ handle => #{}
+     , cache  => #{}
      , module => ?MODULE
      }.
 
-mpt_db_get(Key, Dict) ->
-    case dict:find(Key, Dict) of
+mpt_db_get(Key, Map) ->
+    case maps:find(Key, Map) of
         {ok, Val} -> {value, Val};
         error -> none
     end.
 
-mpt_db_put(Key, Val, Dict) ->
-    dict:store(Key, Val, Dict).
+mpt_db_put(Key, Val, Map) ->
+    Map#{Key => Val}.
 
 mpt_db_drop_cache(_Dict) ->
-    dict:new().
+    #{}.

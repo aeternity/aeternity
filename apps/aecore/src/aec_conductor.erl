@@ -1390,12 +1390,13 @@ handle_successfully_added_block(Block, Hash, false, _, Events, State, Origin) ->
     maybe_publish_tx_events(Events, Hash, Origin),
     maybe_publish_block(Origin, Block),
     State1 = maybe_consensus_change(State, Block),
+    [ maybe_garbage_collect(Block, Hash, false) || aec_blocks:type(Block) == key ],
     {ok, State1};
 handle_successfully_added_block(Block, Hash, true, PrevKeyHeader, Events, State, Origin) ->
     maybe_publish_tx_events(Events, Hash, Origin),
     maybe_publish_block(Origin, Block),
     State1 = maybe_consensus_change(State, Block),
-    ConsensusModule = consensus_module(State),
+    ConsensusModule = consensus_module(State1),
     case preempt_on_new_top(State1, Block, Hash, Origin) of
         {micro_changed, State2 = #state{ consensus = Cons }} ->
             {ok, setup_loop(State2, false, Cons#consensus.leader, Origin)};
@@ -1403,7 +1404,8 @@ handle_successfully_added_block(Block, Hash, true, PrevKeyHeader, Events, State,
             (BlockType == key) andalso
                 aec_metrics:try_update(
                   [ae,epoch,aecore,blocks,key,info], info_value(NewTopBlock)),
-            [ maybe_garbage_collect(NewTopBlock) || BlockType == key ],
+            [ maybe_garbage_collect(NewTopBlock, Hash, true)
+              || BlockType == key ],
             IsLeader = is_leader(NewTopBlock, PrevKeyHeader, ConsensusModule),
             case IsLeader of
                 true ->
@@ -1506,15 +1508,15 @@ get_pending_key_block(TopHash, State) ->
 %%
 %% To avoid starting of the GC process just for EUNIT
 -ifdef(EUNIT).
-maybe_garbage_collect(_) -> nop.
+maybe_garbage_collect(_, _, _) -> nop.
 -else.
 
 %% This should be called when there are no processes modifying the block state
 %% (e.g. aec_conductor on specific places)
-maybe_garbage_collect(Block) ->
+maybe_garbage_collect(Block, Hash, TopChange) ->
     T0 = erlang:system_time(microsecond),
     Header = aec_blocks:to_header(Block),
-    Res = aec_db_gc:maybe_garbage_collect(Header),
+    Res = aec_db_gc:maybe_garbage_collect(Header, Hash, TopChange),
     T1 = erlang:system_time(microsecond),
     lager:debug("Result -> ~p (time: ~p us)", [Res, T1-T0]),
     Res.
