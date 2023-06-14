@@ -21,6 +21,7 @@
 
 -ifdef(TEST).
 -export([ origins_cache_gc/0
+        , garbage_collect/0
         , stop/0]).
 -endif.
 
@@ -96,6 +97,16 @@ sync_gc(Height) ->
                     0
             end
     end.
+
+-ifdef(TEST).
+garbage_collect() ->
+    case aec_tx_pool:gc_height_and_dbs() of
+        undefined ->
+            undefined;
+        {GcHeight, Dbs} ->
+            do_gc(GcHeight, Dbs)
+    end.
+-endif.
 
 -spec add_to_origins_cache(aec_tx_pool:origins_cache(), aec_keys:pubkey(),
                            non_neg_integer()) -> ok.

@@ -99,7 +99,7 @@ end_per_testcase(_Case, Config) ->
 txs_gc(Config) ->
     %% WARNING: GC is triggered only when we receive a keyblock and we are NOT the leader
     %% The old test suite was implicitly calling aec_tx_pool:garbage_collect() when mining stopped.
-    %% To simulate receiving blocks from external entities - call aec_tx_pool:garbage_collect() explicitly :)
+    %% To simulate receiving blocks from external entities - call aec_tx_pool_gc:garbage_collect() explicitly :)
     aecore_suite_utils:reinit_with_ct_consensus(dev1),
     aecore_suite_utils:reinit_with_ct_consensus(dev2),
     N1 = aecore_suite_utils:node_name(dev1),
@@ -120,66 +120,61 @@ txs_gc(Config) ->
     {ok, _, _}    = add_spend_tx(N1, 1000, 20000 * aec_test_utils:min_gas_price(),  8,  7),  %% Short TTL - expires at 7
 
     %% Now there should be 7 transactions in mempool
-    pool_check(N1, 7),
+    pool_check(N1, ?LINE, 7),
 
     %% Mine to get TxH1-3 onto chain
     aecore_suite_utils:mine_key_blocks(N1, 1), %% Make us the leader
     aecore_suite_utils:mine_micro_blocks(N1, 2),
     aecore_suite_utils:mine_key_blocks(N1, 1),
     aecore_suite_utils:mine_micro_blocks(N1, 2),
-    rpc:call(N1, aec_tx_pool, garbage_collect, []),
 
     %% At height 2 there should be 4 transactions in mempool
-    pool_check(N1, 4),
+    pool_check(N1, ?LINE, 4),
 
     %% Mine 1 more key block to ensure one TX is GC:ed.
     aecore_suite_utils:mine_key_blocks(N1, 1),
-    rpc:call(N1, aec_tx_pool, garbage_collect, []),
     Height2 = 3,
 
     %% Now at height 3 there should be 3 transactions in mempool - _GC1 is GC:ed
-    pool_check(N1, 3),
+    pool_check(N1, ?LINE, 3),
 
     %% Add the missing tx
     {ok, _, TxH4} = add_spend_tx(N1, 1000, 20000 * aec_test_utils:min_gas_price(),  4,  10), %% consecutive nonce
 
     %% Mine to get TxH4-5 onto chain
     {ok, Blocks2} = mine_blocks_until_txs_on_chain(N1, [TxH4, TxH5]),
-    rpc:call(N1, aec_tx_pool, garbage_collect, []),
     Height3 = Height2 + length(Blocks2),
 
     %% Now if at height 5 or 6 there should be 2 transactions in mempool
-    pool_check(N1, 2, {Height3, 6}),
+    pool_check(N1, ?LINE, 2, {Height3, 6}),
 
     %% Mine 1 more key block if Height is 5 ensure one TX should be GC:ed.
-    [ begin
-          aecore_suite_utils:mine_key_blocks(N1, 7 - Height3), rpc:call(N1, aec_tx_pool, garbage_collect, [])
-      end || Height3 < 7 ],
+    [ aecore_suite_utils:mine_key_blocks(N1, 7 - Height3)
+      || Height3 < 7 ],
 
     Height4 = max(Height3, 7),
 
     %% Now there should be 1 transaction in mempool
-    pool_check(N1, 1, {Height4, 7}),
+    pool_check(N1, ?LINE, 1, {Height4, 7}),
 
     %% Mine 2 more blocks then all TXs should be GC:ed. Height>=10
     aecore_suite_utils:mine_key_blocks(N1, 3),
-    rpc:call(N1, aec_tx_pool, garbage_collect, []),
 
     %% Now there should be no transactions in mempool
-    pool_check(N1, 0),
+    pool_check(N1, ?LINE, 0),
 
     ok = aecore_suite_utils:check_for_logs([dev1], Config),
     aecore_suite_utils:unmock_mempool_nonce_offset(N1).
 
-pool_check(Node, ExpectedNTxs) ->
-    pool_check_(Node, ExpectedNTxs, 5).
+pool_check(Node, Line, ExpectedNTxs) ->
+    pool_check_(Node, Line, ExpectedNTxs, 5).
 
-pool_check(_Node, _ExpectedNTxs, {Height, MaxHeight}) when Height > MaxHeight ->
-    ct:log("Skipping assert; micro fork advanced height to far...");
-pool_check(Node, ExpectedNTxs, _) ->
-    pool_check_(Node, ExpectedNTxs, 5).
+pool_check(_Node, Line, _ExpectedNTxs, {Height, MaxHeight}) when Height > MaxHeight ->
+    ct:log("~p: Skipping assert; micro fork advanced height to far...", [Line]);
+pool_check(Node, Line, ExpectedNTxs, _) ->
+    pool_check_(Node, Line, ExpectedNTxs, 5).
 
-pool_check_(Node, ExpectedNTxs, Retries) ->
+pool_check_(Node, Line, ExpectedNTxs, Retries) ->
     {ok, Txs} = pool_peek(Node),
     ct:log("pool_check: pool has ~p TXs, expected ~p\n", [length(Txs), ExpectedNTxs]),
     case ExpectedNTxs == length(Txs) of
@@ -189,10 +184,10 @@ pool_check_(Node, ExpectedNTxs, Retries) ->
             ct:log("TXS: ~p", [Txs]),
             GC = rpc:call(Node, ets, tab2list, [mempool_gc]),
             ct:log("GCTAB: ~p", [GC]),
-            ct:fail({pool_check_failed, {expected, ExpectedNTxs, got, length(Txs)}});
+            ct:fail({pool_check_failed, Line, {expected, ExpectedNTxs, got, length(Txs)}});
         _ ->
             timer:sleep(500),
-            pool_check_(Node, ExpectedNTxs, Retries - 1)
+            pool_check_(Node, Line, ExpectedNTxs, Retries - 1)
     end.
 
 pool_peek(Node) ->

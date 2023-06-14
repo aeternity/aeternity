@@ -34,8 +34,7 @@
         , stop/0
         ]).
 
--export([ garbage_collect/0
-        , get_candidate/2
+-export([ get_candidate/2
         , get_candidate/3
         , get_max_nonce/1
         , minimum_miner_gas_price/0
@@ -76,7 +75,6 @@
 -include_lib("aecontract/include/hard_forks.hrl").
 
 -ifdef(TEST).
--export([sync_garbage_collect/1]). %% Only for (Unit-)test
 -export([restore_mempool/0]).
 -export([peek_db/0]).
 -export([peek_visited/0]).
@@ -243,18 +241,7 @@ get_max_nonce(Sender) ->
     #dbs{nonce_db = NDb} = dbs(),
     ?TC(int_get_max_nonce(NDb, Sender), {max_nonce, Sender}).
 
--spec garbage_collect() -> ok.
-garbage_collect() ->
-    lager:debug("garbage_collect()", []),
-    gen_server:cast(?SERVER, garbage_collect).
-
 -ifdef(TEST).
--spec sync_garbage_collect(Height :: aec_blocks:height()) -> ok.
-sync_garbage_collect(Height) ->
-    aec_tx_pool_gc:gc(Height, dbs()),
-    sys:get_status(aec_tx_pool_gc), %% sync point (gc is asynchronous)
-    ok.
-
 restore_mempool() ->
     revisit(dbs()).
 
@@ -510,15 +497,6 @@ handle_call_(Request, From, State) ->
 handle_cast(Msg, St) ->
     ?TC(handle_cast_(Msg, St), Msg).
 
-handle_cast_(garbage_collect, State) ->
-    case State of
-        #state{gc_height = undefined, sync_top_calc = P} when is_pid(P) ->
-            %% sync_top update will be followed by GC (in handle_info/2 below)
-            {noreply, State};
-        #state{gc_height = H} when is_integer(H) ->
-            State1 = do_update_sync_top_target(H, State),
-            {noreply, State1}
-    end;
 handle_cast_(Msg, State) ->
     lager:warning("Ignoring unknown cast message: ~p", [Msg]),
     {noreply, State}.
@@ -527,7 +505,6 @@ handle_info(Msg, St) ->
     ?TC(handle_info_(Msg, St), Msg).
 
 handle_info_({P, new_gc_height, GCHeight}, #state{sync_top_calc = P} = State) ->
-    %% aec_tx_pool_gc:gc(GCHeight, State#state.dbs),
     {noreply, State#state{sync_top_calc = undefined, gc_height = GCHeight}};
 handle_info_({'ETS-TRANSFER', _, _, _}, State) ->
     {noreply, State};
