@@ -1626,7 +1626,7 @@
                                                             "default": ""
                                                         },
                                                         "type": {
-                                                            "description" : "The type of parent network connection. Possible values are 'AE2AE', 'AE2BTC', 'AE2DOGE'",
+                                                            "description" : "The type of parent network connection. Currently only AE, Bitcoin and Dogecoin are implemented",
                                                             "type": "string",
                                                             "enum": ["AE2AE", "AE2BTC", "AE2DOGE"],
                                                             "default": "AE2AE"
