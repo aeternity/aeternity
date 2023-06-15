@@ -353,7 +353,7 @@ prev_block(Block) ->
 
 -spec micro_block_header(SerializedHash) -> Result
     when SerializedHash :: binary(), % <<"mb_...">>
-         Result         :: {ok, aec_blocks:micro_block()}
+         Result         :: {ok, aec_headers:header()}
                          | {error, Reason},
          Reason         :: invalid_prefix
                          | invalid_encoding
