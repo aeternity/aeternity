@@ -44,7 +44,7 @@ The easiest way to install package on MacOS is Homebrew, it can be installed by 
 Then install the build dependencies using the `brew` command:
 ```
 brew update
-brew install erlang@23 openssl libsodium autoconf gmp cmake
+brew install erlang@23 openssl libsodium autoconf gmp cmake automake googletest
 ```
 
 If building on an m1 Mac homebrew does not automatically set up symlinks to system directories, so before running `make` set up the build path with:
