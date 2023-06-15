@@ -136,13 +136,17 @@ handle_request_('GetCurrentKeyBlock', _, _) ->
     end;
 handle_request_('GetCurrentKeyBlockHash', _, _) ->
     case aeapi:top_key_block_hash() of
-        {ok, Hash} -> {200, [], aeser_api_encoder:encode(key_block_hash, Hash)};
-        error      -> {404, [], #{reason => <<"Block not found">>}}
+        {ok, Hash} ->
+            {200, [], #{hash => aeser_api_encoder:encode(key_block_hash, Hash)}};
+        error ->
+            {404, [], #{reason => <<"Block not found">>}}
     end;
 handle_request_('GetCurrentKeyBlockHeight', _, _) ->
     case aeapi:current_block_height() of
-        {ok, Height} -> {200, [], Height};
-        error        -> {404, [], #{reason => <<"Block not found">>}}
+        {ok, Height} ->
+            {200, [], #{height => Height}};
+        error ->
+            {404, [], #{reason => <<"Block not found">>}}
     end;
 handle_request_('GetPendingKeyBlock', _, _) ->
     case aeapi:key_block_candidate_header() of
