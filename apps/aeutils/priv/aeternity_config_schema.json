@@ -1688,6 +1688,7 @@
                                                             "hyper_chain_account": {
                                                                 "description": "Child chain staking account",
                                                                 "type" : "object",
+                                                                "additionalProperties" : false,
                                                                 "properties": {
                                                                     "pub": {
                                                                         "description": "Public key",
