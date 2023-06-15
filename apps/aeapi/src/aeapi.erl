@@ -37,6 +37,7 @@
          key_block_txs/1,
          prev_key_block/1,
          prev_block/1,
+         micro_block_header/1,
          micro_blocks_at_key_block/1,
          generation_at_height/1,
          balance_change_events_in_tx/2,
@@ -347,6 +348,29 @@ prev_block(Block) ->
             aec_chain:get_block(PrevHash);
         true ->
             {error, genesis}
+    end.
+
+
+-spec micro_block_header(SerializedHash) -> Result
+    when SerializedHash :: binary(), % <<"mb_...">>
+         Result         :: {ok, aec_blocks:micro_block()}
+                         | {error, Reason},
+         Reason         :: invalid_prefix
+                         | invalid_encoding
+                         | block_not_found.
+%% @doc
+%% Retrieve a microblock header using the serialized form of its block hash.
+
+micro_block_header(SerializedHash) ->
+    case aeser_api_encoder:safe_decode(micro_block_hash, SerializedHash) of
+        {ok, Hash} -> micro_block_header2(Hash);
+        Error      -> Error
+    end.
+
+micro_block_header2(Hash) ->
+    case aec_chain:get_block(Hash) of
+        {ok, Block} -> {ok, aec_blocks:to_header(Block)};
+        error       -> {error, block_not_found}
     end.
 
 

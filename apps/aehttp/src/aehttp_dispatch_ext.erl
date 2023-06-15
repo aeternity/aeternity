@@ -232,19 +232,17 @@ handle_request_('GetAccountNextNonce', Params, _) ->
             {404, [], #{reason => <<"Account not found">>}}
     end;
 handle_request_('GetMicroBlockHeaderByHash', Params, _Context) ->
-    case aeser_api_encoder:safe_decode(micro_block_hash, maps:get(hash, Params)) of
-        {ok, Hash} ->
-            case aehttp_logic:get_micro_block_by_hash(Hash) of
-                {ok, Block} ->
-                    Header = aec_blocks:to_header(Block),
-                    {200, [], aec_headers:serialize_for_client(Header)};
-                {error, block_not_found} ->
-                    {404, [], #{reason => <<"Block not found">>}}
-            end;
-        {error, _} ->
-            {400, [], #{reason => <<"Invalid hash">>}}
+    Hash = maps:get(hash, Params),
+    case aeapi:micro_block_header(Hash) of
+        {ok, Header} ->
+            {200, [], aec_headers:serialize_for_client(Header)};
+        {error, invalid_prefix} ->
+            {400, [], #{reason => <<"Invalid hash">>}};
+        {error, invalid_encoding} ->
+            {400, [], #{reason => <<"Invalid hash">>}};
+        {error, block_not_found} ->
+            {404, [], #{reason => <<"Block not found">>}}
     end;
-
 handle_request_('GetMicroBlockTransactionsByHash', Params, _Context) ->
     case aeser_api_encoder:safe_decode(micro_block_hash, maps:get(hash, Params)) of
         {ok, Hash} ->
