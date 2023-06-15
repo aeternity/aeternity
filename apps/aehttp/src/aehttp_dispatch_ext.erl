@@ -190,7 +190,7 @@ handle_request_('GetAccountByPubkeyAndHeight', Params, _) ->
         {error, invalid_prefix} ->
             {400, [], #{reason => <<"Invalid public key">>}};
         {error, chain_too_short} ->
-            {400, [], #{reason => <<"Height not available">>}};
+            {404, [], #{reason => <<"Height not available">>}};
         {error, garbage_collected} ->
             {410, [], #{reason => gc_error_message()}};
         {error, account_not_found} ->
