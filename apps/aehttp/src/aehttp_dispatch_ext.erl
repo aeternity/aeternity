@@ -181,7 +181,8 @@ handle_request_('GetAccountByPubkey', Params, _) ->
     end;
 handle_request_('GetAccountByPubkeyAndHeight', Params, _) ->
     PubKey = maps:get(pubkey, Params),
-    Height = aehttp_helpers:to_int(maps:get(height, Params)),
+    Height = maps:get(height, Params),
+%   Height = aehttp_helpers:to_int(maps:get(height, Params)),
     case aeapi:account_at_height(PubKey, Height) of
         {ok, Account} ->
             {200, [], aec_accounts:serialize_for_client(Account)};
@@ -207,7 +208,9 @@ handle_request_('GetAccountByPubkeyAndHash', Params, _) ->
         {error, {block, _}} ->
             {400, [], #{reason => <<"Invalid block hash">>}};
         {error, account_not_found} ->
-            {404, [], #{reason => <<"Account not found">>}}
+            {404, [], #{reason => <<"Account not found">>}};
+        {error, no_state_trees} ->
+            {404, [], #{reason => <<"Hash not available">>}}
     end;
 handle_request_('GetKeyBlockByHeight', Params, _Context) ->
     Height =  aehttp_helpers:to_int(maps:get(height, Params)),
