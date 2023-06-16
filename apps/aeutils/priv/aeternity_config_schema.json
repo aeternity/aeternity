@@ -1611,9 +1611,20 @@
                                                     "type": "integer"
                                                 },
                                                 "consensus": {
-                                                    "description" : "Details of the parent chain. TODO: add 'fee' and 'amount'",
+                                                    "description" : "Details of the parent chain.",
                                                     "type" : "object",
+                                                    "additionalProperties" : false,
                                                     "properties": {
+                                                        "fee": {
+                                                            "description": "The fee for the commitment on the parent chain",
+                                                            "default": 100000000000000,
+                                                            "type": "integer"
+                                                        },
+                                                        "amount": {
+                                                            "description": "Amount of the parent chain commitment transaction",
+                                                            "default": 1,
+                                                            "type": "integer"
+                                                        },
                                                         "network_id": {
                                                             "description" : "The network Id of the parent chain if it has one",
                                                             "type": "string",
