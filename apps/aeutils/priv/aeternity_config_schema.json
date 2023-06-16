@@ -1597,8 +1597,8 @@
                                         },
                                         "parent_chain": {
                                             "description" : "Details of how this node will connect to a parent chain if this is a hyperchain.",
-                                            "type" : "object",
                                             "additionalProperties" : false,
+                                            "type" : "object",
                                             "properties": {
                                                 "confirmations": {
                                                     "description": "Minimum number of block confirmations required when selecting a UTXO for sending parent chain commitment transactions",
@@ -1611,9 +1611,8 @@
                                                     "type": "integer"
                                                 },
                                                 "consensus": {
-                                                    "description" : "Details of the parent chain",
+                                                    "description" : "Details of the parent chain. TODO: add 'fee' and 'amount'",
                                                     "type" : "object",
-                                                    "additionalProperties" : false,
                                                     "properties": {
                                                         "network_id": {
                                                             "description" : "The network Id of the parent chain if it has one",
@@ -1676,53 +1675,53 @@
                                                             "default": []
                                                         }
                                                     }
-                                                },
-                                                "stakers": {
-                                                    "description" : "List of hyperchain accounts and associated parent chain accounts that this node should post commitments for",
-                                                    "type" : "array",
-                                                    "items" : {
+                                                }
+                                            }
+                                        },
+                                        "stakers": {
+                                            "description" : "List of hyperchain accounts and associated parent chain accounts that this node should post commitments for",
+                                            "type" : "array",
+                                            "items" : {
+                                                "type" : "object",
+                                                "additionalProperties" : false,
+                                                "description" : "Hyperchain and parent chain account pair",
+                                                "properties": {
+                                                    "hyper_chain_account": {
+                                                        "description": "Child chain staking account",
                                                         "type" : "object",
                                                         "additionalProperties" : false,
-                                                        "description" : "Hyperchain and parent chain account pair",
                                                         "properties": {
-                                                            "hyper_chain_account": {
-                                                                "description": "Child chain staking account",
-                                                                "type" : "object",
-                                                                "additionalProperties" : false,
-                                                                "properties": {
-                                                                    "pub": {
-                                                                        "description": "Public key",
-                                                                        "type": "string",
-                                                                        "default": ""
-                                                                    },
-                                                                    "priv": {
-                                                                        "description": "Private key",
-                                                                        "type": "string",
-                                                                        "default": ""
-                                                                    }
-                                                                }
+                                                            "pub": {
+                                                                "description": "Public key",
+                                                                "type": "string",
+                                                                "default": ""
                                                             },
-                                                            "parent_chain_account": {
-                                                                "description": "Parent chain commitment account",
-                                                                "type" : "object",
-                                                                "additionalProperties" : false,
-                                                                "properties": {
-                                                                    "pub": {
-                                                                        "description": "Public key",
-                                                                        "type": "string",
-                                                                        "default": ""
-                                                                    },
-                                                                    "priv": {
-                                                                        "description": "Private key",
-                                                                        "type": "string",
-                                                                        "default": ""
-                                                                    }
-                                                                }
+                                                            "priv": {
+                                                                "description": "Private key",
+                                                                "type": "string",
+                                                                "default": ""
                                                             }
-                                                        },
-                                                        "default": []
+                                                        }
+                                                    },
+                                                    "parent_chain_account": {
+                                                        "description": "Parent chain commitment account",
+                                                        "type" : "object",
+                                                        "additionalProperties" : false,
+                                                        "properties": {
+                                                            "pub": {
+                                                                "description": "Public key",
+                                                                "type": "string",
+                                                                "default": ""
+                                                            },
+                                                            "priv": {
+                                                                "description": "Private key",
+                                                                "type": "string",
+                                                                "default": ""
+                                                            }
+                                                        }
                                                     }
-                                                }
+                                                },
+                                                "default": []
                                             }
                                         }
                                     }
