@@ -205,15 +205,18 @@ handle_request_('GetAccountByPubkeyAndHash', Params, _) ->
             {200, [], aec_accounts:serialize_for_client(Account)};
         {error, {pubkey, _}} ->
             {400, [], #{reason => <<"Invalid public key">>}};
-        {error, {block, _}} ->
-            {400, [], #{reason => <<"Invalid block hash">>}};
+        {error, {block, invalid_prefix}} ->
+            {400, [], #{reason => <<"Illegal hash: invalid_prefix">>}};
+        {error, {block, invalid_encoding}} ->
+            {400, [], #{reason => <<"Illegal hash: invalid_encoding">>}};
         {error, account_not_found} ->
             {404, [], #{reason => <<"Account not found">>}};
         {error, no_state_trees} ->
             {404, [], #{reason => <<"Hash not available">>}}
     end;
 handle_request_('GetKeyBlockByHeight', Params, _Context) ->
-    Height =  aehttp_helpers:to_int(maps:get(height, Params)),
+    Height = maps:get(height, Params),
+%   Height = aehttp_helpers:to_int(maps:get(height, Params)),
     case aec_chain:get_key_block_by_height(Height) of
         {ok, Block} ->
             Header = aec_blocks:to_header(Block),

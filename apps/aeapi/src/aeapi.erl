@@ -369,8 +369,14 @@ micro_block_header(SerializedHash) ->
 
 micro_block_header2(Hash) ->
     case aec_chain:get_block(Hash) of
-        {ok, Block} -> {ok, aec_blocks:to_header(Block)};
+        {ok, Block} -> micro_block_header3(Block);
         error       -> {error, block_not_found}
+    end.
+
+micro_block_header3(Block) ->
+    case aec_blocks:type(Block) of
+        micro -> {ok, aec_blocks:to_header(Block)};
+        key   -> {error, block_not_found}
     end.
 
 
@@ -735,6 +741,7 @@ account_at_height2(PubKey, Height) ->
          Result  :: {ok, aec_accounts:account()}
                   | {error, Reason},
          Reason  :: account_not_found
+                  | no_state_trees
                   | {Element :: pubkey | block,
                      Info    :: invalid_encoding | invalid_prefix}.
 %% @doc
