@@ -4,8 +4,6 @@ Rosetta is a standardised HTTP API for interacting with the blockchain (https://
 
 It comes with its own API compliance test tool rosetta-cli (https://github.com/coinbase/rosetta-cli)
 
-The Aeternity node supports a subset of the API endpoints at this time, primarily the read only parts of the specification:
-
 - [x] `/network/list`
 - [x] `/network/options`
 - [x] `/network/status`
@@ -15,14 +13,14 @@ The Aeternity node supports a subset of the API endpoints at this time, primaril
 - [x] `/block/transaction`
 - [x] `/mempool`
 - [x] `/mempool/transaction` (partially supported - balance events missing)
-- [ ] `/construction/combine`
-- [ ] `/construction/derive`
-- [ ] `/construction/hash`
-- [ ] `/construction/metadata`
-- [ ] `/construction/parse`
-- [ ] `/construction/payloads`
-- [ ] `/construction/preprocess`
-- [ ] `/construction/submit`
+- [x] `/construction/combine`
+- [x] `/construction/derive`
+- [x] `/construction/hash`
+- [x] `/construction/metadata`
+- [x] `/construction/parse`
+- [x] `/construction/payloads`
+- [x] `/construction/preprocess`
+- [x] `/construction/submit`
 
 The Rosetta server listens by default on localhost at port 3213. This can be configured in your aeternity.{json,yaml}
 
