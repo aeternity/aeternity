@@ -882,7 +882,7 @@ tx_pool_test_() ->
      ]}.
 
 tx_pool_gc(Height) ->
-    aec_tx_pool:sync_garbage_collect(Height).
+    aec_tx_pool_gc:sync_gc(Height).
 
 a_signed_tx(Sender, Recipient, Nonce, Fee) ->
     a_signed_tx(Sender, Recipient, Nonce, Fee,0).

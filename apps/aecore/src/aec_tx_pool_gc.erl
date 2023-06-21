@@ -16,10 +16,12 @@
         , ttl/2
         , delete_hash/2
         , gc/2
+        , sync_gc/1
         ]).
 
 -ifdef(TEST).
 -export([ origins_cache_gc/0
+        , garbage_collect/0
         , stop/0]).
 -endif.
 
@@ -83,6 +85,29 @@ delete_hash(MempoolGC, TxHash) ->
 gc(Height, Dbs) ->
     gen_server:cast(?SERVER, {garbage_collect, Height, Dbs}).
 
+sync_gc(Height) ->
+    case aec_tx_pool:gc_height_and_dbs() of
+        undefined ->
+            undefined;
+        {GcHeight, Dbs} ->
+            case Height >= GcHeight of
+                true ->
+                    do_gc(Height, Dbs);
+                false ->
+                    0
+            end
+    end.
+
+-ifdef(TEST).
+garbage_collect() ->
+    case aec_tx_pool:gc_height_and_dbs() of
+        undefined ->
+            undefined;
+        {GcHeight, Dbs} ->
+            do_gc(GcHeight, Dbs)
+    end.
+-endif.
+
 -spec add_to_origins_cache(aec_tx_pool:origins_cache(), aec_keys:pubkey(),
                            non_neg_integer()) -> ok.
 add_to_origins_cache(OriginsCache, Origin, Nonce) ->
@@ -130,7 +155,7 @@ handle_cast({adjust_ttl, Diff, Dbs}, S) ->
     do_adjust_ttl(GCDb, Diff),
     {noreply, S};
 handle_cast({garbage_collect, Height, Dbs}, S) ->
-    ok = do_gc(Height, Dbs),
+    _ = do_gc(Height, Dbs),
     {noreply, S};
 handle_cast({add_to_origins_cache, OriginsCache, Origin, Nonce}, S) ->
     ok = do_add_to_origins_cache(OriginsCache, Origin, Nonce),
@@ -168,32 +193,41 @@ do_adjust_ttl(GCDb, TxHash, Diff) ->
 
 do_gc(Height, Dbs) ->
     GCDb = aec_tx_pool:gc_db(Dbs),
-    GCTxs = ets:select(
+    Cands = ets:select(
               GCDb, [{ #gc_tx{hash = '$1', ttl = '$2', key = '$3', _ = '_'},
                        [{'=<', '$2', Height}],
                        [{{'$1', '$3'}}] }]),
-    do_gc_(GCTxs, Dbs, GCDb).
+    case Cands of
+        [_|_] ->
+            GCTxs =
+                aec_db:ensure_activity(
+                  transaction,
+                  fun() ->
+                          lists:foldr(
+                            fun maybe_gc_tx/2, [], Cands)
+                  end),
+            N = lists:foldl(fun(Tx, Acc) ->
+                                    remove_from_ets(Tx, Dbs, GCDb),
+                                    Acc + 1
+                            end, 0,  GCTxs),
+            aec_metrics:try_update([ae,epoch,aecore,tx_pool,gced], N),
+            N;
+        [] ->
+            0
+    end.
 
-do_gc_([], _Dbs, _GCDb) ->
-    ok;
-do_gc_([{TxHash, Key} | TxHashes], Dbs, GCDb) ->
+maybe_gc_tx({TxHash, _} = Tx, Acc) ->
     case aec_db:gc_tx(TxHash) of
         ok ->
-            aec_tx_pool:raw_delete(Dbs, Key),
-            aec_db:remove_tx_from_mempool(TxHash),
-            ets:delete(GCDb, TxHash),
-            aec_metrics:try_update([ae,epoch,aecore,tx_pool,gced], 1),
-            lager:debug("Garbage collected ~p", [pp(TxHash)]);
-        {error, tx_not_found} ->
-            lager:info("TX garbage collect failed ~p not found",
-                       [pp(TxHash)]),
-            ok;
-        {error, BlockHash} ->
-            lager:info("TX garbage collect failed ~p is present in ~p",
-                       [pp(BlockHash), pp(TxHash)]),
-            ok
-    end,
-    do_gc_(TxHashes, Dbs, GCDb).
+            [Tx|Acc];
+        {error, _} ->
+            Acc
+    end.
+
+remove_from_ets({TxHash, Key}, Dbs, GCDb) ->
+    aec_tx_pool:raw_delete(Dbs, Key),
+    ets:delete(GCDb, TxHash),
+    lager:debug("Garbage collected ~p", [pp(TxHash)]).
 
 %%===================================================================
 %% Origins cache

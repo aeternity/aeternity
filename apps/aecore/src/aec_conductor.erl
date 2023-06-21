@@ -395,7 +395,6 @@ handle_call({post_block, Block},_From, State) ->
 handle_call(stop_block_production,_From, State = #state{ consensus = Cons }) ->
     epoch_mining:info("Mining stopped"),
     aec_block_generator:stop_generation(),
-    [ aec_tx_pool:garbage_collect() || is_record(Cons, consensus) andalso Cons#consensus.leader ],
     aec_events:publish(stop_mining, []),
     State1 = kill_all_workers(State),
     State2 = State1#state{block_producing_state = 'stopped',
@@ -841,13 +840,15 @@ deregister_instance(Pid, #state{instances = MinerInstances0} = State) ->
 preempt_on_new_top(#state{ top_block_hash = OldHash,
                            top_key_block_hash = OldKeyHash,
                            top_height = OldHeight,
+                           consensus = Consensus,
                            mode = Mode
                          } = State, NewBlock, NewHash, Origin) ->
-    ConsensusModule = consensus_module(State),
+    #consensus{ consensus_module = ConsensusModule } = Consensus,
     BlockType = aec_blocks:type(NewBlock),
     PrevNewHash = aec_blocks:prev_hash(NewBlock),
     Hdr = aec_blocks:to_header(NewBlock),
     Height = aec_headers:height(Hdr),
+    maybe_gc_tx_pool(BlockType, Height, OldHeight),
     aec_tx_pool:top_change(#{type => BlockType,
                              old_hash => OldHash,
                              new_hash => NewHash,
@@ -1386,7 +1387,7 @@ handle_add_block(Block, Hash, Prev, #state{top_block_hash = TopBlockHash} = Stat
             {{error, Reason}, State}
     end.
 
-handle_successfully_added_block(Block, Hash, false, _, Events, State, Origin) ->
+handle_successfully_added_block(Block, Hash, false, _PrevKeyHeader, Events, State, Origin) ->
     maybe_publish_tx_events(Events, Hash, Origin),
     maybe_publish_block(Origin, Block),
     State1 = maybe_consensus_change(State, Block),
@@ -1407,14 +1408,14 @@ handle_successfully_added_block(Block, Hash, true, PrevKeyHeader, Events, State,
             [ maybe_garbage_collect(NewTopBlock, Hash, true)
               || BlockType == key ],
             IsLeader = is_leader(NewTopBlock, PrevKeyHeader, ConsensusModule),
-            case IsLeader of
-                true ->
-                    ok; %% Don't spend time when we are the leader.
-                false ->
-                    aec_tx_pool:garbage_collect()
-            end,
             {ok, setup_loop(State2, true, IsLeader, Origin)}
     end.
+
+maybe_gc_tx_pool(key, Height, OldHeight) when Height > OldHeight ->
+    _ = aec_tx_pool_gc:sync_gc(Height),
+    ok;
+maybe_gc_tx_pool(_, _, _) ->
+    ok.
 
 maybe_consensus_change(State, Block) ->
     %% When a new block got successfully inserted we need to check whether the next block
