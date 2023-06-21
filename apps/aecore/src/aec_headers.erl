@@ -47,6 +47,7 @@
          set_root_hash/2,
          set_signature/2,
          serialize_for_client/1,
+         serialize_for_client/2,
          set_target/2,
          set_time_in_msecs/2,
          set_txs_hash/2,
@@ -507,8 +508,12 @@ consensus_module(Header) ->
 
 
 -spec serialize_for_client(header()) -> map().
-serialize_for_client(#key_header{} = Header) ->
+serialize_for_client(Header) ->
     PrevBlockType = check_prev_block_type(Header),
+    serialize_for_client(Header, PrevBlockType).
+
+
+serialize_for_client(Header = #key_header{}, PrevBlockType) ->
     {ok, Hash} = hash_header(Header),
     Res =
         #{<<"hash">>          => encode_block_hash(key, Hash),
@@ -529,8 +534,7 @@ serialize_for_client(#key_header{} = Header) ->
             Res#{<<"pow">>   => serialize_pow_evidence(Header#key_header.key_seal),
                  <<"nonce">> => Header#key_header.nonce}
     end;
-serialize_for_client(#mic_header{} = Header) ->
-    PrevBlockType = check_prev_block_type(Header),
+serialize_for_client(Header = #mic_header{}, PrevBlockType) ->
     {ok, Hash} = hash_header(Header),
     #{<<"hash">>       => encode_block_hash(micro, Hash),
       <<"height">>     => Header#mic_header.height,
