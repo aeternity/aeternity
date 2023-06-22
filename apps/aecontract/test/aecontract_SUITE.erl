@@ -143,6 +143,7 @@
         , sophia_chess/1
         , sophia_variant_types/1
         , sophia_chain/1
+        , sophia_network_id/1
         , sophia_savecoinbase/1
         , sophia_fundme/1
         , sophia_aens_resolve/1
@@ -453,6 +454,7 @@ groups() ->
                                  sophia_variant_types,
                                  sophia_arity_check,
                                  sophia_chain,
+                                 sophia_network_id,
                                  sophia_savecoinbase,
                                  sophia_fundme,
                                  sophia_aens_resolve,
@@ -5134,6 +5136,15 @@ sophia_chain(_Cfg) ->
     ExpectMiner = ?call(call_contract, Acc, Ct1, miner, word, {}),
     ?assertMatchFATE({address, Beneficiary}, ExpectMiner),
     ?assertMatchAEVM(Beneficiary, ExpectMiner),
+    ok.
+
+sophia_network_id(_Cfg) ->
+    ?skipRest(vm_version() < ?VM_FATE_SOPHIA_3, from_ceres),
+    init_new_state(),
+    Acc  = ?call(new_account, 10000000 * aec_test_utils:min_gas_price()),
+    Ct1  = ?call(create_contract, Acc, chain, {}, #{amount => 10000}),
+    NwId = ?call(call_contract, Acc, Ct1, nw_id, string, {}),
+    ?assertMatch(<<"local_ceres_testnet">>, NwId),
     ok.
 
 sophia_savecoinbase(_Cfg) ->
