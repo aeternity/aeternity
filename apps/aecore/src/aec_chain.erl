@@ -40,7 +40,6 @@
         , top_block_with_state/0
         , top_header/0
         , dirty_top_header/0
-        , top_header_hash_and_state/0
         , top_height/0
         ]).
 
@@ -484,16 +483,6 @@ dirty_top_block_node() ->
 top_block_hash() ->
     aec_db:get_top_block_hash().
 
--spec top_header_hash_and_state() -> 'undefined'
-                                   | {aec_headers:header(),
-                                      aec_blocks:block_header_hash(),
-                                      aec_trees:trees()}.
-top_header_hash_and_state() ->
-    case top_block_node() of
-        undefined -> error;
-        #{hash := Hash, header := Header} ->
-            {Header, Hash, aec_db:get_block_state(Hash)}
-    end.
 
 -spec top_key_block() -> 'error' | {ok, aec_blocks:block()}.
 top_key_block() ->
