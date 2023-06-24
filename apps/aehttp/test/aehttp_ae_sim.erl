@@ -179,7 +179,8 @@ encode_keyblock(KeyBlock, SimName) ->
         {error, not_found} ->
             {error, #{reason => <<"Block not found">>}};
         {ok, PrevBlockType} ->
-             {ok, aehttp_helpers:encode_keyblock(KeyBlock, PrevBlockType)}
+            Header = aec_blocks:to_header(KeyBlock),
+            {ok, aec_headers:serialize_for_client(Header, PrevBlockType)}
     end.
 
         

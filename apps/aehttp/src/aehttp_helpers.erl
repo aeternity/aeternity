@@ -838,11 +838,12 @@ encode_keyblock(KeyBlock) ->
 
 encode_generation(KeyBlock, MicroBlocks) ->
     Header = aec_blocks:to_header(KeyBlock),
-    #{key_block => aec_headers:serialize_for_client(Header),
-      micro_blocks => [begin
-                           {ok, Hash} = aec_blocks:hash_internal_representation(M),
-                           aeser_api_encoder:encode(micro_block_hash, Hash)
-                       end || M <- MicroBlocks]}.
+    #{key_block    => aec_headers:serialize_for_client(Header),
+      micro_blocks => lists:map(fun encode_microblock/1, MicroBlocks)}.
+
+encode_microblock(MB) ->
+    {ok, Hash} = aec_blocks:hash_internal_representation(MB),
+    aeser_api_encoder:encode(micro_block_hash, Hash).
 
 -spec read_optional_param(atom(), map(), term()) -> term().
 read_optional_param(Key, Req, Default) ->
