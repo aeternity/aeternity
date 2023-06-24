@@ -475,9 +475,19 @@ data_dir(Name) when is_atom(Name) ->
     filename:join([setup:data_dir(), Name]).
 
 config_file() ->
-    case default_config_file()  of
-        undefined -> deprecated_config_file();
-        F         -> F
+    case command_line_config_file() of
+        undefined ->
+            case default_config_file()  of
+                undefined -> deprecated_config_file();
+                F         -> F
+            end;
+        F -> F
+    end.
+
+command_line_config_file() ->
+    case init:get_argument('-config') of
+        {ok, [[F]]} -> F;
+        _ -> undefined
     end.
 
 default_config_file() ->
