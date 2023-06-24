@@ -74,7 +74,7 @@ info_test_() ->
        fun() ->
                RawKey = raw_key_header_minerva(MinervaHeight),
                WithInfo = ?TEST_MODULE:set_info(RawKey, 123),
-               SerializedWithInfo = ?TEST_MODULE:serialize_for_client(WithInfo),
+               SerializedWithInfo = ?TEST_MODULE:serialize_for_client(WithInfo, key),
                Serialized = SerializedWithInfo#{<<"nonce">> => ?TEST_MODULE:nonce(WithInfo),
                                                 <<"pow">>   => ?TEST_MODULE:pow(WithInfo)
                                                },
@@ -95,7 +95,7 @@ info_test_() ->
        fun() ->
                RawKey = raw_key_header_minerva(MinervaHeight),
                WithInfo = ?TEST_MODULE:set_info(RawKey, default),
-               SerializedWithInfo = ?TEST_MODULE:serialize_for_client(WithInfo),
+               SerializedWithInfo = ?TEST_MODULE:serialize_for_client(WithInfo, key),
                Serialized = SerializedWithInfo#{<<"nonce">> => ?TEST_MODULE:nonce(WithInfo),
                                                 <<"pow">>   => ?TEST_MODULE:pow(WithInfo)
                                                },

@@ -852,6 +852,7 @@ top_block_hash_(Chain) ->
     H.
 
 top_key_block_hash_(Chain) ->
+    erlang:display("XXX MECKd TOP KEY BLOCK HASH"),
     [#{block := B}|_] = blocks_until_key(blocks(main, Chain)),
     {ok, H} = aec_headers:hash_header(aec_blocks:to_header(B)),
     H.
