@@ -90,12 +90,17 @@ ae_sim_test_() ->
                     [{{ok, Top, PrevHash, Height}, PoolSize}] =
                         maps:to_list(Responses),
                     Self = self(),
-                    meck:expect(aec_parent_chain_cache, post_block,
-                                fun(Block) -> Self ! {post_block, Block} end),
-                    aec_parent_connector:trigger_fetch(),
+                    erlang:display({"Mecking", Self}),
+                    ReflectBlock = fun(Block) -> Self ! {post_block, Block} end,
+                    ok = meck:expect(aec_parent_chain_cache, post_block, ReflectBlock),
+                    ok = aec_parent_connector:trigger_fetch(),
                     {ok, Block} =
                         receive
-                            {post_block, B} -> {ok, B}
+                            {post_block, B} ->
+                                erlang:display(B),
+                                {ok, B};
+                            Anything ->
+                                erlang:display(Anything)
                         end,
                     ?assertEqual(Top, aec_parent_chain_block:hash(Block)),
                     ?assertEqual(PrevHash, aec_parent_chain_block:prev_hash(Block)),

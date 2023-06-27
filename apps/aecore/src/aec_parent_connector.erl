@@ -179,14 +179,18 @@ handle_call(_Request, _From, State) ->
 -spec handle_cast(any(), state()) -> {noreply, state()}.
 handle_cast({request_block_by_hash, Hash}, State) ->
     case handle_fetch_block(fun fetch_block_by_hash/5, Hash, State) of
-        {ok, Block} -> aec_parent_chain_cache:post_block(Block);
+        {ok, Block} ->
+            erlang:display("CALLING post_block (hash)"),
+            aec_parent_chain_cache:post_block(Block);
         {error, not_found} -> pass;
         {error, no_parent_chain_agreement} -> pass
     end,
     {noreply, State};
 handle_cast({request_block_by_height, Height}, State) ->
     case handle_fetch_block(fun fetch_block_by_height/5, Height, State) of
-        {ok, Block} -> aec_parent_chain_cache:post_block(Block);
+        {ok, Block} ->
+            erlang:display("CALLING post_block (height)"),
+            aec_parent_chain_cache:post_block(Block);
         {error, not_found} -> pass;
         {error, no_parent_chain_agreement} -> pass
     end,
@@ -199,17 +203,21 @@ handle_info(check_parent, #state{parent_hosts = ParentNodes,
                                  fetch_interval = FetchInterval,
                                  rpc_seed = Seed} = State) ->
     %% Parallel fetch top block from all configured parent chain nodes
+    erlang:display("GOT check_parent"),
     ParentTop1 =
         case fetch_parent_tops(Mod, ParentNodes, Seed, State) of
             {ok, ParentTop, _} ->
+                erlang:display("SAME ParentTop"),
                 %% No change, just check again later
                 ParentTop;
             {ok, NewParentTop, _Node} ->
                 %% Fetch the commitment Txs in the parent block from a node
                 %% that had the majority answer
+                erlang:display("CALLING post_block"),
+                erlang:display({"NewParentTop", NewParentTop}),
                 aec_parent_chain_cache:post_block(NewParentTop),
-                %_Commitments = fetch_commitments(Mod, Node, Seed,
-                %                                 aec_parent_chain_block:hash(NewParentTop))
+                % NewParenTopHash = aec_parent_chain_block:hash(NewParentTop),
+                %_Commitments = fetch_commitments(Mod, Node, Seed, NewParentTopHash)
                 %% Commitments may include varying view on what is the latest
                 %%   block.
                 %% Commitments include:
@@ -219,6 +227,7 @@ handle_info(check_parent, #state{parent_hosts = ParentNodes,
                 %% - Notify conductor of new status
                 NewParentTop;
             {error, no_parent_chain_agreement} ->
+                erlang:display("ERROR no_parent_chain_agreement"),
                 lager:warning("Parent nodes are unable to reach consensus", []),
                 ParentTop
         end,
@@ -242,13 +251,21 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+
+map_pmap(F, L, T) ->
+    case  aeu_lib:map(F, L, T) of
+        {ok, G}      -> {G, []};
+        {done, G, B} -> {G, B}
+    end.
+
 fetch_parent_tops(Mod, ParentNodes, Seed, State) ->
     FetchFun =
         fun(Host, Port, User, Password) ->
             Mod:get_latest_block(Host, Port, User, Password, Seed)
         end,
     Fun = fun(Parent) -> fetch_block(FetchFun, Parent, State) end,
-    {Good, Errors} = aeu_lib:pmap(Fun, ParentNodes, 10000),
+    {Good, Errors} = map_pmap(Fun, ParentNodes, 10000),
+    erlang:display({"FETCH errors", Errors}),
     responses_consensus(Good, Errors, length(ParentNodes)).
 
 fetch_block_by_hash(Hash, Mod, ParentNodes, Seed, State) ->
@@ -257,7 +274,7 @@ fetch_block_by_hash(Hash, Mod, ParentNodes, Seed, State) ->
             Mod:get_header_by_hash(Hash, Host, Port, User, Password, Seed)
         end,
     Fun = fun(Parent) -> fetch_block(FetchFun, Parent, State) end,
-    {Good, Errors} = aeu_lib:pmap(Fun, ParentNodes, 10000),
+    {Good, Errors} = map_pmap(Fun, ParentNodes, 10000),
     responses_consensus(Good, Errors, length(ParentNodes)).
 
 fetch_block_by_height(Height, Mod, ParentNodes, Seed, State) ->
@@ -266,7 +283,7 @@ fetch_block_by_height(Height, Mod, ParentNodes, Seed, State) ->
             Mod:get_header_by_height(Height, Host, Port, User, Password, Seed)
         end,
     Fun = fun(Parent) -> fetch_block(FetchFun, Parent, State) end,
-    {Good, Errors} = aeu_lib:pmap(Fun, ParentNodes, 10000),
+    {Good, Errors} = map_pmap(Fun, ParentNodes, 10000),
     responses_consensus(Good, Errors, length(ParentNodes)).
 
 fetch_block(FetchFun,
@@ -373,7 +390,7 @@ post_commitment(Who, Commitment,
     %% Parallel post to all blocks
     %% TODO: decide if we expect consensus or not
     %% TODO: maybe track a transaction's progress?
-    {Good, Errors} = aeu_lib:pmap(Fun, ParentNodes, 10000),
+    {Good, Errors} = map_pmap(Fun, ParentNodes, 10000),
     case responses_consensus(Good, Errors, length(ParentNodes)) of
         {ok, TxHash, _} when is_binary (TxHash) -> ok;
         {ok, {error, invalid_transaction}, _} ->

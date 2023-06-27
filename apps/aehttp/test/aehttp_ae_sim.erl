@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @title /Users/sean/Aeternity/aeternity-hyperchains/apps/aehttp/test/aehttp_btc_sim
+%%% @title /Users/sean/Aeternity/aeternity-hyperchains/apps/aehttp/test/aehttp_ae_sim
 %%% @doc ae node simulator embedded in minimum http api
 %%%
 %%% @author sean

@@ -310,6 +310,7 @@ handle_request_('GetGenerationByHash', Params, _Context) ->
     case aeser_api_encoder:safe_decode(key_block_hash, maps:get('hash', Params)) of
         {error, _} -> {400, [], #{reason => <<"Invalid hash">>}};
         {ok, Hash} ->
+            erlang:display({"XXX HASH", Hash}),
             case aec_chain:get_generation_by_hash(Hash, forward) of
                 Ok = {ok, _G} -> generation_rsp(Ok);
                 error         -> {400, [], #{reason => <<"Hash not on main chain">>}}

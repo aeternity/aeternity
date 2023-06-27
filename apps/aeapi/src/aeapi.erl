@@ -453,7 +453,7 @@ balance_change_events_in_tx(SignedTX, MicroBlock) ->
     {ok, MBHash} = aec_headers:hash_header(aec_blocks:to_header(MicroBlock)),
     BlockTXs = micro_block_txs(MicroBlock),
     NeededTXs = keep_tx_until(BlockTXs, aetx_sign:hash(SignedTX)),
-    Ops = format_txs(NeededTXs, MBHash),
+    {ok, Ops} = format_txs(NeededTXs, MBHash),
     SpendOps = tx_spend_operations(Ops),
     lists:last(SpendOps).
 
@@ -485,7 +485,7 @@ balance_change_events_in_block(Block) ->
         micro ->
             BlockTXs = micro_block_txs(Block),
             {ok, MBHash} = aec_headers:hash_header(aec_blocks:to_header(Block)),
-            TXs = format_txs(BlockTXs, MBHash),
+            {ok, TXs} = format_txs(BlockTXs, MBHash),
             tx_spend_operations(TXs);
         key ->
             {ok, MicroBlocks} = micro_blocks_at_key_block(Block),
@@ -495,7 +495,7 @@ balance_change_events_in_block(Block) ->
                     {ok, MBHash} = aec_headers:hash_header(aec_blocks:to_header(MB)),
                     format_txs(BlockTXs, MBHash)
                 end,
-            {BlockTXs, []} = aeu_lib:pmap(FormatTXs, MicroBlocks, 600000),
+            {ok, BlockTXs} = aeu_lib:map(FormatTXs, MicroBlocks, 600000),
             BlockTXs1 = lists:flatten(lists:reverse(BlockTXs)),
             KeyBlockTXs = format_block_txs(Block),
             tx_spend_operations(KeyBlockTXs ++ BlockTXs1)
@@ -505,10 +505,10 @@ format_txs(TXs, MBHash) ->
     DryTXs = [{tx, aetx_sign:tx(TX)} || TX <- TXs],
     case aec_dry_run:dry_run({in, MBHash}, [], DryTXs, [tx_events]) of
         {ok, {Results, _Events}} ->
-            lists:zip(lists:map(fun aetx_sign:hash/1, TXs), Results);
+            {ok, lists:zip(lists:map(fun aetx_sign:hash/1, TXs), Results)};
         {error, Reason} ->
             lager:debug("dry_run_error: ~p", [Reason]),
-            throw({dry_run_err, Reason})
+            {error, {dry_run_err, Reason}}
     end.
 
 format_block_txs(KeyBlock) ->

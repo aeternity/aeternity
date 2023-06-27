@@ -1419,5 +1419,14 @@ collect_infos(Timeout) ->
             aec_peer_connection:get_node_info(PeerId, Timeout - 2000 -
                                               TimerOffset)
         end,
-    {Good, _Bad} = aeu_lib:pmap(Fun, ConnectedPeers, Timeout + 2000 + TimerOffset),
-    Good.
+    case aeu_lib:map(Fun, ConnectedPeers, Timeout + 2000 + TimerOffset) of
+        {ok, Results} ->
+            Results;
+        {done, Results, Errors} ->
+            ok = lager:debug("pmap failed with Errors: ~w", [Errors]),
+            Results;
+        {timeout, Results, Errors, Incomplete} ->
+            ok = lager:debug("pmap timed out with Errors: ~w", [Errors]),
+            ok = lager:debug("pmap timed out with Incomplete: ~w", [Incomplete]),
+            Results
+    end.
