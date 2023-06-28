@@ -186,6 +186,11 @@
         , bytes_to_str/3
         , bytes_concat/4
         , bytes_split/4
+        , bytes_split_any/4
+        , bytes_size/3
+        , bytes_to_fixed_size/4
+        , int_to_bytes/4
+        , str_to_bytes/3
         , load_pre_iris_map_ordering/0
         ]).
 
@@ -1296,6 +1301,17 @@ bytes_concat(Arg0, Arg1, Arg2, EngineState) ->
 bytes_split(Arg0, Arg1, Arg2, EngineState) ->
     ES1  = bin_op(bytes_split, {Arg0, Arg1, Arg2}, EngineState),
     spend_tuple_gas(2, ES1).
+
+bytes_split_any(_Arg0, _Arg1, _Arg2, EngineState) ->
+    EngineState.
+bytes_size(_Arg0, _Arg1, EngineState) ->
+    EngineState.
+bytes_to_fixed_size(_Arg0, _Arg1, _Arg2, EngineState) ->
+    EngineState.
+int_to_bytes(_Arg0, _Arg1, _Arg2, EngineState) ->
+    EngineState.
+str_to_bytes(_Arg0, _Arg1, EngineState) ->
+    EngineState.
 
 balance_other(Arg0, Arg1, ES) ->
     API = aefa_engine_state:chain_api(ES),
