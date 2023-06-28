@@ -1,0 +1,24 @@
+changelog:
+  exclude:
+    labels:
+      - release/ignore
+  categories:
+    - title: Breaking Changes 🛠
+      labels:
+        - breaking/api
+        - breaking/db
+        - breaking/config
+        - breaking/p2p
+    - title: Exciting New Features 🎉
+      labels:
+        - kind/feature
+    - title: Bugfixes 🐞
+      labels:
+        - kind/bugfix
+        - kind/bug
+    - title: Next Consensus
+      labels:
+        - breaking/consensus
+    - title: Other Changes
+      labels:
+        - "*"
