@@ -186,8 +186,21 @@
         , bytes_to_str/3
         , bytes_concat/4
         , bytes_split/4
+        , bytes_split_any/4
+        , bytes_size/3
+        , bytes_to_fixed_size/4
+        , int_to_bytes/4
+        , str_to_bytes/3
         , load_pre_iris_map_ordering/0
         ]).
+
+-ifdef(DEBUG_INFO).
+-export([ dbg_loc/3
+        , dbg_def/3
+        , dbg_undef/3
+        , dbg_contract/2
+        ]).
+-endif.
 
 -include_lib("aebytecode/include/aeb_fate_data.hrl").
 -include_lib("aecontract/include/aecontract.hrl").
@@ -1288,6 +1301,17 @@ bytes_concat(Arg0, Arg1, Arg2, EngineState) ->
 bytes_split(Arg0, Arg1, Arg2, EngineState) ->
     ES1  = bin_op(bytes_split, {Arg0, Arg1, Arg2}, EngineState),
     spend_tuple_gas(2, ES1).
+
+bytes_split_any(_Arg0, _Arg1, _Arg2, EngineState) ->
+    EngineState.
+bytes_size(_Arg0, _Arg1, EngineState) ->
+    EngineState.
+bytes_to_fixed_size(_Arg0, _Arg1, _Arg2, EngineState) ->
+    EngineState.
+int_to_bytes(_Arg0, _Arg1, _Arg2, EngineState) ->
+    EngineState.
+str_to_bytes(_Arg0, _Arg1, EngineState) ->
+    EngineState.
 
 balance_other(Arg0, Arg1, ES) ->
     API = aefa_engine_state:chain_api(ES),
@@ -3021,3 +3045,41 @@ gt_to_emcl(X1, X2, X3, X4, X5, X6, X7, X8, X9, X10, X11, X12) ->
     emcl:mk_Gt(emcl:mk_Fp(X1), emcl:mk_Fp(X2), emcl:mk_Fp(X3), emcl:mk_Fp(X4),
                emcl:mk_Fp(X5), emcl:mk_Fp(X6), emcl:mk_Fp(X7), emcl:mk_Fp(X8),
                emcl:mk_Fp(X9), emcl:mk_Fp(X10), emcl:mk_Fp(X11), emcl:mk_Fp(X12)).
+
+-ifdef(DEBUG_INFO).
+dbg_loc({immediate, File}, {immediate, Line}, EngineState) ->
+    Info  = aefa_debug:set_debugger_location({File, Line}, aefa_engine_state:debug_info(EngineState)),
+    Stack = aefa_engine_state:call_stack(EngineState),
+    UpdatedStatus = 
+        case lists:member({File, Line}, aefa_debug:breakpoints(Info)) of
+            true  ->
+                case aefa_debug:debugger_status(Info) of
+                    continue -> aefa_debug:set_debugger_status(break, Info);
+                    _        -> aefa_debug:debugger_resume(Stack, Info)
+                end;
+            false ->
+                aefa_debug:debugger_resume(Stack, Info)
+        end,
+    aefa_engine_state:set_debug_info(UpdatedStatus, EngineState).
+
+dbg_def({immediate, VarName}, Reg, EngineState) ->
+    Info = aefa_debug:add_variable_register(VarName, Reg, aefa_engine_state:debug_info(EngineState)),
+    aefa_engine_state:set_debug_info(Info, EngineState).
+
+dbg_undef({immediate, VarName}, Reg, EngineState) ->
+    case lists:last(aefa_engine_state:current_bb_instructions(EngineState)) of
+        {C, _} when C =:= 'ABORT'; C =:= 'EXIT' ->
+            %% We want to be able to print variables after breaking on aborts.
+            EngineState;
+        _ ->
+            OldInfo = aefa_engine_state:debug_info(EngineState),
+            NewInfo = aefa_debug:del_variable_register(VarName, Reg, OldInfo),
+            aefa_engine_state:set_debug_info(NewInfo, EngineState)
+    end.
+
+dbg_contract({immediate, ContractName}, EngineState) ->
+    OldInfo    = aefa_engine_state:debug_info(EngineState),
+    ContractPK = aefa_engine_state:current_contract(EngineState),
+    Info       = aefa_debug:set_contract_name(ContractPK, ContractName, OldInfo),
+    aefa_engine_state:set_debug_info(Info, EngineState).
+-endif.

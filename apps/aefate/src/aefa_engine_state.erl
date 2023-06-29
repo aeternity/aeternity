@@ -93,6 +93,12 @@
         ]).
 -endif.
 
+-ifdef(DEBUG_INFO).
+-export([ debug_info/1
+        , set_debug_info/2
+        ]).
+-endif.
+
 -define(FIX_CONTRACT_CHECK_WINDOW_LOWER_LIMIT, 237000).
 -define(FIX_CONTRACT_CHECK_WINDOW_UPPER_LIMIT, 245000).
 
@@ -102,6 +108,12 @@
 
 -type void_or_fate() :: ?FATE_VOID | aeb_fate_data:fate_type().
 -type pubkey() :: <<_:256>>.
+
+-ifdef(DEBUG_INFO).
+-type debug_info() :: aefa_debug:info().
+-else.
+-type debug_info() :: disabled.
+-endif.
 
 -record(es, { accumulator       :: void_or_fate()
             , accumulator_stack :: [aeb_fate_data:fate_type()]
@@ -126,6 +138,7 @@
             , stores            :: aefa_stores:store()
             , trace             :: list()
             , vm_version        :: non_neg_integer()
+            , debug_info        :: debug_info()
             }).
 
 -opaque state() :: #es{}.
@@ -158,6 +171,7 @@ new(Gas, Value, Spec, Stores, APIState, CodeCache, VMVersion) ->
        , stores            = Stores
        , trace             = []
        , vm_version        = VMVersion
+       , debug_info        = disabled
        }.
 
 aefa_stores(#es{ chain_api = APIState }) ->
@@ -269,6 +283,14 @@ push_arguments([], Acc, Stack, ES) ->
 push_arguments([A|As], Acc, Stack, ES) ->
     push_arguments(As, A, [Acc | Stack], ES).
 
+-ifdef(DEBUG_INFO).
+-define(PUSH_DEBUG_CALL_STACK(Info), aefa_debug:push_call_stack(Info)).
+-define(POP_DEBUG_CALL_STACK(Info), aefa_debug:pop_call_stack(Info)).
+-else.
+-define(PUSH_DEBUG_CALL_STACK(Info), Info).
+-define(POP_DEBUG_CALL_STACK(Info), Info).
+-endif.
+
 -spec push_call_stack(state()) -> state().
 push_call_stack(#es{ current_bb = BB
                    , current_function = Function
@@ -280,11 +302,13 @@ push_call_stack(#es{ current_bb = BB
                    , call_stack = Stack
                    , call_value = Value
                    , caller = Caller
-                   , memory = Mem} = ES) ->
+                   , memory = Mem
+                   , debug_info = DbgInfo} = ES) ->
     AccS1 = [Acc || Acc /= void] ++ AccS,
     ES#es{accumulator       = void,
           accumulator_stack = [],
-          call_stack        = [{Caller, Contract, VmVersion, Function, TVars, BB + 1, AccS1, Mem, Value}|Stack]}.
+          call_stack        = [{Caller, Contract, VmVersion, Function, TVars, BB + 1, AccS1, Mem, Value}|Stack],
+          debug_info        = ?PUSH_DEBUG_CALL_STACK(DbgInfo)}.
 
 %% TODO: Make better types for all these things
 -spec pop_call_stack(state()) ->
@@ -297,6 +321,7 @@ push_call_stack(#es{ current_bb = BB
                                        _, map(), non_neg_integer(), state()}.
 pop_call_stack(#es{accumulator = ReturnValue,
                    call_stack = Stack,
+                   debug_info = DbgInfo,
                    current_contract = Current} = ES) ->
     case Stack of
         [] -> {empty, ES};
@@ -316,6 +341,7 @@ pop_call_stack(#es{accumulator = ReturnValue,
                   , accumulator_stack = AccS
                   , memory = Mem
                   , call_stack = Rest
+                  , debug_info = ?POP_DEBUG_CALL_STACK(DbgInfo)
                   }};
         [{Caller, Pubkey, VmVersion, Function, TVars, BB, AccS, Mem, Value}| Rest] ->
             Seen = pop_seen_contracts(Pubkey, ES),
@@ -336,6 +362,7 @@ pop_call_stack(#es{accumulator = ReturnValue,
                   , seen_contracts = Seen
                   , current_contract = NewCurrent
                   , vm_version = VmVersion
+                  , debug_info = ?POP_DEBUG_CALL_STACK(DbgInfo)
                   }}
     end.
 
@@ -863,3 +890,13 @@ vm_version(#es{vm_version = X}) ->
 consensus_version(#es{chain_api = Api}) ->
     TxEnv = aefa_chain_api:tx_env(Api),
     aetx_env:consensus_version(TxEnv).
+
+%%%------------------
+
+-ifdef(DEBUG_INFO).
+debug_info(#es{debug_info = Info}) ->
+    Info.
+
+set_debug_info(Info, ES) ->
+    ES#es{debug_info = Info}.
+-endif.
