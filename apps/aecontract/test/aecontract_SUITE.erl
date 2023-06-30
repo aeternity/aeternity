@@ -178,6 +178,7 @@
         , sophia_higher_order_state/1
         , sophia_clone/1
         , sophia_create/1
+        , sophia_create_init_fail/1
         , sophia_bytecode_hash/1
         , sophia_factories/1
         , sophia_bignum/1
@@ -485,6 +486,7 @@ groups() ->
                                  sophia_higher_order_state,
                                  sophia_clone,
                                  sophia_create,
+                                 sophia_create_init_fail,
                                  sophia_bytecode_hash,
                                  sophia_factories,
                                  sophia_use_memory_gas,
@@ -1906,6 +1908,15 @@ sophia_create(_Cfg) ->
     Ct  = ?call(create_contract, Acc, create_test, {}, #{gas => 1000000000000}),
     R1  = ?call(call_contract, Acc, Ct, increaseByThree, word, {2137}, #{gas => 1000000000000, amount => 1000000}),
     ?assertEqual(2140, R1),
+    ok.
+
+sophia_create_init_fail(_Cfg) ->
+    ?skipRest(vm_version() < ?VM_FATE_SOPHIA_2, create_not_pre_iris),
+    init_new_state(),
+    Acc = ?call(new_account, 1000000000000000000000 * aec_test_utils:min_gas_price()),
+    Ct  = ?call(create_contract, Acc, create_crash, {}, #{gas => 1000000000000}),
+    R1  = ?call(call_contract, Acc, Ct, throw_and_catch, bool, {}, #{gas => 1000000000000}),
+    ?assertEqual(true, R1),
     ok.
 
 sophia_bytecode_hash(_Cfg) ->
