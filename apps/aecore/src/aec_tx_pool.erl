@@ -42,6 +42,7 @@
         , maximum_auth_fun_gas/0
         , peek/1
         , peek/2
+        , peek/3        
         , push/1
         , push/2
         , push/3
@@ -284,13 +285,20 @@ gproc_reg() ->
 %% pool.
 -spec peek(pos_integer() | infinity) -> {ok, [aetx_sign:signed_tx()]}.
 peek(MaxN) when is_integer(MaxN), MaxN >= 0; MaxN =:= infinity ->
-    gen_server:call(?SERVER, {peek, MaxN, all}).
+    gen_server:call(?SERVER, {peek, MaxN, all, all}).
 
 %% Only return transactions for a specific account public key
 -spec peek(pos_integer() | infinity, aec_keys:pubkey()) ->
                                        {ok, [aetx_sign:signed_tx()]}.
 peek(MaxN, Account) when is_integer(MaxN), MaxN >= 0; MaxN =:= infinity ->
-    gen_server:call(?SERVER, {peek, MaxN, Account}).
+    gen_server:call(?SERVER, {peek, MaxN, Account, all}).
+
+
+%% Only return transactions for a specific account public key and until a maximum nonce
+-spec peek(pos_integer() | infinity, aec_keys:pubkey(), non_neg_integer() | all) ->
+                                       {ok, [aetx_sign:signed_tx()]}.
+peek(MaxN, Account, MaxNonce) when is_integer(MaxN), MaxN >= 0; MaxN =:= infinity ->
+    gen_server:call(?SERVER, {peek, MaxN, Account, MaxNonce}).
 
 -spec delete(binary()) -> ok | {error, not_found | already_accepted}.
 delete(TxHash) ->
@@ -413,10 +421,10 @@ handle_call_({top_change, Info}, _From, State) ->
 handle_call_({note_rollback, #{ new_top_header := NewTopHdr } = Info}, _From, State) ->
     lager:debug("note_rollback - Info = ~p, State = ~p", [Info, State]),
     {reply, ok, do_update_sync_top_target(aec_headers:height(NewTopHdr), State)};
-handle_call_({peek, MaxNumberOfTxs, Account}, _From, #state{dbs = Dbs} = State)
+handle_call_({peek, MaxNumberOfTxs, Account, MaxNonce}, _From, #state{dbs = Dbs} = State)
   when is_integer(MaxNumberOfTxs), MaxNumberOfTxs >= 0;
        MaxNumberOfTxs =:= infinity ->
-    Txs = pool_db_peek(Dbs, MaxNumberOfTxs, Account, all),
+    Txs = pool_db_peek(Dbs, MaxNumberOfTxs, Account, MaxNonce),
     {reply, {ok, Txs}, State};
 handle_call_({delete, TxHash}, _From, #state{dbs = Dbs} = State) ->
     #dbs{gc_db = GCDb} = Dbs,

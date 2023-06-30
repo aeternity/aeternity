@@ -38,6 +38,7 @@
         , balance_at_block/2
         , balance_change_events_in_tx/2
         , balance_change_events_in_block/1
+        , balance_change_events_in_mempool_tx/1
         , next_nonce/1
 
         , oracle_at_block/2
@@ -434,6 +435,21 @@ generation_at_height(Height) when is_integer(Height) ->
             end
     end.
 
+balance_change_events_in_mempool_tx(SignedTx) ->
+    Tx = aetx_sign:tx(SignedTx),
+    Nonce = aetx:nonce(Tx),
+    SenderAccount = aetx:origin(Tx),
+    Txs = case Nonce of
+        0 ->
+            [SignedTx];
+        _ ->
+            {ok, UnsortedTxs} = aec_tx_pool:peek(infinity, SenderAccount, Nonce - 1),
+            lists:sort(fun(Left, Right) -> aetx:nonce(aetx_sign:tx(Left)) < aetx:nonce(aetx_sign:tx(Right)) end, [SignedTx|UnsortedTxs])
+    end,
+    Ops = format_txs(Txs, undefined),
+    SpendOps = tx_spend_operations(Ops),
+    lists:last(SpendOps).            
+
 %% Format a single Tx in a block. We need to dry run all the Txs in the microblock
 %% up to and including the one we want to know about. dry run works on dummy signed
 %% Txs so the tx_hash included in the results is not the same as the one requested.
@@ -489,7 +505,13 @@ balance_change_events_in_block(Block) ->
 
 format_txs(Txs, MBHash) ->
     DryTxs = [{tx, aetx_sign:tx(Tx)} || Tx <- Txs],
-    case aec_dry_run:dry_run({in, MBHash}, [], DryTxs, [tx_events]) of
+    Top = case MBHash of
+            undefined ->
+                top;
+            _ ->
+                {in, MBHash}
+            end,
+    case aec_dry_run:dry_run(Top, [], DryTxs, [tx_events]) of
         {ok, {Results, _Events}} ->
             TxHashes = [aetx_sign:hash(Tx) || Tx <- Txs],
             lists:zip(TxHashes, Results);
