@@ -352,7 +352,7 @@ step([I|Is], EngineState0) ->
 catch_protected(Err, ES) ->
     case aefa_engine_state:pop_call_stack(ES) of
         {empty, _} -> throw(Err);
-        {modify, Cont, ES1} -> catch_protected(Err, Cont(ES1));
+        {modify, _Cont, ES1} -> catch_protected(Err, ES1);  % The continuation is not applied during unwinding
         {return_check, _, protected, _, Stores, API, ES1} ->
             ES2 = aefa_engine_state:set_accumulator(make_none(),
                   aefa_engine_state:set_stores(Stores,
