@@ -1911,7 +1911,7 @@ sophia_create(_Cfg) ->
     ok.
 
 sophia_create_init_fail(_Cfg) ->
-    ?skipRest(vm_version() < ?VM_FATE_SOPHIA_2, create_not_pre_iris),
+    ?skipRest(vm_version() < ?VM_FATE_SOPHIA_3, create_init_crash_uncatchable_in_iris),
     init_new_state(),
     Acc = ?call(new_account, 1000000000000000000000 * aec_test_utils:min_gas_price()),
     Ct  = ?call(create_contract, Acc, create_crash, {}, #{gas => 1000000000000}),

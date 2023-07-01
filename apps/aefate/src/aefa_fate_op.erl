@@ -1567,8 +1567,22 @@ deploy_contract(CodeOrPK, InitArgsTypes, Value, GasCap, Prot, ES0) ->
     {ContractPK, ES2} = put_contract(CodeOrPK, Value, ES1),
     ReplaceInitResult
         = fun(ES0_) ->
-                  %% init returns unit, so we get rid of it
-                  %% if the call was protected, rewrap the result
+                  %% init returns unit, so we get rid of it if the call was protected, rewrap the
+                  %% result
+                  {Res, ES1_} =
+                      case aefa_engine_state:accumulator(ES0_) of
+                          [] ->
+                              %% We deliberately crash the machine to preserve the original
+                              %% unfortunate Iris behavior, but with a slightly better error
+                              %% message. There should be no transaction on the chain which has
+                              %% reached this point, however.
+                              %%
+                              %% TODO: After the Ceres hard fork, it should be safe to remove this
+                              %% check.
+                              error({init_crashed_miserably, CodeOrPK});
+                          _ ->
+                              get_op_arg({stack, 0}, ES0_)
+                      end,
                   case Protected of
                       unprotected ->
                           {{tuple, {}}, ES1_} = get_op_arg({stack, 0}, ES0_),
