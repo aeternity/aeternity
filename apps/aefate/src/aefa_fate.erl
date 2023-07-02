@@ -373,7 +373,7 @@ catch_protected(Err, ES) ->
                     catch_protected(Err, Cont(ES1));
                 true ->
                     %% During the unwinding process the continuation should not be applied.
-                    catch_protected(Err, ES1);
+                    catch_protected(Err, ES1)
                 end;
         {return_check, _, protected, _, Stores, API, ES1} ->
             ES2 = aefa_engine_state:set_accumulator(make_none(),
