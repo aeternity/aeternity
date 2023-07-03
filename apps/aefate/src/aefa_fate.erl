@@ -63,6 +63,10 @@
 -ifdef(TEST).
 -export([ run_with_cache/3
         ]).
+-ifdef(DEBUG_INFO).
+-export([ run_debug/4
+        ]).
+-endif.
 -endif.
 
 -include_lib("aebytecode/include/aeb_fate_data.hrl").
@@ -86,6 +90,19 @@ run_with_cache(Spec, Env, Cache) ->
         throw:{?MODULE, revert, S, ES} -> {revert, S, ES};
         throw:{?MODULE, E, ES} -> {error, E, ES}
     end.
+
+-ifdef(DEBUG_INFO).
+run_debug(Spec, Env, Cache, BPs) ->
+    ES0  = setup_engine(Spec, Env, Cache),
+    Info = aefa_debug:set_breakpoints(BPs, aefa_engine_state:debug_info(ES0)),
+    try execute(aefa_engine_state:set_debug_info(Info, ES0)) of
+        Res -> {ok, Res}
+    catch
+        throw:{?MODULE, revert, S, ES} -> {revert, S, ES};
+        throw:{?MODULE, E, ES} -> {error, E, ES}
+    end.
+-endif.
+
 -endif.
 
 run(Spec, Env) ->
@@ -258,9 +275,21 @@ abort({auth_tx_type_not_handled, TxType}, ES) ->
 
 abort(E) -> throw({add_engine_state, E}).
 
+-ifdef(DEBUG_INFO).
+execute(EngineState) ->
+    Instructions = aefa_engine_state:current_bb_instructions(EngineState),
+    %% Skip the instructions that were executed before the break
+    Info            = aefa_engine_state:debug_info(EngineState),
+    Skip            = aefa_debug:current_instruction(Info),
+    DbgInstructions = lists:nthtail(Skip, Instructions),
+    loop(DbgInstructions, EngineState).
+-else.
 execute(EngineState) ->
     Instructions = aefa_engine_state:current_bb_instructions(EngineState),
     loop(Instructions, EngineState).
+-endif.
+
+-dialyzer({nowarn_function, loop/2}).
 
 loop(Instructions, EngineState) ->
     case step(Instructions, EngineState) of
@@ -273,21 +302,45 @@ loop(Instructions, EngineState) ->
                         aefa_engine_state:accumulator(ES), final, ES);
                 {error, What} -> abort(What, FinalState)
             end;
+        {break, BreakState} ->
+            BreakState;
         {jump, BB, NewState} ->
             {NewInstructions, State2} = jump(BB, NewState),
             loop(NewInstructions, State2)
     end.
 
+-ifdef(DEBUG_INFO).
+-define(STEP(Is, ES), break_or_step(Is, ES)).
+-define(RESET_CURRENT_INSTRUCTION(State), reset_current_instruction(State)).
+-else.
+-define(STEP(Is, ES), step(Is, ES)).
+-define(RESET_CURRENT_INSTRUCTION(State), State).
+-endif.
+
+-ifdef(DEBUG_INFO).
+break_or_step(Is, ES0) ->
+    Info = aefa_debug:inc_current_instruction(aefa_engine_state:debug_info(ES0)),
+    ES   = aefa_engine_state:set_debug_info(Info, ES0),
+    case aefa_debug:debugger_status(Info) of
+        break -> {break, ES};
+        _     -> step(Is, ES)
+    end.
+
+reset_current_instruction(State) ->
+    Info = aefa_debug:reset_current_instruction(aefa_engine_state:debug_info(State)),
+    aefa_engine_state:set_debug_info(Info, State).
+-endif.
+
 step([], EngineState) ->
     %% TODO check BB + 1 exists.
     BB = aefa_engine_state:current_bb(EngineState) + 1,
-    {jump, BB, EngineState};
+    {jump, BB, ?RESET_CURRENT_INSTRUCTION(EngineState)};
 step([I|Is], EngineState0) ->
     ES = ?trace(I, EngineState0),
     try aefa_fate_eval:eval(I, ES) of
-        {next, NewState} -> step(Is, NewState);
-        {jump,_BB,_NewState} = Res -> Res;
-        {stop, _NewState} = Res -> Res
+        {next,     NewState} -> ?STEP(Is, NewState);
+        {jump, BB, NewState} -> {jump, BB, ?RESET_CURRENT_INSTRUCTION(NewState)};
+        {stop,     NewState} -> {stop,     ?RESET_CURRENT_INSTRUCTION(NewState)}
     catch
         throw:{?MODULE, _, _} = Err ->
             catch_protected(Err, EngineState0);
@@ -311,25 +364,36 @@ catch_protected(Err, ES) ->
 
 %% -----------------------------------------------------------
 
-setup_engine(#{ contract := <<_:256>> = ContractPubkey
-              , code := ByteCode
-              , vm_version := VMVersion} = Spec, Env) ->
+-ifdef(DEBUG_INFO).
+setup_engine(Arg1, Env) ->
+    aefa_engine_state:set_debug_info(aefa_debug:new(), setup_engine_(Arg1, Env)).
+
+setup_engine(Arg1, Env, Cache) ->
+    aefa_engine_state:set_debug_info(aefa_debug:new(), setup_engine_(Arg1, Env, Cache)).
+-else.
+setup_engine(Arg1, Env) ->
+    setup_engine_(Arg1, Env).
+-endif.
+
+setup_engine_(#{ contract := <<_:256>> = ContractPubkey
+               , code := ByteCode
+               , vm_version := VMVersion} = Spec, Env) ->
     try aeb_fate_code:deserialize(ByteCode) of
         Code ->
             Cache = #{ ContractPubkey => { Code, VMVersion } },
-            setup_engine(Spec, Env, Cache)
+            setup_engine_(Spec, Env, Cache)
     catch _:_ ->
             abort(bad_bytecode, no_state)
     end.
 
-setup_engine(#{ contract := <<_:256>> = ContractPubkey
-              , call := Call
-              , gas := Gas
-              , value := Value
-              , store := Store
-              , vm_version := VMVersion
-              , allow_init := AllowInit
-              }, Env, Cache) ->
+setup_engine_(#{ contract := <<_:256>> = ContractPubkey
+               , call := Call
+               , gas := Gas
+               , value := Value
+               , store := Store
+               , vm_version := VMVersion
+               , allow_init := AllowInit
+               }, Env, Cache) ->
     {tuple, {Function, {tuple, ArgTuple}}} =
         aeb_fate_encoding:deserialize(Call),
     Arguments = tuple_to_list(ArgTuple),
