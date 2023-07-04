@@ -512,6 +512,18 @@ block_create_contract_tx(Config) ->
 
     %% Mine the contract Tx so it is on chain when we try to retrieve it
     {ok, [_]} = rpc(aec_tx_pool, peek, [infinity]),
+
+    aecore_suite_utils:use_rosetta(),
+
+    {ok,
+     200,
+     #{<<"transaction">> :=
+           #{<<"transaction_identifier">> := #{<<"hash">> := ContractCreateTxHash},
+             <<"operations">> := [PoolAmountOp, PoolToContractOp, PoolRefundOp]}}} =
+        get_mempool_transaction_sut(ContractCreateTxHash),
+
+    aecore_suite_utils:use_swagger(SwaggerVsn),
+
     aecore_suite_utils:mine_blocks_until_txs_on_chain(Node, [ContractCreateTxHash], 2),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
 
@@ -553,6 +565,11 @@ block_create_contract_tx(Config) ->
     ?assertEqual(OwnerAccountPubKey, RefundAcc),
     ?assertEqual(OwnerBalanceAfterCreate,
                  OwnerBalance + binary_to_integer(AmountDelta) + binary_to_integer(RefundDelta)),
+
+    %% Check the mempool operations are the same as the block operations
+    ?assertEqual(PoolAmountOp, AmountOp),
+    ?assertEqual(PoolToContractOp, ToContractOp),
+    ?assertEqual(PoolRefundOp, RefundOp),
 
     %% Convert the contract id into the matching account id
     {_, ContractPubKey} = aeapi:decode(ContractPubKeyEnc),
