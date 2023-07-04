@@ -361,10 +361,19 @@ block_spend_tx(Config) ->
     {ok, 200, #{<<"tx_hash">> := SpendTxHash}} = post_tx(SignedSpendTx),
 
     {ok, [_]} = rpc(aec_tx_pool, peek, [infinity]),
+
+    aecore_suite_utils:use_rosetta(),
+
+    {ok,
+     200,
+     #{<<"transaction">> :=
+           #{<<"transaction_identifier">> := #{<<"hash">> := SpendTxHash},
+             <<"operations">> := [FeeOpMem, FromOpMem, ToOpMem]}}} =
+        get_mempool_transaction_sut(SpendTxHash),
+
     aecore_suite_utils:mine_blocks_until_txs_on_chain(Node, [SpendTxHash], 2),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
 
-    aecore_suite_utils:use_rosetta(),
 
     FromPubKeyEnc = aeapi:format_account_pubkey(FromPubKey),
     ToPubKeyEnc = aeapi:format_account_pubkey(ToPubKey),
@@ -414,6 +423,11 @@ block_spend_tx(Config) ->
         FromOp,
     #{<<"operation_identifier">> := #{<<"index">> := 2}, <<"type">> := <<"Spend.amount">>} =
         ToOp,
+
+    %% Check the mempool transaction matches
+    ?assertEqual(FromOp, FromOpMem),
+    ?assertEqual(ToOp, ToOpMem),
+    ?assertEqual(FeeOp, FeeOpMem),
 
     %% Also check we can get the same Tx via the "fetch individual Tx" Rosetta API
     %% This is a bit inefficient, because to be sure the Tx starts with the correct state
@@ -1115,6 +1129,14 @@ get_block_transaction_sut(KeyBlockHash, Height, TxHash) ->
               #{blockchain => <<"aeternity">>, network => aec_governance:get_network_id()},
           transaction_identifier => #{hash => TxHash}},
     http_request(Host, post, "block/transaction", Body).
+
+get_mempool_transaction_sut(TxHash) ->
+    Host = rosetta_address(),
+    Body =
+        #{network_identifier =>
+              #{blockchain => <<"aeternity">>, network => aec_governance:get_network_id()},
+          transaction_identifier => #{hash => TxHash}},
+    http_request(Host, post, "mempool/transaction", Body).
 
 get_balance_sut(AccountPubKey) ->
     Host = rosetta_address(),
