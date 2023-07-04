@@ -710,6 +710,18 @@ block_create_contract_tx(Config) ->
         aehttp_integration_SUITE:sign_and_post_tx(EncodedUnsignedContractCallErrTx, OwnerPrivKey),
 
     {ok, [_]} = rpc(aec_tx_pool, peek, [infinity]),
+
+    aecore_suite_utils:use_rosetta(),
+
+    {ok,
+     200,
+     #{<<"transaction">> :=
+           #{<<"transaction_identifier">> := #{<<"hash">> := ContractCallErrTxHash},
+             <<"operations">> := [PoolErrCallerOp]}}} =
+        get_mempool_transaction_sut(ContractCallErrTxHash),
+
+    aecore_suite_utils:use_swagger(SwaggerVsn),
+
     aecore_suite_utils:mine_blocks_until_txs_on_chain(Node, [ContractCallErrTxHash], 2),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
 
@@ -732,7 +744,11 @@ block_create_contract_tx(Config) ->
         ErrCallerOp,
     ?assertEqual(OwnerAccountPubKey, CallerAcc),
     ?assertEqual(OwnerBalanceAfterErrCall,
-                 OwnerBalanceAfterCall + binary_to_integer(ErrCallerDelta)).
+                 OwnerBalanceAfterCall + binary_to_integer(ErrCallerDelta)),
+
+    %% Check mempool operation is the same as block
+    ?assertEqual(PoolErrCallerOp, ErrCallerOp).
+
 
 block_create_channel_tx(Config) ->
     [{_NodeId, Node} | _] = ?config(nodes, Config),
