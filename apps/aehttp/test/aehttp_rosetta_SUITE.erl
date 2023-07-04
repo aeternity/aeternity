@@ -612,6 +612,18 @@ block_create_contract_tx(Config) ->
         aehttp_integration_SUITE:sign_and_post_tx(EncodedUnsignedContractCallTx, OwnerPrivKey),
 
     {ok, [_]} = rpc(aec_tx_pool, peek, [infinity]),
+
+    aecore_suite_utils:use_rosetta(),
+
+    {ok,
+     200,
+     #{<<"transaction">> :=
+           #{<<"transaction_identifier">> := #{<<"hash">> := ContractCallTxHash},
+             <<"operations">> := [PoolCallerFeeOp, PoolContractAmountOp, PoolFromContractOp, PoolToOp, PoolCallRefundOp]}}} =
+        get_mempool_transaction_sut(ContractCallTxHash),
+
+    aecore_suite_utils:use_swagger(SwaggerVsn),
+
     aecore_suite_utils:mine_blocks_until_txs_on_chain(Node, [ContractCallTxHash], 2),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
 
@@ -666,6 +678,13 @@ block_create_contract_tx(Config) ->
                  OwnerBalanceAfterCreate
                  + binary_to_integer(CallerFeeDelta)
                  + binary_to_integer(CallRefundOpDelta)),
+
+    %% Check mempool operations are the same as the block operations
+    ?assertEqual(PoolCallerFeeOp, CallerFeeOp), 
+    ?assertEqual(PoolContractAmountOp, ContractAmountOp),
+    ?assertEqual(PoolFromContractOp, FromContractOp),
+    ?assertEqual(PoolToOp, ToOp),
+    ?assertEqual(PoolCallRefundOp, CallRefundOp),
 
     %% ------------------ Errored Contract Call ---------------------------
     SwaggerVsn = proplists:get_value(swagger_version, Config, oas3),
