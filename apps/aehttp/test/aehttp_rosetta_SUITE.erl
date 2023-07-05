@@ -820,6 +820,19 @@ block_create_channel_tx(Config) ->
     {ok, 200, #{<<"tx_hash">> := ChannelCreateTxHash}} = post_tx(EncTx),
 
     {ok, [_]} = rpc(aec_tx_pool, peek, [infinity]),
+
+
+    aecore_suite_utils:use_rosetta(),
+
+    {ok,
+     200,
+     #{<<"transaction">> :=
+           #{<<"transaction_identifier">> := #{<<"hash">> := ChannelCreateTxHash},
+             <<"operations">> := [PoolInitiatorOp, PoolResponderOp]}}} =
+        get_mempool_transaction_sut(ChannelCreateTxHash),
+
+    aecore_suite_utils:use_swagger(SwaggerVsn),
+
     aecore_suite_utils:mine_blocks_until_txs_on_chain(Node, [ChannelCreateTxHash], 2),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
 
@@ -858,6 +871,10 @@ block_create_channel_tx(Config) ->
     ?assertEqual(ResponderBalanceAfterCreate,
                  ResponderBalance + binary_to_integer(ResponderDelta)),
 
+    %% Check mempool operations
+    ?assertEqual(PoolInitiatorOp, InitiatorOp),
+    ?assertEqual(PoolResponderOp, ResponderOp),
+
     %% ------------------ Channel deposit ---------------------------
     SwaggerVsn = proplists:get_value(swagger_version, Config, oas3),
     aecore_suite_utils:use_swagger(SwaggerVsn),
@@ -879,6 +896,18 @@ block_create_channel_tx(Config) ->
     {ok, 200, #{<<"tx_hash">> := ChannelDepositTxHash}} = post_tx(EncDTx),
 
     {ok, [_]} = rpc(aec_tx_pool, peek, [infinity]),
+
+    aecore_suite_utils:use_rosetta(),
+
+    {ok,
+     200,
+     #{<<"transaction">> :=
+           #{<<"transaction_identifier">> := #{<<"hash">> := ChannelDepositTxHash},
+             <<"operations">> := [PoolDepositInitiatorOp]}}} =
+        get_mempool_transaction_sut(ChannelDepositTxHash),
+
+    aecore_suite_utils:use_swagger(SwaggerVsn),
+
     aecore_suite_utils:mine_blocks_until_txs_on_chain(Node, [ChannelDepositTxHash], 2),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
 
@@ -902,6 +931,8 @@ block_create_channel_tx(Config) ->
     ?assertEqual(InitiatorBalanceAfterDeposit,
                  InitiatorBalanceAfterCreate
                  + binary_to_integer(DepositInitiatorDelta)),
+
+    ?assertEqual(PoolDepositInitiatorOp, DepositInitiatorOp),
 
     %% ------------------ Channel withdraw ---------------------------
     SwaggerVsn = proplists:get_value(swagger_version, Config, oas3),
@@ -928,6 +959,18 @@ block_create_channel_tx(Config) ->
     {ok, 200, #{<<"tx_hash">> := ChannelWithdrawTxHash}} = post_tx(EncWTx),
 
     {ok, [_]} = rpc(aec_tx_pool, peek, [infinity]),
+
+    aecore_suite_utils:use_rosetta(),
+
+    {ok,
+     200,
+     #{<<"transaction">> :=
+           #{<<"transaction_identifier">> := #{<<"hash">> := ChannelWithdrawTxHash},
+             <<"operations">> := [PoolWithdrawFeesOp, PoolWithdrawInitiatorOp]}}} =
+        get_mempool_transaction_sut(ChannelWithdrawTxHash),
+
+    aecore_suite_utils:use_swagger(SwaggerVsn),
+
     aecore_suite_utils:mine_blocks_until_txs_on_chain(Node, [ChannelWithdrawTxHash], 2),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
 
@@ -957,6 +1000,10 @@ block_create_channel_tx(Config) ->
                  + binary_to_integer(WithdrawFeesDelta)
                  + binary_to_integer(WithdrawInitiatorDelta)),
 
+    %% Test mempool operations
+    ?assertEqual(PoolWithdrawFeesOp, WithdrawFeesOp),
+    ?assertEqual(PoolWithdrawInitiatorOp, WithdrawInitiatorOp), 
+
     %% ------------------ Channel close mutual ---------------------------
     aecore_suite_utils:use_swagger(SwaggerVsn),
 
@@ -976,6 +1023,18 @@ block_create_channel_tx(Config) ->
     {ok, 200, #{<<"tx_hash">> := ChannelCloseMutualTxHash}} = post_tx(EncFPTx),
 
     {ok, [_]} = rpc(aec_tx_pool, peek, [infinity]),
+
+    aecore_suite_utils:use_rosetta(),
+
+    {ok,
+     200,
+     #{<<"transaction">> :=
+           #{<<"transaction_identifier">> := #{<<"hash">> := ChannelCloseMutualTxHash},
+             <<"operations">> := [PoolCloseMutualInitiatorOp, PoolCloseMutualResponderOp, _PoolLockFundsOp]}}} =
+        get_mempool_transaction_sut(ChannelCloseMutualTxHash),
+
+    aecore_suite_utils:use_swagger(SwaggerVsn),
+
     aecore_suite_utils:mine_blocks_until_txs_on_chain(Node, [ChannelCloseMutualTxHash], 4),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
 
@@ -1008,7 +1067,11 @@ block_create_channel_tx(Config) ->
         CloseMutualResponderOp,
     ?assertEqual(ResponderAccountPubKey, CloseMutualResponderAcc),
     ?assertEqual(ResponderBalanceAfterCloseMutual,
-                 ResponderBalanceAfterCreate + binary_to_integer(CloseMutualResponderDelta)).
+                 ResponderBalanceAfterCreate + binary_to_integer(CloseMutualResponderDelta)),
+
+    %% Check mempool operations
+    ?assertEqual(CloseMutualInitiatorOp, PoolCloseMutualInitiatorOp),
+    ?assertEqual(PoolCloseMutualResponderOp, CloseMutualResponderOp).
 
 construction_flow(Config) ->
     [{_NodeId, Node} | _] = ?config(nodes, Config),
