@@ -35,8 +35,11 @@
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
+%% On a reasonably fast machine, emission takes ca 2.5 s/1k keyblocks.
+%% While we could try to guess at a reasonable timeout value based on
+%% the requested number, let's be daring and use no timeout.
 emit_keyblocks(N) when is_integer(N), N > 0 ->
-    gen_server:call(?MODULE, {emit_keyblocks, N}).
+    gen_server:call(?MODULE, {emit_keyblocks, N}, infinity).
 
 set_keyblock_interval(I) when is_integer(I), I >= 0 ->
     gen_server:call(?MODULE, {set_keyblock_interval, I}).
