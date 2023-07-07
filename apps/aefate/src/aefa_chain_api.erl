@@ -22,6 +22,7 @@
         , difficulty/1
         , final_trees/1
         , gas_limit/1
+        , network_id/1
         , gas_price/1
         , fee/1
         , generation/1
@@ -161,6 +162,10 @@ difficulty(#state{} = S) ->
 gas_limit(#state{}) ->
     %% Should be tied to height if this is changed.
     aeb_fate_data:make_integer(aec_governance:block_gas_limit()).
+
+-spec network_id(state()) -> aeb_fate_data:fate_string().
+network_id(#state{}) ->
+    aeb_fate_data:make_string(aec_governance:get_network_id()).
 
 -spec timestamp_in_msecs(state()) -> aeb_fate_data:fate_integer().
 timestamp_in_msecs(#state{} = S) ->

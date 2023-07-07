@@ -107,6 +107,7 @@
         , timestamp/2
         , generation/2
         , microblock/2
+        , network_id/2
         , difficulty/2
         , gaslimit/2
         , gas/2
@@ -1433,6 +1434,11 @@ microblock(_Arg0, EngineState) ->
         true  -> aefa_fate:abort({op_not_implemented, microblock}, EngineState);
         false -> exit({error, op_not_implemented_yet})
     end.
+
+network_id(Arg0, EngineState) ->
+    ?AVAILABLE_FROM(?VM_FATE_SOPHIA_3, EngineState),
+    API = aefa_engine_state:chain_api(EngineState),
+    write(Arg0, aefa_chain_api:network_id(API), EngineState).
 
 difficulty(Arg0, EngineState) ->
     API = aefa_engine_state:chain_api(EngineState),
