@@ -13,8 +13,7 @@
          is_key_present/1
         ]).
 
--export([set_candidate/1
-        ]).
+-export([set_candidate/1]).
 
 
 %% Supervisor API
@@ -124,7 +123,6 @@ is_ready() ->
 start_link(Keys) when is_map(Keys) ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, Keys, []).
 
-
 stop() ->
     gen_server:stop(?SERVER).
 
@@ -209,4 +207,3 @@ privkey(Pubkey, #state{keys = Keys}) ->
 -spec is_known_pubkey(aec_keys:pubkey(), #state{}) -> boolean().
 is_known_pubkey(Pubkey, #state{keys = Keys}) ->
     maps:is_key(Pubkey, Keys).
-
