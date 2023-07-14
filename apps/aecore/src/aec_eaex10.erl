@@ -136,8 +136,6 @@ derive_path(Path, DKey0) ->
     {"M" ++ Path1, private} ->
       DKey1 = derive_private_path(Path1, DKey0),
       private_to_public(DKey1);
-    {"M" ++ Path1, public} ->
-      derive_public_path(Path1, DKey0);
     _ ->
       error({invalid_path, "Expecting path to start with 'm/' or 'M/'"})
   end.
@@ -202,18 +200,6 @@ derive_private_path_segment(ed25519, {hard, Ix0}, DKey = #{priv_key := Key, chai
   DKey#{priv_key := <<ILeft:256>>, pub_key := undefined, chain_code := IRight,
         depth := maps:get(depth, DKey) + 1, child := Ix,
         fprint := fingerprint(DKey)}.
-
-derive_public_path(Path, DKey) ->
-  Segments = lists:map(fun parse_segment/1, string:lexemes(Path, "/")),
-  lists:foldl(fun derive_public_path_segment/2, DKey, Segments).
-
-derive_public_path_segment(Ix, DKey = #{curve := Curve}) ->
-  derive_public_path_segment(Curve, Ix, DKey).
-
-derive_public_path_segment(_, {hard, _}, _DKey) ->
-  error({invalid_derivation, "Can't derive hardened path from public key"});
-derive_public_path_segment(ed25519, _, _) ->
-  error({invalid_derivation, "Public derivation for ed25519 not supported"}).
 
 fingerprint(DKey = #{pub_key := undefined}) ->
   fingerprint(private_to_public(DKey));
