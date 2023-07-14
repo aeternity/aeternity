@@ -83,14 +83,10 @@ private_to_public(DKey) ->
   DKey. %% Public key field is already populated
 
 -spec master_key(Curve :: curve(), Seed :: binary()) -> derived_key().
-master_key(Curve, Seed) when byte_size(Seed) >= 16, byte_size(Seed) =< 64 ->
+master_key(ed25519, Seed) when byte_size(Seed) >= 16, byte_size(Seed) =< 64 ->
   I = <<ILeft:256, IRight:32/bytes>> = crypto:mac(hmac, sha512, curve_key(Curve), Seed),
-
-  case Curve /= ed25519 andalso (ILeft == 0 orelse ILeft > curve_order(Curve)) of
-    true  -> master_key(Curve, I);
-    false -> #{curve => Curve, depth => 0, fprint => <<0:32>>, child => 0,
-               priv_key => <<ILeft:256>>, pub_key => undefined, chain_code => IRight}
-  end.
+  #{curve => Curve, depth => 0, fprint => <<0:32>>, child => 0,
+    priv_key => <<ILeft:256>>, pub_key => undefined, chain_code => IRight}.
 
 -spec derive_aex10_from_seed(Seed         :: binary(),
                              AccountIndex :: non_neg_integer(),
@@ -167,8 +163,6 @@ private_to_public(ed25519, PrivateKey) ->
   PublicKey.
 
 curve_key(ed25519)   -> ?ED25519_SEED.
-
-curve_order(ed25519)   -> ?ED25519_ORDER.
 
 parse_segment(Segment) ->
   case lists:reverse(Segment) of

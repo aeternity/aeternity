@@ -44,7 +44,8 @@
     aefate,
     aeserialization,
     ranch,
-    aecli
+    aecli,
+    epbkdf2
   ]},
   {runtime_dependencies, ["app_ctrl-0.1.0"]},
   {env, [

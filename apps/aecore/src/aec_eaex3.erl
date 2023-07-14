@@ -16,7 +16,7 @@ read(File, Password) ->
       case jsx:decode(BinData, [return_maps]) of
         JSON when is_map(JSON) ->
           decrypt(JSON, Password);
-        {error, Err} ->
+        Err ->
           io:format("Error, could not read file: ~s\n  "
                     "Reason: JSON parse failed at ~p\n", [File, Err]),
           {error, invalid_json}
@@ -64,8 +64,6 @@ pwd_hash({pbkdf2, #{rounds := Rounds, dklen := DKLen, hash := Hash, salt := Salt
   {ok, PwdHash} = epbkdf2:pbkdf2(Hash, Password, Salt, Rounds, DKLen),
   PwdHash.
 
-decrypt_algo(xsalsa20_poly1305, CipherText, Key, #{nonce := Nonce}) ->
-  enacl:secretbox_open_easy(CipherText, Nonce, Key);
 decrypt_algo(chacha20_poly1305, CipherText, Key, #{nonce := Nonce}) ->
   <<MAC:16/binary, CMsg/binary>> = CipherText,
   case crypto:crypto_one_time_aead(chacha20_poly1305, Key, Nonce, CMsg, <<>>, MAC, false) of
@@ -130,14 +128,6 @@ get_cipher(#{<<"symmetric_alg">> := CipherAlg,
         _ ->
           throw({missing_info, "crypto/cipher_params/nonce"})
       end;
-    <<"xsalsa20-poly1305">> ->
-      case CipherParams of
-        #{<<"nonce">> := HexNonce} ->
-          {xsalsa20_poly1305, check_hex_to_bin("crypto/ciphertext", HexCipher),
-           #{nonce => check_hex_to_bin("crypto/cipher_params/nonce", HexNonce)}};
-        _ ->
-          throw({missing_info, "crypto/cipher_params/nonce"})
-      end;
     _ ->
       throw({bad_cipher_algo, CipherAlg})
   end;
@@ -161,7 +151,7 @@ check_hex_to_bin(Param, MaybeHex) ->
     throw({bad_format, "'" ++ Param ++ "' should be hexadecimal"})
   end.
 
--spec hex_to_bin(Input :: string()) -> binary().
+-spec hex_to_bin(Input :: binary()) -> binary().
 hex_to_bin(S) ->
   hex_to_bin(S, []).
 hex_to_bin(<<>>, Acc) ->
