@@ -83,8 +83,8 @@ private_to_public(DKey) ->
   DKey. %% Public key field is already populated
 
 -spec master_key(Curve :: curve(), Seed :: binary()) -> derived_key().
-master_key(ed25519, Seed) when byte_size(Seed) >= 16, byte_size(Seed) =< 64 ->
-  I = <<ILeft:256, IRight:32/bytes>> = crypto:mac(hmac, sha512, curve_key(Curve), Seed),
+master_key(ed25519 = Curve, Seed) when byte_size(Seed) >= 16, byte_size(Seed) =< 64 ->
+  <<ILeft:256, IRight:32/bytes>> = crypto:mac(hmac, sha512, curve_key(Curve), Seed),
   #{curve => Curve, depth => 0, fprint => <<0:32>>, child => 0,
     priv_key => <<ILeft:256>>, pub_key => undefined, chain_code => IRight}.
 

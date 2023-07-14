@@ -4,12 +4,14 @@
 -include_lib("eunit/include/eunit.hrl").
 
 read_mnemonic_test() ->
-  {ok, Secret} = eaex3:read("test/data/test1_aex3.json", "passwd"),
+  File = filename:join(code:lib_dir(aecore), "test/data/test1_aex3.json"),
+  {ok, Secret} = aec_eaex3:read(File, "passwd"),
   ?assertEqual(ed25519_bip39_mnemonic, maps:get(type, Secret)),
   ?assertEqual(<<"option spy reduce crazy edge normal escape first suggest dance myth silent">>, maps:get(message, Secret)).
 
 read_mnemonic_empty_passwd_test() ->
-  {ok, Secret} = eaex3:read("test/data/test1_aex3.json", ""),
+  File = filename:join(code:lib_dir(aecore), "test/data/test2_aex3.json"),
+  {ok, Secret} = aec_eaex3:read(File, ""),
   ?assertEqual(ed25519_bip39_mnemonic, maps:get(type, Secret)),
   ?assertEqual(<<"option spy reduce crazy edge normal escape first suggest dance myth silent">>, maps:get(message, Secret)).
 
