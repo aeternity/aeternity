@@ -1713,7 +1713,22 @@
                                                                 "default": ""
                                                             },
                                                             "priv": {
-                                                                "description": "Private key",
+                                                                "description": "Unencrypted hex private key",
+                                                                "type": "string",
+                                                                "default": ""
+                                                            },
+                                                            "wallet_file": {
+                                                                "description": "Path to aex3 file containing encrypted private key",
+                                                                "type": "string",
+                                                                "default": ""
+                                                            },
+                                                            "wallet_file_password": {
+                                                                "description": "Password to open aex3 file if not using wallet_file_password_env",
+                                                                "type": "string",
+                                                                "default": ""
+                                                            },
+                                                            "wallet_file_password_env": {
+                                                                "description": "Name of environment variable holding password to open aex3 file",
                                                                 "type": "string",
                                                                 "default": ""
                                                             }

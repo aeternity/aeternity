@@ -56,17 +56,17 @@
 -define(DEFAULT_GAS_PRICE, aec_test_utils:min_gas_price()).
 -define(INITIAL_STAKE, 1000000000000000000000000).
 
--define(PEEK_MSGQ, peek_msgq(?LINE)).
-
 -define(ALICE, {
-    <<177,181,119,188,211,39,203,57,229,94,108,2,107,214, 167,74,27,
-      53,222,108,6,80,196,174,81,239,171,117,158,65,91,102>>,
-    <<145,69,14,254,5,22,194,68,118,57,0,134,66,96,8,20,124,253,238,
-      207,230,147,95,173,161,192,86,195,165,186,115,251,177,181,119,
-      188,211,39,203,57,229,94,108,2,107,214,167,74,27,53,222,108,6,
-      80,196,174,81,239,171,117,158,65,91,102>>,
-    "Alice"}).
-%% ak_2MGLPW2CHTDXJhqFJezqSwYSNwbZokSKkG7wSbGtVmeyjGfHtm
+    <<57,138,103,138,197,56,127,132,23,228,1,98,41,227,193,51,162,227,127,233,
+      89,99,71,245,21,164,15,129,59,154,223,80>>,
+    <<171,72,154,224,185,127,110,41,222,148,235,127,187,236,196,23,30,6,102,
+      59,0,204,182,163,137,28,231,5,212,252,197,52,
+      57,138,103,138,197,56,127,132,23,228,1,98,41,227,193,51,162,227,127,233,
+      89,99,71,245,21,164,15,129,59,154,223,80>>,
+    "Alice",
+    "alice_aex3.json", "passwd"}).
+%% ak_SLoK6dZZw5P5UkbeMgARZg8nAeSn4KgCweAQP2Anjq7RamZHe
+%% "squeeze dream hotel bomb canal feel voyage scissors retire clay goat hammer"
 
 -define(BOB, {
     <<103,28,85,70,70,73,69,117,178,180,148,246,81,104,
@@ -987,11 +987,21 @@ block_difficulty(Config) ->
         lists:seq(1, 20)), %% test with 20 elections
     ok.
 
-pubkey({Pubkey, _, _}) -> Pubkey.
+staker_account_config({_, Privkey, _} = Who) ->
+    Priv = list_to_binary(aeu_hex:bin_to_hex( Privkey)),
+    #{<<"pub">> => encoded_pubkey(Who), <<"priv">> => Priv};
+staker_account_config({_, _, _, File, Passwd} = Who) ->
+    WalletFile = filename:join([code:lib_dir(aehttp), "test/data", File]),
+    #{<<"pub">> => encoded_pubkey(Who), <<"wallet_file">> => WalletFile,  <<"wallet_file_password">> =>  Passwd}.
 
-privkey({_, Privkey, _}) -> Privkey.
+pubkey({Pubkey, _, _}) -> Pubkey;
+pubkey({Pubkey, _, _, _, _}) -> Pubkey.
 
-name({_, _, Name}) -> Name.
+privkey({_, Privkey, _}) -> Privkey;
+privkey({_, Privkey, _, _, _}) -> Privkey.
+
+name({_, _, Name}) -> Name;
+name({_, _, Name, _, _}) -> Name.
 
 who_by_pubkey(Pubkey) ->
     Alice = pubkey(?ALICE),
@@ -1366,17 +1376,17 @@ node_config(PotentialStakers, ReceiveAddress, Consensus) ->
             ?CONSENSUS_HC ->
                 lists:map(
                     fun({HCWho, PCWho}) ->
-                        HCPriv = list_to_binary(aeu_hex:bin_to_hex( privkey(HCWho))), %% TODO: discuss key management
-                        PCPriv = list_to_binary(aeu_hex:bin_to_hex( privkey(PCWho))),
-                        #{  <<"hyper_chain_account">> =>#{<<"pub">> => encoded_pubkey(HCWho), <<"priv">> => HCPriv},
-                            <<"parent_chain_account">> =>#{<<"pub">> => encoded_pubkey(PCWho), <<"priv">> => PCPriv}}
+                        HCAccount = staker_account_config(HCWho),
+                        PCAccount = staker_account_config(PCWho),
+                        #{  <<"hyper_chain_account">> => HCAccount,
+                            <<"parent_chain_account">> => PCAccount}
                     end,
                     PotentialStakers);
             _ when Consensus == ?CONSENSUS_HC_BTC; Consensus == ?CONSENSUS_HC_DOGE ->
                 lists:map(
                     fun({HCWho, PCWho}) ->
-                        HCPriv = list_to_binary(aeu_hex:bin_to_hex( privkey(HCWho))),
-                        #{  <<"hyper_chain_account">> => #{<<"pub">> => encoded_pubkey(HCWho), <<"priv">> => HCPriv},
+                        HCAccount = staker_account_config(HCWho),
+                        #{  <<"hyper_chain_account">> => HCAccount,
                             <<"parent_chain_account">> => #{<<"pub">> => PCWho} }
                     end,
                     PotentialStakers)

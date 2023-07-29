@@ -129,15 +129,7 @@ start(Config, #{block_production := BlockProduction}) ->
     ok.
 
 start_btc(StakersEncoded, PCSpendAddress, ParentConnMod) ->
-    Stakers =
-        lists:map(
-            fun(#{<<"hyper_chain_account">> := #{<<"pub">> := EncodedPubkey,
-                                                 <<"priv">> := EncodedPrivkey}
-                 }) ->
-                 {HCPubkey, HCPrivkey} = validate_keypair(EncodedPubkey, EncodedPrivkey),
-                 {HCPubkey, HCPrivkey}
-            end,
-            StakersEncoded),
+    Stakers = parse_btc_stakers(StakersEncoded),
     StakersMap = maps:from_list(Stakers),
     start_dependency(aec_preset_keys, [StakersMap]),
     HCPCPairs = lists:map(
@@ -153,35 +145,89 @@ start_btc(StakersEncoded, PCSpendAddress, ParentConnMod) ->
     {ParentConnMod, PCSpendAddress, HCPCPairs, SignModule}.
 
 start_ae(StakersEncoded, PCSpendAddress) ->
-    Stakers =
-        lists:flatmap(
-            fun(#{<<"hyper_chain_account">> := #{<<"pub">> := HCEncodedPubkey,
-                                                 <<"priv">> := HCEncodedPrivkey},
-                  <<"parent_chain_account">> := #{<<"pub">> := PCEncodedPubkey,
-                                                  <<"priv">> := PCEncodedPrivkey}
-                 }) ->
-                {HCPubkey, HCPrivkey} = validate_keypair(HCEncodedPubkey, HCEncodedPrivkey),
-                {PCPubkey, PCPrivkey} = validate_keypair(PCEncodedPubkey, PCEncodedPrivkey),
-                [{HCPubkey, HCPrivkey}, {PCPubkey, PCPrivkey}]
-            end,
-            StakersEncoded),
-    StakersMap = maps:from_list(Stakers),
+    Stakers = parse_ae_stakers(StakersEncoded),
+    StakerPairs = lists:flatmap(fun({{_, HCPubkey, HCPrivkey}, {_, PCPubkey, PCPrivkey}}) ->
+                                    [{HCPubkey, HCPrivkey}, {PCPubkey, PCPrivkey}]
+                                end, Stakers),
+    StakersMap = maps:from_list(StakerPairs),
+
     %% TODO: ditch this after we move beyond OTP24
     _Mod = aec_preset_keys,
     start_dependency(aec_preset_keys, [StakersMap]),
     HCPCPairs = lists:map(
-            fun(#{<<"hyper_chain_account">> := #{<<"pub">> := HCEncodedPubkey},
-                  <<"parent_chain_account">> := #{<<"pub">> := PCEncodedPubkey}
-                 }) ->
-                 {ok, HCPubkey} = aeser_api_encoder:safe_decode(account_pubkey,
-                                                 HCEncodedPubkey),
+            fun({{_, HCPubkey, _}, {PCEncodedPubkey, _, _}}) ->
                  {HCPubkey, PCEncodedPubkey}
             end,
-            StakersEncoded),
+            Stakers),
     ParentConnMod = aehttpc_aeternity,
     SignModule = get_sign_module(),
     {ok, PCSpendPubkey} = aeser_api_encoder:safe_decode(account_pubkey, PCSpendAddress),
     {ParentConnMod, PCSpendPubkey, HCPCPairs, SignModule}.
+
+parse_ae_stakers(StakersConfig) ->
+    lists:map(
+            fun(#{<<"hyper_chain_account">> := #{<<"pub">> := HCEncodedPubkey} = HC,
+                  <<"parent_chain_account">> := #{<<"pub">> := PCEncodedPubkey} = PC
+                 }) ->
+                 {ok, HCPubkey, HCPrivkey} = parse_priv_key(HC),
+                 {ok, PCPubkey, PCPrivkey} = parse_priv_key(PC),
+                 {{HCEncodedPubkey, HCPubkey, HCPrivkey}, {PCEncodedPubkey, PCPubkey, PCPrivkey}}
+            end,
+            StakersConfig).
+
+parse_btc_stakers(StakersConfig) ->
+    lists:map(
+            fun(#{<<"hyper_chain_account">> := #{<<"pub">> := EncodedPubkey} = Account
+                 }) ->
+                 {ok, Pubkey, Privkey} = parse_priv_key(Account),
+                 {Pubkey, Privkey}
+            end,
+            StakersConfig).
+
+parse_priv_key(#{<<"pub">> := EncodedPubkey, <<"priv">> := EncodedPrivkey}) ->
+    {Pubkey, Privkey} = validate_keypair(EncodedPubkey, EncodedPrivkey),
+    {ok, Pubkey, Privkey};
+parse_priv_key(#{<<"pub">> := EncodedPubkey, <<"wallet_file">> := WalletFile} = Config) ->
+    Password = parse_wallet_password(Config),
+    lager:info("Reading wallet file ~s ~s", [WalletFile, filename:absname(WalletFile)]),
+    case aec_eaex3:read(WalletFile, Password) of
+        {ok, Wallet} ->
+            {WalletPubkey, Privkey} = wallet_keys(Wallet),
+            {ok, Pubkey} = aeser_api_encoder:safe_decode(account_pubkey,
+                                                         EncodedPubkey),
+            if (Pubkey == WalletPubkey) ->
+                    {ok, Pubkey, <<Privkey/binary, Pubkey/binary>>};
+                true ->
+                    lager:error("Wallet Pubkey does not match configured Pubkey ~s configured = ~p wallet = ~p", [WalletFile, Pubkey, WalletPubkey]),
+                    {error, key_mismatch}
+            end;
+        {error, Reason} ->
+            lager:error("Failed to read wallet file ~s, ~p", [WalletFile, Reason]),
+            {error, Reason}
+    end.
+
+wallet_keys(#{type := ed25519_bip39_mnemonic, message := Mnemonic}) ->
+    Seed = bip39_mnemonic_to_seed(Mnemonic, ""),
+    Aex10 = aec_eaex10:derive_aex10_from_seed(Seed, 0, 0),
+    {ok, Privkey} = aec_eaex10:private_key(Aex10),
+    {ok, Pubkey} = aec_eaex10:public_key(Aex10),
+    {Pubkey, Privkey}.
+
+
+parse_wallet_password(#{<<"wallet_file_password">> := Password}) ->
+    Password;
+parse_wallet_password(#{<<"wallet_file_password_env">> := PasswordEnv}) ->
+    EnvVar = binary_to_list(PasswordEnv),
+    os:getenv(EnvVar, "").
+
+-spec bip39_mnemonic_to_seed(Mnemonic :: binary(),
+                             PassPhrase :: iodata()) -> <<_:512>>.
+bip39_mnemonic_to_seed(Mnemonic, PassPhrase) ->
+  {ok, BinSeed} = epbkdf2:pbkdf2(sha512,
+                                 Mnemonic,
+                                 iolist_to_binary(["mnemonic", PassPhrase]),
+                                 2048),
+  BinSeed.
 
 validate_keypair(EncodedPubkey, EncodedPrivkey) ->
     {ok, Pubkey} = aeser_api_encoder:safe_decode(account_pubkey,
