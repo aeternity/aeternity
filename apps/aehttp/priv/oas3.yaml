@@ -1028,6 +1028,22 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/EncodedHash"
+  /currency:
+    get:
+      tags:
+        - external
+        - node_info
+      operationId: GetCurrency
+      description: Get the currency metadata of a node
+      parameters:
+        - $ref: '#/components/parameters/intAsString'
+      responses:
+        "200":
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Currency"                  
   ###
   ## Internal endpoints
   ###
@@ -3002,6 +3018,42 @@ components:
         - peer_pubkey
         - top_key_block_hash
         - top_block_height
+    Currency:
+      type: object
+      properties:
+        long_name:
+          type: string
+        short_name:
+          type: string
+        smallest_denomination:
+          type: string
+        subunits_per_unit:
+          $ref: "#/components/schemas/UInt64"
+        fiat_converstion_url:
+          type: string
+        logo:
+          $ref: "#/components/schemas/Image"
+        primary_colour:
+          type: string
+        secondary_colour:
+          type: string
+        network_id:
+          type: string
+      required:
+        - long_name
+        - short_name
+        - smallest_denomination
+        - subunits_per_unit
+        - primary_colour
+        - secondary_colour
+        - network_id
+    Image:
+      type: object
+      properties:
+        type:
+          type: string
+        data:
+          type: string
     Protocol:
       type: object
       properties:

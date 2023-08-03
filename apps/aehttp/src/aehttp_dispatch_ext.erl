@@ -700,6 +700,49 @@ handle_request_('GetStatus', _Params, _Context) ->
        <<"top_key_block_hash">>         => aeser_api_encoder:encode(key_block_hash, TopBlockHash),
        <<"top_block_height">>           => TopBlockHeight}};
 
+handle_request_('GetCurrency', _Params, _Context) ->
+    {ok, LongNameCcy} = aeu_env:find_config([<<"chain">>, <<"currency">>, <<"long_name">>],[user_config, schema_default]),
+    {ok, ShortNameCcy} = aeu_env:find_config([<<"chain">>, <<"currency">>, <<"short_name">>],[user_config, schema_default]),
+    {ok, SmallestDenomination} = aeu_env:find_config([<<"chain">>, <<"currency">>, <<"smallest_denomination">>],[user_config, schema_default]),
+    {ok, SubunitsPerUnit} = aeu_env:find_config([<<"chain">>, <<"currency">>, <<"subunits_per_unit">>],[user_config, schema_default]),
+    CcyMeta0 = #{ <<"long_name">>              => LongNameCcy,
+                  <<"short_name">>            => ShortNameCcy,
+                  <<"smallest_denomination">> => SmallestDenomination,
+                  <<"subunits_per_unit">>     => SubunitsPerUnit
+                },
+    CcyMeta = case aeu_env:find_config([<<"chain">>, <<"currency">>, <<"fiat_converstion_url">>],[user_config]) of
+                undefined ->
+                    CcyMeta0;
+                {ok, FiatUrl} ->
+                    maps:put(<<"fiat_converstion_url">>, FiatUrl, CcyMeta0)
+                end,
+    {ok, PrimaryColour} = aeu_env:find_config([<<"chain">>, <<"display">>, <<"primary_colour">>],[user_config, schema_default]),
+    {ok, SecondaryColour} = aeu_env:find_config([<<"chain">>, <<"display">>, <<"secondary_colour">>],[user_config, schema_default]),
+    {ok, NetworkId} = aeu_env:find_config([<<"chain">>, <<"display">>, <<"network_id">>],[user_config, schema_default]),
+    Display0 = #{ <<"primary_colour">>   => PrimaryColour,
+                  <<"secondary_colour">> => SecondaryColour,
+                  <<"network_id">>       => NetworkId
+                },
+    Display = case aeu_env:find_config([<<"chain">>, <<"display">>, <<"logo_file">>],[user_config]) of
+                undefined ->
+                    Display0;
+                {ok, FileName} ->
+                    case file:read_file(FileName) of
+                        {ok, FileBin} ->
+                            case filename:extension(FileName) of
+                                <<_,Ext/binary>> ->
+                                    maps:put(<<"logo">>, 
+                                                #{<<"type">> => Ext,
+                                                  <<"data">> => base64:encode(FileBin)}, Display0);
+                            _ ->
+                                Display0
+                            end;
+                        _ ->
+                            Display0
+                    end
+              end,
+    {200, [], maps:merge(CcyMeta, Display)};
+
 handle_request_('GetChainEnds', _Params, _Context) ->
     {200, [], [aeser_api_encoder:encode(key_block_hash, H) || H <- aec_db:find_chain_end_hashes()]};
 

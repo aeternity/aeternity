@@ -1604,6 +1604,61 @@
                         }
                     }
                 },
+                "currency" : {
+                    "type" : "object",
+                    "additionalProperties" : false,
+                    "properties" : {
+                        "long_name": {
+                            "description": "Long name of currency.",
+                            "type": "string",
+                            "default": "aeternity"
+                        },
+                        "short_name": {
+                            "description": "Short name of currency.",
+                            "type": "string",
+                            "default": "AE"
+                        },
+                        "smallest_denomination" : {
+                            "description" : "Smallest denomination of currency.",
+                            "type" : "string",
+                            "default" : "aetto"
+                        },
+                        "subunits_per_unit" : {
+                            "description" : "Subunits per unit.",
+                            "type" : "integer",
+                            "default" : 1000000000000000000
+                        },
+                        "fiat_converstion_url" : {
+                            "description" : "URL of the fiat conversion.",
+                            "type" : "string"
+                        }
+                    }
+                },
+                "display" : {
+                    "type" : "object",
+                    "additionalProperties" : false,
+                    "properties" : {
+                        "logo_file": {
+                            "description": "Logo file of the chain.",
+                            "type": "string"
+                        },
+                        "primary_colour": {
+                            "description": "Short name of currency.",
+                            "type": "string",
+                            "default": "#f5274e"
+                        },
+                        "secondary_colour" : {
+                            "description" : "Smallest denomination of currency.",
+                            "type" : "string",
+                            "default" : "#242424"
+                        },
+                        "network_id": {
+                            "description" : "The display name of the network Id",
+                            "type": "string",
+                            "default": "ae_mainnet"
+                        }
+                    }
+                },
                 "consensus" : {
                     "description" : "The consensus algorithms used for validating blocks. Ignored if 'fork_management > network_id' has value 'ae_mainnet' or 'ae_uat'.",
                     "type" : "object",
