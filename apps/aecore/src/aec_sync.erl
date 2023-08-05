@@ -21,6 +21,7 @@
 
 -export([ start_sync/3
         , get_generation/2
+        , get_top_target/0
         , set_last_generation_in_sync/0
         , ask_all_for_node_info/0
         , ask_all_for_node_info/1]).
@@ -59,6 +60,9 @@ start_sync(PeerId, RemoteHash, RemoteDifficulty) ->
 
 get_generation(PeerId, Hash) ->
     gen_server:cast(?MODULE, {get_generation, PeerId, Hash}).
+
+get_top_target() ->
+    gen_server:call(?MODULE, get_top_target).
 
 set_last_generation_in_sync() ->
     gen_server:cast(?MODULE, set_last_generation_in_sync).
@@ -232,6 +236,8 @@ handle_call({worker_for_peer, PeerId}, _, State) ->
     {reply, get_worker_for_peer(State, PeerId), State};
 handle_call({sync_in_progress, PeerId}, _, State) ->
     {reply, peer_in_sync(State, PeerId), State};
+handle_call(get_top_target, _, State) ->
+    {reply, State#state.top_target, State};
 handle_call({known_chain, Chain0 = #chain{ id = CId0 }, NewChainInfo}, _From, State0) ->
     {Chain, State} =
         case NewChainInfo of
@@ -560,6 +566,7 @@ valid_sync_tasks(#state{sync_tasks = STs}) ->
     [ST || #sync_task{suspect = false} = ST <- STs].
 
 update_top_target(TopTarget, State) ->
+    lager:debug("TopTarget = ~p, State = ~p", [TopTarget, lager:pr(State, ?MODULE)]),
     State#state{ top_target = TopTarget }.
 
 do_update_sync_task(State, STId, Update) ->

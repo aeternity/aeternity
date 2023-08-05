@@ -13,5 +13,3 @@ contract ChainTest =
     put(state{last_bf = Chain.coinbase})
 
   entrypoint last_bf() = state.last_bf
-
-  entrypoint nw_id() = Chain.network_id

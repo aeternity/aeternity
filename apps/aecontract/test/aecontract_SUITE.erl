@@ -143,6 +143,7 @@
         , sophia_chess/1
         , sophia_variant_types/1
         , sophia_chain/1
+        , sophia_network_id/1
         , sophia_savecoinbase/1
         , sophia_fundme/1
         , sophia_aens_resolve/1
@@ -168,6 +169,7 @@
         , sophia_namespaces/1
         , sophia_too_little_gas_for_mem/1
         , sophia_bytes/1
+        , sophia_bytes_any/1
         , sophia_bytes_remote/1
         , sophia_bytes_to_x/1
         , sophia_bytes_concat/1
@@ -452,6 +454,7 @@ groups() ->
                                  sophia_variant_types,
                                  sophia_arity_check,
                                  sophia_chain,
+                                 sophia_network_id,
                                  sophia_savecoinbase,
                                  sophia_fundme,
                                  sophia_aens_resolve,
@@ -471,6 +474,7 @@ groups() ->
                                  sophia_heap_to_heap_bug,
                                  sophia_namespaces,
                                  sophia_bytes,
+                                 sophia_bytes_any,
                                  sophia_bytes_remote,
                                  sophia_bytes_to_x,
                                  sophia_bytes_concat,
@@ -4372,7 +4376,7 @@ sophia_all_signatures_aens(Cfg) ->
         _ -> sophia_all_signatures_aens_(Cfg)
     end.
 
-sophia_all_signatures_aens_(Cfg) ->
+sophia_all_signatures_aens_(_Cfg) ->
     init_new_state(),
     Acc             = ?call(new_account, 40000000000000 * aec_test_utils:min_gas_price()),
     NameAcc         = ?call(new_account, 40000000000000 * aec_test_utils:min_gas_price()),
@@ -4381,12 +4385,9 @@ sophia_all_signatures_aens_(Cfg) ->
     Salt1           = rand:uniform(10000),
     {ok, NameAscii} = aens_utils:to_ascii(Name1),
     CHash           = ?hsh(aens_hash:commitment_hash(NameAscii, Salt1)),
-    NHash           = aens_hash:name_hash(NameAscii),
     NameArg         = Name1,
     NameAccSigAll   = sign(<<NameAcc/binary, "AENS"/utf8, Ct/binary>>, NameAcc),
     AccSigAll       = sign(<<Acc/binary, "AENS"/utf8, Ct/binary>>, Acc),
-    APubkey  = 1,
-    OPubkey  = 2,
 
     %% PreClaim
     Res1 = ?call(call_contract, Acc, Ct, signedPreclaim, {tuple, []}, {NameAcc, CHash, NameAccSigAll}, #{ height => 10 }),
@@ -5135,6 +5136,15 @@ sophia_chain(_Cfg) ->
     ExpectMiner = ?call(call_contract, Acc, Ct1, miner, word, {}),
     ?assertMatchFATE({address, Beneficiary}, ExpectMiner),
     ?assertMatchAEVM(Beneficiary, ExpectMiner),
+    ok.
+
+sophia_network_id(_Cfg) ->
+    ?skipRest(vm_version() < ?VM_FATE_SOPHIA_3, from_ceres),
+    init_new_state(),
+    Acc  = ?call(new_account, 10000000 * aec_test_utils:min_gas_price()),
+    Ct1  = ?call(create_contract, Acc, chain, {}, #{amount => 10000}),
+    NwId = ?call(call_contract, Acc, Ct1, nw_id, string, {}),
+    ?assertMatch(<<"local_ceres_testnet">>, NwId),
     ok.
 
 sophia_savecoinbase(_Cfg) ->
@@ -6054,6 +6064,74 @@ sophia_bytes_remote(_Cfg) ->
 
     ok.
 
+split_any({bytes, B}, N) when byte_size(B) < abs(N) ->
+    none;
+split_any({bytes, B}, N) ->
+    N1 = if N > 0 -> N; true -> byte_size(B) - abs(N) end,
+    <<B1:N1/binary, B2/binary>> = B,
+    {some, {{bytes, B1}, {bytes, B2}}}.
+
+concat({bytes, B1}, {bytes, B2}) -> {bytes, <<B1/binary, B2/binary>>}.
+
+sophia_bytes_any(_Cfg) ->
+    ?skipRest(vm_version() < ?VM_FATE_SOPHIA_3, bytes_any_from_ceres_only),
+    init_new_state(),
+    Acc  = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
+    C    = ?call(create_contract, Acc, bytes_any, {}),
+    CR   = ?call(create_contract, Acc, bytes_any, {}),
+
+    B = fun(B) -> {bytes, B} end,
+
+    Bs = B(<<"0123456789">>),
+    SpRes1 = ?call(call_contract, Acc, C, split_any, {option, {tuple, [bytes, bytes]}}, {Bs, 4}),
+    ?assertEqual(split_any(Bs, 4), SpRes1),
+
+    SpRes2 = ?call(call_contract, Acc, C, split_any, {option, {tuple, [bytes, bytes]}}, {Bs, -6}),
+    ?assertEqual(split_any(Bs, -6), SpRes2),
+
+    SpRes3 = ?call(call_contract, Acc, C, split_any, {option, {tuple, [bytes, bytes]}}, {Bs, 42}),
+    ?assertEqual(split_any(Bs, 42), SpRes3),
+
+    SpRes4 = ?call(call_contract, Acc, C, r_split_any, {option, {tuple, [bytes, bytes]}}, {?cid(CR), Bs, 4}),
+    ?assertEqual(split_any(Bs, 4), SpRes4),
+
+    CcRes1 = ?call(call_contract, Acc, C, concat, bytes, {Bs, Bs}),
+    ?assertEqual(concat(Bs, Bs), CcRes1),
+
+    CcRes2 = ?call(call_contract, Acc, C, r_concat, bytes, {?cid(CR), Bs, Bs}),
+    ?assertEqual(concat(Bs, Bs), CcRes2),
+
+    ToRes1 = ?call(call_contract, Acc, C, to_fixed, {option, bytes}, {B(<<"1234">>)}),
+    ?assertEqual({some, B(<<"1234">>)}, ToRes1),
+
+    ToRes2 = ?call(call_contract, Acc, C, to_fixed, {option, bytes}, {Bs}),
+    ?assertEqual(none, ToRes2),
+
+    ToRes3 = ?call(call_contract, Acc, C, to_any, bytes, {B(<<"1234">>)}),
+    ?assertEqual(B(<<"1234">>), ToRes3),
+
+    ToRes4 = ?call(call_contract, Acc, C, to_any, bytes, {Bs}),
+    ?assertEqual({error, <<"Type error on call: [{bytes,<<\"0123456789\">>}] is not of type [{bytes,4}]">>}, ToRes4),
+
+    IBRes1 = ?call(call_contract, Acc, C, int_to_bytes, bytes, {42, 4}),
+    ?assertEqual(B(<<0, 0, 0, 42>>), IBRes1),
+
+    IBRes2 = ?call(call_contract, Acc, C, int_to_bytes, bytes, {1024, 1}),
+    ?assertEqual(B(<<0>>), IBRes2),
+
+    SBRes1 = ?call(call_contract, Acc, C, string_to_bytes, bytes, {<<"abcdef">>}),
+    ?assertEqual(B(<<"abcdef">>), SBRes1),
+
+    SRes1 = ?call(call_contract, Acc, C, size, word, {B(<<"123456">>)}),
+    ?assertEqual(6, SRes1),
+
+    RtRes1 = ?call(call_contract, Acc, C, r_test1, {list, bytes}, {?cid(CR)}),
+    ?assertEqual({error,<<"Type of remote function does not match expected type">>}, RtRes1),
+
+    RtRes2 = ?call(call_contract, Acc, C, r_test2, {list, bytes}, {?cid(CR)}),
+    ?assertEqual({bytes, <<17,34,51,68>>}, RtRes2),
+
+    ok.
 
 sophia_bytes_to_x(_Cfg) ->
     ?skipRest(sophia_version() =< ?SOPHIA_MINERVA, bytes_to_x_not_in_minerva),

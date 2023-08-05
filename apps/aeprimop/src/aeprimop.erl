@@ -795,7 +795,7 @@ oracle_query({OraclePubkey, OriginalIdent, SenderPubkey, SenderNonce,
     {Oracle, S1} = get_oracle(OraclePubkey, oracle_does_not_exist, S),
     assert_query_fee(Oracle, QueryFee),
     assert_query_ttl(Oracle, QTTL, RTTL, S),
-    assert_oracle_format_match(Oracle, aeo_oracles:query_format(Oracle), Query),
+    assert_oracle_format_match(Oracle, aeo_oracles:query_format(Oracle), Query, S#state.protocol),
     AbsoluteQTTL = S#state.height + QTTL,
     ResponseTTL = {delta, RTTL},
     try aeo_query:new(OriginalIdent, SenderPubkey, SenderNonce, Query, QueryFee,
@@ -850,7 +850,7 @@ oracle_respond({OraclePubkey, QueryId, Response, RTTL}, S) ->
     assert_oracle_response_ttl(QueryObject, RTTL),
     {Oracle, S2} = get_oracle(OraclePubkey, oracle_does_not_exist, S1),
     assert_query_belongs_to_oracle(QueryObject, OraclePubkey),
-    assert_oracle_format_match(Oracle, aeo_oracles:response_format(Oracle), Response),
+    assert_oracle_format_match(Oracle, aeo_oracles:response_format(Oracle), Response, S#state.protocol),
     assert_query_is_open(QueryObject),
     Height = S#state.height,
     QueryObject1 = aeo_query:add_response(Height, Response, QueryObject),
@@ -2116,7 +2116,7 @@ assert_query_ttl(Oracle, QTTL, RTTL, S) ->
         false -> ok
     end.
 
-assert_oracle_format_match(Oracle, Format, Content) ->
+assert_oracle_format_match(Oracle, Format, Content, Protocol) ->
     case aeo_oracles:abi_version(Oracle) of
         ?ABI_NO_VM ->
             %% No interpretation of the format, nor content.
@@ -2140,7 +2140,9 @@ assert_oracle_format_match(Oracle, Format, Content) ->
             {Type, <<>>} = aeb_fate_encoding:deserialize_type(Format),
             try aeb_fate_encoding:deserialize(Content) of
                 FateTerm ->
-                    case aefa_fate:check_type(Type, FateTerm) of
+                    VMVersion = if Protocol > ?IRIS_PROTOCOL_VSN -> ?VM_FATE_SOPHIA_3;
+                                   true -> ?VM_FATE_SOPHIA_1 end,
+                    case aefa_fate:check_type(Type, FateTerm, VMVersion) of
                         #{}   -> ok;
                         false -> runtime_error(bad_format)
                     end

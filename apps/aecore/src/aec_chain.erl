@@ -95,6 +95,11 @@
                          micro_blocks := [aec_blocks:micro_block()],
                          dir := backward | forward }.
 
+%% Preferred activity type is dirty for read functions.
+%% If called from within an activity, the activity type is inherited.
+activity(F) when is_function(F, 0) ->
+    aec_db:ensure_activity(async_dirty, F).
+
 %%%===================================================================
 %%% Accounts
 %%%===================================================================
@@ -486,6 +491,9 @@ top_block_hash() ->
 
 -spec top_key_block() -> 'error' | {ok, aec_blocks:block()}.
 top_key_block() ->
+    activity(fun top_key_block_/0).
+
+top_key_block_() ->
     case aec_db:get_top_block_hash() of
         Hash when is_binary(Hash) ->
             {ok, Block} = get_block(Hash),
@@ -499,12 +507,15 @@ top_key_block() ->
 
 -spec top_key_block_hash() -> 'undefined' | binary().
 top_key_block_hash() ->
+    activity(fun top_key_block_hash_/0).
+
+top_key_block_hash_() ->
     case aec_db:get_top_block_hash() of
         Hash when is_binary(Hash) ->
-            {ok, Block} = get_block(Hash),
-            case aec_blocks:type(Block) of
+            Header = aec_db:get_header(Hash),
+            case aec_headers:type(Header) of
                 key -> Hash;
-                micro -> aec_blocks:prev_key_hash(Block)
+                micro -> aec_headers:prev_key_hash(Header)
             end;
         undefined ->
             undefined
@@ -512,6 +523,9 @@ top_key_block_hash() ->
 
 -spec top_block_with_state() -> 'undefined' | {aec_blocks:block(), aec_trees:trees()}.
 top_block_with_state() ->
+    activity(fun top_block_with_state_/0).
+
+top_block_with_state_() ->
     case top_block_hash() of
         undefined -> undefined;
         Hash -> {aec_db:get_block(Hash), aec_db:get_block_state(Hash)}
