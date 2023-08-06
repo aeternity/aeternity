@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @title /Users/sean/Aeternity/aeternity-hyperchains/apps/aehttp/test/aehttp_btc_sim
+%%% @title /Users/sean/Aeternity/aeternity-hyperchains/apps/aehttp/test/aehttp_ae_sim
 %%% @doc ae node simulator embedded in minimum http api
 %%%
 %%% @author sean
@@ -179,7 +179,8 @@ encode_keyblock(KeyBlock, SimName) ->
         {error, not_found} ->
             {error, #{reason => <<"Block not found">>}};
         {ok, PrevBlockType} ->
-             {ok, aehttp_helpers:encode_keyblock(KeyBlock, PrevBlockType)}
+            Header = aec_blocks:to_header(KeyBlock),
+            {ok, aec_headers:serialize_for_client(Header, PrevBlockType)}
     end.
 
         

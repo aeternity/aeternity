@@ -29,8 +29,8 @@
         , get_block_from_chain/1
         , get_block_hash_optionally_by_hash_or_height/1
         , safe_get_txs/1
-        , encode_keyblock/2
-        , encode_generation/3
+        , encode_keyblock/1
+        , encode_generation/2
         , do_dry_run/0
         , dry_run_results/1
         , to_int/1
@@ -52,8 +52,7 @@
 process_request(FunsList, Req) ->
     process_request(FunsList, Req, #{}).
 
-process_request([], _Req, {Code, _, _Response} = Result)
-    when is_integer(Code) ->
+process_request([], _, Result = {Code, _, _}) when is_integer(Code) ->
     Result;
 process_request([Fun | T], Req, Result0) ->
     Res = Fun(Req, Result0),
@@ -833,17 +832,18 @@ encode_transaction(TxKey, EncodedTxKey) ->
         {ok, maps:put(EncodedTxKey, #{tx => T}, State)}
     end.
 
-encode_keyblock(KeyBlock, PrevBlockType) ->
+encode_keyblock(KeyBlock) ->
     Header = aec_blocks:to_header(KeyBlock),
-    aec_headers:serialize_for_client(Header, PrevBlockType).
+    aec_headers:serialize_for_client(Header).
 
-encode_generation(KeyBlock, MicroBlocks, PrevBlockType) ->
+encode_generation(KeyBlock, MicroBlocks) ->
     Header = aec_blocks:to_header(KeyBlock),
-    #{key_block => aec_headers:serialize_for_client(Header, PrevBlockType),
-      micro_blocks => [begin
-                           {ok, Hash} = aec_blocks:hash_internal_representation(M),
-                           aeser_api_encoder:encode(micro_block_hash, Hash)
-                       end || M <- MicroBlocks]}.
+    #{key_block    => aec_headers:serialize_for_client(Header),
+      micro_blocks => lists:map(fun encode_microblock/1, MicroBlocks)}.
+
+encode_microblock(MB) ->
+    {ok, Hash} = aec_blocks:hash_internal_representation(MB),
+    aeser_api_encoder:encode(micro_block_hash, Hash).
 
 -spec read_optional_param(atom(), map(), term()) -> term().
 read_optional_param(Key, Req, Default) ->

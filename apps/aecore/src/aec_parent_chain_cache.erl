@@ -77,6 +77,7 @@ stop() ->
 
 -spec post_block(aec_parent_chain_block:block()) -> ok.
 post_block(Block) ->
+    erlang:display("CALLING the real post_block"),
     gen_server:cast(?SERVER, {post_block, Block}).
 
 -spec get_block_by_height(non_neg_integer()) -> {ok, aec_parent_chain_block:block()}

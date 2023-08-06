@@ -90,12 +90,17 @@ ae_sim_test_() ->
                     [{{ok, Top, PrevHash, Height}, PoolSize}] =
                         maps:to_list(Responses),
                     Self = self(),
-                    meck:expect(aec_parent_chain_cache, post_block,
-                                fun(Block) -> Self ! {post_block, Block} end),
-                    aec_parent_connector:trigger_fetch(),
+                    erlang:display({"Mecking", Self}),
+                    ReflectBlock = fun(Block) -> Self ! {post_block, Block} end,
+                    ok = meck:expect(aec_parent_chain_cache, post_block, ReflectBlock),
+                    ok = aec_parent_connector:trigger_fetch(),
                     {ok, Block} =
                         receive
-                            {post_block, B} -> {ok, B}
+                            {post_block, B} ->
+                                erlang:display(B),
+                                {ok, B};
+                            Anything ->
+                                erlang:display(Anything)
                         end,
                     ?assertEqual(Top, aec_parent_chain_block:hash(Block)),
                     ?assertEqual(PrevHash, aec_parent_chain_block:prev_hash(Block)),
@@ -185,7 +190,7 @@ ae_sim_test_() ->
                             aec_chain_sim:add_keyblock(SimName),
                             %% Post our local top hash as the commitment
                             Val = <<42:32/unit:8>>,
-                            StakerEnc = aeapi:format_account_pubkey(StakerPubKey),
+                            StakerEnc = aeapi:format(account_pubkey, StakerPubKey),
                             Commitment =  aec_parent_chain_block:encode_commitment_btc(StakerPubKey, Val, ?CHILD_CHAIN_NETWORK_ID),
                             Fee = 20000 * aec_test_utils:min_gas_price(),
                             {ok, #{<<"tx_hash">> := _}} =

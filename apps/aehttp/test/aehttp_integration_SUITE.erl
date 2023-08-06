@@ -4588,9 +4588,9 @@ post_paying_for_tx(Config) ->
                 <<"block_hash">> := BlockHash } = MinedPayingForTx} = get_transactions_by_hash_sut(TxHash),
     {ok, 200, #{<<"transactions">> := [MinedPayingForTx]}} = get_micro_blocks_transactions_by_hash_sut(BlockHash),
 
-    ?HTTP_ROS:assertBalanceChanges(TxHash, [ {aeapi:format_account_pubkey(BobPubKey), -?SPEND_FEE * 3},
-                                             {aeapi:format_account_pubkey(BobPubKey), -?SPEND_FEE},
-                                             {aeapi:format_account_pubkey(AlicePubKey), -1},
+    ?HTTP_ROS:assertBalanceChanges(TxHash, [ {aeapi:format(account_pubkey, BobPubKey), -?SPEND_FEE * 3},
+                                             {aeapi:format(account_pubkey, BobPubKey), -?SPEND_FEE},
+                                             {aeapi:format(account_pubkey, AlicePubKey), -1},
                                              {RecipientPubkey, 1} ] ),
 
     %% lets test that we get a proper message when inner tx is wrongly signed
