@@ -279,10 +279,10 @@ state_pre_transform_key_node(Node, PrevNode, Trees) ->
                                     elect_lazy_leader(Beneficiary, TxEnv, Trees) %% initial trees!!!
                             end;
                         {error, What} ->
-                            lager:warning("Consensus contract failed with ~p", [What]),
+                            lager:info("Consensus contract failed with ~p", [What]),
                             elect_lazy_leader(Beneficiary, TxEnv, Trees) %% initial trees!!!
                     catch error:{consensus_call_failed, {error, Why}} ->
-                            lager:warning("Consensus contract failed with ~p", [Why]),
+                            lager:info("Consensus contract failed with ~p", [Why]),
                             elect_lazy_leader(Beneficiary, TxEnv, Trees) %% initial trees!!!
                     end
             end;
@@ -403,7 +403,6 @@ generate_key_header_seal(_, Candidate, _PCHeight, #{expected_key_block_rate := _
     case SignModule:set_candidate(Leader) of
         {error, key_not_found} ->
             timer:sleep(1000),
-            epoch_mining:warning("ASDF KEY NOT FOUND", []),
             {continue_mining, {error, no_solution} };
         ok ->
             {ok, Signature} = SignModule:produce_key_header_signature(Candidate, Leader),
@@ -602,11 +601,6 @@ call_consensus_contract_(ContractType, TxEnv, Trees, EncodedCallData, Keyword, A
 beneficiary() ->
     beneficiary_().
 
-    %%aeu_ets_cache:get(
-    %%    ?ETS_CACHE_TABLE,
-    %%    current_leader,
-    %%    fun beneficiary_/0).
-
 beneficiary_() ->
     {TxEnv, Trees} = aetx_env:tx_env_and_trees_from_top(aetx_transaction),
     beneficiary_(TxEnv, Trees).
@@ -684,15 +678,12 @@ allow_lazy_leader() ->
     end.
 
 pick_lazy_leader() ->
-    epoch_mining:warning("ASDF PICKING UP A LAZY LEADER", []),
     SignModule = get_sign_module(),
     case SignModule:set_random_candidate() of
         {error, key_not_found} ->
             timer:sleep(1000),
-            epoch_mining:warning("ASDF KEY NOT FOUND", []),
             error;
         {ok, LazyLeader} ->
-            epoch_mining:warning("ASDF CHOSE ~p", [LazyLeader]),
             {ok, LazyLeader}
     end.
 

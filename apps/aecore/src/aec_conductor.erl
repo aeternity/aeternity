@@ -1086,7 +1086,7 @@ start_block_production_(#state{ mode = stratum,
 start_block_production_(#state{mode = pos, key_block_candidates = [{ForSealing, Candidate} | Candidates]} = State) ->
     case available_instance(State) of
         none ->
-            epoch_mining:debug("No available instance ~p", [State#state.instances]),
+            epoch_mining:debug("No available instance", []),
             State;
         Instance ->
             epoch_mining:info("Starting PoS block generator on top of ~p", [State#state.top_block_hash]),

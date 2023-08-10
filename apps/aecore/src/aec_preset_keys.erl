@@ -223,7 +223,6 @@ privkey(Pubkey, #state{keys = Keys}) ->
 
 -spec is_known_pubkey(aec_keys:pubkey(), #state{}) -> boolean().
 is_known_pubkey(Pubkey, #state{keys = Keys}) ->
-    epoch_mining:warning("ASDF looking for key ~p, all keys ~p", [Pubkey, Keys]),
     maps:is_key(Pubkey, Keys).
 
 get_random_pubkey(#state{keys = Keys}) ->

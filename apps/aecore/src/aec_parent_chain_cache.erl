@@ -224,7 +224,7 @@ handle_info({gproc_ps_event, chain_sync, #{info := {is_syncing, IsSyncing}}}, St
                 Height = aec_blocks:height(TopBlock),
                 _State1 = maybe_post_commitments(TopHash, State1);
             false ->
-                lager:info("Not posting commitment", []),
+                lager:debug("Not posting commitment", []),
                 State1
         end,
     {noreply, State};
@@ -404,8 +404,6 @@ maybe_post_commitments(TopHash, #state{is_syncing = IsSyncing,
             lager:debug("posting commitments", []),
             post_commitments(TopHash, State#state{posted_commitment = true});
         false ->
-            lager:warning("Will not post commitments, disabled, is Syncing ~p, is posting commitments ~p, already posted ~p",
-                          [IsSyncing, PostingCommitments, State#state.posted_commitment]),
             lager:debug("Will not post commitments, disabled, is Syncing ~p, is posting commitments ~p, already posted ~p",
                           [IsSyncing, PostingCommitments, State#state.posted_commitment]),
             State#state{posted_commitment = false}

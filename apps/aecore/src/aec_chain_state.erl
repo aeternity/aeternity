@@ -897,15 +897,6 @@ add_locations(StopHash, CurrentHash) ->
 assert_state_hash_valid(Trees, Node) ->
     RootHash = aec_trees:hash(Trees),
     Expected = node_root_hash(Node),
-    %% TODO: delete the folllowing few lines with regards of logging
-    case node_is_key_block(Node) of
-        true ->
-            ExpectedBeneficiary = node_beneficiary(Node),
-            Height = node_height(Node),
-            Mod = aec_consensus:get_genesis_consensus_module(),
-            ActualBeneficiary = Mod:beneficiary();
-        false -> pass
-    end,
     case RootHash =:= Expected of
         true -> ok;
         false -> aec_block_insertion:abort_state_transition({root_hash_mismatch, RootHash, Expected})

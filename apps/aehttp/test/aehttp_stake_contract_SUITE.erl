@@ -139,8 +139,6 @@ groups() ->
      {hc_btc, [sequence], common_tests() ++ hc_btc_specific_tests()},
      {hc_doge, [sequence], common_tests() ++ hc_btc_specific_tests()},
      {lazy_leader, [sequence], [elected_leader_did_not_show_up
-                              %% , block difficulty is 0
-                              %% , forks
                                ]}
     ].
 
