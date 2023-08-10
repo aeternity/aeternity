@@ -68,7 +68,6 @@ run(Queue, F) ->
           end)
     catch
         error:{rejected, _} ->
-            lager:error("AAAAAAAAA Temporary overload", []),
             {503, [], #{reason => <<"Temporary overload">>}};
         error:timeout ->
             {503, [], #{reason => <<"Not yet started">>}};

@@ -81,8 +81,7 @@ node_height(#node{header = H}) -> aec_headers:height(H).
 
 node_difficulty(#node{type = micro}) -> 0;
 node_difficulty(#node{header = H}) ->
-    D = aec_headers:difficulty(H),
-    D. 
+    aec_headers:difficulty(H).
 
 node_target(#node{header = H}) -> aec_headers:target(H).
 

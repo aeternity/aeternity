@@ -1523,7 +1523,7 @@ node_config(PotentialStakers, ReceiveAddress, Consensus, ProducingCommitments, G
                         <<"producing_commitments">> => ProducingCommitments
                         },
                     <<"genesis_start_time">> => GenesisStartTime,
-                    <<"time_till_declaring_lazy_leader">> => ?LAZY_INTERVAL
+                    <<"lazy_leader_trigger_time">> => ?LAZY_INTERVAL
                  };
             _ when Consensus == ?CONSENSUS_HC_BTC; Consensus == ?CONSENSUS_HC_DOGE ->
                 PCType = case Consensus of
@@ -1552,7 +1552,7 @@ node_config(PotentialStakers, ReceiveAddress, Consensus, ProducingCommitments, G
                         <<"producing_commitments">> => ProducingCommitments
                         },
                     <<"genesis_start_time">> => GenesisStartTime,
-                    <<"time_till_declaring_lazy_leader">> => ?LAZY_INTERVAL
+                    <<"lazy_leader_trigger_time">> => ?LAZY_INTERVAL
                  }
         end,
     Protocol = aect_test_utils:latest_protocol_version(),

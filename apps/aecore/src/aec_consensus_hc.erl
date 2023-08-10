@@ -104,7 +104,7 @@ start(Config, #{block_production := BlockProduction}) ->
                  } = Polling,
             <<"producing_commitments">> := ProducingCommitments
           },
-     <<"time_till_declaring_lazy_leader">> := _TimeTillDeclaringLazy
+     <<"lazy_leader_trigger_time">> := _TimeTillDeclaringLazy
      } = Config,
     %% assert the boolean type
     case ProducingCommitments of
@@ -437,8 +437,7 @@ assert_key_target_range(_) ->
 
 key_header_difficulty(H) ->
     Target = aec_headers:target(H),
-    Difficulty = aeminer_pow:scientific_to_integer(Target),
-    Difficulty.
+    aeminer_pow:scientific_to_integer(Target).
 
 %% This is initial height; if neeeded shall be reinit at fork height
 election_contract_pubkey() ->
@@ -664,7 +663,7 @@ lazy_leader_time_delta() ->
         aeu_env:user_config([<<"chain">>, <<"consensus">>,
                             <<"0">>,
                             <<"config">>,
-                            <<"time_till_declaring_lazy_leader">>]),
+                            <<"lazy_leader_trigger_time">>]),
     Interval.
 
 allow_lazy_leader() ->
