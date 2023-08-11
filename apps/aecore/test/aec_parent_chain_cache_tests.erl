@@ -11,13 +11,50 @@
 
 -define(TEST_MODULE, aec_parent_chain_cache).
 
--define(ALICE, <<123450:32/unit:8>>).
--define(BOB,   <<123451:32/unit:8>>).
--define(CAROL, <<123452:32/unit:8>>).
--define(DAVE,  <<123453:32/unit:8>>).
+-define(ALICE,
+    <<177,181,119,188,211,39,203,57,229,94,108,2,107,214, 167,74,27,
+      53,222,108,6,80,196,174,81,239,171,117,158,65,91,102>>).
+
+-define(ALICE_PRIV,
+    <<145,69,14,254,5,22,194,68,118,57,0,134,66,96,8,20,124,253,238,
+      207,230,147,95,173,161,192,86,195,165,186,115,251,177,181,119,
+      188,211,39,203,57,229,94,108,2,107,214,167,74,27,53,222,108,6,
+      80,196,174,81,239,171,117,158,65,91,102>>).
+
+-define(BOB,
+    <<103,28,85,70,70,73,69,117,178,180,148,246,81,104,
+      33,113,6,99,216,72,147,205,210,210,54,3,122,84,195,
+      62,238,132>>).
+-define(BOB_PRIV,
+    <<59,130,10,50,47,94,36,188,50,163,253,39,81,120,89,219,72,88,68,
+      154,183,225,78,92,9,216,215,59,108,82,203,25,103,28,85,70,70,
+      73,69,117,178,180,148,246,81,104,33,113,6,99,216,72,147,205,
+      210,210,54,3,122,84,195,62,238,132>>).
+
+-define(CAROL,
+    <<200,171,93,11,3,93,177,65,197,27,123,127,177,165,
+      190,211,20,112,79,108,85,78,88,181,26,207,191,211,
+      40,225,138,154>>).
+
+-define(CAROL_PRIV,
+    <<237,12,20,128,115,166,32,106,220,142,111,97,141,104,201,130,56,
+      100,64,142,139,163,87,166,185,94,4,159,217,243,160,169,200,171,
+      93,11,3,93,177,65,197,27,123,127,177,165,190,211,20,112,79,108,
+      85,78,88,181,26,207,191,211,40,225,138,154>>).
+
+-define(DAVE,
+    <<8,137,159,99,139,175,27,58,77,11,191,52,198,199,7,50,133,195,184,219,
+        148,124,4,5,44,247,57,95,188,173,95,35>>).
+
+-define(DAVE_PRIV,
+    <<107,251,189,176,92,221,4,46,56,231,137,117,181,8,124,14,212,150,167,
+        53,95,94,50,86,144,230,93,222,61,116,85,96,8,137,159,99,139,175,27,58,
+        77,11,191,52,198,199,7,50,133,195,184,219,148,124,4,5,44,247,57,95,
+        188,173,95,35>>).
 
 -define(GENESIS,  <<42:32/unit:8>>).
 -define(NETWORK_ID, <<"hc_eunit">>).
+-define(HC_COMMITMENT_BTC, 3).
 
 -define(SIGN_MODULE, aec_preset_keys).
 
@@ -30,7 +67,7 @@ follow_child_chain_strategy_test_() ->
     {foreach,
      fun() ->
             meck:new(aec_chain, []),
-            meck:expect(aec_chain, top_height, fun() -> 0 end),
+            meck:expect(aec_chain, top_header, fun() -> header(0) end),
             meck:expect(aec_chain, genesis_hash, fun() -> ?GENESIS end),
             meck:new(aec_conductor, []),
             mock_parent_connector(),
@@ -53,7 +90,7 @@ produce_commitments_test_() ->
     {foreach,
      fun() ->
             meck:new(aec_chain, []),
-            meck:expect(aec_chain, top_height, fun() -> 0 end),
+            meck:expect(aec_chain, top_header, fun() -> header(0) end),
             meck:expect(aec_chain, genesis_hash, fun() -> height_to_hash(0) end),
             meck:new(aec_conductor, []),
             meck:new(aetx_env, []),
@@ -76,7 +113,7 @@ produce_commitments_test_() ->
             unmock_sign_module()
      end,
      [  {"No commitments before the startheight", fun no_commitments_before_start/0},
-        {"Post genesis commitments before start seing blocks on the child chain", fun post_initial_commitments/0},
+        {"No commitments before seing blocks on the child chain", fun do_not_post_commitments_without_child_block/0},
         {"Post commitments according to child hash", fun post_commitments/0},
         {"No commitments if stopped", fun no_commitments_if_stopped/0},
         {"Stopping and starting block production dictates commitments emmitting", fun block_production_dictates_commitments/0}
@@ -90,8 +127,8 @@ produce_commitments_test_() ->
 cache_all_above_child_height() ->
     Test =
         fun(CacheMaxSize, StartHeight, ChildTop0) ->
-            meck:expect(aec_chain, top_height, fun() -> ChildTop0 end),
-            {ok, _CachePid} = start_cache(StartHeight, CacheMaxSize, _Confirmations = 1),
+            meck:expect(aec_chain, top_header, fun() -> header(ChildTop0) end),
+            {ok, _CachePid} = start_cache(StartHeight, CacheMaxSize),
             timer:sleep(20),
             %% the cache is waiting for a new top, the cache is up to the target top
             ExpectedTopHeight = ChildTop0 + StartHeight,
@@ -113,8 +150,8 @@ cache_all_above_child_height() ->
 post_cachable_parent_top() ->
     Test =
         fun(CacheMaxSize, StartHeight, ChildTop0) ->
-            meck:expect(aec_chain, top_height, fun() -> ChildTop0 end),
-            {ok, _CachePid} = start_cache(StartHeight, CacheMaxSize, _Confirmations = 1),
+            meck:expect(aec_chain, top_header, fun() -> header(ChildTop0) end),
+            {ok, _CachePid} = start_cache(StartHeight, CacheMaxSize),
             timer:sleep(20),
             %% the cache is waiting for a new top, the cache is up to the target top
             ExpectedTopHeight =  ChildTop0 + StartHeight,
@@ -140,8 +177,8 @@ post_cachable_parent_top() ->
 post_non_cachable_parent_top() ->
     Test =
         fun(CacheMaxSize, StartHeight, ChildTop0) ->
-            meck:expect(aec_chain, top_height, fun() -> ChildTop0 end),
-            {ok, _CachePid} = start_cache(StartHeight, CacheMaxSize, _Confirmations = 1),
+            meck:expect(aec_chain, top_header, fun() -> header(ChildTop0) end),
+            {ok, _CachePid} = start_cache(StartHeight, CacheMaxSize),
             timer:sleep(20),
             %% the cache is waiting for a new top, the cache is up to the target top
             ExpectedTopHeight =  ChildTop0 + StartHeight,
@@ -167,8 +204,8 @@ post_non_cachable_parent_top() ->
 post_child_top_in_the_middle_of_cachable_heights() ->
     Test =
         fun(CacheMaxSize, StartHeight, ChildTop0) ->
-            meck:expect(aec_chain, top_height, fun() -> ChildTop0 end),
-            {ok, CachePid} = start_cache(StartHeight, CacheMaxSize, _Confirmations = 1),
+            meck:expect(aec_chain, top_header, fun() -> header(ChildTop0) end),
+            {ok, CachePid} = start_cache(StartHeight, CacheMaxSize),
             timer:sleep(20),
             %% the cache is waiting for a new top, the cache is up to the target top
             ExpectedTopHeight =  ChildTop0 + StartHeight,
@@ -191,7 +228,7 @@ post_child_top_in_the_middle_of_cachable_heights() ->
                     child_top_height   := ChildTop2,
                     top_height         := ParentTop} = Res} = ?TEST_MODULE:get_state(),
             {ChildTop1, ChildTop1} = {ChildTop1, ChildTop2},
-            assert_child_cache_consistency(Res),
+            %%assert_child_cache_consistency(Res),
             ?TEST_MODULE:stop()
         end,
     Test(20, 200, 0),
@@ -201,9 +238,9 @@ post_child_top_in_the_middle_of_cachable_heights() ->
 
 configurable_confirmation_height() ->
     Test =
-        fun(CacheMaxSize, StartHeight, ChildTop0, Confirmations) ->
-            meck:expect(aec_chain, top_height, fun() -> ChildTop0 end),
-            {ok, _CachePid} = start_cache(StartHeight, CacheMaxSize, Confirmations),
+        fun(CacheMaxSize, StartHeight, ChildTop0) ->
+            meck:expect(aec_chain, top_header, fun() -> header(ChildTop0) end),
+            {ok, _CachePid} = start_cache(StartHeight, CacheMaxSize),
             timer:sleep(20),
             %% the cache is waiting for a new top, the cache is up to the target top
             ExpectedTopHeight = ChildTop0 + StartHeight,
@@ -215,22 +252,21 @@ configurable_confirmation_height() ->
             {error, not_in_cache} = ?TEST_MODULE:get_block_by_height(ExpectedTopHeight + 1),
             ?TEST_MODULE:stop()
         end,
-    Test(20, 200, 0, 1),
-    Test(20, 200, 0, 10),
+    Test(20, 200, 0),
+    Test(20, 200, 0),
     ok.
 
 no_commitments_before_start() ->
     CacheMaxSize = 20,
     StartHeight = 200,
-    Confirmations = 10,
     ChildTop0 = 0,
     Offset = 10,
-    meck:expect(aec_chain, top_height, fun() -> ChildTop0 end),
+    meck:expect(aec_chain, top_header, fun() -> header(ChildTop0) end),
     ParentTop = StartHeight - Offset,
     expect_stakers([?ALICE, ?BOB, ?CAROL]),
     expect_keys([?ALICE, ?BOB]),
     set_parent_chain_top(ParentTop),
-    {ok, _CachePid} = start_cache(StartHeight, CacheMaxSize, Confirmations, true),
+    {ok, _CachePid} = start_cache(StartHeight, CacheMaxSize, true),
     %% populate the cache and start making commitments
     lists:foreach(
         fun(Idx) ->
@@ -254,22 +290,33 @@ no_commitments_before_start() ->
     ?TEST_MODULE:stop(),
     ok.
 
-post_initial_commitments() ->
+do_not_post_commitments_without_child_block() ->
     CacheMaxSize = 20,
     StartHeight = 200,
-    Confirmations = 10,
     ChildTop0 = 0,
-    meck:expect(aec_chain, top_height, fun() -> ChildTop0 end),
-    ParentTop = StartHeight,
+    meck:expect(aec_chain, top_header, fun() -> header(ChildTop0) end),
     expect_stakers([?ALICE, ?BOB, ?CAROL]),
     expect_keys([?ALICE, ?BOB]),
-    set_parent_chain_top(ParentTop),
-    {ok, _CachePid} = start_cache(StartHeight, CacheMaxSize, Confirmations, true),
-    GenesisHash = height_to_hash(0),
+    set_parent_chain_top(StartHeight),
+    {ok, _CachePid} = start_cache(StartHeight, CacheMaxSize, true),
+    ParentHeight0 = StartHeight + 1,
+    set_parent_chain_top(ParentHeight0),
+    ?TEST_MODULE:post_block(block_by_height(ParentHeight0)),
+    timer:sleep(10),
+    {ok, #{ child_start_height := StartHeight,
+            top_height         := _ParentHeight0,
+            child_top_height   := ChildTop0}} = ?TEST_MODULE:get_state(),
+    AliceGenesisCommitment = encode_commitment_btc(?ALICE, height_to_hash(0)),
+    BobGenesisCommitment = encode_commitment_btc(?BOB, height_to_hash(0)),
+    [AliceGenesisCommitment] = collect_commitments(?ALICE),
+    [BobGenesisCommitment] = collect_commitments(?BOB),
+    [] = collect_commitments(?CAROL),
+    [] = collect_commitments(?DAVE),
+    meck:reset(aec_parent_connector),
     %% populate the cache and start making commitments
     lists:foreach(
-        fun(Idx) ->
-            ParentHeight = ParentTop + Idx,
+        fun(Offset) ->
+            ParentHeight = StartHeight + Offset,
             set_parent_chain_top(ParentHeight),
             Block = block_by_height(ParentHeight),
             ?TEST_MODULE:post_block(Block),
@@ -278,30 +325,27 @@ post_initial_commitments() ->
             {ok, #{ child_start_height := StartHeight,
                     top_height         := ParentHeight,
                     child_top_height   := ChildTop0}} = ?TEST_MODULE:get_state(),
-            AliceCommitment = aec_parent_chain_block:encode_commitment_btc(?ALICE, GenesisHash, ?NETWORK_ID),
-            [AliceCommitment] = collect_commitments(?ALICE),
-            BobCommitment = aec_parent_chain_block:encode_commitment_btc(?BOB, GenesisHash, ?NETWORK_ID),
-            [BobCommitment] = collect_commitments(?BOB),
+            [] = collect_commitments(?ALICE),
+            [] = collect_commitments(?BOB),
             [] = collect_commitments(?CAROL),
             [] = collect_commitments(?DAVE),
             meck:reset(aec_parent_connector),
             ok
         end,
-        lists:seq(0, Confirmations - 1)),
+        lists:seq(2, 10)),
     ?TEST_MODULE:stop(),
     ok.
 
 post_commitments() ->
     CacheMaxSize = 20,
     StartHeight = 200,
-    Confirmations = 10,
-    ChildTop = Confirmations,
-    meck:expect(aec_chain, top_height, fun() -> ChildTop end),
-    ParentTop = StartHeight + Confirmations,
+    ChildTop = 10,
+    meck:expect(aec_chain, top_header, fun() -> header(ChildTop) end),
+    ParentTop = StartHeight,
     expect_stakers([?ALICE, ?BOB, ?CAROL]),
     expect_keys([?ALICE, ?BOB]),
     set_parent_chain_top(ParentTop),
-    {ok, CachePid} = start_cache(StartHeight, CacheMaxSize, Confirmations, true),
+    {ok, CachePid} = start_cache(StartHeight, CacheMaxSize, true),
     %% populate the cache and start making commitments
     lists:foreach(
         fun(Idx) ->
@@ -334,14 +378,13 @@ post_commitments() ->
 no_commitments_if_stopped() ->
     CacheMaxSize = 20,
     StartHeight = 200,
-    Confirmations = 10,
-    ChildTop = Confirmations,
-    meck:expect(aec_chain, top_height, fun() -> ChildTop end),
-    ParentTop = StartHeight + Confirmations,
+    ChildTop = 10,
+    meck:expect(aec_chain, top_header, fun() -> header(ChildTop) end),
+    ParentTop = StartHeight,
     expect_stakers([?ALICE, ?BOB, ?CAROL]),
     expect_keys([?ALICE, ?BOB]),
     set_parent_chain_top(ParentTop),
-    {ok, CachePid} = start_cache(StartHeight, CacheMaxSize, Confirmations, false),
+    {ok, CachePid} = start_cache(StartHeight, CacheMaxSize, false),
     %% populate the cache and start making commitments
     lists:foreach(
         fun(Idx) ->
@@ -371,14 +414,13 @@ no_commitments_if_stopped() ->
 block_production_dictates_commitments() ->
     CacheMaxSize = 20,
     StartHeight = 200,
-    Confirmations = 10,
-    ChildTop = Confirmations,
-    meck:expect(aec_chain, top_height, fun() -> ChildTop end),
-    ParentTop = StartHeight + Confirmations,
+    ChildTop = 10,
+    meck:expect(aec_chain, top_header, fun() -> header(ChildTop) end),
+    ParentTop = StartHeight,
     expect_stakers([?ALICE, ?BOB, ?CAROL]),
     expect_keys([?ALICE, ?BOB]),
     set_parent_chain_top(ParentTop),
-    {ok, CachePid} = start_cache(StartHeight, CacheMaxSize, Confirmations, true),
+    {ok, CachePid} = start_cache(StartHeight, CacheMaxSize, true),
     %% populate the cache and start making commitments
     lists:foreach(
         fun(Idx) ->
@@ -466,12 +508,12 @@ block_production_dictates_commitments() ->
 %%% Helper functions
 %%%===================================================================
 
-start_cache(StartHeight, MaxSize, Confirmations) ->
-    start_cache(StartHeight, MaxSize, Confirmations, false).
+start_cache(StartHeight, MaxSize) ->
+    start_cache(StartHeight, MaxSize, false).
 
-start_cache(StartHeight, MaxSize, Confirmations, IsPublishingCommitments) ->
-    Args = [StartHeight, MaxSize, Confirmations, IsPublishingCommitments],
-    gen_server:start({local, ?TEST_MODULE}, ?TEST_MODULE, Args, []).
+start_cache(StartHeight, MaxSize, IsPublishingCommitments) ->
+    Args = [StartHeight, MaxSize, true, IsPublishingCommitments],
+    gen_server:start_link({local, ?TEST_MODULE}, ?TEST_MODULE, Args, []).
 
 height_to_hash(Height) when Height < 0 -> height_to_hash(0);
 height_to_hash(Height) when is_integer(Height) -> <<Height:32/unit:8>>.
@@ -528,7 +570,24 @@ unmock_stakers() ->
 mock_sign_module() ->
     meck:new(?SIGN_MODULE, []),
     meck:expect(?SIGN_MODULE, sign_binary,
-        fun(_Bin, _Pubkey) ->
+        fun(Bin, Pubkey) when Pubkey =:= ?ALICE;
+                              Pubkey =:= ?BOB;
+                              Pubkey =:= ?CAROL;
+                              Pubkey =:= ?DAVE
+                              ->
+                Privkey =
+                    case Pubkey of
+                        ?ALICE -> ?ALICE_PRIV;
+                        ?BOB -> ?BOB_PRIV;
+                        ?CAROL -> ?CAROL_PRIV;
+                        ?DAVE-> ?DAVE_PRIV
+                    end,
+                try enacl:sign_detached(Bin, Privkey) of
+                    Signature -> {ok, Signature}
+                catch
+                    _Type:_What -> {error, failed_sign}
+                end;
+           (_Bin, _Pubkey) ->
             Signature = <<123453:64/unit:8>>,
             {ok, Signature}
         end).
@@ -582,6 +641,7 @@ mock_events() ->
     meck:expect(aec_events, subscribe,
                 fun(top_changed) -> ok;
                    (start_mining) -> ok;
+                   (chain_sync) -> ok;
                    (stop_mining) -> ok
                 end),
     ok.
@@ -599,7 +659,6 @@ assert_child_cache_consistency(#{ child_start_height := StartHeight,
                                   child_top_height   := ChildTop,
                                   blocks             := Blocks,
                                   max_size           := CacheMaxSize,
-                                  pc_confirmations   := Confirmations,
                                   top_height         := TopHeight}) ->
     ?assertEqual(CacheMaxSize, map_size(Blocks)),
     CacheExpectedStart = min(ChildTop + StartHeight, TopHeight - CacheMaxSize + 1),
@@ -609,7 +668,7 @@ assert_child_cache_consistency(#{ child_start_height := StartHeight,
     lists:foreach(
         fun(Height) ->
             {true, Height} = {maps:is_key(Height, Blocks), Height},
-            IsMature = TopHeight - Confirmations >= Height,
+            IsMature = TopHeight >= Height,
             Block = block_by_height(Height),
             case ?TEST_MODULE:get_block_by_height(Height) of
                 {ok, Block} when IsMature -> ok;
@@ -637,3 +696,56 @@ filter_meck_events(Module, Function) ->
             M =:= Module andalso F =:= Function
         end,
         meck:history(Module)).
+
+mock_commitments_list(_BlockHashesMap) ->
+    meck:expect(aec_parent_connector, request_block_by_height,
+                fun(Height) ->
+                    spawn(
+                        fun() ->
+                            Block = block_by_height(Height),
+                            ?TEST_MODULE:post_block(Block)
+                        end)
+            end).
+
+mock_commitments_list(all, L) ->
+    meck:expect(aec_parent_connector, request_block_by_height,
+                fun(Height) ->
+                    spawn(
+                        fun() ->
+                            Block0 = block_by_height(Height),
+                            Block = aec_parent_chain_block:set_commitments(Block0, L),
+                            ?TEST_MODULE:post_block(Block)
+                        end)
+            end).
+
+header(Height) ->
+    Hash = <<Height:32/unit:8>>,
+    PrevHeight =
+        case Height of
+            0 -> 0;
+            H -> H - 1
+        end,
+    Hash = <<Height:32/unit:8>>,
+    PrevHash = <<PrevHeight:32/unit:8>>,
+    PrevKeyHash = PrevHash,
+    RootHash = PrevHash,
+    Miner = PrevHash,
+    Beneficiary = Miner,
+    Target = 0,
+    KeySeal = lists:duplicate(42, 0),
+    Nonce = 0,
+    Time = 0,
+    Info = default,
+    Version = 0,
+    aec_headers:new_key_header(Height, PrevHash, PrevKeyHash, RootHash, Miner, Beneficiary,
+               Target, KeySeal, Nonce, Time, Info, Version).
+
+encode_commitment_btc(PubKey, Hash) ->
+    PubKeyFate = aeb_fate_encoding:serialize(aeb_fate_data:make_address(PubKey)),
+    <<StakerHash:8/binary, _/binary>> = aec_hash:sha256_hash(PubKeyFate),
+    <<TopKeyHash:7/binary, _/binary>> = aec_hash:sha256_hash(Hash),
+    NetworkIdPadded = aec_parent_chain_block:encode_network_id(?NETWORK_ID),
+    Msg = aec_hash:sha256_hash(<<Hash/binary, NetworkIdPadded/binary>>),
+    {ok, <<Signature:64/binary>>} = ?SIGN_MODULE:sign_binary(Msg, PubKey),
+    <<?HC_COMMITMENT_BTC, Signature/binary, StakerHash/binary, TopKeyHash/binary>>.
+

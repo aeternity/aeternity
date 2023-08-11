@@ -56,6 +56,7 @@ forbidden(_Mod, _OpId) -> false.
 handle_request(OperationID, Req, Context) ->
     run(queue(OperationID),
         fun() ->
+                lager:debug("operationId: ~p", [OperationID]),
                 ?TC(handle_request_(OperationID, Req, Context), Req)
         end).
 
@@ -172,7 +173,7 @@ handle_request_('GetCurrentKeyBlock', _Req, _Context) ->
                 0 ->
                     Header = aec_blocks:to_header(Block),
                     {200, [], aec_headers:serialize_for_client(Header, key)};
-                _ ->
+                _Height ->
                     PrevBlockHash = aec_blocks:prev_hash(Block),
                     case aec_chain:get_block(PrevBlockHash) of
                         {ok, PrevBlock} ->

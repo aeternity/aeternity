@@ -385,3 +385,14 @@ main contract MainStaking =
     else
       if(v.creation_height + state.online_delay =< Chain.block_height) true
       else abort("Minimum height not reached")
+
+  entrypoint is_validator(who : address) : bool =
+    switch(Map.member(who, state.online_validators))
+      true =>
+        true
+      false =>
+        switch(Map.member(who, state.offline_validators))
+          true =>
+            true
+          false =>
+            false

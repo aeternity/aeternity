@@ -36,7 +36,7 @@
         , dirty_validate_micro_node_with_ctx/3
         %% State transition
         , state_pre_transform_key_node_consensus_switch/2
-        , state_pre_transform_key_node/2
+        , state_pre_transform_key_node/3
         , state_pre_transform_micro_node/2
         %% Block rewards
         , state_grant_reward/4
@@ -61,10 +61,12 @@
         %% rewards and signing
         , beneficiary/0
         , next_beneficiary/0
+        , allow_lazy_leader/0
+        , pick_lazy_leader/0
         , get_sign_module/0
         , get_type/0
         , get_block_producer_configs/0
-        , is_leader_valid/3
+        , is_leader_valid/4
         ]).
 
 -include_lib("aecontract/include/hard_forks.hrl").
@@ -113,10 +115,18 @@ client_request({mine_blocks, NumBlocksToMine, Type}) ->
     end;
 client_request(mine_micro_block_emptying_mempool_or_fail) ->
     Pre = ensure_leader(),
-    MB = client_request(emit_mb),
-    %% If instant mining is enabled then we can't have microforks :)
-    {ok, []} = aec_tx_pool:peek(infinity),
-    {ok, Pre ++ [MB]};
+    Emit = fun F(_Accum, Attempts) when Attempts < 1 -> error(could_not_mine_tx);
+               F(Accum, Attempts) ->
+                    MB = client_request(emit_mb),
+                    %% If instant mining is enabled then we can't have microforks :)
+                    Accum1 = Accum ++ [MB],
+                    case aec_tx_pool:peek(infinity) of
+                        {ok, []} -> {ok, Accum1};
+                        {ok, [_Tx | _]} -> F(Accum1, Attempts -1)
+                    end
+                end,
+    {ok, MBs} = Emit([], 10),
+    {ok, Pre ++ MBs};
 client_request({mine_blocks_until_txs_on_chain, TxHashes, Max}) ->
     mine_blocks_until_txs_on_chain(TxHashes, Max, []).
 
@@ -175,7 +185,7 @@ dirty_validate_micro_node_with_ctx(_Node, _Block, _Ctx) -> ok.
 %% -------------------------------------------------------------------
 %% Custom state transitions
 state_pre_transform_key_node_consensus_switch(_Node, Trees) -> Trees.
-state_pre_transform_key_node(_Node, Trees) -> Trees.
+state_pre_transform_key_node(_Node, _PrevNode, Trees) -> Trees.
 state_pre_transform_micro_node(_Node, Trees) -> Trees.
 
 %% -------------------------------------------------------------------
@@ -240,6 +250,10 @@ beneficiary() -> aec_consensus_bitcoin_ng:beneficiary().
 
 next_beneficiary() -> aec_consensus_bitcoin_ng:next_beneficiary().
 
+allow_lazy_leader() -> false.
+
+pick_lazy_leader() -> error.
+
 get_sign_module() -> aec_consensus_bitcoin_ng:get_sign_module().
 
 get_type() -> aec_consensus_bitcoin_ng:get_type().
@@ -247,6 +261,6 @@ get_type() -> aec_consensus_bitcoin_ng:get_type().
 
 get_block_producer_configs() -> aec_consensus_bitcoin_ng:get_block_producer_configs().
 
-is_leader_valid(_Node, _Trees, _TxEnv) ->
+is_leader_valid(_Node, _Trees, _TxEnv, _PrevNode) ->
     true.
 
