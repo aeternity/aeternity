@@ -2360,7 +2360,12 @@ spend_tuple_gas(TupleSize, ES) ->
     aefa_engine_state:spend_gas_for_new_cells(TupleSize + 2, ES).
 
 verify_sig(Arg0, Arg1, Arg2, Arg3, ES) ->
-    ter_op(verify_sig, {Arg0, Arg1, Arg2, Arg3}, ES).
+    case aefa_engine_state:vm_version(ES) >= ?VM_FATE_SOPHIA_3 of
+        false ->
+            ter_op(verify_sig_of_hash, {Arg0, Arg1, Arg2, Arg3}, ES);
+        true ->
+            ter_op(verify_sig, {Arg0, Arg1, Arg2, Arg3}, ES)
+    end.
 
 verify_sig_secp256k1(Arg0, Arg1, Arg2, Arg3, ES) ->
     ter_op(verify_sig_secp256k1, {Arg0, Arg1, Arg2, Arg3}, ES).
@@ -2935,10 +2940,14 @@ op(map_update, Map, Key, Value) when ?IS_FATE_MAP(Map),
     aeb_fate_data:make_map(Res);
 op(map_update, ?FATE_STORE_MAP(Cache, Id), Key, Value) ->
     ?FATE_STORE_MAP(Cache#{ Key => Value }, Id);
-op(verify_sig, Msg, PK, Sig) when ?IS_FATE_BYTES(32, Msg)
-                                , ?IS_FATE_ADDRESS(PK)
-                                , ?IS_FATE_BYTES(64, Sig) ->
+op(verify_sig_of_hash, Msg, PK, Sig) when ?IS_FATE_BYTES(32, Msg)
+                                        , ?IS_FATE_ADDRESS(PK)
+                                        , ?IS_FATE_BYTES(64, Sig) ->
     {?FATE_BYTES(Msg1), ?FATE_ADDRESS(PK1), ?FATE_BYTES(Sig1)} = {Msg, PK, Sig},
+    aeu_crypto:verify_sig(Msg1, PK1, Sig1);
+op(verify_sig, ?FATE_BYTES(Msg1), PK, Sig) when ?IS_FATE_ADDRESS(PK)
+                                              , ?IS_FATE_BYTES(64, Sig) ->
+    {?FATE_ADDRESS(PK1), ?FATE_BYTES(Sig1)} = {PK, Sig},
     aeu_crypto:verify_sig(Msg1, PK1, Sig1);
 op(verify_sig_secp256k1, Msg, PK, Sig) when ?IS_FATE_BYTES(32, Msg)
                                           , ?IS_FATE_BYTES(64, PK)

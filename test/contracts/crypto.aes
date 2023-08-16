@@ -18,7 +18,11 @@ contract CryptoTest =
   entrypoint sha256_b52  (x : bytes(52)) : hash = Crypto.sha256(x)
   entrypoint blake2b_b52 (x : bytes(52)) : hash = Crypto.blake2b(x)
 
-  entrypoint test_verify(msg : hash, pk : address, sig : signature) =
+  entrypoint sha3_bX    (x : bytes()) : hash = Crypto.sha3(x)
+  entrypoint sha256_bX  (x : bytes()) : hash = Crypto.sha256(x)
+  entrypoint blake2b_bX (x : bytes()) : hash = Crypto.blake2b(x)
+
+  entrypoint test_verify(msg : bytes(), pk : address, sig : signature) =
     Crypto.verify_sig(msg, pk, sig)
 
   entrypoint test_string_verify(x : string, pk : address, sig : signature) =
