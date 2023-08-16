@@ -537,7 +537,6 @@ bind_args(N, [Arg|Args], Mem, EngineState) ->
     bind_args(N + 1, Args, Mem#{{arg, N} => {val, Arg}}, EngineState).
 
 check_type(T, V, VMVersion) ->
-    io:format("Check type: ~100p =?= ~140p\n", [T, V]),
     try
         match_type(T, infer_type(V), VMVersion)
     catch throw:_Err ->
@@ -604,28 +603,24 @@ intersect_types({variant, Ss}, {variant, Ts}) when length(Ss) == length(Ts) ->
     {variant, lists:zipwith(Isect, Ss, Ts)};
 intersect_types(S, T) -> throw({not_compatible, S, T}).
 
-match_type(T1, T2, V) ->
-    io:format("Match type: ~100p =?= ~140p\n", [T1, T2]),
-    match_type_(T1, T2, V).
-
-match_type_(T, T, _) -> yes_match();
-match_type_(any, _, _) -> yes_match();
-match_type_(_, any, _) -> yes_match();
-match_type_({bytes, any}, {bytes, _}, V) when V >= ?VM_FATE_SOPHIA_3-> yes_match();
-match_type_({bytes, any}, _, _) -> no_match();
-match_type_({tvar, X}, T, _) -> #{ X => T };
-match_type_({list, T}, {list, S}, V) -> match_type_(T, S, V);
-match_type_({tuple, Ts}, {tuple, Ss}, V) when length(Ts) == length(Ss) ->
-    merge_match(lists:zipwith(fun(T, S) -> match_type_(T, S, V) end, Ts, Ss));
-match_type_({map, TK, TV}, {map, SK, SV}, V) ->
-    merge_match(match_type_(TK, SK, V), match_type_(TV, SV, V));
-match_type_({variant, Ts}, {variant, Ss}, V) when length(Ts) == length(Ss) ->
+match_type(T, T, _) -> yes_match();
+match_type(any, _, _) -> yes_match();
+match_type(_, any, _) -> yes_match();
+match_type({bytes, any}, {bytes, _}, V) when V >= ?VM_FATE_SOPHIA_3-> yes_match();
+match_type({bytes, any}, _, _) -> no_match();
+match_type({tvar, X}, T, _) -> #{ X => T };
+match_type({list, T}, {list, S}, V) -> match_type(T, S, V);
+match_type({tuple, Ts}, {tuple, Ss}, V) when length(Ts) == length(Ss) ->
+    merge_match(lists:zipwith(fun(T, S) -> match_type(T, S, V) end, Ts, Ss));
+match_type({map, TK, TV}, {map, SK, SV}, V) ->
+    merge_match(match_type(TK, SK, V), match_type(TV, SV, V));
+match_type({variant, Ts}, {variant, Ss}, V) when length(Ts) == length(Ss) ->
     %% Second argument can be partial variant type
     Match = fun({tuple, Us}, N) when length(Us) == N -> yes_match();
-               (T = {tuple, _}, S = {tuple, _})      -> match_type_(T, S, V);
+               (T = {tuple, _}, S = {tuple, _})      -> match_type(T, S, V);
                (_, _)                                -> no_match() end,
     merge_match(lists:zipwith(Match, Ts, Ss));
-match_type_(_, _, _) -> no_match().
+match_type(_, _, _) -> no_match().
 
 yes_match() -> #{}.
 no_match() -> false.
