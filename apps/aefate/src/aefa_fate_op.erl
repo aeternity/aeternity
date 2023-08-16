@@ -191,10 +191,7 @@
         , bytes_size/3
         , bytes_split/4
         , bytes_split_any/4
-        , bytes_size/3
         , bytes_to_fixed_size/4
-        , int_to_bytes/4
-        , str_to_bytes/3
         , load_pre_iris_map_ordering/0
         ]).
 
