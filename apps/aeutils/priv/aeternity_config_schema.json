@@ -1042,6 +1042,11 @@
                     "type" : "integer",
                     "default" : 120000
                 },
+		"minimum_ping_version" : {
+		    "description" : "The lowest version of ping object that peers have to support",
+		    "type" : "integer",
+		    "default" : 1
+		},
                 "external_port" : {
                     "description" : "Listen port for external sync connections. This must be the WAN-facing port number (depending on NAT configuration this may be different from 'port' value above).",
                     "type" : "integer",

@@ -55,9 +55,29 @@
 
 -import(aeu_debug, [pp/1]).
 
--define(dirty(Fun), aec_db:ensure_activity(async_dirty, Fun)).
+-type status() :: error
+                | {disconnecting, any()}   % {disconnecting, ESock}
+                | {connecting, pid()}
+                | {connected, any()}.      % {connected, ESock}
 
--define(P2P_PROTOCOL_VSN, 1).
+-type state() :: #{ conn_type := noise | tcp
+                  , role      := initiator | responder
+                  , kind      := permanent | temporary
+                  , status    := status()
+                  , version   := binary()
+                  , genesis   := binary()
+                  , pubkey    => binary()
+                  , r_pubkey  => binary()
+                  , address   => inet:ip_address()
+                  , tcp_sock  => any()
+                  , host      => any()
+                  , port      => non_neg_integer()
+                  , requests  => map()
+                  , first_ping_tref => any()
+                  , fragments => [binary()]
+                  }.
+
+-define(dirty(Fun), aec_db:ensure_activity(async_dirty, Fun)).
 
 -define(DEFAULT_CONNECT_TIMEOUT, 1000).
 -define(DEFAULT_FIRST_PING_TIMEOUT, 30000).
@@ -402,6 +422,7 @@ handle_info({noise, _, <<Type:16, Payload/binary>>}, S) ->
         {MsgType, Vsn, Msg} ->
             {noreply, handle_msg(S, MsgType, false, {ok, Vsn, Msg})};
         Err = {error, _} ->
+            epoch_sync:debug("Deserialize failure: ~p / Type: ~p / Payload: ~p", [Err, Type, Payload]),
             epoch_sync:info("Could not deserialize message ~p", [Err]),
             {noreply, S}
     end;
@@ -438,6 +459,7 @@ notify_close(S) ->
     aec_peers:connection_closed(peer_id(S), self()),
     close(S).
 
+-spec close(state()) -> state().
 close(#{ status := {connected, ESock} } = S) ->
     send_msg(S, close, aec_peer_messages:serialize(close, #{})),
     CloseTimeout = close_timeout(),
@@ -475,7 +497,13 @@ remove_request_fld(S, Kind) ->
     S#{ requests => maps:remove(map_request(Kind), Rs) }.
 
 handle_request_timeout(S, Ref, Kind) ->
+    Rs = maps:get(requests, S, #{}),
     case get_request(S, Kind) of
+        {re_ping, test_v2_ping, Ref} ->
+            epoch_sync:debug("Timeout on V2 test ping. Keeping pinging vsn 1", []),
+            Rs1 = maps:remove(Kind, Rs),
+            {noreply, S#{ requests => Rs1
+                        , use_ping_vsn => ?PING_VSN_1 }};
         {_MappedKind, From, Ref} ->
             epoch_sync:info("~p request timeout, stopping peer_connection", [Kind]),
             do_reply(From, {error, request_timeout}),
@@ -512,6 +540,7 @@ try_connect(Parent, Host, Port, Timeout) ->
     end,
     Parent ! {connected, self(), Res}.
 
+-spec ensure_genesis(state()) -> state().
 ensure_genesis(S = #{ genesis := G }) when is_binary(G) ->
     S;
 ensure_genesis(S) ->
@@ -527,6 +556,7 @@ is_non_registered_accept(State) ->
     maps:get(role, State, no_role) == responder
         andalso maps:get(port, State, no_port) == no_port.
 
+-spec cleanup_connection(state()) -> state().
 cleanup_connection(State) ->
     case maps:get(status, State, error) of
         {connected, ESock}     -> enoise:close(ESock);
@@ -588,7 +618,7 @@ handle_msg(S, _MsgType, true, {RequestFld, From, _TRef}, {error, Reason}) ->
     remove_request_fld(S, RequestFld);
 handle_msg(S, MsgType, false, Request, {ok, Vsn, Msg}) ->
     case MsgType of
-        ping                 -> handle_ping(S, Request, Msg);
+        ping                 -> handle_ping(S, Request, Vsn, Msg);
         get_header_by_hash   -> handle_get_header_by_hash(S, Msg);
         get_header_by_height -> handle_get_header_by_height(S, Vsn, Msg);
         get_n_successors     -> handle_get_n_successors(S, Vsn, Msg);
@@ -603,9 +633,9 @@ handle_msg(S, MsgType, false, Request, {ok, Vsn, Msg}) ->
         txps_finish          -> handle_tx_pool_sync_finish(S, Msg);
         get_node_info        -> handle_get_node_info(S)
     end;
-handle_msg(S, MsgType, true, Request, {ok, _Vsn, Msg}) ->
+handle_msg(S, MsgType, true, Request, {ok, Vsn, Msg}) ->
     case MsgType of
-        ping          -> handle_ping_rsp(S, Request, Msg);
+        ping          -> handle_ping_rsp(S, Request, Vsn, Msg);
         header        -> handle_header_rsp(S, Request, Msg);
         header_hashes -> handle_header_hashes_rsp(S, Request, Msg);
         generation    -> handle_get_generation_rsp(S, Request, Msg);
@@ -630,23 +660,46 @@ handle_request(S = #{ status := error }, _Req, _Args, _From) ->
 handle_request(S, tx_pool, TxPoolArgs, From) ->
     handle_tx_pool(S, TxPoolArgs, From);
 handle_request(S, Request, Args, From) ->
-    ReqData = prepare_request_data(S, Request, Args),
-    CustomTimeout = custom_timeout(Request, Args),
-    send_msg(S, Request, aec_peer_messages:serialize(Request, ReqData)),
-    {noreply, set_request(S, map_request(Request), From, CustomTimeout)}.
+    Vsn = msg_version(Request, S),
+    {noreply, prepare_and_send_request(S, Request, Args, Vsn, From)}.
 
-prepare_request_data(S, ping, []) ->
-    ping_obj(local_ping_obj(S), [peer_id(S)]);
-prepare_request_data(_S, get_header_by_hash, [Hash]) ->
+prepare_and_send_request(S, Request0, Args, Vsn, From) ->
+    Request = actual_request(Request0),
+    ReqData = prepare_request_data(S, Request, Args, Vsn),
+    CustomTimeout = custom_timeout(Request, Args),
+    send_msg(S, Request, aec_peer_messages:serialize(Request, ReqData, Vsn)),
+    set_request(S, map_request(Request0), From, CustomTimeout).  % actually use Request0
+
+%% The request map is keyed on request type, and since the re-ping is a test
+%% (we don't know if the peer supports it), we tag it differently so that
+%% normal pinging can proceed concurrently.
+actual_request(re_ping) -> ping;
+actual_request(R) -> R.
+
+prepare_request_data(S, ping, [], Vsn) ->
+    ping_obj(local_ping_obj(S, false), [peer_id(S)], Vsn);
+prepare_request_data(_S, get_header_by_hash, [Hash], _Vsn) ->
     #{ hash => Hash };
-prepare_request_data(_S, get_header_by_height, [Height, TopHash]) ->
+prepare_request_data(_S, get_header_by_height, [Height, TopHash], _Vsn) ->
     #{ height => Height, top_hash => TopHash };
-prepare_request_data(_S, get_n_successors, [FromHash, TargetHash, N]) ->
+prepare_request_data(_S, get_n_successors, [FromHash, TargetHash, N], _Vsn) ->
     #{ from_hash => FromHash, target_hash => TargetHash, n => N };
-prepare_request_data(_S, get_generation, [Hash, Dir]) ->
+prepare_request_data(_S, get_generation, [Hash, Dir], _Vsn) ->
     #{ hash => Hash, forward => (Dir == forward) };
-prepare_request_data(_S, get_node_info, _) ->
+prepare_request_data(_S, get_node_info, _, _Vsn) ->
     #{}.
+
+msg_version(ping, S) ->
+    ping_version(S);
+msg_version(Request, S) ->
+    aec_peer_messages:latest_vsn(Request, p2p_version(S)).
+
+ping_version(#{use_ping_vsn := UseVsn}) ->
+    UseVsn;
+ping_version(_) ->
+    {ok, V} = aeu_env:find_config([<<"sync">>, <<"minimum_ping_version">>],
+				  [user_config, schema_default]),
+    V.
 
 custom_timeout(get_node_info, [Timeout]) -> Timeout;
 custom_timeout(_, _) -> ?REQUEST_TIMEOUT.
@@ -668,28 +721,78 @@ handle_tx_pool(S, Args, From) ->
 
 %% -- Ping message -----------------------------------------------------------
 
-handle_ping_rsp(S, {ping, From, _TRef}, RemotePingObj) ->
+handle_ping_rsp(S, {ping, From, _TRef}, Vsn, RemotePingObj) ->
     Res = handle_ping_msg(S, RemotePingObj),
     gen_server:reply(From, Res),
-    remove_request_fld(S, ping).
+    %% UW: determine which version to use in the future, and perhaps re-ping
+    S1 = set_ping_vsn(S, Vsn, RemotePingObj, true),
+    remove_request_fld(S1, ping).
 
-handle_ping(S, none, RemotePingObj) ->
+ping_versions_supported() ->
+    aec_peer_messages:msg_versions(ping).
+
+intersection(A, B) ->
+    %% assume no duplicate elements
+    A -- (A -- B).
+
+set_ping_vsn(#{use_ping_vsn := UseVsn} = S, Vsn, PingObj, _Initiator) ->
+    if UseVsn =:= Vsn ->
+            S;
+       true ->
+            use_latest_common_ping_version(S, PingObj)
+    end;
+set_ping_vsn(S, Vsn, PingObj, Initiator) ->
+    case Vsn of
+        ?PING_VSN_1 ->
+            if Initiator ->
+                    %% No versions attribute. Re-ping with version 2
+                    epoch_sync:debug("Re-pinging with version 2", []),
+                    prepare_and_send_request(S, re_ping, [], ?PING_VSN_2, test_v2_ping);
+               true ->
+                    S
+            end;
+        _ ->
+            use_latest_common_ping_version(S, PingObj)
+    end.
+
+use_latest_common_ping_version(S, PingObj) ->
+    Vr = remote_vsns_supported(ping, PingObj, S),
+    Pick = lists:max(intersection(
+                       ping_versions_supported(),
+                       Vr)),
+    epoch_sync:debug("Use ping version: ~p", [Pick]),
+    S#{use_ping_vsn => Pick}.
+
+remote_vsns_supported(Type, PingObj, S) ->
+    AllVsns = maps:get(versions, PingObj, []),
+    case lists:keyfind(atom_to_binary(Type, utf8), 1, AllVsns) of
+        {_, Vsns} ->
+            Vsns;
+        _ ->
+            %% assume our hard-coded vsn
+            [aec_peer_messages:latest_vsn(Type, p2p_version(S))]
+    end.
+
+p2p_version(#{version := <<V:64>>}) ->
+    V.
+
+handle_ping(S, none, Vsn, RemotePingObj) ->
     {PeerOk, S1} = handle_first_ping(S, RemotePingObj),
     Response =
         case PeerOk of
             ok ->
                 case handle_ping_msg(S1, RemotePingObj) of
                     ok ->
-                        {ok, ping_obj_rsp(S1, RemotePingObj)};
+                        {ok, ping_obj_rsp(S1, Vsn, RemotePingObj)};
                     {error, Reason} ->
                         {error, Reason}
                 end;
             {error, Reason} ->
                 {error, Reason}
         end,
-    send_response(S, ping, Response),
-    maybe_close(S1);
-handle_ping(S, {ping, _From, _TRef}, RemotePingObj) ->
+    send_response(S1, ping, Vsn, Response),
+    maybe_close(set_ping_vsn(S1, Vsn, RemotePingObj, false));
+handle_ping(S, {ping, _From, _TRef}, _Vsn, RemotePingObj) ->
     epoch_sync:info("Peer ~p got new ping when waiting for PING_RSP - ~p",
                     [peer_id(S), RemotePingObj]),
     send_response(S, ping, {error, already_pinging}),
@@ -775,6 +878,8 @@ handle_ping_msg(S, RemotePingObj) ->
                 epoch_sync:debug("Error: ~p", [Reason]),
                 {{error, Reason}, false}
         end,
+    Caps = maps:get(capabilities, RemotePingObj, []),
+    Caps =/= [] andalso aec_capabilities:register_peer(PeerId, Caps),
     maybe_tx_pool_sync(MpSync, TopHeader, S),
     Res.
 
@@ -841,20 +946,27 @@ decode_remote_ping(_) ->
     {error, bad_ping_message}.
 
 %% Encode hashes and get peers for PingObj
-ping_obj(#{ share := 0 } = PingObj, _Exclude) ->
-    PingObj#{peers => []};
-ping_obj(PingObj, Exclude) ->
+ping_obj(#{ share := 0 } = PingObj, _Exclude, Vsn) ->
+    vsn_upgrade(ping, PingObj#{peers => []}, Vsn);
+ping_obj(PingObj, Exclude, Vsn) ->
     #{ share := Share } = PingObj,
     ConnectedPeerPercentage = ping_connected_peer_percentage(),
     Peers = aec_peers:get_random_mix(Share, ConnectedPeerPercentage, Exclude),
-    PingObj#{peers => lists:sort(Peers)}.
+    vsn_upgrade(ping, PingObj#{peers => lists:sort(Peers)}, Vsn).
 
-ping_obj_rsp(S, RemotePingObj) ->
+vsn_upgrade(ping, Obj, ?PING_VSN_2) ->
+    MyCaps = aec_capabilities:get_capabilities(),
+    Vsns = aec_peer_messages:all_msg_versions(),
+    Obj#{ versions => Vsns, capabilities => MyCaps };
+vsn_upgrade(_T, Obj, _V) ->
+    Obj.
+
+ping_obj_rsp(S, Vsn, RemotePingObj) ->
     PeerId = peer_id(S),
     #{ share := Share, peers := TheirPeers } = RemotePingObj,
     LocalPingObj = local_ping_obj(S),
     ping_obj(LocalPingObj#{ share => Share },
-             [PeerId | [aec_peer:id(P) || P <- TheirPeers]]).
+             [PeerId | [aec_peer:id(P) || P <- TheirPeers]], Vsn).
 
 local_ping_obj(S) ->
     local_ping_obj(S, false).
@@ -1307,7 +1419,12 @@ send_msg(#{ status := {connected, ESock} }, Type, Msg) when is_binary(Msg) ->
     do_send(ESock, <<(aec_peer_messages:tag(Type)):16, Msg/binary>>).
 
 send_response(S, Type, Response) ->
-    Msg = aec_peer_messages:serialize_response(Type, Response),
+    Vsn = msg_version(Type, S),
+    send_response(S, Type, Vsn, Response).
+
+send_response(S, Type, Vsn, Response) ->
+    lager:debug("Type = ~p; Vsn = ~p; Response = ~p", [Type, Vsn, Response]),
+    Msg = aec_peer_messages:serialize_response(Type, Vsn, Response),
     send_msg(S, response, Msg).
 
 %% If the message is more than 0xFFFF - 2 - 16 bytes (2 bytes for the length at

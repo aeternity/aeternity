@@ -9,32 +9,53 @@
 -export([ deserialize/2
         , serialize/2
         , serialize/3
-        , serialize_response/2
+        , serialize_response/3
         , tag/1]).
+
+-export([ msg_versions/1
+        , all_msg_versions/0
+        , latest_vsn/2 ]).
+
+-export([serialize_capabilities/2,
+	 deserialize_capabilities/2]).
 
 -include("aec_peer_messages.hrl").
 
-serialize_response(Type, {ok, Object}) ->
-    SerObj = serialize(Type, Object),
+serialize_response(Type, Vsn, {ok, Object}) ->
+    SerObj = serialize(Type, Object, Vsn),
     serialize(response, #{ result => true,
                            type   => tag(Type),
                            object => SerObj });
-serialize_response(Type, {error, Reason}) ->
+serialize_response(Type, _Vsn, {error, Reason}) ->
     serialize(response, #{ result => false,
                            type   => tag(Type),
                            reason => to_binary(Reason) }).
 
 serialize(Msg, Data) ->
-    serialize(Msg, Data, latest_vsn(Msg)).
+    serialize(Msg, Data, latest_vsn(Msg, ?P2P_PROTOCOL_VSN)).
 
-serialize(ping, Ping, Vsn = ?PING_VSN) ->
+serialize(ping, Ping, Vsn = ?PING_VSN_2) ->
+    lager:debug("ping vsn ~p: ~p", [?PING_VSN_2, Ping]),
+    Caps = serialize_capabilities(?PING_VSN_2, maps:get(capabilities, Ping, [])),
+    Flds = [ {versions, maps:get(versions, Ping)}
+           , {port, maps:get(port, Ping)}
+           , {share, maps:get(share, Ping)}
+           , {genesis_hash, maps:get(genesis_hash, Ping)}
+           , {height, maps:get(height, Ping)}
+           , {difficulty, maps:get(difficulty, Ping)}
+           , {best_hash, maps:get(best_hash, Ping)}
+           , {sync_allowed, maps:get(sync_allowed, Ping)}
+           , {capabilities, Caps}
+           , {peers, serialize(peers, maps:get(peers, Ping), ?PEER_VSN)} ],
+    serialize_flds(ping, Vsn, Flds);
+serialize(ping, Ping, Vsn = ?PING_VSN_1) ->
     Flds = [ {port, maps:get(port, Ping)}
            , {share, maps:get(share, Ping)}
            , {genesis_hash, maps:get(genesis_hash, Ping)}
            , {difficulty, maps:get(difficulty, Ping)}
            , {best_hash, maps:get(best_hash, Ping)}
            , {sync_allowed, maps:get(sync_allowed, Ping)}
-           , {peers, serialize(peers, maps:get(peers, Ping), ?VSN_1)} ],
+           , {peers, serialize(peers, maps:get(peers, Ping), ?PEER_VSN)} ],
     serialize_flds(ping, Vsn, Flds);
 serialize(get_header_by_hash, GetHeader, Vsn = ?GET_HEADER_BY_HASH_VSN) ->
     #{ hash := Hash } = GetHeader,
@@ -88,7 +109,7 @@ serialize(peers, Peers, Vsn = ?VSN_1) ->
     [ serialize(peer, Peer, Vsn) || Peer <- Peers ];
 serialize(peer, Peer, ?VSN_1) ->
     %% Don't pollute the encoding with lots of Vsn-fields...
-    Template = serialization_template(peer, ?PING_VSN),
+    Template = serialization_template(peer, ?VSN_1),
     Flds = [ {host,   maps:get(host, Peer)}
            , {port,   maps:get(port, Peer)}
            , {pubkey, maps:get(pubkey, Peer)} ],
@@ -177,7 +198,10 @@ rev_tag(?MSG_GET_NODE_INFO)        -> get_node_info;
 rev_tag(?MSG_NODE_INFO)            -> node_info;
 rev_tag(?MSG_CLOSE)                -> close.
 
-latest_vsn(ping)                 -> ?PING_VSN;
+latest_vsn(Request, ?P2P_PROTOCOL_VSN) ->
+    latest_vsn(Request).
+
+latest_vsn(ping)                 -> ?PING_VSN_2;
 latest_vsn(get_header_by_hash)   -> ?GET_HEADER_BY_HASH_VSN;
 latest_vsn(get_header_by_height) -> ?GET_HEADER_BY_HEIGHT_VSN;
 latest_vsn(header)               -> ?HEADER_VSN;
@@ -199,7 +223,40 @@ latest_vsn(get_node_info)        -> ?GET_NODE_INFO_VSN;
 latest_vsn(node_info)            -> ?NODE_INFO_VSN;
 latest_vsn(close)                -> ?CLOSE_VSN.
 
-deserialize(ping, Vsn, PingFlds) when Vsn == ?PING_VSN ->
+%% In cases where we support multiple message versions.
+%% Only add clauses for messages where multiple vsns are needed.
+%% Default is to support only the latest version.
+msg_versions(ping) ->
+    {ok, Min} = aeu_env:find_config([<<"sync">>, <<"minimum_ping_version">>],
+				    [user_config, schema_default]),
+    [V || V <- [?PING_VSN_1, ?PING_VSN_2],
+	  V >= Min];
+msg_versions(_Msg) ->
+    undefined.
+
+all_msg_versions() ->
+    [#{protocol => atom_to_binary(T, utf8), vsns => msg_versions(T)} || T <- [ping]].
+
+deserialize(ping, Vsn, PingFlds) when Vsn == ?PING_VSN_2 ->
+    PingData =
+        [ {versions, _Versions}
+        , {port, _Port}
+        , {share, _Share}
+        , {genesis_hash, _GenHash}
+        , {height, _Height}
+        , {difficulty, _Difficulty}
+        , {best_hash, _TopHash}
+        , {sync_allowed, _SyncAllowed}
+        , {capabilities, CapBin}
+        , {peers, PeersBin} ] = aeserialization:decode_fields(
+                                  serialization_template(ping, Vsn),
+                                  PingFlds),
+    Peers = deserialize(peers, ?PEER_VSN, PeersBin),
+    Capabilities = deserialize_capabilities(Vsn, CapBin),
+    PingData1 = replace_keys(PingData, [{peers, Peers},
+                                        {capabilities, Capabilities}]),
+    {ping, Vsn, maps:from_list(PingData1)};
+deserialize(ping, Vsn, PingFlds) when Vsn == ?PING_VSN_1 ->
     PingData =
         [ {port, _Port}
         , {share, _Share}
@@ -210,7 +267,7 @@ deserialize(ping, Vsn, PingFlds) when Vsn == ?PING_VSN ->
         , {peers, PeersBin} ] = aeserialization:decode_fields(
                                     serialization_template(ping, Vsn),
                                     PingFlds),
-    Peers = deserialize(peers, Vsn, PeersBin),
+    Peers = deserialize(peers, ?PEER_VSN, PeersBin),
     PingData1 = replace_keys(PingData, [{peers, Peers}, {difficulty, Difficulty}]),
     {ping, Vsn, maps:from_list(PingData1)};
 deserialize(get_header_by_hash, Vsn, GetHeaderFlds) when Vsn == ?GET_HEADER_BY_HASH_VSN ->
@@ -341,7 +398,71 @@ deserialize(node_info, Vsn, NodeInfoFlds) ->
 deserialize(close, Vsn, _CloseFlds) when Vsn == ?CLOSE_VSN ->
     {close, Vsn, #{}}.
 
-serialization_template(ping, ?PING_VSN) ->
+serialize_capabilities(Vsn, Caps) ->
+    Transformed = lists:map(
+                    fun({Tag, L}) when is_atom(Tag), is_list(L) ->
+                            L1 = lists:map(
+                                   fun(M) when is_map(M) ->
+                                           {Tag, M}
+                                   end, L),
+                            {atom_to_binary(Tag, utf8), L1}
+                    end, Caps),
+    Template = [{data, [{binary, binary}]}],
+    Fields = [{K, serialize_capability(K, V, Vsn)} || {K, V} <- Transformed],
+    [List] = aeserialization:encode_fields(Template, [{data, Fields}]),
+    aeser_rlp:encode(List).
+
+serialize_capability(K, V, Vsn) ->
+    Template = capabilities_template(K, Vsn),
+    List = aeserialization:encode_fields(Template, V),
+    aeser_rlp:encode(List).
+
+deserialize_capabilities(Vsn, Caps) ->
+    try
+	Data = aeser_rlp:decode(Caps),
+	[{data, Fields}] = aeserialization:decode_fields([{data, [{binary, binary}]}], [Data]),
+	Deserialized = [{K, deserialize_capability(K, V, Vsn)} || {K, V} <- Fields],
+        lists:map(
+          fun({Kb, L}) ->
+                  KbA = binary_to_existing_atom(Kb, utf8),
+                  L1 = lists:map(
+                         fun({Ka, M}) when Ka == KbA, is_map(M) ->
+                                 M
+                         end, L),
+                  {KbA, L1}
+          end, Deserialized)
+    catch _:Reason ->
+	    {error, Reason}
+    end.
+
+deserialize_capability(K, Bin, Vsn) ->
+    Data = aeser_rlp:decode(Bin),
+    Template = capabilities_template(K, Vsn),
+    aeserialization:decode_fields(Template, Data).
+
+capabilities_template(<<"chain_poi">>, ?PING_VSN_2) ->
+    [{chain_poi, #{ items => [ {height, int}
+                             , {root_hash, binary}
+                             , {genesis, binary}
+                             , {top, binary}
+                             , {poi, binary} ]}
+     }].
+
+serialization_template(ping, ?PING_VSN_2) ->
+    [ {versions, [#{items => [ {protocol, binary}
+                             , {vsns, [int]}]
+                   }]
+      }
+    , {port, int}
+    , {share, int}
+    , {genesis_hash, binary}
+    , {height, int}                      % V2
+    , {difficulty, int}
+    , {best_hash, binary}
+    , {sync_allowed, bool}
+    , {capabilities, binary} % V2
+    , {peers, [binary]} ];
+serialization_template(ping, ?PING_VSN_1) ->
     [ {port, int}
     , {share, int}
     , {genesis_hash, binary}
