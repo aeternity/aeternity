@@ -731,6 +731,14 @@ handle_request_('ProtectedDryRunTxs', #{ 'DryRunInput' := Req }, _Context) ->
                   do_dry_run()],
     process_request(ParseFuns, Req);
 
+handle_request_('GetRecentGasPrices', _Params, _Context) ->
+    GasPrices = aehttp_logic:get_top_blocks_gas_price_summary(),
+    {200, [], lists:map(
+        fun([BlockAmount, GasPrice]) ->
+            #{ <<"blocks">> => BlockAmount, <<"min_gas_price">> => GasPrice }
+        end,
+        GasPrices)};
+
 handle_request_(OperationID, Req, Context) ->
     error_logger:error_msg(
       ">>> Got not implemented request to process: ~p~n",

@@ -1028,6 +1028,21 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/EncodedHash"
+  /recent-gas-prices:
+    get:
+      tags:
+        - external
+        - transaction
+      operationId: GetRecentGasPrices
+      description: 'Get minimum gas prices in recent blocks'
+      parameters: []
+      responses:
+        '200':
+          description: 'Successful operation'
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GasPrices"
   ###
   ## Internal endpoints
   ###
@@ -3766,6 +3781,20 @@ components:
           type: string
       required:
         - status
+    GasPrices:
+      type: array
+      items:
+        type: object
+        properties:
+          min_gas_price:
+            description: Minimum gas price in the block range
+            $ref: "#/components/schemas/UInt"
+          blocks:
+            description: Amount of blocks from top
+            $ref: "#/components/schemas/UInt64"
+        required:
+          - min_gas_price
+          - blocks
   parameters:
     intAsString:
       in: query

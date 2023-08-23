@@ -14,6 +14,7 @@
         , get_block_genesis/0
         , get_genesis_hash/0
         , get_top_blocks_time_summary/1
+        , get_top_blocks_gas_price_summary/0
         ]).
 
 -export([ get_account/1
@@ -160,3 +161,61 @@ get_top_blocks_time_summary(Count) ->
 connected_peers(Tag) -> aec_peers:connected_peers(Tag).
 
 blocked_peers() -> aec_peers:blocked_peers().
+
+get_top_blocks_gas_price_summary() ->
+    Height = aec_chain:top_height(),
+    lists:map(
+        fun(BlockAmount) ->
+            HeightBottom = Height - BlockAmount + 1,
+            GasPrice =
+                case HeightBottom < 1 of
+                    true -> aec_tx_pool:minimum_miner_gas_price();
+                    false -> get_blocks_min_gas_price(Height, HeightBottom)
+                end,
+            [BlockAmount, GasPrice]
+        end,
+        [1, 5, 20, 120, 480]).
+
+get_blocks_min_gas_price(HeightTop, HeightBottom) when
+        is_integer(HeightBottom), HeightBottom > 0,
+        is_integer(HeightTop), HeightTop > 0, HeightBottom =< HeightTop ->
+    GasPrices = lists:map(
+        fun(Height) ->
+            get_block_min_gas_price(Height)
+        end, lists:seq(HeightBottom, HeightTop)),
+    lists:min(GasPrices).
+
+get_block_min_gas_price(Height) ->
+    {ok, Block} = aec_chain:get_key_block_by_height(Height),
+    Protocol = aec_blocks:version(Block),
+    get_block_min_gas_price(aec_blocks:prev_hash(Block), Height, Protocol, true).
+
+get_block_min_gas_price(Hash, Height, Protocol, IsNextKeyBlock) ->
+    {ok, Block} = aec_chain:get_block(Hash),
+    case aec_blocks:type(Block) of
+        key ->
+            case IsNextKeyBlock of
+                true -> aec_tx_pool:minimum_miner_gas_price();
+                false -> 100000000000000000000000000000
+            end;
+        micro ->
+            Txs = lists:map(
+                fun(SignedTx) ->
+                    aetx_sign:tx(SignedTx)
+                end, aec_blocks:txs(Block)),
+            OverallGas = lists:foldl(
+                fun(Tx, Acc) ->
+                    Acc + aetx:gas_limit(Tx, Height, Protocol)
+                end, 0, Txs),
+            case OverallGas < aec_governance:block_gas_limit() - 200000 of
+                true -> aec_tx_pool:minimum_miner_gas_price();
+                false ->
+                    GasPrices = lists:map(
+                        fun(Tx) ->
+                            aetx:min_gas_price(Tx, Height, Protocol)
+                        end, Txs),
+                    PrevHash = aec_blocks:prev_hash(Block),
+                    PrevMinGasPrice = get_block_min_gas_price(PrevHash, Height, Protocol, false),
+                    lists:min(GasPrices ++ [PrevMinGasPrice])
+            end
+    end.

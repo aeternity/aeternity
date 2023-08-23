@@ -1035,6 +1035,21 @@ paths:
             type: array
             items:
               $ref: '#/definitions/EncodedHash'
+  /recent-gas-prices:
+    get:
+      tags:
+        - external
+        - transaction
+      operationId: GetRecentGasPrices
+      description: 'Get minimum gas prices in recent blocks'
+      produces:
+        - application/json
+      parameters: []
+      responses:
+        '200':
+          description: 'Successful operation'
+          schema:
+            $ref: '#/definitions/GasPrices'
   /debug/network:
     get:
       tags:
@@ -3718,6 +3733,20 @@ definitions:
     oneOf:
       - $ref: '#/definitions/DelegatesList'
       - $ref: '#/definitions/DelegatesObject'
+  GasPrices:
+    type: array
+    items:
+      type: object
+      properties:
+        min_gas_price:
+          description: Minimum gas price in the block range
+          $ref: '#/definitions/UInt'
+        blocks:
+          description: Amount of blocks from top
+          $ref: '#/definitions/UInt64'
+      required:
+        - min_gas_price
+        - blocks
 
 externalDocs:
   description: Find out more about Aeternity
