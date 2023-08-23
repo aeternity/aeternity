@@ -151,6 +151,8 @@
     get_transaction/1,
     check_transaction_in_pool/1,
 
+    get_recent_gas_prices/1,
+
     % sync gossip
     pending_transactions/1,
     post_correct_tx/1,
@@ -460,6 +462,8 @@ groups() ->
 
         get_transaction,
         check_transaction_in_pool,
+
+        get_recent_gas_prices,
 
         % sync gossip
         pending_transactions,
@@ -2004,6 +2008,25 @@ get_status_sut(IntAsString) ->
     Host = external_address(),
     Parameters = case IntAsString of true -> "?int-as-string"; false -> "" end,
     http_request(Host, get, "status" ++ Parameters, []).
+
+%% /recent-gas-prices
+
+get_recent_gas_prices(_Config) ->
+    Host = external_address(),
+    {ok, 200, [
+        #{ <<"blocks">> := 1, <<"min_gas_price">> := MinGasPrice1 },
+        #{ <<"blocks">> := 5, <<"min_gas_price">> := MinGasPrice5 },
+        #{ <<"blocks">> := 20, <<"min_gas_price">> := MinGasPrice20 },
+        #{ <<"blocks">> := 120, <<"min_gas_price">> := MinGasPrice120 },
+        #{ <<"blocks">> := 480, <<"min_gas_price">> := MinGasPrice480 }
+    ]} = http_request(Host, get, "recent-gas-prices", []),
+    MinGasPrice = 1000000000,
+    ?assertMatch(X when is_integer(X) andalso X == MinGasPrice, MinGasPrice1),
+    ?assertMatch(X when is_integer(X) andalso X == MinGasPrice, MinGasPrice5),
+    ?assertMatch(X when is_integer(X) andalso X == MinGasPrice, MinGasPrice20),
+    ?assertMatch(X when is_integer(X) andalso X == MinGasPrice, MinGasPrice120),
+    ?assertMatch(X when is_integer(X) andalso X == MinGasPrice, MinGasPrice480),
+    ok.
 
 prepare_tx(TxType, Args, SignHash) ->
     %assert_required_tx_fields(TxType, Args),
