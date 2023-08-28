@@ -793,7 +793,7 @@ do_dry_run(STx, ExpRes) ->
         {ok, 200, #{ <<"results">> := [#{ <<"result">> := Res } = ResObj] }} ->
             ct:pal("ResObj: ~p", [ResObj]),
             ?assertMatch(ExpRes, binary_to_atom(Res, utf8));
-        {ok, 403, #{<<"reason">> := Reason}} ->
+        {ok, 400, #{<<"reason">> := Reason}} ->
             ct:pal("Dry-run call failed with reason: ~s", [Reason]),
             ?assertMatch(ExpRes, error)
     end.

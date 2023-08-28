@@ -165,6 +165,10 @@ spend_txs(Config) ->
     {ok, 200, #{ <<"results">> := [#{ <<"result">> := <<"error">> }, #{ <<"result">> := <<"ok">> }] }} =
         dry_run(Config, TopHash, [Tx2, Tx1]),
 
+    %% Negative test - badly encoded Tx
+    BinTx1 =  aeser_api_encoder:encode(transaction, aetx:serialize_to_binary(element(2, Tx1))),
+    {ok, 400, #{ <<"reason">> := <<"Bad request: invalid_encoding">> }} = dry_run(Config, TopHash, [{tx, <<BinTx1/binary, 43>>}]),
+
     ok.
 
 identity_contract(Config) ->
