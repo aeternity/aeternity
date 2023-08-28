@@ -121,7 +121,7 @@ init([StartHeight, Size, BlockProducing, EnabledCommitments]) ->
     aec_events:subscribe(stop_mining),
     aec_events:subscribe(chain_sync),
     TopHeader = aec_chain:top_header(),
-    ChildHeight = aec_headers:height(TopHeader), 
+    ChildHeight = aec_headers:height(TopHeader),
     {ok, ChildHash} = aec_headers:hash_header(TopHeader),
     true = is_integer(ChildHeight),
     self() ! initialize_cache,
@@ -136,14 +136,14 @@ init([StartHeight, Size, BlockProducing, EnabledCommitments]) ->
 
 -spec handle_call(any(), any(), state()) -> {reply, any(), state()}.
 handle_call({get_block_by_height, Height}, _From, State) ->
-    Reply = 
+    Reply =
         case get_block(Height, State) of
             {error, _} = Err -> Err;
             {ok, _Block} = OK -> OK
         end,
     {reply, Reply, State};
 handle_call({get_commitments, Hash}, _From, State) ->
-    Reply = 
+    Reply =
         case get_block_height_by_hash(Hash, State) of
             {error, _} = Err -> Err;
             {ok, Height} ->
@@ -168,7 +168,7 @@ handle_cast({post_block, Block}, #state{} = State0) ->
         case State#state.top_height > State0#state.top_height of
             true ->
                 maybe_post_initial_commitments(Block, State);
-            false -> 
+            false ->
                 State
         end,
     {noreply, State1};
@@ -216,12 +216,11 @@ handle_info({gproc_ps_event, top_changed, #{info := #{block_type := key,
     {noreply, State};
 handle_info({gproc_ps_event, chain_sync, #{info := {is_syncing, IsSyncing}}}, State0) ->
     State1 = State0#state{is_syncing = IsSyncing},
-    State = 
+    State =
         case IsSyncing =:= false andalso not State0#state.posted_commitment of
             true ->
                 {ok, TopBlock} = aec_chain:top_key_block(),
                 {ok, TopHash} = aec_blocks:hash_internal_representation(TopBlock),
-                Height = aec_blocks:height(TopBlock),
                 _State1 = maybe_post_commitments(TopHash, State1);
             false ->
                 lager:debug("Not posting commitment", []),
@@ -267,7 +266,7 @@ get_block(Height, #state{blocks = Blocks}) ->
         error ->
             {error, not_in_cache}
     end.
-    
+
 -spec get_block_height_by_hash(aec_parent_chain_block:hash(), state()) ->
     {ok, non_neg_integer()} | {error, not_in_cache}.
 get_block_height_by_hash(Hash, #state{blocks_hash_index = Index}) ->
@@ -276,13 +275,13 @@ get_block_height_by_hash(Hash, #state{blocks_hash_index = Index}) ->
         error ->
             {error, not_in_cache}
     end.
-    
+
 -spec max_block(state()) -> non_neg_integer() | empty_cache.
 max_block(#state{blocks = Blocks}) when map_size(Blocks) =:= 0 ->
     empty_cache;
 max_block(#state{blocks = Blocks}) ->
     lists:max(maps:keys(Blocks)).
-    
+
 -spec delete_block(non_neg_integer(), state()) -> state().
 delete_block(Height, #state{blocks = Blocks,
                             blocks_hash_index = Index} = State) ->
@@ -297,12 +296,12 @@ delete_block(Height, #state{blocks = Blocks,
 state_to_map(#state{child_start_height = StartHeight,
                     child_top_height   = ChildHeight,
                     max_size     = MaxSize,
-                    blocks       = Blocks, 
+                    blocks       = Blocks,
                     top_height   = TopHeight}) ->
     #{  child_start_height => StartHeight,
         child_top_height   => ChildHeight,
         max_size     => MaxSize,
-        blocks       => Blocks, 
+        blocks       => Blocks,
         top_height   => TopHeight}.
 
 target_parent_height(#state{child_start_height    = StartHeight,
