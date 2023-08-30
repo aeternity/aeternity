@@ -12,7 +12,7 @@
 -export([get_env/2, get_env/3]).
 
 -export([user_config/0, user_config/1, user_config/2]).
--export([user_map/0, user_map/1]).
+-export([user_map/0, user_map/1, user_map/2]).
 -export([schema/0, schema/1, schema/2]).
 -export([schema_default/1, schema_default/2]).
 -export([schema_default_values/1]).
@@ -167,16 +167,19 @@ user_map() ->
     setup:get_env(aeutils, '$user_map', #{}).
 
 -spec user_map([any()] | any()) -> {ok, any()} | undefined.
-user_map(Key) when is_list(Key) ->
-    M = user_map(),
+user_map(Key) ->
+    user_map(Key, user_map()).
+
+-spec user_map([any()] | any(), map()) -> {ok, any()} | undefined.
+user_map(Key, M) when is_list(Key) ->
     case maps:find(Key, M) of
         {ok, _} = Ok ->
             Ok;
         error ->
             nested_map_get(Key, M)
     end;
-user_map(Key) ->
-    case maps:find(Key, user_map()) of
+user_map(Key, M) ->
+    case maps:find(Key, M) of
         {ok, _} = Ok -> Ok;
         error        -> undefined
     end.

@@ -30,6 +30,7 @@ check_config(PluginName, SchemaFilename, OsEnvPrefix) ->
                                      Config2
                              end,
                     cache_plugin_schema(NameBin, Schema),
+                    cache_plugin_config(NameBin, Result),
                     Result;
                 [] ->
                     lager:warning("Could not fetch plugin config object (~p)",
@@ -75,8 +76,7 @@ find_config_(_, _, []) ->
     undefined.
 
 find_config_step(PluginName, Key, user_config) ->
-    aeu_env:find_config([<<"system">>, <<"plugins">>,
-                         {<<"name">>, PluginName, <<"config">>} | Key], [user_config]);
+    aeu_env:user_map(Key, cached_plugin_config(PluginName));
 find_config_step(PluginName, Key, schema_default) ->
     aeu_env:schema_default(Key, cached_plugin_schema(PluginName));
 find_config_step(_, Key, Step) ->
@@ -123,8 +123,14 @@ validate(JSON, Schema) when is_map(JSON) ->
 cache_plugin_schema(PluginName, Schema) ->
     persistent_term:put({?MODULE, cached_schema, PluginName}, Schema).
 
+cache_plugin_config(PluginName, Config) ->
+    persistent_term:put({?MODULE, cached_config, PluginName}, Config).
+
 cached_plugin_schema(PluginName) ->
     persistent_term:get({?MODULE, cached_schema, PluginName}, #{}).
+
+cached_plugin_config(PluginName) ->
+    persistent_term:get({?MODULE, cached_config, PluginName}, #{}).
 
 load_plugins() ->
     case aeu_env:find_config([<<"system">>, <<"plugin_path">>],
