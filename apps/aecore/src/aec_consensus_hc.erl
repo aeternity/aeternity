@@ -838,10 +838,8 @@ encode_commitments(Block) ->
     aeb_fate_data:make_list(Commitments1).
 
 elect_lazy_leader(Beneficiary, TxEnv, Trees) ->
-    NetworkId = aec_parent_chain_block:encode_network_id(aec_governance:get_network_id()),
     {ok, CDLazy} = aeb_fate_abi:create_calldata("elect_after_lazy_leader",
-                                                [aefa_fate_code:encode_arg({address, Beneficiary}),
-                                                 aefa_fate_code:encode_arg({bytes, NetworkId})]),
+                                                [aefa_fate_code:encode_arg({address, Beneficiary})]),
     CallDataLazy = aeser_api_encoder:encode(contract_bytearray, CDLazy),
     case call_consensus_contract_(?ELECTION_CONTRACT,
                                 TxEnv, Trees,

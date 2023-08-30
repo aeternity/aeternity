@@ -43,7 +43,7 @@ main contract HCElection =
     put(state{ leader = new_leader, entropy = entropy_str, added_stake = added_staking_power})
     (new_leader, added_staking_power)
 
-  stateful entrypoint elect_after_lazy_leader(new_leader : address, network_id : bytes(15)) =
+  stateful entrypoint elect_after_lazy_leader(new_leader : address) =
     assert_protocol_call()
     let known_validator = state.main_staking_ct.is_validator(new_leader)
     require(known_validator == true, "Must be a validator")
