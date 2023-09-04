@@ -633,7 +633,12 @@ claim_negative2_(Cfg) ->
     TxSpec = aens_test_utils:claim_tx_spec(PubKey, Name, 0, namefee(Name, Cfg), S1),
     {ok, Tx0} = aens_claim_tx:new(TxSpec),
     Env0 = aetx_env:tx_env(Height),
-    {error, illegal_salt_value} = aetx:process(Tx0, Trees, Env0),
+    case aec_hard_forks:protocol_effective_at_height(1) of
+        P when P > ?FORTUNA_PROTOCOL_VSN ->
+            {error, illegal_salt_value} = aetx:process(Tx0, Trees, Env0);
+        _ ->
+            {error, name_not_preclaimed} = aetx:process(Tx0, Trees, Env0)
+    end,
 
     ok.
 
