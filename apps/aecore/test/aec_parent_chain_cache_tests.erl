@@ -226,7 +226,7 @@ post_child_top_in_the_middle_of_cachable_heights() ->
             timer:sleep(20),
             {ok, #{ child_start_height := StartHeight,
                     child_top_height   := ChildTop2,
-                    top_height         := ParentTop} = Res} = ?TEST_MODULE:get_state(),
+                    top_height         := ParentTop} = _Res} = ?TEST_MODULE:get_state(),
             {ChildTop1, ChildTop1} = {ChildTop1, ChildTop2},
             %%assert_child_cache_consistency(Res),
             ?TEST_MODULE:stop()
@@ -697,26 +697,26 @@ filter_meck_events(Module, Function) ->
         end,
         meck:history(Module)).
 
-mock_commitments_list(_BlockHashesMap) ->
-    meck:expect(aec_parent_connector, request_block_by_height,
-                fun(Height) ->
-                    spawn(
-                        fun() ->
-                            Block = block_by_height(Height),
-                            ?TEST_MODULE:post_block(Block)
-                        end)
-            end).
+%% mock_commitments_list(_BlockHashesMap) ->
+%%     meck:expect(aec_parent_connector, request_block_by_height,
+%%                 fun(Height) ->
+%%                     spawn(
+%%                         fun() ->
+%%                             Block = block_by_height(Height),
+%%                             ?TEST_MODULE:post_block(Block)
+%%                         end)
+%%             end).
 
-mock_commitments_list(all, L) ->
-    meck:expect(aec_parent_connector, request_block_by_height,
-                fun(Height) ->
-                    spawn(
-                        fun() ->
-                            Block0 = block_by_height(Height),
-                            Block = aec_parent_chain_block:set_commitments(Block0, L),
-                            ?TEST_MODULE:post_block(Block)
-                        end)
-            end).
+%% mock_commitments_list(all, L) ->
+%%     meck:expect(aec_parent_connector, request_block_by_height,
+%%                 fun(Height) ->
+%%                     spawn(
+%%                         fun() ->
+%%                             Block0 = block_by_height(Height),
+%%                             Block = aec_parent_chain_block:set_commitments(Block0, L),
+%%                             ?TEST_MODULE:post_block(Block)
+%%                         end)
+%%             end).
 
 header(Height) ->
     Hash = <<Height:32/unit:8>>,

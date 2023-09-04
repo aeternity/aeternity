@@ -228,7 +228,6 @@ recent_cache_trim_key_header(_) -> ok.
 
 keyblocks_for_target_calc() -> 0.
 keyblock_create_adjust_target(Block0, []) ->
-    Height = aec_blocks:height(Block0),
     {ok, Stake} = aeu_ets_cache:lookup(?ETS_CACHE_TABLE, added_stake),
     Block = aec_blocks:set_target(Block0, aeminer_pow:integer_to_scientific(Stake)),
     {ok, Block}.
@@ -623,7 +622,6 @@ next_beneficiary() ->
     PCHeight = pc_height(NextHeight),
     case aec_parent_chain_cache:get_block_by_height(PCHeight) of
         {ok, Block} ->
-            {ok, Commitments} = aec_parent_chain_block:commitments(Block),
             Entropy = aec_parent_chain_block:hash(Block),
             CommitmentsSophia = encode_commitments(Block),
             NetworkId = aec_parent_chain_block:encode_network_id(aec_governance:get_network_id()),
@@ -635,7 +633,7 @@ next_beneficiary() ->
             CallData = aeser_api_encoder:encode(contract_bytearray, CD),
             try call_consensus_contract_(?ELECTION_CONTRACT, TxEnv, Trees, CallData, "elect_next", 0) of
                 {ok, _Trees1, Call} ->
-                    {tuple, {{address, Leader}, Stake}}  = aeb_fate_encoding:deserialize(aect_call:return_value(Call)),
+                    {tuple, {{address, Leader}, _Stake}}  = aeb_fate_encoding:deserialize(aect_call:return_value(Call)),
                     SignModule = get_sign_module(),
                     case SignModule:set_candidate(Leader) of
                         {error, key_not_found} ->
@@ -644,10 +642,10 @@ next_beneficiary() ->
                         ok ->
                             {ok, Leader}
                     end;
-                {error, What} ->
+                {error, _What} ->
                     timer:sleep(1000),
                     {error, not_leader}
-            catch error:{consensus_call_failed, {error, What}} ->
+            catch error:{consensus_call_failed, {error, _What}} ->
                     timer:sleep(1000),
                     {error, not_leader}
             end;

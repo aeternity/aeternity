@@ -525,7 +525,7 @@ end_per_group(hc_doge, Config) ->
     Cmd = "dogecoin-cli -datadir="++DogeDataDir++" stop",
     os:cmd(Cmd),
     Config;
-end_per_group(lazy_leader, Config) -> 
+end_per_group(lazy_leader, Config) ->
     aecore_suite_utils:stop_node(?LAZY_NODE, Config);
 end_per_group(_Group, Config) ->
     Config.
@@ -903,7 +903,7 @@ verify_commitments(Config) ->
                     ct:log("Commitments: ~p", [ParsedComms]),
                     lists:map(
                         fun({ParentHeight, N, H}) ->
-                            {N, N} = {N, H}, 
+                            {N, N} = {N, H},
                             ExpectedParentHeight = H + ?CHILD_START_HEIGHT - 1,
                             {ParentHeight, ParentHeight} = {ParentHeight, ExpectedParentHeight}
                         end,
@@ -1703,28 +1703,28 @@ wait_for_commitments_in_pool(Node, CNode, Cnt) ->
                                                end).
 
 wait_for_at_least_commitments_in_pool(Node, CNode, Cnt) ->
-    wait_for_commitments_in_pool_(Node, CNode, fun(Pool) -> 
+    wait_for_commitments_in_pool_(Node, CNode, fun(Pool) ->
                                                     TxsCnt = length(Pool),
                                                     TxsCnt >= Cnt
                                                end).
 
-wait_for_commitments_in_pool_but_allow_other_txs(Node, CNode, Cnt) ->
-    wait_for_commitments_in_pool_(Node, CNode,
-        fun(Pool) -> 
-            {ok, TopH} = aec_headers:hash_header(rpc(Node, aec_chain, top_header, [])),
-            ExpectedCommitment = aeser_api_encoder:encode(key_block_hash, TopH),
+%% wait_for_commitments_in_pool_but_allow_other_txs(Node, CNode, Cnt) ->
+%%     wait_for_commitments_in_pool_(Node, CNode,
+%%         fun(Pool) ->
+%%             {ok, TopH} = aec_headers:hash_header(rpc(Node, aec_chain, top_header, [])),
+%%             ExpectedCommitment = aeser_api_encoder:encode(key_block_hash, TopH),
 
-            TxsCnt =
-                length(
-                    lists:filter(
-                        fun(SignedTx) ->
-                            {spend_tx, SpendTx} = aetx:specialize_type(aetx_sign:tx(SignedTx)),
-                            ct:log("Spend payload ~p", [aec_spend_tx:payload(SpendTx)]),
-                            aec_spend_tx:payload(SpendTx) =:= ExpectedCommitment
-                        end,
-                        Pool)),
-            TxsCnt =:= Cnt
-        end).
+%%             TxsCnt =
+%%                 length(
+%%                     lists:filter(
+%%                         fun(SignedTx) ->
+%%                             {spend_tx, SpendTx} = aetx:specialize_type(aetx_sign:tx(SignedTx)),
+%%                             ct:log("Spend payload ~p", [aec_spend_tx:payload(SpendTx)]),
+%%                             aec_spend_tx:payload(SpendTx) =:= ExpectedCommitment
+%%                         end,
+%%                         Pool)),
+%%             TxsCnt =:= Cnt
+%%         end).
 
 wait_for_commitments_in_pool_(Node, ChildNode, CompareFun) ->
     wait_for_commitments_in_pool_(Node, ChildNode, CompareFun, 100).
@@ -1839,7 +1839,6 @@ validate_expected_commitments(Node, Commitments) ->
                 rpc(?NODE1, aec_parent_chain_block, encode_commitment_btc, [pubkey(Staker), TopH, NetworkId])
             end,
             [?ALICE, ?BOB]),
-    GenesisEncoded = aeser_api_encoder:encode(key_block_hash, rpc(Node, aec_chain, genesis_hash, [])),
     ct:log("Child chain top hashes ~p", [ExpectedCommitments]),
     case lists:all(fun(SignedTx) ->
                         {spend_tx, SpendTx} = aetx:specialize_type(aetx_sign:tx(SignedTx)),
