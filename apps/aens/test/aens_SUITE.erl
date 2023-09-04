@@ -21,16 +21,16 @@
          prune_claim/1,
          prune_claim_auction/1,
          preclaim_negative/1,
-         claim/1,
-         claim_auction/1,
+         claim/1, immediate_claim/1,
          ongoing_auction/1,
          second_claim_auction/1,
          second_claim_extend_auction/1,
          claim_locked_coins_holder_gets_locked_fee/1,
-         claim_negative/1,
+         claim_negative/1, claim_negative2/1,
          claim_empty_name/1,
          claim_race_negative/1,
          claim_race_negative_auction/1,
+         immediate_claim_race/1, immediate_claim_race2/1,
          update/1,
          update_negative/1,
          update_expire_at_once/1,
@@ -65,10 +65,14 @@ groups() ->
        preclaim,
        preclaim_negative,
        claim,
+       immediate_claim,
        claim_locked_coins_holder_gets_locked_fee,
        claim_negative,
+       claim_negative2,
        claim_empty_name,
        claim_race_negative,
+       immediate_claim_race,
+       immediate_claim_race2,
        update,
        update_negative,
        update_expire_at_once,
@@ -79,14 +83,21 @@ groups() ->
        registrar_change]},
      {no_auction_long_names,
       [claim,
+       immediate_claim,
+       immediate_claim_race,
+       immediate_claim_race2,
        claim_locked_coins_holder_gets_locked_fee,
        claim_negative,
+       claim_negative2,
        claim_race_negative]},
      {auction,
       [prune_preclaim,
        prune_claim_auction,
        preclaim,
-       claim_auction,
+       immediate_claim,
+       immediate_claim_race,
+       immediate_claim_race2,
+       claim,
        ongoing_auction,
        second_claim_auction,
        second_claim_extend_auction,
@@ -162,11 +173,17 @@ end_per_group(_, Cfg) ->
     Cfg.
 
 %%%===================================================================
-%%% Init helper
+%%% Helper functions
 %%%===================================================================
 
 gen_name(Length) ->
     <<<<"x">>||_<-lists:seq(1,Length)>>.
+
+auctioned_name(Name, Protocol) ->
+    case aec_governance:name_claim_bid_timeout(Name, Protocol) of
+        0 -> false;
+        _ -> byte_size(Name) > aec_governance:name_max_length_starting_auction()
+    end.
 
 %%%===================================================================
 %%% Preclaim
@@ -244,6 +261,53 @@ preclaim_negative(Cfg) ->
 %%% Claim
 %%%===================================================================
 
+%% Immediate claims (no NamePreclaimTx) was introduced in Ceres
+%% claim_negative2 tests the negative (pre-Ceres) case
+immediate_claim(Cfg) ->
+    Protocol = aec_hard_forks:protocol_effective_at_height(1),
+    if Protocol < ?CERES_PROTOCOL_VSN -> {skip, preclaimless_claim_in_ceres};
+       true                            -> immediate_claim_(Cfg)
+    end.
+
+immediate_claim_(Cfg) ->
+    State = case proplists:get_value(state, Cfg) of
+                undefined -> aens_test_utils:new_state();
+                State0 -> State0
+            end,
+    {PubKey, S1} = aens_test_utils:setup_new_account(State),
+    PrivKey = aens_test_utils:priv_key(PubKey, S1),
+    Trees = aens_test_utils:trees(S1),
+    Height = ?PRE_CLAIM_HEIGHT + 1,
+    Name = aens_test_utils:fullname(?config(name, Cfg)),
+    {ok, NameAscii} = aens_utils:to_ascii(Name),
+    NHash = aens_hash:name_hash(NameAscii),
+
+    TxSpec = aens_test_utils:claim_tx_spec(PubKey, Name, 0, namefee(NameAscii, Cfg), S1),
+    {ok, Tx} = aens_claim_tx:new(TxSpec),
+    SignedTx = aec_test_utils:sign_tx(Tx, PrivKey),
+    Env      = aetx_env:tx_env(Height),
+
+    {ok, [SignedTx], Trees1, _} =
+        aec_block_micro_candidate:apply_block_txs([SignedTx], Trees, Env),
+
+    NTrees = aec_trees:ns(Trees1),
+    S2 = aens_test_utils:set_trees(Trees1, S1),
+
+    case auctioned_name(NameAscii, aec_hard_forks:protocol_effective_at_height(1)) of
+        false ->
+            {value, N} = aens_state_tree:lookup_name(NHash, NTrees),
+            NHash   = aens_names:hash(N),
+            PubKey  = aens_names:owner_pubkey(N),
+            claimed = aens_names:status(N);
+        true ->
+            none   = aens_state_tree:lookup_name(NHash, NTrees),
+            {value, A} = aens_state_tree:lookup_name_auction(aens_hash:to_auction_hash(NHash), NTrees),
+            NHash   = aens_hash:from_auction_hash(aens_auctions:hash(A)),
+            PubKey  = aens_auctions:bidder_pubkey(A)
+    end,
+
+    {PubKey, S2}.
+
 claim(Cfg) ->
     {PubKey, Name, NameSalt, S1} = preclaim(Cfg),
     Trees = aens_test_utils:trees(S1),
@@ -271,52 +335,24 @@ claim(Cfg) ->
     %% Check commitment removed and name entry added
     Trees2 = aens_test_utils:trees(S2),
     NTrees = aec_trees:ns(Trees2),
-    none       = aens_state_tree:lookup_commitment(CHash, NTrees),
-    {value, N} = aens_state_tree:lookup_name(NHash, NTrees),
-    NHash   = aens_names:hash(N),
-    PubKey  = aens_names:owner_pubkey(N),
-    claimed = aens_names:status(N),
-    {PubKey, NHash, S2}.
-
-claim_auction(Cfg) ->
-    {PubKey, Name, NameSalt, S1} = preclaim(Cfg),
-    Trees = aens_test_utils:trees(S1),
-    Height = ?PRE_CLAIM_HEIGHT + 1,
-    PrivKey = aens_test_utils:priv_key(PubKey, S1),
-    {ok, NameAscii} = aens_utils:to_ascii(Name),
-    CHash = aens_hash:commitment_hash(NameAscii, NameSalt),
-    NHash = aens_hash:name_hash(NameAscii),
-
-    %% Check commitment present
-    {value, C} = aens_state_tree:lookup_commitment(CHash, aec_trees:ns(Trees)),
-    CHash      = aens_commitments:hash(C),
-
-    %% Create Claim tx and apply it on trees
-    TxSpec = aens_test_utils:claim_tx_spec(PubKey, Name, NameSalt, namefee(NameAscii, Cfg), S1),
-    {ok, Tx} = aens_claim_tx:new(TxSpec),
-    SignedTx = aec_test_utils:sign_tx(Tx, PrivKey),
-    Env      = aetx_env:tx_env(Height),
-    ct:pal("TxSpec ~p\n", [TxSpec]),
-
-    {ok, [SignedTx], Trees1, _} =
-        aec_block_micro_candidate:apply_block_txs([SignedTx], Trees, Env),
-    S2 = aens_test_utils:set_trees(Trees1, S1),
-
-    %% Check commitment removed and name entry not present and auction entry added
-    Trees2 = aens_test_utils:trees(S2),
-    NTrees = aec_trees:ns(Trees2),
-    none   = aens_state_tree:lookup_commitment(CHash, NTrees),
-    none   = aens_state_tree:lookup_name(NHash, NTrees),
-    {value, A} = aens_state_tree:lookup_name_auction(aens_hash:to_auction_hash(NHash), NTrees),
-    ct:pal("Auction started ~p", [A]),
-    NHash   = aens_hash:from_auction_hash(aens_auctions:hash(A)),
-    PubKey  = aens_auctions:bidder_pubkey(A),
+    case auctioned_name(NameAscii, aec_hard_forks:protocol_effective_at_height(1)) of
+        false ->
+            {value, N} = aens_state_tree:lookup_name(NHash, NTrees),
+            NHash   = aens_names:hash(N),
+            PubKey  = aens_names:owner_pubkey(N),
+            claimed = aens_names:status(N);
+        true ->
+            none   = aens_state_tree:lookup_name(NHash, NTrees),
+            {value, A} = aens_state_tree:lookup_name_auction(aens_hash:to_auction_hash(NHash), NTrees),
+            NHash   = aens_hash:from_auction_hash(aens_auctions:hash(A)),
+            PubKey  = aens_auctions:bidder_pubkey(A)
+    end,
     {PubKey, NHash, S2}.
 
 ongoing_auction(Cfg) ->
     {PubKey2, Name, _Salt, S0} = preclaim(Cfg),
 
-    {PubKey, NHash, S1} = claim_auction([{state, S0} | Cfg]),
+    {PubKey, NHash, S1} = claim([{state, S0} | Cfg]),
     Trees = aens_test_utils:trees(S1),
     Height = ?PRE_CLAIM_HEIGHT + 1,
     %% PrivKey = aens_test_utils:priv_key(PubKey, S1),
@@ -355,7 +391,7 @@ ongoing_auction(Cfg) ->
 second_claim_auction(Cfg) ->
     {PubKey1, _, S1} = claim([{name, <<"a-very-long-name-to-make-sure-lock-account-exists-in-tree">>}|Cfg]),
     PrivKey1 = aens_test_utils:priv_key(PubKey1, S1),
-    {PubKey, NHash, S2} = claim_auction([{state, S1} | Cfg]),
+    {PubKey, NHash, S2} = claim([{state, S1} | Cfg]),
     %% Auction has now started
 
     FullName = aens_test_utils:fullname(?config(name, Cfg)),
@@ -577,6 +613,30 @@ claim_negative(Cfg) ->
     end,
     ok.
 
+claim_negative2(Cfg) ->
+    Protocol = aec_hard_forks:protocol_effective_at_height(1),
+    if Protocol >= ?CERES_PROTOCOL_VSN -> {skip, preclaimless_claim_in_ceres};
+       true                            -> claim_negative2_(Cfg)
+    end.
+
+claim_negative2_(Cfg) ->
+    State = case proplists:get_value(state, Cfg) of
+                undefined -> aens_test_utils:new_state();
+                State0 -> State0
+            end,
+    {PubKey, S1} = aens_test_utils:setup_new_account(State),
+    Trees = aens_test_utils:trees(S1),
+    Height = ?PRE_CLAIM_HEIGHT,
+    Name = aens_test_utils:fullname(?config(name, Cfg)),
+
+    %% No preclaim
+    TxSpec = aens_test_utils:claim_tx_spec(PubKey, Name, 0, namefee(Name, Cfg), S1),
+    {ok, Tx0} = aens_claim_tx:new(TxSpec),
+    Env0 = aetx_env:tx_env(Height),
+    {error, illegal_salt_value} = aetx:process(Tx0, Trees, Env0),
+
+    ok.
+
 %% Assure we cannot accidentally claim the empty name
 claim_empty_name(Cfg) ->
     PreLima = ?config(protocl, Cfg) < ?LIMA_PROTOCOL_VSN,
@@ -624,7 +684,7 @@ claim_race_negative(Cfg) ->
 
 claim_race_negative_auction(Cfg) ->
     %% The first claim
-    {_PubKey, _NHash, S1} = claim_auction(Cfg),
+    {_PubKey, _NHash, S1} = claim(Cfg),
 
     %% The second claim of the same name (hardcoded in preclaim) decomposed
     {PubKey2, Name2, NameSalt2, S2} = preclaim([{state, S1}, {name, ?config(name, Cfg)}]),
@@ -647,6 +707,63 @@ claim_race_negative_auction(Cfg) ->
     TxSpec3 = aens_test_utils:claim_tx_spec(PubKey2, Name2, 0, NameFee - 1, S2),
     {ok, Tx3} = aens_claim_tx:new(TxSpec3),
     {error, name_fee_increment_too_low} = aetx:process(Tx3, Trees, Env),
+    ok.
+
+immediate_claim_race(Cfg) ->
+    Protocol = aec_hard_forks:protocol_effective_at_height(1),
+    if Protocol < ?CERES_PROTOCOL_VSN -> {skip, preclaimless_claim_in_ceres};
+       true                           -> immediate_claim_race_(Cfg)
+    end.
+
+immediate_claim_race_(Cfg) ->
+    %% The pre-claim
+    {PubKey, Name, NameSalt, S1} = preclaim(Cfg),
+
+    %% Do the immediate claim
+    {_PubKey, S2} = immediate_claim([{state, S1} | Cfg]),
+
+    %% Now try the delayed claim
+    Trees = aens_test_utils:trees(S2),
+    Height = ?PRE_CLAIM_HEIGHT + 1,
+    Env = aetx_env:tx_env(Height),
+
+    TxSpec = aens_test_utils:claim_tx_spec(PubKey, Name, NameSalt, namefee(Name, Cfg), S2),
+    {ok, Tx} = aens_claim_tx:new(TxSpec),
+    case auctioned_name(Name, aec_hard_forks:protocol_effective_at_height(1)) of
+        true ->
+            {error, name_already_in_auction} = aetx:process(Tx, Trees, Env);
+        false ->
+            {error, name_already_taken} = aetx:process(Tx, Trees, Env)
+    end,
+
+    ok.
+
+immediate_claim_race2(Cfg) ->
+    Protocol = aec_hard_forks:protocol_effective_at_height(1),
+    if Protocol < ?CERES_PROTOCOL_VSN -> {skip, preclaimless_claim_in_ceres};
+       true                           -> immediate_claim_race2_(Cfg)
+    end.
+
+immediate_claim_race2_(Cfg) ->
+    %% Do the claim
+    {PubKey, _NHash, S1} = claim(Cfg),
+
+    %% Now try the immediate claim
+    Trees = aens_test_utils:trees(S1),
+    Height = ?PRE_CLAIM_HEIGHT + 1,
+    Env = aetx_env:tx_env(Height),
+    Name = aens_test_utils:fullname(?config(name, Cfg)),
+
+    TxSpec = aens_test_utils:claim_tx_spec(PubKey, Name, 0, namefee(Name, Cfg), S1),
+    {ok, Tx} = aens_claim_tx:new(TxSpec),
+
+    case auctioned_name(Name, aec_hard_forks:protocol_effective_at_height(1)) of
+        true ->
+            {error, name_fee_increment_too_low} = aetx:process(Tx, Trees, Env);
+        false ->
+            {error, name_already_taken} = aetx:process(Tx, Trees, Env)
+    end,
+
     ok.
 
 %%%===================================================================
@@ -1031,7 +1148,7 @@ prune_claim(Cfg) ->
 
 prune_claim_auction(Cfg) ->
     {_, _, _} = claim([{name, <<"a-very-long-name-to-make-sure-lock-account-exists-in-tree">>}|Cfg]),
-    {PubKey, NHash, S2} = claim_auction(Cfg),
+    {PubKey, NHash, S2} = claim(Cfg),
     %% Auction has now started
 
     %% Re-pull values for this test
