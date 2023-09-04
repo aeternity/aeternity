@@ -5567,6 +5567,13 @@ sophia_crypto(_Cfg) ->
                                 , {test_string_verify, Message, true}
                                 , {test_string_verify, <<"Not the secret message">>, false}] ],
 
+    %% Test that arbitrary sized message also works in Ceres and onwards
+    [ begin
+        Sig2 = ?sig(enacl:sign_detached(Message, PrivKey)),
+        TestRes = ?call(call_contract, Acc, IdC, test_verify, bool, {{bytes, Message}, PubKey, Sig2}),
+        ?assertMatch(true, TestRes)
+      end || sophia_version() >= ?SOPHIA_CERES_FATE ],
+
     %% SECP256K1 signature verification
     {SECP_Pub0, SECP_Priv} = crypto:generate_key(ecdh, secp256k1),
     SECP_Pub = aeu_crypto:ecdsa_from_der_pk(SECP_Pub0),
@@ -5654,6 +5661,22 @@ sophia_crypto(_Cfg) ->
 
     PHash3 = ?call(call_contract, Acc, IdC, poseidon, word, {TooLarge, B}),
     ?assertMatch({error, <<"Bad arguments to poseidon", _/binary>>}, PHash3),
+
+
+    BytesArb = <<"arbitrary sized byte array">>,
+    BytesX = {bytes, BytesArb},
+
+    Sha3_BX    = aec_hash:hash(evm, BytesArb),
+    Sha256_BX  = aec_hash:sha256_hash(BytesArb),
+    Blake2b_BX = aec_hash:blake2b_256_hash(BytesArb),
+
+    ResSha3_BX    = ?call(call_contract, Acc, IdC, sha3_bX,    word, {BytesX}),
+    ResSha256_BX  = ?call(call_contract, Acc, IdC, sha256_bX,  word, {BytesX}),
+    ResBlake2b_BX = ?call(call_contract, Acc, IdC, blake2b_bX, word, {BytesX}),
+
+    ?assertMatch({bytes, Sha3_BX},    ResSha3_BX),
+    ?assertMatch({bytes, Sha256_BX},  ResSha256_BX),
+    ?assertMatch({bytes, Blake2b_BX}, ResBlake2b_BX),
 
     ok.
 
