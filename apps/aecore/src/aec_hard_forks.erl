@@ -165,7 +165,7 @@ protocols_from_network_id(<<"ae_dev">>) ->
             #{ ?ROMA_PROTOCOL_VSN => 0
              , ?IRIS_PROTOCOL_VSN => 1 };
         M when is_map(M) ->
-            maps:fold(fun(K, V, Acc) ->
+            maps:fold(fun(K, #{<<"height">> := V}, Acc) ->
                               Acc#{binary_to_integer(K) => V}
                       end, #{}, M)
     end;
@@ -176,7 +176,7 @@ protocols_from_network_id(_ID) ->
              , ?IRIS_PROTOCOL_VSN  => 1
              };
         M when is_map(M) ->
-            maps:fold(fun(K, V, Acc) ->
+            maps:fold(fun(K, #{<<"height">> := V}, Acc) ->
                               Acc#{binary_to_integer(K) => V}
                       end, #{}, M)
     end.

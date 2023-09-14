@@ -649,7 +649,7 @@ init_per_suite(Config) ->
     %% special. Instead we start the node and use the values set there instead
     Forks =
         maps:fold(fun(K, V, Acc) ->
-                          Acc#{integer_to_binary(K) => V}
+                          Acc#{integer_to_binary(K) => #{<<"height">> => V}}
                   end, #{}, rpc(aec_hard_forks, protocols, [])),
     application:set_env(aecore, hard_forks, Forks),
     [{node, Node} | Config2].

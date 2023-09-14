@@ -25,7 +25,9 @@ keys:
 chain:
     persist: true
     hard_forks:
-        "1": 0
+        "1":
+            height: 0
+            use_hardcoded_directory: true
 
 mempool:
     nonce_offset: 1000

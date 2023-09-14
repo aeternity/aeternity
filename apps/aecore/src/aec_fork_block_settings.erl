@@ -3,6 +3,7 @@
 -include_lib("aecontract/include/hard_forks.hrl").
 
 -export([dir/1,
+         hardcoded_dir/1,
          genesis_accounts/0,
          minerva_accounts/0,
          fortuna_accounts/0,
@@ -11,7 +12,11 @@
          lima_contracts/0,
          block_whitelist/0,
          pre_iris_map_ordering/0,
-         hc_seed_contracts/2
+         hc_seed_contracts/2,
+         is_custom_fork/0,
+         accounts/1,
+         extra_accounts/1,
+         contracts/1
         ]).
 
 -export([ accounts_file_name/1
@@ -29,16 +34,21 @@
 
 -spec dir(aec_hard_forks:protocol_vsn()) -> string().
 dir(ProtocolVsn) ->
-    Dir =
-        case ProtocolVsn of
-            ?ROMA_PROTOCOL_VSN    -> ?GENESIS_DIR;
-            ?MINERVA_PROTOCOL_VSN -> ?MINERVA_DIR;
-            ?FORTUNA_PROTOCOL_VSN -> ?FORTUNA_DIR;
-            ?LIMA_PROTOCOL_VSN    -> ?LIMA_DIR;
-            ?IRIS_PROTOCOL_VSN    -> ?IRIS_DIR;
-            ?CERES_PROTOCOL_VSN   -> ?CERES_DIR
-        end,
-    filename:join(aeu_env:data_dir(aecore), Dir).
+    ProtocolBin = integer_to_binary(ProtocolVsn),
+    case aeu_env:user_map_or_env([<<"chain">>, <<"hard_forks">>, ProtocolBin, <<"directory">>], aecore, [hard_forks, ProtocolVsn, directory], undefined) of
+        undefined ->
+            case not is_custom_fork() orelse
+                  aeu_env:user_map_or_env([<<"chain">>, <<"hard_forks">>, ProtocolBin, <<"use_hardcoded_directory">>], aecore,
+                                          [hard_forks, ProtocolVsn, use_hardcoded_directory], false) of
+                true ->
+                    hardcoded_dir(ProtocolVsn);
+                _ ->
+                    BaseName = lists:concat([".", integer_to_list(ProtocolVsn)]),
+                    filename:join(aeu_env:data_dir(aecore), BaseName)
+            end;
+        UserDir ->
+            UserDir
+    end.
 
 -spec genesis_accounts() -> list().
 genesis_accounts() ->
@@ -67,6 +77,25 @@ lima_extra_accounts() -> preset_accounts(extra_accounts, ?LIMA_PROTOCOL_VSN,
 -spec lima_contracts() -> list().
 lima_contracts() -> preset_contracts(?LIMA_PROTOCOL_VSN,
                                      lima_contracts_file_missing).
+
+-spec accounts(aec_hard_forks:protocol_vsn()) -> list().
+accounts(ProtocolVsn) -> preset_accounts(accounts, ProtocolVsn, undefined).
+
+-spec extra_accounts(aec_hard_forks:protocol_vsn()) -> list().
+extra_accounts(ProtocolVsn) -> preset_accounts(extra_accounts, ProtocolVsn, undefined).
+
+-spec contracts(aec_hard_forks:protocol_vsn()) -> list().
+contracts(ProtocolVsn) -> preset_contracts(ProtocolVsn, undefined).
+
+
+-spec is_custom_fork() -> boolean().
+is_custom_fork() ->
+    aeu_env:user_map_or_env([<<"chain">>, <<"hard_forks">>], aecore, hard_forks, undefined) =/= undefined.
+
+-spec hardcoded_dir(aec_hard_forks:protocol_vsn()) -> string().
+hardcoded_dir(ProtocolVsn) ->
+    Dir = hardcoded_basename(ProtocolVsn),
+    filename:join(aeu_env:data_dir(aecore), Dir).
 
 block_whitelist() ->
     P = whitelist_filename(),
@@ -116,7 +145,12 @@ preset_accounts(Type, Release, ErrorMsg) ->
     case read_preset(Type, Release) of
         {error, {_Err, PresetAccountsFile}} ->
             % no setup, no preset accounts
-            erlang:error({ErrorMsg, PresetAccountsFile});
+            case ErrorMsg of
+                undefined ->
+                    [];
+                _ ->
+                    erlang:error({ErrorMsg, PresetAccountsFile})
+            end;
         {ok, JSONData} ->
             DecodedData =
                 try jsx:decode(JSONData) of
@@ -159,7 +193,12 @@ preset_contracts(Release, ErrorMsg) ->
     case read_preset_contracts(Release) of
         {error, {_Err, Msg}} ->
             % no setup, no preset contracts
-            erlang:error({ErrorMsg, Msg});
+            case ErrorMsg of
+                undefined ->
+                    [];
+                _ ->
+                    erlang:error({ErrorMsg, Msg})
+            end;
         {ok, JSONData} ->
             DecodedData =
                 try jsx:decode(JSONData) of
@@ -245,7 +284,7 @@ decode_contract_spec(SpecIn) ->
 
 
 -spec read_preset_contracts(aec_hard_forks:protocol_vsn()) -> {ok, binary()}| {error, {atom(), string()}}.
-read_preset_contracts(?LIMA_PROTOCOL_VSN = Release) ->
+read_preset_contracts(Release) ->
     PresetContractsFile = aec_fork_block_settings:contracts_file_name(Release),
     case file:read_file(PresetContractsFile) of
         {ok, _} = OK -> OK;
@@ -357,4 +396,14 @@ hc_seed_contracts(Protocol, NetworkId) ->
         {ok, Data} ->
             {ok, jsx:decode(Data, [return_maps])};
         {error, Err} -> {error, {Err, ContractsFile}}
+    end.
+
+hardcoded_basename(ProtocolVsn) ->
+    case ProtocolVsn of
+        ?ROMA_PROTOCOL_VSN    -> ?GENESIS_DIR;
+        ?MINERVA_PROTOCOL_VSN -> ?MINERVA_DIR;
+        ?FORTUNA_PROTOCOL_VSN -> ?FORTUNA_DIR;
+        ?LIMA_PROTOCOL_VSN    -> ?LIMA_DIR;
+        ?IRIS_PROTOCOL_VSN    -> ?IRIS_DIR;
+        ?CERES_PROTOCOL_VSN   -> ?CERES_DIR
     end.

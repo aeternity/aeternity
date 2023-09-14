@@ -49,7 +49,8 @@
                     "default": []
                 },
                 "custom_prefunded_accs_file" : {
-                    "description" : "Overrides the automatically derived file name for prefunded accounts. No default value",
+                    "deprecated" : true,
+                    "description" : "OBSOLETE/ignored: Overrides the automatically derived file name for prefunded accounts. No default value",
                     "type" : "string"
                 }
             }
@@ -1556,9 +1557,24 @@
                     "additionalProperties" : false,
                     "patternProperties" : {
                         "^[1-9][0-9]*$": {
-                            "description" : "Minimum height at which protocol is effective",
-                            "type" : "integer",
-                            "minimum" : 0
+                            "description" : "Configuration for the hardfork",
+                            "type" : "object",
+                            "required" : ["height"],
+                            "properties": {
+                                "height" :{
+                                    "description" : "Minimum height at which protocol is effective",
+                                    "type" : "integer",
+                                    "minimum" : 0
+                                },
+                                "directory" :{
+                                    "description" : "Directory where accounts are stored",
+                                    "type" : "string"
+                                },
+                                "use_hardcoded_directory" :{
+                                    "description" : "Use the hardcoded directory of the protocol to facilitate testing old protocols",
+                                    "type" : "boolean"
+                                }                                
+                            }                                
                         }
                     }
                 },
