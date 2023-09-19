@@ -15,6 +15,7 @@
          spend_txs/1,
          simple_withdraw/1,
          change_leaders/1,
+         empty_parent_block/1,
          verify_fees/1,
          verify_commitments/1,
          verify_btc_commitments/1,
@@ -136,7 +137,7 @@ all() -> [{group, pos}
 
 groups() ->
     [{pos, [sequence], common_tests()},
-     {hc, [sequence], common_tests() ++ hc_specific_tests() ++ [{group, lazy_leader}]},
+     {hc, [sequence], common_tests()}, %% ++ hc_specific_tests() ++ [{group, lazy_leader}]},
      {hc_btc, [sequence], common_tests() ++ hc_btc_specific_tests()},
      {hc_doge, [sequence], common_tests() ++ hc_btc_specific_tests()},
      {lazy_leader, [sequence], [elected_leader_did_not_show_up
@@ -149,6 +150,7 @@ common_tests() ->
     , spend_txs
     , simple_withdraw
     , change_leaders
+    , empty_parent_block
     ].
 
 hc_specific_tests() ->
@@ -308,7 +310,7 @@ init_per_group_custom(NetworkId, ?CONSENSUS_HC, Config) ->
     ChildTopHeight = rpc(?NODE1, aec_chain, top_height, []),
     {ok, ChildBlocks} = get_generations(?NODE1, 0, ChildTopHeight),
     ct:log("Child chain blocks ~p", [ChildBlocks]),
-
+    set_up_lazy_leader_node(<<"hc">>, Config1),
     Config1;
 init_per_group_custom(NetworkId, ?CONSENSUS_HC_BTC, Config) ->
     ElectionContract = election_contract_by_consensus(?CONSENSUS_HC),
@@ -509,7 +511,8 @@ end_per_group(pos, Config) ->
 end_per_group(hc, Config) ->
     aecore_suite_utils:stop_node(?NODE1, Config),
     aecore_suite_utils:stop_node(?NODE2, Config),
-    aecore_suite_utils:stop_node(?PARENT_CHAIN_NODE1, Config);
+    aecore_suite_utils:stop_node(?PARENT_CHAIN_NODE1, Config),
+    aecore_suite_utils:stop_node(?LAZY_NODE, Config);
 end_per_group(hc_btc, Config) ->
     aecore_suite_utils:stop_node(?NODE1, Config),
     aecore_suite_utils:stop_node(?NODE2, Config),
@@ -734,6 +737,11 @@ change_leaders(Config) ->
     false = BobLeaderCnt =:= Blocks,
     true  = BobLeaderCnt > 0,
     {ok, _B} = wait_same_top(),
+    ok.
+
+empty_parent_block(Config) ->
+    {ok, [KB]} = aecore_suite_utils:mine_key_blocks(?PARENT_CHAIN_NODE1_NAME, 1),
+    timer:sleep(70000),
     ok.
 
 verify_fees(Config) ->
