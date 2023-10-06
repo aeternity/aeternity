@@ -1,0 +1,46 @@
+{{#aeternity_config}}
+---
+peers: {{^peers}}[]{{/peers}}
+{{#peers}}
+    - {{peer}}
+{{/peers}}
+
+sync:
+    port: {{services.sync.port}}
+    ping_interval: 5000
+    single_outbound_per_group: false
+    resolver_backoff_times: [1000]  # Small compared to ping_interval, so when test adds container to network the node resolves peer hostname soon and starts syncing.
+
+http:
+    external:
+        port: {{services.ext_http.port}}
+    internal:
+        listen_address: 0.0.0.0
+        port: {{services.int_http.port}}
+
+keys:
+    peer_password: {{key_password}}
+    dir: ./keys
+
+chain:
+    persist: true
+    hard_forks:
+        "1": 0
+
+mempool:
+    nonce_offset: 1000
+
+mining:
+    autostart: true
+    beneficiary: "ak_2a1j2Mk9YSmC1gioUq4PWRm3bsv887MbuRVwyv4KaUGoR1eiKi"
+    beneficiary_reward_delay: 2
+    micro_block_cycle: 100
+    expected_mine_rate: 1000
+    cuckoo:
+        edge_bits: 15
+        miners:
+            - executable: mean15-generic
+
+fork_management:
+    network_id: "ae_system_test"
+{{/aeternity_config}}
