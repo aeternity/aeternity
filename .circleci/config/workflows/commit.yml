@@ -442,24 +442,24 @@ jobs:
           only:
             - << pipeline.parameters.master_branch >>
 
-  - deploy:
-      name: deploy-next
-      version: $CIRCLE_SHA1
-      env: next
-      downtime: 900 #15m
-      context:
-        - ae-slack
-        - ae-vault-node
-      requires:
-        - test
-        - eunit
-        - aevm-test
-        - static-analysis
-        - rebar_lock_check
-        - linux-tarball
-      filters:
-        branches:
-          only: << pipeline.parameters.master_branch >>
+  # - deploy:
+  #     name: deploy-next
+  #     version: $CIRCLE_SHA1
+  #     env: next
+  #     downtime: 900 #15m
+  #     context:
+  #       - ae-slack
+  #       - ae-vault-node
+  #     requires:
+  #       - test
+  #       - eunit
+  #       - aevm-test
+  #       - static-analysis
+  #       - rebar_lock_check
+  #       - linux-tarball
+  #     filters:
+  #       branches:
+  #         only: << pipeline.parameters.master_branch >>
 
   - deploy:
       name: deploy-dev1
