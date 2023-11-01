@@ -650,6 +650,7 @@ handle_request_('GetStatus', _Params, _Context) ->
     GenesisBlockHash = aec_consensus:get_genesis_hash(),
     Solutions = 0, %% TODO
     Difficulty = aec_blocks:difficulty(TopKeyBlock),
+    HashRate = target_to_hashrate(aec_blocks:target(TopKeyBlock)),
     {Syncing, SyncProgress, _} = aec_sync:sync_progress(),
     Listening = true, %% TODO
     Protocols =
@@ -682,6 +683,7 @@ handle_request_('GetStatus', _Params, _Context) ->
      #{<<"genesis_key_block_hash">>     => aeser_api_encoder:encode(key_block_hash, GenesisBlockHash),
        <<"solutions">>                  => Solutions,
        <<"difficulty">>                 => Difficulty,
+       <<"hashrate">>                   => HashRate,
        <<"syncing">>                    => Syncing,
        <<"sync_progress">>              => SyncProgress,
        <<"listening">>                  => Listening,
@@ -761,3 +763,14 @@ deserialize_transaction(Tx) ->
     catch
         _:_ -> {error, broken_tx}
     end.
+
+%% Compute hash-rate
+%%
+%% Target is scientific notation, aeminer_pow:target_to_difficulty computes
+%% Difficulty * K   - (for integer precision, where K is (1 bsl 24)
+%%
+%% One correct solution per blocktime (provided in ms) and 42 graphs per
+%% solution explains the last bit of math.
+target_to_hashrate(Target) ->
+    Difficulty = aeminer_pow:target_to_difficulty(Target) / (1 bsl 24),
+    round(Difficulty * (aec_governance:expected_block_mine_rate() / 1000) * 42).
