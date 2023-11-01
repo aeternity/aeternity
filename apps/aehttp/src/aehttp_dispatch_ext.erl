@@ -772,5 +772,9 @@ deserialize_transaction(Tx) ->
 %% One correct solution per blocktime (provided in ms) and 42 graphs per
 %% solution explains the last bit of math.
 target_to_hashrate(Target) ->
-    Difficulty = aeminer_pow:target_to_difficulty(Target) / (1 bsl 24),
-    round(Difficulty * (aec_governance:expected_block_mine_rate() / 1000) * 42).
+    case aeminer_pow:scientific_to_integer(Target) of
+      0 -> 0;
+      _ ->
+          Difficulty = aeminer_pow:target_to_difficulty(Target) / (1 bsl 24),
+          round(Difficulty * (aec_governance:expected_block_mine_rate() / 1000) * 42)
+    end.
