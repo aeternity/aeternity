@@ -2952,6 +2952,8 @@ components:
           $ref: "#/components/schemas/UInt64"
         difficulty:
           $ref: "#/components/schemas/UInt64"
+        hashrate:
+          $ref: "#/components/schemas/UInt64"
         syncing:
           type: boolean
         sync_progress:
@@ -2987,6 +2989,7 @@ components:
         - genesis_key_block_hash
         - solutions
         - difficulty
+        - hashrate
         - syncing
         - listening
         - protocols
