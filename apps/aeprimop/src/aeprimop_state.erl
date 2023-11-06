@@ -281,7 +281,7 @@ put_commitment(Object, S) ->
 
 %%----------
 
--spec find_name_auction(channel_key(), state()) -> {term(), state()} | none.
+-spec find_name_auction(auction_hash(), state()) -> {object(), state()} | none.
 find_name_auction(Hash, S) ->
     find_x(name_auction, Hash, S).
 

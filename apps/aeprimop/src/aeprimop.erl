@@ -903,42 +903,58 @@ name_claim_op(AccountPubkey, PlainName, NameSalt, NameFee, PreclaimDelta
 
 -spec name_claim({pubkey(), binary(),
     non_neg_integer(), fee(), non_neg_integer()}, state()) -> state().
-name_claim({AccountPubkey, PlainName, NameSalt, NameFee, PreclaimDelta}, S) ->
+name_claim({AccountPubkey, PlainName, NameSalt, NameFee, PreclaimDelta},
+           S = #state{ protocol = Protocol }) ->
     NameAscii = name_to_ascii(PlainName),
     NameRegistrar = name_registrar(PlainName),
     NameHash = aens_hash:name_hash(NameAscii),
     AuctionHash = aens_hash:to_auction_hash(NameHash),
     %% Cannot compute CommitmentHash before we know whether in auction
-    BidTimeout = aec_governance:name_claim_bid_timeout(NameAscii, S#state.protocol),
+    BidTimeout = aec_governance:name_claim_bid_timeout(NameAscii, Protocol),
     LockOrSpend = if BidTimeout == 0 -> lock; true -> spend end,
     S0 = lock_namefee(LockOrSpend, AccountPubkey, NameFee, S),
+    assert_not_name(NameHash, S0),
     case BidTimeout of
+        0 when Protocol >= ?CERES_PROTOCOL_VSN, NameSalt == 0 ->
+            %% No auction, skipping Preclaim; added in Ceres
+            DeltaTTL = aec_governance:name_claim_max_expiration(Protocol),
+            Name = aens_names:new(NameHash, AccountPubkey, S0#state.height + DeltaTTL),
+            put_name(Name, S0);
+
         0 ->
             %% No auction for this name, preclaim delta suffices
             %% For clarity DeltaTTL for name computed here
-            DeltaTTL = aec_governance:name_claim_max_expiration(S#state.protocol),
+            DeltaTTL = aec_governance:name_claim_max_expiration(Protocol),
             CommitmentHash = commitment_hash(NameAscii, NameSalt),
             {Commitment, S1} = get_commitment(CommitmentHash, name_not_preclaimed, S0),
             assert_claim_after_preclaim({AccountPubkey, Commitment, NameAscii, NameRegistrar, NameFee, PreclaimDelta}, S1),
             Name = aens_names:new(NameHash, AccountPubkey, S1#state.height + DeltaTTL),
             S2 = delete_x(commitment, CommitmentHash, S1),
             put_name(Name, S2);
-        _Timeout when NameSalt == 0  ->
-            %% Auction should be running, this is a new bid
-            assert_not_name(NameHash, S0), %% just to be sure
-            {Auction, S1} = get_name_auction(AuctionHash, name_not_in_auction, S0),
-            PreviousBidderPubkey = aens_auctions:bidder_pubkey(Auction),
-            PreviousBid = aens_auctions:name_fee(Auction),
-            assert_name_bid_fee(NameAscii, NameFee, S#state.protocol), %% just in case, consensus may have changed
-            assert_valid_overbid(NameFee, aens_auctions:name_fee(Auction)),
-            ExtendTime = aec_governance:name_claim_bid_extension(NameAscii, S#state.protocol),
-            NewAuction = aens_auctions:extend(AuctionHash, AccountPubkey, NameFee, aens_auctions:ttl(Auction), ExtendTime, S1#state.height),
-            %% Return the tokens hold in the previous bid
-            {PreviousBidderAccount, S2} = get_account(PreviousBidderPubkey, S1),
-            S3 = account_earn(PreviousBidderAccount, PreviousBid, S2),
-            S4 = tx_event({delta, {PreviousBidderPubkey, PreviousBid}, <<"Name.refund">>}, S3),
-            %% overwrite old auction with new one
-            put_name_auction(NewAuction, S4);
+
+        Timeout when NameSalt == 0  ->
+            case find_name_auction(AuctionHash, S0) of
+                none when Protocol >= ?CERES_PROTOCOL_VSN ->
+                    %% Start auction, skipping Preclaim; added in Ceres
+                    Auction = aens_auctions:new(AuctionHash, AccountPubkey, NameFee, Timeout, S0#state.height),
+                    put_name_auction(Auction, S0);
+                none ->
+                    runtime_error(name_not_in_auction);
+                {Auction, S1} ->
+                    %% Auction running, this is a new bid
+                    PreviousBidderPubkey = aens_auctions:bidder_pubkey(Auction),
+                    PreviousBid = aens_auctions:name_fee(Auction),
+                    assert_name_bid_fee(NameAscii, NameFee, Protocol), %% just in case, consensus may have changed
+                    assert_valid_overbid(NameFee, aens_auctions:name_fee(Auction)),
+                    ExtendTime = aec_governance:name_claim_bid_extension(NameAscii, S#state.protocol),
+                    NewAuction = aens_auctions:extend(AuctionHash, AccountPubkey, NameFee, aens_auctions:ttl(Auction), ExtendTime, S1#state.height),
+                    %% Return the tokens hold in the previous bid
+                    {PreviousBidderAccount, S2} = get_account(PreviousBidderPubkey, S1),
+                    S3 = account_earn(PreviousBidderAccount, PreviousBid, S2),
+                    S4 = tx_event({delta, {PreviousBidderPubkey, PreviousBid}, <<"Name.refund">>}, S3),
+                    %% overwrite old auction with new one
+                    put_name_auction(NewAuction, S4)
+            end;
         Timeout when NameSalt =/= 0 ->
             %% This is the first claim that starts an auction
             assert_not_name_auction(AuctionHash, S0),
