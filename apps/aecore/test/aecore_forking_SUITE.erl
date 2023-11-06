@@ -27,6 +27,7 @@
     spend_on_dev2/1,
     mine_a_micro_block_on_dev1/1,
     mine_a_micro_block_on_dev2/1,
+    mine_micro_blocks_on_dev1_until_empty/1,
     mine_micro_blocks_on_dev2_until_empty/1,
     start_nodes_and_wait_sync_dev1_chain_wins/1,
     start_nodes_and_wait_sync_dev2_chain_wins/1,
@@ -85,7 +86,7 @@ groups() ->
        stop_dev2,
        mine_a_key_block_on_dev1,
        spend_on_dev1,
-       mine_a_micro_block_on_dev1,
+       mine_micro_blocks_on_dev1_until_empty,
        mine_a_key_block_on_dev1,
        stop_dev1,
        start_dev2,
@@ -115,7 +116,7 @@ groups() ->
        stop_dev2,
        mine_a_key_block_on_dev1,
        spend_on_dev1,
-       mine_a_micro_block_on_dev1,
+       mine_micro_blocks_on_dev1_until_empty,
        stop_dev1,
        start_dev2,
        mine_a_key_block_on_dev2,
@@ -436,6 +437,11 @@ mine_a_micro_block(Node) ->
 
 mine_a_micro_block_on_node(NName) ->
     aecore_suite_utils:mine_blocks(NName, 1, ?MINE_RATE, micro, #{}).
+
+mine_micro_blocks_on_dev1_until_empty(_Config) ->
+    %% Mine at least one micro block
+    NName = aecore_suite_utils:node_name(dev1),
+    mine_until_empty(NName).
 
 mine_micro_blocks_on_dev2_until_empty(_Config) ->
     %% Mine at least one micro block
