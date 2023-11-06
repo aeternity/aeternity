@@ -1556,25 +1556,35 @@
                     "type" : "object",
                     "additionalProperties" : false,
                     "patternProperties" : {
-                        "^[1-9][0-9]*$": {
+                        "^[1-9][0-9]*$" : {
                             "description" : "Configuration for the hardfork",
-                            "type" : "object",
-                            "required" : ["height"],
-                            "properties": {
-                                "height" :{
-                                    "description" : "Minimum height at which protocol is effective",
-                                    "type" : "integer",
-                                    "minimum" : 0
-                                },
-                                "directory" :{
-                                    "description" : "Directory where accounts are stored",
-                                    "type" : "string"
-                                },
-                                "use_hardcoded_directory" :{
-                                    "description" : "Use the hardcoded directory of the protocol to facilitate testing old protocols",
-                                    "type" : "boolean"
-                                }                                
-                            }                                
+                            "oneOf" : [
+                            {
+                                "description" : "Minimum height at which protocol is effective (legacy format)",
+                                "type" : "integer",
+                                "minimum" : 0
+                            },
+                            {
+                                "description" : "Configuration for the hardfork (new format)",
+                                "type" : "object",
+                                "required" : ["height"],
+                                "properties" : {
+                                    "height" : {
+                                        "description" : "Minimum height at which protocol is effective",
+                                        "type" : "integer",
+                                        "minimum" : 0
+                                    },
+                                    "directory" : {
+                                        "description" : "Directory where accounts are stored",
+                                        "type" : "string"
+                                    },
+                                    "use_hardcoded_directory" : {
+                                        "description" : "Use the hardcoded directory of the protocol to facilitate testing old protocols",
+                                        "type" : "boolean",
+                                        "default" : false
+                                    }
+                                }
+                            }]
                         }
                     }
                 },

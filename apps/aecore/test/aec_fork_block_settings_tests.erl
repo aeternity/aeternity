@@ -78,6 +78,9 @@ release_based(Dir, ForkConfig, ReadAccountsFun, ReadContractsFun, CMissingErr, A
                                 ForkConfig end),
                 meck:expect(aeu_env, user_map_or_env,
                             fun([<<"chain">>, <<"hard_forks">>, Protocol, Key], aecore, [hard_forks, _, _], Default) ->
+                                maps:get(Key, maps:get(Protocol, ForkConfig, #{}), Default) end),
+                meck:expect(aeu_env, config_value,
+                            fun([<<"chain">>, <<"hard_forks">>, Protocol, Key], aecore, [hard_forks, _, _], Default) ->
                                 maps:get(Key, maps:get(Protocol, ForkConfig, #{}), Default) end)
          end,
          ok

@@ -35,11 +35,14 @@
 -spec dir(aec_hard_forks:protocol_vsn()) -> string().
 dir(ProtocolVsn) ->
     ProtocolBin = integer_to_binary(ProtocolVsn),
-    case aeu_env:user_map_or_env([<<"chain">>, <<"hard_forks">>, ProtocolBin, <<"directory">>], aecore, [hard_forks, ProtocolVsn, directory], undefined) of
+    case aeu_env:config_value([<<"chain">>, <<"hard_forks">>, ProtocolBin, <<"directory">>],
+                              aecore, [hard_forks, ProtocolVsn, directory],
+                              undefined) of
         undefined ->
             case not is_custom_fork() orelse
-                  aeu_env:user_map_or_env([<<"chain">>, <<"hard_forks">>, ProtocolBin, <<"use_hardcoded_directory">>], aecore,
-                                          [hard_forks, ProtocolVsn, use_hardcoded_directory], false) of
+                  aeu_env:config_value([<<"chain">>, <<"hard_forks">>, ProtocolBin, <<"use_hardcoded_directory">>],
+                                       aecore, [hard_forks, ProtocolVsn, use_hardcoded_directory],
+                                       false) of
                 true ->
                     hardcoded_dir(ProtocolVsn);
                 _ ->
