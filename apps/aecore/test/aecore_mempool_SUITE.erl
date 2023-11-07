@@ -442,14 +442,17 @@ skipped_nonce_specific_cleanup(Config) ->
     %% assert the assumption
     {ok, CleanupTTL} = rpc:call(NodeName, aec_tx_pool_failures, limit, [SkippedNonceTx, tx_nonce_too_high_for_account]),
     make_microblock_attempts(1, Config),
+    %% Mining the block here will occasionally _also_ make an attempt to
+    %% produce a microblock - be conservative below...
     {ok, _} = aecore_suite_utils:mine_blocks(NodeName, 1, ?MINE_RATE, key, #{}),
     %% the tx is still here
     {ok, [SkippedNonceTx]} = rpc:call(NodeName, aec_tx_pool, peek, [infinity]),
-    %% mine some more blocks to check the tx is not cleaned up too early
-    make_microblock_attempts(CleanupTTL - 2, Config),
+    %% Attempt to mine some more microblocks to check the tx is not cleaned up too early
+    %% Use -3 here in case _mine_blocks_ made an extra attempt
+    make_microblock_attempts(CleanupTTL - 3, Config),
     {ok, [SkippedNonceTx]} = rpc:call(NodeName, aec_tx_pool, peek, [infinity]),
-    %% it should be cleaned up at the next height
-    make_microblock_attempts(1, Config),
+    %% it should be cleaned up after two additional attempts
+    make_microblock_attempts(2, Config),
     timer:sleep(100), %% provide some time for the tx pool to process the message
     {ok, []} = rpc:call(NodeName, aec_tx_pool, peek, [infinity]),
     %% the tx can not reenter the pool:
