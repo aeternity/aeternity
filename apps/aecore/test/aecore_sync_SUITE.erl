@@ -83,7 +83,7 @@ groups() ->
                               %% the peers
                               %% TODO: investigate why
                               {group, persistence}
-                              
+
                              ]},
      {two_nodes, [sequence],
       [start_first_node,
@@ -166,8 +166,7 @@ groups() ->
            start_with_trusted_peers,
            restart_with_no_trusted_peers,
            add_and_delete_untrusted_peers_and_restart,
-           trusted_peer_is_untrusted_after_a_restart,
-           stop_devs %% delete the db to cleanup
+           trusted_peer_is_untrusted_after_a_restart
       ]},
      {node_info, [sequence],
       [%% all nodes respond:
@@ -184,7 +183,7 @@ groups() ->
        start_third_node,
        first_fetch_node_infos_1_success_1_failure,
        stop_three_nodes,
-       %% no one responded 
+       %% no one responded
        start_first_node,
        mine_on_first,
        start_second_with_disabled_node_info_no_analytics,
@@ -372,7 +371,8 @@ end_per_group(config_overwrites_defaults, Config) ->
     aecore_suite_utils:create_config(Dev1, Config, NodeCfg,
                                             [{add_peers, true}]),
     ok;
-end_per_group(persistence, _Config) ->
+end_per_group(persistence, Config) ->
+    stop_devs(Config),
     ok;
 end_per_group(all_nodes, _Config) ->
    ok.
@@ -384,6 +384,11 @@ stop_devs(Config) ->
 stop_devs(Devs, Config) ->
     lists:foreach(
         fun(Node) ->
+            %% Ensure node is started (only an issue when something fails)
+            case rpc:call(Node, aec_peers, connected_peers, [], 100) of
+              {badrpc, _} -> aecore_suite_utils:start_node(Node, Config);
+              _           -> ok
+            end,
             {ok, DbCfg} = node_db_cfg(Node),
             aecore_suite_utils:stop_node(Node, Config),
             aecore_suite_utils:delete_node_db_if_persisted(DbCfg)
@@ -867,8 +872,8 @@ validate_default_peers(_Config) ->
     %% this test relies on having those as default peers in the config/dev1/sys.config
     %% [<<"aenode://pp_23YdvfRPQ1b1AMWmkKZUGk2cQLqygQp55FzDWZSEUicPjhxtp5@localhost:3025">>,
     %%  <<"aenode://pp_2M9oPohzsWgJrBBCFeYi3PVT4YF7F2botBtq6J1EGcVkiutx3R@localhost:3035">>]
-    Peer2Id = <<"pp_23YdvfRPQ1b1AMWmkKZUGk2cQLqygQp55FzDWZSEUicPjhxtp5">>, 
-    Peer3Id = <<"pp_2M9oPohzsWgJrBBCFeYi3PVT4YF7F2botBtq6J1EGcVkiutx3R">>, 
+    Peer2Id = <<"pp_23YdvfRPQ1b1AMWmkKZUGk2cQLqygQp55FzDWZSEUicPjhxtp5">>,
+    Peer3Id = <<"pp_2M9oPohzsWgJrBBCFeYi3PVT4YF7F2botBtq6J1EGcVkiutx3R">>,
     DefaultIds = [I || {ok, I} <- [aeser_api_encoder:safe_decode(peer_pubkey, P) ||
                                    P <- [Peer2Id, Peer3Id]]],
     N1 = aecore_suite_utils:node_name(dev1),
@@ -886,7 +891,7 @@ restart_with_different_defaults(Config) ->
     Dev1 = dev1,
     N1 = aecore_suite_utils:node_name(Dev1),
     aecore_suite_utils:stop_node(Dev1, Config),
-    Peer = random_peer(),
+    [Peer] = random_peers(1),
     NodeCfg0 = aecore_suite_utils:node_config(Dev1, Config),
     NodeCfg = NodeCfg0#{<<"peers">> => [aec_peer:peer_config_info(Peer)],
                           <<"include_default_peers">> => false},
@@ -904,9 +909,7 @@ restart_with_different_defaults(Config) ->
 start_with_trusted_peers(Config) ->
     Dev1 = dev1,
     N1 = aecore_suite_utils:node_name(Dev1),
-    Peer1 = random_peer(),
-    Peer2 = random_peer(),
-    Peer3 = random_peer(),
+    [Peer1, Peer2, Peer3] = random_peers(3),
 
     NodeCfg = aecore_suite_utils:node_config(Dev1, Config),
     Peers = [encode_peer_for_config(Peer1),
@@ -923,7 +926,7 @@ start_with_trusted_peers(Config) ->
     assert_all_peers(N1, unverified, []),
     aecore_suite_utils:stop_node(Dev1, Config),
     ok.
-    
+
 %% this tests that trusted peers are not persisted
 restart_with_no_trusted_peers(Config) ->
     Dev1 = dev1,
@@ -952,10 +955,7 @@ add_and_delete_untrusted_peers_and_restart(Config) ->
     0 = rpc:call(N1, aec_peers, count, [unverified], 5000),
 
     %% add an untrusted peer
-    Peer1 = random_peer(),
-    Peer2 = random_peer(),
-    Peer3 = random_peer(),
-    Peer4 = random_peer(),
+    [Peer1, Peer2, Peer3, Peer4] = random_peers(4),
     Add =
         fun(P) ->
             ok = rpc:call(N1, aec_peers, add_peers, [aec_peer:source(P),
@@ -1001,7 +1001,7 @@ add_and_delete_untrusted_peers_and_restart(Config) ->
     2 = rpc:call(N1, aec_peers, count, [unverified], 5000),
     assert_all_peers(N1, verified, []),
     assert_all_peers(N1, unverified, [Peer3, Peer4]),
- 
+
     %% stop the node and start it over
     aecore_suite_utils:stop_node(Dev1, Config),
     start_first_node(Config),
@@ -1015,7 +1015,7 @@ add_and_delete_untrusted_peers_and_restart(Config) ->
     1 = rpc:call(N1, aec_peers, count, [unverified], 5000),
     assert_all_peers(N1, verified, []),
     assert_all_peers(N1, unverified, [Peer4]),
- 
+
     %% stop the node and start it over
     aecore_suite_utils:stop_node(Dev1, Config),
     start_first_node(Config),
@@ -1029,7 +1029,7 @@ add_and_delete_untrusted_peers_and_restart(Config) ->
     0 = rpc:call(N1, aec_peers, count, [unverified], 5000),
     assert_all_peers(N1, verified, []),
     assert_all_peers(N1, unverified, []),
- 
+
     %% stop the node and start it over
     aecore_suite_utils:stop_node(Dev1, Config),
     start_first_node(Config),
@@ -1049,8 +1049,7 @@ trusted_peer_is_untrusted_after_a_restart(Config) ->
     0 = rpc:call(N1, aec_peers, count, [unverified], 5000),
 
     %% add an untrusted peer
-    Peer1 = random_peer(),
-    Peer2 = random_peer(),
+    [Peer1, Peer2] = random_peers(2),
     ok = rpc:call(N1, aec_peers, add_peers, [aec_peer:source(Peer1),
                                             [aec_peer:info(Peer1)
                                             ]]),
@@ -1245,9 +1244,23 @@ encode_peer_for_config(Peer) ->
     Port = integer_to_binary(aec_peer:port(Peer)),
     <<"aenode://", PK/binary, "@", Host/binary, ":", Port/binary>>.
 
-random_peer() ->
+%% Make sure to generate non-overlapping ports...
+random_peers(N) ->
+    Ports = random_ports(N, []),
+    [ random_peer(Port) || Port <- Ports ].
+
+random_ports(0, Ports) -> Ports;
+random_ports(N, Ports) ->
+  Port = 4000 + rand:uniform(999),
+  case lists:member(Port, Ports) of
+    true  -> random_ports(N, Ports);
+    false -> random_ports(N - 1, [Port | Ports])
+  end.
+
+random_peer(Port) ->
     aec_peers_pool_tests:random_peer(#{host    => <<"127.0.0.1">>,
-                                       address => {127,0,0,1}}).
+                                       address => {127,0,0,1},
+                                       port    => Port}).
 
 assert_all_peers(N1, PeerPool, ExpectedPeers) ->
     GetInfos= fun(Peers) -> lists:sort([aec_peer:info(P) || P <- Peers]) end,
@@ -1273,7 +1286,7 @@ first_fetch_node_infos(Successes, Fails) ->
     Timeout = 5000, %% giving participants 2s to respond, ok for a test
     Info = rpc:call(N1, aec_sync, ask_all_for_node_info, [Timeout], Timeout + 500),
     #{ versions  := Versions
-     , revisions := Revisions 
+     , revisions := Revisions
      , vendors   := Vendors
      , os        := OSes
      , failed    := Failed } = Info,
