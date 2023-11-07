@@ -198,8 +198,7 @@ missing_tx_gossip(_Config) ->
     N1 = aecore_suite_utils:node_name(dev1),
     N2 = aecore_suite_utils:node_name(dev2),
 
-    aecore_suite_utils:reinit_with_bitcoin_ng(dev1),
-    aecore_suite_utils:reinit_with_bitcoin_ng(dev2),
+    reset_nodes(),
 
     %% Both nodes are up, now turn off gossiping of TXs
     %% Also (virtually) disable ping
@@ -283,8 +282,8 @@ yield() -> timer:sleep(10).
 micro_block_cycle(Config) ->
     MBC = ?config(micro_block_cycle, Config),
     N1 = aecore_suite_utils:node_name(dev1),
-    aecore_suite_utils:reinit_with_bitcoin_ng(dev1),
-    aecore_suite_utils:reinit_with_bitcoin_ng(dev2),
+
+    reset_nodes(),
 
     %% Mine a block to get some funds. Height=1
     aecore_suite_utils:mine_key_blocks(N1, 1),
@@ -312,8 +311,8 @@ micro_block_cycle(Config) ->
 rollback_releases_tx(Config) ->
     N1 = aecore_suite_utils:node_name(dev1),
     N2 = aecore_suite_utils:node_name(dev2),
-    aecore_suite_utils:reinit_with_bitcoin_ng(dev1),
-    aecore_suite_utils:reinit_with_bitcoin_ng(dev2),
+
+    reset_nodes(),
     ok = aecore_suite_utils:stop_node(dev2, Config),
 
     aecore_suite_utils:mine_key_blocks(N1, 1),
@@ -442,3 +441,21 @@ mine_blocks_until_txs_on_chain(Node, TxHashes) ->
       aecore_suite_utils:expected_mine_rate(),
       ?MAX_MINED_BLOCKS,
       #{strictly_follow_top => true}).
+
+reset_nodes() ->
+    %% restart them in parallel or else they will sync up to
+    %% some undefined height :see_no_evil:
+    Self = self(),
+    spawn(fun() -> aecore_suite_utils:reinit_with_bitcoin_ng(dev1), Self ! ok_dev1 end),
+    spawn(fun() -> aecore_suite_utils:reinit_with_bitcoin_ng(dev2), Self ! ok_dev2 end),
+
+    receive
+        ok_dev1 ->
+            receive
+                ok_dev2 -> ok
+            after 5000 ->
+                ct:log("TIMEOUT RESETTING NODES (dev2)")
+            end
+    after 5000 ->
+        ct:log("TIMEOUT RESETTING NODES (dev1)")
+    end.
