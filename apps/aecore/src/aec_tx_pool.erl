@@ -295,7 +295,7 @@ peek(MaxN, Account) when is_integer(MaxN), MaxN >= 0; MaxN =:= infinity ->
 
 
 %% Only return transactions for a specific account public key and until a maximum nonce
--spec peek(pos_integer() | infinity, aec_keys:pubkey(), non_neg_integer() | all) ->
+-spec peek(pos_integer() | infinity, aec_keys:pubkey() | all, non_neg_integer() | all) ->
                                        {ok, [aetx_sign:signed_tx()]}.
 peek(MaxN, Account, MaxNonce) when is_integer(MaxN), MaxN >= 0; MaxN =:= infinity ->
     gen_server:call(?SERVER, {peek, MaxN, Account, MaxNonce}).
