@@ -185,15 +185,19 @@ nested_map_get([], V) ->
     {ok, V};
 nested_map_get([H|T], M) when is_map(M) ->
     case maps:find(H, M) of
-        {ok, M1} ->
+        {ok, M1} when is_map(M1) ->
             nested_map_get(T, M1);
-        error ->
+        {ok, V} when T == [] ->
+            {ok, V};
+        _ ->
             undefined
     end;
 nested_map_get([H|T], L) when is_list(L) ->
     case lists_map_key_find(H, L) of
-        {ok, V} ->
+        {ok, V} when is_map(V) ->
             nested_map_get(T, V);
+        {ok, V} when T == [] ->
+            {ok, V};
         error ->
             undefined
     end.

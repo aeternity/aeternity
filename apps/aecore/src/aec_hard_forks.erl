@@ -177,7 +177,9 @@ protocols_from_network_id(_ID) ->
              };
         M when is_map(M) ->
             maps:fold(fun(K, #{<<"height">> := V}, Acc) ->
-                              Acc#{binary_to_integer(K) => V}
+                              Acc#{binary_to_integer(K) => V};
+                         (K, Height, Acc) when is_integer(Height) ->
+                              Acc#{binary_to_integer(K) => Height}
                       end, #{}, M)
     end.
 

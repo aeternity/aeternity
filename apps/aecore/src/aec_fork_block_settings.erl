@@ -90,6 +90,37 @@ extra_accounts(ProtocolVsn) -> preset_accounts(extra_accounts, ProtocolVsn, unde
 -spec contracts(aec_hard_forks:protocol_vsn()) -> list().
 contracts(ProtocolVsn) -> preset_contracts(ProtocolVsn, undefined).
 
+lookup_fork_config(Protocol, Key, Default) when is_integer(Protocol) ->
+    case aeu_env:config_value([<<"chain">>, <<"hard_forks">>], aecore, hard_forks, undefined) of
+        undefined ->
+            maybe_hardcoded_config(Protocol, Key, Default);
+        Map when is_map(Map) ->
+            case maps:get(integer_to_binary(Protocol), Map, undefined) of
+                undefined ->
+                    Default;
+                Height when is_integer(Height) ->
+                    if Key == <<"height">> ->
+                            Height;
+                       true ->
+                            maybe_hardcoded_config(Protocol, Key, Default)
+                    end;
+                Map1 when is_map(Map1) ->
+                    maps:get(integer_to_binary(Key), Map, Default)
+            end
+    end.
+
+maybe_hardcoded_config(Protocol, Key, Default) when is_binary(Protocol),
+                                                    Protocol =< ?CERES_PROTOCOL_VSN ->
+    case Key of
+        <<"use_hardcoded_directory">> -> true;
+        <<"directory">>               -> hardcoded_dir(Protocol)
+    end;
+maybe_hardcoded_config(Protocol, Key, Default) ->
+    case Key of
+        <<"use_hardcoded_dir">> -> false;
+        _ ->
+            Default
+    end.
 
 -spec is_custom_fork() -> boolean().
 is_custom_fork() ->
