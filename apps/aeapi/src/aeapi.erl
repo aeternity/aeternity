@@ -435,6 +435,7 @@ generation_at_height(Height) when is_integer(Height) ->
             end
     end.
 
+%% Format a single Tx in a block. This function only returns an estimate of what might be included in a block. 
 balance_change_events_in_mempool_tx(SignedTx) ->
     Tx = aetx_sign:tx(SignedTx),
     Nonce = aetx:nonce(Tx),

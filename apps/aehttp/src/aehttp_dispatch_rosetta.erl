@@ -673,6 +673,10 @@ handle_request_(mempoolTransaction,
     end,
     case aec_db:find_signed_tx(TxHashInternal) of
         {value, SignedTx} ->
+                %% Since it is impossible to know what will be mined returns an estimate, which is acceptable
+                %% according to the Rosetta docs:
+                %% "On this endpoint, it is ok that returned transactions are only estimates of what 
+                %%  may actually be included in a block."
                 Resp = #{<<"transaction">> => format_tx(SignedTx, undefined)},
                 {200, [], Resp};
         _ ->
