@@ -361,10 +361,19 @@ block_spend_tx(Config) ->
     {ok, 200, #{<<"tx_hash">> := SpendTxHash}} = post_tx(SignedSpendTx),
 
     {ok, [_]} = rpc(aec_tx_pool, peek, [infinity]),
+
+    aecore_suite_utils:use_rosetta(),
+
+    {ok,
+     200,
+     #{<<"transaction">> :=
+           #{<<"transaction_identifier">> := #{<<"hash">> := SpendTxHash},
+             <<"operations">> := [FeeOpMem, FromOpMem, ToOpMem]}}} =
+        get_mempool_transaction_sut(SpendTxHash),
+
     aecore_suite_utils:mine_blocks_until_txs_on_chain(Node, [SpendTxHash], 2),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
 
-    aecore_suite_utils:use_rosetta(),
 
     FromPubKeyEnc = aeapi:format_account_pubkey(FromPubKey),
     ToPubKeyEnc = aeapi:format_account_pubkey(ToPubKey),
@@ -414,6 +423,11 @@ block_spend_tx(Config) ->
         FromOp,
     #{<<"operation_identifier">> := #{<<"index">> := 2}, <<"type">> := <<"Spend.amount">>} =
         ToOp,
+
+    %% Check the mempool transaction matches
+    ?assertEqual(FromOp, FromOpMem),
+    ?assertEqual(ToOp, ToOpMem),
+    ?assertEqual(FeeOp, FeeOpMem),
 
     %% Also check we can get the same Tx via the "fetch individual Tx" Rosetta API
     %% This is a bit inefficient, because to be sure the Tx starts with the correct state
@@ -498,6 +512,18 @@ block_create_contract_tx(Config) ->
 
     %% Mine the contract Tx so it is on chain when we try to retrieve it
     {ok, [_]} = rpc(aec_tx_pool, peek, [infinity]),
+
+    aecore_suite_utils:use_rosetta(),
+
+    {ok,
+     200,
+     #{<<"transaction">> :=
+           #{<<"transaction_identifier">> := #{<<"hash">> := ContractCreateTxHash},
+             <<"operations">> := [PoolAmountOp, PoolToContractOp, PoolRefundOp]}}} =
+        get_mempool_transaction_sut(ContractCreateTxHash),
+
+    aecore_suite_utils:use_swagger(SwaggerVsn),
+
     aecore_suite_utils:mine_blocks_until_txs_on_chain(Node, [ContractCreateTxHash], 2),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
 
@@ -540,6 +566,11 @@ block_create_contract_tx(Config) ->
     ?assertEqual(OwnerBalanceAfterCreate,
                  OwnerBalance + binary_to_integer(AmountDelta) + binary_to_integer(RefundDelta)),
 
+    %% Check the mempool operations are the same as the block operations
+    ?assertEqual(PoolAmountOp, AmountOp),
+    ?assertEqual(PoolToContractOp, ToContractOp),
+    ?assertEqual(PoolRefundOp, RefundOp),
+
     %% Convert the contract id into the matching account id
     {_, ContractPubKey} = aeapi:decode(ContractPubKeyEnc),
     ContractAccountPubKey = aeapi:format_account_pubkey(ContractPubKey),
@@ -581,6 +612,18 @@ block_create_contract_tx(Config) ->
         aehttp_integration_SUITE:sign_and_post_tx(EncodedUnsignedContractCallTx, OwnerPrivKey),
 
     {ok, [_]} = rpc(aec_tx_pool, peek, [infinity]),
+
+    aecore_suite_utils:use_rosetta(),
+
+    {ok,
+     200,
+     #{<<"transaction">> :=
+           #{<<"transaction_identifier">> := #{<<"hash">> := ContractCallTxHash},
+             <<"operations">> := [PoolCallerFeeOp, PoolContractAmountOp, PoolFromContractOp, PoolToOp, PoolCallRefundOp]}}} =
+        get_mempool_transaction_sut(ContractCallTxHash),
+
+    aecore_suite_utils:use_swagger(SwaggerVsn),
+
     aecore_suite_utils:mine_blocks_until_txs_on_chain(Node, [ContractCallTxHash], 2),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
 
@@ -636,6 +679,13 @@ block_create_contract_tx(Config) ->
                  + binary_to_integer(CallerFeeDelta)
                  + binary_to_integer(CallRefundOpDelta)),
 
+    %% Check mempool operations are the same as the block operations
+    ?assertEqual(PoolCallerFeeOp, CallerFeeOp), 
+    ?assertEqual(PoolContractAmountOp, ContractAmountOp),
+    ?assertEqual(PoolFromContractOp, FromContractOp),
+    ?assertEqual(PoolToOp, ToOp),
+    ?assertEqual(PoolCallRefundOp, CallRefundOp),
+
     %% ------------------ Errored Contract Call ---------------------------
     SwaggerVsn = proplists:get_value(swagger_version, Config, oas3),
     aecore_suite_utils:use_swagger(SwaggerVsn),
@@ -660,6 +710,18 @@ block_create_contract_tx(Config) ->
         aehttp_integration_SUITE:sign_and_post_tx(EncodedUnsignedContractCallErrTx, OwnerPrivKey),
 
     {ok, [_]} = rpc(aec_tx_pool, peek, [infinity]),
+
+    aecore_suite_utils:use_rosetta(),
+
+    {ok,
+     200,
+     #{<<"transaction">> :=
+           #{<<"transaction_identifier">> := #{<<"hash">> := ContractCallErrTxHash},
+             <<"operations">> := [PoolErrCallerOp]}}} =
+        get_mempool_transaction_sut(ContractCallErrTxHash),
+
+    aecore_suite_utils:use_swagger(SwaggerVsn),
+
     aecore_suite_utils:mine_blocks_until_txs_on_chain(Node, [ContractCallErrTxHash], 2),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
 
@@ -682,7 +744,11 @@ block_create_contract_tx(Config) ->
         ErrCallerOp,
     ?assertEqual(OwnerAccountPubKey, CallerAcc),
     ?assertEqual(OwnerBalanceAfterErrCall,
-                 OwnerBalanceAfterCall + binary_to_integer(ErrCallerDelta)).
+                 OwnerBalanceAfterCall + binary_to_integer(ErrCallerDelta)),
+
+    %% Check mempool operation is the same as block
+    ?assertEqual(PoolErrCallerOp, ErrCallerOp).
+
 
 block_create_channel_tx(Config) ->
     [{_NodeId, Node} | _] = ?config(nodes, Config),
@@ -754,6 +820,19 @@ block_create_channel_tx(Config) ->
     {ok, 200, #{<<"tx_hash">> := ChannelCreateTxHash}} = post_tx(EncTx),
 
     {ok, [_]} = rpc(aec_tx_pool, peek, [infinity]),
+
+
+    aecore_suite_utils:use_rosetta(),
+
+    {ok,
+     200,
+     #{<<"transaction">> :=
+           #{<<"transaction_identifier">> := #{<<"hash">> := ChannelCreateTxHash},
+             <<"operations">> := [PoolInitiatorOp, PoolResponderOp]}}} =
+        get_mempool_transaction_sut(ChannelCreateTxHash),
+
+    aecore_suite_utils:use_swagger(SwaggerVsn),
+
     aecore_suite_utils:mine_blocks_until_txs_on_chain(Node, [ChannelCreateTxHash], 2),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
 
@@ -792,6 +871,10 @@ block_create_channel_tx(Config) ->
     ?assertEqual(ResponderBalanceAfterCreate,
                  ResponderBalance + binary_to_integer(ResponderDelta)),
 
+    %% Check mempool operations
+    ?assertEqual(PoolInitiatorOp, InitiatorOp),
+    ?assertEqual(PoolResponderOp, ResponderOp),
+
     %% ------------------ Channel deposit ---------------------------
     SwaggerVsn = proplists:get_value(swagger_version, Config, oas3),
     aecore_suite_utils:use_swagger(SwaggerVsn),
@@ -813,6 +896,18 @@ block_create_channel_tx(Config) ->
     {ok, 200, #{<<"tx_hash">> := ChannelDepositTxHash}} = post_tx(EncDTx),
 
     {ok, [_]} = rpc(aec_tx_pool, peek, [infinity]),
+
+    aecore_suite_utils:use_rosetta(),
+
+    {ok,
+     200,
+     #{<<"transaction">> :=
+           #{<<"transaction_identifier">> := #{<<"hash">> := ChannelDepositTxHash},
+             <<"operations">> := [PoolDepositInitiatorOp]}}} =
+        get_mempool_transaction_sut(ChannelDepositTxHash),
+
+    aecore_suite_utils:use_swagger(SwaggerVsn),
+
     aecore_suite_utils:mine_blocks_until_txs_on_chain(Node, [ChannelDepositTxHash], 2),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
 
@@ -836,6 +931,8 @@ block_create_channel_tx(Config) ->
     ?assertEqual(InitiatorBalanceAfterDeposit,
                  InitiatorBalanceAfterCreate
                  + binary_to_integer(DepositInitiatorDelta)),
+
+    ?assertEqual(PoolDepositInitiatorOp, DepositInitiatorOp),
 
     %% ------------------ Channel withdraw ---------------------------
     SwaggerVsn = proplists:get_value(swagger_version, Config, oas3),
@@ -862,6 +959,18 @@ block_create_channel_tx(Config) ->
     {ok, 200, #{<<"tx_hash">> := ChannelWithdrawTxHash}} = post_tx(EncWTx),
 
     {ok, [_]} = rpc(aec_tx_pool, peek, [infinity]),
+
+    aecore_suite_utils:use_rosetta(),
+
+    {ok,
+     200,
+     #{<<"transaction">> :=
+           #{<<"transaction_identifier">> := #{<<"hash">> := ChannelWithdrawTxHash},
+             <<"operations">> := [PoolWithdrawFeesOp, PoolWithdrawInitiatorOp]}}} =
+        get_mempool_transaction_sut(ChannelWithdrawTxHash),
+
+    aecore_suite_utils:use_swagger(SwaggerVsn),
+
     aecore_suite_utils:mine_blocks_until_txs_on_chain(Node, [ChannelWithdrawTxHash], 2),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
 
@@ -891,6 +1000,10 @@ block_create_channel_tx(Config) ->
                  + binary_to_integer(WithdrawFeesDelta)
                  + binary_to_integer(WithdrawInitiatorDelta)),
 
+    %% Test mempool operations
+    ?assertEqual(PoolWithdrawFeesOp, WithdrawFeesOp),
+    ?assertEqual(PoolWithdrawInitiatorOp, WithdrawInitiatorOp), 
+
     %% ------------------ Channel close mutual ---------------------------
     aecore_suite_utils:use_swagger(SwaggerVsn),
 
@@ -910,6 +1023,18 @@ block_create_channel_tx(Config) ->
     {ok, 200, #{<<"tx_hash">> := ChannelCloseMutualTxHash}} = post_tx(EncFPTx),
 
     {ok, [_]} = rpc(aec_tx_pool, peek, [infinity]),
+
+    aecore_suite_utils:use_rosetta(),
+
+    {ok,
+     200,
+     #{<<"transaction">> :=
+           #{<<"transaction_identifier">> := #{<<"hash">> := ChannelCloseMutualTxHash},
+             <<"operations">> := [PoolCloseMutualInitiatorOp, PoolCloseMutualResponderOp, _PoolLockFundsOp]}}} =
+        get_mempool_transaction_sut(ChannelCloseMutualTxHash),
+
+    aecore_suite_utils:use_swagger(SwaggerVsn),
+
     aecore_suite_utils:mine_blocks_until_txs_on_chain(Node, [ChannelCloseMutualTxHash], 4),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
 
@@ -942,7 +1067,11 @@ block_create_channel_tx(Config) ->
         CloseMutualResponderOp,
     ?assertEqual(ResponderAccountPubKey, CloseMutualResponderAcc),
     ?assertEqual(ResponderBalanceAfterCloseMutual,
-                 ResponderBalanceAfterCreate + binary_to_integer(CloseMutualResponderDelta)).
+                 ResponderBalanceAfterCreate + binary_to_integer(CloseMutualResponderDelta)),
+
+    %% Check mempool operations
+    ?assertEqual(CloseMutualInitiatorOp, PoolCloseMutualInitiatorOp),
+    ?assertEqual(PoolCloseMutualResponderOp, CloseMutualResponderOp).
 
 construction_flow(Config) ->
     [{_NodeId, Node} | _] = ?config(nodes, Config),
@@ -1115,6 +1244,14 @@ get_block_transaction_sut(KeyBlockHash, Height, TxHash) ->
               #{blockchain => <<"aeternity">>, network => aec_governance:get_network_id()},
           transaction_identifier => #{hash => TxHash}},
     http_request(Host, post, "block/transaction", Body).
+
+get_mempool_transaction_sut(TxHash) ->
+    Host = rosetta_address(),
+    Body =
+        #{network_identifier =>
+              #{blockchain => <<"aeternity">>, network => aec_governance:get_network_id()},
+          transaction_identifier => #{hash => TxHash}},
+    http_request(Host, post, "mempool/transaction", Body).
 
 get_balance_sut(AccountPubKey) ->
     Host = rosetta_address(),
