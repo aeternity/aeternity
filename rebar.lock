@@ -28,7 +28,10 @@
   {git,"https://github.com/aeternity/app_ctrl.git",
       {ref,"c1fb92758ab7add4489837eff3a7d5d44b925dd2"}},
   0},
- {<<"argparse">>,{pkg,<<"argparse">>,<<"1.1.4">>},0},
+ {<<"argparse">>,
+  {git,"https://github.com/aeternity/argparse.git",
+      {ref,"3dd46f3ea5fdfa6a9a94702c80badc0449602f76"}},
+  0},
  {<<"base58">>,
   {git,"https://github.com/aeternity/erl-base58.git",
       {ref,"60a335668a60328a29f9731b67c4a0e9e3d50ab6"}},
@@ -134,7 +137,6 @@
  {<<"yamerl">>,{pkg,<<"yamerl">>,<<"0.7.0">>},0}]}.
 [
 {pkg_hash,[
- {<<"argparse">>, <<"A9F83748FABB1AF2A329484434E542FA02ADE6B6FEE58F5EDA15E3E471359992">>},
  {<<"bear">>, <<"430419C1126B477686CDE843E88BA0F2C7DC5CDF0881C677500074F704339A99">>},
  {<<"eblake2">>, <<"EC8AD20E438AAB3F2E8D5D118C366A0754219195F8A0F536587440F8F9BCF2EF">>},
  {<<"exometer_core">>, <<"7E1D4D8D05FE4E33B96EBA366B4A7C85F0E023573CAF297F13E83CF17A5E3941">>},
@@ -155,7 +157,6 @@
  {<<"unicode_util_compat">>, <<"D869E4C68901DD9531385BB0C8C40444EBF624E60B6962D95952775CAC5E90CD">>},
  {<<"yamerl">>, <<"E51DBA652DCE74C20A88294130B48051EBBBB0BE7D76F22DE064F0F3CCF0AAF5">>}]},
 {pkg_hash_ext,[
- {<<"argparse">>, <<"AC825D3B52CA64F25A4867D70324FBE940ED9BFC2CB9C8826E0B88D7BF7F73F3">>},
  {<<"bear">>, <<"157B67901ADF84FF0DA6EAE035CA1292A0AC18AA55148154D8C582B2C68959DB">>},
  {<<"eblake2">>, <<"3C4D300A91845B25D501929A26AC2E6F7157480846FAB2347A4C11AE52E08A99">>},
  {<<"exometer_core">>, <<"B539E97DBB3137E0FE0B782C561CACB64C9704CB3F19451442B6FDF46DB95B38">>},
