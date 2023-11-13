@@ -1305,7 +1305,7 @@ max_gossiped_peers_count() ->
     Max.
 
 ping_connected_peer_percentage() ->
-    aeu_env:user_config_or_env([<<"sync">>, <<"ping_connected_peer_percentage">>],
+    aeu_env:user_config_or_env([<<"sync">>, <<"ping">>, <<"peer_percentage">>],
                                aecore, sync_ping_connected_peer_percentage,
                                ?DEFAULT_PING_CONNECTED_PEER_PERCENTAGE).
 

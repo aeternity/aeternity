@@ -1099,13 +1099,6 @@
                     "maximum" : 32,
                     "default" : 32
                 },
-                "ping_connected_peer_percentage" : {
-                    "description" : "The number of peers sent in ping message",
-                    "type" : "integer",
-                    "minimum" : 1,
-                    "maximum" : 100,
-                    "default" : 10
-                },                
                 "resolver_max_retries": {
                     "description" : "Maximum number of retries at resolving the host name of untrusted peers.",
                     "type" : "integer",
@@ -1147,6 +1140,19 @@
                     "description": "Time (milliseconds) between logging info about connected peers",
                     "type" : "integer",
                     "default": 300000
+                },
+                "ping" : {
+                    "type" : "object",
+                    "additionalproperties" : false,
+                    "properties" : {
+                        "peer_percentage" : {
+                            "description" : "The percentage of connected peers sent in ping message. Recommend values are from 5-30.",
+                            "type" : "integer",
+                            "minimum" : 1,
+                            "maximum" : 100,
+                            "default" : 10
+                        }
+                    }
                 },
                 "peer_pool" : {
                     "type" : "object",
