@@ -1608,18 +1608,18 @@
                     "type" : "object",
                     "additionalProperties" : false,
                     "properties" : {
-                        "long_name": {
-                            "description": "Long name of currency.",
+                        "name": {
+                            "description": "Name of currency.",
                             "type": "string",
                             "default": "aeternity"
                         },
-                        "short_name": {
-                            "description": "Short name of currency.",
+                        "symbol": {
+                            "description": "Symbol of currency.",
                             "type": "string",
                             "default": "AE"
                         },
-                        "smallest_denomination" : {
-                            "description" : "Smallest denomination of currency.",
+                        "subunit" : {
+                            "description" : "Smallest subunit of currency.",
                             "type" : "string",
                             "default" : "aetto"
                         },
@@ -1643,19 +1643,19 @@
                             "type": "string"
                         },
                         "primary_colour": {
-                            "description": "Short name of currency.",
+                            "description": "Primary colour for branding.",
                             "type": "string",
                             "default": "#f5274e"
                         },
                         "secondary_colour" : {
-                            "description" : "Smallest denomination of currency.",
+                            "description" : "Secondary colour for branding.",
                             "type" : "string",
                             "default" : "#242424"
                         },
-                        "network_id": {
+                        "network_name": {
                             "description" : "The display name of the network Id",
                             "type": "string",
-                            "default": "ae_mainnet"
+                            "default": "mainnet"
                         }
                     }
                 },

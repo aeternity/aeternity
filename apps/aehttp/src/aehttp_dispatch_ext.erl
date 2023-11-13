@@ -701,14 +701,14 @@ handle_request_('GetStatus', _Params, _Context) ->
        <<"top_block_height">>           => TopBlockHeight}};
 
 handle_request_('GetCurrency', _Params, _Context) ->
-    {ok, LongNameCcy} = aeu_env:find_config([<<"chain">>, <<"currency">>, <<"long_name">>],[user_config, schema_default]),
-    {ok, ShortNameCcy} = aeu_env:find_config([<<"chain">>, <<"currency">>, <<"short_name">>],[user_config, schema_default]),
-    {ok, SmallestDenomination} = aeu_env:find_config([<<"chain">>, <<"currency">>, <<"smallest_denomination">>],[user_config, schema_default]),
+    {ok, NameCcy} = aeu_env:find_config([<<"chain">>, <<"currency">>, <<"name">>],[user_config, schema_default]),
+    {ok, SymNameCcy} = aeu_env:find_config([<<"chain">>, <<"currency">>, <<"symbol">>],[user_config, schema_default]),
+    {ok, Subunit} = aeu_env:find_config([<<"chain">>, <<"currency">>, <<"subunit">>],[user_config, schema_default]),
     {ok, SubunitsPerUnit} = aeu_env:find_config([<<"chain">>, <<"currency">>, <<"subunits_per_unit">>],[user_config, schema_default]),
-    CcyMeta0 = #{ <<"long_name">>              => LongNameCcy,
-                  <<"short_name">>            => ShortNameCcy,
-                  <<"smallest_denomination">> => SmallestDenomination,
-                  <<"subunits_per_unit">>     => SubunitsPerUnit
+    CcyMeta0 = #{ <<"name">>                   => NameCcy,
+                  <<"symbol">>                 => SymNameCcy,
+                  <<"subunit">>                => Subunit,
+                  <<"subunits_per_unit">>      => SubunitsPerUnit
                 },
     CcyMeta = case aeu_env:find_config([<<"chain">>, <<"currency">>, <<"fiat_converstion_url">>],[user_config]) of
                 undefined ->
@@ -718,10 +718,10 @@ handle_request_('GetCurrency', _Params, _Context) ->
                 end,
     {ok, PrimaryColour} = aeu_env:find_config([<<"chain">>, <<"display">>, <<"primary_colour">>],[user_config, schema_default]),
     {ok, SecondaryColour} = aeu_env:find_config([<<"chain">>, <<"display">>, <<"secondary_colour">>],[user_config, schema_default]),
-    {ok, NetworkId} = aeu_env:find_config([<<"chain">>, <<"display">>, <<"network_id">>],[user_config, schema_default]),
+    {ok, NetworkName} = aeu_env:find_config([<<"chain">>, <<"display">>, <<"network_name">>],[user_config, schema_default]),
     Display0 = #{ <<"primary_colour">>   => PrimaryColour,
                   <<"secondary_colour">> => SecondaryColour,
-                  <<"network_id">>       => NetworkId
+                  <<"network_name">>     => NetworkName
                 },
     Display = case aeu_env:find_config([<<"chain">>, <<"display">>, <<"logo_file">>],[user_config]) of
                 undefined ->
