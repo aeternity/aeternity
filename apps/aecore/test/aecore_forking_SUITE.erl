@@ -27,6 +27,8 @@
     spend_on_dev2/1,
     mine_a_micro_block_on_dev1/1,
     mine_a_micro_block_on_dev2/1,
+    mine_micro_blocks_on_dev1_until_empty/1,
+    mine_micro_blocks_on_dev2_until_empty/1,
     start_nodes_and_wait_sync_dev1_chain_wins/1,
     start_nodes_and_wait_sync_dev2_chain_wins/1,
     assert_orphaned_tx_in_pool_dev1_receives/1,
@@ -84,7 +86,7 @@ groups() ->
        stop_dev2,
        mine_a_key_block_on_dev1,
        spend_on_dev1,
-       mine_a_micro_block_on_dev1,
+       mine_micro_blocks_on_dev1_until_empty,
        mine_a_key_block_on_dev1,
        stop_dev1,
        start_dev2,
@@ -99,6 +101,7 @@ groups() ->
        start_nodes_and_wait_sync_dev2_chain_wins,
        assert_orphaned_tx_in_pool_dev2_receives,
        mine_a_micro_block_on_dev2,
+       mine_micro_blocks_on_dev2_until_empty,
        wait_dev1_txpool_empty,
        stop_dev1,
        stop_dev2
@@ -113,7 +116,7 @@ groups() ->
        stop_dev2,
        mine_a_key_block_on_dev1,
        spend_on_dev1,
-       mine_a_micro_block_on_dev1,
+       mine_micro_blocks_on_dev1_until_empty,
        stop_dev1,
        start_dev2,
        mine_a_key_block_on_dev2,
@@ -430,7 +433,31 @@ mine_a_micro_block_on_dev2(_Config) -> mine_a_micro_block(dev2).
 
 mine_a_micro_block(Node) ->
     NName = aecore_suite_utils:node_name(Node),
+    mine_a_micro_block_on_node(NName).
+
+mine_a_micro_block_on_node(NName) ->
     aecore_suite_utils:mine_blocks(NName, 1, ?MINE_RATE, micro, #{}).
+
+mine_micro_blocks_on_dev1_until_empty(_Config) ->
+    %% Mine at least one micro block
+    NName = aecore_suite_utils:node_name(dev1),
+    mine_until_empty(NName).
+
+mine_micro_blocks_on_dev2_until_empty(_Config) ->
+    %% Mine at least one micro block
+    NName = aecore_suite_utils:node_name(dev2),
+    mine_until_empty(NName).
+
+mine_until_empty(Node) ->
+    case rpc:call(Node, aec_tx_pool, peek, [infinity], 1000) of
+        {ok, []} ->
+            ct:log("dev2 tx pool is empty", []),
+            ok;
+        {ok, [_|_] = Txs} ->
+            ct:log("~p txs still in dev2's tx pool", [length(Txs)]),
+            mine_a_micro_block_on_node(Node),
+            mine_until_empty(Node)
+    end.
 
 spend(Node) ->
     {_, Pub} = aecore_suite_utils:sign_keys(Node),

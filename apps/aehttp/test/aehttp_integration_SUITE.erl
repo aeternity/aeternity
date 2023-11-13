@@ -1936,6 +1936,7 @@ get_status(_Config) ->
        <<"genesis_key_block_hash">>     := GenesisKeyBlocHash,
        <<"solutions">>                  := Solutions,
        <<"difficulty">>                 := Difficulty,
+       <<"hashrate">>                   := HashRate,
        <<"syncing">>                    := Syncing,
        <<"sync_progress">>              := SyncProgress,
        <<"listening">>                  := Listening,
@@ -1954,6 +1955,7 @@ get_status(_Config) ->
     ?assertMatch({ok, _}, aeser_api_encoder:safe_decode(key_block_hash, GenesisKeyBlocHash)),
     ?assertMatch(X when is_integer(X) andalso X >= 0, Solutions),
     ?assertMatch(X when is_integer(X), Difficulty),
+    ?assertMatch(X when is_integer(X), HashRate),
     ?assertMatch(X when is_boolean(X), Syncing),
     ?assertMatch(X when is_boolean(X), Listening),
     ?assertMatch(X when is_list(X) andalso length(X) > 0, Protocols),
@@ -1995,10 +1997,6 @@ get_status_sut(IntAsString) ->
     Host = external_address(),
     Parameters = case IntAsString of true -> "?int-as-string"; false -> "" end,
     http_request(Host, get, "status" ++ Parameters, []).
-
-prepare_tx(TxType, Args) ->
-    SignHash = lists:last(aec_hard_forks:sorted_protocol_versions()) >= ?LIMA_PROTOCOL_VSN,
-    prepare_tx(TxType, Args, SignHash).
 
 prepare_tx(TxType, Args, SignHash) ->
     %assert_required_tx_fields(TxType, Args),

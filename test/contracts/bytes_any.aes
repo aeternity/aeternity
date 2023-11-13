@@ -1,0 +1,57 @@
+include "String.aes"
+
+contract interface BytesRemote =
+  entrypoint split_any : (bytes(), int) => option(bytes() * bytes())
+  entrypoint concat : (bytes(), bytes()) => bytes()
+  entrypoint to_fixed : (bytes()) => option(bytes(4))
+  entrypoint to_any : (bytes(4)) => bytes()
+  entrypoint int_to_bytes : (int, int) => bytes()
+  entrypoint string_to_bytes : (string) => bytes()
+  entrypoint size : (bytes()) => int
+  entrypoint b4 : () => bytes(4)
+  entrypoint bX : () => bytes()
+
+
+contract BytesAny =
+
+  entrypoint split_any(b : bytes(), at : int) =
+    Bytes.split_any(b, at)
+
+  entrypoint concat(a : bytes(), b : bytes()) =
+    Bytes.concat(a, b)
+
+  entrypoint to_fixed(b : bytes()) : option(bytes(4)) =
+    Bytes.to_fixed_size(b)
+
+  entrypoint to_any(b4 : bytes(4)) =
+    Bytes.to_any_size(b4)
+
+  entrypoint int_to_bytes(i : int, size : int) =
+    Int.to_bytes(i, size)
+
+  entrypoint string_to_bytes(s : string) =
+    String.to_bytes(s)
+
+  entrypoint size(b : bytes()) =
+    Bytes.size(b)
+
+  // Intentionally backwards to test checks
+  entrypoint b4() : bytes() = Bytes.to_any_size(#1122)
+  entrypoint bX() : bytes(4) = #11223344 : bytes(4)
+
+  entrypoint r_split_any(r : BytesRemote, b : bytes(), at : int) =
+    r.split_any(b, at)
+
+  entrypoint r_concat(r : BytesRemote, a : bytes(), b : bytes()) =
+    r.concat(a, b)
+
+  entrypoint r_test_to_fixed(r : BytesRemote, b : bytes()) =
+    switch (r.to_fixed(b))
+      Some(b1) => true
+      None     => false
+
+  entrypoint r_test1(r : BytesRemote) =
+    Bytes.to_any_size(r.b4())
+
+  entrypoint r_test2(r : BytesRemote) : bytes() =
+    r.bX()

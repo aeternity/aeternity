@@ -59,10 +59,11 @@ serialize_id_for_client({data, Data}) ->
 serialize_id_for_client(Id) ->
     aeser_api_encoder:encode(id_hash, Id).
 
-%% TODO: check max length of key?
+-define(MAX_RAW_POINTER_SIZE, 1024).
+
 assert_key(Key) when is_binary(Key) -> ok.
 
-assert_data(Data) when is_binary(Data), byte_size(Data) =< 1024 -> ok.
+assert_data(Data) when is_binary(Data), byte_size(Data) =< ?MAX_RAW_POINTER_SIZE -> ok.
 
 assert_id(Id) ->
     assert_id_type(aeser_id:specialize_type(Id)).

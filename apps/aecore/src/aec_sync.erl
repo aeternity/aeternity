@@ -21,6 +21,7 @@
 
 -export([ start_sync/3
         , get_generation/2
+        , get_top_target/0
         , set_last_generation_in_sync/0
         , ask_all_for_node_info/0
         , ask_all_for_node_info/1]).
@@ -59,6 +60,9 @@ start_sync(PeerId, RemoteHash, RemoteDifficulty) ->
 
 get_generation(PeerId, Hash) ->
     gen_server:cast(?MODULE, {get_generation, PeerId, Hash}).
+
+get_top_target() ->
+    gen_server:call(?MODULE, get_top_target).
 
 set_last_generation_in_sync() ->
     gen_server:cast(?MODULE, set_last_generation_in_sync).
@@ -232,6 +236,8 @@ handle_call({worker_for_peer, PeerId}, _, State) ->
     {reply, get_worker_for_peer(State, PeerId), State};
 handle_call({sync_in_progress, PeerId}, _, State) ->
     {reply, peer_in_sync(State, PeerId), State};
+handle_call(get_top_target, _, State) ->
+    {reply, State#state.top_target, State};
 handle_call({known_chain, Chain0 = #chain{ id = CId0 }, NewChainInfo}, _From, State0) ->
     {Chain, State} =
         case NewChainInfo of
@@ -560,6 +566,7 @@ valid_sync_tasks(#state{sync_tasks = STs}) ->
     [ST || #sync_task{suspect = false} = ST <- STs].
 
 update_top_target(TopTarget, State) ->
+    lager:debug("TopTarget = ~p, State = ~p", [TopTarget, lager:pr(State, ?MODULE)]),
     State#state{ top_target = TopTarget }.
 
 do_update_sync_task(State, STId, Update) ->
@@ -892,7 +899,7 @@ agree_on_height(PeerId, #chain{ blocks = [#chain_block{ hash = TopHash, height =
                 true  -> TopHash;
                 false -> get_header_by_height(PeerId, LocalHeight, TopHash)
             end,
-        case aec_chain:hash_is_connected_to_genesis(RemoteHash) of
+        case hash_is_connected_to_genesis(RemoteHash) of
             true ->
                 {ok, MinHeight, RemoteHash};
             false ->
@@ -906,12 +913,15 @@ agree_on_height(PeerId, #chain{ blocks = [#chain_block{ hash = TopHash, height =
 agree_on_height(PeerId, RemoteTop, Height, Step) ->
     NewHeight = max(aec_block_genesis:height(), Height - Step),
     RHash = get_header_by_height(PeerId, NewHeight, RemoteTop),
-    case aec_chain:hash_is_connected_to_genesis(RHash) of
+    case hash_is_connected_to_genesis(RHash) of
         true ->
             agree_on_height(PeerId, RemoteTop, NewHeight, Height, RHash);
         false ->
             agree_on_height(PeerId, RemoteTop, NewHeight, Step * 2)
     end.
+
+hash_is_connected_to_genesis(Hash) ->
+    aec_db:ensure_dirty(fun() -> aec_chain:hash_is_connected_to_genesis(Hash) end).
 
 %% We agree on Hash at MinH and disagree at MaxH
 agree_on_height(_PeerId, _RemoteTop, MinH, MaxH, Hash) when MaxH == MinH + 1 ->
@@ -919,7 +929,7 @@ agree_on_height(_PeerId, _RemoteTop, MinH, MaxH, Hash) when MaxH == MinH + 1 ->
 agree_on_height(PeerId, RemoteTop, MinH, MaxH, Hash) ->
     H = (MinH + MaxH) div 2,
     RHash = get_header_by_height(PeerId, H, RemoteTop),
-    case aec_chain:hash_is_connected_to_genesis(RHash) of
+    case hash_is_connected_to_genesis(RHash) of
         true ->
             agree_on_height(PeerId, RemoteTop, H, MaxH, RHash);
         false ->
@@ -927,7 +937,7 @@ agree_on_height(PeerId, RemoteTop, MinH, MaxH, Hash) ->
     end.
 get_header_by_height(PeerId, Height, RemoteTop) ->
     case Height == aec_block_genesis:height() of
-        true  -> aec_chain:genesis_hash(); %% Handshake ensure we agree on genesis
+        true  -> aec_db:ensure_dirty(fun() -> aec_chain:genesis_hash() end); %% Handshake ensure we agree on genesis
         false ->
             case peer_get_header_by_height(PeerId, Height, RemoteTop) of
                 {ok, RemoteAtHeight} ->
@@ -1138,7 +1148,8 @@ gen_is_consecutive(backward, KB, MBs = [MB1, MB2 | _]) ->
 %%%=============================================================================
 
 has_generation(KeyBlockHash) ->
-    case aec_chain:get_header(KeyBlockHash) of
+    case aec_db:ensure_dirty(
+           fun() -> aec_chain:get_header(KeyBlockHash) end) of
         error ->
             false;
         {ok, Header} ->

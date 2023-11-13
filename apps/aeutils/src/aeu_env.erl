@@ -218,14 +218,22 @@ lists_map_key_find(_, []) ->
     error.
 
 schema() ->
-    case setup:get_env(aeutils, '$schema', undefined) of
+    case pt_get_schema(undefined) of
         undefined ->
             load_schema(),
-            {ok, S} = setup:get_env(aeutils, '$schema'),
-            S;
+            pt_get_schema();
         S ->
             S
     end.
+
+pt_get_schema() ->
+    persistent_term:get({?MODULE, '$schema'}).
+
+pt_get_schema(Default) ->
+    persistent_term:get({?MODULE, '$schema'}, Default).
+
+pt_set_schema(Schema) ->
+    persistent_term:put({?MODULE, '$schema'}, Schema).
 
 schema(Key) ->
     schema(Key, schema()).
@@ -475,9 +483,19 @@ data_dir(Name) when is_atom(Name) ->
     filename:join([setup:data_dir(), Name]).
 
 config_file() ->
-    case default_config_file()  of
-        undefined -> deprecated_config_file();
-        F         -> F
+    case command_line_config_file() of
+        undefined ->
+            case default_config_file()  of
+                undefined -> deprecated_config_file();
+                F         -> F
+            end;
+        F -> F
+    end.
+
+command_line_config_file() ->
+    case init:get_argument('-config') of
+        {ok, [[F]]} -> F;
+        _ -> undefined
     end.
 
 default_config_file() ->
@@ -825,5 +843,5 @@ load_schema() ->
 
 load_schema(F) ->
     [Schema] = jsx:consult(F, [return_maps]),
-    application:set_env(aeutils, '$schema', Schema),
+    pt_set_schema(Schema),
     Schema.

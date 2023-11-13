@@ -55,6 +55,8 @@
 
 -import(aeu_debug, [pp/1]).
 
+-define(dirty(Fun), aec_db:ensure_activity(async_dirty, Fun)).
+
 -define(P2P_PROTOCOL_VSN, 1).
 
 -define(DEFAULT_CONNECT_TIMEOUT, 1000).
@@ -175,7 +177,7 @@ cast_or_call(PeerId, Action, CastOrCall, Timeout) ->
 accept_init(Ref, TcpSock, ranch_tcp, Opts) ->
     ok = ranch:accept_ack(Ref),
     Version = <<?P2P_PROTOCOL_VSN:64>>,
-    Genesis = aec_chain:genesis_hash(),
+    Genesis = ?dirty(fun() -> aec_chain:genesis_hash() end),
     HSTimeout = noise_hs_timeout(),
     case inet:peername(TcpSock) of
         {error, Reason} ->
@@ -264,7 +266,9 @@ handle_cast({send_block, SerBlock}, State) ->
 handle_cast({set_sync_height, none}, State) ->
     {noreply, maps:remove(sync_height, State)};
 handle_cast({set_sync_height, Height}, State) when is_integer(Height) ->
-    {noreply, State#{ sync_height => Height }};
+    State1 = State#{ sync_height => Height },
+    maybe_tx_pool_sync_(State1),
+    {noreply, State1};
 handle_cast({expand_micro_block, MicroBlockFragment}, State) ->
     {noreply, expand_micro_block(State, MicroBlockFragment)};
 handle_cast(stop, State) ->
@@ -724,8 +728,9 @@ handle_first_ping(S, RemotePingObj) ->
 handle_ping_msg(S, RemotePingObj) ->
     #{ genesis_hash := LGHash,
        best_hash    := LTHash,
+       top_header   := TopHeader,
        sync_allowed := LSyncAllowed,
-       difficulty   := LDiff } = local_ping_obj(S),
+       difficulty   := LDiff } = local_ping_obj(S, _Extended = true),
     #{ address := SourceAddr } = S,
     PeerId = peer_id(S),
     DecodedPingObj = decode_remote_ping(RemotePingObj),
@@ -736,33 +741,83 @@ handle_ping_msg(S, RemotePingObj) ->
             aec_peer_analytics:log_temporary_peer_status(S, RGHash0, RTHash0, RDiff0);
         {error, _} -> ok
     end,
-    case DecodedPingObj of
-        {ok, true, RGHash, RTHash, RDiff, RPeers}
-          when RGHash == LGHash, LSyncAllowed =:= true ->
-            case {{LTHash, LDiff}, {RTHash, RDiff}} of
-                {{T, _}, {T, _}} ->
-                    epoch_sync:debug("Same top blocks", []),
-                    aec_sync:get_generation(PeerId, T),
-                    aec_events:publish(chain_sync, {chain_sync_done, PeerId}),
-                    ok;
-                {{_, DL}, {_, DR}} when DL > DR ->
-                    epoch_sync:debug("Our difficulty is higher", []),
-                    aec_events:publish(chain_sync, {chain_sync_done, PeerId}),
-                    ok;
-                {{_, _}, {_, DR}} ->
-                    aec_sync:start_sync(PeerId, RTHash, DR)
-            end,
-            ok = aec_peers:add_peers(SourceAddr, RPeers),
-            aec_tx_pool_sync:connect(PeerId, self()),
-            ok;
-        {ok, _SyncAllowed, RGHash, _RTHash, _RDiff, RPeers}
-          when RGHash == LGHash ->
-            epoch_sync:debug("Temporary connection, not synchronizing", []),
-            ok = aec_peers:add_peers(SourceAddr, RPeers);
-        {ok, _SyncAllowed, _RGHash, _RTHash, _RDiff, _RPeers} ->
-            {error, wrong_genesis_hash};
-        {error, Reason} ->
-            {error, Reason}
+    {Res, MpSync} =
+        case DecodedPingObj of
+            {ok, true, RGHash, RTHash, RDiff, RPeers}
+              when RGHash == LGHash, LSyncAllowed =:= true ->
+                {R1, MPSync1} =
+                    case {{LTHash, LDiff}, {RTHash, RDiff}} of
+                        {{T, _}, {T, _}} ->
+                            epoch_sync:debug("Same top blocks", []),
+                            aec_sync:get_generation(PeerId, T),
+                            aec_events:publish(chain_sync, {chain_sync_done, PeerId}),
+                            {ok, true};
+                        {{_, DL}, {_, DR}} when DL > DR ->
+                            epoch_sync:debug("Our difficulty is higher", []),
+                            aec_events:publish(chain_sync, {chain_sync_done, PeerId}),
+                            {ok, true};
+                        {{_, _}, {_, DR}} ->
+                            epoch_sync:debug("Starting sync to ~p", [PeerId]),
+                            aec_sync:start_sync(PeerId, RTHash, DR),
+                            {ok, perhaps}
+                    end,
+                ok = aec_peers:add_peers(SourceAddr, RPeers),
+                {R1, MPSync1};
+            {ok, _SyncAllowed, RGHash, _RTHash, _RDiff, RPeers}
+              when RGHash == LGHash ->
+                epoch_sync:debug("Temporary connection, not synchronizing", []),
+                ok = aec_peers:add_peers(SourceAddr, RPeers),
+                {ok, false};
+            {ok, _SyncAllowed, _RGHash, _RTHash, _RDiff, _RPeers} ->
+                  epoch_sync:debug("Wrong genesis", []),
+                {{error, wrong_genesis_hash}, false};
+            {error, Reason} ->
+                epoch_sync:debug("Error: ~p", [Reason]),
+                {{error, Reason}, false}
+        end,
+    maybe_tx_pool_sync(MpSync, TopHeader, S),
+    Res.
+
+maybe_tx_pool_sync(Guess, LocalHeader, S) ->
+    case Guess of
+        true    -> do_tx_pool_sync(S);
+        perhaps -> maybe_tx_pool_sync_(LocalHeader, S);
+        false   -> ignore
+    end.
+
+do_tx_pool_sync(S) ->
+    PeerId = peer_id(S),
+    lager:debug("Trying to start mempool sync to ~p", [aec_peer:ppp(PeerId)]),
+    aec_tx_pool_sync:connect(PeerId, self()).
+
+maybe_tx_pool_sync_(S) ->
+    LocalHeader = aec_chain:dirty_top_header(),
+    maybe_tx_pool_sync_(LocalHeader, S).
+
+maybe_tx_pool_sync_(LocalHeader, S) ->
+    TopTarget = aec_sync:get_top_target(),
+    case TopTarget of
+        0 ->
+            lager:debug("no top target - not starting mempool sync.", []),
+            ignore;
+        _ ->
+            LocalHeight = aec_headers:height(LocalHeader),
+            {ok, WhenTxPoolSync} = aeu_env:find_config(
+                                     [<<"mempool">>, <<"sync_start">>],
+                                     [user_config, schema_default]),
+            AtHeight = if WhenTxPoolSync < 0 ->
+                               max(0, TopTarget + WhenTxPoolSync);
+                          true ->
+                               WhenTxPoolSync
+                       end,
+            lager:debug("AtHeight = ~p; LocalHeight = ~p; TopTarget = ~p",
+                        [AtHeight, LocalHeight, TopTarget]),
+            case AtHeight =< LocalHeight of
+                true ->
+                    do_tx_pool_sync(S);
+                false ->
+                    ignore
+            end
     end.
 
 decode_remote_ping(#{ genesis_hash := GHash,
@@ -801,17 +856,46 @@ ping_obj_rsp(S, RemotePingObj) ->
     ping_obj(LocalPingObj#{ share => Share },
              [PeerId | [aec_peer:id(P) || P <- TheirPeers]]).
 
-local_ping_obj(#{ kind := ConnKind, ext_sync_port := Port }) ->
+local_ping_obj(S) ->
+    local_ping_obj(S, false).
+
+local_ping_obj(#{ kind := ConnKind, ext_sync_port := Port }, Extended) ->
+    Obj = aec_db:ensure_activity(
+            async_dirty,
+            fun() ->
+                    local_ping_obj_(Extended)
+            end),
+    Obj#{ sync_allowed => ConnKind =/= temporary
+        , share        => gossiped_peers_count()
+        , peers        => []
+        , port         => Port }.
+
+local_ping_obj_(Extended) ->
     GHash = aec_chain:genesis_hash(),
-    TopHash = aec_chain:top_key_block_hash(),
-    {ok, Difficulty} = aec_chain:difficulty_at_top_block(),
-    #{ genesis_hash => GHash,
-       best_hash    => TopHash,
-       difficulty   => Difficulty,
-       sync_allowed => ConnKind =/= temporary,
-       share        => gossiped_peers_count(),
-       peers        => [],
-       port         => Port }.
+    TopHash = aec_chain:top_block_hash(),
+    Header = aec_db:get_header(TopHash),
+    Height = aec_headers:height(Header),
+    TopKeyHash = key_block_hash_of_hash(TopHash, Header),
+    {ok, Difficulty} = aec_chain:difficulty_at_hash(TopKeyHash),
+    maybe_extend(Extended, Header,
+                 #{ genesis_hash => GHash
+                  , best_hash    => TopKeyHash
+                  , height       => Height
+                  , difficulty   => Difficulty }).
+
+maybe_extend(true, Header, Obj) ->
+    Obj#{top_header => Header};
+maybe_extend(false, _, Obj) ->
+    Obj.
+
+key_block_hash_of_hash(Hash, Header) ->
+    {ok, Header} = aec_chain:get_header(Hash),
+    case aec_headers:type(Header) of
+        key ->
+            Hash;
+        micro ->
+            aec_headers:prev_key_hash(Header)
+    end.
 
 %% -- Get Header by Hash -----------------------------------------------------
 
@@ -841,7 +925,7 @@ get_header(hash, Hash) ->
 get_header(height, N) ->
     get_header(fun aec_chain:get_key_header_by_height/1, N);
 get_header(Fun, Arg) ->
-    case Fun(Arg) of
+    case ?dirty(fun() -> Fun(Arg) end) of
         {ok, Header} ->
             HH = aec_headers:serialize_to_binary(Header),
             {ok, #{ hdr => HH }};
@@ -857,8 +941,8 @@ handle_get_header_by_height(S, ?VSN_1, Msg) ->
     S;
 handle_get_header_by_height(S, ?GET_HEADER_BY_HEIGHT_VSN,
                             #{ height := H, top_hash := TopHash}) ->
-    case {aec_chain:get_key_header_by_height(H),
-          aec_chain:hash_is_in_main_chain(TopHash)} of
+    case ?dirty(fun() -> {aec_chain:get_key_header_by_height(H),
+                          aec_chain:hash_is_in_main_chain(TopHash)} end) of
         {{ok, Header}, true} ->
             SerHeader = aec_headers:serialize_to_binary(Header),
             send_response(S, header, {ok, #{ hdr => SerHeader }});
@@ -894,7 +978,7 @@ handle_get_n_successors(S, Vsn, Msg) ->
             #{ from_hash := FromHash, target_hash := TargetHash, n := N }
                 when Vsn == ?GET_N_SUCCESSORS_VSN ->
                 Res = do_get_n_successors(FromHash, N),
-                case aec_chain:hash_is_in_main_chain(TargetHash) of
+                case ?dirty(fun() -> aec_chain:hash_is_in_main_chain(TargetHash) end) of
                     true  -> Res;
                     false -> {error, not_on_chain}
                 end;
@@ -1075,13 +1159,13 @@ check_gossiped_header_height(S, Header) ->
 
 handle_light_micro_block(_S, Header, TxHashes, PoF) ->
     %% Before assembling the block, check if it is known, and valid
-    case pre_assembly_check(Header) of
+    case ?dirty(fun() -> pre_assembly_check(Header) end) of
         known ->
             ok;
         E = {error, _} ->
             {ok, HH} = aec_headers:hash_header(Header),
             epoch_sync:debug("Dropping gossiped light micro_block (~s): ~p", [pp(HH), E]),
-            case aec_chain:get_header(aec_headers:prev_key_hash(Header)) of
+            case ?dirty(fun() -> aec_chain:get_header(aec_headers:prev_key_hash(Header)) end) of
                 {ok, PrevHeader} ->
                     epoch_sync:debug("miner beneficiary: ~p", [aec_headers:beneficiary(PrevHeader)]),
                     ok;

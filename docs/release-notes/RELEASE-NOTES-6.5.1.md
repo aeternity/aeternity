@@ -4,7 +4,7 @@
 
 It:
 
-* Fixes a bug in the OAS3 definition for endpoint "/accounts/{pubkey}/next-nonce" in a combination with `int-to-string` flag
+* Fixes a bug in the OAS3 definition for endpoint "/accounts/{pubkey}/next-nonce" in a combination with `int-as-string` flag
 
 Please join the **mainnet** by following the instructions in the documentation below,
 and let us know if you have any problems by [opening a ticket](https://github.com/aeternity/aeternity/issues).

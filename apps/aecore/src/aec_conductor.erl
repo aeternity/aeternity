@@ -395,7 +395,6 @@ handle_call({post_block, Block},_From, State) ->
 handle_call(stop_block_production,_From, State = #state{ consensus = Cons }) ->
     epoch_mining:info("Mining stopped"),
     aec_block_generator:stop_generation(),
-    [ aec_tx_pool:garbage_collect() || is_record(Cons, consensus) andalso Cons#consensus.leader ],
     aec_events:publish(stop_mining, []),
     State1 = kill_all_workers(State),
     State2 = State1#state{block_producing_state = 'stopped',
@@ -535,7 +534,33 @@ get_beneficiary(Consensus) ->
     Consensus:beneficiary().
 
 get_next_beneficiary(Consensus) ->
-    Consensus:next_beneficiary().
+    TopHeader = aec_chain:top_header(),
+    get_next_beneficiary(Consensus, TopHeader).
+
+get_next_beneficiary(Consensus, TopHeader) ->
+    case Consensus:next_beneficiary() of
+        {ok, _L} = OK -> OK;
+        {error, not_in_cache} = Err ->
+            %%timer:sleep(1000), %% TODO: make this configurable
+            Err;
+        {error, not_leader} = NotLeader ->
+            case Consensus:allow_lazy_leader() of
+                {true, LazyLeaderTimeDelta} ->
+                    LastBlockTime = aec_headers:time_in_msecs(TopHeader),
+                    Now = aeu_time:now_in_msecs(),
+                    TimeDelta = Now - LastBlockTime,
+                    case TimeDelta > LazyLeaderTimeDelta of
+                        true ->
+                            case Consensus:pick_lazy_leader() of
+                                error -> NotLeader;
+                                {ok, _L} = OK -> OK
+                            end;
+                        false ->
+                            NotLeader
+                    end;
+                false -> NotLeader
+            end
+    end.
 
 get_beneficiary() ->
     TopHeader = aec_chain:top_header(),
@@ -545,7 +570,7 @@ get_beneficiary() ->
 get_next_beneficiary() ->
     TopHeader = aec_chain:top_header(),
     Consensus = aec_consensus:get_consensus_module_at_height(aec_headers:height(TopHeader) + 1),
-    get_next_beneficiary(Consensus).
+    get_next_beneficiary(Consensus, TopHeader).
 
 note_rollback(Info) ->
     gen_server:call(?SERVER, {note_rollback, Info}).
@@ -841,13 +866,15 @@ deregister_instance(Pid, #state{instances = MinerInstances0} = State) ->
 preempt_on_new_top(#state{ top_block_hash = OldHash,
                            top_key_block_hash = OldKeyHash,
                            top_height = OldHeight,
+                           consensus = Consensus,
                            mode = Mode
                          } = State, NewBlock, NewHash, Origin) ->
-    ConsensusModule = consensus_module(State),
+    #consensus{ consensus_module = ConsensusModule } = Consensus,
     BlockType = aec_blocks:type(NewBlock),
     PrevNewHash = aec_blocks:prev_hash(NewBlock),
     Hdr = aec_blocks:to_header(NewBlock),
     Height = aec_headers:height(Hdr),
+    maybe_gc_tx_pool(BlockType, Height, OldHeight),
     aec_tx_pool:top_change(#{type => BlockType,
                              old_hash => OldHash,
                              new_hash => NewHash,
@@ -1386,16 +1413,17 @@ handle_add_block(Block, Hash, Prev, #state{top_block_hash = TopBlockHash} = Stat
             {{error, Reason}, State}
     end.
 
-handle_successfully_added_block(Block, Hash, false, _, Events, State, Origin) ->
+handle_successfully_added_block(Block, Hash, false, _PrevKeyHeader, Events, State, Origin) ->
     maybe_publish_tx_events(Events, Hash, Origin),
     maybe_publish_block(Origin, Block),
     State1 = maybe_consensus_change(State, Block),
+    [ maybe_garbage_collect(Block, Hash, false) || aec_blocks:type(Block) == key ],
     {ok, State1};
 handle_successfully_added_block(Block, Hash, true, PrevKeyHeader, Events, State, Origin) ->
     maybe_publish_tx_events(Events, Hash, Origin),
     maybe_publish_block(Origin, Block),
     State1 = maybe_consensus_change(State, Block),
-    ConsensusModule = consensus_module(State),
+    ConsensusModule = consensus_module(State1),
     case preempt_on_new_top(State1, Block, Hash, Origin) of
         {micro_changed, State2 = #state{ consensus = Cons }} ->
             {ok, setup_loop(State2, false, Cons#consensus.leader, Origin)};
@@ -1403,16 +1431,17 @@ handle_successfully_added_block(Block, Hash, true, PrevKeyHeader, Events, State,
             (BlockType == key) andalso
                 aec_metrics:try_update(
                   [ae,epoch,aecore,blocks,key,info], info_value(NewTopBlock)),
-            [ maybe_garbage_collect(NewTopBlock) || BlockType == key ],
+            [ maybe_garbage_collect(NewTopBlock, Hash, true)
+              || BlockType == key ],
             IsLeader = is_leader(NewTopBlock, PrevKeyHeader, ConsensusModule),
-            case IsLeader of
-                true ->
-                    ok; %% Don't spend time when we are the leader.
-                false ->
-                    aec_tx_pool:garbage_collect()
-            end,
             {ok, setup_loop(State2, true, IsLeader, Origin)}
     end.
+
+maybe_gc_tx_pool(key, Height, OldHeight) when Height > OldHeight ->
+    _ = aec_tx_pool_gc:sync_gc(Height),
+    ok;
+maybe_gc_tx_pool(_, _, _) ->
+    ok.
 
 maybe_consensus_change(State, Block) ->
     %% When a new block got successfully inserted we need to check whether the next block
@@ -1506,15 +1535,15 @@ get_pending_key_block(TopHash, State) ->
 %%
 %% To avoid starting of the GC process just for EUNIT
 -ifdef(EUNIT).
-maybe_garbage_collect(_) -> nop.
+maybe_garbage_collect(_, _, _) -> nop.
 -else.
 
 %% This should be called when there are no processes modifying the block state
 %% (e.g. aec_conductor on specific places)
-maybe_garbage_collect(Block) ->
+maybe_garbage_collect(Block, Hash, TopChange) ->
     T0 = erlang:system_time(microsecond),
     Header = aec_blocks:to_header(Block),
-    Res = aec_db_gc:maybe_garbage_collect(Header),
+    Res = aec_db_gc:maybe_garbage_collect(Header, Hash, TopChange),
     T1 = erlang:system_time(microsecond),
     lager:debug("Result -> ~p (time: ~p us)", [Res, T1-T0]),
     Res.

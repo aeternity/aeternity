@@ -99,7 +99,7 @@ compile_contract(Code, Options) ->
         {FCodeEnv, FCode} = aeso_ast_to_fcode:ast_to_fcode(TypedAst, Options),
         ChildContracts = maps:get(child_con_env, FCodeEnv),
         SavedFreshNames = maps:get(saved_fresh_names, FCodeEnv, #{}),
-        {Fate, _VarsRegs} = aeso_fcode_to_fate:compile(ChildContracts, FCode, SavedFreshNames, Options),
+        Fate = aeso_fcode_to_fate:compile(ChildContracts, FCode, SavedFreshNames, Options),
         case aeb_fate_code:deserialize(aeb_fate_code:serialize(Fate)) of
             Fate  -> Fate;
             Other -> {error, {Other, '/=', Fate}}

@@ -20,7 +20,7 @@ It:
 
 * Drop support of Ubuntu 16.04
 
-* Fixes a bug in the OAS3 definition for endpoint "/accounts/{pubkey}/next-nonce" in a combination with `int-to-string` flag
+* Fixes a bug in the OAS3 definition for endpoint "/accounts/{pubkey}/next-nonce" in a combination with `int-as-string` flag
 
 With regards of HyperChains it:
 

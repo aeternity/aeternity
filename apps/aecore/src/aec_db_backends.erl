@@ -30,6 +30,7 @@
 %% Callbacks for aeu_mp_trees_db
 -export([ mpt_db_drop_cache/1
         , mpt_db_get/2
+        , mpt_db_get/3
         , mpt_db_put/3
         ]).
 
@@ -124,6 +125,11 @@ mpt_db_get(Key, {gb_trees, Tree}) ->
     gb_trees:lookup(Key, Tree);
 mpt_db_get(Key, Handle) ->
     aec_db:lookup_tree_node(Key, Handle).
+
+mpt_db_get(Key, {gb_trees, Tree}, Map) when is_map(Map) ->
+    Map#{result => gb_trees:lookup(Key, Tree)};
+mpt_db_get(Key, Handle, Map) when is_map(Map) ->
+    aec_db:lookup_tree_node(Key, Handle, Map).
 
 mpt_db_put(Key, Val, {gb_trees, Tree}) ->
     {gb_trees, gb_trees:enter(Key, Val, Tree)};

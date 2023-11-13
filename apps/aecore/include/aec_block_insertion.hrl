@@ -10,6 +10,7 @@
 -record(node, { header :: aec_headers:header()
               , hash   :: binary()
               , type   :: key | micro
+              , txs    :: undefined | list(aetx_sign:signed_tx())
               }).
 
 %% Metadata about the given fork

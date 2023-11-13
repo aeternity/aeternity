@@ -72,19 +72,19 @@ relx_usage() {
 
     case "$command" in
         foreground)
-            echo "Usage: $REL_NAME foreground"
+            echo "Usage: $REL_NAME foreground [--config aeternity.{json|yaml}]"
             echo "  Starts the Aeternity node in the foreground, meaning all output"
             echo "  going to stdout but without an interactive shell."
             echo "  This command is recommended for starting the Aeternity node"
             echo "  in a systemd based system as a simple process."
             ;;
         start)
-            echo "Usage: $REL_NAME start"
+            echo "Usage: $REL_NAME start  [--config aeternity.{json|yaml}]"
             echo "  Starts the Aeternity node as a background daemon"
             echo "  This command is provided for use in traditional SysV init scripts"
             ;;
         console)
-            echo "Usage: $REL_NAME console"
+            echo "Usage: $REL_NAME console  [--config aeternity.{json|yaml}]"
             echo "  Starts the Aeternity node with an interactive Erlang shell."
             ;;
         cli)
@@ -112,18 +112,12 @@ relx_usage() {
             echo "Usage: $REL_NAME ping"
             echo "  Test if the Aeternity node is running and responsive."
             ;;
-        console)
-            echo "Usage: $REL_NAME console"
-            echo "  Start the Aeternity node with an interacive Erlang shell."
-            echo "  This mode is useful for advanced users who wish to expore the internals"
-            echo "  of the Erlang node, and for debugging startup issues."
-            ;;
         status)
             echo "Usage: $REL_NAME status"
             echo "  Show summary information about the Aeternity node."
             ;;
         check_config)
-            echo "Usage: $REL_NAME check_config CONFIG_FILE [SCHhEMA_FILE]"
+            echo "Usage: $REL_NAME check_config CONFIG_FILE [SCHEMA_FILE]"
             echo "  Validate the aeternity config file against its schema."
             ;;
         keys_gen)

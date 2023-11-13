@@ -673,19 +673,12 @@ handle_request_(mempoolTransaction,
     end,
     case aec_db:find_signed_tx(TxHashInternal) of
         {value, SignedTx} ->
-            Tx = aetx_sign:tx(SignedTx),
-            %% TODO:
-            %% The way format_tx/2 is implemented, it requires a Block
-            %% to format it for TxType of contract_create_tx or
-            %% contract_call_tx. Perhaps we should exclude these from
-            %% the /mempool API call response itself?
-            case aetx:tx_type(Tx) of
-                TxType when TxType == contract_create_tx; TxType == contract_call_tx ->
-                    throw(tx_not_found);
-                _ ->
-                    Resp = #{<<"transaction">> => format_tx(SignedTx, undefined)},
-                    {200, [], Resp}
-            end;
+                %% Since it is impossible to know what will be mined returns an estimate, which is acceptable
+                %% according to the Rosetta docs:
+                %% "On this endpoint, it is ok that returned transactions are only estimates of what 
+                %%  may actually be included in a block."
+                Resp = #{<<"transaction">> => format_tx(SignedTx, undefined)},
+                {200, [], Resp};
         _ ->
             throw(tx_not_found)
     end;
@@ -750,9 +743,9 @@ format_block_identifier(Block) ->
 format_keyblock_txs(KeyBlock) ->
     aeapi:balance_change_events_in_block(KeyBlock).
 
-%% FIXME: Re-instate events for Txs in the mempool
-format_tx(_SignedTx, undefined) ->
-    [];
+
+format_tx(SignedTx, undefined) ->
+    aeapi:balance_change_events_in_mempool_tx(SignedTx);
 format_tx(SignedTx, MicroBlock) ->
     aeapi:balance_change_events_in_tx(SignedTx, MicroBlock).
 

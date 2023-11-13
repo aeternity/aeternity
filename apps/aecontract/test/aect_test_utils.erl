@@ -779,26 +779,6 @@ decode_data_(aevm, Type, Data0) ->
     after
         cleanup_tempfiles()
     end.
-%%     case get_type(Type) of
-%%         {ok, SophiaType} ->
-%%             try aeb_heap:from_binary(SophiaType, Data) of
-%%                 {ok, Term} ->
-%%                     try aect_sophia:prepare_for_json(SophiaType, Term) of
-%%                         R -> {ok, R}
-%%                     catch throw:R -> R
-%%                     end;
-%%                 {error, _} -> {error, <<"bad type/data">>}
-%%             catch _T:_E ->    {error, <<"bad argument">>}
-%%             end;
-%%         {error, _} = E -> E
-%%     end.
-
-get_type(Type) ->
-    case aeso_compiler:sophia_type_to_typerep(to_str(Type)) of
-        {ok, _Type} = R -> R;
-        {error, ErrorAtom} ->
-            {error, unicode:characters_to_binary(atom_to_list(ErrorAtom))}
-    end.
 
 %% Convert to old style hex literals.
 legacy_args(Vsn, Args) when Vsn =< ?SOPHIA_MINERVA ->

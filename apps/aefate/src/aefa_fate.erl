@@ -28,7 +28,7 @@
         , ensure_contract_store/2
         , unfold_store_maps/3
         , unfold_store_maps_in_args/2
-        , check_type/2
+        , check_type/3
         , get_function_signature/2
         , push_gas_cap/2
         , push_continuation/2
@@ -63,10 +63,15 @@
 -ifdef(TEST).
 -export([ run_with_cache/3
         ]).
+-ifdef(DEBUG_INFO).
+-export([ run_debug/4
+        ]).
+-endif.
 -endif.
 
 -include_lib("aebytecode/include/aeb_fate_data.hrl").
 -include_lib("aecontract/include/hard_forks.hrl").
+-include_lib("aecontract/include/aecontract.hrl").
 
 -ifdef(TEST).
 -define(trace(I,S), aefa_engine_state:add_trace(I, S)).
@@ -86,6 +91,19 @@ run_with_cache(Spec, Env, Cache) ->
         throw:{?MODULE, revert, S, ES} -> {revert, S, ES};
         throw:{?MODULE, E, ES} -> {error, E, ES}
     end.
+
+-ifdef(DEBUG_INFO).
+run_debug(Spec, Env, Cache, BPs) ->
+    ES0  = setup_engine(Spec, Env, Cache),
+    Info = aefa_debug:set_breakpoints(BPs, aefa_engine_state:debug_info(ES0)),
+    try execute(aefa_engine_state:set_debug_info(Info, ES0)) of
+        Res -> {ok, Res}
+    catch
+        throw:{?MODULE, revert, S, ES} -> {revert, S, ES};
+        throw:{?MODULE, E, ES} -> {error, E, ES}
+    end.
+-endif.
+
 -endif.
 
 run(Spec, Env) ->
@@ -258,9 +276,21 @@ abort({auth_tx_type_not_handled, TxType}, ES) ->
 
 abort(E) -> throw({add_engine_state, E}).
 
+-ifdef(DEBUG_INFO).
+execute(EngineState) ->
+    Instructions = aefa_engine_state:current_bb_instructions(EngineState),
+    %% Skip the instructions that were executed before the break
+    Info            = aefa_engine_state:debug_info(EngineState),
+    Skip            = aefa_debug:current_instruction(Info),
+    DbgInstructions = lists:nthtail(Skip, Instructions),
+    loop(DbgInstructions, EngineState).
+-else.
 execute(EngineState) ->
     Instructions = aefa_engine_state:current_bb_instructions(EngineState),
     loop(Instructions, EngineState).
+-endif.
+
+-dialyzer({nowarn_function, loop/2}).
 
 loop(Instructions, EngineState) ->
     case step(Instructions, EngineState) of
@@ -273,21 +303,45 @@ loop(Instructions, EngineState) ->
                         aefa_engine_state:accumulator(ES), final, ES);
                 {error, What} -> abort(What, FinalState)
             end;
+        {break, BreakState} ->
+            BreakState;
         {jump, BB, NewState} ->
             {NewInstructions, State2} = jump(BB, NewState),
             loop(NewInstructions, State2)
     end.
 
+-ifdef(DEBUG_INFO).
+-define(STEP(Is, ES), break_or_step(Is, ES)).
+-define(RESET_CURRENT_INSTRUCTION(State), reset_current_instruction(State)).
+-else.
+-define(STEP(Is, ES), step(Is, ES)).
+-define(RESET_CURRENT_INSTRUCTION(State), State).
+-endif.
+
+-ifdef(DEBUG_INFO).
+break_or_step(Is, ES0) ->
+    Info = aefa_debug:inc_current_instruction(aefa_engine_state:debug_info(ES0)),
+    ES   = aefa_engine_state:set_debug_info(Info, ES0),
+    case aefa_debug:debugger_status(Info) of
+        break -> {break, ES};
+        _     -> step(Is, ES)
+    end.
+
+reset_current_instruction(State) ->
+    Info = aefa_debug:reset_current_instruction(aefa_engine_state:debug_info(State)),
+    aefa_engine_state:set_debug_info(Info, State).
+-endif.
+
 step([], EngineState) ->
     %% TODO check BB + 1 exists.
     BB = aefa_engine_state:current_bb(EngineState) + 1,
-    {jump, BB, EngineState};
+    {jump, BB, ?RESET_CURRENT_INSTRUCTION(EngineState)};
 step([I|Is], EngineState0) ->
     ES = ?trace(I, EngineState0),
     try aefa_fate_eval:eval(I, ES) of
-        {next, NewState} -> step(Is, NewState);
-        {jump,_BB,_NewState} = Res -> Res;
-        {stop, _NewState} = Res -> Res
+        {next,     NewState} -> ?STEP(Is, NewState);
+        {jump, BB, NewState} -> {jump, BB, ?RESET_CURRENT_INSTRUCTION(NewState)};
+        {stop,     NewState} -> {stop,     ?RESET_CURRENT_INSTRUCTION(NewState)}
     catch
         throw:{?MODULE, _, _} = Err ->
             catch_protected(Err, EngineState0);
@@ -311,25 +365,36 @@ catch_protected(Err, ES) ->
 
 %% -----------------------------------------------------------
 
-setup_engine(#{ contract := <<_:256>> = ContractPubkey
-              , code := ByteCode
-              , vm_version := VMVersion} = Spec, Env) ->
+-ifdef(DEBUG_INFO).
+setup_engine(Arg1, Env) ->
+    aefa_engine_state:set_debug_info(aefa_debug:new(), setup_engine_(Arg1, Env)).
+
+setup_engine(Arg1, Env, Cache) ->
+    aefa_engine_state:set_debug_info(aefa_debug:new(), setup_engine_(Arg1, Env, Cache)).
+-else.
+setup_engine(Arg1, Env) ->
+    setup_engine_(Arg1, Env).
+-endif.
+
+setup_engine_(#{ contract := <<_:256>> = ContractPubkey
+               , code := ByteCode
+               , vm_version := VMVersion} = Spec, Env) ->
     try aeb_fate_code:deserialize(ByteCode) of
         Code ->
             Cache = #{ ContractPubkey => { Code, VMVersion } },
-            setup_engine(Spec, Env, Cache)
+            setup_engine_(Spec, Env, Cache)
     catch _:_ ->
             abort(bad_bytecode, no_state)
     end.
 
-setup_engine(#{ contract := <<_:256>> = ContractPubkey
-              , call := Call
-              , gas := Gas
-              , value := Value
-              , store := Store
-              , vm_version := VMVersion
-              , allow_init := AllowInit
-              }, Env, Cache) ->
+setup_engine_(#{ contract := <<_:256>> = ContractPubkey
+               , call := Call
+               , gas := Gas
+               , value := Value
+               , store := Store
+               , vm_version := VMVersion
+               , allow_init := AllowInit
+               }, Env, Cache) ->
     {tuple, {Function, {tuple, ArgTuple}}} =
         aeb_fate_encoding:deserialize(Call),
     Arguments = tuple_to_list(ArgTuple),
@@ -420,7 +485,8 @@ check_return_type(ES) ->
 check_return_type(RetType, TVars, ES) ->
     Acc = aefa_engine_state:accumulator(ES),
     ES1 = aefa_engine_state:spend_gas_for_traversal(Acc, simple, ES),
-    case check_type(RetType, Acc) of
+    VMVersion = aefa_engine_state:vm_version(ES),
+    case check_type(RetType, Acc, VMVersion) of
         false -> abort({bad_return_type, Acc, RetType}, ES1);
         Inst  ->
             case merge_match(Inst, TVars) of
@@ -432,7 +498,8 @@ check_return_type(RetType, TVars, ES) ->
 check_signature(Args, {ArgTypes, _RetSignature}, ES) when length(ArgTypes) /= length(Args) ->
     abort({function_arity_mismatch, length(Args), length(ArgTypes)}, ES);
 check_signature(Args, {ArgTypes, _RetSignature}, ES) ->
-    case check_arg_types(ArgTypes, Args) of
+    VMVersion = aefa_engine_state:vm_version(ES),
+    case check_arg_types(ArgTypes, Args, VMVersion) of
         {ok, Inst} ->
             aefa_engine_state:set_current_tvars(Inst, ES);
         {error, T, V}  ->
@@ -457,9 +524,9 @@ pop_args(N, ES) ->
 bind_args(Args, ES) ->
     bind_args(0, Args, #{}, ES).
 
-check_arg_types(Ts, As0) ->
+check_arg_types(Ts, As0, VMVersion) ->
     As = lists:sublist(As0, length(Ts)),
-    case check_type({tuple, Ts}, {tuple, list_to_tuple(As)}) of
+    case check_type({tuple, Ts}, {tuple, list_to_tuple(As)}, VMVersion) of
         false -> {error, Ts, As};
         Inst  -> {ok, Inst}
     end.
@@ -469,9 +536,9 @@ bind_args(_, [], Mem, EngineState) ->
 bind_args(N, [Arg|Args], Mem, EngineState) ->
     bind_args(N + 1, Args, Mem#{{arg, N} => {val, Arg}}, EngineState).
 
-check_type(T, V) ->
+check_type(T, V, VMVersion) ->
     try
-        match_type(T, infer_type(V))
+        match_type(T, infer_type(V), VMVersion)
     catch throw:_Err ->
         false
     end.
@@ -536,22 +603,24 @@ intersect_types({variant, Ss}, {variant, Ts}) when length(Ss) == length(Ts) ->
     {variant, lists:zipwith(Isect, Ss, Ts)};
 intersect_types(S, T) -> throw({not_compatible, S, T}).
 
-match_type(T, T) -> yes_match();
-match_type(any, _) -> yes_match();
-match_type(_, any) -> yes_match();
-match_type({tvar, X}, T) -> #{ X => T };
-match_type({list, T}, {list, S}) -> match_type(T, S);
-match_type({tuple, Ts}, {tuple, Ss}) when length(Ts) == length(Ss) ->
-    merge_match(lists:zipwith(fun match_type/2, Ts, Ss));
-match_type({map, TK, TV}, {map, SK, SV}) ->
-    merge_match(match_type(TK, SK), match_type(TV, SV));
-match_type({variant, Ts}, {variant, Ss}) when length(Ts) == length(Ss) ->
+match_type(T, T, _) -> yes_match();
+match_type(any, _, _) -> yes_match();
+match_type(_, any, _) -> yes_match();
+match_type({bytes, any}, {bytes, _}, V) when V >= ?VM_FATE_SOPHIA_3-> yes_match();
+match_type({bytes, any}, _, _) -> no_match();
+match_type({tvar, X}, T, _) -> #{ X => T };
+match_type({list, T}, {list, S}, V) -> match_type(T, S, V);
+match_type({tuple, Ts}, {tuple, Ss}, V) when length(Ts) == length(Ss) ->
+    merge_match(lists:zipwith(fun(T, S) -> match_type(T, S, V) end, Ts, Ss));
+match_type({map, TK, TV}, {map, SK, SV}, V) ->
+    merge_match(match_type(TK, SK, V), match_type(TV, SV, V));
+match_type({variant, Ts}, {variant, Ss}, V) when length(Ts) == length(Ss) ->
     %% Second argument can be partial variant type
     Match = fun({tuple, Us}, N) when length(Us) == N -> yes_match();
-               (T = {tuple, _}, S = {tuple, _})      -> match_type(T, S);
+               (T = {tuple, _}, S = {tuple, _})      -> match_type(T, S, V);
                (_, _)                                -> no_match() end,
     merge_match(lists:zipwith(Match, Ts, Ss));
-match_type(_, _) -> no_match().
+match_type(_, _, _) -> no_match().
 
 yes_match() -> #{}.
 no_match() -> false.
@@ -616,7 +685,8 @@ push_return_type_check({CalleeArgs, CalleeRet}, {CallerArgs, CallerRet}, CalleeT
     %% unify CalleeSig and CallerSig to get the instantiation for the Caller
     %% tvars.
     InstCalleeSig = instantiate_type(CalleeTVars, CalleeSig),
-    case match_type(CallerSig, InstCalleeSig) of
+    VMVersion = aefa_engine_state:vm_version(ES),
+    case match_type(CallerSig, InstCalleeSig, VMVersion) of
         false       -> abort(remote_type_mismatch, ES);
         CallerTVars -> aefa_engine_state:push_return_type_check(CallerRet, CallerTVars, Protected, ES)
     end.

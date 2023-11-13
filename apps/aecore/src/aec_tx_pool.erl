@@ -34,14 +34,14 @@
         , stop/0
         ]).
 
--export([ garbage_collect/0
-        , get_candidate/2
+-export([ get_candidate/2
         , get_candidate/3
         , get_max_nonce/1
         , minimum_miner_gas_price/0
         , maximum_auth_fun_gas/0
         , peek/1
         , peek/2
+        , peek/3        
         , push/1
         , push/2
         , push/3
@@ -57,6 +57,7 @@
 
 %% exports used by GC (should perhaps be in a common lib module)
 -export([ dbs_/0
+        , gc_height_and_dbs/0
         , gc_db/1
         , origins_cache/0
         , origins_cache_max_size/0
@@ -75,7 +76,6 @@
 -include_lib("aecontract/include/hard_forks.hrl").
 
 -ifdef(TEST).
--export([sync_garbage_collect/1]). %% Only for (Unit-)test
 -export([restore_mempool/0]).
 -export([peek_db/0]).
 -export([peek_visited/0]).
@@ -242,18 +242,7 @@ get_max_nonce(Sender) ->
     #dbs{nonce_db = NDb} = dbs(),
     ?TC(int_get_max_nonce(NDb, Sender), {max_nonce, Sender}).
 
--spec garbage_collect() -> ok.
-garbage_collect() ->
-    lager:debug("garbage_collect()", []),
-    gen_server:cast(?SERVER, garbage_collect).
-
 -ifdef(TEST).
--spec sync_garbage_collect(Height :: aec_blocks:height()) -> ok.
-sync_garbage_collect(Height) ->
-    aec_tx_pool_gc:gc(Height, dbs()),
-    sys:get_status(aec_tx_pool_gc), %% sync point (gc is asynchronous)
-    ok.
-
 restore_mempool() ->
     revisit(dbs()).
 
@@ -284,13 +273,20 @@ gproc_reg() ->
 %% pool.
 -spec peek(pos_integer() | infinity) -> {ok, [aetx_sign:signed_tx()]}.
 peek(MaxN) when is_integer(MaxN), MaxN >= 0; MaxN =:= infinity ->
-    gen_server:call(?SERVER, {peek, MaxN, all}).
+    gen_server:call(?SERVER, {peek, MaxN, all, all}).
 
 %% Only return transactions for a specific account public key
 -spec peek(pos_integer() | infinity, aec_keys:pubkey()) ->
                                        {ok, [aetx_sign:signed_tx()]}.
 peek(MaxN, Account) when is_integer(MaxN), MaxN >= 0; MaxN =:= infinity ->
-    gen_server:call(?SERVER, {peek, MaxN, Account}).
+    gen_server:call(?SERVER, {peek, MaxN, Account, all}).
+
+
+%% Only return transactions for a specific account public key and until a maximum nonce
+-spec peek(pos_integer() | infinity, aec_keys:pubkey() | all, non_neg_integer() | all) ->
+                                       {ok, [aetx_sign:signed_tx()]}.
+peek(MaxN, Account, MaxNonce) when is_integer(MaxN), MaxN >= 0; MaxN =:= infinity ->
+    gen_server:call(?SERVER, {peek, MaxN, Account, MaxNonce}).
 
 -spec delete(binary()) -> ok | {error, not_found | already_accepted}.
 delete(TxHash) ->
@@ -363,6 +359,9 @@ origins_cache_max_size() -> ?ORIGINS_CACHE_MAX_SIZE.
 dbs() ->
     gen_server:call(?SERVER, dbs).
 
+gc_height_and_dbs() ->
+    gen_server:call(?SERVER, gc_height_and_dbs).
+
 raw_delete(#dbs{} = Dbs, Key) ->
     pool_db_raw_delete(Dbs, Key).
 
@@ -413,10 +412,10 @@ handle_call_({top_change, Info}, _From, State) ->
 handle_call_({note_rollback, #{ new_top_header := NewTopHdr } = Info}, _From, State) ->
     lager:debug("note_rollback - Info = ~p, State = ~p", [Info, State]),
     {reply, ok, do_update_sync_top_target(aec_headers:height(NewTopHdr), State)};
-handle_call_({peek, MaxNumberOfTxs, Account}, _From, #state{dbs = Dbs} = State)
+handle_call_({peek, MaxNumberOfTxs, Account, MaxNonce}, _From, #state{dbs = Dbs} = State)
   when is_integer(MaxNumberOfTxs), MaxNumberOfTxs >= 0;
        MaxNumberOfTxs =:= infinity ->
-    Txs = pool_db_peek(Dbs, MaxNumberOfTxs, Account, all),
+    Txs = pool_db_peek(Dbs, MaxNumberOfTxs, Account, MaxNonce),
     {reply, {ok, Txs}, State};
 handle_call_({delete, TxHash}, _From, #state{dbs = Dbs} = State) ->
     #dbs{gc_db = GCDb} = Dbs,
@@ -492,6 +491,13 @@ handle_call_({failed_txs, FailedTxs}, _From, #state{dbs = Dbs} = State) ->
     {reply, ok, State};
 handle_call_(dbs, _From, #state{dbs = Dbs} = State) ->
     {reply, Dbs, State};
+handle_call_(gc_height_and_dbs, _From, #state{dbs = Dbs} = State) ->
+    case State of
+        #state{gc_height = undefined, sync_top_calc = P} when is_pid(P) ->
+            {reply, undefined, State};
+        #state{gc_height = H} when is_integer(H) ->
+            {reply, {H, Dbs}, State}
+    end;
 handle_call_(Request, From, State) ->
     lager:warning("Ignoring unknown call request from ~p: ~p", [From, Request]),
     {noreply, State}.
@@ -499,15 +505,6 @@ handle_call_(Request, From, State) ->
 handle_cast(Msg, St) ->
     ?TC(handle_cast_(Msg, St), Msg).
 
-handle_cast_(garbage_collect, State) ->
-    case State of
-        #state{gc_height = undefined, sync_top_calc = P} when is_pid(P) ->
-            %% sync_top update will be followed by GC (in handle_info/2 below)
-            {noreply, State};
-        #state{gc_height = H} when is_integer(H) ->
-            State1 = do_update_sync_top_target(H, State),
-            {noreply, State1}
-    end;
 handle_cast_(Msg, State) ->
     lager:warning("Ignoring unknown cast message: ~p", [Msg]),
     {noreply, State}.
@@ -516,7 +513,6 @@ handle_info(Msg, St) ->
     ?TC(handle_info_(Msg, St), Msg).
 
 handle_info_({P, new_gc_height, GCHeight}, #state{sync_top_calc = P} = State) ->
-    aec_tx_pool_gc:gc(GCHeight, State#state.dbs),
     {noreply, State#state{sync_top_calc = undefined, gc_height = GCHeight}};
 handle_info_({'ETS-TRANSFER', _, _, _}, State) ->
     {noreply, State};
@@ -560,8 +556,7 @@ int_get_max_nonce(NonceDb, Sender) ->
 %% ... Unless no matching txs can be found in the regular mempool.
 %%
 int_get_candidate(MaxGas, IgnoreTxs, BlockHash, #dbs{db = Db} = DBs) ->
-    {ok, Trees} = aec_chain:get_block_state(BlockHash),
-    {ok, Header} = aec_chain:get_header(BlockHash),
+    {Trees, Header} = get_trees_and_header(BlockHash),
     lager:debug("size(Db) = ~p", [ets:info(Db, size)]),
     MinMinerGasPrice = aec_tx_pool:minimum_miner_gas_price(),
     MinTxGas = aec_governance:min_tx_gas(),
@@ -581,6 +576,14 @@ int_get_candidate(MaxGas, IgnoreTxs, BlockHash, #dbs{db = Db} = DBs) ->
             end || {DbX, KeyX, TxX} <- AllVisited ],
 
     {ok, Txs}.
+
+get_trees_and_header(BlockHash) ->
+    aec_db:ensure_dirty(
+      fun() ->
+              {ok, Trees} = aec_chain:get_block_state(BlockHash),
+              {ok, Header} = aec_chain:get_header(BlockHash),
+              {Trees, Header}
+      end).
 
 int_get_candidate(Db, Gas, MinTxGas, MinMinerGasPrice, Trees, Header, DBs, Acc)
   when Gas > MinTxGas ->
@@ -895,8 +898,11 @@ add_to_origins_cache(OriginsCache, SignedTx) ->
     ok = aec_tx_pool_gc:add_to_origins_cache(OriginsCache, Origin, Nonce).
 
 -spec check_pool_db_put(aetx_sign:signed_tx(), tx_hash(), event()) ->
-                               ignore | ok | {error, atom()}.
+          ignore | ok | {error, atom()}.
 check_pool_db_put(Tx, TxHash, Event) ->
+    aec_db:ensure_dirty(fun() -> check_pool_db_put_(Tx, TxHash, Event) end).
+
+check_pool_db_put_(Tx, TxHash, Event) ->
     AllowReentryOfDeletedTx = allow_reentry(),
     case aec_chain:find_tx_location(TxHash) of
         BlockHash when is_binary(BlockHash) ->
@@ -1070,9 +1076,12 @@ nonce_baseline_check(TxNonce, _) ->
         false -> {error, nonce_too_high}
     end.
 
-get_account(AccountKey, {account_trees, AccountsTrees}) ->
+get_account(AccountKey, How) ->
+    aec_db:ensure_dirty(fun() -> get_account_(AccountKey, How) end).
+
+get_account_(AccountKey, {account_trees, AccountsTrees}) ->
     aec_accounts_trees:lookup(AccountKey, AccountsTrees);
-get_account(AccountKey, {block_hash, BlockHash}) ->
+get_account_(AccountKey, {block_hash, BlockHash}) ->
     aec_chain:get_account_at_hash(AccountKey, BlockHash).
 
 check_minimum_fee(Tx, _TxHash, Block, _BlockHash, _Trees, _Event) ->

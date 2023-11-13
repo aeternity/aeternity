@@ -661,8 +661,10 @@ do_dry_run() ->
 
 dry_run_err(Err) when is_list(Err) ->
     dry_run_err(list_to_binary(Err));
+dry_run_err(Err) when is_binary(Err) ->
+    {ok, {400, [], #{ reason => <<"Bad request: ", Err/binary>>}}};
 dry_run_err(Err) ->
-    {ok, {403, [], #{ reason => <<"Bad request: ", Err/binary>>}}}.
+    {ok, {400, [], #{ reason => iolist_to_binary(io_lib:format("Bad request: ~200p", [Err])) }}}.
 
 prepare_dry_run_param(top, #{ top := top }) ->
     case aec_chain:top_block_hash() of

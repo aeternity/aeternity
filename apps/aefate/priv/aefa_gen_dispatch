@@ -28,30 +28,56 @@ maybe_show_help(true) ->
 maybe_show_help(false) ->
     ok.
 
+-define(IS_DEBUG_OP(Op),
+    (Op =:= dbg_def orelse
+     Op =:= dbg_undef orelse
+     Op =:= dbg_loc orelse
+     Op =:= dbg_contract)).
+
 do_main(Filename) ->
     {ok, File} = file:open(Filename, [write]),
     Ops = aeb_fate_generate_ops:get_ops(),
-    Instructions = lists:flatten([gen_eval(Op)++"\n" || Op <- Ops]),
+    Instructions = lists:flatten([gen_eval(Op, eval) || Op <- Ops]),
+    DbgInstructions = lists:flatten([gen_eval(Op, eval_dbg) || Op <- Ops]),
     io:format(File,
 	      "%%\n%% This file is generated. Any modifications will be overwritten.\n%%\n"
 	      "-module(aefa_fate_eval).\n\n"
 	      "-export([eval/2]).\n\n"
               "~s"
               "eval(Op, _EngineState) ->\n"
+              "    throw({error, unknown_op, Op}).\n\n"
+              "-ifdef(DEBUG_INFO).\n"
+              "~s"
+              "eval_dbg(Op, _EngineState) ->\n"
               "    throw({error, unknown_op, Op}).\n"
-             , [Instructions]),
+              "-else.\n"
+              "eval_dbg(Op, _EngineState) ->\n"
+              "    throw({error, unknown_op, Op}).\n"
+              "-endif.\n"
+             , [Instructions, DbgInstructions]),
     io:format(File, "\n", []),
     file:close(File).
 
-gen_eval(#{ constructor := Constructor, gas := Gas } = Op) ->
+gen_eval(#{ constructor := Constructor, gas := Gas } = Op, EvalKind) ->
     check_descending(Constructor, Gas),
     Cmd = io_lib:format("aefa_fate_op:~w(~saefa_engine_state:spend_gas(~w, EngineState))",
                         [Constructor, gen_cargs(Op), Gas]),
-    Body = [gen_allowed_offchain(Op),
-            gen_in_auth(Op, gen_next_cmd(Op, Cmd))
-           ],
-    io_lib:format("eval(~s, EngineState) ->\n~s;\n",
-                  [gen_op_w_args(Op), Body]).
+    Body =
+        case Constructor of
+            C when ?IS_DEBUG_OP(C) andalso EvalKind =:= eval ->
+                io_lib:format("    eval_dbg(~s, EngineState)", [gen_op_w_args(Op)]);
+            _ ->
+                [ gen_allowed_offchain(Op)
+                , gen_in_auth(Op, gen_next_cmd(Op, Cmd)) ]
+        end,
+    PrintFun = EvalKind =:= eval orelse ?IS_DEBUG_OP(Constructor),
+    case PrintFun of
+        true ->
+            io_lib:format("~s(~s, EngineState) ->\n~s;\n\n",
+                        [atom_to_list(EvalKind), gen_op_w_args(Op), Body]);
+        false ->
+            ""
+    end.
 
 gen_next_cmd(#{ end_bb := true },  Cmd) -> Cmd;
 gen_next_cmd(#{ end_bb := false }, Cmd) -> io_lib:format("{next, ~s}", [Cmd]).

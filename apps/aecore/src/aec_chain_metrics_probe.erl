@@ -127,7 +127,8 @@ sample_(_, Acc) ->
     Acc.
 
 total_difficulty() ->
-    try {ok, V} = aec_chain:difficulty_at_top_block(),
+    try {ok, V} = aec_db:ensure_activity(
+                    async_dirty, fun() -> aec_chain:difficulty_at_top_block() end),
          V
     catch
         error:_ -> 0

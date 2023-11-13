@@ -156,9 +156,11 @@ ae_sim_test_() ->
                     {ok, Block3} =
                         aec_parent_connector:fetch_block_by_hash(
                             aec_parent_chain_block:hash(Block3)),
-                    {error, no_parent_chain_agreement} =
+                    %% since the majority of parent chain nodes responded with
+                    %% not_found, this is what is being returned
+                    {error, not_found} =
                         aec_parent_connector:fetch_block_by_height(4),
-                    {error, no_parent_chain_agreement} =
+                    {error, not_found} =
                         aec_parent_connector:fetch_block_by_hash(
                             aec_parent_chain_block:hash(Block4)),
                     %% get node2 to the same top as node3
@@ -503,7 +505,7 @@ mock_sign_module(#{pubkey := ExpectedPubKey, privkey := PrivKey}) ->
     meck:new(?SIGN_MODULE, []),
     meck:expect(?SIGN_MODULE, sign_binary,
         fun(Bin, Pubkey) when Pubkey =:= ExpectedPubKey ->
-            Signature = enacl:sign_detached(Bin, PrivKey), 
+            Signature = enacl:sign_detached(Bin, PrivKey),
             {ok, Signature}
         end).
 

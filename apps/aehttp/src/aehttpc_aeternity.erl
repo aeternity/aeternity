@@ -23,14 +23,18 @@ get_header_by_height(Height, Host, Port, _User, _Password, _Seed) ->
 
 get_commitment_tx_in_block(Host, Port, _User, _Password, _Seed, _BlockHash,
                            PrevHash, ParentHCAccountPubKey) ->
-    %% TODO: handle hash not in the main chain
-    {ok, #{<<"micro_blocks">> := MBs}} = get_generation(Host, Port, PrevHash),
-    get_commitments(Host, Port, MBs, ParentHCAccountPubKey).
+    case get_generation(Host, Port, PrevHash) of
+        {ok, #{<<"micro_blocks">> := MBs}} ->
+            get_commitments(Host, Port, MBs, ParentHCAccountPubKey);
+        {error, not_found} = Err -> Err
+    end.
 
 get_commitment_tx_at_height(Host, Port, _User, _Password, _Seed, Height, ParentHCAccountPubKey) ->
-    %% TODO: handle height not in the main chain
-    {ok, #{<<"micro_blocks">> := MBs}} = get_generation_by_height(Host, Port, Height),
-    get_commitments(Host, Port, MBs, ParentHCAccountPubKey).
+    case get_generation_by_height(Host, Port, Height) of
+        {ok, #{<<"micro_blocks">> := MBs}} ->
+            get_commitments(Host, Port, MBs, ParentHCAccountPubKey);
+        {error, not_found} = Err -> Err
+    end.
 
 %% @doc Post commitment to AE parent chain.
 post_commitment(Host, Port, _User, _Password, StakerPubkey, HCCollectPubkey, Amount, Fee, Commitment,
@@ -51,17 +55,19 @@ get_top_block_header(Host, Port) ->
                <<"height">> := Height}} =
             get_request(<<"/v3/key-blocks/current">>, Host, Port, 5000),
         {ok, Hash, PrevHash, Height}
-    catch E:R ->
-        {error, {E, R}}
+    catch error:{badmatch, {error, not_found}} -> {error, not_found};
+          E:R -> {error, {E, R}}
     end.
 
 get_key_block_header(Hash, Host, Port) ->
     try
-        {ok, #{<<"hash">> := Hash,
-               <<"prev_key_hash">> := PrevHash,
-               <<"height">> := Height}} =
-            get_request(<<"/v3/key-blocks/hash/", Hash/binary>>, Host, Port, 5000),
-        {ok, Hash, PrevHash, Height}
+        case get_request(<<"/v3/key-blocks/hash/", Hash/binary>>, Host, Port, 5000) of
+            {ok, #{<<"hash">> := Hash,
+                <<"prev_key_hash">> := PrevHash,
+                <<"height">> := Height}} ->
+                {ok, Hash, PrevHash, Height};
+            {error, not_found} -> {error, not_found}
+        end
     catch E:R ->
         {error, {E, R}}
     end.
@@ -183,6 +189,12 @@ get_request(Path, Host, Port, Timeout) ->
             lager:debug("Req: ~p, Res: ~p with URL: ~ts", [Req, Res, Url]),
             {ok, jsx:decode(list_to_binary(Res), [return_maps])};
         {ok, {{_, 404 = _Code, _}, _, "{\"reason\":\"Block not found\"}"}} ->
+            {error, not_found};
+        {ok, {{_, Code, _}, _, Res}} when Code >= 400 ->
+            lager:debug("Req: ~p, Res: ~p with URL: ~ts, Code ~p", [Req, Res, Url, Code]),
+            {error, not_found};
+        {error, Err} ->
+            lager:debug("Req: ~p, ERROR: ~p with URL: ~ts", [Req, Err, Url]),
             {error, not_found}
     end
   catch E:R:S ->
@@ -202,7 +214,7 @@ post_request(Path, Body, Host, Port, Timeout) ->
         {ok, {{_, 200 = _Code, _}, _, Res}} ->
             lager:debug("Req: ~p, Res: ~p with URL: ~ts", [Req, Res, Url]),
             {ok, jsx:decode(list_to_binary(Res), [return_maps])};
-        {ok, {{_, 400, _}, _, Res}} ->
+        {ok, {{_ ,400, _}, _, Res}} ->
             lager:debug("Req: ~p, Res: ~p with URL: ~ts", [Req, Res, Url]),
             {error, 400, jsx:decode(list_to_binary(Res), [return_maps])}
     end

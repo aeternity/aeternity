@@ -568,7 +568,7 @@ start_node(N, Config, ExtraEnv) ->
             _ ->
                 ["-pa ", MyDir, " -config ./" ++ ConfigFilename]
         end,
-    Env0 = 
+    Env0 =
         case ?config(build_to_connect_to_mainnet, Config) of
             true ->
                 [
@@ -727,6 +727,21 @@ wait_for_tx_in_pool(Node, SignedTx, Timeout) ->
 	    ok = unsubscribe(Node, tx_received)
     end.
 
+wait_for_tx_included_in_chain(Node, SignedTx) ->
+    wait_for_tx_included_in_chain(Node, SignedTx, 100).
+
+wait_for_tx_included_in_chain(_Node, SignedTx, Attempts) when Attempts < 1 ->
+    error({run_out_of_attempts, SignedTx});
+wait_for_tx_included_in_chain(Node, SignedTx, Attempts) ->
+    Hash = aetx_sign:hash(SignedTx),
+    case rpc:call(Node, aec_chain, find_tx_location, [Hash]) of
+        B when is_binary(B) -> ok;
+        none -> error({already_gc, SignedTx});
+        _ ->
+            timer:sleep(10),
+            wait_for_tx_included_in_chain(Node, SignedTx, Attempts - 1)
+    end.
+
 mine_blocks_until_txs_on_chain(Node, TxHashes, MaxBlocks) ->
     mine_blocks_until_txs_on_chain(Node, TxHashes, ?DEFAULT_CUSTOM_EXPECTED_MINE_RATE, MaxBlocks).
 
@@ -853,9 +868,6 @@ wait_for_new_block_mined(T) when is_integer(T), T >= 0 ->
             end,
             {error, timeout_waiting_for_block}
     end.
-
-wait_for_new_block() ->
-    wait_for_new_block(30000).
 
 wait_for_new_block(T) when is_integer(T), T >= 0 ->
     receive
