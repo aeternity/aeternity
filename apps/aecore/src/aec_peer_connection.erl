@@ -66,6 +66,8 @@
 -define(GET_GENERATION_TIMEOUT, 60000).
 %% The number of peers sent in ping message.
 -define(DEFAULT_GOSSIPED_PEERS_COUNT, 32).
+%% perecentage of connected peers to validated peers to send in a ping 
+-define(DEFAULT_PING_CONNECTED_PEER_PERCENTAGE, 10).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -843,11 +845,9 @@ ping_obj(#{ share := 0 } = PingObj, _Exclude) ->
     PingObj#{peers => []};
 ping_obj(PingObj, Exclude) ->
     #{ share := Share } = PingObj,
-    ConnectedN = max(1, Share div 10),
-    Connected = aec_peers:get_random_connected(ConnectedN),
-    ConnectedIds = [aec_peer:id(P) || P <- Connected] -- [Exclude],
-    Peers = aec_peers:get_random(Share - length(ConnectedIds), ConnectedIds ++ Exclude),
-    PingObj#{peers => lists:sort(Connected ++ Peers)}.
+    ConnectedPeerPercentage = ping_connected_peer_percentage(),
+    Peers = aec_peers:get_random_mix(Share, ConnectedPeerPercentage, Exclude),
+    PingObj#{peers => lists:sort(Peers)}.
 
 ping_obj_rsp(S, RemotePingObj) ->
     PeerId = peer_id(S),
@@ -1387,6 +1387,11 @@ max_gossiped_peers_count() ->
     {ok, Max} = aeu_env:schema([<<"sync">>, <<"properties">>,
                                 <<"gossiped_peers_count">>, <<"maximum">>]),
     Max.
+
+ping_connected_peer_percentage() ->
+    aeu_env:user_config_or_env([<<"sync">>, <<"ping">>, <<"peer_percentage">>],
+                               aecore, sync_ping_connected_peer_percentage,
+                               ?DEFAULT_PING_CONNECTED_PEER_PERCENTAGE).
 
 %% -- Helper functions -------------------------------------------------------
 
