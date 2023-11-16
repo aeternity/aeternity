@@ -19,7 +19,7 @@ parse_opts(Args, Spec0, Opts) when is_map(Spec0) ->
     Spec = Spec0#{arguments => Args0 ++ node_arguments()},
     try parse_opts_(Args, Spec, Opts)
     catch
-        error:{arg_parse, Error} ->
+        error:{argparse, Error} ->
             usage(Error, Spec, Opts);
         error:{?MODULE, _} = Error ->
             usage(Error, Spec, Opts);
@@ -43,7 +43,7 @@ options(Opts0) ->
     maps:merge(#{progname => script_name()}, Opts0).
 
 parse(Args, Spec, Opts) ->
-    Res = arg_parse:parse(Args, Spec, Opts),
+    Res = argparse:parse(Args, Spec, Opts),
     case Res of
         {ArgMap, CmdSpec} ->
             #{arg_map => ArgMap, cmd_spec => CmdSpec};
@@ -219,7 +219,7 @@ format_error(_Spec, {?MODULE, no_name_or_sname}, _) ->
 format_error(_Spec, {?MODULE, both_sname_and_name}, _) ->
     "Cannot have both -sname and -name~n";
 format_error(Spec, Error, Opts) ->
-    arg_parse:format_error(Error, Spec, Opts).
+    argparse:format_error(Error, Spec, Opts).
 
 append_node_suffix(Name, Suffix) ->
     case re:split(Name, "@", [{return, list}, unicode]) of
