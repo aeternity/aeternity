@@ -1,0 +1,14 @@
+%% -*- mode: erlang; erlang-indent-level: 4; indent-tabs-mode: nil -*-
+
+%% OTP26 has `argparse` built in
+OTPVersion = list_to_integer(erlang:system_info(otp_release)),
+FilterArgparse =
+    case OTPVersion > 25 of
+       true  -> fun(Apps) -> Apps -- [argparse] end;
+       false -> fun(Apps) -> Apps end
+    end,
+
+[{application, aeutils, AppConfig0}] = CONFIG,
+{applications, Apps0} = lists:keyfind(applications, 1, AppConfig0),
+AppConfig1 = lists:keyreplace(applications, 1, AppConfig0, {applications, FilterArgparse(Apps0)}),
+[{application, aeutils, AppConfig1}].

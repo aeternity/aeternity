@@ -28,6 +28,20 @@ FilterDepsRocksDb = fun(Deps) ->
                         end
                     end,
 
+%% OTP26 has `argparse` built in
+OTPVersion = list_to_integer(erlang:system_info(otp_release)),
+FilterDepsArgparse =
+    case OTPVersion > 25 of
+       true  -> fun(Deps) -> lists:keydelete(argparse, 1, Deps) end;
+       false -> fun(Deps) -> Deps end
+    end,
+
+FilterRelxArgparse =
+    case OTPVersion > 25 of
+       true  -> fun(Apps) -> Apps -- [argparse] end;
+       false -> fun(Apps) -> Apps end
+    end,
+
 %% In order to avoid ugly dynamic module loading over rpc - inject meck into the common test release
 %% This does not inject any applications into the system tests, smoke tests and production releases
 Args = init:get_plain_arguments(),
@@ -88,20 +102,11 @@ Version = case file:read_file(<<"VERSION">>) of
     _ -> "UNKNOWN_VERSION"
 end,
 %% the release should be in front
-RelxApps1 = FilterRelxRocksDb(RelxApps0),
+RelxApps1 = FilterRelxArgparse(FilterRelxRocksDb(RelxApps0)),
 RelxApps2 = AddMeckInCommonTests(RelxApps1),
 Relx = {relx, [{release, {aeternity, Version}, RelxApps2}] ++ RelxT1},
 CONFIG1 = lists:keyreplace(relx, 1, CONFIG, Relx),
 
 %% Update rebar deps
-
-%% OTP26 has `argparse` built in
-OTPVersion = list_to_integer(erlang:system_info(otp_release)),
-FilterDepsArgparse =
-    case OTPVersion > 25 of
-       true  -> fun(Deps) -> lists:keydelete(argparse, 1, Deps) end;
-       false -> fun(Deps) -> Deps end
-    end,
-
 {deps, Deps0} = lists:keyfind(deps, 1, CONFIG1),
 lists:keyreplace(deps, 1, CONFIG1, {deps, FilterDepsArgparse(FilterDepsRocksDb(Deps0))}).
