@@ -352,7 +352,29 @@ step([I|Is], EngineState0) ->
 catch_protected(Err, ES) ->
     case aefa_engine_state:pop_call_stack(ES) of
         {empty, _} -> throw(Err);
-        {modify, Cont, ES1} -> catch_protected(Err, Cont(ES1));
+        {modify, Cont, ES1} ->
+            case aefa_engine_state:vm_version(ES1) >= ?VM_FATE_SOPHIA_3 of
+                false ->
+                    %% TODO: after Ceres this branch can be safely removed along with the entire
+                    %% version switch. In Iris, the only situation in which this is not an identity
+                    %% is when there was a crash in `init`. In that case, the only option is for
+                    %% this function to replace the top of the accumulator stack. There are two
+                    %% consequences possible:
+                    %%
+                    %% (1) The stack is empty, and the VM crashes
+                    %% (2) The stack had its top element which is replaced, after which stack rewind
+                    %%     proceeds.
+                    %%
+                    %% (1) Is not observable on chain, so we will not have to be concerned about
+                    %% it. The change introduced in (2) shall be either ignored if the entire call
+                    %% reverts, or wiped by a protected return check which sets the accumulator to
+                    %% [None]. In either case, consequences of this Cont are not going to be
+                    %% observable after Ceres comes to power, even for syncing nodes.
+                    catch_protected(Err, Cont(ES1));
+                true ->
+                    %% During the unwinding process the continuation should not be applied.
+                    catch_protected(Err, ES1)
+                end;
         {return_check, _, protected, _, Stores, API, ES1} ->
             ES2 = aefa_engine_state:set_accumulator(make_none(),
                   aefa_engine_state:set_stores(Stores,

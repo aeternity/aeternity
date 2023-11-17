@@ -1562,27 +1562,35 @@ deploy_contract(CodeOrPK, InitArgsTypes, Value, GasCap, Prot, ES0) ->
           end,
 
     {ContractPK, ES2} = put_contract(CodeOrPK, Value, ES1),
-    ReplaceInitResult
-        = fun(ES0_) ->
-                  %% init returns unit, so we get rid of it
-                  %% if the call was protected, rewrap the result
-                  case Protected of
-                      unprotected ->
-                          {{tuple, {}}, ES1_} = get_op_arg({stack, 0}, ES0_),
-                          write({stack, 0}, ?FATE_CONTRACT(ContractPK), ES1_);
-                      protected ->
-                          case get_op_arg({stack, 0}, ES0_) of
-                              {{variant,[0, 1], 1, {{tuple, {}}}}, ES1_} ->
-                                  write( {stack, 0}, make_some(?FATE_CONTRACT(ContractPK))
-                                       , ES1_
-                                       );
-                              {{variant, [0, 1], 0, {}}, ES1_} ->
-                                  %% Call to `init` failed due to runtime error
-                                  ES2_ = unput_contract(ContractPK, Value, ES1_),
-                                  write({stack, 0}, make_none(), ES2_)
-                          end
-                  end
-          end,
+    ReplaceInitResult =
+        %% init returns unit, so we get rid of it if the call was protected, rewrap the
+        %% result
+        fun(ES0_) ->
+                [ error({init_crashed_miserably, CodeOrPK}) ||
+                      %% We deliberately crash the machine to preserve the original unfortunate Iris
+                      %% behavior, but with a slightly better error message. There should be no
+                      %% transaction on the chain which has reached this point, however.
+                      %%
+                      %% TODO: After the Ceres hard fork, it should be safe to remove this check.
+                    aefa_engine_state:accumulator(ES0_) == [] ],
+
+                case Protected of
+                    unprotected ->
+                        {{tuple, {}}, ES1_} = get_op_arg({stack, 0}, ES0_),
+                        write({stack, 0}, ?FATE_CONTRACT(ContractPK), ES1_);
+                    protected ->
+                        case get_op_arg({stack, 0}, ES0_) of
+                            {{variant,[0, 1], 1, {{tuple, {}}}}, ES1_} ->
+                                write( {stack, 0}, make_some(?FATE_CONTRACT(ContractPK))
+                                     , ES1_
+                                     );
+                            {{variant, [0, 1], 0, {}}, ES1_} ->
+                                %% Call to `init` failed due to runtime error
+                                ES2_ = unput_contract(ContractPK, Value, ES1_),
+                                write({stack, 0}, make_none(), ES2_)
+                        end
+                end
+        end,
 
     ES3 = aefa_engine_state:set_chain_api(
             begin

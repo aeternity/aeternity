@@ -1,0 +1,14 @@
+contract Remote =  
+  stateful entrypoint init() =
+    abort("ERROR")
+
+contract Exposer =
+  stateful entrypoint expose(): Remote =
+    Chain.create(): Remote
+
+main contract Catcher =
+  stateful entrypoint throw_and_catch() : bool =
+    let e = Chain.create() : Exposer
+    switch(e.expose(protected=true))
+      None => true
+      Some(_) => false
