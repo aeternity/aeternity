@@ -2719,7 +2719,7 @@ sophia_oracles_interact_with_no_vm_oracle(_Cfg) ->
                             false ->
                                 QId
                         end,
-    RespSign          = sign(<<QIdInt:256, Ct/binary>>, Acc),
+    RespSign          = delegate_sign(oracle_response, {<<QIdInt:256>>, Ct}, Acc),
     {}                = ?call(call_contract, Acc, Ct, respond, {tuple, []},
                               {?oid(Acc), QId, RespSign, Response}),
     %% Check that the plain response and the contract response is the same
@@ -4196,13 +4196,13 @@ sophia_signatures_oracles(_Cfg) ->
     TTL                 = 50,
     <<OrcId:256>>       = Orc,
 
-    BadSig              = sign(<<Ct/binary, Orc/binary>>, Orc),
+    BadSig              = delegate_sign(oracle, {Ct, Orc}, Orc),
     BadSigResp1         = ?call(call_contract, Acc, Ct, signedRegisterOracle, word,
                                 {Orc, BadSig, QueryFee, FixedTTL(TTL)}, #{amount => 1}),
     ?assertMatchAEVM({error, <<"out_of_gas">>}, BadSigResp1),
     ?assertMatchFATE({error, <<"Error in oracle_register: bad_signature">>}, BadSigResp1),
 
-    RegSig              = sign(<<Orc/binary, Ct/binary>>, Orc),
+    RegSig              = delegate_sign(oracle, {Orc, Ct}, Orc),
     Oracle              = ?call(call_contract, Acc, Ct, signedRegisterOracle, word, {Orc, RegSig, QueryFee, FixedTTL(TTL)},
                                 #{amount => 1}),
     ?assertMatchAEVM(OrcId, Oracle),
@@ -4222,7 +4222,7 @@ sophia_signatures_oracles(_Cfg) ->
     none              = ?call(call_contract, Acc, Ct, getAnswer, {option, word}, {?oid(Orc), QId}),
 
     NonceBeforeRespond = aec_accounts:nonce(aect_test_utils:get_account(Orc, state())),
-    RespSign                  = sign(<<QIdInt:256, Ct/binary>>, Orc),
+    RespSign                  = delegate_sign(oracle_response, {<<QIdInt:256>>, Ct}, Orc),
     BadSigResp2               = ?call(call_contract, Acc, Ct, signedRespond, {tuple, []}, {?oid(Orc), QId, BadSig, 4001}),
     ?assertMatchAEVM({error, <<"out_of_gas">>}, BadSigResp2),
     ?assertMatchFATE({error, <<"Error in oracle_respond: bad_signature">>}, BadSigResp2),
@@ -4256,7 +4256,7 @@ sophia_signature_check_gas_cost(_Cfg) ->
     <<CtId:256>>        = Ct,
     <<OrcId:256>>       = Orc,
 
-    RegSig              = sign(<<Orc/binary, Ct/binary>>, Orc),
+    RegSig              = delegate_sign(oracle, {Orc, Ct}, Orc),
     ArgsRemote          = {Orc, RegSig, QueryFee, FixedTTL(TTL)},
     ArgsSelfReg         = {Ct, RegSig, QueryFee, FixedTTL(TTL)},
     Opts                = #{return_gas_used => true},
@@ -4287,9 +4287,9 @@ sophia_signatures_aens(Cfg) ->
                   ?IS_AEVM_SOPHIA(VMVersion), VMVersion < ?VM_AEVM_SOPHIA_4 -> ?hsh(NHash);
                   ?IS_FATE_SOPHIA(VMVersion) -> Name1
               end,
-    NameAccSig      = sign(<<NameAcc/binary, Ct/binary>>, NameAcc),
-    NameSig         = sign(<<NameAcc/binary, NHash/binary, Ct/binary>>, NameAcc),
-    AccSig          = sign(<<Acc/binary, NHash/binary, Ct/binary>>, Acc),
+    NameAccSig      = delegate_sign(aens_preclaim, {NameAcc, Ct}, NameAcc),
+    NameSig         = delegate_sign(aens_name, {NameAcc, NHash, Ct}, NameAcc),
+    AccSig          = delegate_sign(aens_name, {Acc, NHash, Ct}, Acc),
     APubkey  = 1,
     OPubkey  = 2,
 
@@ -4397,8 +4397,8 @@ sophia_all_signatures_aens_(_Cfg) ->
     {ok, NameAscii} = aens_utils:to_ascii(Name1),
     CHash           = ?hsh(aens_hash:commitment_hash(NameAscii, Salt1)),
     NameArg         = Name1,
-    NameAccSigAll   = sign(<<NameAcc/binary, "AENS"/utf8, Ct/binary>>, NameAcc),
-    AccSigAll       = sign(<<Acc/binary, "AENS"/utf8, Ct/binary>>, Acc),
+    NameAccSigAll   = delegate_sign(aens_wild, {NameAcc, Ct}, NameAcc),
+    AccSigAll       = delegate_sign(aens_wild, {Acc, Ct}, Acc),
 
     %% PreClaim
     Res1 = ?call(call_contract, Acc, Ct, signedPreclaim, {tuple, []}, {NameAcc, CHash, NameAccSigAll}, #{ height => 10 }),
@@ -4446,10 +4446,10 @@ sophia_fate_signatures_aens(Cfg) ->
     CHash           = ?hsh(aens_hash:commitment_hash(NameAscii, Salt1)),
     NHash           = aens_hash:name_hash(NameAscii),
     NameArg         = Name1,
-    CtSigNameAcc    = sign(<<NameAcc/binary, Ct/binary>>, NameAcc),
-    NameSigNameAcc  = sign(<<NameAcc/binary, NHash/binary, Ct/binary>>, NameAcc),
-    NameSigNameAcc2 = sign_(<<NameAcc2/binary, NHash/binary, Ct/binary>>, NameAcc2PrivKey),
-    NameSigNameAcc3 = sign_(<<NameAcc3/binary, NHash/binary, Ct/binary>>, NameAcc3PrivKey),
+    CtSigNameAcc    = delegate_sign(aens_preclaim, {NameAcc, Ct}, NameAcc),
+    NameSigNameAcc  = delegate_sign(aens_name, {NameAcc, NHash, Ct}, NameAcc),
+    NameSigNameAcc2 = delegate_sign_(aens_name, {NameAcc2, NHash, Ct}, NameAcc2PrivKey),
+    NameSigNameAcc3 = delegate_sign_(aens_name, {NameAcc3, NHash, Ct}, NameAcc3PrivKey),
 
     %% PreClaim
     {} = ?call(call_contract, Acc, Ct, signedPreclaim, {tuple, []}, {NameAcc, CHash, CtSigNameAcc}, #{ height => 10 }),
@@ -4504,13 +4504,39 @@ sophia_fate_signatures_aens(Cfg) ->
 
     ok.
 
-sign(Material, KeyHolder) ->
+delegate_sign(Type, Material, KeyHolder) ->
     PrivKey  = aect_test_utils:priv_key(KeyHolder, state()),
-    sign_(Material, PrivKey).
+    delegate_sign_(Type, Material, PrivKey).
 
-sign_(Material, PrivKey) ->
-    MaterialForNetworkId = aec_governance:add_network_id(Material),
-    ?sig(enacl:sign_detached(MaterialForNetworkId, PrivKey)).
+delegate_sign_(Type, Material, PrivKey) ->
+    SigData =
+        case vm_version() of
+            VM when VM =< ?VM_FATE_SOPHIA_2 ->
+                aec_governance:add_network_id(delegate_sign_old(Type, Material));
+            _ ->
+                delegate_sign_new(Type, Material)
+        end,
+    ?sig(enacl:sign_detached(SigData, PrivKey)).
+    %% MaterialForNetworkId = aec_governance:add_network_id(Material),
+    %% ?sig(enacl:sign_detached(MaterialForNetworkId, PrivKey)).
+
+delegate_sign_old(aens_wild, {A, C}) -> <<A/binary, "AENS"/utf8, C/binary>>;
+delegate_sign_old(_, {A, B})         -> <<A/binary, B/binary>>;
+delegate_sign_old(_, {A, B, C})      -> <<A/binary, B/binary, C/binary>>.
+
+delegate_sign_new(aens_wild, {A, C}) ->
+    aeser_del(aens_sig, {aeser_id:create(account, A), aeser_id:create(contract, C)});
+delegate_sign_new(aens_preclaim, {A, C}) ->
+    aeser_del(aens_preclaim_sig, {aeser_id:create(account, A), aeser_id:create(contract, C)});
+delegate_sign_new(aens_name, {A, N, C}) ->
+    aeser_del(aens_name_sig, {aeser_id:create(account, A), aeser_id:create(name, N), aeser_id:create(contract, C)});
+delegate_sign_new(oracle, {A, C}) ->
+    aeser_del(oracle_sig, {aeser_id:create(account, A), aeser_id:create(contract, C)});
+delegate_sign_new(oracle_response, {Q, C}) ->
+    aeser_del(oracle_response_sig, {aeser_id:create(oracle, Q), aeser_id:create(contract, C)}).
+
+aeser_del(Fun, {A, B})    -> aeser_delegation:Fun(aec_governance:get_network_id(), A, B);
+aeser_del(Fun, {A, B, C}) -> aeser_delegation:Fun(aec_governance:get_network_id(), A, B, C).
 
 %% Testing map functions and primitives
 sophia_maps(_Cfg) ->
@@ -6808,9 +6834,9 @@ bad_aens_pointer_handling_lima_to_iris(Cfg) ->
     Ct       = ?call(create_contract, Acc, aens, {},
                      #{ height => IrisHeight, amount => 20000000000000 * aec_test_utils:min_gas_price() }),
 
-    NameSig1 = sign(<<Acc/binary, Hash1/binary, Ct/binary>>, Acc),
-    NameSig2 = sign(<<Acc/binary, Hash2/binary, Ct/binary>>, Acc),
-    NameSig3 = sign(<<Acc/binary, Hash3/binary, Ct/binary>>, Acc),
+    NameSig1 = delegate_sign(aens_name, {Acc, Hash1, Ct}, Acc),
+    NameSig2 = delegate_sign(aens_name, {Acc, Hash2, Ct}, Acc),
+    NameSig3 = delegate_sign(aens_name, {Acc, Hash3, Ct}, Acc),
 
     GetNameRecord   = fun (NH) ->
                               NSTree = aec_trees:ns(aect_test_utils:trees(state())),
