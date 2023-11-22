@@ -359,9 +359,9 @@ next_nonce(Pubkey, #state{primop_state = PState0,
             end
     end.
 
--spec check_delegation_signature(pubkey(), binary() | {binary(), binary()}, binary(), aect_contracts:vm_version(), state()) ->
+-spec check_delegation_signature(pubkey(), [binary()], binary(), aect_contracts:vm_version(), state()) ->
                                         {'ok', state()} | 'error'.
-check_delegation_signature(Pubkey, Binary, Signature, VmVersion,
+check_delegation_signature(Pubkey, SigData, Signature, VmVersion,
                            #state{ primop_state = PState} = State) ->
     case aeprimop_state:find_account(Pubkey, PState) of
         {Account, PState1} ->
@@ -370,29 +370,20 @@ check_delegation_signature(Pubkey, Binary, Signature, VmVersion,
                     error;
                 basic ->
                     State1 = State#state{primop_state = PState1},
-                    verify_delegation_signature_(Pubkey, Binary, Signature, VmVersion, State1)
+                    check_delegation_signature(Pubkey, SigData, Signature, State1)
             end;
         none when VmVersion >= ?VM_FATE_SOPHIA_3 ->
-            verify_delegation_signature_(Pubkey, Binary, Signature, VmVersion, State);
+            check_delegation_signature(Pubkey, SigData, Signature, State);
         none ->
             error
     end.
 
-verify_delegation_signature_(Pubkey, {Binary1, _}, Signature, VmVersion, State) when VmVersion < ?VM_FATE_SOPHIA_3 ->
-    verify_delegation_signature(Pubkey, Binary1, Signature, State);
-verify_delegation_signature_(Pubkey, {Binary1, Binary2}, Signature, _VmVersion, State) ->
-    case verify_delegation_signature(Pubkey, Binary1, Signature, State) of
-        {ok, State} -> {ok, State};
-        error       -> verify_delegation_signature(Pubkey, Binary2, Signature, State)
-    end;
-verify_delegation_signature_(Pubkey, Binary, Signature, _VmVersion, State) ->
-    verify_delegation_signature(Pubkey, Binary, Signature, State).
-
-verify_delegation_signature(Pubkey, Binary, Signature, State) ->
-    BinaryForNetwork = aec_governance:add_network_id(Binary),
-    case enacl:sign_verify_detached(Signature, BinaryForNetwork, Pubkey) of
+check_delegation_signature(_Pubkey, [], _Signature, _State) ->
+    error;
+check_delegation_signature(Pubkey, [SigData | MoreSigData], Signature, State) ->
+    case enacl:sign_verify_detached(Signature, SigData, Pubkey) of
         true  -> {ok, State};
-        false -> error
+        false -> check_delegation_signature(Pubkey, MoreSigData, Signature, State)
     end.
 
 %%%-------------------------------------------------------------------
