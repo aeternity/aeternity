@@ -18,7 +18,7 @@
   0},
  {<<"aeserialization">>,
   {git,"https://github.com/aeternity/aeserialization.git",
-      {ref,"177bf604b2a05e940f92cf00e96e6e269e708245"}},
+      {ref,"8a5b5cef1f3864933a23a7932dcf6807a11a3eff"}},
   0},
  {<<"aestratum_lib">>,
   {git,"https://github.com/aeternity/aestratum_lib.git",
