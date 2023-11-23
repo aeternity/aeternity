@@ -281,8 +281,14 @@ simple_double_attach_fail(_Cfg) ->
     Acc1 = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
     {ok, _} = ?call(attach, Acc1, "simple_auth", "authorize", ["123"]),
 
-    {failed, not_a_basic_account} =
-        ?call(attach, Acc1, "simple_auth", "authorize", ["0"], #{fail => true}),
+    Protocol = aec_hard_forks:protocol_effective_at_height(1),
+    Res = ?call(attach, Acc1, "simple_auth", "authorize", ["0"], #{fail => true}),
+
+    if Protocol =< ?IRIS_PROTOCOL_VSN ->
+        ?assertEqual({failed, not_a_basic_account}, Res);
+       true ->
+        ?assertEqual({failed, invalid_at_protocol}, Res)
+    end,
 
     ok.
 
