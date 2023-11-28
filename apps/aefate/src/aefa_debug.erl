@@ -6,6 +6,7 @@
         , debugger_status/1
         , debugger_location/1
         , call_stack/1
+        , vars_registers/1
         ]).
 
 %% Debug info setters
@@ -110,6 +111,11 @@ set_debugger_location(Location, Info) ->
 -spec call_stack(info()) -> [{string(), pos_integer()}].
 call_stack(#dbginf{call_stack = Stack}) ->
     Stack.
+
+
+-spec vars_registers(info()) -> #{string() => list(tuple())}.
+vars_registers(#dbginf{vars_registers = VarsRegisters}) ->
+    VarsRegisters.
 
 
 -spec add_variable_register(string(), tuple(), info()) -> info().
