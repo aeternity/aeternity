@@ -647,10 +647,11 @@ handle_request_('GetPeerPubkey', _Params, _Context) ->
 
 handle_request_('GetStatus', _Params, _Context) ->
     {ok, TopKeyBlock} = aec_chain:top_key_block(),
+    Consensus = aec_blocks:consensus_module(TopKeyBlock),
     GenesisBlockHash = aec_consensus:get_genesis_hash(),
     Solutions = 0, %% TODO
-    Difficulty = aec_blocks:difficulty(TopKeyBlock),
-    HashRate = target_to_hashrate(aec_blocks:target(TopKeyBlock)),
+    Difficulty = difficulty(aec_blocks:difficulty(TopKeyBlock), Consensus),
+    HashRate = target_to_hashrate(aec_blocks:target(TopKeyBlock), Consensus),
     {Syncing, SyncProgress, _} = aec_sync:sync_progress(),
     Listening = true, %% TODO
     Protocols =
@@ -771,10 +772,20 @@ deserialize_transaction(Tx) ->
 %%
 %% One correct solution per blocktime (provided in ms) and 42 graphs per
 %% solution explains the last bit of math.
-target_to_hashrate(Target) ->
+target_to_hashrate(Target, aec_consensus_bitcoin_ng) ->
     case aeminer_pow:scientific_to_integer(Target) of
       0 -> 0;
       _ ->
           Difficulty = aeminer_pow:target_to_difficulty(Target) / (1 bsl 24),
           round(Difficulty * (aec_governance:expected_block_mine_rate() / 1000) * 42)
-    end.
+    end;
+target_to_hashrate(_Target, _Consensus) ->
+    0.
+
+%%% Difficulty for PoS is the number of tokens staked, that is a large number, present
+%%% it in microAE instead.
+difficulty(Difficulty, Consensus)
+        when Consensus =:= aec_consensus_smart_contract; Consensus =:= aec_consensus_hc ->
+    Difficulty div 1_000_000_000_000;
+difficulty(Difficulty, _Consensus) ->
+    Difficulty.
