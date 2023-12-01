@@ -137,7 +137,7 @@ all() -> [{group, pos}
 
 groups() ->
     [{pos, [sequence], common_tests()},
-     {hc, [sequence], common_tests()}, %% ++ hc_specific_tests() ++ [{group, lazy_leader}]},
+     {hc, [sequence], common_tests() ++ hc_specific_tests() ++ [{group, lazy_leader}]},
      {hc_btc, [sequence], common_tests() ++ hc_btc_specific_tests()},
      {hc_doge, [sequence], common_tests() ++ hc_btc_specific_tests()},
      {lazy_leader, [sequence], [elected_leader_did_not_show_up
@@ -740,8 +740,14 @@ change_leaders(Config) ->
     ok.
 
 empty_parent_block(Config) ->
-    {ok, [KB]} = aecore_suite_utils:mine_key_blocks(?PARENT_CHAIN_NODE1_NAME, 1),
-    timer:sleep(70000),
+    TopHeight = rpc(?LAZY_NODE, aec_chain, top_height, []),
+    {ok, [_KB]} = aecore_suite_utils:mine_key_blocks(?PARENT_CHAIN_NODE1_NAME, 1),
+    ok = produce_blocks_hc(?LAZY_NODE, ?LAZY_NODE_NAME, 1, lazy_leader),
+    ct:log("Producing a block with height ~p", [TopHeight + 1]),
+    ok = aecore_suite_utils:wait_for_height(?LAZY_NODE_NAME, TopHeight + 1, ?LAZY_INTERVAL + 5000),
+    CTop = rpc(?LAZY_NODE, aec_chain, top_block, []),
+    true = is_keyblock_lazy(CTop),
+    {ok, KB} = wait_same_top(?NODE1, ?LAZY_NODE),
     ok.
 
 verify_fees(Config) ->

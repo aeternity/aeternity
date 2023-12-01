@@ -586,8 +586,8 @@ call_consensus_contract_(ContractType, TxEnv, Trees, EncodedCallData, Keyword, A
                 ok -> pass;
                 revert ->
                     lager:debug("consensus contract call failed ~s~n", [aect_call:return_value(Call)]),
-                    error({consensus_call_failed, aect_call:return_value(Call)});
-                error -> error({consensus_call_failed, aect_call:return_value(Call)})
+                    error({consensus_call_failed, {error, aect_call:return_value(Call)}});
+                error -> error({consensus_call_failed, {error, aect_call:return_value(Call)}})
             end,
             %% prune the call being produced. If not done, the fees for it
             %% would be redistributed to the corresponding leaders
