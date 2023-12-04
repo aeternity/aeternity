@@ -40,7 +40,7 @@
 -define(CHILD_START_HEIGHT, 101).
 -define(CHILD_CONFIRMATIONS, 0).
 -define(REWARD_DELAY, 2).
--define(LAZY_INTERVAL, 15000).
+-define(LAZY_INTERVAL, 60000).
 -define(NODE1, dev1).
 -define(NODE1_NAME, aecore_suite_utils:node_name(?NODE1)).
 
