@@ -289,14 +289,8 @@ state_pre_transform_key_node(Node, PrevNode, Trees) ->
     end.
 
 cache(Leader, AddedStake) ->
-    aeu_ets_cache:reinit(
-        ?ETS_CACHE_TABLE,
-        current_leader,
-        fun () -> Leader end ),
-    aeu_ets_cache:reinit(
-        ?ETS_CACHE_TABLE,
-        added_stake,
-        fun () -> AddedStake end ),
+    aeu_ets_cache:put(?ETS_CACHE_TABLE, current_leader, Leader),
+    aeu_ets_cache:put(?ETS_CACHE_TABLE, added_stake, AddedStake),
     ok.
 
 state_pre_transform_micro_node(_Node, Trees) -> Trees.
