@@ -423,8 +423,9 @@ post_commitments(TopHash, #state{sign_module = SignModule} = State) ->
             CommitmentBin = aec_parent_chain_block:encode_commitment_btc(Staker, TopHash, NetworkId),
             case aec_parent_connector:post_commitment(Staker, CommitmentBin) of
                 ok ->
-                    lager:debug("Posted a commitment [height ~p] for staker ~p",
-                                [aetx_env:height(TxEnv), Staker]),
+                    <<THashPart:7/binary, _/binary>> = aec_hash:sha256_hash(TopHash),
+                    lager:debug("Posted a commitment [height ~p] for staker ~p with tophash: ~p",
+                                [aetx_env:height(TxEnv), Staker, THashPart]),
                     ok;
                 {error, _Err} ->
                     %% TODO: maybe repost?

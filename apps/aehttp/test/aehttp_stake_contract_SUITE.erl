@@ -150,11 +150,11 @@ common_tests() ->
     , spend_txs
     , simple_withdraw
     , change_leaders
-    , empty_parent_block
     ].
 
 hc_specific_tests() ->
     [
+     empty_parent_block,
      verify_commitments,
      genesis_has_commitments,
      block_difficulty
@@ -739,15 +739,17 @@ change_leaders(Config) ->
     {ok, _B} = wait_same_top(),
     ok.
 
-empty_parent_block(Config) ->
+empty_parent_block(_Config) ->
     TopHeight = rpc(?LAZY_NODE, aec_chain, top_height, []),
-    {ok, [_KB]} = aecore_suite_utils:mine_key_blocks(?PARENT_CHAIN_NODE1_NAME, 1),
+    %% Remove the posted commitments to create a parent generation without commitments
+    aecore_suite_utils:flush_mempool(?PARENT_CHAIN_NODE1_NAME),
     ok = produce_blocks_hc(?LAZY_NODE, ?LAZY_NODE_NAME, 1, lazy_leader),
-    ct:log("Producing a block with height ~p", [TopHeight + 1]),
-    ok = aecore_suite_utils:wait_for_height(?LAZY_NODE_NAME, TopHeight + 1, ?LAZY_INTERVAL + 5000),
+
+    ct:log("Checking block with height ~p", [TopHeight + 1]),
     CTop = rpc(?LAZY_NODE, aec_chain, top_block, []),
     true = is_keyblock_lazy(CTop),
-    {ok, KB} = wait_same_top(?NODE1, ?LAZY_NODE),
+
+    {ok, _KB} = wait_same_top(?NODE1, ?LAZY_NODE),
     ok.
 
 verify_fees(Config) ->
@@ -917,8 +919,8 @@ verify_commitments(Config) ->
                         Comms),
                     ct:log("Commitments: ~p", [ParsedComms]),
                     lists:map(
-                        fun({ParentHeight, N, H}) ->
-                            {N, N} = {N, H},
+                        fun({ParentHeight, _N, H}) ->
+                            %% {N, N} = {N, H}, %% This is not true after a lazy_leader generation because of empty block
                             ExpectedParentHeight = H + ?CHILD_START_HEIGHT - 1,
                             {ParentHeight, ParentHeight} = {ParentHeight, ExpectedParentHeight}
                         end,
@@ -1677,7 +1679,7 @@ produce_blocks_hc(Node, NodeName, BlocksCnt, LeaderType) ->
         lazy_leader ->
             {ok, _} = aecore_suite_utils:mine_micro_block_emptying_mempool_or_fail(ParentNodeName),
             {ok, [KB]} = aecore_suite_utils:mine_key_blocks(ParentNodeName, 1),
-            ct:log("Patent block mined ~p", [KB]),
+            ct:log("Parent block mined ~p", [KB]),
             ok = aecore_suite_utils:wait_for_height(NodeName, TopHeight + 1, ?LAZY_INTERVAL + 5000),
             CTop = rpc(Node, aec_chain, top_block, []),
             true = is_keyblock_lazy(CTop),
@@ -1686,7 +1688,7 @@ produce_blocks_hc(Node, NodeName, BlocksCnt, LeaderType) ->
             {ok, _} = wait_for_at_least_commitments_in_pool(ParentNode, Node, 2),
             {ok, _} = aecore_suite_utils:mine_micro_block_emptying_mempool_or_fail(ParentNodeName),
             {ok, [KB]} = aecore_suite_utils:mine_key_blocks(ParentNodeName, 1),
-            ct:log("Patent block mined ~p", [KB]),
+            ct:log("Parent block mined ~p", [KB]),
             ok = aecore_suite_utils:wait_for_height(NodeName, TopHeight + 1, 10000), %% 10s per block
             CTop = rpc(Node, aec_chain, top_block, []),
             false = is_keyblock_lazy(CTop),
@@ -1695,7 +1697,7 @@ produce_blocks_hc(Node, NodeName, BlocksCnt, LeaderType) ->
             {ok, _} = wait_for_commitments_in_pool(ParentNode, Node, 2),
             {ok, _} = aecore_suite_utils:mine_micro_block_emptying_mempool_or_fail(ParentNodeName),
             {ok, [KB]} = aecore_suite_utils:mine_key_blocks(ParentNodeName, 1),
-            ct:log("Patent block mined ~p", [KB]),
+            ct:log("Parent block mined ~p", [KB]),
             ok = aecore_suite_utils:wait_for_height(NodeName, TopHeight + 1, 10000), %% 10s per block
             CTop = rpc(Node, aec_chain, top_block, []),
             false = is_keyblock_lazy(CTop),
