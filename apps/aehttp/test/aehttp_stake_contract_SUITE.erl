@@ -129,10 +129,9 @@
 
 -define(GENESIS_BENFICIARY, <<0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0>>).
 
-all() -> [{group, pos}
-          %% These tests are currently not stable enough (CI!) - let's disable for now.
-          %% {group, hc},
-          %% {group, hc_btc}
+all() -> [{group, pos},
+          {group, hc},
+          {group, hc_btc}
          ].
 
 groups() ->
