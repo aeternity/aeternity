@@ -40,7 +40,7 @@
 -define(CHILD_START_HEIGHT, 101).
 -define(CHILD_CONFIRMATIONS, 0).
 -define(REWARD_DELAY, 2).
--define(LAZY_INTERVAL, 60000).
+-define(LAZY_INTERVAL, 10000).
 -define(NODE1, dev1).
 -define(NODE1_NAME, aecore_suite_utils:node_name(?NODE1)).
 
@@ -192,6 +192,7 @@ init_per_suite(Config0) ->
                         #{<<"network_id">> => ?PARENT_CHAIN_NETWORK_ID},
                     %%<<"http">> => #{<<"external">> => #{<<"acceptors">> => 100}},
                     <<"http">> => #{<<"cache">> => #{<<"enabled">> => false}},
+                    <<"mempool">> => #{<<"nonce_offset">> => 200},
                     <<"mining">> =>
                         #{<<"micro_block_cycle">> => 1,
                           <<"expected_mine_rate">> => 2000,
@@ -744,11 +745,24 @@ empty_parent_block(_Config) ->
     aecore_suite_utils:flush_mempool(?PARENT_CHAIN_NODE1_NAME),
     ok = produce_blocks_hc(?LAZY_NODE, ?LAZY_NODE_NAME, 1, lazy_leader),
 
+    %% The lazy leader block is either from ?LISA (dev8) or ?ALICE/?BOB (dev1)
     ct:log("Checking block with height ~p", [TopHeight + 1]),
     CTop = rpc(?LAZY_NODE, aec_chain, top_block, []),
     true = is_keyblock_lazy(CTop),
 
-    {ok, _KB} = wait_same_top(?NODE1, ?LAZY_NODE),
+    %% Produce yet another block (now dev1 should commit to a lazy block and win)
+    ok = produce_blocks_hc(?LAZY_NODE, ?LAZY_NODE_NAME, 1, abnormal_commitments_cnt),
+
+    %% Check that they sync and that the right chain wins
+    {ok, CTop2} = wait_same_top(?NODE1, ?LAZY_NODE),
+
+    case lists:member(aec_blocks:miner(CTop2), [element(1, ?ALICE), element(1, ?BOB)]) of
+      true -> ok;
+      _ ->
+        ct:log("ERROR: Expected ~p or ~200p as the miner:\nTOP  : ~200p",
+               [element(1, ?ALICE), element(1, ?BOB), CTop2]),
+        ?assert(false)
+    end,
     ok.
 
 verify_fees(Config) ->
@@ -1073,9 +1087,8 @@ block_difficulty(Config) ->
 elected_leader_did_not_show_up(Config) ->
     aecore_suite_utils:stop_node(?NODE1, Config), %% stop the block producer
     TopHeader0 = rpc(?NODE2, aec_chain, top_header, []),
-    {TopHeader0, TopHeader0} = {rpc(?LAZY_NODE, aec_chain, top_header, []),
-                                TopHeader0},
-    ct:log("Start header: ~p", [TopHeader0]),
+    {TopHeader0, TopHeader0} = {rpc(?LAZY_NODE, aec_chain, top_header, []), TopHeader0},
+    ct:log("Starting test at (child chain): ~p", [TopHeader0]),
     %% produce a block on the parent chain
     ok = produce_blocks_hc(?LAZY_NODE, ?LAZY_NODE_NAME, 1, lazy_leader),
     {ok, KB} = wait_same_top(?NODE2, ?LAZY_NODE),
@@ -1084,8 +1097,7 @@ elected_leader_did_not_show_up(Config) ->
     ct:log("Lazy header: ~p", [TopHeader1]),
     TopHeader1 = rpc(?NODE2, aec_chain, top_header, []),
     NetworkId = ?config(network_id, Config),
-    Env = [ {"AE__FORK_MANAGEMENT__NETWORK_ID", binary_to_list(NetworkId)}
-          ],
+    Env = [ {"AE__FORK_MANAGEMENT__NETWORK_ID", binary_to_list(NetworkId)} ],
     aecore_suite_utils:start_node(?NODE1, Config, Env),
     aecore_suite_utils:connect(?NODE1_NAME, []),
     {ok, _} = wait_same_top(?NODE1, ?LAZY_NODE),
@@ -1096,7 +1108,6 @@ elected_leader_did_not_show_up(Config) ->
     {ok, KB2} = wait_same_top(?NODE1, ?LAZY_NODE),
     {ok, KB2} = wait_same_top(?NODE2, ?LAZY_NODE),
     ok.
-
 
 
 pubkey({Pubkey, _, _}) -> Pubkey.
