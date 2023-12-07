@@ -1600,6 +1600,7 @@ node_config(PotentialStakers, ReceiveAddress, Consensus, ProducingCommitments, G
         <<"fork_management">> =>
             #{<<"network_id">> => <<"this_will_be_overwritten_runtime">>},
         <<"logging">> => #{<<"level">> => <<"debug">>},
+        <<"sync">> => #{<<"ping_interval">> => 5000},
         <<"mining">> =>
             #{<<"micro_block_cycle">> => 1,
             <<"autostart">> => true,
