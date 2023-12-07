@@ -212,7 +212,7 @@ handle_info({gproc_ps_event, top_changed, #{info := #{block_type := key,
         end,
     TargetHeight = target_parent_height(State2),
     aec_parent_connector:request_block_by_height(TargetHeight),
-    State = maybe_post_commitments(Hash, State2),
+    State = maybe_post_commitments(TargetHeight, Hash, State2),
     {noreply, State};
 handle_info({gproc_ps_event, chain_sync, #{info := {is_syncing, IsSyncing}}}, State0) ->
     State1 = State0#state{is_syncing = IsSyncing},
@@ -221,7 +221,8 @@ handle_info({gproc_ps_event, chain_sync, #{info := {is_syncing, IsSyncing}}}, St
             true ->
                 {ok, TopBlock} = aec_chain:top_key_block(),
                 {ok, TopHash} = aec_blocks:hash_internal_representation(TopBlock),
-                _State1 = maybe_post_commitments(TopHash, State1);
+
+                _State1 = maybe_post_commitments(State0#state.child_start_height + aec_blocks:height(TopBlock), TopHash, State1);
             false ->
                 lager:debug("Not posting commitment", []),
                 State1
@@ -395,16 +396,18 @@ maybe_request_next_block(BlockHeight, #state{max_size = MaxSize } = State) ->
             pass
     end.
 
-maybe_post_commitments(TopHash, #state{is_syncing = IsSyncing,
-                                       posted_commitment = PostedCommitment} = State) ->
+maybe_post_commitments(TargetHeight, TopHash, #state{is_syncing = IsSyncing,
+                                                     top_height = TopHeight,
+                                                     posted_commitment = PostedCommitment} = State) ->
     PostingCommitments = posting_commitments_enabled(State),
-    case PostingCommitments andalso not IsSyncing andalso not PostedCommitment of
+    GoodHeight = TargetHeight >= TopHeight orelse TopHeight == 0,
+    case PostingCommitments andalso not IsSyncing andalso not PostedCommitment andalso GoodHeight of
         true ->
             lager:debug("posting commitments", []),
             post_commitments(TopHash, State#state{posted_commitment = true});
         false ->
-            lager:debug("Will not post commitments, disabled, is Syncing ~p, is posting commitments ~p, already posted ~p",
-                          [IsSyncing, PostingCommitments, State#state.posted_commitment]),
+            lager:debug("Will not post commitments, disabled, is Syncing ~p, is posting commitments ~p, already posted ~p, good height ~p",
+                          [IsSyncing, PostingCommitments, State#state.posted_commitment, GoodHeight]),
             State#state{posted_commitment = false}
     end.
 
@@ -451,7 +454,7 @@ maybe_post_initial_commitments(Block, State) ->
     case IsFirstCommitment andalso IsPublishingCommitments of
         true ->
             Hash = aec_chain:genesis_hash(), %% TODO: maybe reconsider if we shall post Genesis hash before seeing any block on the parent chain or a different approach should be taken
-            _State1 = maybe_post_commitments(Hash, State);
+            _State1 = maybe_post_commitments(Height, Hash, State);
         false ->
             State
     end.
