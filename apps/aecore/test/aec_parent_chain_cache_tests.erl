@@ -416,7 +416,7 @@ block_production_dictates_commitments() ->
     StartHeight = 200,
     ChildTop = 10,
     meck:expect(aec_chain, top_header, fun() -> header(ChildTop) end),
-    ParentTop = StartHeight,
+    ParentTop = StartHeight + ChildTop,
     expect_stakers([?ALICE, ?BOB, ?CAROL]),
     expect_keys([?ALICE, ?BOB]),
     set_parent_chain_top(ParentTop),
@@ -426,9 +426,9 @@ block_production_dictates_commitments() ->
         fun(Idx) ->
             ParentHeight = ParentTop + Idx,
             set_parent_chain_top(ParentHeight),
-            ChildTop1 = ChildTop + Idx,
+            ChildHeight = ChildTop + Idx,
             meck:reset(aec_parent_connector),
-            child_new_top(CachePid, ChildTop1),
+            child_new_top(CachePid, ChildHeight),
             Block = block_by_height(ParentHeight),
             ?TEST_MODULE:post_block(Block),
             timer:sleep(10),
@@ -436,8 +436,8 @@ block_production_dictates_commitments() ->
             %% the child chain
             {ok, #{ child_start_height := StartHeight,
                     top_height         := ParentHeight,
-                    child_top_height   := ChildTop1}} = ?TEST_MODULE:get_state(),
-            Hash = height_to_hash(ChildTop1),
+                    child_top_height   := ChildHeight}} = ?TEST_MODULE:get_state(),
+            Hash = height_to_hash(ChildHeight),
             AliceCommitment = aec_parent_chain_block:encode_commitment_btc(?ALICE, Hash, ?NETWORK_ID),
             [AliceCommitment] = collect_commitments(?ALICE),
             BobCommitment = aec_parent_chain_block:encode_commitment_btc(?BOB, Hash, ?NETWORK_ID),
@@ -449,14 +449,15 @@ block_production_dictates_commitments() ->
         lists:seq(0, 20)),
     %% stop block production
     ParentTop1 = ParentTop + 20,
+    ChildTop1 = ChildTop + 20,
     CachePid ! {gproc_ps_event, stop_mining, unused},
     lists:foreach(
         fun(Idx) ->
             ParentHeight = ParentTop1 + Idx,
             set_parent_chain_top(ParentHeight),
-            ChildTop1 = ChildTop + Idx,
+            ChildHeight = ChildTop1 + Idx,
             meck:reset(aec_parent_connector),
-            child_new_top(CachePid, ChildTop1),
+            child_new_top(CachePid, ChildHeight),
             Block = block_by_height(ParentHeight),
             ?TEST_MODULE:post_block(Block),
             timer:sleep(10),
@@ -464,7 +465,7 @@ block_production_dictates_commitments() ->
             %% the child chain
             {ok, #{ child_start_height := StartHeight,
                     top_height         := ParentHeight,
-                    child_top_height   := _ChildTop1}} = ?TEST_MODULE:get_state(),
+                    child_top_height   := _ChildHeight}} = ?TEST_MODULE:get_state(),
             [] = collect_commitments(?ALICE),
             [] = collect_commitments(?BOB),
             [] = collect_commitments(?CAROL),
@@ -474,23 +475,25 @@ block_production_dictates_commitments() ->
         lists:seq(0, 20)),
     %% start block production
     ParentTop2 = ParentTop1 + 20,
+    ChildTop2 = ChildTop1 + 20,
     CachePid ! {gproc_ps_event, start_mining, unused},
     lists:foreach(
         fun(Idx) ->
             ParentHeight = ParentTop2 + Idx,
             set_parent_chain_top(ParentHeight),
-            ChildTop1 = ChildTop + Idx,
+            ChildHeight = ChildTop2 + Idx,
             meck:reset(aec_parent_connector),
-            child_new_top(CachePid, ChildTop1),
+            child_new_top(CachePid, ChildHeight),
             Block = block_by_height(ParentHeight),
+            io:format("ParentHeight: ~p ChildHeight: ~p\n", [ParentHeight, ChildHeight]),
             ?TEST_MODULE:post_block(Block),
             timer:sleep(10),
             %% ensure that the node is up to date with the parent chain and
             %% the child chain
             {ok, #{ child_start_height := StartHeight,
                     top_height         := ParentHeight,
-                    child_top_height   := ChildTop1}} = ?TEST_MODULE:get_state(),
-            Hash = height_to_hash(ChildTop1),
+                    child_top_height   := ChildHeight}} = ?TEST_MODULE:get_state(),
+            Hash = height_to_hash(ChildHeight),
             AliceCommitment = aec_parent_chain_block:encode_commitment_btc(?ALICE, Hash, ?NETWORK_ID),
             [AliceCommitment] = collect_commitments(?ALICE),
             BobCommitment = aec_parent_chain_block:encode_commitment_btc(?BOB, Hash, ?NETWORK_ID),
