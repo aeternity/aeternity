@@ -1101,6 +1101,7 @@ elected_leader_did_not_show_up(Config) ->
     aecore_suite_utils:start_node(?NODE1, Config, Env),
     aecore_suite_utils:connect(?NODE1_NAME, []),
     {ok, _} = wait_same_top(?NODE1, ?LAZY_NODE),
+    timer:sleep(2000), %% Give NODE1 a moment to finalize sync and post commitments
     ok = produce_blocks_hc(?NODE1, ?NODE1_NAME, 1, abnormal_commitments_cnt),
     {ok, KB1} = wait_same_top(?NODE1, ?LAZY_NODE),
     {ok, KB1} = wait_same_top(?NODE2, ?LAZY_NODE),
