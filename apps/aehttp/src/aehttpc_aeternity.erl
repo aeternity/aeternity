@@ -151,7 +151,7 @@ post_commitment_tx(Host, Port, SenderEnc, ReceiverPubkey, Amount, Fee,
           %% * parent chain's protocol version
           %% * expected min_gas on both miner and protocol level
           %% * current gas prices
-          fee          => Fee, 
+          fee          => Fee,
           nonce        => Nonce,
           payload      => Commitment},
     {ok, SpendTx} = aec_spend_tx:new(TxArgs),
@@ -183,10 +183,10 @@ get_request(Path, Host, Port, Timeout) ->
     Req = {UrlPath, []},
     HTTPOpt = [{timeout, Timeout}],
     Opt = [],
-    lager:debug("Req: ~p, with URL: ~ts", [Req, Url]),
+    %% lager:debug("Req: ~p, with URL: ~ts", [Req, Url]),
     case httpc:request(get, Req, HTTPOpt, Opt) of
         {ok, {{_, 200 = _Code, _}, _, Res}} ->
-            lager:debug("Req: ~p, Res: ~p with URL: ~ts", [Req, Res, Url]),
+            %% lager:debug("Req: ~p, Res: ~p with URL: ~ts", [Req, Res, Url]),
             {ok, jsx:decode(list_to_binary(Res), [return_maps])};
         {ok, {{_, 404 = _Code, _}, _, "{\"reason\":\"Block not found\"}"}} ->
             {error, not_found};
@@ -201,7 +201,7 @@ get_request(Path, Host, Port, Timeout) ->
     lager:info("Error: ~p Reason: ~p Stacktrace: ~p", [E, R, S]),
     {error, {E, R, S}}
   end.
-    
+
 -spec post_request(binary(), map(), binary(), integer(),integer()) -> {ok, map()} | {error, term()}.
 post_request(Path, Body, Host, Port, Timeout) ->
   try

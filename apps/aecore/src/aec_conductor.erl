@@ -8,7 +8,7 @@
 %%% There are three different modes:
 %%% * local_pow - a PoW miner is being run locally by the node
 %%% * stratum - a Stratum implementation: PoW miners are being fed hashes to
-%%%   mine on top of 
+%%%   mine on top of
 %%% * pos - a proof of stake consensus with no mining involved
 %%%
 %%% The block production has two states of operation 'running' and 'stopped'
@@ -551,7 +551,8 @@ get_next_beneficiary(Consensus, TopHeader) ->
                     TimeDelta = Now - LastBlockTime,
                     case TimeDelta > LazyLeaderTimeDelta of
                         true ->
-                            case Consensus:pick_lazy_leader() of
+                            {ok, TopHash} = aec_headers:hash_header(TopHeader),
+                            case Consensus:pick_lazy_leader(TopHash) of
                                 error -> NotLeader;
                                 {ok, _L} = OK -> OK
                             end;
@@ -1392,7 +1393,7 @@ handle_add_block(Block, Hash, Prev, #state{top_block_hash = TopBlockHash} = Stat
     %% produce ourselves.
     case aec_chain_state:insert_block_conductor(Block, Origin) of
         {ok, TopChanged, PrevKeyHeader, Events} = OkResult  ->
-            lager:debug("insert_block -> ~p", [OkResult]),
+            lager:debug("insert_block ~p -> ~p", [aec_blocks:to_header(Block), OkResult]),
             handle_successfully_added_block(Block, Hash, TopChanged, PrevKeyHeader, Events, State, Origin);
         {pof, TopChanged, PrevKeyHeader, _PoF, Events} ->
             %% TODO: should we really publish tx_events in this case?

@@ -914,7 +914,7 @@ validate_generation_leader(Node, Trees, Env) ->
         false ->
             ok
     end.
-    
+
 apply_node_transactions(Node, PrevNode, Trees, ForkInfo, State) ->
     Consensus = aec_block_insertion:node_consensus(Node),
     case node_is_micro_block(Node) of

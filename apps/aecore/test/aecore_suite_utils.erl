@@ -51,6 +51,7 @@
          wait_for_height/2,
          wait_for_height/3,
          flush_new_blocks/0,
+         flush_mempool/1,
          spend/5,         %% (Node, FromPub, ToPub, Amount, Fee) -> ok
          sign_on_node/2,
          sign_on_node/3,
@@ -903,6 +904,11 @@ flush_new_blocks_produced() ->
             flush_new_blocks_produced()
     end.
 
+flush_mempool(Node) ->
+    {ok, SignedTxs} = rpc:call(Node, aec_tx_pool, peek, [infinity]),
+    [ rpc:call(Node, aec_tx_pool, delete, [aetx_sign:hash(STx)]) || STx <- SignedTxs ],
+    ct:log("Flushed ~p txs from ~p's mempool", [length(SignedTxs), Node]),
+    ok.
 
 %% block the process until a certain height is reached
 %% this has the expectation that the Node is mining

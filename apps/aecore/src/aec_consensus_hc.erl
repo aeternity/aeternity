@@ -68,7 +68,7 @@
         , beneficiary/0
         , next_beneficiary/0
         , allow_lazy_leader/0
-        , pick_lazy_leader/0
+        , pick_lazy_leader/1
         , get_sign_module/0
         , get_type/0
         , get_block_producer_configs/0
@@ -289,14 +289,8 @@ state_pre_transform_key_node(Node, PrevNode, Trees) ->
     end.
 
 cache(Leader, AddedStake) ->
-    aeu_ets_cache:reinit(
-        ?ETS_CACHE_TABLE,
-        current_leader,
-        fun () -> Leader end ),
-    aeu_ets_cache:reinit(
-        ?ETS_CACHE_TABLE,
-        added_stake,
-        fun () -> AddedStake end ),
+    aeu_ets_cache:put(?ETS_CACHE_TABLE, current_leader, Leader),
+    aeu_ets_cache:put(?ETS_CACHE_TABLE, added_stake, AddedStake),
     ok.
 
 state_pre_transform_micro_node(_Node, Trees) -> Trees.
@@ -586,8 +580,9 @@ call_consensus_contract_(ContractType, TxEnv, Trees, EncodedCallData, Keyword, A
                 ok -> pass;
                 revert ->
                     lager:debug("consensus contract call failed ~s~n", [aect_call:return_value(Call)]),
-                    error({consensus_call_failed, aect_call:return_value(Call)});
-                error -> error({consensus_call_failed, aect_call:return_value(Call)})
+                    error({consensus_call_failed, {error, aeb_fate_encoding:deserialize(aect_call:return_value(Call))}});
+                error ->
+                    error({consensus_call_failed, {error, aeb_fate_encoding:deserialize(aect_call:return_value(Call))}})
             end,
             %% prune the call being produced. If not done, the fees for it
             %% would be redistributed to the corresponding leaders
@@ -674,14 +669,18 @@ allow_lazy_leader() ->
             {true, lazy_leader_time_delta()}
     end.
 
-pick_lazy_leader() ->
-    SignModule = get_sign_module(),
-    case SignModule:set_random_candidate() of
-        {error, key_not_found} ->
+pick_lazy_leader(TopHash) ->
+    {TxEnv, Trees} = aetx_env:tx_env_and_trees_from_hash(aetx_transaction, TopHash),
+    case parent_chain_validators(TxEnv, Trees) of
+        {ok, AllStakers} ->
+            SignModule = get_sign_module(),
+            LocalStakers = lists:filter(fun SignModule:is_key_present/1, AllStakers),
+            Staker = lists:nth(rand:uniform(length(LocalStakers)), LocalStakers),
+            SignModule:set_candidate(Staker),
+            {ok, Staker};
+        _ ->
             timer:sleep(1000),
-            error;
-        {ok, LazyLeader} ->
-            {ok, LazyLeader}
+            error
     end.
 
 get_sign_module() -> aec_preset_keys.

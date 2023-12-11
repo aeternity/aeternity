@@ -62,7 +62,7 @@
         , beneficiary/0
         , next_beneficiary/0
         , allow_lazy_leader/0
-        , pick_lazy_leader/0
+        , pick_lazy_leader/1
         , get_sign_module/0
         , get_type/0
         , get_block_producer_configs/0
@@ -252,7 +252,7 @@ next_beneficiary() -> aec_consensus_bitcoin_ng:next_beneficiary().
 
 allow_lazy_leader() -> false.
 
-pick_lazy_leader() -> error.
+pick_lazy_leader(_) -> error.
 
 get_sign_module() -> aec_consensus_bitcoin_ng:get_sign_module().
 

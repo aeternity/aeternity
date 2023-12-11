@@ -187,7 +187,7 @@
 -callback beneficiary() -> {ok, binary() | fun(() -> binary())} | {error, atom()}.
 -callback next_beneficiary() -> {ok, binary() | fun(() -> binary())} | {error, atom()}.
 -callback allow_lazy_leader() -> false | {true, integer()}.
--callback pick_lazy_leader() -> error | {ok, aec_keys:pubkey()}.
+-callback pick_lazy_leader(binary()) -> error | {ok, aec_keys:pubkey()}.
 -callback get_sign_module() -> sign_module().
 -callback get_type() -> pow | pos.
 -callback get_block_producer_configs() -> list().
