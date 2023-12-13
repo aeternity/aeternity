@@ -178,12 +178,15 @@ init_per_suite(Config0) ->
                                                         #{}, %% config is rewritten per suite
                                                         [],
                                                         Config),
+            GenesisProtocol = 1,
+            {ok, AccountFileName} = aecore_suite_utils:hard_fork_filename(?PARENT_CHAIN_NODE1, Config1, integer_to_list(GenesisProtocol), "accounts_test.json"),
+            GenesisProtocolBin = integer_to_binary(GenesisProtocol),
             ParentCfg =
                 #{  <<"chain">> =>
                         #{  <<"persist">> => false,
                             <<"hard_forks">> =>
-                                #{  <<"1">> => 0,
-                                    integer_to_binary(?CERES_PROTOCOL_VSN) => 1
+                                #{  GenesisProtocolBin => #{<<"height">> => 0, <<"accounts_file">> => AccountFileName},
+                                    integer_to_binary(?CERES_PROTOCOL_VSN) => #{<<"height">> => 1}
                                 },
                             <<"consensus">> =>
                                 #{ <<"0">> => #{<<"type">> => <<"ct_tests">>}}
@@ -203,9 +206,7 @@ init_per_suite(Config0) ->
             aecore_suite_utils:create_config(?PARENT_CHAIN_NODE1, Config1, ParentCfg, []),
             {_ParentPatronPriv, ParentPatronPub} = aecore_suite_utils:sign_keys(?PARENT_CHAIN_NODE1),
             ParentPatronPubEnc = aeser_api_encoder:encode(account_pubkey, ParentPatronPub),
-            aecore_suite_utils:create_seed_file([?PARENT_CHAIN_NODE1],
-                Config1,
-                "genesis", "accounts_test.json",
+            aecore_suite_utils:create_seed_file(AccountFileName,
                 #{  ParentPatronPubEnc =>
                     100000000000000000000000000000000000000000000000000000000000000000000000,
                     encoded_pubkey(?DWIGHT) => 2100000000000000000000000000,
@@ -255,15 +256,17 @@ init_per_group(Group, Config0) ->
 
 init_per_group_custom(NetworkId, ?CONSENSUS_POS, Config) ->
     ElectionContract = election_contract_by_consensus(?CONSENSUS_POS),
-    build_json_files(NetworkId, ElectionContract, Config, [?NODE1, ?NODE2]),
+    Node1Config = node_config(NetworkId,?NODE1, Config, [?ALICE, ?BOB, ?LISA], <<>>, ?CONSENSUS_POS),
+    Node2Config = node_config(NetworkId,?NODE2, Config, [], <<>>, ?CONSENSUS_POS),
+    build_json_files(ElectionContract, [Node1Config, Node2Config]),
     %% different runs use different network ids
     Env = [ {"AE__FORK_MANAGEMENT__NETWORK_ID", binary_to_list(NetworkId)}
           ],
     aecore_suite_utils:create_config(?NODE1, Config,
-                                    node_config([?ALICE, ?BOB, ?LISA], <<>>, ?CONSENSUS_POS),
+                                    Node1Config,
                                     [{add_peers, true} ]),
     aecore_suite_utils:create_config(?NODE2, Config,
-                                    node_config([], <<>>, ?CONSENSUS_POS),
+                                    Node2Config,
                                     [{add_peers, true} ]),
     aecore_suite_utils:start_node(?NODE1, Config, Env),
     aecore_suite_utils:connect(?NODE1_NAME, []),
@@ -275,7 +278,6 @@ init_per_group_custom(NetworkId, ?CONSENSUS_POS, Config) ->
 init_per_group_custom(NetworkId, ?CONSENSUS_HC, Config) ->
     GenesisStartTime = aeu_time:now_in_msecs(),
     ElectionContract = election_contract_by_consensus(?CONSENSUS_HC),
-    build_json_files(NetworkId, ElectionContract, Config, [?NODE1, ?NODE2]),
     %% different runs use different network ids
     Env = [ {"AE__FORK_MANAGEMENT__NETWORK_ID", binary_to_list(NetworkId)}
           ],
@@ -286,13 +288,16 @@ init_per_group_custom(NetworkId, ?CONSENSUS_HC, Config) ->
                     parent, ?CHILD_START_HEIGHT, Config, ?CONSENSUS_HC),
     %% ?ALICE on the child chain, ?DWIGHT on the parent chain
     ReceiveAddress = encoded_pubkey(?FORD),
+    NodeConfig1 = node_config(NetworkId,?NODE1, Config, [{?ALICE, ?DWIGHT}, {?BOB, ?EDWIN}], ReceiveAddress, ?CONSENSUS_HC,
+                                true,  GenesisStartTime),
+    NodeConfig2 = node_config(NetworkId,?NODE2, Config, [], ReceiveAddress, ?CONSENSUS_HC, true,
+                                GenesisStartTime),
+    build_json_files(ElectionContract, [NodeConfig1, NodeConfig2]),
     aecore_suite_utils:create_config(?NODE1, Config,
-                                    node_config([{?ALICE, ?DWIGHT}, {?BOB, ?EDWIN}], ReceiveAddress, ?CONSENSUS_HC,
-                                                true, GenesisStartTime),
+                                     NodeConfig1,
                                     [{add_peers, true} ]),
     aecore_suite_utils:create_config(?NODE2, Config,
-                                    node_config([], ReceiveAddress, ?CONSENSUS_HC, true,
-                                                GenesisStartTime),
+                                     NodeConfig2,
                                     [{add_peers, true} ]),
     aecore_suite_utils:start_node(?NODE1, Config, Env),
     aecore_suite_utils:connect(?NODE1_NAME, []),
@@ -314,7 +319,6 @@ init_per_group_custom(NetworkId, ?CONSENSUS_HC, Config) ->
     Config1;
 init_per_group_custom(NetworkId, ?CONSENSUS_HC_BTC, Config) ->
     ElectionContract = election_contract_by_consensus(?CONSENSUS_HC),
-    build_json_files(NetworkId, ElectionContract, Config, [?NODE1, ?NODE2]),
     %% different runs use different network ids
     Env = [ {"AE__FORK_MANAGEMENT__NETWORK_ID", binary_to_list(NetworkId)}
           ],
@@ -350,12 +354,15 @@ rpcport=" ++ integer_to_list(?BTC_PARENT_CHAIN_PORT),
     produce_blocks(?PARENT_CHAIN_NODE1, ?PARENT_CHAIN_NODE1_NAME,
                     parent, ?CHILD_START_HEIGHT, Config1, ?CONSENSUS_HC_BTC),
     ReceiveAddress = string:trim(os:cmd(BitcoinCli ++ "getnewaddress")),
+    NodeConfig1 = node_config(NetworkId,?NODE1, Config, [{?ALICE, list_to_binary(Dwight)}, {?BOB, list_to_binary(Edwin)}],
+                                list_to_binary(ReceiveAddress), ?CONSENSUS_HC_BTC),
+    NodeConfig2 = node_config(NetworkId,?NODE2, Config, [], ReceiveAddress, ?CONSENSUS_HC_BTC),
+    build_json_files(ElectionContract, [NodeConfig1, NodeConfig2]),
     aecore_suite_utils:create_config(?NODE1, Config,
-                                    node_config([{?ALICE, list_to_binary(Dwight)}, {?BOB, list_to_binary(Edwin)}],
-                                                list_to_binary(ReceiveAddress), ?CONSENSUS_HC_BTC),
+                                     NodeConfig1,
                                     [{add_peers, true} ]),
     aecore_suite_utils:create_config(?NODE2, Config,
-                                    node_config([], ReceiveAddress, ?CONSENSUS_HC_BTC),
+                                    NodeConfig2,
                                     [{add_peers, true} ]),
     aecore_suite_utils:start_node(?NODE1, Config, Env),
     aecore_suite_utils:connect(?NODE1_NAME, []),
@@ -388,7 +395,6 @@ rpcport=" ++ integer_to_list(?BTC_PARENT_CHAIN_PORT),
     Config1;
 init_per_group_custom(NetworkId, ?CONSENSUS_HC_DOGE, Config) ->
     ElectionContract = election_contract_by_consensus(?CONSENSUS_HC),
-    build_json_files(NetworkId, ElectionContract, Config, [?NODE1, ?NODE2]),
     %% different runs use different network ids
     Env = [ {"AE__FORK_MANAGEMENT__NETWORK_ID", binary_to_list(NetworkId)}
           ],
@@ -423,12 +429,15 @@ rpcport=" ++ integer_to_list(?BTC_PARENT_CHAIN_PORT),
     produce_blocks(?PARENT_CHAIN_NODE1, ?PARENT_CHAIN_NODE1_NAME,
                     parent, ?CHILD_START_HEIGHT, Config1, ?CONSENSUS_HC_BTC),
     ReceiveAddress = string:trim(os:cmd(DogecoinCli ++ "getnewaddress")),
+    NodeConfig1 = node_config(NetworkId,?NODE1, Config, [{?ALICE, list_to_binary(Dwight)}, {?BOB, list_to_binary(Edwin)}],
+                                    list_to_binary(ReceiveAddress), ?CONSENSUS_HC_DOGE),
+    NodeConfig2 = node_config(NetworkId,?NODE2, Config, [], ReceiveAddress, ?CONSENSUS_HC_DOGE),
+    build_json_files(ElectionContract, [NodeConfig1, NodeConfig2]),
     aecore_suite_utils:create_config(?NODE1, Config,
-                                    node_config([{?ALICE, list_to_binary(Dwight)}, {?BOB, list_to_binary(Edwin)}],
-                                                list_to_binary(ReceiveAddress), ?CONSENSUS_HC_DOGE),
+                                     NodeConfig1,
                                     [{add_peers, true} ]),
     aecore_suite_utils:create_config(?NODE2, Config,
-                                    node_config([], ReceiveAddress, ?CONSENSUS_HC_DOGE),
+                                     NodeConfig2,
                                     [{add_peers, true} ]),
     aecore_suite_utils:start_node(?NODE1, Config, Env),
     aecore_suite_utils:connect(?NODE1_NAME, []),
@@ -465,14 +474,15 @@ set_up_lazy_leader_node(NetworkId, Config) ->
     false = GenesisStartTime =:= undefined,
     ElectionContract = election_contract_by_consensus(?CONSENSUS_HC),
     aecore_suite_utils:make_multi(Config, [?LAZY_NODE]),
-    build_json_files(NetworkId, ElectionContract, Config, [?LAZY_NODE]),
     %% different runs use different network ids
     Env = [ {"AE__FORK_MANAGEMENT__NETWORK_ID", binary_to_list(NetworkId)}
           ],
     ReceiveAddress = encoded_pubkey(?FORD),
+    NodeConfig = node_config(NetworkId,?LAZY_NODE, Config, [{?LISA, ?LISA}], ReceiveAddress, ?CONSENSUS_HC,
+                                false, GenesisStartTime),
+    build_json_files(ElectionContract, [NodeConfig]),    
     aecore_suite_utils:create_config(?LAZY_NODE, Config,
-                                    node_config([{?LISA, ?LISA}], ReceiveAddress, ?CONSENSUS_HC,
-                                                false, GenesisStartTime),
+                                     NodeConfig,
                                     [{add_peers, true} ]),
     aecore_suite_utils:start_node(?LAZY_NODE, Config, Env),
     aecore_suite_utils:connect(?LAZY_NODE_NAME, []),
@@ -1360,7 +1370,7 @@ calc_rewards(RewardForHeight) ->
            [AdjustedReward1, AdjustedReward2]),
     Res.
 
-build_json_files(NetworkId, ElectionContract, Config, NodesList) ->
+build_json_files(ElectionContract, NodeConfigs) ->
     Pubkey = ?OWNER_PUBKEY,
     {_PatronPriv, PatronPub} = aecore_suite_utils:sign_keys(?NODE1),
     ct:log("Patron is ~p", [aeser_api_encoder:encode(account_pubkey, PatronPub)]),
@@ -1438,7 +1448,7 @@ build_json_files(NetworkId, ElectionContract, Config, NodesList) ->
     Call10 =
         contract_call_spec(SCId, ?STAKING_CONTRACT,
                             "set_validator_description",
-                            ["\"Alice is a really awesome validator and she had set a description of her great service to the network.\""], 0,
+                            ["\"Alice is a really awesome validator and she had set a description of her great service to the §work.\""], 0,
                             pubkey(?ALICE), 4),
     Call11 =
         contract_call_spec(SCId, ?STAKING_CONTRACT,
@@ -1466,18 +1476,12 @@ build_json_files(NetworkId, ElectionContract, Config, NodesList) ->
     %% keep the BRI offline
     AllCalls =  [Call1, Call2, Call3, Call4, Call5, Call6,
 		 Call7, Call8, Call9, Call10, Call11, Call12, Call13],
-    Subdir =
-        case aect_test_utils:latest_protocol_version() of
-            ?IRIS_PROTOCOL_VSN -> "iris";
-            ?CERES_PROTOCOL_VSN -> "ceres"
-        end,
-    aecore_suite_utils:create_seed_file(NodesList,
-        Config,
-        Subdir, binary_to_list(NetworkId) ++ "_contracts.json",
+    ProtocolBin = integer_to_binary(aect_test_utils:latest_protocol_version()),
+    ContractsFileNames = [ContractsFileName  || #{<<"chain">> := #{<<"hard_forks">> := #{ProtocolBin := #{<<"hc_contracts_file">> := ContractsFileName}}}} <- NodeConfigs],
+    AccountsFileNames = [AccountsFileName  || #{<<"chain">> := #{<<"hard_forks">> := #{ProtocolBin := #{<<"accounts_file">> := AccountsFileName}}}} <- NodeConfigs],    
+    aecore_suite_utils:create_seed_file(ContractsFileNames,
         #{<<"contracts">> => [C0, SC, EC], <<"calls">> => AllCalls}),
-    aecore_suite_utils:create_seed_file(NodesList,
-        Config,
-        Subdir, binary_to_list(NetworkId) ++ "_accounts.json",
+    aecore_suite_utils:create_seed_file(AccountsFileNames,
         #{  <<"ak_2evAxTKozswMyw9kXkvjJt3MbomCR1nLrf91BduXKdJLrvaaZt">> => 1000000000000000000000000000000000000000000000000,
             encoded_pubkey(?ALICE) => 2100000000000000000000000000,
             encoded_pubkey(?BOB) => 3100000000000000000000000000,
@@ -1486,10 +1490,10 @@ build_json_files(NetworkId, ElectionContract, Config, NodesList) ->
          }),
     ok.
 
-node_config(PotentialStakers, ReceiveAddress, Consensus) ->
-    node_config(PotentialStakers, ReceiveAddress, Consensus, true, 0).
+node_config(NetworkId,Node, CTConfig, PotentialStakers, ReceiveAddress, Consensus) ->
+    node_config(NetworkId,Node, CTConfig, PotentialStakers, ReceiveAddress, Consensus, true, 0).
 
-node_config(PotentialStakers, ReceiveAddress, Consensus, ProducingCommitments, GenesisStartTime) ->
+node_config(NetworkId,Node, CTConfig, PotentialStakers, ReceiveAddress, Consensus, ProducingCommitments, GenesisStartTime) ->
     Stakers =
         case Consensus of
             ?CONSENSUS_POS ->
@@ -1584,9 +1588,13 @@ node_config(PotentialStakers, ReceiveAddress, Consensus, ProducingCommitments, G
                  }
         end,
     Protocol = aect_test_utils:latest_protocol_version(),
+    {ok, ContractFileName} = aecore_suite_utils:hard_fork_filename(Node, CTConfig, integer_to_list(Protocol), binary_to_list(NetworkId) ++ "_contracts.json"),
+    {ok, AccountFileName} = aecore_suite_utils:hard_fork_filename(Node, CTConfig, integer_to_list(Protocol), binary_to_list(NetworkId) ++ "_accounts.json"),
     #{<<"chain">> =>
             #{  <<"persist">> => false,
-                <<"hard_forks">> => #{integer_to_binary(Protocol) => 0},
+                <<"hard_forks">> => #{integer_to_binary(Protocol) => #{<<"height">> => 0, 
+                                                                       <<"hc_contracts_file">> => ContractFileName,
+                                                                       <<"accounts_file">> => AccountFileName}},
                 <<"consensus">> =>
                     #{<<"0">> => #{<<"type">> => ConsensusType,
                                 <<"config">> =>

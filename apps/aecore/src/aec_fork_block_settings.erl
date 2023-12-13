@@ -2,7 +2,7 @@
 
 -include_lib("aecontract/include/hard_forks.hrl").
 
--export([dir/1,
+-export([hardcoded_dir/1,
          genesis_accounts/0,
          minerva_accounts/0,
          fortuna_accounts/0,
@@ -11,7 +11,11 @@
          lima_contracts/0,
          block_whitelist/0,
          pre_iris_map_ordering/0,
-         hc_seed_contracts/2
+         hc_seed_contracts/1,
+         is_custom_fork/1,
+         accounts/1,
+         extra_accounts/1,
+         contracts/1
         ]).
 
 -export([ accounts_file_name/1
@@ -27,18 +31,6 @@
 -define(IRIS_DIR,    ".iris").
 -define(CERES_DIR,   ".ceres").
 
--spec dir(aec_hard_forks:protocol_vsn()) -> string().
-dir(ProtocolVsn) ->
-    Dir =
-        case ProtocolVsn of
-            ?ROMA_PROTOCOL_VSN    -> ?GENESIS_DIR;
-            ?MINERVA_PROTOCOL_VSN -> ?MINERVA_DIR;
-            ?FORTUNA_PROTOCOL_VSN -> ?FORTUNA_DIR;
-            ?LIMA_PROTOCOL_VSN    -> ?LIMA_DIR;
-            ?IRIS_PROTOCOL_VSN    -> ?IRIS_DIR;
-            ?CERES_PROTOCOL_VSN   -> ?CERES_DIR
-        end,
-    filename:join(aeu_env:data_dir(aecore), Dir).
 
 -spec genesis_accounts() -> list().
 genesis_accounts() ->
@@ -67,6 +59,34 @@ lima_extra_accounts() -> preset_accounts(extra_accounts, ?LIMA_PROTOCOL_VSN,
 -spec lima_contracts() -> list().
 lima_contracts() -> preset_contracts(?LIMA_PROTOCOL_VSN,
                                      lima_contracts_file_missing).
+
+-spec accounts(aec_hard_forks:protocol_vsn()) -> list().
+accounts(ProtocolVsn) -> preset_accounts(accounts, ProtocolVsn, accounts_file_missing).
+
+-spec extra_accounts(aec_hard_forks:protocol_vsn()) -> list().
+extra_accounts(ProtocolVsn) -> preset_accounts(extra_accounts, ProtocolVsn, extra_accounts_file_missing).
+
+-spec contracts(aec_hard_forks:protocol_vsn()) -> list().
+contracts(ProtocolVsn) -> preset_contracts(ProtocolVsn, contracts_file_missing).
+
+-spec is_custom_fork(aec_hard_forks:protocol_vsn()) -> boolean().
+is_custom_fork(ProtocolVsn) ->
+    case aeu_env:config_value([<<"chain">>, <<"hard_forks">>], aecore, hard_forks, undefined) of
+        undefined ->
+            false;
+        Map ->
+            case maps:get(integer_to_binary(ProtocolVsn), Map) of
+                Height when is_integer(Height) ->
+                    false;
+                _ ->
+                    true
+            end
+    end.
+            
+-spec hardcoded_dir(aec_hard_forks:protocol_vsn()) -> string().
+hardcoded_dir(ProtocolVsn) ->
+    Dir = hardcoded_basename(ProtocolVsn),
+    filename:join(aeu_env:data_dir(aecore), Dir).
 
 block_whitelist() ->
     P = whitelist_filename(),
@@ -142,23 +162,45 @@ preset_accounts(Type, Release, ErrorMsg) ->
 -spec read_preset(accounts | extra_accounts, aec_hard_forks:protocol_vsn()) ->
         {ok, binary()}| {error, {atom(), string()}}.
 read_preset(accounts, Release) ->
-    PresetAccountsFile = aec_fork_block_settings:accounts_file_name(Release),
-    case file:read_file(PresetAccountsFile) of
-        {ok, _} = OK -> OK;
-        {error, Err} -> {error, {Err, PresetAccountsFile}}
-    end;
+    read_hard_fork_file(Release, <<"accounts_file">>, fun aec_fork_block_settings:accounts_file_name/1);
 read_preset(extra_accounts, Release) ->
-    PresetExtraFile = aec_fork_block_settings:extra_accounts_file_name(Release),
-    case file:read_file(PresetExtraFile) of
+    read_hard_fork_file(Release, <<"extra_accounts_file">>, fun aec_fork_block_settings:extra_accounts_file_name/1).
+
+read_hard_fork_file(Protocol, Key, DefaultFun) when is_integer(Protocol) ->
+    case aeu_env:config_value([<<"chain">>, <<"hard_forks">>], aecore, hard_forks, undefined) of
+        undefined ->
+            read_hard_fork_file(DefaultFun(Protocol));
+        Map when is_map(Map) ->
+            case maps:get(integer_to_binary(Protocol), Map) of
+                Height when is_integer(Height) ->
+                    read_hard_fork_file(DefaultFun(Protocol));
+                Map1 when is_map(Map1) ->
+                    case maps:get(Key, Map1, undefined) of
+                        %% Setting files for a height are not mandatory so return empty object, an error will be return if the file name is set but not found 
+                        undefined ->
+                            {ok, <<"{}">>};
+                        FileName ->
+                            AbsoluteFileName = case filename:pathtype(FileName) of
+                                                absolute ->
+                                                    FileName;
+                                                _ ->
+                                                    filename:join([aeu_env:data_dir(aecore), FileName])
+                                                end,
+                            read_hard_fork_file(AbsoluteFileName)
+                    end
+            end
+    end.
+
+read_hard_fork_file(FileName) ->
+    case file:read_file(FileName) of
         {ok, _} = OK -> OK;
-        {error, Err} -> {error, {Err, PresetExtraFile}}
+        {error, Err} -> {error, {Err, FileName}}
     end.
 
 -spec preset_contracts(aec_hard_forks:protocol_vsn(), atom()) -> list().
 preset_contracts(Release, ErrorMsg) ->
     case read_preset_contracts(Release) of
         {error, {_Err, Msg}} ->
-            % no setup, no preset contracts
             erlang:error({ErrorMsg, Msg});
         {ok, JSONData} ->
             DecodedData =
@@ -245,17 +287,13 @@ decode_contract_spec(SpecIn) ->
 
 
 -spec read_preset_contracts(aec_hard_forks:protocol_vsn()) -> {ok, binary()}| {error, {atom(), string()}}.
-read_preset_contracts(?LIMA_PROTOCOL_VSN = Release) ->
-    PresetContractsFile = aec_fork_block_settings:contracts_file_name(Release),
-    case file:read_file(PresetContractsFile) of
-        {ok, _} = OK -> OK;
-        {error, Err} -> {error, {Err, PresetContractsFile}}
-    end.
+read_preset_contracts(Release) ->
+    read_hard_fork_file(Release, <<"contracts_file">>, fun aec_fork_block_settings:contracts_file_name/1).
 
 accounts_file_name(Release) ->
     case aeu_env:find_config([<<"system">>, <<"custom_prefunded_accs_file">>], [user_config]) of
         undefined ->
-            filename:join([dir(Release), accounts_json_file()]);
+            filename:join([hardcoded_dir(Release), accounts_json_file()]);
         {ok, CustomAccsFilePath} ->
             case filelib:is_file(CustomAccsFilePath) of 
                 true ->
@@ -268,13 +306,11 @@ accounts_file_name(Release) ->
     end.
 
 extra_accounts_file_name(Release) ->
-    filename:join([dir(Release), extra_accounts_json_file()]).
+    filename:join([hardcoded_dir(Release), extra_accounts_json_file()]).
 
 contracts_file_name(Release) ->
-    filename:join([dir(Release), contracts_json_file()]).
+    filename:join([hardcoded_dir(Release), contracts_json_file()]).
 
-seed_contracts_file_name(Release, NetworkId) ->
-    filename:join([dir(Release), <<NetworkId/binary, "_contracts.json">>]).
 
 -ifdef(TEST).
 accounts_json_file() ->
@@ -351,10 +387,25 @@ pre_iris_map_ordering_file() ->
     end.
 -endif.
 
-hc_seed_contracts(Protocol, NetworkId) ->
-    ContractsFile = seed_contracts_file_name(Protocol, NetworkId),
-    case file:read_file(ContractsFile) of
-        {ok, Data} ->
-            {ok, jsx:decode(Data, [return_maps])};
-        {error, Err} -> {error, {Err, ContractsFile}}
+hc_seed_contracts(ProtocolVsn) ->
+    ProtocolBin = integer_to_binary(ProtocolVsn),
+    case aeu_env:config_value([<<"chain">>, <<"hard_forks">>, ProtocolBin, <<"hc_contracts_file">>], aecore, [hard_forks, ProtocolVsn, hc_contracts_file], undefined) of
+        undefined ->
+            {error, hc_contracts_file_undefined};
+        ContractsFile ->
+            case file:read_file(ContractsFile) of
+                {ok, Data} ->
+                    {ok, jsx:decode(Data, [return_maps])};
+                {error, Err} -> {error, {Err, ContractsFile}}
+            end
+    end.
+
+hardcoded_basename(ProtocolVsn) ->
+    case ProtocolVsn of
+        ?ROMA_PROTOCOL_VSN    -> ?GENESIS_DIR;
+        ?MINERVA_PROTOCOL_VSN -> ?MINERVA_DIR;
+        ?FORTUNA_PROTOCOL_VSN -> ?FORTUNA_DIR;
+        ?LIMA_PROTOCOL_VSN    -> ?LIMA_DIR;
+        ?IRIS_PROTOCOL_VSN    -> ?IRIS_DIR;
+        ?CERES_PROTOCOL_VSN   -> ?CERES_DIR
     end.

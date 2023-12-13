@@ -758,7 +758,7 @@ copy_forks_dir(SourceRelDir, DestRelDir) ->
 
 
 copy_fork_dir(SourceRelDir, DestRelDir, Release) ->
-    GenesisDir = aec_fork_block_settings:dir(Release), % ex data/aecore/.genesis
+    GenesisDir = aec_fork_block_settings:hardcoded_dir(Release), % ex data/aecore/.genesis
     GenesisName = filename:basename(GenesisDir),
     DataAecoreRoot = filename:dirname(GenesisDir), % ex. data/aecore
     DataRoot = filename:dirname(DataAecoreRoot), % ex. data

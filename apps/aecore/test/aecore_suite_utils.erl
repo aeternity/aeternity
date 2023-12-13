@@ -10,7 +10,8 @@
          make_shortcut/1,
          node_config/2,
          create_config/4,
-         create_seed_file/5,
+         create_seed_file/2,
+         hard_fork_filename/4,
          make_multi/2,
          node_shortcut/2,
          shortcut_dir/1,
@@ -520,14 +521,17 @@ create_config(Node, CTConfig, CustomConfig, Options) ->
     ok = filelib:ensure_dir(NodeCfgPath),
     write_config(NodeCfgPath, FinalConfig).
 
-create_seed_file(Nodes, CTConfig, Consensus, FileName, Data) when
-    is_list(Nodes) ->
-    [create_seed_file(Node, CTConfig, Consensus, FileName, Data) ||
-        Node <- Nodes];
-create_seed_file(Node, CTConfig, Consensus, FileName, Data) ->
+create_seed_file(FileNames, Data) when
+    is_list(FileNames) ->
+    [create_seed_file(FileName, Data) ||
+        FileName <- FileNames];
+create_seed_file(FileName, Data) ->
+    ok = filelib:ensure_dir(FileName),
+    write_config(FileName, Data, false).
+
+hard_fork_filename(Node, CTConfig, Consensus, FileName) ->
     Path = filename:join([data_dir(Node, CTConfig), "aecore", "." ++ Consensus, FileName]),
-    ok = filelib:ensure_dir(Path),
-    write_config(Path, Data, false).
+    {ok, list_to_binary(Path)}.
 
 maps_merge(V1, V2) when not is_map(V1); not is_map(V2) ->
     V2;
@@ -964,7 +968,7 @@ sign_on_node({Id, _Node}, Tx, SignHash) ->
 sign_on_node(Id, Tx, SignHash) ->
     sign_on_node(node_tuple(Id), Tx, SignHash).
 
-forks() ->
+protocol_to_heights() ->
     NetworkId =
         case os:getenv("PROTOCOL") of
             false ->
@@ -976,8 +980,11 @@ forks() ->
         end,
     aec_hard_forks:protocols_from_network_id(NetworkId).
 
+forks() ->
+  maps:fold(fun(K,V,Acc) -> Acc#{K => V} end, #{}, protocol_to_heights()).
+
 latest_fork_height() ->
-    lists:max(maps:values(forks())).
+    lists:max(maps:values(protocol_to_heights())).
 
 latest_protocol_version() ->
     lists:max(maps:keys(aec_hard_forks:protocols())).

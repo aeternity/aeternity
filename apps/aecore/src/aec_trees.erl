@@ -310,21 +310,10 @@ perform_pre_transformations(Trees, _TxEnv, _Protocol, undefined) ->
 perform_pre_transformations(Trees, _TxEnv, Protocol, Protocol) ->
     %% No version change in block.
     Trees;
-perform_pre_transformations(Trees, _TxEnv, Protocol, _PrevProtocol)
-  when Protocol > ?LIMA_PROTOCOL_VSN ->
-    %% Trees shouldn't need transformations after Lima.
-    Trees;
 perform_pre_transformations(Trees, TxEnv, Protocol, PrevProtocol)
   when Protocol > PrevProtocol ->
     %% Fork.
-    apply_pre_transformations(Protocol, Trees, TxEnv).
-
-apply_pre_transformations(?MINERVA_PROTOCOL_VSN, Trees, _TxEnv) ->
-    aec_block_fork:apply_minerva(Trees);
-apply_pre_transformations(?FORTUNA_PROTOCOL_VSN, Trees, _TxEnv) ->
-    aec_block_fork:apply_fortuna(Trees);
-apply_pre_transformations(?LIMA_PROTOCOL_VSN, Trees, TxEnv) ->
-    aec_block_fork:apply_lima(Trees, TxEnv).
+    aec_block_fork:apply(Protocol, Trees, TxEnv).
 
 -spec calls(trees()) -> aect_call_state_tree:tree().
 calls(Trees) ->

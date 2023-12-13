@@ -2,6 +2,7 @@
 
 -include_lib("eunit/include/eunit.hrl").
 -include("blocks.hrl").
+-include_lib("aecontract/include/hard_forks.hrl").
 
 -define(TEST_MODULE, aec_fork_block_settings).
 -define(ROOT_DIR, "/tmp").
@@ -12,6 +13,7 @@
 
 genesis_accounts_test_() ->
     release_based(?ROOT_DIR ++ "/.genesis",
+                  undefined,
                   fun ?TEST_MODULE:genesis_accounts/0,
                   none,
                   none,
@@ -19,6 +21,7 @@ genesis_accounts_test_() ->
 
 minerva_accounts_test_() ->
     release_based(?ROOT_DIR ++ "/.minerva",
+                  undefined,
                   fun ?TEST_MODULE:minerva_accounts/0,
                   none,
                   none,
@@ -26,6 +29,7 @@ minerva_accounts_test_() ->
 
 fortuna_accounts_test_() ->
     release_based(?ROOT_DIR ++ "/.fortuna",
+                  undefined,
                   fun ?TEST_MODULE:fortuna_accounts/0,
                   none,
                   none,
@@ -33,17 +37,47 @@ fortuna_accounts_test_() ->
 
 lima_accounts_test_() ->
     release_based(?ROOT_DIR ++ "/.lima",
+                  undefined,
                   fun ?TEST_MODULE:lima_accounts/0,
                   fun ?TEST_MODULE:lima_contracts/0,
                   lima_contracts_file_missing,
                   lima_accounts_file_missing).
 
-release_based(Dir, ReadAccountsFun, ReadContractsFun, CMissingErr, AMissingErr) ->
+configurable_accounts_test_() ->
+    configurable_accounts(100, 100).
+
+configurable_accounts_override_test_() ->
+    %% Test the hard coded accounts are overridden
+    configurable_accounts(?ROMA_PROTOCOL_VSN, 0).
+
+
+configurable_accounts(Protocol, Height) ->
+    Dir = ?ROOT_DIR ++ "/.configurable",
+    Config = #{integer_to_binary(Protocol) =>
+                  #{<<"accounts_file">> => accounts_filename(Dir),
+                    <<"contracts_file">> => contracts_filename(Dir),
+                    <<"height">> => Height}},
+    release_based(Dir,
+                  Config,
+                  fun() -> ?TEST_MODULE:accounts(Protocol) end,
+                  fun() -> ?TEST_MODULE:contracts(Protocol) end,
+                  contracts_file_missing,
+                  accounts_file_missing).
+
+release_based(Dir, ForkConfig, ReadAccountsFun, ReadContractsFun, CMissingErr, AMissingErr) ->
     {foreach,
      fun() ->
          file:make_dir(Dir),
          meck:new(aeu_env, [passthrough]),
          meck:expect(aeu_env, data_dir, fun(aecore) -> ?ROOT_DIR end),
+         case ForkConfig of
+            undefined ->
+                ok;
+            _ ->
+                meck:expect(aeu_env, config_value,
+                            fun([<<"chain">>, <<"hard_forks">>], aecore, hard_forks, _Default) ->
+                                ForkConfig end)
+         end,
          ok
      end,
      fun(ok) ->
@@ -100,7 +134,12 @@ release_based(Dir, ReadAccountsFun, ReadContractsFun, CMissingErr, AMissingErr) 
         fun() ->
             delete_accounts_file(Dir),
             File = accounts_filename(Dir),
-            ?assertError({AMissingErr, File}, ReadAccountsFun()),
+            case AMissingErr of
+                undefined ->
+                    ?assertEqual([], ReadAccountsFun());
+                _ ->
+                    ?assertError({AMissingErr, File}, ReadAccountsFun())
+                end,
             ok
         end}]
      ++
@@ -132,7 +171,12 @@ release_based(Dir, ReadAccountsFun, ReadContractsFun, CMissingErr, AMissingErr) 
                  fun() ->
                      delete_contracts_file(Dir),
                      File = contracts_filename(Dir),
-                     ?assertError({CMissingErr, File}, ReadContractsFun()),
+                     case CMissingErr of
+                        undefined ->
+                            ?assertEqual([], ReadContractsFun());
+                        _ ->
+                         ?assertError({CMissingErr, File}, ReadContractsFun())
+                     end, 
                      okma
                  end},
                 {"Preset contracts parsing: Format check",

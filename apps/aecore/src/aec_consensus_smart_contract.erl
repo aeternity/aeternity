@@ -169,11 +169,10 @@ pogf_detected(_H1, _H2) -> ok.
 %% -------------------------------------------------------------------
 %% Genesis block
 genesis_transform_trees(Trees0, #{}) ->
-    NetworkId = aec_governance:get_network_id(),
     GenesisProtocol = genesis_protocol_version(),
     {ok, #{ <<"contracts">> := Contracts
           , <<"calls">> := Calls }} =
-        aec_fork_block_settings:hc_seed_contracts(GenesisProtocol, NetworkId),
+        aec_fork_block_settings:hc_seed_contracts(GenesisProtocol),
     GenesisHeader = genesis_raw_header(),
     {ok, GenesisHash} = aec_headers:hash_header(GenesisHeader),
     TxEnv = aetx_env:tx_env_from_key_header(GenesisHeader,

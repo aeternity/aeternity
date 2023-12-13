@@ -143,6 +143,39 @@ fork_management:
     network_id: ae_uat
 ```
 
+### Hardforks
+
+Hardforks allow the specification of consensuss protocol versions with their repsective heights for custom chains.
+Optionally, prefunded account and contract files can be speficied which will be effective at these heights.
+The files can be specified using the absolute path or a path relative to the home of the node in the directory data/aecore.
+
+```yaml
+chain:
+    persist: true
+    hard_forks:
+        "genesis":
+            "height": 0
+            "accounts_file": hf_dir/genesis/accounts.json
+            "contracts_file": hf_dir/genesis/contracts.json
+        "first":
+            "height": 1800
+            "accounts_file": hf_dir/first/accounts.json
+        "second":
+            "height": 1100
+```
+
+For hyperchains a contact file can also be specified alongside the other files.
+```yaml
+chain:
+    persist: true
+    hard_forks:
+        "genesis":
+            "height": 0
+            "accounts_file": hf_dir/genesis/accounts.json
+            "hc_contracts_file": hf_dir/genesis/contracts.json
+```
+
+
 ### Peers
 
 Peers is a list of nodes that node tries to connect to.
