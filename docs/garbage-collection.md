@@ -23,6 +23,16 @@ has been overwritten at some point.
 
 ## Configuration
 
+An example setting for a very compact chain state size of around ~40 GB in 2023 would be:
+```yaml
+chain:
+    garbage_collection:
+       during_sync: true
+       history: 500
+```
+Please note that this might come with sync performance implications, as the garbage collection is performed in addition to the sync.
+
+
 Garbage collection can be customized with the following configuration options:
 
 ### `chain:garbage_collection:enabled`
