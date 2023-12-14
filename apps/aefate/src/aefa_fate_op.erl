@@ -2246,7 +2246,7 @@ mk_pointer_id_v1(?FATE_VARIANT([1, 1, 1, 1], AddrTag, {?FATE_ADDRESS(Addr)})) ->
 
 mk_pointer_id_v2(?FATE_VARIANT([1, 1, 1, 1, 1], AddrTag, {?FATE_ADDRESS(Addr)})) ->
     mk_id(AddrTag, Addr);
-mk_pointer_id_v2(?FATE_VARIANT([1, 1, 1, 1, 1], 4, {?FATE_STRING(Data)})) ->
+mk_pointer_id_v2(?FATE_VARIANT([1, 1, 1, 1, 1], 4, {?FATE_BYTES(Data)})) ->
     Data.
 
 %% type pointee = Account | Oracle | Contract | Channel
