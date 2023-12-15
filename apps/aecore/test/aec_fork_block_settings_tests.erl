@@ -55,12 +55,11 @@ configurable_accounts(Protocol, Height) ->
     Dir = ?ROOT_DIR ++ "/.configurable",
     Config = #{integer_to_binary(Protocol) =>
                   #{<<"accounts_file">> => accounts_filename(Dir),
-                    <<"contracts_file">> => contracts_filename(Dir),
                     <<"height">> => Height}},
     release_based(Dir,
                   Config,
                   fun() -> ?TEST_MODULE:accounts(Protocol) end,
-                  fun() -> ?TEST_MODULE:contracts(Protocol) end,
+                  none,
                   contracts_file_missing,
                   accounts_file_missing).
 

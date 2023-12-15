@@ -1477,7 +1477,7 @@ build_json_files(ElectionContract, NodeConfigs) ->
     AllCalls =  [Call1, Call2, Call3, Call4, Call5, Call6,
 		 Call7, Call8, Call9, Call10, Call11, Call12, Call13],
     ProtocolBin = integer_to_binary(aect_test_utils:latest_protocol_version()),
-    ContractsFileNames = [ContractsFileName  || #{<<"chain">> := #{<<"hard_forks">> := #{ProtocolBin := #{<<"hc_contracts_file">> := ContractsFileName}}}} <- NodeConfigs],
+    ContractsFileNames = [ContractsFileName  || #{<<"chain">> := #{<<"hard_forks">> := #{ProtocolBin := #{<<"contracts_file">> := ContractsFileName}}}} <- NodeConfigs],
     AccountsFileNames = [AccountsFileName  || #{<<"chain">> := #{<<"hard_forks">> := #{ProtocolBin := #{<<"accounts_file">> := AccountsFileName}}}} <- NodeConfigs],    
     aecore_suite_utils:create_seed_file(ContractsFileNames,
         #{<<"contracts">> => [C0, SC, EC], <<"calls">> => AllCalls}),
@@ -1593,7 +1593,7 @@ node_config(NetworkId,Node, CTConfig, PotentialStakers, ReceiveAddress, Consensu
     #{<<"chain">> =>
             #{  <<"persist">> => false,
                 <<"hard_forks">> => #{integer_to_binary(Protocol) => #{<<"height">> => 0, 
-                                                                       <<"hc_contracts_file">> => ContractFileName,
+                                                                       <<"contracts_file">> => ContractFileName,
                                                                        <<"accounts_file">> => AccountFileName}},
                 <<"consensus">> =>
                     #{<<"0">> => #{<<"type">> => ConsensusType,

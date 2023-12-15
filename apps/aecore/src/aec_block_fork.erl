@@ -33,8 +33,7 @@ apply(ProtocolVsn, Trees, TxEnv) ->
     case aec_fork_block_settings:is_custom_fork(ProtocolVsn) of
         true ->
             Trees1 = apply_accounts_file(Trees, aec_fork_block_settings:accounts(ProtocolVsn)),
-            Trees2 = apply_accounts_file(Trees1, aec_fork_block_settings:extra_accounts(ProtocolVsn)),
-            apply_hard_fork_contracts_file(aec_fork_block_settings:contracts(ProtocolVsn), Trees2, TxEnv);
+            apply_accounts_file(Trees1, aec_fork_block_settings:extra_accounts(ProtocolVsn));
         _ ->
             case ProtocolVsn of
                 ?MINERVA_PROTOCOL_VSN ->

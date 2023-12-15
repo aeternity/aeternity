@@ -144,8 +144,6 @@ chain:
         accounts_file: /tmp/accounts.json
         # relative path
         contracts_file: 1/contracts.json
-        # hyper chain contracts
-        hc_contracts_file: 1/contracts.json
       "2":
         height: 1
         accounts_file: 2/accounts.json

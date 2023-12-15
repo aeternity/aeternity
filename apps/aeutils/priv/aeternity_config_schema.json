@@ -1598,12 +1598,7 @@
                                     "contracts_file" : {
                                         "description" : "File where contracts are stored",
                                         "type" : "string"
-                                    },
-                                    "hc_contracts_file" : {
-                                        "description" : "File where hyperchain contracts are stored",
-                                        "type" : "string"
-                                    }                                    
-
+                                    }
                                 }
                             }]
                         }

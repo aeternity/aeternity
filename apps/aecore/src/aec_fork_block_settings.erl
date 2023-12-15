@@ -11,7 +11,6 @@
          lima_contracts/0,
          block_whitelist/0,
          pre_iris_map_ordering/0,
-         hc_seed_contracts/1,
          is_custom_fork/1,
          accounts/1,
          extra_accounts/1,
@@ -57,7 +56,7 @@ lima_extra_accounts() -> preset_accounts(extra_accounts, ?LIMA_PROTOCOL_VSN,
                                          lima_extra_accounts_file_missing).
 
 -spec lima_contracts() -> list().
-lima_contracts() -> preset_contracts(?LIMA_PROTOCOL_VSN,
+lima_contracts() -> preset_hardcoded_contracts(?LIMA_PROTOCOL_VSN,
                                      lima_contracts_file_missing).
 
 -spec accounts(aec_hard_forks:protocol_vsn()) -> list().
@@ -66,7 +65,7 @@ accounts(ProtocolVsn) -> preset_accounts(accounts, ProtocolVsn, accounts_file_mi
 -spec extra_accounts(aec_hard_forks:protocol_vsn()) -> list().
 extra_accounts(ProtocolVsn) -> preset_accounts(extra_accounts, ProtocolVsn, extra_accounts_file_missing).
 
--spec contracts(aec_hard_forks:protocol_vsn()) -> list().
+-spec contracts(aec_hard_forks:protocol_vsn()) -> map().
 contracts(ProtocolVsn) -> preset_contracts(ProtocolVsn, contracts_file_missing).
 
 -spec is_custom_fork(aec_hard_forks:protocol_vsn()) -> boolean().
@@ -160,20 +159,20 @@ preset_accounts(Type, Release, ErrorMsg) ->
     end.
 
 -spec read_preset(accounts | extra_accounts, aec_hard_forks:protocol_vsn()) ->
-        {ok, binary()}| {error, {atom(), string()}}.
+        {ok, binary()} | {error, {atom(), string()}}.
 read_preset(accounts, Release) ->
-    read_hard_fork_file(Release, <<"accounts_file">>, fun aec_fork_block_settings:accounts_file_name/1);
+    read_hard_fork_file(Release, <<"accounts_file">>, fun(Protocol) -> read_hard_fork_file(aec_fork_block_settings:accounts_file_name(Protocol)) end);
 read_preset(extra_accounts, Release) ->
-    read_hard_fork_file(Release, <<"extra_accounts_file">>, fun aec_fork_block_settings:extra_accounts_file_name/1).
+    read_hard_fork_file(Release, <<"extra_accounts_file">>, fun(Protocol) -> read_hard_fork_file(aec_fork_block_settings:extra_accounts_file_name(Protocol)) end).
 
 read_hard_fork_file(Protocol, Key, DefaultFun) when is_integer(Protocol) ->
     case aeu_env:config_value([<<"chain">>, <<"hard_forks">>], aecore, hard_forks, undefined) of
         undefined ->
-            read_hard_fork_file(DefaultFun(Protocol));
+            DefaultFun(Protocol);
         Map when is_map(Map) ->
             case maps:get(integer_to_binary(Protocol), Map) of
                 Height when is_integer(Height) ->
-                    read_hard_fork_file(DefaultFun(Protocol));
+                    DefaultFun(Protocol);
                 Map1 when is_map(Map1) ->
                     case maps:get(Key, Map1, undefined) of
                         %% Setting files for a height are not mandatory so return empty object, an error will be return if the file name is set but not found 
@@ -197,9 +196,18 @@ read_hard_fork_file(FileName) ->
         {error, Err} -> {error, {Err, FileName}}
     end.
 
--spec preset_contracts(aec_hard_forks:protocol_vsn(), atom()) -> list().
+-spec preset_contracts(aec_hard_forks:protocol_vsn(), atom()) -> map().
 preset_contracts(Release, ErrorMsg) ->
     case read_preset_contracts(Release) of
+        {error, {_Err, Msg}} ->
+            erlang:error({ErrorMsg, Msg});
+        {ok, JSONData} ->
+            jsx:decode(JSONData, [return_maps])
+    end.
+
+-spec preset_hardcoded_contracts(aec_hard_forks:protocol_vsn(), atom()) -> list().
+preset_hardcoded_contracts(Release, ErrorMsg) ->
+    case read_hard_fork_file(contracts_file_name(Release)) of
         {error, {_Err, Msg}} ->
             erlang:error({ErrorMsg, Msg});
         {ok, JSONData} ->
@@ -288,7 +296,8 @@ decode_contract_spec(SpecIn) ->
 
 -spec read_preset_contracts(aec_hard_forks:protocol_vsn()) -> {ok, binary()}| {error, {atom(), string()}}.
 read_preset_contracts(Release) ->
-    read_hard_fork_file(Release, <<"contracts_file">>, fun aec_fork_block_settings:contracts_file_name/1).
+    %% If the configuration variable is not set return an empty object
+    read_hard_fork_file(Release, <<"contracts_file">>, fun(_Protocol) -> {ok, <<"{}">>} end).
 
 accounts_file_name(Release) ->
     case aeu_env:find_config([<<"system">>, <<"custom_prefunded_accs_file">>], [user_config]) of
@@ -386,19 +395,6 @@ pre_iris_map_ordering_file() ->
         _                -> ".pre_iris_map_ordering_test.json"
     end.
 -endif.
-
-hc_seed_contracts(ProtocolVsn) ->
-    ProtocolBin = integer_to_binary(ProtocolVsn),
-    case aeu_env:config_value([<<"chain">>, <<"hard_forks">>, ProtocolBin, <<"hc_contracts_file">>], aecore, [hard_forks, ProtocolVsn, hc_contracts_file], undefined) of
-        undefined ->
-            {error, hc_contracts_file_undefined};
-        ContractsFile ->
-            case file:read_file(ContractsFile) of
-                {ok, Data} ->
-                    {ok, jsx:decode(Data, [return_maps])};
-                {error, Err} -> {error, {Err, ContractsFile}}
-            end
-    end.
 
 hardcoded_basename(ProtocolVsn) ->
     case ProtocolVsn of
