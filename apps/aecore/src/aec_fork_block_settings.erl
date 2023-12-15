@@ -207,7 +207,7 @@ preset_contracts(Release, ErrorMsg) ->
 
 -spec preset_hardcoded_contracts(aec_hard_forks:protocol_vsn(), atom()) -> list().
 preset_hardcoded_contracts(Release, ErrorMsg) ->
-    case read_hard_fork_file(contracts_file_name(Release)) of
+    case read_hard_fork_file(aec_fork_block_settings:contracts_file_name(Release)) of
         {error, {_Err, Msg}} ->
             erlang:error({ErrorMsg, Msg});
         {ok, JSONData} ->
