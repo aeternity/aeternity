@@ -164,17 +164,9 @@ chain:
             "height": 1100
 ```
 
-For hyperchains a contact file can also be specified alongside the other files.
-```yaml
-chain:
-    persist: true
-    hard_forks:
-        "genesis":
-            "height": 0
-            "accounts_file": hf_dir/genesis/accounts.json
-            "hc_contracts_file": hf_dir/genesis/contracts.json
-```
+It is also possible to set the configuration in an enviroment variable.
 
+Example: ```AE__CHAIN__HARD_FORKS='{"1":{"acccounts_file": "hf_dir/genesis/accounts.json", "height":0}}'```
 
 ### Peers
 
