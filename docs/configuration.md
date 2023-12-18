@@ -164,7 +164,7 @@ chain:
             "height": 1100
 ```
 
-It is also possible to set the configuration in an enviroment variable.
+It is also possible to set the configuration in an environment variable.
 
 Example: ```AE__CHAIN__HARD_FORKS='{"1":{"acccounts_file": "hf_dir/genesis/accounts.json", "height":0}}'```
 
