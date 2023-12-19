@@ -47,6 +47,7 @@
         , latest_sophia_version/0
         , latest_sophia_contract_version/0
         , require_at_least_protocol/1
+        , delegation_signature/3
         ]).
 
 -export([ abi_version/0
@@ -948,3 +949,34 @@ try_setup_cache(Tab, Keypos) ->
         _ ->
             ok
     end.
+
+%% delegation signature
+delegation_signature(Type, Material, PrivKey) ->
+    SigData =
+        case vm_version() of
+            VM when VM =< ?VM_FATE_SOPHIA_2 ->
+                aec_governance:add_network_id(delegate_sign_old(Type, Material));
+            _ ->
+                delegate_sign_new(Type, Material)
+        end,
+    enacl:sign_detached(SigData, PrivKey).
+
+%% Pre-Ceres
+delegate_sign_old(aens_wild, {A, C}) -> <<A/binary, "AENS"/utf8, C/binary>>;
+delegate_sign_old(_, {A, B})         -> <<A/binary, B/binary>>;
+delegate_sign_old(_, {A, B, C})      -> <<A/binary, B/binary, C/binary>>.
+
+%% From Ceres
+delegate_sign_new(aens_wild, {A, C}) ->
+    aeser_del(aens_sig, {aeser_id:create(account, A), aeser_id:create(contract, C)});
+delegate_sign_new(aens_preclaim, {A, C}) ->
+    aeser_del(aens_preclaim_sig, {aeser_id:create(account, A), aeser_id:create(contract, C)});
+delegate_sign_new(aens_name, {A, N, C}) ->
+    aeser_del(aens_name_sig, {aeser_id:create(account, A), aeser_id:create(name, N), aeser_id:create(contract, C)});
+delegate_sign_new(oracle, {A, C}) ->
+    aeser_del(oracle_sig, {aeser_id:create(account, A), aeser_id:create(contract, C)});
+delegate_sign_new(oracle_response, {Q, C}) ->
+    aeser_del(oracle_response_sig, {aeser_id:create(oracle, Q), aeser_id:create(contract, C)}).
+
+aeser_del(Fun, {A, B})    -> aeser_delegation:Fun(aec_governance:get_network_id(), A, B);
+aeser_del(Fun, {A, B, C}) -> aeser_delegation:Fun(aec_governance:get_network_id(), A, B, C).

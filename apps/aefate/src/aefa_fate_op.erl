@@ -2324,7 +2324,7 @@ check_delegation_signature(Type, Data, Signature, ES) ->
     check_delegation_signature(Type, Data, Signature, Current, ES).
 
 check_delegation_signature(Type, Data, SignBin, Current, ES0) ->
-    {Bin, Pubkey} = delegation_signature_data(Type, Data, Current),
+    Pubkey = delegation_signer_account(Data),
     case Pubkey =:= Current of
         true ->
             ES0;
@@ -2334,7 +2334,9 @@ check_delegation_signature(Type, Data, SignBin, Current, ES0) ->
             ES = spend_gas(aeb_fate_opcodes:gas_cost(VerifyOp), ES0),
             API = aefa_engine_state:chain_api(ES),
             VmVersion = aefa_engine_state:vm_version(ES),
-            case aefa_chain_api:check_delegation_signature(Pubkey, Bin, SignBin, VmVersion, API) of
+            NetworkId = aec_governance:get_network_id(),
+            SigData = delegation_signature_data(Type, VmVersion, NetworkId, Data, Current),
+            case aefa_chain_api:check_delegation_signature(Pubkey, SigData, SignBin, VmVersion, API) of
                 {ok, API1} ->
                     aefa_engine_state:set_chain_api(API1, ES);
                 error ->
@@ -2342,21 +2344,49 @@ check_delegation_signature(Type, Data, SignBin, Current, ES0) ->
             end
     end.
 
+delegation_signer_account({Pubkey, _})                   -> Pubkey;
+delegation_signer_account(Pubkey) when is_binary(Pubkey) -> Pubkey.
+
+delegation_signature_data(Type, VmVersion, NetworkId, Data, Current) when VmVersion =< ?VM_FATE_SOPHIA_2 ->
+    SigData = delegation_signature_data(Type, Data, Current),
+    [<<NetworkId/binary, SigData/binary>>];
+delegation_signature_data(Type, _VmVersion, NetworkId, Data, Current) ->
+    delegation_signature_data(Type, NetworkId, Data, Current).
+
+%% FATE_1 and FATE_2
 delegation_signature_data(aens_preclaim, Pubkey, Current) ->
-    {{<<Pubkey/binary, Current/binary>>, aens_wildcard_signature_data(Pubkey, Current)}, Pubkey};
+    <<Pubkey/binary, Current/binary>>;
 delegation_signature_data(Type, Pubkey, Current) when Type =:= oracle_register;
                                                       Type =:= oracle_extend ->
-    {<<Pubkey/binary, Current/binary>>, Pubkey};
-delegation_signature_data(oracle_respond, {Pubkey, QueryId}, Current) ->
-    {<<QueryId/binary, Current/binary>>, Pubkey};
+    <<Pubkey/binary, Current/binary>>;
+delegation_signature_data(oracle_respond, {_Pubkey, QueryId}, Current) ->
+    <<QueryId/binary, Current/binary>>;
 delegation_signature_data(Type, {Pubkey, Hash}, Current) when Type =:= aens_claim;
                                                               Type =:= aens_update;
                                                               Type =:= aens_transfer;
                                                               Type =:= aens_revoke ->
-    {{<<Pubkey/binary, Hash/binary, Current/binary>>, aens_wildcard_signature_data(Pubkey, Current)}, Pubkey}.
+    <<Pubkey/binary, Hash/binary, Current/binary>>.
 
-aens_wildcard_signature_data(Pubkey, ContractPubkey) ->
-    <<Pubkey/binary, "AENS"/utf8, ContractPubkey/binary>>.
+%% FATE_3 and onwards
+delegation_signature_data(aens_preclaim, NetworkId, Pubkey, Current) ->
+    Account  = aeser_id:create(account, Pubkey),
+    Contract = aeser_id:create(contract, Current),
+    [ aeser_delegation:aens_preclaim_sig(NetworkId, Account, Contract)
+    , aeser_delegation:aens_sig(NetworkId, Account, Contract) ];
+delegation_signature_data(Type, NetworkId, {Pubkey, NameHash}, Current)
+        when Type =:= aens_claim; Type =:= aens_update; Type =:= aens_transfer; Type =:= aens_revoke ->
+    Account  = aeser_id:create(account, Pubkey),
+    Contract = aeser_id:create(contract, Current),
+    [ aeser_delegation:aens_name_sig(NetworkId, Account, aeser_id:create(name, NameHash), Contract)
+    , aeser_delegation:aens_sig(NetworkId, Account, Contract) ];
+delegation_signature_data(Type, NetworkId, Pubkey, Current)
+        when Type =:= oracle_register; Type =:= oracle_extend ->
+    Account  = aeser_id:create(account, Pubkey),
+    Contract = aeser_id:create(contract, Current),
+    [aeser_delegation:oracle_sig(NetworkId, Account, Contract)];
+delegation_signature_data(oracle_respond, NetworkId, {_Pubkey, QueryId}, Current) ->
+    Contract = aeser_id:create(contract, Current),
+    [aeser_delegation:oracle_response_sig(NetworkId, aeser_id:create(oracle, QueryId), Contract)].
 
 spend_gas(Delta, ES) when is_integer(Delta), Delta > 0 ->
     aefa_engine_state:spend_gas(Delta, ES).

@@ -3753,8 +3753,7 @@ fp_register_name(Cfg) ->
     FPRound = Round + 10,
     SignContractAddress =
         fun(PubK, PrivK, ConId) ->
-            BinToSign = <<PubK/binary, ConId/binary>>,
-            SigBin = enacl:sign_detached(aec_governance:add_network_id(BinToSign), PrivK),
+            SigBin = aect_test_utils:delegation_signature(aens_preclaim, {PubK, ConId}, PrivK),
             ?TEST_LOG("Signature binary ~p", [SigBin]),
             address_encode(hash, SigBin)
         end,
@@ -4040,8 +4039,7 @@ fp_oracle_respond(Cfg) ->
         fun(_Pubkey, _Privkey, Oracle, OraclePrivkey, QueryId, ContractId, _QueryFee) ->
             ?TEST_LOG("Oracle ~p", [Oracle]),
             ?TEST_LOG("QueryId ~p", [QueryId]),
-            BinToSign = <<QueryId/binary, ContractId/binary>>,
-            SigBin = enacl:sign_detached(aec_governance:add_network_id(BinToSign), OraclePrivkey),
+            SigBin = aect_test_utils:delegation_signature(oracle_response, {QueryId, ContractId}, OraclePrivkey),
             ?TEST_LOG("Signature binary ~p", [SigBin]),
             Args = [binary_to_list(aeser_api_encoder:encode(oracle_pubkey, Oracle)),
                     binary_to_list(aeser_api_encoder:encode(oracle_query_id, QueryId)),
@@ -4056,8 +4054,7 @@ fp_oracle_respond(Cfg) ->
 fp_oracle_extend(Cfg) ->
     ProduceCallData =
         fun(_Pubkey, _Privkey, Oracle, OraclePrivkey, _QueryId, ContractId, _QueryFee) ->
-            BinToSign = <<Oracle/binary, ContractId/binary>>,
-            SigBin = enacl:sign_detached(aec_governance:add_network_id(BinToSign), OraclePrivkey),
+            SigBin = aect_test_utils:delegation_signature(oracle, {Oracle, ContractId}, OraclePrivkey),
             ?TEST_LOG("Signature binary ~p", [SigBin]),
             Args = [binary_to_list(aeser_api_encoder:encode(oracle_pubkey, Oracle)),
                     encode_sig(SigBin), "RelativeTTL(10)"],
@@ -4255,8 +4252,7 @@ fp_register_oracle(Cfg) ->
     FPRound = Round + 10,
     SignAddress =
         fun(Oracle, PrivK, ContractId) ->
-            BinToSign = <<Oracle/binary, ContractId/binary>>,
-            SigBin = enacl:sign_detached(aec_governance:add_network_id(BinToSign), PrivK),
+            SigBin = aect_test_utils:delegation_signature(oracle, {Oracle, ContractId}, PrivK),
             ?TEST_LOG("Signature binary ~p", [SigBin]),
             encode_sig(SigBin)
         end,
