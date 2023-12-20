@@ -19,7 +19,7 @@ main contract AENSUpdate =
     let Some(pv1) = AENSCompat.pointee_from_V2(ptr)
     o.set(name, key, pv1)
 
-  stateful entrypoint add_data_ptr(name : string, key : string, data : string) =
+  stateful entrypoint add_data_ptr(name : string, key : string, data : bytes()) =
     set(name, key, AENSv2.DataPt(data))
 
   stateful entrypoint set(name : string, key : string, ptr : AENSv2.pointee) =

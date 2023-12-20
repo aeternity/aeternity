@@ -6735,7 +6735,7 @@ sophia_aens_update_transaction(Cfg) ->
     ?assertEqual(23456, aens_names:ttl(Rec3)),
     ?assertEqual(23456, aens_names:client_ttl(Rec3)),
 
-    RawPointers = if VMVersion >= ?VM_FATE_SOPHIA_3 -> #{<<"raw_pointer">> => DataPointee(<<"data">>)};
+    RawPointers = if VMVersion >= ?VM_FATE_SOPHIA_3 -> #{<<"raw_pointer">> => DataPointee({bytes, <<"data">>})};
                      true                           -> #{}
                   end,
 
@@ -6755,7 +6755,7 @@ sophia_aens_update_transaction(Cfg) ->
                    [aens_pointer:new(<<(atom_to_binary(T, utf8))/binary, "_pubkey">>,
                                      aeser_id:create(T, <<A:256>>)) ||
                        {T, A} <- [{account, APubkey}, {oracle, OPubkey}, {contract, CPubkey}]]
-                   ++ [aens_pointer:new(K, V) || {K, {variant, _, _, {V}}} <- maps:to_list(RawPointers)]),
+                   ++ [aens_pointer:new(K, V) || {K, {variant, _, _, {{bytes, V}}}} <- maps:to_list(RawPointers)]),
                  lists:sort(aens_names:pointers(Rec4))),
 
     {} = ?call(call_contract, Acc, Ct, update, {tuple, []},
@@ -7346,7 +7346,7 @@ fate_vm_new_data_pointers(Cfg) ->
     CHash           = aens_hash:commitment_hash(NameAscii, Salt1),
 
     AccountPointeeV2 = fun (A) -> {variant, [1, 1, 1, 1, 1], 0, {A}} end,
-    PointeeV2Type = {variant_t, [{acc_pt, [word]}, {orc_pt, [word]}, {con_pt, [word]}, {cha_pt, [word]}, {dat_pt, [string]}]},
+    PointeeV2Type = {variant_t, [{acc_pt, [word]}, {orc_pt, [word]}, {con_pt, [word]}, {cha_pt, [word]}, {dat_pt, [{bytes, any}]}]},
 
     %%  A1 register a name N
     {} = ?call(call_contract, Acc, CtIris, reg, {tuple, []}, {Name1, ?hsh(CHash), Salt1, 1_000_000_000_000_000_000}, CallSpec),
@@ -7365,7 +7365,7 @@ fate_vm_new_data_pointers(Cfg) ->
     Res = ?call(call_contract, Acc, CtCeres, remote_lookup, PointeeV2Type, {?cid(CtIris), Name1, <<"key1">>}, CallSpec),
 
     %%  A2 add key2 -> data
-    {} = ?call(call_contract, Acc, CtCeres, add_data_ptr, {tuple, []}, {Name1, <<"key2">>, <<"ptr1">>}, CallSpec),
+    {} = ?call(call_contract, Acc, CtCeres, add_data_ptr, {tuple, []}, {Name1, <<"key2">>, {bytes, <<"ptr1">>}}, CallSpec),
 
     %%  A2 tries to lookup key2 through A1 -> fail
     {error,<<"Error in aens_lookup: data_pointer_not_in_fate_vm_2">>} =
@@ -7393,7 +7393,7 @@ fate_vm_new_data_pointers(Cfg) ->
 
     %%  A2 add key2 -> too long -> fail
     {error,<<"Error in aens_update: bad_pointer">>} =
-        ?call(call_contract, Acc, CtCeres, add_data_ptr, {tuple, []}, {Name1, <<"key2">>, <<0:(1025*8)>>}, CallSpec),
+        ?call(call_contract, Acc, CtCeres, add_data_ptr, {tuple, []}, {Name1, <<"key2">>, {bytes, <<0:(1025*8)>>}}, CallSpec),
 
     %%  A2 transfer N to A1
     {} = ?call(call_contract, Acc, CtCeres, trf, {tuple, []}, {Name1, CtIris}, CallSpec),
