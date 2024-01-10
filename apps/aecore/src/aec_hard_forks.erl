@@ -8,6 +8,8 @@
          protocol_vsn/1
         ]).
 
+-export([fork_config/0]).
+
 -ifdef(TEST).
 -export([sorted_protocol_versions/0]).
 -endif.
