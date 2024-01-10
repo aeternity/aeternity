@@ -1,8 +1,11 @@
 -module(aec_block_fork).
 
+-include_lib("aecontract/include/hard_forks.hrl").
+
 -export([apply_minerva/1,
          apply_fortuna/1,
-         apply_lima/2
+         apply_lima/2,
+         apply/3
         ]).
 
 %% used in consensus feeding
@@ -25,6 +28,27 @@ apply_lima(Trees, TxEnv) ->
     Trees2 = apply_accounts_file(Trees1, aec_fork_block_settings:lima_extra_accounts()),
     apply_hard_fork_contracts_file(aec_fork_block_settings:lima_contracts(), Trees2, TxEnv).
 
+-spec apply(aec_hard_forks:protocol_vsn(), aec_trees:trees(), aetx_env:env()) -> aec_trees:trees().
+apply(ProtocolVsn, Trees, TxEnv) ->
+    case aec_fork_block_settings:is_custom_fork(ProtocolVsn) of
+        true ->
+            Trees1 = apply_accounts_file(Trees, aec_fork_block_settings:accounts(ProtocolVsn)),
+            apply_accounts_file(Trees1, aec_fork_block_settings:extra_accounts(ProtocolVsn));
+        _ ->
+            case ProtocolVsn of
+                ?MINERVA_PROTOCOL_VSN ->
+                    apply_minerva(Trees);
+                ?FORTUNA_PROTOCOL_VSN ->
+                    apply_fortuna(Trees);
+                ?LIMA_PROTOCOL_VSN ->
+                    apply_lima(Trees, TxEnv);
+                _ ->
+                    Trees
+            end
+    end.
+
+apply_accounts_file(Trees, []) ->
+    Trees;
 apply_accounts_file(Trees, Accounts) ->
     AccTrees =
         lists:foldl(

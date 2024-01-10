@@ -75,6 +75,8 @@
     config => #{atom() => term()},
     % Tuple of host/guest paths where the node DB is meant to be if persisted
     db_path => {binary(), binary()} | undefined,
+    % Optionally provide the directory for the configuration templates, if not specfied the data_dir is used
+    templ_dir => nonempty_string() | undefined,
     % proplist of encoded addresses and balances
     genesis_accounts => [{binary(), non_neg_integer()}],
     % the path to the accounts_test.json to be used for genesis block
@@ -208,7 +210,8 @@ setup_node(Spec, BackendState) ->
     ConfigFileName = format("aeternity_~s.yaml", [Name]),
     ConfigFileHostPath = filename:join([TempDir, "config", ConfigFileName]),
     ct:log("~p will be using config ~p", [Name, ConfigFileHostPath]),
-    TemplateFile = filename:join(DataDir, ?CONFIG_FILE_TEMPLATE),
+    TemplDir = maps:get(templ_dir, Spec, DataDir),
+    TemplateFile = filename:join(TemplDir, ?CONFIG_FILE_TEMPLATE),
     PeerVars = lists:map(fun (Addr) -> #{peer => Addr} end, Peers),
     CuckooMinerVars =
         case maps:find(cuckoo_miner, Spec) of

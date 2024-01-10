@@ -160,24 +160,21 @@ protocols_from_network_id(<<"local_ceres_testnet">>) ->
      , ?CERES_PROTOCOL_VSN    => 1
      };
 protocols_from_network_id(<<"ae_dev">>) ->
-    case aeu_env:user_map_or_env([<<"chain">>, <<"hard_forks">>], aecore, hard_forks, undefined) of
-        undefined ->
-            #{ ?ROMA_PROTOCOL_VSN => 0
-             , ?IRIS_PROTOCOL_VSN => 1 };
-        M when is_map(M) ->
-            maps:fold(fun(K, V, Acc) ->
-                              Acc#{binary_to_integer(K) => V}
-                      end, #{}, M)
-    end;
-protocols_from_network_id(_ID) ->
+    default_protocols_from_network_id();
+protocols_from_network_id(_Id) ->
+    default_protocols_from_network_id().    
+
+default_protocols_from_network_id() ->
     case aeu_env:user_map_or_env([<<"chain">>, <<"hard_forks">>], aecore, hard_forks, undefined) of
         undefined ->
             #{ ?ROMA_PROTOCOL_VSN  => 0
              , ?IRIS_PROTOCOL_VSN  => 1
              };
         M when is_map(M) ->
-            maps:fold(fun(K, V, Acc) ->
-                              Acc#{binary_to_integer(K) => V}
+            maps:fold(fun(K, #{<<"height">> := V}, Acc) ->
+                              Acc#{binary_to_integer(K) => V};
+                         (K, Height, Acc) when is_integer(Height) ->
+                              Acc#{binary_to_integer(K) => Height}
                       end, #{}, M)
     end.
 

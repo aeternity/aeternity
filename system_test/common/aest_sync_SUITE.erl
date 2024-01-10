@@ -169,7 +169,14 @@ patron() ->
 %% A node with a newer version of the code can join and synchronize
 %% to a cluster of older nodes.
 new_node_joins_network(Cfg) ->
-    Compatible = "aeternity/aeternity:v1.4.0", %% Latest version it should be compatible with
+    CompatibleVersion = "v1.4.0", %% Latest version it should be compatible with
+    Compatible = lists:concat(["aeternity/aeternity:", CompatibleVersion]),
+    DataDir = proplists:get_value(data_dir, Cfg),
+    VersionTemplDir = filename:join(DataDir, CompatibleVersion),
+    OldTemplDir = case filelib:is_dir(VersionTemplDir) of
+                    true -> VersionTemplDir;
+                    _ -> DataDir
+    end,
     PatronAddress = aeser_api_encoder:encode(account_pubkey,
                                               maps:get(pubkey, patron())),
     %% have all nodes share the same accounts_test.json
@@ -182,12 +189,14 @@ new_node_joins_network(Cfg) ->
     ct:log("Testing compatibility of aeternity/aeternity:local with ~p", [Compatible]),
 
     OldNode1 = OldBaseSpec#{
-      name    => old_node1,
-      peers   => [old_node2]},
+      name      => old_node1,
+      peers     => [old_node2],
+      templ_dir => OldTemplDir},
 
     OldNode2 = OldBaseSpec#{
-      name    => old_node2,
-      peers   => [old_node1]},
+      name      => old_node2,
+      peers     => [old_node1],
+      templ_dir => OldTemplDir},
 
     NewNode =  #{
       name             => new_node1,

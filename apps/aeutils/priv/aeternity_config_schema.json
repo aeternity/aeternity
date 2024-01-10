@@ -49,7 +49,8 @@
                     "default": []
                 },
                 "custom_prefunded_accs_file" : {
-                    "description" : "Overrides the automatically derived file name for prefunded accounts. No default value",
+                    "deprecated" : true,
+                    "description" : "OBSOLETE/ignored: Overrides the automatically derived file name for prefunded accounts. No default value",
                     "type" : "string"
                 }
             }
@@ -1568,10 +1569,38 @@
                     "type" : "object",
                     "additionalProperties" : false,
                     "patternProperties" : {
-                        "^[1-9][0-9]*$": {
-                            "description" : "Minimum height at which protocol is effective",
-                            "type" : "integer",
-                            "minimum" : 0
+                        "^[1-9][0-9]*$" : {
+                            "description" : "Configuration for the hardfork",
+                            "oneOf" : [
+                            {
+                                "description" : "Minimum height at which protocol is effective using hardcoded directories for testing",
+                                "type" : "integer",
+                                "minimum" : 0
+                            },
+                            {
+                                "description" : "Configuration for the hardfork",
+                                "type" : "object",
+                                "required" : ["height"],
+                                "properties" : {
+                                    "height" : {
+                                        "description" : "Minimum height at which protocol is effective",
+                                        "type" : "integer",
+                                        "minimum" : 0
+                                    },
+                                    "accounts_file" : {
+                                        "description" : "File where accounts are stored",
+                                        "type" : "string"
+                                    },
+                                    "extra_accounts_file" : {
+                                        "description" : "File where extra accounts are stored",
+                                        "type" : "string"
+                                    },
+                                    "contracts_file" : {
+                                        "description" : "File where contracts are stored",
+                                        "type" : "string"
+                                    }
+                                }
+                            }]
                         }
                     }
                 },

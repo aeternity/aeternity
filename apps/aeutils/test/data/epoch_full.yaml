@@ -138,8 +138,15 @@ chain:
     db_path: .
     # Hard forks
     hard_forks:
-      "1": 0
-      "2": 1
+      "1":
+        height: 0
+        # absolute path
+        accounts_file: /tmp/accounts.json
+        # relative path
+        contracts_file: 1/contracts.json
+      "2":
+        height: 1
+        accounts_file: 2/accounts.json
     # section describing reward split
     protocol_beneficiaries: ["ak_2KAcA2Pp1nrR8Wkt3FtCkReGzAi8vJ9Snxa4PcmrthVx8AhPe8:109"]
     protocol_beneficiaries_enabled: true
