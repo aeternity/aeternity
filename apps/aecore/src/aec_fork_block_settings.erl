@@ -78,8 +78,8 @@ is_custom_fork(ProtocolVsn) ->
                 Height when is_integer(Height) ->
                     false;
                 _ ->
-                    case aec_hard_forks:fork_config() of
-                        #{version := ProtocolVsn} -> false;
+                    case application:get_env(aecore, fork) of
+                        {ok, #{version := ProtocolVsn}} -> false;
                         _ -> true
                     end
             end
