@@ -158,11 +158,11 @@ has_backend(#mpt{ db = DB }) ->
     ?MODULE =/= aeu_mp_trees_db:get_module(DB).
 
 -spec from_db_format(tree() | tuple()) -> tree().
-from_db_format(Tree = #mpt{}) -> Tree;
+from_db_format(Tree = #mpt{ db = DB }) -> Tree#mpt{ db = aeu_mp_trees_db:from_db_format(DB) };
 from_db_format(Tuple) ->
     case setelement(1, Tuple, db_mpt) of
         #db_mpt{ hash = RootHash, db = DB } ->
-            #mpt{ hash = RootHash, db = DB, node_cache = none };
+            #mpt{ hash = RootHash, db = aeu_mp_trees_db:from_db_format(DB), node_cache = none };
         _ ->
             error(illegal_db_format)
     end.

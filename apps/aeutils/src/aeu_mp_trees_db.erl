@@ -28,6 +28,8 @@
 
 -export([record_fields/1]).
 
+-export([from_db_format/1]).
+
 -export_type([ db/0
              , db_spec/0
              ]).
@@ -144,6 +146,11 @@ get_module(DB) ->
     #db{module = Module} = to_new_db(DB),
     Module.
 
+-spec from_db_format(db()) -> db().
+from_db_format(DB = #db{handle = H, cache = C}) ->
+    DB#db{ handle = ensure_map(H), cache = ensure_map(C) }.
+
+
 %%%===================================================================
 %%% Cache
 %%%===================================================================
@@ -175,7 +182,7 @@ to_new_db(#db{} = DB) -> DB;
 to_new_db({db, _, _, _, _, _} = OldDB) ->
     case setelement(1, OldDB, old_db) of
         #old_db{ handle = Handle
-               , cache  = Cache 
+               , cache  = Cache
                , drop_cache = {Module, _}
                , get        = {Module, _}
                , put        = {Module, _} } ->
@@ -184,4 +191,8 @@ to_new_db({db, _, _, _, _, _} = OldDB) ->
                 , handle  => Handle});
         _ -> not_db
     end.
-    
+
+-spec ensure_map(map() | dict:dict()) -> map().
+ensure_map(Map) when is_map(Map) -> Map;
+ensure_map(Dict) ->
+    maps:from_list(dict:to_list(Dict)).
