@@ -124,16 +124,16 @@ test_mempool_ttl_cleanup(Cfg) ->
     %% Send multiple deposit transaction with the same round
     #{tx_hash := DepositHash1} =
         aest_nodes:post_deposit_state_channel_tx(node1, ?BOB, ?ALICE, ChannelId,
-            #{ nonce => 2, amount => 10, round => 2, ttl => 20 }),
+            #{ nonce => 2, amount => 10, round => 2, ttl => 40 }),
     #{tx_hash := DepositHash2} =
         aest_nodes:post_deposit_state_channel_tx(node1, ?BOB, ?ALICE, ChannelId,
-            #{ nonce => 3, amount => 11, round => 2, ttl => 20 }),
+            #{ nonce => 3, amount => 11, round => 2, ttl => 40 }),
     #{tx_hash := DepositHash3} =
         aest_nodes:post_deposit_state_channel_tx(node1, ?BOB, ?ALICE, ChannelId,
-            #{ nonce => 4, amount => 12, round => 2, ttl => 20 }),
+            #{ nonce => 4, amount => 12, round => 2, ttl => 40 }),
     #{tx_hash := DepositHash4} =
         aest_nodes:post_deposit_state_channel_tx(node1, ?BOB, ?ALICE, ChannelId,
-            #{ nonce => 5, amount => 13, round => 2, ttl => 20 }),
+            #{ nonce => 5, amount => 13, round => 2, ttl => 40 }),
 
     %% Check the first one got on the chain
     aest_nodes:wait_for_value({txs_on_chain, [DepositHash1]},
@@ -141,7 +141,7 @@ test_mempool_ttl_cleanup(Cfg) ->
 
     %% Check the others are dropped
     aest_nodes:wait_for_value({txs_all_dropped, [DepositHash2, DepositHash3, DepositHash4]},
-                              [node1, node2], {blocks_delta, 21}, []),
+                              [node1, node2], {blocks_delta, 31}, []),
 
     ok.
 
