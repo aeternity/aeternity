@@ -148,7 +148,9 @@ get_module(DB) ->
 
 -spec from_db_format(db()) -> db().
 from_db_format(DB = #db{handle = H, cache = C}) ->
-    DB#db{ handle = ensure_map(H), cache = ensure_map(C) }.
+    DB#db{ handle = ensure_map(H), cache = ensure_map(C) };
+from_db_format(OldDB) ->
+    from_db_format(to_new_db(OldDB)).
 
 
 %%%===================================================================
@@ -187,8 +189,8 @@ to_new_db({db, _, _, _, _, _} = OldDB) ->
                , get        = {Module, _}
                , put        = {Module, _} } ->
             new(#{ module => Module
-                , cache   => Cache
-                , handle  => Handle});
+                 , cache   => Cache
+                 , handle  => Handle});
         _ -> not_db
     end.
 
