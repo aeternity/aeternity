@@ -71,7 +71,7 @@ init_per_suite(Config) ->
 
 init_per_group(minerva_compatibility, Config) ->
     [{tx_mempool_vsn, "v2.3.0"} | Config];
-init_per_group(lima_compatibility, Config) ->
+init_per_group(lima_compatibility, _Config) ->
     %%[{state_channels_vsn, "v5.1.0"} | Config];
     {skip, no_backwards_compatibility_until_5_1};
 init_per_group(local_compatibility, Config) ->
@@ -258,7 +258,7 @@ patron() ->
      , privkey => <<237,12,20,128,115,166,32,106,220,142,111,97,141,104,201,130,56,100,64,142,139,163,87,166,185,94,4,159,217,243,160,169,200,171,93,11,3,93,177,65,197,27,123,127,177,165,190,211,20,112,79,108,85,78,88,181,26,207,191,211,40,225,138,154>>
      }.
 
-populate_db_with_channels_force_progress_tx(NodeName, Cfg) ->
+populate_db_with_channels_force_progress_tx(NodeName, _Cfg) ->
     %% This function actually uses the latest code to populate a possibly old database
     %% The state channel fsm sets its environment to be able to encode data using old
     %% protocols, but in this case, we're not producing the tx inside the fsm, so we

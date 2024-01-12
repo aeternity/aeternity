@@ -74,14 +74,17 @@ is_custom_fork(ProtocolVsn) ->
         undefined ->
             false;
         Map ->
-            case maps:get(integer_to_binary(ProtocolVsn), Map) of
+            case maps:get(integer_to_binary(ProtocolVsn), Map, undefined) of
                 Height when is_integer(Height) ->
                     false;
                 _ ->
-                    true
+                    case application:get_env(aecore, fork) of
+                        {ok, #{version := ProtocolVsn}} -> false;
+                        _ -> true
+                    end
             end
     end.
-            
+
 -spec hardcoded_dir(aec_hard_forks:protocol_vsn()) -> string().
 hardcoded_dir(ProtocolVsn) ->
     Dir = hardcoded_basename(ProtocolVsn),
@@ -170,12 +173,14 @@ read_hard_fork_file(Protocol, Key, DefaultFun) when is_integer(Protocol) ->
         undefined ->
             DefaultFun(Protocol);
         Map when is_map(Map) ->
-            case maps:get(integer_to_binary(Protocol), Map) of
+            case maps:get(integer_to_binary(Protocol), Map, undefined) of
+                undefined ->
+                    DefaultFun(Protocol);
                 Height when is_integer(Height) ->
                     DefaultFun(Protocol);
                 Map1 when is_map(Map1) ->
                     case maps:get(Key, Map1, undefined) of
-                        %% Setting files for a height are not mandatory so return empty object, an error will be return if the file name is set but not found 
+                        %% Setting files for a height are not mandatory so return empty object, an error will be return if the file name is set but not found
                         undefined ->
                             {ok, <<"{}">>};
                         FileName ->
