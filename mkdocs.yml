@@ -1,6 +1,7 @@
 site_name: Aeternity node documentation
 site_url: https://aeternity.com
 repo_url: https://github.com/aeternity/aeternity
+docs_dir: docs
 theme:
     name: readthedocs
     highlightjs: true
