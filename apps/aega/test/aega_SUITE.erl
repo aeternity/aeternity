@@ -28,6 +28,7 @@
         , simple_contract_call/1
         , simple_re_attach_fail/1
         , simple_spend_from_fail/1
+        , simple_attach_after_spend/1
 
         , basic_attach/1
         , basic_spend_from/1
@@ -144,6 +145,7 @@ groups() ->
                    , simple_contract_call
                    , simple_re_attach_fail
                    , simple_spend_from_fail
+                   , simple_attach_after_spend
                    ]}
 
     , {basic, [], [ basic_attach
@@ -281,8 +283,14 @@ simple_double_attach_fail(_Cfg) ->
     Acc1 = ?call(new_account, 1000000000 * aec_test_utils:min_gas_price()),
     {ok, _} = ?call(attach, Acc1, "simple_auth", "authorize", ["123"]),
 
-    {failed, not_a_basic_account} =
-        ?call(attach, Acc1, "simple_auth", "authorize", ["0"], #{fail => true}),
+    Protocol = aec_hard_forks:protocol_effective_at_height(1),
+    Res = ?call(attach, Acc1, "simple_auth", "authorize", ["0"], #{fail => true}),
+
+    if Protocol =< ?IRIS_PROTOCOL_VSN ->
+        ?assertEqual({failed, not_a_basic_account}, Res);
+       true ->
+        ?assertEqual({failed, invalid_at_protocol}, Res)
+    end,
 
     ok.
 
@@ -382,6 +390,25 @@ simple_spend_from_fail(_Cfg) ->
         ?call(ga_spend, Acc1, AuthOpts, Acc2, 500, 20000),
     PostBalance = ?call(account_balance, Acc2),
     ?assertEqual(PreBalance, PostBalance),
+
+    ok.
+
+simple_attach_after_spend(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    MinGP = aec_test_utils:min_gas_price(),
+    Acc1 = ?call(new_account, 1000000000 * MinGP),
+    Acc2 = ?call(new_account, 1000000000 * MinGP),
+
+    %% Do a normal spend from Acc1
+    ok = ?call(spend, Acc1, Acc2, 500,  20000 * MinGP),
+
+    %% Then do attach - it should fail from Ceres and onwards
+    Protocol = aec_hard_forks:protocol_effective_at_height(1),
+    if  Protocol =< ?IRIS_PROTOCOL_VSN ->
+            {ok, _} = ?call(attach, Acc1, "simple_auth", "authorize", ["123"]);
+        true ->
+            {failed, invalid_at_protocol} = ?call(attach, Acc1, "simple_auth", "authorize", ["123"], #{fail => true})
+    end,
 
     ok.
 

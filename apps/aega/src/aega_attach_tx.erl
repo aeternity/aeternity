@@ -306,8 +306,13 @@ version(_) ->
     ?GA_ATTACH_TX_VSN.
 
 -spec valid_at_protocol(aec_hard_forks:protocol_vsn(), tx()) -> boolean().
-valid_at_protocol(P, #ga_attach_tx{}) ->
-    P >= ?FORTUNA_PROTOCOL_VSN.
+valid_at_protocol(P, #ga_attach_tx{ nonce = Nonce }) ->
+    if P < ?FORTUNA_PROTOCOL_VSN -> false;
+       P =< ?IRIS_PROTOCOL_VSN    -> true;
+       %% In Ceres (and onwards) only allow fresh accounts to transform
+       true                      -> Nonce =< 1
+    end.
+
 
 %%%===================================================================
 %%% Internal functions
