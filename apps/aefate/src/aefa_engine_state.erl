@@ -538,7 +538,7 @@ spend_gas_for_new_cells1(NewCells, #es{ created_cells = Cells } = ES) ->
 spend_gas_for_store_values(StoreValues, ES) ->
     case consensus_version(ES) < ?CERES_PROTOCOL_VSN of
         true  -> ES;
-        false -> spend_gas(StoreValues * 20000, ES)
+        false -> spend_gas(StoreValues * 5000, ES)
     end.
 
 -define(GAS_DENOMINATOR, 1000).
