@@ -78,8 +78,6 @@ macos-tarball:
     xcode: "13.4.1" # macOS 12.3.1
   resource_class: macos.x86.medium.gen2
   working_directory: /Users/distiller/aeternity
-  # environment:
-  #   HOMEBREW_NO_AUTO_UPDATE: 1
   steps:
     - fixed_checkout
     - when:

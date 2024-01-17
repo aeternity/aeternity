@@ -270,7 +270,6 @@ jobs:
           only:
             - /releases\/.*/
             - << pipeline.parameters.master_branch >>
-            - macos_build
 
   - macos-tarball:
       name: macos-tarball-bundle
