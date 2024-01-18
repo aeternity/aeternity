@@ -152,7 +152,7 @@
                                 "crash" : {
                                     "description" : "Something went really wrong, clean up.",
                                     "type" : "integer",
-                                    "default" : 1 
+                                    "default" : 1
                                 },
                                 "not_a_generalized_account" : {
                                     "description" : "If the transaction is being authenticated as a GA but the account is still basic. We provide a grace period in a number of generations for the account to be upgraded.",
@@ -1140,7 +1140,7 @@
                 "whitelist_file" : {
                     "description" : "The name of a block hash whitelist file (JSON format)",
                     "type" : "string",
-                    "default" : ".block_whitelist.json" 
+                    "default" : ".block_whitelist.json"
                 },
                 "log_peer_connection_count_interval" : {
                     "description": "Time (milliseconds) between logging info about connected peers",
@@ -1199,7 +1199,7 @@
                 "provide_node_info" : {
                     "description": "Provide node version to peers",
                     "type" : "boolean",
-                    "default": true 
+                    "default": true
                 },
                 "peer_analytics" : {
                     "description": "If enabled aggregates info about remote peers and exposes them via HTTP. Overrides max_inbound and max_outbound",
@@ -1704,31 +1704,8 @@
                                                             "description" : "List of parent chain nodes to poll for new blocks",
                                                             "type" : "array",
                                                             "items" : {
-                                                                "type" : "object",
-                                                                "description" : "Host name and login details",
-                                                                "additionalProperties" : false,
-                                                                "properties": {
-                                                                    "host": {
-                                                                        "description": "Host name of IP address",
-                                                                        "type": "string",
-                                                                        "default": "localhost"
-                                                                    },
-                                                                    "port": {
-                                                                        "description": "Port number of HTTP API server on parent node",
-                                                                        "type": "integer",
-                                                                        "default": 3013
-                                                                    },
-                                                                    "user": {
-                                                                        "description": "Username for HTTP API login if needed",
-                                                                        "type": "string",
-                                                                        "default": ""
-                                                                    },
-                                                                    "password": {
-                                                                        "description": "Password for HTTP API login if needed",
-                                                                        "type": "string",
-                                                                        "default": ""
-                                                                    }
-                                                                }
+                                                                "type" : "string",
+                                                                "description" : "URL address of the API - <protocol>://<user>:<password>@<hostname>:<port>"
                                                             },
                                                             "default": []
                                                         }

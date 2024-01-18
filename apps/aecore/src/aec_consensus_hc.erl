@@ -112,19 +112,7 @@ start(Config, #{block_production := BlockProduction}) ->
         false -> ok
     end,
     CacheSize = maps:get(<<"cache_size">>, Polling, 200),
-    ParentHosts =
-        lists:map(
-            fun(#{<<"host">> := Host,
-                  <<"port">> := Port,
-                  <<"user">> := User,
-                  <<"password">> := Pass
-                }) ->
-                #{host => Host,
-                  port => Port,
-                  user => User,
-                  password => Pass}
-            end,
-            Nodes0),
+    ParentHosts = lists:map(fun aehttpc:parse_node_url/1, Nodes0),
     {ParentConnMod, PCSpendPubkey, HCPCPairs, SignModule} =
         case PCType of
             <<"AE2AE">> -> start_ae(StakersEncoded, PCSpendAddress);
@@ -858,4 +846,3 @@ elect_lazy_leader(Beneficiary, TxEnv, Trees) ->
         {error, What} ->
             aec_conductor:throw_error({failed_to_elect_new_leader, What})
     end.
-

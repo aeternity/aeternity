@@ -4,42 +4,44 @@
 %% Subset of Aeternity HTTP client API required to interact with a hyperchain
 
 %% Required exports for hyperchain:
--export([get_latest_block/5,
-         get_header_by_hash/6,
-         get_header_by_height/6,
-         get_commitment_tx_in_block/8,
-         get_commitment_tx_at_height/7,
-         post_commitment/11]).
+-export([get_latest_block/2,
+         get_header_by_hash/3,
+         get_header_by_height/3,
+         get_commitment_tx_in_block/5,
+         get_commitment_tx_at_height/4,
+         post_commitment/8]).
+
+-behavior(aehttpc).
 
 %% @doc fetch latest top hash
-get_latest_block(Host, Port, _User, _Password, _Seed) ->
-    get_top_block_header(Host, Port).
+get_latest_block(NodeSpec, _Seed) ->
+    get_top_block_header(NodeSpec).
 
-get_header_by_hash(Hash, Host, Port, _User, _Password, _Seed) ->
-    get_key_block_header(Hash, Host, Port).
+get_header_by_hash(Hash, NodeSpec, _Seed) ->
+    get_key_block_header(Hash, NodeSpec).
 
-get_header_by_height(Height, Host, Port, _User, _Password, _Seed) ->
-    get_key_block_header_by_height(Height, Host, Port).
+get_header_by_height(Height, NodeSpec, _Seed) ->
+    get_key_block_header_by_height(Height, NodeSpec).
 
-get_commitment_tx_in_block(Host, Port, _User, _Password, _Seed, _BlockHash,
+get_commitment_tx_in_block(NodeSpec, _Seed, _BlockHash,
                            PrevHash, ParentHCAccountPubKey) ->
-    case get_generation(Host, Port, PrevHash) of
+    case get_generation(NodeSpec, PrevHash) of
         {ok, #{<<"micro_blocks">> := MBs}} ->
-            get_commitments(Host, Port, MBs, ParentHCAccountPubKey);
+            get_commitments(NodeSpec, MBs, ParentHCAccountPubKey);
         {error, not_found} = Err -> Err
     end.
 
-get_commitment_tx_at_height(Host, Port, _User, _Password, _Seed, Height, ParentHCAccountPubKey) ->
-    case get_generation_by_height(Host, Port, Height) of
+get_commitment_tx_at_height(NodeSpec, _Seed, Height, ParentHCAccountPubKey) ->
+    case get_generation_by_height(NodeSpec, Height) of
         {ok, #{<<"micro_blocks">> := MBs}} ->
-            get_commitments(Host, Port, MBs, ParentHCAccountPubKey);
+            get_commitments(NodeSpec, MBs, ParentHCAccountPubKey);
         {error, not_found} = Err -> Err
     end.
 
 %% @doc Post commitment to AE parent chain.
-post_commitment(Host, Port, _User, _Password, StakerPubkey, HCCollectPubkey, Amount, Fee, Commitment,
+post_commitment(NodeSpec, StakerPubkey, HCCollectPubkey, Amount, Fee, Commitment,
                 NetworkId, SignModule) ->
-    post_commitment_tx(Host, Port, StakerPubkey, HCCollectPubkey, Amount,
+    post_commitment_tx(NodeSpec, StakerPubkey, HCCollectPubkey, Amount,
                        Fee, Commitment,
                        NetworkId, SignModule).
 
@@ -47,21 +49,21 @@ post_commitment(Host, Port, _User, _Password, StakerPubkey, HCCollectPubkey, Amo
 %%%===================================================================
 %%%  AE HTTP protocol
 %%%===================================================================
--spec get_top_block_header(binary(), integer()) -> {ok, binary()} | {error, term()}.
-get_top_block_header(Host, Port) ->
+-spec get_top_block_header(aehttpc:node_spec()) -> {ok, binary()} | {error, term()}.
+get_top_block_header(NodeSpec) ->
     try
         {ok, #{<<"hash">> := Hash,
                <<"prev_key_hash">> := PrevHash,
                <<"height">> := Height}} =
-            get_request(<<"/v3/key-blocks/current">>, Host, Port, 5000),
+            get_request(<<"/v3/key-blocks/current">>, NodeSpec, 5000),
         {ok, Hash, PrevHash, Height}
     catch error:{badmatch, {error, not_found}} -> {error, not_found};
           E:R -> {error, {E, R}}
     end.
 
-get_key_block_header(Hash, Host, Port) ->
+get_key_block_header(Hash, NodeSpec) ->
     try
-        case get_request(<<"/v3/key-blocks/hash/", Hash/binary>>, Host, Port, 5000) of
+        case get_request(<<"/v3/key-blocks/hash/", Hash/binary>>, NodeSpec, 5000) of
             {ok, #{<<"hash">> := Hash,
                 <<"prev_key_hash">> := PrevHash,
                 <<"height">> := Height}} ->
@@ -72,10 +74,10 @@ get_key_block_header(Hash, Host, Port) ->
         {error, {E, R}}
     end.
 
-get_key_block_header_by_height(Height, Host, Port) ->
+get_key_block_header_by_height(Height, NodeSpec) ->
     HeightB = integer_to_binary(Height),
     try
-        case  get_request(<<"/v3/key-blocks/height/", HeightB/binary>>, Host, Port, 5000) of
+        case  get_request(<<"/v3/key-blocks/height/", HeightB/binary>>, NodeSpec, 5000) of
             {ok, #{ <<"hash">> := Hash,
                     <<"prev_key_hash">> := PrevHash,
                     <<"height">> := Height}} ->
@@ -87,28 +89,28 @@ get_key_block_header_by_height(Height, Host, Port) ->
     end.
 
 
--spec get_generation(binary(), integer(), binary()) -> {ok, map()} | {error, term()}.
-get_generation(Host, Port, Hash) ->
+-spec get_generation(aehttpc:node_spec(), binary()) -> {ok, map()} | {error, term()}.
+get_generation(NodeSpec, Hash) ->
     Path = <<"/v3/generations/hash/", Hash/binary>>,
-    get_request(Path, Host, Port, 5000).
+    get_request(Path, NodeSpec, 5000).
 
--spec get_generation_by_height(binary(), integer(), integer()) -> {ok, map()} | {error, term()}.
-get_generation_by_height(Host, Port, Height) ->
+-spec get_generation_by_height(aehttpc:node_spec(), integer()) -> {ok, map()} | {error, term()}.
+get_generation_by_height(NodeSpec, Height) ->
     HeightBin = list_to_binary(integer_to_list(Height - 1 )), %% previous generation!!!
     Path = <<"/v3/generations/height/", HeightBin/binary>>,
-    get_request(Path, Host, Port, 5000).
+    get_request(Path, NodeSpec, 5000).
 
--spec get_commitments(binary(), integer(), [binary()], binary()) -> {ok, list()} | {error, term()}.
-get_commitments(Host, Port, MBs, ParentHCAccountPubKey) ->
+-spec get_commitments(aehttpc:node_spec(), [binary()], binary()) -> {ok, list()} | {error, term()}.
+get_commitments(NodeSpec, MBs, ParentHCAccountPubKey) ->
     Txs = lists:flatmap(
         fun(MB) ->
-            get_hc_commitments(Host, Port, MB, ParentHCAccountPubKey)
+            get_hc_commitments(NodeSpec, MB, ParentHCAccountPubKey)
         end, MBs),
     {ok, Txs}.
 
-get_hc_commitments(Host, Port, MB, ParentHCAccountPubKey) ->
+get_hc_commitments(NodeSpec, MB, ParentHCAccountPubKey) ->
     Path =  <<"/v3/micro-blocks/hash/", MB/binary, "/transactions">>,
-    {ok, Res} = get_request(Path, Host, Port, 5000),
+    {ok, Res} = get_request(Path, NodeSpec, 5000),
     #{<<"transactions">> := Txs} = Res,
     %% TODO - take hc commitment account from some config
     %% Commitments include:
@@ -129,7 +131,7 @@ get_hc_commitments(Host, Port, MB, ParentHCAccountPubKey) ->
                     end
             end, [], Txs).
 
-post_commitment_tx(Host, Port, SenderEnc, ReceiverPubkey, Amount, Fee,
+post_commitment_tx(NodeSpec, SenderEnc, ReceiverPubkey, Amount, Fee,
                    Commitment,
                    NetworkId, SignModule) ->
     %% 1. get the next nonce for our account over at the parent chain
@@ -139,7 +141,7 @@ post_commitment_tx(Host, Port, SenderEnc, ReceiverPubkey, Amount, Fee,
     %% is a hanging transaction in the pool this would produce another hanging
     %% one
     NoncePath = <<"/v3/accounts/", SenderEnc/binary, "/next-nonce">>,
-    {ok, #{<<"next_nonce">> := Nonce}} = get_request(NoncePath, Host, Port, 5000),
+    {ok, #{<<"next_nonce">> := Nonce}} = get_request(NoncePath, NodeSpec, 5000),
     %% 2. Create a SpendTx containing the commitment in its payload
     TxArgs =
         #{sender_id    => aeser_id:create(account, SenderPubkey),
@@ -159,7 +161,7 @@ post_commitment_tx(Host, Port, SenderEnc, ReceiverPubkey, Amount, Fee,
     Transaction = aeser_api_encoder:encode(transaction, aetx_sign:serialize_to_binary(SignedSpendTx)),
     Body = #{<<"tx">> => Transaction},
     Path = <<"/v3/transactions">>,
-    post_request(Path, Body, Host, Port, 5000).
+    post_request(Path, Body, NodeSpec, 5000).
 
 %% TODO This function copied from aec_test_utils as that module is not available
 %% in normal builds
@@ -176,9 +178,9 @@ sign_tx(Tx, NetworkId, Signer, SignModule) when is_binary(Signer) ->
     {ok, Signature} = SignModule:sign_binary(BinForNetwork, Signer),
     aetx_sign:new(Tx, [Signature]).
 
-get_request(Path, Host, Port, Timeout) ->
+get_request(Path, NodeSpec, Timeout) ->
     try
-    Url = url(binary_to_list(Host), Port, false),
+    Url = aehttpc:url(NodeSpec),
     UrlPath = lists:concat([Url, binary_to_list(Path)]),
     Req = {UrlPath, []},
     HTTPOpt = [{timeout, Timeout}],
@@ -202,10 +204,10 @@ get_request(Path, Host, Port, Timeout) ->
     {error, {E, R, S}}
   end.
 
--spec post_request(binary(), map(), binary(), integer(),integer()) -> {ok, map()} | {error, term()}.
-post_request(Path, Body, Host, Port, Timeout) ->
+-spec post_request(binary(), map(), aehttpc:node_spec(), integer()) -> {ok, map()} | {error, term()}.
+post_request(Path, Body, NodeSpec, Timeout) ->
   try
-    Url = url(binary_to_list(Host), Port, false),
+    Url = aehttpc:url(NodeSpec),
     UrlPath = lists:concat([Url, binary_to_list(Path)]),
     Req = {UrlPath, [], "application/json", jsx:encode(Body)},
     HTTPOpt = [{timeout, Timeout}],
@@ -222,10 +224,3 @@ post_request(Path, Body, Host, Port, Timeout) ->
     lager:info("Error: ~p Reason: ~p Stacktrace: ~p", [E, R, S]),
     {error, {E, R, S}}
   end.
-
-url(Host, Port, false) when is_list(Host), is_integer(Port) ->
-  path("http://", Host, Port).
-
-path(Scheme, Host, Port) ->
-  lists:concat([Scheme, Host, ":", Port]).
-
