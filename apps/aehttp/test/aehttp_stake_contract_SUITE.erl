@@ -129,6 +129,8 @@
 
 -define(GENESIS_BENFICIARY, <<0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0>>).
 
+-define(BRI, <<"ak_2KAcA2Pp1nrR8Wkt3FtCkReGzAi8vJ9Snxa4PcmrthVx8AhPe8">>).
+
 all() -> [{group, pos},
           {group, hc},
           {group, hc_btc}
@@ -188,6 +190,8 @@ init_per_suite(Config0) ->
                                 #{  GenesisProtocolBin => #{<<"height">> => 0, <<"accounts_file">> => AccountFileName},
                                     integer_to_binary(?CERES_PROTOCOL_VSN) => #{<<"height">> => 1}
                                 },
+                            <<"protocol_beneficiaries">> =>
+                                [<<?BRI/binary,":109::">>],
                             <<"consensus">> =>
                                 #{ <<"0">> => #{<<"type">> => <<"ct_tests">>}}
                          },
@@ -1462,8 +1466,7 @@ build_json_files(ElectionContract, NodeConfigs) ->
     %%  B) allow pending stake in the contract that is not allocated
     %%  yet
     %%  C) something else
-    BRI = <<"ak_2KAcA2Pp1nrR8Wkt3FtCkReGzAi8vJ9Snxa4PcmrthVx8AhPe8">>,
-    {ok, BRIPub} = aeser_api_encoder:safe_decode(account_pubkey, BRI),
+    {ok, BRIPub} = aeser_api_encoder:safe_decode(account_pubkey, ?BRI),
     Call12 =
         contract_call_spec(SCId, ?STAKING_CONTRACT,
                             "new_validator", [],
@@ -1486,7 +1489,7 @@ build_json_files(ElectionContract, NodeConfigs) ->
             encoded_pubkey(?ALICE) => 2100000000000000000000000000,
             encoded_pubkey(?BOB) => 3100000000000000000000000000,
             encoded_pubkey(?LISA) => 4100000000000000000000000000,
-            BRI => 2000000000000000000000000000
+            ?BRI => 2000000000000000000000000000
          }),
     ok.
 
@@ -1595,6 +1598,8 @@ node_config(NetworkId,Node, CTConfig, PotentialStakers, ReceiveAddress, Consensu
                 <<"hard_forks">> => #{integer_to_binary(Protocol) => #{<<"height">> => 0, 
                                                                        <<"contracts_file">> => ContractFileName,
                                                                        <<"accounts_file">> => AccountFileName}},
+               <<"protocol_beneficiaries">> =>
+                                [<<?BRI/binary,":109::">>],
                 <<"consensus">> =>
                     #{<<"0">> => #{<<"type">> => ConsensusType,
                                 <<"config">> =>
