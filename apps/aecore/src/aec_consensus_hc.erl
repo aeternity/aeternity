@@ -674,9 +674,15 @@ pick_lazy_leader(TopHash) ->
         {ok, AllStakers} ->
             SignModule = get_sign_module(),
             LocalStakers = lists:filter(fun SignModule:is_key_present/1, AllStakers),
-            Staker = lists:nth(rand:uniform(length(LocalStakers)), LocalStakers),
-            SignModule:set_candidate(Staker),
-            {ok, Staker};
+            case LocalStakers of
+              [] ->
+                  timer:sleep(1000),
+                  error;
+              _ ->
+                  Staker = lists:nth(rand:uniform(length(LocalStakers)), LocalStakers),
+                  SignModule:set_candidate(Staker),
+                  {ok, Staker}
+            end;
         _ ->
             timer:sleep(1000),
             error
