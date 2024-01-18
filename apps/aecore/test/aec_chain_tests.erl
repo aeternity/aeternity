@@ -1142,7 +1142,9 @@ fees_three_beneficiaries() ->
     ?assertEqual(split_reward(aec_governance:block_mine_reward(3) + reward_60(Fee3)),
                  orddict:fetch(PubKey8, DictBal2)),
 
-    [{PubKeyProtocol, _}] = aec_dev_reward:beneficiaries(),
+    Header = aec_chain:top_header(),
+    Protocol = aec_headers:version(Header),
+    [{PubKeyProtocol, _}] = aec_dev_reward:beneficiaries(Protocol),
     case aec_dev_reward:enabled() of
         true ->
             TotalRewards = aec_governance:block_mine_reward(1) + aec_governance:block_mine_reward(2) + aec_governance:block_mine_reward(3)
@@ -2097,7 +2099,9 @@ get_used_gas_fee(STx) ->
 split_reward(Fee) ->
     case aec_dev_reward:enabled() of
         true ->
-            ContribFactor = aec_dev_reward:allocated_shares(),
+            Header = aec_chain:top_header(),
+            Protocol = aec_headers:version(Header),
+            ContribFactor = aec_dev_reward:allocated_shares(Protocol),
             Fee * (1000 - ContribFactor) div 1000;
         false ->
             Fee
