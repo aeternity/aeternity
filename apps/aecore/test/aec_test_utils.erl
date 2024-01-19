@@ -866,6 +866,13 @@ min_gas_price() ->
 %%% Dev reward setup
 %%%=============================================================================
 
+dev_reward_setup(Enabled, Activated, BeneficiaryShares) when is_list(BeneficiaryShares)->
+    application:set_env(aecore, dev_reward_enabled, Enabled),
+    application:set_env(aecore, dev_reward_activated, Activated),
+    Beneficiaries = lists:map(fun({BeneficiaryShare, From, To}) ->
+        #{public := PubKeyProtocol} = enacl:sign_keypair(),
+        {PubKeyProtocol, BeneficiaryShare, From, To} end, BeneficiaryShares),
+    aec_dev_reward:set_beneficiaries(Beneficiaries);
 dev_reward_setup(Enabled, Activated, BeneficiaryShare) ->
     #{public := PubKeyProtocol} = enacl:sign_keypair(),
     application:set_env(aecore, dev_reward_enabled, Enabled),

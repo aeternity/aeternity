@@ -1053,7 +1053,7 @@ fees_test_teardown(TmpDir) ->
 %%% Check fee division between three beneficiaries with reward split
 fees_three_beneficiaries_with_split_test_() ->
     {setup,
-     fun() -> fees_test_setup(true, true, 100) end,
+     fun() -> fees_test_setup(true, true, [{100, Protocol, Protocol} || Protocol <- maps:keys(aec_hard_forks:protocols())]) end,
      fun fees_test_teardown/1,
      fun fees_three_beneficiaries/0}.
 
@@ -1115,6 +1115,7 @@ fees_three_beneficiaries() ->
 
     %% Write all but the last key block to the chain and keep the top hash.
     ok = write_blocks_to_chain(lists:droplast(Chain)),
+
     Hash1 = aec_chain:top_block_hash(),
     {ok, Balances1} = aec_chain:all_accounts_balances_at_hash(Hash1),
     DictBal1 = orddict:from_list(Balances1),
@@ -1142,16 +1143,25 @@ fees_three_beneficiaries() ->
     ?assertEqual(split_reward(aec_governance:block_mine_reward(3) + reward_60(Fee3)),
                  orddict:fetch(PubKey8, DictBal2)),
 
-    Header = aec_chain:top_header(),
-    Protocol = aec_headers:version(Header),
-    [{PubKeyProtocol, _}] = aec_dev_reward:beneficiaries(Protocol),
     case aec_dev_reward:enabled() of
         true ->
             TotalRewards = aec_governance:block_mine_reward(1) + aec_governance:block_mine_reward(2) + aec_governance:block_mine_reward(3)
                 + Fee1 + Fee2 + Fee3,
             ProtocolBenefits = TotalRewards - split_reward(TotalRewards),
-            ?assertEqual(ProtocolBenefits, orddict:fetch(PubKeyProtocol, DictBal2));
+            PubKeyProtocols = lists:map(fun(Protocol) ->
+                                            [{PubKeyProtocol, _}] = aec_dev_reward:beneficiaries(Protocol),
+                                            PubKeyProtocol end, maps:keys(aec_hard_forks:protocols())),
+            case length(PubKeyProtocols) of
+                1 -> 
+                    ?assertEqual(ProtocolBenefits, orddict:fetch(hd(PubKeyProtocols), DictBal2));
+                2 ->
+                    [PubKeyProtocol1, PubKeyProtocol2] = PubKeyProtocols,
+                    ?assertEqual(ProtocolBenefits, orddict:fetch(PubKeyProtocol1, DictBal2) + orddict:fetch(PubKeyProtocol2, DictBal2))
+            end;
         false ->
+            Header = aec_chain:top_header(),
+            Protocol = aec_headers:version(Header),
+            [{PubKeyProtocol, _}] = aec_dev_reward:beneficiaries(Protocol),
             ?assertEqual(false, orddict:is_key(PubKeyProtocol, DictBal2))
     end,
 
