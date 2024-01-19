@@ -1151,13 +1151,10 @@ fees_three_beneficiaries() ->
             PubKeyProtocols = lists:map(fun(Protocol) ->
                                             [{PubKeyProtocol, _}] = aec_dev_reward:beneficiaries(Protocol),
                                             PubKeyProtocol end, maps:keys(aec_hard_forks:protocols())),
-            case length(PubKeyProtocols) of
-                1 -> 
-                    ?assertEqual(ProtocolBenefits, orddict:fetch(hd(PubKeyProtocols), DictBal2));
-                2 ->
-                    [PubKeyProtocol1, PubKeyProtocol2] = PubKeyProtocols,
-                    ?assertEqual(ProtocolBenefits, orddict:fetch(PubKeyProtocol1, DictBal2) + orddict:fetch(PubKeyProtocol2, DictBal2))
-            end;
+            TotalDevRewards = lists:foldl(fun(PubKeyProtocol, Total) ->
+                                                            orddict:fetch(PubKeyProtocol, DictBal2) + Total end,
+                                            0, PubKeyProtocols),
+            ?assertEqual(ProtocolBenefits, TotalDevRewards);
         false ->
             Header = aec_chain:top_header(),
             Protocol = aec_headers:version(Header),
