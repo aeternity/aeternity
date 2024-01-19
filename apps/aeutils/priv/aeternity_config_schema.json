@@ -1624,22 +1624,29 @@
                                     "properties": {
                                         "contract_owner": {
                                             "description": "Owner of the smart contracts that controls the consensus.",
-                                            "default": "ak_11111111111111111111111111111115rHyByZ",
                                             "type": "string"
                                         },
                                         "election_contract": {
                                             "description": "The address of the smart contract that will be used for leader elections. For a new chain this contract should be loaded at genesis",
-                                            "default": "",
                                             "type": "string"
                                         },
                                         "rewards_contract": {
                                             "description": "The address of the smart contract that will be used for reward distributions. For a new chain this contract should be loaded at genesis",
-                                            "default": "",
                                             "type": "string"
                                         },
                                         "expected_key_block_rate": {
                                             "description": "Something about rates.. FIXME",
                                             "default": 2000,
+                                            "type": "integer"
+                                        },
+                                        "genesis_start_time": {
+                                            "description": "Timestamp for genesis",
+                                            "default": 0,
+                                            "type": "integer"
+                                        },
+                                        "lazy_leader_trigger_time": {
+                                            "description": "Graze period until lazy leader is triggered (in ms)",
+                                            "default": 10000,
                                             "type": "integer"
                                         },
                                         "parent_chain": {
@@ -1656,6 +1663,11 @@
                                                     "description": "Height on the parent chain that this hyperchain will start posting commitments and start creating blocks",
                                                     "default": 0,
                                                     "type": "integer"
+                                                },
+                                                "producing_commitments": {
+                                                    "description": "Enable/Disable commitment production",
+                                                    "default": false,
+                                                    "type": "boolean"
                                                 },
                                                 "consensus": {
                                                     "description" : "Details of the parent chain.",
@@ -1699,6 +1711,11 @@
                                                             "description" : "The interval between polls of the parent chain looking for a new block (millisec)",
                                                             "type": "integer",
                                                             "default": 500
+                                                        },
+                                                        "cache_size": {
+                                                            "description" : "Size of local cache for parent chain",
+                                                            "type": "integer",
+                                                            "default": 200
                                                         },
                                                         "nodes": {
                                                             "description" : "List of parent chain nodes to poll for new blocks",

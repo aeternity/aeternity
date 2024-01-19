@@ -87,44 +87,45 @@ can_be_turned_off() -> false.
 assert_config(_Config) -> ok.
 
 start(Config, #{block_production := BlockProduction}) ->
-    #{<<"stakers">> := StakersEncoded,
-      <<"parent_chain">> :=
-        #{  <<"start_height">> := StartHeight,
-            <<"confirmations">> := Confirmations,
-            <<"consensus">> :=
-                #{  <<"type">> := PCType,
-                    <<"network_id">> := NetworkId,
-                    <<"spend_address">> := PCSpendAddress,
-                    <<"fee">> := Fee,
-                    <<"amount">> := Amount
-                 },
-            <<"polling">> :=
-                #{  <<"fetch_interval">> := FetchInterval,
-                    <<"nodes">> := Nodes0
-                 } = Polling,
-            <<"producing_commitments">> := ProducingCommitments
-          },
-     <<"lazy_leader_trigger_time">> := _TimeTillDeclaringLazy
-     } = Config,
+    #{ <<"stakers">>      := StakersConfig,
+       <<"parent_chain">> := PCConfig      } = Config,
+
+    StakersConfig = maps:get(<<"stakers">>, Config, []),
+    PCConfig      = maps:get(<<"parent_chain">>, Config),
+
+    Confirmations        = maps:get(<<"confirmations">>, PCConfig, 6),
+    StartHeight          = maps:get(<<"start_height">>, PCConfig, 0),
+    ProducingCommitments = maps:get(<<"producing_commitments">>, PCConfig, false),
+    ConsensusConfig      = maps:get(<<"consensus">>, PCConfig, #{}),
+    PollingConfig        = maps:get(<<"polling">>, PCConfig, #{}),
+
+    PCType         = maps:get(<<"type">>, ConsensusConfig, <<"AE2AE">>),
+    NetworkId      = maps:get(<<"network_id">>, ConsensusConfig, <<"ae_mainnet">>),
+    PCSpendAddress = maps:get(<<"spend_address">>, ConsensusConfig, <<"">>),
+    Fee            = maps:get(<<"fee">>, ConsensusConfig, 100000000000000),
+    Amount         = maps:get(<<"amount">>, ConsensusConfig, 1),
+
+    FetchInterval = maps:get(<<"fetch_interval">>, PollingConfig, 500),
+    CacheSize     = maps:get(<<"cache_size">>, PollingConfig, 200),
+    Nodes         = maps:get(<<"nodes">>, PollingConfig, []),
+    ParentHosts   = lists:map(fun aehttpc:parse_node_url/1, Nodes),
+
     %% assert the boolean type
     case ProducingCommitments of
         true -> ok;
         false -> ok
     end,
-    CacheSize = maps:get(<<"cache_size">>, Polling, 200),
-    ParentHosts = lists:map(fun aehttpc:parse_node_url/1, Nodes0),
+
     {ParentConnMod, PCSpendPubkey, HCPCPairs, SignModule} =
         case PCType of
-            <<"AE2AE">> -> start_ae(StakersEncoded, PCSpendAddress);
-            <<"AE2BTC">> -> start_btc(StakersEncoded, PCSpendAddress, aehttpc_btc);
-            <<"AE2DOGE">> -> start_btc(StakersEncoded, PCSpendAddress, aehttpc_doge)
+            <<"AE2AE">> -> start_ae(StakersConfig, PCSpendAddress);
+            <<"AE2BTC">> -> start_btc(StakersConfig, PCSpendAddress, aehttpc_btc);
+            <<"AE2DOGE">> -> start_btc(StakersConfig, PCSpendAddress, aehttpc_doge)
         end,
-    start_dependency(aec_parent_connector, [ParentConnMod, FetchInterval,
-                                            ParentHosts, NetworkId,
+    start_dependency(aec_parent_connector, [ParentConnMod, FetchInterval, ParentHosts, NetworkId,
                                             SignModule, HCPCPairs, PCSpendPubkey, Fee, Amount]),
-    start_dependency(aec_parent_chain_cache, [StartHeight, CacheSize,
-                                              Confirmations, BlockProduction,
-                                             ProducingCommitments]),
+    start_dependency(aec_parent_chain_cache, [StartHeight, CacheSize, Confirmations,
+                                              BlockProduction, ProducingCommitments]),
     ok.
 
 start_btc(StakersEncoded, PCSpendAddress, ParentConnMod) ->
@@ -421,88 +422,48 @@ key_header_difficulty(H) ->
 
 %% This is initial height; if neeeded shall be reinit at fork height
 election_contract_pubkey() ->
-    aeu_ets_cache:get(
-      ?ETS_CACHE_TABLE,
-      election_contract_pubkey,
-      fun() ->
-              {ok, EncContractId} =
-                  aeu_env:user_config([<<"chain">>, <<"consensus">>,
-                                       <<"0">>,
-                                       <<"config">>, <<"election_contract">>]),
-              {ok, Pubkey}   = aeser_api_encoder:safe_decode(contract_pubkey,
-                                                             EncContractId),
-              Pubkey
-      end).
+    Fun = fun() ->
+              EncContractId = get_consensus_config_key([<<"election_contract">>]),
+              case aeser_api_encoder:safe_decode(contract_pubkey, EncContractId) of
+                  {ok, Pubkey} -> Pubkey;
+                  _ -> erlang:error({contract_owner_not_valid_contract, EncContractId})
+              end
+          end,
+    aeu_ets_cache:get(?ETS_CACHE_TABLE, election_contract_pubkey, Fun).
 
 rewards_contract_pubkey() ->
-    aeu_ets_cache:get(
-      ?ETS_CACHE_TABLE,
-      rewards_contract_pubkey,
-      fun() ->
-              {ok, EncContractId} =
-                  aeu_env:user_config([<<"chain">>, <<"consensus">>,
-                                       <<"0">>,
-                                       <<"config">>, <<"rewards_contract">>]),
-              {ok, Pubkey}   = aeser_api_encoder:safe_decode(contract_pubkey,
-                                                             EncContractId),
-              Pubkey
-      end).
+    Fun = fun() ->
+              EncContractId = get_consensus_config_key([<<"rewards_contract">>]),
+              case aeser_api_encoder:safe_decode(contract_pubkey, EncContractId) of
+                  {ok, Pubkey} -> Pubkey;
+                  _ -> erlang:error({contract_owner_not_valid_contract, EncContractId})
+              end
+          end,
+    aeu_ets_cache:get(?ETS_CACHE_TABLE, rewards_contract_pubkey, Fun).
 
 pc_start_height() ->
-    aeu_ets_cache:get(
-      ?ETS_CACHE_TABLE,
-      pc_start_height,
-      fun() ->
-              {ok, H} =
-                  aeu_env:user_config([<<"chain">>, <<"consensus">>,
-                                       <<"0">>,
-                                       <<"config">>, <<"parent_chain">>,
-                                       <<"start_height">>]),
-              H
-      end).
+    Fun = fun() -> get_consensus_config_key([<<"parent_chain">>, <<"start_height">>], 0) end,
+    aeu_ets_cache:get(?ETS_CACHE_TABLE, pc_start_height, Fun).
 
 genesis_start_time() ->
-    aeu_ets_cache:get(
-      ?ETS_CACHE_TABLE,
-      genesis_start_time,
-      fun() ->
-            case aeu_env:user_config([<<"chain">>, <<"consensus">>,
-                                      <<"0">>,
-                                      <<"config">>,
-                                      <<"genesis_start_time">>]) of
-                {ok, Timestamp} -> Timestamp;
-                undefined -> 0
-            end
-      end).
-
+    Fun = fun() -> get_consensus_config_key([<<"genesis_start_time">>], 0) end,
+    aeu_ets_cache:get(?ETS_CACHE_TABLE, genesis_start_time, Fun).
 
 %% This is the contract owner, calls shall be only available via protocol
 contract_owner() ->
-    aeu_ets_cache:get(
-      ?ETS_CACHE_TABLE,
-      contract_owner,
-      fun() ->
-              {ok, EncOwner} =
-                  aeu_env:user_config([<<"chain">>, <<"consensus">>,
-                                       <<"0">>,
-                                       <<"config">>, <<"contract_owner">>]),
-              {ok, Pubkey}   = aeser_api_encoder:safe_decode(account_pubkey,
-                                                             EncOwner),
-              Pubkey
-      end).
+    Fun = fun() ->
+              EncOwner = get_consensus_config_key([<<"contract_owner">>]),
+              case aeser_api_encoder:safe_decode(account_pubkey, EncOwner) of
+                  {ok, Pubkey} -> Pubkey;
+                  _ -> erlang:error({contract_owner_not_valid_account, EncOwner})
+              end
+          end,
+    aeu_ets_cache:get(?ETS_CACHE_TABLE, contract_owner, Fun).
 
 %% TODO: do we need this in HC?
 expected_key_block_rate() ->
-    aeu_ets_cache:get(
-      ?ETS_CACHE_TABLE,
-      key_block_rate,
-      fun() ->
-              {ok, ExpectedRate} =
-                  aeu_env:user_config([<<"chain">>, <<"consensus">>,
-                                       <<"0">>,
-                                       <<"config">>, <<"expected_key_block_rate">>]),
-              ExpectedRate
-      end).
+    Fun = fun() -> get_consensus_config_key([<<"expected_key_block_rate">>], 2000) end,
+    aeu_ets_cache:get(?ETS_CACHE_TABLE, key_block_rate, Fun).
 
 genesis_protocol_version() ->
     aeu_ets_cache:get(
@@ -511,6 +472,25 @@ genesis_protocol_version() ->
       fun() ->
             hd(lists:sort(maps:keys(aec_hard_forks:protocols())))
       end).
+
+lazy_leader_time_delta() ->
+    case aeu_env:user_config([<<"chain">>, <<"consensus">>, <<"0">>,
+                              <<"config">>, <<"lazy_leader_trigger_time">>]) of
+        {ok, Interval} -> Interval;
+        undefined -> 10000
+    end.
+
+get_consensus_config_key(Keys) ->
+    case aeu_env:user_config([<<"chain">>, <<"consensus">>, <<"0">>, <<"config">>] ++ Keys) of
+      {ok, Value} -> Value;
+      undefined   -> erlang:error({missing_mandatory_chain_consensus_config_key, Keys})
+    end.
+
+get_consensus_config_key(Keys, Default) ->
+    case aeu_env:user_config([<<"chain">>, <<"consensus">>, <<"0">>, <<"config">>] ++ Keys) of
+      {ok, Value} -> Value;
+      undefined   -> Default
+    end.
 
 log_consensus_call(TxEnv, FunName, EncodedCallData, Amount) ->
     Height = aetx_env:height(TxEnv),
@@ -637,14 +617,6 @@ next_beneficiary() ->
             timer:sleep(1000),
             {error, not_in_cache}
     end.
-
-lazy_leader_time_delta() ->
-    {ok, Interval} =
-        aeu_env:user_config([<<"chain">>, <<"consensus">>,
-                            <<"0">>,
-                            <<"config">>,
-                            <<"lazy_leader_trigger_time">>]),
-    Interval.
 
 allow_lazy_leader() ->
     Height = aec_chain:top_height(),
