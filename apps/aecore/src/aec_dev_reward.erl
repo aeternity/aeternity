@@ -22,11 +22,11 @@
 %%% weighted avg BRI voting result of 1% to 20% (yes) votes is 10.89869526640124746202%, 109 of 1000 shares will be the protocol reward
 %%% for: "ak_2KAcA2Pp1nrR8Wkt3FtCkReGzAi8vJ9Snxa4PcmrthVx8AhPe8:109"
 %%%%%%%%% TODO update with real values
--define(MAINNET_BENEFICIARIES, [{<<172,241,128,85,116,104,119,143,197,105,4,192,224,207,200,138,230,84,111,38,89,33,239,21,201,183,185,209,19,60,109,136>>, 109, undefined, ?LIMA_PROTOCOL_VSN},
-                                {<<152,57,168,5,218,153,177,254,226,207,243,133,11,50,143,68,121,242,94,41,187,198,158,67,133,88,6,71,55,26,85,54>>, 109, ?IRIS_PROTOCOL_VSN, undefined}]).
+-define(MAINNET_BENEFICIARIES, [{<<172,241,128,85,116,104,119,143,197,105,4,192,224,207,200,138,230,84,111,38,89,33,239,21,201,183,185,209,19,60,109,136>>, 109, undefined, ?IRIS_PROTOCOL_VSN},
+                                {<<152,57,168,5,218,153,177,254,226,207,243,133,11,50,143,68,121,242,94,41,187,198,158,67,133,88,6,71,55,26,85,54>>, 109, ?CERES_PROTOCOL_VSN, undefined}]).
 %%% for: "ak_2A3PZPfMC2X7ZVy4qGXz2xh2Lbh79Q4UvZ5fdH7QVFocEgcKzU:109"
--define(TESTNET_BENEFICIARIES, [{<<152,57,168,5,218,153,177,254,226,207,243,133,11,50,143,68,121,242,94,41,187,198,158,67,133,88,6,71,55,26,85,54>>, 109, undefined, ?LIMA_PROTOCOL_VSN},
-                                {<<172,241,128,85,116,104,119,143,197,105,4,192,224,207,200,138,230,84,111,38,89,33,239,21,201,183,185,209,19,60,109,136>>, 109, ?IRIS_PROTOCOL_VSN, undefined}]).
+-define(TESTNET_BENEFICIARIES, [{<<152,57,168,5,218,153,177,254,226,207,243,133,11,50,143,68,121,242,94,41,187,198,158,67,133,88,6,71,55,26,85,54>>, 109, undefined, ?IRIS_PROTOCOL_VSN},
+                                {<<172,241,128,85,116,104,119,143,197,105,4,192,224,207,200,138,230,84,111,38,89,33,239,21,201,183,185,209,19,60,109,136>>, 109, ?CERES_PROTOCOL_VSN, undefined}]).
 
 ensure_env() ->
     Enabled = cfg(<<"protocol_beneficiaries_enabled">>, ?ENABLED),
@@ -122,7 +122,7 @@ parse_beneficiary(BeneficiaryShareStr) ->
                     Share = binary_to_integer(ShareBin),
                     Share > 0 orelse error({invalid_share, Share}),
                     MinProtocol = min_protocol(),
-                    MaxProtcol = max_protocol(),
+                    MaxProtocol = max_protocol(),
                     FromProtocol = case FromProtocolBin of
                                             <<>> ->
                                                 MinProtocol;
@@ -132,11 +132,11 @@ parse_beneficiary(BeneficiaryShareStr) ->
                     FromProtocol > 0 orelse error({invalid_from_protocol, FromProtocol}),
                     ToProtocol = case ToProtocolBin of
                                             <<>> ->
-                                                MaxProtcol;
+                                                MaxProtocol;
                                             ToBin ->
                                                 binary_to_integer(ToBin)
                                             end,
-                    case ToProtocol < MinProtocol orelse FromProtocol > MaxProtcol of
+                    case ToProtocol < MinProtocol orelse FromProtocol > MaxProtocol of
                         true ->
                             false;
                         _ ->
@@ -156,7 +156,7 @@ parse_beneficiaries([_|_] = BeneficiarySharesProtocolsStrs) ->
     try lists:filtermap(fun parse_beneficiary/1, BeneficiarySharesProtocolsStrs) of
         BeneficiarySharesProtocols ->
             {ok, [{ProtocolVsn, beneficiaries_at_protocol(ProtocolVsn, BeneficiarySharesProtocols)} ||
-                    ProtocolVsn <- maps:keys(aec_hard_forks:protocols())]}
+                    ProtocolVsn <- protocols()]}
     catch
         error:Reason ->
             {error, Reason}
@@ -195,16 +195,20 @@ split(BeneficiaryReward1, BeneficiaryReward2, NewestNodeVersion) ->
     end.
 
 max_protocol() ->
-    ProtocolMax = lists:max(maps:keys(aec_hard_forks:protocols())),
-    case application:get_env(aecore, fork) of
-        {ok, #{version := ForkProtocol}} ->
-            max(ProtocolMax, ForkProtocol);
-        _ ->
-            ProtocolMax
-    end.
+    lists:max(protocols()).
 
 min_protocol() ->
-    lists:min(maps:keys(aec_hard_forks:protocols())).
+    lists:min(protocols()).
+
+protocols() ->
+    Protocols = maps:keys(aec_hard_forks:protocols()),
+    case application:get_env(aecore, fork) of
+        {ok, #{version := ForkProtocol}} ->
+            [ForkProtocol|Protocols];
+        _ ->
+            Protocols
+    end.
+
 
 split_int(BeneficiaryReward1, BeneficiaryReward2,
           AllocShares, TotalShares,
@@ -234,7 +238,7 @@ split_int(BeneficiaryReward1, BeneficiaryReward2,
 
 set_beneficiaries(BeneficiaryShares) ->
     ProtocolBenefShares0 = [{ProtocolVsn, beneficiaries_at_protocol(ProtocolVsn, BeneficiaryShares)} ||
-                                ProtocolVsn <- maps:keys(aec_hard_forks:protocols())],
+                                ProtocolVsn <- protocols()],
     {ProtocolAllocShares, ProtocolBenefShares} = all_allocated_shares_and_beneficiaries(ProtocolBenefShares0),
     application:set_env(aecore, dev_reward_allocated_shares, ProtocolAllocShares),
     application:set_env(aecore, dev_reward_beneficiaries, ProtocolBenefShares).
