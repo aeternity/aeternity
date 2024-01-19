@@ -121,21 +121,28 @@ parse_beneficiary(BeneficiaryShareStr) ->
                 {ok, PubKey} ->
                     Share = binary_to_integer(ShareBin),
                     Share > 0 orelse error({invalid_share, Share}),
+                    MinProtocol = min_protocol(),
+                    MaxProtcol = max_protocol(),
                     FromProtocol = case FromProtocolBin of
                                             <<>> ->
-                                                min_protocol();
+                                                MinProtocol;
                                             FromBin ->
                                                 binary_to_integer(FromBin)
                                             end,
                     FromProtocol > 0 orelse error({invalid_from_protocol, FromProtocol}),
                     ToProtocol = case ToProtocolBin of
                                             <<>> ->
-                                                max_protocol();
+                                                MaxProtcol;
                                             ToBin ->
                                                 binary_to_integer(ToBin)
                                             end,
-                    ToProtocol >= FromProtocol orelse error({invalid_to_protocol, ToProtocol}),
-                    {PubKey, Share, FromProtocol, ToProtocol};
+                    case ToProtocol < MinProtocol orelse FromProtocol > MaxProtcol of
+                        true ->
+                            false;
+                        _ ->
+                            ToProtocol >= FromProtocol orelse error({invalid_to_protocol, ToProtocol}),
+                            {true, {PubKey, Share, FromProtocol, ToProtocol}}
+                    end;
                 {error, _} ->
                     error({invalid_account, AccountBin})
             end;
@@ -146,8 +153,7 @@ parse_beneficiary(BeneficiaryShareStr) ->
 parse_beneficiaries([]) ->
     {error, no_beneficiaries};
 parse_beneficiaries([_|_] = BeneficiarySharesProtocolsStrs) ->
-    try lists:foldl(fun (Str, Acc) -> [parse_beneficiary(Str) | Acc] end,
-                    [], BeneficiarySharesProtocolsStrs) of
+    try lists:filtermap(fun parse_beneficiary/1, BeneficiarySharesProtocolsStrs) of
         BeneficiarySharesProtocols ->
             {ok, [{ProtocolVsn, beneficiaries_at_protocol(ProtocolVsn, BeneficiarySharesProtocols)} ||
                     ProtocolVsn <- maps:keys(aec_hard_forks:protocols())]}
