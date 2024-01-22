@@ -1533,6 +1533,7 @@ node_config(NetworkId,Node, CTConfig, PotentialStakers, ReceiveAddress, Consensu
         case Consensus of
             ?CONSENSUS_POS -> #{};
             ?CONSENSUS_HC ->
+                Port = aecore_suite_utils:external_api_port(?PARENT_CHAIN_NODE1),
                 #{  <<"parent_chain">> =>
                     #{  <<"start_height">> => ?CHILD_START_HEIGHT,
                         <<"confirmations">> => ?CHILD_CONFIRMATIONS,
@@ -1545,12 +1546,7 @@ node_config(NetworkId,Node, CTConfig, PotentialStakers, ReceiveAddress, Consensu
                             },
                         <<"polling">> =>
                             #{  <<"fetch_interval">> => 100,
-                                <<"nodes">> =>
-                                    [   #{  <<"host">> => <<"127.0.0.1">>,
-                                            <<"port">> => aecore_suite_utils:external_api_port(?PARENT_CHAIN_NODE1),
-                                            <<"user">> => <<"test">>,
-                                            <<"password">> => <<"Pass">>}
-                                    ]
+                                <<"nodes">> => [ iolist_to_binary(io_lib:format("http://test:Pass@127.0.0.1:~p", [Port])) ]
                             },
                         <<"producing_commitments">> => ProducingCommitments
                         },
@@ -1574,12 +1570,7 @@ node_config(NetworkId,Node, CTConfig, PotentialStakers, ReceiveAddress, Consensu
                             },
                         <<"polling">> =>
                             #{  <<"fetch_interval">> => 100,
-                                <<"nodes">> =>
-                                    [   #{  <<"host">> => <<"127.0.0.1">>,
-                                            <<"port">> => ?BTC_PARENT_CHAIN_PORT,
-                                            <<"user">> => <<"test">>,
-                                            <<"password">> => <<"Pass">>}
-                                    ]
+                                <<"nodes">> => [ iolist_to_binary(io_lib:format("http://test:Pass@127.0.0.1:~p", [?BTC_PARENT_CHAIN_PORT])) ]
                             },
                         <<"producing_commitments">> => ProducingCommitments
                         },
@@ -1592,7 +1583,7 @@ node_config(NetworkId,Node, CTConfig, PotentialStakers, ReceiveAddress, Consensu
     {ok, AccountFileName} = aecore_suite_utils:hard_fork_filename(Node, CTConfig, integer_to_list(Protocol), binary_to_list(NetworkId) ++ "_accounts.json"),
     #{<<"chain">> =>
             #{  <<"persist">> => false,
-                <<"hard_forks">> => #{integer_to_binary(Protocol) => #{<<"height">> => 0, 
+                <<"hard_forks">> => #{integer_to_binary(Protocol) => #{<<"height">> => 0,
                                                                        <<"contracts_file">> => ContractFileName,
                                                                        <<"accounts_file">> => AccountFileName}},
                 <<"consensus">> =>

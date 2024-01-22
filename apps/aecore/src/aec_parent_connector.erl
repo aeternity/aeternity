@@ -80,10 +80,11 @@
 -spec start_link() -> {ok, pid()} | {error, {already_started, pid()}} | {error, Reason::any()}.
 start_link() ->
     FetchInterval = 10000,
-    ParentHosts = [#{host => <<"127.0.0.1">>,
-                    port => 3013,
-                    user => "test",
-                    password => "Pass"
+    ParentHosts = [#{host     => <<"127.0.0.1">>,
+                     port     => 3013,
+                     scheme   => "http",
+                     user     => "test",
+                     password => "Pass"
                     }],
     ParentConnMod = aehttpc_aeternity,
     start_link(ParentConnMod, FetchInterval, ParentHosts, <<"local_testnet">>,
@@ -93,7 +94,7 @@ start_link() ->
 %% Start the parent connector process
 %% ParentConnMod :: atom() - module name of the http client module aehttpc_btc | aehttpc_aeternity
 %% FetchInterval :: integer() | on_demand - millisecs between parent chain checks or when asked (useful for test)
-%% ParentHosts :: [#{host => Host, port => Port, user => User, password => Pass}]
+%% ParentHosts :: [#{host => Host, port => Port, scheme => Scheme, user => User, password => Pass}]
 %% NetworkID :: binary() - the parent chain's network id
 %% SignModule :: atom() - module name of the module that keeps the keys for the parent chain transactions to be signed
 %% HCPCPairs :: [{binary(), binary()}] - mapping from hyperchain address to child chain address
@@ -247,8 +248,8 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 fetch_parent_tops(Mod, ParentNodes, Seed, State) ->
     FetchFun =
-        fun(Host, Port, User, Password) ->
-            Mod:get_latest_block(Host, Port, User, Password, Seed)
+        fun(NodeSpec) ->
+            Mod:get_latest_block(NodeSpec, Seed)
         end,
     Fun = fun(Parent) -> fetch_block(FetchFun, Parent, State) end,
     {Good, Errors} = aeu_lib:pmap(Fun, ParentNodes, 10000),
@@ -256,8 +257,8 @@ fetch_parent_tops(Mod, ParentNodes, Seed, State) ->
 
 fetch_block_by_hash(Hash, Mod, ParentNodes, Seed, State) ->
     FetchFun =
-        fun(Host, Port, User, Password) ->
-            Mod:get_header_by_hash(Hash, Host, Port, User, Password, Seed)
+        fun(NodeSpec) ->
+            Mod:get_header_by_hash(Hash, NodeSpec, Seed)
         end,
     Fun = fun(Parent) -> fetch_block(FetchFun, Parent, State) end,
     {Good, Errors} = aeu_lib:pmap(Fun, ParentNodes, 10000),
@@ -265,27 +266,25 @@ fetch_block_by_hash(Hash, Mod, ParentNodes, Seed, State) ->
 
 fetch_block_by_height(Height, Mod, ParentNodes, Seed, State) ->
     FetchFun =
-        fun(Host, Port, User, Password) ->
-            Mod:get_header_by_height(Height, Host, Port, User, Password, Seed)
+        fun(NodeSpec) ->
+            Mod:get_header_by_height(Height, NodeSpec, Seed)
         end,
     Fun = fun(Parent) -> fetch_block(FetchFun, Parent, State) end,
     {Good, Errors} = aeu_lib:pmap(Fun, ParentNodes, 10000),
     responses_consensus(Good, Errors, length(ParentNodes)).
 
-fetch_block(FetchFun,
-            #{host := Host, port := Port,
-              user := User, password := Password} = Node,
+fetch_block(FetchFun, NodeSpec,
             #state{parent_conn_mod = Mod,
                    rpc_seed = Seed,
                    c_details = CDetails}) ->
     #commitment_details{recipient = Receiver} = CDetails,
-    case FetchFun(Host, Port, User, Password) of
+    case FetchFun(NodeSpec) of
         {ok, BlockHash, PrevHash, Height} ->
             Block = aec_parent_chain_block:new(BlockHash, Height, PrevHash),
-            case Mod:get_commitment_tx_in_block(Host, Port, User, Password, Seed, BlockHash,
+            case Mod:get_commitment_tx_in_block(NodeSpec, Seed, BlockHash,
                            PrevHash, Receiver) of
                 {ok, Commitments} ->
-                    {ok, {aec_parent_chain_block:set_commitments(Block, Commitments), Node}};
+                    {ok, {aec_parent_chain_block:set_commitments(Block, Commitments), NodeSpec}};
                 {error, _} = Err ->
                     Err
             end;
@@ -361,10 +360,10 @@ post_commitment(Who, Commitment,
         amount = Amount,
         fee = Fee} = CDetails,
     Fun =
-        fun(#{host := Host, port := Port, user := User, password := Password} = Node) ->
-            case Mod:post_commitment(Host, Port, User, Password, Who, Receiver, Amount, Fee,
+        fun(NodeSpec) ->
+            case Mod:post_commitment(NodeSpec, Who, Receiver, Amount, Fee,
                                      Commitment, PCNetworkId, SignModule) of
-                {ok, #{<<"tx_hash">> := TxHash}} -> {ok, {TxHash, Node}};
+                {ok, #{<<"tx_hash">> := TxHash}} -> {ok, {TxHash, NodeSpec}};
                 {error, 400, _E} ->
                     {error, invalid_transaction}
             end

@@ -77,15 +77,8 @@ ae_sim_test_() ->
                                 [Spec1, Spec2, Spec3])
                         end,
                     PostPCBlock(),
-                    Responses =
-                        get_results(
-                            fun(Host, Port, User, Password, Seed) ->
-                                aehttpc_aeternity:get_latest_block(Host,
-                                                                   Port,
-                                                                   User,
-                                                                   Password,
-                                                                   Seed)
-                            end, ae_parent_http_specs()),
+                    Responses = get_results(fun aehttpc_aeternity:get_latest_block/2,
+                                            ae_parent_http_specs()),
                     PoolSize = length(ae_parent_http_specs()),
                     [{{ok, Top, PrevHash, Height}, PoolSize}] =
                         maps:to_list(Responses),
@@ -125,15 +118,8 @@ ae_sim_test_() ->
                         aec_parent_chain_block:set_commitments(keyblock_to_pc_block(KB3), []),
                     Block4 =
                         aec_parent_chain_block:set_commitments(keyblock_to_pc_block(KB4), []),
-                    Responses =
-                        get_results(
-                            fun(Host, Port, User, Password, Seed) ->
-                                aehttpc_aeternity:get_latest_block(Host,
-                                                                   Port,
-                                                                   User,
-                                                                   Password,
-                                                                   Seed)
-                            end, ae_parent_http_specs()),
+                    Responses = get_results(fun aehttpc_aeternity:get_latest_block/2,
+                                            ae_parent_http_specs()),
                     PoolSize = length(ae_parent_http_specs()),
                     PoolSize = length(maps:to_list(Responses)), %% all different answers
                     Self = self(),
@@ -180,8 +166,7 @@ ae_sim_test_() ->
             fun() ->
                     %% aec_parent_connector:trigger_fetch(),
                     lists:foreach(
-                        fun(#{host := Host, port := Port,
-                            user := User, password := Password}) ->
+                        fun(NodeSpec = #{port := Port}) ->
                             SimName = ae_sim_name(Port),
                             aec_chain_sim:add_keyblock(SimName),
                             aec_chain_sim:add_keyblock(SimName),
@@ -191,23 +176,18 @@ ae_sim_test_() ->
                             Commitment =  aec_parent_chain_block:encode_commitment_btc(StakerPubKey, Val, ?CHILD_CHAIN_NETWORK_ID),
                             Fee = 20000 * aec_test_utils:min_gas_price(),
                             {ok, #{<<"tx_hash">> := _}} =
-                                aehttpc_aeternity:post_commitment(Host, Port, <<>>, <<>>,
-                                                                   StakerEnc,
-                                                                   CommitmentPubKey,
-                                                                   1, Fee,
-                                                                   Commitment,
-                                                                  ?PARENT_CHAIN_NETWORK_ID,
-                                                                  ?SIGN_MODULE),
+                                aehttpc_aeternity:post_commitment(NodeSpec, StakerEnc, CommitmentPubKey, 1, Fee, Commitment,
+                                                                  ?PARENT_CHAIN_NETWORK_ID, ?SIGN_MODULE),
                             ?assertMatch({ok, #{micro_blocks := []}}, aec_chain_sim:get_current_generation(SimName)),
                             %% Call the simulator directly to force our Tx in a block
                             aec_chain_sim:add_microblock(SimName),
                             ?assertMatch({ok, #{micro_blocks := []}}, aec_chain_sim:get_current_generation(SimName)),
                             %% And create a keyblock
                             aec_chain_sim:add_keyblock(SimName),
-                            {ok, TopHash, PrevHash, Height} = aehttpc_aeternity:get_latest_block(Host, Port, User, Password, <<"Seed">>),
+                            {ok, TopHash, PrevHash, Height} = aehttpc_aeternity:get_latest_block(NodeSpec, <<"Seed">>),
                             ?assertMatch({ok, #{micro_blocks := []}}, aec_chain_sim:get_current_generation(SimName)),
                             {ok, [{Signature, AcctHashPrefix, PayloadHashPrefix}]} =
-                                aehttpc_aeternity:get_commitment_tx_in_block(Host, Port, User, Password, <<"Seed">>, TopHash, PrevHash, CommitmentPubKey),
+                                aehttpc_aeternity:get_commitment_tx_in_block(NodeSpec, <<"Seed">>, TopHash, PrevHash, CommitmentPubKey),
                             ?assertMatch(AcctHashPrefix, binary:part(aec_hash:sha256_hash(aeb_fate_encoding:serialize(aeb_fate_data:make_address(StakerPubKey))), 0, 8)),
                             ?assertMatch(PayloadHashPrefix, binary:part(aec_hash:sha256_hash(Val), 0, 7)),
                             %% Test we can also get the same commitments by height
@@ -215,7 +195,7 @@ ae_sim_test_() ->
                             %% Top here is the keyblock we added after the microblock with our Txs, so
                             %% we need to look in the height one below top
                             ?assertEqual(TopHeight, Height + 1),
-                            {ok, [{Signature, AcctHashPrefix, PayloadHashPrefix}]} = aehttpc_aeternity:get_commitment_tx_at_height(Host, Port, User, Password, <<"Seed">>, TopHeight - 1, CommitmentPubKey)
+                            {ok, [{Signature, AcctHashPrefix, PayloadHashPrefix}]} = aehttpc_aeternity:get_commitment_tx_at_height(NodeSpec, <<"Seed">>, TopHeight - 1, CommitmentPubKey)
                         end, ae_parent_http_specs()),
                     ok
             end}]
@@ -226,6 +206,7 @@ ae_parent_http_specs() ->
     lists:map(fun(Index) ->
                 #{host => <<"127.0.0.1">>,
                   port => 3013 + Index,
+                  scheme => "http",
                   user => "test",
                   password => "Pass"
                  } end, lists:seq(0, 2)).
@@ -310,15 +291,8 @@ btc_sim_test_() ->
                                 [Spec1, Spec2, Spec3])
                         end,
                     PostPCBlock(),
-                    Responses =
-                        get_results(
-                            fun(Host, Port, User, Password, Seed) ->
-                                aehttpc_btc:get_latest_block(Host,
-                                                             Port,
-                                                             User,
-                                                             Password,
-                                                             Seed)
-                            end, btc_parent_http_specs()),
+                    Responses = get_results(fun aehttpc_btc:get_latest_block/2,
+                                            btc_parent_http_specs()),
                     PoolSize = length(btc_parent_http_specs()),
                     [{{ok, Top, PrevHash, Height}, PoolSize}] =
                         maps:to_list(Responses),
@@ -359,15 +333,8 @@ btc_sim_test_() ->
                     aec_parent_chain_block:set_commitments(keyblock_to_pc_block(KB3), []),
                 Block4 =
                     aec_parent_chain_block:set_commitments(keyblock_to_pc_block(KB4), []),
-                Responses =
-                    get_results(
-                        fun(Host, Port, User, Password, Seed) ->
-                            aehttpc_btc:get_latest_block(Host,
-                                                         Port,
-                                                         User,
-                                                         Password,
-                                                         Seed)
-                        end, btc_parent_http_specs()),
+                Responses = get_results(fun aehttpc_btc:get_latest_block/2,
+                                        btc_parent_http_specs()),
                 PoolSize = length(btc_parent_http_specs()),
                 PoolSize = length(maps:to_list(Responses)), %% all different answers
                 Self = self(),
@@ -412,8 +379,7 @@ btc_sim_test_() ->
             fun() ->
                 %% aec_parent_connector:trigger_fetch(),
                 lists:foreach(
-                    fun(#{host := Host, port := Port,
-                        user := User, password := Password}) ->
+                    fun(NodeSpec = #{port := Port}) ->
                         SimName = btc_sim_name(Port),
                         aehttp_btc_sim:mine_on_fork(SimName, main),
                         aehttp_btc_sim:mine_on_fork(SimName, main),
@@ -423,19 +389,14 @@ btc_sim_test_() ->
                         Commitment = aec_parent_chain_block:encode_commitment_btc(StakerPubKey, Val, ?CHILD_CHAIN_NETWORK_ID),
                         Fee = 8000,
                         {ok, #{<<"tx_hash">> := _}} =
-                            aehttpc_btc:post_commitment(Host, Port, User, Password,
-                                                                BTCStakerPubKey,
-                                                                CommitmentPubKey,
-                                                                1, Fee,
-                                                                Commitment,
-                                                                ?PARENT_CHAIN_NETWORK_ID,
-                                                                ?SIGN_MODULE),
+                            aehttpc_btc:post_commitment(NodeSpec, BTCStakerPubKey, CommitmentPubKey, 1, Fee, Commitment,
+                                                        ?PARENT_CHAIN_NETWORK_ID, ?SIGN_MODULE),
                         %% Call the simulator directly to force our Tx in a block
                         aehttp_btc_sim:mine_on_fork(SimName, main),
-                        {ok, TopHash, PrevHash, Height} = aehttpc_btc:get_latest_block(Host, Port, User, Password, <<"Seed">>),
+                        {ok, TopHash, PrevHash, Height} = aehttpc_btc:get_latest_block(NodeSpec, <<"Seed">>),
 
                         {ok, [{Signature, AcctHashPrefix, PayloadHashPrefix}]} =
-                                aehttpc_btc:get_commitment_tx_in_block(Host, Port, User, Password, <<"Seed">>, TopHash, PrevHash, CommitmentPubKey),
+                                aehttpc_btc:get_commitment_tx_in_block(NodeSpec, <<"Seed">>, TopHash, PrevHash, CommitmentPubKey),
                         ?assertMatch(AcctHashPrefix, binary:part(aec_hash:sha256_hash(aeb_fate_encoding:serialize(aeb_fate_data:make_address(StakerPubKey))), 0, 8)),
                         ?assertMatch(PayloadHashPrefix, binary:part(aec_hash:sha256_hash(Val), 0, 7)),
 
@@ -445,7 +406,7 @@ btc_sim_test_() ->
                         %% we need to look in the height one below top.
                         %% But for bitcoin transactions are included in the actual block at the height
                         ?assertEqual(TopHeight, Height),
-                        {ok, [{Signature, AcctHashPrefix, PayloadHashPrefix}]} = aehttpc_btc:get_commitment_tx_at_height(Host, Port, User, Password, <<"Seed">>, TopHeight, CommitmentPubKey)
+                        {ok, [{Signature, AcctHashPrefix, PayloadHashPrefix}]} = aehttpc_btc:get_commitment_tx_at_height(NodeSpec, <<"Seed">>, TopHeight, CommitmentPubKey)
                     end, btc_parent_http_specs()),
                 ok
             end}]
@@ -457,6 +418,7 @@ btc_parent_http_specs() ->
     lists:map(fun(Index) ->
         #{host => "127.0.0.1",
           port => 3513 + Index,
+          scheme => "http",
           user => <<"test">>,
           password => <<"Pass">>
          } end, lists:seq(0, 2)).
@@ -482,8 +444,8 @@ new_keypair() ->
 get_results(Fun, HTTPSpecs) ->
     Responses =
         lists:map(
-            fun(#{host := Host, port := Port, user := User, password := Password}) ->
-                {ok, _TopHash, _PrevHash, _Height} = Fun(Host, Port, User, Password, <<"Seed">>)
+            fun(NodeSpec) ->
+                {ok, _TopHash, _PrevHash, _Height} = Fun(NodeSpec, <<"Seed">>)
             end,
             HTTPSpecs),
     count_duplicates(Responses).

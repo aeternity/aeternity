@@ -4,48 +4,57 @@
 %% Low level subset of bitcoin API required to interact with a hyperchain
 
 %% Required exports:
--export([get_latest_block/5,
-         get_header_by_hash/6,
-         get_header_by_height/6,
-         get_commitment_tx_in_block/8,
-         get_commitment_tx_at_height/7,
-         post_commitment/11]).
+-export([get_latest_block/2,
+         get_header_by_hash/3,
+         get_header_by_height/3,
+         get_commitment_tx_in_block/5,
+         get_commitment_tx_at_height/4,
+         post_commitment/8]).
+
+-behavior(aehttpc).
 
 %% Handy for use in test suites and other BTC based chains
 -export([parse_vout/1]).
 
 -type hex() :: binary().%[byte()].
 
-get_latest_block(Host, Port, User, Password, Seed) ->
-    {ok, Hash} = getbestblockhash(Host, Port, User, Password, Seed, false),
+get_latest_block(NodeSpec, Seed) ->
+    case getbestblockhash(NodeSpec, Seed) of
+        {ok, Hash} ->
+            case getblock(NodeSpec, Seed, Hash, _Verbosity = 1) of
+                {ok, {Height, Hash, PrevHash, _Txs}} ->
+                    {ok, Hash, PrevHash, Height};
+                Err = {error, _} ->
+                    Err
+            end;
+        Err = {error, _} ->
+            Err
+    end.
+
+get_header_by_hash(Hash, NodeSpec, Seed) ->
     {ok, {Height, Hash, PrevHash, _Txs}}
-        = getblock(Host, Port, User, Password, Seed, false, Hash, _Verbosity = 1),
+      = getblock(NodeSpec, Seed, Hash, _Verbosity = 1),
     {ok, Hash, PrevHash, Height}.
 
-get_header_by_hash(Hash, Host, Port, User, Password, Seed) ->
-    {ok, {Height, Hash, PrevHash, _Txs}}
-      = getblock(Host, Port, User, Password, Seed, false, Hash, _Verbosity = 1),
-    {ok, Hash, PrevHash, Height}.
-
-get_header_by_height(Height, Host, Port, User, Password, Seed) ->
-    case getblockhash(Host, Port, User, Password, Seed, false, Height) of
+get_header_by_height(Height, NodeSpec, Seed) ->
+    case getblockhash(NodeSpec, Seed, Height) of
         {ok, Hash} ->
             {ok, {_Height, Hash, PrevHash, _Txs}}
-                = getblock(Host, Port, User, Password, Seed, false, Hash, _Verbosity = 1),
+                = getblock(NodeSpec, Seed, Hash, _Verbosity = 1),
             {ok, Hash, PrevHash, Height};
         {error, not_found} -> {error, not_found}
     end.
 
-get_commitment_tx_in_block(Host, Port, User, Password, Seed, BlockHash, _PrevHash, ParentHCAccountPubKey) ->
+get_commitment_tx_in_block(NodeSpec, Seed, BlockHash, _PrevHash, ParentHCAccountPubKey) ->
     {ok, {_Height, _Hash, __PrevHash, Txs}}
-      = getblock(Host, Port, User, Password, Seed, false, BlockHash, _Verbosity = 2),
+      = getblock(NodeSpec, Seed, BlockHash, _Verbosity = 2),
     Commitments = find_commitments(Txs, ParentHCAccountPubKey),
     {ok, Commitments}.
 
-get_commitment_tx_at_height(Host, Port, User, Password, Seed, Height, ParentHCAccountPubKey) ->
-    {ok, Hash} = getblockhash(Host, Port, User, Password, Seed, false, Height),
+get_commitment_tx_at_height(NodeSpec, Seed, Height, ParentHCAccountPubKey) ->
+    {ok, Hash} = getblockhash(NodeSpec, Seed, Height),
     {ok, {_Height, _Hash, _PrevHash, Txs}}
-      = getblock(Host, Port, User, Password, Seed, false, Hash, _Verbosity = 2),
+      = getblock(NodeSpec, Seed, Hash, _Verbosity = 2),
     Commitments = find_commitments(Txs, ParentHCAccountPubKey),
     {ok, Commitments}.
 
@@ -59,18 +68,17 @@ get_commitment_tx_at_height(Host, Port, User, Password, Seed, Height, ParentHCAc
 %% 3. Apply signatures using signrawtransaction
 %% 4. Submit it using sendrawtransaction
 
-post_commitment(Host, Port, User, Password, StakerPubkey, HCCollectPubkey, Amount, Fee, Commitment,
-                _NetworkId, _SignModule) ->
-        post_commitment(Host, Port, User, Password, StakerPubkey, HCCollectPubkey, Amount, Fee, Commitment).
+post_commitment(NodeSpec, StakerPubkey, HCCollectPubkey, Amount, Fee, Commitment, _NetworkId, _SignModule) ->
+    post_commitment(NodeSpec, StakerPubkey, HCCollectPubkey, Amount, Fee, Commitment).
 
-post_commitment(Host, Port, User, Password, BTCAcc, HCCollectPubkey, Amount, Fee, Commitment) ->
-    {ok, Unspent} = listunspent(Host, Port, User, Password, false),
+post_commitment(NodeSpec, BTCAcc, HCCollectPubkey, Amount, Fee, Commitment) ->
+    {ok, Unspent} = listunspent(NodeSpec),
     UnspentSatoshis = unspent_to_satoshis(Unspent),
     {ok, {Inputs, TotalAmount}} = select_utxo(UnspentSatoshis, Fee + Amount),
     Outputs = create_outputs(Commitment, BTCAcc, HCCollectPubkey, TotalAmount, Amount, Fee),
-    {ok, Tx} = createrawtransaction(Host, Port, User, Password, false, Inputs, Outputs),
-    {ok, SignedTx} = signrawtransactionwithwallet(Host, Port, User, Password, false, Tx),
-    {ok, TxHash} = sendrawtransaction(Host, Port, User, Password, false, SignedTx),
+    {ok, Tx} = createrawtransaction(NodeSpec, Inputs, Outputs),
+    {ok, SignedTx} = signrawtransactionwithwallet(NodeSpec, Tx),
+    {ok, TxHash} = sendrawtransaction(NodeSpec, SignedTx),
     %% lager:debug("Posted BTC Commitment in Tx: ~p", [TxHash]),
     {ok, #{<<"tx_hash">> => TxHash}}.
 
@@ -136,22 +144,22 @@ drop_until_point(X) -> X.
 %%%===================================================================
 %%%  BTC protocol
 %%%===================================================================
--spec getbestblockhash(binary(), binary(), binary(), binary(), binary(), boolean()) -> {ok, binary()} | {error, term()}.
-getbestblockhash(Host, Port, User, Password, Seed, SSL) ->
+-spec getbestblockhash(aehttpc:node_spec(), binary()) -> {ok, binary()} | {error, term()}.
+getbestblockhash(NodeSpec, Seed) ->
     try
         Body = jsx:encode(request_body(<<"getbestblockhash">>, [], seed_to_utf8(Seed))),
-        {ok, Res} = request(<<"/">>, Body, Host, Port, User, Password, SSL, 5000),
+        {ok, Res} = request(<<"/">>, Body, NodeSpec, 5000),
         Hash = result(Res),
         {ok, Hash}
     catch E:R ->
         {error, {E, R}}
     end.
 
--spec getblockhash(binary(), binary(), binary(), binary(), binary(), boolean(), integer()) -> {ok, binary()} | {error, term()}.
-getblockhash(Host, Port, User, Password, Seed, SSL, Height) ->
+-spec getblockhash(aehttpc:node_spec(), binary(), integer()) -> {ok, binary()} | {error, term()}.
+getblockhash(NodeSpec, Seed, Height) ->
     try
       Body = jsx:encode(request_body(<<"getblockhash">>, [Height], seed_to_utf8(Seed))),
-      case request(<<"/">>, Body, Host, Port, User, Password, SSL, 5000) of
+      case request(<<"/">>, Body, NodeSpec, 5000) of
         {ok, Res} ->
             Hash = result(Res),
             {ok, Hash};
@@ -162,33 +170,33 @@ getblockhash(Host, Port, User, Password, Seed, SSL, Height) ->
       {error, {E, R, S}}
     end.
 
--spec getblock(binary(), binary(), binary(), binary(), binary(), false, binary(), integer()) -> {ok, tuple()} | {error, term()}.
-getblock(Host, Port, User, Password, Seed, SSL, Hash, Verbosity) ->
+-spec getblock(aehttpc:node_spec(), binary(), binary(), integer()) -> {ok, tuple()} | {error, term()}.
+getblock(NodeSpec, Seed, Hash, Verbosity) ->
     try
         Body = jsx:encode(request_body(<<"getblock">>, [Hash, Verbosity], seed_to_utf8(Seed))),
-        {ok, Res} = request(<<"/">>, Body, Host, Port, User, Password, SSL, 5000),
+        {ok, Res} = request(<<"/">>, Body, NodeSpec, 5000),
         Block = block(result(Res)),
         {ok, Block}
     catch E:R:S ->
         {error, {E, R, S}}
     end.
 
-listunspent(Host, Port, User, Password, SSL) ->
+listunspent(NodeSpec) ->
     try
         Seed = <<>>,
         Body = jsx:encode(request_body(<<"listunspent">>, [0, 9999999], seed_to_utf8(Seed))),
-        {ok, Res} = request(<<"/">>, Body, Host, Port, User, Password, SSL, 5000),
+        {ok, Res} = request(<<"/">>, Body, NodeSpec, 5000),
         Unspent = result(Res),
         {ok, Unspent}
     catch E:R ->
         {error, {E, R}}
     end.
 
-createrawtransaction(Host, Port, User, Password, SSL, Inputs, Outputs) ->
+createrawtransaction(NodeSpec, Inputs, Outputs) ->
     try
         Seed = <<>>,
         Body = jsx:encode(request_body(<<"createrawtransaction">>, [Inputs, Outputs], seed_to_utf8(Seed))),
-        {ok, Res} = request(<<"/">>, Body, Host, Port, User, Password, SSL, 5000),
+        {ok, Res} = request(<<"/">>, Body, NodeSpec, 5000),
         Tx = result(Res),
         {ok, Tx}
     catch E:R ->
@@ -198,12 +206,12 @@ createrawtransaction(Host, Port, User, Password, SSL, Inputs, Outputs) ->
 %% Rely on the wallet embedded in the local bitcoind
 %% FIXME: Allow this to use a different host/port so users can use a separate offline bitcoind
 %% holding their commitments wallet.
--spec signrawtransactionwithwallet(binary(), integer(), binary(), binary(), boolean(), binary()) -> {ok, binary()} | {error, term()}.
-signrawtransactionwithwallet(Host, Port, User, Password, SSL, RawTx) ->
+-spec signrawtransactionwithwallet(aehttpc:node_spec(), binary()) -> {ok, binary()} | {error, term()}.
+signrawtransactionwithwallet(NodeSpec, RawTx) ->
     try
         Seed = <<>>,
         Body = jsx:encode(request_body(<<"signrawtransactionwithwallet">>, [RawTx], seed_to_utf8(Seed))),
-        {ok, Res} = request(<<"/">>, Body, Host, Port, User, Password, SSL, 5000),
+        {ok, Res} = request(<<"/">>, Body, NodeSpec, 5000),
         SignedTx = result(Res),
         Complete = maps:get(<<"complete">>, SignedTx),
         true = Complete,
@@ -213,12 +221,12 @@ signrawtransactionwithwallet(Host, Port, User, Password, SSL, RawTx) ->
         {error, {E, R}}
     end.
 
--spec sendrawtransaction(binary(), integer(), binary(), binary(), boolean(), binary()) -> {ok, binary()} | {error, term()}.
-sendrawtransaction(Host, Port, User, Password, SSL, Hex) ->
+-spec sendrawtransaction(aehttpc:node_spec(), binary()) -> {ok, binary()} | {error, term()}.
+sendrawtransaction(NodeSpec, Hex) ->
     try
         Seed = <<>>,
         Body = jsx:encode(request_body(<<"sendrawtransaction">>, [Hex], seed_to_utf8(Seed))),
-        {ok, Res} = request(<<"/">>, Body, Host, Port, User, Password, SSL, 5000),
+        {ok, Res} = request(<<"/">>, Body, NodeSpec, 5000),
         {ok, result(Res)}
     catch E:R ->
         {error, {E, R}}
@@ -251,10 +259,11 @@ find_commitments(Txs, _ParentHCAccountPubKey) ->
                         end
                 end, [], Txs).
 
--spec request(binary(), binary(), binary(), integer(),binary(), binary(),boolean(),integer()) -> {ok, map()} | {error, term()}.
-request(Path, Body, Host, Port, User, Password, SSL, Timeout) ->
+-spec request(binary(), binary(), aehttpc:node_spec(), integer()) -> {ok, map()} | {error, term()}.
+request(Path, Body, NodeSpec, Timeout) ->
     try
-        Url = url(Host, Port, SSL),
+        #{user := User, password := Password} = NodeSpec,
+        Url = aehttpc:url(NodeSpec),
         Auth = auth(User, Password),
         UrlPath = lists:concat([Url, binary_to_list(Path)]),
         Headers = [
@@ -267,7 +276,7 @@ request(Path, Body, Host, Port, User, Password, SSL, Timeout) ->
             {ok, {{_, 200 = _Code, _}, _, Res}} ->
                 %% lager:debug("Req: ~p, Res: ~p with URL: ~ts", [Req, Res, Url]),
                 {ok, jsx:decode(list_to_binary(Res), [return_maps])};
-             {ok, {{_, 500 = _Code, _}, _, "{\"result\":null,\"error\":{\"code\":-8,\"message\":\"Block height out of range\"}" ++ _}} ->
+            {ok, {{_, 500 = _Code, _}, _, "{\"result\":null,\"error\":{\"code\":-8,\"message\":\"Block height out of range\"}" ++ _}} ->
                 {error, not_found}
         end
     catch E:R:S ->
@@ -286,18 +295,6 @@ request_body(Method, Params, Seed) ->
 -spec auth(binary(), binary()) -> list().
 auth(User, Password) when is_binary(User), is_binary(Password) ->
     base64:encode_to_string(lists:concat([binary_to_list(User), ":", binary_to_list(Password)])).
-
-% url(Host, Port, true = _SSL) when is_binary(Host), is_integer(Port) ->
-%     path("https://", binary_to_list(Host), Port);
-% url(Host, Port, true = _SSL) when is_list(Host), is_integer(Port) ->
-%     path("https://", Host, Port);
-url(Host, Port, _) when is_binary(Host), is_integer(Port) ->
-    path("http://", binary_to_list(Host), Port);
-url(Host, Port, _) when is_list(Host), is_integer(Port) ->
-    path("http://", Host, Port).
-
-path(Scheme, Host, Port) ->
-    lists:concat([Scheme, Host, ":", Port]).
 
 -spec from_hex(hex()) -> binary().
 from_hex(HexData) ->
