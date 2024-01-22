@@ -25,13 +25,12 @@
 -define(MAINNET_BENEFICIARIES, [{<<172,241,128,85,116,104,119,143,197,105,4,192,224,207,200,138,230,84,111,38,89,33,239,21,201,183,185,209,19,60,109,136>>, 109, undefined, ?IRIS_PROTOCOL_VSN},
                                 {<<172,241,128,85,116,104,119,143,197,105,4,192,224,207,200,138,230,84,111,38,89,33,239,21,201,183,185,209,19,60,109,136>>, 109, ?CERES_PROTOCOL_VSN, undefined}]).
 %%% for: "ak_2A3PZPfMC2X7ZVy4qGXz2xh2Lbh79Q4UvZ5fdH7QVFocEgcKzU:109"
--define(TESTNET_BENEFICIARIES, [{<<152,57,168,5,218,153,177,254,226,207,243,133,11,50,143,68,121,242,94,41,187,198,158,67,133,88,6,71,55,26,85,54>>, 109, undefined, ?IRIS_PROTOCOL_VSN},
-                                {<<152,57,168,5,218,153,177,254,226,207,243,133,11,50,143,68,121,242,94,41,187,198,158,67,133,88,6,71,55,26,85,54>>, 109, ?CERES_PROTOCOL_VSN, undefined}]).
+-define(TESTNET_BENEFICIARIES, [{<<152,57,168,5,218,153,177,254,226,207,243,133,11,50,143,68,121,242,94,41,187,198,158,67,133,88,6,71,55,26,85,54>>, 109, undefined, undefined}]).
 
 ensure_env() ->
     Enabled = cfg(<<"protocol_beneficiaries_enabled">>, ?ENABLED),
     DefaultBenefs = default_beneficiaries(),
-    Benefs0 = cfg(<<"protocol_beneficiaries">>, lists:map(fun unparse_beneficiary/1, DefaultBenefs)),
+    Benefs0 = cfg(<<"protocol_beneficiaries">>, lists:map(fun encode_beneficiary/1, DefaultBenefs)),
     case Enabled andalso parse_beneficiaries(Benefs0) of
         false ->
             application:set_env(aecore, dev_reward_enabled, false);
@@ -102,15 +101,15 @@ activated(Protocol) ->
     end.
 
 
-unparse_beneficiary({PK, Share, FromProtocol, ToProtocol}) ->
-    FromProtocolBin = unparse_protocol(FromProtocol),
-    ToProtocolBin = unparse_protocol(ToProtocol),
+encode_beneficiary({PK, Share, FromProtocol, ToProtocol}) ->
+    FromProtocolBin = encode_protocol(FromProtocol),
+    ToProtocolBin = encode_protocol(ToProtocol),
     <<(aeser_api_encoder:encode(account_pubkey, PK))/binary, ":", (integer_to_binary(Share))/binary,
         ":", FromProtocolBin/binary, ":", ToProtocolBin/binary>>.
 
-unparse_protocol(undefined) ->
+encode_protocol(undefined) ->
     <<>>;
-unparse_protocol(ProtocolVsn) ->
+encode_protocol(ProtocolVsn) ->
     integer_to_binary(ProtocolVsn).
 
 parse_beneficiary(BeneficiaryShareStr) ->
