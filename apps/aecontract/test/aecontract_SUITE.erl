@@ -713,7 +713,6 @@ init_per_testcase(TC, Config) when TC == sophia_aens_optional_preclaim ->
     ProtocolVsn = aec_hard_forks:protocol_vsn(?config(protocol, Config)),
     case ProtocolVsn >= ?CERES_PROTOCOL_VSN of
         true ->
-            meck:expect(aec_governance, name_claim_bid_timeout, fun(_, _) -> 0 end),
             init_per_testcase_common(TC, Config);
         false ->
             {skip, {requires_protocol, ceres, TC}}
@@ -788,7 +787,6 @@ end_per_testcase(fate_environment, _Config) ->
     ok;
 end_per_testcase(TC, _Config) when TC == sophia_aens_resolve;
                                    TC == sophia_aens_lookup;
-                                   TC == sophia_aens_optional_preclaim;
                                    TC == sophia_signatures_aens;
                                    TC == sophia_all_signatures_aens;
                                    TC == sophia_fate_signatures_aens;
