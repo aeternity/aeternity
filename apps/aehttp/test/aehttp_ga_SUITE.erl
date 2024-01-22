@@ -545,7 +545,7 @@ meta_contract_create(Config) ->
     %% Get account information.
     #{acc_a := #{pub_key := Pub, priv_key := Priv}} = proplists:get_value(accounts, Config),
     MGP = aec_test_utils:min_gas_price(),
-    MetaFee = (5 * 15000 + 30000) * MGP,
+    MetaFee = (5 * 15000 + 50000) * MGP,
     #{tx_hash := MetaTx} = post_ga_contract_create_tx(Pub, Priv, "13", "arithm", ["10"], MetaFee),
     ?MINE_TXS([MetaTx]),
     %% test that we can return GAMetaTx via http interface
@@ -568,16 +568,15 @@ meta_contract_create(Config) ->
 
 meta_contract_call(Config) ->
     %% Get account information.
-    #{acc_a := #{pub_key := Pub, priv_key := Priv},
-      acc_b := #{pub_key := BasicPub, priv_key := BasicPriv}} = proplists:get_value(accounts, Config),
+    #{acc_a := #{pub_key := Pub, priv_key := Priv}} = proplists:get_value(accounts, Config),
     MGP = aec_test_utils:min_gas_price(),
-    MetaFee = (5 * 15000 + 30000) * MGP,
+    MetaFee = (5 * 15000 + 50000) * MGP,
     #{tx_hash := MetaTxCreate, sign_tx := SignedTx} = post_ga_contract_create_tx(Pub, Priv, "14", "arithm", ["10"], MetaFee),
     ?MINE_TXS([MetaTxCreate]),
     {contract_create_tx, CreateTx} = aetx:specialize_type(aetx_sign:innermost_tx(SignedTx)),
     Owner = aect_create_tx:owner_pubkey(CreateTx),
     Contract = aect_contracts:compute_contract_pubkey(Owner, auth_id(SignedTx)),
-    
+
     #{tx_hash := MetaTxCall} = post_ga_contract_call_tx(Pub, Priv, "15", Contract, "arithm", "pow", ["2"], MetaFee),
 
     ?MINE_TXS([MetaTxCall]),
@@ -715,7 +714,7 @@ make_contract_create_tx(Owner, Nonce, ContractName, InitArgs) ->
          , amount      => 0
          , gas         => 1000000
          , gas_price   => 1 * aec_test_utils:min_gas_price()
-         , call_data   => CallData 
+         , call_data   => CallData
          , ttl         => 0
         },
     {ok, _Tx} = aect_create_tx:new(CreateMap).
