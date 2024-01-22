@@ -148,6 +148,7 @@
         , sophia_fundme/1
         , sophia_aens_resolve/1
         , sophia_aens_lookup/1
+        , sophia_aens_optional_preclaim/1
         , sophia_aens_transactions/1
         , sophia_aens_update_transaction/1
         , sophia_state_handling/1
@@ -357,6 +358,7 @@ all() ->
                        , lima_migration
                        , sophia_aens_update_transaction
                        , sophia_aens_lookup
+                       , sophia_aens_optional_preclaim
                        , sophia_crypto_pairing
                        , sophia_auth_tx
                        , sophia_strings
@@ -707,6 +709,14 @@ init_per_testcase(TC, Config) when TC == fate_vm_new_data_pointers ->
     %% Disable name auction
     meck:expect(aec_governance, name_claim_preclaim_delta, fun() -> 0 end),
     init_per_testcase_common(TC, Config);
+init_per_testcase(TC, Config) when TC == sophia_aens_optional_preclaim ->
+    ProtocolVsn = aec_hard_forks:protocol_vsn(?config(protocol, Config)),
+    case ProtocolVsn >= ?CERES_PROTOCOL_VSN of
+        true ->
+            init_per_testcase_common(TC, Config);
+        false ->
+            {skip, {requires_protocol, ceres, TC}}
+    end;
 init_per_testcase(TC, Config) when TC == sophia_aens_update_transaction;
                                    TC == sophia_aens_lookup ->
     ProtocolVsn = aec_hard_forks:protocol_vsn(?config(protocol, Config)),
@@ -6600,6 +6610,16 @@ sophia_aens_lookup(_Cfg) ->
     ?call(perform_pre_transformations, 11),
     {} = ?call(call_contract, Acc, Ct, claim,    {tuple, []}, {Ct, Name1, Salt1, 360000000000000000000}, #{ height => 11 }),
     true = ?call(call_contract, Acc, Ct, test,     bool,  {Ct, Name1}, #{ height => 11 }),
+    ok.
+
+sophia_aens_optional_preclaim(_Cfg) ->
+    init_new_state(),
+    Acc      = ?call(new_account, 40000000000000 * aec_test_utils:min_gas_price()),
+    Ct       = ?call(create_contract, Acc, aens_lookup, {}, #{ amount => 20000000000000 * aec_test_utils:min_gas_price() }),
+    Name1           = aens_test_utils:fullname(<<"bla">>),
+
+    %% Starting with CERES/FATE_SOPHIA_3 pre-claim is optional - just set salt to 0 to immediately claim.
+    {} = ?call(call_contract, Acc, Ct, claim, {tuple, []}, {Ct, Name1, 0, 360000000000000000000}, #{ height => 11 }),
     ok.
 
 sophia_aens_transactions(Cfg) ->
