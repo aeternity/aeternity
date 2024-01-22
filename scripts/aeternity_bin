@@ -195,8 +195,9 @@ Commands:
   ping                    Print pong if the aeternity node is alive
   console                 Start the aeternity node in the foreground with an interactive Erlang shell
   status                  Verify node is running and print status summary
+  version                 Print node version
   check_config            Check validity of a configuration file
-  keys_gen                Generate password protected account keypair 
+  keys_gen                Generate password protected account keypair
   peer_key                Display the peer key of the aeternity node
   create_whitelist        Export block hashes within a range of heights to json file
   db_rollback             Rollback blockchain to specified height, hash, or from whitelist file
