@@ -1536,6 +1536,17 @@
                     "type" : "boolean",
                     "default" : true
                 },
+                "genesis_accounts" : {
+                    "description" : "Pre-funded accounts added to the genesis state trees - applied after prefunded accounts from file (if any).",
+                    "type" : "object",
+                    "patternProperties" : {
+                        "^ak_[a-z0-9]+" : {
+                            "description" : "Token amount",
+                            "type" : "integer"
+                        }
+                    }
+                },
+
                 "db_backend" : {
                     "description" : "Choice of database backend.",
                     "type" : "string",
