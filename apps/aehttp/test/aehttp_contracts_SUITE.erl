@@ -1394,6 +1394,16 @@ paying_for_contract(Config) ->
 
     APost2 = get_balance(APub),
     Broke1Post2 = get_balance(BrokePub1),
+    {ok, 200, #{<<"call_info">> := #{<<"caller_id">> := _,
+                                    <<"caller_nonce">> := _,
+                                    <<"contract_id">> := _,
+                                    <<"gas_price">> := _,
+                                    <<"gas_used">> := _,
+                                    <<"height">> := _,
+                                    <<"log">> := _,
+                                    <<"return_type">> := <<"ok">>,
+                                    <<"return_value">> := <<"cb_f3HLyas=">>}}} =
+        ?HTTP_INT:get_transaction_info_by_hash_sut(binary_to_list(SignPayingForTx2Hash)),
 
     ct:pal("Spend:\n  APub: ~p ~p\n  Bro1: ~p ~p", [APre2, APost2, Broke1Pre2, Broke1Post2]),
 
