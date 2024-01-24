@@ -52,6 +52,7 @@ If building on an m1 Mac homebrew does not automatically set up symlinks to syst
 ```bash
 export PATH=/opt/homebrew/bin:$PATH
 export CFLAGS="-I/opt/homebrew/include"
+export CXXFLAGS="-I/opt/homebrew/include"
 export LDFLAGS="-L/opt/homebrew/lib"
 ```
 
