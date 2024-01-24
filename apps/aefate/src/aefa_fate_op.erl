@@ -2167,7 +2167,7 @@ mk_fate_pointee_v1(Id, _ES) ->
     end.
 
 mk_fate_pointee_v2({data, Data}) when is_binary(Data) ->
-    aeb_fate_data:make_variant([1, 1, 1, 1, 1], 4, {?FATE_STRING(Data)});
+    aeb_fate_data:make_variant([1, 1, 1, 1, 1], 4, {?FATE_BYTES(Data)});
 mk_fate_pointee_v2(Id) ->
     case aeser_id:specialize(Id) of
         {account, PK}  -> aeb_fate_data:make_variant([1, 1, 1, 1, 1], 0, {?FATE_ADDRESS(PK)});
