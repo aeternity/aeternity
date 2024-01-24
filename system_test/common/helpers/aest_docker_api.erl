@@ -93,8 +93,11 @@ disconnect_container(ContName, NetName) ->
 
 create_container(Name, #{image := Image} = Config) ->
     BodyObj = maps:fold(fun create_container_object/3, #{}, Config),
+    ct:log("Body ~p", [BodyObj]),
     case docker_post([containers, create], #{name => Name}, BodyObj) of
-        {ok, 201, Response} -> Response;
+        {ok, 201, Response} ->
+            ct:log("Container created ~p", [Response]),
+            Response;
         {ok, 404, _Response} -> throw({no_such_image, Image});
         {ok, 500, Response} ->
             throw({docker_error, maps:get(message, Response)})
@@ -302,8 +305,10 @@ docker_get(Path) -> docker_get(Path, #{}, #{}).
 docker_get(Path, Query, Opts) ->
     ResultType = maps:get(result_type, Opts, json),
     Timeout = maps:get(timeout, Opts, ?DEFAULT_TIMEOUT),
+    ct:log("curl -s ~p", [url(Path, Query)]),
     ReqRes = hackney:request(get, url(Path, Query), [], <<>>,
                              [{recv_timeout, Timeout}]),
+    ct:log("Response\n~p", [ReqRes]),
     case ReqRes of
         {error, _Reason} = Error -> Error;
         {ok, Status, _RespHeaders, ClientRef} ->
@@ -318,8 +323,10 @@ docker_delete(Path) -> docker_delete(Path, #{}).
 docker_delete(Path, Opts) ->
     ResultType = maps:get(result_type, Opts, json),
     Timeout = maps:get(timeout, Opts, ?DEFAULT_TIMEOUT),
+    ct:log("curl -s -X DELETE ~p", [url(Path)]),
     ReqRes = hackney:request(delete, url(Path), [], <<>>,
                              [{recv_timeout, Timeout}]),
+    ct:log("Response\n~p", [ReqRes]),
     case ReqRes of
         {error, _Reason} = Error -> Error;
         {ok, Status, _RespHeaders, ClientRef} ->
@@ -340,8 +347,10 @@ docker_post(Path, Query, BodyObj, Opts) ->
     Timeout = maps:get(timeout, Opts, ?DEFAULT_TIMEOUT),
     BodyJSON = encode(BodyObj),
     Headers = [{<<"Content-Type">>, <<"application/json">>}],
+    ct:log("curl -s -X POST -H \"Content-Type: application/json\" -d ~p ~p", [BodyJSON, url(Path, Query)] ),
     ReqRes = hackney:request(post, url(Path, Query), Headers, BodyJSON,
                              [{recv_timeout, Timeout}]),
+    ct:log("Response\n~p", [ReqRes]),
     case ReqRes of
         {error, _Reason} = Error -> Error;
         {ok, Status, _RespHeaders, ClientRef} ->
@@ -355,8 +364,11 @@ docker_put(Path, Query, Body) -> docker_put(Path, Query, Body, #{}).
 
 docker_put(Path, Query, Body, Opts) ->
     ResultType = maps:get(result_type, Opts, json),
+    ct:log("curl -s -X PUT  -d ~p ~p", [Body, url(Path, Query)] ),
     %% Content type?
-    case hackney:request(put, url(Path, Query), [], Body, []) of
+    ReqRes = hackney:request(put, url(Path, Query), [], Body, []),
+    ct:log("Response\n~p", [ReqRes]),
+    case ReqRes of
         {error, _Reason} = Error -> Error;
         {ok, Status, _RespHeaders, ClientRef} ->
             case docker_fetch_json_body(ClientRef, ResultType) of

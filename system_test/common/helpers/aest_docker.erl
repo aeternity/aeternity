@@ -240,7 +240,7 @@ setup_node(Spec, BackendState) ->
                         hard_fork_info => []}}
         end,
     Mining = maps:merge(#{autostart => true,
-                          strictly_follow_top => false}, maps:get(mining, Spec, #{})),
+                          strictly_follow_top => true}, maps:get(mining, Spec, #{})),
     ct:log("~p has set mining ~p", [Name, Mining]),
     ForkManagementVars =
         case maps:find(fork_management, Spec) of
@@ -340,6 +340,7 @@ setup_node(Spec, BackendState) ->
         end,
     #{'Id' := ContId} = aest_docker_api:create_container(Hostname, DockerConfig),
     log(NodeState, "Container ~p [~s] created", [Name, ContId]),
+    ct:log("Contaiter config: ~p", [DockerConfig]),
 
     lists:map(fun(NetId) ->
         aest_docker_api:connect_container(ContId, NetId),
