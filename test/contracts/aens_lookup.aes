@@ -10,8 +10,9 @@ contract Test =
     let p2 = AENSv2.ContractPt(addr)
     let p3 = AENSv2.OraclePt(Call.caller)
     let p4 = AENSv2.ChannelPt(addr)
+    let p5 = AENSv2.DataPt(Bytes.to_any_size(#aabbccdd))
     let pts = {["account_pubkey"] = p1, ["contract_pubkey"] = p2,
-               ["misc1"] = p3, ["misc2"] = p4}
+               ["misc1"] = p3, ["misc2"] = p4, ["misc3"] = p5}
 
     AENSv2.update(addr, name, Some(RelativeTTL(1000)), None, Some(pts))
 
