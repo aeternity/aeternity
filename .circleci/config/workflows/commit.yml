@@ -270,7 +270,6 @@ jobs:
           only:
             - /releases\/.*/
             - << pipeline.parameters.master_branch >>
-            - macos_otp
 
   - macos-tarball:
       name: macos-tarball-bundle
@@ -282,7 +281,6 @@ jobs:
           only:
             - /releases\/.*/
             - << pipeline.parameters.master_branch >>
-            - macos_otp
 
   - publish-build-packages:
       requires:
