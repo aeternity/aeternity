@@ -718,7 +718,7 @@ handle_request_('GetCurrency', _Params, _Context) ->
                 end,
     {ok, PrimaryColour} = aeu_env:find_config([<<"chain">>, <<"display">>, <<"primary_colour">>],[user_config, schema_default]),
     {ok, SecondaryColour} = aeu_env:find_config([<<"chain">>, <<"display">>, <<"secondary_colour">>],[user_config, schema_default]),
-    {ok, NetworkName} = aeu_env:find_config([<<"chain">>, <<"display">>, <<"network_name">>],[user_config, schema_default]),
+    {ok, NetworkName} = aeu_env:find_config([<<"chain">>, <<"display">>, <<"network_name">>],[user_config, {value, get_default_network_name()}]),
     Display0 = #{ <<"primary_colour">>   => PrimaryColour,
                   <<"secondary_colour">> => SecondaryColour,
                   <<"network_name">>     => NetworkName
@@ -833,3 +833,15 @@ difficulty(Difficulty, Consensus)
     Difficulty div 1_000_000_000_000;
 difficulty(Difficulty, _Consensus) ->
     Difficulty.
+
+
+get_default_network_name() ->
+    get_default_network_name(aec_governance:get_network_id()).
+
+get_default_network_name(<<"ae_mainnet">>) ->
+    <<"Mainnet">>;
+get_default_network_name(<<"ae_uat">>) ->
+    <<"Testnet">>;
+get_default_network_name(NetworkId) ->
+    NetworkId.
+

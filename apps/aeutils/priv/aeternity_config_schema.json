@@ -1653,9 +1653,8 @@
                             "default" : "#242424"
                         },
                         "network_name": {
-                            "description" : "The display name of the network Id",
-                            "type": "string",
-                            "default": "mainnet"
+                            "description" : "The display name of the network id, if not set defaults to Mainnet for ae_mainnet, Testnet for ae_uat otherwise network id",
+                            "type": "string"
                         }
                     }
                 },
