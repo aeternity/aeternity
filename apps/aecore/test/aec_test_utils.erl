@@ -430,7 +430,7 @@ grant_fees(FromHeight, Chain, TreesIn, BeneficiaryAccount) ->
             false ->
                 {{Beneficiary1Reward, Beneficiary2Reward}, 0}
         end,
-    [{DevRewardPK, _} | _] = aec_dev_reward:beneficiaries(),
+    [{DevRewardPK, _} | _] = aec_dev_reward:beneficiaries(Protocol),
     grant_fees_iter({Benefits1, Beneficiary1}, {Benefits2, Beneficiary2},
                     {BenefitsProto, DevRewardPK}, FromHeight, TreesIn).
 
@@ -866,12 +866,18 @@ min_gas_price() ->
 %%% Dev reward setup
 %%%=============================================================================
 
+dev_reward_setup(Enabled, Activated, BeneficiaryShares) when is_list(BeneficiaryShares)->
+    application:set_env(aecore, dev_reward_enabled, Enabled),
+    application:set_env(aecore, dev_reward_activated, Activated),
+    Beneficiaries = lists:map(fun({BeneficiaryShare, From, To}) ->
+        #{public := PubKeyProtocol} = enacl:sign_keypair(),
+        {PubKeyProtocol, BeneficiaryShare, From, To} end, BeneficiaryShares),
+    aec_dev_reward:set_beneficiaries(Beneficiaries);
 dev_reward_setup(Enabled, Activated, BeneficiaryShare) ->
     #{public := PubKeyProtocol} = enacl:sign_keypair(),
     application:set_env(aecore, dev_reward_enabled, Enabled),
     application:set_env(aecore, dev_reward_activated, Activated),
-    application:set_env(aecore, dev_reward_allocated_shares, BeneficiaryShare),
-    application:set_env(aecore, dev_reward_beneficiaries, [{PubKeyProtocol, BeneficiaryShare}]).
+    aec_dev_reward:set_beneficiaries([{PubKeyProtocol, BeneficiaryShare, undefined, undefined}]).
 
 
 %%%=============================================================================

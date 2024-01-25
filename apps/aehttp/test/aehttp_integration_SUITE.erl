@@ -3356,9 +3356,12 @@ pending_transactions(_Config) ->
     {ok, MinedBlocks1} = aecore_suite_utils:mine_key_blocks(Node, BlocksToMine),
     {ok, 200, #{<<"balance">> := Bal0}} = get_balance_at_top(),
 
+
+    Header = rpc(aec_chain, top_header, []),
+    Protocol = aec_headers:version(Header),
     DevRewardEnabled = rpc(aec_dev_reward, enabled, []) andalso
         aect_test_utils:latest_protocol_version() >= ?FORTUNA_PROTOCOL_VSN,
-    DevRewardSharesSum = rpc(aec_dev_reward, allocated_shares, []),
+    DevRewardSharesSum = rpc(aec_dev_reward, allocated_shares, [Protocol]),
     DevRewardTotalShares = rpc(aec_dev_reward, total_shares, []),
 
     BlockRewards = fun (Blocks) ->

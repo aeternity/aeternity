@@ -244,9 +244,11 @@ siblings_common(TopBlock, N1, N2, Account1, Account2) ->
             Reward2 = lists:sum([aec_governance:block_mine_reward(X)
                                 || X <- lists:seq(N1KeyBlocksCount + 1, N2Height - PofDelay),
                                     X =/= FraudHeight]) + FraudReward,
+            Header = rpc:call(N2, aec_chain, top_header, []),
+            Protocol = aec_headers:version(Header),
             BenefTotal = rpc:call(N2, aec_dev_reward, total_shares, []),
-            BenefFactor = rpc:call(N2, aec_dev_reward, allocated_shares, []),
-            FoundationBenefs = rpc:call(N2, aec_dev_reward, beneficiaries, []),
+            BenefFactor = rpc:call(N2, aec_dev_reward, allocated_shares, [Protocol]),
+            FoundationBenefs = rpc:call(N2, aec_dev_reward, beneficiaries, [Protocol]),
             FoundationBal = lists:sum([begin
                                            {value, Acc} = rpc:call(N2, aec_chain, get_account, [PK]),
                                            aec_accounts:balance(Acc)
