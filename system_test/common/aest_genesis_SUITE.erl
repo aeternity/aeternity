@@ -45,6 +45,14 @@
                  80,196,174,81,239,171,117,158,65,91,102>>
 }).
 
+-define(BOB, #{
+    %% ak_nQpnNuBPQwibGpSJmjAah6r3ktAB7pG9JHuaGWHgLKxaKqEvC
+    pubkey => <<103,28,85,70,70,73,69,117,178,180,148,246,81,104,
+                33,113,6,99,216,72,147,205,210,210,54,3,122,84,195,
+                62,238,132>>,
+    privkey => undefined
+}).
+
 -define(NODE1, #{
     name    => node1,
     peers   => [],
@@ -77,7 +85,7 @@ end_per_suite(_Config) -> ok.
 test_node_starts_with_30k_accounts(Cfg) ->
     MikeAddress = aeser_api_encoder:encode(account_pubkey, maps:get(pubkey, ?MIKE)),
     Alice = maps:get(pubkey, ?ALICE),
-    NodeConfig = #{ beneficiary      => MikeAddress},
+    NodeConfig = #{ beneficiary => MikeAddress },
     GenesisAccounts =
         lists:map(
             fun({PK, Amount}) ->
@@ -88,7 +96,10 @@ test_node_starts_with_30k_accounts(Cfg) ->
     setup([?NODE1], NodeConfig, GenesisAccounts, Cfg),
     start_node(node1, Cfg),
     wait_for_startup([node1], 1, Cfg),
+
+    %% Alice is configured above, and Bob is in the aeternity.yaml.mustache
     wait_for_value({balance, Alice, 1234}, [node1], 10000, Cfg),
+    wait_for_value({balance, maps:get(pubkey, ?BOB), 1337}, [node1], 1000, Cfg),
     ok.
 
 %=== INTERNAL FUNCTIONS ========================================================

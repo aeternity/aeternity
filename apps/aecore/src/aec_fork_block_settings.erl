@@ -36,8 +36,10 @@ genesis_accounts() ->
     ConsensusModule = aec_consensus:get_genesis_consensus_module(),
     Header = ConsensusModule:genesis_raw_header(),
     Protocol = aec_headers:version(Header),
-    preset_accounts(accounts, Protocol,
-                     genesis_accounts_file_missing).
+
+    PresetAs = preset_accounts(accounts, Protocol, genesis_accounts_file_missing),
+    ConfigAs = configured_genesis_accounts(),
+    merge_accounts(PresetAs, ConfigAs).
 
 -spec minerva_accounts() -> list().
 minerva_accounts() -> preset_accounts(accounts, ?MINERVA_PROTOCOL_VSN,
@@ -150,13 +152,7 @@ preset_accounts(Type, Release, ErrorMsg) ->
                   error:_ ->
                     erlang:error(invalid_accounts_json)
                 end,
-            Accounts =
-                lists:map(
-                    fun({EncodedPubKey, Amt}) ->
-                        {ok, PubKey} = aeser_api_encoder:safe_decode(account_pubkey, EncodedPubKey),
-                        {PubKey, Amt}
-                    end,
-                    DecodedData),
+            Accounts = decode_accounts(DecodedData),
             % ensure deterministic ordering of accounts
             lists:keysort(1, Accounts)
     end.
@@ -309,7 +305,7 @@ accounts_file_name(Release) ->
         undefined ->
             filename:join([hardcoded_dir(Release), accounts_json_file()]);
         {ok, CustomAccsFilePath} ->
-            case filelib:is_file(CustomAccsFilePath) of 
+            case filelib:is_file(CustomAccsFilePath) of
                 true ->
                     lager:info("Custom file for prefunded accounts provided: ~p ~n", [CustomAccsFilePath]),
                     CustomAccsFilePath;
@@ -410,3 +406,23 @@ hardcoded_basename(ProtocolVsn) ->
         ?IRIS_PROTOCOL_VSN    -> ?IRIS_DIR;
         ?CERES_PROTOCOL_VSN   -> ?CERES_DIR
     end.
+
+configured_genesis_accounts() ->
+    case aec_governance:get_network_id() of
+        <<"ae_mainnet">> -> [];
+        <<"ae_uat">> -> [];
+        _ -> decode_accounts(aeu_env:user_config([<<"chain">>, <<"genesis_accounts">>], #{}))
+    end.
+
+decode_accounts(EncodedAccounts) when is_map(EncodedAccounts) ->
+    decode_accounts(maps:to_list(EncodedAccounts));
+decode_accounts(EncodedAccounts) when is_list(EncodedAccounts) ->
+    F = fun({EncodedPubKey, Amount}) ->
+            {ok, PubKey} = aeser_api_encoder:safe_decode(account_pubkey, EncodedPubKey),
+            {PubKey, Amount}
+        end,
+    lists:map(F, EncodedAccounts).
+
+%% Merge accounts from file and accounts from config - config takes precedence.
+merge_accounts(PresetAs, ConfigAs) ->
+    lists:keysort(1, maps:to_list(maps:merge(maps:from_list(PresetAs), maps:from_list(ConfigAs)))).
