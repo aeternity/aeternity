@@ -2976,6 +2976,8 @@ definitions:
         $ref: '#/definitions/EncodedHash'
       hash:
         $ref: '#/definitions/EncodedHash'
+      encoded_tx:
+        $ref: '#/definitions/EncodedByteArray'
       signatures:
         description: 'At least one signature is required unless for Generalized Account Meta transactions'
         type: array

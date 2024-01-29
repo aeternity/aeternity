@@ -268,7 +268,9 @@ serialize_for_client(#signed_tx{} = SigTx, BlockHeight, BlockHash0, TxHash) ->
         #{
           <<"block_height">> => BlockHeight,
           <<"block_hash">>   => BlockHash,
-          <<"hash">>         => aeser_api_encoder:encode(tx_hash, TxHash)},
+          <<"hash">>         => aeser_api_encoder:encode(tx_hash, TxHash),
+          <<"encoded_tx">>   => aeser_api_encoder:encode(transaction, serialize_to_binary(SigTx))
+         },
     serialize_for_client_inner(SigTx, MetaData).
 
 %% For inner transactions we leave out block height etc and for generalized
@@ -288,6 +290,7 @@ meta_data_from_client_serialized(Serialized) ->
       <<"block_height">> := BlockHeight,
       <<"block_hash">>   := BlockHashEncoded,
       <<"hash">>         := TxHashEncoded,
+      <<"encoded_tx">>   := _TxEncoded,
       <<"signatures">>   := _Sigs} = Serialized,
     {block_hash, BlockHash} = aeser_api_encoder:decode(BlockHashEncoded),
     {tx_hash, TxHash}       = aeser_api_encoder:decode(TxHashEncoded),

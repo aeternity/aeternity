@@ -1491,9 +1491,10 @@ get_transaction_by_hash([], _Config) ->
     {ok, 404, Error} = get_transactions_by_hash_sut(RandomTxHash),
     ?assertEqual(<<"Transaction not found">>, maps:get(<<"reason">>, Error)),
     ok;
-get_transaction_by_hash([{TxHash, _ExpectedTx}], Config) ->
+get_transaction_by_hash([{TxHash, ExpectedTx}], Config) ->
     BlockWithTxsHash = ?config(block_with_txs_hash, Config),
     BlockWithTxsHeight = ?config(block_with_txs_height, Config),
+    EncodedTx = aeser_api_encoder:encode(transaction, aetx_sign:serialize_to_binary(ExpectedTx)),
     {ok, 200, Tx} = get_transactions_by_hash_sut(TxHash),
     case ?config(swagger_version, Config) of
         swagger2 -> pass;
@@ -1503,6 +1504,7 @@ get_transaction_by_hash([{TxHash, _ExpectedTx}], Config) ->
     ?assertEqual(TxHash, maps:get(<<"hash">>, Tx)),
     ?assertEqual(BlockWithTxsHash, maps:get(<<"block_hash">>, Tx)),
     ?assertEqual(BlockWithTxsHeight, maps:get(<<"block_height">>, Tx)),
+    ?assertEqual(EncodedTx, maps:get(<<"encoded_tx">>, Tx)),
     ok.
 
 get_transaction_info_by_hash(_Config) ->
