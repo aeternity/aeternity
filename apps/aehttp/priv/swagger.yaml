@@ -930,6 +930,34 @@ paths:
           description: 'Oracle query not found'
           schema:
             $ref: '#/definitions/Error'
+  /auctions/{name}:
+    get:
+      tags:
+        - external
+        - name_service
+      operationId: GetAuctionEntryByName
+      description: 'Get auction entry from naming system'
+      produces:
+        - application/json
+      parameters:
+        - in: path
+          name: name
+          description: 'The name key of the name entry'
+          required: true
+          type: string
+      responses:
+        '200':
+          description: 'Successful operation'
+          schema:
+            $ref: '#/definitions/AuctionEntry'
+        '400':
+          description: 'Invalid name'
+          schema:
+            $ref: '#/definitions/Error'
+        '404':
+          description: 'Name not found'
+          schema:
+            $ref: '#/definitions/Error'
   /names/{name}:
     get:
       tags:
@@ -2356,6 +2384,24 @@ definitions:
     required:
       - type
       - value
+  AuctionEntry:
+    type: object
+    properties:
+      id:
+        $ref: '#/definitions/EncodedValue'
+      started_at:
+        $ref: '#/definitions/UInt64'
+      ends_at:
+        $ref: '#/definitions/UInt64'
+      highest_bidder:
+        $ref: '#/definitions/EncodedPubkey'
+      highest_bid:
+        $ref: '#/definitions/UInt'
+    required:
+      - id
+      - ends_at
+      - highest_bidder
+      - highest_bid
   NameEntry:
     type: object
     properties:

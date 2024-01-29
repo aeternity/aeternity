@@ -52,7 +52,8 @@
         ]).
 
 %%% NS API
--export([ name_entry/1
+-export([ auction_entry/1
+        , name_entry/1
         , resolve_name/2
         , resolve_namehash/2
         ]).
@@ -258,6 +259,15 @@ get_channel_at_hash(ChannelPubkey, Hash) ->
 %%%===================================================================
 %%% Name service
 %%%===================================================================
+
+-spec auction_entry(binary()) ->
+                        {'ok', map()} |
+                        {'error', atom()}.
+auction_entry(Name) ->
+    case get_top_state() of
+        {ok, Trees} -> aens:get_auction_entry(Name, aec_trees:ns(Trees));
+        error -> {error, no_state_trees}
+    end.
 
 -spec name_entry(binary()) ->
                         {'ok', map()} |

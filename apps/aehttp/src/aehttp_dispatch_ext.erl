@@ -105,6 +105,7 @@ queue('GetOracleByPubkey')                      -> ?READ_Q;
 queue('GetOracleQueriesByPubkey')               -> ?READ_Q;
 queue('GetOracleQueryByPubkeyAndQueryId')       -> ?READ_Q;
 queue('GetNameEntryByName')                     -> ?READ_Q;
+queue('GetAuctionEntryByName')                  -> ?READ_Q;
 queue('GetChannelByPubkey')                     -> ?READ_Q;
 queue('GetPeerPubkey')                          -> ?READ_Q;
 queue('GetStatus')                              -> ?READ_Q;
@@ -609,6 +610,28 @@ handle_request_('GetOracleQueryByPubkeyAndQueryId', Params, _Context) ->
             {400, [], #{reason => <<"Invalid public key or query ID">>}}
     end;
 
+handle_request_('GetAuctionEntryByName', Params, _Context) ->
+    lager:info("GetAuctionEntryByName", []),
+    Name = maps:get(name, Params),
+    case aec_chain:auction_entry(Name) of
+        {ok, #{id       := Id,
+               bidder   := Bidder,
+               started  := Started,
+               ttl      := TTL,
+               bid      := Bid}} ->
+            {200, [], #{<<"id">>             => aeser_api_encoder:encode(id_hash, Id),
+                        <<"started_at">>     => Started,
+                        <<"ends_at">>        => TTL,
+                        <<"highest_bidder">> => aeser_api_encoder:encode(account_pubkey, Bidder),
+                        <<"highest_bid">>    => Bid
+                        }};
+        {error, name_not_found} ->
+            {404, [], #{reason => <<"Name not found">>}};
+        {error, Reason} ->
+            ReasonBin = atom_to_binary(Reason, utf8),
+            {400, [], #{reason => <<"Name validation failed with a reason: ", ReasonBin/binary>>}}
+    end;
+
 handle_request_('GetNameEntryByName', Params, _Context) ->
     Name = maps:get(name, Params),
     case aec_chain:name_entry(Name) of
@@ -731,7 +754,7 @@ handle_request_('GetCurrency', _Params, _Context) ->
                         {ok, FileBin} ->
                             case filename:extension(FileName) of
                                 <<_,Ext/binary>> ->
-                                    maps:put(<<"logo">>, 
+                                    maps:put(<<"logo">>,
                                                 #{<<"type">> => Ext,
                                                   <<"data">> => base64:encode(FileBin)}, Display0);
                             _ ->
