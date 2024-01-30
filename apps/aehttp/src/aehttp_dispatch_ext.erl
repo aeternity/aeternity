@@ -611,7 +611,6 @@ handle_request_('GetOracleQueryByPubkeyAndQueryId', Params, _Context) ->
     end;
 
 handle_request_('GetAuctionEntryByName', Params, _Context) ->
-    lager:info("GetAuctionEntryByName", []),
     Name = maps:get(name, Params),
     case aec_chain:auction_entry(Name) of
         {ok, #{id       := Id,
