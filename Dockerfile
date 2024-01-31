@@ -1,4 +1,4 @@
-FROM aeternity/builder:bionic-otp23 as builder
+FROM aeternity/builder:focal-otp26 as builder
 
 # Add required files to download and compile only the dependencies
 ADD rebar.config rebar.lock Makefile rebar3 rebar.config.script /app/
@@ -10,11 +10,11 @@ ADD . /app
 RUN cd /app && make prod-build
 
 # Put aeternity node in second stage container
-FROM ubuntu:18.04
+FROM ubuntu:20.04
 
 # Install shared library dependencies
 RUN apt-get -qq update \
-    && apt-get -qq -y install libssl1.0.0 curl libsodium23 libgmp10 \
+    && apt-get -qq -y install libssl1.1 curl libsodium23 libgmp10 \
         libsnappy1v5 liblz4-1 libzstd1 libgflags2.2 libbz2-1.0 \
     && ldconfig \
     && rm -rf /var/lib/apt/lists/*
