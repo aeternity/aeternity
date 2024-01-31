@@ -25,7 +25,7 @@ install_otp:
           sudo apt-get update && sudo apt-get install libncurses5 libwxbase3.0-dev libwxgtk3.0-gtk3-dev libsctp1
           # Install OTP binary package
           PACKAGE_NAME=esl-erlang_${OTP_VERSION}-1~ubuntu~focal_amd64.deb
-          OTP_DOWNLOAD_URL=https://packages.erlang-solutions.com/erlang/debian/pool/${PACKAGE_NAME}
+          OTP_DOWNLOAD_URL=https://binaries2.erlang-solutions.com/ubuntu/pool/contrib/e/esl-erlang/${PACKAGE_NAME}
           curl -fsSL -o ${PACKAGE_NAME} "$OTP_DOWNLOAD_URL"
           sudo dpkg -i ${PACKAGE_NAME}
 
