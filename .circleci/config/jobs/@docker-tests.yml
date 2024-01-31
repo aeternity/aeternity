@@ -40,7 +40,7 @@ docker-js-sdk-smoke-test:
 
 docker-db-smoke-test:
   docker:
-    - image: circleci/buildpack-deps:bionic
+    - image: circleci/buildpack-deps:focal
   environment:
     - AE__CHAIN__PERSIST: "true"
   steps:
@@ -95,7 +95,7 @@ docker-db-smoke-test:
 
 js-sdk-smoke-test:
   docker:
-    - image: circleci/buildpack-deps:bionic
+    - image: circleci/buildpack-deps:focal
   environment:
     - AE__CHAIN__PERSIST: false
     - AE__FORK_MANAGEMENT__NETWORK_ID: local_ceres_testnet
@@ -131,7 +131,7 @@ js-sdk-smoke-test:
 
 db-smoke-test:
   docker:
-    - image: circleci/buildpack-deps:bionic
+    - image: circleci/buildpack-deps:focal
   environment:
     - AE__CHAIN__PERSIST: true
     - PACKAGES_DIR: << pipeline.parameters.packages_workspace >>
