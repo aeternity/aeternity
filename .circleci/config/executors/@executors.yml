@@ -22,7 +22,6 @@ builder_container_otp24:
   docker:
     - image: aeternity/builder:focal-otp24
       user: builder
-  resource_class: large
   working_directory: /home/builder/aeternity
   environment:
     OTP_VERSION: 24.3.4.15
@@ -33,7 +32,6 @@ builder_container_otp25:
   docker:
     - image: aeternity/builder:focal-otp25
       user: builder
-  resource_class: large
   working_directory: /home/builder/aeternity
   environment:
     OTP_VERSION: 25.3.2.8
@@ -44,7 +42,6 @@ builder_container_otp26:
   docker:
     - image: aeternity/builder:focal-otp26
       user: builder
-  resource_class: large
   working_directory: /home/builder/aeternity
   environment:
     OTP_VERSION: 26.2.1
