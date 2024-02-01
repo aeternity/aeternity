@@ -691,7 +691,7 @@ init_per_testcase(TC, Config) when TC == aevm_version_interaction;
 init_per_testcase(fate_environment, Config) ->
     meck:new(aefa_chain_api, [passthrough]),
     meck:expect(aefa_chain_api, blockhash,
-                fun(N, S) when is_integer(N) ->
+                fun(N, _, S) when is_integer(N) ->
                         %% Just to ensure the arg format
                         _ = aefa_chain_api:generation(S),
                         aeb_fate_data:make_hash(<<N:256>>)

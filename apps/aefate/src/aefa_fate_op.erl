@@ -1405,7 +1405,7 @@ blockhash(Arg0, Arg1, ES) ->
                 true ->
                     write(Arg0, make_none(), ES1);
                 false ->
-                    FateHash = aefa_chain_api:blockhash(N, API),
+                    FateHash = aefa_chain_api:blockhash(N, VMVsn, API),
                     write(Arg0, make_some(FateHash), ES1)
             end;
         {Value, ES1} ->
