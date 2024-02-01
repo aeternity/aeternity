@@ -87,7 +87,7 @@ expect(Chain, Contract, Function, Arguments, Expect) ->
 %% For now, implement pipeline here.
 
 default_options() ->
-    [{debug, [scode, opt, opt_rules, compile]}, pp_fcode].
+    [{debug, [scode, opt, opt_rules, compile]}].
 
 compile_contract(Code) ->
     compile_contract(Code, default_options()).
