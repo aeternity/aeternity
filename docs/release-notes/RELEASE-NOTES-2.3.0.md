@@ -93,7 +93,6 @@ For running a node as part of the testnet by using the Docker image, please cons
 In order to join testnet reconfigure seed nodes in the release package:
 
 * aenode://pp_QU9CvhAQH56a2kA15tCnWPRJ2srMJW8ZmfbbFTAy7eG4o16Bf@52.10.46.160:3015
-* aenode://pp_2vhFb3HtHd1S7ynbpbFnEdph1tnDXFSfu4NGtq46S2eM5HCdbC@18.195.109.60:3015
 * aenode://pp_27xmgQ4N1E3QwHyoutLtZsHW5DSW4zneQJ3CxT5JbUejxtFuAu@13.250.162.250:3015
 * aenode://pp_DMLqy7Zuhoxe2FzpydyQTgwCJ52wouzxtHWsPGo51XDcxc5c8@13.53.161.215:3015
 
@@ -103,7 +102,6 @@ The core nodes of the public test network are accessible from the Internet.
 
 Information, e.g. height, of the top block of the longest chain as seen by these core nodes of the testnet can be obtained by opening in the browser any of the following URLs:
 * http://52.10.46.160:3013/v2/blocks/top
-* http://18.195.109.60:3013/v2/blocks/top
 * http://13.250.162.250:3013/v2/blocks/top
 * http://13.53.161.215:3013/v2/blocks/top
 
