@@ -753,7 +753,15 @@ change_leaders(Config) ->
     {ok, _B} = wait_same_top(),
     ok.
 
-empty_parent_block(_Config) ->
+empty_parent_block(Config) ->
+    case aect_test_utils:latest_protocol_version() < ?CERES_PROTOCOL_VSN of
+        true ->
+            {skip, lazy_leader_sync_broken_on_iris};
+        false ->
+            empty_parent_block_(Config)
+    end.
+
+empty_parent_block_(_Config) ->
     TopHeight = rpc(?LAZY_NODE, aec_chain, top_height, []),
     %% Remove the posted commitments to create a parent generation without commitments
     aecore_suite_utils:flush_mempool(?PARENT_CHAIN_NODE1_NAME),
@@ -1099,6 +1107,14 @@ block_difficulty(Config) ->
     ok.
 
 elected_leader_did_not_show_up(Config) ->
+    case aect_test_utils:latest_protocol_version() < ?CERES_PROTOCOL_VSN of
+        true ->
+            {skip, lazy_leader_sync_broken_on_iris};
+        false ->
+            elected_leader_did_not_show_up_(Config)
+    end.
+
+elected_leader_did_not_show_up_(Config) ->
     aecore_suite_utils:stop_node(?NODE1, Config), %% stop the block producer
     TopHeader0 = rpc(?NODE2, aec_chain, top_header, []),
     {TopHeader0, TopHeader0} = {rpc(?LAZY_NODE, aec_chain, top_header, []), TopHeader0},

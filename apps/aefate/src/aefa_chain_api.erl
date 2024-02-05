@@ -13,7 +13,7 @@
 -export([ account_balance/2
         , next_nonce/2
         , beneficiary/1
-        , blockhash/2
+        , blockhash/3
         , put_contract/2
         , contract_vm_version/2
         , contract_fate_bytecode/2
@@ -186,8 +186,8 @@ creator(Pubkey, #state{primop_state = PState}) ->
 %%%-------------------------------------------------------------------
 %%% Slightly more involved getters with caching
 
--spec blockhash(non_neg_integer(), #state{}) -> aeb_fate_data:fate_hash().
-blockhash(Height, #state{} = S) ->
+-spec blockhash(non_neg_integer(), aect_contracts:vm_version(), #state{}) -> aeb_fate_data:fate_hash().
+blockhash(Height, VMVersion, #state{} = S) ->
     TxEnv = tx_env(S),
     case aetx_env:key_hash(TxEnv) of
         <<0:?BLOCK_HEADER_HASH_BYTES/unit:8>> = Hash ->
@@ -201,9 +201,16 @@ blockhash(Height, #state{} = S) ->
                 {ok, <<_:?BLOCK_HEADER_HASH_BYTES/unit:8 >> = Hash} ->
                     aeb_fate_data:make_hash(Hash);
                 {ok, _Other} ->
-                    <<_:?BLOCK_HEADER_HASH_BYTES/unit:8 >> = Hash =
-                        traverse_to_key_hash(Height, KeyHash),
-                    aeb_fate_data:make_hash(Hash)
+                    case VMVersion > ?VM_FATE_SOPHIA_2 of
+                        false -> %% Bug unintended match
+                            <<_:?BLOCK_HEADER_HASH_BYTES/unit:8 >> = Hash =
+                                traverse_to_key_hash(Height, KeyHash),
+                            aeb_fate_data:make_hash(Hash);
+                        true ->
+                            <<_:?BLOCK_HEADER_HASH_BYTES/unit:8 >> = Hash1 =
+                                traverse_to_key_hash(Height, KeyHash),
+                            aeb_fate_data:make_hash(Hash1)
+                    end
             end
     end.
 

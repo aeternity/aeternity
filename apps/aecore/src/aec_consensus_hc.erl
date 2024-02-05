@@ -271,7 +271,9 @@ state_pre_transform_key_node(Node, PrevNode, Trees) ->
                             elect_lazy_leader(Beneficiary, TxEnv, Trees) %% initial trees!!!
                     catch error:{consensus_call_failed, {error, Why}} ->
                             lager:info("Consensus contract failed with ~p", [Why]),
-                            elect_lazy_leader(Beneficiary, TxEnv, Trees) %% initial trees!!!
+                            elect_lazy_leader(Beneficiary, TxEnv, Trees); %% initial trees!!!
+                          error:{consensus_call_crashed, {error, _Why}} ->
+                            aec_conductor:throw_error(consensus_call_crashed)
                     end
             end;
         false -> Trees %% do not elect leader for genesis
@@ -535,7 +537,7 @@ call_consensus_contract_(ContractType, TxEnv, Trees, EncodedCallData, Keyword, A
                   gas_price   => GasPrice,
                   call_data   => CallData},
     {ok, Tx} = aect_call_tx:new(CallSpec),
-    case aetx:process(Tx, Trees1, TxEnv) of
+    try aetx:process(Tx, Trees1, TxEnv) of
         {ok, Trees2, _} ->
             Calls = aec_trees:calls(Trees2),
             {contract_call_tx, CallTx} = aetx:specialize_type(Tx),
@@ -556,6 +558,10 @@ call_consensus_contract_(ContractType, TxEnv, Trees, EncodedCallData, Keyword, A
             {ok, aect_call_state_tree:prune(Height, Trees2), Call};
         {error, _What} = Err ->
             Err
+    catch Err:Reason:St ->
+        lager:error("Consensus contract call to ~p crashed(~p): ~p", [Keyword, Err, Reason]),
+        lager:info("Crash stacktrace: ~p", [St]),
+        error({consensus_call_crashed, {error, Reason}})
     end.
 
 beneficiary() ->
