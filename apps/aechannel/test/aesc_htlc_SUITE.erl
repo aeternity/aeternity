@@ -44,7 +44,7 @@
 -import(aec_test_utils, [ get_debug/1 ]).
 
 -import(aesc_fsm_SUITE, [ create_channel_/3
-                        , channel_shutdown/3
+                        , channel_shutdown/4
                         , prepare_contract_create_args/3
                         , load_contract/4
                         , call_contract/9
@@ -572,7 +572,7 @@ prep_hub(AmountI, AmountR, Node) ->
 
 
 shutdown(I, R, Cfg, Debug) ->
-    channel_shutdown(I, R, Cfg),
+    channel_shutdown(I, R, Cfg, false),
     {ok, _} = receive_log(I, Debug),
     {ok, _} = receive_log(R, Debug),
     ok.
