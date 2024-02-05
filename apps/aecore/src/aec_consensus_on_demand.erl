@@ -114,19 +114,25 @@ client_request({mine_blocks, NumBlocksToMine, Type}) ->
             {ok, [client_request(emit_mb) || _ <- lists:seq(1, NumBlocksToMine)]}
     end;
 client_request(mine_micro_block_emptying_mempool_or_fail) ->
-    Pre = ensure_leader(),
-    Emit = fun F(_Accum, Attempts) when Attempts < 1 -> error(could_not_mine_tx);
-               F(Accum, Attempts) ->
-                    MB = client_request(emit_mb),
-                    %% If instant mining is enabled then we can't have microforks :)
-                    Accum1 = Accum ++ [MB],
-                    case aec_tx_pool:peek(infinity) of
-                        {ok, []} -> {ok, Accum1};
-                        {ok, [_Tx | _]} -> F(Accum1, Attempts -1)
-                    end
-                end,
-    {ok, MBs} = Emit([], 10),
-    {ok, Pre ++ MBs};
+    case aec_tx_pool:peek(infinity) of
+      {ok, []} ->
+          MB = aec_chain:top_block(),
+          {ok, [MB]};
+      _ ->
+          Pre = ensure_leader(),
+          Emit = fun F(_Accum, Attempts) when Attempts < 1 -> error(could_not_mine_tx);
+                     F(Accum, Attempts) ->
+                          MB = client_request(emit_mb),
+                          %% If instant mining is enabled then we can't have microforks :)
+                          Accum1 = Accum ++ [MB],
+                          case aec_tx_pool:peek(infinity) of
+                              {ok, []} -> {ok, Accum1};
+                              {ok, [_Tx | _]} -> F(Accum1, Attempts -1)
+                          end
+                      end,
+          {ok, MBs} = Emit([], 10),
+          {ok, Pre ++ MBs}
+    end;
 client_request({mine_blocks_until_txs_on_chain, TxHashes, Max}) ->
     mine_blocks_until_txs_on_chain(TxHashes, Max, []).
 
