@@ -24,12 +24,12 @@ test:
         target: << parameters.target >>
 
 aevm-test:
-  executor: builder_container_otp23
+  executor: builder_container_otp26
   steps:
     - fixed_checkout
     - restore_rebar_cache
     - restore_build_cache:
-        otp: otp23
+        otp: otp26
     - run:
         name: AEVM Tests
         command: |
@@ -73,7 +73,7 @@ static-analysis:
     - fail_notification
 
 rebar_lock_check:
-  executor: builder_container_otp23
+  executor: builder_container_otp26
   steps:
     - fixed_checkout
     - run:

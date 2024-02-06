@@ -5,7 +5,7 @@ linux-tarball:
       default: false
     package_name:
       type: string
-  executor: builder_container_otp23
+  executor: builder_container_otp26
   steps:
     - fixed_checkout
     - when:
@@ -30,7 +30,7 @@ linux-tarball:
     - fail_notification
 
 ubuntu_package:
-  executor: builder_container_otp23
+  executor: builder_container_otp26
   working_directory: /home/builder/aeternity_deb
   steps:
     - fixed_checkout
@@ -50,7 +50,7 @@ linux-standalone:
       default: false
     package_name:
       type: string
-  executor: builder_container_otp23
+  executor: builder_container_otp26
   steps:
     - fixed_checkout
     - when:

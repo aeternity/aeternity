@@ -43,11 +43,13 @@ testcase_generate(Path, Tests) ->
 testcase_generate(Path, Tests, Opts) ->
     case is_external_available(Path) of
         true ->
-            {foreachx
-            , fun get_config/1
-            , fun(_, _) -> ok end
-            , [{{Path, TestName, expand_opts(Opts, TestName)}, fun testcase/2}
-               || TestName <- Tests]
+            {timeout, 30,
+              { foreachx
+              , fun get_config/1
+              , fun(_, _) -> ok end
+              , [{{Path, TestName, expand_opts(Opts, TestName)}, fun testcase/2}
+                 || TestName <- Tests]
+              }
             };
         false ->
             []
@@ -63,7 +65,7 @@ testcase_generate(Path, Tests, Opts) ->
 testcase({Path0, Name, Opts}, #{ pre := Pre, exec := Exec} = Spec) ->
     Path = case Path0 of {local, P} -> P; _ -> Path0 end,
     { Path ++ "/" ++ atom_to_list(Name)
-    , {timeout, 10, fun() ->
+    , {timeout, 30, fun() ->
               %% Set up the store for the contract.
               #{ address := Address } = Exec,
               Store = get_store(Address, Pre),

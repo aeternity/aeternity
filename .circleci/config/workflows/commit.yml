@@ -6,7 +6,7 @@ jobs:
       context: ae-slack
       matrix:
         parameters:
-          otp: ["otp23", "otp24"]
+          otp: ["otp24", "otp25", "otp26"]
       filters:
         branches:
           ignore:
@@ -25,7 +25,7 @@ jobs:
       context: ae-slack
       matrix:
         parameters:
-          otp: ["otp23", "otp24"]
+          otp: ["otp24", "otp25", "otp26"]
           target:
             - "ct-roma"
             - "ct-minerva"
@@ -45,6 +45,15 @@ jobs:
           - {otp: "otp24", target: "ct-latest-no-aci"}
           - {otp: "otp24", target: "ct-mnesia-rocksdb"}
           - {otp: "otp24", target: "ct-mnesia-mrdb"}
+
+          - {otp: "otp25", target: "ct-roma"}
+          - {otp: "otp25", target: "ct-minerva"}
+          - {otp: "otp25", target: "ct-fortuna"}
+          - {otp: "otp25", target: "ct-lima"}
+          - {otp: "otp25", target: "ct-iris"}
+          - {otp: "otp25", target: "ct-latest-no-aci"}
+          - {otp: "otp25", target: "ct-mnesia-rocksdb"}
+          - {otp: "otp25", target: "ct-mnesia-mrdb"}
       requires:
         - build-<< matrix.otp >>
       filters:
@@ -58,7 +67,7 @@ jobs:
       context: ae-slack
       matrix:
         parameters:
-          otp: ["otp23"]
+          otp: ["otp26"]
           target:
             - "roma"
             - "minerva"
@@ -78,7 +87,7 @@ jobs:
   - aevm-test:
       context: ae-slack
       requires:
-        - build-otp23
+        - build-otp26
       filters:
         branches:
           ignore:
@@ -90,7 +99,7 @@ jobs:
       context: ae-slack
       matrix:
         parameters:
-          otp: ["otp23", "otp24"]
+          otp: ["otp24", "otp25", "otp26"]
       requires:
         - build-<< matrix.otp >>
       filters:
@@ -180,7 +189,7 @@ jobs:
   - rebar_lock_check:
       context: ae-slack
       requires:
-        - build-otp23
+        - build-otp26
       filters:
         branches:
           ignore:
