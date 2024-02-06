@@ -228,15 +228,6 @@ jobs:
             - /releases\/.*/
             - << pipeline.parameters.master_branch >>
 
-  - ubuntu_package:
-      requires: []
-      context: ae-slack
-      filters:
-        branches:
-          only:
-            - /releases\/.*/
-            - << pipeline.parameters.master_branch >>
-
   - upload-artifacts-s3:
       name: upload-artifacts-s3
       bucket: << pipeline.parameters.s3_builds_bucket >>
@@ -284,16 +275,6 @@ jobs:
       name: macos-tarball-bundle
       package_name: aeternity-bundle-$CIRCLE_SHA1-macos-x86_64.tar.gz
       aeplugin_devmode: true
-      context: ae-slack
-      filters:
-        branches:
-          only:
-            - /releases\/.*/
-            - << pipeline.parameters.master_branch >>
-
-  - publish-build-packages:
-      requires:
-        - ubuntu_package
       context: ae-slack
       filters:
         branches:
