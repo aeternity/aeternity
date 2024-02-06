@@ -1,5 +1,5 @@
 let
-  pkgs = import (fetchTarball "https://github.com/NixOS/nixpkgs/archive/860b56be91fb874d48e23a950815969a7b832fbc.tar.gz") {};
+  pkgs = import (fetchTarball "https://github.com/NixOS/nixpkgs/tarball/nixos-23.11") {};
 in {
   aeternityEnv = pkgs.stdenv.mkDerivation {
     name = "aeternity";
@@ -10,7 +10,7 @@ in {
       ## base
       pkgs.stdenv
       ## erlang
-      pkgs.erlangR23 # OTP 23.3.4.4
+      pkgs.erlang_26 # OTP 26.1.2
       ## crypto
       pkgs.libsodium
       ## rocksdb build deps
