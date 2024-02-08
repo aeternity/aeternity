@@ -203,7 +203,10 @@ protocols() ->
             Protocols
     end.
 
-
+split_int(BeneficiaryReward1, BeneficiaryReward2,
+          _AllocShares, _TotalShares,
+          []) ->
+    {{BeneficiaryReward1, BeneficiaryReward2}, []};
 split_int(BeneficiaryReward1, BeneficiaryReward2,
           AllocShares, TotalShares,
           Beneficiaries = [_|_]) when
