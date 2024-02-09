@@ -22,10 +22,9 @@
 %%% weighted avg BRI voting result of 1% to 20% (yes) votes is 10.89869526640124746202%, 109 of 1000 shares will be the protocol reward
 %%% for: "ak_2KAcA2Pp1nrR8Wkt3FtCkReGzAi8vJ9Snxa4PcmrthVx8AhPe8:109"
 %%%%%%%%% TODO update with real values
--define(MAINNET_BENEFICIARIES, [{<<172,241,128,85,116,104,119,143,197,105,4,192,224,207,200,138,230,84,111,38,89,33,239,21,201,183,185,209,19,60,109,136>>, 109, undefined, ?IRIS_PROTOCOL_VSN},
-                                {<<172,241,128,85,116,104,119,143,197,105,4,192,224,207,200,138,230,84,111,38,89,33,239,21,201,183,185,209,19,60,109,136>>, 109, ?CERES_PROTOCOL_VSN, undefined}]).
+-define(MAINNET_BENEFICIARIES, [{<<172,241,128,85,116,104,119,143,197,105,4,192,224,207,200,138,230,84,111,38,89,33,239,21,201,183,185,209,19,60,109,136>>, 109, ?FORTUNA_PROTOCOL_VSN, ?IRIS_PROTOCOL_VSN}]).
 %%% for: "ak_2A3PZPfMC2X7ZVy4qGXz2xh2Lbh79Q4UvZ5fdH7QVFocEgcKzU:109"
--define(TESTNET_BENEFICIARIES, [{<<152,57,168,5,218,153,177,254,226,207,243,133,11,50,143,68,121,242,94,41,187,198,158,67,133,88,6,71,55,26,85,54>>, 109, undefined, undefined}]).
+-define(TESTNET_BENEFICIARIES, [{<<152,57,168,5,218,153,177,254,226,207,243,133,11,50,143,68,121,242,94,41,187,198,158,67,133,88,6,71,55,26,85,54>>, 109, ?FORTUNA_PROTOCOL_VSN, ?IRIS_PROTOCOL_VSN}]).
 
 ensure_env() ->
     Enabled = cfg(<<"protocol_beneficiaries_enabled">>, ?ENABLED),
@@ -54,9 +53,7 @@ allocated_shares_and_beneficiaries(BenefShares0) ->
     BenefShares = lists:sort(BenefShares0),
     {_, Shares} = lists:unzip(BenefShares),
     AllocShares = lists:sum(Shares),
-    if AllocShares == 0 ->
-            exit({invalid_protocol_beneficiaries, sum_shares_is_zero});
-       AllocShares > ?TOTAL_SHARES ->
+    if   AllocShares > ?TOTAL_SHARES ->
             exit({invalid_protocol_beneficiaries, sum_shares_too_large});
        AllocShares =< ?TOTAL_SHARES ->
             {AllocShares, BenefShares}
@@ -149,9 +146,7 @@ parse_beneficiary(BeneficiaryShareStr) ->
             error({invalid_format, BeneficiaryShareStr})
     end.
 
-parse_beneficiaries([]) ->
-    {error, no_beneficiaries};
-parse_beneficiaries([_|_] = BeneficiarySharesProtocolsStrs) ->
+parse_beneficiaries(BeneficiarySharesProtocolsStrs) ->
     try lists:filtermap(fun parse_beneficiary/1, BeneficiarySharesProtocolsStrs) of
         BeneficiarySharesProtocols ->
             {ok, [{ProtocolVsn, beneficiaries_at_protocol(ProtocolVsn, BeneficiarySharesProtocols)} ||
@@ -208,7 +203,10 @@ protocols() ->
             Protocols
     end.
 
-
+split_int(BeneficiaryReward1, BeneficiaryReward2,
+          _AllocShares, _TotalShares,
+          []) ->
+    {{BeneficiaryReward1, BeneficiaryReward2}, []};
 split_int(BeneficiaryReward1, BeneficiaryReward2,
           AllocShares, TotalShares,
           Beneficiaries = [_|_]) when
