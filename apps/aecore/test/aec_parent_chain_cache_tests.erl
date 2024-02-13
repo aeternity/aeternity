@@ -94,6 +94,7 @@ produce_commitments_test_() ->
             meck:expect(aec_chain, genesis_hash, fun() -> height_to_hash(0) end),
             meck:new(aec_conductor, []),
             meck:new(aetx_env, []),
+            meck:expect(aetx_env, height, fun(_) -> 42 end),
             meck:expect(aetx_env, tx_env_and_trees_from_hash,
                         fun(_, _Hash) -> {tx_env, trees} end),
             mock_parent_connector(),
