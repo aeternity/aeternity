@@ -5,11 +5,9 @@ Micro-block gas limit calculation changed: Gas limit was computed from a transac
 
 * Contracts can be called by name: Just like it is possible to spend to an AENS name, it is now possible to call a function for a name that points to a contract.
 
-    * Generalized Accounts:
-
-    * GAMetaTx parameters (fee and gas_price) are now part of the transaction hash and thus not changeable by a rouge miner.
+* Generalized Accounts:
+  * GAMetaTx parameters (fee and gas_price) are now part of the transaction hash and thus not changeable by a rouge miner.
 GAAttachTx can only be used by a fresh account.
-
 * AENS:
   * Adjusted auction parameters - auctions are generally made shorter.
   * Adding raw data pointers.
