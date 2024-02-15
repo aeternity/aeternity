@@ -53,7 +53,7 @@ auction length of 2400 generations, approximately 5 days. The extension period i
 We introduce a new type of pointer for AENS names. The raw data pointer/value is an arbitrary-sized byte array (max 1024 bytes). And, unchanged, a name can have a maximum of 32 key-pointer pairs. FATE VM and Sophia are updated to allow full access to the new pointer type (See
 https://github.com/aeternity/aesophia/blob/master/docs/sophia_stdlib.md#aensv2).
 ## AENS - Wildcard delegation signatures
-Add generic/wildcard AENS delegation signatures. I.e. instead of delegating authority for a contract to operate with a specific name (name hash), by signing just the network id, public key, and contract address, you can delegate the authority for a contract to handle all your names with one signature. See Issue #4080 for details.
+Add generic/wildcard AENS delegation signatures. I.e. instead of delegating authority for a contract to operate with a specific name (name hash), by signing just the network id, public key, and contract address, you can delegate the authority for a contract to handle all your names with one signature. See Issue [#4080](https://github.com/aeternity/aeternity/issues/4080) for details.
 BEWARE: This gives the contract authority to handle all current and future names on your behalf, so it should be used with extreme care and only for well-known (and well-understood!!) contracts.
 ## AENS - Preclaim is optional
 Since the introduction of auctions, the front-running protection offered by the
@@ -72,4 +72,4 @@ a preceeding NamePreclaimTx. In this case, we set the NameSalt to 0.
 * Chain.network\_id - the network id of the chain
 ### FATE - Structured delegation signatures
 Delegation signatures have been made more structured, and their serialization is part of the protocol description (and their implementation is part of aeserialization). This means that the data for delegation signatures no longer risks overlapping with transactions, and it should be clear what is
-signed. This is discussed in #4177 and #4178.
+signed. This is discussed in [#4177](https://github.com/aeternity/aeternity/issues/4177) and [#4178](https://github.com/aeternity/aeternity/issues/4178).
