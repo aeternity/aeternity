@@ -7,7 +7,7 @@ Micro-block gas limit calculation changed: Gas limit was computed from a transac
 
 * Generalized Accounts:
   * GAMetaTx parameters (fee and gas_price) are now part of the transaction hash and thus not changeable by a rouge miner.
-GAAttachTx can only be used by a fresh account.
+  * GAAttachTx can only be used by a fresh account.
 * AENS:
   * Adjusted auction parameters - auctions are generally made shorter.
   * Adding raw data pointers.
