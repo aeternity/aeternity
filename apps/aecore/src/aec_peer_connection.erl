@@ -763,9 +763,10 @@ use_latest_common_ping_version(S, PingObj) ->
     S#{use_ping_vsn => Pick}.
 
 remote_vsns_supported(Type, PingObj, S) ->
+    TypeBin = atom_to_binary(Type, utf8),
     AllVsns = maps:get(versions, PingObj, []),
-    case lists:keyfind(atom_to_binary(Type, utf8), 1, AllVsns) of
-        {_, Vsns} ->
+    case lists:filter(fun(#{protocol := Protocol})  -> Protocol == TypeBin end, AllVsns) of
+        [#{vsns := Vsns}] ->
             Vsns;
         _ ->
             %% assume our hard-coded vsn
@@ -955,7 +956,7 @@ ping_obj(PingObj, Exclude, Vsn) ->
 
 vsn_upgrade(ping, Obj, ?PING_VSN_2) ->
     MyCaps = aec_capabilities:get_capabilities(),
-    Vsns = aec_peer_messages:all_msg_versions(),
+    Vsns = aec_peer_messages:supported_msg_versions(),
     Obj#{ versions => Vsns, capabilities => MyCaps };
 vsn_upgrade(_T, Obj, _V) ->
     Obj.

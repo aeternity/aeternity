@@ -13,7 +13,7 @@
         , tag/1]).
 
 -export([ msg_versions/1
-        , all_msg_versions/0
+        , supported_msg_versions/0
         , latest_vsn/2 ]).
 
 -export([serialize_capabilities/2,
@@ -234,7 +234,7 @@ msg_versions(ping) ->
 msg_versions(_Msg) ->
     undefined.
 
-all_msg_versions() ->
+supported_msg_versions() ->
     [#{protocol => atom_to_binary(T, utf8), vsns => msg_versions(T)} || T <- [ping]].
 
 deserialize(ping, Vsn, PingFlds) when Vsn == ?PING_VSN_2 ->
