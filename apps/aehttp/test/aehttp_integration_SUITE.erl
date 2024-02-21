@@ -25,6 +25,7 @@
    , initialize_account/2
    , get_name_preclaim/1
    , get_name_claim/1
+   , get_auctions_entry_by_name_sut/1
    , get_names_entry_by_name_sut/1
    , get_commitment_id/2
    , get_accounts_by_pubkey_sut/1
@@ -1874,6 +1875,10 @@ get_name_entry_by_name(_Config) ->
 
     "example.com" = proplists:get_value("access-control-allow-origin", Headers),
     ok.
+
+get_auctions_entry_by_name_sut(Name) ->
+    Host = external_address(),
+    http_request(Host, get, "auctions/" ++ Name, []).
 
 get_names_entry_by_name_sut(Name) ->
     Host = external_address(),

@@ -12,6 +12,7 @@
          resolve_hash/3,
          resolve_from_name_object/2,
          get_commitment_hash/2,
+         get_auction_entry/2,
          get_name_entry/2,
          get_name_hash/1]).
 
@@ -65,6 +66,14 @@ get_commitment_hash(Name, Salt) when is_binary(Name) andalso is_integer(Salt) ->
         {error, _} = E  -> E
     end.
 
+-spec get_auction_entry(binary(), aens_state_tree:tree()) ->
+    {ok, map()} | {error, atom()}.
+get_auction_entry(Name, NSTree) when is_binary(Name) ->
+    case name_to_name_hash(Name) of
+        {ok, NameHash} -> name_hash_to_name_auction(aens_hash:to_auction_hash(NameHash), NSTree);
+        {error, _} = Error -> Error
+    end.
+
 -spec get_name_entry(binary(), aens_state_tree:tree()) ->
     {ok, map()} | {error, atom()}.
 get_name_entry(Name, NSTree) when is_binary(Name) ->
@@ -97,11 +106,24 @@ name_to_name_hash(Name) ->
             Error
     end.
 
+name_hash_to_name_auction(NameHash, NSTree) ->
+    case aens_state_tree:lookup_name_auction(NameHash, NSTree) of
+        {value, NameRecord} -> auction_entry(NameRecord);
+        none -> {error, name_not_found}
+    end.
+
 name_hash_to_name_entry(NameHash, NSTree) ->
     case aens_state_tree:lookup_name(NameHash, NSTree) of
         {value, NameRecord} -> name_entry(NameRecord);
         none -> {error, name_not_found}
     end.
+
+auction_entry(AuctionRecord) ->
+    {ok, #{id      => aens_auctions:id(AuctionRecord),
+           bidder  => aens_auctions:bidder_pubkey(AuctionRecord),
+           started => aens_auctions:started(AuctionRecord),
+           ttl     => aens_auctions:ttl(AuctionRecord),
+           bid     => aens_auctions:name_fee(AuctionRecord)}}.
 
 name_entry(NameRecord) ->
     case aens_names:status(NameRecord) of

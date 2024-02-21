@@ -151,6 +151,11 @@ naming_system_auction(Config) ->
     %% Check that name entry is absent as there is auction ongoing
     {ok, 404, #{<<"reason">> := <<"Name not found">>}} = ?HTTP_INT:get_names_entry_by_name_sut(Name),
 
+    %% Check that auction entry is present as there is auction ongoing
+    {ok, 200, AuctionMap} = ?HTTP_INT:get_auctions_entry_by_name_sut(Name),
+    ?assertEqual(maps:get(<<"highest_bid">>, AuctionMap), FirstNameFee),
+    ?assertEqual(maps:get(<<"highest_bidder">>, AuctionMap), PubKey1Enc),
+
     {ok, 200, #{<<"balance">> := PubKey2BalPreAuction}} = ?HTTP_INT:get_accounts_by_pubkey_sut(PubKey2Enc),
     ct:log("Balance PubKey2 before counter bid: ~p", [PubKey2BalPreAuction]),
 
@@ -181,6 +186,11 @@ naming_system_auction(Config) ->
     ct:log("Balance PubKey1 post counter bid: ~p", [PubKey1BalPostAuction]),
     ct:log("Balance PubKey2 post counter bid: ~p", [PubKey2BalPostAuction]),
 
+    %% Check that auction entry is present and updated
+    {ok, 200, AuctionMap2} = ?HTTP_INT:get_auctions_entry_by_name_sut(Name),
+    ?assertEqual(maps:get(<<"highest_bid">>, AuctionMap2), NextMinPrice),
+    ?assertEqual(maps:get(<<"highest_bidder">>, AuctionMap2), PubKey2Enc),
+
     %% Return first bid to PubKey1
     ?assertEqual(PubKey1BalPostAuction, PubKey1BalPreAuction + FirstNameFee),
     %% The second bidder, PubKey2, is now charged
@@ -192,6 +202,9 @@ naming_system_auction(Config) ->
 
     {ok, 404, #{<<"reason">> := <<"Name not found">>}} = ?HTTP_INT:get_names_entry_by_name_sut(Name),
     aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE), ?BID_TIMEOUT),
+
+    %% Assert the auction is no longer there
+    {ok, 404, #{<<"reason">> := <<"Name not found">>}} = ?HTTP_INT:get_auctions_entry_by_name_sut(Name),
 
     %% Check if we get correct name from the API
     {ok, 200, RespMap} = ?HTTP_INT:get_names_entry_by_name_sut(Name),

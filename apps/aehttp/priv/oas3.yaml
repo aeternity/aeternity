@@ -908,6 +908,41 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  "/auctions/{name}":
+    get:
+      tags:
+        - external
+        - name_service
+      operationId: GetAuctionEntryByName
+      description: Get auction entry from naming system
+      parameters:
+        - $ref: '#/components/parameters/intAsString'
+        - in: path
+          name: name
+          description: The name key of the name entry
+          required: true
+          schema:
+            type: string
+            example: "dimitar.chain"
+      responses:
+        "200":
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuctionEntry"
+        "400":
+          description: Invalid name
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Name not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   "/names/{name}":
     get:
       tags:
@@ -2473,6 +2508,24 @@ components:
       required:
         - type
         - value
+    AuctionEntry:
+      type: object
+      properties:
+        id:
+          $ref: "#/components/schemas/EncodedValue"
+        started_at:
+          $ref: "#/components/schemas/UInt64"
+        ends_at:
+          $ref: "#/components/schemas/UInt64"
+        highest_bidder:
+          $ref: "#/components/schemas/EncodedPubkey"
+        highest_bid:
+          $ref: "#/components/schemas/UInt"
+      required:
+        - id
+        - ends_at
+        - highest_bidder
+        - highest_bid
     NameEntry:
       type: object
       properties:

@@ -28,7 +28,8 @@
         ]).
 
 %% Getters
--export([hash/1,
+-export([id/1,
+         hash/1,
          bidder_pubkey/1,
          ttl/1,
          name_fee/1,
@@ -134,6 +135,10 @@ serialization_type() -> ?AUCTION_TYPE.
 %%%===================================================================
 %%% Getters
 %%%===================================================================
+
+-spec id(auction()) -> id().
+id(#auction{id = Id}) ->
+    Id.
 
 -spec hash(auction()) -> aens_hash:auction_hash().
 hash(#auction{id = Id}) ->
