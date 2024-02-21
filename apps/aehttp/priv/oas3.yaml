@@ -1043,7 +1043,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Currency"                  
+                $ref: "#/components/schemas/Currency"
   ###
   ## Internal endpoints
   ###
@@ -3125,6 +3125,8 @@ components:
           $ref: "#/components/schemas/EncodedHash"
         hash:
           $ref: "#/components/schemas/EncodedHash"
+        encoded_tx:
+          $ref: "#/components/schemas/EncodedByteArray"
         signatures:
           description: At least one signature is required unless for Generalized Account
             Meta transactions
