@@ -1,4 +1,4 @@
-Ceres is the 5th protocol upgrade for aeternity; following the initial protocol Roma, we have then seen Minerva, Fortuna, Lima, and Iris. Ceres is the first protocol upgrade not part of the initial update schedule and it contains mainly smaller improvements and enhancements.
+Ceres is the 5th protocol upgrade for aeternity; following the initial protocol Roma, we have then seen Minerva, Fortuna, Lima, and Iris. Ceres is the first protocol upgrade not part of the initial update schedule and it contains mainly smaller improvements and enhancements. The protocol documentation can be found at  https://docs.aeternity.com/protocol/
 
 # Changes summarized
 Micro-block gas limit calculation changed: Gas limit was computed from a transaction's max gas value, now it is computed from the actually used gas.
