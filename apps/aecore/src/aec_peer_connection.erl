@@ -721,7 +721,7 @@ handle_tx_pool(S, Args, Vsn, From) ->
 %% -- Ping message -----------------------------------------------------------
 
 handle_ping_rsp(S, {ping, From, _TRef}, Vsn, RemotePingObj) ->
-    Res = handle_ping_msg(S, RemotePingObj),
+    Res = handle_ping_msg(S, Vsn, RemotePingObj),
     gen_server:reply(From, Res),
     %% UW: determine which version to use in the future, and perhaps re-ping
     S1 = set_ping_vsn(S, Vsn, RemotePingObj, From),
@@ -781,7 +781,7 @@ handle_ping(S, none, Vsn, RemotePingObj) ->
     Response =
         case PeerOk of
             ok ->
-                case handle_ping_msg(S1, RemotePingObj) of
+                case handle_ping_msg(S1, Vsn, RemotePingObj) of
                     ok ->
                         {ok, ping_obj_rsp(S1, Vsn, RemotePingObj)};
                     {error, Reason} ->
@@ -826,6 +826,16 @@ handle_first_ping(S, RemotePingObj) ->
             end;
         false ->
             {ok, S}
+    end.
+
+
+handle_ping_msg(S, Vsn, RemotePingObj) ->
+    case (not maps:is_key(use_ping_vsn, S) andalso Vsn > ?PING_VSN_1) of
+        true ->
+            %% Negotiating ping upgrade, don't need to process handle_ping_msg, causes sync to fail because the pings are too close together
+            ok;
+        _ ->
+            handle_ping_msg(S, RemotePingObj)
     end.
 
 handle_ping_msg(S, RemotePingObj) ->
