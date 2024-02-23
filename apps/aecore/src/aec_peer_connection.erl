@@ -475,8 +475,11 @@ handle_general_error(S) ->
             connect_fail(S1)
     end.
 
-request_key(Kind, Vsn) ->
-    {Kind,Vsn}.
+%% Ping needs to support concurrent pings of different versions
+request_key(ping, Vsn) ->
+    {ping, Vsn};
+request_key(Kind, _Vsn) ->
+    Kind.
 
 get_request(S, Kind, Vsn) ->
     maps:get(request_key(map_request(Kind), Vsn), maps:get(requests, S, #{}), none).
@@ -487,7 +490,7 @@ set_request(S, Kind, Vsn, From) ->
 set_request(S, Kind, Vsn, From, Timeout) ->
     Rs = maps:get(requests, S, #{}),
     TRef = erlang:start_timer(Timeout, self(), {request, Kind, Vsn}),
-    S#{ requests => Rs#{ {Kind, Vsn} => {Kind, From, TRef} } }.
+    S#{ requests => Rs#{ request_key(Kind, Vsn) => {Kind, From, TRef} } }.
 
 remove_request_fld(S, Kind, Vsn) ->
     Rs = maps:get(requests, S, #{}),
