@@ -2014,18 +2014,16 @@ get_status_sut(IntAsString) ->
 get_recent_gas_prices(_Config) ->
     Host = external_address(),
     {ok, 200, [
-        #{ <<"blocks">> := 1, <<"min_gas_price">> := MinGasPrice1 },
-        #{ <<"blocks">> := 5, <<"min_gas_price">> := MinGasPrice5 },
-        #{ <<"blocks">> := 20, <<"min_gas_price">> := MinGasPrice20 },
-        #{ <<"blocks">> := 120, <<"min_gas_price">> := MinGasPrice120 },
-        #{ <<"blocks">> := 480, <<"min_gas_price">> := MinGasPrice480 }
+        #{ <<"minutes">> := 1,  <<"min_gas_price">> := MinGasPrice1 },
+        #{ <<"minutes">> := 5,  <<"min_gas_price">> := MinGasPrice5 },
+        #{ <<"minutes">> := 15, <<"min_gas_price">> := MinGasPrice15 },
+        #{ <<"minutes">> := 60, <<"min_gas_price">> := MinGasPrice60 }
     ]} = http_request(Host, get, "recent-gas-prices", []),
     MinGasPrice = 1000000000,
     ?assertMatch(X when is_integer(X) andalso X == MinGasPrice, MinGasPrice1),
     ?assertMatch(X when is_integer(X) andalso X == MinGasPrice, MinGasPrice5),
-    ?assertMatch(X when is_integer(X) andalso X == MinGasPrice, MinGasPrice20),
-    ?assertMatch(X when is_integer(X) andalso X == MinGasPrice, MinGasPrice120),
-    ?assertMatch(X when is_integer(X) andalso X == MinGasPrice, MinGasPrice480),
+    ?assertMatch(X when is_integer(X) andalso X == MinGasPrice, MinGasPrice15),
+    ?assertMatch(X when is_integer(X) andalso X == MinGasPrice, MinGasPrice60),
     ok.
 
 prepare_tx(TxType, Args, SignHash) ->

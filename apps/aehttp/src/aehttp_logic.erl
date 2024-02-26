@@ -14,7 +14,7 @@
         , get_block_genesis/0
         , get_genesis_hash/0
         , get_top_blocks_time_summary/1
-        , get_top_blocks_gas_price_summary/0
+        , get_top_blocks_gas_price_summary/1
         ]).
 
 -export([ get_account/1
@@ -162,57 +162,49 @@ connected_peers(Tag) -> aec_peers:connected_peers(Tag).
 
 blocked_peers() -> aec_peers:blocked_peers().
 
-get_top_blocks_gas_price_summary() ->
-    TopKeyHash = aec_chain:top_key_block_hash(),
-    case get_gens_min_gas_price(TopKeyHash, 480) of
-        Err = {error, _} ->
-            Err;
-        MinGasPrices ->
-            MinPriceN = fun(N) ->
-                            case lists:min(lists:sublist(MinGasPrices, N)) of
-                                undefined -> 0;
-                                X         -> X
-                            end
-                        end,
+get_top_blocks_gas_price_summary(Minutes) ->
+    Now = erlang:system_time(millisecond),
+    Offsets = [ {N, Now - N * 60 * 1_000_000} || N <- Minutes ],
+    TopHash = aec_chain:top_block_hash(),
+    get_min_gas_price_since(Offsets, TopHash, undefined, []).
 
-            {ok, [ [N, MinPriceN(N)] || N <- [1, 5, 20, 120, 480] ]}
-    end.
+-define(GEN_MB_PRICE_CACHE, '$aec_microblock_min_gas_price').
 
--define(GEN_MIN_PRICE_CACHE, '$aec_generation_min_gas_price').
--define(MIN_GAS_SLACK, 200_000).
-
-get_gens_min_gas_price(_, 0) -> [];
-get_gens_min_gas_price(KeyHash, N) ->
-    case get_gen_min_gas_price(KeyHash) of
-        {ok, MinGasPrice, PrevKeyHash} ->
-            [MinGasPrice | get_gens_min_gas_price(PrevKeyHash, N - 1)];
-        Err = {error, _} ->
-            Err
-    end.
-
-get_gen_min_gas_price(KeyHash) ->
-    aeu_ets_cache:get(?GEN_MIN_PRICE_CACHE, KeyHash,
-                      fun() -> get_gen_min_gas_price_(KeyHash) end).
-
-get_gen_min_gas_price_(KeyHash) ->
-    case aec_chain:get_block(KeyHash) of
-        {ok, Block} ->
-            get_gen_min_gas_price(aec_blocks:prev_hash(Block), aec_blocks:version(Block), undefined);
+get_min_gas_price_since([], _Hash, _MinGasPrice, Data) ->
+  {ok, lists:reverse(Data)};
+get_min_gas_price_since([{Ms, CutOff} | CutOffs] = COs, Hash, MinGasPrice, Data) ->
+    case aec_chain:get_header(Hash) of
+        {ok, Header} ->
+            case aec_headers:time_in_msecs(Header) < CutOff of
+                true ->
+                    get_min_gas_price_since(CutOffs, Hash, MinGasPrice, [{Ms, MinGasPrice} | Data]);
+                false ->
+                    case aec_headers:type(Header) of
+                        key ->
+                            get_min_gas_price_since(COs, aec_headers:prev_hash(Header), MinGasPrice, Data);
+                        micro ->
+                            {_, MinGasPrice0} = get_mb_min_gas_price(Hash, aec_headers:version(Header)),
+                            MGP = min(MinGasPrice0, MinGasPrice),
+                            get_min_gas_price_since(COs, aec_headers:prev_hash(Header), MGP, Data)
+                    end
+            end;
         error ->
             {error, block_not_found}
     end.
 
-get_gen_min_gas_price(Hash, Protocol, MinGasPrice) ->
-    {ok, Block} = aec_chain:get_block(Hash),
-    case aec_blocks:type(Block) of
-        key ->
-            {ok, MinGasPrice, Hash};
-        micro ->
+get_mb_min_gas_price(Hash, Protocol) ->
+    aeu_ets_cache:get(?GEN_MB_PRICE_CACHE, Hash,
+                      fun() -> get_mb_min_gas_price_(Hash, Protocol) end).
+
+get_mb_min_gas_price_(Hash, Protocol) ->
+    case aec_chain:get_block(Hash) of
+        {ok, Block} ->
             Txs = lists:map(fun aetx_sign:tx/1, aec_blocks:txs(Block)),
             Height = aec_blocks:height(Block),
-            NewMinGasPrice = lists:foldl(
-                fun(MGP, Tx) ->
+            {aec_blocks:time_in_msecs(Block), lists:foldl(
+                fun(Tx, MGP) ->
                     min(MGP, aetx:min_gas_price(Tx, Height, Protocol))
-                end, MinGasPrice, Txs),
-            get_gen_min_gas_price(aec_blocks:prev_hash(Block), Protocol, NewMinGasPrice)
+                end, undefined, Txs)};
+        error ->
+            {error, block_not_found}
     end.

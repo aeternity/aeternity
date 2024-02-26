@@ -3827,12 +3827,12 @@ definitions:
         min_gas_price:
           description: Minimum gas price in the block range
           $ref: '#/definitions/UInt'
-        blocks:
-          description: Amount of blocks from top
+        minutes:
+          description: Number of minutes from the top
           $ref: '#/definitions/UInt64'
       required:
         - min_gas_price
-        - blocks
+        - minutes
 
 externalDocs:
   description: Find out more about Aeternity
