@@ -36,8 +36,8 @@ delete_capability(Key) ->
 get_capabilities() ->
     call(get_capabilities).
 
-register_peer(Peer, Capabilities) ->
-    call({register_peer, Peer, Capabilities}).
+register_peer(Peer, Capabilities) when is_list(Capabilities) ->
+    call({register_peer, Peer, maps:from_list(Capabilities)}).
 
 remove_peer(Peer) ->
     call({remove_peer, Peer}).
