@@ -170,6 +170,9 @@ get_top_blocks_gas_price_summary(Minutes) ->
 
 -define(GEN_MB_PRICE_CACHE, '$aec_microblock_min_gas_price').
 
+min_gas_price(undefined) -> 0;
+min_gas_price(N) -> N.
+
 get_min_gas_price_since([], _Hash, _MinGasPrice, Data) ->
   {ok, lists:reverse(Data)};
 get_min_gas_price_since([{Ms, CutOff} | CutOffs] = COs, Hash, MinGasPrice, Data) ->
@@ -177,7 +180,7 @@ get_min_gas_price_since([{Ms, CutOff} | CutOffs] = COs, Hash, MinGasPrice, Data)
         {ok, Header} ->
             case aec_headers:time_in_msecs(Header) < CutOff of
                 true ->
-                    get_min_gas_price_since(CutOffs, Hash, MinGasPrice, [{Ms, MinGasPrice} | Data]);
+                    get_min_gas_price_since(CutOffs, Hash, MinGasPrice, [{Ms, min_gas_price(MinGasPrice)} | Data]);
                 false ->
                     case aec_headers:type(Header) of
                         key ->
