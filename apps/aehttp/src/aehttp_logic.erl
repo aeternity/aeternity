@@ -210,10 +210,9 @@ get_gen_min_gas_price(Hash, Protocol, MinGasPrice) ->
         micro ->
             Txs = lists:map(fun aetx_sign:tx/1, aec_blocks:txs(Block)),
             Height = aec_blocks:height(Block),
-            GasPrices = lists:map(
-                fun(Tx) ->
-                    aetx:min_gas_price(Tx, Height, Protocol)
-                end, Txs),
-            NewMinGasPrice = min(lists:min(GasPrices), MinGasPrice),
+            NewMinGasPrice = lists:foldl(
+                fun(MGP, Tx) ->
+                    min(MGP, aetx:min_gas_price(Tx, Height, Protocol))
+                end, MinGasPrice, Txs),
             get_gen_min_gas_price(aec_blocks:prev_hash(Block), Protocol, NewMinGasPrice)
     end.
