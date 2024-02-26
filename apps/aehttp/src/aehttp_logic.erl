@@ -166,7 +166,14 @@ get_top_blocks_gas_price_summary() ->
     TopKeyHash = aec_chain:top_key_block_hash(),
     MinGasPrices = get_gens_min_gas_price(TopKeyHash, 480),
 
-    [ [N, lists:sublist(MinGasPrices, N)] || N <- [1, 5, 20, 120, 480] ].
+    MinPriceN = fun(N) ->
+                    case lists:min(lists:sublist(MinGasPrices, N)) of
+                        undefined -> 0;
+                        X         -> X
+                    end
+                end,
+
+    [ [N, MinPriceN(N)] || N <- [1, 5, 20, 120, 480] ].
 
 -define(GEN_MIN_PRICE_CACHE, '$aec_generation_min_gas_price').
 -define(MIN_GAS_SLACK, 200_000).
