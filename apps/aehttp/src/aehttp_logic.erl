@@ -210,21 +210,10 @@ get_gen_min_gas_price(Hash, Protocol, MinGasPrice) ->
         micro ->
             Txs = lists:map(fun aetx_sign:tx/1, aec_blocks:txs(Block)),
             Height = aec_blocks:height(Block),
-            GasUsed =
-                lists:foldl(
-                    fun(Tx, Acc) ->
-                        Acc + aetx:gas_limit(Tx, Height, Protocol)
-                    end, 0, Txs),
-            %% Min gas is only interesting for full (or nearly full) micro blocks
-            case GasUsed < aec_governance:block_gas_limit() - ?MIN_GAS_SLACK of
-                true ->
-                    get_gen_min_gas_price(aec_blocks:prev_hash(Block), Protocol, MinGasPrice);
-                false ->
-                    GasPrices = lists:map(
-                        fun(Tx) ->
-                            aetx:min_gas_price(Tx, Height, Protocol)
-                        end, Txs),
-                    NewMinGasPrice = min(lists:min(GasPrices), MinGasPrice),
-                    get_gen_min_gas_price(aec_blocks:prev_hash(Block), Protocol, NewMinGasPrice)
-            end
+            GasPrices = lists:map(
+                fun(Tx) ->
+                    aetx:min_gas_price(Tx, Height, Protocol)
+                end, Txs),
+            NewMinGasPrice = min(lists:min(GasPrices), MinGasPrice),
+            get_gen_min_gas_price(aec_blocks:prev_hash(Block), Protocol, NewMinGasPrice)
     end.
