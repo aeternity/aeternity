@@ -1583,7 +1583,7 @@ post_contract_and_call_tx(_Config) ->
                       deposit     => 2,
                       amount      => 1,
                       gas         => 600,
-                      gas_price   => aec_test_utils:min_gas_price(),
+                      gas_price   => min_gas_price(),
                       fee         => 400000 * aec_test_utils:min_gas_price(),
                       call_data   => EncodedInitCallData},
 
@@ -1610,7 +1610,7 @@ post_contract_and_call_tx(_Config) ->
                              abi_version => latest_sophia_abi(),
                              amount      => 1,
                              gas         => 1000,
-                             gas_price   => aec_test_utils:min_gas_price(),
+                             gas_price   => min_gas_price(),
                              fee         => 500000 * aec_test_utils:min_gas_price(),
                              call_data   => EncodedCallData},
     {ok, 200, #{<<"tx">> := EncodedUnsignedContractCallTx}} = get_contract_call(ContractCallEncoded),
@@ -1668,7 +1668,7 @@ get_contract(_Config) ->
                       deposit     => 2,
                       amount      => ContractInitBalance,
                       gas         => 600,
-                      gas_price   => aec_test_utils:min_gas_price(),
+                      gas_price   => min_gas_price(),
                       fee         => 200000 * aec_test_utils:min_gas_price(),
                       call_data   => EncodedInitCallData},
 
@@ -2011,6 +2011,10 @@ get_status_sut(IntAsString) ->
 
 %% /recent-gas-prices
 
+%% Use slighly un-orthodox gas price to tests recent gas_prices endpoint
+min_gas_price() ->
+    aec_test_utils:min_gas_price() + 101.
+
 get_recent_gas_prices(_Config) ->
     Host = external_address(),
     {ok, 200, [
@@ -2019,7 +2023,7 @@ get_recent_gas_prices(_Config) ->
         #{ <<"minutes">> := 15, <<"min_gas_price">> := MinGasPrice15 },
         #{ <<"minutes">> := 60, <<"min_gas_price">> := MinGasPrice60 }
     ]} = http_request(Host, get, "recent-gas-prices", []),
-    MinGasPrice = 1000000000,
+    MinGasPrice = min_gas_price(),
     ?assertMatch(X when is_integer(X) andalso X == MinGasPrice, MinGasPrice1),
     ?assertMatch(X when is_integer(X) andalso X == MinGasPrice, MinGasPrice5),
     ?assertMatch(X when is_integer(X) andalso X == MinGasPrice, MinGasPrice15),
@@ -2121,7 +2125,7 @@ contract_transactions(_Config) ->    % miner has an account
                       deposit => 2,
                       amount => ContractInitBalance,
                       gas => 600,
-                      gas_price => aec_test_utils:min_gas_price(),
+                      gas_price => min_gas_price(),
                       fee => 200000 * aec_test_utils:min_gas_price(),
                       call_data => EncodedInitCallData},
 
@@ -2203,7 +2207,7 @@ contract_transactions(_Config) ->    % miner has an account
                              abi_version => latest_sophia_abi(),
                              amount => 1,
                              gas => 1000,
-                             gas_price => aec_test_utils:min_gas_price(),
+                             gas_price => min_gas_price(),
                              fee => 600000 * aec_test_utils:min_gas_price(),
                              call_data => EncodedCallData},
 
@@ -2315,7 +2319,7 @@ contract_create_transaction_init_error(_Config) ->
                       deposit     => 2,
                       amount      => 1,
                       gas         => 30,
-                      gas_price   => aec_test_utils:min_gas_price(),
+                      gas_price   => min_gas_price(),
                       fee         => 200000 * aec_test_utils:min_gas_price(),
                       call_data   => EncodedInitData},
     ValidDecoded = maps:merge(ValidEncoded,
