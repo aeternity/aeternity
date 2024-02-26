@@ -164,16 +164,19 @@ blocked_peers() -> aec_peers:blocked_peers().
 
 get_top_blocks_gas_price_summary() ->
     TopKeyHash = aec_chain:top_key_block_hash(),
-    MinGasPrices = get_gens_min_gas_price(TopKeyHash, 480),
+    case get_gens_min_gas_price(TopKeyHash, 480) of
+        Err = {error, _} ->
+            Err;
+        MinGasPrices ->
+            MinPriceN = fun(N) ->
+                            case lists:min(lists:sublist(MinGasPrices, N)) of
+                                undefined -> 0;
+                                X         -> X
+                            end
+                        end,
 
-    MinPriceN = fun(N) ->
-                    case lists:min(lists:sublist(MinGasPrices, N)) of
-                        undefined -> 0;
-                        X         -> X
-                    end
-                end,
-
-    [ [N, MinPriceN(N)] || N <- [1, 5, 20, 120, 480] ].
+            {ok, [ [N, MinPriceN(N)] || N <- [1, 5, 20, 120, 480] ]}
+    end.
 
 -define(GEN_MIN_PRICE_CACHE, '$aec_generation_min_gas_price').
 -define(MIN_GAS_SLACK, 200_000).
@@ -182,7 +185,7 @@ get_gens_min_gas_price(_, 0) -> [];
 get_gens_min_gas_price(KeyHash, N) ->
     case get_gen_min_gas_price(KeyHash) of
         {ok, MinGasPrice, PrevKeyHash} ->
-            [MinGasPrice || get_gens_min_gas_price(PrevKeyHash, N - 1)];
+            [MinGasPrice | get_gens_min_gas_price(PrevKeyHash, N - 1)];
         Err = {error, _} ->
             Err
     end.
@@ -196,7 +199,7 @@ get_gen_min_gas_price_(KeyHash) ->
         {ok, Block} ->
             get_gen_min_gas_price(aec_blocks:prev_hash(Block), aec_blocks:version(Block), undefined);
         error ->
-            {error, header_not_found}
+            {error, block_not_found}
     end.
 
 get_gen_min_gas_price(Hash, Protocol, MinGasPrice) ->

@@ -825,12 +825,16 @@ handle_request_('ProtectedDryRunTxs', #{ 'DryRunInput' := Req }, _Context) ->
     process_request(ParseFuns, Req);
 
 handle_request_('GetRecentGasPrices', _Params, _Context) ->
-    GasPrices = aehttp_logic:get_top_blocks_gas_price_summary(),
-    {200, [], lists:map(
-        fun([BlockAmount, GasPrice]) ->
-            #{ <<"blocks">> => BlockAmount, <<"min_gas_price">> => GasPrice }
-        end,
-        GasPrices)};
+    case aehttp_logic:get_top_blocks_gas_price_summary() of
+        {ok, GasPrices} ->
+            MkGasPrice =
+                fun([BlockAmount, GasPrice]) ->
+                    #{ <<"blocks">> => BlockAmount, <<"min_gas_price">> => GasPrice }
+                end,
+            {200, [], lists:map(MkGasPrice, GasPrices)};
+        {error, _} ->
+            {404, [], #{reason => <<"Block not found">>}}
+    end;
 
 handle_request_(OperationID, Req, Context) ->
     error_logger:error_msg(
