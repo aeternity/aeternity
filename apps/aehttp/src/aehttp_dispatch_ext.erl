@@ -700,6 +700,7 @@ handle_request_('GetStatus', _Params, _Context) ->
     Difficulty = difficulty(aec_blocks:difficulty(TopKeyBlock), Consensus),
     HashRate = target_to_hashrate(aec_blocks:target(TopKeyBlock), Consensus),
     {Syncing, SyncProgress, _, _} = aec_sync:sync_progress(),
+    Uptime = uptime(),
     Listening = true, %% TODO
     Protocols =
         maps:fold(fun(Vsn, Height, Acc) ->
@@ -734,6 +735,7 @@ handle_request_('GetStatus', _Params, _Context) ->
        <<"hashrate">>                   => HashRate,
        <<"syncing">>                    => Syncing,
        <<"sync_progress">>              => SyncProgress,
+       <<"uptime">>                     => Uptime,
        <<"listening">>                  => Listening,
        <<"protocols">>                  => Protocols2,
        <<"node_version">>               => NodeVersion,
@@ -891,3 +893,25 @@ get_default_network_name(<<"ae_uat">>) ->
 get_default_network_name(NetworkId) ->
     NetworkId.
 
+uptime() ->
+  %% {UptimeMs, _} = statistics(wall_clock),
+  {UptimeMs0, _} = statistics(wall_clock),
+  UptimeMs = if UptimeMs0 rem 2 == 0 -> UptimeMs0 + 1000 * 60 * 60 * 24 * 2; true -> UptimeMs0 + 1000 * 60 * 60 * 20 end,
+
+
+  Ts = UptimeMs div 1000,
+  Tms = UptimeMs rem 1000,
+
+  Res =
+      if Ts < 60 ->
+           io_lib:format("~ps:~p", [Ts, Tms]);
+         Ts < 60 * 60 ->
+           io_lib:format("~pm:~ps:~p", [Ts div 60, Ts rem 60, Tms]);
+         Ts < 60 * 60 * 24 ->
+           io_lib:format("~ph:~pm:~ps", [Ts div (60 * 60), (Ts rem (60 * 60)) div 60, Ts rem 60]);
+         true ->
+           io_lib:format("~pdays:~ph:~pm:~ps", [Ts div (60 * 60 * 24), (Ts rem (60 * 60 * 24)) div (60 * 60),
+                                                (Ts rem (60 * 60)) div 60, Ts rem 60])
+      end,
+
+  iolist_to_binary(Res).

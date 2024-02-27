@@ -2934,6 +2934,8 @@ definitions:
         format: float
         minimum: 0.0
         maximum: 100.0
+      uptime:
+        type: string
       listening:
         type: boolean
       protocols:
@@ -2964,6 +2966,7 @@ definitions:
       - difficulty
       - hashrate
       - syncing
+      - uptime
       - listening
       - protocols
       - node_version

@@ -3066,6 +3066,8 @@ components:
           format: float
           minimum: 0
           maximum: 100
+        uptime:
+          type: string
         listening:
           type: boolean
         protocols:
@@ -3096,6 +3098,7 @@ components:
         - difficulty
         - hashrate
         - syncing
+        - uptime
         - listening
         - protocols
         - node_version
