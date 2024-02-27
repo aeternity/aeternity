@@ -92,9 +92,9 @@ gossip_txs(GossipTxs) ->
 sync_in_progress(PeerId) ->
     opt_call({sync_in_progress, PeerId}, false).
 
--spec sync_progress() -> {boolean(), float(), aec_blocks:height()}.
+-spec sync_progress() -> {boolean(), float(), aec_blocks:height(), undefined | chain_id()}.
 sync_progress() ->
-    opt_call(sync_progress, {false, 100.0, 0}).
+    opt_call(sync_progress, {false, 100.0, 0, undefined}).
 
 -spec is_syncing() -> boolean().
 is_syncing() ->
@@ -358,7 +358,7 @@ handle_info({'EXIT', Pid, Reason}, State) ->
     end,
     {noreply, do_terminate_worker(Pid, State, Reason)};
 handle_info(update_sync_progress_metric, State) ->
-    {_, SyncProgress, _} = sync_progress(State),
+    {_, SyncProgress, _, _} = sync_progress(State),
     aec_metrics:try_update([ae,epoch,aecore,sync,progress], SyncProgress),
     log_sync_status(State),
 
@@ -1226,20 +1226,24 @@ max_gossip() ->
 is_syncing(#state{sync_tasks = SyncTasks}) ->
     [1 || #sync_task{suspect = false} <- SyncTasks] =/= [].
 
--spec sync_progress(#state{}) -> {boolean(), float(), aec_blocks:height()}.
+-spec sync_progress(#state{}) -> {boolean(), float(), aec_blocks:height(), undefined | chain_id()}.
 sync_progress(#state{sync_tasks = SyncTasks, top_target = TopTarget} = State) ->
     case is_syncing(State) of
-        false -> {false, 100.0, TopTarget};
+        false -> {false, 100.0, TopTarget, undefined};
         true ->
-            TargetHeight =
+            {TargetHeight, SyncTaskId} =
                 lists:foldl(
                   fun(#sync_task{suspect = true}, Acc) ->
                           Acc;
-                     (SyncTask, MaxHeight) ->
+                     (SyncTask, {MaxHeight, STId}) ->
                           #chain{blocks = Chain} = SyncTask#sync_task.chain,
                           [#chain_block{height = Height} | _] = Chain,
-                          max(Height, MaxHeight)
-                  end, 0, SyncTasks),
+                          if Height > MaxHeight ->
+                               {Height, SyncTask#sync_task.id};
+                             true ->
+                               {MaxHeight, STId}
+                          end
+                  end, {0, undefined}, SyncTasks),
             TopHeight = aec_headers:height(aec_chain:dirty_top_header()),
             SyncProgress0 = round(10000000 * TopHeight / TargetHeight) / 100000,
             %% It is possible to have TopHeight already higher than Height in sync task,
@@ -1251,7 +1255,7 @@ sync_progress(#state{sync_tasks = SyncTasks, top_target = TopTarget} = State) ->
                     true -> 99.9;
                     false -> SyncProgress0
                 end,
-            {true, SyncProgress, TargetHeight}
+            {true, SyncProgress, TargetHeight, SyncTaskId}
     end.
 
 peer_get_header_by_hash(PeerId, RemoteHash) ->
@@ -1339,7 +1343,7 @@ validate_block(Block) ->
 
 log_sync_status(#state{is_syncing = false}) -> ok;
 log_sync_status(#state{sync_tasks = STs} = S) ->
-    {_, SyncProgress, _} = sync_progress(S),
+    {_, SyncProgress, _, _} = sync_progress(S),
     epoch_sync:info("Sync progress: ~.4f%", [SyncProgress]),
     [log_sync_task(ST) || ST <- STs].
 

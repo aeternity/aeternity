@@ -143,7 +143,8 @@ top_key_block() ->
 %% @doc Get the current sync status, percent complete and height reached.
 -spec sync_progress() -> {boolean(), float(), aec_blocks:height()}.
 sync_progress() ->
-    aec_sync:sync_progress().
+    {Syncing, Progress, Top, _} = aec_sync:sync_progress(),
+    {Syncing, Progress, Top}.
 
 connected_peers() ->
     aec_peers:connected_peers().

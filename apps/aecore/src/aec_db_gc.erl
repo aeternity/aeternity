@@ -291,7 +291,7 @@ siblings_at_height(H) ->
 %% once the chain is synced, there's no way to "unsync"
 handle_info({_, chain_sync, #{info := {chain_sync_done, _}}}, St) ->
     case aec_sync:sync_progress() of
-        {false, _, _} ->
+        {false, _, _, _} ->
             {noreply, St#st{synced = true}};
         _ ->
             {noreply, St}
@@ -384,7 +384,7 @@ handle_cast({scanning_failed, _ErrHeight}, St) ->
 
 handle_cast(#scanner_done{tree = Name, height = Height, block_hash = Hash},
             #st{scanners = Scanners} = St) ->
-    Scanners1 = 
+    Scanners1 =
         [X || #scanner{height = He, block_hash = Ha, tree = T} = X <- Scanners,
               {He, Ha, T} =/= {Height, Hash, Name}],
     St1 = update_current_scan(Hash, Scanners1, St#st{scanners = Scanners1}),
