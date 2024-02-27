@@ -894,10 +894,7 @@ get_default_network_name(NetworkId) ->
     NetworkId.
 
 uptime() ->
-  %% {UptimeMs, _} = statistics(wall_clock),
-  {UptimeMs0, _} = statistics(wall_clock),
-  UptimeMs = if UptimeMs0 rem 2 == 0 -> UptimeMs0 + 1000 * 60 * 60 * 24 * 2; true -> UptimeMs0 + 1000 * 60 * 60 * 20 end,
-
+  {UptimeMs, _} = statistics(wall_clock),
 
   Ts = UptimeMs div 1000,
   Tms = UptimeMs rem 1000,
