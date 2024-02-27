@@ -197,7 +197,9 @@ log_agg_stats(#{t0 := T0, t1 := T1, t := T, gs := Gs, mbs := MBs, txs := Txs}) -
     TWall = T1 - T0,
     epoch_sync:info("Synced ~p generations: ~.2f ms/gen (~p mblock(s), ~p tx(s))"
                     " - Walltime: ~.2fs CPU: ~.2fs efficiency ~.2f%",
-                    [Gs, T / (1000 * Gs), MBs, Txs, TWall / 1_000_000, T / 1_000_000, (T * 100) / TWall]).
+                    [Gs, T / (1000 * Gs), MBs, Txs, TWall / 1_000_000, T / 1_000_000, (T * 100) / TWall]);
+log_agg_stats(_Incomplete) ->
+    ok.
 
 %% ------------------------------------------------------------------------
 %% -- Misc helpers
