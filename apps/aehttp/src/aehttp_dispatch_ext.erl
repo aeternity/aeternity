@@ -910,8 +910,8 @@ uptime() ->
          Ts < 60 * 60 * 24 ->
            io_lib:format("~ph:~pm:~ps", [Ts div (60 * 60), (Ts rem (60 * 60)) div 60, Ts rem 60]);
          true ->
-           io_lib:format("~pdays:~ph:~pm:~ps", [Ts div (60 * 60 * 24), (Ts rem (60 * 60 * 24)) div (60 * 60),
-                                                (Ts rem (60 * 60)) div 60, Ts rem 60])
+           io_lib:format("~pd:~ph:~pm:~ps", [Ts div (60 * 60 * 24), (Ts rem (60 * 60 * 24)) div (60 * 60),
+                                             (Ts rem (60 * 60)) div 60, Ts rem 60])
       end,
 
   iolist_to_binary(Res).
