@@ -139,7 +139,8 @@ get_estimate(Id, State) ->
             #{t1 := T1} = hd(Stats),
             #{t0 := T0} = lists:last(Stats),
             Tx = ((T1 - T0) / ?ESTIMATE_SIZE) / 1_000_000,
-            {ok, #{ speed => 60 / Tx }};
+            Speed = round(1000 * (60 / Tx)) / 1000,
+            {ok, #{ speed => Speed }};
         false ->
             epoch_sync:info("Get estimate failed, no sync_stat for ~p", [Id]),
             {error, no_estimate}
