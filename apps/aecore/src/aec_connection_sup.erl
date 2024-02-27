@@ -63,6 +63,7 @@ init([]) ->
                  , worker(aec_tx_gossip_cache)
                  , worker(aec_peers)
                  , worker(aec_sync)
+                 , worker(aec_sync_stats)
                  , peer_listener_spec()           % incoming connections
                  ],
     {ok, {SupFlags, ChildSpecs}}.

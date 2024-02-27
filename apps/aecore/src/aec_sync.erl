@@ -378,10 +378,12 @@ sync_task_for_chain(Chain, S = #state{ sync_tasks = STs }) ->
     case match_tasks(Chain, STs, []) of
         no_match ->
             ST = init_sync_task(Chain),
+            new_sync_stats(ST),
             {{new, Chain, ST#sync_task.id}, set_sync_task(ST, S)};
         {match, ST = #sync_task{ id = STId, chain = C2 }} ->
             NewChain = merge_chains(Chain#chain{ id = STId }, C2),
             ST1 = ST#sync_task{ chain = NewChain },
+            new_sync_stats(ST1),
             {{existing, NewChain, STId}, set_sync_task(ST1, S)};
         Res = {inconclusive, _, _} ->
             {Res, S}
@@ -414,8 +416,9 @@ handle_last_result(ST, {get_generation, Height, Hash, PeerId, {ok, Block}}) ->
     ST#sync_task{ pool = Pool1 };
 handle_last_result(ST, {post_blocks, ok}) ->
     ST#sync_task{ adding = [] };
-handle_last_result(ST, {post_blocks, {ok, NewTop}}) ->
+handle_last_result(ST, {post_blocks, {ok, NewTop, Stats}}) ->
     inform_workers(ST, {new_top, NewTop}),
+    post_stats(ST, Stats),
     ST#sync_task{ adding = [] };
 handle_last_result(ST, {post_blocks, {rejected, BlockFromPeerId, Height}}) ->
     mark_workers_as_suspect(ST#sync_task.workers),
@@ -529,6 +532,7 @@ maybe_end_sync_task(State, ST) ->
                 false ->
                     epoch_sync:info("Removing/ending sync task ~p target was ~p",
                                     [ST#sync_task.id, pp_chain_block(Target)]),
+                    aec_sync_stats:sync_done(ST#sync_task.id),
                     State1 = delete_sync_task(ST, State),
                     maybe_update_top_target(State1);
                 true ->
@@ -950,23 +954,27 @@ get_header_by_height(PeerId, Height, RemoteTop) ->
             end
     end.
 
+new_sync_stats(#sync_task{ id = STId, chain = Chain }) ->
+    #chain{ blocks = [#chain_block{ hash = Hash, height = Height } | _] } = Chain,
+    aec_sync_stats:new_sync(STId, {Height, Hash}).
+
+post_stats(#sync_task{ id = STId }, Stats) ->
+    aec_sync_stats:post_stats(STId, Stats).
+
 post_blocks([]) -> ok;
 post_blocks([#pool_item{ height = StartHeight } | _] = Blocks) ->
     post_blocks(StartHeight, StartHeight, Blocks, empty_stats()).
 
-post_blocks(To, To, [], Stats) ->
-    epoch_sync:info("Synced block  ~p   (~s)", [To, pp_stats(Stats)]),
-    {ok, To};
 post_blocks(From, To, [], Stats) ->
-    epoch_sync:info("Synced blocks ~p - ~p   (~s)", [From, To, pp_stats(Stats)]),
-    {ok, To};
+    log_sync_stats(From, To, Stats),
+    {ok, To, lists:reverse(maps:get(gens, Stats, []))};
 post_blocks(From, _To, [#pool_item{ height = Height, got = {_PeerId, local} } | Blocks],
             Stats = #{gs := Gs}) ->
     post_blocks(From, Height, Blocks, Stats#{gs := Gs + 1});
 post_blocks(From, To, [#pool_item{ height = Height, got = {PeerId, Block} } | Blocks], Stats) ->
-    case add_generation(Block, Stats) of
-        {ok, Stats1} ->
-            post_blocks(From, Height, Blocks, Stats1);
+    case add_generation(Block, empty_gen_stats(Height)) of
+        {ok, GenStats} ->
+            post_blocks(From, Height, Blocks, add_gen_stats(Stats, GenStats));
         {error, Reason} ->
             epoch_sync:info("Failed to add synced block ~p: ~p", [Height, Reason]),
             [ epoch_sync:info("Synced blocks ~p - ~p   (~s)", [From, To - 1, pp_stats(Stats)]) || To > From ],
@@ -981,10 +989,25 @@ post_blocks(From, To, [#pool_item{ height = Height, got = {PeerId, Block} } | Bl
     end.
 
 empty_stats() ->
-  #{t0 => os:timestamp(), gs => 0, mbs => 0, txs => 0}.
+    #{t0 => erlang:system_time(microsecond), gs => 0, mbs => 0, txs => 0, gens => []}.
+
+empty_gen_stats(Height) ->
+    ES = empty_stats(),
+    ES#{height => Height}.
+
+add_gen_stats(S  = #{gs := Gs, mbs := MBs, txs := Txs, gens := Gens},
+              GS = #{mbs := GMBs, txs := GTxs}) ->
+    T1 = erlang:system_time(microsecond),
+    S#{gs := Gs + 1, mbs := MBs + GMBs, txs := Txs + GTxs,
+       gens := [GS#{t1 => T1} | Gens]}.
+
+log_sync_stats(To, To, Stats) ->
+    epoch_sync:info("Synced block  ~p   (~s)", [To, pp_stats(Stats)]);
+log_sync_stats(From, To, Stats) ->
+    epoch_sync:info("Synced blocks ~p - ~p   (~s)", [From, To, pp_stats(Stats)]).
 
 pp_stats(#{t0 := T0, gs := Gs, mbs := MBs, txs := Txs}) ->
-    T = timer:now_diff(os:timestamp(), T0),
+    T = erlang:system_time(microsecond) - T0,
     Avg = if Gs == 0 -> 0.0; true ->  T / (1000 * Gs) end,
     io_lib:format("~p generations (~.2f ms/gen), ~p mblock(s), ~p tx(s)",
                   [Gs, Avg, MBs, Txs]).
@@ -996,11 +1019,11 @@ pp_stats(#{t0 := T0, gs := Gs, mbs := MBs, txs := Txs}) ->
 %% each synchronous call.
 %% Map contains key dir, saying in which direction we sync
 add_generation(#{dir := forward, key_block := _KB, micro_blocks := MBs},
-               Stats = #{mbs := Bs, gs := Gs}) ->
-    add_blocks(MBs, Stats#{mbs := Bs + length(MBs), gs := Gs + 1});
+               Stats = #{mbs := NMBs}) ->
+    add_blocks(MBs, Stats#{mbs := NMBs + length(MBs)});
 add_generation(#{dir := backward, key_block := KB, micro_blocks := MBs},
-               Stats = #{mbs := Bs, gs := Gs}) ->
-    add_blocks(MBs ++ [KB], Stats#{mbs := Bs + length(MBs), gs := Gs + 1}).
+               Stats = #{mbs := NMBs}) ->
+    add_blocks(MBs ++ [KB], Stats#{mbs := NMBs + length(MBs)}).
 
 add_blocks([], Stats) ->
     {ok, Stats};
