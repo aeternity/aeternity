@@ -164,7 +164,7 @@ blocked_peers() -> aec_peers:blocked_peers().
 
 get_top_blocks_gas_price_summary(Minutes) ->
     Now = erlang:system_time(millisecond),
-    Offsets = [ {N, Now - N * 60 * 1_000_000} || N <- Minutes ],
+    Offsets = [ {N, Now - N * 60 * 1_000} || N <- Minutes ],
     TopHash = aec_chain:top_block_hash(),
     get_min_gas_price_since(Offsets, TopHash, undefined, []).
 
