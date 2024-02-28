@@ -90,7 +90,6 @@ The core nodes of the public test network are accessible from the Internet.
 
 Information, e.g. height, of the top block of the longest chain as seen by these core nodes of the testnet can be obtained by opening in the browser any of the following URLs:
 * http://52.10.46.160:3013/v2/blocks/top
-* http://18.195.109.60:3013/v2/blocks/top
 * http://13.250.162.250:3013/v2/blocks/top
 * http://18.130.148.7:3013/v2/blocks/top
 
