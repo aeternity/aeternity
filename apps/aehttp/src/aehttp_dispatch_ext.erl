@@ -843,7 +843,7 @@ target_to_hashrate(Target, aec_consensus_bitcoin_ng) ->
       0 -> 0;
       _ ->
           Difficulty = aeminer_pow:target_to_difficulty(Target) / (1 bsl 24),
-          round(Difficulty * (aec_governance:expected_block_mine_rate() / 1000) * 42)
+          round((Difficulty * 42) / (aec_governance:expected_block_mine_rate() / 1000))
     end;
 target_to_hashrate(_Target, _Consensus) ->
     0.
