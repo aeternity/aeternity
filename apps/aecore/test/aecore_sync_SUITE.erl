@@ -656,6 +656,8 @@ check_capabilities(Config) ->
     {ok, PeerInfo} = aec_peers:parse_peer_address(aecore_suite_utils:peer_info(Dev1)),
     PeerId = aec_peer:id(PeerInfo),
     Caps = default_capabilities(),
+    %% Wait for the ping capabailities to be propagated
+    timer:sleep(2000),
     PeersWithCap = rpc:call(N2, aec_capabilities, peers_with_capability, [chain_poi], 5000),
     ct:log("Peers with chain_poi on Dev2 = ~p", [ PeersWithCap ]),
     PeersWithCap = [{PeerId, Caps}],
