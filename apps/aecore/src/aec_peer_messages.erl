@@ -105,11 +105,11 @@ serialize(txps_get, TxpsGet, Vsn = ?TX_POOL_SYNC_GET_VSN) ->
 serialize(txps_finish, TxpsFinish, Vsn = ?TX_POOL_SYNC_FINISH_VSN) ->
     #{ done := Done } = TxpsFinish,
     serialize_flds(txps_finish, Vsn, [{done, Done}]);
-serialize(peers, Peers, Vsn = ?VSN_1) ->
+serialize(peers, Peers, Vsn = ?PEER_VSN) ->
     [ serialize(peer, Peer, Vsn) || Peer <- Peers ];
-serialize(peer, Peer, ?VSN_1) ->
+serialize(peer, Peer, ?PEER_VSN) ->
     %% Don't pollute the encoding with lots of Vsn-fields...
-    Template = serialization_template(peer, ?VSN_1),
+    Template = serialization_template(peer, ?PEER_VSN),
     Flds = [ {host,   maps:get(host, Peer)}
            , {port,   maps:get(port, Peer)}
            , {pubkey, maps:get(pubkey, Peer)} ],
