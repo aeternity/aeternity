@@ -412,16 +412,38 @@ serialize_capabilities(Vsn, Caps) ->
     [List] = aeserialization:encode_fields(Template, [{data, Fields}]),
     aeser_rlp:encode(List).
 
+
+-ifdef(TEST).
+
+test_capabilities_template(<<"test">>, ?PING_VSN_2) ->
+    [{test, #{ items => [ {test_hash, binary}
+                        , {root_hash, binary}
+                        , {genesis, binary}
+                        , {top, int} ]}
+     }];
+test_capabilities_template(K, Vsn) ->
+    capabilities_template(K, Vsn).
+
+serialize_capability(K, V, Vsn) ->
+    Template = test_capabilities_template(K, Vsn),
+    List = aeserialization:encode_fields(Template, V),
+    aeser_rlp:encode(List).
+
+-else.
+
 serialize_capability(K, V, Vsn) ->
     Template = capabilities_template(K, Vsn),
     List = aeserialization:encode_fields(Template, V),
     aeser_rlp:encode(List).
 
+-endif.
+
+
 deserialize_capabilities(Vsn, Caps) ->
     try
 	Data = aeser_rlp:decode(Caps),
 	[{data, Fields}] = aeserialization:decode_fields([{data, [{binary, binary}]}], [Data]),
-	Deserialized = [{K, deserialize_capability(K, V, Vsn)} || {K, V} <- Fields],
+	Deserialized = lists:filtermap(fun({K,V}) -> deserialize_capability(K, V, Vsn) end, Fields),
         lists:map(
           fun({Kb, L}) ->
                   KbA = binary_to_existing_atom(Kb, utf8),
@@ -437,8 +459,12 @@ deserialize_capabilities(Vsn, Caps) ->
 
 deserialize_capability(K, Bin, Vsn) ->
     Data = aeser_rlp:decode(Bin),
-    Template = capabilities_template(K, Vsn),
-    aeserialization:decode_fields(Template, Data).
+    case capabilities_template(K, Vsn) of
+        undefined -> 
+            false;
+        Template ->
+            {true, {K, aeserialization:decode_fields(Template, Data)}}
+    end.
 
 capabilities_template(<<"chain_poi">>, ?PING_VSN_2) ->
     [{chain_poi, #{ items => [ {height, int}
@@ -446,7 +472,9 @@ capabilities_template(<<"chain_poi">>, ?PING_VSN_2) ->
                              , {genesis, binary}
                              , {top, binary}
                              , {poi, binary} ]}
-     }].
+     }];
+capabilities_template(_, _) ->
+    undefined.
 
 serialization_template(ping, ?PING_VSN_2) ->
     [ {versions, [#{items => [ {protocol, binary}

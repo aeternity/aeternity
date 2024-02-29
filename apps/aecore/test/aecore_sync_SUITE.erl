@@ -39,6 +39,8 @@
     large_msgs/1,
     set_capabilities/1,
     check_capabilities/1,
+    set_unknown_capabilities/1,
+    check_unknown_capabilities/1,
     inject_long_chain/1,
     measure_second_node_sync_time/1,
     validate_default_peers/1,
@@ -145,7 +147,10 @@ groups() ->
        set_capabilities,
        mine_on_first,
        start_second_node,
-       check_capabilities]},
+       check_capabilities,
+       set_unknown_capabilities,
+       restart_second,
+       check_unknown_capabilities]},
      {one_blocked, [sequence],
       [start_first_node,
        mine_on_first,
@@ -300,7 +305,8 @@ init_per_group(persistence, Config) ->
     Config1;
 init_per_group(ThreeNodes, Config) when ThreeNodes =:= three_nodes;
                                         ThreeNodes =:= node_info;
-                                        ThreeNodes =:= peer_analytics ->
+                                        ThreeNodes =:= peer_analytics;
+                                        ThreeNodes =:= capabilities ->
     Config1 = config({devs, [dev1, dev2, dev3]}, Config),
     InitialApps = {running_apps(), loaded_apps()},
     {ok, _} = application:ensure_all_started(exometer_core),
@@ -662,6 +668,19 @@ check_capabilities(Config) ->
     ct:log("Peers with chain_poi on Dev2 = ~p", [ PeersWithCap ]),
     PeersWithCap = [{PeerId, Caps}],
     ok.
+
+set_unknown_capabilities(Config) ->
+    [ Dev1 | _ ] = proplists:get_value(devs, Config),
+    N1 = aecore_suite_utils:node_name(Dev1),
+    TestCaps = [#{test_hash => <<>>, root_hash => <<>>, genesis => <<>>, top => 0}],
+    ok = rpc:call(N1, aec_capabilities, set_capability, [test, TestCaps], 5000),
+    {ok, TestCaps} = rpc:call(N1, aec_capabilities, get_capability, [test], 5000),
+    ok.
+
+check_unknown_capabilities(Config) ->
+    %% Check the known capabliities can still bre retrieved 
+    check_capabilities(Config).
+
 
 default_capabilities() ->
     [#{height => 0, root_hash => <<>>, genesis => <<>>, top => <<>>, poi => <<>>}].
