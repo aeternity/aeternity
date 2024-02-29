@@ -654,7 +654,12 @@ handle_msg(S, MsgType, Vsn, true, Request, {ok, Msg}) ->
 
 handle_request(S, {Request, Args}, From) ->
     MappedRequest = map_request(Request),
-    Vsn = msg_version(Request, S),
+    Vsn = case Request of
+            tx_pool ->
+                undefined;
+            _ ->
+                msg_version(Request, S)
+          end,
     case get_request(S, Request, Vsn) of
         none ->
             handle_request(S, Request, Args, Vsn, From);
@@ -690,9 +695,6 @@ prepare_request_data(_S, get_node_info, _, _Vsn) ->
 
 msg_version(ping, S) ->
     ping_version(S);
-msg_version(tx_pool, _S) ->
-    %% TODO which version number should be used? Should tx_pool messages have a common version number?
-    1;
 msg_version(Request, S) ->
     aec_peer_messages:latest_vsn(Request, p2p_version(S)).
 
@@ -726,7 +728,7 @@ handle_tx_pool(S, Args, Vsn, From) ->
 handle_ping_rsp(S, {ping, From, _TRef}, Vsn, RemotePingObj) ->
     Res = handle_ping_msg(S, Vsn, RemotePingObj),
     gen_server:reply(From, Res),
-    %% UW: determine which version to use in the future, and perhaps re-ping
+    %% determine which version to use in the future, and re-ping
     S1 = set_ping_vsn(S, Vsn, RemotePingObj, From),
     remove_request_fld(S1, ping, Vsn).
 
@@ -835,7 +837,8 @@ handle_first_ping(S, RemotePingObj) ->
 handle_ping_msg(S, Vsn, RemotePingObj) ->
     case (not maps:is_key(use_ping_vsn, S) andalso Vsn > ?PING_VSN_1) of
         true ->
-            %% Negotiating ping upgrade, don't need to process handle_ping_msg, causes sync to fail because the pings are too close together
+            %% Negotiating ping upgrade, don't need to process handle_ping_msg
+            %% otherwise start sync fails because it is called twice in rapid succession which causes sync_in_progress to return false and therefore cause the sync to be attempted to be started twice
             ok;
         _ ->
             handle_ping_msg(S, RemotePingObj)
@@ -1205,7 +1208,6 @@ handle_tx_pool_sync_finish(S, MsgObj) ->
     S.
 
 handle_tx_pool_sync_rsp(S, Action, {tx_pool, From, _TRef}, MsgObj) ->
-    Vsn = msg_version(tx_pool, S),
     case Action of
         init ->
             gen_server:reply(From, ok);
@@ -1218,7 +1220,7 @@ handle_tx_pool_sync_rsp(S, Action, {tx_pool, From, _TRef}, MsgObj) ->
         finish ->
             gen_server:reply(From, {ok, maps:get(done, MsgObj)})
     end,
-    remove_request_fld(S, tx_pool, Vsn).
+    remove_request_fld(S, tx_pool, undefined).
 
 %% -- Send Block --------------------------------------------------------------
 
