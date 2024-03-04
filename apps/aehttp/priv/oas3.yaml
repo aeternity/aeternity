@@ -1029,6 +1029,26 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PeerPubKey"
+  /sync-status:
+    get:
+      tags:
+        - external
+        - node_info
+      operationId: GetSyncStatus
+      description: Get the sync status of a node
+      responses:
+        "200":
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SyncStatus"
+        "404":
+          description: Node not syncing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /status:
     get:
       tags:
@@ -3012,6 +3032,22 @@ components:
           $ref: "#/components/schemas/EncodedPubkey"
       required:
         - pub_key
+    SyncStatus:
+      type: object
+      properties:
+        progress:
+          type: number
+        target:
+          $ref: "#/components/schemas/UInt64"
+        speed:
+          type: number
+        estimate:
+          $ref: "#/components/schemas/UInt64"
+      required:
+        - progress
+        - target
+        - speed
+        - estimate
     Status:
       type: object
       properties:

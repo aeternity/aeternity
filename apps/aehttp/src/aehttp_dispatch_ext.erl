@@ -109,6 +109,7 @@ queue('GetAuctionEntryByName')                  -> ?READ_Q;
 queue('GetChannelByPubkey')                     -> ?READ_Q;
 queue('GetPeerPubkey')                          -> ?READ_Q;
 queue('GetStatus')                              -> ?READ_Q;
+queue('GetSyncStatus')                          -> ?READ_Q;
 queue('GetPeerKey')                             -> ?READ_Q;
 queue('GetChainEnds')                           -> ?READ_Q;
 %% update transactions (default to update in catch-all)
@@ -668,6 +669,29 @@ handle_request_('GetPeerPubkey', _Params, _Context) ->
     {ok, Pubkey} = aec_keys:peer_pubkey(),
     {200, [], #{pubkey => aeser_api_encoder:encode(peer_pubkey, Pubkey)}};
 
+handle_request_('GetSyncStatus', _Params, _Context) ->
+    {Syncing, SyncProgress, TargetHeight, SyncTaskId} = aec_sync:sync_progress(),
+    case Syncing of
+        false ->
+            {404, [], #{reason => <<"Node is not syncing">>}};
+        true ->
+
+            case aec_sync_stats:get_estimate(SyncTaskId) of
+               {ok, #{ speed := Speed }} ->
+                    CurrentTop = aec_chain:top_height(),
+                    Remaining = round((TargetHeight - CurrentTop) / Speed) * 60,
+                    {200, [], #{<<"progress">> => SyncProgress,
+                                <<"target">> => TargetHeight,
+                                <<"speed">> => Speed,
+                                <<"estimate">> => Remaining}};
+               _ ->
+                    {200, [], #{<<"progress">> => SyncProgress,
+                                <<"target">> => TargetHeight,
+                                <<"speed">> => 0,
+                                <<"estimate">> => 0 }}
+            end
+    end;
+
 handle_request_('GetStatus', _Params, _Context) ->
     {ok, TopKeyBlock} = aec_chain:top_key_block(),
     Consensus = aec_blocks:consensus_module(TopKeyBlock),
@@ -675,7 +699,7 @@ handle_request_('GetStatus', _Params, _Context) ->
     Solutions = 0, %% TODO
     Difficulty = difficulty(aec_blocks:difficulty(TopKeyBlock), Consensus),
     HashRate = target_to_hashrate(aec_blocks:target(TopKeyBlock), Consensus),
-    {Syncing, SyncProgress, _} = aec_sync:sync_progress(),
+    {Syncing, SyncProgress, _, _} = aec_sync:sync_progress(),
     Listening = true, %% TODO
     Protocols =
         maps:fold(fun(Vsn, Height, Acc) ->

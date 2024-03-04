@@ -1046,6 +1046,25 @@ paths:
           description: 'Successful operation'
           schema:
             $ref: '#/definitions/Status'
+  /sync-status:
+    get:
+      tags:
+        - external
+        - node_info
+      operationId: GetSyncStatus
+      description: 'Get the sync status of a node'
+      produces:
+        - application/json
+      parameters: []
+      responses:
+        '200':
+          description: 'Successful operation'
+          schema:
+            $ref: '#/definitions/SyncStatus'
+        '404':
+          description: Node not syncinc
+          schema:
+            $ref: '#/definitions/Error'
   /status/chain-ends:
     get:
       tags:
@@ -2881,6 +2900,22 @@ definitions:
         $ref: '#/definitions/EncodedPubkey'
     required:
       - pub_key
+  SyncStatus:
+    type: object
+    properties:
+      progress:
+        type: number
+      target:
+        $ref: "#/definitions/UInt64"
+      speed:
+        type: number
+      estimate:
+        $ref: "#/definitions/UInt64"
+    required:
+      - progress
+      - target
+      - speed
+      - estimate
   Status:
     type: object
     properties:
