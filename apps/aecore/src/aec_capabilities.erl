@@ -64,8 +64,9 @@ handle_call(get_capabilities, _From, #{capabilities := Cs} = St) ->
 handle_call({register_peer, PeerId, Capabilities}, _From, #{peers := Peers} = St) ->
     {reply, ok, St#{peers := Peers#{PeerId => Capabilities}}};
 handle_call({peers_with_capability, Key}, _From, #{peers := Peers} = St) ->
-    Result = maps:fold(fun(P, Cs, Acc) ->
-                               peers_with_cap_(P, Key, Cs, Acc)
+    Result = maps:fold(fun(PeerId, #{Key := Caps}, Acc) ->
+                            [{PeerId, Caps}|Acc];
+                           (_,_, Acc) -> Acc
                        end, [], Peers),
     {reply, Result, St}.
 
@@ -80,11 +81,3 @@ terminate(_Reason, _State) ->
 
 code_change(_FromVsn, St, _Extra) ->
     {ok, St}.
-
-peers_with_cap_(PeerId, Key, PeerCaps, Acc) ->
-    case maps:find(Key, PeerCaps) of
-        {ok, Value} ->
-            [{PeerId, Value} | Acc];
-        error ->
-            Acc
-    end.

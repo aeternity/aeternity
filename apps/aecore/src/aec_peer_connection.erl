@@ -74,6 +74,7 @@
                   , port      => non_neg_integer()
                   , requests  => map()
                   , first_ping_tref => any()
+                  , use_ping_vsn := ?PING_VSN_1 | ?PING_VSN_2
                   , fragments => [binary()]
                   }.
 
@@ -494,13 +495,13 @@ set_request(S, Kind, Vsn, From, Timeout) ->
 
 remove_request_fld(S, Kind, Vsn) ->
     Rs = maps:get(requests, S, #{}),
-    case get_request(S, Kind, Vsn) of
-        none ->
-            ok;
-        {_MappedKind, _From, TRef} ->
-            erlang:cancel_timer(TRef)
-    end,
-    S#{ requests => maps:remove(request_key(map_request(Kind), Vsn), Rs) }.
+    case maps:take(request_key(map_request(Kind), Vsn), Rs) of
+        error ->
+            S;
+        {{_MappedKind, _From, TRef}, Rs1} ->
+            erlang:cancel_timer(TRef),
+            S#{ requests => Rs1 }
+    end.
 
 handle_request_timeout(S, Ref, Kind, Vsn) ->
     Rs = maps:get(requests, S, #{}),
@@ -613,8 +614,8 @@ do_reply(From = {Pid, _Tag}, Msg) when is_pid(Pid) ->
 do_reply(_Other, _Msg) ->
     ok.
 
-handle_msg(S, block_txs, Vsn, true, none, Result) ->
-    handle_get_block_txs_rsp(S, Vsn, Result);
+handle_msg(S, block_txs, _Vsn, true, none, Result) ->
+    handle_get_block_txs_rsp(S, Result);
 handle_msg(S, MsgType, _Vsn, true, none, Result) ->
     epoch_sync:info("Peer ~p got unexpected ~p response - ~p",
                     [peer_id(S), MsgType, Result]),
@@ -669,8 +670,8 @@ handle_request(S, {Request, Args}, From) ->
 
 handle_request(S = #{ status := error }, _Req, _Args, _Vsn, _From) ->
     {reply, {error, disconnected}, S};
-handle_request(S, tx_pool, TxPoolArgs, Vsn, From) ->
-    handle_tx_pool(S, TxPoolArgs, Vsn, From);
+handle_request(S, tx_pool, TxPoolArgs, _Vsn, From) ->
+    handle_tx_pool(S, TxPoolArgs, From);
 handle_request(S, Request, Args, Vsn, From) ->
     {noreply, prepare_and_send_request(S, Request, Args, Vsn, From)}.
 
@@ -708,7 +709,7 @@ ping_version(_) ->
 custom_timeout(get_node_info, [Timeout]) -> Timeout;
 custom_timeout(_, _) -> ?REQUEST_TIMEOUT.
 
-handle_tx_pool(S, Args, Vsn, From) ->
+handle_tx_pool(S, Args, From) ->
     {Msg, MsgData} =
         case Args of
             [sync_init] ->
@@ -721,7 +722,7 @@ handle_tx_pool(S, Args, Vsn, From) ->
                 {txps_finish, #{ done => Done }}
         end,
     send_msg(S, Msg, aec_peer_messages:serialize(Msg, MsgData)),
-    {noreply, set_request(S#{ tx_pool => Msg }, tx_pool, Vsn, From)}.
+    {noreply, set_request(S#{ tx_pool => Msg }, tx_pool, undefined, From)}.
 
 %% -- Ping message -----------------------------------------------------------
 
@@ -895,7 +896,7 @@ handle_ping_msg(S, RemotePingObj) ->
                 {{error, Reason}, false}
         end,
     Caps = maps:get(capabilities, RemotePingObj, []),
-    Caps =/= [] andalso aec_capabilities:register_peer(PeerId, Caps),
+    [ aec_capabilities:register_peer(PeerId, Caps) || Caps =/= [] ],
     maybe_tx_pool_sync(MpSync, TopHeader, S),
     Res.
 
@@ -1324,14 +1325,13 @@ handle_light_micro_block(_S, Header, TxHashes, PoF) ->
 expand_micro_block(State, #{ header := Header,
                              tx_data := TxsAndTxHashes } = MicroBlockFragment) ->
     {ok, Hash} = aec_headers:hash_header(Header),
-    Vsn = aec_headers:version(Header),
-    case get_request(State, {expand, Hash}, Vsn) of
+    case get_request(State, {expand, Hash}, undefined) of
         none ->
             MissingTxs = [ T || T <- TxsAndTxHashes, is_binary(T) ],
             MsgData    = #{ hash => Hash, tx_hashes => MissingTxs },
             Msg = aec_peer_messages:serialize(get_block_txs, MsgData),
             send_msg(State, get_block_txs, Msg),
-            set_request(State, {expand, Hash}, Vsn, MicroBlockFragment);
+            set_request(State, {expand, Hash}, undefined, MicroBlockFragment);
         {_, _, _} ->
             %% Already working on this one
             epoch_sync:info("Got the same block twice from the same source (Hash: ~s)",
@@ -1366,11 +1366,11 @@ find_txs([TxHash | TxHashes], Acc) ->
             find_txs(TxHashes, [Tx | Acc])
     end.
 
-handle_get_block_txs_rsp(State, _Vsn, {error, _}) ->
+handle_get_block_txs_rsp(State, {error, _}) ->
     State; %% We can't do any cleanup - the request will timeout later
-handle_get_block_txs_rsp(State, Vsn, {ok, Msg}) ->
+handle_get_block_txs_rsp(State, {ok, Msg}) ->
     Hash = maps:get(hash, Msg),
-    case get_request(State, {expand, Hash}, Vsn) of
+    case get_request(State, {expand, Hash}, undefined) of
         none ->
             epoch_sync:info("Got unexpected 'block_txs' message for ~s", [pp(Hash)]),
             State;
@@ -1386,7 +1386,7 @@ handle_get_block_txs_rsp(State, Vsn, {ok, Msg}) ->
                     epoch_sync:info("Failed to assemble micro block ~s", [pp(Hash)])
             end
     end,
-    remove_request_fld(State, {expand, Hash}, Vsn).
+    remove_request_fld(State, {expand, Hash}, undefined).
 
 fill_txs(TATHs, Txs) ->
     fill_txs(TATHs, Txs, []).
@@ -1440,7 +1440,6 @@ send_response(S, Type, Response) ->
     send_response(S, Type, Vsn, Response).
 
 send_response(S, Type, Vsn, Response) ->
-    lager:debug("Type = ~p; Vsn = ~p; Response = ~p", [Type, Vsn, Response]),
     Msg = aec_peer_messages:serialize_response(Type, Vsn, Response),
     send_msg(S, response, Msg).
 

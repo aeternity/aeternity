@@ -261,14 +261,14 @@ deserialize(ping, Vsn, PingFlds) when Vsn == ?PING_VSN_1 ->
         [ {port, _Port}
         , {share, _Share}
         , {genesis_hash, _GenHash}
-        , {difficulty, Difficulty}
+        , {difficulty, _Difficulty}
         , {best_hash, _TopHash}
         , {sync_allowed, _SyncAllowed}
         , {peers, PeersBin} ] = aeserialization:decode_fields(
                                     serialization_template(ping, Vsn),
                                     PingFlds),
     Peers = deserialize(peers, ?PEER_VSN, PeersBin),
-    PingData1 = replace_keys(PingData, [{peers, Peers}, {difficulty, Difficulty}]),
+    PingData1 = replace_keys(PingData, [{peers, Peers}]),
     {ping, Vsn, maps:from_list(PingData1)};
 deserialize(get_header_by_hash, Vsn, GetHeaderFlds) when Vsn == ?GET_HEADER_BY_HASH_VSN ->
     [{hash, Hash}] = aeserialization:decode_fields(
