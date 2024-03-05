@@ -212,10 +212,12 @@ handle_request_('GetPendingKeyBlock', _Req, _Context) ->
                 error ->
                     {404, [], #{reason => <<"Block not found">>}}
             end;
-        {error, beneficiary_not_configured} ->
-            {400, [], #{reason => <<"Beneficiary not configured">>}};
-        {error, _} ->
-            {404, [], #{reason => <<"Block not found">>}}
+        {error, beneficiary_not_configured = Code} ->
+            {400, [], #{reason => <<"Beneficiary not configured">>,
+                        error_code => atom_to_binary(Code, utf8)}};
+        {error, Code} ->
+            {404, [], #{reason => <<"Block not found">>,
+                        error_code => atom_to_binary(Code, utf8)}}
     end;
 
 handle_request_('GetKeyBlockByHash', Params, _Context) ->
@@ -241,7 +243,8 @@ handle_request_('GetKeyBlockByHash', Params, _Context) ->
                                     end
                             end;
                         false ->
-                            {404, [], #{reason => <<"Block not fond">>}}
+                            {404, [], #{reason => <<"Block not found">>,
+                                        error_code => <<"no_key_block">>}}
                     end;
                 error ->
                     {404, [], #{reason => <<"Block not fond">>}}
@@ -266,8 +269,9 @@ handle_request_('GetKeyBlockByHeight', Params, _Context) ->
                             {404, [], #{reason => <<"Block not found">>}}
                     end
             end;
-        {error, _Rsn} ->
-            {404, [], #{reason => <<"Block not found">>}}
+        {error, Code} ->
+            {404, [], #{reason => <<"Block not found">>,
+                        error_code => atom_to_binary(Code, utf8)}}
     end;
 
 handle_request_('GetMicroBlockHeaderByHash', Params, _Context) ->
@@ -284,11 +288,13 @@ handle_request_('GetMicroBlockHeaderByHash', Params, _Context) ->
                         error ->
                             {404, [], #{reason => <<"Block not found">>}}
                     end;
-                {error, block_not_found} ->
-                    {404, [], #{reason => <<"Block not found">>}}
+                {error, block_not_found = Code} ->
+                    {404, [], #{reason => <<"Block not found">>,
+                                error_code => atom_to_binary(Code, utf8)}}
             end;
-        {error, _} ->
-            {400, [], #{reason => <<"Invalid hash">>}}
+        {error, Code} ->
+            {400, [], #{reason => <<"Invalid hash">>,
+                        error_code => atom_to_binary(Code, utf8)}}
     end;
 
 handle_request_('GetMicroBlockTransactionsByHash', Params, _Context) ->
@@ -300,11 +306,13 @@ handle_request_('GetMicroBlockTransactionsByHash', Params, _Context) ->
                     Txs = [ aetx_sign:serialize_for_client(Header, Tx)
                             || Tx <- aec_blocks:txs(Block)],
                     {200, [], #{transactions => Txs}};
-                {error, block_not_found} ->
-                    {404, [], #{reason => <<"Block not found">>}}
+                {error, block_not_found = Code} ->
+                    {404, [], #{reason => <<"Block not found">>,
+                                error_code => atom_to_binary(Code, utf8)}}
             end;
-        {error, _} ->
-            {400, [], #{reason => <<"Invalid hash">>}}
+        {error, Code} ->
+            {400, [], #{reason => <<"Invalid hash">>,
+                        error_code => atom_to_binary(Code, utf8)}}
     end;
 
 handle_request_('GetMicroBlockTransactionByHashAndIndex', Params, _Context) ->
@@ -338,11 +346,13 @@ handle_request_('GetMicroBlockTransactionsCountByHash', Params, _Context) ->
             case aehttp_logic:get_micro_block_by_hash(Hash) of
                 {ok, Block} ->
                     {200, [], #{count => length(aec_blocks:txs(Block))}};
-                {error, block_not_found} ->
-                    {404, [], #{reason => <<"Block not found">>}}
+                {error, block_not_found = Code} ->
+                    {404, [], #{reason => <<"Block not found">>,
+                                error_code => atom_to_binary(Code, utf8)}}
             end;
-        {error, _} ->
-            {400, [], #{reason => <<"Invalid hash">>}}
+        {error, Code} ->
+            {400, [], #{reason => <<"Invalid hash">>,
+                        error_code => atom_to_binary(Code, utf8)}}
     end;
 
 handle_request_('GetCurrentGeneration', _, _Context) ->
@@ -350,7 +360,8 @@ handle_request_('GetCurrentGeneration', _, _Context) ->
 
 handle_request_('GetGenerationByHash', Params, _Context) ->
     case aeser_api_encoder:safe_decode(key_block_hash, maps:get('hash', Params)) of
-        {error, _} -> {400, [], #{reason => <<"Invalid hash">>}};
+        {error, Code} -> {400, [], #{reason => <<"Invalid hash">>,
+                                     error_code => atom_to_binary(Code, utf8)}};
         {ok, Hash} ->
             case aec_chain:get_generation_by_hash(Hash, forward) of
                 Ok = {ok, _G} -> generation_rsp(Ok);
@@ -375,8 +386,9 @@ handle_request_('GetAccountByPubkey', Params, _Context) ->
                 none ->
                     {404, [], #{reason => <<"Account not found">>}}
             end;
-        {error, _} ->
-            {400, [], #{reason => <<"Invalid public key">>}}
+        {error, Code} ->
+            {400, [], #{reason => <<"Invalid public key">>,
+                        error_code => atom_to_binary(Code, utf8)}}
     end;
 
 handle_request_('GetAccountByPubkeyAndHeight', Params, _Context) ->
@@ -390,13 +402,16 @@ handle_request_('GetAccountByPubkeyAndHeight', Params, _Context) ->
                     {200, [], aec_accounts:serialize_for_client(Account)};
                 none ->
                     {404, [], #{reason => <<"Account not found">>}};
-                {error, chain_too_short} ->
-                    {404, [], #{reason => <<"Height not available">>}};
-                {error, garbage_collected} ->
-                    {410, [], #{reason => <<"State data at the requested height has been garbage-collected">>}}
+                {error, chain_too_short = Code} ->
+                    {404, [], #{reason => <<"Height not available">>,
+                                error_code => atom_to_binary(Code, utf8)}};
+                {error, garbage_collected = Code} ->
+                    {410, [], #{reason => <<"State data at the requested height has been garbage-collected">>,
+                                error_code => atom_to_binary(Code, utf8)}}
             end;
-        {error, _} ->
-            {400, [], #{reason => <<"Invalid public key">>}}
+        {error, Code} ->
+            {400, [], #{reason => <<"Invalid public key">>,
+                        error_code => atom_to_binary(Code, utf8)}}
     end;
 
 handle_request_('GetAccountByPubkeyAndHash', Params, _Context) ->
@@ -415,12 +430,14 @@ handle_request_('GetAccountByPubkeyAndHash', Params, _Context) ->
                             {200, [], aec_accounts:serialize_for_client(Account)};
                         none ->
                             {404, [], #{reason => <<"Account not found">>}};
-                        {error, no_state_trees} ->
-                            {404, [], #{reason => <<"Hash not available">>}}
+                        {error, no_state_trees = Code} ->
+                            {404, [], #{reason => <<"Hash not available">>,
+                                        error_code => atom_to_binary(Code, utf8)}}
                     end
             end;
-        {error, _} ->
-            {400, [], #{reason => <<"Invalid public key">>}}
+        {error, Code} ->
+            {400, [], #{reason => <<"Invalid public key">>,
+                        error_code => atom_to_binary(Code, utf8)}}
     end;
 
 handle_request_('GetPendingAccountTransactionsByPubkey', Params, _Context) ->
@@ -434,8 +451,9 @@ handle_request_('GetPendingAccountTransactionsByPubkey', Params, _Context) ->
                 _ ->
                     {404, [], #{reason => <<"Account not found">>}}
             end;
-        {error, _} ->
-            {400, [], #{reason => <<"Invalid public key">>}}
+        {error, Code} ->
+            {400, [], #{reason => <<"Invalid public key">>,
+                        error_code => atom_to_binary(Code, utf8)}}
     end;
 
 handle_request_('GetAccountNextNonce', Params, _Context) ->
@@ -449,11 +467,13 @@ handle_request_('GetAccountNextNonce', Params, _Context) ->
             case aec_next_nonce:pick_for_account(Pubkey, Strategy) of
                 {ok, NextNonce} ->
                     {200, [], #{next_nonce => NextNonce}};
-                {error, account_not_found} ->
-                    {404, [], #{reason => <<"Account not found">>}}
+                {error, account_not_found = Code} ->
+                    {404, [], #{reason => <<"Account not found">>,
+                                error_code => atom_to_binary(Code, utf8)}}
             end;
-        {error, _} ->
-            {400, [], #{reason => <<"Invalid public key">>}}
+        {error, Code} ->
+            {400, [], #{reason => <<"Invalid public key">>,
+                        error_code => atom_to_binary(Code, utf8)}}
     end;
 
 handle_request_('GetTransactionByHash', Params, _Config) ->
@@ -470,8 +490,9 @@ handle_request_('GetTransactionByHash', Params, _Config) ->
                     Response = aetx_sign:serialize_for_client(Header, Tx),
                     {200, [], Response}
             end;
-        {error, _} ->
-            {400, [], #{reason => <<"Invalid hash">>}}
+        {error, Code} ->
+            {400, [], #{reason => <<"Invalid hash">>,
+                        error_code => atom_to_binary(Code, utf8)}}
     end;
 
 handle_request_('GetTransactionInfoByHash', Params, _Config) ->
@@ -511,13 +532,16 @@ handle_request_('PostTransaction', #{<<"tx">> := Tx}, _Context) ->
                             {200, [], #{<<"tx_hash">> => aeser_api_encoder:encode(tx_hash, Hash)}};
                         {error, E} ->
                             lager:debug("Transaciton ~p failed to be pushed to pool because: ~p", [SignedTx, E]),
-                            {400, [], #{reason => <<"Invalid tx">>}}
+                            {400, [], #{reason => <<"Invalid tx">>,
+                                        error_code => atom_to_binary(E, utf8)}}
                     end;
-                {error, broken_tx} ->
-                    {400, [], #{reason => <<"Invalid tx">>}}
+                {error, broken_tx = Code} ->
+                    {400, [], #{reason => <<"Invalid tx">>,
+                                error_code => atom_to_binary(Code, utf8)}}
             end;
-        {error, _} ->
-            {400, [], #{reason => <<"Invalid api encoding">>}}
+        {error, Code} ->
+            {400, [], #{reason => <<"Invalid api encoding">>,
+                        error_code => atom_to_binary(Code, utf8)}}
     end;
 
 handle_request_('GetContract', Req, _Context) ->
@@ -525,7 +549,8 @@ handle_request_('GetContract', Req, _Context) ->
         {error, _} -> {400, [], #{reason => <<"Invalid public key">>}};
         {ok, PubKey} ->
             case aec_chain:get_contract(PubKey) of
-                {error, _} -> {404, [], #{reason => <<"Contract not found">>}};
+                {error, Code} -> {404, [], #{reason => <<"Contract not found">>,
+                                             error_code => atom_to_binary(Code, utf8)}};
                 {ok, Contract} ->
                     Response = aect_contracts:serialize_for_client(Contract),
                     {200, [], Response}
@@ -534,10 +559,12 @@ handle_request_('GetContract', Req, _Context) ->
 
 handle_request_('GetContractCode', Req, _Context) ->
     case aeser_api_encoder:safe_decode(contract_pubkey, maps:get(pubkey, Req)) of
-        {error, _} -> {400, [], #{reason => <<"Invalid public key">>}};
+        {error, ErrCode} -> {400, [], #{reason => <<"Invalid public key">>,
+                                        error_code => atom_to_binary(ErrCode, utf8)}};
         {ok, PubKey} ->
             case aec_chain:get_contract_with_code(PubKey) of
-                {error, _} -> {404, [], #{reason => <<"Contract not found">>}};
+                {error, ErrCode} -> {404, [], #{reason => <<"Contract not found">>,
+                                                error_code => atom_to_binary(ErrCode, utf8)}};
                 {ok, _Contract, Code} ->
                     {200, [], #{ <<"bytecode">> => aeser_api_encoder:encode(contract_bytearray, Code) }}
             end
@@ -560,11 +587,13 @@ handle_request_('GetOracleByPubkey', Params, _Context) ->
             case aec_chain:get_oracle(Pubkey) of
                 {ok, Oracle} ->
                     {200, [], aeo_oracles:serialize_for_client(Oracle)};
-                {error, _} ->
-                    {404, [], #{reason => <<"Oracle not found">>}}
+                {error, Code} ->
+                    {404, [], #{reason => <<"Oracle not found">>,
+                                error_code => atom_to_binary(Code, utf8) }}
             end;
-        {error, _} ->
-            {400, [], #{reason => <<"Invalid public key">>}}
+        {error, Code} ->
+            {400, [], #{reason => <<"Invalid public key">>,
+                        error_code => atom_to_binary(Code, utf8)}}
     end;
 
 handle_request_('GetOracleQueriesByPubkey', Params, _Context) ->
@@ -589,8 +618,9 @@ handle_request_('GetOracleQueriesByPubkey', Params, _Context) ->
                 {error, _} ->
                     {200, [], #{oracle_queries => []}}
             end;
-        {error, _} ->
-            {400, [], #{reason => <<"Invalid public key">>}}
+        {error, Code} ->
+            {400, [], #{reason => <<"Invalid public key">>,
+                        error_code => atom_to_binary(Code, utf8)}}
     end;
 
 handle_request_('GetOracleQueryByPubkeyAndQueryId', Params, _Context) ->
@@ -601,14 +631,17 @@ handle_request_('GetOracleQueryByPubkeyAndQueryId', Params, _Context) ->
                     case aec_chain:get_oracle_query(Pubkey, QueryId) of
                         {ok, Query} ->
                             {200, [], aeo_query:serialize_for_client(Query)};
-                        {error, _} ->
-                            {404, [], #{reason => <<"Query not found">>}}
+                        {error, Code} ->
+                            {404, [], #{reason => <<"Query not found">>,
+                                        error_code => atom_to_binary(Code, utf8)}}
                     end;
-                {error, _} ->
-                    {400, [], #{reason => <<"Invalid public key or query ID">>}}
+                {error, Code} ->
+                    {400, [], #{reason => <<"Invalid public key or query ID">>,
+                                error_code => atom_to_binary(Code, utf8)}}
             end;
-        {error, _} ->
-            {400, [], #{reason => <<"Invalid public key or query ID">>}}
+        {error, Code} ->
+            {400, [], #{reason => <<"Invalid public key or query ID">>,
+                        error_code => atom_to_binary(Code, utf8)}}
     end;
 
 handle_request_('GetAuctionEntryByName', Params, _Context) ->
@@ -625,11 +658,13 @@ handle_request_('GetAuctionEntryByName', Params, _Context) ->
                         <<"highest_bidder">> => aeser_api_encoder:encode(account_pubkey, Bidder),
                         <<"highest_bid">>    => Bid
                         }};
-        {error, name_not_found} ->
-            {404, [], #{reason => <<"Name not found">>}};
+        {error, name_not_found = Code} ->
+            {404, [], #{reason => <<"Name not found">>,
+                        error_code => atom_to_binary(Code, utf8)}};
         {error, Reason} ->
             ReasonBin = atom_to_binary(Reason, utf8),
-            {400, [], #{reason => <<"Name validation failed with a reason: ", ReasonBin/binary>>}}
+            {400, [], #{reason => <<"Name validation failed with a reason: ", ReasonBin/binary>>,
+                        error_code => ReasonBin}}
     end;
 
 handle_request_('GetNameEntryByName', Params, _Context) ->
@@ -643,13 +678,16 @@ handle_request_('GetNameEntryByName', Params, _Context) ->
                         <<"owner">>    => aeser_api_encoder:encode(account_pubkey, Owner),
                         <<"ttl">>      => TTL,
                         <<"pointers">> => [aens_pointer:serialize_for_client(P) || P <- Pointers]}};
-        {error, name_not_found} ->
-            {404, [], #{reason => <<"Name not found">>}};
-        {error, name_revoked} ->
-            {404, [], #{reason => <<"Name revoked">>}};
+        {error, name_not_found = Code} ->
+            {404, [], #{reason => <<"Name not found">>,
+                        error_code => atom_to_binary(Code, utf8)}};
+        {error, name_revoked = Code} ->
+            {404, [], #{reason => <<"Name revoked">>,
+                        error_code => atom_to_binary(Code, utf8)}};
         {error, Reason} ->
             ReasonBin = atom_to_binary(Reason, utf8),
-            {400, [], #{reason => <<"Name validation failed with a reason: ", ReasonBin/binary>>}}
+            {400, [], #{reason => <<"Name validation failed with a reason: ", ReasonBin/binary>>,
+                        error_code => ReasonBin}}
     end;
 
 handle_request_('GetChannelByPubkey', Params, _Context) ->
@@ -658,11 +696,13 @@ handle_request_('GetChannelByPubkey', Params, _Context) ->
             case aec_chain:get_channel(Pubkey) of
                 {ok, Channel} ->
                     {200, [], aesc_channels:serialize_for_client(Channel)};
-                {error, _} ->
-                    {404, [], #{reason => <<"Channel not found">>}}
+                {error, Code} ->
+                    {404, [], #{reason => <<"Channel not found">>,
+                                error_code => atom_to_binary(Code, utf8)}}
             end;
-        {error, _} ->
-            {400, [], #{reason => <<"Invalid public key">>}}
+        {error, Code} ->
+            {400, [], #{reason => <<"Invalid public key">>,
+                        error_code => atom_to_binary(Code, utf8)}}
     end;
 
 handle_request_('GetPeerPubkey', _Params, _Context) ->
