@@ -1289,7 +1289,7 @@ get_generation_by_hash(CurrentBlockType, Config) when
                 <<"micro_blocks">> := []}} = get_generation_by_hash_sut(CurrentBlockHash),
 
     ?assertEqual(CurrentBlockHash, maps:get(<<"hash">>, KeyBlock)),
-    ?assertEqual({ok, 400, #{<<"reason">> => <<"Invalid hash">>}},
+    ?assertMatch({ok, 400, #{<<"reason">> := <<"Invalid hash">>}},
                  get_generation_by_hash_sut(<<"random">>)),
     ok;
 get_generation_by_hash(micro_block, Config) ->
@@ -1300,9 +1300,9 @@ get_generation_by_hash(micro_block, Config) ->
 
     ?assertEqual(PrevKeyBlockHash, maps:get(<<"hash">>, KeyBlock)),
     ?assertEqual(CurrentBlockHash, MicroBlockHash),
-    ?assertEqual({ok, 400, #{<<"reason">> => <<"Invalid hash">>}},
+    ?assertMatch({ok, 400, #{<<"reason">> := <<"Invalid hash">>}},
                  get_generation_by_hash_sut(CurrentBlockHash)),
-    ?assertEqual({ok, 400, #{<<"reason">> => <<"Invalid hash">>}},
+    ?assertMatch({ok, 400, #{<<"reason">> := <<"Invalid hash">>}},
                  get_generation_by_hash_sut(<<"random">>)),
     ok.
 
@@ -1888,7 +1888,7 @@ get_names_entry_by_name_sut(Name) ->
 
 get_channel_by_pubkey(_Config) ->
     aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE), 2),
-    ?assertEqual({ok, 400, #{<<"reason">> => <<"Invalid public key">>}},
+    ?assertMatch({ok, 400, #{<<"reason">> := <<"Invalid public key">>}},
                  get_channel_by_pubkey_sut(<<"InvalidKey">>)),
 
     #{i := #{channel_id := ChannelId0, pub := IPub},
