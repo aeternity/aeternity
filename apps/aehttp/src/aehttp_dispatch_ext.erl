@@ -901,9 +901,9 @@ uptime() ->
 
   Res =
       if Ts < 60 ->
-           io_lib:format("~ps:~p", [Ts, Tms]);
+           io_lib:format("~ps.~p", [Ts, Tms]);
          Ts < 60 * 60 ->
-           io_lib:format("~pm:~ps:~p", [Ts div 60, Ts rem 60, Tms]);
+           io_lib:format("~pm:~ps.~p", [Ts div 60, Ts rem 60, Tms]);
          Ts < 60 * 60 * 24 ->
            io_lib:format("~ph:~pm:~ps", [Ts div (60 * 60), (Ts rem (60 * 60)) div 60, Ts rem 60]);
          true ->
