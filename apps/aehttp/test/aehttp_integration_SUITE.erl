@@ -3477,28 +3477,22 @@ post_broken_tx(_Config) ->
     Amount = 1,
     BlocksToMine = blocks_to_mine(Amount, 1),
     {PubKey, Nonce} = prepare_for_spending(max(BlocksToMine, 3)),  %% we need at least 3 blocks
-    {ok, SpendTx} =
-        aec_spend_tx:new(
-          #{sender_id => aeser_id:create(account, PubKey),
-            recipient_id => aeser_id:create(account, random_hash()),
-            amount => Amount,
-            fee => ?SPEND_FEE,
-            nonce => Nonce,
-            payload => <<"foo">>}),
-    {ok, SignedTx} = aecore_suite_utils:sign_on_node(?NODE, SpendTx),
-    SignedTxBin = aetx_sign:serialize_to_binary(SignedTx),
+    Spend =
+        #{sender_id => aeser_id:create(account, PubKey),
+          recipient_id => aeser_id:create(account, random_hash()),
+          amount => Amount,
+          fee => ?SPEND_FEE,
+          nonce => Nonce,
+          payload => <<"foo">>},
 
-    {ok, SpendTTLTx} =
-        aec_spend_tx:new(
-          #{sender_id => aeser_id:create(account, PubKey),
-            recipient_id => aeser_id:create(account, random_hash()),
-            amount => Amount,
-            fee => ?SPEND_FEE,
-            nonce => Nonce,
-            ttl => 2,
-            payload => <<"too low ttl">>}),
-    {ok, SignedTTLTx} = aecore_suite_utils:sign_on_node(?NODE, SpendTTLTx),
-    SignedTTLTxBin = aetx_sign:serialize_to_binary(SignedTTLTx),
+    SignedTxBin =
+        signed_serialized(Spend),
+    SignedTTLTxBin =
+        signed_serialized(Spend#{ttl => 2,
+                                 payload => <<"too low ttl">>}),
+    SignedNonceTxBin =
+        signed_serialized(Spend#{nonce => Nonce-1,
+                                 payload => <<"wrong nonce">>}),
 
     BrokenTxBin = case SignedTxBin of
                     <<1:1, Rest/bits>> -> <<0:1, Rest/bits>>;
@@ -3506,11 +3500,22 @@ post_broken_tx(_Config) ->
                   end,
     EncodedBrokenTx = aeser_api_encoder:encode(transaction, BrokenTxBin),
     EncodedBrokenTTLTx = aeser_api_encoder:encode(transaction, SignedTTLTxBin),
+    EncodedBrokenNonceTx = aeser_api_encoder:encode(transaction, SignedNonceTxBin),
     EncodedSignedTx = aeser_api_encoder:encode(transaction, SignedTxBin),
-    {ok, 400, #{<<"reason">> := <<"Invalid tx">>}} = post_transactions_sut(EncodedBrokenTx),
-    {ok, 400, #{<<"reason">> := <<"Invalid tx">>}} = post_transactions_sut(EncodedBrokenTTLTx),
+    {ok, 400, #{<<"reason">> := <<"Invalid tx">>,
+                <<"error_code">> := <<"broken_tx">>}} = post_transactions_sut(EncodedBrokenTx),
+    {ok, 400, #{<<"reason">> := <<"Invalid tx">>,
+                <<"error_code">> := <<"ttl_expired">>}} = post_transactions_sut(EncodedBrokenTTLTx),
+    {ok, 400, #{<<"reason">> := <<"Invalid tx">>,
+                <<"error_code">> := <<"nonce_too_low">>}} = post_transactions_sut(EncodedBrokenNonceTx),
     {ok, 200, _} = post_transactions_sut(EncodedSignedTx),
     ok.
+
+signed_serialized(Spend) ->
+    {ok, SpendTx} = aec_spend_tx:new(Spend),
+    {ok, SignedTx} = aecore_suite_utils:sign_on_node(?NODE, SpendTx),
+    aetx_sign:serialize_to_binary(SignedTx).
+
 
 post_broken_api_encoded_tx(_Config) ->
     Amount = 1,
@@ -3519,18 +3524,15 @@ post_broken_api_encoded_tx(_Config) ->
     {PubKey, Nonce} = prepare_for_spending(BlocksToMine),
     lists:foreach(
         fun(_) ->
-            {ok, SpendTx} =
-                aec_spend_tx:new(
+            SignedBinTx = signed_serialized(
                   #{sender_id => aeser_id:create(account, PubKey),
                     recipient_id => aeser_id:create(account, random_hash()),
                     amount => Amount,
                     fee => ?SPEND_FEE,
                     nonce => Nonce,
                     payload => <<"foo">>}),
-            {ok, SignedTx} = aecore_suite_utils:sign_on_node(?NODE, SpendTx),
             <<_, BrokenHash/binary>> =
-                aeser_api_encoder:encode(transaction,
-                                   aetx_sign:serialize_to_binary(SignedTx)),
+                aeser_api_encoder:encode(transaction, SignedBinTx),
             {ok, 400, #{<<"reason">> := <<"Invalid api encoding">>}} = post_transactions_sut(BrokenHash)
         end,
         lists:seq(1, NumberOfChecks)), % number
