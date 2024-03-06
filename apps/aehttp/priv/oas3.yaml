@@ -3378,6 +3378,8 @@ components:
       properties:
         reason:
           type: string
+        error_code:
+          type: string
       required:
         - reason
     ContractObject:
