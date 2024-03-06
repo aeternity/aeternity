@@ -205,12 +205,6 @@ get_mb_stats(Hash, Protocol) ->
         undefined ->
             get_mb_stats_(Hash, Protocol);
         Cache ->
-            case kache:get(Cache, Hash) of
-                {ok, _} ->
-                    lager:info("ZZZ: ~p in cache", [Hash]);
-                notfound ->
-                    lager:info("ZZZ: ~p NOT in cache", [Hash])
-            end,
             kache:get_fill(Cache, Hash, fun(_) -> {ok, get_mb_stats_(Hash, Protocol)} end)
     end.
 
