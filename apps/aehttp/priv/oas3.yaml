@@ -581,7 +581,7 @@ paths:
         - external
         - dry-run
       operationId: ProtectedDryRunTxs
-      description: Dry-run transactions on top of a given block. Supports all TXs except GAMetaTx, PayingForTx and OffchainTx. The maximum gas limit of all calls is capped. The maximum gas limit per request is a global node setting. Since DryRunCallReq object do not have a mandatory gas field, if not set a default value of 1000000 is being used instead.
+      description: Dry-run unsigned transactions on top of a given block. Supports all TXs except GAMetaTx, PayingForTx and OffchainTx. The maximum gas limit of all calls is capped. The maximum gas limit per request is a global node setting. Since DryRunCallReq object do not have a mandatory gas field, if not set a default value of 1000000 is being used instead.
       parameters:
         - $ref: '#/components/parameters/intAsString'
       requestBody:
