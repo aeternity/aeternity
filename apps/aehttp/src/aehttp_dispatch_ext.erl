@@ -844,11 +844,11 @@ handle_request_('ProtectedDryRunTxs', #{ 'DryRunInput' := Req }, _Context) ->
                       TxGasLimit= lists:sum(
                           lists:map(
                               fun(#{<<"tx">> := ETx}) ->
-                                  case aeser_api_encoder:safe_decode(transaction, ETx) of
-                                      {ok, DTx} ->
-                                          Tx = aetx:deserialize_from_binary(DTx),
-                                          aetx:gas_limit(Tx, Height, Protocol);
-                                      {error, _Err} -> 0 %% this is handled later on
+                                  try {ok, DTx} = aeser_api_encoder:safe_decode(transaction, ETx),
+                                      Tx = aetx:deserialize_from_binary(DTx),
+                                      aetx:gas_limit(Tx, Height, Protocol)
+                                  catch _:_ ->
+                                      0 %% this is handled later on
                                   end;
                                  (#{<<"call_req">> := CallReq}) ->
                                     maps:get(<<"gas">>, CallReq, ?DEFAULT_CALL_REQ_GAS_LIMIT)
