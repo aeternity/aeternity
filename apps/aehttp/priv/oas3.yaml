@@ -1114,6 +1114,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/GasPrices"
+        "400":
+          description: Not enough/Invalid data for statistics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   ###
   ## Internal endpoints
   ###
@@ -3935,6 +3941,11 @@ components:
           min_gas_price:
             description: Minimum gas price in the block range
             $ref: "#/components/schemas/UInt"
+          utilization:
+            description: Percent of available gas used
+            type: integer
+            minimum: 0
+            maximum: 100
           minutes:
             description: Number of minutes from the top
             $ref: "#/components/schemas/UInt64"

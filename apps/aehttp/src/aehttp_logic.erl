@@ -29,6 +29,8 @@
         , blocked_peers/0
         ]).
 
+-include_lib("aecontract/include/hard_forks.hrl").
+
 -spec get_top() -> {ok, aec_blocks:block()}.
 get_top() ->
     Block = aec_chain:top_block(),
@@ -166,48 +168,70 @@ get_top_blocks_gas_price_summary(Minutes) ->
     Now = erlang:system_time(millisecond),
     Offsets = [ {N, Now - N * 60 * 1_000} || N <- Minutes ],
     TopHash = aec_chain:top_block_hash(),
-    get_min_gas_price_since(Offsets, TopHash, undefined, []).
-
--define(GEN_MB_PRICE_CACHE, '$aec_microblock_min_gas_price').
+    get_min_gas_price_since(Offsets, TopHash, {undefined, 0, 0}, []).
 
 min_gas_price(undefined) -> 0;
 min_gas_price(N) -> N.
 
-get_min_gas_price_since([], _Hash, _MinGasPrice, Data) ->
+get_min_gas_price_since([], _Hash, _AccStats, Data) ->
   {ok, lists:reverse(Data)};
-get_min_gas_price_since([{Ms, CutOff} | CutOffs] = COs, Hash, MinGasPrice, Data) ->
+get_min_gas_price_since([{Ms, CutOff} | CutOffs] = COs, Hash, AccStats, Data) ->
     case aec_chain:get_header(Hash) of
         {ok, Header} ->
             case aec_headers:time_in_msecs(Header) < CutOff of
                 true ->
-                    get_min_gas_price_since(CutOffs, Hash, MinGasPrice, [{Ms, min_gas_price(MinGasPrice)} | Data]);
+                    get_min_gas_price_since(CutOffs, Hash, AccStats, [stats_to_data(Ms, AccStats) | Data]);
                 false ->
                     case aec_headers:type(Header) of
                         key ->
-                            get_min_gas_price_since(COs, aec_headers:prev_hash(Header), MinGasPrice, Data);
+                            get_min_gas_price_since(COs, aec_headers:prev_hash(Header), AccStats, Data);
                         micro ->
-                            {_, MinGasPrice0} = get_mb_min_gas_price(Hash, aec_headers:version(Header)),
-                            MGP = min(MinGasPrice0, MinGasPrice),
-                            get_min_gas_price_since(COs, aec_headers:prev_hash(Header), MGP, Data)
+                        {ok, {_, Stats}} = get_mb_stats(Hash, aec_headers:version(Header)),
+                        get_min_gas_price_since(COs, aec_headers:prev_hash(Header), add_stats(Stats, AccStats), Data)
                     end
             end;
         error ->
             {error, block_not_found}
     end.
 
-get_mb_min_gas_price(Hash, Protocol) ->
-    aeu_ets_cache:get(?GEN_MB_PRICE_CACHE, Hash,
-                      fun() -> get_mb_min_gas_price_(Hash, Protocol) end).
+stats_to_data(Minutes, {MinGasPrice, UsedGas, TotGas}) ->
+    {Minutes, min_gas_price(MinGasPrice), round((100 * UsedGas) / TotGas)}.
 
-get_mb_min_gas_price_(Hash, Protocol) ->
-    case aec_chain:get_block(Hash) of
-        {ok, Block} ->
+add_stats({MinGasPrice, UsedGas, TotGas}, {AccMinGasPrice, AccUsedGas, AccTotGas}) ->
+    {min(MinGasPrice, AccMinGasPrice), AccUsedGas + UsedGas, AccTotGas + TotGas}.
+
+get_mb_stats(Hash, Protocol) ->
+    case persistent_term:get({aehttp_app, kache}, undefined) of
+        undefined ->
+            get_mb_stats_(Hash, Protocol);
+        Cache ->
+            case kache:get(Cache, Hash) of
+                {ok, _} ->
+                    lager:info("ZZZ: ~p in cache", [Hash]);
+                notfound ->
+                    lager:info("ZZZ: ~p NOT in cache", [Hash])
+            end,
+            kache:get_fill(Cache, Hash, fun(_) -> {ok, get_mb_stats_(Hash, Protocol)} end)
+    end.
+
+get_mb_stats_(Hash, Protocol) ->
+    case {aec_chain:get_block(Hash), aec_chain:get_block_state(Hash)} of
+        {{ok, Block}, {ok, Trees}} ->
             Txs = lists:map(fun aetx_sign:tx/1, aec_blocks:txs(Block)),
             Height = aec_blocks:height(Block),
-            {aec_blocks:time_in_msecs(Block), lists:foldl(
-                fun(Tx, MGP) ->
-                    min(MGP, aetx:min_gas_price(Tx, Height, Protocol))
-                end, undefined, Txs)};
-        error ->
+            {MinGasPrice, UsedGas} =
+                lists:foldl(
+                    fun(Tx, {MGP, UG}) ->
+                        {min(MGP, aetx:min_gas_price(Tx, Height, Protocol)),
+                         UG + get_tx_gas(Tx, Height, Protocol, Trees)}
+                    end, {undefined, 0}, Txs),
+
+            {aec_blocks:time_in_msecs(Block), {MinGasPrice, UsedGas, aec_governance:block_gas_limit()}};
+        _Error ->
             {error, block_not_found}
     end.
+
+get_tx_gas(Tx, Height, Protocol, _Trees) when Protocol < ?CERES_PROTOCOL_VSN ->
+    aetx:gas_limit(Tx, Height, Protocol);
+get_tx_gas(Tx, Height, Protocol, Trees) ->
+    aetx:used_gas(Tx, Height, Protocol, Trees).

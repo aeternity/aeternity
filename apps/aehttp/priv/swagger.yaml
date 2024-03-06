@@ -1097,6 +1097,10 @@ paths:
           description: 'Successful operation'
           schema:
             $ref: '#/definitions/GasPrices'
+        '400':
+          description: Not enough/Invalid data for statistics
+          schema:
+            $ref: '#/definitions/Error'
   /debug/network:
     get:
       tags:
@@ -3827,6 +3831,11 @@ definitions:
         min_gas_price:
           description: Minimum gas price in the block range
           $ref: '#/definitions/UInt'
+        utilization:
+          description: Percent of available gas used
+          type: integer
+          minimum: 0
+          maximum: 100
         minutes:
           description: Number of minutes from the top
           $ref: '#/definitions/UInt64'

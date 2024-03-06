@@ -2018,13 +2018,14 @@ min_gas_price() ->
 get_recent_gas_prices(_Config) ->
     Host = external_address(),
     {ok, 200, [
-        #{ <<"minutes">> := 1,  <<"min_gas_price">> := MinGasPrice1 },
+        #{ <<"minutes">> := 1,  <<"min_gas_price">> := MinGasPrice1, <<"utilization">> := Util1 },
         #{ <<"minutes">> := 5,  <<"min_gas_price">> := MinGasPrice5 },
         #{ <<"minutes">> := 15, <<"min_gas_price">> := MinGasPrice15 },
         #{ <<"minutes">> := 60, <<"min_gas_price">> := MinGasPrice60 }
     ]} = http_request(Host, get, "recent-gas-prices", []),
     MinGasPrice = min_gas_price(),
     ?assertMatch(X when is_integer(X) andalso X == MinGasPrice, MinGasPrice1),
+    ?assertMatch(X when is_integer(X) andalso X == 1, Util1),
     ?assertMatch(X when is_integer(X) andalso X == MinGasPrice, MinGasPrice5),
     ?assertMatch(X when is_integer(X) andalso X == MinGasPrice, MinGasPrice15),
     ?assertMatch(X when is_integer(X) andalso X == MinGasPrice, MinGasPrice60),

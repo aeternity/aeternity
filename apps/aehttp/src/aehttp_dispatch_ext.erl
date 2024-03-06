@@ -112,6 +112,7 @@ queue('GetStatus')                              -> ?READ_Q;
 queue('GetSyncStatus')                          -> ?READ_Q;
 queue('GetPeerKey')                             -> ?READ_Q;
 queue('GetChainEnds')                           -> ?READ_Q;
+queue('GetRecentGasPrices')                     -> ?READ_Q;
 %% update transactions (default to update in catch-all)
 queue('PostTransaction')                        -> ?WRITE_Q;
 queue(_)                                        -> ?WRITE_Q.
@@ -829,8 +830,8 @@ handle_request_('GetRecentGasPrices', _Params, _Context) ->
     case aehttp_logic:get_top_blocks_gas_price_summary(Minutes) of
         {ok, GasPrices} ->
             MkGasPrice =
-                fun({Ms, GasPrice}) ->
-                    #{ <<"minutes">> => Ms, <<"min_gas_price">> => GasPrice }
+                fun({Ms, GasPrice, Utilization}) ->
+                    #{ <<"minutes">> => Ms, <<"min_gas_price">> => GasPrice, <<"utilization">> => Utilization }
                 end,
             {200, [], lists:map(MkGasPrice, GasPrices)};
         {error, _} ->
