@@ -729,7 +729,7 @@ dry_run_tx(ETx) ->
                 true  -> {ok, Tx};
                 false -> {error, lists:concat(["Unsupported transaction type ", Type])}
             end;
-         Err = {error, _Reason} ->
+        Err = {error, _Reason} ->
             Err
     end.
 
