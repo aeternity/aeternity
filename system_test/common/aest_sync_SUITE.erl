@@ -678,14 +678,15 @@ net_split_mining_power(Cfg) ->
 
 
     %% Metrics are only populated after 10 seconds, so let's make sure we've
-    %% run for long enough (11 s).
+    %% run for long enough (21 s).
     T2 = erlang:system_time(millisecond),
-    timer:sleep(max(1, 11000 - (T2 - T1))),
+    timer:sleep(max(1, 21000 - (T2 - T1))),
 
     % Check that the larger cluster has more mining power.
     Net1MinedBlocks1 = node_mined_retries(Net1Nodes),
     Net2MinedBlocks1 = node_mined_retries(Net2Nodes),
 
+    ct:log("Net1 mined ~p while Net2 mined ~p", [Net1MinedBlocks1, Net2MinedBlocks1]),
     ?assert(Net1MinedBlocks1 < Net2MinedBlocks1),
 
     %% Join all the nodes
