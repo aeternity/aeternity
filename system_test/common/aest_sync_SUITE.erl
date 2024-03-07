@@ -647,10 +647,6 @@ net_split_mining_power(Cfg) ->
 
     wait_for_startup(AllNodes, 0, Cfg),
 
-    %% Nodes are started, setup timer and trigger the metrics reader once
-    T1 = erlang:system_time(millisecond),
-    aest_nodes:read_last_metric(net1_node1, "ae.epoch.aecore.mining.retries.value"),
-
     TargetHeight1 = SplitLength,
     %% Wait for some extra blocks for resolving potential fork caused by nodes mining distinct blocks at the same time.
     MinedHeight1 = ExtraLength + TargetHeight1,
@@ -675,12 +671,6 @@ net_split_mining_power(Cfg) ->
 
     %% Check that the chains are different
     ?assertNotEqual(N1A1, N2A1),
-
-
-    %% Metrics are only populated after 10 seconds, so let's make sure we've
-    %% run for long enough (21 s).
-    T2 = erlang:system_time(millisecond),
-    timer:sleep(max(1, 21000 - (T2 - T1))),
 
     % Check that the larger cluster has more mining power.
     Net1MinedBlocks1 = node_mined_retries(Net1Nodes),
@@ -774,14 +764,26 @@ abrupt_stop_mining_node(_Cfg) ->
 
 %% helper functions
 
+%% Metrics are not populated immediately, so let's make sure we poll until there
+%% is actually data.
 node_mined_retries(Nodes) ->
     Metric = "ae.epoch.aecore.mining.retries.value",
     lists:foldl(fun(N, Acc) ->
-        case aest_nodes:read_last_metric(N, Metric) of
-            undefined -> Acc;
-            Num -> Acc + Num
-        end
+        poll_node_metric(N, Metric, 15) + Acc
     end, 0, Nodes).
+
+poll_node_metric(Node, Metric, 0) ->
+    ct:log("Giving up getting ~p at ~p", [Metric, Node]),
+    0;
+poll_node_metric(Node, Metric, N) ->
+    case aest_nodes:read_last_metric(Node, Metric) of
+        undefined ->
+            timer:sleep(1000),
+            poll_node_metric(Node, Metric, N - 1);
+        Value ->
+            ct:log("~p attempts remaining: Got value ~p for ~p from ~p", [N - 1, Value, Metric, Node]),
+            Value
+    end.
 
 ping_interval(Node) ->
     get_node_config(Node, ["sync", "ping_interval"]).
