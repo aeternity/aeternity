@@ -647,6 +647,10 @@ net_split_mining_power(Cfg) ->
 
     wait_for_startup(AllNodes, 0, Cfg),
 
+    %% Nodes are started, setup timer and trigger the metrics reader once
+    T1 = erlang:system_time(millisecond),
+    aest_nodes:read_last_metric(net1_node1, "ae.epoch.aecore.mining.retries.value"),
+
     TargetHeight1 = SplitLength,
     %% Wait for some extra blocks for resolving potential fork caused by nodes mining distinct blocks at the same time.
     MinedHeight1 = ExtraLength + TargetHeight1,
@@ -672,9 +676,16 @@ net_split_mining_power(Cfg) ->
     %% Check that the chains are different
     ?assertNotEqual(N1A1, N2A1),
 
+
+    %% Metrics are only populated after 10 seconds, so let's make sure we've
+    %% run for long enough (11 s).
+    T2 = erlang:system_time(millisecond),
+    timer:sleep(max(1, 11000 - (T2 - T1))),
+
     % Check that the larger cluster has more mining power.
     Net1MinedBlocks1 = node_mined_retries(Net1Nodes),
     Net2MinedBlocks1 = node_mined_retries(Net2Nodes),
+
     ?assert(Net1MinedBlocks1 < Net2MinedBlocks1),
 
     %% Join all the nodes
