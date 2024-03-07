@@ -454,6 +454,12 @@ init_per_group(Group, Config) when Group =:= initiator_is_ga;
                                     {bench_rounds, 1} %% a lower amount than the default 10
                                     | Config], btc_auth)
     end;
+init_per_group(failed_onchain, Config) ->
+    case proplists:get_value(who_is_ga, Config, none) of
+        responder_is_ga -> init_per_group_(Config);
+        none            -> init_per_group_(Config);
+        _               -> {skip, dont_run_when_initiator_is_ga}
+    end;
 init_per_group(generalized_accounts, Config) ->
     Config;
 init_per_group(accomodate_missed_onchain_tx, Config) ->
