@@ -154,8 +154,11 @@ spend_txs(Config) ->
 
     #{ public := EPub } = enacl:sign_keypair(),
 
-    Tx1 = {tx, create_spend_tx(APub, EPub, 100000 * aec_test_utils:min_gas_price(), 20000 * aec_test_utils:min_gas_price(), 1, 100)},
+    SpendTx1 = create_spend_tx(APub, EPub, 100000 * aec_test_utils:min_gas_price(), 20000 * aec_test_utils:min_gas_price(), 1, 100),
+    Tx1 = {tx, SpendTx1},
     Tx2 = {tx, create_spend_tx(EPub, APub, 100, 20000 * aec_test_utils:min_gas_price(), 1, 100)},
+    SignedTx1 = aetx_sign:new(SpendTx1, [<<0:512>>]),
+    BinSignedTx1 = aeser_api_encoder:encode(transaction, aetx_sign:serialize_to_binary(SignedTx1)),
 
     {ok, 200, #{ <<"results">> := [#{ <<"result">> := <<"ok">>,
                                       <<"type">> := <<"spend">> },
@@ -164,6 +167,10 @@ spend_txs(Config) ->
 
     {ok, 200, #{ <<"results">> := [#{ <<"result">> := <<"error">> }, #{ <<"result">> := <<"ok">> }] }} =
         dry_run(Config, TopHash, [Tx2, Tx1]),
+
+    ?assertMatch({ok, 400, #{<<"reason">> := <<"Bad request: ", _/binary>>}},
+        dry_run(Config, TopHash, [Tx2, Tx1, {tx, BinSignedTx1}])),
+
 
     %% Negative test - badly encoded Tx
     BinTx1 =  aeser_api_encoder:encode(transaction, aetx:serialize_to_binary(element(2, Tx1))),
