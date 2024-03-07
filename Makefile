@@ -301,6 +301,7 @@ system-test-deps:
 	docker pull "aeternity/aeternity:v2.3.0"
 	docker pull "aeternity/aeternity:v4.0.0"
 	docker pull "aeternity/aeternity:v4.2.0"
+	docker pull "aeternity/aeternity:v6.9.0"
 	docker pull "aeternity/aeternity:latest"
 
 system-test: KIND=system_test

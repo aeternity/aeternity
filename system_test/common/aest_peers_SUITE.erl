@@ -132,7 +132,7 @@ test_old_peer_discovery(Cfg) ->
     StartupTimeout = proplists:get_value(node_startup_time, Cfg),
 
 
-    CompatibleVersion = "v6.12.0", %% Latest version it should be compatible with
+    CompatibleVersion = "v6.9.0", %% Latest version it should be compatible with
     Compatible = lists:concat(["aeternity/aeternity:", CompatibleVersion]),
     OldBaseSpec = #{
                     peers   => [old_node1],
