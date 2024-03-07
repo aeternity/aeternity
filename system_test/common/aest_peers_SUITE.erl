@@ -12,6 +12,7 @@
 % Test cases
 -export([
     test_peer_discovery/1,
+    test_old_peer_discovery/1,
     test_inbound_limitation/1
 ]).
 
@@ -74,6 +75,7 @@
 
 all() -> [
     test_peer_discovery,
+    test_old_peer_discovery,
     test_inbound_limitation
 ].
 
@@ -119,6 +121,73 @@ test_peer_discovery(Cfg) ->
                                 #{inbound := InboundPeers, outbound := OutboundPeers} = Peers,
                                 ?assertEqual(4, length(InboundPeers) + length(OutboundPeers))
                         end, [node1, node2, node3, node4, node5])
+              end),
+    ok.
+
+
+test_old_peer_discovery(Cfg) ->
+    NodeConfig = #{
+        max_inbound => 4
+    },
+    StartupTimeout = proplists:get_value(node_startup_time, Cfg),
+
+
+    CompatibleVersion = "v6.12.0", %% Latest version it should be compatible with
+    Compatible = lists:concat(["aeternity/aeternity:", CompatibleVersion]),
+    OldBaseSpec = #{
+                    peers   => [old_node1],
+                    backend => aest_docker,
+                    source  => {pull, Compatible}
+                   },
+    NewBaseSpec = #{
+                    peers   => [old_node1],
+                    backend => aest_docker,
+                    source  => {pull, "aeternity/aeternity:local"}
+                   },
+
+    OldNode1 = OldBaseSpec#{
+                             name      => old_node1,
+                             peers     => []
+                           },
+    NewNode2 = NewBaseSpec#{
+                             name      => new_node2
+                           },
+    NewNode3 = NewBaseSpec#{
+                             name      => new_node3
+                            },
+    NewNode4 = NewBaseSpec#{
+                            name      => new_node4
+                            },
+    OldNode5 = OldBaseSpec#{
+                             name      => old_node5,
+                             peers     => [old_node1]
+                           },
+    ct:log("Testing ping compatibility of aeternity/aeternity:local with ~p", [Compatible]),
+
+    setup([OldNode1, NewNode2, NewNode3, NewNode4, OldNode5], NodeConfig, Cfg),
+    Nodes = [old_node1, new_node2, new_node3, new_node4, old_node5],
+
+    start_node(old_node1, Cfg),
+    start_node(new_node2, Cfg),
+    start_node(new_node3, Cfg),
+    start_node(new_node4, Cfg),
+    start_node(old_node5, Cfg),
+    wait_for_internal_api(Nodes, StartupTimeout),
+
+    try_until(erlang:system_time(millisecond)
+              + 3 * ping_interval(old_node1),
+              fun() ->
+                      lists:foreach(
+                        fun(N) ->
+                                {ok, 200, Peers} = aehttp_client:request(
+                                                     'GetPeers', #{},
+                                                     [
+                                                      {int_http, aest_nodes_mgr:get_service_address(N, int_http)},
+                                                      {ct_log, true}
+                                                     ]),
+                                #{inbound := InboundPeers, outbound := OutboundPeers} = Peers,
+                                ?assertEqual(4, length(InboundPeers) + length(OutboundPeers))
+                        end, Nodes)
               end),
     ok.
 
