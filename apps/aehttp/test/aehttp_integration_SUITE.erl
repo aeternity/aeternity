@@ -151,6 +151,8 @@
     get_transaction/1,
     check_transaction_in_pool/1,
 
+    get_recent_gas_prices/1,
+
     % sync gossip
     pending_transactions/1,
     post_correct_tx/1,
@@ -460,6 +462,8 @@ groups() ->
 
         get_transaction,
         check_transaction_in_pool,
+
+        get_recent_gas_prices,
 
         % sync gossip
         pending_transactions,
@@ -1579,7 +1583,7 @@ post_contract_and_call_tx(_Config) ->
                       deposit     => 2,
                       amount      => 1,
                       gas         => 600,
-                      gas_price   => aec_test_utils:min_gas_price(),
+                      gas_price   => min_gas_price(),
                       fee         => 400000 * aec_test_utils:min_gas_price(),
                       call_data   => EncodedInitCallData},
 
@@ -1606,7 +1610,7 @@ post_contract_and_call_tx(_Config) ->
                              abi_version => latest_sophia_abi(),
                              amount      => 1,
                              gas         => 1000,
-                             gas_price   => aec_test_utils:min_gas_price(),
+                             gas_price   => min_gas_price(),
                              fee         => 500000 * aec_test_utils:min_gas_price(),
                              call_data   => EncodedCallData},
     {ok, 200, #{<<"tx">> := EncodedUnsignedContractCallTx}} = get_contract_call(ContractCallEncoded),
@@ -1664,7 +1668,7 @@ get_contract(_Config) ->
                       deposit     => 2,
                       amount      => ContractInitBalance,
                       gas         => 600,
-                      gas_price   => aec_test_utils:min_gas_price(),
+                      gas_price   => min_gas_price(),
                       fee         => 200000 * aec_test_utils:min_gas_price(),
                       call_data   => EncodedInitCallData},
 
@@ -2005,6 +2009,28 @@ get_status_sut(IntAsString) ->
     Parameters = case IntAsString of true -> "?int-as-string"; false -> "" end,
     http_request(Host, get, "status" ++ Parameters, []).
 
+%% /recent-gas-prices
+
+%% Use slighly un-orthodox gas price to tests recent gas_prices endpoint
+min_gas_price() ->
+    aec_test_utils:min_gas_price() + 101.
+
+get_recent_gas_prices(_Config) ->
+    Host = external_address(),
+    {ok, 200, [
+        #{ <<"minutes">> := 1,  <<"min_gas_price">> := MinGasPrice1, <<"utilization">> := Util1 },
+        #{ <<"minutes">> := 5,  <<"min_gas_price">> := MinGasPrice5 },
+        #{ <<"minutes">> := 15, <<"min_gas_price">> := MinGasPrice15 },
+        #{ <<"minutes">> := 60, <<"min_gas_price">> := MinGasPrice60 }
+    ]} = http_request(Host, get, "recent-gas-prices", []),
+    MinGasPrice = min_gas_price(),
+    ?assertMatch(X when is_integer(X) andalso X == MinGasPrice, MinGasPrice1),
+    ?assertMatch(X when is_integer(X) andalso X == 1, Util1),
+    ?assertMatch(X when is_integer(X) andalso X == MinGasPrice, MinGasPrice5),
+    ?assertMatch(X when is_integer(X) andalso X == MinGasPrice, MinGasPrice15),
+    ?assertMatch(X when is_integer(X) andalso X == MinGasPrice, MinGasPrice60),
+    ok.
+
 prepare_tx(TxType, Args, SignHash) ->
     %assert_required_tx_fields(TxType, Args),
     {Host, Path} = tx_object_http_path(TxType),
@@ -2100,7 +2126,7 @@ contract_transactions(_Config) ->    % miner has an account
                       deposit => 2,
                       amount => ContractInitBalance,
                       gas => 600,
-                      gas_price => aec_test_utils:min_gas_price(),
+                      gas_price => min_gas_price(),
                       fee => 200000 * aec_test_utils:min_gas_price(),
                       call_data => EncodedInitCallData},
 
@@ -2182,7 +2208,7 @@ contract_transactions(_Config) ->    % miner has an account
                              abi_version => latest_sophia_abi(),
                              amount => 1,
                              gas => 1000,
-                             gas_price => aec_test_utils:min_gas_price(),
+                             gas_price => min_gas_price(),
                              fee => 600000 * aec_test_utils:min_gas_price(),
                              call_data => EncodedCallData},
 
@@ -2294,7 +2320,7 @@ contract_create_transaction_init_error(_Config) ->
                       deposit     => 2,
                       amount      => 1,
                       gas         => 30,
-                      gas_price   => aec_test_utils:min_gas_price(),
+                      gas_price   => min_gas_price(),
                       fee         => 200000 * aec_test_utils:min_gas_price(),
                       call_data   => EncodedInitData},
     ValidDecoded = maps:merge(ValidEncoded,

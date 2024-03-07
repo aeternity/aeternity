@@ -1099,6 +1099,27 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Currency"
+  /recent-gas-prices:
+    get:
+      tags:
+        - external
+        - transaction
+      operationId: GetRecentGasPrices
+      description: 'Get minimum gas prices in recent blocks'
+      parameters: []
+      responses:
+        '200':
+          description: 'Successful operation'
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GasPrices"
+        "400":
+          description: Not enough/Invalid data for statistics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   ###
   ## Internal endpoints
   ###
@@ -3917,6 +3938,25 @@ components:
           type: string
       required:
         - status
+    GasPrices:
+      type: array
+      items:
+        type: object
+        properties:
+          min_gas_price:
+            description: Minimum gas price in the block range
+            $ref: "#/components/schemas/UInt"
+          utilization:
+            description: Percent of available gas used
+            type: integer
+            minimum: 0
+            maximum: 100
+          minutes:
+            description: Number of minutes from the top
+            $ref: "#/components/schemas/UInt64"
+        required:
+          - min_gas_price
+          - minutes
   parameters:
     intAsString:
       in: query

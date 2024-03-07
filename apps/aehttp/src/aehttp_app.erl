@@ -42,11 +42,16 @@ start(_StartType, _StartArgs) ->
     {ok, Pid} = aehttp_sup:start_link(),
     ok = start_http_api(),
     ok = start_channel_websocket(),
-    {ok, Pid}.
+    %% Max 1200 MBs in an hour
+    {ok, Cache} = kache:start_link([{eviction, lru}, {capacity, 1200}]),
+    persistent_term:put({?MODULE, kache}, Cache),
+    {ok, Pid, #{ kache => Cache }}.
 
 
 %%--------------------------------------------------------------------
-stop(_State) ->
+stop(#{ kache := Cache }) ->
+    persistent_term:erase({?MODULE, kache}),
+    kache:stop(Cache),
     _ = cowboy:stop_listener(internal),
     _ = cowboy:stop_listener(external),
     _ = cowboy:stop_listener(rosetta),

@@ -1082,6 +1082,25 @@ paths:
             type: array
             items:
               $ref: '#/definitions/EncodedHash'
+  /recent-gas-prices:
+    get:
+      tags:
+        - external
+        - transaction
+      operationId: GetRecentGasPrices
+      description: 'Get minimum gas prices in recent blocks'
+      produces:
+        - application/json
+      parameters: []
+      responses:
+        '200':
+          description: 'Successful operation'
+          schema:
+            $ref: '#/definitions/GasPrices'
+        '400':
+          description: Not enough/Invalid data for statistics
+          schema:
+            $ref: '#/definitions/Error'
   /debug/network:
     get:
       tags:
@@ -3809,6 +3828,25 @@ definitions:
     oneOf:
       - $ref: '#/definitions/DelegatesList'
       - $ref: '#/definitions/DelegatesObject'
+  GasPrices:
+    type: array
+    items:
+      type: object
+      properties:
+        min_gas_price:
+          description: Minimum gas price in the block range
+          $ref: '#/definitions/UInt'
+        utilization:
+          description: Percent of available gas used
+          type: integer
+          minimum: 0
+          maximum: 100
+        minutes:
+          description: Number of minutes from the top
+          $ref: '#/definitions/UInt64'
+      required:
+        - min_gas_price
+        - minutes
 
 externalDocs:
   description: Find out more about Aeternity
