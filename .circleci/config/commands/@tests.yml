@@ -110,6 +110,12 @@ docker_system_test:
     - install_libsodium
     - restore_rebar_cache
     - restore_machine_build_cache
+    - run:
+        # The host system might run with "any" UID while the aeternity containers run with 1000:1000
+        # umask is not great idea, but this is private CI after all, no better solutions without changing the tests
+        name: Ensure logs permissions
+        command: |
+          umask 0
     - when:
         condition:
           not: << parameters.smoke >>
