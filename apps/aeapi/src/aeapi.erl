@@ -590,24 +590,33 @@ reward_txs(Block, _Consensus) ->
 hardfork_txs(Height) ->
     Forks =  maps:to_list(aec_hard_forks:protocols()),
     case lists:keyfind(Height + 1, 2, Forks) of
-        false ->
-            [];
-        {?MINERVA_PROTOCOL_VSN, _} ->
-            Deltas = aec_fork_block_settings:minerva_accounts(),
-            hardfork_ops(Deltas);
-        {?FORTUNA_PROTOCOL_VSN, _} ->
-            Deltas = aec_fork_block_settings:fortuna_accounts(),
-            hardfork_ops(Deltas);
-        {?LIMA_PROTOCOL_VSN, _} ->
-            Deltas = aec_fork_block_settings:lima_accounts(),
-            Ops = hardfork_ops(Deltas, []),
-            ExtraDeltas = aec_fork_block_settings:lima_extra_accounts(),
-            Ops1 = hardfork_ops(ExtraDeltas, Ops),
-            Contracts = aec_fork_block_settings:lima_contracts(),
-            Ops2 = hardfork_contract_ops(Contracts, Ops1),
-            lists:reverse(Ops2);
-        {?IRIS_PROTOCOL_VSN, _} ->
-            [];
+        {Protocol, _} ->
+            IsCustomFork = aec_fork_block_settings:is_custom_fork(Protocol),
+            if IsCustomFork ->
+                Deltas = aec_fork_block_settings:accounts(Protocol),
+                hardfork_ops(Deltas);
+            true ->
+                case Protocol of
+                    ?MINERVA_PROTOCOL_VSN ->
+                        Deltas = aec_fork_block_settings:minerva_accounts(),
+                        hardfork_ops(Deltas);
+                    ?FORTUNA_PROTOCOL_VSN ->
+                        Deltas = aec_fork_block_settings:fortuna_accounts(),
+                        hardfork_ops(Deltas);
+                    ?LIMA_PROTOCOL_VSN ->
+                        Deltas = aec_fork_block_settings:lima_accounts(),
+                        Ops = hardfork_ops(Deltas, []),
+                        ExtraDeltas = aec_fork_block_settings:lima_extra_accounts(),
+                        Ops1 = hardfork_ops(ExtraDeltas, Ops),
+                        Contracts = aec_fork_block_settings:lima_contracts(),
+                        Ops2 = hardfork_contract_ops(Contracts, Ops1),
+                        lists:reverse(Ops2);
+                    ?IRIS_PROTOCOL_VSN ->
+                        [];
+                    _ ->
+                        []
+                end
+            end;
         _ ->
             []
     end.
