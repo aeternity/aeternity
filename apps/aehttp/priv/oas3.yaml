@@ -1106,7 +1106,8 @@ paths:
         - transaction
       operationId: GetRecentGasPrices
       description: 'Get minimum gas prices in recent blocks'
-      parameters: []
+      parameters:
+        - $ref: '#/components/parameters/intAsString'
       responses:
         '200':
           description: 'Successful operation'
@@ -3948,9 +3949,11 @@ components:
             $ref: "#/components/schemas/UInt"
           utilization:
             description: Percent of available gas used
-            type: integer
-            minimum: 0
-            maximum: 100
+            oneOf:
+              - type: integer
+                minimum: 0
+                maximum: 100
+              - type: string
           minutes:
             description: Number of minutes from the top
             $ref: "#/components/schemas/UInt64"
