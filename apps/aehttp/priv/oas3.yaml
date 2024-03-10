@@ -3287,7 +3287,7 @@ components:
           required:
             - version
             - type
-        - anyOf:
+        - oneOf:
             - $ref: "#/components/schemas/SpendTx"
             - $ref: "#/components/schemas/ChannelCreateTx"
             - $ref: "#/components/schemas/ChannelDepositTx"
@@ -3893,7 +3893,7 @@ components:
         - fee
         - tx
     Header:
-      anyOf:
+      oneOf:
         - $ref: "#/components/schemas/KeyBlock"
         - $ref: "#/components/schemas/MicroBlockHeader"
     SignedTxs:
