@@ -3957,6 +3957,7 @@ components:
         required:
           - min_gas_price
           - minutes
+          - utilization
   parameters:
     intAsString:
       in: query
