@@ -74,6 +74,9 @@ run_docker_system_test:
         name: System Tests
         no_output_timeout: 2h
         command: |
+          # The host system might run with "any" UID while the aeternity containers run with 1000:1000
+          # umask is not great idea, but this is private CI after all, no better solutions without changing the tests
+          umask 0
           make system-test
 
 run_docker_system_smoke_test:
@@ -86,6 +89,9 @@ run_docker_system_smoke_test:
         name: System Smoke Tests
         no_output_timeout: 1h
         command: |
+          # The host system might run with "any" UID while the aeternity containers run with 1000:1000
+          # umask is not great idea, but this is private CI after all, no better solutions without changing the tests
+          umask 0
           make smoke-test-run
 
 docker_system_test:

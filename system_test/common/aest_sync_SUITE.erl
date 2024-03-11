@@ -675,6 +675,8 @@ net_split_mining_power(Cfg) ->
     % Check that the larger cluster has more mining power.
     Net1MinedBlocks1 = node_mined_retries(Net1Nodes),
     Net2MinedBlocks1 = node_mined_retries(Net2Nodes),
+
+    ct:log("Net1 mined ~p while Net2 mined ~p", [Net1MinedBlocks1, Net2MinedBlocks1]),
     ?assert(Net1MinedBlocks1 < Net2MinedBlocks1),
 
     %% Join all the nodes
@@ -762,14 +764,26 @@ abrupt_stop_mining_node(_Cfg) ->
 
 %% helper functions
 
+%% Metrics are not populated immediately, so let's make sure we poll until there
+%% is actually data.
 node_mined_retries(Nodes) ->
     Metric = "ae.epoch.aecore.mining.retries.value",
     lists:foldl(fun(N, Acc) ->
-        case aest_nodes:read_last_metric(N, Metric) of
-            undefined -> Acc;
-            Num -> Acc + Num
-        end
+        poll_node_metric(N, Metric, 15) + Acc
     end, 0, Nodes).
+
+poll_node_metric(Node, Metric, 0) ->
+    ct:log("Giving up getting ~p at ~p", [Metric, Node]),
+    0;
+poll_node_metric(Node, Metric, N) ->
+    case aest_nodes:read_last_metric(Node, Metric) of
+        undefined ->
+            timer:sleep(1000),
+            poll_node_metric(Node, Metric, N - 1);
+        Value ->
+            ct:log("~p attempts remaining: Got value ~p for ~p from ~p", [N - 1, Value, Metric, Node]),
+            Value
+    end.
 
 ping_interval(Node) ->
     get_node_config(Node, ["sync", "ping_interval"]).
