@@ -280,20 +280,27 @@ new_pid() ->
     spawn(fun() -> ok end).
 
 new_receiver(Msg) ->
-    spawn(fun() ->
-                  Res =
-                    receive
-                        Msg    -> Msg;
-                        _Other -> unexpected_msg
-                    after
-                        5000   -> receiver_msg_timeout
-                    end,
-                  receive
-                      {get_result, From} -> From ! Res
-                  end
-          end).
+    spawn(fun() -> receiver_loop(Msg) end).
+
+receiver_loop(Msg) ->
+    receive
+        Msg -> receiver_final(Msg);
+        {get_result, _} = Get ->
+            erlang:send_after(5, self(), Get),
+            receiver_loop(Msg);
+        _Other ->
+            receiver_final(unexpected_msg)
+    after
+        500 ->
+            receiver_final(receiver_msg_timeout)
+    end.
+
+receiver_final(Res) ->
+    receive
+      {get_result, From} -> From ! Res
+    end.
 
 receiver_result(From, ConnPid) ->
     ConnPid ! {get_result, From},
-    receive Res -> Res end.
-
+    receive Res -> Res
+    after 2000 -> timeout end.
