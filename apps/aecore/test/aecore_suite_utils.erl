@@ -52,7 +52,7 @@
          wait_for_height/2,
          wait_for_height/3,
          flush_new_blocks/0,
-         flush_mempool/1,
+         flush_mempool/2,
          spend/5,         %% (Node, FromPub, ToPub, Amount, Fee) -> ok
          sign_on_node/2,
          sign_on_node/3,
@@ -908,11 +908,20 @@ flush_new_blocks_produced() ->
             flush_new_blocks_produced()
     end.
 
-flush_mempool(Node) ->
-    {ok, SignedTxs} = rpc:call(Node, aec_tx_pool, peek, [infinity]),
-    [ rpc:call(Node, aec_tx_pool, delete, [aetx_sign:hash(STx)]) || STx <- SignedTxs ],
-    ct:log("Flushed ~p txs from ~p's mempool", [length(SignedTxs), Node]),
-    ok.
+%% Try to flush at least N messages from mempool
+%% (the N is to avoid races - so it just waits "a little bit").
+flush_mempool(N, Node) ->
+    flush_mempool(2, N, Node).
+
+flush_mempool(Retries, N, Node) ->
+    case rpc:call(Node, aec_tx_pool, peek, [infinity]) of
+        {ok, SignedTxs} when length(SignedTxs) >= N orelse Retries == 0 ->
+            [ rpc:call(Node, aec_tx_pool, delete, [aetx_sign:hash(STx)]) || STx <- SignedTxs ],
+            ct:log("Flushed ~p txs from ~p's mempool", [length(SignedTxs), Node]);
+        _ ->
+            timer:sleep(500),
+            flush_mempool(Retries - 1, N, Node)
+    end.
 
 %% block the process until a certain height is reached
 %% this has the expectation that the Node is mining
