@@ -1543,23 +1543,46 @@ prepare_mnesia_bypass() ->
             %% Check whether we can bypass mnesia in some cases
             persistent_term:erase(?PT_BYPASS); %% TODO: add leveled backend here
         [_|_] ->
-            case aeu_env:find_config([<<"chain">>, <<"db_direct_access">>], [ user_config
-                                                                            , schema_default
-                                                                            , {value, false} ]) of
-                {ok, true} ->
-                    lager:debug("Enabling direct access for rocksdb", []),
+            case can_enable_direct_access() of
+                true ->
                     persistent_term:put(?PT_DIRECT_API, true);
-                _ ->
+                false ->
                     case aeu_env:find_config([<<"chain">>, <<"db_commit_bypass">>], [ user_config
                                                                                     , schema_default
                                                                                     , {value, true} ]) of
                         {ok, true} ->
-                            lager:debug("Enabling bypass for rocksdb", []),
+                            lager:info("Enabling bypass for rocksdb", []),
                             persistent_term:put(?PT_BYPASS, rocksdb);
                         _ ->
                             lager:debug("NOT enabling bypass logic for rocksdb", [])
                     end
             end
+    end.
+
+can_enable_direct_access() ->
+    AllStandalone = all_standalone_tables(),
+    case aeu_env:find_config([<<"chain">>, <<"db_direct_access">>], [ user_config
+                                                                    , schema_default
+                                                                    , {value, false} ]) of
+        {ok, true} ->
+            case AllStandalone of
+                [] ->
+                    lager:info("Enabling direct access for rocksdb", []),
+                    true;
+                [_|_] ->
+                    lager:warning(
+                      "NOT enabling direct access - Detected standalone tables. Migrate first", []),
+                    false
+            end;
+        _ ->
+            case AllStandalone of
+                [] ->
+                    lager:warning("Recommend enabling db_direct_access for best consistency protection", []);
+                [_|_] ->
+                    lager:warning("Recommend migrating db and enabling db_direct_access"
+                                  " for best consistency protection", [])
+            end,
+            false
     end.
 
 %% Initialization routines
