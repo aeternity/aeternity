@@ -5,6 +5,8 @@
 %%%-------------------------------------------------------------------
 -module(aecontract_SUITE).
 
+-compile([nowarn_update_literal]).
+
 %% common_test exports
 -export([ all/0
         , groups/0

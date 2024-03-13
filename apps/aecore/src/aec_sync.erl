@@ -119,18 +119,18 @@ handle_worker(Task, Action) ->
 opt_call(Req, Else) ->
     case sync_running() of
         true  -> gen_server:call(?MODULE, Req);
-        false -> else(Else)
+        false -> else_do(Else)
     end.
 
 opt_call(Req, Timeout, Else) ->
     case sync_running() of
         true  -> gen_server:call(?MODULE, Req, Timeout);
-        false -> else(Else)
+        false -> else_do(Else)
     end.
 
-else(F) when is_function(F, 0) ->
+else_do(F) when is_function(F, 0) ->
     F();
-else(Else) ->
+else_do(Else) ->
     Else.
 
 %% When we Ping a node with at least as much difficulty as we have,

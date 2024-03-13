@@ -315,7 +315,7 @@ unfold(<<>>, _, #mpt{ hash = Hash, db = DB }) ->
 unfold(PrefixPath, Node, #mpt{ db = DB }) ->
     int_unfold(PrefixPath, decode_node(Node, DB), DB).
 
--spec has_node(path(), enc_node(), tree()) -> yes | no | maybe.
+-spec has_node(path(), enc_node(), tree()) -> yes | no | 'maybe'.
 has_node(Path, Node, T = #mpt{ hash = Root, db = DB }) ->
     try decode_node(Node, DB) of
         {'leaf', NodePath, Val} ->
@@ -605,7 +605,7 @@ int_has_node(<<Next:4>>, Node, {branch, Branch}, _DB) ->
     case branch_next(Next, Branch) of
         <<>> -> no;
         Node -> yes;
-        _    -> maybe
+        _    -> 'maybe'
     end;
 int_has_node(<<Next:4, Rest/bits>>, Node, {branch, Branch}, DB) ->
     NextEncoded = branch_next(Next, Branch),
@@ -622,7 +622,7 @@ int_has_node(Path, Node, {Type, NodePath, NodeVal}, DB)
             S1 = bit_size(Path),
             case NodePath of
                 <<Path:S1/bits, _/bits>> ->
-                    maybe;
+                    'maybe';
                 _ ->
                     no
             end
@@ -630,7 +630,7 @@ int_has_node(Path, Node, {Type, NodePath, NodeVal}, DB)
 int_has_node(_, _, <<>>, _) ->
     no;
 int_has_node(<<>>, _, {branch, _Branch}, _DB) ->
-    maybe.
+    'maybe'.
 
 %%%===================================================================
 %%% Reachable store nodes (useful for implementing GC).
