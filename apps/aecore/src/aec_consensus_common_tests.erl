@@ -114,13 +114,21 @@ client_request({mine_blocks, NumBlocksToMine, Type}) ->
             {ok, [client_request(emit_mb) || _ <- lists:seq(1, NumBlocksToMine)]}
     end;
 client_request(mine_micro_block_emptying_mempool_or_fail) ->
-    MaybeKB = ensure_leader(),
-    MB = client_request(emit_mb),
-    %% If instant mining is enabled then we can't have microforks :)
-    {ok, []} = aec_tx_pool:peek(infinity),
-    {ok, MaybeKB ++ [MB]};
+    mine_micro_block_emptying_mempool_or_fail(1, []);
 client_request({mine_blocks_until_txs_on_chain, TxHashes, Max}) ->
     mine_blocks_until_txs_on_chain(TxHashes, Max, []).
+
+mine_micro_block_emptying_mempool_or_fail(N, PrevBlocks) ->
+    case aec_tx_pool:peek(infinity) of
+        {ok, []} ->
+            {ok, PrevBlocks};
+        _ when N == 0 ->
+            {error, mempool_not_empty};
+        _ ->
+            MaybeKB = ensure_leader(),
+            MB = client_request(emit_mb),
+            mine_micro_block_emptying_mempool_or_fail(N - 1, PrevBlocks ++ MaybeKB ++ [MB])
+    end.
 
 mine_blocks_until_txs_on_chain(_TxHashes, 0, _Blocks) ->
     {error, max_reached};

@@ -484,7 +484,7 @@ set_up_lazy_leader_node(NetworkId, Config) ->
     ReceiveAddress = encoded_pubkey(?FORD),
     NodeConfig = node_config(NetworkId,?LAZY_NODE, Config, [{?LISA, ?LISA}], ReceiveAddress, ?CONSENSUS_HC,
                                 false, GenesisStartTime),
-    build_json_files(ElectionContract, [NodeConfig]),    
+    build_json_files(ElectionContract, [NodeConfig]),
     aecore_suite_utils:create_config(?LAZY_NODE, Config,
                                      NodeConfig,
                                     [{add_peers, true} ]),
@@ -764,7 +764,7 @@ empty_parent_block(Config) ->
 empty_parent_block_(_Config) ->
     TopHeight = rpc(?LAZY_NODE, aec_chain, top_height, []),
     %% Remove the posted commitments to create a parent generation without commitments
-    aecore_suite_utils:flush_mempool(?PARENT_CHAIN_NODE1_NAME),
+    aecore_suite_utils:flush_mempool(2, ?PARENT_CHAIN_NODE1_NAME),
     ok = produce_blocks_hc(?LAZY_NODE, ?LAZY_NODE_NAME, 1, lazy_leader),
 
     %% The lazy leader block is either from ?LISA (dev8) or ?ALICE/?BOB (dev1)
@@ -1497,7 +1497,7 @@ build_json_files(ElectionContract, NodeConfigs) ->
 		 Call7, Call8, Call9, Call10, Call11, Call12, Call13],
     ProtocolBin = integer_to_binary(aect_test_utils:latest_protocol_version()),
     ContractsFileNames = [ContractsFileName  || #{<<"chain">> := #{<<"hard_forks">> := #{ProtocolBin := #{<<"contracts_file">> := ContractsFileName}}}} <- NodeConfigs],
-    AccountsFileNames = [AccountsFileName  || #{<<"chain">> := #{<<"hard_forks">> := #{ProtocolBin := #{<<"accounts_file">> := AccountsFileName}}}} <- NodeConfigs],    
+    AccountsFileNames = [AccountsFileName  || #{<<"chain">> := #{<<"hard_forks">> := #{ProtocolBin := #{<<"accounts_file">> := AccountsFileName}}}} <- NodeConfigs],
     aecore_suite_utils:create_seed_file(ContractsFileNames,
         #{<<"contracts">> => [C0, SC, EC], <<"calls">> => AllCalls}),
     aecore_suite_utils:create_seed_file(AccountsFileNames,

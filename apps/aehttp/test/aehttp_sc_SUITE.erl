@@ -1681,7 +1681,10 @@ sc_ws_reestablish_(ReestablishOptions, Config) ->
                                 {RCP, FsmId}
                           end,
     ReestablishOptions1 = maps:put(host, <<"localhost">>, ReestablishOptions),
-    {ok, IrConnPid, IFsmId} = channel_ws_start(initiator, ReestablishOptions1, Config),
+    %% We need to register for events - before starting the channel (asynch!)
+    ok = ?WS:register_test_for_channel_events(RrConnPid, [info, update]),
+    {ok, IrConnPid, IFsmId} = channel_ws_start(initiator, ReestablishOptions1, Config, [info, update]),
+
     Config1 = lists:keystore(channel_clients, 1, Config,
                             {channel_clients, #{ initiator => IrConnPid
                                                , initiator_fsm_id => IFsmId
@@ -1694,8 +1697,6 @@ await_reestablish_reports(Config) ->
     ResponderLeaves = proplists:get_value(responder_leaves, Config, true),
     #{initiator := IConnPid, responder := RConnPid}
         = proplists:get_value(channel_clients, Config),
-    ok = ?WS:register_test_for_channel_events(RConnPid, [info, update]),
-    ok = ?WS:register_test_for_channel_events(IConnPid, [info, update]),
     {ok, ChId, IMsg} = wait_for_channel_event(IConnPid, info, Config),
     {ok, ChId, RMsg} = wait_for_channel_event(RConnPid, info, Config),
     {ChId, true} = {ChId, ChId =/= null},
@@ -3440,10 +3441,17 @@ reconnect_client_(ReestablishOpts, Role, Config) ->
                            responder ->
                                ReestablishOpts
                        end,
-    {ok, ConnPid, FsmId} = channel_ws_start(Role, ReestablishOpts1, Config),
+    OldClients = ?config(channel_clients, Config),
+    OtherConnPid = case Role of
+                       initiator -> maps:get(responder, OldClients);
+                       responder -> maps:get(initiator, OldClients)
+                   end,
+    %% We need to register for events - before starting the channel (asynch!)
+    ok = ?WS:register_test_for_channel_events(OtherConnPid, [info, update]),
+    {ok, ConnPid, FsmId} = channel_ws_start(Role, ReestablishOpts1, Config, [info, update]),
+
     ct:log("New ConnPid = ~p", [ConnPid]),
     ct:log("Check if reestablish resulted in a reconnect", []),
-    OldClients = ?config(channel_clients, Config),
     ct:log("OldClients = ~p", [OldClients]),
     {OldFsmId, NewClients} = case Role of
                                  initiator ->
