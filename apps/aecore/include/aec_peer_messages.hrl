@@ -1,3 +1,6 @@
+
+-define(P2P_PROTOCOL_VSN, 1).
+
 -define(REQUEST_TIMEOUT, 30000).
 
 -define(MSG_FRAGMENT, 0).
@@ -27,7 +30,8 @@
 
 
 -define(RESPONSE_VSN, 1).
--define(PING_VSN, 1).
+-define(PING_VSN_1, 1).
+-define(PING_VSN_2, 2).
 -define(GET_MEMPOOL_VSN, 1).
 -define(MEMPOOL_VSN, 1).
 -define(GET_HEADER_BY_HASH_VSN, 1).

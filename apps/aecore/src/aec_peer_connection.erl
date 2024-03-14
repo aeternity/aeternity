@@ -55,9 +55,30 @@
 
 -import(aeu_debug, [pp/1]).
 
--define(dirty(Fun), aec_db:ensure_activity(async_dirty, Fun)).
+-type status() :: error
+                | {disconnecting, any()}   % {disconnecting, ESock}
+                | {connecting, pid()}
+                | {connected, any()}.      % {connected, ESock}
 
--define(P2P_PROTOCOL_VSN, 1).
+-type state() :: #{ conn_type := noise | tcp
+                  , role      := initiator | responder
+                  , kind      := permanent | temporary
+                  , status    := status()
+                  , version   := binary()
+                  , genesis   := binary()
+                  , pubkey    => binary()
+                  , r_pubkey  => binary()
+                  , address   => inet:ip_address()
+                  , tcp_sock  => any()
+                  , host      => any()
+                  , port      => non_neg_integer()
+                  , requests  => map()
+                  , first_ping_tref => any()
+                  , use_ping_vsn := ?PING_VSN_1 | ?PING_VSN_2
+                  , fragments => [binary()]
+                  }.
+
+-define(dirty(Fun), aec_db:ensure_activity(async_dirty, Fun)).
 
 -define(DEFAULT_CONNECT_TIMEOUT, 1000).
 -define(DEFAULT_FIRST_PING_TIMEOUT, 30000).
@@ -292,8 +313,8 @@ handle_info(timeout, S = #{ role := initiator, host := Host, port := Port }) ->
     {noreply, S#{ status => {connecting, Pid} }};
 handle_info(timeout, S) ->
     {noreply, S};
-handle_info({timeout, Ref, {request, Kind}}, S) ->
-    handle_request_timeout(S, Ref, Kind);
+handle_info({timeout, Ref, {request, Kind, Vsn}}, S) ->
+    handle_request_timeout(S, Ref, Kind, Vsn);
 handle_info({timeout, Ref, first_ping_timeout}, S) ->
     NonRegAccept = is_non_registered_accept(S),
     case maps:get(first_ping_tref, S, undefined) of
@@ -384,10 +405,10 @@ handle_info({noise, _, <<?MSG_FRAGMENT:16, N:16, M:16, Fragment/binary>>}, S) ->
     handle_fragment(S, N, M, Fragment);
 handle_info({noise, _, <<Type:16, Payload/binary>>}, S) ->
     case aec_peer_messages:deserialize(Type, Payload) of
-        {response, _Vsn, #{ result := false, type := MsgType, reason := Reason }} ->
-            {noreply, handle_msg(S, MsgType, true, {error, Reason})};
+        {response, Vsn, #{ result := false, type := MsgType, reason := Reason }} ->
+            {noreply, handle_msg(S, MsgType, Vsn, true, {error, Reason})};
         {response, _Vsn, #{ result := true, type := MsgType, msg := {MsgType, Vsn, Msg} }} ->
-            {noreply, handle_msg(S, MsgType, true, {ok, Vsn, Msg})};
+            {noreply, handle_msg(S, MsgType, Vsn, true, {ok, Msg})};
         {close, _Vsn, _Msg} ->
             case S of
                 #{ status := {disconnecting, _} } ->
@@ -400,8 +421,9 @@ handle_info({noise, _, <<Type:16, Payload/binary>>}, S) ->
                     {stop, normal, S}
             end;
         {MsgType, Vsn, Msg} ->
-            {noreply, handle_msg(S, MsgType, false, {ok, Vsn, Msg})};
+            {noreply, handle_msg(S, MsgType, Vsn, false, {ok, Msg})};
         Err = {error, _} ->
+            epoch_sync:debug("Deserialize failure: ~p / Type: ~p / Payload: ~p", [Err, Type, Payload]),
             epoch_sync:info("Could not deserialize message ~p", [Err]),
             {noreply, S}
     end;
@@ -438,6 +460,7 @@ notify_close(S) ->
     aec_peers:connection_closed(peer_id(S), self()),
     close(S).
 
+-spec close(state()) -> state().
 close(#{ status := {connected, ESock} } = S) ->
     send_msg(S, close, aec_peer_messages:serialize(close, #{})),
     CloseTimeout = close_timeout(),
@@ -453,29 +476,41 @@ handle_general_error(S) ->
             connect_fail(S1)
     end.
 
-get_request(S, Kind) ->
-    maps:get(map_request(Kind), maps:get(requests, S, #{}), none).
+%% Ping needs to support concurrent pings of different versions
+request_key(ping, Vsn) ->
+    {ping, Vsn};
+request_key(Kind, _Vsn) ->
+    Kind.
 
-set_request(S, Kind, From) ->
-    set_request(S, Kind, From, ?REQUEST_TIMEOUT).
+get_request(S, Kind, Vsn) ->
+    maps:get(request_key(map_request(Kind), Vsn), maps:get(requests, S, #{}), none).
 
-set_request(S, Kind, From, Timeout) ->
+set_request(S, Kind, Vsn, From) ->
+    set_request(S, Kind, Vsn, From, ?REQUEST_TIMEOUT).
+
+set_request(S, Kind, Vsn, From, Timeout) ->
     Rs = maps:get(requests, S, #{}),
-    TRef = erlang:start_timer(Timeout, self(), {request, Kind}),
-    S#{ requests => Rs#{ Kind => {Kind, From, TRef} } }.
+    TRef = erlang:start_timer(Timeout, self(), {request, Kind, Vsn}),
+    S#{ requests => Rs#{ request_key(Kind, Vsn) => {Kind, From, TRef} } }.
 
-remove_request_fld(S, Kind) ->
+remove_request_fld(S, Kind, Vsn) ->
     Rs = maps:get(requests, S, #{}),
-    case get_request(S, Kind) of
-        none ->
-            ok;
-        {_MappedKind, _From, TRef} ->
-            erlang:cancel_timer(TRef)
-    end,
-    S#{ requests => maps:remove(map_request(Kind), Rs) }.
+    case maps:take(request_key(map_request(Kind), Vsn), Rs) of
+        error ->
+            S;
+        {{_MappedKind, _From, TRef}, Rs1} ->
+            erlang:cancel_timer(TRef),
+            S#{ requests => Rs1 }
+    end.
 
-handle_request_timeout(S, Ref, Kind) ->
-    case get_request(S, Kind) of
+handle_request_timeout(S, Ref, Kind, Vsn) ->
+    Rs = maps:get(requests, S, #{}),
+    case get_request(S, Kind, Vsn) of
+        {ping, _From, Ref} when Vsn > 1 ->
+            epoch_sync:debug("Timeout on V2 test ping. Keeping pinging vsn 1", []),
+            Rs1 = maps:remove(request_key(Kind, Vsn), Rs),
+            {noreply, S#{ requests => Rs1
+                        , use_ping_vsn => ?PING_VSN_1 }};
         {_MappedKind, From, Ref} ->
             epoch_sync:info("~p request timeout, stopping peer_connection", [Kind]),
             do_reply(From, {error, request_timeout}),
@@ -512,6 +547,7 @@ try_connect(Parent, Host, Port, Timeout) ->
     end,
     Parent ! {connected, self(), Res}.
 
+-spec ensure_genesis(state()) -> state().
 ensure_genesis(S = #{ genesis := G }) when is_binary(G) ->
     S;
 ensure_genesis(S) ->
@@ -527,6 +563,7 @@ is_non_registered_accept(State) ->
     maps:get(role, State, no_role) == responder
         andalso maps:get(port, State, no_port) == no_port.
 
+-spec cleanup_connection(state()) -> state().
 cleanup_connection(State) ->
     case maps:get(status, State, error) of
         {connected, ESock}     -> enoise:close(ESock);
@@ -569,26 +606,26 @@ handle_fragment(S = #{ fragments := Fragments }, N, M, _Fragment) ->
     S1 = cleanup_connection(S),
     connect_fail(maps:remove(fragments, S1)).
 
-handle_msg(S, MsgType, IsResponse, Result) ->
-    handle_msg(S, MsgType, IsResponse, get_request(S, MsgType), Result).
+handle_msg(S, MsgType, Vsn, IsResponse, Result) ->
+    handle_msg(S, MsgType, Vsn, IsResponse, get_request(S, MsgType, Vsn), Result).
 
 do_reply(From = {Pid, _Tag}, Msg) when is_pid(Pid) ->
     gen_server:reply(From, Msg);
 do_reply(_Other, _Msg) ->
     ok.
 
-handle_msg(S, block_txs, true, none, Result) ->
+handle_msg(S, block_txs, _Vsn, true, none, Result) ->
     handle_get_block_txs_rsp(S, Result);
-handle_msg(S, MsgType, true, none, Result) ->
+handle_msg(S, MsgType, _Vsn, true, none, Result) ->
     epoch_sync:info("Peer ~p got unexpected ~p response - ~p",
                     [peer_id(S), MsgType, Result]),
     S;
-handle_msg(S, _MsgType, true, {RequestFld, From, _TRef}, {error, Reason}) ->
+handle_msg(S, _MsgType, Vsn, true, {RequestFld, From, _TRef}, {error, Reason}) ->
     do_reply(From, {error, Reason}),
-    remove_request_fld(S, RequestFld);
-handle_msg(S, MsgType, false, Request, {ok, Vsn, Msg}) ->
+    remove_request_fld(S, RequestFld, Vsn);
+handle_msg(S, MsgType, Vsn, false, Request, {ok, Msg}) ->
     case MsgType of
-        ping                 -> handle_ping(S, Request, Msg);
+        ping                 -> handle_ping(S, Request, Vsn, Msg);
         get_header_by_hash   -> handle_get_header_by_hash(S, Msg);
         get_header_by_height -> handle_get_header_by_height(S, Vsn, Msg);
         get_n_successors     -> handle_get_n_successors(S, Vsn, Msg);
@@ -603,50 +640,71 @@ handle_msg(S, MsgType, false, Request, {ok, Vsn, Msg}) ->
         txps_finish          -> handle_tx_pool_sync_finish(S, Msg);
         get_node_info        -> handle_get_node_info(S)
     end;
-handle_msg(S, MsgType, true, Request, {ok, _Vsn, Msg}) ->
+handle_msg(S, MsgType, Vsn, true, Request, {ok, Msg}) ->
     case MsgType of
-        ping          -> handle_ping_rsp(S, Request, Msg);
-        header        -> handle_header_rsp(S, Request, Msg);
-        header_hashes -> handle_header_hashes_rsp(S, Request, Msg);
-        generation    -> handle_get_generation_rsp(S, Request, Msg);
+        ping          -> handle_ping_rsp(S, Request, Vsn, Msg);
+        header        -> handle_header_rsp(S, Request, Vsn, Msg);
+        header_hashes -> handle_header_hashes_rsp(S, Request, Vsn, Msg);
+        generation    -> handle_get_generation_rsp(S, Request, Vsn, Msg);
         txps_init     -> handle_tx_pool_sync_rsp(S, init, Request, Msg);
         txps_unfold   -> handle_tx_pool_sync_rsp(S, unfold, Request, Msg);
         txs           -> handle_tx_pool_sync_rsp(S, get, Request, Msg);
         txps_finish   -> handle_tx_pool_sync_rsp(S, finish, Request, Msg);
-        node_info     -> handle_node_info_rsp(S, Request, Msg)
+        node_info     -> handle_node_info_rsp(S, Request, Vsn, Msg)
     end.
 
 handle_request(S, {Request, Args}, From) ->
     MappedRequest = map_request(Request),
-    case get_request(S, Request) of
+    Vsn = case Request of
+            tx_pool ->
+                undefined;
+            _ ->
+                msg_version(Request, S)
+          end,
+    case get_request(S, Request, Vsn) of
         none ->
-            handle_request(S, Request, Args, From);
+            handle_request(S, Request, Args, Vsn, From);
         {MappedRequest, _From, _TRef} ->
             {reply, {error, request_already_in_progress}, S}
     end.
 
-handle_request(S = #{ status := error }, _Req, _Args, _From) ->
+handle_request(S = #{ status := error }, _Req, _Args, _Vsn, _From) ->
     {reply, {error, disconnected}, S};
-handle_request(S, tx_pool, TxPoolArgs, From) ->
+handle_request(S, tx_pool, TxPoolArgs, _Vsn, From) ->
     handle_tx_pool(S, TxPoolArgs, From);
-handle_request(S, Request, Args, From) ->
-    ReqData = prepare_request_data(S, Request, Args),
-    CustomTimeout = custom_timeout(Request, Args),
-    send_msg(S, Request, aec_peer_messages:serialize(Request, ReqData)),
-    {noreply, set_request(S, map_request(Request), From, CustomTimeout)}.
+handle_request(S, Request, Args, Vsn, From) ->
+    {noreply, prepare_and_send_request(S, Request, Args, Vsn, From)}.
 
-prepare_request_data(S, ping, []) ->
-    ping_obj(local_ping_obj(S), [peer_id(S)]);
-prepare_request_data(_S, get_header_by_hash, [Hash]) ->
+prepare_and_send_request(S, Request, Args, Vsn, From) ->
+    ReqData = prepare_request_data(S, Request, Args, Vsn),
+    CustomTimeout = custom_timeout(Request, Args),
+    send_msg(S, Request, aec_peer_messages:serialize(Request, ReqData, Vsn)),
+    set_request(S, map_request(Request), Vsn, From, CustomTimeout).
+
+prepare_request_data(S, ping, [], Vsn) ->
+    ping_obj(local_ping_obj(S, false), [peer_id(S)], Vsn);
+prepare_request_data(_S, get_header_by_hash, [Hash], _Vsn) ->
     #{ hash => Hash };
-prepare_request_data(_S, get_header_by_height, [Height, TopHash]) ->
+prepare_request_data(_S, get_header_by_height, [Height, TopHash], _Vsn) ->
     #{ height => Height, top_hash => TopHash };
-prepare_request_data(_S, get_n_successors, [FromHash, TargetHash, N]) ->
+prepare_request_data(_S, get_n_successors, [FromHash, TargetHash, N], _Vsn) ->
     #{ from_hash => FromHash, target_hash => TargetHash, n => N };
-prepare_request_data(_S, get_generation, [Hash, Dir]) ->
+prepare_request_data(_S, get_generation, [Hash, Dir], _Vsn) ->
     #{ hash => Hash, forward => (Dir == forward) };
-prepare_request_data(_S, get_node_info, _) ->
+prepare_request_data(_S, get_node_info, _, _Vsn) ->
     #{}.
+
+msg_version(ping, S) ->
+    ping_version(S);
+msg_version(Request, S) ->
+    aec_peer_messages:latest_vsn(Request, p2p_version(S)).
+
+ping_version(#{use_ping_vsn := UseVsn}) ->
+    UseVsn;
+ping_version(_) ->
+    {ok, V} = aeu_env:find_config([<<"sync">>, <<"minimum_ping_version">>],
+				  [user_config, schema_default]),
+    V.
 
 custom_timeout(get_node_info, [Timeout]) -> Timeout;
 custom_timeout(_, _) -> ?REQUEST_TIMEOUT.
@@ -664,32 +722,83 @@ handle_tx_pool(S, Args, From) ->
                 {txps_finish, #{ done => Done }}
         end,
     send_msg(S, Msg, aec_peer_messages:serialize(Msg, MsgData)),
-    {noreply, set_request(S#{ tx_pool => Msg }, tx_pool, From)}.
+    {noreply, set_request(S#{ tx_pool => Msg }, tx_pool, undefined, From)}.
 
 %% -- Ping message -----------------------------------------------------------
 
-handle_ping_rsp(S, {ping, From, _TRef}, RemotePingObj) ->
-    Res = handle_ping_msg(S, RemotePingObj),
+handle_ping_rsp(S, {ping, From, _TRef}, Vsn, RemotePingObj) ->
+    Res = handle_ping_msg(S, Vsn, RemotePingObj),
     gen_server:reply(From, Res),
-    remove_request_fld(S, ping).
+    %% determine which version to use in the future, and re-ping
+    S1 = set_ping_vsn(S, Vsn, RemotePingObj, From),
+    remove_request_fld(S1, ping, Vsn).
 
-handle_ping(S, none, RemotePingObj) ->
+ping_versions_supported() ->
+    aec_peer_messages:msg_versions(ping).
+
+intersection(A, B) ->
+    %% assume no duplicate elements
+    A -- (A -- B).
+
+set_ping_vsn(#{use_ping_vsn := UseVsn} = S, Vsn, PingObj, _From) ->
+    if UseVsn =:= Vsn ->
+            S;
+       true ->
+            use_latest_common_ping_version(S, PingObj)
+    end;
+set_ping_vsn(S, Vsn, PingObj, From) ->
+    case Vsn of
+        ?PING_VSN_1 ->
+            if From =/= undefined ->
+                    %% No versions attribute. Ping with version 2
+                    epoch_sync:debug("Pinging with version 2", []),
+                    prepare_and_send_request(S, ping, [], ?PING_VSN_2, From);
+               true ->
+                    S
+            end;
+        _ ->
+            use_latest_common_ping_version(S, PingObj)
+    end.
+
+use_latest_common_ping_version(S, PingObj) ->
+    Vr = remote_vsns_supported(ping, PingObj, S),
+    Pick = lists:max(intersection(
+                       ping_versions_supported(),
+                       Vr)),
+    epoch_sync:debug("Use ping version: ~p", [Pick]),
+    S#{use_ping_vsn => Pick}.
+
+remote_vsns_supported(Type, PingObj, S) ->
+    TypeBin = atom_to_binary(Type, utf8),
+    AllVsns = maps:get(versions, PingObj, []),
+    case lists:filter(fun(#{protocol := Protocol})  -> Protocol == TypeBin end, AllVsns) of
+        [#{vsns := Vsns}] ->
+            Vsns;
+        _ ->
+            %% assume our hard-coded vsn
+            [aec_peer_messages:latest_vsn(Type, p2p_version(S))]
+    end.
+
+p2p_version(#{version := <<V:64>>}) ->
+    V.
+
+handle_ping(S, none, Vsn, RemotePingObj) ->
     {PeerOk, S1} = handle_first_ping(S, RemotePingObj),
     Response =
         case PeerOk of
             ok ->
-                case handle_ping_msg(S1, RemotePingObj) of
+                case handle_ping_msg(S1, Vsn, RemotePingObj) of
                     ok ->
-                        {ok, ping_obj_rsp(S1, RemotePingObj)};
+                        {ok, ping_obj_rsp(S1, Vsn, RemotePingObj)};
                     {error, Reason} ->
                         {error, Reason}
                 end;
             {error, Reason} ->
                 {error, Reason}
         end,
-    send_response(S, ping, Response),
-    maybe_close(S1);
-handle_ping(S, {ping, _From, _TRef}, RemotePingObj) ->
+    send_response(S1, ping, Vsn, Response),
+    maybe_close(set_ping_vsn(S1, Vsn, RemotePingObj, undefined));
+handle_ping(S, {ping, _From, _TRef}, _Vsn, RemotePingObj) ->
     epoch_sync:info("Peer ~p got new ping when waiting for PING_RSP - ~p",
                     [peer_id(S), RemotePingObj]),
     send_response(S, ping, {error, already_pinging}),
@@ -723,6 +832,17 @@ handle_first_ping(S, RemotePingObj) ->
             end;
         false ->
             {ok, S}
+    end.
+
+
+handle_ping_msg(S, Vsn, RemotePingObj) ->
+    case (not maps:is_key(use_ping_vsn, S) andalso Vsn > ?PING_VSN_1) of
+        true ->
+            %% Negotiating ping upgrade, don't need to process handle_ping_msg
+            %% otherwise start sync fails because it is called twice in rapid succession which causes sync_in_progress to return false and therefore cause the sync to be attempted to be started twice
+            ok;
+        _ ->
+            handle_ping_msg(S, RemotePingObj)
     end.
 
 handle_ping_msg(S, RemotePingObj) ->
@@ -775,6 +895,8 @@ handle_ping_msg(S, RemotePingObj) ->
                 epoch_sync:debug("Error: ~p", [Reason]),
                 {{error, Reason}, false}
         end,
+    Caps = maps:get(capabilities, RemotePingObj, []),
+    [ aec_capabilities:register_peer(PeerId, Caps) || Caps =/= [] ],
     maybe_tx_pool_sync(MpSync, TopHeader, S),
     Res.
 
@@ -841,20 +963,27 @@ decode_remote_ping(_) ->
     {error, bad_ping_message}.
 
 %% Encode hashes and get peers for PingObj
-ping_obj(#{ share := 0 } = PingObj, _Exclude) ->
-    PingObj#{peers => []};
-ping_obj(PingObj, Exclude) ->
+ping_obj(#{ share := 0 } = PingObj, _Exclude, Vsn) ->
+    vsn_upgrade(ping, PingObj#{peers => []}, Vsn);
+ping_obj(PingObj, Exclude, Vsn) ->
     #{ share := Share } = PingObj,
     ConnectedPeerPercentage = ping_connected_peer_percentage(),
     Peers = aec_peers:get_random_mix(Share, ConnectedPeerPercentage, Exclude),
-    PingObj#{peers => lists:sort(Peers)}.
+    vsn_upgrade(ping, PingObj#{peers => lists:sort(Peers)}, Vsn).
 
-ping_obj_rsp(S, RemotePingObj) ->
+vsn_upgrade(ping, Obj, ?PING_VSN_2) ->
+    MyCaps = aec_capabilities:get_capabilities(),
+    Vsns = aec_peer_messages:supported_msg_versions(),
+    Obj#{ versions => Vsns, capabilities => MyCaps };
+vsn_upgrade(_T, Obj, _V) ->
+    Obj.
+
+ping_obj_rsp(S, Vsn, RemotePingObj) ->
     PeerId = peer_id(S),
     #{ share := Share, peers := TheirPeers } = RemotePingObj,
     LocalPingObj = local_ping_obj(S),
     ping_obj(LocalPingObj#{ share => Share },
-             [PeerId | [aec_peer:id(P) || P <- TheirPeers]]).
+             [PeerId | [aec_peer:id(P) || P <- TheirPeers]], Vsn).
 
 local_ping_obj(S) ->
     local_ping_obj(S, false).
@@ -904,14 +1033,14 @@ handle_get_header_by_hash(S, Msg) ->
     send_response(S, header, Response),
     S.
 
-handle_header_rsp(S, {get_header, From, _TRef}, Msg) ->
+handle_header_rsp(S, {get_header, From, _TRef}, Vsn, Msg) ->
     try
         Header = aec_headers:deserialize_from_binary(maps:get(hdr, Msg)),
         gen_server:reply(From, {ok, Header})
     catch _:_ ->
         gen_server:reply(From, {error, bad_response})
     end,
-    remove_request_fld(S, get_header).
+    remove_request_fld(S, get_header, Vsn).
 
 get_header(Hash) when is_binary(Hash) ->
     get_header(hash, Hash);
@@ -988,7 +1117,7 @@ handle_get_n_successors(S, Vsn, Msg) ->
     send_response(S, header_hashes, Response),
     S.
 
-handle_header_hashes_rsp(S, {get_n_successors, From, _TRef}, Msg) ->
+handle_header_hashes_rsp(S, {get_n_successors, From, _TRef}, Vsn, Msg) ->
     case maps:get(header_hashes, Msg, undefined) of
         Hdrs when is_list(Hdrs) ->
             Hdrs1 = [ {Height, Hash} || <<Height:64, Hash/binary>> <- Hdrs ],
@@ -996,7 +1125,7 @@ handle_header_hashes_rsp(S, {get_n_successors, From, _TRef}, Msg) ->
         _ ->
             gen_server:reply(From, {error, no_headers_in_response})
     end,
-    remove_request_fld(S, get_n_successors).
+    remove_request_fld(S, get_n_successors, Vsn).
 
 %% -- Get Generation ----------------------------------------------------------
 
@@ -1023,7 +1152,7 @@ do_get_generation_(Hash, true) ->
 do_get_generation_(Hash, false) ->
     aec_chain:get_generation_by_hash(Hash, backward).
 
-handle_get_generation_rsp(S, {get_generation, From, _TRef}, Msg) ->
+handle_get_generation_rsp(S, {get_generation, From, _TRef}, Vsn, Msg) ->
     SerKeyBlock = maps:get(key_block, Msg),
     SerMicroBlocks = maps:get(micro_blocks, Msg),
     Dir = case maps:get(forward, Msg) of true -> forward; false -> backward end,
@@ -1040,7 +1169,7 @@ handle_get_generation_rsp(S, {get_generation, From, _TRef}, Msg) ->
                 Err
         end,
     gen_server:reply(From, Res),
-    remove_request_fld(S, get_generation).
+    remove_request_fld(S, get_generation, Vsn).
 
 %% -- TX Pool ----------------------------------------------------------------
 
@@ -1092,7 +1221,7 @@ handle_tx_pool_sync_rsp(S, Action, {tx_pool, From, _TRef}, MsgObj) ->
         finish ->
             gen_server:reply(From, {ok, maps:get(done, MsgObj)})
     end,
-    remove_request_fld(S, tx_pool).
+    remove_request_fld(S, tx_pool, undefined).
 
 %% -- Send Block --------------------------------------------------------------
 
@@ -1196,13 +1325,13 @@ handle_light_micro_block(_S, Header, TxHashes, PoF) ->
 expand_micro_block(State, #{ header := Header,
                              tx_data := TxsAndTxHashes } = MicroBlockFragment) ->
     {ok, Hash} = aec_headers:hash_header(Header),
-    case get_request(State, {expand, Hash}) of
+    case get_request(State, {expand, Hash}, undefined) of
         none ->
             MissingTxs = [ T || T <- TxsAndTxHashes, is_binary(T) ],
             MsgData    = #{ hash => Hash, tx_hashes => MissingTxs },
             Msg = aec_peer_messages:serialize(get_block_txs, MsgData),
             send_msg(State, get_block_txs, Msg),
-            set_request(State, {expand, Hash}, MicroBlockFragment);
+            set_request(State, {expand, Hash}, undefined, MicroBlockFragment);
         {_, _, _} ->
             %% Already working on this one
             epoch_sync:info("Got the same block twice from the same source (Hash: ~s)",
@@ -1239,9 +1368,9 @@ find_txs([TxHash | TxHashes], Acc) ->
 
 handle_get_block_txs_rsp(State, {error, _}) ->
     State; %% We can't do any cleanup - the request will timeout later
-handle_get_block_txs_rsp(State, {ok, _Vsn, Msg}) ->
+handle_get_block_txs_rsp(State, {ok, Msg}) ->
     Hash = maps:get(hash, Msg),
-    case get_request(State, {expand, Hash}) of
+    case get_request(State, {expand, Hash}, undefined) of
         none ->
             epoch_sync:info("Got unexpected 'block_txs' message for ~s", [pp(Hash)]),
             State;
@@ -1257,7 +1386,7 @@ handle_get_block_txs_rsp(State, {ok, _Vsn, Msg}) ->
                     epoch_sync:info("Failed to assemble micro block ~s", [pp(Hash)])
             end
     end,
-    remove_request_fld(State, {expand, Hash}).
+    remove_request_fld(State, {expand, Hash}, undefined).
 
 fill_txs(TATHs, Txs) ->
     fill_txs(TATHs, Txs, []).
@@ -1307,7 +1436,11 @@ send_msg(#{ status := {connected, ESock} }, Type, Msg) when is_binary(Msg) ->
     do_send(ESock, <<(aec_peer_messages:tag(Type)):16, Msg/binary>>).
 
 send_response(S, Type, Response) ->
-    Msg = aec_peer_messages:serialize_response(Type, Response),
+    Vsn = msg_version(Type, S),
+    send_response(S, Type, Vsn, Response).
+
+send_response(S, Type, Vsn, Response) ->
+    Msg = aec_peer_messages:serialize_response(Type, Vsn, Response),
     send_msg(S, response, Msg).
 
 %% If the message is more than 0xFFFF - 2 - 16 bytes (2 bytes for the length at
@@ -1590,9 +1723,9 @@ handle_get_node_info(S) ->
             S
     end.
 
-handle_node_info_rsp(S, {node_info, From, _TRef} = _Request, NodeInfo) ->
+handle_node_info_rsp(S, {node_info, From, _TRef} = _Request, Vsn, NodeInfo) ->
     gen_server:reply(From, {ok, NodeInfo}),
-    remove_request_fld(S, get_node_info).
+    remove_request_fld(S, get_node_info, Vsn).
 
 -spec is_node_info_sharing_enabled() -> boolean().
 is_node_info_sharing_enabled() ->

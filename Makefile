@@ -291,6 +291,7 @@ smoke-test-run: internal-build
 system-smoke-test-deps:
 	$(MAKE) docker
 	docker pull "aeternity/aeternity:v1.4.0"
+	docker pull "aeternity/aeternity:v6.9.0"
 
 local-system-test: KIND=system_test
 local-system-test: internal-build
