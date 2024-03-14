@@ -77,9 +77,12 @@ init([]) ->
         _ ->
             ok
     end,
-    {ok, #st{ keyblock_interval   = cfg(<<"keyblock_interval">>)
+    St = #st{ keyblock_interval   = cfg(<<"keyblock_interval">>)
             , microblock_interval = cfg(<<"microblock_interval">>)
-            , auto_emit           = cfg(<<"auto_emit_microblocks">>) }}.
+            , auto_emit           = cfg(<<"auto_emit_microblocks">>) },
+    St1 = restart_keyblock_timer(St),
+    St2 = restart_microblock_timer(St1),
+    {ok, St2}.
 
 cfg(K) ->
     {ok, V} = aeu_env:find_config([<<"dev_mode">>, K], [user_config, schema_default]),
