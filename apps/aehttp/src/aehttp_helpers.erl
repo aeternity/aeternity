@@ -709,6 +709,14 @@ dry_run_accounts_([Account | Accounts], Acc) ->
 
 dry_run_txs_([], Txs) ->
     {ok, lists:reverse(Txs)};
+dry_run_txs_([#{ <<"tx_hash">> := ETx } | Txs], Acc) ->
+    try dry_run_tx_hash(ETx) of
+        {ok, Tx} -> dry_run_txs_(Txs, [{tx, Tx} | Acc]);
+        Err = {error, _Reason} ->
+            Err
+    catch
+        _:_ -> {error, "malformed transaction hash"}
+    end;
 dry_run_txs_([#{ <<"tx">> := ETx } | Txs], Acc) ->
     try dry_run_tx(ETx) of
         {ok, Tx} -> dry_run_txs_(Txs, [{tx, Tx} | Acc]);
@@ -719,6 +727,26 @@ dry_run_txs_([#{ <<"tx">> := ETx } | Txs], Acc) ->
     end;
 dry_run_txs_([#{ <<"call_req">> := CallReq } | Txs], Acc) ->
     dry_run_txs_(Txs, [{call_req, CallReq} | Acc]).
+
+
+dry_run_tx_hash(TxHash) ->
+    case aeser_api_encoder:safe_decode(tx_hash, TxHash) of
+        {ok, TxHashInternal} ->
+            case aec_chain:find_tx_with_location(TxHashInternal) of
+                {mempool, SignedTx} ->
+                    Tx = aetx_sign:tx(SignedTx),
+                    {Type, _} = aetx:specialize_type(Tx),
+                    case not lists:member(Type, [paying_for_tx, offchain_tx, ga_meta_tx]) of
+                        true  -> {ok, Tx};
+                        false -> {error, lists:concat(["Unsupported transaction type ", Type])}
+                    end;
+                _ ->
+                    %% TODO what to do about transaction that have already succeeded 
+                    {error, "Transaction not found in mempool"}
+            end;
+        Err = {error, _Reason} ->
+            Err
+    end.
 
 dry_run_tx(ETx) ->
     case aeser_api_encoder:safe_decode(transaction, ETx) of
