@@ -6,6 +6,7 @@ aeplugin_install_devmode:
           export PLUGIN_VERSION=<< pipeline.parameters.aeplugin_devmode_version >>
           curl -fsSLOJ https://github.com/aeternity/aeplugin_dev_mode/releases/download/v$PLUGIN_VERSION/aeplugin_dev_mode.ez
           cp aeplugin_dev_mode.ez plugins/
+          mkdir -p data/aeplugin_dev_mode
 
 install_os_deps:
   steps:
