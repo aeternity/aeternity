@@ -20,6 +20,7 @@
         , accounts/1
         , a_lot_of_gas_limit_passes/1
         , a_lot_of_gas_limit_fails/1
+        , mempool_spend_txs/1
         ]).
 
 -import(aecore_suite_utils, [http_request/4, internal_address/0, external_address/0, rpc/4]).
@@ -55,6 +56,7 @@ groups() ->
         , authenticate_contract
         , accounts
         , authenticate_contract_tx
+        , mempool_spend_txs        
         ]}
     ].
 
@@ -389,6 +391,30 @@ accounts(Config) ->
 
     ok.
 
+mempool_spend_txs(Config) ->
+    #{acc_a := #{pub_key := APub, priv_key := APrivKey}} = proplists:get_value(accounts, Config),
+
+    #{ public := EPub, secret := EPrivKey } = enacl:sign_keypair(),
+
+    SpendTx1 = create_spend_tx(APub, EPub, 100000 * aec_test_utils:min_gas_price(), 20000 * aec_test_utils:min_gas_price(), 1, 100),
+    SignedTx1 = aec_test_utils:sign_tx(SpendTx1, [APrivKey]),
+    BinSignedTx1 = aeser_api_encoder:encode(transaction, aetx_sign:serialize_to_binary(SignedTx1)),
+    {ok, 200, #{ <<"tx_hash">> := TxHash1}} = post_tx(BinSignedTx1),
+
+    SpendTx2 = create_spend_tx(EPub, APub, 100, 20000 * aec_test_utils:min_gas_price(), 1, 100),
+    SignedTx2 = aec_test_utils:sign_tx(SpendTx2, [EPrivKey]),
+    BinSignedTx2 = aeser_api_encoder:encode(transaction, aetx_sign:serialize_to_binary(SignedTx2)),
+    {ok, 200, #{ <<"tx_hash">> := TxHash2}} = post_tx(BinSignedTx2),
+
+
+    {ok, 200, #{ <<"results">> := [#{ <<"result">> := <<"ok">>,
+                                       <<"type">> := <<"spend">> },
+                                    #{ <<"result">> := <<"ok">> }] }} =
+         dry_run(Config, #{txs => [#{tx_hash => TxHash} || TxHash <- [TxHash1, TxHash2]]}),
+
+    ok.
+
+
 %% --- Internal functions ---
 
 make_call_data(Contract, FunName, Args) ->
@@ -403,9 +429,16 @@ contract_id(Tx) ->
 dry_run(Config, TopHash, Txs) ->
     dry_run(Config, TopHash, Txs, []).
 
-dry_run(Config, TopHash, Txs, Accounts) ->
+dry_run(Config, TopHash, Txs, Accounts) ->  
     EncTx = fun(Tx) -> try aeser_api_encoder:encode(transaction, aetx:serialize_to_binary(Tx))
                        catch _:_ -> Tx end end,
+    dry_run( Config,
+             #{ top => aeser_api_encoder:encode(key_block_hash, TopHash),
+                accounts => [ A#{pub_key => aeser_api_encoder:encode(account_pubkey, PK)}
+                              || A = #{pub_key := PK } <- Accounts ],
+                txs => [#{Type => EncTx(Tx)} || {Type, Tx} <- Txs] }).
+
+dry_run(Config, Params) ->
     {Host, URI} =
         case ?config(interface, Config) of
             internal ->
@@ -413,11 +446,7 @@ dry_run(Config, TopHash, Txs, Accounts) ->
             external ->
                 {external_address(), "dry-run"}
         end,
-    http_request(Host, post, URI,
-                 #{ top => aeser_api_encoder:encode(key_block_hash, TopHash),
-                    accounts => [ A#{pub_key => aeser_api_encoder:encode(account_pubkey, PK)}
-                                  || A = #{pub_key := PK } <- Accounts ],
-                    txs => [#{Type => EncTx(Tx)} || {Type, Tx} <- Txs] }).
+    http_request(Host, post, URI, Params).
 
 get_genesis_hash() ->
     {ok, 200, #{<<"genesis_key_block_hash">> := EncGenesisHash}} = get_status(),
@@ -426,6 +455,11 @@ get_genesis_hash() ->
 
 get_status() ->
     http_request(external_address(), get, "status", #{}).
+
+post_tx(TxSerialized) ->
+    Host = external_address(),
+    http_request(Host, post, "transactions", #{tx => TxSerialized}).
+
 
 create_spend_tx(Sender, Recipient, Amount, Fee, Nonce, TTL) ->
     SenderId = aeser_id:create(account, Sender),
@@ -524,3 +558,4 @@ a_lot_of_gas_limit_fails(Config) ->
     {ok, 403, #{<<"reason">> := <<"Over the gas limit">>}} =
         dry_run(Config, TopHash, [CreateTx3, CallReq]),
     ok.
+
