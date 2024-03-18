@@ -112,7 +112,8 @@ init_per_group(all, Config) ->
     %% Save account information.
     Accounts = #{acc_a => #{pub_key => APubkey,
                             priv_key => APrivkey,
-                            start_amt => StartAmt},
+                            start_amt => StartAmt,
+                            spend_tx => STx1},
                  acc_b => #{pub_key => BPubkey,
                             priv_key => BPrivkey,
                             start_amt => StartAmt},
@@ -392,7 +393,9 @@ accounts(Config) ->
     ok.
 
 mempool_spend_txs(Config) ->
-    #{acc_a := #{pub_key := APub, priv_key := APrivKey}} = proplists:get_value(accounts, Config),
+    Txs = fun(TxHashes) -> #{txs => [#{tx_hash => TxHash} || TxHash <- TxHashes]} end,
+
+    #{acc_a := #{pub_key := APub, priv_key := APrivKey, spend_tx := STx1}} = proplists:get_value(accounts, Config),
 
     #{ public := EPub, secret := EPrivKey } = enacl:sign_keypair(),
 
@@ -406,11 +409,18 @@ mempool_spend_txs(Config) ->
     BinSignedTx2 = aeser_api_encoder:encode(transaction, aetx_sign:serialize_to_binary(SignedTx2)),
     {ok, 200, #{ <<"tx_hash">> := TxHash2}} = post_tx(BinSignedTx2),
 
-
     {ok, 200, #{ <<"results">> := [#{ <<"result">> := <<"ok">>,
                                        <<"type">> := <<"spend">> },
                                     #{ <<"result">> := <<"ok">> }] }} =
-         dry_run(Config, #{txs => [#{tx_hash => TxHash} || TxHash <- [TxHash1, TxHash2]]}),
+         dry_run(Config, Txs([TxHash1, TxHash2])),
+
+
+    {ok, 200, #{ <<"results">> := [#{ <<"result">> := <<"error">> }, #{ <<"result">> := <<"ok">> }] }} =
+         dry_run(Config, Txs([TxHash2, TxHash1])),
+
+    % Check dry run on mined transaction fails
+    {ok, 400, #{ <<"reason">> := <<"Bad request: ", _/binary>>}} =
+         dry_run(Config, Txs([STx1])),
 
     ok.
 

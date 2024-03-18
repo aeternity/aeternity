@@ -741,7 +741,6 @@ dry_run_tx_hash(TxHash) ->
                         false -> {error, lists:concat(["Unsupported transaction type ", Type])}
                     end;
                 _ ->
-                    %% TODO what to do about transaction that have already succeeded 
                     {error, "Transaction not found in mempool"}
             end;
         Err = {error, _Reason} ->
