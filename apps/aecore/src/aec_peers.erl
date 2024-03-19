@@ -843,7 +843,7 @@ tcp_probe(PeerPoolName, State0) ->
                     schedule_tcp_probe(?MAX_TCP_PROBE_INTERVAL, PeerPoolName, State2);
                 {wait, Delay, State2} ->
                     epoch_sync:debug("No peers available for TCP probe in ~p, "
-                                    "waiting ~b ms", [PeerPoolName, Delay]),
+                                     "waiting ~b ms", [PeerPoolName, Delay]),
                     schedule_tcp_probe(Delay, PeerPoolName, State2);
                 {selected, Peer, State2} ->
                     schedule_tcp_probe(undefined, PeerPoolName,
@@ -1375,9 +1375,12 @@ on_add_peer(Peer, State0) ->
                             LogMismatch(Peer2),
                             State
                     end;
-                {_, {ok, Peer2}} ->
+                {{ok, _}, {ok, Peer2}} ->
                     LogMismatch(Peer2),
                     State;
+                {error, {ok, Peer2}} ->
+                    epoch_sync:debug("Peer ~p - known socket not set - setting = ~p", [aec_peer:ppp(PeerId), PeerSocket]),
+                    add_known_socket(Peer2, State);
                 {{ok, OtherPeerPubkey}, error} ->
                     epoch_sync:debug("Peer ~p with address ~p - ignoring peer pubkey changed "
                                      "from ~s to ~s by ~s", [aec_peer:ppp(PeerId),
@@ -1531,20 +1534,19 @@ pool_log_changes(Id, Old, New) ->
 %% Tries to add given peer to the pool.
 -spec pool_update(aec_peer:peer(), state())
     -> {ignored | verified | unverified, state()}.
-pool_update(Peer, State) ->
-    #state{ pool = Pool
-          , known_sockets = KnownSockets} = State,
+pool_update(Peer, State = #state{ pool = Pool }) ->
     PeerId = aec_peer:id(Peer),
     Now = timestamp(),
     {OldPoolName, _} = aec_peers_pool:peer_state(Pool, PeerId),
     {NewPoolName, Pool2} = aec_peers_pool:update(Pool, Now, Peer),
     pool_log_changes(PeerId, OldPoolName, NewPoolName),
 
+    {NewPoolName, add_known_socket(Peer, State#state{ pool = Pool2 })}.
+
+add_known_socket(Peer, State = #state{ known_sockets = KnownSockets }) ->
+    PeerId = aec_peer:id(Peer),
     Socket = aec_peer:socket(Peer),
-    {NewPoolName, State#state{ pool = Pool2
-                             , known_sockets = gb_trees:enter(Socket,
-                                                              PeerId,
-                                                              KnownSockets)}}.
+    State#state{ known_sockets = gb_trees:enter(Socket, PeerId, KnownSockets) }.
 
 -spec pool_random_select(state())
     -> {selected, aec_peer:peer(), state()}
