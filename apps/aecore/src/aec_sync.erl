@@ -141,8 +141,8 @@ else_do(Else) ->
 %%
 %% When an additional Ping arrives for which we agree upon genesis, we have
 %% the following possibilities:
-%% 1. It has worst top hash than our node, do not include in sync
-%% 2. It has better top hash than our node
+%% 1. It has worse/lower top hash than our node, do not include in sync
+%% 2. It has better/higher top hash than our node
 %%    We binary search for a block that we agree upon (could be genesis)
 %% We add new node to sync pool to sync agreed block up to top of new
 %% 1. If we are already synchronizing, we ignore it,
@@ -169,6 +169,7 @@ else_do(Else) ->
                                        , dir := backward
                                        }
                             }
+                   , attempts = 0 :: non_neg_integer()
                    }).
 -record(worker, { peer_id :: aec_peer:id()
                 , pid :: pid()
@@ -177,6 +178,7 @@ else_do(Else) ->
                     suspect = false :: boolean(),
                     chain :: #chain{},
                     pool = [] :: [#pool_item{}],
+                    next_pool = none :: none | fetching | [#pool_item{}],
                     agreed :: undefined | #chain_block{},
                     adding = [] :: [#pool_item{}],
                     pending = none :: none | {[#pool_item{}], [[#pool_item{}]]},
@@ -404,11 +406,23 @@ handle_last_result(ST = #sync_task{ agreed = undefined }, {agreed_height, Agreed
     ST#sync_task{ agreed = Agreed };
 handle_last_result(ST, {agreed_height, _Agreed}) ->
     ST;
-handle_last_result(ST = #sync_task{ pool = [] }, {hash_pool, HashPool}) ->
+handle_last_result(ST = #sync_task{ pool = [] }, {hash_pool, _FirstHeight, HashPool}) ->
+    %% We're already waiting for the fill_pool - handle it right away
     #pool_item{ height = Height, hash = Hash, got = false } = lists:last(HashPool),
-    ST#sync_task{ pool = HashPool, agreed = #chain_block{ height = Height, hash = Hash } };
-handle_last_result(ST, {hash_pool, _HashPool}) ->
-    ST;
+    epoch_sync:debug("We got next pool - but had to wait for it", []),
+    ST#sync_task{ pool = HashPool,
+                  next_pool = none,
+                  agreed = #chain_block{ height = Height, hash = Hash }
+                };
+handle_last_result(ST, {hash_pool, FirstHeight, HashPool}) ->
+    case FirstHeight > ST#sync_task.agreed#chain_block.height of
+        true ->
+            %% We're working on the previous pool, save new filled pool
+            ST#sync_task{ next_pool = HashPool };
+        false ->
+            %% We're already working on this pool, work wasted.
+            ST
+    end;
 handle_last_result(ST, {get_generation, Height, Hash, PeerId, {ok, Block}}) ->
     Pool = ST#sync_task.pool,
     NewItem = #pool_item{ height = Height, hash = Hash, got = {PeerId, Block} },
@@ -502,28 +516,52 @@ get_next_work_item(ST = #sync_task{ pool = [#pool_item{ got = {_, _} } | _] = Po
 get_next_work_item(ST = #sync_task{ adding = [], pending = Pending }) when Pending /= none ->
     {ToAdd, NewPending} = get_pending(Pending),
     {{post_blocks, ToAdd}, ST#sync_task{ adding = ToAdd, pending = NewPending }};
-get_next_work_item(ST = #sync_task{ pool = [#pool_item{ got = false } | _] }) ->
+get_next_work_item(ST = #sync_task{ pool = [#pool_item{ got = false } | _]}) ->
     Pool = ST#sync_task.pool,
-    PickFrom = [ P || P = #pool_item{ got = false } <- Pool ],
-    Random = rand:uniform(length(PickFrom)),
-    #pool_item{ height = PickH
-              , hash = PickHash
-              , got = false} = lists:nth(Random, PickFrom),
-    epoch_sync:debug("Get block at height ~p", [PickH]),
-    {{get_generation, PickH, PickHash}, ST};
-get_next_work_item(ST = #sync_task{ pool = [], agreed = #chain_block{}, pending = Pending }) ->
-    case Pending of
-        {_, Ps} when length(Ps) > 15 ->
-            {take_a_break, ST};
+
+    MissingGens = lists:sort(fun pool_item_sort/2, [ P || P = #pool_item{ got = false } <- Pool ]),
+    PI = #pool_item{ height = PickH, hash = PickHash, attempts = As } = hd(MissingGens),
+
+    case ST#sync_task.next_pool of
+        none when length(ST#sync_task.workers) > 2 ->
+            %% Avoid the main choke-point - waiting for next pool fill - by starting early
+            do_fill_pool(ST);
         _ ->
-            #chain_block{ hash = LastHash, height = H } = ST#sync_task.agreed,
-            Chain = ST#sync_task.chain,
-            TargetHash = next_known_hash(Chain#chain.blocks, H + ?MAX_HEADERS_PER_CHUNK),
-            {{fill_pool, LastHash, TargetHash}, ST}
+            epoch_sync:debug("Get block at height ~p", [PickH]),
+            Pool1 = lists:keyreplace(PickH, #pool_item.height, Pool, PI#pool_item{attempts = As + 1}),
+            {{get_generation, PickH, PickHash}, ST#sync_task{ pool = Pool1 }}
+    end;
+get_next_work_item(ST = #sync_task{ pool = [], agreed = #chain_block{},
+                                    next_pool = Next, pending = Pending }) ->
+    %% Pool is empty
+    case Pending of
+        {_, Ps} when length(Ps) > ?MAX_FORWARD_CHUNKS ->
+            %% We are (too) far ahead - take a break
+            {take_a_break, ST};
+        _ when is_list(Next) ->
+            %% We already have the next pool filled, start working
+            #pool_item{ height = Height, hash = Hash, got = false } = lists:last(Next),
+            ST1 = ST#sync_task{ pool = Next,
+                                next_pool = none,
+                                agreed = #chain_block{ height = Height, hash = Hash }
+                              },
+            get_next_work_item(ST1);
+        _ ->
+            %% We need to fill the pool first - go fetch the info
+            do_fill_pool(ST)
     end;
 get_next_work_item(ST) ->
     epoch_sync:info("Nothing to do: ~1000p", [pp_sync_task(ST)]),
     {take_a_break, ST}.
+
+do_fill_pool(ST) ->
+    #chain_block{ hash = LastHash, height = H } = ST#sync_task.agreed,
+    Chain = ST#sync_task.chain,
+    TargetHash = next_known_hash(Chain#chain.blocks, H + ?MAX_HEADERS_PER_CHUNK),
+    {{fill_pool, LastHash, TargetHash}, ST#sync_task{ next_pool = fetching }}.
+
+pool_item_sort(#pool_item{height = H1, attempts = A1}, #pool_item{height = H2, attempts = A2}) ->
+  {A1, H1} =< {A2, H2}.
 
 maybe_end_sync_task(State, ST) ->
     case ST#sync_task.chain of
@@ -1062,7 +1100,7 @@ fill_pool(PeerId, StartHash, TargetHash, ST) ->
                                                    , hash = Hash
                                                    , got = false
                                                    } || {Height, Hash} <- Hashes ],
-                            do_work_on_sync_task(PeerId, ST, {hash_pool, HashPool});
+                            do_work_on_sync_task(PeerId, ST, {hash_pool, FirstHeight, HashPool});
                         {error, {LastGoodHeight, FirstBadHeight}} ->
                             epoch_sync:info(
                               "Abort sync with ~p (bad successor height ~p after ~p)",
@@ -1142,7 +1180,7 @@ do_fetch_generation_ext(Hash, PeerId) ->
                     {error, hash_mismatch}
             end;
         {error, _} = Error ->
-            epoch_sync:debug("failed to fetch block from ~p; Hash = ~p; Error = ~p",
+            epoch_sync:info("failed to fetch generation from ~p; Hash = ~p; Error = ~p",
                              [ppp(PeerId), pp(Hash), Error]),
             Error
     end.
