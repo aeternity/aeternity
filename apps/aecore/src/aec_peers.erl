@@ -68,6 +68,7 @@
 
 %=== MACROS ====================================================================
 
+-define(RAND_CONN_DELAY,                      50).
 -define(MIN_CONNECTION_INTERVAL,             100).
 -define(MAX_CONNECTION_INTERVAL,       30 * 1000). % 30 seconds
 
@@ -911,11 +912,15 @@ next_connect_delay(State) ->
                     #state{ last_connect_time = LastTime, outbound = Outbound } = State,
                     ExpDelay = floor(math:pow(2, Outbound - 1)) * 1000,
                     BoundDelay = min(ExpDelay, ?MAX_CONNECTION_INTERVAL),
-                    max(?MIN_CONNECTION_INTERVAL, BoundDelay - (timestamp() - LastTime));
+                    max(min_connection_interval(), BoundDelay - (timestamp() - LastTime));
                 %% If this is a monitoring node then aggressively connect to peers
-                true -> ?MIN_CONNECTION_INTERVAL
+                true ->
+                    min_connection_interval()
             end
     end.
+
+min_connection_interval() ->
+    ?MIN_CONNECTION_INTERVAL + rand:uniform(?RAND_CONN_DELAY).
 
 %% Gives the node some time to receive peers and establish outbound connections
 %% before it starts TCP probes of verified and unverified peers.
