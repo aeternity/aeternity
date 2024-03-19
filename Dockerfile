@@ -20,10 +20,11 @@ RUN apt-get -qq update \
     && rm -rf /var/lib/apt/lists/*
 
 # Install shared rocksdb code from builder container
-COPY --from=builder /usr/local/lib/librocksdb.so.6.13.3 /usr/local/lib/
-RUN ln -fs librocksdb.so.6.13.3 /usr/local/lib/librocksdb.so.6.13 \
-    && ln -fs librocksdb.so.6.13.3 /usr/local/lib/librocksdb.so.6 \
-    && ln -fs librocksdb.so.6.13.3 /usr/local/lib/librocksdb.so \
+
+COPY --from=builder /usr/local/lib/librocksdb.so.7.10.2 /usr/local/lib/
+RUN ln -fs librocksdb.so.7.10.2 /usr/local/lib/librocksdb.so.7.10 \
+    && ln -fs librocksdb.so.7.10.2 /usr/local/lib/librocksdb.so.7 \
+    && ln -fs librocksdb.so.7.10.2 /usr/local/lib/librocksdb.so \
     && ldconfig
 
 # Deploy application code from builder container
