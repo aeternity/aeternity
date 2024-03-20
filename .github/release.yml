@@ -2,6 +2,8 @@ changelog:
   exclude:
     labels:
       - release/ignore
+      - area/tests
+      - area/ci
   categories:
     - title: Breaking Changes 🛠
       labels:
@@ -9,16 +11,17 @@ changelog:
         - breaking/db
         - breaking/config
         - breaking/p2p
+    - title: Next Consensus
+      labels:
+        - breaking/consensus
     - title: Exciting New Features 🎉
       labels:
         - kind/feature
+        - kind/improvement
     - title: Bugfixes 🐞
       labels:
         - kind/bugfix
         - kind/bug
-    - title: Next Consensus
-      labels:
-        - breaking/consensus
     - title: Other Changes
       labels:
         - "*"
