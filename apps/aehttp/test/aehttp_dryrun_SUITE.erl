@@ -433,36 +433,24 @@ mempool_paying_for_tx(Config) ->
       acc_b := #{pub_key := BPub, priv_key := BPrivKey}} = proplists:get_value(accounts, Config),
     #{ public := EPub } = enacl:sign_keypair(),
     
-    {ok, SpendTx} =
-        aec_spend_tx:new(
-          #{sender_id => aeser_id:create(account, APub),
-            recipient_id => aeser_id:create(account, EPub),
-            amount => 1,
-            fee => 20000 * aec_test_utils:min_gas_price(),
-            nonce => 1,
-            payload => <<"foo">>}),
-    SignedSpendTx = aec_test_utils:sign_pay_for_inner_tx(SpendTx, APrivKey),
-
-    PayingForData0 =
-        #{payer_id => aeser_api_encoder:encode(account_pubkey, BPub),
-          nonce => 1,
-          fee => 60000 * aec_test_utils:min_gas_price()},
-    PayingForData = PayingForData0#{tx => aetx_sign:serialize_for_client_inner(SignedSpendTx, #{})},
-
-    {ok, 200, #{<<"tx">> := EncodedPayingForTx}} = get_paying_for(PayingForData),
-
-    {ok, SerializedUnsignedTx} = aeser_api_encoder:safe_decode(transaction, EncodedPayingForTx),
-    PayingForTx = aetx:deserialize_from_binary(SerializedUnsignedTx),
+    PayingForTx = create_paying_for_tx(APub, APrivKey, EPub, 1, 20000 * aec_test_utils:min_gas_price(), 1, BPub, 1, 60000 * aec_test_utils:min_gas_price()),
 
     STx = aec_test_utils:sign_tx(PayingForTx, BPrivKey),
     EncodedSignedTx = aeser_api_encoder:encode(transaction, aetx_sign:serialize_to_binary(STx)),
 
     {ok, 200, #{ <<"tx_hash">> := TxHash1}} = post_tx(EncodedSignedTx),
 
-    {ok, 200, #{ <<"results">> := [#{ <<"result">> := <<"ok">>,
-                                      <<"type">> := <<"paying_for_tx">> }]}} =
-        dry_run(Config, Txs([TxHash1])),
-    
+    %% Nonce for payer transaction too high
+    FailTx = create_paying_for_tx(APub, APrivKey, EPub, 1, 20000 * aec_test_utils:min_gas_price(), 1, BPub, 42, 60000 * aec_test_utils:min_gas_price()),
+
+    SFailTx = aec_test_utils:sign_tx(FailTx, BPrivKey),
+    EncodedSignedFailTx = aeser_api_encoder:encode(transaction, aetx_sign:serialize_to_binary(SFailTx)),
+
+    {ok, 200, #{ <<"tx_hash">> := TxHashFail}} = post_tx(EncodedSignedFailTx),
+
+    {ok, 200, #{ <<"results">> := [#{ <<"result">> := <<"error">> }, #{ <<"result">> := <<"ok">> }] }} =
+        dry_run(Config, Txs([TxHashFail, TxHash1])),
+
     ok.
 
 %% --- Internal functions ---
@@ -527,6 +515,29 @@ create_spend_tx(Sender, Recipient, Amount, Fee, Nonce, TTL) ->
                 fee          => Fee },
     {ok, Tx} = aec_spend_tx:new(Params),
     Tx.
+
+create_paying_for_tx(Sender, SenderPrivKey, Recipient, Amount, Fee, Nonce, Payer, PayerNonce, PayerFee) ->
+    {ok, SpendTx} =
+        aec_spend_tx:new(
+          #{sender_id => aeser_id:create(account, Sender),
+            recipient_id => aeser_id:create(account, Recipient),
+            amount => Amount,
+            fee => Fee,
+            nonce => Nonce,
+            payload => <<"foo">>}),
+    SignedSpendTx = aec_test_utils:sign_pay_for_inner_tx(SpendTx, SenderPrivKey),
+
+    PayingForData0 =
+        #{payer_id => aeser_api_encoder:encode(account_pubkey, Payer),
+          nonce => PayerNonce,
+          fee => PayerFee},
+    PayingForData = PayingForData0#{tx => aetx_sign:serialize_for_client_inner(SignedSpendTx, #{})},
+
+    {ok, 200, #{<<"tx">> := EncodedPayingForTx}} = get_paying_for(PayingForData),
+
+    {ok, SerializedUnsignedTx} = aeser_api_encoder:safe_decode(transaction, EncodedPayingForTx),
+    aetx:deserialize_from_binary(SerializedUnsignedTx).
+
 
 create_contract_tx(Owner, Nonce, Code, CallData) ->
     create_contract_tx(Owner, Nonce, Code, CallData, 100000).
