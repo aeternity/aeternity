@@ -736,7 +736,7 @@ dry_run_tx_hash(TxHash) ->
                 {mempool, SignedTx} ->
                     Tx = aetx_sign:tx(SignedTx),
                     {Type, _} = aetx:specialize_type(Tx),
-                    case not lists:member(Type, [paying_for_tx, offchain_tx, ga_meta_tx]) of
+                    case not lists:member(Type, [offchain_tx, ga_meta_tx]) of
                         true  -> {ok, Tx};
                         false -> {error, lists:concat(["Unsupported transaction type ", Type])}
                     end;
@@ -822,6 +822,7 @@ ok_err({error, _}) -> <<"error">>;
 ok_err(_)          -> <<"ok">>.
 
 type(spend_tx)                  -> <<"spend">>;
+type(paying_for_tx)             -> <<"paying_for_tx">>;
 type(oracle_register_tx)        -> <<"oracle_register">>;
 type(oracle_extend_tx)          -> <<"oracle_extend">>;
 type(oracle_query_tx)           -> <<"oracle_query">>;

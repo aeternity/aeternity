@@ -21,6 +21,7 @@
         , a_lot_of_gas_limit_passes/1
         , a_lot_of_gas_limit_fails/1
         , mempool_spend_txs/1
+        , mempool_paying_for_tx/1
         ]).
 
 -import(aecore_suite_utils, [http_request/4, internal_address/0, external_address/0, rpc/4]).
@@ -56,7 +57,8 @@ groups() ->
         , authenticate_contract
         , accounts
         , authenticate_contract_tx
-        , mempool_spend_txs        
+        , mempool_spend_txs
+        , mempool_paying_for_tx
         ]}
     ].
 
@@ -424,6 +426,44 @@ mempool_spend_txs(Config) ->
 
     ok.
 
+mempool_paying_for_tx(Config) ->
+    Txs = fun(TxHashes) -> #{txs => [#{tx_hash => TxHash} || TxHash <- TxHashes]} end,
+
+    #{acc_a := #{pub_key := APub, priv_key := APrivKey},
+      acc_b := #{pub_key := BPub, priv_key := BPrivKey}} = proplists:get_value(accounts, Config),
+    #{ public := EPub } = enacl:sign_keypair(),
+    
+    {ok, SpendTx} =
+        aec_spend_tx:new(
+          #{sender_id => aeser_id:create(account, APub),
+            recipient_id => aeser_id:create(account, EPub),
+            amount => 1,
+            fee => 20000 * aec_test_utils:min_gas_price(),
+            nonce => 1,
+            payload => <<"foo">>}),
+    SignedSpendTx = aec_test_utils:sign_pay_for_inner_tx(SpendTx, APrivKey),
+
+    PayingForData0 =
+        #{payer_id => aeser_api_encoder:encode(account_pubkey, BPub),
+          nonce => 1,
+          fee => 60000 * aec_test_utils:min_gas_price()},
+    PayingForData = PayingForData0#{tx => aetx_sign:serialize_for_client_inner(SignedSpendTx, #{})},
+
+    {ok, 200, #{<<"tx">> := EncodedPayingForTx}} = get_paying_for(PayingForData),
+
+    {ok, SerializedUnsignedTx} = aeser_api_encoder:safe_decode(transaction, EncodedPayingForTx),
+    PayingForTx = aetx:deserialize_from_binary(SerializedUnsignedTx),
+
+    STx = aec_test_utils:sign_tx(PayingForTx, BPrivKey),
+    EncodedSignedTx = aeser_api_encoder:encode(transaction, aetx_sign:serialize_to_binary(STx)),
+
+    {ok, 200, #{ <<"tx_hash">> := TxHash1}} = post_tx(EncodedSignedTx),
+
+    {ok, 200, #{ <<"results">> := [#{ <<"result">> := <<"ok">>,
+                                      <<"type">> := <<"paying_for_tx">> }]}} =
+        dry_run(Config, Txs([TxHash1])),
+    
+    ok.
 
 %% --- Internal functions ---
 
@@ -469,6 +509,10 @@ get_status() ->
 post_tx(TxSerialized) ->
     Host = external_address(),
     http_request(Host, post, "transactions", #{tx => TxSerialized}).
+
+get_paying_for(Data) ->
+    Host = internal_address(),
+    http_request(Host, post, "debug/transactions/paying-for", Data).
 
 
 create_spend_tx(Sender, Recipient, Amount, Fee, Nonce, TTL) ->
