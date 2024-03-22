@@ -145,7 +145,14 @@ init_per_testcase(_Case, Config) ->
     aect_test_utils:setup_testcase(Config),
     [{tc_start, os:timestamp()}|Config].
 
-end_per_testcase(_Case, Config) ->
+end_per_testcase(Case, Config) ->
+    case lists:member(Case, [mempool_spend_txs, mempool_paying_for_tx, mempool_ga_tx]) of
+        true ->
+            Node = aecore_suite_utils:node_name(?NODE),
+            aecore_suite_utils:flush_mempool(2, Node);
+        _ ->
+            ok
+    end,
     Ts0 = ?config(tc_start, Config),
     ct:log("Events during TC: ~p", [[{N, aecore_suite_utils:all_events_since(N, Ts0)}
                                      || {_,N} <- ?config(nodes, Config)]]),
@@ -459,25 +466,26 @@ mempool_ga_tx(Config) ->
 
     Txs = fun(TxHashes) -> #{txs => [#{tx_hash => TxHash} || TxHash <- TxHashes]} end,
 
-    #{acc_a := #{pub_key := DPub, priv_key := DPrivKey}} = proplists:get_value(accounts, Config),
+    #{acc_a := #{pub_key := APub}} = proplists:get_value(accounts, Config),
 
-    #{ public := EPub } = enacl:sign_keypair(),
+    StartAmt = 25000000 * aec_test_utils:min_gas_price(),
+    {EPub, EPrivKey, TxHash0} = new_account(StartAmt),
+    NodeName = aecore_suite_utils:node_name(?NODE),
+    {ok, _KBs} = aecore_suite_utils:mine_blocks_until_txs_on_chain(
+                                NodeName, [TxHash0], ?MAX_MINED_BLOCKS),
 
-    AttachTx = create_attach_tx(DPub, 1),
-    SAttachTx = aec_test_utils:sign_tx(AttachTx, DPrivKey),
+    AttachTx = create_attach_tx(EPub, 1),
+    SAttachTx = aec_test_utils:sign_tx(AttachTx, EPrivKey),
     EncodedSAttachTx = aeser_api_encoder:encode(transaction, aetx_sign:serialize_to_binary(SAttachTx)),
     {ok, 200, #{ <<"tx_hash">> := TxHash1}} = post_tx(EncodedSAttachTx),
 
-    SpendTx = create_spend_tx(DPub, EPub, 100000 * aec_test_utils:min_gas_price(), 20000 * aec_test_utils:min_gas_price(), 1, 100),
-    SMetaTx = create_ga_meta_tx(["1"], DPub, DPrivKey, SpendTx, 100000 * aec_test_utils:min_gas_price(), 10000),
+    SpendTx = create_spend_tx(EPub, APub, 100000 * aec_test_utils:min_gas_price(), 20000 * aec_test_utils:min_gas_price(), 1, 100),
+    SMetaTx = create_ga_meta_tx(["1"], EPub, EPrivKey, SpendTx, 100000 * aec_test_utils:min_gas_price(), 10000),
     EncodedSMetaTx = aeser_api_encoder:encode(transaction, aetx_sign:serialize_to_binary(SMetaTx)),
     {ok, 200, #{ <<"tx_hash">> := TxHash2}} = post_tx(EncodedSMetaTx),
 
     {ok, 200, #{ <<"results">> := [#{ <<"result">> := <<"ok">> }, #{ <<"result">> := <<"ok">> }] }} =
         dry_run(Config, Txs([TxHash1, TxHash2])),
-
-    %Node = aecore_suite_utils:node_name(?NODE),
-    %aecore_suite_utils:flush_mempool(2, Node);
 
     ok.
 
