@@ -22,6 +22,7 @@
         , a_lot_of_gas_limit_fails/1
         , mempool_spend_txs/1
         , mempool_paying_for_tx/1
+        , mempool_ga_tx/1
         ]).
 
 -import(aecore_suite_utils, [http_request/4, internal_address/0, external_address/0, rpc/4]).
@@ -59,6 +60,7 @@ groups() ->
         , authenticate_contract_tx
         , mempool_spend_txs
         , mempool_paying_for_tx
+        , mempool_ga_tx
         ]}
     ].
 
@@ -453,6 +455,32 @@ mempool_paying_for_tx(Config) ->
 
     ok.
 
+mempool_ga_tx(Config) ->
+
+    Txs = fun(TxHashes) -> #{txs => [#{tx_hash => TxHash} || TxHash <- TxHashes]} end,
+
+    #{acc_a := #{pub_key := DPub, priv_key := DPrivKey}} = proplists:get_value(accounts, Config),
+
+    #{ public := EPub } = enacl:sign_keypair(),
+
+    AttachTx = create_attach_tx(DPub, 1),
+    SAttachTx = aec_test_utils:sign_tx(AttachTx, DPrivKey),
+    EncodedSAttachTx = aeser_api_encoder:encode(transaction, aetx_sign:serialize_to_binary(SAttachTx)),
+    {ok, 200, #{ <<"tx_hash">> := TxHash1}} = post_tx(EncodedSAttachTx),
+
+    SpendTx = create_spend_tx(DPub, EPub, 100000 * aec_test_utils:min_gas_price(), 20000 * aec_test_utils:min_gas_price(), 1, 100),
+    SMetaTx = create_ga_meta_tx(["1"], DPub, DPrivKey, SpendTx, 100000 * aec_test_utils:min_gas_price(), 10000),
+    EncodedSMetaTx = aeser_api_encoder:encode(transaction, aetx_sign:serialize_to_binary(SMetaTx)),
+    {ok, 200, #{ <<"tx_hash">> := TxHash2}} = post_tx(EncodedSMetaTx),
+
+    {ok, 200, #{ <<"results">> := [#{ <<"result">> := <<"ok">> }, #{ <<"result">> := <<"ok">> }] }} =
+        dry_run(Config, Txs([TxHash1, TxHash2])),
+
+    %Node = aecore_suite_utils:node_name(?NODE),
+    %aecore_suite_utils:flush_mempool(2, Node);
+
+    ok.
+
 %% --- Internal functions ---
 
 make_call_data(Contract, FunName, Args) ->
@@ -538,6 +566,29 @@ create_paying_for_tx(Sender, SenderPrivKey, Recipient, Amount, Fee, Nonce, Payer
     {ok, SerializedUnsignedTx} = aeser_api_encoder:safe_decode(transaction, EncodedPayingForTx),
     aetx:deserialize_from_binary(SerializedUnsignedTx).
 
+create_ga_meta_tx([], _AccPK, _AccSK, InnerTx, _MetaFee, _AuthGas) ->
+    aetx_sign:new(InnerTx, []);
+create_ga_meta_tx([Nonce|Nonces], AccPK, AccSK, InnerTx, MetaFee, AuthGas) ->
+    TxBin     = aec_governance:add_network_id(aetx:serialize_to_binary(InnerTx)),
+    TxHash    = aega_test_utils:auth_data_hash(#{ fee => MetaFee }, TxBin),
+    Signature = aega_test_utils:basic_auth_sign(list_to_integer(Nonce), TxHash, AccSK),
+    AuthData  = aega_test_utils:make_calldata("basic_auth", "authorize",
+                    [Nonce, aega_test_utils:to_hex_lit(64, Signature)]),
+    MetaTx    = aega_test_utils:ga_meta_tx(AccPK,
+                    #{ gas => AuthGas, auth_data => AuthData,
+                       tx => aetx_sign:new(InnerTx, []), fee => MetaFee }),
+    create_ga_meta_tx(Nonces, AccPK, AccSK, MetaTx, MetaFee, AuthGas).
+
+create_attach_tx(AccPK, Nonce) ->
+    {ok, #{bytecode := Code, src := Src, map := #{type_info := TI}}} =
+        aega_test_utils:get_contract("basic_auth"),
+
+    CallData = aega_test_utils:make_calldata(Src, "init", []),
+
+    {ok, AuthFun} = aega_test_utils:auth_fun_hash(<<"authorize">>, TI),
+
+    AttachTxMap = #{ nonce => Nonce, code => Code, auth_fun => AuthFun, call_data => CallData },
+    aega_test_utils:ga_attach_tx(AccPK, AttachTxMap).
 
 create_contract_tx(Owner, Nonce, Code, CallData) ->
     create_contract_tx(Owner, Nonce, Code, CallData, 100000).
