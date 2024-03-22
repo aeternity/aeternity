@@ -487,6 +487,13 @@ mempool_ga_tx(Config) ->
     {ok, 200, #{ <<"results">> := [#{ <<"result">> := <<"ok">> }, #{ <<"result">> := <<"ok">> }] }} =
         dry_run(Config, Txs([TxHash1, TxHash2])),
 
+    SFailMetaTx = create_ga_meta_tx(["42"], EPub, EPrivKey, SpendTx, 100000 * aec_test_utils:min_gas_price(), 10000),
+    EncodedSFailMetaTx = aeser_api_encoder:encode(transaction, aetx_sign:serialize_to_binary(SFailMetaTx)),
+    {ok, 200, #{ <<"tx_hash">> := TxHash3}} = post_tx(EncodedSFailMetaTx),
+
+    {ok, 200, #{ <<"results">> := [#{ <<"result">> := <<"ok">> }, #{ <<"result">> := <<"error">> }] }} =
+        dry_run(Config, Txs([TxHash1, TxHash3])),
+
     ok.
 
 %% --- Internal functions ---
