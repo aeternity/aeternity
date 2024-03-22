@@ -221,15 +221,11 @@ identity_contract(Config) ->
     ok.
 
 authenticate_contract_tx(Config) ->
-    case aect_test_utils:latest_protocol_version() of
-        ?ROMA_PROTOCOL_VSN    -> {skip, generalized_accounts_not_in_roma};
-        ?MINERVA_PROTOCOL_VSN -> {skip, generalized_accounts_not_in_minerva};
-        ?FORTUNA_PROTOCOL_VSN -> {skip, generalized_accounts_in_dry_run_not_in_fortuna};
-        ?LIMA_PROTOCOL_VSN    -> {skip, generalized_accounts_auth_tx_in_dry_run_not_in_lima};
-        _ -> case aect_test_utils:backend() of
-                 aevm -> {skip, generalized_accounts_auth_tx_not_in_aevm};
-                 fate -> authenticate_contract_tx_(Config)
-             end
+    case are_generalized_accounts_supported() of
+        true ->
+            authenticate_contract_tx_(Config);
+        Reason ->
+            Reason
     end.
 
 authenticate_contract_tx_(Config) ->
@@ -436,6 +432,14 @@ mempool_spend_txs(Config) ->
     ok.
 
 mempool_paying_for_tx(Config) ->
+    case are_generalized_accounts_supported() of
+        true ->
+            mempool_paying_for_tx_(Config);
+        Reason ->
+            Reason
+    end.
+
+mempool_paying_for_tx_(Config) ->
     Txs = fun(TxHashes) -> #{txs => [#{tx_hash => TxHash} || TxHash <- TxHashes]} end,
 
     #{acc_a := #{pub_key := APub, priv_key := APrivKey},
@@ -463,6 +467,14 @@ mempool_paying_for_tx(Config) ->
     ok.
 
 mempool_ga_tx(Config) ->
+    case are_generalized_accounts_supported() of
+        true ->
+            mempool_ga_tx_(Config);
+        Reason ->
+            Reason
+    end.
+
+mempool_ga_tx_(Config) ->
 
     Txs = fun(TxHashes) -> #{txs => [#{tx_hash => TxHash} || TxHash <- TxHashes]} end,
 
@@ -690,3 +702,14 @@ a_lot_of_gas_limit_fails(Config) ->
         dry_run(Config, TopHash, [CreateTx3, CallReq]),
     ok.
 
+are_generalized_accounts_supported() ->
+    case aect_test_utils:latest_protocol_version() of
+        ?ROMA_PROTOCOL_VSN    -> {skip, generalized_accounts_not_in_roma};
+        ?MINERVA_PROTOCOL_VSN -> {skip, generalized_accounts_not_in_minerva};
+        ?FORTUNA_PROTOCOL_VSN -> {skip, generalized_accounts_in_dry_run_not_in_fortuna};
+        ?LIMA_PROTOCOL_VSN    -> {skip, generalized_accounts_auth_tx_in_dry_run_not_in_lima};
+        _ -> case aect_test_utils:backend() of
+                 aevm -> {skip, generalized_accounts_auth_tx_not_in_aevm};
+                 fate -> true
+             end
+    end.
