@@ -188,7 +188,7 @@ is_legal_version_at_protocol_(create, #{vm := ?VM_FATE_SOPHIA_2, abi := ?ABI_FAT
     end;
 is_legal_version_at_protocol_(create, #{vm := ?VM_FATE_SOPHIA_3, abi := ?ABI_FATE_SOPHIA_1}, Protocol) ->
     case Protocol of
-        P when P < ?IRIS_PROTOCOL_VSN  -> false;
+        P when P < ?CERES_PROTOCOL_VSN -> false;
         ?CERES_PROTOCOL_VSN            -> true;
         P when P > ?CERES_PROTOCOL_VSN -> true
     end;
