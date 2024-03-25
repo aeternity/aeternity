@@ -68,6 +68,7 @@
 
 %=== MACROS ====================================================================
 
+-define(RAND_CONN_DELAY,                      50).
 -define(MIN_CONNECTION_INTERVAL,             100).
 -define(MAX_CONNECTION_INTERVAL,       30 * 1000). % 30 seconds
 
@@ -842,7 +843,7 @@ tcp_probe(PeerPoolName, State0) ->
                     schedule_tcp_probe(?MAX_TCP_PROBE_INTERVAL, PeerPoolName, State2);
                 {wait, Delay, State2} ->
                     epoch_sync:debug("No peers available for TCP probe in ~p, "
-                                    "waiting ~b ms", [PeerPoolName, Delay]),
+                                     "waiting ~b ms", [PeerPoolName, Delay]),
                     schedule_tcp_probe(Delay, PeerPoolName, State2);
                 {selected, Peer, State2} ->
                     schedule_tcp_probe(undefined, PeerPoolName,
@@ -911,11 +912,15 @@ next_connect_delay(State) ->
                     #state{ last_connect_time = LastTime, outbound = Outbound } = State,
                     ExpDelay = floor(math:pow(2, Outbound - 1)) * 1000,
                     BoundDelay = min(ExpDelay, ?MAX_CONNECTION_INTERVAL),
-                    max(?MIN_CONNECTION_INTERVAL, BoundDelay - (timestamp() - LastTime));
+                    max(min_connection_interval(), BoundDelay - (timestamp() - LastTime));
                 %% If this is a monitoring node then aggressively connect to peers
-                true -> ?MIN_CONNECTION_INTERVAL
+                true ->
+                    min_connection_interval()
             end
     end.
+
+min_connection_interval() ->
+    ?MIN_CONNECTION_INTERVAL + rand:uniform(?RAND_CONN_DELAY).
 
 %% Gives the node some time to receive peers and establish outbound connections
 %% before it starts TCP probes of verified and unverified peers.
@@ -1370,9 +1375,12 @@ on_add_peer(Peer, State0) ->
                             LogMismatch(Peer2),
                             State
                     end;
-                {_, {ok, Peer2}} ->
+                {{ok, _}, {ok, Peer2}} ->
                     LogMismatch(Peer2),
                     State;
+                {error, {ok, Peer2}} ->
+                    epoch_sync:debug("Peer ~p - known socket not set - setting = ~p", [aec_peer:ppp(PeerId), PeerSocket]),
+                    add_known_socket(Peer2, State);
                 {{ok, OtherPeerPubkey}, error} ->
                     epoch_sync:debug("Peer ~p with address ~p - ignoring peer pubkey changed "
                                      "from ~s to ~s by ~s", [aec_peer:ppp(PeerId),
@@ -1526,20 +1534,19 @@ pool_log_changes(Id, Old, New) ->
 %% Tries to add given peer to the pool.
 -spec pool_update(aec_peer:peer(), state())
     -> {ignored | verified | unverified, state()}.
-pool_update(Peer, State) ->
-    #state{ pool = Pool
-          , known_sockets = KnownSockets} = State,
+pool_update(Peer, State = #state{ pool = Pool }) ->
     PeerId = aec_peer:id(Peer),
     Now = timestamp(),
     {OldPoolName, _} = aec_peers_pool:peer_state(Pool, PeerId),
     {NewPoolName, Pool2} = aec_peers_pool:update(Pool, Now, Peer),
     pool_log_changes(PeerId, OldPoolName, NewPoolName),
 
+    {NewPoolName, add_known_socket(Peer, State#state{ pool = Pool2 })}.
+
+add_known_socket(Peer, State = #state{ known_sockets = KnownSockets }) ->
+    PeerId = aec_peer:id(Peer),
     Socket = aec_peer:socket(Peer),
-    {NewPoolName, State#state{ pool = Pool2
-                             , known_sockets = gb_trees:enter(Socket,
-                                                              PeerId,
-                                                              KnownSockets)}}.
+    State#state{ known_sockets = gb_trees:enter(Socket, PeerId, KnownSockets) }.
 
 -spec pool_random_select(state())
     -> {selected, aec_peer:peer(), state()}
