@@ -3478,6 +3478,8 @@ components:
       properties:
         tx:
           $ref: "#/components/schemas/EncodedByteArray"
+        tx_hash:
+          $ref: "#/components/schemas/EncodedHash"
         call_req:
           $ref: "#/components/schemas/DryRunCallReq"
     DryRunCallReq:

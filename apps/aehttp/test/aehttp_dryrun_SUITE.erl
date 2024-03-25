@@ -20,6 +20,9 @@
         , accounts/1
         , a_lot_of_gas_limit_passes/1
         , a_lot_of_gas_limit_fails/1
+        , mempool_spend_txs/1
+        , mempool_paying_for_tx/1
+        , mempool_ga_tx/1
         ]).
 
 -import(aecore_suite_utils, [http_request/4, internal_address/0, external_address/0, rpc/4]).
@@ -55,6 +58,9 @@ groups() ->
         , authenticate_contract
         , accounts
         , authenticate_contract_tx
+        , mempool_spend_txs
+        , mempool_paying_for_tx
+        , mempool_ga_tx
         ]}
     ].
 
@@ -110,7 +116,8 @@ init_per_group(all, Config) ->
     %% Save account information.
     Accounts = #{acc_a => #{pub_key => APubkey,
                             priv_key => APrivkey,
-                            start_amt => StartAmt},
+                            start_amt => StartAmt,
+                            spend_tx => STx1},
                  acc_b => #{pub_key => BPubkey,
                             priv_key => BPrivkey,
                             start_amt => StartAmt},
@@ -138,7 +145,14 @@ init_per_testcase(_Case, Config) ->
     aect_test_utils:setup_testcase(Config),
     [{tc_start, os:timestamp()}|Config].
 
-end_per_testcase(_Case, Config) ->
+end_per_testcase(Case, Config) ->
+    case lists:member(Case, [mempool_spend_txs, mempool_paying_for_tx, mempool_ga_tx]) of
+        true ->
+            Node = aecore_suite_utils:node_name(?NODE),
+            aecore_suite_utils:flush_mempool(2, Node);
+        _ ->
+            ok
+    end,
     Ts0 = ?config(tc_start, Config),
     ct:log("Events during TC: ~p", [[{N, aecore_suite_utils:all_events_since(N, Ts0)}
                                      || {_,N} <- ?config(nodes, Config)]]),
@@ -207,15 +221,11 @@ identity_contract(Config) ->
     ok.
 
 authenticate_contract_tx(Config) ->
-    case aect_test_utils:latest_protocol_version() of
-        ?ROMA_PROTOCOL_VSN    -> {skip, generalized_accounts_not_in_roma};
-        ?MINERVA_PROTOCOL_VSN -> {skip, generalized_accounts_not_in_minerva};
-        ?FORTUNA_PROTOCOL_VSN -> {skip, generalized_accounts_in_dry_run_not_in_fortuna};
-        ?LIMA_PROTOCOL_VSN    -> {skip, generalized_accounts_auth_tx_in_dry_run_not_in_lima};
-        _ -> case aect_test_utils:backend() of
-                 aevm -> {skip, generalized_accounts_auth_tx_not_in_aevm};
-                 fate -> authenticate_contract_tx_(Config)
-             end
+    case are_generalized_accounts_supported() of
+        true ->
+            authenticate_contract_tx_(Config);
+        Reason ->
+            Reason
     end.
 
 authenticate_contract_tx_(Config) ->
@@ -389,6 +399,115 @@ accounts(Config) ->
 
     ok.
 
+mempool_spend_txs(Config) ->
+    Txs = fun(TxHashes) -> #{txs => [#{tx_hash => TxHash} || TxHash <- TxHashes]} end,
+
+    #{acc_a := #{pub_key := APub, priv_key := APrivKey, spend_tx := STx1}} = proplists:get_value(accounts, Config),
+
+    #{ public := EPub, secret := EPrivKey } = enacl:sign_keypair(),
+
+    SpendTx1 = create_spend_tx(APub, EPub, 100000 * aec_test_utils:min_gas_price(), 20000 * aec_test_utils:min_gas_price(), 1, 100),
+    SignedTx1 = aec_test_utils:sign_tx(SpendTx1, [APrivKey]),
+    BinSignedTx1 = aeser_api_encoder:encode(transaction, aetx_sign:serialize_to_binary(SignedTx1)),
+    {ok, 200, #{ <<"tx_hash">> := TxHash1}} = post_tx(BinSignedTx1),
+
+    SpendTx2 = create_spend_tx(EPub, APub, 100, 20000 * aec_test_utils:min_gas_price(), 1, 100),
+    SignedTx2 = aec_test_utils:sign_tx(SpendTx2, [EPrivKey]),
+    BinSignedTx2 = aeser_api_encoder:encode(transaction, aetx_sign:serialize_to_binary(SignedTx2)),
+    {ok, 200, #{ <<"tx_hash">> := TxHash2}} = post_tx(BinSignedTx2),
+
+    {ok, 200, #{ <<"results">> := [#{ <<"result">> := <<"ok">>,
+                                       <<"type">> := <<"spend">> },
+                                    #{ <<"result">> := <<"ok">> }] }} =
+         dry_run(Config, Txs([TxHash1, TxHash2])),
+
+
+    {ok, 200, #{ <<"results">> := [#{ <<"result">> := <<"error">> }, #{ <<"result">> := <<"ok">> }] }} =
+         dry_run(Config, Txs([TxHash2, TxHash1])),
+
+    % Check dry run on mined transaction fails
+    {ok, 400, #{ <<"reason">> := <<"Bad request: ", _/binary>>}} =
+         dry_run(Config, Txs([STx1])),
+
+    ok.
+
+mempool_paying_for_tx(Config) ->
+    case are_generalized_accounts_supported() of
+        true ->
+            mempool_paying_for_tx_(Config);
+        Reason ->
+            Reason
+    end.
+
+mempool_paying_for_tx_(Config) ->
+    Txs = fun(TxHashes) -> #{txs => [#{tx_hash => TxHash} || TxHash <- TxHashes]} end,
+
+    #{acc_a := #{pub_key := APub, priv_key := APrivKey},
+      acc_b := #{pub_key := BPub, priv_key := BPrivKey}} = proplists:get_value(accounts, Config),
+    #{ public := EPub } = enacl:sign_keypair(),
+    
+    PayingForTx = create_paying_for_tx(APub, APrivKey, EPub, 1, 20000 * aec_test_utils:min_gas_price(), 1, BPub, 1, 60000 * aec_test_utils:min_gas_price()),
+
+    STx = aec_test_utils:sign_tx(PayingForTx, BPrivKey),
+    EncodedSignedTx = aeser_api_encoder:encode(transaction, aetx_sign:serialize_to_binary(STx)),
+
+    {ok, 200, #{ <<"tx_hash">> := TxHash1}} = post_tx(EncodedSignedTx),
+
+    %% Nonce for payer transaction too high
+    FailTx = create_paying_for_tx(APub, APrivKey, EPub, 1, 20000 * aec_test_utils:min_gas_price(), 1, BPub, 42, 60000 * aec_test_utils:min_gas_price()),
+
+    SFailTx = aec_test_utils:sign_tx(FailTx, BPrivKey),
+    EncodedSignedFailTx = aeser_api_encoder:encode(transaction, aetx_sign:serialize_to_binary(SFailTx)),
+
+    {ok, 200, #{ <<"tx_hash">> := TxHashFail}} = post_tx(EncodedSignedFailTx),
+
+    {ok, 200, #{ <<"results">> := [#{ <<"result">> := <<"error">> }, #{ <<"result">> := <<"ok">> }] }} =
+        dry_run(Config, Txs([TxHashFail, TxHash1])),
+
+    ok.
+
+mempool_ga_tx(Config) ->
+    case are_generalized_accounts_supported() of
+        true ->
+            mempool_ga_tx_(Config);
+        Reason ->
+            Reason
+    end.
+
+mempool_ga_tx_(Config) ->
+
+    Txs = fun(TxHashes) -> #{txs => [#{tx_hash => TxHash} || TxHash <- TxHashes]} end,
+
+    #{acc_a := #{pub_key := APub}} = proplists:get_value(accounts, Config),
+
+    StartAmt = 25000000 * aec_test_utils:min_gas_price(),
+    {EPub, EPrivKey, TxHash0} = new_account(StartAmt),
+    NodeName = aecore_suite_utils:node_name(?NODE),
+    {ok, _KBs} = aecore_suite_utils:mine_blocks_until_txs_on_chain(
+                                NodeName, [TxHash0], ?MAX_MINED_BLOCKS),
+
+    AttachTx = create_attach_tx(EPub, 1),
+    SAttachTx = aec_test_utils:sign_tx(AttachTx, EPrivKey),
+    EncodedSAttachTx = aeser_api_encoder:encode(transaction, aetx_sign:serialize_to_binary(SAttachTx)),
+    {ok, 200, #{ <<"tx_hash">> := TxHash1}} = post_tx(EncodedSAttachTx),
+
+    SpendTx = create_spend_tx(EPub, APub, 100000 * aec_test_utils:min_gas_price(), 20000 * aec_test_utils:min_gas_price(), 1, 100),
+    SMetaTx = create_ga_meta_tx(["1"], EPub, EPrivKey, SpendTx, 100000 * aec_test_utils:min_gas_price(), 10000),
+    EncodedSMetaTx = aeser_api_encoder:encode(transaction, aetx_sign:serialize_to_binary(SMetaTx)),
+    {ok, 200, #{ <<"tx_hash">> := TxHash2}} = post_tx(EncodedSMetaTx),
+
+    {ok, 200, #{ <<"results">> := [#{ <<"result">> := <<"ok">> }, #{ <<"result">> := <<"ok">> }] }} =
+        dry_run(Config, Txs([TxHash1, TxHash2])),
+
+    SFailMetaTx = create_ga_meta_tx(["42"], EPub, EPrivKey, SpendTx, 100000 * aec_test_utils:min_gas_price(), 10000),
+    EncodedSFailMetaTx = aeser_api_encoder:encode(transaction, aetx_sign:serialize_to_binary(SFailMetaTx)),
+    {ok, 200, #{ <<"tx_hash">> := TxHash3}} = post_tx(EncodedSFailMetaTx),
+
+    {ok, 200, #{ <<"results">> := [#{ <<"result">> := <<"ok">> }, #{ <<"result">> := <<"error">> }] }} =
+        dry_run(Config, Txs([TxHash1, TxHash3])),
+
+    ok.
+
 %% --- Internal functions ---
 
 make_call_data(Contract, FunName, Args) ->
@@ -403,9 +522,16 @@ contract_id(Tx) ->
 dry_run(Config, TopHash, Txs) ->
     dry_run(Config, TopHash, Txs, []).
 
-dry_run(Config, TopHash, Txs, Accounts) ->
+dry_run(Config, TopHash, Txs, Accounts) ->  
     EncTx = fun(Tx) -> try aeser_api_encoder:encode(transaction, aetx:serialize_to_binary(Tx))
                        catch _:_ -> Tx end end,
+    dry_run( Config,
+             #{ top => aeser_api_encoder:encode(key_block_hash, TopHash),
+                accounts => [ A#{pub_key => aeser_api_encoder:encode(account_pubkey, PK)}
+                              || A = #{pub_key := PK } <- Accounts ],
+                txs => [#{Type => EncTx(Tx)} || {Type, Tx} <- Txs] }).
+
+dry_run(Config, Params) ->
     {Host, URI} =
         case ?config(interface, Config) of
             internal ->
@@ -413,11 +539,7 @@ dry_run(Config, TopHash, Txs, Accounts) ->
             external ->
                 {external_address(), "dry-run"}
         end,
-    http_request(Host, post, URI,
-                 #{ top => aeser_api_encoder:encode(key_block_hash, TopHash),
-                    accounts => [ A#{pub_key => aeser_api_encoder:encode(account_pubkey, PK)}
-                                  || A = #{pub_key := PK } <- Accounts ],
-                    txs => [#{Type => EncTx(Tx)} || {Type, Tx} <- Txs] }).
+    http_request(Host, post, URI, Params).
 
 get_genesis_hash() ->
     {ok, 200, #{<<"genesis_key_block_hash">> := EncGenesisHash}} = get_status(),
@@ -426,6 +548,15 @@ get_genesis_hash() ->
 
 get_status() ->
     http_request(external_address(), get, "status", #{}).
+
+post_tx(TxSerialized) ->
+    Host = external_address(),
+    http_request(Host, post, "transactions", #{tx => TxSerialized}).
+
+get_paying_for(Data) ->
+    Host = internal_address(),
+    http_request(Host, post, "debug/transactions/paying-for", Data).
+
 
 create_spend_tx(Sender, Recipient, Amount, Fee, Nonce, TTL) ->
     SenderId = aeser_id:create(account, Sender),
@@ -439,6 +570,52 @@ create_spend_tx(Sender, Recipient, Amount, Fee, Nonce, TTL) ->
                 fee          => Fee },
     {ok, Tx} = aec_spend_tx:new(Params),
     Tx.
+
+create_paying_for_tx(Sender, SenderPrivKey, Recipient, Amount, Fee, Nonce, Payer, PayerNonce, PayerFee) ->
+    {ok, SpendTx} =
+        aec_spend_tx:new(
+          #{sender_id => aeser_id:create(account, Sender),
+            recipient_id => aeser_id:create(account, Recipient),
+            amount => Amount,
+            fee => Fee,
+            nonce => Nonce,
+            payload => <<"foo">>}),
+    SignedSpendTx = aec_test_utils:sign_pay_for_inner_tx(SpendTx, SenderPrivKey),
+
+    PayingForData0 =
+        #{payer_id => aeser_api_encoder:encode(account_pubkey, Payer),
+          nonce => PayerNonce,
+          fee => PayerFee},
+    PayingForData = PayingForData0#{tx => aetx_sign:serialize_for_client_inner(SignedSpendTx, #{})},
+
+    {ok, 200, #{<<"tx">> := EncodedPayingForTx}} = get_paying_for(PayingForData),
+
+    {ok, SerializedUnsignedTx} = aeser_api_encoder:safe_decode(transaction, EncodedPayingForTx),
+    aetx:deserialize_from_binary(SerializedUnsignedTx).
+
+create_ga_meta_tx([], _AccPK, _AccSK, InnerTx, _MetaFee, _AuthGas) ->
+    aetx_sign:new(InnerTx, []);
+create_ga_meta_tx([Nonce|Nonces], AccPK, AccSK, InnerTx, MetaFee, AuthGas) ->
+    TxBin     = aec_governance:add_network_id(aetx:serialize_to_binary(InnerTx)),
+    TxHash    = aega_test_utils:auth_data_hash(#{ fee => MetaFee }, TxBin),
+    Signature = aega_test_utils:basic_auth_sign(list_to_integer(Nonce), TxHash, AccSK),
+    AuthData  = aega_test_utils:make_calldata("basic_auth", "authorize",
+                    [Nonce, aega_test_utils:to_hex_lit(64, Signature)]),
+    MetaTx    = aega_test_utils:ga_meta_tx(AccPK,
+                    #{ gas => AuthGas, auth_data => AuthData,
+                       tx => aetx_sign:new(InnerTx, []), fee => MetaFee }),
+    create_ga_meta_tx(Nonces, AccPK, AccSK, MetaTx, MetaFee, AuthGas).
+
+create_attach_tx(AccPK, Nonce) ->
+    {ok, #{bytecode := Code, src := Src, map := #{type_info := TI}}} =
+        aega_test_utils:get_contract("basic_auth"),
+
+    CallData = aega_test_utils:make_calldata(Src, "init", []),
+
+    {ok, AuthFun} = aega_test_utils:auth_fun_hash(<<"authorize">>, TI),
+
+    AttachTxMap = #{ nonce => Nonce, code => Code, auth_fun => AuthFun, call_data => CallData },
+    aega_test_utils:ga_attach_tx(AccPK, AttachTxMap).
 
 create_contract_tx(Owner, Nonce, Code, CallData) ->
     create_contract_tx(Owner, Nonce, Code, CallData, 100000).
@@ -524,3 +701,15 @@ a_lot_of_gas_limit_fails(Config) ->
     {ok, 403, #{<<"reason">> := <<"Over the gas limit">>}} =
         dry_run(Config, TopHash, [CreateTx3, CallReq]),
     ok.
+
+are_generalized_accounts_supported() ->
+    case aect_test_utils:latest_protocol_version() of
+        ?ROMA_PROTOCOL_VSN    -> {skip, generalized_accounts_not_in_roma};
+        ?MINERVA_PROTOCOL_VSN -> {skip, generalized_accounts_not_in_minerva};
+        ?FORTUNA_PROTOCOL_VSN -> {skip, generalized_accounts_in_dry_run_not_in_fortuna};
+        ?LIMA_PROTOCOL_VSN    -> {skip, generalized_accounts_auth_tx_in_dry_run_not_in_lima};
+        _ -> case aect_test_utils:backend() of
+                 aevm -> {skip, generalized_accounts_auth_tx_not_in_aevm};
+                 fate -> true
+             end
+    end.

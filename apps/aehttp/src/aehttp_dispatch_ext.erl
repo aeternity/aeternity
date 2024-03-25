@@ -853,6 +853,14 @@ handle_request_('ProtectedDryRunTxs', #{ 'DryRunInput' := Req }, _Context) ->
                                   catch _:_ ->
                                       0 %% this is handled later on
                                   end;
+                                 (#{<<"tx_hash">> := TxHash}) ->
+                                  try {ok, TxHashInternal} = aeser_api_encoder:safe_decode(tx_hash, TxHash),
+                                      {mempool, SignedTx} = aec_chain:find_tx_with_location(TxHashInternal),
+                                      Tx = aetx_sign:tx(SignedTx),
+                                      aetx:gas_limit(Tx, Height, Protocol)
+                                  catch _:_ ->
+                                      0 %% this is handled later on
+                                  end;                                    
                                  (#{<<"call_req">> := CallReq}) ->
                                     maps:get(<<"gas">>, CallReq, ?DEFAULT_CALL_REQ_GAS_LIMIT)
                               end,

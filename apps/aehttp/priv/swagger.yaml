@@ -3376,6 +3376,8 @@ definitions:
     properties:
       tx:
         $ref: '#/definitions/EncodedByteArray'
+        tx_hash:
+          $ref: "#/components/schemas/EncodedHash"        
       call_req:
         $ref: '#/definitions/DryRunCallReq'
   DryRunCallReq:
