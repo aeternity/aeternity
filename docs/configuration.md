@@ -145,7 +145,7 @@ fork_management:
 
 ### Hardforks
 
-Hardforks allow the specification of consensuss protocol versions with their repsective heights for custom chains.
+Hardforks allow the specification of consensus protocol versions with their respective heights for custom chains.
 Optionally, prefunded account and contract files can be speficied which will be effective at these heights.
 The files can be specified using the absolute path or a path relative to the home of the node in the directory data/aecore.
 
@@ -381,4 +381,4 @@ If using an existing database, the old model with one database instance per tabl
 #### Troubleshooting
 
 If an error occurs during migration, you will need to address the error and try to complete the migration, as the system is unlikely to work correctly after a partial migration.
-The script should leave the node in 'maintenance mode' after a failed migration. If the node died, try starting the node using e.g. `AE__SYSTEM__MAINTENANCE_MODE=true bin/aeternity console` and re-run the `db_migrate` script. If this doesn't work, fall back to synching the node from scratch, or download a good database snaphot and restart from there.
+The script should leave the node in 'maintenance mode' after a failed migration. If the node died, try starting the node using e.g. `AE__SYSTEM__MAINTENANCE_MODE=true bin/aeternity console` and re-run the `db_migrate` script. If this doesn't work, fall back to synching the node from scratch, or download a good database snapshot and restart from there.
