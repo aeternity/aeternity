@@ -297,8 +297,7 @@ decode_contract_spec(SpecIn) ->
 
 -spec read_preset_contracts(aec_hard_forks:protocol_vsn()) -> {ok, binary()}| {error, {atom(), string()}}.
 read_preset_contracts(Release) ->
-    %% If the configuration variable is not set return an empty object
-    read_hard_fork_file(Release, <<"contracts_file">>, fun(_Protocol) -> {ok, <<"{}">>} end).
+    read_hard_fork_file(Release, <<"contracts_file">>, fun(Protocol) -> read_hard_fork_file(aec_fork_block_settings:contracts_file_name(Protocol)) end).
 
 accounts_file_name(Release) ->
     case aeu_env:find_config([<<"system">>, <<"custom_prefunded_accs_file">>], [user_config]) of
