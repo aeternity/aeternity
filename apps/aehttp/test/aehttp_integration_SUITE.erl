@@ -2197,6 +2197,11 @@ contract_transactions(_Config) ->    % miner has an account
     ContractAccInPoI = rpc(aec_accounts_trees, get, [ContractPubKey,
                                                      aec_trees:accounts(Trees)]),
 
+    %% Test spending to the non-payable account
+    {ok, 200, #{<<"tx">> := BadSpendTx}} =
+        post_spend_tx(aeser_api_encoder:encode(account_pubkey, ContractPubKey), 100000, ?SPEND_FEE),
+    {ok, 400, #{<<"error_code">> := <<"account_is_not_payable">>}} = sign_and_post_tx_(BadSpendTx, on_node),
+
     %% Assert the balance is the one which we created the contract with
     {ok, 200, #{<<"balance">> := ContractInitBalance}} =
         get_accounts_by_pubkey_sut(EncodedContractPubKey),

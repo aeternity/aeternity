@@ -41,7 +41,7 @@
         , maximum_auth_fun_gas/0
         , peek/1
         , peek/2
-        , peek/3        
+        , peek/3
         , push/1
         , push/2
         , push/3
@@ -925,6 +925,7 @@ check_pool_db_put_(Tx, TxHash, Event) ->
                      , fun check_minimum_fee/6
                      , fun check_minimum_gas_price/6
                      , fun check_minimum_miner_gas_price/6
+                     , fun check_payable/6
                      , fun check_tx_ttl/6
                      ],
             case aeu_validation:run(Checks, [Tx, TxHash, Block, BlockHash, Trees, Event]) of
@@ -995,6 +996,44 @@ check_tx_ttl(Tx, _TxHash, Block, _BlockHash, _Trees, _Event) ->
     case Height > aetx:ttl(Tx1) of
         true  -> {error, ttl_expired};
         false -> ok
+    end.
+
+check_payable(Tx, _TxHash, _Block, _BlockHash, Trees, _Event) ->
+    Unsigned = aetx_sign:innermost_tx(Tx),
+    case aetx:specialize_type(Unsigned) of
+        {spend_tx, SpendTx} ->
+            check_spend_payable(SpendTx, Trees);
+        _ ->
+            ok
+    end.
+
+check_spend_payable(SpendTx, Trees) ->
+    RecipientId = aec_spend_tx:recipient_id(SpendTx),
+    case resolve_recipient(RecipientId, Trees) of
+        {ok, Pubkey} ->
+            case get_account(Pubkey, {account_trees, aec_trees:accounts(Trees)}) of
+                none -> ok;
+                {value, Account} ->
+                    case aec_accounts:is_payable(Account) of
+                        true  -> ok;
+                        false -> {error, account_is_not_payable}
+                    end
+            end;
+        Err = {error, _} ->
+            Err
+    end.
+
+resolve_recipient(Id, Trees) ->
+    case aeser_id:specialize(Id) of
+        {name, NameHash} ->
+            case aens:resolve_hash(<<"account_pubkey">>, NameHash, aec_trees:ns(Trees)) of
+                {ok, Id1} ->
+                    resolve_recipient(Id1, Trees);
+                _ ->
+                    {error, could_not_resolve_recipient}
+            end;
+        {_, Pubkey} ->
+            {ok, Pubkey}
     end.
 
 check_valid_at_protocol(Tx, _TxHash, Block, _BlockHash, _Trees, _Event) ->
