@@ -375,10 +375,18 @@ extra_accounts_json_file() ->
     end.
 
 contracts_json_file() ->
-    case aec_governance:get_network_id() of
-        <<"ae_mainnet">> -> "contracts.json";
-        <<"ae_uat">>     -> "contracts_uat.json";
-        _                -> "contracts_test.json"
+    ConsensusModule = aec_consensus:get_consensus_module_at_height(0),
+    NetworkId = aec_governance:get_network_id(),
+    case ConsensusModule:get_type() of
+        pos ->
+            NetworkIdStr = binary_to_list(NetworkId),
+            NetworkIdStr ++ "_contracts.json";
+        pow ->
+            case NetworkId of
+                <<"ae_mainnet">> -> "contracts.json";
+                <<"ae_uat">>     -> "contracts_uat.json";
+                _                -> "contracts_test.json"
+            end
     end.
 
 whitelist_json_file() ->
