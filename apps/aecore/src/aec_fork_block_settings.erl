@@ -342,8 +342,17 @@ accounts_json_file() ->
 extra_accounts_json_file() ->
     "extra_accounts_test.json".
 
+
 contracts_json_file() ->
-    "contracts_test.json".
+    ConsensusModule = aec_consensus:get_consensus_module_at_height(0),
+    NetworkId = aec_governance:get_network_id(),
+    case ConsensusModule:get_type() of
+        pos ->
+            NetworkIdStr = binary_to_list(NetworkId),
+            NetworkIdStr ++ "_contracts.json";
+        pow ->
+            "contracts_test.json"
+    end.
 
 whitelist_json_file() ->
     ".block_whitelist.json".

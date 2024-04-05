@@ -13,7 +13,6 @@
 
 genesis_accounts_test_() ->
     release_based(?ROOT_DIR ++ "/.genesis",
-                  undefined,
                   fun ?TEST_MODULE:genesis_accounts/0,
                   none,
                   none,
@@ -21,7 +20,6 @@ genesis_accounts_test_() ->
 
 minerva_accounts_test_() ->
     release_based(?ROOT_DIR ++ "/.minerva",
-                  undefined,
                   fun ?TEST_MODULE:minerva_accounts/0,
                   none,
                   none,
@@ -29,7 +27,6 @@ minerva_accounts_test_() ->
 
 fortuna_accounts_test_() ->
     release_based(?ROOT_DIR ++ "/.fortuna",
-                  undefined,
                   fun ?TEST_MODULE:fortuna_accounts/0,
                   none,
                   none,
@@ -37,7 +34,6 @@ fortuna_accounts_test_() ->
 
 lima_accounts_test_() ->
     release_based(?ROOT_DIR ++ "/.lima",
-                  undefined,
                   fun ?TEST_MODULE:lima_accounts/0,
                   fun ?TEST_MODULE:lima_contracts/0,
                   lima_contracts_file_missing,
@@ -50,15 +46,27 @@ configurable_accounts_override_test_() ->
     %% Test the hard coded accounts are overridden
     configurable_accounts(?ROMA_PROTOCOL_VSN, 0).
 
-configurable_accounts_hard_codeed_test() ->
+configurable_accounts_hard_coded_test_() ->
     Config = #{integer_to_binary(?IRIS_PROTOCOL_VSN) => 0},
 
     release_based(?ROOT_DIR ++ "/.iris",
-                  fun() -> ?TEST_MODULE:accounts(?IRIS_PROTOCOL_VSN) end,
                   Config,
+                  fun() -> ?TEST_MODULE:accounts(?IRIS_PROTOCOL_VSN) end,                  
                   none,
                   contracts_file_missing,
                   accounts_file_missing).
+
+configurable_accounts_hc_test_() ->
+    Config = #{integer_to_binary(?IRIS_PROTOCOL_VSN) => 0},
+
+    release_based(?ROOT_DIR ++ "/.iris",
+                  Config,
+                  <<"aehc_demo">>,
+                  fun() -> ?TEST_MODULE:accounts(?IRIS_PROTOCOL_VSN) end,                
+                  none,
+                  contracts_file_missing,
+                  accounts_file_missing).
+
 
 configurable_accounts(Protocol, Height) ->
     Dir = ?ROOT_DIR ++ "/.configurable",
@@ -72,7 +80,13 @@ configurable_accounts(Protocol, Height) ->
                   contracts_file_missing,
                   accounts_file_missing).
 
+release_based(Dir, ReadAccountsFun, ReadContractsFun, CMissingErr, AMissingErr) ->
+    release_based(Dir, undefined, ReadAccountsFun, ReadContractsFun, CMissingErr, AMissingErr).
+
 release_based(Dir, ForkConfig, ReadAccountsFun, ReadContractsFun, CMissingErr, AMissingErr) ->
+    release_based(Dir, ForkConfig, undefined, ReadAccountsFun, ReadContractsFun, CMissingErr, AMissingErr).
+
+release_based(Dir, ForkConfig, PosNetworkId, ReadAccountsFun, ReadContractsFun, CMissingErr, AMissingErr) ->
     {foreach,
      fun() ->
          file:make_dir(Dir),
@@ -85,6 +99,17 @@ release_based(Dir, ForkConfig, ReadAccountsFun, ReadContractsFun, CMissingErr, A
                 meck:expect(aeu_env, config_value,
                             fun([<<"chain">>, <<"hard_forks">>], aecore, hard_forks, _Default) ->
                                 ForkConfig end)
+         end,
+         case PosNetworkId of
+            undefined ->
+                ok;
+            _ ->
+                meck:expect(aec_consensus,get_consensus_module_at_height,
+                            fun(_) ->
+                                aec_consensus_hc end),
+                meck:expect(aec_governance,get_network_id,
+                            fun() ->
+                                PosNetworkId end)
          end,
          ok
      end,
@@ -234,10 +259,28 @@ delete_dir(Dir) ->
     ok = file:del_dir(Dir).
 
 accounts_filename(Dir) ->
-    Dir ++ "/accounts_test.json".
+    ConsensusModule = aec_consensus:get_consensus_module_at_height(0),
+    NetworkId = aec_governance:get_network_id(),
+    FileName = case ConsensusModule:get_type() of
+                    pos ->
+                        NetworkIdStr = binary_to_list(NetworkId),
+                        NetworkIdStr ++ "_accounts.json";
+                    pow ->
+                        "accounts_test.json"
+    end,
+    lists:concat([Dir, "/", FileName]).
 
 contracts_filename(Dir) ->
-    Dir ++ "/contracts_test.json".
+    ConsensusModule = aec_consensus:get_consensus_module_at_height(0),
+    NetworkId = aec_governance:get_network_id(),
+    FileName = case ConsensusModule:get_type() of
+                    pos ->
+                        NetworkIdStr = binary_to_list(NetworkId),
+                        NetworkIdStr ++ "_contracts.json";
+                    pow ->
+                        "contracts_test.json"
+    end,
+    lists:concat([Dir, "/", FileName]).
 
 well_formed_contract_spec() ->
     <<"{\"ct_11111111111111111111111111111115rHyByZ\" :
