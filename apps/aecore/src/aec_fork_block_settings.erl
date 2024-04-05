@@ -160,11 +160,11 @@ preset_accounts(Type, Release, ErrorMsg) ->
 -spec read_preset(accounts | extra_accounts, aec_hard_forks:protocol_vsn()) ->
         {ok, binary()} | {error, {atom(), string()}}.
 read_preset(accounts, Release) ->
-    read_hard_fork_file(Release, <<"accounts_file">>, fun(Protocol) -> read_hard_fork_file(aec_fork_block_settings:accounts_file_name(Protocol)) end);
+    read_hard_fork_file(Release, <<"accounts_file">>, fun(Protocol) -> read_hard_fork_file(aec_fork_block_settings:accounts_file_name(Protocol)) end, fun() -> {ok, <<"{}">>} end);
 read_preset(extra_accounts, Release) ->
-    read_hard_fork_file(Release, <<"extra_accounts_file">>, fun(Protocol) -> read_hard_fork_file(aec_fork_block_settings:extra_accounts_file_name(Protocol)) end).
+    read_hard_fork_file(Release, <<"extra_accounts_file">>, fun(Protocol) -> read_hard_fork_file(aec_fork_block_settings:extra_accounts_file_name(Protocol)) end, fun() -> {ok, <<"{}">>} end).
 
-read_hard_fork_file(Protocol, Key, DefaultFun) when is_integer(Protocol) ->
+read_hard_fork_file(Protocol, Key, DefaultFun, UndefinedCustomFileFun) when is_integer(Protocol) ->
     case aeu_env:config_value([<<"chain">>, <<"hard_forks">>], aecore, hard_forks, undefined) of
         undefined ->
             DefaultFun(Protocol);
@@ -178,7 +178,7 @@ read_hard_fork_file(Protocol, Key, DefaultFun) when is_integer(Protocol) ->
                     case maps:get(Key, Map1, undefined) of
                         %% Setting files for a height are not mandatory so return empty object, an error will be return if the file name is set but not found
                         undefined ->
-                            {ok, <<"{}">>};
+                            UndefinedCustomFileFun();
                         FileName ->
                             AbsoluteFileName = case filename:pathtype(FileName) of
                                                 absolute ->
@@ -199,11 +199,16 @@ read_hard_fork_file(FileName) ->
 
 -spec preset_contracts(aec_hard_forks:protocol_vsn(), atom()) -> map().
 preset_contracts(Release, ErrorMsg) ->
-    case read_preset_contracts(Release) of
+    case read_preset_contracts(Release, ErrorMsg) of
         {error, {_Err, Msg}} ->
             erlang:error({ErrorMsg, Msg});
         {ok, JSONData} ->
-            jsx:decode(JSONData, [return_maps])
+            try
+                jsx:decode(JSONData, [return_maps])
+            catch
+              error:_ ->
+                erlang:error(invalid_contracts_json)
+            end
     end.
 
 -spec preset_hardcoded_contracts(aec_hard_forks:protocol_vsn(), atom()) -> list().
@@ -295,9 +300,9 @@ decode_contract_spec(SpecIn) ->
 
 
 
--spec read_preset_contracts(aec_hard_forks:protocol_vsn()) -> {ok, binary()}| {error, {atom(), string()}}.
-read_preset_contracts(Release) ->
-    read_hard_fork_file(Release, <<"contracts_file">>, fun(Protocol) -> read_hard_fork_file(aec_fork_block_settings:contracts_file_name(Protocol)) end).
+-spec read_preset_contracts(aec_hard_forks:protocol_vsn(), atom()) -> {ok, binary()}| {error, {atom(), string()}}.
+read_preset_contracts(Release, ErrorMsg) ->
+    read_hard_fork_file(Release, <<"contracts_file">>, fun(Protocol) -> read_hard_fork_file(aec_fork_block_settings:contracts_file_name(Protocol)) end, fun() -> erlang:error({ErrorMsg, "configuration not defined"}) end).
 
 accounts_file_name(Release) ->
     case aeu_env:find_config([<<"system">>, <<"custom_prefunded_accs_file">>], [user_config]) of
@@ -341,7 +346,6 @@ accounts_json_file() ->
 
 extra_accounts_json_file() ->
     "extra_accounts_test.json".
-
 
 contracts_json_file() ->
     ConsensusModule = aec_consensus:get_consensus_module_at_height(0),

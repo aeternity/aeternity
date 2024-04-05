@@ -35,7 +35,7 @@ fortuna_accounts_test_() ->
 lima_accounts_test_() ->
     release_based(?ROOT_DIR ++ "/.lima",
                   fun ?TEST_MODULE:lima_accounts/0,
-                  fun ?TEST_MODULE:lima_contracts/0,
+                  {lima, fun ?TEST_MODULE:lima_contracts/0},
                   lima_contracts_file_missing,
                   lima_accounts_file_missing).
 
@@ -51,8 +51,8 @@ configurable_accounts_hard_coded_test_() ->
 
     release_based(?ROOT_DIR ++ "/.iris",
                   Config,
-                  fun() -> ?TEST_MODULE:accounts(?IRIS_PROTOCOL_VSN) end,                  
-                  none,
+                  fun() -> ?TEST_MODULE:accounts(?IRIS_PROTOCOL_VSN) end,
+                  {hc, fun() -> ?TEST_MODULE:contracts(?IRIS_PROTOCOL_VSN) end},
                   contracts_file_missing,
                   accounts_file_missing).
 
@@ -62,8 +62,8 @@ configurable_accounts_hc_test_() ->
     release_based(?ROOT_DIR ++ "/.iris",
                   Config,
                   <<"aehc_demo">>,
-                  fun() -> ?TEST_MODULE:accounts(?IRIS_PROTOCOL_VSN) end,                
-                  none,
+                  fun() -> ?TEST_MODULE:accounts(?IRIS_PROTOCOL_VSN) end,
+                  {hc, fun() -> ?TEST_MODULE:contracts(?IRIS_PROTOCOL_VSN) end},
                   contracts_file_missing,
                   accounts_file_missing).
 
@@ -72,11 +72,12 @@ configurable_accounts(Protocol, Height) ->
     Dir = ?ROOT_DIR ++ "/.configurable",
     Config = #{integer_to_binary(Protocol) =>
                   #{<<"accounts_file">> => accounts_filename(Dir),
+                    <<"contracts_file">> => contracts_filename(Dir),
                     <<"height">> => Height}},
     release_based(Dir,
                   Config,
                   fun() -> ?TEST_MODULE:accounts(Protocol) end,
-                  none,
+                  {hc, fun() -> ?TEST_MODULE:contracts(Protocol) end},
                   contracts_file_missing,
                   accounts_file_missing).
 
@@ -86,7 +87,7 @@ release_based(Dir, ReadAccountsFun, ReadContractsFun, CMissingErr, AMissingErr) 
 release_based(Dir, ForkConfig, ReadAccountsFun, ReadContractsFun, CMissingErr, AMissingErr) ->
     release_based(Dir, ForkConfig, undefined, ReadAccountsFun, ReadContractsFun, CMissingErr, AMissingErr).
 
-release_based(Dir, ForkConfig, PosNetworkId, ReadAccountsFun, ReadContractsFun, CMissingErr, AMissingErr) ->
+release_based(Dir, ForkConfig, PosNetworkId, ReadAccountsFun, ReadContractsFunAndType, CMissingErr, AMissingErr) ->
     {foreach,
      fun() ->
          file:make_dir(Dir),
@@ -176,9 +177,9 @@ release_based(Dir, ForkConfig, PosNetworkId, ReadAccountsFun, ReadContractsFun, 
             ok
         end}]
      ++
-       case ReadContractsFun =:= none of
-           true -> [];
-           false ->
+       case ReadContractsFunAndType of
+           none -> [];
+           {lima, ReadContractsFun} ->
                [{"Preset contracts parsing: broken file",
                  fun() ->
                      %% empty file
@@ -221,6 +222,41 @@ release_based(Dir, ForkConfig, PosNetworkId, ReadAccountsFun, ReadContractsFun, 
                           ?assertError({invalid_spec, _}, ReadContractsFun())
                       end || S <- ill_formed_contract_specs()],
                      ok
+                 end}
+               ];
+           {hc, ReadContractsFun} ->
+               [{"Preset contracts parsing: broken file",
+                 fun() ->
+                     %% empty file
+                     expect_contracts(Dir, <<"">>),
+                     ?assertError(invalid_contracts_json, ReadContractsFun()),
+                     %% broken json
+                     expect_contracts(Dir, <<"{">>),
+                     ?assertError(invalid_contracts_json, ReadContractsFun()),
+                     %% not json at all
+                     expect_contracts(Dir, <<"Hejsan svejsan">>),
+                     ?assertError(invalid_contracts_json, ReadContractsFun()),
+                     ok
+                 end},
+                {"Preset contracts parsing: empty object",
+                 fun() ->
+                     expect_contracts(Dir, <<"{}">>),
+                     ?assertEqual(#{}, ReadContractsFun()),
+                     expect_contracts(Dir, <<"{ }">>),
+                     ?assertEqual(#{}, ReadContractsFun()),
+                     ok
+                 end},
+                {"Preset contracts parsing: preset contracts file missing",
+                 fun() ->
+                     delete_contracts_file(Dir),
+                     File = contracts_filename(Dir),
+                     case CMissingErr of
+                        undefined ->
+                            ?assertEqual([], ReadContractsFun());
+                        _ ->
+                         ?assertError({CMissingErr, File}, ReadContractsFun())
+                     end,
+                     okma
                  end}
                ]
        end
