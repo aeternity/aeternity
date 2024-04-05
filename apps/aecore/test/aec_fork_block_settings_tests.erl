@@ -50,6 +50,15 @@ configurable_accounts_override_test_() ->
     %% Test the hard coded accounts are overridden
     configurable_accounts(?ROMA_PROTOCOL_VSN, 0).
 
+configurable_accounts_hard_codeed_test() ->
+    Config = #{integer_to_binary(?IRIS_PROTOCOL_VSN) => 0},
+
+    release_based(?ROOT_DIR ++ "/.iris",
+                  fun() -> ?TEST_MODULE:accounts(?IRIS_PROTOCOL_VSN) end,
+                  Config,
+                  none,
+                  contracts_file_missing,
+                  accounts_file_missing).
 
 configurable_accounts(Protocol, Height) ->
     Dir = ?ROOT_DIR ++ "/.configurable",
