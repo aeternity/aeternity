@@ -92,6 +92,8 @@ release_based(Dir, ForkConfig, PosNetworkId, ReadAccountsFun, ReadContractsFunAn
      fun() ->
          file:make_dir(Dir),
          meck:new(aeu_env, [passthrough]),
+         meck:new(aec_consensus, [passthrough]),
+         meck:new(aec_governance, [passthrough]),
          meck:expect(aeu_env, data_dir, fun(aecore) -> ?ROOT_DIR end),
          case ForkConfig of
             undefined ->
@@ -117,6 +119,8 @@ release_based(Dir, ForkConfig, PosNetworkId, ReadAccountsFun, ReadContractsFunAn
      fun(ok) ->
          delete_dir(Dir),
          meck:unload(aeu_env),
+         meck:unload(aec_consensus),
+         meck:unload(aec_governance),
          ok
      end,
      [ {"Preset accounts parsing: broken file",
