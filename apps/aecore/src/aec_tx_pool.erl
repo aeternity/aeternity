@@ -1024,16 +1024,21 @@ check_spend_payable(SpendTx, Trees) ->
     end.
 
 resolve_recipient(Id, Trees) ->
-    case aeser_id:specialize(Id) of
-        {name, NameHash} ->
-            case aens:resolve_hash(<<"account_pubkey">>, NameHash, aec_trees:ns(Trees)) of
-                {ok, Id1} ->
-                    resolve_recipient(Id1, Trees);
-                _ ->
-                    {error, could_not_resolve_recipient}
+    case aeser_id:is_id(Id) of
+        true ->
+            case aeser_id:specialize(Id) of
+                {name, NameHash} ->
+                    case aens:resolve_hash(<<"account_pubkey">>, NameHash, aec_trees:ns(Trees)) of
+                        {ok, Id1} ->
+                            resolve_recipient(Id1, Trees);
+                        _ ->
+                            {error, could_not_resolve_recipient}
+                    end;
+                {_, Pubkey} ->
+                    {ok, Pubkey}
             end;
-        {_, Pubkey} ->
-            {ok, Pubkey}
+        false ->
+            {error, could_not_resolve_recipient}
     end.
 
 check_valid_at_protocol(Tx, _TxHash, Block, _BlockHash, _Trees, _Event) ->
