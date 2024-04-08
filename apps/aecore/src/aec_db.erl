@@ -623,7 +623,7 @@ bypass_on_commit(R) ->
             R
     end.
 
-walk_tstore(TStore, Ref) ->                                          
+walk_tstore(TStore, Ref) ->
     ets:foldl(fun walk_tstore_/2, Ref, TStore).
 
 walk_tstore_({{locks, _, _}, _}, Acc) -> Acc;
@@ -1311,7 +1311,10 @@ lookup_tree_node(Hash, #tree_gc{ primary   = Prim
 
 lookup_tree_node_(Hash, T, Rec) ->
     case read(T, Hash) of
-        [Obj] -> {value, get_tree_value(Rec, Obj)};
+        [Obj] ->
+            Value = get_tree_value(Rec, Obj),
+            Hash = aec_hash:hash(header, aeser_rlp:encode(Value)),
+            {value, Value};
         []    -> none
     end.
 
