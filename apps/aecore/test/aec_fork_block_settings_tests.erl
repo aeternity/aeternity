@@ -13,7 +13,6 @@
 
 genesis_accounts_test_() ->
     release_based(?ROOT_DIR ++ "/.genesis",
-                  undefined,
                   fun ?TEST_MODULE:genesis_accounts/0,
                   none,
                   none,
@@ -21,7 +20,6 @@ genesis_accounts_test_() ->
 
 minerva_accounts_test_() ->
     release_based(?ROOT_DIR ++ "/.minerva",
-                  undefined,
                   fun ?TEST_MODULE:minerva_accounts/0,
                   none,
                   none,
@@ -29,7 +27,6 @@ minerva_accounts_test_() ->
 
 fortuna_accounts_test_() ->
     release_based(?ROOT_DIR ++ "/.fortuna",
-                  undefined,
                   fun ?TEST_MODULE:fortuna_accounts/0,
                   none,
                   none,
@@ -37,9 +34,8 @@ fortuna_accounts_test_() ->
 
 lima_accounts_test_() ->
     release_based(?ROOT_DIR ++ "/.lima",
-                  undefined,
                   fun ?TEST_MODULE:lima_accounts/0,
-                  fun ?TEST_MODULE:lima_contracts/0,
+                  {lima, fun ?TEST_MODULE:lima_contracts/0},
                   lima_contracts_file_missing,
                   lima_accounts_file_missing).
 
@@ -50,24 +46,54 @@ configurable_accounts_override_test_() ->
     %% Test the hard coded accounts are overridden
     configurable_accounts(?ROMA_PROTOCOL_VSN, 0).
 
+configurable_accounts_hard_coded_test_() ->
+    Config = #{integer_to_binary(?IRIS_PROTOCOL_VSN) => 0},
+
+    release_based(?ROOT_DIR ++ "/.iris",
+                  Config,
+                  fun() -> ?TEST_MODULE:accounts(?IRIS_PROTOCOL_VSN) end,
+                  {hc, fun() -> ?TEST_MODULE:contracts(?IRIS_PROTOCOL_VSN) end},
+                  contracts_file_missing,
+                  accounts_file_missing).
+
+configurable_accounts_hc_test_() ->
+    Config = #{integer_to_binary(?IRIS_PROTOCOL_VSN) => 0},
+
+    release_based(?ROOT_DIR ++ "/.iris",
+                  Config,
+                  <<"aehc_demo">>,
+                  fun() -> ?TEST_MODULE:accounts(?IRIS_PROTOCOL_VSN) end,
+                  {hc, fun() -> ?TEST_MODULE:contracts(?IRIS_PROTOCOL_VSN) end},
+                  contracts_file_missing,
+                  accounts_file_missing).
+
 
 configurable_accounts(Protocol, Height) ->
     Dir = ?ROOT_DIR ++ "/.configurable",
     Config = #{integer_to_binary(Protocol) =>
                   #{<<"accounts_file">> => accounts_filename(Dir),
+                    <<"contracts_file">> => contracts_filename(Dir),
                     <<"height">> => Height}},
     release_based(Dir,
                   Config,
                   fun() -> ?TEST_MODULE:accounts(Protocol) end,
-                  none,
+                  {hc, fun() -> ?TEST_MODULE:contracts(Protocol) end},
                   contracts_file_missing,
                   accounts_file_missing).
 
+release_based(Dir, ReadAccountsFun, ReadContractsFun, CMissingErr, AMissingErr) ->
+    release_based(Dir, undefined, ReadAccountsFun, ReadContractsFun, CMissingErr, AMissingErr).
+
 release_based(Dir, ForkConfig, ReadAccountsFun, ReadContractsFun, CMissingErr, AMissingErr) ->
+    release_based(Dir, ForkConfig, undefined, ReadAccountsFun, ReadContractsFun, CMissingErr, AMissingErr).
+
+release_based(Dir, ForkConfig, PosNetworkId, ReadAccountsFun, ReadContractsFunAndType, CMissingErr, AMissingErr) ->
     {foreach,
      fun() ->
          file:make_dir(Dir),
          meck:new(aeu_env, [passthrough]),
+         meck:new(aec_consensus, [passthrough]),
+         meck:new(aec_governance, [passthrough]),
          meck:expect(aeu_env, data_dir, fun(aecore) -> ?ROOT_DIR end),
          case ForkConfig of
             undefined ->
@@ -77,11 +103,24 @@ release_based(Dir, ForkConfig, ReadAccountsFun, ReadContractsFun, CMissingErr, A
                             fun([<<"chain">>, <<"hard_forks">>], aecore, hard_forks, _Default) ->
                                 ForkConfig end)
          end,
+         case PosNetworkId of
+            undefined ->
+                ok;
+            _ ->
+                meck:expect(aec_consensus,get_consensus_module_at_height,
+                            fun(_) ->
+                                aec_consensus_hc end),
+                meck:expect(aec_governance,get_network_id,
+                            fun() ->
+                                PosNetworkId end)
+         end,
          ok
      end,
      fun(ok) ->
          delete_dir(Dir),
          meck:unload(aeu_env),
+         meck:unload(aec_consensus),
+         meck:unload(aec_governance),
          ok
      end,
      [ {"Preset accounts parsing: broken file",
@@ -142,9 +181,9 @@ release_based(Dir, ForkConfig, ReadAccountsFun, ReadContractsFun, CMissingErr, A
             ok
         end}]
      ++
-       case ReadContractsFun =:= none of
-           true -> [];
-           false ->
+       case ReadContractsFunAndType of
+           none -> [];
+           {lima, ReadContractsFun} ->
                [{"Preset contracts parsing: broken file",
                  fun() ->
                      %% empty file
@@ -188,6 +227,41 @@ release_based(Dir, ForkConfig, ReadAccountsFun, ReadContractsFun, CMissingErr, A
                       end || S <- ill_formed_contract_specs()],
                      ok
                  end}
+               ];
+           {hc, ReadContractsFun} ->
+               [{"Preset contracts parsing: broken file",
+                 fun() ->
+                     %% empty file
+                     expect_contracts(Dir, <<"">>),
+                     ?assertError(invalid_contracts_json, ReadContractsFun()),
+                     %% broken json
+                     expect_contracts(Dir, <<"{">>),
+                     ?assertError(invalid_contracts_json, ReadContractsFun()),
+                     %% not json at all
+                     expect_contracts(Dir, <<"Hejsan svejsan">>),
+                     ?assertError(invalid_contracts_json, ReadContractsFun()),
+                     ok
+                 end},
+                {"Preset contracts parsing: empty object",
+                 fun() ->
+                     expect_contracts(Dir, <<"{}">>),
+                     ?assertEqual(#{}, ReadContractsFun()),
+                     expect_contracts(Dir, <<"{ }">>),
+                     ?assertEqual(#{}, ReadContractsFun()),
+                     ok
+                 end},
+                {"Preset contracts parsing: preset contracts file missing",
+                 fun() ->
+                     delete_contracts_file(Dir),
+                     File = contracts_filename(Dir),
+                     case CMissingErr of
+                        undefined ->
+                            ?assertEqual([], ReadContractsFun());
+                        _ ->
+                         ?assertError({CMissingErr, File}, ReadContractsFun())
+                     end,
+                     okma
+                 end}
                ]
        end
     }.
@@ -225,10 +299,28 @@ delete_dir(Dir) ->
     ok = file:del_dir(Dir).
 
 accounts_filename(Dir) ->
-    Dir ++ "/accounts_test.json".
+    ConsensusModule = aec_consensus:get_consensus_module_at_height(0),
+    NetworkId = aec_governance:get_network_id(),
+    FileName = case ConsensusModule:get_type() of
+                    pos ->
+                        NetworkIdStr = binary_to_list(NetworkId),
+                        NetworkIdStr ++ "_accounts.json";
+                    pow ->
+                        "accounts_test.json"
+    end,
+    lists:concat([Dir, "/", FileName]).
 
 contracts_filename(Dir) ->
-    Dir ++ "/contracts_test.json".
+    ConsensusModule = aec_consensus:get_consensus_module_at_height(0),
+    NetworkId = aec_governance:get_network_id(),
+    FileName = case ConsensusModule:get_type() of
+                    pos ->
+                        NetworkIdStr = binary_to_list(NetworkId),
+                        NetworkIdStr ++ "_contracts.json";
+                    pow ->
+                        "contracts_test.json"
+    end,
+    lists:concat([Dir, "/", FileName]).
 
 well_formed_contract_spec() ->
     <<"{\"ct_11111111111111111111111111111115rHyByZ\" :
