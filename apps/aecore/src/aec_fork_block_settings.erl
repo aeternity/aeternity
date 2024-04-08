@@ -327,36 +327,6 @@ contracts_file_name(Release) ->
 
 
 -ifdef(TEST).
-accounts_json_file() ->
-    NetworkId = aec_governance:get_network_id(),
-    ConsensusModule = aec_consensus:get_consensus_module_at_height(0),
-    case NetworkId of
-        <<"ae_mainnet">>                  -> "accounts.json";
-        <<"ae_uat">>                      -> "accounts_uat.json";
-        _ ->
-            case ConsensusModule:get_type() of
-                pos ->
-                    NetworkId = aec_governance:get_network_id(),
-                    NetworkIdStr = binary_to_list(NetworkId),
-                    NetworkIdStr ++ "_accounts.json";
-                pow ->
-                    "accounts_test.json"
-            end
-    end.
-
-extra_accounts_json_file() ->
-    "extra_accounts_test.json".
-
-contracts_json_file() ->
-    ConsensusModule = aec_consensus:get_consensus_module_at_height(0),
-    NetworkId = aec_governance:get_network_id(),
-    case ConsensusModule:get_type() of
-        pos ->
-            NetworkIdStr = binary_to_list(NetworkId),
-            NetworkIdStr ++ "_contracts.json";
-        pow ->
-            "contracts_test.json"
-    end.
 
 whitelist_json_file() ->
     ".block_whitelist.json".
@@ -365,42 +335,6 @@ pre_iris_map_ordering_file() ->
     ".pre_iris_map_ordering.json".
 
 -else.
-accounts_json_file() ->
-    ConsensusModule = aec_consensus:get_consensus_module_at_height(0),
-    NetworkId = aec_governance:get_network_id(),
-    case ConsensusModule:get_type() of
-        pos ->
-            NetworkIdStr = binary_to_list(NetworkId),
-            NetworkIdStr ++ "_accounts.json";
-        pow ->
-            case NetworkId of
-                <<"ae_mainnet">>                  -> "accounts.json";
-                <<"ae_uat">>                      -> "accounts_uat.json";
-                _                                 -> "accounts_test.json"
-            end
-    end.
-
-extra_accounts_json_file() ->
-    case aec_governance:get_network_id() of
-        <<"ae_mainnet">> -> "extra_accounts.json";
-        <<"ae_uat">>     -> "extra_accounts_uat.json";
-        _                -> "extra_accounts_test.json"
-    end.
-
-contracts_json_file() ->
-    ConsensusModule = aec_consensus:get_consensus_module_at_height(0),
-    NetworkId = aec_governance:get_network_id(),
-    case ConsensusModule:get_type() of
-        pos ->
-            NetworkIdStr = binary_to_list(NetworkId),
-            NetworkIdStr ++ "_contracts.json";
-        pow ->
-            case NetworkId of
-                <<"ae_mainnet">> -> "contracts.json";
-                <<"ae_uat">>     -> "contracts_uat.json";
-                _                -> "contracts_test.json"
-            end
-    end.
 
 whitelist_json_file() ->
     case aec_governance:get_network_id() of
@@ -416,6 +350,31 @@ pre_iris_map_ordering_file() ->
         _                -> ".pre_iris_map_ordering_test.json"
     end.
 -endif.
+
+accounts_json_file() ->
+    json_file("accounts").
+
+extra_accounts_json_file() ->
+    json_file("extra_accounts").
+
+contracts_json_file() ->
+    json_file("contracts").
+
+json_file(BaseFileName) ->
+    ConsensusModule = aec_consensus:get_consensus_module_at_height(0),
+    NetworkId = aec_governance:get_network_id(),
+    case ConsensusModule:get_type() of
+        pos ->
+            NetworkIdStr = binary_to_list(NetworkId),
+            lists:concat([NetworkIdStr, "_", BaseFileName, ".json"]);
+        pow ->
+            case NetworkId of
+                <<"ae_mainnet">>                  -> BaseFileName ++ ".json";
+                <<"ae_uat">>                      -> BaseFileName ++ "_uat.json";
+                _                                 -> BaseFileName ++ "_test.json"
+            end
+    end.
+
 
 hardcoded_basename(ProtocolVsn) ->
     case ProtocolVsn of
