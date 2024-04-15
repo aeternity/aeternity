@@ -3870,7 +3870,32 @@ components:
               $ref: "#/components/schemas/UInt32"
             type:
               type: string
-              enum: [SpendTx, ChannelCreateTx, ChannelDepositTx, ChannelWithdrawTx, ChannelForceProgressTx, ChannelCloseMutualTx, ChannelCloseSoloTx, ChannelSlashTx, ChannelSettleTx, ChannelSnapshotSoloTx, ChannelSetDelegatesTx, OracleRegisterTx, OracleExtendTx, OracleQueryTx, OracleRespondTx, NamePreclaimTx, NameClaimTx, NameUpdateTx, NameTransferTx, NameRevokeTx, ContractCreateTx, ContractCallTx, GAAttachTx, GAMetaTx, PayingForTx]
+              enum:
+                - SpendTx
+                - ChannelCreateTx
+                - ChannelDepositTx
+                - ChannelWithdrawTx
+                - ChannelForceProgressTx
+                - ChannelCloseMutualTx
+                - ChannelCloseSoloTx
+                - ChannelSlashTx
+                - ChannelSettleTx
+                - ChannelSnapshotSoloTx
+                - ChannelSetDelegatesTx
+                - OracleRegisterTx
+                - OracleExtendTx
+                - OracleQueryTx
+                - OracleRespondTx
+                - NamePreclaimTx
+                - NameClaimTx
+                - NameUpdateTx
+                - NameTransferTx
+                - NameRevokeTx
+                - ContractCreateTx
+                - ContractCallTx
+                - GAAttachTx
+                - GAMetaTx
+                - PayingForTx
           required:
             - version
             - type
