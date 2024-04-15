@@ -35,6 +35,9 @@ tags:
 schemes:
   - http
 paths:
+  ###
+  ## External APIs definitions
+  ###
   /accounts/{pubkey}:
     get:
       tags:
@@ -236,9 +239,6 @@ paths:
           description: 'Name not found'
           schema:
             $ref: '#/definitions/Error'
-  ###
-  ## External APIs definitions
-  ###
   /blocks/top:
     get:
       tags:

@@ -41,6 +41,9 @@ externalDocs:
 servers:
   - url: /v3
 paths:
+  ###
+  ## External endpoints
+  ###
   "/accounts/{pubkey}":
     get:
       tags:
@@ -487,9 +490,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-  ###
-  ## External endpoints
-  ###
   /headers/top:
     get:
       tags:
@@ -1124,6 +1124,9 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  ###
+  ## Internal endpoints
+  ###
   /debug/accounts/beneficiary:
     get:
       tags:
@@ -2115,9 +2118,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-  ###
-  ## Internal endpoints
-  ###
   /key-blocks:
     post:
       tags:
