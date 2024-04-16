@@ -248,7 +248,7 @@ handle_request_('GetKeyBlockByHash', Params, _Context) ->
                                         error_code => <<"no_key_block">>}}
                     end;
                 error ->
-                    {404, [], #{reason => <<"Block not fond">>}}
+                    {404, [], #{reason => <<"Block not found">>}}
             end
     end;
 
