@@ -5,7 +5,7 @@ info:
   title: Aeternity node
   termsOfService: https://www.aeternity.com/terms/
   contact:
-    email: admin@aeternity.foundation
+    url: https://github.com/aeternity/aeternity/issues
 tags:
   - name: external
     description: External API
