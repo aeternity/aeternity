@@ -5,7 +5,7 @@ info:
   title: Aeternity node
   termsOfService: 'https://www.aeternity.com/terms/'
   contact:
-    url: https://github.com/aeternity/aeternity/issues
+    url: 'https://github.com/aeternity/aeternity/issues'
 basePath: /v2
 tags:
   - name: external
