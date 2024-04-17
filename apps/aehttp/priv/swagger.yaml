@@ -5,7 +5,7 @@ info:
   title: Aeternity node
   termsOfService: 'https://www.aeternity.com/terms/'
   contact:
-    email: apiteam@aeternity.com
+    email: admin@aeternity.foundation
 basePath: /v2
 tags:
   - name: external
