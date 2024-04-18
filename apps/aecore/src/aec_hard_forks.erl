@@ -96,20 +96,20 @@ protocol_vsn(ceres)   -> ?CERES_PROTOCOL_VSN.
 %%%===================================================================
 
 protocols_from_network_id(<<"ae_mainnet">>) ->
-    #{ ?ROMA_PROTOCOL_VSN     => 0
-     , ?MINERVA_PROTOCOL_VSN  => 47800
+    #{ ?ROMA_PROTOCOL_VSN    => 0
+     , ?MINERVA_PROTOCOL_VSN => 47800
      , ?FORTUNA_PROTOCOL_VSN => 90800
-     , ?LIMA_PROTOCOL_VSN => 161150
-     , ?IRIS_PROTOCOL_VSN =>  441444
-%%%  , ?CERES_PROTOCOL_VSN =>  Not yet decided
+     , ?LIMA_PROTOCOL_VSN    => 161150
+     , ?IRIS_PROTOCOL_VSN    => 441444
+     , ?CERES_PROTOCOL_VSN   => 941700
     };
 protocols_from_network_id(<<"ae_uat">>) ->
-    #{ ?ROMA_PROTOCOL_VSN     => 0
-     , ?MINERVA_PROTOCOL_VSN  => 40900
+    #{ ?ROMA_PROTOCOL_VSN    => 0
+     , ?MINERVA_PROTOCOL_VSN => 40900
      , ?FORTUNA_PROTOCOL_VSN => 82900
-     , ?LIMA_PROTOCOL_VSN => 154300
-     , ?IRIS_PROTOCOL_VSN => 425900
-%%%  , ?CERES_PROTOCOL_VSN =>  Not yet decided
+     , ?LIMA_PROTOCOL_VSN    => 154300
+     , ?IRIS_PROTOCOL_VSN    => 425900
+     , ?CERES_PROTOCOL_VSN   => 939750
      };
 protocols_from_network_id(<<"local_roma_testnet">>) ->
     #{ ?ROMA_PROTOCOL_VSN     => 0
@@ -162,13 +162,13 @@ protocols_from_network_id(<<"local_ceres_testnet">>) ->
 protocols_from_network_id(<<"ae_dev">>) ->
     default_protocols_from_network_id();
 protocols_from_network_id(_Id) ->
-    default_protocols_from_network_id().    
+    default_protocols_from_network_id().
 
 default_protocols_from_network_id() ->
     case aeu_env:user_map_or_env([<<"chain">>, <<"hard_forks">>], aecore, hard_forks, undefined) of
         undefined ->
             #{ ?ROMA_PROTOCOL_VSN  => 0
-             , ?IRIS_PROTOCOL_VSN  => 1
+             , ?CERES_PROTOCOL_VSN  => 1
              };
         M when is_map(M) ->
             maps:fold(fun(K, #{<<"height">> := V}, Acc) ->
