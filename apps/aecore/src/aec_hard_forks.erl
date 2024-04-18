@@ -101,7 +101,7 @@ protocols_from_network_id(<<"ae_mainnet">>) ->
      , ?FORTUNA_PROTOCOL_VSN => 90800
      , ?LIMA_PROTOCOL_VSN    => 161150
      , ?IRIS_PROTOCOL_VSN    => 441444
-     , ?CERES_PROTOCOL_VSN   => 941750
+     , ?CERES_PROTOCOL_VSN   => 941700
     };
 protocols_from_network_id(<<"ae_uat">>) ->
     #{ ?ROMA_PROTOCOL_VSN    => 0
