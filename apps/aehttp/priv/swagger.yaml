@@ -1,6 +1,6 @@
 swagger: '2.0'
 info:
-  description: 'This is the [Aeternity](https://www.aeternity.com/) node API.'
+  description: 'This is the [Aeternity](https://www.aeternity.com/) compiler API. The swagger version of this API will be deprecated and replaced by an openAPI 3.x specification'
   version: x.y.z
   title: Aeternity node
   termsOfService: 'https://www.aeternity.com/terms/'
