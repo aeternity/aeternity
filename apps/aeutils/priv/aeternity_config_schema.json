@@ -18,7 +18,7 @@
                     "default" : false
                 },
                 "dev_mode" : {
-                    "description" : "When true, the node sets up for development (default netw id: ae_dev, default consensus: on_demand)",
+                    "description" : "When true, the node sets up for development (default network id: ae_dev, default consensus: on_demand)",
                     "type" : "boolean",
                     "default" : false
                 },
@@ -218,7 +218,7 @@
                                     "default" : 20
                                 },
                                 "bad_transaction" : {
-                                    "description" : "If there is something unexpected about the transaciton. Clean up.",
+                                    "description" : "If there is something unexpected about the transaction. Clean up.",
                                     "type" : "integer",
                                     "default" : 1
                                 },
@@ -516,7 +516,7 @@
                                     "default" : 20
                                 },
                                 "insufficient_channel_funds" : {
-                                    "description" : "If the channel final amounts exceedthe channel balance. Clean up.",
+                                    "description" : "If the channel final amounts exceed the channel balance. Clean up.",
                                     "type" : "integer",
                                     "default" : 1
                                 }
@@ -557,7 +557,7 @@
                                     "default" : 1
                                 },
                                 "bad_offchain_state_type" : {
-                                    "description" : "If the offhchain state is from an unknown off-chain transaction type, if there is an upcoming fork to allow new off-chain transaction types - provide a grace period for it, otherwise clean up.",
+                                    "description" : "If the offchain state is from an unknown off-chain transaction type, if there is an upcoming fork to allow new off-chain transaction types - provide a grace period for it, otherwise clean up.",
                                     "type" : "integer",
                                     "default" : 1
                                 },
@@ -638,7 +638,7 @@
                                     "default" : 1
                                 },
                                 "bad_offchain_state_type" : {
-                                    "description" : "If the offhchain state is from an unknown off-chain transaction type, if there is an upcoming fork to allow new off-chain transaction types - provide a grace period for it, otherwise clean up.",
+                                    "description" : "If the offchain state is from an unknown off-chain transaction type, if there is an upcoming fork to allow new off-chain transaction types - provide a grace period for it, otherwise clean up.",
                                     "type" : "integer",
                                     "default" : 1
                                 },
@@ -714,7 +714,7 @@
                                     "default" : 1
                                 },
                                 "bad_offchain_state_type" : {
-                                    "description" : "If the offhchain state is from an unknown off-chain transaction type, if there is an upcoming fork to allow new off-chain transaction types - provide a grace period for it, otherwise clean up.",
+                                    "description" : "If the offchain state is from an unknown off-chain transaction type, if there is an upcoming fork to allow new off-chain transaction types - provide a grace period for it, otherwise clean up.",
                                     "type" : "integer",
                                     "default" : 1
                                 },
@@ -775,7 +775,7 @@
                                     "default" : 5
                                 },
                                 "bad_offchain_state_type" : {
-                                    "description" : "If the offhchain state is from an unknown off-chain transaction type, if there is an upcoming fork to allow new off-chain transaction types - provide a grace period for it, otherwise clean up.",
+                                    "description" : "If the offchain state is from an unknown off-chain transaction type, if there is an upcoming fork to allow new off-chain transaction types - provide a grace period for it, otherwise clean up.",
                                     "type" : "integer",
                                     "default" : 1
                                 },
@@ -1154,7 +1154,7 @@
                 },
                 "ping" : {
                     "type" : "object",
-                    "additionalproperties" : false,
+                    "additionalProperties" : false,
                     "properties" : {
                         "peer_percentage" : {
                             "description" : "The percentage of connected peers sent in ping message. Recommend values are from 5-30.",
@@ -1167,7 +1167,7 @@
                 },
                 "peer_pool" : {
                     "type" : "object",
-                    "additionalproperties" : false,
+                    "additionalProperties" : false,
                     "properties" : {
                         "select_verified_peer_probability" : {
                             "description" : "Probability of selecting a peer from the verified pool.",
@@ -1396,7 +1396,7 @@
                             "type" : "boolean"
                         },
                         "transactions" : {
-                            "description" : "Transactions insection endpoints",
+                            "description" : "Transactions inspection endpoints",
                             "type" : "boolean"
                         },
                         "node-operator" : {
@@ -1778,7 +1778,7 @@
                                                     "additionalProperties" : false,
                                                     "properties": {
                                                         "fetch_interval": {
-                                                            "description" : "The interval between polls of the parent chain looking for a new block (millisec)",
+                                                            "description" : "The interval between polls of the parent chain looking for a new block (milliseconds)",
                                                             "type": "integer",
                                                             "default": 500
                                                         },
@@ -2453,7 +2453,7 @@
                 },
                 "fork" : {
                     "type" : "object",
-                    "additionalproperties" : false,
+                    "additionalProperties" : false,
                     "required" : [
                         "enabled"
                     ],

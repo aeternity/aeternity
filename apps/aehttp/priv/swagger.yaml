@@ -987,7 +987,7 @@ paths:
           schema:
             $ref: '#/definitions/SyncStatus'
         '404':
-          description: Node not syncinc
+          description: Node not syncing
           schema:
             $ref: '#/definitions/Error'
   /transactions:
