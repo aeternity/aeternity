@@ -799,11 +799,20 @@ handle_request_('GetCurrency', _Params, _Context) ->
                   <<"subunit">>                => Subunit,
                   <<"subunits_per_unit">>      => SubunitsPerUnit
                 },
-    CcyMeta = case aeu_env:find_config([<<"chain">>, <<"currency">>, <<"fiat_converstion_url">>],[user_config]) of
-                undefined ->
-                    CcyMeta0;
-                {ok, FiatUrl} ->
-                    maps:put(<<"fiat_converstion_url">>, FiatUrl, CcyMeta0)
+    FiatUrl = lists:foldl(
+        fun(Key, Acc) ->
+            case aeu_env:find_config([<<"chain">>, <<"currency">>, Key],[user_config]) of
+                undefined -> Acc;
+                {ok, FiatUrl} -> FiatUrl
+            end
+        end,
+        undefined,
+        [<<"fiat_converstion_url">>, <<"fiat_conversion_url">>]),
+    CcyMeta = case FiatUrl of
+                undefined -> CcyMeta0;
+                FiatUrl -> maps:merge(CcyMeta0,
+                                #{ <<"fiat_converstion_url">> => FiatUrl,
+                                   <<"fiat_conversion_url">>  => FiatUrl})
                 end,
     {ok, PrimaryColour} = aeu_env:find_config([<<"chain">>, <<"display">>, <<"primary_colour">>],[user_config, schema_default]),
     {ok, SecondaryColour} = aeu_env:find_config([<<"chain">>, <<"display">>, <<"secondary_colour">>],[user_config, schema_default]),

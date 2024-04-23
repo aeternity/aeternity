@@ -1647,6 +1647,11 @@
                             "default" : 1000000000000000000
                         },
                         "fiat_converstion_url" : {
+                            "deprecated": true,
+                            "description" : "Use `fiat_conversion_url` instead",
+                            "type" : "string"
+                        },
+                        "fiat_conversion_url" : {
                             "description" : "URL of the fiat conversion.",
                             "type" : "string"
                         }
