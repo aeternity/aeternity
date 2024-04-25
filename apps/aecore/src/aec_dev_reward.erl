@@ -27,9 +27,7 @@
 -define(TESTNET_BENEFICIARIES, [{<<152,57,168,5,218,153,177,254,226,207,243,133,11,50,143,68,121,242,94,41,187,198,158,67,133,88,6,71,55,26,85,54>>, 109, ?FORTUNA_PROTOCOL_VSN, ?IRIS_PROTOCOL_VSN}]).
 
 ensure_env() ->
-    Enabled = cfg(<<"protocol_beneficiaries_enabled">>, ?ENABLED),
-    DefaultBenefs = default_beneficiaries(),
-    Benefs0 = cfg(<<"protocol_beneficiaries">>, lists:map(fun encode_beneficiary/1, DefaultBenefs)),
+    {Enabled, Benefs0} = protocol_beneficiaries(),
     case Enabled andalso parse_beneficiaries(Benefs0) of
         false ->
             application:set_env(aecore, dev_reward_enabled, false);
@@ -97,6 +95,26 @@ activated(Protocol) ->
             Val
     end.
 
+protocol_beneficiaries() ->
+    case aec_governance:get_network_id() of
+        <<"ae_mainnet">> ->
+            immutable_beneficiaries(?MAINNET_BENEFICIARIES);
+        <<"ae_uat">>     ->
+            immutable_beneficiaries(?TESTNET_BENEFICIARIES);
+        _ ->
+            Enabled = cfg(<<"protocol_beneficiaries_enabled">>, ?ENABLED),
+            DefaultBenefs = default_beneficiaries(),
+            {Enabled, cfg(<<"protocol_beneficiaries">>, lists:map(fun encode_beneficiary/1, DefaultBenefs))}
+    end.
+
+immutable_beneficiaries(Beneficiaries) ->
+    case cfg(<<"protocol_beneficiaries">>, undefined) of
+        undefined ->
+            ok;
+        _ ->
+            lager:warning("Protocol beneficiaries cannot be set for ~p", [aec_governance:get_network_id()])
+    end,
+    {true, lists:map(fun encode_beneficiary/1, Beneficiaries)}.
 
 encode_beneficiary({PK, Share, FromProtocol, ToProtocol}) ->
     FromProtocolBin = encode_protocol(FromProtocol),
