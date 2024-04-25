@@ -235,6 +235,13 @@
     wrong_http_method_peers/1
     ]).
 
+%%
+%% test case exports
+%% legacy from swagger
+-export([
+    swagger_endpoints_from_documentation/1
+    ]).
+
 -export([post_paying_for_tx/1]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -258,6 +265,10 @@ groups() ->
      {all, [sequence],
       [{group, swagger2},
        {group, oas3}]},
+     {swagger_legacy, [sequence],
+       %% Mentioned in old documentation and should be tested for to exist
+       %% until v2 endpoints are removed
+       [ swagger_endpoints_from_documentation ]},
      {swagger2, [sequence],
       [
        %% /key-blocks/* /micro-blocks/* /generations/* status/chain-ends
@@ -4326,6 +4337,19 @@ wrong_http_method_node_pubkey(_Config) ->
 wrong_http_method_peers(_Config) ->
     Host = internal_address(),
     {ok, 405, _} = http_request(Host, post, "debug/peers", []).
+
+%% ============================================================
+%% swagger2 legacy
+%% ============================================================
+%% Remove when v2 API is removed
+swagger_endpoints_from_documentation(_Config) ->
+    Host = external_address(),
+    {ok, {{_, 200, _}, _, _}} =
+        httpc_request(get, {Host ++ "/v2/blocks/top", []}, [], []),
+    {ok, {{_, 200, _}, _, _}} =
+        httpc_request(get, {Host ++ "/v2/debug/peers", []}, [], []),
+    {ok, {{_, 200, _}, _, _}} =
+        httpc_request(get, {Host ++ "/v2/key-blocks/height/0", []}, [], []).
 
 %% ============================================================
 %% private functions
