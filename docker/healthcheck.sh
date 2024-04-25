@@ -11,7 +11,7 @@ if [ -z $INTERNAL_ADDRESS ]; then
     exit 0
 fi
 
-PEERS_COUNT=$(curl -s -S ${INTERNAL_ADDRESS}/v2/debug/peers | grep -o aenode | wc -l)
+PEERS_COUNT=$(curl -s -S ${INTERNAL_ADDRESS}/v3/debug/peers | grep -o aenode | wc -l)
 
 # Explicit exit because otherwise test would exit with status 127
 test $PEERS_COUNT -ge $MIN_PEERS || exit 1
