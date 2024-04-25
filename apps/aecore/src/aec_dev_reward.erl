@@ -28,8 +28,7 @@
 
 ensure_env() ->
     Enabled = cfg(<<"protocol_beneficiaries_enabled">>, ?ENABLED),
-    DefaultBenefs = default_beneficiaries(),
-    Benefs0 = cfg(<<"protocol_beneficiaries">>, lists:map(fun encode_beneficiary/1, DefaultBenefs)),
+    Benefs0 = protocol_beneficiaries(),
     case Enabled andalso parse_beneficiaries(Benefs0) of
         false ->
             application:set_env(aecore, dev_reward_enabled, false);
@@ -97,6 +96,25 @@ activated(Protocol) ->
             Val
     end.
 
+protocol_beneficiaries() ->
+    case aec_governance:get_network_id() of
+        <<"ae_mainnet">> ->
+            immutable_beneficiaries(?MAINNET_BENEFICIARIES);
+        <<"ae_uat">>     ->
+            immutable_beneficiaries(?TESTNET_BENEFICIARIES);
+        _ ->
+            DefaultBenefs = default_beneficiaries(),
+            cfg(<<"protocol_beneficiaries">>, lists:map(fun encode_beneficiary/1, DefaultBenefs))
+    end.
+
+immutable_beneficiaries(Beneficiaries) ->
+    case cfg(<<"protocol_beneficiaries">>, undefined) of
+        undefined ->
+            ok;
+        _ ->
+            lager:warning("Protocol beneficiaries cannot be set for ~p", [aec_governance:get_network_id()])
+    end,
+    lists:map(fun encode_beneficiary/1, Beneficiaries).
 
 encode_beneficiary({PK, Share, FromProtocol, ToProtocol}) ->
     FromProtocolBin = encode_protocol(FromProtocol),
