@@ -80,19 +80,22 @@ After the node is successfully connected to the mainnet, you could verify that i
 You can validate it observing the `hash` of the `/headers/top` of the remote nodes:
 ```bash
 $ curl https://mainnet.aeternity.io/v3/headers/top
-{"hash":"mh_2bZx1kGy5uqJRDzDQ8zyJwrQgeDah5k36u2AtHcUE3tSTJ9QyY","height":935925,"pof_hash":"no_fraud",
-"prev_hash":"mh_25cGxvwEWVw5HwfRHYeftx39Los9WBk36qN6672Yc6yzDvtQri",
-"prev_key_hash":"kh_26W973ssbCk6kaNdhMpwqA5xtyHF5DD7VxKqUZiTRcQz2BSbv4","signature":"sg_AD2X35bHmToFWab8LPGzXkrQpJFjCeXmEwNLhuB4zyV3WDWqMFVKNzsj9fnRxwo1RgWzTe379nsZpmhyuKam6b5sA8Jzx","state_hash":"bs_2ZJAGk6dmjfgDYUccLqbfRPFWoDeERa2owkwJDyKnfuPVpKzYg","time":1714033836967,"txs_hash":"bx_2Sexq6NKZUvqN2RK9Z5932bZQZFgE2d7w2CbfNgMQi7NmzDRih","version":5}
+{"hash":"mh_2bZx1kGy5uqJRDzDQ8zyJwrQgeDah5k36u2AtHcUE3tSTJ9QyY","height":935925,...,
+"prev_key_hash":"kh_26W973ssbCk6kaNdhMpwqA5xtyHF5DD7VxKqUZiTRcQz2BSbv4",...}
 ```
 
-You should certainly mine on top of the prvious key hash, preferably on top of the previous hash that points to a micro block. However, it may be that you are
-not completely in sync with the micro blocks, which is accepted.
-Make sure that the hash of the block being at the top of the chain of the node has the same `prev_key_hash` of the block you're currently mining:
+This is the hash of the block being at the top of the chain of the node and the
+previous key hash should be same as the hash in `prev_key_hash` of the block
+you're currently mining:
+
 ```bash
-$ curl http://127.0.0.1:3013/v3/headers/top
-{...,"height":935925,"pof_hash":"no_fraud", ...
-"prev_key_hash":"kh_26W973ssbCk6kaNdhMpwqA5xtyHF5DD7VxKqUZiTRcQz2BSbv4", ... ,"version":5}
+$ curl http://127.0.0.1:3013/v3/key-blocks/pending
+{...,"height":..., "prev_key_hash":"kh_26W973ssbCk6kaNdhMpwqA5xtyHF5DD7VxKqUZiTRcQz2BSbv4", ...}
 ```
+
+Height would be +1 of what is in the `/headers/top` of the remote node but this is not as strong guarantee as the `prev_key_hash`.
+
+
 
 ## Maintenance mode
 
