@@ -36,7 +36,7 @@ docker_build:
     - run:
         name: Wait for container to be ready
         command: |
-          docker exec -it ae_<< pipeline.git.revision >> curl -4 --retry-connrefused --max-time 60 --retry 6 --connect-timeout 10 http://localhost:3013/v2/status
+          docker exec -it ae_<< pipeline.git.revision >> curl -4 --retry-connrefused --max-time 60 --retry 6 --connect-timeout 10 http://localhost:3013/v3/status
     - run:
         name: Health check
         command: |

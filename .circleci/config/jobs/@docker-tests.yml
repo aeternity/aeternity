@@ -85,7 +85,7 @@ docker-db-smoke-test:
     - run:
         name: Wait for the node to be ready
         command: |
-          docker exec -it ae_${CIRCLE_SHA1:?} curl -4 --retry-connrefused --max-time 60 --retry 6 --connect-timeout 10 http://localhost:3013/v2/status
+          docker exec -it ae_${CIRCLE_SHA1:?} curl -4 --retry-connrefused --max-time 60 --retry 6 --connect-timeout 10 http://localhost:3013/v3/status
     - run:
         name: Health check
         command: |
@@ -120,7 +120,7 @@ js-sdk-smoke-test:
         command: ./node/bin/aeternity start
     - run:
         name: Wait for the node api to boot
-        command: curl -4 --retry-connrefused --max-time 60 --retry 6 --connect-timeout 10 http://localhost:3013/v2/status
+        command: curl -4 --retry-connrefused --max-time 60 --retry 6 --connect-timeout 10 http://localhost:3013/v3/status
     - run:
         name: Run js sdk smoke test
         command: cd ./sdk_smoke_test/aepp-sdk-js && npm test
@@ -156,7 +156,7 @@ db-smoke-test:
         command: |
           ./node_stable/bin/aeternity start
           sleep 60 # Let it sync a bit
-          curl http://localhost:3013/v2/status
+          curl http://localhost:3013/v3/status
           ./node_stable/bin/aeternity stop
     - run:
         name: Test DB compatibility
@@ -164,5 +164,5 @@ db-smoke-test:
           cp -r ./node_stable/data/mnesia ./node_new/data/
           ./node_new/bin/aeternity start
           sleep 30
-          curl http://localhost:3013/v2/status
+          curl http://localhost:3013/v3/status
           ./node_new/bin/aeternity stop

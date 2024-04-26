@@ -1235,7 +1235,6 @@ seed_account(Node, NodeName, RecipientPubkey, Amount, NetworkId, MineFun) ->
     {ok, Tx} = aec_spend_tx:new(Params),
     SignedTx = sign_tx(Tx, PatronPriv, NetworkId),
     ok = rpc:call(NodeName, aec_tx_pool, push, [SignedTx, tx_received]),
-    {ok, [_SpendTx]} = rpc:call(NodeName, aec_tx_pool, peek, [infinity]),
     MineFun(SignedTx),
     {ok, SignedTx}.
 
