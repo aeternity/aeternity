@@ -50,4 +50,4 @@ EXPOSE 3013 3014 3015 3113 3213 3413
 COPY ./docker/healthcheck.sh /healthcheck.sh
 HEALTHCHECK --timeout=3s CMD /healthcheck.sh
 
-CMD ["bin/aeternity", "console", "-noinput"]
+CMD ["bin/aeternity", "foreground"]
