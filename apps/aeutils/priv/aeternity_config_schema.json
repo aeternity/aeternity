@@ -1409,6 +1409,7 @@
                             "type" : "boolean"
                         },
                         "debug" : {
+                            "deprecated" : true,
                             "description" : "Deprecated. See also 'http > internal > debug_endpoints'",
                             "type" : "boolean"
                         },
@@ -1423,6 +1424,7 @@
                     }
                 },
                 "debug" : {
+                    "deprecated" : true,
                     "description" : "Deprecated. See also 'http > internal > debug_endpoints' KILLME FIXME",
                     "type" : "boolean",
                     "default": false
@@ -1886,6 +1888,7 @@
                             "default" : 0
                         },
                         "interval" : {
+                            "deprecated" : true,
                             "description" : "DEPRECATED. How often (every `interval` block) should garbage collection run",
                             "type" : "integer",
                             "minimum" : 3,
@@ -2020,6 +2023,7 @@
                                         "default" : false
                                     },
                                     "nice" : {
+                                        "deprecated" : true,
                                         "description" : "DEPRECATED: Miner process priority (niceness) in a UNIX fashion. Higher `nice` means lower priority. Keep it unset to inherit parent process priority.",
                                         "tags" : ["deprecated"],
                                         "type" : "integer"
@@ -2044,6 +2048,7 @@
                         "miner" : {
                             "type" : "object",
                             "tags" : ["deprecated"],
+                            "deprecated" : true,
                             "description" : "Deprecated way of configuring single miner. Please use 'mining > cuckoo > miners' and 'mining > cuckoo > edge_bits' instead. Note that this section CAN NOT be configured when either 'mining > cuckoo > miners' or 'mining > cuckoo > edge_bits' is set.",
                             "additionalProperties" : false,
                             "required" : [
