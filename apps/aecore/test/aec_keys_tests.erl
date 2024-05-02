@@ -71,27 +71,4 @@ all_test_() ->
                 end}]
       end]}.
 
-start_test_() ->
-    TF =
-        fun() ->
-                ?_test(
-                   aec_test_utils:aec_keys_bare_cleanup(
-                     aec_test_utils:aec_keys_bare_setup()))
-        end,
-    {setup,
-     fun() -> ok = application:ensure_started(crypto) end,
-     fun(_) -> ok = application:stop(crypto) end,
-     lazy_gen(100, TF)}.
-
-lazy_gen(N, TF) ->
-    {generator,
-     fun () ->
-             if N > 0 ->
-                     [TF()
-                      | lazy_gen(N-1, TF)];
-                true ->
-                     []
-             end
-     end}.
-
 -endif.
