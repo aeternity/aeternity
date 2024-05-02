@@ -71,4 +71,28 @@ all_test_() ->
                 end}]
       end]}.
 
+ensure_dir_test_() ->
+    {foreach,
+     fun() -> meck:new(filelib, [passthrough, unstick]) end,
+     fun(_) -> meck:unload(filelib) end,
+     [{"OK case 1",
+       fun() ->
+           meck:expect(filelib, is_dir, fun(_Dir) -> true end),
+           meck:expect(filelib, ensure_dir, fun(_Dir) -> ok end),
+           ?assertEqual(ok, aec_keys:ensure_dir("/testdir"))
+       end},
+      {"OK case 2",
+       fun() ->
+           meck:expect(filelib, is_dir, fun(_Dir) -> false end),
+           meck:expect(filelib, ensure_dir, fun(_Dir) -> ok end),
+           ?assertEqual(ok, aec_keys:ensure_dir("/testdir"))
+       end},
+      {"Bad dir",
+       fun() ->
+           meck:expect(filelib, is_dir, fun(_Dir) -> false end),
+           meck:expect(filelib, ensure_dir, fun(_Dir) -> {error, erofs} end),
+           ?assertError({could_not_ensure_key_dir, "/testdir", _}, aec_keys:ensure_dir("/testdir"))
+       end}
+     ]}.
+
 -endif.

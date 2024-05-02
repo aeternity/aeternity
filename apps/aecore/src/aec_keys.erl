@@ -59,7 +59,8 @@
 -export([check_peer_keys/2,
          encrypt_key/2,
          sign_privkey/0,
-         start_link/1
+         start_link/1,
+         ensure_dir/1
         ]).
 -endif.
 
