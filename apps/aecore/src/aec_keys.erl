@@ -511,11 +511,18 @@ p_gen_new_peer(Pwd, PubFile, PrivFile) ->
 ensure_dir(KeysDir) ->
     case filelib:is_dir(KeysDir) of
         false ->
-            KeysDirFile = filename:join(KeysDir, "keyfile"),
-            ok = filelib:ensure_dir(KeysDirFile);
+            case ensure_dir_(KeysDir) of
+                ok  -> ok;
+                Err -> error({could_not_ensure_key_dir, KeysDir, Err})
+            end;
         true ->
             ok
     end.
+
+%% Note: `filelib:ensure_path/1` was introduced in OTP-25
+ensure_dir_(KeysDir) ->
+    KeysDirFile = filename:join(KeysDir, "keyfile"),
+    filelib:ensure_dir(KeysDirFile).
 
 from_local_dir(NewFile) ->
     file:read_file(NewFile).
