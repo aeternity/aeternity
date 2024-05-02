@@ -229,7 +229,7 @@ handler_init_error(Err, Handler) ->
                     , {invalid_fsm_id                , invalid_fsm_id}
                     , {bad_signature                 , bad_signature}
                     , {failed_noise_session_start    , failed_noise_session_start}
-                    , {responder_port_not_allowed     , responder_port_not_allowed}
+                    , {responder_port_not_allowed    , responder_port_not_allowed}
                     ],
     case proplists:get_value(Err, HandledErrors, not_handled_error) of
         not_handled_error ->
