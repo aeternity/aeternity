@@ -27,6 +27,7 @@
    , get_name_claim/1
    , get_auctions_entry_by_name_sut/1
    , get_names_entry_by_name_sut/1
+   , get_names_entry_by_hash_sut/1
    , get_commitment_id/2
    , get_accounts_by_pubkey_sut/1
    , get_accounts_by_pubkey_and_height_sut/2
@@ -295,7 +296,8 @@ groups() ->
        {group, debug_endpoints},
        {group, swagger_validation},
        {group, wrong_http_method_endpoints},
-       {group, naming},
+       %% Swagger is deprecated and part of naming API is only in oas3
+       %% {group, naming},
        {group, paying_for_tx}
       ]},
 
@@ -1898,6 +1900,10 @@ get_auctions_entry_by_name_sut(Name) ->
 get_names_entry_by_name_sut(Name) ->
     Host = external_address(),
     http_request(Host, get, "names/" ++ Name, []).
+
+get_names_entry_by_hash_sut(NameHash) ->
+    Host = external_address(),
+    http_request(Host, get, "names/hash/" ++ NameHash, []).
 
 %% /channels/*
 
@@ -3706,6 +3712,11 @@ naming_system_manage_name(_Config) ->
                 <<"ttl">>      := ExpectedTTL1,
                 <<"owner">>    := PubKeyEnc,
                 <<"pointers">> := []}} = get_names_entry_by_name_sut(Name),
+
+    {ok, 200, #{<<"id">>       := EncodedNHash,
+                <<"ttl">>      := ExpectedTTL1,
+                <<"owner">>    := PubKeyEnc,
+                <<"pointers">> := []}} = get_names_entry_by_hash_sut(EncodedNHash),
 
     %% Submit name updated tx and check it is in mempool
     NameUpdateData = #{account_id => PubKeyEnc,

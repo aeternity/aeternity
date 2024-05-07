@@ -14,6 +14,7 @@
          get_commitment_hash/2,
          get_auction_entry/2,
          get_name_entry/2,
+         get_name_entry_by_hash/2,
          get_name_hash/1]).
 
 %%%===================================================================
@@ -78,9 +79,14 @@ get_auction_entry(Name, NSTree) when is_binary(Name) ->
     {ok, map()} | {error, atom()}.
 get_name_entry(Name, NSTree) when is_binary(Name) ->
     case name_to_name_hash(Name) of
-        {ok, NameHash} -> name_hash_to_name_entry(NameHash, NSTree);
+        {ok, NameHash} -> get_name_entry_by_hash(NameHash, NSTree);
         {error, _} = Error -> Error
     end.
+
+-spec get_name_entry_by_hash(binary(), aens_state_tree:tree()) ->
+    {ok, map()} | {error, atom()}.
+get_name_entry_by_hash(NameHash, NSTree) when is_binary(NameHash) ->
+    name_hash_to_name_entry(NameHash, NSTree).
 
 -spec get_name_hash(binary()) ->
     {ok, aens_hash:name_hash()} | {error, atom()}.
