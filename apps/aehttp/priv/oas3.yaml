@@ -3184,6 +3184,8 @@ components:
       properties:
         key:
           type: string
+        encoded_key:
+          $ref: "#/components/schemas/EncodedValue"
         id:
           $ref: "#/components/schemas/EncodedPubkey"
       required:

@@ -51,8 +51,9 @@ id(#pointer{id = Id}) ->
 
 -spec serialize_for_client(pointer()) -> map().
 serialize_for_client(#pointer{key = Key, id = Id}) ->
-    #{<<"key">> => Key,
-      <<"id">>  => serialize_id_for_client(Id)}.
+    #{<<"key">>         => Key,
+      <<"encoded_key">> => aeser_api_encoder:encode(bytearray, Key),
+      <<"id">>          => serialize_id_for_client(Id)}.
 
 serialize_id_for_client({data, Data}) ->
     aeser_api_encoder:encode(bytearray, Data);
