@@ -1804,17 +1804,17 @@ http_api_version() ->
     end.
 
 http_api_prefix() ->
-    get(api_prefix, "/v2/").
+    get(api_prefix, "/v3/").
 
 http_request(Host, get, Path, Params) ->
-    Prefix = get(api_prefix, "/v2/"),
+    Prefix = get(api_prefix, "/v3/"),
     URL = binary_to_list(
             iolist_to_binary([Host, Prefix, Path, encode_get_params(Params)])),
     ct:log("GET ~p", [URL]),
     R = httpc_request(get, {URL, []}, [], []),
     process_http_return(R);
 http_request(Host, post, Path, Params) ->
-    Prefix = get(api_prefix, "/v2/"),
+    Prefix = get(api_prefix, "/v3/"),
     URL = binary_to_list(iolist_to_binary([Host, Prefix, Path])),
     {Type, Body} = case Params of
                        Map when is_map(Map) ->
