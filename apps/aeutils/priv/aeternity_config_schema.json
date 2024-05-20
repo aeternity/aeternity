@@ -1133,9 +1133,9 @@
                     "default" : 5
                 },
                 "sync_allowed_height_from_top" : {
-                    "description": "Once own node is synced, reject sync blocks at least this far from the current top; 0 means disabled",
+                    "description": "Once the node is synced, reject synced blocks more than this distance from the current top; 0 means disabled",
                     "type" : "integer",
-                    "default" : 100
+                    "default" : 20
                 },
                 "resist_forks_from_start" : {
                     "description": "If sync_allowed_height_from_top > 0, this is applied at startup",
