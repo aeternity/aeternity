@@ -36,7 +36,6 @@
    , get_micro_blocks_header_by_hash_sut/1
    , check_transaction_in_pool_sut/1
    , get_contract_call_object/1
-   , get_top_header/1
    , get_chain_ends/1
    , wait_for_tx_hash_on_chain/1
    , sign_and_post_tx/2
@@ -52,6 +51,7 @@
 
 -export(
    [
+    get_top_header/1,
     get_current_key_block/1,
     get_current_key_block_hash/1,
     get_current_key_block_height/1,
