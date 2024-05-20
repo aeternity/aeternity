@@ -256,7 +256,7 @@
 -define(NODE, dev1).
 -define(DEFAULT_TESTS_COUNT, 5).
 -define(BOGUS_STATE_HASH, <<42:32/unit:8>>).
--define(SPEND_FEE, 20000 * min_gas_price()).
+-define(SPEND_FEE, 20000 * aec_test_utils:min_gas_price()).
 
 -define(MAX_MINED_BLOCKS, 20).
 
@@ -501,13 +501,6 @@ groups() ->
         disabled_debug_endpoints,
         enabled_debug_endpoints
      ]},
-     {swagger_validation, [], [
-        swagger_validation_body,
-        %% swagger_validation_enum,
-        %%swagger_validation_required,
-        swagger_validation_schema
-        %%swagger_validation_types
-      ]},
      {cors_headers, [],
       [cors_not_returned_when_origin_not_sent,
        cors_returned_on_preflight_request,
@@ -568,7 +561,6 @@ groups() ->
        {group, external_endpoints},
        {group, internal_endpoints},
        {group, debug_endpoints},
-       {group, swagger_validation},
        {group, wrong_http_method_endpoints},
        {group, naming},
        {group, paying_for_tx},
@@ -1214,25 +1206,6 @@ assert_balance_at_least(Pubkey, MinExpectedBalance) ->
         get_accounts_by_pubkey_sut(Address),
     true = MinExpectedBalance =< Balance.
 
-initialize_account(Amount) ->
-    KeyPair = aecore_suite_utils:generate_key_pair(),
-    initialize_account(Amount, KeyPair).
-
-initialize_account(Amount, {Pubkey, Privkey}) ->
-    Fee = ?SPEND_FEE,
-    BlocksToMine = 3,
-
-    Node = aecore_suite_utils:node_name(?NODE),
-
-    aecore_suite_utils:mine_key_blocks(Node, BlocksToMine),
-
-    {ok, 200, #{<<"tx">> := SpendTx}} =
-        post_spend_tx(aeser_api_encoder:encode(account_pubkey, Pubkey), Amount, Fee),
-    TxHash = sign_and_post_tx(SpendTx),
-    ok = wait_for_tx_hash_on_chain(TxHash),
-    assert_balance_at_least(Pubkey, Amount),
-    {Pubkey, Privkey}.
-
 encode_call_data(Name, Fun, Args) when is_atom(Name) ->
     encode_call_data(contract_code(Name), Fun, Args);
 encode_call_data(Src, Fun, Args) ->
@@ -1323,16 +1296,6 @@ post_spend_tx(SenderId, RecipientId, Amount, Fee, Payload) ->
 get_commitment_id(Name, Salt) ->
     Host = internal_address(),
     http_request(Host, get, "debug/names/commitment-id", [{name, Name}, {salt, Salt}]).
-
-%% ============================================================
-%% Test swagger validation errors
-%% ============================================================
-
-swagger_validation_body(Config) ->
-    aehttp_integration_SUITE:swagger_validation_body(Config).
-
-swagger_validation_schema(Config) ->
-    aehttp_integration_SUITE:swagger_validation_schema(Config).
 
 %% ============================================================
 %% Test CORS headers
@@ -1708,8 +1671,6 @@ get_top_header(_Config) ->
       <<"state_hash">> := <<"bs_",StateHash/binary>>,
       <<"target">> := Target,
       <<"time">> := Time,<<"version">> := Version} = HeaderOrig,
-    %% this is not present in oas3.yaml but swagger.yaml
-    {ok, 404, #{}} = get_top_sut(),
     {ok, 200, HeaderOrig}= get_top_header_sut([{'int-as-string', false}]),
     {ok, 200, HeaderStrings}= get_top_header_sut([{'int-as-string', true}]),
     ct:log("HeaderOrig = ~p", [HeaderOrig]),
@@ -1732,9 +1693,6 @@ get_top_header(_Config) ->
 
 post_paying_for_tx(Config) ->
     aehttp_integration_SUITE:post_paying_for_tx(Config).
-
-min_gas_price() ->
-    aec_test_utils:min_gas_price().
 
 get_prev_key_block([KB, _MB]) ->
     true = aec_blocks:is_key_block(KB),

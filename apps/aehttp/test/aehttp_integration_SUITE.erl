@@ -4142,7 +4142,7 @@ get_contract_poi(ContractAddress) ->
 
 swagger_validation_body(_Config) ->
     Host = internal_address(),
-    URL = binary_to_list(iolist_to_binary([Host, "/v2/debug/transactions/spend"])),
+    URL = binary_to_list(iolist_to_binary([Host, "/v3/debug/transactions/spend"])),
     Type = "application/json",
     Body = <<"{broken_json">>,
 
