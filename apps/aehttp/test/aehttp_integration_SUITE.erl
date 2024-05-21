@@ -3008,12 +3008,8 @@ spend_transaction(_Config) ->
     {ok, 200, #{<<"next_nonce">> := NextNonce}} = get_accounts_next_nonce_sut(MinerID),
     {ok, 200, #{<<"next_nonce">> := NextNonce}} = get_accounts_next_nonce_sut(MinerID, max),
     {ok, 200, #{<<"next_nonce">> := NextNonce}} = get_accounts_next_nonce_sut(MinerID, continuity),
-    case aecore_suite_utils:http_api_version() of
-        oas3 ->
-            {ok, 200, #{<<"next_nonce">> := NextNonceBin}} = get_accounts_next_nonce_sut_(MinerID),
-            NextNonce = binary_to_integer(NextNonceBin);
-        _ -> pass
-    end,
+    {ok, 200, #{<<"next_nonce">> := NextNonceBin}} =
+        get_accounts_next_nonce_sut_(MinerID), NextNonce = binary_to_integer(NextNonceBin),
     RandAddress = random_hash(),
     Payload = <<"hejsan svejsan">>,
     Encoded = #{sender_id => MinerAddress,
@@ -4128,11 +4124,7 @@ charset_param_in_content_type(_Config) ->
 
 wrong_http_method_top(_Config) ->
     Host = external_address(),
-    Path =
-        case aecore_suite_utils:http_api_version() of
-            swagger2 -> "blocks/top";
-            oas3 -> "headers/top"
-        end,
+    Path = "headers/top",
     {ok, 405, _} = http_request(Host, post, Path, []).
 
 wrong_http_method_contract_create(_Config) ->
