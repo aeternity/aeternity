@@ -45,8 +45,7 @@ all() ->
     ].
 
 groups() ->
-    [ {all, [sequence], [{group, swagger2}, {group, oas3}]}
-    , {swagger2, [sequence], [{group, aevm}, {group, fate}]}
+    [ {all, [sequence], [{group, oas3}]}
     , {oas3, [sequence], [{group, aevm}, {group, fate}]}
     , {aevm, [], [{group, internal}, {group, external}]}
     , {fate, [], [{group, internal}, {group, external}]}
@@ -84,9 +83,8 @@ end_per_suite(Config) ->
     aecore_suite_utils:stop_node(?NODE, Config),
     ok.
 
-init_per_group(SwaggerVsn, Config) when SwaggerVsn =:= swagger2;
-                                        SwaggerVsn =:= oas3 ->
-    [{swagger_version, SwaggerVsn} | Config];
+init_per_group(oas3, Config) ->
+    Config;
 init_per_group(VM, Config) when VM == aevm; VM == fate ->
     aect_test_utils:init_per_group(VM, Config);
 init_per_group(Interface, Config) when Interface =:= internal;
@@ -389,12 +387,8 @@ accounts(Config) ->
         dry_run(Config, TopHash, [Tx2, Tx1], [#{ pub_key => EPub, amount => 1000000000000000}]),
 
     %% Should work with amount as string
-    case proplists:get_value(swagger_version, Config) of
-        oas3 ->
-            {ok, 200, #{ <<"results">> := [#{ <<"result">> := <<"ok">> }, #{ <<"result">> := <<"ok">> }] }} =
-                dry_run(Config, TopHash, [Tx1, Tx2], [#{ pub_key => APub, amount => <<"100000000">> }]);
-        swagger2 -> none
-    end,
+    {ok, 200, #{ <<"results">> := [#{ <<"result">> := <<"ok">> }, #{ <<"result">> := <<"ok">> }] }} =
+        dry_run(Config, TopHash, [Tx1, Tx2], [#{ pub_key => APub, amount => <<"100000000">> }]),
 
     ok.
 
