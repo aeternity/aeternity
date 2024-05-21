@@ -105,6 +105,7 @@ queue('GetOracleByPubkey')                      -> ?READ_Q;
 queue('GetOracleQueriesByPubkey')               -> ?READ_Q;
 queue('GetOracleQueryByPubkeyAndQueryId')       -> ?READ_Q;
 queue('GetNameEntryByName')                     -> ?READ_Q;
+queue('GetNameEntryByNameHash')                 -> ?READ_Q;
 queue('GetAuctionEntryByName')                  -> ?READ_Q;
 queue('GetChannelByPubkey')                     -> ?READ_Q;
 queue('GetPeerPubkey')                          -> ?READ_Q;
@@ -670,25 +671,15 @@ handle_request_('GetAuctionEntryByName', Params, _Context) ->
 
 handle_request_('GetNameEntryByName', Params, _Context) ->
     Name = maps:get(name, Params),
-    case aec_chain:name_entry(Name) of
-        {ok, #{id       := Id,
-               ttl      := TTL,
-               owner    := Owner,
-               pointers := Pointers}} ->
-            {200, [], #{<<"id">>       => aeser_api_encoder:encode(id_hash, Id),
-                        <<"owner">>    => aeser_api_encoder:encode(account_pubkey, Owner),
-                        <<"ttl">>      => TTL,
-                        <<"pointers">> => [aens_pointer:serialize_for_client(P) || P <- Pointers]}};
-        {error, name_not_found = Code} ->
-            {404, [], #{reason => <<"Name not found">>,
-                        error_code => atom_to_binary(Code, utf8)}};
-        {error, name_revoked = Code} ->
-            {404, [], #{reason => <<"Name revoked">>,
-                        error_code => atom_to_binary(Code, utf8)}};
-        {error, Reason} ->
-            ReasonBin = atom_to_binary(Reason, utf8),
-            {400, [], #{reason => <<"Name validation failed with a reason: ", ReasonBin/binary>>,
-                        error_code => ReasonBin}}
+    handle_get_name_entry(aec_chain:name_entry(Name));
+
+handle_request_('GetNameEntryByNameHash', Params, _Context) ->
+    case aeser_api_encoder:safe_decode(name, maps:get(name_hash, Params)) of
+        {ok, NameHash} ->
+            handle_get_name_entry(aec_chain:name_entry_by_hash(NameHash));
+        {error, Code} ->
+            {400, [], #{reason => <<"Invalid name hash">>,
+                        error_code => atom_to_binary(Code, utf8)}}
     end;
 
 handle_request_('GetChannelByPubkey', Params, _Context) ->
@@ -869,7 +860,7 @@ handle_request_('ProtectedDryRunTxs', #{ 'DryRunInput' := Req }, _Context) ->
                                       aetx:gas_limit(Tx, Height, Protocol)
                                   catch _:_ ->
                                       0 %% this is handled later on
-                                  end;                                    
+                                  end;
                                  (#{<<"call_req">> := CallReq}) ->
                                     maps:get(<<"gas">>, CallReq, ?DEFAULT_CALL_REQ_GAS_LIMIT)
                               end,
@@ -926,6 +917,28 @@ deserialize_transaction(Tx) ->
         {ok, aetx_sign:deserialize_from_binary(Tx)}
     catch
         _:_ -> {error, broken_tx}
+    end.
+
+handle_get_name_entry(GetResult) ->
+    case GetResult of
+        {ok, #{id       := Id,
+               ttl      := TTL,
+               owner    := Owner,
+               pointers := Pointers}} ->
+            {200, [], #{<<"id">>       => aeser_api_encoder:encode(id_hash, Id),
+                        <<"owner">>    => aeser_api_encoder:encode(account_pubkey, Owner),
+                        <<"ttl">>      => TTL,
+                        <<"pointers">> => [aens_pointer:serialize_for_client(P) || P <- Pointers]}};
+        {error, name_not_found = Code} ->
+            {404, [], #{reason => <<"Name not found">>,
+                        error_code => atom_to_binary(Code, utf8)}};
+        {error, name_revoked = Code} ->
+            {404, [], #{reason => <<"Name revoked">>,
+                        error_code => atom_to_binary(Code, utf8)}};
+        {error, Reason} ->
+            ReasonBin = atom_to_binary(Reason, utf8),
+            {400, [], #{reason => <<"Name validation failed with a reason: ", ReasonBin/binary>>,
+                        error_code => ReasonBin}}
     end.
 
 %% Compute hash-rate

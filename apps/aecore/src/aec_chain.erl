@@ -54,6 +54,7 @@
 %%% NS API
 -export([ auction_entry/1
         , name_entry/1
+        , name_entry_by_hash/1
         , resolve_name/2
         , resolve_namehash/2
         ]).
@@ -275,6 +276,15 @@ auction_entry(Name) ->
 name_entry(Name) ->
     case get_top_state() of
         {ok, Trees} -> aens:get_name_entry(Name, aec_trees:ns(Trees));
+        error -> {error, no_state_trees}
+    end.
+
+-spec name_entry_by_hash(binary()) ->
+                        {'ok', map()} |
+                        {'error', atom()}.
+name_entry_by_hash(NameHash) ->
+    case get_top_state() of
+        {ok, Trees} -> aens:get_name_entry_by_hash(NameHash, aec_trees:ns(Trees));
         error -> {error, no_state_trees}
     end.
 

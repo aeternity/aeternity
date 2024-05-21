@@ -296,7 +296,8 @@ groups() ->
        {group, debug_endpoints},
        {group, swagger_validation},
        {group, wrong_http_method_endpoints},
-       {group, naming},
+       %% Swagger is deprecated and part of naming API is only in oas3
+       %% {group, naming},
        {group, paying_for_tx},
        {group, rollback}
       ]},
@@ -1584,7 +1585,7 @@ enable_gc(N, History) ->
 
 disable_gc(N, History) ->
     Config
-        = #{<<"chain">> => #{ <<"garbage_collection">> => #{ <<"enabled">> => false 
+        = #{<<"chain">> => #{ <<"garbage_collection">> => #{ <<"enabled">> => false
                                                            , <<"history">> => History}}},
     rpc:call(N, aeu_env, update_config, [Config, _Notify = true, _InfoReport = silent]),
     ok.
