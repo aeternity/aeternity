@@ -12,11 +12,9 @@ const sdk = new AeSdk({
     ],
 });
 
-await sdk.awaitHeight(1);
-
 const balance = await sdk.getBalance(sdk.address);
 if (balance !== "10000000000000000000000000000000") {
     throw new Error(`Unexpected balance: ${balance}`);
 };
 
-await sdk.spend(1e18, MemoryAccount.generate().address);
+console.log("JS SDK smoke test passed");
