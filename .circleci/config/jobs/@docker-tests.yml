@@ -30,7 +30,7 @@ docker-js-sdk-smoke-test:
         tag: ${CIRCLE_BRANCH/\//_}
     - run:
         name: Start NodeJS
-        command: docker run -d --network container:ae_${CIRCLE_SHA1:?} --name nodejs circleci/node:20-buster-slim sleep 1337
+        command: docker run -d --network container:ae_${CIRCLE_SHA1:?} --name nodejs node:20-buster-slim sleep 1337
     - run:
         name: Copy tests
         command: docker cp ./sdk_smoke_test/aepp-sdk-js nodejs:/tests
