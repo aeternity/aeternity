@@ -12,6 +12,8 @@ const sdk = new AeSdk({
     ],
 });
 
+await sdk.awaitHeight(1);
+
 const balance = await sdk.getBalance(sdk.address);
 if (balance !== "10000000000000000000000000000000") {
     throw new Error(`Unexpected balance: ${balance}`);
