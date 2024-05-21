@@ -2731,6 +2731,10 @@ components:
           $ref: "#/components/schemas/UInt64"
         fiat_converstion_url:
           type: string
+          description: "Use `fiat_conversion_url` instead"
+          deprecated: true
+        fiat_conversion_url:
+          type: string
         logo:
           $ref: "#/components/schemas/Image"
         primary_colour:
