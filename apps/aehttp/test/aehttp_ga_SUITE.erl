@@ -58,12 +58,10 @@
 -define(START_AMT, 1000 * 1000 * 10000000000 * ?DEFAULT_GAS_PRICE).
 
 all() ->
-    [{group, swagger2},
-     {group, oas3}
-    ].
+    [ {group, oas3} ].
 
 groups() ->
-    [{swagger2, [sequence], [{group, aevm}, {group, fate}]},
+    [
      {oas3, [sequence], [{group, aevm}, {group, fate}]},
      {aevm, [sequence], [{group, ga_txs}, {group, ga_info}, {group, ga_mempool}]},
      {fate, [sequence], [{group, ga_txs}, {group, ga_info}, {group, ga_mempool}]},
@@ -125,9 +123,8 @@ end_per_suite(Config) ->
     aecore_suite_utils:stop_node(?NODE, Config),
     ok.
 
-init_per_group(SwaggerVsn, Config) when SwaggerVsn =:= swagger2;
-                                        SwaggerVsn =:= oas3 ->
-    [{swagger_version, SwaggerVsn} | Config];
+init_per_group(oas3, Config) ->
+    Config;
 init_per_group(VMGroup, Config) when VMGroup == aevm; VMGroup == fate ->
     case aect_test_utils:latest_protocol_version() of
         ?ROMA_PROTOCOL_VSN    -> {skip, generalized_accounts_not_in_roma};

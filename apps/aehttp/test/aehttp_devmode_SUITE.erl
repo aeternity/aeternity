@@ -606,7 +606,7 @@ end_per_suite(Config) ->
 init_per_group(all, Config) ->
     Config;
 init_per_group(oas3, Config) ->
-    [{swagger_version, oas3} | Config];
+    Config;
 init_per_group(Group, Config) when
       Group =:= debug_endpoints;
       Group =:= account_endpoints;
