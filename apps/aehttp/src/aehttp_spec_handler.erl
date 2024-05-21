@@ -21,12 +21,7 @@
 -include("aehttp_spec.hrl").
 
 init(Req, {OperationId, AllowedMethod}) ->
-    Qs = cowboy_req:parse_qs(Req),
-    Spec =
-        case proplists:get_value(<<"oas3">>, Qs, false) of
-            true -> aehttp_api_validate:json_spec(?OAS3);
-            false -> aehttp_api_validate:json_spec(?SWAGGER2)
-        end,
+    Spec = aehttp_api_validate:json_spec(?OAS3),
     State = #state{
         operation_id = OperationId,
         allowed_method = AllowedMethod,
