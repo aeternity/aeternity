@@ -587,9 +587,6 @@ end_per_suite(Config) ->
 
 init_per_group(all, Config) ->
     Config;
-init_per_group(SwaggerVsn, Config) when SwaggerVsn =:= swagger2;
-                                        SwaggerVsn =:= oas3 ->
-    [{swagger_version, SwaggerVsn} | Config];
 init_per_group(Group, Config) when
       Group =:= debug_endpoints;
       Group =:= account_endpoints;
@@ -843,8 +840,7 @@ init_per_testcase(_Case, Config) ->
 init_per_testcase_all(Config) ->
     [{_, Node} | _] = ?config(nodes, Config),
     aecore_suite_utils:mock_mempool_nonce_offset(Node, 100),
-    SwaggerVsn = proplists:get_value(swagger_version, Config, oas3),
-    aecore_suite_utils:use_swagger(SwaggerVsn),
+    aecore_suite_utils:use_api(oas3),
     [{tc_start, os:timestamp()} | Config].
 
 end_per_testcase(Case, Config) when
@@ -1450,18 +1446,13 @@ post_spend_tx_(Config, SignHash) ->
           fee          => ?config(fee, Config),
           payload      => ?config(payload, Config)},
     {TxHash, Tx} = prepare_tx(spend_tx, TxArgs, SignHash),
-    case aecore_suite_utils:http_api_version() of
-        oas3 ->
-            TxArgsStrings =
-                #{sender_id    => ?config(sender_id, Config),
-                  recipient_id => ?config(recipient_id, Config),
-                  amount       => integer_to_binary(?config(amount, Config)),
-                  fee          => integer_to_binary(?config(fee, Config)),
-                  payload      => ?config(payload, Config)},
-            %% assert same result
-            {TxHash, Tx} = prepare_tx(spend_tx, TxArgsStrings, SignHash);
-        swagger2 -> pass
-    end,
+    TxArgsStrings =
+        #{sender_id    => ?config(sender_id, Config),
+          recipient_id => ?config(recipient_id, Config),
+          amount       => integer_to_binary(?config(amount, Config)),
+          fee          => integer_to_binary(?config(fee, Config)),
+          payload      => ?config(payload, Config)},
+    ?assertEqual({TxHash, Tx},  prepare_tx(spend_tx, TxArgsStrings, SignHash)),
     case lists:last(aec_hard_forks:sorted_protocol_versions()) of
         Vsn when Vsn < ?LIMA_PROTOCOL_VSN andalso SignHash ->
             ?assertMatch({ok, 400, #{<<"reason">> := <<"Invalid tx">>}},
@@ -1914,16 +1905,11 @@ get_status(_Config) ->
     end,
     ?assertEqual(40, byte_size(NodeRevision)),
 
-    case proplists:get_value(swagger_version, _Config) of
-        oas3 ->
-            {ok, 200, #{ <<"protocols">> := ProtocolsStr }} = get_status_sut(true),
-            lists:foreach(fun(P) ->
-                                  ?assertMatch(X when is_binary(X), maps:get(<<"version">>, P)),
-                                  ?assertMatch(X when is_binary(X), maps:get(<<"effective_at_height">>, P))
-                          end, ProtocolsStr);
-        swagger2 -> none
-    end,
-
+    {ok, 200, #{ <<"protocols">> := ProtocolsStr }} = get_status_sut(true),
+    lists:foreach(fun(P) ->
+                      ?assertMatch(X when is_binary(X), maps:get(<<"version">>, P)),
+                      ?assertMatch(X when is_binary(X), maps:get(<<"effective_at_height">>, P))
+                  end, ProtocolsStr),
     ok.
 
 get_status_sut() ->

@@ -155,8 +155,7 @@ end_per_group(_VMGroup, _Config) ->
     ok.
 
 init_per_testcase(_Case, Config) ->
-    SwaggerVsn = proplists:get_value(swagger_version, Config),
-    aecore_suite_utils:use_swagger(SwaggerVsn),
+    aecore_suite_utils:use_api(oas3),
     put('$vm_version',     ?config(vm_version,     Config)),
     put('$abi_version',    ?config(abi_version,    Config)),
     put('$sophia_version', ?config(sophia_version, Config)),

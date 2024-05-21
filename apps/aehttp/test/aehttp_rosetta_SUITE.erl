@@ -132,12 +132,9 @@ end_per_group(_Group, _Config) ->
     ok.
 
 init_per_testcase(_Case, Config) ->
-    init_per_testcase_all(Config).
-
-init_per_testcase_all(Config) ->
     [{_, Node} | _] = ?config(nodes, Config),
     aecore_suite_utils:mock_mempool_nonce_offset(Node, 100),
-    aecore_suite_utils:use_rosetta(),
+    aecore_suite_utils:use_api(rosetta),
     [{tc_start, os:timestamp()} | Config].
 
 end_per_testcase(_Case, Config) ->
@@ -163,16 +160,15 @@ assertBalanceChanges(TxHash, ExpectedChanges) ->
     %% the api_prefix when we are done
     Prefix = get(api_prefix),
 
-    aecore_suite_utils:use_swagger(oas3),
+    aecore_suite_utils:use_api(oas3),
     {ok, 200, #{<<"block_height">> := Height, <<"block_hash">> := MBHash}} =
         aehttp_integration_SUITE:get_transactions_by_hash_sut(TxHash),
 
     {ok, 200, #{<<"prev_key_hash">> := KeyBlockHash}} =
         aehttp_integration_SUITE:get_micro_blocks_header_by_hash_sut(MBHash),
 
-    aecore_suite_utils:use_rosetta(),
-    {ok,
-     200,
+    aecore_suite_utils:use_api(rosetta),
+    {ok, 200,
      #{<<"transaction">> :=
            #{<<"transaction_identifier">> := #{<<"hash">> := TxHash}, <<"operations">> := Ops}}} =
         get_block_transaction_sut(KeyBlockHash, Height, TxHash),
@@ -338,8 +334,7 @@ block_spend_tx(Config) ->
 
     %% Create To and From accounts and the SpendTx using the non rosetta API for now
     %% Uses process dictionary to set the path prefix
-    SwaggerVsn = proplists:get_value(swagger_version, Config, oas3),
-    aecore_suite_utils:use_swagger(SwaggerVsn),
+    aecore_suite_utils:use_api(oas3),
 
     StartBalance = 100000000 * aec_test_utils:min_gas_price(),
     {FromPubKey, FromPrivKey} = aehttp_integration_SUITE:initialize_account(StartBalance),
@@ -362,10 +357,9 @@ block_spend_tx(Config) ->
 
     {ok, [_]} = rpc(aec_tx_pool, peek, [infinity]),
 
-    aecore_suite_utils:use_rosetta(),
+    aecore_suite_utils:use_api(rosetta),
 
-    {ok,
-     200,
+    {ok, 200,
      #{<<"transaction">> :=
            #{<<"transaction_identifier">> := #{<<"hash">> := SpendTxHash},
              <<"operations">> := [FeeOpMem, FromOpMem, ToOpMem]}}} =
@@ -462,8 +456,7 @@ block_create_contract_tx(Config) ->
     true = aec_blocks:is_key_block(KeyBlock),
 
     %% Use the native http api for the operations not yet implemented in Rosetta
-    SwaggerVsn = proplists:get_value(swagger_version, Config, oas3),
-    aecore_suite_utils:use_swagger(SwaggerVsn),
+    aecore_suite_utils:use_api(oas3),
 
     {OwnerPubKey, OwnerPrivKey} =
         aehttp_integration_SUITE:initialize_account(100000000 * aec_test_utils:min_gas_price()),
@@ -513,7 +506,7 @@ block_create_contract_tx(Config) ->
     %% Mine the contract Tx so it is on chain when we try to retrieve it
     {ok, [_]} = rpc(aec_tx_pool, peek, [infinity]),
 
-    aecore_suite_utils:use_rosetta(),
+    aecore_suite_utils:use_api(rosetta),
 
     {ok,
      200,
@@ -522,7 +515,7 @@ block_create_contract_tx(Config) ->
              <<"operations">> := [PoolAmountOp, PoolToContractOp, PoolRefundOp]}}} =
         get_mempool_transaction_sut(ContractCreateTxHash),
 
-    aecore_suite_utils:use_swagger(SwaggerVsn),
+    aecore_suite_utils:use_api(oas3),
 
     aecore_suite_utils:mine_blocks_until_txs_on_chain(Node, [ContractCreateTxHash], 2),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
@@ -545,7 +538,7 @@ block_create_contract_tx(Config) ->
     ?assertMatch(ExpectedBalance, OwnerBalanceAfterCreate),
 
     %% Finally reached a place where we can switch to using our new rosetta API
-    aecore_suite_utils:use_rosetta(),
+    aecore_suite_utils:use_api(rosetta),
     {ok, 200, #{<<"current_block_identifier">> := #{<<"hash">> := TopKeyBlockHash}}} =
         get_status_sut(),
     {ok, 200, #{<<"block">> := #{<<"transactions">> := [_, Transaction]}}} =
@@ -577,11 +570,10 @@ block_create_contract_tx(Config) ->
 
     %% Fetch the contract Balance
     %% Temp switch to the native http api until we have the balance Rosetta Op
-    SwaggerVsn = proplists:get_value(swagger_version, Config, oas3),
-    aecore_suite_utils:use_swagger(SwaggerVsn),
+    aecore_suite_utils:use_api(oas3),
     {ok, 200, #{<<"balance">> := ContractBalanceAfterCreate}} =
         aehttp_integration_SUITE:get_accounts_by_pubkey_sut(ContractAccountPubKey),
-    aecore_suite_utils:use_rosetta(),
+    aecore_suite_utils:use_api(rosetta),
     #{<<"amount">> := #{<<"value">> := ContractDelta},
       <<"account">> := #{<<"address">> := ContractAcc}} =
         ToContractOp,
@@ -589,8 +581,7 @@ block_create_contract_tx(Config) ->
     ?assertEqual(ContractBalanceAfterCreate, 0 + binary_to_integer(ContractDelta)),
 
     %% ------------------ Contract Call ---------------------------
-    SwaggerVsn = proplists:get_value(swagger_version, Config, oas3),
-    aecore_suite_utils:use_swagger(SwaggerVsn),
+    aecore_suite_utils:use_api(oas3),
     %% Call the contract, sending 15000 of the 20000 balance to the To Account
     %% This should generate a Chain.spend trace within the contract execution
     Args = [aeapi:format_account_pubkey(ToPubKey), "15000"],
@@ -613,7 +604,7 @@ block_create_contract_tx(Config) ->
 
     {ok, [_]} = rpc(aec_tx_pool, peek, [infinity]),
 
-    aecore_suite_utils:use_rosetta(),
+    aecore_suite_utils:use_api(rosetta),
 
     {ok,
      200,
@@ -622,7 +613,7 @@ block_create_contract_tx(Config) ->
              <<"operations">> := [PoolCallerFeeOp, PoolContractAmountOp, PoolFromContractOp, PoolToOp, PoolCallRefundOp]}}} =
         get_mempool_transaction_sut(ContractCallTxHash),
 
-    aecore_suite_utils:use_swagger(SwaggerVsn),
+    aecore_suite_utils:use_api(oas3),
 
     aecore_suite_utils:mine_blocks_until_txs_on_chain(Node, [ContractCallTxHash], 2),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
@@ -635,7 +626,7 @@ block_create_contract_tx(Config) ->
         aehttp_integration_SUITE:get_accounts_by_pubkey_sut(ToAccountPubKey),
 
     %% Switch back to the Rosetta API root path
-    aecore_suite_utils:use_rosetta(),
+    aecore_suite_utils:use_api(rosetta),
 
     %% Seems that mine_blocks_until_txs_on_chain always stops at the block
     %% containing the Tx. Or maybe this is a race condition??
@@ -680,15 +671,14 @@ block_create_contract_tx(Config) ->
                  + binary_to_integer(CallRefundOpDelta)),
 
     %% Check mempool operations are the same as the block operations
-    ?assertEqual(PoolCallerFeeOp, CallerFeeOp), 
+    ?assertEqual(PoolCallerFeeOp, CallerFeeOp),
     ?assertEqual(PoolContractAmountOp, ContractAmountOp),
     ?assertEqual(PoolFromContractOp, FromContractOp),
     ?assertEqual(PoolToOp, ToOp),
     ?assertEqual(PoolCallRefundOp, CallRefundOp),
 
     %% ------------------ Errored Contract Call ---------------------------
-    SwaggerVsn = proplists:get_value(swagger_version, Config, oas3),
-    aecore_suite_utils:use_swagger(SwaggerVsn),
+    aecore_suite_utils:use_api(oas3),
     %% Call the contract, attempting to send amount 500 to a non payable entry point
     %% This should just consume all the fees but not take the amount
     ErrArgs = [aeapi:format_account_pubkey(ToPubKey), "2000"],
@@ -711,7 +701,7 @@ block_create_contract_tx(Config) ->
 
     {ok, [_]} = rpc(aec_tx_pool, peek, [infinity]),
 
-    aecore_suite_utils:use_rosetta(),
+    aecore_suite_utils:use_api(rosetta),
 
     {ok,
      200,
@@ -720,7 +710,7 @@ block_create_contract_tx(Config) ->
              <<"operations">> := [PoolErrCallerOp]}}} =
         get_mempool_transaction_sut(ContractCallErrTxHash),
 
-    aecore_suite_utils:use_swagger(SwaggerVsn),
+    aecore_suite_utils:use_api(oas3),
 
     aecore_suite_utils:mine_blocks_until_txs_on_chain(Node, [ContractCallErrTxHash], 2),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
@@ -729,7 +719,7 @@ block_create_contract_tx(Config) ->
         aehttp_integration_SUITE:get_accounts_by_pubkey_sut(OwnerAccountPubKey),
 
     %% Switch back to the Rosetta API root path
-    aecore_suite_utils:use_rosetta(),
+    aecore_suite_utils:use_api(rosetta),
 
     {ok, 200, #{<<"current_block_identifier">> := #{<<"hash">> := TopKeyBlockHash2}}} =
         get_status_sut(),
@@ -759,8 +749,7 @@ block_create_channel_tx(Config) ->
     true = aec_blocks:is_key_block(KeyBlock),
 
     %% Use the native http api for the operations not yet implemented in Rosetta
-    SwaggerVsn = proplists:get_value(swagger_version, Config, oas3),
-    aecore_suite_utils:use_swagger(SwaggerVsn),
+    aecore_suite_utils:use_api(oas3),
 
     {InitiatorPubKey, InitiatorPrivKey} =
         aehttp_integration_SUITE:initialize_account(1000000000 * aec_test_utils:min_gas_price()),
@@ -822,7 +811,7 @@ block_create_channel_tx(Config) ->
     {ok, [_]} = rpc(aec_tx_pool, peek, [infinity]),
 
 
-    aecore_suite_utils:use_rosetta(),
+    aecore_suite_utils:use_api(rosetta),
 
     {ok,
      200,
@@ -831,7 +820,7 @@ block_create_channel_tx(Config) ->
              <<"operations">> := [PoolInitiatorOp, PoolResponderOp]}}} =
         get_mempool_transaction_sut(ChannelCreateTxHash),
 
-    aecore_suite_utils:use_swagger(SwaggerVsn),
+    aecore_suite_utils:use_api(oas3),
 
     aecore_suite_utils:mine_blocks_until_txs_on_chain(Node, [ChannelCreateTxHash], 2),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
@@ -843,7 +832,7 @@ block_create_channel_tx(Config) ->
     % {ok, 200, #{<<"balance">> := ChannelBalanceAfterCreate}} =
     %     aehttp_integration_SUITE:get_accounts_by_pubkey_sut(ChannelAccountPubKey),
     %% Switch back to the Rosetta API root path
-    aecore_suite_utils:use_rosetta(),
+    aecore_suite_utils:use_api(rosetta),
 
     {ok, 200, #{<<"current_block_identifier">> := #{<<"hash">> := TopKeyBlockHash}}} =
         get_status_sut(),
@@ -876,8 +865,7 @@ block_create_channel_tx(Config) ->
     ?assertEqual(PoolResponderOp, ResponderOp),
 
     %% ------------------ Channel deposit ---------------------------
-    SwaggerVsn = proplists:get_value(swagger_version, Config, oas3),
-    aecore_suite_utils:use_swagger(SwaggerVsn),
+    aecore_suite_utils:use_api(oas3),
 
     {ok, ChannelDepositTx} =
         aesc_deposit_tx:new(#{channel_id => ChannelId,
@@ -897,7 +885,7 @@ block_create_channel_tx(Config) ->
 
     {ok, [_]} = rpc(aec_tx_pool, peek, [infinity]),
 
-    aecore_suite_utils:use_rosetta(),
+    aecore_suite_utils:use_api(rosetta),
 
     {ok,
      200,
@@ -906,7 +894,7 @@ block_create_channel_tx(Config) ->
              <<"operations">> := [PoolDepositInitiatorOp]}}} =
         get_mempool_transaction_sut(ChannelDepositTxHash),
 
-    aecore_suite_utils:use_swagger(SwaggerVsn),
+    aecore_suite_utils:use_api(oas3),
 
     aecore_suite_utils:mine_blocks_until_txs_on_chain(Node, [ChannelDepositTxHash], 2),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
@@ -914,7 +902,7 @@ block_create_channel_tx(Config) ->
     {ok, 200, #{<<"balance">> := InitiatorBalanceAfterDeposit}} =
         aehttp_integration_SUITE:get_accounts_by_pubkey_sut(InitiatorAccountPubKey),
 
-    aecore_suite_utils:use_rosetta(),
+    aecore_suite_utils:use_api(rosetta),
     {ok, 200, #{<<"current_block_identifier">> := #{<<"hash">> := TopKeyBlockHash1}}} =
         get_status_sut(),
     {ok, 200, #{<<"block">> := #{<<"transactions">> := [_, DepositTransaction]}}} =
@@ -935,8 +923,7 @@ block_create_channel_tx(Config) ->
     ?assertEqual(PoolDepositInitiatorOp, DepositInitiatorOp),
 
     %% ------------------ Channel withdraw ---------------------------
-    SwaggerVsn = proplists:get_value(swagger_version, Config, oas3),
-    aecore_suite_utils:use_swagger(SwaggerVsn),
+    aecore_suite_utils:use_api(oas3),
 
     ChannelId =
         aesc_create_tx:channel_id(
@@ -960,7 +947,7 @@ block_create_channel_tx(Config) ->
 
     {ok, [_]} = rpc(aec_tx_pool, peek, [infinity]),
 
-    aecore_suite_utils:use_rosetta(),
+    aecore_suite_utils:use_api(rosetta),
 
     {ok,
      200,
@@ -969,7 +956,7 @@ block_create_channel_tx(Config) ->
              <<"operations">> := [PoolWithdrawFeesOp, PoolWithdrawInitiatorOp]}}} =
         get_mempool_transaction_sut(ChannelWithdrawTxHash),
 
-    aecore_suite_utils:use_swagger(SwaggerVsn),
+    aecore_suite_utils:use_api(oas3),
 
     aecore_suite_utils:mine_blocks_until_txs_on_chain(Node, [ChannelWithdrawTxHash], 2),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
@@ -977,7 +964,7 @@ block_create_channel_tx(Config) ->
     {ok, 200, #{<<"balance">> := InitiatorBalanceAfterWithdraw}} =
         aehttp_integration_SUITE:get_accounts_by_pubkey_sut(InitiatorAccountPubKey),
 
-    aecore_suite_utils:use_rosetta(),
+    aecore_suite_utils:use_api(rosetta),
     {ok, 200, #{<<"current_block_identifier">> := #{<<"hash">> := TopKeyBlockHash2}}} =
         get_status_sut(),
     {ok, 200, #{<<"block">> := #{<<"transactions">> := [_, WithdrawTransaction]}}} =
@@ -1002,10 +989,10 @@ block_create_channel_tx(Config) ->
 
     %% Test mempool operations
     ?assertEqual(PoolWithdrawFeesOp, WithdrawFeesOp),
-    ?assertEqual(PoolWithdrawInitiatorOp, WithdrawInitiatorOp), 
+    ?assertEqual(PoolWithdrawInitiatorOp, WithdrawInitiatorOp),
 
     %% ------------------ Channel close mutual ---------------------------
-    aecore_suite_utils:use_swagger(SwaggerVsn),
+    aecore_suite_utils:use_api(oas3),
 
     {ok, ChannelCloseMutualTx} =
         aesc_close_mutual_tx:new(#{channel_id => ChannelId,
@@ -1024,7 +1011,7 @@ block_create_channel_tx(Config) ->
 
     {ok, [_]} = rpc(aec_tx_pool, peek, [infinity]),
 
-    aecore_suite_utils:use_rosetta(),
+    aecore_suite_utils:use_api(rosetta),
 
     {ok,
      200,
@@ -1033,7 +1020,7 @@ block_create_channel_tx(Config) ->
              <<"operations">> := [PoolCloseMutualInitiatorOp, PoolCloseMutualResponderOp, _PoolLockFundsOp]}}} =
         get_mempool_transaction_sut(ChannelCloseMutualTxHash),
 
-    aecore_suite_utils:use_swagger(SwaggerVsn),
+    aecore_suite_utils:use_api(oas3),
 
     aecore_suite_utils:mine_blocks_until_txs_on_chain(Node, [ChannelCloseMutualTxHash], 4),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]),
@@ -1043,7 +1030,7 @@ block_create_channel_tx(Config) ->
     {ok, 200, #{<<"balance">> := InitiatorBalanceAfterCloseMutual}} =
         aehttp_integration_SUITE:get_accounts_by_pubkey_sut(InitiatorAccountPubKey),
 
-    aecore_suite_utils:use_rosetta(),
+    aecore_suite_utils:use_api(rosetta),
     {ok, 200, #{<<"current_block_identifier">> := #{<<"hash">> := TopKeyBlockHash3}}} =
         get_status_sut(),
     {ok, 200, #{<<"block">> := #{<<"transactions">> := [_, CloseMutualTransaction]}}} =
@@ -1082,8 +1069,7 @@ construction_flow(Config) ->
     true = aec_blocks:is_key_block(KeyBlock),
 
     %% Use the native http api for the operations not yet implemented in Rosetta
-    SwaggerVsn = proplists:get_value(swagger_version, Config, oas3),
-    aecore_suite_utils:use_swagger(SwaggerVsn),
+    aecore_suite_utils:use_api(oas3),
 
     {FromPubKey, FromPrivKey} =
         aehttp_integration_SUITE:initialize_account(1000000000 * aec_test_utils:min_gas_price()),
@@ -1094,7 +1080,7 @@ construction_flow(Config) ->
         aehttp_integration_SUITE:initialize_account(2000000000 * aec_test_utils:min_gas_price()),
     ToPubKeyExt = aeapi:format_account_pubkey(ToPubKey),
 
-    aecore_suite_utils:use_rosetta(),
+    aecore_suite_utils:use_api(rosetta),
 
     %% The standard rosetta construction flow (create and post a SpendTx) must follow all 9 steps in this test case:
     %%
@@ -1191,8 +1177,7 @@ construction_rosetta_cli(Config) ->
     true = aec_blocks:is_key_block(KeyBlock),
 
     %% Use the native http api for the operations not yet implemented in Rosetta
-    SwaggerVsn = proplists:get_value(swagger_version, Config, oas3),
-    aecore_suite_utils:use_swagger(SwaggerVsn),
+    aecore_suite_utils:use_api(oas3),
 
     {_Pubkey, _Privkey} =
         aehttp_integration_SUITE:initialize_account(1000000000 * aec_test_utils:min_gas_price(),

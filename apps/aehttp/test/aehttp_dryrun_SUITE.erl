@@ -135,8 +135,7 @@ end_per_group(_VM, _Config) ->
     ok.
 
 init_per_testcase(_Case, Config) ->
-    SwaggerVsn = proplists:get_value(swagger_version, Config),
-    aecore_suite_utils:use_swagger(SwaggerVsn),
+    aecore_suite_utils:use_api(oas3),
     put('$vm_version',     ?config(vm_version,     Config)),
     put('$abi_version',    ?config(abi_version,    Config)),
     put('$sophia_version', ?config(sophia_version, Config)),
@@ -445,7 +444,7 @@ mempool_paying_for_tx_(Config) ->
     #{acc_a := #{pub_key := APub, priv_key := APrivKey},
       acc_b := #{pub_key := BPub, priv_key := BPrivKey}} = proplists:get_value(accounts, Config),
     #{ public := EPub } = enacl:sign_keypair(),
-    
+
     PayingForTx = create_paying_for_tx(APub, APrivKey, EPub, 1, 20000 * aec_test_utils:min_gas_price(), 1, BPub, 1, 60000 * aec_test_utils:min_gas_price()),
 
     STx = aec_test_utils:sign_tx(PayingForTx, BPrivKey),
@@ -522,7 +521,7 @@ contract_id(Tx) ->
 dry_run(Config, TopHash, Txs) ->
     dry_run(Config, TopHash, Txs, []).
 
-dry_run(Config, TopHash, Txs, Accounts) ->  
+dry_run(Config, TopHash, Txs, Accounts) ->
     EncTx = fun(Tx) -> try aeser_api_encoder:encode(transaction, aetx:serialize_to_binary(Tx))
                        catch _:_ -> Tx end end,
     dry_run( Config,

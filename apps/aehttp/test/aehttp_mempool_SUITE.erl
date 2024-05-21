@@ -84,8 +84,7 @@ end_per_suite(Config) ->
     aecore_suite_utils:stop_node(?NODE, Config),
     ok.
 
-init_per_group(SwaggerVsn, Config0) when SwaggerVsn =:= oas3 ->
-    Config = [{swagger_version, SwaggerVsn} | Config0],
+init_per_group(SwaggerVsn, Config) when SwaggerVsn =:= oas3 ->
     VM =
         case aect_test_utils:latest_protocol_version() of
             PreIris when PreIris < ?IRIS_PROTOCOL_VSN -> aevm;
@@ -119,8 +118,7 @@ end_per_group(_VMGroup, _Config) ->
     ok.
 
 init_per_testcase(_Case, Config) ->
-    SwaggerVsn = proplists:get_value(swagger_version, Config),
-    aecore_suite_utils:use_swagger(SwaggerVsn),
+    aecore_suite_utils:use_api(oas3),
     put('$vm_version',     ?config(vm_version,     Config)),
     put('$abi_version',    ?config(abi_version,    Config)),
     put('$sophia_version', ?config(sophia_version, Config)),

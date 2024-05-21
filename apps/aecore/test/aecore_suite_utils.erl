@@ -89,8 +89,7 @@
          await_is_syncing/2,
          rpc/3,
          rpc/4,
-         use_swagger/1,
-         use_rosetta/0,
+         use_api/1,
          http_request/4,
          httpc_request/4,
          http_api_version/0,
@@ -1780,16 +1779,13 @@ await_new_jobs_pid_recurse(N, OldP, TRef) ->
             await_new_jobs_pid(N, OldP, TRef)
     end.
 
-use_swagger(SpecVsn) ->
+use_api(SpecVsn) ->
     Prefix =
         case SpecVsn of
             oas3 -> "/v3/";
-            swagger2 -> "/v2/"
+            rosetta -> "/"
         end,
     put(api_prefix, Prefix).
-
-use_rosetta() ->
-    put(api_prefix, "/").
 
 get(Key, Default) ->
     case get(Key) of
