@@ -30,7 +30,7 @@ docker-js-sdk-smoke-test:
         tag: ${CIRCLE_BRANCH/\//_}
     - run:
         name: Start NodeJS
-        command: docker run -d --network container:ae_${CIRCLE_SHA1:?} --name nodejs circleci/node:15.0.0-buster sleep 1337
+        command: docker run -d --network container:ae_${CIRCLE_SHA1:?} --name nodejs node:20-buster-slim sleep 1337
     - run:
         name: Copy tests
         command: docker cp ./sdk_smoke_test/aepp-sdk-js nodejs:/tests
@@ -105,7 +105,7 @@ js-sdk-smoke-test:
     - run:
         name: Install OS Deps
         command: |
-          curl -fsSL https://deb.nodesource.com/setup_15.x | sudo -E bash -
+          curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
           sudo apt-get update && sudo apt-get install -y nodejs libsodium23 libtinfo5 libssl1.0
     - attach_workspace:
         at: << pipeline.parameters.packages_workspace >>
