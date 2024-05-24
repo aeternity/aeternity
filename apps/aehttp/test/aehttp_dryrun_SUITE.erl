@@ -45,8 +45,7 @@ all() ->
     ].
 
 groups() ->
-    [ {all, [sequence], [{group, swagger2}, {group, oas3}]}
-    , {swagger2, [sequence], [{group, aevm}, {group, fate}]}
+    [ {all, [sequence], [{group, oas3}]}
     , {oas3, [sequence], [{group, aevm}, {group, fate}]}
     , {aevm, [], [{group, internal}, {group, external}]}
     , {fate, [], [{group, internal}, {group, external}]}
@@ -84,9 +83,8 @@ end_per_suite(Config) ->
     aecore_suite_utils:stop_node(?NODE, Config),
     ok.
 
-init_per_group(SwaggerVsn, Config) when SwaggerVsn =:= swagger2;
-                                        SwaggerVsn =:= oas3 ->
-    [{swagger_version, SwaggerVsn} | Config];
+init_per_group(oas3, Config) ->
+    Config;
 init_per_group(VM, Config) when VM == aevm; VM == fate ->
     aect_test_utils:init_per_group(VM, Config);
 init_per_group(Interface, Config) when Interface =:= internal;
@@ -135,8 +133,7 @@ end_per_group(_VM, _Config) ->
     ok.
 
 init_per_testcase(_Case, Config) ->
-    SwaggerVsn = proplists:get_value(swagger_version, Config),
-    aecore_suite_utils:use_swagger(SwaggerVsn),
+    aecore_suite_utils:use_api(oas3),
     put('$vm_version',     ?config(vm_version,     Config)),
     put('$abi_version',    ?config(abi_version,    Config)),
     put('$sophia_version', ?config(sophia_version, Config)),
@@ -390,12 +387,8 @@ accounts(Config) ->
         dry_run(Config, TopHash, [Tx2, Tx1], [#{ pub_key => EPub, amount => 1000000000000000}]),
 
     %% Should work with amount as string
-    case proplists:get_value(swagger_version, Config) of
-        oas3 ->
-            {ok, 200, #{ <<"results">> := [#{ <<"result">> := <<"ok">> }, #{ <<"result">> := <<"ok">> }] }} =
-                dry_run(Config, TopHash, [Tx1, Tx2], [#{ pub_key => APub, amount => <<"100000000">> }]);
-        swagger2 -> none
-    end,
+    {ok, 200, #{ <<"results">> := [#{ <<"result">> := <<"ok">> }, #{ <<"result">> := <<"ok">> }] }} =
+        dry_run(Config, TopHash, [Tx1, Tx2], [#{ pub_key => APub, amount => <<"100000000">> }]),
 
     ok.
 
@@ -445,7 +438,7 @@ mempool_paying_for_tx_(Config) ->
     #{acc_a := #{pub_key := APub, priv_key := APrivKey},
       acc_b := #{pub_key := BPub, priv_key := BPrivKey}} = proplists:get_value(accounts, Config),
     #{ public := EPub } = enacl:sign_keypair(),
-    
+
     PayingForTx = create_paying_for_tx(APub, APrivKey, EPub, 1, 20000 * aec_test_utils:min_gas_price(), 1, BPub, 1, 60000 * aec_test_utils:min_gas_price()),
 
     STx = aec_test_utils:sign_tx(PayingForTx, BPrivKey),
@@ -522,7 +515,7 @@ contract_id(Tx) ->
 dry_run(Config, TopHash, Txs) ->
     dry_run(Config, TopHash, Txs, []).
 
-dry_run(Config, TopHash, Txs, Accounts) ->  
+dry_run(Config, TopHash, Txs, Accounts) ->
     EncTx = fun(Tx) -> try aeser_api_encoder:encode(transaction, aetx:serialize_to_binary(Tx))
                        catch _:_ -> Tx end end,
     dry_run( Config,

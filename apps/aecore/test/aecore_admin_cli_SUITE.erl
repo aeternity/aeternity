@@ -47,7 +47,7 @@ groups() ->
      {peers, [sequence],
       [ invalid_peers
       , peer_lists
-      , blocking_peers 
+      , blocking_peers
       ]}
 
     ].
@@ -122,7 +122,7 @@ end_per_suite(Config) ->
     ok.
 
 init_per_testcase(_Case, Config) ->
-    aecore_suite_utils:use_swagger(oas3),
+    aecore_suite_utils:use_api(oas3),
     [{tc_start, os:timestamp()}|Config].
 
 end_per_testcase(_Case, Config) ->

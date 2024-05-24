@@ -35,9 +35,12 @@ end_per_suite(_Config) ->
     ok.
 
 init_per_testcase(validate_api, Config) ->
-    case aect_test_utils:latest_protocol_version() of
-        ?IRIS_PROTOCOL_VSN    -> Config;
-        _ -> {skip, only_test_swagger_in_latest_protocol}
+    case aect_test_utils:latest_protocol_version() >= ?CERES_PROTOCOL_VSN of
+        true   -> Config;
+        _ ->
+          %% An external service validates the openAPI spec.
+          %% We only need to do this once, not for each protocol
+          {skip, only_test_api_validation_after_ceres_protocol}
     end;
 init_per_testcase(_Case, Config) ->
     aecore_suite_utils:start_node(?NODE, Config),
@@ -79,8 +82,8 @@ get_api(_Config) ->
             {ok,{{"HTTP/1.1",405,"Method Not Allowed"},_,_}} =
                 httpc:request(post, {URL, [], Type, Body}, [], [])
         end,
-    Test(swagger2, "/api"),
-    Test(oas3, "/api?oas3"),
+    Test(oas3, "/api"),
+    Test(oas3, "/api?oas3"), %% for backward compatibility
     ok.
 
 validate_api(_Config) ->
@@ -119,5 +122,5 @@ validate_api(_Config) ->
                     {fail, "cannot connect to swagger validation server"}
             end
         end,
-        [swagger2, oas3]).
+        [oas3]).
 

@@ -252,7 +252,7 @@ new_pubkey() ->
     PubKey.
 
 calls_test(_Config) ->
-    aecore_suite_utils:use_swagger(oas3),   % GC-related return codes only in OAS3 for now
+    aecore_suite_utils:use_api(oas3),   % GC-related return codes only in OAS3 for now
     [N1] = [aecore_suite_utils:node_name(X) || X <- [dev1]],
     ok = aecore_suite_utils:subscribe(N1, gc),
     H0 = aec_headers:height(rpc:call(N1, aec_chain, top_header, [])),

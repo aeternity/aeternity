@@ -19,12 +19,9 @@
     init_per_testcase/2, end_per_testcase/2
    ]).
 
-%% Exports for other tests
 -export(
-   [ initialize_account/1
-   , get_name_preclaim/1
-   , get_name_claim/1
-   , get_names_entry_by_name_sut/1
+   [
+     get_names_entry_by_name_sut/1
    , get_commitment_id/2
    , get_accounts_by_pubkey_sut/1
    , get_accounts_by_pubkey_and_height_sut/2
@@ -32,11 +29,9 @@
    , get_transactions_by_hash_sut/1
    , check_transaction_in_pool_sut/1
    , get_contract_call_object/1
-   , get_top_block/1
    , get_top_header/1
    , get_chain_ends/1
    , wait_for_tx_hash_on_chain/1
-   , sign_and_post_tx/2
    , end_per_testcase_all/1
    , get_spend/1
    , post_transactions_sut/1
@@ -50,7 +45,6 @@
     get_current_key_block/1,
     get_current_key_block_hash/1,
     get_current_key_block_height/1,
-    %% get_pending_key_block/1,
     post_key_block/1,
     get_key_block_by_hash/1,
     get_key_block_by_height/1
@@ -81,8 +75,6 @@
 -export(
    [
     get_transaction_by_hash/1,
-    get_transaction_info_by_hash/1,
-    get_transaction_info_by_hash_sut/1,
     post_spend_tx/1,
     post_spend_tx_w_hash_sig/1,
     post_contract_and_call_tx/1,
@@ -180,19 +172,6 @@
    ]).
 
 %% test case exports
-%% for swagger validation errors
--export([
-    swagger_validation_body/1,
-    %% swagger_validation_enum/1,
-    %%swagger_validation_required/1,
-    swagger_validation_schema/1
-    %% TODO: validate that API expects some type but gets
-    %% a different type
-    %%swagger_validation_types/1
-
-    ]).
-
-%% test case exports
 %% for CORS headers
 -export([
     cors_not_returned_when_origin_not_sent/1,
@@ -256,52 +235,18 @@
 -define(NODE, dev1).
 -define(DEFAULT_TESTS_COUNT, 5).
 -define(BOGUS_STATE_HASH, <<42:32/unit:8>>).
--define(SPEND_FEE, 20000 * min_gas_price()).
+-define(SPEND_FEE, 20000 * aec_test_utils:min_gas_price()).
 
 -define(MAX_MINED_BLOCKS, 20).
 
 all() ->
     [
-     {group, all}
+     {group, oas3}
     ].
 
 groups() ->
     [
-     {all, [sequence],
-      [{group, swagger2},
-       {group, oas3}]},
-     {swagger2, [sequence],
-      [
-       %% /key-blocks/* /micro-blocks/* /generations/* status/chain-ends
-       {group, block_endpoints},
-       %% /accounts/*
-       {group, account_endpoints},
-       %% /transactions/*
-       {group, transaction_endpoints},
-       %% /contracts/*
-       {group, contract_endpoints},
-       %% /oracles/*
-       {group, oracle_endpoints},
-       %% /names/*
-       {group, name_endpoints},
-       %% /channels/*
-       {group, channel_endpoints},
-       %% /peers/*
-       {group, peer_endpoints},
-       %% /status/*
-       {group, status_endpoints},
-
-       {group, external_endpoints},
-       {group, internal_endpoints},
-       {group, debug_endpoints},
-       {group, swagger_validation},
-       {group, wrong_http_method_endpoints},
-       %% Swagger is deprecated and part of naming API is only in oas3
-       %% {group, naming},
-       {group, paying_for_tx},
-       {group, rollback}
-      ]},
-
+     {all, [sequence], [ {group, oas3}]},
      %% /key-blocks/* /micro-blocks/* /generations/*
      {block_endpoints, [sequence],
       [
@@ -326,7 +271,6 @@ groups() ->
       ]},
      {block_info, [sequence],
       [
-       get_top_block,
        get_chain_ends,
        get_current_key_block,
        get_current_key_block_hash,
@@ -398,8 +342,7 @@ groups() ->
       ]},
      {tx_info, [sequence],
       [
-       get_transaction_by_hash,
-       get_transaction_info_by_hash
+       get_transaction_by_hash
       ]},
      {contract_txs, [sequence],
       [
@@ -501,13 +444,6 @@ groups() ->
         disabled_debug_endpoints,
         enabled_debug_endpoints
      ]},
-     {swagger_validation, [], [
-        swagger_validation_body,
-        %% swagger_validation_enum,
-        %%swagger_validation_required,
-        swagger_validation_schema
-        %%swagger_validation_types
-      ]},
      {cors_headers, [],
       [cors_not_returned_when_origin_not_sent,
        cors_returned_on_preflight_request,
@@ -568,7 +504,6 @@ groups() ->
        {group, external_endpoints},
        {group, internal_endpoints},
        {group, debug_endpoints},
-       {group, swagger_validation},
        {group, wrong_http_method_endpoints},
        {group, naming},
        {group, paying_for_tx},
@@ -670,9 +605,8 @@ end_per_suite(Config) ->
 
 init_per_group(all, Config) ->
     Config;
-init_per_group(SwaggerVsn, Config) when SwaggerVsn =:= swagger2;
-                                        SwaggerVsn =:= oas3 ->
-    [{swagger_version, SwaggerVsn} | Config];
+init_per_group(oas3, Config) ->
+    Config;
 init_per_group(Group, Config) when
       Group =:= debug_endpoints;
       Group =:= account_endpoints;
@@ -891,14 +825,7 @@ get_chain_ends(Config) ->
             aehttp_integration_SUITE:get_chain_ends(Config)
     end.
 
-%% /blocks/top
-
-get_top_block(Config) ->
-    aehttp_integration_SUITE:get_top_block(Config).
-
-get_top_sut() ->
-    Host = external_address(),
-    http_request(Host, get, "blocks/top", []).
+%% /headers/top
 
 get_top_header_sut() ->
     get_top_header_sut([]).
@@ -1021,9 +948,6 @@ delete_tx_from_mempool_sut(Hash) when is_list(Hash) ->
 get_transaction_by_hash(Config) ->
     aehttp_integration_SUITE:get_transaction_by_hash(Config).
 
-get_transaction_info_by_hash(_Config) ->
-    {skip, not_implemented}.
-
 post_spend_tx(Config) ->
     aehttp_integration_SUITE:post_spend_tx(Config).
 
@@ -1043,10 +967,6 @@ get_transactions_by_hash_sut(Hash) ->
 check_transaction_in_pool_sut(Hash) ->
     Host = internal_address(),
     http_request(Host, get, "debug/check-tx/pool/" ++ aeu_uri:encode(Hash), []).
-
-get_transaction_info_by_hash_sut(Hash) ->
-    Host = external_address(),
-    http_request(Host, get, "transactions/" ++ aeu_uri:encode(Hash) ++ "/info", []).
 
 post_transactions_sut(Tx) ->
     Host = external_address(),
@@ -1208,31 +1128,6 @@ naming_system_manage_name(Config) ->
 naming_system_broken_txs(Config) ->
     aehttp_integration_SUITE:naming_system_broken_txs(Config).
 
-assert_balance_at_least(Pubkey, MinExpectedBalance) ->
-    Address = aeser_api_encoder:encode(account_pubkey, Pubkey),
-    {ok, 200, #{<<"balance">> := Balance}} =
-        get_accounts_by_pubkey_sut(Address),
-    true = MinExpectedBalance =< Balance.
-
-initialize_account(Amount) ->
-    KeyPair = aecore_suite_utils:generate_key_pair(),
-    initialize_account(Amount, KeyPair).
-
-initialize_account(Amount, {Pubkey, Privkey}) ->
-    Fee = ?SPEND_FEE,
-    BlocksToMine = 3,
-
-    Node = aecore_suite_utils:node_name(?NODE),
-
-    aecore_suite_utils:mine_key_blocks(Node, BlocksToMine),
-
-    {ok, 200, #{<<"tx">> := SpendTx}} =
-        post_spend_tx(aeser_api_encoder:encode(account_pubkey, Pubkey), Amount, Fee),
-    TxHash = sign_and_post_tx(SpendTx),
-    ok = wait_for_tx_hash_on_chain(TxHash),
-    assert_balance_at_least(Pubkey, Amount),
-    {Pubkey, Privkey}.
-
 encode_call_data(Name, Fun, Args) when is_atom(Name) ->
     encode_call_data(contract_code(Name), Fun, Args);
 encode_call_data(Src, Fun, Args) ->
@@ -1298,41 +1193,9 @@ get_spend(Data) ->
     Host = internal_address(),
     http_request(Host, post, "debug/transactions/spend", Data).
 
-get_name_preclaim(Data) ->
-    Host = internal_address(),
-    http_request(Host, post, "debug/names/preclaim", Data).
-
-get_name_claim(Data) ->
-    Host = internal_address(),
-    http_request(Host, post, "debug/names/claim", Data).
-
-post_spend_tx(RecipientId, Amount, Fee) ->
-    {_, Sender} = aecore_suite_utils:sign_keys(?NODE),
-    SenderId = aeser_api_encoder:encode(account_pubkey, Sender),
-    post_spend_tx(SenderId, RecipientId, Amount, Fee, <<"foo">>).
-
-post_spend_tx(SenderId, RecipientId, Amount, Fee, Payload) ->
-    Host = internal_address(),
-    http_request(Host, post, "debug/transactions/spend",
-                 #{sender_id => SenderId,
-                   recipient_id => RecipientId,
-                   amount => Amount,
-                   fee => Fee,
-                   payload => Payload}).
-
 get_commitment_id(Name, Salt) ->
     Host = internal_address(),
     http_request(Host, get, "debug/names/commitment-id", [{name, Name}, {salt, Salt}]).
-
-%% ============================================================
-%% Test swagger validation errors
-%% ============================================================
-
-swagger_validation_body(Config) ->
-    aehttp_integration_SUITE:swagger_validation_body(Config).
-
-swagger_validation_schema(Config) ->
-    aehttp_integration_SUITE:swagger_validation_schema(Config).
 
 %% ============================================================
 %% Test CORS headers
@@ -1652,42 +1515,6 @@ random_hash() ->
             lists:seq(1, 32)),
     list_to_binary(HList).
 
-sign_and_post_tx(EncodedUnsignedTx) ->
-    sign_and_post_tx(EncodedUnsignedTx, on_node).
-
-sign_and_post_tx(EncodedUnsignedTx, PrivKey) ->
-    %% Check that we get the correct hash
-    {ok, 200, #{<<"tx_hash">> := TxHash}} = sign_and_post_tx_(EncodedUnsignedTx, PrivKey),
-    %% Check tx is in mempool.
-    Fun = fun() ->
-                  tx_in_mempool(TxHash)
-          end,
-    {ok, true} = aec_test_utils:wait_for_it_or_timeout(Fun, true, 5000),
-    TxHash.
-
-%% sign_and_post_tx_(EncodedUnsignedTx) ->
-%%     sign_and_post_tx_(EncodedUnsignedTx, on_node).
-
-sign_and_post_tx_(EncodedUnsignedTx, PrivKey) ->
-    {ok, SerializedUnsignedTx} = aeser_api_encoder:safe_decode(transaction, EncodedUnsignedTx),
-    UnsignedTx = aetx:deserialize_from_binary(SerializedUnsignedTx),
-    {ok, SignedTx} =
-        case PrivKey =:= on_node of
-            true  -> aecore_suite_utils:sign_on_node(?NODE, UnsignedTx);
-            false -> {ok, aec_test_utils:sign_tx(UnsignedTx, PrivKey)}
-        end,
-    SerializedTx = aetx_sign:serialize_to_binary(SignedTx),
-    post_transactions_sut(aeser_api_encoder:encode(transaction, SerializedTx)).
-
-tx_in_mempool(TxHash) ->
-    case get_transactions_by_hash_sut(TxHash) of
-        {ok, 200, #{<<"block_hash">> := <<"none">>}} -> true;
-        {ok, 200, #{<<"block_hash">> := Other}} ->
-            ct:log("Tx not in mempool, but in chain: ~p", [Other]),
-            false;
-        {ok, 404, _} -> false
-    end.
-
 %%%%%
 %% OAS3
 %%%%%
@@ -1708,8 +1535,6 @@ get_top_header(_Config) ->
       <<"state_hash">> := <<"bs_",StateHash/binary>>,
       <<"target">> := Target,
       <<"time">> := Time,<<"version">> := Version} = HeaderOrig,
-    %% this is not present in oas3.yaml but swagger.yaml
-    {ok, 404, #{}} = get_top_sut(),
     {ok, 200, HeaderOrig}= get_top_header_sut([{'int-as-string', false}]),
     {ok, 200, HeaderStrings}= get_top_header_sut([{'int-as-string', true}]),
     ct:log("HeaderOrig = ~p", [HeaderOrig]),
@@ -1732,9 +1557,6 @@ get_top_header(_Config) ->
 
 post_paying_for_tx(Config) ->
     aehttp_integration_SUITE:post_paying_for_tx(Config).
-
-min_gas_price() ->
-    aec_test_utils:min_gas_price().
 
 get_prev_key_block([KB, _MB]) ->
     true = aec_blocks:is_key_block(KB),
