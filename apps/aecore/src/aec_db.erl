@@ -1313,7 +1313,10 @@ lookup_tree_node_(Hash, T, Rec) ->
     case read(T, Hash) of
         [Obj] ->
             Value = get_tree_value(Rec, Obj),
-            Hash = aec_hash:hash(header, aeser_rlp:encode(Value)),
+            case db_safe_access() of
+                true  -> Hash = aec_hash:hash(header, aeser_rlp:encode(Value));
+                false -> ok
+            end,
             {value, Value};
         []    -> none
     end.
@@ -1560,6 +1563,18 @@ prepare_mnesia_bypass() ->
                             lager:debug("NOT enabling bypass logic for rocksdb", [])
                     end
             end
+    end.
+
+db_safe_access() ->
+    case persistent_term:get({?MODULE, db_safe_access}, undefined) of
+        Value when is_boolean(Value) ->
+            Value;
+        undefined ->
+            {ok, SafeAccess} = aeu_env:find_config([<<"chain">>, <<"db_safe_access">>],
+                                                   [user_config, schema_default, {value, false}]),
+            lager:info("Safe DB-access mode is ~s", [if SafeAccess -> "ON"; true -> "OFF" end]),
+            persistent_term:put({?MODULE, db_safe_access}, SafeAccess),
+            SafeAccess
     end.
 
 can_enable_direct_access() ->
