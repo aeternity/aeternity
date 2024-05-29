@@ -150,6 +150,11 @@ relx_usage() {
             echo "  This can take a few hours and the node will be placed in maintenance mode during the migration"
             echo "  -s (-silent)    : Suppress progress reports"
             ;;
+        db_safe_access_scan)
+            echo "Usage: $REL_NAME db_safe_access_scan [-t Tree]"
+            echo "  Scan state tree DB for incorrect/tainted values - useful when running on an untrusted DB snapshot"
+            echo "  -t (--tree)  : State tree to scan, default all (accounts, calls, contracts, oracles, channels, ns)"
+            ;;
         maintenance)
             echo "Usage: $REL_NAME maintenance [on | off | status] [-t timeout]"
             echo "  Enable / disable / check status of maintenance mode"
@@ -202,6 +207,7 @@ Commands:
   create_whitelist        Export block hashes within a range of heights to json file
   db_rollback             Rollback blockchain to specified height, hash, or from whitelist file
   db_migrate              Migrate rocksdb database to column families
+  db_safe_access_scan     Run safe access scan for state tree DB(s)
   maintenance             Enable / disable maintenance mode
   offline                 Enable / disable offline mode
   admin                   Aeternity node administration commands
