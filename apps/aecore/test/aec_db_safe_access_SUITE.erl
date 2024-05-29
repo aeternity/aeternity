@@ -151,16 +151,22 @@ safe_access_test(Config, PK, PKKey, NodeHash) ->
     {ok, Acc1} = aec_accounts:earn(Acc, 100000000000000),
     SerAcc = aec_accounts:serialize(Acc1),
 
+    ok = rpc:call(N1, aec_db_gc, db_safe_access_scan, []),
+    ct:log("Scanning all trees successfully", []),
+
     Ctxt = rpc:call(N1, aec_db, new_tree_context, [dirty, accounts]),
     ok = rpc:call(N1, aec_db, enter_tree_node, [NodeHash, [PKKey, SerAcc], Ctxt]),
-
     {value, Acc1} = rpc:call(N1, aec_chain, get_account, [PK]),
+
+    {error, Reason} = rpc:call(N1, aec_db_gc, db_safe_access_scan, [accounts]),
+    ct:log("Scanning 'accounts' failed as expected: ~p", [Reason]),
 
     aecore_suite_utils:stop_node(dev1, Config),
 
     aecore_suite_utils:start_node(dev1, Config, [{"AE__CHAIN__DB_SAFE_ACCESS", "true"}]),
 
     {badrpc, _} = rpc:call(N1, aec_chain, get_account, [PK]),
+    error = rpc:call(N1, aec_db_gc, db_safe_access_scan, []),
 
     ok.
 

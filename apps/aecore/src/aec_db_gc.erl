@@ -39,6 +39,10 @@
 
 -export([maybe_garbage_collect/3]).
 
+-export([ db_safe_access_scan/0
+        , db_safe_access_scan/1
+        ]).
+
 %% gen_server callbacks
 -export([ init/1
         , handle_call/3
@@ -603,6 +607,42 @@ update_current_scan(Hash, Scanners, #st{current_scan = #{hashes := Hashes} = Sca
 %%     lager:debug("Height = ~p, N = ~p, Res = ~p",
 %%                 [aec_blocks:height(MicroBlock), N, Res]),
 %%     Res.
+
+db_safe_access_scan() ->
+  case lists:usort([ element(1, db_safe_access_scan(Tree))
+                     || Tree <- [accounts, calls, contracts, oracles, channels, ns] ]) of
+      [ok] -> ok;
+      _    -> error
+  end.
+
+db_safe_access_scan(Tree) ->
+    {ok, Block} = aec_chain:top_key_block(),
+    Height = aec_blocks:height(Block),
+    {ok, Hash} = aec_blocks:hash_internal_representation(Block),
+    case get_mpt(Tree, Hash) of
+        empty ->
+            ?DBG("Tree ~p empty at height ~p - no scan needed", [Tree, Height]),
+            {ok, 0};
+        MPT ->
+            ?DBG("DB safe access FULL_SCAN for ~p at height ~p from root hash ~w",
+                 [Tree, Height, aeu_mp_trees:root_hash(MPT)]),
+            OldDBSafeAccess = persistent_term:get({aec_db, db_safe_access}, undefined),
+            [ persistent_term:put({aec_db, db_safe_access}, true) || OldDBSafeAccess /= true ],
+            try
+                N = visit_reachable(MPT),
+                ?DBG("DB safe access FULL_SCAN for ~p completed, checked ~p nodes", [Tree, N]),
+                {ok, N}
+            catch E:{Reason, _S} ->
+                ?DBG("DB safe access FULL_SCAN on ~p failed ~p:~p", [Tree, E, Reason]),
+                {error, Reason}
+            after
+                case OldDBSafeAccess of
+                    undefined -> persistent_term:erase({aec_db, db_safe_access});
+                    false     -> persistent_term:put({aec_db, db_safe_access}, false);
+                    true      -> ok
+                end
+            end
+    end.
 
 -spec get_mpt(tree_name(), block_hash()) -> aeu_mp_trees:tree() | empty.
 get_mpt(Tree, Hash) ->
