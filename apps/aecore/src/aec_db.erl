@@ -1314,7 +1314,11 @@ lookup_tree_node_(Hash, T, Rec) ->
         [Obj] ->
             Value = get_tree_value(Rec, Obj),
             case db_safe_access() of
-                true  -> Hash = aec_hash:hash(header, aeser_rlp:encode(Value));
+                true  -> case aec_hash:hash(header, aeser_rlp:encode(Value)) of
+                             Hash -> ok;
+                             Hash1 ->
+                                 error({corrupted_db_node, {expected, Hash, got, Hash1}})
+                         end;
                 false -> ok
             end,
             {value, Value};
