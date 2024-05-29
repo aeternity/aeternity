@@ -166,6 +166,8 @@ safe_access_test(Config, PK, PKKey, NodeHash) ->
     aecore_suite_utils:start_node(dev1, Config, [{"AE__CHAIN__DB_SAFE_ACCESS", "true"}]),
 
     {badrpc, _} = rpc:call(N1, aec_chain, get_account, [PK]),
+
+    timer:sleep(2000), %% Wait for node to fully get up to speed?!
     error = rpc:call(N1, aec_db_gc, db_safe_access_scan, []),
 
     ok.
