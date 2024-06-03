@@ -29,7 +29,6 @@
 
 -callback event_reply(SubId :: non_neg_integer(), Topic ::binary, Msg :: map) -> binary().
 
-
 %%%===================================================================
 %%% API
 %%%===================================================================
@@ -84,26 +83,36 @@ process_incoming(#{api := Mod, unpacked_msg := Msg, state := State}) ->
     process_incoming_request(Mod, Msg, State).
 
 process_incoming_request(Mod, #{topic := Topic, params := Params, is_subscribe := true} = Msg, State) ->
-    Result = process_subscription_request(Topic, Params, State),
-    SubId = erlang:unique_integer([positive]),
-    Response = Mod:subscription_reply(SubId, Msg),
-    {reply, Response, add_subscription(SubId, Result, Topic, State)};
+    Key = generate_subscription_key(Topic, Params),
+    case lookup_subscription_id_and_topic(Key, State) of
+        undefined ->
+            ok = process_subscription_request(Key),
+            SubId = erlang:unique_integer([positive]),
+            Response = Mod:subscription_reply(SubId, Msg),
+            {reply, Response, add_subscription(SubId, Key, Topic, State)};
+        _ ->
+            no_reply
+    end;
 process_incoming_request(Mod, #{topic := Topic, params := [SubId], is_subscribe := false} = Msg, State) ->
-    process_unsubscription_request(Topic, State),
+    {Key, Topic} = lookup_subscription_key_and_topic(SubId, State),
+    process_unsubscription_request(Key),
     Response = Mod:unsubscription_reply(SubId, Msg),
     {reply, Response, remove_subscription(SubId, State)}.
 
-process_subscription_request(<<"top_changed">>, _Params, _State) ->
-    %% TODO check if already subscribed
+
+generate_subscription_key(<<"top_changed">>, _Params) ->
+    top_changed.
+
+process_subscription_request(top_changed) ->
     true = aec_events:subscribe(top_changed),
-    top_changed;
-process_subscription_request(_, _Params, _State) ->
+    ok;
+process_subscription_request(_) ->
     throw({decode_error, invalid_request}).
 
-process_unsubscription_request(<<"top_changed">>, _State) ->
+process_unsubscription_request(top_changed) ->
     true = aec_events:unsubscribe(top_changed),
     ok;
-process_unsubscription_request(_, _State) ->
+process_unsubscription_request(_) ->
     throw({decode_error, invalid_request}).
 
 process_event(#{msg := Msg, api := Mod, state := State}) ->
@@ -135,9 +144,20 @@ remove_subscription(SubId, #{subscriptions := Subscriptions} = State) ->
     State#{subscriptions => NewSubscriptions}.
 
 lookup_subscription_id_and_topic(Key, #{subscriptions := Subscriptions}) ->
-    #{id := Id, topic := Topic} = maps:get({key, Key}, Subscriptions),
-    {Id, Topic}.
+    case maps:get({key, Key}, Subscriptions, undefined) of
+        #{id := Id, topic := Topic} ->
+            {Id, Topic};
+        _ ->
+            undefined
+    end.
 
+lookup_subscription_key_and_topic(Id, #{subscriptions := Subscriptions}) ->
+    case maps:get({id, Id}, Subscriptions) of
+        #{key := Key, topic := Topic} ->
+            {Key, Topic};
+        _ ->
+            undefined
+    end.
 
 encode_block_hash(key, Hash) ->
     aeser_api_encoder:encode(key_block_hash, Hash);
