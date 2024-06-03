@@ -23,6 +23,11 @@
 -define(DEFAULT_CHANNEL_WEBSOCKET_LISTEN_ADDRESS, <<"127.0.0.1">>).
 -define(DEFAULT_CHANNEL_ACCEPTORS, 10).
 
+
+-define(DEFAULT_PUBSUB_WEBSOCKET_PORT, 8045).
+-define(DEFAULT_PUBSUB_WEBSOCKET_LISTEN_ADDRESS, <<"127.0.0.1">>).
+-define(DEFAULT_PUBSUB_ACCEPTORS, 10).
+
 % cowboy default
 -define(DEFAULT_MAX_SKIP_BODY_LENGTH, 1000000).
 
@@ -42,6 +47,7 @@ start(_StartType, _StartArgs) ->
     {ok, Pid} = aehttp_sup:start_link(),
     ok = start_http_api(),
     ok = start_channel_websocket(),
+    ok = start_pubsub_websocket(),
     %% Max 1200 MBs in an hour
     {ok, Cache} = kache:start_link([{eviction, lru}, {capacity, 1200}]),
     persistent_term:put({?MODULE, kache}, Cache),
@@ -57,6 +63,7 @@ stop(#{ kache := Cache }) ->
     _ = cowboy:stop_listener(rosetta),
     _ = cowboy:stop_listener(rosetta_offline),
     _ = cowboy:stop_listener(channels_socket),
+    _ = cowboy:stop_listener(pubsub_socket),
     ok.
 
 
@@ -176,6 +183,26 @@ start_channel_websocket() ->
     {ok, _} = cowboy:start_clear(channels_socket, Opts, Env),
     ok.
 
+
+start_pubsub_websocket() ->
+    Port = get_pubsub_websockets_port(),
+    Acceptors = get_pubsub_websockets_acceptors(),
+    ListenAddress = get_pubsub_websockets_listen_address(),
+    Dispatch = cowboy_router:compile([
+        {'_', [
+            {"/pubsub", pubsub_ws_handler, []}
+        ]}
+    ]),
+    Opts = #{ num_acceptors => Acceptors
+            , socket_opts => [ {port, Port}
+                             , {ip, ListenAddress} ]
+            },
+    Env = #{ env => #{dispatch => Dispatch}
+           , max_skip_body_length => get_http_max_skip_body_length()},
+    lager:debug("Opts = ~p", [Opts]),
+    {ok, _} = cowboy:start_clear(pubsub_socket, Opts, Env),
+    ok.
+
 get_and_parse_ip_address_from_config_or_env(CfgKey, App, EnvKey, Default) ->
     Config = aeu_env:config_value(CfgKey, App, EnvKey, Default),
     {ok, IpAddress} = inet:parse_address(binary_to_list(Config)),
@@ -213,16 +240,16 @@ get_http_api_port(rosetta_offline) ->
 
 get_http_api_listen_address(external) ->
     get_and_parse_ip_address_from_config_or_env([<<"http">>, <<"external">>, <<"listen_address">>],
-                                                aehttp, [http, websocket, listen_address], ?DEFAULT_SWAGGER_EXTERNAL_LISTEN_ADDRESS);
+                                                aehttp, [http, external, listen_address], ?DEFAULT_SWAGGER_EXTERNAL_LISTEN_ADDRESS);
 get_http_api_listen_address(internal) ->
     get_and_parse_ip_address_from_config_or_env([<<"http">>, <<"internal">>, <<"listen_address">>],
-                                                aehttp, [http, websocket, listen_address], ?DEFAULT_SWAGGER_INTERNAL_LISTEN_ADDRESS);
+                                                aehttp, [http, internal, listen_address], ?DEFAULT_SWAGGER_INTERNAL_LISTEN_ADDRESS);
 get_http_api_listen_address(rosetta) ->
     get_and_parse_ip_address_from_config_or_env([<<"http">>, <<"rosetta">>, <<"listen_address">>],
-                                                aehttp, [http, websocket, listen_address], ?DEFAULT_ROSETTA_LISTEN_ADDRESS);
+                                                aehttp, [http, rosetta, listen_address], ?DEFAULT_ROSETTA_LISTEN_ADDRESS);
 get_http_api_listen_address(rosetta_offline) ->
     get_and_parse_ip_address_from_config_or_env([<<"http">>, <<"rosetta_offline">>, <<"listen_address">>],
-                                                aehttp, [http, websocket, listen_address], ?DEFAULT_ROSETTA_OFFLINE_LISTEN_ADDRESS).
+                                                aehttp, [http, rosetta_offline, listen_address], ?DEFAULT_ROSETTA_OFFLINE_LISTEN_ADDRESS).
 
 get_channel_websockets_listen_address() ->
     get_and_parse_ip_address_from_config_or_env(
@@ -239,6 +266,22 @@ get_channel_websockets_acceptors() ->
     aeu_env:config_value([<<"websocket">>, <<"channel">>, <<"acceptors">>],
                          aehttp, [channel, websocket, handlers],
                          ?DEFAULT_CHANNEL_ACCEPTORS).
+
+get_pubsub_websockets_listen_address() ->
+    get_and_parse_ip_address_from_config_or_env(
+      [<<"websocket">>, <<"pubsub">>, <<"listen_address">>],
+      aehttp, [pubsub, websocket,
+               listen_address], ?DEFAULT_PUBSUB_WEBSOCKET_LISTEN_ADDRESS).
+
+get_pubsub_websockets_port() ->
+    aeu_env:config_value([<<"websocket">>, <<"pubsub">>, <<"port">>],
+                         aehttp, [pubsub, websocket, port],
+                         ?DEFAULT_PUBSUB_WEBSOCKET_PORT).
+
+get_pubsub_websockets_acceptors() ->
+    aeu_env:config_value([<<"websocket">>, <<"pubsub">>, <<"acceptors">>],
+                         aehttp, [pubsub, websocket, handlers],
+                         ?DEFAULT_PUBSUB_ACCEPTORS).
 
 enable_internal_debug_endpoints() ->
     aeu_env:config_value([<<"http">>, <<"internal">>, <<"debug_endpoints">>],

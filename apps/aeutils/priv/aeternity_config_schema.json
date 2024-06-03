@@ -1515,6 +1515,28 @@
                             "default" : 10
                         }
                     }
+                },
+                "pubsub" : {
+                    "type" : "object",
+                    "additionalProperties" : false,
+                    "properties" : {
+                        "listen_address": {
+                            "description": "Listen address for pubsub websocket interface.",
+                            "type": "string",
+                            "default": "127.0.0.1",
+                            "example": "0.0.0.0"
+                        },
+                        "port" : {
+                            "description" : "Listen port for pubsub websocket interface.",
+                            "type" : "integer",
+                            "default" : 3016
+                        },
+                        "acceptors" : {
+                            "description" : "Number of acceptors in pool",
+                            "type" : "integer",
+                            "default" : 10
+                        }
+                    }
                 }
             }
         },
