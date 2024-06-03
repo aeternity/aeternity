@@ -28,11 +28,16 @@ main(Args) ->
     db_safe_access_scan(Node, Opts).
 
 db_safe_access_scan(Node, #{opts := Opts}) ->
-    case Opts of
-        #{tree := "all"} ->
-            db_safe_access_scan_(Node, [accounts, calls, contracts, oracles, channels, ns]);
-        #{tree := Tree} ->
-            db_safe_access_scan_(Node, [list_to_atom(Tree)])
+    case rpc:call(Node, aec_db_gc, gc_enabled, []) of
+        false ->
+            case Opts of
+                #{tree := "all"} ->
+                    db_safe_access_scan_(Node, [accounts, calls, contracts, oracles, channels, ns]);
+                #{tree := Tree} ->
+                    db_safe_access_scan_(Node, [list_to_atom(Tree)])
+            end;
+        _ ->
+            io:fwrite("Aborted! Scan is only available when Garbage Collect is OFF!\n", [])
     end.
 
 db_safe_access_scan_(_Node, []) ->

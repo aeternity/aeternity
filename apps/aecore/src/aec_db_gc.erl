@@ -35,6 +35,7 @@
         , info/1
         , enable/0
         , disable/0
+        , gc_enabled/0
         ]).
 
 -export([maybe_garbage_collect/3]).
@@ -128,6 +129,10 @@ start_link() ->
 
 cleanup() ->
     erase_cached_enabled_status().
+
+-spec gc_enabled() -> boolean().
+gc_enabled() ->
+    gen_server:call(?MODULE, is_enabled).
 
 -spec maybe_garbage_collect(Header, Hash, TopChange) -> ok | nop
               when Header :: aec_headers: header()
@@ -378,6 +383,8 @@ handle_call(#maybe_garbage_collect{}, _From, St) ->
     {reply, nop, St};
 handle_call({set_enabled, Bool}, _From, #st{enabled = Enabled} = St) ->
     {reply, Enabled, set_gc_enabled(Bool, St)};
+handle_call(is_enabled, _From, #st{enabled = Enabled} = St) ->
+    {reply, Enabled, St};
 handle_call({info, Keys}, _, St) ->
     {reply, info_(Keys, St), St}.
 
