@@ -1576,6 +1576,11 @@
 		    "type" : "boolean",
 		    "default" : true
 		},
+		"db_safe_access" : {
+		    "description" : "Enable checksum check for data read from DB - only applies for state tree (Merkle Patricia Tree) data. Relevant when using untrusted DB snapshot. This lowers DB read performance with 3% - 7%.",
+		    "type" : "boolean",
+		    "default" : false
+		},
                 "db_write_max_retries" : {
                     "deprecated" : true,
                     "description" : "OBSOLETE/ignored: Maximum number of retries for failing database write operations.",
