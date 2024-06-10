@@ -338,11 +338,14 @@ claim(Cfg) ->
     case auctioned_name(NameAscii, aec_hard_forks:protocol_effective_at_height(1)) of
         false ->
             {value, N} = aens_state_tree:lookup_name(NHash, NTrees),
+            {ok, N2}   = aens:get_name_entry_by_hash(NHash, NTrees),
             NHash   = aens_names:hash(N),
             PubKey  = aens_names:owner_pubkey(N),
+            PubKey  = maps:get(owner, N2),
             claimed = aens_names:status(N);
         true ->
             none   = aens_state_tree:lookup_name(NHash, NTrees),
+            {error, name_not_found} = aens:get_name_entry_by_hash(NHash, NTrees),
             {value, A} = aens_state_tree:lookup_name_auction(aens_hash:to_auction_hash(NHash), NTrees),
             NHash   = aens_hash:from_auction_hash(aens_auctions:hash(A)),
             PubKey  = aens_auctions:bidder_pubkey(A)

@@ -15,4 +15,4 @@ ApiAddress="${1:?}"
 ExtApiPort=3013
 KeyBlockHeight="${2:?}"
 
-human_time_s "$(curl -sS http://${ApiAddress:?}:${ExtApiPort:?}/v2/key-blocks/height/${KeyBlockHeight:?} | jq .time)"
+human_time_s "$(curl -sS http://${ApiAddress:?}:${ExtApiPort:?}/v3/key-blocks/height/${KeyBlockHeight:?} | jq .time)"

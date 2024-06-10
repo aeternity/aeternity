@@ -14,7 +14,7 @@
 initiate(Host, Port, #{} = Opts0) ->
     lager:debug("initiate(~p, ~p, ~p)", [Host, Port, aesc_utils:censor_init_opts(Opts0)]),
     Opts = maps:merge(#{client => self(), role => initiator}, Opts0),
-    try init_checks(Opts) of
+    try init_checks(Port, Opts) of
         ok ->
             aesc_fsm_sup:start_child([#{ host => Host
                                        , port => Port
@@ -29,7 +29,7 @@ respond(Port, #{} = Opts0) ->
     lager:debug("respond(~p, ~p)", [Port, aesc_utils:censor_init_opts(Opts0)]),
     Opts = maps:merge(#{ client => self()
                        , role   => responder }, Opts0),
-    try init_checks(Opts) of
+    try init_checks(Port, Opts) of
         ok ->
             aesc_fsm_sup:start_child([#{ port => Port
                                        , opts => Opts }]);
@@ -42,12 +42,12 @@ respond(Port, #{} = Opts0) ->
 %% ==================================================================
 %% Internal functions
 
-init_checks(#{existing_channel_id := ChId, offchain_tx := Tx, role := Role})
+init_checks(_Port, #{existing_channel_id := ChId, offchain_tx := Tx, role := Role})
   when is_binary(ChId) andalso Tx =/= undefined ->
     Checks = [ fun() -> aesc_checks:known_role(Role) end
              ],
     aeu_validation:run(Checks);
-init_checks(Opts) ->
+init_checks(Port, Opts) ->
     #{ initiator   := Initiator
      , responder   := Responder
      , role        := Role
@@ -56,5 +56,6 @@ init_checks(Opts) ->
              , fun() -> aesc_checks:amounts(Opts) end
              , fun() -> aesc_checks:accounts(Initiator, Responder, Role) end
              , fun() -> aesc_checks:lock_period(LockPeriod) end
+             , fun() -> aesc_checks:port(Port, Role) end
              ],
     aeu_validation:run(Checks).

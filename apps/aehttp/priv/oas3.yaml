@@ -5,7 +5,7 @@ info:
   title: Aeternity node
   termsOfService: https://www.aeternity.com/terms/
   contact:
-    email: apiteam@aeternity.com
+    url: https://github.com/aeternity/aeternity/issues
 tags:
   - name: external
     description: External API
@@ -798,6 +798,41 @@ paths:
           schema:
             type: string
             example: "dimitar.chain"
+      responses:
+        "200":
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NameEntry"
+        "400":
+          description: Invalid name
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Name not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  "/names/hash/{name_hash}":
+    get:
+      tags:
+        - external
+        - name_service
+      operationId: GetNameEntryByNameHash
+      description: Get name entry from naming system
+      parameters:
+        - $ref: '#/components/parameters/intAsString'
+        - in: path
+          name: name_hash
+          description: The name hash of the name entry
+          required: true
+          schema:
+            type: string
+            example: "nm_1G1GgdPsPCzSvEDSVAeuiW7tKdmTXStb3N2wXviyPfMgLME5"
       responses:
         "200":
           description: Successful operation
@@ -2731,6 +2766,10 @@ components:
           $ref: "#/components/schemas/UInt64"
         fiat_converstion_url:
           type: string
+          description: "Use `fiat_conversion_url` instead"
+          deprecated: true
+        fiat_conversion_url:
+          type: string
         logo:
           $ref: "#/components/schemas/Image"
         primary_colour:
@@ -3184,6 +3223,8 @@ components:
       properties:
         key:
           type: string
+        encoded_key:
+          $ref: "#/components/schemas/EncodedValue"
         id:
           $ref: "#/components/schemas/EncodedPubkey"
       required:

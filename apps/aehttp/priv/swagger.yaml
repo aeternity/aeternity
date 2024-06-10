@@ -1,11 +1,11 @@
 swagger: '2.0'
 info:
-  description: 'This is the [Aeternity](https://www.aeternity.com/) node API.'
+  description: 'This is the [Aeternity](https://www.aeternity.com/) node API. The swagger version of this API will be deprecated and replaced by an openAPI 3.x specification'
   version: x.y.z
   title: Aeternity node
   termsOfService: 'https://www.aeternity.com/terms/'
   contact:
-    email: apiteam@aeternity.com
+    url: 'https://github.com/aeternity/aeternity/issues'
 basePath: /v2
 tags:
   - name: external
@@ -987,7 +987,7 @@ paths:
           schema:
             $ref: '#/definitions/SyncStatus'
         '404':
-          description: Node not syncinc
+          description: Node not syncing
           schema:
             $ref: '#/definitions/Error'
   /transactions:

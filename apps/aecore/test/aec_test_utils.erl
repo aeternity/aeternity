@@ -583,6 +583,8 @@ extend_block_chain_with_state(Chain,
                               [{PubKey, PrivKey}|Miners],
                               [BeneficiaryPubKey | Beneficiaries],
                               TxsFun, Nonce) ->
+    %% Avoid creating blocks with the same timestamp by sleeping here...
+    timer:sleep(1),
     NewChain = next_block_with_state(Chain, Tgt, Ts, TxsFun, Nonce, PubKey, PrivKey, BeneficiaryPubKey),
     extend_block_chain_with_state(NewChain, Tgts, Tss, Miners, Beneficiaries, TxsFun, Nonce).
 
