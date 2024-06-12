@@ -15,6 +15,17 @@ bash <(curl -s https://install.aeternity.io/install.sh)
 
 While this method is the easiest one it is not recommended for production systems.
 
+### Windows
+
+Use docker to run under Windows:
+
+```bash
+mkdir %APPDATA%\aeternity\maindb
+docker pull aeternity/aeternity
+docker run -p 3013:3013 -p 3015:3015 -v %APPDATA%/aeternity/maindb:/home/aeternity/node/data/mnesia aeternity/aeternity
+```
+
+
 ## Tarball Install
 
 In order to install an Aeternity node from a tarball, you need to:
