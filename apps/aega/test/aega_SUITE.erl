@@ -57,6 +57,7 @@
         , mwt_temp_n_spend/1
         , mwt_temp_height_spend/1
         , mwt_neg_master_actions/1
+        , mwt_can_not_attach_itself_as_master/1
 
         , oracle_register/1
         , oracle_query/1
@@ -162,6 +163,7 @@ groups() ->
                 , mwt_temp_n_spend
                 , mwt_temp_height_spend
                 , mwt_neg_master_actions
+                , mwt_can_not_attach_itself_as_master
                 ]}
 
     , {tx, [], [ tx_check
@@ -795,10 +797,20 @@ mwt_temp_spend(_Cfg) ->
     MainAcc  = ?call(new_account, 1000000000 * MinGP),
     TempAcc  = ?call(new_account, 1000000000 * MinGP),
     OtherAcc = ?call(new_account, 1000000000 * MinGP),
-    {ok, #{ct := GACt}}  = ?call(attach, GAAcc, "ga_main_w_temporary", "authorize", [account_lit(MainAcc)]),
+    {ok, #{ct := GACt}} = ?call(attach, GAAcc, "ga_main_w_temporary", "authorize", [account_lit(MainAcc)]),
 
     {ok, #{call_res := ok}} =
-        ?call(ct_call, MainAcc, GACt, "ga_main_w_temporary", "add_validator", [account_lit(TempAcc), "Plain"], #{}),
+        ?call(ct_call, MainAcc, GACt, "ga_main_w_temporary", "add_trustee", [account_lit(TempAcc), "Plain"], #{}),
+
+    {ok, #{call_res := ok,
+           call_val := Val}} =
+        ?call(ct_call, MainAcc, GACt, "ga_main_w_temporary", "get_state", [], #{}),
+    {tuple,{{address, MainAcc},
+            #{{address, TempAcc} := {variant,[0,1,1],0,{}}}, %% Trustees
+            {variant,[0,1], 1, {{tuple,{2000000000000000,1000000000000}}}}, %% fee protection
+            1 %% Nonce
+            }} =
+        decode_call_result("ga_main_w_temporary", "get_state", ok, Val),
 
     PreBalance = ?call(account_balance, OtherAcc),
     {ok, #{tx_res := ok}} =
@@ -816,16 +828,16 @@ mwt_neg_temp_spend(_Cfg) ->
     MainAcc  = ?call(new_account, 1000000000 * MinGP),
     TempAcc  = ?call(new_account, 1000000000 * MinGP),
     OtherAcc = ?call(new_account, 1000000000 * MinGP),
-    {ok, #{ct := GACt}}  = ?call(attach, GAAcc, "ga_main_w_temporary", "authorize", [account_lit(MainAcc)]),
+    {ok, #{ct := GACt}} = ?call(attach, GAAcc, "ga_main_w_temporary", "authorize", [account_lit(MainAcc)]),
 
     {ok, #{call_res := ok}} =
-        ?call(ct_call, MainAcc, GACt, "ga_main_w_temporary", "add_validator", [account_lit(TempAcc), "Plain"], #{}),
+        ?call(ct_call, MainAcc, GACt, "ga_main_w_temporary", "add_trustee", [account_lit(TempAcc), "Plain"], #{}),
 
     {ok, #{tx_res := ok}} =
         ?call(ga_spend, GAAcc, mwt_auth_opts(TempAcc, "1"), OtherAcc, 500, 20000 * MinGP),
 
     {ok, #{call_res := ok}} =
-        ?call(ct_call, MainAcc, GACt, "ga_main_w_temporary", "remove_validator", [account_lit(TempAcc)], #{}),
+        ?call(ct_call, MainAcc, GACt, "ga_main_w_temporary", "remove_trustee", [account_lit(TempAcc)], #{}),
 
     {failed, authentication_failed} =
         ?call(ga_spend, GAAcc, mwt_auth_opts(TempAcc, "2"), OtherAcc, 500, 20000 * MinGP, #{fail => true}),
@@ -841,12 +853,12 @@ mwt_temp_multi_spend(_Cfg) ->
     TempAcc1 = ?call(new_account, 1000000000 * MinGP),
     TempAcc2 = ?call(new_account, 1000000000 * MinGP),
     OtherAcc = ?call(new_account, 1000000000 * MinGP),
-    {ok, #{ct := GACt}}  = ?call(attach, GAAcc, "ga_main_w_temporary", "authorize", [account_lit(MainAcc)]),
+    {ok, #{ct := GACt}} = ?call(attach, GAAcc, "ga_main_w_temporary", "authorize", [account_lit(MainAcc)]),
 
     {ok, #{call_res := ok}} =
-        ?call(ct_call, MainAcc, GACt, "ga_main_w_temporary", "add_validator", [account_lit(TempAcc1), "Plain"], #{}),
+        ?call(ct_call, MainAcc, GACt, "ga_main_w_temporary", "add_trustee", [account_lit(TempAcc1), "Plain"], #{}),
     {ok, #{call_res := ok}} =
-        ?call(ct_call, MainAcc, GACt, "ga_main_w_temporary", "add_validator", [account_lit(TempAcc2), "Plain"], #{}),
+        ?call(ct_call, MainAcc, GACt, "ga_main_w_temporary", "add_trustee", [account_lit(TempAcc2), "Plain"], #{}),
 
     {ok, #{tx_res := ok}} =
         ?call(ga_spend, GAAcc, mwt_auth_opts(TempAcc2, "1"), OtherAcc, 500, 20000 * MinGP),
@@ -865,10 +877,10 @@ mwt_temp_n_spend(_Cfg) ->
     MainAcc  = ?call(new_account, 1000000000 * MinGP),
     TempAcc = ?call(new_account, 1000000000 * MinGP),
     OtherAcc = ?call(new_account, 1000000000 * MinGP),
-    {ok, #{ct := GACt}}  = ?call(attach, GAAcc, "ga_main_w_temporary", "authorize", [account_lit(MainAcc)]),
+    {ok, #{ct := GACt}} = ?call(attach, GAAcc, "ga_main_w_temporary", "authorize", [account_lit(MainAcc)]),
 
     {ok, #{call_res := ok}} =
-        ?call(ct_call, MainAcc, GACt, "ga_main_w_temporary", "add_validator", [account_lit(TempAcc), "NBound(2)"], #{}),
+        ?call(ct_call, MainAcc, GACt, "ga_main_w_temporary", "add_trustee", [account_lit(TempAcc), "NBound(2)"], #{}),
 
     {ok, #{tx_res := ok}} =
         ?call(ga_spend, GAAcc, mwt_auth_opts(TempAcc, "1"), OtherAcc, 500, 20000 * MinGP),
@@ -887,10 +899,10 @@ mwt_temp_height_spend(_Cfg) ->
     MainAcc  = ?call(new_account, 1000000000 * MinGP),
     TempAcc = ?call(new_account, 1000000000 * MinGP),
     OtherAcc = ?call(new_account, 1000000000 * MinGP),
-    {ok, #{ct := GACt}}  = ?call(attach, GAAcc, "ga_main_w_temporary", "authorize", [account_lit(MainAcc)]),
+    {ok, #{ct := GACt}} = ?call(attach, GAAcc, "ga_main_w_temporary", "authorize", [account_lit(MainAcc)]),
 
     {ok, #{call_res := ok}} =
-        ?call(ct_call, MainAcc, GACt, "ga_main_w_temporary", "add_validator", [account_lit(TempAcc), "TimeBound(10)"], #{}),
+        ?call(ct_call, MainAcc, GACt, "ga_main_w_temporary", "add_trustee", [account_lit(TempAcc), "TimeBound(10)"], #{}),
 
     {ok, #{tx_res := ok}} =
         ?call(ga_spend, GAAcc, mwt_auth_opts(TempAcc, "1"), OtherAcc, 500, 20000 * MinGP),
@@ -909,20 +921,30 @@ mwt_neg_master_actions(_Cfg) ->
     MainAcc  = ?call(new_account, 1000000000 * MinGP),
     TempAcc  = ?call(new_account, 1000000000 * MinGP),
     OtherAcc = ?call(new_account, 1000000000 * MinGP),
-    {ok, #{ct := GACt}}  = ?call(attach, GAAcc, "ga_main_w_temporary", "authorize", [account_lit(MainAcc)]),
+    {ok, #{ct := GACt}} = ?call(attach, GAAcc, "ga_main_w_temporary", "authorize", [account_lit(MainAcc)]),
 
     {ok, #{call_res := ok}} =
-        ?call(ct_call, MainAcc, GACt, "ga_main_w_temporary", "add_validator", [account_lit(TempAcc), "TimeBound(10)"], #{}),
+        ?call(ct_call, MainAcc, GACt, "ga_main_w_temporary", "add_trustee", [account_lit(TempAcc), "TimeBound(10)"], #{}),
 
     {ok, #{call_res := revert, call_val := <<"=Only for master">>}} =
-        ?call(ct_call, TempAcc, GACt, "ga_main_w_temporary", "add_validator", [account_lit(OtherAcc), "TimeBound(10)"]),
+        ?call(ct_call, TempAcc, GACt, "ga_main_w_temporary", "add_trustee", [account_lit(OtherAcc), "TimeBound(10)"]),
 
     {ok, #{call_res := revert, call_val := <<"=Only for master">>}} =
-        ?call(ct_call, TempAcc, GACt, "ga_main_w_temporary", "remove_validator", [account_lit(OtherAcc)]),
+        ?call(ct_call, TempAcc, GACt, "ga_main_w_temporary", "remove_trustee", [account_lit(OtherAcc)]),
 
     {ok, #{call_res := revert, call_val := <<"=Only for master">>}} =
         ?call(ct_call, TempAcc, GACt, "ga_main_w_temporary", "set_fee_protection", ["None"]),
 
+    ok.
+
+%% Assert that master account can not be the same as the delegated account
+mwt_can_not_attach_itself_as_master(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    MinGP = aec_test_utils:min_gas_price(),
+    GAAcc    = ?call(new_account, 1000000000 * MinGP),
+    {error, #{call_val := Val}} =
+        ?call(attach, GAAcc, "ga_main_w_temporary", "authorize", [account_lit(GAAcc)]),
+    ?assertMatch(<<"Master not allowed to be the account itself">>, decode_call_result("ga_main_w_temporary", "init", revert, Val)),
     ok.
 
 %%%===================================================================
@@ -1477,8 +1499,12 @@ attach(Owner, Contract, AuthFun, Args, Opts, S) ->
             CallKey  = aect_call:id(Owner, Nonce, ConKey),
             CallTree = aect_test_utils:calls(S1),
             Call     = aect_call_state_tree:get_call(ConKey, CallKey, CallTree),
-
-            {{ok, #{res => aect_call:return_type(Call), ct => ConKey}}, S1};
+            case aect_call:return_type(Call) of
+                ok ->
+                    {{ok, #{res => ok, ct => ConKey}}, S1};
+                revert ->
+                    {{error, #{call_val => aect_call:return_value(Call)}}, S}
+            end;
         _ ->
             error(bad_contract)
     end.
@@ -1902,7 +1928,7 @@ call_tx_default() ->
      , abi_version => abi_version()
      , fee         => 500000 * aec_test_utils:min_gas_price()
      , amount      => 0
-     , gas         => 10000 }.
+     , gas         => 30000 }.
 
 paying_for_tx(Payer, Nonce, Fee, Tx) ->
     {ok, PayingTx} =
@@ -2074,6 +2100,5 @@ ethereum_auth(_GA, Nonce, TxHash, S) ->
 main_w_temp_auth(Acc, Nonce, TxHash, S) ->
     AccPrivKey = aect_test_utils:priv_key(Acc, S),
     Sign = aega_test_utils:basic_auth_sign(list_to_integer(Nonce), TxHash, AccPrivKey),
-
     Args = [Nonce, account_lit(Acc), aega_test_utils:to_hex_lit(64, Sign)],
     {aega_test_utils:make_calldata("ga_main_w_temporary", "authorize", Args), S}.
