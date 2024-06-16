@@ -1673,12 +1673,12 @@
                         "primary_colour": {
                             "description": "Primary colour for branding.",
                             "type": "string",
-                            "default": "#f5274e"
+                            "default": "#f7296e"
                         },
                         "secondary_colour" : {
                             "description" : "Secondary colour for branding.",
                             "type" : "string",
-                            "default" : "#242424"
+                            "default" : "#1e1e1e"
                         },
                         "network_name": {
                             "description" : "The display name of the network id, if not set defaults to Mainnet for ae_mainnet, Testnet for ae_uat otherwise network id",
