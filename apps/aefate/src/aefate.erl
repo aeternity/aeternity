@@ -7,6 +7,7 @@
 -module(aefate).
 -export([main/1]).
 
+-include_lib("apps/aecontract/include/aecontract.hrl").
 
 -define(OPT_SPEC,
     [ {obj_file, undefined, undefined, string, "Fate bytecode file"}
@@ -62,19 +63,33 @@ load_file(FileName, Opts) ->
             usage();
         Call ->
             {ok, File} = file:read_file(FileName),
-            Code = aeb_fate_code:deserialize(File),
+            {contract_bytearray, CodeArr} = aeser_api_encoder:decode(File),
+            #{byte_code := Code} = aeser_contract_code:deserialize(CodeArr),
             SerializedCall = aeb_fate_asm:function_call(Call),
-            What = #{ contract => FileName
+            Spec = #{ contract => <<0:256>>
+                    , code => Code
+                    , vm_version => ?VM_FATE_SOPHIA_2
                     , call => SerializedCall
-                    , allow_init => true},
-            Chain = #{ contracts =>
-                           #{ FileName => Code}},
-            case aefa_fate:run(What, Chain) of
-                {ok, Env} ->
-                    print_after_run(Verbose, Code, Chain, Env),
-                    io:format("~0p~n", [aefa_engine_state:accumulator(Env)]);
-                {error, Error, Env} ->
-                    print_after_run(Verbose, Code, Chain, Env),
+                    , allow_init => true
+                    , value => 0 % TODO: make a flag
+                    , gas => 1000000000000000000000000 % TODO: make a flag
+                    , store => aefa_stores:new()
+                   },
+            Env = #{ contracts =>
+                           #{ FileName => Code}
+                  , gas_price => 1 % TODO: make a flag
+                  , fee => 621
+                  , trees => aec_trees:new_without_backend()
+                  , caller => <<0:256>>
+                  , origin => <<0:256>>
+                  , tx_env => aetx_env:tx_env(1)
+                  },
+            case aefa_fate:run(Spec, Env) of
+                {ok, ES} ->
+                    print_after_run(Verbose, Code, Env, ES),
+                    io:format("~0p~n", [aefa_engine_state:accumulator(ES)]);
+                {error, Error, ES} ->
+                    print_after_run(Verbose, Code, Env, ES),
                     io:format("~p~n", [Error])
             end
     end.
@@ -82,4 +97,6 @@ load_file(FileName, Opts) ->
 print_after_run(true, Code, Chain, Env) ->
     io:format("Code: ~0p~n", [Code]),
     io:format("Chain: ~0p~n", [Chain]),
-    io:format("Env: ~0p~n", [Env]).
+    io:format("Env: ~0p~n", [Env]);
+print_after_run(false, _, _, _) ->
+    ok.
