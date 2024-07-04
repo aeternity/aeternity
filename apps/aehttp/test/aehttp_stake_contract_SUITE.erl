@@ -16,6 +16,7 @@
          simple_withdraw/1,
          change_leaders/1,
          empty_parent_block/1,
+         sync_lazy_node/1,
          verify_fees/1,
          verify_commitments/1,
          verify_btc_commitments/1,
@@ -138,7 +139,7 @@ all() -> [{group, pos},
 
 groups() ->
     [{pos, [sequence], common_tests()},
-     {hc, [sequence], common_tests() ++ hc_specific_tests() ++ [{group, lazy_leader}]},
+     {hc, [sequence], common_tests() ++ hc_specific_tests()},
      {hc_btc, [sequence], common_tests() ++ hc_btc_specific_tests()},
      {hc_doge, [sequence], common_tests() ++ hc_btc_specific_tests()},
      {lazy_leader, [sequence], [elected_leader_did_not_show_up
@@ -154,11 +155,12 @@ common_tests() ->
     ].
 
 hc_specific_tests() ->
-    [
+    [sync_lazy_node,
      empty_parent_block,
      verify_commitments,
      genesis_has_commitments,
-     block_difficulty
+     block_difficulty,
+     elected_leader_did_not_show_up
     ].
 
 hc_btc_specific_tests() ->
@@ -312,14 +314,13 @@ init_per_group_custom(NetworkId, ?CONSENSUS_HC, Config) ->
     timer:sleep(1000),
     Config1 = [{network_id, NetworkId}, {consensus, ?CONSENSUS_HC},
                {genesis_start_time, GenesisStartTime} | Config],
-    {ok, _} = produce_blocks(?NODE1, ?NODE1_NAME, child, 10, Config, ?config(consensus, Config1)),
+    {ok, _} = produce_blocks(?NODE1, ?NODE1_NAME, child, 20, Config, ?config(consensus, Config1)),
     ParentTopHeight = rpc(?PARENT_CHAIN_NODE1, aec_chain, top_height, []),
     {ok, ParentBlocks} = get_generations(?PARENT_CHAIN_NODE1, 0, ParentTopHeight),
     ct:log("Parent chain blocks ~p", [ParentBlocks]),
     ChildTopHeight = rpc(?NODE1, aec_chain, top_height, []),
     {ok, ChildBlocks} = get_generations(?NODE1, 0, ChildTopHeight),
     ct:log("Child chain blocks ~p", [ChildBlocks]),
-    set_up_lazy_leader_node(<<"hc">>, Config1),
     Config1;
 init_per_group_custom(NetworkId, ?CONSENSUS_HC_BTC, Config) ->
     ElectionContract = election_contract_by_consensus(?CONSENSUS_HC),
@@ -752,6 +753,9 @@ change_leaders(Config) ->
     true  = BobLeaderCnt > 0,
     {ok, _B} = wait_same_top(),
     ok.
+
+sync_lazy_node(Config) ->
+    set_up_lazy_leader_node(<<"hc">>, Config).
 
 empty_parent_block(Config) ->
     case aect_test_utils:latest_protocol_version() < ?CERES_PROTOCOL_VSN of
@@ -1564,6 +1568,7 @@ node_config(NetworkId,Node, CTConfig, PotentialStakers, ReceiveAddress, Consensu
                             },
                         <<"polling">> =>
                             #{  <<"fetch_interval">> => 100,
+                                <<"cache_size">> => 10,
                                 <<"nodes">> => [ iolist_to_binary(io_lib:format("http://test:Pass@127.0.0.1:~p", [Port])) ]
                             },
                         <<"producing_commitments">> => ProducingCommitments

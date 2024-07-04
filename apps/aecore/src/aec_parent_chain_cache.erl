@@ -39,8 +39,6 @@
          get_block_by_height/1,
          get_commitments/1]).
 
--export([get_state/0]).
-
 -define(SERVER, ?MODULE).
 -define(FOLLOW_PC_TOP, follow_parent_chain_top).
 -define(FOLLOW_CHILD_TOP, sync_child_chain).
@@ -51,7 +49,7 @@
         child_top_hash                          :: aec_blocks:block_header_hash(),
         child_start_height                      :: non_neg_integer(),
         max_size                                :: non_neg_integer(),
-        blocks              = #{}               :: #{non_neg_integer() => aec_parent_chain_block:block()},
+        block_cache         = #{}               :: #{non_neg_integer() => aec_parent_chain_block:block() | requested},
         blocks_hash_index   = #{}               :: #{aec_parent_chain_block:hash() => non_neg_integer()},
         top_height          = 0                 :: non_neg_integer(),
         sign_module         = aec_preset_keys   :: atom(), %% TODO: make it configurable
@@ -103,13 +101,6 @@ get_commitments(Hash) ->
             Err
     end.
 
-
--spec get_state() -> {ok, map()}.
-get_state() ->
-    gen_server:call(?SERVER, get_state).
-
-
-
 %%%=============================================================================
 %%% Gen Server Callbacks
 %%%=============================================================================
@@ -129,7 +120,7 @@ init([StartHeight, Size, BlockProducing, EnabledCommitments]) ->
                 child_top_height        = ChildHeight,
                 child_top_hash          = ChildHash,
                 max_size                = Size,
-                blocks                  = #{},
+                block_cache             = #{},
                 producing_blocks        = BlockProducing,
                 enabled_commitments     = EnabledCommitments
                 }}.
@@ -153,9 +144,6 @@ handle_call({get_commitments, Hash}, _From, State) ->
                     {ok, _Commitments} = Ok -> Ok
                 end
         end,
-    {reply, Reply, State};
-handle_call(get_state, _From, State) ->
-    Reply = {ok, state_to_map(State)},
     {reply, Reply, State};
 handle_call(_Request, _From, State) ->
     Reply = unhandled,
@@ -207,11 +195,11 @@ handle_info({gproc_ps_event, top_changed, #{info := #{block_type := key,
                           posted_commitment = false},
     State2 =
         case OldHeight + MaxSize < Height of
-            true -> State1#state{blocks = #{}}; %% we flush the whole state - this should not happen
+            true  -> State1#state{block_cache = #{}}; %% we flush the whole state - this should not happen
             false -> State1
         end,
     TargetHeight = target_parent_height(State2),
-    aec_parent_connector:request_block_by_height(TargetHeight),
+    maybe_request_block(TargetHeight, State2),
     State = maybe_post_commitments(TargetHeight, Hash, State2),
     {noreply, State};
 handle_info({gproc_ps_event, chain_sync, #{info := {is_syncing, IsSyncing}}}, State0) ->
@@ -253,19 +241,19 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 
 -spec insert_block(aec_parent_chain_block:block(), state()) -> state().
-insert_block(Block, #state{blocks = Blocks,
+insert_block(Block, #state{block_cache = Blocks,
                            blocks_hash_index = Index} = State) ->
     Height = aec_parent_chain_block:height(Block),
     Hash = aec_parent_chain_block:hash(Block),
-    State#state{blocks = maps:put(Height, Block, Blocks),
+    State#state{block_cache = maps:put(Height, Block, Blocks),
                 blocks_hash_index = maps:put(Hash, Height, Index)}.
 
 -spec get_block(non_neg_integer(), state()) -> {ok, aec_parent_chain_block:block()} | {error, not_in_cache}.
-get_block(Height, #state{blocks = Blocks}) ->
+get_block(Height, #state{block_cache = Blocks}) ->
     case maps:find(Height, Blocks) of
+        {ok, requested}   -> {error, not_in_cache};
         {ok, _Block} = OK -> OK;
-        error ->
-            {error, not_in_cache}
+        error             -> {error, not_in_cache}
     end.
 
 -spec get_block_height_by_hash(aec_parent_chain_block:hash(), state()) ->
@@ -278,35 +266,26 @@ get_block_height_by_hash(Hash, #state{blocks_hash_index = Index}) ->
     end.
 
 -spec max_block(state()) -> non_neg_integer() | empty_cache.
-max_block(#state{blocks = Blocks}) when map_size(Blocks) =:= 0 ->
+max_block(#state{block_cache = Blocks}) when map_size(Blocks) =:= 0 ->
     empty_cache;
-max_block(#state{blocks = Blocks}) ->
+max_block(#state{block_cache = Blocks}) ->
     lists:max(maps:keys(Blocks)).
 
 -spec delete_block(non_neg_integer(), state()) -> state().
-delete_block(Height, #state{blocks = Blocks,
+delete_block(Height, #state{block_cache = Blocks,
                             blocks_hash_index = Index} = State) ->
-    case get_block(Height, State) of
+  case maps:find(Height, Blocks) of
+        {ok, requested} ->
+            State#state{block_cache = maps:remove(Height, Blocks)};
         {ok, Block} ->
             Hash = aec_parent_chain_block:hash(Block),
-            State#state{blocks = maps:remove(Height, Blocks),
+            State#state{block_cache = maps:remove(Height, Blocks),
                         blocks_hash_index = maps:remove(Hash, Index)};
-        {error, not_in_cache} -> State
+        error -> State
     end.
 
-state_to_map(#state{child_start_height = StartHeight,
-                    child_top_height   = ChildHeight,
-                    max_size     = MaxSize,
-                    blocks       = Blocks,
-                    top_height   = TopHeight}) ->
-    #{  child_start_height => StartHeight,
-        child_top_height   => ChildHeight,
-        max_size     => MaxSize,
-        blocks       => Blocks,
-        top_height   => TopHeight}.
-
-target_parent_height(#state{child_start_height    = StartHeight,
-                            child_top_height      = ChildHeight}) ->
+target_parent_height(#state{child_start_height = StartHeight,
+                            child_top_height   = ChildHeight}) ->
     ChildHeight + StartHeight.
 
 min_cachable_parent_height(#state{max_size   = CacheSize,
@@ -334,8 +313,7 @@ post_block(Block, #state{max_size = MaxSize,
                             empty_cache -> TargetHeight;
                             H -> H
                         end,
-                    maybe_request_next_block(MaxBlock, State),
-                    State;
+                    maybe_request_next_block(MaxBlock, State);
                 false ->
                     %% the block received might be the top one or a previous one; we try GCing
                     %% older blocks according to the top block only;
@@ -355,45 +333,52 @@ post_block(Block, #state{max_size = MaxSize,
                             false -> State1
                         end,
                     State3 = State2#state{top_height = max(TopHeight, BlockHeight)},
-                    maybe_request_previous_block(BlockHeight, State3),
-                    maybe_request_next_block(BlockHeight, State3),
-                    State3
+                    State4 = maybe_request_previous_block(BlockHeight, State3),
+                    maybe_request_next_block(BlockHeight, State4)
             end
     end.
 
-maybe_request_previous_block(0 = _BlockHeight, _State) -> pass;
+request_block(Height, #state{block_cache = Blocks} = State) ->
+    case maps:get(Height, Blocks, undefined) of
+        undefined ->
+            lager:debug("Missing block with height ~p detected, requesting it", [Height]),
+            aec_parent_connector:request_block_by_height(Height),
+            State#state{block_cache = Blocks#{Height => requested}};
+        _ ->
+            State
+    end.
+
+maybe_request_previous_block(0 = _BlockHeight, State) -> State;
 maybe_request_previous_block(BlockHeight, #state{} = State) ->
     PrevHeight = BlockHeight - 1,
     case PrevHeight >= min_cachable_parent_height(State) of
         true ->
-            %% check if the previous block is missing
-            case get_block(PrevHeight, State) of
-                {ok, _} -> pass;
-                {error, _} -> %% missing block detected
-                    lager:debug("Missing block with height ~p detected, requesting it", [PrevHeight]),
-                    aec_parent_connector:request_block_by_height(PrevHeight)
-            end;
+            request_block(PrevHeight, State);
         false ->
-            pass
+            State
     end.
 
-maybe_request_next_block(BlockHeight, #state{top_height = TopHeight}) when BlockHeight >= TopHeight ->
-    pass;
-maybe_request_next_block(BlockHeight, #state{max_size = MaxSize } = State) ->
+maybe_request_block(BlockHeight, #state{top_height = TopHeight}) when BlockHeight > TopHeight ->
+    aec_parent_connector:request_block_by_height(BlockHeight);
+maybe_request_block(BlockHeight, State) ->
+    maybe_request_next_block(BlockHeight - 1, State).
+
+maybe_request_next_block(BlockHeight, #state{top_height = TopHeight} = State) when BlockHeight >= TopHeight ->
+    State;
+maybe_request_next_block(BlockHeight, #state{max_size = MaxSize} = State) ->
     TargetHeight = target_parent_height(State),
-    MaxBlockToRequest = TargetHeight + MaxSize,
+    MaxBlockToRequest = TargetHeight + MaxSize - 1,
     NextHeight = BlockHeight + 1,
     case MaxBlockToRequest > BlockHeight andalso NextHeight =< MaxBlockToRequest of
         true ->
             case get_block(NextHeight, State) of
-                {ok, _} -> pass;
+                {ok, _} ->
+                    maybe_request_next_block(NextHeight, State);
                 {error, not_in_cache} ->
-                    lager:debug("Populating the cache forward, requesting block with height ~p",
-                                [NextHeight]),
-                    aec_parent_connector:request_block_by_height(NextHeight)
+                    request_block(NextHeight, State)
             end;
         _ -> %% cache is already full
-            pass
+            State
     end.
 
 maybe_post_commitments(TargetHeight, TopHash, #state{is_syncing = IsSyncing,
