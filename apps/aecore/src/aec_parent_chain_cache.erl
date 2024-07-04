@@ -39,6 +39,12 @@
          get_block_by_height/1,
          get_commitments/1]).
 
+-ifdef(TEST).
+
+-export([get_state/0]).
+
+-endif.
+
 -define(SERVER, ?MODULE).
 -define(FOLLOW_PC_TOP, follow_parent_chain_top).
 -define(FOLLOW_CHILD_TOP, sync_child_chain).
@@ -101,6 +107,13 @@ get_commitments(Hash) ->
             Err
     end.
 
+
+-spec get_state() -> {ok, map()}.
+get_state() ->
+    gen_server:call(?SERVER, get_state).
+
+
+
 %%%=============================================================================
 %%% Gen Server Callbacks
 %%%=============================================================================
@@ -144,6 +157,9 @@ handle_call({get_commitments, Hash}, _From, State) ->
                     {ok, _Commitments} = Ok -> Ok
                 end
         end,
+    {reply, Reply, State};
+handle_call(get_state, _From, State) ->
+    Reply = {ok, state_to_map(State)},
     {reply, Reply, State};
 handle_call(_Request, _From, State) ->
     Reply = unhandled,
@@ -283,6 +299,17 @@ delete_block(Height, #state{block_cache = Blocks,
                         blocks_hash_index = maps:remove(Hash, Index)};
         error -> State
     end.
+
+state_to_map(#state{child_start_height = StartHeight,
+                    child_top_height   = ChildHeight,
+                    max_size           = MaxSize,
+                    block_cache        = Blocks,
+                    top_height         = TopHeight}) ->
+    #{ child_start_height => StartHeight,
+       child_top_height   => ChildHeight,
+       max_size           => MaxSize,
+       blocks             => Blocks,
+       top_height         => TopHeight}.
 
 target_parent_height(#state{child_start_height = StartHeight,
                             child_top_height   = ChildHeight}) ->
