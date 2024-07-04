@@ -108,10 +108,11 @@ get_commitments(Hash) ->
     end.
 
 
+-ifdef(TEST).
 -spec get_state() -> {ok, map()}.
 get_state() ->
     gen_server:call(?SERVER, get_state).
-
+-endif.
 
 
 %%%=============================================================================
