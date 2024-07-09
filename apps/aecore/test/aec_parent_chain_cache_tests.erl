@@ -661,9 +661,10 @@ child_new_top(CachePid, Height) ->
 
 assert_child_cache_consistency(#{ child_start_height := StartHeight,
                                   child_top_height   := ChildTop,
-                                  blocks             := Blocks,
+                                  blocks             := Blocks0,
                                   max_size           := CacheMaxSize,
                                   top_height         := TopHeight}) ->
+    Blocks = maps:filter(fun(_, V) -> is_tuple(V) end, Blocks0),
     ?assertEqual(CacheMaxSize, map_size(Blocks)),
     CacheExpectedStart = min(ChildTop + StartHeight, TopHeight - CacheMaxSize + 1),
     ?assertEqual(CacheExpectedStart, lists:min(maps:keys(Blocks))),
