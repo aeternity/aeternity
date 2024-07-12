@@ -1472,7 +1472,7 @@ find_tx_with_location(STxHash) ->
 remove_tx(TxHash) ->
     ?t(begin
            remove_tx_location(TxHash),
-           mnesia:delete({aec_signed_tx, TxHash})
+           delete(aec_signed_tx, TxHash)
        end).
 
 add_tx(STx) ->
