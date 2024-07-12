@@ -122,9 +122,13 @@ start(Config, #{block_production := BlockProduction}) ->
             <<"AE2BTC">> -> start_btc(StakersConfig, PCSpendAddress, aehttpc_btc);
             <<"AE2DOGE">> -> start_btc(StakersConfig, PCSpendAddress, aehttpc_doge)
         end,
+
+    Hash2IntFun = fun ParentConnMod:hash_to_integer/1,
+    aeu_ets_cache:put(?ETS_CACHE_TABLE, hash_to_int, Hash2IntFun),
+
     start_dependency(aec_parent_connector, [ParentConnMod, FetchInterval, ParentHosts, NetworkId,
                                             SignModule, HCPCPairs, PCSpendPubkey, Fee, Amount]),
-    start_dependency(aec_parent_chain_cache, [StartHeight, CacheSize, Confirmations,
+    start_dependency(aec_parent_chain_cache, [StartHeight + pc_finality(), CacheSize, Confirmations,
                                               BlockProduction, ProducingCommitments]),
     ok.
 
@@ -248,7 +252,7 @@ state_pre_transform_key_node(Node, PrevNode, Trees) ->
                 {error, not_in_cache} ->
                     aec_conductor:throw_error(parent_chain_block_not_synced);
                 {ok, Block} ->
-                    Entropy = aec_parent_chain_block:hash(Block),
+                    Entropy = entropy(Block, Height),
                     CommitmentsSophia = encode_commitments(Block),
                     NetworkId = aec_parent_chain_block:encode_network_id(aec_governance:get_network_id()),
                     {ok, CD} = aeb_fate_abi:create_calldata("elect",
@@ -447,9 +451,81 @@ pc_start_height() ->
     Fun = fun() -> get_consensus_config_key([<<"parent_chain">>, <<"start_height">>], 0) end,
     aeu_ets_cache:get(?ETS_CACHE_TABLE, pc_start_height, Fun).
 
+pc_finality() ->
+    Fun = fun() -> get_consensus_config_key([<<"parent_chain">>, <<"finality">>], 0) end,
+    aeu_ets_cache:get(?ETS_CACHE_TABLE, finality, Fun).
+
 genesis_start_time() ->
     Fun = fun() -> get_consensus_config_key([<<"genesis_start_time">>], 0) end,
     aeu_ets_cache:get(?ETS_CACHE_TABLE, genesis_start_time, Fun).
+
+parent_generation() ->
+    Fun = fun() -> get_consensus_config_key([<<"parent_chain">>, <<"parent_generation">>]) end,
+    aeu_ets_cache:get(?ETS_CACHE_TABLE, parent_generation, Fun).
+
+child_epoch_length() ->
+    Fun = fun() -> get_consensus_config_key([<<"child_epoch_length">>]) end,
+    aeu_ets_cache:get(?ETS_CACHE_TABLE, child_epoch_length, Fun).
+
+is_new_epoch(Height) ->
+    Height rem child_epoch_length() == 0.
+
+hash_to_int(Hash) ->
+    {ok, Hash2IntFun} = aeu_ets_cache:lookup(?ETS_CACHE_TABLE, hash_to_int),
+    Hash2IntFun(Hash).
+
+
+entropy(Block, Height) ->
+    PCHeight = aec_parent_chain_block:height(Block),
+    Hash = aec_parent_chain_block:hash(Block),
+    case is_new_epoch(Height) of
+        true ->
+            case set_new_entropy(Hash, PCHeight) of
+                {SeedState, SeedHeight} when PCHeight > SeedHeight ->
+                    %% The finality for the parent chain has not been reached
+                    next_entropy_from_seed(SeedState, SeedHeight);
+                _ ->
+                    Hash
+            end;
+        _ ->
+            next_entropy(Hash, PCHeight)
+    end.
+
+
+set_new_entropy(Hash, PCHeight) ->
+    case aec_parent_chain_cache:get_block_by_height(PCHeight + pc_finality()) of
+        {error, not_in_cache} ->
+            case aeu_ets_cache:lookup(?ETS_CACHE_TABLE, seed) of
+                error ->
+                    lager:error("Parent finality not reached for height ~p", [PCHeight]),
+                    aec_conductor:throw_error(parent_chain_block_not_synced);
+                {_OldState, _OldPCHeight} = Old ->
+                    lager:warning("Parent finality not reached for parent height ~p", [PCHeight]),
+                    Old
+            end;
+        {ok, _Block} ->
+            lager:info("New epoch at parent height ~p", [PCHeight]),
+            Seed = hash_to_int(Hash),
+            State = rand:seed_s(exsss, Seed),
+            aeu_ets_cache:put(?ETS_CACHE_TABLE, seed, {State, PCHeight}),
+            {State, PCHeight}
+    end.
+
+next_entropy(Hash, PCHeight) ->
+    {NewState, NewPCHeight} = case aeu_ets_cache:lookup(?ETS_CACHE_TABLE, seed) of
+                                {ok, {_State, PCHeight} = Result} ->
+                                    Result;
+                                _ ->
+                                    lager:warning("Trying to set entropy for parent height ~p", [PCHeight]),
+                                    set_new_entropy(Hash, PCHeight)
+                              end,
+    next_entropy_from_seed(NewState, NewPCHeight).
+
+next_entropy_from_seed(State, PCHeight) ->
+    {HashInt, State2} = rand:bytes_s(256, State),
+    aeu_ets_cache:put(?ETS_CACHE_TABLE, seed, {State2, PCHeight}),
+    list_to_bitstring(base58:binary_to_base58(HashInt)).
+
 
 %% This is the contract owner, calls shall be only available via protocol
 contract_owner() ->
@@ -590,7 +666,7 @@ next_beneficiary() ->
     PCHeight = pc_height(NextHeight),
     case aec_parent_chain_cache:get_block_by_height(PCHeight) of
         {ok, Block} ->
-            Entropy = aec_parent_chain_block:hash(Block),
+            Entropy = entropy(Block, NextHeight),
             CommitmentsSophia = encode_commitments(Block),
             NetworkId = aec_parent_chain_block:encode_network_id(aec_governance:get_network_id()),
             {ok, CD} = aeb_fate_abi:create_calldata("elect_next",
@@ -789,8 +865,10 @@ call_contracts([Call | Tail], TxEnv, TreesAccum) ->
 seal_padding_size() ->
     ?KEY_SEAL_SIZE - ?SIGNATURE_SIZE.
 
-pc_height(ChildHeight) ->
-    ChildHeight + pc_start_height().%% child starts pinning from height 1, not genesis
+pc_height(Height) ->
+    ChildEpochLength = child_epoch_length(),
+    EpochNum = Height div ChildEpochLength,
+    EpochNum * parent_generation() + pc_start_height().%% child starts pinning from height 1, not genesis
 
 encode_commitments(Block) ->
     {ok, Commitments} = aec_parent_chain_block:commitments(Block),
