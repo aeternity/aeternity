@@ -9,7 +9,8 @@
          get_header_by_height/3,
          get_commitment_tx_in_block/5,
          get_commitment_tx_at_height/4,
-         post_commitment/8]).
+         post_commitment/8,
+         hash_to_integer/1]).
 
 -behavior(aehttpc).
 
@@ -44,6 +45,11 @@ post_commitment(NodeSpec, StakerPubkey, HCCollectPubkey, Amount, Fee, Commitment
     post_commitment_tx(NodeSpec, StakerPubkey, HCCollectPubkey, Amount,
                        Fee, Commitment,
                        NetworkId, SignModule).
+
+hash_to_integer(Hash) ->
+    {_, HashBin} = aeser_api_encoder:decode(Hash),
+    <<Int:256/unsigned-integer>> = HashBin,
+    Int.
 
 
 %%%===================================================================
