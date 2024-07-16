@@ -34,7 +34,7 @@ jobs:
 
   - macos-tarball:
       name: macos-release-tarball
-      package_name: aeternity-$CIRCLE_TAG-macos-x86_64.tar.gz
+      package_name: aeternity-$CIRCLE_TAG-macos-arm64.tar.gz
       context: ae-slack
       filters:
         branches:
@@ -44,7 +44,7 @@ jobs:
 
   - macos-tarball:
       name: macos-release-tarball-bundle
-      package_name: aeternity-bundle-$CIRCLE_TAG-macos-x86_64.tar.gz
+      package_name: aeternity-bundle-$CIRCLE_TAG-macos-arm64.tar.gz
       aeplugin_devmode: true
       context: ae-slack
       filters:
@@ -55,7 +55,7 @@ jobs:
 
   - macos-standalone:
       name: macos-release-standalone
-      package_name: aeternity-$CIRCLE_TAG-macos-x86_64-standalone
+      package_name: aeternity-$CIRCLE_TAG-macos-arm64-standalone
       context: ae-slack
       filters:
         branches:
@@ -248,7 +248,7 @@ jobs:
 
   - promote-tarball-s3:
       name: promote-release-macos-tarball-s3
-      uri: s3://<< pipeline.parameters.s3_releases_bucket >>/aeternity-$CIRCLE_TAG-macos-x86_64.tar.gz
+      uri: s3://<< pipeline.parameters.s3_releases_bucket >>/aeternity-$CIRCLE_TAG-macos-arm64.tar.gz
       context:
         - ae-slack
         - ae-vault-node

@@ -75,8 +75,8 @@ macos-tarball:
     package_name:
       type: string
   macos:
-    xcode: "13.4.1" # macOS 12.3.1
-  resource_class: macos.x86.medium.gen2
+    xcode: "14.2.0" # macOS 12.6.3
+  resource_class: macos.m1.medium.gen1
   working_directory: /Users/distiller/aeternity
   steps:
     - fixed_checkout
@@ -113,8 +113,8 @@ macos-standalone:
     package_name:
       type: string
   macos:
-    xcode: "13.4.1" # macOS 12.3.1
-  resource_class: macos.x86.medium.gen2
+    xcode: "14.2.0" # macOS 12.6.3
+  resource_class: macos.m1.medium.gen1
   working_directory: /Users/distiller/aeternity
   steps:
     - fixed_checkout

@@ -28,7 +28,7 @@ In order to install an Aeternity node from a tarball, you need to:
 The release binaries are published on [GitHub][releases] and are tested on the following platforms:
 
 * Ubuntu 18.04 LTS (x86-64);
-* macOS Big Sur 11.6.2 (x86-64).
+* macOS Big Sur 12.6.3 (arm64).
 
 [releases]: https://github.com/aeternity/aeternity/releases
 
@@ -82,5 +82,5 @@ Create a directory and unpack the downloaded package (you need to amend the dire
 ```bash
 mkdir -p ~/aeternity/node
 cd ~/aeternity/node
-tar xf ~/Downloads/aeternity-<package_version>-macos-x86_64.tar.gz
+tar xf ~/Downloads/aeternity-<package_version>-macos-arm64.tar.gz
 ```
