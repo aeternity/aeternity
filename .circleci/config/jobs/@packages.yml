@@ -90,9 +90,9 @@ macos-tarball:
           brew install autoconf automake libtool gmp libsodium erlang@24 cmake
           brew link erlang@24
           echo 'export PATH=/opt/homebrew/bin:$PATH' >> "$BASH_ENV"
-          echo 'CFLAGS="-I/opt/homebrew/include"' >> "$BASH_ENV"
-          echo 'CXXFLAGS="-I/opt/homebrew/include"' >> "$BASH_ENV"
-          echo 'LDFLAGS="-L/opt/homebrew/lib"' >> "$BASH_ENV"
+          echo 'export CFLAGS="-I/opt/homebrew/include"' >> "$BASH_ENV"
+          echo 'export CXXFLAGS="-I/opt/homebrew/include"' >> "$BASH_ENV"
+          echo 'export LDFLAGS="-L/opt/homebrew/lib"' >> "$BASH_ENV"
     - test_arch_os_dependencies
     - build_tarball:
         output: << pipeline.parameters.packages_workspace >>/<< parameters.package_name >>
