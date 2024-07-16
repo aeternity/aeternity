@@ -265,22 +265,17 @@ jobs:
       package_name: aeternity-$CIRCLE_SHA1-macos-x86_64.tar.gz
       context: ae-slack
       requires: []
-      filters:
-        branches:
-          only:
-            - /releases\/.*/
-            - << pipeline.parameters.master_branch >>
 
   - macos-tarball:
       name: macos-tarball-bundle
       package_name: aeternity-bundle-$CIRCLE_SHA1-macos-x86_64.tar.gz
       aeplugin_devmode: true
       context: ae-slack
-      filters:
-        branches:
-          only:
-            - /releases\/.*/
-            - << pipeline.parameters.master_branch >>
+
+  - macos-standalone:
+      name: macos-release-standalone
+      package_name: aeternity-$CIRCLE_TAG-macos-x86_64-standalone
+      context: ae-slack
 
   - deploy:
       name: deploy-integration
