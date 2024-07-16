@@ -53,16 +53,6 @@ jobs:
         tags:
           only: << pipeline.parameters.tag_regex >>
 
-  - macos-standalone:
-      name: macos-release-standalone
-      package_name: aeternity-$CIRCLE_TAG-macos-arm64-standalone
-      context: ae-slack
-      filters:
-        branches:
-          ignore: /.*/
-        tags:
-          only: << pipeline.parameters.tag_regex >>
-
   - slack/on-hold:
       name: hodl-artifact-upload-notification
       context: ae-slack
@@ -72,7 +62,6 @@ jobs:
         - linux-release-tarball-bundle
         - macos-release-tarball-bundle
         - linux-release-standalone
-        - macos-release-standalone
       filters:
         branches:
           ignore: /.*/
@@ -101,7 +90,6 @@ jobs:
         - linux-release-tarball-bundle
         - macos-release-tarball-bundle
         - linux-release-standalone
-        - macos-release-standalone
         - hodl_artifact_upload
       filters:
         branches:
@@ -119,7 +107,6 @@ jobs:
         - linux-release-tarball-bundle
         - macos-release-tarball-bundle
         - linux-release-standalone
-        - macos-release-standalone
         - hodl_artifact_upload
       filters:
         branches:
