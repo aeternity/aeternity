@@ -34,7 +34,7 @@ jobs:
 
   - macos-tarball:
       name: macos-release-tarball
-      package_name: aeternity-$CIRCLE_TAG-macos-x86_64.tar.gz
+      package_name: aeternity-$CIRCLE_TAG-macos-arm64.tar.gz
       context: ae-slack
       filters:
         branches:
@@ -44,18 +44,8 @@ jobs:
 
   - macos-tarball:
       name: macos-release-tarball-bundle
-      package_name: aeternity-bundle-$CIRCLE_TAG-macos-x86_64.tar.gz
+      package_name: aeternity-bundle-$CIRCLE_TAG-macos-arm64.tar.gz
       aeplugin_devmode: true
-      context: ae-slack
-      filters:
-        branches:
-          ignore: /.*/
-        tags:
-          only: << pipeline.parameters.tag_regex >>
-
-  - macos-standalone:
-      name: macos-release-standalone
-      package_name: aeternity-$CIRCLE_TAG-macos-x86_64-standalone
       context: ae-slack
       filters:
         branches:
@@ -72,7 +62,6 @@ jobs:
         - linux-release-tarball-bundle
         - macos-release-tarball-bundle
         - linux-release-standalone
-        - macos-release-standalone
       filters:
         branches:
           ignore: /.*/
@@ -101,7 +90,6 @@ jobs:
         - linux-release-tarball-bundle
         - macos-release-tarball-bundle
         - linux-release-standalone
-        - macos-release-standalone
         - hodl_artifact_upload
       filters:
         branches:
@@ -119,7 +107,6 @@ jobs:
         - linux-release-tarball-bundle
         - macos-release-tarball-bundle
         - linux-release-standalone
-        - macos-release-standalone
         - hodl_artifact_upload
       filters:
         branches:
@@ -248,7 +235,7 @@ jobs:
 
   - promote-tarball-s3:
       name: promote-release-macos-tarball-s3
-      uri: s3://<< pipeline.parameters.s3_releases_bucket >>/aeternity-$CIRCLE_TAG-macos-x86_64.tar.gz
+      uri: s3://<< pipeline.parameters.s3_releases_bucket >>/aeternity-$CIRCLE_TAG-macos-arm64.tar.gz
       context:
         - ae-slack
         - ae-vault-node

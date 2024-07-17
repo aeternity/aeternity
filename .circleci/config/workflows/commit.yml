@@ -262,7 +262,7 @@ jobs:
 
   - macos-tarball:
       name: macos-tarball
-      package_name: aeternity-$CIRCLE_SHA1-macos-x86_64.tar.gz
+      package_name: aeternity-$CIRCLE_SHA1-macos-arm64.tar.gz
       context: ae-slack
       requires: []
       filters:
@@ -273,7 +273,7 @@ jobs:
 
   - macos-tarball:
       name: macos-tarball-bundle
-      package_name: aeternity-bundle-$CIRCLE_SHA1-macos-x86_64.tar.gz
+      package_name: aeternity-bundle-$CIRCLE_SHA1-macos-arm64.tar.gz
       aeplugin_devmode: true
       context: ae-slack
       filters:
