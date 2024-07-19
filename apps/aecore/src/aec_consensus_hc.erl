@@ -253,11 +253,9 @@ state_pre_transform_key_node(Node, PrevNode, Trees) ->
                     aec_conductor:throw_error(parent_chain_block_not_synced);
                 {ok, Block} ->
                     Entropy = entropy(Block, Height),
-                    CommitmentsSophia = encode_commitments(Block),
                     NetworkId = aec_parent_chain_block:encode_network_id(aec_governance:get_network_id()),
                     {ok, CD} = aeb_fate_abi:create_calldata("elect",
                                                             [aefa_fate_code:encode_arg({string, Entropy}),
-                                                             CommitmentsSophia,
                                                              aefa_fate_code:encode_arg({bytes, NetworkId})
                                                             ]),
                     CallData = aeser_api_encoder:encode(contract_bytearray, CD),
@@ -476,30 +474,34 @@ hash_to_int(Hash) ->
 
 
 entropy(Block, Height) ->
-    PCHeight = aec_parent_chain_block:height(Block),
-    Hash = aec_parent_chain_block:hash(Block),
-    case is_new_epoch(Height) of
-        true ->
-            case set_new_entropy(Hash, PCHeight) of
-                {SeedState, SeedHeight} when PCHeight > SeedHeight ->
-                    %% The finality for the parent chain has not been reached
-                    next_entropy_from_seed(SeedState, SeedHeight);
+    case aeu_ets_cache:lookup(?ETS_CACHE_TABLE, seed) of
+        {ok, {_OldState, Seed, Height, _OldPCHeight}} ->
+            Seed;
+        _Other ->
+            PCHeight = aec_parent_chain_block:height(Block),
+            Hash = aec_parent_chain_block:hash(Block),
+            case is_new_epoch(Height) of
+                true ->
+                    case set_new_entropy(Hash, Height, PCHeight) of
+                        {SeedState, _OldSeed, _OldHeight, SeedHeight} when PCHeight > SeedHeight ->
+                            %% The finality for the parent chain has not been reached
+                            next_entropy_from_seed(SeedState, Height, SeedHeight);
+                        _ ->
+                            Hash
+                    end;
                 _ ->
-                    Hash
-            end;
-        _ ->
-            next_entropy(Hash, PCHeight)
+                    next_entropy(Hash, Height, PCHeight)
+            end
     end.
 
-
-set_new_entropy(Hash, PCHeight) ->
+set_new_entropy(Hash, Height, PCHeight) ->
     case aec_parent_chain_cache:get_block_by_height(PCHeight + pc_finality()) of
         {error, not_in_cache} ->
             case aeu_ets_cache:lookup(?ETS_CACHE_TABLE, seed) of
                 error ->
                     lager:error("Parent finality not reached for height ~p", [PCHeight]),
                     aec_conductor:throw_error(parent_chain_block_not_synced);
-                {_OldState, _OldPCHeight} = Old ->
+                {ok, {_OldState, _OldSeed, _OldHeight, _OldPCHeight} = Old} ->
                     lager:warning("Parent finality not reached for parent height ~p", [PCHeight]),
                     Old
             end;
@@ -507,24 +509,26 @@ set_new_entropy(Hash, PCHeight) ->
             lager:info("New epoch at parent height ~p", [PCHeight]),
             Seed = hash_to_int(Hash),
             State = rand:seed_s(exsss, Seed),
-            aeu_ets_cache:put(?ETS_CACHE_TABLE, seed, {State, PCHeight}),
-            {State, PCHeight}
+            Result = {State, Hash, Height, PCHeight},
+            aeu_ets_cache:put(?ETS_CACHE_TABLE, seed, Result),
+            Result
     end.
 
-next_entropy(Hash, PCHeight) ->
-    {NewState, NewPCHeight} = case aeu_ets_cache:lookup(?ETS_CACHE_TABLE, seed) of
-                                {ok, {_State, PCHeight} = Result} ->
+next_entropy(Hash, Height, PCHeight) ->
+    {NewState, _Seed, _Height, NewPCHeight} = case aeu_ets_cache:lookup(?ETS_CACHE_TABLE, seed) of
+                                {ok, {_State, _OldSeed, _OldHeight, PCHeight} = Result} ->
                                     Result;
                                 _ ->
                                     lager:warning("Trying to set entropy for parent height ~p", [PCHeight]),
-                                    set_new_entropy(Hash, PCHeight)
+                                    set_new_entropy(Hash, Height, PCHeight)
                               end,
-    next_entropy_from_seed(NewState, NewPCHeight).
+    next_entropy_from_seed(NewState, Height, NewPCHeight).
 
-next_entropy_from_seed(State, PCHeight) ->
+next_entropy_from_seed(State, Height, PCHeight) ->
     {HashInt, State2} = rand:bytes_s(256, State),
-    aeu_ets_cache:put(?ETS_CACHE_TABLE, seed, {State2, PCHeight}),
-    list_to_bitstring(base58:binary_to_base58(HashInt)).
+    Seed = list_to_bitstring(base58:binary_to_base58(HashInt)),
+    aeu_ets_cache:put(?ETS_CACHE_TABLE, seed, {State2, Seed, Height, PCHeight}),
+    Seed.
 
 
 %% This is the contract owner, calls shall be only available via protocol
@@ -667,11 +671,9 @@ next_beneficiary() ->
     case aec_parent_chain_cache:get_block_by_height(PCHeight) of
         {ok, Block} ->
             Entropy = entropy(Block, NextHeight),
-            CommitmentsSophia = encode_commitments(Block),
             NetworkId = aec_parent_chain_block:encode_network_id(aec_governance:get_network_id()),
             {ok, CD} = aeb_fate_abi:create_calldata("elect_next",
                                                     [aefa_fate_code:encode_arg({string, Entropy}),
-                                                     CommitmentsSophia,
                                                      aefa_fate_code:encode_arg({bytes, NetworkId})
                                                     ]),
             CallData = aeser_api_encoder:encode(contract_bytearray, CD),
@@ -869,19 +871,6 @@ pc_height(Height) ->
     ChildEpochLength = child_epoch_length(),
     EpochNum = Height div ChildEpochLength,
     EpochNum * parent_generation() + pc_start_height().%% child starts pinning from height 1, not genesis
-
-encode_commitments(Block) ->
-    {ok, Commitments} = aec_parent_chain_block:commitments(Block),
-    Commitments1 =
-        lists:map(
-            fun({Signature, StakerHash, TopKeyHash}) ->
-                Sig = aefa_fate_code:encode_arg({signature, Signature}),
-                Staker = aefa_fate_code:encode_arg({bytes, StakerHash}),
-                TopHash = aefa_fate_code:encode_arg({bytes, TopKeyHash}),
-                aeb_fate_data:make_tuple({Sig, Staker, TopHash})
-            end,
-            Commitments),
-    aeb_fate_data:make_list(Commitments1).
 
 elect_lazy_leader(Beneficiary, TxEnv, Trees) ->
     {ok, CDLazy} = aeb_fate_abi:create_calldata("elect_after_lazy_leader",
