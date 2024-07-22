@@ -382,7 +382,7 @@ seal_correct_signature(Header, Signature, _Padding) ->
             {error, signature_verification_failed}
     end.
 
-generate_key_header_seal(_, Candidate, _PCHeight, #{expected_key_block_rate := _Expected} = _Config, _) ->
+generate_key_header_seal(_, Candidate, _PCHeight, #{child_block_time := ChildBlockTime} = _Config, _) ->
     Leader = aec_headers:beneficiary(Candidate),
     SignModule = get_sign_module(),
     case SignModule:set_candidate(Leader) of
@@ -390,6 +390,7 @@ generate_key_header_seal(_, Candidate, _PCHeight, #{expected_key_block_rate := _
             timer:sleep(1000),
             {continue_mining, {error, no_solution} };
         ok ->
+            timer:sleep(ChildBlockTime),
             {ok, Signature} = SignModule:produce_key_header_signature(Candidate, Leader),
             %% the signature is 64 bytes. The seal is 168 bytes. We add 104 bytes at
             %% the end of the signature
@@ -464,6 +465,10 @@ parent_generation() ->
 child_epoch_length() ->
     Fun = fun() -> get_consensus_config_key([<<"child_epoch_length">>]) end,
     aeu_ets_cache:get(?ETS_CACHE_TABLE, child_epoch_length, Fun).
+
+child_block_time() ->
+    Fun = fun() -> get_consensus_config_key([<<"child_block_time">>]) end,
+    aeu_ets_cache:get(?ETS_CACHE_TABLE, child_block_time, Fun).
 
 is_new_epoch(Height) ->
     Height rem child_epoch_length() == 0.
@@ -541,11 +546,6 @@ contract_owner() ->
               end
           end,
     aeu_ets_cache:get(?ETS_CACHE_TABLE, contract_owner, Fun).
-
-%% TODO: do we need this in HC?
-expected_key_block_rate() ->
-    Fun = fun() -> get_consensus_config_key([<<"expected_key_block_rate">>], 2000) end,
-    aeu_ets_cache:get(?ETS_CACHE_TABLE, key_block_rate, Fun).
 
 genesis_protocol_version() ->
     aeu_ets_cache:get(
@@ -737,7 +737,7 @@ get_sign_module() -> aec_preset_keys.
 get_type() -> pos.
 
 get_block_producer_configs() -> [{instance_not_used,
-                                  #{expected_key_block_rate => expected_key_block_rate()}}].
+                                  #{child_block_time => child_block_time()}}].
 
 is_leader_valid(Node, Trees, TxEnv, PrevNode) ->
     Header = aec_block_insertion:node_header(Node),
