@@ -128,7 +128,8 @@ start(Config, #{block_production := BlockProduction}) ->
 
     start_dependency(aec_parent_connector, [ParentConnMod, FetchInterval, ParentHosts, NetworkId,
                                             SignModule, HCPCPairs, PCSpendPubkey, Fee, Amount]),
-    start_dependency(aec_parent_chain_cache, [StartHeight + pc_finality(), CacheSize, Confirmations,
+    start_dependency(aec_parent_chain_cache, [StartHeight + pc_finality(), fun(ChildHeight) -> pc_height(ChildHeight) + pc_finality() end,
+                                              CacheSize, Confirmations,
                                               BlockProduction, ProducingCommitments]),
     ok.
 
@@ -870,7 +871,7 @@ seal_padding_size() ->
 pc_height(Height) ->
     ChildEpochLength = child_epoch_length(),
     EpochNum = Height div ChildEpochLength,
-    EpochNum * parent_generation() + pc_start_height().%% child starts pinning from height 1, not genesis
+    EpochNum * parent_generation() + pc_start_height().
 
 elect_lazy_leader(Beneficiary, TxEnv, Trees) ->
     {ok, CDLazy} = aeb_fate_abi:create_calldata("elect_after_lazy_leader",
