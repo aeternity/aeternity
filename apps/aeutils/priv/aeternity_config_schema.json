@@ -1727,8 +1727,16 @@
                                             "type": "integer"
                                         },
                                         "lazy_leader_trigger_time": {
-                                            "description": "Graze period until lazy leader is triggered (in ms)",
+                                            "description": "Grace period until lazy leader is triggered (in ms)",
                                             "default": 10000,
+                                            "type": "integer"
+                                        },
+                                        "child_epoch_length": {
+                                            "description": "The number of blocks in a child generation",
+                                            "type": "integer"
+                                        },
+                                        "child_block_time": {
+                                            "description": "The time in milliseconds to produce a child block",
                                             "type": "integer"
                                         },
                                         "parent_chain": {
@@ -1744,6 +1752,14 @@
                                                 "start_height": {
                                                     "description": "Height on the parent chain that this hyperchain will start posting commitments and start creating blocks",
                                                     "default": 0,
+                                                    "type": "integer"
+                                                },
+                                                "finality": {
+                                                    "description": "The number of blocks on the parent chain to reach finality.",
+                                                    "type": "integer"
+                                                },
+                                                "parent_generation": {
+                                                    "description": "The number of blocks in a parent generation.",
                                                     "type": "integer"
                                                 },
                                                 "producing_commitments": {
