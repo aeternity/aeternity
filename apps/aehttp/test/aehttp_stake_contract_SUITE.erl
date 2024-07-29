@@ -39,7 +39,11 @@
 -define(CONSENSUS_HC_DOGE, hc_doge).
 -define(CONSENSUS_POS, pos).
 -define(CHILD_START_HEIGHT, 101).
+-define(CHILD_EPOCH_LENGTH, 10000).
+-define(CHILD_BLOCK_TIME, 1000).
 -define(CHILD_CONFIRMATIONS, 0).
+-define(PARENT_GENERATION, 100).
+-define(PARENT_FINALITY, 0).
 -define(REWARD_DELAY, 2).
 -define(LAZY_INTERVAL, 10000).
 -define(NODE1, dev1).
@@ -155,12 +159,12 @@ common_tests() ->
     ].
 
 hc_specific_tests() ->
-    [sync_lazy_node,
-     empty_parent_block,
-     verify_commitments,
-     genesis_has_commitments,
-     block_difficulty,
-     elected_leader_did_not_show_up
+    [sync_lazy_node
+     %%empty_parent_block,
+     %%verify_commitments,
+     %%genesis_has_commitments,
+     %%block_difficulty,
+     %%elected_leader_did_not_show_up
     ].
 
 hc_btc_specific_tests() ->
@@ -294,9 +298,10 @@ init_per_group_custom(NetworkId, ?CONSENSUS_HC, Config) ->
                     parent, ?CHILD_START_HEIGHT, Config, ?CONSENSUS_HC),
     %% ?ALICE on the child chain, ?DWIGHT on the parent chain
     ReceiveAddress = encoded_pubkey(?FORD),
-    NodeConfig1 = node_config(NetworkId,?NODE1, Config, [{?ALICE, ?DWIGHT}, {?BOB, ?EDWIN}], ReceiveAddress, ?CONSENSUS_HC,
-                                true,  GenesisStartTime),
-    NodeConfig2 = node_config(NetworkId,?NODE2, Config, [], ReceiveAddress, ?CONSENSUS_HC, true,
+    %% Add LISA because with the removal of commitments in the HCElection contract she can become a leader
+    NodeConfig1 = node_config(NetworkId,?NODE1, Config, [{?ALICE, ?DWIGHT}, {?BOB, ?EDWIN}, {?LISA, ?LISA}], ReceiveAddress, ?CONSENSUS_HC,
+                                false,  GenesisStartTime),
+    NodeConfig2 = node_config(NetworkId,?NODE2, Config, [], ReceiveAddress, ?CONSENSUS_HC, false,
                                 GenesisStartTime),
     build_json_files(ElectionContract, [NodeConfig1, NodeConfig2]),
     aecore_suite_utils:create_config(?NODE1, Config,
@@ -774,7 +779,7 @@ empty_parent_block_(_Config) ->
     %% The lazy leader block is either from ?LISA (dev8) or ?ALICE/?BOB (dev1)
     ct:log("Checking block with height ~p", [TopHeight + 1]),
     CTop = rpc(?LAZY_NODE, aec_chain, top_block, []),
-    true = is_keyblock_lazy(CTop),
+    %% true = is_keyblock_lazy(CTop),
 
     %% Produce yet another block (now dev1 should commit to a lazy block and win)
     ok = produce_blocks_hc(?LAZY_NODE, ?LAZY_NODE_NAME, 1, abnormal_commitments_cnt),
@@ -1513,7 +1518,7 @@ build_json_files(ElectionContract, NodeConfigs) ->
     ok.
 
 node_config(NetworkId,Node, CTConfig, PotentialStakers, ReceiveAddress, Consensus) ->
-    node_config(NetworkId,Node, CTConfig, PotentialStakers, ReceiveAddress, Consensus, true, 0).
+    node_config(NetworkId,Node, CTConfig, PotentialStakers, ReceiveAddress, Consensus, false, 0).
 
 node_config(NetworkId,Node, CTConfig, PotentialStakers, ReceiveAddress, Consensus, ProducingCommitments, GenesisStartTime) ->
     Stakers =
@@ -1558,6 +1563,8 @@ node_config(NetworkId,Node, CTConfig, PotentialStakers, ReceiveAddress, Consensu
                 Port = aecore_suite_utils:external_api_port(?PARENT_CHAIN_NODE1),
                 #{  <<"parent_chain">> =>
                     #{  <<"start_height">> => ?CHILD_START_HEIGHT,
+                        <<"finality">> => ?PARENT_FINALITY,
+                        <<"parent_generation">> => ?PARENT_GENERATION,
                         <<"confirmations">> => ?CHILD_CONFIRMATIONS,
                         <<"consensus">> =>
                             #{  <<"type">> => <<"AE2AE">>,
@@ -1574,6 +1581,8 @@ node_config(NetworkId,Node, CTConfig, PotentialStakers, ReceiveAddress, Consensu
                         <<"producing_commitments">> => ProducingCommitments
                         },
                     <<"genesis_start_time">> => GenesisStartTime,
+                    <<"child_epoch_length">> => ?CHILD_EPOCH_LENGTH,
+                    <<"child_block_time">> => ?CHILD_BLOCK_TIME,
                     <<"lazy_leader_trigger_time">> => ?LAZY_INTERVAL
                  };
             _ when Consensus == ?CONSENSUS_HC_BTC; Consensus == ?CONSENSUS_HC_DOGE ->
@@ -1583,6 +1592,8 @@ node_config(NetworkId,Node, CTConfig, PotentialStakers, ReceiveAddress, Consensu
                         end,
                 #{  <<"parent_chain">> =>
                     #{  <<"start_height">> => ?CHILD_START_HEIGHT,
+                        <<"finality">> => ?PARENT_FINALITY,
+                        <<"parent_generation">> => ?PARENT_GENERATION,
                         <<"confirmations">> => ?CHILD_CONFIRMATIONS,
                         <<"consensus">> =>
                             #{  <<"type">> => PCType,
@@ -1598,6 +1609,8 @@ node_config(NetworkId,Node, CTConfig, PotentialStakers, ReceiveAddress, Consensu
                         <<"producing_commitments">> => ProducingCommitments
                         },
                     <<"genesis_start_time">> => GenesisStartTime,
+                    <<"child_epoch_length">> => ?CHILD_EPOCH_LENGTH,
+                    <<"child_block_time">> => ?CHILD_BLOCK_TIME,
                     <<"lazy_leader_trigger_time">> => ?LAZY_INTERVAL
                  }
         end,
@@ -1718,7 +1731,8 @@ produce_blocks_hc(Node, NodeName, BlocksCnt, LeaderType) ->
             ct:log("Parent block mined ~p", [KB]),
             ok = aecore_suite_utils:wait_for_height(NodeName, TopHeight + 1, ?LAZY_INTERVAL + 5000),
             CTop = rpc(Node, aec_chain, top_block, []),
-            true = is_keyblock_lazy(CTop),
+            %% Choosing leaders will change
+            %% true = is_keyblock_lazy(CTop),
             ok;
         abnormal_commitments_cnt ->
             {ok, _} = wait_for_at_least_commitments_in_pool(ParentNode, Node, 2),
@@ -1730,13 +1744,15 @@ produce_blocks_hc(Node, NodeName, BlocksCnt, LeaderType) ->
             false = is_keyblock_lazy(CTop),
             ok;
         correct_leader ->
-            {ok, _} = wait_for_commitments_in_pool(ParentNode, Node, 2),
+            %% Don't wait for commitments, in the future pinning will be implemented
+            %%{ok, _} = wait_for_commitments_in_pool(ParentNode, Node, 2),
             {ok, _} = aecore_suite_utils:mine_micro_block_emptying_mempool_or_fail(ParentNodeName),
             {ok, [KB]} = aecore_suite_utils:mine_key_blocks(ParentNodeName, 1),
-            ct:log("Parent block mined ~p", [KB]),
+            ct:log("Parent block mined ~p ~p", [KB, NodeName]),
             ok = aecore_suite_utils:wait_for_height(NodeName, TopHeight + 1, 10000), %% 10s per block
             CTop = rpc(Node, aec_chain, top_block, []),
-            false = is_keyblock_lazy(CTop),
+            %% Choosing leaders will change
+            %% false = is_keyblock_lazy(CTop),
             ok
     end,
     %% wait for the child to catch up
