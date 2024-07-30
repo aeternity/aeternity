@@ -39,11 +39,11 @@
 -define(CONSENSUS_HC_DOGE, hc_doge).
 -define(CONSENSUS_POS, pos).
 -define(CHILD_START_HEIGHT, 101).
--define(CHILD_EPOCH_LENGTH, 10000).
+-define(CHILD_EPOCH_LENGTH, 10).
 -define(CHILD_BLOCK_TIME, 1000).
 -define(CHILD_CONFIRMATIONS, 0).
--define(PARENT_GENERATION, 100).
--define(PARENT_FINALITY, 0).
+-define(PARENT_GENERATION, 10).
+-define(PARENT_FINALITY, 3).
 -define(REWARD_DELAY, 2).
 -define(LAZY_INTERVAL, 10000).
 -define(NODE1, dev1).
@@ -295,7 +295,7 @@ init_per_group_custom(NetworkId, ?CONSENSUS_HC, Config) ->
     aecore_suite_utils:connect(?PARENT_CHAIN_NODE1_NAME, []),
     timer:sleep(1000),
     produce_blocks(?PARENT_CHAIN_NODE1, ?PARENT_CHAIN_NODE1_NAME,
-                    parent, ?CHILD_START_HEIGHT, Config, ?CONSENSUS_HC),
+                    parent, ?CHILD_START_HEIGHT + ?PARENT_GENERATION + ?PARENT_FINALITY, Config, ?CONSENSUS_HC),
     %% ?ALICE on the child chain, ?DWIGHT on the parent chain
     ReceiveAddress = encoded_pubkey(?FORD),
     %% Add LISA because with the removal of commitments in the HCElection contract she can become a leader
@@ -362,7 +362,7 @@ rpcport=" ++ integer_to_list(?BTC_PARENT_CHAIN_PORT),
     %% in posting commitments.
     Config1 = [{network_id, NetworkId}, {consensus, ?CONSENSUS_HC_BTC}, {bitcoin_cli, BitcoinCli}, {btc_beneficiary, Dwight} | Config],
     produce_blocks(?PARENT_CHAIN_NODE1, ?PARENT_CHAIN_NODE1_NAME,
-                    parent, ?CHILD_START_HEIGHT, Config1, ?CONSENSUS_HC_BTC),
+                    parent, ?CHILD_START_HEIGHT + ?PARENT_GENERATION + ?PARENT_FINALITY, Config1, ?CONSENSUS_HC_BTC),
     ReceiveAddress = string:trim(os:cmd(BitcoinCli ++ "getnewaddress")),
     NodeConfig1 = node_config(NetworkId,?NODE1, Config, [{?ALICE, list_to_binary(Dwight)}, {?BOB, list_to_binary(Edwin)}],
                                 list_to_binary(ReceiveAddress), ?CONSENSUS_HC_BTC),
@@ -437,7 +437,7 @@ rpcport=" ++ integer_to_list(?BTC_PARENT_CHAIN_PORT),
     %% in posting commitments.
     Config1 = [{network_id, NetworkId}, {consensus, ?CONSENSUS_HC_BTC}, {bitcoin_cli, DogecoinCli}, {btc_beneficiary, Dwight} | Config],
     produce_blocks(?PARENT_CHAIN_NODE1, ?PARENT_CHAIN_NODE1_NAME,
-                    parent, ?CHILD_START_HEIGHT, Config1, ?CONSENSUS_HC_BTC),
+                    parent, ?CHILD_START_HEIGHT + ?PARENT_GENERATION + ?PARENT_FINALITY, Config1, ?CONSENSUS_HC_BTC),
     ReceiveAddress = string:trim(os:cmd(DogecoinCli ++ "getnewaddress")),
     NodeConfig1 = node_config(NetworkId,?NODE1, Config, [{?ALICE, list_to_binary(Dwight)}, {?BOB, list_to_binary(Edwin)}],
                                     list_to_binary(ReceiveAddress), ?CONSENSUS_HC_DOGE),
@@ -1723,12 +1723,14 @@ produce_blocks_hc(Node, NodeName, BlocksCnt, LeaderType) ->
     %% initial child chain state
     TopHeight = rpc(Node, aec_chain, top_height, []),
     ct:log("Producing a block with height ~p", [TopHeight + 1]),
-    %% mine a single block on the parent chain
+    %% mine a generation on the parent block
+    NumParentBlocks = case (TopHeight + 1) rem ?CHILD_EPOCH_LENGTH of
+                        true -> ?PARENT_GENERATION + ?PARENT_FINALITY;
+                        _ -> 0
+                      end,
     case LeaderType of
         lazy_leader ->
-            {ok, _} = aecore_suite_utils:mine_micro_block_emptying_mempool_or_fail(ParentNodeName),
-            {ok, [KB]} = aecore_suite_utils:mine_key_blocks(ParentNodeName, 1),
-            ct:log("Parent block mined ~p", [KB]),
+            mine_key_blocks(ParentNodeName, NumParentBlocks),
             ok = aecore_suite_utils:wait_for_height(NodeName, TopHeight + 1, ?LAZY_INTERVAL + 5000),
             CTop = rpc(Node, aec_chain, top_block, []),
             %% Choosing leaders will change
@@ -1736,9 +1738,7 @@ produce_blocks_hc(Node, NodeName, BlocksCnt, LeaderType) ->
             ok;
         abnormal_commitments_cnt ->
             {ok, _} = wait_for_at_least_commitments_in_pool(ParentNode, Node, 2),
-            {ok, _} = aecore_suite_utils:mine_micro_block_emptying_mempool_or_fail(ParentNodeName),
-            {ok, [KB]} = aecore_suite_utils:mine_key_blocks(ParentNodeName, 1),
-            ct:log("Parent block mined ~p", [KB]),
+            mine_key_blocks(ParentNodeName, NumParentBlocks),
             ok = aecore_suite_utils:wait_for_height(NodeName, TopHeight + 1, 10000), %% 10s per block
             CTop = rpc(Node, aec_chain, top_block, []),
             false = is_keyblock_lazy(CTop),
@@ -1746,9 +1746,7 @@ produce_blocks_hc(Node, NodeName, BlocksCnt, LeaderType) ->
         correct_leader ->
             %% Don't wait for commitments, in the future pinning will be implemented
             %%{ok, _} = wait_for_commitments_in_pool(ParentNode, Node, 2),
-            {ok, _} = aecore_suite_utils:mine_micro_block_emptying_mempool_or_fail(ParentNodeName),
-            {ok, [KB]} = aecore_suite_utils:mine_key_blocks(ParentNodeName, 1),
-            ct:log("Parent block mined ~p ~p", [KB, NodeName]),
+            mine_key_blocks(ParentNodeName, NumParentBlocks),
             ok = aecore_suite_utils:wait_for_height(NodeName, TopHeight + 1, 10000), %% 10s per block
             CTop = rpc(Node, aec_chain, top_block, []),
             %% Choosing leaders will change
@@ -1757,6 +1755,12 @@ produce_blocks_hc(Node, NodeName, BlocksCnt, LeaderType) ->
     end,
     %% wait for the child to catch up
     produce_blocks_hc(Node, NodeName, BlocksCnt - 1, LeaderType).
+
+mine_key_blocks(ParentNodeName, NumParentBlocks) ->
+    {ok, _} = aecore_suite_utils:mine_micro_block_emptying_mempool_or_fail(ParentNodeName),
+    {ok, KBs} = aecore_suite_utils:mine_key_blocks(ParentNodeName, NumParentBlocks),
+    ct:log("Parent block mined ~p ~p number: ~p", [KBs, ParentNodeName, NumParentBlocks]).
+
 
 wait_for_commitments_in_pool(Node, CNode, Cnt) ->
     wait_for_commitments_in_pool_(Node, CNode, fun(Pool) ->
