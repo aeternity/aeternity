@@ -29,7 +29,7 @@
 %%%=============================================================================
 
 %% External API
--export([start_link/5, stop/0]).
+-export([start_link/6, stop/0]).
 
 %% Callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -53,6 +53,7 @@
     {
         child_top_height                        :: non_neg_integer(),
         child_top_hash                          :: aec_blocks:block_header_hash(),
+        parent_target_fun                       :: fun((integer()) -> integer()),
         child_start_height                      :: non_neg_integer(),
         max_size                                :: non_neg_integer(),
         block_cache         = #{}               :: #{non_neg_integer() => aec_parent_chain_block:block() | requested},
@@ -72,11 +73,11 @@
 %%% API
 %%%=============================================================================
 %% Start the parent chain cache process
--spec start_link(non_neg_integer(), non_neg_integer(), non_neg_integer(),
+-spec start_link(non_neg_integer(), fun((integer()) -> integer()), non_neg_integer(), non_neg_integer(),
                  boolean(), boolean()) ->
     {ok, pid()} | {error, {already_started, pid()}} | {error, Reason::any()}.
-start_link(Height, Size, _Confirmations, IsProducingBlocks, IsPublishingCommitments) ->
-    Args = [Height, Size, IsProducingBlocks, IsPublishingCommitments],
+start_link(Height, ParentTargetFun, Size, _Confirmations, IsProducingBlocks, IsPublishingCommitments) ->
+    Args = [Height, ParentTargetFun, Size, IsProducingBlocks, IsPublishingCommitments],
     gen_server:start_link({local, ?SERVER}, ?MODULE, Args, []).
 
 stop() ->
@@ -120,7 +121,7 @@ get_state() ->
 %%%=============================================================================
 
 -spec init([any()]) -> {ok, #state{}}.
-init([StartHeight, Size, BlockProducing, EnabledCommitments]) ->
+init([StartHeight, ParentTargetFun, Size, BlockProducing, EnabledCommitments]) ->
     aec_events:subscribe(top_changed),
     aec_events:subscribe(start_mining),
     aec_events:subscribe(stop_mining),
@@ -132,6 +133,7 @@ init([StartHeight, Size, BlockProducing, EnabledCommitments]) ->
     self() ! initialize_cache,
     {ok, #state{child_start_height      = StartHeight,
                 child_top_height        = ChildHeight,
+                parent_target_fun       = ParentTargetFun,
                 child_top_hash          = ChildHash,
                 max_size                = Size,
                 block_cache             = #{},
@@ -312,9 +314,9 @@ state_to_map(#state{child_start_height = StartHeight,
        blocks             => Blocks,
        top_height         => TopHeight}.
 
-target_parent_height(#state{child_start_height = StartHeight,
+target_parent_height(#state{parent_target_fun  = ParentTargetFun,
                             child_top_height   = ChildHeight}) ->
-    ChildHeight + StartHeight.
+    ParentTargetFun(ChildHeight).
 
 min_cachable_parent_height(#state{max_size   = CacheSize,
                                   top_height = ParentTop} = State) ->
