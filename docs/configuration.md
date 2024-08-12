@@ -166,7 +166,7 @@ chain:
 
 It is also possible to set the configuration in an environment variable.
 
-Example: ```AE__CHAIN__HARD_FORKS='{"1":{"acccounts_file": "hf_dir/genesis/accounts.json", "height":0}}'```
+Example: ```AE__CHAIN__HARD_FORKS='{"1":{"accounts_file": "hf_dir/genesis/accounts.json", "height":0}}'```
 
 ### Peers
 
