@@ -257,17 +257,19 @@
         ?FORTUNA_PROTOCOL_VSN -> ?assertMatch(ExpMinerva, Res);
         ?LIMA_PROTOCOL_VSN    -> ?assertMatch(ExpMinerva, Res);
         ?IRIS_PROTOCOL_VSN    -> ?assertMatch(ExpMinerva, Res);
-        ?CERES_PROTOCOL_VSN   -> ?assertMatch(ExpMinerva, Res)
+        ?CERES_PROTOCOL_VSN   -> ?assertMatch(ExpMinerva, Res);
+        ?ARCUS_PROTOCOL_VSN   -> ?assertMatch(ExpMinerva, Res)
     end).
 
--define(assertMatchProtocol(Res, ExpR, ExpM, ExpF, ExpL, ExpI, ExpC),
+-define(assertMatchProtocol(Res, ExpR, ExpM, ExpF, ExpL, ExpI, ExpC, ExpA),
     case protocol_version() of
         ?ROMA_PROTOCOL_VSN    -> ?assertMatch(ExpR, Res);
         ?MINERVA_PROTOCOL_VSN -> ?assertMatch(ExpM, Res);
         ?FORTUNA_PROTOCOL_VSN -> ?assertMatch(ExpF, Res);
         ?LIMA_PROTOCOL_VSN    -> ?assertMatch(ExpL, Res);
         ?IRIS_PROTOCOL_VSN    -> ?assertMatch(ExpI, Res);
-        ?CERES_PROTOCOL_VSN   -> ?assertMatch(ExpC, Res)
+        ?CERES_PROTOCOL_VSN   -> ?assertMatch(ExpC, Res);
+        ?ARCUS_PROTOCOL_VSN   -> ?assertMatch(ExpA, Res)
     end).
 
 -define(assertMatchAEVM(__Exp, __Res),
@@ -588,6 +590,10 @@ init_tests(Release, VMName) ->
                 {ceres,   {?CERES_PROTOCOL_VSN,
                            IfAEVM(?SOPHIA_LIMA_AEVM, ?SOPHIA_CERES_FATE),
                            IfAEVM(?ABI_AEVM_SOPHIA_1, ?ABI_FATE_SOPHIA_1),
+                           IfAEVM(?VM_AEVM_SOPHIA_4, ?VM_FATE_SOPHIA_3)}},
+                {arcus,   {?CERES_PROTOCOL_VSN,
+                           IfAEVM(?SOPHIA_LIMA_AEVM, ?SOPHIA_ARCUS_FATE),
+                           IfAEVM(?ABI_AEVM_SOPHIA_1, ?ABI_FATE_SOPHIA_1),
                            IfAEVM(?VM_AEVM_SOPHIA_4, ?VM_FATE_SOPHIA_3)}}],
     {Proto, Sophia, ABI, VM} = proplists:get_value(Release, Versions),
     meck:expect(aec_hard_forks, protocol_effective_at_height, fun(_) -> Proto end),
@@ -641,6 +647,18 @@ init_per_group(protocol_interaction, Cfg) ->
     end;
 init_per_group(protocol_interaction_fate, Cfg) ->
     case aect_test_utils:latest_protocol_version() of
+        ?ARCUS_PROTOCOL_VSN ->
+            CHeight = 20,
+            AHeight = 25,
+            Fun = fun(H) when H =< CHeight -> ?CERES_PROTOCOL_VSN;
+                     (H) when H >  CHeight -> ?ARCUS_PROTOCOL_VSN
+                  end,
+            meck:expect(aec_hard_forks, protocol_effective_at_height, Fun),
+            [{sophia_version, ?SOPHIA_ARCUS_FATE},
+             {vm_version, ?VM_FATE_SOPHIA_3},
+             {abi_version, ?ABI_FATE_SOPHIA_1},
+             {fork_heights, [{ceres, CHeight, ?VM_FATE_SOPHIA_3}, {arcus, AHeight, ?VM_FATE_SOPHIA_3}]},
+             {protocol, arcus} | Cfg];
         ?CERES_PROTOCOL_VSN ->
             IHeight = 20,
             CHeight = 25,
@@ -763,14 +781,7 @@ init_per_testcase_common(_TC, Config) ->
     VmVersion = ?config(vm_version, Config),
     ABIVersion = ?config(abi_version, Config),
     SophiaVersion = ?config(sophia_version, Config),
-    ProtocolVersion = case ?config(protocol, Config) of
-                          roma    -> ?ROMA_PROTOCOL_VSN;
-                          minerva -> ?MINERVA_PROTOCOL_VSN;
-                          fortuna -> ?FORTUNA_PROTOCOL_VSN;
-                          lima    -> ?LIMA_PROTOCOL_VSN;
-                          iris    -> ?IRIS_PROTOCOL_VSN;
-                          ceres   -> ?CERES_PROTOCOL_VSN
-                      end,
+    ProtocolVersion = aec_hard_forks:protocol_vsn(?config(protocol, Config)),
     AciDisabled = case os:getenv("SOPHIA_NO_ACI") of
                   false ->
                       ?config(aci_disabled, Config);
@@ -1017,7 +1028,7 @@ create_version_too_high(Cfg) ->
     Res = sign_and_apply_transaction(Tx, PrivKey, S1),
     %% Test that the create transaction is accepted/rejected accordingly
     case proplists:get_value(protocol, Cfg) of
-        P when P =:= roma; P =:= lima; P =:= iris; P =:= ceres ->
+        P when P =:= roma; P =:= lima; P =:= iris; P =:= ceres; P =:= arcus ->
             {error, illegal_contract_compiler_version, _} = Res;
         P when P =:= minerva; P =:= fortuna ->
             {ok, _} = Res
@@ -5166,7 +5177,8 @@ sophia_network_id(_Cfg) ->
     Acc  = ?call(new_account, 10000000 * aec_test_utils:min_gas_price()),
     Ct1  = ?call(create_contract, Acc, chain, {}, #{amount => 10000}),
     NwId = ?call(call_contract, Acc, Ct1, nw_id, string, {}),
-    ?assertMatch(<<"local_ceres_testnet">>, NwId),
+    ExNwId = aec_governance:get_network_id(),
+    ?assertMatch(ExNwId, NwId),
     ok.
 
 sophia_savecoinbase(_Cfg) ->
@@ -5935,7 +5947,7 @@ sophia_compiler_version(_Cfg) ->
     {code, Code} = aect_contracts:code(C),
     CMap = aeser_contract_code:deserialize(Code),
     ?assertMatchProtocol(maps:get(compiler_version, CMap, undefined),
-                         undefined, <<"2.1.0">>, <<"3.2.0">>, <<"unknown">>, <<"6.1.0">>, <<"8.0.0">>),
+                         undefined, <<"2.1.0">>, <<"3.2.0">>, <<"unknown">>, <<"6.1.0">>, <<"8.0.0">>, <<"8.0.0">>),
     ok.
 
 sophia_protected_call(_Cfg) ->
