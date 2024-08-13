@@ -7211,6 +7211,7 @@ lima_migration(_Config) ->
 
 
 fate_vm_interaction(Cfg) ->
+    ?skipRest(sophia_version() == ?SOPHIA_ARCUS_FATE, same_vm_ceres_arcus),
     init_new_state(),
     ForkHeights = ?config(fork_heights, Cfg),
     [{_ProtoA, HeightA, VMA}, {_ProtoB, HeightB, VMB}] = ForkHeights,
