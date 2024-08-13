@@ -110,11 +110,11 @@ suite() ->
 init_per_suite(Config) ->
     case aec_governance:get_network_id() of
         Id when Id == <<"local_iris_testnet">>;
+                Id == <<"local_ceres_testnet">>;
                 Id == <<"local_arcus_testnet">> ->
             aesc_fsm_SUITE:init_per_suite([{symlink, "latest.aesc_htlc"} | Config]);
         Other ->
-            %% confusing skip. This is running on both Iris and latest it seems
-            {skip, {only_on_iris, Other}}
+            {skip, {only_from_iris, Other}}
     end.
 
 end_per_suite(Config) ->
