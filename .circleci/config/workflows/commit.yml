@@ -32,6 +32,7 @@ jobs:
             - "ct-fortuna"
             - "ct-lima"
             - "ct-iris"
+            - "ct-ceres"
             - "ct-latest"
             - "ct-latest-no-aci"
             - "ct-mnesia-rocksdb"
@@ -74,6 +75,7 @@ jobs:
             - "fortuna"
             - "lima"
             - "iris"
+            - "ceres"
             - "latest"
       requires:
         - build-<< matrix.otp >>
