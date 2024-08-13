@@ -57,8 +57,9 @@ init_per_suite(Cfg) ->
                      PreIris =:= ?LIMA_PROTOCOL_VSN ->
             init_per_suite_(Cfg);
         FromIrisOn when FromIrisOn =:= ?IRIS_PROTOCOL_VSN;
-                        FromIrisOn =:= ?CERES_PROTOCOL_VSN ->
-            {skip, stratum_not_yet_working_in_iris_and_ceres}
+                        FromIrisOn =:= ?CERES_PROTOCOL_VSN;
+                        FromIrisOn =:= ?ARCUS_PROTOCOL_VSN ->
+            {skip, stratum_not_working_in_iris_to_arcus}
     end.
 
 init_per_suite_(Cfg) ->
