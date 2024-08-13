@@ -43,6 +43,7 @@ jobs:
           - {otp: "otp24", target: "ct-fortuna"}
           - {otp: "otp24", target: "ct-lima"}
           - {otp: "otp24", target: "ct-iris"}
+          - {otp: "otp24", target: "ct-ceres"}
           - {otp: "otp24", target: "ct-latest-no-aci"}
           - {otp: "otp24", target: "ct-mnesia-rocksdb"}
           - {otp: "otp24", target: "ct-mnesia-mrdb"}
@@ -52,6 +53,7 @@ jobs:
           - {otp: "otp25", target: "ct-fortuna"}
           - {otp: "otp25", target: "ct-lima"}
           - {otp: "otp25", target: "ct-iris"}
+          - {otp: "otp25", target: "ct-ceres"}
           - {otp: "otp25", target: "ct-latest-no-aci"}
           - {otp: "otp25", target: "ct-mnesia-rocksdb"}
           - {otp: "otp25", target: "ct-mnesia-mrdb"}
