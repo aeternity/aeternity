@@ -2,7 +2,7 @@ CORE = rel/aeternity/bin/aeternity
 
 REBAR ?= ./rebar3
 
-PROTOCOLS = roma minerva fortuna lima iris ceres
+PROTOCOLS = roma minerva fortuna lima iris ceres arcus
 CT_TARGETS = $(patsubst %,ct-%,$(PROTOCOLS))
 LATEST_PROTOCOL = $(lastword $(PROTOCOLS))
 
@@ -442,8 +442,12 @@ internal-ct: test-build
 	if [ $$(printf "%b" "$${NODE_PROCESSES}" | wc -l) -gt 0 ] ; then \
 		(printf "%b\n%b\n" "Failed testing: another node is already running" "$${NODE_PROCESSES}" >&2; exit 1);\
 	else \
+		if [ ! -f $(SYSCONFIG) ]; then \
+			(echo "config $(SYSCONFIG) not found"; exit 1); \
+	else \
 		AETERNITY_TESTCONFIG_DB_BACKEND=$(AETERNITY_TESTCONFIG_DB_BACKEND) \
 			$(REBAR) ct $(CT_TEST_FLAGS) --sys_config $(SYSCONFIG); \
+		fi \
 	fi
 
 $(DEB_PKG_CHANGELOG_FILE): VERSION REVISION

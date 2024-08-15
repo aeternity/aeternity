@@ -32,6 +32,7 @@ jobs:
             - "ct-fortuna"
             - "ct-lima"
             - "ct-iris"
+            - "ct-ceres"
             - "ct-latest"
             - "ct-latest-no-aci"
             - "ct-mnesia-rocksdb"
@@ -42,6 +43,7 @@ jobs:
           - {otp: "otp24", target: "ct-fortuna"}
           - {otp: "otp24", target: "ct-lima"}
           - {otp: "otp24", target: "ct-iris"}
+          - {otp: "otp24", target: "ct-ceres"}
           - {otp: "otp24", target: "ct-latest-no-aci"}
           - {otp: "otp24", target: "ct-mnesia-rocksdb"}
           - {otp: "otp24", target: "ct-mnesia-mrdb"}
@@ -51,6 +53,7 @@ jobs:
           - {otp: "otp25", target: "ct-fortuna"}
           - {otp: "otp25", target: "ct-lima"}
           - {otp: "otp25", target: "ct-iris"}
+          - {otp: "otp25", target: "ct-ceres"}
           - {otp: "otp25", target: "ct-latest-no-aci"}
           - {otp: "otp25", target: "ct-mnesia-rocksdb"}
           - {otp: "otp25", target: "ct-mnesia-mrdb"}
@@ -74,6 +77,7 @@ jobs:
             - "fortuna"
             - "lima"
             - "iris"
+            - "ceres"
             - "latest"
       requires:
         - build-<< matrix.otp >>
