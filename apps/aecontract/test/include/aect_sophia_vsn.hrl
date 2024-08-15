@@ -5,3 +5,4 @@
 -define(SOPHIA_LIMA_FATE, 5).
 -define(SOPHIA_IRIS_FATE, 6).
 -define(SOPHIA_CERES_FATE, 7).
+-define(SOPHIA_ARCUS_FATE, 8).
