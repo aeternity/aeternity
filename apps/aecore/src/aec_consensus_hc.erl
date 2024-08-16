@@ -128,7 +128,7 @@ start(Config, #{block_production := BlockProduction}) ->
 
     start_dependency(aec_parent_connector, [ParentConnMod, FetchInterval, ParentHosts, NetworkId,
                                             SignModule, HCPCPairs, PCSpendPubkey, Fee, Amount]),
-    start_dependency(aec_parent_chain_cache, [StartHeight + pc_finality(), fun(ChildHeight) -> pc_height(ChildHeight) + pc_finality() end,
+    start_dependency(aec_parent_chain_cache, [StartHeight, fun(ChildHeight) -> pc_height(ChildHeight + 1) end, %% prefetch the next parent block
                                               CacheSize, Confirmations,
                                               BlockProduction, ProducingCommitments]),
     ok.
@@ -171,6 +171,7 @@ start_ae(StakersEncoded, PCSpendAddress) ->
             end,
             StakersEncoded),
     StakersMap = maps:from_list(Stakers),
+    lager:warning("Stakers ~p", [StakersMap]),
     %% TODO: ditch this after we move beyond OTP24
     _Mod = aec_preset_keys,
     start_dependency(aec_preset_keys, [StakersMap]),
@@ -677,6 +678,7 @@ next_beneficiary() ->
                                                     [aefa_fate_code:encode_arg({string, Entropy}),
                                                      aefa_fate_code:encode_arg({bytes, NetworkId})
                                                     ]),
+            lager:warning("Entropy ~p ~p", [NextHeight, Entropy]),
             CallData = aeser_api_encoder:encode(contract_bytearray, CD),
             try call_consensus_contract_(?ELECTION_CONTRACT, TxEnv, Trees, CallData, "elect_next", 0) of
                 {ok, _Trees1, Call} ->
@@ -684,15 +686,18 @@ next_beneficiary() ->
                     SignModule = get_sign_module(),
                     case SignModule:set_candidate(Leader) of
                         {error, key_not_found} ->
+                            lager:warning("key_not_found ~p", [Leader]),
                             timer:sleep(1000),
                             {error, not_leader};
                         ok ->
                             {ok, Leader}
                     end;
                 {error, _What} ->
+                    lager:error("next_beneficiary exception ~p", [_What]),
                     timer:sleep(1000),
                     {error, not_leader}
             catch error:{consensus_call_failed, {error, _What}} ->
+                    lager:error("consensus_call_failed ~p", [_What]),
                     timer:sleep(1000),
                     {error, not_leader}
             end;
@@ -755,6 +760,7 @@ is_leader_valid(Node, Trees, TxEnv, PrevNode) ->
                     Leader = aec_headers:miner(Header),
                     Target = aec_headers:target(Header),
                     IsDefaultT = Target =:= default_target(),
+                    lager:warning("is_leader_valid ~p ~p", [ExpectedLeader, Leader]),
                     case ExpectedLeader =:= Leader of
                         true when IsDefaultT -> true;
                         true ->
