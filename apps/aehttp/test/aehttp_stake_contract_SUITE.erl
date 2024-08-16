@@ -1724,7 +1724,7 @@ produce_blocks_hc(Node, NodeName, BlocksCnt, LeaderType) ->
     TopHeight = rpc(Node, aec_chain, top_height, []),
     ct:log("Producing a block with height ~p", [TopHeight + 1]),
     %% mine a generation on the parent block
-    NumParentBlocks = case (TopHeight + 1) rem ?CHILD_EPOCH_LENGTH of
+    NumParentBlocks = case (TopHeight + 1) rem ?CHILD_EPOCH_LENGTH == 0 of
                         true -> ?PARENT_GENERATION + ?PARENT_FINALITY;
                         _ -> 0
                       end,
