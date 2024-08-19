@@ -128,7 +128,7 @@ start(Config, #{block_production := BlockProduction}) ->
 
     start_dependency(aec_parent_connector, [ParentConnMod, FetchInterval, ParentHosts, NetworkId,
                                             SignModule, HCPCPairs, PCSpendPubkey, Fee, Amount]),
-    start_dependency(aec_parent_chain_cache, [StartHeight, fun(ChildHeight) -> pc_height(ChildHeight + 1) end, %% prefetch the next parent block
+    start_dependency(aec_parent_chain_cache, [StartHeight, fun target_parent_height/1, %% prefetch the next parent block
                                               CacheSize, Confirmations,
                                               BlockProduction, ProducingCommitments]),
     ok.
@@ -873,6 +873,14 @@ call_contracts([Call | Tail], TxEnv, TreesAccum) ->
 
 seal_padding_size() ->
     ?KEY_SEAL_SIZE - ?SIGNATURE_SIZE.
+
+target_parent_height(0) ->
+    pc_start_height();
+target_parent_height(Height) ->
+    ChildEpochLength = child_epoch_length(),
+    EpochNum = round(Height / ChildEpochLength),
+    EpochNum * parent_generation() + pc_start_height().
+
 
 pc_height(Height) ->
     ChildEpochLength = child_epoch_length(),
