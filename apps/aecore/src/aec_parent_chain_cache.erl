@@ -184,10 +184,11 @@ handle_cast(_Msg, State) ->
 
 -spec handle_info(any(), state()) -> {noreply, state()}.
 handle_info(initialize_cache, State) ->
-    TargetHeight = target_parent_height(State),
+    % Fetch the last block, which will be the block required for finality
+    [TargetHeight|RestHeights] = lists:reverse(lists:sort(target_parent_heights(State))),
     case catch aec_parent_connector:fetch_block_by_height(TargetHeight) of
         {ok, B} ->
-            aec_parent_connector:request_top(),
+            maybe_request_blocks(RestHeights, State),
             State1 = post_block(B, State),
             State2 = maybe_post_initial_commitments(B, State1),
             {noreply, State2};
@@ -212,14 +213,15 @@ handle_info({gproc_ps_event, top_changed, #{info := #{block_type := key,
     State1 = State0#state{child_top_height = Height,
                           child_top_hash = Hash,
                           posted_commitment = false},
-    State2 =
+    State =
         case OldHeight + MaxSize < Height of
             true  -> State1#state{block_cache = #{}}; %% we flush the whole state - this should not happen
             false -> State1
         end,
-    TargetHeight = target_parent_height(State2),
-    maybe_request_block(TargetHeight, State2),
-    State = maybe_post_commitments(TargetHeight, Hash, State2),
+    TargetHeights = target_parent_heights(State),
+    maybe_request_blocks(TargetHeights, State),
+    %% Commitment handling changing
+    %% State = maybe_post_commitments(TargetHeight, Hash, State2),
     {noreply, State};
 handle_info({gproc_ps_event, chain_sync, #{info := {is_syncing, IsSyncing}}}, State0) ->
     State1 = State0#state{is_syncing = IsSyncing},
@@ -235,7 +237,7 @@ handle_info({gproc_ps_event, chain_sync, #{info := {is_syncing, IsSyncing}}}, St
                 State1
         end,
     {noreply, State};
-handle_info({gproc_ps_event, top_changed, _}, State) ->
+handle_info({gproc_ps_event, top_changed, _A} , State) ->
     {noreply, State};
 handle_info({gproc_ps_event, start_mining, _}, State) ->
     {noreply, State#state{producing_blocks = true}};
@@ -284,15 +286,13 @@ get_block_height_by_hash(Hash, #state{blocks_hash_index = Index}) ->
             {error, not_in_cache}
     end.
 
--spec max_block(state()) -> non_neg_integer() | empty_cache.
-max_block(#state{block_cache = Blocks}) when map_size(Blocks) =:= 0 ->
-    empty_cache;
-max_block(#state{block_cache = Blocks}) ->
-    lists:max(maps:keys(Blocks)).
-
--spec delete_block(non_neg_integer(), state()) -> state().
-delete_block(Height, #state{block_cache = Blocks,
+-spec maybe_delete_oldest_block(state()) -> state().
+maybe_delete_oldest_block(#state{block_cache = Blocks,
+                            max_size = MaxSize} = State) when map_size(Blocks) < MaxSize ->
+    State;
+maybe_delete_oldest_block(#state{block_cache = Blocks,
                             blocks_hash_index = Index} = State) ->
+  [Height|_] = lists:sort(maps:keys(Blocks)),
   case maps:find(Height, Blocks) of
         {ok, requested} ->
             State#state{block_cache = maps:remove(Height, Blocks)};
@@ -314,59 +314,26 @@ state_to_map(#state{child_start_height = StartHeight,
        blocks             => Blocks,
        top_height         => TopHeight}.
 
-target_parent_height(#state{parent_target_fun  = ParentTargetFun,
-                            child_top_height   = ChildHeight}) ->
+target_parent_heights(#state{parent_target_fun  = ParentTargetFun,
+                            child_top_height    = ChildHeight}) ->
     ParentTargetFun(ChildHeight).
 
-min_cachable_parent_height(#state{max_size   = CacheSize,
-                                  top_height = ParentTop} = State) ->
-    min(target_parent_height(State), ParentTop - CacheSize ).
+min_cachable_parent_height(State) ->
+    [MinHeight|_] = lists:sort(target_parent_heights(State)),
+    MinHeight.
 
-post_block(Block, #state{max_size = MaxSize,
-                         top_height = TopHeight} = State0) ->
-    TargetHeight = target_parent_height(State0),
+post_block(Block, #state{top_height = TopHeight} = State0) ->
     BlockHeight = aec_parent_chain_block:height(Block),
-    MaxBlockToRequest = TargetHeight + MaxSize - 1,
     GCHeight = min_cachable_parent_height(State0),
-    case BlockHeight < GCHeight of
-        true ->
-            State0;
-        false ->
-            case BlockHeight > MaxBlockToRequest of
-                true ->
-                    %% we are syncing and this is a new top block that is too far away
-                    %% from the future; we ignore it;
-                    %% we still keep the knowledge of seeing this block
-                    State = State0#state{top_height = max(TopHeight, BlockHeight)},
-                    MaxBlock =
-                        case max_block(State) of
-                            empty_cache -> TargetHeight;
-                            H -> H
-                        end,
-                    maybe_request_next_block(MaxBlock, State);
-                false ->
-                    %% the block received might be the top one or a previous one; we try GCing
-                    %% older blocks according to the top block only;
-                    %% if the previous block is missing, fetch it (if above the GC height)
-                    State1 =
-                        case BlockHeight > GCHeight of
-                            true ->
-                                insert_block(Block, State0);
-                            false ->
-                                State0
-                        end,
-                    TryGCHeight = BlockHeight - MaxSize,
-                    State2 =
-                        case TryGCHeight >= 0 of
-                            true ->
-                                delete_block(TryGCHeight, State1);
-                            false -> State1
-                        end,
-                    State3 = State2#state{top_height = max(TopHeight, BlockHeight)},
-                    State4 = maybe_request_previous_block(BlockHeight, State3),
-                    maybe_request_next_block(BlockHeight, State4)
-            end
-    end.
+    State1 =
+        case BlockHeight >= GCHeight of
+            true ->
+                insert_block(Block, State0);
+            false ->
+                State0
+        end,
+    State2 = maybe_delete_oldest_block(State1),
+    State2#state{top_height = max(TopHeight, BlockHeight)}.
 
 request_block(Height, #state{block_cache = Blocks} = State) ->
     case maps:get(Height, Blocks, undefined) of
@@ -378,37 +345,18 @@ request_block(Height, #state{block_cache = Blocks} = State) ->
             State
     end.
 
-maybe_request_previous_block(0 = _BlockHeight, State) -> State;
-maybe_request_previous_block(BlockHeight, #state{} = State) ->
-    PrevHeight = BlockHeight - 1,
-    case PrevHeight >= min_cachable_parent_height(State) of
-        true ->
-            request_block(PrevHeight, State);
-        false ->
-            State
-    end.
+
+maybe_request_blocks(BlockHeights, State) ->
+    lists:foreach(fun(BlockHeight) -> maybe_request_block(BlockHeight, State) end, BlockHeights).
 
 maybe_request_block(BlockHeight, #state{top_height = TopHeight}) when BlockHeight > TopHeight ->
     aec_parent_connector:request_block_by_height(BlockHeight);
 maybe_request_block(BlockHeight, State) ->
-    maybe_request_next_block(BlockHeight - 1, State).
-
-maybe_request_next_block(BlockHeight, #state{top_height = TopHeight} = State) when BlockHeight >= TopHeight ->
-    State;
-maybe_request_next_block(BlockHeight, #state{max_size = MaxSize} = State) ->
-    TargetHeight = target_parent_height(State),
-    MaxBlockToRequest = TargetHeight + MaxSize - 1,
-    NextHeight = BlockHeight + 1,
-    case MaxBlockToRequest > BlockHeight andalso NextHeight =< MaxBlockToRequest of
-        true ->
-            case get_block(NextHeight, State) of
-                {ok, _} ->
-                    maybe_request_next_block(NextHeight, State);
-                {error, not_in_cache} ->
-                    request_block(NextHeight, State)
-            end;
-        _ -> %% cache is already full
-            State
+    case get_block(BlockHeight, State) of
+        {ok, _} ->
+            ok;
+        {error, not_in_cache} ->
+            request_block(BlockHeight, State)
     end.
 
 maybe_post_commitments(TargetHeight, TopHash, #state{is_syncing = IsSyncing,
