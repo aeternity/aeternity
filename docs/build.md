@@ -22,14 +22,14 @@ The node have couple of main dependencies that have to be installed to build it 
 
 ## Dependencies
 
-### Ubuntu 20.04
+### Ubuntu 24.04
 
 Update package database, packages and install the common tools and libraries:
 
 ```bash
 sudo apt-get -qq update \
 && sudo apt-get -y upgrade \
-&& sudo apt-get -qq -y install git autoconf build-essential cmake erlang libsodium-dev libgmp-dev
+&& sudo apt-get -qq -y install git autoconf libtool build-essential cmake erlang libsodium-dev libgmp-dev
 ```
 
 ### MacOS
