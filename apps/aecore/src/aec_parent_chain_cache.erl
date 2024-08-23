@@ -53,7 +53,7 @@
     {
         child_top_height                        :: non_neg_integer(),
         child_top_hash                          :: aec_blocks:block_header_hash(),
-        parent_target_fun                       :: fun((integer()) -> integer()),
+        parent_target_fun                       :: fun((integer()) -> [integer()]),
         child_start_height                      :: non_neg_integer(),
         max_size                                :: non_neg_integer(),
         block_cache         = #{}               :: #{non_neg_integer() => aec_parent_chain_block:block() | requested},
@@ -73,7 +73,7 @@
 %%% API
 %%%=============================================================================
 %% Start the parent chain cache process
--spec start_link(non_neg_integer(), fun((integer()) -> integer()), non_neg_integer(), non_neg_integer(),
+-spec start_link(non_neg_integer(), fun((integer()) -> [integer()]), non_neg_integer(), non_neg_integer(),
                  boolean(), boolean()) ->
     {ok, pid()} | {error, {already_started, pid()}} | {error, Reason::any()}.
 start_link(Height, ParentTargetFun, Size, _Confirmations, IsProducingBlocks, IsPublishingCommitments) ->
