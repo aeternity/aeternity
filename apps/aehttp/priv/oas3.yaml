@@ -3187,7 +3187,10 @@ components:
         height:
           $ref: "#/components/schemas/UInt64"
         pof_hash:
-          $ref: "#/components/schemas/EncodedHash"
+          description: \"no_fraud\" or Base58Check encoded Proof of Fraud hash
+          type: string
+          pattern: ^no_fraud|bf_\w{38,50}$
+          example: no_fraud
         prev_hash:
           $ref: "#/components/schemas/EncodedHash"
         prev_key_hash:
