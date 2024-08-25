@@ -2822,7 +2822,7 @@ components:
         tx:
           $ref: "#/components/schemas/EncodedTx"
         tx_hash:
-          $ref: "#/components/schemas/EncodedHash"
+          $ref: "#/components/schemas/EncodedTxHash"
         stateful:
           description: This call will have effects on the next call in this dry-run (or not)
           type: boolean
@@ -2875,7 +2875,7 @@ components:
         tx:
           $ref: "#/components/schemas/EncodedTx"
         tx_hash:
-          $ref: "#/components/schemas/EncodedHash"
+          $ref: "#/components/schemas/EncodedTxHash"
         call_req:
           $ref: "#/components/schemas/DryRunCallReq"
     DryRunResult:
@@ -2936,6 +2936,11 @@ components:
       type: string
       example: tx_+E8hAaEB4TK48d23oE5jt/qWR5pUu8UlpTGn8bwM5JISGQMGf7ABoQOvDVCf43V7alNbsUvTarXaCf7rjtWX36YLS4+JTa4jn4YPHaUyOAAAxRZ6Sg==
       pattern: ^tx_\w+$
+    EncodedTxHash:
+      description: Base58Check encoded transaction hash
+      type: string
+      example: th_2Zfo2ALfRkKQxEaUj3HhcUGyMrTqYpDMgr2u15fPanYD1d55kz
+      pattern: ^th_\w{38,50}$
     EncodedValue:
       description: Base58Check encoded tagged value
       type: string
@@ -3698,7 +3703,7 @@ components:
       type: object
       properties:
         tx_hash:
-          $ref: "#/components/schemas/EncodedHash"
+          $ref: "#/components/schemas/EncodedTxHash"
       required:
         - tx_hash
     Pow:
@@ -3768,7 +3773,7 @@ components:
         block_hash:
           $ref: "#/components/schemas/EncodedHash"
         hash:
-          $ref: "#/components/schemas/EncodedHash"
+          $ref: "#/components/schemas/EncodedTxHash"
         encoded_tx:
           $ref: "#/components/schemas/EncodedTx"
         signatures:
