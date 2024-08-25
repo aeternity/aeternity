@@ -222,8 +222,7 @@ paths:
           description: The name key of the name entry
           required: true
           schema:
-            type: string
-            example: "dimitar.chain"
+            $ref: "#/components/schemas/Name"
       responses:
         "200":
           description: Successful operation
@@ -796,8 +795,7 @@ paths:
           description: The name key of the name entry
           required: true
           schema:
-            type: string
-            example: "dimitar.chain"
+            $ref: "#/components/schemas/Name"
       responses:
         "200":
           description: Successful operation
@@ -2946,6 +2944,11 @@ components:
       type: string
       example: sg_8hhU15cVMbukFj4FbdrFwwYnbzXYPnstu9PDnWZGbfQNpeHcB6tK1F3wvG1MPYySARgDRJYUh3YPJD3HctFwg6Y4rUGSR
       pattern: ^sg_\w+$
+    Name:
+      description: AENS name
+      type: string
+      example: dimitar.chain
+      pattern: ^\w+\.chain$
     EncodedNameId:
       description: Base58Check encoded AENS name hash
       type: string
