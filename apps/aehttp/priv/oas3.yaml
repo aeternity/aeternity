@@ -2604,7 +2604,7 @@ components:
       type: object
       properties:
         commitment_id:
-          $ref: "#/components/schemas/EncodedValue"
+          $ref: "#/components/schemas/EncodedCommitmentId"
       required:
         - commitment_id
     ContractCallObject:
@@ -2951,6 +2951,11 @@ components:
       type: string
       example: nm_psy8tRXPzGxh6975H7K6XQcMFVsdrxJMt7YkzMY8oUTevutzw
       pattern: ^nm_\w{38,50}$
+    EncodedCommitmentId:
+      description: Base58Check encoded AENS commitment
+      type: string
+      example: cm_psy8tRXPzGxh6975H7K6XQcMFVsdrxJMt7YkzMY8oUTevutzw
+      pattern: ^cm_\w{38,50}$
     EncodedValue:
       description: Base58Check encoded tagged value
       type: string
@@ -3267,7 +3272,7 @@ components:
       type: object
       properties:
         commitment_id:
-          $ref: "#/components/schemas/EncodedValue"
+          $ref: "#/components/schemas/EncodedCommitmentId"
         fee:
           $ref: "#/components/schemas/UInt"
         ttl:
