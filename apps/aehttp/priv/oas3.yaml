@@ -2260,7 +2260,7 @@ components:
       type: object
       properties:
         id:
-          $ref: "#/components/schemas/EncodedValue"
+          $ref: "#/components/schemas/EncodedNameId"
         started_at:
           $ref: "#/components/schemas/UInt64"
         ends_at:
@@ -2946,6 +2946,11 @@ components:
       type: string
       example: sg_8hhU15cVMbukFj4FbdrFwwYnbzXYPnstu9PDnWZGbfQNpeHcB6tK1F3wvG1MPYySARgDRJYUh3YPJD3HctFwg6Y4rUGSR
       pattern: ^sg_\w+$
+    EncodedNameId:
+      description: Base58Check encoded AENS name hash
+      type: string
+      example: nm_psy8tRXPzGxh6975H7K6XQcMFVsdrxJMt7YkzMY8oUTevutzw
+      pattern: ^nm_\w{38,50}$
     EncodedValue:
       description: Base58Check encoded tagged value
       type: string
@@ -3226,7 +3231,7 @@ components:
       type: object
       properties:
         id:
-          $ref: "#/components/schemas/EncodedValue"
+          $ref: "#/components/schemas/EncodedNameId"
         owner:
           $ref: "#/components/schemas/EncodedPubkey"
         ttl:
@@ -3243,7 +3248,7 @@ components:
       type: object
       properties:
         name_id:
-          $ref: "#/components/schemas/EncodedValue"
+          $ref: "#/components/schemas/EncodedNameId"
       required:
         - name_id
     NamePointer:
@@ -3279,7 +3284,7 @@ components:
       type: object
       properties:
         name_id:
-          $ref: "#/components/schemas/EncodedValue"
+          $ref: "#/components/schemas/EncodedNameId"
         fee:
           $ref: "#/components/schemas/UInt"
         ttl:
@@ -3296,7 +3301,7 @@ components:
       type: object
       properties:
         name_id:
-          $ref: "#/components/schemas/EncodedValue"
+          $ref: "#/components/schemas/EncodedNameId"
         recipient_id:
           $ref: "#/components/schemas/EncodedPubkey"
         fee:
@@ -3316,7 +3321,7 @@ components:
       type: object
       properties:
         name_id:
-          $ref: "#/components/schemas/EncodedValue"
+          $ref: "#/components/schemas/EncodedNameId"
         name_ttl:
           $ref: "#/components/schemas/UInt64"
         pointers:
