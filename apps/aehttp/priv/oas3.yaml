@@ -2959,9 +2959,11 @@ components:
       type: string
       example: cm_psy8tRXPzGxh6975H7K6XQcMFVsdrxJMt7YkzMY8oUTevutzw
       pattern: ^cm_\w{38,50}$
-    EncodedValue:
-      description: Base58Check encoded tagged value
+    EncodedOracleQueryId:
+      description: Base58Check encoded oracle query id
       type: string
+      example: oq_psy8tRXPzGxh6975H7K6XQcMFVsdrxJMt7YkzMY8oUTevutzw
+      pattern: ^oq_\w{38,50}$
     Error:
       type: object
       properties:
@@ -3496,7 +3498,7 @@ components:
       type: object
       properties:
         id:
-          $ref: "#/components/schemas/EncodedValue"
+          $ref: "#/components/schemas/EncodedOracleQueryId"
         sender_id:
           $ref: "#/components/schemas/EncodedPubkey"
         sender_nonce:
@@ -3584,7 +3586,7 @@ components:
       type: object
       properties:
         query_id:
-          $ref: "#/components/schemas/EncodedValue"
+          $ref: "#/components/schemas/EncodedOracleQueryId"
         response:
           type: string
         response_ttl:
