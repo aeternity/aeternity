@@ -2278,7 +2278,7 @@ components:
       type: object
       properties:
         bytecode:
-          $ref: "#/components/schemas/EncodedByteArray"
+          $ref: "#/components/schemas/EncodedContractByteArray"
       required:
         - bytecode
     Channel:
@@ -2364,7 +2364,7 @@ components:
         nonce:
           $ref: "#/components/schemas/UInt64"
         poi:
-          $ref: "#/components/schemas/EncodedByteArray"
+          $ref: "#/components/schemas/EncodedProofOfInclusion"
       required:
         - channel_id
         - from_id
@@ -2454,7 +2454,7 @@ components:
         nonce:
           $ref: "#/components/schemas/UInt64"
         offchain_trees:
-          $ref: "#/components/schemas/EncodedByteArray"
+          $ref: "#/components/schemas/EncodedStateTrees"
       required:
         - channel_id
         - from_id
@@ -2539,7 +2539,7 @@ components:
         nonce:
           $ref: "#/components/schemas/UInt64"
         poi:
-          $ref: "#/components/schemas/EncodedByteArray"
+          $ref: "#/components/schemas/EncodedProofOfInclusion"
       required:
         - channel_id
         - from_id
@@ -2627,7 +2627,7 @@ components:
           items:
             $ref: "#/components/schemas/Event"
         return_value:
-          $ref: "#/components/schemas/EncodedByteArray"
+          $ref: "#/components/schemas/EncodedContractByteArray"
         return_type:
           description: The status of the call 'ok | error | revert'.
           type: string
@@ -2667,7 +2667,7 @@ components:
         gas_price:
           $ref: "#/components/schemas/UInt"
         call_data:
-          $ref: "#/components/schemas/EncodedByteArray"
+          $ref: "#/components/schemas/EncodedContractByteArray"
       required:
         - caller_id
         - contract_id
@@ -2685,7 +2685,7 @@ components:
         nonce:
           $ref: "#/components/schemas/UInt64"
         code:
-          $ref: "#/components/schemas/EncodedByteArray"
+          $ref: "#/components/schemas/EncodedContractByteArray"
         vm_version:
           $ref: "#/components/schemas/UInt16"
         abi_version:
@@ -2703,7 +2703,7 @@ components:
         ttl:
           $ref: "#/components/schemas/UInt64"
         call_data:
-          $ref: "#/components/schemas/EncodedByteArray"
+          $ref: "#/components/schemas/EncodedContractByteArray"
       required:
         - owner_id
         - code
@@ -2830,7 +2830,7 @@ components:
       type: object
       properties:
         calldata:
-          $ref: "#/components/schemas/EncodedByteArray"
+          $ref: "#/components/schemas/EncodedContractByteArray"
         contract:
           $ref: "#/components/schemas/EncodedPubkey"
         amount:
@@ -2908,8 +2908,23 @@ components:
       required:
         - results
     EncodedByteArray:
-      description: Base64Check encoded tagged byte array
+      description: Base64Check encoded byte array
       type: string
+      example: ba_AAAAAfy4hFE=
+      pattern: ^ba_\w+$
+    EncodedContractByteArray:
+      description: Base64Check encoded contract byte array
+      type: string
+      example: cb_AAAAAfy4hFE=
+      pattern: ^cb_\w+$
+    EncodedProofOfInclusion:
+      description: Base64Check encoded proof of inclusion
+      type: string
+      pattern: ^pi_\w+$
+    EncodedStateTrees:
+      description: Base64Check encoded state trees
+      type: string
+      pattern: ^ss_\w+$
     EncodedHash:
       description: Base58Check encoded tagged hash
       type: string
@@ -2944,7 +2959,7 @@ components:
           items:
             $ref: "#/components/schemas/UInt"
         data:
-          $ref: "#/components/schemas/EncodedByteArray"
+          $ref: "#/components/schemas/EncodedContractByteArray"
       required:
         - address
         - topics
@@ -2957,7 +2972,7 @@ components:
         nonce:
           $ref: "#/components/schemas/UInt64"
         code:
-          $ref: "#/components/schemas/EncodedByteArray"
+          $ref: "#/components/schemas/EncodedContractByteArray"
         vm_version:
           $ref: "#/components/schemas/UInt16"
         abi_version:
@@ -2971,7 +2986,7 @@ components:
         ttl:
           $ref: "#/components/schemas/UInt64"
         call_data:
-          $ref: "#/components/schemas/EncodedByteArray"
+          $ref: "#/components/schemas/EncodedContractByteArray"
         auth_fun:
           description: Contract authorization function hash (hex encoded)
           type: string
@@ -3002,7 +3017,7 @@ components:
         ttl:
           $ref: "#/components/schemas/UInt64"
         auth_data:
-          $ref: "#/components/schemas/EncodedByteArray"
+          $ref: "#/components/schemas/EncodedContractByteArray"
         tx:
           $ref: "#/components/schemas/SignedTx"
       required:
@@ -3025,7 +3040,7 @@ components:
         gas_used:
           $ref: "#/components/schemas/UInt64"
         return_value:
-          $ref: "#/components/schemas/EncodedByteArray"
+          $ref: "#/components/schemas/EncodedContractByteArray"
         return_type:
           description: The status of the call 'ok | error'.
           type: string
@@ -3128,7 +3143,7 @@ components:
         version:
           $ref: "#/components/schemas/UInt32"
         info:
-          $ref: "#/components/schemas/EncodedByteArray"
+          $ref: "#/components/schemas/EncodedContractByteArray"
       required:
         - hash
         - height
@@ -3227,7 +3242,7 @@ components:
         key:
           type: string
         encoded_key:
-          $ref: "#/components/schemas/EncodedValue"
+          $ref: "#/components/schemas/EncodedByteArray"
         id:
           $ref: "#/components/schemas/EncodedPubkey"
       required:
@@ -3344,7 +3359,7 @@ components:
             gas_price:
               $ref: "#/components/schemas/UInt"
             call_data:
-              $ref: "#/components/schemas/EncodedByteArray"
+              $ref: "#/components/schemas/EncodedContractByteArray"
           required:
             - caller
             - contract
@@ -3381,7 +3396,7 @@ components:
             deposit:
               $ref: "#/components/schemas/UInt"
             call_data:
-              $ref: "#/components/schemas/EncodedByteArray"
+              $ref: "#/components/schemas/EncodedContractByteArray"
           required:
             - owner
             - vm_version
@@ -3676,7 +3691,7 @@ components:
       type: object
       properties:
         poi:
-          $ref: "#/components/schemas/EncodedByteArray"
+          $ref: "#/components/schemas/EncodedProofOfInclusion"
       required:
         - poi
     PostTxResponse:
