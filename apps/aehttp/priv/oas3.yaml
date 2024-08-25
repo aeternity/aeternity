@@ -2941,6 +2941,11 @@ components:
       type: string
       example: th_2Zfo2ALfRkKQxEaUj3HhcUGyMrTqYpDMgr2u15fPanYD1d55kz
       pattern: ^th_\w{38,50}$
+    EncodedSignature:
+      description: Base58Check encoded signature
+      type: string
+      example: sg_8hhU15cVMbukFj4FbdrFwwYnbzXYPnstu9PDnWZGbfQNpeHcB6tK1F3wvG1MPYySARgDRJYUh3YPJD3HctFwg6Y4rUGSR
+      pattern: ^sg_\w+$
     EncodedValue:
       description: Base58Check encoded tagged value
       type: string
@@ -3179,7 +3184,7 @@ components:
         txs_hash:
           $ref: "#/components/schemas/EncodedHash"
         signature:
-          $ref: "#/components/schemas/EncodedValue"
+          $ref: "#/components/schemas/EncodedSignature"
         time:
           $ref: "#/components/schemas/UInt64"
         version:
@@ -3781,7 +3786,7 @@ components:
           type: array
           minItems: 0
           items:
-            $ref: "#/components/schemas/EncodedValue"
+            $ref: "#/components/schemas/EncodedSignature"
       required:
         - tx
     SignedTxs:
