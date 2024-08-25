@@ -1080,7 +1080,12 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/EncodedTx"
+              type: object
+              properties:
+                tx:
+                  $ref: "#/components/schemas/EncodedTx"
+              required:
+                - tx
         description: The new transaction
         required: true
       responses:
@@ -2351,7 +2356,7 @@ components:
         from_id:
           $ref: "#/components/schemas/EncodedPubkey"
         payload:
-          $ref: "#/components/schemas/EncodedByteArray"
+          $ref: "#/components/schemas/EncodedTx"
         ttl:
           $ref: "#/components/schemas/UInt64"
         fee:
@@ -2435,7 +2440,7 @@ components:
         from_id:
           $ref: "#/components/schemas/EncodedPubkey"
         payload:
-          $ref: "#/components/schemas/EncodedByteArray"
+          $ref: "#/components/schemas/EncodedTx"
         round:
           $ref: "#/components/schemas/UInt64"
         update:
@@ -2478,7 +2483,7 @@ components:
         round:
           $ref: '#/components/schemas/UInt64'
         payload:
-          $ref: '#/components/schemas/EncodedByteArray'
+          $ref: '#/components/schemas/EncodedTx'
         ttl:
           $ref: '#/components/schemas/UInt64'
         fee:
@@ -2526,7 +2531,7 @@ components:
         from_id:
           $ref: "#/components/schemas/EncodedPubkey"
         payload:
-          $ref: "#/components/schemas/EncodedByteArray"
+          $ref: "#/components/schemas/EncodedTx"
         ttl:
           $ref: "#/components/schemas/UInt64"
         fee:
@@ -2549,7 +2554,7 @@ components:
         from_id:
           $ref: "#/components/schemas/EncodedPubkey"
         payload:
-          $ref: "#/components/schemas/EncodedByteArray"
+          $ref: "#/components/schemas/EncodedTx"
         ttl:
           $ref: "#/components/schemas/UInt64"
         fee:
@@ -2815,7 +2820,7 @@ components:
       type: object
       properties:
         tx:
-          $ref: "#/components/schemas/EncodedByteArray"
+          $ref: "#/components/schemas/EncodedTx"
         tx_hash:
           $ref: "#/components/schemas/EncodedHash"
         stateful:
@@ -2868,7 +2873,7 @@ components:
       type: object
       properties:
         tx:
-          $ref: "#/components/schemas/EncodedByteArray"
+          $ref: "#/components/schemas/EncodedTx"
         tx_hash:
           $ref: "#/components/schemas/EncodedHash"
         call_req:
@@ -2912,12 +2917,10 @@ components:
       description: Base58Check encoded tagged pubkey
       type: string
     EncodedTx:
-      type: object
-      properties:
-        tx:
-          $ref: "#/components/schemas/EncodedByteArray"
-      required:
-        - tx
+      description: Base64Check encoded transaction
+      type: string
+      example: tx_+E8hAaEB4TK48d23oE5jt/qWR5pUu8UlpTGn8bwM5JISGQMGf7ABoQOvDVCf43V7alNbsUvTarXaCf7rjtWX36YLS4+JTa4jn4YPHaUyOAAAxRZ6Sg==
+      pattern: ^tx_\w+$
     EncodedValue:
       description: Base58Check encoded tagged value
       type: string
@@ -3752,7 +3755,7 @@ components:
         hash:
           $ref: "#/components/schemas/EncodedHash"
         encoded_tx:
-          $ref: "#/components/schemas/EncodedByteArray"
+          $ref: "#/components/schemas/EncodedTx"
         signatures:
           description: At least one signature is required unless for Generalized Account Meta transactions
           type: array
@@ -4010,7 +4013,7 @@ components:
       type: object
       properties:
         tx:
-          $ref: "#/components/schemas/EncodedByteArray"
+          $ref: "#/components/schemas/EncodedTx"
       required:
         - tx
   parameters:
