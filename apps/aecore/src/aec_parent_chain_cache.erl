@@ -322,11 +322,16 @@ min_cachable_parent_height(State) ->
     [MinHeight|_] = lists:sort(target_parent_heights(State)),
     MinHeight.
 
+max_cachable_parent_height(State) ->
+    [MaxHeight|_] = lists:reverse(lists:sort(target_parent_heights(State))),
+    MaxHeight.
+
 post_block(Block, #state{top_height = TopHeight} = State0) ->
     BlockHeight = aec_parent_chain_block:height(Block),
+    MaxBlockToRequest = max_cachable_parent_height(State0),
     GCHeight = min_cachable_parent_height(State0),
     State1 =
-        case BlockHeight >= GCHeight of
+        case (BlockHeight >= GCHeight) and (BlockHeight =< MaxBlockToRequest) of
             true ->
                 insert_block(Block, State0);
             false ->
