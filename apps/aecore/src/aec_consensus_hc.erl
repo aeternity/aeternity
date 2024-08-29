@@ -79,6 +79,13 @@
 -export([ parent_chain_validators/2
         ]).
 
+-ifdef(TEST).
+
+-export([entropy/2]).
+
+-endif.
+
+
 -include_lib("aecontract/include/hard_forks.hrl").
 -include("blocks.hrl").
 -include("aec_consensus.hrl").
@@ -527,7 +534,7 @@ next_entropy(Hash, Height, PCHeight) ->
                                 {ok, {_State, _OldSeed, _OldHeight, PCHeight} = Result} ->
                                     Result;
                                 _ ->
-                                    lager:warning("Trying to set entropy for parent height ~p", [PCHeight]),
+                                    lager:info("Trying to set entropy for parent height ~p", [PCHeight]),
                                     set_new_entropy(Hash, Height, PCHeight)
                               end,
     next_entropy_from_seed(NewState, Height, NewPCHeight).
