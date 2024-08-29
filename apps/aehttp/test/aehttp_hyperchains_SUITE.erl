@@ -226,8 +226,8 @@ init_per_group(hc, Config0) ->
 
     ReceiveAddress = encoded_pubkey(?FORD),
 
-    NodeConfig1 = node_config(NetworkId,?NODE1, Config, [?ALICE, ?BOB, ?LISA], ReceiveAddress, ?CONSENSUS, false,  GenesisStartTime),
-    NodeConfig2 = node_config(NetworkId,?NODE2, Config, [], ReceiveAddress, ?CONSENSUS, false, GenesisStartTime),
+    NodeConfig1 = node_config(NetworkId,?NODE1, Config, [?ALICE, ?LISA], ReceiveAddress, ?CONSENSUS, false,  GenesisStartTime),
+    NodeConfig2 = node_config(NetworkId,?NODE2, Config, [?BOB], ReceiveAddress, ?CONSENSUS, false, GenesisStartTime),
     build_json_files(ElectionContract, [NodeConfig1, NodeConfig2]),
     aecore_suite_utils:create_config(?NODE1, Config, NodeConfig1, [{add_peers, true}]),
     aecore_suite_utils:create_config(?NODE2, Config, NodeConfig2, [{add_peers, true}]),
@@ -1168,6 +1168,8 @@ produce_blocks_hc(Node, NodeName, BlocksCnt, LeaderType) ->
     stopped = rpc:call(ParentNodeName, aec_conductor, get_mining_state, []),
     %% initial child chain state
     TopHeight = rpc(Node, aec_chain, top_height, []),
+    Producer = get_block_producer_name(Node, TopHeight),
+    ct:log("Block producer for height ~p: ~p", [TopHeight, Producer]),
     ct:log("Producing a block with height ~p", [TopHeight + 1]),
     %% mine a generation on the parent block
     NumParentBlocks = case (TopHeight + 1) rem ?CHILD_EPOCH_LENGTH == 0 of
@@ -1206,4 +1208,15 @@ mine_key_blocks(ParentNodeName, NumParentBlocks) ->
     {ok, _} = aecore_suite_utils:mine_micro_block_emptying_mempool_or_fail(ParentNodeName),
     {ok, KBs} = aecore_suite_utils:mine_key_blocks(ParentNodeName, NumParentBlocks),
     ct:log("Parent block mined ~p ~p number: ~p", [KBs, ParentNodeName, NumParentBlocks]).
+
+get_block_producer_name(Parties, Node, Height) ->
+    Producer = get_block_producer(Node, Height),
+    case lists:keyfind(Producer, 1, Parties) of
+        false -> Producer;
+        {_, _, Name} -> Name
+    end.
+
+get_block_producer(Node, Height) ->
+    {ok, KeyHeader} = rpc(Node, aec_chain, get_key_header_by_height, [Height]),
+    aec_headers:miner(KeyHeader).
 
