@@ -203,6 +203,10 @@ init_per_suite(Config0) ->
     end.
 
 end_per_suite(Config) ->
+    catch aecore_suite_utils:stop_node(?NODE1, Config),
+    catch aecore_suite_utils:stop_node(?NODE2, Config),
+    catch aecore_suite_utils:stop_node(?NODE3, Config),
+    catch aecore_suite_utils:stop_node(?PARENT_CHAIN_NODE, Config),
     [application:stop(A) ||
         A <- lists:reverse(
                proplists:get_value(started_apps, Config, []))],
@@ -222,12 +226,12 @@ init_per_group(hc, Config0) ->
     aecore_suite_utils:connect(?PARENT_CHAIN_NODE_NAME, []),
     timer:sleep(1000),
     produce_blocks(?PARENT_CHAIN_NODE, ?PARENT_CHAIN_NODE_NAME,
-                   parent, ?START_HEIGHT + ?PARENT_EPOCH_LENGTH + ?PARENT_FINALITY, Config, ?CONSENSUS),
+                   parent, ?START_HEIGHT + ?PARENT_EPOCH_LENGTH + ?PARENT_FINALITY, Config),
 
     ReceiveAddress = encoded_pubkey(?FORD),
 
-    NodeConfig1 = node_config(NetworkId,?NODE1, Config, [?ALICE, ?LISA], ReceiveAddress, ?CONSENSUS, false,  GenesisStartTime),
-    NodeConfig2 = node_config(NetworkId,?NODE2, Config, [?BOB], ReceiveAddress, ?CONSENSUS, false, GenesisStartTime),
+    NodeConfig1 = node_config(NetworkId,?NODE1, Config, [?ALICE, ?BOB, ?LISA], ReceiveAddress, ?CONSENSUS, false,  GenesisStartTime),
+    NodeConfig2 = node_config(NetworkId,?NODE2, Config, [], ReceiveAddress, ?CONSENSUS, false, GenesisStartTime),
     build_json_files(ElectionContract, [NodeConfig1, NodeConfig2]),
     aecore_suite_utils:create_config(?NODE1, Config, NodeConfig1, [{add_peers, true}]),
     aecore_suite_utils:create_config(?NODE2, Config, NodeConfig2, [{add_peers, true}]),
@@ -239,14 +243,8 @@ init_per_group(hc, Config0) ->
     ParentTopHeight0 = rpc(?PARENT_CHAIN_NODE, aec_chain, top_height, []),
     ct:log("Parent chain top height ~p", [ParentTopHeight0]),
     timer:sleep(1000),
-    Config1 = [{network_id, NetworkId}, {consensus, ?CONSENSUS}, {genesis_start_time, GenesisStartTime} | Config],
-    {ok, _} = produce_blocks(?NODE1, ?NODE1_NAME, child, 20, Config, ?config(consensus, Config1)),
-    ParentTopHeight = rpc(?PARENT_CHAIN_NODE, aec_chain, top_height, []),
-    {ok, ParentBlocks} = get_generations(?PARENT_CHAIN_NODE, 0, ParentTopHeight),
-    ct:log("Parent chain blocks ~p", [ParentBlocks]),
-    ChildTopHeight = rpc(?NODE1, aec_chain, top_height, []),
-    {ok, ChildBlocks} = get_generations(?NODE1, 0, ChildTopHeight),
-    ct:log("Child chain blocks ~p", [ChildBlocks]),
+    Config1 = [{network_id, NetworkId}, {consensus, ?CONSENSUS}, {genesis_start_time, GenesisStartTime},
+               {staker_names, [?ALICE, ?BOB, ?LISA]} | Config],
     Config1.
 
 set_up_third_node(Config) ->
@@ -373,7 +371,7 @@ contract_call(ContractPubkey, Name, Fun, Args, Amount, From, Nonce) ->
     Tx.
 
 mine_and_sync(Config) ->
-    {ok, [KB]} = produce_blocks(?NODE1, ?NODE1_NAME, child, 1, Config, ?config(consensus, Config)),
+    {ok, [KB]} = produce_blocks(?NODE1, ?NODE1_NAME, child, 1, Config),
     {ok, KB} = wait_same_top(),
     ok.
 
@@ -418,7 +416,7 @@ simple_withdraw(Config) ->
     true = rpc:call(?NODE1_NAME, aec_conductor, is_leader, []),
     {ok, []} = rpc:call(?NODE1_NAME, aec_tx_pool, peek, [infinity]),
 
-    {ok, [KB0 | _ ]} = produce_blocks(?NODE1, ?NODE1_NAME, child, 1, Config, ?config(consensus, Config)),
+    {ok, [KB0 | _ ]} = produce_blocks(?NODE1, ?NODE1_NAME, child, 1, Config),
     Top0 = aec_blocks:to_header(KB0),
     Top0 = rpc(?NODE1, aec_chain, top_header, []),
     ct_log_header(Top0),
@@ -479,7 +477,7 @@ change_leaders(Config) ->
     Blocks = 10,
     NewLeader =
         fun() ->
-            {ok, [KB | _ ]} = produce_blocks(?NODE1, ?NODE1_NAME, child, 1, Config, ?config(consensus, Config)),
+            {ok, [KB | _ ]} = produce_blocks(?NODE1, ?NODE1_NAME, child, 1, Config),
             Beneficiary = aec_blocks:beneficiary(KB),
             Beneficiary = aec_blocks:miner(KB),
             ct_log_block(KB),
@@ -550,7 +548,7 @@ verify_fees(Config) ->
             %% gather staking_powers before reward distribution
             AliceBalance0 = account_balance(pubkey(?ALICE)),
             BobBalance0 = account_balance(pubkey(?BOB)),
-            produce_blocks(?NODE1, ?NODE1_NAME, child, 1, Config, ?config(consensus, Config)),
+            produce_blocks(?NODE1, ?NODE1_NAME, child, 1, Config),
             TopHeader = rpc(?NODE1, aec_chain, top_header, []),
             {ok, TopHash} = aec_headers:hash_header(TopHeader),
             PrevHash = aec_headers:prev_hash(TopHeader),
@@ -644,17 +642,17 @@ verify_fees(Config) ->
         lists:seq(1, 10)),
     ct:log("Test with a spend transaction", []),
     Test(), %% fees
-    produce_blocks(?NODE1, ?NODE1_NAME, child, 1, Config, ?config(consensus, Config)),
+    produce_blocks(?NODE1, ?NODE1_NAME, child, 1, Config),
     ct:log("Test with no transaction", []),
     {ok, _SignedTx} = seed_account(pubkey(?ALICE), 1, NetworkId),
-    produce_blocks(?NODE1, ?NODE1_NAME, child, 1, Config, ?config(consensus, Config)),
+    produce_blocks(?NODE1, ?NODE1_NAME, child, 1, Config),
     Test(), %% after fees
     ok.
 
 block_difficulty(Config) ->
     lists:foreach(
         fun(_) ->
-            {ok, [KB]} = produce_blocks(?NODE1, ?NODE1_NAME, child, 1, Config, ?config(consensus, Config)),
+            {ok, [KB]} = produce_blocks(?NODE1, ?NODE1_NAME, child, 1, Config),
             {ok, AddedStakingPower} = inspect_election_contract(?ALICE, current_added_staking_power, Config),
             Target = aec_blocks:target(KB),
             {Target, Target} = {Target, aeminer_pow:integer_to_scientific(AddedStakingPower)}
@@ -676,7 +674,7 @@ elected_leader_did_not_show_up_(Config) ->
     {TopHeader0, TopHeader0} = {rpc(?NODE3, aec_chain, top_header, []), TopHeader0},
     ct:log("Starting test at (child chain): ~p", [TopHeader0]),
     %% produce a block on the parent chain
-    ok = produce_blocks_hc(?NODE3, ?NODE3_NAME, 1, lazy_leader),
+    ok = produce_blocks_hc(?NODE3, ?NODE3_NAME, 1, lazy_leader, Config),
     {ok, KB} = wait_same_top(?NODE2, ?NODE3),
     0 = aec_blocks:difficulty(KB),
     TopHeader1 = rpc(?NODE3, aec_chain, top_header, []),
@@ -688,10 +686,10 @@ elected_leader_did_not_show_up_(Config) ->
     aecore_suite_utils:connect(?NODE1_NAME, []),
     {ok, _} = wait_same_top(?NODE1, ?NODE3),
     timer:sleep(2000), %% Give NODE1 a moment to finalize sync and post commitments
-    ok = produce_blocks_hc(?NODE1, ?NODE1_NAME, 1, abnormal_commitments_cnt),
+    ok = produce_blocks_hc(?NODE1, ?NODE1_NAME, 1, abnormal_commitments_cnt, Config),
     {ok, KB1} = wait_same_top(?NODE1, ?NODE3),
     {ok, KB1} = wait_same_top(?NODE2, ?NODE3),
-    {ok, _} = produce_blocks(?NODE1, ?NODE1_NAME, child, 10, Config, ?config(consensus, Config)),
+    {ok, _} = produce_blocks(?NODE1, ?NODE1_NAME, child, 10, Config),
     {ok, KB2} = wait_same_top(?NODE1, ?NODE3),
     {ok, KB2} = wait_same_top(?NODE2, ?NODE3),
     ok.
@@ -1133,14 +1131,14 @@ staking_contract_address() ->
 election_contract_address() ->
     aect_contracts:compute_contract_pubkey(?OWNER_PUBKEY, 3).
 
-produce_blocks(_Node, NodeName, parent = _NodeType, BlocksCnt, _Config, _Consensus) ->
+produce_blocks(_Node, NodeName, parent = _NodeType, BlocksCnt, _Config) ->
     {ok, _} = aecore_suite_utils:mine_key_blocks(NodeName, BlocksCnt);
-produce_blocks(Node, NodeName, NodeType, BlocksCnt, Config, Consensus) ->
-    produce_blocks(Node, NodeName, NodeType, BlocksCnt, Config, Consensus, correct_leader).
+produce_blocks(Node, NodeName, NodeType, BlocksCnt, Config) ->
+    produce_blocks(Node, NodeName, NodeType, BlocksCnt, Config, ?config(consensus, Config), correct_leader).
 
-produce_blocks(Node, NodeName, child = _NodeType, BlocksCnt, _Config, ?CONSENSUS, HCType) ->
+produce_blocks(Node, NodeName, child = _NodeType, BlocksCnt, Config, ?CONSENSUS, HCType) ->
     TopHeight0 = rpc(Node, aec_chain, top_height, []),
-    produce_blocks_hc(Node, NodeName, BlocksCnt, HCType),
+    produce_blocks_hc(Node, NodeName, BlocksCnt, HCType, Config),
     TopHeight = rpc(Node, aec_chain, top_height, []),
     get_generations(Node, TopHeight0 + 1, TopHeight).
 
@@ -1202,7 +1200,7 @@ produce_blocks_hc(Node, NodeName, BlocksCnt, LeaderType) ->
             ok
     end,
     %% wait for the child to catch up
-    produce_blocks_hc(Node, NodeName, BlocksCnt - 1, LeaderType).
+    produce_blocks_hc(Node, NodeName, BlocksCnt - 1, LeaderType, Config).
 
 mine_key_blocks(ParentNodeName, NumParentBlocks) ->
     {ok, _} = aecore_suite_utils:mine_micro_block_emptying_mempool_or_fail(ParentNodeName),
