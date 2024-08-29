@@ -517,7 +517,7 @@ start_cache(StartHeight, MaxSize) ->
     start_cache(StartHeight, MaxSize, false).
 
 start_cache(StartHeight, MaxSize, IsPublishingCommitments) ->
-    Args = [StartHeight, fun(Height) -> [Height + StartHeight, Height + StartHeight + ?EPOCH] end, MaxSize, true, IsPublishingCommitments],
+    Args = [StartHeight, 1000, fun(Height) -> [Height + StartHeight, Height + StartHeight + ?EPOCH] end, MaxSize, true, IsPublishingCommitments],
     gen_server:start_link({local, ?TEST_MODULE}, ?TEST_MODULE, Args, []).
 
 

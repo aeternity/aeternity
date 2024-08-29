@@ -95,6 +95,7 @@ start(Config, #{block_production := BlockProduction}) ->
 
     Confirmations        = maps:get(<<"confirmations">>, PCConfig, 6),
     StartHeight          = maps:get(<<"start_height">>, PCConfig, 0),
+    ParentRetryInterval  = maps:get(<<"retry_interval">>, PCConfig, 1000),
     ProducingCommitments = maps:get(<<"producing_commitments">>, PCConfig, false),
     ConsensusConfig      = maps:get(<<"consensus">>, PCConfig, #{}),
     PollingConfig        = maps:get(<<"polling">>, PCConfig, #{}),
@@ -128,7 +129,7 @@ start(Config, #{block_production := BlockProduction}) ->
 
     start_dependency(aec_parent_connector, [ParentConnMod, FetchInterval, ParentHosts, NetworkId,
                                             SignModule, HCPCPairs, PCSpendPubkey, Fee, Amount]),
-    start_dependency(aec_parent_chain_cache, [StartHeight, fun target_parent_heights/1, %% prefetch the next parent block
+    start_dependency(aec_parent_chain_cache, [StartHeight, ParentRetryInterval, fun target_parent_heights/1, %% prefetch the next parent block
                                               CacheSize, Confirmations,
                                               BlockProduction, ProducingCommitments]),
     ok.
