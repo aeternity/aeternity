@@ -133,10 +133,10 @@ groups() ->
     [
      {hc, [sequence], [ produce_first_epoch
                       , verify_fees
-    , mine_and_sync
-    , spend_txs
-    , simple_withdraw
-    , change_leaders
+                      , mine_and_sync
+                      , spend_txs
+                      , simple_withdraw
+                      , change_leaders
                       , sync_third_node
                       ]}
     ].
