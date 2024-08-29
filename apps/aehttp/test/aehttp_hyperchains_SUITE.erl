@@ -15,7 +15,8 @@
     init_per_testcase/2, end_per_testcase/2
    ]).
 
--export([mine_and_sync/1,
+-export([produce_first_epoch/1,
+         mine_and_sync/1,
          spend_txs/1,
          simple_withdraw/1,
          change_leaders/1,
@@ -35,9 +36,9 @@
 -define(HC_CONTRACT, "HCElection").
 -define(CONSENSUS, hc).
 -define(START_HEIGHT, 100).
--define(CHILD_EPOCH_LENGTH, 10).
+-define(CHILD_EPOCH_LENGTH, 20).
 -define(CHILD_BLOCK_TIME, 1000).
--define(PARENT_EPOCH_LENGTH, 10).
+-define(PARENT_EPOCH_LENGTH, 5).
 -define(PARENT_FINALITY, 3).
 -define(REWARD_DELAY, 2).
 
@@ -130,25 +131,14 @@ all() -> [{group, hc}].
 
 groups() ->
     [
-     {hc, [sequence], common_tests() ++ hc_specific_tests()}
-     %% , {lazy_leader, [sequence], [elected_leader_did_not_show_up]}
-    ].
-
-common_tests() ->
-    [ verify_fees
+     {hc, [sequence], [ produce_first_epoch
+                      , verify_fees
     , mine_and_sync
     , spend_txs
     , simple_withdraw
     , change_leaders
-    ].
-
-hc_specific_tests() ->
-    [sync_third_node
-     %%empty_parent_block,
-     %%verify_commitments,
-     %%genesis_has_commitments,
-     %%block_difficulty,
-     %%elected_leader_did_not_show_up
+                      , sync_third_node
+                      ]}
     ].
 
 suite() -> [].
@@ -407,6 +397,22 @@ spend_txs(Config) ->
             ct:log("Generation ~p:\n~p", [GenIndex, Gen])
         end,
         lists:seq(1, 2)),
+    ok.
+
+produce_first_epoch(Config) ->
+    {ok, Bs} = produce_blocks(?NODE1, ?NODE1_NAME, child, ?CHILD_EPOCH_LENGTH, Config),
+    Producers = [ aec_blocks:miner(B) || B <- Bs ],
+    Leaders = leaders_at_height(?NODE1, 1, Config),
+    ct:log("Bs: ~p  Leaders ~p", [Bs, Leaders]),
+    %% Check that all producers are valid leaders
+    ?assertEqual([], lists:usort(Producers) -- Leaders),
+    ?assert(true, length(Producers) > 1),  %% should be for larger EPOCHs
+    ParentTopHeight = rpc(?PARENT_CHAIN_NODE, aec_chain, top_height, []),
+    {ok, ParentBlocks} = get_generations(?PARENT_CHAIN_NODE, 0, ParentTopHeight),
+    ct:log("Parent chain blocks ~p", [ParentBlocks]),
+    ChildTopHeight = rpc(?NODE1, aec_chain, top_height, []),
+    {ok, ChildBlocks} = get_generations(?NODE1, 0, ChildTopHeight),
+    ct:log("Child chain blocks ~p", [ChildBlocks]),
     ok.
 
 simple_withdraw(Config) ->
@@ -838,7 +844,9 @@ inspect_staking_contract(OriginWho, WhatToInspect, Config, TopHash) ->
             {get_validator_state, Who} ->
                 {"get_validator_state", [binary_to_list(encoded_pubkey(Who))]};
             get_state ->
-                {"get_state", []}
+                {"get_state", []};
+            leaders ->
+                {"sorted_validators", []}
         end,
     ContractPubkey = ?config(staking_contract, Config),
     Tx = contract_call(ContractPubkey, ?MAIN_STAKING_CONTRACT, Fun,
@@ -854,7 +862,8 @@ inspect_election_contract(OriginWho, WhatToInspect, Config, TopHash) ->
     {Fun, Args} =
         case WhatToInspect of
             current_leader -> {"leader", []};
-            current_added_staking_power -> {"added_stake", []}
+            current_added_staking_power -> {"added_stake", []};
+            validators -> {"sorted_validators", []}
         end,
     ContractPubkey = ?config(election_contract, Config),
     ElectionContract = ?HC_CONTRACT,
@@ -1157,18 +1166,17 @@ get_generations(Node, FromHeight, ToHeight) ->
             lists:seq(FromHeight, ToHeight)),
     {ok, lists:reverse(ReversedBlocks)}.
 
-produce_blocks_hc(_Node, _NodeName, BlocksCnt, _LeaderType) when BlocksCnt < 1 ->
+produce_blocks_hc(_Node, _NodeName, BlocksCnt, _LeaderType, _Config) when BlocksCnt < 1 ->
     ok;
-produce_blocks_hc(Node, NodeName, BlocksCnt, LeaderType) ->
+produce_blocks_hc(Node, NodeName, BlocksCnt, LeaderType, Config) ->
     %% ParentNode = ?PARENT_CHAIN_NODE,
     ParentNodeName = ?PARENT_CHAIN_NODE_NAME,
     %% make sure the parent chain is not mining
     stopped = rpc:call(ParentNodeName, aec_conductor, get_mining_state, []),
     %% initial child chain state
     TopHeight = rpc(Node, aec_chain, top_height, []),
-    Producer = get_block_producer_name(Node, TopHeight),
-    ct:log("Block producer for height ~p: ~p", [TopHeight, Producer]),
-    ct:log("Producing a block with height ~p", [TopHeight + 1]),
+    Producer = get_block_producer_name(?config(staker_names, Config), Node, TopHeight),
+    ct:log("~p producer for height ~p. Now producing next block", [Producer, TopHeight]),
     %% mine a generation on the parent block
     NumParentBlocks = case (TopHeight + 1) rem ?CHILD_EPOCH_LENGTH == 0 of
                         true -> ?PARENT_EPOCH_LENGTH + ?PARENT_FINALITY;
@@ -1218,3 +1226,9 @@ get_block_producer(Node, Height) ->
     {ok, KeyHeader} = rpc(Node, aec_chain, get_key_header_by_height, [Height]),
     aec_headers:miner(KeyHeader).
 
+leaders_at_height(Node, Height, Config) ->
+    {ok, Hash} = rpc(Node, aec_chain_state, get_key_block_hash_at_height, [Height]),
+    {ok, Return} = inspect_staking_contract(?ALICE, leaders, Config, Hash),
+    [ begin
+        {account_pubkey, K} = aeser_api_encoder:decode(LeaderKey), K
+      end || [ LeaderKey, _LeaderStake] <- Return ].
