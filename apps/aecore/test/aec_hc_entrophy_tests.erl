@@ -42,28 +42,55 @@ epoch_test_() ->
      [  {"Test a new epoch is created", fun new_epoch/0},
         {"Test a cached epoch is used", fun cached_new_epoch/0},
         {"Test next entropy", fun next_entropy/0},
-        {"Test next entropy comes from the cache", fun next_entropy_from_cache/0}
+        {"Test next entropy comes from the cache", fun next_entropy_from_cache/0},
+        {"Test next entropy with a seed", fun next_entropy_with_seed/0},
+        {"Test next entropy with a seed comes from the cache", fun next_entropy_with_seed_from_cache/0},
+        {"Test a full epoch", fun full_epoch/0}
      ]}.
 
 
 new_epoch() ->
-    check_new_epoch(?KEY_HASH_1, ?CHILD_START_HEIGHT, ?KEY_HASH_2, ?CHILD_EPOCH_LENGTH),
+    check_new_epoch(?KEY_HASH_1, ?CHILD_START_HEIGHT, ?KEY_HASH_2, 0),
     ok.
 
 cached_new_epoch() ->
-    check_new_epoch(?KEY_HASH_1, ?CHILD_START_HEIGHT, ?KEY_HASH_2, ?CHILD_EPOCH_LENGTH),
-    check_new_epoch(?KEY_HASH_1, ?CHILD_START_HEIGHT, ?KEY_HASH_2, ?CHILD_EPOCH_LENGTH),
+    check_new_epoch(?KEY_HASH_1, ?CHILD_START_HEIGHT, ?KEY_HASH_2, 0),
+    check_new_epoch(?KEY_HASH_1, ?CHILD_START_HEIGHT, ?KEY_HASH_2, 0),
     ok.
 
 next_entropy() ->
-    check_new_epoch(?KEY_HASH_1, ?CHILD_START_HEIGHT, ?KEY_HASH_2, ?CHILD_EPOCH_LENGTH),
-    check_next_entrophy_from_epoch(?KEY_HASH_1, ?KEY_HASH_3, ?CHILD_START_HEIGHT, ?KEY_HASH_4, ?CHILD_EPOCH_LENGTH + 1),
+    check_new_epoch(?KEY_HASH_1, ?CHILD_START_HEIGHT, ?KEY_HASH_2, 0),
+    check_next_entrophy_from_epoch(?KEY_HASH_1, ?CHILD_START_HEIGHT, ?KEY_HASH_2, 1),
     ok.
 
 next_entropy_from_cache() ->
-    check_new_epoch(?KEY_HASH_1, ?CHILD_START_HEIGHT, ?KEY_HASH_2, ?CHILD_EPOCH_LENGTH),
-    check_next_entrophy_from_epoch(?KEY_HASH_1, ?KEY_HASH_3, ?CHILD_START_HEIGHT, ?KEY_HASH_4, ?CHILD_EPOCH_LENGTH + 1),
-    check_next_entrophy_from_epoch(?KEY_HASH_1, ?KEY_HASH_3, ?CHILD_START_HEIGHT, ?KEY_HASH_4, ?CHILD_EPOCH_LENGTH + 1),
+    check_new_epoch(?KEY_HASH_1, ?CHILD_START_HEIGHT, ?KEY_HASH_2, 0),
+    check_next_entrophy_from_epoch(?KEY_HASH_1, ?CHILD_START_HEIGHT, ?KEY_HASH_2, 1),
+    check_next_entrophy_from_epoch(?KEY_HASH_1, ?CHILD_START_HEIGHT, ?KEY_HASH_2, 1),
+    ok.
+
+
+next_entropy_with_seed() ->
+    check_new_epoch(?KEY_HASH_1, ?CHILD_START_HEIGHT, ?KEY_HASH_2, 0),
+    State = check_next_entrophy_from_epoch(?KEY_HASH_1, ?CHILD_START_HEIGHT, ?KEY_HASH_2, 1),
+    _State2 = check_next_entrophy_from_seed(?KEY_HASH_1, ?CHILD_START_HEIGHT, ?KEY_HASH_2, 2, State),
+    ok.
+
+next_entropy_with_seed_from_cache() ->
+    check_new_epoch(?KEY_HASH_1, ?CHILD_START_HEIGHT, ?KEY_HASH_2, 0),
+    State = check_next_entrophy_from_epoch(?KEY_HASH_1, ?CHILD_START_HEIGHT, ?KEY_HASH_2, 1),
+    State = check_next_entrophy_from_epoch(?KEY_HASH_1, ?CHILD_START_HEIGHT, ?KEY_HASH_2, 1),
+    State2 = check_next_entrophy_from_seed(?KEY_HASH_1, ?CHILD_START_HEIGHT, ?KEY_HASH_2, 2, State),
+    State2 = check_next_entrophy_from_seed(?KEY_HASH_1, ?CHILD_START_HEIGHT, ?KEY_HASH_2, 2, State),
+    ok.
+
+full_epoch() ->
+    Height = 0,
+    check_new_epoch(?KEY_HASH_1, ?CHILD_START_HEIGHT, ?KEY_HASH_2, Height),
+    State  = check_next_entrophy_from_epoch(?KEY_HASH_1, ?CHILD_START_HEIGHT, ?KEY_HASH_2, Height + 1),
+    _State2 = lists:foldl(fun(ChildHeight, NewState) -> check_next_entrophy_from_seed(?KEY_HASH_1, ?CHILD_START_HEIGHT, ?KEY_HASH_2, ChildHeight, NewState) end,
+                            State, lists:seq(Height +2, ?CHILD_EPOCH_LENGTH -1)),
+    check_new_epoch(?KEY_HASH_3, ?CHILD_START_HEIGHT + ?PARENT_GENERATION, ?KEY_HASH_4, Height + ?CHILD_EPOCH_LENGTH),
     ok.
 
 check_new_epoch(PCHash, PCHeight, PCPrevHash, Height) ->
@@ -72,19 +99,34 @@ check_new_epoch(PCHash, PCHeight, PCPrevHash, Height) ->
     ?assertEqual(PCHash, Entrophy),
     Entrophy.
 
-check_next_entrophy_from_epoch(EpochPCHash, PCHash, PCHeight, PCPrevHash, Height) ->
+check_next_entrophy_from_epoch(PCHash, PCHeight, PCPrevHash, Height) ->
     Block = new_block(PCHash, PCHeight, PCPrevHash),
     Entrophy = aec_consensus_hc:entropy(Block, Height),
-    {IntEntropy, State} = next_entropy_from_hash(EpochPCHash),
-    ExpectedEntropy = list_to_bitstring(base58:binary_to_base58(IntEntropy)),
+    {ExpectedEntropy, State} = next_entropy_from_hash(PCHash),
     ?assertEqual(ExpectedEntropy, Entrophy),
     State.
+
+check_next_entrophy_from_seed(PCHash, PCHeight, PCPrevHash, Height, State) ->
+    Block = new_block(PCHash, PCHeight, PCPrevHash),
+    Entrophy = aec_consensus_hc:entropy(Block, Height),
+    {ExpectedEntropy, State2} = next_entropy_from_seed(State),
+    ?assertEqual(ExpectedEntropy, Entrophy),
+    State2.
+
+next_entropy_from_seed(State) ->
+    {IntEntropy, State2} = rand:bytes_s(256, State),
+    Entropy = int_to_entropy(IntEntropy),
+    {Entropy, State2}.
 
 next_entropy_from_hash(PCHash) ->
     Seed = hash_to_int(PCHash),
     State = rand:seed_s(exsss, Seed),
-    rand:bytes_s(256, State).
+    {IntEntropy, State2} = rand:bytes_s(256, State),
+    Entropy = int_to_entropy(IntEntropy),
+    {Entropy, State2}.
 
+int_to_entropy(IntEntropy) ->
+    list_to_bitstring(base58:binary_to_base58(IntEntropy)).
 
 new_block(Hash, Height, PrevHash) ->
     aec_parent_chain_block:new(Hash, Height, PrevHash).
