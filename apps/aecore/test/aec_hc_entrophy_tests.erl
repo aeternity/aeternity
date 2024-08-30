@@ -37,7 +37,7 @@ epoch_test_() ->
      fun(_) ->
             meck:unload(aec_parent_chain_cache),
             meck:unload(aeu_env),
-            ets:delete(?ETS_CACHE_TABLE)
+            ets:delete(?ETS_CACHE_TABLE, seed)
      end,
      [  {"Test a new epoch is created", fun new_epoch/0},
         {"Test a cached epoch is used", fun cached_new_epoch/0},
