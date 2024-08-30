@@ -179,7 +179,6 @@ start_ae(StakersEncoded, PCSpendAddress) ->
             end,
             StakersEncoded),
     StakersMap = maps:from_list(Stakers),
-    lager:warning("Stakers ~p", [StakersMap]),
     %% TODO: ditch this after we move beyond OTP24
     _Mod = aec_preset_keys,
     start_dependency(aec_preset_keys, [StakersMap]),
@@ -530,13 +529,14 @@ set_new_entropy(Hash, Height, PCHeight) ->
     end.
 
 next_entropy(Hash, Height, PCHeight) ->
-    {NewState, _Seed, _Height, NewPCHeight} = case aeu_ets_cache:lookup(?ETS_CACHE_TABLE, seed) of
-                                {ok, {_State, _OldSeed, _OldHeight, PCHeight} = Result} ->
-                                    Result;
-                                _ ->
-                                    lager:info("Trying to set entropy for parent height ~p", [PCHeight]),
-                                    set_new_entropy(Hash, Height, PCHeight)
-                              end,
+    {NewState, _Seed, _Height, NewPCHeight} =
+        case aeu_ets_cache:lookup(?ETS_CACHE_TABLE, seed) of
+            {ok, {_State, _OldSeed, _OldHeight, PCHeight} = Result} ->
+                Result;
+            _ ->
+                lager:info("Trying to set entropy for parent height ~p", [PCHeight]),
+                set_new_entropy(Hash, Height, PCHeight)
+        end,
     next_entropy_from_seed(NewState, Height, NewPCHeight).
 
 next_entropy_from_seed(State, Height, PCHeight) ->
@@ -686,7 +686,6 @@ next_beneficiary() ->
                                                     [aefa_fate_code:encode_arg({string, Entropy}),
                                                      aefa_fate_code:encode_arg({bytes, NetworkId})
                                                     ]),
-            lager:warning("Entropy ~p ~p", [NextHeight, Entropy]),
             CallData = aeser_api_encoder:encode(contract_bytearray, CD),
             try call_consensus_contract_(?ELECTION_CONTRACT, TxEnv, Trees, CallData, "elect_next", 0) of
                 {ok, _Trees1, Call} ->
@@ -768,7 +767,6 @@ is_leader_valid(Node, Trees, TxEnv, PrevNode) ->
                     Leader = aec_headers:miner(Header),
                     Target = aec_headers:target(Header),
                     IsDefaultT = Target =:= default_target(),
-                    lager:warning("is_leader_valid ~p ~p", [ExpectedLeader, Leader]),
                     case ExpectedLeader =:= Leader of
                         true when IsDefaultT -> true;
                         true ->
