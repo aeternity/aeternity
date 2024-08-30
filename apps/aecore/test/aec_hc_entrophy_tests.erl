@@ -30,13 +30,10 @@ epoch_test_() ->
             set_child_epoch_length(?CHILD_EPOCH_LENGTH),
             meck:new(aec_parent_chain_cache, []),
             meck:expect(aec_parent_chain_cache, get_block_by_height,
-                            fun(Height) -> {ok, new_block(?KEY_HASH_3, Height, ?KEY_HASH_4)} end),
-            meck:new(aeu_env, []),
-            meck:expect(aeu_env, user_config, fun(_Keys) -> {ok, ok} end)
+                            fun(Height) -> {ok, new_block(?KEY_HASH_3, Height, ?KEY_HASH_4)} end)
      end,
      fun(_) ->
             meck:unload(aec_parent_chain_cache),
-            meck:unload(aeu_env),
             ets:delete(?ETS_CACHE_TABLE, seed)
      end,
      [  {"Test a new epoch is created", fun new_epoch/0},
