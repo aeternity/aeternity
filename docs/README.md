@@ -18,3 +18,4 @@ There is also additional documentation on mining with CUDA and build and/or join
 - [Fork Resistance](fork-resistance.md)
 - [Garbage Collection](garbage-collection.md)
 - [Node API](api.md)
+- [Hacking](hacking.md)
