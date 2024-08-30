@@ -31,7 +31,7 @@ epoch_test_() ->
             meck:new(aec_parent_chain_cache, []),
             meck:expect(aec_parent_chain_cache, get_block_by_height,
                             fun(Height) -> {ok, new_block(?KEY_HASH_3, Height, ?KEY_HASH_4)} end),
-            meck:new(aeu_env, [passthrough]),
+            meck:new(aeu_env, []),
             meck:expect(aeu_env, user_config, fun(_Keys) -> {ok, ok} end)
      end,
      fun(_) ->
