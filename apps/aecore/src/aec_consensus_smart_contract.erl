@@ -82,8 +82,8 @@ can_be_turned_off() -> false.
 assert_config(_Config) -> ok.
 
 start(Config, _) ->
-    #{<<"stakers">> := StakersEncoded} = Config,
-    Stakers =
+    #{<<"pinning_accounts">> := PinningAccountsEncoded} = Config,
+    PinningAccounts =
         lists:map(
             fun(#{<<"pub">> := EncodedPubkey, <<"priv">> := EncodedPrivkey}) ->
                 {ok, Pubkey} = aeser_api_encoder:safe_decode(account_pubkey,
@@ -95,14 +95,14 @@ start(Config, _) ->
                 end,
                 {Pubkey, Privkey}
             end,
-            StakersEncoded),
-    StakersMap = maps:from_list(Stakers),
+            PinningAccountsEncoded),
+    PinningAccountsMap = maps:from_list(PinningAccounts),
     %% TODO: ditch this after we move beyond OTP24
     Mod = aec_preset_keys,
     OldSpec =
-        {Mod, {Mod, start_link, [StakersMap]}, permanent, 3000, worker, [Mod]},
+        {Mod, {Mod, start_link, [PinningAccountsMap]}, permanent, 3000, worker, [Mod]},
     aec_consensus_sup:start_child(OldSpec),
-    lager:debug("Stakers: ~p", [StakersMap]),
+    lager:debug("PinningAccounts: ~p", [PinningAccountsMap]),
     ok.
 
 stop() -> ok.

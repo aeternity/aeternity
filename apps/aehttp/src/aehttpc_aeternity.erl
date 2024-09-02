@@ -40,9 +40,9 @@ get_commitment_tx_at_height(NodeSpec, _Seed, Height, ParentHCAccountPubKey) ->
     end.
 
 %% @doc Post commitment to AE parent chain.
-post_commitment(NodeSpec, StakerPubkey, HCCollectPubkey, Amount, Fee, Commitment,
+post_commitment(NodeSpec, PinningAccountPubkey, HCCollectPubkey, Amount, Fee, Commitment,
                 NetworkId, SignModule) ->
-    post_commitment_tx(NodeSpec, StakerPubkey, HCCollectPubkey, Amount,
+    post_commitment_tx(NodeSpec, PinningAccountPubkey, HCCollectPubkey, Amount,
                        Fee, Commitment,
                        NetworkId, SignModule).
 
@@ -130,8 +130,8 @@ get_hc_commitments(NodeSpec, MB, ParentHCAccountPubKey) ->
                           <<"sender_id">> := _SenderId,
                           <<"payload">> := CommitmentEnc} ->
                                 {ok, Commitment} = aeser_api_encoder:safe_decode(bytearray, CommitmentEnc),
-                                {btc, Signature, StakerHash, TopKeyHash} = aec_parent_chain_block:decode_commitment(Commitment),
-                                [{Signature, StakerHash, TopKeyHash} | Acc];
+                                {btc, Signature, PinningAccountHash, TopKeyHash} = aec_parent_chain_block:decode_commitment(Commitment),
+                                [{Signature, PinningAccountHash, TopKeyHash} | Acc];
                         _ ->
                             Acc
                     end

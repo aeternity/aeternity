@@ -1787,7 +1787,7 @@
                                                             "type": "string",
                                                             "default": "ae_mainnet"
                                                         },
-                                                        "spend_address": {
+                                                        "pinning_recipient": {
                                                             "description" : "The address on the parent chain where commitment transactions will be sent. e.g. for a bitcoin parent chain this might start 'bcrt1'...",
                                                             "type": "string",
                                                             "default": ""
@@ -1833,8 +1833,8 @@
                                                 }
                                             }
                                         },
-                                        "stakers": {
-                                            "description" : "List of hyperchain accounts and associated parent chain accounts that this node should post commitments for",
+                                        "pinning_accounts": {
+                                            "description" : "List of hyperchain accounts and associated parent chain accounts that this node should use for pinning",
                                             "type" : "array",
                                             "items" : {
                                                 "type" : "object",

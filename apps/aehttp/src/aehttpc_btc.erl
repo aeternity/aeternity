@@ -72,8 +72,8 @@ get_commitment_tx_at_height(NodeSpec, Seed, Height, ParentHCAccountPubKey) ->
 %% 3. Apply signatures using signrawtransaction
 %% 4. Submit it using sendrawtransaction
 
-post_commitment(NodeSpec, StakerPubkey, HCCollectPubkey, Amount, Fee, Commitment, _NetworkId, _SignModule) ->
-    post_commitment(NodeSpec, StakerPubkey, HCCollectPubkey, Amount, Fee, Commitment).
+post_commitment(NodeSpec, PinningAccountPubkey, HCCollectPubkey, Amount, Fee, Commitment, _NetworkId, _SignModule) ->
+    post_commitment(NodeSpec, PinningAccountPubkey, HCCollectPubkey, Amount, Fee, Commitment).
 
 post_commitment(NodeSpec, BTCAcc, HCCollectPubkey, Amount, Fee, Commitment) ->
     {ok, Unspent} = listunspent(NodeSpec),
@@ -327,8 +327,8 @@ parse_vout(Vout) when length(Vout) == 3 ->
             case CommitmentBTC of
                 <<Commitment:80/binary>> ->
                     case aec_parent_chain_block:decode_commitment(Commitment) of
-                        {btc, Signature, StakerHash, TopKeyHash} ->
-                            {ok, {Signature, StakerHash, TopKeyHash}};
+                        {btc, Signature, PinningAccountHash, TopKeyHash} ->
+                            {ok, {Signature, PinningAccountHash, TopKeyHash}};
                         _ ->
                             {error, not_btc_commitment}
                     end;

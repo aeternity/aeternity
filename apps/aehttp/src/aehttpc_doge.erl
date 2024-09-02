@@ -60,9 +60,9 @@ get_commitment_tx_at_height(NodeSpec, Seed, Height, ParentHCAccountPubKey) ->
 %% 3. Apply signatures using signrawtransaction
 %% 4. Submit it using sendrawtransaction
 
-post_commitment(NodeSpec, StakerPubkey, HCCollectPubkey, Amount, Fee, Commitment,
+post_commitment(NodeSpec, PinningAccountPubkey, HCCollectPubkey, Amount, Fee, Commitment,
                 _NetworkId, _SignModule) ->
-        post_commitment(NodeSpec, StakerPubkey, HCCollectPubkey, Amount, Fee, Commitment).
+        post_commitment(NodeSpec, PinningAccountPubkey, HCCollectPubkey, Amount, Fee, Commitment).
 
 post_commitment(NodeSpec, BTCAcc, HCCollectPubkey, Amount, Fee, Commitment) ->
     {ok, Unspent} = listunspent(NodeSpec),

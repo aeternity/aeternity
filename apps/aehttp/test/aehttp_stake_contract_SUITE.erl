@@ -1517,11 +1517,11 @@ build_json_files(ElectionContract, NodeConfigs) ->
          }),
     ok.
 
-node_config(NetworkId,Node, CTConfig, PotentialStakers, ReceiveAddress, Consensus) ->
-    node_config(NetworkId,Node, CTConfig, PotentialStakers, ReceiveAddress, Consensus, false, 0).
+node_config(NetworkId,Node, CTConfig, PotentialPinningAccounts, ReceiveAddress, Consensus) ->
+    node_config(NetworkId,Node, CTConfig, PotentialPinningAccounts, ReceiveAddress, Consensus, false, 0).
 
-node_config(NetworkId,Node, CTConfig, PotentialStakers, ReceiveAddress, Consensus, ProducingCommitments, GenesisStartTime) ->
-    Stakers =
+node_config(NetworkId,Node, CTConfig, PotentialPinningAccounts, ReceiveAddress, Consensus, ProducingCommitments, GenesisStartTime) ->
+    PinningAccounts =
         case Consensus of
             ?CONSENSUS_POS ->
                 lists:map(
@@ -1530,7 +1530,7 @@ node_config(NetworkId,Node, CTConfig, PotentialStakers, ReceiveAddress, Consensu
                         Priv = list_to_binary(aeu_hex:bin_to_hex( privkey(Who))), %% TODO: discuss key management
                         #{<<"pub">> => Pub, <<"priv">> => Priv}
                     end,
-                    PotentialStakers);
+                    PotentialPinningAccounts);
             ?CONSENSUS_HC ->
                 lists:map(
                     fun({HCWho, PCWho}) ->
@@ -1539,7 +1539,7 @@ node_config(NetworkId,Node, CTConfig, PotentialStakers, ReceiveAddress, Consensu
                         #{  <<"hyper_chain_account">> =>#{<<"pub">> => encoded_pubkey(HCWho), <<"priv">> => HCPriv},
                             <<"parent_chain_account">> =>#{<<"pub">> => encoded_pubkey(PCWho), <<"priv">> => PCPriv}}
                     end,
-                    PotentialStakers);
+                    PotentialPinningAccounts);
             _ when Consensus == ?CONSENSUS_HC_BTC; Consensus == ?CONSENSUS_HC_DOGE ->
                 lists:map(
                     fun({HCWho, PCWho}) ->
@@ -1547,7 +1547,7 @@ node_config(NetworkId,Node, CTConfig, PotentialStakers, ReceiveAddress, Consensu
                         #{  <<"hyper_chain_account">> => #{<<"pub">> => encoded_pubkey(HCWho), <<"priv">> => HCPriv},
                             <<"parent_chain_account">> => #{<<"pub">> => PCWho} }
                     end,
-                    PotentialStakers)
+                    PotentialPinningAccounts)
         end,
     ConsensusType =
         case Consensus of
@@ -1569,7 +1569,7 @@ node_config(NetworkId,Node, CTConfig, PotentialStakers, ReceiveAddress, Consensu
                         <<"consensus">> =>
                             #{  <<"type">> => <<"AE2AE">>,
                                 <<"network_id">> => ?PARENT_CHAIN_NETWORK_ID,
-                                <<"spend_address">> => ReceiveAddress,
+                                <<"pinning_recipient">> => ReceiveAddress,
                                 <<"fee">> => 100000000000000,
                                 <<"amount">> => 9700
                             },
@@ -1598,7 +1598,7 @@ node_config(NetworkId,Node, CTConfig, PotentialStakers, ReceiveAddress, Consensu
                         <<"consensus">> =>
                             #{  <<"type">> => PCType,
                                 <<"network_id">> => <<"regtest">>,
-                                <<"spend_address">> => ReceiveAddress,
+                                <<"pinning_recipient">> => ReceiveAddress,
                                 <<"fee">> => 95000,
                                 <<"amount">> => 7500
                             },
@@ -1632,7 +1632,7 @@ node_config(NetworkId,Node, CTConfig, PotentialStakers, ReceiveAddress, Consensu
                                         <<"rewards_contract">> => aeser_api_encoder:encode(contract_pubkey, staking_contract_address()),
                                         <<"contract_owner">> => aeser_api_encoder:encode(account_pubkey,?OWNER_PUBKEY),
                                         <<"expected_key_block_rate">> => 2000,
-                                        <<"stakers">> => Stakers},
+                                        <<"pinning_accounts">> => PinningAccounts},
                                     SpecificConfig)
                                     }}},
         <<"fork_management">> =>

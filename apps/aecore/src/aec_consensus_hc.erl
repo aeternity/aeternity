@@ -94,29 +94,29 @@ can_be_turned_off() -> false.
 assert_config(_Config) -> ok.
 
 start(Config, #{block_production := BlockProduction}) ->
-    #{ <<"stakers">>      := StakersConfig,
-       <<"parent_chain">> := PCConfig      } = Config,
+    #{ <<"pinning_accounts">>    := PinningAccountsConfig,
+       <<"parent_chain">>        := PCConfig      } = Config,
 
-    StakersConfig = maps:get(<<"stakers">>, Config, []),
-    PCConfig      = maps:get(<<"parent_chain">>, Config),
+    PinningAccountsConfig = maps:get(<<"pinning_accounts">>, Config, []),
+    PCConfig              = maps:get(<<"parent_chain">>, Config),
 
-    Confirmations        = maps:get(<<"confirmations">>, PCConfig, 6),
-    StartHeight          = maps:get(<<"start_height">>, PCConfig, 0),
-    ProducingCommitments = maps:get(<<"producing_commitments">>, PCConfig, false),
-    ConsensusConfig      = maps:get(<<"consensus">>, PCConfig, #{}),
-    PollingConfig        = maps:get(<<"polling">>, PCConfig, #{}),
+    Confirmations         = maps:get(<<"confirmations">>, PCConfig, 6),
+    StartHeight           = maps:get(<<"start_height">>, PCConfig, 0),
+    ProducingCommitments  = maps:get(<<"producing_commitments">>, PCConfig, false),
+    ConsensusConfig       = maps:get(<<"consensus">>, PCConfig, #{}),
+    PollingConfig         = maps:get(<<"polling">>, PCConfig, #{}),
 
-    PCType         = maps:get(<<"type">>, ConsensusConfig, <<"AE2AE">>),
-    NetworkId      = maps:get(<<"network_id">>, ConsensusConfig, <<"ae_mainnet">>),
-    PCSpendAddress = maps:get(<<"spend_address">>, ConsensusConfig, <<"">>),
-    Fee            = maps:get(<<"fee">>, ConsensusConfig, 100000000000000),
-    Amount         = maps:get(<<"amount">>, ConsensusConfig, 1),
+    PCType                = maps:get(<<"type">>, ConsensusConfig, <<"AE2AE">>),
+    NetworkId             = maps:get(<<"network_id">>, ConsensusConfig, <<"ae_mainnet">>),
+    PinningRecipient      = maps:get(<<"pinning_recipient">>, ConsensusConfig, <<"">>),
+    Fee                   = maps:get(<<"fee">>, ConsensusConfig, 100000000000000),
+    Amount                = maps:get(<<"amount">>, ConsensusConfig, 1),
 
-    FetchInterval  = maps:get(<<"fetch_interval">>, PollingConfig, 500),
-    RetryInterval  = maps:get(<<"retry_interval">>, PollingConfig, 1000),
-    CacheSize      = maps:get(<<"cache_size">>, PollingConfig, 200),
-    Nodes          = maps:get(<<"nodes">>, PollingConfig, []),
-    ParentHosts    = lists:map(fun aehttpc:parse_node_url/1, Nodes),
+    FetchInterval         = maps:get(<<"fetch_interval">>, PollingConfig, 500),
+    RetryInterval         = maps:get(<<"retry_interval">>, PollingConfig, 1000),
+    CacheSize             = maps:get(<<"cache_size">>, PollingConfig, 200),
+    Nodes                 = maps:get(<<"nodes">>, PollingConfig, []),
+    ParentHosts           = lists:map(fun aehttpc:parse_node_url/1, Nodes),
 
     %% assert the boolean type
     case ProducingCommitments of
@@ -124,25 +124,25 @@ start(Config, #{block_production := BlockProduction}) ->
         false -> ok
     end,
 
-    {ParentConnMod, PCSpendPubkey, HCPCPairs, SignModule} =
+    {ParentConnMod, PinningRecipientPubkey, HCPCPairs, SignModule} =
         case PCType of
-            <<"AE2AE">> -> start_ae(StakersConfig, PCSpendAddress);
-            <<"AE2BTC">> -> start_btc(StakersConfig, PCSpendAddress, aehttpc_btc);
-            <<"AE2DOGE">> -> start_btc(StakersConfig, PCSpendAddress, aehttpc_doge)
+            <<"AE2AE">> -> start_ae(PinningAccountsConfig, PinningRecipient);
+            <<"AE2BTC">> -> start_btc(PinningAccountsConfig, PinningRecipient, aehttpc_btc);
+            <<"AE2DOGE">> -> start_btc(PinningAccountsConfig, PinningRecipient, aehttpc_doge)
         end,
 
     Hash2IntFun = fun ParentConnMod:hash_to_integer/1,
     aeu_ets_cache:put(?ETS_CACHE_TABLE, hash_to_int, Hash2IntFun),
 
     start_dependency(aec_parent_connector, [ParentConnMod, FetchInterval, ParentHosts, NetworkId,
-                                            SignModule, HCPCPairs, PCSpendPubkey, Fee, Amount]),
+                                            SignModule, HCPCPairs, PinningRecipientPubkey, Fee, Amount]),
     start_dependency(aec_parent_chain_cache, [StartHeight, RetryInterval, fun target_parent_heights/1, %% prefetch the next parent block
                                               CacheSize, Confirmations,
                                               BlockProduction, ProducingCommitments]),
     ok.
 
-start_btc(StakersEncoded, PCSpendAddress, ParentConnMod) ->
-    Stakers =
+start_btc(PinningAccountsEncoded, PinningRecipient, ParentConnMod) ->
+    PinningAccounts =
         lists:map(
             fun(#{<<"hyper_chain_account">> := #{<<"pub">> := EncodedPubkey,
                                                  <<"priv">> := EncodedPrivkey}
@@ -150,9 +150,9 @@ start_btc(StakersEncoded, PCSpendAddress, ParentConnMod) ->
                  {HCPubkey, HCPrivkey} = validate_keypair(EncodedPubkey, EncodedPrivkey),
                  {HCPubkey, HCPrivkey}
             end,
-            StakersEncoded),
-    StakersMap = maps:from_list(Stakers),
-    start_dependency(aec_preset_keys, [StakersMap]),
+            PinningAccountsEncoded),
+    PinningAccountsMap = maps:from_list(PinningAccounts),
+    start_dependency(aec_preset_keys, [PinningAccountsMap]),
     HCPCPairs = lists:map(
             fun(#{<<"hyper_chain_account">> := #{<<"pub">> := EncodedPubkey},
                   <<"parent_chain_account">> := #{<<"pub">> := BTCPubkey}
@@ -161,12 +161,12 @@ start_btc(StakersEncoded, PCSpendAddress, ParentConnMod) ->
                                                                 EncodedPubkey),
                  {HCPubkey, BTCPubkey}
             end,
-            StakersEncoded),
+            PinningAccountsEncoded),
     SignModule = undefined,
-    {ParentConnMod, PCSpendAddress, HCPCPairs, SignModule}.
+    {ParentConnMod, PinningRecipient, HCPCPairs, SignModule}.
 
-start_ae(StakersEncoded, PCSpendAddress) ->
-    Stakers =
+start_ae(PinningAccountsEncoded, PinningRecipient) ->
+    PinningAccounts =
         lists:flatmap(
             fun(#{<<"hyper_chain_account">> := #{<<"pub">> := HCEncodedPubkey,
                                                  <<"priv">> := HCEncodedPrivkey},
@@ -177,11 +177,11 @@ start_ae(StakersEncoded, PCSpendAddress) ->
                 {PCPubkey, PCPrivkey} = validate_keypair(PCEncodedPubkey, PCEncodedPrivkey),
                 [{HCPubkey, HCPrivkey}, {PCPubkey, PCPrivkey}]
             end,
-            StakersEncoded),
-    StakersMap = maps:from_list(Stakers),
+            PinningAccountsEncoded),
+    PinningAccountsMap = maps:from_list(PinningAccounts),
     %% TODO: ditch this after we move beyond OTP24
     _Mod = aec_preset_keys,
-    start_dependency(aec_preset_keys, [StakersMap]),
+    start_dependency(aec_preset_keys, [PinningAccountsMap]),
     HCPCPairs = lists:map(
             fun(#{<<"hyper_chain_account">> := #{<<"pub">> := HCEncodedPubkey},
                   <<"parent_chain_account">> := #{<<"pub">> := PCEncodedPubkey}
@@ -190,10 +190,10 @@ start_ae(StakersEncoded, PCSpendAddress) ->
                                                  HCEncodedPubkey),
                  {HCPubkey, PCEncodedPubkey}
             end,
-            StakersEncoded),
+            PinningAccountsEncoded),
     ParentConnMod = aehttpc_aeternity,
     SignModule = get_sign_module(),
-    {ok, PCSpendPubkey} = aeser_api_encoder:safe_decode(account_pubkey, PCSpendAddress),
+    {ok, PCSpendPubkey} = aeser_api_encoder:safe_decode(account_pubkey, PinningRecipient),
     {ParentConnMod, PCSpendPubkey, HCPCPairs, SignModule}.
 
 validate_keypair(EncodedPubkey, EncodedPrivkey) ->
