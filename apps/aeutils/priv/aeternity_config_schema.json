@@ -1762,11 +1762,6 @@
                                                     "description": "The number of blocks in a parent generation.",
                                                     "type": "integer"
                                                 },
-                                                "retry_interval": {
-                                                    "description": "The amount of time in milliseconds to wait before retrying a check for a block on the parent chain.",
-                                                    "default": 1000,
-                                                    "type": "integer"
-                                                },
                                                 "producing_commitments": {
                                                     "description": "Enable/Disable commitment production",
                                                     "default": false,
@@ -1814,6 +1809,11 @@
                                                             "description" : "The interval between polls of the parent chain looking for a new block (milliseconds)",
                                                             "type": "integer",
                                                             "default": 500
+                                                        },
+                                                        "retry_interval": {
+                                                            "description": "The amount of time in milliseconds to wait before retrying a check for a block on the parent chain.",
+                                                            "default": 1000,
+                                                            "type": "integer"
                                                         },
                                                         "cache_size": {
                                                             "description" : "Size of local cache for parent chain",
