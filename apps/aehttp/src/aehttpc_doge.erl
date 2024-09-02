@@ -9,7 +9,8 @@
          get_header_by_height/3,
          get_commitment_tx_in_block/5,
          get_commitment_tx_at_height/4,
-         post_commitment/8]).
+         post_commitment/8,
+         hash_to_integer/1]).
 
 -behavior(aehttpc).
 
@@ -32,6 +33,9 @@ get_header_by_height(Height, NodeSpec, Seed) ->
             {ok, Hash, PrevHash, Height};
         {error, not_found} -> {error, not_found}
     end.
+
+hash_to_integer(Hash) ->
+    binary_to_integer(Hash, 16).
 
 get_commitment_tx_in_block(NodeSpec, Seed, BlockHash, _PrevHash, ParentHCAccountPubKey) ->
     {ok, {_Height, _Hash, __PrevHash, Txs}}
