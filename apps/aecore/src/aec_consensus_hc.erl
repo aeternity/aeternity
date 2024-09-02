@@ -102,7 +102,6 @@ start(Config, #{block_production := BlockProduction}) ->
 
     Confirmations        = maps:get(<<"confirmations">>, PCConfig, 6),
     StartHeight          = maps:get(<<"start_height">>, PCConfig, 0),
-    ParentRetryInterval  = maps:get(<<"retry_interval">>, PCConfig, 1000),
     ProducingCommitments = maps:get(<<"producing_commitments">>, PCConfig, false),
     ConsensusConfig      = maps:get(<<"consensus">>, PCConfig, #{}),
     PollingConfig        = maps:get(<<"polling">>, PCConfig, #{}),
@@ -113,10 +112,11 @@ start(Config, #{block_production := BlockProduction}) ->
     Fee            = maps:get(<<"fee">>, ConsensusConfig, 100000000000000),
     Amount         = maps:get(<<"amount">>, ConsensusConfig, 1),
 
-    FetchInterval = maps:get(<<"fetch_interval">>, PollingConfig, 500),
-    CacheSize     = maps:get(<<"cache_size">>, PollingConfig, 200),
-    Nodes         = maps:get(<<"nodes">>, PollingConfig, []),
-    ParentHosts   = lists:map(fun aehttpc:parse_node_url/1, Nodes),
+    FetchInterval  = maps:get(<<"fetch_interval">>, PollingConfig, 500),
+    RetryInterval  = maps:get(<<"retry_interval">>, PollingConfig, 1000),
+    CacheSize      = maps:get(<<"cache_size">>, PollingConfig, 200),
+    Nodes          = maps:get(<<"nodes">>, PollingConfig, []),
+    ParentHosts    = lists:map(fun aehttpc:parse_node_url/1, Nodes),
 
     %% assert the boolean type
     case ProducingCommitments of
@@ -136,7 +136,7 @@ start(Config, #{block_production := BlockProduction}) ->
 
     start_dependency(aec_parent_connector, [ParentConnMod, FetchInterval, ParentHosts, NetworkId,
                                             SignModule, HCPCPairs, PCSpendPubkey, Fee, Amount]),
-    start_dependency(aec_parent_chain_cache, [StartHeight, ParentRetryInterval, fun target_parent_heights/1, %% prefetch the next parent block
+    start_dependency(aec_parent_chain_cache, [StartHeight, RetryInterval, fun target_parent_heights/1, %% prefetch the next parent block
                                               CacheSize, Confirmations,
                                               BlockProduction, ProducingCommitments]),
     ok.
