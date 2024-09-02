@@ -15,7 +15,8 @@
     init_per_testcase/2, end_per_testcase/2
    ]).
 
--export([produce_first_epoch/1,
+-export([start_two_child_nodes/1,
+         produce_first_epoch/1,
          mine_and_sync/1,
          spend_txs/1,
          simple_withdraw/1,
@@ -131,7 +132,8 @@ all() -> [{group, hc}].
 
 groups() ->
     [
-     {hc, [sequence], [ produce_first_epoch
+     {hc, [sequence], [ start_two_child_nodes
+                      , produce_first_epoch
                       , verify_fees
                       , mine_and_sync
                       , spend_txs
@@ -210,7 +212,6 @@ init_per_group(hc, Config0) ->
               {consensus, ?CONSENSUS} |
               aect_test_utils:init_per_group(VM, Config0)],
 
-    ElectionContract = ?HC_CONTRACT,
     %% different runs use different network ids
     Env = [ {"AE__FORK_MANAGEMENT__NETWORK_ID", binary_to_list(NetworkId)} ],
 
@@ -219,36 +220,24 @@ init_per_group(hc, Config0) ->
     timer:sleep(1000),
     produce_blocks(?PARENT_CHAIN_NODE, ?PARENT_CHAIN_NODE_NAME,
                    parent, ?START_HEIGHT + ?PARENT_EPOCH_LENGTH + ?PARENT_FINALITY, Config),
-
-    NodeConfig1 = child_node_config(?NODE1, [?ALICE, ?BOB, ?LISA], Config),
-    NodeConfig2 = child_node_config(?NODE2, [], Config),
-    build_json_files(ElectionContract, [NodeConfig1, NodeConfig2]),
-    aecore_suite_utils:create_config(?NODE1, Config, NodeConfig1, [{add_peers, true}]),
-    aecore_suite_utils:create_config(?NODE2, Config, NodeConfig2, [{add_peers, true}]),
-    aecore_suite_utils:start_node(?NODE1, Config, Env),
-    aecore_suite_utils:connect(?NODE1_NAME, []),
-    aecore_suite_utils:start_node(?NODE2, Config, Env),
-    aecore_suite_utils:connect(?NODE2_NAME, []),
-
+    timer:sleep(200),
     ParentTopHeight0 = rpc(?PARENT_CHAIN_NODE, aec_chain, top_height, []),
     ct:log("Parent chain top height ~p", [ParentTopHeight0]),
-    timer:sleep(1000),
     [ {staker_names, [?ALICE, ?BOB, ?LISA]} | Config].
 
 child_node_config(Node, Stakeholders, CTConfig) ->
     ReceiveAddress = encoded_pubkey(?FORD),
     Pinning = false,
-    node_config(Node, CTConfig, Stakeholders, ReceiveAddress, Pinning).
+    NodeConfig = node_config(Node, CTConfig, Stakeholders, ReceiveAddress, Pinning),
+    build_json_files(?HC_CONTRACT, [NodeConfig]),
+    aecore_suite_utils:create_config(Node, CTConfig, NodeConfig, [{add_peers, true}]).
 
 set_up_third_node(Config) ->
-    ElectionContract = ?HC_CONTRACT,
     NetworkId = <<"hc">>,
     aecore_suite_utils:make_multi(Config, [?NODE3]),
     %% different runs use different network ids
     Env = [ {"AE__FORK_MANAGEMENT__NETWORK_ID", binary_to_list(NetworkId)} ],
-    NodeConfig = child_node_config(?NODE3, [?LISA], Config),
-    build_json_files(ElectionContract, [NodeConfig]),
-    aecore_suite_utils:create_config(?NODE3, Config, NodeConfig, [{add_peers, true}]),
+    child_node_config(?NODE3, [?LISA], Config),
     aecore_suite_utils:start_node(?NODE3, Config, Env),
     aecore_suite_utils:connect(?NODE3_NAME, []),
     timer:sleep(1000),
@@ -397,6 +386,16 @@ spend_txs(Config) ->
             ct:log("Generation ~p:\n~p", [GenIndex, Gen])
         end,
         lists:seq(1, 2)),
+    ok.
+
+start_two_child_nodes(Config) ->
+    Env = [ {"AE__FORK_MANAGEMENT__NETWORK_ID", binary_to_list(?config(network_id, Config))} ],
+    child_node_config(?NODE1, [?ALICE, ?BOB, ?LISA], Config),
+    child_node_config(?NODE2, [], Config),
+    aecore_suite_utils:start_node(?NODE1, Config, Env),
+    aecore_suite_utils:connect(?NODE1_NAME, []),
+    aecore_suite_utils:start_node(?NODE2, Config, Env),
+    aecore_suite_utils:connect(?NODE2_NAME, []),
     ok.
 
 produce_first_epoch(Config) ->
