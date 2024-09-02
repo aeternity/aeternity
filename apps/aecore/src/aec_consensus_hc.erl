@@ -79,6 +79,13 @@
 -export([ parent_chain_validators/2
         ]).
 
+-ifdef(TEST).
+
+-export([entropy/2]).
+
+-endif.
+
+
 -include_lib("aecontract/include/hard_forks.hrl").
 -include("blocks.hrl").
 -include("aec_consensus.hrl").
@@ -105,10 +112,11 @@ start(Config, #{block_production := BlockProduction}) ->
     Fee            = maps:get(<<"fee">>, ConsensusConfig, 100000000000000),
     Amount         = maps:get(<<"amount">>, ConsensusConfig, 1),
 
-    FetchInterval = maps:get(<<"fetch_interval">>, PollingConfig, 500),
-    CacheSize     = maps:get(<<"cache_size">>, PollingConfig, 200),
-    Nodes         = maps:get(<<"nodes">>, PollingConfig, []),
-    ParentHosts   = lists:map(fun aehttpc:parse_node_url/1, Nodes),
+    FetchInterval  = maps:get(<<"fetch_interval">>, PollingConfig, 500),
+    RetryInterval  = maps:get(<<"retry_interval">>, PollingConfig, 1000),
+    CacheSize      = maps:get(<<"cache_size">>, PollingConfig, 200),
+    Nodes          = maps:get(<<"nodes">>, PollingConfig, []),
+    ParentHosts    = lists:map(fun aehttpc:parse_node_url/1, Nodes),
 
     %% assert the boolean type
     case ProducingCommitments of
@@ -122,9 +130,14 @@ start(Config, #{block_production := BlockProduction}) ->
             <<"AE2BTC">> -> start_btc(StakersConfig, PCSpendAddress, aehttpc_btc);
             <<"AE2DOGE">> -> start_btc(StakersConfig, PCSpendAddress, aehttpc_doge)
         end,
+
+    Hash2IntFun = fun ParentConnMod:hash_to_integer/1,
+    aeu_ets_cache:put(?ETS_CACHE_TABLE, hash_to_int, Hash2IntFun),
+
     start_dependency(aec_parent_connector, [ParentConnMod, FetchInterval, ParentHosts, NetworkId,
                                             SignModule, HCPCPairs, PCSpendPubkey, Fee, Amount]),
-    start_dependency(aec_parent_chain_cache, [StartHeight, CacheSize, Confirmations,
+    start_dependency(aec_parent_chain_cache, [StartHeight, RetryInterval, fun target_parent_heights/1, %% prefetch the next parent block
+                                              CacheSize, Confirmations,
                                               BlockProduction, ProducingCommitments]),
     ok.
 
@@ -248,12 +261,10 @@ state_pre_transform_key_node(Node, PrevNode, Trees) ->
                 {error, not_in_cache} ->
                     aec_conductor:throw_error(parent_chain_block_not_synced);
                 {ok, Block} ->
-                    Entropy = aec_parent_chain_block:hash(Block),
-                    CommitmentsSophia = encode_commitments(Block),
+                    Entropy = entropy(Block, Height),
                     NetworkId = aec_parent_chain_block:encode_network_id(aec_governance:get_network_id()),
                     {ok, CD} = aeb_fate_abi:create_calldata("elect",
                                                             [aefa_fate_code:encode_arg({string, Entropy}),
-                                                             CommitmentsSophia,
                                                              aefa_fate_code:encode_arg({bytes, NetworkId})
                                                             ]),
                     CallData = aeser_api_encoder:encode(contract_bytearray, CD),
@@ -380,7 +391,7 @@ seal_correct_signature(Header, Signature, _Padding) ->
             {error, signature_verification_failed}
     end.
 
-generate_key_header_seal(_, Candidate, _PCHeight, #{expected_key_block_rate := _Expected} = _Config, _) ->
+generate_key_header_seal(_, Candidate, _PCHeight, #{child_block_time := ChildBlockTime} = _Config, _) ->
     Leader = aec_headers:beneficiary(Candidate),
     SignModule = get_sign_module(),
     case SignModule:set_candidate(Leader) of
@@ -388,6 +399,7 @@ generate_key_header_seal(_, Candidate, _PCHeight, #{expected_key_block_rate := _
             timer:sleep(1000),
             {continue_mining, {error, no_solution} };
         ok ->
+            timer:sleep(ChildBlockTime),
             {ok, Signature} = SignModule:produce_key_header_signature(Candidate, Leader),
             %% the signature is 64 bytes. The seal is 168 bytes. We add 104 bytes at
             %% the end of the signature
@@ -447,9 +459,92 @@ pc_start_height() ->
     Fun = fun() -> get_consensus_config_key([<<"parent_chain">>, <<"start_height">>], 0) end,
     aeu_ets_cache:get(?ETS_CACHE_TABLE, pc_start_height, Fun).
 
+pc_finality() ->
+    Fun = fun() -> get_consensus_config_key([<<"parent_chain">>, <<"finality">>], 0) end,
+    aeu_ets_cache:get(?ETS_CACHE_TABLE, finality, Fun).
+
 genesis_start_time() ->
     Fun = fun() -> get_consensus_config_key([<<"genesis_start_time">>], 0) end,
     aeu_ets_cache:get(?ETS_CACHE_TABLE, genesis_start_time, Fun).
+
+parent_generation() ->
+    Fun = fun() -> get_consensus_config_key([<<"parent_chain">>, <<"parent_generation">>]) end,
+    aeu_ets_cache:get(?ETS_CACHE_TABLE, parent_generation, Fun).
+
+child_epoch_length() ->
+    Fun = fun() -> get_consensus_config_key([<<"child_epoch_length">>]) end,
+    aeu_ets_cache:get(?ETS_CACHE_TABLE, child_epoch_length, Fun).
+
+child_block_time() ->
+    Fun = fun() -> get_consensus_config_key([<<"child_block_time">>]) end,
+    aeu_ets_cache:get(?ETS_CACHE_TABLE, child_block_time, Fun).
+
+is_new_epoch(Height) ->
+    Height rem child_epoch_length() == 0.
+
+hash_to_int(Hash) ->
+    {ok, Hash2IntFun} = aeu_ets_cache:lookup(?ETS_CACHE_TABLE, hash_to_int),
+    Hash2IntFun(Hash).
+
+
+entropy(Block, Height) ->
+    case aeu_ets_cache:lookup(?ETS_CACHE_TABLE, seed) of
+        {ok, {_OldState, Seed, Height, _OldPCHeight}} ->
+            Seed;
+        _Other ->
+            PCHeight = aec_parent_chain_block:height(Block),
+            Hash = aec_parent_chain_block:hash(Block),
+            case is_new_epoch(Height) of
+                true ->
+                    case set_new_entropy(Hash, Height, PCHeight) of
+                        {SeedState, _OldSeed, _OldHeight, SeedHeight} when PCHeight > SeedHeight ->
+                            %% The finality for the parent chain has not been reached
+                            next_entropy_from_seed(SeedState, Height, SeedHeight);
+                        _ ->
+                            Hash
+                    end;
+                _ ->
+                    next_entropy(Hash, Height, PCHeight)
+            end
+    end.
+
+set_new_entropy(Hash, Height, PCHeight) ->
+    case aec_parent_chain_cache:get_block_by_height(PCHeight + pc_finality()) of
+        {error, not_in_cache} ->
+            case aeu_ets_cache:lookup(?ETS_CACHE_TABLE, seed) of
+                error ->
+                    lager:error("Parent finality not reached for height ~p", [PCHeight]),
+                    aec_conductor:throw_error(parent_chain_block_not_synced);
+                {ok, {_OldState, _OldSeed, _OldHeight, _OldPCHeight} = Old} ->
+                    lager:warning("Parent finality not reached for parent height ~p", [PCHeight]),
+                    Old
+            end;
+        {ok, _Block} ->
+            lager:info("New epoch at parent height ~p", [PCHeight]),
+            Seed = hash_to_int(Hash),
+            State = rand:seed_s(exsss, Seed),
+            Result = {State, Hash, Height, PCHeight},
+            aeu_ets_cache:put(?ETS_CACHE_TABLE, seed, Result),
+            Result
+    end.
+
+next_entropy(Hash, Height, PCHeight) ->
+    {NewState, _Seed, _Height, NewPCHeight} =
+        case aeu_ets_cache:lookup(?ETS_CACHE_TABLE, seed) of
+            {ok, {_State, _OldSeed, _OldHeight, PCHeight} = Result} ->
+                Result;
+            _ ->
+                lager:info("Trying to set entropy for parent height ~p", [PCHeight]),
+                set_new_entropy(Hash, Height, PCHeight)
+        end,
+    next_entropy_from_seed(NewState, Height, NewPCHeight).
+
+next_entropy_from_seed(State, Height, PCHeight) ->
+    {HashInt, State2} = rand:bytes_s(256, State),
+    Seed = list_to_bitstring(base58:binary_to_base58(HashInt)),
+    aeu_ets_cache:put(?ETS_CACHE_TABLE, seed, {State2, Seed, Height, PCHeight}),
+    Seed.
+
 
 %% This is the contract owner, calls shall be only available via protocol
 contract_owner() ->
@@ -461,11 +556,6 @@ contract_owner() ->
               end
           end,
     aeu_ets_cache:get(?ETS_CACHE_TABLE, contract_owner, Fun).
-
-%% TODO: do we need this in HC?
-expected_key_block_rate() ->
-    Fun = fun() -> get_consensus_config_key([<<"expected_key_block_rate">>], 2000) end,
-    aeu_ets_cache:get(?ETS_CACHE_TABLE, key_block_rate, Fun).
 
 genesis_protocol_version() ->
     aeu_ets_cache:get(
@@ -590,12 +680,10 @@ next_beneficiary() ->
     PCHeight = pc_height(NextHeight),
     case aec_parent_chain_cache:get_block_by_height(PCHeight) of
         {ok, Block} ->
-            Entropy = aec_parent_chain_block:hash(Block),
-            CommitmentsSophia = encode_commitments(Block),
+            Entropy = entropy(Block, NextHeight),
             NetworkId = aec_parent_chain_block:encode_network_id(aec_governance:get_network_id()),
             {ok, CD} = aeb_fate_abi:create_calldata("elect_next",
                                                     [aefa_fate_code:encode_arg({string, Entropy}),
-                                                     CommitmentsSophia,
                                                      aefa_fate_code:encode_arg({bytes, NetworkId})
                                                     ]),
             CallData = aeser_api_encoder:encode(contract_bytearray, CD),
@@ -605,15 +693,18 @@ next_beneficiary() ->
                     SignModule = get_sign_module(),
                     case SignModule:set_candidate(Leader) of
                         {error, key_not_found} ->
+                            lager:warning("key_not_found ~p", [Leader]),
                             timer:sleep(1000),
                             {error, not_leader};
                         ok ->
                             {ok, Leader}
                     end;
                 {error, _What} ->
+                    lager:error("next_beneficiary exception ~p", [_What]),
                     timer:sleep(1000),
                     {error, not_leader}
             catch error:{consensus_call_failed, {error, _What}} ->
+                    lager:error("consensus_call_failed ~p", [_What]),
                     timer:sleep(1000),
                     {error, not_leader}
             end;
@@ -659,7 +750,7 @@ get_sign_module() -> aec_preset_keys.
 get_type() -> pos.
 
 get_block_producer_configs() -> [{instance_not_used,
-                                  #{expected_key_block_rate => expected_key_block_rate()}}].
+                                  #{child_block_time => child_block_time()}}].
 
 is_leader_valid(Node, Trees, TxEnv, PrevNode) ->
     Header = aec_block_insertion:node_header(Node),
@@ -789,21 +880,18 @@ call_contracts([Call | Tail], TxEnv, TreesAccum) ->
 seal_padding_size() ->
     ?KEY_SEAL_SIZE - ?SIGNATURE_SIZE.
 
-pc_height(ChildHeight) ->
-    ChildHeight + pc_start_height().%% child starts pinning from height 1, not genesis
+target_parent_heights(Height) ->
+    ChildEpochLength = child_epoch_length(),
+    %% When half way through child epoch, start checking for next parent
+    EpochNum = round(Height / ChildEpochLength),
+    ParentHeight = EpochNum * parent_generation() + pc_start_height(),
+    [ParentHeight, ParentHeight + pc_finality()].
 
-encode_commitments(Block) ->
-    {ok, Commitments} = aec_parent_chain_block:commitments(Block),
-    Commitments1 =
-        lists:map(
-            fun({Signature, StakerHash, TopKeyHash}) ->
-                Sig = aefa_fate_code:encode_arg({signature, Signature}),
-                Staker = aefa_fate_code:encode_arg({bytes, StakerHash}),
-                TopHash = aefa_fate_code:encode_arg({bytes, TopKeyHash}),
-                aeb_fate_data:make_tuple({Sig, Staker, TopHash})
-            end,
-            Commitments),
-    aeb_fate_data:make_list(Commitments1).
+
+pc_height(Height) ->
+    ChildEpochLength = child_epoch_length(),
+    EpochNum = Height div ChildEpochLength,
+    EpochNum * parent_generation() + pc_start_height().
 
 elect_lazy_leader(Beneficiary, TxEnv, Trees) ->
     {ok, CDLazy} = aeb_fate_abi:create_calldata("elect_after_lazy_leader",
