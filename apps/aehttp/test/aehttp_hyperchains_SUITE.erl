@@ -204,10 +204,12 @@ end_per_suite(Config) ->
 
 init_per_group(hc, Config0) ->
     VM = fate,
-    Config = aect_test_utils:init_per_group(VM, Config0),
     NetworkId = <<"hc">>,
-
     GenesisStartTime = aeu_time:now_in_msecs(),
+    Config = [{network_id, NetworkId}, {genesis_start_time, GenesisStartTime},
+              {consensus, ?CONSENSUS} |
+              aect_test_utils:init_per_group(VM, Config0)],
+
     ElectionContract = ?HC_CONTRACT,
     %% different runs use different network ids
     Env = [ {"AE__FORK_MANAGEMENT__NETWORK_ID", binary_to_list(NetworkId)} ],
@@ -218,10 +220,8 @@ init_per_group(hc, Config0) ->
     produce_blocks(?PARENT_CHAIN_NODE, ?PARENT_CHAIN_NODE_NAME,
                    parent, ?START_HEIGHT + ?PARENT_EPOCH_LENGTH + ?PARENT_FINALITY, Config),
 
-    ReceiveAddress = encoded_pubkey(?FORD),
-
-    NodeConfig1 = node_config(NetworkId,?NODE1, Config, [?ALICE, ?BOB, ?LISA], ReceiveAddress, ?CONSENSUS, false,  GenesisStartTime),
-    NodeConfig2 = node_config(NetworkId,?NODE2, Config, [], ReceiveAddress, ?CONSENSUS, false, GenesisStartTime),
+    NodeConfig1 = child_node_config(?NODE1, [?ALICE, ?BOB, ?LISA], Config),
+    NodeConfig2 = child_node_config(?NODE2, [], Config),
     build_json_files(ElectionContract, [NodeConfig1, NodeConfig2]),
     aecore_suite_utils:create_config(?NODE1, Config, NodeConfig1, [{add_peers, true}]),
     aecore_suite_utils:create_config(?NODE2, Config, NodeConfig2, [{add_peers, true}]),
@@ -233,20 +233,20 @@ init_per_group(hc, Config0) ->
     ParentTopHeight0 = rpc(?PARENT_CHAIN_NODE, aec_chain, top_height, []),
     ct:log("Parent chain top height ~p", [ParentTopHeight0]),
     timer:sleep(1000),
-    Config1 = [{network_id, NetworkId}, {consensus, ?CONSENSUS}, {genesis_start_time, GenesisStartTime},
-               {staker_names, [?ALICE, ?BOB, ?LISA]} | Config],
-    Config1.
+    [ {staker_names, [?ALICE, ?BOB, ?LISA]} | Config].
+
+child_node_config(Node, Stakeholders, CTConfig) ->
+    ReceiveAddress = encoded_pubkey(?FORD),
+    Pinning = false,
+    node_config(Node, CTConfig, Stakeholders, ReceiveAddress, Pinning).
 
 set_up_third_node(Config) ->
-    GenesisStartTime = ?config(genesis_start_time, Config),
-    false = GenesisStartTime =:= undefined,
     ElectionContract = ?HC_CONTRACT,
     NetworkId = <<"hc">>,
     aecore_suite_utils:make_multi(Config, [?NODE3]),
     %% different runs use different network ids
     Env = [ {"AE__FORK_MANAGEMENT__NETWORK_ID", binary_to_list(NetworkId)} ],
-    ReceiveAddress = encoded_pubkey(?FORD),
-    NodeConfig = node_config(NetworkId,?NODE3, Config, [?LISA], ReceiveAddress, ?CONSENSUS, false, GenesisStartTime),
+    NodeConfig = child_node_config(?NODE3, [?LISA], Config),
     build_json_files(ElectionContract, [NodeConfig]),
     aecore_suite_utils:create_config(?NODE3, Config, NodeConfig, [{add_peers, true}]),
     aecore_suite_utils:start_node(?NODE3, Config, Env),
@@ -1066,10 +1066,9 @@ build_json_files(ElectionContract, NodeConfigs) ->
          }),
     ok.
 
-%% node_config(NetworkId,Node, CTConfig, PotentialStakers, ReceiveAddress, Consensus) ->
-%%     node_config(NetworkId,Node, CTConfig, PotentialStakers, ReceiveAddress, Consensus, false, 0).
-
-node_config(NetworkId,Node, CTConfig, PotentialStakers, ReceiveAddress, _Consensus, ProducingCommitments, GenesisStartTime) ->
+node_config(Node, CTConfig, PotentialStakers, ReceiveAddress, ProducingCommitments) ->
+    NetworkId = ?config(network_id, CTConfig),
+    GenesisStartTime = ?config(genesis_start_time, CTConfig),
     Stakers = lists:map(
                     fun(HCWho) ->
                         HCPriv = list_to_binary(aeu_hex:bin_to_hex( privkey(HCWho))), %% TODO: discuss key management
@@ -1143,9 +1142,9 @@ election_contract_address() ->
 produce_blocks(_Node, NodeName, parent = _NodeType, BlocksCnt, _Config) ->
     {ok, _} = aecore_suite_utils:mine_key_blocks(NodeName, BlocksCnt);
 produce_blocks(Node, NodeName, NodeType, BlocksCnt, Config) ->
-    produce_blocks(Node, NodeName, NodeType, BlocksCnt, Config, ?config(consensus, Config), correct_leader).
+    produce_blocks(Node, NodeName, NodeType, BlocksCnt, Config, correct_leader).
 
-produce_blocks(Node, NodeName, child = _NodeType, BlocksCnt, Config, ?CONSENSUS, HCType) ->
+produce_blocks(Node, NodeName, child = _NodeType, BlocksCnt, Config, HCType) ->
     TopHeight0 = rpc(Node, aec_chain, top_height, []),
     produce_blocks_hc(Node, NodeName, BlocksCnt, HCType, Config),
     TopHeight = rpc(Node, aec_chain, top_height, []),
