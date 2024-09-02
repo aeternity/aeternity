@@ -391,9 +391,9 @@ spend_txs(Config) ->
 start_two_child_nodes(Config) ->
     Env = [ {"AE__FORK_MANAGEMENT__NETWORK_ID", binary_to_list(?config(network_id, Config))} ],
     child_node_config(?NODE1, [?ALICE, ?BOB, ?LISA], Config),
-    child_node_config(?NODE2, [], Config),
     aecore_suite_utils:start_node(?NODE1, Config, Env),
     aecore_suite_utils:connect(?NODE1_NAME, []),
+    child_node_config(?NODE2, [], Config),
     aecore_suite_utils:start_node(?NODE2, Config, Env),
     aecore_suite_utils:connect(?NODE2_NAME, []),
     ok.
