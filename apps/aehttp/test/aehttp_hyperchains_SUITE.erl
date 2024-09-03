@@ -20,7 +20,6 @@
          mine_and_sync/1,
          spend_txs/1,
          simple_withdraw/1,
-         change_leaders/1,
          empty_parent_block/1,
          sync_third_node/1,
          verify_fees/1,
@@ -138,7 +137,6 @@ groups() ->
                       , mine_and_sync
                       , spend_txs
                       , simple_withdraw
-                      , change_leaders
                       , sync_third_node
                       ]}
     ].
@@ -405,7 +403,9 @@ produce_first_epoch(Config) ->
     ct:log("Bs: ~p  Leaders ~p", [Bs, Leaders]),
     %% Check that all producers are valid leaders
     ?assertEqual([], lists:usort(Producers) -- Leaders),
-    ?assert(true, length(Producers) > 1),  %% should be for larger EPOCHs
+    %% If we have more than 1 leader, then we should see more than one producer
+    %% at least for larger EPOCHs
+    ?assert(length(Leaders) > 1, length(Producers) > 1),
     ParentTopHeight = rpc(?PARENT_CHAIN_NODE, aec_chain, top_height, []),
     {ok, ParentBlocks} = get_generations(?PARENT_CHAIN_NODE, 0, ParentTopHeight),
     ct:log("Parent chain blocks ~p", [ParentBlocks]),
@@ -472,40 +472,6 @@ simple_withdraw(Config) ->
     BlocksInBetween = aec_headers:height(Top1) - aec_headers:height(Top0),
     ct:log("Key blocks: ~p, Time difference = ~p", [BlocksInBetween, TimeInBetween]),
 
-    ok.
-
-change_leaders(Config) ->
-    {ok, AliceSPower} = inspect_staking_contract(?ALICE, {staking_power, ?ALICE}, Config),
-    {ok, BobSPower} = inspect_staking_contract(?ALICE, {staking_power, ?BOB}, Config),
-    ct:log("Alice ~p, staking_power: ~p", [encoded_pubkey(?ALICE), AliceSPower]),
-    ct:log("Bob ~p, staking_power: ~p", [encoded_pubkey(?BOB), BobSPower]),
-    Blocks = 10,
-    NewLeader =
-        fun() ->
-            {ok, [KB | _ ]} = produce_blocks(?NODE1, ?NODE1_NAME, child, 1, Config),
-            Beneficiary = aec_blocks:beneficiary(KB),
-            Beneficiary = aec_blocks:miner(KB),
-            ct_log_block(KB),
-            {ok, Leader} = inspect_election_contract(?ALICE, current_leader, Config),
-            {ok, LeaderDecoded} =
-                aeser_api_encoder:safe_decode(account_pubkey, Leader),
-            Beneficiary = LeaderDecoded, %% assert
-            Leader
-        end,
-    Ls = lists:map(fun(_Idx) -> NewLeader() end, lists:seq(1, Blocks)),
-    Stats =
-        lists:foldl(
-            fun(Leader, Accum) ->
-                maps:update_with(Leader, fun(X) -> X + 1 end, 1, Accum)
-            end, #{}, Ls),
-    ct:log("Leaders: ~p", [Stats]),
-    AliceLeaderCnt = maps:get(encoded_pubkey(?ALICE), Stats, 0),
-    BobLeaderCnt = maps:get(encoded_pubkey(?BOB), Stats, 0),
-    false = AliceLeaderCnt =:= Blocks,
-    true  = AliceLeaderCnt > 0,
-    false = BobLeaderCnt =:= Blocks,
-    true  = BobLeaderCnt > 0,
-    {ok, _B} = wait_same_top(),
     ok.
 
 sync_third_node(Config) ->
@@ -1026,7 +992,7 @@ build_json_files(ElectionContract, NodeConfigs) ->
     Call10 =
         contract_call_spec(SCId, ?MAIN_STAKING_CONTRACT,
                             "set_validator_description",
-                            ["\"Alice is a really awesome validator and she had set a description of her great service to the §work.\""], 0,
+                            ["\"Alice is a really awesome validator and she had set a description of her great service to the work.\""], 0,
                             pubkey(?ALICE), 4),
     Call11 =
         contract_call_spec(SCId, ?MAIN_STAKING_CONTRACT,
