@@ -134,7 +134,7 @@ groups() ->
      {hc, [sequence], [ start_two_child_nodes
                       , produce_first_epoch
                       , verify_fees
-                      %, mine_and_sync
+                      , mine_and_sync
                       , spend_txs
                       %, simple_withdraw
                       %, sync_third_node
@@ -346,25 +346,23 @@ contract_call(ContractPubkey, Name, Fun, Args, Amount, From, Nonce) ->
     Tx.
 
 mine_and_sync(Config) ->
-    {ok, [KB]} = produce_cc_blocks(Config, 1),
-    {ok, KB} = wait_same_top(),
+    {ok, _KBs} = produce_cc_blocks(Config, 3),
+    {ok, _KB} = wait_same_top([?NODE1, ?NODE2]),
     ok.
 
-wait_same_top() ->
-    wait_same_top(?NODE1, ?NODE2).
+wait_same_top(Nodes) ->
+    wait_same_top(Nodes, 3).
 
-wait_same_top(Node1, Node2) ->
-    wait_same_top(Node1, Node2, 500).
-
-wait_same_top(_Node1, _Node2, Attempts) when Attempts < 1 ->
+wait_same_top(_Nodes, Attempts) when Attempts < 1 ->
     {error, run_out_of_attempts};
-wait_same_top(Node1, Node2, Attempts) ->
-    case {rpc(Node1, aec_chain, top_block, []), rpc(Node2, aec_chain, top_block, [])} of
-        {KB, KB} -> {ok, KB};
-        {KB1, KB2} ->
-            ct:log("Node1 top: ~p\nNode2 top: ~p", [KB1, KB2]),
-            timer:sleep(500),
-            wait_same_top(Node1, Node2, Attempts - 1)
+wait_same_top(Nodes, Attempts) ->
+    KBs = [ rpc(Node, aec_chain, top_block, []) || Node <- Nodes ],
+    case lists:usort(KBs) of
+        [KB] -> {ok, KB};
+        Diffs ->
+            ct:log("Nodes differ: ~p", [Diffs]),
+            timer:sleep(?CHILD_BLOCK_TIME div 2),
+            wait_same_top(Nodes, Attempts - 1)
     end.
 
 spend_txs(Config) ->
