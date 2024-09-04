@@ -75,6 +75,11 @@ CT_TEST_FLAGS += --group=$(GROUP)
 unexport GROUP
 endif
 
+ifdef DIR
+CT_TEST_FLAGS += --dir=$(DIR)
+unexport DIR
+endif
+
 ifdef TEST
 CT_TEST_FLAGS += --case=$(TEST)
 EUNIT_TEST_FLAGS += --module=$(TEST)
