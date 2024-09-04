@@ -135,7 +135,7 @@ groups() ->
                       , produce_first_epoch
                       , verify_fees
                       %, mine_and_sync
-                      %, spend_txs
+                      , spend_txs
                       %, simple_withdraw
                       %, sync_third_node
                       ]}
@@ -370,17 +370,14 @@ spend_txs(Config) ->
     Top0 = rpc(?NODE1, aec_chain, top_header, []),
     ct:log("Top before posting spend txs: ~p", [aec_headers:height(Top0)]),
     NetworkId = ?config(network_id, Config),
+    {ok, []} = rpc:call(?NODE1_NAME, aec_tx_pool, peek, [infinity]),
     seed_account(pubkey(?ALICE), 100000001 * ?DEFAULT_GAS_PRICE, NetworkId),
     seed_account(pubkey(?BOB), 100000002 * ?DEFAULT_GAS_PRICE, NetworkId),
     seed_account(pubkey(?LISA), 100000003 * ?DEFAULT_GAS_PRICE, NetworkId),
 
-    lists:foreach(
-        fun(GenIndex) ->
-            {ok, Gen} = rpc:call(?NODE1_NAME, aec_chain,
-                                get_generation_by_height, [GenIndex, forward]),
-            ct:log("Generation ~p:\n~p", [GenIndex, Gen])
-        end,
-        lists:seq(1, 2)),
+    produce_cc_blocks(Config, 1),
+    {ok, []} = rpc:call(?NODE1_NAME, aec_tx_pool, peek, [infinity]),
+    %% TODO check that the actors got their share
     ok.
 
 start_two_child_nodes(Config) ->
@@ -610,6 +607,7 @@ verify_fees(Config) ->
 
     ct:log("Test with a spend transaction", []),
     {_, PatronPub} = aecore_suite_utils:sign_keys(?NODE1),
+    {ok, []} = rpc:call(?NODE1_NAME, aec_tx_pool, peek, [infinity]),
     {ok, _SignedTx} = seed_account(PatronPub, 1, NetworkId),
     Test(), %% fees are generated
 
@@ -737,8 +735,6 @@ seed_account(RecpipientPubkey, Amount, NetworkId) ->
     seed_account(?NODE1, ?NODE1_NAME, RecpipientPubkey, Amount, NetworkId).
 
 seed_account(Node, NodeName, RecipientPubkey, Amount, NetworkId) ->
-    {ok, []} = rpc:call(NodeName, aec_tx_pool, peek, [infinity]),
-    ct:log("Seed spend tx", []),
     {PatronPriv, PatronPub} = aecore_suite_utils:sign_keys(Node),
     Nonce = next_nonce(Node, PatronPub),
     Params =
@@ -748,7 +744,6 @@ seed_account(Node, NodeName, RecipientPubkey, Amount, NetworkId) ->
           fee          => 30000 * ?DEFAULT_GAS_PRICE,
           nonce        => Nonce,
           payload      => <<>>},
-    ct:log("Network id ~p", [NetworkId]),
     ct:log("Preparing a spend tx: ~p", [Params]),
     {ok, Tx} = aec_spend_tx:new(Params),
     SignedTx = sign_tx(Tx, PatronPriv, NetworkId),
