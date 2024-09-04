@@ -213,8 +213,9 @@ init_per_group(hc, Config0) ->
     aecore_suite_utils:start_node(?PARENT_CHAIN_NODE, Config),
     aecore_suite_utils:connect(?PARENT_CHAIN_NODE_NAME, []),
     timer:sleep(1000),
-    produce_blocks(?PARENT_CHAIN_NODE, ?PARENT_CHAIN_NODE_NAME,
-                   parent, ?START_HEIGHT + ?PARENT_EPOCH_LENGTH + ?PARENT_FINALITY, Config),
+    {ok, _} = mine_key_blocks(
+            ?PARENT_CHAIN_NODE_NAME,
+            ?START_HEIGHT + ?PARENT_EPOCH_LENGTH + ?PARENT_FINALITY),
     timer:sleep(200),
     ParentTopHeight0 = rpc(?PARENT_CHAIN_NODE, aec_chain, top_height, []),
     ct:log("Parent chain top height ~p", [ParentTopHeight0]),
@@ -345,7 +346,7 @@ contract_call(ContractPubkey, Name, Fun, Args, Amount, From, Nonce) ->
     Tx.
 
 mine_and_sync(Config) ->
-    {ok, [KB]} = produce_blocks(?NODE1, ?NODE1_NAME, child, 1, Config),
+    {ok, [KB]} = produce_cc_blocks(Config, 1),
     {ok, KB} = wait_same_top(),
     ok.
 
@@ -415,7 +416,7 @@ simple_withdraw(Config) ->
     true = rpc:call(?NODE1_NAME, aec_conductor, is_leader, []),
     {ok, []} = rpc:call(?NODE1_NAME, aec_tx_pool, peek, [infinity]),
 
-    {ok, [KB0 | _ ]} = produce_blocks(?NODE1, ?NODE1_NAME, child, 1, Config),
+    {ok, [KB0 | _ ]} = produce_cc_blocks(Config, 1),
     Top0 = aec_blocks:to_header(KB0),
     Top0 = rpc(?NODE1, aec_chain, top_header, []),
     ct_log_header(Top0),
@@ -479,32 +480,6 @@ empty_parent_block(_Config) ->
             %% empty_parent_block_(Config)
             {skip, todo}
     end.
-
-%% empty_parent_block_(_Config) ->
-%%     TopHeight = rpc(?LAZY_NODE, aec_chain, top_height, []),
-%%     %% Remove the posted commitments to create a parent generation without commitments
-%%     aecore_suite_utils:flush_mempool(2, ?PARENT_CHAIN_NODE1_NAME),
-%%     ok = produce_blocks_hc(?LAZY_NODE, ?LAZY_NODE_NAME, 1, lazy_leader),
-
-%%     %% The lazy leader block is either from ?LISA (dev8) or ?ALICE/?BOB (dev1)
-%%     ct:log("Checking block with height ~p", [TopHeight + 1]),
-%%     CTop = rpc(?LAZY_NODE, aec_chain, top_block, []),
-%%     %% true = is_keyblock_lazy(CTop),
-
-%%     %% Produce yet another block (now dev1 should commit to a lazy block and win)
-%%     ok = produce_blocks_hc(?LAZY_NODE, ?LAZY_NODE_NAME, 1, abnormal_commitments_cnt),
-
-%%     %% Check that they sync and that the right chain wins
-%%     {ok, CTop2} = wait_same_top(?NODE1, ?LAZY_NODE),
-
-%%     case lists:member(aec_blocks:miner(CTop2), [element(1, ?ALICE), element(1, ?BOB)]) of
-%%       true -> ok;
-%%       _ ->
-%%         ct:log("ERROR: Expected ~p or ~200p as the miner:\nTOP  : ~200p",
-%%                [element(1, ?ALICE), element(1, ?BOB), CTop2]),
-%%         ?assert(false)
-%%     end,
-%%     ok.
 
 verify_fees(Config) ->
     %% start without any tx fees, only a keyblock
@@ -618,7 +593,7 @@ verify_fees(Config) ->
 block_difficulty(Config) ->
     lists:foreach(
         fun(_) ->
-            {ok, [KB]} = produce_blocks(?NODE1, ?NODE1_NAME, child, 1, Config),
+            {ok, [KB]} = produce_cc_blocks(Config, 1),
             {ok, AddedStakingPower} = inspect_election_contract(?ALICE, current_added_staking_power, Config),
             Target = aec_blocks:target(KB),
             {Target, Target} = {Target, aeminer_pow:integer_to_scientific(AddedStakingPower)}
@@ -640,7 +615,7 @@ elected_leader_did_not_show_up_(Config) ->
     {TopHeader0, TopHeader0} = {rpc(?NODE3, aec_chain, top_header, []), TopHeader0},
     ct:log("Starting test at (child chain): ~p", [TopHeader0]),
     %% produce a block on the parent chain
-    ok = produce_blocks_hc(?NODE3, ?NODE3_NAME, 1, lazy_leader, Config),
+    ok = produce_cc_blocks(Config, 1),
     {ok, KB} = wait_same_top(?NODE2, ?NODE3),
     0 = aec_blocks:difficulty(KB),
     TopHeader1 = rpc(?NODE3, aec_chain, top_header, []),
@@ -653,10 +628,10 @@ elected_leader_did_not_show_up_(Config) ->
     produce_cc_blocks(Config, 1),
     {ok, _} = wait_same_top(?NODE1, ?NODE3),
     timer:sleep(2000), %% Give NODE1 a moment to finalize sync and post commitments
-    ok = produce_blocks_hc(?NODE1, ?NODE1_NAME, 1, abnormal_commitments_cnt, Config),
+    ok = produce_cc_blocks(Config, 1),
     {ok, KB1} = wait_same_top(?NODE1, ?NODE3),
     {ok, KB1} = wait_same_top(?NODE2, ?NODE3),
-    {ok, _} = produce_blocks(?NODE1, ?NODE1_NAME, child, 10, Config),
+    {ok, _} = produce_cc_blocks(Config, 10),
     {ok, KB2} = wait_same_top(?NODE1, ?NODE3),
     {ok, KB2} = wait_same_top(?NODE2, ?NODE3),
     ok.
@@ -684,27 +659,6 @@ who_by_pubkey(Pubkey) ->
         Genesis -> genesis;
         _  -> error(unknown_beneficiary)
     end.
-
-%% who_by_pubkeyhashprefix(PubKeyHash) ->
-%%     Alice = pubkey_hash_prefix(?ALICE),
-%%     Bob = pubkey_hash_prefix(?BOB),
-%%     Dwight = pubkey_hash_prefix(?DWIGHT),
-%%     Edwin = pubkey_hash_prefix(?EDWIN),
-%%     Genesis = ?GENESIS_BENFICIARY,
-%%     case PubKeyHash of
-%%         Alice -> ?ALICE;
-%%         Bob -> ?BOB;
-%%         Dwight -> ?DWIGHT;
-%%         Edwin -> ?EDWIN;
-%%         Genesis -> genesis;
-%%         _  -> error(unknown_beneficiary)
-%%     end.
-
-%% pubkey_hash_prefix(Who) ->
-%%     PubKey = pubkey(Who),
-%%     StakerPubKeyFate = aeb_fate_encoding:serialize(aeb_fate_data:make_address(PubKey)),
-%%     <<StakerHash:8/binary, _/binary>> = aec_hash:sha256_hash(StakerPubKeyFate),
-%%     StakerHash.
 
 encoded_pubkey(Who) ->
     aeser_api_encoder:encode(account_pubkey, pubkey(Who)).
@@ -1091,17 +1045,6 @@ staking_contract_address() ->
 election_contract_address() ->
     aect_contracts:compute_contract_pubkey(?OWNER_PUBKEY, 3).
 
-produce_blocks(_Node, NodeName, parent = _NodeType, BlocksCnt, _Config) ->
-    {ok, _} = aecore_suite_utils:mine_key_blocks(NodeName, BlocksCnt);
-produce_blocks(Node, NodeName, NodeType, BlocksCnt, Config) ->
-    produce_blocks(Node, NodeName, NodeType, BlocksCnt, Config, correct_leader).
-
-produce_blocks(Node, NodeName, child = _NodeType, BlocksCnt, Config, HCType) ->
-    TopHeight0 = rpc(Node, aec_chain, top_height, []),
-    produce_blocks_hc(Node, NodeName, BlocksCnt, HCType, Config),
-    TopHeight = rpc(Node, aec_chain, top_height, []),
-    get_generations(Node, TopHeight0 + 1, TopHeight).
-
 %% Increase the child chain with a number of key blocks
 %% Automatically add key blocks on parent chain and
 %% if there are Txs, put them in a micro block
@@ -1165,55 +1108,11 @@ get_generations(Node, FromHeight, ToHeight) ->
             lists:seq(FromHeight, ToHeight)),
     {ok, lists:reverse(ReversedBlocks)}.
 
-produce_blocks_hc(_Node, _NodeName, BlocksCnt, _LeaderType, _Config) when BlocksCnt < 1 ->
-    ok;
-produce_blocks_hc(Node, NodeName, BlocksCnt, LeaderType, Config) ->
-    %% ParentNode = ?PARENT_CHAIN_NODE,
-    ParentNodeName = ?PARENT_CHAIN_NODE_NAME,
-    %% make sure the parent chain is not mining
-    stopped = rpc:call(ParentNodeName, aec_conductor, get_mining_state, []),
-    %% initial child chain state
-    TopHeight = rpc(Node, aec_chain, top_height, []),
-    Producer = get_block_producer_name(?config(staker_names, Config), Node, TopHeight),
-    ct:log("~p producer for height ~p. Now producing next block", [Producer, TopHeight]),
-    %% mine a generation on the parent block
-    NumParentBlocks = case (TopHeight + 1) rem ?CHILD_EPOCH_LENGTH == 0 of
-                        true -> ?PARENT_EPOCH_LENGTH + ?PARENT_FINALITY;
-                        _ -> 0
-                      end,
-    case LeaderType of
-        %% lazy_leader ->
-        %%     mine_key_blocks(ParentNodeName, NumParentBlocks),
-        %%     ok = aecore_suite_utils:wait_for_height(NodeName, TopHeight + 1, ?LAZY_INTERVAL + 5000),
-        %%     CTop = rpc(Node, aec_chain, top_block, []),
-        %%     %% Choosing leaders will change
-        %%     %% true = is_keyblock_lazy(CTop),
-        %%     ok;
-        %% abnormal_commitments_cnt ->
-        %%     {ok, _} = wait_for_at_least_commitments_in_pool(ParentNode, Node, 2),
-        %%     mine_key_blocks(ParentNodeName, NumParentBlocks),
-        %%     ok = aecore_suite_utils:wait_for_height(NodeName, TopHeight + 1, 10000), %% 10s per block
-        %%     CTop = rpc(Node, aec_chain, top_block, []),
-        %%     false = is_keyblock_lazy(CTop),
-        %%     ok;
-        correct_leader ->
-            %% Don't wait for commitments, in the future pinning will be implemented
-            %%{ok, _} = wait_for_commitments_in_pool(ParentNode, Node, 2),
-            mine_key_blocks(ParentNodeName, NumParentBlocks),
-            ok = aecore_suite_utils:wait_for_height(NodeName, TopHeight + 1, 10000), %% 10s per block
-            TopBlock = rpc(Node, aec_chain, top_block, []),
-            ct_log_block(TopBlock),
-            %% Choosing leaders will change
-            %% false = is_keyblock_lazy(CTop),
-            ok
-    end,
-    %% wait for the child to catch up
-    produce_blocks_hc(Node, NodeName, BlocksCnt - 1, LeaderType, Config).
-
 mine_key_blocks(ParentNodeName, NumParentBlocks) ->
     {ok, _} = aecore_suite_utils:mine_micro_block_emptying_mempool_or_fail(ParentNodeName),
     {ok, KBs} = aecore_suite_utils:mine_key_blocks(ParentNodeName, NumParentBlocks),
-    ct:log("Parent block mined ~p ~p number: ~p", [KBs, ParentNodeName, NumParentBlocks]).
+    ct:log("Parent block mined ~p ~p number: ~p", [KBs, ParentNodeName, NumParentBlocks]),
+    {ok, KBs}.
 
 get_block_producer_name(Parties, Node, Height) ->
     Producer = get_block_producer(Node, Height),
