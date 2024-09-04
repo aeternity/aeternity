@@ -1107,48 +1107,52 @@ produce_blocks(Node, NodeName, child = _NodeType, BlocksCnt, Config, HCType) ->
     TopHeight = rpc(Node, aec_chain, top_height, []),
     get_generations(Node, TopHeight0 + 1, TopHeight).
 
+%% Increase the child chain with a number of key blocks
+%% Automatically add key blocks on parent chain and
+%% if there are Txs, put them in a micro block
 produce_cc_blocks(Config, BlocksCnt) ->
+    %% Last parameter steers where in Child epoch parent block is produced
+    produce_cc_blocks(Config, BlocksCnt, 2).
+
+produce_cc_blocks(Config, BlocksCnt, ParentProduce) ->
     %% use NODE1 as a reference
     %% (make sure to design tests not to fiddle with this node)
     TopHeight = rpc(?NODE1, aec_chain, top_height, []),
     %% assert that the parent chain is not mining
     ?assertEqual(stopped, rpc:call(?PARENT_CHAIN_NODE_NAME, aec_conductor, get_mining_state, [])),
-    produce_to_cc_height(Config, TopHeight + BlocksCnt),
-    get_generations(?NODE1, TopHeight + 1, TopHeight + BlocksCnt).
+    NewTopHeight = produce_to_cc_height(Config, TopHeight + BlocksCnt, ParentProduce),
+    get_generations(?NODE1, TopHeight + 1, NewTopHeight).
 
 %% It seems we automatically produce child chain blocks in the background
-produce_to_cc_height(Config, GoalHeight) ->
+produce_to_cc_height(Config, GoalHeight, ParentProduce) ->
     NodeName = ?NODE1_NAME,
     TopHeight = rpc(?NODE1, aec_chain, top_height, []),
-    %% Get the following through an API, here just compute since we control it
-    %% Mine on second CC block in parent epoch
-    case ((TopHeight rem ?CHILD_EPOCH_LENGTH) - 2) rem ?PARENT_EPOCH_LENGTH == 0 of
-      true ->
-          mine_key_blocks(?PARENT_CHAIN_NODE_NAME, 1);
-      false ->
-          ok
-    end,
     case TopHeight >= GoalHeight of
       true ->
-        TopHeight;
+          TopHeight;
       false ->
-        KeyBlock =
-            case rpc:call(NodeName, aec_tx_pool, peek, [infinity]) of
-                {ok, []} ->
-                     {ok, [Block]} = aecore_suite_utils:mine_key_blocks(NodeName, 1),
-                     ct:log("CC ~p mined block: ~p", [NodeName, Block]),
-                     Block;
-                {ok, _Txs} ->
-                     {ok, [KB, MB]} = aecore_suite_utils:mine_blocks(NodeName, 2),
-                     ?assertEqual(key, aec_blocks:type(KB)),
-                     ?assertEqual(micro, aec_blocks:type(MB)),
-                     ct:log("CC ~p mined block: ~p", [NodeName, KB]),
-                     ct:log("CC ~p mined micro block: ~p", [NodeName, MB]),
-                     KB
-            end,
-        Producer = get_block_producer_name(?config(staker_names, Config), KeyBlock),
-        ct:log("~p produced CC block at height ~p", [Producer, TopHeight + 1]),
-        produce_to_cc_height(Config, GoalHeight)
+          case is_integer(ParentProduce) andalso
+                 ((TopHeight rem ?CHILD_EPOCH_LENGTH) - ParentProduce) rem ?PARENT_EPOCH_LENGTH == 0 of
+              true  -> mine_key_blocks(?PARENT_CHAIN_NODE_NAME, 1);
+              false -> ok
+          end,
+          KeyBlock =
+              case rpc:call(NodeName, aec_tx_pool, peek, [infinity]) of
+                  {ok, []} ->
+                       {ok, [Block]} = aecore_suite_utils:mine_key_blocks(NodeName, 1),
+                       ct:log("CC ~p mined block: ~p", [NodeName, Block]),
+                       Block;
+                  {ok, _Txs} ->
+                       {ok, [KB, MB]} = aecore_suite_utils:mine_blocks(NodeName, 2),
+                       ?assertEqual(key, aec_blocks:type(KB)),
+                       ?assertEqual(micro, aec_blocks:type(MB)),
+                       ct:log("CC ~p mined block: ~p", [NodeName, KB]),
+                       ct:log("CC ~p mined micro block: ~p", [NodeName, MB]),
+                       KB
+              end,
+          Producer = get_block_producer_name(?config(staker_names, Config), KeyBlock),
+          ct:log("~p produced CC block at height ~p", [Producer, TopHeight + 1]),
+          produce_to_cc_height(Config, GoalHeight, ParentProduce)
     end.
 
 get_generations(Node, FromHeight, ToHeight) ->
