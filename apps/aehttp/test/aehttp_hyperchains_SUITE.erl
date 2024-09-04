@@ -383,10 +383,10 @@ spend_txs(Config) ->
 
 start_two_child_nodes(Config) ->
     Env = [ {"AE__FORK_MANAGEMENT__NETWORK_ID", binary_to_list(?config(network_id, Config))} ],
-    child_node_config(?NODE1, [?ALICE, ?BOB, ?LISA], Config),
+    child_node_config(?NODE1, [?ALICE, ?LISA], Config),
     aecore_suite_utils:start_node(?NODE1, Config, Env),
     aecore_suite_utils:connect(?NODE1_NAME, []),
-    child_node_config(?NODE2, [], Config),
+    child_node_config(?NODE2, [?BOB], Config),
     aecore_suite_utils:start_node(?NODE2, Config, Env),
     aecore_suite_utils:connect(?NODE2_NAME, []),
     ok.
@@ -1077,21 +1077,24 @@ produce_to_cc_height(Config, GoalHeight, ParentProduce) ->
           KeyBlock =
               case rpc:call(NodeName, aec_tx_pool, peek, [infinity]) of
                   {ok, []} ->
-                       {ok, [Block]} = aecore_suite_utils:mine_key_blocks(NodeName, 1),
-                       ct:log("CC ~p mined block: ~p", [NodeName, Block]),
+                       {ok, [{Node, Block}]} = mine_cc_blocks(1),
+                       ct:log("CC ~p mined block: ~p", [Node, Block]),
                        Block;
                   {ok, _Txs} ->
-                       {ok, [KB, MB]} = aecore_suite_utils:mine_blocks(NodeName, 2),
+                       {ok, [{Node1, KB}, {Node2, MB}]} = mine_cc_blocks(2),
                        ?assertEqual(key, aec_blocks:type(KB)),
                        ?assertEqual(micro, aec_blocks:type(MB)),
-                       ct:log("CC ~p mined block: ~p", [NodeName, KB]),
-                       ct:log("CC ~p mined micro block: ~p", [NodeName, MB]),
+                       ct:log("CC ~p mined block: ~p", [Node1, KB]),
+                       ct:log("CC ~p mined micro block: ~p", [Node2, MB]),
                        KB
               end,
           Producer = get_block_producer_name(?config(staker_names, Config), KeyBlock),
-          ct:log("~p produced CC block at height ~p", [Producer, TopHeight + 1]),
+          ct:log("~p produced CC block at height ~p", [Producer, aec_blocks:height(KeyBlock)]),
           produce_to_cc_height(Config, GoalHeight, ParentProduce)
     end.
+
+mine_cc_blocks(N) ->
+    aecore_suite_utils:hc_mine_blocks([?NODE1_NAME, ?NODE2_NAME], N).
 
 get_generations(Node, FromHeight, ToHeight) ->
     ReversedBlocks =

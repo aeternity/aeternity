@@ -33,6 +33,8 @@
          get_node_db_config/1,
          delete_node_db_if_persisted/1,
          expected_mine_rate/0,
+         hc_mine_blocks/2,
+         hc_mine_blocks/3,
          mine_blocks/2,
          mine_blocks/3,
          mine_blocks/4,
@@ -685,6 +687,9 @@ mine_blocks(Node, NumBlocksToMine, Opts) when is_map(Opts) ->
 mine_blocks(Node, NumBlocksToMine, MiningRate, Opts) ->
     mine_blocks(Node, NumBlocksToMine, MiningRate, any, Opts).
 
+hc_mine_blocks(Nodes, NumBlocksToMine) ->
+    hc_mine_blocks(Nodes, NumBlocksToMine, #{}).
+
 mine_blocks(Node, NumBlocksToMine, MiningRate, Type, Opts) ->
     case rpc_test_consensus_enabled(Node)
         orelse rpc_on_demand_consensus_enabled(Node) of
@@ -818,13 +823,26 @@ tx_in_microblock(MB, TxHash) ->
                       aeser_api_encoder:encode(tx_hash, aetx_sign:hash(STx)) == TxHash
               end, aec_blocks:txs(MB)).
 
+hc_loop_mine_blocks(Nodes, NBlocks) ->
+    hc_loop_mine_blocks([], NBlocks, Nodes).
+
+hc_loop_mine_blocks(Blocks, 0, _Nodes) ->
+    {ok, Blocks};
+hc_loop_mine_blocks(Blocks, N, Nodes) ->
+    case wait_for_new_block_mined(5000) of
+        {ok, Node, Block} ->
+            hc_loop_mine_blocks([{Node, Block} | Blocks], N - 1, Nodes);
+        Err = {error, _} ->
+            Err
+    end.
+
 mine_blocks_loop(Cnt, Type) ->
     mine_blocks_loop([], Cnt, Type).
 
 mine_blocks_loop(Blocks, 0, _Type) ->
     {ok, Blocks};
 mine_blocks_loop(Blocks, BlocksToMine, Type) when is_integer(BlocksToMine), BlocksToMine > 0 ->
-    {ok, Block} = wait_for_new_block_mined(),
+    {ok, _Node, Block} = wait_for_new_block_mined(),
     case aec_blocks:type(Block) of
         Type1 when Type =/= any andalso Type =/= Type1 ->
             %% Don't decrement
@@ -839,11 +857,11 @@ wait_for_new_block_mined() ->
 wait_for_new_block_mined(T) when is_integer(T), T >= 0 ->
     receive
         {gproc_ps_event, block_created, Info} ->
-            #{info := Block} = Info,
-            {ok, Block};
+            #{info := Block, test_node := Node} = Info,
+            {ok, Node, Block};
         {gproc_ps_event, micro_block_created, Info} ->
-            #{info := Block} = Info,
-            {ok, Block}
+            #{info := Block, test_node := Node} = Info,
+            {ok, Node, Block}
     after
         T ->
             case T of
@@ -879,7 +897,7 @@ flush_new_blocks_(Acc) ->
     case wait_for_new_block_mined(0) of
         {error, timeout_waiting_for_block} ->
             lists:reverse(Acc);
-        {ok, Block} ->
+        {ok, _Node, Block} ->
             flush_new_blocks_([Block | Acc])
     end.
 
@@ -1943,6 +1961,49 @@ get_key_hash_by_delta(Node, Delta) ->
     {ok, Header} = rpc(Node, aec_chain, get_key_header_by_height, [TopHeight - Delta]),
     {ok, Hash} = aec_headers:hash_header(Header),
     Hash.
+
+assert_stopped(Node) ->
+    stopped = rpc:call(Node, aec_conductor, get_mining_state, [], 5000).
+
+subscribe_created(Node) ->
+    ok = subscribe(Node, block_created),
+    ok = subscribe(Node, micro_block_created).
+
+start_mining(Node, Opts) ->
+    StartRes = rpc:call(Node, aec_conductor, start_mining, [Opts], 5000),
+    ct:log("aec_conductor:start_mining(~p) (~p) -> ~p", [Opts, Node, StartRes]).
+
+stop_mining(Node) ->
+    StopRes = rpc:call(Node, aec_conductor, stop_mining, [], 5000),
+    ct:log("aec_conductor:stop_mining() (~p) -> ~p", [Node, StopRes]).
+
+unsubscribe_created(Node) ->
+    ok = unsubscribe(Node, block_created),
+    ok = unsubscribe(Node, micro_block_created).
+
+hc_mine_blocks(Nodes, NBlocks, Opts) ->
+    [ assert_stopped(Node) || Node <- Nodes ],
+
+    _ = flush_new_blocks(), %% Flush old messages
+
+    [ subscribe_created(Node) || Node <- Nodes ],
+    [ start_mining(Node, Opts) || Node <- Nodes ],
+
+    Res = hc_loop_mine_blocks(Nodes, NBlocks),
+
+    [ stop_mining(Node) || Node <- Nodes ],
+    [ unsubscribe_created(Node) || Node <- Nodes ],
+
+    [ assert_stopped(Node) || Node <- Nodes ],
+
+    _ = flush_new_blocks(), %% Flush late messages
+
+    case Res of
+        {ok, BlocksReverse} ->
+            {ok, lists:reverse(BlocksReverse)};
+        {error, Reason} ->
+            erlang:error(Reason)
+    end.
 
 mine_safe_setup(Node, MiningRate, Opts, LoopFun) ->
     ok = rpc:call(Node, application, set_env,
