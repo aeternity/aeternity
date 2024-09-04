@@ -842,7 +842,6 @@ wait_for_new_block_mined(T) when is_integer(T), T >= 0 ->
             #{info := Block} = Info,
             {ok, Block};
         {gproc_ps_event, micro_block_created, Info} ->
-            ct:log("micro block created, Info=~p", [Info]),
             #{info := Block} = Info,
             {ok, Block}
     after
