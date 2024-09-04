@@ -210,9 +210,6 @@ init_per_group(hc, Config0) ->
               {consensus, ?CONSENSUS} |
               aect_test_utils:init_per_group(VM, Config0)],
 
-    %% different runs use different network ids
-    Env = [ {"AE__FORK_MANAGEMENT__NETWORK_ID", binary_to_list(NetworkId)} ],
-
     aecore_suite_utils:start_node(?PARENT_CHAIN_NODE, Config),
     aecore_suite_utils:connect(?PARENT_CHAIN_NODE_NAME, []),
     timer:sleep(1000),
@@ -397,7 +394,7 @@ start_two_child_nodes(Config) ->
     ok.
 
 produce_first_epoch(Config) ->
-    {ok, Bs} = produce_blocks(?NODE1, ?NODE1_NAME, child, ?CHILD_EPOCH_LENGTH, Config),
+    {ok, Bs} = produce_cc_blocks(Config, ?CHILD_EPOCH_LENGTH),
     Producers = [ aec_blocks:miner(B) || B <- Bs ],
     Leaders = leaders_at_height(?NODE1, 1, Config),
     ct:log("Bs: ~p  Leaders ~p", [Bs, Leaders]),
@@ -519,7 +516,7 @@ verify_fees(Config) ->
             %% gather staking_powers before reward distribution
             AliceBalance0 = account_balance(pubkey(?ALICE)),
             BobBalance0 = account_balance(pubkey(?BOB)),
-            produce_blocks(?NODE1, ?NODE1_NAME, child, 1, Config),
+            produce_cc_blocks(Config, 1),
             TopHeader = rpc(?NODE1, aec_chain, top_header, []),
             {ok, TopHash} = aec_headers:hash_header(TopHeader),
             PrevHash = aec_headers:prev_hash(TopHeader),
@@ -613,10 +610,10 @@ verify_fees(Config) ->
         lists:seq(1, 10)),
     ct:log("Test with a spend transaction", []),
     Test(), %% fees
-    produce_blocks(?NODE1, ?NODE1_NAME, child, 1, Config),
+    produce_cc_blocks(Config, 1),
     ct:log("Test with no transaction", []),
     {ok, _SignedTx} = seed_account(pubkey(?ALICE), 1, NetworkId),
-    produce_blocks(?NODE1, ?NODE1_NAME, child, 1, Config),
+    produce_cc_blocks(Config, 1),
     Test(), %% after fees
     ok.
 
@@ -1090,7 +1087,7 @@ node_config(Node, CTConfig, PotentialStakers, ReceiveAddress, ProducingCommitmen
         <<"sync">> => #{<<"ping_interval">> => 5000},
         <<"mining">> =>
             #{<<"micro_block_cycle">> => 1,
-            <<"autostart">> => true,
+            <<"autostart">> => false,
             %%<<"autostart">> => ProducingCommitments,
             <<"beneficiary_reward_delay">> => ?REWARD_DELAY
         }}.  %% this relies on certain nonce numbers
@@ -1114,6 +1111,38 @@ produce_blocks(Node, NodeName, child = _NodeType, BlocksCnt, Config, HCType) ->
     produce_blocks_hc(Node, NodeName, BlocksCnt, HCType, Config),
     TopHeight = rpc(Node, aec_chain, top_height, []),
     get_generations(Node, TopHeight0 + 1, TopHeight).
+
+produce_cc_blocks(Config, BlocksCnt) ->
+    %% use NODE1 as a reference
+    %% (make sure to design tests not to fiddle with this node)
+    TopHeight = rpc(?NODE1, aec_chain, top_height, []),
+    %% make sure the parent chain is not mining
+    stopped = rpc:call(?PARENT_CHAIN_NODE_NAME, aec_conductor, get_mining_state, []),
+    produce_to_cc_height(Config, TopHeight + BlocksCnt),
+    get_generations(?NODE1, TopHeight + 1, TopHeight + BlocksCnt).
+
+%% It seems we automatically produce child chain blocks in the background
+produce_to_cc_height(Config, GoalHeight) ->
+    TopHeight = rpc(?NODE1, aec_chain, top_height, []),
+    %% Get the following through an API, here just compute since we control it
+    %% Mine on second CC block in parent epoch
+    case ((TopHeight rem ?CHILD_EPOCH_LENGTH) - 2) rem ?PARENT_EPOCH_LENGTH == 0 of
+      true ->
+          mine_key_blocks(?PARENT_CHAIN_NODE_NAME, 1);
+      false ->
+          ok
+    end,
+    case TopHeight == GoalHeight of
+      true ->
+        GoalHeight;
+      false ->
+        [Block] = mine_cc_blocks(?NODE1_NAME, 1),
+        Producer = get_block_producer_name(?config(staker_names, Config), Block),
+        ct:log("~p produced CC block at height ~p", [Producer, TopHeight + 1]),
+        %% produce_blocks_hc(?NODE1, ?NODE1_NAME, 1, correct_leader, Config),
+        ok = aecore_suite_utils:wait_for_height(?NODE1_NAME, TopHeight + 1, 10000), %% 10s per block
+        produce_to_cc_height(Config, GoalHeight)
+    end.
 
 get_generations(Node, FromHeight, ToHeight) ->
     ReversedBlocks =
@@ -1174,6 +1203,13 @@ produce_blocks_hc(Node, NodeName, BlocksCnt, LeaderType, Config) ->
     %% wait for the child to catch up
     produce_blocks_hc(Node, NodeName, BlocksCnt - 1, LeaderType, Config).
 
+%% Unclear why for CC emptying_mempool_or_fail creates 2 key blocks,
+%% need to investigate that later
+mine_cc_blocks(NodeName, NumBlocks) ->
+    {ok, KBs} = aecore_suite_utils:mine_key_blocks(NodeName, NumBlocks),
+    ct:log("CC ~p mined ~p blocks: ~p", [NodeName, NumBlocks, KBs]),
+    KBs.
+
 mine_key_blocks(ParentNodeName, NumParentBlocks) ->
     {ok, _} = aecore_suite_utils:mine_micro_block_emptying_mempool_or_fail(ParentNodeName),
     {ok, KBs} = aecore_suite_utils:mine_key_blocks(ParentNodeName, NumParentBlocks),
@@ -1181,6 +1217,13 @@ mine_key_blocks(ParentNodeName, NumParentBlocks) ->
 
 get_block_producer_name(Parties, Node, Height) ->
     Producer = get_block_producer(Node, Height),
+    case lists:keyfind(Producer, 1, Parties) of
+        false -> Producer;
+        {_, _, Name} -> Name
+    end.
+
+get_block_producer_name(Parties, Block) ->
+    Producer = aec_blocks:miner(Block),
     case lists:keyfind(Producer, 1, Parties) of
         false -> Producer;
         {_, _, Name} -> Name
