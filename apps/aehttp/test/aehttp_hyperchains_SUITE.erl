@@ -415,8 +415,8 @@ simple_withdraw(Config) ->
     {ok, []} = rpc:call(?NODE1_NAME, aec_tx_pool, peek, [infinity]),
 
     InitBalance  = account_balance(pubkey(?ALICE)),
-    {ok, _AliceContractSPower} = inspect_staking_contract(?ALICE, {staking_power, ?ALICE}, Config),
-    {ok, _BobContractSPower} = inspect_staking_contract(?ALICE, {staking_power, ?BOB}, Config),
+    {ok, AliceContractSPower} = inspect_staking_contract(?ALICE, {staking_power, ?ALICE}, Config),
+    {ok, BobContractSPower} = inspect_staking_contract(?ALICE, {staking_power, ?BOB}, Config),
     {ok,
         #{<<"ct">> := _, %% pool contract
           <<"is_online">> := true,
@@ -446,12 +446,17 @@ simple_withdraw(Config) ->
     GasUsed = aect_call:gas_used(Call),
     GasPrice = aect_call:gas_price(Call),
     Fee = aetx:fee(aetx_sign:tx(CallTx)),
+    {Producer, KeyReward} = key_reward_provided(),
     ct:log("Initial balance: ~p, withdrawn: ~p, gas used: ~p, gas price: ~p, fee: ~p, end balance: ~p",
            [InitBalance, WithdrawAmount, GasUsed, GasPrice,
                           Fee, EndBalance]),
-    {ok, _AliceContractSPower1} = inspect_staking_contract(?ALICE, {staking_power, ?ALICE}, Config),
-%%    {AliceContractSPower, AliceContractSPower} = {AliceContractSPower, AliceContractSPower1 + 1},
-    {ok, BobContractSPower} = inspect_staking_contract(?ALICE, {staking_power, ?BOB}, Config),
+    {ok, AliceContractSPower1} = inspect_staking_contract(?ALICE, {staking_power, ?ALICE}, Config),
+    {ok, BobContractSPower1} = inspect_staking_contract(?ALICE, {staking_power, ?BOB}, Config),
+    ?assert(BobContractSPower == BobContractSPower1 orelse
+            (Producer == pubkey(?BOB) andalso BobContractSPower + KeyReward == BobContractSPower1)),
+    ct:log("Staking power before: ~p and after ~p", [AliceContractSPower, AliceContractSPower1]),
+    ?assert(AliceContractSPower - 1000 == AliceContractSPower1 orelse
+            (Producer == pubkey(?ALICE) andalso AliceContractSPower + KeyReward - 1000 == AliceContractSPower1)),
     ok.
 
 sync_third_node(Config) ->
@@ -813,7 +818,7 @@ calc_rewards(RewardForHeight) ->
                 fun(MB) -> aec_blocks:txs(MB) end,
                 MBs)),
     ct:log("Txs: ~p", [Txs]),
-    KeyReward = rpc(?NODE1, aec_governance, block_mine_reward, [RewardForHeight]),
+    {_, KeyReward} = key_reward_provided(RewardForHeight),
     GenerationFees =
         lists:foldl(
             fun(SignTx, Accum) ->
@@ -1126,3 +1131,12 @@ leaders_at_height(Node, Height, Config) ->
     [ begin
         {account_pubkey, K} = aeser_api_encoder:decode(LeaderKey), K
       end || [ LeaderKey, _LeaderStake] <- Return ].
+
+key_reward_provided() ->
+    TopHeight = rpc(?NODE1, aec_chain, top_height, []),
+    RewardHeight = TopHeight - ?REWARD_DELAY,
+    key_reward_provided(RewardHeight).
+
+key_reward_provided(RewardHeight) ->
+  {get_block_producer(?NODE1, RewardHeight),
+   rpc(?NODE1, aec_governance, block_mine_reward, [RewardHeight])}.
