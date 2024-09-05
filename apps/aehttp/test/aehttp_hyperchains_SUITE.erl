@@ -228,43 +228,6 @@ child_node_config(Node, Stakeholders, CTConfig) ->
     build_json_files(?HC_CONTRACT, [NodeConfig]),
     aecore_suite_utils:create_config(Node, CTConfig, NodeConfig, [{add_peers, true}]).
 
-set_up_third_node(Config) ->
-    NetworkId = <<"hc">>,
-    aecore_suite_utils:make_multi(Config, [?NODE3]),
-    %% different runs use different network ids
-    Env = [ {"AE__FORK_MANAGEMENT__NETWORK_ID", binary_to_list(NetworkId)} ],
-    child_node_config(?NODE3, [?LISA], Config),
-    aecore_suite_utils:start_node(?NODE3, Config, Env),
-    aecore_suite_utils:connect(?NODE3_NAME, []),
-    timer:sleep(1000),
-    Node3Peers = rpc(?NODE3, aec_peers, connected_peers, []),
-    ct:log("Connected peers ~p", [Node3Peers]),
-    Node3VerifiedPeers = rpc(?NODE3, aec_peers, available_peers, [verified]),
-    ct:log("Verified peers ~p", [Node3VerifiedPeers]),
-    {ok, _} = wait_same_top(?NODE1, ?NODE3),
-    Inspect =
-        fun(Node) ->
-            {ok, TopH} = aec_headers:hash_header(rpc(Node, aec_chain, top_header, [])),
-            ct:log("     top hash ~p", [TopH]),
-            ChainEnds = rpc(Node, aec_db, find_chain_end_hashes, []),
-            lists:foreach(
-                fun(Hash) ->
-                    {value, D} = rpc(Node, aec_db, find_block_difficulty, [Hash]),
-                    {value, H} = rpc(Node, aec_db, dirty_find_header, [Hash]),
-                    ct:log("     Chain end with ~p has difficulty ~p", [H, D]),
-                    ok
-                end,
-                ChainEnds)
-        end,
-    ct:log("Node1 point of view:", []),
-    Inspect(?NODE1),
-    ct:log("Node2 point of view:", []),
-    Inspect(?NODE2),
-    ct:log("Node3 point of view:", []),
-    Inspect(?NODE3),
-    {ok, _} = wait_same_top(?NODE1, ?NODE3),
-    Config.
-
 end_per_group(hc, Config) ->
     aecore_suite_utils:stop_node(?NODE1, Config),
     aecore_suite_utils:stop_node(?NODE2, Config),
@@ -458,6 +421,42 @@ simple_withdraw(Config) ->
     ?assert(AliceContractSPower - 1000 == AliceContractSPower1 orelse
             (Producer == pubkey(?ALICE) andalso AliceContractSPower + KeyReward - 1000 == AliceContractSPower1)),
     ok.
+
+set_up_third_node(Config) ->
+    aecore_suite_utils:make_multi(Config, [?NODE3]),
+    %% different runs use different network ids
+    Env = [ {"AE__FORK_MANAGEMENT__NETWORK_ID", binary_to_list(?config(network_id, Config))} ],
+    child_node_config(?NODE3, [?LISA], Config),
+    aecore_suite_utils:start_node(?NODE3, Config, Env),
+    aecore_suite_utils:connect(?NODE3_NAME, []),
+    timer:sleep(1000),
+    Node3Peers = rpc(?NODE3, aec_peers, connected_peers, []),
+    ct:log("Connected peers ~p", [Node3Peers]),
+    Node3VerifiedPeers = rpc(?NODE3, aec_peers, available_peers, [verified]),
+    ct:log("Verified peers ~p", [Node3VerifiedPeers]),
+    {ok, _} = wait_same_top([?NODE1, ?NODE2, ?NODE3]),
+    Inspect =
+        fun(Node) ->
+            {ok, TopH} = aec_headers:hash_header(rpc(Node, aec_chain, top_header, [])),
+            ct:log("     top hash ~p", [TopH]),
+            ChainEnds = rpc(Node, aec_db, find_chain_end_hashes, []),
+            lists:foreach(
+                fun(Hash) ->
+                    {value, D} = rpc(Node, aec_db, find_block_difficulty, [Hash]),
+                    {value, H} = rpc(Node, aec_db, dirty_find_header, [Hash]),
+                    ct:log("     Chain end with ~p has difficulty ~p", [H, D]),
+                    ok
+                end,
+                ChainEnds)
+        end,
+    ct:log("Node1 point of view:", []),
+    Inspect(?NODE1),
+    ct:log("Node2 point of view:", []),
+    Inspect(?NODE2),
+    ct:log("Node3 point of view:", []),
+    Inspect(?NODE3),
+    ok.
+
 
 sync_third_node(Config) ->
     set_up_third_node(Config).
