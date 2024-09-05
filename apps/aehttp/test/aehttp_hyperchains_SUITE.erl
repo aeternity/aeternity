@@ -377,6 +377,8 @@ spend_txs(Config) ->
     seed_account(pubkey(?LISA), 100000003 * ?DEFAULT_GAS_PRICE, NetworkId),
 
     produce_cc_blocks(Config, 1),
+    %% Give some time to sync nodes and remove Txs from pool
+    timer:sleep(100),
     {ok, []} = rpc:call(?NODE1_NAME, aec_tx_pool, peek, [infinity]),
     %% TODO check that the actors got their share
     ok.
