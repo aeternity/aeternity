@@ -15,6 +15,8 @@
     init_per_testcase/2, end_per_testcase/2
    ]).
 
+
+%% Test cases
 -export([start_two_child_nodes/1,
          produce_first_epoch/1,
          mine_and_sync/1,
@@ -692,34 +694,6 @@ seed_account(Node, NodeName, RecipientPubkey, Amount, NetworkId) ->
     SignedTx = sign_tx(Tx, PatronPriv, NetworkId),
     ok = rpc:call(NodeName, aec_tx_pool, push, [SignedTx, tx_received]),
     {ok, SignedTx}.
-
-mine_tx_no_cheating(Node, SignedTx) ->
-    mine_tx_no_cheating(Node, SignedTx, 100).
-
-mine_tx_no_cheating(Node, SignedTx, Attempts) when Attempts < 1 ->
-    {TxEnv, Trees} = rpc(Node, aetx_env, tx_env_and_trees_from_top, [aetx_transaction]),
-    Reason =
-        case rpc(Node, aetx_sign, verify, [SignedTx, Trees, ?CERES_PROTOCOL_VSN]) of
-            ok ->
-                case rpc(Node, aetx, process, [aetx_sign:tx(SignedTx), Trees, TxEnv]) of
-                    {ok, _Trees, _} -> no_reason;
-                    {error, R} -> R
-                end;
-            {error, R} -> R
-        end,
-    error({could_not_mine_tx, Reason, SignedTx});
-mine_tx_no_cheating(Node, SignedTx, Attempts) ->
-    Retry = fun() -> timer:sleep(100), mine_tx_no_cheating(Node, SignedTx, Attempts - 1) end,
-    TxHash = aetx_sign:hash(SignedTx),
-    case rpc(Node, aec_chain, find_tx_location, [TxHash]) of
-        mempool -> Retry();
-        none ->
-            error({could_not_mine_tx, garbage_collected, SignedTx});
-        not_found ->
-            error({could_not_mine_tx, tx_not_found, SignedTx});
-        BlockHash when is_binary(BlockHash) ->
-            ok
-    end.
 
 account_balance(Pubkey) ->
     case rpc(?NODE1, aec_chain, get_account, [Pubkey]) of
