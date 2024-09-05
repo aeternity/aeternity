@@ -25,8 +25,9 @@
          empty_parent_block/1,
          sync_third_node/1,
          verify_fees/1,
-         elected_leader_did_not_show_up/1,
-         block_difficulty/1
+         % elected_leader_did_not_show_up/1,
+         % block_difficulty/1,
+         epoch_with_slow_parent/1
         ]).
 
 -include_lib("stdlib/include/assert.hrl").
@@ -129,18 +130,22 @@
 
 -define(GENESIS_BENFICIARY, <<0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0>>).
 
-all() -> [{group, hc}].
+all() -> [{group, hc}, {group, epochs}].
 
 groups() ->
     [
-     {hc, [sequence], [ start_two_child_nodes
-                      , produce_first_epoch
-                      , verify_fees
-                      , mine_and_sync
-                      , spend_txs
-                      , simple_withdraw
-                      %, sync_third_node
-                      ]}
+      {hc, [sequence],
+          [ start_two_child_nodes
+          , produce_first_epoch
+          , verify_fees
+          , mine_and_sync
+          , spend_txs
+          , simple_withdraw
+          , sync_third_node
+          ]}
+    , {epochs, [sequence],
+          [ start_two_child_nodes
+          , epoch_with_slow_parent ]}
     ].
 
 suite() -> [].
@@ -204,7 +209,7 @@ end_per_suite(Config) ->
                proplists:get_value(started_apps, Config, []))],
     ok.
 
-init_per_group(hc, Config0) ->
+init_per_group(_, Config0) ->
     VM = fate,
     NetworkId = <<"hc">>,
     GenesisStartTime = aeu_time:now_in_msecs(),
@@ -606,7 +611,7 @@ elected_leader_did_not_show_up_(Config) ->
     {TopHeader0, TopHeader0} = {rpc(?NODE3, aec_chain, top_header, []), TopHeader0},
     ct:log("Starting test at (child chain): ~p", [TopHeader0]),
     %% produce a block on the parent chain
-    ok = produce_cc_blocks(Config, 1),
+    produce_cc_blocks(Config, 1),
     {ok, KB} = wait_same_top(?NODE2, ?NODE3),
     0 = aec_blocks:difficulty(KB),
     TopHeader1 = rpc(?NODE3, aec_chain, top_header, []),
@@ -619,7 +624,7 @@ elected_leader_did_not_show_up_(Config) ->
     produce_cc_blocks(Config, 1),
     {ok, _} = wait_same_top(?NODE1, ?NODE3),
     timer:sleep(2000), %% Give NODE1 a moment to finalize sync and post commitments
-    ok = produce_cc_blocks(Config, 1),
+    produce_cc_blocks(Config, 1),
     {ok, KB1} = wait_same_top(?NODE1, ?NODE3),
     {ok, KB1} = wait_same_top(?NODE2, ?NODE3),
     {ok, _} = produce_cc_blocks(Config, 10),
@@ -627,6 +632,26 @@ elected_leader_did_not_show_up_(Config) ->
     {ok, KB2} = wait_same_top(?NODE2, ?NODE3),
     ok.
 
+epoch_with_slow_parent(Config) ->
+    %% ensure start at a new epoch boundary
+    ChildTopHeight = rpc(?NODE1, aec_chain, top_height, []),
+    BlocksLeftToBoundary = ?CHILD_EPOCH_LENGTH - (ChildTopHeight rem ?CHILD_EPOCH_LENGTH),
+    %% some block production including parent blocks
+    produce_cc_blocks(Config, BlocksLeftToBoundary),
+
+    ParentStartHeight = rpc(?PARENT_CHAIN_NODE, aec_chain, top_height, []),
+    %% Produce no parent block in the next child epoch
+    %% Preferably the child chain should get to a halt or
+    %% at least one should be able to measure that the child chain epoch
+    %% becomes larger after this
+    {ok, Bs} = produce_cc_blocks(Config, ?CHILD_EPOCH_LENGTH, none),
+
+    ParentTopHeight = rpc(?PARENT_CHAIN_NODE, aec_chain, top_height, []),
+    ?assertEqual(ParentStartHeight, ParentTopHeight),
+    ct:log("Child chain blocks ~p", [Bs]),
+    ok.
+
+%%% --------- helper functions
 
 pubkey({Pubkey, _, _}) -> Pubkey.
 
