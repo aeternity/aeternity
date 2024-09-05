@@ -136,7 +136,7 @@ groups() ->
                       , verify_fees
                       , mine_and_sync
                       , spend_txs
-                      %, simple_withdraw
+                      , simple_withdraw
                       %, sync_third_node
                       ]}
     ].
@@ -412,14 +412,8 @@ produce_first_epoch(Config) ->
 simple_withdraw(Config) ->
     AliceBin = encoded_pubkey(?ALICE),
     Alice = binary_to_list(encoded_pubkey(?ALICE)),
-    running = rpc:call(?NODE1_NAME, aec_conductor, get_mining_state, []),
-    true = rpc:call(?NODE1_NAME, aec_conductor, is_leader, []),
     {ok, []} = rpc:call(?NODE1_NAME, aec_tx_pool, peek, [infinity]),
 
-    {ok, [KB0 | _ ]} = produce_cc_blocks(Config, 1),
-    Top0 = aec_blocks:to_header(KB0),
-    Top0 = rpc(?NODE1, aec_chain, top_header, []),
-    ct_log_header(Top0),
     InitBalance  = account_balance(pubkey(?ALICE)),
     {ok, _AliceContractSPower} = inspect_staking_contract(?ALICE, {staking_power, ?ALICE}, Config),
     {ok, _BobContractSPower} = inspect_staking_contract(?ALICE, {staking_power, ?BOB}, Config),
@@ -429,44 +423,35 @@ simple_withdraw(Config) ->
           <<"stake">> := _,
           <<"state">> :=
                 #{<<"delegates">> := [[AliceBin, ?INITIAL_STAKE]],
-                  <<"main_staking_ct">> := <<"ak_LRbi65kmLtE7YMkG6mvG5TxAXTsPJDZjAtsPuaXtRyPA7gnfJ">>,
+                  <<"main_staking_ct">> := CPubkey,
                   <<"shares">> := ?INITIAL_STAKE}}} =
         inspect_staking_contract(?ALICE, {get_validator_state, ?ALICE}, Config),
+
+    %% The results translation somehow makes a contract key into an account key!
+    ?assertEqual(aeser_api_encoder:encode(account_pubkey, ?config(staking_contract, Config)), CPubkey),
     WithdrawAmount = 1000,
-    Fun = "unstake",
-    ContractPubkey = ?config(staking_contract, Config),
     NetworkId = ?config(network_id, Config),
     CallTx =
         sign_and_push(
-            contract_call(ContractPubkey, ?MAIN_STAKING_CONTRACT, Fun,
-                  [Alice, integer_to_list(WithdrawAmount)], 0, pubkey(?ALICE)),
+            contract_call(?config(staking_contract, Config), ?MAIN_STAKING_CONTRACT, "unstake",
+                [Alice, integer_to_list(WithdrawAmount)], 0, pubkey(?ALICE)),
             ?ALICE,
             NetworkId),
     {ok, [_]} = rpc:call(?NODE1_NAME, aec_tx_pool, peek, [infinity]),
-    {value, _Acc} = rpc(?NODE1, aec_chain, get_account, [pubkey(?ALICE)]),
-    mine_tx_no_cheating(?NODE1, CallTx),
+    StakeWithdrawDelay = 1,
+    produce_cc_blocks(Config, StakeWithdrawDelay),
     EndBalance = account_balance(pubkey(?ALICE)),
     {ok, Call} = call_info(CallTx),
-    {ok, _Res} = decode_consensus_result(Call, Fun, ?MAIN_STAKING_CONTRACT),
+    {ok, _Res} = decode_consensus_result(Call, "unstake", ?MAIN_STAKING_CONTRACT),
     GasUsed = aect_call:gas_used(Call),
     GasPrice = aect_call:gas_price(Call),
     Fee = aetx:fee(aetx_sign:tx(CallTx)),
     ct:log("Initial balance: ~p, withdrawn: ~p, gas used: ~p, gas price: ~p, fee: ~p, end balance: ~p",
            [InitBalance, WithdrawAmount, GasUsed, GasPrice,
                           Fee, EndBalance]),
-%% TODO: adjust rewarded fees
-%%    {EndSPower, EndSPower} = {EndSPower, InitSPower + WithdrawAmount -
-%%                               TotalSpent},
-
     {ok, _AliceContractSPower1} = inspect_staking_contract(?ALICE, {staking_power, ?ALICE}, Config),
 %%    {AliceContractSPower, AliceContractSPower} = {AliceContractSPower, AliceContractSPower1 + 1},
-%%    {ok, BobContractSPower} = inspect_staking_contract(?ALICE, {staking_power, ?BOB}, Config),
-    Top1 = rpc(?NODE1, aec_chain, top_header, []),
-    ct_log_header(Top1),
-    TimeInBetween = aec_headers:time_in_msecs(Top1) - aec_headers:time_in_msecs(Top0),
-    BlocksInBetween = aec_headers:height(Top1) - aec_headers:height(Top0),
-    ct:log("Key blocks: ~p, Time difference = ~p", [BlocksInBetween, TimeInBetween]),
-
+    {ok, BobContractSPower} = inspect_staking_contract(?ALICE, {staking_power, ?BOB}, Config),
     ok.
 
 sync_third_node(Config) ->
