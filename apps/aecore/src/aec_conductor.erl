@@ -579,35 +579,30 @@ note_rollback(Info) ->
 set_mode(State) ->
     ConsensusModule = consensus_module(State),
     case ConsensusModule:get_type() of
-        pow -> set_pow_modes(State);
+        pow ->
+            case aeu_env:user_config_or_env([<<"stratum">>, <<"enabled">>], aecore, stratum_enabled) of
+                {ok, true} ->
+                    set_stratum_mode(State);
+                _ ->
+                    set_beneficiary_configured(State#state{mode = local_pow}, ConsensusModule)
+            end;
         pos ->
-            HasBeneficiaryConfigured =
-                case get_beneficiary(ConsensusModule) of
-                    {error, beneficiary_not_configured} -> false;
-                    {ok, _} -> true
-                end,
-            State#state{mode = pos, has_beneficiary = HasBeneficiaryConfigured}
+            set_beneficiary_configured(State#state{mode = pos}, ConsensusModule)
     end.
 
-set_pow_modes(State) ->
-    case aeu_env:user_config_or_env([<<"stratum">>, <<"enabled">>], aecore, stratum_enabled) of
-        {ok, true} ->
-            {ok, Dir} = aeu_env:user_config_or_env(
-                          [<<"stratum">>, <<"reward">>, <<"keys">>, <<"dir">>],
-                          aecore, stratum_reward_keys_dir),
-            {PubKey, _PrivKey} =  aestratum_config:read_keys(Dir, create),
-            State#state{mode = stratum,
-                        stratum_beneficiary  = PubKey,
-                        has_beneficiary = true};
-        _ ->
-            ConsensusModule = consensus_module(State),
-            HasBeneficiaryConfigured =
-                case get_beneficiary(ConsensusModule) of
-                    {error, beneficiary_not_configured} -> false;
-                    {ok, _} -> true
-                end,
-            State#state{mode = local_pow, has_beneficiary = HasBeneficiaryConfigured}
-    end.
+set_stratum_mode(State) ->
+    Key = [<<"stratum">>, <<"reward">>, <<"keys">>, <<"dir">>],
+    {ok, Dir} = aeu_env:user_config_or_env(Key, aecore, stratum_reward_keys_dir),
+    {PubKey, _PrivKey} = aestratum_config:read_keys(Dir, create),
+    State#state{mode = stratum, stratum_beneficiary = PubKey, has_beneficiary = true}.
+
+set_beneficiary_configured(State, ConsensusModule) ->
+    HasBeneficiaryConfigured =
+        case get_beneficiary(ConsensusModule) of
+            {error, beneficiary_not_configured} -> false;
+            {ok, _} -> true
+        end,
+    State#state{has_beneficiary = HasBeneficiaryConfigured}.
 
 %%%===================================================================
 %%% Handle monitor messages
@@ -1303,7 +1298,7 @@ handle_key_block_candidate_reply({{ok, _KeyBlockCandidate}, _OldTopHash},
 handle_key_block_candidate_reply({{error, key_not_found}, _}, State) ->
     start_block_production_(State#state{keys_ready = false});
 handle_key_block_candidate_reply({{error, Reason}, _}, #state{top_height = Height} = State)
-        when Reason =:= not_in_cache; 
+        when Reason =:= not_in_cache;
              Reason =:= not_leader ->
     epoch_mining:debug("Creation of key block candidate (~p) failed: ~p", [Height + 1, Reason]),
     create_key_block_candidate(State);
