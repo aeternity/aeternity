@@ -363,10 +363,10 @@ migrate_tables_(Tabs0, Rpt) ->
                all -> [T || T <- all_standalone_tables()];
                _ when is_list(Tabs0) -> Tabs0
            end,
-    T0 = erlang:localtime(),
+    T0 = erlang:monotonic_time(second),
     Res = mnesia_rocksdb_admin:migrate_standalone(rocksdb_copies, Tabs, Rpt),
-    T1 = erlang:localtime(),
-    {ok, {calendar:time_difference(T0, T1), Res}}.
+    T1 = erlang:monotonic_time(second),
+    {ok, {calendar:seconds_to_daystime(T1 - T0), Res}}.
 
 all_standalone_tables() ->
     maps:fold(

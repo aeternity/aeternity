@@ -498,9 +498,9 @@ scan_tree(Name, Height, Hash, Parent) when is_atom(Name)
                                          , is_integer(Height)
                                          , is_binary(Hash)
                                          , is_pid(Parent) ->
-    T0 = erlang:system_time(millisecond),
+    T0 = erlang:monotonic_time(millisecond),
     {ok, Count} = collect_reachable_hashes_fullscan(Name, Height, Hash),
-    T1 = erlang:system_time(millisecond),
+    T1 = erlang:monotonic_time(millisecond),
     ?INFO("GC scan done at ~p (~-13w), Count: ~-9w, Time (ms): ~-8w, hash: ~s",
           [Height, Name, Count, T1 - T0, pp_hash(Hash)]),
     gen_server:cast(Parent, #scanner_done{ tree = Name

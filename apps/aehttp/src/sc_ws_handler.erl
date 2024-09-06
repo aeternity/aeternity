@@ -39,7 +39,7 @@ time_since_last_dispatch(HandlerPid) ->
         {_, Dict} ->
             case lists:keyfind(timestamp_key(), 1, Dict) of
                 {_, TS} ->
-                    Now = erlang:monotonic_time(),
+                    Now = timestamp_now(),
                     erlang:convert_time_unit(Now - TS, native, millisecond);
                 _ ->
                     undefined
@@ -51,10 +51,15 @@ time_since_last_dispatch(HandlerPid) ->
 %% Called from websocket_handle()
 %%
 put_timestamp() ->
-    put(timestamp_key(), erlang:monotonic_time()).
+    put(timestamp_key(), timestamp_now()).
 
 timestamp_key() ->
     {?MODULE, last_dispatch}.
+
+timestamp_now() ->
+    %% Use monotonically increasing timestamps (not guaranteed distinct).
+    %% Can be used for time deltas, but not compared between systems.
+    erlang:monotonic_time().
 
 %% ===========================================================================
 
