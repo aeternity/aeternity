@@ -31,15 +31,6 @@
 -callback get_header_by_height(height(), node_spec(), seed()) ->
     {ok, hash(), hash(), height()} | {error, term()}.
 
--callback get_commitment_tx_in_block(node_spec(), seed(), hash(), hash(), pubkey()) ->
-    {ok, [term()]} | {error, term()}.
-
--callback get_commitment_tx_at_height(node_spec(), seed(), height(), pubkey()) ->
-    {ok, [term()]} | {error, term()}.
-
--callback post_commitment(node_spec(), pubkey(), pubkey(), non_neg_integer(), non_neg_integer(), binary(), binary(), term()) ->
-    {ok, term()} | {error, term()} | {error, non_neg_integer(), term()}.
-
 
 -spec parse_node_url(string()) -> node_spec().
 parse_node_url(NodeURL) ->

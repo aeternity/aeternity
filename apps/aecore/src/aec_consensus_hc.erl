@@ -102,7 +102,6 @@ start(Config, #{block_production := BlockProduction}) ->
 
     Confirmations        = maps:get(<<"confirmations">>, PCConfig, 6),
     StartHeight          = maps:get(<<"start_height">>, PCConfig, 0),
-    ProducingCommitments = maps:get(<<"producing_commitments">>, PCConfig, false),
     ConsensusConfig      = maps:get(<<"consensus">>, PCConfig, #{}),
     PollingConfig        = maps:get(<<"polling">>, PCConfig, #{}),
 
@@ -118,11 +117,6 @@ start(Config, #{block_production := BlockProduction}) ->
     Nodes          = maps:get(<<"nodes">>, PollingConfig, []),
     ParentHosts    = lists:map(fun aehttpc:parse_node_url/1, Nodes),
 
-    %% assert the boolean type
-    case ProducingCommitments of
-        true -> ok;
-        false -> ok
-    end,
 
     {ParentConnMod, PCSpendPubkey, _HCs, SignModule} =
         case PCType of

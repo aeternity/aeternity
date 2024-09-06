@@ -10,7 +10,8 @@
 -define(CHILD_CHAIN_NETWORK_ID, <<"hc_network_id">>).
 -define(SIGN_MODULE, aec_preset_keys).
 
-ae_sim_test_() ->
+% removed as test, should/could be removed altogether, same goes for btc version below.
+ae_sim_test_rem() ->
     {foreach,
      fun() ->
             Apps = [gproc, lager, crypto, enacl, cowboy, inets],
@@ -227,7 +228,7 @@ stop_ae_parent_sims(ParentSims) ->
 ae_sim_name(Port) ->
      list_to_atom("ae_sim_" ++ integer_to_list(Port)).
 
-btc_sim_test_() ->
+btc_sim_test_rem() ->
     {foreach,
         fun() ->
             Apps = [gproc, lager, crypto, enacl, cowboy, inets],
