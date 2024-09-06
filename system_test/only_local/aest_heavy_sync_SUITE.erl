@@ -169,7 +169,7 @@ many_spend_txs(Cfg) ->
 find_txs(_Node, [], Found, _Deadline) ->
     Found;
 find_txs(Node, [TxHash | TxHashes], Found, Deadline) ->
-    case Deadline - erlang:system_time(seconds) > 0 of
+    case Deadline - erlang:system_time(second) > 0 of
         true ->
              case aest_nodes:request(Node, 'GetTransactionByHash', #{hash => TxHash}) of
                  {ok, 200, #{ block_hash := MBHash}} ->
