@@ -182,7 +182,7 @@ log_ping(#{stats := Stats} = St, Pub, Host, Port, GHash, THash, Diff) ->
     St#{stats => Stats#{ Pub => PS }}.
 
 unix_time() ->
-    erlang:monotonic_time(second) + erlang:time_offset(second).
+    erlang:system_time(second).  %% Erlang system view of POSIX time
 
 maybe_schedule_version_probe(#{stats := Stats, probes_pids := PPids, probes_mref := MRefs} = St, Pub) ->
     #{first_seen := First, last_seen := Last, info := Info} = maps:get(Pub, Stats),
