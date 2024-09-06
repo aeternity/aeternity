@@ -15,15 +15,17 @@
     {
         hash = <<>> :: binary(),
         height = 0 :: non_neg_integer(),
-        prev_hash = <<>> :: binary()
+        prev_hash = <<>> :: binary(),
+        time = 0 :: non_neg_integer()
     }).
 
 -opaque block() :: #block{}.
 
--export([new/3,
+-export([new/4,
          hash/1,
          height/1,
          prev_hash/1,
+         time/1,
          encode_network_id/1
         ]).
 
@@ -40,11 +42,12 @@
 
 %% External API
 
--spec new(binary(), non_neg_integer(), binary()) -> block().
-new(Hash, Height, PrevHash) ->
+-spec new(binary(), non_neg_integer(), binary(), non_neg_integer()) -> block().
+new(Hash, Height, PrevHash, Time) ->
     #block{hash = Hash,
            height = Height,
-           prev_hash = PrevHash}.
+           prev_hash = PrevHash,
+           time = Time}.
 
 -spec hash(block()) -> binary().
 hash(#block{hash = Hash}) -> Hash.
@@ -55,6 +58,8 @@ height(#block{height = Height}) -> Height.
 -spec prev_hash(block()) -> binary().
 prev_hash(#block{prev_hash = PrevHash}) -> PrevHash.
 
+-spec time(block()) -> non_neg_integer().
+time(#block{time = Time}) -> Time.
 
 encode_network_id(NetworkId) when is_binary(NetworkId), size(NetworkId) =< 15 ->
     BytesToPad = 15 - byte_size(NetworkId),

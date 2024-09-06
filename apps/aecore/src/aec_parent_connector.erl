@@ -9,9 +9,9 @@
 -module(aec_parent_connector).
 
 %% Functionality
-%% Holds parent chain connection state and contains various utilities for 
+%% Holds parent chain connection state and contains various utilities for
 %% interacting withvthe PC. Wraps parent implementation specific stuff
-%% and delegates the actual calling to aehttpc modules for each specific 
+%% and delegates the actual calling to aehttpc modules for each specific
 %% parent implementation (ae, btc, doge).
 
 -behaviour(gen_server).

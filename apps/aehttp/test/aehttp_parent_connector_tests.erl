@@ -79,7 +79,7 @@ ae_sim_test_rem() ->
                     Responses = get_results(fun aehttpc_aeternity:get_latest_block/2,
                                             ae_parent_http_specs()),
                     PoolSize = length(ae_parent_http_specs()),
-                    [{{ok, Top, PrevHash, Height}, PoolSize}] =
+                    [{{ok, Top, PrevHash, Height, _Time}, PoolSize}] =
                         maps:to_list(Responses),
                     Self = self(),
                     meck:expect(aec_parent_chain_cache, post_block,
@@ -183,7 +183,7 @@ ae_sim_test_rem() ->
                             ?assertMatch({ok, #{micro_blocks := []}}, aec_chain_sim:get_current_generation(SimName)),
                             %% And create a keyblock
                             aec_chain_sim:add_keyblock(SimName),
-                            {ok, TopHash, PrevHash, Height} = aehttpc_aeternity:get_latest_block(NodeSpec, <<"Seed">>),
+                            {ok, TopHash, PrevHash, Height, _Time} = aehttpc_aeternity:get_latest_block(NodeSpec, <<"Seed">>),
                             ?assertMatch({ok, #{micro_blocks := []}}, aec_chain_sim:get_current_generation(SimName)),
                             {ok, [{Signature, AcctHashPrefix, PayloadHashPrefix}]} =
                                 aehttpc_aeternity:get_commitment_tx_in_block(NodeSpec, <<"Seed">>, TopHash, PrevHash, CommitmentPubKey),
@@ -290,7 +290,7 @@ btc_sim_test_rem() ->
                     Responses = get_results(fun aehttpc_btc:get_latest_block/2,
                                             btc_parent_http_specs()),
                     PoolSize = length(btc_parent_http_specs()),
-                    [{{ok, Top, PrevHash, Height}, PoolSize}] =
+                    [{{ok, Top, PrevHash, Height, _Time}, PoolSize}] =
                         maps:to_list(Responses),
                     Self = self(),
                     meck:expect(aec_parent_chain_cache, post_block,
@@ -389,7 +389,7 @@ btc_sim_test_rem() ->
                                                         ?PARENT_CHAIN_NETWORK_ID, ?SIGN_MODULE),
                         %% Call the simulator directly to force our Tx in a block
                         aehttp_btc_sim:mine_on_fork(SimName, main),
-                        {ok, TopHash, PrevHash, Height} = aehttpc_btc:get_latest_block(NodeSpec, <<"Seed">>),
+                        {ok, TopHash, PrevHash, Height, _Time} = aehttpc_btc:get_latest_block(NodeSpec, <<"Seed">>),
 
                         {ok, [{Signature, AcctHashPrefix, PayloadHashPrefix}]} =
                                 aehttpc_btc:get_commitment_tx_in_block(NodeSpec, <<"Seed">>, TopHash, PrevHash, CommitmentPubKey),
@@ -441,7 +441,7 @@ get_results(Fun, HTTPSpecs) ->
     Responses =
         lists:map(
             fun(NodeSpec) ->
-                {ok, _TopHash, _PrevHash, _Height} = Fun(NodeSpec, <<"Seed">>)
+                {ok, _TopHash, _PrevHash, _Height, _Time} = Fun(NodeSpec, <<"Seed">>)
             end,
             HTTPSpecs),
     count_duplicates(Responses).
@@ -479,12 +479,12 @@ unmock_network_id() ->
     meck:unload(aec_governance).
 
 keyblock_to_pc_block({Hash, Height, PrevHash}) -> % BTC parent
-    aec_parent_chain_block:new(Hash, Height, PrevHash);
+    aec_parent_chain_block:new(Hash, Height, PrevHash, 123 * 1000); %% hard coded time form btc sim: <<"time">> => 123,                 % (numeric) The block time expressed in UNIX epoch time
 keyblock_to_pc_block(KB) ->
     {ok, Hash0} = aec_blocks:hash_internal_representation(KB),
     Hash = aeser_api_encoder:encode(key_block_hash, Hash0),
     PrevHash0 = aec_blocks:prev_hash(KB),
     PrevHash = aeser_api_encoder:encode(key_block_hash, PrevHash0),
     Height = aec_blocks:height(KB),
-    aec_parent_chain_block:new(Hash, Height, PrevHash).
+    aec_parent_chain_block:new(Hash, Height, PrevHash, 123000). %% in aec_chain_sim hard code the block time to the same as btc sim
 

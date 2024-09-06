@@ -4,35 +4,59 @@ contract interface MainStaking =
   entrypoint sorted_validators : () => list((address * int))
   entrypoint is_validator : (address) => bool
   entrypoint total_stake : () => int
+  entrypoint epoch : () => int
+  entrypoint epoch_length : () => int
   stateful entrypoint post_elect : () => unit
-
+  stateful entrypoint set_next_epoch_length : (int) => unit
 
 main contract HCElection =
   record state =
     { main_staking_ct       : MainStaking,
       entropy               : string,
       leader                : address,
-      added_stake           : int
+      added_stake           : int,
+      epoch                 : int,
+      epoch_length          : int,
+      blocks_left_in_epoch  : int,
+      next_epoch_length     : int
     }
 
   record get_state_response =
     { main_staking_ct       : MainStaking,
       entropy               : string,
       leader                : address,
-      added_stake           : int
+      added_stake           : int,
+      epoch                 : int,
+      epoch_length          : int
     }
 
-  entrypoint init(main_staking_ct : MainStaking, entropy_str : string) =
+  entrypoint init(main_staking_ct : MainStaking, entropy_str : string, epoch_length : int) =
     { main_staking_ct       = main_staking_ct,
       leader                = Contract.address,
       entropy               = entropy_str,
-      added_stake           = 0
+      added_stake           = 0,
+      epoch                 = 1,
+      epoch_length          = epoch_length,
+      blocks_left_in_epoch  = epoch_length,
+      next_epoch_length     = epoch_length
       }
+
+  stateful entrypoint set_next_epoch_length(len : int) =
+    assert_protocol_call()
+    put(state{epoch_length = len})
+
 
   stateful entrypoint elect(entropy_str : string, network_id : bytes(15)) =
     assert_protocol_call()
+    require(state.blocks_left_in_epoch > 0, "End of epoch reached")
     let (new_leader, added_staking_power) = elect_(entropy_str, network_id)
     state.main_staking_ct.post_elect()
+    if (state.blocks_left_in_epoch > 1)
+       put(state{blocks_left_in_epoch = state.blocks_left_in_epoch - 1})
+    else
+       put(state{blocks_left_in_epoch = state.next_epoch_length,
+                 epoch = state.epoch + 1,
+                 epoch_length = state.next_epoch_length})
     put(state{ leader = new_leader, entropy = entropy_str, added_stake = added_staking_power})
     (new_leader, added_staking_power)
 
@@ -42,7 +66,7 @@ main contract HCElection =
     require(known_validator == true, "Must be a validator")
     put(state{ leader = new_leader, entropy = "lazy_leader", added_stake = 0})
     (new_leader, 0)
-        
+
 
   entrypoint elect_next(entropy_str : string, network_id : bytes(15)) =
     let (leader, staking_power) = elect_(entropy_str, network_id)
@@ -51,7 +75,7 @@ main contract HCElection =
   function elect_(entropy_str : string, network_id) =
     let Some(current_hash : hash) = Chain.block_hash(Chain.block_height) // current hash!
     let entropy : hash = Crypto.sha256(entropy_str)
-    let sorted0 = state.main_staking_ct.sorted_validators() 
+    let sorted0 = state.main_staking_ct.sorted_validators()
     // Further filter based on prefix of the hash of the staker pubkey being somewhere in sorted0 and the signature being correct
     let (sorted, total_stake, _, _)  = List.foldl(accum_stake, ([], 0, current_hash, network_id), sorted0)
 
@@ -66,11 +90,19 @@ main contract HCElection =
   entrypoint added_stake() =
     state.added_stake
 
+  entrypoint epoch() =
+    state.epoch
+
+  entrypoint epoch_length() =
+    state.epoch_length
+
   entrypoint get_state() : get_state_response =
     { main_staking_ct   = state.main_staking_ct,
       entropy           = state.entropy,
       leader            = state.leader,
-      added_stake       = state.added_stake
+      added_stake       = state.added_stake,
+      epoch             = state.epoch,
+      epoch_length      = state.epoch_length
       }
 
   function find_validator(validators, shot) =
