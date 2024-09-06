@@ -138,7 +138,7 @@ start(Config, #{block_production := BlockProduction}) ->
                                             SignModule, [], PCSpendPubkey, Fee, Amount]),
     start_dependency(aec_parent_chain_cache, [StartHeight, RetryInterval, fun target_parent_heights/1, %% prefetch the next parent block
                                               CacheSize, Confirmations,
-                                              BlockProduction, ProducingCommitments]),
+                                              BlockProduction]),
     ok.
 
 start_btc(StakersEncoded, PCSpendAddress, ParentConnMod) ->

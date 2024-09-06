@@ -169,10 +169,10 @@ handle_call({fetch_block_by_hash, Hash}, _From, State) ->
 handle_call({fetch_block_by_height, Height}, _From, State) ->
     Reply = handle_fetch_block(fun fetch_block_by_height/5, Height, State),
     {reply, Reply, State};
-handle_call({post_commitment, Who, Hash}, _From, #state{hcpc = Hcpc} = State) ->
-    PCWho = maps:get(Who, Hcpc),
-    Reply = post_commitment(PCWho, Hash, State),
-    {reply, Reply, State};
+%handle_call({post_commitment, Who, Hash}, _From, #state{hcpc = Hcpc} = State) ->
+%    PCWho = maps:get(Who, Hcpc),
+%    Reply = post_commitment(PCWho, Hash, State),
+%    {reply, Reply, State};
 handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
