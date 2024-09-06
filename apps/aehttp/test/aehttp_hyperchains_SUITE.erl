@@ -242,20 +242,45 @@ child_node_config(Node, Stakeholders, CTConfig) ->
     build_json_files(?HC_CONTRACT, NodeConfig, CTConfig),
     aecore_suite_utils:create_config(Node, CTConfig, NodeConfig, [{add_peers, true}]).
 
-end_per_group(hc, Config) ->
-    aecore_suite_utils:stop_node(?NODE1, Config),
-    aecore_suite_utils:stop_node(?NODE2, Config),
-    %% aecore_suite_utils:stop_node(?NODE3, Config),
-    aecore_suite_utils:stop_node(?PARENT_CHAIN_NODE, Config);
 end_per_group(_Group, Config) ->
+    Config1 = with_saved_keys([nodes], Config),
+    [ aecore_suite_utils:stop_node(Node, Config1)
+      || {Node, _, _} <- proplists:get_value(nodes, Config1, []) ],
     Config.
 
+%% Here we decide which nodes are started/running
+init_per_testcase(start_two_child_nodes, Config) ->
+    Config1 =
+        [{nodes, [{?NODE1, ?NODE1_NAME, [?ALICE, ?LISA]},
+                  {?NODE2, ?NODE2_NAME, [?BOB]}
+                 ]}
+         | Config],
+    aect_test_utils:setup_testcase(Config1),
+    Config1;
+init_per_testcase(sync_third_node, Config) ->
+    Config1 = with_saved_keys([nodes], Config),
+    Nodes = ?config(nodes, Config1),
+    Config2 = lists:keyreplace(nodes, 1, Config1,
+                               {nodes, Nodes ++ [{?NODE3, ?NODE3_NAME, [?LISA]}]}),
+    aect_test_utils:setup_testcase(Config2),
+    Config2;
 init_per_testcase(_Case, Config) ->
-    aect_test_utils:setup_testcase(Config),
-    Config.
+    Config1 = with_saved_keys([nodes], Config),
+    aect_test_utils:setup_testcase(Config1),
+    Config1.
 
-end_per_testcase(_Case, _Config) ->
-    ok.
+end_per_testcase(_Case, Config) ->
+    {save_config, Config}.
+
+with_saved_keys(Keys, Config) ->
+    {_TC, SavedConfig} = ?config(saved_config, Config),
+    lists:foldl(fun(Key, Conf) ->
+                    case proplists:get_value(Key, SavedConfig) of
+                        undefined -> Conf;
+                        Val -> [{Key, Val} | Conf]
+                    end
+                end,
+                lists:keydelete(saved_config, 1, Config), Keys).
 
 contract_create_spec(Name, Src, Args, Amount, Nonce, Owner) ->
     {ok, Code}   = aect_test_utils:compile_contract(aect_test_utils:sophia_version(), Name),
@@ -318,9 +343,11 @@ contract_call(ContractPubkey, Src, Fun, Args, Amount, From, Nonce) ->
     {ok, Tx} = aect_call_tx:new(TxSpec),
     Tx.
 
+%% This test is trivially true, since we already check in
+%% sync when producting the blocks.
 mine_and_sync(Config) ->
     {ok, _KBs} = produce_cc_blocks(Config, 3),
-    {ok, _KB} = wait_same_top([?NODE1, ?NODE2]),
+    {ok, _KB} = wait_same_top([ Node || {Node, _, _} <- ?config(nodes, Config)]),
     ok.
 
 wait_same_top(Nodes) ->
@@ -349,25 +376,26 @@ spend_txs(Config) ->
 
     produce_cc_blocks(Config, 1),
     %% Give some time to sync nodes and remove Txs from pool
-    timer:sleep(100),
     {ok, []} = rpc:call(?NODE1_NAME, aec_tx_pool, peek, [infinity]),
     %% TODO check that the actors got their share
     ok.
 
 start_two_child_nodes(Config) ->
+    [{Node1, NodeName1, Stakers1}, {Node2, NodeName2, Stakers2} | _] = ?config(nodes, Config),
     Env = [ {"AE__FORK_MANAGEMENT__NETWORK_ID", binary_to_list(?config(network_id, Config))} ],
-    child_node_config(?NODE1, [?ALICE, ?LISA], Config),
-    aecore_suite_utils:start_node(?NODE1, Config, Env),
-    aecore_suite_utils:connect(?NODE1_NAME, []),
-    child_node_config(?NODE2, [?BOB], Config),
-    aecore_suite_utils:start_node(?NODE2, Config, Env),
-    aecore_suite_utils:connect(?NODE2_NAME, []),
+    child_node_config(Node1, Stakers1, Config),
+    aecore_suite_utils:start_node(Node1, Config, Env),
+    aecore_suite_utils:connect(NodeName1, []),
+    child_node_config(Node2, Stakers2, Config),
+    aecore_suite_utils:start_node(Node2, Config, Env),
+    aecore_suite_utils:connect(NodeName2, []),
     ok.
 
 produce_first_epoch(Config) ->
+    [{Node1, _, _}|_] = ?config(nodes, Config),
     {ok, Bs} = produce_cc_blocks(Config, ?CHILD_EPOCH_LENGTH),
     Producers = [ aec_blocks:miner(B) || B <- Bs ],
-    Leaders = leaders_at_height(?NODE1, 1, Config),
+    Leaders = leaders_at_height(Node1, 1, Config),
     ct:log("Bs: ~p  Leaders ~p", [Bs, Leaders]),
     %% Check that all producers are valid leaders
     ?assertEqual([], lists:usort(Producers) -- Leaders),
@@ -377,15 +405,16 @@ produce_first_epoch(Config) ->
     ParentTopHeight = rpc(?PARENT_CHAIN_NODE, aec_chain, top_height, []),
     {ok, ParentBlocks} = get_generations(?PARENT_CHAIN_NODE, 0, ParentTopHeight),
     ct:log("Parent chain blocks ~p", [ParentBlocks]),
-    ChildTopHeight = rpc(?NODE1, aec_chain, top_height, []),
-    {ok, ChildBlocks} = get_generations(?NODE1, 0, ChildTopHeight),
+    ChildTopHeight = rpc(Node1, aec_chain, top_height, []),
+    {ok, ChildBlocks} = get_generations(Node1, 0, ChildTopHeight),
     ct:log("Child chain blocks ~p", [ChildBlocks]),
     ok.
 
 simple_withdraw(Config) ->
+    [{_, NodeName, _}|_] = ?config(nodes, Config),
     AliceBin = encoded_pubkey(?ALICE),
     Alice = binary_to_list(encoded_pubkey(?ALICE)),
-    {ok, []} = rpc:call(?NODE1_NAME, aec_tx_pool, peek, [infinity]),
+    {ok, []} = rpc:call(NodeName, aec_tx_pool, peek, [infinity]),
 
     InitBalance  = account_balance(pubkey(?ALICE)),
     {ok, AliceContractSPower} = inspect_staking_contract(?ALICE, {staking_power, ?ALICE}, Config),
@@ -410,7 +439,7 @@ simple_withdraw(Config) ->
                 [Alice, integer_to_list(WithdrawAmount)], 0, pubkey(?ALICE)),
             ?ALICE,
             NetworkId),
-    {ok, [_]} = rpc:call(?NODE1_NAME, aec_tx_pool, peek, [infinity]),
+    {ok, [_]} = rpc:call(NodeName, aec_tx_pool, peek, [infinity]),
     StakeWithdrawDelay = 1,
     produce_cc_blocks(Config, StakeWithdrawDelay),
     EndBalance = account_balance(pubkey(?ALICE)),
@@ -433,18 +462,20 @@ simple_withdraw(Config) ->
     ok.
 
 set_up_third_node(Config) ->
-    aecore_suite_utils:make_multi(Config, [?NODE3]),
-    %% different runs use different network ids
+    {Node3, NodeName, Stakers} = lists:keyfind(?NODE3, 1, ?config(nodes, Config)),
+    Nodes = [ Node || {Node, _, _} <- ?config(nodes, Config)],
+    aecore_suite_utils:make_multi(Config, [Node3]),
     Env = [ {"AE__FORK_MANAGEMENT__NETWORK_ID", binary_to_list(?config(network_id, Config))} ],
-    child_node_config(?NODE3, [?LISA], Config),
-    aecore_suite_utils:start_node(?NODE3, Config, Env),
-    aecore_suite_utils:connect(?NODE3_NAME, []),
+    child_node_config(Node3, Stakers, Config),
+    aecore_suite_utils:start_node(Node3, Config, Env),
+    aecore_suite_utils:connect(NodeName, []),
     timer:sleep(1000),
-    Node3Peers = rpc(?NODE3, aec_peers, connected_peers, []),
+    Node3Peers = rpc(Node3, aec_peers, connected_peers, []),
     ct:log("Connected peers ~p", [Node3Peers]),
-    Node3VerifiedPeers = rpc(?NODE3, aec_peers, available_peers, [verified]),
+    Node3VerifiedPeers = rpc(Node3, aec_peers, available_peers, [verified]),
     ct:log("Verified peers ~p", [Node3VerifiedPeers]),
-    {ok, _} = wait_same_top([?NODE1, ?NODE2, ?NODE3]),
+    {ok, _} = wait_same_top(Nodes),
+    %% What on earth are we testing here??
     Inspect =
         fun(Node) ->
             {ok, TopH} = aec_headers:hash_header(rpc(Node, aec_chain, top_header, [])),
@@ -609,11 +640,9 @@ elected_leader_did_not_show_up_(Config) ->
     {ok, _} = wait_same_top(?NODE1, ?NODE3),
     timer:sleep(2000), %% Give NODE1 a moment to finalize sync and post commitments
     produce_cc_blocks(Config, 1),
-    {ok, KB1} = wait_same_top(?NODE1, ?NODE3),
-    {ok, KB1} = wait_same_top(?NODE2, ?NODE3),
+    {ok, _KB1} = wait_same_top([ Node || {Node, _, _} <- ?config(nodes, Config)]),
     {ok, _} = produce_cc_blocks(Config, 10),
-    {ok, KB2} = wait_same_top(?NODE1, ?NODE3),
-    {ok, KB2} = wait_same_top(?NODE2, ?NODE3),
+    {ok, _KB2} = wait_same_top([ Node || {Node, _, _} <- ?config(nodes, Config)]),
     ok.
 
 epoch_with_slow_parent(Config) ->
@@ -1031,18 +1060,19 @@ produce_cc_blocks(Config, BlocksCnt) ->
     produce_cc_blocks(Config, BlocksCnt, 2).
 
 produce_cc_blocks(Config, BlocksCnt, ParentProduce) ->
-    %% use NODE1 as a reference
-    %% (make sure to design tests not to fiddle with this node)
-    TopHeight = rpc(?NODE1, aec_chain, top_height, []),
+    [{Node1, _, _} | _] = ?config(nodes, Config),
+    TopHeight = rpc(Node1, aec_chain, top_height, []),
     %% assert that the parent chain is not mining
     ?assertEqual(stopped, rpc:call(?PARENT_CHAIN_NODE_NAME, aec_conductor, get_mining_state, [])),
     NewTopHeight = produce_to_cc_height(Config, TopHeight + BlocksCnt, ParentProduce),
-    get_generations(?NODE1, TopHeight + 1, NewTopHeight).
+    wait_same_top([ Node || {Node, _, _} <- ?config(nodes, Config)]),
+    get_generations(Node1, TopHeight + 1, NewTopHeight).
 
 %% It seems we automatically produce child chain blocks in the background
 produce_to_cc_height(Config, GoalHeight, ParentProduce) ->
-    NodeName = ?NODE1_NAME,
-    TopHeight = rpc(?NODE1, aec_chain, top_height, []),
+    [{Node, NodeName, _} | _] = ?config(nodes, Config),
+    NodeNames = [ Name || {_, Name, _} <- ?config(nodes, Config) ],
+    TopHeight = rpc(Node, aec_chain, top_height, []),
     case TopHeight >= GoalHeight of
       true ->
           TopHeight;
@@ -1055,15 +1085,15 @@ produce_to_cc_height(Config, GoalHeight, ParentProduce) ->
           KeyBlock =
               case rpc:call(NodeName, aec_tx_pool, peek, [infinity]) of
                   {ok, []} ->
-                       {ok, [{Node, Block}]} = mine_cc_blocks(1),
-                       ct:log("CC ~p mined block: ~p", [Node, Block]),
+                       {ok, [{N, Block}]} = mine_cc_blocks(NodeNames, 1),
+                       ct:log("CC ~p mined block: ~p", [N, Block]),
                        Block;
                   {ok, _Txs} ->
-                       {ok, [{Node1, KB}, {Node2, MB}]} = mine_cc_blocks(2),
+                       {ok, [{N1, KB}, {N2, MB}]} = mine_cc_blocks(NodeNames, 2),
                        ?assertEqual(key, aec_blocks:type(KB)),
                        ?assertEqual(micro, aec_blocks:type(MB)),
-                       ct:log("CC ~p mined block: ~p", [Node1, KB]),
-                       ct:log("CC ~p mined micro block: ~p", [Node2, MB]),
+                       ct:log("CC ~p mined block: ~p", [N1, KB]),
+                       ct:log("CC ~p mined micro block: ~p", [N2, MB]),
                        KB
               end,
           Producer = get_block_producer_name(?config(staker_names, Config), KeyBlock),
@@ -1071,8 +1101,8 @@ produce_to_cc_height(Config, GoalHeight, ParentProduce) ->
           produce_to_cc_height(Config, GoalHeight, ParentProduce)
     end.
 
-mine_cc_blocks(N) ->
-    aecore_suite_utils:hc_mine_blocks([?NODE1_NAME, ?NODE2_NAME], N).
+mine_cc_blocks(NodeNames, N) ->
+    aecore_suite_utils:hc_mine_blocks(NodeNames, N).
 
 get_generations(Node, FromHeight, ToHeight) ->
     ReversedBlocks =
