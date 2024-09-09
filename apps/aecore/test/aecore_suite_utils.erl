@@ -854,13 +854,18 @@ mine_blocks_loop(Blocks, BlocksToMine, Type) when is_integer(BlocksToMine), Bloc
 wait_for_new_block_mined() ->
     wait_for_new_block_mined(30000).
 
+td(B) ->
+    aeu_time:now_in_msecs() - aec_blocks:time_in_msecs(B).
+
 wait_for_new_block_mined(T) when is_integer(T), T >= 0 ->
     receive
         {gproc_ps_event, block_created, Info} ->
             #{info := Block, test_node := Node} = Info,
+            ct:log("~p produced a key-block at ~p (time-diff: ~p)", [Node, aec_blocks:height(Block), td(Block)]),
             {ok, Node, Block};
         {gproc_ps_event, micro_block_created, Info} ->
             #{info := Block, test_node := Node} = Info,
+            ct:log("~p produced a micro-block at ~p (time-diff ~p)", [Node, aec_blocks:height(Block), td(Block)]),
             {ok, Node, Block}
     after
         T ->

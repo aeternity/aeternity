@@ -717,7 +717,7 @@ generate_json_aci(Vsn, Code) ->
 
 generate_json_aci_(Vsn, Backend, Code) when Vsn >= ?SOPHIA_CERES_FATE ->
     try
-        {ok, JAci} = aeso_aci:contract_interface(json, to_str(Code), [{backend, Backend}]),
+        {ok, JAci} = aeso_aci:contract_interface(json, to_str(Code), [{backend, Backend}, {no_code, true}]),
         aeaci_aci:from_string(jsx:encode(JAci), #{backend => Backend})
     catch Err:Reason:Stack ->
         ct:log("Aci generation failed ~p ~p ~p\n", [Err, Reason, Stack]),
