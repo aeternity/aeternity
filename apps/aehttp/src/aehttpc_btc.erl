@@ -7,11 +7,17 @@
 -export([get_latest_block/2,
          get_header_by_hash/3,
          get_header_by_height/3,
+         get_commitment_tx_in_block/5,
+         get_commitment_tx_at_height/4,
+         post_commitment/8,
          hash_to_integer/1]).
 
 -behavior(aehttpc).
 
 %% Handy for use in test suites and other BTC based chains
+-export([parse_vout/1]).
+
+-type hex() :: binary().%[byte()].
 
 get_latest_block(NodeSpec, Seed) ->
     case getbestblockhash(NodeSpec, Seed) of
@@ -43,6 +49,101 @@ get_header_by_height(Height, NodeSpec, Seed) ->
 hash_to_integer(Hash) ->
     binary_to_integer(Hash, 16).
 
+get_commitment_tx_in_block(NodeSpec, Seed, BlockHash, _PrevHash, ParentHCAccountPubKey) ->
+    {ok, {_Height, _Hash, __PrevHash, Txs}}
+      = getblock(NodeSpec, Seed, BlockHash, _Verbosity = 2),
+    Commitments = find_commitments(Txs, ParentHCAccountPubKey),
+    {ok, Commitments}.
+
+get_commitment_tx_at_height(NodeSpec, Seed, Height, ParentHCAccountPubKey) ->
+    {ok, Hash} = getblockhash(NodeSpec, Seed, Height),
+    {ok, {_Height, _Hash, _PrevHash, Txs}}
+      = getblock(NodeSpec, Seed, Hash, _Verbosity = 2),
+    Commitments = find_commitments(Txs, ParentHCAccountPubKey),
+    {ok, Commitments}.
+
+%% @doc Post commitment to BTC parent chain.
+%% Commitment is a simple spend transaction to a known BTC account
+%% Spend TX must be signed by the BTC account owned by the staking node
+%% SpendTx must include the AE validator account pubkey in its MetaData
+%% Bitcoin doc suggests 4 ops for this (https://gist.github.com/gavinandresen/2839617):
+%% 1. Get a list of not-yet-spent outputs with listunspent
+%% 2. Create a transaction using createrawtransaction
+%% 3. Apply signatures using signrawtransaction
+%% 4. Submit it using sendrawtransaction
+
+post_commitment(NodeSpec, StakerPubkey, HCCollectPubkey, Amount, Fee, Commitment, _NetworkId, _SignModule) ->
+    post_commitment(NodeSpec, StakerPubkey, HCCollectPubkey, Amount, Fee, Commitment).
+
+post_commitment(NodeSpec, BTCAcc, HCCollectPubkey, Amount, Fee, Commitment) ->
+    {ok, Unspent} = listunspent(NodeSpec),
+    UnspentSatoshis = unspent_to_satoshis(Unspent),
+    {ok, {Inputs, TotalAmount}} = select_utxo(UnspentSatoshis, Fee + Amount),
+    Outputs = create_outputs(Commitment, BTCAcc, HCCollectPubkey, TotalAmount, Amount, Fee),
+    {ok, Tx} = createrawtransaction(NodeSpec, Inputs, Outputs),
+    {ok, SignedTx} = signrawtransactionwithwallet(NodeSpec, Tx),
+    {ok, TxHash} = sendrawtransaction(NodeSpec, SignedTx),
+    %% lager:debug("Posted BTC Commitment in Tx: ~p", [TxHash]),
+    {ok, #{<<"tx_hash">> => TxHash}}.
+
+select_utxo([#{<<"spendable">> := true, <<"amount">> := Amount} = Unspent | _Us], Needed) when Amount >= Needed ->
+    %% For now just pick first spendable UTXO with enough funds. There is no end to how fancy this can get
+    %% https://bitcoin.stackexchange.com/questions/32145/what-are-the-trade-offs-between-the-different-algorithms-for-deciding-which-utxo
+    #{<<"txid">> := TxId, <<"vout">> := VOut} = Unspent,
+    {ok, {[#{<<"txid">> => TxId, <<"vout">> => VOut}], Amount}};
+select_utxo([_U|Us], Fee) ->
+    select_utxo(Us, Fee);
+select_utxo([], _Fee) ->
+    {error, no_suitable_utxo}.
+
+unspent_to_satoshis([#{<<"amount">> := Amount} = U | Us]) when is_float(Amount) ->
+    Sats = float_btc_to_satoshi(Amount),
+    [maps:put(<<"amount">>, Sats, U) | unspent_to_satoshis(Us)];
+unspent_to_satoshis([U|Us]) ->
+    [U|unspent_to_satoshis(Us)];
+unspent_to_satoshis([]) ->
+    [].
+
+-define(SATOSHIS_PER_BTC, 100000000).
+float_btc_to_satoshi(Amount) ->
+    SatsStr = erlang:float_to_list(Amount, [{decimals, 8}, compact]),
+    [BTCStr, SatStr] = string:tokens(SatsStr, "."),
+    list_to_integer(BTCStr) * ?SATOSHIS_PER_BTC + list_to_integer(pad8(SatStr)).
+
+pad8(Str) when length(Str) == 8 -> Str;
+pad8(Str) when length(Str) < 8 ->
+    Padding = lists:duplicate(8 - length(Str), $0),
+    Str ++ Padding.
+
+create_outputs(Commitment, BTCAcc, HCCollectPubkey, TotalAmount, Amount, Fee) ->
+    %% Three outputs needed:
+    %% 1. for the OP_RETURN containing the Commitment
+    %% 2. to return the total UTXO amount minus the Fee and Amount to our own account.
+    %% 3. to register this transaction against the common HC BTC account
+    %% The "data" field gets magically turned by the bitcoind API into an output
+    %% in a correctly formatted OP_RETURN
+    Refund = satoshi_to_btc(TotalAmount - Fee - Amount),
+    HCAmount = satoshi_to_btc(Amount),
+    HexCommitment = to_hex(Commitment),
+    [#{BTCAcc => Refund}, #{HCCollectPubkey => HCAmount}, #{<<"data">> => HexCommitment}].
+
+satoshi_to_btc(Sats) when Sats >= 0 ->
+    SatsStr = integer_to_list(Sats),
+    NumDigits = length(SatsStr),
+    BTCStr = if NumDigits =< 8 ->
+                    "0." ++ lists:duplicate(8 - NumDigits, $0) ++ SatsStr;
+                NumDigits > 8 ->
+                    {A,B} = lists:split(NumDigits - 8, SatsStr),
+                    A ++ "." ++ B
+             end,
+    list_to_binary(drop_trailing_zeroes(BTCStr)).
+
+drop_trailing_zeroes(BTCStr) ->
+    lists:reverse(drop_until_point(lists:reverse(BTCStr))).
+
+drop_until_point([_, $. | _] = X) -> X;
+drop_until_point("0" ++ X) -> drop_until_point(X);
+drop_until_point(X) -> X.
 
 %%%===================================================================
 %%%  BTC protocol
@@ -84,6 +185,57 @@ getblock(NodeSpec, Seed, Hash, Verbosity) ->
         {error, {E, R, S}}
     end.
 
+listunspent(NodeSpec) ->
+    try
+        Seed = <<>>,
+        Body = jsx:encode(request_body(<<"listunspent">>, [0, 9999999], seed_to_utf8(Seed))),
+        {ok, Res} = request(<<"/">>, Body, NodeSpec, 5000),
+        Unspent = result(Res),
+        {ok, Unspent}
+    catch E:R ->
+        {error, {E, R}}
+    end.
+
+createrawtransaction(NodeSpec, Inputs, Outputs) ->
+    try
+        Seed = <<>>,
+        Body = jsx:encode(request_body(<<"createrawtransaction">>, [Inputs, Outputs], seed_to_utf8(Seed))),
+        {ok, Res} = request(<<"/">>, Body, NodeSpec, 5000),
+        Tx = result(Res),
+        {ok, Tx}
+    catch E:R ->
+        {error, {E, R}}
+    end.
+
+%% Rely on the wallet embedded in the local bitcoind
+%% FIXME: Allow this to use a different host/port so users can use a separate offline bitcoind
+%% holding their commitments wallet.
+-spec signrawtransactionwithwallet(aehttpc:node_spec(), binary()) -> {ok, binary()} | {error, term()}.
+signrawtransactionwithwallet(NodeSpec, RawTx) ->
+    try
+        Seed = <<>>,
+        Body = jsx:encode(request_body(<<"signrawtransactionwithwallet">>, [RawTx], seed_to_utf8(Seed))),
+        {ok, Res} = request(<<"/">>, Body, NodeSpec, 5000),
+        SignedTx = result(Res),
+        Complete = maps:get(<<"complete">>, SignedTx),
+        true = Complete,
+        Hex = maps:get(<<"hex">>, SignedTx),
+        {ok, Hex}
+    catch E:R ->
+        {error, {E, R}}
+    end.
+
+-spec sendrawtransaction(aehttpc:node_spec(), binary()) -> {ok, binary()} | {error, term()}.
+sendrawtransaction(NodeSpec, Hex) ->
+    try
+        Seed = <<>>,
+        Body = jsx:encode(request_body(<<"sendrawtransaction">>, [Hex], seed_to_utf8(Seed))),
+        {ok, Res} = request(<<"/">>, Body, NodeSpec, 5000),
+        {ok, result(Res)}
+    catch E:R ->
+        {error, {E, R}}
+    end.
+
 -spec result(map()) -> term().
 result(Response) ->
     maps:get(<<"result">>, Response).
@@ -93,9 +245,23 @@ block(Obj) ->
     Hash = maps:get(<<"hash">>, Obj), true = is_binary(Hash),
     Height = maps:get(<<"height">>, Obj), true = is_integer(Height),
 
+    %% TODO: To analyze the size field;
+    %% Txs that might be Commitments will have at least one type:nulldata entry - just do some pre-filtering
+    %% FilteredTxs = lists:filter(fun (Tx) -> is_nulldata(Tx) end, maps:get(<<"tx">>, Obj)),
+
     PrevHash = prev_hash(Obj),
     {Height, Hash, PrevHash, maps:get(<<"tx">>, Obj)}.
 
+-spec find_commitments(list(), binary()) -> [{Pubkey :: binary(), Payload :: binary()}].
+find_commitments(Txs, _ParentHCAccountPubKey) ->
+    lists:foldl(fun(#{<<"vout">> := Vout}, Acc) ->
+                        case parse_vout(Vout) of
+                            {ok, ParsedCommitment} ->
+                                [ParsedCommitment | Acc];
+                            {error, _Reason} ->
+                                Acc
+                        end
+                end, [], Txs).
 
 -spec request(binary(), binary(), aehttpc:node_spec(), integer()) -> {ok, map()} | {error, term()}.
 request(Path, Body, NodeSpec, Timeout) ->
@@ -134,6 +300,14 @@ request_body(Method, Params, Seed) ->
 auth(User, Password) when is_binary(User), is_binary(Password) ->
     base64:encode_to_string(lists:concat([binary_to_list(User), ":", binary_to_list(Password)])).
 
+-spec from_hex(hex()) -> binary().
+from_hex(HexData) ->
+    aeu_hex:hex_to_bin(HexData).
+
+-spec to_hex(binary()) -> hex().
+to_hex(Payload) ->
+    list_to_binary(aeu_hex:bin_to_hex(Payload)).
+
 -spec prev_hash(map()) -> null | binary().
 prev_hash(Obj) ->
     PrevHash = maps:get(<<"previousblockhash">>, Obj, null),
@@ -146,3 +320,30 @@ prev_hash(Obj) ->
 seed_to_utf8(Seed) when is_binary(Seed) ->
     base64:encode(Seed).
 
+parse_vout(Vout) when length(Vout) == 3 ->
+    case find_op_return(Vout) of
+        {ok, CommitmentEnc} ->
+            CommitmentBTC = from_hex(CommitmentEnc),
+            case CommitmentBTC of
+                <<Commitment:80/binary>> ->
+                    case aec_parent_chain_block:decode_commitment(Commitment) of
+                        {btc, Signature, StakerHash, TopKeyHash} ->
+                            {ok, {Signature, StakerHash, TopKeyHash}};
+                        _ ->
+                            {error, not_btc_commitment}
+                    end;
+                _ ->
+                    {error, not_commitment_op}
+            end;
+        _ ->
+            {error, no_op_return}
+    end;
+parse_vout(_Vout) ->
+    {error, not_commitment}.
+
+find_op_return([#{<<"scriptPubKey">> := #{<<"type">> := <<"nulldata">>, <<"asm">> := <<"OP_RETURN ", CommitmentEnc/binary>>}} | _]) ->
+    {ok, CommitmentEnc};
+find_op_return([_ | Vs]) ->
+    find_op_return(Vs);
+find_op_return([]) ->
+    {error, no_op_return}.
