@@ -200,9 +200,9 @@ init_per_suite(Config0) ->
             {ok, MSBinSrc} = aect_test_utils:read_contract(?MAIN_STAKING_CONTRACT),
             {ok, EBinSrc} = aect_test_utils:read_contract(?HC_CONTRACT),
             [{staking_contract, StakingContract}, {election_contract, ElectionContract},
-             {contract_src, #{"StakingValidator" => binary_to_list(SVBinSrc),
-                              ?MAIN_STAKING_CONTRACT => binary_to_list(MSBinSrc),
-                              ?HC_CONTRACT => binary_to_list(EBinSrc)
+             {contract_src, #{"StakingValidator" => create_stub(binary_to_list(SVBinSrc)),
+                              ?MAIN_STAKING_CONTRACT => create_stub(binary_to_list(MSBinSrc)),
+                              ?HC_CONTRACT => create_stub(binary_to_list(EBinSrc))
                               }} | Config1]
     end.
 
@@ -1143,3 +1143,11 @@ key_reward_provided() ->
 key_reward_provided(RewardHeight) ->
   {get_block_producer(?NODE1, RewardHeight),
    rpc(?NODE1, aec_governance, block_mine_reward, [RewardHeight])}.
+
+create_stub(ContractFile) ->
+    create_stub(ContractFile, []).
+
+create_stub(ContractFile, Opts) ->
+    {ok, Enc}  = aeso_aci:contract_interface(json, ContractFile, Opts ++ [{no_code, true}]),
+    {ok, Stub} = aeso_aci:render_aci_json(Enc),
+    binary_to_list(Stub).
