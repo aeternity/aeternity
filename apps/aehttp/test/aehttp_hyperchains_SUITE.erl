@@ -482,6 +482,9 @@ empty_parent_block(_Config) ->
 
 verify_fees(Config) ->
     %% start without any tx fees, only a keyblock
+    GetSPower = fun(Who1, Who2, When) ->
+                    inspect_staking_contract(Who1, {staking_power, Who2}, Config, When)
+                end,
     Test =
         fun() ->
             %% gather staking_powers before reward distribution
@@ -492,39 +495,17 @@ verify_fees(Config) ->
             TopKeyHeader = aec_blocks:to_header(TopKeyBlock),
             {ok, TopHash} = aec_headers:hash_header(TopKeyHeader),
             PrevHash = aec_headers:prev_key_hash(TopKeyHeader),
-            {ok, AliceContractSPower0} = inspect_staking_contract(?ALICE,
-                                                                  {staking_power,
-                                                                   ?ALICE},
-                                                                  Config,
-                                                                  PrevHash),
-            {ok, BobContractSPower0} = inspect_staking_contract(?ALICE,
-                                                                {staking_power,
-                                                                 ?BOB},
-                                                                Config,
-                                                                PrevHash),
-            {ok, LisaContractSPower0} = inspect_staking_contract(?ALICE,
-                                                                {staking_power,
-                                                                 ?LISA},
-                                                                Config,
-                                                                PrevHash),
+            {ok, AliceContractSPower0} = GetSPower(?ALICE, ?ALICE, PrevHash),
+            {ok, BobContractSPower0}   = GetSPower(?ALICE, ?BOB, PrevHash),
+            {ok, LisaContractSPower0}  = GetSPower(?ALICE, ?LISA, PrevHash),
+
             %% gather staking_powers after reward distribution
-            AliceBalance1= account_balance(pubkey(?ALICE)),
-            BobBalance1 = account_balance(pubkey(?BOB)),
-            {ok, AliceContractSPower1} = inspect_staking_contract(?ALICE,
-                                                                  {staking_power,
-                                                                   ?ALICE},
-                                                                  Config,
-                                                                  TopHash),
-            {ok, BobContractSPower1} = inspect_staking_contract(?ALICE,
-                                                                {staking_power,
-                                                                 ?BOB},
-                                                                Config,
-                                                                TopHash),
-            {ok, LisaContractSPower1} = inspect_staking_contract(?ALICE,
-                                                                  {staking_power,
-                                                                  ?LISA},
-                                                                  Config,
-                                                                  TopHash),
+            AliceBalance1 = account_balance(pubkey(?ALICE)),
+            BobBalance1   = account_balance(pubkey(?BOB)),
+            {ok, AliceContractSPower1} = GetSPower(?ALICE, ?ALICE, TopHash),
+            {ok, BobContractSPower1}   = GetSPower(?ALICE, ?BOB, TopHash),
+            {ok, LisaContractSPower1}  = GetSPower(?ALICE, ?LISA, TopHash),
+
             %% inspect who shall receive what reward
             RewardForHeight = aec_headers:height(TopKeyHeader) - ?REWARD_DELAY,
             {ok, PrevH} = rpc(?NODE1, aec_chain, get_key_header_by_height, [RewardForHeight - 1]),
@@ -799,9 +780,7 @@ ct_log_header(Header) ->
 decode_consensus_result(Call, Fun, Src) ->
     ReturnType = aect_call:return_type(Call),
     ReturnValue = aect_call:return_value(Call),
-    Res =
-        aect_test_utils:decode_call_result(Src, Fun,
-                                          ReturnType, ReturnValue),
+    Res = aect_test_utils:decode_call_result(Src, Fun, ReturnType, ReturnValue),
     {ReturnType, Res}.
 
 calc_rewards(RewardForHeight) ->
