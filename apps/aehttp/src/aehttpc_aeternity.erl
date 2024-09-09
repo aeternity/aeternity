@@ -9,6 +9,11 @@
          get_header_by_height/3,
          hash_to_integer/1]).
 
+%% Util exports
+-export([get_generation/2,
+get_generation_by_height/2,
+post_request/4]).
+
 -behavior(aehttpc).
 
 %% @doc fetch latest top hash
@@ -70,16 +75,16 @@ get_key_block_header_by_height(Height, NodeSpec) ->
     end.
 
 
-% -spec get_generation(aehttpc:node_spec(), binary()) -> {ok, map()} | {error, term()}.
-% get_generation(NodeSpec, Hash) ->
-%     Path = <<"/v3/generations/hash/", Hash/binary>>,
-%     get_request(Path, NodeSpec, 5000).
+-spec get_generation(aehttpc:node_spec(), binary()) -> {ok, map()} | {error, term()}.
+get_generation(NodeSpec, Hash) ->
+    Path = <<"/v3/generations/hash/", Hash/binary>>,
+    get_request(Path, NodeSpec, 5000).
 
-% -spec get_generation_by_height(aehttpc:node_spec(), integer()) -> {ok, map()} | {error, term()}.
-% get_generation_by_height(NodeSpec, Height) ->
-%     HeightBin = list_to_binary(integer_to_list(Height - 1 )), %% previous generation!!!
-%     Path = <<"/v3/generations/height/", HeightBin/binary>>,
-%     get_request(Path, NodeSpec, 5000).
+-spec get_generation_by_height(aehttpc:node_spec(), integer()) -> {ok, map()} | {error, term()}.
+get_generation_by_height(NodeSpec, Height) ->
+    HeightBin = list_to_binary(integer_to_list(Height - 1 )), %% previous generation!!!
+    Path = <<"/v3/generations/height/", HeightBin/binary>>,
+    get_request(Path, NodeSpec, 5000).
 
 
 %% TODO This function copied from aec_test_utils as that module is not available
@@ -123,23 +128,23 @@ get_request(Path, NodeSpec, Timeout) ->
     {error, {E, R, S}}
   end.
 
-% -spec post_request(binary(), map(), aehttpc:node_spec(), integer()) -> {ok, map()} | {error, term()}.
-% post_request(Path, Body, NodeSpec, Timeout) ->
-%   try
-%     Url = aehttpc:url(NodeSpec),
-%     UrlPath = lists:concat([Url, binary_to_list(Path)]),
-%     Req = {UrlPath, [], "application/json", jsx:encode(Body)},
-%     HTTPOpt = [{timeout, Timeout}],
-%     Opt = [],
-%     case httpc:request(post, Req, HTTPOpt, Opt) of
-%         {ok, {{_, 200 = _Code, _}, _, Res}} ->
-%             lager:debug("Req: ~p, Res: ~p with URL: ~ts", [Req, Res, Url]),
-%             {ok, jsx:decode(list_to_binary(Res), [return_maps])};
-%         {ok, {{_ ,400, _}, _, Res}} ->
-%             lager:debug("Req: ~p, Res: ~p with URL: ~ts", [Req, Res, Url]),
-%             {error, 400, jsx:decode(list_to_binary(Res), [return_maps])}
-%     end
-%   catch E:R:S ->
-%     lager:info("Error: ~p Reason: ~p Stacktrace: ~p", [E, R, S]),
-%     {error, {E, R, S}}
-%   end.
+-spec post_request(binary(), map(), aehttpc:node_spec(), integer()) -> {ok, map()} | {error, term()}.
+post_request(Path, Body, NodeSpec, Timeout) ->
+  try
+    Url = aehttpc:url(NodeSpec),
+    UrlPath = lists:concat([Url, binary_to_list(Path)]),
+    Req = {UrlPath, [], "application/json", jsx:encode(Body)},
+    HTTPOpt = [{timeout, Timeout}],
+    Opt = [],
+    case httpc:request(post, Req, HTTPOpt, Opt) of
+        {ok, {{_, 200 = _Code, _}, _, Res}} ->
+            lager:debug("Req: ~p, Res: ~p with URL: ~ts", [Req, Res, Url]),
+            {ok, jsx:decode(list_to_binary(Res), [return_maps])};
+        {ok, {{_ ,400, _}, _, Res}} ->
+            lager:debug("Req: ~p, Res: ~p with URL: ~ts", [Req, Res, Url]),
+            {error, 400, jsx:decode(list_to_binary(Res), [return_maps])}
+    end
+  catch E:R:S ->
+    lager:info("Error: ~p Reason: ~p Stacktrace: ~p", [E, R, S]),
+    {error, {E, R, S}}
+  end.

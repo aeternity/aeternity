@@ -8,6 +8,12 @@
 
 -module(aec_parent_connector).
 
+%% Functionality
+%% Holds parent chain connection state and contains various utilities for 
+%% interacting withvthe PC. Wraps parent implementation specific stuff
+%% and delegates the actual calling to aehttpc modules for each specific 
+%% parent implementation (ae, btc, doge).
+
 -behaviour(gen_server).
 
 %%%=============================================================================
@@ -15,7 +21,7 @@
 %%%=============================================================================
 
 %% External API
--export([start_link/9, stop/0]).
+-export([start_link/6, stop/0]).
 
 %% Use in test only
 -ifdef(TEST).
@@ -68,7 +74,7 @@ start_link() ->
                     }],
     ParentConnMod = aehttpc_aeternity,
     start_link(ParentConnMod, FetchInterval, ParentHosts, <<"local_testnet">>,
-              aec_preset_keys, [], <<0:32/unit:8>>, 7800, 7900).
+              aec_preset_keys, []).
 -endif.
 
 %% Start the parent connector process
@@ -79,9 +85,9 @@ start_link() ->
 %% SignModule :: atom() - module name of the module that keeps the keys for the parent chain transactions to be signed
 %% HCPCPairs :: [{binary(), binary()}] - mapping from hyperchain address to child chain address
 %% Recipient :: binary() - the parent chain address to which the commitments must be sent to
--spec start_link(atom(), integer() | on_demand, [map()], binary(), atom(), [{binary(), binary()}], binary(), integer(), integer()) -> {ok, pid()} | {error, {already_started, pid()}} | {error, Reason::any()}.
-start_link(ParentConnMod, FetchInterval, ParentHosts, NetworkId, SignModule, HCPCPairs, Recipient, Fee, Amount) ->
-    gen_server:start_link({local, ?SERVER}, ?MODULE, [ParentConnMod, FetchInterval, ParentHosts, NetworkId, SignModule, HCPCPairs, Recipient, Fee, Amount], []).
+-spec start_link(atom(), integer() | on_demand, [map()], binary(), atom(), [{binary(), binary()}]) -> {ok, pid()} | {error, {already_started, pid()}} | {error, Reason::any()}.
+start_link(ParentConnMod, FetchInterval, ParentHosts, NetworkId, SignModule, HCPCPairs) ->
+    gen_server:start_link({local, ?SERVER}, ?MODULE, [ParentConnMod, FetchInterval, ParentHosts, NetworkId, SignModule, HCPCPairs], []).
 
 stop() ->
     gen_server:stop(?MODULE).
@@ -117,11 +123,7 @@ fetch_block_by_height(Height) ->
 %%%=============================================================================
 
 -spec init([any()]) -> {ok, #state{}}.
-init([ParentConnMod, FetchInterval, ParentHosts, _NetworkId, _SignModule, HCPCPairs, _Recipient, _Fee, _Amount]) ->
-    % if is_integer(FetchInterval) ->
-    %     erlang:send_after(FetchInterval, self(), check_parent);
-    %     true -> ok
-    % end,
+init([ParentConnMod, FetchInterval, ParentHosts, _NetworkId, _SignModule, HCPCPairs]) ->
     {ok, #state{parent_conn_mod = ParentConnMod,
                 fetch_interval = FetchInterval,
                 parent_hosts = ParentHosts,
