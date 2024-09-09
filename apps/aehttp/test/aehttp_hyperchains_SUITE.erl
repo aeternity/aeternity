@@ -25,8 +25,8 @@
          empty_parent_block/1,
          sync_third_node/1,
          verify_fees/1,
-         % elected_leader_did_not_show_up/1,
-         % block_difficulty/1,
+         elected_leader_did_not_show_up/1,
+         block_difficulty/1,
          epoch_with_slow_parent/1
         ]).
 
@@ -803,15 +803,6 @@ call_info(SignedTx) ->
             end
     end.
 
-ct_log_block(Block) ->
-    ct_log_header(aec_blocks:to_header(Block)).
-
-ct_log_header(Header) ->
-    Time = aec_headers:time_in_msecs(Header),
-    DateTime = calendar:system_time_to_universal_time(Time, millisecond),
-    Height = aec_headers:height(Header),
-    ct:log("Block ~p, Timestamp: ~p (~p)", [Height, DateTime, Time]).
-
 decode_consensus_result(Call, Fun, Src) ->
     ReturnType = aect_call:return_type(Call),
     ReturnValue = aect_call:return_value(Call),
@@ -1125,12 +1116,12 @@ mine_key_blocks(ParentNodeName, NumParentBlocks) ->
     ct:log("Parent block mined ~p ~p number: ~p", [KBs, ParentNodeName, NumParentBlocks]),
     {ok, KBs}.
 
-get_block_producer_name(Parties, Node, Height) ->
-    Producer = get_block_producer(Node, Height),
-    case lists:keyfind(Producer, 1, Parties) of
-        false -> Producer;
-        {_, _, Name} -> Name
-    end.
+%get_block_producer_name(Parties, Node, Height) ->
+%    Producer = get_block_producer(Node, Height),
+%    case lists:keyfind(Producer, 1, Parties) of
+%        false -> Producer;
+%        {_, _, Name} -> Name
+%    end.
 
 get_block_producer_name(Parties, Block) ->
     Producer = aec_blocks:miner(Block),
