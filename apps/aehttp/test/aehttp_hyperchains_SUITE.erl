@@ -649,6 +649,8 @@ epoch_with_slow_parent(Config) ->
     %% ensure start at a new epoch boundary
     ChildTopHeight = rpc(?NODE1, aec_chain, top_height, []),
     BlocksLeftToBoundary = ?CHILD_EPOCH_LENGTH - (ChildTopHeight rem ?CHILD_EPOCH_LENGTH),
+    {ok, StartEpoch} = inspect_election_contract(?ALICE, epoch, Config),
+    ct:log("Starting at CC epoch ~p", [StartEpoch]),
     %% some block production including parent blocks
     produce_cc_blocks(Config, BlocksLeftToBoundary),
 
@@ -657,11 +659,13 @@ epoch_with_slow_parent(Config) ->
     %% Preferably the child chain should get to a halt or
     %% at least one should be able to measure that the child chain epoch
     %% becomes larger after this
-    {ok, Bs} = produce_cc_blocks(Config, ?CHILD_EPOCH_LENGTH, none),
+    {ok, Bs} = produce_cc_blocks(Config, ?CHILD_EPOCH_LENGTH*2, none),
 
     ParentTopHeight = rpc(?PARENT_CHAIN_NODE, aec_chain, top_height, []),
     ?assertEqual(ParentStartHeight, ParentTopHeight),
     ct:log("Child chain blocks ~p", [Bs]),
+    {ok, EndEpoch} = inspect_election_contract(?ALICE, epoch, Config),
+    ct:log("Ending at CC epoch ~p", [EndEpoch]),
     ok.
 
 %%% --------- helper functions
@@ -754,6 +758,7 @@ inspect_staking_contract(OriginWho, WhatToInspect, Config, TopHash) ->
                 {"get_state", []};
             leaders ->
                 {"sorted_validators", []}
+
         end,
     ContractPubkey = ?config(staking_contract, Config),
     do_contract_call(ContractPubkey, src(?MAIN_STAKING_CONTRACT, Config), Fun, Args, OriginWho, TopHash).
@@ -767,7 +772,8 @@ inspect_election_contract(OriginWho, WhatToInspect, Config, TopHash) ->
         case WhatToInspect of
             current_leader -> {"leader", []};
             current_added_staking_power -> {"added_stake", []};
-            validators -> {"sorted_validators", []}
+            validators -> {"sorted_validators", []};
+            epoch -> {"epoch", []}
         end,
     ContractPubkey = ?config(election_contract, Config),
     do_contract_call(ContractPubkey, src(?HC_CONTRACT, Config), Fun, Args, OriginWho, TopHash).
@@ -891,7 +897,7 @@ build_json_files(ElectionContract, NodeConfig, CTConfig) ->
         , <<"owner_pubkey">> := ContractOwner } = EC
         = contract_create_spec(ElectionContract, src(ElectionContract, CTConfig),
                                 [binary_to_list(StakingContractPubkey),
-                                "\"domat\""], 0, 3, Pubkey),
+                                "\"domat\"", integer_to_list(?CHILD_EPOCH_LENGTH)], 0, 3, Pubkey),
     {ok, ElectionAddress} = aeser_api_encoder:safe_decode(contract_pubkey,
                                                           ElectionContractPubkey),
     %% assert assumption
