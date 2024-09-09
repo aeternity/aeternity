@@ -196,7 +196,14 @@ init_per_suite(Config0) ->
                 }),
             StakingContract = staking_contract_address(),
             ElectionContract = election_contract_address(),
-            [{staking_contract, StakingContract}, {election_contract, ElectionContract} | Config1]
+            {ok, SVBinSrc} = aect_test_utils:read_contract("StakingValidator"),
+            {ok, MSBinSrc} = aect_test_utils:read_contract(?MAIN_STAKING_CONTRACT),
+            {ok, EBinSrc} = aect_test_utils:read_contract(?HC_CONTRACT),
+            [{staking_contract, StakingContract}, {election_contract, ElectionContract},
+             {contract_src, #{"StakingValidator" => create_stub(binary_to_list(SVBinSrc)),
+                              ?MAIN_STAKING_CONTRACT => create_stub(binary_to_list(MSBinSrc)),
+                              ?HC_CONTRACT => create_stub(binary_to_list(EBinSrc))
+                              }} | Config1]
     end.
 
 end_per_suite(Config) ->
@@ -232,7 +239,7 @@ child_node_config(Node, Stakeholders, CTConfig) ->
     ReceiveAddress = encoded_pubkey(?FORD),
     Pinning = false,
     NodeConfig = node_config(Node, CTConfig, Stakeholders, ReceiveAddress, Pinning),
-    build_json_files(?HC_CONTRACT, [NodeConfig]),
+    build_json_files(?HC_CONTRACT, NodeConfig, CTConfig),
     aecore_suite_utils:create_config(Node, CTConfig, NodeConfig, [{add_peers, true}]).
 
 end_per_group(hc, Config) ->
@@ -250,9 +257,7 @@ init_per_testcase(_Case, Config) ->
 end_per_testcase(_Case, _Config) ->
     ok.
 
-contract_create_spec(Name, Args, Amount, Nonce, Owner) ->
-    {ok, BinSrc} = aect_test_utils:read_contract(aect_test_utils:sophia_version(), Name),
-    Src = binary_to_list(BinSrc),
+contract_create_spec(Name, Src, Args, Amount, Nonce, Owner) ->
     {ok, Code}   = aect_test_utils:compile_contract(aect_test_utils:sophia_version(), Name),
     Pubkey = aect_contracts:compute_contract_pubkey(Owner, Nonce),
     EncodedPubkey   = aeser_api_encoder:encode(contract_pubkey, Pubkey),
@@ -272,9 +277,9 @@ contract_create_spec(Name, Args, Amount, Nonce, Owner) ->
             , <<"owner_pubkey">> => EncodedOwner },
     Spec.
 
-contract_call_spec(ContractPubkey, Name, Fun, Args, Amount, From, Nonce) ->
+contract_call_spec(ContractPubkey, Src, Fun, Args, Amount, From, Nonce) ->
     {contract_call_tx, CallTx} =
-        aetx:specialize_type(contract_call(ContractPubkey, Name, Fun, Args,
+        aetx:specialize_type(contract_call(ContractPubkey, Src, Fun, Args,
                                            Amount, From, Nonce)),
     %% Don't allow named contracts!?
     {contract, ContractPubKey} =
@@ -293,13 +298,11 @@ contract_call_spec(ContractPubkey, Name, Fun, Args, Amount, From, Nonce) ->
                                                               aect_call_tx:call_data(CallTx))},
     Spec.
 
-contract_call(ContractPubkey, Name, Fun, Args, Amount, From) ->
+contract_call(ContractPubkey, Src, Fun, Args, Amount, From) ->
     Nonce = next_nonce(?NODE1, From), %% no contract calls support for parent chain
-    contract_call(ContractPubkey, Name, Fun, Args, Amount, From, Nonce).
+    contract_call(ContractPubkey, Src, Fun, Args, Amount, From, Nonce).
 
-contract_call(ContractPubkey, Name, Fun, Args, Amount, From, Nonce) ->
-    {ok, BinSrc} = aect_test_utils:read_contract(aect_test_utils:sophia_version(), Name),
-    Src = binary_to_list(BinSrc),
+contract_call(ContractPubkey, Src, Fun, Args, Amount, From, Nonce) ->
     {ok, CallData} = aect_test_utils:encode_call_data(Src, Fun, Args),
     ABI = aect_test_utils:abi_version(),
     TxSpec =
@@ -403,7 +406,7 @@ simple_withdraw(Config) ->
     NetworkId = ?config(network_id, Config),
     CallTx =
         sign_and_push(
-            contract_call(?config(staking_contract, Config), ?MAIN_STAKING_CONTRACT, "unstake",
+            contract_call(?config(staking_contract, Config), src(?MAIN_STAKING_CONTRACT, Config), "unstake",
                 [Alice, integer_to_list(WithdrawAmount)], 0, pubkey(?ALICE)),
             ?ALICE,
             NetworkId),
@@ -412,7 +415,7 @@ simple_withdraw(Config) ->
     produce_cc_blocks(Config, StakeWithdrawDelay),
     EndBalance = account_balance(pubkey(?ALICE)),
     {ok, Call} = call_info(CallTx),
-    {ok, _Res} = decode_consensus_result(Call, "unstake", ?MAIN_STAKING_CONTRACT),
+    {ok, _Res} = decode_consensus_result(Call, "unstake", src(?MAIN_STAKING_CONTRACT, Config)),
     GasUsed = aect_call:gas_used(Call),
     GasPrice = aect_call:gas_price(Call),
     Fee = aetx:fee(aetx_sign:tx(CallTx)),
@@ -479,6 +482,9 @@ empty_parent_block(_Config) ->
 
 verify_fees(Config) ->
     %% start without any tx fees, only a keyblock
+    GetSPower = fun(Who1, Who2, When) ->
+                    inspect_staking_contract(Who1, {staking_power, Who2}, Config, When)
+                end,
     Test =
         fun() ->
             %% gather staking_powers before reward distribution
@@ -489,39 +495,17 @@ verify_fees(Config) ->
             TopKeyHeader = aec_blocks:to_header(TopKeyBlock),
             {ok, TopHash} = aec_headers:hash_header(TopKeyHeader),
             PrevHash = aec_headers:prev_key_hash(TopKeyHeader),
-            {ok, AliceContractSPower0} = inspect_staking_contract(?ALICE,
-                                                                  {staking_power,
-                                                                   ?ALICE},
-                                                                  Config,
-                                                                  PrevHash),
-            {ok, BobContractSPower0} = inspect_staking_contract(?ALICE,
-                                                                {staking_power,
-                                                                 ?BOB},
-                                                                Config,
-                                                                PrevHash),
-            {ok, LisaContractSPower0} = inspect_staking_contract(?ALICE,
-                                                                {staking_power,
-                                                                 ?LISA},
-                                                                Config,
-                                                                PrevHash),
+            {ok, AliceContractSPower0} = GetSPower(?ALICE, ?ALICE, PrevHash),
+            {ok, BobContractSPower0}   = GetSPower(?ALICE, ?BOB, PrevHash),
+            {ok, LisaContractSPower0}  = GetSPower(?ALICE, ?LISA, PrevHash),
+
             %% gather staking_powers after reward distribution
-            AliceBalance1= account_balance(pubkey(?ALICE)),
-            BobBalance1 = account_balance(pubkey(?BOB)),
-            {ok, AliceContractSPower1} = inspect_staking_contract(?ALICE,
-                                                                  {staking_power,
-                                                                   ?ALICE},
-                                                                  Config,
-                                                                  TopHash),
-            {ok, BobContractSPower1} = inspect_staking_contract(?ALICE,
-                                                                {staking_power,
-                                                                 ?BOB},
-                                                                Config,
-                                                                TopHash),
-            {ok, LisaContractSPower1} = inspect_staking_contract(?ALICE,
-                                                                  {staking_power,
-                                                                  ?LISA},
-                                                                  Config,
-                                                                  TopHash),
+            AliceBalance1 = account_balance(pubkey(?ALICE)),
+            BobBalance1   = account_balance(pubkey(?BOB)),
+            {ok, AliceContractSPower1} = GetSPower(?ALICE, ?ALICE, TopHash),
+            {ok, BobContractSPower1}   = GetSPower(?ALICE, ?BOB, TopHash),
+            {ok, LisaContractSPower1}  = GetSPower(?ALICE, ?LISA, TopHash),
+
             %% inspect who shall receive what reward
             RewardForHeight = aec_headers:height(TopKeyHeader) - ?REWARD_DELAY,
             {ok, PrevH} = rpc(?NODE1, aec_chain, get_key_header_by_height, [RewardForHeight - 1]),
@@ -743,10 +727,7 @@ inspect_staking_contract(OriginWho, WhatToInspect, Config, TopHash) ->
                 {"sorted_validators", []}
         end,
     ContractPubkey = ?config(staking_contract, Config),
-    Tx = contract_call(ContractPubkey, ?MAIN_STAKING_CONTRACT, Fun,
-                  Args, 0, pubkey(OriginWho)),
-    {ok, Call} = dry_run(TopHash, Tx),
-    {_Type, _Res} = decode_consensus_result(Call, Fun, ?MAIN_STAKING_CONTRACT).
+    do_contract_call(ContractPubkey, src(?MAIN_STAKING_CONTRACT, Config), Fun, Args, OriginWho, TopHash).
 
 inspect_election_contract(OriginWho, WhatToInspect, Config) ->
     TopHash = rpc(?NODE1, aec_chain, top_block_hash, []),
@@ -760,10 +741,18 @@ inspect_election_contract(OriginWho, WhatToInspect, Config, TopHash) ->
             validators -> {"sorted_validators", []}
         end,
     ContractPubkey = ?config(election_contract, Config),
-    ElectionContract = ?HC_CONTRACT,
-    Tx = contract_call(ContractPubkey, ElectionContract, Fun, Args, 0, pubkey(OriginWho)),
+    do_contract_call(ContractPubkey, src(?HC_CONTRACT, Config), Fun, Args, OriginWho, TopHash).
+
+do_contract_call(CtPubkey, CtSrc, Fun, Args, Who, TopHash) ->
+    F = fun() -> do_contract_call_(CtPubkey, CtSrc, Fun, Args, Who, TopHash) end,
+    {T, Res} = timer:tc(F),
+    ct:log("Calling contract took ~.2f ms", [T / 1000]),
+    Res.
+
+do_contract_call_(CtPubkey, CtSrc, Fun, Args, Who, TopHash) ->
+    Tx = contract_call(CtPubkey, CtSrc, Fun, Args, 0, pubkey(Who)),
     {ok, Call} = dry_run(TopHash, Tx),
-    {_Type, _Res} = decode_consensus_result(Call, Fun, ElectionContract).
+    decode_consensus_result(Call, Fun, CtSrc).
 
 dry_run(TopHash, Tx) ->
     case rpc(?NODE1, aec_dry_run, dry_run, [TopHash, [], [{tx, Tx}]]) of
@@ -794,14 +783,10 @@ ct_log_header(Header) ->
     Height = aec_headers:height(Header),
     ct:log("Block ~p, Timestamp: ~p (~p)", [Height, DateTime, Time]).
 
-decode_consensus_result(Call, Fun, Contract) ->
+decode_consensus_result(Call, Fun, Src) ->
     ReturnType = aect_call:return_type(Call),
     ReturnValue = aect_call:return_value(Call),
-    SophiaVersion = aect_test_utils:latest_sophia_version(),
-    {ok, BinCode} = aect_test_utils:read_contract(SophiaVersion, Contract),
-    Res =
-        aect_test_utils:decode_call_result(binary_to_list(BinCode), Fun,
-                                          ReturnType, ReturnValue),
+    Res = aect_test_utils:decode_call_result(Src, Fun, ReturnType, ReturnValue),
     {ReturnType, Res}.
 
 calc_rewards(RewardForHeight) ->
@@ -843,7 +828,11 @@ calc_rewards(RewardForHeight) ->
            [AdjustedReward1, AdjustedReward2]),
     Res.
 
-build_json_files(ElectionContract, NodeConfigs) ->
+src(ContractName, Config) ->
+    Srcs = ?config(contract_src, Config),
+    maps:get(ContractName, Srcs).
+
+build_json_files(ElectionContract, NodeConfig, CTConfig) ->
     Pubkey = ?OWNER_PUBKEY,
     {_PatronPriv, PatronPub} = aecore_suite_utils:sign_keys(?NODE1),
     ct:log("Patron is ~p", [aeser_api_encoder:encode(account_pubkey, PatronPub)]),
@@ -859,15 +848,16 @@ build_json_files(ElectionContract, NodeConfigs) ->
     StakeDelay = "0",
     UnstakeDelay = "0",
     #{ <<"pubkey">> := StakingValidatorContract} = C0
-        = contract_create_spec("StakingValidator",
+        = contract_create_spec("StakingValidator", src("StakingValidator", CTConfig),
                                 [EncodePub(Pubkey), UnstakeDelay], 0, 1, Pubkey),
     {ok, ValidatorPoolAddress} = aeser_api_encoder:safe_decode(contract_pubkey,
                                                               StakingValidatorContract),
     %% assert assumption
     ValidatorPoolAddress = validator_pool_contract_address(),
+    MSSrc = src(?MAIN_STAKING_CONTRACT, CTConfig),
     #{ <<"pubkey">> := StakingContractPubkey
         , <<"owner_pubkey">> := ContractOwner } = SC
-        = contract_create_spec(?MAIN_STAKING_CONTRACT,
+        = contract_create_spec(?MAIN_STAKING_CONTRACT, MSSrc,
                                 [binary_to_list(StakingValidatorContract),
                                 MinValidatorAmt, MinStakePercent, MinStakeAmt,
                                 OnlineDelay, StakeDelay, UnstakeDelay],
@@ -879,7 +869,7 @@ build_json_files(ElectionContract, NodeConfigs) ->
     %% create election contract
     #{ <<"pubkey">> := ElectionContractPubkey
         , <<"owner_pubkey">> := ContractOwner } = EC
-        = contract_create_spec(ElectionContract,
+        = contract_create_spec(ElectionContract, src(ElectionContract, CTConfig),
                                 [binary_to_list(StakingContractPubkey),
                                 "\"domat\""], 0, 3, Pubkey),
     {ok, ElectionAddress} = aeser_api_encoder:safe_decode(contract_pubkey,
@@ -889,42 +879,42 @@ build_json_files(ElectionContract, NodeConfigs) ->
     {ok, SCId} = aeser_api_encoder:safe_decode(contract_pubkey,
                                                 StakingContractPubkey),
     Call1 =
-        contract_call_spec(SCId, ?MAIN_STAKING_CONTRACT,
+        contract_call_spec(SCId, MSSrc,
                             "new_validator", [],
                             ?INITIAL_STAKE, pubkey(?ALICE), 1),
     Call2 =
-        contract_call_spec(SCId, ?MAIN_STAKING_CONTRACT,
+        contract_call_spec(SCId, MSSrc,
                             "new_validator", [],
                             ?INITIAL_STAKE, pubkey(?BOB), 1),
     Call3 =
-        contract_call_spec(SCId, ?MAIN_STAKING_CONTRACT,
+        contract_call_spec(SCId, MSSrc,
                             "new_validator", [],
                             ?INITIAL_STAKE, pubkey(?LISA), 1),
     Call4  =
-        contract_call_spec(SCId, ?MAIN_STAKING_CONTRACT,
+        contract_call_spec(SCId, MSSrc,
                             "set_online", [], 0, pubkey(?ALICE), 2),
     Call5  =
-        contract_call_spec(SCId, ?MAIN_STAKING_CONTRACT,
+        contract_call_spec(SCId, MSSrc,
                             "set_online", [], 0, pubkey(?BOB), 2),
     Call6 =
-        contract_call_spec(SCId, ?MAIN_STAKING_CONTRACT,
+        contract_call_spec(SCId, MSSrc,
                             "set_online", [], 0, pubkey(?LISA), 2),
     Call7 =
-        contract_call_spec(SCId, ?MAIN_STAKING_CONTRACT,
+        contract_call_spec(SCId, MSSrc,
                             "set_validator_name", ["\"Alice\""], 0, pubkey(?ALICE), 3),
     Call8 =
-        contract_call_spec(SCId, ?MAIN_STAKING_CONTRACT,
+        contract_call_spec(SCId, MSSrc,
                             "set_validator_name", ["\"Bob\""], 0, pubkey(?BOB), 3),
     Call9 =
-        contract_call_spec(SCId, ?MAIN_STAKING_CONTRACT,
+        contract_call_spec(SCId, MSSrc,
                             "set_validator_name", ["\"Lisa\""], 0, pubkey(?LISA), 3),
     Call10 =
-        contract_call_spec(SCId, ?MAIN_STAKING_CONTRACT,
+        contract_call_spec(SCId, MSSrc,
                             "set_validator_description",
                             ["\"Alice is a really awesome validator and she had set a description of her great service to the work.\""], 0,
                             pubkey(?ALICE), 4),
     Call11 =
-        contract_call_spec(SCId, ?MAIN_STAKING_CONTRACT,
+        contract_call_spec(SCId, MSSrc,
                             "set_validator_avatar_url",
                             ["\"https://aeternity.com/images/aeternity-logo.svg\""], 0,
                             pubkey(?ALICE), 5),
@@ -936,11 +926,11 @@ build_json_files(ElectionContract, NodeConfigs) ->
     %%  yet
     %%  C) something else
     %% Call12 =
-    %%     contract_call_spec(SCId, ?MAIN_STAKING_CONTRACT,
+    %%     contract_call_spec(SCId, MSSrc,
     %%                         "new_validator", [],
     %%                         ?INITIAL_STAKE, BRIPub, 1),
     %% Call13 =
-    %%     contract_call_spec(SCId, ?MAIN_STAKING_CONTRACT,
+    %%     contract_call_spec(SCId, MSSrc,
     %%                         "set_validator_description",
     %%                         ["\"This validator is offline. She can never become a leader. She has no name set. She is receiving the BRI rewards\""],
     %%                         0, BRIPub, 2),
@@ -948,11 +938,11 @@ build_json_files(ElectionContract, NodeConfigs) ->
     AllCalls =  [Call1, Call2, Call3, Call4, Call5, Call6,
 		 Call7, Call8, Call9, Call10, Call11],
     ProtocolBin = integer_to_binary(aect_test_utils:latest_protocol_version()),
-    ContractsFileNames = [ContractsFileName  || #{<<"chain">> := #{<<"hard_forks">> := #{ProtocolBin := #{<<"contracts_file">> := ContractsFileName}}}} <- NodeConfigs],
-    AccountsFileNames = [AccountsFileName  || #{<<"chain">> := #{<<"hard_forks">> := #{ProtocolBin := #{<<"accounts_file">> := AccountsFileName}}}} <- NodeConfigs],
-    aecore_suite_utils:create_seed_file(ContractsFileNames,
+    #{<<"chain">> := #{<<"hard_forks">> := #{ProtocolBin := #{<<"contracts_file">> := ContractsFileName,
+                                                              <<"accounts_file">> := AccountsFileName}}}} = NodeConfig,
+    aecore_suite_utils:create_seed_file(ContractsFileName,
         #{<<"contracts">> => [C0, SC, EC], <<"calls">> => AllCalls}),
-    aecore_suite_utils:create_seed_file(AccountsFileNames,
+    aecore_suite_utils:create_seed_file(AccountsFileName,
         #{  <<"ak_2evAxTKozswMyw9kXkvjJt3MbomCR1nLrf91BduXKdJLrvaaZt">> => 1000000000000000000000000000000000000000000000000,
             encoded_pubkey(?ALICE) => 2100000000000000000000000000,
             encoded_pubkey(?BOB) => 3100000000000000000000000000,
@@ -1138,3 +1128,11 @@ key_reward_provided() ->
 key_reward_provided(RewardHeight) ->
   {get_block_producer(?NODE1, RewardHeight),
    rpc(?NODE1, aec_governance, block_mine_reward, [RewardHeight])}.
+
+create_stub(ContractFile) ->
+    create_stub(ContractFile, []).
+
+create_stub(ContractFile, Opts) ->
+    {ok, Enc}  = aeso_aci:contract_interface(json, ContractFile, Opts ++ [{no_code, true}]),
+    {ok, Stub} = aeso_aci:render_aci_json(Enc),
+    binary_to_list(Stub).
