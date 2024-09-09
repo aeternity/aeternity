@@ -727,10 +727,7 @@ inspect_staking_contract(OriginWho, WhatToInspect, Config, TopHash) ->
                 {"sorted_validators", []}
         end,
     ContractPubkey = ?config(staking_contract, Config),
-    Tx = contract_call(ContractPubkey, src(?MAIN_STAKING_CONTRACT, Config), Fun,
-                  Args, 0, pubkey(OriginWho)),
-    {ok, Call} = dry_run(TopHash, Tx),
-    {_Type, _Res} = decode_consensus_result(Call, Fun, src(?MAIN_STAKING_CONTRACT, Config)).
+    do_contract_call(ContractPubkey, src(?MAIN_STAKING_CONTRACT, Config), Fun, Args, OriginWho, TopHash).
 
 inspect_election_contract(OriginWho, WhatToInspect, Config) ->
     TopHash = rpc(?NODE1, aec_chain, top_block_hash, []),
@@ -744,9 +741,18 @@ inspect_election_contract(OriginWho, WhatToInspect, Config, TopHash) ->
             validators -> {"sorted_validators", []}
         end,
     ContractPubkey = ?config(election_contract, Config),
-    Tx = contract_call(ContractPubkey, src(?HC_CONTRACT, Config), Fun, Args, 0, pubkey(OriginWho)),
+    do_contract_call(ContractPubkey, src(?HC_CONTRACT, Config), Fun, Args, OriginWho, TopHash).
+
+do_contract_call(CtPubkey, CtSrc, Fun, Args, Who, TopHash) ->
+    F = fun() -> do_contract_call_(CtPubkey, CtSrc, Fun, Args, Who, TopHash) end,
+    {T, Res} = timer:tc(F),
+    ct:log("Calling contract took ~.2f ms", [T / 1000]),
+    Res.
+
+do_contract_call_(CtPubkey, CtSrc, Fun, Args, Who, TopHash) ->
+    Tx = contract_call(CtPubkey, CtSrc, Fun, Args, 0, pubkey(Who)),
     {ok, Call} = dry_run(TopHash, Tx),
-    {_Type, _Res} = decode_consensus_result(Call, Fun, src(?HC_CONTRACT, Config)).
+    decode_consensus_result(Call, Fun, CtSrc).
 
 dry_run(TopHash, Tx) ->
     case rpc(?NODE1, aec_dry_run, dry_run, [TopHash, [], [{tx, Tx}]]) of
