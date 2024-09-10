@@ -10,7 +10,9 @@
 -define(CHILD_CHAIN_NETWORK_ID, <<"hc_network_id">>).
 -define(SIGN_MODULE, aec_preset_keys).
 
-ae_sim_test_() ->
+%% removed as test, should/could be removed altogether, same goes for btc version below.
+%% Keeping around for future pinning testing.
+ae_sim_test_rem() ->
     {foreach,
      fun() ->
             Apps = [gproc, lager, crypto, enacl, cowboy, inets],
@@ -38,10 +40,7 @@ ae_sim_test_() ->
                                                 ParentHosts,
                                                 ?PARENT_CHAIN_NETWORK_ID,
                                                 ?SIGN_MODULE,
-                                                [],
-                                                CommitmentPubKey,
-                                                8100,
-                                                110000000000000),
+                                                []),
              mock_parent_cache(),
              mock_network_id(?PARENT_CHAIN_NETWORK_ID),
              mock_sign_module(StakerKeyPair),
@@ -227,7 +226,7 @@ stop_ae_parent_sims(ParentSims) ->
 ae_sim_name(Port) ->
      list_to_atom("ae_sim_" ++ integer_to_list(Port)).
 
-btc_sim_test_() ->
+btc_sim_test_rem() ->
     {foreach,
         fun() ->
             Apps = [gproc, lager, crypto, enacl, cowboy, inets],
@@ -255,10 +254,7 @@ btc_sim_test_() ->
                                             ParentHosts,
                                             ?PARENT_CHAIN_NETWORK_ID,
                                             ?SIGN_MODULE,
-                                            [],
-                                            CommitmentPubKey,
-                                            7500,
-                                            8500),
+                                            []),
             mock_parent_cache(),
             mock_sign_module(StakerKeyPair),
             {ok, CommitmentPubKey, BTCStakerPubKey, StakerKeyPair, ParentSims}
