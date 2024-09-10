@@ -108,9 +108,7 @@ start(Config, #{block_production := BlockProduction}) ->
     PCType         = maps:get(<<"type">>, ConsensusConfig, <<"AE2AE">>),
     NetworkId      = maps:get(<<"network_id">>, ConsensusConfig, <<"ae_mainnet">>),
     PCSpendAddress = maps:get(<<"spend_address">>, ConsensusConfig, <<"">>),
-    Fee            = maps:get(<<"fee">>, ConsensusConfig, 100000000000000),
-    Amount         = maps:get(<<"amount">>, ConsensusConfig, 1),
-
+    
     FetchInterval  = maps:get(<<"fetch_interval">>, PollingConfig, 500),
     RetryInterval  = maps:get(<<"retry_interval">>, PollingConfig, 1000),
     CacheSize      = maps:get(<<"cache_size">>, PollingConfig, 200),
@@ -118,7 +116,7 @@ start(Config, #{block_production := BlockProduction}) ->
     ParentHosts    = lists:map(fun aehttpc:parse_node_url/1, Nodes),
 
 
-    {ParentConnMod, PCSpendPubkey, _HCs, SignModule} =
+    {ParentConnMod, _PCSpendPubkey, _HCs, SignModule} =
         case PCType of
             <<"AE2AE">> -> start_ae(StakersConfig, PCSpendAddress);
             <<"AE2BTC">> -> start_btc(StakersConfig, PCSpendAddress, aehttpc_btc);
@@ -129,7 +127,7 @@ start(Config, #{block_production := BlockProduction}) ->
     aeu_ets_cache:put(?ETS_CACHE_TABLE, hash_to_int, Hash2IntFun),
 
     start_dependency(aec_parent_connector, [ParentConnMod, FetchInterval, ParentHosts, NetworkId,
-                                            SignModule, [], PCSpendPubkey, Fee, Amount]),
+                                            SignModule, []]),
     start_dependency(aec_parent_chain_cache, [StartHeight, RetryInterval, fun target_parent_heights/1, %% prefetch the next parent block
                                               CacheSize, Confirmations,
                                               BlockProduction]),

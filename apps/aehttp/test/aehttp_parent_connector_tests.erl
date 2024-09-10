@@ -10,7 +10,8 @@
 -define(CHILD_CHAIN_NETWORK_ID, <<"hc_network_id">>).
 -define(SIGN_MODULE, aec_preset_keys).
 
-% removed as test, should/could be removed altogether, same goes for btc version below.
+%% removed as test, should/could be removed altogether, same goes for btc version below.
+%% Keeping around for future pinning testing.
 ae_sim_test_rem() ->
     {foreach,
      fun() ->
