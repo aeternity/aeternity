@@ -7,10 +7,27 @@
 -export([get_latest_block/2,
          get_header_by_hash/3,
          get_header_by_height/3,
-         get_commitment_tx_in_block/5,
-         get_commitment_tx_at_height/4,
-         post_commitment/8,
+        %  get_commitment_tx_in_block/5,
+        %  get_commitment_tx_at_height/4,
+        %  post_commitment/8,
          hash_to_integer/1]).
+
+%% Temporary exports for keeping useful chain utils around
+-export([select_utxo/2,
+unspent_to_satoshis/1,
+float_btc_to_satoshi/1,
+pad8/1,
+create_outputs/6,
+satoshi_to_btc/1,
+drop_trailing_zeroes/1,
+drop_until_point/1,
+listunspent/1,
+getblock/4,
+createrawtransaction/3,
+signrawtransaction/2,
+sendrawtransaction/2,
+getrawtransaction/2,
+to_hex/1]).
 
 -behavior(aehttpc).
 
@@ -37,18 +54,18 @@ get_header_by_height(Height, NodeSpec, Seed) ->
 hash_to_integer(Hash) ->
     binary_to_integer(Hash, 16).
 
-get_commitment_tx_in_block(NodeSpec, Seed, BlockHash, _PrevHash, ParentHCAccountPubKey) ->
-    {ok, {_Height, _Hash, __PrevHash, Txs}}
-      = getblock(NodeSpec, Seed, BlockHash, _Verbosity = 2),
-    Commitments = find_commitments(Txs, ParentHCAccountPubKey),
-    {ok, Commitments}.
+% get_commitment_tx_in_block(NodeSpec, Seed, BlockHash, _PrevHash, ParentHCAccountPubKey) ->
+%     {ok, {_Height, _Hash, __PrevHash, Txs}}
+%       = getblock(NodeSpec, Seed, BlockHash, _Verbosity = 2),
+%     Commitments = find_commitments(Txs, ParentHCAccountPubKey),
+%     {ok, Commitments}.
 
-get_commitment_tx_at_height(NodeSpec, Seed, Height, ParentHCAccountPubKey) ->
-    {ok, Hash} = getblockhash(NodeSpec, Seed, Height),
-    {ok, {_Height, _Hash, _PrevHash, Txs}}
-      = getblock(NodeSpec, Seed, Hash, _Verbosity = 2),
-    Commitments = find_commitments(Txs, ParentHCAccountPubKey),
-    {ok, Commitments}.
+% get_commitment_tx_at_height(NodeSpec, Seed, Height, ParentHCAccountPubKey) ->
+%     {ok, Hash} = getblockhash(NodeSpec, Seed, Height),
+%     {ok, {_Height, _Hash, _PrevHash, Txs}}
+%       = getblock(NodeSpec, Seed, Hash, _Verbosity = 2),
+%     Commitments = find_commitments(Txs, ParentHCAccountPubKey),
+%     {ok, Commitments}.
 
 %% @doc Post commitment to BTC parent chain.
 %% Commitment is a simple spend transaction to a known BTC account
@@ -60,19 +77,19 @@ get_commitment_tx_at_height(NodeSpec, Seed, Height, ParentHCAccountPubKey) ->
 %% 3. Apply signatures using signrawtransaction
 %% 4. Submit it using sendrawtransaction
 
-post_commitment(NodeSpec, StakerPubkey, HCCollectPubkey, Amount, Fee, Commitment,
-                _NetworkId, _SignModule) ->
-        post_commitment(NodeSpec, StakerPubkey, HCCollectPubkey, Amount, Fee, Commitment).
+% post_commitment(NodeSpec, StakerPubkey, HCCollectPubkey, Amount, Fee, Commitment,
+%                 _NetworkId, _SignModule) ->
+%         post_commitment(NodeSpec, StakerPubkey, HCCollectPubkey, Amount, Fee, Commitment).
 
-post_commitment(NodeSpec, BTCAcc, HCCollectPubkey, Amount, Fee, Commitment) ->
-    {ok, Unspent} = listunspent(NodeSpec),
-    UnspentSatoshis = unspent_to_satoshis(Unspent),
-    {ok, {Inputs, TotalAmount}} = select_utxo(UnspentSatoshis, Fee + Amount),
-    Outputs = create_outputs(Commitment, BTCAcc, HCCollectPubkey, TotalAmount, Amount, Fee),
-    {ok, Tx} = createrawtransaction(NodeSpec, Inputs, Outputs),
-    {ok, SignedTx} = signrawtransaction(NodeSpec, Tx),
-    {ok, TxHash} = sendrawtransaction(NodeSpec, SignedTx),
-    {ok, #{<<"tx_hash">> => TxHash}}.
+% post_commitment(NodeSpec, BTCAcc, HCCollectPubkey, Amount, Fee, Commitment) ->
+%     {ok, Unspent} = listunspent(NodeSpec),
+%     UnspentSatoshis = unspent_to_satoshis(Unspent),
+%     {ok, {Inputs, TotalAmount}} = select_utxo(UnspentSatoshis, Fee + Amount),
+%     Outputs = create_outputs(Commitment, BTCAcc, HCCollectPubkey, TotalAmount, Amount, Fee),
+%     {ok, Tx} = createrawtransaction(NodeSpec, Inputs, Outputs),
+%     {ok, SignedTx} = signrawtransaction(NodeSpec, Tx),
+%     {ok, TxHash} = sendrawtransaction(NodeSpec, SignedTx),
+%     {ok, #{<<"tx_hash">> => TxHash}}.
 
 select_utxo([#{<<"spendable">> := true, <<"amount">> := Amount} = Unspent | _Us], Needed) when Amount >= Needed ->
     %% For now just pick first spendable UTXO with enough funds. There is no end to how fancy this can get
@@ -266,16 +283,16 @@ block(Obj) ->
     PrevHash = prev_hash(Obj),
     {Height, Hash, PrevHash, maps:get(<<"tx">>, Obj)}.
 
--spec find_commitments(list(), binary()) -> [{Pubkey :: binary(), Payload :: binary()}].
-find_commitments(Txs, _ParentHCAccountPubKey) ->
-    lists:foldl(fun(#{<<"vout">> := Vout}, Acc) ->
-                        case aehttpc_btc:parse_vout(Vout) of
-                            {ok, ParsedCommitment} ->
-                                [ParsedCommitment | Acc];
-                            {error, _Reason} ->
-                                Acc
-                        end
-                end, [], Txs).
+% -spec find_commitments(list(), binary()) -> [{Pubkey :: binary(), Payload :: binary()}].
+% find_commitments(Txs, _ParentHCAccountPubKey) ->
+%     lists:foldl(fun(#{<<"vout">> := Vout}, Acc) ->
+%                         case aehttpc_btc:parse_vout(Vout) of
+%                             {ok, ParsedCommitment} ->
+%                                 [ParsedCommitment | Acc];
+%                             {error, _Reason} ->
+%                                 Acc
+%                         end
+%                 end, [], Txs).
 
 -spec request(binary(), binary(), aehttpc:node_spec(), integer()) -> {ok, map()} | {error, term()}.
 request(Path, Body, NodeSpec, Timeout) ->
@@ -331,3 +348,6 @@ prev_hash(Obj) ->
 
 seed_to_utf8(Seed) when is_binary(Seed) ->
     base64:encode(Seed).
+
+
+

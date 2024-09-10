@@ -102,29 +102,21 @@ start(Config, #{block_production := BlockProduction}) ->
 
     Confirmations        = maps:get(<<"confirmations">>, PCConfig, 6),
     StartHeight          = maps:get(<<"start_height">>, PCConfig, 0),
-    ProducingCommitments = maps:get(<<"producing_commitments">>, PCConfig, false),
     ConsensusConfig      = maps:get(<<"consensus">>, PCConfig, #{}),
     PollingConfig        = maps:get(<<"polling">>, PCConfig, #{}),
 
     PCType         = maps:get(<<"type">>, ConsensusConfig, <<"AE2AE">>),
     NetworkId      = maps:get(<<"network_id">>, ConsensusConfig, <<"ae_mainnet">>),
     PCSpendAddress = maps:get(<<"spend_address">>, ConsensusConfig, <<"">>),
-    Fee            = maps:get(<<"fee">>, ConsensusConfig, 100000000000000),
-    Amount         = maps:get(<<"amount">>, ConsensusConfig, 1),
-
+    
     FetchInterval  = maps:get(<<"fetch_interval">>, PollingConfig, 500),
     RetryInterval  = maps:get(<<"retry_interval">>, PollingConfig, 1000),
     CacheSize      = maps:get(<<"cache_size">>, PollingConfig, 200),
     Nodes          = maps:get(<<"nodes">>, PollingConfig, []),
     ParentHosts    = lists:map(fun aehttpc:parse_node_url/1, Nodes),
 
-    %% assert the boolean type
-    case ProducingCommitments of
-        true -> ok;
-        false -> ok
-    end,
 
-    {ParentConnMod, PCSpendPubkey, _HCs, SignModule} =
+    {ParentConnMod, _PCSpendPubkey, _HCs, SignModule} =
         case PCType of
             <<"AE2AE">> -> start_ae(StakersConfig, PCSpendAddress);
             <<"AE2BTC">> -> start_btc(StakersConfig, PCSpendAddress, aehttpc_btc);
@@ -135,10 +127,10 @@ start(Config, #{block_production := BlockProduction}) ->
     aeu_ets_cache:put(?ETS_CACHE_TABLE, hash_to_int, Hash2IntFun),
 
     start_dependency(aec_parent_connector, [ParentConnMod, FetchInterval, ParentHosts, NetworkId,
-                                            SignModule, [], PCSpendPubkey, Fee, Amount]),
+                                            SignModule, []]),
     start_dependency(aec_parent_chain_cache, [StartHeight, RetryInterval, fun target_parent_heights/1, %% prefetch the next parent block
                                               CacheSize, Confirmations,
-                                              BlockProduction, ProducingCommitments]),
+                                              BlockProduction]),
     ok.
 
 start_btc(StakersEncoded, PCSpendAddress, ParentConnMod) ->
