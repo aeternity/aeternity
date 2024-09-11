@@ -27,7 +27,8 @@
          verify_fees/1,
          elected_leader_did_not_show_up/1,
          block_difficulty/1,
-         epoch_with_slow_parent/1
+         epoch_with_slow_parent/1,
+         check_blocktime/1
         ]).
 
 -include_lib("stdlib/include/assert.hrl").
@@ -142,6 +143,7 @@ groups() ->
           , spend_txs
           , simple_withdraw
           , sync_third_node
+          , check_blocktime
           ]}
     , {epochs, [sequence],
           [ start_two_child_nodes
@@ -375,10 +377,28 @@ spend_txs(Config) ->
     seed_account(pubkey(?LISA), 100000003 * ?DEFAULT_GAS_PRICE, NetworkId),
 
     produce_cc_blocks(Config, 1),
-    %% Give some time to sync nodes and remove Txs from pool
     {ok, []} = rpc:call(?NODE1_NAME, aec_tx_pool, peek, [infinity]),
     %% TODO check that the actors got their share
     ok.
+
+check_blocktime(_Config) ->
+    {ok, TopBlock} = rpc(?NODE1, aec_chain, top_key_block, []),
+    check_blocktime_(TopBlock).
+
+check_blocktime_(Block) ->
+    case aec_blocks:height(Block) >= 1 of
+        true ->
+            {ok, PrevBlock} = rpc(?NODE1, aec_chain, get_block, [aec_blocks:prev_key_hash(Block)]),
+            Time1 = aec_blocks:time_in_msecs(Block),
+            Time2 = aec_blocks:time_in_msecs(PrevBlock),
+            [ ct:pal("Blocktime not respected KB(~p) at ~p and KB(~p) at ~p",
+                     [aec_blocks:height(Block), Time1, aec_blocks:height(PrevBlock), Time2])
+              || Time1 - Time2 < ?CHILD_BLOCK_TIME ],
+            ?assertMatch(Diff when Diff >= ?CHILD_BLOCK_TIME, Time1 - Time2),
+            check_blocktime_(PrevBlock);
+        false ->
+            ok
+    end.
 
 start_two_child_nodes(Config) ->
     [{Node1, NodeName1, Stakers1}, {Node2, NodeName2, Stakers2} | _] = ?config(nodes, Config),
@@ -426,7 +446,8 @@ simple_withdraw(Config) ->
           <<"state">> :=
                 #{<<"delegates">> := [[AliceBin, ?INITIAL_STAKE]],
                   <<"main_staking_ct">> := CPubkey,
-                  <<"shares">> := ?INITIAL_STAKE}}} =
+                  <<"shares">> := ?INITIAL_STAKE}
+         }} =
         inspect_staking_contract(?ALICE, {get_validator_state, ?ALICE}, Config),
 
     %% The results translation somehow makes a contract key into an account key!

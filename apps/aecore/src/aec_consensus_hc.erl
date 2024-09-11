@@ -384,15 +384,14 @@ seal_correct_signature(Header, Signature, _Padding) ->
             {error, signature_verification_failed}
     end.
 
-generate_key_header_seal(_, Candidate, _PCHeight, #{child_block_time := ChildBlockTime} = _Config, _) ->
+generate_key_header_seal(_, Candidate, _PCHeight, _Config, _) ->
     Leader = aec_headers:beneficiary(Candidate),
     SignModule = get_sign_module(),
     case SignModule:set_candidate(Leader) of
         {error, key_not_found} ->
             timer:sleep(1000),
-            {continue_mining, {error, no_solution} };
+            {continue_mining, {error, no_solution}};
         ok ->
-            timer:sleep(ChildBlockTime),
             {ok, Signature} = SignModule:produce_key_header_signature(Candidate, Leader),
             %% the signature is 64 bytes. The seal is 168 bytes. We add 104 bytes at
             %% the end of the signature
@@ -668,12 +667,24 @@ beneficiary_(TxEnv, Trees) ->
 
 next_beneficiary() ->
     {TxEnv, Trees} = aetx_env:tx_env_and_trees_from_top(aetx_transaction),
+    ChildBlockTime = child_block_time(),
+    case aeu_time:now_in_msecs() - aetx_env:time_in_msecs(TxEnv) of
+        T when T >= ChildBlockTime ->
+            next_beneficiary(TxEnv, Trees);
+        T ->
+            lager:debug("Not time for next block yet; sleeping ~p ms", [ChildBlockTime - T + 1]),
+            timer:sleep(ChildBlockTime - T + 1),
+            next_beneficiary()
+    end.
+
+next_beneficiary(TxEnv, Trees) ->
     Height0 = aetx_env:height(TxEnv),
     NextHeight = Height0 + 1,
     PCHeight = pc_height(NextHeight),
     case aec_parent_chain_cache:get_block_by_height(PCHeight) of
         {ok, Block} ->
             Entropy = entropy(Block, NextHeight),
+            %% TODO: Network Id is available _in_ FATE since Ceres...
             NetworkId = aec_parent_chain_block:encode_network_id(aec_governance:get_network_id()),
             {ok, CD} = aeb_fate_abi:create_calldata("elect_next",
                                                     [aefa_fate_code:encode_arg({string, Entropy}),
