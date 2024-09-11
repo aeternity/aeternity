@@ -6,6 +6,7 @@ contract interface MainStaking =
   entrypoint total_stake : () => int
   entrypoint epoch : () => int
   entrypoint epoch_length : () => int
+  entrypoint blocks_to_fill_epoch : () => int
   stateful entrypoint post_elect : () => unit
   stateful entrypoint set_next_epoch_length : (int) => unit
 
@@ -17,7 +18,7 @@ main contract HCElection =
       added_stake           : int,
       epoch                 : int,
       epoch_length          : int,
-      blocks_left_in_epoch  : int,
+      blocks_to_fill_epoch  : int,
       next_epoch_length     : int
     }
 
@@ -37,7 +38,7 @@ main contract HCElection =
       added_stake           = 0,
       epoch                 = 1,
       epoch_length          = epoch_length,
-      blocks_left_in_epoch  = epoch_length,
+      blocks_to_fill_epoch  = epoch_length,
       next_epoch_length     = epoch_length
       }
 
@@ -48,13 +49,13 @@ main contract HCElection =
 
   stateful entrypoint elect(entropy_str : string, network_id : bytes(15)) =
     assert_protocol_call()
-    require(state.blocks_left_in_epoch > 0, "End of epoch reached")
+    require(state.blocks_to_fill_epoch > 0, "End of epoch reached")
     let (new_leader, added_staking_power) = elect_(entropy_str, network_id)
     state.main_staking_ct.post_elect()
-    if (state.blocks_left_in_epoch > 1)
-       put(state{blocks_left_in_epoch = state.blocks_left_in_epoch - 1})
+    if (state.blocks_to_fill_epoch > 1)
+       put(state{blocks_to_fill_epoch = state.blocks_to_fill_epoch - 1})
     else
-       put(state{blocks_left_in_epoch = state.next_epoch_length,
+       put(state{blocks_to_fill_epoch = state.next_epoch_length,
                  epoch = state.epoch + 1,
                  epoch_length = state.next_epoch_length})
     put(state{ leader = new_leader, entropy = entropy_str, added_stake = added_staking_power})
@@ -95,6 +96,9 @@ main contract HCElection =
 
   entrypoint epoch_length() =
     state.epoch_length
+
+  entrypoint blocks_to_fill_epoch() =
+    state.blocks_to_fill_epoch
 
   entrypoint get_state() : get_state_response =
     { main_staking_ct   = state.main_staking_ct,
