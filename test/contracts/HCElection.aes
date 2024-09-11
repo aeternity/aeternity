@@ -4,11 +4,7 @@ contract interface MainStaking =
   entrypoint sorted_validators : () => list((address * int))
   entrypoint is_validator : (address) => bool
   entrypoint total_stake : () => int
-  entrypoint epoch : () => int
-  entrypoint epoch_length : () => int
-  entrypoint blocks_to_fill_epoch : () => int
   stateful entrypoint post_elect : () => unit
-  stateful entrypoint set_next_epoch_length : (int) => unit
 
 main contract HCElection =
   record state =
