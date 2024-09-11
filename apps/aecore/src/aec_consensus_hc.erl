@@ -86,7 +86,7 @@
 -endif.
 
 %% For mocking
--export([child_epoch_length/3]).
+-export([get_child_epoch_length/2]).
 
 -include_lib("aecontract/include/hard_forks.hrl").
 -include("blocks.hrl").
@@ -251,13 +251,12 @@ state_pre_transform_key_node(Node, PrevNode, Trees) ->
             %% TODO: discuss which is the correct height to pass: the new or the
             %% previous one. At this point since there is no key block hash yet, it
             %% makes sense to base the tx call on the previous height altogether
-            Trees1 = cache_child_epoch_length(TxEnv, Trees),
             PCHeight = pc_height(Height),
             case aec_parent_chain_cache:get_block_by_height(PCHeight) of
                 {error, not_in_cache} ->
                     aec_conductor:throw_error(parent_chain_block_not_synced);
                 {ok, Block} ->
-                    {Entropy, Trees2} = entropy(Block, Height, TxEnv, Trees1),
+                    {Entropy, Trees2} = entropy(Block, Height, TxEnv, Trees),
                     NetworkId = aec_parent_chain_block:encode_network_id(aec_governance:get_network_id()),
                     {ok, CD} = aeb_fate_abi:create_calldata("elect",
                                                             [aefa_fate_code:encode_arg({string, Entropy}),
@@ -327,8 +326,7 @@ genesis_transform_trees(Trees0, #{}) ->
                                             aec_headers:prev_hash(GenesisHeader)),
     Trees1 = create_contracts(Contracts, TxEnv, Trees0),
     Trees2 = call_contracts(Calls, TxEnv, Trees1),
-    Trees = cache_child_epoch_length(TxEnv, Trees2),
-    aect_call_state_tree:prune(0, Trees).
+    aect_call_state_tree:prune(0, Trees2).
 
 genesis_raw_header() ->
     GenesisProtocol = genesis_protocol_version(),
@@ -411,8 +409,7 @@ set_key_block_seal(KeyBlock, Seal) ->
 
 nonce_for_sealing(Header) ->
     Height = aec_headers:height(Header),
-    PCHeight = pc_height(Height),
-    PCHeight.
+    pc_height(Height).
 
 next_nonce_for_sealing(PCHeight, _) ->
     PCHeight.
@@ -472,45 +469,26 @@ acceptable_sync_offset() ->
     aeu_ets_cache:get(?ETS_CACHE_TABLE, acceptable_sync_offset, Fun).
 
 
-cache_child_epoch_length(TxEnv, Trees) ->
-    {ok, CD} = aeb_fate_abi:create_calldata("epoch_length",
-                                            [
-                                            ]),
-    CallData = aeser_api_encoder:encode(contract_bytearray, CD),
-    try call_consensus_contract_(?ELECTION_CONTRACT, TxEnv, Trees, CallData, "epoch_length", 0) of
-        {ok, Trees1, Call} ->
-            child_epoch_length(aeb_fate_encoding:deserialize(aect_call:return_value(Call))),
-            Trees1;
-        {error, What} ->
-            lager:info("Retrieving epoch length failed with ~p", [What]),
-            aec_conductor:throw_error(epoch_length_failed)
-    catch error:{consensus_call_failed, {error, Why}} ->
-            lager:info("Retrieving epoch length failed with ~p", [Why]),
-            aec_conductor:throw_error(epoch_length_failed);
-          error:{consensus_call_crashed, {error, _Why}} ->
-            aec_conductor:throw_error(epoch_length_call_crashed)
-    end.
+get_child_epoch_length(TxEnv, Trees) ->
+    {ok, Result} = call_consensus_contract_result(?ELECTION_CONTRACT, TxEnv, Trees, "epoch_length", []),
+    Result.
 
-child_epoch_length(Length) ->
-    aeu_ets_cache:put(?ETS_CACHE_TABLE, child_epoch_length, Length).
+get_child_epoch(TxEnv, Trees) ->
+    {ok, Result} = call_consensus_contract_result(?ELECTION_CONTRACT, TxEnv, Trees, "epoch", []),
+    Result.
 
-child_epoch_length() ->
-    case aeu_ets_cache:lookup(?ETS_CACHE_TABLE, child_epoch_length) of
-        error ->
-            0;
-        {ok, Length} ->
-            Length
-    end.
+get_blocks_upto_child_epoch(TxEnv, Trees) ->
+    {ok, NrBlocks} = call_consensus_contract_result(?ELECTION_CONTRACT, TxEnv, Trees, "blocks_to_fill_epoch", []),
+    NrBlocks.
 
-child_epoch_length(Length, TxEnv, Trees) ->
+set_child_epoch_length(Length, TxEnv, Trees) ->
     {ok, CD} = aeb_fate_abi:create_calldata("set_next_epoch_length",
                                             [
-                                            aefa_fate_code:encode_arg({inetger, Length})
+                                            aefa_fate_code:encode_arg({integer, Length})
                                             ]),
     CallData = aeser_api_encoder:encode(contract_bytearray, CD),
     try call_consensus_contract_(?ELECTION_CONTRACT, TxEnv, Trees, CallData, "set_next_epoch_length", 0) of
-        {ok, Trees1, Call} ->
-            child_epoch_length(aeb_fate_encoding:deserialize(aect_call:return_value(Call))),
+        {ok, Trees1, _Call} ->
             Trees1;
         {error, What} ->
             lager:info("Retrieving epoch length failed with ~p", [What]),
@@ -525,9 +503,6 @@ child_epoch_length(Length, TxEnv, Trees) ->
 child_block_time() ->
     Fun = fun() -> get_consensus_config_key([<<"child_block_time">>]) end,
     aeu_ets_cache:get(?ETS_CACHE_TABLE, child_block_time, Fun).
-
-is_new_epoch(Height) ->
-    Height rem child_epoch_length() == 0.
 
 hash_to_int(Hash) ->
     {ok, Hash2IntFun} = aeu_ets_cache:lookup(?ETS_CACHE_TABLE, hash_to_int),
@@ -550,16 +525,15 @@ check_parent_generation_time(Block, TxEnv, Trees) ->
             % Already been checked
             Trees;
         {ok, PCTime0} ->
-            OldEpochLength = child_epoch_length(),
+            OldEpochLength = get_child_epoch_length(TxEnv, Trees),
             ExpectedEpochDuration = child_block_time() * OldEpochLength,
             PCGenerationDuration = PCTime1 - PCTime0,
             AcceptableOffset = acceptable_sync_offset(),
             case abs(ExpectedEpochDuration - PCGenerationDuration) of
                 DurationDiff when DurationDiff > AcceptableOffset ->
                     NewEpochLength = ceil(PCGenerationDuration / child_block_time()),
-                    child_epoch_length(NewEpochLength),
                     lager:info("Adjusted child epoch length from ~p to ~p because of a difference in the parent chain of ~p", [OldEpochLength, NewEpochLength, DurationDiff]),
-                    aec_consensus_hc:child_epoch_length(NewEpochLength, TxEnv, Trees);
+                    set_child_epoch_length(NewEpochLength, TxEnv, Trees);
                 _ ->
                     Trees
             end,
@@ -574,7 +548,10 @@ entropy(Block, Height, TxEnv, Trees) ->
         _Other ->
             PCHeight = aec_parent_chain_block:height(Block),
             Hash = aec_parent_chain_block:hash(Block),
-            case is_new_epoch(Height) of
+            EpochLength = get_child_epoch_length(TxEnv, Trees),
+            BlocksLeft = get_blocks_upto_child_epoch(TxEnv, Trees),
+            %% TODO possibly set new entropy at last block in epoch, i.e. BlocksLeft == 0
+            case BlocksLeft == EpochLength of
                 true ->
                     case set_new_entropy(Hash, Height, PCHeight) of
                         {_SeedState, _OldSeed, _OldHeight, SeedHeight} when PCHeight > SeedHeight ->
@@ -598,7 +575,6 @@ set_new_entropy(Hash, Height, PCHeight) ->
                 {ok, {_OldState, _OldSeed, _OldHeight, _OldPCHeight} = Old} ->
                     lager:warning("Parent finality not reached for parent height ~p", [PCHeight]),
                     %% generate a block with the previous epoch, next block will check the epoch again.
-                    child_epoch_length(child_epoch_length() + 1),
                     Old
             end;
         {ok, _Block} ->
@@ -679,6 +655,12 @@ call_consensus_contract(Contract, Node, Trees, EncodedCallData, Keyword, Amount)
               aec_block_insertion:node_time(Node), aec_block_insertion:node_prev_hash(Node)),
     call_consensus_contract_(Contract, TxEnv, Trees, EncodedCallData, Keyword, Amount).
 
+call_consensus_contract_result(ContractType, TxEnv, Trees, ContractFun, Args) ->
+    {ok, CD} = aeb_fate_abi:create_calldata(ContractFun, Args),
+    CallData = aeser_api_encoder:encode(contract_bytearray, CD),
+    {ok, _, Call} = call_consensus_contract_(ContractType, TxEnv, Trees, CallData, ContractFun, 0),
+    {ok, aeb_fate_encoding:deserialize(aect_call:return_value(Call))}.
+
 call_consensus_contract_(ContractType, TxEnv, Trees, EncodedCallData, Keyword, Amount) ->
     log_consensus_call(TxEnv, Keyword, EncodedCallData, Amount),
     ContractPubkey =
@@ -744,16 +726,8 @@ beneficiary_() ->
     beneficiary_(TxEnv, Trees).
 
 beneficiary_(TxEnv, Trees) ->
-    {ok, CD} = aeb_fate_abi:create_calldata("leader", []),
-    CallData = aeser_api_encoder:encode(contract_bytearray, CD),
-    case call_consensus_contract_(?ELECTION_CONTRACT, TxEnv, Trees, CallData, "leader", 0) of
-        {ok, _Trees1, Call} ->
-            {address, Leader} = aeb_fate_encoding:deserialize(aect_call:return_value(Call)),
-            {ok, Leader};
-        {error, What} ->
-            %% maybe a softer approach than crash and burn?
-            error({failed_to_elect_new_leader, What})
-    end.
+  {ok, {address, Leader}} = call_consensus_contract_result(?ELECTION_CONTRACT, TxEnv, Trees, "leader", []),
+  {ok, Leader}.
 
 next_beneficiary() ->
     {TxEnv, Trees} = aetx_env:tx_env_and_trees_from_top(aetx_transaction),
@@ -769,34 +743,26 @@ next_beneficiary() ->
 
 next_beneficiary(TxEnv, Trees) ->
     Height0 = aetx_env:height(TxEnv),
-    Trees1 = cache_child_epoch_length(TxEnv, Trees),
+    %% TODO this seems wrong, since we don't relate child height with parent height this way
     NextHeight = Height0 + 1,
     PCHeight = pc_height(NextHeight),
     case aec_parent_chain_cache:get_block_by_height(PCHeight) of
         {ok, Block} ->
-            {Entropy, Trees2} = entropy(Block, NextHeight, TxEnv, Trees1),
+            {Entropy, Trees1} = entropy(Block, NextHeight, TxEnv, Trees),
             NetworkId = aec_parent_chain_block:encode_network_id(aec_governance:get_network_id()),
-            {ok, CD} = aeb_fate_abi:create_calldata("elect_next",
-                                                    [aefa_fate_code:encode_arg({string, Entropy}),
-                                                     aefa_fate_code:encode_arg({bytes, NetworkId})
-                                                    ]),
-            CallData = aeser_api_encoder:encode(contract_bytearray, CD),
-            try call_consensus_contract_(?ELECTION_CONTRACT, TxEnv, Trees2, CallData, "elect_next", 0) of
-                {ok, _Trees2, Call} ->
-                    {tuple, {{address, Leader}, _Stake}}  = aeb_fate_encoding:deserialize(aect_call:return_value(Call)),
-                    SignModule = get_sign_module(),
-                    case SignModule:set_candidate(Leader) of
-                        {error, key_not_found} ->
-                            lager:warning("key_not_found ~p", [Leader]),
-                            timer:sleep(1000),
-                            {error, not_leader};
-                        ok ->
-                            {ok, Leader}
-                    end;
-                {error, _What} ->
-                    lager:error("next_beneficiary exception ~p", [_What]),
-                    timer:sleep(1000),
-                    {error, not_leader}
+            Args = [aefa_fate_code:encode_arg({string, Entropy}),
+                    aefa_fate_code:encode_arg({bytes, NetworkId})],
+            try {ok, CallResult} = call_consensus_contract_result(?ELECTION_CONTRACT, TxEnv, Trees1, "elect_next", Args),
+                {tuple, {{address, Leader}, _Stake}} = CallResult,
+                SignModule = get_sign_module(),
+                case SignModule:set_candidate(Leader) of
+                     {error, key_not_found} ->
+                         lager:warning("key_not_found ~p", [Leader]),
+                         timer:sleep(1000),
+                         {error, not_leader};
+                     ok ->
+                         {ok, Leader}
+                end
             catch error:{consensus_call_failed, {error, _What}} ->
                     lager:error("consensus_call_failed ~p", [_What]),
                     timer:sleep(1000),
@@ -850,52 +816,38 @@ is_leader_valid(Node, Trees, TxEnv, PrevNode) ->
     Header = aec_block_insertion:node_header(Node),
     PrevHeader = aec_block_insertion:node_header(PrevNode),
     TimeDelta = aec_headers:time_in_msecs(Header) - aec_headers:time_in_msecs(PrevHeader),
-    {ok, CD} = aeb_fate_abi:create_calldata("leader", []),
-    CallData = aeser_api_encoder:encode(contract_bytearray, CD),
     case TimeDelta > lazy_leader_time_delta() of
          true -> true;
          false ->
-            case call_consensus_contract_(?ELECTION_CONTRACT, TxEnv, Trees, CallData, "leader", 0) of
-                {ok, _Trees1, Call} ->
-                    {address, ExpectedLeader} = aeb_fate_encoding:deserialize(aect_call:return_value(Call)),
-                    Leader = aec_headers:miner(Header),
-                    Target = aec_headers:target(Header),
-                    IsDefaultT = Target =:= default_target(),
-                    case ExpectedLeader =:= Leader of
-                        true when IsDefaultT -> true;
-                        true ->
-                            {ok, CD2} = aeb_fate_abi:create_calldata("added_stake", []),
-                            CallData2 = aeser_api_encoder:encode(contract_bytearray, CD2),
-                            {ok, _, Call2} = call_consensus_contract_(?ELECTION_CONTRACT, TxEnv, Trees, CallData2, "added_stake", 0),
-                            AddedStake = aeb_fate_encoding:deserialize(aect_call:return_value(Call2)),
-                            ExpectedTarget = aeminer_pow:integer_to_scientific(AddedStake),
-                            ExpectedTarget =:= Target;
-                        false -> false
-                    end;
-                {error, What} ->
-                    lager:info("Block validation failed with a reason ~p", [What]),
-                    false
-            end
+          try {ok, {address, ExpectedLeader}} = call_consensus_contract_result(?ELECTION_CONTRACT, TxEnv, Trees, "leader", []),
+              Leader = aec_headers:miner(Header),
+              Target = aec_headers:target(Header),
+              IsDefaultT = Target =:= default_target(),
+              case ExpectedLeader =:= Leader of
+                   true when IsDefaultT -> true;
+                   true ->
+                       {ok, AddedStake} = call_consensus_contract_result(?ELECTION_CONTRACT, TxEnv, Trees, "added_stake", []),
+                       ExpectedTarget = aeminer_pow:integer_to_scientific(AddedStake),
+                       ExpectedTarget =:= Target;
+                   false -> false
+              end
+          catch _:What ->
+              lager:info("Block validation failed with a reason ~p", [What]),
+              false
+          end
     end.
 
 parent_chain_validators(TxEnv, Trees) ->
     %% TODO: cache this
     %% this could be cached: we only need to track contract call events for
     %% validator creation and going online and offline
-    {ok, CD} = aeb_fate_abi:create_calldata("sorted_validators", []),
-    CallData = aeser_api_encoder:encode(contract_bytearray, CD),
-    case call_consensus_contract_(?STAKING_CONTRACT, TxEnv, Trees, CallData,
-                                  "sorted_validators", 0) of
-        {ok, _Trees1, Call} ->
-            SortedValidators =
-                lists:map(
-                    fun({tuple, {{address, Address}, _Amt}}) -> Address end,
-                    aeb_fate_encoding:deserialize(aect_call:return_value(Call))),
-            {ok, SortedValidators};
-        {error, What} ->
-            lager:warning("Unable to fetch validators from the contract because of ~p", [What]),
-            error
-    end.
+    {ok, CallResult} =
+        call_consensus_contract_result(?STAKING_CONTRACT, TxEnv, Trees, "sorted_validators", []),
+    SortedValidators =
+        lists:map(
+            fun({tuple, {{address, Address}, _Amt}}) -> Address end,
+            CallResult),
+    {ok, SortedValidators}.
 
 create_contracts([], _TxEnv, Trees) -> Trees;
 create_contracts([Contract | Tail], TxEnv, TreesAccum) ->
@@ -974,23 +926,20 @@ call_contracts([Call | Tail], TxEnv, TreesAccum) ->
 seal_padding_size() ->
     ?KEY_SEAL_SIZE - ?SIGNATURE_SIZE.
 
-target_parent_heights(Height) ->
-    ChildEpochLength = child_epoch_length(),
-    case ChildEpochLength > 0 of
-        true ->
-            %% When half way through child epoch, start checking for next parent
-            EpochNum = round(Height / ChildEpochLength),
-            ParentHeight = EpochNum * parent_generation() + pc_start_height(),
-            [ParentHeight, ParentHeight + pc_finality()];
-        _ ->
-            [pc_start_height()]
-    end.
+target_parent_heights(ChildHeight) ->
+    {TxEnv, Trees} = aetx_env:tx_env_and_trees_from_top(aetx_transaction),
+    EpochNum = get_child_epoch(TxEnv, Trees),
+    lager:debug("ChildHeight ~p, target_parent_heights called with child epoch ~p",
+                [ChildHeight, EpochNum]),
+    %%TODO this computation is wrong in the long run... it assumes all child epochs to be of equal length
+    ParentHeightStart = (EpochNum - 2) * parent_generation() + pc_start_height(),
+    ParentHeightEnd = (EpochNum + 2) * parent_generation() + pc_start_height(),
+    [ParentHeightStart, ParentHeightEnd].
 
-
-pc_height(Height) ->
-    ChildEpochLength = child_epoch_length(),
-    EpochNum = Height div ChildEpochLength,
-    EpochNum * parent_generation() + pc_start_height().
+pc_height(_Height) ->
+    {TxEnv, Trees} = aetx_env:tx_env_and_trees_from_top(aetx_transaction),
+    ChildEpoch = get_child_epoch(TxEnv, Trees),
+    ChildEpoch * parent_generation() + pc_start_height().
 
 elect_lazy_leader(Beneficiary, TxEnv, Trees) ->
     {ok, CDLazy} = aeb_fate_abi:create_calldata("elect_after_lazy_leader",
