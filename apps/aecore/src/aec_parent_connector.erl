@@ -233,8 +233,8 @@ fetch_block(FetchFun, NodeSpec,
             #state{parent_conn_mod = _Mod,
                    rpc_seed = _Seed}) ->
     case FetchFun(NodeSpec) of
-        {ok, BlockHash, PrevHash, Height} ->
-            Block = aec_parent_chain_block:new(BlockHash, Height, PrevHash),
+        {ok, BlockHash, PrevHash, Height, Time} ->
+            Block = aec_parent_chain_block:new(BlockHash, Height, PrevHash, Time),
             {ok, {Block, NodeSpec}};
         Err ->
             Err
