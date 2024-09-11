@@ -274,8 +274,7 @@ target_parent_heights(#state{parent_target_fun  = ParentTargetFun,
     ParentTargetFun(ChildHeight).
 
 max_cachable_parent_height(State) ->
-    [MaxHeight|_] = lists:reverse(lists:sort(target_parent_heights(State))),
-    MaxHeight.
+    lists:max(target_parent_heights(State)).
 
 post_block(Block, #state{top_height = TopHeight} = State0) ->
     BlockHeight = aec_parent_chain_block:height(Block),
