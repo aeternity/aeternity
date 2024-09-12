@@ -16,7 +16,8 @@ make prod-build
 
 The Aeternity build system uses Rebar3 to do the heavy work, and wraps this
 in a Makefile for ease of use. To hack on Aeternity you need some basic
-knowledge about Rebar3. See [Rebar](rebar.md) for the full documentation.
+knowledge about Rebar3. See [Quick Guide to Rebar](rebar.md) for a
+comprehensive introduction.
 
 
 ## Configuration files
