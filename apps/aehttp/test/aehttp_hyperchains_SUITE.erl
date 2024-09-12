@@ -495,7 +495,7 @@ set_up_third_node(Config) ->
     ct:log("Connected peers ~p", [Node3Peers]),
     Node3VerifiedPeers = rpc(Node3, aec_peers, available_peers, [verified]),
     ct:log("Verified peers ~p", [Node3VerifiedPeers]),
-    {ok, _} = wait_same_top(Nodes),
+    {ok, _} = wait_same_top(Nodes, 100),
     %% What on earth are we testing here??
     Inspect =
         fun(Node) ->
