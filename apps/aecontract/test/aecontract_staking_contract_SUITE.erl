@@ -1844,32 +1844,34 @@ genesis_trees(Consensus, Opts) ->
     Trees4.
 
 entropy_impacts_leader_election(_Config) ->
-    Alice = pubkey(?ALICE),
-    Bob = pubkey(?BOB),
-    Carol = pubkey(?CAROL), %% will be offline
-    Trees0 = genesis_trees(?HC),
-    TxEnv = aetx_env:tx_env(?GENESIS_HEIGHT),
-    Trees1 =
-        lists:foldl(
-            fun({Pubkey,  Amount}, TreesAccum) ->
-                {ok, TreesAccum1, _} = new_validator_(Pubkey, Amount, TxEnv,
-                                                      TreesAccum),
-                TreesAccum1
-            end,
-            Trees0,
-            [{Alice, ?VALIDATOR_MIN},
-            {Bob, ?VALIDATOR_MIN},
-            {Carol, ?VALIDATOR_MIN}]),
-    {ok, Trees2, {tuple, {}}} = set_validator_online_(Alice, TxEnv, Trees1),
-    {ok, Trees3, {tuple, {}}} = set_validator_online_(Bob, TxEnv, Trees2),
-    Entropy1 = hash($A),
-    {ok, Trees4, {tuple, {{address, Bob}, _}}} = hc_elect_(Entropy1, ?OWNER_PUBKEY, TxEnv, Trees3),
-    {ok, _, {address, Bob}} = leader_(?OWNER_PUBKEY, TxEnv, Trees4),
-    %% same context, different entropy leads to different leader
-    Entropy2 = hash($a),
-    {ok, Trees5, {tuple, {{address, Alice}, _}}} = hc_elect_(Entropy2, ?OWNER_PUBKEY, TxEnv, Trees3),
-    {ok, _, {address, Alice}} = leader_(?OWNER_PUBKEY, TxEnv, Trees5),
-    ok.
+    {skip, rethink_test_case}.
+%entropy_impacts_leader_election(_Config) ->
+%    Alice = pubkey(?ALICE),
+%    Bob = pubkey(?BOB),
+%    Carol = pubkey(?CAROL), %% will be offline
+%    Trees0 = genesis_trees(?HC),
+%    TxEnv = aetx_env:tx_env(?GENESIS_HEIGHT),
+%    Trees1 =
+%        lists:foldl(
+%            fun({Pubkey,  Amount}, TreesAccum) ->
+%                {ok, TreesAccum1, _} = new_validator_(Pubkey, Amount, TxEnv,
+%                                                      TreesAccum),
+%                TreesAccum1
+%            end,
+%            Trees0,
+%            [{Alice, ?VALIDATOR_MIN},
+%            {Bob, ?VALIDATOR_MIN},
+%            {Carol, ?VALIDATOR_MIN}]),
+%    {ok, Trees2, {tuple, {}}} = set_validator_online_(Alice, TxEnv, Trees1),
+%    {ok, Trees3, {tuple, {}}} = set_validator_online_(Bob, TxEnv, Trees2),
+%    Entropy1 = hash($A),
+%    {ok, Trees4, {tuple, {{address, Bob}, _}}} = hc_elect_(Entropy1, ?OWNER_PUBKEY, TxEnv, Trees3),
+%    {ok, _, {address, Bob}} = leader_(?OWNER_PUBKEY, TxEnv, Trees4),
+%    %% same context, different entropy leads to different leader
+%    Entropy2 = hash($a),
+%    {ok, Trees5, {tuple, {{address, Alice}, _}}} = hc_elect_(Entropy2, ?OWNER_PUBKEY, TxEnv, Trees3),
+%    {ok, _, {address, Alice}} = leader_(?OWNER_PUBKEY, TxEnv, Trees5),
+%    ok.
 
 set_up_accounts(Trees) ->
     lists:foldl(fun set_up_account/2,

@@ -808,7 +808,7 @@ get_type() -> pos.
 get_block_producer_configs() -> [{instance_not_used,
                                   #{child_block_time => child_block_time()}}].
 
-is_leader_valid(Node, Trees, TxEnv, PrevNode) ->
+is_leader_valid(Node, _Trees, TxEnv, _PrevNode) ->
     Height = aetx_env:height(TxEnv),
     case leader_for_height(Height) of
         {ok, ExpectedLeader} ->
