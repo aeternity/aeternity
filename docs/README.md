@@ -20,3 +20,4 @@ There is also additional documentation on mining with CUDA and build and/or join
 - [Node API](api.md)
 - [Testing](testing.md)
 - [Hacking](hacking.md)
+- [Rebar Quick Guide](rebar.md)
