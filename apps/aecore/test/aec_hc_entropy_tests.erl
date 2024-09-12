@@ -4,15 +4,15 @@
 %%% EUnit tests for hyper chains entrophy
 %%% @end
 %%%-------------------------------------------------------------------
--module(aec_hc_entrophy_tests).
+-module(aec_hc_entropy_tests).
 
 -include_lib("eunit/include/eunit.hrl").
 
 -define(ETS_CACHE_TABLE, aec_consensus_hc).
--define(CHILD_START_HEIGHT, 101).
--define(CHILD_EPOCH_LENGTH, 10).
--define(CHILD_BLOCK_TIME, 1000).
--define(PARENT_GENERATION, 10).
+-define(CHILD_START_HEIGHT, 10).
+-define(CHILD_EPOCH_LENGTH, 20).
+-define(CHILD_BLOCK_TIME, 100).
+-define(PARENT_GENERATION, 5).
 -define(PARENT_FINALITY, 3).
 -define(ACCEPTABLE_SYNC_OFFSET, 60).
 -define(KEY_HASH_1, <<"kh_oRJt1P7b9vnB6ZyeqEFYkYR6u13vmxYfi3iw2v8AqdG62DtnK">>).
@@ -32,8 +32,8 @@ epoch_test_() ->
             meck:expect(aec_parent_chain_cache, get_block_by_height,
                             fun(Height) -> {ok, new_block(?KEY_HASH_3, Height, ?KEY_HASH_4, 0)} end),
             meck:new(aec_consensus_hc, [passthrough]),
-            meck:expect(aec_consensus_hc, child_epoch_length,
-                            fun(_EpochLength, _TxEnv, Trees) -> Trees end)
+            meck:expect(aec_consensus_hc, get_child_epoch_length,
+                            fun(_TxEnv, Trees) -> Trees end)
 
      end,
      fun(_) ->
@@ -58,8 +58,8 @@ sync_test_() ->
             meck:expect(aec_parent_chain_cache, get_block_by_height,
                             fun(Height) -> {ok, new_block(?KEY_HASH_3, Height, ?KEY_HASH_4, 0)} end),
             meck:new(aec_consensus_hc, [passthrough]),
-            meck:expect(aec_consensus_hc, child_epoch_length,
-                            fun(_EpochLength, _TxEnv, Trees) -> Trees end)
+            meck:expect(aec_consensus_hc, get_child_epoch_length,
+                            fun(_TxEnv, Trees) -> Trees end)
 
      end,
      fun(_) ->
@@ -77,7 +77,7 @@ set_defaults() ->
     set_pc_finality(?PARENT_FINALITY),
     set_parent_generation(?PARENT_GENERATION),
     set_child_epoch_length(?CHILD_EPOCH_LENGTH),
-   set_child_block_time(?CHILD_BLOCK_TIME),
+    set_child_block_time(?CHILD_BLOCK_TIME),
     set_acceptable_sync_offset(?ACCEPTABLE_SYNC_OFFSET).
 
 new_epoch() ->
