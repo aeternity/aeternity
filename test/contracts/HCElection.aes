@@ -1,4 +1,5 @@
 include "List.aes"
+include "Pair.aes"
 
 contract interface MainStaking =
   entrypoint sorted_validators : () => list((address * int))
@@ -57,6 +58,16 @@ main contract HCElection =
     put(state{ leader = new_leader, entropy = entropy_str, added_stake = added_staking_power})
     (new_leader, added_staking_power)
 
+  stateful entrypoint tick() =
+    assert_protocol_call()
+    require(state.blocks_to_fill_epoch > 0, "End of epoch reached")
+    if (state.blocks_to_fill_epoch > 1)
+       put(state{blocks_to_fill_epoch = state.blocks_to_fill_epoch - 1})
+    else
+       put(state{blocks_to_fill_epoch = state.next_epoch_length,
+                 epoch = state.epoch + 1,
+                 epoch_length = state.next_epoch_length})
+
   stateful entrypoint elect_after_lazy_leader(new_leader : address) =
     assert_protocol_call()
     let known_validator = state.main_staking_ct.is_validator(new_leader)
@@ -95,6 +106,14 @@ main contract HCElection =
 
   entrypoint blocks_to_fill_epoch() =
     state.blocks_to_fill_epoch
+
+  entrypoint validator_schedule(seed : int, validators : list(address * int), length : int) =
+    let addresses = List.map(Pair.fst, validators)
+    simple_schedule(length, addresses, [])
+
+  function
+    simple_schedule(0, _, schedule) = schedule
+    simple_schedule(n, ad :: ads, schedule) = simple_schedule(n - 1, ads ++ [ad], ad :: schedule)
 
   entrypoint get_state() : get_state_response =
     { main_staking_ct   = state.main_staking_ct,
