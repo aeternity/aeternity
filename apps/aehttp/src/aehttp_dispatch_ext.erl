@@ -888,6 +888,15 @@ handle_request_('GetRecentGasPrices', _Params, _Context) ->
             {404, [], #{reason => <<"Block unexpectedly not found">>}}
     end;
 
+handle_request_('GetPinningTransaction', _Params, _Context) ->
+    #{<<"epoch">> => 1000,
+        <<"height">> => 123456789,
+        <<"block_hash">> => "",
+        <<"parent_type">> => aeternity,
+        <<"network_id">> => "dev1",
+        <<"pinning_payload">> => ""        
+        }.
+
 handle_request_(OperationID, Req, Context) ->
     error_logger:error_msg(
       ">>> Got not implemented request to process: ~p~n",
