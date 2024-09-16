@@ -45,7 +45,7 @@
         height,
         block_hash,
         parent_type,
-        parent_network_id})
+        parent_network_id}).
 
 %%%=============================================================================
 %%% API
