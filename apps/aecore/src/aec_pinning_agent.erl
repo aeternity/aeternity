@@ -41,6 +41,12 @@
 }).
 -type state() :: state.
 
+-record(pin, {epoch,
+        height,
+        block_hash,
+        parent_type,
+        parent_network_id})
+
 %%%=============================================================================
 %%% API
 %%%=============================================================================
@@ -51,6 +57,7 @@ start_link(ParentId, ParentType) ->
 
 get_pinning_data() ->
     gen_server:call(?SERVER, get_pinning_data_record).
+    %get_pinning_data_record(<<"dev1">>, <<"aeternity">>).
 
 %%%=============================================================================
 %%% Gen Server Callbacks
@@ -86,11 +93,11 @@ code_change(_OldVsn, LoopState, _Extra) ->
 %%%=============================================================================
 
 get_pinning_data_record(Id, Type) ->
-    {epoch = 1000,
-        height = 123456789,
-        block_hash = aeser_api_encoder:encode(key_block_hash, "12344567"),
-        parent_type = Type,
-        parent_network_id = Id}.
+    {1000,
+        123456789,
+        aeser_api_encoder:encode(key_block_hash, "12344567"),
+        Type,
+        Id}.
 
 %%%=============================================================================
 %%% Eunit Tests
