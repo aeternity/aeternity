@@ -227,15 +227,13 @@ init_per_group(_, Config0) ->
 
     aecore_suite_utils:start_node(?PARENT_CHAIN_NODE, Config),
     aecore_suite_utils:connect(?PARENT_CHAIN_NODE_NAME, []),
-    timer:sleep(1000),
     ParentTopHeight = rpc(?PARENT_CHAIN_NODE, aec_chain, top_height, []),
-    StartHeight = ParentTopHeight + 4 * ?PARENT_EPOCH_LENGTH,
+    StartHeight = ParentTopHeight,
     ct:log("Parent chain top height ~p start at ~p", [ParentTopHeight, StartHeight]),
     %%TODO mine less than necessary parent height and test chain starts when height reached
     {ok, _} = mine_key_blocks(
             ?PARENT_CHAIN_NODE_NAME,
             (StartHeight - ParentTopHeight) + ?PARENT_EPOCH_LENGTH + ?PARENT_FINALITY),
-    timer:sleep(200),
     [ {staker_names, [?ALICE, ?BOB, ?LISA]}, {parent_start_height, StartHeight} | Config].
 
 child_node_config(Node, Stakeholders, CTConfig) ->
@@ -264,7 +262,7 @@ init_per_testcase(sync_third_node, Config) ->
     Config1 = with_saved_keys([nodes], Config),
     Nodes = ?config(nodes, Config1),
     Config2 = lists:keyreplace(nodes, 1, Config1,
-                               {nodes, Nodes ++ [{?NODE3, ?NODE3_NAME, [?LISA]}]}),
+                               {nodes, Nodes ++ [{?NODE3, ?NODE3_NAME, []}]}),
     aect_test_utils:setup_testcase(Config2),
     Config2;
 init_per_testcase(_Case, Config) ->
