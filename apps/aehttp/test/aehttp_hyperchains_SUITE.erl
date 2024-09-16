@@ -39,7 +39,6 @@
 -define(MAIN_STAKING_CONTRACT, "MainStaking").
 -define(HC_CONTRACT, "HCElection").
 -define(CONSENSUS, hc).
--define(START_HEIGHT, 100).
 -define(CHILD_EPOCH_LENGTH, 20).
 -define(CHILD_BLOCK_TIME, 200).
 -define(PARENT_EPOCH_LENGTH, 5).
@@ -229,13 +228,15 @@ init_per_group(_, Config0) ->
     aecore_suite_utils:start_node(?PARENT_CHAIN_NODE, Config),
     aecore_suite_utils:connect(?PARENT_CHAIN_NODE_NAME, []),
     timer:sleep(1000),
+    ParentTopHeight = rpc(?PARENT_CHAIN_NODE, aec_chain, top_height, []),
+    StartHeight = ParentTopHeight + 4 * ?PARENT_EPOCH_LENGTH,
+    ct:log("Parent chain top height ~p start at ~p", [ParentTopHeight, StartHeight]),
+    %%TODO mine less than necessary parent height and test chain starts when height reached
     {ok, _} = mine_key_blocks(
             ?PARENT_CHAIN_NODE_NAME,
-            ?START_HEIGHT + ?PARENT_EPOCH_LENGTH + ?PARENT_FINALITY),
+            (StartHeight - ParentTopHeight) + ?PARENT_EPOCH_LENGTH + ?PARENT_FINALITY),
     timer:sleep(200),
-    ParentTopHeight0 = rpc(?PARENT_CHAIN_NODE, aec_chain, top_height, []),
-    ct:log("Parent chain top height ~p", [ParentTopHeight0]),
-    [ {staker_names, [?ALICE, ?BOB, ?LISA]} | Config].
+    [ {staker_names, [?ALICE, ?BOB, ?LISA]}, {parent_start_height, StartHeight} | Config].
 
 child_node_config(Node, Stakeholders, CTConfig) ->
     ReceiveAddress = encoded_pubkey(?FORD),
@@ -248,7 +249,7 @@ end_per_group(_Group, Config) ->
     Config1 = with_saved_keys([nodes], Config),
     [ aecore_suite_utils:stop_node(Node, Config1)
       || {Node, _, _} <- proplists:get_value(nodes, Config1, []) ],
-    Config.
+    Config1.
 
 %% Here we decide which nodes are started/running
 init_per_testcase(start_two_child_nodes, Config) ->
@@ -1010,7 +1011,7 @@ node_config(Node, CTConfig, PotentialStakers, ReceiveAddress, ProducingCommitmen
     Port = aecore_suite_utils:external_api_port(?PARENT_CHAIN_NODE),
     SpecificConfig =
                 #{  <<"parent_chain">> =>
-                    #{  <<"start_height">> => ?START_HEIGHT,
+                    #{  <<"start_height">> => ?config(parent_start_height, CTConfig),
                         <<"finality">> => ?PARENT_FINALITY,
                         <<"parent_generation">> => ?PARENT_EPOCH_LENGTH,
                         <<"consensus">> =>
