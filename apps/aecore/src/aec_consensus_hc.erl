@@ -731,7 +731,7 @@ next_beneficiary(TxEnv, Trees) ->
             Epoch = get_child_epoch(TxEnv, Trees),
             EntropyHeight = entropy_height(Epoch),
             lager:debug("Entropy from PC block at height ~p", [EntropyHeight]),
-            case aec_parent_chain_cache:get_block_by_height(EntropyHeight) of
+            case aec_parent_chain_cache:get_block_by_height(EntropyHeight, 1000) of
                 {ok, Block} ->
                     Validators = get_sorted_validators(TxEnv, Trees),
                     EpochLength = get_child_epoch_length(TxEnv, Trees),
@@ -742,7 +742,6 @@ next_beneficiary(TxEnv, Trees) ->
                 {error, _Err} ->
                     lager:debug("Unable to pick the next leader for height ~p, parent height ~p; reason is ~p",
                                 [ChildHeight + 1, EntropyHeight, _Err]),
-                    timer:sleep(1000),
                     {error, not_in_cache}
             end
     end.
