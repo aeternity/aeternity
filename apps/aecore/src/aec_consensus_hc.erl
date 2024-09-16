@@ -761,7 +761,15 @@ validator_schedule(Block, ChildHeight, Validators, EpochLength, TxEnv, Trees) ->
     Hash = aec_parent_chain_block:hash(Block),
     Seed = hash_to_int(Hash),
     Schedule = get_validator_schedule(Seed, Validators, EpochLength, TxEnv, Trees),
-    maps:from_list(lists:enumerate(ChildHeight, Schedule)).
+    maps:from_list(enumerate(ChildHeight, Schedule)).
+
+-if(?OTP_RELEASE < 25).
+enumerate(From, List) ->
+  lists:zip(lists:seq(From, From + length(List)-1), List).
+-else.
+enumerate(From, List) ->
+    lists:enumerate(From, List).
+-endif.
 
 get_validator_schedule(Seed, Validators, EpochLength, TxEnv, Trees) ->
     Args = [aefa_fate_code:encode_arg({integer, Seed}),
