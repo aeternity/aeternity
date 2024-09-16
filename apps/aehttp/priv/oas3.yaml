@@ -514,12 +514,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-  /hyperchain/pin-transaction:
+  /hyperchain/pin-tx:
     get:
       tags:
         - external
         - hyperchain
-      operationId: GetPinningTransaction
+      operationId: GetPinningTx
       description: Get the pinning transsaction hash for the current epoch. Returns both the individual parameters as well as the parent chain type (aeternity, btc etc.), network id and a packaged 80 byte readymade payload for that chain type.
       parameters:
       responses:
@@ -528,7 +528,13 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schema/PinningTx"
+                $ref: "#/components/schemas/PinningTx"
+        "404":
+          description: HC Endpoint not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /key-blocks/current:
     get:
       tags:
@@ -3690,21 +3696,17 @@ components:
       type: object
       properties:
         epoch:
-          $ref: "#/components/schemas/UInt32"
+          type: integer
         height:
-          $ref: "#/components/schemas/UInt32"
+          type: integer
         block_hash:
-          $ref: "#/components/schemas/EncodedHash"
+          type: string
         parent_type:
           type: string
-          enum:
-            - aeternity
-            - btc
-            - doge
-        network_id:
+        parent_network_id:
           type: string
         pinning_payload:
-          $ref: "#/components/schemas/EncodedHash"
+          type: string
     PoI:
       type: object
       properties:

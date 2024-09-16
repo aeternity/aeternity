@@ -1,4 +1,4 @@
--module(aehttp_spec_SUITE).
+-module(aehttp_pinning_SUITE).
 
 %%
 %% simple tests to verify functionality of /api endpoint
@@ -24,10 +24,11 @@
 
 all() ->
     [
-     get_api, validate_api
+     get_api
     ].
 
 init_per_suite(Config) ->
+    {ok, _State} = aec_pinning_agent:start_link(dev1, aeternity),
     Config1 = aecore_suite_utils:init_per_suite([?NODE], [{symlink_name, "latest.spec_endpoint"}, {test_module, ?MODULE}] ++ Config),
     [{nodes, [aecore_suite_utils:node_tuple(?NODE)]}]  ++ Config1.
 
@@ -40,6 +41,7 @@ init_per_testcase(_Case, Config) ->
 
 end_per_testcase(validate_api, _Config) ->
     ok;
+
 end_per_testcase(_Case, Config) ->
     aecore_suite_utils:stop_node(?NODE, Config),
     Ts0 = ?config(tc_start, Config),
@@ -54,26 +56,21 @@ get_api(_Config) ->
     %% ensure http interface is up and running
     N1 = aecore_suite_utils:node_name(?NODE),
     aecore_suite_utils:connect(N1),
-    Type = "application/json",
-    Body = <<"{broken_json">>,
 
     Test =
-        fun(SpecVsn, Path) ->
-            Spec = rpc:call(N1, aehttp_spec, json, [SpecVsn]),
+        fun(_SpecVsn, Path) ->
+            % Spec = rpc:call(N1, aehttp_spec, json, [SpecVsn]),
 
             Host = aecore_suite_utils:external_address(),
             URL = binary_to_list(iolist_to_binary([Host, Path])),
+            ct:log(URL),
+            
             Repl1 = httpc:request(URL),
 
-            {ok, {{"HTTP/1.1", 200, "OK"}, _, Json}} = Repl1,
-            ct:log("~p returned spec: ~p", [?NODE, Json]),
-            JsonObj = jsx:decode(Spec),
-            JsonObj = jsx:decode(list_to_binary(Json)),
-
-            %% negative test
-            {ok,{{"HTTP/1.1",405,"Method Not Allowed"},_,_}} =
-                httpc:request(post, {URL, [], Type, Body}, [], [])
+            {ok, {{"HTTP/1.1", 200, "OK"}, _, _Json}} = Repl1
+    
         end,
-    Test(oas3, "/api"),
-    Test(oas3, "/api?oas3"), %% for backward compatibility
+    % Test(oas3, "/api"), %% for backward compatibility
+    % Test(oas3, "/api?oas3"), %% for backward compatibility
+    Test(oas3, "/v3/hyperchain/pin-tx"),
     ok.

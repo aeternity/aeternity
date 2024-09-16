@@ -80,6 +80,7 @@ check_env() ->
                       <<"name_service">>  => Default0,
                       <<"channel">>       => Default0,
                       <<"node_info">>     => Default0,
+                      <<"hyperchain">>    => Default0,
                       <<"debug">>         => true,
                       <<"dry-run">>       => false,
                       <<"node-operator">> => false,
