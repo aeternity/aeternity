@@ -354,7 +354,7 @@ mine_and_sync(Config) ->
     ok.
 
 wait_same_top(Nodes) ->
-    wait_same_top(Nodes, 100).
+    wait_same_top(Nodes, 500).
 
 wait_same_top(_Nodes, Attempts) when Attempts < 1 ->
     {error, run_out_of_attempts};
@@ -672,20 +672,23 @@ epoch_with_slow_parent(Config) ->
     ChildTopHeight = rpc(?NODE1, aec_chain, top_height, []),
     BlocksLeftToBoundary = ?CHILD_EPOCH_LENGTH - (ChildTopHeight rem ?CHILD_EPOCH_LENGTH),
     {ok, StartEpoch} = inspect_election_contract(?ALICE, epoch, Config),
-    ct:log("Starting at CC epoch ~p", [StartEpoch]),
+    ct:log("Starting at CC epoch ~p: producing ~p cc blocks", [StartEpoch, BlocksLeftToBoundary]),
     %% some block production including parent blocks
     produce_cc_blocks(Config, BlocksLeftToBoundary),
 
     ParentStartHeight = rpc(?PARENT_CHAIN_NODE, aec_chain, top_height, []),
+    ct:log("Child continues while parent stuck at: ~p", [ParentStartHeight]),
     %% Produce no parent block in the next child epoch
     %% Preferably the child chain should get to a halt or
     %% at least one should be able to measure that the child chain epoch
     %% becomes larger after this
     {ok, Bs} = produce_cc_blocks(Config, ?CHILD_EPOCH_LENGTH*2, none),
 
+    ct:log("Mined 2 additional child epochs without parent progress:\n~p", [Bs]),
     ParentTopHeight = rpc(?PARENT_CHAIN_NODE, aec_chain, top_height, []),
     ?assertEqual(ParentStartHeight, ParentTopHeight),
-    ct:log("Child chain blocks ~p", [Bs]),
+
+    ?assertException(error, timeout_waiting_for_block, produce_cc_blocks(Config, ?CHILD_EPOCH_LENGTH, none)),
     {ok, EndEpoch} = inspect_election_contract(?ALICE, epoch, Config),
     ct:log("Ending at CC epoch ~p", [EndEpoch]),
     ok.
