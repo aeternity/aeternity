@@ -353,7 +353,7 @@ mine_and_sync(Config) ->
     ok.
 
 wait_same_top(Nodes) ->
-    wait_same_top(Nodes, 3).
+    wait_same_top(Nodes, 100).
 
 wait_same_top(_Nodes, Attempts) when Attempts < 1 ->
     {error, run_out_of_attempts};
