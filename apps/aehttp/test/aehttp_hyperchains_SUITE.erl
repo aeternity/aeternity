@@ -354,7 +354,7 @@ mine_and_sync(Config) ->
     ok.
 
 wait_same_top(Nodes) ->
-    wait_same_top(Nodes, 500).
+    wait_same_top(Nodes, 3).
 
 wait_same_top(_Nodes, Attempts) when Attempts < 1 ->
     {error, run_out_of_attempts};
@@ -496,7 +496,7 @@ set_up_third_node(Config) ->
     ct:log("Connected peers ~p", [Node3Peers]),
     Node3VerifiedPeers = rpc(Node3, aec_peers, available_peers, [verified]),
     ct:log("Verified peers ~p", [Node3VerifiedPeers]),
-    {ok, _} = wait_same_top(Nodes, 100),
+    {ok, _} = wait_same_top(Nodes, 300),
     %% What on earth are we testing here??
     Inspect =
         fun(Node) ->
@@ -649,7 +649,7 @@ elected_leader_did_not_show_up_(Config) ->
     ct:log("Starting test at (child chain): ~p", [TopHeader0]),
     %% produce a block on the parent chain
     produce_cc_blocks(Config, 1),
-    {ok, KB} = wait_same_top(?NODE2, ?NODE3),
+    {ok, KB} = wait_same_top([?NODE2, ?NODE3]),
     0 = aec_blocks:difficulty(KB),
     TopHeader1 = rpc(?NODE3, aec_chain, top_header, []),
     ct:log("Lazy header: ~p", [TopHeader1]),
@@ -659,7 +659,7 @@ elected_leader_did_not_show_up_(Config) ->
     aecore_suite_utils:start_node(?NODE1, Config, Env),
     aecore_suite_utils:connect(?NODE1_NAME, []),
     produce_cc_blocks(Config, 1),
-    {ok, _} = wait_same_top(?NODE1, ?NODE3),
+    {ok, _} = wait_same_top([?NODE1, ?NODE3]),
     timer:sleep(2000), %% Give NODE1 a moment to finalize sync and post commitments
     produce_cc_blocks(Config, 1),
     {ok, _KB1} = wait_same_top([ Node || {Node, _, _} <- ?config(nodes, Config)]),
