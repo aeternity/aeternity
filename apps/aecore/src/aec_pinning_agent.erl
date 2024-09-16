@@ -56,7 +56,8 @@ start_link(ParentId, ParentType) ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [ParentId, ParentType], []).
 
 get_pinning_data() ->
-    gen_server:call(?SERVER, get_pinning_data_record).
+
+    %gen_server:call(?SERVER, get_pinning_data_record).
     %get_pinning_data_record(<<"dev1">>, <<"aeternity">>).
 
 %%%=============================================================================
@@ -93,6 +94,7 @@ code_change(_OldVsn, LoopState, _Extra) ->
 %%%=============================================================================
 
 get_pinning_data_record(Id, Type) ->
+    aec_chain:top
     {1000,
         123456789,
         aeser_api_encoder:encode(key_block_hash, "12344567"),

@@ -520,7 +520,7 @@ paths:
         - external
         - hyperchain
       operationId: GetPinningTx
-      description: Get the pinning transsaction hash for the current epoch. Returns both the individual parameters as well as the parent chain type (aeternity, btc etc.), network id and a packaged 80 byte readymade payload for that chain type.
+      description: Get the pinning transaction for the current epoch. Returns both the individual parameters as well as the parent chain type (aeternity, btc etc.), network id and a packaged 80 byte readymade payload for that chain type.
       parameters:
       responses:
         "200":
