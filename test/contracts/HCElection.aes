@@ -107,13 +107,21 @@ main contract HCElection =
   entrypoint blocks_to_fill_epoch() =
     state.blocks_to_fill_epoch
 
-  entrypoint validator_schedule(seed : int, validators : list(address * int), length : int) =
-    let addresses = List.map(Pair.fst, validators)
-    simple_schedule(length, addresses, [])
+  entrypoint validator_schedule(seed : bytes(), validators : list(address * int), length : int) =
+    let total_stake = List.foldl((+), 0, List.map(Pair.snd, validators))
+    // One extra hash operation to convert from bytes() tp bytes(32)/hash
+    validator_schedule_(Crypto.blake2b(seed), (s) => Bytes.to_int(s) mod total_stake, validators, length, [])
 
   function
-    simple_schedule(0, _, schedule) = schedule
-    simple_schedule(n, ad :: ads, schedule) = simple_schedule(n - 1, ads ++ [ad], ad :: schedule)
+    validator_schedule_(_, _, _, 0, schedule) = List.reverse(schedule)
+    validator_schedule_(seed0, rnd, validators, n, schedule) =
+      let seed = Crypto.blake2b(seed0)
+      let validator = pick_validator(rnd(seed), validators)
+      validator_schedule_(seed, rnd, validators, n - 1, validator :: schedule)
+
+  function
+    pick_validator(n, (validator, stake) :: _) | n < stake = validator
+    pick_validator(n, (_, stake) :: validators)            = pick_validator(n - stake, validators)
 
   entrypoint get_state() : get_state_response =
     { main_staking_ct   = state.main_staking_ct,
