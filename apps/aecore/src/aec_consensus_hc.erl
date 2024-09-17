@@ -74,6 +74,8 @@
         , get_type/0
         , get_block_producer_configs/0
         , is_leader_valid/4
+        %% contract access
+        , call_consensus_contract_result/5
         ]).
 
 -ifdef(TEST).
@@ -81,9 +83,6 @@
 % -export([entropy/4]).
 
 -endif.
-
-%% For mocking
--export([get_child_epoch_length/2]).
 
 -include_lib("aecontract/include/hard_forks.hrl").
 -include("blocks.hrl").
@@ -372,8 +371,9 @@ set_key_block_seal(KeyBlock, Seal) ->
     aec_blocks:set_key_seal(KeyBlock, Seal).
 
 nonce_for_sealing(Header) ->
-    Height = aec_headers:height(Header),
-    pc_height(Height).
+    ChildHeight = aec_headers:height(Header),
+    {ok, ChildEpoch} = aec_chain_hc:epoch(ChildHeight - 1),
+    ChildEpoch * parent_generation() + pc_start_height().
 
 next_nonce_for_sealing(PCHeight, _) ->
     PCHeight.
@@ -888,8 +888,7 @@ seal_padding_size() ->
     ?KEY_SEAL_SIZE - ?SIGNATURE_SIZE.
 
 target_parent_heights(ChildHeight) ->
-    {TxEnv, Trees} = aetx_env:tx_env_and_trees_from_top(aetx_transaction),
-    EpochNum = get_child_epoch(TxEnv, Trees),
+    {ok, EpochNum} = aec_chain_hc:epoch(ChildHeight),
     lager:debug("ChildHeight ~p, target_parent_heights called with child epoch ~p",
                 [ChildHeight, EpochNum]),
     %%TODO this computation is wrong in the long run... it assumes all child epochs to be of equal length
@@ -897,10 +896,6 @@ target_parent_heights(ChildHeight) ->
     ParentHeightEnd = (EpochNum + 2) * parent_generation() + pc_start_height(),
     [ParentHeightStart, ParentHeightEnd].
 
-pc_height(_Height) ->
-    {TxEnv, Trees} = aetx_env:tx_env_and_trees_from_top(aetx_transaction),
-    ChildEpoch = get_child_epoch(TxEnv, Trees),
-    ChildEpoch * parent_generation() + pc_start_height().
 
 %elect_lazy_leader(Beneficiary, TxEnv, Trees) ->
 %    {ok, CDLazy} = aeb_fate_abi:create_calldata("elect_after_lazy_leader",

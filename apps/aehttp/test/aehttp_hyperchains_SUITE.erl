@@ -669,7 +669,7 @@ epoch_with_slow_parent(Config) ->
     %% ensure start at a new epoch boundary
     ChildTopHeight = rpc(?NODE1, aec_chain, top_height, []),
     BlocksLeftToBoundary = ?CHILD_EPOCH_LENGTH - (ChildTopHeight rem ?CHILD_EPOCH_LENGTH),
-    {ok, StartEpoch} = inspect_election_contract(?ALICE, epoch, Config),
+    {ok, StartEpoch} = rpc(?NODE1, aec_chain_hc, epoch, []),
     ct:log("Starting at CC epoch ~p: producing ~p cc blocks", [StartEpoch, BlocksLeftToBoundary]),
     %% some block production including parent blocks
     produce_cc_blocks(Config, BlocksLeftToBoundary),
@@ -687,7 +687,7 @@ epoch_with_slow_parent(Config) ->
     ?assertEqual(ParentStartHeight, ParentTopHeight),
 
     ?assertException(error, timeout_waiting_for_block, produce_cc_blocks(Config, ?CHILD_EPOCH_LENGTH, none)),
-    {ok, EndEpoch} = inspect_election_contract(?ALICE, epoch, Config),
+    {ok, EndEpoch} = rpc(?NODE1, aec_chain_hc, epoch, []),
     ct:log("Ending at CC epoch ~p", [EndEpoch]),
     ok.
 
@@ -793,10 +793,7 @@ inspect_election_contract(OriginWho, WhatToInspect, Config) ->
 inspect_election_contract(OriginWho, WhatToInspect, Config, TopHash) ->
     {Fun, Args} =
         case WhatToInspect of
-            current_leader -> {"leader", []};
-            current_added_staking_power -> {"added_stake", []};
-            validators -> {"sorted_validators", []};
-            epoch -> {"epoch", []}
+            current_added_staking_power -> {"added_stake", []}
         end,
     ContractPubkey = ?config(election_contract, Config),
     do_contract_call(ContractPubkey, src(?HC_CONTRACT, Config), Fun, Args, OriginWho, TopHash).
