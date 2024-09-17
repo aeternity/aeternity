@@ -38,8 +38,8 @@ get_latest_block(NodeSpec, Seed) ->
     case getbestblockhash(NodeSpec, Seed) of
         {ok, Hash} ->
             case getblock(NodeSpec, Seed, Hash, _Verbosity = 1) of
-                {ok, {Height, Hash, PrevHash, _Txs}} ->
-                    {ok, Hash, PrevHash, Height};
+                {ok, {Height, Hash, PrevHash, Time, _Txs}} ->
+                    {ok, Hash, PrevHash, Height, Time};
                 Err = {error, _} ->
                     Err
             end;
@@ -48,22 +48,21 @@ get_latest_block(NodeSpec, Seed) ->
     end.
 
 get_header_by_hash(Hash, NodeSpec, Seed) ->
-    {ok, {Height, Hash, PrevHash, _Txs}}
+    {ok, {Height, Hash, PrevHash, Time, _Txs}}
       = getblock(NodeSpec, Seed, Hash, _Verbosity = 1),
-    {ok, Hash, PrevHash, Height}.
+    {ok, Hash, PrevHash, Height, Time}.
 
 get_header_by_height(Height, NodeSpec, Seed) ->
     case getblockhash(NodeSpec, Seed, Height) of
         {ok, Hash} ->
-            {ok, {_Height, Hash, PrevHash, _Txs}}
+            {ok, {_Height, Hash, PrevHash, Time, _Txs}}
                 = getblock(NodeSpec, Seed, Hash, _Verbosity = 1),
-            {ok, Hash, PrevHash, Height};
+            {ok, Hash, PrevHash, Height, Time};
         {error, not_found} -> {error, not_found}
     end.
 
 hash_to_integer(Hash) ->
     binary_to_integer(Hash, 16).
-
 
 select_utxo([#{<<"spendable">> := true, <<"amount">> := Amount} = Unspent | _Us], Needed) when Amount >= Needed ->
     %% For now just pick first spendable UTXO with enough funds. There is no end to how fancy this can get
@@ -223,13 +222,14 @@ result(Response) ->
 block(Obj) ->
     Hash = maps:get(<<"hash">>, Obj), true = is_binary(Hash),
     Height = maps:get(<<"height">>, Obj), true = is_integer(Height),
+    Time = maps:get(<<"time">>, Obj), true = is_integer(Time),
 
     %% TODO: To analyze the size field;
     %% Txs that might be Commitments will have at least one type:nulldata entry - just do some pre-filtering
     %% FilteredTxs = lists:filter(fun (Tx) -> is_nulldata(Tx) end, maps:get(<<"tx">>, Obj)),
 
     PrevHash = prev_hash(Obj),
-    {Height, Hash, PrevHash, maps:get(<<"tx">>, Obj)}.
+    {Height, Hash, PrevHash, Time * 1000, maps:get(<<"tx">>, Obj)}.
 
 % -spec find_commitments(list(), binary()) -> [{Pubkey :: binary(), Payload :: binary()}].
 % find_commitments(Txs, _ParentHCAccountPubKey) ->

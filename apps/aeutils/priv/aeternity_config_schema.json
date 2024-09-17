@@ -1731,10 +1731,6 @@
                                             "default": 10000,
                                             "type": "integer"
                                         },
-                                        "child_epoch_length": {
-                                            "description": "The number of blocks in a child generation",
-                                            "type": "integer"
-                                        },
                                         "child_block_time": {
                                             "description": "The time in milliseconds to produce a child block",
                                             "type": "integer"
@@ -1760,6 +1756,11 @@
                                                 },
                                                 "parent_generation": {
                                                     "description": "The number of blocks in a parent generation.",
+                                                    "type": "integer"
+                                                },
+                                                "acceptable_sync_offset": {
+                                                    "description": "The maximum amount of time the parent chain block generation can be off the expected time.",
+                                                    "default": 60000,
                                                     "type": "integer"
                                                 },
                                                 "producing_commitments": {

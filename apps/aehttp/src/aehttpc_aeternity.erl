@@ -40,9 +40,10 @@ get_top_block_header(NodeSpec) ->
     try
         {ok, #{<<"hash">> := Hash,
                <<"prev_key_hash">> := PrevHash,
-               <<"height">> := Height}} =
+               <<"height">> := Height,
+               <<"time">> := Time}} =
             get_request(<<"/v3/key-blocks/current">>, NodeSpec, 5000),
-        {ok, Hash, PrevHash, Height}
+        {ok, Hash, PrevHash, Height, Time}
     catch error:{badmatch, {error, not_found}} -> {error, not_found};
           E:R -> {error, {E, R}}
     end.
@@ -52,8 +53,9 @@ get_key_block_header(Hash, NodeSpec) ->
         case get_request(<<"/v3/key-blocks/hash/", Hash/binary>>, NodeSpec, 5000) of
             {ok, #{<<"hash">> := Hash,
                 <<"prev_key_hash">> := PrevHash,
-                <<"height">> := Height}} ->
-                {ok, Hash, PrevHash, Height};
+                <<"height">> := Height,
+                <<"time">> := Time}} ->
+                {ok, Hash, PrevHash, Height, Time};
             {error, not_found} -> {error, not_found}
         end
     catch E:R ->
@@ -66,8 +68,9 @@ get_key_block_header_by_height(Height, NodeSpec) ->
         case  get_request(<<"/v3/key-blocks/height/", HeightB/binary>>, NodeSpec, 5000) of
             {ok, #{ <<"hash">> := Hash,
                     <<"prev_key_hash">> := PrevHash,
-                    <<"height">> := Height}} ->
-                {ok, Hash, PrevHash, Height};
+                    <<"height">> := Height,
+                    <<"time">> := Time}} ->
+                {ok, Hash, PrevHash, Height, Time};
             {error, not_found} -> {error, not_found}
         end
     catch E:R ->
