@@ -24,6 +24,7 @@
         , start/2
         , stop/0
         , is_providing_extra_http_endpoints/0
+        , is_block_producer/0
         , client_request/1
         %% Deserialization
         , extra_from_header/1
@@ -717,24 +718,43 @@ next_beneficiary(TxEnv, Trees) ->
             end;
         error ->
             %% Check whether we can compute the leader schedule
-            Epoch = get_child_epoch(TxEnv, Trees),
-            EntropyHeight = entropy_height(Epoch),
-            lager:debug("Entropy from PC block at height ~p", [EntropyHeight]),
-            case aec_parent_chain_cache:get_block_by_height(EntropyHeight, 1000) of
-                {ok, Block} ->
-                    Hash = aec_parent_chain_block:hash(Block),
-                    Validators = get_sorted_validators(TxEnv, Trees),
-                    EpochLength = get_child_epoch_length(TxEnv, Trees),
-                    Schedule = validator_schedule(Hash, ChildHeight + 1, Validators, EpochLength, TxEnv, Trees),
-                    cache_schedule(Schedule),
-                    lager:debug("Schedule cached", []),
+            case try_compute_schedule(TxEnv, Trees, ChildHeight + 1) of
+                ok ->
                     next_beneficiary(TxEnv, Trees);
-                {error, _Err} ->
-                    lager:debug("Unable to pick the next leader for height ~p, parent height ~p; reason is ~p",
-                                [ChildHeight + 1, EntropyHeight, _Err]),
-                    {error, not_in_cache}
+                Err = {error, _} ->
+                    Err
             end
     end.
+
+%% TODO: lookup epoch start height (from conctract)
+try_compute_schedule(TxEnv, Trees, ChildHeight) ->
+    Epoch = get_child_epoch(TxEnv, Trees),
+    EntropyHeight = entropy_height(Epoch),
+    lager:debug("Entropy from PC block at height ~p", [EntropyHeight]),
+    case aec_parent_chain_cache:get_block_by_height(EntropyHeight, 1000) of
+        {ok, Block} ->
+            Hash = aec_parent_chain_block:hash(Block),
+            Validators = get_sorted_validators(TxEnv, Trees),
+            EpochLength = get_child_epoch_length(TxEnv, Trees),
+            Schedule = validator_schedule(Hash, ChildHeight, Validators, EpochLength, TxEnv, Trees),
+            cache_schedule(Schedule),
+            lager:debug("Schedule cached (range ~p -> ~p)", [ChildHeight, ChildHeight + EpochLength - 1]),
+            ok;
+        {error, _Err} ->
+            lager:debug("Unable to pick the next leader for height ~p, parent height ~p; reason is ~p",
+                        [ChildHeight + 1, EntropyHeight, _Err]),
+            {error, not_in_cache}
+    end.
+
+is_block_producer() ->
+    aeu_ets_cache:get(?ETS_CACHE_TABLE, is_block_producer, fun is_block_producer_/0).
+
+is_block_producer_() ->
+    TopHeader = aec_chain:top_header(),
+    Config = aec_consensus:get_consensus_config_at_height(aec_headers:height(TopHeader)),
+    StakersConfig = maps:get(<<"stakers">>, Config, []),
+
+    StakersConfig /= [].
 
 entropy_height(ChildEpoch) ->
     (ChildEpoch - 1) * parent_generation() + pc_start_height().
@@ -743,7 +763,7 @@ cache_schedule(Schedule) ->
     aeu_ets_cache:put(?ETS_CACHE_TABLE, validator_schedule, Schedule).
 
 leader_for_height(Height) ->
-    Schedule =  aeu_ets_cache:get(?ETS_CACHE_TABLE, validator_schedule, fun() -> #{} end),
+    Schedule = aeu_ets_cache:get(?ETS_CACHE_TABLE, validator_schedule, fun() -> #{} end),
     maps:find(Height, Schedule).
 
 validator_schedule(Hash, ChildHeight, Validators, EpochLength, TxEnv, Trees) ->
@@ -781,7 +801,7 @@ get_type() -> pos.
 get_block_producer_configs() -> [{instance_not_used,
                                   #{child_block_time => child_block_time()}}].
 
-is_leader_valid(Node, _Trees, TxEnv, _PrevNode) ->
+is_leader_valid(Node, Trees, TxEnv, PrevNode) ->
     Height = aetx_env:height(TxEnv),
     case leader_for_height(Height) of
         {ok, ExpectedLeader} ->
@@ -790,8 +810,20 @@ is_leader_valid(Node, _Trees, TxEnv, _PrevNode) ->
             Leader == ExpectedLeader;
             %% Fix this to have stake as target validated here also?
         _ ->
-            lager:debug("Waiting for leader schedule", []),
-            aec_conductor:throw_error(parent_chain_block_not_synced)
+            lager:debug("No leader known for height = ~p", [Height]),
+            case is_block_producer() of
+                false ->
+                    case try_compute_schedule(TxEnv, Trees, Height) of
+                        ok ->
+                            is_leader_valid(Node, Trees, TxEnv, PrevNode);
+                        Err ->
+                            lager:debug("Waiting for leader schedule? ~p", [Err]),
+                            aec_conductor:throw_error(parent_chain_block_not_synced)
+                    end;
+                true ->
+                    lager:debug("Waiting for leader schedule", []),
+                    aec_conductor:throw_error(parent_chain_block_not_synced)
+            end
     end.
 
 get_sorted_validators(TxEnv, Trees) ->
