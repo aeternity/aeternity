@@ -92,44 +92,38 @@
 can_be_turned_off() -> false.
 assert_config(_Config) -> ok.
 
-start(Config, #{block_production := BlockProduction}) ->
-    #{ <<"stakers">>      := StakersConfig,
-       <<"parent_chain">> := PCConfig      } = Config,
-
+start(Config, _) ->
     StakersConfig = maps:get(<<"stakers">>, Config, []),
     PCConfig      = maps:get(<<"parent_chain">>, Config),
 
-    Confirmations        = maps:get(<<"confirmations">>, PCConfig, 6),
-    StartHeight          = maps:get(<<"start_height">>, PCConfig, 0),
-    ConsensusConfig      = maps:get(<<"consensus">>, PCConfig, #{}),
-    PollingConfig        = maps:get(<<"polling">>, PCConfig, #{}),
+    Confirmations   = maps:get(<<"confirmations">>, PCConfig, 6),
+    StartHeight     = maps:get(<<"start_height">>, PCConfig, 0),
+    ConsensusConfig = maps:get(<<"consensus">>, PCConfig, #{}),
+    PollingConfig   = maps:get(<<"polling">>, PCConfig, #{}),
 
     PCType         = maps:get(<<"type">>, ConsensusConfig, <<"AE2AE">>),
     NetworkId      = maps:get(<<"network_id">>, ConsensusConfig, <<"ae_mainnet">>),
     PCSpendAddress = maps:get(<<"spend_address">>, ConsensusConfig, <<"">>),
 
-    FetchInterval  = maps:get(<<"fetch_interval">>, PollingConfig, 500),
-    RetryInterval  = maps:get(<<"retry_interval">>, PollingConfig, 1000),
-    CacheSize      = maps:get(<<"cache_size">>, PollingConfig, 200),
-    Nodes          = maps:get(<<"nodes">>, PollingConfig, []),
-    ParentHosts    = lists:map(fun aehttpc:parse_node_url/1, Nodes),
+    FetchInterval = maps:get(<<"fetch_interval">>, PollingConfig, 500),
+    RetryInterval = maps:get(<<"retry_interval">>, PollingConfig, 1000),
+    CacheSize     = maps:get(<<"cache_size">>, PollingConfig, 200),
+    Nodes         = maps:get(<<"nodes">>, PollingConfig, []),
+    ParentHosts   = lists:map(fun aehttpc:parse_node_url/1, Nodes),
 
 
     {ParentConnMod, _PCSpendPubkey, _HCs, SignModule} =
         case PCType of
-            <<"AE2AE">> -> start_ae(StakersConfig, PCSpendAddress);
-            <<"AE2BTC">> -> start_btc(StakersConfig, PCSpendAddress, aehttpc_btc);
+            <<"AE2AE">>   -> start_ae(StakersConfig, PCSpendAddress);
+            <<"AE2BTC">>  -> start_btc(StakersConfig, PCSpendAddress, aehttpc_btc);
             <<"AE2DOGE">> -> start_btc(StakersConfig, PCSpendAddress, aehttpc_doge)
         end,
 
-    Hash2IntFun = fun ParentConnMod:hash_to_integer/1,
-    aeu_ets_cache:put(?ETS_CACHE_TABLE, hash_to_int, Hash2IntFun),
-
     start_dependency(aec_parent_connector, [ParentConnMod, FetchInterval, ParentHosts, NetworkId,
                                             SignModule, []]),
-    start_dependency(aec_parent_chain_cache, [StartHeight, RetryInterval, fun target_parent_heights/1, %% prefetch the next parent block
-                                              CacheSize, Confirmations,
-                                              BlockProduction]),
+    start_dependency(aec_parent_chain_cache, [StartHeight, RetryInterval,
+                                              fun target_parent_heights/1, %% prefetch the next parent block
+                                              CacheSize, Confirmations]),
     ok.
 
 start_btc(StakersEncoded, PCSpendAddress, ParentConnMod) ->
