@@ -480,10 +480,6 @@ child_block_time() ->
     Fun = fun() -> get_consensus_config_key([<<"child_block_time">>]) end,
     aeu_ets_cache:get(?ETS_CACHE_TABLE, child_block_time, Fun).
 
-hash_to_int(Hash) ->
-    {ok, Hash2IntFun} = aeu_ets_cache:lookup(?ETS_CACHE_TABLE, hash_to_int),
-    Hash2IntFun(Hash).
-
 parent_generation_block_time() ->
     aeu_ets_cache:lookup(?ETS_CACHE_TABLE, parent_generation_block_time).
 
