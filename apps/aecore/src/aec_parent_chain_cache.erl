@@ -36,7 +36,8 @@
             terminate/2, code_change/3]).
 
 -export([post_block/1,
-         get_block_by_height/1]).
+         get_block_by_height/1,
+         get_block_by_height/2]).
 
 -ifdef(TEST).
 
@@ -92,6 +93,17 @@ get_block_by_height(Height) ->
         {ok, _B} = OK -> OK;
         {error, not_in_cache} = Err ->
             Err
+    end.
+
+-spec get_block_by_height(non_neg_integer(), integer()) ->
+           {ok, aec_parent_chain_block:block()} | {error, not_in_cache}.
+get_block_by_height(Height, Timeout) ->
+    case get_block_by_height(Height) of
+        {ok, _B} = OK -> OK;
+        Err when Timeout > 0 ->
+            timer:sleep(10),
+            get_block_by_height(Height, Timeout - 10);
+        Err -> Err
     end.
 
 -ifdef(TEST).
@@ -274,8 +286,7 @@ target_parent_heights(#state{parent_target_fun  = ParentTargetFun,
     ParentTargetFun(ChildHeight).
 
 max_cachable_parent_height(State) ->
-    [MaxHeight|_] = lists:reverse(lists:sort(target_parent_heights(State))),
-    MaxHeight.
+    lists:max(target_parent_heights(State)).
 
 post_block(Block, #state{top_height = TopHeight} = State0) ->
     BlockHeight = aec_parent_chain_block:height(Block),

@@ -769,7 +769,7 @@ add_keyblock_(ForkId, #{forks := Forks, miner := #{pubkey := Miner}} = Chain, Op
     Height = aec_headers:height(TopHdr),
     NewHdr = aec_headers:new_key_header(
                Height+1, PrevHash, PrevKeyHash, root_hash(),
-               Miner, Miner, 0, 0, 0, 0, default, 0),
+               Miner, Miner, 0, 0, 0, 123000, default, 0),
     NewBlock = aec_blocks:new_key_from_header(NewHdr),
     NewChain = Chain#{ forks => Forks#{ ForkId => F#{blocks => [#{block => NewBlock} | Blocks]} } },
     announce(ForkId, [], [], NewChain, Opts),

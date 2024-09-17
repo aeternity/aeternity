@@ -33,21 +33,21 @@ to_hex/1]).
 
 get_latest_block(NodeSpec, Seed) ->
     {ok, Hash} = getbestblockhash(NodeSpec, Seed),
-    {ok, {Height, Hash, PrevHash, _Txs}}
+    {ok, {Height, Hash, PrevHash, Time, _Txs}}
         = getblock(NodeSpec, Seed, Hash, _Verbosity = 1),
-    {ok, Hash, PrevHash, Height}.
+    {ok, Hash, PrevHash, Height, Time}.
 
 get_header_by_hash(Hash, NodeSpec, Seed) ->
-    {ok, {Height, Hash, PrevHash, _Txs}}
+    {ok, {Height, Hash, PrevHash, Time, _Txs}}
       = getblock(NodeSpec, Seed, Hash, _Verbosity = 1),
-    {ok, Hash, PrevHash, Height}.
+    {ok, Hash, PrevHash, Height, Time}.
 
 get_header_by_height(Height, NodeSpec, Seed) ->
     case getblockhash(NodeSpec, Seed, Height) of
         {ok, Hash} ->
-            {ok, {_Height, Hash, PrevHash, _Txs}}
+            {ok, {_Height, Hash, PrevHash, Time, _Txs}}
                 = getblock(NodeSpec, Seed, Hash, _Verbosity = 1),
-            {ok, Hash, PrevHash, Height};
+            {ok, Hash, PrevHash, Height, Time};
         {error, not_found} -> {error, not_found}
     end.
 
@@ -280,8 +280,9 @@ result(Response) ->
 block(Obj) ->
     Hash = maps:get(<<"hash">>, Obj), true = is_binary(Hash),
     Height = maps:get(<<"height">>, Obj), true = is_integer(Height),
+    Time = maps:get(<<"time">>, Obj), true = is_integer(Time),
     PrevHash = prev_hash(Obj),
-    {Height, Hash, PrevHash, maps:get(<<"tx">>, Obj)}.
+    {Height, Hash, PrevHash, Time * 1000, maps:get(<<"tx">>, Obj)}.
 
 % -spec find_commitments(list(), binary()) -> [{Pubkey :: binary(), Payload :: binary()}].
 % find_commitments(Txs, _ParentHCAccountPubKey) ->

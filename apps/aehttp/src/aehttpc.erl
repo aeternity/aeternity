@@ -18,18 +18,19 @@
 -type seed() :: binary().
 -type hash() :: binary().
 -type height() :: non_neg_integer().
+-type time() :: non_neg_integer().
 -type pubkey() :: binary().
 
 -export_type([ node_spec/0 ]).
 
 -callback get_latest_block(node_spec(), seed()) ->
-    {ok, hash(), hash(), height()} | {error, term()}.
+    {ok, hash(), hash(), height(), time()} | {error, term()}.
 
 -callback get_header_by_hash(hash(), node_spec(), seed()) ->
-    {ok, hash(), hash(), height()} | {error, term()}.
+    {ok, hash(), hash(), height(), time()} | {error, term()}.
 
 -callback get_header_by_height(height(), node_spec(), seed()) ->
-    {ok, hash(), hash(), height()} | {error, term()}.
+    {ok, hash(), hash(), height(), time()} | {error, term()}.
 
 
 -spec parse_node_url(string()) -> node_spec().

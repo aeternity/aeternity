@@ -39,7 +39,6 @@
 -define(MAIN_STAKING_CONTRACT, "MainStaking").
 -define(HC_CONTRACT, "HCElection").
 -define(CONSENSUS, hc).
--define(START_HEIGHT, 100).
 -define(CHILD_EPOCH_LENGTH, 20).
 -define(CHILD_BLOCK_TIME, 200).
 -define(PARENT_EPOCH_LENGTH, 5).
@@ -228,14 +227,14 @@ init_per_group(_, Config0) ->
 
     aecore_suite_utils:start_node(?PARENT_CHAIN_NODE, Config),
     aecore_suite_utils:connect(?PARENT_CHAIN_NODE_NAME, []),
-    timer:sleep(1000),
+    ParentTopHeight = rpc(?PARENT_CHAIN_NODE, aec_chain, top_height, []),
+    StartHeight = ParentTopHeight,
+    ct:log("Parent chain top height ~p start at ~p", [ParentTopHeight, StartHeight]),
+    %%TODO mine less than necessary parent height and test chain starts when height reached
     {ok, _} = mine_key_blocks(
             ?PARENT_CHAIN_NODE_NAME,
-            ?START_HEIGHT + ?PARENT_EPOCH_LENGTH + ?PARENT_FINALITY),
-    timer:sleep(200),
-    ParentTopHeight0 = rpc(?PARENT_CHAIN_NODE, aec_chain, top_height, []),
-    ct:log("Parent chain top height ~p", [ParentTopHeight0]),
-    [ {staker_names, [?ALICE, ?BOB, ?LISA]} | Config].
+            (StartHeight - ParentTopHeight) + ?PARENT_EPOCH_LENGTH + ?PARENT_FINALITY),
+    [ {staker_names, [?ALICE, ?BOB, ?LISA]}, {parent_start_height, StartHeight} | Config].
 
 child_node_config(Node, Stakeholders, CTConfig) ->
     ReceiveAddress = encoded_pubkey(?FORD),
@@ -248,7 +247,7 @@ end_per_group(_Group, Config) ->
     Config1 = with_saved_keys([nodes], Config),
     [ aecore_suite_utils:stop_node(Node, Config1)
       || {Node, _, _} <- proplists:get_value(nodes, Config1, []) ],
-    Config.
+    Config1.
 
 %% Here we decide which nodes are started/running
 init_per_testcase(start_two_child_nodes, Config) ->
@@ -263,7 +262,7 @@ init_per_testcase(sync_third_node, Config) ->
     Config1 = with_saved_keys([nodes], Config),
     Nodes = ?config(nodes, Config1),
     Config2 = lists:keyreplace(nodes, 1, Config1,
-                               {nodes, Nodes ++ [{?NODE3, ?NODE3_NAME, [?LISA]}]}),
+                               {nodes, Nodes ++ [{?NODE3, ?NODE3_NAME, []}]}),
     aect_test_utils:setup_testcase(Config2),
     Config2;
 init_per_testcase(_Case, Config) ->
@@ -495,7 +494,7 @@ set_up_third_node(Config) ->
     ct:log("Connected peers ~p", [Node3Peers]),
     Node3VerifiedPeers = rpc(Node3, aec_peers, available_peers, [verified]),
     ct:log("Verified peers ~p", [Node3VerifiedPeers]),
-    {ok, _} = wait_same_top(Nodes),
+    {ok, _} = wait_same_top(Nodes, 300),
     %% What on earth are we testing here??
     Inspect =
         fun(Node) ->
@@ -648,7 +647,7 @@ elected_leader_did_not_show_up_(Config) ->
     ct:log("Starting test at (child chain): ~p", [TopHeader0]),
     %% produce a block on the parent chain
     produce_cc_blocks(Config, 1),
-    {ok, KB} = wait_same_top(?NODE2, ?NODE3),
+    {ok, KB} = wait_same_top([?NODE2, ?NODE3]),
     0 = aec_blocks:difficulty(KB),
     TopHeader1 = rpc(?NODE3, aec_chain, top_header, []),
     ct:log("Lazy header: ~p", [TopHeader1]),
@@ -658,7 +657,7 @@ elected_leader_did_not_show_up_(Config) ->
     aecore_suite_utils:start_node(?NODE1, Config, Env),
     aecore_suite_utils:connect(?NODE1_NAME, []),
     produce_cc_blocks(Config, 1),
-    {ok, _} = wait_same_top(?NODE1, ?NODE3),
+    {ok, _} = wait_same_top([?NODE1, ?NODE3]),
     timer:sleep(2000), %% Give NODE1 a moment to finalize sync and post commitments
     produce_cc_blocks(Config, 1),
     {ok, _KB1} = wait_same_top([ Node || {Node, _, _} <- ?config(nodes, Config)]),
@@ -670,19 +669,26 @@ epoch_with_slow_parent(Config) ->
     %% ensure start at a new epoch boundary
     ChildTopHeight = rpc(?NODE1, aec_chain, top_height, []),
     BlocksLeftToBoundary = ?CHILD_EPOCH_LENGTH - (ChildTopHeight rem ?CHILD_EPOCH_LENGTH),
+    {ok, StartEpoch} = inspect_election_contract(?ALICE, epoch, Config),
+    ct:log("Starting at CC epoch ~p: producing ~p cc blocks", [StartEpoch, BlocksLeftToBoundary]),
     %% some block production including parent blocks
     produce_cc_blocks(Config, BlocksLeftToBoundary),
 
     ParentStartHeight = rpc(?PARENT_CHAIN_NODE, aec_chain, top_height, []),
+    ct:log("Child continues while parent stuck at: ~p", [ParentStartHeight]),
     %% Produce no parent block in the next child epoch
     %% Preferably the child chain should get to a halt or
     %% at least one should be able to measure that the child chain epoch
     %% becomes larger after this
-    {ok, Bs} = produce_cc_blocks(Config, ?CHILD_EPOCH_LENGTH, none),
+    {ok, Bs} = produce_cc_blocks(Config, ?CHILD_EPOCH_LENGTH*2, none),
 
+    ct:log("Mined 2 additional child epochs without parent progress:\n~p", [Bs]),
     ParentTopHeight = rpc(?PARENT_CHAIN_NODE, aec_chain, top_height, []),
     ?assertEqual(ParentStartHeight, ParentTopHeight),
-    ct:log("Child chain blocks ~p", [Bs]),
+
+    ?assertException(error, timeout_waiting_for_block, produce_cc_blocks(Config, ?CHILD_EPOCH_LENGTH, none)),
+    {ok, EndEpoch} = inspect_election_contract(?ALICE, epoch, Config),
+    ct:log("Ending at CC epoch ~p", [EndEpoch]),
     ok.
 
 %%% --------- helper functions
@@ -775,6 +781,7 @@ inspect_staking_contract(OriginWho, WhatToInspect, Config, TopHash) ->
                 {"get_state", []};
             leaders ->
                 {"sorted_validators", []}
+
         end,
     ContractPubkey = ?config(staking_contract, Config),
     do_contract_call(ContractPubkey, src(?MAIN_STAKING_CONTRACT, Config), Fun, Args, OriginWho, TopHash).
@@ -788,7 +795,8 @@ inspect_election_contract(OriginWho, WhatToInspect, Config, TopHash) ->
         case WhatToInspect of
             current_leader -> {"leader", []};
             current_added_staking_power -> {"added_stake", []};
-            validators -> {"sorted_validators", []}
+            validators -> {"sorted_validators", []};
+            epoch -> {"epoch", []}
         end,
     ContractPubkey = ?config(election_contract, Config),
     do_contract_call(ContractPubkey, src(?HC_CONTRACT, Config), Fun, Args, OriginWho, TopHash).
@@ -912,7 +920,7 @@ build_json_files(ElectionContract, NodeConfig, CTConfig) ->
         , <<"owner_pubkey">> := ContractOwner } = EC
         = contract_create_spec(ElectionContract, src(ElectionContract, CTConfig),
                                 [binary_to_list(StakingContractPubkey),
-                                "\"domat\""], 0, 3, Pubkey),
+                                "\"domat\"", integer_to_list(?CHILD_EPOCH_LENGTH)], 0, 3, Pubkey),
     {ok, ElectionAddress} = aeser_api_encoder:safe_decode(contract_pubkey,
                                                           ElectionContractPubkey),
     %% assert assumption
@@ -1004,7 +1012,7 @@ node_config(Node, CTConfig, PotentialStakers, ReceiveAddress, ProducingCommitmen
     Port = aecore_suite_utils:external_api_port(?PARENT_CHAIN_NODE),
     SpecificConfig =
                 #{  <<"parent_chain">> =>
-                    #{  <<"start_height">> => ?START_HEIGHT,
+                    #{  <<"start_height">> => ?config(parent_start_height, CTConfig),
                         <<"finality">> => ?PARENT_FINALITY,
                         <<"parent_generation">> => ?PARENT_EPOCH_LENGTH,
                         <<"consensus">> =>

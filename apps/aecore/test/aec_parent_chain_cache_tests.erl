@@ -247,7 +247,7 @@ height_to_hash(Height) when is_integer(Height) -> <<Height:32/unit:8>>.
 block_by_height(Height) ->
     Hash = height_to_hash(Height),
     PrevHash = height_to_hash(Height - 1),
-    aec_parent_chain_block:new(Hash, Height, PrevHash).
+    aec_parent_chain_block:new(Hash, Height, PrevHash, 0).
 
 %% block_by_hash(Hash) ->
 %%     Height = hash_to_height(Hash),
