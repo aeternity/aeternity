@@ -480,10 +480,6 @@ child_block_time() ->
     Fun = fun() -> get_consensus_config_key([<<"child_block_time">>]) end,
     aeu_ets_cache:get(?ETS_CACHE_TABLE, child_block_time, Fun).
 
-hash_to_int(Hash) ->
-    {ok, Hash2IntFun} = aeu_ets_cache:lookup(?ETS_CACHE_TABLE, hash_to_int),
-    Hash2IntFun(Hash).
-
 parent_generation_block_time() ->
     aeu_ets_cache:lookup(?ETS_CACHE_TABLE, parent_generation_block_time).
 
@@ -680,8 +676,9 @@ call_consensus_contract_(ContractType, TxEnv, Trees, EncodedCallData, Keyword, A
             case aect_call:return_type(Call) of
                 ok -> pass;
                 revert ->
-                    lager:debug("consensus contract call failed ~s~n", [aect_call:return_value(Call)]),
-                    error({consensus_call_failed, {error, aeb_fate_encoding:deserialize(aect_call:return_value(Call))}});
+                    Err = aeb_fate_encoding:deserialize(aect_call:return_value(Call)),
+                    lager:debug("consensus contract call failed ~s~n", [Err]),
+                    error({consensus_call_failed, {error, Err}});
                 error ->
                     error({consensus_call_failed, {error, aeb_fate_encoding:deserialize(aect_call:return_value(Call))}})
             end,
@@ -758,8 +755,7 @@ leader_for_height(Height) ->
 
 validator_schedule(Block, ChildHeight, Validators, EpochLength, TxEnv, Trees) ->
     Hash = aec_parent_chain_block:hash(Block),
-    Seed = hash_to_int(Hash),
-    Schedule = get_validator_schedule(Seed, Validators, EpochLength, TxEnv, Trees),
+    Schedule = get_validator_schedule(Hash, Validators, EpochLength, TxEnv, Trees),
     maps:from_list(enumerate(ChildHeight, Schedule)).
 
 -if(?OTP_RELEASE < 25).
@@ -771,7 +767,7 @@ enumerate(From, List) ->
 -endif.
 
 get_validator_schedule(Seed, Validators, EpochLength, TxEnv, Trees) ->
-    Args = [aefa_fate_code:encode_arg({integer, Seed}),
+    Args = [aefa_fate_code:encode_arg({bytes, Seed}),
             aefa_fate_code:encode_arg(Validators),
             aefa_fate_code:encode_arg({integer, EpochLength})
            ],
