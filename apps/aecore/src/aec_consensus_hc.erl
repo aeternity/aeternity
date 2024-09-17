@@ -76,6 +76,7 @@
         , is_leader_valid/4
         %% contract access
         , call_consensus_contract_result/5
+        , entropy_height/1
         ]).
 
 -ifdef(TEST).
@@ -594,7 +595,8 @@ genesis_protocol_version() ->
 %lazy_leader_time_delta() ->
 %    case aeu_env:user_config([<<"chain">>, <<"consensus">>, <<"0">>,
 %                              <<"config">>, <<"lazy_leader_trigger_time">>]) of
-%        {ok, Interval} -> Interval;
+%        {ok, Interval} /validators
+%        -> Interval;
 %        undefined -> 10000
 %    end.
 
@@ -726,9 +728,10 @@ next_beneficiary(TxEnv, Trees) ->
             lager:debug("Entropy from PC block at height ~p", [EntropyHeight]),
             case aec_parent_chain_cache:get_block_by_height(EntropyHeight, 1000) of
                 {ok, Block} ->
+                    Hash = aec_parent_chain_block:hash(Block),
                     Validators = get_sorted_validators(TxEnv, Trees),
                     EpochLength = get_child_epoch_length(TxEnv, Trees),
-                    Schedule = validator_schedule(Block, ChildHeight + 1, Validators, EpochLength, TxEnv, Trees),
+                    Schedule = validator_schedule(Hash, ChildHeight + 1, Validators, EpochLength, TxEnv, Trees),
                     cache_schedule(Schedule),
                     lager:debug("Schedule cached", []),
                     next_beneficiary(TxEnv, Trees);
@@ -749,8 +752,7 @@ leader_for_height(Height) ->
     Schedule =  aeu_ets_cache:get(?ETS_CACHE_TABLE, validator_schedule, fun() -> #{} end),
     maps:find(Height, Schedule).
 
-validator_schedule(Block, ChildHeight, Validators, EpochLength, TxEnv, Trees) ->
-    Hash = aec_parent_chain_block:hash(Block),
+validator_schedule(Hash, ChildHeight, Validators, EpochLength, TxEnv, Trees) ->
     Schedule = get_validator_schedule(Hash, Validators, EpochLength, TxEnv, Trees),
     maps:from_list(enumerate(ChildHeight, Schedule)).
 

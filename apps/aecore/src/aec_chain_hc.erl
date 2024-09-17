@@ -15,6 +15,8 @@
         , block_producer/0
         , block_producer/1
         , epoch_start_height/1
+        , validators_at_height/1
+        , validator_schedule_at_height/2
         ]).
 
 -define(ELECTION_CONTRACT, election).
@@ -68,9 +70,11 @@ block_producer(Height) ->
                                               length => non_neg_integer()}}.
 epoch_info(Height) ->
     {ok, LeftToFill} = call_consensus_contract_at_height(?ELECTION_CONTRACT, Height, "blocks_to_fill_epoch", []),
-    {ok, Length} =  epoch_length(Height),
+    {ok, Length} = epoch_length(Height),
+    {ok, Epoch} = epoch(Height),
     HeightInEpoch = Length - LeftToFill,
     {ok, #{first => Height - HeightInEpoch,
+           epoch => Epoch,
            at => Height + HeightInEpoch,
            length => Length}}.
 
@@ -79,22 +83,45 @@ epoch_start_height(Epoch) ->
     case aec_chain:top_height() of
         undefined -> {error, chain_too_short};
         Height ->
-           {ok, #{first := StartHeight}} = epoch_info(Height),
-           epoch_start_height(Epoch, StartHeight)
+           epoch_start_height(Epoch, Height)
     end.
 
-epoch_start_height(Epoch, EStartHeight) ->
-    case epoch(EStartHeight) of
-        {ok, EpochNum} when EpochNum == Epoch ->
-            {ok, EStartHeight};
-        {ok, EpochNum} when EpochNum > Epoch ->
-            {ok, Length} = epoch_length(EStartHeight - 1),
-            epoch_start_height(Epoch, EStartHeight - Length);
+epoch_start_height(Epoch, Height) ->
+    case epoch_info(Height) of
+        {ok, #{epoch := EpochNum, first := StartHeight}} when EpochNum == Epoch ->
+            {ok, StartHeight};
+        {ok, #{epoch := EpochNum, first := StartHeight}} when EpochNum > Epoch ->
+            epoch_start_height(Epoch, StartHeight - 1);
         _ ->
             {error, chain_too_short}
     end.
 
+validators_at_height(Height) ->
+    {ok, Result} = call_consensus_contract_at_height(?STAKING_CONTRACT, Height, "sorted_validators", []),
+    {ok, lists:map(fun({tuple, Staker}) -> Staker end, Result)}.
+
+validator_schedule_at_height(ParentEntropyBlockHash, Height) ->
+  case validators_at_height(Height) of
+      {ok, Validators} ->
+           {ok, EpochLength} = epoch_length(Height),
+           Args = [aefa_fate_code:encode_arg({bytes, ParentEntropyBlockHash}),
+                   aefa_fate_code:encode_arg(Validators),
+                   aefa_fate_code:encode_arg({integer, EpochLength})
+                  ],
+           {ok, Result} = call_consensus_contract_at_height(?ELECTION_CONTRACT, Height, "validator_schedule", Args),
+           {ok, maps:from_list(enumerate(Height, lists:map(fun({address, Address}) -> Address end, Result)))};
+      Err -> Err
+  end.
+
 %%% --- internal
+
+-if(?OTP_RELEASE < 25).
+enumerate(From, List) ->
+  lists:zip(lists:seq(From, From + length(List)-1), List).
+-else.
+enumerate(From, List) ->
+    lists:enumerate(From, List).
+-endif.
 
 call_consensus_contract_at_height(Contract, Height, Endpoint, Args) when is_integer(Height), Height >= 0 ->
     case aec_chain_state:get_key_block_hash_at_height(Height) of

@@ -19,6 +19,7 @@
 %% Test cases
 -export([start_two_child_nodes/1,
          produce_first_epoch/1,
+         respect_schedule/1,
          mine_and_sync/1,
          spend_txs/1,
          simple_withdraw/1,
@@ -137,6 +138,7 @@ groups() ->
       {hc, [sequence],
           [ start_two_child_nodes
           , produce_first_epoch
+          , respect_schedule
           , verify_fees
           , mine_and_sync
           , spend_txs
@@ -429,6 +431,20 @@ produce_first_epoch(Config) ->
     ct:log("Child chain blocks ~p", [ChildBlocks]),
     ok.
 
+respect_schedule(Config) ->
+    {ok, ChildEpoch} = rpc(?NODE1, aec_chain_hc, epoch, []),
+    PrevChildEpoch = ChildEpoch - 1,
+    ?assert(PrevChildEpoch >= 0),
+    EntropyHeight = PrevChildEpoch * ?PARENT_EPOCH_LENGTH + ?config(parent_start_height, Config),
+    {ok, StartHeight} = rpc(?NODE1, aec_chain_hc, epoch_start_height, [PrevChildEpoch]),
+    ct:log("Validating schedule for Epoch ~p from height ~p", [PrevChildEpoch, StartHeight]),
+    Hash = <<"12">>,
+    ct:log("Entropy from height ~p: block hash ~p", [EntropyHeight, Hash]),
+    {ok, Schedule} = rpc(?NODE1, aec_chain_hc, validator_schedule_at_height, [StartHeight]),
+    ct:log("Validating schedule ~p", [Schedule]),
+    ok.
+
+
 simple_withdraw(Config) ->
     [{_, NodeName, _}|_] = ?config(nodes, Config),
     AliceBin = encoded_pubkey(?ALICE),
@@ -667,10 +683,10 @@ elected_leader_did_not_show_up_(Config) ->
 
 epoch_with_slow_parent(Config) ->
     %% ensure start at a new epoch boundary
-    ChildTopHeight = rpc(?NODE1, aec_chain, top_height, []),
-    BlocksLeftToBoundary = ?CHILD_EPOCH_LENGTH - (ChildTopHeight rem ?CHILD_EPOCH_LENGTH),
-    {ok, StartEpoch} = rpc(?NODE1, aec_chain_hc, epoch, []),
-    ct:log("Starting at CC epoch ~p: producing ~p cc blocks", [StartEpoch, BlocksLeftToBoundary]),
+    StartHeight = rpc(?NODE1, aec_chain, top_height, []),
+    {ok, #{at := EHeight, last := ELast}} = rpc(?NODE1, aec_chain_hc, epoch_info, [StartHeight]),
+    BlocksLeftToBoundary = ELast - EHeight,
+    ct:log("Starting at CC height ~p: producing ~p cc blocks", [StartHeight, BlocksLeftToBoundary]),
     %% some block production including parent blocks
     produce_cc_blocks(Config, BlocksLeftToBoundary),
 
@@ -687,8 +703,12 @@ epoch_with_slow_parent(Config) ->
     ?assertEqual(ParentStartHeight, ParentTopHeight),
 
     ?assertException(error, timeout_waiting_for_block, produce_cc_blocks(Config, ?CHILD_EPOCH_LENGTH, none)),
-    {ok, EndEpoch} = rpc(?NODE1, aec_chain_hc, epoch, []),
-    ct:log("Ending at CC epoch ~p", [EndEpoch]),
+
+    EndHeight = rpc(?NODE1, aec_chain, top_height, []),
+    {ok, #{epoch := EndEpoch} = EpochInfo} = rpc(?NODE1, aec_chain_hc, epoch_info, [EndHeight]),
+    ct:log("Ending at CC epoch ~p", [EpochInfo]),
+    ?assertEqual([{ok, (N-1) * ?CHILD_EPOCH_LENGTH} || N <- lists:seq(1, EndEpoch)],
+                 [rpc(?NODE1, aec_chain_hc, epoch_start_height, [N]) || N <- lists:seq(1, EndEpoch)]),
     ok.
 
 %%% --------- helper functions
