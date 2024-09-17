@@ -441,10 +441,6 @@ get_child_epoch(TxEnv, Trees) ->
     {ok, Result} = call_consensus_contract_result(?ELECTION_CONTRACT, TxEnv, Trees, "epoch", []),
     Result.
 
-%get_blocks_upto_child_epoch(TxEnv, Trees) ->
-%    {ok, NrBlocks} = call_consensus_contract_result(?ELECTION_CONTRACT, TxEnv, Trees, "blocks_to_fill_epoch", []),
-%    NrBlocks.
-
 set_child_epoch_length(Length, TxEnv, Trees) ->
     {ok, CD} = aeb_fate_abi:create_calldata("set_next_epoch_length",
                                             [
