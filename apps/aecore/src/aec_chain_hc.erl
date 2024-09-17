@@ -46,7 +46,7 @@ block_producer() ->
 
 -spec epoch_info() -> {ok, #{first => non_neg_integer(),
                              at => non_neg_integer(),
-                             length => non_neg_integer()}} | {error, chain_too_short}.
+                             last => non_neg_integer()}} | {error, chain_too_short}.
 epoch_info() ->
     case aec_chain:top_height() of
         undefined -> {error, chain_too_short};
@@ -67,7 +67,7 @@ block_producer(Height) ->
 
 -spec epoch_info(non_neg_integer()) -> {ok, #{first => non_neg_integer(),
                                               at => non_neg_integer(),
-                                              length => non_neg_integer()}}.
+                                              last => non_neg_integer()}}.
 epoch_info(Height) ->
     {ok, LeftToFill} = call_consensus_contract_at_height(?ELECTION_CONTRACT, Height, "blocks_to_fill_epoch", []),
     {ok, Length} = epoch_length(Height),
@@ -76,7 +76,7 @@ epoch_info(Height) ->
     {ok, #{first => Height - HeightInEpoch,
            epoch => Epoch,
            at => Height + HeightInEpoch,
-           length => Length}}.
+           last => Height - HeightInEpoch + Length - 1}}.
 
 -spec epoch_start_height(non_neg_integer()) -> {ok, non_neg_integer()} | {error, chain_too_short}.
 epoch_start_height(Epoch) ->

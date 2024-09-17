@@ -440,7 +440,7 @@ respect_schedule(Config) ->
     ct:log("Validating schedule for Epoch ~p from height ~p", [PrevChildEpoch, StartHeight]),
     Hash = <<"12">>,
     ct:log("Entropy from height ~p: block hash ~p", [EntropyHeight, Hash]),
-    {ok, Schedule} = rpc(?NODE1, aec_chain_hc, validator_schedule_at_height, [StartHeight]),
+    {ok, Schedule} = rpc(?NODE1, aec_chain_hc, validator_schedule_at_height, [Hash, StartHeight]),
     ct:log("Validating schedule ~p", [Schedule]),
     ok.
 
