@@ -891,15 +891,15 @@ handle_request_('GetRecentGasPrices', _Params, _Context) ->
 
 handle_request_('GetPinningTx', _Params, _Context) ->
     Pinning = aec_pinning_agent:get_pinning_data(),
-    {Epoch,
-        CCHeight,
-        EpochBlockHash,
-        Type,
-        Id} = Pinning,
+    #{epoch := Epoch,
+        height := CCHeight,
+        block_hash := EpochBlockHash,
+        parent_type := Type,
+        parent_network_id := Id} = Pinning,
     {200, [], #{<<"epoch">> => Epoch,
         <<"height">> => CCHeight,
         <<"block_hash">> => EpochBlockHash,
-        <<"parent_type">> => Type,
+        <<"parent_type">> => atom_to_binary(Type),
         <<"parent_network_id">> => Id,
         <<"pinning_payload">> => aeser_api_encoder:encode(key_block_hash, "12344567")        
         }};

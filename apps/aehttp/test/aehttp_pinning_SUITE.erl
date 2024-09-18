@@ -28,7 +28,6 @@ all() ->
     ].
 
 init_per_suite(Config) ->
-    {ok, _State} = aec_pinning_agent:start_link(<<"dev1">>, <<"aeternity">>),
     Config1 = aecore_suite_utils:init_per_suite([?NODE], [{symlink_name, "latest.spec_endpoint"}, {test_module, ?MODULE}] ++ Config),
     [{nodes, [aecore_suite_utils:node_tuple(?NODE)]}]  ++ Config1.
 
