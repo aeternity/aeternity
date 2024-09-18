@@ -449,9 +449,9 @@ parent_generation() ->
     Fun = fun() -> get_consensus_config_key([<<"parent_chain">>, <<"parent_generation">>]) end,
     aeu_ets_cache:get(?ETS_CACHE_TABLE, parent_generation, Fun).
 
-acceptable_sync_offset() ->
-    Fun = fun() -> get_consensus_config_key([<<"parent_chain">>, <<"acceptable_sync_offset">>], 60000) end,
-    aeu_ets_cache:get(?ETS_CACHE_TABLE, acceptable_sync_offset, Fun).
+%acceptable_sync_offset() ->
+%    Fun = fun() -> get_consensus_config_key([<<"parent_chain">>, <<"acceptable_sync_offset">>], 60000) end,
+%    aeu_ets_cache:get(?ETS_CACHE_TABLE, acceptable_sync_offset, Fun).
 
 
 get_child_epoch_length(TxEnv, Trees) ->

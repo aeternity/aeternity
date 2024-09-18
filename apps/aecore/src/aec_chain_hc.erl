@@ -27,6 +27,7 @@
 -define(REWARDS_CONTRACT, rewards).
 
 -type height() :: non_neg_integer() | {aetx_env:env(), aec_trees:trees()}.
+-type epoch_info() :: map().
 
 -spec epoch() -> {ok, non_neg_integer()} | {error, chain_too_short}.
 epoch() ->
@@ -42,9 +43,7 @@ epoch_length() ->
         Height -> epoch_length(Height)
     end.
 
--spec epoch_info() -> {ok, #{first => non_neg_integer(),
-                             epoch => non_neg_integer(),
-                             last => non_neg_integer()}} | {error, chain_too_short}.
+-spec epoch_info() -> {ok, epoch_info()} | {error, chain_too_short}.
 epoch_info() ->
     case aec_chain:top_height() of
         undefined -> {error, chain_too_short};
@@ -59,24 +58,15 @@ epoch(Height) ->
 epoch_length(Height) ->
     call_consensus_contract_at_height(?ELECTION_CONTRACT, Height, "epoch_length", []).
 
--spec epoch_info(height()) -> {ok, #{first => non_neg_integer(),
-                                              epoch => non_neg_integer(),
-                                              last => non_neg_integer()}}.
+-spec epoch_info(height()) -> {ok, epoch_info()}.
 epoch_info(Height) ->
     {ok, {tuple, {Epoch, EpochInfo}}} = call_consensus_contract_at_height(?ELECTION_CONTRACT, Height, "epoch_info", []),
-    {tuple, {Start, Length, _Seed, _StakingDist}} = EpochInfo,
-    {ok, #{first => Start,
-           epoch => Epoch,
-           length => Length,
-           last  => Start + Length - 1}}.
+    {ok, epoch_info_map(Epoch, EpochInfo)}.
 
 epoch_info_for_epoch(Epoch) ->
     Height = aec_chain:top_height(),
     {ok, EpochInfo} = call_consensus_contract_at_height(?ELECTION_CONTRACT, Height, "epoch_info_epoch", [Epoch]),
-    {tuple, {Start, Length, _Seed, _StakingDist}} = EpochInfo,
-    {ok, #{first => Start,
-           epoch => Epoch,
-           last  => Start + Length - 1}}.
+    {ok, epoch_info_map(Epoch, EpochInfo)}.
 
 
 -spec epoch_start_height(non_neg_integer()) -> {ok, non_neg_integer()} | {error, chain_too_short}.
@@ -131,6 +121,10 @@ enumerate(From, List) ->
 enumerate(From, List) ->
     lists:enumerate(From, List).
 -endif.
+
+epoch_info_map(Epoch, EpochInfo) ->
+    {tuple, {Start, Length, _Seed, _StakingDist}} = EpochInfo,
+    #{first => Start, epoch => Epoch, length => Length, last  => Start + Length - 1}.
 
 call_consensus_contract_at_height(Contract, {TxEnv, Trees}, Endpoint, Args) ->
     aec_consensus_hc:call_consensus_contract_result(Contract, TxEnv, Trees, Endpoint, Args);
