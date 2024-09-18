@@ -237,10 +237,26 @@ state_pre_transform_key_node(Node, PrevNode, Trees) ->
     PrevHeader = aec_block_insertion:node_header(PrevNode),
     {ok, PrevHash} = aec_headers:hash_header(PrevHeader),
     Height = aec_block_insertion:node_height(Node),
+    %% TODO: maybe call init_epochs for height 0?
     case Height > 0 of
         true ->
-            {TxEnv, _} = aetx_env:tx_env_and_trees_from_hash(aetx_transaction, PrevHash),
-            tick(TxEnv, Trees);
+            {TxEnv0, _} = aetx_env:tx_env_and_trees_from_hash(aetx_transaction, PrevHash),
+            TxEnv = aetx_env:set_height(TxEnv0, Height),
+            {ok, EpochInfo} = aec_chain_hc:epoch_info({TxEnv, Trees}),
+            lager:debug("EphocInoif(~p): ~p", [Height, EpochInfo]),
+            {ok, Leader} = leader_for_height(Height),
+            lager:debug("Leder is: ~p", [Leader]),
+            case Height == maps:get(last, EpochInfo) of
+                true ->
+                    ParentHeight = maps:get(epoch, EpochInfo) * parent_generation() + pc_start_height(),
+                    {ok, Block} = aec_parent_chain_cache:get_block_by_height(ParentHeight, 100),
+                    Seed = aec_parent_chain_block:hash(Block),
+                    lager:debug("StepEOE ~p ~p ~p", [ParentHeight, EpochInfo, Leader]),
+                    step_eoe(TxEnv, Trees, Leader, Seed, 0);
+                false ->
+                    lager:debug("Step ~p ~p", [EpochInfo, Leader]),
+                    step(TxEnv, Trees, Leader)
+            end;
         false -> Trees %% do not elect leader for genesis
     end.
 
@@ -437,36 +453,47 @@ get_child_epoch(TxEnv, Trees) ->
     {ok, Result} = call_consensus_contract_result(?ELECTION_CONTRACT, TxEnv, Trees, "epoch", []),
     Result.
 
-set_child_epoch_length(Length, TxEnv, Trees) ->
-    {ok, CD} = aeb_fate_abi:create_calldata("set_next_epoch_length",
-                                            [
-                                            aefa_fate_code:encode_arg({integer, Length})
-                                            ]),
+%% set_child_epoch_length(Length, TxEnv, Trees) ->
+%%     {ok, CD} = aeb_fate_abi:create_calldata("set_next_epoch_length",
+%%                                             [
+%%                                             aefa_fate_code:encode_arg({integer, Length})
+%%                                             ]),
+%%     CallData = aeser_api_encoder:encode(contract_bytearray, CD),
+%%     try call_consensus_contract_(?ELECTION_CONTRACT, TxEnv, Trees, CallData, "set_next_epoch_length", 0) of
+%%         {ok, Trees1, _Call} ->
+%%             Trees1;
+%%         {error, What} ->
+%%             lager:info("Retrieving epoch length failed with ~p", [What]),
+%%             aec_conductor:throw_error(set_epoch_length_failed)
+%%     catch error:{consensus_call_failed, {error, Why}} ->
+%%             lager:info("Retrieving epoch length failed with ~p", [Why]),
+%%             aec_conductor:throw_error(set_epoch_length_failed);
+%%           error:{consensus_call_crashed, {error, _Why}} ->
+%%             aec_conductor:throw_error(set_epoch_length_call_crashed)
+%%     end.
+
+step(TxEnv, Trees, Leader) ->
+    {ok, CD} = aeb_fate_abi:create_calldata("step", [{address, Leader}]),
     CallData = aeser_api_encoder:encode(contract_bytearray, CD),
-    try call_consensus_contract_(?ELECTION_CONTRACT, TxEnv, Trees, CallData, "set_next_epoch_length", 0) of
+    case call_consensus_contract_(?ELECTION_CONTRACT, TxEnv, Trees, CallData, "step", 0) of
         {ok, Trees1, _Call} ->
             Trees1;
         {error, What} ->
-            lager:info("Retrieving epoch length failed with ~p", [What]),
-            aec_conductor:throw_error(set_epoch_length_failed)
-    catch error:{consensus_call_failed, {error, Why}} ->
-            lager:info("Retrieving epoch length failed with ~p", [Why]),
-            aec_conductor:throw_error(set_epoch_length_failed);
-          error:{consensus_call_crashed, {error, _Why}} ->
-            aec_conductor:throw_error(set_epoch_length_call_crashed)
+            lager:info("Calling step failed with ~p", [What]),
+            aec_conductor:throw_error(step_failed)
     end.
 
-tick(TxEnv, Trees) ->
-    {ok, CD} = aeb_fate_abi:create_calldata("tick", []),
+step_eoe(TxEnv, Trees, Leader, Seed, Adjust) ->
+    {ok, CD} = aeb_fate_abi:create_calldata("step_eoe", [{address, Leader}, {bytes, Seed}, Adjust]),
     CallData = aeser_api_encoder:encode(contract_bytearray, CD),
-    case call_consensus_contract_(?ELECTION_CONTRACT, TxEnv, Trees, CallData, "tick", 0) of
+    case call_consensus_contract_(?ELECTION_CONTRACT, TxEnv, Trees, CallData, "step_eoe", 0) of
         {ok, Trees1, _Call} ->
+            lager:debug("StepEOE successful", []),
             Trees1;
         {error, What} ->
-            lager:info("Retrieving epoch length failed with ~p", [What]),
-            aec_conductor:throw_error(set_epoch_length_failed)
+            lager:info("Calling step_eoe failed with ~p", [What]),
+            aec_conductor:throw_error(step_eoe_failed)
     end.
-
 
 child_block_time() ->
     Fun = fun() -> get_consensus_config_key([<<"child_block_time">>]) end,
@@ -478,7 +505,7 @@ parent_generation_block_time() ->
 parent_generation_block_time(Time) ->
     aeu_ets_cache:put(?ETS_CACHE_TABLE, parent_generation_block_time, Time).
 
-check_parent_generation_time(Block, TxEnv, Trees) ->
+check_parent_generation_time(Block, _TxEnv, Trees) ->
     PCTime1 = aec_parent_chain_block:time(Block),
     case parent_generation_block_time() of
         error ->
@@ -488,20 +515,20 @@ check_parent_generation_time(Block, TxEnv, Trees) ->
         {ok, PCTime1} ->
             % Already been checked
             Trees;
-        {ok, PCTime0} ->
-            OldEpochLength = get_child_epoch_length(TxEnv, Trees),
-            ExpectedEpochDuration = child_block_time() * OldEpochLength,
-            PCGenerationDuration = PCTime1 - PCTime0,
-            AcceptableOffset = acceptable_sync_offset(),
-            case abs(ExpectedEpochDuration - PCGenerationDuration) of
-                DurationDiff when DurationDiff > AcceptableOffset ->
-                    NewEpochLength = ceil(PCGenerationDuration / child_block_time()),
-                    lager:info("Adjusted child epoch length from ~p to ~p because of a difference in the parent chain of ~p", [OldEpochLength, NewEpochLength, DurationDiff]),
-                    set_child_epoch_length(NewEpochLength, TxEnv, Trees);
-                _ ->
-                    Trees
-            end,
-            parent_generation_block_time(PCTime1),
+        {ok, _PCTime0} ->
+            %% OldEpochLength = get_child_epoch_length(TxEnv, Trees),
+            %% ExpectedEpochDuration = child_block_time() * OldEpochLength,
+            %% PCGenerationDuration = PCTime1 - PCTime0,
+            %% AcceptableOffset = acceptable_sync_offset(),
+            %% case abs(ExpectedEpochDuration - PCGenerationDuration) of
+            %%     DurationDiff when DurationDiff > AcceptableOffset ->
+            %%         NewEpochLength = ceil(PCGenerationDuration / child_block_time()),
+            %%         lager:info("Adjusted child epoch length from ~p to ~p because of a difference in the parent chain of ~p", [OldEpochLength, NewEpochLength, DurationDiff]),
+            %%         set_child_epoch_length(NewEpochLength, TxEnv, Trees);
+            %%     _ ->
+            %%         Trees
+            %% end,
+            %% parent_generation_block_time(PCTime1),
             Trees
     end.
 
@@ -673,6 +700,7 @@ call_consensus_contract_(ContractType, TxEnv, Trees, EncodedCallData, Keyword, A
                     lager:debug("consensus contract call failed ~s~n", [Err]),
                     error({consensus_call_failed, {error, Err}});
                 error ->
+                    lager:debug("consensus contract call failed: error~n", []),
                     error({consensus_call_failed, {error, aeb_fate_encoding:deserialize(aect_call:return_value(Call))}})
             end,
             %% prune the call being produced. If not done, the fees for it
@@ -726,7 +754,6 @@ next_beneficiary(TxEnv, Trees) ->
             end
     end.
 
-%% TODO: lookup epoch start height (from conctract)
 try_compute_schedule(TxEnv, Trees, ChildHeight) ->
     Epoch = get_child_epoch(TxEnv, Trees),
     EntropyHeight = entropy_height(Epoch),
@@ -778,13 +805,10 @@ enumerate(From, List) ->
     lists:enumerate(From, List).
 -endif.
 
-get_validator_schedule(Seed, Validators, EpochLength, TxEnv, Trees) ->
-    Args = [aefa_fate_code:encode_arg({bytes, Seed}),
-            aefa_fate_code:encode_arg(Validators),
-            aefa_fate_code:encode_arg({integer, EpochLength})
-           ],
+get_validator_schedule(Seed, _Validators, _EpochLength, TxEnv, Trees) ->
+    Args = [aefa_fate_code:encode_arg({bytes, Seed})],
     {ok, CallResult} =
-        call_consensus_contract_result(?ELECTION_CONTRACT, TxEnv, Trees, "validator_schedule", Args),
+        call_consensus_contract_result(?ELECTION_CONTRACT, TxEnv, Trees, "get_validator_schedule_seed", Args),
     lists:map(fun({address, Address}) -> Address end, CallResult).
 
 

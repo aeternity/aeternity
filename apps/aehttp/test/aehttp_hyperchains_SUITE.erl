@@ -436,7 +436,7 @@ respect_schedule(Config) ->
     PrevChildEpoch = ChildEpoch - 1,
     ?assert(PrevChildEpoch >= 0),
     EntropyHeight = PrevChildEpoch * ?PARENT_EPOCH_LENGTH + ?config(parent_start_height, Config),
-    {ok, StartHeight} = rpc(?NODE1, aec_chain_hc, epoch_start_height, [PrevChildEpoch]),
+    {ok, StartHeight} = rpc(?NODE1, aec_chain_hc, epoch_info, [PrevChildEpoch]),
     ct:log("Validating schedule for Epoch ~p from height ~p", [PrevChildEpoch, StartHeight]),
     Hash = <<"12">>,
     ct:log("Entropy from height ~p: block hash ~p", [EntropyHeight, Hash]),
@@ -924,10 +924,10 @@ build_json_files(ElectionContract, NodeConfig, CTConfig) ->
     #{ <<"pubkey">> := StakingContractPubkey
         , <<"owner_pubkey">> := ContractOwner } = SC
         = contract_create_spec(?MAIN_STAKING_CONTRACT, MSSrc,
-                                [binary_to_list(StakingValidatorContract),
-                                MinValidatorAmt, MinStakePercent, MinStakeAmt,
-                                OnlineDelay, StakeDelay, UnstakeDelay],
-                                0, 2, Pubkey),
+                               [binary_to_list(StakingValidatorContract),
+                               MinValidatorAmt, MinStakePercent, MinStakeAmt,
+                               OnlineDelay, StakeDelay, UnstakeDelay],
+                               0, 2, Pubkey),
     {ok, StakingAddress} = aeser_api_encoder:safe_decode(contract_pubkey,
                                                          StakingContractPubkey),
     %% assert assumption
@@ -936,8 +936,7 @@ build_json_files(ElectionContract, NodeConfig, CTConfig) ->
     #{ <<"pubkey">> := ElectionContractPubkey
         , <<"owner_pubkey">> := ContractOwner } = EC
         = contract_create_spec(ElectionContract, src(ElectionContract, CTConfig),
-                                [binary_to_list(StakingContractPubkey),
-                                "\"domat\"", integer_to_list(?CHILD_EPOCH_LENGTH)], 0, 3, Pubkey),
+                               [binary_to_list(StakingContractPubkey)], 0, 3, Pubkey),
     {ok, ElectionAddress} = aeser_api_encoder:safe_decode(contract_pubkey,
                                                           ElectionContractPubkey),
     %% assert assumption
@@ -946,8 +945,8 @@ build_json_files(ElectionContract, NodeConfig, CTConfig) ->
                                                 StakingContractPubkey),
     Call1 =
         contract_call_spec(SCId, MSSrc,
-                            "new_validator", [],
-                            ?INITIAL_STAKE, pubkey(?ALICE), 1),
+                           "new_validator", [],
+                           ?INITIAL_STAKE, pubkey(?ALICE), 1),
     Call2 =
         contract_call_spec(SCId, MSSrc,
                             "new_validator", [],
@@ -984,6 +983,11 @@ build_json_files(ElectionContract, NodeConfig, CTConfig) ->
                             "set_validator_avatar_url",
                             ["\"https://aeternity.com/images/aeternity-logo.svg\""], 0,
                             pubkey(?ALICE), 5),
+
+    Call12 =
+        contract_call_spec(ElectionAddress, src(ElectionContract, CTConfig),
+                           "init_epochs",
+                           [integer_to_list(?CHILD_EPOCH_LENGTH)], 0, ?OWNER_PUBKEY, 4),
     %% create a BRI validator in the contract so they can receive
     %% rewards as well
     %% TODO: discuss how we want to tackle this:
@@ -1002,7 +1006,7 @@ build_json_files(ElectionContract, NodeConfig, CTConfig) ->
     %%                         0, BRIPub, 2),
     %% keep the BRI offline
     AllCalls =  [Call1, Call2, Call3, Call4, Call5, Call6,
-		 Call7, Call8, Call9, Call10, Call11],
+		 Call7, Call8, Call9, Call10, Call11, Call12],
     ProtocolBin = integer_to_binary(aect_test_utils:latest_protocol_version()),
     #{<<"chain">> := #{<<"hard_forks">> := #{ProtocolBin := #{<<"contracts_file">> := ContractsFileName,
                                                               <<"accounts_file">> := AccountsFileName}}}} = NodeConfig,

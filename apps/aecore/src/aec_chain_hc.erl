@@ -66,17 +66,14 @@ block_producer(Height) ->
     call_consensus_contract_at_height(?ELECTION_CONTRACT, Height, "leader", []).
 
 -spec epoch_info(non_neg_integer()) -> {ok, #{first => non_neg_integer(),
-                                              at => non_neg_integer(),
+                                              epoch => non_neg_integer(),
                                               last => non_neg_integer()}}.
 epoch_info(Height) ->
-    {ok, LeftToFill} = call_consensus_contract_at_height(?ELECTION_CONTRACT, Height, "blocks_to_fill_epoch", []),
-    {ok, Length} = epoch_length(Height),
-    {ok, Epoch} = epoch(Height),
-    HeightInEpoch = Length - LeftToFill,
-    {ok, #{first => Height - HeightInEpoch,
+    {ok, {tuple, {Epoch, EpochInfo}}} = call_consensus_contract_at_height(?ELECTION_CONTRACT, Height, "epoch_info", []),
+    {tuple, {Start, Length, _, _}} = EpochInfo,
+    {ok, #{first => Start,
            epoch => Epoch,
-           at => Height + HeightInEpoch,
-           last => Height - HeightInEpoch + Length - 1}}.
+           last  => Start + Length - 1}}.
 
 -spec epoch_start_height(non_neg_integer()) -> {ok, non_neg_integer()} | {error, chain_too_short}.
 epoch_start_height(Epoch) ->
@@ -123,11 +120,14 @@ enumerate(From, List) ->
     lists:enumerate(From, List).
 -endif.
 
+call_consensus_contract_at_height(Contract, {TxEnv, Trees}, Endpoint, Args) ->
+    aec_consensus_hc:call_consensus_contract_result(Contract, TxEnv, Trees, Endpoint, Args);
+
 call_consensus_contract_at_height(Contract, Height, Endpoint, Args) when is_integer(Height), Height >= 0 ->
     case aec_chain_state:get_key_block_hash_at_height(Height) of
         error -> {error, chain_too_short};
         {ok, Hash} ->
            {TxEnv, Trees} = aetx_env:tx_env_and_trees_from_hash(aetx_transaction, Hash),
-           aec_consensus_hc:call_consensus_contract_result(Contract, TxEnv, Trees, Endpoint, Args)
+           call_consensus_contract_at_height(Contract, {TxEnv, Trees}, Endpoint, Args)
     end.
 
