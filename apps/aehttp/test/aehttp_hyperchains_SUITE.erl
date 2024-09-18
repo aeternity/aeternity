@@ -40,10 +40,10 @@
 -define(MAIN_STAKING_CONTRACT, "MainStaking").
 -define(HC_CONTRACT, "HCElection").
 -define(CONSENSUS, hc).
--define(CHILD_EPOCH_LENGTH, 20).
+-define(CHILD_EPOCH_LENGTH, 10).
 -define(CHILD_BLOCK_TIME, 200).
--define(PARENT_EPOCH_LENGTH, 5).
--define(PARENT_FINALITY, 3).
+-define(PARENT_EPOCH_LENGTH, 3).
+-define(PARENT_FINALITY, 2).
 -define(REWARD_DELAY, 2).
 
 -define(NODE1, dev1).
@@ -432,16 +432,15 @@ produce_first_epoch(Config) ->
     ok.
 
 respect_schedule(Config) ->
-    {ok, ChildEpoch} = rpc(?NODE1, aec_chain_hc, epoch, []),
-    PrevChildEpoch = ChildEpoch - 1,
-    ?assert(PrevChildEpoch >= 0),
-    EntropyHeight = PrevChildEpoch * ?PARENT_EPOCH_LENGTH + ?config(parent_start_height, Config),
-    {ok, StartHeight} = rpc(?NODE1, aec_chain_hc, epoch_info, [PrevChildEpoch]),
-    ct:log("Validating schedule for Epoch ~p from height ~p", [PrevChildEpoch, StartHeight]),
-    Hash = <<"12">>,
-    ct:log("Entropy from height ~p: block hash ~p", [EntropyHeight, Hash]),
-    {ok, Schedule} = rpc(?NODE1, aec_chain_hc, validator_schedule_at_height, [Hash, StartHeight]),
-    ct:log("Validating schedule ~p", [Schedule]),
+    [{Node1, _, _}|_] = ?config(nodes, Config),
+    {ok, #{first := StartHeight, length := Length, epoch := Epoch}} = rpc(?NODE1, aec_chain_hc, epoch_info, []),
+    produce_cc_blocks(Config, Length),
+    ct:log("Produced at least Epoch ~p starting at height ~p", [Epoch, StartHeight]),
+    {ok, Schedule} = rpc(?NODE1, aec_chain_hc, validator_schedule_at_height, [StartHeight]),
+    ct:log("Validating schedule ~p for Epoch ~p", [Schedule, Epoch]),
+    ?assert(maps:fold(fun(Height, Producer, Acc) ->
+                              Acc andalso Producer == get_block_producer(Node1, Height)
+                      end, true, Schedule)),
     ok.
 
 
@@ -684,30 +683,34 @@ elected_leader_did_not_show_up_(Config) ->
 epoch_with_slow_parent(Config) ->
     %% ensure start at a new epoch boundary
     StartHeight = rpc(?NODE1, aec_chain, top_height, []),
-    {ok, #{at := EHeight, last := ELast}} = rpc(?NODE1, aec_chain_hc, epoch_info, [StartHeight]),
-    BlocksLeftToBoundary = ELast - EHeight,
+    {ok, #{last := Last}} = rpc(?NODE1, aec_chain_hc, epoch_info, [StartHeight]),
+    BlocksLeftToBoundary = Last - StartHeight,
     ct:log("Starting at CC height ~p: producing ~p cc blocks", [StartHeight, BlocksLeftToBoundary]),
     %% some block production including parent blocks
     produce_cc_blocks(Config, BlocksLeftToBoundary),
 
-    ParentStartHeight = rpc(?PARENT_CHAIN_NODE, aec_chain, top_height, []),
-    ct:log("Child continues while parent stuck at: ~p", [ParentStartHeight]),
-    %% Produce no parent block in the next child epoch
-    %% Preferably the child chain should get to a halt or
+    ParentHeight = rpc(?PARENT_CHAIN_NODE, aec_chain, top_height, []),
+    ct:log("Child continues while parent stuck at: ~p", [ParentHeight]),
+    ParentEpoch = (ParentHeight - ?config(parent_start_height, Config) - ?PARENT_FINALITY) div ?PARENT_EPOCH_LENGTH,
+    ChildEpoch = rpc(?NODE1, aec_chain, top_height, []) div ?CHILD_EPOCH_LENGTH,
+    ct:log("Child epoch ~p while parent epoch ~p", [ChildEpoch, ParentEpoch]),
+    EpochsToSucceed = ParentEpoch - ChildEpoch,
+    %% Produce no parent block in the next child epochs
+    %% the child chain should get to a halt or
     %% at least one should be able to measure that the child chain epoch
     %% becomes larger after this
-    {ok, Bs} = produce_cc_blocks(Config, ?CHILD_EPOCH_LENGTH*2, none),
+    {ok, _Bs} = produce_cc_blocks(Config, ?CHILD_EPOCH_LENGTH*EpochsToSucceed, none),
 
-    ct:log("Mined 2 additional child epochs without parent progress:\n~p", [Bs]),
+    ct:log("Mined ~p additional child epochs without parent progress", [EpochsToSucceed]),
     ParentTopHeight = rpc(?PARENT_CHAIN_NODE, aec_chain, top_height, []),
-    ?assertEqual(ParentStartHeight, ParentTopHeight),
+    ?assertEqual(ParentHeight, ParentTopHeight),
 
     ?assertException(error, timeout_waiting_for_block, produce_cc_blocks(Config, ?CHILD_EPOCH_LENGTH, none)),
 
     EndHeight = rpc(?NODE1, aec_chain, top_height, []),
     {ok, #{epoch := EndEpoch} = EpochInfo} = rpc(?NODE1, aec_chain_hc, epoch_info, [EndHeight]),
     ct:log("Ending at CC epoch ~p", [EpochInfo]),
-    ?assertEqual([{ok, (N-1) * ?CHILD_EPOCH_LENGTH} || N <- lists:seq(1, EndEpoch)],
+    ?assertEqual([{ok, (N-1) * ?CHILD_EPOCH_LENGTH + 1} || N <- lists:seq(1, EndEpoch)],
                  [rpc(?NODE1, aec_chain_hc, epoch_start_height, [N]) || N <- lists:seq(1, EndEpoch)]),
     ok.
 
