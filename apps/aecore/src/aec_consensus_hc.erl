@@ -78,6 +78,7 @@
         %% contract access
         , call_consensus_contract_result/5
         , entropy_height/1
+        , get_entropy_hash/1
         ]).
 
 -ifdef(TEST).
@@ -764,20 +765,26 @@ next_beneficiary(TxEnv, Trees) ->
 
 try_compute_schedule(TxEnv, Trees, ChildHeight) ->
     Epoch = get_child_epoch(TxEnv, Trees),
-    EntropyHeight = entropy_height(Epoch),
-    lager:debug("Entropy from PC block at height ~p", [EntropyHeight]),
-    case aec_parent_chain_cache:get_block_by_height(EntropyHeight, 1000) of
-        {ok, Block} ->
-            Hash = aec_parent_chain_block:hash(Block),
+    case get_entropy_hash(Epoch) of
+        {ok, Hash} ->
             Validators = get_sorted_validators(TxEnv, Trees),
             EpochLength = get_child_epoch_length(TxEnv, Trees),
             Schedule = validator_schedule(Hash, ChildHeight, Validators, EpochLength, TxEnv, Trees),
             cache_schedule(Schedule),
             lager:debug("Schedule cached (range ~p -> ~p)", [ChildHeight, ChildHeight + EpochLength - 1]),
             ok;
+        Err -> Err
+    end.
+
+get_entropy_hash(ChildEpoch) ->
+    EntropyHeight = entropy_height(ChildEpoch),
+    lager:debug("Entropy from PC block at height ~p", [EntropyHeight]),
+    case aec_parent_chain_cache:get_block_by_height(EntropyHeight, 1000) of
+        {ok, Block} ->
+            {ok, aec_parent_chain_block:hash(Block)};
         {error, _Err} ->
-            lager:debug("Unable to pick the next leader for height ~p, parent height ~p; reason is ~p",
-                        [ChildHeight + 1, EntropyHeight, _Err]),
+            lager:debug("Unable to pick the next leader for epoch ~p, parent height ~p; reason is ~p",
+                        [ChildEpoch, EntropyHeight, _Err]),
             {error, not_in_cache}
     end.
 

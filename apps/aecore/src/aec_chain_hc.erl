@@ -6,22 +6,27 @@
 -module(aec_chain_hc).
 
 %%% Hyperchain API
--export([ epoch/0
+-export([ %% height determined
+          epoch/0
         , epoch/1
         , epoch_length/0
         , epoch_length/1
         , epoch_info/0
         , epoch_info/1
-        , block_producer/0
-        , block_producer/1
-        , epoch_start_height/1
         , validators_at_height/1
-        , validator_schedule_at_height/2
+        , validator_schedule_at_height/1
+        %% epoch determined
+        , epoch_start_height/1
+        , epoch_info_for_epoch/1
+        , validator_schedule/1
+        , entropy_hash/1
         ]).
 
 -define(ELECTION_CONTRACT, election).
 -define(STAKING_CONTRACT, staking).
 -define(REWARDS_CONTRACT, rewards).
+
+-type height() :: non_neg_integer() | {aetx_env:env(), aec_trees:trees()}.
 
 -spec epoch() -> {ok, non_neg_integer()} | {error, chain_too_short}.
 epoch() ->
@@ -37,15 +42,8 @@ epoch_length() ->
         Height -> epoch_length(Height)
     end.
 
--spec block_producer() -> {ok, aec_keys:pubkey()} | {error, chain_too_short}.
-block_producer() ->
-    case aec_chain:top_height() of
-        undefined -> {error, chain_too_short};
-        Height -> block_producer(Height)
-    end.
-
 -spec epoch_info() -> {ok, #{first => non_neg_integer(),
-                             at => non_neg_integer(),
+                             epoch => non_neg_integer(),
                              last => non_neg_integer()}} | {error, chain_too_short}.
 epoch_info() ->
     case aec_chain:top_height() of
@@ -53,27 +51,33 @@ epoch_info() ->
         Height -> epoch_info(Height)
     end.
 
--spec epoch(non_neg_integer()) -> {ok, non_neg_integer()} | {error, chain_too_short}.
+-spec epoch(height()) -> {ok, non_neg_integer()} | {error, chain_too_short}.
 epoch(Height) ->
     call_consensus_contract_at_height(?ELECTION_CONTRACT, Height, "epoch", []).
 
--spec epoch_length(non_neg_integer()) -> {ok, non_neg_integer()} | {error, chain_too_short}.
+-spec epoch_length(height()) -> {ok, non_neg_integer()} | {error, chain_too_short}.
 epoch_length(Height) ->
     call_consensus_contract_at_height(?ELECTION_CONTRACT, Height, "epoch_length", []).
 
--spec block_producer(non_neg_integer()) -> {ok, aec_keys:pubkey()} | {error, chain_too_short}.
-block_producer(Height) ->
-    call_consensus_contract_at_height(?ELECTION_CONTRACT, Height, "leader", []).
-
--spec epoch_info(non_neg_integer()) -> {ok, #{first => non_neg_integer(),
+-spec epoch_info(height()) -> {ok, #{first => non_neg_integer(),
                                               epoch => non_neg_integer(),
                                               last => non_neg_integer()}}.
 epoch_info(Height) ->
     {ok, {tuple, {Epoch, EpochInfo}}} = call_consensus_contract_at_height(?ELECTION_CONTRACT, Height, "epoch_info", []),
-    {tuple, {Start, Length, _, _}} = EpochInfo,
+    {tuple, {Start, Length, _Seed, _StakingDist}} = EpochInfo,
+    {ok, #{first => Start,
+           epoch => Epoch,
+           length => Length,
+           last  => Start + Length - 1}}.
+
+epoch_info_for_epoch(Epoch) ->
+    Height = aec_chain:top_height(),
+    {ok, EpochInfo} = call_consensus_contract_at_height(?ELECTION_CONTRACT, Height, "epoch_info_epoch", [Epoch]),
+    {tuple, {Start, Length, _Seed, _StakingDist}} = EpochInfo,
     {ok, #{first => Start,
            epoch => Epoch,
            last  => Start + Length - 1}}.
+
 
 -spec epoch_start_height(non_neg_integer()) -> {ok, non_neg_integer()} | {error, chain_too_short}.
 epoch_start_height(Epoch) ->
@@ -83,34 +87,42 @@ epoch_start_height(Epoch) ->
            epoch_start_height(Epoch, Height)
     end.
 
+-spec validators_at_height(height()) -> {ok, [binary()]}.
+validators_at_height(Height) ->
+    {ok, Result} = call_consensus_contract_at_height(?STAKING_CONTRACT, Height, "sorted_validators", []),
+    {ok, lists:map(fun({tuple, Staker}) -> Staker end, Result)}.
+
+-spec validator_schedule(non_neg_integer()) -> {ok, #{integer() => binary()}}.
+validator_schedule(Epoch) when Epoch > 1 ->
+    case epoch_start_height(Epoch) of
+      {ok, Height} -> validator_schedule_at_height(Height);
+      Err -> Err
+    end.
+
+-spec validator_schedule_at_height(height()) -> {ok, #{integer() => binary()}}.
+validator_schedule_at_height(Height) ->
+    {ok, Result} = call_consensus_contract_at_height(?ELECTION_CONTRACT, Height, "get_validator_schedule", []),
+    From = case Height of
+                {TxEnv, _} -> aetx_env:height(TxEnv);
+                _ when is_integer(Height) -> Height
+           end,
+    {ok, maps:from_list(enumerate(From, lists:map(fun({address, Address}) -> Address end, Result)))}.
+
+-spec entropy_hash(non_neg_integer()) -> {ok, binary()} | {error, any()}.
+entropy_hash(Epoch) ->
+  aec_consensus_hc:get_entropy_hash(Epoch).
+
+%%% --- internal
+
 epoch_start_height(Epoch, Height) ->
     case epoch_info(Height) of
         {ok, #{epoch := EpochNum, first := StartHeight}} when EpochNum == Epoch ->
             {ok, StartHeight};
         {ok, #{epoch := EpochNum, first := StartHeight}} when EpochNum > Epoch ->
-            epoch_start_height(Epoch, StartHeight - 1);
+            epoch_start_height(Epoch, StartHeight - 2);
         _ ->
             {error, chain_too_short}
     end.
-
-validators_at_height(Height) ->
-    {ok, Result} = call_consensus_contract_at_height(?STAKING_CONTRACT, Height, "sorted_validators", []),
-    {ok, lists:map(fun({tuple, Staker}) -> Staker end, Result)}.
-
-validator_schedule_at_height(ParentEntropyBlockHash, Height) ->
-  case validators_at_height(Height) of
-      {ok, Validators} ->
-           {ok, EpochLength} = epoch_length(Height),
-           Args = [aefa_fate_code:encode_arg({bytes, ParentEntropyBlockHash}),
-                   aefa_fate_code:encode_arg(Validators),
-                   aefa_fate_code:encode_arg({integer, EpochLength})
-                  ],
-           {ok, Result} = call_consensus_contract_at_height(?ELECTION_CONTRACT, Height, "validator_schedule", Args),
-           {ok, maps:from_list(enumerate(Height, lists:map(fun({address, Address}) -> Address end, Result)))};
-      Err -> Err
-  end.
-
-%%% --- internal
 
 -if(?OTP_RELEASE < 25).
 enumerate(From, List) ->
@@ -122,7 +134,6 @@ enumerate(From, List) ->
 
 call_consensus_contract_at_height(Contract, {TxEnv, Trees}, Endpoint, Args) ->
     aec_consensus_hc:call_consensus_contract_result(Contract, TxEnv, Trees, Endpoint, Args);
-
 call_consensus_contract_at_height(Contract, Height, Endpoint, Args) when is_integer(Height), Height >= 0 ->
     case aec_chain_state:get_key_block_hash_at_height(Height) of
         error -> {error, chain_too_short};
