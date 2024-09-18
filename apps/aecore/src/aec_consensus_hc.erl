@@ -243,21 +243,29 @@ state_pre_transform_key_node(Node, PrevNode, Trees) ->
             {TxEnv0, _} = aetx_env:tx_env_and_trees_from_hash(aetx_transaction, PrevHash),
             TxEnv = aetx_env:set_height(TxEnv0, Height),
             {ok, EpochInfo} = aec_chain_hc:epoch_info({TxEnv, Trees}),
-            lager:debug("EphocInoif(~p): ~p", [Height, EpochInfo]),
-            {ok, Leader} = leader_for_height(Height),
-            lager:debug("Leder is: ~p", [Leader]),
+            {ok, Leader} = safe_leader_for_height(TxEnv, Trees, Height),
             case Height == maps:get(last, EpochInfo) of
                 true ->
                     ParentHeight = maps:get(epoch, EpochInfo) * parent_generation() + pc_start_height(),
                     {ok, Block} = aec_parent_chain_cache:get_block_by_height(ParentHeight, 100),
                     Seed = aec_parent_chain_block:hash(Block),
-                    lager:debug("StepEOE ~p ~p ~p", [ParentHeight, EpochInfo, Leader]),
                     step_eoe(TxEnv, Trees, Leader, Seed, 0);
                 false ->
-                    lager:debug("Step ~p ~p", [EpochInfo, Leader]),
                     step(TxEnv, Trees, Leader)
             end;
         false -> Trees %% do not elect leader for genesis
+    end.
+
+safe_leader_for_height(TxEnv, Trees, Height) ->
+    case leader_for_height(Height) of
+        Ok = {ok, _} -> Ok;
+        _Err ->
+            case is_block_producer() of
+                false -> try_compute_schedule(TxEnv, Trees, Height);
+                true  -> ok
+            end,
+            lager:debug("No leader for height: ~p", [Height]),
+            aec_conductor:throw_error(leader_not_known)
     end.
 
 %cache(Leader, AddedStake) ->
