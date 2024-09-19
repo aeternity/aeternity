@@ -442,11 +442,16 @@ produce_first_epoch(Config) ->
 
 respect_schedule(Config) ->
     [{Node1, _, _}|_] = ?config(nodes, Config),
-    {ok, #{first := StartHeight, length := Length, epoch := Epoch}} = rpc(?NODE1, aec_chain_hc, epoch_info, []),
+    {ok, #{first := StartHeight, length := Length, epoch := Epoch} = EI0} = rpc(?NODE1, aec_chain_hc, epoch_info, []),
+    {ok, EntropyHash} = rpc(?NODE1, aec_consensus_hc, get_entropy_hash, [Epoch]),
+    ct:log("Info ~p and entropy hash ~p", [EI0, EntropyHash]),
     produce_cc_blocks(Config, Length),
     ct:log("Produced at least Epoch ~p starting at height ~p", [Epoch, StartHeight]),
     {ok, Schedule} = rpc(?NODE1, aec_chain_hc, validator_schedule_at_height, [StartHeight]),
     ct:log("Validating schedule ~p for Epoch ~p", [Schedule, Epoch]),
+    {ok, HashSchedule} = rpc(?NODE1, aec_chain_hc, validator_schedule_at_height_from_hash, [StartHeight, EntropyHash]),
+    ct:log("Equals schedule ~p for Epoch ~p", [HashSchedule, Epoch]),
+    ?assertEqual(Schedule, HashSchedule),
     ?assert(maps:fold(fun(Height, Producer, Acc) ->
                               Acc andalso Producer == get_block_producer(Node1, Height)
                       end, true, Schedule)),
