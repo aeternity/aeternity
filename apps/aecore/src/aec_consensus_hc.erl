@@ -455,14 +455,6 @@ parent_generation() ->
 %    aeu_ets_cache:get(?ETS_CACHE_TABLE, acceptable_sync_offset, Fun).
 
 
-get_child_epoch_length(TxEnv, Trees) ->
-    {ok, Result} = call_consensus_contract_result(?ELECTION_CONTRACT, TxEnv, Trees, "epoch_length", []),
-    Result.
-
-get_child_epoch(TxEnv, Trees) ->
-    {ok, Result} = call_consensus_contract_result(?ELECTION_CONTRACT, TxEnv, Trees, "epoch", []),
-    Result.
-
 %% set_child_epoch_length(Length, TxEnv, Trees) ->
 %%     {ok, CD} = aeb_fate_abi:create_calldata("set_next_epoch_length",
 %%                                             [
@@ -627,7 +619,7 @@ genesis_protocol_version() ->
 %lazy_leader_time_delta() ->
 %    case aeu_env:user_config([<<"chain">>, <<"consensus">>, <<"0">>,
 %                              <<"config">>, <<"lazy_leader_trigger_time">>]) of
-%        {ok, Interval} /validators
+%        {ok, Interval}
 %        -> Interval;
 %        undefined -> 10000
 %    end.
@@ -765,12 +757,12 @@ next_beneficiary(TxEnv, Trees) ->
     end.
 
 try_compute_schedule(TxEnv, Trees, ChildHeight) ->
-    Epoch = get_child_epoch(TxEnv, Trees),
+    {ok, EpochInfo} = aec_chain_hc:epoch_info({TxEnv, Trees}),
+    lager:debug("Epoch info for schedule ~p", [EpochInfo]),
+    #{length := EpochLength, epoch := Epoch} = EpochInfo,
     case get_entropy_hash(Epoch) of
         {ok, Hash} ->
-            Validators = get_sorted_validators(TxEnv, Trees),
-            EpochLength = get_child_epoch_length(TxEnv, Trees),
-            Schedule = validator_schedule(Hash, ChildHeight, Validators, EpochLength, TxEnv, Trees),
+            Schedule = validator_schedule(Hash, ChildHeight, EpochLength, TxEnv, Trees),
             cache_schedule(Schedule),
             lager:debug("Schedule cached (range ~p -> ~p)", [ChildHeight, ChildHeight + EpochLength - 1]),
             ok;
@@ -809,8 +801,8 @@ leader_for_height(Height) ->
     Schedule = aeu_ets_cache:get(?ETS_CACHE_TABLE, validator_schedule, fun() -> #{} end),
     maps:find(Height, Schedule).
 
-validator_schedule(Hash, ChildHeight, Validators, EpochLength, TxEnv, Trees) ->
-    Schedule = get_validator_schedule(Hash, Validators, EpochLength, TxEnv, Trees),
+validator_schedule(Hash, ChildHeight, EpochLength, TxEnv, Trees) ->
+    Schedule = get_validator_schedule(Hash, EpochLength, TxEnv, Trees),
     maps:from_list(enumerate(ChildHeight, Schedule)).
 
 -if(?OTP_RELEASE < 25).
@@ -821,7 +813,7 @@ enumerate(From, List) ->
     lists:enumerate(From, List).
 -endif.
 
-get_validator_schedule(Seed, _Validators, _EpochLength, TxEnv, Trees) ->
+get_validator_schedule(Seed, _EpochLength, TxEnv, Trees) ->
     Args = [aefa_fate_code:encode_arg({bytes, Seed})],
     {ok, CallResult} =
         call_consensus_contract_result(?ELECTION_CONTRACT, TxEnv, Trees, "get_validator_schedule_seed", Args),
@@ -865,14 +857,6 @@ is_leader_valid(Node, Trees, TxEnv, PrevNode) ->
                     aec_conductor:throw_error(parent_chain_block_not_synced)
             end
     end.
-
-get_sorted_validators(TxEnv, Trees) ->
-    %% TODO: cache this
-    %% this could be cached: we only need to track contract call events for
-    %% validator creation and going online and offline
-    {ok, CallResult} =
-        call_consensus_contract_result(?STAKING_CONTRACT, TxEnv, Trees, "sorted_validators", []),
-    lists:map(fun({tuple, Staker}) -> Staker end, CallResult).
 
 create_contracts([], _TxEnv, Trees) -> Trees;
 create_contracts([Contract | Tail], TxEnv, TreesAccum) ->

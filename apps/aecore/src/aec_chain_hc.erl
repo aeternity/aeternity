@@ -123,8 +123,20 @@ enumerate(From, List) ->
 -endif.
 
 epoch_info_map(Epoch, EpochInfo) ->
-    {tuple, {Start, Length, _Seed, _StakingDist}} = EpochInfo,
-    #{first => Start, epoch => Epoch, length => Length, last  => Start + Length - 1}.
+    {tuple, {Start, Length, Seed, StakingDist}} = EpochInfo,
+    SeedHash =
+       case Seed of
+         {variant, [0,1], 0, {}} -> undefined;
+         {variant, [0,1], 1, {{bytes, Bin}}} -> Bin
+       end,
+    Validators =
+       case StakingDist of
+         {variant, [0, 1], 1, {SD}} ->
+            lists:map(fun({tuple, {{address, Staker}, Stake}}) -> {Staker, Stake} end, SD);
+         {variant, [0, 1], 0, {}} -> undefined
+       end,
+    #{first => Start, epoch => Epoch, length => Length, last => Start + Length - 1,
+      validators => Validators, seed => SeedHash}.
 
 call_consensus_contract_at_height(Contract, {TxEnv, Trees}, Endpoint, Args) ->
     aec_consensus_hc:call_consensus_contract_result(Contract, TxEnv, Trees, Endpoint, Args);
