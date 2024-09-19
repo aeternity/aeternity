@@ -632,6 +632,10 @@ verify_fees(Config) ->
     {ok, _SignedTx} = seed_account(PatronPub, 1, NetworkId),
     Test(), %% fees are generated
 
+    %% key blocks are in sync, but give gossip time to sync micro block
+    %% This won't be needed if micro blocks come before key blocks
+    timer:sleep(?CHILD_BLOCK_TIME div 2),
+
     ct:log("Test with no transaction", []),
     [ Test() || _ <- lists:seq(0, ?REWARD_DELAY) ],
     ok.
