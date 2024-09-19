@@ -15,6 +15,7 @@
         , epoch_info/1
         , validators_at_height/1
         , validator_schedule_at_height/1
+        , validator_schedule_at_height_from_hash/2
         %% epoch determined
         , epoch_start_height/1
         , epoch_info_for_epoch/1
@@ -92,11 +93,19 @@ validator_schedule(Epoch) when Epoch > 1 ->
 -spec validator_schedule_at_height(height()) -> {ok, #{integer() => binary()}}.
 validator_schedule_at_height(Height) ->
     {ok, Result} = call_consensus_contract_at_height(?ELECTION_CONTRACT, Height, "get_validator_schedule", []),
-    From = case Height of
-                {TxEnv, _} -> aetx_env:height(TxEnv);
-                _ when is_integer(Height) -> Height
-           end,
-    {ok, maps:from_list(enumerate(From, lists:map(fun({address, Address}) -> Address end, Result)))}.
+    {ok, maps:from_list(enumerate(Height, lists:map(fun({address, Address}) -> Address end, Result)))}.
+
+-spec validator_schedule_at_height_from_hash(height(), binary()) -> {ok, #{integer() => binary()}}.
+validator_schedule_at_height_from_hash(Height, Hash) ->
+    Args = [aefa_fate_code:encode_arg({bytes, Hash})],
+    {ok, Result} = call_consensus_contract_at_height(?ELECTION_CONTRACT, Height, "get_validator_schedule_seed", Args),
+    {ok, maps:from_list(enumerate(Height, lists:map(fun({address, Address}) -> Address end, Result)))}.
+
+%% support OTP24 without lists:enumerate
+enumerate({TxEnv, _Trees}, List) ->
+     enumerate(aetx_env:height(TxEnv), List);
+enumerate(From, List) when is_integer(From) ->
+    lists:zip(lists:seq(From, From + length(List)-1), List).
 
 -spec entropy_hash(non_neg_integer()) -> {ok, binary()} | {error, any()}.
 entropy_hash(Epoch) ->
@@ -113,14 +122,6 @@ epoch_start_height(Epoch, Height) ->
         _ ->
             {error, chain_too_short}
     end.
-
--if(?OTP_RELEASE < 25).
-enumerate(From, List) ->
-  lists:zip(lists:seq(From, From + length(List)-1), List).
--else.
-enumerate(From, List) ->
-    lists:enumerate(From, List).
--endif.
 
 epoch_info_map(Epoch, EpochInfo) ->
     {tuple, {Start, Length, Seed, StakingDist}} = EpochInfo,
