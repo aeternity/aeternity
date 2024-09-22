@@ -244,13 +244,11 @@ state_pre_transform_key_node(Node, PrevNode, Trees) ->
         true ->
             {TxEnv0, _} = aetx_env:tx_env_and_trees_from_hash(aetx_transaction, PrevHash),
             TxEnv = aetx_env:set_height(TxEnv0, Height),
-            {ok, EpochInfo} = aec_chain_hc:epoch_info({TxEnv, Trees}),
+            {ok, #{epoch := Epoch} = EpochInfo} = aec_chain_hc:epoch_info({TxEnv, Trees}),
             {ok, Leader} = safe_leader_for_height(TxEnv, Trees, Height),
             case Height == maps:get(last, EpochInfo) of
                 true ->
-                    ParentHeight = maps:get(epoch, EpochInfo) * parent_generation() + pc_start_height(),
-                    {ok, Block} = aec_parent_chain_cache:get_block_by_height(ParentHeight, 100),
-                    Seed = aec_parent_chain_block:hash(Block),
+                    {ok, Seed} = get_entropy_hash(Epoch + 1),
                     step_eoe(TxEnv, Trees, Leader, Seed, 0);
                 false ->
                     step(TxEnv, Trees, Leader)
@@ -762,7 +760,8 @@ try_compute_schedule(TxEnv, Trees, ChildHeight) ->
     #{length := EpochLength, epoch := Epoch} = EpochInfo,
     case get_entropy_hash(Epoch) of
         {ok, Hash} ->
-            Schedule = validator_schedule(Hash, ChildHeight, EpochLength, TxEnv, Trees),
+            Schedule = validator_schedule(Hash, ChildHeight, TxEnv, Trees),
+            %% Enumerate here from ChildHeight ... the contract returns an ordered list
             cache_schedule(Schedule),
             lager:debug("Schedule cached (range ~p -> ~p)", [ChildHeight, ChildHeight + EpochLength - 1]),
             ok;
@@ -801,23 +800,19 @@ leader_for_height(Height) ->
     Schedule = aeu_ets_cache:get(?ETS_CACHE_TABLE, validator_schedule, fun() -> #{} end),
     maps:find(Height, Schedule).
 
-validator_schedule(Hash, ChildHeight, EpochLength, TxEnv, Trees) ->
-    Schedule = get_validator_schedule(Hash, EpochLength, TxEnv, Trees),
+validator_schedule(Hash, ChildHeight, TxEnv, Trees) ->
+    {ok, Schedule} = aec_chain_hc:validator_schedule_at_height({TxEnv, Trees}, Hash),
     maps:from_list(enumerate(ChildHeight, Schedule)).
 
--if(?OTP_RELEASE < 25).
-enumerate(From, List) ->
-  lists:zip(lists:seq(From, From + length(List)-1), List).
--else.
-enumerate(From, List) ->
-    lists:enumerate(From, List).
--endif.
+%% support OTP24 without lists:enumerate
+enumerate(From, List) when is_integer(From) ->
+    lists:zip(lists:seq(From, From + length(List)-1), List).
 
-get_validator_schedule(Seed, _EpochLength, TxEnv, Trees) ->
-    Args = [aefa_fate_code:encode_arg({bytes, Seed})],
-    {ok, CallResult} =
-        call_consensus_contract_result(?ELECTION_CONTRACT, TxEnv, Trees, "get_validator_schedule_seed", Args),
-    lists:map(fun({address, Address}) -> Address end, CallResult).
+%get_validator_schedule(Seed, TxEnv, Trees) ->
+%    Args = [aefa_fate_code:encode_arg({bytes, Seed})],
+%    {ok, CallResult} =
+%        call_consensus_contract_result(?ELECTION_CONTRACT, TxEnv, Trees, "get_validator_schedule_seed", Args),
+%    lists:map(fun({address, Address}) -> Address end, CallResult).
 
 
 allow_lazy_leader() ->

@@ -15,11 +15,12 @@
         , epoch_info/1
         , validators_at_height/1
         , validator_schedule_at_height/1
-        , validator_schedule_at_height_from_hash/2
+        , validator_schedule_at_height/2
         %% epoch determined
         , epoch_start_height/1
         , epoch_info_for_epoch/1
         , validator_schedule/1
+        , validator_schedule_from_hash/2
         , entropy_hash/1
         ]).
 
@@ -83,29 +84,31 @@ validators_at_height(Height) ->
     {ok, Result} = call_consensus_contract_at_height(?STAKING_CONTRACT, Height, "sorted_validators", []),
     {ok, lists:map(fun({tuple, Staker}) -> Staker end, Result)}.
 
--spec validator_schedule(non_neg_integer()) -> {ok, #{integer() => binary()}}.
+-spec validator_schedule(non_neg_integer()) -> {ok, [binary()]}.
 validator_schedule(Epoch) when Epoch > 1 ->
     case epoch_start_height(Epoch) of
       {ok, Height} -> validator_schedule_at_height(Height);
       Err -> Err
     end.
 
--spec validator_schedule_at_height(height()) -> {ok, #{integer() => binary()}}.
+-spec validator_schedule_from_hash(non_neg_integer(), binary()) -> {ok, [binary()]}.
+validator_schedule_from_hash(Epoch, Hash) when Epoch > 1 ->
+    case epoch_start_height(Epoch) of
+      {ok, Height} -> validator_schedule_at_height(Height, Hash);
+      Err -> Err
+    end.
+
+
+-spec validator_schedule_at_height(height()) -> {ok, [binary()]}.
 validator_schedule_at_height(Height) ->
     {ok, Result} = call_consensus_contract_at_height(?ELECTION_CONTRACT, Height, "get_validator_schedule", []),
-    {ok, maps:from_list(enumerate(Height, lists:map(fun({address, Address}) -> Address end, Result)))}.
+    {ok, lists:map(fun({address, Address}) -> Address end, Result)}.
 
--spec validator_schedule_at_height_from_hash(height(), binary()) -> {ok, #{integer() => binary()}}.
-validator_schedule_at_height_from_hash(Height, Hash) ->
+-spec validator_schedule_at_height(height(), binary()) -> {ok, [binary()]}.
+validator_schedule_at_height(Height, Hash) ->
     Args = [aefa_fate_code:encode_arg({bytes, Hash})],
     {ok, Result} = call_consensus_contract_at_height(?ELECTION_CONTRACT, Height, "get_validator_schedule_seed", Args),
-    {ok, maps:from_list(enumerate(Height, lists:map(fun({address, Address}) -> Address end, Result)))}.
-
-%% support OTP24 without lists:enumerate
-enumerate({TxEnv, _Trees}, List) ->
-     enumerate(aetx_env:height(TxEnv), List);
-enumerate(From, List) when is_integer(From) ->
-    lists:zip(lists:seq(From, From + length(List)-1), List).
+    {ok, lists:map(fun({address, Address}) -> Address end, Result)}.
 
 -spec entropy_hash(non_neg_integer()) -> {ok, binary()} | {error, any()}.
 entropy_hash(Epoch) ->

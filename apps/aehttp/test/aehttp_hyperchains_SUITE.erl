@@ -443,20 +443,38 @@ produce_first_epoch(Config) ->
 respect_schedule(Config) ->
     [{Node1, _, _}|_] = ?config(nodes, Config),
     {ok, #{first := StartHeight, length := Length, epoch := Epoch} = EI0} = rpc(?NODE1, aec_chain_hc, epoch_info, []),
+    ChildHeight = rpc(?NODE1, aec_chain, top_height, []),
+    ct:log("Strating test with epoch info: ~p on height ~p", [EI0, ChildHeight]),
+    %% recompute the hashes... here we know we have an AE perant chain
+    %% maybe replace with getting it from parent_chain_cache.
+    ParentHashesPerEpoch = epoch_hashes(Config, Epoch),
+    ct:log("Epoch hashes ~p", [ParentHashesPerEpoch]),
     {ok, EntropyHash} = rpc(?NODE1, aec_consensus_hc, get_entropy_hash, [Epoch]),
+    %% contract does do something with the hash to make it a seed... which is wrong, should store the hash to
+    %% compare to parent chain later on.
+    ?assertEqual(maps:get(seed, EI0), EntropyHash),
     ct:log("Info ~p and entropy hash ~p", [EI0, EntropyHash]),
+    ct:log("Produced at least Epoch ~p starting at height ~p", [Epoch, ChildHeight]),
     produce_cc_blocks(Config, Length),
-    ct:log("Produced at least Epoch ~p starting at height ~p", [Epoch, StartHeight]),
-    {ok, Schedule} = rpc(?NODE1, aec_chain_hc, validator_schedule_at_height, [StartHeight]),
+
+    %% Check the API functions in aec_chain_hc
+    {ok, Schedule} = rpc(?NODE1, aec_chain_hc, validator_schedule, [Epoch]),
     ct:log("Validating schedule ~p for Epoch ~p", [Schedule, Epoch]),
-    {ok, HashSchedule} = rpc(?NODE1, aec_chain_hc, validator_schedule_at_height_from_hash, [StartHeight, EntropyHash]),
+    {ok, HashSchedule} = rpc(?NODE1, aec_chain_hc, validator_schedule_from_hash, [Epoch, EntropyHash]),
     ct:log("Equals schedule ~p for Epoch ~p", [HashSchedule, Epoch]),
     ?assertEqual(Schedule, HashSchedule),
-    ?assert(maps:fold(fun(Height, Producer, Acc) ->
+    ?assert(lists:foldl(fun({Height, Producer}, Acc) ->
                               Acc andalso Producer == get_block_producer(Node1, Height)
-                      end, true, Schedule)),
+                        end, true, lists:zip(lists:seq(StartHeight, StartHeight + Length - 1), Schedule))),
     ok.
 
+epoch_hashes(_Config, Epoch) ->
+    lists:map(fun(E) ->
+                  H = rpc(?NODE1, aec_consensus_hc, entropy_height, [E]),
+                  {ok, Hdr} = rpc(?PARENT_CHAIN_NODE, aec_chain, get_key_header_by_height, [H]),
+                  {ok, Hash} = aec_headers:hash_header(Hdr),
+                  {H, aeser_api_encoder:encode(key_block_hash, Hash)}
+              end, lists:seq(1, Epoch)).
 
 simple_withdraw(Config) ->
     [{_, NodeName, _}|_] = ?config(nodes, Config),
