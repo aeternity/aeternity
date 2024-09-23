@@ -29,7 +29,8 @@
          elected_leader_did_not_show_up/1,
          block_difficulty/1,
          epoch_with_slow_parent/1,
-         check_blocktime/1
+         check_blocktime/1,
+         get_pin/1
         ]).
 
 -include_lib("stdlib/include/assert.hrl").
@@ -131,7 +132,7 @@
 
 -define(GENESIS_BENFICIARY, <<0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0>>).
 
-all() -> [{group, hc}, {group, epochs}].
+all() -> [{group, hc}, {group, epochs}, {group, pinning}].
 
 groups() ->
     [
@@ -149,6 +150,10 @@ groups() ->
     , {epochs, [sequence],
           [ start_two_child_nodes
           , epoch_with_slow_parent ]}
+    , {pinning, [sequence],
+          [ start_two_child_nodes,
+            produce_first_epoch,
+            get_pin ]}
     ].
 
 suite() -> [].
@@ -717,6 +722,23 @@ epoch_with_slow_parent(Config) ->
     ?assertEqual([{ok, (N-1) * ?CHILD_EPOCH_LENGTH + 1} || N <- lists:seq(1, EndEpoch)],
                  [rpc(?NODE1, aec_chain_hc, epoch_start_height, [N]) || N <- lists:seq(1, EndEpoch)]),
     ok.
+
+%%%=============================================================================
+%%% Pinning
+%%%=============================================================================
+
+get_pin(_Config) ->
+
+    Test =
+        fun(_SpecVsn, Path) ->
+            
+            % likely not the way you want to figure out the URL to ?NODE1..?
+            Repl1 = aecore_suite_utils:http_request(aecore_suite_utils:external_address(), get, Path, []),
+            {ok, 200, _Smap} = Repl1
+    
+        end,
+   Test(oas3, "hyperchain/pin-tx"),
+   ok.
 
 %%% --------- helper functions
 
