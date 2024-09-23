@@ -28,48 +28,38 @@
 -define(STAKING_CONTRACT, staking).
 -define(REWARDS_CONTRACT, rewards).
 
--type height() :: non_neg_integer() | {aetx_env:env(), aec_trees:trees()}.
+-type run_env() :: top | non_neg_integer() | {aetx_env:env(), aec_trees:trees()}.
 -type epoch_info() :: map().
 
 -spec epoch() -> {ok, non_neg_integer()} | {error, chain_too_short}.
 epoch() ->
-    case aec_chain:top_height() of
-        undefined -> {error, chain_too_short};
-        Height -> epoch(Height)
-    end.
+    epoch(top).
 
 -spec epoch_length() -> {ok, non_neg_integer()} | {error, chain_too_short}.
 epoch_length() ->
-    case aec_chain:top_height() of
-        undefined -> {error, chain_too_short};
-        Height -> epoch_length(Height)
-    end.
+    epoch_length(top).
 
 -spec epoch_info() -> {ok, epoch_info()} | {error, chain_too_short}.
 epoch_info() ->
-    case aec_chain:top_height() of
-        undefined -> {error, chain_too_short};
-        Height -> epoch_info(Height)
-    end.
+    epoch_info(top).
 
--spec epoch(height()) -> {ok, non_neg_integer()} | {error, chain_too_short}.
-epoch(Height) ->
-    call_consensus_contract_at_height(?ELECTION_CONTRACT, Height, "epoch", []).
+-spec epoch(run_env()) -> {ok, non_neg_integer()} | {error, chain_too_short}.
+epoch(RunEnv) ->
+    call_consensus_contract_w_env(?ELECTION_CONTRACT, RunEnv, "epoch", []).
 
--spec epoch_length(height()) -> {ok, non_neg_integer()} | {error, chain_too_short}.
-epoch_length(Height) ->
-    call_consensus_contract_at_height(?ELECTION_CONTRACT, Height, "epoch_length", []).
+-spec epoch_length(run_env()) -> {ok, non_neg_integer()} | {error, chain_too_short}.
+epoch_length(RunEnv) ->
+    call_consensus_contract_w_env(?ELECTION_CONTRACT, RunEnv, "epoch_length", []).
 
--spec epoch_info(height()) -> {ok, epoch_info()}.
-epoch_info(Height) ->
-    {ok, {tuple, {Epoch, EpochInfo}}} = call_consensus_contract_at_height(?ELECTION_CONTRACT, Height, "epoch_info", []),
+-spec epoch_info(run_env()) -> {ok, epoch_info()} | {error, chain_too_short}.
+epoch_info(RunEnv) ->
+    {ok, {tuple, {Epoch, EpochInfo}}} = call_consensus_contract_w_env(?ELECTION_CONTRACT, RunEnv, "epoch_info", []),
     {ok, epoch_info_map(Epoch, EpochInfo)}.
 
+-spec epoch_info_for_epoch(non_neg_integer()) -> {ok, epoch_info()} | {error, chain_too_short}.
 epoch_info_for_epoch(Epoch) ->
-    Height = aec_chain:top_height(),
-    {ok, EpochInfo} = call_consensus_contract_at_height(?ELECTION_CONTRACT, Height, "epoch_info_epoch", [Epoch]),
+    {ok, EpochInfo} = call_consensus_contract_w_env(?ELECTION_CONTRACT, top, "epoch_info_epoch", [Epoch]),
     {ok, epoch_info_map(Epoch, EpochInfo)}.
-
 
 -spec epoch_start_height(non_neg_integer()) -> {ok, non_neg_integer()} | {error, chain_too_short}.
 epoch_start_height(Epoch) ->
@@ -79,9 +69,9 @@ epoch_start_height(Epoch) ->
            epoch_start_height(Epoch, Height)
     end.
 
--spec validators_at_height(height()) -> {ok, [binary()]}.
-validators_at_height(Height) ->
-    {ok, Result} = call_consensus_contract_at_height(?STAKING_CONTRACT, Height, "sorted_validators", []),
+-spec validators_at_height(run_env()) -> {ok, [binary()]}.
+validators_at_height(RunEnv) ->
+    {ok, Result} = call_consensus_contract_w_env(?STAKING_CONTRACT, RunEnv, "sorted_validators", []),
     {ok, lists:map(fun({tuple, Staker}) -> Staker end, Result)}.
 
 -spec validator_schedule(non_neg_integer()) -> {ok, [binary()]}.
@@ -98,18 +88,18 @@ validator_schedule_from_hash(Epoch, Hash) when Epoch > 1 ->
       Err -> Err
     end.
 
-
--spec validator_schedule_at_height(height()) -> {ok, [binary()]}.
-validator_schedule_at_height(Height) ->
-    {ok, Result} = call_consensus_contract_at_height(?ELECTION_CONTRACT, Height, "get_validator_schedule", []),
+-spec validator_schedule_at_height(run_env()) -> {ok, [binary()]}.
+validator_schedule_at_height(RunEnv) ->
+    {ok, Result} = call_consensus_contract_w_env(?ELECTION_CONTRACT, RunEnv, "get_validator_schedule", []),
     {ok, lists:map(fun({address, Address}) -> Address end, Result)}.
 
--spec validator_schedule_at_height(height(), binary()) -> {ok, [binary()]}.
+-spec validator_schedule_at_height(non_neg_integer(), binary()) -> {ok, [binary()]}.
 validator_schedule_at_height(Height, Hash) ->
     Args = [aefa_fate_code:encode_arg({bytes, Hash})],
-    {ok, Result} = call_consensus_contract_at_height(?ELECTION_CONTRACT, Height, "get_validator_schedule_seed", Args),
+    {ok, Result} = call_consensus_contract_w_env(?ELECTION_CONTRACT, Height, "get_validator_schedule_seed", Args),
     {ok, lists:map(fun({address, Address}) -> Address end, Result)}.
 
+%% This makes the dependency graph a circle, right?
 -spec entropy_hash(non_neg_integer()) -> {ok, binary()} | {error, any()}.
 entropy_hash(Epoch) ->
   aec_consensus_hc:get_entropy_hash(Epoch).
@@ -128,27 +118,28 @@ epoch_start_height(Epoch, Height) ->
 
 epoch_info_map(Epoch, EpochInfo) ->
     {tuple, {Start, Length, Seed, StakingDist}} = EpochInfo,
-    SeedHash =
-       case Seed of
-         {variant, [0,1], 0, {}} -> undefined;
-         {variant, [0,1], 1, {{bytes, Bin}}} -> Bin
-       end,
-    Validators =
-       case StakingDist of
-         {variant, [0, 1], 1, {SD}} ->
-            lists:map(fun({tuple, {{address, Staker}, Stake}}) -> {Staker, Stake} end, SD);
-         {variant, [0, 1], 0, {}} -> undefined
-       end,
+    SeedHash   = decode_option(Seed, {fun({bytes, Bin}) -> Bin end, undefined}),
+    Validators = decode_option(StakingDist, {fun decode_stakers/1, undefined}),
     #{first => Start, epoch => Epoch, length => Length, last => Start + Length - 1,
       validators => Validators, seed => SeedHash}.
 
-call_consensus_contract_at_height(Contract, {TxEnv, Trees}, Endpoint, Args) ->
+decode_option({variant, [0, 1], 0, {}}, {_SomeFun, NoneValue}) -> NoneValue;
+decode_option({variant, [0, 1], 1, {SomeValue}}, {SomeFun, _NoneValue}) -> SomeFun(SomeValue).
+
+decode_stakers(RawStakers) ->
+    lists:map(fun({tuple, {{address, Staker}, Stake}}) -> {Staker, Stake} end, RawStakers).
+
+call_consensus_contract_w_env(Contract, {TxEnv, Trees}, Endpoint, Args) ->
     aec_consensus_hc:call_consensus_contract_result(Contract, TxEnv, Trees, Endpoint, Args);
-call_consensus_contract_at_height(Contract, Height, Endpoint, Args) when is_integer(Height), Height >= 0 ->
+call_consensus_contract_w_env(Contract, top, Endpoint, Args) ->
+    case aec_chain:top_height() of
+        undefined -> {error, chain_too_short};
+        Height    -> call_consensus_contract_w_env(Contract, Height, Endpoint, Args)
+    end;
+call_consensus_contract_w_env(Contract, Height, Endpoint, Args) when is_integer(Height), Height >= 0 ->
     case aec_chain_state:get_key_block_hash_at_height(Height) of
         error -> {error, chain_too_short};
         {ok, Hash} ->
            {TxEnv, Trees} = aetx_env:tx_env_and_trees_from_hash(aetx_transaction, Hash),
-           call_consensus_contract_at_height(Contract, {TxEnv, Trees}, Endpoint, Args)
+           call_consensus_contract_w_env(Contract, {TxEnv, Trees}, Endpoint, Args)
     end.
-

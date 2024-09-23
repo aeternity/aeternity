@@ -235,6 +235,8 @@ dirty_validate_micro_node_with_ctx(_Node, _Block, _Ctx) -> ok.
 %% Custom state transitions
 state_pre_transform_key_node_consensus_switch(_Node, Trees) -> Trees.
 
+%% only called for key-blocks - this is the call where we set epoch and
+%% leader
 state_pre_transform_key_node(Node, PrevNode, Trees) ->
     PrevHeader = aec_block_insertion:node_header(PrevNode),
     {ok, PrevHash} = aec_headers:hash_header(PrevHeader),
@@ -730,6 +732,7 @@ next_beneficiary() ->
             next_beneficiary()
     end.
 
+%% Called as part of deciding who will produce block at Height `height(TxEnv) + 1`
 next_beneficiary(TxEnv, Trees) ->
     ChildHeight = aetx_env:height(TxEnv),
     case leader_for_height(ChildHeight + 1) of
@@ -828,6 +831,8 @@ get_type() -> pos.
 get_block_producer_configs() -> [{instance_not_used,
                                   #{child_block_time => child_block_time()}}].
 
+%% is_leader_valid is called (soon) after `state_pre_transformation_key_node`
+%% only called for key-blocks - Height and Epoch should be up to date
 is_leader_valid(Node, Trees, TxEnv, PrevNode) ->
     Height = aetx_env:height(TxEnv),
     case leader_for_height(Height) of
