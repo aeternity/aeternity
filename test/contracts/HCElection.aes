@@ -87,14 +87,6 @@ main contract HCElection =
     require(epoch >= state.epoch - 1 && epoch =< state.epoch + 2, "Epoch not in scope")
     state.epochs[epoch]
 
-  entrypoint get_validator_schedule() =
-    let ei = state.epochs[state.epoch]
-    validator_schedule(Option.force(ei.seed), Option.force(ei.staking_distribution), ei.length)
-
-  entrypoint get_validator_schedule_seed(seed : bytes()) =
-    let ei = state.epochs[state.epoch]
-    validator_schedule(seed, Option.force(ei.staking_distribution), ei.length)
-
   entrypoint validator_schedule(seed : bytes(), validators : list(address * int), length : int) =
     let total_stake = List.foldl((+), 0, List.map(Pair.snd, validators))
     // One extra hash operation to convert from bytes() to bytes(32)/hash
@@ -111,26 +103,8 @@ main contract HCElection =
     pick_validator(n, (validator, stake) :: _) | n < stake = validator
     pick_validator(n, (_, stake) :: validators)            = pick_validator(n - stake, validators)
 
-  // entrypoint get_state() : get_state_response =
-  //   { main_staking_ct   = state.main_staking_ct,
-  //     entropy           = state.entropy,
-  //     leader            = state.leader,
-  //     added_stake       = state.added_stake,
-  //     epoch             = state.epoch,
-  //     epoch_length      = state.epoch_length
-  //     }
-
-  // function find_validator(validators, shot) =
-  //   switch(validators)
-  //     []   => None
-  //     (validator_addr, validator_stake : int)::t =>
-  //       if(validator_stake > shot) Some(validator_addr)
-  //       else find_validator(t, shot - validator_stake)
-
   function assert_protocol_call() =
       require(Call.caller == Contract.creator, "Must be called by the protocol")
 
   // function accum_stake((accum, total_s, current_hash, network_id), (addr, stake)) =
   //   ((addr, stake) :: accum, stake + total_s, current_hash, network_id)
-
-
