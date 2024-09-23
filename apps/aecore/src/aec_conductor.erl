@@ -589,7 +589,13 @@ set_mode(State) ->
             end;
         pos ->
             %% TODO actually check whether node is a producing node
-            State#state{mode = pos, has_beneficiary = true}
+            case ConsensusModule of
+                aec_consensus_hc ->
+                    IsBlockProducer = aec_consensus_hc:is_block_producer(),
+                    State#state{mode = pos, has_beneficiary = IsBlockProducer};
+                _ ->
+                    set_beneficiary_configured(State#state{mode = pos}, ConsensusModule)
+            end
     end.
 
 set_stratum_mode(State) ->

@@ -29,7 +29,7 @@
 %%%=============================================================================
 
 %% External API
--export([start_link/6, stop/0]).
+-export([start_link/5, stop/0]).
 
 %% Callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -61,7 +61,6 @@
         blocks_hash_index   = #{}               :: #{aec_parent_chain_block:hash() => non_neg_integer()},
         top_height          = 0                 :: non_neg_integer(),
         sign_module         = aec_preset_keys   :: atom(), %% TODO: make it configurable
-        producing_blocks    = false             :: boolean(),
         is_syncing          = false             :: boolean()
     }).
 -type state() :: #state{}.
@@ -72,11 +71,12 @@
 %%% API
 %%%=============================================================================
 %% Start the parent chain cache process
--spec start_link(non_neg_integer(), non_neg_integer(), fun((integer()) -> [integer()]), non_neg_integer(), non_neg_integer(),
-                 boolean()) ->
+-spec start_link(non_neg_integer(), non_neg_integer(),
+                 fun((integer()) -> [integer()]),
+                 non_neg_integer(), non_neg_integer()) ->
     {ok, pid()} | {error, {already_started, pid()}} | {error, Reason::any()}.
-start_link(Height, RetryInterval, ParentTargetFun, Size, _Confirmations, IsProducingBlocks) ->
-    Args = [Height, RetryInterval, ParentTargetFun, Size, IsProducingBlocks],
+start_link(Height, RetryInterval, ParentTargetFun, Size, _Confirmations) ->
+    Args = [Height, RetryInterval, ParentTargetFun, Size],
     gen_server:start_link({local, ?SERVER}, ?MODULE, Args, []).
 
 stop() ->
@@ -95,12 +95,13 @@ get_block_by_height(Height) ->
             Err
     end.
 
+%% TODO: This is really ugly, properly fix at some point
 -spec get_block_by_height(non_neg_integer(), integer()) ->
            {ok, aec_parent_chain_block:block()} | {error, not_in_cache}.
 get_block_by_height(Height, Timeout) ->
     case get_block_by_height(Height) of
         {ok, _B} = OK -> OK;
-        Err when Timeout > 0 ->
+        _Err when Timeout > 0 ->
             timer:sleep(10),
             get_block_by_height(Height, Timeout - 10);
         Err -> Err
@@ -118,7 +119,7 @@ get_state() ->
 %%%=============================================================================
 
 -spec init([any()]) -> {ok, #state{}}.
-init([StartHeight, RetryInterval, ParentTargetFun, Size, BlockProducing]) ->
+init([StartHeight, RetryInterval, ParentTargetFun, Size]) ->
     aec_events:subscribe(top_changed),
     aec_events:subscribe(start_mining),
     aec_events:subscribe(stop_mining),
@@ -134,8 +135,7 @@ init([StartHeight, RetryInterval, ParentTargetFun, Size, BlockProducing]) ->
                 parent_target_fun       = ParentTargetFun,
                 child_top_hash          = ChildHash,
                 max_size                = Size,
-                block_cache             = #{},
-                producing_blocks        = BlockProducing
+                block_cache             = #{}
                 }}.
 
 -spec handle_call(any(), any(), state()) -> {reply, any(), state()}.
@@ -206,10 +206,6 @@ handle_info({gproc_ps_event, chain_sync, #{info := {is_syncing, IsSyncing}}}, St
     {noreply, State1};
 handle_info({gproc_ps_event, top_changed, _A} , State) ->
     {noreply, State};
-handle_info({gproc_ps_event, start_mining, _}, State) ->
-    {noreply, State#state{producing_blocks = true}};
-handle_info({gproc_ps_event, stop_mining, _}, State) ->
-    {noreply, State#state{producing_blocks = false}};
 handle_info({gproc_ps_event, chain_sync, _}, State) ->
     {noreply, State};
 handle_info(_Info, State) ->
