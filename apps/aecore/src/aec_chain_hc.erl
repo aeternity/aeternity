@@ -14,13 +14,11 @@
         , epoch_info/0
         , epoch_info/1
         , validators_at_height/1
-        , validator_schedule_at_height/1
-        , validator_schedule_at_height/2
         %% epoch determined
         , epoch_start_height/1
         , epoch_info_for_epoch/1
-        , validator_schedule/1
-        , validator_schedule_from_hash/2
+        , epoch_info_for_epoch/2
+        , validator_schedule/4
         , entropy_hash/1
         ]).
 
@@ -28,10 +26,12 @@
 -define(STAKING_CONTRACT, staking).
 -define(REWARDS_CONTRACT, rewards).
 
--type run_env() :: top | non_neg_integer() | {aetx_env:env(), aec_trees:trees()}.
+-type epoch() :: non_neg_integer().
+-type height() :: non_neg_integer().
+-type run_env() :: top | height() | {aetx_env:env(), aec_trees:trees()}.
 -type epoch_info() :: map().
 
--spec epoch() -> {ok, non_neg_integer()} | {error, chain_too_short}.
+-spec epoch() -> {ok, epoch()} | {error, chain_too_short}.
 epoch() ->
     epoch(top).
 
@@ -43,7 +43,7 @@ epoch_length() ->
 epoch_info() ->
     epoch_info(top).
 
--spec epoch(run_env()) -> {ok, non_neg_integer()} | {error, chain_too_short}.
+-spec epoch(run_env()) -> {ok, epoch()} | {error, chain_too_short}.
 epoch(RunEnv) ->
     call_consensus_contract_w_env(?ELECTION_CONTRACT, RunEnv, "epoch", []).
 
@@ -58,7 +58,11 @@ epoch_info(RunEnv) ->
 
 -spec epoch_info_for_epoch(non_neg_integer()) -> {ok, epoch_info()} | {error, chain_too_short}.
 epoch_info_for_epoch(Epoch) ->
-    {ok, EpochInfo} = call_consensus_contract_w_env(?ELECTION_CONTRACT, top, "epoch_info_epoch", [Epoch]),
+    epoch_info_for_epoch(top, Epoch).
+
+-spec epoch_info_for_epoch(run_env(), non_neg_integer()) -> {ok, epoch_info()} | {error, chain_too_short}.
+epoch_info_for_epoch(RunEnv, Epoch) ->
+    {ok, EpochInfo} = call_consensus_contract_w_env(?ELECTION_CONTRACT, RunEnv, "epoch_info_epoch", [Epoch]),
     {ok, epoch_info_map(Epoch, EpochInfo)}.
 
 -spec epoch_start_height(non_neg_integer()) -> {ok, non_neg_integer()} | {error, chain_too_short}.
@@ -74,30 +78,38 @@ validators_at_height(RunEnv) ->
     {ok, Result} = call_consensus_contract_w_env(?STAKING_CONTRACT, RunEnv, "sorted_validators", []),
     {ok, lists:map(fun({tuple, Staker}) -> Staker end, Result)}.
 
--spec validator_schedule(non_neg_integer()) -> {ok, [binary()]}.
-validator_schedule(Epoch) when Epoch > 1 ->
-    case epoch_start_height(Epoch) of
-      {ok, Height} -> validator_schedule_at_height(Height);
-      Err -> Err
-    end.
-
--spec validator_schedule_from_hash(non_neg_integer(), binary()) -> {ok, [binary()]}.
-validator_schedule_from_hash(Epoch, Hash) when Epoch > 1 ->
-    case epoch_start_height(Epoch) of
-      {ok, Height} -> validator_schedule_at_height(Height, Hash);
-      Err -> Err
-    end.
-
--spec validator_schedule_at_height(run_env()) -> {ok, [binary()]}.
-validator_schedule_at_height(RunEnv) ->
-    {ok, Result} = call_consensus_contract_w_env(?ELECTION_CONTRACT, RunEnv, "get_validator_schedule", []),
+-spec validator_schedule(run_env(), binary(), [{binary(), non_neg_integer()}], non_neg_integer()) ->
+          {ok, [binary()]} | {error, chain_too_short}.
+validator_schedule(RunEnv, Seed, Validators, Length) ->
+    Args = [{bytes, Seed}, encode_stakers(Validators), Length],
+    {ok, Result} = call_consensus_contract_w_env(?ELECTION_CONTRACT, RunEnv, "validator_schedule", Args),
     {ok, lists:map(fun({address, Address}) -> Address end, Result)}.
 
--spec validator_schedule_at_height(non_neg_integer(), binary()) -> {ok, [binary()]}.
-validator_schedule_at_height(Height, Hash) ->
-    Args = [aefa_fate_code:encode_arg({bytes, Hash})],
-    {ok, Result} = call_consensus_contract_w_env(?ELECTION_CONTRACT, Height, "get_validator_schedule_seed", Args),
-    {ok, lists:map(fun({address, Address}) -> Address end, Result)}.
+%% -spec validator_schedule(non_neg_integer()) -> {ok, [binary()]}.
+%% validator_schedule(Epoch) when Epoch > 1 ->
+%%     case epoch_start_height(Epoch) of
+%%       {ok, Height} -> validator_schedule_at_height(Height);
+%%       Err -> Err
+%%     end.
+
+%% -spec validator_schedule_from_hash(non_neg_integer(), binary()) -> {ok, [binary()]}.
+%% validator_schedule_from_hash(Epoch, Hash) when Epoch > 1 ->
+%%     case epoch_start_height(Epoch) of
+%%       {ok, Height} -> validator_schedule_at_height(Height, Hash);
+%%       Err -> Err
+%%     end.
+
+%% -spec validator_schedule_at_height(run_env()) -> {ok, [binary()]}.
+%% validator_schedule_at_height(RunEnv) ->
+%%     {ok, Result} = call_consensus_contract_w_env(?ELECTION_CONTRACT, RunEnv, "get_validator_schedule", []),
+%%     {ok, lists:map(fun({address, Address}) -> Address end, Result)}.
+
+%% -spec validator_schedule_at_height(run_env(), binary()) -> {ok, [binary()]}.
+%% validator_schedule_at_height(RunEnv, Hash) ->
+%%     Args = [aefa_fate_code:encode_arg({bytes, Hash})],
+%%     {ok, Result} = call_consensus_contract_w_env(?ELECTION_CONTRACT, RunEnv, "get_validator_schedule_seed", Args),
+%%     {ok, lists:map(fun({address, Address}) -> Address end, Result)}.
+
 
 %% This makes the dependency graph a circle, right?
 -spec entropy_hash(non_neg_integer()) -> {ok, binary()} | {error, any()}.
@@ -128,6 +140,9 @@ decode_option({variant, [0, 1], 1, {SomeValue}}, {SomeFun, _NoneValue}) -> SomeF
 
 decode_stakers(RawStakers) ->
     lists:map(fun({tuple, {{address, Staker}, Stake}}) -> {Staker, Stake} end, RawStakers).
+
+encode_stakers(Stakers) ->
+    lists:map(fun({Staker, Stake}) -> {tuple, {{address, Staker}, Stake}} end, Stakers).
 
 call_consensus_contract_w_env(Contract, {TxEnv, Trees}, Endpoint, Args) ->
     aec_consensus_hc:call_consensus_contract_result(Contract, TxEnv, Trees, Endpoint, Args);

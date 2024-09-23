@@ -758,15 +758,14 @@ next_beneficiary(TxEnv, Trees) ->
     end.
 
 try_compute_schedule(TxEnv, Trees, ChildHeight) ->
-    {ok, EpochInfo} = aec_chain_hc:epoch_info({TxEnv, Trees}),
-    lager:debug("Epoch info for schedule ~p", [EpochInfo]),
-    #{length := EpochLength, epoch := Epoch} = EpochInfo,
+    {ok, EpochInfo} = epoch_info_at_height({TxEnv, Trees}, ChildHeight),
+    lager:debug("Epoch info for schedule at height ~p: ~p", [ChildHeight, EpochInfo]),
+    #{epoch := Epoch, first := First} = EpochInfo,
     case get_entropy_hash(Epoch) of
         {ok, Hash} ->
-            Schedule = validator_schedule(Hash, ChildHeight, TxEnv, Trees),
-            %% Enumerate here from ChildHeight ... the contract returns an ordered list
+            Schedule = validator_schedule({TxEnv, Trees}, Hash, EpochInfo),
             cache_schedule(Schedule),
-            lager:debug("Schedule cached (range ~p -> ~p)", [ChildHeight, ChildHeight + EpochLength - 1]),
+            lager:debug("Schedule cached (range ~p -> ~p)", [First, First + maps:size(Schedule) - 1]),
             ok;
         Err -> Err
     end.
@@ -803,13 +802,34 @@ leader_for_height(Height) ->
     Schedule = aeu_ets_cache:get(?ETS_CACHE_TABLE, validator_schedule, fun() -> #{} end),
     maps:find(Height, Schedule).
 
-validator_schedule(Hash, ChildHeight, TxEnv, Trees) ->
-    {ok, Schedule} = aec_chain_hc:validator_schedule_at_height({TxEnv, Trees}, Hash),
-    maps:from_list(enumerate(ChildHeight, Schedule)).
+validator_schedule(RunEnv, Hash, EpochInfo) ->
+    #{first := First, length := Length, validators := Validators} = EpochInfo,
+    {ok, Schedule} = aec_chain_hc:validator_schedule(RunEnv, Hash, Validators, Length),
+    maps:from_list(enumerate(First, Schedule)).
 
 %% support OTP24 without lists:enumerate
 enumerate(From, List) when is_integer(From) ->
-    lists:zip(lists:seq(From, From + length(List)-1), List).
+    lists:zip(lists:seq(From, From + length(List) - 1), List).
+
+epoch_info_at_height(RunEnv, ChildHeight) ->
+    {ok, Info = #{ epoch := Epoch, first := First, last := Last }} = aec_chain_hc:epoch_info(RunEnv),
+    case {ChildHeight >= First, ChildHeight =< Last} of
+        {true, true} ->
+            {ok, Info};
+        {false, _} ->
+            epoch_info_at_height(Epoch - 1, RunEnv, ChildHeight);
+        {_, false} ->
+            epoch_info_at_height(Epoch + 1, RunEnv, ChildHeight)
+    end.
+
+epoch_info_at_height(Epoch, RunEnv, ChildHeight) ->
+    {ok, Info = #{ first := First, last := Last }} = aec_chain_hc:epoch_info_for_epoch(RunEnv, Epoch),
+    case ChildHeight >= First andalso ChildHeight =< Last of
+        true ->
+            {ok, Info};
+        false ->
+            {error, not_in_scope}
+    end.
 
 %get_validator_schedule(Seed, TxEnv, Trees) ->
 %    Args = [aefa_fate_code:encode_arg({bytes, Seed})],
