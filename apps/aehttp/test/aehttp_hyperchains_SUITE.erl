@@ -19,6 +19,7 @@
 %% Test cases
 -export([start_two_child_nodes/1,
          produce_first_epoch/1,
+         respect_schedule/1,
          mine_and_sync/1,
          spend_txs/1,
          simple_withdraw/1,
@@ -39,10 +40,10 @@
 -define(MAIN_STAKING_CONTRACT, "MainStaking").
 -define(HC_CONTRACT, "HCElection").
 -define(CONSENSUS, hc).
--define(CHILD_EPOCH_LENGTH, 20).
+-define(CHILD_EPOCH_LENGTH, 10).
 -define(CHILD_BLOCK_TIME, 200).
--define(PARENT_EPOCH_LENGTH, 5).
--define(PARENT_FINALITY, 3).
+-define(PARENT_EPOCH_LENGTH, 3).
+-define(PARENT_FINALITY, 2).
 -define(REWARD_DELAY, 2).
 
 -define(NODE1, dev1).
@@ -137,6 +138,7 @@ groups() ->
       {hc, [sequence],
           [ start_two_child_nodes
           , produce_first_epoch
+          , respect_schedule
           , verify_fees
           , mine_and_sync
           , spend_txs
@@ -429,6 +431,19 @@ produce_first_epoch(Config) ->
     ct:log("Child chain blocks ~p", [ChildBlocks]),
     ok.
 
+respect_schedule(Config) ->
+    [{Node1, _, _}|_] = ?config(nodes, Config),
+    {ok, #{first := StartHeight, length := Length, epoch := Epoch}} = rpc(?NODE1, aec_chain_hc, epoch_info, []),
+    produce_cc_blocks(Config, Length),
+    ct:log("Produced at least Epoch ~p starting at height ~p", [Epoch, StartHeight]),
+    {ok, Schedule} = rpc(?NODE1, aec_chain_hc, validator_schedule_at_height, [StartHeight]),
+    ct:log("Validating schedule ~p for Epoch ~p", [Schedule, Epoch]),
+    ?assert(maps:fold(fun(Height, Producer, Acc) ->
+                              Acc andalso Producer == get_block_producer(Node1, Height)
+                      end, true, Schedule)),
+    ok.
+
+
 simple_withdraw(Config) ->
     [{_, NodeName, _}|_] = ?config(nodes, Config),
     AliceBin = encoded_pubkey(?ALICE),
@@ -617,6 +632,10 @@ verify_fees(Config) ->
     {ok, _SignedTx} = seed_account(PatronPub, 1, NetworkId),
     Test(), %% fees are generated
 
+    %% key blocks are in sync, but give gossip time to sync micro block
+    %% This won't be needed if micro blocks come before key blocks
+    timer:sleep(?CHILD_BLOCK_TIME div 2),
+
     ct:log("Test with no transaction", []),
     [ Test() || _ <- lists:seq(0, ?REWARD_DELAY) ],
     ok.
@@ -667,28 +686,36 @@ elected_leader_did_not_show_up_(Config) ->
 
 epoch_with_slow_parent(Config) ->
     %% ensure start at a new epoch boundary
-    ChildTopHeight = rpc(?NODE1, aec_chain, top_height, []),
-    BlocksLeftToBoundary = ?CHILD_EPOCH_LENGTH - (ChildTopHeight rem ?CHILD_EPOCH_LENGTH),
-    {ok, StartEpoch} = inspect_election_contract(?ALICE, epoch, Config),
-    ct:log("Starting at CC epoch ~p: producing ~p cc blocks", [StartEpoch, BlocksLeftToBoundary]),
+    StartHeight = rpc(?NODE1, aec_chain, top_height, []),
+    {ok, #{last := Last}} = rpc(?NODE1, aec_chain_hc, epoch_info, [StartHeight]),
+    BlocksLeftToBoundary = Last - StartHeight,
+    ct:log("Starting at CC height ~p: producing ~p cc blocks", [StartHeight, BlocksLeftToBoundary]),
     %% some block production including parent blocks
     produce_cc_blocks(Config, BlocksLeftToBoundary),
 
-    ParentStartHeight = rpc(?PARENT_CHAIN_NODE, aec_chain, top_height, []),
-    ct:log("Child continues while parent stuck at: ~p", [ParentStartHeight]),
-    %% Produce no parent block in the next child epoch
-    %% Preferably the child chain should get to a halt or
+    ParentHeight = rpc(?PARENT_CHAIN_NODE, aec_chain, top_height, []),
+    ct:log("Child continues while parent stuck at: ~p", [ParentHeight]),
+    ParentEpoch = (ParentHeight - ?config(parent_start_height, Config) - ?PARENT_FINALITY) div ?PARENT_EPOCH_LENGTH,
+    ChildEpoch = rpc(?NODE1, aec_chain, top_height, []) div ?CHILD_EPOCH_LENGTH,
+    ct:log("Child epoch ~p while parent epoch ~p", [ChildEpoch, ParentEpoch]),
+    EpochsToSucceed = ParentEpoch - ChildEpoch,
+    %% Produce no parent block in the next child epochs
+    %% the child chain should get to a halt or
     %% at least one should be able to measure that the child chain epoch
     %% becomes larger after this
-    {ok, Bs} = produce_cc_blocks(Config, ?CHILD_EPOCH_LENGTH*2, none),
+    {ok, _Bs} = produce_cc_blocks(Config, ?CHILD_EPOCH_LENGTH*EpochsToSucceed, none),
 
-    ct:log("Mined 2 additional child epochs without parent progress:\n~p", [Bs]),
+    ct:log("Mined ~p additional child epochs without parent progress", [EpochsToSucceed]),
     ParentTopHeight = rpc(?PARENT_CHAIN_NODE, aec_chain, top_height, []),
-    ?assertEqual(ParentStartHeight, ParentTopHeight),
+    ?assertEqual(ParentHeight, ParentTopHeight),
 
     ?assertException(error, timeout_waiting_for_block, produce_cc_blocks(Config, ?CHILD_EPOCH_LENGTH, none)),
-    {ok, EndEpoch} = inspect_election_contract(?ALICE, epoch, Config),
-    ct:log("Ending at CC epoch ~p", [EndEpoch]),
+
+    EndHeight = rpc(?NODE1, aec_chain, top_height, []),
+    {ok, #{epoch := EndEpoch} = EpochInfo} = rpc(?NODE1, aec_chain_hc, epoch_info, [EndHeight]),
+    ct:log("Ending at CC epoch ~p", [EpochInfo]),
+    ?assertEqual([{ok, (N-1) * ?CHILD_EPOCH_LENGTH + 1} || N <- lists:seq(1, EndEpoch)],
+                 [rpc(?NODE1, aec_chain_hc, epoch_start_height, [N]) || N <- lists:seq(1, EndEpoch)]),
     ok.
 
 %%% --------- helper functions
@@ -793,10 +820,7 @@ inspect_election_contract(OriginWho, WhatToInspect, Config) ->
 inspect_election_contract(OriginWho, WhatToInspect, Config, TopHash) ->
     {Fun, Args} =
         case WhatToInspect of
-            current_leader -> {"leader", []};
-            current_added_staking_power -> {"added_stake", []};
-            validators -> {"sorted_validators", []};
-            epoch -> {"epoch", []}
+            current_added_staking_power -> {"added_stake", []}
         end,
     ContractPubkey = ?config(election_contract, Config),
     do_contract_call(ContractPubkey, src(?HC_CONTRACT, Config), Fun, Args, OriginWho, TopHash).
@@ -907,10 +931,10 @@ build_json_files(ElectionContract, NodeConfig, CTConfig) ->
     #{ <<"pubkey">> := StakingContractPubkey
         , <<"owner_pubkey">> := ContractOwner } = SC
         = contract_create_spec(?MAIN_STAKING_CONTRACT, MSSrc,
-                                [binary_to_list(StakingValidatorContract),
-                                MinValidatorAmt, MinStakePercent, MinStakeAmt,
-                                OnlineDelay, StakeDelay, UnstakeDelay],
-                                0, 2, Pubkey),
+                               [binary_to_list(StakingValidatorContract),
+                               MinValidatorAmt, MinStakePercent, MinStakeAmt,
+                               OnlineDelay, StakeDelay, UnstakeDelay],
+                               0, 2, Pubkey),
     {ok, StakingAddress} = aeser_api_encoder:safe_decode(contract_pubkey,
                                                          StakingContractPubkey),
     %% assert assumption
@@ -919,8 +943,7 @@ build_json_files(ElectionContract, NodeConfig, CTConfig) ->
     #{ <<"pubkey">> := ElectionContractPubkey
         , <<"owner_pubkey">> := ContractOwner } = EC
         = contract_create_spec(ElectionContract, src(ElectionContract, CTConfig),
-                                [binary_to_list(StakingContractPubkey),
-                                "\"domat\"", integer_to_list(?CHILD_EPOCH_LENGTH)], 0, 3, Pubkey),
+                               [binary_to_list(StakingContractPubkey)], 0, 3, Pubkey),
     {ok, ElectionAddress} = aeser_api_encoder:safe_decode(contract_pubkey,
                                                           ElectionContractPubkey),
     %% assert assumption
@@ -929,8 +952,8 @@ build_json_files(ElectionContract, NodeConfig, CTConfig) ->
                                                 StakingContractPubkey),
     Call1 =
         contract_call_spec(SCId, MSSrc,
-                            "new_validator", [],
-                            ?INITIAL_STAKE, pubkey(?ALICE), 1),
+                           "new_validator", [],
+                           ?INITIAL_STAKE, pubkey(?ALICE), 1),
     Call2 =
         contract_call_spec(SCId, MSSrc,
                             "new_validator", [],
@@ -967,6 +990,11 @@ build_json_files(ElectionContract, NodeConfig, CTConfig) ->
                             "set_validator_avatar_url",
                             ["\"https://aeternity.com/images/aeternity-logo.svg\""], 0,
                             pubkey(?ALICE), 5),
+
+    Call12 =
+        contract_call_spec(ElectionAddress, src(ElectionContract, CTConfig),
+                           "init_epochs",
+                           [integer_to_list(?CHILD_EPOCH_LENGTH)], 0, ?OWNER_PUBKEY, 4),
     %% create a BRI validator in the contract so they can receive
     %% rewards as well
     %% TODO: discuss how we want to tackle this:
@@ -985,7 +1013,7 @@ build_json_files(ElectionContract, NodeConfig, CTConfig) ->
     %%                         0, BRIPub, 2),
     %% keep the BRI offline
     AllCalls =  [Call1, Call2, Call3, Call4, Call5, Call6,
-		 Call7, Call8, Call9, Call10, Call11],
+		 Call7, Call8, Call9, Call10, Call11, Call12],
     ProtocolBin = integer_to_binary(aect_test_utils:latest_protocol_version()),
     #{<<"chain">> := #{<<"hard_forks">> := #{ProtocolBin := #{<<"contracts_file">> := ContractsFileName,
                                                               <<"accounts_file">> := AccountsFileName}}}} = NodeConfig,
