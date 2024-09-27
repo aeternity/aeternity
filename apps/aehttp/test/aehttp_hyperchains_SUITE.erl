@@ -199,8 +199,8 @@ init_per_suite(Config0) ->
             ParentPatronPubEnc = aeser_api_encoder:encode(account_pubkey, ParentPatronPub),
             aecore_suite_utils:create_seed_file(AccountFileName,
                 #{  ParentPatronPubEnc => 100000000000000000000000000000000000000000000000000000000000000000000000
-                    %%, encoded_pubkey(?DWIGHT) => 2100000000000000000000000000
-                    %%, encoded_pubkey(?EDWIN) => 3100000000000000000000000000
+                    , encoded_pubkey(?DWIGHT) => 2100000000000000000000000000
+                    , encoded_pubkey(?EDWIN) => 3100000000000000000000000000
                 }),
             StakingContract = staking_contract_address(),
             ElectionContract = election_contract_address(),
@@ -419,7 +419,9 @@ start_two_child_nodes(Config) ->
 
 produce_first_epoch(Config) ->
     [{Node1, _, _}|_] = ?config(nodes, Config),
+    %% produce blocks
     {ok, Bs} = produce_cc_blocks(Config, ?CHILD_EPOCH_LENGTH),
+    %% check producers
     Producers = [ aec_blocks:miner(B) || B <- Bs ],
     Leaders = leaders_at_height(Node1, 1, Config),
     ct:log("Bs: ~p  Leaders ~p", [Bs, Leaders]),
@@ -727,17 +729,41 @@ epoch_with_slow_parent(Config) ->
 %%% Pinning
 %%%=============================================================================
 
-get_pin(_Config) ->
+get_pin(Config) ->
 
-    Test =
-        fun(_SpecVsn, Path) ->
-            
-            % likely not the way you want to figure out the URL to ?NODE1..?
-            Repl1 = aecore_suite_utils:http_request(aecore_suite_utils:external_address(), get, Path, []),
-            {ok, 200, _Smap} = Repl1
-    
-        end,
-   Test(oas3, "hyperchain/pin-tx"),
+    %% note: we are actuall in epoch=2, but the pins are for the previous epoch
+    Repl1 = aecore_suite_utils:http_request(aecore_suite_utils:external_address(), get, "hyperchain/pin-tx", []),
+    {ok, 200, #{<<"epoch">> := 1}} = Repl1,
+    %% product, still in same epoch, so pins should be the same
+    {ok, _} = produce_cc_blocks(Config, 2),
+    Repl2 = aecore_suite_utils:http_request(aecore_suite_utils:external_address(), get, "hyperchain/pin-tx", []),
+    {ok, 200, #{<<"epoch">> := 1}} = Repl2,
+    ?assertEqual(Repl1, Repl2),
+    %% move into next epoch, test pin:epoch
+    {ok, _} = produce_cc_blocks(Config, 9),
+    Repl3 = aecore_suite_utils:http_request(aecore_suite_utils:external_address(), get, "hyperchain/pin-tx", []),
+    {ok, 200, #{<<"epoch">> := 2}} = Repl3,
+
+    %% we use local
+    Pin = rpc(?NODE1, aec_pinning_agent, get_pinning_data, []),
+    PinPayloadBin = rpc(?NODE1, aec_pinning_agent, encode_pin_payload, [Pin]),
+
+   AlicePub = pubkey(?DWIGHT),
+   AliceEnc = aeser_api_encoder:encode(account_pubkey, AlicePub),
+   ParentNodeSpec = #{scheme => "http", host => "127.0.0.1", port => aecore_suite_utils:external_api_port(?PARENT_CHAIN_NODE)},
+   {ok, []} = rpc(?PARENT_CHAIN_NODE, aec_tx_pool, peek, [infinity]), % no pending transactions
+   PinTx = aec_pinning_agent:create_pin_tx(ParentNodeSpec, AliceEnc, AlicePub, 1, 30000 * ?DEFAULT_GAS_PRICE, PinPayloadBin), 
+   SignedPinTx = sign_tx(PinTx, privkey(?DWIGHT),?PARENT_CHAIN_NETWORK_ID),
+   {ok, _TxHash} = aec_pinning_agent:post_pin_tx(SignedPinTx, ParentNodeSpec),
+   {ok, [_]} = rpc(?PARENT_CHAIN_NODE, aec_tx_pool, peek, [infinity]), % one transaction pending now.
+   PinHeight = rpc(?PARENT_CHAIN_NODE, aec_chain, top_height, []),
+    {ok, _} = produce_cc_blocks(Config, 4),
+   SecondHeight = rpc(?PARENT_CHAIN_NODE, aec_chain, top_height, []),
+   ?assert(PinHeight < SecondHeight), % we've progressed on the PC
+   {ok, []} = rpc(?PARENT_CHAIN_NODE, aec_tx_pool, peek, [infinity]), % all transactions comitted
+   %something = rpc(?PARENT_CHAIN_NODE, aec_chain, find_tx_location, [TxHash]),
+
+
    ok.
 
 %%% --------- helper functions

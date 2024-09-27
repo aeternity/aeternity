@@ -898,10 +898,9 @@ handle_request_('GetPinningTx', _Params, _Context) ->
         parent_network_id := Id} = Pinning,
     {200, [], #{<<"epoch">> => Epoch,
         <<"height">> => CCHeight,
-        <<"block_hash">> => EpochBlockHash,
-        <<"parent_type">> => atom_to_binary(Type),
-        <<"parent_network_id">> => Id,
-        <<"pinning_payload">> => aeser_api_encoder:encode(key_block_hash, "12344567")        
+        <<"block_hash">> => aeser_api_encoder:encode(key_block_hash, EpochBlockHash),
+        <<"parent_type">> => list_to_binary(Type),
+        <<"parent_network_id">> => Id        
         }};
 
 handle_request_(OperationID, Req, Context) ->

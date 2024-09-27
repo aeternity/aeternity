@@ -3697,16 +3697,18 @@ components:
       properties:
         epoch:
           type: integer
+          description: The epoch for which the pin is valid
         height:
           type: integer
+          description: the height of the pinned block (usually last block of )
         block_hash:
           type: string
         parent_type:
           type: string
+          description: chain type of parent (aeternity, btc, doge eventually supported)
         parent_network_id:
           type: string
-        pinning_payload:
-          type: string
+          description: the parent node id
     PoI:
       type: object
       properties:
