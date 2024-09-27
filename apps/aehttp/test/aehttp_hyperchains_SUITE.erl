@@ -754,11 +754,12 @@ get_pin(Config) ->
    {ok, []} = rpc(?PARENT_CHAIN_NODE, aec_tx_pool, peek, [infinity]), % no pending transactions
    PinTx = aec_pinning_agent:create_pin_tx(ParentNodeSpec, AliceEnc, AlicePub, 1, 30000 * ?DEFAULT_GAS_PRICE, PinPayloadBin), 
    SignedPinTx = sign_tx(PinTx, privkey(?DWIGHT),?PARENT_CHAIN_NETWORK_ID),
-   {ok, _TxHash} = aec_pinning_agent:post_pin_tx(SignedPinTx, ParentNodeSpec),
+   {ok, #{<<"tx_hash">> := TxHash}} = aec_pinning_agent:post_pin_tx(SignedPinTx, ParentNodeSpec),
    {ok, [_]} = rpc(?PARENT_CHAIN_NODE, aec_tx_pool, peek, [infinity]), % one transaction pending now.
+   %something = rpc(?PARENT_CHAIN_NODE, aec_chain, find_tx_with_location, [aeser_api_encoder:decode(TxHash)]),
    PinHeight = rpc(?PARENT_CHAIN_NODE, aec_chain, top_height, []),
-    {ok, _} = produce_cc_blocks(Config, 4),
-   SecondHeight = rpc(?PARENT_CHAIN_NODE, aec_chain, top_height, []),
+   {ok, _} = produce_cc_blocks(Config, 4),
+   SecondHeight = rpc(?PARENT_CHAIN_NODE, aec_chain, top_height, []), % now further up the PC
    ?assert(PinHeight < SecondHeight), % we've progressed on the PC
    {ok, []} = rpc(?PARENT_CHAIN_NODE, aec_tx_pool, peek, [infinity]), % all transactions comitted
    %something = rpc(?PARENT_CHAIN_NODE, aec_chain, find_tx_location, [TxHash]),
