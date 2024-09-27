@@ -88,7 +88,6 @@
 
 -endif.
 
--include_lib("aecontract/include/hard_forks.hrl").
 -include("blocks.hrl").
 -include("aec_consensus.hrl").
 
