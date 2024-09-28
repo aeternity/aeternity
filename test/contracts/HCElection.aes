@@ -1,6 +1,5 @@
 include "List.aes"
 include "Pair.aes"
-include "Option.aes"
 
 contract interface MainStaking =
   entrypoint sorted_validators : () => list((address * int))
@@ -37,7 +36,8 @@ main contract HCElection =
     put(state{ epochs = { [0] = mk_epoch_info(0, 1, None, None),
                           [1] = mk_epoch_info(1, epoch_length, None, Some(state.main_staking_ct.sorted_validators())),
                           [2] = mk_epoch_info(epoch_length + 1, epoch_length, None, Some(state.main_staking_ct.sorted_validators())),
-                          [3] = mk_epoch_info(2 * epoch_length + 1, epoch_length, None, Some(state.main_staking_ct.sorted_validators()))
+                          [3] = mk_epoch_info(2 * epoch_length + 1, epoch_length, None, Some(state.main_staking_ct.sorted_validators())),
+                          [4] = mk_epoch_info(3 * epoch_length + 1, epoch_length, None, Some(state.main_staking_ct.sorted_validators()))
                         },
                epoch  = 1
              })
@@ -56,12 +56,14 @@ main contract HCElection =
     assert_protocol_call()
     let epoch = state.epoch
     let ei = state.epochs[epoch]
-    // require(ei.start + ei.length - 1 == Chain.block_height, "This is not the end")
+    require(ei.start + ei.length - 1 == Chain.block_height, "This is not the end")
     let ei2 = state.epochs[epoch + 2]
+    let ei_adjust = state.epochs[epoch + 3]{ length = ei2.length + epoch_adjust }
     let new_epochs = { [epoch] = state.epochs[epoch],
-                       [epoch + 1] = state.epochs[epoch + 1]{ seed = Some(seed) },
-                       [epoch + 2] = state.epochs[epoch + 2],
-                       [epoch + 3] = mk_epoch_info(ei2.start + ei2.length + 1, ei2.length + epoch_adjust, None,
+                       [epoch + 1] = state.epochs[epoch + 1]{ seed = Some(seed) }, // election epoch
+                       [epoch + 2] = state.epochs[epoch + 2],                      // vote epoch
+                       [epoch + 3] = ei_adjust,                                    // length adjust epoch
+                       [epoch + 4] = mk_epoch_info(ei_adjust.start + ei_adjust.length + 1, ei_adjust.length, None,
                                                    Some(state.main_staking_ct.sorted_validators()))
                      }
     put(state{ leader = leader,
