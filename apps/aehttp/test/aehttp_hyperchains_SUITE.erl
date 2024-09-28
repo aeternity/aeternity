@@ -719,6 +719,7 @@ elected_leader_did_not_show_up_(Config) ->
     ok.
 
 epoch_with_slow_parent(Config) ->
+    ct:log("Parent start height = ~p", [?config(parent_start_height, Config)]),
     %% ensure start at a new epoch boundary
     StartHeight = rpc(?NODE1, aec_chain, top_height, []),
     {ok, #{last := Last}} = rpc(?NODE1, aec_chain_hc, epoch_info, [StartHeight]),
@@ -729,25 +730,29 @@ epoch_with_slow_parent(Config) ->
 
     ParentHeight = rpc(?PARENT_CHAIN_NODE, aec_chain, top_height, []),
     ct:log("Child continues while parent stuck at: ~p", [ParentHeight]),
-    ParentEpoch = (ParentHeight - ?config(parent_start_height, Config) - ?PARENT_FINALITY) div ?PARENT_EPOCH_LENGTH,
+    ParentEpoch = (ParentHeight - ?config(parent_start_height, Config)) div ?PARENT_EPOCH_LENGTH,
     ChildEpoch = rpc(?NODE1, aec_chain, top_height, []) div ?CHILD_EPOCH_LENGTH,
-    ct:log("Child epoch ~p while parent epoch ~p", [ChildEpoch, ParentEpoch]),
-    EpochsToSucceed = ParentEpoch - ChildEpoch,
-    %% Produce no parent block in the next child epochs
-    %% the child chain should get to a halt or
-    %% at least one should be able to measure that the child chain epoch
-    %% becomes larger after this
-    {ok, _Bs} = produce_cc_blocks(Config, ?CHILD_EPOCH_LENGTH*EpochsToSucceed, none),
+    ct:log("Child epoch ~p while parent epoch ~p (parent should be in next epoch)", [ChildEpoch, ParentEpoch]),
+    ?assertEqual(1, ParentEpoch - ChildEpoch),
 
-    ct:log("Mined ~p additional child epochs without parent progress", [EpochsToSucceed]),
+    Resilience = 2, %% Child can cope with missing Resilience epochs in parent chain
+    %% Produce no parent block in the next Resilience child epochs
+    %% the child chain should get to a halt or
+    %% at least one should be able to observe signalling that the length should be adjusted upward
+    {ok, _} = produce_cc_blocks(Config, ?CHILD_EPOCH_LENGTH*Resilience, none),
+
+    ct:log("Mined ~p additional child epochs without parent progress", [Resilience]),
     ParentTopHeight = rpc(?PARENT_CHAIN_NODE, aec_chain, top_height, []),
     ?assertEqual(ParentHeight, ParentTopHeight),
+    ChildTopHeight = rpc(?NODE1, aec_chain, top_height, []),
+    {ok, #{epoch := EndEpoch} = EpochInfo} = rpc(?NODE1, aec_chain_hc, epoch_info, [ChildTopHeight]),
+    ct:log("Parent at height ~p and child at height ~p in child epoch ~p",
+           [ParentTopHeight, ChildTopHeight, EndEpoch ]),
 
-    ?assertException(error, timeout_waiting_for_block, produce_cc_blocks(Config, ?CHILD_EPOCH_LENGTH, none)),
+    %% Parent hash grabbed in last block child epoch, so here we can start, but not finish next epoch
+    {ok, _} = produce_cc_blocks(Config, maps:get(length, EpochInfo) - 1, none),
+    ?assertException(error, timeout_waiting_for_block, produce_cc_blocks(Config, 1, none)),
 
-    EndHeight = rpc(?NODE1, aec_chain, top_height, []),
-    {ok, #{epoch := EndEpoch} = EpochInfo} = rpc(?NODE1, aec_chain_hc, epoch_info, [EndHeight]),
-    ct:log("Ending at CC epoch ~p", [EpochInfo]),
     ?assertEqual([{ok, (N-1) * ?CHILD_EPOCH_LENGTH + 1} || N <- lists:seq(1, EndEpoch)],
                  [rpc(?NODE1, aec_chain_hc, epoch_start_height, [N]) || N <- lists:seq(1, EndEpoch)]),
     ok.
