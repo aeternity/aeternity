@@ -793,7 +793,7 @@ is_block_producer_() ->
     StakersConfig /= [].
 
 entropy_height(ChildEpoch) ->
-    (ChildEpoch - 1) * parent_generation() + pc_start_height().
+    max(0, (ChildEpoch - 2)) * parent_generation() + pc_start_height().
 
 cache_schedule(Schedule) ->
     aeu_ets_cache:put(?ETS_CACHE_TABLE, validator_schedule, Schedule).
