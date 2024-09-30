@@ -788,7 +788,15 @@ post_pin_to_pc(Config) ->
     {ok, Tx} = aec_spend_tx:new(Params),
     SignedTx = sign_tx(Tx, privkey(?ALICE), NetworkId),
     ok = rpc:call(?NODE1_NAME, aec_tx_pool, push, [SignedTx, tx_received]),
-
+    {ok, [_]} = rpc(?NODE1, aec_tx_pool, peek, [infinity]), % transactions in pool
+    {ok, _} = produce_cc_blocks(Config, 1),
+    CH = rpc(?NODE1, aec_chain, top_height, []),
+    {ok, []} = rpc(?PARENT_CHAIN_NODE, aec_tx_pool, peek, [infinity]), % all transactions comitted
+    DistToBeforeLast = Last - CH - 1, 
+    {ok, _} = produce_cc_blocks(Config, DistToBeforeLast), % produce blocks until last
+    BL = Last - 1,
+    BL = rpc(?NODE1, aec_chain, top_height, []), % we're producing in last black
+    
    ok.
 
 
