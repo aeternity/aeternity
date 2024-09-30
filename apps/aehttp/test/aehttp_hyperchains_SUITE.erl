@@ -30,7 +30,8 @@
          block_difficulty/1,
          epoch_with_slow_parent/1,
          check_blocktime/1,
-         get_pin/1
+         get_pin/1,
+         post_pin_to_pc/1
         ]).
 
 -include_lib("stdlib/include/assert.hrl").
@@ -153,7 +154,8 @@ groups() ->
     , {pinning, [sequence],
           [ start_two_child_nodes,
             produce_first_epoch,
-            get_pin ]}
+            get_pin,
+            post_pin_to_pc ]}
     ].
 
 suite() -> [].
@@ -744,28 +746,51 @@ get_pin(Config) ->
     Repl3 = aecore_suite_utils:http_request(aecore_suite_utils:external_address(), get, "hyperchain/pin-tx", []),
     {ok, 200, #{<<"epoch">> := 2}} = Repl3,
 
-    %% we use local
+    ok.
+
+post_pin_to_pc(Config) ->
+
+    %% we use local/rpc here.
     Pin = rpc(?NODE1, aec_pinning_agent, get_pinning_data, []),
     PinPayloadBin = rpc(?NODE1, aec_pinning_agent, encode_pin_payload, [Pin]),
 
-   AlicePub = pubkey(?DWIGHT),
-   AliceEnc = aeser_api_encoder:encode(account_pubkey, AlicePub),
+   DwightPub = pubkey(?DWIGHT), % PC chain account
+   DwightEnc = aeser_api_encoder:encode(account_pubkey, DwightPub),
    ParentNodeSpec = #{scheme => "http", host => "127.0.0.1", port => aecore_suite_utils:external_api_port(?PARENT_CHAIN_NODE)},
    {ok, []} = rpc(?PARENT_CHAIN_NODE, aec_tx_pool, peek, [infinity]), % no pending transactions
-   PinTx = aec_pinning_agent:create_pin_tx(ParentNodeSpec, AliceEnc, AlicePub, 1, 30000 * ?DEFAULT_GAS_PRICE, PinPayloadBin), 
+   PinTx = aec_pinning_agent:create_pin_tx(ParentNodeSpec, DwightEnc, DwightPub, 1, 30000 * ?DEFAULT_GAS_PRICE, PinPayloadBin), 
    SignedPinTx = sign_tx(PinTx, privkey(?DWIGHT),?PARENT_CHAIN_NETWORK_ID),
    {ok, #{<<"tx_hash">> := TxHash}} = aec_pinning_agent:post_pin_tx(SignedPinTx, ParentNodeSpec),
    {ok, [_]} = rpc(?PARENT_CHAIN_NODE, aec_tx_pool, peek, [infinity]), % one transaction pending now.
-   %something = rpc(?PARENT_CHAIN_NODE, aec_chain, find_tx_with_location, [aeser_api_encoder:decode(TxHash)]),
    PinHeight = rpc(?PARENT_CHAIN_NODE, aec_chain, top_height, []),
    {ok, _} = produce_cc_blocks(Config, 4),
    SecondHeight = rpc(?PARENT_CHAIN_NODE, aec_chain, top_height, []), % now further up the PC
    ?assert(PinHeight < SecondHeight), % we've progressed on the PC
    {ok, []} = rpc(?PARENT_CHAIN_NODE, aec_tx_pool, peek, [infinity]), % all transactions comitted
-   %something = rpc(?PARENT_CHAIN_NODE, aec_chain, find_tx_location, [TxHash]),
+   
+   {ok, #{epoch := _Epoch,
+        first := _First,
+        last := Last,
+        length := _Length}} = rpc(?NODE1, aec_chain_hc, epoch_info, []),
 
+    {ok, LastLeader} = rpc(?NODE1, aec_consensus_hc, leader_for_height, [Last]),    
+
+    NetworkId = ?config(network_id, Config), % TODO not 100% sure about this one...
+    Nonce = next_nonce(?NODE1, pubkey(?ALICE)),
+    Params =
+        #{sender_id    => aeser_id:create(account, pubkey(?ALICE)),
+          recipient_id => aeser_id:create(account, LastLeader),
+          amount       => 1,
+          fee          => 30000 * ?DEFAULT_GAS_PRICE,
+          nonce        => Nonce,
+          payload      => TxHash},
+    ct:log("Preparing a spend tx: ~p", [Params]),
+    {ok, Tx} = aec_spend_tx:new(Params),
+    SignedTx = sign_tx(Tx, privkey(?ALICE), NetworkId),
+    ok = rpc:call(?NODE1_NAME, aec_tx_pool, push, [SignedTx, tx_received]),
 
    ok.
+
 
 %%% --------- helper functions
 
@@ -851,7 +876,7 @@ inspect_staking_contract(OriginWho, WhatToInspect, Config, TopHash) ->
         case WhatToInspect of
             {staking_power, Who} ->
                 {"staking_power", [binary_to_list(encoded_pubkey(Who))]};
-            {get_validator_state, Who} ->
+            {get__state, Who} ->
                 {"get_validator_state", [binary_to_list(encoded_pubkey(Who))]};
             get_state ->
                 {"get_state", []};

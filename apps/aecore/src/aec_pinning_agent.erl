@@ -122,13 +122,6 @@ post_pin_tx(SignedSpendTx, NodeSpec) ->
 %% TODO: redo this whole thing
 -define(VALID_PRIVK(K), byte_size(K) =:= 64).
 
-sign_tx(Tx, NetworkId, Signer, PrivKey) when is_binary(Signer) ->
-    Bin0 = aetx:serialize_to_binary(Tx),
-    BinForNetwork = aec_governance:add_custom_network_id(NetworkId, Bin0),
-    %{ok, Signature} = SignModule:sign_binary(BinForNetwork, Signer),
-    {ok, Signature} = enacl:sign_detached(BinForNetwork, PrivKey),
-    aetx_sign:new(Tx, [Signature]).
-
 get_request(Path, NodeSpec, Timeout) ->
     try
     Url = aehttpc:url(NodeSpec),
