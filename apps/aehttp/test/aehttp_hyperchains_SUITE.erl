@@ -19,6 +19,7 @@
 %% Test cases
 -export([start_two_child_nodes/1,
          produce_first_epoch/1,
+         produce_some_epochs/1,
          respect_schedule/1,
          mine_and_sync/1,
          spend_txs/1,
@@ -28,7 +29,8 @@
          verify_fees/1,
          elected_leader_did_not_show_up/1,
          block_difficulty/1,
-         epoch_with_slow_parent/1,
+         epochs_with_slow_parent/1,
+         epochs_with_fast_parent/1,
          check_blocktime/1,
          get_pin/1,
          post_pin_to_pc/1
@@ -145,12 +147,14 @@ groups() ->
           , spend_txs
           , simple_withdraw
           , sync_third_node
+          , produce_some_epochs
           , respect_schedule
           , check_blocktime
           ]}
     , {epochs, [sequence],
           [ start_two_child_nodes
-          , epoch_with_slow_parent ]}
+          , epochs_with_slow_parent
+          , epochs_with_fast_parent ]}
     , {pinning, [sequence],
           [ start_two_child_nodes,
             produce_first_epoch,
@@ -237,12 +241,12 @@ init_per_group(_, Config0) ->
     aecore_suite_utils:start_node(?PARENT_CHAIN_NODE, Config),
     aecore_suite_utils:connect(?PARENT_CHAIN_NODE_NAME, []),
     ParentTopHeight = rpc(?PARENT_CHAIN_NODE, aec_chain, top_height, []),
-    StartHeight = ParentTopHeight,
+    StartHeight = max(ParentTopHeight, ?PARENT_EPOCH_LENGTH),
     ct:log("Parent chain top height ~p start at ~p", [ParentTopHeight, StartHeight]),
     %%TODO mine less than necessary parent height and test chain starts when height reached
     {ok, _} = mine_key_blocks(
             ?PARENT_CHAIN_NODE_NAME,
-            (StartHeight - ParentTopHeight) + ?PARENT_EPOCH_LENGTH + ?PARENT_FINALITY),
+            (StartHeight - ParentTopHeight) + ?PARENT_FINALITY),
     [ {staker_names, [?ALICE, ?BOB, ?LISA]}, {parent_start_height, StartHeight} | Config].
 
 child_node_config(Node, Stakeholders, CTConfig) ->
@@ -420,12 +424,19 @@ start_two_child_nodes(Config) ->
     ok.
 
 produce_first_epoch(Config) ->
+    produce_n_epochs(Config, 1).
+
+produce_some_epochs(Config) ->
+    produce_n_epochs(Config, 5).
+
+produce_n_epochs(Config, N) ->
     [{Node1, _, _}|_] = ?config(nodes, Config),
     %% produce blocks
-    {ok, Bs} = produce_cc_blocks(Config, ?CHILD_EPOCH_LENGTH),
+    {ok, Bs} = produce_cc_blocks(Config, N * ?CHILD_EPOCH_LENGTH),
     %% check producers
     Producers = [ aec_blocks:miner(B) || B <- Bs ],
-    Leaders = leaders_at_height(Node1, 1, Config),
+    ChildTopHeight = rpc(Node1, aec_chain, top_height, []),
+    Leaders = leaders_at_height(Node1, ChildTopHeight, Config),
     ct:log("Bs: ~p  Leaders ~p", [Bs, Leaders]),
     %% Check that all producers are valid leaders
     ?assertEqual([], lists:usort(Producers) -- Leaders),
@@ -435,7 +446,6 @@ produce_first_epoch(Config) ->
     ParentTopHeight = rpc(?PARENT_CHAIN_NODE, aec_chain, top_height, []),
     {ok, ParentBlocks} = get_generations(?PARENT_CHAIN_NODE, 0, ParentTopHeight),
     ct:log("Parent chain blocks ~p", [ParentBlocks]),
-    ChildTopHeight = rpc(Node1, aec_chain, top_height, []),
     {ok, ChildBlocks} = get_generations(Node1, 0, ChildTopHeight),
     ct:log("Child chain blocks ~p", [ChildBlocks]),
     ok.
@@ -458,7 +468,8 @@ respect_schedule(Node, EpochStart, Epoch, TopHeight) ->
 
     ct:log("Checking epoch ~p info: ~p at height ~p", [Epoch, EI, EpochStart]),
 
-    ParentHeight = rpc(?NODE1, aec_consensus_hc, entropy_height, [Epoch]),
+    %% We buffer the seed one epoch, hence Epoch - 1
+    ParentHeight = rpc(?NODE1, aec_consensus_hc, entropy_height, [Epoch - 1]),
     {ok, PHdr}   = rpc(?PARENT_CHAIN_NODE, aec_chain, get_key_header_by_height, [ParentHeight]),
     {ok, PHash0} = aec_headers:hash_header(PHdr),
     PHash = aeser_api_encoder:encode(key_block_hash, PHash0),
@@ -718,7 +729,9 @@ elected_leader_did_not_show_up_(Config) ->
     {ok, _KB2} = wait_same_top([ Node || {Node, _, _} <- ?config(nodes, Config)]),
     ok.
 
-epoch_with_slow_parent(Config) ->
+%% Demonstrate that child chain start signalling epoch length adjustment upward
+%% When parent blocks are produced too slowly, we need to lengthen child epoch
+epochs_with_slow_parent(Config) ->
     ct:log("Parent start height = ~p", [?config(parent_start_height, Config)]),
     %% ensure start at a new epoch boundary
     StartHeight = rpc(?NODE1, aec_chain, top_height, []),
@@ -730,7 +743,8 @@ epoch_with_slow_parent(Config) ->
 
     ParentHeight = rpc(?PARENT_CHAIN_NODE, aec_chain, top_height, []),
     ct:log("Child continues while parent stuck at: ~p", [ParentHeight]),
-    ParentEpoch = (ParentHeight - ?config(parent_start_height, Config)) div ?PARENT_EPOCH_LENGTH,
+    ParentEpoch = (ParentHeight - ?config(parent_start_height, Config) +
+                      (?PARENT_EPOCH_LENGTH - 1)) div ?PARENT_EPOCH_LENGTH,
     ChildEpoch = rpc(?NODE1, aec_chain, top_height, []) div ?CHILD_EPOCH_LENGTH,
     ct:log("Child epoch ~p while parent epoch ~p (parent should be in next epoch)", [ChildEpoch, ParentEpoch]),
     ?assertEqual(1, ParentEpoch - ChildEpoch),
@@ -739,9 +753,9 @@ epoch_with_slow_parent(Config) ->
     %% Produce no parent block in the next Resilience child epochs
     %% the child chain should get to a halt or
     %% at least one should be able to observe signalling that the length should be adjusted upward
-    {ok, _} = produce_cc_blocks(Config, ?CHILD_EPOCH_LENGTH*Resilience, none),
+    {ok, _} = produce_cc_blocks(Config, ?CHILD_EPOCH_LENGTH*Resilience, []),
 
-    ct:log("Mined ~p additional child epochs without parent progress", [Resilience]),
+    ct:log("Mined almost ~p additional child epochs without parent progress", [Resilience]),
     ParentTopHeight = rpc(?PARENT_CHAIN_NODE, aec_chain, top_height, []),
     ?assertEqual(ParentHeight, ParentTopHeight),
     ChildTopHeight = rpc(?NODE1, aec_chain, top_height, []),
@@ -749,12 +763,57 @@ epoch_with_slow_parent(Config) ->
     ct:log("Parent at height ~p and child at height ~p in child epoch ~p",
            [ParentTopHeight, ChildTopHeight, EndEpoch ]),
 
+    %% Here we should have observed some signalling for increased child epoch length
+
     %% Parent hash grabbed in last block child epoch, so here we can start, but not finish next epoch
-    {ok, _} = produce_cc_blocks(Config, maps:get(length, EpochInfo) - 1, none),
-    ?assertException(error, timeout_waiting_for_block, produce_cc_blocks(Config, 1, none)),
+    {ok, _} = produce_cc_blocks(Config, maps:get(length, EpochInfo) - 1, []),
+    ?assertException(error, timeout_waiting_for_block, produce_cc_blocks(Config, 1, [])),
 
     ?assertEqual([{ok, (N-1) * ?CHILD_EPOCH_LENGTH + 1} || N <- lists:seq(1, EndEpoch)],
                  [rpc(?NODE1, aec_chain_hc, epoch_start_height, [N]) || N <- lists:seq(1, EndEpoch)]),
+    ok.
+
+%% Demonstrate that child chain start signalling epoch length adjustment downward
+%% When parent blocks are produced too quickly, we need to shorten child epoch
+epochs_with_fast_parent(Config) ->
+    ParentTopHeight = rpc(?PARENT_CHAIN_NODE, aec_chain, top_height, []),
+    ChildTopHeight = rpc(?NODE1, aec_chain, top_height, []),
+    {ok, #{epoch := ChildEpoch} = EpochInfo} = rpc(?NODE1, aec_chain_hc, epoch_info, []),
+
+    %% Quickly produce parent blocks to be in sync again
+    ParentBlocksNeeded =
+        ChildEpoch * ?PARENT_EPOCH_LENGTH + ?config(parent_start_height, Config) + ?PARENT_FINALITY - ParentTopHeight,
+
+    %% Produce ?PARENT_EPOCH_LENGTH parent blocks quickly (very artificial)
+    {ok, _} = produce_cc_blocks(Config, 1, [{ChildTopHeight + 1, ParentBlocksNeeded}]),
+    %% and finish a child epoch
+    %% ensure start at a new epoch boundary
+    StartHeight = rpc(?NODE1, aec_chain, top_height, []),
+    {ok, #{last := Last, length := Len} = EpochInfo1} = rpc(?NODE1, aec_chain_hc, epoch_info, []),
+    ct:log("Info ~p", [EpochInfo1]),
+    BlocksLeftToBoundary = Last - StartHeight,
+    %% some block production including parent blocks
+    {ok, _} = produce_cc_blocks(Config, BlocksLeftToBoundary),
+
+    %% Produce twice as many parent blocks as needed in an epoch
+    Height0 = rpc(?NODE1, aec_chain, top_height, []),
+    ParentTopHeight0 = rpc(?PARENT_CHAIN_NODE, aec_chain, top_height, []),
+    {ok, _} = produce_cc_blocks(Config, ?CHILD_EPOCH_LENGTH,
+                                spread(2*?PARENT_EPOCH_LENGTH, Height0,
+                                       [ {CH, 0} || CH <- lists:seq(Height0 + 1, Height0 + Len)])),
+
+    ParentTopHeight1 = rpc(?PARENT_CHAIN_NODE, aec_chain, top_height, []),
+    Height1 = rpc(?NODE1, aec_chain, top_height, []),
+    {ok, EpochInfo2} = rpc(?NODE1, aec_chain_hc, epoch_info, []),
+    ct:log("Parent at height ~p and child at height ~p in child epoch ~p",
+           [ParentTopHeight1, Height1, EpochInfo2 ]),
+    ?assertEqual(2*?PARENT_EPOCH_LENGTH, ParentTopHeight1 - ParentTopHeight0),
+
+    {ok, _} = produce_cc_blocks(Config, ?CHILD_EPOCH_LENGTH,
+                                spread(2*?PARENT_EPOCH_LENGTH, Height1,
+                                       [ {CH, 0} || CH <- lists:seq(Height1 + 1, Height1 + Len)])),
+
+    %% Here we should be able to observe signalling that epoch should be shorter
     ok.
 
 %%%=============================================================================
@@ -1238,14 +1297,30 @@ election_contract_address() ->
 %% Automatically add key blocks on parent chain and
 %% if there are Txs, put them in a micro block
 produce_cc_blocks(Config, BlocksCnt) ->
+    [{Node, _, _} | _] = ?config(nodes, Config),
+    TopHeight = rpc(Node, aec_chain, top_height, []),
+    {ok, #{epoch := Epoch, first := First, last := Last, length := L} = Info} =
+        rpc(?NODE1, aec_chain_hc, epoch_info, [TopHeight]),
+    ct:log("EpochInfo ~p", [Info]),
+    %% At end of BlocksCnt child epoch approaches approx:
+    CBAfterEpoch = BlocksCnt - (Last - TopHeight),
+    ScheduleUpto = Epoch + 1 + (CBAfterEpoch div L),
+    ParentTopHeight = rpc(?PARENT_CHAIN_NODE, aec_chain, top_height, []),
+    ct:log("P@~p C@~p for next ~p child blocks", [ParentTopHeight, TopHeight,  BlocksCnt]),
+    %% Spread parent blocks over BlocksCnt
+    ParentProduce =
+        lists:append([ spread(?PARENT_EPOCH_LENGTH, TopHeight,
+                              [ {CH, 0} || CH <- lists:seq(First + E * L, Last + E * L)]) ||
+                       E <- lists:seq(0, ScheduleUpto - Epoch) ]),
     %% Last parameter steers where in Child epoch parent block is produced
-    produce_cc_blocks(Config, BlocksCnt, 2).
+    produce_cc_blocks(Config, BlocksCnt, ParentProduce).
 
 produce_cc_blocks(Config, BlocksCnt, ParentProduce) ->
     [{Node1, _, _} | _] = ?config(nodes, Config),
     TopHeight = rpc(Node1, aec_chain, top_height, []),
     %% assert that the parent chain is not mining
     ?assertEqual(stopped, rpc:call(?PARENT_CHAIN_NODE_NAME, aec_conductor, get_mining_state, [])),
+    ct:log("parent produce ~p", [ParentProduce]),
     NewTopHeight = produce_to_cc_height(Config, TopHeight + BlocksCnt, ParentProduce),
     wait_same_top([ Node || {Node, _, _} <- ?config(nodes, Config)]),
     get_generations(Node1, TopHeight + 1, NewTopHeight).
@@ -1253,35 +1328,38 @@ produce_cc_blocks(Config, BlocksCnt, ParentProduce) ->
 %% It seems we automatically produce child chain blocks in the background
 produce_to_cc_height(Config, GoalHeight, ParentProduce) ->
     [{Node, NodeName, _} | _] = ?config(nodes, Config),
-    NodeNames = [ Name || {_, Name, _} <- ?config(nodes, Config) ],
     TopHeight = rpc(Node, aec_chain, top_height, []),
-    case TopHeight >= GoalHeight of
-      true ->
-          TopHeight;
-      false ->
-          case is_integer(ParentProduce) andalso
-                 ((TopHeight rem ?CHILD_EPOCH_LENGTH) - ParentProduce) rem ?PARENT_EPOCH_LENGTH == 0 of
-              true  -> mine_key_blocks(?PARENT_CHAIN_NODE_NAME, 1);
-              false -> ok
-          end,
-          KeyBlock =
-              case rpc:call(NodeName, aec_tx_pool, peek, [infinity]) of
-                  {ok, []} ->
-                       {ok, [{N, Block}]} = mine_cc_blocks(NodeNames, 1),
-                       ct:log("CC ~p mined block: ~p", [N, Block]),
-                       Block;
-                  {ok, _Txs} ->
-                       {ok, [{N1, KB}, {N2, MB}]} = mine_cc_blocks(NodeNames, 2),
-                       ?assertEqual(key, aec_blocks:type(KB)),
-                       ?assertEqual(micro, aec_blocks:type(MB)),
-                       ct:log("CC ~p mined block: ~p", [N1, KB]),
-                       ct:log("CC ~p mined micro block: ~p", [N2, MB]),
-                       KB
-              end,
-          Producer = get_block_producer_name(?config(staker_names, Config), KeyBlock),
-          ct:log("~p produced CC block at height ~p", [Producer, aec_blocks:height(KeyBlock)]),
-          produce_to_cc_height(Config, GoalHeight, ParentProduce)
-    end.
+    NodeNames = [ Name || {_, Name, _} <- ?config(nodes, Config) ],
+    BlocksNeeded = GoalHeight - TopHeight,
+    case  BlocksNeeded > 0 of
+        false ->
+            TopHeight;
+        true ->
+            NewParentProduce =
+                case ParentProduce of
+                    [{CH, PBs} | PRest ]  when CH == TopHeight+1 ->
+                        mine_key_blocks(?PARENT_CHAIN_NODE_NAME, PBs),
+                        PRest;
+                    PP -> PP
+                end,
+            KeyBlock =
+                case rpc:call(NodeName, aec_tx_pool, peek, [infinity]) of
+                    {ok, []} ->
+                         {ok, [{N, Block}]} = mine_cc_blocks(NodeNames, 1),
+                         ct:log("CC ~p mined block: ~p", [N, Block]),
+                         Block;
+                    {ok, _Txs} ->
+                         {ok, [{N1, KB}, {N2, MB}]} = mine_cc_blocks(NodeNames, 2),
+                         ?assertEqual(key, aec_blocks:type(KB)),
+                         ?assertEqual(micro, aec_blocks:type(MB)),
+                         ct:log("CC ~p mined block: ~p", [N1, KB]),
+                         ct:log("CC ~p mined micro block: ~p", [N2, MB]),
+                         KB
+                end,
+            Producer = get_block_producer_name(?config(staker_names, Config), KeyBlock),
+            ct:log("~p produced CC block at height ~p", [Producer, aec_blocks:height(KeyBlock)]),
+            produce_to_cc_height(Config, GoalHeight, NewParentProduce)
+      end.
 
 mine_cc_blocks(NodeNames, N) ->
     aecore_suite_utils:hc_mine_blocks(NodeNames, N).
@@ -1348,3 +1426,18 @@ create_stub(ContractFile, Opts) ->
     {ok, Enc}  = aeso_aci:contract_interface(json, ContractFile, Opts ++ [{no_code, true}]),
     {ok, Stub} = aeso_aci:render_aci_json(Enc),
     binary_to_list(Stub).
+
+spread(_, _, []) ->
+    [];
+spread(0, TopHeight, Spread) ->
+    [ {CH, N} || {CH, N} <- Spread, N /= 0, CH > TopHeight ];
+%spread(N, TopHeight, [{CH, K} | Spread]) when length(Spread) < N ->
+%    %% Take speed first (not realistic), then fill rest
+%    spread(0, TopHeight, [{CH, K + N - length(Spread)} | [ {CH2, X+1} || {CH2, X} <- Spread]]);
+spread(N, TopHeight, Spread) when N rem 2 == 0 ->
+    {Left, Right} = lists:split(length(Spread) div 2, Spread),
+    spread(N div 2, TopHeight, Left) ++ spread(N div 2, TopHeight, Right);
+spread(N, TopHeight, Spread) when N rem 2 == 1 ->
+    {Left, [{Middle, K} | Right]} = lists:split(length(Spread) div 2, Spread),
+    spread(N div 2, TopHeight, Left) ++ [{Middle, K+1} || Middle > TopHeight] ++ spread(N div 2, TopHeight, Right).
+
