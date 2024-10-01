@@ -64,25 +64,24 @@ get_hc_pins(NodeSpec, MB, ParentHCAccountPubKey) ->
     #{<<"transactions">> := Txs} = Res,
     ExpectedRecipient = aeser_api_encoder:encode(account_pubkey, ParentHCAccountPubKey),
     lists:foldl(
-            fun(#{<<"tx">> := Tx}, Acc) ->
-                    case Tx of
-                        #{<<"type">> := <<"SpendTx">>,
-                          <<"recipient_id">> := ExpectedRecipient,
-                          <<"sender_id">> := _SenderId,
-                          <<"payload">> := PinEnc} ->
-                                {ok, Pin} = aeser_api_encoder:safe_decode(bytearray, PinEnc),
-                                DecodedPin = decode_pin_payload(Pin),
-                                [DecodedPin | Acc];
-                        _ ->
-                            Acc
-                    end
-            end, [], Txs).
+        fun(#{<<"tx">> := Tx}, Acc) ->
+            case Tx of
+                #{<<"type">> := <<"SpendTx">>,
+                    <<"recipient_id">> := ExpectedRecipient,
+                    <<"sender_id">> := _SenderId,
+                    <<"payload">> := PinEnc} ->
+                        {ok, Pin} = aeser_api_encoder:safe_decode(bytearray, PinEnc),
+                        DecodedPin = decode_pin_payload(Pin),
+                        [DecodedPin | Acc];
+                _ ->
+                    Acc
+            end
+        end, [], Txs).
 
 -spec create_pin_tx(binary(), binary(), binary(), integer(), integer(), binary()) -> aetx:tx().
 create_pin_tx(NodeSpec, SenderEnc, ReceiverPubkey, Amount, Fee, PinPayload) ->
     %% 1. get the next nonce for our account over at the parent chain
-    {ok, SenderPubkey} = aeser_api_encoder:safe_decode(account_pubkey,
-                                                        SenderEnc),
+    {ok, SenderPubkey} = aeser_api_encoder:safe_decode(account_pubkey, SenderEnc),
     %% FIXME consider altenrative approaches to fetching a nonce: ex. if there
     %% is a hanging transaction in the pool this would produce another hanging
     %% one
@@ -148,21 +147,21 @@ get_request(Path, NodeSpec, Timeout) ->
 
 -spec post_request(binary(), map(), aehttpc:node_spec(), integer()) -> {ok, map()} | {error, term()}.
 post_request(Path, Body, NodeSpec, Timeout) ->
-  try
-    Url = aehttpc:url(NodeSpec),
-    UrlPath = lists:concat([Url, binary_to_list(Path)]),
-    Req = {UrlPath, [], "application/json", jsx:encode(Body)},
-    HTTPOpt = [{timeout, Timeout}],
-    Opt = [],
-    case httpc:request(post, Req, HTTPOpt, Opt) of
-        {ok, {{_, 200 = _Code, _}, _, Res}} ->
-            lager:debug("Req: ~p, Res: ~p with URL: ~ts", [Req, Res, Url]),
-            {ok, jsx:decode(list_to_binary(Res), [return_maps])};
-        {ok, {{_ ,400, _}, _, Res}} ->
-            lager:debug("Req: ~p, Res: ~p with URL: ~ts", [Req, Res, Url]),
-            {error, 400, jsx:decode(list_to_binary(Res), [return_maps])}
-    end
-  catch E:R:S ->
-    lager:info("Error: ~p Reason: ~p Stacktrace: ~p", [E, R, S]),
-    {error, {E, R, S}}
-  end.
+    try
+        Url = aehttpc:url(NodeSpec),
+        UrlPath = lists:concat([Url, binary_to_list(Path)]),
+        Req = {UrlPath, [], "application/json", jsx:encode(Body)},
+        HTTPOpt = [{timeout, Timeout}],
+        Opt = [],
+        case httpc:request(post, Req, HTTPOpt, Opt) of
+            {ok, {{_, 200 = _Code, _}, _, Res}} ->
+                lager:debug("Req: ~p, Res: ~p with URL: ~ts", [Req, Res, Url]),
+                {ok, jsx:decode(list_to_binary(Res), [return_maps])};
+            {ok, {{_ ,400, _}, _, Res}} ->
+                lager:debug("Req: ~p, Res: ~p with URL: ~ts", [Req, Res, Url]),
+                {error, 400, jsx:decode(list_to_binary(Res), [return_maps])}
+        end
+    catch E:R:S ->
+        lager:info("Error: ~p Reason: ~p Stacktrace: ~p", [E, R, S]),
+        {error, {E, R, S}}
+    end.
