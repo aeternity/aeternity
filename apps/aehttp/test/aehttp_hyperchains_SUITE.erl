@@ -1318,18 +1318,17 @@ produce_cc_blocks(Config, BlocksCnt) ->
 
 produce_cc_blocks(Config, BlocksCnt, ParentProduce) ->
     [{Node1, _, _} | _] = ?config(nodes, Config),
+    %% The previous production ended with wait_same_top, so asking first node is sufficient
     TopHeight = rpc(Node1, aec_chain, top_height, []),
     %% assert that the parent chain is not mining
     ?assertEqual(stopped, rpc:call(?PARENT_CHAIN_NODE_NAME, aec_conductor, get_mining_state, [])),
     ct:log("parent produce ~p", [ParentProduce]),
-    NewTopHeight = produce_to_cc_height(Config, TopHeight + BlocksCnt, ParentProduce),
+    NewTopHeight = produce_to_cc_height(Config, TopHeight, TopHeight + BlocksCnt, ParentProduce),
     wait_same_top([ Node || {Node, _, _} <- ?config(nodes, Config)]),
     get_generations(Node1, TopHeight + 1, NewTopHeight).
 
 %% It seems we automatically produce child chain blocks in the background
-produce_to_cc_height(Config, GoalHeight, ParentProduce) ->
-    [{Node, NodeName, _} | _] = ?config(nodes, Config),
-    TopHeight = rpc(Node, aec_chain, top_height, []),
+produce_to_cc_height(Config, TopHeight, GoalHeight, ParentProduce) ->
     NodeNames = [ Name || {_, Name, _} <- ?config(nodes, Config) ],
     BlocksNeeded = GoalHeight - TopHeight,
     case  BlocksNeeded > 0 of
@@ -1344,7 +1343,7 @@ produce_to_cc_height(Config, GoalHeight, ParentProduce) ->
                     PP -> PP
                 end,
             KeyBlock =
-                case rpc:call(NodeName, aec_tx_pool, peek, [infinity]) of
+                case rpc:call(hd(NodeNames), aec_tx_pool, peek, [infinity]) of
                     {ok, []} ->
                          {ok, [{N, Block}]} = mine_cc_blocks(NodeNames, 1),
                          ct:log("CC ~p mined block: ~p", [N, Block]),
@@ -1359,7 +1358,7 @@ produce_to_cc_height(Config, GoalHeight, ParentProduce) ->
                 end,
             Producer = get_block_producer_name(?config(staker_names, Config), KeyBlock),
             ct:log("~p produced CC block at height ~p", [Producer, aec_blocks:height(KeyBlock)]),
-            produce_to_cc_height(Config, GoalHeight, NewParentProduce)
+            produce_to_cc_height(Config, TopHeight + 1, GoalHeight, NewParentProduce)
       end.
 
 mine_cc_blocks(NodeNames, N) ->
