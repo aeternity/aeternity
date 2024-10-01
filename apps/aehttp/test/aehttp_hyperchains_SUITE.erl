@@ -769,21 +769,21 @@ post_pin_to_pc(Config) ->
    {ok, []} = rpc(?PARENT_CHAIN_NODE, aec_tx_pool, peek, [infinity]), % all transactions comitted
    
    {ok, #{epoch := _Epoch,
-        first := _First,
-        last := Last,
-        length := _Length}} = rpc(?NODE1, aec_chain_hc, epoch_info, []),
+          first := _First,
+          last := Last,
+          length := _Length}} = rpc(?NODE1, aec_chain_hc, epoch_info, []),
 
     {ok, LastLeader} = rpc(?NODE1, aec_consensus_hc, leader_for_height, [Last]),    
 
     NetworkId = ?config(network_id, Config), % TODO not 100% sure about this one...
     Nonce = next_nonce(?NODE1, pubkey(?ALICE)),
-    Params =
-        #{sender_id    => aeser_id:create(account, pubkey(?ALICE)),
-          recipient_id => aeser_id:create(account, LastLeader),
-          amount       => 1,
-          fee          => 30000 * ?DEFAULT_GAS_PRICE,
-          nonce        => Nonce,
-          payload      => TxHash},
+    Params = #{  
+        sender_id    => aeser_id:create(account, pubkey(?ALICE)),
+        recipient_id => aeser_id:create(account, LastLeader),
+        amount       => 1,
+        fee          => 30000 * ?DEFAULT_GAS_PRICE,
+        nonce        => Nonce,
+        payload      => TxHash},
     ct:log("Preparing a spend tx: ~p", [Params]),
     {ok, Tx} = aec_spend_tx:new(Params),
     SignedTx = sign_tx(Tx, privkey(?ALICE), NetworkId),

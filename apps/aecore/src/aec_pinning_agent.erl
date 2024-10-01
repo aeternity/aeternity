@@ -9,39 +9,44 @@
 -module(aec_pinning_agent).
 -define(PIN_TAG, 101).
 
--export([get_pinning_data/0,
-        encode_pin_payload/1,
-        decode_pin_payload/1,
-        get_pins/3,
-        create_pin_tx/6,
-        post_pin_tx/2]).
+-export(
+    [
+    get_pinning_data/0,
+    encode_pin_payload/1,
+    decode_pin_payload/1,
+    get_pins/3,
+    create_pin_tx/6,
+    post_pin_tx/2
+    ]).
 
 
 get_pinning_data() ->
-    {ok, #{epoch := Epoch,
+    {ok, #{
+        epoch := Epoch,
         first := First,
         last := _Last,
-        length := _Length}} = aec_chain_hc:epoch_info(),
+        length := _Length
+    }} = aec_chain_hc:epoch_info(),
     %BlockHash = aec_chain:get_block_hash_optionally_by_hash_or_height(First-1),
     {ok, BlockHash} = aec_chain_state:get_key_block_hash_at_height(First-1),
     ConMod = aec_parent_connector:get_parent_conn_mod(),
     {_,Type} = lists:split(8,atom_to_list(ConMod)), % split off "aehttpc_" from mod name to get type
     
     #{epoch => Epoch-1,
-        height => First-1,
-        block_hash => BlockHash,
-        parent_type => Type,
-        parent_network_id => aec_parent_connector:get_network_id()}.
+      height => First-1,
+      block_hash => BlockHash,
+      parent_type => Type,
+      parent_network_id => aec_parent_connector:get_network_id()}.
 
 
 -spec encode_pin_payload(#{epoch => integer(), height => integer(), block_hash => binary()}) -> binary(). 
 encode_pin_payload(#{epoch := _Epoch, height := _Height, block_hash := BlockHash}) when byte_size(BlockHash) > 64 ->
-    {error, <<"pin payload larger than 80 bytes">>};
+    {error, <<"pin payload < 64 bytes -> total encoded pin payload > 80 bytes">>};
 encode_pin_payload(#{epoch := Epoch, height := Height, block_hash := BlockHash}) ->
-    <<?PIN_TAG, Epoch:32/integer, Height:32/integer, BlockHash/binary>>.
+    <<Epoch:64/integer, Height:64/integer, BlockHash/binary>>.
 
 -spec decode_pin_payload(binary()) -> #{epoch => integer(), height => integer(), block_hash => binary()}. 
-decode_pin_payload(<<?PIN_TAG, Epoch:32/integer,Height:32/integer,BlockHash/binary>>) ->
+decode_pin_payload(<<Epoch:64/integer,Height:64/integer,BlockHash/binary>>) ->
     #{epoch => Epoch, height => Height, block_hash => BlockHash}.
 
 
@@ -74,8 +79,7 @@ get_hc_pins(NodeSpec, MB, ParentHCAccountPubKey) ->
             end, [], Txs).
 
 -spec create_pin_tx(binary(), binary(), binary(), integer(), integer(), binary()) -> aetx:tx().
-create_pin_tx(NodeSpec, SenderEnc, ReceiverPubkey, Amount, Fee,
-                   PinPayload) ->
+create_pin_tx(NodeSpec, SenderEnc, ReceiverPubkey, Amount, Fee, PinPayload) ->
     %% 1. get the next nonce for our account over at the parent chain
     {ok, SenderPubkey} = aeser_api_encoder:safe_decode(account_pubkey,
                                                         SenderEnc),
@@ -162,20 +166,3 @@ post_request(Path, Body, NodeSpec, Timeout) ->
     lager:info("Error: ~p Reason: ~p Stacktrace: ~p", [E, R, S]),
     {error, {E, R, S}}
   end.
-
-
-
-
-%%%=============================================================================
-%%% Eunit Tests
-%%%=============================================================================
-
--ifdef(TEST).
-
--include_lib("eunit/include/eunit.hrl").
-
-example_test() ->
-    #{epoch := 123, height := 456, block_hash := <<"a binary?">>} = 
-        decode_pin_payload(encode_pin_payload(#{epoch => 123, height => 456, block_hash => <<"a binary?">>})).
-
--endif.
