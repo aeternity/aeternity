@@ -801,7 +801,7 @@ post_pin_to_pc(Config) ->
     BL = Last - 1,
     BL = rpc(?NODE1, aec_chain, top_height, []), % we're producing in last black
 
-   ok.
+    ok.
 
 
 %%% --------- helper functions
