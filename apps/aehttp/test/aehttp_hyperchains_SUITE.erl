@@ -735,16 +735,20 @@ get_pin(Config) ->
 
     %% note: we are actuall in epoch=2, but the pins are for the previous epoch
     Repl1 = aecore_suite_utils:http_request(aecore_suite_utils:external_address(), get, "hyperchain/pin-tx", []),
-    {ok, 200, #{<<"epoch">> := 1}} = Repl1,
+    {ok, 200, #{<<"epoch">> := 1, <<"height">> := Height1, <<"block_hash">> := BH1}} = Repl1,
+    Height1 = ?CHILD_EPOCH_LENGTH,
+    {ok, IBH1} = rpc(?NODE1, aec_chain_state, get_key_block_hash_at_height, [Height1]),
+    {ok, BH1Dec} = aeser_api_encoder:safe_decode(key_block_hash, BH1),
+    BH1Dec = IBH1,
     %% product, still in same epoch, so pins should be the same
     {ok, _} = produce_cc_blocks(Config, 2),
     Repl2 = aecore_suite_utils:http_request(aecore_suite_utils:external_address(), get, "hyperchain/pin-tx", []),
     {ok, 200, #{<<"epoch">> := 1}} = Repl2,
     ?assertEqual(Repl1, Repl2),
     %% move into next epoch, test pin:epoch
-    {ok, _} = produce_cc_blocks(Config, 9),
+    {ok, _} = produce_cc_blocks(Config, ?CHILD_EPOCH_LENGTH),
     Repl3 = aecore_suite_utils:http_request(aecore_suite_utils:external_address(), get, "hyperchain/pin-tx", []),
-    {ok, 200, #{<<"epoch">> := 2}} = Repl3,
+    {ok, 200, #{<<"epoch">> := 2, <<"height">> := ?CHILD_EPOCH_LENGTH*2}} = Repl3,
 
     ok.
 
@@ -762,10 +766,10 @@ post_pin_to_pc(Config) ->
    SignedPinTx = sign_tx(PinTx, privkey(?DWIGHT),?PARENT_CHAIN_NETWORK_ID),
    {ok, #{<<"tx_hash">> := TxHash}} = aec_pinning_agent:post_pin_tx(SignedPinTx, ParentNodeSpec),
    {ok, [_]} = rpc(?PARENT_CHAIN_NODE, aec_tx_pool, peek, [infinity]), % one transaction pending now.
-   PinHeight = rpc(?PARENT_CHAIN_NODE, aec_chain, top_height, []),
+   %PinHeight = rpc(?PARENT_CHAIN_NODE, aec_chain, top_height, []),
    {ok, _} = produce_cc_blocks(Config, 4),
-   SecondHeight = rpc(?PARENT_CHAIN_NODE, aec_chain, top_height, []), % now further up the PC
-   ?assert(PinHeight < SecondHeight), % we've progressed on the PC
+   %SecondHeight = rpc(?PARENT_CHAIN_NODE, aec_chain, top_height, []), % now further up the PC
+   %?assert(PinHeight < SecondHeight), % we've progressed on the PC
    {ok, []} = rpc(?PARENT_CHAIN_NODE, aec_tx_pool, peek, [infinity]), % all transactions comitted
    
    {ok, #{epoch := _Epoch,

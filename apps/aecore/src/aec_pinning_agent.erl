@@ -1,7 +1,7 @@
 %%%-------------------------------------------------------------------
 %%% @copyright (C) 2024, Aeternity
 %%% @doc
-%%% Gather cild->parent chain pinning information for AE HC and make it 
+%%% Gather child->parent chain pinning information for AE HC and make it 
 %%% available through API
 %%% @end
 %%%-------------------------------------------------------------------
@@ -27,7 +27,6 @@ get_pinning_data() ->
         last := _Last,
         length := _Length
     }} = aec_chain_hc:epoch_info(),
-    %BlockHash = aec_chain:get_block_hash_optionally_by_hash_or_height(First-1),
     {ok, BlockHash} = aec_chain_state:get_key_block_hash_at_height(First-1),
     ConMod = aec_parent_connector:get_parent_conn_mod(),
     {_,Type} = lists:split(8,atom_to_list(ConMod)), % split off "aehttpc_" from mod name to get type
@@ -39,9 +38,7 @@ get_pinning_data() ->
       parent_network_id => aec_parent_connector:get_network_id()}.
 
 
--spec encode_pin_payload(#{epoch => integer(), height => integer(), block_hash => binary()}) -> binary(). 
-encode_pin_payload(#{epoch := _Epoch, height := _Height, block_hash := BlockHash}) when byte_size(BlockHash) > 64 ->
-    {error, <<"pin payload < 64 bytes -> total encoded pin payload > 80 bytes">>};
+-spec encode_pin_payload(#{epoch => integer(), height => integer(), block_hash => binary()}) -> binary().
 encode_pin_payload(#{epoch := Epoch, height := Height, block_hash := BlockHash}) ->
     <<Epoch:64/integer, Height:64/integer, BlockHash/binary>>.
 
@@ -82,9 +79,6 @@ get_hc_pins(NodeSpec, MB, ParentHCAccountPubKey) ->
 create_pin_tx(NodeSpec, SenderEnc, ReceiverPubkey, Amount, Fee, PinPayload) ->
     %% 1. get the next nonce for our account over at the parent chain
     {ok, SenderPubkey} = aeser_api_encoder:safe_decode(account_pubkey, SenderEnc),
-    %% FIXME consider altenrative approaches to fetching a nonce: ex. if there
-    %% is a hanging transaction in the pool this would produce another hanging
-    %% one
     NoncePath = <<"/v3/accounts/", SenderEnc/binary, "/next-nonce">>,
     {ok, #{<<"next_nonce">> := Nonce}} = get_request(NoncePath, NodeSpec, 5000),
     %% 2. Create a SpendTx containing the Pin in its payload
@@ -92,12 +86,6 @@ create_pin_tx(NodeSpec, SenderEnc, ReceiverPubkey, Amount, Fee, PinPayload) ->
         #{sender_id    => aeser_id:create(account, SenderPubkey),
           recipient_id => aeser_id:create(account, ReceiverPubkey),
           amount       => Amount,
-          %% TODO: automatic fee computation
-          %% This might not be trivial as the fee depends on a bunch of
-          %% parameters, namely:
-          %% * parent chain's protocol version
-          %% * expected min_gas on both miner and protocol level
-          %% * current gas prices
           fee          => Fee,
           nonce        => Nonce,
           payload      => PinPayload},
