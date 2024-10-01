@@ -85,31 +85,6 @@ validator_schedule(RunEnv, Seed, Validators, Length) ->
     {ok, Result} = call_consensus_contract_w_env(?ELECTION_CONTRACT, RunEnv, "validator_schedule", Args),
     {ok, lists:map(fun({address, Address}) -> Address end, Result)}.
 
-%% -spec validator_schedule(non_neg_integer()) -> {ok, [binary()]}.
-%% validator_schedule(Epoch) when Epoch > 1 ->
-%%     case epoch_start_height(Epoch) of
-%%       {ok, Height} -> validator_schedule_at_height(Height);
-%%       Err -> Err
-%%     end.
-
-%% -spec validator_schedule_from_hash(non_neg_integer(), binary()) -> {ok, [binary()]}.
-%% validator_schedule_from_hash(Epoch, Hash) when Epoch > 1 ->
-%%     case epoch_start_height(Epoch) of
-%%       {ok, Height} -> validator_schedule_at_height(Height, Hash);
-%%       Err -> Err
-%%     end.
-
-%% -spec validator_schedule_at_height(run_env()) -> {ok, [binary()]}.
-%% validator_schedule_at_height(RunEnv) ->
-%%     {ok, Result} = call_consensus_contract_w_env(?ELECTION_CONTRACT, RunEnv, "get_validator_schedule", []),
-%%     {ok, lists:map(fun({address, Address}) -> Address end, Result)}.
-
-%% -spec validator_schedule_at_height(run_env(), binary()) -> {ok, [binary()]}.
-%% validator_schedule_at_height(RunEnv, Hash) ->
-%%     Args = [aefa_fate_code:encode_arg({bytes, Hash})],
-%%     {ok, Result} = call_consensus_contract_w_env(?ELECTION_CONTRACT, RunEnv, "get_validator_schedule_seed", Args),
-%%     {ok, lists:map(fun({address, Address}) -> Address end, Result)}.
-
 
 %% This makes the dependency graph a circle, right?
 -spec entropy_hash(non_neg_integer()) -> {ok, binary()} | {error, any()}.
