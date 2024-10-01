@@ -758,36 +758,35 @@ post_pin_to_pc(Config) ->
     Pin = rpc(?NODE1, aec_pinning_agent, get_pinning_data, []),
     PinPayloadBin = rpc(?NODE1, aec_pinning_agent, encode_pin_payload, [Pin]),
 
-   DwightPub = pubkey(?DWIGHT), % PC chain account
-   DwightEnc = aeser_api_encoder:encode(account_pubkey, DwightPub),
-   ParentNodeSpec = #{scheme => "http", host => "127.0.0.1", port => aecore_suite_utils:external_api_port(?PARENT_CHAIN_NODE)},
-   {ok, []} = rpc(?PARENT_CHAIN_NODE, aec_tx_pool, peek, [infinity]), % no pending transactions
-   PinTx = aec_pinning_agent:create_pin_tx(ParentNodeSpec, DwightEnc, DwightPub, 1, 30000 * ?DEFAULT_GAS_PRICE, PinPayloadBin), 
-   SignedPinTx = sign_tx(PinTx, privkey(?DWIGHT),?PARENT_CHAIN_NETWORK_ID),
-   {ok, #{<<"tx_hash">> := TxHash}} = aec_pinning_agent:post_pin_tx(SignedPinTx, ParentNodeSpec),
-   {ok, [_]} = rpc(?PARENT_CHAIN_NODE, aec_tx_pool, peek, [infinity]), % one transaction pending now.
-   %PinHeight = rpc(?PARENT_CHAIN_NODE, aec_chain, top_height, []),
-   {ok, _} = produce_cc_blocks(Config, 4),
-   %SecondHeight = rpc(?PARENT_CHAIN_NODE, aec_chain, top_height, []), % now further up the PC
-   %?assert(PinHeight < SecondHeight), % we've progressed on the PC
-   {ok, []} = rpc(?PARENT_CHAIN_NODE, aec_tx_pool, peek, [infinity]), % all transactions comitted
-   
-   {ok, #{epoch := _Epoch,
-          first := _First,
-          last := Last,
-          length := _Length}} = rpc(?NODE1, aec_chain_hc, epoch_info, []),
+    DwightPub = pubkey(?DWIGHT), % PC chain account
+    DwightEnc = aeser_api_encoder:encode(account_pubkey, DwightPub),
+    ParentNodeSpec = #{scheme => "http", host => "127.0.0.1", port => aecore_suite_utils:external_api_port(?PARENT_CHAIN_NODE)},
+    {ok, []} = rpc(?PARENT_CHAIN_NODE, aec_tx_pool, peek, [infinity]), % no pending transactions
+    PinTx = aec_pinning_agent:create_pin_tx(ParentNodeSpec, DwightEnc, DwightPub, 1, 30000 * ?DEFAULT_GAS_PRICE, PinPayloadBin), 
+    SignedPinTx = sign_tx(PinTx, privkey(?DWIGHT),?PARENT_CHAIN_NETWORK_ID),
+    {ok, #{<<"tx_hash">> := TxHash}} = aec_pinning_agent:post_pin_tx(SignedPinTx, ParentNodeSpec),
+    {ok, [_]} = rpc(?PARENT_CHAIN_NODE, aec_tx_pool, peek, [infinity]), % one transaction pending now.
+    %PinHeight = rpc(?PARENT_CHAIN_NODE, aec_chain, top_height, []),
+    {ok, _} = produce_cc_blocks(Config, 4),
+    %SecondHeight = rpc(?PARENT_CHAIN_NODE, aec_chain, top_height, []), % now further up the PC
+    %?assert(PinHeight < SecondHeight), % we've progressed on the PC
+    {ok, []} = rpc(?PARENT_CHAIN_NODE, aec_tx_pool, peek, [infinity]), % all transactions comitted
+    
+    {ok, #{epoch  := _Epoch,
+           first  := _First,
+           last   := Last,
+           length := _Length}} = rpc(?NODE1, aec_chain_hc, epoch_info, []),
 
     {ok, LastLeader} = rpc(?NODE1, aec_consensus_hc, leader_for_height, [Last]),    
 
     NetworkId = ?config(network_id, Config), % TODO not 100% sure about this one...
     Nonce = next_nonce(?NODE1, pubkey(?ALICE)),
-    Params = #{  
-        sender_id    => aeser_id:create(account, pubkey(?ALICE)),
-        recipient_id => aeser_id:create(account, LastLeader),
-        amount       => 1,
-        fee          => 30000 * ?DEFAULT_GAS_PRICE,
-        nonce        => Nonce,
-        payload      => TxHash},
+    Params = #{ sender_id    => aeser_id:create(account, pubkey(?ALICE)),
+                recipient_id => aeser_id:create(account, LastLeader),
+                amount       => 1,
+                fee          => 30000 * ?DEFAULT_GAS_PRICE,
+                nonce        => Nonce,
+                payload      => TxHash},
     ct:log("Preparing a spend tx: ~p", [Params]),
     {ok, Tx} = aec_spend_tx:new(Params),
     SignedTx = sign_tx(Tx, privkey(?ALICE), NetworkId),

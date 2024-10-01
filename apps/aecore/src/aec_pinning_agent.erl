@@ -21,20 +21,19 @@
 
 
 get_pinning_data() ->
-    {ok, #{
-        epoch := Epoch,
-        first := First,
-        last := _Last,
-        length := _Length
+    {ok, #{epoch  := Epoch,
+           first  := First,
+           last   := _Last,
+           length := _Length
     }} = aec_chain_hc:epoch_info(),
     {ok, BlockHash} = aec_chain_state:get_key_block_hash_at_height(First-1),
     ConMod = aec_parent_connector:get_parent_conn_mod(),
     {_,Type} = lists:split(8,atom_to_list(ConMod)), % split off "aehttpc_" from mod name to get type
     
-    #{epoch => Epoch-1,
-      height => First-1,
-      block_hash => BlockHash,
-      parent_type => Type,
+    #{epoch             => Epoch-1,
+      height            => First-1,
+      block_hash        => BlockHash,
+      parent_type       => Type,
       parent_network_id => aec_parent_connector:get_network_id()}.
 
 
@@ -63,15 +62,14 @@ get_hc_pins(NodeSpec, MB, ParentHCAccountPubKey) ->
     lists:foldl(
         fun(#{<<"tx">> := Tx}, Acc) ->
             case Tx of
-                #{<<"type">> := <<"SpendTx">>,
-                    <<"recipient_id">> := ExpectedRecipient,
-                    <<"sender_id">> := _SenderId,
-                    <<"payload">> := PinEnc} ->
+                #{<<"type">>            := <<"SpendTx">>,
+                  <<"recipient_id">>    := ExpectedRecipient,
+                  <<"sender_id">>       := _SenderId,
+                  <<"payload">>         := PinEnc} ->
                         {ok, Pin} = aeser_api_encoder:safe_decode(bytearray, PinEnc),
                         DecodedPin = decode_pin_payload(Pin),
                         [DecodedPin | Acc];
-                _ ->
-                    Acc
+                _ -> Acc
             end
         end, [], Txs).
 
@@ -82,13 +80,12 @@ create_pin_tx(NodeSpec, SenderEnc, ReceiverPubkey, Amount, Fee, PinPayload) ->
     NoncePath = <<"/v3/accounts/", SenderEnc/binary, "/next-nonce">>,
     {ok, #{<<"next_nonce">> := Nonce}} = get_request(NoncePath, NodeSpec, 5000),
     %% 2. Create a SpendTx containing the Pin in its payload
-    TxArgs =
-        #{sender_id    => aeser_id:create(account, SenderPubkey),
-          recipient_id => aeser_id:create(account, ReceiverPubkey),
-          amount       => Amount,
-          fee          => Fee,
-          nonce        => Nonce,
-          payload      => PinPayload},
+    TxArgs = #{sender_id    => aeser_id:create(account, SenderPubkey),
+               recipient_id => aeser_id:create(account, ReceiverPubkey),
+               amount       => Amount,
+               fee          => Fee,
+               nonce        => Nonce,
+               payload      => PinPayload},
     {ok, SpendTx} = aec_spend_tx:new(TxArgs),
     SpendTx.
 
@@ -109,29 +106,29 @@ post_pin_tx(SignedSpendTx, NodeSpec) ->
 
 get_request(Path, NodeSpec, Timeout) ->
     try
-    Url = aehttpc:url(NodeSpec),
-    UrlPath = lists:concat([Url, binary_to_list(Path)]),
-    Req = {UrlPath, []},
-    HTTPOpt = [{timeout, Timeout}],
-    Opt = [],
-    %% lager:debug("Req: ~p, with URL: ~ts", [Req, Url]),
-    case httpc:request(get, Req, HTTPOpt, Opt) of
-        {ok, {{_, 200 = _Code, _}, _, Res}} ->
-            %% lager:debug("Req: ~p, Res: ~p with URL: ~ts", [Req, Res, Url]),
-            {ok, jsx:decode(list_to_binary(Res), [return_maps])};
-        {ok, {{_, 404 = _Code, _}, _, "{\"reason\":\"Block not found\"}"}} ->
-            {error, not_found};
-        {ok, {{_, Code, _}, _, Res}} when Code >= 400 ->
-            lager:debug("Req: ~p, Res: ~p with URL: ~ts, Code ~p", [Req, Res, Url, Code]),
-            {error, not_found};
-        {error, Err} ->
-            lager:debug("Req: ~p, ERROR: ~p with URL: ~ts", [Req, Err, Url]),
-            {error, not_found}
-    end
-  catch E:R:S ->
-    lager:info("Error: ~p Reason: ~p Stacktrace: ~p", [E, R, S]),
-    {error, {E, R, S}}
-  end.
+        Url = aehttpc:url(NodeSpec),
+        UrlPath = lists:concat([Url, binary_to_list(Path)]),
+        Req = {UrlPath, []},
+        HTTPOpt = [{timeout, Timeout}],
+        Opt = [],
+        %% lager:debug("Req: ~p, with URL: ~ts", [Req, Url]),
+        case httpc:request(get, Req, HTTPOpt, Opt) of
+            {ok, {{_, 200 = _Code, _}, _, Res}} ->
+                %% lager:debug("Req: ~p, Res: ~p with URL: ~ts", [Req, Res, Url]),
+                {ok, jsx:decode(list_to_binary(Res), [return_maps])};
+            {ok, {{_, 404 = _Code, _}, _, "{\"reason\":\"Block not found\"}"}} ->
+                {error, not_found};
+            {ok, {{_, Code, _}, _, Res}} when Code >= 400 ->
+                lager:debug("Req: ~p, Res: ~p with URL: ~ts, Code ~p", [Req, Res, Url, Code]),
+                {error, not_found};
+            {error, Err} ->
+                lager:debug("Req: ~p, ERROR: ~p with URL: ~ts", [Req, Err, Url]),
+                {error, not_found}
+        end
+    catch E:R:S ->
+        lager:info("Error: ~p Reason: ~p Stacktrace: ~p", [E, R, S]),
+        {error, {E, R, S}}
+    end.
 
 -spec post_request(binary(), map(), aehttpc:node_spec(), integer()) -> {ok, map()} | {error, term()}.
 post_request(Path, Body, NodeSpec, Timeout) ->
