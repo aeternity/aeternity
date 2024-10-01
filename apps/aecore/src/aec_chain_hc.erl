@@ -77,6 +77,11 @@ epoch_start_height(Epoch) ->
            epoch_start_height(Epoch, Height)
     end.
 
+-spec validators_at_height(height()) -> {ok, [binary()]}.
+validators_at_height(Height) ->
+    {ok, Result} = call_consensus_contract_at_height(?STAKING_CONTRACT, Height, "sorted_validators", []),
+    {ok, lists:map(fun({tuple, Staker}) -> Staker end, Result)}.
+
 -spec validator_schedule(non_neg_integer()) -> {ok, #{integer() => binary()}}.
 validator_schedule(Epoch) when Epoch > 1 ->
     case epoch_start_height(Epoch) of
@@ -109,29 +114,6 @@ epoch_start_height(Epoch, Height) ->
             {error, chain_too_short}
     end.
 
--spec validators_at_height(height()) -> {ok, [binary()]}.
-validators_at_height(Height) ->
-    case call_consensus_contract_at_height(?STAKING_CONTRACT, Height, "sorted_validators", []) of
-      {ok, Result} ->
-          {ok, lists:map(fun({tuple, Staker}) -> Staker end, Result)};
-      Err -> Err
-    end.
-
-validator_schedule_at_height(ParentEntropyBlockHash, Height) ->
-  case validators_at_height(Height) of
-      {ok, Validators} ->
-           {ok, EpochLength} = epoch_length(Height),
-           Args = [aefa_fate_code:encode_arg({bytes, ParentEntropyBlockHash}),
-                   aefa_fate_code:encode_arg(Validators),
-                   aefa_fate_code:encode_arg({integer, EpochLength})
-                  ],
-           {ok, Result} = call_consensus_contract_at_height(?ELECTION_CONTRACT, Height, "validator_schedule", Args),
-           {ok, maps:from_list(enumerate(Height, lists:map(fun({address, Address}) -> Address end, Result)))};
-      Err -> Err
-  end.
-
-%%% --- internal
-
 -if(?OTP_RELEASE < 25).
 enumerate(From, List) ->
   lists:zip(lists:seq(From, From + length(List)-1), List).
@@ -153,4 +135,3 @@ call_consensus_contract_at_height(Contract, Height, Endpoint, Args) when is_inte
            {TxEnv, Trees} = aetx_env:tx_env_and_trees_from_hash(aetx_transaction, Hash),
            call_consensus_contract_at_height(Contract, {TxEnv, Trees}, Endpoint, Args)
     end.
-

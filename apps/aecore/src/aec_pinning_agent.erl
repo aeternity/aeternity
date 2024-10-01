@@ -7,6 +7,7 @@
 %%%-------------------------------------------------------------------
 
 -module(aec_pinning_agent).
+-define(PIN_TAG, 101).
 
 -export([get_pinning_data/0,
         encode_pin_payload/1,
@@ -15,14 +16,7 @@
         create_pin_tx/6,
         post_pin_tx/2]).
 
--define(PIN_TAG, <<"pin">>).
 
--spec get_pinning_data() -> 
-    #{epoch => integer(), 
-        height => integer(), 
-        block_hash => binary(), 
-        parent_type => binary(), 
-        parent_network_id => binary()}.
 get_pinning_data() ->
     {ok, #{epoch := Epoch,
         first := First,
@@ -44,10 +38,10 @@ get_pinning_data() ->
 encode_pin_payload(#{epoch := _Epoch, height := _Height, block_hash := BlockHash}) when byte_size(BlockHash) > 64 ->
     {error, <<"pin payload larger than 80 bytes">>};
 encode_pin_payload(#{epoch := Epoch, height := Height, block_hash := BlockHash}) ->
-    <<Epoch:32/integer, Height:32/integer, BlockHash/binary>>.
+    <<?PIN_TAG, Epoch:32/integer, Height:32/integer, BlockHash/binary>>.
 
 -spec decode_pin_payload(binary()) -> #{epoch => integer(), height => integer(), block_hash => binary()}. 
-decode_pin_payload(<<Epoch:32/integer,Height:32/integer,BlockHash/binary>>) ->
+decode_pin_payload(<<?PIN_TAG, Epoch:32/integer,Height:32/integer,BlockHash/binary>>) ->
     #{epoch => Epoch, height => Height, block_hash => BlockHash}.
 
 
@@ -79,7 +73,7 @@ get_hc_pins(NodeSpec, MB, ParentHCAccountPubKey) ->
                     end
             end, [], Txs).
 
--spec create_pin_tx(binary(), binary(), binary(), integer(), integer(), binary()) -> binary().
+-spec create_pin_tx(binary(), binary(), binary(), integer(), integer(), binary()) -> aetx:tx().
 create_pin_tx(NodeSpec, SenderEnc, ReceiverPubkey, Amount, Fee,
                    PinPayload) ->
     %% 1. get the next nonce for our account over at the parent chain

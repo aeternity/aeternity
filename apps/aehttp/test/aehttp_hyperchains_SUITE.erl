@@ -796,7 +796,7 @@ post_pin_to_pc(Config) ->
     {ok, _} = produce_cc_blocks(Config, DistToBeforeLast), % produce blocks until last
     BL = Last - 1,
     BL = rpc(?NODE1, aec_chain, top_height, []), % we're producing in last black
-    
+
    ok.
 
 
@@ -884,7 +884,7 @@ inspect_staking_contract(OriginWho, WhatToInspect, Config, TopHash) ->
         case WhatToInspect of
             {staking_power, Who} ->
                 {"staking_power", [binary_to_list(encoded_pubkey(Who))]};
-            {get__state, Who} ->
+            {get_validator_state, Who} ->
                 {"get_validator_state", [binary_to_list(encoded_pubkey(Who))]};
             get_state ->
                 {"get_state", []};
