@@ -760,15 +760,23 @@ next_beneficiary(TxEnv, Trees) ->
 try_compute_schedule(TxEnv, Trees, ChildHeight) ->
     {ok, EpochInfo} = epoch_info_at_height({TxEnv, Trees}, ChildHeight),
     lager:debug("Epoch info for schedule at height ~p: ~p", [ChildHeight, EpochInfo]),
-    #{epoch := Epoch, first := First} = EpochInfo,
-    case get_entropy_hash(Epoch) of
-        {ok, Hash} ->
-            Schedule = validator_schedule({TxEnv, Trees}, Hash, EpochInfo),
-            cache_schedule(Schedule),
-            lager:debug("Schedule cached (range ~p -> ~p)", [First, First + maps:size(Schedule) - 1]),
-            ok;
-        Err -> Err
+    case EpochInfo of
+        #{seed := undefined, epoch := Epoch} when Epoch =< 2 ->
+            case get_entropy_hash(Epoch) of
+                {ok, Hash} -> try_compute_schedule(TxEnv, Trees, Hash, EpochInfo);
+                Err  -> Err
+            end;
+        #{seed := Hash} ->
+            try_compute_schedule(TxEnv, Trees, Hash, EpochInfo)
     end.
+
+try_compute_schedule(TxEnv, Trees, Hash, #{first := First} = EpochInfo) ->
+    Schedule = validator_schedule({TxEnv, Trees}, Hash, EpochInfo),
+    cache_schedule(Schedule),
+    lager:debug("Schedule cached (range ~p -> ~p)", [First, First + maps:size(Schedule) - 1]),
+    ok.
+
+
 
 get_entropy_hash(ChildEpoch) ->
     EntropyHeight = entropy_height(ChildEpoch),
@@ -792,8 +800,10 @@ is_block_producer_() ->
 
     StakersConfig /= [].
 
+%% We start at parent epoch 1
+%% We take first hash of parent epoch (hence -1)
 entropy_height(ChildEpoch) ->
-    max(0, (ChildEpoch - 2)) * parent_generation() + pc_start_height().
+    (max(1, (ChildEpoch - 2)) - 1) * parent_generation() + pc_start_height().
 
 cache_schedule(Schedule) ->
     aeu_ets_cache:put(?ETS_CACHE_TABLE, validator_schedule, Schedule).

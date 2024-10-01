@@ -60,10 +60,10 @@ main contract HCElection =
     let ei2 = state.epochs[epoch + 2]
     let ei_adjust = state.epochs[epoch + 3]{ length = ei2.length + epoch_adjust }
     let new_epochs = { [epoch] = state.epochs[epoch],
-                       [epoch + 1] = state.epochs[epoch + 1]{ seed = Some(seed) }, // election epoch
-                       [epoch + 2] = state.epochs[epoch + 2],                      // vote epoch
-                       [epoch + 3] = ei_adjust,                                    // length adjust epoch
-                       [epoch + 4] = mk_epoch_info(ei_adjust.start + ei_adjust.length + 1, ei_adjust.length, None,
+                       [epoch + 1] = state.epochs[epoch + 1],
+                       [epoch + 2] = state.epochs[epoch + 2]{ seed = Some(seed) },
+                       [epoch + 3] = ei_adjust,
+                       [epoch + 4] = mk_epoch_info(ei_adjust.start + ei_adjust.length, ei_adjust.length, None,
                                                    Some(state.main_staking_ct.sorted_validators()))
                      }
     put(state{ leader = leader,
