@@ -481,10 +481,11 @@ respect_schedule(Node, EpochStart, Epoch, TopHeight) ->
     {ok, Schedule} = rpc(?NODE1, aec_chain_hc, validator_schedule, [EpochStart, PHash, EIValidators, EILength]),
     ct:log("Validating schedule ~p for Epoch ~p", [Schedule, Epoch]),
 
-    lists:foreach(fun({Height, ExpectedProducer}) ->
+    lists:foreach(fun({Height, ExpectedProducer}) when Height =< TopHeight ->
                               Producer = get_block_producer(Node, Height),
                               ct:log("Check producer of block ~p: ~p =?= ~p", [Height, Producer, ExpectedProducer]),
-                              ?assertEqual(Producer, ExpectedProducer)
+                              ?assertEqual(Producer, ExpectedProducer);
+                     (_) -> ok
                   end, lists:zip(lists:seq(StartHeight, StartHeight + EILength - 1), Schedule)),
 
     respect_schedule(Node, EILast + 1, Epoch + 1, TopHeight).
@@ -778,7 +779,7 @@ epochs_with_slow_parent(Config) ->
 epochs_with_fast_parent(Config) ->
     ParentTopHeight = rpc(?PARENT_CHAIN_NODE, aec_chain, top_height, []),
     ChildTopHeight = rpc(?NODE1, aec_chain, top_height, []),
-    {ok, #{epoch := ChildEpoch} = EpochInfo} = rpc(?NODE1, aec_chain_hc, epoch_info, []),
+    {ok, #{epoch := ChildEpoch}} = rpc(?NODE1, aec_chain_hc, epoch_info, []),
 
     %% Quickly produce parent blocks to be in sync again
     ParentBlocksNeeded =
