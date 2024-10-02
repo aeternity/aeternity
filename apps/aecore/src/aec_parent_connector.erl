@@ -36,7 +36,11 @@
          request_top/0,
          %% blocking getting of blocks
          fetch_block_by_hash/1,
-         fetch_block_by_height/1
+         fetch_block_by_height/1,
+        %% internal state getters
+        get_network_id/0,
+        get_parent_conn_mod/0,
+        get_sign_module/0
         ]).
 
 %% Callbacks
@@ -50,6 +54,8 @@
 -record(state,
     {
         parent_conn_mod = aehttpc_btc,
+        network_id,
+        sign_module,
         fetch_interval = 10000, % Interval for parent top change checks
         parent_hosts = [],
         hcpc = #{}, % Mapping from hyperchain staker pubkey to parent chain pubkey
@@ -123,10 +129,12 @@ fetch_block_by_height(Height) ->
 %%%=============================================================================
 
 -spec init([any()]) -> {ok, #state{}}.
-init([ParentConnMod, FetchInterval, ParentHosts, _NetworkId, _SignModule, HCPCPairs]) ->
+init([ParentConnMod, FetchInterval, ParentHosts, NetworkId, SignModule, HCPCPairs]) ->
     {ok, #state{parent_conn_mod = ParentConnMod,
                 fetch_interval = FetchInterval,
                 parent_hosts = ParentHosts,
+                network_id = NetworkId,
+                sign_module = SignModule,
                 hcpc = maps:from_list(HCPCPairs)}}.
 
 -spec handle_call(any(), any(), state()) -> {reply, any(), state()}.
@@ -140,6 +148,12 @@ handle_call({fetch_block_by_hash, Hash}, _From, State) ->
 handle_call({fetch_block_by_height, Height}, _From, State) ->
     Reply = handle_fetch_block(fun fetch_block_by_height/5, Height, State),
     {reply, Reply, State};
+handle_call(get_network_id, _From, #state{network_id = NetworkId} = State) ->
+    {reply, NetworkId, State};
+handle_call(get_sign_module, _From, #state{sign_module = SM} = State) ->
+    {reply, SM, State};
+handle_call(get_parent_conn_mod, _From, #state{parent_conn_mod = ParentConnMod} = State) ->
+    {reply, ParentConnMod, State};
 handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
@@ -296,3 +310,11 @@ handle_fetch_block(Fun, Arg,
             Err
     end.
 
+get_network_id() ->
+    gen_server:call(?SERVER, get_network_id).
+
+get_parent_conn_mod() ->
+    gen_server:call(?SERVER, get_parent_conn_mod).
+
+get_sign_module() ->
+    gen_server:call(?SERVER, get_sign_module).

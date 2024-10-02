@@ -29,7 +29,9 @@
          elected_leader_did_not_show_up/1,
          block_difficulty/1,
          epoch_with_slow_parent/1,
-         check_blocktime/1
+         check_blocktime/1,
+         get_pin/1,
+         post_pin_to_pc/1
         ]).
 
 -include_lib("stdlib/include/assert.hrl").
@@ -131,7 +133,7 @@
 
 -define(GENESIS_BENFICIARY, <<0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0>>).
 
-all() -> [{group, hc}, {group, epochs}].
+all() -> [{group, hc}, {group, pinning}].
 
 groups() ->
     [
@@ -149,6 +151,11 @@ groups() ->
     , {epochs, [sequence],
           [ start_two_child_nodes
           , epoch_with_slow_parent ]}
+    , {pinning, [sequence],
+          [ start_two_child_nodes,
+            produce_first_epoch,
+            get_pin,
+            post_pin_to_pc ]}
     ].
 
 suite() -> [].
@@ -194,8 +201,8 @@ init_per_suite(Config0) ->
             ParentPatronPubEnc = aeser_api_encoder:encode(account_pubkey, ParentPatronPub),
             aecore_suite_utils:create_seed_file(AccountFileName,
                 #{  ParentPatronPubEnc => 100000000000000000000000000000000000000000000000000000000000000000000000
-                    %%, encoded_pubkey(?DWIGHT) => 2100000000000000000000000000
-                    %%, encoded_pubkey(?EDWIN) => 3100000000000000000000000000
+                    , encoded_pubkey(?DWIGHT) => 2100000000000000000000000000
+                    , encoded_pubkey(?EDWIN) => 3100000000000000000000000000
                 }),
             StakingContract = staking_contract_address(),
             ElectionContract = election_contract_address(),
@@ -414,7 +421,9 @@ start_two_child_nodes(Config) ->
 
 produce_first_epoch(Config) ->
     [{Node1, _, _}|_] = ?config(nodes, Config),
+    %% produce blocks
     {ok, Bs} = produce_cc_blocks(Config, ?CHILD_EPOCH_LENGTH),
+    %% check producers
     Producers = [ aec_blocks:miner(B) || B <- Bs ],
     Leaders = leaders_at_height(Node1, 1, Config),
     ct:log("Bs: ~p  Leaders ~p", [Bs, Leaders]),
@@ -717,6 +726,100 @@ epoch_with_slow_parent(Config) ->
     ?assertEqual([{ok, (N-1) * ?CHILD_EPOCH_LENGTH + 1} || N <- lists:seq(1, EndEpoch)],
                  [rpc(?NODE1, aec_chain_hc, epoch_start_height, [N]) || N <- lists:seq(1, EndEpoch)]),
     ok.
+
+%%%=============================================================================
+%%% Pinning
+%%%=============================================================================
+
+get_pin(Config) ->
+    [{Node, _, _} | _] = ?config(nodes, Config),
+    %% Verify that endpoint is available
+    {ok, IsChildChain} = rpc(Node, aeu_env, find_config,
+                             [[<<"http">>, <<"endpoints">>, <<"hyperchain">>], [user_config, schema_default]]),
+    ?assert(IsChildChain),
+    %% Derive which epoch we are in
+    {ok, #{epoch := Epoch} = EpochInfo1} = rpc(?NODE1, aec_chain_hc, epoch_info, []),
+
+    %% note: the pins are for the last block in previous epoch
+    Repl1 = aecore_suite_utils:http_request(aecore_suite_utils:external_address(), get, "hyperchain/pin-tx", []),
+    {ok, 200, #{<<"epoch">> := PrevEpoch, <<"height">> := Height1, <<"block_hash">> := BH1}} = Repl1,
+    {ok, BH1Dec} = aeser_api_encoder:safe_decode(key_block_hash, BH1),
+    ?assertEqual({epoch, Epoch - 1}, {epoch, PrevEpoch}),
+    ?assertEqual(maps:get(first, EpochInfo1) - 1, Height1),
+    {ok, IBH1} = rpc(?NODE1, aec_chain_state, get_key_block_hash_at_height, [Height1]),
+    ?assertEqual(BH1Dec, IBH1),
+    %% produce some more child blocks if we stay in same epoch, then pins should be the same
+    {ok, _} = produce_cc_blocks(Config, 2),
+    Repl2 = aecore_suite_utils:http_request(aecore_suite_utils:external_address(), get, "hyperchain/pin-tx", []),
+    {ok, EpochInfo2} = rpc(?NODE1, aec_chain_hc, epoch_info, []),
+    %% Get response from being in next Epoch
+    Repl3 =
+        if EpochInfo1 == EpochInfo2 ->
+             ?assertEqual(Repl1, Repl2),
+             {ok, _} = produce_cc_blocks(Config, maps:get(length, EpochInfo2) - 1),
+             aecore_suite_utils:http_request(aecore_suite_utils:external_address(), get, "hyperchain/pin-tx", []);
+           true -> Repl2
+        end,
+    %% Verfify for the next epoch as well
+    {ok, 200, #{<<"epoch">> := NextEpoch, <<"height">> := Height2, <<"block_hash">> := BH2}} = Repl3,
+    {ok, BH2Dec} = aeser_api_encoder:safe_decode(key_block_hash, BH2),
+    %% Now the epoch we started with is the one we take the pin from
+    ?assertEqual({epoch, Epoch}, {epoch, NextEpoch}),
+    ?assertEqual(maps:get(last, EpochInfo1), Height2),
+    {ok, IBH2} = rpc(?NODE1, aec_chain_state, get_key_block_hash_at_height, [Height2]),
+    ?assertEqual(BH2Dec, IBH2),
+    ok.
+
+post_pin_to_pc(Config) ->
+
+    %% we use local/rpc here.
+    Pin = rpc(?NODE1, aec_pinning_agent, get_pinning_data, []),
+    PinPayloadBin = rpc(?NODE1, aec_pinning_agent, encode_pin_payload, [Pin]),
+
+    DwightPub = pubkey(?DWIGHT), % PC chain account
+    DwightEnc = aeser_api_encoder:encode(account_pubkey, DwightPub),
+    ParentNodeSpec = #{scheme => "http", host => "127.0.0.1", port => aecore_suite_utils:external_api_port(?PARENT_CHAIN_NODE)},
+    {ok, []} = rpc(?PARENT_CHAIN_NODE, aec_tx_pool, peek, [infinity]), % no pending transactions
+    PinTx = aec_pinning_agent:create_pin_tx(ParentNodeSpec, DwightEnc, DwightPub, 1, 30000 * ?DEFAULT_GAS_PRICE, PinPayloadBin),
+    SignedPinTx = sign_tx(PinTx, privkey(?DWIGHT),?PARENT_CHAIN_NETWORK_ID),
+    {ok, #{<<"tx_hash">> := TxHash}} = aec_pinning_agent:post_pin_tx(SignedPinTx, ParentNodeSpec),
+    {ok, [_]} = rpc(?PARENT_CHAIN_NODE, aec_tx_pool, peek, [infinity]), % one transaction pending now.
+    %PinHeight = rpc(?PARENT_CHAIN_NODE, aec_chain, top_height, []),
+    {ok, _} = produce_cc_blocks(Config, 4),
+    %SecondHeight = rpc(?PARENT_CHAIN_NODE, aec_chain, top_height, []), % now further up the PC
+    %?assert(PinHeight < SecondHeight), % we've progressed on the PC
+    {ok, []} = rpc(?PARENT_CHAIN_NODE, aec_tx_pool, peek, [infinity]), % all transactions comitted
+
+    {ok, #{epoch  := _Epoch,
+           first  := _First,
+           last   := Last,
+           length := _Length}} = rpc(?NODE1, aec_chain_hc, epoch_info, []),
+
+    {ok, LastLeader} = rpc(?NODE1, aec_consensus_hc, leader_for_height, [Last]),
+
+    NetworkId = ?config(network_id, Config), % TODO not 100% sure about this one...
+    Nonce = next_nonce(?NODE1, pubkey(?ALICE)),
+    Params = #{ sender_id    => aeser_id:create(account, pubkey(?ALICE)),
+                recipient_id => aeser_id:create(account, LastLeader),
+                amount       => 1,
+                fee          => 30000 * ?DEFAULT_GAS_PRICE,
+                nonce        => Nonce,
+                payload      => TxHash},
+    ct:log("Preparing a spend tx: ~p", [Params]),
+    {ok, Tx} = aec_spend_tx:new(Params),
+    SignedTx = sign_tx(Tx, privkey(?ALICE), NetworkId),
+    ok = rpc:call(?NODE1_NAME, aec_tx_pool, push, [SignedTx, tx_received]),
+    {ok, [_]} = rpc(?NODE1, aec_tx_pool, peek, [infinity]), % transactions in pool
+    {ok, _} = produce_cc_blocks(Config, 1),
+    CH = rpc(?NODE1, aec_chain, top_height, []),
+    {ok, []} = rpc(?PARENT_CHAIN_NODE, aec_tx_pool, peek, [infinity]), % all transactions comitted
+    DistToBeforeLast = Last - CH - 1,
+    {ok, _} = produce_cc_blocks(Config, DistToBeforeLast), % produce blocks until last
+    BL = Last - 1,
+    BL = rpc(?NODE1, aec_chain, top_height, []), % we're producing in last black
+
+    ok.
+
 
 %%% --------- helper functions
 
@@ -1084,6 +1187,7 @@ node_config(Node, CTConfig, PotentialStakers, ReceiveAddress, ProducingCommitmen
             #{<<"network_id">> => <<"this_will_be_overwritten_runtime">>},
         <<"logging">> => #{<<"level">> => <<"debug">>},
         <<"sync">> => #{<<"ping_interval">> => 5000},
+        <<"http">> => #{<<"endpoints">> => #{<<"hyperchain">> => true}},
         <<"mining">> =>
             #{<<"micro_block_cycle">> => 1,
             <<"autostart">> => false,
