@@ -35,6 +35,8 @@ tags:
     description: External dry run endpoint.
   - name: node-operator
     description: Endpoints to help the node operator interact with the node
+  - name: hyperchain
+    description: Hyperchain related endpoints
 externalDocs:
   description: Find out more about Aeternity
   url: http://www.aeternity.com
@@ -508,6 +510,27 @@ paths:
                 $ref: "#/components/schemas/Header"
         "404":
           description: Block not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /hyperchain/pin-tx:
+    get:
+      tags:
+        - external
+        - hyperchain
+      operationId: GetPinningTx
+      description: Get the pinning transaction for the current epoch. Returns both the individual parameters as well as the parent chain type (aeternity, btc etc.), network id and a packaged 80 byte readymade payload for that chain type.
+      parameters:
+      responses:
+        "200":
+          description: Succesful operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PinningTx"
+        "404":
+          description: HC Endpoint not found
           content:
             application/json:
               schema:
@@ -3669,6 +3692,23 @@ components:
       required:
         - peers
         - blocked
+    PinningTx:
+      type: object
+      properties:
+        epoch:
+          type: integer
+          description: The epoch for which the pin is valid
+        height:
+          type: integer
+          description: the height of the pinned block (usually last block of )
+        block_hash:
+          type: string
+        parent_type:
+          type: string
+          description: chain type of parent (aeternity, btc, doge eventually supported)
+        parent_network_id:
+          type: string
+          description: the parent node id
     PoI:
       type: object
       properties:

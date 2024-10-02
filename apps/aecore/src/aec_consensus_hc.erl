@@ -75,6 +75,7 @@
         , get_type/0
         , get_block_producer_configs/0
         , is_leader_valid/4
+        , leader_for_height/1
         %% contract access
         , call_consensus_contract_result/5
         , entropy_height/1
