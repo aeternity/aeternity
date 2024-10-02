@@ -135,3 +135,4 @@ call_consensus_contract_at_height(Contract, Height, Endpoint, Args) when is_inte
            {TxEnv, Trees} = aetx_env:tx_env_and_trees_from_hash(aetx_transaction, Hash),
            call_consensus_contract_at_height(Contract, {TxEnv, Trees}, Endpoint, Args)
     end.
+
