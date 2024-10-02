@@ -135,7 +135,7 @@
 
 -define(GENESIS_BENFICIARY, <<0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0>>).
 
-all() -> [{group, hc}, {group, pinning}].
+all() -> [{group, hc}, {group, epochs}, {group, pinning}].
 
 groups() ->
     [
