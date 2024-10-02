@@ -732,8 +732,15 @@ epoch_with_slow_parent(Config) ->
 %%%=============================================================================
 
 get_pin(Config) ->
+    [{Node, _, _} | _] = ?config(nodes, Config),
+    %% Verify that endpoint is available
+    {ok, IsChildChain} = rpc(Node, aeu_env, find_config,
+                             [[<<"http">>, <<"endpoints">>, <<"hyperchain">>], [user_config, schema_default]]),
+    ?assert(IsChildChain),
+    %% Derive which epoch we are in
+    {ok, #{epoch := Epoch} = EpochInfo1} = rpc(?NODE1, aec_chain_hc, epoch_info, []),
 
-    %% note: we are actuall in epoch=2, but the pins are for the previous epoch
+    %% note: the pins are for the last block in previous epoch
     Repl1 = aecore_suite_utils:http_request(aecore_suite_utils:external_address(), get, "hyperchain/pin-tx", []),
     {ok, 200, #{<<"epoch">> := 1, <<"height">> := Height1, <<"block_hash">> := BH1}} = Repl1,
     Height1 = ?CHILD_EPOCH_LENGTH,
@@ -1169,6 +1176,7 @@ node_config(Node, CTConfig, PotentialStakers, ReceiveAddress, ProducingCommitmen
             #{<<"network_id">> => <<"this_will_be_overwritten_runtime">>},
         <<"logging">> => #{<<"level">> => <<"debug">>},
         <<"sync">> => #{<<"ping_interval">> => 5000},
+        <<"http">> => #{<<"endpoints">> => #{<<"hyperchain">> => true}},
         <<"mining">> =>
             #{<<"micro_block_cycle">> => 1,
             <<"autostart">> => false,

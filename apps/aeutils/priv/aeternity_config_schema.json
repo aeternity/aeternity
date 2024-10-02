@@ -1413,6 +1413,10 @@
                             "description" : "Deprecated. See also 'http > internal > debug_endpoints'",
                             "type" : "boolean"
                         },
+                        "hyperchain" : {
+                            "description" : "Endpoints specifically for child chain in hyperchain mode",
+                            "type" : "boolean"
+                        },
                         "obsolete" : {
                             "description" : "Old endpoints that will be removed",
                             "type" : "boolean"
