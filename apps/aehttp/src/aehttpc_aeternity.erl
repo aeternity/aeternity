@@ -12,7 +12,8 @@
 %% Util exports
 -export([get_generation/2,
 get_generation_by_height/2,
-post_request/4]).
+post_request/4,
+get_chain_type/0]).
 
 -behavior(aehttpc).
 
@@ -25,6 +26,9 @@ get_header_by_hash(Hash, NodeSpec, _Seed) ->
 
 get_header_by_height(Height, NodeSpec, _Seed) ->
     get_key_block_header_by_height(Height, NodeSpec).
+
+get_chain_type() ->
+    {ok, aeternity}.
 
 hash_to_integer(Hash) ->
     {_, HashBin} = aeser_api_encoder:decode(Hash),
