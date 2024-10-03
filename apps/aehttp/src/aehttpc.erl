@@ -20,6 +20,7 @@
 -type height() :: non_neg_integer().
 -type time() :: non_neg_integer().
 -type pubkey() :: binary().
+-type chain() :: aeternity | btc | doge.
 
 -export_type([ node_spec/0 ]).
 
@@ -32,6 +33,8 @@
 -callback get_header_by_height(height(), node_spec(), seed()) ->
     {ok, hash(), hash(), height(), time()} | {error, term()}.
 
+-callback get_chain_type() ->
+    {ok, chain()}.
 
 -spec parse_node_url(string()) -> node_spec().
 parse_node_url(NodeURL) ->

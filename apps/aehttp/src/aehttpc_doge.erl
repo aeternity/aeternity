@@ -10,7 +10,8 @@
         %  get_commitment_tx_in_block/5,
         %  get_commitment_tx_at_height/4,
         %  post_commitment/8,
-         hash_to_integer/1]).
+         hash_to_integer/1,
+         get_chain_type/0]).
 
 %% Temporary exports for keeping useful chain utils around
 -export([select_utxo/2,
@@ -53,6 +54,9 @@ get_header_by_height(Height, NodeSpec, Seed) ->
 
 hash_to_integer(Hash) ->
     binary_to_integer(Hash, 16).
+
+get_chain_type() ->
+    {ok, doge}.
 
 % get_commitment_tx_in_block(NodeSpec, Seed, BlockHash, _PrevHash, ParentHCAccountPubKey) ->
 %     {ok, {_Height, _Hash, __PrevHash, Txs}}

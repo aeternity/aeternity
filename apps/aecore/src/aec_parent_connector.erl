@@ -40,7 +40,8 @@
         %% internal state getters
         get_network_id/0,
         get_parent_conn_mod/0,
-        get_sign_module/0
+        get_sign_module/0,
+        get_parent_chain_type/0
         ]).
 
 %% Callbacks
@@ -154,6 +155,9 @@ handle_call(get_sign_module, _From, #state{sign_module = SM} = State) ->
     {reply, SM, State};
 handle_call(get_parent_conn_mod, _From, #state{parent_conn_mod = ParentConnMod} = State) ->
     {reply, ParentConnMod, State};
+handle_call(get_parent_chain_type, _From, #state{parent_conn_mod = ParentConnMod} = State) ->
+    Reply = ParentConnMod:get_chain_type(),
+    {reply, Reply, State};
 handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
@@ -318,3 +322,7 @@ get_parent_conn_mod() ->
 
 get_sign_module() ->
     gen_server:call(?SERVER, get_sign_module).
+
+-spec get_parent_chain_type() -> {ok, atom()}.
+get_parent_chain_type() ->
+    gen_server:call(?SERVER, get_parent_chain_type).
