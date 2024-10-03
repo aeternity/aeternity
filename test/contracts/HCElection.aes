@@ -1,6 +1,5 @@
 include "List.aes"
 include "Pair.aes"
-include "Option.aes"
 
 contract interface MainStaking =
   entrypoint sorted_validators : () => list((address * int))
@@ -12,7 +11,7 @@ main contract HCElection =
   record epoch_info =
     { start                : int,
       length               : int,
-      seed                 : option(hash),
+      seed                 : option(bytes()),
       staking_distribution : option(list(address * int))
     }
 
@@ -23,15 +22,6 @@ main contract HCElection =
       epoch                 : int,
       epochs                : map(int, epoch_info)
     }
-
-  // record get_state_response =
-  //   { main_staking_ct       : MainStaking,
-  //     entropy               : string,
-  //     leader                : address,
-  //     added_stake           : int,
-  //     epoch                 : int,
-  //     epoch_length          : int
-  //   }
 
   entrypoint init(main_staking_ct : MainStaking) =
     { main_staking_ct       = main_staking_ct,
@@ -46,14 +36,15 @@ main contract HCElection =
     put(state{ epochs = { [0] = mk_epoch_info(0, 1, None, None),
                           [1] = mk_epoch_info(1, epoch_length, None, Some(state.main_staking_ct.sorted_validators())),
                           [2] = mk_epoch_info(epoch_length + 1, epoch_length, None, Some(state.main_staking_ct.sorted_validators())),
-                          [3] = mk_epoch_info(2 * epoch_length + 1, epoch_length, None, Some(state.main_staking_ct.sorted_validators()))
+                          [3] = mk_epoch_info(2 * epoch_length + 1, epoch_length, None, Some(state.main_staking_ct.sorted_validators())),
+                          [4] = mk_epoch_info(3 * epoch_length + 1, epoch_length, None, Some(state.main_staking_ct.sorted_validators()))
                         },
                epoch  = 1
              })
 
   function mk_epoch_info(start : int,
                          length : int,
-                         seed : option(hash),
+                         seed : option(bytes),
                          staking_distribution : option(list(address * int))) =
     {start = start, length = length, seed = seed, staking_distribution = staking_distribution}
 
@@ -65,12 +56,14 @@ main contract HCElection =
     assert_protocol_call()
     let epoch = state.epoch
     let ei = state.epochs[epoch]
-    // require(ei.start + ei.length - 1 == Chain.block_height, "This is not the end")
+    require(ei.start + ei.length - 1 == Chain.block_height, "This is not the end")
     let ei2 = state.epochs[epoch + 2]
+    let ei_adjust = state.epochs[epoch + 3]{ length = ei2.length + epoch_adjust }
     let new_epochs = { [epoch] = state.epochs[epoch],
-                       [epoch + 1] = state.epochs[epoch + 1]{ seed = Some(Crypto.blake2b(seed)) },
-                       [epoch + 2] = state.epochs[epoch + 2],
-                       [epoch + 3] = mk_epoch_info(ei2.start + ei2.length + 1, ei2.length + epoch_adjust, None,
+                       [epoch + 1] = state.epochs[epoch + 1],
+                       [epoch + 2] = state.epochs[epoch + 2]{ seed = Some(seed) },
+                       [epoch + 3] = ei_adjust,
+                       [epoch + 4] = mk_epoch_info(ei_adjust.start + ei_adjust.length, ei_adjust.length, None,
                                                    Some(state.main_staking_ct.sorted_validators()))
                      }
     put(state{ leader = leader,
@@ -96,18 +89,10 @@ main contract HCElection =
     require(epoch >= state.epoch - 1 && epoch =< state.epoch + 2, "Epoch not in scope")
     state.epochs[epoch]
 
-  entrypoint get_validator_schedule() =
-    let ei = state.epochs[state.epoch]
-    validator_schedule(Option.force(ei.seed), Option.force(ei.staking_distribution), ei.length)
-
-  entrypoint get_validator_schedule_seed(seed : bytes()) =
-    let ei = state.epochs[state.epoch]
-    validator_schedule(Crypto.blake2b(seed), Option.force(ei.staking_distribution), ei.length)
-
-  entrypoint validator_schedule(seed : hash, validators : list(address * int), length : int) =
+  entrypoint validator_schedule(seed : bytes(), validators : list(address * int), length : int) =
     let total_stake = List.foldl((+), 0, List.map(Pair.snd, validators))
-    // One extra hash operation to convert from bytes() tp bytes(32)/hash
-    validator_schedule_(seed, (s) => Bytes.to_int(s) mod total_stake, validators, length, [])
+    // One extra hash operation to convert from bytes() to bytes(32)/hash
+    validator_schedule_(Crypto.blake2b(seed), (s) => Bytes.to_int(s) mod total_stake, validators, length, [])
 
   function
     validator_schedule_(_, _, _, 0, schedule) = List.reverse(schedule)
@@ -120,26 +105,8 @@ main contract HCElection =
     pick_validator(n, (validator, stake) :: _) | n < stake = validator
     pick_validator(n, (_, stake) :: validators)            = pick_validator(n - stake, validators)
 
-  // entrypoint get_state() : get_state_response =
-  //   { main_staking_ct   = state.main_staking_ct,
-  //     entropy           = state.entropy,
-  //     leader            = state.leader,
-  //     added_stake       = state.added_stake,
-  //     epoch             = state.epoch,
-  //     epoch_length      = state.epoch_length
-  //     }
-
-  // function find_validator(validators, shot) =
-  //   switch(validators)
-  //     []   => None
-  //     (validator_addr, validator_stake : int)::t =>
-  //       if(validator_stake > shot) Some(validator_addr)
-  //       else find_validator(t, shot - validator_stake)
-
   function assert_protocol_call() =
       require(Call.caller == Contract.creator, "Must be called by the protocol")
 
   // function accum_stake((accum, total_s, current_hash, network_id), (addr, stake)) =
   //   ((addr, stake) :: accum, stake + total_s, current_hash, network_id)
-
-

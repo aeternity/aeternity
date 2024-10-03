@@ -235,6 +235,8 @@ dirty_validate_micro_node_with_ctx(_Node, _Block, _Ctx) -> ok.
 %% Custom state transitions
 state_pre_transform_key_node_consensus_switch(_Node, Trees) -> Trees.
 
+%% only called for key-blocks - this is the call where we set epoch and
+%% leader
 state_pre_transform_key_node(Node, PrevNode, Trees) ->
     PrevHeader = aec_block_insertion:node_header(PrevNode),
     {ok, PrevHash} = aec_headers:hash_header(PrevHeader),
@@ -244,13 +246,11 @@ state_pre_transform_key_node(Node, PrevNode, Trees) ->
         true ->
             {TxEnv0, _} = aetx_env:tx_env_and_trees_from_hash(aetx_transaction, PrevHash),
             TxEnv = aetx_env:set_height(TxEnv0, Height),
-            {ok, EpochInfo} = aec_chain_hc:epoch_info({TxEnv, Trees}),
+            {ok, #{epoch := Epoch} = EpochInfo} = aec_chain_hc:epoch_info({TxEnv, Trees}),
             {ok, Leader} = safe_leader_for_height(TxEnv, Trees, Height),
             case Height == maps:get(last, EpochInfo) of
                 true ->
-                    ParentHeight = maps:get(epoch, EpochInfo) * parent_generation() + pc_start_height(),
-                    {ok, Block} = aec_parent_chain_cache:get_block_by_height(ParentHeight, 100),
-                    Seed = aec_parent_chain_block:hash(Block),
+                    {ok, Seed} = get_entropy_hash(Epoch + 1),
                     step_eoe(TxEnv, Trees, Leader, Seed, 0);
                 false ->
                     step(TxEnv, Trees, Leader)
@@ -455,14 +455,6 @@ parent_generation() ->
 %    aeu_ets_cache:get(?ETS_CACHE_TABLE, acceptable_sync_offset, Fun).
 
 
-get_child_epoch_length(TxEnv, Trees) ->
-    {ok, Result} = call_consensus_contract_result(?ELECTION_CONTRACT, TxEnv, Trees, "epoch_length", []),
-    Result.
-
-get_child_epoch(TxEnv, Trees) ->
-    {ok, Result} = call_consensus_contract_result(?ELECTION_CONTRACT, TxEnv, Trees, "epoch", []),
-    Result.
-
 %% set_child_epoch_length(Length, TxEnv, Trees) ->
 %%     {ok, CD} = aeb_fate_abi:create_calldata("set_next_epoch_length",
 %%                                             [
@@ -627,7 +619,7 @@ genesis_protocol_version() ->
 %lazy_leader_time_delta() ->
 %    case aeu_env:user_config([<<"chain">>, <<"consensus">>, <<"0">>,
 %                              <<"config">>, <<"lazy_leader_trigger_time">>]) of
-%        {ok, Interval} /validators
+%        {ok, Interval}
 %        -> Interval;
 %        undefined -> 10000
 %    end.
@@ -740,6 +732,7 @@ next_beneficiary() ->
             next_beneficiary()
     end.
 
+%% Called as part of deciding who will produce block at Height `height(TxEnv) + 1`
 next_beneficiary(TxEnv, Trees) ->
     ChildHeight = aetx_env:height(TxEnv),
     case leader_for_height(ChildHeight + 1) of
@@ -765,17 +758,25 @@ next_beneficiary(TxEnv, Trees) ->
     end.
 
 try_compute_schedule(TxEnv, Trees, ChildHeight) ->
-    Epoch = get_child_epoch(TxEnv, Trees),
-    case get_entropy_hash(Epoch) of
-        {ok, Hash} ->
-            Validators = get_sorted_validators(TxEnv, Trees),
-            EpochLength = get_child_epoch_length(TxEnv, Trees),
-            Schedule = validator_schedule(Hash, ChildHeight, Validators, EpochLength, TxEnv, Trees),
-            cache_schedule(Schedule),
-            lager:debug("Schedule cached (range ~p -> ~p)", [ChildHeight, ChildHeight + EpochLength - 1]),
-            ok;
-        Err -> Err
+    {ok, EpochInfo} = epoch_info_at_height({TxEnv, Trees}, ChildHeight),
+    lager:debug("Epoch info for schedule at height ~p: ~p", [ChildHeight, EpochInfo]),
+    case EpochInfo of
+        #{seed := undefined, epoch := Epoch} when Epoch =< 2 ->
+            case get_entropy_hash(Epoch) of
+                {ok, Hash} -> try_compute_schedule(TxEnv, Trees, Hash, EpochInfo);
+                Err  -> Err
+            end;
+        #{seed := Hash} ->
+            try_compute_schedule(TxEnv, Trees, Hash, EpochInfo)
     end.
+
+try_compute_schedule(TxEnv, Trees, Hash, #{first := First} = EpochInfo) ->
+    Schedule = validator_schedule({TxEnv, Trees}, Hash, EpochInfo),
+    cache_schedule(Schedule),
+    lager:debug("Schedule cached (range ~p -> ~p)", [First, First + maps:size(Schedule) - 1]),
+    ok.
+
+
 
 get_entropy_hash(ChildEpoch) ->
     EntropyHeight = entropy_height(ChildEpoch),
@@ -799,8 +800,10 @@ is_block_producer_() ->
 
     StakersConfig /= [].
 
+%% We start at parent epoch 1
+%% We take first hash of parent epoch (hence -1)
 entropy_height(ChildEpoch) ->
-    (ChildEpoch - 1) * parent_generation() + pc_start_height().
+    (max(1, (ChildEpoch - 2)) - 1) * parent_generation() + pc_start_height().
 
 cache_schedule(Schedule) ->
     aeu_ets_cache:put(?ETS_CACHE_TABLE, validator_schedule, Schedule).
@@ -809,23 +812,40 @@ leader_for_height(Height) ->
     Schedule = aeu_ets_cache:get(?ETS_CACHE_TABLE, validator_schedule, fun() -> #{} end),
     maps:find(Height, Schedule).
 
-validator_schedule(Hash, ChildHeight, Validators, EpochLength, TxEnv, Trees) ->
-    Schedule = get_validator_schedule(Hash, Validators, EpochLength, TxEnv, Trees),
-    maps:from_list(enumerate(ChildHeight, Schedule)).
+validator_schedule(RunEnv, Hash, EpochInfo) ->
+    #{first := First, length := Length, validators := Validators} = EpochInfo,
+    {ok, Schedule} = aec_chain_hc:validator_schedule(RunEnv, Hash, Validators, Length),
+    maps:from_list(enumerate(First, Schedule)).
 
--if(?OTP_RELEASE < 25).
-enumerate(From, List) ->
-  lists:zip(lists:seq(From, From + length(List)-1), List).
--else.
-enumerate(From, List) ->
-    lists:enumerate(From, List).
--endif.
+%% support OTP24 without lists:enumerate
+enumerate(From, List) when is_integer(From) ->
+    lists:zip(lists:seq(From, From + length(List) - 1), List).
 
-get_validator_schedule(Seed, _Validators, _EpochLength, TxEnv, Trees) ->
-    Args = [aefa_fate_code:encode_arg({bytes, Seed})],
-    {ok, CallResult} =
-        call_consensus_contract_result(?ELECTION_CONTRACT, TxEnv, Trees, "get_validator_schedule_seed", Args),
-    lists:map(fun({address, Address}) -> Address end, CallResult).
+epoch_info_at_height(RunEnv, ChildHeight) ->
+    {ok, Info = #{ epoch := Epoch, first := First, last := Last }} = aec_chain_hc:epoch_info(RunEnv),
+    case {ChildHeight >= First, ChildHeight =< Last} of
+        {true, true} ->
+            {ok, Info};
+        {false, _} ->
+            epoch_info_at_height(Epoch - 1, RunEnv, ChildHeight);
+        {_, false} ->
+            epoch_info_at_height(Epoch + 1, RunEnv, ChildHeight)
+    end.
+
+epoch_info_at_height(Epoch, RunEnv, ChildHeight) ->
+    {ok, Info = #{ first := First, last := Last }} = aec_chain_hc:epoch_info_for_epoch(RunEnv, Epoch),
+    case ChildHeight >= First andalso ChildHeight =< Last of
+        true ->
+            {ok, Info};
+        false ->
+            {error, not_in_scope}
+    end.
+
+%get_validator_schedule(Seed, TxEnv, Trees) ->
+%    Args = [aefa_fate_code:encode_arg({bytes, Seed})],
+%    {ok, CallResult} =
+%        call_consensus_contract_result(?ELECTION_CONTRACT, TxEnv, Trees, "get_validator_schedule_seed", Args),
+%    lists:map(fun({address, Address}) -> Address end, CallResult).
 
 
 allow_lazy_leader() ->
@@ -841,6 +861,8 @@ get_type() -> pos.
 get_block_producer_configs() -> [{instance_not_used,
                                   #{child_block_time => child_block_time()}}].
 
+%% is_leader_valid is called (soon) after `state_pre_transformation_key_node`
+%% only called for key-blocks - Height and Epoch should be up to date
 is_leader_valid(Node, Trees, TxEnv, PrevNode) ->
     Height = aetx_env:height(TxEnv),
     case leader_for_height(Height) of
@@ -865,14 +887,6 @@ is_leader_valid(Node, Trees, TxEnv, PrevNode) ->
                     aec_conductor:throw_error(parent_chain_block_not_synced)
             end
     end.
-
-get_sorted_validators(TxEnv, Trees) ->
-    %% TODO: cache this
-    %% this could be cached: we only need to track contract call events for
-    %% validator creation and going online and offline
-    {ok, CallResult} =
-        call_consensus_contract_result(?STAKING_CONTRACT, TxEnv, Trees, "sorted_validators", []),
-    lists:map(fun({tuple, Staker}) -> Staker end, CallResult).
 
 create_contracts([], _TxEnv, Trees) -> Trees;
 create_contracts([Contract | Tail], TxEnv, TreesAccum) ->
