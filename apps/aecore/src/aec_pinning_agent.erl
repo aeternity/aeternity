@@ -27,13 +27,12 @@ get_pinning_data() ->
            length := _Length
     }} = aec_chain_hc:epoch_info(),
     {ok, BlockHash} = aec_chain_state:get_key_block_hash_at_height(First-1),
-    ConMod = aec_parent_connector:get_parent_conn_mod(),
-    {_,Type} = lists:split(8,atom_to_list(ConMod)), % split off "aehttpc_" from mod name to get type
+    {ok, ChainType} = aec_parent_connector:get_parent_chain_type(),
     
     #{epoch             => Epoch-1,
       height            => First-1,
       block_hash        => BlockHash,
-      parent_type       => Type,
+      parent_type       => ChainType,
       parent_network_id => aec_parent_connector:get_network_id()}.
 
 

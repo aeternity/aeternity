@@ -832,7 +832,7 @@ get_pin(Config) ->
 
     %% note: the pins are for the last block in previous epoch
     Repl1 = aecore_suite_utils:http_request(aecore_suite_utils:external_address(), get, "hyperchain/pin-tx", []),
-    {ok, 200, #{<<"epoch">> := PrevEpoch, <<"height">> := Height1, <<"block_hash">> := BH1}} = Repl1,
+    {ok, 200, #{<<"epoch">> := PrevEpoch, <<"height">> := Height1, <<"block_hash">> := BH1, <<"parent_type">> := <<"aeternity">>}} = Repl1,
     {ok, BH1Dec} = aeser_api_encoder:safe_decode(key_block_hash, BH1),
     ?assertEqual({epoch, Epoch - 1}, {epoch, PrevEpoch}),
     ?assertEqual(maps:get(first, EpochInfo1) - 1, Height1),
