@@ -873,8 +873,10 @@ get_pin(Config) ->
 post_pin_to_pc(Config) ->
 
     %% we use local/rpc here.
-    Pin = rpc(?NODE1, aec_pinning_agent, get_pinning_data, []),
+    {ok, Pin} = rpc(?NODE1, aec_pinning_agent, get_pinning_data, []),
     PinPayloadBin = rpc(?NODE1, aec_pinning_agent, encode_pin_payload, [Pin]),
+    %% Get to first block in new epoch in dirty way
+    {ok, _} = produce_cc_blocks(Config, 5),
 
     DwightPub = pubkey(?DWIGHT), % PC chain account
     DwightEnc = aeser_api_encoder:encode(account_pubkey, DwightPub),
