@@ -1,7 +1,6 @@
 -module(aehttp_hyperchains_SUITE).
 
 -import(aecore_suite_utils, [ http_request/4
-                            , internal_address/0
                             , external_address/0
                             , rpc/3
                             , rpc/4
@@ -33,6 +32,7 @@
          epochs_with_fast_parent/1,
          check_blocktime/1,
          get_pin/1,
+         wallet_post_pin_to_pc/1,
          post_pin_to_pc/1
         ]).
 
@@ -159,6 +159,7 @@ groups() ->
           [ start_two_child_nodes,
             produce_first_epoch,
             get_pin,
+            wallet_post_pin_to_pc,
             post_pin_to_pc ]}
     ].
 
@@ -190,8 +191,6 @@ init_per_suite(Config0) ->
                          },
                     <<"fork_management">> =>
                         #{<<"network_id">> => ?PARENT_CHAIN_NETWORK_ID},
-                    %%<<"http">> => #{<<"external">> => #{<<"acceptors">> => 100}},
-                    <<"http">> => #{<<"cache">> => #{<<"enabled">> => false}},
                     <<"mempool">> => #{<<"nonce_offset">> => 200},
                     <<"mining">> =>
                         #{<<"micro_block_cycle">> => 1,
@@ -962,9 +961,10 @@ sign_tx(Tx, Privkey, NetworkId) ->
     aetx_sign:new(Tx, Signatures).
 
 seed_account(RecpipientPubkey, Amount, NetworkId) ->
-    seed_account(?NODE1, ?NODE1_NAME, RecpipientPubkey, Amount, NetworkId).
+    seed_account(?NODE1, RecpipientPubkey, Amount, NetworkId).
 
-seed_account(Node, NodeName, RecipientPubkey, Amount, NetworkId) ->
+seed_account(Node, RecipientPubkey, Amount, NetworkId) ->
+    NodeName = aecore_suite_utils:node_name(Node),
     {PatronPriv, PatronPub} = aecore_suite_utils:sign_keys(Node),
     Nonce = next_nonce(Node, PatronPub),
     Params =
@@ -1048,6 +1048,22 @@ call_info(SignedTx) ->
                 {error, Reason} -> {error, Reason}
             end
     end.
+
+create_ae_spend_tx(SenderId, RecipientId, Nonce, Payload) ->
+    Params = #{sender_id => aeser_id:create(account, SenderId),
+               recipient_id => aeser_id:create(account, RecipientId),
+               amount => 1,
+               nonce => Nonce,
+               fee => 40000 * ?DEFAULT_GAS_PRICE,
+               payload => Payload},
+    ct:log("Preparing a spend tx: ~p", [Params]),
+    aec_spend_tx:new(Params).
+
+external_address(Node) ->
+    {ok, Port} = rpc(Node, aeu_env, user_config_or_env,
+                     [[<<"http">>, <<"external">>, <<"port">>], aehttp, [external, port]]),
+   "http://127.0.0.1:" ++ integer_to_list(Port).
+
 
 decode_consensus_result(Call, Fun, Src) ->
     ReturnType = aect_call:return_type(Call),
