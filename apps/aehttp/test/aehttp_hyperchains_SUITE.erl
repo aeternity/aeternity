@@ -826,31 +826,42 @@ get_pin(Config) ->
     {ok, IsChildChain} = rpc(Node, aeu_env, find_config,
                              [[<<"http">>, <<"endpoints">>, <<"hyperchain">>], [user_config, schema_default]]),
     ?assert(IsChildChain),
-    %% Derive which epoch we are in
-    {ok, #{epoch := Epoch} = EpochInfo1} = rpc(?NODE1, aec_chain_hc, epoch_info, []),
+
+    %% Mine one block and derive which epoch we are in
+    {ok, _} = produce_cc_blocks(Config, 1),
+    {ok, #{epoch := Epoch} = EpochInfo1} = rpc(Node, aec_chain_hc, epoch_info, []),
 
     %% note: the pins are for the last block in previous epoch
-    Repl1 = aecore_suite_utils:http_request(aecore_suite_utils:external_address(), get, "hyperchain/pin-tx", []),
-    {ok, 200, #{<<"epoch">> := PrevEpoch, <<"height">> := Height1, <<"block_hash">> := BH1, <<"parent_type">> := <<"aeternity">>}} = Repl1,
+    {ok, 200, Repl1} = aecore_suite_utils:http_request(aecore_suite_utils:external_address(), get, "hyperchain/pin-tx", []),
+    #{<<"epoch">> := PrevEpoch,
+      <<"height">> := Height1,
+      <<"block_hash">> := BH1,
+      <<"parent_payload">> := Payload} = Repl1,
     {ok, BH1Dec} = aeser_api_encoder:safe_decode(key_block_hash, BH1),
     ?assertEqual({epoch, Epoch - 1}, {epoch, PrevEpoch}),
     ?assertEqual(maps:get(first, EpochInfo1) - 1, Height1),
     {ok, IBH1} = rpc(?NODE1, aec_chain_state, get_key_block_hash_at_height, [Height1]),
     ?assertEqual(BH1Dec, IBH1),
+
+    %% Verify that decoding function works on encoded payload:
+    ?assertEqual(#{epoch => PrevEpoch, height => Height1, block_hash => BH1Dec},
+                 rpc(Node, aec_pinning_agent, decode_pin_payload, [Payload])),
+
     %% produce some more child blocks if we stay in same epoch, then pins should be the same
     {ok, _} = produce_cc_blocks(Config, 2),
-    Repl2 = aecore_suite_utils:http_request(aecore_suite_utils:external_address(), get, "hyperchain/pin-tx", []),
+    {ok, 200, Repl2} = aecore_suite_utils:http_request(aecore_suite_utils:external_address(), get, "hyperchain/pin-tx", []),
     {ok, EpochInfo2} = rpc(?NODE1, aec_chain_hc, epoch_info, []),
     %% Get response from being in next Epoch
     Repl3 =
         if EpochInfo1 == EpochInfo2 ->
              ?assertEqual(Repl1, Repl2),
              {ok, _} = produce_cc_blocks(Config, maps:get(length, EpochInfo2) - 1),
-             aecore_suite_utils:http_request(aecore_suite_utils:external_address(), get, "hyperchain/pin-tx", []);
+             {ok, 200, Repl} = aecore_suite_utils:http_request(aecore_suite_utils:external_address(), get, "hyperchain/pin-tx", []),
+             Repl;
            true -> Repl2
         end,
     %% Verfify for the next epoch as well
-    {ok, 200, #{<<"epoch">> := NextEpoch, <<"height">> := Height2, <<"block_hash">> := BH2}} = Repl3,
+    #{<<"epoch">> := NextEpoch, <<"height">> := Height2, <<"block_hash">> := BH2} = Repl3,
     {ok, BH2Dec} = aeser_api_encoder:safe_decode(key_block_hash, BH2),
     %% Now the epoch we started with is the one we take the pin from
     ?assertEqual({epoch, Epoch}, {epoch, NextEpoch}),
