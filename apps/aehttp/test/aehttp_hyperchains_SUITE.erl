@@ -917,7 +917,48 @@ post_pin_to_pc(Config) ->
     {ok, _} = produce_cc_blocks(Config, DistToBeforeLast), % produce blocks until last
     BL = Last - 1,
     BL = rpc(?NODE1, aec_chain, top_height, []), % we're producing in last black
+    ok.
 
+%% A wallet posting a pin transaction by only usign HTTP API towards Child and Parent
+wallet_post_pin_to_pc(Config) ->
+    [{Node, _, _} | _] = ?config(nodes, Config),
+
+    %% Progress to first block of next epoch
+    Height1 = rpc(?NODE1, aec_chain, top_height, []),
+    {ok, #{last := Last1, length := Len}} = rpc(Node, aec_chain_hc, epoch_info, []),
+    {ok, _} = produce_cc_blocks(Config, Last1 - Height1 + 1),
+
+    DwightPub = pubkey(?DWIGHT),
+    DwightEnc = aeser_api_encoder:encode(account_pubkey, DwightPub),
+    %% Get the block hash of the last block of previous epoch wrapped in a specified payload
+    {ok, 200, #{<<"parent_payload">> := Payload,
+                <<"last_leader">> := LastLeader}} =
+        aecore_suite_utils:http_request(aecore_suite_utils:external_address(), get, "hyperchain/pin-tx", []),
+
+    {_ParentPatronPriv, ParentPatronPub} = aecore_suite_utils:sign_keys(?PARENT_CHAIN_NODE),
+    ParentPatronPubEnc = aeser_api_encoder:encode(account_pubkey, ParentPatronPub),
+
+    %% The wallet talks to "its own version" of the parent chain
+    %% Here typically the only node
+    ParentHost = external_address(?PARENT_CHAIN_NODE),
+    ct:log("patron ~p on ~p =?= 6013", [ParentPatronPubEnc, ParentHost]),
+    {ok, 200, DwightInfo} = aecore_suite_utils:http_request(ParentHost, get, <<"accounts/", DwightEnc/binary>>, []),
+    ct:log("Account Dwight ~p", [DwightInfo]),
+    Nonce = maps:get(<<"nonce">>, DwightInfo) + 1,
+    {ok, PinTx} = create_ae_spend_tx(DwightPub, DwightPub, Nonce, Payload),
+    ct:log("Unsigned Spend on parent chain ~p", [PinTx]),
+
+    SignedPinTx = sign_tx(PinTx, privkey(?DWIGHT), ?PARENT_CHAIN_NETWORK_ID),
+    Transaction = aeser_api_encoder:encode(transaction, aetx_sign:serialize_to_binary(SignedPinTx)),
+    {ok, 200, #{<<"tx_hash">> := TxHash}} = aecore_suite_utils:http_request(ParentHost, post, <<"transactions">>, #{tx => Transaction}),
+
+    {ok, [_]} = rpc(?PARENT_CHAIN_NODE, aec_tx_pool, peek, [infinity]), % one transaction pending now.
+    {ok, _} = produce_cc_blocks(Config, Len div 2),
+    {ok, []} = rpc(?PARENT_CHAIN_NODE, aec_tx_pool, peek, [infinity]), % all transactions comitted
+    %% Now find out at which parent height the hash is accepted
+
+    %% Post a spend Tx to the child chain to inform the leader of pinned success
+    {ok, #{last := CollectHeight}} = rpc(?NODE1, aec_chain_hc, epoch_info, []),
     ok.
 
 
