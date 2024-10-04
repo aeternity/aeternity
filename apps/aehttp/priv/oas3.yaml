@@ -530,7 +530,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/PinningTx"
         "404":
-          description: HC Endpoint not found
+          description: Cannot find pinning data for some reason, e.g. epoch not started
           content:
             application/json:
               schema:
@@ -3702,7 +3702,13 @@ components:
           type: integer
           description: the height of the pinned block (usually last block of )
         block_hash:
+          $ref: "#/components/schemas/EncodedHash"
+        parent_payload:
           type: string
+          description: this is the payload to post to the parent chain (standardized). Combines Epoch, Height and Hash.
+        last_leader:
+          description: The last leader in the epoch that could use this pin to collect the award
+          $ref: '#/components/parameters/accountPubkey'
         parent_type:
           type: string
           description: chain type of parent (aeternity, btc, doge eventually supported)

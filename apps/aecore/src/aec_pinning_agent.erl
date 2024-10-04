@@ -1,7 +1,7 @@
 %%%-------------------------------------------------------------------
 %%% @copyright (C) 2024, Aeternity
 %%% @doc
-%%% Gather child->parent chain pinning information for AE HC and make it 
+%%% Gather child->parent chain pinning information for AE HC and make it
 %%% available through API
 %%% @end
 %%%-------------------------------------------------------------------
@@ -20,28 +20,46 @@
     ]).
 
 
+-spec get_pinning_data() -> {ok, map()} | {error, atom()}.
 get_pinning_data() ->
-    {ok, #{epoch  := Epoch,
-           first  := First,
-           last   := _Last,
-           length := _Length
-    }} = aec_chain_hc:epoch_info(),
+    {ok, #{epoch := Epoch,
+           first := First,
+           last  := Last}} = aec_chain_hc:epoch_info(),
+    lager:debug("Get pin data for epoch ~p for leader of block ~p", [Epoch - 1, Last]),
     {ok, BlockHash} = aec_chain_state:get_key_block_hash_at_height(First-1),
     {ok, ChainType} = aec_parent_connector:get_parent_chain_type(),
-    
-    #{epoch             => Epoch-1,
-      height            => First-1,
-      block_hash        => BlockHash,
-      parent_type       => ChainType,
-      parent_network_id => aec_parent_connector:get_network_id()}.
+    ConMod = aec_parent_connector:get_parent_conn_mod(),
+    {_,Type} = lists:split(8,atom_to_list(ConMod)), % split off "aehttpc_" from mod name to get type
+    PrevEpoch = Epoch - 1,
+    Height = First - 1,
+    case aec_consensus_hc:leader_for_height(Last) of
+      {ok, Leader} ->
+        {ok, #{epoch             => PrevEpoch,
+               height            => Height,
+               block_hash        => BlockHash,
+               parent_payload    => encode_pin_payload(#{epoch => PrevEpoch, height => Height, block_hash => BlockHash}),
+               last_leader       => Leader,
+               parent_type       => ChainType,
+               parent_network_id => aec_parent_connector:get_network_id()}};
+      error ->
+          %% schedule not yet cached
+          {error, last_leader_unknown}
+    end.
 
 
 -spec encode_pin_payload(#{epoch => integer(), height => integer(), block_hash => binary()}) -> binary().
 encode_pin_payload(#{epoch := Epoch, height := Height, block_hash := BlockHash}) ->
-    <<Epoch:64/integer, Height:64/integer, BlockHash/binary>>.
+    EpochHex = list_to_binary(erlang:integer_to_list(Epoch, 16)),
+    HeightHex = list_to_binary(erlang:integer_to_list(Height, 16)),
+    EncBlockHash = aeser_api_encoder:encode(key_block_hash, BlockHash),
+    <<EpochHex/binary, ":", HeightHex/binary, " ", EncBlockHash/binary>>.
 
--spec decode_pin_payload(binary()) -> #{epoch => integer(), height => integer(), block_hash => binary()}. 
-decode_pin_payload(<<Epoch:64/integer,Height:64/integer,BlockHash/binary>>) ->
+-spec decode_pin_payload(binary()) -> #{epoch => integer(), height => integer(), block_hash => binary()}.
+decode_pin_payload(Binary) ->
+    [HexEpoch, HexHeight, EncBlockHash] = binary:split(Binary, [<<":">>, <<" ">>], [global]),
+    Epoch = erlang:list_to_integer(binary_to_list(HexEpoch), 16),
+    Height = erlang:list_to_integer(binary_to_list(HexHeight), 16),
+    {ok, BlockHash} = aeser_api_encoder:safe_decode(key_block_hash, EncBlockHash),
     #{epoch => Epoch, height => Height, block_hash => BlockHash}.
 
 

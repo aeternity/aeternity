@@ -890,18 +890,24 @@ handle_request_('GetRecentGasPrices', _Params, _Context) ->
     end;
 
 handle_request_('GetPinningTx', _Params, _Context) ->
-    Pinning = aec_pinning_agent:get_pinning_data(),
-    #{epoch := Epoch,
-      height := CCHeight,
-      block_hash := EpochBlockHash,
-      parent_type := Type,
-      parent_network_id := Id} = Pinning,
-    {200, [], #{<<"epoch">> => Epoch,
-                <<"height">> => CCHeight,
-                <<"block_hash">> => aeser_api_encoder:encode(key_block_hash, EpochBlockHash),
-                <<"parent_type">> => atom_to_binary(Type),
-                <<"parent_network_id">> => Id        
-        }};
+    case aec_pinning_agent:get_pinning_data() of
+        {ok, #{epoch := Epoch,
+               height := CCHeight,
+               block_hash := EpochBlockHash,
+               parent_payload := Payload,
+               last_leader := Leader,
+               parent_type := Type,
+               parent_network_id := Id}} ->
+            {200, [], #{<<"epoch">> => Epoch,
+                        <<"height">> => CCHeight,
+                        <<"block_hash">> => aeser_api_encoder:encode(key_block_hash, EpochBlockHash),
+                        <<"parent_payload">> => Payload,
+                        <<"last_leader">> => aeser_api_encoder:encode(account_pubkey, Leader),
+                        <<"parent_type">> => atom_to_binary(Type),
+                        <<"parent_network_id">> => Id}};
+        {error, _} ->
+           {404, [], #{reason => <<"No pin data available">>}}
+    end;
 
 handle_request_(OperationID, Req, Context) ->
     error_logger:error_msg(
