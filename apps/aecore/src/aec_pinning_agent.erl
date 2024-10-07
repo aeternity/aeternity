@@ -28,8 +28,6 @@ get_pinning_data() ->
     lager:debug("Get pin data for epoch ~p for leader of block ~p", [Epoch - 1, Last]),
     {ok, BlockHash} = aec_chain_state:get_key_block_hash_at_height(First-1),
     {ok, ChainType} = aec_parent_connector:get_parent_chain_type(),
-    ConMod = aec_parent_connector:get_parent_conn_mod(),
-    {_,Type} = lists:split(8,atom_to_list(ConMod)), % split off "aehttpc_" from mod name to get type
     PrevEpoch = Epoch - 1,
     Height = First - 1,
     case aec_consensus_hc:leader_for_height(Last) of
