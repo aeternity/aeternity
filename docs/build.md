@@ -22,7 +22,7 @@ The node have couple of main dependencies that have to be installed to build it 
 
 ## Dependencies
 
-### Ubuntu 24.04
+### Ubuntu 20.04
 
 Update package database, packages and install the common tools and libraries:
 
