@@ -162,6 +162,10 @@
 -callback dirty_validate_key_node_with_ctx(#node{}, aec_blocks:micro_block(), #insertion_ctx{}) -> ok | {error, term()}.
 -callback dirty_validate_micro_node_with_ctx(#node{}, aec_blocks:micro_block(), #insertion_ctx{}) -> ok | {error, term()}.
 
+%% Callbacks handling block structure differences between PoW and PoS/HC.
+-callback key_block_height_relative_previous_block(key | micro, non_neg_integer()) -> non_neg_integer().
+-callback micro_block_height_relative_previous_block(key | micro, non_neg_integer()) -> non_neg_integer().
+
 %% Customized state transitions - in case of keyblocks the callbacks are called with pruned state trees
 %% Those callbacks run in a DB context - to abort the execution please call aec_block_insertion:abort_state_transition(Reason)
 %% Performs initial state transformation when the previous block used a different consensus algorithm
