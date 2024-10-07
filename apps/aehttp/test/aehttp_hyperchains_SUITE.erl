@@ -871,11 +871,14 @@ get_pin(Config) ->
     ok.
 
 post_pin_to_pc(Config) ->
+    [{Node, _, _} | _] = ?config(nodes, Config),
 
-    %% we use local/rpc here.
-    {ok, Pin} = rpc(?NODE1, aec_pinning_agent, get_pinning_data, []),
-    PinPayloadBin = rpc(?NODE1, aec_pinning_agent, encode_pin_payload, [Pin]),
-    %% Get to first block in new epoch in dirty way
+    %% Get to first block in new epoch
+    Height1 = rpc(Node, aec_chain, top_height, []),
+    {ok, #{last := Last1, length := Len, epoch := Epoch}} = rpc(Node, aec_chain_hc, epoch_info, []),
+    {ok, _} = produce_cc_blocks(Config, Last1 - Height1 + 1),
+    {ok, Pin} = rpc(Node, aec_pinning_agent, get_pinning_data, []),
+    PinPayloadBin = rpc(Node, aec_pinning_agent, encode_pin_payload, [Pin]),
     {ok, _} = produce_cc_blocks(Config, 5),
 
     DwightPub = pubkey(?DWIGHT), % PC chain account
@@ -886,21 +889,15 @@ post_pin_to_pc(Config) ->
     SignedPinTx = sign_tx(PinTx, privkey(?DWIGHT),?PARENT_CHAIN_NETWORK_ID),
     {ok, #{<<"tx_hash">> := TxHash}} = aec_pinning_agent:post_pin_tx(SignedPinTx, ParentNodeSpec),
     {ok, [_]} = rpc(?PARENT_CHAIN_NODE, aec_tx_pool, peek, [infinity]), % one transaction pending now.
-    %PinHeight = rpc(?PARENT_CHAIN_NODE, aec_chain, top_height, []),
-    {ok, _} = produce_cc_blocks(Config, 4),
-    %SecondHeight = rpc(?PARENT_CHAIN_NODE, aec_chain, top_height, []), % now further up the PC
-    %?assert(PinHeight < SecondHeight), % we've progressed on the PC
+    {ok, _} = produce_cc_blocks(Config, 5),
     {ok, []} = rpc(?PARENT_CHAIN_NODE, aec_tx_pool, peek, [infinity]), % all transactions comitted
 
-    {ok, #{epoch  := _Epoch,
-           first  := _First,
-           last   := Last,
-           length := _Length}} = rpc(?NODE1, aec_chain_hc, epoch_info, []),
+    {ok, #{last := Last}} = rpc(Node, aec_chain_hc, epoch_info, []),
 
-    {ok, LastLeader} = rpc(?NODE1, aec_consensus_hc, leader_for_height, [Last]),
+    {ok, LastLeader} = rpc(Node, aec_consensus_hc, leader_for_height, [Last]),
 
     NetworkId = ?config(network_id, Config), % TODO not 100% sure about this one...
-    Nonce = next_nonce(?NODE1, pubkey(?ALICE)),
+    Nonce = next_nonce(Node, pubkey(?ALICE)),
     Params = #{ sender_id    => aeser_id:create(account, pubkey(?ALICE)),
                 recipient_id => aeser_id:create(account, LastLeader),
                 amount       => 1,
@@ -910,15 +907,15 @@ post_pin_to_pc(Config) ->
     ct:log("Preparing a spend tx: ~p", [Params]),
     {ok, Tx} = aec_spend_tx:new(Params),
     SignedTx = sign_tx(Tx, privkey(?ALICE), NetworkId),
-    ok = rpc:call(?NODE1_NAME, aec_tx_pool, push, [SignedTx, tx_received]),
-    {ok, [_]} = rpc(?NODE1, aec_tx_pool, peek, [infinity]), % transactions in pool
+    ok = rpc(Node, aec_tx_pool, push, [SignedTx, tx_received]),
+    {ok, [_]} = rpc(Node, aec_tx_pool, peek, [infinity]), % transactions in pool
     {ok, _} = produce_cc_blocks(Config, 1),
-    CH = rpc(?NODE1, aec_chain, top_height, []),
+    CH = rpc(Node, aec_chain, top_height, []),
     {ok, []} = rpc(?PARENT_CHAIN_NODE, aec_tx_pool, peek, [infinity]), % all transactions comitted
     DistToBeforeLast = Last - CH - 1,
     {ok, _} = produce_cc_blocks(Config, DistToBeforeLast), % produce blocks until last
     BL = Last - 1,
-    BL = rpc(?NODE1, aec_chain, top_height, []), % we're producing in last black
+    BL = rpc(Node, aec_chain, top_height, []), % we're producing in last black
     ok.
 
 %% A wallet posting a pin transaction by only usign HTTP API towards Child and Parent
@@ -927,25 +924,28 @@ wallet_post_pin_to_pc(Config) ->
 
     %% Progress to first block of next epoch
     Height1 = rpc(?NODE1, aec_chain, top_height, []),
-    {ok, #{last := Last1, length := Len}} = rpc(Node, aec_chain_hc, epoch_info, []),
-    {ok, _} = produce_cc_blocks(Config, Last1 - Height1 + 1),
+    {ok, #{last := Last1, length := Len, epoch := Epoch}} = rpc(Node, aec_chain_hc, epoch_info, []),
+    {ok, Bs} = produce_cc_blocks(Config, Last1 - Height1 + 1),
+    HashLastInEpoch = aec_blocks:prev_hash(lists:last(Bs)),
+    ct:log("Block last epoch: ~p", [aeser_api_encoder:encode(key_block_hash, HashLastInEpoch)]),
 
     DwightPub = pubkey(?DWIGHT),
     DwightEnc = aeser_api_encoder:encode(account_pubkey, DwightPub),
     %% Get the block hash of the last block of previous epoch wrapped in a specified payload
     {ok, 200, #{<<"parent_payload">> := Payload,
+                <<"epoch">> := E, <<"height">> := H,
+                <<"block_hash">> := BH,
                 <<"last_leader">> := LastLeader}} =
         aecore_suite_utils:http_request(aecore_suite_utils:external_address(), get, "hyperchain/pin-tx", []),
-
-    {_ParentPatronPriv, ParentPatronPub} = aecore_suite_utils:sign_keys(?PARENT_CHAIN_NODE),
-    ParentPatronPubEnc = aeser_api_encoder:encode(account_pubkey, ParentPatronPub),
+    ?assertEqual(E, Epoch),
+    ?assertEqual(H, Last1),
+    ?assertEqual(BH, aeser_api_encoder:encode(key_block_hash, HashLastInEpoch)),
 
     %% The wallet talks to "its own version" of the parent chain
     %% Here typically the only node
     ParentHost = external_address(?PARENT_CHAIN_NODE),
-    ct:log("patron ~p on ~p =?= 6013", [ParentPatronPubEnc, ParentHost]),
+    ct:log("Parent address ~p", [ParentHost]),
     {ok, 200, DwightInfo} = aecore_suite_utils:http_request(ParentHost, get, <<"accounts/", DwightEnc/binary>>, []),
-    ct:log("Account Dwight ~p", [DwightInfo]),
     Nonce = maps:get(<<"nonce">>, DwightInfo) + 1,
     {ok, PinTx} = create_ae_spend_tx(DwightPub, DwightPub, Nonce, Payload),
     ct:log("Unsigned Spend on parent chain ~p", [PinTx]),
@@ -953,14 +953,40 @@ wallet_post_pin_to_pc(Config) ->
     SignedPinTx = sign_tx(PinTx, privkey(?DWIGHT), ?PARENT_CHAIN_NETWORK_ID),
     Transaction = aeser_api_encoder:encode(transaction, aetx_sign:serialize_to_binary(SignedPinTx)),
     {ok, 200, #{<<"tx_hash">> := TxHash}} = aecore_suite_utils:http_request(ParentHost, post, <<"transactions">>, #{tx => Transaction}),
-
     {ok, [_]} = rpc(?PARENT_CHAIN_NODE, aec_tx_pool, peek, [infinity]), % one transaction pending now.
     {ok, _} = produce_cc_blocks(Config, Len div 2),
     {ok, []} = rpc(?PARENT_CHAIN_NODE, aec_tx_pool, peek, [infinity]), % all transactions comitted
-    %% Now find out at which parent height the hash is accepted
 
-    %% Post a spend Tx to the child chain to inform the leader of pinned success
+    %% Don't wait and check for the height of acceptance, because due to parent fork micro forks,
+    %% this may change in a while... the last leader will do the work needed on the hashes
+    %% it receives
+
+    %% Now just inform the last leader of this epoch about the transaction hash
+    %% via a spend on child chain... the leader will have machinery to pick up tx hash
+    %% and to find out at which parent height the hash is accepted at
+    ProofHash = list_to_binary("PIN"++TxHash),
+    {_, LeaderPubkey} = aeser_api_encoder:decode(LastLeader),
+    NonceAlice = next_nonce(Node, pubkey(?ALICE)),
+    Params = #{ sender_id    => aeser_id:create(account, pubkey(?ALICE)),
+                recipient_id => aeser_id:create(account, LeaderPubkey),
+                amount       => 1,
+                fee          => 30000 * ?DEFAULT_GAS_PRICE,
+                nonce        => NonceAlice,
+                payload      => ProofHash},
+    ct:log("Preparing a spend tx for child chain: ~p", [Params]),
+    {ok, ProofTx} = aec_spend_tx:new(Params),
+    SignedProofTx = sign_tx(ProofTx, privkey(?ALICE), ?config(network_id, Config)),
+    ProofTransaction = aeser_api_encoder:encode(transaction, aetx_sign:serialize_to_binary(SignedProofTx)),
+    {ok, 200, _} = aecore_suite_utils:http_request(aecore_suite_utils:external_address(), post, <<"transactions">>, #{tx => ProofTransaction}),
+
+    {ok, [_]} = rpc(Node, aec_tx_pool, peek, [infinity]), % transactions in pool
+    {ok, _} = produce_cc_blocks(Config, 1),
+    {ok, []} = rpc(Node, aec_tx_pool, peek, [infinity]), % transactions in pool
+
+    Height2 = rpc(Node, aec_chain, top_height, []),
     {ok, #{last := CollectHeight}} = rpc(?NODE1, aec_chain_hc, epoch_info, []),
+    %% mine to CollectHeight and TODO: see that indeed the proof has been used
+    {ok, _} = produce_cc_blocks(Config, CollectHeight - Height2),
     ok.
 
 
