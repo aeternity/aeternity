@@ -523,7 +523,7 @@ format_txs(Txs, MBHash) ->
     end.
 
 format_block_txs(KeyBlock) ->
-    RewardTxs = reward_txs(KeyBlock, aec_consensus:get_genesis_consensus_module()),
+    RewardTxs = reward_txs(KeyBlock, aec_blocks:consensus_module(KeyBlock)),
     PreTxs = expiry_txs(KeyBlock),
     ForkTxs = hardfork_txs(aec_blocks:height(KeyBlock)),
     case RewardTxs ++ PreTxs ++ ForkTxs of
