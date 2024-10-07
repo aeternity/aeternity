@@ -52,9 +52,6 @@
           unstaking_below_minimum_stake/1
         ]).
 
--export([ entropy_impacts_leader_election/1
-        ]).
-
 -include_lib("aecontract/include/hard_forks.hrl").
 -include_lib("aebytecode/include/aeb_fate_data.hrl").
 
@@ -124,8 +121,7 @@
 
 -record(staking_resp, {stake, shares, execution_height}).
 
-all() -> [{group, staking},
-          {group, hc_election}
+all() -> [%{group, staking}
          ].
 
 groups() ->
@@ -158,9 +154,6 @@ groups() ->
          staking_with_delay_return_shares,
          unstaking_return_shares,
          unstaking_below_minimum_stake
-       ]},
-      {hc_election, [sequence],
-       [ entropy_impacts_leader_election
        ]}
     ].
 
@@ -1843,36 +1836,6 @@ genesis_trees(Consensus, Opts) ->
     ElectionPubkey = election_contract_address(),
     Trees4.
 
-entropy_impacts_leader_election(_Config) ->
-    {skip, rethink_test_case}.
-%entropy_impacts_leader_election(_Config) ->
-%    Alice = pubkey(?ALICE),
-%    Bob = pubkey(?BOB),
-%    Carol = pubkey(?CAROL), %% will be offline
-%    Trees0 = genesis_trees(?HC),
-%    TxEnv = aetx_env:tx_env(?GENESIS_HEIGHT),
-%    Trees1 =
-%        lists:foldl(
-%            fun({Pubkey,  Amount}, TreesAccum) ->
-%                {ok, TreesAccum1, _} = new_validator_(Pubkey, Amount, TxEnv,
-%                                                      TreesAccum),
-%                TreesAccum1
-%            end,
-%            Trees0,
-%            [{Alice, ?VALIDATOR_MIN},
-%            {Bob, ?VALIDATOR_MIN},
-%            {Carol, ?VALIDATOR_MIN}]),
-%    {ok, Trees2, {tuple, {}}} = set_validator_online_(Alice, TxEnv, Trees1),
-%    {ok, Trees3, {tuple, {}}} = set_validator_online_(Bob, TxEnv, Trees2),
-%    Entropy1 = hash($A),
-%    {ok, Trees4, {tuple, {{address, Bob}, _}}} = hc_elect_(Entropy1, ?OWNER_PUBKEY, TxEnv, Trees3),
-%    {ok, _, {address, Bob}} = leader_(?OWNER_PUBKEY, TxEnv, Trees4),
-%    %% same context, different entropy leads to different leader
-%    Entropy2 = hash($a),
-%    {ok, Trees5, {tuple, {{address, Alice}, _}}} = hc_elect_(Entropy2, ?OWNER_PUBKEY, TxEnv, Trees3),
-%    {ok, _, {address, Alice}} = leader_(?OWNER_PUBKEY, TxEnv, Trees5),
-%    ok.
-
 set_up_accounts(Trees) ->
     lists:foldl(fun set_up_account/2,
                 Trees,
@@ -2093,14 +2056,6 @@ elect_(Caller, TxEnv, Trees0) ->
     {ok, CallData} = aeb_fate_abi:create_calldata("elect", []),
     call_contract(ContractPubkey, Caller, CallData, 0, TxEnv, Trees0).
 
-hc_elect_(Entropy, Caller, TxEnv, Trees0) ->
-    ContractPubkey = election_contract_address(),
-    NetworkId = aec_parent_chain_block:encode_network_id(?NETWORK_ID),
-    {ok, CallData} = aeb_fate_abi:create_calldata("elect",
-                                                  [aefa_fate_code:encode_arg({string, Entropy}),
-                                                   aefa_fate_code:encode_arg({bytes, NetworkId})]),
-    call_contract(ContractPubkey, Caller, CallData, 0, TxEnv, Trees0).
-
 leader_(Caller, TxEnv, Trees0) ->
     ContractPubkey = election_contract_address(),
     {ok, CallData} = aeb_fate_abi:create_calldata("leader", []),
@@ -2236,8 +2191,3 @@ assert_equal_states(State1, State2) ->
     ?assertEqual(Map1, Map2),
     ?assertEqual(Shares1, Shares2),
     ok.
-
-hash(Str) when is_list(Str), length(Str) =:= 32 ->
-    list_to_binary(Str);
-hash(C) when is_integer(C), C < 255 ->
-    list_to_binary(lists:duplicate(32, C)).

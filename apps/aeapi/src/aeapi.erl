@@ -5,7 +5,7 @@
 %%% the various JSON interfaces, CLI and GUI.
 %%%
 %%% Brings together in one place a useful subset of internal APIs for looking
-%%% up blocks, accounts etc, and provides routines to convert between internal 
+%%% up blocks, accounts etc, and provides routines to convert between internal
 %%% and internal forms of hashes, keys etc.
 %%% @end
 %%%-------------------------------------------------------------------
@@ -215,7 +215,7 @@ micro_block_txs(MicroBlock) ->
 %%             val = <<170,20,197,4,89,131,91,158,24,63,28,200,44,49,35,88,224,211,211,30,
 %%                     29,108,91,130,93,230,47,111,34,172,124,50>>}}'''
 -spec create_id(aeser_api_encoder:encoded(),
-                [account_pubkey | oracle_pubkey | name 
+                [account_pubkey | oracle_pubkey | name
                  | commitment | contract_pubkey
                  | channel]) -> {'ok', aeser_id:id()} | {'error', atom()}.
 create_id(Binary, AllowedTypes) ->
@@ -436,7 +436,7 @@ generation_at_height(Height) when is_integer(Height) ->
             end
     end.
 
-%% Format a single Tx in a block. This function only returns an estimate of what might be included in a block. 
+%% Format a single Tx in a block. This function only returns an estimate of what might be included in a block.
 balance_change_events_in_mempool_tx(SignedTx) ->
     Tx = aetx_sign:tx(SignedTx),
     Nonce = aetx:nonce(Tx),
@@ -450,7 +450,7 @@ balance_change_events_in_mempool_tx(SignedTx) ->
     end,
     Ops = format_txs(Txs, undefined),
     SpendOps = tx_spend_operations(Ops),
-    lists:last(SpendOps).            
+    lists:last(SpendOps).
 
 %% Format a single Tx in a block. We need to dry run all the Txs in the microblock
 %% up to and including the one we want to know about. dry run works on dummy signed
@@ -557,7 +557,7 @@ expiry_txs(KeyBlock0) ->
             aetx_env:events(TxEnv2)
     end.
 
-reward_txs(_Block, aec_consensus_hc) -> 
+reward_txs(_Block, aec_consensus_hc) ->
     [];
 reward_txs(Block, _Consensus) ->
     %% Block rewards.
@@ -670,7 +670,7 @@ tx_spend_ops({block, BlockOps}) ->
     lists:foldl(fun tx_spend_op/2, {[], 0}, BlockOps).
 
 tx_spend_op({{internal_call_tx, _Key}, _}, {Acc, Ix}) ->
-    %% Balance change ops with contract calls 
+    %% Balance change ops with contract calls
     {Acc, Ix};
 tx_spend_op({{spend, {SenderPubkey, RecipientPubkey, Amount}}, #{type := _Type}},
             {Acc, Ix}) ->
