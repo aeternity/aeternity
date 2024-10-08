@@ -1115,14 +1115,36 @@ last_leader_validates_pin_and_post_to_contract(Config) ->
     [FirstSpend|_] = find_spends_to(LastLeader, AllBlocks),
     DecodedPL = aec_pinning_agent:decode_child_pin_payload(FirstSpend),
 
-    ContractPubkey = ?config(staking_contract, Config),
+    ContractPubkey = ?config(election_contract, Config),
     TopHash = rpc(?NODE1, aec_chain, top_block_hash, []),
-    whatever = do_contract_call(ContractPubkey, src(?MAIN_STAKING_CONTRACT, Config), pin_hash, [DecodedPL], ?ALICE, TopHash),
+    whatever = pin_contract_call(ContractPubkey, src(?HC_CONTRACT, Config), "pin", 1000, LastLeader, TopHash, DecodedPL),
 
     ok.
 
 
 %%% --------- pinning helpers
+
+
+pin_contract_call(ContractPubkey, Src, Fun, Amount, From, TopHash, PL) ->
+    Nonce = next_nonce(?NODE1, From), %% no contract calls support for parent chain
+    {ok, CallData} = aeb_fate_abi:create_calldata(Fun, [{bytes, PL}]),
+    ABI = aect_test_utils:abi_version(),
+    TxSpec =
+        #{  caller_id   => aeser_id:create(account, From)
+          , nonce       => Nonce
+          , contract_id => aeser_id:create(contract, ContractPubkey)
+          , abi_version => ABI
+          , fee         => 1000000 * ?DEFAULT_GAS_PRICE
+          , amount      => Amount
+          , gas         => 1000000
+          , gas_price   => ?DEFAULT_GAS_PRICE
+          , call_data   => CallData},
+    {ok, Tx} = aect_call_tx:new(TxSpec),
+    {ok, Call} = dry_run(TopHash, Tx),
+    decode_consensus_result(Call, Fun, Src).
+
+
+
 
 find_spends_to(Account, Blocks) ->
    lists:flatten([ pick_pin_spends_to(Account, Txs) || {mic_block, _, Txs, _} <- Blocks ]).
