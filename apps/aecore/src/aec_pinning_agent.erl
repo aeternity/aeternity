@@ -71,8 +71,12 @@ decode_child_pin_payload(<<$p,$i,$n, TxHash/binary>>) ->
 decode_child_pin_payload(_) ->
     error.
 
-is_pin(<<$p,$i,$n, _/binary>>) -> true;
-is_pin(_) -> false.
+is_pin(Pin) -> 
+    case decode_child_pin_payload(Pin) of
+        error -> false;
+        _ -> true
+    end.
+
 
 
 -spec get_pins(aehttpc:node_spec(), [binary()], binary()) -> {ok, list()} | {error, term()}.
