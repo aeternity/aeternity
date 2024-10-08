@@ -505,9 +505,14 @@ get_key_block_hash_at_height(Height, State) when is_integer(Height), Height >= 0
             case Height > TopHeight of
                 true -> error;
                 false ->
+                    ConsensusModule = aec_block_insertion:node_consensus(TopNode),
                     case db_find_key_nodes_at_height(Height) of
-                        error        -> error({broken_chain, Height});
-                        {ok, [Node]} -> {ok, node_hash(Node)};
+                        error when ConsensusModule == aec_consensus_hc ->
+                            error;
+                        error ->
+                            error({broken_chain, Height});
+                        {ok, [Node]} ->
+                            {ok, node_hash(Node)};
                         {ok, [_|_] = Nodes} ->
                             {ok, {MaybeChokeNode, ChokePt}} = choke_point(Height, TopHeight, TopNode, TopHash),
                             keyblock_hash_in_main_chain(Nodes, MaybeChokeNode, ChokePt)
