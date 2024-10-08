@@ -16,7 +16,10 @@
     decode_pin_payload/1,
     get_pins/3,
     create_pin_tx/6,
-    post_pin_tx/2
+    post_pin_tx/2,
+    encode_child_pin_payload/1,
+    decode_child_pin_payload/1,
+    is_pin/1
     ]).
 
 
@@ -59,6 +62,17 @@ decode_pin_payload(Binary) ->
     Height = erlang:list_to_integer(binary_to_list(HexHeight), 16),
     {ok, BlockHash} = aeser_api_encoder:safe_decode(key_block_hash, EncBlockHash),
     #{epoch => Epoch, height => Height, block_hash => BlockHash}.
+
+encode_child_pin_payload(TxHash) ->
+    <<$p,$i,$n, TxHash/binary>>.
+
+decode_child_pin_payload(<<$p,$i,$n, TxHash/binary>>) ->
+    TxHash;
+decode_child_pin_payload(_) ->
+    error.
+
+is_pin(<<$p,$i,$n, _/binary>>) -> true;
+is_pin(_) -> false.
 
 
 -spec get_pins(aehttpc:node_spec(), [binary()], binary()) -> {ok, list()} | {error, term()}.

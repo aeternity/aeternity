@@ -1085,6 +1085,73 @@ wallet_post_pin_to_pc(Config) ->
     {ok, _} = produce_cc_blocks(Config, CollectHeight - Height2),
     ok.
 
+last_leader_validates_pin_and_post_to_contract(Config) ->
+
+    %% move into next epoch
+    Height1 = rpc(?NODE1, aec_chain, top_height, []),
+    {ok, #{last := Last1, length := _Len}} = rpc(?NODE1, aec_chain_hc, epoch_info, []),
+    {ok, Bs} = produce_cc_blocks(Config, Last1 - Height1 + 1), 
+    ct:log("Block last epoch: ~p", [hd(lists:nthtail(length(Bs) - 2, Bs))]),
+    %% post pin to PC
+    TxHash = pin_to_parent(pubkey(?DWIGHT)),
+    %% post parent spend tx hash to CC
+    {ok, #{epoch  := _Epoch,
+           first  := First,
+           last   := Last,
+           length := _Length}} = rpc(?NODE1, aec_chain_hc, epoch_info, []),
+    {ok, LastLeader} = rpc(?NODE1, aec_consensus_hc, leader_for_height, [Last]),
+    tx_hash_to_child(TxHash, ?ALICE, LastLeader, Config),
+    %% move forward to last block
+    CH = rpc(?NODE1, aec_chain, top_height, []),
+    DistToBeforeLast = Last - CH - 1,
+    {ok, _} = produce_cc_blocks(Config, DistToBeforeLast), % produce blocks until last
+
+    %% TODO test to see that LastLeader actually is leader now?
+
+    %% get all blocks(?)
+    {ok, AllBlocks} = get_generations(?NODE1, First, Last-1),
+    [FirstSpend|_] = find_spends_to(LastLeader, AllBlocks),
+
+    
+
+    ok.
+
+
+%%% --------- pinning helpers
+
+find_spends_to(Account, Blocks) ->
+   lists:flatten([ pick(Account, Txs) || {mic_block, _, Txs, _} <- Blocks ]).
+
+pick(Account, Txs) ->
+    [ T || {signed_tx,{aetx,spend_tx,aec_spend_tx,_,{spend_tx,_,{id,account,Account2},_,_,_,_,T}},_} <- Txs, Account =:= Account2, aec_pinning_agent:is_pin(T)].
+
+pin_to_parent(AccountPK) ->
+    Pin = rpc(?NODE1, aec_pinning_agent, get_pinning_data, []),
+    PinPayloadBin = rpc(?NODE1, aec_pinning_agent, encode_pin_payload, [Pin]),
+
+    AccPKEncEnc = aeser_api_encoder:encode(account_pubkey, AccountPK),
+    ParentNodeSpec = #{scheme => "http", host => "127.0.0.1", port => aecore_suite_utils:external_api_port(?PARENT_CHAIN_NODE)},
+    {ok, []} = rpc(?PARENT_CHAIN_NODE, aec_tx_pool, peek, [infinity]), % no pending transactions
+    PinTx = aec_pinning_agent:create_pin_tx(ParentNodeSpec, AccPKEncEnc, AccountPK, 1, 30000 * ?DEFAULT_GAS_PRICE, PinPayloadBin),
+    SignedPinTx = sign_tx(PinTx, privkey(?DWIGHT),?PARENT_CHAIN_NETWORK_ID),
+    {ok, #{<<"tx_hash">> := TxHash}} = aec_pinning_agent:post_pin_tx(SignedPinTx, ParentNodeSpec),
+    TxHash.
+
+tx_hash_to_child(TxHash, SendAccount, Leader, Config) ->
+    NetworkId = ?config(network_id, Config), % TODO not 100% sure about this one...
+    Nonce = next_nonce(?NODE1, pubkey(SendAccount)),
+    Params = #{ sender_id    => aeser_id:create(account, pubkey(SendAccount)),
+                recipient_id => aeser_id:create(account, Leader),
+                amount       => 1,
+                fee          => 30000 * ?DEFAULT_GAS_PRICE,
+                nonce        => Nonce,
+                payload      => aec_pinning_agent:encode_child_pin_payload(TxHash)},
+    ct:log("Preparing a spend tx: ~p", [Params]),
+    {ok, Tx} = aec_spend_tx:new(Params),
+    SignedTx = sign_tx(Tx, privkey(SendAccount), NetworkId),
+    ok = rpc:call(?NODE1_NAME, aec_tx_pool, push, [SignedTx, tx_received]),
+    Hash = rpc:call(?NODE1_NAME, aetx_sign, hash, [SignedTx]),
+    Hash.
 
 %%% --------- helper functions
 

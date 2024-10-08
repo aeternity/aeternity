@@ -6,6 +6,7 @@ contract interface MainStaking =
   entrypoint is_validator : (address) => bool
   entrypoint total_stake : () => int
   stateful entrypoint post_elect : () => unit
+  entrypoint pin_hash : () => unit
 
 main contract HCElection =
   record epoch_info =
@@ -100,6 +101,10 @@ main contract HCElection =
     let total_stake = List.foldl((+), 0, List.map(Pair.snd, validators))
     // One extra hash operation to convert from bytes() to bytes(32)/hash
     validator_schedule_(Crypto.blake2b(seed), (s) => Bytes.to_int(s) mod total_stake, validators, length, [])
+
+  entrypoint pin_hash(tx_hash : bytes()) = 
+    ()
+
 
   function
     validator_schedule_(_, _, _, 0, schedule) = List.reverse(schedule)
