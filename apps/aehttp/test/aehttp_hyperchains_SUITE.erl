@@ -33,7 +33,8 @@
          check_blocktime/1,
          get_pin/1,
          wallet_post_pin_to_pc/1,
-         post_pin_to_pc/1
+         post_pin_to_pc/1,
+         last_leader_validates_pin_and_post_to_contract/1
         ]).
 
 -include_lib("stdlib/include/assert.hrl").
@@ -160,7 +161,8 @@ groups() ->
             produce_first_epoch,
             get_pin,
             wallet_post_pin_to_pc,
-            post_pin_to_pc ]}
+            post_pin_to_pc,
+            last_leader_validates_pin_and_post_to_contract]}
     ].
 
 suite() -> [].
@@ -1015,8 +1017,11 @@ last_leader_validates_pin_and_post_to_contract(Config) ->
     %% get all blocks(?)
     {ok, AllBlocks} = get_generations(?NODE1, First, Last-1),
     [FirstSpend|_] = find_spends_to(LastLeader, AllBlocks),
+    DecodedPL = aec_pinning_agent:decode_child_pin_payload(FirstSpend),
 
-    
+    ContractPubkey = ?config(staking_contract, Config),
+    TopHash = rpc(?NODE1, aec_chain, top_block_hash, []),
+    whatever = do_contract_call(ContractPubkey, src(?MAIN_STAKING_CONTRACT, Config), pin_hash, [DecodedPL], ?ALICE, TopHash),
 
     ok.
 
@@ -1024,13 +1029,13 @@ last_leader_validates_pin_and_post_to_contract(Config) ->
 %%% --------- pinning helpers
 
 find_spends_to(Account, Blocks) ->
-   lists:flatten([ pick(Account, Txs) || {mic_block, _, Txs, _} <- Blocks ]).
+   lists:flatten([ pick_pin_spends_to(Account, Txs) || {mic_block, _, Txs, _} <- Blocks ]).
 
-pick(Account, Txs) ->
+pick_pin_spends_to(Account, Txs) ->
     [ T || {signed_tx,{aetx,spend_tx,aec_spend_tx,_,{spend_tx,_,{id,account,Account2},_,_,_,_,T}},_} <- Txs, Account =:= Account2, aec_pinning_agent:is_pin(T)].
 
 pin_to_parent(AccountPK) ->
-    Pin = rpc(?NODE1, aec_pinning_agent, get_pinning_data, []),
+    {ok, Pin} = rpc(?NODE1, aec_pinning_agent, get_pinning_data, []),
     PinPayloadBin = rpc(?NODE1, aec_pinning_agent, encode_pin_payload, [Pin]),
 
     AccPKEncEnc = aeser_api_encoder:encode(account_pubkey, AccountPK),
