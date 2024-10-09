@@ -367,7 +367,8 @@ wait_same_top(Nodes) ->
     wait_same_top(Nodes, 3).
 
 wait_same_top(_Nodes, Attempts) when Attempts < 1 ->
-    {error, run_out_of_attempts};
+    %% {error, run_out_of_attempts};
+    throw({error, run_out_of_attempts});
 wait_same_top(Nodes, Attempts) ->
     KBs = [ rpc(Node, aec_chain, top_block, []) || Node <- Nodes ],
     case lists:usort(KBs) of
@@ -1156,7 +1157,7 @@ calc_rewards(RewardForHeight) ->
     {ok, #{key_block := PrevKB,
            micro_blocks := MBs}}
         = rpc(?NODE1, aec_chain, get_generation_by_height,
-              [RewardForHeight - 1, forward]),
+              [RewardForHeight, backward]),
     PrevGenProtocol = aec_blocks:version(PrevKB),
     Txs = lists:flatten(
             lists:map(
@@ -1445,11 +1446,11 @@ produce_to_cc_height(Config, TopHeight, GoalHeight, ParentProduce) ->
                          ct:log("CC ~p mined block: ~p", [N, Block]),
                          Block;
                     {ok, _Txs} ->
-                         {ok, [{N1, KB}, {N2, MB}]} = mine_cc_blocks(NodeNames, 2),
+                         {ok, [{N1, MB}, {N2, KB}]} = mine_cc_blocks(NodeNames, 2),
                          ?assertEqual(key, aec_blocks:type(KB)),
                          ?assertEqual(micro, aec_blocks:type(MB)),
-                         ct:log("CC ~p mined block: ~p", [N1, KB]),
-                         ct:log("CC ~p mined micro block: ~p", [N2, MB]),
+                         ct:log("CC ~p mined micro block: ~p", [N1, MB]),
+                         ct:log("CC ~p mined key block:   ~p", [N2, KB]),
                          KB
                 end,
             Producer = get_block_producer_name(?config(staker_names, Config), KeyBlock),

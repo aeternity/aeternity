@@ -240,12 +240,20 @@ build_insertion_ctx_prev(Node, PrevKeyNode) ->
    end.
 
 build_insertion_ctx_check_prev_height(#node{type = key} = Node, PrevNode, PrevKeyNode) ->
-    case node_height(PrevNode) =:= (node_height(Node) - 1) of
+    ConsensusModule = node_consensus(Node),
+    ExpectedHeight =
+        ConsensusModule:key_block_height_relative_previous_block(node_type(PrevNode),
+                                                                 node_height(PrevNode)),
+    case ExpectedHeight =:= node_height(Node) of
         true -> {ok, PrevNode, PrevKeyNode};
         false -> {error, height_inconsistent_for_keyblock_with_previous_hash}
     end;
 build_insertion_ctx_check_prev_height(#node{type = micro} = Node, PrevNode, PrevKeyNode) ->
-    case node_height(PrevNode) =:= node_height(Node) of
+    ConsensusModule = node_consensus(Node),
+    ExpectedHeight =
+        ConsensusModule:micro_block_height_relative_previous_block(node_type(PrevNode),
+                                                                   node_height(PrevNode)),
+    case ExpectedHeight =:= node_height(Node) of
         true -> {ok, PrevNode, PrevKeyNode};
         false -> {error, height_inconsistent_for_microblock_with_previous_hash}
     end.

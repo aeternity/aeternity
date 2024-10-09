@@ -41,6 +41,9 @@
         %% Dirty validation before starting the state transition
         , dirty_validate_key_node_with_ctx/3
         , dirty_validate_micro_node_with_ctx/3
+        %% Block structure
+        , key_block_height_relative_previous_block/2
+        , micro_block_height_relative_previous_block/2
         %% State transition
         , state_pre_transform_key_node_consensus_switch/2
         , state_pre_transform_key_node/3
@@ -229,7 +232,44 @@ dirty_validate_header_pre_conductor(_) -> ok.
 dirty_validate_key_hash_at_height(_, _) -> ok.
 %% Don't waste CPU cycles when we are only interested in state transitions...
 dirty_validate_key_node_with_ctx(_Node, _Block, _Ctx) -> ok.
-dirty_validate_micro_node_with_ctx(_Node, _Block, _Ctx) -> ok.
+
+dirty_validate_micro_node_with_ctx(Node, Block, Ctx) ->
+    Validators = [ fun ctx_validate_micro_block_time/3
+                 , fun ctx_validate_micro_signature/3
+                 ],
+    aeu_validation:run(Validators, [Node, Block, Ctx]).
+
+ctx_validate_micro_block_time(Node, _Block, Ctx) ->
+    PrevNode = aec_block_insertion:ctx_prev(Ctx),
+    case aec_block_insertion:node_time(Node) > aec_block_insertion:node_time(PrevNode) of
+        true  -> ok;
+        false -> {error, micro_block_time_too_low}
+    end.
+
+ctx_validate_micro_signature(Node, _Block, _Ctx) ->
+    Height = aec_block_insertion:node_height(Node),
+    case leader_for_height(Height) of
+        {ok, Leader} ->
+            case aeu_sig:verify(aec_block_insertion:node_header(Node), Leader) of
+                ok         -> ok;
+                {error, _} -> {error, signature_verification_failed}
+            end;
+        error ->
+            {error, signature_verification_failed}
+    end.
+
+%% ------------------------------------------------------------------------
+%% -- Block structure
+%% ------------------------------------------------------------------------
+key_block_height_relative_previous_block(key, KeyHeight) ->
+    KeyHeight + 1;
+key_block_height_relative_previous_block(micro, MicroHeight) ->
+    MicroHeight.
+
+micro_block_height_relative_previous_block(key, KeyHeight) ->
+    KeyHeight + 1;
+micro_block_height_relative_previous_block(micro, MicroHeight) ->
+    MicroHeight.
 
 %% -------------------------------------------------------------------
 %% Custom state transitions
