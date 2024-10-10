@@ -20,7 +20,8 @@ main contract HCElection =
       leader                : address,
       added_stake           : int,
       epoch                 : int,
-      epochs                : map(int, epoch_info)
+      epochs                : map(int, epoch_info),
+      pin                   : string
     }
 
   entrypoint init(main_staking_ct : MainStaking) =
@@ -28,7 +29,8 @@ main contract HCElection =
       leader                = Contract.address,
       added_stake           = 0,
       epoch                 = 0,
-      epochs                = {} }
+      epochs                = {},
+      pin                   = "foo" }   
 
   stateful entrypoint init_epochs(epoch_length : int) =
     assert_protocol_call()
@@ -101,9 +103,12 @@ main contract HCElection =
     // One extra hash operation to convert from bytes() to bytes(32)/hash
     validator_schedule_(Crypto.blake2b(seed), (s) => Bytes.to_int(s) mod total_stake, validators, length, [])
 
-  stateful entrypoint pin(s : bytes()) = 
-    state
+  stateful entrypoint pin(s : string) =
+    put(state{pin = s})
+    s
 
+  entrypoint pin_info() =
+    state.pin
 
   function
     validator_schedule_(_, _, _, 0, schedule) = List.reverse(schedule)

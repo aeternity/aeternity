@@ -1090,20 +1090,17 @@ wallet_post_pin_to_pc(Config) ->
 last_leader_validates_pin_and_post_to_contract(Config) ->
 
     %% move into next epoch
-    Height1 = rpc(?NODE1, aec_chain, top_height, []),
-    {ok, #{last := Last1, length := _Len}} = rpc(?NODE1, aec_chain_hc, epoch_info, []),
-    {ok, Bs} = produce_cc_blocks(Config, Last1 - Height1 + 1), 
-    ct:log("Block last epoch: ~p", [hd(lists:nthtail(length(Bs) - 2, Bs))]),
+    mine_to_next_epoch(Config),
     %% post pin to PC
     TxHash = pin_to_parent(pubkey(?DWIGHT)),
     %% post parent spend tx hash to CC
+    tx_hash_to_child(TxHash, ?ALICE, Config),
+    %% move forward to last block
     {ok, #{epoch  := _Epoch,
            first  := First,
            last   := Last,
            length := _Length}} = rpc(?NODE1, aec_chain_hc, epoch_info, []),
     {ok, LastLeader} = rpc(?NODE1, aec_consensus_hc, leader_for_height, [Last]),
-    tx_hash_to_child(TxHash, ?ALICE, LastLeader, Config),
-    %% move forward to last block
     CH = rpc(?NODE1, aec_chain, top_height, []),
     DistToBeforeLast = Last - CH - 1,
     {ok, _} = produce_cc_blocks(Config, DistToBeforeLast), % produce blocks until last
@@ -1115,9 +1112,18 @@ last_leader_validates_pin_and_post_to_contract(Config) ->
     [FirstSpend|_] = find_spends_to(LastLeader, AllBlocks),
     DecodedPL = aec_pinning_agent:decode_child_pin_payload(FirstSpend),
 
-    ContractPubkey = ?config(election_contract, Config),
-    TopHash = rpc(?NODE1, aec_chain, top_block_hash, []),
-    whatever = pin_contract_call(ContractPubkey, src(?HC_CONTRACT, Config), "pin", 1000, LastLeader, TopHash, DecodedPL),
+    %ContractPubkey = ?config(election_contract, Config),
+    %TopHash = rpc(?NODE1, aec_chain, top_block_hash, []),
+    %{ok,_} = pin_contract_call(ContractPubkey, src(?HC_CONTRACT, Config), "pin", 0, LastLeader, TopHash, DecodedPL),
+    %some = consensus_pin("pin", TopHash, DecodedPL),
+    {ok, Pin} = rpc(?NODE1, aec_chain_hc, pin, [DecodedPL]),
+    
+    {ok, _} = produce_cc_blocks(Config, 2),
+
+    %% 'foo' is init val (=wrong here, should be Pin). this will fail once we get state to update properly...
+    {ok, <<"foo">>} = rpc(?NODE1, aec_chain_hc, pin_info, []), 
+    
+    
 
     ok.
 
@@ -1126,8 +1132,8 @@ last_leader_validates_pin_and_post_to_contract(Config) ->
 
 
 pin_contract_call(ContractPubkey, Src, Fun, Amount, From, TopHash, PL) ->
-    Nonce = next_nonce(?NODE1, From), %% no contract calls support for parent chain
-    {ok, CallData} = aeb_fate_abi:create_calldata(Fun, [{bytes, PL}]),
+    Nonce = next_nonce(?NODE1, From),
+    {ok, CallData} = aeb_fate_abi:create_calldata(Fun, [PL]),
     ABI = aect_test_utils:abi_version(),
     TxSpec =
         #{  caller_id   => aeser_id:create(account, From)
@@ -1142,9 +1148,6 @@ pin_contract_call(ContractPubkey, Src, Fun, Amount, From, TopHash, PL) ->
     {ok, Tx} = aect_call_tx:new(TxSpec),
     {ok, Call} = dry_run(TopHash, Tx),
     decode_consensus_result(Call, Fun, Src).
-
-
-
 
 find_spends_to(Account, Blocks) ->
    lists:flatten([ pick_pin_spends_to(Account, Txs) || {mic_block, _, Txs, _} <- Blocks ]).
@@ -1164,7 +1167,9 @@ pin_to_parent(AccountPK) ->
     {ok, #{<<"tx_hash">> := TxHash}} = aec_pinning_agent:post_pin_tx(SignedPinTx, ParentNodeSpec),
     TxHash.
 
-tx_hash_to_child(TxHash, SendAccount, Leader, Config) ->
+tx_hash_to_child(TxHash, SendAccount, Config) ->
+    {ok, #{last   := Last}} = rpc(?NODE1, aec_chain_hc, epoch_info, []),
+    {ok, Leader} = rpc(?NODE1, aec_consensus_hc, leader_for_height, [Last]),
     NetworkId = ?config(network_id, Config), % TODO not 100% sure about this one...
     Nonce = next_nonce(?NODE1, pubkey(SendAccount)),
     Params = #{ sender_id    => aeser_id:create(account, pubkey(SendAccount)),
@@ -1179,6 +1184,12 @@ tx_hash_to_child(TxHash, SendAccount, Leader, Config) ->
     ok = rpc:call(?NODE1_NAME, aec_tx_pool, push, [SignedTx, tx_received]),
     Hash = rpc:call(?NODE1_NAME, aetx_sign, hash, [SignedTx]),
     Hash.
+
+mine_to_next_epoch(Config) ->
+    Height1 = rpc(?NODE1, aec_chain, top_height, []),
+    {ok, #{last := Last1, length := _Len}} = rpc(?NODE1, aec_chain_hc, epoch_info, []),
+    {ok, Bs} = produce_cc_blocks(Config, Last1 - Height1 + 1), 
+    ct:log("Block last epoch: ~p", [hd(lists:nthtail(length(Bs) - 2, Bs))]).
 
 %%% --------- helper functions
 
@@ -1283,7 +1294,8 @@ inspect_election_contract(OriginWho, WhatToInspect, Config) ->
 inspect_election_contract(OriginWho, WhatToInspect, Config, TopHash) ->
     {Fun, Args} =
         case WhatToInspect of
-            current_added_staking_power -> {"added_stake", []}
+            current_added_staking_power -> {"added_stake", []};
+            _ -> {WhatToInspect, []}
         end,
     ContractPubkey = ?config(election_contract, Config),
     do_contract_call(ContractPubkey, src(?HC_CONTRACT, Config), Fun, Args, OriginWho, TopHash).
