@@ -14,6 +14,8 @@
         , epoch_info/0
         , epoch_info/1
         , validators_at_height/1
+        , pin_info/0
+        , pin/1
         %% epoch determined
         , epoch_start_height/1
         , epoch_info_for_epoch/1
@@ -85,6 +87,18 @@ validator_schedule(RunEnv, Seed, Validators, Length) ->
     {ok, Result} = call_consensus_contract_w_env(?ELECTION_CONTRACT, RunEnv, "validator_schedule", Args),
     {ok, lists:map(fun({address, Address}) -> Address end, Result)}.
 
+
+pin_info() ->
+    pin_info(top).
+
+pin_info(RunEnv) ->
+    call_consensus_contract_w_env(?ELECTION_CONTRACT, RunEnv, "pin_info", []).
+
+pin(Hash) ->
+    pin(top, Hash).
+
+pin(RunEnv, Hash) ->
+    call_consensus_contract_w_env(?ELECTION_CONTRACT, RunEnv, "pin", [Hash]).
 
 %% This makes the dependency graph a circle, right?
 -spec entropy_hash(non_neg_integer()) -> {ok, binary()} | {error, any()}.
