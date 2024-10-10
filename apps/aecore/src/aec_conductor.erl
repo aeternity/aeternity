@@ -1092,13 +1092,14 @@ start_block_production_(#state{mode = pos, key_block_candidates = [{ForSealing, 
             epoch_mining:debug("No available instance", []),
             State;
         Instance ->
-            epoch_mining:info("Starting PoS block generator on top of ~p", [State#state.top_block_hash]),
+            epoch_mining:info("Starting PoS block sealer on top of ~p", [State#state.top_block_hash]),
             Consensus         = aec_blocks:consensus_module(Candidate#candidate.block),
             Header            = aec_blocks:to_header(Candidate#candidate.block),
             StakerConfig      = Instance#instance.config,
             AddressedInstance = Instance#instance.instance,
             Nonce             = Consensus:trim_sealing_nonce(Candidate#candidate.nonce, StakerConfig),
             Info              = [{top_block_hash, State#state.top_block_hash}],
+            epoch_mining:info("Sealing candidate ~p", [Candidate]),
             aec_events:publish(start_mining, Info),
             Fun = fun() ->
                           { Consensus:generate_key_header_seal(
@@ -1113,7 +1114,7 @@ start_block_production_(#state{mode = pos, key_block_candidates = [{ForSealing, 
             State1 = State#state{key_block_candidates = [{ForSealing, Candidate1} | Candidates]},
             {State2, Pid} = dispatch_worker(mining, Fun, State1),
             State3 = register_instance(Instance, Pid, State2),
-            epoch_mining:info("Block producer started ~p started", [Pid]),
+            epoch_mining:info("Mining started ~p started", [Pid]),
             start_block_production_(State3)
     end.
 
@@ -1343,6 +1344,7 @@ hc_create_block_fun(ConsensusModule, TopHash) ->
     fun() ->
         case get_next_beneficiary(ConsensusModule, TopHash) of
             {ok, Leader} ->
+                  epoch_mining:debug("Got leader, calling hc_create_block", []),
                   {hc_create_block(ConsensusModule, TopHash, Leader), TopHash};
             {error, _} = Err ->
                 {Err, TopHash}
@@ -1358,15 +1360,19 @@ hc_create_microblock(ConsensusModule, TopHash, Leader) ->
     case aec_block_micro_candidate:create(TopHash) of
         {ok, MBlock, _MBlockInfo} ->
             case aec_blocks:txs(MBlock) of
-                [] -> TopHash;
+                [] ->
+                    epoch_mining:debug("Empty micro-block, top is still: ~p", [TopHash]),
+                    TopHash;
                 [_ | _ ] ->
                     SignModule = ConsensusModule:get_sign_module(),
                     {ok, SignedMBlock} = SignModule:sign_micro_block(MBlock, Leader),
                     add_signed_block(SignedMBlock),
                     {ok, MBHash} = aec_blocks:hash_internal_representation(SignedMBlock),
+                    epoch_mining:debug("New micro-block added, top is: ~p", [MBHash]),
                     MBHash
             end;
         _ ->
+            epoch_mining:debug("Failed micro-block, top is still: ~p", [TopHash]),
             TopHash
     end.
 
