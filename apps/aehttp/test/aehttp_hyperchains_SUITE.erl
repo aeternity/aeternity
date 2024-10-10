@@ -1112,15 +1112,15 @@ last_leader_validates_pin_and_post_to_contract(Config) ->
     [FirstSpend|_] = find_spends_to(LastLeader, AllBlocks),
     DecodedPL = aec_pinning_agent:decode_child_pin_payload(FirstSpend),
 
-    
-    TopHash = rpc(?NODE1, aec_chain, top_block_hash, []),
-    %some = consensus_pin("pin", TopHash, DecodedPL),
+    %% we test the contract call and then put it (or a similar one...) in the tx pool
+    %% TODO should really be the same Tx to ensure consistency
     {ok, Pin} = rpc(?NODE1, aec_chain_hc, pin, [DecodedPL]),
-    ok = pin_contract_call_tx(Config, "pin", 0, ?ALICE, TopHash, [DecodedPL]),
-    
-    {ok, _} = produce_cc_blocks(Config, 2),
-
-    %% 'foo' is init val (=wrong here, should be Pin). this will fail once we get state to update properly...
+    ok = pin_contract_call_tx(Config, "pin", [DecodedPL], 0, ?ALICE),
+    %% mine to next block/epoch. Why hasn't the state updated yet!?
+    {ok, _} = produce_cc_blocks(Config, 1),
+    {ok, <<"foo">>} = rpc(?NODE1, aec_chain_hc, pin_info, []), 
+    %% mine another block. NOW the state is updated. WHY!?
+    {ok, _} = produce_cc_blocks(Config, 1),
     {ok, Pin} = rpc(?NODE1, aec_chain_hc, pin_info, []), 
 
     ok.
@@ -1129,10 +1129,10 @@ last_leader_validates_pin_and_post_to_contract(Config) ->
 %%% --------- pinning helpers
 
 
-pin_contract_call_tx(Config, Fun, Amount, From, TopHash, PL) ->
+pin_contract_call_tx(Config, Fun, Args, Amount, From) ->
     ContractPubkey = ?config(election_contract, Config),
     Nonce = next_nonce(?NODE1, pubkey(From)),
-    {ok, CallData} = aeb_fate_abi:create_calldata(Fun, PL),
+    {ok, CallData} = aeb_fate_abi:create_calldata(Fun, Args),
     ABI = aect_test_utils:abi_version(),
     TxSpec =
         #{  caller_id   => aeser_id:create(account, pubkey(From))
