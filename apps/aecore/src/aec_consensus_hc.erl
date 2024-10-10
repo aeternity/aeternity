@@ -869,7 +869,7 @@ is_leader_valid(Node, Trees, TxEnv, PrevNode) ->
         {ok, ExpectedLeader} ->
             Header = aec_block_insertion:node_header(Node),
             Leader = aec_headers:miner(Header),
-            Leader == ExpectedLeader;
+            Leader == ExpectedLeader; % andalso validate_pin(Node, Trees, TxEnv, PrevNode);
             %% Fix this to have stake as target validated here also?
         _ ->
             lager:debug("No leader known for height = ~p", [Height]),
