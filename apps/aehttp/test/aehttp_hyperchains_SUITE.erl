@@ -1112,18 +1112,16 @@ last_leader_validates_pin_and_post_to_contract(Config) ->
     [FirstSpend|_] = find_spends_to(LastLeader, AllBlocks),
     DecodedPL = aec_pinning_agent:decode_child_pin_payload(FirstSpend),
 
-    %ContractPubkey = ?config(election_contract, Config),
-    %TopHash = rpc(?NODE1, aec_chain, top_block_hash, []),
-    %{ok,_} = pin_contract_call(ContractPubkey, src(?HC_CONTRACT, Config), "pin", 0, LastLeader, TopHash, DecodedPL),
+    
+    TopHash = rpc(?NODE1, aec_chain, top_block_hash, []),
     %some = consensus_pin("pin", TopHash, DecodedPL),
     {ok, Pin} = rpc(?NODE1, aec_chain_hc, pin, [DecodedPL]),
+    ok = pin_contract_call_tx(Config, "pin", 0, ?ALICE, TopHash, [DecodedPL]),
     
     {ok, _} = produce_cc_blocks(Config, 2),
 
     %% 'foo' is init val (=wrong here, should be Pin). this will fail once we get state to update properly...
-    {ok, <<"foo">>} = rpc(?NODE1, aec_chain_hc, pin_info, []), 
-    
-    
+    {ok, Pin} = rpc(?NODE1, aec_chain_hc, pin_info, []), 
 
     ok.
 
@@ -1131,12 +1129,13 @@ last_leader_validates_pin_and_post_to_contract(Config) ->
 %%% --------- pinning helpers
 
 
-pin_contract_call(ContractPubkey, Src, Fun, Amount, From, TopHash, PL) ->
-    Nonce = next_nonce(?NODE1, From),
-    {ok, CallData} = aeb_fate_abi:create_calldata(Fun, [PL]),
+pin_contract_call_tx(Config, Fun, Amount, From, TopHash, PL) ->
+    ContractPubkey = ?config(election_contract, Config),
+    Nonce = next_nonce(?NODE1, pubkey(From)),
+    {ok, CallData} = aeb_fate_abi:create_calldata(Fun, PL),
     ABI = aect_test_utils:abi_version(),
     TxSpec =
-        #{  caller_id   => aeser_id:create(account, From)
+        #{  caller_id   => aeser_id:create(account, pubkey(From))
           , nonce       => Nonce
           , contract_id => aeser_id:create(contract, ContractPubkey)
           , abi_version => ABI
@@ -1146,8 +1145,11 @@ pin_contract_call(ContractPubkey, Src, Fun, Amount, From, TopHash, PL) ->
           , gas_price   => ?DEFAULT_GAS_PRICE
           , call_data   => CallData},
     {ok, Tx} = aect_call_tx:new(TxSpec),
-    {ok, Call} = dry_run(TopHash, Tx),
-    decode_consensus_result(Call, Fun, Src).
+    NetworkId = ?config(network_id, Config),
+    SignedTx = sign_tx(Tx, privkey(From), NetworkId),
+    ok = rpc:call(?NODE1_NAME, aec_tx_pool, push, [SignedTx, tx_received]),
+    ok.
+
 
 find_spends_to(Account, Blocks) ->
    lists:flatten([ pick_pin_spends_to(Account, Txs) || {mic_block, _, Txs, _} <- Blocks ]).
