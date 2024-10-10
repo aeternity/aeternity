@@ -1553,8 +1553,10 @@ is_leader(NewTopBlock, PrevKeyHeader, ConsensusModule) ->
     end.
 
 setup_loop(State = #state{ mode = pos,
-                           consensus = #consensus{ consensus_module = aec_consensus_hc } }, _, _, _) ->
-    State;
+                           consensus = #consensus{ consensus_module = aec_consensus_hc } }, Restart, _, _) ->
+    if not Restart -> create_key_block_candidate(State);
+       true        -> State
+    end;
 setup_loop(State = #state{ consensus = Cons }, RestartMining, IsLeader, Origin) ->
     State1 = State#state{ consensus = Cons#consensus{ leader = IsLeader } },
     State2 =
