@@ -95,6 +95,7 @@ init_per_testcase(_Case, Config) ->
     Config1.
 
 end_per_testcase(_Case, Config) ->
+    [catch peer:stop(Node) || {_, Node} <- ?config(nodes, Config)],
     Config.
 
 %%
@@ -102,16 +103,14 @@ end_per_testcase(_Case, Config) ->
 %%
 
 start_child_nodes(Config) ->
-    [{Node1, NodeName1, Stakers1}, {Node2, NodeName2, Stakers2} | _] = ?config(nodes, Config),
     Env = [{"AE__FORK_MANAGEMENT__NETWORK_ID", binary_to_list(?config(network_id, Config))}],
-
-    %% TODO: Support more than 2 child nodes
-    aehttp_hyperchains_utils:child_node_config(Node1, Stakers1, Config),
-    aecore_suite_utils:start_node(Node1, Config, Env),
-    aecore_suite_utils:connect(NodeName1, []),
-
-    aehttp_hyperchains_utils:child_node_config(Node2, Stakers2, Config),
-    aecore_suite_utils:start_node(Node2, Config, Env),
-    aecore_suite_utils:connect(NodeName2, []),
-
+    [
+        begin
+            aehttp_hyperchains_utils:child_node_config(Node, Stakers, Config),
+            % Use a new implementation of start_node
+            {ok, _Pid, LongName} = aecore_suite_utils:start_node(Node, Config, Env),
+            aecore_suite_utils:connect(LongName, [])
+        end
+     || {Node, _NodeName, Stakers} <- ?config(nodes, Config)
+    ],
     ok.

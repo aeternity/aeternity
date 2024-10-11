@@ -8,7 +8,7 @@
 
 -include_lib("aecontract/include/hard_forks.hrl").
 
--import(aecore_suite_utils, [rpc/3, rpc/4]).
+% -import(aecore_suite_utils, [rpc/3, rpc/4]).
 
 -export([
     run/2,
@@ -18,6 +18,8 @@
     end_per_group/2,
     with_saved_keys/2,
     child_node_config/3
+    % start_node/2, start_node/3,
+    % connect/2, connect/1
 ]).
 
 -type action() ::
@@ -141,7 +143,7 @@ produce_cc_blocks(Node, CtConfig, BlocksCnt, ParentProduce) ->
     TopHeight = rpc(Node, aec_chain, top_height, []),
 
     %% assert that the parent chain is not mining
-    ?assertEqual(stopped, rpc:call(?PARENT_CHAIN_NODE_NAME, aec_conductor, get_mining_state, [])),
+    ?assertEqual(stopped, rpc:call(?PARENT_CHAIN_NODE, aec_conductor, get_mining_state, [])),
     ct:log("produce_cc_blocks: parent produce ~p", [ParentProduce]),
     NewTopHeight = produce_to_cc_height(CtConfig, TopHeight, TopHeight + BlocksCnt, ParentProduce),
     wait_same_top([N || {N, _, _} <- ?config(nodes, CtConfig)], 3),
@@ -182,7 +184,7 @@ produce_to_cc_height(CtConfig, TopHeight, GoalHeight, ParentProduce) ->
             NewParentProduce =
                 case ParentProduce of
                     [{CH, PBs} | PRest] when CH == TopHeight + 1 ->
-                        mine_key_blocks(?PARENT_CHAIN_NODE_NAME, PBs),
+                        mine_key_blocks(?PARENT_CHAIN_NODE, PBs),
                         PRest;
                     PP ->
                         PP
@@ -449,14 +451,14 @@ init_per_group(_, Config0) ->
         | aect_test_utils:init_per_group(VM, Config0)
     ],
 
-    aecore_suite_utils:start_node(?PARENT_CHAIN_NODE, Config),
-    aecore_suite_utils:connect(?PARENT_CHAIN_NODE_NAME, []),
+    start_node(?PARENT_CHAIN_NODE, Config),
+    connect(?PARENT_CHAIN_NODE, []),
     ParentTopHeight = rpc(?PARENT_CHAIN_NODE, aec_chain, top_height, []),
     StartHeight = max(ParentTopHeight, ?PARENT_EPOCH_LENGTH),
     ct:log("Parent chain top height ~p start at ~p", [ParentTopHeight, StartHeight]),
     %%TODO mine less than necessary parent height and test chain starts when height reached
     {ok, _} = mine_key_blocks(
-        ?PARENT_CHAIN_NODE_NAME,
+        ?PARENT_CHAIN_NODE,
         (StartHeight - ParentTopHeight) + ?PARENT_FINALITY
     ),
     [{staker_names, [?ALICE, ?BOB, ?LISA]}, {parent_start_height, StartHeight} | Config].
@@ -939,3 +941,143 @@ contract_call_spec(ContractPubkey, Src, Fun, Args, Amount, From, Nonce) ->
             )
         },
     Spec.
+
+% -spec start_node(node(), ct_config()) -> {ok, pid(), node()}.
+% start_node(N, Config) ->
+%     start_node(N, Config, []).
+
+% %% Returns {ok, PeerPid, LongNodeName}, even if short name was supplied
+% -spec start_node(node(), ct_config(), ExtraEnv :: proplists:proplist()) -> {ok, pid(), node()}.
+% start_node(Node, Config, ExtraEnv) ->
+%     MyDir = filename:dirname(code:which(?MODULE)),
+%     ConfigFilename = proplists:get_value(config_name, Config, "default"),
+%     Flags =
+%         case ?config(build_to_connect_to_mainnet, Config) of
+%             %% no proxy!
+%             true ->
+%                 ["-pa ", MyDir];
+%             _ ->
+%                 ["-pa ", MyDir, " -config ./" ++ ConfigFilename]
+%         end,
+%     Env0 =
+%         case ?config(build_to_connect_to_mainnet, Config) of
+%             true ->
+%                 [
+%                     {"ERL_FLAGS", Flags},
+%                     {"AETERNITY_CONFIG", "data/aeternity.json"},
+%                     {"RUNNER_LOG_DIR", "log"}
+%                 ];
+%             _ ->
+%                 [
+%                     {"ERL_FLAGS", Flags},
+%                     {"AETERNITY_CONFIG", "data/aeternity.json"},
+%                     {"RUNNER_LOG_DIR", "log"},
+%                     {"CODE_LOADING_MODE", "interactive"}
+%                 ]
+%         end,
+%     Env = maybe_override(ExtraEnv, Env0),
+%     %% cmd(?OPS_BIN, node_shortcut(N, Config), "bin", ["daemon"], Env).
+%     ct:pal("Starting node name=~0p with env=~0p flags=~0p~n", [Node, Env, Flags]),
+
+%     {ok, SavedDir} = file:get_cwd(),
+%     UseDir = filename:join([
+%         ?config(priv_dir, Config), atom_to_list(?config(test_module, Config)), atom_to_list(Node)
+%     ]),
+%     ok = file:set_cwd(UseDir),
+%     %% For ?CT_PEER() options see peer:start_options() type
+%     {ok, _PeerPid, LongNodeName} = ?CT_PEER(#{
+%         name => Node,
+%         env => Env,
+%         args => Flags
+%     }),
+%     ok = file:set_cwd(SavedDir),
+%     % boot_node(Node),
+%     {ok, _PeerPid, LongNodeName}.
+
+% -spec maybe_override(Extra :: proplists:proplist(), Env :: proplists:proplist()) ->
+%     proplists:proplist().
+% maybe_override([{K, _} = H | T], L0) ->
+%     [H | maybe_override(T, lists:keydelete(K, 1, L0))];
+% maybe_override([], L0) ->
+%     L0.
+
+% %% Run a sequence of application:start() RPC calls
+% boot_node(Node) ->
+%     RemoteApps = [
+%         sasl,
+%         lager,
+%         gproc,
+%         jobs,
+%         kache,
+%         % crypto,
+%         % public_key,
+%         ssl,
+%         aeserialization,
+%         aebytecode,
+%         aevm,
+%         aecontract,
+%         aens,
+%         aeoracle,
+%         aeprimop,
+%         aega,
+%         % ecrecover,
+%         % emcl,
+%         aefate,
+%         % ecli,
+%         aecli,
+%         aecore,
+%         aeapi,
+%         aechannel,
+%         aehttp,
+%         aemon,
+%         aestratum,
+%         aedevmode,
+%         aesync
+%     ],
+%     lists:foreach(
+%         fun(App) -> rpc:call(Node, application, ensure_all_started, [App]) end,
+%         RemoteApps
+%     ).
+
+% -spec connect(node(), list(atom()) | all_mocks) -> ok.
+% connect(N, all_mocks) ->
+%     Mocks = maps:keys(aecore_suite_utils:known_mocks()),
+%     connect(N, Mocks);
+% connect(N, Mocks) when is_list(Mocks) ->
+%     ok = connect(N),
+%     aecore_suite_utils:start_mocks(N, Mocks),
+%     ok.
+
+% -spec connect(node()) -> ok.
+% connect(N) ->
+%     connect_wait(N, aehttp).
+
+% connect_(N, Timeout, WaitF) when Timeout < 10000, is_function(WaitF, 0) ->
+%     timer:sleep(Timeout),
+%     case net_kernel:hidden_connect_node(N) of
+%         true ->
+%             ct:log("hidden_connect_node(~p) -> true", [N]),
+%             WaitF(),
+%             true;
+%         false ->
+%             ct:log("hidden_connect_node(~p) -> false, retrying ...", [N]),
+%             connect_(N, Timeout * 2, WaitF)
+%     end;
+% connect_(N, _, _) ->
+%     ct:log("exhausted retries (~p)", [N]),
+%     erlang:error({could_not_connect, N}).
+
+% -spec connect_wait(node(), atom()) -> ok.
+% connect_wait(N, WaitForApp) ->
+%     connect_(N, 50, fun() -> aecore_suite_utils:await_app(N, WaitForApp) end),
+%     aecore_suite_utils:report_node_config(N),
+%     ok.
+
+% % rpc(Mod, Fun, Args) ->
+% %     rpc(?DEFAULT_NODE, Mod, Fun, Args).
+
+% rpc(Node, Mod, Fun, Args) ->
+%     case rpc:call(Node, Mod, Fun, Args, 5_000) of
+%         {badrpc, Reason} -> error({badrpc, Reason});
+%         R -> R
+%     end.
