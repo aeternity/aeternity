@@ -17,9 +17,9 @@
     init_per_group/2,
     end_per_group/2,
     with_saved_keys/2,
-    child_node_config/3
-    % start_node/2, start_node/3,
-    % connect/2, connect/1
+    child_node_config/3,
+    start_node/2, start_node/3,
+    connect/2, connect/1
 ]).
 
 -type action() ::
@@ -942,142 +942,141 @@ contract_call_spec(ContractPubkey, Src, Fun, Args, Amount, From, Nonce) ->
         },
     Spec.
 
-% -spec start_node(node(), ct_config()) -> {ok, pid(), node()}.
-% start_node(N, Config) ->
-%     start_node(N, Config, []).
+-spec start_node(node(), ct_config()) -> {ok, pid(), node()}.
+start_node(N, Config) ->
+    start_node(N, Config, []).
 
-% %% Returns {ok, PeerPid, LongNodeName}, even if short name was supplied
-% -spec start_node(node(), ct_config(), ExtraEnv :: proplists:proplist()) -> {ok, pid(), node()}.
-% start_node(Node, Config, ExtraEnv) ->
-%     MyDir = filename:dirname(code:which(?MODULE)),
-%     ConfigFilename = proplists:get_value(config_name, Config, "default"),
-%     Flags =
-%         case ?config(build_to_connect_to_mainnet, Config) of
-%             %% no proxy!
-%             true ->
-%                 ["-pa ", MyDir];
-%             _ ->
-%                 ["-pa ", MyDir, " -config ./" ++ ConfigFilename]
-%         end,
-%     Env0 =
-%         case ?config(build_to_connect_to_mainnet, Config) of
-%             true ->
-%                 [
-%                     {"ERL_FLAGS", Flags},
-%                     {"AETERNITY_CONFIG", "data/aeternity.json"},
-%                     {"RUNNER_LOG_DIR", "log"}
-%                 ];
-%             _ ->
-%                 [
-%                     {"ERL_FLAGS", Flags},
-%                     {"AETERNITY_CONFIG", "data/aeternity.json"},
-%                     {"RUNNER_LOG_DIR", "log"},
-%                     {"CODE_LOADING_MODE", "interactive"}
-%                 ]
-%         end,
-%     Env = maybe_override(ExtraEnv, Env0),
-%     %% cmd(?OPS_BIN, node_shortcut(N, Config), "bin", ["daemon"], Env).
-%     ct:pal("Starting node name=~0p with env=~0p flags=~0p~n", [Node, Env, Flags]),
+%% Returns {ok, PeerPid, LongNodeName}, even if short name was supplied
+-spec start_node(node(), ct_config(), ExtraEnv :: proplists:proplist()) -> {ok, pid(), node()}.
+start_node(Node, Config, ExtraEnv) ->
+    MyDir = filename:dirname(code:which(?MODULE)),
+    ConfigFilename = proplists:get_value(config_name, Config, "default"),
+    Args0 =
+        case ?config(build_to_connect_to_mainnet, Config) of
+            %% no proxy!
+            true -> [];
+            _ -> ["-config", "./" ++ ConfigFilename]
+        end,
+    Args = ["-pa", MyDir, "-sname", atom_to_list(Node) | Args0],
+    Env0 =
+        case ?config(build_to_connect_to_mainnet, Config) of
+            true ->
+                [
+                    % {"ERL_FLAGS", Args},
+                    {"AETERNITY_CONFIG", "data/aeternity.json"},
+                    {"RUNNER_LOG_DIR", "log"}
+                ];
+            _ ->
+                [
+                    % {"ERL_FLAGS", Args},
+                    {"AETERNITY_CONFIG", "data/aeternity.json"},
+                    {"RUNNER_LOG_DIR", "log"},
+                    {"CODE_LOADING_MODE", "interactive"}
+                ]
+        end,
+    Env = maybe_override(ExtraEnv, Env0),
+    %% cmd(?OPS_BIN, node_shortcut(N, Config), "bin", ["daemon"], Env).
+    ct:pal("Starting node name=~0p with env=~0p args=~0p~n", [Node, Env, Args]),
 
-%     {ok, SavedDir} = file:get_cwd(),
-%     UseDir = filename:join([
-%         ?config(priv_dir, Config), atom_to_list(?config(test_module, Config)), atom_to_list(Node)
-%     ]),
-%     ok = file:set_cwd(UseDir),
-%     %% For ?CT_PEER() options see peer:start_options() type
-%     {ok, _PeerPid, LongNodeName} = ?CT_PEER(#{
-%         name => Node,
-%         env => Env,
-%         args => Flags
-%     }),
-%     ok = file:set_cwd(SavedDir),
-%     % boot_node(Node),
-%     {ok, _PeerPid, LongNodeName}.
+    {ok, SavedDir} = file:get_cwd(),
+    UseDir = filename:join([
+        ?config(priv_dir, Config), atom_to_list(?config(test_module, Config)), atom_to_list(Node)
+    ]),
+    ok = file:set_cwd(UseDir),
+    %% For ?CT_PEER() options see peer:start_options() type
+    {ok, _PeerPid, LongNodeName} = ?CT_PEER(#{
+        name => Node,
+        env => Env,
+        args => Args
+    }),
+    ok = file:set_cwd(SavedDir),
+    % boot_node(Node),
+    {ok, _PeerPid, LongNodeName}.
 
-% -spec maybe_override(Extra :: proplists:proplist(), Env :: proplists:proplist()) ->
-%     proplists:proplist().
-% maybe_override([{K, _} = H | T], L0) ->
-%     [H | maybe_override(T, lists:keydelete(K, 1, L0))];
-% maybe_override([], L0) ->
-%     L0.
+-spec maybe_override(Extra :: proplists:proplist(), Env :: proplists:proplist()) ->
+    proplists:proplist().
+maybe_override([{K, _} = H | T], L0) ->
+    [H | maybe_override(T, lists:keydelete(K, 1, L0))];
+maybe_override([], L0) ->
+    L0.
 
-% %% Run a sequence of application:start() RPC calls
-% boot_node(Node) ->
-%     RemoteApps = [
-%         sasl,
-%         lager,
-%         gproc,
-%         jobs,
-%         kache,
-%         % crypto,
-%         % public_key,
-%         ssl,
-%         aeserialization,
-%         aebytecode,
-%         aevm,
-%         aecontract,
-%         aens,
-%         aeoracle,
-%         aeprimop,
-%         aega,
-%         % ecrecover,
-%         % emcl,
-%         aefate,
-%         % ecli,
-%         aecli,
-%         aecore,
-%         aeapi,
-%         aechannel,
-%         aehttp,
-%         aemon,
-%         aestratum,
-%         aedevmode,
-%         aesync
-%     ],
-%     lists:foreach(
-%         fun(App) -> rpc:call(Node, application, ensure_all_started, [App]) end,
-%         RemoteApps
-%     ).
+%% Run a sequence of application:start() RPC calls
+boot_node(Node) ->
+    RemoteApps = [
+        sasl,
+        lager,
+        gproc,
+        jobs,
+        kache,
+        % crypto,
+        % public_key,
+        ssl,
+        aeserialization,
+        aebytecode,
+        aevm,
+        aecontract,
+        aens,
+        aeoracle,
+        aeprimop,
+        aega,
+        % ecrecover,
+        % emcl,
+        aefate,
+        % ecli,
+        aecli,
+        aecore,
+        aeapi,
+        aechannel,
+        aehttp,
+        aemon,
+        aestratum,
+        aedevmode,
+        aesync
+    ],
+    lists:foreach(
+        fun(App) -> rpc:call(Node, application, ensure_all_started, [App]) end,
+        RemoteApps
+    ).
 
-% -spec connect(node(), list(atom()) | all_mocks) -> ok.
-% connect(N, all_mocks) ->
-%     Mocks = maps:keys(aecore_suite_utils:known_mocks()),
-%     connect(N, Mocks);
-% connect(N, Mocks) when is_list(Mocks) ->
-%     ok = connect(N),
-%     aecore_suite_utils:start_mocks(N, Mocks),
-%     ok.
+-spec connect(node(), list(atom()) | all_mocks) -> ok.
+connect(N, all_mocks) ->
+    Mocks = maps:keys(aecore_suite_utils:known_mocks()),
+    connect(N, Mocks);
+connect(N, Mocks) when is_list(Mocks) ->
+    ok = connect(N),
+    aecore_suite_utils:start_mocks(N, Mocks),
+    ok.
 
-% -spec connect(node()) -> ok.
-% connect(N) ->
-%     connect_wait(N, aehttp).
+-spec connect(node()) -> ok.
+connect(N) ->
+    connect_wait(N, aehttp).
 
-% connect_(N, Timeout, WaitF) when Timeout < 10000, is_function(WaitF, 0) ->
-%     timer:sleep(Timeout),
-%     case net_kernel:hidden_connect_node(N) of
-%         true ->
-%             ct:log("hidden_connect_node(~p) -> true", [N]),
-%             WaitF(),
-%             true;
-%         false ->
-%             ct:log("hidden_connect_node(~p) -> false, retrying ...", [N]),
-%             connect_(N, Timeout * 2, WaitF)
-%     end;
-% connect_(N, _, _) ->
-%     ct:log("exhausted retries (~p)", [N]),
-%     erlang:error({could_not_connect, N}).
+connect_(N, Timeout, WaitF) when Timeout < 10000, is_function(WaitF, 0) ->
+    timer:sleep(Timeout),
+    case net_kernel:hidden_connect_node(N) of
+        true ->
+            ct:log("hidden_connect_node(~p) -> true", [N]),
+            WaitF(),
+            true;
+        false ->
+            ct:log("hidden_connect_node(~p) -> false, retrying ...", [N]),
+            connect_(N, Timeout * 2, WaitF)
+    end;
+connect_(N, _, _) ->
+    ct:log("exhausted retries (~p)", [N]),
+    erlang:error({could_not_connect, N}).
 
-% -spec connect_wait(node(), atom()) -> ok.
-% connect_wait(N, WaitForApp) ->
-%     connect_(N, 50, fun() -> aecore_suite_utils:await_app(N, WaitForApp) end),
-%     aecore_suite_utils:report_node_config(N),
-%     ok.
+-spec connect_wait(node(), atom()) -> ok.
+connect_wait(Node, WaitForApp) ->
+    connect_(Node, 50, fun() -> aecore_suite_utils:await_app(Node, WaitForApp) end),
+    aecore_suite_utils:report_node_config(Node),
+    ok.
 
-% % rpc(Mod, Fun, Args) ->
-% %     rpc(?DEFAULT_NODE, Mod, Fun, Args).
+% rpc(Mod, Fun, Args) ->
+%     rpc(?DEFAULT_NODE, Mod, Fun, Args).
 
-% rpc(Node, Mod, Fun, Args) ->
-%     case rpc:call(Node, Mod, Fun, Args, 5_000) of
-%         {badrpc, Reason} -> error({badrpc, Reason});
-%         R -> R
-%     end.
+rpc(Node, Mod, Fun, Args) ->
+    case rpc:call(Node, Mod, Fun, Args, 5_000) of
+        {badrpc, Reason} -> error({badrpc, Reason});
+        R -> R
+    end.

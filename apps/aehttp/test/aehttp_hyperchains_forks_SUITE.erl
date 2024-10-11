@@ -108,8 +108,8 @@ start_child_nodes(Config) ->
         begin
             aehttp_hyperchains_utils:child_node_config(Node, Stakers, Config),
             % Use a new implementation of start_node
-            {ok, _Pid, LongName} = aecore_suite_utils:start_node(Node, Config, Env),
-            aecore_suite_utils:connect(LongName, [])
+            {ok, _Pid, LongName} = aehttp_hyperchains_utils:start_node(Node, Config, Env),
+            aehttp_hyperchains_utils:connect(LongName, [])
         end
      || {Node, _NodeName, Stakers} <- ?config(nodes, Config)
     ],

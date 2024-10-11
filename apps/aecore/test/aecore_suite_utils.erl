@@ -563,7 +563,6 @@ make_shortcut(Config) ->
 start_node(N, Config) ->
     start_node(N, Config, []).
 
-%% TODO: Is this possible to replace with peer (slave) module?
 start_node(N, Config, ExtraEnv) ->
     MyDir = filename:dirname(code:which(?MODULE)),
     ConfigFilename = proplists:get_value(config_name, Config, "default"),
