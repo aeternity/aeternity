@@ -753,7 +753,13 @@ get_generation_by_height(Height, KeyBlock, forward) ->
             case get_key_block_by_height(Height + 1) of
                 {error, _Reason} -> error;
                 {ok, KeyBlock1}  ->
-                    get_generation_by_height(Height, KeyBlock, aec_blocks:prev_hash(KeyBlock1), forward)
+                    {ok, KeyBlockHash} = aec_blocks:hash_internal_representation(KeyBlock),
+                    case aec_blocks:prev_key_hash(KeyBlock1) of
+                        KeyBlockHash ->
+                            get_generation_by_height(Height, KeyBlock, aec_blocks:prev_hash(KeyBlock1), forward);
+                        _ ->
+                            error
+                    end
             end
     end.
 
@@ -766,6 +772,8 @@ get_generation_by_height(Height, KeyBlock, LastMBHash, forward) ->
     MBHeight = ConsensusModule:micro_block_height_relative_previous_block(key, Height),
     get_generation(forward, KeyBlock, MBHeight, LastMBHash).
 
+get_generation(Dir, KeyBlock, MBHeight, _LastMBHash) when MBHeight < 0 ->
+    {ok, #{ key_block => KeyBlock, micro_blocks => [], dir => Dir }};
 get_generation(Dir, KeyBlock, MBHeight, LastMBHash) ->
     {ok, MBs} = get_micro_blocks_at_height(MBHeight, LastMBHash),
     {ok, #{ key_block => KeyBlock, micro_blocks => MBs, dir => Dir }}.

@@ -380,6 +380,7 @@ wait_same_top(Nodes, Attempts) ->
     end.
 
 spend_txs(Config) ->
+    produce_cc_blocks(Config, 1),
     Top0 = rpc(?NODE1, aec_chain, top_header, []),
     ct:log("Top before posting spend txs: ~p", [aec_headers:height(Top0)]),
     NetworkId = ?config(network_id, Config),
@@ -491,6 +492,7 @@ respect_schedule(Node, EpochStart, Epoch, TopHeight) ->
     respect_schedule(Node, EILast + 1, Epoch + 1, TopHeight).
 
 simple_withdraw(Config) ->
+    produce_cc_blocks(Config, 3), %% Make sure there are no lingering TxFees in the reward
     [{_, NodeName, _}|_] = ?config(nodes, Config),
     AliceBin = encoded_pubkey(?ALICE),
     Alice = binary_to_list(encoded_pubkey(?ALICE)),
@@ -531,8 +533,7 @@ simple_withdraw(Config) ->
     Fee = aetx:fee(aetx_sign:tx(CallTx)),
     {Producer, KeyReward} = key_reward_provided(),
     ct:log("Initial balance: ~p, withdrawn: ~p, gas used: ~p, gas price: ~p, fee: ~p, end balance: ~p",
-           [InitBalance, WithdrawAmount, GasUsed, GasPrice,
-                          Fee, EndBalance]),
+           [InitBalance, WithdrawAmount, GasUsed, GasPrice, Fee, EndBalance]),
     {ok, AliceContractSPower1} = inspect_staking_contract(?ALICE, {staking_power, ?ALICE}, Config),
     {ok, BobContractSPower1} = inspect_staking_contract(?ALICE, {staking_power, ?BOB}, Config),
     ?assert(BobContractSPower == BobContractSPower1 orelse
@@ -876,7 +877,7 @@ post_pin_to_pc(Config) ->
 
     %% Get to first block in new epoch
     Height1 = rpc(Node, aec_chain, top_height, []),
-    {ok, #{last := Last1, length := Len, epoch := Epoch}} = rpc(Node, aec_chain_hc, epoch_info, []),
+    {ok, #{last := Last1}} = rpc(Node, aec_chain_hc, epoch_info, []),
     {ok, _} = produce_cc_blocks(Config, Last1 - Height1 + 1),
     {ok, Pin} = rpc(Node, aec_pinning_agent, get_pinning_data, []),
     PinPayloadBin = rpc(Node, aec_pinning_agent, encode_pin_payload, [Pin]),
@@ -1465,7 +1466,7 @@ get_generations(Node, FromHeight, ToHeight) ->
     ReversedBlocks =
         lists:foldl(
             fun(Height, Accum) ->
-                case rpc(Node, aec_chain, get_generation_by_height, [Height, forward]) of
+                case rpc(Node, aec_chain, get_generation_by_height, [Height, backward]) of
                     {ok, #{key_block := KB, micro_blocks := MBs}} ->
                         ReversedGeneration = lists:reverse(MBs) ++ [KB],
                         ReversedGeneration ++ Accum;

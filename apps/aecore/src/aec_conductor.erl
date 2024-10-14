@@ -1372,7 +1372,7 @@ hc_create_microblock(ConsensusModule, TopHash, Leader) ->
                     MBHash
             end;
         _ ->
-            epoch_mining:debug("Failed micro-block, top is still: ~p", [TopHash]),
+            epoch_mining:info("Failed micro-block, top is still: ~p", [TopHash]),
             TopHash
     end.
 
