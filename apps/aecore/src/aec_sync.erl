@@ -1188,8 +1188,11 @@ do_fetch_generation_ext(Hash, PeerId) ->
 gen_is_consecutive(backward, _KB, []) ->
     ok;
 gen_is_consecutive(backward, KB, [MB]) ->
+    ConsensusModule = aec_blocks:consensus_module(KB),
+    ExpectedHeight =
+        ConsensusModule:key_block_height_relative_previous_block(micro, aec_blocks:height(MB)),
     case
-        (aec_blocks:height(KB) =:= (1 + aec_blocks:height(MB)))
+        (aec_blocks:height(KB) =:= ExpectedHeight)
         andalso (aec_blocks:prev_hash(KB) =:= header_hash(MB))
     of
         false -> {error, {MB, KB}};

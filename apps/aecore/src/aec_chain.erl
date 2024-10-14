@@ -723,76 +723,75 @@ get_key_block_by_height(Height) when is_integer(Height), Height >= 0 ->
 
 -spec get_current_generation() -> 'error' | {'ok', generation()}.
 get_current_generation() ->
-    get_generation_(top_block_node()).
-
-get_generation_(#{hash := Hash, header := Header}) ->
-    case aec_headers:type(Header) of
-        key ->
-            {ok, #{ key_block => aec_blocks:new_key_from_header(Header), micro_blocks => [], dir => forward }};
-        micro ->
-            Index = maps:from_list(aec_db:find_headers_and_hash_at_height(aec_headers:height(Header))),
-            get_generation_with_header_index(Hash, Index)
-    end;
-get_generation_(Hash) when is_binary(Hash) ->
-    case get_header(Hash) of
-        error -> error;
-        {ok, Header} ->
-            get_generation_(#{hash => Hash, header => Header})
-    end;
-get_generation_(_) ->
-    error.
-
-get_generation_with_header_index(TopHash, Index) ->
-    get_generation_with_header_index(TopHash, Index, []).
-
-get_generation_with_header_index(TopHash, Index, MBs) ->
-    H = maps:get(TopHash, Index),
-    case aec_headers:type(H) of
-        key -> {ok, #{ key_block => aec_blocks:new_key_from_header(H), micro_blocks => MBs, dir => forward }};
-        micro ->
-            Block = aec_db:get_block_from_micro_header(TopHash, H),
-            get_generation_with_header_index(aec_headers:prev_hash(H), Index, [Block | MBs])
-    end.
+    #{header := TopHeader} = top_block_node(),
+    get_generation_by_height(aec_headers:height(TopHeader), forward).
 
 -spec get_generation_by_hash(binary(), forward | backward) ->
         'error' | {'ok', generation()}.
 get_generation_by_hash(KeyBlockHash, Dir) ->
     case aec_db:find_key_block(KeyBlockHash) of
         none -> error;
-        {value, KeyBlock} when Dir == backward ->
-            case get_generation_(aec_blocks:prev_hash(KeyBlock)) of
-                error         -> error;
-                {ok, G = #{}} -> {ok, G#{ key_block => KeyBlock, dir => Dir }}
-            end;
-        {value, KeyBlock} when Dir == forward ->
-            case get_generation_by_height(aec_blocks:height(KeyBlock), forward) of
-                {ok, G = #{ key_block := KeyBlock }} -> {ok, G};
-                {ok, _G}                             -> error; %% KeyBlockHash not on chain!!
-                error                                -> error
-            end
+        {value, KeyBlock} -> get_generation_by_height(aec_blocks:height(KeyBlock), KeyBlock, Dir)
     end.
 
 -spec get_generation_by_height(aec_blocks:height(), forward | backward) ->
         'error' | {'ok', generation()}.
-get_generation_by_height(Height, backward) ->
+get_generation_by_height(Height, Dir) ->
     case get_key_block_by_height(Height) of
         {error, _Reason} -> error;
-        {ok, KeyBlock} ->
-            case get_generation_(aec_blocks:prev_hash(KeyBlock)) of
-                error         -> error;
-                {ok, G = #{}} -> {ok, G#{ key_block => KeyBlock, dir => backward }}
-            end
-    end;
-get_generation_by_height(Height, forward) ->
-    #{header := TopHeader} = TopNode = top_block_node(),
+        {ok, KeyBlock}   -> get_generation_by_height(Height, KeyBlock, Dir)
+    end.
+
+get_generation_by_height(Height, KeyBlock, backward) ->
+    get_generation_by_height(Height, KeyBlock, aec_blocks:prev_hash(KeyBlock), backward);
+get_generation_by_height(Height, KeyBlock, forward) ->
+    #{header := TopHeader, hash := TopHash} = top_block_node(),
     TopHeight = aec_headers:height(TopHeader),
-    if TopHeight < Height  -> error;
-       TopHeight == Height -> get_generation_(TopNode);
-       true                ->
-           case get_key_block_by_height(Height + 1) of
-               {error, _Reason} -> error;
-               {ok, KeyBlock}   -> get_generation_(aec_blocks:prev_hash(KeyBlock))
-           end
+    if  TopHeight < Height  -> error;
+        TopHeight == Height -> get_generation_by_height(Height, KeyBlock, TopHash, forward);
+        true                ->
+            case get_key_block_by_height(Height + 1) of
+                {error, _Reason} -> error;
+                {ok, KeyBlock1}  ->
+                    {ok, KeyBlockHash} = aec_blocks:hash_internal_representation(KeyBlock),
+                    case aec_blocks:prev_key_hash(KeyBlock1) of
+                        KeyBlockHash ->
+                            get_generation_by_height(Height, KeyBlock, aec_blocks:prev_hash(KeyBlock1), forward);
+                        _ ->
+                            error
+                    end
+            end
+    end.
+
+get_generation_by_height(Height, KeyBlock, LastMBHash, backward) ->
+    ConsensusModule = aec_blocks:consensus_module(KeyBlock),
+    MBHeight = ConsensusModule:micro_block_height_relative_previous_block(key, Height - 1),
+    get_generation(backward, KeyBlock, MBHeight, LastMBHash);
+get_generation_by_height(Height, KeyBlock, LastMBHash, forward) ->
+    ConsensusModule = aec_blocks:consensus_module(KeyBlock),
+    MBHeight = ConsensusModule:micro_block_height_relative_previous_block(key, Height),
+    get_generation(forward, KeyBlock, MBHeight, LastMBHash).
+
+get_generation(Dir, KeyBlock, MBHeight, _LastMBHash) when MBHeight < 0 ->
+    {ok, #{ key_block => KeyBlock, micro_blocks => [], dir => Dir }};
+get_generation(Dir, KeyBlock, MBHeight, LastMBHash) ->
+    {ok, MBs} = get_micro_blocks_at_height(MBHeight, LastMBHash),
+    {ok, #{ key_block => KeyBlock, micro_blocks => MBs, dir => Dir }}.
+
+get_micro_blocks_at_height(Height, LastMBHash) ->
+    Index = maps:from_list(aec_db:find_headers_and_hash_at_height(Height)),
+    get_micro_blocks_at_height(LastMBHash, Index, []).
+
+get_micro_blocks_at_height(Hash, Index, MBs) ->
+    case maps:get(Hash, Index, undefined) of
+        undefined -> {ok, MBs};
+        H ->
+            case aec_headers:type(H) of
+                key -> {ok, MBs};
+                micro ->
+                    Block = aec_db:get_block_from_micro_header(Hash, H),
+                    get_micro_blocks_at_height(aec_headers:prev_hash(H), Index, [Block | MBs])
+            end
     end.
 
 %%%===================================================================
