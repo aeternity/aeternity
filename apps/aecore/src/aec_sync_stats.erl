@@ -161,7 +161,7 @@ set_sync_stat(Id, SyncStat, State) ->
     lists:keystore(Id, #sync_stat.id, State, touch(SyncStat)).
 
 touch(SyncStat) ->
-    SyncStat#sync_stat{ last_update = now_ms() }.
+    SyncStat#sync_stat{ last_update = erlang:system_time(millisecond) }.
 
 %% -- Stats and aggregation -----------------------------------------------
 empty_agg(Step, Limit) ->
@@ -200,8 +200,3 @@ log_agg_stats(#{t0 := T0, t1 := T1, t := T, gs := Gs, mbs := MBs, txs := Txs}) -
                     [Gs, T / (1000 * Gs), MBs, Txs, TWall / 1_000_000, T / 1_000_000, (T * 100) / TWall]);
 log_agg_stats(_Incomplete) ->
     ok.
-
-%% ------------------------------------------------------------------------
-%% -- Misc helpers
-%% ------------------------------------------------------------------------
-now_ms() -> erlang:system_time(millisecond).

@@ -270,7 +270,7 @@ format_status(_Opt, Status) ->
 push_payment(#aestratum_payment{id = Id} = P, S) ->
     try ?TXN(send_payment(P, S#aestratum_state.height, S#aestratum_state.protocol)) of
         {Pid, TxHash, PayoutTxArgs, AbsMap} ->
-            Date = calendar:now_to_datetime(erlang:timestamp()),
+            Date = erlang:universaltime(),
             P1   = ok_val_err(?TXN(aestratum_db:update_payment(P, AbsMap, TxHash, Date))),
             log_push_tx(P1, PayoutTxArgs),
             S#aestratum_state{tx_push_pid = Pid,

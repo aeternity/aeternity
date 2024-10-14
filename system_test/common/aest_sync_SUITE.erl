@@ -210,23 +210,23 @@ new_node_joins_network(Cfg) ->
     %% Starts a chain with two nodes
     start_node(old_node1, Cfg),
     start_node(old_node2, Cfg),
-    T0 = erlang:system_time(seconds),
+    T0 = erlang:system_time(second),
     wait_for_startup([old_node1, old_node2], 4, Cfg),
     #{network_id := <<"ae_system_test">>} = aest_nodes:get_status(old_node1), %% Check node picked user config
     #{network_id := <<"ae_system_test">>} = aest_nodes:get_status(old_node2), %% Check node picked user config
-    StartupTime = erlang:system_time(seconds) - T0,
+    StartupTime = erlang:system_time(second) - T0,
 
     Length = max(30, 5 + proplists:get_value(blocks_per_second, Cfg) * StartupTime),
 
     %% Mines for 20 blocks and calculate the average mining time
-    StartTime = erlang:system_time(seconds),
+    StartTime = erlang:system_time(second),
 
 
     inject_spend_txs(old_node1, patron(), 5, 1, 100),
     inject_spend_txs(old_node2, patron(), 5, 6, 100),
 
     wait_for_value({height, Length + 1}, [old_node1, old_node2], Length * ?MINING_TIMEOUT, Cfg),
-    EndTime = erlang:system_time(seconds),
+    EndTime = erlang:system_time(second),
     %% Average mining time per block
     MiningTime = ((EndTime - StartTime) * 1000) div Length,
     ct:log("Mining time per block ~p ms for ~p blocks", [MiningTime, Length]),
@@ -274,9 +274,9 @@ docker_keeps_data(Cfg) ->
     wait_for_startup([standalone_node], 0, Cfg),
 
     %% Mines for 20 blocks and calculate the average mining time
-    StartTime = erlang:system_time(seconds),
+    StartTime = erlang:system_time(second),
     wait_for_value({height, Length}, [standalone_node], Length * ?MINING_TIMEOUT, Cfg),
-    EndTime = erlang:system_time(seconds),
+    EndTime = erlang:system_time(second),
     %% Average mining time per block
     MiningTime = ((EndTime - StartTime) * 1000) div Length,
 
