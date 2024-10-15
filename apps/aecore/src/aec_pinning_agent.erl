@@ -14,9 +14,9 @@
     get_pinning_data/0,
     encode_pin_payload/1,
     decode_pin_payload/1,
-    get_pins/3,
     create_pin_tx/6,
     post_pin_tx/2,
+    get_pin_by_tx_hash/2,
     encode_child_pin_payload/1,
     decode_child_pin_payload/1,
     is_pin/1
@@ -78,34 +78,6 @@ is_pin(Pin) ->
     end.
 
 
-
--spec get_pins(aehttpc:node_spec(), [binary()], binary()) -> {ok, list()} | {error, term()}.
-get_pins(NodeSpec, MBs, ParentHCAccountPubKey) ->
-    Txs = lists:flatmap(
-        fun(MB) ->
-            get_hc_pins(NodeSpec, MB, ParentHCAccountPubKey)
-        end, MBs),
-    {ok, Txs}.
-
-get_hc_pins(NodeSpec, MB, ParentHCAccountPubKey) ->
-    Path =  <<"/v3/micro-blocks/hash/", MB/binary, "/transactions">>,
-    {ok, Res} = get_request(Path, NodeSpec, 5000),
-    #{<<"transactions">> := Txs} = Res,
-    ExpectedRecipient = aeser_api_encoder:encode(account_pubkey, ParentHCAccountPubKey),
-    lists:foldl(
-        fun(#{<<"tx">> := Tx}, Acc) ->
-            case Tx of
-                #{<<"type">>            := <<"SpendTx">>,
-                  <<"recipient_id">>    := ExpectedRecipient,
-                  <<"sender_id">>       := _SenderId,
-                  <<"payload">>         := PinEnc} ->
-                        {ok, Pin} = aeser_api_encoder:safe_decode(bytearray, PinEnc),
-                        DecodedPin = decode_pin_payload(Pin),
-                        [DecodedPin | Acc];
-                _ -> Acc
-            end
-        end, [], Txs).
-
 -spec create_pin_tx(binary(), binary(), binary(), integer(), integer(), binary()) -> aetx:tx().
 create_pin_tx(NodeSpec, SenderEnc, ReceiverPubkey, Amount, Fee, PinPayload) ->
     %% 1. get the next nonce for our account over at the parent chain
@@ -128,6 +100,16 @@ post_pin_tx(SignedSpendTx, NodeSpec) ->
     Path = <<"/v3/transactions">>,
     post_request(Path, Body, NodeSpec, 5000).
 
+get_pin_by_tx_hash(TxHash, NodeSpec) ->
+    %SerHash = aeser_api_encoder:encode(tx_hash, TxHash),
+    TxPath = <<"/v3/transactions/", TxHash/binary>>,
+    {ok, #{<<"tx">> := #{<<"payload">> := EncPin}}} = get_request(TxPath, NodeSpec, 5000),
+    {ok, Pin} = aeser_api_encoder:safe_decode(bytearray, EncPin),
+    decode_pin_payload(Pin).
+    %get_request(TxPath, NodeSpec, 5000).
+
+
+
 %% TODO This function copied from aec_test_utils as that module is not available
 %% in normal builds
 %% TODO - wallet interaction of some kind to get privKey
@@ -144,7 +126,7 @@ get_request(Path, NodeSpec, Timeout) ->
         Req = {UrlPath, []},
         HTTPOpt = [{timeout, Timeout}],
         Opt = [],
-        %% lager:debug("Req: ~p, with URL: ~ts", [Req, Url]),
+        lager:debug("Req: ~p, with URL: ~ts", [Req, Url]),
         case httpc:request(get, Req, HTTPOpt, Opt) of
             {ok, {{_, 200 = _Code, _}, _, Res}} ->
                 %% lager:debug("Req: ~p, Res: ~p with URL: ~ts", [Req, Res, Url]),

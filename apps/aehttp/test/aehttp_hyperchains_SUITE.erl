@@ -1096,7 +1096,7 @@ last_leader_validates_pin_and_post_to_contract(Config) ->
     %% post parent spend tx hash to CC
     tx_hash_to_child(TxHash, ?ALICE, Config),
     %% move forward to last block
-    {ok, #{epoch  := _Epoch,
+    {ok, #{epoch  := Epoch,
            first  := First,
            last   := Last,
            length := _Length}} = rpc(?NODE1, aec_chain_hc, epoch_info, []),
@@ -1114,14 +1114,21 @@ last_leader_validates_pin_and_post_to_contract(Config) ->
 
     %% we test the contract call and then put it (or a similar one...) in the tx pool
     %% TODO should really be the same Tx to ensure consistency
-    {ok, Pin} = rpc(?NODE1, aec_chain_hc, pin, [DecodedPL]),
-    ok = pin_contract_call_tx(Config, "pin", [DecodedPL], 0, ?ALICE),
+    %% ISSUE: the contracttx is added to pool in Epoch X, but is actually excuted in epoch X+1
+    %% so the value of state.epoch is X+1. Is that the correct behavior?
+    ok = pin_contract_call_tx(Config, "pin", [DecodedPL, Epoch], 0, ?ALICE),
     %% mine to next block/epoch. Why hasn't the state updated yet!?
     {ok, _} = produce_cc_blocks(Config, 1),
-    {ok, <<"foo">>} = rpc(?NODE1, aec_chain_hc, pin_info, []), 
+    {ok, <<"no_pin">>} = rpc(?NODE1, aec_chain_hc, pin_info, [Epoch]), 
     %% mine another block. NOW the state is updated. WHY!?
-    {ok, _} = produce_cc_blocks(Config, 1),
-    {ok, Pin} = rpc(?NODE1, aec_chain_hc, pin_info, []), 
+    {ok, _} = produce_cc_blocks(Config, 3),
+    {ok, DecodedPL} = rpc(?NODE1, aec_chain_hc, pin_info, [Epoch]), 
+
+    ParentNodeSpec = #{scheme => "http", host => "127.0.0.1", port => aecore_suite_utils:external_api_port(?PARENT_CHAIN_NODE)},
+    #{epoch := _PinEpoch, height := PinHeight, block_hash := PinHash} = 
+        aec_pinning_agent:get_pin_by_tx_hash(DecodedPL, ParentNodeSpec),
+    
+    {ok, PinHash} = rpc(?NODE1, aec_chain_state, get_key_block_hash_at_height, [PinHeight]),
 
     ok.
 
@@ -1147,7 +1154,7 @@ pin_contract_call_tx(Config, Fun, Args, Amount, From) ->
     {ok, Tx} = aect_call_tx:new(TxSpec),
     NetworkId = ?config(network_id, Config),
     SignedTx = sign_tx(Tx, privkey(From), NetworkId),
-    ok = rpc:call(?NODE1_NAME, aec_tx_pool, push, [SignedTx, tx_received]),
+    rpc:call(?NODE1_NAME, aec_tx_pool, push, [SignedTx, tx_received]),
     ok.
 
 
@@ -1158,8 +1165,7 @@ pick_pin_spends_to(Account, Txs) ->
     [ T || {signed_tx,{aetx,spend_tx,aec_spend_tx,_,{spend_tx,_,{id,account,Account2},_,_,_,_,T}},_} <- Txs, Account =:= Account2, aec_pinning_agent:is_pin(T)].
 
 pin_to_parent(AccountPK) ->
-    {ok, Pin} = rpc(?NODE1, aec_pinning_agent, get_pinning_data, []),
-    PinPayloadBin = rpc(?NODE1, aec_pinning_agent, encode_pin_payload, [Pin]),
+    {ok, #{parent_payload := PinPayloadBin}} = rpc(?NODE1, aec_pinning_agent, get_pinning_data, []),
 
     AccPKEncEnc = aeser_api_encoder:encode(account_pubkey, AccountPK),
     ParentNodeSpec = #{scheme => "http", host => "127.0.0.1", port => aecore_suite_utils:external_api_port(?PARENT_CHAIN_NODE)},

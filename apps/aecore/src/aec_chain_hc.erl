@@ -14,7 +14,7 @@
         , epoch_info/0
         , epoch_info/1
         , validators_at_height/1
-        , pin_info/0
+        , pin_info/1
         , pin/1
         %% epoch determined
         , epoch_start_height/1
@@ -88,11 +88,11 @@ validator_schedule(RunEnv, Seed, Validators, Length) ->
     {ok, lists:map(fun({address, Address}) -> Address end, Result)}.
 
 
-pin_info() ->
-    pin_info(top).
+pin_info(Height) ->
+    pin_info(top, Height).
 
-pin_info(RunEnv) ->
-    call_consensus_contract_w_env(?ELECTION_CONTRACT, RunEnv, "pin_info", []).
+pin_info(RunEnv, Height) ->
+    call_consensus_contract_w_env(?ELECTION_CONTRACT, RunEnv, "pin_info", [Height]).
 
 pin(Hash) ->
     pin(top, Hash).
