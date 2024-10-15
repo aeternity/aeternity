@@ -100,6 +100,13 @@
         , terminate/2
         , code_change/3]).
 
+%%%% Used by hc fork testing
+%%-ifdef(TEST).
+%%-export([ hc_create_block_fun/2
+%%        , create_key_block_candidate/1
+%%        , dispatch_worker/3]).
+%%-endif.
+
 -export_type([options/0]).
 
 -include("blocks.hrl").
@@ -1333,10 +1340,24 @@ hc_create_block_fun(ConsensusModule, TopHash) ->
             {ok, Leader} ->
                   epoch_mining:debug("Got leader, calling hc_create_block", []),
                   {hc_create_block(ConsensusModule, TopHash, Leader), TopHash};
+            {error, {missing_previous_block, Leader, MissingBlocksCount}} ->
+                  %% We are the leader, but need 1+ hole blocks before we can produce
+                  epoch_mining:debug(
+                      "Leader, at cutoff time, no previous block in cache: creating ~p hole(s)",
+                      [MissingBlocksCount]
+                  ),
+                  {hc_create_holes_and_block(ConsensusModule, TopHash, Leader, MissingBlocksCount), TopHash};
             {error, _} = Err ->
                 {Err, TopHash}
         end
     end.
+
+%% For as long as chain length is shorter than currentHeight-1, create holes
+hc_create_holes_and_block(ConsensusModule, TopHash, Leader, MissingBlocksCount) ->
+    lists:foreach(
+        fun(_) -> aec_block_hole_candidate:create(ConsensusModule, TopHash, Leader) end,
+        lists:seq(1, MissingBlocksCount)),
+    hc_create_block(ConsensusModule, TopHash, Leader).
 
 hc_create_block(ConsensusModule, TopHash0, Leader) ->
     TopHash = hc_create_microblock(ConsensusModule, TopHash0, Leader),

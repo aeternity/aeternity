@@ -39,6 +39,7 @@
 -type instances() :: list(instance()).
 
 -type mode() :: local_pow | stratum | pos.
+-type bin32() :: binary().
 -record(state, {key_block_candidates                :: list({candidate_hash(), #candidate{}}) | 'undefined',
                 micro_block_candidate               :: #candidate{} | 'undefined',
                 blocked_tags            = []        :: ordsets:ordset(atom()),
@@ -52,7 +53,7 @@
                 instances               = []        :: instances(),
                 consensus                           :: #consensus{},
                 has_beneficiary         = false     :: boolean(),
-                stratum_beneficiary                 :: <<_:(32*8)>> | 'undefined' | fun(() -> <<_:(32*8)>>),
+                stratum_beneficiary                 :: bin32() | 'undefined' | fun(() -> bin32()),
                 fraud_list              = []        :: list({binary(), aec_pof:pof()}),
                 pending_key_block                   :: aec_blocks:block() | 'undefined',
                 mode                    = local_pow :: mode()

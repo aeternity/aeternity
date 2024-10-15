@@ -636,8 +636,6 @@ child_block_production_time() ->
     Fun = fun() -> get_consensus_config_key([<<"child_block_production_time">>]) end,
     aeu_ets_cache:get(?ETS_CACHE_TABLE, child_block_production_time, Fun).
 
-
-
 %% This is the contract owner, calls shall be only available via protocol
 contract_owner() ->
     Fun = fun() ->

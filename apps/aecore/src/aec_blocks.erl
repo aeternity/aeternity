@@ -20,6 +20,7 @@
          is_key_block/1,
          miner/1,
          new_key/11,
+         new_key/12,
          new_key_from_header/1,
          new_micro/9,
          new_micro_from_header/3,
@@ -163,6 +164,21 @@ type(#mic_block{}) -> 'micro'.
 %%% Constructors
 %%%===================================================================
 
+%% @doc Creates a key block with specific flags
+-spec new_key(height(), block_header_hash(), block_header_hash(), state_hash(),
+    aec_consensus:key_target(),
+    non_neg_integer(), non_neg_integer(), info(),
+    aec_hard_forks:protocol_vsn(), miner_pubkey(), beneficiary_pubkey(),
+    block_header_flags()
+) -> key_block().
+new_key(Height, PrevHash, PrevKeyHash, RootHash, Target,
+            Nonce, Time, Info, Version, Miner, Beneficiary, Flags) ->
+    H = aec_headers:new_key_header(Height, PrevHash, PrevKeyHash, RootHash,
+                                   Miner, Beneficiary, Target,
+                                   no_value, Nonce, Time, Info, Version, Flags),
+    #key_block{header = H}.
+
+%% @doc Creates a key block with default flags
 -spec new_key(height(), block_header_hash(), block_header_hash(), state_hash(),
               aec_consensus:key_target(),
               non_neg_integer(), non_neg_integer(), info(),

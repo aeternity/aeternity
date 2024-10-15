@@ -12,18 +12,20 @@
 -include("blocks.hrl").
 
 %% -- API functions ----------------------------------------------------------
+create(BlockHash, Beneficiary, Miner) -> create(BlockHash, Beneficiary, Miner, 0).
+
 -spec create(BlockHash, Beneficiary, Miner) -> {ok, aec_blocks:block()} | {error, term()}
   when BlockHash :: aec_blocks:block() | aec_blocks:block_header_hash()
      , Beneficiary :: aec_keys:pubkey()
      , Miner :: aec_keys:pubkey().
-create(BlockHash, Beneficiary, Miner) when is_binary(BlockHash) ->
+create(BlockHash, Beneficiary, Miner, Flags) when is_binary(BlockHash) ->
     case aec_chain:get_block(BlockHash) of
         {ok, Block} ->
             create(Block, Beneficiary, Miner);
         error ->
             {error, block_not_found}
     end;
-create(Block, Beneficiary, Miner) ->
+create(Block, Beneficiary, Miner, Flags) ->
     {ok, BlockHash} = aec_blocks:hash_internal_representation(Block),
     ConsensusModule = aec_blocks:consensus_module(Block),
     Height = ConsensusModule:key_block_height_relative_previous_block(aec_blocks:type(Block),

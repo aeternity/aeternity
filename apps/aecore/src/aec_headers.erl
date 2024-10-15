@@ -23,6 +23,7 @@
          info/1,
          miner/1,
          new_key_header/12,
+         new_key_header/13,
          new_micro_header/8,
          nonce/1,
          pof_hash/1,
