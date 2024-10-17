@@ -32,6 +32,20 @@ sudo apt-get -qq update \
 && sudo apt-get -qq -y install git autoconf build-essential cmake erlang libsodium-dev libgmp-dev
 ```
 
+#### Building with dynamically linked RocksDB
+
+To speed up build times, you can tell the RocksDB bindings to use
+dynamically loaded system libraries instead of building everything from
+source with static linking. You can do this by setting the following
+environment variable:
+
+``` bash
+export ERLANG_ROCKSDB_OPTS="-DWITH_SYSTEM_ROCKSDB=ON -DWITH_LZ4=ON -DWITH_SNAPPY=ON"
+```
+
+You must then also install the corresponding libraries on your system:
+`sudo apt install librocksdb-dev liblz4-dev libsnappy-dev`.
+
 ### MacOS
 
 The easiest way to install package on MacOS is Homebrew, it can be installed by running:
@@ -86,21 +100,6 @@ To build a particular version it should be checkout first:
 VERSION=X.Y.Z # set a particular version
 git checkout tags/v${VERSION:?}
 ```
-
-### Building with dynamically linked RocksDB
-
-To speed up build times, you can tell the RocksDB bindings to use
-dynamically loaded system libraries instead of building everything from
-source with static linking. You can do this by setting the following
-environment variable:
-
-``` bash
-export ERLANG_ROCKSDB_OPTS="-DWITH_SYSTEM_ROCKSDB=ON -DWITH_LZ4=ON -DWITH_SNAPPY=ON"
-```
-
-You must then also install the corresponding libraries on your system; for
-example, on Ubuntu you would do `sudo apt install librocksdb-dev liblz4-dev
-libsnappy-dev`.
 
 ### Production build
 
