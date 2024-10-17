@@ -22,7 +22,7 @@
     is_pin/1
     ]).
 
-
+% PINREFAC aec_chains_hc?
 -spec get_pinning_data() -> {ok, map()} | {error, atom()}.
 get_pinning_data() ->
     {ok, #{epoch := Epoch,
@@ -77,7 +77,7 @@ is_pin(Pin) ->
         _ -> true
     end.
 
-
+% PINREFAC aec_parent_connector?
 -spec create_pin_tx(binary(), binary(), binary(), integer(), integer(), binary()) -> aetx:tx().
 create_pin_tx(NodeSpec, SenderEnc, ReceiverPubkey, Amount, Fee, PinPayload) ->
     %% 1. get the next nonce for our account over at the parent chain
@@ -94,12 +94,14 @@ create_pin_tx(NodeSpec, SenderEnc, ReceiverPubkey, Amount, Fee, PinPayload) ->
     {ok, SpendTx} = aec_spend_tx:new(TxArgs),
     SpendTx.
 
+% PINREFAC aec_parent_connector?
 post_pin_tx(SignedSpendTx, NodeSpec) ->
     Transaction = aeser_api_encoder:encode(transaction, aetx_sign:serialize_to_binary(SignedSpendTx)),
     Body = #{<<"tx">> => Transaction},
     Path = <<"/v3/transactions">>,
     post_request(Path, Body, NodeSpec, 5000).
 
+% PINREFAC aec_parent_connector?
 get_pin_by_tx_hash(TxHash, NodeSpec) ->
     %SerHash = aeser_api_encoder:encode(tx_hash, TxHash),
     TxPath = <<"/v3/transactions/", TxHash/binary>>,
@@ -119,6 +121,7 @@ get_pin_by_tx_hash(TxHash, NodeSpec) ->
 %% TODO: redo this whole thing
 -define(VALID_PRIVK(K), byte_size(K) =:= 64).
 
+% PINREFAC aec_parent_connector
 get_request(Path, NodeSpec, Timeout) ->
     try
         Url = aehttpc:url(NodeSpec),
@@ -145,6 +148,7 @@ get_request(Path, NodeSpec, Timeout) ->
         {error, {E, R, S}}
     end.
 
+% PINREFAC aec_parent_connector
 -spec post_request(binary(), map(), aehttpc:node_spec(), integer()) -> {ok, map()} | {error, term()}.
 post_request(Path, Body, NodeSpec, Timeout) ->
     try
