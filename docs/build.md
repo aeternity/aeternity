@@ -32,6 +32,20 @@ sudo apt-get -qq update \
 && sudo apt-get -qq -y install git autoconf build-essential cmake erlang libsodium-dev libgmp-dev
 ```
 
+#### Building with dynamically linked RocksDB
+
+To speed up build times, you can tell the RocksDB bindings to use
+dynamically loaded system libraries instead of building everything from
+source with static linking. You can do this by setting the following
+environment variable:
+
+``` bash
+export ERLANG_ROCKSDB_OPTS="-DWITH_SYSTEM_ROCKSDB=ON -DWITH_LZ4=ON -DWITH_SNAPPY=ON"
+```
+
+You must then also install the corresponding libraries on your system:
+`sudo apt install librocksdb-dev liblz4-dev libsnappy-dev`.
+
 ### MacOS
 
 The easiest way to install package on MacOS is Homebrew, it can be installed by running:
@@ -82,12 +96,10 @@ git clone https://github.com/aeternity/aeternity.git aeternity_source && cd aete
 **NOTE**: By default git will checkout the `master` (default) branch of the source code.
 To build a particular version it should be checkout first:
 
-
 ```bash
 VERSION=X.Y.Z # set a particular version
 git checkout tags/v${VERSION:?}
 ```
-
 
 ### Production build
 
