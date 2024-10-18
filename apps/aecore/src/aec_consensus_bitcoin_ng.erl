@@ -29,6 +29,9 @@
         %% Dirty validation before starting the state transition
         , dirty_validate_key_node_with_ctx/3
         , dirty_validate_micro_node_with_ctx/3
+        %% Block structure
+        , key_block_height_relative_previous_block/2
+        , micro_block_height_relative_previous_block/2
         %% State transition
         , state_pre_transform_key_node_consensus_switch/2
         , state_pre_transform_key_node/3
@@ -415,6 +418,15 @@ get_fraud_miner(Ctx) ->
 
 time_diff_greater_than_minimal(Node, PrevNode) ->
     aec_block_insertion:node_time(Node) >= aec_block_insertion:node_time(PrevNode) + aec_governance:micro_block_cycle().
+
+%% ------------------------------------------------------------------------
+%% -- Block structure
+%% ------------------------------------------------------------------------
+key_block_height_relative_previous_block(_Type, Height) ->
+    Height + 1.
+
+micro_block_height_relative_previous_block(_Type, Height) ->
+    Height.
 
 %% -------------------------------------------------------------------
 %% Custom state transitions

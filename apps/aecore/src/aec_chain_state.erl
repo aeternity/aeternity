@@ -75,7 +75,7 @@
 
 -module(aec_chain_state).
 
--export([ calculate_state_for_new_keyblock/4
+-export([ calculate_state_for_new_keyblock/5
         , find_common_ancestor/2
         , get_key_block_hash_at_height/1
         , key_block_hashes_at_height/1
@@ -271,16 +271,16 @@ hash_is_in_main_chain(Hash) ->
     end.
 
 -spec calculate_state_for_new_keyblock(
+        non_neg_integer(),
         binary(),
         aec_keys:pubkey(),
         aec_keys:pubkey(),
         aec_hard_forks:protocol_vsn()) -> {'ok', aec_trees:trees()} | 'error'.
-calculate_state_for_new_keyblock(PrevHash, Miner, Beneficiary, Protocol) ->
+calculate_state_for_new_keyblock(Height, PrevHash, Miner, Beneficiary, Protocol) ->
     aec_db:ensure_transaction(fun() ->
         case db_find_node(PrevHash) of
             error -> error;
             {ok, PrevNode} ->
-                Height = node_height(PrevNode) + 1,
                 Node  = fake_key_node(PrevNode, Height, Miner, Beneficiary, Protocol),
                 State = new_state_from_persistence(),
                 case get_state_trees_in(Node, true) of
@@ -505,9 +505,14 @@ get_key_block_hash_at_height(Height, State) when is_integer(Height), Height >= 0
             case Height > TopHeight of
                 true -> error;
                 false ->
+                    ConsensusModule = aec_block_insertion:node_consensus(TopNode),
                     case db_find_key_nodes_at_height(Height) of
-                        error        -> error({broken_chain, Height});
-                        {ok, [Node]} -> {ok, node_hash(Node)};
+                        error when ConsensusModule == aec_consensus_hc ->
+                            error;
+                        error ->
+                            error({broken_chain, Height});
+                        {ok, [Node]} ->
+                            {ok, node_hash(Node)};
                         {ok, [_|_] = Nodes} ->
                             {ok, {MaybeChokeNode, ChokePt}} = choke_point(Height, TopHeight, TopNode, TopHash),
                             keyblock_hash_in_main_chain(Nodes, MaybeChokeNode, ChokePt)
