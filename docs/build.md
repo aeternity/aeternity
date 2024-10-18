@@ -29,7 +29,7 @@ Update package database, packages and install the common tools and libraries:
 ```bash
 sudo apt-get -qq update \
 && sudo apt-get -y upgrade \
-&& sudo apt-get -qq -y install git autoconf build-essential cmake erlang libsodium-dev libgmp-dev
+&& sudo apt-get -qq -y install git autoconf libtool build-essential cmake erlang libsodium-dev libgmp-dev
 ```
 
 #### Building with dynamically linked RocksDB
