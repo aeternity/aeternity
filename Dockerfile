@@ -50,4 +50,8 @@ EXPOSE 3013 3014 3015 3113 3213 3413
 COPY ./docker/healthcheck.sh /healthcheck.sh
 HEALTHCHECK --timeout=3s CMD /healthcheck.sh
 
+# Run in `console` mode with `-noinput` to enable Ctrl-C for entering the
+# Erlang Break menu. In `foreground` mode (which is equivalent to `-noinput
+# +Bd`), no Ctrl-C handler is installed, and Docker will not forward Ctrl-C
+# to a process running as PID 1 unless it has a custom handler.
 CMD ["bin/aeternity", "console", "-noinput"]
