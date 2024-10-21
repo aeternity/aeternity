@@ -367,7 +367,8 @@ wait_same_top(Nodes) ->
     wait_same_top(Nodes, 3).
 
 wait_same_top(_Nodes, Attempts) when Attempts < 1 ->
-    {error, run_out_of_attempts};
+    %% {error, run_out_of_attempts};
+    throw({error, run_out_of_attempts});
 wait_same_top(Nodes, Attempts) ->
     KBs = [ rpc(Node, aec_chain, top_block, []) || Node <- Nodes ],
     case lists:usort(KBs) of
@@ -379,6 +380,7 @@ wait_same_top(Nodes, Attempts) ->
     end.
 
 spend_txs(Config) ->
+    produce_cc_blocks(Config, 1),
     Top0 = rpc(?NODE1, aec_chain, top_header, []),
     ct:log("Top before posting spend txs: ~p", [aec_headers:height(Top0)]),
     NetworkId = ?config(network_id, Config),
@@ -490,6 +492,7 @@ respect_schedule(Node, EpochStart, Epoch, TopHeight) ->
     respect_schedule(Node, EILast + 1, Epoch + 1, TopHeight).
 
 simple_withdraw(Config) ->
+    produce_cc_blocks(Config, 3), %% Make sure there are no lingering TxFees in the reward
     [{_, NodeName, _}|_] = ?config(nodes, Config),
     AliceBin = encoded_pubkey(?ALICE),
     Alice = binary_to_list(encoded_pubkey(?ALICE)),
@@ -530,8 +533,7 @@ simple_withdraw(Config) ->
     Fee = aetx:fee(aetx_sign:tx(CallTx)),
     {Producer, KeyReward} = key_reward_provided(),
     ct:log("Initial balance: ~p, withdrawn: ~p, gas used: ~p, gas price: ~p, fee: ~p, end balance: ~p",
-           [InitBalance, WithdrawAmount, GasUsed, GasPrice,
-                          Fee, EndBalance]),
+           [InitBalance, WithdrawAmount, GasUsed, GasPrice, Fee, EndBalance]),
     {ok, AliceContractSPower1} = inspect_staking_contract(?ALICE, {staking_power, ?ALICE}, Config),
     {ok, BobContractSPower1} = inspect_staking_contract(?ALICE, {staking_power, ?BOB}, Config),
     ?assert(BobContractSPower == BobContractSPower1 orelse
@@ -875,7 +877,7 @@ post_pin_to_pc(Config) ->
 
     %% Get to first block in new epoch
     Height1 = rpc(Node, aec_chain, top_height, []),
-    {ok, #{last := Last1, length := Len, epoch := Epoch}} = rpc(Node, aec_chain_hc, epoch_info, []),
+    {ok, #{last := Last1}} = rpc(Node, aec_chain_hc, epoch_info, []),
     {ok, _} = produce_cc_blocks(Config, Last1 - Height1 + 1),
     {ok, Pin} = rpc(Node, aec_pinning_agent, get_pinning_data, []),
     PinPayloadBin = rpc(Node, aec_pinning_agent, encode_pin_payload, [Pin]),
@@ -1156,7 +1158,7 @@ calc_rewards(RewardForHeight) ->
     {ok, #{key_block := PrevKB,
            micro_blocks := MBs}}
         = rpc(?NODE1, aec_chain, get_generation_by_height,
-              [RewardForHeight - 1, forward]),
+              [RewardForHeight, backward]),
     PrevGenProtocol = aec_blocks:version(PrevKB),
     Txs = lists:flatten(
             lists:map(
@@ -1445,11 +1447,11 @@ produce_to_cc_height(Config, TopHeight, GoalHeight, ParentProduce) ->
                          ct:log("CC ~p mined block: ~p", [N, Block]),
                          Block;
                     {ok, _Txs} ->
-                         {ok, [{N1, KB}, {N2, MB}]} = mine_cc_blocks(NodeNames, 2),
+                         {ok, [{N1, MB}, {N2, KB}]} = mine_cc_blocks(NodeNames, 2),
                          ?assertEqual(key, aec_blocks:type(KB)),
                          ?assertEqual(micro, aec_blocks:type(MB)),
-                         ct:log("CC ~p mined block: ~p", [N1, KB]),
-                         ct:log("CC ~p mined micro block: ~p", [N2, MB]),
+                         ct:log("CC ~p mined micro block: ~p", [N1, MB]),
+                         ct:log("CC ~p mined key block:   ~p", [N2, KB]),
                          KB
                 end,
             Producer = get_block_producer_name(?config(staker_names, Config), KeyBlock),
@@ -1464,7 +1466,7 @@ get_generations(Node, FromHeight, ToHeight) ->
     ReversedBlocks =
         lists:foldl(
             fun(Height, Accum) ->
-                case rpc(Node, aec_chain, get_generation_by_height, [Height, forward]) of
+                case rpc(Node, aec_chain, get_generation_by_height, [Height, backward]) of
                     {ok, #{key_block := KB, micro_blocks := MBs}} ->
                         ReversedGeneration = lists:reverse(MBs) ++ [KB],
                         ReversedGeneration ++ Accum;

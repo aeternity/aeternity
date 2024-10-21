@@ -69,6 +69,7 @@
 -export([ add_synced_block/1
         , get_key_block_candidate/0
         , post_block/1
+        , add_signed_block/1
         ]).
 
 %% Consensus API
@@ -159,29 +160,22 @@ is_leader() ->
 
 -spec post_block(aec_blocks:block()) -> 'ok' | {'error', any()}.
 post_block(Block) ->
-    Height = aec_blocks:height(Block),
-    Protocol = aec_hard_forks:protocol_effective_at_height(Height),
-    case aec_validation:validate_block(Block, Protocol) of
-        ok ->
-            gen_server:call(?SERVER, {post_block, Block}, 30000);
-        {error, {consensus, Reason}} ->
-            epoch_mining:info("Consensus rejected block: ~p", [Reason]),
-            {error, Reason};
-        {error, {header, Reason}} ->
-            epoch_mining:info("Header failed validation: ~p", [Reason]),
-            {error, Reason};
-        {error, {block, Reason}} ->
-            epoch_mining:info("Block failed validation: ~p", [Reason]),
-            {error, Reason}
-    end.
+    add_block(Block, post_block).
 
 -spec add_synced_block(aec_blocks:block()) -> 'ok' | {'error', any()}.
 add_synced_block(Block) ->
+    add_block(Block, add_synced_block).
+
+-spec add_signed_block(aec_blocks:block()) -> 'ok' | {'error', any()}.
+add_signed_block(Block) ->
+    add_block(Block, add_signed_block).
+
+add_block(Block, Origin) ->
     Height = aec_blocks:height(Block),
     Protocol = aec_hard_forks:protocol_effective_at_height(Height),
     case aec_validation:validate_block(Block, Protocol) of
         ok ->
-            gen_server:call(?SERVER, {add_synced_block, Block}, 30000);
+            gen_server:call(?SERVER, {Origin, Block}, 30000);
         {error, {consensus, Reason}} ->
             epoch_mining:info("Consensus rejected block: ~p", [Reason]),
             {error, Reason};
@@ -370,6 +364,9 @@ reinit_chain_impl(State) ->
 
 handle_call({add_synced_block, Block},_From, State) ->
     {Reply, State1} = handle_synced_block(Block, State),
+    {reply, Reply, State1};
+handle_call({add_signed_block, Block},_From, State) ->
+    {Reply, State1} = handle_signed_block(Block, State),
     {reply, Reply, State1};
 handle_call(get_key_block_candidate,_From, State) ->
     {Res, State1} =
@@ -906,6 +903,8 @@ preempt_on_new_top(#state{ top_block_hash = OldHash,
     %%  microblocks will be discarded.
     ResetWorkers =
         case Mode of
+            pos when ConsensusModule == aec_consensus_hc ->
+                false;
             pos ->
                 true;
             PoW when PoW =:= local_pow;
@@ -1093,13 +1092,14 @@ start_block_production_(#state{mode = pos, key_block_candidates = [{ForSealing, 
             epoch_mining:debug("No available instance", []),
             State;
         Instance ->
-            epoch_mining:info("Starting PoS block generator on top of ~p", [State#state.top_block_hash]),
+            epoch_mining:info("Starting PoS block sealer on top of ~p", [State#state.top_block_hash]),
             Consensus         = aec_blocks:consensus_module(Candidate#candidate.block),
             Header            = aec_blocks:to_header(Candidate#candidate.block),
             StakerConfig      = Instance#instance.config,
             AddressedInstance = Instance#instance.instance,
             Nonce             = Consensus:trim_sealing_nonce(Candidate#candidate.nonce, StakerConfig),
             Info              = [{top_block_hash, State#state.top_block_hash}],
+            epoch_mining:info("Sealing candidate ~p", [Candidate]),
             aec_events:publish(start_mining, Info),
             Fun = fun() ->
                           { Consensus:generate_key_header_seal(
@@ -1114,7 +1114,7 @@ start_block_production_(#state{mode = pos, key_block_candidates = [{ForSealing, 
             State1 = State#state{key_block_candidates = [{ForSealing, Candidate1} | Candidates]},
             {State2, Pid} = dispatch_worker(mining, Fun, State1),
             State3 = register_instance(Instance, Pid, State2),
-            epoch_mining:info("Block producer started ~p started", [Pid]),
+            epoch_mining:info("Mining started ~p started", [Pid]),
             start_block_production_(State3)
     end.
 
@@ -1261,19 +1261,29 @@ create_key_block_candidate(#state{key_block_candidates = [{_, #candidate{top_has
     start_block_production_(State);
 create_key_block_candidate(#state{top_block_hash = TopHash, mode = pos} = State) ->
     ConsensusModule = consensus_module(State),
-    epoch_mining:info("Creating key block candidate on the top"),
-    Fun = fun() ->
-              case get_next_beneficiary(ConsensusModule, TopHash) of
-                  {ok, Beneficiary} ->
-                        SignModule  = ConsensusModule:get_sign_module(),
-                        {ok, Miner} = SignModule:candidate_pubkey(),
-                        {aec_block_key_candidate:create(TopHash, Beneficiary, Miner), TopHash};
-                  {error, _} = Err ->
-                      {Err, TopHash}
-              end
-          end,
-    {State1, _Pid} = dispatch_worker(create_key_block_candidate, Fun, State),
-    State1;
+
+    %% TODO: should we bother with "normal" pos
+    case ConsensusModule of
+        aec_consensus_hc ->
+            epoch_mining:info("HC: check and maybe create micro + key block at the top of the chain"),
+            Fun = hc_create_block_fun(ConsensusModule, TopHash),
+            {State1, _Pid} = dispatch_worker(create_key_block_candidate, Fun, State),
+            State1;
+        _ ->
+            epoch_mining:info("Creating key block candidate on the top"),
+            Fun = fun() ->
+                      case get_next_beneficiary(ConsensusModule, TopHash) of
+                          {ok, Beneficiary} ->
+                                SignModule  = ConsensusModule:get_sign_module(),
+                                {ok, Miner} = SignModule:candidate_pubkey(),
+                                {aec_block_key_candidate:create(TopHash, Beneficiary, Miner), TopHash};
+                          {error, _} = Err ->
+                              {Err, TopHash}
+                      end
+                  end,
+            {State1, _Pid} = dispatch_worker(create_key_block_candidate, Fun, State),
+            State1
+    end;
 
 create_key_block_candidate(#state{top_block_hash      = TopHash,
                                   mode                = Mode,
@@ -1329,6 +1339,42 @@ handle_key_block_candidate_reply({{error, Reason}, _}, #state{top_height = Heigh
 handle_key_block_candidate_reply({{error, Reason}, _}, State) ->
     epoch_mining:error("Creation of key block candidate failed: ~p", [Reason]),
     create_key_block_candidate(State).
+
+hc_create_block_fun(ConsensusModule, TopHash) ->
+    fun() ->
+        case get_next_beneficiary(ConsensusModule, TopHash) of
+            {ok, Leader} ->
+                  epoch_mining:debug("Got leader, calling hc_create_block", []),
+                  {hc_create_block(ConsensusModule, TopHash, Leader), TopHash};
+            {error, _} = Err ->
+                {Err, TopHash}
+        end
+    end.
+
+hc_create_block(ConsensusModule, TopHash0, Leader) ->
+    TopHash = hc_create_microblock(ConsensusModule, TopHash0, Leader),
+    Res = aec_block_key_candidate:create(TopHash, Leader, Leader),
+    Res.
+
+hc_create_microblock(ConsensusModule, TopHash, Leader) ->
+    case aec_block_micro_candidate:create(TopHash) of
+        {ok, MBlock, _MBlockInfo} ->
+            case aec_blocks:txs(MBlock) of
+                [] ->
+                    epoch_mining:debug("Empty micro-block, top is still: ~p", [TopHash]),
+                    TopHash;
+                [_ | _ ] ->
+                    SignModule = ConsensusModule:get_sign_module(),
+                    {ok, SignedMBlock} = SignModule:sign_micro_block(MBlock, Leader),
+                    add_signed_block(SignedMBlock),
+                    {ok, MBHash} = aec_blocks:hash_internal_representation(SignedMBlock),
+                    epoch_mining:debug("New micro-block added, top is: ~p", [MBHash]),
+                    MBHash
+            end;
+        _ ->
+            epoch_mining:info("Failed micro-block, top is still: ~p", [TopHash]),
+            TopHash
+    end.
 
 %%%===================================================================
 %%% In server context: A block was given to us from the outside world
@@ -1506,6 +1552,11 @@ is_leader(NewTopBlock, PrevKeyHeader, ConsensusModule) ->
         {error, _}     -> false
     end.
 
+setup_loop(State = #state{ mode = pos,
+                           consensus = #consensus{ consensus_module = aec_consensus_hc } }, Restart, _, _) ->
+    if not Restart -> create_key_block_candidate(State);
+       true        -> State
+    end;
 setup_loop(State = #state{ consensus = Cons }, RestartMining, IsLeader, Origin) ->
     State1 = State#state{ consensus = Cons#consensus{ leader = IsLeader } },
     State2 =

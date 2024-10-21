@@ -143,7 +143,10 @@ int_create_block(MBEnv, TxEnv, Txs, Trees, Events) ->
       prev_block := PrevBlock, prev_hash := PrevBlockHash} = MBEnv,
     Time = aetx_env:time_in_msecs(TxEnv),
     Protocol = aec_blocks:version(KeyBlock),
-    Height = aec_blocks:height(KeyBlock),
+
+    %% Heigth is relative to last key-block.
+    ConsensusModule = aec_blocks:consensus_module(KeyBlock),
+    Height = ConsensusModule:micro_block_height_relative_previous_block(key, aec_blocks:height(KeyBlock)),
 
     TxsTree = aec_txs_trees:from_txs(Txs),
     TxsRootHash = aec_txs_trees:pad_empty(aec_txs_trees:root_hash(TxsTree)),
