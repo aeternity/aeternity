@@ -87,7 +87,7 @@
 -define(GET_GENERATION_TIMEOUT, 60000).
 %% The number of peers sent in ping message.
 -define(DEFAULT_GOSSIPED_PEERS_COUNT, 32).
-%% perecentage of connected peers to validated peers to send in a ping 
+%% perecentage of connected peers to validated peers to send in a ping
 -define(DEFAULT_PING_CONNECTED_PEER_PERCENTAGE, 10).
 
 %% gen_server callbacks
@@ -1669,7 +1669,11 @@ validate_delta_height(MicroHeader, _PrevHeader, _PrevKeyHeader) ->
 
 validate_prev_key_block(MicroHeader, PrevHeader, _PrevKeyHeader)
   when PrevHeader =/= not_found ->
-    case aec_headers:height(PrevHeader) =:= aec_headers:height(MicroHeader) of
+    ConsensusModule = aec_headers:consensus_module(MicroHeader),
+    ExpectedHeight =
+        ConsensusModule:micro_block_height_relative_previous_block(aec_headers:type(PrevHeader),
+                                                                   aec_headers:height(PrevHeader)),
+    case ExpectedHeight =:= aec_headers:height(MicroHeader) of
         false -> {error, wrong_prev_key_block_height};
         true ->
             case aec_headers:type(PrevHeader) of
@@ -1692,12 +1696,16 @@ validate_prev_key_block(_MicroHeader, not_found, _PrevKeyHeader) ->
 
 validate_micro_signature(MicroHeader, _PrevHeader, PrevKeyHeader)
   when PrevKeyHeader =/= not_found ->
-    Bin = aec_headers:serialize_to_signature_binary(MicroHeader),
-    Sig = aec_headers:signature(MicroHeader),
-    Signer = aec_headers:miner(PrevKeyHeader),
-    case enacl:sign_verify_detached(Sig, Bin, Signer) of
-        true  -> ok;
-        false -> {error, signature_verification_failed}
+    case aec_headers:consensus_module(MicroHeader) of
+        aec_consensus_hc -> ok;
+        _ ->
+            Bin = aec_headers:serialize_to_signature_binary(MicroHeader),
+            Sig = aec_headers:signature(MicroHeader),
+            Signer = aec_headers:miner(PrevKeyHeader),
+            case enacl:sign_verify_detached(Sig, Bin, Signer) of
+                true  -> ok;
+                false -> {error, signature_verification_failed}
+            end
     end;
 validate_micro_signature(_MicroHeader, _PrevHeader, not_found) ->
     {error, signer_not_found}.

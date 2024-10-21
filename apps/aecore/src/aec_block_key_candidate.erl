@@ -12,7 +12,7 @@
 -include("blocks.hrl").
 
 %% -- API functions ----------------------------------------------------------
--spec create(BlockHash, Beneficiary, Miner) -> {ok, aec_blocks:block()} | {error, term()} 
+-spec create(BlockHash, Beneficiary, Miner) -> {ok, aec_blocks:block()} | {error, term()}
   when BlockHash :: aec_blocks:block() | aec_blocks:block_header_hash()
      , Beneficiary :: aec_keys:pubkey()
      , Miner :: aec_keys:pubkey().
@@ -25,45 +25,45 @@ create(BlockHash, Beneficiary, Miner) when is_binary(BlockHash) ->
     end;
 create(Block, Beneficiary, Miner) ->
     {ok, BlockHash} = aec_blocks:hash_internal_representation(Block),
-    Height = aec_blocks:height(Block) + 1,
+    ConsensusModule = aec_blocks:consensus_module(Block),
+    Height = ConsensusModule:key_block_height_relative_previous_block(aec_blocks:type(Block),
+                                                                      aec_blocks:height(Block)),
     Protocol = aec_hard_forks:protocol_effective_at_height(Height),
-    int_create(BlockHash, Block, Beneficiary, Miner, Protocol).
+    int_create(Height, BlockHash, Block, Beneficiary, Miner, Protocol).
 
 %% -- Internal functions -----------------------------------------------------
 
-int_create(BlockHash, Block, Beneficiary, Miner, Protocol) ->
-    H = aec_blocks:height(Block) + 1,
-    Consensus = aec_consensus:get_consensus_module_at_height(H),
+int_create(Height, BlockHash, Block, Beneficiary, Miner, Protocol) ->
+    Consensus = aec_consensus:get_consensus_module_at_height(Height),
     N = Consensus:keyblocks_for_target_calc() + 1,
     case aec_blocks:height(Block) < N of
         true  ->
-            int_create_(BlockHash, Block, Beneficiary, Miner, [], Protocol);
+            int_create_(Height, BlockHash, Block, Beneficiary, Miner, [], Protocol);
         false ->
             case N of
                 1 ->
-                    int_create_(BlockHash, Block, Beneficiary, Miner, [], Protocol);
+                    int_create_(Height, BlockHash, Block, Beneficiary, Miner, [], Protocol);
                 _ ->
                     case aec_chain:get_n_generation_headers_backwards_from_hash(BlockHash, N) of
                         {ok, Headers} ->
-                            int_create_(BlockHash, Block, Beneficiary, Miner, Headers, Protocol);
+                            int_create_(Height, BlockHash, Block, Beneficiary, Miner, Headers, Protocol);
                         error ->
                             {error, headers_for_target_adjustment_not_found}
                     end
             end
     end.
 
-int_create_(PrevBlockHash, PrevBlock, Beneficiary, Miner, AdjChain, Protocol) ->
-    {ok, Trees} =
-        aec_chain_state:calculate_state_for_new_keyblock(PrevBlockHash, Miner, Beneficiary, Protocol),
-    Block = int_create_block(PrevBlockHash, PrevBlock, Miner, Beneficiary, Trees, Protocol),
+int_create_(Height, PrevBlockHash, PrevBlock, Beneficiary, Miner, AdjChain, Protocol) ->
+    {ok, Trees} = aec_chain_state:calculate_state_for_new_keyblock(Height, PrevBlockHash,
+                                                                   Miner, Beneficiary, Protocol),
+    Block = int_create_block(Height, PrevBlockHash, PrevBlock, Miner, Beneficiary, Trees, Protocol),
     Consensus = aec_blocks:consensus_module(Block),
     case Consensus:keyblock_create_adjust_target(Block, AdjChain) of
         {ok, AdjBlock} -> {ok, AdjBlock};
         {error, Reason} -> {error, {failed_to_adjust_target, Reason}}
     end.
 
-int_create_block(PrevBlockHash, PrevBlock, Miner, Beneficiary, Trees, Protocol) ->
-    Height = aec_blocks:height(PrevBlock) + 1,
+int_create_block(Height, PrevBlockHash, PrevBlock, Miner, Beneficiary, Trees, Protocol) ->
     Consensus = aec_consensus:get_consensus_module_at_height(Height),
     PrevKeyHash = case aec_blocks:type(PrevBlock) of
                       micro -> aec_blocks:prev_key_hash(PrevBlock);
