@@ -535,6 +535,27 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /hyperchain/contract-pubkeys:
+    get:
+      tags:
+        - external
+        - hyperchain
+      operationId: GetHyperchainContractPubkeys
+      description: Get the pubkeys for the configured hyperchain contracts for staking, election and rewards
+      parameters:
+      responses:
+        "200":
+          description: succesful operation
+          content:
+            application/json:
+              schema:
+                $ref: "#components/schemas/HCContractPubkeys"
+        "404":
+          description: Cannot find the contract pubkeys for some reason, e.g. HC consensus not started, or misconfigured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /key-blocks/current:
     get:
       tags:
@@ -3102,6 +3123,15 @@ components:
           type: string
       required:
         - hash
+    HCContractPubkeys:
+      type: object
+      properties:
+        staking:
+          $ref: "#/components/schemas/EncodedPubkey" 
+        election:
+          $ref: "#/components/schemas/EncodedPubkey" 
+        rewards:
+          $ref: "#/components/schemas/EncodedPubkey" 
     Header:
       anyOf:
         - $ref: "#/components/schemas/KeyBlock"
