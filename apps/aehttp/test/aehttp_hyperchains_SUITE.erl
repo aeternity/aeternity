@@ -33,7 +33,8 @@
          check_blocktime/1,
          get_pin/1,
          wallet_post_pin_to_pc/1,
-         post_pin_to_pc/1
+         post_pin_to_pc/1,
+         first_leader_next_epoch/1
         ]).
 
 -include_lib("stdlib/include/assert.hrl").
@@ -153,6 +154,7 @@ groups() ->
           ]}
     , {epochs, [sequence],
           [ start_two_child_nodes
+          , first_leader_next_epoch
           , epochs_with_slow_parent
           , epochs_with_fast_parent ]}
     , {pinning, [sequence],
@@ -731,6 +733,14 @@ elected_leader_did_not_show_up_(Config) ->
     {ok, _} = produce_cc_blocks(Config, 10),
     {ok, _KB2} = wait_same_top([ Node || {Node, _, _} <- ?config(nodes, Config)]),
     ok.
+
+first_leader_next_epoch(Config) ->
+    [{Node, _, _} | _] = ?config(nodes, Config),
+    StartHeight = rpc(Node, aec_chain, top_height, []),
+    {ok, #{last := Last, epoch := Epoch}} = rpc(Node, aec_chain_hc, epoch_info, [StartHeight]),
+    ct:log("Checking leader for first block next epoch ~p (height ~p)", [Epoch+1, Last+1]),
+    ?assertMatch({ok, _}, rpc(Node, aec_consensus_hc, leader_for_height, [Last + 1])).
+
 
 %% Demonstrate that child chain start signalling epoch length adjustment upward
 %% When parent blocks are produced too slowly, we need to lengthen child epoch
