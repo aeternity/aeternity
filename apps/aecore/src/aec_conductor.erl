@@ -588,8 +588,9 @@ set_mode(State) ->
             %% TODO actually check whether node is a producing node
             case ConsensusModule of
                 aec_consensus_hc ->
-                    IsBlockProducer = aec_consensus_hc:is_block_producer(),
-                    State#state{mode = pos, has_beneficiary = IsBlockProducer};
+                    %% Consult aec_consensus_hc:is_block_producer() at each height to know whether the node can mine,
+                    %% and consult aec_consensus_hc:beneficiary() to know the beneficiary
+                    State#state{mode = pos, has_beneficiary = 'dynamic_pos'};
                 _ ->
                     set_beneficiary_configured(State#state{mode = pos}, ConsensusModule)
             end
@@ -1031,7 +1032,9 @@ start_block_production_(#state{keys_ready = false} = State) ->
     %% We need to get the keys first
     wait_for_keys(State);
 start_block_production_(#state{key_block_candidates = undefined,
-                               has_beneficiary      = true} = State) ->
+                               has_beneficiary      = HasBeneficiary} = State)
+                        when HasBeneficiary =:= 'true';
+                             HasBeneficiary =:= 'dynamic_pos' ->
     %% If the mining is turned off and beneficiary is configured,
     %% the key block candidate is still created, but not mined.
     %% The candidate can be retrieved via the API and other nodes can mine it.
@@ -1255,6 +1258,12 @@ create_key_block_candidate(#state{keys_ready = false} = State) ->
     wait_for_keys(State);
 create_key_block_candidate(#state{has_beneficiary = false} = State) ->
     State;
+create_key_block_candidate(#state{has_beneficiary = dynamic_pos} = State) ->
+    ConsensusModule = consensus_module(State),
+    case ConsensusModule:is_block_producer() of
+        true -> create_key_block_candidate_pos(State);
+        false -> State
+    end;
 create_key_block_candidate(#state{key_block_candidates = [{_, #candidate{top_hash = TopHash}} | _],
                                   top_block_hash       = TopHash} = State) ->
     %% We have the most recent candidate already. Just start mining.
@@ -1284,7 +1293,6 @@ create_key_block_candidate(#state{top_block_hash = TopHash, mode = pos} = State)
             {State1, _Pid} = dispatch_worker(create_key_block_candidate, Fun, State),
             State1
     end;
-
 create_key_block_candidate(#state{top_block_hash      = TopHash,
                                   mode                = Mode,
                                   stratum_beneficiary = StratumBeneficiary} = State) ->
@@ -1306,6 +1314,23 @@ create_key_block_candidate(#state{top_block_hash      = TopHash,
                         {aec_block_key_candidate:create(TopHash, Beneficiary, Miner), TopHash};
                     {error, _} = Err -> {Err, TopHash}
                 end
+          end,
+    {State1, _Pid} = dispatch_worker(create_key_block_candidate, Fun, State),
+    State1.
+
+%% A specific proof-of-stake scenario
+create_key_block_candidate_pos(#state{top_block_hash = TopHash} = State) ->
+    ConsensusModule = consensus_module(State),
+    epoch_mining:info("Creating key block candidate on the top"),
+    Fun = fun() ->
+              case get_next_beneficiary(ConsensusModule, TopHash) of
+                  {ok, Beneficiary} ->
+                        SignModule  = ConsensusModule:get_sign_module(),
+                        {ok, Miner} = SignModule:candidate_pubkey(),
+                        {aec_block_key_candidate:create(TopHash, Beneficiary, Miner), TopHash};
+                  {error, _} = Err ->
+                      {Err, TopHash}
+              end
           end,
     {State1, _Pid} = dispatch_worker(create_key_block_candidate, Fun, State),
     State1.

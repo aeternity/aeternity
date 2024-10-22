@@ -1092,9 +1092,10 @@ file_missing(F) ->
 
 assert_no_errors_in_logs(Config) ->
     Nodes = [Node || {Node, _, _} <- ?config(nodes, Config)],
+    Group = proplists:get_value(name, proplists:get_value(tc_group_properties, Config, []), "?"),
     lists:foreach(
         fun({Node, {File, Line}}) ->
-            ct:fail("[~s] in ~s: ~s", [Node, File, Line])
+            ct:fail("group=~s node=~s file=~s: ~s", [Group, Node, File, Line])
         end,
         errors_in_logs(Nodes, Config)).
 
