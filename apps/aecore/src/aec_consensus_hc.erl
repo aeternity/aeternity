@@ -265,9 +265,15 @@ state_pre_transform_key_node(Node, PrevNode, Trees) ->
             {ok, Leader} = leader_for_height(Height, {TxEnv, Trees}),
             case Height == maps:get(last, EpochInfo) of
                 true ->
-                    {ok, Seed} = get_entropy_hash(Epoch + 2),
-                    cache_validators_for_epoch({TxEnv, Trees}, Seed, Epoch + 2),
-                    step_eoe(TxEnv, Trees, Leader, Seed, 0);
+                    case get_entropy_hash(Epoch + 2) of
+                        {ok, Seed} ->
+                            cache_validators_for_epoch({TxEnv, Trees}, Seed, Epoch + 2),
+                            step_eoe(TxEnv, Trees, Leader, Seed, 0);
+                        {error, not_in_cache} ->
+                            lager:debug("Entropy hash for height ~p is not in cache, attempting to resync", [Height]),
+                            %% Fail the keyblock production flow, attempt to resync
+                            aec_conductor:throw_error(parent_chain_not_synced)
+                    end;
                 false ->
                     step(TxEnv, Trees, Leader)
             end;

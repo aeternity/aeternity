@@ -401,6 +401,9 @@ handle_call(stop_block_production,_From, State = #state{ consensus = Cons }) ->
 handle_call({start_block_production, _Opts},_From, #state{block_producing_state = 'running'} = State) ->
     epoch_mining:info("Mining running" ++ print_opts(State)),
     {reply, ok, State};
+handle_call({start_block_production, _Opts},_From, #state{mode = pos, has_beneficiary = false} = State) ->
+    epoch_mining:info("Cannot start block production - node is not a block producer"),
+    {reply, {error, node_not_block_producer}, State};
 handle_call({start_block_production, _Opts},_From, #state{has_beneficiary = false} = State) ->
     epoch_mining:error("Cannot start mining - beneficiary not configured"),
     {reply, {error, beneficiary_not_configured}, State};
@@ -1523,9 +1526,9 @@ is_leader(NewTopBlock, PrevKeyHeader, ConsensusModule) ->
         {error, _}     -> false
     end.
 
-setup_loop(State = #state{ mode = pos }, Restart, _, _) ->
-    if not Restart -> create_key_block_candidate(State);
-       true        -> State
+setup_loop(State = #state{ mode = pos }, Restart, _IsLeader, Origin) ->
+    if not Restart andalso Origin == block_created -> create_key_block_candidate(State);
+       true                                        -> State
     end;
 setup_loop(State = #state{ consensus = Cons }, RestartMining, IsLeader, Origin) ->
     State1 = State#state{ consensus = Cons#consensus{ leader = IsLeader } },
