@@ -33,7 +33,8 @@
          check_blocktime/1,
          get_pin/1,
          wallet_post_pin_to_pc/1,
-         post_pin_to_pc/1
+         post_pin_to_pc/1,
+         first_leader_next_epoch/1
         ]).
 
 -include_lib("stdlib/include/assert.hrl").
@@ -153,6 +154,7 @@ groups() ->
           ]}
     , {epochs, [sequence],
           [ start_two_child_nodes
+          , first_leader_next_epoch
           , epochs_with_slow_parent
           , epochs_with_fast_parent ]}
     , {pinning, [sequence],
@@ -469,7 +471,8 @@ respect_schedule(Node, EpochStart, Epoch, TopHeight) ->
 
     ct:log("Checking epoch ~p info: ~p at height ~p", [Epoch, EI, EpochStart]),
 
-    %% We buffer the seed one epoch, hence Epoch - 1
+    %% We buffer the seed two epochs, entropy height already looks at previous Epoch,
+    %% hence Epoch - 1
     ParentHeight = rpc(?NODE1, aec_consensus_hc, entropy_height, [Epoch - 1]),
     {ok, PHdr}   = rpc(?PARENT_CHAIN_NODE, aec_chain, get_key_header_by_height, [ParentHeight]),
     {ok, PHash0} = aec_headers:hash_header(PHdr),
@@ -731,13 +734,22 @@ elected_leader_did_not_show_up_(Config) ->
     {ok, _KB2} = wait_same_top([ Node || {Node, _, _} <- ?config(nodes, Config)]),
     ok.
 
+first_leader_next_epoch(Config) ->
+    [{Node, _, _} | _] = ?config(nodes, Config),
+    StartHeight = rpc(Node, aec_chain, top_height, []),
+    {ok, #{last := Last, epoch := Epoch}} = rpc(Node, aec_chain_hc, epoch_info, [StartHeight]),
+    ct:log("Checking leader for first block next epoch ~p (height ~p)", [Epoch+1, Last+1]),
+    ?assertMatch({ok, _}, rpc(Node, aec_consensus_hc, leader_for_height, [Last + 1])).
+
+
 %% Demonstrate that child chain start signalling epoch length adjustment upward
 %% When parent blocks are produced too slowly, we need to lengthen child epoch
 epochs_with_slow_parent(Config) ->
+    [{Node, _, _} | _] = ?config(nodes, Config),
     ct:log("Parent start height = ~p", [?config(parent_start_height, Config)]),
     %% ensure start at a new epoch boundary
-    StartHeight = rpc(?NODE1, aec_chain, top_height, []),
-    {ok, #{last := Last}} = rpc(?NODE1, aec_chain_hc, epoch_info, [StartHeight]),
+    StartHeight = rpc(Node, aec_chain, top_height, []),
+    {ok, #{last := Last}} = rpc(Node, aec_chain_hc, epoch_info, [StartHeight]),
     BlocksLeftToBoundary = Last - StartHeight,
     ct:log("Starting at CC height ~p: producing ~p cc blocks", [StartHeight, BlocksLeftToBoundary]),
     %% some block production including parent blocks
@@ -747,7 +759,7 @@ epochs_with_slow_parent(Config) ->
     ct:log("Child continues while parent stuck at: ~p", [ParentHeight]),
     ParentEpoch = (ParentHeight - ?config(parent_start_height, Config) +
                       (?PARENT_EPOCH_LENGTH - 1)) div ?PARENT_EPOCH_LENGTH,
-    ChildEpoch = rpc(?NODE1, aec_chain, top_height, []) div ?CHILD_EPOCH_LENGTH,
+    ChildEpoch = rpc(Node, aec_chain, top_height, []) div ?CHILD_EPOCH_LENGTH,
     ct:log("Child epoch ~p while parent epoch ~p (parent should be in next epoch)", [ChildEpoch, ParentEpoch]),
     ?assertEqual(1, ParentEpoch - ChildEpoch),
 
@@ -760,8 +772,8 @@ epochs_with_slow_parent(Config) ->
     ct:log("Mined almost ~p additional child epochs without parent progress", [Resilience]),
     ParentTopHeight = rpc(?PARENT_CHAIN_NODE, aec_chain, top_height, []),
     ?assertEqual(ParentHeight, ParentTopHeight),
-    ChildTopHeight = rpc(?NODE1, aec_chain, top_height, []),
-    {ok, #{epoch := EndEpoch} = EpochInfo} = rpc(?NODE1, aec_chain_hc, epoch_info, [ChildTopHeight]),
+    ChildTopHeight = rpc(Node, aec_chain, top_height, []),
+    {ok, #{epoch := EndEpoch} = EpochInfo} = rpc(Node, aec_chain_hc, epoch_info, [ChildTopHeight]),
     ct:log("Parent at height ~p and child at height ~p in child epoch ~p",
            [ParentTopHeight, ChildTopHeight, EndEpoch ]),
 
@@ -772,7 +784,7 @@ epochs_with_slow_parent(Config) ->
     ?assertException(error, timeout_waiting_for_block, produce_cc_blocks(Config, 1, [])),
 
     ?assertEqual([{ok, (N-1) * ?CHILD_EPOCH_LENGTH + 1} || N <- lists:seq(1, EndEpoch)],
-                 [rpc(?NODE1, aec_chain_hc, epoch_start_height, [N]) || N <- lists:seq(1, EndEpoch)]),
+                 [rpc(Node, aec_chain_hc, epoch_start_height, [N]) || N <- lists:seq(1, EndEpoch)]),
     ok.
 
 %% Demonstrate that child chain start signalling epoch length adjustment downward
@@ -920,7 +932,7 @@ post_pin_to_pc(Config) ->
     BL = rpc(Node, aec_chain, top_height, []), % we're producing in last black
     ok.
 
-%% A wallet posting a pin transaction by only usign HTTP API towards Child and Parent
+%% A wallet posting a pin transaction by only using HTTP API towards Child and Parent
 wallet_post_pin_to_pc(Config) ->
     [{Node, _, _} | _] = ?config(nodes, Config),
 
