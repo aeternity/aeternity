@@ -51,9 +51,7 @@
                 workers                 = []        :: workers(),
                 instances               = []        :: instances(),
                 consensus                           :: #consensus{},
-                %% 'dynamic' means that the beneficiary and the capability of node to mine
-                %% are determined at each height by the consensus module.
-                has_beneficiary         = false     :: boolean() | 'dynamic_pos',
+                has_beneficiary         = false     :: boolean(),
                 stratum_beneficiary                 :: <<_:(32*8)>> | 'undefined' | fun(() -> <<_:(32*8)>>),
                 fraud_list              = []        :: list({binary(), aec_pof:pof()}),
                 pending_key_block                   :: aec_blocks:block() | 'undefined',
