@@ -483,7 +483,7 @@ staking_contract_pubkey() ->
                   _ -> erlang:error({contract_owner_not_valid_contract, EncContractId})
               end
           end,
-    aeu_ets_cache:get(?ETS_CACHE_TABLE, rewards_contract_pubkey, Fun).
+    aeu_ets_cache:get(?ETS_CACHE_TABLE, staking_contract_pubkey, Fun).
 
 pc_start_height() ->
     Fun = fun() -> get_consensus_config_key([<<"parent_chain">>, <<"start_height">>], 0) end,
