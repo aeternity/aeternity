@@ -798,25 +798,33 @@ next_beneficiary(TxEnv, Trees) ->
     end.
 
 try_compute_schedule(TxEnv, Trees, ChildHeight) ->
-    {ok, EpochInfo} = epoch_info_at_height({TxEnv, Trees}, ChildHeight),
-    lager:debug("Epoch info for schedule at height ~p: ~p", [ChildHeight, EpochInfo]),
-    case EpochInfo of
-        #{seed := undefined, epoch := Epoch} when Epoch =< 2 ->
-            case get_entropy_hash(Epoch) of
-                {ok, Hash} -> try_compute_schedule(TxEnv, Trees, Hash, EpochInfo);
-                Err  -> Err
-            end;
-        #{seed := Hash} ->
-            try_compute_schedule(TxEnv, Trees, Hash, EpochInfo)
+    {ok, #{last := Last} = EpochInfo} = epoch_info_at_height({TxEnv, Trees}, ChildHeight),
+    {ok, NextEpochInfo} = epoch_info_at_height({TxEnv, Trees}, Last + 1),
+    lager:debug("Epoch info for schedule at height ~p: ~p ~p", [ChildHeight, EpochInfo, NextEpochInfo]),
+    case {adjust_seed(EpochInfo), adjust_seed(NextEpochInfo)} of
+        {{ok, AdjEpochInfo}, {ok, AdjNextEpochInfo}} ->
+            try_compute_schedules(TxEnv, Trees, AdjEpochInfo, AdjNextEpochInfo);
+        {{ok, _}, Err} -> Err;
+        {Err, _} -> Err
     end.
 
-try_compute_schedule(TxEnv, Trees, Hash, #{first := First} = EpochInfo) ->
-    Schedule = validator_schedule({TxEnv, Trees}, Hash, EpochInfo),
+adjust_seed(#{seed := undefined, epoch := Epoch} = EpochInfo) when Epoch =< 2 ->
+    case get_entropy_hash(Epoch) of
+        {ok, Hash} -> {ok, EpochInfo#{seed => Hash}};
+        Err  -> Err
+    end;
+adjust_seed(#{seed := Hash} = EpochInfo) when Hash /= undefined ->
+    {ok, EpochInfo}.
+
+try_compute_schedules(TxEnv, Trees, EpochInfo, NextEpochInfo) ->
+    #{first := First} = EpochInfo,
+    Schedule1 = validator_schedule({TxEnv, Trees}, EpochInfo),
+    Schedule2 = validator_schedule({TxEnv, Trees}, NextEpochInfo),
+    Schedule = maps:merge(Schedule1, Schedule2),
+    lager:debug("Schedule ~p", [Schedule]),
     cache_schedule(Schedule),
     lager:debug("Schedule cached (range ~p -> ~p)", [First, First + maps:size(Schedule) - 1]),
     ok.
-
-
 
 get_entropy_hash(ChildEpoch) ->
     EntropyHeight = entropy_height(ChildEpoch),
@@ -852,7 +860,7 @@ leader_for_height(Height) ->
     Schedule = aeu_ets_cache:get(?ETS_CACHE_TABLE, validator_schedule, fun() -> #{} end),
     maps:find(Height, Schedule).
 
-validator_schedule(RunEnv, Hash, EpochInfo) ->
+validator_schedule(RunEnv, #{seed := Hash} = EpochInfo) ->
     #{first := First, length := Length, validators := Validators} = EpochInfo,
     {ok, Schedule} = aec_chain_hc:validator_schedule(RunEnv, Hash, Validators, Length),
     maps:from_list(enumerate(First, Schedule)).
