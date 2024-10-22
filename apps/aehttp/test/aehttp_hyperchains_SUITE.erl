@@ -745,10 +745,11 @@ first_leader_next_epoch(Config) ->
 %% Demonstrate that child chain start signalling epoch length adjustment upward
 %% When parent blocks are produced too slowly, we need to lengthen child epoch
 epochs_with_slow_parent(Config) ->
+    [{Node, _, _} | _] = ?config(nodes, Config),
     ct:log("Parent start height = ~p", [?config(parent_start_height, Config)]),
     %% ensure start at a new epoch boundary
-    StartHeight = rpc(?NODE1, aec_chain, top_height, []),
-    {ok, #{last := Last}} = rpc(?NODE1, aec_chain_hc, epoch_info, [StartHeight]),
+    StartHeight = rpc(Node, aec_chain, top_height, []),
+    {ok, #{last := Last}} = rpc(Node, aec_chain_hc, epoch_info, [StartHeight]),
     BlocksLeftToBoundary = Last - StartHeight,
     ct:log("Starting at CC height ~p: producing ~p cc blocks", [StartHeight, BlocksLeftToBoundary]),
     %% some block production including parent blocks
@@ -758,7 +759,7 @@ epochs_with_slow_parent(Config) ->
     ct:log("Child continues while parent stuck at: ~p", [ParentHeight]),
     ParentEpoch = (ParentHeight - ?config(parent_start_height, Config) +
                       (?PARENT_EPOCH_LENGTH - 1)) div ?PARENT_EPOCH_LENGTH,
-    ChildEpoch = rpc(?NODE1, aec_chain, top_height, []) div ?CHILD_EPOCH_LENGTH,
+    ChildEpoch = rpc(Node, aec_chain, top_height, []) div ?CHILD_EPOCH_LENGTH,
     ct:log("Child epoch ~p while parent epoch ~p (parent should be in next epoch)", [ChildEpoch, ParentEpoch]),
     ?assertEqual(1, ParentEpoch - ChildEpoch),
 
@@ -771,8 +772,8 @@ epochs_with_slow_parent(Config) ->
     ct:log("Mined almost ~p additional child epochs without parent progress", [Resilience]),
     ParentTopHeight = rpc(?PARENT_CHAIN_NODE, aec_chain, top_height, []),
     ?assertEqual(ParentHeight, ParentTopHeight),
-    ChildTopHeight = rpc(?NODE1, aec_chain, top_height, []),
-    {ok, #{epoch := EndEpoch} = EpochInfo} = rpc(?NODE1, aec_chain_hc, epoch_info, [ChildTopHeight]),
+    ChildTopHeight = rpc(Node, aec_chain, top_height, []),
+    {ok, #{epoch := EndEpoch} = EpochInfo} = rpc(Node, aec_chain_hc, epoch_info, [ChildTopHeight]),
     ct:log("Parent at height ~p and child at height ~p in child epoch ~p",
            [ParentTopHeight, ChildTopHeight, EndEpoch ]),
 
@@ -783,7 +784,7 @@ epochs_with_slow_parent(Config) ->
     ?assertException(error, timeout_waiting_for_block, produce_cc_blocks(Config, 1, [])),
 
     ?assertEqual([{ok, (N-1) * ?CHILD_EPOCH_LENGTH + 1} || N <- lists:seq(1, EndEpoch)],
-                 [rpc(?NODE1, aec_chain_hc, epoch_start_height, [N]) || N <- lists:seq(1, EndEpoch)]),
+                 [rpc(Node, aec_chain_hc, epoch_start_height, [N]) || N <- lists:seq(1, EndEpoch)]),
     ok.
 
 %% Demonstrate that child chain start signalling epoch length adjustment downward
