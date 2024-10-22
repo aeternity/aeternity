@@ -469,7 +469,8 @@ respect_schedule(Node, EpochStart, Epoch, TopHeight) ->
 
     ct:log("Checking epoch ~p info: ~p at height ~p", [Epoch, EI, EpochStart]),
 
-    %% We buffer the seed one epoch, hence Epoch - 1
+    %% We buffer the seed two epochs, entropy height already looks at previous Epoch,
+    %% hence Epoch - 1
     ParentHeight = rpc(?NODE1, aec_consensus_hc, entropy_height, [Epoch - 1]),
     {ok, PHdr}   = rpc(?PARENT_CHAIN_NODE, aec_chain, get_key_header_by_height, [ParentHeight]),
     {ok, PHash0} = aec_headers:hash_header(PHdr),
@@ -920,7 +921,7 @@ post_pin_to_pc(Config) ->
     BL = rpc(Node, aec_chain, top_height, []), % we're producing in last black
     ok.
 
-%% A wallet posting a pin transaction by only usign HTTP API towards Child and Parent
+%% A wallet posting a pin transaction by only using HTTP API towards Child and Parent
 wallet_post_pin_to_pc(Config) ->
     [{Node, _, _} | _] = ?config(nodes, Config),
 
