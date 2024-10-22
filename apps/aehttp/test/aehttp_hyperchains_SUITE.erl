@@ -1126,7 +1126,7 @@ last_leader_validates_pin_and_post_to_contract(Config) ->
     %   At end(?) of last block, execute contract with block and validate from there?
     {ok, BS} = produce_cc_blocks(Config, 1),
     ct:log("produced CC blocks: ~p", [BS]),
-    assertEqual(undefined, rpc(?NODE1, aec_chain_hc, pin_info, [])), % will fail once keyblock-microblock order is reversed
+    ?assertEqual(undefined, rpc(?NODE1, aec_chain_hc, pin_info, [])), % will fail once keyblock-microblock order is reversed
     %% mine another block. NOW the state is updated. WHY!?
     {ok, _} = produce_cc_blocks(Config, 1),
     DecodedPL = rpc(?NODE1, aec_chain_hc, pin_info, []), 
