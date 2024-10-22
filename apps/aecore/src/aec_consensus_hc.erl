@@ -824,13 +824,36 @@ is_leader_valid(Node, _Trees, TxEnv, _PrevNode) ->
         {ok, ExpectedLeader} ->
             Header = aec_block_insertion:node_header(Node),
             Leader = aec_headers:miner(Header),
-            Leader == ExpectedLeader;
+            Leader == ExpectedLeader andalso validate_pin(Node, Height, Trees, TxEnv, PrevNode);
             %% Fix this to have stake as target validated here also?
         _ ->
             %% This really should not happen, we just got through
             %% state_pre_transformation_key_node
             lager:debug("(Impossible) No leader known for height = ~p", [Height]),
             aec_conductor:throw_error(parent_chain_block_not_synced)
+    end.
+
+validate_pin(Node, Height, Trees, TxEnv, PrevNode) ->
+    try  
+        lager:debug("PINNING: height=~p", [Height]),
+        {ok, #{last := Last, epoch := _Epoch}} = aec_chain_hc:epoch_info(Height-1), % epoch info isn't yet in for our height, so we look one down
+        lager:debug("PINNING: last=~p", [Last]),
+        if Height > 78 ->
+            lager:debug("PINNING: node: ~p", [PrevNode]);
+            true -> true
+        end,
+        case aec_chain_hc:pin_info({TxEnv, Trees}) of
+            undefined -> lager:debug("PINNING got no tx hash"), true;
+            TXHash -> lager:debug("PINNING: got a proper tx hash: ~p", [TXHash]), true
+        end
+        % case call_consensus_contract_result(?ELECTION_CONTRACT, TxEnv, Trees, "pin_info", []) of
+        %     {ok, _, Call} -> lager:debug("PINNING: call: ~p", [Call]), true;
+        %     {error, Error} -> lager:debug("PINNING: call failed: ~p", [Error]), true
+        % end
+    catch
+        Some:Err -> 
+            lager:debug("PINNING: caught ~p:~p", [Some,Err]),
+            true
     end.
 
 create_contracts([], _TxEnv, Trees) -> Trees;

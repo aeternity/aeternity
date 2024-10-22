@@ -15,6 +15,7 @@
         , epoch_info/1
         , validators_at_height/1
         , pin_info/0
+        , pin_info/1
         %% epoch determined
         , epoch_start_height/1
         , epoch_info_for_epoch/1

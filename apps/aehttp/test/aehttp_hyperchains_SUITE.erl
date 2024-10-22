@@ -1094,7 +1094,7 @@ last_leader_validates_pin_and_post_to_contract(Config) ->
     %% post pin to PC
     TxHash = pin_to_parent(pubkey(?DWIGHT)),
     %% post parent spend tx hash to CC
-    {ok, #{epoch  := Epoch,
+    {ok, #{epoch  := _Epoch,
            first  := First,
            last   := Last,
            length := _Length}} = rpc(?NODE1, aec_chain_hc, epoch_info, []),
@@ -1113,30 +1113,18 @@ last_leader_validates_pin_and_post_to_contract(Config) ->
     ct:log("First Spend: ~p", [FirstSpend]),
     DecodedPL = aec_pinning_agent:decode_child_pin_payload(FirstSpend),
 
-    %% we test the contract call and then put it (or a similar one...) in the tx pool
-    %% TODO should really be the same Tx to ensure consistency
-    %% ISSUE: the contracttx is added to pool in Epoch X, but is actually excuted in epoch X+1
-    %% so the value of state.epoch is X+1. Is that the correct behavior?
-    % TODO verify correctness of DecodedPL vs. Epoch
-    % PINTODO: remove Epoch, make sure DecodedPL is proper bytes() contract data type arg
+    %% call contract with PC pin tx hash
     ok = pin_contract_call_tx(Config, "pin", [DecodedPL], 0, LastLeader),
-    %% mine to next block/epoch. Why hasn't the state updated yet!?
-    % TODO product_cc_blocks_until(Fun, [Args], ...) ???? Fun = the contract call is on chain
-    % PINTODO: validation/consensus/proof might be executed quite differently than this...
-    %   At end(?) of last block, execute contract with block and validate from there?
-    {ok, BS} = produce_cc_blocks(Config, 1),
-    ct:log("produced CC blocks: ~p", [BS]),
-    ?assertEqual(undefined, rpc(?NODE1, aec_chain_hc, pin_info, [])), % will fail once keyblock-microblock order is reversed
-    %% mine another block. NOW the state is updated. WHY!?
-    {ok, _} = produce_cc_blocks(Config, 1),
-    DecodedPL = rpc(?NODE1, aec_chain_hc, pin_info, []), 
 
+
+    %% use get_pin_by_tx_hash to get the posted hash back and compare with actual keyblock (to test encoding decoding etc)
     ParentNodeSpec = #{scheme => "http", host => "127.0.0.1", port => aecore_suite_utils:external_api_port(?PARENT_CHAIN_NODE)},
     #{epoch := _PinEpoch, height := PinHeight, block_hash := PinHash} = 
         aec_pinning_agent:get_pin_by_tx_hash(DecodedPL, ParentNodeSpec),
-    
     ?assertEqual({ok, PinHash}, rpc(?NODE1, aec_chain_state, get_key_block_hash_at_height, [PinHeight])),
 
+    %% move into next epoch - trigger leader validation?
+    {ok, _} = produce_cc_blocks(Config, 2),
     ok.
 
 
