@@ -821,7 +821,6 @@ try_compute_schedules(TxEnv, Trees, EpochInfo, NextEpochInfo) ->
     Schedule1 = validator_schedule({TxEnv, Trees}, EpochInfo),
     Schedule2 = validator_schedule({TxEnv, Trees}, NextEpochInfo),
     Schedule = maps:merge(Schedule1, Schedule2),
-    lager:debug("Schedule ~p", [Schedule]),
     cache_schedule(Schedule),
     lager:debug("Schedule cached (range ~p -> ~p)", [First, First + maps:size(Schedule) - 1]),
     ok.
