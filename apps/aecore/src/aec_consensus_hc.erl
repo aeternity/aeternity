@@ -885,11 +885,11 @@ validate_pin(TxEnv, Trees, CurEpochInfo) ->
 add_pin_reward(Trees, TxEnv, Leader) ->
     #{cur_pin_reward := Reward} = aec_chain_hc:pin_reward_info({TxEnv, Trees}),
     aec_events:publish(pin, {pin_accepted}),
-    LeaderAcc = aec_accounts_trees:get(Leader, aec_trees:accounts(Trees)),
+    ATrees = aec_trees:accounts(Trees),
+    LeaderAcc = aec_accounts_trees:get(Leader, ATrees),
     {ok, LeaderAcc1} = aec_accounts:earn(LeaderAcc, Reward),
-    Trees1 = aec_trees:set_accounts(Trees,
-                                    aec_accounts_trees:enter(LeaderAcc1, aec_trees:accounts(Trees))),
-    Trees1.
+    ATrees1 = aec_accounts_trees:enter(LeaderAcc1, ATrees),
+    aec_trees:set_accounts(Trees, ATrees1).
 
 create_contracts([], _TxEnv, Trees) -> Trees;
 create_contracts([Contract | Tail], TxEnv, TreesAccum) ->
