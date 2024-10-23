@@ -268,10 +268,7 @@ state_pre_transform_key_node(Node, PrevNode, Trees) ->
                         {error, not_in_cache} ->
                             lager:debug("Entropy hash for height ~p is not in cache, attempting to resync", [Height]),
                             %% Fail the keyblock production flow, attempt to resync
-                            aec_conductor:throw_error(parent_chain_not_synced);
-                        {error, What} ->
-                            lager:debug("Entropy hash for height ~p: ~p", [Height, What]),
-                            aec_conductor:throw_error(What)
+                            aec_conductor:throw_error(parent_chain_not_synced)
                     end;
                 false ->
                     step(TxEnv, Trees, Leader)
