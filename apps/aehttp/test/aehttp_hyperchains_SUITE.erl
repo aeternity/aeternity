@@ -34,6 +34,7 @@
          get_pin/1,
          wallet_post_pin_to_pc/1,
          post_pin_to_pc/1,
+         last_leader_validates_pin_and_post_to_contract/1,
          first_leader_next_epoch/1
         ]).
 
@@ -162,7 +163,8 @@ groups() ->
             produce_first_epoch,
             get_pin,
             wallet_post_pin_to_pc,
-            post_pin_to_pc ]}
+            post_pin_to_pc,
+            last_leader_validates_pin_and_post_to_contract]}
     ].
 
 suite() -> [].
@@ -1003,6 +1005,113 @@ wallet_post_pin_to_pc(Config) ->
     {ok, _} = produce_cc_blocks(Config, CollectHeight - Height2),
     ok.
 
+last_leader_validates_pin_and_post_to_contract(Config) ->
+
+    %% move into next epoch
+    mine_to_next_epoch(Config),
+    %% post pin to PC
+    TxHash = pin_to_parent(pubkey(?DWIGHT)),
+    %% post parent spend tx hash to CC
+    {ok, #{epoch  := _Epoch,
+           first  := First,
+           last   := Last,
+           length := _Length}} = rpc(?NODE1, aec_chain_hc, epoch_info, []),
+    {ok, LastLeader} = rpc(?NODE1, aec_consensus_hc, leader_for_height, [Last]),
+    tx_hash_to_child(TxHash, ?ALICE, LastLeader, Config),
+    %% move forward to last block
+    CH = rpc(?NODE1, aec_chain, top_height, []),
+    DistToBeforeLast = Last - CH - 1,
+    {ok, _} = produce_cc_blocks(Config, DistToBeforeLast), % produce blocks until last
+
+    %% TODO test to see that LastLeader actually is leader now?
+
+    %% get all blocks(?)
+    {ok, AllBlocks} = get_generations(?NODE1, First, Last-1),
+    [FirstSpend|_] = find_spends_to(LastLeader, AllBlocks),
+    ct:log("First Spend: ~p", [FirstSpend]),
+    DecodedPL = aec_pinning_agent:decode_child_pin_payload(FirstSpend),
+
+    %% call contract with PC pin tx hash
+    ok = pin_contract_call_tx(Config, "pin", [DecodedPL], 0, LastLeader),
+
+
+    %% use get_pin_by_tx_hash to get the posted hash back and compare with actual keyblock (to test encoding decoding etc)
+    ParentNodeSpec = #{scheme => "http", host => "127.0.0.1", port => aecore_suite_utils:external_api_port(?PARENT_CHAIN_NODE)},
+    #{epoch := _PinEpoch, height := PinHeight, block_hash := PinHash} = 
+        aec_pinning_agent:get_pin_by_tx_hash(DecodedPL, ParentNodeSpec),
+    ?assertEqual({ok, PinHash}, rpc(?NODE1, aec_chain_state, get_key_block_hash_at_height, [PinHeight])),
+
+    %% move into next epoch - trigger leader validation?
+    {ok, _} = produce_cc_blocks(Config, 2),
+    ok.
+
+
+%%% --------- pinning helpers
+
+% PINREFAC
+pin_contract_call_tx(Config, Fun, Args, Amount, FromPubKey) ->
+    ContractPubkey = ?config(election_contract, Config),
+    Nonce = next_nonce(?NODE1, FromPubKey),
+    {ok, CallData} = aeb_fate_abi:create_calldata(Fun, Args),
+    ABI = aect_test_utils:abi_version(),
+    TxSpec =
+        #{  caller_id   => aeser_id:create(account, FromPubKey)
+          , nonce       => Nonce
+          , contract_id => aeser_id:create(contract, ContractPubkey)
+          , abi_version => ABI
+          , fee         => 1000000 * ?DEFAULT_GAS_PRICE
+          , amount      => Amount
+          , gas         => 1000000
+          , gas_price   => ?DEFAULT_GAS_PRICE
+          , call_data   => CallData},
+    {ok, Tx} = aect_call_tx:new(TxSpec),
+    NetworkId = ?config(network_id, Config),
+    SignedTx = sign_tx(Tx, privkey(who_by_pubkey(FromPubKey)), NetworkId),
+    rpc:call(?NODE1_NAME, aec_tx_pool, push, [SignedTx, tx_received]),
+    ok.
+
+% PINREFAC
+find_spends_to(Account, Blocks) ->
+   lists:flatten([ pick_pin_spends_to(Account, Txs) || {mic_block, _, Txs, _} <- Blocks ]).
+
+% PINREFAC
+pick_pin_spends_to(Account, Txs) ->
+    [ T || {signed_tx,{aetx,spend_tx,aec_spend_tx,_,{spend_tx,_,{id,account,Account2},_,_,_,_,T}},_} <- Txs, Account =:= Account2, aec_pinning_agent:is_pin(T)].
+
+% PINREFAC aec_parent_connector??
+pin_to_parent(AccountPK) ->
+    {ok, #{parent_payload := PinPayloadBin}} = rpc(?NODE1, aec_pinning_agent, get_pinning_data, []),
+
+    AccPKEncEnc = aeser_api_encoder:encode(account_pubkey, AccountPK),
+    ParentNodeSpec = #{scheme => "http", host => "127.0.0.1", port => aecore_suite_utils:external_api_port(?PARENT_CHAIN_NODE)},
+    {ok, []} = rpc(?PARENT_CHAIN_NODE, aec_tx_pool, peek, [infinity]), % no pending transactions
+    PinTx = aec_pinning_agent:create_pin_tx(ParentNodeSpec, AccPKEncEnc, AccountPK, 1, 30000 * ?DEFAULT_GAS_PRICE, PinPayloadBin),
+    SignedPinTx = sign_tx(PinTx, privkey(?DWIGHT),?PARENT_CHAIN_NETWORK_ID),
+    {ok, #{<<"tx_hash">> := TxHash}} = aec_pinning_agent:post_pin_tx(SignedPinTx, ParentNodeSpec),
+    TxHash.
+
+% PINREFAC
+tx_hash_to_child(TxHash, SendAccount, Leader, Config) ->
+    NetworkId = ?config(network_id, Config), % TODO not 100% sure about this one...
+    Nonce = next_nonce(?NODE1, pubkey(SendAccount)),
+    Params = #{ sender_id    => aeser_id:create(account, pubkey(SendAccount)),
+                recipient_id => aeser_id:create(account, Leader),
+                amount       => 1,
+                fee          => 30000 * ?DEFAULT_GAS_PRICE,
+                nonce        => Nonce,
+                payload      => aec_pinning_agent:encode_child_pin_payload(TxHash)},
+    ct:log("Preparing a spend tx: ~p", [Params]),
+    {ok, Tx} = aec_spend_tx:new(Params),
+    SignedTx = sign_tx(Tx, privkey(SendAccount), NetworkId),
+    ok = rpc:call(?NODE1_NAME, aec_tx_pool, push, [SignedTx, tx_received]),
+    Hash = rpc:call(?NODE1_NAME, aetx_sign, hash, [SignedTx]),
+    Hash.
+
+mine_to_next_epoch(Config) ->
+    Height1 = rpc(?NODE1, aec_chain, top_height, []),
+    {ok, #{last := Last1, length := _Len}} = rpc(?NODE1, aec_chain_hc, epoch_info, []),
+    {ok, Bs} = produce_cc_blocks(Config, Last1 - Height1 + 1), 
+    ct:log("Block last epoch: ~p", [hd(lists:nthtail(length(Bs) - 2, Bs))]).
 
 %%% --------- helper functions
 
@@ -1107,7 +1216,8 @@ inspect_election_contract(OriginWho, WhatToInspect, Config) ->
 inspect_election_contract(OriginWho, WhatToInspect, Config, TopHash) ->
     {Fun, Args} =
         case WhatToInspect of
-            current_added_staking_power -> {"added_stake", []}
+            current_added_staking_power -> {"added_stake", []};
+            _ -> {WhatToInspect, []}
         end,
     ContractPubkey = ?config(election_contract, Config),
     do_contract_call(ContractPubkey, src(?HC_CONTRACT, Config), Fun, Args, OriginWho, TopHash).
