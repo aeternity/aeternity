@@ -845,9 +845,8 @@ get_contract_pubkeys(Config) ->
     StakingContractPK = rpc(Node, aec_consensus_hc, get_contract_pubkey, [staking]),
     ElectionContractPK = rpc(Node, aec_consensus_hc, get_contract_pubkey, [election]),
     RewardsContractPK = rpc(Node, aec_consensus_hc, get_contract_pubkey, [rewards]),
-    %% note: the pins are for the last block in previous epoch
-    ct:log("Calling hyperchain/contract-pubkeys at ~p", [aecore_suite_utils:external_address()]),
-    {ok, 200, Repl1} = aecore_suite_utils:http_request(aecore_suite_utils:external_address(), get, "hyperchain/contract-pubkeys", []),
+    ct:log("Calling hyperchain/contracts at ~p", [aecore_suite_utils:external_address()]),
+    {ok, 200, Repl1} = aecore_suite_utils:http_request(aecore_suite_utils:external_address(), get, "hyperchain/contracts", []),
     #{<<"staking">> := Staking,
       <<"election">> := Election,
       <<"rewards">> := Rewards

@@ -535,7 +535,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-  /hyperchain/contract-pubkeys:
+  /hyperchain/contracts:
     get:
       tags:
         - external
