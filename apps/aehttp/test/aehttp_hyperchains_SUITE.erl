@@ -1124,7 +1124,8 @@ last_leader_validates_pin_and_post_to_contract(Config) ->
     ?assertEqual({ok, PinHash}, rpc(?NODE1, aec_chain_state, get_key_block_hash_at_height, [PinHeight])),
 
     %% move into next epoch - trigger leader validation?
-    {ok, _} = produce_cc_blocks(Config, 2),
+    {ok, _} = produce_cc_blocks(Config, 1),
+
     ok.
 
 

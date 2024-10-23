@@ -274,9 +274,14 @@ state_pre_transform_node(Type, Height, PrevNode, Trees) ->
         key ->
            case Height == maps:get(last, EpochInfo) of
                true ->
+                    Trees1 = 
+                        case validate_pin(TxEnv, Trees) of
+                            true -> add_pin_reward(Trees, Leader);
+                            false -> Trees
+                        end,
                    {ok, Seed} = get_entropy_hash(Epoch + 2),
                    cache_validators_for_epoch({TxEnv, Trees}, Seed, Epoch + 2),
-                   step_eoe(TxEnv, Trees, Leader, Seed, 0);
+                   step_eoe(TxEnv, Trees1, Leader, Seed, 0);
                false ->
                    step(TxEnv, Trees, Leader)
            end;
@@ -824,7 +829,7 @@ is_leader_valid(Node, _Trees, TxEnv, _PrevNode) ->
         {ok, ExpectedLeader} ->
             Header = aec_block_insertion:node_header(Node),
             Leader = aec_headers:miner(Header),
-            Leader == ExpectedLeader andalso validate_pin(Node, Height, Trees, TxEnv, PrevNode);
+            Leader == ExpectedLeader;
             %% Fix this to have stake as target validated here also?
         _ ->
             %% This really should not happen, we just got through
@@ -833,28 +838,14 @@ is_leader_valid(Node, _Trees, TxEnv, _PrevNode) ->
             aec_conductor:throw_error(parent_chain_block_not_synced)
     end.
 
-validate_pin(_Node, Height, Trees, TxEnv, _PrevNode) ->
-    try  
-        lager:debug("PINNING: height=~p", [Height]),
-        {ok, #{last := Last, epoch := _Epoch}} = aec_chain_hc:epoch_info(Height-1), % epoch info isn't yet in for our height, so we look one down
-        lager:debug("PINNING: last=~p", [Last]),
-        % if Height > 78 -> % trace the PrevNode
-        %     lager:debug("PINNING: node: ~p", [PrevNode]);
-        %     true -> true
-        % end,
-        case aec_chain_hc:pin_info({TxEnv, Trees}) of
-            undefined -> lager:debug("PINNING got no tx hash"), true;
-            TXHash -> lager:debug("PINNING: got a proper tx hash: ~p", [TXHash]), true
-        end
-        % case call_consensus_contract_result(?ELECTION_CONTRACT, TxEnv, Trees, "pin_info", []) of
-        %     {ok, _, Call} -> lager:debug("PINNING: call: ~p", [Call]), true;
-        %     {error, Error} -> lager:debug("PINNING: call failed: ~p", [Error]), true
-        % end
-    catch
-        Some:Err -> 
-            lager:debug("PINNING: caught ~p:~p", [Some,Err]),
-            true
+validate_pin(TxEnv, Trees) ->
+    case aec_chain_hc:pin_info({TxEnv, Trees}) of
+        undefined -> lager:debug("PINNING got no tx hash"), true;
+        TXHash -> lager:debug("PINNING: got a proper tx hash: ~p", [TXHash]), % false, true % also emit event
     end.
+    
+add_pin_reward(Trees, Leader) ->
+    Trees.
 
 create_contracts([], _TxEnv, Trees) -> Trees;
 create_contracts([Contract | Tail], TxEnv, TreesAccum) ->
