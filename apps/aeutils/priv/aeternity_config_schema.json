@@ -1700,9 +1700,9 @@
                             "required": ["type"],
                             "properties": {
                                 "type": {
-                                    "description": "The type of the consensus algorithm used at the given height (ex. pow_cuckoo, smart_contract or hyper_chain)",
+                                    "description": "The type of the consensus algorithm used at the given height (ex. pow_cuckoo, smart_contract or hyperchain)",
                                     "type": "string",
-                                    "default": "hyper_chain"
+                                    "default": "hyperchain"
                                 },
                                 "config": {
                                     "description": "Configuration for the given consensus algorithm",
@@ -1720,19 +1720,9 @@
                                             "description": "The address of the smart contract that will be used for reward distributions. For a new chain this contract should be loaded at genesis",
                                             "type": "string"
                                         },
-                                        "expected_key_block_rate": {
-                                            "description": "Something about rates.. FIXME",
-                                            "default": 2000,
-                                            "type": "integer"
-                                        },
                                         "genesis_start_time": {
                                             "description": "Timestamp for genesis",
                                             "default": 0,
-                                            "type": "integer"
-                                        },
-                                        "lazy_leader_trigger_time": {
-                                            "description": "Grace period until lazy leader is triggered (in ms)",
-                                            "default": 10000,
                                             "type": "integer"
                                         },
                                         "child_block_time": {
@@ -1744,11 +1734,6 @@
                                             "additionalProperties" : false,
                                             "type" : "object",
                                             "properties": {
-                                                "confirmations": {
-                                                    "description": "Minimum number of block confirmations required when selecting a UTXO for sending parent chain commitment transactions",
-                                                    "default": 6,
-                                                    "type": "integer"
-                                                },
                                                 "start_height": {
                                                     "description": "Height on the parent chain that this hyperchain will start posting commitments and start creating blocks",
                                                     "default": 0,
@@ -1758,7 +1743,7 @@
                                                     "description": "The number of blocks on the parent chain to reach finality.",
                                                     "type": "integer"
                                                 },
-                                                "parent_generation": {
+                                                "parent_epoch_length": {
                                                     "description": "The number of blocks in a parent generation.",
                                                     "type": "integer"
                                                 },
@@ -1767,35 +1752,15 @@
                                                     "default": 60000,
                                                     "type": "integer"
                                                 },
-                                                "producing_commitments": {
-                                                    "description": "Enable/Disable commitment production",
-                                                    "default": false,
-                                                    "type": "boolean"
-                                                },
                                                 "consensus": {
                                                     "description" : "Details of the parent chain.",
                                                     "type" : "object",
                                                     "additionalProperties" : false,
                                                     "properties": {
-                                                        "fee": {
-                                                            "description": "The fee for the commitment on the parent chain",
-                                                            "default": 100000000000000,
-                                                            "type": "integer"
-                                                        },
-                                                        "amount": {
-                                                            "description": "Amount of the parent chain commitment transaction",
-                                                            "default": 1,
-                                                            "type": "integer"
-                                                        },
                                                         "network_id": {
                                                             "description" : "The network Id of the parent chain if it has one",
                                                             "type": "string",
                                                             "default": "ae_mainnet"
-                                                        },
-                                                        "spend_address": {
-                                                            "description" : "The address on the parent chain where commitment transactions will be sent. e.g. for a bitcoin parent chain this might start 'bcrt1'...",
-                                                            "type": "string",
-                                                            "default": ""
                                                         },
                                                         "type": {
                                                             "description" : "The type of parent network connection. Currently only AE, Bitcoin and Dogecoin are implemented",
@@ -1806,7 +1771,7 @@
                                                     }
                                                 },
                                                 "polling": {
-                                                    "description" : "Parent chain connection",
+                                                    "description" : "Parent chain connection configuration",
                                                     "type" : "object",
                                                     "additionalProperties" : false,
                                                     "properties": {
@@ -1839,32 +1804,15 @@
                                             }
                                         },
                                         "stakers": {
-                                            "description" : "List of hyperchain accounts and associated parent chain accounts that this node should post commitments for",
+                                            "description" : "List of hyperchain accounts",
                                             "type" : "array",
                                             "items" : {
                                                 "type" : "object",
                                                 "additionalProperties" : false,
-                                                "description" : "Hyperchain and parent chain account pair",
+                                                "description" : "Hyperchain account pair",
                                                 "properties": {
                                                     "hyper_chain_account": {
                                                         "description": "Child chain staking account",
-                                                        "type" : "object",
-                                                        "additionalProperties" : false,
-                                                        "properties": {
-                                                            "pub": {
-                                                                "description": "Public key",
-                                                                "type": "string",
-                                                                "default": ""
-                                                            },
-                                                            "priv": {
-                                                                "description": "Private key",
-                                                                "type": "string",
-                                                                "default": ""
-                                                            }
-                                                        }
-                                                    },
-                                                    "parent_chain_account": {
-                                                        "description": "Parent chain commitment account",
                                                         "type" : "object",
                                                         "additionalProperties" : false,
                                                         "properties": {

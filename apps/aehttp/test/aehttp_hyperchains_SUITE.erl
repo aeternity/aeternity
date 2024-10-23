@@ -1367,13 +1367,13 @@ node_config(Node, CTConfig, PotentialStakers, ReceiveAddress, ProducingCommitmen
                         #{ <<"hyper_chain_account">> => #{<<"pub">> => encoded_pubkey(HCWho), <<"priv">> => HCPriv} }
                     end,
                     PotentialStakers),
-    ConsensusType = <<"hyper_chain">>,
+    ConsensusType = <<"hyperchain">>,
     Port = aecore_suite_utils:external_api_port(?PARENT_CHAIN_NODE),
     SpecificConfig =
                 #{  <<"parent_chain">> =>
                     #{  <<"start_height">> => ?config(parent_start_height, CTConfig),
                         <<"finality">> => ?PARENT_FINALITY,
-                        <<"parent_generation">> => ?PARENT_EPOCH_LENGTH,
+                        <<"parent_epoch_length">> => ?PARENT_EPOCH_LENGTH,
                         <<"consensus">> =>
                             #{  <<"type">> => <<"AE2AE">>,
                                 <<"network_id">> => ?PARENT_CHAIN_NETWORK_ID,

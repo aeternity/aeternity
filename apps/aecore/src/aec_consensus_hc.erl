@@ -68,7 +68,6 @@
         , default_target/0
         , assert_key_target_range/1
         , key_header_difficulty/1
-        , check_parent_generation_time/3
         %% rewards and signing
         , beneficiary/0
         , next_beneficiary/0
@@ -110,7 +109,6 @@ start(Config, _) ->
 
     PCType         = maps:get(<<"type">>, ConsensusConfig, <<"AE2AE">>),
     NetworkId      = maps:get(<<"network_id">>, ConsensusConfig, <<"ae_mainnet">>),
-    PCSpendAddress = maps:get(<<"spend_address">>, ConsensusConfig, <<"">>),
 
     FetchInterval = maps:get(<<"fetch_interval">>, PollingConfig, 500),
     RetryInterval = maps:get(<<"retry_interval">>, PollingConfig, 1000),
@@ -119,11 +117,11 @@ start(Config, _) ->
     ParentHosts   = lists:map(fun aehttpc:parse_node_url/1, Nodes),
 
 
-    {ParentConnMod, _PCSpendPubkey, _HCs, SignModule} =
+    {ParentConnMod, SignModule} =
         case PCType of
-            <<"AE2AE">>   -> start_ae(StakersConfig, PCSpendAddress);
-            <<"AE2BTC">>  -> start_btc(StakersConfig, PCSpendAddress, aehttpc_btc);
-            <<"AE2DOGE">> -> start_btc(StakersConfig, PCSpendAddress, aehttpc_doge)
+            <<"AE2AE">>   -> start_ae(StakersConfig);
+            <<"AE2BTC">>  -> start_btc(StakersConfig, aehttpc_btc);
+            <<"AE2DOGE">> -> start_btc(StakersConfig, aehttpc_doge)
         end,
 
     start_dependency(aec_parent_connector, [ParentConnMod, FetchInterval, ParentHosts, NetworkId,
@@ -133,7 +131,7 @@ start(Config, _) ->
                                               CacheSize, Confirmations]),
     ok.
 
-start_btc(StakersEncoded, PCSpendAddress, ParentConnMod) ->
+start_btc(StakersEncoded, ParentConnMod) ->
     Stakers =
         lists:map(
             fun(#{<<"hyper_chain_account">> := #{<<"pub">> := EncodedPubkey,
@@ -145,49 +143,24 @@ start_btc(StakersEncoded, PCSpendAddress, ParentConnMod) ->
             StakersEncoded),
     StakersMap = maps:from_list(Stakers),
     start_dependency(aec_preset_keys, [StakersMap]),
-    HCPCPairs = lists:map(
-            fun(#{<<"hyper_chain_account">> := #{<<"pub">> := EncodedPubkey},
-                  <<"parent_chain_account">> := #{<<"pub">> := BTCPubkey}
-                 }) ->
-                 {ok, HCPubkey} = aeser_api_encoder:safe_decode(account_pubkey,
-                                                                EncodedPubkey),
-                 {HCPubkey, BTCPubkey}
-            end,
-            StakersEncoded),
     SignModule = undefined,
-    {ParentConnMod, PCSpendAddress, HCPCPairs, SignModule}.
+    {ParentConnMod, SignModule}.
 
-start_ae(StakersEncoded, PCSpendAddress) ->
+start_ae(StakersEncoded) ->
     Stakers =
         lists:flatmap(
             fun(#{<<"hyper_chain_account">> := #{<<"pub">> := HCEncodedPubkey,
                                                  <<"priv">> := HCEncodedPrivkey}
-                  %% <<"parent_chain_account">> := #{<<"pub">> := PCEncodedPubkey,
-                  %%                                 <<"priv">> := PCEncodedPrivkey}
                  }) ->
                 {HCPubkey, HCPrivkey} = validate_keypair(HCEncodedPubkey, HCEncodedPrivkey),
-                %% {PCPubkey, PCPrivkey} = validate_keypair(PCEncodedPubkey, PCEncodedPrivkey),
                 [{HCPubkey, HCPrivkey}]
-                %% [{HCPubkey, HCPrivkey}, {PCPubkey, PCPrivkey}]
             end,
             StakersEncoded),
     StakersMap = maps:from_list(Stakers),
-    %% TODO: ditch this after we move beyond OTP24
-    _Mod = aec_preset_keys,
     start_dependency(aec_preset_keys, [StakersMap]),
-    HCPCPairs = lists:map(
-            fun(#{<<"hyper_chain_account">> := #{<<"pub">> := HCEncodedPubkey}
-                  %% <<"parent_chain_account">> := #{<<"pub">> := PCEncodedPubkey}
-                 }) ->
-                 {ok, HCPubkey} = aeser_api_encoder:safe_decode(account_pubkey, HCEncodedPubkey),
-                 %% {HCPubkey, PCEncodedPubkey}
-                 HCPubkey
-            end,
-            StakersEncoded),
     ParentConnMod = aehttpc_aeternity,
     SignModule = get_sign_module(),
-    {ok, PCSpendPubkey} = aeser_api_encoder:safe_decode(account_pubkey, PCSpendAddress),
-    {ParentConnMod, PCSpendPubkey, HCPCPairs, SignModule}.
+    {ParentConnMod, SignModule}.
 
 validate_keypair(EncodedPubkey, EncodedPrivkey) ->
     {ok, Pubkey} = aeser_api_encoder:safe_decode(account_pubkey,
@@ -436,7 +409,7 @@ set_key_block_seal(KeyBlock, Seal) ->
 nonce_for_sealing(Header) ->
     ChildHeight = aec_headers:height(Header),
     {ok, ChildEpoch} = aec_chain_hc:epoch(ChildHeight - 1),
-    ChildEpoch * parent_generation() + pc_start_height().
+    ChildEpoch * parent_epoch_length() + pc_start_height().
 
 next_nonce_for_sealing(PCHeight, _) ->
     PCHeight.
@@ -497,9 +470,9 @@ genesis_start_time() ->
     Fun = fun() -> get_consensus_config_key([<<"genesis_start_time">>], 0) end,
     aeu_ets_cache:get(?ETS_CACHE_TABLE, genesis_start_time, Fun).
 
-parent_generation() ->
-    Fun = fun() -> get_consensus_config_key([<<"parent_chain">>, <<"parent_generation">>]) end,
-    aeu_ets_cache:get(?ETS_CACHE_TABLE, parent_generation, Fun).
+parent_epoch_length() ->
+    Fun = fun() -> get_consensus_config_key([<<"parent_chain">>, <<"parent_epoch_length">>]) end,
+    aeu_ets_cache:get(?ETS_CACHE_TABLE, parent_epoch_length, Fun).
 
 %acceptable_sync_offset() ->
 %    Fun = fun() -> get_consensus_config_key([<<"parent_chain">>, <<"acceptable_sync_offset">>], 60000) end,
@@ -552,102 +525,6 @@ child_block_time() ->
     Fun = fun() -> get_consensus_config_key([<<"child_block_time">>]) end,
     aeu_ets_cache:get(?ETS_CACHE_TABLE, child_block_time, Fun).
 
-parent_generation_block_time() ->
-    aeu_ets_cache:lookup(?ETS_CACHE_TABLE, parent_generation_block_time).
-
-parent_generation_block_time(Time) ->
-    aeu_ets_cache:put(?ETS_CACHE_TABLE, parent_generation_block_time, Time).
-
-check_parent_generation_time(Block, _TxEnv, Trees) ->
-    PCTime1 = aec_parent_chain_block:time(Block),
-    case parent_generation_block_time() of
-        error ->
-            %% This is the first epoch
-            parent_generation_block_time(PCTime1),
-            Trees;
-        {ok, PCTime1} ->
-            % Already been checked
-            Trees;
-        {ok, _PCTime0} ->
-            %% OldEpochLength = get_child_epoch_length(TxEnv, Trees),
-            %% ExpectedEpochDuration = child_block_time() * OldEpochLength,
-            %% PCGenerationDuration = PCTime1 - PCTime0,
-            %% AcceptableOffset = acceptable_sync_offset(),
-            %% case abs(ExpectedEpochDuration - PCGenerationDuration) of
-            %%     DurationDiff when DurationDiff > AcceptableOffset ->
-            %%         NewEpochLength = ceil(PCGenerationDuration / child_block_time()),
-            %%         lager:info("Adjusted child epoch length from ~p to ~p because of a difference in the parent chain of ~p", [OldEpochLength, NewEpochLength, DurationDiff]),
-            %%         set_child_epoch_length(NewEpochLength, TxEnv, Trees);
-            %%     _ ->
-            %%         Trees
-            %% end,
-            %% parent_generation_block_time(PCTime1),
-            Trees
-    end.
-
-%entropy(Block, Height, TxEnv, Trees) ->
-%    case aeu_ets_cache:lookup(?ETS_CACHE_TABLE, seed) of
-%        {ok, {_OldState, Seed, Height, _OldPCHeight}} ->
-%            {Seed, Trees};
-%        _Other ->
-%            PCHeight = aec_parent_chain_block:height(Block),
-%            Hash = aec_parent_chain_block:hash(Block),
-%            EpochLength = get_child_epoch_length(TxEnv, Trees),
-%            BlocksLeft = get_blocks_upto_child_epoch(TxEnv, Trees),
-%            %% TODO possibly set new entropy at last block in epoch, i.e. BlocksLeft == 0
-%            case BlocksLeft == EpochLength of
-%                true ->
-%                    case set_new_entropy(Hash, Height, PCHeight) of
-%                        {_SeedState, _OldSeed, _OldHeight, SeedHeight} when PCHeight > SeedHeight ->
-%                            aec_conductor:throw_error(parent_chain_finality_not_reached);
-%                        _ ->
-%                            Trees1 = check_parent_generation_time(Block, TxEnv, Trees),
-%                            {Hash, Trees1}
-%                    end;
-%                _ ->
-%                    {next_entropy(Hash, Height, PCHeight), Trees}
-%            end
-%    end.
-
-%set_new_entropy(Hash, Height, PCHeight) ->
-%    case aec_parent_chain_cache:get_block_by_height(PCHeight + pc_finality()) of
-%        {error, not_in_cache} ->
-%            case aeu_ets_cache:lookup(?ETS_CACHE_TABLE, seed) of
-%                error ->
-%                    lager:error("Parent finality not reached for height ~p", [PCHeight]),
-%                    aec_conductor:throw_error(parent_chain_block_not_synced);
-%                {ok, {_OldState, _OldSeed, _OldHeight, _OldPCHeight} = Old} ->
-%                    lager:warning("Parent finality not reached for parent height ~p", [PCHeight]),
-%                    %% generate a block with the previous epoch, next block will check the epoch again.
-%                    Old
-%            end;
-%        {ok, _Block} ->
-%            lager:info("New epoch at parent height ~p", [PCHeight]),
-%            Seed = hash_to_int(Hash),
-%            State = rand:seed_s(exsss, Seed),
-%            Result = {State, Hash, Height, PCHeight},
-%            aeu_ets_cache:put(?ETS_CACHE_TABLE, seed, Result),
-%            Result
-%    end.
-%
-%next_entropy(Hash, Height, PCHeight) ->
-%    {NewState, _Seed, _Height, NewPCHeight} =
-%        case aeu_ets_cache:lookup(?ETS_CACHE_TABLE, seed) of
-%            {ok, {_State, _OldSeed, _OldHeight, PCHeight} = Result} ->
-%                Result;
-%            _ ->
-%                lager:info("Trying to set entropy for parent height ~p", [PCHeight]),
-%                set_new_entropy(Hash, Height, PCHeight)
-%        end,
-%    next_entropy_from_seed(NewState, Height, NewPCHeight).
-
-%next_entropy_from_seed(State, Height, PCHeight) ->
-%    {HashInt, State2} = rand:bytes_s(256, State),
-%    Seed = list_to_bitstring(base58:binary_to_base58(HashInt)),
-%    aeu_ets_cache:put(?ETS_CACHE_TABLE, seed, {State2, Seed, Height, PCHeight}),
-%    Seed.
-
-
 %% This is the contract owner, calls shall be only available via protocol
 contract_owner() ->
     Fun = fun() ->
@@ -666,14 +543,6 @@ genesis_protocol_version() ->
       fun() ->
             hd(lists:sort(maps:keys(aec_hard_forks:protocols())))
       end).
-
-%lazy_leader_time_delta() ->
-%    case aeu_env:user_config([<<"chain">>, <<"consensus">>, <<"0">>,
-%                              <<"config">>, <<"lazy_leader_trigger_time">>]) of
-%        {ok, Interval}
-%        -> Interval;
-%        undefined -> 10000
-%    end.
 
 get_consensus_config_key(Keys) ->
     case aeu_env:user_config([<<"chain">>, <<"consensus">>, <<"0">>, <<"config">>] ++ Keys) of
@@ -864,7 +733,7 @@ is_block_producer_() ->
 %% We start at parent epoch 1
 %% We take first hash of parent epoch (hence -1)
 entropy_height(ChildEpoch) ->
-    (max(1, (ChildEpoch - 2)) - 1) * parent_generation() + pc_start_height().
+    (max(1, (ChildEpoch - 2)) - 1) * parent_epoch_length() + pc_start_height().
 
 cache_schedule(Schedule) ->
     aeu_ets_cache:put(?ETS_CACHE_TABLE, validator_schedule, Schedule).
@@ -1031,27 +900,7 @@ target_parent_heights(ChildHeight) ->
     lager:debug("ChildHeight ~p, target_parent_heights called with child epoch ~p",
                 [ChildHeight, EpochNum]),
     %%TODO this computation is wrong in the long run... it assumes all child epochs to be of equal length
-    ParentHeightStart = (EpochNum - 2) * parent_generation() + pc_start_height(),
-    ParentHeightEnd = (EpochNum + 2) * parent_generation() + pc_start_height(),
+    ParentHeightStart = (EpochNum - 2) * parent_epoch_length() + pc_start_height(),
+    ParentHeightEnd = (EpochNum + 2) * parent_epoch_length() + pc_start_height(),
     [ParentHeightStart, ParentHeightEnd].
 
-
-%elect_lazy_leader(Beneficiary, TxEnv, Trees) ->
-%    {ok, CDLazy} = aeb_fate_abi:create_calldata("elect_after_lazy_leader",
-%                                                [aefa_fate_code:encode_arg({address, Beneficiary})]),
-%    CallDataLazy = aeser_api_encoder:encode(contract_bytearray, CDLazy),
-%    case call_consensus_contract_(?ELECTION_CONTRACT,
-%                                TxEnv, Trees,
-%                                CallDataLazy, "elect_after_lazy_leader", 0) of
-%        {ok, Trees2, Call2} ->
-%            case aeb_fate_encoding:deserialize(aect_call:return_value(Call2)) of
-%                {tuple, {{address, Beneficiary}, AddedStake}} -> %% same beneficiary!
-%                    cache(Beneficiary, AddedStake),
-%                    Trees2;
-%                What ->
-%                    %% maybe a softer approach than crash and burn?
-%                    aec_conductor:throw_error({failed_to_elect_new_leader, What})
-%            end;
-%        {error, What} ->
-%            aec_conductor:throw_error({failed_to_elect_new_leader, What})
-%    end.
