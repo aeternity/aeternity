@@ -264,7 +264,8 @@ end_per_group(_Group, Config) ->
     [ aecore_suite_utils:stop_node(Node, Config1)
       || {Node, _, _} <- proplists:get_value(nodes, Config1, []) ],
 
-    aecore_suite_utils:assert_no_errors_in_logs(Config1),
+    %% Ignore conductor/consensus errors which went through the proper error reporting routine (calling aec_conductor:throw_error)
+    aecore_suite_utils:assert_no_errors_in_logs(Config1, ["{handled_abort,"]),
 
     Config1.
 

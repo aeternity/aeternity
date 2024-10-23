@@ -81,7 +81,7 @@
          all_events_since/2,
          check_for_logs/2,
          times_in_epoch_log/3,
-         errors_in_logs/2, assert_no_errors_in_logs/1
+         errors_in_logs/2, assert_no_errors_in_logs/1, assert_no_errors_in_logs/2
         ]).
 
 -export([proxy/0,
@@ -1091,13 +1091,25 @@ file_missing(F) ->
     end.
 
 assert_no_errors_in_logs(Config) ->
+    assert_no_errors_in_logs(Config, []).
+
+%% Scans the logs for '[error]' patterns and fails if any are found.
+%% If AllowedSubstrings is provided, then any log lines containing these substrings are not reported.
+-spec assert_no_errors_in_logs(Config :: proplists:proplist(), AllowedPatterns :: [string()]) -> ok.
+assert_no_errors_in_logs(Config, AllowedSubstrings) ->
     Nodes = [Node || {Node, _, _} <- ?config(nodes, Config)],
     Group = proplists:get_value(name, proplists:get_value(tc_group_properties, Config, []), "?"),
+    ErrorsToReport = lists:filter(
+        fun({_Node, {_File, Line}}) ->
+            not lists:any(fun(Pattern) -> string:find(Line, Pattern) =/= nomatch end, AllowedSubstrings)
+        end,
+        errors_in_logs(Nodes, Config)),
     lists:foreach(
         fun({Node, {File, Line}}) ->
             ct:fail("group=~s node=~s file=~s: ~s", [Group, Node, File, Line])
         end,
-        errors_in_logs(Nodes, Config)).
+        ErrorsToReport),
+    ok.
 
 errors_in_logs(Nodes, Config) ->
     [{N, Errs} || N <- Nodes,

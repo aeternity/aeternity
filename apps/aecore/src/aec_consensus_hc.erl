@@ -265,10 +265,13 @@ state_pre_transform_key_node(Node, PrevNode, Trees) ->
                 true ->
                     case get_entropy_hash(Epoch + 1) of
                         {ok, Seed} -> step_eoe(TxEnv, Trees, Leader, Seed, 0);
+                        {error, not_in_cache} ->
+                            lager:debug("Entropy hash for height ~p is not in cache, attempting to resync", [Height]),
+                            %% Fail the keyblock production flow, attempt to resync
+                            aec_conductor:throw_error(parent_chain_not_synced);
                         {error, What} ->
-                            lager:warning("Failed to get entropy hash for height ~p: ~p", [Height, What]),
-                            %% can not eoe, because we have no entropy data
-                            step(TxEnv, Trees, Leader)
+                            lager:debug("Entropy hash for height ~p: ~p", [Height, What]),
+                            aec_conductor:throw_error(What)
                     end;
                 false ->
                     step(TxEnv, Trees, Leader)
