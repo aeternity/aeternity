@@ -115,6 +115,7 @@ queue('GetPeerKey')                             -> ?READ_Q;
 queue('GetChainEnds')                           -> ?READ_Q;
 queue('GetRecentGasPrices')                     -> ?READ_Q;
 queue('GetPinningTx')                           -> ?READ_Q;
+queue('GetHyperchainContractPubkeys')           -> ?READ_Q;
 %% update transactions (default to update in catch-all)
 queue('PostTransaction')                        -> ?WRITE_Q;
 queue(_)                                        -> ?WRITE_Q.
@@ -908,6 +909,14 @@ handle_request_('GetPinningTx', _Params, _Context) ->
         {error, _} ->
            {404, [], #{reason => <<"No pin data available">>}}
     end;
+
+handle_request_('GetHyperchainContractPubkeys', _Params, _Context) ->
+    % TODO handle not in HC at all or consensus not initialized?
+    lager:debug("HyperchainsGetContract"),
+    {200, [], #{<<"staking">> => aeser_api_encoder:encode(contract_pubkey, aec_consensus_hc:get_contract_pubkey(staking)),
+                <<"election">> => aeser_api_encoder:encode(contract_pubkey, aec_consensus_hc:get_contract_pubkey(election)),
+                <<"rewards">> => aeser_api_encoder:encode(contract_pubkey, aec_consensus_hc:get_contract_pubkey(rewards))
+            }};
 
 handle_request_(OperationID, Req, Context) ->
     error_logger:error_msg(

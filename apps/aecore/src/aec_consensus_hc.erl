@@ -83,6 +83,7 @@
         , call_consensus_contract_result/5
         , entropy_height/1
         , get_entropy_hash/1
+        , get_contract_pubkey/1
         ]).
 
 -ifdef(TEST).
@@ -474,6 +475,16 @@ rewards_contract_pubkey() ->
           end,
     aeu_ets_cache:get(?ETS_CACHE_TABLE, rewards_contract_pubkey, Fun).
 
+staking_contract_pubkey() ->
+    Fun = fun() ->
+              EncContractId = get_consensus_config_key([<<"staking_contract">>]),
+              case aeser_api_encoder:safe_decode(contract_pubkey, EncContractId) of
+                  {ok, Pubkey} -> Pubkey;
+                  _ -> erlang:error({contract_owner_not_valid_contract, EncContractId})
+              end
+          end,
+    aeu_ets_cache:get(?ETS_CACHE_TABLE, staking_contract_pubkey, Fun).
+
 pc_start_height() ->
     Fun = fun() -> get_consensus_config_key([<<"parent_chain">>, <<"start_height">>], 0) end,
     aeu_ets_cache:get(?ETS_CACHE_TABLE, pc_start_height, Fun).
@@ -697,14 +708,17 @@ call_consensus_contract_result(ContractType, TxEnv, Trees, ContractFun, Args) ->
     lager:debug("Call result ~p", [Result]),
     {ok, Result}.
 
+-spec get_contract_pubkey(election | rewards | staking) -> binary().
+get_contract_pubkey(ContractType) ->
+    case ContractType of
+        ?ELECTION_CONTRACT -> election_contract_pubkey();
+        ?REWARDS_CONTRACT -> rewards_contract_pubkey();
+        ?STAKING_CONTRACT -> staking_contract_pubkey()
+    end.
+
 call_consensus_contract_(ContractType, TxEnv, Trees, EncodedCallData, Keyword, Amount) ->
     log_consensus_call(TxEnv, Keyword, EncodedCallData, Amount),
-    ContractPubkey =
-        case ContractType of
-            ?ELECTION_CONTRACT -> election_contract_pubkey();
-            ?REWARDS_CONTRACT -> rewards_contract_pubkey();
-            ?STAKING_CONTRACT -> rewards_contract_pubkey()
-        end,
+    ContractPubkey = get_contract_pubkey(ContractType),
     OwnerPubkey = contract_owner(),
     Contract = aect_state_tree:get_contract(ContractPubkey,
                                             aec_trees:contracts(Trees)),

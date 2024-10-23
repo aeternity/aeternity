@@ -19,7 +19,7 @@
 -type hash() :: binary().
 -type height() :: non_neg_integer().
 -type time() :: non_neg_integer().
--type pubkey() :: binary().
+%-type pubkey() :: binary().
 -type chain() :: aeternity | btc | doge.
 
 -export_type([ node_spec/0 ]).

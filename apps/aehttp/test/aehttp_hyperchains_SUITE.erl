@@ -34,6 +34,7 @@
          get_pin/1,
          wallet_post_pin_to_pc/1,
          post_pin_to_pc/1,
+         get_contract_pubkeys/1,
          first_leader_next_epoch/1
         ]).
 
@@ -151,6 +152,7 @@ groups() ->
           , produce_some_epochs
           , respect_schedule
           , check_blocktime
+          , get_contract_pubkeys
           ]}
     , {epochs, [sequence],
           [ start_two_child_nodes
@@ -831,6 +833,32 @@ epochs_with_fast_parent(Config) ->
     ok.
 
 %%%=============================================================================
+%%% HC Endpoints
+%%%=============================================================================
+
+get_contract_pubkeys(Config) ->
+    [{Node, _, _} | _] = ?config(nodes, Config),
+    %% Verify that endpoint is available
+    {ok, IsChildChain} = rpc(Node, aeu_env, find_config,
+                             [[<<"http">>, <<"endpoints">>, <<"hyperchain">>], [user_config, schema_default]]),
+    ?assert(IsChildChain),
+    StakingContractPK = rpc(Node, aec_consensus_hc, get_contract_pubkey, [staking]),
+    ElectionContractPK = rpc(Node, aec_consensus_hc, get_contract_pubkey, [election]),
+    RewardsContractPK = rpc(Node, aec_consensus_hc, get_contract_pubkey, [rewards]),
+    ct:log("Calling hyperchain/contracts at ~p", [aecore_suite_utils:external_address()]),
+    {ok, 200, Repl1} = aecore_suite_utils:http_request(aecore_suite_utils:external_address(), get, "hyperchain/contracts", []),
+    #{<<"staking">> := Staking,
+      <<"election">> := Election,
+      <<"rewards">> := Rewards
+    } = Repl1,
+    ?assertEqual({ok, StakingContractPK}, aeser_api_encoder:safe_decode(contract_pubkey, Staking)),
+    ?assertEqual({ok, ElectionContractPK}, aeser_api_encoder:safe_decode(contract_pubkey, Election)),
+    ?assertEqual({ok, RewardsContractPK}, aeser_api_encoder:safe_decode(contract_pubkey, Rewards)),
+
+    ok.
+    
+
+%%%=============================================================================
 %%% Pinning
 %%%=============================================================================
 
@@ -1378,6 +1406,7 @@ node_config(Node, CTConfig, PotentialStakers, ReceiveAddress, ProducingCommitmen
                                 maps:merge(
                                     #{  <<"election_contract">> => aeser_api_encoder:encode(contract_pubkey, election_contract_address()),
                                         <<"rewards_contract">> => aeser_api_encoder:encode(contract_pubkey, staking_contract_address()),
+                                        <<"staking_contract">> => aeser_api_encoder:encode(contract_pubkey, staking_contract_address()),
                                         <<"contract_owner">> => aeser_api_encoder:encode(account_pubkey,?OWNER_PUBKEY),
                                         <<"expected_key_block_rate">> => 2000,
                                         <<"stakers">> => Stakers},
