@@ -40,7 +40,7 @@
         %% State transition
         , state_pre_transform_key_node_consensus_switch/2
         , state_pre_transform_key_node/3
-        , state_pre_transform_micro_node/2
+        , state_pre_transform_micro_node/3
         %% Block rewards
         , state_grant_reward/4
         %% PoGF
@@ -204,7 +204,7 @@ micro_block_height_relative_previous_block(_Type, Height) ->
 %% Custom state transitions
 state_pre_transform_key_node_consensus_switch(_Node, Trees) -> Trees.
 state_pre_transform_key_node(_Node, _PrevNode, Trees) -> Trees.
-state_pre_transform_micro_node(_Node, Trees) -> Trees.
+state_pre_transform_micro_node(_Height, _PrevNode, Trees) -> Trees.
 
 %% -------------------------------------------------------------------
 %% Block rewards
