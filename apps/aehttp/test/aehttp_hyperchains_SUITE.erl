@@ -263,6 +263,14 @@ end_per_group(_Group, Config) ->
     Config1 = with_saved_keys([nodes], Config),
     [ aecore_suite_utils:stop_node(Node, Config1)
       || {Node, _, _} <- proplists:get_value(nodes, Config1, []) ],
+
+    %% Ignore conductor/consensus errors which went through the proper error reporting routine (calling aec_conductor:throw_error)
+    %% Ignore blocked worker tag errors
+    aecore_suite_utils:assert_no_errors_in_logs(
+        Config1,
+        ["{handled_abort,", "Disallowing dispatch"]
+    ),
+
     Config1.
 
 %% Here we decide which nodes are started/running

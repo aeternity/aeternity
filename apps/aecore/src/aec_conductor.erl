@@ -1261,7 +1261,6 @@ create_key_block_candidate(#state{key_block_candidates = [{_, #candidate{top_has
     start_block_production_(State);
 create_key_block_candidate(#state{top_block_hash = TopHash, mode = pos} = State) ->
     ConsensusModule = consensus_module(State),
-
     %% TODO: should we bother with "normal" pos
     case ConsensusModule of
         aec_consensus_hc ->
@@ -1284,7 +1283,6 @@ create_key_block_candidate(#state{top_block_hash = TopHash, mode = pos} = State)
             {State1, _Pid} = dispatch_worker(create_key_block_candidate, Fun, State),
             State1
     end;
-
 create_key_block_candidate(#state{top_block_hash      = TopHash,
                                   mode                = Mode,
                                   stratum_beneficiary = StratumBeneficiary} = State) ->

@@ -81,7 +81,10 @@
          all_events_since/2,
          check_for_logs/2,
          times_in_epoch_log/3,
-         errors_in_logs/2]).
+         errors_in_logs/2,
+         assert_no_errors_in_logs/1,
+         assert_no_errors_in_logs/2
+        ]).
 
 -export([proxy/0,
          start_proxy/0,
@@ -1088,6 +1091,36 @@ file_missing(F) ->
         _ ->
             true
     end.
+
+assert_no_errors_in_logs(Config) ->
+    assert_no_errors_in_logs(Config, []).
+
+%% Scans the logs for '[error]' patterns and fails if any are found.
+%% If AllowedSubstrings is provided, then any log lines containing these substrings are not reported.
+-spec assert_no_errors_in_logs(Config :: proplists:proplist(), AllowedPatterns :: [string()]) -> ok.
+assert_no_errors_in_logs(Config, AllowedSubstrings) ->
+    Nodes = [Node || {Node, _, _} <- ?config(nodes, Config)],
+    Group = proplists:get_value(name, proplists:get_value(tc_group_properties, Config, []), "?"),
+    {IgnoredErrors, ErrorsToReport} = lists:partition(
+        fun({_Node, {_File, Line}}) ->
+            lists:any(
+                fun(Pattern) -> string:find(Line, Pattern) =/= nomatch end,
+                AllowedSubstrings
+            )
+        end,
+        errors_in_logs(Nodes, Config)),
+
+    case IgnoredErrors of
+        [] -> ok;
+        _ -> ct:pal("Found some allowed errors in logs, while running group=~s~n~150p", [Group, IgnoredErrors])
+    end,
+    case ErrorsToReport of
+        [] -> ok;
+        _ ->
+            ct:pal("Errors in logs, while running group=~s~n~150p", [Group, ErrorsToReport]),
+            ct:fail("Found errors in logs. Add samples to AllowedSubstrings parameter in the aecore_suite_utils:assert_no_errors_in_logs call to ignore.")
+    end,
+    ok.
 
 errors_in_logs(Nodes, Config) ->
     [{N, Errs} || N <- Nodes,

@@ -249,8 +249,7 @@ micro_block_height_relative_previous_block(micro, MicroHeight) ->
 %% Custom state transitions
 state_pre_transform_key_node_consensus_switch(_Node, Trees) -> Trees.
 
-%% only called for key-blocks - this is the call where we set epoch and
-%% leader
+%% only called for key-blocks - this is the call where we set the epoch and the leader
 state_pre_transform_key_node(Node, PrevNode, Trees) ->
     PrevHeader = aec_block_insertion:node_header(PrevNode),
     {ok, PrevHash} = aec_headers:hash_header(PrevHeader),
@@ -264,8 +263,13 @@ state_pre_transform_key_node(Node, PrevNode, Trees) ->
             {ok, Leader} = safe_leader_for_height(TxEnv, Trees, Height),
             case Height == maps:get(last, EpochInfo) of
                 true ->
-                    {ok, Seed} = get_entropy_hash(Epoch + 1),
-                    step_eoe(TxEnv, Trees, Leader, Seed, 0);
+                    case get_entropy_hash(Epoch + 1) of
+                        {ok, Seed} -> step_eoe(TxEnv, Trees, Leader, Seed, 0);
+                        {error, not_in_cache} ->
+                            lager:debug("Entropy hash for height ~p is not in cache, attempting to resync", [Height]),
+                            %% Fail the keyblock production flow, attempt to resync
+                            aec_conductor:throw_error(parent_chain_not_synced)
+                    end;
                 false ->
                     step(TxEnv, Trees, Leader)
             end;
