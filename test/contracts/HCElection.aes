@@ -108,5 +108,9 @@ main contract HCElection =
   function assert_protocol_call() =
       require(Call.caller == Contract.creator, "Must be called by the protocol")
 
+// for testing. TODO update test that use this to call via other API functions
+  entrypoint get_state() =
+      state
+
   // function accum_stake((accum, total_s, current_hash, network_id), (addr, stake)) =
   //   ((addr, stake) :: accum, stake + total_s, current_hash, network_id)
