@@ -1729,6 +1729,10 @@
                                             "description": "The time in milliseconds to produce a child block",
                                             "type": "integer"
                                         },
+                                        "child_epoch_length": {
+                                            "description": "The number of blocks in an epoch on the child chain",
+                                            "type": "integer"
+                                        },
                                         "parent_chain": {
                                             "description" : "Details of how this node will connect to a parent chain if this is a hyperchain.",
                                             "additionalProperties" : false,
@@ -1744,7 +1748,7 @@
                                                     "type": "integer"
                                                 },
                                                 "parent_epoch_length": {
-                                                    "description": "The number of blocks in a parent generation.",
+                                                    "description": "The number of blocks in an epoch on the parent chain.",
                                                     "type": "integer"
                                                 },
                                                 "acceptable_sync_offset": {

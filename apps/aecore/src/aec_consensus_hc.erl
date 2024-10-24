@@ -269,7 +269,9 @@ state_pre_transform_key_node(Node, PrevNode, Trees) ->
                 false ->
                     step(TxEnv, Trees, Leader)
             end;
-        false -> Trees %% do not elect leader for genesis
+        false ->
+            %% No leader for genesis
+            Trees
     end.
 
 safe_leader_for_height(TxEnv, Trees, Height) ->
@@ -325,7 +327,8 @@ genesis_transform_trees(Trees0, #{}) ->
                                             aec_headers:prev_hash(GenesisHeader)),
     Trees1 = create_contracts(Contracts, TxEnv, Trees0),
     Trees2 = call_contracts(Calls, TxEnv, Trees1),
-    aect_call_state_tree:prune(0, Trees2).
+    Trees3 = init_epochs(TxEnv, Trees2, child_epoch_length()),
+    aect_call_state_tree:prune(0, Trees3).
 
 genesis_raw_header() ->
     GenesisProtocol = genesis_protocol_version(),
@@ -474,6 +477,10 @@ parent_epoch_length() ->
     Fun = fun() -> get_consensus_config_key([<<"parent_chain">>, <<"parent_epoch_length">>]) end,
     aeu_ets_cache:get(?ETS_CACHE_TABLE, parent_epoch_length, Fun).
 
+child_epoch_length() ->
+    Fun = fun() -> get_consensus_config_key([<<"child_epoch_length">>]) end,
+    aeu_ets_cache:get(?ETS_CACHE_TABLE, child_epoch_length, Fun).
+
 %acceptable_sync_offset() ->
 %    Fun = fun() -> get_consensus_config_key([<<"parent_chain">>, <<"acceptable_sync_offset">>], 60000) end,
 %    aeu_ets_cache:get(?ETS_CACHE_TABLE, acceptable_sync_offset, Fun).
@@ -497,6 +504,17 @@ parent_epoch_length() ->
 %%           error:{consensus_call_crashed, {error, _Why}} ->
 %%             aec_conductor:throw_error(set_epoch_length_call_crashed)
 %%     end.
+
+init_epochs(TxEnv, Trees, InitialEpochLength) ->
+    {ok, CD} = aeb_fate_abi:create_calldata("init_epochs", [InitialEpochLength]),
+    CallData = aeser_api_encoder:encode(contract_bytearray, CD),
+    case call_consensus_contract_(?ELECTION_CONTRACT, TxEnv, Trees, CallData, "init_epochs", 0) of
+        {ok, Trees1, _Call} ->
+            Trees1;
+        {error, What} ->
+            lager:info("Calling init_epochs failed with ~p", [What]),
+            aec_conductor:throw_error(init_epochs_failed)
+    end.
 
 step(TxEnv, Trees, Leader) ->
     {ok, CD} = aeb_fate_abi:create_calldata("step", [{address, Leader}]),
