@@ -265,7 +265,11 @@ end_per_group(_Group, Config) ->
       || {Node, _, _} <- proplists:get_value(nodes, Config1, []) ],
 
     %% Ignore conductor/consensus errors which went through the proper error reporting routine (calling aec_conductor:throw_error)
-    aecore_suite_utils:assert_no_errors_in_logs(Config1, ["{handled_abort,"]),
+    %% Ignore blocked worker tag errors
+    aecore_suite_utils:assert_no_errors_in_logs(
+        Config1,
+        ["{handled_abort,", "Disallowing dispatch"]
+    ),
 
     Config1.
 

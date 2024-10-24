@@ -588,8 +588,8 @@ set_mode(State) ->
             %% TODO actually check whether node is a producing node
             case ConsensusModule of
                 aec_consensus_hc ->
-                    %% TODO: Call aec_consensus_hc:is_block_producer() later
-                    State#state{mode = pos, has_beneficiary = true};
+                    IsBlockProducer = aec_consensus_hc:is_block_producer(),
+                    State#state{mode = pos, has_beneficiary = IsBlockProducer};
                 _ ->
                     set_beneficiary_configured(State#state{mode = pos}, ConsensusModule)
             end
