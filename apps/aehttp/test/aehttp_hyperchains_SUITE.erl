@@ -856,7 +856,7 @@ get_contract_pubkeys(Config) ->
     ?assertEqual({ok, RewardsContractPK}, aeser_api_encoder:safe_decode(contract_pubkey, Rewards)),
 
     ok.
-    
+
 
 %%%=============================================================================
 %%% Pinning
@@ -1322,10 +1322,6 @@ build_json_files(ElectionContract, NodeConfig, CTConfig) ->
                             ["\"https://aeternity.com/images/aeternity-logo.svg\""], 0,
                             pubkey(?ALICE), 5),
 
-    Call12 =
-        contract_call_spec(ElectionAddress, src(ElectionContract, CTConfig),
-                           "init_epochs",
-                           [integer_to_list(?CHILD_EPOCH_LENGTH)], 0, ?OWNER_PUBKEY, 4),
     %% create a BRI validator in the contract so they can receive
     %% rewards as well
     %% TODO: discuss how we want to tackle this:
@@ -1344,7 +1340,7 @@ build_json_files(ElectionContract, NodeConfig, CTConfig) ->
     %%                         0, BRIPub, 2),
     %% keep the BRI offline
     AllCalls =  [Call1, Call2, Call3, Call4, Call5, Call6,
-		 Call7, Call8, Call9, Call10, Call11, Call12],
+		 Call7, Call8, Call9, Call10, Call11],
     ProtocolBin = integer_to_binary(aect_test_utils:latest_protocol_version()),
     #{<<"chain">> := #{<<"hard_forks">> := #{ProtocolBin := #{<<"contracts_file">> := ContractsFileName,
                                                               <<"accounts_file">> := AccountsFileName}}}} = NodeConfig,
