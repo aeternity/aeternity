@@ -110,7 +110,7 @@ is_key_present(Pubkey) ->
 
 
 
-%% used in PoS context§
+%% used in hyperchain context
 -spec produce_key_header_signature(aec_headers:key_header(), aec_keys:pubkey()) -> {ok, block_signature()} | {error, term()}.
 produce_key_header_signature(Header, ByWho) ->
     Bin = aec_headers:serialize_to_signature_binary(Header),

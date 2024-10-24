@@ -988,10 +988,9 @@ target_to_hashrate(Target, aec_consensus_bitcoin_ng) ->
 target_to_hashrate(_Target, _Consensus) ->
     0.
 
-%%% Difficulty for PoS is the number of tokens staked, that is a large number, present
+%%% Difficulty for hyperchains is the number of tokens staked, that is a large number, present
 %%% it in microAE instead.
-difficulty(Difficulty, Consensus)
-        when Consensus =:= aec_consensus_smart_contract; Consensus =:= aec_consensus_hc ->
+difficulty(Difficulty, Consensus) when Consensus =:= aec_consensus_hc ->
     Difficulty div 1_000_000_000_000;
 difficulty(Difficulty, _Consensus) ->
     Difficulty.
