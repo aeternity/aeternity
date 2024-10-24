@@ -20,6 +20,7 @@ main contract HCElection =
       leader                : address,
       added_stake           : int,
       epoch                 : int,
+      pin                   : option(bytes()),
       epochs                : map(int, epoch_info)
     }
 
@@ -28,6 +29,7 @@ main contract HCElection =
       leader                = Contract.address,
       added_stake           = 0,
       epoch                 = 0,
+      pin                   = None,
       epochs                = {} }
 
   stateful entrypoint init_epochs(epoch_length : int) =
@@ -69,6 +71,16 @@ main contract HCElection =
     put(state{ leader = leader,
                epoch  = epoch + 1,
                epochs = new_epochs })
+
+  stateful entrypoint pin(proof : bytes()) =
+    let epoch = state.epoch
+    let last = state.epochs[epoch].start + state.epochs[epoch].length - 1
+    require(Chain.block_height == last, "Only in last block")
+    require(Call.caller == state.leader, "Must be called by the last leader of epoch")
+    put(state{pin = Some(proof)})
+
+  entrypoint get_pin() =
+    state.pin
 
   entrypoint leader() =
     state.leader
