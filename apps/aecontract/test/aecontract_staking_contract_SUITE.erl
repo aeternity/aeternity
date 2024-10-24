@@ -163,8 +163,8 @@ end_per_suite(_Config) ->
 
 init_per_group(_, Config) ->
     case aect_test_utils:latest_protocol_version() of
-        PreIris when PreIris < ?IRIS_PROTOCOL_VSN ->
-            {skip, from_iris_on};
+        PreIris when PreIris < ?CERES_PROTOCOL_VSN ->
+            {skip, from_ceres_on};
         _ ->
             aect_test_utils:init_per_group(fate, Config, fun(X) -> X end)
     end.
@@ -204,13 +204,8 @@ inspect_validator(_Config) ->
                 }} = ContractState0,
     {contract, ValidatorContractPubkey} = StakingValidatorCT,
     ValidatorContractPubkey = validator_contract_address(),
-    {ok, _, ElectionContractState0} = get_election_contract_state_(Alice, TxEnv, Trees0),
-    {tuple, { StakingCT,
-              Leader,
-              _AddedDifficulty,
-              _Epoch,
-              _Epochs
-             }} = ElectionContractState0,
+    {ok, _, Leader} = leader_(Alice, TxEnv, Trees0),
+    {ok, _, StakingCT} = election_staking_contract_(Alice, TxEnv, Trees0),
     {contract, StakingContractPubkey} = StakingCT,
     StakingContractPubkey = staking_contract_address(),
     ElectionContractPubkey = election_contract_address(),
@@ -2011,6 +2006,12 @@ get_election_contract_state_(Caller, TxEnv, Trees0) ->
     ContractPubkey = election_contract_address(),
     {ok, CallData} = aeb_fate_abi:create_calldata("get_state", []),
     call_contract(ContractPubkey, Caller, CallData, 0, TxEnv, Trees0).
+
+election_staking_contract_(Caller, TxEnv, Trees0) ->
+    ContractPubkey = election_contract_address(),
+    {ok, CallData} = aeb_fate_abi:create_calldata("staking_contract", []),
+    call_contract(ContractPubkey, Caller, CallData, 0, TxEnv, Trees0).
+
 
 is_validator_online_(Who, Caller, TxEnv, Trees0) ->
     ContractPubkey = staking_contract_address(),

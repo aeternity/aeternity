@@ -89,6 +89,9 @@ main contract HCElection =
     require(epoch >= state.epoch - 1 && epoch =< state.epoch + 2, "Epoch not in scope")
     state.epochs[epoch]
 
+  entrypoint staking_contract() =
+    state.main_staking_ct
+
   entrypoint validator_schedule(seed : bytes(), validators : list(address * int), length : int) =
     let total_stake = List.foldl((+), 0, List.map(Pair.snd, validators))
     // One extra hash operation to convert from bytes() to bytes(32)/hash
