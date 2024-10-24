@@ -81,7 +81,8 @@
          all_events_since/2,
          check_for_logs/2,
          times_in_epoch_log/3,
-         errors_in_logs/2]).
+         errors_in_logs/2,
+         assert_no_errors_in_logs/1]).
 
 -export([proxy/0,
          start_proxy/0,
@@ -1088,6 +1089,16 @@ file_missing(F) ->
         _ ->
             true
     end.
+
+assert_no_errors_in_logs(Config) ->
+    Nodes = [Node || {Node, _, _} <- ?config(nodes, Config)],
+    Errors = errors_in_logs(Nodes, Config),
+    lists:foreach(
+        fun({Node, {File, Line}}) ->
+            ct:log("Error [~s] in ~s: ~s", [Node, File, Line])
+        end,
+        Errors),
+    [ ct:fail("Errors in logs, expected 0 got ~p", [length(Errors)]) || [] /= Errors ].
 
 errors_in_logs(Nodes, Config) ->
     [{N, Errs} || N <- Nodes,
