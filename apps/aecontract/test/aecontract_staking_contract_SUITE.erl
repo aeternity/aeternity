@@ -101,7 +101,6 @@
 -define(STAKING_CONTRACT, "MainStaking").
 -define(HC_ELECTION_CONTRACT, "HCElection").
 
--define(POS, hc).
 -define(HC, hc).
 
 -define(GAS, 10000000).
@@ -180,14 +179,14 @@ end_per_testcase(_TC, _Config) ->
     ok.
 
 new_validator(_Config) ->
-    Trees0 = genesis_trees(?POS),
+    Trees0 = genesis_trees(),
     TxEnv = aetx_env:tx_env(?GENESIS_HEIGHT),
     Alice = pubkey(?ALICE),
     {ok, _, {contract, _}} = new_validator_(Alice, ?VALIDATOR_MIN, TxEnv, Trees0),
     ok.
 
 inspect_validator(_Config) ->
-    Trees0 = genesis_trees(?POS),
+    Trees0 = genesis_trees(),
     Amount = ?VALIDATOR_MIN,
     TxEnv = aetx_env:tx_env(?GENESIS_HEIGHT),
     Alice = pubkey(?ALICE),
@@ -350,7 +349,7 @@ inspect_validator(_Config) ->
     ok.
 
 inspect_two_validators(_Config) ->
-    Trees0 = genesis_trees(?POS),
+    Trees0 = genesis_trees(),
     Amount = ?VALIDATOR_MIN,
     TxEnv = aetx_env:tx_env(?GENESIS_HEIGHT),
     Alice = pubkey(?ALICE),
@@ -438,7 +437,7 @@ inspect_two_validators(_Config) ->
     ok.
 
 validator_withdrawal(_Config) ->
-    Trees0 = genesis_trees(?POS),
+    Trees0 = genesis_trees(),
     OverheadAmt = 1000,
     Amount = ?VALIDATOR_MIN + OverheadAmt,
     TxEnv = aetx_env:tx_env(?GENESIS_HEIGHT),
@@ -478,7 +477,7 @@ setting_online_delay(_Config) ->
     Delay = 100,
     Alice = pubkey(?ALICE),
     TxEnv = aetx_env:tx_env(?GENESIS_HEIGHT),
-    Trees = genesis_trees(?POS, #{online_delay => Delay}),
+    Trees = genesis_trees(#{online_delay => Delay}),
 
     {ok, Trees1, {contract, _}} = new_validator_(Alice, ?VALIDATOR_MIN, TxEnv, Trees),
 
@@ -509,7 +508,7 @@ setting_online_delay(_Config) ->
 
 setting_online_and_offline(_Config) ->
     Alice = pubkey(?ALICE),
-    Trees0 = genesis_trees(?POS),
+    Trees0 = genesis_trees(),
     Amount = ?VALIDATOR_MIN,
     AliceStake = {tuple, {{address, Alice}, Amount}},
     TxEnv = aetx_env:tx_env(?GENESIS_HEIGHT),
@@ -538,7 +537,7 @@ setting_online_and_offline(_Config) ->
 
 single_validator_gets_elected_every_time(_Config) ->
     Alice = pubkey(?ALICE),
-    Trees0 = genesis_trees(?POS),
+    Trees0 = genesis_trees(),
     TxEnv = aetx_env:tx_env(?GENESIS_HEIGHT),
     {ok, Trees1, _} = new_validator_(pubkey(?ALICE), ?VALIDATOR_MIN, TxEnv, Trees0),
     {ok, Trees2, {tuple, {}}} = set_validator_online_(Alice, TxEnv, Trees1),
@@ -575,7 +574,7 @@ three_validators_election(_Config) ->
     Alice = pubkey(?ALICE),
     Bob = pubkey(?BOB),
     Carol = pubkey(?CAROL), %% will be offline
-    Trees0 = genesis_trees(?POS),
+    Trees0 = genesis_trees(),
     TxEnv = aetx_env:tx_env(?GENESIS_HEIGHT),
     Trees1 =
         lists:foldl(
@@ -595,7 +594,7 @@ three_validators_election(_Config) ->
 unstake_balances(_Config) ->
     Alice = pubkey(?ALICE),
     Bob = pubkey(?BOB),
-    Trees0 = genesis_trees(?POS),
+    Trees0 = genesis_trees(),
     TxEnv = aetx_env:tx_env(?GENESIS_HEIGHT),
 
     {ok, Trees0_1, _} = new_validator_(Alice, ?VALIDATOR_MIN, TxEnv, Trees0),
@@ -634,7 +633,7 @@ unstake_balances(_Config) ->
 
 %% TODO this is different for hyperchains. Create better test
 staking_and_unstaking_effects_election(_Config) ->
-    Trees0 = genesis_trees(?POS),
+    Trees0 = genesis_trees(),
     TxEnv = aetx_env:tx_env(?GENESIS_HEIGHT),
     %% Alice will have twice the staking power compared to Bob, she shall get
     %% elected twice as often
@@ -728,7 +727,7 @@ staking_and_unstaking_effects_election(_Config) ->
 can_not_unstake_more_shares_than_owned(_Config) ->
     Alice = pubkey(?ALICE),
     Bob = pubkey(?BOB),
-    Trees0 = genesis_trees(?POS),
+    Trees0 = genesis_trees(),
     TxEnv = aetx_env:tx_env(?GENESIS_HEIGHT),
     Trees1 =
         lists:foldl(
@@ -773,7 +772,7 @@ can_not_unstake_more_shares_than_owned(_Config) ->
 change_name_description_avatar(_Config) ->
     Alice = pubkey(?ALICE),
     Bob = pubkey(?BOB),
-    Trees0 = genesis_trees(?POS),
+    Trees0 = genesis_trees(),
     TxEnv = aetx_env:tx_env(?GENESIS_HEIGHT),
     Trees1 =
         lists:foldl(
@@ -893,7 +892,7 @@ change_name_description_avatar(_Config) ->
 can_not_have_two_validators_with_same_id(_Config) ->
     Alice = pubkey(?ALICE),
     Bob = pubkey(?BOB),
-    Trees0 = genesis_trees(?POS),
+    Trees0 = genesis_trees(),
     TxEnv = aetx_env:tx_env(?GENESIS_HEIGHT),
     Trees1 =
         lists:foldl(
@@ -915,7 +914,7 @@ delegate_can_support_multiple_validators(_Config) ->
     Alice = pubkey(?ALICE),
     Bob = pubkey(?BOB),
     Carol = pubkey(?CAROL),
-    Trees0 = genesis_trees(?POS),
+    Trees0 = genesis_trees(),
     TxEnv = aetx_env:tx_env(?GENESIS_HEIGHT),
     Trees1 =
         lists:foldl(
@@ -962,7 +961,7 @@ delegate_can_support_multiple_validators(_Config) ->
 if_unstake_all_delegate_is_deleted(_Config) ->
     Alice = pubkey(?ALICE),
     Bob = pubkey(?BOB),
-    Trees0 = genesis_trees(?POS),
+    Trees0 = genesis_trees(),
     TxEnv = aetx_env:tx_env(?GENESIS_HEIGHT),
     Trees1 =
         lists:foldl(
@@ -1063,7 +1062,7 @@ if_unstake_all_delegate_is_deleted(_Config) ->
 
 can_not_become_validator_below_treshold(_Config) ->
     Alice = pubkey(?ALICE),
-    Trees0 = genesis_trees(?POS),
+    Trees0 = genesis_trees(),
     TxEnv = aetx_env:tx_env(?GENESIS_HEIGHT),
     {revert, <<"A new validator stake the minimum amount">>}
         = new_validator_(Alice, ?VALIDATOR_MIN - 1, TxEnv, Trees0),
@@ -1072,7 +1071,7 @@ can_not_become_validator_below_treshold(_Config) ->
 can_not_stake_below_treshold(_Config) ->
     Alice = pubkey(?ALICE),
     Bob = pubkey(?BOB),
-    Trees0 = genesis_trees(?POS),
+    Trees0 = genesis_trees(),
     TxEnv = aetx_env:tx_env(?GENESIS_HEIGHT),
     Trees1 =
         lists:foldl(
@@ -1096,7 +1095,7 @@ can_not_stake_below_treshold(_Config) ->
 validator_can_not_unstake_below_30_percent_treshold(_Config) ->
     Alice = pubkey(?ALICE),
     TxEnv = aetx_env:tx_env(?GENESIS_HEIGHT),
-    Trees0 = genesis_trees(?POS),
+    Trees0 = genesis_trees(),
     {Sam, Trees1} = set_up_account(Trees0),
 
     InitialStake = 2 * ?VALIDATOR_MIN,
@@ -1124,7 +1123,7 @@ validator_can_not_unstake_below_30_percent_treshold(_Config) ->
 total_stake_limit(_Config) ->
     Alice = pubkey(?ALICE),
     TxEnv = aetx_env:tx_env(?GENESIS_HEIGHT),
-    Trees = genesis_trees(?POS),
+    Trees = genesis_trees(),
     {Sam, Trees0} = set_up_account(Trees),
 
     InitialStake = ?VALIDATOR_MIN,
@@ -1155,7 +1154,7 @@ stake_delay(_Config) ->
     Alice = pubkey(?ALICE),
     Bob = pubkey(?BOB),
     TxEnv = aetx_env:tx_env(?GENESIS_HEIGHT),
-    Trees0 = genesis_trees(?POS, #{stake_delay => StakeDelay}),
+    Trees0 = genesis_trees(#{stake_delay => StakeDelay}),
 
     ?assertMatch({ok, _, {tuple, {_, _, _, _, _, _, _, StakeDelay, _}}},
                  get_staking_contract_state_(Alice, TxEnv, Trees0)),
@@ -1271,7 +1270,7 @@ check_stake_delay(Alice, AliceCt, InitialStake, StakeDelay, TxEnv, Trees) ->
 stake_delay_respects_upper_stake_limit(_Config) ->
     Alice = pubkey(?ALICE),
     TxEnv = aetx_env:tx_env(?GENESIS_HEIGHT),
-    Trees0 = genesis_trees(?POS, #{stake_delay => 100}),
+    Trees0 = genesis_trees(#{stake_delay => 100}),
     Ct = staking_contract_address(),
     {Sam, Trees1} = set_up_account(Trees0),
 
@@ -1303,7 +1302,7 @@ stake_delay_respects_upper_stake_limit(_Config) ->
 stake_delay_set_to_zero(_Config) ->
     Alice = pubkey(?ALICE),
     TxEnv = aetx_env:tx_env(?GENESIS_HEIGHT),
-    Trees0 = genesis_trees(?POS, #{stake_delay => 0}),
+    Trees0 = genesis_trees(#{stake_delay => 0}),
     Ct = staking_contract_address(),
     {Sam, Trees1} = set_up_account(Trees0),
 
@@ -1381,7 +1380,7 @@ unstake_delay(_Config) ->
     Alice = pubkey(?ALICE),
     Bob = pubkey(?BOB),
     TxEnv = aetx_env:tx_env(?GENESIS_HEIGHT),
-    Trees0 = genesis_trees(?POS, #{unstake_delay => UnstakeDelay}),
+    Trees0 = genesis_trees(#{unstake_delay => UnstakeDelay}),
 
     ?assertMatch({ok, _, {tuple, {_, _, _, _, _, _, _, _, UnstakeDelay}}},
                  get_staking_contract_state_(Alice, TxEnv, Trees0)),
@@ -1612,7 +1611,7 @@ check_unstake_delay(Alice, AliceCt, InitialStake, UnstakeDelay, TxEnv0, Trees0) 
 unstake_delay_set_to_zero(_Config) ->
     Alice = pubkey(?ALICE),
     TxEnv = aetx_env:tx_env(?GENESIS_HEIGHT),
-    Trees0 = genesis_trees(?POS, #{unstake_delay => 0}),
+    Trees0 = genesis_trees(#{unstake_delay => 0}),
     {Sam, Trees1} = set_up_account(Trees0),
 
     InitialStake = ?VALIDATOR_MIN+(1000*?AE),
@@ -1684,7 +1683,7 @@ unstake_delay_set_to_zero(_Config) ->
 staking_without_delay_return_shares(_Config) ->
     Alice = pubkey(?ALICE),
     TxEnv = aetx_env:tx_env(?GENESIS_HEIGHT),
-    Trees0 = genesis_trees(?POS),
+    Trees0 = genesis_trees(),
     {Sam, Trees1} = set_up_account(Trees0),
     {ok, Trees2, _} = new_validator_(Alice, ?VALIDATOR_MIN, TxEnv, Trees1),
 
@@ -1722,7 +1721,7 @@ staking_with_delay_return_shares(_Config) ->
     StakeDelay = 10,
     Alice = pubkey(?ALICE),
     TxEnv = aetx_env:tx_env(?GENESIS_HEIGHT),
-    Trees0 = genesis_trees(?POS, #{stake_delay => StakeDelay}),
+    Trees0 = genesis_trees(#{stake_delay => StakeDelay}),
     {Sam, Trees1} = set_up_account(Trees0),
     {ok, Trees2, _} = new_validator_(Alice, ?VALIDATOR_MIN, TxEnv, Trees1),
 
@@ -1758,7 +1757,7 @@ unstaking_return_shares(_Config) ->
     UnstakeDelay = 10,
     Alice = pubkey(?ALICE),
     TxEnv = aetx_env:tx_env(?GENESIS_HEIGHT),
-    Trees0 = genesis_trees(?POS, #{unstake_delay => UnstakeDelay}),
+    Trees0 = genesis_trees(#{unstake_delay => UnstakeDelay}),
 
     {ok, Trees1, _} = new_validator_(Alice, 2*?VALIDATOR_MIN, TxEnv, Trees0),
     {ok, Trees2, {tuple, {}}} = reward_(Alice, 2*?VALIDATOR_MIN, ?OWNER_PUBKEY, TxEnv, Trees1),
@@ -1772,7 +1771,7 @@ unstaking_return_shares(_Config) ->
 unstaking_below_minimum_stake(_Config) ->
     Alice = pubkey(?ALICE),
     TxEnv = aetx_env:tx_env(?GENESIS_HEIGHT),
-    Trees0 = genesis_trees(?POS),
+    Trees0 = genesis_trees(),
     {Sam, Trees1} = set_up_account(Trees0),
     {ok, Trees, _} = new_validator_(Alice, ?VALIDATOR_MIN, TxEnv, Trees1),
 
@@ -1796,10 +1795,10 @@ genesis_trees_opts(Type, Key, Opts, Default) ->
     Value = maps:get(Key, Opts, Default),
     aefa_fate_code:encode_arg({Type, Value}).
 
-genesis_trees(Consensus) ->
-    genesis_trees(Consensus, #{}).
+genesis_trees() ->
+    genesis_trees(#{}).
 
-genesis_trees(_Consensus, Opts) ->
+genesis_trees(Opts) ->
     ElectionContract = ?HC_ELECTION_CONTRACT,
     Trees0 = aec_trees:new_without_backend(),
     Trees1 = set_up_accounts(Trees0),
