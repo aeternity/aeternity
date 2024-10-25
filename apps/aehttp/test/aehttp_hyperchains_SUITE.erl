@@ -35,6 +35,7 @@
          wallet_post_pin_to_pc/1,
          post_pin_to_pc/1,
          get_contract_pubkeys/1,
+         correct_leader_in_micro_block/1,
          first_leader_next_epoch/1
         ]).
 
@@ -147,6 +148,7 @@ groups() ->
           , verify_fees
           , spend_txs
           , simple_withdraw
+          , correct_leader_in_micro_block
           , sync_third_node
           , produce_some_epochs
           , respect_schedule
@@ -474,7 +476,7 @@ respect_schedule(_Node, EpochStart, _Epoch, TopHeight) when TopHeight < EpochSta
     ok;
 respect_schedule(Node, EpochStart, Epoch, TopHeight) ->
     {ok, #{first := StartHeight} = EI} =
-        rpc(?NODE1, aec_chain_hc, epoch_info, [EpochStart]),
+        rpc(Node, aec_chain_hc, epoch_info, [EpochStart]),
 
     #{ seed := EISeed, validators := EIValidators, length := EILength, last := EILast } = EI,
 
@@ -490,7 +492,7 @@ respect_schedule(Node, EpochStart, Epoch, TopHeight) ->
     ?assertMatch(Hash when Hash == undefined; Hash == PHash, EISeed),
 
     %% Check the API functions in aec_chain_hc
-    {ok, Schedule} = rpc(?NODE1, aec_chain_hc, validator_schedule, [EpochStart, PHash, EIValidators, EILength]),
+    {ok, Schedule} = rpc(Node, aec_chain_hc, validator_schedule, [EpochStart, PHash, EIValidators, EILength]),
     ct:log("Validating schedule ~p for Epoch ~p", [Schedule, Epoch]),
 
     lists:foreach(fun({Height, ExpectedProducer}) when Height =< TopHeight ->
@@ -578,6 +580,23 @@ simple_withdraw(Config) ->
     ?assert(AliceContractSPower - 1000 == AliceContractSPower1 orelse
             (Producer == pubkey(?ALICE) andalso AliceContractSPower + KeyReward - 1000 == AliceContractSPower1)),
     ok.
+
+correct_leader_in_micro_block(Config) ->
+    [{Node, _, _} | _] = ?config(nodes, Config),
+    %% Call the contract in a transaction, asking for "leader"
+    CallTx =
+        sign_and_push(
+            contract_call(?config(election_contract, Config), src(?HC_CONTRACT, Config),
+                          "leader", [], 0, pubkey(?ALICE)),
+            ?ALICE, ?config(network_id, Config)),
+
+    {ok, [KeyBlock, MicroBlock]} = produce_cc_blocks(Config, 1),
+    %% Microblock contains the contract call, find out what it returned on that call
+    {ok, Call} = call_info(CallTx),
+    {ok, Res} = decode_consensus_result(Call, "leader", src(?HC_CONTRACT, Config)),
+    %% The actual leader did produce the keyblock (and micro block)
+    Producer = aeser_api_encoder:encode(account_pubkey, aec_blocks:miner(KeyBlock)),
+    ?assertEqual(Producer, Res).
 
 set_up_third_node(Config) ->
     {Node3, NodeName, Stakers} = lists:keyfind(?NODE3, 1, ?config(nodes, Config)),
