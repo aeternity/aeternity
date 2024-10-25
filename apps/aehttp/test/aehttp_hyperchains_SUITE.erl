@@ -530,8 +530,8 @@ entropy_impact_schedule(Config) ->
     ?assertNotEqual(WrongSchedule, Schedule).
 
 simple_withdraw(Config) ->
+    [{_Node, NodeName, _} | _] = ?config(nodes, Config),
     produce_cc_blocks(Config, 3), %% Make sure there are no lingering TxFees in the reward
-    [{_, NodeName, _}|_] = ?config(nodes, Config),
     AliceBin = encoded_pubkey(?ALICE),
     Alice = binary_to_list(encoded_pubkey(?ALICE)),
     {ok, []} = rpc:call(NodeName, aec_tx_pool, peek, [infinity]),
@@ -556,6 +556,7 @@ simple_withdraw(Config) ->
     NetworkId = ?config(network_id, Config),
     CallTx =
         sign_and_push(
+            NodeName,
             contract_call(?config(staking_contract, Config), src(?MAIN_STAKING_CONTRACT, Config), "unstake",
                 [Alice, integer_to_list(WithdrawAmount)], 0, pubkey(?ALICE)),
             ?ALICE,
@@ -582,15 +583,16 @@ simple_withdraw(Config) ->
     ok.
 
 correct_leader_in_micro_block(Config) ->
-    [{Node, _, _} | _] = ?config(nodes, Config),
+    [{_Node, NodeName, _} | _] = ?config(nodes, Config),
     %% Call the contract in a transaction, asking for "leader"
     CallTx =
         sign_and_push(
+            NodeName,
             contract_call(?config(election_contract, Config), src(?HC_CONTRACT, Config),
                           "leader", [], 0, pubkey(?ALICE)),
             ?ALICE, ?config(network_id, Config)),
 
-    {ok, [KeyBlock, MicroBlock]} = produce_cc_blocks(Config, 1),
+    {ok, [KeyBlock, _MicroBlock]} = produce_cc_blocks(Config, 1),
     %% Microblock contains the contract call, find out what it returned on that call
     {ok, Call} = call_info(CallTx),
     {ok, Res} = decode_consensus_result(Call, "leader", src(?HC_CONTRACT, Config)),
@@ -649,6 +651,7 @@ empty_parent_block(_Config) ->
     end.
 
 verify_fees(Config) ->
+    [{Node, NodeName, _} | _ ] = ?config(nodes, Config),
     %% start without any tx fees, only a keyblock
     GetSPower = fun(Who1, Who2, When) ->
                     inspect_staking_contract(Who1, {staking_power, Who2}, Config, When)
@@ -659,7 +662,7 @@ verify_fees(Config) ->
             AliceBalance0 = account_balance(pubkey(?ALICE)),
             BobBalance0 = account_balance(pubkey(?BOB)),
             produce_cc_blocks(Config, 1),
-            {ok, TopKeyBlock} = rpc(?NODE1, aec_chain, top_key_block, []),
+            {ok, TopKeyBlock} = rpc(Node, aec_chain, top_key_block, []),
             TopKeyHeader = aec_blocks:to_header(TopKeyBlock),
             {ok, TopHash} = aec_headers:hash_header(TopKeyHeader),
             PrevHash = aec_headers:prev_key_hash(TopKeyHeader),
@@ -676,8 +679,8 @@ verify_fees(Config) ->
 
             %% inspect who shall receive what reward
             RewardForHeight = aec_headers:height(TopKeyHeader) - ?REWARD_DELAY,
-            {ok, PrevH} = rpc(?NODE1, aec_chain, get_key_header_by_height, [RewardForHeight - 1]),
-            {ok, RewardH} = rpc(?NODE1, aec_chain, get_key_header_by_height, [RewardForHeight]),
+            {ok, PrevH} = rpc(Node, aec_chain, get_key_header_by_height, [RewardForHeight - 1]),
+            {ok, RewardH} = rpc(Node, aec_chain, get_key_header_by_height, [RewardForHeight]),
             Beneficiary1 = aec_headers:beneficiary(PrevH),
             Beneficiary1Name = name(who_by_pubkey(Beneficiary1)),
             Beneficiary2 = aec_headers:beneficiary(RewardH),
@@ -729,8 +732,8 @@ verify_fees(Config) ->
     Test(),
 
     ct:log("Test with a spend transaction", []),
-    {_, PatronPub} = aecore_suite_utils:sign_keys(?NODE1),
-    {ok, []} = rpc:call(?NODE1_NAME, aec_tx_pool, peek, [infinity]),
+    {_, PatronPub} = aecore_suite_utils:sign_keys(Node),
+    {ok, []} = rpc:call(NodeName, aec_tx_pool, peek, [infinity]),
     {ok, _SignedTx} = seed_account(PatronPub, 1, NetworkId),
     %% key blocks are in sync, but give gossip time to get transactions to all nodes
     timer:sleep(?CHILD_BLOCK_TIME div 2),
@@ -840,9 +843,10 @@ epochs_with_slow_parent(Config) ->
 %% Demonstrate that child chain start signalling epoch length adjustment downward
 %% When parent blocks are produced too quickly, we need to shorten child epoch
 epochs_with_fast_parent(Config) ->
+    [{Node, _, _} | _] = ?config(nodes, Config),
     ParentTopHeight = rpc(?PARENT_CHAIN_NODE, aec_chain, top_height, []),
-    ChildTopHeight = rpc(?NODE1, aec_chain, top_height, []),
-    {ok, #{epoch := ChildEpoch}} = rpc(?NODE1, aec_chain_hc, epoch_info, []),
+    ChildTopHeight = rpc(Node, aec_chain, top_height, []),
+    {ok, #{epoch := ChildEpoch}} = rpc(Node, aec_chain_hc, epoch_info, []),
 
     %% Quickly produce parent blocks to be in sync again
     ParentBlocksNeeded =
@@ -852,23 +856,23 @@ epochs_with_fast_parent(Config) ->
     {ok, _} = produce_cc_blocks(Config, 1, [{ChildTopHeight + 1, ParentBlocksNeeded}]),
     %% and finish a child epoch
     %% ensure start at a new epoch boundary
-    StartHeight = rpc(?NODE1, aec_chain, top_height, []),
-    {ok, #{last := Last, length := Len} = EpochInfo1} = rpc(?NODE1, aec_chain_hc, epoch_info, []),
+    StartHeight = rpc(Node, aec_chain, top_height, []),
+    {ok, #{last := Last, length := Len} = EpochInfo1} = rpc(Node, aec_chain_hc, epoch_info, []),
     ct:log("Info ~p", [EpochInfo1]),
     BlocksLeftToBoundary = Last - StartHeight,
     %% some block production including parent blocks
     {ok, _} = produce_cc_blocks(Config, BlocksLeftToBoundary),
 
     %% Produce twice as many parent blocks as needed in an epoch
-    Height0 = rpc(?NODE1, aec_chain, top_height, []),
+    Height0 = rpc(Node, aec_chain, top_height, []),
     ParentTopHeight0 = rpc(?PARENT_CHAIN_NODE, aec_chain, top_height, []),
     {ok, _} = produce_cc_blocks(Config, ?CHILD_EPOCH_LENGTH,
                                 spread(2*?PARENT_EPOCH_LENGTH, Height0,
                                        [ {CH, 0} || CH <- lists:seq(Height0 + 1, Height0 + Len)])),
 
     ParentTopHeight1 = rpc(?PARENT_CHAIN_NODE, aec_chain, top_height, []),
-    Height1 = rpc(?NODE1, aec_chain, top_height, []),
-    {ok, EpochInfo2} = rpc(?NODE1, aec_chain_hc, epoch_info, []),
+    Height1 = rpc(Node, aec_chain, top_height, []),
+    {ok, EpochInfo2} = rpc(Node, aec_chain_hc, epoch_info, []),
     ct:log("Parent at height ~p and child at height ~p in child epoch ~p",
            [ParentTopHeight1, Height1, EpochInfo2 ]),
     ?assertEqual(2*?PARENT_EPOCH_LENGTH, ParentTopHeight1 - ParentTopHeight0),
@@ -1114,9 +1118,9 @@ next_nonce(Node, Pubkey) ->
         {error, account_not_found} -> 1
     end.
 
-sign_and_push(Tx, Who, NetworkId) ->
+sign_and_push(NodeName, Tx, Who, NetworkId) ->
     SignedTx = sign_tx(Tx, privkey(Who), NetworkId),
-    ok = rpc:call(?NODE1_NAME, aec_tx_pool, push, [SignedTx, tx_received]),
+    ok = rpc:call(NodeName, aec_tx_pool, push, [SignedTx, tx_received]),
     SignedTx.
 
 %% usually we would use aec_test_utils:sign_tx/3. This function is being
