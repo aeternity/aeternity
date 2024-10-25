@@ -20,6 +20,7 @@
          produce_first_epoch/1,
          produce_some_epochs/1,
          respect_schedule/1,
+         entropy_impact_schedule/1,
          mine_and_sync/1,
          spend_txs/1,
          simple_withdraw/1,
@@ -151,6 +152,7 @@ groups() ->
           , sync_third_node
           , produce_some_epochs
           , respect_schedule
+          , entropy_impact_schedule
           , check_blocktime
           , get_contract_pubkeys
           ]}
@@ -456,12 +458,10 @@ produce_n_epochs(Config, N) ->
     ok.
 
 respect_schedule(Config) ->
-    [{Node1, _, _}|_] = ?config(nodes, Config),
-    ChildHeight = rpc(?NODE1, aec_chain, top_height, []),
-
+    [{Node, _, _}|_] = ?config(nodes, Config),
+    ChildHeight = rpc(Node, aec_chain, top_height, []),
     %% Validate one epoch at a time
-    respect_schedule(Node1, 1, 1, ChildHeight).
-
+    respect_schedule(Node, 1, 1, ChildHeight).
 
 respect_schedule(_Node, EpochStart, _Epoch, TopHeight) when TopHeight < EpochStart ->
     ok;
@@ -495,6 +495,31 @@ respect_schedule(Node, EpochStart, Epoch, TopHeight) ->
                   end, lists:zip(lists:seq(StartHeight, StartHeight + EILength - 1), Schedule)),
 
     respect_schedule(Node, EILast + 1, Epoch + 1, TopHeight).
+
+entropy_impact_schedule(Config) ->
+    Nodes = [ N || {N, _, _} <- ?config(nodes, Config)],
+    Node = hd(Nodes),
+    %% Sync nodes
+    {ok, _} = wait_same_top(Nodes, 300),
+
+    ChildHeight = rpc(Node, aec_chain, top_height, []),
+    ct:log("ChildHeight ~p and info before ~p", [ChildHeight, rpc(Node, aec_chain_hc, epoch_info, [ChildHeight-1]) ]),
+    {ok, #{seed := Seed,
+           validators := Validators,
+           first := First,
+           length := Length,
+           epoch := Epoch}} = rpc(Node, aec_chain_hc, epoch_info, []),
+
+    ParentHeight = rpc(Node, aec_consensus_hc, entropy_height, [Epoch - 1]),
+    {ok, WPHdr}  = rpc(?PARENT_CHAIN_NODE, aec_chain, get_key_header_by_height, [ParentHeight + 1]),
+    {ok, WPHash0} = aec_headers:hash_header(WPHdr),
+    WPHash = aeser_api_encoder:encode(key_block_hash, WPHash0),
+
+    {ok, Schedule} = rpc(Node, aec_chain_hc, validator_schedule, [First, Seed, Validators, Length]),
+    {ok, WrongSchedule} = rpc(Node, aec_chain_hc, validator_schedule, [First, WPHash, Validators, Length]),
+    ct:log("Invalid schedule ~p for Epoch ~p", [WrongSchedule, Epoch]),
+    %% There is a tiny possibility that the two against all odds are the same
+    ?assertNotEqual(WrongSchedule, Schedule).
 
 simple_withdraw(Config) ->
     produce_cc_blocks(Config, 3), %% Make sure there are no lingering TxFees in the reward

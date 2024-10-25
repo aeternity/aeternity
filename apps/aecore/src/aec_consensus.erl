@@ -347,8 +347,6 @@ consensus_config_or_default(Default) ->
 consensus_module_from_type(<<"pow_cuckoo">>) -> aec_consensus_bitcoin_ng;
 consensus_module_from_type(<<"on_demand">>) -> aec_consensus_on_demand;
 consensus_module_from_type(<<"ct_tests">>) -> aec_consensus_common_tests;
-consensus_module_from_type(<<"smart_contract">>) ->
-  aec_consensus_smart_contract;
 consensus_module_from_type(<<"hyperchain">>) -> aec_consensus_hc;
 consensus_module_from_type(<<"eunit_one">>) -> module_eunit_one;
 consensus_module_from_type(<<"eunit_two">>) -> module_eunit_two;
@@ -357,7 +355,6 @@ consensus_module_from_type(_) -> undefined.
 -else.
 consensus_module_from_type(<<"pow_cuckoo">>) -> aec_consensus_bitcoin_ng;
 consensus_module_from_type(<<"on_demand">>) -> aec_consensus_on_demand;
-consensus_module_from_type(<<"smart_contract">>) -> aec_consensus_smart_contract;
 consensus_module_from_type(<<"hyperchain">>) -> aec_consensus_hc;
 consensus_module_from_type(_) -> undefined.
 -endif.
