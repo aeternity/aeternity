@@ -983,7 +983,7 @@ post_pin_to_pc(Config) ->
     {ok, []} = rpc(?PARENT_CHAIN_NODE, aec_tx_pool, peek, [infinity]), % no pending transactions
     PinTx = rpc(Node, aec_parent_connector, create_pin_tx, [DwightEnc, DwightPub, 1, 30000 * ?DEFAULT_GAS_PRICE, Pin]),
     SignedPinTx = sign_tx(PinTx, privkey(?DWIGHT),?PARENT_CHAIN_NETWORK_ID),
-    {ok, #{<<"tx_hash">> := TxHash}} = rpc(Node, aec_parent_connector, post_pin_tx, [SignedPinTx]),
+    EncTxHash = rpc(Node, aec_parent_connector, post_pin_tx, [SignedPinTx]),
     {ok, [_]} = rpc(?PARENT_CHAIN_NODE, aec_tx_pool, peek, [infinity]), % one transaction pending now.
     {ok, _} = produce_cc_blocks(Config, 5),
     {ok, []} = rpc(?PARENT_CHAIN_NODE, aec_tx_pool, peek, [infinity]), % all transactions comitted
@@ -999,7 +999,7 @@ post_pin_to_pc(Config) ->
                 amount       => 1,
                 fee          => 30000 * ?DEFAULT_GAS_PRICE,
                 nonce        => Nonce,
-                payload      => TxHash},
+                payload      => EncTxHash},
     ct:log("Preparing a spend tx: ~p", [Params]),
     {ok, Tx} = aec_spend_tx:new(Params),
     SignedTx = sign_tx(Tx, privkey(?ALICE), NetworkId),
@@ -1048,7 +1048,7 @@ wallet_post_pin_to_pc(Config) ->
 
     SignedPinTx = sign_tx(PinTx, privkey(?DWIGHT), ?PARENT_CHAIN_NETWORK_ID),
     Transaction = aeser_api_encoder:encode(transaction, aetx_sign:serialize_to_binary(SignedPinTx)),
-    {ok, 200, #{<<"tx_hash">> := TxHash}} = aecore_suite_utils:http_request(ParentHost, post, <<"transactions">>, #{tx => Transaction}),
+    {ok, 200, #{<<"tx_hash">> := ProofHash}} = aecore_suite_utils:http_request(ParentHost, post, <<"transactions">>, #{tx => Transaction}),
     {ok, [_]} = rpc(?PARENT_CHAIN_NODE, aec_tx_pool, peek, [infinity]), % one transaction pending now.
     {ok, _} = produce_cc_blocks(Config, Len div 2),
     {ok, []} = rpc(?PARENT_CHAIN_NODE, aec_tx_pool, peek, [infinity]), % all transactions comitted
@@ -1060,7 +1060,7 @@ wallet_post_pin_to_pc(Config) ->
     %% Now just inform the last leader of this epoch about the transaction hash
     %% via a spend on child chain... the leader will have machinery to pick up tx hash
     %% and to find out at which parent height the hash is accepted at
-    ProofHash = list_to_binary("PIN"++TxHash),
+    % ProofHash = list_to_binary("PIN"++TxHash), % the hash comes encoded already
     {_, LeaderPubkey} = aeser_api_encoder:decode(LastLeader),
     NonceAlice = next_nonce(Node, pubkey(?ALICE)),
     Params = #{ sender_id    => aeser_id:create(account, pubkey(?ALICE)),
@@ -1106,19 +1106,16 @@ last_leader_validates_pin_and_post_to_contract(Config) ->
 
     %% TODO test to see that LastLeader actually is leader now?
 
-    %% get all blocks(?)
-    % {ok, AllBlocks} = get_generations(Node, First, Last-1),
+    %% Find the first spend
     [FirstSpend|_] = rpc(Node, aec_parent_connector, find_spends_to, [LastLeader]),
     ct:log("First Spend: ~p", [FirstSpend]),
-    DecodedPL = rpc(Node, aec_parent_connector, decode_child_pin_payload, [FirstSpend]),
 
     %% call contract with PC pin tx hash
-    ok = pin_contract_call_tx(Config, "pin", [DecodedPL], 0, LastLeader),
-
+    ok = pin_contract_call_tx(Config, "pin", [FirstSpend], 0, LastLeader),
 
     %% use get_pin_by_tx_hash to get the posted hash back and compare with actual keyblock (to test encoding decoding etc)
     #{epoch := _PinEpoch, height := PinHeight, block_hash := PinHash} = 
-        rpc(Node, aec_parent_connector, get_pin_by_tx_hash, [DecodedPL]),
+        rpc(Node, aec_parent_connector, get_pin_by_tx_hash, [FirstSpend]),
     ?assertEqual({ok, PinHash}, rpc(Node, aec_chain_state, get_key_block_hash_at_height, [PinHeight])),
 
     %% move into next epoch - trigger leader validation?
@@ -1158,11 +1155,10 @@ pin_to_parent(Node, AccountPK) ->
     {ok, []} = rpc(?PARENT_CHAIN_NODE, aec_tx_pool, peek, [infinity]), % no pending transactions
     PinTx = rpc(Node, aec_parent_connector, create_pin_tx, [AccPKEncEnc, AccountPK, 1, 30000 * ?DEFAULT_GAS_PRICE, PinningData]),
     SignedPinTx = sign_tx(PinTx, privkey(?DWIGHT),?PARENT_CHAIN_NETWORK_ID),
-    {ok, #{<<"tx_hash">> := TxHash}} = rpc(Node, aec_parent_connector, post_pin_tx, [SignedPinTx]),
-    TxHash.
+    rpc(Node, aec_parent_connector, post_pin_tx, [SignedPinTx]).
 
 % PINREFAC
-tx_hash_to_child(Node, TxHash, SendAccount, Leader, Config) ->
+tx_hash_to_child(Node, EncTxHash, SendAccount, Leader, Config) ->
     NodeName = aecore_suite_utils:node_name(Node),
     NetworkId = ?config(network_id, Config), % TODO not 100% sure about this one...
     Nonce = next_nonce(Node, pubkey(SendAccount)),
@@ -1171,7 +1167,7 @@ tx_hash_to_child(Node, TxHash, SendAccount, Leader, Config) ->
                 amount       => 1,
                 fee          => 30000 * ?DEFAULT_GAS_PRICE,
                 nonce        => Nonce,
-                payload      => rpc(Node, aec_parent_connector, encode_child_pin_payload, [TxHash])},
+                payload      => EncTxHash},
     ct:log("Preparing a spend tx: ~p", [Params]),
     {ok, Tx} = aec_spend_tx:new(Params),
     SignedTx = sign_tx(Tx, privkey(SendAccount), NetworkId),

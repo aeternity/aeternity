@@ -138,12 +138,10 @@ is_pin(Pin) ->
 
 % -spec create_pin_tx(binary(), binary(), binary(), integer(), integer(), binary()) -> aetx:tx().
 create_pin_tx({SenderEnc, ReceiverPubkey, Amount, Fee, PinningData}, NodeSpec) ->
-    %% 1. get the next nonce for our account over at the parent chain
     PinPayload = encode_parent_pin_payload(PinningData),
     {ok, SenderPubkey} = aeser_api_encoder:safe_decode(account_pubkey, SenderEnc),
     NoncePath = <<"/v3/accounts/", SenderEnc/binary, "/next-nonce">>,
     {ok, #{<<"next_nonce">> := Nonce}} = get_request(NoncePath, NodeSpec, 5000),
-    %% 2. Create a SpendTx containing the Pin in its payload
     TxArgs = #{sender_id    => aeser_id:create(account, SenderPubkey),
                recipient_id => aeser_id:create(account, ReceiverPubkey),
                amount       => Amount,
@@ -157,21 +155,20 @@ post_pin_tx(SignedSpendTx, NodeSpec) ->
     Transaction = aeser_api_encoder:encode(transaction, aetx_sign:serialize_to_binary(SignedSpendTx)),
     Body = #{<<"tx">> => Transaction},
     Path = <<"/v3/transactions">>,
-    post_request(Path, Body, NodeSpec, 5000).
+    {ok, #{<<"tx_hash">> := TxHash}} = post_request(Path, Body, NodeSpec, 5000),
+    lager:debug("PINNING: wrote to PC tx hash: ~p", [TxHash]),
+    encode_child_pin_payload(TxHash).
 
-get_pin_by_tx_hash(TxHash, NodeSpec) ->
-    %SerHash = aeser_api_encoder:encode(tx_hash, TxHash),
+get_pin_by_tx_hash(TxHashEnc, NodeSpec) ->
+    TxHash = decode_child_pin_payload(TxHashEnc),
+    lager:debug("PINNING: fetch from PC tx hash ~p", [TxHash, TxHashEnc]),
     TxPath = <<"/v3/transactions/", TxHash/binary>>,
-    {ok, #{<<"tx">> := #{<<"payload">> := EncPin}}} = get_request(TxPath, NodeSpec, 5000),
-    {ok, Pin} = aeser_api_encoder:safe_decode(bytearray, EncPin),
-    decode_parent_pin_payload(Pin).
-    %get_request(TxPath, NodeSpec, 5000).
-
-% sign_tx(Tx, NetworkId, Signer, SignModule) when is_binary(Signer) ->
-%     Bin0 = aetx:serialize_to_binary(Tx),
-%     BinForNetwork = aec_governance:add_custom_network_id(NetworkId, Bin0),
-%     {ok, Signature} = SignModule:sign_binary(BinForNetwork, Signer),
-%     aetx_sign:new(Tx, [Signature]).
+    case get_request(TxPath, NodeSpec, 5000) of
+        {ok, #{<<"tx">> := #{<<"payload">> := EncPin}}} ->
+            {ok, Pin} = aeser_api_encoder:safe_decode(bytearray, EncPin),
+            decode_parent_pin_payload(Pin);
+        OtherErr -> OtherErr
+    end.
 
 get_request(Path, NodeSpec, Timeout) ->
     try
