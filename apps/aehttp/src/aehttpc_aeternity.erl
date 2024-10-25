@@ -8,7 +8,7 @@
          get_header_by_hash/3,
          get_header_by_height/3,
          hash_to_integer/1,
-         create_pin_tx/6,
+         create_pin_tx/2,
          post_pin_tx/2,
          get_pin_by_tx_hash/2,
          encode_parent_pin_payload/1,
@@ -137,7 +137,7 @@ is_pin(Pin) ->
     end.
 
 % -spec create_pin_tx(binary(), binary(), binary(), integer(), integer(), binary()) -> aetx:tx().
-create_pin_tx(NodeSpec, SenderEnc, ReceiverPubkey, Amount, Fee, PinningData) ->
+create_pin_tx({SenderEnc, ReceiverPubkey, Amount, Fee, PinningData}, NodeSpec) ->
     %% 1. get the next nonce for our account over at the parent chain
     PinPayload = encode_parent_pin_payload(PinningData),
     {ok, SenderPubkey} = aeser_api_encoder:safe_decode(account_pubkey, SenderEnc),

@@ -44,14 +44,15 @@
         get_parent_chain_type/0,
         %% Pinning
         get_pinning_data/0,
-        create_pin_tx/6,
-        post_pin_tx/2,
-        get_pin_by_tx_hash/2,
+        create_pin_tx/5,
+        post_pin_tx/1,
+        get_pin_by_tx_hash/1,
         encode_parent_pin_payload/1,
         decode_parent_pin_payload/1,
         encode_child_pin_payload/1,
         decode_child_pin_payload/1,
-        is_pin/1
+        is_pin/1,
+        find_spends_to/1
         ]).
 
 %% Callbacks
@@ -168,16 +169,16 @@ handle_call(get_parent_conn_mod, _From, #state{parent_conn_mod = Mod} = State) -
 handle_call(get_parent_chain_type, _From, #state{parent_conn_mod = Mod} = State) ->
     Reply = Mod:get_chain_type(),
     {reply, Reply, State};
-handle_call({create_pin_tx, NodeSpec, SenderEnc, ReceiverPubkey, Amount, Fee, PinningData}, 
+handle_call({create_pin_tx, SenderEnc, ReceiverPubkey, Amount, Fee, PinningData}, 
              _From, 
-             #state{parent_conn_mod = Mod} = State) ->
-    Reply = Mod:create_pin_tx(NodeSpec, SenderEnc, ReceiverPubkey, Amount, Fee, PinningData),
+             #state{parent_conn_mod = Mod, parent_hosts = ParentHosts} = State) ->
+    Reply = handle_parent_pin_calls(Mod, create_pin_tx, {SenderEnc, ReceiverPubkey, Amount, Fee, PinningData}, ParentHosts),
     {reply, Reply, State};
-handle_call({post_pin_tx, Tx, NodeSpec}, _From, #state{parent_conn_mod = Mod} = State) ->
-    Reply = Mod:post_pin_tx(Tx, NodeSpec),
+handle_call({post_pin_tx, Tx}, _From, #state{parent_conn_mod = Mod, parent_hosts = ParentHosts} = State) ->
+    Reply = handle_parent_pin_calls(Mod, post_pin_tx, Tx, ParentHosts),
     {reply, Reply, State};
-handle_call({get_pin_by_tx_hash, Tx, NodeSpec}, _From, #state{parent_conn_mod = Mod} = State) ->
-    Reply = Mod:get_pin_by_tx_hash(Tx, NodeSpec),
+handle_call({get_pin_by_tx_hash, Tx}, _From, #state{parent_conn_mod = Mod, parent_hosts = ParentHosts} = State) ->
+    Reply = handle_parent_pin_calls(Mod, get_pin_by_tx_hash, Tx, ParentHosts),
     {reply, Reply, State};
 handle_call({encode_parent_pin_payload, Pin}, _From, #state{parent_conn_mod = Mod} = State) ->
     Reply = Mod:encode_parent_pin_payload(Pin),
@@ -363,15 +364,15 @@ get_sign_module() ->
 get_parent_chain_type() ->
     gen_server:call(?SERVER, get_parent_chain_type).
 
--spec create_pin_tx(binary(), binary(), binary(), integer(), integer(), binary()) -> aetx:tx().
-create_pin_tx(NodeSpec, SenderEnc, ReceiverPubkey, Amount, Fee, PinningData) ->
-    gen_server:call(?SERVER, {create_pin_tx, NodeSpec, SenderEnc, ReceiverPubkey, Amount, Fee, PinningData}).
+-spec create_pin_tx(binary(), binary(), integer(), integer(), binary()) -> aetx:tx().
+create_pin_tx(SenderEnc, ReceiverPubkey, Amount, Fee, PinningData) ->
+    gen_server:call(?SERVER, {create_pin_tx, SenderEnc, ReceiverPubkey, Amount, Fee, PinningData}).
 
-post_pin_tx(Tx, NodeSpec) ->
-    gen_server:call(?SERVER, {post_pin_tx, Tx, NodeSpec}).
+post_pin_tx(Tx) ->
+    gen_server:call(?SERVER, {post_pin_tx, Tx}).
 
-get_pin_by_tx_hash(TxHash, NodeSpec) ->
-    gen_server:call(?SERVER, {get_pin_by_tx_hash, TxHash, NodeSpec}).
+get_pin_by_tx_hash(TxHash) ->
+    gen_server:call(?SERVER, {get_pin_by_tx_hash, TxHash}).
 
 encode_parent_pin_payload(Pin) ->
     gen_server:call(?SERVER, {encode_parent_pin_payload, Pin}).
@@ -388,7 +389,7 @@ decode_child_pin_payload(TxHash) ->
 is_pin(Pin) -> 
     gen_server:call(?SERVER, {is_pin, Pin}).
 
-% PINREFAC aec_chains_hc?
+% PINREFAC is this (aec_p_c) the correct place for this and the following CC pin related ones?
 -spec get_pinning_data() -> {ok, map()} | {error, atom()}.
 get_pinning_data() ->
     {ok, #{epoch := Epoch,
@@ -412,3 +413,35 @@ get_pinning_data() ->
           %% schedule not yet cached
           {error, last_leader_unknown}
     end.
+
+get_generations(FromHeight, ToHeight) ->
+    ReversedBlocks =
+        lists:foldl(
+            fun(Height, Accum) ->
+                case aec_chain:get_generation_by_height(Height, backward) of
+                    {ok, #{micro_blocks := MBs}} ->
+                        ReversedGeneration = lists:reverse(MBs),
+                        ReversedGeneration ++ Accum;
+                    error -> error({failed_to_fetch_generation, Height})
+                end
+            end,
+            [],
+            lists:seq(FromHeight, ToHeight)),
+    lists:reverse(ReversedBlocks).
+
+
+find_spends_to(Account) ->
+    %% TODO Not happy with this. are we in the correct epoch when this is supposed to be 
+    %%      called, and what if you want to go back through the chain and validate backwards?
+    {ok, #{last := Last, first := First}} = aec_chain_hc:epoch_info(), 
+    Blocks = get_generations(First, Last-1),
+    lists:flatten([ pick_pin_spends_to(Account, Txs) || {mic_block, _, Txs, _} <- Blocks ]).
+
+pick_pin_spends_to(Account, Txs) ->
+    [ T || {signed_tx,{aetx,spend_tx,aec_spend_tx,_,{spend_tx,_,{id,account,Account2},_,_,_,_,T}},_} <- Txs, Account =:= Account2, is_pin(T)].
+
+%% FUTURE Should be reasonably easy to loop over NodeSpecs until one call suceeds.
+%%        For now, we just pick the first one.
+handle_parent_pin_calls(Mod, Fun, Args, NodeSpecs) ->
+    [NodeSpec|_] = NodeSpecs,
+    Mod:Fun(Args, NodeSpec). % can fail with {error,{}} to be caught in future loop
