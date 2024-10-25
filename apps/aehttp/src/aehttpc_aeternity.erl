@@ -7,7 +7,16 @@
 -export([get_latest_block/2,
          get_header_by_hash/3,
          get_header_by_height/3,
-         hash_to_integer/1]).
+         hash_to_integer/1,
+         create_pin_tx/6,
+         post_pin_tx/2,
+         get_pin_by_tx_hash/2,
+         encode_parent_pin_payload/1,
+         decode_parent_pin_payload/1,
+         encode_child_pin_payload/1,
+         decode_child_pin_payload/1,
+         is_pin/1
+        ]).
 
 %% Util exports
 -export([get_generation/2,
@@ -94,14 +103,69 @@ get_generation_by_height(NodeSpec, Height) ->
     get_request(Path, NodeSpec, 5000).
 
 
-%% TODO This function copied from aec_test_utils as that module is not available
-%% in normal builds
-%% TODO - wallet interaction of some kind to get privKey
-%% This is a horrible hack for now
-%% Maybe aec_preset_keys??
-%% {ok, Sig} = aec_preset_keys:sign_tx(SpendTx, AccountId)
-%% TODO: redo this whole thing
--define(VALID_PRIVK(K), byte_size(K) =:= 64).
+%%%=============================================================================
+%%% Pinning
+%%%=============================================================================
+
+-spec encode_parent_pin_payload(#{epoch => integer(), height => integer(), block_hash => binary()}) -> binary().
+encode_parent_pin_payload(#{epoch := Epoch, height := Height, block_hash := BlockHash}) ->
+    EpochHex = list_to_binary(erlang:integer_to_list(Epoch, 16)),
+    HeightHex = list_to_binary(erlang:integer_to_list(Height, 16)),
+    EncBlockHash = aeser_api_encoder:encode(key_block_hash, BlockHash),
+    <<EpochHex/binary, ":", HeightHex/binary, " ", EncBlockHash/binary>>.
+
+-spec decode_parent_pin_payload(binary()) -> #{epoch => integer(), height => integer(), block_hash => binary()}.
+decode_parent_pin_payload(Binary) ->
+    [HexEpoch, HexHeight, EncBlockHash] = binary:split(Binary, [<<":">>, <<" ">>], [global]),
+    Epoch = erlang:list_to_integer(binary_to_list(HexEpoch), 16),
+    Height = erlang:list_to_integer(binary_to_list(HexHeight), 16),
+    {ok, BlockHash} = aeser_api_encoder:safe_decode(key_block_hash, EncBlockHash),
+    #{epoch => Epoch, height => Height, block_hash => BlockHash}.
+
+encode_child_pin_payload(TxHash) ->
+    <<$p,$i,$n, TxHash/binary>>.
+
+decode_child_pin_payload(<<$p,$i,$n, TxHash/binary>>) ->
+    TxHash;
+decode_child_pin_payload(_) ->
+    error.
+
+is_pin(Pin) -> 
+    case decode_child_pin_payload(Pin) of
+        error -> false;
+        _ -> true
+    end.
+
+% -spec create_pin_tx(binary(), binary(), binary(), integer(), integer(), binary()) -> aetx:tx().
+create_pin_tx(NodeSpec, SenderEnc, ReceiverPubkey, Amount, Fee, PinningData) ->
+    %% 1. get the next nonce for our account over at the parent chain
+    PinPayload = encode_parent_pin_payload(PinningData),
+    {ok, SenderPubkey} = aeser_api_encoder:safe_decode(account_pubkey, SenderEnc),
+    NoncePath = <<"/v3/accounts/", SenderEnc/binary, "/next-nonce">>,
+    {ok, #{<<"next_nonce">> := Nonce}} = get_request(NoncePath, NodeSpec, 5000),
+    %% 2. Create a SpendTx containing the Pin in its payload
+    TxArgs = #{sender_id    => aeser_id:create(account, SenderPubkey),
+               recipient_id => aeser_id:create(account, ReceiverPubkey),
+               amount       => Amount,
+               fee          => Fee,
+               nonce        => Nonce,
+               payload      => PinPayload},
+    {ok, SpendTx} = aec_spend_tx:new(TxArgs),
+    SpendTx.
+
+post_pin_tx(SignedSpendTx, NodeSpec) ->
+    Transaction = aeser_api_encoder:encode(transaction, aetx_sign:serialize_to_binary(SignedSpendTx)),
+    Body = #{<<"tx">> => Transaction},
+    Path = <<"/v3/transactions">>,
+    post_request(Path, Body, NodeSpec, 5000).
+
+get_pin_by_tx_hash(TxHash, NodeSpec) ->
+    %SerHash = aeser_api_encoder:encode(tx_hash, TxHash),
+    TxPath = <<"/v3/transactions/", TxHash/binary>>,
+    {ok, #{<<"tx">> := #{<<"payload">> := EncPin}}} = get_request(TxPath, NodeSpec, 5000),
+    {ok, Pin} = aeser_api_encoder:safe_decode(bytearray, EncPin),
+    decode_parent_pin_payload(Pin).
+    %get_request(TxPath, NodeSpec, 5000).
 
 % sign_tx(Tx, NetworkId, Signer, SignModule) when is_binary(Signer) ->
 %     Bin0 = aetx:serialize_to_binary(Tx),

@@ -41,7 +41,16 @@
         get_network_id/0,
         get_parent_conn_mod/0,
         get_sign_module/0,
-        get_parent_chain_type/0
+        get_parent_chain_type/0,
+        %% Pinning
+        create_pin_tx/6,
+        post_pin_tx/2,
+        get_pin_by_tx_hash/2,
+        encode_parent_pin_payload/1,
+        decode_parent_pin_payload/1,
+        encode_child_pin_payload/1,
+        decode_child_pin_payload/1,
+        is_pin/1
         ]).
 
 %% Callbacks
@@ -153,10 +162,36 @@ handle_call(get_network_id, _From, #state{network_id = NetworkId} = State) ->
     {reply, NetworkId, State};
 handle_call(get_sign_module, _From, #state{sign_module = SM} = State) ->
     {reply, SM, State};
-handle_call(get_parent_conn_mod, _From, #state{parent_conn_mod = ParentConnMod} = State) ->
-    {reply, ParentConnMod, State};
-handle_call(get_parent_chain_type, _From, #state{parent_conn_mod = ParentConnMod} = State) ->
-    Reply = ParentConnMod:get_chain_type(),
+handle_call(get_parent_conn_mod, _From, #state{parent_conn_mod = Mod} = State) ->
+    {reply, Mod, State};
+handle_call(get_parent_chain_type, _From, #state{parent_conn_mod = Mod} = State) ->
+    Reply = Mod:get_chain_type(),
+    {reply, Reply, State};
+handle_call({create_pin_tx, NodeSpec, SenderEnc, ReceiverPubkey, Amount, Fee, PinningData}, 
+             _From, 
+             #state{parent_conn_mod = Mod} = State) ->
+    Reply = Mod:create_pin_tx(NodeSpec, SenderEnc, ReceiverPubkey, Amount, Fee, PinningData),
+    {reply, Reply, State};
+handle_call({post_pin_tx, Tx, NodeSpec}, _From, #state{parent_conn_mod = Mod} = State) ->
+    Reply = Mod:post_pin_tx(Tx, NodeSpec),
+    {reply, Reply, State};
+handle_call({get_pin_by_tx_hash, Tx, NodeSpec}, _From, #state{parent_conn_mod = Mod} = State) ->
+    Reply = Mod:get_pin_by_tx_hash(Tx, NodeSpec),
+    {reply, Reply, State};
+handle_call({encode_parent_pin_payload, Pin}, _From, #state{parent_conn_mod = Mod} = State) ->
+    Reply = Mod:encode_parent_pin_payload(Pin),
+    {reply, Reply, State};
+handle_call({decode_parent_pin_payload, PinPayload}, _From, #state{parent_conn_mod = Mod} = State) ->
+    Reply = Mod:decode_parent_pin_payload(PinPayload),
+    {reply, Reply, State};
+handle_call({encode_child_pin_payload, TxHash}, _From, #state{parent_conn_mod = Mod} = State) ->
+    Reply = Mod:encode_child_pin_payload(TxHash),
+    {reply, Reply, State};
+handle_call({decode_child_pin_payload, EncTxHash}, _From, #state{parent_conn_mod = Mod} = State) ->
+    Reply = Mod:decode_child_pin_payload(EncTxHash),
+    {reply, Reply, State};
+handle_call({is_pin, EncTxHash}, _From, #state{parent_conn_mod = Mod} = State) ->
+    Reply = Mod:is_pin(EncTxHash),
     {reply, Reply, State};
 handle_call(_Request, _From, State) ->
     Reply = ok,
@@ -326,3 +361,28 @@ get_sign_module() ->
 -spec get_parent_chain_type() -> {ok, atom()}.
 get_parent_chain_type() ->
     gen_server:call(?SERVER, get_parent_chain_type).
+
+-spec create_pin_tx(binary(), binary(), binary(), integer(), integer(), binary()) -> aetx:tx().
+create_pin_tx(NodeSpec, SenderEnc, ReceiverPubkey, Amount, Fee, PinningData) ->
+    gen_server:call(?SERVER, {create_pin_tx, NodeSpec, SenderEnc, ReceiverPubkey, Amount, Fee, PinningData}).
+
+post_pin_tx(Tx, NodeSpec) ->
+    gen_server:call(?SERVER, {post_pin_tx, Tx, NodeSpec}).
+
+get_pin_by_tx_hash(TxHash, NodeSpec) ->
+    gen_server:call(?SERVER, {get_pin_by_tx_hash, TxHash, NodeSpec}).
+
+encode_parent_pin_payload(Pin) ->
+    gen_server:call(?SERVER, {encode_parent_pin_payload, Pin}).
+
+decode_parent_pin_payload(PinPayload) ->
+    gen_server:call(?SERVER, {decode_parent_pin_payload, PinPayload}).
+
+encode_child_pin_payload(TxHash) ->
+    gen_server:call(?SERVER, {encode_child_pin_payload, TxHash}).
+
+decode_child_pin_payload(TxHash) ->
+    gen_server:call(?SERVER, {decode_child_pin_payload, TxHash}).
+
+is_pin(Pin) -> 
+    gen_server:call(?SERVER, {is_pin, Pin}).

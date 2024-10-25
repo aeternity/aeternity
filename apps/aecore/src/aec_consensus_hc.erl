@@ -840,11 +840,13 @@ is_leader_valid(Node, _Trees, TxEnv, _PrevNode) ->
 
 validate_pin(TxEnv, Trees) ->
     case aec_chain_hc:pin_info({TxEnv, Trees}) of
-        undefined -> lager:debug("PINNING got no tx hash"), true;
-        TXHash -> lager:debug("PINNING: got a proper tx hash: ~p", [TXHash]), % false, true % also emit event
+        undefined -> lager:debug("PINNING got no tx hash"), false;
+        TXHash -> 
+            lager:debug("PINNING: got a proper tx hash: ~p", [TXHash]), true% false, true % also emit event
+            
     end.
     
-add_pin_reward(Trees, Leader) ->
+add_pin_reward(Trees, _Leader) ->
     Trees.
 
 create_contracts([], _TxEnv, Trees) -> Trees;
