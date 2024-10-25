@@ -713,11 +713,9 @@ verify_fees(Config) ->
     {_, PatronPub} = aecore_suite_utils:sign_keys(?NODE1),
     {ok, []} = rpc:call(?NODE1_NAME, aec_tx_pool, peek, [infinity]),
     {ok, _SignedTx} = seed_account(PatronPub, 1, NetworkId),
-    Test(), %% fees are generated
-
-    %% key blocks are in sync, but give gossip time to sync micro block
-    %% This won't be needed if micro blocks come before key blocks
+    %% key blocks are in sync, but give gossip time to get transactions to all nodes
     timer:sleep(?CHILD_BLOCK_TIME div 2),
+    Test(), %% fees are generated
 
     ct:log("Test with no transaction", []),
     [ Test() || _ <- lists:seq(0, ?REWARD_DELAY) ],
