@@ -891,7 +891,7 @@ handle_request_('GetRecentGasPrices', _Params, _Context) ->
     end;
 
 handle_request_('GetPinningTx', _Params, _Context) ->
-    case aec_pinning_agent:get_pinning_data() of
+    case aec_parent_connector:get_pinning_data() of
         {ok, #{epoch := Epoch,
                height := CCHeight,
                block_hash := EpochBlockHash,

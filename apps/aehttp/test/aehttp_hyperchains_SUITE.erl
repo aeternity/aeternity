@@ -975,7 +975,7 @@ post_pin_to_pc(Config) ->
     Height1 = rpc(Node, aec_chain, top_height, []),
     {ok, #{last := Last1}} = rpc(Node, aec_chain_hc, epoch_info, []),
     {ok, _} = produce_cc_blocks(Config, Last1 - Height1 + 1),
-    {ok, Pin} = rpc(Node, aec_pinning_agent, get_pinning_data, []),
+    {ok, Pin} = rpc(Node, aec_parent_connector, get_pinning_data, []),
     {ok, _} = produce_cc_blocks(Config, 5),
 
     DwightPub = pubkey(?DWIGHT), % PC chain account
@@ -1163,7 +1163,7 @@ pick_pin_spends_to(Node, Account, Txs) ->
 
 % PINREFAC aec_parent_connector??
 pin_to_parent(Node, AccountPK) ->
-    {ok, PinningData} = rpc(Node, aec_pinning_agent, get_pinning_data, []),
+    {ok, PinningData} = rpc(Node, aec_parent_connector, get_pinning_data, []),
     AccPKEncEnc = aeser_api_encoder:encode(account_pubkey, AccountPK),
     ParentNodeSpec = #{scheme => "http", host => "127.0.0.1", port => aecore_suite_utils:external_api_port(?PARENT_CHAIN_NODE)},
     {ok, []} = rpc(?PARENT_CHAIN_NODE, aec_tx_pool, peek, [infinity]), % no pending transactions

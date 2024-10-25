@@ -43,6 +43,7 @@
         get_sign_module/0,
         get_parent_chain_type/0,
         %% Pinning
+        get_pinning_data/0,
         create_pin_tx/6,
         post_pin_tx/2,
         get_pin_by_tx_hash/2,
@@ -386,3 +387,28 @@ decode_child_pin_payload(TxHash) ->
 
 is_pin(Pin) -> 
     gen_server:call(?SERVER, {is_pin, Pin}).
+
+% PINREFAC aec_chains_hc?
+-spec get_pinning_data() -> {ok, map()} | {error, atom()}.
+get_pinning_data() ->
+    {ok, #{epoch := Epoch,
+           first := First,
+           last  := Last}} = aec_chain_hc:epoch_info(),
+    lager:debug("Get pin data for epoch ~p for leader of block ~p", [Epoch - 1, Last]),
+    {ok, BlockHash} = aec_chain_state:get_key_block_hash_at_height(First-1),
+    {ok, ChainType} = get_parent_chain_type(),
+    PrevEpoch = Epoch - 1,
+    Height = First - 1,
+    case aec_consensus_hc:leader_for_height(Last) of
+      {ok, Leader} ->
+        {ok, #{epoch             => PrevEpoch,
+               height            => Height,
+               block_hash        => BlockHash,
+               parent_payload    => encode_parent_pin_payload(#{epoch => PrevEpoch, height => Height, block_hash => BlockHash}),
+               last_leader       => Leader,
+               parent_type       => ChainType,
+               parent_network_id => get_network_id()}};
+      error ->
+          %% schedule not yet cached
+          {error, last_leader_unknown}
+    end.
