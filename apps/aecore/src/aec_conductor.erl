@@ -585,14 +585,8 @@ set_mode(State) ->
                     set_beneficiary_configured(State#state{mode = local_pow}, ConsensusModule)
             end;
         pos ->
-            %% TODO actually check whether node is a producing node
-            case ConsensusModule of
-                aec_consensus_hc ->
-                    IsBlockProducer = aec_consensus_hc:is_block_producer(),
-                    State#state{mode = pos, has_beneficiary = IsBlockProducer};
-                _ ->
-                    set_beneficiary_configured(State#state{mode = pos}, ConsensusModule)
-            end
+            IsBlockProducer = ConsensusModule:is_block_producer(),
+            State#state{mode = pos, has_beneficiary = IsBlockProducer}
     end.
 
 set_stratum_mode(State) ->
@@ -903,10 +897,7 @@ preempt_on_new_top(#state{ top_block_hash = OldHash,
     %%  microblocks will be discarded.
     ResetWorkers =
         case Mode of
-            pos when ConsensusModule == aec_consensus_hc ->
-                false;
-            pos ->
-                true;
+            pos -> false;
             PoW when PoW =:= local_pow;
                      PoW =:= stratum ->
                 case BlockType of
@@ -1261,30 +1252,10 @@ create_key_block_candidate(#state{key_block_candidates = [{_, #candidate{top_has
     start_block_production_(State);
 create_key_block_candidate(#state{top_block_hash = TopHash, mode = pos} = State) ->
     ConsensusModule = consensus_module(State),
-
-    %% TODO: should we bother with "normal" pos
-    case ConsensusModule of
-        aec_consensus_hc ->
-            epoch_mining:info("HC: check and maybe create micro + key block at the top of the chain"),
-            Fun = hc_create_block_fun(ConsensusModule, TopHash),
-            {State1, _Pid} = dispatch_worker(create_key_block_candidate, Fun, State),
-            State1;
-        _ ->
-            epoch_mining:info("Creating key block candidate on the top"),
-            Fun = fun() ->
-                      case get_next_beneficiary(ConsensusModule, TopHash) of
-                          {ok, Beneficiary} ->
-                                SignModule  = ConsensusModule:get_sign_module(),
-                                {ok, Miner} = SignModule:candidate_pubkey(),
-                                {aec_block_key_candidate:create(TopHash, Beneficiary, Miner), TopHash};
-                          {error, _} = Err ->
-                              {Err, TopHash}
-                      end
-                  end,
-            {State1, _Pid} = dispatch_worker(create_key_block_candidate, Fun, State),
-            State1
-    end;
-
+    epoch_mining:info("HC: check and maybe create micro + key block at the top of the chain"),
+    Fun = hc_create_block_fun(ConsensusModule, TopHash),
+    {State1, _Pid} = dispatch_worker(create_key_block_candidate, Fun, State),
+    State1;
 create_key_block_candidate(#state{top_block_hash      = TopHash,
                                   mode                = Mode,
                                   stratum_beneficiary = StratumBeneficiary} = State) ->
@@ -1552,8 +1523,7 @@ is_leader(NewTopBlock, PrevKeyHeader, ConsensusModule) ->
         {error, _}     -> false
     end.
 
-setup_loop(State = #state{ mode = pos,
-                           consensus = #consensus{ consensus_module = aec_consensus_hc } }, Restart, _, _) ->
+setup_loop(State = #state{ mode = pos }, Restart, _, _) ->
     if not Restart -> create_key_block_candidate(State);
        true        -> State
     end;
