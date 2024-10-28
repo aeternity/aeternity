@@ -21,7 +21,6 @@
          produce_some_epochs/1,
          respect_schedule/1,
          entropy_impact_schedule/1,
-         mine_and_sync/1,
          spend_txs/1,
          simple_withdraw/1,
          empty_parent_block/1,
@@ -146,7 +145,6 @@ groups() ->
           [ start_two_child_nodes
           , produce_first_epoch
           , verify_fees
-          , mine_and_sync
           , spend_txs
           , simple_withdraw
           , sync_third_node
@@ -362,13 +360,6 @@ contract_call(ContractPubkey, Src, Fun, Args, Amount, From, Nonce) ->
     {ok, Tx} = aect_call_tx:new(TxSpec),
     Tx.
 
-%% This test is trivially true, since we already check in
-%% sync when producting the blocks.
-mine_and_sync(Config) ->
-    {ok, _KBs} = produce_cc_blocks(Config, 3),
-    {ok, _KB} = wait_same_top([ Node || {Node, _, _} <- ?config(nodes, Config)]),
-    ok.
-
 wait_same_top(Nodes) ->
     wait_same_top(Nodes, 3).
 
@@ -387,18 +378,34 @@ wait_same_top(Nodes, Attempts) ->
 
 spend_txs(Config) ->
     produce_cc_blocks(Config, 1),
-    Top0 = rpc(?NODE1, aec_chain, top_header, []),
-    ct:log("Top before posting spend txs: ~p", [aec_headers:height(Top0)]),
-    NetworkId = ?config(network_id, Config),
+
+    %% First, seed ALICE, BOB and LISA, they need tokens in later tests
     {ok, []} = rpc:call(?NODE1_NAME, aec_tx_pool, peek, [infinity]),
+    NetworkId = ?config(network_id, Config),
     seed_account(pubkey(?ALICE), 100000001 * ?DEFAULT_GAS_PRICE, NetworkId),
     seed_account(pubkey(?BOB), 100000002 * ?DEFAULT_GAS_PRICE, NetworkId),
     seed_account(pubkey(?LISA), 100000003 * ?DEFAULT_GAS_PRICE, NetworkId),
 
     produce_cc_blocks(Config, 1),
     {ok, []} = rpc:call(?NODE1_NAME, aec_tx_pool, peek, [infinity]),
-    %% TODO check that the actors got their share
-    ok.
+
+    %% Make spends until we've passed an epoch boundary
+    spend_txs_(Config).
+
+
+spend_txs_(Config) ->
+    {ok, #{first := First}} = rpc(?NODE1, aec_chain_hc, epoch_info, []),
+    Top = rpc(?NODE1, aec_chain, top_header, []),
+
+    case aec_headers:height(Top) == First of
+        true  -> ok;
+        false ->
+            NetworkId = ?config(network_id, Config),
+            seed_account(pubkey(?EDWIN), 1, NetworkId),
+            produce_cc_blocks(Config, 1),
+            {ok, []} = rpc:call(?NODE1_NAME, aec_tx_pool, peek, [infinity]),
+            spend_txs_(Config)
+    end.
 
 check_blocktime(_Config) ->
     {ok, TopBlock} = rpc(?NODE1, aec_chain, top_key_block, []),
@@ -767,7 +774,6 @@ first_leader_next_epoch(Config) ->
     {ok, #{last := Last, epoch := Epoch}} = rpc(Node, aec_chain_hc, epoch_info, [StartHeight]),
     ct:log("Checking leader for first block next epoch ~p (height ~p)", [Epoch+1, Last+1]),
     ?assertMatch({ok, _}, rpc(Node, aec_consensus_hc, leader_for_height, [Last + 1])).
-
 
 %% Demonstrate that child chain start signalling epoch length adjustment upward
 %% When parent blocks are produced too slowly, we need to lengthen child epoch
