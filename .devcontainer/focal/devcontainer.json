@@ -1,0 +1,42 @@
+// For format details, see https://aka.ms/devcontainer.json
+{
+  "name": "Aeternity-dev",
+
+  // using an existing image
+  "image": "aeternity/builder:focal-otp26",
+
+   // building image from a Dockerfile for full control
+   // "build": {
+   //   // (path is relative to the devcontainer.json file)
+   //   "dockerfile": "Dockerfile",
+   //   "args": { },
+   // },
+
+  // Run container commands as a different user than the container default
+  // (Note: containers running as root cannot be updated to the local UID)
+  "remoteUser": "builder",
+
+  // Run all container processes as a different user than the default
+  // "containerUser": "1000",
+
+  // Disables updating of the remote user uid to that of the local user
+  // (typically you should leave this on to avoid problems with ownership
+  // on your local files)
+  // "updateRemoteUserUID": false,
+
+  // Features to add to the dev container.
+  "features": {
+    // "ghcr.io/nils-geistmann/devcontainers-features/create-remote-user:0": {
+    //   // ensure the remote user exists (i.e. remoteUser or containerUser)
+    // }
+  }
+
+  // Make a list of ports inside the container available locally
+  // "forwardPorts": [],
+
+  // Use 'postCreateCommand' to run commands after the container is created.
+  // "postCreateCommand": ".devcontainer/postCreate.sh",
+
+  // Configure tool-specific properties.
+  // "customizations": {},
+}
