@@ -482,12 +482,7 @@ respect_schedule(Node, EpochStart, Epoch, TopHeight) ->
 
     ct:log("Checking epoch ~p info: ~p at height ~p", [Epoch, EI, EpochStart]),
 
-    %% We buffer the seed two epochs
-    ParentHeight = rpc(?NODE1, aec_consensus_hc, entropy_height, [Epoch]),
-    {ok, PHdr}   = rpc(?PARENT_CHAIN_NODE, aec_chain, get_key_header_by_height, [ParentHeight]),
-    {ok, PHash0} = aec_headers:hash_header(PHdr),
-    PHash = aeser_api_encoder:encode(key_block_hash, PHash0),
-
+    {ParentHeight, PHash} = get_entropy(Node, Epoch),
     ct:log("ParentHash at height ~p: ~p", [ParentHeight, PHash]),
     ?assertMatch(Hash when Hash == undefined; Hash == PHash, EISeed),
 
@@ -504,30 +499,37 @@ respect_schedule(Node, EpochStart, Epoch, TopHeight) ->
 
     respect_schedule(Node, EILast + 1, Epoch + 1, TopHeight).
 
-%% TODO FIX TEST for non block boundary
+%% For different Epoch's we have different schedules
+%% (Provided we past 4 epochs)
 entropy_impact_schedule(Config) ->
     Nodes = [ N || {N, _, _} <- ?config(nodes, Config)],
     Node = hd(Nodes),
     %% Sync nodes
-    {ok, _} = wait_same_top(Nodes, 300),
-
     ChildHeight = rpc(Node, aec_chain, top_height, []),
-    ct:log("ChildHeight ~p and info before ~p", [ChildHeight, rpc(Node, aec_chain_hc, epoch_info, [ChildHeight-1]) ]),
+    {ok, #{epoch := Epoch0, length := Length0}} = rpc(Node, aec_chain_hc, epoch_info, []),
+    %% Make sure chain is long enough
+    case Epoch0 =< 5 of
+      true ->
+        %% Chain to short to have meaningful test, e.g. when ran in isolation
+        produce_cc_blocks(Config, 5 * Length0 - ChildHeight);
+      false ->
+        ok
+    end,
     {ok, #{seed := Seed,
-           validators := Validators,
            first := First,
            length := Length,
+           validators := Validators,
            epoch := Epoch}} = rpc(Node, aec_chain_hc, epoch_info, []),
 
-    ParentHeight = rpc(Node, aec_consensus_hc, entropy_height, [Epoch]),
-    {ok, WPHdr}  = rpc(?PARENT_CHAIN_NODE, aec_chain, get_key_header_by_height, [ParentHeight + 1]),
-    {ok, WPHash0} = aec_headers:hash_header(WPHdr),
-    WPHash = aeser_api_encoder:encode(key_block_hash, WPHash0),
+    {_, Entropy0} = get_entropy(Node, Epoch - 1),
+    {_, Entropy1} = get_entropy(Node, Epoch),
 
     {ok, Schedule} = rpc(Node, aec_chain_hc, validator_schedule, [First, Seed, Validators, Length]),
-    {ok, WrongSchedule} = rpc(Node, aec_chain_hc, validator_schedule, [First, WPHash, Validators, Length]),
-    ct:log("Invalid schedule ~p for Epoch ~p", [WrongSchedule, Epoch]),
+    {ok, RightSchedule} = rpc(Node, aec_chain_hc, validator_schedule, [First, Entropy1, Validators, Length]),
+    {ok, WrongSchedule} = rpc(Node, aec_chain_hc, validator_schedule, [First, Entropy0, Validators, Length]),
+    ct:log("Schedules:\nepoch ~p\nwrong ~p\nright ~p", [Schedule, WrongSchedule, RightSchedule]),
     %% There is a tiny possibility that the two against all odds are the same
+    ?assertEqual(RightSchedule, Schedule),
     ?assertNotEqual(WrongSchedule, Schedule).
 
 simple_withdraw(Config) ->
@@ -1487,7 +1489,7 @@ produce_cc_blocks(Config, BlocksCnt) ->
     [{Node, _, _} | _] = ?config(nodes, Config),
     TopHeight = rpc(Node, aec_chain, top_height, []),
     {ok, #{epoch := Epoch, first := First, last := Last, length := L} = Info} =
-        rpc(?NODE1, aec_chain_hc, epoch_info, [TopHeight]),
+        rpc(Node, aec_chain_hc, epoch_info, [TopHeight]),
     ct:log("EpochInfo ~p", [Info]),
     %% At end of BlocksCnt child epoch approaches approx:
     CBAfterEpoch = BlocksCnt - (Last - TopHeight),
@@ -1626,4 +1628,12 @@ spread(N, TopHeight, Spread) when N rem 2 == 0 ->
 spread(N, TopHeight, Spread) when N rem 2 == 1 ->
     {Left, [{Middle, K} | Right]} = lists:split(length(Spread) div 2, Spread),
     spread(N div 2, TopHeight, Left) ++ [{Middle, K+1} || Middle > TopHeight] ++ spread(N div 2, TopHeight, Right).
+
+get_entropy(Node, Epoch) ->
+    %% We buffer the seed two epochs, entropy height already looks at previous Epoch,
+    %% hence Epoch - 1
+    ParentHeight = rpc(Node, aec_consensus_hc, entropy_height, [Epoch - 1]),
+    {ok, WPHdr}  = rpc(?PARENT_CHAIN_NODE, aec_chain, get_key_header_by_height, [ParentHeight]),
+    {ok, WPHash0} = aec_headers:hash_header(WPHdr),
+    {ParentHeight, aeser_api_encoder:encode(key_block_hash, WPHash0)}.
 
