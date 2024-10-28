@@ -1087,6 +1087,10 @@ wallet_post_pin_to_pc(Config) ->
 
 last_leader_validates_pin_and_post_to_contract(Config) ->
     [{Node, _, _} | _] = ?config(nodes, Config),
+    [{_, NodeName, _} | _] = ?config(nodes, Config),
+    
+    %% use to check that pinning actually happened
+    aecore_suite_utils:subscribe(NodeName, pin),
 
     %% move into next epoch
     mine_to_next_epoch(Node, Config),
@@ -1120,11 +1124,20 @@ last_leader_validates_pin_and_post_to_contract(Config) ->
 
     %% move into next epoch - trigger leader validation?
     {ok, _} = produce_cc_blocks(Config, 1),
+    {ok, #{info := {accepted}}} = wait_for_ps(pin),
 
+
+    aecore_suite_utils:unsubscribe(NodeName, pin),
     ok.
 
 
 %%% --------- pinning helpers
+
+wait_for_ps(Event) ->
+    receive
+        {gproc_ps_event, Event, Info} -> {ok, Info};
+        Other -> error({wrong_signal, Other})
+    end.
 
 % PINREFAC
 pin_contract_call_tx(Config, Fun, Args, Amount, FromPubKey) ->
