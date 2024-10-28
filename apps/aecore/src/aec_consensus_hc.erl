@@ -276,12 +276,12 @@ state_pre_transform_node(Type, Height, PrevNode, Trees) ->
                true ->
                     Trees1 = 
                         case validate_pin(TxEnv, Trees) of
-                            none -> 
+                            pin_missing -> 
                                 lager:debug("PINNING: no proof posted"),
-                                aec_events:publish(pin, {no_proof_posted}), 
+                                aec_events:publish(pin, {no_proof_posted}),
                                 Trees;
-                            correct -> add_pin_reward(Trees, Leader);
-                            fail -> 
+                            pin_correct -> add_pin_reward(Trees, Leader);
+                            pin_validation_fail -> 
                                 lager:debug("PINNING: Incorrect proof posted"), 
                                 aec_events:publish(pin, {incorrect_proof_posted}), 
                                 Trees
@@ -847,19 +847,20 @@ is_leader_valid(Node, _Trees, TxEnv, _PrevNode) ->
 
 validate_pin(TxEnv, Trees) ->
     case aec_chain_hc:pin_info({TxEnv, Trees}) of
-        undefined -> none;
+        undefined -> pin_missing;
         EncTxHash ->  
+            % TODO make this code much more robust - incorrect EncTxHash, bad value from PC, incorrect hash etc.etc
             #{epoch := _PinEpoch, height := PinHeight, block_hash := PinHash} = 
                 aec_parent_connector:get_pin_by_tx_hash(EncTxHash),
             case {ok,PinHash} =:= aec_chain_state:get_key_block_hash_at_height(PinHeight) of 
-                true -> correct;
-                false -> fail
+                true -> pin_correct;
+                false -> pin_validation_fail
             end
     end.
     
 add_pin_reward(Trees, _Leader) ->
     lager:debug("PINNING: correct pin in current Epoch. Rewarding"),
-    aec_events:publish(pin, {accepted}),
+    aec_events:publish(pin, {pin_accepted}),
     Trees.
 
 create_contracts([], _TxEnv, Trees) -> Trees;

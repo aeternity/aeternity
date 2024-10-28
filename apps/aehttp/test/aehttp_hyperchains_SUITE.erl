@@ -1090,8 +1090,7 @@ last_leader_validates_pin_and_post_to_contract(Config) ->
     [{_, NodeName, _} | _] = ?config(nodes, Config),
     
     %% use to check that pinning actually happened
-    aecore_suite_utils:subscribe(NodeName, pin),
-
+  
     %% move into next epoch
     mine_to_next_epoch(Node, Config),
     %% post pin to PC
@@ -1108,6 +1107,7 @@ last_leader_validates_pin_and_post_to_contract(Config) ->
     DistToBeforeLast = Last - CH - 1,
     {ok, _} = produce_cc_blocks(Config, DistToBeforeLast), % produce blocks until last
 
+    aecore_suite_utils:subscribe(NodeName, pin),
     %% TODO test to see that LastLeader actually is leader now?
 
     %% Find the first spend
@@ -1116,15 +1116,15 @@ last_leader_validates_pin_and_post_to_contract(Config) ->
 
     %% call contract with PC pin tx hash
     ok = pin_contract_call_tx(Config, "pin", [FirstSpend], 0, LastLeader),
-
+    %0 = flush_ps_event(pin, 0),
     %% use get_pin_by_tx_hash to get the posted hash back and compare with actual keyblock (to test encoding decoding etc)
     #{epoch := _PinEpoch, height := PinHeight, block_hash := PinHash} = 
         rpc(Node, aec_parent_connector, get_pin_by_tx_hash, [FirstSpend]),
     ?assertEqual({ok, PinHash}, rpc(Node, aec_chain_state, get_key_block_hash_at_height, [PinHeight])),
 
     %% move into next epoch - trigger leader validation?
-    {ok, _} = produce_cc_blocks(Config, 1),
-    {ok, #{info := {accepted}}} = wait_for_ps(pin),
+    {ok, _} = produce_cc_blocks(Config, 2),
+    {ok, #{info := {pin_accepted}}} = wait_for_ps(pin),
 
 
     aecore_suite_utils:unsubscribe(NodeName, pin),
@@ -1134,9 +1134,16 @@ last_leader_validates_pin_and_post_to_contract(Config) ->
 %%% --------- pinning helpers
 
 wait_for_ps(Event) ->
-    receive
+    receive 
         {gproc_ps_event, Event, Info} -> {ok, Info};
         Other -> error({wrong_signal, Other})
+    end.
+
+flush_ps_event(Event, Acc) ->
+    receive
+        {proc_ps_event, Event, _} -> flush_ps_event(Event, Acc+1)
+    after 1000 ->
+        Acc
     end.
 
 % PINREFAC
