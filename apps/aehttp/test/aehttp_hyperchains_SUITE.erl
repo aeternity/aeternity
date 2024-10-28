@@ -730,13 +730,11 @@ verify_fees(Config) ->
     %% rewards
     NetworkId = ?config(network_id, Config),
     Test(),
-
+    {ok, _} = produce_cc_blocks(Config, 1),
     ct:log("Test with a spend transaction", []),
     {_, PatronPub} = aecore_suite_utils:sign_keys(Node),
     {ok, []} = rpc:call(NodeName, aec_tx_pool, peek, [infinity]),
     {ok, _SignedTx} = seed_account(PatronPub, 1, NetworkId),
-    %% key blocks are in sync, but give gossip time to get transactions to all nodes
-    timer:sleep(?CHILD_BLOCK_TIME div 2),
     Test(), %% fees are generated
 
     ct:log("Test with no transaction", []),
