@@ -287,6 +287,7 @@ inspect_validator(_Config) ->
              Leader2,
              _,
              _,
+             _,
              _}} = ElectionContractState1,
     {address, Alice} = Leader2, %% Alice is being elected as a leader
     %% give away some rewards; this changes the total staking power but does
@@ -367,8 +368,8 @@ inspect_two_validators(_Config) ->
              Leader,
              _,
              _Epoch,
-             _
-            }} = ElectionContractState0,
+             _,
+             _}} = ElectionContractState0,
     ElectionContractPubkey = election_contract_address(),
     {address, ElectionContractPubkey} = Leader, %% no election yet, the contract is the first leader
     %% create a validator and check the contract state; the newly created

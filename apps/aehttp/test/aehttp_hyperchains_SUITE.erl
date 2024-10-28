@@ -1116,7 +1116,7 @@ last_leader_validates_pin_and_post_to_contract(Config) ->
 
     %% call contract with PC pin tx hash
     ok = pin_contract_call_tx(Config, "pin", [FirstSpend], 0, LastLeader),
-    %0 = flush_ps_event(pin, 0),
+   
     %% use get_pin_by_tx_hash to get the posted hash back and compare with actual keyblock (to test encoding decoding etc)
     #{epoch := _PinEpoch, height := PinHeight, block_hash := PinHash} = 
         rpc(Node, aec_parent_connector, get_pin_by_tx_hash, [FirstSpend]),
