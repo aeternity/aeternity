@@ -504,6 +504,7 @@ respect_schedule(Node, EpochStart, Epoch, TopHeight) ->
 
     respect_schedule(Node, EILast + 1, Epoch + 1, TopHeight).
 
+%% TODO FIX TEST for non block boundary
 entropy_impact_schedule(Config) ->
     Nodes = [ N || {N, _, _} <- ?config(nodes, Config)],
     Node = hd(Nodes),
