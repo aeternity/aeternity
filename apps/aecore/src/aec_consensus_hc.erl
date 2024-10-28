@@ -278,12 +278,12 @@ state_pre_transform_node(Type, Height, PrevNode, Trees) ->
                         case validate_pin(TxEnv, Trees) of
                             none -> 
                                 lager:debug("PINNING: no proof posted"),
-                                %aec_event:publish(pin, {no_proof_posted}), 
+                                aec_events:publish(pin, {no_proof_posted}), 
                                 Trees;
                             correct -> add_pin_reward(Trees, Leader);
                             fail -> 
                                 lager:debug("PINNING: Incorrect proof posted"), 
-                                aec_event:publish(pin, {incorrect_proof_posted}), 
+                                aec_events:publish(pin, {incorrect_proof_posted}), 
                                 Trees
                         end,
                    {ok, Seed} = get_entropy_hash(Epoch + 2),
