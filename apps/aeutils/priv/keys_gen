@@ -7,8 +7,11 @@
 -define(FILENAME_SIGNPUB , "key.pub").
 -define(FILENAME_SIGNPRIV, "key").
 
-main([[]]) ->
+main([]) ->
     io:fwrite("Usage: keys_gen PASSWORD~n"),
+    halt(1);
+main([[]]) ->
+    io:fwrite("Error: Password cannot be empty!~n~nUsage: keys_gen PASSWORD~n"),
     halt(1);
 main([Password0]) ->
     Password = string:trim(Password0),
