@@ -1094,7 +1094,8 @@ last_leader_validates_pin_and_post_to_contract(Config) ->
     %% move into next epoch
     mine_to_next_epoch(Node, Config),
     %% post pin to PC
-    TxHash = pin_to_parent(Node, pubkey(?DWIGHT)),
+    {ok, PinningData} = rpc(Node, aec_parent_connector, get_pinning_data, []),
+    TxHash = pin_to_parent(Node, PinningData, pubkey(?DWIGHT)),
     %% post parent spend tx hash to CC
     {ok, #{epoch  := _Epoch,
            first  := _First,
@@ -1160,6 +1161,28 @@ last_leader_validates_pin_and_post_to_contract(Config) ->
 
     aecore_suite_utils:unsubscribe(NodeName, pin),
 
+    %% 4. Incorrect hash stored on PC
+
+    mine_to_next_epoch(Node, Config),
+    
+    {ok, PD4} = rpc(Node, aec_parent_connector, get_pinning_data, []),
+    EncTxHash4 = pin_to_parent(Node, PD4#{block_hash := <<"VERYINCORRECTBLOCKHASH">>}, pubkey(?DWIGHT)),
+    %% post parent spend tx hash to CC
+    {ok, #{last := Last4}} = rpc(Node, aec_chain_hc, epoch_info, []),
+    {ok, LastLeader4} = rpc(Node, aec_consensus_hc, leader_for_height, [Last4]),
+
+    mine_to_last_block_in_epoch(Node, Config),
+
+    aecore_suite_utils:subscribe(NodeName, pin),
+    
+    % post bad hash to contract
+
+    ok = pin_contract_call_tx(Config, "pin", [EncTxHash4], 0, LastLeader4),
+
+    {ok, _} = produce_cc_blocks(Config, 2),
+    {ok, #{info := {incorrect_proof_posted}}} = wait_for_ps(pin),
+
+    aecore_suite_utils:unsubscribe(NodeName, pin),
 
     ok.
 
@@ -1211,8 +1234,7 @@ pin_contract_call_tx(Config, Fun, Args, Amount, FromPubKey) ->
     ok.
 
 % PINREFAC aec_parent_connector??
-pin_to_parent(Node, AccountPK) ->
-    {ok, PinningData} = rpc(Node, aec_parent_connector, get_pinning_data, []),
+pin_to_parent(Node, PinningData, AccountPK) ->
     AccPKEncEnc = aeser_api_encoder:encode(account_pubkey, AccountPK),
     {ok, []} = rpc(?PARENT_CHAIN_NODE, aec_tx_pool, peek, [infinity]), % no pending transactions
     PinTx = rpc(Node, aec_parent_connector, create_pin_tx, [AccPKEncEnc, AccountPK, 1, 30000 * ?DEFAULT_GAS_PRICE, PinningData]),
