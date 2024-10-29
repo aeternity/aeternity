@@ -78,6 +78,7 @@
         , get_block_producer_configs/0
         , is_leader_valid/4
         , leader_for_height/1
+        , leader_for_height/2
         %% contract access
         , call_consensus_contract_result/5
         , entropy_height/1
@@ -222,7 +223,7 @@ ctx_validate_micro_block_time(Node, _Block, Ctx) ->
 
 ctx_validate_micro_signature(Node, _Block, _Ctx) ->
     Height = aec_block_insertion:node_height(Node),
-    case leader_for_height(Height) of
+    case leader_for_height(Height, {hash, aec_block_insertion:node_prev_hash(Node)}) of
         {ok, Leader} ->
             case aeu_sig:verify(aec_block_insertion:node_header(Node), Leader) of
                 ok         -> ok;
@@ -261,10 +262,11 @@ state_pre_transform_key_node(Node, PrevNode, Trees) ->
             {TxEnv0, _} = aetx_env:tx_env_and_trees_from_hash(aetx_transaction, PrevHash),
             TxEnv = aetx_env:set_height(TxEnv0, Height),
             {ok, #{epoch := Epoch} = EpochInfo} = aec_chain_hc:epoch_info({TxEnv, Trees}),
-            {ok, Leader} = safe_leader_for_height(TxEnv, Trees, Height),
+            {ok, Leader} = leader_for_height(Height, {TxEnv, Trees}),
             case Height == maps:get(last, EpochInfo) of
                 true ->
                     {ok, Seed} = get_entropy_hash(Epoch + 1),
+                    cache_validators_for_epoch({TxEnv, Trees}, Seed, Epoch + 2),
                     step_eoe(TxEnv, Trees, Leader, Seed, 0);
                 false ->
                     step(TxEnv, Trees, Leader)
@@ -273,23 +275,6 @@ state_pre_transform_key_node(Node, PrevNode, Trees) ->
             %% No leader for genesis
             Trees
     end.
-
-safe_leader_for_height(TxEnv, Trees, Height) ->
-    case leader_for_height(Height) of
-        Ok = {ok, _} -> Ok;
-        _Err ->
-            case is_block_producer() of
-                false -> try_compute_schedule(TxEnv, Trees, Height);
-                true  -> ok
-            end,
-            lager:debug("No leader for height: ~p", [Height]),
-            aec_conductor:throw_error(leader_not_known)
-    end.
-
-%cache(Leader, AddedStake) ->
-%    aeu_ets_cache:put(?ETS_CACHE_TABLE, current_leader, Leader),
-%    aeu_ets_cache:put(?ETS_CACHE_TABLE, added_stake, AddedStake),
-%    ok.
 
 state_pre_transform_micro_node(_Node, Trees) -> Trees.
 
@@ -317,7 +302,7 @@ pogf_detected(_H1, _H2) -> ok.
 genesis_transform_trees(Trees0, #{}) ->
     GenesisProtocol = genesis_protocol_version(),
     #{ <<"contracts">> := Contracts
-          , <<"calls">> := Calls } =
+     , <<"calls">> := Calls } =
         aec_fork_block_settings:contracts(GenesisProtocol),
     GenesisHeader = genesis_raw_header(),
     {ok, GenesisHash} = aec_headers:hash_header(GenesisHeader),
@@ -484,26 +469,6 @@ child_epoch_length() ->
 %acceptable_sync_offset() ->
 %    Fun = fun() -> get_consensus_config_key([<<"parent_chain">>, <<"acceptable_sync_offset">>], 60000) end,
 %    aeu_ets_cache:get(?ETS_CACHE_TABLE, acceptable_sync_offset, Fun).
-
-
-%% set_child_epoch_length(Length, TxEnv, Trees) ->
-%%     {ok, CD} = aeb_fate_abi:create_calldata("set_next_epoch_length",
-%%                                             [
-%%                                             aefa_fate_code:encode_arg({integer, Length})
-%%                                             ]),
-%%     CallData = aeser_api_encoder:encode(contract_bytearray, CD),
-%%     try call_consensus_contract_(?ELECTION_CONTRACT, TxEnv, Trees, CallData, "set_next_epoch_length", 0) of
-%%         {ok, Trees1, _Call} ->
-%%             Trees1;
-%%         {error, What} ->
-%%             lager:info("Retrieving epoch length failed with ~p", [What]),
-%%             aec_conductor:throw_error(set_epoch_length_failed)
-%%     catch error:{consensus_call_failed, {error, Why}} ->
-%%             lager:info("Retrieving epoch length failed with ~p", [Why]),
-%%             aec_conductor:throw_error(set_epoch_length_failed);
-%%           error:{consensus_call_crashed, {error, _Why}} ->
-%%             aec_conductor:throw_error(set_epoch_length_call_crashed)
-%%     end.
 
 init_epochs(TxEnv, Trees, InitialEpochLength) ->
     {ok, CD} = aeb_fate_abi:create_calldata("init_epochs", [InitialEpochLength]),
@@ -676,7 +641,7 @@ next_beneficiary() ->
 %% Called as part of deciding who will produce block at Height `height(TxEnv) + 1`
 next_beneficiary(TxEnv, Trees) ->
     ChildHeight = aetx_env:height(TxEnv),
-    case leader_for_height(ChildHeight + 1) of
+    case leader_for_height(ChildHeight + 1, {TxEnv, Trees}) of
         {ok, Leader} ->
             SignModule = get_sign_module(),
             case SignModule:set_candidate(Leader) of
@@ -689,42 +654,13 @@ next_beneficiary(TxEnv, Trees) ->
                      {ok, Leader}
             end;
         error ->
-            %% Check whether we can compute the leader schedule
-            case try_compute_schedule(TxEnv, Trees, ChildHeight + 1) of
-                ok ->
-                    next_beneficiary(TxEnv, Trees);
-                Err = {error, _} ->
-                    Err
-            end
+            {error, not_in_cache}
     end.
 
-try_compute_schedule(TxEnv, Trees, ChildHeight) ->
-    {ok, #{last := Last} = EpochInfo} = epoch_info_at_height({TxEnv, Trees}, ChildHeight),
-    {ok, NextEpochInfo} = epoch_info_at_height({TxEnv, Trees}, Last + 1),
-    lager:debug("Epoch info for schedule at height ~p: ~p ~p", [ChildHeight, EpochInfo, NextEpochInfo]),
-    case {adjust_seed(EpochInfo), adjust_seed(NextEpochInfo)} of
-        {{ok, AdjEpochInfo}, {ok, AdjNextEpochInfo}} ->
-            try_compute_schedules(TxEnv, Trees, AdjEpochInfo, AdjNextEpochInfo);
-        {{ok, _}, Err} -> Err;
-        {Err, _} -> Err
-    end.
-
-adjust_seed(#{seed := undefined, epoch := Epoch} = EpochInfo) when Epoch =< 2 ->
-    case get_entropy_hash(Epoch) of
-        {ok, Hash} -> {ok, EpochInfo#{seed => Hash}};
-        Err  -> Err
-    end;
-adjust_seed(#{seed := Hash} = EpochInfo) when Hash /= undefined ->
-    {ok, EpochInfo}.
-
-try_compute_schedules(TxEnv, Trees, EpochInfo, NextEpochInfo) ->
-    #{first := First} = EpochInfo,
-    Schedule1 = validator_schedule({TxEnv, Trees}, EpochInfo),
-    Schedule2 = validator_schedule({TxEnv, Trees}, NextEpochInfo),
-    Schedule = maps:merge(Schedule1, Schedule2),
-    cache_schedule(Schedule),
-    lager:debug("Schedule cached (range ~p -> ~p)", [First, First + maps:size(Schedule) - 1]),
-    ok.
+get_seed(#{seed := undefined, epoch := Epoch}) when Epoch =< 2 ->
+    get_entropy_hash(Epoch);
+get_seed(#{seed := Hash}) when is_binary(Hash) ->
+    {ok, Hash}.
 
 get_entropy_hash(ChildEpoch) ->
     EntropyHeight = entropy_height(ChildEpoch),
@@ -753,48 +689,93 @@ is_block_producer_() ->
 entropy_height(ChildEpoch) ->
     (max(1, (ChildEpoch - 2)) - 1) * parent_epoch_length() + pc_start_height().
 
-cache_schedule(Schedule) ->
-    aeu_ets_cache:put(?ETS_CACHE_TABLE, validator_schedule, Schedule).
+%% -- Validator schedule (cached) -----------------------------------------
+
+%% Second parameter contains run environment for computing a validator
+%% schedule, if needed.
+leader_for_height(Height, RunEnv) ->
+    case leader_for_height(Height) of
+        error ->
+            lager:debug("Unknown leader for height = ~p, computing", [Height]),
+            {ok, EpochInfo = #{epoch := Epoch}} = aec_chain_hc:epoch_info(RunEnv),
+            cache_validators_for_epoch_info(RunEnv, EpochInfo),
+            cache_validators_for_epoch(RunEnv, Epoch + 1),
+            leader_for_height(Height);
+        {ok, Leader} ->
+            {ok, Leader}
+    end.
+
+cache_validators_for_epoch(RunEnv, Epoch) ->
+    case aec_chain_hc:epoch_info_for_epoch(RunEnv, Epoch) of
+        {ok, EpochInfo} -> cache_validators_for_epoch_info(RunEnv, EpochInfo);
+        _Err            -> error
+    end.
+
+cache_validators_for_epoch(RunEnv, Hash, Epoch) ->
+    case aec_chain_hc:epoch_info_for_epoch(RunEnv, Epoch) of
+        {ok, EpochInfo} -> cache_validators_for_epoch_info_(RunEnv, Hash, EpochInfo);
+        _Err            -> error
+    end.
+
+cache_validators_for_epoch_info(RunEnv, EpochInfo) ->
+    case get_seed(EpochInfo) of
+        {ok, Seed} -> cache_validators_for_epoch_info_(RunEnv, Seed, EpochInfo);
+        {error, _} -> error
+    end.
+
+-define(MAX_VALIDATOR_CACHE_SIZE, 5).
+
+cache_validators_for_epoch_info_(RunEnv, Hash, EpochInfo) ->
+    #{ first      := First
+     , epoch      := Epoch
+     , length     := Length
+     , validators := Validators} = EpochInfo,
+    %% Check if it is already in cache to avoid extra work
+    case leader_for_height(First) of
+        error ->
+            {ok, RawSchedule} = aec_chain_hc:validator_schedule(RunEnv, Hash, Validators, Length),
+            Schedule = maps:from_list(enumerate(First, RawSchedule)),
+
+            Cache = aeu_ets_cache:lookup(?ETS_CACHE_TABLE, validator_schedule, #{}),
+
+            Cache1 = Cache#{epochs => maps:get(epochs, Cache, []) ++ [Epoch],
+                            epoch_infos => maps:put(Epoch, {First, First + Length - 1}, maps:get(epoch_infos, Cache, #{})),
+                            schedule => maps:merge(maps:get(schedule, Cache, #{}), Schedule)},
+
+            Cache2 =
+                case length(maps:get(epochs, Cache1)) > ?MAX_VALIDATOR_CACHE_SIZE of
+                    true  -> gc_validator_cache(Cache1);
+                    false -> Cache1
+                end,
+
+            aeu_ets_cache:put(?ETS_CACHE_TABLE, validator_schedule, Cache2);
+        {ok, _Leader} ->
+            %% Already in cache
+            ok
+    end.
+
+gc_validator_cache(C0 = #{epochs := [GC | Rest], epoch_infos := EIs, schedule := Schedule}) ->
+    C1 = C0#{epochs => Rest},
+    case maps:find(GC, EIs) of
+        error -> C1;
+        {ok, {First, Last}} ->
+            Schedule1 = maps:without(lists:seq(First, Last), Schedule),
+            C1#{epoch_infos := maps:remove(GC, EIs),
+                schedule    := Schedule1}
+    end.
+
 
 leader_for_height(Height) ->
-    Schedule = aeu_ets_cache:get(?ETS_CACHE_TABLE, validator_schedule, fun() -> #{} end),
-    maps:find(Height, Schedule).
-
-validator_schedule(RunEnv, #{seed := Hash} = EpochInfo) ->
-    #{first := First, length := Length, validators := Validators} = EpochInfo,
-    {ok, Schedule} = aec_chain_hc:validator_schedule(RunEnv, Hash, Validators, Length),
-    maps:from_list(enumerate(First, Schedule)).
+    case aeu_ets_cache:lookup(?ETS_CACHE_TABLE, validator_schedule) of
+        error ->
+            error;
+        {ok, #{schedule := Schedule}} ->
+            maps:find(Height, Schedule)
+    end.
 
 %% support OTP24 without lists:enumerate
 enumerate(From, List) when is_integer(From) ->
     lists:zip(lists:seq(From, From + length(List) - 1), List).
-
-epoch_info_at_height(RunEnv, ChildHeight) ->
-    {ok, Info = #{ epoch := Epoch, first := First, last := Last }} = aec_chain_hc:epoch_info(RunEnv),
-    case {ChildHeight >= First, ChildHeight =< Last} of
-        {true, true} ->
-            {ok, Info};
-        {false, _} ->
-            epoch_info_at_height(Epoch - 1, RunEnv, ChildHeight);
-        {_, false} ->
-            epoch_info_at_height(Epoch + 1, RunEnv, ChildHeight)
-    end.
-
-epoch_info_at_height(Epoch, RunEnv, ChildHeight) ->
-    {ok, Info = #{ first := First, last := Last }} = aec_chain_hc:epoch_info_for_epoch(RunEnv, Epoch),
-    case ChildHeight >= First andalso ChildHeight =< Last of
-        true ->
-            {ok, Info};
-        false ->
-            {error, not_in_scope}
-    end.
-
-%get_validator_schedule(Seed, TxEnv, Trees) ->
-%    Args = [aefa_fate_code:encode_arg({bytes, Seed})],
-%    {ok, CallResult} =
-%        call_consensus_contract_result(?ELECTION_CONTRACT, TxEnv, Trees, "get_validator_schedule_seed", Args),
-%    lists:map(fun({address, Address}) -> Address end, CallResult).
-
 
 allow_lazy_leader() ->
     false.
@@ -811,7 +792,7 @@ get_block_producer_configs() -> [{instance_not_used,
 
 %% is_leader_valid is called (soon) after `state_pre_transformation_key_node`
 %% only called for key-blocks - Height and Epoch should be up to date
-is_leader_valid(Node, Trees, TxEnv, PrevNode) ->
+is_leader_valid(Node, _Trees, TxEnv, _PrevNode) ->
     Height = aetx_env:height(TxEnv),
     case leader_for_height(Height) of
         {ok, ExpectedLeader} ->
@@ -820,20 +801,10 @@ is_leader_valid(Node, Trees, TxEnv, PrevNode) ->
             Leader == ExpectedLeader;
             %% Fix this to have stake as target validated here also?
         _ ->
-            lager:debug("No leader known for height = ~p", [Height]),
-            case is_block_producer() of
-                false ->
-                    case try_compute_schedule(TxEnv, Trees, Height) of
-                        ok ->
-                            is_leader_valid(Node, Trees, TxEnv, PrevNode);
-                        Err ->
-                            lager:debug("Waiting for leader schedule? ~p", [Err]),
-                            aec_conductor:throw_error(parent_chain_block_not_synced)
-                    end;
-                true ->
-                    lager:debug("Waiting for leader schedule", []),
-                    aec_conductor:throw_error(parent_chain_block_not_synced)
-            end
+            %% This really should not happen, we just got through
+            %% state_pre_transformation_key_node
+            lager:debug("(Impossible) No leader known for height = ~p", [Height]),
+            aec_conductor:throw_error(parent_chain_block_not_synced)
     end.
 
 create_contracts([], _TxEnv, Trees) -> Trees;

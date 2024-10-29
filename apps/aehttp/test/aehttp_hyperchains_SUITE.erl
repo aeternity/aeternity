@@ -770,6 +770,7 @@ elected_leader_did_not_show_up_(Config) ->
 
 first_leader_next_epoch(Config) ->
     [{Node, _, _} | _] = ?config(nodes, Config),
+    produce_cc_blocks(Config, 1),
     StartHeight = rpc(Node, aec_chain, top_height, []),
     {ok, #{last := Last, epoch := Epoch}} = rpc(Node, aec_chain_hc, epoch_info, [StartHeight]),
     ct:log("Checking leader for first block next epoch ~p (height ~p)", [Epoch+1, Last+1]),
