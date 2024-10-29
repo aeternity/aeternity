@@ -265,7 +265,7 @@ state_pre_transform_key_node(Node, PrevNode, Trees) ->
             {ok, Leader} = leader_for_height(Height, {TxEnv, Trees}),
             case Height == maps:get(last, EpochInfo) of
                 true ->
-                    {ok, Seed} = get_entropy_hash(Epoch + 1),
+                    {ok, Seed} = get_entropy_hash(Epoch + 2),
                     cache_validators_for_epoch({TxEnv, Trees}, Seed, Epoch + 2),
                     step_eoe(TxEnv, Trees, Leader, Seed, 0);
                 false ->
@@ -664,7 +664,7 @@ get_seed(#{seed := Hash}) when is_binary(Hash) ->
 
 get_entropy_hash(ChildEpoch) ->
     EntropyHeight = entropy_height(ChildEpoch),
-    lager:debug("Entropy from PC block at height ~p", [EntropyHeight]),
+    lager:debug("Entropy for epoch ~p from PC block at height ~p", [ChildEpoch, EntropyHeight]),
     case aec_parent_chain_cache:get_block_by_height(EntropyHeight, 1000) of
         {ok, Block} ->
             {ok, aec_parent_chain_block:hash(Block)};
@@ -684,10 +684,9 @@ is_block_producer_() ->
 
     StakersConfig /= [].
 
-%% We start at parent epoch 1
-%% We take first hash of parent epoch (hence -1)
+%% See whitepaper for details, but corresponding parent epoch is max(0, n-3)
 entropy_height(ChildEpoch) ->
-    (max(1, (ChildEpoch - 2)) - 1) * parent_epoch_length() + pc_start_height().
+    max(0, (ChildEpoch - 3)) * parent_epoch_length() + pc_start_height().
 
 %% -- Validator schedule (cached) -----------------------------------------
 

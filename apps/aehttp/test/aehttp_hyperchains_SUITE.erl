@@ -480,9 +480,8 @@ respect_schedule(Node, EpochStart, Epoch, TopHeight) ->
 
     ct:log("Checking epoch ~p info: ~p at height ~p", [Epoch, EI, EpochStart]),
 
-    %% We buffer the seed two epochs, entropy height already looks at previous Epoch,
-    %% hence Epoch - 1
-    ParentHeight = rpc(?NODE1, aec_consensus_hc, entropy_height, [Epoch - 1]),
+    %% We buffer the seed two epochs
+    ParentHeight = rpc(?NODE1, aec_consensus_hc, entropy_height, [Epoch]),
     {ok, PHdr}   = rpc(?PARENT_CHAIN_NODE, aec_chain, get_key_header_by_height, [ParentHeight]),
     {ok, PHash0} = aec_headers:hash_header(PHdr),
     PHash = aeser_api_encoder:encode(key_block_hash, PHash0),
@@ -517,7 +516,7 @@ entropy_impact_schedule(Config) ->
            length := Length,
            epoch := Epoch}} = rpc(Node, aec_chain_hc, epoch_info, []),
 
-    ParentHeight = rpc(Node, aec_consensus_hc, entropy_height, [Epoch - 1]),
+    ParentHeight = rpc(Node, aec_consensus_hc, entropy_height, [Epoch]),
     {ok, WPHdr}  = rpc(?PARENT_CHAIN_NODE, aec_chain, get_key_header_by_height, [ParentHeight + 1]),
     {ok, WPHash0} = aec_headers:hash_header(WPHdr),
     WPHash = aeser_api_encoder:encode(key_block_hash, WPHash0),
@@ -797,7 +796,7 @@ epochs_with_slow_parent(Config) ->
     ct:log("Child epoch ~p while parent epoch ~p (parent should be in next epoch)", [ChildEpoch, ParentEpoch]),
     ?assertEqual(1, ParentEpoch - ChildEpoch),
 
-    Resilience = 2, %% Child can cope with missing Resilience epochs in parent chain
+    Resilience = 1, %% Child can cope with missing Resilience epochs in parent chain
     %% Produce no parent block in the next Resilience child epochs
     %% the child chain should get to a halt or
     %% at least one should be able to observe signalling that the length should be adjusted upward
@@ -809,7 +808,7 @@ epochs_with_slow_parent(Config) ->
     ChildTopHeight = rpc(Node, aec_chain, top_height, []),
     {ok, #{epoch := EndEpoch} = EpochInfo} = rpc(Node, aec_chain_hc, epoch_info, [ChildTopHeight]),
     ct:log("Parent at height ~p and child at height ~p in child epoch ~p",
-           [ParentTopHeight, ChildTopHeight, EndEpoch ]),
+           [ParentTopHeight, ChildTopHeight, EndEpoch]),
 
     %% Here we should have observed some signalling for increased child epoch length
 
