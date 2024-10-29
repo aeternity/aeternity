@@ -705,16 +705,25 @@ leader_for_height(Height, RunEnv) ->
     end.
 
 cache_validators_for_epoch(RunEnv, Epoch) ->
-    case aec_chain_hc:epoch_info_for_epoch(RunEnv, Epoch) of
+    case epoch_info_for_epoch(RunEnv, Epoch) of
         {ok, EpochInfo} -> cache_validators_for_epoch_info(RunEnv, EpochInfo);
         _Err            -> error
     end.
 
 cache_validators_for_epoch(RunEnv, Hash, Epoch) ->
-    case aec_chain_hc:epoch_info_for_epoch(RunEnv, Epoch) of
+    case epoch_info_for_epoch(RunEnv, Epoch) of
         {ok, EpochInfo} -> cache_validators_for_epoch_info_(RunEnv, Hash, EpochInfo);
         _Err            -> error
     end.
+
+epoch_info_for_epoch(RunEnv, Epoch) ->
+    try
+        aec_chain_hc:epoch_info_for_epoch(RunEnv, Epoch)
+    catch _:_ ->
+        %% Not sure this is possible...
+        error
+    end.
+
 
 cache_validators_for_epoch_info(RunEnv, EpochInfo) ->
     case get_seed(EpochInfo) of
