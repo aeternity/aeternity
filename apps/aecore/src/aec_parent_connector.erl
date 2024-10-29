@@ -181,19 +181,19 @@ handle_call({get_pin_by_tx_hash, Tx}, _From, #state{parent_conn_mod = Mod, paren
     Reply = handle_parent_pin_calls(Mod, get_pin_by_tx_hash, Tx, ParentHosts),
     {reply, Reply, State};
 handle_call({encode_parent_pin_payload, Pin}, _From, #state{parent_conn_mod = Mod} = State) ->
-    Reply = Mod:encode_parent_pin_payload(Pin),
+    Reply = handle_conn_mod_calls(Mod, encode_parent_pin_payload, Pin),
     {reply, Reply, State};
 handle_call({decode_parent_pin_payload, PinPayload}, _From, #state{parent_conn_mod = Mod} = State) ->
-    Reply = Mod:decode_parent_pin_payload(PinPayload),
+    Reply = handle_conn_mod_calls(Mod, decode_parent_pin_payload, PinPayload),
     {reply, Reply, State};
 handle_call({encode_child_pin_payload, TxHash}, _From, #state{parent_conn_mod = Mod} = State) ->
-    Reply = Mod:encode_child_pin_payload(TxHash),
+    Reply = handle_conn_mod_calls(Mod, encode_child_pin_payload, TxHash),
     {reply, Reply, State};
 handle_call({decode_child_pin_payload, EncTxHash}, _From, #state{parent_conn_mod = Mod} = State) ->
-    Reply = Mod:decode_child_pin_payload(EncTxHash),
+    Reply = handle_conn_mod_calls(Mod, decode_child_pin_payload, EncTxHash),
     {reply, Reply, State};
 handle_call({is_pin, EncTxHash}, _From, #state{parent_conn_mod = Mod} = State) ->
-    Reply = Mod:is_pin(EncTxHash),
+    Reply = handle_conn_mod_calls(Mod, is_pin, EncTxHash),
     {reply, Reply, State};
 handle_call(_Request, _From, State) ->
     Reply = ok,
@@ -440,8 +440,26 @@ find_spends_to(Account) ->
 pick_pin_spends_to(Account, Txs) ->
     [ T || {signed_tx,{aetx,spend_tx,aec_spend_tx,_,{spend_tx,_,{id,account,Account2},_,_,_,_,T}},_} <- Txs, Account =:= Account2, is_pin(T)].
 
+%% handle (pin) calls to the parent connector module and ensure we don't throw anything
 %% FUTURE Should be reasonably easy to loop over NodeSpecs until one call suceeds.
 %%        For now, we just pick the first one.
+
 handle_parent_pin_calls(Mod, Fun, Args, NodeSpecs) ->
     [NodeSpec|_] = NodeSpecs,
-    Mod:Fun(Args, NodeSpec). % can fail with {error,{}} to be caught in future loop
+    try 
+        Mod:Fun(Args, NodeSpec)
+    catch
+        Type:Err -> 
+            lager:debug("PINNING: caught bad pin parent call: ~p : ~p", [Type, Err]),
+            {error, Err}
+    end.
+
+handle_conn_mod_calls(Mod, Fun, Args) ->
+    try 
+        Mod:Fun(Args)
+    catch
+        Type:Err -> 
+            lager:debug("PINNING: caught bad connector call: ~p :  ~p", [Type, Err]),
+            {error, Err}
+    end.
+

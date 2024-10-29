@@ -850,11 +850,18 @@ validate_pin(TxEnv, Trees) ->
         undefined -> pin_missing;
         EncTxHash ->  
             % TODO make this code much more robust - incorrect EncTxHash, bad value from PC, incorrect hash etc.etc
-            #{epoch := _PinEpoch, height := PinHeight, block_hash := PinHash} = 
-                aec_parent_connector:get_pin_by_tx_hash(EncTxHash),
-            case {ok,PinHash} =:= aec_chain_state:get_key_block_hash_at_height(PinHeight) of 
-                true -> pin_correct;
-                false -> pin_validation_fail
+            lager:debug("PINNING: EncHash: ~p", [EncTxHash]),
+            try 
+                #{epoch := _PinEpoch, height := PinHeight, block_hash := PinHash} = 
+                    aec_parent_connector:get_pin_by_tx_hash(EncTxHash),
+                case {ok,PinHash} =:= aec_chain_state:get_key_block_hash_at_height(PinHeight) of 
+                    true -> pin_correct;
+                    false -> pin_validation_fail
+                end
+            catch
+                Type:Err -> 
+                    lager:debug("bad pin proof posted: ~p : ~p", [Type, Err]),
+                    pin_validation_fail               
             end
     end.
     

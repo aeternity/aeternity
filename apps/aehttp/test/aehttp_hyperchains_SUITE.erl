@@ -1088,9 +1088,9 @@ wallet_post_pin_to_pc(Config) ->
 last_leader_validates_pin_and_post_to_contract(Config) ->
     [{Node, _, _} | _] = ?config(nodes, Config),
     [{_, NodeName, _} | _] = ?config(nodes, Config),
-    
-    %% use to check that pinning actually happened
   
+    %% 1. Correct pin is posted in the contract
+
     %% move into next epoch
     mine_to_next_epoch(Node, Config),
     %% post pin to PC
@@ -1103,9 +1103,9 @@ last_leader_validates_pin_and_post_to_contract(Config) ->
     {ok, LastLeader} = rpc(Node, aec_consensus_hc, leader_for_height, [Last]),
     tx_hash_to_child(Node, TxHash, ?ALICE, LastLeader, Config),
     %% move forward to last block
-    CH = rpc(Node, aec_chain, top_height, []),
-    DistToBeforeLast = Last - CH - 1,
-    {ok, _} = produce_cc_blocks(Config, DistToBeforeLast), % produce blocks until last
+    
+    mine_to_last_block_in_epoch(Node, Config),
+    % produce blocks until last
 
     aecore_suite_utils:subscribe(NodeName, pin),
     %% TODO test to see that LastLeader actually is leader now?
@@ -1125,9 +1125,42 @@ last_leader_validates_pin_and_post_to_contract(Config) ->
     %% move into next epoch - trigger leader validation?
     {ok, _} = produce_cc_blocks(Config, 2),
     {ok, #{info := {pin_accepted}}} = wait_for_ps(pin),
+    aecore_suite_utils:unsubscribe(NodeName, pin),
+    
+    %% 2. No pin is posted
 
+    % to next epoch
+    mine_to_next_epoch(Node, Config),
+    
+    mine_to_last_block_in_epoch(Node, Config),
+
+    aecore_suite_utils:subscribe(NodeName, pin),
+    
+    % In last generation, but we don't post pin
+
+    {ok, _} = produce_cc_blocks(Config, 2),
+    {ok, #{info := {no_proof_posted}}} = wait_for_ps(pin),
 
     aecore_suite_utils:unsubscribe(NodeName, pin),
+
+    %% 3. Incorrect pin posted to contract a) bad tx hash
+
+    mine_to_next_epoch(Node, Config),
+    
+    mine_to_last_block_in_epoch(Node, Config),
+
+    aecore_suite_utils:subscribe(NodeName, pin),
+    
+    % post bad hash to contract
+
+    ok = pin_contract_call_tx(Config, "pin", [<<"THIS IS A BAD TX HASH">>], 0, LastLeader),
+
+    {ok, _} = produce_cc_blocks(Config, 2),
+    {ok, #{info := {incorrect_proof_posted}}} = wait_for_ps(pin),
+
+    aecore_suite_utils:unsubscribe(NodeName, pin),
+
+
     ok.
 
 
@@ -1145,6 +1178,15 @@ flush_ps_event(Event, Acc) ->
     after 1000 ->
         Acc
     end.
+
+mine_to_last_block_in_epoch(Node, Config) ->
+    {ok, #{epoch  := _Epoch,
+           first  := _First,
+           last   := Last,
+           length := _Length}} = rpc(Node, aec_chain_hc, epoch_info, []),
+    CH = rpc(Node, aec_chain, top_height, []),
+    DistToBeforeLast = Last - CH - 1,
+    {ok, _} = produce_cc_blocks(Config, DistToBeforeLast).
 
 % PINREFAC
 pin_contract_call_tx(Config, Fun, Args, Amount, FromPubKey) ->

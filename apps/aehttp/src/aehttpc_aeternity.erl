@@ -116,11 +116,15 @@ encode_parent_pin_payload(#{epoch := Epoch, height := Height, block_hash := Bloc
 
 -spec decode_parent_pin_payload(binary()) -> #{epoch => integer(), height => integer(), block_hash => binary()}.
 decode_parent_pin_payload(Binary) ->
-    [HexEpoch, HexHeight, EncBlockHash] = binary:split(Binary, [<<":">>, <<" ">>], [global]),
-    Epoch = erlang:list_to_integer(binary_to_list(HexEpoch), 16),
-    Height = erlang:list_to_integer(binary_to_list(HexHeight), 16),
-    {ok, BlockHash} = aeser_api_encoder:safe_decode(key_block_hash, EncBlockHash),
-    #{epoch => Epoch, height => Height, block_hash => BlockHash}.
+    try
+        [HexEpoch, HexHeight, EncBlockHash] = binary:split(Binary, [<<":">>, <<" ">>], [global]),
+        Epoch = erlang:list_to_integer(binary_to_list(HexEpoch), 16),
+        Height = erlang:list_to_integer(binary_to_list(HexHeight), 16),
+        {ok, BlockHash} = aeser_api_encoder:safe_decode(key_block_hash, EncBlockHash),
+        #{epoch => Epoch, height => Height, block_hash => BlockHash}
+    catch 
+        _ -> {error, {bad_parent_pin_payload, Binary}}
+    end.
 
 encode_child_pin_payload(TxHash) ->
     <<$p,$i,$n, TxHash/binary>>.
@@ -156,19 +160,22 @@ post_pin_tx(SignedSpendTx, NodeSpec) ->
     Body = #{<<"tx">> => Transaction},
     Path = <<"/v3/transactions">>,
     {ok, #{<<"tx_hash">> := TxHash}} = post_request(Path, Body, NodeSpec, 5000),
-    lager:debug("PINNING: wrote to PC tx hash: ~p", [TxHash]),
+    %lager:debug("PINNING: wrote to PC tx hash: ~p", [TxHash]),
     encode_child_pin_payload(TxHash).
 
 get_pin_by_tx_hash(TxHashEnc, NodeSpec) ->
-    TxHash = decode_child_pin_payload(TxHashEnc),
-    lager:debug("PINNING: fetch from PC tx hash ~p", [TxHash, TxHashEnc]),
-    TxPath = <<"/v3/transactions/", TxHash/binary>>,
-    case get_request(TxPath, NodeSpec, 5000) of
-        {ok, #{<<"tx">> := #{<<"payload">> := EncPin}}} ->
-            {ok, Pin} = aeser_api_encoder:safe_decode(bytearray, EncPin),
-            decode_parent_pin_payload(Pin);
-        OtherErr -> OtherErr
+    case decode_child_pin_payload(TxHashEnc) of
+         error -> {error, {bad_child_pin_tx_hash, TxHashEnc}};
+         TxHash ->
+            TxPath = <<"/v3/transactions/", TxHash/binary>>,
+            case get_request(TxPath, NodeSpec, 5000) of
+                {ok, #{<<"tx">> := #{<<"payload">> := EncPin}}} ->
+                    {ok, Pin} = aeser_api_encoder:safe_decode(bytearray, EncPin),
+                    decode_parent_pin_payload(Pin);
+                OtherErr -> OtherErr
+            end
     end.
+    
 
 get_request(Path, NodeSpec, Timeout) ->
     try
