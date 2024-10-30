@@ -1726,7 +1726,13 @@
                                             "type": "integer"
                                         },
                                         "child_block_time": {
-                                            "description": "The time in milliseconds to produce a child block",
+                                            "description": "The average time in milliseconds between two key blocks on the child chain",
+                                            "defult": 3000,
+                                            "type": "integer"
+                                        },
+                                        "child_block_production_time": {
+                                            "description": "The maximum time (in ms) given produce both a micro block and a keyblock from a given transaction mempool.",
+                                            "defult": 500,
                                             "type": "integer"
                                         },
                                         "child_epoch_length": {
