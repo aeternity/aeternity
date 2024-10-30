@@ -1630,9 +1630,7 @@ spread(N, TopHeight, Spread) when N rem 2 == 1 ->
     spread(N div 2, TopHeight, Left) ++ [{Middle, K+1} || Middle > TopHeight] ++ spread(N div 2, TopHeight, Right).
 
 get_entropy(Node, Epoch) ->
-    %% We buffer the seed two epochs, entropy height already looks at previous Epoch,
-    %% hence Epoch - 1
-    ParentHeight = rpc(Node, aec_consensus_hc, entropy_height, [Epoch - 1]),
+    ParentHeight = rpc(Node, aec_consensus_hc, entropy_height, [Epoch]),
     {ok, WPHdr}  = rpc(?PARENT_CHAIN_NODE, aec_chain, get_key_header_by_height, [ParentHeight]),
     {ok, WPHash0} = aec_headers:hash_header(WPHdr),
     {ParentHeight, aeser_api_encoder:encode(key_block_hash, WPHash0)}.
