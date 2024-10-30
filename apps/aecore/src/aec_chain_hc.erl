@@ -28,7 +28,7 @@
 
 -type epoch() :: non_neg_integer().
 -type height() :: non_neg_integer().
--type run_env() :: top | height() | {aetx_env:env(), aec_trees:trees()}.
+-type run_env() :: top | height() | {aetx_env:env(), aec_trees:trees()} | {hash, binary()}.
 -type epoch_info() :: map().
 
 -spec epoch() -> {ok, epoch()} | {error, chain_too_short}.
@@ -119,17 +119,18 @@ decode_stakers(RawStakers) ->
 encode_stakers(Stakers) ->
     lists:map(fun({Staker, Stake}) -> {tuple, {{address, Staker}, Stake}} end, Stakers).
 
-call_consensus_contract_w_env(Contract, {TxEnv, Trees}, Endpoint, Args) ->
-    aec_consensus_hc:call_consensus_contract_result(Contract, TxEnv, Trees, Endpoint, Args);
 call_consensus_contract_w_env(Contract, top, Endpoint, Args) ->
     case aec_chain:top_height() of
         undefined -> {error, chain_too_short};
         Height    -> call_consensus_contract_w_env(Contract, Height, Endpoint, Args)
     end;
+call_consensus_contract_w_env(Contract, {hash, Hash}, Endpoint, Args) when is_binary(Hash) ->
+    {TxEnv, Trees} = aetx_env:tx_env_and_trees_from_hash(aetx_transaction, Hash),
+    call_consensus_contract_w_env(Contract, {TxEnv, Trees}, Endpoint, Args);
 call_consensus_contract_w_env(Contract, Height, Endpoint, Args) when is_integer(Height), Height >= 0 ->
     case aec_chain_state:get_key_block_hash_at_height(Height) of
-        error -> {error, chain_too_short};
-        {ok, Hash} ->
-           {TxEnv, Trees} = aetx_env:tx_env_and_trees_from_hash(aetx_transaction, Hash),
-           call_consensus_contract_w_env(Contract, {TxEnv, Trees}, Endpoint, Args)
-    end.
+        error      -> {error, chain_too_short};
+        {ok, Hash} -> call_consensus_contract_w_env(Contract, {hash, Hash}, Endpoint, Args)
+    end;
+call_consensus_contract_w_env(Contract, {TxEnv, Trees}, Endpoint, Args) ->
+    aec_consensus_hc:call_consensus_contract_result(Contract, TxEnv, Trees, Endpoint, Args).
