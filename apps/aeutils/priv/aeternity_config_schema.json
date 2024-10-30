@@ -1730,7 +1730,7 @@
                                             "defult": 3000,
                                             "type": "integer"
                                         },
-                                        "hc_block_production_time": {
+                                        "child_block_production_time": {
                                             "description": "The maximum time (in ms) given produce both a micro block and a keyblock from a given transaction mempool.",
                                             "defult": 500,
                                             "type": "integer"
