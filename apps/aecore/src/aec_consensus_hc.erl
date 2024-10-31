@@ -272,8 +272,8 @@ state_pre_transform_node(Type, Height, PrevNode, Trees) ->
     {ok, Leader} = leader_for_height(Height, {TxEnv, Trees}),
     case Type of
         key ->
-           case Height == maps:get(last, EpochInfo) of
-               true ->
+            case Height == maps:get(last, EpochInfo) of
+                true ->
                     Trees1 = 
                         case validate_pin(TxEnv, Trees) of
                             pin_missing -> 
@@ -289,11 +289,11 @@ state_pre_transform_node(Type, Height, PrevNode, Trees) ->
                    {ok, Seed} = get_entropy_hash(Epoch + 2),
                    cache_validators_for_epoch({TxEnv, Trees}, Seed, Epoch + 2),
                    step_eoe(TxEnv, Trees1, Leader, Seed, 0);
-               false ->
-                   step(TxEnv, Trees, Leader)
-           end;
-       micro ->
-           step_micro(TxEnv, Trees, Leader)
+                false ->
+                    step(TxEnv, Trees, Leader)
+            end;
+        micro ->
+            step_micro(TxEnv, Trees, Leader)
     end.
 
 %% -------------------------------------------------------------------

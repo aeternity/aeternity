@@ -76,6 +76,9 @@
     }).
 -type state() :: #state{}.
 
+%% Import the spend_tx type from module_a
+-type spend_tx() :: aec_spend_tx:tx().
+
 
 %%%=============================================================================
 %%% API
@@ -135,6 +138,41 @@ fetch_block_by_hash(Hash) ->
                                                 | {error, not_found | no_parent_chain_agreement}.
 fetch_block_by_height(Height) ->
     gen_server:call(?SERVER, {fetch_block_by_height, Height}).
+
+get_network_id() ->
+    gen_server:call(?SERVER, get_network_id).
+
+get_parent_conn_mod() ->
+    gen_server:call(?SERVER, get_parent_conn_mod).
+
+get_sign_module() ->
+    gen_server:call(?SERVER, get_sign_module).
+
+-spec get_parent_chain_type() -> {ok, atom()}.
+get_parent_chain_type() ->
+    gen_server:call(?SERVER, get_parent_chain_type).
+
+-spec create_pin_tx(binary(), binary(), integer(), integer(), binary()) -> aetx:tx().
+create_pin_tx(SenderEnc, ReceiverPubkey, Amount, Fee, PinningData) ->
+    gen_server:call(?SERVER, {create_pin_tx, SenderEnc, ReceiverPubkey, Amount, Fee, PinningData}).
+
+post_pin_tx(Tx) ->
+    gen_server:call(?SERVER, {post_pin_tx, Tx}).
+
+get_pin_by_tx_hash(TxHash) ->
+    gen_server:call(?SERVER, {get_pin_by_tx_hash, TxHash}).
+
+encode_parent_pin_payload(Pin) ->
+    gen_server:call(?SERVER, {encode_parent_pin_payload, Pin}).
+
+decode_parent_pin_payload(PinPayload) ->
+    gen_server:call(?SERVER, {decode_parent_pin_payload, PinPayload}).
+
+encode_child_pin_payload(TxHash) ->
+    gen_server:call(?SERVER, {encode_child_pin_payload, TxHash}).
+
+decode_child_pin_payload(TxHash) ->
+    gen_server:call(?SERVER, {decode_child_pin_payload, TxHash}).
 
 %%%=============================================================================
 %%% Gen Server Callbacks
@@ -351,40 +389,7 @@ handle_fetch_block(Fun, Arg,
             Err
     end.
 
-get_network_id() ->
-    gen_server:call(?SERVER, get_network_id).
 
-get_parent_conn_mod() ->
-    gen_server:call(?SERVER, get_parent_conn_mod).
-
-get_sign_module() ->
-    gen_server:call(?SERVER, get_sign_module).
-
--spec get_parent_chain_type() -> {ok, atom()}.
-get_parent_chain_type() ->
-    gen_server:call(?SERVER, get_parent_chain_type).
-
--spec create_pin_tx(binary(), binary(), integer(), integer(), binary()) -> aetx:tx().
-create_pin_tx(SenderEnc, ReceiverPubkey, Amount, Fee, PinningData) ->
-    gen_server:call(?SERVER, {create_pin_tx, SenderEnc, ReceiverPubkey, Amount, Fee, PinningData}).
-
-post_pin_tx(Tx) ->
-    gen_server:call(?SERVER, {post_pin_tx, Tx}).
-
-get_pin_by_tx_hash(TxHash) ->
-    gen_server:call(?SERVER, {get_pin_by_tx_hash, TxHash}).
-
-encode_parent_pin_payload(Pin) ->
-    gen_server:call(?SERVER, {encode_parent_pin_payload, Pin}).
-
-decode_parent_pin_payload(PinPayload) ->
-    gen_server:call(?SERVER, {decode_parent_pin_payload, PinPayload}).
-
-encode_child_pin_payload(TxHash) ->
-    gen_server:call(?SERVER, {encode_child_pin_payload, TxHash}).
-
-decode_child_pin_payload(TxHash) ->
-    gen_server:call(?SERVER, {decode_child_pin_payload, TxHash}).
 
 is_pin(Pin) -> 
     gen_server:call(?SERVER, {is_pin, Pin}).
@@ -415,19 +420,16 @@ get_pinning_data() ->
     end.
 
 get_generations(FromHeight, ToHeight) ->
-    ReversedBlocks =
-        lists:foldl(
-            fun(Height, Accum) ->
-                case aec_chain:get_generation_by_height(Height, backward) of
-                    {ok, #{micro_blocks := MBs}} ->
-                        ReversedGeneration = lists:reverse(MBs),
-                        ReversedGeneration ++ Accum;
-                    error -> error({failed_to_fetch_generation, Height})
-                end
-            end,
-            [],
-            lists:seq(FromHeight, ToHeight)),
-    lists:reverse(ReversedBlocks).
+    lists:flatten(
+        lists:map(
+        fun(Height) ->
+            case aec_chain:get_generation_by_height(Height, backward) of
+                {ok, #{micro_blocks := MBs}} -> MBs;
+                error -> error({failed_to_fetch_generation, Height})
+            end
+        end,
+        lists:seq(FromHeight, ToHeight)
+    )).
 
 
 find_spends_to(Account) ->
@@ -435,10 +437,13 @@ find_spends_to(Account) ->
     %%      called, and what if you want to go back through the chain and validate backwards?
     {ok, #{last := Last, first := First}} = aec_chain_hc:epoch_info(), 
     Blocks = get_generations(First, Last-1),
-    lists:flatten([ pick_pin_spends_to(Account, Txs) || {mic_block, _, Txs, _} <- Blocks ]).
+    lists:flatten([ pick_pin_spends_to(Account, aec_blocks:txs(B)) || B <- Blocks ]).
+
 
 pick_pin_spends_to(Account, Txs) ->
-    [ T || {signed_tx,{aetx,spend_tx,aec_spend_tx,_,{spend_tx,_,{id,account,Account2},_,_,_,_,T}},_} <- Txs, Account =:= Account2, is_pin(T)].
+    BareTxs = [ aetx_sign:tx(T) || T <- Txs],
+    InnerTxs = [ aetx:specialize_type(Tx) || Tx <- BareTxs,  spend_tx == aetx:tx_type(Tx)],
+    [ aec_spend_tx:payload(T) || {_, T} <- InnerTxs, aeser_id:specialize(aec_spend_tx:recipient_id(T)) == {account,Account}, is_pin(aec_spend_tx:payload(T))].
 
 %% handle (pin) calls to the parent connector module and ensure we don't throw anything
 %% FUTURE Should be reasonably easy to loop over NodeSpecs until one call suceeds.

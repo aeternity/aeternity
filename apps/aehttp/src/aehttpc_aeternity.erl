@@ -127,9 +127,9 @@ decode_parent_pin_payload(Binary) ->
     end.
 
 encode_child_pin_payload(TxHash) ->
-    <<$p,$i,$n, TxHash/binary>>.
+    <<"pin", TxHash/binary>>.
 
-decode_child_pin_payload(<<$p,$i,$n, TxHash/binary>>) ->
+decode_child_pin_payload(<<"pin", TxHash/binary>>) ->
     TxHash;
 decode_child_pin_payload(_) ->
     error.

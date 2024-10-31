@@ -1098,7 +1098,7 @@ last_leader_validates_pin_and_post_to_contract(Config) ->
     TxHash = pin_to_parent(Node, PinningData, pubkey(?DWIGHT)),
     %% post parent spend tx hash to CC
     {ok, #{epoch  := _Epoch,
-           first  := _First,
+           first  := First,
            last   := Last,
            length := _Length}} = rpc(Node, aec_chain_hc, epoch_info, []),
     {ok, LastLeader} = rpc(Node, aec_consensus_hc, leader_for_height, [Last]),
@@ -1126,17 +1126,17 @@ last_leader_validates_pin_and_post_to_contract(Config) ->
     #{epoch := _PinEpoch, height := PinHeight, block_hash := PinHash} = 
         rpc(Node, aec_parent_connector, get_pin_by_tx_hash, [FirstSpend]),
     ?assertEqual({ok, PinHash}, rpc(Node, aec_chain_state, get_key_block_hash_at_height, [PinHeight])),
-
+    
     %% move into next epoch - trigger leader validation?
     {ok, _} = produce_cc_blocks(Config, 2),
     {ok, #{info := {pin_accepted}}} = wait_for_ps(pin),
-
     LeaderBalance1B = account_balance(LastLeader),
     
     ct:log("Account balance for leader was: ~p, is now: ~p", [LeaderBalance1A, LeaderBalance1B]),
     % Any Reasonable way to do this test? Likely a bunch of rewards/fees etc have been awarded, although
     % the above log clearly shows that 4711 (and a bunch more coin) was added.
     % LeaderBalance0 = LeaderBalance1 - 4711, 
+
 
     aecore_suite_utils:unsubscribe(NodeName, pin),
     
@@ -1826,4 +1826,3 @@ get_entropy(Node, Epoch) ->
     {ok, WPHdr}  = rpc(?PARENT_CHAIN_NODE, aec_chain, get_key_header_by_height, [ParentHeight]),
     {ok, WPHash0} = aec_headers:hash_header(WPHdr),
     {ParentHeight, aeser_api_encoder:encode(key_block_hash, WPHash0)}.
-
