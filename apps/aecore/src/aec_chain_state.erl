@@ -925,7 +925,8 @@ apply_node_transactions(Node, PrevNode, Trees, ForkInfo, State) ->
     case node_is_micro_block(Node) of
         true ->
             #fork_info{fees = FeesIn} = ForkInfo,
-            Trees1 = Consensus:state_pre_transform_micro_node(Node, Trees),
+            Height = aec_block_insertion:node_height(Node),
+            Trees1 = Consensus:state_pre_transform_micro_node(Height, PrevNode, Trees),
             apply_micro_block_transactions(Node, FeesIn, Trees1);
         false ->
             #fork_info{fees = FeesIn, fraud = FraudStatus} = ForkInfo,

@@ -52,6 +52,10 @@ main contract HCElection =
     assert_protocol_call()
     put(state{ leader = leader })
 
+  stateful entrypoint step_micro(leader : address) =
+    assert_protocol_call()
+    put(state{ leader = leader })
+
   stateful entrypoint step_eoe(leader : address, seed : bytes(), epoch_adjust : int) =
     assert_protocol_call()
     let epoch = state.epoch
