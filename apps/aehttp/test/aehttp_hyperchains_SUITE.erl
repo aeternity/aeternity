@@ -588,6 +588,7 @@ simple_withdraw(Config) ->
 correct_leader_in_micro_block(Config) ->
     [{_Node, NodeName, _} | _] = ?config(nodes, Config),
     %% Call the contract in a transaction, asking for "leader"
+    {ok, [_]} = produce_cc_blocks(Config, 1),
     CallTx =
         sign_and_push(
             NodeName,
