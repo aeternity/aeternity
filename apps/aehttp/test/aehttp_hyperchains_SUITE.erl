@@ -1121,7 +1121,7 @@ last_leader_validates_pin_and_post_to_contract(Config) ->
     {value, Account} = rpc(?NODE1, aec_chain, get_account, [LastLeader]),
     ct:log("Leader Account: ~p", [Account]),
 
-    LeaderBalance0 = account_balance(LastLeader),
+    LeaderBalance1A = account_balance(LastLeader),
     %% use get_pin_by_tx_hash to get the posted hash back and compare with actual keyblock (to test encoding decoding etc)
     #{epoch := _PinEpoch, height := PinHeight, block_hash := PinHash} = 
         rpc(Node, aec_parent_connector, get_pin_by_tx_hash, [FirstSpend]),
@@ -1131,9 +1131,9 @@ last_leader_validates_pin_and_post_to_contract(Config) ->
     {ok, _} = produce_cc_blocks(Config, 2),
     {ok, #{info := {pin_accepted}}} = wait_for_ps(pin),
 
-    LeaderBalance1 = account_balance(LastLeader),
+    LeaderBalance1B = account_balance(LastLeader),
     
-    ct:log("Account balance for leader was: ~p, is now: ~p", [LeaderBalance0, LeaderBalance1]),
+    ct:log("Account balance for leader was: ~p, is now: ~p", [LeaderBalance1A, LeaderBalance1B]),
     % Any Reasonable way to do this test? Likely a bunch of rewards/fees etc have been awarded, although
     % the above log clearly shows that 4711 (and a bunch more coin) was added.
     % LeaderBalance0 = LeaderBalance1 - 4711, 
@@ -1196,6 +1196,7 @@ last_leader_validates_pin_and_post_to_contract(Config) ->
 
     LeaderBalance4B = account_balance(LastLeader4),
 
+    ct:log("Account balance for leader was: ~p, is now: ~p", [LeaderBalance4A, LeaderBalance4B]),
     % See above for when a reward for pinning actually was given... Same problem here.
     % LeaderBalance4A = LeaderBalance4B, % nothing was rewarded
 
@@ -1210,13 +1211,6 @@ wait_for_ps(Event) ->
     receive 
         {gproc_ps_event, Event, Info} -> {ok, Info};
         Other -> error({wrong_signal, Other})
-    end.
-
-flush_ps_event(Event, Acc) ->
-    receive
-        {proc_ps_event, Event, _} -> flush_ps_event(Event, Acc+1)
-    after 1000 ->
-        Acc
     end.
 
 mine_to_last_block_in_epoch(Node, Config) ->
