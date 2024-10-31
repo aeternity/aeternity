@@ -173,7 +173,7 @@
 %% State pre transformations on every keyblock
 -callback state_pre_transform_key_node(#node{}, #node{}, aec_trees:trees()) -> aec_trees:trees() | no_return().
 %% State pre transformations on every microblock
--callback state_pre_transform_micro_node(#node{}, aec_trees:trees()) -> aec_trees:trees() | no_return().
+-callback state_pre_transform_micro_node(non_neg_integer(), #node{}, aec_trees:trees()) -> aec_trees:trees() | no_return().
 
 %% Block rewards :)
 -callback state_grant_reward(aec_keys:pubkey(), #node{}, aec_trees:trees(), non_neg_integer()) -> aec_trees:trees() | no_return().

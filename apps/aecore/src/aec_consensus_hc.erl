@@ -47,7 +47,7 @@
         %% State transition
         , state_pre_transform_key_node_consensus_switch/2
         , state_pre_transform_key_node/3
-        , state_pre_transform_micro_node/2
+        , state_pre_transform_micro_node/3
         %% Block rewards
         , state_grant_reward/4
         %% PoGF
@@ -253,30 +253,36 @@ state_pre_transform_key_node_consensus_switch(_Node, Trees) -> Trees.
 %% only called for key-blocks - this is the call where we set epoch and
 %% leader
 state_pre_transform_key_node(Node, PrevNode, Trees) ->
+    Height = aec_block_insertion:node_height(Node),
+    state_pre_transform_node(key, Height, PrevNode, Trees).
+
+state_pre_transform_micro_node(Height, PrevNode, Trees) ->
+    state_pre_transform_node(micro, Height, PrevNode, Trees).
+
+state_pre_transform_node(Type, Height, PrevNode, Trees) when Height < 1 ->
+    %% TODO: maybe call init_epochs for height 0?
+    %% No leader for genesis
+    Trees;
+state_pre_transform_node(Type, Height, PrevNode, Trees) ->
     PrevHeader = aec_block_insertion:node_header(PrevNode),
     {ok, PrevHash} = aec_headers:hash_header(PrevHeader),
-    Height = aec_block_insertion:node_height(Node),
-    %% TODO: maybe call init_epochs for height 0?
-    case Height > 0 of
-        true ->
-            {TxEnv0, _} = aetx_env:tx_env_and_trees_from_hash(aetx_transaction, PrevHash),
-            TxEnv = aetx_env:set_height(TxEnv0, Height),
-            {ok, #{epoch := Epoch} = EpochInfo} = aec_chain_hc:epoch_info({TxEnv, Trees}),
-            {ok, Leader} = leader_for_height(Height, {TxEnv, Trees}),
-            case Height == maps:get(last, EpochInfo) of
-                true ->
-                    {ok, Seed} = get_entropy_hash(Epoch + 2),
-                    cache_validators_for_epoch({TxEnv, Trees}, Seed, Epoch + 2),
-                    step_eoe(TxEnv, Trees, Leader, Seed, 0);
-                false ->
-                    step(TxEnv, Trees, Leader)
-            end;
-        false ->
-            %% No leader for genesis
-            Trees
+    {TxEnv0, _} = aetx_env:tx_env_and_trees_from_hash(aetx_transaction, PrevHash),
+    TxEnv = aetx_env:set_height(TxEnv0, Height),
+    {ok, #{epoch := Epoch} = EpochInfo} = aec_chain_hc:epoch_info({TxEnv, Trees}),
+    {ok, Leader} = leader_for_height(Height, {TxEnv, Trees}),
+    case Type of
+        key ->
+           case Height == maps:get(last, EpochInfo) of
+               true ->
+                   {ok, Seed} = get_entropy_hash(Epoch + 2),
+                   cache_validators_for_epoch({TxEnv, Trees}, Seed, Epoch + 2),
+                   step_eoe(TxEnv, Trees, Leader, Seed, 0);
+               false ->
+                   step(TxEnv, Trees, Leader)
+           end;
+       micro ->
+           step_micro(TxEnv, Trees, Leader)
     end.
-
-state_pre_transform_micro_node(_Node, Trees) -> Trees.
 
 %% -------------------------------------------------------------------
 %% Block rewards
@@ -497,11 +503,23 @@ step_eoe(TxEnv, Trees, Leader, Seed, Adjust) ->
     CallData = aeser_api_encoder:encode(contract_bytearray, CD),
     case call_consensus_contract_(?ELECTION_CONTRACT, TxEnv, Trees, CallData, "step_eoe", 0) of
         {ok, Trees1, _Call} ->
-            lager:debug("StepEOE successful", []),
             Trees1;
         {error, What} ->
             lager:info("Calling step_eoe failed with ~p", [What]),
             aec_conductor:throw_error(step_eoe_failed)
+    end.
+
+%% Set the leader in case there is a micro block to be produced
+%% If not, leader is anyway set when creating key block
+step_micro(TxEnv, Trees, Leader) ->
+    {ok, CD} = aeb_fate_abi:create_calldata("step_micro", [{address, Leader}]),
+    CallData = aeser_api_encoder:encode(contract_bytearray, CD),
+    case call_consensus_contract_(?ELECTION_CONTRACT, TxEnv, Trees, CallData, "step_micro", 0) of
+        {ok, Trees1, _Call} ->
+            Trees1;
+        {error, What} ->
+            lager:info("Calling step_micro failed with ~p", [What]),
+            aec_conductor:throw_error(step_micro_failed)
     end.
 
 child_block_time() ->

@@ -51,8 +51,10 @@ create(Block) ->
 create_with_state(Block, KeyBlock, Txs, Trees) ->
     MBEnv = create_micro_block_env(Block, KeyBlock),
     TxEnv = create_tx_env(MBEnv),
+    ConsensusModule = aec_blocks:consensus_module(KeyBlock),
+    Height = ConsensusModule:micro_block_height_relative_previous_block(key, aec_blocks:height(KeyBlock)),
     {ok, NewBlock, #{ trees := NewTrees}} =
-        int_create_block(MBEnv, TxEnv, Txs, Trees),
+        int_create_block(Height, MBEnv, TxEnv, Txs, Trees),
     {NewBlock, NewTrees}.
 
 -spec apply_block_txs(list(aetx_sign:signed_tx()), aec_trees:trees(),
@@ -98,7 +100,12 @@ int_create(PrevBlock, KeyBlock) ->
         {ok, Trees} ->
             TxEnv = create_tx_env(MBEnv),
             MaxGas = aec_governance:block_gas_limit(),
-            int_pack_block(MaxGas, [], [], MBEnv, TxEnv, Trees, []);
+            %% Height is relative to last key-block.
+            ConsensusModule = aec_blocks:consensus_module(KeyBlock),
+            Height = ConsensusModule:micro_block_height_relative_previous_block(key, aec_blocks:height(KeyBlock)),
+            PrevNode = aec_chain_state:wrap_block(PrevBlock),
+            Trees1 = ConsensusModule:state_pre_transform_micro_node(Height, PrevNode, Trees),
+            int_pack_block(Height, MaxGas, [], [], MBEnv, TxEnv, Trees1, []);
         error ->
             {error, block_state_not_found}
     end.
@@ -120,33 +127,29 @@ create_tx_env(#{prev_block := PrevBlock, prev_hash := PrevBlockHash,
     Time = determine_new_time(PrevBlock),
     aetx_env:tx_env_from_key_header(KeyHeader, KeyBlockHash, Time, PrevBlockHash).
 
-int_pack_block(GasAvailable, TxHashes, Txs, MBEnv, TxEnv, Trees, Events) ->
+int_pack_block(Height, GasAvailable, TxHashes, Txs, MBEnv, TxEnv, Trees, Events) ->
     #{prev_hash := PrevBlockHash, key_block := KeyBlock} = MBEnv,
     case aec_tx_pool:get_candidate(GasAvailable, TxHashes, PrevBlockHash) of
         {ok, []} ->
-            int_create_block(MBEnv, TxEnv, Txs, Trees, Events);
+            int_create_block(Height, MBEnv, TxEnv, Txs, Trees, Events);
         {ok, Txs0} ->
             {ok, Txs1, FailedTxs1, Trees1, Events1} = int_apply_block_txs(Txs0, Trees, TxEnv, false),
             report_failed_txs(FailedTxs1),
             TxHashes1 = [ aetx_sign:hash(Tx) || Tx <- Txs0 ],
-            int_pack_block(GasAvailable - used_gas(KeyBlock, Txs1, Trees1), TxHashes ++ TxHashes1,
+            int_pack_block(Height, GasAvailable - used_gas(KeyBlock, Txs1, Trees1), TxHashes ++ TxHashes1,
                            Txs ++ Txs1, MBEnv, TxEnv, Trees1, Events ++ Events1)
     end.
 
-int_create_block(MBEnv, TxEnv, Txs, Trees) ->
+int_create_block(Height, MBEnv, TxEnv, Txs, Trees) ->
     {ok, Txs1, InvalidTxs, Trees1, Events1} = int_apply_block_txs(Txs, Trees, TxEnv, false),
     report_failed_txs(InvalidTxs),
-    int_create_block(MBEnv, TxEnv, Txs1, Trees1, Events1).
+    int_create_block(Height, MBEnv, TxEnv, Txs1, Trees1, Events1).
 
-int_create_block(MBEnv, TxEnv, Txs, Trees, Events) ->
+int_create_block(Height, MBEnv, TxEnv, Txs, Trees, Events) ->
     #{key_block := KeyBlock, key_hash := KeyBlockHash,
       prev_block := PrevBlock, prev_hash := PrevBlockHash} = MBEnv,
     Time = aetx_env:time_in_msecs(TxEnv),
     Protocol = aec_blocks:version(KeyBlock),
-
-    %% Heigth is relative to last key-block.
-    ConsensusModule = aec_blocks:consensus_module(KeyBlock),
-    Height = ConsensusModule:micro_block_height_relative_previous_block(key, aec_blocks:height(KeyBlock)),
 
     TxsTree = aec_txs_trees:from_txs(Txs),
     TxsRootHash = aec_txs_trees:pad_empty(aec_txs_trees:root_hash(TxsTree)),

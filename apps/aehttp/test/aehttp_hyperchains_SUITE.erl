@@ -35,6 +35,7 @@
          wallet_post_pin_to_pc/1,
          post_pin_to_pc/1,
          get_contract_pubkeys/1,
+         correct_leader_in_micro_block/1,
          first_leader_next_epoch/1
         ]).
 
@@ -147,6 +148,7 @@ groups() ->
           , verify_fees
           , spend_txs
           , simple_withdraw
+          , correct_leader_in_micro_block
           , sync_third_node
           , produce_some_epochs
           , respect_schedule
@@ -474,23 +476,18 @@ respect_schedule(_Node, EpochStart, _Epoch, TopHeight) when TopHeight < EpochSta
     ok;
 respect_schedule(Node, EpochStart, Epoch, TopHeight) ->
     {ok, #{first := StartHeight} = EI} =
-        rpc(?NODE1, aec_chain_hc, epoch_info, [EpochStart]),
+        rpc(Node, aec_chain_hc, epoch_info, [EpochStart]),
 
     #{ seed := EISeed, validators := EIValidators, length := EILength, last := EILast } = EI,
 
     ct:log("Checking epoch ~p info: ~p at height ~p", [Epoch, EI, EpochStart]),
 
-    %% We buffer the seed two epochs
-    ParentHeight = rpc(?NODE1, aec_consensus_hc, entropy_height, [Epoch]),
-    {ok, PHdr}   = rpc(?PARENT_CHAIN_NODE, aec_chain, get_key_header_by_height, [ParentHeight]),
-    {ok, PHash0} = aec_headers:hash_header(PHdr),
-    PHash = aeser_api_encoder:encode(key_block_hash, PHash0),
-
+    {ParentHeight, PHash} = get_entropy(Node, Epoch),
     ct:log("ParentHash at height ~p: ~p", [ParentHeight, PHash]),
     ?assertMatch(Hash when Hash == undefined; Hash == PHash, EISeed),
 
     %% Check the API functions in aec_chain_hc
-    {ok, Schedule} = rpc(?NODE1, aec_chain_hc, validator_schedule, [EpochStart, PHash, EIValidators, EILength]),
+    {ok, Schedule} = rpc(Node, aec_chain_hc, validator_schedule, [EpochStart, PHash, EIValidators, EILength]),
     ct:log("Validating schedule ~p for Epoch ~p", [Schedule, Epoch]),
 
     lists:foreach(fun({Height, ExpectedProducer}) when Height =< TopHeight ->
@@ -502,34 +499,42 @@ respect_schedule(Node, EpochStart, Epoch, TopHeight) ->
 
     respect_schedule(Node, EILast + 1, Epoch + 1, TopHeight).
 
+%% For different Epoch's we have different schedules
+%% (Provided we past 4 epochs)
 entropy_impact_schedule(Config) ->
     Nodes = [ N || {N, _, _} <- ?config(nodes, Config)],
     Node = hd(Nodes),
     %% Sync nodes
-    {ok, _} = wait_same_top(Nodes, 300),
-
     ChildHeight = rpc(Node, aec_chain, top_height, []),
-    ct:log("ChildHeight ~p and info before ~p", [ChildHeight, rpc(Node, aec_chain_hc, epoch_info, [ChildHeight-1]) ]),
+    {ok, #{epoch := Epoch0, length := Length0}} = rpc(Node, aec_chain_hc, epoch_info, []),
+    %% Make sure chain is long enough
+    case Epoch0 =< 5 of
+      true ->
+        %% Chain to short to have meaningful test, e.g. when ran in isolation
+        produce_cc_blocks(Config, 5 * Length0 - ChildHeight);
+      false ->
+        ok
+    end,
     {ok, #{seed := Seed,
-           validators := Validators,
            first := First,
            length := Length,
+           validators := Validators,
            epoch := Epoch}} = rpc(Node, aec_chain_hc, epoch_info, []),
 
-    ParentHeight = rpc(Node, aec_consensus_hc, entropy_height, [Epoch]),
-    {ok, WPHdr}  = rpc(?PARENT_CHAIN_NODE, aec_chain, get_key_header_by_height, [ParentHeight + 1]),
-    {ok, WPHash0} = aec_headers:hash_header(WPHdr),
-    WPHash = aeser_api_encoder:encode(key_block_hash, WPHash0),
+    {_, Entropy0} = get_entropy(Node, Epoch - 1),
+    {_, Entropy1} = get_entropy(Node, Epoch),
 
     {ok, Schedule} = rpc(Node, aec_chain_hc, validator_schedule, [First, Seed, Validators, Length]),
-    {ok, WrongSchedule} = rpc(Node, aec_chain_hc, validator_schedule, [First, WPHash, Validators, Length]),
-    ct:log("Invalid schedule ~p for Epoch ~p", [WrongSchedule, Epoch]),
+    {ok, RightSchedule} = rpc(Node, aec_chain_hc, validator_schedule, [First, Entropy1, Validators, Length]),
+    {ok, WrongSchedule} = rpc(Node, aec_chain_hc, validator_schedule, [First, Entropy0, Validators, Length]),
+    ct:log("Schedules:\nepoch ~p\nwrong ~p\nright ~p", [Schedule, WrongSchedule, RightSchedule]),
     %% There is a tiny possibility that the two against all odds are the same
+    ?assertEqual(RightSchedule, Schedule),
     ?assertNotEqual(WrongSchedule, Schedule).
 
 simple_withdraw(Config) ->
+    [{_Node, NodeName, _} | _] = ?config(nodes, Config),
     produce_cc_blocks(Config, 3), %% Make sure there are no lingering TxFees in the reward
-    [{_, NodeName, _}|_] = ?config(nodes, Config),
     AliceBin = encoded_pubkey(?ALICE),
     Alice = binary_to_list(encoded_pubkey(?ALICE)),
     {ok, []} = rpc:call(NodeName, aec_tx_pool, peek, [infinity]),
@@ -554,6 +559,7 @@ simple_withdraw(Config) ->
     NetworkId = ?config(network_id, Config),
     CallTx =
         sign_and_push(
+            NodeName,
             contract_call(?config(staking_contract, Config), src(?MAIN_STAKING_CONTRACT, Config), "unstake",
                 [Alice, integer_to_list(WithdrawAmount)], 0, pubkey(?ALICE)),
             ?ALICE,
@@ -578,6 +584,25 @@ simple_withdraw(Config) ->
     ?assert(AliceContractSPower - 1000 == AliceContractSPower1 orelse
             (Producer == pubkey(?ALICE) andalso AliceContractSPower + KeyReward - 1000 == AliceContractSPower1)),
     ok.
+
+correct_leader_in_micro_block(Config) ->
+    [{_Node, NodeName, _} | _] = ?config(nodes, Config),
+    %% Call the contract in a transaction, asking for "leader"
+    {ok, [_]} = produce_cc_blocks(Config, 1),
+    CallTx =
+        sign_and_push(
+            NodeName,
+            contract_call(?config(election_contract, Config), src(?HC_CONTRACT, Config),
+                          "leader", [], 0, pubkey(?ALICE)),
+            ?ALICE, ?config(network_id, Config)),
+
+    {ok, [KeyBlock, _MicroBlock]} = produce_cc_blocks(Config, 1),
+    %% Microblock contains the contract call, find out what it returned on that call
+    {ok, Call} = call_info(CallTx),
+    {ok, Res} = decode_consensus_result(Call, "leader", src(?HC_CONTRACT, Config)),
+    %% The actual leader did produce the keyblock (and micro block)
+    Producer = aeser_api_encoder:encode(account_pubkey, aec_blocks:miner(KeyBlock)),
+    ?assertEqual(Producer, Res).
 
 set_up_third_node(Config) ->
     {Node3, NodeName, Stakers} = lists:keyfind(?NODE3, 1, ?config(nodes, Config)),
@@ -630,6 +655,7 @@ empty_parent_block(_Config) ->
     end.
 
 verify_fees(Config) ->
+    [{Node, NodeName, _} | _ ] = ?config(nodes, Config),
     %% start without any tx fees, only a keyblock
     GetSPower = fun(Who1, Who2, When) ->
                     inspect_staking_contract(Who1, {staking_power, Who2}, Config, When)
@@ -640,7 +666,7 @@ verify_fees(Config) ->
             AliceBalance0 = account_balance(pubkey(?ALICE)),
             BobBalance0 = account_balance(pubkey(?BOB)),
             produce_cc_blocks(Config, 1),
-            {ok, TopKeyBlock} = rpc(?NODE1, aec_chain, top_key_block, []),
+            {ok, TopKeyBlock} = rpc(Node, aec_chain, top_key_block, []),
             TopKeyHeader = aec_blocks:to_header(TopKeyBlock),
             {ok, TopHash} = aec_headers:hash_header(TopKeyHeader),
             PrevHash = aec_headers:prev_key_hash(TopKeyHeader),
@@ -657,8 +683,8 @@ verify_fees(Config) ->
 
             %% inspect who shall receive what reward
             RewardForHeight = aec_headers:height(TopKeyHeader) - ?REWARD_DELAY,
-            {ok, PrevH} = rpc(?NODE1, aec_chain, get_key_header_by_height, [RewardForHeight - 1]),
-            {ok, RewardH} = rpc(?NODE1, aec_chain, get_key_header_by_height, [RewardForHeight]),
+            {ok, PrevH} = rpc(Node, aec_chain, get_key_header_by_height, [RewardForHeight - 1]),
+            {ok, RewardH} = rpc(Node, aec_chain, get_key_header_by_height, [RewardForHeight]),
             Beneficiary1 = aec_headers:beneficiary(PrevH),
             Beneficiary1Name = name(who_by_pubkey(Beneficiary1)),
             Beneficiary2 = aec_headers:beneficiary(RewardH),
@@ -708,16 +734,12 @@ verify_fees(Config) ->
     %% rewards
     NetworkId = ?config(network_id, Config),
     Test(),
-
+    {ok, _} = produce_cc_blocks(Config, 1),
     ct:log("Test with a spend transaction", []),
-    {_, PatronPub} = aecore_suite_utils:sign_keys(?NODE1),
-    {ok, []} = rpc:call(?NODE1_NAME, aec_tx_pool, peek, [infinity]),
+    {_, PatronPub} = aecore_suite_utils:sign_keys(Node),
+    {ok, []} = rpc:call(NodeName, aec_tx_pool, peek, [infinity]),
     {ok, _SignedTx} = seed_account(PatronPub, 1, NetworkId),
     Test(), %% fees are generated
-
-    %% key blocks are in sync, but give gossip time to sync micro block
-    %% This won't be needed if micro blocks come before key blocks
-    timer:sleep(?CHILD_BLOCK_TIME div 2),
 
     ct:log("Test with no transaction", []),
     [ Test() || _ <- lists:seq(0, ?REWARD_DELAY) ],
@@ -823,9 +845,10 @@ epochs_with_slow_parent(Config) ->
 %% Demonstrate that child chain start signalling epoch length adjustment downward
 %% When parent blocks are produced too quickly, we need to shorten child epoch
 epochs_with_fast_parent(Config) ->
+    [{Node, _, _} | _] = ?config(nodes, Config),
     ParentTopHeight = rpc(?PARENT_CHAIN_NODE, aec_chain, top_height, []),
-    ChildTopHeight = rpc(?NODE1, aec_chain, top_height, []),
-    {ok, #{epoch := ChildEpoch}} = rpc(?NODE1, aec_chain_hc, epoch_info, []),
+    ChildTopHeight = rpc(Node, aec_chain, top_height, []),
+    {ok, #{epoch := ChildEpoch}} = rpc(Node, aec_chain_hc, epoch_info, []),
 
     %% Quickly produce parent blocks to be in sync again
     ParentBlocksNeeded =
@@ -835,23 +858,23 @@ epochs_with_fast_parent(Config) ->
     {ok, _} = produce_cc_blocks(Config, 1, [{ChildTopHeight + 1, ParentBlocksNeeded}]),
     %% and finish a child epoch
     %% ensure start at a new epoch boundary
-    StartHeight = rpc(?NODE1, aec_chain, top_height, []),
-    {ok, #{last := Last, length := Len} = EpochInfo1} = rpc(?NODE1, aec_chain_hc, epoch_info, []),
+    StartHeight = rpc(Node, aec_chain, top_height, []),
+    {ok, #{last := Last, length := Len} = EpochInfo1} = rpc(Node, aec_chain_hc, epoch_info, []),
     ct:log("Info ~p", [EpochInfo1]),
     BlocksLeftToBoundary = Last - StartHeight,
     %% some block production including parent blocks
     {ok, _} = produce_cc_blocks(Config, BlocksLeftToBoundary),
 
     %% Produce twice as many parent blocks as needed in an epoch
-    Height0 = rpc(?NODE1, aec_chain, top_height, []),
+    Height0 = rpc(Node, aec_chain, top_height, []),
     ParentTopHeight0 = rpc(?PARENT_CHAIN_NODE, aec_chain, top_height, []),
     {ok, _} = produce_cc_blocks(Config, ?CHILD_EPOCH_LENGTH,
                                 spread(2*?PARENT_EPOCH_LENGTH, Height0,
                                        [ {CH, 0} || CH <- lists:seq(Height0 + 1, Height0 + Len)])),
 
     ParentTopHeight1 = rpc(?PARENT_CHAIN_NODE, aec_chain, top_height, []),
-    Height1 = rpc(?NODE1, aec_chain, top_height, []),
-    {ok, EpochInfo2} = rpc(?NODE1, aec_chain_hc, epoch_info, []),
+    Height1 = rpc(Node, aec_chain, top_height, []),
+    {ok, EpochInfo2} = rpc(Node, aec_chain_hc, epoch_info, []),
     ct:log("Parent at height ~p and child at height ~p in child epoch ~p",
            [ParentTopHeight1, Height1, EpochInfo2 ]),
     ?assertEqual(2*?PARENT_EPOCH_LENGTH, ParentTopHeight1 - ParentTopHeight0),
@@ -1097,9 +1120,9 @@ next_nonce(Node, Pubkey) ->
         {error, account_not_found} -> 1
     end.
 
-sign_and_push(Tx, Who, NetworkId) ->
+sign_and_push(NodeName, Tx, Who, NetworkId) ->
     SignedTx = sign_tx(Tx, privkey(Who), NetworkId),
-    ok = rpc:call(?NODE1_NAME, aec_tx_pool, push, [SignedTx, tx_received]),
+    ok = rpc:call(NodeName, aec_tx_pool, push, [SignedTx, tx_received]),
     SignedTx.
 
 %% usually we would use aec_test_utils:sign_tx/3. This function is being
@@ -1467,7 +1490,7 @@ produce_cc_blocks(Config, BlocksCnt) ->
     [{Node, _, _} | _] = ?config(nodes, Config),
     TopHeight = rpc(Node, aec_chain, top_height, []),
     {ok, #{epoch := Epoch, first := First, last := Last, length := L} = Info} =
-        rpc(?NODE1, aec_chain_hc, epoch_info, [TopHeight]),
+        rpc(Node, aec_chain_hc, epoch_info, [TopHeight]),
     ct:log("EpochInfo ~p", [Info]),
     %% At end of BlocksCnt child epoch approaches approx:
     CBAfterEpoch = BlocksCnt - (Last - TopHeight),
@@ -1606,4 +1629,10 @@ spread(N, TopHeight, Spread) when N rem 2 == 0 ->
 spread(N, TopHeight, Spread) when N rem 2 == 1 ->
     {Left, [{Middle, K} | Right]} = lists:split(length(Spread) div 2, Spread),
     spread(N div 2, TopHeight, Left) ++ [{Middle, K+1} || Middle > TopHeight] ++ spread(N div 2, TopHeight, Right).
+
+get_entropy(Node, Epoch) ->
+    ParentHeight = rpc(Node, aec_consensus_hc, entropy_height, [Epoch]),
+    {ok, WPHdr}  = rpc(?PARENT_CHAIN_NODE, aec_chain, get_key_header_by_height, [ParentHeight]),
+    {ok, WPHash0} = aec_headers:hash_header(WPHdr),
+    {ParentHeight, aeser_api_encoder:encode(key_block_hash, WPHash0)}.
 
