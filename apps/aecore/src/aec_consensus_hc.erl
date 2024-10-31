@@ -865,10 +865,15 @@ validate_pin(TxEnv, Trees) ->
             end
     end.
     
-add_pin_reward(Trees, _Leader) ->
-    lager:debug("PINNING: correct pin in current Epoch. Rewarding"),
+add_pin_reward(Trees, Leader) ->
+    lager:debug("PINNING: correct pin in current Epoch. Rewarding 4711"),
     aec_events:publish(pin, {pin_accepted}),
-    Trees.
+    LeaderAcc = aec_accounts_trees:get(Leader, aec_trees:accounts(Trees)),
+    Reward = 4711,
+    {ok, LeaderAcc1} = aec_accounts:earn(LeaderAcc, Reward),
+    Trees1 = aec_trees:set_accounts(Trees, 
+                                    aec_accounts_trees:enter(LeaderAcc1, aec_trees:accounts(Trees))),
+    Trees1.
 
 create_contracts([], _TxEnv, Trees) -> Trees;
 create_contracts([Contract | Tail], TxEnv, TreesAccum) ->

@@ -1117,7 +1117,11 @@ last_leader_validates_pin_and_post_to_contract(Config) ->
 
     %% call contract with PC pin tx hash
     ok = pin_contract_call_tx(Config, "pin", [FirstSpend], 0, LastLeader),
-   
+
+    {value, Account} = rpc(?NODE1, aec_chain, get_account, [LastLeader]),
+    ct:log("Leader Account: ~p", [Account]),
+
+    LeaderBalance0 = account_balance(LastLeader),
     %% use get_pin_by_tx_hash to get the posted hash back and compare with actual keyblock (to test encoding decoding etc)
     #{epoch := _PinEpoch, height := PinHeight, block_hash := PinHash} = 
         rpc(Node, aec_parent_connector, get_pin_by_tx_hash, [FirstSpend]),
@@ -1126,6 +1130,14 @@ last_leader_validates_pin_and_post_to_contract(Config) ->
     %% move into next epoch - trigger leader validation?
     {ok, _} = produce_cc_blocks(Config, 2),
     {ok, #{info := {pin_accepted}}} = wait_for_ps(pin),
+
+    LeaderBalance1 = account_balance(LastLeader),
+    
+    ct:log("Account balance for leader was: ~p, is now: ~p", [LeaderBalance0, LeaderBalance1]),
+    % Any Reasonable way to do this test? Likely a bunch of rewards/fees etc have been awarded, although
+    % the above log clearly shows that 4711 (and a bunch more coin) was added.
+    % LeaderBalance0 = LeaderBalance1 - 4711, 
+
     aecore_suite_utils:unsubscribe(NodeName, pin),
     
     %% 2. No pin is posted
@@ -1176,11 +1188,16 @@ last_leader_validates_pin_and_post_to_contract(Config) ->
     aecore_suite_utils:subscribe(NodeName, pin),
     
     % post bad hash to contract
-
+    LeaderBalance4A = account_balance(LastLeader4),
     ok = pin_contract_call_tx(Config, "pin", [EncTxHash4], 0, LastLeader4),
 
     {ok, _} = produce_cc_blocks(Config, 2),
     {ok, #{info := {incorrect_proof_posted}}} = wait_for_ps(pin),
+
+    LeaderBalance4B = account_balance(LastLeader4),
+
+    % See above for when a reward for pinning actually was given... Same problem here.
+    % LeaderBalance4A = LeaderBalance4B, % nothing was rewarded
 
     aecore_suite_utils:unsubscribe(NodeName, pin),
 
