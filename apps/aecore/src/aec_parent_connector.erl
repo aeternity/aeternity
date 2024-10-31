@@ -76,9 +76,6 @@
     }).
 -type state() :: #state{}.
 
-%% Import the spend_tx type from module_a
--type spend_tx() :: aec_spend_tx:tx().
-
 
 %%%=============================================================================
 %%% API
