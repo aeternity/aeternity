@@ -854,7 +854,7 @@ validate_pin(TxEnv, Trees) ->
             try 
                 #{epoch := _PinEpoch, height := PinHeight, block_hash := PinHash} = 
                     aec_parent_connector:get_pin_by_tx_hash(EncTxHash),
-                case {ok,PinHash} =:= aec_chain_state:get_key_block_hash_at_height(PinHeight) of 
+                case {ok, PinHash} =:= aec_chain_state:get_key_block_hash_at_height(PinHeight) of 
                     true -> pin_correct;
                     false -> pin_validation_fail
                 end

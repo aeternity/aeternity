@@ -396,7 +396,7 @@ get_pinning_data() ->
            first := First,
            last  := Last}} = aec_chain_hc:epoch_info(),
     lager:debug("Get pin data for epoch ~p for leader of block ~p", [Epoch - 1, Last]),
-    {ok, BlockHash} = aec_chain_state:get_key_block_hash_at_height(First-1),
+    {ok, BlockHash} = aec_chain_state:get_key_block_hash_at_height(First - 1),
     {ok, ChainType} = get_parent_chain_type(),
     PrevEpoch = Epoch - 1,
     Height = First - 1,

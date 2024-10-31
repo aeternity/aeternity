@@ -93,7 +93,7 @@ pin_info() ->
 
 pin_info(RunEnv) ->
     {ok, Result} = call_consensus_contract_w_env(?ELECTION_CONTRACT, RunEnv, "pin_info", []),
-    decode_option(Result, {fun(X)->X end, undefined}).
+    decode_option(Result, {fun(X) -> X end, undefined}).
 
 
 %% This makes the dependency graph a circle, right?
