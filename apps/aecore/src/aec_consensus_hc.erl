@@ -148,6 +148,7 @@ start_btc(StakersEncoded, ParentConnMod) ->
             StakersEncoded),
     StakersMap = maps:from_list(Stakers),
     start_dependency(aec_preset_keys, [StakersMap]),
+    start_dependency(aec_eoe_vote, [StakersMap, child_block_time()]),
     SignModule = undefined,
     {ParentConnMod, SignModule, []}.
 
@@ -183,6 +184,7 @@ start_ae(StakersEncoded, PinnersEncoded) ->
             PinnersEncoded),
     HCPCMap = maps:from_list(HCPC),
     lager:debug("Pinners: ~p", [HCPCMap]),
+    start_dependency(aec_eoe_vote, [StakersMap, child_block_time()]),
     ParentConnMod = aehttpc_aeternity,
     SignModule = get_sign_module(),
     {ParentConnMod, SignModule, HCPCMap}.
@@ -310,6 +312,7 @@ state_pre_transform_node(Type, Height, PrevNode, Trees) ->
                     case get_entropy_hash(Epoch + 2) of
                         {ok, Seed} ->
                             cache_validators_for_epoch({TxEnv, Trees1}, Seed, Epoch + 2),
+                            Result = aec_eoe_vote:get_result(),
                             Trees2 = step_eoe(TxEnv, Trees1, Leader, Seed, 0, -1, CarryOverFlag),
                             {ok, NextEpochInfo} = aec_chain_hc:epoch_info({TxEnv, Trees2}),
                             {Trees2, Events ++ [{new_epoch, NextEpochInfo}]};
@@ -748,8 +751,19 @@ next_beneficiary() ->
 %% Called as part of deciding who will produce block at Height `height(TxEnv) + 1`
 next_beneficiary(TxEnv, Trees) ->
     ChildHeight = aetx_env:height(TxEnv),
-    case leader_for_height(ChildHeight + 1, {TxEnv, Trees}) of
+    ChildHeight1 = ChildHeight + 1,
+    case leader_for_height(ChildHeight1, {TxEnv, Trees}) of
         {ok, Leader} ->
+            {ok, #{epoch := Epoch} = EpochInfo} = aec_chain_hc:epoch_info({TxEnv, Trees}),
+            case ChildHeight1 == maps:get(last, EpochInfo) of
+                true ->
+                    Hash = aetx_env:key_hash(TxEnv),
+                    Protocol = aetx_env:consensus_version(TxEnv),
+                    aec_eoe_vote:negotiate(Epoch, ChildHeight1, Hash, 0, Protocol); %% TODO epoch delta
+                false ->
+                    %% Try to set the validator as early as possible in epoch, so votes are not missed due to the vote not being able to be validated
+                    aec_eoe_vote:validators(maps:get(validators, EpochInfo), Epoch)
+            end,
             SignModule = get_sign_module(),
             case SignModule:set_candidate(Leader) of
                  {error, key_not_found} ->
