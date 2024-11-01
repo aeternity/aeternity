@@ -14,7 +14,6 @@
          origin/1,
          voter_id/1,
          voter_pubkey/1,
-         recipient_id/1,
          epoch/1,
          check/3,
          process/3,
@@ -27,7 +26,8 @@
          valid_at_protocol/2
         ]).
 
--export([data/1]).
+-export([data/1,
+         type/1]).
 
 -behavior(aetx).
 
@@ -39,6 +39,7 @@
 -record(hc_vote_tx,
         { voter_id        :: aeser_id:id(),
           epoch     = 0   :: non_neg_integer(),
+          type      = 0   :: non_neg_integer(),
           data      = #{} :: #{binary() => binary()}
         }).
 
@@ -49,12 +50,15 @@
 -spec new(map()) -> {ok, aetx:tx()}.
 new(#{voter_id := VoterId,
       epoch    := Epoch,
+      type     := Type,
       data     := Data})
   when is_integer(Epoch), Epoch >= 0,
+       is_integer(Type), Type >= 0,
        is_map(Data) ->
     account = aeser_id:specialize_type(VoterId),
     Tx = #hc_vote_tx{voter_id = VoterId,
                      epoch    = Epoch,
+                     type     = Type,
                      data     = Data},
     {ok, aetx:new(?MODULE, Tx)}.
 
@@ -90,6 +94,10 @@ voter_id(#hc_vote_tx{voter_id = VoterId}) ->
 voter_pubkey(#hc_vote_tx{voter_id = VoterId}) ->
     aeser_id:specialize(VoterId, account).
 
+-spec type(tx()) -> non_neg_integer().
+type(#hc_vote_tx{type = Type}) ->
+    Type.
+
 -spec epoch(tx()) -> non_neg_integer().
 epoch(#hc_vote_tx{epoch = Epoch}) ->
     Epoch.
@@ -112,21 +120,25 @@ process(#hc_vote_tx{}, _Trees, _Env) ->
 
 serialize(#hc_vote_tx{voter_id = VoterId,
                       epoch    = Epoch,
+                      type     = Type,
                       data     = Data} = Tx) ->
     {version(Tx),
      [ {voter_id, VoterId}
      , {epoch, Epoch}
+     , {type, Type}
      , {data, serialize_data(Data)}
      ]}.
 
 deserialize(?HC_VOTE_TX_VSN,
             [ {voter_id, VoterId}
             , {epoch, Epoch}
+            , {type, Type}
             , {data, Data}]) ->
     %% Asserts
     account = aeser_id:specialize_type(VoterId),
     #hc_vote_tx{voter_id = VoterId,
                 epoch    = Epoch,
+                type     = Type,
                 data     = deserialize_data(Data)}.
 
 serialize_data(Data) ->
@@ -138,15 +150,18 @@ deserialize_data(Data) ->
 serialization_template(?HC_VOTE_TX_VSN) ->
     [ {voter_id, id}
     , {epoch, int}
+    , {type, int}
     , {data, [{binary, binary}]}
     ].
 
 for_client(#hc_vote_tx{voter_id = VoterId,
                        epoch    = Epoch,
+                       type     = Type,
                        data     = Data}) ->
-    #{<<"voter_id">>    => aeser_api_encoder:encode(id_hash, VoterId),
-      <<"epoch">>       => Epoch,
-      <<"data">>        => Data}.
+    #{<<"voter_id">> => aeser_api_encoder:encode(id_hash, VoterId),
+      <<"epoch">>    => Epoch,
+      <<"type">>     => Type,
+      <<"data">>     => Data}.
 
 -spec version(tx()) -> non_neg_integer().
 version(_) ->
