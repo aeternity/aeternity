@@ -1201,6 +1201,29 @@ last_leader_validates_pin_and_post_to_contract(Config) ->
 
     aecore_suite_utils:unsubscribe(NodeName, pin),
 
+    %% 4. Bad Epoch (correct epoch - 2)
+
+    mine_to_next_epoch(Node, Config),
+    
+    {ok, PD5} = rpc(Node, aec_parent_connector, get_pinning_data, []),
+    #{epoch := Epoch52} = PD5,
+    EncTxHash5 = pin_to_parent(Node, PD5#{epoch := Epoch52 - 2}, pubkey(?DWIGHT)),
+    %% post parent spend tx hash to CC
+    {ok, #{last := Last5}} = rpc(Node, aec_chain_hc, epoch_info, []),
+    {ok, LastLeader5} = rpc(Node, aec_consensus_hc, leader_for_height, [Last5]),
+
+    mine_to_last_block_in_epoch(Node, Config),
+
+    aecore_suite_utils:subscribe(NodeName, pin),
+    
+    % post bad hash to contract
+    ok = pin_contract_call_tx(Config, "pin", [EncTxHash5], 0, LastLeader5),
+
+    {ok, _} = produce_cc_blocks(Config, 2),
+    {ok, #{info := {incorrect_proof_posted}}} = wait_for_ps(pin),
+
+    aecore_suite_utils:unsubscribe(NodeName, pin),
+
     ok.
 
 
