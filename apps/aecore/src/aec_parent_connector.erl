@@ -416,24 +416,11 @@ get_pinning_data() ->
           {error, last_leader_unknown}
     end.
 
-get_generations(FromHeight, ToHeight) ->
-    lists:flatten(
-        lists:map(
-        fun(Height) ->
-            case aec_chain:get_generation_by_height(Height, backward) of
-                {ok, #{micro_blocks := MBs}} -> MBs;
-                error -> error({failed_to_fetch_generation, Height})
-            end
-        end,
-        lists:seq(FromHeight, ToHeight)
-    )).
-
-
 find_spends_to(Account) ->
     %% TODO Not happy with this. are we in the correct epoch when this is supposed to be 
     %%      called, and what if you want to go back through the chain and validate backwards?
     {ok, #{last := Last, first := First}} = aec_chain_hc:epoch_info(), 
-    Blocks = get_generations(First, Last-1),
+    Blocks = aec_chain_hc:get_micro_blocks_between(First, Last-1), %get_generations(First, Last-1),
     lists:flatten([ pick_pin_spends_to(Account, aec_blocks:txs(B)) || B <- Blocks ]).
 
 

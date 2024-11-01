@@ -22,6 +22,7 @@
         , epoch_info_for_epoch/2
         , validator_schedule/4
         , entropy_hash/1
+        , get_micro_blocks_between/2
         ]).
 
 -define(ELECTION_CONTRACT, election).
@@ -144,3 +145,22 @@ call_consensus_contract_w_env(Contract, Height, Endpoint, Args) when is_integer(
     end;
 call_consensus_contract_w_env(Contract, {TxEnv, Trees}, Endpoint, Args) ->
     aec_consensus_hc:call_consensus_contract_result(Contract, TxEnv, Trees, Endpoint, Args).
+
+get_micro_blocks_between(From, To) ->
+    {ok, KeyHdr} = aec_chain:get_key_header_by_height(To),
+    get_micro_blocks_between(From, KeyHdr, []).
+
+get_micro_blocks_between(Stop, KeyHdr, MBs) ->
+    case Stop > aec_headers:height(KeyHdr) of
+        true -> MBs;
+        false ->
+            {ok, PrevKeyHdr} = aec_chain:get_header(aec_headers:prev_key_hash(KeyHdr)),
+            case aec_headers:prev_hash(KeyHdr) == aec_headers:prev_key_hash(KeyHdr) of
+                true -> %% No Mb
+                    get_micro_blocks_between(Stop, PrevKeyHdr, MBs);
+                false ->
+                    {ok, MB} = aec_chain:get_block(aec_headers:prev_hash(KeyHdr)),
+                    get_micro_blocks_between(Stop, PrevKeyHdr, [MB | MBs])
+            end
+    end.
+

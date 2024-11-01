@@ -1137,7 +1137,6 @@ last_leader_validates_pin_and_post_to_contract(Config) ->
     % the above log clearly shows that 4711 (and a bunch more coin) was added.
     % LeaderBalance0 = LeaderBalance1 - 4711, 
 
-
     aecore_suite_utils:unsubscribe(NodeName, pin),
     
     %% 2. No pin is posted
@@ -1255,7 +1254,7 @@ pin_to_parent(Node, PinningData, AccountPK) ->
 % PINREFAC
 tx_hash_to_child(Node, EncTxHash, SendAccount, Leader, Config) ->
     NodeName = aecore_suite_utils:node_name(Node),
-    NetworkId = ?config(network_id, Config), % TODO not 100% sure about this one...
+    NetworkId = ?config(network_id, Config),
     Nonce = next_nonce(Node, pubkey(SendAccount)),
     Params = #{ sender_id    => aeser_id:create(account, pubkey(SendAccount)),
                 recipient_id => aeser_id:create(account, Leader),
@@ -1273,8 +1272,8 @@ tx_hash_to_child(Node, EncTxHash, SendAccount, Leader, Config) ->
 mine_to_next_epoch(Node, Config) ->
     Height1 = rpc(Node, aec_chain, top_height, []),
     {ok, #{last := Last1, length := _Len}} = rpc(Node, aec_chain_hc, epoch_info, []),
-    {ok, Bs} = produce_cc_blocks(Config, Last1 - Height1 + 1), 
-    ct:log("Block last epoch: ~p", [hd(lists:nthtail(length(Bs) - 2, Bs))]).
+    {ok, Bs} = produce_cc_blocks(Config, Last1 - Height1 + 1),
+    ct:log("Block last epoch: ~p", [Bs]).
 
 %%% --------- helper functions
 
