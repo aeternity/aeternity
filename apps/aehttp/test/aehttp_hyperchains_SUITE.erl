@@ -1672,7 +1672,8 @@ node_config(Node, CTConfig, PotentialStakers, ReceiveAddress, ProducingCommitmen
                                         <<"staking_contract">> => aeser_api_encoder:encode(contract_pubkey, staking_contract_address()),
                                         <<"contract_owner">> => aeser_api_encoder:encode(account_pubkey,?OWNER_PUBKEY),
                                         <<"expected_key_block_rate">> => 2000,
-                                        <<"stakers">> => Stakers},
+                                        <<"stakers">> => Stakers,
+                                        <<"pinning_reward_value">> => 4711},
                                     SpecificConfig)
                                     }}},
         <<"fork_management">> =>

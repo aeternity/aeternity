@@ -115,11 +115,11 @@ epoch_start_height(Epoch, Height) ->
     end.
 
 epoch_info_map(Epoch, EpochInfo) ->
-    {tuple, {Start, Length, Seed, StakingDist}} = EpochInfo,
+    {tuple, {Start, Length, Seed, StakingDist, CarryOver}} = EpochInfo,
     SeedHash   = decode_option(Seed, {fun({bytes, Bin}) -> Bin end, undefined}),
     Validators = decode_option(StakingDist, {fun decode_stakers/1, undefined}),
     #{first => Start, epoch => Epoch, length => Length, last => Start + Length - 1,
-      validators => Validators, seed => SeedHash}.
+      validators => Validators, seed => SeedHash, carry_over_pin_reward => CarryOver}.
 
 decode_option({variant, [0, 1], 0, {}}, {_SomeFun, NoneValue}) -> NoneValue;
 decode_option({variant, [0, 1], 1, {SomeValue}}, {SomeFun, _NoneValue}) -> SomeFun(SomeValue).

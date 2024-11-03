@@ -9,10 +9,11 @@ contract interface MainStaking =
 
 main contract HCElection =
   record epoch_info =
-    { start                : int,
-      length               : int,
-      seed                 : option(bytes()),
-      staking_distribution : option(list(address * int))
+    { start                 : int,
+      length                : int,
+      seed                  : option(bytes()),
+      staking_distribution  : option(list(address * int)),
+      carry_over_pin_reward : int
     }
 
   record state =
@@ -31,7 +32,7 @@ main contract HCElection =
       epoch                 = 0,
       epochs                = {},
       pin                   = None }   
-
+ 
   stateful entrypoint init_epochs(epoch_length : int) =
     assert_protocol_call()
     require(Chain.block_height == 0, "Only in genesis")
@@ -48,7 +49,7 @@ main contract HCElection =
                          length : int,
                          seed : option(bytes),
                          staking_distribution : option(list(address * int))) =
-    {start = start, length = length, seed = seed, staking_distribution = staking_distribution}
+    {start = start, length = length, seed = seed, staking_distribution = staking_distribution, carry_over_pin_reward = 0}
 
   stateful entrypoint step(leader : address) =
     assert_protocol_call()
@@ -58,7 +59,7 @@ main contract HCElection =
     assert_protocol_call()
     put(state{ leader = leader })
 
-  stateful entrypoint step_eoe(leader : address, seed : bytes(), epoch_adjust : int) =
+  stateful entrypoint step_eoe(leader : address, seed : bytes(), epoch_adjust : int, carry_over : int) =
     assert_protocol_call()
     let epoch = state.epoch
     let ei = state.epochs[epoch]
@@ -66,7 +67,7 @@ main contract HCElection =
     let ei2 = state.epochs[epoch + 2]
     let ei_adjust = state.epochs[epoch + 3]{ length = ei2.length + epoch_adjust }
     let new_epochs = { [epoch] = state.epochs[epoch],
-                       [epoch + 1] = state.epochs[epoch + 1],
+                       [epoch + 1] = state.epochs[epoch + 1]{ carry_over_pin_reward = carry_over },
                        [epoch + 2] = state.epochs[epoch + 2]{ seed = Some(seed) },
                        [epoch + 3] = ei_adjust,
                        [epoch + 4] = mk_epoch_info(ei_adjust.start + ei_adjust.length, ei_adjust.length, None,

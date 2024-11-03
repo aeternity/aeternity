@@ -268,27 +268,30 @@ state_pre_transform_node(Type, Height, PrevNode, Trees) ->
     {ok, PrevHash} = aec_headers:hash_header(PrevHeader),
     {TxEnv0, _} = aetx_env:tx_env_and_trees_from_hash(aetx_transaction, PrevHash),
     TxEnv = aetx_env:set_height(TxEnv0, Height),
-    {ok, #{epoch := Epoch} = EpochInfo} = aec_chain_hc:epoch_info({TxEnv, Trees}),
+    {ok, #{epoch := Epoch, carry_over_pin_reward := CarryOver} = EpochInfo} = aec_chain_hc:epoch_info({TxEnv, Trees}),
     {ok, Leader} = leader_for_height(Height, {TxEnv, Trees}),
     case Type of
         key ->
             case Height == maps:get(last, EpochInfo) of
                 true ->
-                    Trees1 = 
+                    PinReward = pinning_reward_value(),
+                    {Trees1, NewCarryOver} = 
                         case validate_pin(TxEnv, Trees, EpochInfo) of
                             pin_missing -> 
                                 lager:debug("PINNING: no proof posted"),
                                 aec_events:publish(pin, {no_proof_posted}),
-                                Trees;
-                            pin_correct -> add_pin_reward(Trees, Leader);
+                                {Trees, PinReward + CarryOver};
+                            pin_correct -> 
+                                Ttemp = add_pin_reward(Trees, Leader, CarryOver),
+                                {Ttemp, 0};
                             pin_validation_fail -> 
                                 lager:debug("PINNING: Incorrect proof posted"), 
                                 aec_events:publish(pin, {incorrect_proof_posted}), 
-                                Trees
+                                {Trees, PinReward + CarryOver}
                         end,
                     {ok, Seed} = get_entropy_hash(Epoch + 2),
                     cache_validators_for_epoch({TxEnv, Trees}, Seed, Epoch + 2),
-                    step_eoe(TxEnv, Trees1, Leader, Seed, 0);
+                    step_eoe(TxEnv, Trees1, Leader, Seed, 0, NewCarryOver);
                 false ->
                     step(TxEnv, Trees, Leader)
             end;
@@ -484,6 +487,10 @@ child_epoch_length() ->
     Fun = fun() -> get_consensus_config_key([<<"child_epoch_length">>]) end,
     aeu_ets_cache:get(?ETS_CACHE_TABLE, child_epoch_length, Fun).
 
+pinning_reward_value() ->
+    Fun = fun() -> get_consensus_config_key([<<"pinning_reward_value">>]) end,
+    aeu_ets_cache:get(?ETS_CACHE_TABLE, pinning_reward_value, Fun).
+
 %acceptable_sync_offset() ->
 %    Fun = fun() -> get_consensus_config_key([<<"parent_chain">>, <<"acceptable_sync_offset">>], 60000) end,
 %    aeu_ets_cache:get(?ETS_CACHE_TABLE, acceptable_sync_offset, Fun).
@@ -510,8 +517,8 @@ step(TxEnv, Trees, Leader) ->
             aec_conductor:throw_error(step_failed)
     end.
 
-step_eoe(TxEnv, Trees, Leader, Seed, Adjust) ->
-    {ok, CD} = aeb_fate_abi:create_calldata("step_eoe", [{address, Leader}, {bytes, Seed}, Adjust]),
+step_eoe(TxEnv, Trees, Leader, Seed, Adjust, CarryOver) ->
+    {ok, CD} = aeb_fate_abi:create_calldata("step_eoe", [{address, Leader}, {bytes, Seed}, Adjust, CarryOver]),
     CallData = aeser_api_encoder:encode(contract_bytearray, CD),
     case call_consensus_contract_(?ELECTION_CONTRACT, TxEnv, Trees, CallData, "step_eoe", 0) of
         {ok, Trees1, _Call} ->
@@ -867,11 +874,10 @@ validate_pin(TxEnv, Trees, CurEpochInfo) ->
             end
     end.
     
-add_pin_reward(Trees, Leader) ->
-    lager:debug("PINNING: correct pin in current Epoch. Rewarding 4711"),
+add_pin_reward(Trees, Leader, CarryOver) ->
     aec_events:publish(pin, {pin_accepted}),
     LeaderAcc = aec_accounts_trees:get(Leader, aec_trees:accounts(Trees)),
-    Reward = 4711,   %% TODO Fix the rewards
+    Reward = pinning_reward_value() + CarryOver,
     {ok, LeaderAcc1} = aec_accounts:earn(LeaderAcc, Reward),
     Trees1 = aec_trees:set_accounts(Trees, 
                                     aec_accounts_trees:enter(LeaderAcc1, aec_trees:accounts(Trees))),
