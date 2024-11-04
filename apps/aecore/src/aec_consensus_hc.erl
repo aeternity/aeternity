@@ -272,16 +272,28 @@ state_pre_transform_node(Type, Height, PrevNode, Trees) ->
     {ok, Leader} = leader_for_height(Height, {TxEnv, Trees}),
     case Type of
         key ->
-           case Height == maps:get(last, EpochInfo) of
-               true ->
-                   {ok, Seed} = get_entropy_hash(Epoch + 2),
-                   cache_validators_for_epoch({TxEnv, Trees}, Seed, Epoch + 2),
-                   step_eoe(TxEnv, Trees, Leader, Seed, 0);
-               false ->
-                   step(TxEnv, Trees, Leader)
-           end;
-       micro ->
-           step_micro(TxEnv, Trees, Leader)
+            case Height == maps:get(last, EpochInfo) of
+                true ->
+                    Trees1 = 
+                        case validate_pin(TxEnv, Trees, EpochInfo) of
+                            pin_missing -> 
+                                lager:debug("PINNING: no proof posted"),
+                                aec_events:publish(pin, {no_proof_posted}),
+                                Trees;
+                            pin_correct -> add_pin_reward(Trees, Leader);
+                            pin_validation_fail -> 
+                                lager:debug("PINNING: Incorrect proof posted"), 
+                                aec_events:publish(pin, {incorrect_proof_posted}), 
+                                Trees
+                        end,
+                    {ok, Seed} = get_entropy_hash(Epoch + 2),
+                    cache_validators_for_epoch({TxEnv, Trees}, Seed, Epoch + 2),
+                    step_eoe(TxEnv, Trees1, Leader, Seed, 0);
+                false ->
+                    step(TxEnv, Trees, Leader)
+            end;
+        micro ->
+            step_micro(TxEnv, Trees, Leader)
     end.
 
 %% -------------------------------------------------------------------
@@ -832,6 +844,38 @@ is_leader_valid(Node, _Trees, TxEnv, _PrevNode) ->
             lager:debug("(Impossible) No leader known for height = ~p", [Height]),
             aec_conductor:throw_error(parent_chain_block_not_synced)
     end.
+
+validate_pin(TxEnv, Trees, CurEpochInfo) ->
+    case aec_chain_hc:pin_info({TxEnv, Trees}) of
+        undefined -> pin_missing;
+        EncTxHash ->  
+            % TODO make this code much more robust - incorrect EncTxHash, bad value from PC, incorrect hash etc.etc
+            lager:debug("PINNING: EncHash: ~p", [EncTxHash]),
+            try 
+                #{epoch := CurEpoch} = CurEpochInfo,
+                #{epoch := PinEpoch, height := PinHeight, block_hash := PinHash} = 
+                    aec_parent_connector:get_pin_by_tx_hash(EncTxHash),
+                PinEpoch = CurEpoch - 1, % validate it was actually last epoch
+                case {ok, PinHash} =:= aec_chain_state:get_key_block_hash_at_height(PinHeight) of 
+                    true -> pin_correct;
+                    false -> pin_validation_fail
+                end
+            catch
+                Type:Err -> 
+                    lager:debug("bad pin proof posted: ~p : ~p", [Type, Err]),
+                    pin_validation_fail               
+            end
+    end.
+    
+add_pin_reward(Trees, Leader) ->
+    lager:debug("PINNING: correct pin in current Epoch. Rewarding 4711"),
+    aec_events:publish(pin, {pin_accepted}),
+    LeaderAcc = aec_accounts_trees:get(Leader, aec_trees:accounts(Trees)),
+    Reward = 4711,   %% TODO Fix the rewards
+    {ok, LeaderAcc1} = aec_accounts:earn(LeaderAcc, Reward),
+    Trees1 = aec_trees:set_accounts(Trees, 
+                                    aec_accounts_trees:enter(LeaderAcc1, aec_trees:accounts(Trees))),
+    Trees1.
 
 create_contracts([], _TxEnv, Trees) -> Trees;
 create_contracts([Contract | Tail], TxEnv, TreesAccum) ->

@@ -34,6 +34,7 @@
          get_pin/1,
          wallet_post_pin_to_pc/1,
          post_pin_to_pc/1,
+         last_leader_validates_pin_and_post_to_contract/1,
          get_contract_pubkeys/1,
          correct_leader_in_micro_block/1,
          first_leader_next_epoch/1
@@ -166,7 +167,8 @@ groups() ->
             produce_first_epoch,
             get_pin,
             wallet_post_pin_to_pc,
-            post_pin_to_pc ]}
+            post_pin_to_pc,
+            last_leader_validates_pin_and_post_to_contract]}
     ].
 
 suite() -> [].
@@ -941,7 +943,7 @@ get_pin(Config) ->
 
     %% Verify that decoding function works on encoded payload:
     ?assertEqual(#{epoch => PrevEpoch, height => Height1, block_hash => BH1Dec},
-                 rpc(Node, aec_pinning_agent, decode_pin_payload, [Payload])),
+                 rpc(Node, aec_parent_connector, decode_parent_pin_payload, [Payload])),
 
     %% produce some more child blocks if we stay in same epoch, then pins should be the same
     {ok, _} = produce_cc_blocks(Config, 2),
@@ -973,17 +975,15 @@ post_pin_to_pc(Config) ->
     Height1 = rpc(Node, aec_chain, top_height, []),
     {ok, #{last := Last1}} = rpc(Node, aec_chain_hc, epoch_info, []),
     {ok, _} = produce_cc_blocks(Config, Last1 - Height1 + 1),
-    {ok, Pin} = rpc(Node, aec_pinning_agent, get_pinning_data, []),
-    PinPayloadBin = rpc(Node, aec_pinning_agent, encode_pin_payload, [Pin]),
+    {ok, Pin} = rpc(Node, aec_parent_connector, get_pinning_data, []),
     {ok, _} = produce_cc_blocks(Config, 5),
 
     DwightPub = pubkey(?DWIGHT), % PC chain account
     DwightEnc = aeser_api_encoder:encode(account_pubkey, DwightPub),
-    ParentNodeSpec = #{scheme => "http", host => "127.0.0.1", port => aecore_suite_utils:external_api_port(?PARENT_CHAIN_NODE)},
     {ok, []} = rpc(?PARENT_CHAIN_NODE, aec_tx_pool, peek, [infinity]), % no pending transactions
-    PinTx = aec_pinning_agent:create_pin_tx(ParentNodeSpec, DwightEnc, DwightPub, 1, 30000 * ?DEFAULT_GAS_PRICE, PinPayloadBin),
+    PinTx = rpc(Node, aec_parent_connector, create_pin_tx, [DwightEnc, DwightPub, 1, 30000 * ?DEFAULT_GAS_PRICE, Pin]),
     SignedPinTx = sign_tx(PinTx, privkey(?DWIGHT),?PARENT_CHAIN_NETWORK_ID),
-    {ok, #{<<"tx_hash">> := TxHash}} = aec_pinning_agent:post_pin_tx(SignedPinTx, ParentNodeSpec),
+    EncTxHash = rpc(Node, aec_parent_connector, post_pin_tx, [SignedPinTx]),
     {ok, [_]} = rpc(?PARENT_CHAIN_NODE, aec_tx_pool, peek, [infinity]), % one transaction pending now.
     {ok, _} = produce_cc_blocks(Config, 5),
     {ok, []} = rpc(?PARENT_CHAIN_NODE, aec_tx_pool, peek, [infinity]), % all transactions comitted
@@ -999,7 +999,7 @@ post_pin_to_pc(Config) ->
                 amount       => 1,
                 fee          => 30000 * ?DEFAULT_GAS_PRICE,
                 nonce        => Nonce,
-                payload      => TxHash},
+                payload      => EncTxHash},
     ct:log("Preparing a spend tx: ~p", [Params]),
     {ok, Tx} = aec_spend_tx:new(Params),
     SignedTx = sign_tx(Tx, privkey(?ALICE), NetworkId),
@@ -1048,7 +1048,7 @@ wallet_post_pin_to_pc(Config) ->
 
     SignedPinTx = sign_tx(PinTx, privkey(?DWIGHT), ?PARENT_CHAIN_NETWORK_ID),
     Transaction = aeser_api_encoder:encode(transaction, aetx_sign:serialize_to_binary(SignedPinTx)),
-    {ok, 200, #{<<"tx_hash">> := TxHash}} = aecore_suite_utils:http_request(ParentHost, post, <<"transactions">>, #{tx => Transaction}),
+    {ok, 200, #{<<"tx_hash">> := ProofHash}} = aecore_suite_utils:http_request(ParentHost, post, <<"transactions">>, #{tx => Transaction}),
     {ok, [_]} = rpc(?PARENT_CHAIN_NODE, aec_tx_pool, peek, [infinity]), % one transaction pending now.
     {ok, _} = produce_cc_blocks(Config, Len div 2),
     {ok, []} = rpc(?PARENT_CHAIN_NODE, aec_tx_pool, peek, [infinity]), % all transactions comitted
@@ -1060,7 +1060,7 @@ wallet_post_pin_to_pc(Config) ->
     %% Now just inform the last leader of this epoch about the transaction hash
     %% via a spend on child chain... the leader will have machinery to pick up tx hash
     %% and to find out at which parent height the hash is accepted at
-    ProofHash = list_to_binary("PIN"++TxHash),
+    % ProofHash = list_to_binary("PIN"++TxHash), % the hash comes encoded already
     {_, LeaderPubkey} = aeser_api_encoder:decode(LastLeader),
     NonceAlice = next_nonce(Node, pubkey(?ALICE)),
     Params = #{ sender_id    => aeser_id:create(account, pubkey(?ALICE)),
@@ -1080,11 +1080,223 @@ wallet_post_pin_to_pc(Config) ->
     {ok, []} = rpc(Node, aec_tx_pool, peek, [infinity]), % transactions in pool
 
     Height2 = rpc(Node, aec_chain, top_height, []),
-    {ok, #{last := CollectHeight}} = rpc(?NODE1, aec_chain_hc, epoch_info, []),
+    {ok, #{last := CollectHeight}} = rpc(Node, aec_chain_hc, epoch_info, []),
     %% mine to CollectHeight and TODO: see that indeed the proof has been used
     {ok, _} = produce_cc_blocks(Config, CollectHeight - Height2),
     ok.
 
+last_leader_validates_pin_and_post_to_contract(Config) ->
+    [{Node, _, _} | _] = ?config(nodes, Config),
+    [{_, NodeName, _} | _] = ?config(nodes, Config),
+  
+    %% 1. Correct pin is posted in the contract
+
+    %% move into next epoch
+    mine_to_next_epoch(Node, Config),
+    %% post pin to PC
+    {ok, PinningData} = rpc(Node, aec_parent_connector, get_pinning_data, []),
+    TxHash = pin_to_parent(Node, PinningData, pubkey(?DWIGHT)),
+    %% post parent spend tx hash to CC
+    {ok, #{epoch  := _Epoch,
+           first  := First,
+           last   := Last,
+           length := _Length}} = rpc(Node, aec_chain_hc, epoch_info, []),
+    {ok, LastLeader} = rpc(Node, aec_consensus_hc, leader_for_height, [Last]),
+    tx_hash_to_child(Node, TxHash, ?ALICE, LastLeader, Config),
+    %% move forward to last block
+    
+    mine_to_last_block_in_epoch(Node, Config),
+    % produce blocks until last
+
+    aecore_suite_utils:subscribe(NodeName, pin),
+    %% TODO test to see that LastLeader actually is leader now?
+
+    %% Find the first spend
+    [FirstSpend|_] = rpc(Node, aec_parent_connector, find_spends_to, [LastLeader]),
+    ct:log("First Spend: ~p", [FirstSpend]),
+
+    %% call contract with PC pin tx hash
+    ok = pin_contract_call_tx(Config, "pin", [FirstSpend], 0, LastLeader),
+
+    {value, Account} = rpc(?NODE1, aec_chain, get_account, [LastLeader]),
+    ct:log("Leader Account: ~p", [Account]),
+
+    LeaderBalance1A = account_balance(LastLeader),
+    %% use get_pin_by_tx_hash to get the posted hash back and compare with actual keyblock (to test encoding decoding etc)
+    #{epoch := _PinEpoch, height := PinHeight, block_hash := PinHash} = 
+        rpc(Node, aec_parent_connector, get_pin_by_tx_hash, [FirstSpend]),
+    ?assertEqual({ok, PinHash}, rpc(Node, aec_chain_state, get_key_block_hash_at_height, [PinHeight])),
+    
+    %% move into next epoch - trigger leader validation?
+    {ok, _} = produce_cc_blocks(Config, 2),
+    {ok, #{info := {pin_accepted}}} = wait_for_ps(pin),
+    LeaderBalance1B = account_balance(LastLeader),
+    
+    ct:log("Account balance for leader was: ~p, is now: ~p", [LeaderBalance1A, LeaderBalance1B]),
+    % Any Reasonable way to do this test? Likely a bunch of rewards/fees etc have been awarded, although
+    % the above log clearly shows that 4711 (and a bunch more coin) was added.
+    % LeaderBalance0 = LeaderBalance1 - 4711, 
+
+    aecore_suite_utils:unsubscribe(NodeName, pin),
+    
+    %% 2. No pin is posted
+
+    % to next epoch
+    mine_to_next_epoch(Node, Config),
+    
+    mine_to_last_block_in_epoch(Node, Config),
+
+    aecore_suite_utils:subscribe(NodeName, pin),
+    
+    % In last generation, but we don't post pin
+
+    {ok, _} = produce_cc_blocks(Config, 2),
+    {ok, #{info := {no_proof_posted}}} = wait_for_ps(pin),
+
+    aecore_suite_utils:unsubscribe(NodeName, pin),
+
+    %% 3. Incorrect pin posted to contract a) bad tx hash
+
+    mine_to_next_epoch(Node, Config),
+    
+    mine_to_last_block_in_epoch(Node, Config),
+
+    aecore_suite_utils:subscribe(NodeName, pin),
+    
+    % post bad hash to contract
+
+    ok = pin_contract_call_tx(Config, "pin", [<<"THIS IS A BAD TX HASH">>], 0, LastLeader),
+
+    {ok, _} = produce_cc_blocks(Config, 2),
+    {ok, #{info := {incorrect_proof_posted}}} = wait_for_ps(pin),
+
+    aecore_suite_utils:unsubscribe(NodeName, pin),
+
+    %% 4. Incorrect hash stored on PC
+
+    mine_to_next_epoch(Node, Config),
+    
+    {ok, PD4} = rpc(Node, aec_parent_connector, get_pinning_data, []),
+    EncTxHash4 = pin_to_parent(Node, PD4#{block_hash := <<"VERYINCORRECTBLOCKHASH">>}, pubkey(?DWIGHT)),
+    %% post parent spend tx hash to CC
+    {ok, #{last := Last4}} = rpc(Node, aec_chain_hc, epoch_info, []),
+    {ok, LastLeader4} = rpc(Node, aec_consensus_hc, leader_for_height, [Last4]),
+
+    mine_to_last_block_in_epoch(Node, Config),
+
+    aecore_suite_utils:subscribe(NodeName, pin),
+    
+    % post bad hash to contract
+    LeaderBalance4A = account_balance(LastLeader4),
+    ok = pin_contract_call_tx(Config, "pin", [EncTxHash4], 0, LastLeader4),
+
+    {ok, _} = produce_cc_blocks(Config, 2),
+    {ok, #{info := {incorrect_proof_posted}}} = wait_for_ps(pin),
+
+    LeaderBalance4B = account_balance(LastLeader4),
+
+    ct:log("Account balance for leader was: ~p, is now: ~p", [LeaderBalance4A, LeaderBalance4B]),
+    % See above for when a reward for pinning actually was given... Same problem here.
+    % LeaderBalance4A = LeaderBalance4B, % nothing was rewarded
+
+    aecore_suite_utils:unsubscribe(NodeName, pin),
+
+    %% 4. Bad Epoch (correct epoch - 2)
+
+    mine_to_next_epoch(Node, Config),
+    
+    {ok, PD5} = rpc(Node, aec_parent_connector, get_pinning_data, []),
+    #{epoch := Epoch52} = PD5,
+    EncTxHash5 = pin_to_parent(Node, PD5#{epoch := Epoch52 - 2}, pubkey(?DWIGHT)),
+    %% post parent spend tx hash to CC
+    {ok, #{last := Last5}} = rpc(Node, aec_chain_hc, epoch_info, []),
+    {ok, LastLeader5} = rpc(Node, aec_consensus_hc, leader_for_height, [Last5]),
+
+    mine_to_last_block_in_epoch(Node, Config),
+
+    aecore_suite_utils:subscribe(NodeName, pin),
+    
+    % post bad hash to contract
+    ok = pin_contract_call_tx(Config, "pin", [EncTxHash5], 0, LastLeader5),
+
+    {ok, _} = produce_cc_blocks(Config, 2),
+    {ok, #{info := {incorrect_proof_posted}}} = wait_for_ps(pin),
+
+    aecore_suite_utils:unsubscribe(NodeName, pin),
+
+    ok.
+
+
+%%% --------- pinning helpers
+
+wait_for_ps(Event) ->
+    receive 
+        {gproc_ps_event, Event, Info} -> {ok, Info};
+        Other -> error({wrong_signal, Other})
+    end.
+
+mine_to_last_block_in_epoch(Node, Config) ->
+    {ok, #{epoch  := _Epoch,
+           first  := _First,
+           last   := Last,
+           length := _Length}} = rpc(Node, aec_chain_hc, epoch_info, []),
+    CH = rpc(Node, aec_chain, top_height, []),
+    DistToBeforeLast = Last - CH - 1,
+    {ok, _} = produce_cc_blocks(Config, DistToBeforeLast).
+
+% PINREFAC
+pin_contract_call_tx(Config, Fun, Args, Amount, FromPubKey) ->
+    ContractPubkey = ?config(election_contract, Config),
+    Nonce = next_nonce(?NODE1, FromPubKey),
+    {ok, CallData} = aeb_fate_abi:create_calldata(Fun, Args),
+    ABI = aect_test_utils:abi_version(),
+    TxSpec =
+        #{  caller_id   => aeser_id:create(account, FromPubKey)
+          , nonce       => Nonce
+          , contract_id => aeser_id:create(contract, ContractPubkey)
+          , abi_version => ABI
+          , fee         => 1000000 * ?DEFAULT_GAS_PRICE
+          , amount      => Amount
+          , gas         => 1000000
+          , gas_price   => ?DEFAULT_GAS_PRICE
+          , call_data   => CallData},
+    {ok, Tx} = aect_call_tx:new(TxSpec),
+    NetworkId = ?config(network_id, Config),
+    SignedTx = sign_tx(Tx, privkey(who_by_pubkey(FromPubKey)), NetworkId),
+    rpc:call(?NODE1_NAME, aec_tx_pool, push, [SignedTx, tx_received]),
+    ok.
+
+% PINREFAC aec_parent_connector??
+pin_to_parent(Node, PinningData, AccountPK) ->
+    AccPKEncEnc = aeser_api_encoder:encode(account_pubkey, AccountPK),
+    {ok, []} = rpc(?PARENT_CHAIN_NODE, aec_tx_pool, peek, [infinity]), % no pending transactions
+    PinTx = rpc(Node, aec_parent_connector, create_pin_tx, [AccPKEncEnc, AccountPK, 1, 30000 * ?DEFAULT_GAS_PRICE, PinningData]),
+    SignedPinTx = sign_tx(PinTx, privkey(?DWIGHT),?PARENT_CHAIN_NETWORK_ID),
+    rpc(Node, aec_parent_connector, post_pin_tx, [SignedPinTx]).
+
+% PINREFAC
+tx_hash_to_child(Node, EncTxHash, SendAccount, Leader, Config) ->
+    NodeName = aecore_suite_utils:node_name(Node),
+    NetworkId = ?config(network_id, Config),
+    Nonce = next_nonce(Node, pubkey(SendAccount)),
+    Params = #{ sender_id    => aeser_id:create(account, pubkey(SendAccount)),
+                recipient_id => aeser_id:create(account, Leader),
+                amount       => 1,
+                fee          => 30000 * ?DEFAULT_GAS_PRICE,
+                nonce        => Nonce,
+                payload      => EncTxHash},
+    ct:log("Preparing a spend tx: ~p", [Params]),
+    {ok, Tx} = aec_spend_tx:new(Params),
+    SignedTx = sign_tx(Tx, privkey(SendAccount), NetworkId),
+    ok = rpc:call(NodeName, aec_tx_pool, push, [SignedTx, tx_received]),
+    Hash = rpc:call(NodeName, aetx_sign, hash, [SignedTx]),
+    Hash.
+
+mine_to_next_epoch(Node, Config) ->
+    Height1 = rpc(Node, aec_chain, top_height, []),
+    {ok, #{last := Last1, length := _Len}} = rpc(Node, aec_chain_hc, epoch_info, []),
+    {ok, Bs} = produce_cc_blocks(Config, Last1 - Height1 + 1),
+    ct:log("Block last epoch: ~p", [Bs]).
 
 %%% --------- helper functions
 
@@ -1189,7 +1401,8 @@ inspect_election_contract(OriginWho, WhatToInspect, Config) ->
 inspect_election_contract(OriginWho, WhatToInspect, Config, TopHash) ->
     {Fun, Args} =
         case WhatToInspect of
-            current_added_staking_power -> {"added_stake", []}
+            current_added_staking_power -> {"added_stake", []};
+            _ -> {WhatToInspect, []}
         end,
     ContractPubkey = ?config(election_contract, Config),
     do_contract_call(ContractPubkey, src(?HC_CONTRACT, Config), Fun, Args, OriginWho, TopHash).
@@ -1635,4 +1848,3 @@ get_entropy(Node, Epoch) ->
     {ok, WPHdr}  = rpc(?PARENT_CHAIN_NODE, aec_chain, get_key_header_by_height, [ParentHeight]),
     {ok, WPHash0} = aec_headers:hash_header(WPHdr),
     {ParentHeight, aeser_api_encoder:encode(key_block_hash, WPHash0)}.
-
