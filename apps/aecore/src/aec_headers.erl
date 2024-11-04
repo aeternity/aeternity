@@ -76,9 +76,18 @@
 
 -define(IS_INT_INFO(I), is_integer(I) andalso (I >= 0) andalso (I =< 16#ffffffff)).
 
--type height() :: aec_blocks:height().
--type bin_info() :: <<>> | <<_:32>>. %% ?OPTIONAL_INFO_BYTES * 8
--type info()     :: aec_blocks:info().
+-type height()        :: aec_blocks:height().
+%% The info field is a 32 bit field.
+%% In ae this is an opaque field (that may contain a node version).
+%% In HC thus is a defined bitfield as follows:
+%% Bit       31: 1 - A 'Hole' block, 0 - not a 'Hole' block.
+%% Bits 21 - 30: Currently undefined/free.
+%% Bits  0 - 20: Node version:
+%% Bits          14 - 20: Major
+%% Bits           7 - 13: Minor
+%% Bits           0 -  6: Increment
+-type bin_info()      :: <<>> | <<_:32>>. %% ?OPTIONAL_INFO_BYTES * 8
+-type symbolic_info() :: aec_blocks:symbolic_info().
 
 -record(mic_header, {
           height       = 0                                     :: height(),
@@ -280,7 +289,7 @@ from_db_header_(_) ->
                      state_hash(), miner_pubkey(), beneficiary_pubkey(),
                      aec_consensus:key_target(),
                      aec_consensus:key_seal() | 'no_value',
-                     non_neg_integer(), non_neg_integer(), info(),
+                     non_neg_integer(), non_neg_integer(), symbolic_info(),
                      aec_hard_forks:protocol_vsn()
                     ) -> header().
 new_key_header(Height, PrevHash, PrevKeyHash, RootHash, Miner, Beneficiary,
@@ -300,6 +309,14 @@ new_key_header(Height, PrevHash, PrevKeyHash, RootHash, Miner, Beneficiary,
                     version      = Version
                }).
 
+hole_to_bits(true)  -> 1 bsl 31;
+hole_to_bits(false) -> 0.
+
+version_to_bits(#version{major = Major, minor = Minor, increment = I}) ->
+    ((Major band 127) bsl 14)
+    bor ((Minor band 127) bsl 7)
+    bor (I band 127).
+
 make_info(0, _Version, default) ->
     <<>>;
 make_info(_, Version, Info) when (Version >= ?MINERVA_PROTOCOL_VSN), ?IS_INT_INFO(Info) ->
@@ -308,7 +325,12 @@ make_info(_, Version, default) when Version >= ?MINERVA_PROTOCOL_VSN ->
     PointReleaseInfo = aeu_info:block_info(),
     <<PointReleaseInfo:?OPTIONAL_INFO_BYTES/unit:8>>;
 make_info(_, _Version, default) ->
-    <<>>.
+    <<>>;
+%% New symbolic info for HC.
+make_info(_, _Version, #info_fields{hole = Hole, version = NodeVersion }) ->
+    Info = hole_to_bits(Hole) bor version_to_bits(NodeVersion),
+    <<Info:?OPTIONAL_INFO_BYTES/unit:8>>.
+
 
 -spec new_micro_header(height(), block_header_hash(), block_header_hash(),
                        state_hash(), non_neg_integer(), txs_hash(),
@@ -358,7 +380,7 @@ info(#key_header{info = <<>>}) ->
 info(#key_header{info = <<I:?OPTIONAL_INFO_BYTES/unit:8>>}) ->
     I.
 
--spec set_info(key_header(), info()) -> key_header().
+-spec set_info(key_header(), symbolic_info()) -> key_header().
 set_info(#key_header{version = Vsn} = H, I) ->
     H#key_header{info = make_info(height(H), Vsn, I)}.
 

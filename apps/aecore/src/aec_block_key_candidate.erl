@@ -7,7 +7,7 @@
 -module(aec_block_key_candidate).
 
 -export([ create/3
-        , create_hole/3
+        , hc_create_hole/3
         ]).
 
 -include_lib("aecontract/include/hard_forks.hrl").
@@ -21,12 +21,12 @@
 create(BlockHash, Beneficiary, Miner) ->
     create(BlockHash, Beneficiary, Miner, #{hc_hole => false}).
 
-
--spec create_hole(BlockHash, Beneficiary, Miner) -> {ok, aec_blocks:block()} | {error, term()}
+%% HC only function.
+-spec hc_create_hole(BlockHash, Beneficiary, Miner) -> {ok, aec_blocks:block()} | {error, term()}
   when BlockHash :: aec_blocks:block() | aec_blocks:block_header_hash()
      , Beneficiary :: aec_keys:pubkey()
      , Miner :: aec_keys:pubkey().
-create_hole(BlockHash, Beneficiary, Miner) ->
+hc_create_hole(BlockHash, Beneficiary, Miner) ->
     create(BlockHash, Beneficiary, Miner, #{hc_hole => true}).
 
 create(BlockHash, Beneficiary, Miner, Flags) when is_binary(BlockHash) ->
@@ -83,27 +83,10 @@ int_create_block(Height, PrevBlockHash, PrevBlock, Miner, Beneficiary, Trees, Pr
                       key   -> PrevBlockHash
                   end,
     Fork = aeu_env:get_env(aecore, fork, undefined),
-    InfoField =
-        case maps:get(hc_hole, Flags, false) of
-            true ->
-                %% Keep backwards comatibility for ae
-                %% WIP Note: Not sure if this should live here.
-                case aec_chain_state:get_info_field(Height, Fork) of
-                    default when Protocol  >= ?MINERVA_PROTOCOL_VSN ->
-                    PointReleaseInfo = aeu_info:block_info(),
-                    Info = (1 bsl 31) bor PointReleaseInfo,
-                    <<Info:?OPTIONAL_INFO_BYTES/unit:8>>;
-                default ->
-                    Info = (1 bsl 31),
-                    <<Info:?OPTIONAL_INFO_BYTES/unit:8>>;
-                BaseInfo when is_integer(BaseInfo) ->
-                    Info = (1 bsl 31) bor BaseInfo,
-                    <<Info:?OPTIONAL_INFO_BYTES/unit:8>>
-                end;
-            false ->
-                aec_chain_state:get_info_field(Height, Fork)
-            end,
-
+    NodeVersion = aec_chain_state:get_info_field(Height, Fork),
+    %% WIP: TODO: use Consensus:node_version(...) to get Node version.
+    Hole = maps:get(hc_hole, Flags, false),
+    InfoField = #info_fields{ hole = Hole, version = NodeVersion},
     aec_blocks:new_key(Height, PrevBlockHash, PrevKeyHash,
         aec_trees:hash(Trees), Consensus:default_target(),
         0, aeu_time:now_in_msecs(), InfoField, Protocol,

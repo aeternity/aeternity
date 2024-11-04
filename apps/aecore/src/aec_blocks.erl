@@ -76,19 +76,22 @@
           header    :: aec_headers:key_header()
          }).
 
--opaque key_block()   :: #key_block{}.
--opaque micro_block() :: #mic_block{}.
--type   block()       :: key_block() | micro_block().
--type   height()      :: non_neg_integer().
--type   tx_list()     :: list(aetx_sign:signed_tx()).
--type   info()        :: 0..16#ffffffff | default.
+
+
+-opaque key_block()     :: #key_block{}.
+-opaque micro_block()   :: #mic_block{}.
+-type   block()         :: key_block() | micro_block().
+-type   height()        :: non_neg_integer().
+-type   tx_list()       :: list(aetx_sign:signed_tx()).
+-type   symbolic_info() :: 0..16#ffffffff | default | #info_fields{}.
+
 
 -export_type([block/0,
               block_header_hash/0,
               height/0,
               key_block/0,
               micro_block/0,
-              info/0
+              symbolic_info/0
              ]).
 
 %%%===================================================================
@@ -165,7 +168,7 @@ type(#mic_block{}) -> 'micro'.
 
 -spec new_key(height(), block_header_hash(), block_header_hash(), state_hash(),
               aec_consensus:key_target(),
-              non_neg_integer(), non_neg_integer(), info(),
+              non_neg_integer(), non_neg_integer(), symbolic_info(),
               aec_hard_forks:protocol_vsn(), miner_pubkey(), beneficiary_pubkey()
              ) -> key_block().
 new_key(Height, PrevHash, PrevKeyHash, RootHash, Target,
