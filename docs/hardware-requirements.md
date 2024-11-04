@@ -3,11 +3,13 @@
 Hardware requirements may vary based in what mode the node is running, the network and it is supposed to run full sync or restore from database snapshot. Running a full node to do a full sync being the most resource intensive.
 Requirements would also vary based on the node configuration, API requests and eventually on future consensus protocol and features.
 
+This recommendations are for nodes part of the **Aeternity Mainnet**
+
 Last update: **October 1, 2024**
 
 ## Summary
 
-Running a full node with full since now and then (i.e. once per month):
+Running a full node with full sync now and then (i.e. once per month):
 
 - Intel(R) CPU 2 cores @ 3.0Ghz
 - 8GB of RAM
@@ -45,5 +47,7 @@ So a reasonable disk space allocation for 1 year horizon would be **100GB**.
 
 During the normal operations the node needs up to 30KB/s inbound and up to 30KB/s outbound traffic.
 That's about 78GB/mo per direction or 156GB/mo total.
+
+Notice that, fully utilized chain might go up to 300-500KB/s for gossip traffic.
 
 However during initial full sync this requirement goes as high as 1MB/s but 400KB/s on average inbound traffic.
