@@ -41,7 +41,18 @@
         get_network_id/0,
         get_parent_conn_mod/0,
         get_sign_module/0,
-        get_parent_chain_type/0
+        get_parent_chain_type/0,
+        %% Pinning
+        get_pinning_data/0,
+        create_pin_tx/5,
+        post_pin_tx/1,
+        get_pin_by_tx_hash/1,
+        encode_parent_pin_payload/1,
+        decode_parent_pin_payload/1,
+        encode_child_pin_payload/1,
+        decode_child_pin_payload/1,
+        is_pin/1,
+        find_spends_to/1
         ]).
 
 %% Callbacks
@@ -125,6 +136,41 @@ fetch_block_by_hash(Hash) ->
 fetch_block_by_height(Height) ->
     gen_server:call(?SERVER, {fetch_block_by_height, Height}).
 
+get_network_id() ->
+    gen_server:call(?SERVER, get_network_id).
+
+get_parent_conn_mod() ->
+    gen_server:call(?SERVER, get_parent_conn_mod).
+
+get_sign_module() ->
+    gen_server:call(?SERVER, get_sign_module).
+
+-spec get_parent_chain_type() -> {ok, atom()}.
+get_parent_chain_type() ->
+    gen_server:call(?SERVER, get_parent_chain_type).
+
+-spec create_pin_tx(binary(), binary(), integer(), integer(), binary()) -> aetx:tx().
+create_pin_tx(SenderEnc, ReceiverPubkey, Amount, Fee, PinningData) ->
+    gen_server:call(?SERVER, {create_pin_tx, SenderEnc, ReceiverPubkey, Amount, Fee, PinningData}).
+
+post_pin_tx(Tx) ->
+    gen_server:call(?SERVER, {post_pin_tx, Tx}).
+
+get_pin_by_tx_hash(TxHash) ->
+    gen_server:call(?SERVER, {get_pin_by_tx_hash, TxHash}).
+
+encode_parent_pin_payload(Pin) ->
+    gen_server:call(?SERVER, {encode_parent_pin_payload, Pin}).
+
+decode_parent_pin_payload(PinPayload) ->
+    gen_server:call(?SERVER, {decode_parent_pin_payload, PinPayload}).
+
+encode_child_pin_payload(TxHash) ->
+    gen_server:call(?SERVER, {encode_child_pin_payload, TxHash}).
+
+decode_child_pin_payload(TxHash) ->
+    gen_server:call(?SERVER, {decode_child_pin_payload, TxHash}).
+
 %%%=============================================================================
 %%% Gen Server Callbacks
 %%%=============================================================================
@@ -153,10 +199,36 @@ handle_call(get_network_id, _From, #state{network_id = NetworkId} = State) ->
     {reply, NetworkId, State};
 handle_call(get_sign_module, _From, #state{sign_module = SM} = State) ->
     {reply, SM, State};
-handle_call(get_parent_conn_mod, _From, #state{parent_conn_mod = ParentConnMod} = State) ->
-    {reply, ParentConnMod, State};
-handle_call(get_parent_chain_type, _From, #state{parent_conn_mod = ParentConnMod} = State) ->
-    Reply = ParentConnMod:get_chain_type(),
+handle_call(get_parent_conn_mod, _From, #state{parent_conn_mod = Mod} = State) ->
+    {reply, Mod, State};
+handle_call(get_parent_chain_type, _From, #state{parent_conn_mod = Mod} = State) ->
+    Reply = Mod:get_chain_type(),
+    {reply, Reply, State};
+handle_call({create_pin_tx, SenderEnc, ReceiverPubkey, Amount, Fee, PinningData}, 
+             _From, 
+             #state{parent_conn_mod = Mod, parent_hosts = ParentHosts} = State) ->
+    Reply = handle_parent_pin_calls(Mod, create_pin_tx, {SenderEnc, ReceiverPubkey, Amount, Fee, PinningData}, ParentHosts),
+    {reply, Reply, State};
+handle_call({post_pin_tx, Tx}, _From, #state{parent_conn_mod = Mod, parent_hosts = ParentHosts} = State) ->
+    Reply = handle_parent_pin_calls(Mod, post_pin_tx, Tx, ParentHosts),
+    {reply, Reply, State};
+handle_call({get_pin_by_tx_hash, Tx}, _From, #state{parent_conn_mod = Mod, parent_hosts = ParentHosts} = State) ->
+    Reply = handle_parent_pin_calls(Mod, get_pin_by_tx_hash, Tx, ParentHosts),
+    {reply, Reply, State};
+handle_call({encode_parent_pin_payload, Pin}, _From, #state{parent_conn_mod = Mod} = State) ->
+    Reply = handle_conn_mod_calls(Mod, encode_parent_pin_payload, Pin),
+    {reply, Reply, State};
+handle_call({decode_parent_pin_payload, PinPayload}, _From, #state{parent_conn_mod = Mod} = State) ->
+    Reply = handle_conn_mod_calls(Mod, decode_parent_pin_payload, PinPayload),
+    {reply, Reply, State};
+handle_call({encode_child_pin_payload, TxHash}, _From, #state{parent_conn_mod = Mod} = State) ->
+    Reply = handle_conn_mod_calls(Mod, encode_child_pin_payload, TxHash),
+    {reply, Reply, State};
+handle_call({decode_child_pin_payload, EncTxHash}, _From, #state{parent_conn_mod = Mod} = State) ->
+    Reply = handle_conn_mod_calls(Mod, decode_child_pin_payload, EncTxHash),
+    {reply, Reply, State};
+handle_call({is_pin, EncTxHash}, _From, #state{parent_conn_mod = Mod} = State) ->
+    Reply = handle_conn_mod_calls(Mod, is_pin, EncTxHash),
     {reply, Reply, State};
 handle_call(_Request, _From, State) ->
     Reply = ok,
@@ -314,15 +386,67 @@ handle_fetch_block(Fun, Arg,
             Err
     end.
 
-get_network_id() ->
-    gen_server:call(?SERVER, get_network_id).
 
-get_parent_conn_mod() ->
-    gen_server:call(?SERVER, get_parent_conn_mod).
 
-get_sign_module() ->
-    gen_server:call(?SERVER, get_sign_module).
+is_pin(Pin) -> 
+    gen_server:call(?SERVER, {is_pin, Pin}).
 
--spec get_parent_chain_type() -> {ok, atom()}.
-get_parent_chain_type() ->
-    gen_server:call(?SERVER, get_parent_chain_type).
+% PINREFAC is this (aec_p_c) the correct place for this and the following CC pin related ones?
+-spec get_pinning_data() -> {ok, map()} | {error, atom()}.
+get_pinning_data() ->
+    {ok, #{epoch := Epoch,
+           first := First,
+           last  := Last}} = aec_chain_hc:epoch_info(),
+    lager:debug("Get pin data for epoch ~p for leader of block ~p", [Epoch - 1, Last]),
+    {ok, BlockHash} = aec_chain_state:get_key_block_hash_at_height(First - 1),
+    {ok, ChainType} = get_parent_chain_type(),
+    PrevEpoch = Epoch - 1,
+    Height = First - 1,
+    case aec_consensus_hc:leader_for_height(Last) of
+      {ok, Leader} ->
+        {ok, #{epoch             => PrevEpoch,
+               height            => Height,
+               block_hash        => BlockHash,
+               parent_payload    => encode_parent_pin_payload(#{epoch => PrevEpoch, height => Height, block_hash => BlockHash}),
+               last_leader       => Leader,
+               parent_type       => ChainType,
+               parent_network_id => get_network_id()}};
+      error ->
+          %% schedule not yet cached
+          {error, last_leader_unknown}
+    end.
+
+find_spends_to(Account) ->
+    {ok, #{last := Last, first := First}} = aec_chain_hc:epoch_info(), 
+    Blocks = aec_chain_hc:get_micro_blocks_between(First, Last-1),
+    lists:flatten([ pick_pin_spends_to(Account, aec_blocks:txs(B)) || B <- Blocks ]).
+
+
+pick_pin_spends_to(Account, Txs) ->
+    BareTxs = [ aetx_sign:tx(T) || T <- Txs],
+    InnerTxs = [ aetx:specialize_type(Tx) || Tx <- BareTxs,  spend_tx == aetx:tx_type(Tx)],
+    [ aec_spend_tx:payload(T) || {_, T} <- InnerTxs, aeser_id:specialize(aec_spend_tx:recipient_id(T)) == {account,Account}, is_pin(aec_spend_tx:payload(T))].
+
+%% handle (pin) calls to the parent connector module and ensure we don't throw anything
+%% FUTURE Should be reasonably easy to loop over NodeSpecs until one call suceeds.
+%%        For now, we just pick the first one.
+
+handle_parent_pin_calls(Mod, Fun, Args, NodeSpecs) ->
+    [NodeSpec|_] = NodeSpecs,
+    try 
+        Mod:Fun(Args, NodeSpec)
+    catch
+        Type:Err -> 
+            lager:debug("PINNING: caught bad pin parent call: ~p : ~p", [Type, Err]),
+            {error, Err}
+    end.
+
+handle_conn_mod_calls(Mod, Fun, Args) ->
+    try 
+        Mod:Fun(Args)
+    catch
+        Type:Err -> 
+            lager:debug("PINNING: caught bad connector call: ~p :  ~p", [Type, Err]),
+            {error, Err}
+    end.
+
