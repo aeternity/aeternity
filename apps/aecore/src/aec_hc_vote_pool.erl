@@ -31,23 +31,20 @@
         , code_change/3
         ]).
 
--import(aeu_debug, [pp/1]).
-
 -define(SERVER, ?MODULE).
 
--record(state, { gc_height       :: height()
+-record(state, { gc_height       :: epoch()
                , hash_pool = #{} :: #{tx_hash() => vote()}
-               , h_cache   = #{} :: #{height() => tx_hash()}
-               , t_cache   = #{} :: #{{height(), binary()} => [vote()]} }).
+               , e_cache   = #{} :: #{epoch() => tx_hash()}
+               , t_cache   = #{} :: #{{epoch(), vote_type()} => [vote()]} }).
 
--type height() :: aec_blocks:height().
+-type epoch() :: non_neg_integer().
+-type vote_type() :: non_neg_integer().
 
 -type event() :: tx_created | tx_received.
 
 -type vote()    :: aec_hc_vote_tx:tx().
 -type tx_hash() :: binary().
-
--define(DEFAULT_TX_TTL, 5).
 
 %%%===================================================================
 %%% API
@@ -89,16 +86,16 @@ safe_tx_hash(Tx) ->
 push_(STx, Event) ->
     case validate_vote_tx(STx) of
         Err = {error, _} ->
-            lager:debub("Validation error ~p for HCVoteTx: ~p", [Err, STx]),
+            lager:debug("Validation error ~p for HCVoteTx: ~p", [Err, STx]),
             Err;
-        {ok, Vote} ->
-            gen_server:call(?SERVER, {push, Vote, STx, Event})
+        ok ->
+            gen_server:call(?SERVER, {push, STx, Event})
     end.
 
 %% The specified maximum number of transactions avoids requiring
 %% building in memory the complete list of all transactions in the
 %% pool.
--spec peek(height() | {height(), binary()}) -> {ok, [vote()]}.
+-spec peek(epoch() | {epoch(), vote_type()}) -> {ok, [vote()]}.
 peek(At) when is_integer(At) ->
     gen_server:call(?SERVER, {peek, At});
 peek({H, B} = At) when is_integer(H), is_binary(B) ->
@@ -118,8 +115,8 @@ init([]) ->
     aec_events:subscribe(top_changed),
     {ok, #state{gc_height = GCHeight}}.
 
-handle_call({push, Vote, STx, Event}, _From, State) ->
-    State1 = do_add_vote(Vote, State),
+handle_call({push, STx, Event}, _From, State) ->
+    State1 = do_add_vote(STx, State),
     aec_events:publish(Event, STx),
     {reply, ok, State1};
 handle_call({peek, PeekAt}, _From, State) ->
@@ -152,28 +149,28 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%%===================================================================
 
-do_add_vote(Vote, #state{ hash_pool = HashPool
-                                  , t_cache   = TCache
-                                  , h_cache   = HCache } = State) ->
-    THash = aec_vote:hash(Vote),
-    BlockHash = aec_vote:block_hash(Vote),
+do_add_vote(STx, #state{ hash_pool = HashPool
+                       , t_cache   = TCache
+                       , e_cache   = ECache } = State) ->
+    THash = aetx_sign:hash(STx),
+    {hc_vote_tx, Tx} = aetx:specialize_type(aetx_sign:tx(STx)),
     case maps:is_key(THash, HashPool) of
         true ->
-            lager:debug("Duplicate vote: ~p", [Vote]),
+            lager:debug("Duplicate vote: ~p", [STx]),
             State;
         false ->
-            HashPool1 = HashPool#{THash => Vote},
-            Height    = aec_vote:height(Vote),
-            T         = {Height, aec_vote:block_hash(Vote)},
+            HashPool1 = HashPool#{THash => Tx},
+            Epoch     = aec_hc_vote_tx:epoch(Tx),
+            T         = {Epoch, aec_hc_vote_tx:type(Tx)},
             TCache1   = TCache#{T => [THash | maps:get(T, TCache, [])]},
-            HCache1   = HCache#{Height => [THash | maps:get(Height, HCache, [])]},
+            ECache1   = ECache#{Epoch => [THash | maps:get(Epoch, ECache, [])]},
             State#state{ hash_pool = HashPool1
-                       , h_cache   = HCache1
+                       , e_cache   = ECache1
                        , t_cache   = TCache1 }
     end.
 
-do_pool_peek(Height, #state{hash_pool = HPool, h_cache = HCache}) when is_integer(Height) ->
-    get_votes(maps:get(Height, HCache, []), HPool);
+do_pool_peek(Epoch, #state{hash_pool = HPool, e_cache = ECache}) when is_integer(Epoch) ->
+    get_votes(maps:get(Epoch, ECache, []), HPool);
 do_pool_peek(T = {_, _}, #state{hash_pool = HPool, t_cache = TCache}) ->
     get_votes(maps:get(T, TCache, []), HPool).
 
@@ -187,26 +184,20 @@ top_height() ->
     end.
 
 do_update_top(_Height, State) ->
-    %% TODO: do some GC/cleanup
+    %% TODO: do some GC/cleanup maybe based on epoch?
     State.
 
 validate_vote_tx(STx) ->
-    {Block, _BlockHash, Trees} = get_onchain_env(),
+    {Block, Trees} = get_onchain_env(),
     Checks = [ fun check_tx_type/3
              , fun check_valid_at_protocol/3
              , fun check_signature/3
-             , fun check_ttl/3
              ],
-    case aeu_validation:run(Checks, [STx, Block, Trees]) of
-        ok ->
-            extract_vote(STx);
-        Err = {error, _} ->
-            Err
-    end.
+    aeu_validation:run(Checks, [STx, Block, Trees]).
 
 check_tx_type(STx, _Block, _Trees) ->
     case aetx:specialize_type(aetx_sign:tx(STx)) of
-        {vote_tx, _} ->
+        {hc_vote_tx, _} ->
             ok;
         _ ->
             lager:info("Only HCVoteTXs expected in vote_pool: ~p", [STx]),
@@ -227,36 +218,21 @@ check_signature(STx, Block, Trees) ->
             ok
     end.
 
-check_ttl(STx, Block, _Trees) ->
-    Height = aec_blocks:height(Block),
-    Tx = aetx_sign:tx(STx),
-    case Height > aetx:ttl(Tx) of
-        true  -> {error, ttl_expired};
-        false -> ok
+%% validate_vote(Tx) ->
+%%     %% TODO: Actually do check something more here!?
+%%     Top = aec_chain:top_block(),
+%%     case aec_hc_vote_tx:epoch(Tx) > aec_chain_hc:epoch(Top) of
+%%         true ->
+%%             {error, vote_from_the_future};
+%%         false ->
+%%             ok
+%%     end.
+
+get_onchain_env() ->
+    case aec_chain:top_block_with_state() of
+        {Block, Trees} ->
+            {Block, Trees};
+        undefined ->
+            aec_block_genesis:genesis_block_with_state()
     end.
 
--spec extract_vote(aetx_sign:signed_tx()) -> {ok, vote()} | {error, term()}.
-extract_vote(STx) ->
-    {vote_tx, TTx} = aetx:specialize_type(aetx_sign:tx(STx)),
-    Height    = aec_vote_tx:height(TTx),
-    WitnessPK = aec_vote_tx:witness_pubkey(TTx),
-    BlockHash = aec_vote_tx:block_hash(TTx),
-    Signature = aec_vote_tx:signature(TTx),
-    Vote = aec_vote:new(Height, BlockHash, WitnessPK, Signature),
-
-    case aec_vote:validate(Vote) of
-        true ->
-            {ok, Vote};
-        false ->
-            {error, invalid_vote}
-    end.
-
-validate_vote(Vote) ->
-    %% TODO: Actually do check something more here!?
-    Top = aec_chain:top_block(),
-    case aec_vote:height(Vote) > aec_blocks:height(Top) of
-        true ->
-            {error, vote_from_the_future};
-        false ->
-            ok
-    end.
