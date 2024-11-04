@@ -1314,16 +1314,35 @@ handle_key_block_candidate_reply({{error, Reason}, _}, State) ->
     epoch_mining:error("Creation of key block candidate failed: ~p", [Reason]),
     create_key_block_candidate(State).
 
+
+%% TODO: Possibly move to aec_consensus_hc.
 hc_create_block_fun(ConsensusModule, TopHash) ->
     fun() ->
         case get_next_beneficiary(ConsensusModule, TopHash) of
             {ok, Leader} ->
-                  epoch_mining:debug("Got leader, calling hc_create_block", []),
-                  {hc_create_block(ConsensusModule, TopHash, Leader), TopHash};
+                epoch_mining:debug("Got leader, calling hc_create_block", []),
+                {hc_create_block(ConsensusModule, TopHash, Leader), TopHash};
+            {error, not_leader} = Err ->
+                %% TODO: check if time is > CutOffTime = MaxBT - 2 * block production time.
+                case time of
+                    cutofftime ->
+                        %% This validator will sign
+                        Leader = aec_preset_keys:get_pubkey(),
+                        {hc_create_hole(ConsensusModule, TopHash, Leader), TopHash};
+                    time ->
+                        {Err, TopHash}
+                end;
             {error, _} = Err ->
                 {Err, TopHash}
         end
     end.
+
+hc_create_hole(_ConsensusModule, TopHash0, Leader) ->
+    %% WIP: TODO: Empty microblock also?
+    %% TopHash = hc_create_microblock(ConsensusModule, TopHash0, Leader),
+    Res = aec_block_key_candidate:hc_create_hole(TopHash0, Leader, Leader),
+    Res.
+
 
 hc_create_block(ConsensusModule, TopHash0, Leader) ->
     TopHash = hc_create_microblock(ConsensusModule, TopHash0, Leader),
