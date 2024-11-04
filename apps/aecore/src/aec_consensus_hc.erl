@@ -275,20 +275,20 @@ state_pre_transform_node(Type, Height, PrevNode, Trees) ->
             case Height == maps:get(last, EpochInfo) of
                 true ->
                     PinReward = pinning_reward_value(),
-                    {Trees1, NewCarryOver} = 
-                        case validate_pin(TxEnv, Trees, EpochInfo) of
-                            pin_missing -> 
-                                lager:debug("PINNING: no proof posted"),
-                                aec_events:publish(pin, {no_proof_posted}),
-                                {Trees, PinReward + CarryOver};
-                            pin_correct -> 
-                                Ttemp = add_pin_reward(Trees, Leader, CarryOver),
-                                {Ttemp, 0};
-                            pin_validation_fail -> 
-                                lager:debug("PINNING: Incorrect proof posted"), 
-                                aec_events:publish(pin, {incorrect_proof_posted}), 
-                                {Trees, PinReward + CarryOver}
-                        end,
+                    {Trees1, NewCarryOver} = handle_pinning(TxEnv, Trees, EpochInfo, PinReward, CarryOver, Leader),
+                        % case validate_pin(TxEnv, Trees, EpochInfo) of
+                        %     pin_missing -> hand
+                        %         lager:debug("PINNING: no proof posted"),
+                        %         aec_events:publish(pin, {no_proof_posted}),
+                        %         {Trees, PinReward + CarryOver};
+                        %     pin_correct -> 
+                        %         Ttemp = add_pin_reward(Trees, Leader, CarryOver),
+                        %         {Ttemp, 0};
+                        %     pin_validation_fail -> 
+                        %         lager:debug("PINNING: Incorrect proof posted"), 
+                        %         aec_events:publish(pin, {incorrect_proof_posted}), 
+                        %         {Trees, PinReward + CarryOver}
+                        % end,
                     {ok, Seed} = get_entropy_hash(Epoch + 2),
                     cache_validators_for_epoch({TxEnv, Trees}, Seed, Epoch + 2),
                     step_eoe(TxEnv, Trees1, Leader, Seed, 0, NewCarryOver);
@@ -297,6 +297,21 @@ state_pre_transform_node(Type, Height, PrevNode, Trees) ->
             end;
         micro ->
             step_micro(TxEnv, Trees, Leader)
+    end.
+
+handle_pinning(TxEnv, Trees, EpochInfo, PinReward, CarryOver, Leader ) ->
+    case validate_pin(TxEnv, Trees, EpochInfo) of
+        pin_missing -> 
+            lager:debug("PINNING: no proof posted"),
+            aec_events:publish(pin, {no_proof_posted}),
+            {Trees, PinReward + CarryOver};
+        pin_correct -> 
+            Ttemp = add_pin_reward(Trees, Leader, CarryOver),
+            {Ttemp, 0};
+        pin_validation_fail -> 
+            lager:debug("PINNING: Incorrect proof posted"), 
+            aec_events:publish(pin, {incorrect_proof_posted}), 
+            {Trees, PinReward + CarryOver}
     end.
 
 %% -------------------------------------------------------------------
