@@ -33,8 +33,8 @@ main contract HCElection =
       added_stake           = 0,
       epoch                 = 0,
       epochs                = {},
-      pin                   = None }   
- 
+      pin                   = None }
+
   stateful entrypoint init_epochs(epoch_length : int, base_pin_reward : int) =
     assert_protocol_call()
     require(Chain.block_height == 0, "Only in genesis")
@@ -52,7 +52,7 @@ main contract HCElection =
                          seed : option(bytes),
                          staking_distribution : option(list(address * int)),
                          pin_reward : int) =
-    {start = start, length = length, seed = seed, staking_distribution = staking_distribution, 
+    {start = start, length = length, seed = seed, staking_distribution = staking_distribution,
      base_pin_reward = pin_reward, cur_pin_reward = pin_reward, carry_over_pin_reward = 0}
 
   stateful entrypoint step(leader : address) =
@@ -63,26 +63,26 @@ main contract HCElection =
     assert_protocol_call()
     put(state{ leader = leader })
 
-  stateful entrypoint step_eoe(leader : address, seed : bytes(), epoch_adjust : int, 
-                               new_base_pin_reward : int, carry_over_flag : bool) =
+  stateful entrypoint step_eoe(leader : address, seed : bytes(), epoch_adjust : int,
+                               next_base_pin_reward : int, carry_over_flag : bool) =
     assert_protocol_call()
     let epoch = state.epoch
     let ei = state.epochs[epoch]
-    let carry_over = calc_carry_over(carry_over_flag)
-    let next_reward = calc_next_reward()
+    let next_carry_over = calc_carry_over(carry_over_flag)
+    let next_reward = next_base_pin_reward + next_carry_over
     require(ei.start + ei.length - 1 == Chain.block_height, "This is not the end")
     let ei2 = state.epochs[epoch + 2]
     let ei_adjust = state.epochs[epoch + 3]{ length = ei2.length + epoch_adjust }
     let new_epochs = { [epoch] = state.epochs[epoch],
-                       [epoch + 1] = state.epochs[epoch + 1]{ base_pin_reward = new_base_pin_reward, 
+                       [epoch + 1] = state.epochs[epoch + 1]{ base_pin_reward = next_base_pin_reward,
                                                               cur_pin_reward =  next_reward,
-                                                              carry_over_pin_reward = carry_over}, 
+                                                              carry_over_pin_reward = next_carry_over},
                        [epoch + 2] = state.epochs[epoch + 2]{ seed = Some(seed) },
                        [epoch + 3] = ei_adjust,
                        [epoch + 4] = mk_epoch_info(ei_adjust.start + ei_adjust.length, ei_adjust.length, None,
                                                    Some(state.main_staking_ct.sorted_validators()), 0)
                      }
-    
+
     put(state{ leader = leader,
                epoch  = epoch + 1,
                epochs = new_epochs,
