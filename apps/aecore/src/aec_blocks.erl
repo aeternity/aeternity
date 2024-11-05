@@ -77,15 +77,12 @@
           header    :: aec_headers:key_header()
          }).
 
-
-
--opaque key_block()     :: #key_block{}.
--opaque micro_block()   :: #mic_block{}.
--type   block()         :: key_block() | micro_block().
--type   height()        :: non_neg_integer().
--type   tx_list()       :: list(aetx_sign:signed_tx()).
--type   info()          :: 0..16#ffffffff | default.
-
+-opaque key_block()   :: #key_block{}.
+-opaque micro_block() :: #mic_block{}.
+-type   block()       :: key_block() | micro_block().
+-type   height()      :: non_neg_integer().
+-type   tx_list()     :: list(aetx_sign:signed_tx()).
+-type   info()        :: 0..16#ffffffff | default.
 
 -export_type([block/0,
               block_header_hash/0,
