@@ -259,7 +259,7 @@ state_pre_transform_key_node(Node, PrevNode, Trees) ->
 state_pre_transform_micro_node(Height, PrevNode, Trees) ->
     state_pre_transform_node(micro, Height, PrevNode, Trees).
 
-state_pre_transform_node(Type, Height, PrevNode, Trees) when Height < 1 ->
+state_pre_transform_node(_Type, Height, _PrevNode, Trees) when Height < 1 ->
     %% TODO: maybe call init_epochs for height 0?
     %% No leader for genesis
     Trees;
