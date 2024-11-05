@@ -7,8 +7,13 @@
 -module(aec_block_key_candidate).
 
 -export([ create/3
-        , hc_create_hole/3
         ]).
+
+-ifdef(POS).
+-export([ hc_create_hole/3
+        ]).
+-endif.
+
 
 -include_lib("aecontract/include/hard_forks.hrl").
 -include("blocks.hrl").
@@ -19,8 +24,9 @@
      , Beneficiary :: aec_keys:pubkey()
      , Miner :: aec_keys:pubkey().
 create(BlockHash, Beneficiary, Miner) ->
-    create(BlockHash, Beneficiary, Miner, #{hc_hole => false}).
+    create(BlockHash, Beneficiary, Miner, #{}).
 
+-ifdef(POS).
 %% HC only function.
 -spec hc_create_hole(BlockHash, Beneficiary, Miner) -> {ok, aec_blocks:block()} | {error, term()}
   when BlockHash :: aec_blocks:block() | aec_blocks:block_header_hash()
@@ -28,6 +34,8 @@ create(BlockHash, Beneficiary, Miner) ->
      , Miner :: aec_keys:pubkey().
 hc_create_hole(BlockHash, Beneficiary, Miner) ->
     create(BlockHash, Beneficiary, Miner, #{hc_hole => true}).
+-endif.
+
 
 create(BlockHash, Beneficiary, Miner, Flags) when is_binary(BlockHash) ->
     case aec_chain:get_block(BlockHash) of

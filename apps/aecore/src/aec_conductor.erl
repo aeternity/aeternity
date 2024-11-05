@@ -1243,6 +1243,18 @@ handle_micro_sleep_reply(ok, State) ->
 
 %%%===================================================================
 %%% Worker: Generate new block candidates
+-ifdef(POS).
+-define(POS_BLOCK_CREATE,
+create_key_block_candidate(#state{top_block_hash = TopHash, mode = pos} = State) ->
+    ConsensusModule = consensus_module(State),
+    epoch_mining:info("HC: check and maybe create micro + key block at the top of the chain"),
+    Fun = hc_create_block_fun(ConsensusModule, TopHash),
+    {State1, _Pid} = dispatch_worker(create_key_block_candidate, Fun, State),
+    State1;
+).
+-else.
+-define(POS_BLOCK_CREATE,).
+-endif.
 
 create_key_block_candidate(#state{keys_ready = false} = State) ->
     %% Keys are needed for creating a candidate
@@ -1253,12 +1265,7 @@ create_key_block_candidate(#state{key_block_candidates = [{_, #candidate{top_has
                                   top_block_hash       = TopHash} = State) ->
     %% We have the most recent candidate already. Just start mining.
     start_block_production_(State);
-create_key_block_candidate(#state{top_block_hash = TopHash, mode = pos} = State) ->
-    ConsensusModule = consensus_module(State),
-    epoch_mining:info("HC: check and maybe create micro + key block at the top of the chain"),
-    Fun = hc_create_block_fun(ConsensusModule, TopHash),
-    {State1, _Pid} = dispatch_worker(create_key_block_candidate, Fun, State),
-    State1;
+?POS_BLOCK_CREATE
 create_key_block_candidate(#state{top_block_hash      = TopHash,
                                   mode                = Mode,
                                   stratum_beneficiary = StratumBeneficiary} = State) ->
@@ -1314,7 +1321,7 @@ handle_key_block_candidate_reply({{error, Reason}, _}, State) ->
     epoch_mining:error("Creation of key block candidate failed: ~p", [Reason]),
     create_key_block_candidate(State).
 
-
+-ifdef(POS).
 %% TODO: Possibly move to aec_consensus_hc.
 hc_create_block_fun(ConsensusModule, TopHash) ->
     fun() ->
@@ -1338,7 +1345,6 @@ hc_create_block_fun(ConsensusModule, TopHash) ->
     end.
 
 hc_create_hole(_ConsensusModule, TopHash0, Leader) ->
-    %% WIP: TODO: Empty microblock also?
     %% TopHash = hc_create_microblock(ConsensusModule, TopHash0, Leader),
     Res = aec_block_key_candidate:hc_create_hole(TopHash0, Leader, Leader),
     Res.
@@ -1368,6 +1374,7 @@ hc_create_microblock(ConsensusModule, TopHash, Leader) ->
             epoch_mining:info("Failed micro-block, top is still: ~p", [TopHash]),
             TopHash
     end.
+-endif.
 
 %%%===================================================================
 %%% In server context: A block was given to us from the outside world
