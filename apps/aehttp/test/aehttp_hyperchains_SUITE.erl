@@ -1088,7 +1088,7 @@ wallet_post_pin_to_pc(Config) ->
 last_leader_validates_pin_and_post_to_contract(Config) ->
     [{Node, _, _} | _] = ?config(nodes, Config),
     [{_, NodeName, _} | _] = ?config(nodes, Config),
-  
+
     %% 1. Correct pin is posted in the contract
 
     %% move into next epoch
@@ -1098,13 +1098,12 @@ last_leader_validates_pin_and_post_to_contract(Config) ->
     TxHash = pin_to_parent(Node, PinningData, pubkey(?DWIGHT)),
     %% post parent spend tx hash to CC
     {ok, #{epoch  := _Epoch,
-           first  := First,
            last   := Last,
            length := _Length}} = rpc(Node, aec_chain_hc, epoch_info, []),
     {ok, LastLeader} = rpc(Node, aec_consensus_hc, leader_for_height, [Last]),
     tx_hash_to_child(Node, TxHash, ?ALICE, LastLeader, Config),
     %% move forward to last block
-    
+
     mine_to_last_block_in_epoch(Node, Config),
     % produce blocks until last
 
@@ -1123,31 +1122,31 @@ last_leader_validates_pin_and_post_to_contract(Config) ->
 
     LeaderBalance1A = account_balance(LastLeader),
     %% use get_pin_by_tx_hash to get the posted hash back and compare with actual keyblock (to test encoding decoding etc)
-    #{epoch := _PinEpoch, height := PinHeight, block_hash := PinHash} = 
+    #{epoch := _PinEpoch, height := PinHeight, block_hash := PinHash} =
         rpc(Node, aec_parent_connector, get_pin_by_tx_hash, [FirstSpend]),
     ?assertEqual({ok, PinHash}, rpc(Node, aec_chain_state, get_key_block_hash_at_height, [PinHeight])),
-    
+
     %% move into next epoch - trigger leader validation?
     {ok, _} = produce_cc_blocks(Config, 2),
     {ok, #{info := {pin_accepted}}} = wait_for_ps(pin),
     LeaderBalance1B = account_balance(LastLeader),
-    
+
     ct:log("Account balance for leader was: ~p, is now: ~p", [LeaderBalance1A, LeaderBalance1B]),
     % Any Reasonable way to do this test? Likely a bunch of rewards/fees etc have been awarded, although
     % the above log clearly shows that 4711 (and a bunch more coin) was added.
-    % LeaderBalance0 = LeaderBalance1 - 4711, 
+    % LeaderBalance0 = LeaderBalance1 - 4711,
 
     aecore_suite_utils:unsubscribe(NodeName, pin),
-    
+
     %% 2. No pin is posted
 
     % to next epoch
     mine_to_next_epoch(Node, Config),
-    
+
     mine_to_last_block_in_epoch(Node, Config),
 
     aecore_suite_utils:subscribe(NodeName, pin),
-    
+
     % In last generation, but we don't post pin
 
     {ok, _} = produce_cc_blocks(Config, 2),
@@ -1158,11 +1157,11 @@ last_leader_validates_pin_and_post_to_contract(Config) ->
     %% 3. Incorrect pin posted to contract a) bad tx hash
 
     mine_to_next_epoch(Node, Config),
-    
+
     mine_to_last_block_in_epoch(Node, Config),
 
     aecore_suite_utils:subscribe(NodeName, pin),
-    
+
     % post bad hash to contract
 
     ok = pin_contract_call_tx(Config, "pin", [<<"THIS IS A BAD TX HASH">>], 0, LastLeader),
@@ -1175,7 +1174,7 @@ last_leader_validates_pin_and_post_to_contract(Config) ->
     %% 4. Incorrect hash stored on PC
 
     mine_to_next_epoch(Node, Config),
-    
+
     {ok, PD4} = rpc(Node, aec_parent_connector, get_pinning_data, []),
     EncTxHash4 = pin_to_parent(Node, PD4#{block_hash := <<"VERYINCORRECTBLOCKHASH">>}, pubkey(?DWIGHT)),
     %% post parent spend tx hash to CC
@@ -1185,7 +1184,7 @@ last_leader_validates_pin_and_post_to_contract(Config) ->
     mine_to_last_block_in_epoch(Node, Config),
 
     aecore_suite_utils:subscribe(NodeName, pin),
-    
+
     % post bad hash to contract
     LeaderBalance4A = account_balance(LastLeader4),
     ok = pin_contract_call_tx(Config, "pin", [EncTxHash4], 0, LastLeader4),
@@ -1204,7 +1203,7 @@ last_leader_validates_pin_and_post_to_contract(Config) ->
     %% 4. Bad Epoch (correct epoch - 2)
 
     mine_to_next_epoch(Node, Config),
-    
+
     {ok, PD5} = rpc(Node, aec_parent_connector, get_pinning_data, []),
     #{epoch := Epoch52} = PD5,
     EncTxHash5 = pin_to_parent(Node, PD5#{epoch := Epoch52 - 2}, pubkey(?DWIGHT)),
@@ -1215,7 +1214,7 @@ last_leader_validates_pin_and_post_to_contract(Config) ->
     mine_to_last_block_in_epoch(Node, Config),
 
     aecore_suite_utils:subscribe(NodeName, pin),
-    
+
     % post bad hash to contract
     ok = pin_contract_call_tx(Config, "pin", [EncTxHash5], 0, LastLeader5),
 
@@ -1230,7 +1229,7 @@ last_leader_validates_pin_and_post_to_contract(Config) ->
 %%% --------- pinning helpers
 
 wait_for_ps(Event) ->
-    receive 
+    receive
         {gproc_ps_event, Event, Info} -> {ok, Info};
         Other -> error({wrong_signal, Other})
     end.
