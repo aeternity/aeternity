@@ -1095,6 +1095,7 @@ last_leader_validates_pin_and_post_to_contract(Config) ->
     mine_to_next_epoch(Node, Config),
     %% post pin to PC
     {ok, PinningData} = rpc(Node, aec_parent_connector, get_pinning_data, []),
+    ct:log("Pinning data ~p", [PinningData]),
     TxHash = pin_to_parent(Node, PinningData, pubkey(?DWIGHT)),
     %% post parent spend tx hash to CC
     {ok, #{epoch  := _Epoch,
