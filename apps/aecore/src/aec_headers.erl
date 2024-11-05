@@ -76,18 +76,9 @@
 
 -define(IS_INT_INFO(I), is_integer(I) andalso (I >= 0) andalso (I =< 16#ffffffff)).
 
--type height()        :: aec_blocks:height().
-%% The info field is a 32 bit field.
-%% In ae this is an opaque field (that may contain a node version).
-%% In HC thus is a defined bitfield as follows:
-%% Bit       31: 1 - A 'Hole' block, 0 - not a 'Hole' block.
-%% Bits 21 - 30: Currently undefined/free.
-%% Bits  0 - 20: Node version:
-%% Bits          14 - 20: Major
-%% Bits           7 - 13: Minor
-%% Bits           0 -  6: Increment
--type bin_info()      :: <<>> | <<_:32>>. %% ?OPTIONAL_INFO_BYTES * 8
--type symbolic_info() :: aec_blocks:symbolic_info().
+-type height()   :: aec_blocks:height().
+-type bin_info() :: <<>> | <<_:32>>. %% ?OPTIONAL_INFO_BYTES * 8
+-type info()     :: aec_blocks:info().
 
 -record(mic_header, {
           height       = 0                                     :: height(),
@@ -99,7 +90,8 @@
           txs_hash     = <<0:?TXS_HASH_BYTES/unit:8>>          :: txs_hash(),
           time         = 0                                     :: non_neg_integer(),
           version                                              :: non_neg_integer(),
-          extra        = #{}                                   :: map()
+          extra        = #{}                                   :: map(),
+          flags        = <<0:?FLAG_BYTES/unit:8>>              :: block_header_flags()
          }).
 
 -record(key_header, {
@@ -115,7 +107,8 @@
           miner        = <<0:?MINER_PUB_BYTES/unit:8>>         :: miner_pubkey(),
           beneficiary  = <<0:?BENEFICIARY_PUB_BYTES/unit:8>>   :: beneficiary_pubkey(),
           info         = <<>>                                  :: bin_info(),
-          extra        = #{}                                   :: map()
+          extra        = #{}                                   :: map(),
+          flags        = <<0:?FLAG_BYTES/unit:8>>              :: block_header_flags()
          }).
 
 %% -record(db_key_header, {
@@ -289,11 +282,24 @@ from_db_header_(_) ->
                      state_hash(), miner_pubkey(), beneficiary_pubkey(),
                      aec_consensus:key_target(),
                      aec_consensus:key_seal() | 'no_value',
-                     non_neg_integer(), non_neg_integer(), symbolic_info(),
+                     non_neg_integer(), non_neg_integer(), info(),
                      aec_hard_forks:protocol_vsn()
                     ) -> header().
 new_key_header(Height, PrevHash, PrevKeyHash, RootHash, Miner, Beneficiary,
                Target, KeySeal, Nonce, Time, Info, Version) ->
+new_key_header(Height, PrevHash, PrevKeyHash, RootHash, Miner, Beneficiary,
+               Target, KeySeal, Nonce, Time, Info, Version, <<0:?FLAG_BYTES/unit:8>>).
+
+
+-spec new_key_header(height(), block_header_hash(), block_header_hash(),
+                     state_hash(), miner_pubkey(), beneficiary_pubkey(),
+                     aec_consensus:key_target(),
+                     aec_consensus:key_seal() | 'no_value',
+                     non_neg_integer(), non_neg_integer(), info(),
+                     aec_hard_forks:protocol_vsn(), block_header_flags()
+                    ) -> header().
+new_key_header(Height, PrevHash, PrevKeyHash, RootHash, Miner, Beneficiary,
+               Target, KeySeal, Nonce, Time, Info, Version, Flags) ->
     populate_extra(
         #key_header{height       = Height,
                     prev_hash    = PrevHash,
@@ -306,16 +312,10 @@ new_key_header(Height, PrevHash, PrevKeyHash, RootHash, Miner, Beneficiary,
                     nonce        = Nonce,
                     time         = Time,
                     info         = make_info(Height, Version, Info),
-                    version      = Version
+                    version      = Version,
+                    flags        = Flags
                }).
 
-hole_to_bits(true)  -> 1 bsl 31;
-hole_to_bits(false) -> 0.
-
-version_to_bits(#version{major = Major, minor = Minor, increment = I}) ->
-    ((Major band 127) bsl 14)
-    bor ((Minor band 127) bsl 7)
-    bor (I band 127).
 
 make_info(0, _Version, default) ->
     <<>>;
@@ -325,12 +325,7 @@ make_info(_, Version, default) when Version >= ?MINERVA_PROTOCOL_VSN ->
     PointReleaseInfo = aeu_info:block_info(),
     <<PointReleaseInfo:?OPTIONAL_INFO_BYTES/unit:8>>;
 make_info(_, _Version, default) ->
-    <<>>;
-%% New symbolic info for HC.
-make_info(_, _Version, #info_fields{hole = Hole, version = NodeVersion }) ->
-    Info = hole_to_bits(Hole) bor version_to_bits(NodeVersion),
-    <<Info:?OPTIONAL_INFO_BYTES/unit:8>>.
-
+    <<>>.
 
 -spec new_micro_header(height(), block_header_hash(), block_header_hash(),
                        state_hash(), non_neg_integer(), txs_hash(),
@@ -380,7 +375,7 @@ info(#key_header{info = <<>>}) ->
 info(#key_header{info = <<I:?OPTIONAL_INFO_BYTES/unit:8>>}) ->
     I.
 
--spec set_info(key_header(), symbolic_info()) -> key_header().
+-spec set_info(key_header(), info()) -> key_header().
 set_info(#key_header{version = Vsn} = H, I) ->
     H#key_header{info = make_info(height(H), Vsn, I)}.
 
@@ -640,19 +635,22 @@ serialize_to_binary(#mic_header{} = Header) ->
       (Header#mic_header.pof_hash)/binary, %% Either 0 or 32 bytes.
       (Header#mic_header.signature)/binary>>.
 
-construct_key_flags(#key_header{info = <<>>}) ->
-    ContainsInfo = 0,
-    <<?KEY_HEADER_TAG:1, ContainsInfo:1, 0:30>>;
-construct_key_flags(#key_header{info = <<_:?OPTIONAL_INFO_BYTES/unit:8>>} = H) ->
-    [error(illegal_info_field) || version(H) < ?MINERVA_PROTOCOL_VSN],
-    ContainsInfo = 1,
-    <<?KEY_HEADER_TAG:1, ContainsInfo:1, 0:30>>;
-construct_key_flags(#key_header{}) ->
-    error(illegal_info_field).
+construct_key_flags(#key_header{flags = <<_:2, RestFlags:30>>, info = Info} = H) ->
+    case Info of
+        <<>> ->
+            ContainsInfo = 0,
+            <<?KEY_HEADER_TAG:1, ContainsInfo:1, RestFlags:30>>;
+        <<_:?OPTIONAL_INFO_BYTES/unit:8>> ->
+            [error(illegal_info_field) || version(H) < ?MINERVA_PROTOCOL_VSN],
+            ContainsInfo = 1,
+            <<?KEY_HEADER_TAG:1, ContainsInfo:1, RestFlags:30>>;
+        _ ->
+            error(illegal_info_field)
+        end.
 
-construct_micro_flags(#mic_header{pof_hash = Bin}) ->
+construct_micro_flags(#mic_header{flags = <<_:2, RestFlags:30>>, pof_hash = Bin}) ->
     PoFFlag = min(byte_size(Bin), 1),
-    <<?MICRO_HEADER_TAG:1, PoFFlag:1, 0:30>>.
+    <<?MICRO_HEADER_TAG:1, PoFFlag:1, RestFlags:30>>.
 
 -spec deserialize_from_binary(deterministic_header_binary()) -> header().
 

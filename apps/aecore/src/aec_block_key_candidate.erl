@@ -91,11 +91,13 @@ int_create_block(Height, PrevBlockHash, PrevBlock, Miner, Beneficiary, Trees, Pr
                       key   -> PrevBlockHash
                   end,
     Fork = aeu_env:get_env(aecore, fork, undefined),
-    NodeVersion = aec_chain_state:get_info_field(Height, Fork),
-    %% WIP: TODO: use Consensus:node_version(...) to get Node version.
-    Hole = maps:get(hc_hole, Flags, false),
-    InfoField = #info_fields{ hole = Hole, version = NodeVersion},
+    InfoField = aec_chain_state:get_info_field(Height, Fork),
+    Hole = hole_to_bits(maps:get(hc_hole, Flags, false)),
+    Flags = <<Hole:?FLAG_BYTES/unit:8>>,
     aec_blocks:new_key(Height, PrevBlockHash, PrevKeyHash,
         aec_trees:hash(Trees), Consensus:default_target(),
         0, aeu_time:now_in_msecs(), InfoField, Protocol,
-        Miner, Beneficiary).
+        Miner, Beneficiary, Flags).
+
+hole_to_bits(true) -> 1 bsl 29;
+hole_to_bits(false) -> 0.
