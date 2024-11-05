@@ -11,14 +11,21 @@
 -define(KEY_HEADER_TAG, 1).
 -define(MICRO_HEADER_TAG, 0).
 
-%% The flag field is a 32 bit (4 bytes) field.
-%% With the following meaning:
+%% The flag field is a 32 bit (4 bytes) field, bits 31 to 0.
+%% %% With the following meaning:
+%%
 %% BIT        MEANING
 %% 31         Block Type: 1 - key, 0 - micro (KEY_HEADER_TAG/MICRO_HEADER_TAG)
-%% 30         For key block: ContainsInfo 1 - true, 0 - false
-%%            For micro blocks: PoFFlag: 1 - pof_hash, 0 no pof_hash
-%% 29         HC Hole block
-%% 0 - 28     Unused shold be 0.
+%%
+%% Key blocks (bit 31:1)
+%% 30         ContainsInfo 1 - true, 0 - false
+%% 29         HC Hole block: 1 - is a hole block, 0 - ordinary block
+%% 0 - 28     Unused, shold be 0.
+%%
+%% Micro blocks (bit 31:0)
+%% 30         PoFFlag: 1 - pof_hash, 0 - no pof_hash
+%% 0 - 29     Unused, shold be 0.
+
 
 -define(KEY_HEADER_MIN_BYTES, 364).
 -define(MIC_HEADER_MIN_BYTES, 216).
