@@ -93,11 +93,11 @@ int_create_block(Height, PrevBlockHash, PrevBlock, Miner, Beneficiary, Trees, Pr
     Fork = aeu_env:get_env(aecore, fork, undefined),
     InfoField = aec_chain_state:get_info_field(Height, Fork),
     Hole = hole_to_bits(maps:get(hc_hole, Flags, false)),
-    Flags = <<Hole:?FLAG_BYTES/unit:8>>,
+    HeaderFlags = <<Hole:?FLAG_BYTES/unit:8>>,
     aec_blocks:new_key(Height, PrevBlockHash, PrevKeyHash,
         aec_trees:hash(Trees), Consensus:default_target(),
         0, aeu_time:now_in_msecs(), InfoField, Protocol,
-        Miner, Beneficiary, Flags).
+        Miner, Beneficiary, HeaderFlags).
 
 hole_to_bits(true) -> 1 bsl 29;
 hole_to_bits(false) -> 0.
