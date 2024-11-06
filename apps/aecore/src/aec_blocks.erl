@@ -20,7 +20,6 @@
          is_key_block/1,
          miner/1,
          new_key/11,
-         new_key/12,
          new_key_from_header/1,
          new_micro/9,
          new_micro_from_header/3,
@@ -59,6 +58,12 @@
          validate_micro_block/2,
          version/1
         ]).
+
+-ifdef(POS).
+-export([
+         new_key/12
+        ]).
+-endif.
 
 -include("blocks.hrl").
 -include_lib("aecontract/include/hard_forks.hrl").
@@ -176,6 +181,7 @@ new_key(Height, PrevHash, PrevKeyHash, RootHash, Target,
                                    no_value, Nonce, Time, Info, Version),
     #key_block{header = H}.
 
+-ifdef(POS).
 -spec new_key(height(), block_header_hash(), block_header_hash(), state_hash(),
               aec_consensus:key_target(),
               non_neg_integer(), non_neg_integer(), info(),
@@ -188,6 +194,7 @@ new_key(Height, PrevHash, PrevKeyHash, RootHash, Target,
                                    Miner, Beneficiary, Target,
                                    no_value, Nonce, Time, Info, Version, Flags),
     #key_block{header = H}.
+-endif.
 
 -spec new_key_from_header(aec_headers:key_header()) -> key_block().
 new_key_from_header(Header) ->

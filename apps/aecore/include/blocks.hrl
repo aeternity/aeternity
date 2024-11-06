@@ -6,10 +6,21 @@
 -define(BLOCK_SIGNATURE_BYTES, 64).
 -define(OPTIONAL_INFO_BYTES, 4).
 -define(FLAG_BYTES, 4).
+-define(FLAG_BITS, 32).
+
+-define(SET(X,Y),((X) bor (Y))).
+-define(CLR(X,Y),((X) band (bnot (Y)))).
+
+-define(KEY_HEADER_TAG,              1).
+-define(KEY_HEADER_FLAG,    (1 bsl 31)).
+-define(CONTAINS_INFO_FLAG, (1 bsl 30)).
+-define(HOLE_FLAG,          (1 bsl 29)).
 
 
--define(KEY_HEADER_TAG, 1).
--define(MICRO_HEADER_TAG, 0).
+-define(MICRO_HEADER_TAG,            0).
+-define(MICRO_HEADER_FLAG,           0).
+-define(POF_FLAG,           (1 bsl 30)).
+
 
 %% The flag field is a 32 bit (4 bytes) field, bits 31 to 0.
 %% %% With the following meaning:
@@ -20,11 +31,11 @@
 %% Key blocks (bit 31:1)
 %% 30         ContainsInfo 1 - true, 0 - false
 %% 29         HC Hole block: 1 - is a hole block, 0 - ordinary block
-%% 0 - 28     Unused, shold be 0.
+%% 0 - 28     Unused, should be 0.
 %%
 %% Micro blocks (bit 31:0)
 %% 30         PoFFlag: 1 - pof_hash, 0 - no pof_hash
-%% 0 - 29     Unused, shold be 0.
+%% 0 - 29     Unused, should be 0.
 
 
 -define(KEY_HEADER_MIN_BYTES, 364).

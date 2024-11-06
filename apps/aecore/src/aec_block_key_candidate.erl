@@ -84,6 +84,13 @@ int_create_(Height, PrevBlockHash, PrevBlock, Beneficiary, Miner, AdjChain, Prot
         {error, Reason} -> {error, {failed_to_adjust_target, Reason}}
     end.
 
+%% WIP: Please shoot me!
+-ifdef(POS).
+-define(HC_FLAG_ARGUMENT, , _HeaderFlags).
+-else.
+-define(HC_FLAG_ARGUMENT,).
+-endif.
+
 int_create_block(Height, PrevBlockHash, PrevBlock, Miner, Beneficiary, Trees, Protocol, Flags) ->
     Consensus = aec_consensus:get_consensus_module_at_height(Height),
     PrevKeyHash = case aec_blocks:type(PrevBlock) of
@@ -93,11 +100,11 @@ int_create_block(Height, PrevBlockHash, PrevBlock, Miner, Beneficiary, Trees, Pr
     Fork = aeu_env:get_env(aecore, fork, undefined),
     InfoField = aec_chain_state:get_info_field(Height, Fork),
     Hole = hole_to_bits(maps:get(hc_hole, Flags, false)),
-    HeaderFlags = <<Hole:?FLAG_BYTES/unit:8>>,
+    _HeaderFlags = <<Hole:?FLAG_BYTES/unit:8>>,
     aec_blocks:new_key(Height, PrevBlockHash, PrevKeyHash,
         aec_trees:hash(Trees), Consensus:default_target(),
         0, aeu_time:now_in_msecs(), InfoField, Protocol,
-        Miner, Beneficiary, HeaderFlags).
+        Miner, Beneficiary ?HC_FLAG_ARGUMENT).
 
 hole_to_bits(true) -> 1 bsl 29;
 hole_to_bits(false) -> 0.
