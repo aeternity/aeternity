@@ -268,7 +268,7 @@ state_pre_transform_node(Type, Height, PrevNode, Trees) ->
     {ok, PrevHash} = aec_headers:hash_header(PrevHeader),
     {TxEnv0, _} = aetx_env:tx_env_and_trees_from_hash(aetx_transaction, PrevHash),
     TxEnv = aetx_env:set_height(TxEnv0, Height),
-    {ok, #{epoch := Epoch, base_pin_reward := BasePinReward} = EpochInfo} = aec_chain_hc:epoch_info({TxEnv, Trees}),
+    {ok, #{epoch := Epoch} = EpochInfo} = aec_chain_hc:epoch_info({TxEnv, Trees}),
     {ok, Leader} = leader_for_height(Height, {TxEnv, Trees}),
     case Type of
         key ->
@@ -277,7 +277,7 @@ state_pre_transform_node(Type, Height, PrevNode, Trees) ->
                     {Trees1, CarryOverFlag} = handle_pinning(TxEnv, Trees, EpochInfo, Leader),
                     {ok, Seed} = get_entropy_hash(Epoch + 2),
                     cache_validators_for_epoch({TxEnv, Trees}, Seed, Epoch + 2),
-                    step_eoe(TxEnv, Trees1, Leader, Seed, 0, BasePinReward, CarryOverFlag);
+                    step_eoe(TxEnv, Trees1, Leader, Seed, 0, -1, CarryOverFlag); % -1 = no base_pin_reward update
                 false ->
                     step(TxEnv, Trees, Leader)
             end;
@@ -840,14 +840,14 @@ is_leader_valid(Node, _Trees, TxEnv, _PrevNode) ->
             aec_conductor:throw_error(parent_chain_block_not_synced)
     end.
 
-handle_pinning(TxEnv, Trees, #{cur_pin_reward := Reward} = EpochInfo, Leader ) ->
+handle_pinning(TxEnv, Trees, EpochInfo, Leader ) ->
     case validate_pin(TxEnv, Trees, EpochInfo) of
         pin_missing ->
             lager:debug("PINNING: no proof posted"),
             aec_events:publish(pin, {no_proof_posted}),
             {Trees, true};
         pin_correct ->
-            Ttemp = add_pin_reward(Trees, Leader, Reward),
+            Ttemp = add_pin_reward(Trees, TxEnv, Leader),
             {Ttemp, false};
         pin_validation_fail ->
             lager:debug("PINNING: Incorrect proof posted"),
@@ -877,7 +877,8 @@ validate_pin(TxEnv, Trees, CurEpochInfo) ->
             end
     end.
 
-add_pin_reward(Trees, Leader, Reward) ->
+add_pin_reward(Trees, TxEnv, Leader) ->
+    #{cur_pin_reward := Reward} = aec_chain_hc:pin_reward_info({TxEnv, Trees}),
     aec_events:publish(pin, {pin_accepted}),
     LeaderAcc = aec_accounts_trees:get(Leader, aec_trees:accounts(Trees)),
     {ok, LeaderAcc1} = aec_accounts:earn(LeaderAcc, Reward),

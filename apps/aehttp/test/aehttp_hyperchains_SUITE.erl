@@ -1091,6 +1091,8 @@ last_leader_validates_pin_and_post_to_contract(Config) ->
 
     %% 1. Correct pin is posted in the contract
 
+    #{cur_pin_reward := _Reward} = rpc(Node, aec_chain_hc , pin_reward_info, []),
+
     %% move into next epoch
     mine_to_next_epoch(Node, Config),
     %% post pin to PC
