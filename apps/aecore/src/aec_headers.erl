@@ -477,10 +477,10 @@ pof_hash(#mic_header{pof_hash = Hash}) ->
     Hash.
 
 -spec set_pof_hash(micro_header(), aec_pof:hash()) -> micro_header().
-set_pof_hash(#mic_header{flags = <<Flags>>} = Header, Hash) when byte_size(Hash) =:= 0 ->
+set_pof_hash(#mic_header{flags = <<Flags:?FLAG_BITS>>} = Header, Hash) when byte_size(Hash) =:= 0 ->
     Header#mic_header{pof_hash = Hash,
                       flags = <<?CLR(Flags,?POF_FLAG):?FLAG_BITS>>};
-set_pof_hash(#mic_header{flags = <<Flags>>} = Header, Hash) when byte_size(Hash) =:= 32 ->
+set_pof_hash(#mic_header{flags = <<Flags:?FLAG_BITS>>} = Header, Hash) when byte_size(Hash) =:= 32 ->
     Header#mic_header{pof_hash = Hash,
                       flags = <<?SET(Flags,?POF_FLAG):?FLAG_BITS>>}.
 
