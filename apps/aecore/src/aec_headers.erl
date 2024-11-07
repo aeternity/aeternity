@@ -199,7 +199,12 @@ type(#mic_header{}) -> micro.
 -spec from_db_header(tuple() | header()) -> header().
 %% We might have a legacy tuple in the db
 from_db_header(Header) ->
-    fix_flags(populate_extra(from_db_header_(Header))).
+    HeaderRecord = fix_flags(populate_extra(from_db_header_(Header))),
+    case type(HeaderRecord) of
+        key -> ok;
+        micro -> ok
+    end,
+    HeaderRecord.
 
 from_db_header_(#key_header{} = K) -> K;
 from_db_header_(#mic_header{} = M) -> M;
