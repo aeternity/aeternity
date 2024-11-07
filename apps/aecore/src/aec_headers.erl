@@ -327,7 +327,7 @@ from_db_header_({key_header,
                key_seal     = KeySeal,
                miner        = Miner,
                beneficiary  = Beneficiary,
-               info         = <<>>,
+               info         = Info,
                extra        = Extra
               };
 from_db_header_(_) ->
@@ -437,7 +437,7 @@ info(#key_header{info = <<I:?OPTIONAL_INFO_BYTES/unit:8>>}) ->
 
 -spec set_info(key_header(), info()) -> key_header().
 set_info(#key_header{version = Vsn} = H, I) ->
-    H#key_header{info = make_info(height(H), Vsn, I)}.
+   fix_flags(H#key_header{info = make_info(height(H), Vsn, I)}).
 
 -spec prev_hash(header()) -> block_header_hash().
 prev_hash(#key_header{prev_hash = H}) -> H;
@@ -828,7 +828,7 @@ deserialize_key_from_binary(<<Version:32,
                     info = Info,
                     flags = <<?KEY_HEADER_TAG:1, ContainsInfoFlag:1, RestFlags:30 >>
                    },
-    {ok, populate_extra(H)};
+    {ok, fix_flags(populate_extra(H))};
 deserialize_key_from_binary(_Other) ->
     {error, malformed_header}.
 
@@ -868,7 +868,7 @@ deserialize_micro_from_binary(<<Version:32,
                             flags = << ?MICRO_HEADER_TAG:1,
                                        PoFTag:1,
                                        RestFlags:30 >>},
-            {ok, populate_extra(H)};
+            {ok, fix_flags(populate_extra(H))};
         _ ->
             {error, malformed_header}
     end;
