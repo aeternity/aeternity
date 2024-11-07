@@ -16,6 +16,8 @@
         , validators_at_height/1
         , pin_info/0
         , pin_info/1
+        , pin_reward_info/0
+        , pin_reward_info/1
         %% epoch determined
         , epoch_start_height/1
         , epoch_info_for_epoch/1
@@ -33,6 +35,7 @@
 -type height() :: non_neg_integer().
 -type run_env() :: top | height() | {aetx_env:env(), aec_trees:trees()} | {hash, binary()}.
 -type epoch_info() :: map().
+-type pin_reward_info() :: map().
 
 -spec epoch() -> {ok, epoch()} | {error, chain_too_short}.
 epoch() ->
@@ -95,6 +98,14 @@ pin_info() ->
 pin_info(RunEnv) ->
     {ok, Result} = call_consensus_contract_w_env(?ELECTION_CONTRACT, RunEnv, "pin_info", []),
     decode_option(Result, {fun(X) -> X end, undefined}).
+
+pin_reward_info() ->
+    pin_reward_info(top).
+
+pin_reward_info(RunEnv) ->
+    {ok, Res} = call_consensus_contract_w_env(?ELECTION_CONTRACT, RunEnv, "pin_reward_info", []),
+    {tuple, {Base, Current, CarryOver}} = Res,
+    #{ base_pin_reward => Base, cur_pin_reward => Current, carry_over_pin_reward => CarryOver }.
 
 
 %% This makes the dependency graph a circle, right?

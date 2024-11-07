@@ -1739,6 +1739,11 @@
                                             "description": "The number of blocks in an epoch on the child chain",
                                             "type": "integer"
                                         },
+                                        "pinning_reward_value": {
+                                            "description": "The initial value of the Pinning reward. It can later be changed through consensus",
+                                            "default": 0,
+                                            "type": "integer"
+                                        },
                                         "parent_chain": {
                                             "description" : "Details of how this node will connect to a parent chain if this is a hyperchain.",
                                             "additionalProperties" : false,

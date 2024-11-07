@@ -1815,7 +1815,7 @@ genesis_trees(Opts) ->
     {ElectionPubkey, Trees4} = create_contract(ElectionContract, ElectionCD, TxEnv, Trees3),
     ?assertEqual(ElectionPubkey, election_contract_address()),
     {ok, EpochInit} = aeb_fate_abi:create_calldata("init_epochs",
-                                              [aefa_fate_code:encode_arg({integer, 10})]),
+                                              [aefa_fate_code:encode_arg({integer, 10}), aefa_fate_code:encode_arg({integer, 4711})]),
     {ok, Trees5, _} = call_contract(ElectionPubkey,  ?OWNER_PUBKEY, EpochInit, 0, TxEnv, Trees4),
     %% assert expectation:
     Trees5.

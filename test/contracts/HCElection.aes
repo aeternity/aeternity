@@ -9,10 +9,16 @@ contract interface MainStaking =
 
 main contract HCElection =
   record epoch_info =
-    { start                : int,
-      length               : int,
-      seed                 : option(bytes()),
-      staking_distribution : option(list(address * int))
+    { start                 : int,
+      length                : int,
+      seed                  : option(bytes()),
+      staking_distribution  : option(list(address * int))
+    }
+
+  record pin_reward_info =
+    { base       : int,
+      current    : int,
+      carry_over : int
     }
 
   record state =
@@ -21,7 +27,8 @@ main contract HCElection =
       added_stake           : int,
       epoch                 : int,
       epochs                : map(int, epoch_info),
-      pin                   : option(string)
+      pin                   : option(string),
+      pin_reward            : pin_reward_info
     }
 
   entrypoint init(main_staking_ct : MainStaking) =
@@ -30,9 +37,10 @@ main contract HCElection =
       added_stake           = 0,
       epoch                 = 0,
       epochs                = {},
-      pin                   = None }   
+      pin                   = None,
+      pin_reward            = {base = 0, current = 0, carry_over = 0} }
 
-  stateful entrypoint init_epochs(epoch_length : int) =
+  stateful entrypoint init_epochs(epoch_length : int, base_pin_reward : int) =
     assert_protocol_call()
     require(Chain.block_height == 0, "Only in genesis")
     put(state{ epochs = { [0] = mk_epoch_info(0, 1, None, None),
@@ -41,7 +49,8 @@ main contract HCElection =
                           [3] = mk_epoch_info(2 * epoch_length + 1, epoch_length, None, Some(state.main_staking_ct.sorted_validators())),
                           [4] = mk_epoch_info(3 * epoch_length + 1, epoch_length, None, Some(state.main_staking_ct.sorted_validators()))
                         },
-               epoch  = 1
+               epoch  = 1,
+               pin_reward.base = base_pin_reward
              })
 
   function mk_epoch_info(start : int,
@@ -58,10 +67,17 @@ main contract HCElection =
     assert_protocol_call()
     put(state{ leader = leader })
 
-  stateful entrypoint step_eoe(leader : address, seed : bytes(), epoch_adjust : int) =
+  stateful entrypoint step_eoe(leader : address, seed : bytes(), epoch_adjust : int,
+                               next_base_pin_reward : int, carry_over_flag : bool) =
     assert_protocol_call()
     let epoch = state.epoch
     let ei = state.epochs[epoch]
+    // pin rewards
+    let next_carry_over = calc_carry_over(carry_over_flag)
+    let next_base = calc_next_base_reward(next_base_pin_reward)
+    let next_reward = next_base + next_carry_over
+    let pr = {current = next_reward, carry_over = next_carry_over, base = next_base}
+    // update epochs
     require(ei.start + ei.length - 1 == Chain.block_height, "This is not the end")
     let ei2 = state.epochs[epoch + 2]
     let ei_adjust = state.epochs[epoch + 3]{ length = ei2.length + epoch_adjust }
@@ -72,11 +88,12 @@ main contract HCElection =
                        [epoch + 4] = mk_epoch_info(ei_adjust.start + ei_adjust.length, ei_adjust.length, None,
                                                    Some(state.main_staking_ct.sorted_validators()))
                      }
-    
+
     put(state{ leader = leader,
                epoch  = epoch + 1,
                epochs = new_epochs,
-               pin = None })
+               pin = None,
+               pin_reward = pr})
 
   entrypoint leader() =
     state.leader
@@ -113,6 +130,9 @@ main contract HCElection =
   entrypoint pin_info() =
     state.pin
 
+  entrypoint pin_reward_info() =
+    state.pin_reward
+
   function
     validator_schedule_(_, _, _, 0, schedule) = List.reverse(schedule)
     validator_schedule_(seed0, rnd, validators, n, schedule) =
@@ -125,7 +145,20 @@ main contract HCElection =
     pick_validator(n, (_, stake) :: validators)            = pick_validator(n - stake, validators)
 
   function assert_protocol_call() =
-      require(Call.caller == Contract.creator, "Must be called by the protocol")
+    require(Call.caller == Contract.creator, "Must be called by the protocol")
+
+  function calc_carry_over(carry_over_flag : bool) =
+    let ei = state.pin_reward
+    if (carry_over_flag)
+      ei.base + ei.carry_over
+    else
+      0
+
+  function calc_next_base_reward(next_base_pin_reward : int) =
+    if ( next_base_pin_reward >= 0 )
+      next_base_pin_reward
+    else
+      state.pin_reward.base
 
   // function accum_stake((accum, total_s, current_hash, network_id), (addr, stake)) =
   //   ((addr, stake) :: accum, stake + total_s, current_hash, network_id)
