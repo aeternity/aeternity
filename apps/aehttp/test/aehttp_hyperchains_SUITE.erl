@@ -1091,6 +1091,8 @@ last_leader_validates_pin_and_post_to_contract(Config) ->
 
     %% 1. Correct pin is posted in the contract
 
+    #{cur_pin_reward := _Reward} = rpc(Node, aec_chain_hc , pin_reward_info, []),
+
     %% move into next epoch
     mine_to_next_epoch(Node, Config),
     %% post pin to PC
@@ -1672,7 +1674,8 @@ node_config(Node, CTConfig, PotentialStakers, ReceiveAddress, ProducingCommitmen
                                         <<"staking_contract">> => aeser_api_encoder:encode(contract_pubkey, staking_contract_address()),
                                         <<"contract_owner">> => aeser_api_encoder:encode(account_pubkey,?OWNER_PUBKEY),
                                         <<"expected_key_block_rate">> => 2000,
-                                        <<"stakers">> => Stakers},
+                                        <<"stakers">> => Stakers,
+                                        <<"pinning_reward_value">> => 4711},
                                     SpecificConfig)
                                     }}},
         <<"fork_management">> =>

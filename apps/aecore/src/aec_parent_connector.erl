@@ -204,8 +204,8 @@ handle_call(get_parent_conn_mod, _From, #state{parent_conn_mod = Mod} = State) -
 handle_call(get_parent_chain_type, _From, #state{parent_conn_mod = Mod} = State) ->
     Reply = Mod:get_chain_type(),
     {reply, Reply, State};
-handle_call({create_pin_tx, SenderEnc, ReceiverPubkey, Amount, Fee, PinningData}, 
-             _From, 
+handle_call({create_pin_tx, SenderEnc, ReceiverPubkey, Amount, Fee, PinningData},
+             _From,
              #state{parent_conn_mod = Mod, parent_hosts = ParentHosts} = State) ->
     Reply = handle_parent_pin_calls(Mod, create_pin_tx, {SenderEnc, ReceiverPubkey, Amount, Fee, PinningData}, ParentHosts),
     {reply, Reply, State};
@@ -388,7 +388,8 @@ handle_fetch_block(Fun, Arg,
 
 
 
-is_pin(Pin) -> 
+
+is_pin(Pin) ->
     gen_server:call(?SERVER, {is_pin, Pin}).
 
 % PINREFAC is this (aec_p_c) the correct place for this and the following CC pin related ones?
@@ -417,7 +418,7 @@ get_pinning_data() ->
     end.
 
 find_spends_to(Account) ->
-    {ok, #{last := Last, first := First}} = aec_chain_hc:epoch_info(), 
+    {ok, #{last := Last, first := First}} = aec_chain_hc:epoch_info(),
     Blocks = aec_chain_hc:get_micro_blocks_between(First, Last-1),
     lists:flatten([ pick_pin_spends_to(Account, aec_blocks:txs(B)) || B <- Blocks ]).
 
@@ -433,19 +434,19 @@ pick_pin_spends_to(Account, Txs) ->
 
 handle_parent_pin_calls(Mod, Fun, Args, NodeSpecs) ->
     [NodeSpec|_] = NodeSpecs,
-    try 
+    try
         Mod:Fun(Args, NodeSpec)
     catch
-        Type:Err -> 
+        Type:Err ->
             lager:debug("PINNING: caught bad pin parent call: ~p : ~p", [Type, Err]),
             {error, Err}
     end.
 
 handle_conn_mod_calls(Mod, Fun, Args) ->
-    try 
+    try
         Mod:Fun(Args)
     catch
-        Type:Err -> 
+        Type:Err ->
             lager:debug("PINNING: caught bad connector call: ~p :  ~p", [Type, Err]),
             {error, Err}
     end.
