@@ -260,7 +260,6 @@ state_pre_transform_micro_node(Height, PrevNode, Trees) ->
     state_pre_transform_node(micro, Height, PrevNode, Trees).
 
 state_pre_transform_node(_Type, Height, _PrevNode, Trees) when Height < 1 ->
-    %% TODO: maybe call init_epochs for height 0?
     %% No leader for genesis
     Trees;
 state_pre_transform_node(Type, Height, PrevNode, Trees) ->
@@ -275,9 +274,15 @@ state_pre_transform_node(Type, Height, PrevNode, Trees) ->
             case Height == maps:get(last, EpochInfo) of
                 true ->
                     {Trees1, CarryOverFlag} = handle_pinning(TxEnv, Trees, EpochInfo, Leader),
-                    {ok, Seed} = get_entropy_hash(Epoch + 2),
-                    cache_validators_for_epoch({TxEnv, Trees}, Seed, Epoch + 2),
-                    step_eoe(TxEnv, Trees1, Leader, Seed, 0, -1, CarryOverFlag); % -1 = no base_pin_reward update
+                    case get_entropy_hash(Epoch + 2) of
+                        {ok, Seed} ->
+                            cache_validators_for_epoch({TxEnv, Trees}, Seed, Epoch + 2),
+                            step_eoe(TxEnv, Trees1, Leader, Seed, 0, -1, CarryOverFlag);
+                        {error, _} ->
+                            lager:debug("Entropy hash for height ~p is not in cache, attempting to resync", [Height]),
+                            %% Fail the keyblock production flow, attempt to resync
+                            aec_conductor:throw_error(parent_chain_not_synced)
+                    end;
                 false ->
                     step(TxEnv, Trees, Leader)
             end;
