@@ -429,6 +429,18 @@ beneficiary(Header) ->
 -spec height(header()) -> height().
 height(#key_header{height = H}) -> H;
 height(#mic_header{height = H}) -> H.
+%% WIP: Try to find out where the problem comes from.
+% height(H) ->
+%     try
+%         {H,H} = {#key_header{},H}
+%     catch
+%     C:E:Stacktrace ->
+%         erlang:display(H),
+%         io:format("~p:~p:~p~n", [C,E,Stacktrace]),
+%         erlang:display(Stacktrace)
+%     end,
+%     {H,H} = {#key_header{},H},
+%     element(2,H).
 
 -spec set_height(header(), height()) -> header().
 set_height(#key_header{} = H, Height) -> H#key_header{height = Height};

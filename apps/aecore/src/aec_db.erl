@@ -1102,11 +1102,23 @@ get_top_block_hash() ->
             undefined
     end.
 
+%% WIP: Whhy is this not typed?
+%%      Also, how did this work with previous header updatest?
 get_top_block_node() ->
-    get_chain_state_value(top_block_node).
+    case get_chain_state_value(top_block_node) of
+        #{ header := Header, hash := Hash} ->
+            NewHeader = aec_headers:from_db_header(Header),
+            #{ header => NewHeader, hash => Hash};
+        undefined -> undefined
+    end.
 
 dirty_get_top_block_node() ->
-    dirty_get_chain_state_value(top_block_node).
+    case dirty_get_chain_state_value(top_block_node) of
+        #{ header := Header, hash := Hash} ->
+            NewHeader = aec_headers:from_db_header(Header),
+            #{ header => NewHeader, hash => Hash};
+        undefined -> undefined
+    end.
 
 %% Some migration code: Ideally, top_block_node is there, and we're done.
 %% If not, we should find top_block_hash. Fetch the corresponding
