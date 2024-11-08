@@ -1102,8 +1102,10 @@ get_top_block_hash() ->
             undefined
     end.
 
-%% WIP: Whhy is this not typed?
-%%      Also, how did this work with previous header updatest?
+%% WIP: Why is this not typed?
+%%      Also, how did this work with previous header update tests?
+%%      Probably because this code is newer than the last upgrade.
+%%      Should we rewrite new values to the DB?
 get_top_block_node() ->
     case get_chain_state_value(top_block_node) of
         #{ header := Header, hash := Hash} ->
@@ -1127,7 +1129,7 @@ convert_top_block_entry() ->
     ?t(convert_top_block_entry_()).
 
 convert_top_block_entry_() ->
-    case get_chain_state_value(top_block_node) of
+    case get_top_block_node() of
         undefined ->
             case get_chain_state_value(top_block_hash) of
                 undefined ->
