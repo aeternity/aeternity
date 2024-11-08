@@ -1,0 +1,238 @@
+// CRITICAL TODO : make main staking contract use this accounting logic when crediting the rewards to the block producer
+// CRITICAL TODO : if a block producer changes his staked amount, this needs to be reflected in the bookkeeping of the delegated staking logic for the calculation of the delegators' rewards to work
+
+// TODO: Change list of delegatees to map of known delegatees for gas costs
+@compiler >= 6
+
+include "String.aes"
+include "List.aes"
+include "Option.aes"
+include "Frac.aes"
+
+contract interface MainStaking =
+  entrypoint sorted_validators : () => list((address * int))
+
+
+contract StakingPoC =
+
+    record state = {
+        current_blockreward_stub : int, // pretend it's 1AE for now
+        current_epoch_stub: int, // defined to satisfy the compiler, this specific value is not to be relied upon. it will be taken form the protocol later.
+        delegatees : list(address), // every staker that registered to be a delegatee
+        my_delegatees : map(address, map(address, bool)), // tracking the delegatees one has delegated to via map, because if it was a list, removing one delegatee requires to process the entire list. As the reading of all delegatees is done in a dryrun, it doesn't mater if the Map.tolist is expensive.
+        delegated_stakes: map(address, list(delegated_stake)), // producer -> list of delegates
+        minimum_delegation_threshold: int, // The lowest amount a delegator can contribute (in percent to the staked amount of the block producer - checked once, upon delegation) 
+        maximum_delegators_per_staker: int // As we actively credit each delegator their payout, we need to limit the size of the list of delegators.
+        }
+
+    // the relationship between delegating stakers and delegated stakes is M 1 --- * N (Many delegators can have many delegated stakes, every delegated stake has exactly one delegator)
+    record delegated_stake = {
+        delegator: address,
+        stake_amount: int,
+        from_epoch : int,
+        reward : int
+        } // the amount the user is eligible for on withdraw
+
+    stateful entrypoint init() =
+      { 
+        current_epoch_stub = 1, // stub value, NOT to be relied upon!
+        delegatees = [],
+        delegated_stakes = {},
+        minimum_delegation_threshold = 1,
+        maximum_delegators_per_staker = 30,
+        current_blockreward_stub = 1 * (10 ^ 18), // pretend it's 1AE for now
+        my_delegatees = {}
+       }
+
+    // Register validator as delegatee
+    stateful entrypoint register_as_delegatee() =
+      // Make assertions:
+
+      let stake = stub_get_staking_amount(Call.caller) // Lookup stake amount in Mainstaking to see if you're actually a staker
+      require(stake > 0, "No staked funds found for this account") // Assert postive amount
+      require(!is_delegatee(Call.caller), "Already registerted as delegatee") // Assert you're not yet a delegatee yet
+      
+      let epoch = get_current_epoch()
+      let own_stake = {delegator = Call.caller, stake_amount = stake, from_epoch = 1, reward = 0} //from_epoch is as low as possible here, because actual stakers should always be able to withdraw their rewards.
+
+      put(state{delegatees = state.delegatees ++ [Call.caller]}) // add to list of known delegatees
+
+
+      put(state{delegated_stakes[Call.caller = []] @ delegations = delegations ++ [own_stake] }) // register yourself and your main stake as delegator, too, so that you and the delegateees are in the same list of data used for calculating the payouts.
+
+
+    // CRITICAL TODO: 
+    // The delegated staking amount needs to be added to the total staking amount of the block producer in the main staking logic
+    payable stateful entrypoint delegate_stake(delegatee: address) =
+      require(is_delegatee(delegatee), "Provided address is not a known staker") // assert it actually is a delegatee
+      require(Call.caller != delegatee , "Cannot delegate stake to own stake") // assert Caller is not a delegatee himself
+      require(Call.value >= get_minimum_stake_amount(delegatee), "Delegated funds do not suffice required minimum, aborting")// Assert call.value > minimum amount
+      require(List.length(state.delegated_stakes[delegatee]) < state.maximum_delegators_per_staker, "Allowed amount of delegators per staker exceeded") // Assert list of delegators for delegatee is smaller than maximum
+      
+      // add stake to producer/delegatee:
+      let epoch = get_current_epoch() // present epoch
+      let amount = Call.value
+      let delegated_stakes = state.delegated_stakes[delegatee]
+      let new_delegated_stake = {delegator = Call.caller, stake_amount = Call.value, from_epoch = 1, reward = 0}
+      put(state{ my_delegatees[Call.caller][delegatee] = true, // write down that I'm a delegator for this delegatee
+                 delegated_stakes[delegatee = []] @ delegated = delegated ++ [new_delegated_stake] }  ) // add the stake it to the list of stakes for this delegatee
+
+
+    // unstake your delegated stakes for a particular producer
+    public stateful entrypoint withdraw_delegated_stake(delegatee: address) =
+        require(is_delegatee(delegatee), "Provided account is not a delegatee.")
+        let (others_delegated_stakes, my_delegated_stakes) = List.partition((delegation) => delegation.delegator == Call.caller, get_all_delegations_by_delegatee(delegatee)) // get mine and other's delegated stakes
+
+
+        let total_rewards = List.foldl((reward_acc, delegated_stake) =>  // accumulate rewards from all stakes
+            let updated_reward = reward_acc + delegated_stake.reward 
+            updated_reward, 
+            0, 
+            my_delegated_stakes)
+
+
+        let total_delegated = List.foldl((stake_acc, delegated_stake) =>  // accumulate delegated funds 
+            let updated_total_delegated_stake = stake_acc + delegated_stake.stake_amount 
+            updated_total_delegated_stake, 
+            0, 
+            my_delegated_stakes)
+
+        let total_payout = total_rewards + total_delegated // sum all payouts 
+
+          
+        put(state{delegated_stakes[delegatee] = others_delegated_stakes,     // update the list of stakes: remove mine.
+                  my_delegatees[Call.caller] = Map.delete(delegatee, state.my_delegatees[Call.caller])}) // clear this delegatee from my delegatees 
+
+        Chain.spend(Call.caller, total_payout)
+    
+        // CRITICAL TODO: update the producer's now reduced total stake in HC staking contract logic 
+
+
+    // calculate total rewards for all delegated stakes and withdraw.
+    public stateful entrypoint withdraw_rewards(delegatee: address) =
+
+        let (others_delegated_stakes, my_delegated_stakes) = List.partition((delegation) => delegation.delegator == Call.caller, get_all_delegations_by_delegatee(delegatee)) // get mine and other's delegated stakes
+        require(!List.is_empty(my_delegated_stakes), "No delegated stakes found for this account.") // Double-check.
+        let (total_rewards : int, updated_delegated_stakes : list(delegated_stake)) = List.foldl((reward_and_stakes_acc, old_delegated_stake) =>  // accumulate rewards and create a new list of my delegations with rewards being reset to 0.
+            
+            let (reward, all_updated_stakes) = reward_and_stakes_acc
+
+            let updated_reward = reward + old_delegated_stake.reward // accumulate the reward amount
+            let updated_stake : delegated_stake = {
+                delegator = old_delegated_stake.delegator,
+                stake_amount = old_delegated_stake.stake_amount,
+                from_epoch = old_delegated_stake.from_epoch,
+                reward = 0 // reset the reward of that delegated stake
+             } 
+            
+            (updated_reward, all_updated_stakes ++ [updated_stake]), 
+            (0 , []), 
+            my_delegated_stakes)
+
+        put(state{delegated_stakes[delegatee] = others_delegated_stakes ++ updated_delegated_stakes}) // put others' stakes and mine back into the map.
+        
+
+        Chain.spend(Call.caller, total_rewards) // transfer the calculated withdrawal amount
+        true // quality-of-life return statement so SDK does not return confusing 'false' value
+
+    // CRITICAL TODO: this needs to be called by the main staking contract. I assume, the Call.caller is the block producer?
+    stateful function split_reward_to_delegators() =
+        switch(is_delegatee(Call.caller))
+            false => () // if the staker is not a delegator, we don't care and are done here. Return value TBD.
+            true => 
+                    // get only those who have staked for long enough already!
+                    let all_delegations = get_all_delegations_by_delegatee(Call.caller)
+                    let (all_other_delegators, all_eligible_delegators : list(delegated_stake)) = List.partition((delegation) => delegation.from_epoch =< get_current_epoch() - state.minimum_delegation_threshold, all_delegations)
+                    // get the total staking & delegation amount for this delegatee
+                    let total_stake = stub_get_total_stake_amount_by_delegatee(Call.caller)
+
+                    // update rewards for the eligible ones
+                    let all_eligible_delegators_with_updated_rewards : list(delegated_stake) = List.map((delegator) => 
+                        let percentage_of_total_stake = Frac.make_frac(delegator.stake_amount, total_stake) // calculate delegator's percentage of total stake
+                        let final_reward_frac = Frac.mul(percentage_of_total_stake, Frac.from_int(state.current_blockreward_stub))
+                        let final_reward = Frac.floor(final_reward_frac)
+                        // return an updated delegator record: 
+                        {
+                                delegator = delegator.delegator,
+                                stake_amount = delegator.stake_amount,
+                                from_epoch = delegator.from_epoch,
+                                reward = delegator.reward + final_reward // add final reward to delegator's reward balance
+                            }
+                         ,all_eligible_delegators)
+
+                    put(state{delegated_stakes[Call.caller] = all_other_delegators ++ all_eligible_delegators_with_updated_rewards })
+                    // loop over all delegates, calculate their percentage of the total stake  stake
+ 
+
+    // CRITICAL TODO: called by the main stakng contract logic whenever a staker changes his staked amount
+    stateful function update_delegatees_stake(new_value: int, delegatee: address) =
+        require(is_delegatee(delegatee), "Tried updating a non-delegatee's stake")
+        let (others_delegated_stakes, delegatees_stake) = List.partition((delegation) => delegation.delegator == Call.caller, get_all_delegations_by_delegatee(delegatee)) // get mine and other's delegated stakes
+        require(!List.is_empty(delegatees_stake), "No stake found for the delegatee in the delegated stakes list. this should never happen.")
+        let old_stake = List.get(0, delegatees_stake)
+
+        let updated_stake = {
+            delegator = old_stake.delegator,
+            stake_amount = new_value,
+            from_epoch = old_stake.from_epoch,
+            reward = old_stake.reward
+         }
+        // update only the entry of that index in state
+        put (state{delegated_stakes[delegatee] = others_delegated_stakes ++ [updated_stake]})
+    
+
+    function get_current_epoch() =
+        state.current_epoch_stub
+
+    function is_delegatee(maybe_delegatee: address) =
+        List.contains(maybe_delegatee, state.delegatees)
+
+    // stub functions to reference values from the actual HC staking contract
+    function stub_get_staking_amount(potential_staker: address) : int =
+        10 * (10 ^ 18) // pretend we have 10 AE staked
+
+    // stub for fetching the total amount staked (and delegated) under some block producer
+    // in the main contract, this should be somewhere easily available I guess and would not have to be calculated.
+    function stub_get_total_stake_amount_by_delegatee(delegatee: address) =
+        let all_delegations = get_all_delegations_by_delegatee(delegatee)
+
+        // add up all the delegated stake
+        List.foldl((stake_acc, delegated_stake) =>  // accumulate delegated funds 
+            let updated_total_delegated_stake = stake_acc + delegated_stake.stake_amount 
+            updated_total_delegated_stake, 
+            0, 
+            all_delegations)
+
+    // Get a list of all delegatees somebody delegated to
+    public entrypoint get_all_delegatees_by_delegator(delegator: address) =
+        state.my_delegatees[delegator] //alternatively, convert to list
+
+    //Suggestion: Delegators need to delegate at least 3% of the initial staker's stake to prevent spam? TBD. 
+    public entrypoint get_minimum_stake_amount(delegatee: address) : int =
+        require(is_delegatee(delegatee), "Tried checking stake amount for a non-delegatee")// assert you're checking an actual delegatee.
+        let staked_amount = stub_get_staking_amount(delegatee) // at this point, we can be sure the delegatee definitely has something staked, else he cannot be a delegatee.
+        (staked_amount / 100) * state.minimum_delegation_threshold // the required delegation amount is at least x percent of the delegatee's currently staked amount
+
+    // for any delegatee, find all delegations
+    public entrypoint get_all_delegations_by_delegatee(delegatee : address) : list(delegated_stake) =
+        require(is_delegatee(delegatee), "Tried fetching delegated stakes from a non-delegatee.")
+        Map.lookup_default(delegatee, state.delegated_stakes, [])
+
+    // for a given delegatee, find all delegations of a specific delegator
+    public entrypoint get_all_delegations_by_delegatee_and_delegator(delegatee: address, delegator: address) =
+        let all_delegations = get_all_delegations_by_delegatee(delegatee)
+        switch(all_delegations) 
+            [] => []
+            all => find_in_delegations_by_delegator(all, delegator) 
+
+    // for any list of delegations, find all delegations with a specific delegator
+    function find_in_delegations_by_delegator(delegations: list(delegated_stake), delegator: address) = 
+        let found_delegations = List.filter((delegated) => delegated.delegator == delegator, delegations)
+        found_delegations
+
+    public entrypoint calculate_accumulated_rewards_per_delegatee(delegatee: address) =
+        require(is_delegatee(delegatee), "Address provided is not a delegatee")
+        let ( others , my_delegated_stakes) = List.partition((delegation) => delegation.delegator == Call.caller, get_all_delegations_by_delegatee(delegatee))
+        List.foldl((acc, delegated_stake) => acc + delegated_stake.stake_amount , 0 ,my_delegated_stakes)
+
+
