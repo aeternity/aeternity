@@ -286,7 +286,9 @@ state_pre_transform_node(Type, Height, PrevNode, Trees) ->
                     case get_entropy_hash(Epoch + 2) of
                         {ok, Seed} ->
                             cache_validators_for_epoch({TxEnv, Trees1}, Seed, Epoch + 2),
-                            step_eoe(TxEnv, Trees1, Leader, Seed, 0, -1, CarryOverFlag);
+                            Trees2 = step_eoe(TxEnv, Trees1, Leader, Seed, 0, -1, CarryOverFlag),
+                            start_default_pinning_process(TxEnv, Trees2, Height),
+                            Trees2;
                         {error, _} ->
                             lager:debug("Entropy hash for height ~p is not in cache, attempting to resync", [Height]),
                             %% Fail the keyblock production flow, attempt to resync
@@ -297,6 +299,14 @@ state_pre_transform_node(Type, Height, PrevNode, Trees) ->
             end;
         micro ->
             step_micro(TxEnv, Trees, Leader)
+    end.
+
+start_default_pinning_process(TxEnv, Trees, _Height) ->
+    case default_pinning_behavior() of
+        true ->
+            NextEpochInfo = aec_chain_hc:epoch_info({TxEnv, Trees}),
+            aec_pinning_agent:spawn_for_epoch(NextEpochInfo);
+        _ -> ok
     end.
 
 cache_child_epoch_info(Epoch, Height, StartTime) ->
@@ -524,6 +534,10 @@ child_epoch_length() ->
 pinning_reward_value() ->
     Fun = fun() -> get_consensus_config_key([<<"pinning_reward_value">>]) end,
     aeu_ets_cache:get(?ETS_CACHE_TABLE, pinning_reward_value, Fun).
+
+default_pinning_behavior() ->
+    Fun = fun() -> get_consensus_config_key([<<"default_pinning_behavior">>], false) end,
+    aeu_ets_cache:get(?ETS_CACHE_TABLE, default_pinning_behavior, Fun).
 
 %acceptable_sync_offset() ->
 %    Fun = fun() -> get_consensus_config_key([<<"parent_chain">>, <<"acceptable_sync_offset">>], 60000) end,
@@ -910,7 +924,7 @@ validate_pin(TxEnv, Trees, CurEpochInfo) ->
             lager:debug("PINNING: EncHash: ~p", [EncTxHash]),
             try
                 #{epoch := CurEpoch} = CurEpochInfo,
-                #{epoch := PinEpoch, height := PinHeight, block_hash := PinHash} =
+                {ok, #{epoch := PinEpoch, height := PinHeight, block_hash := PinHash}} =
                     aec_parent_connector:get_pin_by_tx_hash(EncTxHash),
                 PinEpoch = CurEpoch - 1, % validate it was actually last epoch
                 case {ok, PinHash} =:= aec_chain_state:get_key_block_hash_at_height(PinHeight) of

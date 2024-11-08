@@ -121,8 +121,8 @@ decode_parent_pin_payload(Binary) ->
         Epoch = erlang:list_to_integer(binary_to_list(HexEpoch), 16),
         Height = erlang:list_to_integer(binary_to_list(HexHeight), 16),
         {ok, BlockHash} = aeser_api_encoder:safe_decode(key_block_hash, EncBlockHash),
-        #{epoch => Epoch, height => Height, block_hash => BlockHash}
-    catch 
+        {ok, #{epoch => Epoch, height => Height, block_hash => BlockHash}}
+    catch
         _ -> {error, {bad_parent_pin_payload, Binary}}
     end.
 
@@ -130,11 +130,11 @@ encode_child_pin_payload(TxHash) ->
     <<"pin", TxHash/binary>>.
 
 decode_child_pin_payload(<<"pin", TxHash/binary>>) ->
-    TxHash;
-decode_child_pin_payload(_) ->
-    error.
+    {ok, TxHash};
+decode_child_pin_payload(BadTxHash) ->
+    {error, {bad_child_pin_payload, BadTxHash}}.
 
-is_pin(Pin) -> 
+is_pin(Pin) ->
     case decode_child_pin_payload(Pin) of
         error -> false;
         _ -> true
@@ -165,17 +165,17 @@ post_pin_tx(SignedSpendTx, NodeSpec) ->
 
 get_pin_by_tx_hash(TxHashEnc, NodeSpec) ->
     case decode_child_pin_payload(TxHashEnc) of
-         error -> {error, {bad_child_pin_tx_hash, TxHashEnc}};
-         TxHash ->
+         {error, _} -> {error, {bad_child_pin_tx_hash, TxHashEnc}};
+         {ok, TxHash} ->
             TxPath = <<"/v3/transactions/", TxHash/binary>>,
             case get_request(TxPath, NodeSpec, 5000) of
                 {ok, #{<<"tx">> := #{<<"payload">> := EncPin}}} ->
                     {ok, Pin} = aeser_api_encoder:safe_decode(bytearray, EncPin),
                     decode_parent_pin_payload(Pin);
-                OtherErr -> OtherErr
+                OtherErr -> {error, OtherErr}
             end
     end.
-    
+
 
 get_request(Path, NodeSpec, Timeout) ->
     try

@@ -37,7 +37,8 @@
          last_leader_validates_pin_and_post_to_contract/1,
          get_contract_pubkeys/1,
          correct_leader_in_micro_block/1,
-         first_leader_next_epoch/1
+         first_leader_next_epoch/1,
+         check_default_pin/1
         ]).
 
 -include_lib("stdlib/include/assert.hrl").
@@ -140,7 +141,7 @@
 
 -define(GENESIS_BENFICIARY, <<0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0>>).
 
-all() -> [{group, hc}, {group, epochs}, {group, pinning}].
+all() -> [{group, hc}, {group, epochs}, {group, pinning}, {group, default_pin}].
 
 groups() ->
     [
@@ -170,6 +171,10 @@ groups() ->
             wallet_post_pin_to_pc,
             post_pin_to_pc,
             last_leader_validates_pin_and_post_to_contract]}
+    , {default_pin, [sequence],
+          [ start_two_child_nodes,
+            produce_first_epoch,
+            check_default_pin]}
     ].
 
 suite() -> [].
@@ -238,7 +243,12 @@ end_per_suite(Config) ->
                proplists:get_value(started_apps, Config, []))],
     ok.
 
-init_per_group(_, Config0) ->
+init_per_group(Group, ConfigPre) ->
+    Config0 =
+        case Group of
+            pinning -> [ {default_pinning_behavior, false} | ConfigPre ];
+            _ -> [ {default_pinning_behavior, true} | ConfigPre ]
+        end,
     VM = fate,
     NetworkId = <<"hc">>,
     GenesisStartTime = aeu_time:now_in_msecs(),
@@ -1129,7 +1139,7 @@ last_leader_validates_pin_and_post_to_contract(Config) ->
 
     LeaderBalance1A = account_balance(LastLeader),
     %% use get_pin_by_tx_hash to get the posted hash back and compare with actual keyblock (to test encoding decoding etc)
-    #{epoch := _PinEpoch, height := PinHeight, block_hash := PinHash} =
+    {ok, #{epoch := _PinEpoch, height := PinHeight, block_hash := PinHash}} =
         rpc(Node, aec_parent_connector, get_pin_by_tx_hash, [FirstSpend]),
     ?assertEqual({ok, PinHash}, rpc(Node, aec_chain_state, get_key_block_hash_at_height, [PinHeight])),
 
@@ -1234,6 +1244,10 @@ last_leader_validates_pin_and_post_to_contract(Config) ->
 
     aecore_suite_utils:unsubscribe(NodeName, pin),
 
+    ok.
+
+check_default_pin(Config) ->
+    {ok, _} = produce_cc_blocks(Config, 15),
     ok.
 
 
@@ -1676,7 +1690,8 @@ node_config(Node, CTConfig, PotentialStakers, ReceiveAddress, ProducingCommitmen
                                         <<"contract_owner">> => aeser_api_encoder:encode(account_pubkey,?OWNER_PUBKEY),
                                         <<"expected_key_block_rate">> => 2000,
                                         <<"stakers">> => Stakers,
-                                        <<"pinning_reward_value">> => 4711},
+                                        <<"pinning_reward_value">> => 4711,
+                                        <<"default_pinning_behavior">> => ?config(default_pinning_behavior, CTConfig)},
                                     SpecificConfig)
                                     }}},
         <<"fork_management">> =>
