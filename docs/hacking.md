@@ -274,15 +274,34 @@ the temporary directory that was created, do:
       any child processes, or even any supervisor.
   - `aecore`
     - The Core Aeternity Application supervisor tree. Runs the
-      `aec_worker_sup`, `aec_consensus_sup`, and `aec_conductor_sup`. It used
-      to run the `aec_connection_sup` as well, before that was moved to the
-      `aesync` app.
+      `aec_worker_sup`, `aec_consensus_sup`, and `aec_conductor_sup`. (It
+      used to run the `aec_connection_sup` as well, before that was moved
+      to the `aesync` app.)
       - `aec_worker_sup`
         - Runs `aec_metrics`, `aec_keys`, and `aec_tx_pool`
       - `aec_consensus_sup`
         - Initially empty
       - `aec_conductor_sup`
         - Runs `aec_conductor` and `aec_block_generator`
+
+          - Under PoW, the puzzle to be solved by the mining in order to be
+            allowed to build a new key block depends on the top hash on
+            which the key block will be added. For every new top hash,
+            i.e., each added (micro-)block, a corresponding key block candidate
+            is created and mining for that block is started; the mining
+            worker process runs under a timeout and will abort if it takes
+            too long. There can thus be several candidate blocks, each
+            based on a different top hash. If a solution is found, insertion
+            will be attempted just like if the block arrived from elsewhere.
+
+          - Under PoS, a candidate is only created when the local node
+            decides it should produce a key block; for hyperchains, this
+            depends on computed time slots, and the candidate worker may
+            sleep until the right time. In this case the actual block
+            production does not do any mining; it just signs the new key
+            block. If candidate creation reports failure (e.g. due to not
+            being leader), a fresh attempt will be made.
+
   - `aecli`
     - The CLI, based on `ecli`. The supervisor is started with no children.
   - `aefate`
@@ -301,7 +320,7 @@ the temporary directory that was created, do:
   - `aecontract`
     - Library for Contracts
   - `aevm`
-    - Other VM (Aethereum?)
+    - Aethereum VM clone in Erlang.
   - `aebytecode` (`github.com/aeternity/aebytecode.git`)
     - Library and standalone assembler for Aeternity bytecode, supporting
       both AEVM bytecode and FATE bytecode.
