@@ -3,6 +3,7 @@
 %%% @copyright (C) 2018, Aeternity Anstalt
 %%% @doc
 %%% API for chain related information.
+%%% See also module `aec_chain_state`.
 %%% @end
 %%%-------------------------------------------------------------------
 -module(aec_chain).

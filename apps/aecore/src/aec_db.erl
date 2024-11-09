@@ -2,7 +2,10 @@
 %%%-------------------------------------------------------------------
 %%% @copyright (C) 2017, Aeternity Anstalt
 %%% @doc
-%%% API to the Aeternity node db
+%%% API to the Aeternity node db.
+%%%
+%%% This stores the nodes that make up the blockchain.
+%%% See also module `aec_chain_state`.
 %%% @end
 %%%-------------------------------------------------------------------
 -module(aec_db).
