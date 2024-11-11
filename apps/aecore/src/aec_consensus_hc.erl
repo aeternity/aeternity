@@ -863,7 +863,7 @@ handle_pinning(TxEnv, Trees, EpochInfo, Leader ) ->
 validate_pin(TxEnv, Trees, CurEpochInfo) ->
     case aec_chain_hc:pin_info({TxEnv, Trees}) of
         undefined -> pin_missing;
-        EncTxHash ->
+        {bytes, EncTxHash} ->
             % TODO make this code much more robust - incorrect EncTxHash, bad value from PC, incorrect hash etc.etc
             lager:debug("PINNING: EncHash: ~p", [EncTxHash]),
             try
