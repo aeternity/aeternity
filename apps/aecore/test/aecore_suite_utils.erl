@@ -82,7 +82,9 @@
          check_for_logs/2,
          times_in_epoch_log/3,
          errors_in_logs/2,
-         assert_no_errors_in_logs/1]).
+         assert_no_errors_in_logs/1,
+         assert_no_errors_in_logs/2
+        ]).
 
 -export([proxy/0,
          start_proxy/0,
@@ -121,6 +123,7 @@
 
 -include_lib("kernel/include/file.hrl").
 -include_lib("common_test/include/ct.hrl").
+-include_lib("stdlib/include/assert.hrl").
 
 -define(OPS_BIN, "aeternity").
 -define(DEFAULT_CUSTOM_EXPECTED_MINE_RATE, 100).
@@ -1091,14 +1094,34 @@ file_missing(F) ->
     end.
 
 assert_no_errors_in_logs(Config) ->
+    assert_no_errors_in_logs(Config, []).
+
+%% Scans the logs for '[error]' patterns and fails if any are found.
+%% If AllowedSubstrings is provided, then any log lines containing these substrings are not reported.
+-spec assert_no_errors_in_logs(Config :: proplists:proplist(), AllowedPatterns :: [string()]) -> ok.
+assert_no_errors_in_logs(Config, AllowedSubstrings) ->
     Nodes = [Node || {Node, _, _} <- ?config(nodes, Config)],
-    Errors = errors_in_logs(Nodes, Config),
-    lists:foreach(
-        fun({Node, {File, Line}}) ->
-            ct:log("Error [~s] in ~s: ~s", [Node, File, Line])
+    Group = proplists:get_value(name, proplists:get_value(tc_group_properties, Config, []), "?"),
+    {IgnoredErrors, ErrorsToReport} = lists:partition(
+        fun({_Node, {_File, Line}}) ->
+            lists:any(
+                fun(Pattern) -> string:find(Line, Pattern) =/= nomatch end,
+                AllowedSubstrings
+            )
         end,
-        Errors),
-    [ ct:fail("Errors in logs, expected 0 got ~p", [length(Errors)]) || [] /= Errors ].
+        errors_in_logs(Nodes, Config)),
+
+    case IgnoredErrors of
+        [] -> ok;
+        _ -> ct:pal("Ignoring errors found in logs, while running group=~s~n~150p", [Group, IgnoredErrors])
+    end,
+    case ErrorsToReport of
+        [] -> ok;
+        _ ->
+            ct:pal("Errors found in logs, while running group=~s~n~150p", [Group, ErrorsToReport]),
+            ?assert(false, "Found errors in logs. To ignore, add substrings to 2nd arg of aecore_suite_utils:assert_no_errors_in_logs/2")
+    end,
+    ok.
 
 errors_in_logs(Nodes, Config) ->
     [{N, Errs} || N <- Nodes,
