@@ -276,7 +276,7 @@ state_pre_transform_node(Type, Height, PrevNode, Trees) ->
                     {Trees1, CarryOverFlag} = handle_pinning(TxEnv, Trees, EpochInfo, Leader),
                     case get_entropy_hash(Epoch + 2) of
                         {ok, Seed} ->
-                            cache_validators_for_epoch({TxEnv, Trees}, Seed, Epoch + 2),
+                            cache_validators_for_epoch({TxEnv, Trees1}, Seed, Epoch + 2),
                             step_eoe(TxEnv, Trees1, Leader, Seed, 0, -1, CarryOverFlag);
                         {error, _} ->
                             lager:debug("Entropy hash for height ~p is not in cache, attempting to resync", [Height]),
