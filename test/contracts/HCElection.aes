@@ -27,7 +27,7 @@ main contract HCElection =
       added_stake           : int,
       epoch                 : int,
       epochs                : map(int, epoch_info),
-      pin                   : option(string),
+      pin                   : option(bytes()),
       pin_reward            : pin_reward_info
     }
 
@@ -101,9 +101,6 @@ main contract HCElection =
     require(Chain.block_height == last, "Only in last block")
     require(Call.caller == state.leader, "Must be called by the last leader of epoch")
     put(state{pin = Some(proof)})
-
-  entrypoint pin_info() =
-    state.pin
 
   entrypoint leader() =
     state.leader
