@@ -76,37 +76,39 @@
 
 -define(IS_INT_INFO(I), is_integer(I) andalso (I >= 0) andalso (I =< 16#ffffffff)).
 
--type height() :: aec_blocks:height().
+-type height()   :: aec_blocks:height().
 -type bin_info() :: <<>> | <<_:32>>. %% ?OPTIONAL_INFO_BYTES * 8
 -type info()     :: aec_blocks:info().
 
 -record(mic_header, {
-          height       = 0                                     :: height(),
-          pof_hash     = <<>>                                  :: aec_pof:hash(),
-          prev_hash    = <<0:?BLOCK_HEADER_HASH_BYTES/unit:8>> :: block_header_hash(),
-          prev_key     = <<0:?BLOCK_HEADER_HASH_BYTES/unit:8>> :: block_header_hash(),
-          root_hash    = <<0:?STATE_HASH_BYTES/unit:8>>        :: state_hash(),
-          signature    = <<0:?BLOCK_SIGNATURE_BYTES/unit:8>>   :: block_signature(),
-          txs_hash     = <<0:?TXS_HASH_BYTES/unit:8>>          :: txs_hash(),
-          time         = 0                                     :: non_neg_integer(),
-          version                                              :: non_neg_integer(),
-          extra        = #{}                                   :: map()
+          height       = 0                                         :: height(),
+          pof_hash     = <<>>                                      :: aec_pof:hash(),
+          prev_hash    = <<0:?BLOCK_HEADER_HASH_BYTES/unit:8>>     :: block_header_hash(),
+          prev_key     = <<0:?BLOCK_HEADER_HASH_BYTES/unit:8>>     :: block_header_hash(),
+          root_hash    = <<0:?STATE_HASH_BYTES/unit:8>>            :: state_hash(),
+          signature    = <<0:?BLOCK_SIGNATURE_BYTES/unit:8>>       :: block_signature(),
+          txs_hash     = <<0:?TXS_HASH_BYTES/unit:8>>              :: txs_hash(),
+          time         = 0                                         :: non_neg_integer(),
+          version                                                  :: non_neg_integer(),
+          extra        = #{}                                       :: map(),
+          flags        = <<?MICRO_HEADER_FLAG:?FLAG_BYTES/unit:8>> :: block_header_flags()
          }).
 
 -record(key_header, {
-          height       = 0                                     :: height(),
-          prev_hash    = <<0:?BLOCK_HEADER_HASH_BYTES/unit:8>> :: block_header_hash(),
-          prev_key     = <<0:?BLOCK_HEADER_HASH_BYTES/unit:8>> :: block_header_hash(),
-          root_hash    = <<0:?STATE_HASH_BYTES/unit:8>>        :: state_hash(),
-          target                                               :: aec_consensus:key_target(),
-          nonce        = 0                                     :: non_neg_integer(),
-          time         = 0                                     :: non_neg_integer(),
-          version                                              :: non_neg_integer(),
-          key_seal     = no_value                              :: aec_consensus:key_seal() | no_value,
-          miner        = <<0:?MINER_PUB_BYTES/unit:8>>         :: miner_pubkey(),
-          beneficiary  = <<0:?BENEFICIARY_PUB_BYTES/unit:8>>   :: beneficiary_pubkey(),
-          info         = <<>>                                  :: bin_info(),
-          extra        = #{}                                   :: map()
+          height       = 0                                         :: height(),
+          prev_hash    = <<0:?BLOCK_HEADER_HASH_BYTES/unit:8>>     :: block_header_hash(),
+          prev_key     = <<0:?BLOCK_HEADER_HASH_BYTES/unit:8>>     :: block_header_hash(),
+          root_hash    = <<0:?STATE_HASH_BYTES/unit:8>>            :: state_hash(),
+          target                                                   :: aec_consensus:key_target(),
+          nonce        = 0                                         :: non_neg_integer(),
+          time         = 0                                         :: non_neg_integer(),
+          version                                                  :: non_neg_integer(),
+          key_seal     = no_value                                  :: aec_consensus:key_seal() | no_value,
+          miner        = <<0:?MINER_PUB_BYTES/unit:8>>             :: miner_pubkey(),
+          beneficiary  = <<0:?BENEFICIARY_PUB_BYTES/unit:8>>       :: beneficiary_pubkey(),
+          info         = <<>>                                      :: bin_info(),
+          extra        = #{}                                       :: map(),
+          flags        = <<?KEY_HEADER_FLAG:?FLAG_BYTES/unit:8>>   :: block_header_flags()
          }).
 
 %% -record(db_key_header, {
@@ -190,7 +192,13 @@ type(#mic_header{}) -> micro.
 
 -spec from_db_header(tuple() | header()) -> header().
 %% We might have a legacy tuple in the db
-from_db_header(Header) -> populate_extra(from_db_header_(Header)).
+from_db_header(Header) ->
+    HeaderRecord = fix_flags(populate_extra(from_db_header_(Header))),
+    case type(HeaderRecord) of
+        key -> ok;
+        micro -> ok
+    end,
+    HeaderRecord.
 
 from_db_header_(#key_header{} = K) -> K;
 from_db_header_(#mic_header{} = M) -> M;
@@ -203,7 +211,7 @@ from_db_header_({mic_header,
                  Signature,
                  Txs_hash,
                  Time,
-                 Version}) ->
+                 Version})->
     #mic_header{
        height    = Height,
        pof_hash  = Pof_hash,
@@ -214,6 +222,28 @@ from_db_header_({mic_header,
        txs_hash  = Txs_hash,
        time      = Time,
        version   = Version};
+from_db_header_({mic_header,
+                 Height,
+                 Pof_hash,
+                 Prev_hash,
+                 Prev_key,
+                 Root_hash,
+                 Signature,
+                 Txs_hash,
+                 Time,
+                 Version,
+                 Extra})->
+    #mic_header{
+       height    = Height,
+       pof_hash  = Pof_hash,
+       prev_hash = Prev_hash,
+       prev_key  = Prev_key,
+       root_hash = Root_hash,
+       signature = Signature,
+       txs_hash  = Txs_hash,
+       time      = Time,
+       version   = Version,
+       extra     = Extra};
 from_db_header_({key_header,
                  Height,
                  PrevHash,
@@ -269,6 +299,36 @@ from_db_header_({key_header,
                beneficiary  = Beneficiary,
                info         = <<>>
               };
+from_db_header_({key_header,
+                 Height,
+                 PrevHash,
+                 PrevKey,
+                 RootHash,
+                 Target,
+                 Nonce,
+                 Time,
+                 Version,
+                 KeySeal,
+                 Miner,
+                 Beneficiary,
+                 Info,
+                 Extra
+                }) ->
+            #key_header{
+               height       = Height,
+               prev_hash    = PrevHash,
+               prev_key     = PrevKey,
+               root_hash    = RootHash,
+               target       = Target,
+               nonce        = Nonce,
+               time         = Time,
+               version      = Version,
+               key_seal     = KeySeal,
+               miner        = Miner,
+               beneficiary  = Beneficiary,
+               info         = Info,
+               extra        = Extra
+              };
 from_db_header_(_) ->
     error(bad_db_header).
 
@@ -285,7 +345,21 @@ from_db_header_(_) ->
                     ) -> header().
 new_key_header(Height, PrevHash, PrevKeyHash, RootHash, Miner, Beneficiary,
                Target, KeySeal, Nonce, Time, Info, Version) ->
-    populate_extra(
+    new_key_header(Height, PrevHash, PrevKeyHash, RootHash, Miner, Beneficiary,
+                  Target, KeySeal, Nonce, Time, Info, Version,
+                  <<?KEY_HEADER_FLAG:?FLAG_BYTES/unit:8>>).
+
+
+-spec new_key_header(height(), block_header_hash(), block_header_hash(),
+                      state_hash(), miner_pubkey(), beneficiary_pubkey(),
+                      aec_consensus:key_target(),
+                      aec_consensus:key_seal() | 'no_value',
+                      non_neg_integer(), non_neg_integer(), info(),
+                      aec_hard_forks:protocol_vsn(), block_header_flags()
+                     ) -> header().
+new_key_header(Height, PrevHash, PrevKeyHash, RootHash, Miner, Beneficiary,
+                Target, KeySeal, Nonce, Time, Info, Version, Flags) ->
+    fix_flags(populate_extra(
         #key_header{height       = Height,
                     prev_hash    = PrevHash,
                     prev_key     = PrevKeyHash,
@@ -297,8 +371,10 @@ new_key_header(Height, PrevHash, PrevKeyHash, RootHash, Miner, Beneficiary,
                     nonce        = Nonce,
                     time         = Time,
                     info         = make_info(Height, Version, Info),
-                    version      = Version
-               }).
+                    version      = Version,
+                    flags        = Flags
+               })).
+
 
 make_info(0, _Version, default) ->
     <<>>;
@@ -315,7 +391,7 @@ make_info(_, _Version, default) ->
                        aec_pof:hash(), non_neg_integer()
                       ) -> header().
 new_micro_header(Height, PrevHash, PrevKey, RootHash, Time, TxsHash, PoFHash, Version) ->
-    populate_extra(
+    fix_flags(populate_extra(
         #mic_header{height    = Height,
                     pof_hash  = PoFHash,
                     prev_hash = PrevHash,
@@ -325,7 +401,7 @@ new_micro_header(Height, PrevHash, PrevKey, RootHash, Time, TxsHash, PoFHash, Ve
                     time      = Time,
                     version   = Version
                    }
-    ).
+    )).
 
 %%%===================================================================
 %%% Header hash
@@ -360,7 +436,7 @@ info(#key_header{info = <<I:?OPTIONAL_INFO_BYTES/unit:8>>}) ->
 
 -spec set_info(key_header(), info()) -> key_header().
 set_info(#key_header{version = Vsn} = H, I) ->
-    H#key_header{info = make_info(height(H), Vsn, I)}.
+   fix_flags(H#key_header{info = make_info(height(H), Vsn, I)}).
 
 -spec prev_hash(header()) -> block_header_hash().
 prev_hash(#key_header{prev_hash = H}) -> H;
@@ -400,9 +476,13 @@ pof_hash(#mic_header{pof_hash = Hash}) ->
     Hash.
 
 -spec set_pof_hash(micro_header(), aec_pof:hash()) -> micro_header().
-set_pof_hash(Header, Hash) when byte_size(Hash) =:= 0;
-                                byte_size(Hash) =:= 32 ->
-    Header#mic_header{pof_hash = Hash}.
+set_pof_hash(#mic_header{flags = <<Flags:?FLAG_BITS>>} = Header, Hash) when byte_size(Hash) =:= 0 ->
+    Header#mic_header{pof_hash = Hash,
+                      flags = <<?CLR(Flags,?POF_FLAG):?FLAG_BITS>>};
+set_pof_hash(#mic_header{flags = <<Flags:?FLAG_BITS>>} = Header, Hash) when byte_size(Hash) =:= 32 ->
+    Header#mic_header{pof_hash = Hash,
+                      flags = <<?SET(Flags,?POF_FLAG):?FLAG_BITS>>}.
+
 
 -spec pow(key_header()) -> aec_consensus:key_seal().
 %% Deprecated - please use key_seal/1 in new code
@@ -555,7 +635,7 @@ encode_pof_hash(PofHash) ->
 -spec deserialize_from_client(key, map()) -> {ok, header()} | {error, term()}.
 deserialize_from_client(key, KeyBlock) ->
     try
-        {ok, populate_extra(
+        {ok, fix_flags(populate_extra(
              #key_header{height       = maps:get(<<"height">>, KeyBlock),
                          prev_hash    = decode(block_hash, maps:get(<<"prev_hash">>, KeyBlock)),
                          prev_key     = decode(key_block_hash, maps:get(<<"prev_key_hash">>, KeyBlock)),
@@ -568,7 +648,7 @@ deserialize_from_client(key, KeyBlock) ->
                          time         = maps:get(<<"time">>, KeyBlock),
                          version      = maps:get(<<"version">>, KeyBlock),
                          info         = decode(contract_bytearray, maps:get(<<"info">>, KeyBlock))
-                        })}
+                        }))}
     catch
         _:_ -> {error, invalid_header}
     end.
@@ -589,10 +669,10 @@ serialize_to_signature_binary(#key_header{} = H) ->
 -spec serialize_to_binary(header()) -> deterministic_header_binary().
 serialize_to_binary(#key_header{} = Header) ->
     PowEvidence = serialize_pow_evidence_to_binary(Header#key_header.key_seal),
-    Flags = construct_key_flags(Header),
+
     %% Todo check size of hashes = (?BLOCK_HEADER_HASH_BYTES*8),
     <<(Header#key_header.version):32,
-      Flags:32/bits,
+      (Header#key_header.flags):32/bits,
       (Header#key_header.height):64,
       (Header#key_header.prev_hash)/binary,
       (Header#key_header.prev_key)/binary,
@@ -606,9 +686,8 @@ serialize_to_binary(#key_header{} = Header) ->
       (Header#key_header.info)/binary %% Either 0 or 4 bytes.
     >>;
 serialize_to_binary(#mic_header{} = Header) ->
-    Flags = construct_micro_flags(Header),
     <<(Header#mic_header.version):32,
-      Flags:32/bits,
+      (Header#mic_header.flags):32/bits,
       (Header#mic_header.height):64,
       (Header#mic_header.prev_hash)/binary,
       (Header#mic_header.prev_key)/binary,
@@ -618,19 +697,23 @@ serialize_to_binary(#mic_header{} = Header) ->
       (Header#mic_header.pof_hash)/binary, %% Either 0 or 32 bytes.
       (Header#mic_header.signature)/binary>>.
 
-construct_key_flags(#key_header{info = <<>>}) ->
-    ContainsInfo = 0,
-    <<?KEY_HEADER_TAG:1, ContainsInfo:1, 0:30>>;
-construct_key_flags(#key_header{info = <<_:?OPTIONAL_INFO_BYTES/unit:8>>} = H) ->
-    [error(illegal_info_field) || version(H) < ?MINERVA_PROTOCOL_VSN],
-    ContainsInfo = 1,
-    <<?KEY_HEADER_TAG:1, ContainsInfo:1, 0:30>>;
-construct_key_flags(#key_header{}) ->
-    error(illegal_info_field).
-
-construct_micro_flags(#mic_header{pof_hash = Bin}) ->
+fix_flags(#key_header{flags = <<_:2, RestFlags:30>>, info = Info} = H) ->
+    case Info of
+        <<>> ->
+            ContainsInfo = 0,
+            Flags = <<?KEY_HEADER_TAG:1, ContainsInfo:1, RestFlags:30>>,
+            H#key_header{flags = Flags};
+        <<_:?OPTIONAL_INFO_BYTES/unit:8>> ->
+            [error(illegal_info_field) || version(H) < ?MINERVA_PROTOCOL_VSN],
+            ContainsInfo = 1,
+            Flags = <<?KEY_HEADER_TAG:1, ContainsInfo:1, RestFlags:30>>,
+            H#key_header{flags = Flags};
+        _ ->
+            error(illegal_info_field)
+    end;
+fix_flags(#mic_header{flags = <<_:2, RestFlags:30>>, pof_hash = Bin} = H) ->
     PoFFlag = min(byte_size(Bin), 1),
-    <<?MICRO_HEADER_TAG:1, PoFFlag:1, 0:30>>.
+    H#mic_header{flags = <<?MICRO_HEADER_TAG:1, PoFFlag:1, RestFlags:30>>}.
 
 -spec deserialize_from_binary(deterministic_header_binary()) -> header().
 
@@ -689,8 +772,8 @@ deserialize_from_binary_partial(<<_Version:32,
                                        | {'error', term()}.
 deserialize_key_from_binary(<<Version:32,
                               ?KEY_HEADER_TAG:1,
-                              _ContainsInfoFlag:1,
-                              0:30, %% Remaining flags.
+                              ContainsInfoFlag:1,
+                              RestFlags:30, %% Remaining flags.
                               Height:64,
                               PrevHash:?BLOCK_HEADER_HASH_BYTES/binary,
                               PrevKeyHash:?BLOCK_HEADER_HASH_BYTES/binary,
@@ -715,9 +798,10 @@ deserialize_key_from_binary(<<Version:32,
                     nonce = Nonce,
                     time = Time,
                     version = Version,
-                    info = Info
+                    info = Info,
+                    flags = <<?KEY_HEADER_TAG:1, ContainsInfoFlag:1, RestFlags:30 >>
                    },
-    {ok, populate_extra(H)};
+    {ok, fix_flags(populate_extra(H))};
 deserialize_key_from_binary(_Other) ->
     {error, malformed_header}.
 
@@ -732,7 +816,7 @@ deserialize_key_from_binary(_Other) ->
 deserialize_micro_from_binary(<<Version:32,
                                 ?MICRO_HEADER_TAG:1,
                                 PoFTag:1,
-                                0:30, %% Remaining flags
+                                RestFlags:30, %% Remaining flags.
                                 Height:64,
                                 PrevHash:?BLOCK_HEADER_HASH_BYTES/binary,
                                 PrevKeyHash:?BLOCK_HEADER_HASH_BYTES/binary,
@@ -753,8 +837,11 @@ deserialize_micro_from_binary(<<Version:32,
                             signature = Signature,
                             txs_hash = TxsHash,
                             time = Time,
-                            version = Version},
-            {ok, populate_extra(H)};
+                            version = Version,
+                            flags = << ?MICRO_HEADER_TAG:1,
+                                       PoFTag:1,
+                                       RestFlags:30 >>},
+            {ok, fix_flags(populate_extra(H))};
         _ ->
             {error, malformed_header}
     end;
