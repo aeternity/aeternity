@@ -599,7 +599,8 @@ serialize_for_client(#key_header{} = Header, PrevBlockType) ->
           <<"target">>        => Header#key_header.target,
           <<"time">>          => Header#key_header.time,
           <<"version">>       => Header#key_header.version,
-          <<"info">>          => aeser_api_encoder:encode(contract_bytearray, Header#key_header.info)
+          <<"info">>          => aeser_api_encoder:encode(contract_bytearray, Header#key_header.info),
+          <<"flags">>         => aeser_api_encoder:encode(bytearray, Header#key_header.flags)
          },
     case Header#key_header.key_seal of
         no_value ->
@@ -619,7 +620,8 @@ serialize_for_client(#mic_header{} = Header, PrevBlockType) ->
       <<"state_hash">> => aeser_api_encoder:encode(block_state_hash, Header#mic_header.root_hash),
       <<"time">>       => Header#mic_header.time,
       <<"txs_hash">>   => aeser_api_encoder:encode(block_tx_hash, Header#mic_header.txs_hash),
-      <<"version">>    => Header#mic_header.version
+      <<"version">>    => Header#mic_header.version,
+      <<"flags">>      => aeser_api_encoder:encode(bytearray, Header#mic_header.flags)
      }.
 
 encode_block_hash(key, Hash) ->
@@ -647,11 +649,19 @@ deserialize_from_client(key, KeyBlock) ->
                          nonce        = maps:get(<<"nonce">>, KeyBlock),
                          time         = maps:get(<<"time">>, KeyBlock),
                          version      = maps:get(<<"version">>, KeyBlock),
-                         info         = decode(contract_bytearray, maps:get(<<"info">>, KeyBlock))
+                         info         = decode(contract_bytearray, maps:get(<<"info">>, KeyBlock)),
+                         flags        = deserialize_key_flags(KeyBlock)
                         }))}
     catch
         _:_ -> {error, invalid_header}
     end.
+
+deserialize_key_flags(KeyBlock) ->
+    case maps:get(<<"flags">>, KeyBlock, undefined) of
+        undefined -> <<?KEY_HEADER_FLAG:?FLAG_BYTES/unit:8>>;
+        Flags -> decode(bytearray, Flags)
+    end.
+
 
 -spec serialize_to_signature_binary(header()) -> deterministic_header_binary().
 serialize_to_signature_binary(#mic_header{signature = Sig} = H) ->
@@ -801,7 +811,7 @@ deserialize_key_from_binary(<<Version:32,
                     info = Info,
                     flags = <<?KEY_HEADER_TAG:1, ContainsInfoFlag:1, RestFlags:30 >>
                    },
-    {ok, fix_flags(populate_extra(H))};
+    {ok, populate_extra(H)};
 deserialize_key_from_binary(_Other) ->
     {error, malformed_header}.
 
