@@ -27,7 +27,7 @@ main contract HCElection =
       added_stake           : int,
       epoch                 : int,
       epochs                : map(int, epoch_info),
-      pin                   : option(string),
+      pin                   : option(bytes()),
       pin_reward            : pin_reward_info
     }
 
@@ -95,6 +95,13 @@ main contract HCElection =
                pin = None,
                pin_reward = pr})
 
+  stateful entrypoint pin(proof : bytes()) =
+    let epoch = state.epoch
+    let last = state.epochs[epoch].start + state.epochs[epoch].length - 1
+    require(Chain.block_height == last, "Only in last block")
+    require(Call.caller == state.leader, "Must be called by the last leader of epoch")
+    put(state{pin = Some(proof)})
+
   entrypoint leader() =
     state.leader
 
@@ -121,11 +128,6 @@ main contract HCElection =
     let total_stake = List.foldl((+), 0, List.map(Pair.snd, validators))
     // One extra hash operation to convert from bytes() to bytes(32)/hash
     validator_schedule_(Crypto.blake2b(seed), (s) => Bytes.to_int(s) mod total_stake, validators, length, [])
-
-  stateful entrypoint pin(s : string) =
-    // PINTODO: determine that caller is "correct"
-    // PINTODO: simplify to single bytes() arg
-    put(state{pin = Some(s)})
 
   entrypoint pin_info() =
     state.pin

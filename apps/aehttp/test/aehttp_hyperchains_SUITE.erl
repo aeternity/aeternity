@@ -1121,7 +1121,7 @@ last_leader_validates_pin_and_post_to_contract(Config) ->
     ct:log("First Spend: ~p", [FirstSpend]),
 
     %% call contract with PC pin tx hash
-    ok = pin_contract_call_tx(Config, "pin", [FirstSpend], 0, LastLeader),
+    ok = pin_contract_call_tx(Config, FirstSpend, LastLeader),
 
     {value, Account} = rpc(?NODE1, aec_chain, get_account, [LastLeader]),
     ct:log("Leader Account: ~p", [Account]),
@@ -1146,9 +1146,7 @@ last_leader_validates_pin_and_post_to_contract(Config) ->
 
     %% 2. No pin is posted
 
-    % to next epoch
-    mine_to_next_epoch(Node, Config),
-
+    % to end of (next) epoch
     mine_to_last_block_in_epoch(Node, Config),
 
     aecore_suite_utils:subscribe(NodeName, pin),
@@ -1162,15 +1160,15 @@ last_leader_validates_pin_and_post_to_contract(Config) ->
 
     %% 3. Incorrect pin posted to contract a) bad tx hash
 
-    mine_to_next_epoch(Node, Config),
-
     mine_to_last_block_in_epoch(Node, Config),
 
     aecore_suite_utils:subscribe(NodeName, pin),
 
     % post bad hash to contract
 
-    ok = pin_contract_call_tx(Config, "pin", [<<"THIS IS A BAD TX HASH">>], 0, LastLeader),
+    {ok, #{last := Last3}} = rpc(Node, aec_chain_hc, epoch_info, []),
+    {ok, LastLeader3} = rpc(Node, aec_consensus_hc, leader_for_height, [Last3]),
+    ok = pin_contract_call_tx(Config, <<"THIS IS A BAD TX HASH">>, LastLeader3),
 
     {ok, _} = produce_cc_blocks(Config, 2),
     {ok, #{info := {incorrect_proof_posted}}} = wait_for_ps(pin),
@@ -1178,8 +1176,6 @@ last_leader_validates_pin_and_post_to_contract(Config) ->
     aecore_suite_utils:unsubscribe(NodeName, pin),
 
     %% 4. Incorrect hash stored on PC
-
-    mine_to_next_epoch(Node, Config),
 
     {ok, PD4} = rpc(Node, aec_parent_connector, get_pinning_data, []),
     EncTxHash4 = pin_to_parent(Node, PD4#{block_hash := <<"VERYINCORRECTBLOCKHASH">>}, pubkey(?DWIGHT)),
@@ -1193,7 +1189,7 @@ last_leader_validates_pin_and_post_to_contract(Config) ->
 
     % post bad hash to contract
     LeaderBalance4A = account_balance(LastLeader4),
-    ok = pin_contract_call_tx(Config, "pin", [EncTxHash4], 0, LastLeader4),
+    ok = pin_contract_call_tx(Config, EncTxHash4, LastLeader4),
 
     {ok, _} = produce_cc_blocks(Config, 2),
     {ok, #{info := {incorrect_proof_posted}}} = wait_for_ps(pin),
@@ -1206,26 +1202,34 @@ last_leader_validates_pin_and_post_to_contract(Config) ->
 
     aecore_suite_utils:unsubscribe(NodeName, pin),
 
-    %% 4. Bad Epoch (correct epoch - 2)
-
-    mine_to_next_epoch(Node, Config),
+    %% 4. Bad height and then bad leader
 
     {ok, PD5} = rpc(Node, aec_parent_connector, get_pinning_data, []),
-    #{epoch := Epoch52} = PD5,
-    EncTxHash5 = pin_to_parent(Node, PD5#{epoch := Epoch52 - 2}, pubkey(?DWIGHT)),
-    %% post parent spend tx hash to CC
+    EncTxHash5 = pin_to_parent(Node, PD5, pubkey(?DWIGHT)),
+
     {ok, #{last := Last5}} = rpc(Node, aec_chain_hc, epoch_info, []),
     {ok, LastLeader5} = rpc(Node, aec_consensus_hc, leader_for_height, [Last5]),
+
+    {ok, _} = produce_cc_blocks(Config, 1),
+
+    %% at the wrong height
+    ok = pin_contract_call_tx(Config, EncTxHash5, LastLeader5),
+
+    {ok, _} = produce_cc_blocks(Config, 1),
+    {ok, []} = rpc(Node, aec_tx_pool, peek, [infinity]), % transaction not in pool
+    %% check that no pin info was stored.
+    undefined = rpc(Node, aec_chain_hc, pin_info, []),
 
     mine_to_last_block_in_epoch(Node, Config),
 
     aecore_suite_utils:subscribe(NodeName, pin),
 
-    % post bad hash to contract
-    ok = pin_contract_call_tx(Config, "pin", [EncTxHash5], 0, LastLeader5),
+    % post by wrong leader
+    NotLeader = hd([pubkey(?ALICE), pubkey(?BOB)] -- [LastLeader5]),
+    ok = pin_contract_call_tx(Config, EncTxHash5, NotLeader),
 
     {ok, _} = produce_cc_blocks(Config, 2),
-    {ok, #{info := {incorrect_proof_posted}}} = wait_for_ps(pin),
+    {ok, #{info := {no_proof_posted}}} = wait_for_ps(pin),
 
     aecore_suite_utils:unsubscribe(NodeName, pin),
 
@@ -1249,23 +1253,15 @@ mine_to_last_block_in_epoch(Node, Config) ->
     DistToBeforeLast = Last - CH - 1,
     {ok, _} = produce_cc_blocks(Config, DistToBeforeLast).
 
+bytes_literal(Bin) ->
+    [_, _ | PinLit] = binary_to_list(aeu_hex:hexstring_encode(Bin)),
+    "#" ++ PinLit.
+
 % PINREFAC
-pin_contract_call_tx(Config, Fun, Args, Amount, FromPubKey) ->
-    ContractPubkey = ?config(election_contract, Config),
-    Nonce = next_nonce(?NODE1, FromPubKey),
-    {ok, CallData} = aeb_fate_abi:create_calldata(Fun, Args),
-    ABI = aect_test_utils:abi_version(),
-    TxSpec =
-        #{  caller_id   => aeser_id:create(account, FromPubKey)
-          , nonce       => Nonce
-          , contract_id => aeser_id:create(contract, ContractPubkey)
-          , abi_version => ABI
-          , fee         => 1000000 * ?DEFAULT_GAS_PRICE
-          , amount      => Amount
-          , gas         => 1000000
-          , gas_price   => ?DEFAULT_GAS_PRICE
-          , call_data   => CallData},
-    {ok, Tx} = aect_call_tx:new(TxSpec),
+pin_contract_call_tx(Config, PinProof, FromPubKey) ->
+    Tx = contract_call(?config(election_contract, Config), src(?HC_CONTRACT, Config),
+                       "pin", [bytes_literal(PinProof)], 0, FromPubKey),
+
     NetworkId = ?config(network_id, Config),
     SignedTx = sign_tx(Tx, privkey(who_by_pubkey(FromPubKey)), NetworkId),
     rpc:call(?NODE1_NAME, aec_tx_pool, push, [SignedTx, tx_received]),

@@ -1050,8 +1050,9 @@ apply_micro_block_transactions(Node, FeesIn, Trees) ->
               Txs1      -> Txs1
           end,
     KeyHeader = db_get_header(node_prev_key_hash(Node)),
-    Env = aetx_env:tx_env_from_key_header(KeyHeader, node_prev_key_hash(Node),
-                                          node_time(Node), node_prev_hash(Node)),
+    Env0 = aetx_env:tx_env_from_key_header(KeyHeader, node_prev_key_hash(Node),
+                                           node_time(Node), node_prev_hash(Node)),
+    Env = aetx_env:set_height(Env0, node_height(Node)),
     case timer:tc(aec_block_micro_candidate, apply_block_txs_strict, [Txs, Trees, Env]) of
         {Time, {ok, _, NewTrees, Events}} ->
             aec_metrics:try_update([ae, epoch, aecore, blocks, micro, txs_execution_time, success], Time),
