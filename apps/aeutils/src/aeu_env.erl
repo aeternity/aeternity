@@ -258,7 +258,7 @@ schema(Key, Schema) ->
         {ok, _} = Ok -> Ok;
         error        -> undefined
     end.
-
+%
 schema_find([H|T], S) ->
     case S of
         #{<<"properties">> := #{H := Tree}} ->

@@ -26,11 +26,12 @@
 %%%=============================================================================
 
 
-spawn_for_epoch(Epoch) ->
+spawn_for_epoch(EpochInfo) ->
+    lager:debug("AGENT: Trying to spawn pinning agent...", []),
     try
     case whereis(my_unique_process) of
         undefined ->
-            Pid = spawn(aec_pinning_agent, start, [Epoch]),
+            Pid = spawn(aec_pinning_agent, start, [EpochInfo]),
             register(my_unique_process, Pid),
             Pid;
         Pid when is_pid(Pid) ->

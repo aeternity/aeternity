@@ -43,6 +43,9 @@
         get_sign_module/0,
         get_parent_chain_type/0,
         %% Pinning
+        pin_to_pc/3,
+        pin_tx_to_cc/4,
+        pin_contract_call/5,
         get_pinning_data/0,
         create_pin_tx/5,
         post_pin_tx/1,
@@ -52,7 +55,8 @@
         encode_child_pin_payload/1,
         decode_child_pin_payload/1,
         is_pin/1,
-        find_spends_to/1
+        find_spends_to/1,
+        has_parent_account/1
         ]).
 
 %% Callbacks
@@ -149,6 +153,20 @@ get_sign_module() ->
 get_parent_chain_type() ->
     gen_server:call(?SERVER, get_parent_chain_type).
 
+-spec get_pinning_data() -> {ok, map()} | {error, atom()}.
+get_pinning_data() ->
+    gen_server:call(?SERVER, get_pinning_data).
+
+pin_to_pc(Who, Amount, Fee) ->
+    gen_server:call(?SERVER, {pin_to_pc, Who, Amount, Fee}).
+
+pin_tx_to_cc(PinTx, Who, Amount, Fee) ->
+    gen_server:call(?SERVER, {pin_to_pc, PinTx, Who, Amount, Fee}).
+
+pin_contract_call(Contract, PinTx, Who, Amount, Fee) ->
+    gen_server:call(?SERVER, {pin_contract_call, Contract, PinTx, Who, Amount, Fee}).
+
+
 -spec create_pin_tx(binary(), binary(), integer(), integer(), binary()) -> aetx:tx().
 create_pin_tx(SenderEnc, ReceiverPubkey, Amount, Fee, PinningData) ->
     gen_server:call(?SERVER, {create_pin_tx, SenderEnc, ReceiverPubkey, Amount, Fee, PinningData}).
@@ -171,18 +189,21 @@ encode_child_pin_payload(TxHash) ->
 decode_child_pin_payload(TxHash) ->
     gen_server:call(?SERVER, {decode_child_pin_payload, TxHash}).
 
+has_parent_account(Account) ->
+    gen_server:call(?SERVER, {has_parent_account, Account}).
+
 %%%=============================================================================
 %%% Gen Server Callbacks
 %%%=============================================================================
 
 -spec init([any()]) -> {ok, #state{}}.
-init([ParentConnMod, FetchInterval, ParentHosts, NetworkId, SignModule, HCPCPairs]) ->
+init([ParentConnMod, FetchInterval, ParentHosts, NetworkId, SignModule, HCPCMap]) ->
     {ok, #state{parent_conn_mod = ParentConnMod,
                 fetch_interval = FetchInterval,
                 parent_hosts = ParentHosts,
                 network_id = NetworkId,
                 sign_module = SignModule,
-                hcpc = maps:from_list(HCPCPairs)}}.
+                hcpc = HCPCMap}}.
 
 -spec handle_call(any(), any(), state()) -> {reply, any(), state()}.
 handle_call(trigger_fetch, _From, State) ->
@@ -203,6 +224,27 @@ handle_call(get_parent_conn_mod, _From, #state{parent_conn_mod = Mod} = State) -
     {reply, Mod, State};
 handle_call(get_parent_chain_type, _From, #state{parent_conn_mod = Mod} = State) ->
     Reply = Mod:get_chain_type(),
+    {reply, Reply, State};
+handle_call(get_pinning_data, _From, #state{parent_conn_mod = Mod, network_id = NetworkID} = State) ->
+    Reply = get_pinning_data_(Mod, NetworkID),
+    {reply, Reply, State};
+handle_call({pin_to_pc, Who, Amount, Fee}, _From, #state{parent_conn_mod = Mod, parent_hosts = ParentHosts, hcpc = HCPCMap, sign_module = SignModule, network_id = NetworkID} = State) ->
+    Reply = case maps:is_key(Who, HCPCMap) of
+        true ->
+            {ok, PinningData} = get_pinning_data_(Mod, NetworkID),
+            handle_parent_pin_calls(Mod, pin_to_pc, {PinningData, maps:get(Who, HCPCMap), Amount, Fee, NetworkID, SignModule}, ParentHosts);
+        false -> {error, {no_pc_account_for_staker, Who}}
+    end,
+    {reply, Reply, State};
+handle_call({pin_tx_to_cc, PinTx, Who, Amount, Fee}, _From, #state{parent_conn_mod = Mod, sign_module = SignModule} = State) ->
+    Reply = case SignModule:is_key_present(Who) of
+        true ->
+            Mod:pin_tx_to_cc(PinTx, Who, Amount, Fee, SignModule);
+        false -> {error, {no_cc_account_for_staker, Who}} % Could this actually happen????
+    end,
+    {reply, Reply, State};
+handle_call({pin_contract_call, Contract, PinTx, Who, Amount, Fee}, _From, #state{parent_conn_mod = Mod, sign_module = SignModule} = State) ->
+    Reply =  Mod:pin_contract_call(Contract, PinTx, Who, Amount, Fee, SignModule),
     {reply, Reply, State};
 handle_call({create_pin_tx, SenderEnc, ReceiverPubkey, Amount, Fee, PinningData},
              _From,
@@ -229,6 +271,9 @@ handle_call({decode_child_pin_payload, EncTxHash}, _From, #state{parent_conn_mod
     {reply, Reply, State};
 handle_call({is_pin, EncTxHash}, _From, #state{parent_conn_mod = Mod} = State) ->
     Reply = handle_conn_mod_calls(Mod, is_pin, EncTxHash),
+    {reply, Reply, State};
+handle_call({has_parent_account, Account}, _From, #state{hcpc = HCPCMap} = State) ->
+    Reply = maps:is_key(Account, HCPCMap),
     {reply, Reply, State};
 handle_call(_Request, _From, State) ->
     Reply = ok,
@@ -393,14 +438,13 @@ is_pin(Pin) ->
     gen_server:call(?SERVER, {is_pin, Pin}).
 
 % PINREFAC is this (aec_p_c) the correct place for this and the following CC pin related ones?
--spec get_pinning_data() -> {ok, map()} | {error, atom()}.
-get_pinning_data() ->
+get_pinning_data_(Mod, NetworkID) ->
     {ok, #{epoch := Epoch,
            first := First,
            last  := Last}} = aec_chain_hc:epoch_info(),
     lager:debug("Get pin data for epoch ~p for leader of block ~p", [Epoch - 1, Last]),
     {ok, BlockHash} = aec_chain_state:get_key_block_hash_at_height(First - 1),
-    {ok, ChainType} = get_parent_chain_type(),
+    {ok, ChainType} = Mod:get_chain_type(),
     PrevEpoch = Epoch - 1,
     Height = First - 1,
     case aec_consensus_hc:leader_for_height(Last) of
@@ -408,10 +452,10 @@ get_pinning_data() ->
         {ok, #{epoch             => PrevEpoch,
                height            => Height,
                block_hash        => BlockHash,
-               parent_payload    => encode_parent_pin_payload(#{epoch => PrevEpoch, height => Height, block_hash => BlockHash}),
+               parent_payload    => Mod:encode_parent_pin_payload(#{epoch => PrevEpoch, height => Height, block_hash => BlockHash}),
                last_leader       => Leader,
                parent_type       => ChainType,
-               parent_network_id => get_network_id()}};
+               parent_network_id => NetworkID}};
       error ->
           %% schedule not yet cached
           {error, last_leader_unknown}
