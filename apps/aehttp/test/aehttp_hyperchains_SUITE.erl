@@ -1146,9 +1146,7 @@ last_leader_validates_pin_and_post_to_contract(Config) ->
 
     %% 2. No pin is posted
 
-    % to next epoch
-    mine_to_next_epoch(Node, Config),
-
+    % to end of (next) epoch
     mine_to_last_block_in_epoch(Node, Config),
 
     aecore_suite_utils:subscribe(NodeName, pin),
@@ -1161,8 +1159,6 @@ last_leader_validates_pin_and_post_to_contract(Config) ->
     aecore_suite_utils:unsubscribe(NodeName, pin),
 
     %% 3. Incorrect pin posted to contract a) bad tx hash
-
-    mine_to_next_epoch(Node, Config),
 
     mine_to_last_block_in_epoch(Node, Config),
 
@@ -1180,8 +1176,6 @@ last_leader_validates_pin_and_post_to_contract(Config) ->
     aecore_suite_utils:unsubscribe(NodeName, pin),
 
     %% 4. Incorrect hash stored on PC
-
-    mine_to_next_epoch(Node, Config),
 
     {ok, PD4} = rpc(Node, aec_parent_connector, get_pinning_data, []),
     EncTxHash4 = pin_to_parent(Node, PD4#{block_hash := <<"VERYINCORRECTBLOCKHASH">>}, pubkey(?DWIGHT)),
@@ -1208,26 +1202,34 @@ last_leader_validates_pin_and_post_to_contract(Config) ->
 
     aecore_suite_utils:unsubscribe(NodeName, pin),
 
-    %% 4. Bad Epoch (correct epoch - 2)
-
-    mine_to_next_epoch(Node, Config),
+    %% 4. Bad height and then bad leader
 
     {ok, PD5} = rpc(Node, aec_parent_connector, get_pinning_data, []),
-    #{epoch := Epoch52} = PD5,
-    EncTxHash5 = pin_to_parent(Node, PD5#{epoch := Epoch52 - 2}, pubkey(?DWIGHT)),
-    %% post parent spend tx hash to CC
+    EncTxHash5 = pin_to_parent(Node, PD5, pubkey(?DWIGHT)),
+
     {ok, #{last := Last5}} = rpc(Node, aec_chain_hc, epoch_info, []),
     {ok, LastLeader5} = rpc(Node, aec_consensus_hc, leader_for_height, [Last5]),
+
+    {ok, _} = produce_cc_blocks(Config, 1),
+
+    %% at the wrong height
+    ok = pin_contract_call_tx(Config, EncTxHash5, LastLeader5),
+
+    {ok, _} = produce_cc_blocks(Config, 1),
+    {ok, []} = rpc(Node, aec_tx_pool, peek, [infinity]), % transaction not in pool
+    %% check that no pin info was stored.
+    undefined = rpc(Node, aec_chain_hc, pin_info, []),
 
     mine_to_last_block_in_epoch(Node, Config),
 
     aecore_suite_utils:subscribe(NodeName, pin),
 
-    % post bad hash to contract
-    ok = pin_contract_call_tx(Config, EncTxHash5, LastLeader5),
+    % post by wrong leader
+    NotLeader = hd([pubkey(?ALICE), pubkey(?BOB)] -- [LastLeader5]),
+    ok = pin_contract_call_tx(Config, EncTxHash5, NotLeader),
 
     {ok, _} = produce_cc_blocks(Config, 2),
-    {ok, #{info := {incorrect_proof_posted}}} = wait_for_ps(pin),
+    {ok, #{info := {no_proof_posted}}} = wait_for_ps(pin),
 
     aecore_suite_utils:unsubscribe(NodeName, pin),
 
