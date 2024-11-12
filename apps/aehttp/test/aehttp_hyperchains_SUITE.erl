@@ -49,7 +49,7 @@
 -define(HC_CONTRACT, "HCElection").
 -define(CONSENSUS, hc).
 -define(CHILD_EPOCH_LENGTH, 10).
--define(CHILD_BLOCK_TIME, 500).
+-define(CHILD_BLOCK_TIME, 300).
 -define(PARENT_EPOCH_LENGTH, 3).
 -define(PARENT_FINALITY, 2).
 -define(REWARD_DELAY, 2).
