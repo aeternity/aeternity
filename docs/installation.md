@@ -3,6 +3,7 @@
 This document describes how to install an Aeternity node using a release binary either by:
 
 * [Quick install](#quick-install);
+* [Install from a package manager](#package-install);
 * [Install from a tarball](#tarball-install).
 
 ## Quick install
@@ -14,6 +15,28 @@ bash <(curl -s https://install.aeternity.io/install.sh)
 ```
 
 While this method is the easiest one it is not recommended for production systems.
+
+## Package Install
+Installing from a package manager is the recommended way of installing the aeternity node, as it also automatically installs the additional requirements and makes the updates much more simple.
+
+**Ubuntu**
+The only supported version so far is 18.04 Bionic (x86-64).
+
+```bash
+sudo apt-get install software-properties-common
+sudo apt-key adv --keyserver keyserver.ubuntu.com --recv-keys D18ABB45C5AF91A0D835367E2106A773A40AFAEB
+sudo apt-add-repository 'deb https://apt.aeternity.io bionic main'
+sudo apt-get install aeternity-node
+sudo service aeternity-node start
+```
+
+**macOS** 
+Minimum required version is macOS Big Sur 11.6.2 (x86-64).
+
+```bash
+brew tap aeternity/aeternity
+brew install aeternity-node
+```
 
 ## Tarball Install
 
