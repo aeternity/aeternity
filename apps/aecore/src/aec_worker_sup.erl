@@ -19,6 +19,7 @@ init([]) ->
         ++ [?CHILD(aec_metrics_rpt_dest, 5000, worker),
             ?CHILD(aec_keys, 5000, worker),
             ?CHILD(aec_tx_pool, 5000, worker),
+            ?CHILD(aec_hc_vote_pool, 5000, worker),
             ?CHILD(aec_peer_analytics, 5000, worker),
             ?CHILD(aec_tx_pool_gc, 5000, worker),
             ?CHILD(aec_resilience, 5000, worker),

@@ -92,13 +92,10 @@ push_(STx, Event) ->
             gen_server:call(?SERVER, {push, STx, Event})
     end.
 
-%% The specified maximum number of transactions avoids requiring
-%% building in memory the complete list of all transactions in the
-%% pool.
 -spec peek(epoch() | {epoch(), vote_type()}) -> {ok, [vote()]}.
-peek(At) when is_integer(At) ->
-    gen_server:call(?SERVER, {peek, At});
-peek({H, B} = At) when is_integer(H), is_binary(B) ->
+peek(Epoch) when is_integer(Epoch) ->
+    gen_server:call(?SERVER, {peek, Epoch});
+peek({Epoch, Type} = At) when is_integer(Epoch), is_integer(Type) ->
     gen_server:call(?SERVER, {peek, At}).
 
 -spec size() -> {ok, non_neg_integer()}.
