@@ -98,11 +98,12 @@ int_create(PrevBlock, KeyBlock) ->
     MBEnv = #{prev_hash := PrevBlockHash} = create_micro_block_env(PrevBlock, KeyBlock),
     case aec_chain:get_block_state(PrevBlockHash) of
         {ok, Trees} ->
-            TxEnv = create_tx_env(MBEnv),
+            TxEnv0 = create_tx_env(MBEnv),
             MaxGas = aec_governance:block_gas_limit(),
             %% Height is relative to last key-block.
             ConsensusModule = aec_blocks:consensus_module(KeyBlock),
             Height = ConsensusModule:micro_block_height_relative_previous_block(key, aec_blocks:height(KeyBlock)),
+            TxEnv = aetx_env:set_height(TxEnv0, Height),
             PrevNode = aec_chain_state:wrap_block(PrevBlock),
             Trees1 = ConsensusModule:state_pre_transform_micro_node(Height, PrevNode, Trees),
             int_pack_block(Height, MaxGas, [], [], MBEnv, TxEnv, Trees1, []);
