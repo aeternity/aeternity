@@ -1121,7 +1121,7 @@ dirty_get_top_block_node() ->
 %% Some migration code: Ideally, top_block_node is there, and we're done.
 %% If not, we should find top_block_hash. Fetch the corresponding
 %% header, delete the obsolete top_block_hash and put in the new top_block_node.
-%% We do not update the top blok in the DB if it is there, the next top block
+%% We do not update the top block in the DB if it is there, the next top block
 %% will be of the latest version and the get_top_block_node function converts
 %% on the fly.
 convert_top_block_entry() ->
