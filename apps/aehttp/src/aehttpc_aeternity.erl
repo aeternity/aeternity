@@ -11,7 +11,7 @@
          pin_to_pc/2,
          pin_tx_to_cc/5,
          pin_contract_call/6,
-         create_pin_tx/1,
+         create_pin_tx/2,
          post_pin_tx/2,
          get_pin_by_tx_hash/2,
          encode_parent_pin_payload/1,
@@ -144,19 +144,24 @@ is_pin(Pin) ->
     end.
 
 % -spec create_pin_tx(binary(), binary(), binary(), integer(), integer(), binary()) -> aetx:tx().
-create_pin_tx({SenderPubkey, ReceiverPubkey, Nonce, Amount, Fee, PinPayload}) ->
+create_pin_tx({SenderPubkey, ReceiverPubkey, Amount, Fee, PinningData}, NodeSpec) ->
+    Nonce = get_pc_nonce(SenderPubkey, NodeSpec),
+    PinPayload = encode_parent_pin_payload(PinningData),
+    create_pin_tx_({SenderPubkey, ReceiverPubkey, Nonce, Amount, Fee, PinPayload}).
+
+create_pin_tx_({SenderPubkey, ReceiverPubkey, Nonce, Amount, Fee, PinPayload}) ->
     TxArgs = #{sender_id    => aeser_id:create(account, SenderPubkey),
-               recipient_id => aeser_id:create(account, ReceiverPubkey),
-               amount       => Amount,
-               fee          => Fee,
-               nonce        => Nonce,
-               payload      => PinPayload},
+            recipient_id => aeser_id:create(account, ReceiverPubkey),
+            amount       => Amount,
+            fee          => Fee,
+            nonce        => Nonce,
+            payload      => PinPayload},
     {ok, SpendTx} = aec_spend_tx:new(TxArgs),
     SpendTx.
 
-get_pc_nonce(SenderPubkey, NodeSpec) ->
-    SenderEnc = aeser_api_encoder:encode(account_pubkey, SenderPubkey),
-    NoncePath = <<"/v3/accounts/", SenderEnc/binary, "/next-nonce">>,
+get_pc_nonce(Who, NodeSpec) ->
+    WhoEnc = aeser_api_encoder:encode(account_pubkey, Who),
+    NoncePath = <<"/v3/accounts/", WhoEnc/binary, "/next-nonce">>,
     {ok, #{<<"next_nonce">> := Nonce}} = get_request(NoncePath, NodeSpec, 5000),
     Nonce.
 
@@ -166,16 +171,16 @@ get_local_nonce(Who) ->
         {error, account_not_found} -> 1
     end.
 
-pin_to_pc({PinningData, Who, Amount, Fee, NetworkId, SignModule}, NodeSpec) ->
+pin_to_pc({PinningData, Who, Amount, Fee, NetworkId, SignModule} = Args, NodeSpec) ->
     PinPayload = encode_parent_pin_payload(PinningData),
     Nonce = get_pc_nonce(Who, NodeSpec),
-    SpendTx = create_pin_tx({Who, Who, Nonce, Amount, Fee, PinPayload}),
+    SpendTx = create_pin_tx_({Who, Who, Nonce, Amount, Fee, PinPayload}),
     SignedSpendTx = sign_tx(SpendTx, NetworkId, Who, SignModule),
     post_pin_tx(SignedSpendTx, NodeSpec).
 
 pin_tx_to_cc(PinTxHash, Who, Amount, Fee, SignModule) ->
     Nonce = get_local_nonce(Who),
-    SpendTx = create_pin_tx({Who, Who, Nonce, Amount, Fee, PinTxHash}),
+    SpendTx = create_pin_tx_({Who, Who, Nonce, Amount, Fee, PinTxHash}),
     NetworkId = aec_governance:get_network_id(),
     SignedSpendTx = sign_tx(SpendTx, NetworkId, Who, SignModule),
     aec_tx_pool:push(SignedSpendTx, tx_received).
@@ -196,22 +201,27 @@ post_pin_tx(SignedSpendTx, NodeSpec) ->
 
 pin_contract_call(ContractPubkey, PinTx, Who, Amount, Fee, SignModule) ->
     Nonce = get_local_nonce(Who),
-    {ok, CallData} = aeb_fate_abi:create_calldata("pin", [PinTx]),
-    ABI = 8, % not really nice, what is the supported version of getting the latest ABI version
+    {ok, CallData} = aeb_fate_abi:create_calldata("pin", [bytes_literal(PinTx)]),
+    ABI = 3, % not really nice, what is the supported version of getting the latest ABI version
     TxSpec =
         #{  caller_id   => aeser_id:create(account, Who)
           , nonce       => Nonce
           , contract_id => aeser_id:create(contract, ContractPubkey)
           , abi_version => ABI
-          , fee         => Fee
+          , fee         => Fee %1000000 * min_gas_price()
           , amount      => Amount
-          , gas         => 10
-          , gas_price   => 1000 * min_gas_price()
+          , gas         => 1000000
+          , gas_price   => min_gas_price()
           , call_data   => CallData},
     {ok, Tx} = aect_call_tx:new(TxSpec),
     NetworkId = aec_governance:get_network_id(),
-    SignedSpendTx = sign_tx(Tx, NetworkId, Who, SignModule),
-    aec_tx_pool:push(SignedSpendTx, tx_received).
+    SignedCallTx = sign_tx(Tx, NetworkId, Who, SignModule),
+    aec_tx_pool:push(SignedCallTx, tx_received).
+
+
+bytes_literal(Bin) ->
+    [_, _ | PinLit] = binary_to_list(aeu_hex:hexstring_encode(Bin)),
+    "#" ++ PinLit.
 
 min_gas_price() ->
     Protocol = aec_hard_forks:protocol_effective_at_height(1),
