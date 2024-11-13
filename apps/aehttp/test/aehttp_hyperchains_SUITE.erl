@@ -1735,31 +1735,35 @@ produce_cc_blocks(Config, BlocksCnt, ParentProduce) ->
 produce_to_cc_height(Config, TopHeight, GoalHeight, ParentProduce) ->
     NodeNames = [ Name || {_, Name, _} <- ?config(nodes, Config) ],
     BlocksNeeded = GoalHeight - TopHeight,
-    case  BlocksNeeded > 0 of
+    case BlocksNeeded > 0 of
         false ->
             TopHeight;
         true ->
             NewParentProduce =
                 case ParentProduce of
-                    [{CH, PBs} | PRest ]  when CH == TopHeight+1 ->
+                    [{CH, PBs} | PRest ] when CH == TopHeight+1 ->
                         mine_key_blocks(?PARENT_CHAIN_NODE_NAME, PBs),
                         PRest;
                     PP -> PP
                 end,
-            KeyBlock =
-                case rpc:call(hd(NodeNames), aec_tx_pool, peek, [infinity]) of
-                    {ok, []} ->
-                         {ok, [{N, Block}]} = mine_cc_blocks(NodeNames, 1),
-                         ct:log("CC ~p mined block: ~p", [N, Block]),
-                         Block;
-                    {ok, _Txs} ->
-                         {ok, [{N1, MB}, {N2, KB}]} = mine_cc_blocks(NodeNames, 2),
-                         ?assertEqual(key, aec_blocks:type(KB)),
-                         ?assertEqual(micro, aec_blocks:type(MB)),
-                         ct:log("CC ~p mined micro block: ~p", [N1, MB]),
-                         ct:log("CC ~p mined key block:   ~p", [N2, KB]),
-                         KB
-                end,
+
+            %% TODO: add some assertions when we expect an MB (and not)!
+            {ok, _Txs} = rpc:call(hd(NodeNames), aec_tx_pool, peek, [infinity]),
+
+            %% This will mine 1 key-block (and 0 or 1 micro-blocks)
+            {ok, Blocks} = mine_cc_blocks(NodeNames, 1),
+
+            {Node, KeyBlock} = lists:last(Blocks),
+            case Blocks of
+                [{Node, MB}, _] ->
+                    ?assertEqual(micro, aec_blocks:type(MB)),
+                    ct:log("CC ~p produced micro-block: ~p", [Node, MB]);
+                [_] ->
+                    ok
+            end,
+            ?assertEqual(key, aec_blocks:type(KeyBlock)),
+            ct:log("CC ~p produced key-block: ~p", [Node, KeyBlock]),
+
             Producer = get_block_producer_name(?config(staker_names, Config), KeyBlock),
             ct:log("~p produced CC block at height ~p", [Producer, aec_blocks:height(KeyBlock)]),
             produce_to_cc_height(Config, TopHeight + 1, GoalHeight, NewParentProduce)
