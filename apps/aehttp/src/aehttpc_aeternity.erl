@@ -201,7 +201,7 @@ post_pin_tx(SignedSpendTx, NodeSpec) ->
 
 pin_contract_call(ContractPubkey, PinTx, Who, Amount, Fee, SignModule) ->
     Nonce = get_local_nonce(Who),
-    {ok, CallData} = aeb_fate_abi:create_calldata("pin", [bytes_literal(PinTx)]),
+    {ok, CallData} = aeb_fate_abi:create_calldata("pin", [{bytes, PinTx}]),
     ABI = 3, % not really nice, what is the supported version of getting the latest ABI version
     TxSpec =
         #{  caller_id   => aeser_id:create(account, Who)
