@@ -161,7 +161,7 @@ pin_to_pc(Who, Amount, Fee) ->
     gen_server:call(?SERVER, {pin_to_pc, Who, Amount, Fee}).
 
 pin_tx_to_cc(PinTx, Who, Amount, Fee) ->
-    gen_server:call(?SERVER, {pin_to_pc, PinTx, Who, Amount, Fee}).
+    gen_server:call(?SERVER, {pin_tx_to_cc, PinTx, Who, Amount, Fee}).
 
 pin_contract_call(Contract, PinTx, Who, Amount, Fee) ->
     gen_server:call(?SERVER, {pin_contract_call, Contract, PinTx, Who, Amount, Fee}).
@@ -237,6 +237,7 @@ handle_call({pin_to_pc, Who, Amount, Fee}, _From, #state{parent_conn_mod = Mod, 
     end,
     {reply, Reply, State};
 handle_call({pin_tx_to_cc, PinTx, Who, Amount, Fee}, _From, #state{parent_conn_mod = Mod, sign_module = SignModule} = State) ->
+    lager:debug("In here?",[]),
     Reply = case SignModule:is_key_present(Who) of
         true ->
             Mod:pin_tx_to_cc(PinTx, Who, Amount, Fee, SignModule);

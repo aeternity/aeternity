@@ -179,10 +179,15 @@ pin_to_pc({PinningData, Who, Amount, Fee, NetworkId, SignModule} = Args, NodeSpe
     post_pin_tx(SignedSpendTx, NodeSpec).
 
 pin_tx_to_cc(PinTxHash, Who, Amount, Fee, SignModule) ->
+    lager:debug("1",[]),
     Nonce = get_local_nonce(Who),
+    lager:debug("2",[]),
     SpendTx = create_pin_tx_({Who, Who, Nonce, Amount, Fee, PinTxHash}),
+    lager:debug("3",[]),
     NetworkId = aec_governance:get_network_id(),
+    lager:debug("4",[]),
     SignedSpendTx = sign_tx(SpendTx, NetworkId, Who, SignModule),
+    lager:debug("5",[]),
     aec_tx_pool:push(SignedSpendTx, tx_received).
 
 sign_tx(Tx, NetworkId, Signer, SignModule) when is_binary(Signer) ->
@@ -199,7 +204,7 @@ post_pin_tx(SignedSpendTx, NodeSpec) ->
     %lager:debug("PINNING: wrote to PC tx hash: ~p", [TxHash]),
     encode_child_pin_payload(TxHash).
 
-pin_contract_call(ContractPubkey, PinTx, Who, Amount, Fee, SignModule) ->
+pin_contract_call(ContractPubkey, PinTx, Who, Amount, _Fee, SignModule) ->
     Nonce = get_local_nonce(Who),
     {ok, CallData} = aeb_fate_abi:create_calldata("pin", [{bytes, PinTx}]),
     ABI = 3, % not really nice, what is the supported version of getting the latest ABI version
@@ -208,7 +213,7 @@ pin_contract_call(ContractPubkey, PinTx, Who, Amount, Fee, SignModule) ->
           , nonce       => Nonce
           , contract_id => aeser_id:create(contract, ContractPubkey)
           , abi_version => ABI
-          , fee         => Fee %1000000 * min_gas_price()
+          , fee         => 1000000 * min_gas_price()
           , amount      => Amount
           , gas         => 1000000
           , gas_price   => min_gas_price()

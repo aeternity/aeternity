@@ -1145,7 +1145,7 @@ last_leader_validates_pin_and_post_to_contract(Config) ->
 
     %% move into next epoch - trigger leader validation?
     {ok, _} = produce_cc_blocks(Config, 2),
-    {ok, #{info := {pin_accepted}}} = wait_for_ps(pin),
+    {ok, #{info := {pin_accepted, _}}} = wait_for_ps(pin),
     LeaderBalance1B = account_balance(LastLeader),
 
     ct:log("Account balance for leader was: ~p, is now: ~p", [LeaderBalance1A, LeaderBalance1B]),
@@ -1252,25 +1252,26 @@ check_default_pin(Config) ->
     {ok, _} = produce_cc_blocks(Config, 12),
     {ok, #{last := Last}} = rpc(Node, aec_chain_hc, epoch_info, []),
     {ok, LastLeader} = rpc(Node, aec_consensus_hc, leader_for_height, [Last]),
+    ct:log("Last Leader: ~p", [LastLeader]),
 
-    PinTx = rpc(Node, aec_parent_connector, pin_to_pc, [pubkey(?ALICE), 1, 1000000 * ?DEFAULT_GAS_PRICE]),
-    ct:log("PinTx: ~p", [PinTx]),
+    %PinTx = rpc(Node, aec_parent_connector, pin_to_pc, [pubkey(?ALICE), 1, 1000000 * ?DEFAULT_GAS_PRICE]),
+    %ct:log("PinTx: ~p", [PinTx]),
     % {ok, #{pc_height := -1}} = rpc(Node, aec_parent_connector, get_pin_by_tx_hash, [PinTx]),
     % {ok, _} = produce_cc_blocks(Config, 1),
     % {ok, #{pc_height := PCH}} = rpc(Node, aec_parent_connector, get_pin_by_tx_hash, [PinTx]),
     % ?assert(PCH > 0),
-    {ok, #{pc_height := H}} = produce_cc_until_pin_on_pc(Node, Config, PinTx),
-    ct:log("Pin to PC at Height: ~p", [H]),
-    ok = rpc(Node, aec_parent_connector, pin_tx_to_cc, [PinTx, pubkey(?ALICE), 1, 1000000 * ?DEFAULT_GAS_PRICE]),
+    %{%ok, #{pc_height := H}} = produce_cc_until_pin_on_pc(Node, Config, PinTx),
+    %ct:log("Pin to PC at Height: ~p", [H]),
+    %ok = rpc(Node, aec_parent_connector, pin_tx_to_cc, [PinTx, pubkey(?ALICE), 1, 1000000 * ?DEFAULT_GAS_PRICE]),
     mine_to_last_block_in_epoch(Node, Config),
 
     aecore_suite_utils:subscribe(NodeName, pin),
 
-    ContractPubkey = ?config(election_contract, Config),
-    ok = rpc(Node, aec_parent_connector, pin_contract_call, [ContractPubkey, PinTx, pubkey(?ALICE), 0, 1000000 * ?DEFAULT_GAS_PRICE]),
+    %ContractPubkey = ?config(election_contract, Config),
+    %ok = rpc(Node, aec_parent_connector, pin_contract_call, [ContractPubkey, PinTx, LastLeader, 0, 1000000 * ?DEFAULT_GAS_PRICE]),
 
     {ok, _} = produce_cc_blocks(Config, 2),
-    {ok, #{info := {pin_accepted}}} = wait_for_ps(pin),
+    {ok, #{info := {pin_accepted, _}}} = wait_for_ps(pin),
 
     aecore_suite_utils:unsubscribe(NodeName, pin),
 

@@ -328,15 +328,15 @@ start_default_pinning_process(TxEnv, Trees, _Height) ->
         true ->
             NextEpochInfo = aec_chain_hc:epoch_info({TxEnv, Trees}),
             {ok, #{ first      := First
-                  , epoch      := _Epoch
+                  , epoch      := Epoch
                   , length     := Length
                   , validators := _Validators}} = NextEpochInfo,
             {ok, LastLeader} = leader_for_height(First + Length - 1, {TxEnv, Trees}),
-            lager:debug("AGENT: Trying to start pinning agent... for:  ~p", [LastLeader]),
+            lager:debug("AGENT: Trying to start pinning agent... for:  ~p in epoch ~p", [LastLeader, Epoch]),
             try
             case aec_parent_connector:has_parent_account(LastLeader) of
-                true -> aec_pinning_agent:spawn_for_epoch(NextEpochInfo);
-                false -> lager:debug("AGENT: No parent account found for ~p", [LastLeader])
+                true -> aec_pinning_agent:spawn_for_epoch(NextEpochInfo, ?ELECTION_CONTRACT, LastLeader);
+                false -> lager:debug("AGENT: No parent chain account found for ~p", [LastLeader])
             end
             catch
                 T:E -> lager:debug("AGENT throws: ~p:~p", [T,E])
@@ -943,7 +943,7 @@ handle_pinning(TxEnv, Trees, EpochInfo, Leader ) ->
             aec_events:publish(pin, {no_proof_posted}),
             {Trees, true};
         pin_correct ->
-            Ttemp = add_pin_reward(Trees, TxEnv, Leader),
+            Ttemp = add_pin_reward(Trees, TxEnv, Leader, EpochInfo),
             {Ttemp, false};
         pin_validation_fail ->
             lager:debug("PINNING: Incorrect proof posted"),
@@ -973,9 +973,9 @@ validate_pin(TxEnv, Trees, CurEpochInfo) ->
             end
     end.
 
-add_pin_reward(Trees, TxEnv, Leader) ->
+add_pin_reward(Trees, TxEnv, Leader, #{epoch := CurEpoch, first := First, length := Length} = _EpochInfo) ->
     #{cur_pin_reward := Reward} = aec_chain_hc:pin_reward_info({TxEnv, Trees}),
-    aec_events:publish(pin, {pin_accepted}),
+    aec_events:publish(pin, {pin_accepted, #{reward => Reward, recipient => Leader, epoch => CurEpoch, height => First + Length -1}}),
     ATrees = aec_trees:accounts(Trees),
     LeaderAcc = aec_accounts_trees:get(Leader, ATrees),
     {ok, LeaderAcc1} = aec_accounts:earn(LeaderAcc, Reward),
