@@ -276,7 +276,7 @@ child_node_config(Node, Stakeholders, Pinners, CTConfig) ->
 end_per_group(_Group, Config) ->
     Config1 = with_saved_keys([nodes], Config),
     [ aecore_suite_utils:stop_node(Node, Config1)
-      || {Node, _, _} <- proplists:get_value(nodes, Config1, []) ],
+      || {Node, _, _, _} <- proplists:get_value(nodes, Config1, []) ],
 
     aecore_suite_utils:assert_no_errors_in_logs(Config1, ["{handled_abort,parent_chain_not_synced}"]),
 
@@ -465,7 +465,7 @@ produce_n_epochs(Config, N) ->
     %% produce blocks
     {ok, Bs} = produce_cc_blocks(Config, N * ?CHILD_EPOCH_LENGTH),
     %% check producers
-    Producers = [ aec_blocks:miner(B) || B <- Bs ],
+    Producers = [ aec_blocks:miner(B) || B <- Bs, aec_blocks:is_key_block(B) ],
     ChildTopHeight = rpc(Node1, aec_chain, top_height, []),
     Leaders = leaders_at_height(Node1, ChildTopHeight, Config),
     ct:log("Bs: ~p  Leaders ~p", [Bs, Leaders]),

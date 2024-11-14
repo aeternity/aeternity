@@ -179,15 +179,10 @@ pin_to_pc({PinningData, Who, Amount, Fee, NetworkId, SignModule}, NodeSpec) ->
     post_pin_tx(SignedSpendTx, NodeSpec).
 
 pin_tx_to_cc(PinTxHash, Who, Amount, Fee, SignModule) ->
-    lager:debug("1",[]),
     Nonce = get_local_nonce(Who),
-    lager:debug("2",[]),
     SpendTx = create_pin_tx_({Who, Who, Nonce, Amount, Fee, PinTxHash}),
-    lager:debug("3",[]),
     NetworkId = aec_governance:get_network_id(),
-    lager:debug("4",[]),
     SignedSpendTx = sign_tx(SpendTx, NetworkId, Who, SignModule),
-    lager:debug("5",[]),
     aec_tx_pool:push(SignedSpendTx, tx_received).
 
 sign_tx(Tx, NetworkId, Signer, SignModule) when is_binary(Signer) ->
