@@ -617,7 +617,8 @@ serialize_for_client(#key_header{} = Header, PrevBlockType) ->
           <<"target">>        => Header#key_header.target,
           <<"time">>          => Header#key_header.time,
           <<"version">>       => Header#key_header.version,
-          <<"info">>          => aeser_api_encoder:encode(contract_bytearray, Header#key_header.info)
+          <<"info">>          => aeser_api_encoder:encode(contract_bytearray, Header#key_header.info),
+          <<"flags">>         => aeser_api_encoder:encode(bytearray, Header#key_header.flags)
          },
     case Header#key_header.key_seal of
         no_value ->
@@ -637,7 +638,8 @@ serialize_for_client(#mic_header{} = Header, PrevBlockType) ->
       <<"state_hash">> => aeser_api_encoder:encode(block_state_hash, Header#mic_header.root_hash),
       <<"time">>       => Header#mic_header.time,
       <<"txs_hash">>   => aeser_api_encoder:encode(block_tx_hash, Header#mic_header.txs_hash),
-      <<"version">>    => Header#mic_header.version
+      <<"version">>    => Header#mic_header.version,
+      <<"flags">>      => aeser_api_encoder:encode(bytearray, Header#mic_header.flags)
      }.
 
 encode_block_hash(key, Hash) ->
@@ -665,11 +667,19 @@ deserialize_from_client(key, KeyBlock) ->
                          nonce        = maps:get(<<"nonce">>, KeyBlock),
                          time         = maps:get(<<"time">>, KeyBlock),
                          version      = maps:get(<<"version">>, KeyBlock),
-                         info         = decode(contract_bytearray, maps:get(<<"info">>, KeyBlock))
+                         info         = decode(contract_bytearray, maps:get(<<"info">>, KeyBlock)),
+                         flags        = deserialize_key_flags(KeyBlock)
                         }))}
     catch
         _:_ -> {error, invalid_header}
     end.
+
+deserialize_key_flags(KeyBlock) ->
+    case maps:get(<<"flags">>, KeyBlock, undefined) of
+        undefined -> <<?KEY_HEADER_FLAG:?FLAG_BYTES/unit:8>>;
+        Flags -> decode(bytearray, Flags)
+    end.
+
 
 -spec serialize_to_signature_binary(header()) -> deterministic_header_binary().
 serialize_to_signature_binary(#mic_header{signature = Sig} = H) ->
@@ -687,12 +697,10 @@ serialize_to_signature_binary(#key_header{} = H) ->
 -spec serialize_to_binary(header()) -> deterministic_header_binary().
 serialize_to_binary(#key_header{flags = HFlags} = Header) ->
     PowEvidence = serialize_pow_evidence_to_binary(Header#key_header.key_seal),
-    Flags = construct_key_flags(Header),
 
-    {Flags, Flags} = {Flags, HFlags}, %% WIP: Ensure construct is not nessessary
     %% Todo check size of hashes = (?BLOCK_HEADER_HASH_BYTES*8),
     <<(Header#key_header.version):32,
-      Flags:32/bits,
+      (Header#key_header.flags):32/bits,
       (Header#key_header.height):64,
       (Header#key_header.prev_hash)/binary,
       (Header#key_header.prev_key)/binary,
@@ -705,11 +713,9 @@ serialize_to_binary(#key_header{flags = HFlags} = Header) ->
       (Header#key_header.time):64,
       (Header#key_header.info)/binary %% Either 0 or 4 bytes.
     >>;
-serialize_to_binary(#mic_header{flags = HFlags} = Header) ->
-    Flags = construct_micro_flags(Header),
-    {Flags, Flags} = {Flags, HFlags}, % WIP: Ensure construct is not nessessary
+serialize_to_binary(#mic_header{} = Header) ->
     <<(Header#mic_header.version):32,
-      Flags:32/bits,
+      (Header#mic_header.flags):32/bits,
       (Header#mic_header.height):64,
       (Header#mic_header.prev_hash)/binary,
       (Header#mic_header.prev_key)/binary,
@@ -736,28 +742,6 @@ fix_flags(#key_header{flags = <<_:2, RestFlags:30>>, info = Info} = H) ->
 fix_flags(#mic_header{flags = <<_:2, RestFlags:30>>, pof_hash = Bin} = H) ->
     PoFFlag = min(byte_size(Bin), 1),
     H#mic_header{flags = <<?MICRO_HEADER_TAG:1, PoFFlag:1, RestFlags:30>>}.
-
-%% WIP: TODO: Get rid of this function entirely.
-%% Make sure the flags field is correct.
-construct_key_flags(#key_header{flags = <<_:2, RestFlags:30>>,
-                                info = Info} = H) ->
-    case Info of
-        <<>> ->
-            ContainsInfo = 0,
-            <<?KEY_HEADER_TAG:1, ContainsInfo:1, RestFlags:30>>;
-        <<_:?OPTIONAL_INFO_BYTES/unit:8>> ->
-            [error(illegal_info_field) || version(H) < ?MINERVA_PROTOCOL_VSN],
-            ContainsInfo = 1,
-            <<?KEY_HEADER_TAG:1, ContainsInfo:1, RestFlags:30>>;
-        _ ->
-            error(illegal_info_field)
-        end.
-
-%% WIP: TODO: Get rid of this function entirely.
-construct_micro_flags(#mic_header{flags = <<_:2, RestFlags:30>>,
-                                  pof_hash = Bin}) ->
-    PoFFlag = min(byte_size(Bin), 1),
-    <<?MICRO_HEADER_TAG:1, PoFFlag:1, RestFlags:30>>.
 
 -spec deserialize_from_binary(deterministic_header_binary()) -> header().
 

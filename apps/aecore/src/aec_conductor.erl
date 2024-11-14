@@ -1552,7 +1552,7 @@ is_leader(NewTopBlock, PrevKeyHeader, ConsensusModule) ->
         {error, _}     -> false
     end.
 
-setup_loop(State = #state{ mode = pos }, Restart, _, Origin) ->
+setup_loop(State = #state{ mode = pos }, Restart, _IsLeader, Origin) ->
     if not Restart andalso Origin == block_created -> create_key_block_candidate(State);
        true                                        -> State
     end;

@@ -276,7 +276,7 @@ state_pre_transform_node(Type, Height, PrevNode, Trees) ->
                     {Trees1, CarryOverFlag} = handle_pinning(TxEnv, Trees, EpochInfo, Leader),
                     case get_entropy_hash(Epoch + 2) of
                         {ok, Seed} ->
-                            cache_validators_for_epoch({TxEnv, Trees}, Seed, Epoch + 2),
+                            cache_validators_for_epoch({TxEnv, Trees1}, Seed, Epoch + 2),
                             step_eoe(TxEnv, Trees1, Leader, Seed, 0, -1, CarryOverFlag);
                         {error, _} ->
                             lager:debug("Entropy hash for height ~p is not in cache, attempting to resync", [Height]),
@@ -863,7 +863,7 @@ handle_pinning(TxEnv, Trees, EpochInfo, Leader ) ->
 validate_pin(TxEnv, Trees, CurEpochInfo) ->
     case aec_chain_hc:pin_info({TxEnv, Trees}) of
         undefined -> pin_missing;
-        EncTxHash ->
+        {bytes, EncTxHash} ->
             % TODO make this code much more robust - incorrect EncTxHash, bad value from PC, incorrect hash etc.etc
             lager:debug("PINNING: EncHash: ~p", [EncTxHash]),
             try
@@ -885,11 +885,11 @@ validate_pin(TxEnv, Trees, CurEpochInfo) ->
 add_pin_reward(Trees, TxEnv, Leader) ->
     #{cur_pin_reward := Reward} = aec_chain_hc:pin_reward_info({TxEnv, Trees}),
     aec_events:publish(pin, {pin_accepted}),
-    LeaderAcc = aec_accounts_trees:get(Leader, aec_trees:accounts(Trees)),
+    ATrees = aec_trees:accounts(Trees),
+    LeaderAcc = aec_accounts_trees:get(Leader, ATrees),
     {ok, LeaderAcc1} = aec_accounts:earn(LeaderAcc, Reward),
-    Trees1 = aec_trees:set_accounts(Trees,
-                                    aec_accounts_trees:enter(LeaderAcc1, aec_trees:accounts(Trees))),
-    Trees1.
+    ATrees1 = aec_accounts_trees:enter(LeaderAcc1, ATrees),
+    aec_trees:set_accounts(Trees, ATrees1).
 
 create_contracts([], _TxEnv, Trees) -> Trees;
 create_contracts([Contract | Tail], TxEnv, TreesAccum) ->
