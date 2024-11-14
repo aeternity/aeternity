@@ -272,16 +272,15 @@ state_pre_transform_node(Type, Height, PrevNode, Trees) ->
     {ok, Leader} = leader_for_height(Height, {TxEnv, Trees}),
     case Type of
         key ->
-            case Height =:= EpochFirst of
-                true ->
+            if Height =:= EpochFirst ->
                     %% cache the current epoch start time
                     EpochStartTime = aetx_env:time_in_msecs(TxEnv),
                     cache_child_epoch_info(Epoch, Height, EpochStartTime);
-                false ->
+               true ->
                     ok
             end,
-            case Height =:= EpochLast of
-                true ->
+            %% note that EpochFirst and EpochLast could be the same, not exclusive
+            if Height =:= EpochLast ->
                     {Trees1, CarryOverFlag} = handle_pinning(TxEnv, Trees, EpochInfo, Leader),
                     case get_entropy_hash(Epoch + 2) of
                         {ok, Seed} ->
@@ -292,7 +291,7 @@ state_pre_transform_node(Type, Height, PrevNode, Trees) ->
                             %% Fail the keyblock production flow, attempt to resync
                             aec_conductor:throw_error(parent_chain_not_synced)
                     end;
-                false ->
+               true ->
                     step(TxEnv, Trees, Leader)
             end;
         micro ->
