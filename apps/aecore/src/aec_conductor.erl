@@ -1299,6 +1299,16 @@ handle_key_block_candidate_reply({{ok, KeyBlockCandidate}, TopHash},
                  end,
     State1 = State#state{key_block_candidates = Candidates},
     start_block_production_(State1);
+handle_key_block_candidate_reply({{ok, KeyBlockCandidate}, NewTopHash},
+                                 #state{top_block_hash = TopHash,
+                                        mode = pos} = State) ->
+    epoch_mining:info("Created PoS key block candidate: ~p with micro-block: ~p",
+                      [aec_blocks:height(KeyBlockCandidate), NewTopHash /= TopHash]),
+    {ForSealing, Candidate} = make_key_candidate(KeyBlockCandidate),
+
+    Candidates = [{ForSealing, Candidate}],
+    State1 = State#state{key_block_candidates = Candidates},
+    start_block_production_(State1);
 handle_key_block_candidate_reply({{ok, _KeyBlockCandidate}, _OldTopHash},
                                  #state{top_block_hash = _TopHash} = State) ->
     epoch_mining:debug("Created key block candidate is already stale, create a new one", []),

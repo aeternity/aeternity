@@ -657,10 +657,11 @@ beneficiary() ->
     leader_for_height(Height).
 
 next_beneficiary() ->
-    {TxEnv, Trees} = aetx_env:tx_env_and_trees_from_top(aetx_transaction),
+    {ok, KeyBlock} = aec_chain:top_key_block(),
     ChildBlockTime = child_block_time(),
-    case aeu_time:now_in_msecs() - aetx_env:time_in_msecs(TxEnv) of
+    case aeu_time:now_in_msecs() - aec_blocks:time_in_msecs(KeyBlock) of
         T when T >= ChildBlockTime ->
+            {TxEnv, Trees} = aetx_env:tx_env_and_trees_from_top(aetx_transaction),
             next_beneficiary(TxEnv, Trees);
         T ->
             lager:debug("Not time for next block yet; sleeping ~p ms", [ChildBlockTime - T + 1]),
