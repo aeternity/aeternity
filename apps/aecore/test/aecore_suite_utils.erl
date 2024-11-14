@@ -827,15 +827,19 @@ tx_in_microblock(MB, TxHash) ->
                       aeser_api_encoder:encode(tx_hash, aetx_sign:hash(STx)) == TxHash
               end, aec_blocks:txs(MB)).
 
-hc_loop_mine_blocks(Nodes, NBlocks) ->
-    hc_loop_mine_blocks([], NBlocks, Nodes).
+hc_loop_mine_blocks(NBlocks) ->
+    hc_loop_mine_blocks_([], NBlocks).
 
-hc_loop_mine_blocks(Blocks, 0, _Nodes) ->
+hc_loop_mine_blocks_(Blocks, 0) ->
     {ok, Blocks};
-hc_loop_mine_blocks(Blocks, N, Nodes) ->
+hc_loop_mine_blocks_(Blocks, N) ->
     case wait_for_new_block_mined(5000) of
         {ok, Node, Block} ->
-            hc_loop_mine_blocks([{Node, Block} | Blocks], N - 1, Nodes);
+            N1 = case aec_blocks:type(Block) of
+                     micro -> N;
+                     key   -> N - 1
+                 end,
+            hc_loop_mine_blocks_([{Node, Block} | Blocks], N1);
         Err = {error, _} ->
             Err
     end.
@@ -2028,7 +2032,7 @@ hc_mine_blocks(Nodes, NBlocks, Opts) ->
     [ subscribe_created(Node) || Node <- Nodes ],
     [ start_mining(Node, Opts) || Node <- Nodes ],
 
-    Res = hc_loop_mine_blocks(Nodes, NBlocks),
+    Res = hc_loop_mine_blocks(NBlocks),
 
     [ stop_mining(Node) || Node <- Nodes ],
     [ unsubscribe_created(Node) || Node <- Nodes ],
