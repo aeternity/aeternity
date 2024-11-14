@@ -335,7 +335,7 @@ start_default_pinning_process(TxEnv, Trees, _Height) ->
             lager:debug("AGENT: Trying to start pinning agent... for:  ~p in epoch ~p", [LastLeader, Epoch]),
             try
             case aec_parent_connector:has_parent_account(LastLeader) of
-                true -> aec_pinning_agent:spawn_for_epoch(NextEpochInfo, ?ELECTION_CONTRACT, LastLeader);
+                true -> aec_pinning_agent:spawn_for_epoch(NextEpochInfo, get_contract_pubkey(?ELECTION_CONTRACT), LastLeader);
                 false -> lager:debug("AGENT: No parent chain account found for ~p", [LastLeader])
             end
             catch

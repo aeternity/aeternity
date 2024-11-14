@@ -1254,38 +1254,23 @@ check_default_pin(Config) ->
     {ok, LastLeader} = rpc(Node, aec_consensus_hc, leader_for_height, [Last]),
     ct:log("Last Leader: ~p", [LastLeader]),
 
-    %PinTx = rpc(Node, aec_parent_connector, pin_to_pc, [pubkey(?ALICE), 1, 1000000 * ?DEFAULT_GAS_PRICE]),
-    %ct:log("PinTx: ~p", [PinTx]),
-    % {ok, #{pc_height := -1}} = rpc(Node, aec_parent_connector, get_pin_by_tx_hash, [PinTx]),
-    % {ok, _} = produce_cc_blocks(Config, 1),
-    % {ok, #{pc_height := PCH}} = rpc(Node, aec_parent_connector, get_pin_by_tx_hash, [PinTx]),
-    % ?assert(PCH > 0),
-    %{%ok, #{pc_height := H}} = produce_cc_until_pin_on_pc(Node, Config, PinTx),
-    %ct:log("Pin to PC at Height: ~p", [H]),
-    %ok = rpc(Node, aec_parent_connector, pin_tx_to_cc, [PinTx, pubkey(?ALICE), 1, 1000000 * ?DEFAULT_GAS_PRICE]),
     mine_to_last_block_in_epoch(Node, Config),
 
     aecore_suite_utils:subscribe(NodeName, pin),
 
-    %ContractPubkey = ?config(election_contract, Config),
-    %ok = rpc(Node, aec_parent_connector, pin_contract_call, [ContractPubkey, PinTx, LastLeader, 0, 1000000 * ?DEFAULT_GAS_PRICE]),
-
     {ok, _} = produce_cc_blocks(Config, 2),
+    %% with current test setup, all validators have a pc account, so pins will always happen(?)
     {ok, #{info := {pin_accepted, _}}} = wait_for_ps(pin),
 
     aecore_suite_utils:unsubscribe(NodeName, pin),
+
+    %% TODO test when not all validators have PC account, but how ensure
+    %% that any given validator will be last leader within the run of the test???
 
     ok.
 
 %%% --------- pinning helpers
 
-produce_cc_until_pin_on_pc(Node, Config, PinTx) ->
-    case rpc(Node, aec_parent_connector, get_pin_by_tx_hash, [PinTx]) of
-        {ok, #{pc_height := -1}}  ->
-            produce_cc_blocks(Config, 1),
-            produce_cc_until_pin_on_pc(Node, Config, PinTx);
-        E -> E
-    end.
 
 wait_for_ps(Event) ->
     receive

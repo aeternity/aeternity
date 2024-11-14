@@ -171,7 +171,7 @@ get_local_nonce(Who) ->
         {error, account_not_found} -> 1
     end.
 
-pin_to_pc({PinningData, Who, Amount, Fee, NetworkId, SignModule} = Args, NodeSpec) ->
+pin_to_pc({PinningData, Who, Amount, Fee, NetworkId, SignModule}, NodeSpec) ->
     PinPayload = encode_parent_pin_payload(PinningData),
     Nonce = get_pc_nonce(Who, NodeSpec),
     SpendTx = create_pin_tx_({Who, Who, Nonce, Amount, Fee, PinPayload}),
@@ -222,11 +222,6 @@ pin_contract_call(ContractPubkey, PinTx, Who, Amount, _Fee, SignModule) ->
     NetworkId = aec_governance:get_network_id(),
     SignedCallTx = sign_tx(Tx, NetworkId, Who, SignModule),
     aec_tx_pool:push(SignedCallTx, tx_received).
-
-
-bytes_literal(Bin) ->
-    [_, _ | PinLit] = binary_to_list(aeu_hex:hexstring_encode(Bin)),
-    "#" ++ PinLit.
 
 min_gas_price() ->
     Protocol = aec_hard_forks:protocol_effective_at_height(1),
