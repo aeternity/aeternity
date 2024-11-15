@@ -158,6 +158,9 @@ the temporary directory that was created, do:
       "/home/username/log". (This only works on variables defined via `setup`
       itself, not general shell environment variables - `$HOME` is a
       predefined special case.)
+    - Setup has a configuration option `data_dir` which the Aeternity system
+      uses to know where its database is located. The directory needs to
+      already exist and be populated at system start, else the startup fails.
   - The (nonstandard) `app_ctrl` application provides additional control over
     the start order in the system. Normally, the applications are started in
     the order listed in the `relx` specification of `rebar.config`, modified
@@ -192,7 +195,25 @@ the temporary directory that was created, do:
       up a supervisor and a worker process which acts as a proxy that links
       itself to the already running `app_ctrl_server` process, so that the
       application crashes if the server process crashes.
-
+  - Logging is done via the Lager app. A handler `aeu_lager_logger_handler`
+    for the standard OTP logger is also set up in the `sys.config`, which
+    forwards standard log messages to Lager.
+    - The `aeutils.app.src` file configures a hook for the `setup` app,
+      making it call `aeu_logging_env:adjust_log_levels()` when `setup`
+      starts. (Note that `aeutils` configuration must thus be loaded before
+      `setup` runs, which it will be when running from a boot script.) This
+      will also call `aeu_logging_env:expand_lager_log_root()` to ensure
+      that `lager` has its `log_root` configuration set, using
+      `setup:log_dir()` as the default. Furthermore it rewrites the log
+      root setting to be an absolute path, to ensure that the logging is
+      not affected by changes to the current working directory of the
+      Erlang VM during execution.
+    - As soon as lager starts, it will create the log directory and all log
+      files using its current configuration.
+    - Since `setup` and `lager` don't know about each other's existence,
+      their `.app` files do not specify any dependency between them. Their
+      relative order in the `relx` specification thus decides their actual
+      order in the boot script.
 - Main applications (in reverse start order), most under the main repo
   (`github.com/aeternity/aeternity.git`) under the `apps` directory; the rest
   will be found under `_build/default/lib`:
