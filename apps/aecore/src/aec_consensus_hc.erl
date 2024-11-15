@@ -84,6 +84,7 @@
         , entropy_height/1
         , get_entropy_hash/1
         , get_contract_pubkey/1
+        , get_child_epoch_info/1
         ]).
 
 -ifdef(TEST).
