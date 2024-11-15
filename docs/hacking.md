@@ -214,6 +214,14 @@ the temporary directory that was created, do:
       their `.app` files do not specify any dependency between them. Their
       relative order in the `relx` specification thus decides their actual
       order in the boot script.
+    - The `lager` configuration in `sys.config` sets up both a handler that
+      writes to the console, and a handler that writes to the
+      `aeternity.log` logfile. It also configures additional logging sinks,
+      for which corresponding modules are generated dynamically, so that
+      the sink whose name is `epoch_mining_lager_event` can be used by
+      calling `epoch_mining:info(...)`, and so on. Hence you will not find
+      a source module named `epoch_mining.erl` in the codebase. Most of
+      these extra sinks will not log to the console, only to log files.
 - Main applications (in reverse start order), most under the main repo
   (`github.com/aeternity/aeternity.git`) under the `apps` directory; the rest
   will be found under `_build/default/lib`:
