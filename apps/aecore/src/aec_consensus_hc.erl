@@ -84,6 +84,7 @@
         , entropy_height/1
         , get_entropy_hash/1
         , get_contract_pubkey/1
+        , get_child_epoch_info/1
         ]).
 
 -ifdef(TEST).
@@ -267,12 +268,20 @@ state_pre_transform_node(Type, Height, PrevNode, Trees) ->
     {ok, PrevHash} = aec_headers:hash_header(PrevHeader),
     {TxEnv0, _} = aetx_env:tx_env_and_trees_from_hash(aetx_transaction, PrevHash),
     TxEnv = aetx_env:set_height(TxEnv0, Height),
-    {ok, #{epoch := Epoch} = EpochInfo} = aec_chain_hc:epoch_info({TxEnv, Trees}),
+    {ok, #{epoch := Epoch, first := EpochFirst, last := EpochLast} = EpochInfo} =
+        aec_chain_hc:epoch_info({TxEnv, Trees}),
     {ok, Leader} = leader_for_height(Height, {TxEnv, Trees}),
     case Type of
         key ->
-            case Height == maps:get(last, EpochInfo) of
-                true ->
+            if Height =:= EpochFirst ->
+                    %% cache the current epoch start time
+                    EpochStartTime = aetx_env:time_in_msecs(TxEnv),
+                    cache_child_epoch_info(Epoch, Height, EpochStartTime);
+               true ->
+                    ok
+            end,
+            %% note that EpochFirst and EpochLast could be the same, not exclusive
+            if Height =:= EpochLast ->
                     {Trees1, CarryOverFlag} = handle_pinning(TxEnv, Trees, EpochInfo, Leader),
                     case get_entropy_hash(Epoch + 2) of
                         {ok, Seed} ->
@@ -283,14 +292,46 @@ state_pre_transform_node(Type, Height, PrevNode, Trees) ->
                             %% Fail the keyblock production flow, attempt to resync
                             aec_conductor:throw_error(parent_chain_not_synced)
                     end;
-                false ->
+               true ->
                     step(TxEnv, Trees, Leader)
             end;
         micro ->
             step_micro(TxEnv, Trees, Leader)
     end.
 
+cache_child_epoch_info(Epoch, Height, StartTime) ->
+    %% if the leader is running on the same node, and the current process
+    %% is not the leader, then the the epoch info should already be cached
+    case aeu_ets_cache:lookup(?ETS_CACHE_TABLE, child_epoch_start) of
+        {ok, {E, _}} when E >= Epoch ->
+            ok;  % should already be in cache
+        {ok, {E, _}} when Epoch =/= E + 1 ->
+            error({skipped_epoch, E, Epoch});
+        Other ->
+            Es = case Other of
+                     {ok, {_, Es0}} when length(Es0) < 5 -> Es0;
+                     {ok, {_, Es0}} -> lists:droplast(Es0);
+                     error -> []
+                 end,
+            %% here, the current process must be the leader and is the
+            %% only one who writes to this key, so there is no race
+            aeu_ets_cache:put(?ETS_CACHE_TABLE, child_epoch_start,
+                              {Epoch, [{Epoch, Height, StartTime} | Es]}),
+            ok
+    end.
 
+get_child_epoch_info(Epoch) ->
+    case aeu_ets_cache:lookup(?ETS_CACHE_TABLE, child_epoch_start) of
+        {ok, {E, Es}} when E >= Epoch ->
+            case lists:keyfind(Epoch, 1, Es) of
+                false ->
+                    error({epoch_not_in_cache, Epoch, {E, Es}});
+                Info ->
+                    Info
+            end;
+        Result ->
+            error({epoch_not_yet_cached, Epoch, Result})
+    end.
 
 %% -------------------------------------------------------------------
 %% Block rewards
