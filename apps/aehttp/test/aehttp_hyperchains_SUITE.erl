@@ -50,6 +50,7 @@
 -define(CONSENSUS, hc).
 -define(CHILD_EPOCH_LENGTH, 10).
 -define(CHILD_BLOCK_TIME, 200).
+-define(CHILD_BLOCK_PRODUCTION_TIME, 80).
 -define(PARENT_EPOCH_LENGTH, 3).
 -define(PARENT_FINALITY, 2).
 -define(REWARD_DELAY, 2).
@@ -1654,7 +1655,8 @@ node_config(Node, CTConfig, PotentialStakers, ReceiveAddress, ProducingCommitmen
                         },
                     <<"genesis_start_time">> => GenesisStartTime,
                     <<"child_epoch_length">> => ?CHILD_EPOCH_LENGTH,
-                    <<"child_block_time">> => ?CHILD_BLOCK_TIME
+                    <<"child_block_time">> => ?CHILD_BLOCK_TIME,
+                    <<"child_block_production_time">> => ?CHILD_BLOCK_PRODUCTION_TIME
                  },
     Protocol = aect_test_utils:latest_protocol_version(),
     {ok, ContractFileName} = aecore_suite_utils:hard_fork_filename(Node, CTConfig, integer_to_list(Protocol), binary_to_list(NetworkId) ++ "_contracts.json"),
