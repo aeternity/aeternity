@@ -12,6 +12,12 @@
    //   "args": { },
    // },
 
+  "containerEnv": {
+    // Build with dynamically linked RocksDB like we do in the
+    // main Aeternity Dockerfile, speeding up full builds a lot
+    "ERLANG_ROCKSDB_OPTS": "-DWITH_SYSTEM_ROCKSDB=ON -DWITH_LZ4=ON -DWITH_SNAPPY=ON -DWITH_BZ2=ON -DWITH_ZSTD=ON"
+  },
+
   // Run container commands as a different user than the container default
   // (Note: containers running as root cannot be updated to the local UID)
   "remoteUser": "builder",
