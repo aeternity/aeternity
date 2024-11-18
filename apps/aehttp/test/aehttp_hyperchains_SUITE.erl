@@ -246,8 +246,8 @@ end_per_suite(Config) ->
 init_per_group(Group, ConfigPre) ->
     Config0 =
         case Group of
-            pinning -> [ {default_pinning_behavior, false} | ConfigPre ];
-            _ -> [ {default_pinning_behavior, true} | ConfigPre ]
+            default_pin -> [ {default_pinning_behavior, true} | ConfigPre ];
+            _ -> [ {default_pinning_behavior, false} | ConfigPre ]
         end,
     VM = fate,
     NetworkId = <<"hc">>,
@@ -397,14 +397,14 @@ spend_txs(Config) ->
     produce_cc_blocks(Config, 1),
 
     %% First, seed ALICE, BOB and LISA, they need tokens in later tests
-    %{ok, []} = rpc:call(?NODE1_NAME, aec_tx_pool, peek, [infinity]),
+    {ok, []} = rpc:call(?NODE1_NAME, aec_tx_pool, peek, [infinity]),
     NetworkId = ?config(network_id, Config),
     seed_account(pubkey(?ALICE), 100000001 * ?DEFAULT_GAS_PRICE, NetworkId),
     seed_account(pubkey(?BOB), 100000002 * ?DEFAULT_GAS_PRICE, NetworkId),
     seed_account(pubkey(?LISA), 100000003 * ?DEFAULT_GAS_PRICE, NetworkId),
 
     produce_cc_blocks(Config, 1),
-    %{ok, []} = rpc:call(?NODE1_NAME, aec_tx_pool, peek, [infinity]),
+    {ok, []} = rpc:call(?NODE1_NAME, aec_tx_pool, peek, [infinity]),
 
     %% Make spends until we've passed an epoch boundary
     spend_txs_(Config).
@@ -420,7 +420,7 @@ spend_txs_(Config) ->
             NetworkId = ?config(network_id, Config),
             seed_account(pubkey(?EDWIN), 1, NetworkId),
             produce_cc_blocks(Config, 1),
-            %{ok, []} = rpc:call(?NODE1_NAME, aec_tx_pool, peek, [infinity]),
+            {ok, []} = rpc:call(?NODE1_NAME, aec_tx_pool, peek, [infinity]),
             spend_txs_(Config)
     end.
 
@@ -552,7 +552,7 @@ simple_withdraw(Config) ->
     produce_cc_blocks(Config, 3), %% Make sure there are no lingering TxFees in the reward
     AliceBin = encoded_pubkey(?ALICE),
     Alice = binary_to_list(encoded_pubkey(?ALICE)),
-    %{ok, []} = rpc:call(NodeName, aec_tx_pool, peek, [infinity]),
+    {ok, []} = rpc:call(NodeName, aec_tx_pool, peek, [infinity]),
 
     InitBalance  = account_balance(pubkey(?ALICE)),
     {ok, AliceContractSPower} = inspect_staking_contract(?ALICE, {staking_power, ?ALICE}, Config),
@@ -579,7 +579,7 @@ simple_withdraw(Config) ->
                 [Alice, integer_to_list(WithdrawAmount)], 0, pubkey(?ALICE)),
             ?ALICE,
             NetworkId),
-    %{ok, [_]} = rpc:call(NodeName, aec_tx_pool, peek, [infinity]),
+    {ok, [_]} = rpc:call(NodeName, aec_tx_pool, peek, [infinity]),
     StakeWithdrawDelay = 1,
     produce_cc_blocks(Config, StakeWithdrawDelay),
     EndBalance = account_balance(pubkey(?ALICE)),
@@ -707,8 +707,8 @@ verify_fees(Config) ->
             ct:log("Beneficiary1: ~p, Beneficiary2: ~p", [Beneficiary1Name,
                                                           Beneficiary2Name]),
             %% assert account staking_powers do not change; only contract staking_powers change
-            %{AliceBalance0, AliceBalance0} = {AliceBalance0, AliceBalance1},
-            %{BobBalance0, BobBalance0} = {BobBalance0, BobBalance1},
+            {AliceBalance0, AliceBalance0} = {AliceBalance0, AliceBalance1},
+            {BobBalance0, BobBalance0} = {BobBalance0, BobBalance1},
             %% calc rewards
             {{AdjustedReward1, AdjustedReward2}, _DevRewards} =
                 calc_rewards(RewardForHeight),
@@ -752,7 +752,7 @@ verify_fees(Config) ->
     {ok, _} = produce_cc_blocks(Config, 1),
     ct:log("Test with a spend transaction", []),
     {_, PatronPub} = aecore_suite_utils:sign_keys(Node),
-    %{ok, []} = rpc:call(NodeName, aec_tx_pool, peek, [infinity]),
+    {ok, []} = rpc:call(NodeName, aec_tx_pool, peek, [infinity]),
     {ok, _SignedTx} = seed_account(PatronPub, 1, NetworkId),
     Test(), %% fees are generated
 
