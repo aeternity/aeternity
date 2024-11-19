@@ -1427,8 +1427,14 @@ handle_new_txs(S, Msg) ->
     S.
 
 tx_push(STx) ->
-    try aec_tx_pool:push(STx, tx_received)
-    catch _:_ -> rejected end.
+    case aetx:specialize_type(aetx_sign:tx(STx)) of
+        {hc_vote_tx, _Tx} ->
+            try aec_hc_vote_pool:push(STx, tx_received)
+            catch _:_ -> rejected end;
+        {_, _Tx} ->
+            try aec_tx_pool:push(STx, tx_received)
+            catch _:_ -> rejected end
+    end.
 
 %% -- Send message -----------------------------------------------------------
 send_msg(#{ status := {disconnecting, _ESock} }, _Type, _Msg) -> ok;

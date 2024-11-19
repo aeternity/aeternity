@@ -38,7 +38,8 @@
          get_contract_pubkeys/1,
          correct_leader_in_micro_block/1,
          first_leader_next_epoch/1,
-         check_default_pin/1
+         check_default_pin/1,
+         sanity_check_vote_tx/1
         ]).
 
 -include_lib("stdlib/include/assert.hrl").
@@ -158,6 +159,7 @@ groups() ->
           , entropy_impact_schedule
           , check_blocktime
           , get_contract_pubkeys
+          , sanity_check_vote_tx
           ]}
     , {epochs, [sequence],
           [ start_two_child_nodes
@@ -668,6 +670,26 @@ empty_parent_block(_Config) ->
             %% empty_parent_block_(Config)
             {skip, todo}
     end.
+
+sanity_check_vote_tx(Config) ->
+    [{Node1, _, _, _}, {Node2, _, _, _} | _] = ?config(nodes, Config),
+
+    %% Push a vote tx onto node1 - then read on node2
+    {ok, VoteTx1} = aec_hc_vote_tx:new(#{voter_id => aeser_id:create(account, pubkey(?ALICE)),
+                                         epoch    => 42,
+                                         type     => 4,
+                                         data     => #{<<"key1">> => <<"value1">>,
+                                                       <<"key2">> => <<"value2">>}}),
+    {_, HCVoteTx1} = aetx:specialize_type(VoteTx1),
+
+    NetworkId = rpc(Node1, aec_governance, get_network_id, []),
+    SVoteTx1 = sign_tx(VoteTx1, privkey(?ALICE), NetworkId),
+
+    ok = rpc(Node1, aec_hc_vote_pool, push, [SVoteTx1]),
+    timer:sleep(10),
+    {ok, [HCVoteTx1]} = rpc(Node2, aec_hc_vote_pool, peek, [42]),
+
+    ok.
 
 verify_fees(Config) ->
     [{Node, NodeName, _, _} | _ ] = ?config(nodes, Config),
