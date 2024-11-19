@@ -16,7 +16,6 @@ setup_minimal() ->
     ok = application:ensure_started(gproc),
     ok = aec_test_utils:start_chain_db(),
     aec_block_generator:start_link(),
-
     meck:new(aec_governance, [passthrough]),
     meck:expect(aec_governance, expected_block_mine_rate,
                 fun() ->
@@ -32,18 +31,18 @@ setup_minimal() ->
     TmpKeysDir.
 
 teardown_minimal(TmpKeysDir) ->
-    ok = application:unset_env(aecore, beneficiary),
     ok = aec_tx_pool:stop(),
     ok = aec_tx_pool_gc:stop(),
-    aec_block_generator:stop(),
-    ok = application:stop(gproc),
-    _  = flush_gproc(),
+    aec_test_utils:unmock_time(),
+    aec_test_utils:unmock_genesis_and_forks(),
+    ok = application:unset_env(aecore, beneficiary),
+    aec_test_utils:aec_keys_cleanup(TmpKeysDir),
     ?assert(meck:validate(aec_governance)),
     meck:unload(aec_governance),
-    aec_test_utils:unmock_genesis_and_forks(),
-    aec_test_utils:unmock_time(),
+    aec_block_generator:stop(),
     ok = aec_test_utils:stop_chain_db(),
-    aec_test_utils:aec_keys_cleanup(TmpKeysDir),
+    ok = application:stop(gproc),
+    _  = flush_gproc(),
     ok.
 
 setup_cuckoo_pow() ->
@@ -81,9 +80,9 @@ chain_test_() ->
              TmpKeysDir
      end,
      fun(TmpKeysDir) ->
-             teardown_common(TmpKeysDir),
-             meck:unload(aec_headers),
              meck:unload(aec_blocks),
+             meck:unload(aec_headers),
+             teardown_common(TmpKeysDir),
              ok
      end,
      [
