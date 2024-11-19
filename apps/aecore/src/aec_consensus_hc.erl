@@ -102,6 +102,7 @@ assert_config(_Config) -> ok.
 
 start(Config, _) ->
     StakersConfig = maps:get(<<"stakers">>, Config, []),
+    PinnersConfig  = maps:get(<<"pinners">>, Config, []),
     PCConfig      = maps:get(<<"parent_chain">>, Config),
 
     Confirmations   = maps:get(<<"confirmations">>, PCConfig, 6),
@@ -119,15 +120,15 @@ start(Config, _) ->
     ParentHosts   = lists:map(fun aehttpc:parse_node_url/1, Nodes),
 
 
-    {ParentConnMod, SignModule} =
+    {ParentConnMod, SignModule, HCPCMap} =
         case PCType of
-            <<"AE2AE">>   -> start_ae(StakersConfig);
+            <<"AE2AE">>   -> start_ae(StakersConfig, PinnersConfig);
             <<"AE2BTC">>  -> start_btc(StakersConfig, aehttpc_btc);
             <<"AE2DOGE">> -> start_btc(StakersConfig, aehttpc_doge)
         end,
 
     start_dependency(aec_parent_connector, [ParentConnMod, FetchInterval, ParentHosts, NetworkId,
-                                            SignModule, []]),
+                                            SignModule, HCPCMap]),
     start_dependency(aec_parent_chain_cache, [StartHeight, RetryInterval,
                                               fun target_parent_heights/1, %% prefetch the next parent block
                                               CacheSize, Confirmations]),
@@ -146,9 +147,9 @@ start_btc(StakersEncoded, ParentConnMod) ->
     StakersMap = maps:from_list(Stakers),
     start_dependency(aec_preset_keys, [StakersMap]),
     SignModule = undefined,
-    {ParentConnMod, SignModule}.
+    {ParentConnMod, SignModule, []}.
 
-start_ae(StakersEncoded) ->
+start_ae(StakersEncoded, PinnersEncoded) ->
     Stakers =
         lists:flatmap(
             fun(#{<<"hyper_chain_account">> := #{<<"pub">> := HCEncodedPubkey,
@@ -158,11 +159,31 @@ start_ae(StakersEncoded) ->
                 [{HCPubkey, HCPrivkey}]
             end,
             StakersEncoded),
-    StakersMap = maps:from_list(Stakers),
+    Pinners = lists:flatmap(
+            fun(#{<<"parent_chain_account">> := #{<<"pub">> := EncodedPubkey,
+                                                 <<"priv">> := EncodedPrivkey}
+                 }) ->
+                 {PCPubkey, PCPrivkey} = validate_keypair(EncodedPubkey, EncodedPrivkey),
+                 [{PCPubkey, PCPrivkey}]
+            end,
+            PinnersEncoded),
+    StakersMap = maps:from_list(lists:append(Stakers, Pinners)),
+    lager:debug("Stakers: ~p", [StakersMap]),
     start_dependency(aec_preset_keys, [StakersMap]),
+    HCPC = lists:map(
+            fun(#{<<"parent_chain_account">> := #{<<"pub">> := ParentPubEnc,
+                                                 <<"owner">> := OwnerPubEnc}
+                 }) ->
+                {ok, ParentPub} = aeser_api_encoder:safe_decode(account_pubkey, ParentPubEnc),
+                {ok, OwnerPub} = aeser_api_encoder:safe_decode(account_pubkey, OwnerPubEnc),
+                {OwnerPub, ParentPub}
+            end,
+            PinnersEncoded),
+    HCPCMap = maps:from_list(HCPC),
+    lager:debug("Pinners: ~p", [HCPCMap]),
     ParentConnMod = aehttpc_aeternity,
     SignModule = get_sign_module(),
-    {ParentConnMod, SignModule}.
+    {ParentConnMod, SignModule, HCPCMap}.
 
 validate_keypair(EncodedPubkey, EncodedPrivkey) ->
     {ok, Pubkey} = aeser_api_encoder:safe_decode(account_pubkey,
@@ -286,7 +307,9 @@ state_pre_transform_node(Type, Height, PrevNode, Trees) ->
                     case get_entropy_hash(Epoch + 2) of
                         {ok, Seed} ->
                             cache_validators_for_epoch({TxEnv, Trees1}, Seed, Epoch + 2),
-                            step_eoe(TxEnv, Trees1, Leader, Seed, 0, -1, CarryOverFlag);
+                            Trees2 = step_eoe(TxEnv, Trees1, Leader, Seed, 0, -1, CarryOverFlag),
+                            start_default_pinning_process(TxEnv, Trees2, Height),
+                            Trees2;
                         {error, _} ->
                             lager:debug("Entropy hash for height ~p is not in cache, attempting to resync", [Height]),
                             %% Fail the keyblock production flow, attempt to resync
@@ -297,6 +320,27 @@ state_pre_transform_node(Type, Height, PrevNode, Trees) ->
             end;
         micro ->
             step_micro(TxEnv, Trees, Leader)
+    end.
+
+start_default_pinning_process(TxEnv, Trees, _Height) ->
+
+    case default_pinning_behavior() of
+        true ->
+            NextEpochInfo = aec_chain_hc:epoch_info({TxEnv, Trees}),
+            {ok, #{ epoch      := Epoch
+                  , last       := Last
+                  , validators := _Validators}} = NextEpochInfo,
+            {ok, LastLeader} = leader_for_height(Last, {TxEnv, Trees}),
+            lager:debug("AGENT: Trying to start pinning agent... for:  ~p in epoch ~p", [LastLeader, Epoch]),
+            try
+            case aec_parent_connector:has_parent_account(LastLeader) of
+                true -> aec_pinning_agent:spawn_for_epoch(NextEpochInfo, get_contract_pubkey(?ELECTION_CONTRACT), LastLeader);
+                false -> lager:debug("AGENT: No parent chain account found for ~p", [LastLeader])
+            end
+            catch
+                T:E -> lager:debug("AGENT throws: ~p:~p", [T,E])
+            end;
+        _ -> ok
     end.
 
 cache_child_epoch_info(Epoch, Height, StartTime) ->
@@ -522,8 +566,12 @@ child_epoch_length() ->
     aeu_ets_cache:get(?ETS_CACHE_TABLE, child_epoch_length, Fun).
 
 pinning_reward_value() ->
-    Fun = fun() -> get_consensus_config_key([<<"pinning_reward_value">>]) end,
+    Fun = fun() -> get_consensus_config_key([<<"pinning_reward_value">>], 0) end,
     aeu_ets_cache:get(?ETS_CACHE_TABLE, pinning_reward_value, Fun).
+
+default_pinning_behavior() ->
+    Fun = fun() -> get_consensus_config_key([<<"default_pinning_behavior">>], false) end,
+    aeu_ets_cache:get(?ETS_CACHE_TABLE, default_pinning_behavior, Fun).
 
 %acceptable_sync_offset() ->
 %    Fun = fun() -> get_consensus_config_key([<<"parent_chain">>, <<"acceptable_sync_offset">>], 60000) end,
@@ -894,8 +942,8 @@ handle_pinning(TxEnv, Trees, EpochInfo, Leader ) ->
             aec_events:publish(pin, {no_proof_posted}),
             {Trees, true};
         pin_correct ->
-            Ttemp = add_pin_reward(Trees, TxEnv, Leader),
-            {Ttemp, false};
+            Trees1 = add_pin_reward(Trees, TxEnv, Leader, EpochInfo),
+            {Trees1, false};
         pin_validation_fail ->
             lager:debug("PINNING: Incorrect proof posted"),
             aec_events:publish(pin, {incorrect_proof_posted}),
@@ -910,7 +958,7 @@ validate_pin(TxEnv, Trees, CurEpochInfo) ->
             lager:debug("PINNING: EncHash: ~p", [EncTxHash]),
             try
                 #{epoch := CurEpoch} = CurEpochInfo,
-                #{epoch := PinEpoch, height := PinHeight, block_hash := PinHash} =
+                {ok, #{epoch := PinEpoch, height := PinHeight, block_hash := PinHash}} =
                     aec_parent_connector:get_pin_by_tx_hash(EncTxHash),
                 PinEpoch = CurEpoch - 1, % validate it was actually last epoch
                 case {ok, PinHash} =:= aec_chain_state:get_key_block_hash_at_height(PinHeight) of
@@ -924,9 +972,9 @@ validate_pin(TxEnv, Trees, CurEpochInfo) ->
             end
     end.
 
-add_pin_reward(Trees, TxEnv, Leader) ->
+add_pin_reward(Trees, TxEnv, Leader, #{epoch := CurEpoch, last := Last} = _EpochInfo) ->
     #{cur_pin_reward := Reward} = aec_chain_hc:pin_reward_info({TxEnv, Trees}),
-    aec_events:publish(pin, {pin_accepted}),
+    aec_events:publish(pin, {pin_accepted, #{reward => Reward, recipient => Leader, epoch => CurEpoch, height => Last}}),
     ATrees = aec_trees:accounts(Trees),
     LeaderAcc = aec_accounts_trees:get(Leader, ATrees),
     {ok, LeaderAcc1} = aec_accounts:earn(LeaderAcc, Reward),

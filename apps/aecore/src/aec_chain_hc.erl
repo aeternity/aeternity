@@ -99,9 +99,12 @@ pin_info(RunEnv) ->
     {ok, Result} = call_consensus_contract_w_env(?ELECTION_CONTRACT, RunEnv, "pin_info", []),
     decode_option(Result, {fun(X) -> X end, undefined}).
 
+-spec pin_reward_info() -> pin_reward_info().
 pin_reward_info() ->
     pin_reward_info(top).
 
+
+-spec pin_reward_info(run_env()) -> pin_reward_info().
 pin_reward_info(RunEnv) ->
     {ok, Res} = call_consensus_contract_w_env(?ELECTION_CONTRACT, RunEnv, "pin_reward_info", []),
     {tuple, {Base, Current, CarryOver}} = Res,
