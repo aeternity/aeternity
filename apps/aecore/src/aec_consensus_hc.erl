@@ -972,9 +972,9 @@ validate_pin(TxEnv, Trees, CurEpochInfo) ->
             end
     end.
 
-add_pin_reward(Trees, TxEnv, Leader, #{epoch := CurEpoch, first := First, length := Length} = _EpochInfo) ->
+add_pin_reward(Trees, TxEnv, Leader, #{epoch := CurEpoch, last := Last} = _EpochInfo) ->
     #{cur_pin_reward := Reward} = aec_chain_hc:pin_reward_info({TxEnv, Trees}),
-    aec_events:publish(pin, {pin_accepted, #{reward => Reward, recipient => Leader, epoch => CurEpoch, height => First + Length -1}}),
+    aec_events:publish(pin, {pin_accepted, #{reward => Reward, recipient => Leader, epoch => CurEpoch, height => Last}}),
     ATrees = aec_trees:accounts(Trees),
     LeaderAcc = aec_accounts_trees:get(Leader, ATrees),
     {ok, LeaderAcc1} = aec_accounts:earn(LeaderAcc, Reward),

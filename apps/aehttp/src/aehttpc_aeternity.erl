@@ -1,6 +1,8 @@
 %%% @copyright (C) 2022, Aeternity
 -module(aehttpc_aeternity).
 
+-include_lib("aecontract/include/aecontract.hrl").
+
 %% Subset of Aeternity HTTP client API required to interact with a hyperchain
 
 %% Required exports for hyperchain:
@@ -202,7 +204,7 @@ post_pin_tx(SignedSpendTx, NodeSpec) ->
 pin_contract_call(ContractPubkey, PinTx, Who, Amount, _Fee, SignModule) ->
     Nonce = get_local_nonce(Who),
     {ok, CallData} = aeb_fate_abi:create_calldata("pin", [{bytes, PinTx}]),
-    ABI = 3, % not really nice, what is the supported version of getting the latest ABI version
+    ABI = ?ABI_FATE_SOPHIA_1, % not really nice, what is the supported version of getting the latest ABI version
     TxSpec =
         #{  caller_id   => aeser_id:create(account, Who)
           , nonce       => Nonce
@@ -229,8 +231,8 @@ get_pin_by_tx_hash(TxHashEnc, NodeSpec) ->
          {ok, TxHash} ->
             TxPath = <<"/v3/transactions/", TxHash/binary>>,
             case get_request(TxPath, NodeSpec, 5000) of
-                {ok, #{<<"tx">> := #{<<"payload">> := EncPin}, <<"block_height">> := Height}} = Tx ->
-                    lager:debug("TXXXX: ~p", [Tx]),
+                {ok, #{<<"tx">> := #{<<"payload">> := EncPin}, <<"block_height">> := Height}} = _Tx ->
+                    %lager:debug("TXXXX: ~p", [Tx]),
                     {ok, Pin} = aeser_api_encoder:safe_decode(bytearray, EncPin),
                     {ok, DecPin} = decode_parent_pin_payload(Pin),
                     {ok, maps:put(pc_height, Height, DecPin)}; % add the pc block height to pin map, -1 = not on chain yet.
