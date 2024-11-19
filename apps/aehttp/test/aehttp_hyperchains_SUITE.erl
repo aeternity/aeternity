@@ -672,7 +672,7 @@ empty_parent_block(_Config) ->
     end.
 
 sanity_check_vote_tx(Config) ->
-    [{Node1, _, _}, {Node2, _, _} | _] = ?config(nodes, Config),
+    [{Node1, _, _, _}, {Node2, _, _, _} | _] = ?config(nodes, Config),
 
     %% Push a vote tx onto node1 - then read on node2
     {ok, VoteTx1} = aec_hc_vote_tx:new(#{voter_id => aeser_id:create(account, pubkey(?ALICE)),
