@@ -60,6 +60,7 @@
         , set_genesis_hash/0
         , get_consensus_module_at_height/1
         , get_consensus_config_at_height/1
+        , get_consensus_type/0
         , get_genesis_consensus_module/0
         , get_genesis_consensus_config/0
         , get_genesis_hash/0 %% Cached access to the genesis hash using persistent term :)
@@ -72,6 +73,7 @@
 -type consensus_module() :: atom().
 -type sign_module() :: atom().
 -type consensus_config() :: #{binary() => term()}.
+-type consensus_type() :: pow | pos.
 -type global_consensus_config() :: [{non_neg_integer(), {consensus_module(), consensus_config()}}].
 
 %% Block sealing
@@ -193,7 +195,7 @@
 -callback allow_lazy_leader() -> false | {true, integer()}.
 -callback pick_lazy_leader(binary()) -> error | {ok, aec_keys:pubkey()}.
 -callback get_sign_module() -> sign_module().
--callback get_type() -> pow | pos.
+-callback get_type() -> consensus_type().
 -callback get_block_producer_configs() -> list().
 -callback is_leader_valid(#node{}, aec_trees:trees(), aetx_env:env(), #node{}) -> boolean().
 
@@ -286,6 +288,23 @@ get_consensus() ->
 get_consensus_spec_at_height(Height) ->
     [{0,H}|R] = get_consensus(),
     consensus_at_height(H, R, Height).
+
+%% For now let's assume we don't change between 'pos' and 'pow' - if need be
+%% extend with get_consensus_type/1
+-spec get_consensus_type() -> consensus_type().
+get_consensus_type() ->
+    case persistent_term:get({?MODULE, consensus_type}, error) of
+        error ->
+            ConsensusType =
+                case get_consensus() of
+                    [{0, {aec_consensus_hc, _}} | _] -> pos;
+                    _ -> pow
+                end,
+            persistent_term:put({?MODULE, consensus_type}, ConsensusType),
+            ConsensusType;
+        ConsensusType ->
+            ConsensusType
+    end.
 
 %% This is a placeholder for later - the idea is that if at some point
 %% the network decides to change the configuration variables which are
