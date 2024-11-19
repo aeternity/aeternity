@@ -327,11 +327,10 @@ start_default_pinning_process(TxEnv, Trees, _Height) ->
     case default_pinning_behavior() of
         true ->
             NextEpochInfo = aec_chain_hc:epoch_info({TxEnv, Trees}),
-            {ok, #{ first      := First
-                  , epoch      := Epoch
-                  , length     := Length
+            {ok, #{ epoch      := Epoch
+                  , last       := Last
                   , validators := _Validators}} = NextEpochInfo,
-            {ok, LastLeader} = leader_for_height(First + Length - 1, {TxEnv, Trees}),
+            {ok, LastLeader} = leader_for_height(Last, {TxEnv, Trees}),
             lager:debug("AGENT: Trying to start pinning agent... for:  ~p in epoch ~p", [LastLeader, Epoch]),
             try
             case aec_parent_connector:has_parent_account(LastLeader) of

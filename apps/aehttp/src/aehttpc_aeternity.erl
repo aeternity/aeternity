@@ -150,12 +150,12 @@ create_pin_tx({SenderPubkey, ReceiverPubkey, Amount, Fee, PinningData}, NodeSpec
     create_pin_tx_({SenderPubkey, ReceiverPubkey, Nonce, Amount, Fee, PinPayload}).
 
 create_pin_tx_({SenderPubkey, ReceiverPubkey, Nonce, Amount, Fee, PinPayload}) ->
-    TxArgs = #{sender_id    => aeser_id:create(account, SenderPubkey),
-            recipient_id => aeser_id:create(account, ReceiverPubkey),
-            amount       => Amount,
-            fee          => Fee,
-            nonce        => Nonce,
-            payload      => PinPayload},
+    TxArgs = #{ sender_id    => aeser_id:create(account, SenderPubkey),
+                recipient_id => aeser_id:create(account, ReceiverPubkey),
+                amount       => Amount,
+                fee          => Fee,
+                nonce        => Nonce,
+                payload      => PinPayload},
     {ok, SpendTx} = aec_spend_tx:new(TxArgs),
     SpendTx.
 

@@ -32,7 +32,7 @@ spawn_for_epoch(EpochInfo, Contract, LastLeader) ->
     case whereis(my_unique_process) of
         undefined ->
             Pid = spawn(aec_pinning_agent, start, [EpochInfo, Contract, LastLeader]),
-            register(my_unique_process, Pid),
+            register(?MODULE, Pid),
             Pid;
         Pid when is_pid(Pid) ->
             lager:debug("AGENT: already started", []),
