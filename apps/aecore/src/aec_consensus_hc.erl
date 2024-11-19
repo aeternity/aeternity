@@ -943,8 +943,8 @@ handle_pinning(TxEnv, Trees, EpochInfo, Leader ) ->
             aec_events:publish(pin, {no_proof_posted}),
             {Trees, true};
         pin_correct ->
-            Ttemp = add_pin_reward(Trees, TxEnv, Leader, EpochInfo),
-            {Ttemp, false};
+            Trees1 = add_pin_reward(Trees, TxEnv, Leader, EpochInfo),
+            {Trees1, false};
         pin_validation_fail ->
             lager:debug("PINNING: Incorrect proof posted"),
             aec_events:publish(pin, {incorrect_proof_posted}),
