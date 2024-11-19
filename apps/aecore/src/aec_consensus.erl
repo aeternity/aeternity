@@ -195,7 +195,7 @@
 -callback allow_lazy_leader() -> false | {true, integer()}.
 -callback pick_lazy_leader(binary()) -> error | {ok, aec_keys:pubkey()}.
 -callback get_sign_module() -> sign_module().
--callback get_type() -> consensus_config().
+-callback get_type() -> consensus_type().
 -callback get_block_producer_configs() -> list().
 -callback is_leader_valid(#node{}, aec_trees:trees(), aetx_env:env(), #node{}) -> boolean().
 
