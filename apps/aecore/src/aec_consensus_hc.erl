@@ -308,8 +308,9 @@ state_pre_transform_node(Type, Height, PrevNode, Trees) ->
                         {ok, Seed} ->
                             cache_validators_for_epoch({TxEnv, Trees1}, Seed, Epoch + 2),
                             Trees2 = step_eoe(TxEnv, Trees1, Leader, Seed, 0, -1, CarryOverFlag),
-                            start_default_pinning_process(TxEnv, Trees2, Height),
-                            {Trees2, Events};
+                            {ok, NextEpochInfo} = aec_chain_hc:epoch_info({TxEnv, Trees2}),
+                            start_default_pinning_process(TxEnv, Trees2, Height, NextEpochInfo),
+                            {Trees2, Events ++ [{new_epoch, NextEpochInfo}]};
                         {error, _} ->
                             lager:debug("Entropy hash for height ~p is not in cache, attempting to resync", [Height]),
                             %% Fail the keyblock production flow, attempt to resync
@@ -323,14 +324,12 @@ state_pre_transform_node(Type, Height, PrevNode, Trees) ->
             step_micro(TxEnv, Trees, Leader)
     end.
 
-start_default_pinning_process(TxEnv, Trees, _Height) ->
-
+start_default_pinning_process(TxEnv, Trees, _Height, NextEpochInfo) ->
     case default_pinning_behavior() of
         true ->
-            NextEpochInfo = aec_chain_hc:epoch_info({TxEnv, Trees}),
-            {ok, #{ epoch      := Epoch
-                  , last       := Last
-                  , validators := _Validators}} = NextEpochInfo,
+            #{ epoch      := Epoch
+             , last       := Last
+             , validators := _Validators} = NextEpochInfo,
             {ok, LastLeader} = leader_for_height(Last, {TxEnv, Trees}),
             lager:debug("AGENT: Trying to start pinning agent... for:  ~p in epoch ~p", [LastLeader, Epoch]),
             try
@@ -940,14 +939,12 @@ handle_pinning(TxEnv, Trees, EpochInfo, Leader) ->
     case validate_pin(TxEnv, Trees, EpochInfo) of
         pin_missing ->
             lager:debug("PINNING: no proof posted"),
-            %% aec_events:publish(pin, {no_proof_posted}),
             {Trees, true, [{pin, {no_proof_posted}}]};
         pin_correct ->
             {Trees1, Events} = add_pin_reward(Trees, TxEnv, Leader, EpochInfo),
             {Trees1, false, Events};
         pin_validation_fail ->
             lager:debug("PINNING: Incorrect proof posted"),
-            %% aec_events:publish(pin, {incorrect_proof_posted}),
             {Trees, true, [{pin, {incorrect_proof_posted}}]}
     end.
 
@@ -976,7 +973,6 @@ validate_pin(TxEnv, Trees, CurEpochInfo) ->
 add_pin_reward(Trees, TxEnv, Leader, #{epoch := CurEpoch, last := Last} = _EpochInfo) ->
     #{cur_pin_reward := Reward} = aec_chain_hc:pin_reward_info({TxEnv, Trees}),
     Event = {pin, {pin_accepted, #{reward => Reward, recipient => Leader, epoch => CurEpoch, height => Last}}},
-    %% aec_events:publish(pin, {pin_accepted, #{reward => Reward, recipient => Leader, epoch => CurEpoch, height => Last}}),
     ATrees = aec_trees:accounts(Trees),
     LeaderAcc = aec_accounts_trees:get(Leader, ATrees),
     {ok, LeaderAcc1} = aec_accounts:earn(LeaderAcc, Reward),

@@ -945,6 +945,7 @@ publish_tx_events(Events, Hash, Origin) ->
      || {Event, Info} <- lists:reverse(Events)].
 
 publish_events(Events) ->
+    lager:debug("publish key-block events: ~p", [Events]),
     [aec_events:publish(Type, Info) || {Type, Info} <- Events].
 
 
