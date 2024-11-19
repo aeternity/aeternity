@@ -37,7 +37,8 @@
          last_leader_validates_pin_and_post_to_contract/1,
          get_contract_pubkeys/1,
          correct_leader_in_micro_block/1,
-         first_leader_next_epoch/1
+         first_leader_next_epoch/1,
+         check_default_pin/1
         ]).
 
 -include_lib("stdlib/include/assert.hrl").
@@ -140,7 +141,7 @@
 
 -define(GENESIS_BENFICIARY, <<0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0>>).
 
-all() -> [{group, hc}, {group, epochs}, {group, pinning}].
+all() -> [{group, hc}, {group, epochs}, {group, pinning}, {group, default_pin}].
 
 groups() ->
     [
@@ -170,6 +171,10 @@ groups() ->
             wallet_post_pin_to_pc,
             post_pin_to_pc,
             last_leader_validates_pin_and_post_to_contract]}
+    , {default_pin, [sequence],
+          [ start_two_child_nodes,
+            produce_first_epoch,
+            check_default_pin]}
     ].
 
 suite() -> [].
@@ -238,7 +243,12 @@ end_per_suite(Config) ->
                proplists:get_value(started_apps, Config, []))],
     ok.
 
-init_per_group(_, Config0) ->
+init_per_group(Group, ConfigPre) ->
+    Config0 =
+        case Group of
+            default_pin -> [ {default_pinning_behavior, true} | ConfigPre ];
+            _ -> [ {default_pinning_behavior, false} | ConfigPre ]
+        end,
     VM = fate,
     NetworkId = <<"hc">>,
     GenesisStartTime = aeu_time:now_in_msecs(),
@@ -257,17 +267,16 @@ init_per_group(_, Config0) ->
             (StartHeight - ParentTopHeight) + ?PARENT_FINALITY),
     [ {staker_names, [?ALICE, ?BOB, ?LISA]}, {parent_start_height, StartHeight} | Config].
 
-child_node_config(Node, Stakeholders, CTConfig) ->
+child_node_config(Node, Stakeholders, Pinners, CTConfig) ->
     ReceiveAddress = encoded_pubkey(?FORD),
-    Pinning = false,
-    NodeConfig = node_config(Node, CTConfig, Stakeholders, ReceiveAddress, Pinning),
+    NodeConfig = node_config(Node, CTConfig, Stakeholders, Pinners, ReceiveAddress),
     build_json_files(?HC_CONTRACT, NodeConfig, CTConfig),
     aecore_suite_utils:create_config(Node, CTConfig, NodeConfig, [{add_peers, true}]).
 
 end_per_group(_Group, Config) ->
     Config1 = with_saved_keys([nodes], Config),
     [ aecore_suite_utils:stop_node(Node, Config1)
-      || {Node, _, _} <- proplists:get_value(nodes, Config1, []) ],
+      || {Node, _, _, _} <- proplists:get_value(nodes, Config1, []) ],
 
     aecore_suite_utils:assert_no_errors_in_logs(Config1, ["{handled_abort,parent_chain_not_synced}"]),
 
@@ -276,8 +285,8 @@ end_per_group(_Group, Config) ->
 %% Here we decide which nodes are started/running
 init_per_testcase(start_two_child_nodes, Config) ->
     Config1 =
-        [{nodes, [{?NODE1, ?NODE1_NAME, [?ALICE, ?LISA]},
-                  {?NODE2, ?NODE2_NAME, [?BOB]}
+        [{nodes, [{?NODE1, ?NODE1_NAME, [?ALICE, ?LISA], [{?ALICE, ?DWIGHT}, {?LISA, ?EDWIN}]},
+                  {?NODE2, ?NODE2_NAME, [?BOB], [{?BOB, ?EDWIN}]}
                  ]}
          | Config],
     aect_test_utils:setup_testcase(Config1),
@@ -286,7 +295,7 @@ init_per_testcase(sync_third_node, Config) ->
     Config1 = with_saved_keys([nodes], Config),
     Nodes = ?config(nodes, Config1),
     Config2 = lists:keyreplace(nodes, 1, Config1,
-                               {nodes, Nodes ++ [{?NODE3, ?NODE3_NAME, []}]}),
+                               {nodes, Nodes ++ [{?NODE3, ?NODE3_NAME, [], []}]}),
     aect_test_utils:setup_testcase(Config2),
     Config2;
 init_per_testcase(_Case, Config) ->
@@ -435,12 +444,12 @@ check_blocktime_(Block) ->
     end.
 
 start_two_child_nodes(Config) ->
-    [{Node1, NodeName1, Stakers1}, {Node2, NodeName2, Stakers2} | _] = ?config(nodes, Config),
+    [{Node1, NodeName1, Stakers1, Pinners1}, {Node2, NodeName2, Stakers2, Pinners2} | _] = ?config(nodes, Config),
     Env = [ {"AE__FORK_MANAGEMENT__NETWORK_ID", binary_to_list(?config(network_id, Config))} ],
-    child_node_config(Node1, Stakers1, Config),
+    child_node_config(Node1, Stakers1, Pinners1, Config),
     aecore_suite_utils:start_node(Node1, Config, Env),
     aecore_suite_utils:connect(NodeName1, []),
-    child_node_config(Node2, Stakers2, Config),
+    child_node_config(Node2, Stakers2, Pinners2, Config),
     aecore_suite_utils:start_node(Node2, Config, Env),
     aecore_suite_utils:connect(NodeName2, []),
     ok.
@@ -452,11 +461,11 @@ produce_some_epochs(Config) ->
     produce_n_epochs(Config, 5).
 
 produce_n_epochs(Config, N) ->
-    [{Node1, _, _}|_] = ?config(nodes, Config),
+    [{Node1, _, _, _}|_] = ?config(nodes, Config),
     %% produce blocks
     {ok, Bs} = produce_cc_blocks(Config, N * ?CHILD_EPOCH_LENGTH),
     %% check producers
-    Producers = [ aec_blocks:miner(B) || B <- Bs ],
+    Producers = [ aec_blocks:miner(B) || B <- Bs, aec_blocks:is_key_block(B) ],
     ChildTopHeight = rpc(Node1, aec_chain, top_height, []),
     Leaders = leaders_at_height(Node1, ChildTopHeight, Config),
     ct:log("Bs: ~p  Leaders ~p", [Bs, Leaders]),
@@ -473,7 +482,7 @@ produce_n_epochs(Config, N) ->
     ok.
 
 respect_schedule(Config) ->
-    [{Node, _, _}|_] = ?config(nodes, Config),
+    [{Node, _, _, _}|_] = ?config(nodes, Config),
     ChildHeight = rpc(Node, aec_chain, top_height, []),
     %% Validate one epoch at a time
     respect_schedule(Node, 1, 1, ChildHeight).
@@ -508,7 +517,7 @@ respect_schedule(Node, EpochStart, Epoch, TopHeight) ->
 %% For different Epoch's we have different schedules
 %% (Provided we past 4 epochs)
 entropy_impact_schedule(Config) ->
-    Nodes = [ N || {N, _, _} <- ?config(nodes, Config)],
+    Nodes = [ N || {N, _, _, _} <- ?config(nodes, Config)],
     Node = hd(Nodes),
     %% Sync nodes
     ChildHeight = rpc(Node, aec_chain, top_height, []),
@@ -539,7 +548,7 @@ entropy_impact_schedule(Config) ->
     ?assertNotEqual(WrongSchedule, Schedule).
 
 simple_withdraw(Config) ->
-    [{_Node, NodeName, _} | _] = ?config(nodes, Config),
+    [{_Node, NodeName, _, _} | _] = ?config(nodes, Config),
     produce_cc_blocks(Config, 3), %% Make sure there are no lingering TxFees in the reward
     AliceBin = encoded_pubkey(?ALICE),
     Alice = binary_to_list(encoded_pubkey(?ALICE)),
@@ -592,7 +601,7 @@ simple_withdraw(Config) ->
     ok.
 
 correct_leader_in_micro_block(Config) ->
-    [{_Node, NodeName, _} | _] = ?config(nodes, Config),
+    [{_Node, NodeName, _, _} | _] = ?config(nodes, Config),
     %% Call the contract in a transaction, asking for "leader"
     {ok, [_]} = produce_cc_blocks(Config, 1),
     CallTx =
@@ -611,11 +620,11 @@ correct_leader_in_micro_block(Config) ->
     ?assertEqual(Producer, Res).
 
 set_up_third_node(Config) ->
-    {Node3, NodeName, Stakers} = lists:keyfind(?NODE3, 1, ?config(nodes, Config)),
-    Nodes = [ Node || {Node, _, _} <- ?config(nodes, Config)],
+    {Node3, NodeName, Stakers, _Pinners} = lists:keyfind(?NODE3, 1, ?config(nodes, Config)),
+    Nodes = [ Node || {Node, _, _, _} <- ?config(nodes, Config)],
     aecore_suite_utils:make_multi(Config, [Node3]),
     Env = [ {"AE__FORK_MANAGEMENT__NETWORK_ID", binary_to_list(?config(network_id, Config))} ],
-    child_node_config(Node3, Stakers, Config),
+    child_node_config(Node3, Stakers, [], Config), % no pinners here FTM
     aecore_suite_utils:start_node(Node3, Config, Env),
     aecore_suite_utils:connect(NodeName, []),
     timer:sleep(1000),
@@ -661,7 +670,7 @@ empty_parent_block(_Config) ->
     end.
 
 verify_fees(Config) ->
-    [{Node, NodeName, _} | _ ] = ?config(nodes, Config),
+    [{Node, NodeName, _, _} | _ ] = ?config(nodes, Config),
     %% start without any tx fees, only a keyblock
     GetSPower = fun(Who1, Who2, When) ->
                     inspect_staking_contract(Who1, {staking_power, Who2}, Config, When)
@@ -790,13 +799,13 @@ elected_leader_did_not_show_up_(Config) ->
     {ok, _} = wait_same_top([?NODE1, ?NODE3]),
     timer:sleep(2000), %% Give NODE1 a moment to finalize sync and post commitments
     produce_cc_blocks(Config, 1),
-    {ok, _KB1} = wait_same_top([ Node || {Node, _, _} <- ?config(nodes, Config)]),
+    {ok, _KB1} = wait_same_top([ Node || {Node, _, _, _} <- ?config(nodes, Config)]),
     {ok, _} = produce_cc_blocks(Config, 10),
-    {ok, _KB2} = wait_same_top([ Node || {Node, _, _} <- ?config(nodes, Config)]),
+    {ok, _KB2} = wait_same_top([ Node || {Node, _, _, _} <- ?config(nodes, Config)]),
     ok.
 
 first_leader_next_epoch(Config) ->
-    [{Node, _, _} | _] = ?config(nodes, Config),
+    [{Node, _, _, _} | _] = ?config(nodes, Config),
     produce_cc_blocks(Config, 1),
     StartHeight = rpc(Node, aec_chain, top_height, []),
     {ok, #{last := Last, epoch := Epoch}} = rpc(Node, aec_chain_hc, epoch_info, [StartHeight]),
@@ -806,7 +815,7 @@ first_leader_next_epoch(Config) ->
 %% Demonstrate that child chain start signalling epoch length adjustment upward
 %% When parent blocks are produced too slowly, we need to lengthen child epoch
 epochs_with_slow_parent(Config) ->
-    [{Node, _, _} | _] = ?config(nodes, Config),
+    [{Node, _, _, _} | _] = ?config(nodes, Config),
     ct:log("Parent start height = ~p", [?config(parent_start_height, Config)]),
     %% ensure start at a new epoch boundary
     StartHeight = rpc(Node, aec_chain, top_height, []),
@@ -851,7 +860,7 @@ epochs_with_slow_parent(Config) ->
 %% Demonstrate that child chain start signalling epoch length adjustment downward
 %% When parent blocks are produced too quickly, we need to shorten child epoch
 epochs_with_fast_parent(Config) ->
-    [{Node, _, _} | _] = ?config(nodes, Config),
+    [{Node, _, _, _} | _] = ?config(nodes, Config),
     ParentTopHeight = rpc(?PARENT_CHAIN_NODE, aec_chain, top_height, []),
     ChildTopHeight = rpc(Node, aec_chain, top_height, []),
     {ok, #{epoch := ChildEpoch}} = rpc(Node, aec_chain_hc, epoch_info, []),
@@ -897,7 +906,7 @@ epochs_with_fast_parent(Config) ->
 %%%=============================================================================
 
 get_contract_pubkeys(Config) ->
-    [{Node, _, _} | _] = ?config(nodes, Config),
+    [{Node, _, _, _} | _] = ?config(nodes, Config),
     %% Verify that endpoint is available
     {ok, IsChildChain} = rpc(Node, aeu_env, find_config,
                              [[<<"http">>, <<"endpoints">>, <<"hyperchain">>], [user_config, schema_default]]),
@@ -923,7 +932,7 @@ get_contract_pubkeys(Config) ->
 %%%=============================================================================
 
 get_pin(Config) ->
-    [{Node, _, _} | _] = ?config(nodes, Config),
+    [{Node, _, _, _} | _] = ?config(nodes, Config),
     %% Verify that endpoint is available
     {ok, IsChildChain} = rpc(Node, aeu_env, find_config,
                              [[<<"http">>, <<"endpoints">>, <<"hyperchain">>], [user_config, schema_default]]),
@@ -946,8 +955,9 @@ get_pin(Config) ->
     ?assertEqual(BH1Dec, IBH1),
 
     %% Verify that decoding function works on encoded payload:
+    {ok, DecodedPin} = rpc(Node, aec_parent_connector, decode_parent_pin_payload, [Payload]),
     ?assertEqual(#{epoch => PrevEpoch, height => Height1, block_hash => BH1Dec},
-                 rpc(Node, aec_parent_connector, decode_parent_pin_payload, [Payload])),
+                 DecodedPin),
 
     %% produce some more child blocks if we stay in same epoch, then pins should be the same
     {ok, _} = produce_cc_blocks(Config, 2),
@@ -973,7 +983,7 @@ get_pin(Config) ->
     ok.
 
 post_pin_to_pc(Config) ->
-    [{Node, _, _} | _] = ?config(nodes, Config),
+    [{Node, _, _, _} | _] = ?config(nodes, Config),
 
     %% Get to first block in new epoch
     Height1 = rpc(Node, aec_chain, top_height, []),
@@ -983,9 +993,11 @@ post_pin_to_pc(Config) ->
     {ok, _} = produce_cc_blocks(Config, 5),
 
     DwightPub = pubkey(?DWIGHT), % PC chain account
-    DwightEnc = aeser_api_encoder:encode(account_pubkey, DwightPub),
+    %DwightEnc = aeser_api_encoder:encode(account_pubkey, DwightPub),
     {ok, []} = rpc(?PARENT_CHAIN_NODE, aec_tx_pool, peek, [infinity]), % no pending transactions
-    PinTx = rpc(Node, aec_parent_connector, create_pin_tx, [DwightEnc, DwightPub, 1, 30000 * ?DEFAULT_GAS_PRICE, Pin]),
+    ct:log("DWIGHT: ~p ",[DwightPub]),
+    PinTx = rpc(Node, aec_parent_connector, create_pin_tx, [DwightPub, DwightPub, 1, 30000 * ?DEFAULT_GAS_PRICE, Pin]),
+    ct:log("PinTX: ~p", [PinTx]),
     SignedPinTx = sign_tx(PinTx, privkey(?DWIGHT),?PARENT_CHAIN_NETWORK_ID),
     EncTxHash = rpc(Node, aec_parent_connector, post_pin_tx, [SignedPinTx]),
     {ok, [_]} = rpc(?PARENT_CHAIN_NODE, aec_tx_pool, peek, [infinity]), % one transaction pending now.
@@ -1020,7 +1032,7 @@ post_pin_to_pc(Config) ->
 
 %% A wallet posting a pin transaction by only using HTTP API towards Child and Parent
 wallet_post_pin_to_pc(Config) ->
-    [{Node, _, _} | _] = ?config(nodes, Config),
+    [{Node, _, _, _} | _] = ?config(nodes, Config),
 
     %% Progress to first block of next epoch
     Height1 = rpc(?NODE1, aec_chain, top_height, []),
@@ -1090,9 +1102,7 @@ wallet_post_pin_to_pc(Config) ->
     ok.
 
 last_leader_validates_pin_and_post_to_contract(Config) ->
-    [{Node, _, _} | _] = ?config(nodes, Config),
-    [{_, NodeName, _} | _] = ?config(nodes, Config),
-
+    [{Node, NodeName, _, _} | _] = ?config(nodes, Config),
     %% 1. Correct pin is posted in the contract
 
     #{cur_pin_reward := _Reward} = rpc(Node, aec_chain_hc , pin_reward_info, []),
@@ -1129,13 +1139,13 @@ last_leader_validates_pin_and_post_to_contract(Config) ->
 
     LeaderBalance1A = account_balance(LastLeader),
     %% use get_pin_by_tx_hash to get the posted hash back and compare with actual keyblock (to test encoding decoding etc)
-    #{epoch := _PinEpoch, height := PinHeight, block_hash := PinHash} =
+    {ok, #{epoch := _PinEpoch, height := PinHeight, block_hash := PinHash}} =
         rpc(Node, aec_parent_connector, get_pin_by_tx_hash, [FirstSpend]),
     ?assertEqual({ok, PinHash}, rpc(Node, aec_chain_state, get_key_block_hash_at_height, [PinHeight])),
 
     %% move into next epoch - trigger leader validation?
     {ok, _} = produce_cc_blocks(Config, 2),
-    {ok, #{info := {pin_accepted}}} = wait_for_ps(pin),
+    {ok, #{info := {pin_accepted, _}}} = wait_for_ps(pin),
     LeaderBalance1B = account_balance(LastLeader),
 
     ct:log("Account balance for leader was: ~p, is now: ~p", [LeaderBalance1A, LeaderBalance1B]),
@@ -1236,8 +1246,31 @@ last_leader_validates_pin_and_post_to_contract(Config) ->
 
     ok.
 
+check_default_pin(Config) ->
+    [{Node, NodeName, _, _} | _] = ?config(nodes, Config),
+
+    {ok, _} = produce_cc_blocks(Config, 12),
+    {ok, #{last := Last}} = rpc(Node, aec_chain_hc, epoch_info, []),
+    {ok, LastLeader} = rpc(Node, aec_consensus_hc, leader_for_height, [Last]),
+    ct:log("Last Leader: ~p", [LastLeader]),
+
+    mine_to_last_block_in_epoch(Node, Config),
+
+    aecore_suite_utils:subscribe(NodeName, pin),
+
+    {ok, _} = produce_cc_blocks(Config, 2),
+    %% with current test setup, all validators have a pc account, so pins will always happen(?)
+    {ok, #{info := {pin_accepted, _}}} = wait_for_ps(pin),
+
+    aecore_suite_utils:unsubscribe(NodeName, pin),
+
+    %% TODO test when not all validators have PC account, but how ensure
+    %% that any given validator will be last leader within the run of the test???
+
+    ok.
 
 %%% --------- pinning helpers
+
 
 wait_for_ps(Event) ->
     receive
@@ -1270,9 +1303,9 @@ pin_contract_call_tx(Config, PinProof, FromPubKey) ->
 
 % PINREFAC aec_parent_connector??
 pin_to_parent(Node, PinningData, AccountPK) ->
-    AccPKEncEnc = aeser_api_encoder:encode(account_pubkey, AccountPK),
+    %AccPKEncEnc = aeser_api_encoder:encode(account_pubkey, AccountPK),
     {ok, []} = rpc(?PARENT_CHAIN_NODE, aec_tx_pool, peek, [infinity]), % no pending transactions
-    PinTx = rpc(Node, aec_parent_connector, create_pin_tx, [AccPKEncEnc, AccountPK, 1, 30000 * ?DEFAULT_GAS_PRICE, PinningData]),
+    PinTx = rpc(Node, aec_parent_connector, create_pin_tx, [AccountPK, AccountPK, 1, 30000 * ?DEFAULT_GAS_PRICE, PinningData]),
     SignedPinTx = sign_tx(PinTx, privkey(?DWIGHT),?PARENT_CHAIN_NETWORK_ID),
     rpc(Node, aec_parent_connector, post_pin_tx, [SignedPinTx]).
 
@@ -1623,7 +1656,7 @@ build_json_files(ElectionContract, NodeConfig, CTConfig) ->
          }),
     ok.
 
-node_config(Node, CTConfig, PotentialStakers, ReceiveAddress, ProducingCommitments) ->
+node_config(Node, CTConfig, PotentialStakers, PotentialPinners, ReceiveAddress) ->
     NetworkId = ?config(network_id, CTConfig),
     GenesisStartTime = ?config(genesis_start_time, CTConfig),
     Stakers = lists:map(
@@ -1632,6 +1665,14 @@ node_config(Node, CTConfig, PotentialStakers, ReceiveAddress, ProducingCommitmen
                         #{ <<"hyper_chain_account">> => #{<<"pub">> => encoded_pubkey(HCWho), <<"priv">> => HCPriv} }
                     end,
                     PotentialStakers),
+    Pinners = lists:map(
+                    fun({Owner, Pinner}) ->
+                        HCPriv = list_to_binary(aeu_hex:bin_to_hex( privkey(Pinner))), %% TODO: discuss key management
+                        #{ <<"parent_chain_account">> => #{<<"pub">> => encoded_pubkey(Pinner), <<"priv">> => HCPriv, <<"owner">> => encoded_pubkey(Owner)} }
+                    end,
+                    PotentialPinners),
+    ct:log("Stakers: ~p", [Stakers]),
+    ct:log("Pinners: ~p", [Pinners]),
     ConsensusType = <<"hyperchain">>,
     Port = aecore_suite_utils:external_api_port(?PARENT_CHAIN_NODE),
     SpecificConfig =
@@ -1650,8 +1691,7 @@ node_config(Node, CTConfig, PotentialStakers, ReceiveAddress, ProducingCommitmen
                             #{  <<"fetch_interval">> => 100,
                                 <<"cache_size">> => 10,
                                 <<"nodes">> => [ iolist_to_binary(io_lib:format("http://test:Pass@127.0.0.1:~p", [Port])) ]
-                            },
-                        <<"producing_commitments">> => ProducingCommitments
+                            }
                         },
                     <<"genesis_start_time">> => GenesisStartTime,
                     <<"child_epoch_length">> => ?CHILD_EPOCH_LENGTH,
@@ -1676,7 +1716,9 @@ node_config(Node, CTConfig, PotentialStakers, ReceiveAddress, ProducingCommitmen
                                         <<"contract_owner">> => aeser_api_encoder:encode(account_pubkey,?OWNER_PUBKEY),
                                         <<"expected_key_block_rate">> => 2000,
                                         <<"stakers">> => Stakers,
-                                        <<"pinning_reward_value">> => 4711},
+                                        <<"pinners">> => Pinners,
+                                        <<"pinning_reward_value">> => 4711,
+                                        <<"default_pinning_behavior">> => ?config(default_pinning_behavior, CTConfig)},
                                     SpecificConfig)
                                     }}},
         <<"fork_management">> =>
@@ -1704,7 +1746,7 @@ election_contract_address() ->
 %% Automatically add key blocks on parent chain and
 %% if there are Txs, put them in a micro block
 produce_cc_blocks(Config, BlocksCnt) ->
-    [{Node, _, _} | _] = ?config(nodes, Config),
+    [{Node, _, _, _} | _] = ?config(nodes, Config),
     TopHeight = rpc(Node, aec_chain, top_height, []),
     {ok, #{epoch := Epoch, first := First, last := Last, length := L} = Info} =
         rpc(Node, aec_chain_hc, epoch_info, [TopHeight]),
@@ -1723,19 +1765,19 @@ produce_cc_blocks(Config, BlocksCnt) ->
     produce_cc_blocks(Config, BlocksCnt, ParentProduce).
 
 produce_cc_blocks(Config, BlocksCnt, ParentProduce) ->
-    [{Node1, _, _} | _] = ?config(nodes, Config),
+    [{Node1, _, _, _} | _] = ?config(nodes, Config),
     %% The previous production ended with wait_same_top, so asking first node is sufficient
     TopHeight = rpc(Node1, aec_chain, top_height, []),
     %% assert that the parent chain is not mining
     ?assertEqual(stopped, rpc:call(?PARENT_CHAIN_NODE_NAME, aec_conductor, get_mining_state, [])),
     ct:log("parent produce ~p", [ParentProduce]),
     NewTopHeight = produce_to_cc_height(Config, TopHeight, TopHeight + BlocksCnt, ParentProduce),
-    wait_same_top([ Node || {Node, _, _} <- ?config(nodes, Config)]),
+    wait_same_top([ Node || {Node, _, _, _} <- ?config(nodes, Config)]),
     get_generations(Node1, TopHeight + 1, NewTopHeight).
 
 %% It seems we automatically produce child chain blocks in the background
 produce_to_cc_height(Config, TopHeight, GoalHeight, ParentProduce) ->
-    NodeNames = [ Name || {_, Name, _} <- ?config(nodes, Config) ],
+    NodeNames = [ Name || {_, Name, _, _} <- ?config(nodes, Config) ],
     BlocksNeeded = GoalHeight - TopHeight,
     case BlocksNeeded > 0 of
         false ->
