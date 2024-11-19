@@ -891,42 +891,33 @@ preempt_on_new_top(#state{ top_block_hash = OldHash,
     %% A new micro block from the same generation should:
     %%  * Not cause a pre-emption or full re-generation of key-block in PoW
     %%    context. The keyblock is being regenerated on every attempt to solve
-    %%    the puzzle. There are a lot of attempts durring the 3 seconds between
-    %%    microblocks. It is an optimisation for the miner to throw away a
+    %%    the puzzle. There are a lot of attempts during the 3 seconds between
+    %%    microblocks. It is not an optimisation for the miner to throw away a
     %%    valid solution that would discard the last microblock.
-    %%  * Cause a pre-emption or full re-generation of key-block in PoS
-    %%  context. The worker is blocked, waiting until it's time to produce
-    %%  a new keyblock, and this makes it really highly likely that all
-    %%  microblocks will be discarded.
-    ResetWorkers =
-        case Mode of
-            pos -> false;
-            PoW when PoW =:= local_pow;
-                     PoW =:= stratum ->
-                case BlockType of
-                    micro when OldKeyHash =:= KeyHash ->
-                        false;
-                    _ -> true
-                end
-        end,
-    case ResetWorkers of
-        false ->
-            {micro_changed, State1};
-        true ->
-            SignModule = ConsensusModule:get_sign_module(),
-            State2 = kill_all_workers_with_tag(mining, State1),
-            State3 = kill_all_workers_with_tag(create_key_block_candidate, State2),
-            State4 = kill_all_workers_with_tag(micro_sleep, State3), %% in case we are the leader
-            NewTopKey = case BlockType of
-                            micro -> KeyHash;
-                            key   -> NewHash
-                        end,
-            State5 = State4#state{ top_key_block_hash = NewTopKey,
-                                   key_block_candidates = undefined },
 
-            [ SignModule:promote_candidate(aec_blocks:miner(NewBlock)) || BlockType == key ],
+    case Mode of
+        pos -> {pos, State1};
+        _pow ->
+            ResetWorkers = BlockType /= micro orelse OldKeyHash =/= KeyHash,
+            case ResetWorkers of
+                false ->
+                    {micro_changed, State1};
+                true ->
+                    SignModule = ConsensusModule:get_sign_module(),
+                    State2 = kill_all_workers_with_tag(mining, State1),
+                    State3 = kill_all_workers_with_tag(create_key_block_candidate, State2),
+                    State4 = kill_all_workers_with_tag(micro_sleep, State3), %% in case we are the leader
+                    NewTopKey = case BlockType of
+                                    micro -> KeyHash;
+                                    key   -> NewHash
+                                end,
+                    State5 = State4#state{ top_key_block_hash = NewTopKey,
+                                           key_block_candidates = undefined },
 
-            {changed, BlockType, NewBlock, create_key_block_candidate(State5)}
+                    [ SignModule:promote_candidate(aec_blocks:miner(NewBlock)) || BlockType == key ],
+
+                    {changed, BlockType, NewBlock, create_key_block_candidate(State5)}
+            end
     end.
 
 %% GH3283: If we start storing more kinds of tx_events - we have to expand this
@@ -936,16 +927,25 @@ preempt_on_new_top(#state{ top_block_hash = OldHash,
 %% Exactly how we present the internal contract txs is an open question, but
 %% some way to associate ContractCallTxHash with [InternalTxs]... And also
 %% making the storage of this optional?!
-maybe_publish_tx_events(Events, Hash, Origin) when Origin =/= block_synced,
-                                                   Events =/= [] ->
+maybe_publish_events(BlockType, Events, Hash, Origin) when Origin =/= block_synced,
+                                                           Events =/= [] ->
+    case BlockType of
+        micro -> publish_tx_events(Events, Hash, Origin);
+        key   -> publish_events(Events)
+    end;
+maybe_publish_events(_BlockType, _Events, _Hash, _Origin) ->
+    ok.
+
+publish_tx_events(Events, Hash, Origin) ->
     %% For performance reasons, the Events list is LIFO. We want to publish
     %% events in the order in which they were generated, so we reverse it.
     lager:debug("publish tx_events: ~p", [Events]),
     [aec_events:publish({tx_event, Event}, Info#{ block_hash => Hash
                                                 , block_origin => Origin})
-     || {Event, Info} <- lists:reverse(Events)];
-maybe_publish_tx_events(_, _, _) ->
-    ok.
+     || {Event, Info} <- lists:reverse(Events)].
+
+publish_events(Events) ->
+    [aec_events:publish(Type, Info) || {Type, Info} <- Events].
 
 
 maybe_publish_top(block_created,_TopBlock) ->
@@ -1464,17 +1464,23 @@ handle_add_block(Block, Hash, Prev, #state{top_block_hash = TopBlockHash} = Stat
     end.
 
 handle_successfully_added_block(Block, Hash, false, _PrevKeyHeader, Events, State, Origin) ->
-    maybe_publish_tx_events(Events, Hash, Origin),
+    BlockType = aec_blocks:type(Block),
+    maybe_publish_events(BlockType, Events, Hash, Origin),
     maybe_publish_block(Origin, Block),
     State1 = maybe_consensus_change(State, Block),
-    [ maybe_garbage_collect(Block, Hash, false) || aec_blocks:type(Block) == key ],
+    [ maybe_garbage_collect(Block, Hash, false) || BlockType == key ],
     {ok, State1};
 handle_successfully_added_block(Block, Hash, true, PrevKeyHeader, Events, State, Origin) ->
-    maybe_publish_tx_events(Events, Hash, Origin),
+    maybe_publish_events(aec_blocks:type(Block), Events, Hash, Origin),
     maybe_publish_block(Origin, Block),
     State1 = maybe_consensus_change(State, Block),
     ConsensusModule = consensus_module(State1),
     case preempt_on_new_top(State1, Block, Hash, Origin) of
+        {pos, State2} ->
+            case Origin of
+                block_created -> {ok, create_key_block_candidate(State2)};
+                _             -> {ok, State2}
+            end;
         {micro_changed, State2 = #state{ consensus = Cons }} ->
             {ok, setup_loop(State2, false, Cons#consensus.leader, Origin)};
         {changed, BlockType, NewTopBlock, State2} ->
