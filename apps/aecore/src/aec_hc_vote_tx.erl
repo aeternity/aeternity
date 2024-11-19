@@ -169,5 +169,5 @@ version(_) ->
 
 -spec valid_at_protocol(aec_hard_forks:protocol_vsn(), tx()) -> boolean().
 valid_at_protocol(_, _) ->
-    true.
+    aec_consensus:get_consensus_type() == pos.
 
