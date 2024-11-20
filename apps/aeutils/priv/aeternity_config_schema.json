@@ -1465,33 +1465,33 @@
                     "type" : "integer",
                     "default" : 1000
                 },
-		"ad_hoc_listen_ports" : {
-		    "type" : "boolean",
-		    "description" : "Whether to allow responders to listen on any ports other than preconfigured ones",
-		    "default" : true
-		},
-		"listeners" : {
-		    "description" : "Pre-configured responder listen ports",
-		    "type" : "array",
-		    "items" : {
-			"type" : "object",
-			"additionalProperties" : false,
-			"required" : [
-			    "port"
-			],
-			"properties" : {
-			    "port" : {
-				"type" : "integer",
-				"description" : "Listen port number"
-			    },
-			    "acceptors" : {
-				"type" : "integer",
-				"description" : "Number of concurrent acceptors on port (default: 1)",
-				"default" : 1
-			    }
-			}
-		    }
-		}
+                "ad_hoc_listen_ports" : {
+                    "type" : "boolean",
+                    "description" : "Whether to allow responders to listen on any ports other than preconfigured ones",
+                    "default" : true
+                },
+                "listeners" : {
+                    "description" : "Pre-configured responder listen ports",
+                    "type" : "array",
+                    "items" : {
+                    "type" : "object",
+                    "additionalProperties" : false,
+                    "required" : [
+                        "port"
+                    ],
+                    "properties" : {
+                        "port" : {
+                        "type" : "integer",
+                        "description" : "Listen port number"
+                        },
+                        "acceptors" : {
+                        "type" : "integer",
+                        "description" : "Number of concurrent acceptors on port (default: 1)",
+                        "default" : 1
+                        }
+                    }
+                    }
+                }
             }
         },
         "websocket" : {
@@ -1570,21 +1570,21 @@
                     "type" : "string",
                     "default" : "data"
                 },
-		"db_direct_access" : {
-		    "description" : "Use Db backend API rather than the Mnesia API",
-		    "type" : "boolean",
-		    "default" : true
-		},
-		"db_commit_bypass" : {
-		    "description" : "Use Rocksdb tricks to bypass Mnesia's default update logic at tx commit",
-		    "type" : "boolean",
-		    "default" : true
-		},
-		"db_safe_access" : {
-		    "description" : "Enable checksum check for data read from DB - only applies for state tree (Merkle Patricia Tree) data. Relevant when using untrusted DB snapshot. This lowers DB read performance with 3% - 7%.",
-		    "type" : "boolean",
-		    "default" : false
-		},
+                "db_direct_access" : {
+                    "description" : "Use Db backend API rather than the Mnesia API",
+                    "type" : "boolean",
+                    "default" : true
+                },
+                "db_commit_bypass" : {
+                    "description" : "Use Rocksdb tricks to bypass Mnesia's default update logic at tx commit",
+                    "type" : "boolean",
+                    "default" : true
+                },
+                "db_safe_access" : {
+                    "description" : "Enable checksum check for data read from DB - only applies for state tree (Merkle Patricia Tree) data. Relevant when using untrusted DB snapshot. This lowers DB read performance with 3% - 7%.",
+                    "type" : "boolean",
+                    "default" : false
+                },
                 "db_write_max_retries" : {
                     "deprecated" : true,
                     "description" : "OBSOLETE/ignored: Maximum number of retries for failing database write operations.",
@@ -1727,12 +1727,16 @@
                                         },
                                         "child_block_time": {
                                             "description": "The average time in milliseconds between two key blocks on the child chain",
-                                            "defult": 3000,
+                                            "default": 3000,
                                             "type": "integer"
                                         },
                                         "child_block_production_time": {
                                             "description": "The maximum time (in ms) given produce both a micro block and a keyblock from a given transaction mempool.",
-                                            "defult": 500,
+                                            "default": 500,
+                                            "type": "integer"
+                                        },
+                                        "child_block_production_time": {
+                                            "description": "The time in milliseconds to produce a child block",
                                             "type": "integer"
                                         },
                                         "child_epoch_length": {
@@ -1846,11 +1850,46 @@
                                                 },
                                                 "default": []
                                             }
+                                        },
+                                        "pinners": {
+                                            "description" : "List of parent chain accounts",
+                                            "type" : "array",
+                                            "items" : {
+                                                "type" : "object",
+                                                "additionalProperties" : false,
+                                                "description" : "Hyperchain account pair",
+                                                "properties": {
+                                                    "parent_chain_account": {
+                                                        "description": "Parent chain pinning account",
+                                                        "type" : "object",
+                                                        "additionalProperties" : false,
+                                                        "properties": {
+                                                            "pub": {
+                                                                "description": "Public key",
+                                                                "type": "string",
+                                                                "default": ""
+                                                            },
+                                                            "priv": {
+                                                                "description": "Private key",
+                                                                "type": "string",
+                                                                "default": ""
+                                                            },
+                                                            "owner": {
+                                                                "description": "Public key of Hyperchain account owner",
+                                                                "type": "string",
+                                                                "default": ""
+                                                            }
+                                                        }
+                                                    }
+                                                },
+                                                "default": []
+                                            }
                                         }
                                     }
                                 }
                             }
                         }
+
                     }
                 },
                 "protocol_beneficiaries_enabled" : {
