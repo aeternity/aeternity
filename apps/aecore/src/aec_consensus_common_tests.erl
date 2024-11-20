@@ -186,7 +186,7 @@ micro_block_height_relative_previous_block(_Type, Height) ->
 %% -------------------------------------------------------------------
 %% Custom state transitions
 state_pre_transform_key_node_consensus_switch(_Node, Trees) -> Trees.
-state_pre_transform_key_node(_Node, _PrevNode, Trees) -> Trees.
+state_pre_transform_key_node(_Node, _PrevNode, Trees) -> {Trees, []}.
 state_pre_transform_micro_node(_Height, _PrevNode, Trees) -> Trees.
 
 %% -------------------------------------------------------------------

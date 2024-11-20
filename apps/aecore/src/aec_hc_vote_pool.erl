@@ -107,10 +107,8 @@ size() ->
 %%%===================================================================
 
 init([]) ->
-    GCHeight = top_height(),
-    lager:debug("init: GCHeight = ~p", [GCHeight]),
-    aec_events:subscribe(top_changed),
-    {ok, #state{gc_height = GCHeight}}.
+    aec_events:subscribe(new_epoch),
+    {ok, #state{gc_height = 0}}.
 
 handle_call({push, STx, Event}, _From, State) ->
     State1 = do_add_vote(STx, State),
@@ -127,11 +125,8 @@ handle_cast(Msg, State) ->
     lager:warning("Ignoring unknown cast message: ~p", [Msg]),
     {noreply, State}.
 
-handle_info({gproc_ps_event, top_changed, #{info := #{block_type := key, height := Height}}},
-            State) ->
-    {noreply, do_update_top(Height, State)};
-handle_info({gproc_ps_event, top_changed, #{info := #{block_type := micro}}}, State) ->
-    {noreply, State};
+handle_info({gproc_ps_event, new_epoch, #{info := #{epoch := Epoch}}}, State) ->
+    {noreply, do_update_epoch(Epoch, State)};
 handle_info(Info, State) ->
     lager:warning("Ignoring unknown info: ~p", [Info]),
     {noreply, State}.
@@ -174,15 +169,14 @@ do_pool_peek(T = {_, _}, #state{hash_pool = HPool, t_cache = TCache}) ->
 get_votes(THs, HPool) ->
     [ maps:get(TH, HPool) || TH <- THs ].
 
-top_height() ->
-    case aec_chain:dirty_top_header() of
-        undefined -> 0;
-        Header    -> aec_headers:height(Header)
-    end.
+do_update_epoch(Epoch, State = #state{gc_height = OldEpoch}) ->
+    State1 = gc_epochs(OldEpoch, Epoch, State),
+    State1#state{gc_height = Epoch}.
 
-do_update_top(_Height, State) ->
-    %% TODO: do some GC/cleanup maybe based on epoch?
-    State.
+gc_epochs(E1, E2, State) when E1 >= E2; E1 =:= 0 ->
+    State;
+gc_epochs(_E1, _E2, State) ->
+    State#state{hash_pool = #{}, e_cache = #{}, t_cache = #{}}.
 
 validate_vote_tx(STx) ->
     {Block, Trees} = get_onchain_env(),
