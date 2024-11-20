@@ -303,33 +303,33 @@ state_pre_transform_node(Type, Height, PrevNode, Trees) ->
             end,
             %% note that EpochFirst and EpochLast could be the same, not exclusive
             if Height =:= EpochLast ->
-                    {Trees1, CarryOverFlag} = handle_pinning(TxEnv, Trees, EpochInfo, Leader),
+                    {Trees1, CarryOverFlag, Events} = handle_pinning(TxEnv, Trees, EpochInfo, Leader),
                     case get_entropy_hash(Epoch + 2) of
                         {ok, Seed} ->
                             cache_validators_for_epoch({TxEnv, Trees1}, Seed, Epoch + 2),
                             Trees2 = step_eoe(TxEnv, Trees1, Leader, Seed, 0, -1, CarryOverFlag),
-                            start_default_pinning_process(TxEnv, Trees2, Height),
-                            Trees2;
+                            {ok, NextEpochInfo} = aec_chain_hc:epoch_info({TxEnv, Trees2}),
+                            start_default_pinning_process(TxEnv, Trees2, Height, NextEpochInfo),
+                            {Trees2, Events ++ [{new_epoch, NextEpochInfo}]};
                         {error, _} ->
                             lager:debug("Entropy hash for height ~p is not in cache, attempting to resync", [Height]),
                             %% Fail the keyblock production flow, attempt to resync
                             aec_conductor:throw_error(parent_chain_not_synced)
                     end;
                true ->
-                    step(TxEnv, Trees, Leader)
+                    Trees1 = step(TxEnv, Trees, Leader),
+                    {Trees1, []}
             end;
         micro ->
             step_micro(TxEnv, Trees, Leader)
     end.
 
-start_default_pinning_process(TxEnv, Trees, _Height) ->
-
+start_default_pinning_process(TxEnv, Trees, _Height, NextEpochInfo) ->
     case default_pinning_behavior() of
         true ->
-            NextEpochInfo = aec_chain_hc:epoch_info({TxEnv, Trees}),
-            {ok, #{ epoch      := Epoch
-                  , last       := Last
-                  , validators := _Validators}} = NextEpochInfo,
+            #{ epoch      := Epoch
+             , last       := Last
+             , validators := _Validators} = NextEpochInfo,
             {ok, LastLeader} = leader_for_height(Last, {TxEnv, Trees}),
             lager:debug("AGENT: Trying to start pinning agent... for:  ~p in epoch ~p", [LastLeader, Epoch]),
             try
@@ -935,19 +935,17 @@ is_leader_valid(Node, _Trees, TxEnv, _PrevNode) ->
             aec_conductor:throw_error(parent_chain_block_not_synced)
     end.
 
-handle_pinning(TxEnv, Trees, EpochInfo, Leader ) ->
+handle_pinning(TxEnv, Trees, EpochInfo, Leader) ->
     case validate_pin(TxEnv, Trees, EpochInfo) of
         pin_missing ->
             lager:debug("PINNING: no proof posted"),
-            aec_events:publish(pin, {no_proof_posted}),
-            {Trees, true};
+            {Trees, true, [{pin, {no_proof_posted}}]};
         pin_correct ->
-            Trees1 = add_pin_reward(Trees, TxEnv, Leader, EpochInfo),
-            {Trees1, false};
+            {Trees1, Events} = add_pin_reward(Trees, TxEnv, Leader, EpochInfo),
+            {Trees1, false, Events};
         pin_validation_fail ->
             lager:debug("PINNING: Incorrect proof posted"),
-            aec_events:publish(pin, {incorrect_proof_posted}),
-            {Trees, true}
+            {Trees, true, [{pin, {incorrect_proof_posted}}]}
     end.
 
 validate_pin(TxEnv, Trees, CurEpochInfo) ->
@@ -974,12 +972,12 @@ validate_pin(TxEnv, Trees, CurEpochInfo) ->
 
 add_pin_reward(Trees, TxEnv, Leader, #{epoch := CurEpoch, last := Last} = _EpochInfo) ->
     #{cur_pin_reward := Reward} = aec_chain_hc:pin_reward_info({TxEnv, Trees}),
-    aec_events:publish(pin, {pin_accepted, #{reward => Reward, recipient => Leader, epoch => CurEpoch, height => Last}}),
+    Event = {pin, {pin_accepted, #{reward => Reward, recipient => Leader, epoch => CurEpoch, height => Last}}},
     ATrees = aec_trees:accounts(Trees),
     LeaderAcc = aec_accounts_trees:get(Leader, ATrees),
     {ok, LeaderAcc1} = aec_accounts:earn(LeaderAcc, Reward),
     ATrees1 = aec_accounts_trees:enter(LeaderAcc1, ATrees),
-    aec_trees:set_accounts(Trees, ATrees1).
+    {aec_trees:set_accounts(Trees, ATrees1), [Event]}.
 
 create_contracts([], _TxEnv, Trees) -> Trees;
 create_contracts([Contract | Tail], TxEnv, TreesAccum) ->

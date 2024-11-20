@@ -43,11 +43,10 @@ spawn_for_epoch(EpochInfo, Contract, LastLeader) ->
     end.
 
 start(EpochInfo, Contract, LastLeader) ->
-    {ok,
     #{ first      := First
      , epoch      := _Epoch
      , length     := Length
-     , validators := _Validators}} = EpochInfo,
+     , validators := _Validators} = EpochInfo,
     subscribe(),
     lager:debug("AGENT: started ~p", [self()]),
     wait_for_top_changed(First + Length - 2, none, false, Contract, LastLeader).

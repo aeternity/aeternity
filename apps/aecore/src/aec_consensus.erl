@@ -173,7 +173,7 @@
 %% Performs initial state transformation when the previous block used a different consensus algorithm
 -callback state_pre_transform_key_node_consensus_switch(#node{}, aec_trees:trees()) -> aec_trees:trees() | no_return().
 %% State pre transformations on every keyblock
--callback state_pre_transform_key_node(#node{}, #node{}, aec_trees:trees()) -> aec_trees:trees() | no_return().
+-callback state_pre_transform_key_node(#node{}, #node{}, aec_trees:trees()) -> {aec_trees:trees(), aetx_env:events()} | no_return().
 %% State pre transformations on every microblock
 -callback state_pre_transform_micro_node(non_neg_integer(), #node{}, aec_trees:trees()) -> aec_trees:trees() | no_return().
 
