@@ -674,9 +674,10 @@ empty_parent_block(_Config) ->
 sanity_check_vote_tx(Config) ->
     [{Node1, _, _, _}, {Node2, _, _, _} | _] = ?config(nodes, Config),
 
+    {ok, #{epoch := Epoch}} = rpc(Node1, aec_chain_hc, epoch_info, []),
     %% Push a vote tx onto node1 - then read on node2
     {ok, VoteTx1} = aec_hc_vote_tx:new(#{voter_id => aeser_id:create(account, pubkey(?ALICE)),
-                                         epoch    => 42,
+                                         epoch    => Epoch,
                                          type     => 4,
                                          data     => #{<<"key1">> => <<"value1">>,
                                                        <<"key2">> => <<"value2">>}}),
@@ -687,7 +688,14 @@ sanity_check_vote_tx(Config) ->
 
     ok = rpc(Node1, aec_hc_vote_pool, push, [SVoteTx1]),
     timer:sleep(10),
-    {ok, [HCVoteTx1]} = rpc(Node2, aec_hc_vote_pool, peek, [42]),
+    {ok, [HCVoteTx1]} = rpc(Node2, aec_hc_vote_pool, peek, [Epoch]),
+
+    %% Test GC
+    mine_to_next_epoch(Node2, Config),
+
+    timer:sleep(10),
+    {ok, []} = rpc(Node1, aec_hc_vote_pool, peek, [Epoch]),
+    {ok, []} = rpc(Node2, aec_hc_vote_pool, peek, [Epoch]),
 
     ok.
 
