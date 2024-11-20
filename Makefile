@@ -4,7 +4,6 @@ REBAR ?= ./rebar3
 
 PROTOCOLS = roma minerva fortuna lima iris ceres arcus
 CT_TARGETS = $(patsubst %,ct-%,$(PROTOCOLS))
-CT_POS_TARGETS = $(patsubst %,ct-pos-%,$(PROTOCOLS))
 LATEST_PROTOCOL = $(lastword $(PROTOCOLS))
 
 DB_BACKENDS = mnesia-rocksdb
@@ -135,51 +134,6 @@ local-stop: internal-stop
 local-attach: KIND=local
 local-attach: internal-attach
 
-# POS build targets
-local-pos-build: KIND=local_pos
-local-pos-build: internal-build
-
-local-pos-start: KIND=local_pos
-local-pos-start: internal-start
-
-local-pos-stop: KIND=local_pos
-local-pos-stop: internal-stop
-
-local-pos-attach: KIND=local_pos
-local-pos-attach: internal-attach
-
-local-pos-clean: KIND=local_pos
-local-pos-clean: internal-clean
-
-local-pos-distclean: KIND=local_pos
-local-pos-distclean: internal-distclean
-
-
-prod-pos-package: KIND=prod_pos
-prod-pos-package: internal-package
-
-prod-pos-compile-deps: KIND=prod_pos
-prod-pos-compile-deps: internal-compile-deps
-
-prod-pos-build: KIND=prod_pos
-prod-pos-build: internal-build
-
-prod-pos-start: KIND=prod_pos
-prod-pos-start: internal-start
-
-prod-pos-stop: KIND=prod_pos
-prod-pos-stop: internal-stop
-
-prod-pos-attach: KIND=prod_pos
-prod-pos-attach: internal-attach
-
-prod-pos-clean: KIND=prod_pos
-prod-pos-clean: internal-clean
-
-prod-pos-distclean: KIND=prod_pos
-prod-pos-distclean: internal-distclean
-
-
 prod-package: KIND=prod
 prod-package: internal-package
 
@@ -286,15 +240,7 @@ $(CT_TARGETS):
 	AETERNITY_TESTCONFIG_DB_BACKEND=mnesia \
 	$(MAKE) internal-ct
 
-$(CT_POS_TARGETS):
-	@KIND=test-pos \
-	SYSCONFIG=config/test-$(patsubst ct-pos-%,%,$@).config \
-	PROTOCOL=$(patsubst ct-pos-%,%,$@) \
-	AETERNITY_TESTCONFIG_DB_BACKEND=mnesia \
-	$(MAKE) internal-ct
-
 ct-latest: ct-$(LATEST_PROTOCOL)
-ct-pos-latest: ct-pos-$(LATEST_PROTOCOL)
 ct-latest-no-aci:
 	$(MAKE) SOPHIA_NO_ACI=true CT_TEST_FLAGS=--suite=apps/aehttp/test/aehttp_contracts_SUITE,apps/aehttp/test/aehttp_coin_toss_SUITE ct-latest
 ct-mnesia-mrdb:
@@ -317,17 +263,9 @@ eunit-%: KIND=test
 eunit-%: internal-build
 	ERL_FLAGS="-args_file $(EUNIT_VM_ARGS) -config $(EUNIT_SYS_CONFIG) -network_id local_$*_testnet" $(REBAR) do eunit $(EUNIT_TEST_FLAGS)
 
-eunit-pos-%: KIND=test-pos
-eunit-pos-%: internal-build
-	ERL_FLAGS="-args_file $(EUNIT_VM_ARGS) -config $(EUNIT_SYS_CONFIG) -network_id local_$*_testnet" $(REBAR) do eunit $(EUNIT_TEST_FLAGS)
-
-
 eunit-latest: eunit-$(LATEST_PROTOCOL)
-eunit-pos-latest: eunit-pos-$(LATEST_PROTOCOL)
 
 all-tests: eunit-$(LATEST_PROTOCOL) ct-$(LATEST_PROTOCOL)
-all-pos-tests: eunit-pos-$(LATEST_PROTOCOL) ct-pos-$(LATEST_PROTOCOL)
-
 
 docker: dockerignore-check
 	@docker pull aeternity/builder:focal-otp24
@@ -488,7 +426,6 @@ internal-package: VERSION REVISION internal-compile-deps endpoints
 internal-build: VERSION REVISION internal-compile-deps endpoints
 	@$(REBAR) as $(KIND) release
 
-
 internal-start:
 	@./_build/$(KIND)/$(CORE) start
 
@@ -560,9 +497,7 @@ test-arch-os-dependencies:
 	docker docker-clean dockerignore-check \
 	test smoke-test smoke-test-run system-test aevm-test-deps \
 	ct-% ct-latest ct-mnesia-% \
-	ct-pos-% ct-pos-latest \
 	eunit-% eunit-latest \
-	unit-pos-% eunit-pos-latest \
 	system-smoke-test-deps system-test-deps \
 	test-arch-os-dependencies \
 	kill killall \
