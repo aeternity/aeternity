@@ -39,9 +39,9 @@
                 protocol}).
 
 
--define(PROPOSAL_TYPE, <<"fork_proposal">>).
--define(VOTE_TYPE, <<"vote">>).
--define(COMMIT_TYPE, <<"commit">>).
+-define(PROPOSAL_TYPE, 1).
+-define(VOTE_TYPE, 2).
+-define(COMMIT_TYPE, 3).
 
 -define(EPOCH_FLD, <<"epoch">>).
 -define(HASH_FLD, <<"block_hash">>).
@@ -157,46 +157,43 @@ finalize(Type, Msg, D) ->
     handle_common_event(Type, Msg, D).
 
 
-create_proposal(#data{leader=Leader, stakers=Stakers, epoch=Epoch, height=Height, fork_hash=Hash, protocol=Protocol, block_time=BlockTime}) ->
+create_proposal(#data{leader=Leader, stakers=Stakers, epoch=Epoch, height=Height, fork_hash=Hash, length_delta=LengthDelta}) ->
     PrivKey = get_staker_private_key(Leader, Stakers),
-    Proposal = [?PROPOSAL_TYPE,
-                {?EPOCH_FLD, Epoch},
-                {?HASH_FLD, aeser_api_encoder:encode(key_block_hash, Hash)},
-                {?HEIGHT_FLD,Height}],
-    ProposalPayload = create_payload(Proposal, Leader, PrivKey),
-    create_vote_transaction(Leader, PrivKey, ProposalPayload, Height, Protocol, BlockTime).
+    Proposal =#{?HASH_FLD => aeser_api_encoder:encode(key_block_hash, Hash),
+                ?EPOCH_DELTA_FLD => LengthDelta,
+                ?HEIGHT_FLD => Height},
+    ProposalPayload = create_payload(Proposal, PrivKey),
+    create_vote_transaction(Leader, PrivKey, Epoch, ?PROPOSAL_TYPE, ProposalPayload).
 
 
-create_votes(Type, #data{proposal=ProposalFields, leader=Leader, stakers=Stakers, validators=Validators, epoch=Epoch, height=Height, fork_hash=Hash, protocol=Protocol, block_time=BlockTime, length_delta=LengthDelta}) ->
+create_votes(Type, #data{proposal=ProposalFields, leader=Leader, stakers=Stakers, validators=Validators, epoch=Epoch, height=Height, fork_hash=Hash, length_delta=LengthDelta}) ->
     case maps:get(?HASH_FLD, ProposalFields, undefined) of
         undefined ->
             lager:warning("Hash field not found in proposal ~p", [ProposalFields]),
             [];
         Hash ->
-            VoteFlds = [Type,
-                        {?EPOCH_FLD, Epoch},
-                        {?HASH_FLD, aeser_api_encoder:encode(key_block_hash, Hash)},
-                        {?EPOCH_DELTA_FLD, LengthDelta},
-                        {?HEIGHT_FLD,Height}],
-            create_votes(VoteFlds, Leader, Validators, Stakers, Height, Protocol, BlockTime, []);
+            VoteFlds =#{?HASH_FLD => aeser_api_encoder:encode(key_block_hash, Hash),
+                        ?EPOCH_DELTA_FLD => LengthDelta,
+                        ?HEIGHT_FLD => Height},
+            create_votes(VoteFlds, Leader, Validators, Stakers, Epoch, Type, []);
         ProposalHash ->
             lager:warning("Proposal hash ~p does not match hash ~p", [aeser_api_encoder:encode(key_block_hash, ProposalHash), aeser_api_encoder:encode(key_block_hash, Hash)]),
             []
     end.
 
 
-create_votes(_VoteFlds, _Leader, [], _Stakers, _Height, _Protocol, _BlockTime, Votes) ->
+create_votes(_VoteFlds, _Leader, [], _Stakers, _Epoch, _Type, Votes) ->
     Votes;
-create_votes(VoteFlds, Leader, [{Leader,_}|Validators], Stakers, Height, Protocol, BlockTime, Votes) ->
-    create_votes(VoteFlds, Leader, Validators, Stakers, Height, Protocol, BlockTime, Votes);
-create_votes(VoteFlds, Leader, [{Validator,_}|Validators], Stakers, Height, Protocol, BlockTime, Votes) ->
+create_votes(VoteFlds, Leader, [{Leader,_}|Validators], Stakers, Epoch, Type, Votes) ->
+    create_votes(VoteFlds, Leader, Validators, Stakers, Epoch, Type, Votes);
+create_votes(VoteFlds, Leader, [{Validator,_}|Validators], Stakers, Epoch, Type, Votes) ->
     case get_staker_private_key(Validator, Stakers) of
         undefined ->
-            create_votes(VoteFlds, Leader, Validators, Stakers, Height, Protocol, BlockTime, Votes);
+            create_votes(VoteFlds, Leader, Validators, Stakers, Epoch, Type, Votes);
         PrivKey ->
-            VotePayload = create_payload(VoteFlds, Validator, PrivKey),
-            Vote = create_vote_transaction(Validator, PrivKey, VotePayload, Height, Protocol, BlockTime),
-            create_votes(VoteFlds, Leader, Validators, Stakers, Height, Protocol, BlockTime, [Vote|Votes])
+            VotePayload = create_payload(VoteFlds, PrivKey),
+            Vote = create_vote_transaction(Validator, PrivKey, Epoch, Type, VotePayload),
+            create_votes(VoteFlds, Leader, Validators, Stakers, Epoch, Type, [Vote|Votes])
     end.
 
 
@@ -204,10 +201,10 @@ handle_proposal(SignedTx, #data{leader=Leader, epoch=Epoch, fork_hash=Hash} = Da
     %% Handle the proposal phase
     %% Check the transaction contains a proposal
     case convert_transaction(SignedTx) of
-        {ok, ?PROPOSAL_TYPE, ProposalFields} ->
-            case maps:get(?EPOCH_FLD, ProposalFields, undefined) of
+        {ok, ?PROPOSAL_TYPE, ProposalEpoch, ProposalValidator, ProposalFields} ->
+            case ProposalEpoch of
                 Epoch ->
-                    case maps:get(?PRODUCER_FLD, ProposalFields, undefined) of
+                    case ProposalValidator of
                         Leader ->
                             Data1 = Data#data{proposal=ProposalFields},
                             case Hash of
@@ -218,14 +215,14 @@ handle_proposal(SignedTx, #data{leader=Leader, epoch=Epoch, fork_hash=Hash} = Da
                                     check_voting_majority(Data2)
                             end;
                         InvalidProducer ->
-                                lager:warning("Received proposal from invalid leader ~p", [InvalidProducer]),
+                                lager:warning("Received proposal from invalid leader ~p ~p", [InvalidProducer, Leader]),
                                 keep_state_and_data
                     end;
                 InvalidEpoch ->
-                    lager:warning("Received proposal from invalid epcoh ~p", [InvalidEpoch]),
+                    lager:warning("Received proposal from invalid epoch ~p", [InvalidEpoch]),
                     keep_state_and_data
                 end;
-        {ok, _Type, _} ->
+        {ok, _Type, _, _, _} ->
             %% TODO is it possible to get a vote before the proposal?
             keep_state_and_data;
         {error, not_vote} ->
@@ -237,28 +234,22 @@ handle_proposal(SignedTx, #data{leader=Leader, epoch=Epoch, fork_hash=Hash} = Da
 
 handle_vote(Type, SignedTx, Data, CheckMajorityFun) ->
     case convert_transaction(SignedTx) of
-        {ok, Type, VoteFields} ->
-            case maps:get(?PRODUCER_FLD, VoteFields, undefined) of
-                undefined ->
-                    lager:warning("Producer not found in ~p", [VoteFields]),
+        {ok, Type, _Epoch, Validator, VoteFields} ->
+            %% Check if a validator
+            case can_vote(Validator, Data) of
+                true ->
+                    lager:info("Received a vote: ~p", [VoteFields]),
+                    Data1 = count_vote(Validator, Data),
+                    %% Check if reached two thirds
+                    CheckMajorityFun(Data1);
+                {error, not_a_validator} ->
+                    lager:warning("Received a vote from a non validator ~p", [Validator]),
                     keep_state_and_data;
-                Validator ->
-                    %% Check if a validator
-                    case can_vote(Validator, Data) of
-                        true ->
-                            lager:info("Received a vote: ~p", [VoteFields]),
-                            Data1 = count_vote(Validator, Data),
-                            %% Check if reached two thirds
-                            CheckMajorityFun(Data1);
-                        {error, not_a_validator} ->
-                            lager:warning("Received a vote from a non validator ~p", [Validator]),
-                            keep_state_and_data;
-                        {error, already_voted} ->
-                            lager:warning("Received a vote from a validator ~p that has already voted", [Validator]),
-                            keep_state_and_data
-                    end
+                {error, already_voted} ->
+                    lager:warning("Received a vote from a validator ~p that has already voted", [Validator]),
+                    keep_state_and_data
             end;
-        {ok, _Type, _} ->
+        {ok, _Type, _, _, _} ->
             keep_state_and_data;
         {error, not_vote} ->
             keep_state_and_data;
@@ -268,40 +259,24 @@ handle_vote(Type, SignedTx, Data, CheckMajorityFun) ->
     end.
 
 
-create_payload(Fields, PubKey, PrivKey) ->
-    UnsignedPayload = lists:map(fun fld/1, Fields),
-    PayloadBin = iolist_to_binary(lists:join(<<"|">>, UnsignedPayload)),
-    ProducerFld = fld(?PRODUCER_FLD, aeser_api_encoder:encode(account_pubkey,PubKey)),
+create_payload(Payload, PrivKey) ->
+    Fields = maps:map(fun fld/2, Payload),
+    PayloadBin = iolist_to_binary(lists:foldl(fun({Key, Value}, Accum) -> [<<Key/binary,Value/binary>>|Accum] end, [], lists:sort(maps:to_list(Fields)))),
     Signature = enacl:sign_detached(PayloadBin, PrivKey),
-    SignatureFld = fld(?SIGNATURE_FLD, aeser_api_encoder:encode(signature, Signature)),
-    <<PayloadBin/binary, "|", ProducerFld/binary, "|", SignatureFld/binary>>.
+    maps:put(?SIGNATURE_FLD, aeser_api_encoder:encode(signature, Signature), Fields).
 
-fld({Key, Value}) ->
-    fld(Key, Value);
-fld(Value) ->
+fld(_FieldName, Value) when is_integer(Value) ->
+    integer_to_binary(Value);
+fld(_FieldName, Value) ->
     Value.
 
-fld(FieldName, Value) when is_integer(Value) ->
-    ValueBin = integer_to_binary(Value),
-    fld(FieldName, ValueBin);
-fld(FieldName, Value) ->
-    <<FieldName/binary, ":", Value/binary>>.
-
-create_vote_transaction(Pubkey, PrivKey, VotePayload, Height, Protocol, BlockTime) ->
+create_vote_transaction(Pubkey, PrivKey, Epoch, Type, VotePayload) ->
     Account = aeser_id:create(account, Pubkey),
-    [Type|_] = binary:split(VotePayload, <<"|">>),
-    Nonce = get_tx_nonce(Type, Pubkey),
-    SpendM = #{ sender_id    => Account
-              , recipient_id => Account
-              , amount       => 1
-              , fee          => 1
-              , nonce        => Nonce
-              , ttl          => BlockTime
-              , payload      => VotePayload},
-    {ok, SpendTx} = aec_spend_tx:new(SpendM),
-    FeeGas = aetx:fee_gas(SpendTx, Height, Protocol),
-    Fee = aec_tx_pool:minimum_miner_gas_price() *  FeeGas * 2,
-    {ok, VoteTx} = aec_spend_tx:new(maps:put(fee, Fee, SpendM)),
+    VoteM = #{  voter_id     => Account
+              , epoch        => Epoch
+              , type         => Type
+              , data         => VotePayload},
+    {ok, VoteTx} = aec_hc_vote_tx:new(VoteM),
     Bin0 = aetx:serialize_to_binary(VoteTx),
     Bin = aec_hash:hash(signed_tx, Bin0),
     BinForNetwork = aec_governance:add_network_id(Bin),
@@ -345,16 +320,16 @@ handle_voting(#data{majority = Majority} = Data) ->
 
 send_votes(Data) ->
     lager:info("Sending votes"),
-    lists:foreach(fun aec_tx_pool:push/1, create_votes(?VOTE_TYPE, Data)).
+    lists:foreach(fun aec_hc_vote_pool:push/1, create_votes(?VOTE_TYPE, Data)).
 
 send_commits(Data) ->
     lager:info("Sending commits"),
-    lists:foreach(fun aec_tx_pool:push/1, create_votes(?COMMIT_TYPE, Data)).
+    lists:foreach(fun aec_hc_vote_pool:push/1, create_votes(?COMMIT_TYPE, Data)).
 
 
 send(CreateTxFun, Data, Success) ->
     SignedTx = CreateTxFun(Data),
-    case aec_tx_pool:push(SignedTx) of
+    case aec_hc_vote_pool:push(SignedTx) of
         ok ->
             Success;
         {error, Reason} ->
@@ -365,15 +340,16 @@ send(CreateTxFun, Data, Success) ->
 convert_transaction(SignedTx) ->
     Tx = aetx_sign:tx(SignedTx),
     case aetx:specialize_type(Tx) of
-        {spend_tx, SpendTx} ->
-            Payload = aec_spend_tx:payload(SpendTx),
-            case binary:split(Payload, <<"|">>,[global]) of
-                [Type|Fields] when Type == ?PROPOSAL_TYPE; Type == ?VOTE_TYPE; Type == ?COMMIT_TYPE ->
-                    case check_signature(Payload) of
+        {hc_vote_tx, VoteTx} ->
+            case aec_hc_vote_tx:type(VoteTx) of
+                Type when Type == ?PROPOSAL_TYPE; Type == ?VOTE_TYPE; Type == ?COMMIT_TYPE ->
+                    Payload = aec_hc_vote_tx:data(VoteTx),
+                    PubKey = aec_hc_vote_tx:voter_pubkey(VoteTx),
+                    case check_signature(PubKey, Payload) of
                         ok ->
-                            case convert_payload_fields(Fields) of
+                            case convert_payload_fields(Payload) of
                                 {ok, FieldMap} ->
-                                    {ok, Type, FieldMap};
+                                    {ok, Type, aec_hc_vote_tx:epoch(VoteTx), PubKey, FieldMap};
                                 Error ->
                                     Error
                             end;
@@ -389,43 +365,28 @@ convert_transaction(SignedTx) ->
 
 convert_payload_fields(Fields) ->
     try
-        {ok, convert_payload_fields(Fields, [])}
+        {ok, maps:map(fun convert_payload_field/2, Fields)}
     catch error:Reason:StackTrace ->
         lager:warning("Error decoding payload: ~p ~p", [Reason, StackTrace]),
         {error, Reason}
     end.
 
-convert_payload_fields([], Accum) ->
-    maps:from_list(Accum);
-convert_payload_fields([Field|Fields], Accum) ->
-    case binary:split(Field, <<":">>) of
-        [Key, Value] ->
-            convert_payload_fields(Fields, [convert_payload_field(Key, Value)|Accum]);
-        _ ->
-            convert_payload_fields(Fields, Accum)
-    end.
-
-convert_payload_field(?EPOCH_FLD, Value) ->
-    {?EPOCH_FLD, binary_to_integer(Value)};
 convert_payload_field(?HASH_FLD, Value) ->
     {ok, Hash} = aeser_api_encoder:safe_decode(block_hash,Value),
-    {?HASH_FLD, Hash};
+    Hash;
 convert_payload_field(?HEIGHT_FLD, Value) ->
-    {?HEIGHT_FLD, binary_to_integer(Value)};
-convert_payload_field(?PRODUCER_FLD, Value) ->
-    {ok, Producer} = aeser_api_encoder:safe_decode(account_pubkey, Value),
-    {?PRODUCER_FLD, Producer};
+    binary_to_integer(Value);
 convert_payload_field(?EPOCH_DELTA_FLD, Value) ->
-    {?EPOCH_DELTA_FLD, binary_to_integer(Value)};
-convert_payload_field(Key, Value) ->
-    {Key, Value}.
+    binary_to_integer(Value);
+convert_payload_field(_Key, Value) ->
+    Value.
 
-check_signature(Payload) ->
-    case re:run(Payload, <<"^(.*)\\|producer:([^|]+)\\|signature:(sg_[^|]+)">>, [{capture, [1, 2, 3], binary}]) of
-        {match, [Data, Producer, Signature]} ->
-            {ok, PubKey} = aeser_api_encoder:safe_decode(account_pubkey, Producer),
-            {ok, SignatureBin} = aeser_api_encoder:safe_decode(signature, Signature),
-            case enacl:sign_verify_detached(SignatureBin, Data, PubKey) of
+check_signature(PubKey, Payload) ->
+    case get_signatute_from_payload(Payload) of
+        {ok, Signature} ->
+                Fields = lists:sort(maps:to_list(maps:remove(?SIGNATURE_FLD, Payload))),
+                Data = iolist_to_binary(lists:foldl(fun({Key, Value}, Accum) -> [<<Key/binary,Value/binary>>|Accum] end, [], Fields)),
+            case enacl:sign_verify_detached(Signature, Data, PubKey) of
                 true  -> ok;
                 false ->
                     {error, signature_verification_failed}
@@ -434,6 +395,14 @@ check_signature(Payload) ->
             {error, signature_verification_failed}
     end.
 
+
+get_signatute_from_payload(Payload) ->
+    case maps:get(?SIGNATURE_FLD, Payload, undefined) of
+        undefined ->
+            {error, signature_not_found};
+        Signature ->
+            aeser_api_encoder:safe_decode(signature, Signature)
+    end.
 
 %%% Termination and Code Change Handlers
 terminate(_Reason, _State, _Data) ->
@@ -521,23 +490,3 @@ reset_data(#data{stakers = Stakers, block_time=BlockTime}) ->
 get_staker_private_key(Staker, Stakers) ->
     maps:get(Staker, Stakers, undefined).
 
-get_tx_nonce(Type, Pubkey) ->
-    CurrentNonce = get_nonce(Pubkey),
-
-    NonceOffset = case Type of
-                    ?PROPOSAL_TYPE -> 2;
-                    ?VOTE_TYPE -> 2;
-                    ?COMMIT_TYPE -> 0
-                  end,
-
-    CurrentNonce + NonceOffset.
-
-get_nonce(Pubkey) ->
-    case aec_chain:get_account(Pubkey) of
-        {value, Account} ->
-            aec_accounts:nonce(Account);
-        _ ->
-            %% No spend transactions
-            aeu_env:user_config_or_env([<<"mempool">>, <<"nonce_baseline">>],
-                aecore, mempool_nonce_baseline) %% Default set in schema
-    end.
