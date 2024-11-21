@@ -127,13 +127,12 @@ spawn_for_epoch(EpochInfo, Contract, LastLeader) ->
     end.
 
 start(EpochInfo, Contract, LastLeader) ->
-    #{ first      := First
-     , epoch      := _Epoch
-     , length     := Length
+    #{ epoch      := _Epoch
+     , last       := Last
      , validators := _Validators} = EpochInfo,
     subscribe(),
     lager:debug("pinning worker started ~p", [self()]),
-    wait_for_top_changed(First + Length - 2, none, false, Contract, LastLeader).
+    wait_for_top_changed(Last - 1, none, false, Contract, LastLeader).
 
 
 %%%=============================================================================
@@ -160,42 +159,33 @@ post_pin_proof(ContractPubkey, PinTx, LastLeader, Height) ->
     lager:debug("(~p) pin proof @~p ~p", [self(), Height, PinTx]),
     aec_parent_connector:pin_contract_call(ContractPubkey, PinTx, LastLeader, 0, 1000000 * min_gas_price()).
 
-wait_for_top_changed(Last, none, _, Contract, LastLeader) -> % no pin on PC yet, then we post one once the next CC block is done
+wait_for_top_changed(Last, PCPinTx, CCPosted, Contract, LastLeader) ->
     receive
-        {gproc_ps_event, top_changed, #{info := #{ height := Height }}} ->
-            PCPinTx = post_pin_to_pc(LastLeader, Height),
-            wait_for_top_changed(Last, PCPinTx, false, Contract, LastLeader)
-    end;
-wait_for_top_changed(Last, PCPinTx, false, Contract, LastLeader) -> %% if PC pin tx done, post to CC if it's on PC
-    receive
-        {gproc_ps_event, top_changed, #{info := Info}} ->
-            CCPosted = % always try to post to CC if we haven't
-                case aec_parent_connector:get_pin_by_tx_hash(PCPinTx) of
-                    {ok, #{pc_height := -1}} -> % Not on PC yet, let's wait for next PC generation
-                        false;
-                    {ok,_} -> % it's on PC
-                        post_pin_pctx_to_cc(PCPinTx, LastLeader, maps:get(height, Info)), true;
-                    _ -> false
-                end,
-            case Info of
-                #{ height := Last } when CCPosted == true -> % if we posted to CC and we're on last, post proof and die
-                    post_pin_proof(Contract, PCPinTx, LastLeader, Last);
-                #{ height := Last } when CCPosted == false ->
-                    ok; % just exit
-                _ -> % otherwise, we just carry on...
-                    wait_for_top_changed(Last, PCPinTx, CCPosted, Contract, LastLeader)
-            end
-    end;
-wait_for_top_changed(Last, PCPinTx, true, Contract, LastLeader) ->
-    receive
-        {gproc_ps_event, top_changed, #{info := Info}} ->
-            case Info of
-                #{ height := Last } -> % we're on last, post proof and die
-                    post_pin_proof(Contract, PCPinTx, LastLeader, Last);
-                _ -> % something else, we just carry on...
-                    wait_for_top_changed(Last, PCPinTx, true, Contract, LastLeader)
+        {gproc_ps_event, top_changed, #{info := #{height := Height} = Info}} ->
+            NewPCPinTx = maybe_post_pin_to_pc(PCPinTx, LastLeader, Height),
+            NewCCPosted = maybe_post_pin_to_cc(NewPCPinTx, CCPosted, LastLeader, Height),
+
+            case {Height, NewCCPosted} of
+                {Last, true} -> post_pin_proof(Contract, NewPCPinTx, LastLeader, Last);
+                {Last, false} -> ok;
+                _ -> wait_for_top_changed(Last, NewPCPinTx, NewCCPosted, Contract, LastLeader)
             end
     end.
+
+maybe_post_pin_to_pc(none, LastLeader, Height) ->
+    post_pin_to_pc(LastLeader, Height);
+maybe_post_pin_to_pc(PCPinTx, _, _) ->
+    PCPinTx.
+
+maybe_post_pin_to_cc(PCPinTx, false, LastLeader, Height) ->
+    case aec_parent_connector:get_pin_by_tx_hash(PCPinTx) of
+        {ok, #{pc_height := -1}} -> false;
+        {ok, _} -> post_pin_pctx_to_cc(PCPinTx, LastLeader, Height), true;
+        _ -> false
+    end;
+maybe_post_pin_to_cc(_, CCPosted, _, _) ->
+    CCPosted.
+
 
 %%%=============================================================================
 %%% Helpers, communication
