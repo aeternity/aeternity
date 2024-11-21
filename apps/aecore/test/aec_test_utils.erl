@@ -327,6 +327,7 @@ start_chain_db() ->
     start_chain_db(ram).
 
 start_chain_db(ram) ->
+    save_apps_before_start_chain_db(),
     persistent_term:put({?MODULE, db_mode}, ram),
     ok = mnesia:start(),
     ok = aec_db:initialize_db(ram),
@@ -334,16 +335,24 @@ start_chain_db(ram) ->
     ok = mnesia:wait_for_tables(Tabs, 5000),
     aec_db_gc:install_test_env(),
     ok;
-
 start_chain_db(disc) ->
+    save_apps_before_start_chain_db(),
     Persist = application:get_env(aecore, persist),
     persistent_term:put({?MODULE, db_mode}, {disc, Persist}),
     application:set_env(aecore, persist, true),
     aec_db:check_db(),
     aec_db:clear_db().
 
+%% Note: it is not expected that two tests will be running this concurrently
+save_apps_before_start_chain_db() ->
+    Apps = {running_apps(), loaded_apps()},
+    persistent_term:put({?MODULE, apps_before_start_chain_db}, Apps).
+
 stop_chain_db() ->
-    stop_chain_db(persistent_term:get({?MODULE, db_mode})).
+    stop_chain_db(persistent_term:get({?MODULE, db_mode})),
+    {OldRunningApps, OldLoadedApps} = persistent_term:get({?MODULE, apps_before_start_chain_db}),
+    restore_stopped_and_unloaded_apps(OldRunningApps, OldLoadedApps).
+
 stop_chain_db(ram) ->
     aec_db_gc:cleanup(),
     application:stop(mnesia);
@@ -793,12 +802,15 @@ get_config(_Key, undefined, DefaultFun) ->
 %%%=============================================================================
 
 aec_keys_setup() ->
+    Apps = {running_apps(), loaded_apps()},
+    persistent_term:put({?MODULE, apps_before_keys_setup}, Apps),
     ok = application:ensure_started(crypto),
     aec_keys_bare_setup().
 
 aec_keys_cleanup(TmpKeysDir) ->
     aec_keys_bare_cleanup(TmpKeysDir),
-    ok = application:stop(crypto).
+    {OldRunningApps, OldLoadedApps} = persistent_term:get({?MODULE, apps_before_keys_setup}),
+    restore_stopped_and_unloaded_apps(OldRunningApps, OldLoadedApps).
 
 aec_keys_bare_setup() ->
     TmpKeysDir = create_temp_key_dir(),

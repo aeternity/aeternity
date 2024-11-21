@@ -18,7 +18,6 @@ setup_minimal() ->
     ok = application:ensure_started(gproc),
     ok = aec_test_utils:start_chain_db(),
     aec_block_generator:start_link(),
-
     meck:new(aec_governance, [passthrough]),
     meck:expect(aec_governance, expected_block_mine_rate,
                 fun() ->
@@ -34,18 +33,18 @@ setup_minimal() ->
     TmpKeysDir.
 
 teardown_minimal(TmpKeysDir) ->
-    ok = application:unset_env(aecore, beneficiary),
     ok = aec_tx_pool:stop(),
     ok = aec_tx_pool_gc:stop(),
-    aec_block_generator:stop(),
-    ok = application:stop(gproc),
-    _  = flush_gproc(),
+    aec_test_utils:unmock_time(),
+    aec_test_utils:unmock_genesis_and_forks(),
+    ok = application:unset_env(aecore, beneficiary),
+    aec_test_utils:aec_keys_cleanup(TmpKeysDir),
     ?assert(meck:validate(aec_governance)),
     meck:unload(aec_governance),
-    aec_test_utils:unmock_genesis_and_forks(),
-    aec_test_utils:unmock_time(),
+    aec_block_generator:stop(),
     ok = aec_test_utils:stop_chain_db(),
-    aec_test_utils:aec_keys_cleanup(TmpKeysDir),
+    ok = application:stop(gproc),
+    _  = flush_gproc(),
     ok.
 
 setup_cuckoo_pow() ->
@@ -222,9 +221,9 @@ chain_test_() ->
              TmpKeysDir
      end,
      fun(TmpKeysDir) ->
-             teardown_common(TmpKeysDir),
-             meck:unload(aec_headers),
              meck:unload(aec_blocks),
+             meck:unload(aec_headers),
+             teardown_common(TmpKeysDir),
              ok
      end,
      [
@@ -426,10 +425,10 @@ generation_test_() ->
              TmpKeysDir
      end,
      fun(TmpKeysDir) ->
-             teardown_common(TmpKeysDir),
              meck:unload(aec_mining),
              meck:unload(aec_blocks),
              meck:unload(aec_headers),
+             teardown_common(TmpKeysDir),
              ok
      end,
      [
@@ -528,9 +527,9 @@ fork_signalling_test_() ->
              TmpKeysDir
      end,
      fun(TmpKeysDir) ->
-             teardown_common(TmpKeysDir),
-             meck:unload(aeminer_pow_cuckoo),
              meck:unload(aec_trees),
+             meck:unload(aeminer_pow_cuckoo),
+             teardown_common(TmpKeysDir),
              ok
      end,
      [
@@ -638,6 +637,7 @@ throughput_ram_test_() ->
                  accepted_future_block_time_shift, fun() -> 352 * 24 * 60 * 60 * 1000 end),
              Persist = application:get_env(aecore, persist),
              application:set_env(aecore, persist, true),
+             ok = application:ensure_started(gproc),
              aec_db:check_db(),
              aec_db:clear_db(),
              TmpDir = aec_test_utils:aec_keys_setup(),
@@ -646,7 +646,6 @@ throughput_ram_test_() ->
              aec_test_utils:dev_reward_setup(true, true, 100),
              meck:new(aeminer_pow_cuckoo, [passthrough]),
              meck:expect(aeminer_pow_cuckoo, verify, fun(_, _, _, _, _) -> true end),
-             ok = application:ensure_started(gproc),
              aec_block_generator:start_link(),
              {ok, _} = aec_tx_pool_gc:start_link(),
              {ok, _} = aec_tx_pool:start_link(),
@@ -654,21 +653,21 @@ throughput_ram_test_() ->
              {TmpDir, Persist}
      end,
      fun({TmpDir, Persist}) ->
-             ?assert(meck:validate(aec_governance)),
-             meck:unload(aec_governance),
              ok = ?TEST_MODULE:stop(),
-             application:stop(mnesia),
-             aec_test_utils:unmock_genesis_and_forks(),
-             aec_test_utils:aec_keys_cleanup(TmpDir),
-             application:set_env(aecore, persist, Persist),
-             ok = meck:unload(mnesia_rocksdb_lib),
-             meck:unload(aeminer_pow_cuckoo),
-             ok = mnesia:delete_schema([node()]),
-             aec_tx_pool_gc:stop(),
              aec_tx_pool:stop(),
+             aec_tx_pool_gc:stop(),
              aec_block_generator:stop(),
+             meck:unload(aeminer_pow_cuckoo),
+             aec_test_utils:unmock_genesis_and_forks(),
+             ok = meck:unload(mnesia_rocksdb_lib),
+             aec_test_utils:aec_keys_cleanup(TmpDir),
+             application:stop(mnesia),
+             ok = mnesia:delete_schema([node()]),
              ok = application:stop(gproc),
-             _  = flush_gproc()
+             _  = flush_gproc(),
+             application:set_env(aecore, persist, Persist),
+             ?assert(meck:validate(aec_governance)),
+             meck:unload(aec_governance)
      end,
      [{"Throughput test building chain with 100 key blocks in ram",
        fun() ->
@@ -707,6 +706,7 @@ throughput_disc_test_() ->
                  accepted_future_block_time_shift, fun() -> 352 * 24 * 60 * 60 * 1000 end),
              Persist = application:get_env(aecore, persist),
              application:set_env(aecore, persist, true),
+             ok = application:ensure_started(gproc),
              aec_db:check_db(),
              aec_db:clear_db(),
              TmpDir = aec_test_utils:aec_keys_setup(),
@@ -715,7 +715,6 @@ throughput_disc_test_() ->
              aec_test_utils:dev_reward_setup(true, true, 100),
              meck:new(aeminer_pow_cuckoo, [passthrough]),
              meck:expect(aeminer_pow_cuckoo, verify, fun(_, _, _, _, _) -> true end),
-             ok = application:ensure_started(gproc),
              aec_block_generator:start_link(),
              {ok, _} = aec_tx_pool_gc:start_link(),
              {ok, _} = aec_tx_pool:start_link(),
@@ -723,21 +722,21 @@ throughput_disc_test_() ->
              {TmpDir, Persist}
      end,
      fun({TmpDir, Persist}) ->
-             ?assert(meck:validate(aec_governance)),
-             meck:unload(aec_governance),
              ok = ?TEST_MODULE:stop(),
-             application:stop(mnesia),
-             aec_test_utils:unmock_genesis_and_forks(),
-             aec_test_utils:aec_keys_cleanup(TmpDir),
-             application:set_env(aecore, persist, Persist),
-             ok = meck:unload(mnesia_rocksdb_lib),
-             meck:unload(aeminer_pow_cuckoo),
-             ok = mnesia:delete_schema([node()]),
-             aec_tx_pool_gc:stop(),
              aec_tx_pool:stop(),
+             aec_tx_pool_gc:stop(),
              aec_block_generator:stop(),
+             meck:unload(aeminer_pow_cuckoo),
+             aec_test_utils:unmock_genesis_and_forks(),
+             ok = meck:unload(mnesia_rocksdb_lib),
+             aec_test_utils:aec_keys_cleanup(TmpDir),
+             application:stop(mnesia),
+             ok = mnesia:delete_schema([node()]),
              ok = application:stop(gproc),
-             _  = flush_gproc()
+             _  = flush_gproc(),
+             application:set_env(aecore, persist, Persist),
+             ?assert(meck:validate(aec_governance)),
+             meck:unload(aec_governance)
      end,
      [{"Throughput test building chain with 10 key blocks on disc",
        fun() ->

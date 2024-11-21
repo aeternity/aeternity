@@ -184,11 +184,11 @@ chain_test_() ->
              aec_test_utils:aec_keys_setup()
      end,
      fun(TmpDir) ->
-             meck:unload(aec_trees),
              aec_test_utils:aec_keys_cleanup(TmpDir),
              aec_test_utils:stop_chain_db(),
              aec_test_utils:unmock_governance(),
-             aec_test_utils:unmock_genesis_and_forks()
+             aec_test_utils:unmock_genesis_and_forks(),
+             meck:unload(aec_trees)
      end,
      [{"Basic chain negative result test, start before signalling interval",
        fun() -> basic_chain(start_before_signalling_interval, ?BASIC_CHAIN_NEGATIVE_RESULT, false) end},
@@ -359,9 +359,9 @@ throughput_ram_test_() ->
              aec_test_utils:aec_keys_setup()
      end,
      fun(TmpDir) ->
+             aec_test_utils:aec_keys_cleanup(TmpDir),
              aec_test_utils:unmock_genesis_and_forks(),
-             aec_test_utils:stop_chain_db(),
-             aec_test_utils:aec_keys_cleanup(TmpDir)
+             aec_test_utils:stop_chain_db()
      end,
      [{"Throughput test building chain with 100 key blocks in ram",
        fun() ->
@@ -407,11 +407,11 @@ throughput_disc_test_() ->
              {TmpDir, Persist}
      end,
      fun({TmpDir, Persist}) ->
-             application:stop(mnesia),
              aec_test_utils:unmock_genesis_and_forks(),
-             aec_test_utils:aec_keys_cleanup(TmpDir),
-             application:set_env(aecore, persist, Persist),
              ok = meck:unload(mnesia_rocksdb_lib),
+             aec_test_utils:aec_keys_cleanup(TmpDir),
+             application:stop(mnesia),
+             application:set_env(aecore, persist, Persist),
              ok = mnesia:delete_schema([node()])
      end,
      [{"Throughput test building chain with 10 key blocks on disc",
@@ -506,11 +506,11 @@ accept_existing_db_node_test_() ->
              {TmpDir, Persist}
      end,
      fun({TmpDir, Persist}) ->
-             application:stop(mnesia),
              aec_test_utils:unmock_genesis_and_forks(),
-             aec_test_utils:aec_keys_cleanup(TmpDir),
-             application:set_env(aecore, persist, Persist),
              ok = meck:unload(mnesia_rocksdb_lib),
+             aec_test_utils:aec_keys_cleanup(TmpDir),
+             application:stop(mnesia),
+             application:set_env(aecore, persist, Persist),
              ok = mnesia:delete_schema([node()])
      end,
      [
