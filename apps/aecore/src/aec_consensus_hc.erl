@@ -301,6 +301,7 @@ state_pre_transform_node(Type, Height, PrevNode, Trees) ->
             if Height =:= EpochFirstNonGenesis ->
                     %% cache the current epoch start time
                     EpochStartTime = aetx_env:time_in_msecs(TxEnv),
+                    lager:debug("[xx]STATE_PRE_TRANSFORM_NODE: CACHING EPOCH START: ~w AT HEIGHT ~w\n",[EpochStartTime, Height]),
                     cache_child_epoch_info(Epoch, Height, EpochStartTime);
                true ->
                     ok
@@ -761,6 +762,7 @@ next_beneficiary() ->
     %% block to be produced has height+1
     {ok, KeyBlock} = aec_chain:top_key_block(),
     ChildHeight = aec_blocks:height(KeyBlock),
+    lager:debug("[xx]NEXT_BENEFICIARY: CURRENT HEIGHT: ~w\n",[ChildHeight]),
     RunEnv = aetx_env:tx_env_and_trees_from_top(aetx_transaction),
     case leader_for_height(ChildHeight + 1, RunEnv) of
         {ok, Leader} ->
@@ -792,18 +794,30 @@ next_beneficiary_sleep(CurrHeight, _, _) when CurrHeight < ?FIRST_TIMESTAMPED_BL
     %% No cached epoch info yet; don't wait
     ok;
 next_beneficiary_sleep(CurrHeight, RunEnv, KeyBlock) ->
+    lager:debug("[xx]NEXT_BENEFICIARY: CHECK SLEEP: ~w\n",[CurrHeight]),
     ChildBlockTime = child_block_time(),
     ProdStartTime = prod_start_time(CurrHeight, ChildBlockTime, RunEnv),
     CurrBlockTime = aec_blocks:time_in_msecs(KeyBlock),
+    {ok, PrevBlock} = aec_chain:get_block(aec_blocks:prev_key_hash(KeyBlock)),
+    PrevBlockTime = aec_blocks:time_in_msecs(PrevBlock),
+    lager:debug("[xx]NEXT_BENEFICIARY: PREVIOUS BLOCK DELTA: ~w (CHILDBLOCKTIME DIFF: ~w)\n",
+                [CurrBlockTime - PrevBlockTime, ChildBlockTime - (CurrBlockTime - PrevBlockTime)]),
     _NaiveWaitUntil = CurrBlockTime + ChildBlockTime,
+    lager:debug("[xx]NEXT_BENEFICIARY: PRODSTART DIFF FROM NAIVE: ~w\n",
+                [ProdStartTime - _NaiveWaitUntil]),
     WaitUntil = ProdStartTime,  % make it easy to switch
     case aeu_time:now_in_msecs() of
         Now when Now >= WaitUntil ->
+            lager:debug("[xx]NEXT_BENEFICIARY: NO SLEEP ~w, Delta ~w\n",
+                        [Now, WaitUntil - Now]),
             ok;
         Now ->
             Delta = max(WaitUntil - Now, 1),
             lager:debug("Not time for next block yet; sleeping ~p ms", [Delta]),
             timer:sleep(Delta),
+            Now1 = aeu_time:now_in_msecs(),
+            lager:debug("[xx]NEXT_BENEFICIARY: SLEPT UNTIL ~w, Delta ~w\n",
+                        [Now1, Now1 - Now]),
             ok
     end.
 
@@ -813,22 +827,30 @@ prod_start_time(CurrHeight, ChildBlockTime, RunEnv) ->
     %% the current top block to decide how long to wait, not the epoch of
     %% the next block
     CurrEpoch = current_epoch(CurrHeight, RunEnv),
+    lager:debug("[xx]NEXT_BENEFICIARY: EPOCH OF CURRENT BLOCK: ~w\n",[CurrEpoch]),
     {_, EpochFirst, EpochStartTime} = get_child_epoch_info(CurrEpoch),
+    lager:error("[xx]NEXT_BENEFICIARY: GOT CACHED EPOCH START: ~w:~w at ~w\n",[CurrEpoch, EpochFirst, EpochStartTime]),
     %% note: if the current top block is the first block of the epoch, then
     %% CurrHeight - EpochFirst = 0, and the next child block time slot
     %% starts one ChildBlockTime unit later, not zero
     NextBlockInEpoch = CurrHeight + 1 - EpochFirst,
     BlockProdTime = child_block_production_time(),
+    lager:debug("[xx]NEXT_BENEFICIARY: NEXT BLOCK IN EPOCH: ~w\n",[NextBlockInEpoch]),
     BlockLatency = ChildBlockTime - BlockProdTime,
     T0 = EpochStartTime - BlockProdTime,
     TnMin = T0 + ChildBlockTime*NextBlockInEpoch,
+    lager:debug("[xx]NEXT_BENEFICIARY: NOW FROM T0: ~w\n",[aeu_time:now_in_msecs()-T0]),
+    lager:debug("[xx]NEXT_BENEFICIARY: BLOCK MIN FROM T0: ~w\n",[TnMin-T0]),
     TnMax = TnMin + BlockProdTime + trunc(BlockLatency/2),
+    lager:debug("[xx]NEXT_BENEFICIARY: BLOCK MAX FROM T0: ~w\n",[TnMax-T0]),
+    lager:debug("[xx]NEXT_BENEFICIARY: BLOCK START PROD FROM T0: ~w\n",[TnMax-BlockProdTime-T0]),
     TnMax - BlockProdTime.
 
 current_epoch(CurrHeight, RunEnv) ->
     %% note that epoch_info(RunEnv) finds the epoch of the block to be
     %% produced, not the epoch of the block, so we have to adjust it
     {ok, #{epoch := BlockEpoch, first := BlockEpochFirst}} = aec_chain_hc:epoch_info(RunEnv),
+    lager:debug("[xx]NEXT_BENEFICIARY: EPOCH OF NEXT BLOCK: ~w (FROM BLOCK: ~w)\n",[BlockEpoch, BlockEpochFirst]),
     if CurrHeight < BlockEpochFirst ->
             BlockEpoch-1;
        true ->
