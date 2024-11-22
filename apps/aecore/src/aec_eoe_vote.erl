@@ -70,6 +70,7 @@ get_result() ->
 %% Initialization: Start in the await_eoe state
 init([Stakers, BlockTime]) ->
     aec_events:subscribe(tx_received),
+    aec_events:subscribe(new_epoch),
     {ok, await_eoe, #data{stakers=Stakers,block_time=BlockTime}}.
 
 %% Set the callback mode to state functions
@@ -112,8 +113,7 @@ await_eoe(cast, {validators, Validators, Epoch}, Data) ->
     Majority = calculate_majority(Validators),
     lager:info("Majority required ~p", [Majority]),
     {Leader, _} = lists:last(Validators),
-    Data1 = reset_data(Data),
-    {keep_state, Data1#data{validators = Validators, majority=Majority, remaining_validators=maps:from_list(Validators), epoch=Epoch, leader=Leader}};
+    {keep_state, Data#data{validators = Validators, majority=Majority, remaining_validators=maps:from_list(Validators), epoch=Epoch, leader=Leader}};
 await_eoe(info, {gproc_ps_event, tx_received, #{info := SignedTx}}, Data) ->
     handle_proposal(SignedTx, Data);
 await_eoe(Type, Msg, D) ->
@@ -295,7 +295,7 @@ check_voting_majority(#data{proposal=Proposal, majority = CurrentMajority, valid
             send_commits(Data1),
             {next_state, finalize, Data1#data{majority = Majority, remaining_validators = maps:from_list(Validators)}};
         false ->
-            {keep_state, Data, [{state_timeout,BlockTime,no_quorum}]}
+            {next_state, vote, Data, [{state_timeout,BlockTime,no_quorum}]}
     end.
 
 on_valid_commit(_Validator, _CommitFields, #data{result = Result, majority = CurrentMajority, block_time=BlockTime, from=From} = Data) ->
@@ -306,7 +306,7 @@ on_valid_commit(_Validator, _CommitFields, #data{result = Result, majority = Cur
                         undefined ->
                             [];
                         _ ->
-                            lager:info("Replying quorum achieved for commits"),
+                            lager:debug("Replying quorum achieved for commits, result ~p", [Result]),
                             [{reply, From, Result}]
                       end,
             {next_state, complete, Data, Actions};
@@ -447,6 +447,8 @@ handle_no_consensus(#data{from = From} = Data) ->
                   end,
     {next_state, complete, Data#data{result = Result}, Actions}.
 
+handle_common_event(info, {gproc_ps_event, new_epoch, #{info := _EpochInfo}}, Data) ->
+    {next_state, await_eoe, reset_data(Data)};
 handle_common_event({call,From}, get_result, #data{result=Result, num_calls = NumCalls, epoch=Epoch} = Data) ->
     case Epoch of
         undefined ->
@@ -460,6 +462,7 @@ handle_common_event({call,From}, get_result, #data{result=Result, num_calls = Nu
                         undefined ->
                             {keep_state, Data1#data{from=From}};
                         _ ->
+                            lager:debug("Replying quorum achieved for commits, result ~p", [Result]),
                             {keep_state, Data1, [{reply, From, Result}]}
                     end;
                 false ->
@@ -470,7 +473,6 @@ handle_common_event(_E, _Msg, #data{}) ->
     lager:info("Common ~p ~p", [_E, _Msg]),
     %% TODO
     keep_state_and_data.
-
 
 calculate_stake(#data{validators = Validators, stakers = Stakers}) ->
     lists:foldl(fun({Validator, Stake}, Accum) ->
