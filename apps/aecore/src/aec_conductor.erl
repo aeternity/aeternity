@@ -1254,6 +1254,8 @@ create_key_block_candidate(#state{key_block_candidates = [{_, #candidate{top_has
                                   top_block_hash       = TopHash} = State) ->
     %% We have the most recent candidate already. Just start mining.
     start_block_production_(State);
+create_key_block_candidate(#state{block_producing_state = stopped, mode = pos} = State) ->
+    State;
 create_key_block_candidate(#state{top_block_hash = TopHash, mode = pos} = State) ->
     ConsensusModule = consensus_module(State),
     epoch_mining:info("HC: check and maybe create micro + key block at the top of the chain"),
@@ -1543,10 +1545,6 @@ is_leader(NewTopBlock, PrevKeyHeader, ConsensusModule) ->
         {error, _}     -> false
     end.
 
-setup_loop(State = #state{ mode = pos }, Restart, _IsLeader, Origin) ->
-    if not Restart andalso Origin == block_created -> create_key_block_candidate(State);
-       true                                        -> State
-    end;
 setup_loop(State = #state{ consensus = Cons }, RestartMining, IsLeader, Origin) ->
     State1 = State#state{ consensus = Cons#consensus{ leader = IsLeader } },
     State2 =
