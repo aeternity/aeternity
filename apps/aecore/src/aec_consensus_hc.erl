@@ -17,6 +17,7 @@
 -define(ELECTION_CONTRACT, election).
 -define(STAKING_CONTRACT, staking).
 -define(REWARDS_CONTRACT, rewards).
+-define(FIRST_TIMESTAMPED_BLOCK, 2).
 
 %% API
 -export([ can_be_turned_off/0
@@ -291,9 +292,13 @@ state_pre_transform_node(Type, Height, PrevNode, Trees) ->
     {ok, #{epoch := Epoch, first := EpochFirst, last := EpochLast} = EpochInfo} =
         aec_chain_hc:epoch_info({TxEnv, Trees}),
     {ok, Leader} = leader_for_height(Height, {TxEnv, Trees}),
+    EpochFirstNonGenesis = if Height =< ?FIRST_TIMESTAMPED_BLOCK ->
+                                   ?FIRST_TIMESTAMPED_BLOCK;
+                              true -> EpochFirst
+                           end,
     case Type of
         key ->
-            if Height =:= EpochFirst ->
+            if Height =:= EpochFirstNonGenesis ->
                     %% cache the current epoch start time
                     EpochStartTime = aetx_env:time_in_msecs(TxEnv),
                     cache_child_epoch_info(Epoch, Height, EpochStartTime);
@@ -783,7 +788,7 @@ next_beneficiary() ->
 %% within the epoch starts at T0 + N*BlockTime (with N=0 being the first
 %% block of the epoch), and we get a fresh T0 at each new epoch.
 
-next_beneficiary_sleep(0, _, _) ->
+next_beneficiary_sleep(CurrHeight, _, _) when CurrHeight < ?FIRST_TIMESTAMPED_BLOCK ->
     %% No cached epoch info yet; don't wait
     ok;
 next_beneficiary_sleep(CurrHeight, RunEnv, KeyBlock) ->
@@ -809,11 +814,14 @@ prod_start_time(CurrHeight, ChildBlockTime, RunEnv) ->
     %% the next block
     CurrEpoch = current_epoch(CurrHeight, RunEnv),
     {_, EpochFirst, EpochStartTime} = get_child_epoch_info(CurrEpoch),
-    BlockInEpoch = CurrHeight + 1 - EpochFirst,
+    %% note: if the current top block is the first block of the epoch, then
+    %% CurrHeight - EpochFirst = 0, and the next child block time slot
+    %% starts one ChildBlockTime unit later, not zero
+    NextBlockInEpoch = CurrHeight + 1 - EpochFirst,
     BlockProdTime = child_block_production_time(),
     BlockLatency = ChildBlockTime - BlockProdTime,
     T0 = EpochStartTime - BlockProdTime,
-    TnMin = T0 + ChildBlockTime*BlockInEpoch,
+    TnMin = T0 + ChildBlockTime*NextBlockInEpoch,
     TnMax = TnMin + BlockProdTime + trunc(BlockLatency/2),
     TnMax - BlockProdTime.
 
