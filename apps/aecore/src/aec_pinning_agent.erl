@@ -88,10 +88,6 @@ terminate(_Reason, _LoopState) ->
 code_change(_OldVsn, LoopState, _Extra) ->
     {ok, LoopState}.
 
-    % case aec_parent_connector:has_parent_account(LastLeader) of
-    %     true -> aec_pinning_agent:spawn_for_epoch(NextEpochInfo, get_contract_pubkey(?ELECTION_CONTRACT), LastLeader);
-    %     false -> lager:debug("AGENT: No parent chain account found for ~p", [LastLeader])
-    % end
 stop() ->
     lager:debug("STOPPED"),
     gen_server:stop(?SERVER).
@@ -113,7 +109,7 @@ spawn_for_epoch(#{last := Last} = EpochInfo, Contract) ->
 
 spawn_for_epoch(EpochInfo, Contract, LastLeader) ->
     try
-    case whereis(my_unique_process) of
+    case whereis(?WORKER) of
         undefined ->
             Pid = spawn(aec_pinning_agent, start, [EpochInfo, Contract, LastLeader]),
             register(?WORKER, Pid),
@@ -129,10 +125,12 @@ spawn_for_epoch(EpochInfo, Contract, LastLeader) ->
 start(EpochInfo, Contract, LastLeader) ->
     #{ epoch      := _Epoch
      , last       := Last
+     , first      := First
      , validators := _Validators} = EpochInfo,
     subscribe(),
     lager:debug("pinning worker started ~p", [self()]),
-    wait_for_top_changed(Last - 1, none, false, Contract, LastLeader).
+    PCPinTx = post_pin_to_pc(LastLeader, First),
+    wait_for_top_changed(Last - 1, PCPinTx, false, Contract, LastLeader).
 
 
 %%%=============================================================================
@@ -161,21 +159,15 @@ post_pin_proof(ContractPubkey, PinTx, LastLeader, Height) ->
 
 wait_for_top_changed(Last, PCPinTx, CCPosted, Contract, LastLeader) ->
     receive
-        {gproc_ps_event, top_changed, #{info := #{height := Height} = Info}} ->
-            NewPCPinTx = maybe_post_pin_to_pc(PCPinTx, LastLeader, Height),
-            NewCCPosted = maybe_post_pin_to_cc(NewPCPinTx, CCPosted, LastLeader, Height),
+        {gproc_ps_event, top_changed, #{info := #{height := Height}}} ->
+           NewCCPosted = maybe_post_pin_to_cc(PCPinTx, CCPosted, LastLeader, Height),
 
             case {Height, NewCCPosted} of
-                {Last, true} -> post_pin_proof(Contract, NewPCPinTx, LastLeader, Last);
-                {Last, false} -> ok;
-                _ -> wait_for_top_changed(Last, NewPCPinTx, NewCCPosted, Contract, LastLeader)
+                {Last, true} -> post_pin_proof(Contract, PCPinTx, LastLeader, Last);
+                {Last, false} -> ok; % we're on last, pc pin tx not finalized, we bow out.
+                _ -> wait_for_top_changed(Last, PCPinTx, NewCCPosted, Contract, LastLeader)
             end
     end.
-
-maybe_post_pin_to_pc(none, LastLeader, Height) ->
-    post_pin_to_pc(LastLeader, Height);
-maybe_post_pin_to_pc(PCPinTx, _, _) ->
-    PCPinTx.
 
 maybe_post_pin_to_cc(PCPinTx, false, LastLeader, Height) ->
     case aec_parent_connector:get_pin_by_tx_hash(PCPinTx) of
