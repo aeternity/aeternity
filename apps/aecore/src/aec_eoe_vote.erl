@@ -15,7 +15,7 @@
 -export([init/1, callback_mode/0, terminate/3, code_change/4]).
 
 %% FSM states (as per gen_statem callback callback_mode/0)
--export([await_eoe/3, proposal/3, vote/3, finalize/3]).
+-export([await_eoe/3, proposal/3, vote/3, finalize/3, complete/3]).
 
 
 %% ==================================================================
@@ -156,6 +156,8 @@ finalize(state_timeout, no_quorum, Data) ->
 finalize(Type, Msg, D) ->
     handle_common_event(Type, Msg, D).
 
+complete(Type, Msg, D) ->
+    handle_common_event(Type, Msg, D).
 
 create_proposal(#data{leader=Leader, stakers=Stakers, epoch=Epoch, height=Height, fork_hash=Hash, length_delta=LengthDelta}) ->
     PrivKey = get_staker_private_key(Leader, Stakers),
@@ -201,27 +203,22 @@ handle_proposal(SignedTx, #data{leader=Leader, epoch=Epoch, fork_hash=Hash} = Da
     %% Handle the proposal phase
     %% Check the transaction contains a proposal
     case convert_transaction(SignedTx) of
-        {ok, ?PROPOSAL_TYPE, ProposalEpoch, ProposalValidator, ProposalFields} ->
-            case ProposalEpoch of
-                Epoch ->
-                    case ProposalValidator of
-                        Leader ->
-                            Data1 = Data#data{proposal=ProposalFields},
-                            case Hash of
-                                undefined ->
-                                    {keep_state, Data1};
-                                _ ->
-                                    Data2 = handle_voting(Data1),
-                                    check_voting_majority(Data2)
-                            end;
-                        InvalidProducer ->
-                                lager:warning("Received proposal from invalid leader ~p ~p", [InvalidProducer, Leader]),
-                                keep_state_and_data
-                    end;
-                InvalidEpoch ->
-                    lager:warning("Received proposal from invalid epoch ~p", [InvalidEpoch]),
-                    keep_state_and_data
-                end;
+        {ok, ?PROPOSAL_TYPE, Epoch, Leader, ProposalFields} ->
+            Data1 = Data#data{proposal=ProposalFields},
+            case Hash of
+                %% Negotation hasn't begun yet
+                undefined ->
+                    {keep_state, Data1};
+                _ ->
+                    Data2 = handle_voting(Data1),
+                    check_voting_majority(Data2)
+            end;
+        {ok, ?PROPOSAL_TYPE, Epoch, InvalidProducer, _ProposalFields} ->
+            lager:warning("Received proposal from invalid leader ~p", [InvalidProducer]),
+            keep_state_and_data;
+        {ok, ?PROPOSAL_TYPE, InvalidEpoch, Leader, _ProposalFields} ->
+            lager:warning("Received proposal from invalid epoch ~p", [InvalidEpoch]),
+            keep_state_and_data;
         {ok, _Type, _, _, _} ->
             %% TODO is it possible to get a vote before the proposal?
             keep_state_and_data;
@@ -303,12 +300,12 @@ check_commit_majority(#data{result = Result, majority = CurrentMajority, block_t
             lager:info("Quorum achieved for commit"),
             Actions = case From of
                         undefined ->
-                            [{state_timeout,BlockTime,no_quorum}];
+                            [];
                         _ ->
                             lager:info("Replying quorum achieved for commits"),
                             [{reply, From, Result}]
                       end,
-            {next_state, finalize, Data, Actions};
+            {next_state, complete, Data, Actions};
         false ->
             {keep_state, Data, [{state_timeout,BlockTime,no_quorum}]}
     end.
@@ -444,7 +441,7 @@ handle_no_consensus(#data{from = From} = Data) ->
                     _ ->
                         [{reply, From, Result}]
                   end,
-    {next_state, await_eoe, Data#data{result = Result}, Actions}.
+    {next_state, complete, Data#data{result = Result}, Actions}.
 
 handle_common_event({call,From}, get_result, #data{result=Result, num_calls = NumCalls, epoch=Epoch} = Data) ->
     case Epoch of
