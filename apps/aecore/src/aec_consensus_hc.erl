@@ -758,8 +758,7 @@ next_beneficiary(TxEnv, Trees) ->
             case ChildHeight1 == maps:get(last, EpochInfo) of
                 true ->
                     Hash = aetx_env:key_hash(TxEnv),
-                    Protocol = aetx_env:consensus_version(TxEnv),
-                    aec_eoe_vote:negotiate(Epoch, ChildHeight1, Hash, 0, Protocol); %% TODO epoch delta
+                    aec_eoe_vote:negotiate(Epoch, ChildHeight1, Hash, 0); %% TODO epoch delta
                 false ->
                     %% Try to set the validator as early as possible in epoch, so votes are not missed due to the vote not being able to be validated
                     aec_eoe_vote:validators(maps:get(validators, EpochInfo), Epoch)

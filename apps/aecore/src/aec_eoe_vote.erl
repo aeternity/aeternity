@@ -9,7 +9,7 @@
 -behaviour(gen_statem).
 
 %% Export API functions
--export([start_link/2, negotiate/5, validators/2, get_result/0]).
+-export([start_link/2, negotiate/4, validators/2, get_result/0]).
 
 %% Export gen_statem callbacks
 -export([init/1, callback_mode/0, terminate/3, code_change/4]).
@@ -36,7 +36,7 @@
                 num_calls=0,
                 result,
                 from,
-                protocol}).
+                votes=#{}}).
 
 
 -define(PROPOSAL_TYPE, 1).
@@ -44,6 +44,7 @@
 -define(COMMIT_TYPE, 3).
 
 -define(EPOCH_FLD, <<"epoch">>).
+-define(VOTES_FLD, <<"votes">>).
 -define(HASH_FLD, <<"block_hash">>).
 -define(HEIGHT_FLD, <<"block_height">>).
 -define(PRODUCER_FLD, <<"producer">>).
@@ -55,8 +56,8 @@ start_link(Stakers, BlockTime) ->
     gen_statem:start_link({local, ?MODULE}, ?MODULE, [Stakers, BlockTime], []).
 
 %% Negotiate a fork, called with preferred fork and epoch length delta
-negotiate(Epoch, Height, Hash, LengthDelta, Protocol) ->
-    gen_statem:cast(?MODULE, {negotiate, Epoch, Height, Hash, LengthDelta, Protocol}).
+negotiate(Epoch, Height, Hash, LengthDelta) ->
+    gen_statem:cast(?MODULE, {negotiate, Epoch, Height, Hash, LengthDelta}).
 
 validators(Validators, Epoch) ->
     gen_statem:cast(?MODULE, {validators, Validators, Epoch}).
@@ -77,10 +78,10 @@ callback_mode() ->
 
 %%% State: AwaitEndOfEpoch
 %% TODO get transactions that come in before negotiate has been called
-await_eoe(cast, {negotiate, Epoch, Height, Hash, LengthDelta, Protocol}, #data{block_time=BlockTime, epoch=CurrentEpoch, proposal=Proposal, num_calls = NumCalls, majority=Majority} = Data) ->
+await_eoe(cast, {negotiate, Epoch, Height, Hash, LengthDelta}, #data{block_time=BlockTime, epoch=CurrentEpoch, proposal=Proposal, num_calls = NumCalls, majority=Majority} = Data) ->
     case Epoch == CurrentEpoch of
         true ->
-            Data1 = Data#data{epoch=Epoch, height=Height, fork_hash=Hash, length_delta=LengthDelta, protocol=Protocol, num_calls = NumCalls + 1},
+            Data1 = Data#data{epoch=Epoch, height=Height, fork_hash=Hash, length_delta=LengthDelta, num_calls = NumCalls + 1},
             case is_leader(Data1) of
                 false ->
                     case Proposal of
@@ -136,7 +137,7 @@ vote(info, {gproc_ps_event, tx_received, #{info := Tx}}, Data) ->
     %% Handle the voting phase
     %% Check the transaction contains a vote
     %% If more than two thirds of votes agree send a commit then transition to finalization phase
-    handle_vote(?VOTE_TYPE, Tx, Data, fun check_voting_majority/1);
+    handle_vote(?VOTE_TYPE, Tx, Data, fun on_valid_vote/3);
 vote(state_timeout, no_quorum, Data) ->
     %% Handle timeout if no proposal is received
     lager:warning("Voting timeout"),
@@ -148,7 +149,7 @@ vote(Type, Msg, D) ->
 
 %%% State: Finalize
 finalize(info, {gproc_ps_event, tx_received, #{info := Tx}}, Data) ->
-    handle_vote(?COMMIT_TYPE, Tx, Data, fun check_commit_majority/1);
+    handle_vote(?COMMIT_TYPE, Tx, Data, fun on_valid_commit/3);
 finalize(state_timeout, no_quorum, Data) ->
     %% Handle timeout if no proposal is received
     lager:warning("Finalize timeout"),
@@ -229,7 +230,7 @@ handle_proposal(SignedTx, #data{leader=Leader, epoch=Epoch, fork_hash=Hash} = Da
             keep_state_and_data
     end.
 
-handle_vote(Type, SignedTx, Data, CheckMajorityFun) ->
+handle_vote(Type, SignedTx, Data, OnValidFun) ->
     case convert_transaction(SignedTx) of
         {ok, Type, _Epoch, Validator, VoteFields} ->
             %% Check if a validator
@@ -238,7 +239,7 @@ handle_vote(Type, SignedTx, Data, CheckMajorityFun) ->
                     lager:info("Received a vote: ~p", [VoteFields]),
                     Data1 = count_vote(Validator, Data),
                     %% Check if reached two thirds
-                    CheckMajorityFun(Data1);
+                    OnValidFun(Validator, VoteFields, Data1);
                 {error, not_a_validator} ->
                     lager:warning("Received a vote from a non validator ~p", [Validator]),
                     keep_state_and_data;
@@ -280,13 +281,16 @@ create_vote_transaction(Pubkey, PrivKey, Epoch, Type, VotePayload) ->
     Signatures = [enacl:sign_detached(BinForNetwork, PrivKey)],
     aetx_sign:new(VoteTx, Signatures).
 
+on_valid_vote(Validator, VoteFields, #data{votes=Votes} = Data) ->
+    Votes1 = maps:put(Validator, VoteFields, Votes),
+    check_voting_majority(Data#data{votes = Votes1}).
 
-check_voting_majority(#data{proposal=Proposal, majority = CurrentMajority, validators=Validators, block_time=BlockTime} = Data) ->
+check_voting_majority(#data{proposal=Proposal, majority = CurrentMajority, validators=Validators, block_time=BlockTime, votes=Votes} = Data) ->
     case CurrentMajority =< 0 of
         true ->
             lager:info("Quorum achieved for voting"),
             Majority = calculate_majority(Validators),
-            Result = {ok, Proposal},
+            Result = {ok, maps:put(?VOTES_FLD, Votes, Proposal)},
             Data1 = Data#data{result = Result},
             send_commits(Data1),
             {next_state, finalize, Data1#data{majority = Majority, remaining_validators = maps:from_list(Validators)}};
@@ -294,7 +298,7 @@ check_voting_majority(#data{proposal=Proposal, majority = CurrentMajority, valid
             {keep_state, Data, [{state_timeout,BlockTime,no_quorum}]}
     end.
 
-check_commit_majority(#data{result = Result, majority = CurrentMajority, block_time=BlockTime, from=From} = Data) ->
+on_valid_commit(_Validator, _CommitFields, #data{result = Result, majority = CurrentMajority, block_time=BlockTime, from=From} = Data) ->
     case CurrentMajority =< 0 of
         true ->
             lager:info("Quorum achieved for commit"),
