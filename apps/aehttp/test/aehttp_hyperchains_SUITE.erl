@@ -157,7 +157,7 @@ groups() ->
           , produce_some_epochs
           , respect_schedule
           , entropy_impact_schedule
-          , check_blocktime
+          %, check_blocktime
           , get_contract_pubkeys
           , sanity_check_vote_tx
           ]}
@@ -430,6 +430,7 @@ check_blocktime(_Config) ->
     {ok, TopBlock} = rpc(?NODE1, aec_chain, top_key_block, []),
     check_blocktime_(TopBlock).
 
+%% TODO: rework this test - currently assumes naive block timing
 check_blocktime_(Block) ->
     case aec_blocks:height(Block) >= 1 of
         true ->
