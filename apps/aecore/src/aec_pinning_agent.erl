@@ -30,17 +30,16 @@
     code_change/3
 ]).
 
--export([
-    spawn_for_epoch/3,
-    start/3
-]).
-
 -define(SERVER, ?MODULE).
--define(WORKER, worker_name()).
 
 %% Loop state
 -record(state, {
-    contract
+    contract,
+    pinning_mode,
+    next_last,
+    pc_pin,
+    cc_note,
+    last_leader
 }).
 -type state() :: state.
 
@@ -52,6 +51,9 @@
 start_link(Contract, PinningBehavior) ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [Contract, PinningBehavior], []).
 
+stop() ->
+    gen_server:stop(?SERVER).
+
 %%%=============================================================================
 %%% Gen Server Callbacks
 %%%=============================================================================
@@ -59,9 +61,10 @@ start_link(Contract, PinningBehavior) ->
 init([Contract, PinningBehavior]) ->
     case PinningBehavior of
         true ->
-            State = #state{contract = Contract},
+            State = #state{contract = Contract, pinning_mode = false},
             lager:debug("started pinning agent"),
             aec_events:subscribe(new_epoch),
+            aec_events:subscribe(top_changed),
             {ok, State};
         false ->
             lager:debug("default pinning off - no agent started", []),
@@ -76,9 +79,36 @@ handle_call(_Request, _From, LoopState) ->
 handle_cast(_Msg, LoopState) ->
     {noreply, LoopState}.
 
-handle_info({gproc_ps_event, new_epoch, #{info := EpochInfo}}, #state{contract = Contract} = State) ->
-    Reply = spawn_for_epoch(EpochInfo, Contract),
-    {Reply, State};
+handle_info({gproc_ps_event, new_epoch, #{info := #{last := Last, first := First, epoch := Epoch}}}, State) ->
+    {ok, LastLeader} = aec_consensus_hc:leader_for_height(Last),
+    case aec_parent_connector:has_parent_account(LastLeader) of
+        true ->
+            PCPinTx = post_pin_to_pc(LastLeader, First),
+            ProcState = State#state{pinning_mode = true,
+                                    next_last = Last-1,
+                                    pc_pin = PCPinTx,
+                                    cc_note = false,
+                                    last_leader = LastLeader },
+            {noreply, ProcState};
+        false ->
+            lager:debug("no pin in epoch ~p, no parent account for ~p", [Epoch, LastLeader]),
+            {noreply, State#state{pinning_mode = false}}
+    end;
+handle_info({gproc_ps_event, top_changed, #{info := #{height := Height}}},
+            #state{pinning_mode = true,
+                   contract = Contract,
+                   next_last = Last,
+                   pc_pin = PCPinTx,
+                   cc_note = CCPosted,
+                   last_leader = LastLeader } = State) ->
+    NewCCPosted = maybe_post_pin_to_cc(PCPinTx, CCPosted, LastLeader, Height),
+    PinningModeCont =
+        case {Height, NewCCPosted} of
+            {Last, true} -> post_pin_proof(Contract, PCPinTx, LastLeader, Last), false;
+            {Last, false} -> false; % we're on last, pc pin tx not finalized, we bow out.
+            _ -> true % not on last block, we continue triggering on top_changed
+        end,
+    {noreply, State#state{pinning_mode = PinningModeCont, cc_note = NewCCPosted}};
 handle_info(_Info, LoopState) ->
     {noreply, LoopState}.
 
@@ -88,86 +118,27 @@ terminate(_Reason, _LoopState) ->
 code_change(_OldVsn, LoopState, _Extra) ->
     {ok, LoopState}.
 
-stop() ->
-    lager:debug("STOPPED"),
-    gen_server:stop(?SERVER).
-%%%=============================================================================
-%%% API
-%%%=============================================================================
-
 
 %%%=============================================================================
-%%% Pinning Worker Process
+%%% INTERNALS
 %%%=============================================================================
-
-spawn_for_epoch(#{last := Last} = EpochInfo, Contract) ->
-    {ok, LastLeader} = aec_consensus_hc:leader_for_height(Last),
-    case aec_parent_connector:has_parent_account(LastLeader) of
-        true -> spawn_for_epoch(EpochInfo, Contract, LastLeader);
-        false -> lager:debug("no pin in epoch, no parent account for ~p", [LastLeader]), noreply
-    end.
-
-spawn_for_epoch(EpochInfo, Contract, LastLeader) ->
-    try
-    case whereis(?WORKER) of
-        undefined ->
-            Pid = spawn(aec_pinning_agent, start, [EpochInfo, Contract, LastLeader]),
-            register(?WORKER, Pid),
-            noreply;
-        Pid when is_pid(Pid) ->
-            lager:debug("pinning worker already started", []),
-            noreply
-    end
-    catch
-        T:E -> lager:debug("Pinning agent worker failed: ~p:~p", [T,E]),  noreply
-    end.
-
-start(EpochInfo, Contract, LastLeader) ->
-    #{ epoch      := _Epoch
-     , last       := Last
-     , first      := First
-     , validators := _Validators} = EpochInfo,
-    subscribe(),
-    lager:debug("pinning worker started ~p", [self()]),
-    PCPinTx = post_pin_to_pc(LastLeader, First),
-    wait_for_top_changed(Last - 1, PCPinTx, false, Contract, LastLeader).
-
-
-%%%=============================================================================
-%%% FSM
-%%%=============================================================================
-
-subscribe() ->
-    aec_events:subscribe(top_changed).
 
 post_pin_to_pc(LastLeader, Height) ->
     PCPinTx = aec_parent_connector:pin_to_pc(LastLeader, 1, 1000000 * min_gas_price()),
-    lager:debug("(~p) Pinned to PC ~p at height ~p", [self(), PCPinTx, Height]),
+    lager:debug("Pinned to PC @~p: ~p", [Height, PCPinTx]),
     PCPinTx.
 
 post_pin_pctx_to_cc(PinTx, LastLeader, Height) ->
     try
         aec_parent_connector:pin_tx_to_cc(PinTx, LastLeader, 1, 1000000 * min_gas_price()),
-        lager:debug("(~p) noting on CC @~p", [self(), Height])
+        lager:debug("noting on CC @~p", [Height])
     catch
         T:E -> lager:debug("Pin to CC failed: ~p:~p", [T,E]), ok
     end.
 
 post_pin_proof(ContractPubkey, PinTx, LastLeader, Height) ->
-    lager:debug("(~p) pin proof @~p ~p", [self(), Height, PinTx]),
+    lager:debug("pin proof @~p ~p", [Height, PinTx]),
     aec_parent_connector:pin_contract_call(ContractPubkey, PinTx, LastLeader, 0, 1000000 * min_gas_price()).
-
-wait_for_top_changed(Last, PCPinTx, CCPosted, Contract, LastLeader) ->
-    receive
-        {gproc_ps_event, top_changed, #{info := #{height := Height}}} ->
-           NewCCPosted = maybe_post_pin_to_cc(PCPinTx, CCPosted, LastLeader, Height),
-
-            case {Height, NewCCPosted} of
-                {Last, true} -> post_pin_proof(Contract, PCPinTx, LastLeader, Last);
-                {Last, false} -> ok; % we're on last, pc pin tx not finalized, we bow out.
-                _ -> wait_for_top_changed(Last, PCPinTx, NewCCPosted, Contract, LastLeader)
-            end
-    end.
 
 maybe_post_pin_to_cc(PCPinTx, false, LastLeader, Height) ->
     case aec_parent_connector:get_pin_by_tx_hash(PCPinTx) of
@@ -182,9 +153,6 @@ maybe_post_pin_to_cc(_, CCPosted, _, _) ->
 %%%=============================================================================
 %%% Helpers, communication
 %%%=============================================================================
-
-worker_name() ->
-    list_to_atom(?MODULE_STRING "_worker").
 
 min_gas_price() ->
     Protocol = aec_hard_forks:protocol_effective_at_height(1),
