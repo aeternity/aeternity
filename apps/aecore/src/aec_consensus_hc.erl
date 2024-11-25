@@ -132,6 +132,7 @@ start(Config, _) ->
     start_dependency(aec_parent_chain_cache, [StartHeight, RetryInterval,
                                               fun target_parent_heights/1, %% prefetch the next parent block
                                               CacheSize, Confirmations]),
+    start_dependency(aec_pinning_agent, [get_contract_pubkey(?ELECTION_CONTRACT), default_pinning_behavior()]),
     ok.
 
 start_btc(StakersEncoded, ParentConnMod) ->
@@ -205,6 +206,7 @@ stop() ->
     aec_preset_keys:stop(),
     aec_parent_connector:stop(),
     aec_parent_chain_cache:stop(),
+    aec_pinning_agent:stop(),
     ok.
 
 is_providing_extra_http_endpoints() -> false.
@@ -309,7 +311,6 @@ state_pre_transform_node(Type, Height, PrevNode, Trees) ->
                             cache_validators_for_epoch({TxEnv, Trees1}, Seed, Epoch + 2),
                             Trees2 = step_eoe(TxEnv, Trees1, Leader, Seed, 0, -1, CarryOverFlag),
                             {ok, NextEpochInfo} = aec_chain_hc:epoch_info({TxEnv, Trees2}),
-                            start_default_pinning_process(TxEnv, Trees2, Height, NextEpochInfo),
                             {Trees2, Events ++ [{new_epoch, NextEpochInfo}]};
                         {error, _} ->
                             lager:debug("Entropy hash for height ~p is not in cache, attempting to resync", [Height]),
@@ -322,25 +323,6 @@ state_pre_transform_node(Type, Height, PrevNode, Trees) ->
             end;
         micro ->
             step_micro(TxEnv, Trees, Leader)
-    end.
-
-start_default_pinning_process(TxEnv, Trees, _Height, NextEpochInfo) ->
-    case default_pinning_behavior() of
-        true ->
-            #{ epoch      := Epoch
-             , last       := Last
-             , validators := _Validators} = NextEpochInfo,
-            {ok, LastLeader} = leader_for_height(Last, {TxEnv, Trees}),
-            lager:debug("AGENT: Trying to start pinning agent... for:  ~p in epoch ~p", [LastLeader, Epoch]),
-            try
-            case aec_parent_connector:has_parent_account(LastLeader) of
-                true -> aec_pinning_agent:spawn_for_epoch(NextEpochInfo, get_contract_pubkey(?ELECTION_CONTRACT), LastLeader);
-                false -> lager:debug("AGENT: No parent chain account found for ~p", [LastLeader])
-            end
-            catch
-                T:E -> lager:debug("AGENT throws: ~p:~p", [T,E])
-            end;
-        _ -> ok
     end.
 
 cache_child_epoch_info(Epoch, Height, StartTime) ->
@@ -970,7 +952,7 @@ validate_pin(TxEnv, Trees, CurEpochInfo) ->
             end
     end.
 
-add_pin_reward(Trees, TxEnv, Leader, #{epoch := CurEpoch, last := Last} = _EpochInfo) ->
+add_pin_reward(Trees, TxEnv, Leader, #{epoch := CurEpoch, last := Last}) ->
     #{cur_pin_reward := Reward} = aec_chain_hc:pin_reward_info({TxEnv, Trees}),
     Event = {pin, {pin_accepted, #{reward => Reward, recipient => Leader, epoch => CurEpoch, height => Last}}},
     ATrees = aec_trees:accounts(Trees),
