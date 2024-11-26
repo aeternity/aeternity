@@ -54,8 +54,13 @@ handle_info({gproc_ps_event, top_changed,
     ok = aemon_mon_on_chain:notify_new_block(Height, Type, Hash),
 
     %% Notify workers about new generation
-    Gens = lists:seq(Height, NewHeight-1),
-    [ok = Worker:notify(Gen, Type, Hash) || Gen <- Gens, Worker <- ?METRIC_WORKERS],
+    case aec_consensus:get_consensus_type() of
+        pow -> %% probably immensly clever way to write this...
+            Gens = lists:seq(Height, NewHeight-1),
+            [ok = Worker:notify(Gen, Type, Hash) || Gen <- Gens, Worker <- ?METRIC_WORKERS];
+        pos ->
+            [ok = Worker:notify(Height, key, Hash) || Worker <- ?METRIC_WORKERS, Type == key]
+    end,
 
     %% Update metrics
     {ok, Block} = aec_chain:get_block(Hash),

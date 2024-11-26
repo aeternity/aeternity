@@ -9,6 +9,9 @@
         , notify/3
         ]).
 
+-export([ get_pos_generation/1
+        ]).
+
 %% gen_server callbacks
 -export([ init/1
         , handle_call/3
@@ -46,8 +49,15 @@ code_change(_FromVsn, St, _Extra) ->
 handle_call(_Req, _From, St) ->
     {reply, {error, unknown_request}, St}.
 
-handle_cast({gen, Height, key, _Hash}, #st{pubkey = PubKey} = St) ->
-    {ok, #{micro_blocks := Blocks}} = aec_chain:get_generation_by_height(Height, forward),
+handle_cast({gen, Height, key, Hash}, #st{pubkey = PubKey} = St) ->
+    Blocks =
+        case aec_consensus:get_consensus_type() of
+            pow ->
+                {ok, #{micro_blocks := Blocks1}} = aec_chain:get_generation_by_height(Height, forward),
+                Blocks1;
+            pos ->
+                get_pos_generation(Hash)
+        end,
     {TxCount, TxMonCount} = tx_count_in_generation(Blocks, PubKey),
 
     aemon_metrics:gen_stats_tx(TxCount),
@@ -63,6 +73,16 @@ handle_info(_Msg, St) ->
 
 %% ==================================================================
 %% internal functions
+
+get_pos_generation(KeyHash) ->
+    {ok, KeyHeader} = aec_chain:get_header(KeyHash),
+    case aec_headers:prev_hash(KeyHeader) =:= aec_headers:prev_key_hash(KeyHeader) of
+        true -> %% no microblock
+            [];
+        false ->
+            {ok, MicroBlock} = aec_chain:get_block(aec_headers:prev_hash(KeyHeader)),
+            [MicroBlock]
+    end.
 
 tx_count_in_generation(Blocks, PubKey) ->
     lists:foldl(
