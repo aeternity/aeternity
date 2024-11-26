@@ -1104,7 +1104,7 @@ assert_no_errors_in_logs(Config) ->
 %% If AllowedSubstrings is provided, then any log lines containing these substrings are not reported.
 -spec assert_no_errors_in_logs(Config :: proplists:proplist(), AllowedPatterns :: [string()]) -> ok.
 assert_no_errors_in_logs(Config, AllowedSubstrings) ->
-    Nodes = [Node || {Node, _, _} <- ?config(nodes, Config)],
+    Nodes = [Node || {Node, _, _} <- proplists:get_value(nodes, Config, [])],
     Group = proplists:get_value(name, proplists:get_value(tc_group_properties, Config, []), "?"),
     {IgnoredErrors, ErrorsToReport} = lists:partition(
         fun({_Node, {_File, Line}}) ->
@@ -2185,5 +2185,3 @@ binary_join([], Accum, _Sep) ->
     Accum;
 binary_join([H|T], Accum, Sep) ->
     binary_join(T, <<Accum/binary, Sep/binary, H/binary>>, Sep).
-
-

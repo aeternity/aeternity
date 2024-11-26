@@ -1340,28 +1340,28 @@ hc_create_block_fun(ConsensusModule, TopHash) ->
             {ok, Leader} ->
                   epoch_mining:debug("Got leader, calling hc_create_block", []),
                   {hc_create_block(ConsensusModule, TopHash, Leader), TopHash};
-            {error, {missing_previous_block, Leader, MissingBlocksCount}} ->
+            {error, {missing_previous_block, MissingBlocksCount, Producer}} ->
                   %% We are the leader, but need 1+ hole blocks before we can produce
                   epoch_mining:debug(
                       "Leader, at cutoff time, no previous block in cache: creating ~p hole(s)",
                       [MissingBlocksCount]
                   ),
-                  {hc_create_holes_and_block(ConsensusModule, TopHash, Leader, MissingBlocksCount), TopHash};
+                  {hc_create_holes_and_block(ConsensusModule, TopHash, MissingBlocksCount, Producer), TopHash};
             {error, _} = Err ->
                 {Err, TopHash}
         end
     end.
 
 %% For as long as chain length is shorter than currentHeight-1, create holes
-hc_create_holes_and_block(ConsensusModule, TopHash, Leader, MissingBlocksCount) ->
+hc_create_holes_and_block(ConsensusModule, TopHash, MissingBlocksCount, Producer) ->
     lists:foreach(
-        fun(_) -> aec_block_hole_candidate:create(ConsensusModule, TopHash, Leader) end,
+        fun(_) -> aec_block_hole_candidate:create(ConsensusModule, TopHash, Producer) end,
         lists:seq(1, MissingBlocksCount)),
-    hc_create_block(ConsensusModule, TopHash, Leader).
+    hc_create_block(ConsensusModule, TopHash, Producer).
 
-hc_create_block(ConsensusModule, TopHash0, Leader) ->
-    TopHash = hc_create_microblock(ConsensusModule, TopHash0, Leader),
-    Res = aec_block_key_candidate:create(TopHash, Leader, Leader),
+hc_create_block(ConsensusModule, TopHash0, Producer) ->
+    TopHash = hc_create_microblock(ConsensusModule, TopHash0, Producer),
+    Res = aec_block_key_candidate:create(TopHash, Producer, Producer),
     Res.
 
 hc_create_microblock(ConsensusModule, TopHash, Leader) ->

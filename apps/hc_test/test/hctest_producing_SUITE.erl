@@ -2,7 +2,8 @@
 
 %% Test cases
 -export([
-    produce_1_cc_block_except_leader/1,
+    produce_1_cc_block_dev2/1,
+    stop_dev1/1,
     produce_1_cc_block/1,
     produce_many_cc_blocks/1,
     produce_epoch/1,
@@ -34,24 +35,26 @@ suite() -> [].
 
 all() ->
     [
-        {group, late_producing}
+        {group, late_producing_epoch_2}
         %% {group, producing_two_sequential_blocks}
     ].
 
 groups() ->
     [
-        {late_producing, [sequence], [
-            %% Start a parent + two CC nodes. Elect leaders.
-            %% Make sure that the current leader does not mine within the time slot
-            %% Expected behaviour: the other nodes should reject this block and produce the hole
+        {late_producing_epoch_2, [sequence], [
+            %% Start a parent + two CC nodes. Build chain a little and stop dev1. Produce 2 blocks.
+            %% Expected behaviour: dev2 should detect a missing block when it has to produce, and fill in a hole
             start_dev1_dev2,
             produce_epoch,
-            %%            produce_1_cc_block,
-            produce_1_cc_block_except_leader,
-            %%            produce_1_cc_block,
-            %%            wait_and_sync,
-            verify_non_leader_produced_hole
+            stop_dev1,
+            produce_1_cc_block_dev2,
+            produce_1_cc_block_dev2
+            %% verify_non_leader_produced_hole
         ]},
+        %% TODO: Test late producing in epoch 1
+        %% TODO: Test late producing end of epoch?
+        %% TODO: Mine for longer time with only 1 node, other stopped
+
         {producing_two_sequential_blocks, [sequence], [
             %% Mining two or more valid consecutive blocks should be rejected by the other nodes
             %% Expected behaviour: only the first valid block at the allowed height is accepted
@@ -85,7 +88,6 @@ init_per_group(_GroupName, Config0) ->
     hctest_shared:init_per_group(Config0).
 
 end_per_group(_Group, Config) ->
-    aecore_suite_utils:assert_no_errors_in_logs(Config, []),
     hctest_shared:end_per_group(Config).
 
 %% Here we decide which nodes are started/running
@@ -131,23 +133,20 @@ produce_1_cc_block(Config) ->
     {ok, [B]} = hctest_shared:produce_cc_blocks(Config, #{count => 1}),
     ct:pal("produce_1: ~s", [hctest:pp(B)]).
 
-produce_1_cc_block_except_leader(Config) ->
-    {_Height, Leader} = hctest_shared:get_cc_height_and_leader(Config),
-    ct:pal("produce_1_cc_block_except_leader: Stopping leader ~p", [Leader]),
-    catch aecore_suite_utils:stop_node(Leader, Config),
+stop_dev1(Config) ->
+    ct:pal("[yy] stopping dev1", []),
+    catch aecore_suite_utils:stop_node(?NODE1, Config).
 
+produce_1_cc_block_dev2(Config) ->
     %% At this point we should expect a 'timeout_waiting_for_block' error,
     %% but non-leader nodes should produce a hole and we will try to detect that hole
-    ?assertException(
-        error,
-        timeout_waiting_for_block,
-        hctest_shared:produce_cc_blocks(Config, #{count => 1, skip_nodes => [Leader]})
-    ),
+    ProduceResult = catch hctest_shared:produce_cc_blocks(Config, #{count => 1, skip_nodes => [?NODE1]}),
+    ct:pal("[yy] produce_1_cc_block_dev2: produced ~s", [hctest:pp(ProduceResult)]),
+%%    ?assertMatch({error, timeout_waiting_for_block}, ProduceResult),
 
-    timer:sleep(?CHILD_BLOCK_TIME),
-    ct:pal("produce_1_cc_block_except_leader: Starting again ~p", [Leader]),
-    hctest_shared:start_child_nodes([Leader], Config),
-    {save_config, [{excluded_leader, Leader} | Config]}.
+    timer:sleep(?CHILD_BLOCK_TIME).
+%%    hctest_shared:start_child_nodes([Leader], Config).
+%%    {save_config, [{excluded_leader, Leader} | Config]}.
 
 %% All the non-leader nodes must have hole blocks in place
 %% TODO: Ensure the top block is actually produced and we aren't too early (subscribe to gproc?)

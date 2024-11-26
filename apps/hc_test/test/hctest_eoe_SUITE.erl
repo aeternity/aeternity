@@ -25,11 +25,15 @@ all() ->
         % {group, eoe_double_vote}, % covered by slashable SUITE
         % {group, eoe_inactive_producer}, % covered by slashable SUITE
         % {group, eoe_ignored_vote}, % covered by slashable SUITE
-        % {group, eoe_finalizing_txn}
+        % {group, eoe_finalizing_txn},
+        % {group, eoe_restart_node},
     ].
 
 groups() ->
     [
+        {eoe_restart_node, [sequence], [
+            %% If a node restarts in the middle of an epoch will a start of epoch event be sent when it starts? [by Justin]
+        ]},
         {eoe_netsplit, [sequence], [
             %% Create a network split in the end of an epoch (triple length block)
             %% Losing a vote, attempt to penalize a vote and how it is resolved when the netsplit is over, will the penalty be lifted

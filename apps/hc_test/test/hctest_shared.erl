@@ -174,9 +174,7 @@ end_per_group(Config) ->
         aecore_suite_utils:stop_node(Node, Config1)
      || {Node, _, _} <- proplists:get_value(nodes, Config1, [])
     ],
-
-    aecore_suite_utils:assert_no_errors_in_logs(Config1, ["{handled_abort,parent_chain_not_synced}"]),
-
+    aecore_suite_utils:assert_no_errors_in_logs(Config1, []),
     Config1.
 
 %% Here we decide which nodes are started/running
