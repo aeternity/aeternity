@@ -15,7 +15,7 @@
 coinbase_at_height(X) ->
     case aec_consensus:get_consensus_type() of
         pow -> coinbase_at_height_(X);
-        pos -> aec_consensus_hc:hyperchain_static_coinbase()
+        pos -> aec_consensus_hc:fixed_coinbase()
     end.
 
 %% internal function that calculates for classic PoW chain
