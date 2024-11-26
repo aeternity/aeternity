@@ -1748,6 +1748,11 @@
                                             "default": 0,
                                             "type": "integer"
                                         },
+                                        "hyperchain_static_coinbase": {
+                                            "type": "integer",
+                                            "default": 0,
+                                            "description": "HC coinbase value for HyperChains consensus"
+                                        },
                                         "parent_chain": {
                                             "description" : "Details of how this node will connect to a parent chain if this is a hyperchain.",
                                             "additionalProperties" : false,
