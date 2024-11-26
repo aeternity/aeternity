@@ -214,7 +214,7 @@ pin_contract_call(ContractPubkey, PinTx, Who, Amount, _Fee, SignModule) ->
            amount      => Amount,
            gas         => 1000000,
            gas_price   => min_gas_price(),
-           call_data   => CallData},
+           call_data   => CallData },
     {ok, Tx} = aect_call_tx:new(TxSpec),
     NetworkId = aec_governance:get_network_id(),
     SignedCallTx = sign_tx(Tx, NetworkId, Who, SignModule),

@@ -1751,7 +1751,7 @@
                                         "hyperchain_static_coinbase": {
                                             "type": "integer",
                                             "default": 0,
-                                            "description": "HC coinbase value for HyperChains consensus"
+                                            "description": "The coinbase reward specifies the fixed amount of newly minted tokens allocated to block producers as an incentive for validating and adding blocks to the chain."
                                         },
                                         "parent_chain": {
                                             "description" : "Details of how this node will connect to a parent chain if this is a hyperchain.",

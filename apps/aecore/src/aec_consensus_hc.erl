@@ -557,7 +557,7 @@ default_pinning_behavior() ->
     aeu_ets_cache:get(?ETS_CACHE_TABLE, default_pinning_behavior, Fun).
 
 hyperchain_static_coinbase() ->
-    Fun = fun() -> get_consensus_config_key([<<"hyperchain_static_coinbase">>], false) end,
+    Fun = fun() -> get_consensus_config_key([<<"hyperchain_static_coinbase">>], 0) end,
     aeu_ets_cache:get(?ETS_CACHE_TABLE, hyperchain_static_coinbase, Fun).
 
 %acceptable_sync_offset() ->
