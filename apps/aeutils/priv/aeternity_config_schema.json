@@ -1748,7 +1748,7 @@
                                             "default": 0,
                                             "type": "integer"
                                         },
-                                        "hyperchain_static_coinbase": {
+                                        "fixed_coinbase": {
                                             "type": "integer",
                                             "default": 0,
                                             "description": "The coinbase reward specifies the fixed amount of newly minted tokens allocated to block producers as an incentive for validating and adding blocks to the chain."
