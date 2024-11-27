@@ -363,12 +363,12 @@ get_child_epoch_info(Epoch) ->
 %% -------------------------------------------------------------------
 %% Block rewards
 state_grant_reward(Beneficiary, Node, Trees, Amount) ->
-    {ok, CD} = aeb_fate_abi:create_calldata(
-                 "reward", [aefa_fate_code:encode_arg({address, Beneficiary})]),
+    {ok, CD} = aeb_fate_abi:create_calldata("add_rewards",
+                 [aefa_fate_code:encode_arg({integer, 1}),
+                  aefa_fate_code:encode_arg([{{address, Beneficiary}, {integer, Amount}}])]),
     CallData = aeser_api_encoder:encode(contract_bytearray, CD),
-    case call_consensus_contract(?REWARDS_CONTRACT,
-           Node, Trees, CallData,
-           ["reward(", aeser_api_encoder:encode(account_pubkey, Beneficiary), ")"], Amount) of
+    case call_consensus_contract(?REWARDS_CONTRACT, Node, Trees, CallData,
+           ["add_rewards(1, [{", aeser_api_encoder:encode(account_pubkey, Beneficiary), ", ", integer_to_list(Amount), "}])"], Amount) of
         {ok, Trees1, _} -> Trees1;
         {error, What} ->
             error({failed_to_reward_leader, What}) %% maybe a softer approach than crash and burn?
