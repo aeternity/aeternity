@@ -3,9 +3,6 @@ include "Pair.aes"
 
 contract interface MainStaking =
   entrypoint sorted_validators : () => list((address * int))
-  entrypoint is_validator : (address) => bool
-  entrypoint total_stake : () => int
-  stateful entrypoint post_elect : () => unit
 
 main contract HCElection =
   record epoch_info =
