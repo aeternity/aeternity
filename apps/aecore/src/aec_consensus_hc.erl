@@ -79,6 +79,7 @@
         , is_leader_valid/4
         , leader_for_height/1
         , leader_for_height/2
+        , fixed_coinbase/0
         %% contract access
         , call_consensus_contract_result/5
         , entropy_height/1
@@ -554,6 +555,10 @@ pinning_reward_value() ->
 default_pinning_behavior() ->
     Fun = fun() -> get_consensus_config_key([<<"default_pinning_behavior">>], false) end,
     aeu_ets_cache:get(?ETS_CACHE_TABLE, default_pinning_behavior, Fun).
+
+fixed_coinbase() ->
+    Fun = fun() -> get_consensus_config_key([<<"fixed_coinbase">>], 0) end,
+    aeu_ets_cache:get(?ETS_CACHE_TABLE, fixed_coinbase, Fun).
 
 %acceptable_sync_offset() ->
 %    Fun = fun() -> get_consensus_config_key([<<"parent_chain">>, <<"acceptable_sync_offset">>], 60000) end,
