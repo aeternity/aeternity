@@ -49,7 +49,7 @@
         , state_pre_transform_key_node/3
         , state_pre_transform_micro_node/3
         %% Block rewards
-        , state_grant_reward/4
+        , state_grant_reward/5
         %% PoGF
         , pogf_detected/2
         %% Genesis block
@@ -362,13 +362,14 @@ get_child_epoch_info(Epoch) ->
 
 %% -------------------------------------------------------------------
 %% Block rewards
-state_grant_reward(Beneficiary, Node, Trees, Amount) ->
-    {ok, CD} = aeb_fate_abi:create_calldata("add_rewards",
-                 [aefa_fate_code:encode_arg({integer, 1}),
-                  aefa_fate_code:encode_arg([{{address, Beneficiary}, {integer, Amount}}])]),
+state_grant_reward(Beneficiary, Node, Delay, Trees, Amount) ->
+    Height = aec_block_insertion:node_height(Node) - Delay,
+    {ok, CD} = aeb_fate_abi:create_calldata("add_reward", [aefa_fate_code:encode_arg({integer, Height}),
+                                                           aefa_fate_code:encode_arg({address, Beneficiary})]),
     CallData = aeser_api_encoder:encode(contract_bytearray, CD),
-    case call_consensus_contract(?REWARDS_CONTRACT, Node, Trees, CallData,
-           ["add_rewards(1, [{", aeser_api_encoder:encode(account_pubkey, Beneficiary), ", ", integer_to_list(Amount), "}])"], Amount) of
+    Tag = ["add_reward(value = ", integer_to_list(Amount), ", ", integer_to_list(Height), ", ",
+           aeser_api_encoder:encode(account_pubkey, Beneficiary), ")"],
+    case call_consensus_contract(?ELECTION_CONTRACT, Node, Trees, CallData, Tag, Amount) of
         {ok, Trees1, _} -> Trees1;
         {error, What} ->
             error({failed_to_reward_leader, What}) %% maybe a softer approach than crash and burn?

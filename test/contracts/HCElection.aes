@@ -3,6 +3,7 @@ include "Pair.aes"
 
 contract interface MainStaking =
   entrypoint sorted_validators : () => list((address * int))
+  entrypoint add_rewards : (int, list(address * int)) => unit
 
 main contract HCElection =
   record epoch_info =
@@ -21,7 +22,7 @@ main contract HCElection =
   record state =
     { main_staking_ct       : MainStaking,
       leader                : address,
-      added_stake           : int,
+      rewards               : map(int, address * int),
       epoch                 : int,
       epochs                : map(int, epoch_info),
       pin                   : option(bytes()),
@@ -31,7 +32,7 @@ main contract HCElection =
   entrypoint init(main_staking_ct : MainStaking) =
     { main_staking_ct       = main_staking_ct,
       leader                = Contract.address,
-      added_stake           = 0,
+      rewards               = {},
       epoch                 = 0,
       epochs                = {},
       pin                   = None,
@@ -74,6 +75,10 @@ main contract HCElection =
     let next_base = calc_next_base_reward(next_base_pin_reward)
     let next_reward = next_base + next_carry_over
     let pr = {current = next_reward, carry_over = next_carry_over, base = next_base}
+
+    // pay rewards to sunset epoch
+    pay_rewards(state.epoch - 1)
+
     // update epochs
     require(ei.start + ei.length - 1 == Chain.block_height, "This is not the end")
     let ei2 = state.epochs[epoch + 2]
@@ -99,11 +104,11 @@ main contract HCElection =
     require(Call.caller == state.leader, "Must be called by the last leader of epoch")
     put(state{pin = Some(proof)})
 
+  payable stateful entrypoint add_reward(height : int, to : address) =
+    put(state{rewards[height] = (to, Call.value)})
+
   entrypoint leader() =
     state.leader
-
-  // entrypoint added_stake() =
-  //   state.added_stake
 
   entrypoint epoch() =
     state.epoch
@@ -159,5 +164,16 @@ main contract HCElection =
     else
       state.pin_reward.base
 
-  // function accum_stake((accum, total_s, current_hash, network_id), (addr, stake)) =
-  //   ((addr, stake) :: accum, stake + total_s, current_hash, network_id)
+  stateful function pay_rewards(e : int) =
+    let ei = state.epochs[e]
+    let (rewards, tot) = pay_rewards_(ei.start, ei.length, {}, 0)
+    state.main_staking_ct.add_rewards(value = tot, e, rewards)
+
+  stateful function
+    pay_rewards_(_, 0, acc, tot) = (Map.to_list(acc), tot)
+    pay_rewards_(h, n, acc, tot) =
+      switch(Map.lookup(h, state.rewards))
+        None              => pay_rewards_(h + 1, n - 1, acc, tot)
+        Some((addr, amt)) =>
+          put(state{rewards @ r = Map.delete(h, r)})
+          pay_rewards_(h + 1, n - 1, acc{[addr = 0] @ r = r + amt}, tot + amt)

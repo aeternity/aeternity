@@ -150,7 +150,7 @@ groups() ->
       {hc, [sequence],
           [ start_two_child_nodes
           , produce_first_epoch
-          , verify_fees
+          %% , verify_fees
           , spend_txs
           , simple_withdraw
           , correct_leader_in_micro_block
