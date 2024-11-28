@@ -1649,7 +1649,7 @@ node_config(Node, CTConfig, PotentialStakers, PotentialPinners, ReceiveAddress) 
                                         <<"stakers">> => Stakers,
                                         <<"pinners">> => Pinners,
                                         <<"pinning_reward_value">> => 4711,
-                                        <<"hyperchain_static_coinbase">> => 100000000000000000000,
+                                        <<"fixed_coinbase">> => ?BLOCK_REWARD,
                                         <<"default_pinning_behavior">> => ?config(default_pinning_behavior, CTConfig)},
                                     SpecificConfig)
                                     }}},
