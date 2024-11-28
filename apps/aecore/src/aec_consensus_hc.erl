@@ -292,7 +292,7 @@ state_pre_transform_node(Type, Height, PrevNode, Trees) ->
     {ok, #{epoch := Epoch, first := EpochFirst, last := EpochLast} = EpochInfo} =
         aec_chain_hc:epoch_info({TxEnv, Trees}),
 
-    Timeslot = get_timeslot(Height, {TxEnv, Trees}),
+    Timeslot = get_timeslot({TxEnv, Trees}),
     {ok, Leader} = leader_for_timeslot(Timeslot, {TxEnv, Trees}),
 
     EpochFirstNonGenesis = if Height =< ?FIRST_TIMESTAMPED_BLOCK ->
@@ -373,23 +373,63 @@ cache_child_epoch_info(Epoch, Height, StartTime) ->
             ok
     end.
 
-get_child_epoch_info(Epoch) when Epoch =< 1 ->
-    cache_child_epoch_info(1, 1, aeu_time:now_in_msecs()),
-    get_child_epoch_info_(1);
-get_child_epoch_info(E) ->
-    get_child_epoch_info_(E).
+%% Cache stores a tuple {MaxEpoch, [Info...]} where Info :: {Epoch, Height, StartTime}
+%% If the epoch cache is empty and start time is unknown, i will
+%% * Try read epoch first block, if i can, and its time will be epoch start
+%% * Else, try read last block of previous epoch, then its time + block production time
+%%   will be the epoch start
+%% * Else i cannot continue, and wait
+-type aec_chain_epoch_info() :: #{epoch => pos_integer(), first => pos_integer(), last => pos_integer()}.
+-type child_epoch_info() :: #{epoch => pos_integer(), height => pos_integer(), start_time => pos_integer()}.
+-type child_epoch_error() :: {error, epoch_start_time_not_known}.
 
-get_child_epoch_info_(Epoch) ->
+-spec get_child_epoch_from_runenv(RunEnv :: aec_chain_hc:run_env()) -> child_epoch_info() | child_epoch_error().
+get_child_epoch_from_runenv(RunEnv) ->
+    {ok, EpochInfo = #{epoch := Epoch}} = aec_chain_hc:epoch_info(RunEnv),
+    get_child_epoch(Epoch, EpochInfo).
+
+-spec get_child_epoch(Epoch :: pos_integer(), EpochInfo :: aec_chain_epoch_info())
+        -> child_epoch_info() | child_epoch_error().
+get_child_epoch(Epoch, EpochInfo) ->
     case aeu_ets_cache:lookup(?ETS_CACHE_TABLE, child_epoch_start) of
         {ok, {E, Es}} when E >= Epoch ->
             case lists:keyfind(Epoch, 1, Es) of
                 false ->
-                    error({epoch_not_in_cache, Epoch, {E, Es}});
+                    %% Not found in cache, try read the first block of the epoch
+                    get_child_epoch_info_first_block(Epoch, EpochInfo);
                 Info ->
                     Info
             end;
-        Result ->
-            error({epoch_not_yet_cached, Epoch, Result})
+        _Result ->
+            %% Not an OK result, try read the first block of epoch
+            get_child_epoch_info_first_block(Epoch, EpochInfo)
+    end.
+
+%% Try get epoch start time from the first block of the epoch
+-spec get_child_epoch_info_first_block(Epoch :: pos_integer(), EpochInfo :: aec_chain_epoch_info())
+        -> child_epoch_info() | child_epoch_error().
+get_child_epoch_info_first_block(Epoch, #{first := EpochFirst}) ->
+    case aec_chain:get_key_block_by_height(EpochFirst) of
+        {ok, FirstBlock} ->
+            #{epoch => Epoch,
+              height => EpochFirst,
+              start_time => aec_headers:time_in_msecs(aec_blocks:to_header(FirstBlock))
+            };
+        _Error1 ->
+            %% Not found, try read the last block of the previous epoch
+            case aec_chain:get_key_block_by_height(EpochFirst - 1) of
+                {ok, PrevBlock} ->
+                    T = aec_headers:time_in_msecs(aec_blocks:to_header(PrevBlock))
+                        + child_block_time()
+                        - child_block_production_time(),
+                    #{epoch => Epoch,
+                      height => EpochFirst,
+                      start_time => T
+                    };
+                _Error2 ->
+                    %% Having this error means we can't produce, so we wait
+                    {error, epoch_start_time_not_known}
+            end
     end.
 
 %% -------------------------------------------------------------------
@@ -761,35 +801,54 @@ call_consensus_contract_(ContractType, TxEnv, Trees, EncodedCallData, Keyword, A
     end.
 
 beneficiary() ->
-    %% Height = aec_chain:top_height(),
+    % Height = aec_chain:top_height(),
     leader_for_height(get_timeslot()).
 
 %% Called as part of deciding who will produce block at Height `height(TxEnv) + 1`
 next_beneficiary() ->
     %% Get the current timeslot, and we're producing for the next one, hence timeslot+1
-    {ok, KeyBlock} = aec_chain:top_key_block(),
-    ChildHeight = aec_blocks:height(KeyBlock),
+    {ok, TopKeyBlock} = aec_chain:top_key_block(),
+    ChildHeight = aec_blocks:height(TopKeyBlock),
     RunEnv = aetx_env:tx_env_and_trees_from_top(aetx_transaction),
-    Timeslot = get_timeslot(ChildHeight, RunEnv),
+%%    PrevHash = aec_blocks:prev_key_hash(TopKeyBlock),
+%%    RunEnv = aetx_env:tx_env_and_trees_from_hash(aetx_transaction, PrevHash),
+    Timeslot = get_timeslot(RunEnv),
     lager:debug("[xx]NEXT_BENEFICIARY: CHILD_HEIGHT=~w SLOT=~w\n", [ChildHeight, Timeslot]),
 
+    next_beneficiary_check_special_cases(ChildHeight, Timeslot, RunEnv, TopKeyBlock).
+
+%% Top block 0 is special, because block 1 is produced not according to the timeslot, but
+%% it waits for other conditions (parent chain height or time). So we ignore the timeslot.
+%% After block 1 is mined, timeslot calculation should revert to normal as the block 1
+%% will serve as a starting point.
+next_beneficiary_check_special_cases(Height, _Timeslot, RunEnv, TopKeyBlock)
+    when Height =< ?FIRST_TIMESTAMPED_BLOCK ->
+    case leader_for_timeslot(Height, RunEnv) of
+        {ok, Leader} -> next_beneficiary_set_candidate(Leader, Height, RunEnv, TopKeyBlock);
+        error -> {error, not_in_cache}
+    end;
+next_beneficiary_check_special_cases(_ChildHeight, Timeslot, RunEnv, TopKeyBlock) ->
     case leader_for_timeslot(Timeslot + 1, RunEnv) of
         {ok, Leader} ->
-            SignModule = get_sign_module(),
-            case SignModule:set_candidate(Leader) of
-                 {error, key_not_found} ->
-                     lager:debug("node shall not produce (leader ~p)", [Leader]),
-                     timer:sleep(child_block_production_time()),
-                     {error, not_leader};
-                 ok ->
-                     lager:debug("node is producer (leader ~p)", [Leader]),
-                     case next_beneficiary_sleep(Timeslot, RunEnv, KeyBlock) of
-                         ok -> {ok, Leader};
-                         {error, _} = Other -> Other
-                     end
-            end;
+            next_beneficiary_set_candidate(Leader, Timeslot, RunEnv, TopKeyBlock);
         error ->
             {error, not_in_cache}
+    end.
+
+%% TODO: Timeslot can (and will) change while sleeping, so handle that! Epoch
+next_beneficiary_set_candidate(Leader, Timeslot, RunEnv, TopKeyBlock) ->
+    SignModule = get_sign_module(),
+    case SignModule:set_candidate(Leader) of
+        {error, key_not_found} ->
+            lager:debug("node shall not produce (leader ~p)", [Leader]),
+            timer:sleep(child_block_production_time()),
+            {error, not_leader};
+        ok ->
+            lager:debug("node is producer (leader ~p)", [Leader]),
+            case next_beneficiary_sleep(Timeslot, RunEnv, TopKeyBlock) of
+                ok -> {ok, Leader};
+                {error, _} = Other -> Other
+            end
     end.
 
 %% Wait for the correct time to produce a key block. We don't count time
@@ -810,6 +869,7 @@ next_beneficiary_sleep(Timeslot, RunEnv, KeyBlock) ->
     #{prod_start := ProdStartTime,
       cutoff := CutoffTime} = prod_start_time(Timeslot, ChildBlockTime, RunEnv),
     CurrBlockTime = aec_blocks:time_in_msecs(KeyBlock),
+    %% Special case: Genesis block will not have a block with prev_key_hash() you will receive an error
     {ok, PrevBlock} = aec_chain:get_block(aec_blocks:prev_key_hash(KeyBlock)),
     PrevBlockTime = aec_blocks:time_in_msecs(PrevBlock),
     lager:debug("[xx]NEXT_BENEFICIARY: PREVIOUS BLOCK DELTA: ~w (CHILDBLOCKTIME DIFF: ~w)\n",
@@ -825,8 +885,7 @@ next_beneficiary_sleep(Timeslot, RunEnv, KeyBlock) ->
                         [Now, WaitUntil - Now]),
             ok;
         Now when Now >= CutoffTime ->
-            Timeslot = get_timeslot(),
-            MissingBlockCount = Timeslot - Timeslot,
+            MissingBlockCount = Timeslot - aec_chain:top_height() - 1,
             lager:debug("[yy] Cutoff time reached, requesting ~w hole blocks", [MissingBlockCount]),
             {error, {missing_previous_block, MissingBlockCount, contract_owner()}};
         Now ->
@@ -841,45 +900,46 @@ next_beneficiary_sleep(Timeslot, RunEnv, KeyBlock) ->
 
 get_timeslot() ->
     %% TODO: Handle the case when the next epoch could not be started
+    {ok, TopHash} = aec_chain:top_block_hash(),
+    PrevHash = aec_chain:prev_hash_from_hash(TopHash),
     Timeslot = get_timeslot(
-        aec_chain:top_height(),
-        aetx_env:tx_env_and_trees_from_top(aetx_transaction)
+        aetx_env:tx_env_and_trees_from_hash(aetx_transaction, PrevHash)
     ),
     Timeslot.
 
--spec get_timeslot(Height :: pos_integer(), _RunEnv :: any()) -> pos_integer().
-%%get_timeslot(Height, _RunEnv) when Height =< ?FIRST_TIMESTAMPED_BLOCK ->
-%%    lager:debug("[yy] get_timeslot(H=~w, _) default 1", [Height]),
-%%    1;
-get_timeslot(CurrHeight, RunEnv) ->
-    CurrEpoch = current_epoch(CurrHeight, RunEnv),
-    lager:debug("[yy] get_timeslot(H=~w, _) curr_epoch=~w...", [CurrHeight, CurrEpoch]),
-    {_Epoch, EpochHeight, EpochStartTime} = get_child_epoch_info(CurrEpoch),
-%%    {EpochFirst, EpochStartTime} = try
-%%        {_, EpochFirst1, EpochStartTime1} = get_child_epoch_info(CurrEpoch),
-%%        {EpochFirst1, EpochStartTime1},
-%%    catch error:{epoch_not_yet_cached, _, _}:_Stack ->
-%%        %% No data on epoch (too early? first block not mined?), try to calculate from the previous epoch
-%%%%        {_, PrevEpochFirst, PrevEpochStartTime} = get_child_epoch_info(CurrEpoch - 1),
-%%%%        {PrevEpochFirst + 1, PrevEpochStartTime + child_block_production_time() * child_epoch_length()}
-%%        get_timeslot(CurrHeight - 1, RunEnv)
-%%    end,
-    BlockTime = child_block_time(),
-%%    T0 = EpochStartTime - BlockProdTime,
-    Now = aeu_time:now_in_msecs(),
-    Timeslot = EpochHeight + (Now - EpochStartTime) div BlockTime,
-    lager:debug("[yy] calculated ~w (ep_start_time=~w ep_height=~w now=~w blocktime=~w)",
-        [Timeslot, EpochStartTime, EpochHeight, Now, BlockTime]),
-    Timeslot.
+-spec get_timeslot(RunEnv :: aec_chain_hc:run_env()) -> pos_integer().
+get_timeslot(RunEnv) ->
+%%    {ok, Hash} = aec_chain_state:get_key_block_hash_at_height(CurrHeight),
+%%    RunEnv = aetx_env:tx_env_and_trees_from_hash(aetx_transaction, Hash),
+%%    CurrEpoch = current_epoch(CurrHeight, RunEnv),
+%%    lager:debug("[yy] get_timeslot(H=~w, _) curr_epoch=~w...", [CurrHeight, CurrEpoch]),
+%%    {_Epoch, EpochHeight, EpochStartTime} = get_child_epoch_info(CurrEpoch),
+    #{epoch := Epoch, height := EpochHeight, start_time := EpochStartTime} = get_child_epoch_from_runenv(RunEnv),
+    case Epoch of
+        1 ->
+            %% Epoch 1 is special, it ignores the timing and timeslots are equal to heights
+            aec_chain:top_height();
+        _ ->
+            BlockTime = child_block_time(),
+            Now = aeu_time:now_in_msecs(),
+            Timeslot = EpochHeight + (Now - EpochStartTime) div BlockTime,
+            lager:debug("[yy] calculated ~w (ep_start_time=~w ep_height=~w now=~w blocktime=~w)",
+                [Timeslot, EpochStartTime, EpochHeight, Now, BlockTime]),
+            Timeslot
+    end.
 
+-spec prod_start_time(Timeslot :: pos_integer(), ChildBlockTime :: pos_integer(),
+    RunEnv :: aec_chain_hc:run_env()) -> #{prod_start => pos_integer(), cutoff => pos_integer()}.
 prod_start_time(Timeslot, ChildBlockTime, RunEnv) ->
     %% recall that CurrHeight is the height of the existing top block, and
     %% the block to be produced is at height+1; we want to get the epoch of
     %% the current top block to decide how long to wait, not the epoch of
     %% the next block
-    CurrEpoch = current_epoch(Timeslot, RunEnv),
-    lager:debug("[xx]NEXT_BENEFICIARY: EPOCH OF CURRENT BLOCK: ~w\n",[CurrEpoch]),
-    {_, EpochFirst, EpochStartTime} = get_child_epoch_info(CurrEpoch),
+%%    CurrEpoch = current_epoch(Timeslot, RunEnv),
+%%    lager:debug("[xx]NEXT_BENEFICIARY: EPOCH OF CURRENT BLOCK: ~w\n",[CurrEpoch]),
+    #{epoch := CurrEpoch,
+      height := EpochFirst,
+      start_time := EpochStartTime} = get_child_epoch_from_runenv(RunEnv),
     lager:debug("[xx]NEXT_BENEFICIARY: GOT CACHED EPOCH START: ~w:~w at ~w\n",[CurrEpoch, EpochFirst, EpochStartTime]),
     %% note: if the current top block is the first block of the epoch, then
     %% CurrHeight - EpochFirst = 0, and the next child block time slot
@@ -897,19 +957,16 @@ prod_start_time(Timeslot, ChildBlockTime, RunEnv) ->
     lager:debug("[xx]NEXT_BENEFICIARY: BLOCK START PROD FROM T0: ~w\n",[TnMax-BlockProdTime-T0]),
     #{prod_start => TnMax - BlockProdTime, cutoff => TnMax - 2 * BlockProdTime}.
 
-current_epoch(CurrHeight, RunEnv) ->
-    %% note that epoch_info(RunEnv) finds the epoch of the block to be
-    %% produced, not the epoch of the block, so we have to adjust it
-    {ok, #{epoch := BlockEpoch, first := BlockEpochFirst}} = aec_chain_hc:epoch_info(RunEnv),
-    lager:debug("[xx]NEXT_BENEFICIARY: EPOCH OF NEXT BLOCK: ~w (FROM BLOCK: ~w)\n",[BlockEpoch, BlockEpochFirst]),
-    Result = if CurrHeight < BlockEpochFirst ->
-            BlockEpoch-1;
-       true ->
-            BlockEpoch
-    end,
-    %% TODO: When did this epoch start?
-    cache_child_epoch_info(BlockEpoch, BlockEpochFirst, StartTime),
-    Result.
+%%current_epoch(CurrHeight, RunEnv) ->
+%%    %% note that epoch_info(RunEnv) finds the epoch of the block to be
+%%    %% produced, not the epoch of the block, so we have to adjust it
+%%    {ok, Info = #{epoch := BlockEpoch, first := BlockEpochFirst}} = aec_chain_hc:epoch_info(RunEnv),
+%%    lager:debug("[xx]NEXT_BENEFICIARY: EPOCH OF NEXT BLOCK: ~w (FROM BLOCK: ~w)\n",[BlockEpoch, BlockEpochFirst]),
+%%    Result = if CurrHeight < BlockEpochFirst ->
+%%            BlockEpoch-1;
+%%       true ->
+%%            BlockEpoch
+%%    end.
 
 get_seed(#{seed := undefined, epoch := Epoch}) when Epoch =< 2 ->
     get_entropy_hash(Epoch);
@@ -944,18 +1001,29 @@ entropy_height(ChildEpoch) ->
 
 %% -- Validator schedule (cached) -----------------------------------------
 
-%% Second parameter contains run environment for computing a validator
-%% schedule, if needed.
+%% This function takes height values or timeslots. Timeslots are based on the current clock and epoch start time.
+leader_for_height(Height) ->
+    case aeu_ets_cache:lookup(?ETS_CACHE_TABLE, validator_schedule) of
+        error ->
+            error;
+        {ok, #{schedule := Schedule}} ->
+            maps:find(Height, Schedule)
+    end.
+
+%% Timeslot is the same as the height for already produced blocks. Timeslot can be ahead of the height
+%% if the block is not produced in time, and the time continues forward.
+%% Second parameter contains run environment for computing a validator schedule, if needed.
 leader_for_timeslot(Timeslot, RunEnv) ->
     case leader_for_height(Timeslot) of
-        error ->
+        {ok, Leader} ->
+            {ok, Leader};
+        _Error ->
             lager:debug("Unknown leader for timeslot = ~p, computing", [Timeslot]),
             {ok, EpochInfo = #{epoch := Epoch}} = aec_chain_hc:epoch_info(RunEnv),
             cache_validators_for_epoch_info(RunEnv, EpochInfo),
             cache_validators_for_epoch(RunEnv, Epoch + 1),
-            leader_for_height(Timeslot);
-        {ok, Leader} ->
-            {ok, Leader}
+            %% Try once more
+            leader_for_height(Timeslot)
     end.
 
 cache_validators_for_epoch(RunEnv, Epoch) ->
@@ -977,7 +1045,6 @@ epoch_info_for_epoch(RunEnv, Epoch) ->
         %% Not sure this is possible...
         error
     end.
-
 
 cache_validators_for_epoch_info(RunEnv, EpochInfo) ->
     case get_seed(EpochInfo) of
@@ -1026,15 +1093,6 @@ gc_validator_cache(C0 = #{epochs := [GC | Rest], epoch_infos := EIs, schedule :=
                 schedule    := Schedule1}
     end.
 
-%% This function takes height values or timeslots. Timeslots are based on the current clock and epoch start time.
-leader_for_height(Timeslot) ->
-    case aeu_ets_cache:lookup(?ETS_CACHE_TABLE, validator_schedule) of
-        error ->
-            error;
-        {ok, #{schedule := Schedule}} ->
-            maps:find(Timeslot, Schedule)
-    end.
-
 %% support OTP24 without lists:enumerate
 enumerate(From, List) when is_integer(From) ->
     lists:zip(lists:seq(From, From + length(List) - 1), List).
@@ -1062,18 +1120,16 @@ is_leader_valid(Node, _Trees, TxEnv, _PrevNode) ->
     lager:debug("[yy] is_leader_valid: env_height=~w, node_height=~w, produced_by=~w",
                 [EnvHeight, NodeHeight, NodeProducer]),
     case aec_headers:is_hole(NodeHeader) of
-        true ->
-            is_valid_leader_for_hole(NodeHeight, NodeProducer);
-        false ->
-            is_valid_leader_for_block(NodeHeight, NodeProducer)
+        true -> is_leader_valid_for_hole(NodeHeight, NodeProducer);
+        false -> is_leader_valid_for_block(NodeHeight, NodeProducer)
     end.
 
-is_valid_leader_for_block(Height, Producer) ->
+is_leader_valid_for_block(Height, Producer) ->
     %% A non-hole block can only be mined by the current leader
     case leader_for_height(Height) of
         {ok, ExpectedProducer} ->
             lager:debug("[yy] non-hole block, expected_producer=~w", [ExpectedProducer]),
-            Producer == ExpectedProducer;
+            Producer =:= ExpectedProducer;
         %% Fix this to have stake as target validated here also?
         _ ->
             %% This really should not happen, we just got through
@@ -1082,7 +1138,7 @@ is_valid_leader_for_block(Height, Producer) ->
             aec_conductor:throw_error(parent_chain_block_not_synced)
     end.
 
-is_valid_leader_for_hole(Height, Producer) ->
+is_leader_valid_for_hole(Height, Producer) ->
     %% A hole block can be mined by any node on the schedule, which is NOT the current leader
     case leader_for_height(Height) of
         {ok, LeaderAtHeight} ->
