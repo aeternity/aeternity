@@ -27,7 +27,7 @@ main contract MainStaking =
 
   // Should we user Call.caller instead?
   payable stateful entrypoint new_validator(owner : address, restake : bool) : StakingValidator =
-    require(Call.value >= state.validator_min_stake, "A new validator stake the minimum amount")
+    require(Call.value >= state.validator_min_stake, "A new validator must stake the minimum amount")
     require(!Map.member(owner, state.owners), "Owner must be unique")
     let validator_ct = Chain.create(Address.to_contract(Contract.address), owner) : StakingValidator
     let v_addr = validator_ct.address
