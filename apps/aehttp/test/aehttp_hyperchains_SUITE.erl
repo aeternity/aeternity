@@ -758,7 +758,9 @@ verify_rewards(Config) ->
 
     Rewards = calc_rewards(BlocksInGen),
 
-    ct:pal("Alice ~p -> ~p expected: ~p", [AliceTot0, AliceTot1, maps:get(pubkey(?ALICE), Rewards)]),
+    ct:log("Alice ~p -> ~p expected reward ~p", [AliceTot0, AliceTot1, maps:get(pubkey(?ALICE), Rewards)]),
+    ct:log("Bob ~p -> ~p expected reward ~p", [BobTot0, BobTot1, maps:get(pubkey(?BOB), Rewards)]),
+    ct:log("Lisa ~p -> ~p expected reward ~p", [LisaTot0, LisaTot1, maps:get(pubkey(?LISA), Rewards)]),
     ?assertEqual(AliceTot0 + maps:get(pubkey(?ALICE), Rewards, 0), AliceTot1),
     ?assertEqual(BobTot0 + maps:get(pubkey(?BOB), Rewards, 0), BobTot1),
     ?assertEqual(LisaTot0 + maps:get(pubkey(?LISA), Rewards, 0), LisaTot1),
@@ -766,21 +768,22 @@ verify_rewards(Config) ->
     ok.
 
 calc_rewards(Blocks) ->
-    calc_rewards(Blocks, 0, #{}).
+    calc_rewards(Blocks, undefined, #{}).
 
-calc_rewards([], _Carry, Rs) -> Rs;
-calc_rewards([B | Bs], Carry, Rs) ->
+calc_rewards([], _Prev, Rs) -> Rs;
+calc_rewards([B | Bs], Prev, Rs) ->
     case aec_blocks:type(B) of
-        micro -> calc_rewards(Bs, Carry, Rs);
+        micro -> calc_rewards(Bs, Prev, Rs);
         key ->
             M = aec_blocks:miner(B),
-            {R, C} =
+            {R1, R2} =
                 case aec_blocks:prev_key_hash(B) == aec_blocks:prev_hash(B) of
-                    true  -> {Carry + ?BLOCK_REWARD, 0};
-                    false -> {Carry + ?BLOCK_REWARD + (10 * ?FEE_REWARD) div 6,
-                              (10 * ?FEE_REWARD) div 4}
+                    true  -> {?BLOCK_REWARD, 0};
+                    false -> {?BLOCK_REWARD + 6 * (?FEE_REWARD div 10), 4 * (?FEE_REWARD div 10)}
                 end,
-            calc_rewards(Bs, C, Rs#{M => R + maps:get(M, Rs, 0)})
+            Rs1 = Rs#{M => R1 + maps:get(M, Rs, 0)},
+            Rs2 = Rs1#{Prev => R2 + maps:get(Prev, Rs1, 0)},
+            calc_rewards(Bs, M, Rs2)
     end.
 
 
