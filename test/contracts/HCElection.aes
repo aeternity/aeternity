@@ -105,6 +105,7 @@ main contract HCElection =
     put(state{pin = Some(proof)})
 
   payable stateful entrypoint add_reward(height : int, to : address) =
+    assert_protocol_call()
     put(state{rewards[height = []] @ rs = (to, Call.value) :: rs})
 
   entrypoint leader() =

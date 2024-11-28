@@ -111,7 +111,7 @@ main contract MainStaking =
   // --   Internal functions
   // ------------------------------------------------------------------------
   function cmp_validator((x_addr : address, x_stake : int), (y_addr : address, y_stake : int)) =
-    if (x_stake == y_stake) x_addr < y_addr else x_stake < y_stake
+    if (x_stake == y_stake) x_addr < y_addr else x_stake > y_stake
 
   function lookup_validator(owner : address) =
     assert_owner(owner)

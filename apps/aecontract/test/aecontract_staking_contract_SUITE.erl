@@ -21,7 +21,8 @@
           stake/1,
           adjust_stake/1,
           withdraw/1,
-          rewards/1
+          rewards/1,
+          sorted_validators/1
         ]).
 
 -include_lib("aecontract/include/hard_forks.hrl").
@@ -98,7 +99,8 @@ groups() ->
          stake,
          adjust_stake,
          withdraw,
-         rewards
+         rewards,
+         sorted_validators
        ]}
     ].
 
@@ -213,7 +215,67 @@ withdraw(_Config) ->
     ok.
 
 rewards(_Config) ->
+    Trees0 = genesis_trees(),
+    TxEnv = aetx_env:tx_env(?DEFAULT_HEIGHT),
+    {ok, Trees1, #{res := {contract, AliceCt}}} =
+        new_validator_(pubkey(?ALICE), ?VALIDATOR_MIN, TxEnv, Trees0),
+    {ok, Trees2, #{res := {contract, BobCt}}} =
+        new_validator_(pubkey(?BOB), ?VALIDATOR_MIN, false, TxEnv, Trees1),
+
+    Rewards = [{{address, pubkey(?ALICE)}, 4 * ?AE}, {{address, pubkey(?BOB)}, 3 * ?AE}],
+    {ok, Trees3, #{res := ?UNIT}} =
+        add_rewards_(1, Rewards, 7 * ?AE, TxEnv, Trees2),
+
+    {ok, _, #{res := ABalance}}   = get_total_balance_(AliceCt, ?ALICE, TxEnv, Trees3),
+    {ok, _, #{res := AAvailable}} = get_available_balance_(AliceCt, ?ALICE, TxEnv, Trees3),
+    {ok, _, #{res := BBalance}}   = get_total_balance_(BobCt, ?BOB, TxEnv, Trees3),
+    {ok, _, #{res := BAvailable}} = get_available_balance_(BobCt, ?BOB, TxEnv, Trees3),
+
+    ?assertEqual(ABalance, ?VALIDATOR_MIN + 4 * ?AE),
+    ?assertEqual(BBalance, ?VALIDATOR_MIN + 3 * ?AE),
+
+    ?assertEqual(AAvailable, 0),
+    ?assertEqual(BAvailable, 3 * ?AE),
+
     ok.
+
+sorted_validators(_Config) ->
+    Trees0 = genesis_trees(),
+    TxEnv = aetx_env:tx_env(?DEFAULT_HEIGHT),
+    {ok, Trees1, #{res := {contract, AliceCt}}} =
+        new_validator_(pubkey(?ALICE), ?VALIDATOR_MIN + ?AE, TxEnv, Trees0),
+    {ok, Trees2, #{res := {contract, _BobCt}}} =
+        new_validator_(pubkey(?BOB), ?VALIDATOR_MIN + 2 * ?AE, TxEnv, Trees1),
+    {ok, Trees3, #{res := {contract, CarolCt}}} =
+        new_validator_(pubkey(?CAROL), ?VALIDATOR_MIN + 3 * ?AE, TxEnv, Trees2),
+
+    {ok, _, #{res := Validators1}} =
+        sorted_validators_(TxEnv, Trees3),
+
+    ?assertEqual(decode_validators(Validators1),
+                 [{carol, ?VALIDATOR_MIN + 3 * ?AE}, {bob, ?VALIDATOR_MIN + 2 * ?AE}, {alice, ?VALIDATOR_MIN + ?AE}]),
+
+    {ok, Trees4, #{res := ?UNIT}} =
+        adjust_stake_(AliceCt, ?ALICE, -2 * ?AE, TxEnv, Trees3),
+    {ok, Trees5, #{res := ?UNIT}} =
+        adjust_stake_(CarolCt, ?CAROL, -2 * ?AE, TxEnv, Trees4),
+
+    {ok, _, #{res := Validators2}} =
+        sorted_validators_(TxEnv, Trees5),
+
+    ?assertEqual(decode_validators(Validators2),
+                 [{bob, ?VALIDATOR_MIN + 2 * ?AE}, {carol, ?VALIDATOR_MIN + ?AE}]),
+    ok.
+
+decode_validators(Vs) ->
+    [ {vname(A), N} || {tuple, {{address, A}, N}} <- Vs ].
+
+vname(Addr) ->
+    case {pubkey(?ALICE), pubkey(?BOB)} of
+        {Addr, _} -> alice;
+        {_, Addr} -> bob;
+        _         -> carol
+    end.
 
 genesis_trees_opts(Type, Key, Opts, Default) ->
     Value = maps:get(Key, Opts, Default),
@@ -325,7 +387,7 @@ call_contract(ContractPubkey, Caller, CallData, Amount, TxEnv, Trees, TransformF
     Protocol = aetx_env:consensus_version(TxEnv),
     MinFee   = aetx:min_fee(DummyTx, Height, Protocol),
     {ok, Tx} = aect_call_tx:new(TxSpec#{fee => MinFee}),
-    case aetx:process(Tx, Trees, TxEnv) of
+    case aetx:process(Tx, Trees, aetx_env:set_dry_run(TxEnv, true)) of
         {ok, Trees2, _} ->
             Calls = aec_trees:calls(Trees2),
             {contract_call_tx, CallTx} = aetx:specialize_type(Tx),
@@ -340,8 +402,7 @@ call_contract(ContractPubkey, Caller, CallData, Amount, TxEnv, Trees, TransformF
                     Resp = aeb_fate_encoding:deserialize(aect_call:return_value(Call)),
                     Cost = aetx:fee(Tx) + aect_call:gas_price(Call) * aect_call:gas_used(Call),
                     {ok, RespTrees, #{res => TransformFun(Resp), cost => Cost}};
-                error -> {error,
-                            aeb_fate_encoding:deserialize(aect_call:return_value(Call))};
+                error -> {error, aect_call:return_value(Call)};
                 revert -> {revert,
                             aeb_fate_encoding:deserialize(aect_call:return_value(Call))}
             end;
@@ -435,6 +496,18 @@ get_total_balance_(ValidatorCt, Validator, TxEnv, Trees0) ->
 get_available_balance_(ValidatorCt, Validator, TxEnv, Trees0) ->
     CallData = create_calldata("get_available_balance", []),
     call_contract(ValidatorCt, pubkey(Validator), CallData, 0, TxEnv, Trees0).
+
+%% MainStaking
+
+add_rewards_(Epoch, Rewards, TotRewards, TxEnv, Trees0) ->
+    Contract = staking_contract_address(),
+    CallData = create_calldata("add_rewards", [{integer, Epoch}, Rewards]),
+    call_contract(Contract, ?OWNER_PUBKEY, CallData, TotRewards, TxEnv, Trees0).
+
+sorted_validators_(TxEnv, Trees0) ->
+    Contract = staking_contract_address(),
+    CallData = create_calldata("sorted_validators", []),
+    call_contract(Contract, ?OWNER_PUBKEY, CallData, 0, TxEnv, Trees0).
 
 staking_power_(Who, Caller, TxEnv, Trees0) ->
     ContractPubkey = staking_contract_address(),
