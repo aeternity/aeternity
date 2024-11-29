@@ -35,21 +35,22 @@ suite() -> [].
 
 all() ->
     [
-        {group, late_producing_epoch_2}
+        {group, hole_production}
         %% {group, producing_two_sequential_blocks}
     ].
 
 groups() ->
     [
-        {late_producing_epoch_2, [sequence], [
+        {hole_production, [sequence], [
             %% Start a parent + two CC nodes. Build chain a little and stop dev1. Produce 2 blocks.
             %% Expected behaviour: dev2 should detect a missing block when it has to produce, and fill in a hole
             start_dev1_dev2,
             produce_epoch,
+            produce_epoch,
             stop_dev1,
             produce_1_cc_block_dev2,
-            produce_1_cc_block_dev2
-            %% verify_non_leader_produced_hole
+            produce_1_cc_block_dev2,
+            verify_non_leader_produced_hole
         ]},
         %% TODO: Test late producing in epoch 1
         %% TODO: Test late producing end of epoch?
