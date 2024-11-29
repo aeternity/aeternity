@@ -3,7 +3,7 @@
 This is release of Hyperchains as described in [Periodically Syncing HyperChains](https://github.com/aeternity/hyperchains-whitepaper/blob/master/Periodically-Syncing-HyperChains.md).
 See also [aeternity Hyperchains](https://aeternity.com/hyperchains).
 
-Hyperchains integrate with other blockchain networks, leveraging their security and consensus mechanisms while providing scalable, energy-efficient child chains.
+Hyperchains integrate with other blockchain networks, leveraging their security and consensus mechanisms while providing scalable, energy-efficient hyperchains.
 
 An aeternity Hyperchain comes with all the normal features of aetenity:
 * FATE VM: Efficient virtual machine for executing smart contracts.
@@ -24,7 +24,7 @@ This preliminary implementation of Hyperchains lays the foundation for a scalabl
 
 2. **Periodic Synchronization with Pinning Mechanism**
    - Introduces a semi-lockstep synchronization model that aligns the epochs of Hyperchains with the pinning chain.
-   - A cryptographically secure **pinning mechanism** anchors the child chain state to the pinning chain, ensuring robust alignment and reduced operational overhead.
+   - A cryptographically secure **pinning mechanism** anchors the hyperchain state to the pinning chain, ensuring robust alignment and reduced operational overhead.
 
 3. **Future Leader Election**
    - Implements a randomized leader election system, utilizing entropy derived from the pinning chain.
@@ -47,7 +47,7 @@ This preliminary implementation of Hyperchains lays the foundation for a scalabl
 
 ## Key Improvements Over Previous Releases
 1. **Reduced pinning-Chain Dependency**
-   - Optimized the relationship between child and pinning chains, minimizing interaction and operational costs while maintaining security.
+   - Optimized the relationship between the hyperchains and pinning chains, minimizing interaction and operational costs while maintaining security.
 
 2. **Dynamic Epoch Adjustments**
    - Allows adaptive adjustments to epoch lengths based on network conditions, improving flexibility and scalability.
@@ -64,13 +64,16 @@ This pre-release does not yet address all advanced features proposed in the whit
 * Default values for token economics are not yet fully balanced.
 * On chain voting is limited to epoch fork resolution and epoch length adjustment.
 * Fork handling is not fully tested.
+* Performance is not fully tested and optimized.
 
-# Plans for Version 1.0
+# Plans for Version 1.0.0
 
 The 1.0 release aims to achieve the following:
 1. **Comprehensive Fork Handling:** Implement robust solutions for fork scenarios.
 2. **Enhanced Staking Options:** Introduce multi-epoch locking and flexible staking schedules.
 3. **Optimized Block Production:** Refine leader scheduling and reward distribution to incentivize timely and accurate block creation.
+4. **Enhanced Token Economics:** Refine fees, rewards and penalties in default configuration and present configuration suggestion for different scenarios.
+5. **Improved API:** Depending on community feedback the hyperchain API might be changed in version 1.0.0
 
 ## Future Releases
 
@@ -79,6 +82,7 @@ Planned updates will focus on:
 * Performance
 * Enhanced governance through voting
 * More advanced staking and delegated staking mechanisms
+* Improve end of Epoch voting and progress
 
 
 ### Feedback and Collaboration
