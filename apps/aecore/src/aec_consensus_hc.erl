@@ -86,6 +86,8 @@
         , get_entropy_hash/1
         , get_contract_pubkey/1
         , get_child_epoch_info/1
+        %% voting
+        ,vote_result/0
         ]).
 
 -ifdef(TEST).
@@ -148,7 +150,7 @@ start_btc(StakersEncoded, ParentConnMod) ->
             StakersEncoded),
     StakersMap = maps:from_list(Stakers),
     start_dependency(aec_preset_keys, [StakersMap]),
-    start_dependency(aec_eoe_vote, [StakersMap, child_block_time()]),
+    start_aec_eoe_vote(StakersMap),
     SignModule = undefined,
     {ParentConnMod, SignModule, []}.
 
@@ -184,10 +186,13 @@ start_ae(StakersEncoded, PinnersEncoded) ->
             PinnersEncoded),
     HCPCMap = maps:from_list(HCPC),
     lager:debug("Pinners: ~p", [HCPCMap]),
-    start_dependency(aec_eoe_vote, [StakersMap, child_block_time()]),
+    start_aec_eoe_vote(StakersMap),
     ParentConnMod = aehttpc_aeternity,
     SignModule = get_sign_module(),
     {ParentConnMod, SignModule, HCPCMap}.
+
+start_aec_eoe_vote(StakersMap) ->
+    start_dependency(aec_eoe_vote, [StakersMap, child_block_time(), fun(Trees, EncodedCallData, Amount) -> create_call_contract_transaction(?ELECTION_CONTRACT, Trees, EncodedCallData, Amount) end]).
 
 validate_keypair(EncodedPubkey, EncodedPrivkey) ->
     {ok, Pubkey} = aeser_api_encoder:safe_decode(account_pubkey,
@@ -312,7 +317,7 @@ state_pre_transform_node(Type, Height, PrevNode, Trees) ->
                     case get_entropy_hash(Epoch + 2) of
                         {ok, Seed} ->
                             cache_validators_for_epoch({TxEnv, Trees1}, Seed, Epoch + 2),
-                            Result = aec_eoe_vote:get_result(),
+                            %%Result = aec_eoe_vote:get_result(),
                             Trees2 = step_eoe(TxEnv, Trees1, Leader, Seed, 0, -1, CarryOverFlag),
                             {ok, NextEpochInfo} = aec_chain_hc:epoch_info({TxEnv, Trees2}),
                             {Trees2, Events ++ [{new_epoch, NextEpochInfo}]};
@@ -328,6 +333,32 @@ state_pre_transform_node(Type, Height, PrevNode, Trees) ->
         micro ->
             step_micro(TxEnv, Trees, Leader)
     end.
+
+create_call_contract_transaction(ContractType, Trees, EncodedCallData, Amount) ->
+    ContractPubkey = get_contract_pubkey(ContractType),
+    OwnerPubkey = contract_owner(),
+    Contract = aect_state_tree:get_contract(ContractPubkey,
+                                            aec_trees:contracts(Trees)),
+    OwnerAcc = aec_accounts_trees:get(OwnerPubkey,
+                                            aec_trees:accounts(Trees)),
+    Fee = 5000000000000000000, %% TODO: fine tune this
+    Gas = 5000000000000000000, %% TODO: fine tune this
+    GasPrice = 50000000000, %% TODO: fine tune this
+
+    {ok, CallData} = aeser_api_encoder:safe_decode(contract_bytearray, EncodedCallData),
+    CallSpec = #{ caller_id   => aeser_id:create(account, OwnerPubkey),
+                  nonce       => aec_accounts:nonce(OwnerAcc) + 1,
+                  contract_id => aeser_id:create(contract, ContractPubkey),
+                  abi_version => aect_contracts:abi_version(Contract), %% TODO: maybe get the ABI from the config?
+                  fee         => Fee,
+                  amount      => Amount,
+                  gas         => Gas,
+                  gas_price   => GasPrice,
+                  call_data   => CallData},
+    aect_call_tx:new(CallSpec).
+
+vote_result() ->
+    aec_eoe_vote:get_finalize_transaction().
 
 cache_child_epoch_info(Epoch, Height, StartTime) ->
     %% if the leader is running on the same node, and the current process
@@ -755,10 +786,11 @@ next_beneficiary(TxEnv, Trees) ->
     case leader_for_height(ChildHeight1, {TxEnv, Trees}) of
         {ok, Leader} ->
             {ok, #{epoch := Epoch} = EpochInfo} = aec_chain_hc:epoch_info({TxEnv, Trees}),
+            {ok, #{epoch := Epoch, seed := Seed} = EpochInfo} = aec_chain_hc:epoch_info({TxEnv, Trees}),
             case ChildHeight1 == maps:get(last, EpochInfo) of
                 true ->
                     Hash = aetx_env:key_hash(TxEnv),
-                    aec_eoe_vote:negotiate(Epoch, ChildHeight1, Hash, 0); %% TODO epoch delta
+                    aec_eoe_vote:negotiate(Epoch, ChildHeight1, Hash, Leader, Seed, 0, child_epoch_length()); %% TODO epoch delta
                 false ->
                     %% Try to set the validator as early as possible in epoch, so votes are not missed due to the vote not being able to be validated
                     aec_eoe_vote:validators(maps:get(validators, EpochInfo), Epoch)

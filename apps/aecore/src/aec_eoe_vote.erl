@@ -9,7 +9,7 @@
 -behaviour(gen_statem).
 
 %% Export API functions
--export([start_link/2, negotiate/4, validators/2, get_result/0]).
+-export([start_link/3, negotiate/7, validators/2, get_finalize_transaction/0]).
 
 %% Export gen_statem callbacks
 -export([init/1, callback_mode/0, terminate/3, code_change/4]).
@@ -25,6 +25,8 @@
                 epoch,
                 height,
                 fork_hash,
+                seed,
+                length,
                 length_delta,
                 leader,
                 validators=[],
@@ -33,8 +35,8 @@
                 majority=0,
                 proposal,
                 block_time,
-                num_calls=0,
                 result,
+                create_contract_call_fun,
                 from,
                 votes=#{}}).
 
@@ -43,46 +45,42 @@
 -define(VOTE_TYPE, 2).
 -define(COMMIT_TYPE, 3).
 
--define(EPOCH_FLD, <<"epoch">>).
--define(VOTES_FLD, <<"votes">>).
 -define(HASH_FLD, <<"block_hash">>).
 -define(HEIGHT_FLD, <<"block_height">>).
--define(PRODUCER_FLD, <<"producer">>).
 -define(EPOCH_DELTA_FLD, <<"epoch_length_delta">>).
 -define(SIGNATURE_FLD, <<"signature">>).
 
 %% API to start the state machine
-start_link(Stakers, BlockTime) ->
-    gen_statem:start_link({local, ?MODULE}, ?MODULE, [Stakers, BlockTime], []).
+start_link(Stakers, BlockTime, CreateContractCallFun) ->
+    gen_statem:start_link({local, ?MODULE}, ?MODULE, [Stakers, BlockTime, CreateContractCallFun], []).
 
 %% Negotiate a fork, called with preferred fork and epoch length delta
-negotiate(Epoch, Height, Hash, LengthDelta) ->
-    gen_statem:cast(?MODULE, {negotiate, Epoch, Height, Hash, LengthDelta}).
+negotiate(Epoch, Height, Hash, Leader, Seed, LengthDelta, CurrentLength) ->
+    gen_statem:cast(?MODULE, {negotiate, Epoch, Height, Hash, Leader, Seed, LengthDelta, CurrentLength}).
 
 validators(Validators, Epoch) ->
     gen_statem:cast(?MODULE, {validators, Validators, Epoch}).
 
-get_result() ->
-    gen_statem:call(?MODULE, get_result).
+get_finalize_transaction() ->
+    gen_statem:call(?MODULE, get_finalize_transaction).
 
 %%% gen_statem callbacks
 
 %% Initialization: Start in the await_eoe state
-init([Stakers, BlockTime]) ->
+init([Stakers, BlockTime, CreateContractCallFun]) ->
     aec_events:subscribe(tx_received),
     aec_events:subscribe(new_epoch),
-    {ok, await_eoe, #data{stakers=Stakers,block_time=BlockTime}}.
+    {ok, await_eoe, #data{stakers=Stakers,block_time=BlockTime,create_contract_call_fun=CreateContractCallFun}}.
 
 %% Set the callback mode to state functions
 callback_mode() ->
     state_functions.
 
 %%% State: AwaitEndOfEpoch
-%% TODO get transactions that come in before negotiate has been called
-await_eoe(cast, {negotiate, Epoch, Height, Hash, LengthDelta}, #data{block_time=BlockTime, epoch=CurrentEpoch, proposal=Proposal, num_calls = NumCalls, majority=Majority} = Data) ->
+await_eoe(cast, {negotiate, Epoch, Height, Hash, Leader, Seed, LengthDelta, CurrentLength}, #data{block_time=BlockTime, epoch=CurrentEpoch, proposal=Proposal, majority=Majority} = Data) ->
     case Epoch == CurrentEpoch of
         true ->
-            Data1 = Data#data{epoch=Epoch, height=Height, fork_hash=Hash, length_delta=LengthDelta, num_calls = NumCalls + 1},
+            Data1 = Data#data{epoch=Epoch, height=Height, fork_hash=Hash, seed=Seed, length=CurrentLength, leader=Leader, length_delta=LengthDelta},
             case is_leader(Data1) of
                 false ->
                     case Proposal of
@@ -112,8 +110,7 @@ await_eoe(cast, {validators, _Validators, Epoch}, #data{epoch=Epoch}) ->
 await_eoe(cast, {validators, Validators, Epoch}, Data) ->
     Majority = calculate_majority(Validators),
     lager:info("Majority required ~p", [Majority]),
-    {Leader, _} = lists:last(Validators),
-    {keep_state, Data#data{validators = Validators, majority=Majority, remaining_validators=maps:from_list(Validators), epoch=Epoch, leader=Leader}};
+    {keep_state, Data#data{validators = Validators, majority=Majority, remaining_validators=maps:from_list(Validators), epoch=Epoch}};
 await_eoe(info, {gproc_ps_event, tx_received, #{info := SignedTx}}, Data) ->
     handle_proposal(SignedTx, Data);
 await_eoe(Type, Msg, D) ->
@@ -162,12 +159,11 @@ complete(Type, Msg, D) ->
 
 create_proposal(#data{leader=Leader, stakers=Stakers, epoch=Epoch, height=Height, fork_hash=Hash, length_delta=LengthDelta}) ->
     PrivKey = get_staker_private_key(Leader, Stakers),
-    Proposal =#{?HASH_FLD => aeser_api_encoder:encode(key_block_hash, Hash),
+    Proposal =#{?HASH_FLD => Hash,
                 ?EPOCH_DELTA_FLD => LengthDelta,
                 ?HEIGHT_FLD => Height},
     ProposalPayload = create_payload(Proposal, PrivKey),
     create_vote_transaction(Leader, PrivKey, Epoch, ?PROPOSAL_TYPE, ProposalPayload).
-
 
 create_votes(Type, #data{proposal=ProposalFields, leader=Leader, stakers=Stakers, validators=Validators, epoch=Epoch, height=Height, fork_hash=Hash, length_delta=LengthDelta}) ->
     case maps:get(?HASH_FLD, ProposalFields, undefined) of
@@ -175,12 +171,12 @@ create_votes(Type, #data{proposal=ProposalFields, leader=Leader, stakers=Stakers
             lager:warning("Hash field not found in proposal ~p", [ProposalFields]),
             [];
         Hash ->
-            VoteFlds =#{?HASH_FLD => aeser_api_encoder:encode(key_block_hash, Hash),
+            VoteFlds =#{?HASH_FLD => Hash,
                         ?EPOCH_DELTA_FLD => LengthDelta,
                         ?HEIGHT_FLD => Height},
             create_votes(VoteFlds, Leader, Validators, Stakers, Epoch, Type, []);
         ProposalHash ->
-            lager:warning("Proposal hash ~p does not match hash ~p", [aeser_api_encoder:encode(key_block_hash, ProposalHash), aeser_api_encoder:encode(key_block_hash, Hash)]),
+            lager:warning("Proposal hash ~p does not match hash ~p", [ProposalHash, Hash]),
             []
     end.
 
@@ -219,6 +215,9 @@ handle_proposal(SignedTx, #data{leader=Leader, epoch=Epoch, fork_hash=Hash} = Da
             keep_state_and_data;
         {ok, ?PROPOSAL_TYPE, InvalidEpoch, Leader, _ProposalFields} ->
             lager:warning("Received proposal from invalid epoch ~p", [InvalidEpoch]),
+            keep_state_and_data;
+        {ok, ?PROPOSAL_TYPE, InvalidEpoch, InvalidProducer, _ProposalFields} ->
+            lager:warning("Received proposal from invalid epoch ~p and invalid leader ~p", [InvalidEpoch, InvalidProducer]),
             keep_state_and_data;
         {ok, _Type, _, _, _} ->
             %% TODO is it possible to get a vote before the proposal?
@@ -261,7 +260,7 @@ create_payload(Payload, PrivKey) ->
     Fields = maps:map(fun fld/2, Payload),
     PayloadBin = iolist_to_binary(lists:foldl(fun({Key, Value}, Accum) -> [<<Key/binary,Value/binary>>|Accum] end, [], lists:sort(maps:to_list(Fields)))),
     Signature = enacl:sign_detached(PayloadBin, PrivKey),
-    maps:put(?SIGNATURE_FLD, aeser_api_encoder:encode(signature, Signature), Fields).
+    maps:put(?SIGNATURE_FLD, Signature, Fields).
 
 fld(_FieldName, Value) when is_integer(Value) ->
     integer_to_binary(Value);
@@ -290,7 +289,7 @@ check_voting_majority(#data{proposal=Proposal, majority = CurrentMajority, valid
         true ->
             lager:info("Quorum achieved for voting"),
             Majority = calculate_majority(Validators),
-            Result = {ok, maps:put(?VOTES_FLD, Votes, Proposal)},
+            Result = create_finalize_call(Votes, Proposal, Data),
             Data1 = Data#data{result = Result},
             send_commits(Data1),
             {next_state, finalize, Data1#data{majority = Majority, remaining_validators = maps:from_list(Validators)}};
@@ -307,7 +306,7 @@ on_valid_commit(_Validator, _CommitFields, #data{result = Result, majority = Cur
                             [];
                         _ ->
                             lager:debug("Replying quorum achieved for commits, result ~p", [Result]),
-                            [{reply, From, Result}]
+                            [{reply, From, convert_to_finalize_transaction(Result, Data)}]
                       end,
             {next_state, complete, Data, Actions};
         false ->
@@ -372,9 +371,6 @@ convert_payload_fields(Fields) ->
         {error, Reason}
     end.
 
-convert_payload_field(?HASH_FLD, Value) ->
-    {ok, Hash} = aeser_api_encoder:safe_decode(block_hash,Value),
-    Hash;
 convert_payload_field(?HEIGHT_FLD, Value) ->
     binary_to_integer(Value);
 convert_payload_field(?EPOCH_DELTA_FLD, Value) ->
@@ -383,7 +379,7 @@ convert_payload_field(_Key, Value) ->
     Value.
 
 check_signature(PubKey, Payload) ->
-    case get_signatute_from_payload(Payload) of
+    case get_signature_from_payload(Payload) of
         {ok, Signature} ->
                 Fields = lists:sort(maps:to_list(maps:remove(?SIGNATURE_FLD, Payload))),
                 Data = iolist_to_binary(lists:foldl(fun({Key, Value}, Accum) -> [<<Key/binary,Value/binary>>|Accum] end, [], Fields)),
@@ -397,12 +393,12 @@ check_signature(PubKey, Payload) ->
     end.
 
 
-get_signatute_from_payload(Payload) ->
+get_signature_from_payload(Payload) ->
     case maps:get(?SIGNATURE_FLD, Payload, undefined) of
         undefined ->
             {error, signature_not_found};
         Signature ->
-            aeser_api_encoder:safe_decode(signature, Signature)
+            {ok, Signature}
     end.
 
 %%% Termination and Code Change Handlers
@@ -449,30 +445,40 @@ handle_no_consensus(#data{from = From} = Data) ->
 
 handle_common_event(info, {gproc_ps_event, new_epoch, #{info := _EpochInfo}}, Data) ->
     {next_state, await_eoe, reset_data(Data)};
-handle_common_event({call,From}, get_result, #data{result=Result, num_calls = NumCalls, epoch=Epoch} = Data) ->
-    case Epoch of
+handle_common_event({call,From}, get_finalize_transaction, #data{result=Result, leader = Leader} = Data) ->
+    case Leader of
         undefined ->
-            {keep_state_and_data, [{reply, From, not_ready}]};
+            {keep_state_and_data, [{reply, From, {error, not_ready}}]};
         _ ->
-            IsLeader = is_leader(Data),
-            case (not IsLeader) or ((NumCalls > 0) and IsLeader) of
-                true ->
-                    Data1 = Data#data{num_calls = NumCalls + 1},
-                    case Result of
-                        undefined ->
-                            {keep_state, Data1#data{from=From}};
-                        _ ->
-                            lager:debug("Replying quorum achieved for commits, result ~p", [Result]),
-                            {keep_state, Data1, [{reply, From, Result}]}
-                    end;
-                false ->
-                    {keep_state, Data#data{num_calls = NumCalls + 1}, [{reply, From, not_ready}]}
+            case Result of
+                undefined ->
+                    {keep_state, Data#data{from=From}};
+                _ ->
+                    lager:debug("Replying quorum achieved for commits, result ~p", [Result]),
+                    {keep_state, Data, [{reply, From, convert_to_finalize_transaction(Result, Data)}]}
             end
     end;
 handle_common_event(_E, _Msg, #data{}) ->
     lager:info("Common ~p ~p", [_E, _Msg]),
     %% TODO
     keep_state_and_data.
+
+convert_to_finalize_transaction({ok, CallData}, #data{create_contract_call_fun = CreateContractCallFun, leader=Leader, stakers=Stakers}) ->
+    case aec_chain:get_top_state() of
+        {ok, Trees} ->
+            {ok, Tx} = CreateContractCallFun(Trees, aeser_api_encoder:encode(contract_bytearray, CallData), 0),
+            Bin0 = aetx:serialize_to_binary(Tx),
+            Bin = aec_hash:hash(signed_tx, Bin0),
+            BinForNetwork = aec_governance:add_network_id(Bin),
+            PrivKey = get_staker_private_key(Leader, Stakers),
+            Signatures = [enacl:sign_detached(BinForNetwork, PrivKey)],
+            STx = aetx_sign:new(Tx, Signatures),
+            {ok, STx};
+        Error ->
+            {error, Error}
+    end;
+convert_to_finalize_transaction(Result, _Data) ->
+    Result.
 
 calculate_stake(#data{validators = Validators, stakers = Stakers}) ->
     lists:foldl(fun({Validator, Stake}, Accum) ->
@@ -487,9 +493,21 @@ calculate_majority(Validators) ->
     TotalStake = lists:foldl(fun({_, Stake}, Accum) -> Stake + Accum end, 0, Validators),
     math:ceil((2 * TotalStake) / 3).
 
-reset_data(#data{stakers = Stakers, block_time=BlockTime}) ->
-    #data{stakers = Stakers, block_time=BlockTime}.
+reset_data(#data{stakers = Stakers, block_time=BlockTime, create_contract_call_fun=CreateContractCallFun}) ->
+    #data{stakers = Stakers, block_time=BlockTime, create_contract_call_fun = CreateContractCallFun}.
 
 get_staker_private_key(Staker, Stakers) ->
     maps:get(Staker, Stakers, undefined).
 
+create_finalize_call(Votes, #{?HASH_FLD := Hash, ?EPOCH_DELTA_FLD := EpochDelta}, #data{epoch = Epoch, seed=Seed, leader=Leader, length = EpochLength}) ->
+    Seed1 = case Seed of
+                undefined ->
+                    <<>>;
+                _ ->
+                    Seed
+            end,
+    VotesList = maps:fold(fun create_vote_call/3, [], Votes),
+    aeb_fate_abi:create_calldata("finalize_epoch", [Epoch, Hash, EpochLength + EpochDelta, {bytes, Seed1}, {address, Leader}, VotesList]).
+
+create_vote_call(Producer, #{?HASH_FLD := Hash, ?EPOCH_DELTA_FLD := EpochDelta, ?SIGNATURE_FLD := Signature}, Accum) ->
+    [{tuple, {{address, Producer}, Hash, EpochDelta, Signature}}|Accum].

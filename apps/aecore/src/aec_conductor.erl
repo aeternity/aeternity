@@ -1345,14 +1345,26 @@ hc_create_block(ConsensusModule, TopHash0, Leader) ->
 
 hc_create_microblock(ConsensusModule, TopHash, Leader) ->
     case aec_block_micro_candidate:create(TopHash) of
-        {ok, MBlock, _MBlockInfo} ->
-            case aec_blocks:txs(MBlock) of
+        {ok, MBlock, MBlockInfo} ->
+            MBlock1 = case ConsensusModule:vote_result() of
+                                {ok, VoteTransaction} ->
+                                    case aec_block_micro_candidate:update(MBlock, [VoteTransaction], MBlockInfo) of
+                                        {ok, UpdatedMBlock, _MBlockInfo} ->
+                                            UpdatedMBlock;
+                                        Error ->
+                                            lager:warning("Error adding vote transaction ~p", [Error]),
+                                            MBlock
+                                    end;
+                                _ ->
+                                    MBlock
+                            end,
+            case aec_blocks:txs(MBlock1) of
                 [] ->
                     epoch_mining:debug("Empty micro-block, top is still: ~p", [TopHash]),
                     TopHash;
                 [_ | _ ] ->
                     SignModule = ConsensusModule:get_sign_module(),
-                    {ok, SignedMBlock} = SignModule:sign_micro_block(MBlock, Leader),
+                    {ok, SignedMBlock} = SignModule:sign_micro_block(MBlock1, Leader),
                     add_signed_block(SignedMBlock),
                     {ok, MBHash} = aec_blocks:hash_internal_representation(SignedMBlock),
                     epoch_mining:debug("New micro-block added, top is: ~p", [MBHash]),
