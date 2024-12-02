@@ -60,8 +60,9 @@ payable contract StakingValidator =
   entrypoint rewards(epoch : int, amount : int, restaked : bool) =
     assert_main_staking_caller()
     switch(state.reward_callback)
-      None => ()
-      Some(cb_ct) => cb_ct.reward_cb(epoch, amount, restaked)
+      None => None
+      Some(cb_ct) => cb_ct.reward_cb(protected = true, gas = 20000, epoch, amount, restaked)
+    ()
 
   function assert_owner_caller() =
     require(Call.caller == state.owner, "Only contract owner allowed")
