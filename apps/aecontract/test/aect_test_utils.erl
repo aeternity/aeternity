@@ -53,6 +53,8 @@
 -export([ abi_version/0
         , abi_version/2
         , backend/0
+        , contract_filename/1
+        , copts/1
         , init_per_group/2
         , init_per_group/3
         , setup_testcase/1
@@ -328,6 +330,9 @@ contract_filenames(Compiler, Name) ->
     %% io:format("Files for ~p (compiler ~p): ~p\n", [Name, Compiler, Files]),
     lists:filter(fun filelib:is_regular/1, Files).
 
+contract_filename(Name) ->
+    contract_filename(sophia_version(), Name).
+
 contract_filename(Compiler, Name) ->
     case contract_filenames(Compiler, Name) of
         [File | _] -> File;
@@ -358,7 +363,7 @@ compile(Vsn, File) ->
             Self = self(),
             spawn(fun() ->
                 {ok, AsmBin} = file:read_file(File),
-                case generate_json_aci(Vsn, AsmBin) of
+                case generate_json_aci(Vsn, AsmBin, copts({file, File})) of
                     {error, _} = Err ->
                         Self ! {aci_done, Err};
                     _ ->
@@ -395,6 +400,10 @@ compile(Vsn, File) ->
         no -> Result1
     end.
 
+copts({file, File}) ->
+    SrcDir = aeso_utils:canonical_dir(filename:dirname(File)),
+    [{src_dir, SrcDir}, {include, {file_system, [SrcDir]}}].
+
 compile_(SophiaVsn, File) when SophiaVsn >= ?SOPHIA_CERES_FATE ->
     {ok, AsmBin} = file:read_file(File),
     Source = binary_to_list(AsmBin),
@@ -402,7 +411,8 @@ compile_(SophiaVsn, File) when SophiaVsn >= ?SOPHIA_CERES_FATE ->
                   yes_automatic -> [{aci, json}];
                   _ -> []
               end,
-    case aeso_compiler:from_string(Source, [{backend, fate}, {src_file, File}] ++ ACIFlag) of
+    case aeso_compiler:from_string(Source, [{backend, fate}, {src_file, File}] ++
+                                           copts({file, File}) ++ ACIFlag) of
         {ok, Map} ->
             case Map of
                 #{aci := JAci} ->
@@ -534,15 +544,19 @@ to_str(Str)                     -> Str.
 encode_call_data(Code, Fun, Args) ->
     encode_call_data(sophia_version(), Code, Fun, Args).
 
+encode_call_data(Vsn, {contract, ContractName}, Fun, Args) ->
+    File = contract_filename(Vsn, ContractName),
+    {ok, SrcBin} = file:read_file(File),
+    maybe_fast_encode_call_data(Vsn, to_str(SrcBin), Fun, Args, copts({file, File}));
 encode_call_data(Vsn, Code, Fun, Args) ->
-    maybe_fast_encode_call_data(Vsn, Code, Fun, Args).
+    maybe_fast_encode_call_data(Vsn, Code, Fun, Args, []).
 
-maybe_fast_encode_call_data(Vsn, Code, Fun, Args) ->
+maybe_fast_encode_call_data(Vsn, Code, Fun, Args, COpts) ->
     case aci_json_enabled(Vsn) of
         no ->
-            slow_encode_call_data(Vsn, Code, Fun, Args);
+            slow_encode_call_data(Vsn, Code, Fun, Args, COpts);
         _ -> % yes_manual | yes_automatic
-            Aci = generate_json_aci(Vsn, Code),
+            Aci = generate_json_aci(Vsn, Code, COpts),
             Args1 = string:join([ to_str(Arg) || Arg <- Args ], ", "),
             Args2 = to_str(Fun) ++ "(" ++ Args1 ++ ")",
             case aeaci_aci:encode_call_data(Aci, Args2) of
@@ -554,7 +568,7 @@ maybe_fast_encode_call_data(Vsn, Code, Fun, Args) ->
             end
     end.
 
-slow_encode_call_data(Vsn, Code, Fun, Args) ->
+slow_encode_call_data(Vsn, Code, Fun, Args, COpts) ->
     %% Lookup the res in the cache - if not present just calculate the result
     Backend = backend(Vsn),
     CallId = #encode_call_id{vsn = Vsn, code_hash = crypto:hash(md5, Code), fun_name = Fun, args = Args, backend = Backend},
@@ -565,19 +579,19 @@ slow_encode_call_data(Vsn, Code, Fun, Args) ->
             Result;
         [] ->
             ct:log("Encode call cache MISS :("),
-            Result = slow_encode_call_data_(Vsn, Code, Fun, Args, Backend),
+            Result = slow_encode_call_data_(Vsn, Code, Fun, Args, [{backend, Backend} | COpts]),
             ets:insert_new(?ENCODE_CALL_TAB, #encode_call_cache_entry{call_id = CallId, result = Result}),
             Result
     end.
 
-slow_encode_call_data_(Vsn, Code, Fun, Args, Backend) when Vsn >= ?SOPHIA_CERES_FATE ->
+slow_encode_call_data_(Vsn, Code, Fun, Args, COpts) when Vsn >= ?SOPHIA_CERES_FATE ->
     try aeso_compiler:create_calldata(to_str(Code), to_str(Fun),
                                       lists:map(fun to_str/1, Args),
-                                      [{backend, Backend}])
+                                      COpts)
     catch _T:_E ->
         {error, <<"bad argument">>}
     end;
-slow_encode_call_data_(Vsn, Code, Fun, Args0, _Backend) ->
+slow_encode_call_data_(Vsn, Code, Fun, Args0, _COpts) ->
     SrcFile = tempfile_name("sophia_code", ".aes"),
     Args    = legacy_args(Vsn, Args0),
     ok = file:write_file(SrcFile, Code),
@@ -698,32 +712,32 @@ split_at([C | Rest], At, In, Out, N, Acc)   ->
         _            -> split_at(Rest, At, In, Out, N, [C | Acc])
     end.
 
-generate_json_aci(Vsn, Code) ->
+generate_json_aci(Vsn, Code, COpts) ->
     Backend = backend(),
     AciId = make_aci_id(Code),
     NoCache = os:getenv("SOPHIA_ACI_NO_CACHE"),
     case ets:lookup(?ACI_TAB, AciId) of
         _ when NoCache /= false ->
-            generate_json_aci_(Vsn, Backend, Code);
+            generate_json_aci_(Vsn, Backend, Code, COpts);
         [#aci_cache_entry{result = Result}] ->
             ct:log("ACI cache HIT :)"),
             Result;
         [] ->
             ct:log("ACI cache MISS :)"),
-            Result = generate_json_aci_(Vsn, Backend, Code),
+            Result = generate_json_aci_(Vsn, Backend, Code, COpts),
             cache_aci(AciId, Result),
             Result
     end.
 
-generate_json_aci_(Vsn, Backend, Code) when Vsn >= ?SOPHIA_CERES_FATE ->
+generate_json_aci_(Vsn, Backend, Code, COpts) when Vsn >= ?SOPHIA_CERES_FATE ->
     try
-        {ok, JAci} = aeso_aci:contract_interface(json, to_str(Code), [{backend, Backend}, {no_code, true}]),
+        {ok, JAci} = aeso_aci:contract_interface(json, to_str(Code), [{backend, Backend}, {no_code, true}] ++ COpts),
         aeaci_aci:from_string(jsx:encode(JAci), #{backend => Backend})
     catch Err:Reason:Stack ->
         ct:log("Aci generation failed ~p ~p ~p\n", [Err, Reason, Stack]),
         {error, <<"bad argument">>}
     end;
-generate_json_aci_(Vsn, Backend, Code) ->
+generate_json_aci_(Vsn, Backend, Code, _COpts) ->
     SrcFile = tempfile_name("sophia_code", ".aes"),
     ok = file:write_file(SrcFile, Code),
     Compiler = compiler_cmd(max(Vsn, ?SOPHIA_MINERVA)),

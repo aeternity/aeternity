@@ -178,7 +178,7 @@
 -callback state_pre_transform_micro_node(non_neg_integer(), #node{}, aec_trees:trees()) -> aec_trees:trees() | no_return().
 
 %% Block rewards :)
--callback state_grant_reward(aec_keys:pubkey(), #node{}, aec_trees:trees(), non_neg_integer()) -> aec_trees:trees() | no_return().
+-callback state_grant_reward(aec_keys:pubkey(), #node{}, non_neg_integer(), aec_trees:trees(), non_neg_integer()) -> aec_trees:trees() | no_return().
 
 %% PoGF - called just before exiting the DB transaction and fully validating the node in question
 -callback pogf_detected(aec_headers:key_header(), aec_headers:key_header()) -> ok.

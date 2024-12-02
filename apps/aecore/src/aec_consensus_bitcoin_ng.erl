@@ -37,7 +37,7 @@
         , state_pre_transform_key_node/3
         , state_pre_transform_micro_node/3
         %% Block rewards
-        , state_grant_reward/4
+        , state_grant_reward/5
         %% PoGF
         , pogf_detected/2
         %% Genesis block
@@ -436,7 +436,7 @@ state_pre_transform_micro_node(_Height, _PrevNode, Trees) -> Trees.
 
 %% -------------------------------------------------------------------
 %% Block rewards
-state_grant_reward(Beneficiary, _Node, Trees, Amount) -> aec_trees:grant_fee(Beneficiary, Trees, Amount).
+state_grant_reward(Beneficiary, _Node, _Delay, Trees, Amount) -> aec_trees:grant_fee(Beneficiary, Trees, Amount).
 
 %% -------------------------------------------------------------------
 %% PoGF

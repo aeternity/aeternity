@@ -1024,7 +1024,7 @@ grant_fees(Node, Trees, Delay, FraudStatus, _State) ->
                              OldestBeneficiaryVersion),
     Trees1 = lists:foldl(
                fun({K, Amt}, TreesAccum) when Amt > 0 ->
-                       Consensus:state_grant_reward(K, Node, TreesAccum, Amt);
+                       Consensus:state_grant_reward(K, Node, Delay, TreesAccum, Amt);
                   (_, TreesAccum) -> TreesAccum
                end,
                Trees,
