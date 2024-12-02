@@ -317,7 +317,6 @@ state_pre_transform_node(Type, Height, PrevNode, Trees) ->
                     case get_entropy_hash(Epoch + 2) of
                         {ok, Seed} ->
                             cache_validators_for_epoch({TxEnv, Trees1}, Seed, Epoch + 2),
-                            %%Result = aec_eoe_vote:get_result(),
                             Trees2 = step_eoe(TxEnv, Trees1, Leader, Seed, 0, -1, CarryOverFlag),
                             {ok, NextEpochInfo} = aec_chain_hc:epoch_info({TxEnv, Trees2}),
                             {Trees2, Events ++ [{new_epoch, NextEpochInfo}]};
@@ -785,15 +784,13 @@ next_beneficiary(TxEnv, Trees) ->
     ChildHeight1 = ChildHeight + 1,
     case leader_for_height(ChildHeight1, {TxEnv, Trees}) of
         {ok, Leader} ->
-            {ok, #{epoch := Epoch} = EpochInfo} = aec_chain_hc:epoch_info({TxEnv, Trees}),
-            {ok, #{epoch := Epoch, seed := Seed} = EpochInfo} = aec_chain_hc:epoch_info({TxEnv, Trees}),
+            {ok, #{epoch := Epoch, seed := Seed, validators := Validators} = EpochInfo} = aec_chain_hc:epoch_info({TxEnv, Trees}),
             case ChildHeight1 == maps:get(last, EpochInfo) of
                 true ->
                     Hash = aetx_env:key_hash(TxEnv),
-                    aec_eoe_vote:negotiate(Epoch, ChildHeight1, Hash, Leader, Seed, 0, child_epoch_length()); %% TODO epoch delta
+                    aec_eoe_vote:negotiate(Epoch, ChildHeight1, Hash, Leader, Validators, Seed, 0, child_epoch_length()); %% TODO epoch delta
                 false ->
-                    %% Try to set the validator as early as possible in epoch, so votes are not missed due to the vote not being able to be validated
-                    aec_eoe_vote:validators(maps:get(validators, EpochInfo), Epoch)
+                    ok
             end,
             SignModule = get_sign_module(),
             case SignModule:set_candidate(Leader) of

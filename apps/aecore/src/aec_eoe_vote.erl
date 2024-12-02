@@ -9,7 +9,7 @@
 -behaviour(gen_statem).
 
 %% Export API functions
--export([start_link/3, negotiate/7, validators/2, get_finalize_transaction/0]).
+-export([start_link/3, negotiate/8, get_finalize_transaction/0]).
 
 %% Export gen_statem callbacks
 -export([init/1, callback_mode/0, terminate/3, code_change/4]).
@@ -55,11 +55,8 @@ start_link(Stakers, BlockTime, CreateContractCallFun) ->
     gen_statem:start_link({local, ?MODULE}, ?MODULE, [Stakers, BlockTime, CreateContractCallFun], []).
 
 %% Negotiate a fork, called with preferred fork and epoch length delta
-negotiate(Epoch, Height, Hash, Leader, Seed, LengthDelta, CurrentLength) ->
-    gen_statem:cast(?MODULE, {negotiate, Epoch, Height, Hash, Leader, Seed, LengthDelta, CurrentLength}).
-
-validators(Validators, Epoch) ->
-    gen_statem:cast(?MODULE, {validators, Validators, Epoch}).
+negotiate(Epoch, Height, Hash, Leader, Validators, Seed, LengthDelta, CurrentLength) ->
+    gen_statem:cast(?MODULE, {negotiate, Epoch, Height, Hash, Leader, Validators, Seed, LengthDelta, CurrentLength}).
 
 get_finalize_transaction() ->
     gen_statem:call(?MODULE, get_finalize_transaction).
@@ -77,40 +74,27 @@ callback_mode() ->
     state_functions.
 
 %%% State: AwaitEndOfEpoch
-await_eoe(cast, {negotiate, Epoch, Height, Hash, Leader, Seed, LengthDelta, CurrentLength}, #data{block_time=BlockTime, epoch=CurrentEpoch, proposal=Proposal, majority=Majority} = Data) ->
-    case Epoch == CurrentEpoch of
-        true ->
-            Data1 = Data#data{epoch=Epoch, height=Height, fork_hash=Hash, seed=Seed, length=CurrentLength, leader=Leader, length_delta=LengthDelta},
-            case is_leader(Data1) of
-                false ->
-                    case Proposal of
-                        undefined ->
-                            lager:info("End of epoch ~p waiting for proposal", [Epoch]),
-                            {next_state, proposal, Data1,
-                                [{state_timeout,BlockTime,no_proposal}]};
-                        _ ->
-                            Data2 = handle_voting(Data1),
-                            {next_state, vote, Data2,
-                                [{state_timeout,BlockTime,no_quorum}]}
-                    end;
-                true ->
-                    Stake = calculate_stake(Data1),
-                    lager:info("Sending proposal for end of epoch ~p hash: ~p", [Epoch, Hash]),
-                    LeaderProposal = #{?HASH_FLD => Hash, ?EPOCH_DELTA_FLD => LengthDelta},
-                    %% block time * 2 because need to wait for votes to arrive
-                    send(fun create_proposal/1, Data1, {next_state, vote, Data1#data{majority = Majority - Stake, proposal=LeaderProposal}, [{state_timeout,BlockTime * 2,no_quorum}]})
-            end;
+await_eoe(cast, {negotiate, Epoch, Height, Hash, Leader, Validators, Seed, LengthDelta, CurrentLength}, #data{block_time=BlockTime, proposal=Proposal, majority=Majority} = Data) ->
+    Data1 = set_validators(Validators, Data#data{epoch=Epoch, height=Height, fork_hash=Hash, seed=Seed, length=CurrentLength, leader=Leader, validators = Validators, length_delta=LengthDelta}),
+    case is_leader(Data1) of
         false ->
-            lager:warning("Validators for are set for epoch ~p, received end of epoch for epoch ~p", [CurrentEpoch, Epoch]),
-            keep_state_and_data
+            case Proposal of
+                undefined ->
+                    lager:info("End of epoch ~p waiting for proposal", [Epoch]),
+                    {next_state, proposal, Data1,
+                        [{state_timeout,BlockTime,no_proposal}]};
+                _ ->
+                    Data2 = handle_voting(Data1),
+                    {next_state, vote, Data2,
+                        [{state_timeout,BlockTime,no_quorum}]}
+            end;
+        true ->
+            Stake = calculate_stake(Data1),
+            lager:info("Sending proposal for end of epoch ~p hash: ~p", [Epoch, Hash]),
+            LeaderProposal = #{?HASH_FLD => Hash, ?EPOCH_DELTA_FLD => LengthDelta},
+            %% block time * 2 because need to wait for votes to arrive
+            send(fun create_proposal/1, Data1, {next_state, vote, Data1#data{majority = Majority - Stake, proposal=LeaderProposal}, [{state_timeout,BlockTime * 2,no_quorum}]})
     end;
-%% TODO check signature & if already voted
-await_eoe(cast, {validators, _Validators, Epoch}, #data{epoch=Epoch}) ->
-    keep_state_and_data;
-await_eoe(cast, {validators, Validators, Epoch}, Data) ->
-    Majority = calculate_majority(Validators),
-    lager:info("Majority required ~p", [Majority]),
-    {keep_state, Data#data{validators = Validators, majority=Majority, remaining_validators=maps:from_list(Validators), epoch=Epoch}};
 await_eoe(info, {gproc_ps_event, tx_received, #{info := SignedTx}}, Data) ->
     handle_proposal(SignedTx, Data);
 await_eoe(Type, Msg, D) ->
@@ -495,6 +479,11 @@ calculate_majority(Validators) ->
 
 reset_data(#data{stakers = Stakers, block_time=BlockTime, create_contract_call_fun=CreateContractCallFun}) ->
     #data{stakers = Stakers, block_time=BlockTime, create_contract_call_fun = CreateContractCallFun}.
+
+set_validators(Validators, Data) ->
+    Majority = calculate_majority(Validators),
+    lager:info("Majority required ~p", [Majority]),
+    Data#data{validators = Validators, majority=Majority, remaining_validators=maps:from_list(Validators)}.
 
 get_staker_private_key(Staker, Stakers) ->
     maps:get(Staker, Stakers, undefined).
