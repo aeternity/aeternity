@@ -22,14 +22,14 @@ main contract HCElection =
 
   record vote =
     { producer    : address,
-      hash        : hash,
+      hash        : bytes(),
       epoch_delta : int,
-      signature   : signature
+      signature   : bytes()
     }
 
   record finalize_info =
     { epoch        : int,
-      fork         : hash,
+      fork         : bytes(),
       epoch_length : int,
       pc_hash      : bytes(),
       producer     : address,
@@ -127,7 +127,7 @@ main contract HCElection =
     assert_protocol_call()
     put(state{rewards[height = []] @ rs = (to, Call.value) :: rs})
 
-  stateful entrypoint finalize_epoch(epoch_number : int, fork : hash, epoch_length : int, pc_hash : bytes(), producer : address, votes : list(vote)) =
+  stateful entrypoint finalize_epoch(epoch_number : int, fork : bytes(), epoch_length : int, pc_hash : bytes(), producer : address, votes : list(vote)) =
     let epoch = state.epoch
     let last = state.epochs[epoch].start + state.epochs[epoch].length - 1
     require(Chain.block_height == last, "Only in last block")

@@ -192,7 +192,7 @@ start_ae(StakersEncoded, PinnersEncoded) ->
     {ParentConnMod, SignModule, HCPCMap}.
 
 start_aec_eoe_vote(StakersMap) ->
-    start_dependency(aec_eoe_vote, [StakersMap, child_block_time(), fun(Trees, EncodedCallData, Amount) -> create_call_contract_transaction(?ELECTION_CONTRACT, Trees, EncodedCallData, Amount) end]).
+    start_dependency(aec_eoe_vote, [StakersMap, child_block_time(), fun(OwnerPubkey, Trees, EncodedCallData, Amount) -> create_call_contract_transaction(?ELECTION_CONTRACT, OwnerPubkey, Trees, EncodedCallData, Amount) end]).
 
 validate_keypair(EncodedPubkey, EncodedPrivkey) ->
     {ok, Pubkey} = aeser_api_encoder:safe_decode(account_pubkey,
@@ -333,16 +333,15 @@ state_pre_transform_node(Type, Height, PrevNode, Trees) ->
             step_micro(TxEnv, Trees, Leader)
     end.
 
-create_call_contract_transaction(ContractType, Trees, EncodedCallData, Amount) ->
+create_call_contract_transaction(ContractType, OwnerPubkey, Trees, EncodedCallData, Amount) ->
     ContractPubkey = get_contract_pubkey(ContractType),
-    OwnerPubkey = contract_owner(),
     Contract = aect_state_tree:get_contract(ContractPubkey,
                                             aec_trees:contracts(Trees)),
     OwnerAcc = aec_accounts_trees:get(OwnerPubkey,
                                             aec_trees:accounts(Trees)),
-    Fee = 5000000000000000000, %% TODO: fine tune this
-    Gas = 5000000000000000000, %% TODO: fine tune this
-    GasPrice = 50000000000, %% TODO: fine tune this
+    Fee = 1859800000000, %% TODO: fine tune this
+    Gas = 600000, %% TODO: fine tune this
+    GasPrice = 1000000, %% TODO: fine tune this
 
     {ok, CallData} = aeser_api_encoder:safe_decode(contract_bytearray, EncodedCallData),
     CallSpec = #{ caller_id   => aeser_id:create(account, OwnerPubkey),

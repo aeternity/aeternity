@@ -450,7 +450,7 @@ handle_common_event(_E, _Msg, #data{}) ->
 convert_to_finalize_transaction({ok, CallData}, #data{create_contract_call_fun = CreateContractCallFun, leader=Leader, stakers=Stakers}) ->
     case aec_chain:get_top_state() of
         {ok, Trees} ->
-            {ok, Tx} = CreateContractCallFun(Trees, aeser_api_encoder:encode(contract_bytearray, CallData), 0),
+            {ok, Tx} = CreateContractCallFun(Leader, Trees, aeser_api_encoder:encode(contract_bytearray, CallData), 0),
             Bin0 = aetx:serialize_to_binary(Tx),
             Bin = aec_hash:hash(signed_tx, Bin0),
             BinForNetwork = aec_governance:add_network_id(Bin),
@@ -491,12 +491,13 @@ get_staker_private_key(Staker, Stakers) ->
 create_finalize_call(Votes, #{?HASH_FLD := Hash, ?EPOCH_DELTA_FLD := EpochDelta}, #data{epoch = Epoch, seed=Seed, leader=Leader, length = EpochLength}) ->
     Seed1 = case Seed of
                 undefined ->
-                    <<>>;
+                    <<0>>;
                 _ ->
                     Seed
             end,
     VotesList = maps:fold(fun create_vote_call/3, [], Votes),
-    aeb_fate_abi:create_calldata("finalize_epoch", [Epoch, Hash, EpochLength + EpochDelta, {bytes, Seed1}, {address, Leader}, VotesList]).
+    aeb_fate_abi:create_calldata("finalize_epoch", [Epoch, {bytes, Hash}, EpochLength + EpochDelta, {bytes, Seed1}, {address, Leader}, VotesList]).
 
 create_vote_call(Producer, #{?HASH_FLD := Hash, ?EPOCH_DELTA_FLD := EpochDelta, ?SIGNATURE_FLD := Signature}, Accum) ->
-    [{tuple, {{address, Producer}, Hash, EpochDelta, Signature}}|Accum].
+    [{tuple, {{address, Producer}, {bytes, Hash}, EpochDelta, {bytes, Signature}}}|Accum].
+
