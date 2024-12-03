@@ -55,7 +55,6 @@ payable contract StakingValidator =
 
   stateful entrypoint register_reward_callback(cb_ct : RewardCallbackI) =
     assert_owner_caller()
-    assert_reward_cb_exists(cb_ct)
     put(state{reward_callback = Some(cb_ct)})
 
   entrypoint rewards(epoch : int, amount : int, restaked : bool) =
@@ -64,7 +63,7 @@ payable contract StakingValidator =
       None => ()
       Some(cb_ct) => cb_ct.reward_cb(epoch, amount, restaked)
 
-  entrypoint has_reward_callback_registered() =
+  entrypoint has_reward_callback() =
     switch(state.reward_callback)
         None => false
         Some(cb_ct) => true
@@ -74,6 +73,3 @@ payable contract StakingValidator =
 
   function assert_main_staking_caller() =
     require(Call.caller == state.main_staking_ct.address, "Only main staking contract allowed")
-
-  stateful function assert_reward_cb_exists(cb_ct : RewardCallbackI) =
-    cb_ct.reward_cb(0, 0, true)
