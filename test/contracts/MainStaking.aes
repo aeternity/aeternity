@@ -17,13 +17,15 @@ main contract MainStaking =
   record state =
     { validators          : map(address, validator),
       owners              : map(address, address),
-      validator_min_stake : int
+      validator_min_stake : int,
+      current_epoch       : int
     }
 
   entrypoint init(validator_min_stake : int) =
     { validators = {},
       owners = {},
-      validator_min_stake = validator_min_stake }
+      validator_min_stake = validator_min_stake,
+      current_epoch = 0 }
 
   // Should we user Call.caller instead?
   payable stateful entrypoint new_validator(owner : address, restake : bool) : StakingValidator =
@@ -83,6 +85,7 @@ main contract MainStaking =
   // -- Called from HCElection and/or consensus logic
   // ------------------------------------------------------------------------
   payable stateful entrypoint add_rewards(epoch : int, rewards : list(address * int)) =
+    put(state{current_epoch = epoch + 1})
     let total_rewards = List.foldl((+), 0, List.map(Pair.snd, rewards))
     require(total_rewards == Call.value, "Incorrect total reward given")
     List.foreach(rewards, (r) => add_reward(epoch, r))
@@ -106,6 +109,9 @@ main contract MainStaking =
   entrypoint get_validator_contract(owner : address) : StakingValidator =
     assert_owner(owner)
     Address.to_contract(state.owners[owner])
+
+  entrypoint get_current_epoch() =
+    state.current_epoch
 
   // ------------------------------------------------------------------------
   // --   Internal functions

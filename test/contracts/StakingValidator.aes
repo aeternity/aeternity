@@ -10,6 +10,7 @@ contract interface MainStakingI =
   entrypoint get_available_balance    : () => int
   entrypoint get_total_balance        : () => int
   entrypoint register_reward_callback : (RewardCallbackI) => unit
+  entrypoint get_current_epoch        : () => int
 
 payable contract StakingValidator =
   record state =
@@ -67,6 +68,9 @@ payable contract StakingValidator =
     switch(state.reward_callback)
         None => false
         Some(cb_ct) => true
+
+  entrypoint get_current_epoch() =
+    state.main_staking_ct.get_current_epoch()
 
   function assert_owner_caller() =
     require(Call.caller == state.owner, "Only contract owner allowed")
