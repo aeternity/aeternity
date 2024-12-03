@@ -106,5 +106,5 @@ int_create_block(Height, PrevBlockHash, PrevBlock, Miner, Beneficiary, Trees, Pr
         Protocol,
         Miner,
         Beneficiary,
-        ?HOLE_FLAG
+        <<?HOLE_FLAG:32>>
     ).

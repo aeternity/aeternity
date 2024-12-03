@@ -172,7 +172,7 @@ type(#mic_block{}) -> 'micro'.
     block_header_flags()
 ) -> key_block().
 new_key(Height, PrevHash, PrevKeyHash, RootHash, Target,
-            Nonce, Time, Info, Version, Miner, Beneficiary, Flags) ->
+        Nonce, Time, Info, Version, Miner, Beneficiary, Flags) ->
     H = aec_headers:new_key_header(Height, PrevHash, PrevKeyHash, RootHash,
                                    Miner, Beneficiary, Target,
                                    no_value, Nonce, Time, Info, Version, Flags),

@@ -546,7 +546,11 @@ get_next_beneficiary(Consensus) ->
 
 get_next_beneficiary(Consensus, _TopHeader) ->
     case Consensus:next_beneficiary() of
-        {ok, _L} = OK -> OK;
+        {ok, _L} = OK ->
+            %% OK includes both single leader result and "missing_previous_block" result
+            %% "missing_previous_block" is returned when we must produce, but the chain is too short
+            %% due to missing gossips from other previous would-be leaders
+            OK;
         {error, not_in_cache} = Err ->
             %%timer:sleep(1000), %% TODO: make this configurable
             Err;
@@ -1337,32 +1341,31 @@ handle_key_block_candidate_reply({{error, Reason}, _}, State) ->
 hc_create_block_fun(ConsensusModule, TopHash) ->
     fun() ->
         case get_next_beneficiary(ConsensusModule, TopHash) of
-            {ok, Leader} ->
-                  epoch_mining:debug("Got leader, calling hc_create_block", []),
-                  {hc_create_block(ConsensusModule, TopHash, Leader), TopHash};
-            {error, {missing_previous_block, MissingBlocksCount, Producer}} ->
+            {ok, {missing_previous_block, MissingBlocksCount, Leader}} ->
                   %% We are the leader, but need 1+ hole blocks before we can produce
                   epoch_mining:debug(
                       "Leader, at cutoff time, no previous block in cache: creating ~p hole(s)",
                       [MissingBlocksCount]
                   ),
-                  {hc_create_holes_and_block(ConsensusModule, TopHash, MissingBlocksCount, Producer), TopHash};
+                  %% Hole blocks will be injected into conductor candidate pool and written asynchronously
+                  %% Only create one hole and hope the consensus_hc will be called quick enough to create the keyblock
+                  {hc_create_hole(TopHash, MissingBlocksCount, Leader), TopHash};
+            {ok, Leader} ->
+                epoch_mining:debug("Got leader, calling hc_create_block", []),
+                {hc_create_block(ConsensusModule, TopHash, Leader), TopHash};
             {error, _} = Err ->
                 {Err, TopHash}
         end
     end.
 
-%% For as long as chain length is shorter than currentHeight-1, create holes
-hc_create_holes_and_block(ConsensusModule, TopHash, MissingBlocksCount, Producer) ->
-    lists:foreach(
-        fun(_) -> aec_block_hole_candidate:create(ConsensusModule, TopHash, Producer) end,
-        lists:seq(1, MissingBlocksCount)),
-    hc_create_block(ConsensusModule, TopHash, Producer).
+%% For as long as chain length is shorter than currentHeight-1, create holes. Send holes async to conductor for writing
+hc_create_hole(TopHash, MissingBlocksCount, Producer) when MissingBlocksCount > 0 ->
+    %% Not creating microblock, unlike regular hc_create_block
+    aec_block_hole_candidate:create(TopHash, Producer, Producer).
 
 hc_create_block(ConsensusModule, TopHash0, Producer) ->
     TopHash = hc_create_microblock(ConsensusModule, TopHash0, Producer),
-    Res = aec_block_key_candidate:create(TopHash, Producer, Producer),
-    Res.
+    aec_block_key_candidate:create(TopHash, Producer, Producer).
 
 hc_create_microblock(ConsensusModule, TopHash, Leader) ->
     case aec_block_micro_candidate:create(TopHash) of
