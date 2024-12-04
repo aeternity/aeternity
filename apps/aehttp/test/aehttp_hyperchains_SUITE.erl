@@ -1385,6 +1385,7 @@ privkey({_, Privkey, _}) -> Privkey.
 who_by_pubkey(Pubkey) ->
     Alice = pubkey(?ALICE),
     Bob = pubkey(?BOB),
+    BobSign = pubkey(?BOB_SIGN),
     Lisa = pubkey(?LISA),
     Dwight = pubkey(?DWIGHT),
     Edwin = pubkey(?EDWIN),
@@ -1392,6 +1393,7 @@ who_by_pubkey(Pubkey) ->
     case Pubkey of
         Alice -> ?ALICE;
         Bob -> ?BOB;
+        BobSign -> ?BOB_SIGN;
         Lisa -> ?LISA;
         Dwight -> ?DWIGHT;
         Edwin -> ?EDWIN;
@@ -1606,6 +1608,7 @@ build_json_files(ElectionContract, NodeConfig, CTConfig) ->
         #{  <<"ak_2evAxTKozswMyw9kXkvjJt3MbomCR1nLrf91BduXKdJLrvaaZt">> => 1000000000000000000000000000000000000000000000000,
             encoded_pubkey(?ALICE) => 2100000000000000000000000000,
             encoded_pubkey(?BOB) => 3100000000000000000000000000,
+            encoded_pubkey(?BOB_SIGN) => 3100000000000000000000000000,
             encoded_pubkey(?LISA) => 4100000000000000000000000000
          }),
     ok.

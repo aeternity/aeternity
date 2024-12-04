@@ -363,18 +363,24 @@ get_child_epoch_info(Epoch) ->
 %% -------------------------------------------------------------------
 %% Block rewards
 state_grant_reward(Beneficiary, Node, Delay, Trees, Amount) ->
+    Header = aec_block_insertion:node_header(Node),
+    TxEnv = aetx_env:tx_env_from_key_header(
+              Header, aec_block_insertion:node_hash(Node),
+              aec_block_insertion:node_time(Node), aec_block_insertion:node_prev_hash(Node)),
     Height = aec_block_insertion:node_height(Node) - Delay,
+    add_reward(TxEnv, Trees, Height, Beneficiary, Amount).
+
+add_reward(TxEnv, Trees, Height, Beneficiary, Amount) ->
     {ok, CD} = aeb_fate_abi:create_calldata("add_reward", [aefa_fate_code:encode_arg({integer, Height}),
                                                            aefa_fate_code:encode_arg({address, Beneficiary})]),
     CallData = aeser_api_encoder:encode(contract_bytearray, CD),
     Tag = ["add_reward(value = ", integer_to_list(Amount), ", ", integer_to_list(Height), ", ",
            aeser_api_encoder:encode(account_pubkey, Beneficiary), ")"],
-    case call_consensus_contract(?ELECTION_CONTRACT, Node, Trees, CallData, Tag, Amount) of
+    case call_consensus_contract_(?ELECTION_CONTRACT, TxEnv, Trees, CallData, Tag, Amount) of
         {ok, Trees1, _} -> Trees1;
         {error, What} ->
             error({failed_to_reward_leader, What}) %% maybe a softer approach than crash and burn?
     end.
-
 
 %% -------------------------------------------------------------------
 %% PoGF
@@ -651,13 +657,6 @@ log_consensus_call(TxEnv, FunName, EncodedCallData, Amount) ->
     lager:debug("Height ~p, calling ~s with amount ~p aettos, encoded ~p",
                 [Height, FunName, Amount, EncodedCallData]),
     ok.
-
-call_consensus_contract(Contract, Node, Trees, EncodedCallData, Keyword, Amount) ->
-    Header = aec_block_insertion:node_header(Node),
-    TxEnv = aetx_env:tx_env_from_key_header(
-              Header, aec_block_insertion:node_hash(Node),
-              aec_block_insertion:node_time(Node), aec_block_insertion:node_prev_hash(Node)),
-    call_consensus_contract_(Contract, TxEnv, Trees, EncodedCallData, Keyword, Amount).
 
 call_consensus_contract_result(ContractType, TxEnv, Trees, ContractFun, Args) ->
     {ok, CD} = aeb_fate_abi:create_calldata(ContractFun, Args),
@@ -961,11 +960,8 @@ validate_pin(TxEnv, Trees, CurEpochInfo) ->
 add_pin_reward(Trees, TxEnv, Leader, #{epoch := CurEpoch, last := Last}) ->
     #{cur_pin_reward := Reward} = aec_chain_hc:pin_reward_info({TxEnv, Trees}),
     Event = {pin, {pin_accepted, #{reward => Reward, recipient => Leader, epoch => CurEpoch, height => Last}}},
-    ATrees = aec_trees:accounts(Trees),
-    LeaderAcc = aec_accounts_trees:get(Leader, ATrees),
-    {ok, LeaderAcc1} = aec_accounts:earn(LeaderAcc, Reward),
-    ATrees1 = aec_accounts_trees:enter(LeaderAcc1, ATrees),
-    {aec_trees:set_accounts(Trees, ATrees1), [Event]}.
+    Trees1 = add_reward(TxEnv, Trees, Last, Leader, Reward),
+    {Trees1, [Event]}.
 
 create_contracts([], _TxEnv, Trees) -> Trees;
 create_contracts([Contract | Tail], TxEnv, TreesAccum) ->
