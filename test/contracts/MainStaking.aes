@@ -19,14 +19,17 @@ main contract MainStaking =
     { validators          : map(address, validator),
       owners              : map(address, address),
       sign_keys           : map(address, address),
-      validator_min_stake : int
+      validator_min_stake : int,
+      current_epoch       : int
     }
 
   entrypoint init(validator_min_stake : int) =
     { validators = {},
       owners = {},
       sign_keys = {},
-      validator_min_stake = validator_min_stake }
+      validator_min_stake = validator_min_stake,
+      // The first block is part of epoch 1
+      current_epoch = 1 }
 
   payable stateful entrypoint new_validator(owner : address, sign_key : address, restake : bool) : StakingValidator =
     require(Call.value >= state.validator_min_stake, "A new validator must stake the minimum amount")
@@ -92,6 +95,9 @@ main contract MainStaking =
     let total_rewards = List.foldl((+), 0, List.map(Pair.snd, rewards))
     require(total_rewards == Call.value, "Incorrect total reward given")
     List.foreach(rewards, (r) => add_reward(epoch, r))
+    // At the end of epoch X we distribute rewards for X - 1; thus current_epoch
+    // is (soon) X + 1. I.e. X - 1 + 2.
+    put(state{current_epoch = epoch + 2})
 
   entrypoint sorted_validators() : list(address * int) =
     let vs = [ (sk, s) | (_, {sign_key = sk, current_stake = s}) <- Map.to_list(state.validators),
@@ -112,6 +118,9 @@ main contract MainStaking =
   entrypoint get_validator_contract(owner : address) : StakingValidator =
     assert_owner(owner)
     Address.to_contract(state.owners[owner])
+
+  entrypoint get_current_epoch() =
+    state.current_epoch
 
   // ------------------------------------------------------------------------
   // --   Internal functions

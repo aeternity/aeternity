@@ -777,6 +777,10 @@ verify_rewards(Config) ->
     ?assertEqual(BobTot0 + maps:get(pubkey(?BOB_SIGN), Rewards, 0), BobTot1),
     ?assertEqual(LisaTot0 + maps:get(pubkey(?LISA), Rewards, 0), LisaTot1),
 
+    %% Check that MainStaking knows the right epoch.
+    {ok, #{epoch := Epoch}} = rpc(Node, aec_chain_hc, epoch_info, []),
+    {ok, Epoch} = inspect_staking_contract(?ALICE, get_current_epoch, Config),
+
     ok.
 
 calc_rewards(Blocks) ->
@@ -1468,6 +1472,8 @@ inspect_staking_contract(OriginWho, WhatToInspect, Config, TopHash) ->
                 {"get_validator_state", [binary_to_list(encoded_pubkey(Who))]};
             {get_validator_contract, Who} ->
                 {"get_validator_contract", [binary_to_list(encoded_pubkey(Who))]};
+            get_current_epoch ->
+                {"get_current_epoch", []};
             get_state ->
                 {"get_state", []};
             leaders ->
