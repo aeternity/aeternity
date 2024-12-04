@@ -70,6 +70,13 @@ main contract MainStaking =
     withdraw_(Call.caller, amount)
     Chain.spend(Call.caller, amount)
 
+  stateful entrypoint set_restake(restake : bool) =
+    assert_validator(Call.caller)
+    put(state{validators[Call.caller] @ v = v{restake = restake}})
+
+  entrypoint get_restake() : bool =
+    state.validators[Call.caller].restake
+
   entrypoint get_staked_amount(epoch : int) =
     get_staked_amount_(Call.caller, epoch)
 
@@ -149,7 +156,8 @@ main contract MainStaking =
     validator_ct.rewards(epoch, amount, restake)
 
   stateful function lock_stake_(v_addr : address, validator : validator, epoch : int) : unit =
-    put(state{validators[v_addr] = validator{staked @ s = s{[epoch] = validator.current_stake}}})
+    if(validator.current_stake >= state.validator_min_stake)
+      put(state{validators[v_addr] = validator{staked @ s = s{[epoch] = validator.current_stake}}})
 
   stateful function unlock_stake_(v_addr : address, validator : validator, epoch : int) : unit =
     put(state{validators[v_addr] = validator{staked @ s = Map.delete(epoch, s)}})

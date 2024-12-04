@@ -1,3 +1,5 @@
+include "Option.aes"
+
 contract interface RewardCallbackI =
   entrypoint reward_cb : (int, int, bool) => unit
 
@@ -6,9 +8,12 @@ contract interface MainStakingI =
   payable entrypoint stake            : () => unit
   entrypoint adjust_stake             : (int) => unit
   entrypoint withdraw                 : (int) => unit
+  entrypoint set_restake              : (bool) => unit
+  entrypoint get_restake              : () => bool
   entrypoint get_staked_amount        : (int) => int
   entrypoint get_available_balance    : () => int
   entrypoint get_total_balance        : () => int
+  entrypoint get_current_epoch        : () => int
   entrypoint register_reward_callback : (RewardCallbackI) => unit
 
 payable contract StakingValidator =
@@ -44,6 +49,13 @@ payable contract StakingValidator =
     state.main_staking_ct.withdraw(amount)
     Chain.spend(Call.caller, amount)
 
+  entrypoint set_restake(restake : bool) =
+    assert_owner_caller()
+    state.main_staking_ct.set_restake(restake)
+
+  entrypoint get_restake() : bool =
+    state.main_staking_ct.get_restake()
+
   entrypoint get_staked_amount(epoch : int) =
     state.main_staking_ct.get_staked_amount(epoch)
 
@@ -63,6 +75,12 @@ payable contract StakingValidator =
       None => None
       Some(cb_ct) => cb_ct.reward_cb(protected = true, gas = 20000, epoch, amount, restaked)
     ()
+
+  entrypoint has_reward_callback() =
+    Option.is_some(state.reward_callback)
+
+  entrypoint get_current_epoch() =
+    state.main_staking_ct.get_current_epoch()
 
   function assert_owner_caller() =
     require(Call.caller == state.owner, "Only contract owner allowed")
