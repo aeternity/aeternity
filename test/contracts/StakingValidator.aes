@@ -19,10 +19,10 @@ payable contract StakingValidator =
       reward_callback : option(RewardCallbackI)
     }
 
-  entrypoint init(main_staking_ct : MainStakingI, owner : address) =
+  entrypoint init(main_staking_ct : MainStakingI, owner : address, signing_key : address) =
     { main_staking_ct = main_staking_ct,
       owner           = owner,
-      signing_key     = owner,
+      signing_key     = signing_key,
       reward_callback = None }
 
   payable stateful entrypoint deposit() =

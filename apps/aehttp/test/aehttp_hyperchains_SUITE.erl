@@ -102,6 +102,18 @@
     "Bob"}).
 %% ak_nQpnNuBPQwibGpSJmjAah6r3ktAB7pG9JHuaGWHgLKxaKqEvC
 
+-define(BOB_SIGN, {
+    <<211,171,126,224,112,125,255,130,213,51,158,2,198,188,30,
+      130,227,205,11,191,122,121,237,227,129,67,65,170,117,35,
+      131,190>>,
+    <<245,228,166,6,138,54,196,135,180,68,180,161,153,228,97,
+      127,100,77,122,20,169,108,224,29,51,209,182,55,106,223,
+      24,219,211,171,126,224,112,125,255,130,213,51,158,2,
+      198,188,30,130,227,205,11,191,122,121,237,227,129,67,
+      65,170,117,35,131,190>>,
+    "Bob"}).
+%% ak_2cDpmgCXN4nTu2hYsa5KEVTgPJo2cu2SreCDPhjh6VuXH37Z7Y
+
 -define(LISA, {
     <<200,171,93,11,3,93,177,65,197,27,123,127,177,165,
       190,211,20,112,79,108,85,78,88,181,26,207,191,211,
@@ -286,7 +298,7 @@ end_per_group(_Group, Config) ->
 init_per_testcase(start_two_child_nodes, Config) ->
     Config1 =
         [{nodes, [{?NODE1, ?NODE1_NAME, [?ALICE, ?LISA], [{?ALICE, ?DWIGHT}, {?LISA, ?EDWIN}]},
-                  {?NODE2, ?NODE2_NAME, [?BOB], [{?BOB, ?EDWIN}]}
+                  {?NODE2, ?NODE2_NAME, [?BOB_SIGN], [{?BOB_SIGN, ?EDWIN}]}
                  ]}
          | Config],
     aect_test_utils:setup_testcase(Config1),
@@ -759,10 +771,10 @@ verify_rewards(Config) ->
     Rewards = calc_rewards(BlocksInGen),
 
     ct:log("Alice ~p -> ~p expected reward ~p", [AliceTot0, AliceTot1, maps:get(pubkey(?ALICE), Rewards)]),
-    ct:log("Bob ~p -> ~p expected reward ~p", [BobTot0, BobTot1, maps:get(pubkey(?BOB), Rewards)]),
+    ct:log("Bob ~p -> ~p expected reward ~p", [BobTot0, BobTot1, maps:get(pubkey(?BOB_SIGN), Rewards)]),
     ct:log("Lisa ~p -> ~p expected reward ~p", [LisaTot0, LisaTot1, maps:get(pubkey(?LISA), Rewards)]),
     ?assertEqual(AliceTot0 + maps:get(pubkey(?ALICE), Rewards, 0), AliceTot1),
-    ?assertEqual(BobTot0 + maps:get(pubkey(?BOB), Rewards, 0), BobTot1),
+    ?assertEqual(BobTot0 + maps:get(pubkey(?BOB_SIGN), Rewards, 0), BobTot1),
     ?assertEqual(LisaTot0 + maps:get(pubkey(?LISA), Rewards, 0), LisaTot1),
 
     ok.
@@ -1539,10 +1551,6 @@ build_json_files(ElectionContract, NodeConfig, CTConfig) ->
     Pubkey = ?OWNER_PUBKEY,
     {_PatronPriv, PatronPub} = aecore_suite_utils:sign_keys(?NODE1),
     ct:log("Patron is ~p", [aeser_api_encoder:encode(account_pubkey, PatronPub)]),
-    EncodePub =
-        fun(P) ->
-            binary_to_list(aeser_api_encoder:encode(account_pubkey, P))
-        end,
 
     %% create staking contract
     MinStakeAmt = integer_to_list(trunc(math:pow(10,18) * 1)), %% 1 AE
@@ -1566,14 +1574,20 @@ build_json_files(ElectionContract, NodeConfig, CTConfig) ->
     ElectionAddress = election_contract_address(),
     {ok, SCId} = aeser_api_encoder:safe_decode(contract_pubkey, StakingContractPubkey),
 
+    APub = binary_to_list(aeser_api_encoder:encode(account_pubkey, pubkey(?ALICE))),
     Call1 =
-        contract_call_spec(SCId, MSSrc, "new_validator", [EncodePub(pubkey(?ALICE)), "true"],
+        contract_call_spec(SCId, MSSrc, "new_validator", [APub, APub, "true"],
                            ?INITIAL_STAKE, pubkey(?ALICE), 1),
+
+    BPub = binary_to_list(aeser_api_encoder:encode(account_pubkey, pubkey(?BOB))),
+    BPubSign = binary_to_list(aeser_api_encoder:encode(account_pubkey, pubkey(?BOB_SIGN))),
     Call2 =
-        contract_call_spec(SCId, MSSrc, "new_validator", [EncodePub(pubkey(?BOB)), "true"],
+        contract_call_spec(SCId, MSSrc, "new_validator", [BPub, BPubSign, "true"],
                            ?INITIAL_STAKE, pubkey(?BOB), 1),
+
+    LPub = binary_to_list(aeser_api_encoder:encode(account_pubkey, pubkey(?LISA))),
     Call3 =
-        contract_call_spec(SCId, MSSrc, "new_validator", [EncodePub(pubkey(?LISA)), "true"],
+        contract_call_spec(SCId, MSSrc, "new_validator", [LPub, LPub, "true"],
                            ?INITIAL_STAKE, pubkey(?LISA), 1),
 
     AllCalls =  [Call1, Call2, Call3],

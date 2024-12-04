@@ -8,6 +8,7 @@ contract interface StakingValidatorI =
 main contract MainStaking =
   record validator =
     { owner         : address,
+      sign_key      : address,
       total_balance : int,
       current_stake : int,
       staked        : map(int, int),
@@ -17,22 +18,27 @@ main contract MainStaking =
   record state =
     { validators          : map(address, validator),
       owners              : map(address, address),
+      sign_keys           : map(address, address),
       validator_min_stake : int
     }
 
   entrypoint init(validator_min_stake : int) =
     { validators = {},
       owners = {},
+      sign_keys = {},
       validator_min_stake = validator_min_stake }
 
-  // Should we user Call.caller instead?
-  payable stateful entrypoint new_validator(owner : address, restake : bool) : StakingValidator =
+  payable stateful entrypoint new_validator(owner : address, sign_key : address, restake : bool) : StakingValidator =
     require(Call.value >= state.validator_min_stake, "A new validator must stake the minimum amount")
     require(!Map.member(owner, state.owners), "Owner must be unique")
-    let validator_ct = Chain.create(Address.to_contract(Contract.address), owner) : StakingValidator
+    require(!Map.member(sign_key, state.sign_keys), "Sign key must be unique")
+    let validator_ct = Chain.create(Address.to_contract(Contract.address), owner, sign_key) : StakingValidator
     let v_addr = validator_ct.address
-    put(state{validators[v_addr] = {owner = owner, total_balance = 0, current_stake = 0, staked = {}, restake = restake},
-              owners[owner] = v_addr})
+    put(state{validators[v_addr] = {owner = owner, sign_key = sign_key,
+                                    total_balance = 0, current_stake = 0,
+                                    staked = {}, restake = restake},
+              owners[owner] = v_addr,
+              sign_keys[sign_key] = v_addr})
     stake_(v_addr, Call.value)
     validator_ct
 
@@ -88,8 +94,8 @@ main contract MainStaking =
     List.foreach(rewards, (r) => add_reward(epoch, r))
 
   entrypoint sorted_validators() : list(address * int) =
-    let vs = [ (o, s) | (_, {owner = o, current_stake = s}) <- Map.to_list(state.validators),
-                        if(s >= state.validator_min_stake) ]
+    let vs = [ (sk, s) | (_, {sign_key = sk, current_stake = s}) <- Map.to_list(state.validators),
+                         if(s >= state.validator_min_stake) ]
 
     List.sort(cmp_validator, vs)
 
@@ -117,9 +123,9 @@ main contract MainStaking =
     assert_owner(owner)
     state.validators[state.owners[owner]]
 
-  stateful function add_reward(epoch : int, (owner, amount) : address * int) =
-    assert_owner(owner)
-    let validator = state.owners[owner]
+  stateful function add_reward(epoch : int, (sign_key, amount) : address * int) =
+    assert_signer(sign_key)
+    let validator = state.sign_keys[sign_key]
     let restake = state.validators[validator].restake
     if(restake)
       stake_(validator, amount)
@@ -170,3 +176,6 @@ main contract MainStaking =
 
   function assert_owner(o : address) =
     require(Map.member(o, state.owners), "Not a registered validator owner")
+
+  function assert_signer(s : address) =
+    require(Map.member(s, state.sign_keys), "Not a registered sign key")

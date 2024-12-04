@@ -464,6 +464,7 @@ new_validator_(Pubkey, Amount, TxEnv, Trees0) ->
 new_validator_(Pubkey, Amount, ReStake, TxEnv, Trees0) ->
     ContractPubkey = staking_contract_address(),
     Args = [aefa_fate_code:encode_arg({address, Pubkey}),
+            aefa_fate_code:encode_arg({address, Pubkey}),
             aefa_fate_code:encode_arg(ReStake)],
     {ok, CallData} = aeb_fate_abi:create_calldata("new_validator", Args),
     call_contract(ContractPubkey, Pubkey, CallData, Amount, TxEnv, Trees0).
