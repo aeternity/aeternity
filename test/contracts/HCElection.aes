@@ -3,6 +3,7 @@ include "Pair.aes"
 
 contract interface MainStaking =
   entrypoint sorted_validators : () => list((address * int))
+  entrypoint lock_stake  : (int) => list((address * int))
   entrypoint add_rewards : (int, list(address * int)) => unit
 
 main contract HCElection =
@@ -42,10 +43,10 @@ main contract HCElection =
     assert_protocol_call()
     require(Chain.block_height == 0, "Only in genesis")
     put(state{ epochs = { [0] = mk_epoch_info(0, 1, None, None),
-                          [1] = mk_epoch_info(1, epoch_length, None, Some(state.main_staking_ct.sorted_validators())),
-                          [2] = mk_epoch_info(epoch_length + 1, epoch_length, None, Some(state.main_staking_ct.sorted_validators())),
-                          [3] = mk_epoch_info(2 * epoch_length + 1, epoch_length, None, Some(state.main_staking_ct.sorted_validators())),
-                          [4] = mk_epoch_info(3 * epoch_length + 1, epoch_length, None, Some(state.main_staking_ct.sorted_validators()))
+                          [1] = mk_epoch_info(1, epoch_length, None, Some(state.main_staking_ct.lock_stake(1))),
+                          [2] = mk_epoch_info(epoch_length + 1, epoch_length, None, Some(state.main_staking_ct.lock_stake(2))),
+                          [3] = mk_epoch_info(2 * epoch_length + 1, epoch_length, None, Some(state.main_staking_ct.lock_stake(3))),
+                          [4] = mk_epoch_info(3 * epoch_length + 1, epoch_length, None, Some(state.main_staking_ct.lock_stake(4)))
                         },
                epoch  = 1,
                pin_reward.base = base_pin_reward
@@ -88,7 +89,7 @@ main contract HCElection =
                        [epoch + 2] = state.epochs[epoch + 2]{ seed = Some(seed) },
                        [epoch + 3] = ei_adjust,
                        [epoch + 4] = mk_epoch_info(ei_adjust.start + ei_adjust.length, ei_adjust.length, None,
-                                                   Some(state.main_staking_ct.sorted_validators()))
+                                                   Some(state.main_staking_ct.lock_stake(epoch + 4)))
                      }
 
     put(state{ leader = leader,

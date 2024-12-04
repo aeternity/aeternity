@@ -563,9 +563,8 @@ simple_withdraw(Config) ->
     [{_Node, NodeName, _, _} | _] = ?config(nodes, Config),
     NetworkId = ?config(network_id, Config),
 
-    produce_cc_blocks(Config, 3), %% Make sure there are no lingering TxFees in the reward
-    _AliceBin = encoded_pubkey(?ALICE),
-    {ok, []} = rpc:call(NodeName, aec_tx_pool, peek, [infinity]),
+    %% Not at the start of the epoch
+    produce_cc_blocks(Config, 2),
 
     %% grab Alice's and Bob's staking validator contract
     {ok, AliceCtEnc} = inspect_staking_contract(?ALICE, {get_validator_contract, ?ALICE}, Config),
@@ -589,9 +588,15 @@ simple_withdraw(Config) ->
     {ok, CallRes1} = call_info(CallTx1),
     {ok, _Res1} = decode_consensus_result(CallRes1, "adjust_stake", ValidatorStub),
 
-    {ok, WithdrawAmount} = inspect_validator(AliceCt, ?ALICE, get_available_balance, Config),
+    %% Ok, should still be 0
+    produce_cc_blocks(Config, 1),
+    {ok, 0} = inspect_validator(AliceCt, ?ALICE, get_available_balance, Config),
+
+    %% Let's advance 5 epochs...
+    produce_n_epochs(Config, 5),
 
     %% Now test the withdrawal
+    {ok, WithdrawAmount} = inspect_validator(AliceCt, ?ALICE, get_available_balance, Config),
 
     {ok, AliceStake} = inspect_validator(AliceCt, ?ALICE, get_total_balance, Config),
     {ok, BobStake} = inspect_validator(BobCt, ?BOB, get_total_balance, Config),

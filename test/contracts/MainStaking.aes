@@ -78,9 +78,7 @@ main contract MainStaking =
 
   entrypoint get_available_balance_(validator : address) : int =
     let v = state.validators[validator]
-    // TODO: this is what it should be once locking is going
-    // v.total_balance - locked_stake(v)
-    v.total_balance - v.current_stake
+    v.total_balance - locked_stake(v)
 
   entrypoint get_total_balance() =
     get_total_balance_(Call.caller)
@@ -96,9 +94,15 @@ main contract MainStaking =
     let total_rewards = List.foldl((+), 0, List.map(Pair.snd, rewards))
     require(total_rewards == Call.value, "Incorrect total reward given")
     List.foreach(rewards, (r) => add_reward(epoch, r))
+    [ unlock_stake_(v_addr, validator, epoch) | (v_addr, validator) <- Map.to_list(state.validators) ]
     // At the end of epoch X we distribute rewards for X - 1; thus current_epoch
     // is (soon) X + 1. I.e. X - 1 + 2.
     put(state{current_epoch = epoch + 2})
+
+  stateful entrypoint lock_stake(epoch : int) : list(address * int) =
+    assert_protocol_call()
+    [ lock_stake_(v_addr, validator, epoch) | (v_addr, validator) <- Map.to_list(state.validators) ]
+    sorted_validators()
 
   entrypoint sorted_validators() : list(address * int) =
     let vs = [ (sk, s) | (_, {sign_key = sk, current_stake = s}) <- Map.to_list(state.validators),
@@ -143,6 +147,12 @@ main contract MainStaking =
       deposit_(validator, amount)
     let validator_ct = Address.to_contract(validator) : StakingValidator
     validator_ct.rewards(epoch, amount, restake)
+
+  stateful function lock_stake_(v_addr : address, validator : validator, epoch : int) : unit =
+    put(state{validators[v_addr] = validator{staked @ s = s{[epoch] = validator.current_stake}}})
+
+  stateful function unlock_stake_(v_addr : address, validator : validator, epoch : int) : unit =
+    put(state{validators[v_addr] = validator{staked @ s = Map.delete(epoch, s)}})
 
   stateful function deposit_(validator : address, amount : int) =
     put(state{validators[validator] @ v = deposit_v(v, amount)})
