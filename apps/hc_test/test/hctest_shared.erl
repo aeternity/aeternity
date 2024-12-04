@@ -1254,7 +1254,7 @@ produce_cc_blocks(Config, #{count := BlocksCnt} = Options, ParentProduce) ->
     top => pos_integer(),
     goal => pos_integer(),
     parent_produce => parent_produce(),
-    skip_list => [node()]
+    skip_nodes => [node()]
 }.
 -spec produce_to_cc_height(Config :: proplists:proplist(), Options :: produce_to_cc_height()) ->
     any().
@@ -1427,7 +1427,8 @@ get_nodes_and_nodenames(Config, SkipNodes) ->
     NN = [
         {Node, NodeName}
      || {Node, NodeName, _} <- proplists:get_value(nodes, Config, []),
-        not lists:member(Node, SkipNodes)
+        not lists:member(Node, SkipNodes),
+        not lists:member(NodeName, SkipNodes)
     ],
     lists:unzip(NN).
 

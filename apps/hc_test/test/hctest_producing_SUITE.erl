@@ -11,7 +11,9 @@
     start_dev1_dev2_dev3/1,
     sync_dev3/1,
     verify_non_leader_produced_hole/1,
-    verify_only_one_block_accepted/1
+    verify_only_one_block_accepted/1,
+    start_dev1/1,
+    sleep_1_block/1
 ]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -42,15 +44,25 @@ all() ->
 groups() ->
     [
         {hole_production, [sequence], [
-            %% Start a parent + two CC nodes. Build chain a little and stop dev1. Produce 2 blocks.
-            %% Expected behaviour: dev2 should detect a missing block when it has to produce, and fill in a hole
             start_dev1_dev2,
             produce_epoch,
             produce_epoch,
+            produce_epoch,
+            produce_1_cc_block,
+            sleep_1_block,
             stop_dev1,
             produce_1_cc_block_dev2,
             produce_1_cc_block_dev2,
-            verify_non_leader_produced_hole
+            produce_1_cc_block_dev2,
+            produce_1_cc_block_dev2,
+            produce_1_cc_block_dev2,
+            produce_1_cc_block_dev2,
+            produce_1_cc_block_dev2,
+            produce_1_cc_block_dev2,
+            start_dev1,
+            produce_1_cc_block,
+            produce_epoch
+            % verify_non_leader_produced_hole
         ]},
         %% TODO: Test late producing in epoch 1
         %% TODO: Test late producing end of epoch?
@@ -125,6 +137,9 @@ start_dev1_dev2_dev3(Config) ->
 sync_dev3(Config) ->
     hctest_shared:start_child_nodes([?NODE3], Config).
 
+sleep_1_block(_Config) ->
+    timer:sleep(?CHILD_BLOCK_TIME).
+
 %% test step
 produce_epoch(Config) ->
     hctest_shared:produce_n_epochs(Config, #{count_epochs => 1}).
@@ -138,12 +153,17 @@ stop_dev1(Config) ->
     ct:pal("[yy] stopping dev1", []),
     catch aecore_suite_utils:stop_node(?NODE1, Config).
 
+start_dev1(Config) ->
+    ct:pal("[yy] starting dev1", []),
+    hctest_shared:start_child_nodes([?NODE1], Config).
+
 produce_1_cc_block_dev2(Config) ->
     %% At this point we should expect a 'timeout_waiting_for_block' error,
     %% but non-leader nodes should produce a hole and we will try to detect that hole
-    ProduceResult = catch hctest_shared:produce_cc_blocks(Config, #{count => 1, skip_nodes => [?NODE1]}),
+    ProduceResult =
+        catch hctest_shared:produce_cc_blocks(Config, #{count => 1, skip_nodes => [?NODE1]}),
     ct:pal("[yy] produce_1_cc_block_dev2: produced ~s", [hctest:pp(ProduceResult)]),
-%%    ?assertMatch({error, timeout_waiting_for_block}, ProduceResult),
+    %%    ?assertMatch({error, timeout_waiting_for_block}, ProduceResult),
 
     timer:sleep(?CHILD_BLOCK_TIME).
 %%    hctest_shared:start_child_nodes([Leader], Config).

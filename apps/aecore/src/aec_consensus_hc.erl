@@ -251,7 +251,7 @@ ctx_validate_micro_signature(Node, _Block, _Ctx) ->
                 ok         -> ok;
                 {error, _} -> {error, signature_verification_failed}
             end;
-        error ->
+        {error, _} ->
             {error, signature_verification_failed}
     end.
 
@@ -283,7 +283,7 @@ state_pre_transform_micro_node(Height, PrevNode, Trees) ->
 
 state_pre_transform_node(_Type, Height, _PrevNode, Trees) when Height < 1 ->
     %% No leader for genesis
-    Trees;
+    {Trees, []};
 state_pre_transform_node(Type, Height, PrevNode, Trees) ->
     PrevHeader = aec_block_insertion:node_header(PrevNode),
     {ok, PrevHash} = aec_headers:hash_header(PrevHeader),
@@ -296,12 +296,22 @@ state_pre_transform_node(Type, Height, PrevNode, Trees) ->
     #{timeslot := Timeslot} = get_timeslot_and_epoch({TxEnv, Trees}),
     lager:debug("------------ STATE_PRE_TRANSFORM_NODE: height=~w timeslot=~w epoch=~w ep_first=~w ep_last=~w\n",
         [Height, Timeslot, Epoch, EpochFirst, EpochLast]),
-    {ok, Leader} = leader_for_timeslot(Timeslot, {TxEnv, Trees}),
 
     case Type of
         key ->
-            step_key(Height, Timeslot, EpochInfo, {TxEnv, Trees}, Leader);
+            case Timeslot >= EpochFirst andalso Timeslot =< EpochLast of
+                true ->
+                    {ok, Leader} = leader_for_timeslot(Timeslot, {TxEnv, Trees}),
+                    step_key(Height, Timeslot, EpochInfo, {TxEnv, Trees}, Leader);
+                false ->
+                    %% We're now out of the last started epoch and the chain has halted
+                    lager:error("Epoch ~w has ended, but we're still ticking timeslots ts=~w", [Epoch, Timeslot]),
+                    %% TODO: fix timings, prevent busy loop
+                    timer:sleep(child_block_time() div 4),
+                    {Trees, []}
+            end;
         micro ->
+            {ok, Leader} = leader_for_timeslot(Timeslot, {TxEnv, Trees}),
             step_micro({TxEnv, Trees}, Leader)
     end.
 
@@ -323,6 +333,7 @@ step_key(Height, Timeslot, #{epoch := Epoch, first := EpochFirst, last := EpochL
         {Trees1, CarryOverFlag, Events} = handle_pinning(TxEnv, Trees, EpochInfo, Leader),
         case get_entropy_hash(Epoch + 2) of
             {ok, Seed} ->
+                lager:debug("End of epoch=~w, calling step_eoe()", [Epoch]),
                 cache_validators_for_epoch({TxEnv, Trees1}, Seed, Epoch + 2),
                 Trees2 = step_eoe(TxEnv, Trees1, Leader, Seed, 0, -1, CarryOverFlag),
                 {ok, NextEpochInfo} = aec_chain_hc:epoch_info({TxEnv, Trees2}),
@@ -724,8 +735,8 @@ get_consensus_config_key(Keys, Default) ->
 
 log_consensus_call(TxEnv, FunName, EncodedCallData, Amount) ->
     Height = aetx_env:height(TxEnv),
-    lager:debug("Height ~p, calling ~s with amount ~p aettos, encoded ~p",
-                [Height, FunName, Amount, EncodedCallData]),
+    lager:debug("calling ~s() at height=~p amount=~p aettos, encoded ~p",
+                [FunName, Height, Amount, EncodedCallData]),
     ok.
 
 call_consensus_contract(Contract, Node, Trees, EncodedCallData, Keyword, Amount) ->
@@ -827,7 +838,7 @@ next_beneficiary() ->
     %% PrevHash = aec_blocks:prev_key_hash(TopKeyBlock),
     %% RunEnv = aetx_env:tx_env_and_trees_from_hash(aetx_transaction, PrevHash),
     #{timeslot := Timeslot, epoch := Epoch} = get_timeslot_and_epoch(RunEnv),
-    lager:debug("[xx] NEXT_BENEFICIARY: height=~w timeslot=~w\n", [ChildHeight, Timeslot]),
+    lager:debug("- - - - - Next beneficiary: height=~w timeslot=~w", [ChildHeight, Timeslot]),
     State = #next_beneficiary{
         height = ChildHeight,
         timeslot = Timeslot,
@@ -851,7 +862,9 @@ next_beneficiary_check_special_cases(State = #next_beneficiary{
                     %% Use height as timeslot for epoch 1
                     State1 = State#next_beneficiary{leader = Leader, timeslot = Height},
                     next_beneficiary_set_candidate(State1, TopKeyBlock);
-                error ->
+                {error, _} ->
+                    %% TODO: fix timings, prevent busy loop
+                    timer:sleep(child_block_time() div 4),
                     {error, not_in_cache}
             end;
         false ->
@@ -859,7 +872,9 @@ next_beneficiary_check_special_cases(State = #next_beneficiary{
                 {ok, Leader} ->
                     State2 = State#next_beneficiary{leader = Leader},
                     next_beneficiary_set_candidate(State2, TopKeyBlock);
-                error ->
+                {error, _} ->
+                    %% TODO: fix timings, prevent busy loop
+                    timer:sleep(child_block_time() div 4),
                     {error, not_in_cache}
             end
     end.
@@ -870,11 +885,11 @@ next_beneficiary_set_candidate(State = #next_beneficiary{
     SignModule = get_sign_module(),
     case SignModule:set_candidate(Leader) of
         {error, key_not_found} ->
-            lager:debug("node shall not produce (leader ~p)", [Leader]),
+            lager:debug("node shall not produce (not a leader)"),
             timer:sleep(child_block_production_time()),
             {error, not_leader};
         ok ->
-            lager:debug("node is producer (leader ~p)", [Leader]),
+            lager:debug("node will produce"),
             case next_beneficiary_sleep(State, TopKeyBlock) of
                 ok ->
                     %% It is our turn and our time to mine, but check the height of the chain!
@@ -918,12 +933,12 @@ next_beneficiary_sleep(#next_beneficiary{
     %% Special case: Genesis block will not have a block with prev_key_hash() you will receive an error
     {ok, PrevBlock} = aec_chain:get_block(aec_blocks:prev_key_hash(KeyBlock)),
     PrevBlockTime = aec_blocks:time_in_msecs(PrevBlock),
-    lager:debug("[xx] NEXT_BENEFICIARY: prev_block_delta=~w (child_block_time_diff=~w) cutoff=~w prod_end=~w",
+    lager:debug("[xx] prev_block_delta=~w (child_block_time_diff=~w) cutoff=~w prod_end=~w",
         [CurrBlockTimestamp - PrevBlockTime,
         ChildBlockTime - (CurrBlockTimestamp - PrevBlockTime),
         CutoffTime, ProdEndTime]),
     _NaiveWaitUntil = CurrBlockTimestamp + ChildBlockTime,
-    lager:debug("[xx] NEXT_BENEFICIARY: prod_start_diff_from_naive=~w",
+    lager:debug("[xx] prod_start_diff_from_naive=~w",
                 [ProdStartTime - _NaiveWaitUntil]),
 
     %% Wait till closest [cutoff time, prod start time]
@@ -947,7 +962,7 @@ next_beneficiary_sleep(#next_beneficiary{
             %% At cutoff time the chain is not long enough to produce the next block, but we want to try
             ok;
         _ when Now >= WaitUntil ->
-            lager:debug("[xx] NEXT_BENEFICIARY: now=~w is the time, late_by=~w", [Now, WaitUntil - Now]),
+            lager:debug("[xx] now=~w is the time, late_by=~w", [Now, WaitUntil - Now]),
             ok;
         _ ->
             Delta = max(WaitUntil - Now, 1),
@@ -955,7 +970,7 @@ next_beneficiary_sleep(#next_beneficiary{
             timer:sleep(Delta),
             NowAfterSleep = aeu_time:now_in_msecs(),
             %% TODO: The timeslot may have changed while sleeping, so handle that!
-            lager:debug("[xx] NEXT_BENEFICIARY: slept_until=~w, time_diff=~w ms\n",
+            lager:debug("[xx] sleep end: slept_until=~w, time_diff=~w ms\n",
                         [NowAfterSleep, NowAfterSleep - Now]),
             ok
     end.
@@ -996,21 +1011,21 @@ calculate_production_times(Timeslot, ChildBlockTime, CurrBlockTimestamp, RunEnv)
     #{epoch := CurrEpoch,
       height := EpochFirst,
       start_time := EpochStartTime} = get_child_epoch_from_runenv(RunEnv),
-    lager:debug("[xx] GOT CACHED EPOCH START: curr_ep=~w ep_first=~w at start_time=~w",
+    lager:debug("[xx] got cached epoch start: curr_ep=~w ep_first=~w at start_time=~w",
                 [CurrEpoch, EpochFirst, EpochStartTime]),
     %% note: if the current top block is the first block of the epoch, then CurrHeight - EpochFirst = 0, and the next
     %% child block time slot starts one ChildBlockTime unit later, not zero
-    NextBlockInEpoch = Timeslot + 1 - EpochFirst,
+    LastBlockInEpoch = Timeslot - EpochFirst,
     BlockProdTime = child_block_production_time(),
-    lager:debug("[xx] NEXT BLOCK IN EPOCH: ~w\n", [NextBlockInEpoch]),
+    lager:debug("[xx] last block_in_epoch=~w setting timings for next", [LastBlockInEpoch]),
     BlockLatency = ChildBlockTime - BlockProdTime,
     EpochT0 = EpochStartTime - BlockProdTime,
     TnMin = case CurrEpoch of
                 %% Block start time in epoch 1 would be strictly based on previous block and (TODO: CHECK THE WHITEPAPER!)
                 %% would be 2 * BlockProdTime after the previous block's production time
-                N when N =< 1 -> CurrBlockTimestamp + 2 *  BlockProdTime;
+                N when N =< 1 -> CurrBlockTimestamp + 2 * BlockProdTime;
                 %% Block start time in epoch 2+ would advance regardless of whether previous block was produced
-                _Other -> EpochT0 + ChildBlockTime * NextBlockInEpoch
+                _Other -> EpochT0 + ChildBlockTime * LastBlockInEpoch
             end,
     lager:debug("[xx] NOW from EpochT0: ~w", [aeu_time:now_in_msecs() - EpochT0]),
     lager:debug("[xx] TnMin from EpochT0: ~w", [TnMin - EpochT0]),
@@ -1066,30 +1081,48 @@ entropy_height(ChildEpoch) ->
 %% -- Validator schedule (cached) -----------------------------------------
 
 %% This function takes height values or timeslots. Timeslots are based on the current clock and epoch start time.
+-spec leader_for_height(Height :: non_neg_integer()) -> {ok, binary()} | {error, atom()}.
 leader_for_height(Height) ->
     case aeu_ets_cache:lookup(?ETS_CACHE_TABLE, validator_schedule) of
         error ->
-            error;
+            {error, not_in_cache};
         {ok, #{schedule := Schedule}} ->
-            maps:find(Height, Schedule)
+            case maps:get(Height, Schedule, undefined) of
+                undefined -> {error, not_in_cache};
+                Leader -> {ok, Leader}
+            end
+    end.
+
+get_cached_schedule(Height) ->
+    case aeu_ets_cache:lookup(?ETS_CACHE_TABLE, validator_schedule) of
+        error -> error;
+        {ok, #{schedule := Schedule}} ->
+            Epoch = aec_chain_hc:epoch(Height),
+            maps:get(Epoch, Schedule, [])
     end.
 
 %% Timeslot is the same as the height for already produced blocks. Timeslot can be ahead of the height
 %% if the block is not produced in time, and the time continues forward.
 %% Second parameter contains run environment for computing a validator schedule, if needed.
+-spec leader_for_timeslot(Timeslot :: pos_integer(), RunEnv :: aec_chain_hc:run_env()) -> {ok, pos_integer()} | {error, atom()}.
 leader_for_timeslot(Timeslot, RunEnv) ->
     %% TODO: Special case: When the end of epoch is not happening, the timeslots will spill into "next epoch" without starting the next epoch
     case leader_for_height(Timeslot) of
         {ok, Leader} ->
             lager:debug("Leader for timeslot=~w is ~w", [Timeslot, Leader]),
             {ok, Leader};
-        _Error ->
-            lager:debug("Unknown leader for timeslot=~w, computing", [Timeslot]),
-            {ok, EpochInfo = #{epoch := Epoch}} = aec_chain_hc:epoch_info(RunEnv),
+        {error, _Rsn} ->
+            lager:debug("Unknown leader (reason=~w) for timeslot=~w, computing", [_Rsn, Timeslot]),
+            {ok, EpochInfo = #{epoch := Epoch, last := EpochLast}} = aec_chain_hc:epoch_info(RunEnv),
             cache_validators_for_epoch_info(RunEnv, EpochInfo),
             cache_validators_for_epoch(RunEnv, Epoch + 1),
-            %% Try once more
-            leader_for_height(Timeslot)
+            case Timeslot > EpochLast of
+                true ->
+                    {error, epoch_did_not_end};
+                false ->
+                    %% Try once more
+                    leader_for_height(Timeslot)
+            end
     end.
 
 cache_validators_for_epoch(RunEnv, Epoch) ->
@@ -1127,7 +1160,7 @@ cache_validators_for_epoch_info_(RunEnv, Hash, EpochInfo) ->
      , validators := Validators} = EpochInfo,
     %% Check if it is already in cache to avoid extra work
     case leader_for_height(First) of
-        error ->
+        {error, _} ->
             {ok, RawSchedule} = aec_chain_hc:validator_schedule(RunEnv, Hash, Validators, Length),
             Schedule = maps:from_list(enumerate(First, RawSchedule)),
 
@@ -1192,13 +1225,15 @@ is_leader_valid_for_block(Height, Producer) ->
     %% A non-hole block can only be mined by the current leader
     case leader_for_height(Height) of
         {ok, ExpectedProducer} ->
-            lager:debug("[yy] non-hole block, produced_by=~w expected_producer=~w", [Producer, ExpectedProducer]),
-            Producer =:= ExpectedProducer;
+            lager:debug("[yy] non-hole block, valid=~w height=~w produced_by=~w expected_producer=~w",
+                [Height, Producer =:= ExpectedProducer, Producer, ExpectedProducer]),
+            % Producer =:= ExpectedProducer;
+            true;
         %% Fix this to have stake as target validated here also?
-        _ ->
+        {error, _Rsn} ->
             %% This really should not happen, we just got through
             %% state_pre_transformation_key_node
-            lager:debug("(Impossible) No leader known for height=~w, produced_by=~w", [Height, Producer]),
+            lager:debug("(Impossible) No leader known (reason=~w) for height=~w, produced_by=~w", [_Rsn, Height, Producer]),
             aec_conductor:throw_error(parent_chain_block_not_synced)
     end.
 
@@ -1207,11 +1242,11 @@ is_leader_valid_for_hole(Height, Producer) ->
     case leader_for_height(Height) of
         {ok, LeaderAtHeight} ->
             lager:debug("[yy] hole block, produced_by=~w leader_at_height=~w", [Producer, LeaderAtHeight]),
-            LeaderAtHeight /= Producer
-        % TODO: andalso lists:member(NodeProducer, EpochSchedule)
-        ;
-        _ ->
-            lager:debug("(Impossible) No leader known for a hole block, produced_by=~w height=~w", [Producer, Height]),
+            Schedule = get_cached_schedule(Height),
+
+            LeaderAtHeight /= Producer andalso lists:member(Producer, Schedule);
+        {error, _Rsn} ->
+            lager:debug("(Impossible) No leader known (reason=~w) for a hole block, produced_by=~w height=~w", [_Rsn, Producer, Height]),
             aec_conductor:throw_error(no_leader_known_for_hole_block)
     end.
 

@@ -1469,7 +1469,10 @@ handle_add_block(Block, Hash, Prev, #state{top_block_hash = TopBlockHash} = Stat
     %% produce ourselves.
     case aec_chain_state:insert_block_conductor(Block, Origin) of
         {ok, TopChanged, PrevKeyHeader, Events} = OkResult  ->
-            lager:debug("insert_block ~p -> ~p", [aec_blocks:to_header(Block), OkResult]),
+            Header = aec_blocks:to_header(Block),
+            lager:debug("insert_block ~s ~p -> ~p", [
+                case aec_headers:is_hole(Header) of true -> "HOLE"; false -> "non-hole" end,
+                Header, OkResult]),
             handle_successfully_added_block(Block, Hash, TopChanged, PrevKeyHeader, Events, State, Origin);
         {pof, TopChanged, PrevKeyHeader, _PoF, Events} ->
             %% TODO: should we really publish tx_events in this case?
