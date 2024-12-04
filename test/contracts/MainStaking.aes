@@ -92,6 +92,7 @@ main contract MainStaking =
   // -- Called from HCElection and/or consensus logic
   // ------------------------------------------------------------------------
   payable stateful entrypoint add_rewards(epoch : int, rewards : list(address * int)) =
+    assert_protocol_call()
     let total_rewards = List.foldl((+), 0, List.map(Pair.snd, rewards))
     require(total_rewards == Call.value, "Incorrect total reward given")
     List.foreach(rewards, (r) => add_reward(epoch, r))
@@ -188,3 +189,6 @@ main contract MainStaking =
 
   function assert_signer(s : address) =
     require(Map.member(s, state.sign_keys), "Not a registered sign key")
+
+  function assert_protocol_call() =
+    require(Call.origin == Contract.creator, "Must be called by the protocol")
