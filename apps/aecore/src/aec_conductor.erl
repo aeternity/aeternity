@@ -554,6 +554,10 @@ get_next_beneficiary(Consensus, _TopHeader) ->
         {error, not_in_cache} = Err ->
             %%timer:sleep(1000), %% TODO: make this configurable
             Err;
+        {error, {skip_timeslot, _}} = Err ->
+            %% Produced by aec_consensus_hc when a repeated attempt to produce is made but
+            %% the block is already produced and written. Not an error, just no action and no log spam.
+            Err;
         {error, not_leader} = NotLeader ->
             NotLeader
             %case Consensus:allow_lazy_leader() of
@@ -620,6 +624,14 @@ set_beneficiary_configured(State, ConsensusModule) ->
 %%%===================================================================
 %%% Handle monitor messages
 
+log_worker_crash_reason(create_key_block_candidate = Tag, Pid,
+    {aborted, {{leader_validation_failed, invalid_leader}, _Stack}}
+) ->
+    %% For hyperchains this happens more often than for PoW: log it shorter and less severe
+    epoch_mining:warning("Worker ~w (~w) died: ~p", [Tag, Pid, leader_validation_failed]);
+log_worker_crash_reason(Tag, Pid, Why) ->
+    epoch_mining:error("Worker ~w (~w) died: ~p", [Tag, Pid, Why]).
+
 handle_monitor_message(Ref, Pid, Why, State) ->
     case lookup_worker(Ref, Pid, State) of
         not_found ->
@@ -627,7 +639,7 @@ handle_monitor_message(Ref, Pid, Why, State) ->
                               [{Ref, Pid, Why}]),
             State;
         {ok, Tag} ->
-            epoch_mining:error("Worker died: ~p", [{Tag, Pid, Why}]),
+            log_worker_crash_reason(Tag, Pid, Why),
             State1 = state_cleanup_after_worker(State, Tag, Pid),
             State2 = maybe_unblock_tag(Tag, State1),
             State3 = erase_worker(Pid, State2),
@@ -1334,17 +1346,25 @@ handle_key_block_candidate_reply({{error, Reason}, _}, #state{top_height = Heigh
              Reason =:= not_leader ->
     epoch_mining:debug("Creation of key block candidate (~p) failed: ~p", [Height + 1, Reason]),
     create_key_block_candidate(State);
+handle_key_block_candidate_reply({{error, {skip_timeslot, _Rsn}}, _}, State) ->
+    epoch_mining:debug("Creation of key block candidate canceled: ~w", [_Rsn]), % not an error
+    create_key_block_candidate(State);
 handle_key_block_candidate_reply({{error, Reason}, _}, State) ->
     epoch_mining:error("Creation of key block candidate failed: ~p", [Reason]),
     create_key_block_candidate(State).
 
+%% The result is sent via a message to wrap_worker_fun/1, and then is handled here by worker_reply/3
+%% (and from there handled by handle_key_block_candidate_reply/2)
 hc_create_block_fun(ConsensusModule, TopHash) ->
     fun() ->
         case get_next_beneficiary(ConsensusModule, TopHash) of
+            {ok, {skip_timeslot, Rsn}} ->
+                %% No production, the chain has already progressed or a decision been made to skip
+                {{error, {skip_timeslot, Rsn}}, TopHash};
             {ok, {missing_previous_block, MissingBlocksCount, Leader}} ->
                   %% We are the leader, but need 1+ hole blocks before we can produce
                   epoch_mining:debug(
-                      "Leader, at cutoff time, no previous block in cache: creating ~p hole(s)",
+                      "Leader, reached cutoff time and chain is too short: create_holes=~p",
                       [MissingBlocksCount]
                   ),
                   %% Hole blocks will be injected into conductor candidate pool and written asynchronously

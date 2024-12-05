@@ -105,8 +105,8 @@ end_per_group(_Group, Config) ->
 
 %% Here we decide which nodes are started/running
 init_per_testcase(start_dev1_dev2, Config) ->
-    Config1 = hctest_shared:config_add_node(Config, ?NODE1, ?NODE1_NAME, [?ALICE, ?LISA]),
-    Config2 = hctest_shared:config_add_node(Config1, ?NODE2, ?NODE2_NAME, [?BOB]),
+    Config1 = hctest_shared:config_add_node(Config, ?NODE1, ?NODE1_NAME, [?ALICE]),
+    Config2 = hctest_shared:config_add_node(Config1, ?NODE2, ?NODE2_NAME, [?BOB, ?LISA]),
     aect_test_utils:setup_testcase(Config2),
     Config2;
 init_per_testcase(start_dev1_dev2_dev3, Config) ->
@@ -117,7 +117,7 @@ init_per_testcase(start_dev1_dev2_dev3, Config) ->
     Config3;
 init_per_testcase(sync_dev3, Config) ->
     Config1 = hctest_shared:with_saved_keys([nodes], Config),
-    Config2 = hctest_shared:config_add_node(Config1, ?NODE3, ?NODE3_NAME, []),
+    Config2 = hctest_shared:config_add_node(Config1, ?NODE3, ?NODE3_NAME, [?EDWIN, ?DWIGHT]),
     aect_test_utils:setup_testcase(Config2),
     Config2;
 init_per_testcase(_Case, Config) ->
