@@ -93,6 +93,9 @@ main contract MainStaking =
   entrypoint get_total_balance_(v : address) =
     state.validators[v].total_balance
 
+  entrypoint get_validator_min_stake() =
+    state.validator_min_stake
+
   // ------------------------------------------------------------------------
   // -- Called from HCElection and/or consensus logic
   // ------------------------------------------------------------------------
