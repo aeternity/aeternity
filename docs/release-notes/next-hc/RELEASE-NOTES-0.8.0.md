@@ -73,8 +73,8 @@ This pre-release does not yet address all advanced features proposed in the whit
 
 The 1.0 release aims to achieve the following:
 1. **Comprehensive Fork Handling:** Implement robust solutions for fork scenarios.
-2. **Enhanced Staking Options:** Introduce multi-epoch locking and flexible staking schedules.
-3. **Optimized Block Production:** Refine leader scheduling and reward distribution to incentivize timely and accurate block creation.
+2. **Enhanced Staking Options:** Introduce multi-cycle locking and flexible staking schedules.
+3. **Optimized Block Production:** Refine reward distribution to incentivize timely and accurate block creation.
 4. **Enhanced Token Economics:** Refine fees, rewards and penalties in default configuration and present configuration suggestion for different scenarios.
 5. **Improved API:** Depending on community feedback the hyperchain API might be changed in version 1.0.0
 
