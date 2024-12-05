@@ -170,7 +170,14 @@ stake(_Config) ->
         get_available_balance_(AliceCt, ?ALICE, TxEnv, Trees2),
 
     ?assertEqual(TotalBalance, ?VALIDATOR_MIN + 5 * ?AE),
-    ?assertEqual(AvailableBalance, 0),
+    %% staked isn't locked yet
+    ?assertEqual(AvailableBalance, 5 * ?AE),
+
+    {ok, Trees3, _} = lock_stake(2, TxEnv, Trees2),
+    {ok, _, #{res := AvailableBalance2}} =
+        get_available_balance_(AliceCt, ?ALICE, TxEnv, Trees3),
+    ?assertEqual(AvailableBalance2, 0),
+
 
     ok.
 
@@ -178,21 +185,21 @@ adjust_stake(_Config) ->
     Trees0 = genesis_trees(),
     TxEnv = aetx_env:tx_env(?DEFAULT_HEIGHT),
     {ok, Trees1, #{res := {contract, AliceCt}}} =
-        new_validator_(pubkey(?ALICE), ?VALIDATOR_MIN, TxEnv, Trees0),
+        new_validator_(pubkey(?ALICE), 2 * ?VALIDATOR_MIN, TxEnv, Trees0),
     {ok, Trees2, #{res := ?UNIT}} =
-        adjust_stake_(AliceCt, ?ALICE, -2 * ?AE, TxEnv, Trees1),
+        adjust_stake_(AliceCt, ?ALICE, -2 * ?AE, TxEnv, Trees1, 1), %% Lock at 1 to "overwrite"
 
     {ok, _, #{res := TotalBalance}}     = get_total_balance_(AliceCt, ?ALICE, TxEnv, Trees2),
     {ok, _, #{res := AvailableBalance}} = get_available_balance_(AliceCt, ?ALICE, TxEnv, Trees2),
-    ?assertEqual(TotalBalance,     ?VALIDATOR_MIN),
+    ?assertEqual(TotalBalance,     2 * ?VALIDATOR_MIN),
     ?assertEqual(AvailableBalance, 2 * ?AE),
 
     {ok, Trees3, #{res := ?UNIT}} =
-        adjust_stake_(AliceCt, ?ALICE, ?AE, TxEnv, Trees2),
+        adjust_stake_(AliceCt, ?ALICE, ?AE, TxEnv, Trees2, 1),
 
     {ok, _, #{res := TotalBalance2}}     = get_total_balance_(AliceCt, ?ALICE, TxEnv, Trees3),
     {ok, _, #{res := AvailableBalance2}} = get_available_balance_(AliceCt, ?ALICE, TxEnv, Trees3),
-    ?assertEqual(TotalBalance2,     ?VALIDATOR_MIN),
+    ?assertEqual(TotalBalance2,     2 * ?VALIDATOR_MIN),
     ?assertEqual(AvailableBalance2, ?AE),
 
     ok.
@@ -201,10 +208,10 @@ withdraw(_Config) ->
     Trees0 = genesis_trees(),
     TxEnv = aetx_env:tx_env(?DEFAULT_HEIGHT),
     {ok, Trees1, #{res := {contract, AliceCt}}} =
-        new_validator_(pubkey(?ALICE), ?VALIDATOR_MIN, TxEnv, Trees0),
+        new_validator_(pubkey(?ALICE), 2 * ?VALIDATOR_MIN, TxEnv, Trees0),
 
     {ok, Trees2, #{res := ?UNIT}} =
-        adjust_stake_(AliceCt, ?ALICE, -2 * ?AE, TxEnv, Trees1),
+        adjust_stake_(AliceCt, ?ALICE, -2 * ?AE, TxEnv, Trees1, 1),
 
     {ok, Trees3, #{res := ?UNIT, cost := TxCost}} =
         withdraw_(AliceCt, ?ALICE, 2 * ?AE, TxEnv, Trees2),
@@ -220,11 +227,11 @@ rewards(_Config) ->
     {ok, Trees1, #{res := {contract, AliceCt}}} =
         new_validator_(pubkey(?ALICE), ?VALIDATOR_MIN, TxEnv, Trees0),
     {ok, Trees2, #{res := {contract, BobCt}}} =
-        new_validator_(pubkey(?BOB), ?VALIDATOR_MIN, false, TxEnv, Trees1),
+        new_validator_(pubkey(?BOB), ?VALIDATOR_MIN, false, TxEnv, Trees1, undefined),
 
     Rewards = [{{address, pubkey(?ALICE)}, 4 * ?AE}, {{address, pubkey(?BOB)}, 3 * ?AE}],
     {ok, Trees3, #{res := ?UNIT}} =
-        add_rewards_(1, Rewards, 7 * ?AE, TxEnv, Trees2),
+        add_rewards_(1, Rewards, 7 * ?AE, TxEnv, Trees2, 2),
 
     {ok, _, #{res := ABalance}}   = get_total_balance_(AliceCt, ?ALICE, TxEnv, Trees3),
     {ok, _, #{res := AAvailable}} = get_available_balance_(AliceCt, ?ALICE, TxEnv, Trees3),
@@ -367,10 +374,18 @@ create_contract(ContractName, CallData, TxEnv, Trees) ->
     {_, Trees2} = aec_block_fork:apply_contract_create_tx(Tx, Trees1, TxEnv),
     {Pubkey, Trees2}.
 
-call_contract(ContractPubkey, Caller, CallData, Amount, TxEnv, Trees) ->
-  call_contract(ContractPubkey, Caller, CallData, Amount, TxEnv, Trees, fun(X) -> X end).
+call_contract(ContractPubkey, Caller, CallData, Amount, TxEnv, Trees, undefined) ->
+    call_contract(ContractPubkey, Caller, CallData, Amount, TxEnv, Trees);
+call_contract(ContractPubkey, Caller, CallData, Amount, TxEnv, Trees0, LockEpoch) when is_integer(LockEpoch) ->
+    case call_contract(ContractPubkey, Caller, CallData, Amount, TxEnv, Trees0) of
+        {ok, Trees1, Res} ->
+            {ok, Trees2, _} = lock_stake(LockEpoch, TxEnv, Trees1),
+            {ok, Trees2, Res};
+        Res ->
+            Res
+    end.
 
-call_contract(ContractPubkey, Caller, CallData, Amount, TxEnv, Trees, TransformFun) ->
+call_contract(ContractPubkey, Caller, CallData, Amount, TxEnv, Trees) ->
     Nonce = next_nonce(Caller, Trees),
     ABI = aect_test_utils:latest_sophia_abi_version(),
     TxSpec = #{ caller_id    => aeser_id:create(account, Caller),
@@ -401,7 +416,7 @@ call_contract(ContractPubkey, Caller, CallData, Amount, TxEnv, Trees, TransformF
                     RespTrees = aect_call_state_tree:prune(Height, Trees2),
                     Resp = aeb_fate_encoding:deserialize(aect_call:return_value(Call)),
                     Cost = aetx:fee(Tx) + aect_call:gas_price(Call) * aect_call:gas_used(Call),
-                    {ok, RespTrees, #{res => TransformFun(Resp), cost => Cost}};
+                    {ok, RespTrees, #{res => Resp, cost => Cost}};
                 error -> {error, aect_call:return_value(Call)};
                 revert -> {revert,
                             aeb_fate_encoding:deserialize(aect_call:return_value(Call))}
@@ -428,62 +443,60 @@ election_contract_address() ->
     aect_contracts:compute_contract_pubkey(?OWNER_PUBKEY, 2).
 
 %% TODO match logic of election with HCElection contract logic
-test_elect_calls(StartHeight, GenerenationsCnt, TxEnv, StartTrees) ->
-    Alice = pubkey(?ALICE),
-    lists:foldl(
-        fun(Height, {TreesAccum1, Ls}) ->
-            TxEnvPrev = aetx_env:set_height(TxEnv, Height - 1),
-            {ok, TreesAccum2, {tuple, {}}} = elect_(Alice, ?OWNER_PUBKEY, TxEnvPrev, TreesAccum1),
-            TxEnv1 = aetx_env:set_height(TxEnv, Height),
-            {ok, _, {address, NextLeader}} = leader_(?OWNER_PUBKEY, TxEnv1, TreesAccum2),
-            ?assertEqual(Alice, NextLeader),
-            Ls1 = maps:update_with(NextLeader, fun(X) -> X + 1 end, 1, Ls),
-            {TreesAccum2, Ls1}
-        end,
-        {StartTrees, #{}},
-        lists:seq(StartHeight, StartHeight + GenerenationsCnt - 1)).
-
-%% % Total stake limit helpers
-%% calculate_total_stake_limit(Stake) ->
-%%     Stake * 100 div ?VALIDATOR_MIN_PERCENT.
-
-%% get_total_stake_limit(Validator, TxEnv, Trees) ->
-%%     {ok, _, State} = get_validator_state_(Validator, Validator, TxEnv, Trees),
-%%     {tuple, {_, _, _, _, _, StakeLimit, _, _}} = State,
-%%     StakeLimit.
-
-%% get_available_stake_limit(Validator, TxEnv, Trees) ->
-%%     {ok, _, State} = get_validator_state_(Validator, Validator, TxEnv, Trees),
-%%     {tuple, {_, _, _, Stake, PendingStake, StakeLimit, _, _}} = State,
-%%     StakeLimit-Stake-PendingStake.
-
-%% contract call wrappers
-new_validator_(Pubkey, Amount, TxEnv, Trees0) ->
-    new_validator_(Pubkey, Amount, true, TxEnv, Trees0).
-
-new_validator_(Pubkey, Amount, ReStake, TxEnv, Trees0) ->
-    ContractPubkey = staking_contract_address(),
-    Args = [aefa_fate_code:encode_arg({address, Pubkey}),
-            aefa_fate_code:encode_arg(ReStake)],
-    {ok, CallData} = aeb_fate_abi:create_calldata("new_validator", Args),
-    call_contract(ContractPubkey, Pubkey, CallData, Amount, TxEnv, Trees0).
+%% test_elect_calls(StartHeight, GenerenationsCnt, TxEnv, StartTrees) ->
+%%     Alice = pubkey(?ALICE),
+%%     lists:foldl(
+%%         fun(Height, {TreesAccum1, Ls}) ->
+%%             TxEnvPrev = aetx_env:set_height(TxEnv, Height - 1),
+%%             {ok, TreesAccum2, {tuple, {}}} = elect_(Alice, ?OWNER_PUBKEY, TxEnvPrev, TreesAccum1),
+%%             TxEnv1 = aetx_env:set_height(TxEnv, Height),
+%%             {ok, _, {address, NextLeader}} = leader_(?OWNER_PUBKEY, TxEnv1, TreesAccum2),
+%%             ?assertEqual(Alice, NextLeader),
+%%             Ls1 = maps:update_with(NextLeader, fun(X) -> X + 1 end, 1, Ls),
+%%             {TreesAccum2, Ls1}
+%%         end,
+%%         {StartTrees, #{}},
+%%         lists:seq(StartHeight, StartHeight + GenerenationsCnt - 1)).
 
 create_calldata(Fun, Args0) ->
     Args = [ aefa_fate_code:encode_arg(Arg) || Arg <- Args0 ],
     {ok, CallData} = aeb_fate_abi:create_calldata(Fun, Args),
     CallData.
 
+%% contract call wrappers
+new_validator_(Pubkey, Amount, TxEnv, Trees0) ->
+    new_validator_(Pubkey, Amount, true, TxEnv, Trees0, 1).
+
+new_validator_(Pubkey, Amount, ReStake, TxEnv, Trees0, LockEpoch) ->
+    ContractPubkey = staking_contract_address(),
+    Args = [aefa_fate_code:encode_arg({address, Pubkey}),
+            aefa_fate_code:encode_arg({address, Pubkey}),
+            aefa_fate_code:encode_arg(ReStake)],
+    {ok, CallData} = aeb_fate_abi:create_calldata("new_validator", Args),
+    call_contract(ContractPubkey, Pubkey, CallData, Amount, TxEnv, Trees0, LockEpoch).
+
+lock_stake(Epoch, TxEnv, Trees0) ->
+    ContractPubkey = staking_contract_address(),
+    {ok, CallData} = aeb_fate_abi:create_calldata("lock_stake", [aefa_fate_code:encode_arg({integer, Epoch})]),
+    call_contract(ContractPubkey, ?OWNER_PUBKEY, CallData, 0, TxEnv, Trees0).
+
 deposit_(ValidatorCt, Validator, Amount, TxEnv, Trees0) ->
     CallData = create_calldata("deposit", []),
     call_contract(ValidatorCt, pubkey(Validator), CallData, Amount, TxEnv, Trees0).
 
 stake_(ValidatorCt, Validator, Amount, TxEnv, Trees0) ->
+    stake_(ValidatorCt, Validator, Amount, TxEnv, Trees0, undefined).
+
+stake_(ValidatorCt, Validator, Amount, TxEnv, Trees0, LockEpoch) ->
     CallData = create_calldata("stake", []),
-    call_contract(ValidatorCt, pubkey(Validator), CallData, Amount, TxEnv, Trees0).
+    call_contract(ValidatorCt, pubkey(Validator), CallData, Amount, TxEnv, Trees0, LockEpoch).
 
 adjust_stake_(ValidatorCt, Validator, Amount, TxEnv, Trees0) ->
+    adjust_stake_(ValidatorCt, Validator, Amount, TxEnv, Trees0, undefined).
+
+adjust_stake_(ValidatorCt, Validator, Amount, TxEnv, Trees0, LockEpoch) ->
     CallData = create_calldata("adjust_stake", [{integer, Amount}]),
-    call_contract(ValidatorCt, pubkey(Validator), CallData, 0, TxEnv, Trees0).
+    call_contract(ValidatorCt, pubkey(Validator), CallData, 0, TxEnv, Trees0, LockEpoch).
 
 withdraw_(ValidatorCt, Validator, Amount, TxEnv, Trees0) ->
     CallData = create_calldata("withdraw", [{integer, Amount}]),
@@ -499,10 +512,10 @@ get_available_balance_(ValidatorCt, Validator, TxEnv, Trees0) ->
 
 %% MainStaking
 
-add_rewards_(Epoch, Rewards, TotRewards, TxEnv, Trees0) ->
+add_rewards_(Epoch, Rewards, TotRewards, TxEnv, Trees0, LockEpoch) ->
     Contract = staking_contract_address(),
     CallData = create_calldata("add_rewards", [{integer, Epoch}, Rewards]),
-    call_contract(Contract, ?OWNER_PUBKEY, CallData, TotRewards, TxEnv, Trees0).
+    call_contract(Contract, ?OWNER_PUBKEY, CallData, TotRewards, TxEnv, Trees0, LockEpoch).
 
 sorted_validators_(TxEnv, Trees0) ->
     Contract = staking_contract_address(),
