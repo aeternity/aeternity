@@ -447,19 +447,25 @@ handle_common_event(_E, _Msg, #data{}) ->
     %% TODO
     keep_state_and_data.
 
-convert_to_finalize_transaction({ok, CallData}, #data{create_contract_call_fun = CreateContractCallFun, leader=Leader, stakers=Stakers}) ->
-    case aec_chain:get_top_state() of
-        {ok, Trees} ->
-            {ok, Tx} = CreateContractCallFun(Leader, Trees, aeser_api_encoder:encode(contract_bytearray, CallData), 0),
-            Bin0 = aetx:serialize_to_binary(Tx),
-            Bin = aec_hash:hash(signed_tx, Bin0),
-            BinForNetwork = aec_governance:add_network_id(Bin),
-            PrivKey = get_staker_private_key(Leader, Stakers),
-            Signatures = [enacl:sign_detached(BinForNetwork, PrivKey)],
-            STx = aetx_sign:new(Tx, Signatures),
-            {ok, STx};
+convert_to_finalize_transaction({ok, CallData}, #data{create_contract_call_fun = CreateContractCallFun, leader=Leader, stakers=Stakers, epoch=Epoch}) ->
+    case aec_consensus_hc:get_entropy_hash(Epoch + 2) of
+        %% Don't create the transaction until the seed is available.
+        {ok, _Seed} ->
+            case aec_chain:get_top_state() of
+                {ok, Trees} ->
+                    {ok, Tx} = CreateContractCallFun(Leader, Trees, aeser_api_encoder:encode(contract_bytearray, CallData), 0),
+                    Bin0 = aetx:serialize_to_binary(Tx),
+                    Bin = aec_hash:hash(signed_tx, Bin0),
+                    BinForNetwork = aec_governance:add_network_id(Bin),
+                    PrivKey = get_staker_private_key(Leader, Stakers),
+                    Signatures = [enacl:sign_detached(BinForNetwork, PrivKey)],
+                    STx = aetx_sign:new(Tx, Signatures),
+                    {ok, STx};
+                Error ->
+                    {error, Error}
+            end;
         Error ->
-            {error, Error}
+            Error
     end;
 convert_to_finalize_transaction(Result, _Data) ->
     Result.
