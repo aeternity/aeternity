@@ -87,7 +87,7 @@
         , get_contract_pubkey/1
         , get_child_epoch_info/1
         %% voting
-        ,vote_result/0
+        ,vote_result/1
         ]).
 
 -ifdef(TEST).
@@ -355,8 +355,8 @@ create_call_contract_transaction(ContractType, OwnerPubkey, Trees, EncodedCallDa
                   call_data   => CallData},
     aect_call_tx:new(CallSpec).
 
-vote_result() ->
-    aec_eoe_vote:get_finalize_transaction().
+vote_result(Trees) ->
+    aec_eoe_vote:get_finalize_transaction(Trees).
 
 cache_child_epoch_info(Epoch, Height, StartTime) ->
     %% if the leader is running on the same node, and the current process
