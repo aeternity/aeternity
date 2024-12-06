@@ -9,7 +9,7 @@
 -behaviour(gen_statem).
 
 %% Export API functions
--export([start_link/3, negotiate/8, get_finalize_transaction/0]).
+-export([start_link/3, negotiate/8, get_finalize_transaction/1]).
 
 %% Export gen_statem callbacks
 -export([init/1, callback_mode/0, terminate/3, code_change/4]).
@@ -58,8 +58,8 @@ start_link(Stakers, BlockTime, CreateContractCallFun) ->
 negotiate(Epoch, Height, Hash, Leader, Validators, Seed, LengthDelta, CurrentLength) ->
     gen_statem:cast(?MODULE, {negotiate, Epoch, Height, Hash, Leader, Validators, Seed, LengthDelta, CurrentLength}).
 
-get_finalize_transaction() ->
-    gen_statem:call(?MODULE, get_finalize_transaction).
+get_finalize_transaction(Trees) ->
+    gen_statem:call(?MODULE, {get_finalize_transaction, Trees}).
 
 %%% gen_statem callbacks
 
@@ -429,7 +429,7 @@ handle_no_consensus(#data{from = From} = Data) ->
 
 handle_common_event(info, {gproc_ps_event, new_epoch, #{info := _EpochInfo}}, Data) ->
     {next_state, await_eoe, reset_data(Data)};
-handle_common_event({call,From}, get_finalize_transaction, #data{result=Result, leader = Leader} = Data) ->
+handle_common_event({call,From}, {get_finalize_transaction, Trees}, #data{result=Result, leader = Leader} = Data) ->
     case Leader of
         undefined ->
             {keep_state_and_data, [{reply, From, {error, not_ready}}]};
@@ -439,7 +439,7 @@ handle_common_event({call,From}, get_finalize_transaction, #data{result=Result, 
                     {keep_state, Data#data{from=From}};
                 _ ->
                     lager:debug("Replying quorum achieved for commits, result ~p", [Result]),
-                    {keep_state, Data, [{reply, From, convert_to_finalize_transaction(Result, Data)}]}
+                    {keep_state, Data, [{reply, From, convert_to_finalize_transaction(Result, Trees, Data)}]}
             end
     end;
 handle_common_event(_E, _Msg, #data{}) ->
@@ -447,27 +447,30 @@ handle_common_event(_E, _Msg, #data{}) ->
     %% TODO
     keep_state_and_data.
 
-convert_to_finalize_transaction({ok, CallData}, #data{create_contract_call_fun = CreateContractCallFun, leader=Leader, stakers=Stakers, epoch=Epoch}) ->
+convert_to_finalize_transaction(Result, Data) ->
+    case aec_chain:get_top_state() of
+        {ok, Trees} ->
+            convert_to_finalize_transaction(Result, Trees, Data);
+        Error ->
+            {error, Error}
+    end.
+
+convert_to_finalize_transaction({ok, CallData}, Trees, #data{create_contract_call_fun = CreateContractCallFun, leader=Leader, stakers=Stakers, epoch=Epoch}) ->
     case aec_consensus_hc:get_entropy_hash(Epoch + 2) of
         %% Don't create the transaction until the seed is available.
         {ok, _Seed} ->
-            case aec_chain:get_top_state() of
-                {ok, Trees} ->
-                    {ok, Tx} = CreateContractCallFun(Leader, Trees, aeser_api_encoder:encode(contract_bytearray, CallData), 0),
-                    Bin0 = aetx:serialize_to_binary(Tx),
-                    Bin = aec_hash:hash(signed_tx, Bin0),
-                    BinForNetwork = aec_governance:add_network_id(Bin),
-                    PrivKey = get_staker_private_key(Leader, Stakers),
-                    Signatures = [enacl:sign_detached(BinForNetwork, PrivKey)],
-                    STx = aetx_sign:new(Tx, Signatures),
-                    {ok, STx};
-                Error ->
-                    {error, Error}
-            end;
+            {ok, Tx} = CreateContractCallFun(Leader, Trees, aeser_api_encoder:encode(contract_bytearray, CallData), 0),
+            Bin0 = aetx:serialize_to_binary(Tx),
+            Bin = aec_hash:hash(signed_tx, Bin0),
+            BinForNetwork = aec_governance:add_network_id(Bin),
+            PrivKey = get_staker_private_key(Leader, Stakers),
+            Signatures = [enacl:sign_detached(BinForNetwork, PrivKey)],
+            STx = aetx_sign:new(Tx, Signatures),
+            {ok, STx};
         Error ->
             Error
     end;
-convert_to_finalize_transaction(Result, _Data) ->
+convert_to_finalize_transaction(Result, _Trees, _Data) ->
     Result.
 
 calculate_stake(#data{validators = Validators, stakers = Stakers}) ->

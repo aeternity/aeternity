@@ -1345,8 +1345,8 @@ hc_create_block(ConsensusModule, TopHash0, Leader) ->
 
 hc_create_microblock(ConsensusModule, TopHash, Leader) ->
     case aec_block_micro_candidate:create(TopHash) of
-        {ok, MBlock, MBlockInfo} ->
-            MBlock1 = case ConsensusModule:vote_result() of
+        {ok, MBlock, MBlockInfo = #{trees := Trees}} ->
+            MBlock1 = case ConsensusModule:vote_result(Trees) of
                                 {ok, VoteTransaction} ->
                                     case aec_block_micro_candidate:update(MBlock, [VoteTransaction], MBlockInfo) of
                                         {ok, UpdatedMBlock, _MBlockInfo} ->
