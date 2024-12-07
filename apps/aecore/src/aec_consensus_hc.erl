@@ -17,6 +17,7 @@
 -define(ELECTION_CONTRACT, election).
 -define(STAKING_CONTRACT, staking).
 -define(REWARDS_CONTRACT, rewards).
+-define(FIRST_TIMESTAMPED_BLOCK, 2).
 
 %% API
 -export([ can_be_turned_off/0
@@ -85,7 +86,6 @@
         , entropy_height/1
         , get_entropy_hash/1
         , get_contract_pubkey/1
-        , get_child_epoch_info/1
         ]).
 
 -ifdef(TEST).
@@ -295,9 +295,13 @@ state_pre_transform_node(Type, Height, PrevNode, Trees) ->
     {ok, #{epoch := Epoch, first := EpochFirst, last := EpochLast} = EpochInfo} =
         aec_chain_hc:epoch_info({TxEnv, Trees}),
     {ok, Leader} = leader_for_height(Height, {TxEnv, Trees}),
+    EpochFirstNonGenesis = if Height =< ?FIRST_TIMESTAMPED_BLOCK ->
+                                   ?FIRST_TIMESTAMPED_BLOCK;
+                              true -> EpochFirst
+                           end,
     case Type of
         key ->
-            if Height =:= EpochFirst ->
+            if Height =:= EpochFirstNonGenesis ->
                     %% cache the current epoch start time
                     EpochStartTime = aetx_env:time_in_msecs(TxEnv),
                     cache_child_epoch_info(Epoch, Height, EpochStartTime);
@@ -621,6 +625,12 @@ child_block_time() ->
     Fun = fun() -> get_consensus_config_key([<<"child_block_time">>]) end,
     aeu_ets_cache:get(?ETS_CACHE_TABLE, child_block_time, Fun).
 
+child_block_production_time() ->
+    Fun = fun() -> get_consensus_config_key([<<"child_block_production_time">>]) end,
+    aeu_ets_cache:get(?ETS_CACHE_TABLE, child_block_production_time, Fun).
+
+
+
 %% This is the contract owner, calls shall be only available via protocol
 contract_owner() ->
     Fun = fun() ->
@@ -732,36 +742,84 @@ beneficiary() ->
     Height = aec_chain:top_height(),
     leader_for_height(Height).
 
-next_beneficiary() ->
-    {ok, KeyBlock} = aec_chain:top_key_block(),
-    ChildBlockTime = child_block_time(),
-    case aeu_time:now_in_msecs() - aec_blocks:time_in_msecs(KeyBlock) of
-        T when T >= ChildBlockTime ->
-            {TxEnv, Trees} = aetx_env:tx_env_and_trees_from_top(aetx_transaction),
-            next_beneficiary(TxEnv, Trees);
-        T ->
-            lager:debug("Not time for next block yet; sleeping ~p ms", [ChildBlockTime - T + 1]),
-            timer:sleep(ChildBlockTime - T + 1),
-            next_beneficiary()
-    end.
-
 %% Called as part of deciding who will produce block at Height `height(TxEnv) + 1`
-next_beneficiary(TxEnv, Trees) ->
-    ChildHeight = aetx_env:height(TxEnv),
-    case leader_for_height(ChildHeight + 1, {TxEnv, Trees}) of
+next_beneficiary() ->
+    %% get the height of the existing top block on the chain; note that the
+    %% block to be produced has height+1
+    {ok, KeyBlock} = aec_chain:top_key_block(),
+    ChildHeight = aec_blocks:height(KeyBlock),
+    RunEnv = aetx_env:tx_env_and_trees_from_top(aetx_transaction),
+    case leader_for_height(ChildHeight + 1, RunEnv) of
         {ok, Leader} ->
             SignModule = get_sign_module(),
             case SignModule:set_candidate(Leader) of
                  {error, key_not_found} ->
                      lager:debug("node shall not produce (leader ~p)", [Leader]),
-                     timer:sleep(200),
+                     timer:sleep(child_block_production_time()),
                      {error, not_leader};
                  ok ->
                      lager:debug("node is producer (leader ~p)", [Leader]),
+                     next_beneficiary_sleep(ChildHeight, RunEnv, KeyBlock),
                      {ok, Leader}
             end;
         error ->
             {error, not_in_cache}
+    end.
+
+%% Wait for the correct time to produce a key block. We don't count time
+%% slots using the genesis block as T0, as the whitepaper described, since
+%% block times may be adjusted between epochs. In any case there will also
+%% be some drift even if the block times are kept constant. Instead we take
+%% T0 as the timestamp of the first block of the current epoch (minus the
+%% configured block production time). Hence, the time slot for block N
+%% within the epoch starts at T0 + N*BlockTime (with N=0 being the first
+%% block of the epoch), and we get a fresh T0 at each new epoch.
+
+next_beneficiary_sleep(CurrHeight, _, _) when CurrHeight < ?FIRST_TIMESTAMPED_BLOCK ->
+    %% No cached epoch info yet; don't wait
+    ok;
+next_beneficiary_sleep(CurrHeight, RunEnv, KeyBlock) ->
+    ChildBlockTime = child_block_time(),
+    ProdStartTime = prod_start_time(CurrHeight, ChildBlockTime, RunEnv),
+    CurrBlockTime = aec_blocks:time_in_msecs(KeyBlock),
+    _NaiveWaitUntil = CurrBlockTime + ChildBlockTime,
+    WaitUntil = ProdStartTime,  % make it easy to switch
+    case aeu_time:now_in_msecs() of
+        Now when Now >= WaitUntil ->
+            ok;
+        Now ->
+            Delta = max(WaitUntil - Now, 1),
+            lager:debug("Not time for next block yet; sleeping ~p ms", [Delta]),
+            timer:sleep(Delta),
+            ok
+    end.
+
+prod_start_time(CurrHeight, ChildBlockTime, RunEnv) ->
+    %% recall that CurrHeight is the height of the existing top block, and
+    %% the block to be produced is at height+1; we want to get the epoch of
+    %% the current top block to decide how long to wait, not the epoch of
+    %% the next block
+    CurrEpoch = current_epoch(CurrHeight, RunEnv),
+    {_, EpochFirst, EpochStartTime} = get_child_epoch_info(CurrEpoch),
+    %% note: if the current top block is the first block of the epoch, then
+    %% CurrHeight - EpochFirst = 0, and the next child block time slot
+    %% starts one ChildBlockTime unit later, not zero
+    NextBlockInEpoch = CurrHeight + 1 - EpochFirst,
+    BlockProdTime = child_block_production_time(),
+    BlockLatency = ChildBlockTime - BlockProdTime,
+    T0 = EpochStartTime - BlockProdTime,
+    TnMin = T0 + ChildBlockTime*NextBlockInEpoch,
+    TnMax = TnMin + BlockProdTime + trunc(BlockLatency/2),
+    TnMax - BlockProdTime.
+
+current_epoch(CurrHeight, RunEnv) ->
+    %% note that epoch_info(RunEnv) finds the epoch of the block to be
+    %% produced, not the epoch of the block, so we have to adjust it
+    {ok, #{epoch := BlockEpoch, first := BlockEpochFirst}} = aec_chain_hc:epoch_info(RunEnv),
+    if CurrHeight < BlockEpochFirst ->
+            BlockEpoch-1;
+       true ->
+            BlockEpoch
     end.
 
 get_seed(#{seed := undefined, epoch := Epoch}) when Epoch =< 2 ->
