@@ -1,0 +1,14 @@
+{application, hc_test,
+ [{description, "Test-only application containing Hyperchains test suites and test helpers"},
+  {vsn, {cmd, "cat ../../VERSION"}},
+  {registered, []},
+  {applications,
+   [kernel,
+    stdlib,
+    common_test
+  ]},
+  {modules, []},
+  {maintainers, []},
+  {licenses, []},
+  {links, []}
+ ]}.

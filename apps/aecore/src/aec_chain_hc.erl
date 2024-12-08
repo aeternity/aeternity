@@ -30,6 +30,8 @@
         , create_consensus_call_contract_transaction/4
         ]).
 
+-export_type([run_env/0, epoch_info/0]).
+
 -define(ELECTION_CONTRACT, election).
 -define(STAKING_CONTRACT, staking).
 -define(REWARDS_CONTRACT, rewards).
@@ -37,7 +39,16 @@
 -type epoch() :: non_neg_integer().
 -type height() :: non_neg_integer().
 -type run_env() :: top | height() | {aetx_env:env(), aec_trees:trees()} | {hash, binary()}.
--type epoch_info() :: map().
+-type epoch_info() :: #{
+    %% Mandatory
+    epoch := pos_integer(),
+    first := non_neg_integer(),
+    length := non_neg_integer(),
+    last := non_neg_integer(),
+    %% Optional
+    validators => list(binary()),
+    seed => binary() | undefined
+}.
 -type pin_reward_info() :: map().
 -type finalize_info() :: map().
 
@@ -144,6 +155,7 @@ epoch_start_height(Epoch, Height) ->
             {error, chain_too_short}
     end.
 
+-spec epoch_info_map(Epoch :: pos_integer(), EpochInfo::any()) -> epoch_info().
 epoch_info_map(Epoch, EpochInfo) ->
     {tuple, {Start, Length, Seed, StakingDist}} = EpochInfo,
     SeedHash   = decode_option(Seed, {fun({bytes, Bin}) -> Bin end, undefined}),

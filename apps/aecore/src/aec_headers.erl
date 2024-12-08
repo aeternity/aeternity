@@ -23,6 +23,7 @@
          info/1,
          miner/1,
          new_key_header/12,
+         new_key_header/13,
          new_micro_header/8,
          nonce/1,
          pof_hash/1,
@@ -63,7 +64,8 @@
          strip_extra/1,
          set_extra/2,
          extra/1,
-         consensus_module/1
+         consensus_module/1,
+         is_hole/1
         ]).
 
 -include("aec_consensus.hrl").
@@ -176,6 +178,10 @@ set_version_and_height(#mic_header{} = H, Version, Height) ->
 %%%===================================================================
 %%% Header structure
 %%%===================================================================
+
+%% Hyperchains specific. Hole blocks hold places of missing blocks not produced or not gossiped by other nodes.
+is_hole(#key_header{flags = <<F:32>>}) when (F band ?HOLE_FLAG) =/= 0 -> true;
+is_hole(_) -> false.
 
 -spec assert_key_header(key_header()) -> ok.
 assert_key_header(#key_header{}) -> ok;
