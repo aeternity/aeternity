@@ -617,11 +617,8 @@ get_next_beneficiary(Consensus) ->
 get_next_beneficiary(Consensus, _TopHeader) ->
     case Consensus:next_beneficiary() of
         {ok, _L} = OK -> OK;
-        {error, not_in_cache} = Err ->
-            %%timer:sleep(1000), %% TODO: make this configurable
-            Err;
         {error, not_leader} = NotLeader ->
-            NotLeader
+            NotLeader;
             %case Consensus:allow_lazy_leader() of
             %    {true, LazyLeaderTimeDelta} ->
             %        LastBlockTime = aec_headers:time_in_msecs(TopHeader),
@@ -639,6 +636,9 @@ get_next_beneficiary(Consensus, _TopHeader) ->
             %        end;
             %    false -> NotLeader
             %end
+        {error, _} = Err ->
+            %% Cancel current attempt to produce a candidate. Will try again very soon.
+            Err
     end.
 
 get_beneficiary() ->
@@ -686,14 +686,22 @@ set_beneficiary_configured(State, ConsensusModule) ->
 %%%===================================================================
 %%% Handle monitor messages
 
+log_worker_crash_reason(create_key_block_candidate = Tag, Pid,
+    {aborted, {{leader_validation_failed, invalid_leader}, _Stack}}
+) ->
+    %% For hyperchains this happens more often than for PoW: log it shorter and less severe
+    epoch_mining:warning("Worker ~w (~w) died: ~0p", [Tag, Pid, leader_validation_failed]);
+log_worker_crash_reason(Tag, Pid, Why) ->
+    epoch_mining:error("Worker ~w (~w) died: ~0p", [Tag, Pid, Why]).
+
 handle_monitor_message(Ref, Pid, Why, State) ->
     case lookup_worker(Ref, Pid, State) of
         not_found ->
-            epoch_mining:info("Got unknown monitor DOWN message: ~p",
+            epoch_mining:info("Got unknown monitor DOWN message: ~0p",
                               [{Ref, Pid, Why}]),
             State;
         {ok, Tag} ->
-            epoch_mining:error("Worker died: ~p", [{Tag, Pid, Why}]),
+            log_worker_crash_reason(Tag, Pid, Why),
             State1 = state_cleanup_after_worker(State, Tag, Pid),
             State2 = maybe_unblock_tag(Tag, State1),
             State3 = erase_worker(Pid, State2),
@@ -1409,6 +1417,9 @@ handle_key_block_candidate_reply({{ok, _KeyBlockCandidate}, _OldTopHash},
                                  #state{top_block_hash = _TopHash} = State) ->
     epoch_mining:debug("Created key block candidate is already stale, create a new one", []),
     create_key_block_candidate(State);
+handle_key_block_candidate_reply({{error, {skip_timeslot, _Rsn}}, _}, State) ->
+    epoch_mining:debug("Creation of key block candidate canceled: ~w", [_Rsn]), % not an error, will try again
+    create_key_block_candidate(State);
 handle_key_block_candidate_reply({{error, key_not_found}, _}, State) ->
     start_block_production_(State#state{keys_ready = false});
 handle_key_block_candidate_reply({{error, Reason}, _}, #state{top_height = Height} = State)
@@ -1420,9 +1431,19 @@ handle_key_block_candidate_reply({{error, Reason}, _}, State) ->
     epoch_mining:error("Creation of key block candidate failed: ~p", [Reason]),
     create_key_block_candidate(State).
 
+%% The result is sent via a message to wrap_worker_fun/1, and then is handled here by worker_reply/3
+%% (and from there handled by handle_key_block_candidate_reply/2)
 hc_create_block_fun(ConsensusModule, TopHash) ->
     fun() ->
         case get_next_beneficiary(ConsensusModule, TopHash) of
+            {ok, {skip_timeslot, Rsn}} ->
+                %% No production, the chain has already progressed or a decision been made to skip
+                {{error, {skip_timeslot, Rsn}}, TopHash};
+            {ok, {missing_previous_block, MissingBlocksCount, Leader}} ->
+                  %% We are the leader, but need 1+ hole blocks before we can produce
+                  epoch_mining:debug("Leader, reached cutoff time and chain is too short: create_holes=~p", [MissingBlocksCount]),
+                  %% Create one hole and it will need to be sealed by an asynchronous worker
+                  {hc_create_hole(TopHash, MissingBlocksCount, Leader), TopHash};
             {ok, Leader} ->
                   epoch_mining:debug("Got leader, calling hc_create_block", []),
                   {hc_create_block(ConsensusModule, TopHash, Leader), TopHash};
@@ -1431,11 +1452,14 @@ hc_create_block_fun(ConsensusModule, TopHash) ->
         end
     end.
 
-hc_create_block(ConsensusModule, TopHash0, Leader) ->
+%% For as long as chain length is shorter than currentHeight-1, create holes. Send holes async to conductor for writing
+hc_create_hole(TopHash, MissingBlocksCount, Producer) when MissingBlocksCount > 0 ->
+    aec_block_hole_candidate:create(TopHash, Producer, Producer).
+
+hc_create_block(ConsensusModule, TopHash0, Producer) ->
     VoteResult = ConsensusModule:vote_result(),
-    TopHash = hc_create_microblock(ConsensusModule, TopHash0, Leader, VoteResult),
-    Res = aec_block_key_candidate:create(TopHash, Leader, Leader),
-    Res.
+    TopHash = hc_create_microblock(ConsensusModule, TopHash0, Producer, VoteResult),
+    aec_block_key_candidate:create(TopHash, Producer, Producer).
 
 hc_create_microblock(ConsensusModule, TopHash, Leader, VoteResult) ->
     CreateResult = case VoteResult of
@@ -1574,14 +1598,23 @@ handle_add_block(Header, Block, State, Origin) ->
             handle_add_block(Block, Hash, Prev, State, Origin)
     end.
 
-handle_add_block(Block, Hash, Prev, #state{top_block_hash = TopBlockHash} = State, Origin) ->
+handle_add_block(Block, Hash, Prev, #state{top_block_hash = TopBlockHash, consensus = Consensus} = State, Origin) ->
     epoch_mining:debug("trying to add block (hash=~w, prev=~w)", [Hash, Prev]),
     %% Block validation is performed in the caller's context for
     %% external (gossip/sync) blocks and we trust the ones we
     %% produce ourselves.
+    ConsensusModule = Consensus#consensus.consensus_module,
     case aec_chain_state:insert_block_conductor(Block, Origin) of
         {ok, TopChanged, PrevKeyHeader, Events} = OkResult  ->
-            lager:debug("insert_block ~p -> ~p", [aec_blocks:to_header(Block), OkResult]),
+            case ConsensusModule of
+                aec_consensus_hc ->
+                    Header = aec_blocks:to_header(Block),
+                    lager:debug("insert_block ~s ~p -> ~p", [
+                        case aec_headers:is_hole(Header) of true -> "HOLE"; false -> "non-hole" end,
+                        Header, OkResult]);
+                _ ->
+                    lager:debug("insert_block ~p -> ~p", [aec_blocks:to_header(Block), OkResult])
+            end,
             handle_successfully_added_block(Block, Hash, TopChanged, PrevKeyHeader, Events, State, Origin);
         {pof, TopChanged, PrevKeyHeader, _PoF, Events} ->
             %% TODO: should we really publish tx_events in this case?
