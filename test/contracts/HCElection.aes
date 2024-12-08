@@ -3,8 +3,9 @@ include "Pair.aes"
 
 contract interface MainStaking =
   entrypoint sorted_validators : () => list((address * int))
-  entrypoint lock_stake  : (int) => list((address * int))
-  entrypoint add_rewards : (int, list(address * int)) => unit
+  entrypoint is_validator : (address) => bool
+  entrypoint total_stake : () => int
+  stateful entrypoint post_elect : () => unit
 
 main contract HCElection =
   record epoch_info =
@@ -23,7 +24,7 @@ main contract HCElection =
   record state =
     { main_staking_ct       : MainStaking,
       leader                : address,
-      rewards               : map(int, list(address * int)),
+      added_stake           : int,
       epoch                 : int,
       epochs                : map(int, epoch_info),
       pin                   : option(bytes()),
@@ -33,7 +34,7 @@ main contract HCElection =
   entrypoint init(main_staking_ct : MainStaking) =
     { main_staking_ct       = main_staking_ct,
       leader                = Contract.address,
-      rewards               = {},
+      added_stake           = 0,
       epoch                 = 0,
       epochs                = {},
       pin                   = None,
@@ -43,10 +44,10 @@ main contract HCElection =
     assert_protocol_call()
     require(Chain.block_height == 0, "Only in genesis")
     put(state{ epochs = { [0] = mk_epoch_info(0, 1, None, None),
-                          [1] = mk_epoch_info(1, epoch_length, None, Some(state.main_staking_ct.lock_stake(1))),
-                          [2] = mk_epoch_info(epoch_length + 1, epoch_length, None, Some(state.main_staking_ct.lock_stake(2))),
-                          [3] = mk_epoch_info(2 * epoch_length + 1, epoch_length, None, Some(state.main_staking_ct.lock_stake(3))),
-                          [4] = mk_epoch_info(3 * epoch_length + 1, epoch_length, None, Some(state.main_staking_ct.lock_stake(4)))
+                          [1] = mk_epoch_info(1, epoch_length, None, Some(state.main_staking_ct.sorted_validators())),
+                          [2] = mk_epoch_info(epoch_length + 1, epoch_length, None, Some(state.main_staking_ct.sorted_validators())),
+                          [3] = mk_epoch_info(2 * epoch_length + 1, epoch_length, None, Some(state.main_staking_ct.sorted_validators())),
+                          [4] = mk_epoch_info(3 * epoch_length + 1, epoch_length, None, Some(state.main_staking_ct.sorted_validators()))
                         },
                epoch  = 1,
                pin_reward.base = base_pin_reward
@@ -76,10 +77,6 @@ main contract HCElection =
     let next_base = calc_next_base_reward(next_base_pin_reward)
     let next_reward = next_base + next_carry_over
     let pr = {current = next_reward, carry_over = next_carry_over, base = next_base}
-
-    // pay rewards to sunset epoch
-    pay_rewards(state.epoch - 1)
-
     // update epochs
     require(ei.start + ei.length - 1 == Chain.block_height, "This is not the end")
     let ei2 = state.epochs[epoch + 2]
@@ -89,7 +86,7 @@ main contract HCElection =
                        [epoch + 2] = state.epochs[epoch + 2]{ seed = Some(seed) },
                        [epoch + 3] = ei_adjust,
                        [epoch + 4] = mk_epoch_info(ei_adjust.start + ei_adjust.length, ei_adjust.length, None,
-                                                   Some(state.main_staking_ct.lock_stake(epoch + 4)))
+                                                   Some(state.main_staking_ct.sorted_validators()))
                      }
 
     put(state{ leader = leader,
@@ -105,12 +102,11 @@ main contract HCElection =
     require(Call.caller == state.leader, "Must be called by the last leader of epoch")
     put(state{pin = Some(proof)})
 
-  payable stateful entrypoint add_reward(height : int, to : address) =
-    assert_protocol_call()
-    put(state{rewards[height = []] @ rs = (to, Call.value) :: rs})
-
   entrypoint leader() =
     state.leader
+
+  // entrypoint added_stake() =
+  //   state.added_stake
 
   entrypoint epoch() =
     state.epoch
@@ -166,20 +162,5 @@ main contract HCElection =
     else
       state.pin_reward.base
 
-  stateful function pay_rewards(e : int) =
-    let ei = state.epochs[e]
-    let (rewards, tot) = pay_rewards_(ei.start, ei.length, {}, 0)
-    state.main_staking_ct.add_rewards(value = tot, e, rewards)
-
-  stateful function
-    pay_rewards_(_, 0, acc, tot) = (Map.to_list(acc), tot)
-    pay_rewards_(h, n, acc, tot) =
-      switch(Map.lookup(h, state.rewards))
-        None      => pay_rewards_(h + 1, n - 1, acc, tot)
-        Some(aas) =>
-          let (acc1, tot1) = List.foldl(pay_reward_, (acc, tot), aas)
-          put(state{rewards @ r = Map.delete(h, r)})
-          pay_rewards_(h + 1, n - 1, acc1, tot1)
-
-  function pay_reward_((acc, tot), (addr, amt)) =
-    (acc{[addr = 0] @ r = r + amt}, tot + amt)
+  // function accum_stake((accum, total_s, current_hash, network_id), (addr, stake)) =
+  //   ((addr, stake) :: accum, stake + total_s, current_hash, network_id)
