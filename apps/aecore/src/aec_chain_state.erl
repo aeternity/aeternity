@@ -76,6 +76,7 @@
 -module(aec_chain_state).
 
 -export([ calculate_state_for_new_keyblock/5
+        , calculate_state_for_new_keyblock/6
         , find_common_ancestor/2
         , get_key_block_hash_at_height/1
         , key_block_hashes_at_height/1
@@ -277,11 +278,14 @@ hash_is_in_main_chain(Hash) ->
         aec_keys:pubkey(),
         aec_hard_forks:protocol_vsn()) -> {'ok', aec_trees:trees()} | 'error'.
 calculate_state_for_new_keyblock(Height, PrevHash, Miner, Beneficiary, Protocol) ->
+    calculate_state_for_new_keyblock(Height, PrevHash, Miner, Beneficiary, Protocol, <<0:32>>).
+
+calculate_state_for_new_keyblock(Height, PrevHash, Miner, Beneficiary, Protocol, Flags) ->
     aec_db:ensure_transaction(fun() ->
         case db_find_node(PrevHash) of
             error -> error;
             {ok, PrevNode} ->
-                Node  = fake_key_node(PrevNode, Height, Miner, Beneficiary, Protocol),
+                Node  = fake_key_node(PrevNode, Height, Miner, Beneficiary, Protocol, Flags),
                 State = new_state_from_persistence(),
                 case get_state_trees_in(Node, true) of
                     error -> error;
@@ -464,7 +468,7 @@ block_txs(micro, Block) ->
 block_txs(key, _) ->
     [].
 
-fake_key_node(PrevNode, Height, Miner, Beneficiary, Protocol) ->
+fake_key_node(PrevNode, Height, Miner, Beneficiary, Protocol, Flags) ->
     PrevKeyHash = case node_type(PrevNode) of
                       key   -> node_hash(PrevNode);
                       micro -> node_prev_key_hash(PrevNode)
@@ -479,7 +483,8 @@ fake_key_node(PrevNode, Height, Miner, Beneficiary, Protocol) ->
                                default,
                                Protocol,
                                Miner,
-                               Beneficiary),
+                               Beneficiary,
+                               Flags),
     wrap_header(aec_blocks:to_header(Block)).
 
 wrap_header(Header) ->

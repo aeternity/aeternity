@@ -457,7 +457,7 @@ get_pinning_data_(Mod, NetworkID) ->
                last_leader       => Leader,
                parent_type       => ChainType,
                parent_network_id => NetworkID}};
-      error ->
+      {error, _} ->
           %% schedule not yet cached
           {error, last_leader_unknown}
     end.
