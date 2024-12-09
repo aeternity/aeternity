@@ -180,7 +180,7 @@ set_version_and_height(#mic_header{} = H, Version, Height) ->
 %%%===================================================================
 
 %% Hyperchains specific. Hole blocks hold places of missing blocks not produced or not gossiped by other nodes.
-is_hole(#key_header{flags = <<F>>}) when F band ?HOLE_FLAG =/= 0 -> true;
+is_hole(#key_header{flags = <<F:32>>}) when (F band ?HOLE_FLAG) =/= 0 -> true;
 is_hole(_) -> false.
 
 -spec assert_key_header(key_header()) -> ok.

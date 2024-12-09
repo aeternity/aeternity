@@ -275,20 +275,20 @@ micro_block_height_relative_previous_block(micro, MicroHeight) ->
 %% Custom state transitions
 state_pre_transform_key_node_consensus_switch(_Node, Trees) -> Trees.
 
-%% only called for key-blocks - this is the call where we set epoch and
-%% leader
+%% only called for key-blocks - this is the call where we set epoch and leader
 state_pre_transform_key_node(Node, PrevNode, Trees) ->
     Height = aec_block_insertion:node_height(Node),
     state_pre_transform_node(key, Height, PrevNode, Trees).
 
 state_pre_transform_micro_node(Height, PrevNode, Trees) ->
-    state_pre_transform_node(micro, Height, PrevNode, Trees).
+    {T, _} = state_pre_transform_node(micro, Height, PrevNode, Trees),
+    T.
 
 -spec state_pre_transform_node(_Type :: atom(), Height :: non_neg_integer(), _PrevNode :: any(), Trees :: aec_trees:trees())
         -> {aec_trees:trees(), list()}.
 state_pre_transform_node(_Type, Height, _PrevNode, Trees) when Height < 1 ->
     %% No leader for genesis
-    {Trees, []};
+    Trees;
 state_pre_transform_node(Type, Height, PrevNode, Trees) ->
     PrevHeader = aec_block_insertion:node_header(PrevNode),
     {ok, PrevHash} = aec_headers:hash_header(PrevHeader),
@@ -313,7 +313,7 @@ state_pre_transform_node(Type, Height, PrevNode, Trees) ->
                     lager:warning("Epoch ~w has ended, but we're still ticking timeslots ts=~w", [Epoch, Timeslot]),
                     %% TODO: fix timings, prevent busy loop
                     timer:sleep(child_block_time() div 4),
-                    {Trees, []}
+                    Trees
             end;
         micro ->
             {ok, Leader} = leader_for_timeslot(Timeslot, {TxEnv, Trees}),
@@ -350,8 +350,7 @@ step_key(Height, Timeslot, #{epoch := Epoch, first := EpochFirst, last := EpochL
                 aec_conductor:throw_error(parent_chain_not_synced)
         end;
     true ->
-        Trees1 = step(TxEnv, Trees, Leader),
-        {Trees1, []}
+        step(TxEnv, Trees, Leader)
     end.
 
 start_default_pinning_process(TxEnv, Trees, _Height, NextEpochInfo) ->
@@ -674,6 +673,7 @@ init_epochs(TxEnv, Trees, InitialEpochLength, BasePinReward) ->
             aec_conductor:throw_error(init_epochs_failed)
     end.
 
+-spec step(aetx_env:env(), aec_trees:trees(), binary()) -> aec_trees:trees().
 step(TxEnv, Trees, Leader) ->
     {ok, CD} = aeb_fate_abi:create_calldata("step", [{address, Leader}]),
     CallData = aeser_api_encoder:encode(contract_bytearray, CD),
@@ -698,6 +698,7 @@ step_eoe(TxEnv, Trees, Leader, Seed, Adjust, BasePinReward, CarryOver) ->
 
 %% Set the leader in case there is a micro block to be produced
 %% If not, leader is anyway set when creating key block
+-spec step_micro(aetx_env:env(), aec_trees:trees(), binary()) -> aec_trees:trees().
 step_micro(TxEnv, Trees, Leader) ->
     {ok, CD} = aeb_fate_abi:create_calldata("step_micro", [{address, Leader}]),
     CallData = aeser_api_encoder:encode(contract_bytearray, CD),
@@ -1142,7 +1143,7 @@ get_cached_schedule(Height) ->
 %% Timeslot is the same as the height for already produced blocks. Timeslot can be ahead of the height
 %% if the block is not produced in time, and the time continues forward.
 %% Second parameter contains run environment for computing a validator schedule, if needed.
--spec leader_for_timeslot(Timeslot :: pos_integer(), RunEnv :: aec_chain_hc:run_env()) -> {ok, pos_integer()} | {error, atom()}.
+-spec leader_for_timeslot(Timeslot :: pos_integer(), RunEnv :: aec_chain_hc:run_env()) -> {ok, binary()} | {error, atom()}.
 leader_for_timeslot(Timeslot, RunEnv) ->
     %% TODO: Special case: When the end of epoch is not happening, the timeslots will spill into "next epoch" without starting the next epoch
     case leader_for_height(Timeslot) of
