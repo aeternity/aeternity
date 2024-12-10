@@ -299,7 +299,7 @@ state_pre_transform_node(Type, Height, PrevNode, Trees) ->
         aec_chain_hc:epoch_info({TxEnv, Trees}),
 
     #{timeslot := Timeslot} = get_timeslot_and_epoch({TxEnv, Trees}),
-    lager:debug("------ STATE_PRE_TRANSFORM_NODE: height=~w timeslot=~w epoch=~w ep_first=~w ep_last=~w\n",
+    lager:debug("------ STATE_PRE_TRANSFORM_NODE: height=~w timeslot=~w epoch=~w ep_first=~w ep_last=~w",
         [Height, Timeslot, Epoch, EpochFirst, EpochLast]),
 
     case Type of
@@ -342,7 +342,7 @@ step_key(Height, Timeslot, #{epoch := Epoch, first := EpochFirst, last := EpochL
                 cache_validators_for_epoch({TxEnv, Trees1}, Seed, Epoch + 2),
                 Trees2 = step_eoe(TxEnv, Trees1, Leader, Seed, 0, -1, CarryOverFlag),
                 {ok, NextEpochInfo} = aec_chain_hc:epoch_info({TxEnv, Trees2}),
-                start_default_pinning_process(TxEnv, Trees2, Height, NextEpochInfo),
+                %% start_default_pinning_process(TxEnv, Trees2, Height, NextEpochInfo),
                 {Trees2, Events ++ [{new_epoch, NextEpochInfo}]};
             {error, _} ->
                 lager:debug("Entropy hash for height ~p is not in cache, attempting to resync", [Height]),
@@ -351,25 +351,6 @@ step_key(Height, Timeslot, #{epoch := Epoch, first := EpochFirst, last := EpochL
         end;
     true ->
         step(TxEnv, Trees, Leader)
-    end.
-
-start_default_pinning_process(TxEnv, Trees, _Height, NextEpochInfo) ->
-    case default_pinning_behavior() of
-        true ->
-            #{ epoch      := Epoch
-             , last       := Last
-             , validators := _Validators} = NextEpochInfo,
-            {ok, LastLeader} = leader_for_timeslot(Last, {TxEnv, Trees}),
-            lager:debug("AGENT: Trying to start pinning agent... for:  ~p in epoch ~p", [LastLeader, Epoch]),
-            try
-            case aec_parent_connector:has_parent_account(LastLeader) of
-                true -> aec_pinning_agent:spawn_for_epoch(NextEpochInfo, get_contract_pubkey(?ELECTION_CONTRACT), LastLeader);
-                false -> lager:debug("AGENT: No parent chain account found for ~p", [LastLeader])
-            end
-            catch
-                T:E -> lager:debug("AGENT throws: ~p:~p", [T,E])
-            end;
-        _ -> ok
     end.
 
 cache_child_epoch_info(Epoch, Height, StartTime) ->
@@ -396,10 +377,9 @@ cache_child_epoch_info(Epoch, Height, StartTime) ->
 %% Cache stores a tuple {MaxEpoch, [Info...]} where Info :: {Epoch, Height, StartTime}
 %% If the epoch cache is empty and start time is unknown, i will
 %% * Try read epoch first block, if it can, and its time will be epoch start
-%% * Else, will try read last block of previous epoch, then its time + block production time
+%% * Else, will try read last block of previous epoch, then `its time + block time - production time`
 %%   will be the epoch start
 %% * Else i cannot continue, and wait
--type aec_chain_epoch_info() :: #{epoch => pos_integer(), first => pos_integer(), last => pos_integer()}.
 -type child_epoch_info() :: #{epoch => pos_integer(), height => pos_integer(), start_time => pos_integer()}.
 -type child_epoch_error() :: {error, epoch_start_time_not_known}.
 
@@ -408,7 +388,7 @@ get_child_epoch_from_runenv(RunEnv) ->
     {ok, EpochInfo = #{epoch := Epoch}} = aec_chain_hc:epoch_info(RunEnv),
     get_child_epoch(Epoch, EpochInfo).
 
--spec get_child_epoch(Epoch :: pos_integer(), EpochInfo :: aec_chain_epoch_info())
+-spec get_child_epoch(Epoch :: pos_integer(), EpochInfo :: aec_chain_hc:epoch_info())
         -> child_epoch_info() | child_epoch_error().
 get_child_epoch(Epoch, EpochInfo) ->
     case aeu_ets_cache:lookup(?ETS_CACHE_TABLE, child_epoch_start) of
@@ -426,7 +406,7 @@ get_child_epoch(Epoch, EpochInfo) ->
     end.
 
 %% Try get epoch start time from the first block of the epoch
--spec get_child_epoch_info_first_block(Epoch :: pos_integer(), EpochInfo :: aec_chain_epoch_info())
+-spec get_child_epoch_info_first_block(Epoch :: pos_integer(), EpochInfo :: aec_chain_hc:epoch_info())
         -> child_epoch_info() | child_epoch_error().
 get_child_epoch_info_first_block(Epoch, #{first := EpochFirst}) ->
     case aec_chain:get_key_block_by_height(EpochFirst) of
@@ -770,6 +750,8 @@ get_contract_pubkey(ContractType) ->
         ?STAKING_CONTRACT -> staking_contract_pubkey()
     end.
 
+%% TODO: The following function should be removed?
+-dialyzer({no_unused, call_consensus_contract/6}).
 call_consensus_contract(Contract, Node, Trees, EncodedCallData, Keyword, Amount) ->
     Header = aec_block_insertion:node_header(Node),
     TxEnv = aetx_env:tx_env_from_key_header(
@@ -833,11 +815,12 @@ call_consensus_contract_(ContractType, TxEnv, Trees, EncodedCallData, Keyword, A
 
 beneficiary() ->
     % Height = aec_chain:top_height(),
-    leader_for_height(get_timeslot_and_epoch()).
+    #{timeslot := Timeslot} = get_timeslot_and_epoch(),
+    leader_for_height(Timeslot).
 
 %% Context to pass through the calls
 -record(next_beneficiary, {
-    leader :: aec_keys:pubkey(),
+    leader :: aec_keys:pubkey() | undefined,
     height :: non_neg_integer(),
     timeslot :: pos_integer(),
     epoch :: pos_integer(),
@@ -862,7 +845,7 @@ next_beneficiary() ->
         Reason ->
             lager:debug("timeslot=~w skip, cached decision=~w", [Timeslot, Reason]),
             timer:sleep(child_block_time() div 10), % TODO: Prevent a busy loop
-            {error, {skip_timeslot, {skip_decision, Reason, Timeslot}}}
+            {error, skip_timeslot}
     end.
 
 next_beneficiary_check_chain_length(Timeslot, ChildHeight, Epoch, RunEnv, TopKeyBlock) ->
@@ -1013,7 +996,7 @@ next_beneficiary_sleep(#next_beneficiary{
 -spec get_timeslot_and_epoch() -> timeslot_and_epoch().
 get_timeslot_and_epoch() ->
     %% Assumes that the next epoch could be started
-    {ok, TopHash} = aec_chain:top_block_hash(),
+    TopHash = aec_chain:top_block_hash(), % TODO: check not 'undefined'
     PrevHash = aec_chain:prev_hash_from_hash(TopHash),
     get_timeslot_and_epoch(
         aetx_env:tx_env_and_trees_from_hash(aetx_transaction, PrevHash)
