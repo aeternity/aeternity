@@ -27,7 +27,7 @@
         , get_micro_blocks_between/2
         ]).
 
--export_type([run_env/0]).
+-export_type([run_env/0, epoch_info/0]).
 
 -define(ELECTION_CONTRACT, election).
 -define(STAKING_CONTRACT, staking).
