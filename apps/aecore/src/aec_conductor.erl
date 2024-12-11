@@ -613,14 +613,14 @@ log_worker_crash_reason(create_key_block_candidate = Tag, Pid,
     {aborted, {{leader_validation_failed, invalid_leader}, _Stack}}
 ) ->
     %% For hyperchains this happens more often than for PoW: log it shorter and less severe
-    epoch_mining:warning("Worker ~w (~w) died: ~p", [Tag, Pid, leader_validation_failed]);
+    epoch_mining:warning("Worker ~w (~w) died: ~0p", [Tag, Pid, leader_validation_failed]);
 log_worker_crash_reason(Tag, Pid, Why) ->
-    epoch_mining:error("Worker ~w (~w) died: ~p", [Tag, Pid, Why]).
+    epoch_mining:error("Worker ~w (~w) died: ~0p", [Tag, Pid, Why]).
 
 handle_monitor_message(Ref, Pid, Why, State) ->
     case lookup_worker(Ref, Pid, State) of
         not_found ->
-            epoch_mining:info("Got unknown monitor DOWN message: ~p",
+            epoch_mining:info("Got unknown monitor DOWN message: ~0p",
                               [{Ref, Pid, Why}]),
             State;
         {ok, Tag} ->

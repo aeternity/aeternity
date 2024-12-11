@@ -276,19 +276,21 @@ micro_block_height_relative_previous_block(micro, MicroHeight) ->
 state_pre_transform_key_node_consensus_switch(_Node, Trees) -> Trees.
 
 %% only called for key-blocks - this is the call where we set epoch and leader
+-spec state_pre_transform_key_node(_Node, _PrevNode, aec_trees:trees()) -> {aec_trees:trees(), aetx_env:events()} | no_return().
 state_pre_transform_key_node(Node, PrevNode, Trees) ->
     Height = aec_block_insertion:node_height(Node),
     state_pre_transform_node(key, Height, PrevNode, Trees).
 
+-spec state_pre_transform_micro_node(non_neg_integer(), _PrevNode, aec_trees:trees()) -> aec_trees:trees() | no_return().
 state_pre_transform_micro_node(Height, PrevNode, Trees) ->
     {T, _} = state_pre_transform_node(micro, Height, PrevNode, Trees),
     T.
 
 -spec state_pre_transform_node(_Type :: atom(), Height :: non_neg_integer(), _PrevNode :: any(), Trees :: aec_trees:trees())
-        -> {aec_trees:trees(), list()}.
+        -> {aec_trees:trees(), aetx_env:events()}.
 state_pre_transform_node(_Type, Height, _PrevNode, Trees) when Height < 1 ->
     %% No leader for genesis
-    Trees;
+    {Trees, []};
 state_pre_transform_node(Type, Height, PrevNode, Trees) ->
     PrevHeader = aec_block_insertion:node_header(PrevNode),
     {ok, PrevHash} = aec_headers:hash_header(PrevHeader),
@@ -313,13 +315,15 @@ state_pre_transform_node(Type, Height, PrevNode, Trees) ->
                     lager:warning("Epoch ~w has ended, but we're still ticking timeslots ts=~w", [Epoch, Timeslot]),
                     %% TODO: fix timings, prevent busy loop
                     timer:sleep(child_block_time() div 4),
-                    Trees
+                    {Trees, []}
             end;
         micro ->
             {ok, Leader} = leader_for_timeslot(Timeslot, {TxEnv, Trees}),
-            step_micro(TxEnv, Trees, Leader)
+            {step_micro(TxEnv, Trees, Leader), []}
     end.
 
+-spec step_key(Height :: non_neg_integer(), Timeslot :: pos_integer(), EpochInfo :: aec_chain_hc:epoch_info(),
+    {aetx_env:env(), aec_trees:trees()}, Leader :: binary()) -> {aec_trees:trees(), aetx_env:events()}.
 step_key(Height, Timeslot, #{epoch := Epoch, first := EpochFirst, last := EpochLast} = EpochInfo,
          {TxEnv, Trees}, Leader) ->
     EpochFirstNonGenesis = erlang:min(?FIRST_TIMESTAMPED_BLOCK, EpochFirst),
@@ -653,13 +657,13 @@ init_epochs(TxEnv, Trees, InitialEpochLength, BasePinReward) ->
             aec_conductor:throw_error(init_epochs_failed)
     end.
 
--spec step(aetx_env:env(), aec_trees:trees(), binary()) -> aec_trees:trees().
+-spec step(aetx_env:env(), aec_trees:trees(), binary()) -> {aec_trees:trees(), aetx_env:events()}.
 step(TxEnv, Trees, Leader) ->
     {ok, CD} = aeb_fate_abi:create_calldata("step", [{address, Leader}]),
     CallData = aeser_api_encoder:encode(contract_bytearray, CD),
     case call_consensus_contract_(?ELECTION_CONTRACT, TxEnv, Trees, CallData, "step", 0) of
         {ok, Trees1, _Call} ->
-            Trees1;
+            {Trees1, []};
         {error, What} ->
             lager:info("Calling step failed with ~p", [What]),
             aec_conductor:throw_error(step_failed)
@@ -845,7 +849,7 @@ next_beneficiary() ->
         Reason ->
             lager:debug("timeslot=~w skip, cached decision=~w", [Timeslot, Reason]),
             timer:sleep(child_block_time() div 10), % TODO: Prevent a busy loop
-            {error, skip_timeslot}
+            {error, {skip_timeslot, Reason}}
     end.
 
 next_beneficiary_check_chain_length(Timeslot, ChildHeight, Epoch, RunEnv, TopKeyBlock) ->

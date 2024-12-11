@@ -69,20 +69,25 @@ int_create(Height, BlockHash, Block, Beneficiary, Miner, Protocol) ->
 int_create_and_adjust(
     Height, PrevBlockHash, PrevBlock, Beneficiary, Miner, AdjChain, Protocol
 ) ->
-    {ok, Trees} = aec_chain_state:calculate_state_for_new_keyblock(
-        Height,
-        PrevBlockHash,
-        Miner,
-        Beneficiary,
-        Protocol
-    ),
-    Block = int_create_block(
-        Height, PrevBlockHash, PrevBlock, Miner, Beneficiary, Trees, Protocol
-    ),
-    Consensus = aec_blocks:consensus_module(Block),
-    case Consensus:keyblock_create_adjust_target(Block, AdjChain) of
-        {ok, AdjBlock} -> {ok, AdjBlock};
-        {error, Reason} -> {error, {failed_to_adjust_target, Reason}}
+    try
+        {ok, Trees} = aec_chain_state:calculate_state_for_new_keyblock(
+            Height,
+            PrevBlockHash,
+            Miner,
+            Beneficiary,
+            Protocol
+        ),
+        Block = int_create_block(
+            Height, PrevBlockHash, PrevBlock, Miner, Beneficiary, Trees, Protocol
+        ),
+        Consensus = aec_blocks:consensus_module(Block),
+        case Consensus:keyblock_create_adjust_target(Block, AdjChain) of
+            {ok, AdjBlock} -> {ok, AdjBlock};
+            {error, Reason} -> {error, {failed_to_adjust_target, Reason}}
+        end
+    catch
+        error:{aborted, {Err = {leader_validation_failed, _}, _Stack1}}:_Stack2 ->
+            {error, Err}
     end.
 
 int_create_block(Height, PrevBlockHash, PrevBlock, Miner, Beneficiary, Trees, Protocol) ->
