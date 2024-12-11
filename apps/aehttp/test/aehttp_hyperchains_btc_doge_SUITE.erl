@@ -18,6 +18,7 @@
 %% Test cases
 -export([start_two_child_nodes/1,
          produce_first_epoch/1,
+         produce_some_epochs/1,
          check_default_pin/1
         ]).
 
@@ -30,10 +31,10 @@
 -define(MAIN_STAKING_CONTRACT, "MainStaking").
 -define(HC_CONTRACT, "HCElection").
 -define(CONSENSUS, hc).
--define(CHILD_EPOCH_LENGTH, 10).
--define(CHILD_BLOCK_TIME, 200).
--define(CHILD_BLOCK_PRODUCTION_TIME, 80).
--define(PARENT_EPOCH_LENGTH, 3).
+-define(CHILD_EPOCH_LENGTH, 20).
+-define(CHILD_BLOCK_TIME, 4000).
+-define(CHILD_BLOCK_PRODUCTION_TIME, 1500).
+-define(PARENT_EPOCH_LENGTH, 4).
 -define(PARENT_FINALITY, 2).
 -define(REWARD_DELAY, 2).
 -define(BLOCK_REWARD, 100000000000000000000).
@@ -178,6 +179,7 @@ groups() ->
         {doge, [sequence],
             [ start_two_child_nodes
             , produce_first_epoch
+            , produce_some_epochs
             %, check_default_pin
         ]}
     ].
@@ -265,7 +267,7 @@ init_per_group(Group, ConfigPre) ->
     % {ok, _} = mine_key_blocks(
     %         ?PARENT_CHAIN_NODE_NAME,
     %         (StartHeight - ParentTopHeight) + ?PARENT_FINALITY),
-    [ {staker_names, [?ALICE, ?BOB, ?LISA]}, {parent_start_height, 6778370} | Config].
+    [ {staker_names, [?ALICE, ?BOB, ?LISA]}, {parent_start_height, 6778619} | Config].
 
 child_node_config(Node, Stakeholders, Pinners, CTConfig) ->
     ReceiveAddress = encoded_pubkey(?FORD),
