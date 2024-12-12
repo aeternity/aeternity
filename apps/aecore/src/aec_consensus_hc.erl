@@ -743,7 +743,7 @@ call_consensus_contract_result(ContractType, TxEnv, Trees, ContractFun, Args) ->
     CallData = aeser_api_encoder:encode(contract_bytearray, CD),
     {ok, _, Call} = call_consensus_contract_(ContractType, TxEnv, Trees, CallData, ContractFun, 0),
     Result = aeb_fate_encoding:deserialize(aect_call:return_value(Call)),
-    lager:debug("Call result ~p", [Result]),
+    % lager:debug("Call result ~p", [Result]),
     {ok, Result}.
 
 -spec get_contract_pubkey(election | rewards | staking) -> binary().
@@ -771,9 +771,9 @@ call_consensus_contract_(ContractType, TxEnv, Trees, EncodedCallData, Keyword, A
                                             aec_trees:contracts(Trees)),
     OwnerAcc = aec_accounts_trees:get(OwnerPubkey,
                                             aec_trees:accounts(Trees)),
-    Fee = 5000000000000000000, %% TODO: fine tune this
-    Gas = 5000000000000000000, %% TODO: fine tune this
-    GasPrice = 50000000000, %% TODO: fine tune this
+    Fee = 5_000000000_000000000, %% TODO: fine tune this
+    Gas = 5_000000000_000000000, %% TODO: fine tune this
+    GasPrice = 50_000000000, %% TODO: fine tune this
     {ok, OwnerAcc1} = aec_accounts:earn(OwnerAcc, Fee + Gas * GasPrice),
     Trees1 = aec_trees:set_accounts(Trees, aec_accounts_trees:enter(OwnerAcc1,
                                                                     aec_trees:accounts(Trees))),
@@ -973,17 +973,17 @@ next_beneficiary_sleep(#next_beneficiary{
 
     case Now of
         _ when Now >= ProdEndTime ->
-            lager:debug("[yy] now=~w too late to produce, slept over prod_end_time=~w", [Now, ProdEndTime]),
+            lager:debug("now=~w too late to produce, slept over prod_end_time=~w", [Now, ProdEndTime]),
             %% Repeated failing attempts to produce will result in a storm of log messages
             timer:sleep(100),
             {error, not_leader};
         _ when Now >= CutoffTime, CurrentChainHeight + 1 < Timeslot ->
             MissingBlockCount = Timeslot - (CurrentChainHeight + 1),
-            lager:debug("[yy] Cutoff time reached, requesting ~w holes", [MissingBlockCount]),
+            lager:debug("Cutoff time reached, requesting ~w holes", [MissingBlockCount]),
             %% At cutoff time the chain is not long enough to produce the next block, but we still try
             ok;
         _ when Now >= WaitUntil ->
-            lager:debug("[xx] now=~w is the time, late_by=~w", [Now, WaitUntil - Now]),
+            lager:debug("[xx] now=~w is the time, late_by=~w", [Now, Now - WaitUntil]),
             ok;
         _ ->
             Delta = max(WaitUntil - Now, 1),
@@ -1250,7 +1250,7 @@ is_leader_valid_for_block(Height, Producer) ->
     case leader_for_height(Height) of
         {ok, ExpectedProducer} ->
             Valid = Producer =:= ExpectedProducer,
-            lager:debug("[yy] non-hole block, valid=~w height=~w produced_by=~w expected_producer=~w",
+            lager:debug("non-hole block, valid=~w height=~w produced_by=~w expected_producer=~w",
                 [Valid, Height, Producer, case Valid of true -> true; false -> ExpectedProducer end]),
             Valid;
         %% Fix this to have stake as target validated here also?
@@ -1266,7 +1266,7 @@ is_leader_valid_for_hole(Height, Producer) ->
         {ok, LeaderAtHeight} ->
             Schedule = get_cached_schedule(Height),
             Valid = LeaderAtHeight /= Producer andalso lists:member(Producer, Schedule),
-            lager:debug("[yy] hole block, valid=~w produced_by=~w leader_at_height=~w", [Valid, Producer, LeaderAtHeight]),
+            lager:debug("HOLE block, valid=~w produced_by=~w leader_at_height=~w", [Valid, Producer, LeaderAtHeight]),
             Valid;
         {error, _Rsn} ->
             lager:debug("(Impossible) No leader known (reason=~w) for a hole block, produced_by=~w height=~w", [_Rsn, Producer, Height]),
@@ -1317,8 +1317,8 @@ add_pin_reward(Trees, TxEnv, Leader, #{epoch := CurEpoch, last := Last}) ->
 create_contracts([], _TxEnv, Trees) -> Trees;
 create_contracts([Contract | Tail], TxEnv, TreesAccum) ->
     %% TODO: make GasLimit and GasPrice configurable
-    GasLimit = 10000000,
-    GasPrice = 10000000000,
+    GasLimit = 10_000_000,
+    GasPrice = 10_000_000_000,
     #{ <<"amount">> := Amount
       , <<"vm_version">> := VM
       , <<"abi_version">> := ABI
@@ -1341,7 +1341,7 @@ create_contracts([Contract | Tail], TxEnv, TreesAccum) ->
               gas         => GasLimit,
               gas_price   => GasPrice,
               call_data   => CallData,
-              fee         => 1000000000000000}, %% Overshoot the size of the actual fee
+              fee         => 1_000_000_000_000_000}, %% Overshoot the size of the actual fee
     {ok, DummyTx} = aect_create_tx:new(TxSpec),
     Height   = aetx_env:height(TxEnv),
     Protocol = aetx_env:consensus_version(TxEnv),

@@ -13,8 +13,9 @@
     verify_non_leader_produced_hole/1,
     verify_only_one_block_accepted/1,
     start_dev1/1,
-    sleep_1_block/1
-    , verify_chain_height/1]).
+    sleep_1_block/1,
+    verify_chain_height/1
+]).
 
 -include_lib("common_test/include/ct.hrl").
 -include_lib("stdlib/include/assert.hrl").
@@ -105,27 +106,37 @@ init_per_suite(Config0) ->
 end_per_suite(Config) ->
     hctest_shared:end_per_suite(Config, [?NODE1, ?NODE2, ?NODE3]).
 
-init_per_group(_GroupName, Config0) ->
-    hctest_shared:init_per_group(Config0).
+init_per_group(GroupName, Config0) ->
+    hctest_shared:init_per_group(GroupName, Config0).
 
 end_per_group(_Group, Config) ->
     hctest_shared:end_per_group(Config).
 
 %% Here we decide which nodes are started/running
 init_per_testcase(start_dev1_dev2, Config) ->
-    Config1 = hctest_shared:config_add_node(Config, ?NODE1, ?NODE1_NAME, [?ALICE]),
-    Config2 = hctest_shared:config_add_node(Config1, ?NODE2, ?NODE2_NAME, [?BOB, ?LISA]),
+    Config1 = hctest_shared:config_add_node(Config, ?NODE1, ?NODE1_NAME, [?ALICE, ?LISA], [
+        {?ALICE, ?DWIGHT}, {?LISA, ?EDWIN}
+    ]),
+    Config2 = hctest_shared:config_add_node(Config1, ?NODE2, ?NODE2_NAME, [?BOB_SIGN], [
+        {?BOB_SIGN, ?EDWIN}
+    ]),
     aect_test_utils:setup_testcase(Config2),
     Config2;
 init_per_testcase(start_dev1_dev2_dev3, Config) ->
-    Config1 = hctest_shared:config_add_node(Config, ?NODE1, ?NODE1_NAME, [?ALICE]),
-    Config2 = hctest_shared:config_add_node(Config1, ?NODE2, ?NODE2_NAME, [?BOB]),
-    Config3 = hctest_shared:config_add_node(Config2, ?NODE3, ?NODE3_NAME, [?LISA]),
+    Config1 = hctest_shared:config_add_node(Config, ?NODE1, ?NODE1_NAME, [?ALICE], [
+        {?ALICE, ?DWIGHT}
+    ]),
+    Config2 = hctest_shared:config_add_node(Config1, ?NODE2, ?NODE2_NAME, [?BOB_SIGN], [
+        {?BOB_SIGN, ?EDWIN}
+    ]),
+    Config3 = hctest_shared:config_add_node(Config2, ?NODE3, ?NODE3_NAME, [?LISA], [{?LISA, ?EDWIN}]),
     aect_test_utils:setup_testcase(Config3),
     Config3;
 init_per_testcase(sync_dev3, Config) ->
     Config1 = hctest_shared:with_saved_keys([nodes], Config),
-    Config2 = hctest_shared:config_add_node(Config1, ?NODE3, ?NODE3_NAME, [?EDWIN, ?DWIGHT]),
+    Config2 = hctest_shared:config_add_node(Config1, ?NODE3, ?NODE3_NAME, [?EDWIN, ?DWIGHT], [
+        {?EDWIN, ?DWIGHT}, {?DWIGHT, ?EDWIN}
+    ]),
     aect_test_utils:setup_testcase(Config2),
     Config2;
 init_per_testcase(_Case, Config) ->
@@ -158,11 +169,11 @@ produce_1_cc_block(Config) ->
     ct:pal("produce_1: ~s", [hctest:pp(B)]).
 
 stop_dev1(Config) ->
-    ct:pal("[yy] stopping dev1", []),
+    ct:pal("stopping dev1", []),
     catch aecore_suite_utils:stop_node(?NODE1, Config).
 
 start_dev1(Config) ->
-    ct:pal("[yy] starting dev1", []),
+    ct:pal("starting dev1", []),
     hctest_shared:start_child_nodes([?NODE1], Config).
 
 produce_1_cc_block_dev2(Config) ->
@@ -170,7 +181,7 @@ produce_1_cc_block_dev2(Config) ->
     %% but non-leader nodes should produce a hole and we will try to detect that hole
     ProduceResult =
         catch hctest_shared:produce_cc_blocks(Config, #{count => 1, skip_nodes => [?NODE1]}),
-    ct:pal("[yy] produce_1_cc_block_dev2: produced ~s", [hctest:pp(ProduceResult)]),
+    ct:pal("produced ~s", [hctest:pp(ProduceResult)]),
     %%    ?assertMatch({error, timeout_waiting_for_block}, ProduceResult),
 
     timer:sleep(?CHILD_BLOCK_TIME).
@@ -256,5 +267,7 @@ verify_only_one_block_accepted(Config) ->
     ).
 
 verify_chain_height(Config) ->
-    ?assert(30 =< aecore_suite_utils:rpc(?NODE1, aec_chain, top_height, []),
-        "With 3 epochs passing chain height must have reached 30").
+    ?assert(
+        30 =< aecore_suite_utils:rpc(?NODE1, aec_chain, top_height, []),
+        "With 3 epochs passing chain height must have reached 30"
+    ).
