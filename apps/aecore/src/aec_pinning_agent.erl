@@ -16,7 +16,7 @@
 
 %% External API
 -export([
-    start_link/2,
+    start_link/3,
     stop/0
 ]).
 
@@ -36,6 +36,7 @@
 -record(state, {
     contract,
     pinning_mode,
+    sign_module,
     next_last,
     pc_pin,
     cc_note,
@@ -47,9 +48,9 @@
 %%% API
 %%%=============================================================================
 
--spec start_link(term(), atom()) -> {ok, pid()} | {error, {already_started, pid()}} | ignore | {error, Reason::any()}.
-start_link(Contract, PinningBehavior) ->
-    gen_server:start_link({local, ?SERVER}, ?MODULE, [Contract, PinningBehavior], []).
+-spec start_link(term(), atom(), term()) -> {ok, pid()} | {error, {already_started, pid()}} | ignore | {error, Reason::any()}.
+start_link(Contract, PinningBehavior, SignModule) ->
+    gen_server:start_link({local, ?SERVER}, ?MODULE, [Contract, PinningBehavior, SignModule], []).
 
 stop() ->
     gen_server:stop(?SERVER).
@@ -58,10 +59,10 @@ stop() ->
 %%% Gen Server Callbacks
 %%%=============================================================================
 
-init([Contract, PinningBehavior]) ->
+init([Contract, PinningBehavior, SignModule]) ->
     case PinningBehavior of
         true ->
-            State = #state{contract = Contract, pinning_mode = false},
+            State = #state{contract = Contract, pinning_mode = false, sign_module = SignModule},
             lager:debug("started pinning agent"),
             aec_events:subscribe(new_epoch),
             aec_events:subscribe(top_changed),
@@ -97,11 +98,12 @@ handle_info({gproc_ps_event, new_epoch, #{info := #{last := Last, first := First
 handle_info({gproc_ps_event, top_changed, #{info := #{height := Height}}},
             #state{pinning_mode = true,
                    contract = Contract,
+                   sign_module = SignModule,
                    next_last = Last,
                    pc_pin = PCPinTx,
                    cc_note = CCPosted,
                    last_leader = LastLeader } = State) ->
-    NewCCPosted = maybe_post_pin_to_cc(PCPinTx, CCPosted, LastLeader, Height),
+    NewCCPosted = maybe_post_pin_to_cc(PCPinTx, CCPosted, LastLeader, Height, SignModule),
     PinningModeCont =
         case {Height, NewCCPosted} of
             {Last, true} -> post_pin_proof(Contract, PCPinTx, LastLeader, Last), false;
@@ -128,9 +130,9 @@ post_pin_to_pc(LastLeader, Height) ->
     lager:debug("Pinned to PC @~p: ~p", [Height, PCPinTx]),
     PCPinTx.
 
-post_pin_pctx_to_cc(PinTx, LastLeader, Height) ->
+post_pin_pctx_to_cc(PinTx, LastLeader, Height, SignModule) ->
     try
-        aec_parent_connector:pin_tx_to_cc(PinTx, LastLeader, 1, 1000000 * min_gas_price()),
+        pin_tx_to_cc(PinTx, LastLeader, 1, 1000000 * min_gas_price(), SignModule),
         lager:debug("noting on CC @~p", [Height])
     catch
         T:E -> lager:debug("Pin to CC failed: ~p:~p", [T,E]), ok
@@ -140,19 +142,48 @@ post_pin_proof(ContractPubkey, PinTx, LastLeader, Height) ->
     lager:debug("pin proof @~p ~p", [Height, PinTx]),
     aec_parent_connector:pin_contract_call(ContractPubkey, PinTx, LastLeader, 0, 1000000 * min_gas_price()).
 
-maybe_post_pin_to_cc(PCPinTx, false, LastLeader, Height) ->
+maybe_post_pin_to_cc(PCPinTx, false, LastLeader, Height, SignModule) ->
     case aec_parent_connector:get_pin_by_tx_hash(PCPinTx) of
         {ok, #{pc_height := -1}} -> false;
-        {ok, _} -> post_pin_pctx_to_cc(PCPinTx, LastLeader, Height), true;
+        {ok, _} -> post_pin_pctx_to_cc(PCPinTx, LastLeader, Height, SignModule), true;
         _ -> false
     end;
-maybe_post_pin_to_cc(_, CCPosted, _, _) ->
+maybe_post_pin_to_cc(_, CCPosted, _, _, _) ->
     CCPosted.
 
 
 %%%=============================================================================
 %%% Helpers, communication
 %%%=============================================================================
+
+pin_tx_to_cc(PinTxHash, Who, Amount, Fee, SignModule) ->
+    Nonce = get_local_nonce(Who),
+    SpendTx = create_pin_tx_({Who, Who, Nonce, Amount, Fee, PinTxHash}),
+    NetworkId = aec_governance:get_network_id(),
+    SignedSpendTx = sign_tx(SpendTx, NetworkId, Who, SignModule),
+    aec_tx_pool:push(SignedSpendTx, tx_received).
+
+get_local_nonce(Who) ->
+    case aec_next_nonce:pick_for_account(Who, max) of
+        {ok, NextNonce} -> NextNonce;
+        {error, account_not_found} -> 1
+    end.
+
+create_pin_tx_({SenderPubkey, ReceiverPubkey, Nonce, Amount, Fee, PinPayload}) ->
+    TxArgs = #{ sender_id    => aeser_id:create(account, SenderPubkey),
+                recipient_id => aeser_id:create(account, ReceiverPubkey),
+                amount       => Amount,
+                fee          => Fee,
+                nonce        => Nonce,
+                payload      => PinPayload},
+    {ok, SpendTx} = aec_spend_tx:new(TxArgs),
+    SpendTx.
+
+sign_tx(Tx, NetworkId, Signer, SignModule) when is_binary(Signer) ->
+    Bin0 = aetx:serialize_to_binary(Tx),
+    BinForNetwork = aec_governance:add_custom_network_id(NetworkId, Bin0),
+    {ok, Signature} = SignModule:sign_binary(BinForNetwork, Signer),
+    aetx_sign:new(Tx, [Signature]).
 
 min_gas_price() ->
     Protocol = aec_hard_forks:protocol_effective_at_height(1),

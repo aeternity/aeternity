@@ -11,7 +11,6 @@
          get_header_by_height/3,
          hash_to_integer/1,
          pin_to_pc/2,
-         pin_tx_to_cc/5,
          pin_contract_call/6,
          create_pin_tx/2,
          post_pin_tx/2,
@@ -180,12 +179,12 @@ pin_to_pc({PinningData, Who, Amount, Fee, NetworkId, SignModule}, NodeSpec) ->
     SignedSpendTx = sign_tx(SpendTx, NetworkId, Who, SignModule),
     post_pin_tx(SignedSpendTx, NodeSpec).
 
-pin_tx_to_cc(PinTxHash, Who, Amount, Fee, SignModule) ->
-    Nonce = get_local_nonce(Who),
-    SpendTx = create_pin_tx_({Who, Who, Nonce, Amount, Fee, PinTxHash}),
-    NetworkId = aec_governance:get_network_id(),
-    SignedSpendTx = sign_tx(SpendTx, NetworkId, Who, SignModule),
-    aec_tx_pool:push(SignedSpendTx, tx_received).
+% pin_tx_to_cc(PinTxHash, Who, Amount, Fee, SignModule) ->
+%     Nonce = get_local_nonce(Who),
+%     SpendTx = create_pin_tx_({Who, Who, Nonce, Amount, Fee, PinTxHash}),
+%     NetworkId = aec_governance:get_network_id(),
+%     SignedSpendTx = sign_tx(SpendTx, NetworkId, Who, SignModule),
+%     aec_tx_pool:push(SignedSpendTx, tx_received).
 
 sign_tx(Tx, NetworkId, Signer, SignModule) when is_binary(Signer) ->
     Bin0 = aetx:serialize_to_binary(Tx),
