@@ -44,17 +44,17 @@
         get_parent_chain_type/0,
         %% Pinning
         pin_to_pc/3,
-        pin_tx_to_cc/4,
+        %pin_tx_to_cc/4,
         pin_contract_call/5,
         get_pinning_data/0,
         create_pin_tx/5,
         post_pin_tx/1,
         get_pin_by_tx_hash/1,
-        encode_parent_pin_payload/1,
-        decode_parent_pin_payload/1,
-        encode_child_pin_payload/1,
-        decode_child_pin_payload/1,
-        is_pin/1,
+        % encode_parent_pin_payload/1,
+        % decode_parent_pin_payload/1,
+        % encode_child_pin_payload/1,
+        % decode_child_pin_payload/1,
+        % is_pin/1,
         find_spends_to/1,
         has_parent_account/1
         ]).
@@ -160,8 +160,8 @@ get_pinning_data() ->
 pin_to_pc(Who, Amount, Fee) ->
     gen_server:call(?SERVER, {pin_to_pc, Who, Amount, Fee}).
 
-pin_tx_to_cc(PinTx, Who, Amount, Fee) ->
-    gen_server:call(?SERVER, {pin_tx_to_cc, PinTx, Who, Amount, Fee}).
+% pin_tx_to_cc(PinTx, Who, Amount, Fee) ->
+%     gen_server:call(?SERVER, {pin_tx_to_cc, PinTx, Who, Amount, Fee}).
 
 pin_contract_call(Contract, PinTx, Who, Amount, Fee) ->
     gen_server:call(?SERVER, {pin_contract_call, Contract, PinTx, Who, Amount, Fee}).
@@ -177,17 +177,17 @@ post_pin_tx(Tx) ->
 get_pin_by_tx_hash(TxHash) ->
     gen_server:call(?SERVER, {get_pin_by_tx_hash, TxHash}).
 
-encode_parent_pin_payload(Pin) ->
-    gen_server:call(?SERVER, {encode_parent_pin_payload, Pin}).
+% encode_parent_pin_payload(Pin) ->
+%     gen_server:call(?SERVER, {encode_parent_pin_payload, Pin}).
 
-decode_parent_pin_payload(PinPayload) ->
-    gen_server:call(?SERVER, {decode_parent_pin_payload, PinPayload}).
+% decode_parent_pin_payload(PinPayload) ->
+%     gen_server:call(?SERVER, {decode_parent_pin_payload, PinPayload}).
 
-encode_child_pin_payload(TxHash) ->
-    gen_server:call(?SERVER, {encode_child_pin_payload, TxHash}).
+% encode_child_pin_payload(TxHash) ->
+%     gen_server:call(?SERVER, {encode_child_pin_payload, TxHash}).
 
-decode_child_pin_payload(TxHash) ->
-    gen_server:call(?SERVER, {decode_child_pin_payload, TxHash}).
+% decode_child_pin_payload(TxHash) ->
+%     gen_server:call(?SERVER, {decode_child_pin_payload, TxHash}).
 
 has_parent_account(Account) ->
     gen_server:call(?SERVER, {has_parent_account, Account}).
@@ -236,14 +236,14 @@ handle_call({pin_to_pc, Who, Amount, Fee}, _From, #state{parent_conn_mod = Mod, 
         false -> {error, {no_pc_account_for_staker, Who}}
     end,
     {reply, Reply, State};
-handle_call({pin_tx_to_cc, PinTx, Who, Amount, Fee}, _From, #state{parent_conn_mod = Mod, sign_module = SignModule} = State) ->
-    lager:debug("In here?",[]),
-    Reply = case SignModule:is_key_present(Who) of
-        true ->
-            Mod:pin_tx_to_cc(PinTx, Who, Amount, Fee, SignModule);
-        false -> {error, {no_cc_account_for_staker, Who}} % Could this actually happen????
-    end,
-    {reply, Reply, State};
+% handle_call({pin_tx_to_cc, PinTx, Who, Amount, Fee}, _From, #state{parent_conn_mod = Mod, sign_module = SignModule} = State) ->
+%     lager:debug("In here?",[]),
+%     Reply = case SignModule:is_key_present(Who) of
+%         true ->
+%             Mod:pin_tx_to_cc(PinTx, Who, Amount, Fee, SignModule);
+%         false -> {error, {no_cc_account_for_staker, Who}} % Could this actually happen????
+%     end,
+%     {reply, Reply, State};
 handle_call({pin_contract_call, Contract, PinTx, Who, Amount, Fee}, _From, #state{parent_conn_mod = Mod, sign_module = SignModule} = State) ->
     Reply =  Mod:pin_contract_call(Contract, PinTx, Who, Amount, Fee, SignModule),
     {reply, Reply, State};
@@ -258,21 +258,21 @@ handle_call({post_pin_tx, Tx}, _From, #state{parent_conn_mod = Mod, parent_hosts
 handle_call({get_pin_by_tx_hash, Tx}, _From, #state{parent_conn_mod = Mod, parent_hosts = ParentHosts} = State) ->
     Reply = handle_parent_pin_calls(Mod, get_pin_by_tx_hash, Tx, ParentHosts),
     {reply, Reply, State};
-handle_call({encode_parent_pin_payload, Pin}, _From, #state{parent_conn_mod = Mod} = State) ->
-    Reply = handle_conn_mod_calls(Mod, encode_parent_pin_payload, Pin),
-    {reply, Reply, State};
-handle_call({decode_parent_pin_payload, PinPayload}, _From, #state{parent_conn_mod = Mod} = State) ->
-    Reply = handle_conn_mod_calls(Mod, decode_parent_pin_payload, PinPayload),
-    {reply, Reply, State};
-handle_call({encode_child_pin_payload, TxHash}, _From, #state{parent_conn_mod = Mod} = State) ->
-    Reply = handle_conn_mod_calls(Mod, encode_child_pin_payload, TxHash),
-    {reply, Reply, State};
-handle_call({decode_child_pin_payload, EncTxHash}, _From, #state{parent_conn_mod = Mod} = State) ->
-    Reply = handle_conn_mod_calls(Mod, decode_child_pin_payload, EncTxHash),
-    {reply, Reply, State};
-handle_call({is_pin, EncTxHash}, _From, #state{parent_conn_mod = Mod} = State) ->
-    Reply = handle_conn_mod_calls(Mod, is_pin, EncTxHash),
-    {reply, Reply, State};
+% handle_call({encode_parent_pin_payload, Pin}, _From, #state{parent_conn_mod = Mod} = State) ->
+%     Reply = handle_conn_mod_calls(Mod, encode_parent_pin_payload, Pin),
+%     {reply, Reply, State};
+% handle_call({decode_parent_pin_payload, PinPayload}, _From, #state{parent_conn_mod = Mod} = State) ->
+%     Reply = handle_conn_mod_calls(Mod, decode_parent_pin_payload, PinPayload),
+%     {reply, Reply, State};
+% handle_call({encode_child_pin_payload, TxHash}, _From, #state{parent_conn_mod = Mod} = State) ->
+%     Reply = handle_conn_mod_calls(Mod, encode_child_pin_payload, TxHash),
+%     {reply, Reply, State};
+% handle_call({decode_child_pin_payload, EncTxHash}, _From, #state{parent_conn_mod = Mod} = State) ->
+%     Reply = handle_conn_mod_calls(Mod, decode_child_pin_payload, EncTxHash),
+%     {reply, Reply, State};
+% handle_call({is_pin, EncTxHash}, _From, #state{parent_conn_mod = Mod} = State) ->
+%     Reply = handle_conn_mod_calls(Mod, is_pin, EncTxHash),
+%     {reply, Reply, State};
 handle_call({has_parent_account, Account}, _From, #state{hcpc = HCPCMap} = State) ->
     Reply = maps:is_key(Account, HCPCMap),
     {reply, Reply, State};
@@ -435,8 +435,8 @@ handle_fetch_block(Fun, Arg,
 
 
 
-is_pin(Pin) ->
-    gen_server:call(?SERVER, {is_pin, Pin}).
+% is_pin(Pin) ->
+%     gen_server:call(?SERVER, {is_pin, Pin}).
 
 % PINREFAC is this (aec_p_c) the correct place for this and the following CC pin related ones?
 get_pinning_data_(Mod, NetworkID) ->
@@ -453,7 +453,7 @@ get_pinning_data_(Mod, NetworkID) ->
         {ok, #{epoch             => PrevEpoch,
                height            => Height,
                block_hash        => BlockHash,
-               parent_payload    => Mod:encode_parent_pin_payload(#{epoch => PrevEpoch, height => Height, block_hash => BlockHash}),
+               parent_payload    => aeser_api_encoder:encode_parent_pin_payload(#{epoch => PrevEpoch, height => Height, block_hash => BlockHash}),
                last_leader       => Leader,
                parent_type       => ChainType,
                parent_network_id => NetworkID}};
@@ -473,6 +473,12 @@ pick_pin_spends_to(Account, Txs) ->
     InnerTxs = [ aetx:specialize_type(Tx) || Tx <- BareTxs,  spend_tx == aetx:tx_type(Tx)],
     [ aec_spend_tx:payload(T) || {_, T} <- InnerTxs, aeser_id:specialize(aec_spend_tx:recipient_id(T)) == {account,Account}, is_pin(aec_spend_tx:payload(T))].
 
+
+is_pin(Pin) ->
+    case aeser_api_encoder:decode_child_pin_payload(Pin) of
+        {error,_} -> false;
+        _ -> true
+    end.
 %% handle (pin) calls to the parent connector module and ensure we don't throw anything
 %% FUTURE Should be reasonably easy to loop over NodeSpecs until one call suceeds.
 %%        For now, we just pick the first one.

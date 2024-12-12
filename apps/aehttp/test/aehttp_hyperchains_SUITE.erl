@@ -1008,7 +1008,7 @@ get_pin(Config) ->
     ?assertEqual(BH1Dec, IBH1),
 
     %% Verify that decoding function works on encoded payload:
-    {ok, DecodedPin} = rpc(Node, aec_parent_connector, decode_parent_pin_payload, [Payload]),
+    {ok, DecodedPin} = rpc(Node, aeser_api_encoder, decode_parent_pin_payload, [Payload]),
     ?assertEqual(#{epoch => PrevEpoch, height => Height1, block_hash => BH1Dec},
                  DecodedPin),
 

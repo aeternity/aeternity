@@ -10,6 +10,9 @@
 -author("mans.af.klercker@happihacking.se").
 -behaviour(gen_server).
 
+-include_lib("aecontract/include/aecontract.hrl").
+
+
 %%%=============================================================================
 %%% Export and Defs
 %%%=============================================================================
@@ -106,7 +109,7 @@ handle_info({gproc_ps_event, top_changed, #{info := #{height := Height}}},
     NewCCPosted = maybe_post_pin_to_cc(PCPinTx, CCPosted, LastLeader, Height, SignModule),
     PinningModeCont =
         case {Height, NewCCPosted} of
-            {Last, true} -> post_pin_proof(Contract, PCPinTx, LastLeader, Last), false;
+            {Last, true} -> post_pin_proof(Contract, PCPinTx, LastLeader, Last, SignModule), false;
             {Last, false} -> false; % we're on last, pc pin tx not finalized, we bow out.
             _ -> true % not on last block, we continue triggering on top_changed
         end,
@@ -138,9 +141,9 @@ post_pin_pctx_to_cc(PinTx, LastLeader, Height, SignModule) ->
         T:E -> lager:debug("Pin to CC failed: ~p:~p", [T,E]), ok
     end.
 
-post_pin_proof(ContractPubkey, PinTx, LastLeader, Height) ->
+post_pin_proof(ContractPubkey, PinTx, LastLeader, Height, SignModule) ->
     lager:debug("pin proof @~p ~p", [Height, PinTx]),
-    aec_parent_connector:pin_contract_call(ContractPubkey, PinTx, LastLeader, 0, 1000000 * min_gas_price()).
+    pin_contract_call(ContractPubkey, PinTx, LastLeader, 0, 1000000 * min_gas_price(), SignModule).
 
 maybe_post_pin_to_cc(PCPinTx, false, LastLeader, Height, SignModule) ->
     case aec_parent_connector:get_pin_by_tx_hash(PCPinTx) of
@@ -184,6 +187,26 @@ sign_tx(Tx, NetworkId, Signer, SignModule) when is_binary(Signer) ->
     BinForNetwork = aec_governance:add_custom_network_id(NetworkId, Bin0),
     {ok, Signature} = SignModule:sign_binary(BinForNetwork, Signer),
     aetx_sign:new(Tx, [Signature]).
+
+pin_contract_call(ContractPubkey, PinTx, Who, Amount, _Fee, SignModule) ->
+    Nonce = get_local_nonce(Who),
+    {ok, CallData} = aeb_fate_abi:create_calldata("pin", [{bytes, PinTx}]),
+    ABI = ?ABI_FATE_SOPHIA_1,
+    TxSpec =
+        #{ caller_id   => aeser_id:create(account, Who),
+            nonce       => Nonce,
+            contract_id => aeser_id:create(contract, ContractPubkey),
+            abi_version => ABI,
+            fee         => 1000000 * min_gas_price(),
+            amount      => Amount,
+            gas         => 1000000,
+            gas_price   => min_gas_price(),
+            call_data   => CallData },
+    {ok, Tx} = aect_call_tx:new(TxSpec),
+    NetworkId = aec_governance:get_network_id(),
+    SignedCallTx = sign_tx(Tx, NetworkId, Who, SignModule),
+    aec_tx_pool:push(SignedCallTx, tx_received).
+
 
 min_gas_price() ->
     Protocol = aec_hard_forks:protocol_effective_at_height(1),
