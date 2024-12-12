@@ -45,10 +45,10 @@
         %% Pinning
         pin_to_pc/3,
         %pin_tx_to_cc/4,
-        pin_contract_call/5,
+        %pin_contract_call/5,
         get_pinning_data/0,
-        create_pin_tx/5,
-        post_pin_tx/1,
+        %create_pin_tx/5,
+        %post_pin_tx/1,
         get_pin_by_tx_hash/1,
         % encode_parent_pin_payload/1,
         % decode_parent_pin_payload/1,
@@ -163,16 +163,16 @@ pin_to_pc(Who, Amount, Fee) ->
 % pin_tx_to_cc(PinTx, Who, Amount, Fee) ->
 %     gen_server:call(?SERVER, {pin_tx_to_cc, PinTx, Who, Amount, Fee}).
 
-pin_contract_call(Contract, PinTx, Who, Amount, Fee) ->
-    gen_server:call(?SERVER, {pin_contract_call, Contract, PinTx, Who, Amount, Fee}).
+% pin_contract_call(Contract, PinTx, Who, Amount, Fee) ->
+%     gen_server:call(?SERVER, {pin_contract_call, Contract, PinTx, Who, Amount, Fee}).
 
 
--spec create_pin_tx(binary(), binary(), integer(), integer(), binary()) -> aetx:tx().
-create_pin_tx(SenderEnc, ReceiverPubkey, Amount, Fee, PinningData) ->
-    gen_server:call(?SERVER, {create_pin_tx, SenderEnc, ReceiverPubkey, Amount, Fee, PinningData}).
+% -spec create_pin_tx(binary(), binary(), integer(), integer(), binary()) -> aetx:tx().
+% create_pin_tx(SenderEnc, ReceiverPubkey, Amount, Fee, PinningData) ->
+%     gen_server:call(?SERVER, {create_pin_tx, SenderEnc, ReceiverPubkey, Amount, Fee, PinningData}).
 
-post_pin_tx(Tx) ->
-    gen_server:call(?SERVER, {post_pin_tx, Tx}).
+% post_pin_tx(Tx) ->
+%     gen_server:call(?SERVER, {post_pin_tx, Tx}).
 
 get_pin_by_tx_hash(TxHash) ->
     gen_server:call(?SERVER, {get_pin_by_tx_hash, TxHash}).
@@ -247,11 +247,11 @@ handle_call({pin_to_pc, Who, Amount, Fee}, _From, #state{parent_conn_mod = Mod, 
 handle_call({pin_contract_call, Contract, PinTx, Who, Amount, Fee}, _From, #state{parent_conn_mod = Mod, sign_module = SignModule} = State) ->
     Reply =  Mod:pin_contract_call(Contract, PinTx, Who, Amount, Fee, SignModule),
     {reply, Reply, State};
-handle_call({create_pin_tx, SenderEnc, ReceiverPubkey, Amount, Fee, PinningData},
-             _From,
-             #state{parent_conn_mod = Mod, parent_hosts = ParentHosts} = State) ->
-    Reply = handle_parent_pin_calls(Mod, create_pin_tx, {SenderEnc, ReceiverPubkey, Amount, Fee, PinningData}, ParentHosts),
-    {reply, Reply, State};
+% handle_call({create_pin_tx, SenderEnc, ReceiverPubkey, Amount, Fee, PinningData},
+%              _From,
+%              #state{parent_conn_mod = Mod, parent_hosts = ParentHosts} = State) ->
+%     Reply = handle_parent_pin_calls(Mod, create_pin_tx, {SenderEnc, ReceiverPubkey, Amount, Fee, PinningData}, ParentHosts),
+%     {reply, Reply, State};
 handle_call({post_pin_tx, Tx}, _From, #state{parent_conn_mod = Mod, parent_hosts = ParentHosts} = State) ->
     Reply = handle_parent_pin_calls(Mod, post_pin_tx, Tx, ParentHosts),
     {reply, Reply, State};

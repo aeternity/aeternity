@@ -207,6 +207,24 @@ pin_contract_call(ContractPubkey, PinTx, Who, Amount, _Fee, SignModule) ->
     SignedCallTx = sign_tx(Tx, NetworkId, Who, SignModule),
     aec_tx_pool:push(SignedCallTx, tx_received).
 
+find_spends_to(Account) ->
+    {ok, #{last := Last, first := First}} = aec_chain_hc:epoch_info(),
+    Blocks = aec_chain_hc:get_micro_blocks_between(First, Last-1),
+    lists:flatten([ pick_pin_spends_to(Account, aec_blocks:txs(B)) || B <- Blocks ]).
+
+
+pick_pin_spends_to(Account, Txs) ->
+    BareTxs = [ aetx_sign:tx(T) || T <- Txs],
+    InnerTxs = [ aetx:specialize_type(Tx) || Tx <- BareTxs,  spend_tx == aetx:tx_type(Tx)],
+    [ aec_spend_tx:payload(T) || {_, T} <- InnerTxs, aeser_id:specialize(aec_spend_tx:recipient_id(T)) == {account,Account}, is_pin(aec_spend_tx:payload(T))].
+
+
+is_pin(Pin) ->
+    case aeser_api_encoder:decode_child_pin_payload(Pin) of
+        {error,_} -> false;
+        _ -> true
+    end.
+
 
 min_gas_price() ->
     Protocol = aec_hard_forks:protocol_effective_at_height(1),

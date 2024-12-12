@@ -12,8 +12,8 @@
          hash_to_integer/1,
          pin_to_pc/2,
          %pin_contract_call/6,
-         create_pin_tx/2,
-         post_pin_tx/2,
+         %create_pin_tx/2,
+         %post_pin_tx/2,
          get_pin_by_tx_hash/2
         %  encode_parent_pin_payload/1,
         %  decode_parent_pin_payload/1,
