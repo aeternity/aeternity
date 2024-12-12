@@ -20,6 +20,7 @@
 %% External API
 -export([
     start_link/3,
+    start_link/3,
     stop/0
 ]).
 
@@ -40,6 +41,7 @@
     contract,
     pinning_mode,
     sign_module,
+    sign_module,
     next_last,
     pc_pin,
     cc_note,
@@ -54,6 +56,9 @@
 -spec start_link(term(), atom(), term()) -> {ok, pid()} | {error, {already_started, pid()}} | ignore | {error, Reason::any()}.
 start_link(Contract, PinningBehavior, SignModule) ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [Contract, PinningBehavior, SignModule], []).
+-spec start_link(term(), atom(), term()) -> {ok, pid()} | {error, {already_started, pid()}} | ignore | {error, Reason::any()}.
+start_link(Contract, PinningBehavior, SignModule) ->
+    gen_server:start_link({local, ?SERVER}, ?MODULE, [Contract, PinningBehavior, SignModule], []).
 
 stop() ->
     gen_server:stop(?SERVER).
@@ -63,8 +68,10 @@ stop() ->
 %%%=============================================================================
 
 init([Contract, PinningBehavior, SignModule]) ->
+init([Contract, PinningBehavior, SignModule]) ->
     case PinningBehavior of
         true ->
+            State = #state{contract = Contract, pinning_mode = false, sign_module = SignModule},
             State = #state{contract = Contract, pinning_mode = false, sign_module = SignModule},
             lager:debug("started pinning agent"),
             aec_events:subscribe(new_epoch),
@@ -102,10 +109,12 @@ handle_info({gproc_ps_event, top_changed, #{info := #{height := Height}}},
             #state{pinning_mode = true,
                    contract = Contract,
                    sign_module = SignModule,
+                   sign_module = SignModule,
                    next_last = Last,
                    pc_pin = PCPinTx,
                    cc_note = CCPosted,
                    last_leader = LastLeader } = State) ->
+    NewCCPosted = maybe_post_pin_to_cc(PCPinTx, CCPosted, LastLeader, Height, SignModule),
     NewCCPosted = maybe_post_pin_to_cc(PCPinTx, CCPosted, LastLeader, Height, SignModule),
     PinningModeCont =
         case {Height, NewCCPosted} of
@@ -134,7 +143,9 @@ post_pin_to_pc(LastLeader, Height) ->
     PCPinTx.
 
 post_pin_pctx_to_cc(PinTx, LastLeader, Height, SignModule) ->
+post_pin_pctx_to_cc(PinTx, LastLeader, Height, SignModule) ->
     try
+        pin_tx_to_cc(PinTx, LastLeader, 1, 1000000 * min_gas_price(), SignModule),
         pin_tx_to_cc(PinTx, LastLeader, 1, 1000000 * min_gas_price(), SignModule),
         lager:debug("noting on CC @~p", [Height])
     catch
@@ -146,11 +157,14 @@ post_pin_proof(ContractPubkey, PinTx, LastLeader, Height, SignModule) ->
     pin_contract_call(ContractPubkey, PinTx, LastLeader, 0, 1000000 * min_gas_price(), SignModule).
 
 maybe_post_pin_to_cc(PCPinTx, false, LastLeader, Height, SignModule) ->
+maybe_post_pin_to_cc(PCPinTx, false, LastLeader, Height, SignModule) ->
     case aec_parent_connector:get_pin_by_tx_hash(PCPinTx) of
         {ok, #{pc_height := -1}} -> false;
         {ok, _} -> post_pin_pctx_to_cc(PCPinTx, LastLeader, Height, SignModule), true;
+        {ok, _} -> post_pin_pctx_to_cc(PCPinTx, LastLeader, Height, SignModule), true;
         _ -> false
     end;
+maybe_post_pin_to_cc(_, CCPosted, _, _, _) ->
 maybe_post_pin_to_cc(_, CCPosted, _, _, _) ->
     CCPosted.
 
