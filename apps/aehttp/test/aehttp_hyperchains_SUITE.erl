@@ -773,7 +773,7 @@ verify_rewards(Config) ->
     #{first := First, last := Last} = EpochInfo,
     {ok, BlocksInGen} = get_generations(Node, First, Last),
 
-    Rewards = calc_rewards(BlocksInGen),
+    Rewards = calc_rewards(BlocksInGen, Node),
 
     ct:log("Alice ~p -> ~p expected reward ~p", [AliceTot0, AliceTot1, maps:get(pubkey(?ALICE), Rewards)]),
     ct:log("Bob ~p -> ~p expected reward ~p", [BobTot0, BobTot1, maps:get(pubkey(?BOB_SIGN), Rewards)]),
@@ -788,23 +788,26 @@ verify_rewards(Config) ->
 
     ok.
 
-calc_rewards(Blocks) ->
-    calc_rewards(Blocks, undefined, #{}).
+calc_rewards(Blocks, Node) ->
+    calc_rewards(Blocks, Node, undefined, #{}).
 
-calc_rewards([], _Prev, Rs) -> Rs;
-calc_rewards([B | Bs], Prev, Rs) ->
+calc_rewards([], _Node, _Prev, Rs) -> Rs;
+calc_rewards([B | Bs], Node, Prev, Rs) ->
     case aec_blocks:type(B) of
-        micro -> calc_rewards(Bs, Prev, Rs);
+        micro -> calc_rewards(Bs, Node, Prev, Rs);
         key ->
             M = aec_blocks:miner(B),
             {R1, R2} =
                 case aec_blocks:prev_key_hash(B) == aec_blocks:prev_hash(B) of
                     true  -> {?BLOCK_REWARD, 0};
-                    false -> {?BLOCK_REWARD + 6 * (?FEE_REWARD div 10), 4 * (?FEE_REWARD div 10)}
+                    false ->
+                        [{H, _}] = rpc(Node, aec_db, find_key_headers_and_hash_at_height, [aec_blocks:height(B)]),
+                        {value, Fees} = rpc(Node, aec_db, find_block_fees, [H]),
+                        {?BLOCK_REWARD + 6 * (Fees div 10), 4 * (Fees div 10)}
                 end,
             Rs1 = Rs#{M => R1 + maps:get(M, Rs, 0)},
             Rs2 = Rs1#{Prev => R2 + maps:get(Prev, Rs1, 0)},
-            calc_rewards(Bs, M, Rs2)
+            calc_rewards(Bs, Node, M, Rs2)
     end.
 
 
