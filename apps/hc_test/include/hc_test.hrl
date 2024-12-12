@@ -1,5 +1,12 @@
--type ct_config() :: proplists:proplist().
+%% Stored in ct_config under 'nodes' key
+-record(ct_node, {
+    short_name :: node(),
+    long_name :: node(),
+    stakers = [] :: [binary()],
+    pinners = [] :: [{binary(), binary()}]
+}).
 
+-define(STAKING_VALIDATOR_CONTRACT, "StakingValidator").
 -define(MAIN_STAKING_CONTRACT, "MainStaking").
 -define(HC_CONTRACT, "HCElection").
 -define(CONSENSUS, hc).
@@ -9,6 +16,8 @@
 -define(PARENT_EPOCH_LENGTH, 3).
 -define(PARENT_FINALITY, 2).
 -define(REWARD_DELAY, 2).
+-define(BLOCK_REWARD, 100000000000000000000).
+-define(FEE_REWARD, 30000 * ?DEFAULT_GAS_PRICE).
 
 -define(NODE1, dev1).
 -define(NODE1_NAME, aecore_suite_utils:node_name(?NODE1)).
@@ -49,6 +58,17 @@
     "Bob"
 }).
 %% ak_nQpnNuBPQwibGpSJmjAah6r3ktAB7pG9JHuaGWHgLKxaKqEvC
+
+-define(BOB_SIGN, {
+    <<211, 171, 126, 224, 112, 125, 255, 130, 213, 51, 158, 2, 198, 188, 30, 130, 227, 205, 11, 191,
+        122, 121, 237, 227, 129, 67, 65, 170, 117, 35, 131, 190>>,
+    <<245, 228, 166, 6, 138, 54, 196, 135, 180, 68, 180, 161, 153, 228, 97, 127, 100, 77, 122, 20,
+        169, 108, 224, 29, 51, 209, 182, 55, 106, 223, 24, 219, 211, 171, 126, 224, 112, 125, 255,
+        130, 213, 51, 158, 2, 198, 188, 30, 130, 227, 205, 11, 191, 122, 121, 237, 227, 129, 67, 65,
+        170, 117, 35, 131, 190>>,
+    "Bob"
+}).
+%% ak_2cDpmgCXN4nTu2hYsa5KEVTgPJo2cu2SreCDPhjh6VuXH37Z7Y
 
 -define(LISA, {
     <<200, 171, 93, 11, 3, 93, 177, 65, 197, 27, 123, 127, 177, 165, 190, 211, 20, 112, 79, 108, 85,

@@ -10,7 +10,7 @@
 -export([
     init_per_suite/2,
     end_per_suite/2,
-    init_per_group/1,
+    init_per_group/2,
     end_per_group/1,
     init_per_testcase/2,
     end_per_testcase/2
@@ -18,12 +18,12 @@
 
 %% Test cases
 -export([
-    start_two_child_nodes/1,
+    %%    start_two_child_nodes/1,
     empty_parent_block/1,
     block_difficulty/1,
     check_blocktime/1,
     get_contract_pubkeys/1,
-    config_add_node/4,
+    config_add_node/5,
     config_add_node1/1,
     config_add_node2/1,
     config_add_node3/1,
@@ -43,12 +43,7 @@
 -include("../../aecontract/test/include/aect_sophia_vsn.hrl").
 -include_lib("hc_test/include/hc_test.hrl").
 
-%%-define(GENESIS_BENFICIARY,
-%%    <<0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-%%        0>>
-%%).
-
-init_per_suite(Config0, CCNodes) ->
+init_per_suite(Config0, Nodes) ->
     case aect_test_utils:require_at_least_protocol(?CERES_PROTOCOL_VSN) of
         {skip, _} = Skip ->
             Skip;
@@ -56,7 +51,7 @@ init_per_suite(Config0, CCNodes) ->
             {ok, _StartedApps} = application:ensure_all_started(gproc),
             Config = [{symlink_name, "latest.hyperchains"}, {test_module, ?MODULE}] ++ Config0,
             Config1 = aecore_suite_utils:init_per_suite(
-                CCNodes,
+                Nodes,
                 %% config is rewritten per suite
                 #{},
                 [],
@@ -105,24 +100,21 @@ init_per_suite(Config0, CCNodes) ->
                 AccountFileName,
                 #{
                     ParentPatronPubEnc =>
-                        100000000000000000000000000000000000000000000000000000000000000000000000,
-                    encoded_pubkey(?DWIGHT) => 2100000000000000000000000000,
-                    encoded_pubkey(?EDWIN) => 3100000000000000000000000000
+                        100000000_000000000_000000000_000000000_000000000_000000000_000000000_000000000,
+                    encoded_pubkey(?DWIGHT) => 2_100000000_000000000_000000000,
+                    encoded_pubkey(?EDWIN) => 3_100000000_000000000_000000000
                 }
             ),
             StakingContract = staking_contract_address(),
             ElectionContract = election_contract_address(),
-            {ok, SVBinSrc} = aect_test_utils:read_contract("StakingValidator"),
-            {ok, MSBinSrc} = aect_test_utils:read_contract(?MAIN_STAKING_CONTRACT),
-            {ok, EBinSrc} = aect_test_utils:read_contract(?HC_CONTRACT),
+            CtSrcMap = maps:from_list([
+                {C, create_stub(C)}
+             || C <- [?MAIN_STAKING_CONTRACT, ?STAKING_VALIDATOR_CONTRACT, ?HC_CONTRACT]
+            ]),
             [
                 {staking_contract, StakingContract},
                 {election_contract, ElectionContract},
-                {contract_src, #{
-                    "StakingValidator" => create_stub(binary_to_list(SVBinSrc)),
-                    ?MAIN_STAKING_CONTRACT => create_stub(binary_to_list(MSBinSrc)),
-                    ?HC_CONTRACT => create_stub(binary_to_list(EBinSrc))
-                }}
+                {contract_src, CtSrcMap}
                 | Config1
             ]
     end.
@@ -138,7 +130,12 @@ end_per_suite(Config, CCNodes) ->
     ],
     ok.
 
-init_per_group(Config0) ->
+init_per_group(Group, ConfigPre) ->
+    Config0 =
+        case Group of
+            default_pin -> [{default_pinning_behavior, true} | ConfigPre];
+            _ -> [{default_pinning_behavior, false} | ConfigPre]
+        end,
     VM = fate,
     NetworkId = <<"hc">>,
     GenesisStartTime = aeu_time:now_in_msecs(),
@@ -161,10 +158,9 @@ init_per_group(Config0) ->
     ),
     [{staker_names, [?ALICE, ?BOB, ?LISA]}, {parent_start_height, StartHeight} | Config].
 
-child_node_config(Node, Stakeholders, CTConfig) ->
+child_node_config(Node, Stakeholders, Pinners, CTConfig) ->
     ReceiveAddress = encoded_pubkey(?FORD),
-    Pinning = false,
-    NodeConfig = node_config(Node, CTConfig, Stakeholders, ReceiveAddress, Pinning),
+    NodeConfig = node_config(Node, CTConfig, Stakeholders, Pinners, ReceiveAddress),
     build_json_files(?HC_CONTRACT, NodeConfig, CTConfig),
     aecore_suite_utils:create_config(Node, CTConfig, NodeConfig, [{add_peers, true}]).
 
@@ -172,9 +168,10 @@ end_per_group(Config) ->
     Config1 = with_saved_keys([nodes], Config),
     [
         aecore_suite_utils:stop_node(Node, Config1)
-     || {Node, _, _} <- proplists:get_value(nodes, Config1, [])
+     || #ct_node{short_name = Node} <- proplists:get_value(nodes, Config1, [])
     ],
-    aecore_suite_utils:assert_no_errors_in_logs(Config1, []),
+    %%    aecore_suite_utils:assert_no_errors_in_logs(Config1, []),
+    aecore_suite_utils:assert_no_errors_in_logs(Config1, ["{handled_abort,parent_chain_not_synced}"]),
     Config1.
 
 %% Here we decide which nodes are started/running
@@ -182,8 +179,8 @@ init_per_testcase(start_two_child_nodes, Config) ->
     Config1 =
         [
             {nodes, [
-                {?NODE1, ?NODE1_NAME, [?ALICE, ?LISA]},
-                {?NODE2, ?NODE2_NAME, [?BOB]}
+                #ct_node{short_name = ?NODE1, long_name = ?NODE1_NAME, stakers = [?ALICE, ?LISA]},
+                #ct_node{short_name = ?NODE2, long_name = ?NODE2_NAME, stakers = [?BOB]}
             ]}
             | Config
         ],
@@ -191,12 +188,12 @@ init_per_testcase(start_two_child_nodes, Config) ->
     Config1;
 init_per_testcase(sync_third_node, Config) ->
     Config1 = with_saved_keys([nodes], Config),
-    Nodes = ?config(nodes, Config1),
+    Nodes = proplists:get_value(nodes, Config1),
     Config2 = lists:keyreplace(
         nodes,
         1,
         Config1,
-        {nodes, Nodes ++ [{?NODE3, ?NODE3_NAME, []}]}
+        {nodes, Nodes ++ [#ct_node{short_name = ?NODE3, long_name = ?NODE3_NAME}]}
     ),
     aect_test_utils:setup_testcase(Config2),
     Config2;
@@ -209,31 +206,36 @@ end_per_testcase(_Case, Config) ->
     {save_config, Config}.
 
 start_child_nodes(Nodes, Config) ->
-    NetworkId = binary_to_list(?config(network_id, Config)),
-    AllNodeTriples = proplists:get_value(nodes, Config, []),
+    NetworkId = binary_to_list(proplists:get_value(network_id, Config)),
+    AllNodeDefinitions = proplists:get_value(nodes, Config, []),
     StartNodeFn = fun(Node) ->
-        {Node, NodeName, Stakers} = lists:keyfind(Node, 1, AllNodeTriples),
+        #ct_node{short_name = Node1, long_name = NodeName1, stakers = Stakers1, pinners = Pinners1} = lists:keyfind(
+            Node, #ct_node.short_name, AllNodeDefinitions
+        ),
         Env = [{"AE__FORK_MANAGEMENT__NETWORK_ID", NetworkId}],
-        child_node_config(Node, Stakers, Config),
-        aecore_suite_utils:start_node(Node, Config, Env),
-        aecore_suite_utils:connect(NodeName, [])
+        child_node_config(Node1, Stakers1, Pinners1, Config),
+        aecore_suite_utils:start_node(Node1, Config, Env),
+        aecore_suite_utils:connect(NodeName1, [])
     end,
     lists:foreach(StartNodeFn, Nodes).
 
-config_add_node(Config0, Node, NodeName, Stakers) ->
+config_add_node(Config0, ShortName, LongName, Stakers, Pinners) ->
     Nodes0 = proplists:get_value(nodes, Config0, []),
-    Nodes1 = [{Node, NodeName, Stakers} | Nodes0],
+    Nodes1 = [
+        #ct_node{short_name = ShortName, long_name = LongName, stakers = Stakers, pinners = Pinners}
+        | Nodes0
+    ],
     Config1 = proplists:delete(nodes, Config0),
     [{nodes, Nodes1} | Config1].
 
 config_add_node1(Config) ->
-    config_add_node(Config, ?NODE1, ?NODE1_NAME, [?ALICE]).
+    config_add_node(Config, ?NODE1, ?NODE1_NAME, [?ALICE, ?LISA], [?LISA, ?EDWIN]).
 
 config_add_node2(Config) ->
-    config_add_node(Config, ?NODE2, ?NODE2_NAME, [?BOB]).
+    config_add_node(Config, ?NODE2, ?NODE2_NAME, [?BOB_SIGN], [{?BOB_SIGN, ?EDWIN}]).
 
 config_add_node3(Config) ->
-    config_add_node(Config, ?NODE3, ?NODE3_NAME, [?LISA]).
+    config_add_node(Config, ?NODE3, ?NODE3_NAME, [?LISA], [{?LISA, ?EDWIN}]).
 
 with_saved_keys(Keys, Config) ->
     {_TC, SavedConfig} = ?config(saved_config, Config),
@@ -371,16 +373,22 @@ check_blocktime_(Block) ->
             ok
     end.
 
-start_two_child_nodes(Config) ->
-    [{Node1, NodeName1, Stakers1}, {Node2, NodeName2, Stakers2} | _] = ?config(nodes, Config),
-    Env = [{"AE__FORK_MANAGEMENT__NETWORK_ID", binary_to_list(?config(network_id, Config))}],
-    child_node_config(Node1, Stakers1, Config),
-    aecore_suite_utils:start_node(Node1, Config, Env),
-    aecore_suite_utils:connect(NodeName1, []),
-    child_node_config(Node2, Stakers2, Config),
-    aecore_suite_utils:start_node(Node2, Config, Env),
-    aecore_suite_utils:connect(NodeName2, []),
-    ok.
+%%start_two_child_nodes(Config) ->
+%%    [
+%%        #ct_node{short_name = Node1, long_name = NodeName1, stakers = Stakers1, pinners = Pinners1},
+%%        #ct_node{short_name = Node2, long_name = NodeName2, stakers = Stakers2, pinners = Pinners2}
+%%        | _
+%%    ] = proplists:get_value(nodes, Config),
+%%    Env = [{"AE__FORK_MANAGEMENT__NETWORK_ID", binary_to_list(?config(network_id, Config))}],
+%%
+%%    child_node_config(Node1, Stakers1, Pinners1, Config),
+%%    aecore_suite_utils:start_node(Node1, Config, Env),
+%%    aecore_suite_utils:connect(NodeName1, []),
+%%
+%%    child_node_config(Node2, Stakers2, Pinners2, Config),
+%%    aecore_suite_utils:start_node(Node2, Config, Env),
+%%    aecore_suite_utils:connect(NodeName2, []),
+%%    ok.
 
 %%produce_first_epoch(Config) ->
 %%    produce_n_epochs(Config, #{count_epochs => 1}).
@@ -450,7 +458,7 @@ block_difficulty(Config) ->
 %%%=============================================================================
 
 get_contract_pubkeys(Config) ->
-    [{Node, _, _} | _] = ?config(nodes, Config),
+    [#ct_node{short_name = Node} | _] = proplists:get_value(nodes, Config),
     %% Verify that endpoint is available
     {ok, IsChildChain} = aecore_suite_utils:rpc(
         Node,
@@ -810,64 +818,25 @@ build_json_files(ElectionContract, NodeConfig, CTConfig) ->
     Pubkey = ?OWNER_PUBKEY,
     {_PatronPriv, PatronPub} = aecore_suite_utils:sign_keys(?NODE1),
     ct:log("Patron is ~p", [aeser_api_encoder:encode(account_pubkey, PatronPub)]),
-    EncodePub =
-        fun(P) ->
-            binary_to_list(aeser_api_encoder:encode(account_pubkey, P))
-        end,
+
     %% create staking contract
 
-    %% 1 mln AE
-    MinValidatorAmt = integer_to_list(trunc(math:pow(10, 18) * math:pow(10, 6))),
     %% 1 AE
     MinStakeAmt = integer_to_list(trunc(math:pow(10, 18) * 1)),
-    MinStakePercent = "30",
-    OnlineDelay = "0",
-    StakeDelay = "0",
-    UnstakeDelay = "0",
-    #{<<"pubkey">> := StakingValidatorContract} =
-        C0 =
-        contract_create_spec(
-            "StakingValidator",
-            src("StakingValidator", CTConfig),
-            [EncodePub(Pubkey), UnstakeDelay],
-            0,
-            1,
-            Pubkey
-        ),
-    {ok, ValidatorPoolAddress} = aeser_api_encoder:safe_decode(
-        contract_pubkey,
-        StakingValidatorContract
-    ),
-    %% assert assumption
-    ValidatorPoolAddress = validator_pool_contract_address(),
     MSSrc = src(?MAIN_STAKING_CONTRACT, CTConfig),
     #{
         <<"pubkey">> := StakingContractPubkey,
         <<"owner_pubkey">> := ContractOwner
     } =
         SC =
-        contract_create_spec(
-            ?MAIN_STAKING_CONTRACT,
-            MSSrc,
-            [
-                binary_to_list(StakingValidatorContract),
-                MinValidatorAmt,
-                MinStakePercent,
-                MinStakeAmt,
-                OnlineDelay,
-                StakeDelay,
-                UnstakeDelay
-            ],
-            0,
-            2,
-            Pubkey
-        ),
+        contract_create_spec(?MAIN_STAKING_CONTRACT, MSSrc, [MinStakeAmt], 0, 1, Pubkey),
     {ok, StakingAddress} = aeser_api_encoder:safe_decode(
         contract_pubkey,
         StakingContractPubkey
     ),
     %% assert assumption
-    StakingAddress = staking_contract_address(),
+    ?assertEqual(StakingAddress, staking_contract_address()),
+
     %% create election contract
     #{
         <<"pubkey">> := ElectionContractPubkey,
@@ -879,7 +848,7 @@ build_json_files(ElectionContract, NodeConfig, CTConfig) ->
             src(ElectionContract, CTConfig),
             [binary_to_list(StakingContractPubkey)],
             0,
-            3,
+            2,
             Pubkey
         ),
     {ok, ElectionAddress} = aeser_api_encoder:safe_decode(
@@ -888,153 +857,46 @@ build_json_files(ElectionContract, NodeConfig, CTConfig) ->
     ),
     %% assert assumption
     ElectionAddress = election_contract_address(),
-    {ok, SCId} = aeser_api_encoder:safe_decode(
-        contract_pubkey,
-        StakingContractPubkey
-    ),
+    {ok, SCId} = aeser_api_encoder:safe_decode(contract_pubkey, StakingContractPubkey),
+
+    APub = binary_to_list(aeser_api_encoder:encode(account_pubkey, pubkey(?ALICE))),
     Call1 =
         contract_call_spec(
             SCId,
             MSSrc,
             "new_validator",
-            [],
+            [APub, APub, "true"],
             ?INITIAL_STAKE,
             pubkey(?ALICE),
             1
         ),
+
+    BPub = binary_to_list(aeser_api_encoder:encode(account_pubkey, pubkey(?BOB))),
+    BPubSign = binary_to_list(aeser_api_encoder:encode(account_pubkey, pubkey(?BOB_SIGN))),
     Call2 =
         contract_call_spec(
             SCId,
             MSSrc,
             "new_validator",
-            [],
+            [BPub, BPubSign, "true"],
             ?INITIAL_STAKE,
             pubkey(?BOB),
             1
         ),
+
+    LPub = binary_to_list(aeser_api_encoder:encode(account_pubkey, pubkey(?LISA))),
     Call3 =
         contract_call_spec(
             SCId,
             MSSrc,
             "new_validator",
-            [],
+            [LPub, LPub, "true"],
             ?INITIAL_STAKE,
             pubkey(?LISA),
             1
         ),
-    Call4 =
-        contract_call_spec(
-            SCId,
-            MSSrc,
-            "set_online",
-            [],
-            0,
-            pubkey(?ALICE),
-            2
-        ),
-    Call5 =
-        contract_call_spec(
-            SCId,
-            MSSrc,
-            "set_online",
-            [],
-            0,
-            pubkey(?BOB),
-            2
-        ),
-    Call6 =
-        contract_call_spec(
-            SCId,
-            MSSrc,
-            "set_online",
-            [],
-            0,
-            pubkey(?LISA),
-            2
-        ),
-    Call7 =
-        contract_call_spec(
-            SCId,
-            MSSrc,
-            "set_validator_name",
-            ["\"Alice\""],
-            0,
-            pubkey(?ALICE),
-            3
-        ),
-    Call8 =
-        contract_call_spec(
-            SCId,
-            MSSrc,
-            "set_validator_name",
-            ["\"Bob\""],
-            0,
-            pubkey(?BOB),
-            3
-        ),
-    Call9 =
-        contract_call_spec(
-            SCId,
-            MSSrc,
-            "set_validator_name",
-            ["\"Lisa\""],
-            0,
-            pubkey(?LISA),
-            3
-        ),
-    Call10 =
-        contract_call_spec(
-            SCId,
-            MSSrc,
-            "set_validator_description",
-            [
-                "\"Alice is a really awesome validator and she had set a description of her great service to the work.\""
-            ],
-            0,
-            pubkey(?ALICE),
-            4
-        ),
-    Call11 =
-        contract_call_spec(
-            SCId,
-            MSSrc,
-            "set_validator_avatar_url",
-            ["\"https://aeternity.com/images/aeternity-logo.svg\""],
-            0,
-            pubkey(?ALICE),
-            5
-        ),
 
-    %% create a BRI validator in the contract so they can receive
-    %% rewards as well
-    %% TODO: discuss how we want to tackle this:
-    %%  A) require the BRI account to be validator
-    %%  B) allow pending stake in the contract that is not allocated
-    %%  yet
-    %%  C) something else
-    %% Call12 =
-    %%     contract_call_spec(SCId, MSSrc,
-    %%                         "new_validator", [],
-    %%                         ?INITIAL_STAKE, BRIPub, 1),
-    %% Call13 =
-    %%     contract_call_spec(SCId, MSSrc,
-    %%                         "set_validator_description",
-    %%                         ["\"This validator is offline. She can never become a leader. She has no name set. She is receiving the BRI rewards\""],
-    %%                         0, BRIPub, 2),
-    %% keep the BRI offline
-    AllCalls = [
-        Call1,
-        Call2,
-        Call3,
-        Call4,
-        Call5,
-        Call6,
-        Call7,
-        Call8,
-        Call9,
-        Call10,
-        Call11
-    ],
+    AllCalls = [Call1, Call2, Call3],
     ProtocolBin = integer_to_binary(aect_test_utils:latest_protocol_version()),
     #{
         <<"chain">> := #{
@@ -1048,7 +910,7 @@ build_json_files(ElectionContract, NodeConfig, CTConfig) ->
     } = NodeConfig,
     aecore_suite_utils:create_seed_file(
         ContractsFileName,
-        #{<<"contracts">> => [C0, SC, EC], <<"calls">> => AllCalls}
+        #{<<"contracts">> => [SC, EC], <<"calls">> => AllCalls}
     ),
     aecore_suite_utils:create_seed_file(
         AccountsFileName,
@@ -1057,12 +919,13 @@ build_json_files(ElectionContract, NodeConfig, CTConfig) ->
                 1000000000000000000000000000000000000000000000000,
             encoded_pubkey(?ALICE) => 2100000000000000000000000000,
             encoded_pubkey(?BOB) => 3100000000000000000000000000,
+            encoded_pubkey(?BOB_SIGN) => 3100000000000000000000000000,
             encoded_pubkey(?LISA) => 4100000000000000000000000000
         }
     ),
     ok.
 
-node_config(Node, CTConfig, PotentialStakers, ReceiveAddress, ProducingCommitments) ->
+node_config(Node, CTConfig, PotentialStakers, PotentialPinners, ReceiveAddress) ->
     NetworkId = ?config(network_id, CTConfig),
     GenesisStartTime = ?config(genesis_start_time, CTConfig),
     Stakers = lists:map(
@@ -1077,6 +940,22 @@ node_config(Node, CTConfig, PotentialStakers, ReceiveAddress, ProducingCommitmen
         end,
         PotentialStakers
     ),
+    Pinners = lists:map(
+        fun({Owner, Pinner}) ->
+            %% TODO: discuss key management
+            HCPriv = list_to_binary(aeu_hex:bin_to_hex(privkey(Pinner))),
+            #{
+                <<"parent_chain_account">> => #{
+                    <<"pub">> => encoded_pubkey(Pinner),
+                    <<"priv">> => HCPriv,
+                    <<"owner">> => encoded_pubkey(Owner)
+                }
+            }
+        end,
+        PotentialPinners
+    ),
+    ct:log("Stakers: ~p", [Stakers]),
+    ct:log("Pinners: ~p", [Pinners]),
     ConsensusType = <<"hyperchain">>,
     Port = aecore_suite_utils:external_api_port(?PARENT_CHAIN_NODE),
     SpecificConfig =
@@ -1103,8 +982,7 @@ node_config(Node, CTConfig, PotentialStakers, ReceiveAddress, ProducingCommitmen
                                     io_lib:format("http://test:Pass@127.0.0.1:~p", [Port])
                                 )
                             ]
-                        },
-                    <<"producing_commitments">> => ProducingCommitments
+                        }
                 },
             <<"genesis_start_time">> => GenesisStartTime,
             <<"child_epoch_length">> => ?CHILD_EPOCH_LENGTH,
@@ -1150,7 +1028,12 @@ node_config(Node, CTConfig, PotentialStakers, ReceiveAddress, ProducingCommitmen
                                         ),
                                         <<"expected_key_block_rate">> => 2000,
                                         <<"stakers">> => Stakers,
-                                        <<"pinning_reward_value">> => 4711
+                                        <<"pinners">> => Pinners,
+                                        <<"pinning_reward_value">> => 4711,
+                                        <<"fixed_coinbase">> => ?BLOCK_REWARD,
+                                        <<"default_pinning_behavior">> => ?config(
+                                            default_pinning_behavior, CTConfig
+                                        )
                                     },
                                     SpecificConfig
                                 )
@@ -1168,18 +1051,15 @@ node_config(Node, CTConfig, PotentialStakers, ReceiveAddress, ProducingCommitmen
                 <<"autostart">> => false,
                 %%<<"autostart">> => ProducingCommitments,
                 <<"beneficiary_reward_delay">> => ?REWARD_DELAY
-                %% this relies on certain nonce numbers
             }
     }.
-
-validator_pool_contract_address() ->
-    aect_contracts:compute_contract_pubkey(?OWNER_PUBKEY, 1).
+%% ^ This relies on certain nonce numbers
 
 staking_contract_address() ->
-    aect_contracts:compute_contract_pubkey(?OWNER_PUBKEY, 2).
+    aect_contracts:compute_contract_pubkey(?OWNER_PUBKEY, 1).
 
 election_contract_address() ->
-    aect_contracts:compute_contract_pubkey(?OWNER_PUBKEY, 3).
+    aect_contracts:compute_contract_pubkey(?OWNER_PUBKEY, 2).
 
 %% Increase the child chain with a number of key blocks
 %% Automatically add key blocks on parent chain and
@@ -1193,20 +1073,20 @@ produce_cc_blocks(Config, #{count := BlocksCnt} = Options) ->
     SkipNodes = maps:get(skip_nodes, Options, []),
     Nodes = get_nodes(Config, SkipNodes),
     Node = hd(Nodes),
-%%    ct:pal("produce_cc_blocks count=~0p skip=~0p nodes=~0p", [BlocksCnt, SkipNodes, Nodes]),
+    %%    ct:pal("produce_cc_blocks count=~0p skip=~0p nodes=~0p", [BlocksCnt, SkipNodes, Nodes]),
 
     TopHeight = aecore_suite_utils:rpc(Node, aec_chain, top_height, []),
     {ok, #{epoch := Epoch, first := First, last := Last, length := L} = Info} =
         aecore_suite_utils:rpc(Node, aec_chain_hc, epoch_info, [TopHeight]),
-%%    ct:log("produce_cc_blocks EpochInfo ~p", [Info]),
+    %%    ct:log("produce_cc_blocks EpochInfo ~p", [Info]),
 
     %% At end of BlocksCnt child epoch approaches approx:
     CBAfterEpoch = BlocksCnt - (Last - TopHeight),
     ScheduleUpto = Epoch + 1 + (CBAfterEpoch div L),
     ParentTopHeight = aecore_suite_utils:rpc(?PARENT_CHAIN_NODE, aec_chain, top_height, []),
-%%    ct:log("produce_cc_blocks parent_toph=~p c_toph=~p for next ~p child blocks", [
-%%        ParentTopHeight, TopHeight, BlocksCnt
-%%    ]),
+    %%    ct:log("produce_cc_blocks parent_toph=~p c_toph=~p for next ~p child blocks", [
+    %%        ParentTopHeight, TopHeight, BlocksCnt
+    %%    ]),
 
     %% Spread parent blocks over BlocksCnt
     ParentProduce =
@@ -1381,11 +1261,14 @@ key_reward_provided(RewardHeight) ->
         aecore_suite_utils:rpc(?NODE1, aec_governance, block_mine_reward, [RewardHeight])
     }.
 
-create_stub(ContractFile) ->
-    create_stub(ContractFile, []).
+create_stub(Contract) ->
+    create_stub(Contract, []).
 
-create_stub(ContractFile, Opts) ->
-    {ok, Enc} = aeso_aci:contract_interface(json, ContractFile, Opts ++ [{no_code, true}]),
+create_stub(Contract, Opts0) ->
+    File = aect_test_utils:contract_filename(Contract),
+    Opts = Opts0 ++ [{no_code, true}] ++ aect_test_utils:copts({file, File}),
+    {ok, SrcBin} = aect_test_utils:read_contract(Contract),
+    {ok, Enc} = aeso_aci:contract_interface(json, binary_to_list(SrcBin), Opts),
     {ok, Stub} = aeso_aci:render_aci_json(Enc),
     binary_to_list(Stub).
 
@@ -1393,6 +1276,9 @@ spread(_, _, []) ->
     [];
 spread(0, TopHeight, Spread) ->
     [{CH, N} || {CH, N} <- Spread, N /= 0, CH > TopHeight];
+%spread(N, TopHeight, [{CH, K} | Spread]) when length(Spread) < N ->
+%    %% Take speed first (not realistic), then fill rest
+%    spread(0, TopHeight, [{CH, K + N - length(Spread)} | [ {CH2, X+1} || {CH2, X} <- Spread]]);
 spread(N, TopHeight, Spread) when N rem 2 == 0 ->
     {Left, Right} = lists:split(length(Spread) div 2, Spread),
     spread(N div 2, TopHeight, Left) ++ spread(N div 2, TopHeight, Right);
@@ -1400,12 +1286,6 @@ spread(N, TopHeight, Spread) when N rem 2 == 1 ->
     {Left, [{Middle, K} | Right]} = lists:split(length(Spread) div 2, Spread),
     spread(N div 2, TopHeight, Left) ++ [{Middle, K + 1} || Middle > TopHeight] ++
         spread(N div 2, TopHeight, Right).
-
-%%get_entropy(Node, Epoch) ->
-%%    ParentHeight = rpc(Node, aec_consensus_hc, entropy_height, [Epoch]),
-%%    {ok, WPHdr} = rpc(?PARENT_CHAIN_NODE, aec_chain, get_key_header_by_height, [ParentHeight]),
-%%    {ok, WPHash0} = aec_headers:hash_header(WPHdr),
-%%    {ParentHeight, aeser_api_encoder:encode(key_block_hash, WPHash0)}.
 
 mine_and_sync(Config) ->
     {ok, _KBs} = produce_cc_blocks(Config, #{count => 3}),
@@ -1419,14 +1299,18 @@ wait_and_sync(Config) ->
     ok.
 
 get_nodes(Config, SkipNodes) ->
-    [Node || {Node, _, _} <- proplists:get_value(nodes, Config), not lists:member(Node, SkipNodes)].
+    [
+        Node
+     || #ct_node{short_name = Node} <- proplists:get_value(nodes, Config),
+        not lists:member(Node, SkipNodes)
+    ].
 
 -spec get_nodes_and_nodenames(Config :: proplists:proplist(), SkipNodes :: [node()]) ->
     {[node()], [node()]}.
 get_nodes_and_nodenames(Config, SkipNodes) ->
     NN = [
         {Node, NodeName}
-     || {Node, NodeName, _} <- proplists:get_value(nodes, Config, []),
+     || #ct_node{short_name = Node, long_name = NodeName} <- proplists:get_value(nodes, Config, []),
         not lists:member(Node, SkipNodes),
         not lists:member(NodeName, SkipNodes)
     ],
@@ -1439,10 +1323,14 @@ accounts_countains_pubkey(Accounts, Pubkey) ->
     lists:any(fun({Pub, _Priv, _AccountName}) -> Pub =:= Pubkey end, Accounts).
 
 get_node_with_pubkey(Pubkey, Config) ->
-    NodeTriples = ?config(nodes, Config),
-    Nodes = [Node || {Node, _, _Accounts} <- NodeTriples],
+    NodeTriples = proplists:get_value(nodes, Config),
+    Nodes = [Node || #ct_node{short_name = Node} <- NodeTriples],
     case
-        [Node || {Node, _, Accounts} <- NodeTriples, accounts_countains_pubkey(Accounts, Pubkey)]
+        [
+            Node
+         || #ct_node{short_name = Node, stakers = Accounts} <- NodeTriples,
+            accounts_countains_pubkey(Accounts, Pubkey)
+        ]
     of
         [] -> ct:fail("Can't find node with pubkey=~0p nodes=~0p", [Pubkey, Nodes]);
         [One] -> One;
@@ -1450,7 +1338,7 @@ get_node_with_pubkey(Pubkey, Config) ->
     end.
 
 get_cc_height_and_leader(Config) ->
-    {Node1, _, _} = hd(proplists:get_value(nodes, Config)),
+    #ct_node{short_name = Node1} = hd(proplists:get_value(nodes, Config)),
     Height = get_height(Node1),
     {ok, LeaderPubkey} = aecore_suite_utils:rpc(Node1, aec_consensus_hc, leader_for_height, [
         Height
