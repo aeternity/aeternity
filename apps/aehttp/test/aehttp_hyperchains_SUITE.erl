@@ -39,6 +39,7 @@
          correct_leader_in_micro_block/1,
          first_leader_next_epoch/1,
          check_default_pin/1,
+         check_election_info/1,
          sanity_check_vote_tx/1
         ]).
 
@@ -157,7 +158,7 @@
 
 -define(GENESIS_BENFICIARY, <<0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0>>).
 
-all() -> [{group, hc}, {group, epochs}, {group, pinning}, {group, default_pin}].
+all() -> [{group, hc}, {group, epochs}, {group, pinning}, {group, default_pin}, {group, election}].
 
 groups() ->
     [
@@ -192,6 +193,10 @@ groups() ->
           [ start_two_child_nodes,
             produce_first_epoch,
             check_default_pin]}
+    , {election, [sequence],
+          [ start_two_child_nodes,
+            produce_first_epoch,
+            check_election_info]}
     ].
 
 suite() -> [].
@@ -1319,6 +1324,22 @@ check_default_pin(Config) ->
     %% that any given validator will be last leader within the run of the test???
 
     ok.
+
+%%%=============================================================================
+%%% Elections
+%%%=============================================================================
+
+check_election_info(Config) ->
+    [{Node, _, _, _} | _] = ?config(nodes, Config),
+    mine_to_next_epoch(Node, Config),
+    {ok, #{epoch  := _Epoch,
+           last   := Last,
+           length := _Length}} = rpc(Node, aec_chain_hc, epoch_info, []),
+    {ok, LastLeader} = rpc(Node, aec_consensus_hc, leader_for_height, [Last]),
+    mine_to_last_block_in_epoch(Node, Config),
+    {ok, _} = produce_cc_blocks(Config, 2),
+    #{producer := Producer} = rpc(Node, aec_chain_hc , finalize_info, []),
+    ?assertEqual(Producer, LastLeader).
 
 %%% --------- pinning helpers
 
