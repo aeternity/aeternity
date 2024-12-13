@@ -21,24 +21,28 @@
 %% ==================================================================
 %% Records and Types
 
+-type create_contract_call_fun() :: fun((aec_keys:pubkey(), aec_trees:trees(), aeser_api_encoder:encoded(), aect_contracts:amount())
+    -> {ok, aetx:tx()}).
+
 -record(data, {
-                epoch,
-                height,
-                fork_hash,
-                seed,
-                length,
-                length_delta,
-                leader,
-                validators=[],
-                remaining_validators=#{},
-                stakers=#{},
-                majority=0,
-                proposal,
-                block_time,
-                result,
-                create_contract_call_fun,
-                from,
-                votes=#{}}).
+                epoch                      :: non_neg_integer() | undefined,
+                height                     :: non_neg_integer() | undefined,
+                fork_hash                  :: binary() | undefined,
+                seed                       :: binary() | undefined,
+                length                     :: non_neg_integer() | undefined,
+                length_delta               :: non_neg_integer() | undefined,
+                leader                     :: binary() | undefined,
+                validators=[]              :: [{binary(), non_neg_integer()}],
+                remaining_validators=#{}   :: #{binary() => non_neg_integer()},
+                stakers=#{}                :: #{binary() => binary()},
+                majority=0                 :: non_neg_integer(),
+                proposal                   :: #{binary() => any()} | undefined,
+                block_time                 :: non_neg_integer(),
+                result                     :: {ok, binary()} | {error, no_consensus} | undefined,
+                create_contract_call_fun   :: create_contract_call_fun(),
+                from                       :: pid() | undefined,
+                votes=#{}                  :: #{binary() => #{binary() => any()}}
+            }).
 
 
 -define(PROPOSAL_TYPE, 1).
@@ -51,13 +55,16 @@
 -define(SIGNATURE_FLD, <<"signature">>).
 
 %% API to start the state machine
+-spec start_link(#{binary() => binary()}, non_neg_integer(), create_contract_call_fun())  -> {ok, pid()} | {error, atom()}.
 start_link(Stakers, BlockTime, CreateContractCallFun) ->
     gen_statem:start_link({local, ?MODULE}, ?MODULE, [Stakers, BlockTime, CreateContractCallFun], []).
 
 %% Negotiate a fork, called with preferred fork and epoch length delta
+-spec negotiate(non_neg_integer(), non_neg_integer(), binary(), aec_keys:pubkey(), [{binary(), non_neg_integer()}], binary(), non_neg_integer(), non_neg_integer()) -> ok.
 negotiate(Epoch, Height, Hash, Leader, Validators, Seed, LengthDelta, CurrentLength) ->
     gen_statem:cast(?MODULE, {negotiate, Epoch, Height, Hash, Leader, Validators, Seed, LengthDelta, CurrentLength}).
 
+-spec get_finalize_transaction(aec_trees:trees()) -> {ok, aetx_sign:signed_tx()} | {error, not_ready} | {error, term()}.
 get_finalize_transaction(Trees) ->
     gen_statem:call(?MODULE, {get_finalize_transaction, Trees}).
 
@@ -484,7 +491,7 @@ calculate_stake(#data{validators = Validators, stakers = Stakers}) ->
 
 calculate_majority(Validators) ->
     TotalStake = lists:foldl(fun({_, Stake}, Accum) -> Stake + Accum end, 0, Validators),
-    math:ceil((2 * TotalStake) / 3).
+    trunc(math:ceil((2 * TotalStake) / 3)).
 
 reset_data(#data{stakers = Stakers, block_time=BlockTime, create_contract_call_fun=CreateContractCallFun}) ->
     #data{stakers = Stakers, block_time=BlockTime, create_contract_call_fun = CreateContractCallFun}.
