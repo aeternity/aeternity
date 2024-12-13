@@ -11,6 +11,7 @@
         , create/1
         , create_with_state/4
         , update/3
+        , trees/1
         ]).
 
 -export([ min_t_after_keyblock/0]).
@@ -91,6 +92,10 @@ update(Block, Txs, BlockInfo = #{trees := Trees}) ->
         false ->
             {error, block_is_full}
     end.
+
+-spec trees(block_info()) -> {ok, aec_trees:trees()}.
+trees(#{trees := Trees}) ->
+    {ok, Trees}.
 
 %% -- Internal functions -----------------------------------------------------
 
