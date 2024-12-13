@@ -165,6 +165,9 @@ main contract HCElection =
   entrypoint pin_reward_info() =
     state.pin_reward
 
+  entrypoint finalize_info() =
+    state.finalize
+
   function
     validator_schedule_(_, _, _, 0, schedule) = List.reverse(schedule)
     validator_schedule_(seed0, rnd, validators, n, schedule) =

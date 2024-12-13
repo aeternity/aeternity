@@ -18,6 +18,8 @@
         , pin_info/1
         , pin_reward_info/0
         , pin_reward_info/1
+        , finalize_info/0
+        , finalize_info/1
         %% epoch determined
         , epoch_start_height/1
         , epoch_info_for_epoch/1
@@ -36,6 +38,7 @@
 -type run_env() :: top | height() | {aetx_env:env(), aec_trees:trees()} | {hash, binary()}.
 -type epoch_info() :: map().
 -type pin_reward_info() :: map().
+-type finalize_info() :: map().
 
 -spec epoch() -> {ok, epoch()} | {error, chain_too_short}.
 epoch() ->
@@ -103,13 +106,20 @@ pin_info(RunEnv) ->
 pin_reward_info() ->
     pin_reward_info(top).
 
-
 -spec pin_reward_info(run_env()) -> pin_reward_info().
 pin_reward_info(RunEnv) ->
     {ok, Res} = call_consensus_contract_w_env(?ELECTION_CONTRACT, RunEnv, "pin_reward_info", []),
     {tuple, {Base, Current, CarryOver}} = Res,
     #{ base_pin_reward => Base, cur_pin_reward => Current, carry_over_pin_reward => CarryOver }.
 
+-spec finalize_info() -> finalize_info().
+finalize_info() ->
+    finalize_info(top).
+
+-spec finalize_info(run_env()) -> finalize_info().
+finalize_info(RunEnv) ->
+    {ok, Res} = call_consensus_contract_w_env(?ELECTION_CONTRACT, RunEnv, "finalize_info", []),
+    decode_option(Res, {fun decode_finalize/1, undefined}).
 
 %% This makes the dependency graph a circle, right?
 -spec entropy_hash(non_neg_integer()) -> {ok, binary()} | {error, any()}.
@@ -143,6 +153,17 @@ decode_stakers(RawStakers) ->
 
 encode_stakers(Stakers) ->
     lists:map(fun({Staker, Stake}) -> {tuple, {{address, Staker}, Stake}} end, Stakers).
+
+decode_finalize({tuple, {Epoch, {bytes, Fork}, EpochLength, {bytes, PCHash}, {address, Producer}, Votes}}) ->
+    #{ epoch => Epoch, fork => Fork, epoch_length => EpochLength, pc_hash => PCHash, producer => Producer, votes => decode_votes(Votes)}.
+
+decode_votes(Votes) ->
+    decode_votes(Votes, []).
+
+decode_votes([], Accum) ->
+    lists:reverse(Accum);
+decode_votes([{tuple, {{address, Producer}, {bytes, Hash}, EpochDelta, {bytes, Signature}}}|Rest], Accum) ->
+    decode_votes(Rest, [#{ producer => Producer, hash => Hash, epoch_delta => EpochDelta, signature => Signature}|Accum]).
 
 call_consensus_contract_w_env(Contract, top, Endpoint, Args) ->
     case aec_chain:top_height() of
