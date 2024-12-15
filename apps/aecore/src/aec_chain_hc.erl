@@ -27,6 +27,7 @@
         , validator_schedule/4
         , entropy_hash/1
         , get_micro_blocks_between/2
+        , create_consensus_call_contract_transaction/4
         ]).
 
 -define(ELECTION_CONTRACT, election).
@@ -125,6 +126,11 @@ finalize_info(RunEnv) ->
 -spec entropy_hash(non_neg_integer()) -> {ok, binary()} | {error, any()}.
 entropy_hash(Epoch) ->
   aec_consensus_hc:get_entropy_hash(Epoch).
+
+-spec create_consensus_call_contract_transaction(aec_keys:pubkey(), aec_trees:trees(), aeser_api_encoder:encoded(), aect_contracts:amount())
+    -> {ok, aetx:tx()}.
+create_consensus_call_contract_transaction(OwnerPubkey, Trees, EncodedCallData, Amount) ->
+    aec_consensus_hc:create_consensus_call_contract_transaction(?ELECTION_CONTRACT, OwnerPubkey, Trees, EncodedCallData, Amount).
 
 %%% --- internal
 

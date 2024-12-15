@@ -82,6 +82,7 @@
         , fixed_coinbase/0
         %% contract access
         , call_consensus_contract_result/5
+        , create_consensus_call_contract_transaction/5
         , entropy_height/1
         , get_entropy_hash/1
         , get_contract_pubkey/1
@@ -192,7 +193,7 @@ start_ae(StakersEncoded, PinnersEncoded) ->
     {ParentConnMod, SignModule, HCPCMap}.
 
 start_aec_eoe_vote(StakersMap) ->
-    start_dependency(aec_eoe_vote, [StakersMap, child_block_time(), fun(OwnerPubkey, Trees, EncodedCallData, Amount) -> create_call_contract_transaction(?ELECTION_CONTRACT, OwnerPubkey, Trees, EncodedCallData, Amount) end]).
+    start_dependency(aec_eoe_vote, [StakersMap, child_block_time()]).
 
 validate_keypair(EncodedPubkey, EncodedPrivkey) ->
     {ok, Pubkey} = aeser_api_encoder:safe_decode(account_pubkey,
@@ -333,7 +334,7 @@ state_pre_transform_node(Type, Height, PrevNode, Trees) ->
             step_micro(TxEnv, Trees, Leader)
     end.
 
-create_call_contract_transaction(ContractType, OwnerPubkey, Trees, EncodedCallData, Amount) ->
+create_consensus_call_contract_transaction(ContractType, OwnerPubkey, Trees, EncodedCallData, Amount) ->
     ContractPubkey = get_contract_pubkey(ContractType),
     Contract = aect_state_tree:get_contract(ContractPubkey,
                                             aec_trees:contracts(Trees)),

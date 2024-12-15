@@ -9,7 +9,7 @@
 -behaviour(gen_statem).
 
 %% Export API functions
--export([start_link/3, negotiate/8, get_finalize_transaction/1]).
+-export([start_link/2, negotiate/8, get_finalize_transaction/1]).
 
 %% Export gen_statem callbacks
 -export([init/1, callback_mode/0, terminate/3, code_change/4]).
@@ -20,9 +20,6 @@
 
 %% ==================================================================
 %% Records and Types
-
--type create_contract_call_fun() :: fun((aec_keys:pubkey(), aec_trees:trees(), aeser_api_encoder:encoded(), aect_contracts:amount())
-    -> {ok, aetx:tx()}).
 
 -record(data, {
                 epoch                      :: non_neg_integer() | undefined,
@@ -39,7 +36,6 @@
                 proposal                   :: #{binary() => any()} | undefined,
                 block_time                 :: non_neg_integer(),
                 result                     :: {ok, binary()} | {error, no_consensus} | undefined,
-                create_contract_call_fun   :: create_contract_call_fun(),
                 from                       :: pid() | undefined,
                 votes=#{}                  :: #{binary() => #{binary() => any()}}
             }).
@@ -55,9 +51,9 @@
 -define(SIGNATURE_FLD, <<"signature">>).
 
 %% API to start the state machine
--spec start_link(#{binary() => binary()}, non_neg_integer(), create_contract_call_fun())  -> {ok, pid()} | {error, atom()}.
-start_link(Stakers, BlockTime, CreateContractCallFun) ->
-    gen_statem:start_link({local, ?MODULE}, ?MODULE, [Stakers, BlockTime, CreateContractCallFun], []).
+-spec start_link(#{binary() => binary()}, non_neg_integer())  -> {ok, pid()} | {error, atom()}.
+start_link(Stakers, BlockTime) ->
+    gen_statem:start_link({local, ?MODULE}, ?MODULE, [Stakers, BlockTime], []).
 
 %% Negotiate a fork, called with preferred fork and epoch length delta
 -spec negotiate(non_neg_integer(), non_neg_integer(), binary(), aec_keys:pubkey(), [{binary(), non_neg_integer()}], binary(), non_neg_integer(), non_neg_integer()) -> ok.
@@ -71,10 +67,10 @@ get_finalize_transaction(Trees) ->
 %%% gen_statem callbacks
 
 %% Initialization: Start in the await_eoe state
-init([Stakers, BlockTime, CreateContractCallFun]) ->
+init([Stakers, BlockTime]) ->
     aec_events:subscribe(tx_received),
     aec_events:subscribe(new_epoch),
-    {ok, await_eoe, #data{stakers=Stakers,block_time=BlockTime,create_contract_call_fun=CreateContractCallFun}}.
+    {ok, await_eoe, #data{stakers=Stakers,block_time=BlockTime}}.
 
 %% Set the callback mode to state functions
 callback_mode() ->
@@ -211,7 +207,6 @@ handle_proposal(SignedTx, #data{leader=Leader, epoch=Epoch, fork_hash=Hash} = Da
             lager:warning("Received proposal from invalid epoch ~p and invalid leader ~p", [InvalidEpoch, InvalidProducer]),
             keep_state_and_data;
         {ok, _Type, _, _, _} ->
-            %% TODO is it possible to get a vote before the proposal?
             keep_state_and_data;
         {error, not_vote} ->
             keep_state_and_data;
@@ -450,8 +445,6 @@ handle_common_event({call,From}, {get_finalize_transaction, Trees}, #data{result
             end
     end;
 handle_common_event(_E, _Msg, #data{}) ->
-    lager:info("Common ~p ~p", [_E, _Msg]),
-    %% TODO
     keep_state_and_data.
 
 convert_to_finalize_transaction(Result, Data) ->
@@ -462,11 +455,11 @@ convert_to_finalize_transaction(Result, Data) ->
             {error, Error}
     end.
 
-convert_to_finalize_transaction({ok, CallData}, Trees, #data{create_contract_call_fun = CreateContractCallFun, leader=Leader, stakers=Stakers, epoch=Epoch}) ->
+convert_to_finalize_transaction({ok, CallData}, Trees, #data{leader=Leader, stakers=Stakers, epoch=Epoch}) ->
     case aec_consensus_hc:get_entropy_hash(Epoch + 2) of
         %% Don't create the transaction until the seed is available.
         {ok, _Seed} ->
-            {ok, Tx} = CreateContractCallFun(Leader, Trees, aeser_api_encoder:encode(contract_bytearray, CallData), 0),
+            {ok, Tx} = aec_chain_hc:create_consensus_call_contract_transaction(Leader, Trees, aeser_api_encoder:encode(contract_bytearray, CallData), 0),
             Bin0 = aetx:serialize_to_binary(Tx),
             Bin = aec_hash:hash(signed_tx, Bin0),
             BinForNetwork = aec_governance:add_network_id(Bin),
@@ -493,8 +486,8 @@ calculate_majority(Validators) ->
     TotalStake = lists:foldl(fun({_, Stake}, Accum) -> Stake + Accum end, 0, Validators),
     trunc(math:ceil((2 * TotalStake) / 3)).
 
-reset_data(#data{stakers = Stakers, block_time=BlockTime, create_contract_call_fun=CreateContractCallFun}) ->
-    #data{stakers = Stakers, block_time=BlockTime, create_contract_call_fun = CreateContractCallFun}.
+reset_data(#data{stakers = Stakers, block_time=BlockTime}) ->
+    #data{stakers = Stakers, block_time=BlockTime}.
 
 set_validators(Validators, Data) ->
     Majority = calculate_majority(Validators),
