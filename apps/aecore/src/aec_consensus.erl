@@ -190,7 +190,7 @@
 -callback genesis_difficulty() -> key_difficulty().
 
 %% rewards and signing
--callback beneficiary() -> {ok, binary() | fun(() -> binary())} | {error, atom()}.
+-callback beneficiary() -> {ok, binary() | fun(() -> binary())} | {error, atom() | tuple()}.
 -callback next_beneficiary() -> {ok, binary() | fun(() -> binary())} | {error, atom()}.
 -callback allow_lazy_leader() -> false | {true, integer()}.
 -callback pick_lazy_leader(binary()) -> error | {ok, aec_keys:pubkey()}.
