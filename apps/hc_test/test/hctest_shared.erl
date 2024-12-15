@@ -493,110 +493,9 @@ get_contract_pubkeys(Config) ->
 
     ok.
 
-%%% --------- pinning helpers
-
-%%wait_for_ps(Event) ->
-%%    receive
-%%        {gproc_ps_event, Event, Info} -> {ok, Info};
-%%        Other -> error({wrong_signal, Other})
-%%    end.
-
-%%mine_to_last_block_in_epoch(Node, Config) ->
-%%    {ok, #{
-%%        epoch := _Epoch,
-%%        first := _First,
-%%        last := Last,
-%%        length := _Length
-%%    }} = rpc(Node, aec_chain_hc, epoch_info, []),
-%%    CH = rpc(Node, aec_chain, top_height, []),
-%%    DistToBeforeLast = Last - CH - 1,
-%%    {ok, _} = produce_cc_blocks(Config, #{count => DistToBeforeLast}).
-
-% PINREFAC
-%%pin_contract_call_tx(Config, Fun, Args, Amount, FromPubKey) ->
-%%    ContractPubkey = ?config(election_contract, Config),
-%%    Nonce = next_nonce(?NODE1, FromPubKey),
-%%    {ok, CallData} = aeb_fate_abi:create_calldata(Fun, Args),
-%%    ABI = aect_test_utils:abi_version(),
-%%    TxSpec =
-%%        #{
-%%            caller_id => aeser_id:create(account, FromPubKey),
-%%            nonce => Nonce,
-%%            contract_id => aeser_id:create(contract, ContractPubkey),
-%%            abi_version => ABI,
-%%            fee => 1000000 * ?DEFAULT_GAS_PRICE,
-%%            amount => Amount,
-%%            gas => 1000000,
-%%            gas_price => ?DEFAULT_GAS_PRICE,
-%%            call_data => CallData
-%%        },
-%%    {ok, Tx} = aect_call_tx:new(TxSpec),
-%%    NetworkId = ?config(network_id, Config),
-%%    SignedTx = sign_tx(Tx, privkey(who_by_pubkey(FromPubKey)), NetworkId),
-%%    aecore_suite_utils:rpc(?NODE1_NAME, aec_tx_pool, push, [SignedTx, tx_received]),
-%%    ok.
-
-% PINREFAC aec_parent_connector??
-%%pin_to_parent(Node, PinningData, AccountPK) ->
-%%    AccPKEncEnc = aeser_api_encoder:encode(account_pubkey, AccountPK),
-%%    % no pending transactions
-%%    {ok, []} = rpc(?PARENT_CHAIN_NODE, aec_tx_pool, peek, [infinity]),
-%%    PinTx = rpc(Node, aec_parent_connector, create_pin_tx, [
-%%        AccPKEncEnc, AccountPK, 1, 30000 * ?DEFAULT_GAS_PRICE, PinningData
-%%    ]),
-%%    SignedPinTx = sign_tx(PinTx, privkey(?DWIGHT), ?PARENT_CHAIN_NETWORK_ID),
-%%    rpc(Node, aec_parent_connector, post_pin_tx, [SignedPinTx]).
-
-% PINREFAC
-%%tx_hash_to_child(Node, EncTxHash, SendAccount, Leader, Config) ->
-%%    NodeName = aecore_suite_utils:node_name(Node),
-%%    NetworkId = ?config(network_id, Config),
-%%    Nonce = next_nonce(Node, pubkey(SendAccount)),
-%%    Params = #{
-%%        sender_id => aeser_id:create(account, pubkey(SendAccount)),
-%%        recipient_id => aeser_id:create(account, Leader),
-%%        amount => 1,
-%%        fee => 30000 * ?DEFAULT_GAS_PRICE,
-%%        nonce => Nonce,
-%%        payload => EncTxHash
-%%    },
-%%    ct:log("Preparing a spend tx: ~p", [Params]),
-%%    {ok, Tx} = aec_spend_tx:new(Params),
-%%    SignedTx = sign_tx(Tx, privkey(SendAccount), NetworkId),
-%%    ok = aecore_suite_utils:rpc(NodeName, aec_tx_pool, push, [SignedTx, tx_received]),
-%%    Hash = aecore_suite_utils:rpc(NodeName, aetx_sign, hash, [SignedTx]),
-%%    Hash.
-
-%%mine_to_next_epoch(Node, Config) ->
-%%    Height1 = rpc(Node, aec_chain, top_height, []),
-%%    {ok, #{last := Last1, length := _Len}} = rpc(Node, aec_chain_hc, epoch_info, []),
-%%    {ok, Bs} = produce_cc_blocks(Config, #{count => Last1 - Height1 + 1}),
-%%    ct:log("Block last epoch: ~p", [Bs]).
-
-%%% --------- helper functions
-
 pubkey({Pubkey, _, _}) -> Pubkey.
 
 privkey({_, Privkey, _}) -> Privkey.
-
-%%name({_, _, Name}) -> Name.
-
-%%who_by_pubkey(Pubkey) ->
-%%    Alice = pubkey(?ALICE),
-%%    Bob = pubkey(?BOB),
-%%    Lisa = pubkey(?LISA),
-%%    Dwight = pubkey(?DWIGHT),
-%%    Edwin = pubkey(?EDWIN),
-%%    Genesis = ?GENESIS_BENEFICIARY,
-%%    case Pubkey of
-%%        Alice -> ?ALICE;
-%%        Bob -> ?BOB;
-%%        Lisa -> ?LISA;
-%%        Dwight -> ?DWIGHT;
-%%        Edwin -> ?EDWIN;
-%%        Genesis -> genesis;
-%%        _ -> error(unknown_beneficiary)
-%%    end.
 
 encoded_pubkey(Who) ->
     aeser_api_encoder:encode(account_pubkey, pubkey(Who)).
@@ -606,55 +505,6 @@ next_nonce(Node, Pubkey) ->
         {ok, NextNonce} -> NextNonce;
         {error, account_not_found} -> 1
     end.
-
-%%sign_and_push(NodeName, Tx, Who, NetworkId) ->
-%%    SignedTx = sign_tx(Tx, privkey(Who), NetworkId),
-%%    ok = aecore_suite_utils:rpc(NodeName, aec_tx_pool, push, [SignedTx, tx_received]),
-%%    SignedTx.
-
-%% usually we would use aec_test_utils:sign_tx/3. This function is being
-%% executed in the context of the CT test and uses the corresponding
-%% network_id. Since the network_id of the HC node is different, we must sign
-%% the tx using the test-specific network_id
-%%sign_tx(Tx, Privkey, NetworkId) ->
-%%    Bin0 = aetx:serialize_to_binary(Tx),
-%%    %% since we are in CERES context, we sign th hash
-%%    Bin = aec_hash:hash(signed_tx, Bin0),
-%%    BinForNetwork = <<NetworkId/binary, Bin/binary>>,
-%%    Signatures = [enacl:sign_detached(BinForNetwork, Privkey)],
-%%    aetx_sign:new(Tx, Signatures).
-
-%%seed_account(RecpipientPubkey, Amount, NetworkId) ->
-%%    seed_account(?NODE1, RecpipientPubkey, Amount, NetworkId).
-
-%%seed_account(Node, RecipientPubkey, Amount, NetworkId) ->
-%%    NodeName = aecore_suite_utils:node_name(Node),
-%%    {PatronPriv, PatronPub} = aecore_suite_utils:sign_keys(Node),
-%%    Nonce = next_nonce(Node, PatronPub),
-%%    Params =
-%%        #{
-%%            sender_id => aeser_id:create(account, PatronPub),
-%%            recipient_id => aeser_id:create(account, RecipientPubkey),
-%%            amount => Amount,
-%%            fee => 30000 * ?DEFAULT_GAS_PRICE,
-%%            nonce => Nonce,
-%%            payload => <<>>
-%%        },
-%%    ct:log("Preparing a spend tx: ~p", [Params]),
-%%    {ok, Tx} = aec_spend_tx:new(Params),
-%%    SignedTx = sign_tx(Tx, PatronPriv, NetworkId),
-%%    ok = aecore_suite_utils:rpc(NodeName, aec_tx_pool, push, [SignedTx, tx_received]),
-%%    {ok, SignedTx}.
-
-%%account_balance(Pubkey) ->
-%%    case rpc(?NODE1, aec_chain, get_account, [Pubkey]) of
-%%        {value, Account} -> aec_accounts:balance(Account);
-%%        none -> no_such_account
-%%    end.
-
-%%inspect_staking_contract(OriginWho, WhatToInspect, Config) ->
-%%    TopHash = rpc(?NODE1, aec_chain, top_block_hash, []),
-%%    inspect_staking_contract(OriginWho, WhatToInspect, Config, TopHash).
 
 inspect_staking_contract(OriginWho, WhatToInspect, Config, TopHash) ->
     {Fun, Args} =
@@ -703,112 +553,11 @@ dry_run(TopHash, Tx) ->
         {ok, {[{contract_call_tx, {ok, Call}}], _Events}} -> {ok, Call}
     end.
 
-%%call_info(SignedTx) ->
-%%    Hash = aetx_sign:hash(SignedTx),
-%%    case aecore_suite_utils:rpc(?NODE1_NAME, aec_chain, find_tx_location, [Hash]) of
-%%        not_found ->
-%%            {error, unknown_tx};
-%%        none ->
-%%            {error, gced_tx};
-%%        mempool ->
-%%            {error, tx_in_pool};
-%%        MBHash when is_binary(MBHash) ->
-%%            case
-%%                aecore_suite_utils:rpc(
-%%                    ?NODE1_NAME,
-%%                    aehttp_helpers,
-%%                    get_info_object_signed_tx,
-%%                    [MBHash, SignedTx]
-%%                )
-%%            of
-%%                {ok, Call} -> {ok, Call};
-%%                {error, Reason} -> {error, Reason}
-%%            end
-%%    end.
-
-%%create_ae_spend_tx(SenderId, RecipientId, Nonce, Payload) ->
-%%    Params = #{
-%%        sender_id => aeser_id:create(account, SenderId),
-%%        recipient_id => aeser_id:create(account, RecipientId),
-%%        amount => 1,
-%%        nonce => Nonce,
-%%        fee => 40000 * ?DEFAULT_GAS_PRICE,
-%%        payload => Payload
-%%    },
-%%    ct:log("Preparing a spend tx: ~p", [Params]),
-%%    aec_spend_tx:new(Params).
-
-%%external_address(Node) ->
-%%    {ok, Port} = rpc(
-%%        Node,
-%%        aeu_env,
-%%        user_config_or_env,
-%%        [[<<"http">>, <<"external">>, <<"port">>], aehttp, [external, port]]
-%%    ),
-%%    "http://127.0.0.1:" ++ integer_to_list(Port).
-
 decode_consensus_result(Call, Fun, Src) ->
     ReturnType = aect_call:return_type(Call),
     ReturnValue = aect_call:return_value(Call),
     Res = aect_test_utils:decode_call_result(Src, Fun, ReturnType, ReturnValue),
     {ReturnType, Res}.
-
-%%calc_rewards(RewardForHeight) ->
-%%    %% we distribute rewards for the previous
-%%    {ok, #{
-%%        key_block := PrevKB,
-%%        micro_blocks := MBs
-%%    }} =
-%%        rpc(
-%%            ?NODE1,
-%%            aec_chain,
-%%            get_generation_by_height,
-%%            [RewardForHeight, backward]
-%%        ),
-%%    PrevGenProtocol = aec_blocks:version(PrevKB),
-%%    Txs = lists:flatten(
-%%        lists:map(
-%%            fun(MB) -> aec_blocks:txs(MB) end,
-%%            MBs
-%%        )
-%%    ),
-%%    ct:log("Txs: ~p", [Txs]),
-%%    {_, KeyReward} = key_reward_provided(RewardForHeight),
-%%    GenerationFees =
-%%        lists:foldl(
-%%            fun(SignTx, Accum) ->
-%%                %% TODO: maybe add support for contract calls:
-%%                %% * contract create
-%%                %% * contract call
-%%                %% * force progress
-%%                %% * meta tx
-%%                Tx = aetx_sign:tx(SignTx),
-%%                Fee = aetx:fee(Tx),
-%%                Accum + Fee
-%%            end,
-%%            0,
-%%            Txs
-%%        ),
-%%    ct:log(
-%%        "Height ~p, Generation fees: ~p, key reward: ~p",
-%%        [RewardForHeight, GenerationFees, KeyReward]
-%%    ),
-%%    BeneficiaryReward1 = GenerationFees * 4 div 10,
-%%    BeneficiaryReward2 = GenerationFees - BeneficiaryReward1 + KeyReward,
-%%    %% TODO: verify devrewards
-%%    {{AdjustedReward1, AdjustedReward2}, _DevRewards} =
-%%        Res =
-%%        rpc(
-%%            ?NODE1,
-%%            aec_dev_reward,
-%%            split,
-%%            [BeneficiaryReward1, BeneficiaryReward2, PrevGenProtocol]
-%%        ),
-%%    ct:log(
-%%        "AdjustedReward1: ~p, AdjustedReward2: ~p",
-%%        [AdjustedReward1, AdjustedReward2]
-%%    ),
-%%    Res.
 
 src(ContractName, Config) ->
     Srcs = ?config(contract_src, Config),

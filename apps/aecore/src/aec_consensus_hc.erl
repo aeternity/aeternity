@@ -1012,12 +1012,14 @@ get_timeslot_and_epoch(RunEnv) ->
     case Epoch of
         N when N =< 1 ->
             %% Epochs (0 and) 1 are special, it ignores the timing and timeslots are equal to heights
+            % lager:debug("TIMESLOT (EP1) timeslot=~w, ep_height=~w, epoch=~w", [aec_chain:top_height() + 1, EpochHeight, Epoch]),
             #{timeslot => aec_chain:top_height() + 1, epoch => 1};
         _ ->
             %% From epoch 2 onward, the timeslots are based on current time and epoch start time
             BlockTime = child_block_time(),
             Now = aeu_time:now_in_msecs(),
-            Timeslot = EpochHeight + (Now - EpochStartTime) div BlockTime + 1,
+            Timeslot = EpochHeight + (Now - EpochStartTime) div BlockTime,
+            % lager:debug("TIMESLOT (EP2+) timeslot=~w, ep_height=~w, epoch=~w", [Timeslot, EpochHeight, Epoch]),
             #{timeslot => Timeslot, epoch => Epoch}
     end.
 
