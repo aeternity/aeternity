@@ -39,7 +39,7 @@
          correct_leader_in_micro_block/1,
          first_leader_next_epoch/1,
          check_default_pin/1,
-         check_election_info/1,
+         check_finalize_info/1,
          sanity_check_vote_tx/1
         ]).
 
@@ -193,10 +193,10 @@ groups() ->
           [ start_two_child_nodes,
             produce_first_epoch,
             check_default_pin]}
-    , {election, [sequence],
+    , {bft, [sequence],
           [ start_two_child_nodes,
             produce_first_epoch,
-            check_election_info]}
+            check_finalize_info]}
     ].
 
 suite() -> [].
@@ -1329,17 +1329,24 @@ check_default_pin(Config) ->
 %%% Elections
 %%%=============================================================================
 
-check_election_info(Config) ->
+check_finalize_info(Config) ->
     [{Node, _, _, _} | _] = ?config(nodes, Config),
     mine_to_next_epoch(Node, Config),
-    {ok, #{epoch  := _Epoch,
+    {ok, #{epoch  := Epoch,
            last   := Last,
+           validators := Validators,
            length := _Length}} = rpc(Node, aec_chain_hc, epoch_info, []),
     {ok, LastLeader} = rpc(Node, aec_consensus_hc, leader_for_height, [Last]),
     mine_to_last_block_in_epoch(Node, Config),
     {ok, _} = produce_cc_blocks(Config, 2),
-    #{producer := Producer} = rpc(Node, aec_chain_hc , finalize_info, []),
-    ?assertEqual(Producer, LastLeader).
+    #{producer := Producer, epoch := FEpoch, votes := Votes} = rpc(Node, aec_chain_hc , finalize_info, []),
+    FVoters = lists:map(fun(#{producer := Voter}) -> Voter end, Votes),
+    TotalStake = lists:foldl(fun({_, Stake}, Accum) -> Stake + Accum end, 0, Validators),
+    VotersStake = lists:foldl(fun(Voter, Accum) -> proplists:get_value(Voter, Validators) + Accum end, 0, FVoters),
+    TotalVotersStake = proplists:get_value(LastLeader, Validators) + VotersStake,
+    ?assertEqual(Producer, LastLeader),
+    ?assertEqual(Epoch, FEpoch),
+    ?assert(TotalVotersStake >= TotalStake * 0.6).
 
 %%% --------- pinning helpers
 
