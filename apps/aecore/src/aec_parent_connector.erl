@@ -407,12 +407,3 @@ handle_parent_pin_calls(Mod, Fun, Args, NodeSpecs) ->
             {error, Err}
     end.
 
-handle_conn_mod_calls(Mod, Fun, Args) ->
-    try
-        Mod:Fun(Args)
-    catch
-        Type:Err ->
-            lager:debug("PINNING: caught bad connector call: ~p :  ~p", [Type, Err]),
-            {error, Err}
-    end.
-
