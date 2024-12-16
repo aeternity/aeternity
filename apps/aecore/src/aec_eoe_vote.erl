@@ -49,6 +49,8 @@
 -define(HEIGHT_FLD, <<"block_height">>).
 -define(EPOCH_DELTA_FLD, <<"epoch_length_delta">>).
 -define(SIGNATURE_FLD, <<"signature">>).
+-define(LEADER_FLD, <<"leader">>).
+-define(EPOCH_FLD, <<"epoch">>).
 
 %% API to start the state machine
 -spec start_link(#{binary() => binary()}, non_neg_integer())  -> {ok, pid()} | {error, atom()}.
@@ -86,10 +88,15 @@ await_eoe(cast, {negotiate, Epoch, Height, Hash, Leader, Validators, Seed, Lengt
                     lager:info("End of epoch ~p waiting for proposal", [Epoch]),
                     {next_state, proposal, Data1,
                         [{state_timeout,BlockTime,no_proposal}]};
-                _ ->
+                #{?LEADER_FLD := Leader, ?EPOCH_FLD := Epoch} ->
                     Data2 = handle_voting(Data1),
                     {next_state, vote, Data2,
-                        [{state_timeout,BlockTime,no_quorum}]}
+                        [{state_timeout,BlockTime,no_quorum}]};
+                _ ->
+                    lager:info("Discarding invalid proposal ~p, end of epoch ~p waiting for proposal", [Proposal, Epoch]),
+                    {next_state, proposal, Data1#data{proposal = undefined},
+                        [{state_timeout,BlockTime,no_proposal}]}
+
             end;
         true ->
             Stake = calculate_stake(Data1),
@@ -182,21 +189,25 @@ create_votes(VoteFlds, Leader, [{Validator,_}|Validators], Stakers, Epoch, Type,
             create_votes(VoteFlds, Leader, Validators, Stakers, Epoch, Type, [Vote|Votes])
     end.
 
-
-handle_proposal(SignedTx, #data{leader=Leader, epoch=Epoch, fork_hash=Hash} = Data) ->
+handle_proposal(SignedTx, #data{leader=undefined, epoch=undefined} = Data) ->
+    case convert_transaction(SignedTx) of
+        {ok, ?PROPOSAL_TYPE, Epoch, Leader, ProposalFields} ->
+            %% Store the leader so it can be used for validation laster
+            ProposalFields1 = maps:put(?LEADER_FLD, Leader, ProposalFields),
+            %% The epoch is also need for validation
+            ProposalFields2 = maps:put(?EPOCH_FLD, Epoch, ProposalFields1),
+            {keep_state, Data#data{proposal=ProposalFields2}};
+        _ ->
+            keep_state_and_data
+    end;
+handle_proposal(SignedTx, #data{leader=Leader, epoch=Epoch} = Data) ->
     %% Handle the proposal phase
     %% Check the transaction contains a proposal
     case convert_transaction(SignedTx) of
         {ok, ?PROPOSAL_TYPE, Epoch, Leader, ProposalFields} ->
             Data1 = Data#data{proposal=ProposalFields},
-            case Hash of
-                %% Negotation hasn't begun yet
-                undefined ->
-                    {keep_state, Data1};
-                _ ->
-                    Data2 = handle_voting(Data1),
-                    check_voting_majority(Data2)
-            end;
+            Data2 = handle_voting(Data1),
+            check_voting_majority(Data2);
         {ok, ?PROPOSAL_TYPE, Epoch, InvalidProducer, _ProposalFields} ->
             lager:warning("Received proposal from invalid leader ~p", [InvalidProducer]),
             keep_state_and_data;
