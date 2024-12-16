@@ -158,7 +158,7 @@
 
 -define(GENESIS_BENFICIARY, <<0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0>>).
 
-all() -> [{group, hc}, {group, epochs}, {group, pinning}, {group, default_pin}, {group, bft}].
+all() -> [{group, hc}, {group, epochs}, {group, pinning}, {group, default_pin}].
 
 groups() ->
     [
@@ -166,6 +166,7 @@ groups() ->
           [ start_two_child_nodes
           , produce_first_epoch
           , verify_rewards
+          , check_finalize_info
           , spend_txs
           , simple_withdraw
           , correct_leader_in_micro_block
@@ -193,10 +194,6 @@ groups() ->
           [ start_two_child_nodes,
             produce_first_epoch,
             check_default_pin]}
-    , {bft, [sequence],
-          [ start_two_child_nodes,
-            produce_first_epoch,
-            check_finalize_info]}
     ].
 
 suite() -> [].
@@ -1346,7 +1343,7 @@ check_finalize_info(Config) ->
     TotalVotersStake = proplists:get_value(LastLeader, Validators) + VotersStake,
     ?assertEqual(Epoch, FEpoch),
     ?assertEqual(Producer, LastLeader),
-    ?assert(TotalVotersStake >= TotalStake * 2/3).
+    ?assert(TotalVotersStake >= trunc(math:ceil((2 * TotalStake) / 3))).
 
 %%% --------- pinning helpers
 
