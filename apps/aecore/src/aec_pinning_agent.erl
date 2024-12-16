@@ -178,7 +178,7 @@ create_pin_tx_({SenderPubkey, ReceiverPubkey, Nonce, Amount, Fee, PinPayload}) -
                 amount       => Amount,
                 fee          => Fee,
                 nonce        => Nonce,
-                payload      => PinPayload},
+                payload      => aeser_hc:encode_child_pin_payload(PinPayload)},
     {ok, SpendTx} = aec_spend_tx:new(TxArgs),
     SpendTx.
 
@@ -220,7 +220,7 @@ pick_pin_spends_to(Account, Txs) ->
 
 
 is_pin(Pin) ->
-    case aeser_api_encoder:decode_child_pin_payload(Pin) of
+    case aeser_hc:decode_child_pin_payload(Pin) of
         {error,_} -> false;
         _ -> true
     end.
