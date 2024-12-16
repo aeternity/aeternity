@@ -9,8 +9,10 @@
 -export([ apply_block_txs/3
         , apply_block_txs_strict/3
         , create/1
+        , create/2
         , create_with_state/4
         , update/3
+        , trees/1
         ]).
 
 -export([ min_t_after_keyblock/0]).
@@ -43,6 +45,27 @@ create(Block) ->
                 _ -> {error, block_not_found}
             end
     end.
+
+
+-spec create(aec_blocks:block() | aec_blocks:block_header_hash(), non_neg_integer()) ->
+        {ok, aec_blocks:block(), block_info()} | {error, term()}.
+create(BlockHash, GasOffset) when is_binary(BlockHash) ->
+    case aec_chain:get_block(BlockHash) of
+        {ok, Block} -> create(Block, GasOffset);
+        _ -> {error, block_not_found}
+    end;
+create(Block, GasOffset) ->
+    MaxGas = aec_governance:block_gas_limit() - GasOffset,
+    case aec_blocks:is_key_block(Block) of
+        true ->
+            int_create(Block, Block, MaxGas);
+        false ->
+            case aec_chain:get_block(aec_blocks:prev_key_hash(Block)) of
+                {ok, KeyBlock} -> int_create(Block, KeyBlock, MaxGas);
+                _ -> {error, block_not_found}
+            end
+    end.
+
 
 -spec create_with_state(aec_blocks:block(), aec_blocks:block(),
     list(aetx_sign:signed_tx()), aec_trees:trees()) ->
@@ -92,14 +115,22 @@ update(Block, Txs, BlockInfo = #{trees := Trees}) ->
             {error, block_is_full}
     end.
 
+-spec trees(block_info()) -> {ok, aec_trees:trees()}.
+trees(#{trees := Trees}) ->
+    {ok, Trees}.
+
 %% -- Internal functions -----------------------------------------------------
 
+
 int_create(PrevBlock, KeyBlock) ->
+    MaxGas = aec_governance:block_gas_limit(),
+    int_create(PrevBlock, KeyBlock, MaxGas).
+
+int_create(PrevBlock, KeyBlock, MaxGas) ->
     MBEnv = #{prev_hash := PrevBlockHash} = create_micro_block_env(PrevBlock, KeyBlock),
     case aec_chain:get_block_state(PrevBlockHash) of
         {ok, Trees} ->
             TxEnv0 = create_tx_env(MBEnv),
-            MaxGas = aec_governance:block_gas_limit(),
             %% Height is relative to last key-block.
             ConsensusModule = aec_blocks:consensus_module(KeyBlock),
             Height = ConsensusModule:micro_block_height_relative_previous_block(key, aec_blocks:height(KeyBlock)),

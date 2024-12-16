@@ -82,10 +82,14 @@
         , fixed_coinbase/0
         %% contract access
         , call_consensus_contract_result/5
+        , create_consensus_call_contract_transaction/5
         , entropy_height/1
         , get_entropy_hash/1
         , get_contract_pubkey/1
         , get_child_epoch_info/1
+        %% voting
+        , vote_result/1
+        , vote_result/0
         ]).
 
 -ifdef(TEST).
@@ -148,6 +152,7 @@ start_btc(StakersEncoded, ParentConnMod) ->
             StakersEncoded),
     StakersMap = maps:from_list(Stakers),
     start_dependency(aec_preset_keys, [StakersMap]),
+    start_aec_eoe_vote(StakersMap),
     SignModule = undefined,
     {ParentConnMod, SignModule, []}.
 
@@ -183,9 +188,13 @@ start_ae(StakersEncoded, PinnersEncoded) ->
             PinnersEncoded),
     HCPCMap = maps:from_list(HCPC),
     lager:debug("Pinners: ~p", [HCPCMap]),
+    start_aec_eoe_vote(StakersMap),
     ParentConnMod = aehttpc_aeternity,
     SignModule = get_sign_module(),
     {ParentConnMod, SignModule, HCPCMap}.
+
+start_aec_eoe_vote(StakersMap) ->
+    start_dependency(aec_eoe_vote, [StakersMap, child_block_time()]).
 
 validate_keypair(EncodedPubkey, EncodedPrivkey) ->
     {ok, Pubkey} = aeser_api_encoder:safe_decode(account_pubkey,
@@ -325,6 +334,40 @@ state_pre_transform_node(Type, Height, PrevNode, Trees) ->
         micro ->
             step_micro(TxEnv, Trees, Leader)
     end.
+
+create_consensus_call_contract_transaction(ContractType, OwnerPubkey, Trees, EncodedCallData, Amount) ->
+    ContractPubkey = get_contract_pubkey(ContractType),
+    Contract = aect_state_tree:get_contract(ContractPubkey,
+                                            aec_trees:contracts(Trees)),
+    OwnerAcc = aec_accounts_trees:get(OwnerPubkey,
+                                            aec_trees:accounts(Trees)),
+    Fee = 1859800000000, %% TODO: fine tune this
+    Gas = 600000, %% TODO: fine tune this
+    GasPrice = 1000000, %% TODO: fine tune this
+
+    {ok, CallData} = aeser_api_encoder:safe_decode(contract_bytearray, EncodedCallData),
+    CallSpec = #{ caller_id   => aeser_id:create(account, OwnerPubkey),
+                  nonce       => aec_accounts:nonce(OwnerAcc) + 1,
+                  contract_id => aeser_id:create(contract, ContractPubkey),
+                  abi_version => aect_contracts:abi_version(Contract), %% TODO: maybe get the ABI from the config?
+                  fee         => Fee,
+                  amount      => Amount,
+                  gas         => Gas,
+                  gas_price   => GasPrice,
+                  call_data   => CallData},
+    aect_call_tx:new(CallSpec).
+
+vote_result(Trees) ->
+    aec_eoe_vote:get_finalize_transaction(Trees).
+
+vote_result() ->
+    case aec_chain:get_top_state() of
+        {ok, Trees} ->
+            vote_result(Trees);
+        Error ->
+            {error, Error}
+    end.
+
 
 cache_child_epoch_info(Epoch, Height, StartTime) ->
     %% if the leader is running on the same node, and the current process
@@ -748,8 +791,17 @@ next_beneficiary() ->
 %% Called as part of deciding who will produce block at Height `height(TxEnv) + 1`
 next_beneficiary(TxEnv, Trees) ->
     ChildHeight = aetx_env:height(TxEnv),
-    case leader_for_height(ChildHeight + 1, {TxEnv, Trees}) of
+    ChildHeight1 = ChildHeight + 1,
+    case leader_for_height(ChildHeight1, {TxEnv, Trees}) of
         {ok, Leader} ->
+            {ok, #{epoch := Epoch, seed := Seed, validators := Validators} = EpochInfo} = aec_chain_hc:epoch_info({TxEnv, Trees}),
+            case ChildHeight1 == maps:get(last, EpochInfo) of
+                true ->
+                    Hash = aetx_env:key_hash(TxEnv),
+                    aec_eoe_vote:negotiate(Epoch, ChildHeight1, Hash, Leader, Validators, Seed, 0, child_epoch_length()); %% TODO epoch delta
+                false ->
+                    ok
+            end,
             SignModule = get_sign_module(),
             case SignModule:set_candidate(Leader) of
                  {error, key_not_found} ->

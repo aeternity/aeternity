@@ -39,6 +39,7 @@
          correct_leader_in_micro_block/1,
          first_leader_next_epoch/1,
          check_default_pin/1,
+         check_finalize_info/1,
          sanity_check_vote_tx/1
         ]).
 
@@ -165,6 +166,7 @@ groups() ->
           [ start_two_child_nodes
           , produce_first_epoch
           , verify_rewards
+          , check_finalize_info
           , spend_txs
           , simple_withdraw
           , correct_leader_in_micro_block
@@ -773,7 +775,7 @@ verify_rewards(Config) ->
     #{first := First, last := Last} = EpochInfo,
     {ok, BlocksInGen} = get_generations(Node, First, Last),
 
-    Rewards = calc_rewards(BlocksInGen),
+    Rewards = calc_rewards(BlocksInGen, Node),
 
     ct:log("Alice ~p -> ~p expected reward ~p", [AliceTot0, AliceTot1, maps:get(pubkey(?ALICE), Rewards)]),
     ct:log("Bob ~p -> ~p expected reward ~p", [BobTot0, BobTot1, maps:get(pubkey(?BOB_SIGN), Rewards)]),
@@ -788,23 +790,26 @@ verify_rewards(Config) ->
 
     ok.
 
-calc_rewards(Blocks) ->
-    calc_rewards(Blocks, undefined, #{}).
+calc_rewards(Blocks, Node) ->
+    calc_rewards(Blocks, Node, undefined, #{}).
 
-calc_rewards([], _Prev, Rs) -> Rs;
-calc_rewards([B | Bs], Prev, Rs) ->
+calc_rewards([], _Node, _Prev, Rs) -> Rs;
+calc_rewards([B | Bs], Node, Prev, Rs) ->
     case aec_blocks:type(B) of
-        micro -> calc_rewards(Bs, Prev, Rs);
+        micro -> calc_rewards(Bs, Node, Prev, Rs);
         key ->
             M = aec_blocks:miner(B),
             {R1, R2} =
                 case aec_blocks:prev_key_hash(B) == aec_blocks:prev_hash(B) of
                     true  -> {?BLOCK_REWARD, 0};
-                    false -> {?BLOCK_REWARD + 6 * (?FEE_REWARD div 10), 4 * (?FEE_REWARD div 10)}
+                    false ->
+                        [{H, _}] = rpc(Node, aec_db, find_key_headers_and_hash_at_height, [aec_blocks:height(B)]),
+                        {value, Fees} = rpc(Node, aec_db, find_block_fees, [H]),
+                        {?BLOCK_REWARD + 6 * (Fees div 10), 4 * (Fees div 10)}
                 end,
             Rs1 = Rs#{M => R1 + maps:get(M, Rs, 0)},
             Rs2 = Rs1#{Prev => R2 + maps:get(Prev, Rs1, 0)},
-            calc_rewards(Bs, M, Rs2)
+            calc_rewards(Bs, Node, M, Rs2)
     end.
 
 
@@ -1316,6 +1321,29 @@ check_default_pin(Config) ->
     %% that any given validator will be last leader within the run of the test???
 
     ok.
+
+%%%=============================================================================
+%%% Elections
+%%%=============================================================================
+
+check_finalize_info(Config) ->
+    [{Node, _, _, _} | _] = ?config(nodes, Config),
+    mine_to_next_epoch(Node, Config),
+    {ok, #{epoch  := Epoch,
+           last   := Last,
+           validators := Validators,
+           length := _Length}} = rpc(Node, aec_chain_hc, epoch_info, []),
+    {ok, LastLeader} = rpc(Node, aec_consensus_hc, leader_for_height, [Last]),
+    mine_to_last_block_in_epoch(Node, Config),
+    {ok, _} = produce_cc_blocks(Config, 2),
+    #{producer := Producer, epoch := FEpoch, votes := Votes} = rpc(Node, aec_chain_hc , finalize_info, []),
+    FVoters = lists:map(fun(#{producer := Voter}) -> Voter end, Votes),
+    TotalStake = lists:foldl(fun({_, Stake}, Accum) -> Stake + Accum end, 0, Validators),
+    VotersStake = lists:foldl(fun(Voter, Accum) -> proplists:get_value(Voter, Validators) + Accum end, 0, FVoters),
+    TotalVotersStake = proplists:get_value(LastLeader, Validators) + VotersStake,
+    ?assertEqual(Epoch, FEpoch),
+    ?assertEqual(Producer, LastLeader),
+    ?assert(TotalVotersStake >= trunc(math:ceil((2 * TotalStake) / 3))).
 
 %%% --------- pinning helpers
 
