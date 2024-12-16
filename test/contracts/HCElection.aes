@@ -20,6 +20,22 @@ main contract HCElection =
       carry_over : int
     }
 
+  record vote =
+    { producer    : address,
+      hash        : bytes(),
+      epoch_delta : int,
+      signature   : bytes()
+    }
+
+  record finalize_info =
+    { epoch        : int,
+      fork         : bytes(),
+      epoch_length : int,
+      pc_hash      : bytes(),
+      producer     : address,
+      votes        : list(vote)
+    }
+
   record state =
     { main_staking_ct       : MainStaking,
       leader                : address,
@@ -27,7 +43,8 @@ main contract HCElection =
       epoch                 : int,
       epochs                : map(int, epoch_info),
       pin                   : option(bytes()),
-      pin_reward            : pin_reward_info
+      pin_reward            : pin_reward_info,
+      finalize              : option(finalize_info())
     }
 
   entrypoint init(main_staking_ct : MainStaking) =
@@ -37,6 +54,7 @@ main contract HCElection =
       epoch                 = 0,
       epochs                = {},
       pin                   = None,
+      finalize              = None,
       pin_reward            = {base = 0, current = 0, carry_over = 0} }
 
   stateful entrypoint init_epochs(epoch_length : int, base_pin_reward : int) =
@@ -109,6 +127,14 @@ main contract HCElection =
     assert_protocol_call()
     put(state{rewards[height = []] @ rs = (to, Call.value) :: rs})
 
+  stateful entrypoint finalize_epoch(epoch_number : int, fork : bytes(), epoch_length : int, pc_hash : bytes(), producer : address, votes : list(vote)) =
+    let epoch = state.epoch
+    let last = state.epochs[epoch].start + state.epochs[epoch].length - 1
+    require(Chain.block_height == last, "Only in last block")
+    require(Call.caller == state.leader, "Must be called by the last leader of epoch")
+    require(epoch_number == state.epoch, "Not correct epoch")
+    put(state{finalize=Some({epoch = epoch_number, fork = fork, epoch_length = epoch_length, pc_hash = pc_hash, producer = producer, votes = votes})})
+
   entrypoint leader() =
     state.leader
 
@@ -138,6 +164,9 @@ main contract HCElection =
 
   entrypoint pin_reward_info() =
     state.pin_reward
+
+  entrypoint finalize_info() =
+    state.finalize
 
   function
     validator_schedule_(_, _, _, 0, schedule) = List.reverse(schedule)
