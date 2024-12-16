@@ -1344,9 +1344,9 @@ check_finalize_info(Config) ->
     TotalStake = lists:foldl(fun({_, Stake}, Accum) -> Stake + Accum end, 0, Validators),
     VotersStake = lists:foldl(fun(Voter, Accum) -> proplists:get_value(Voter, Validators) + Accum end, 0, FVoters),
     TotalVotersStake = proplists:get_value(LastLeader, Validators) + VotersStake,
-    ?assertEqual(Producer, LastLeader),
     ?assertEqual(Epoch, FEpoch),
-    ?assert(TotalVotersStake >= TotalStake * 0.6).
+    ?assertEqual(Producer, LastLeader),
+    ?assert(TotalVotersStake >= TotalStake * 2/3).
 
 %%% --------- pinning helpers
 
