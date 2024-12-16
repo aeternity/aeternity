@@ -88,7 +88,8 @@
         , get_contract_pubkey/1
         , get_child_epoch_info/1
         %% voting
-        ,vote_result/1
+        , vote_result/1
+        , vote_result/0
         ]).
 
 -ifdef(TEST).
@@ -358,6 +359,15 @@ create_consensus_call_contract_transaction(ContractType, OwnerPubkey, Trees, Enc
 
 vote_result(Trees) ->
     aec_eoe_vote:get_finalize_transaction(Trees).
+
+vote_result() ->
+    case aec_chain:get_top_state() of
+        {ok, Trees} ->
+            vote_result(Trees);
+        Error ->
+            {error, Error}
+    end.
+
 
 cache_child_epoch_info(Epoch, Height, StartTime) ->
     %% if the leader is running on the same node, and the current process
