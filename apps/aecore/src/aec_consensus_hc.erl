@@ -300,36 +300,35 @@ state_pre_transform_node(Type, Height, PrevNode, Trees) ->
     {ok, #{epoch := Epoch, first := EpochFirst, last := EpochLast} = EpochInfo} =
         aec_chain_hc:epoch_info({TxEnv, Trees}),
 
-    #{timeslot := Timeslot} = get_timeslot_and_epoch({TxEnv, Trees}),
-    lager:debug("------ STATE_PRE_TRANSFORM_NODE: height=~w timeslot=~w epoch=~w ep_first=~w ep_last=~w",
-        [Height, Timeslot, Epoch, EpochFirst, EpochLast]),
+    lager:debug("------ STATE_PRE_TRANSFORM_NODE: height=~w epoch=~w ep_first=~w ep_last=~w",
+        [Height, Epoch, EpochFirst, EpochLast]),
 
     case Type of
         key ->
-            case Timeslot >= EpochFirst andalso Timeslot =< EpochLast of
+            case Height >= EpochFirst andalso Height =< EpochLast of
                 true ->
-                    {ok, Leader} = leader_for_timeslot(Timeslot, {TxEnv, Trees}),
-                    step_key(Height, Timeslot, EpochInfo, {TxEnv, Trees}, Leader);
+                    {ok, Leader} = leader_for_timeslot(Height, {TxEnv, Trees}),
+                    step_key(Height, EpochInfo, {TxEnv, Trees}, Leader);
                 false ->
                     %% We're now out of the last started epoch and the chain has halted
-                    lager:warning("Epoch ~w has ended, but we're still ticking timeslots ts=~w", [Epoch, Timeslot]),
+                    lager:warning("Epoch ~w has ended, but we're still ticking timeslots height=~w", [Epoch, Height]),
                     %% TODO: fix timings, prevent busy loop
                     timer:sleep(child_block_time() div 4),
                     {Trees, []}
             end;
         micro ->
-            {ok, Leader} = leader_for_timeslot(Timeslot, {TxEnv, Trees}),
+            {ok, Leader} = leader_for_timeslot(Height, {TxEnv, Trees}),
             {step_micro(TxEnv, Trees, Leader), []}
     end.
 
--spec step_key(Height :: non_neg_integer(), Timeslot :: pos_integer(), EpochInfo :: aec_chain_hc:epoch_info(),
+-spec step_key(Height :: non_neg_integer(), EpochInfo :: aec_chain_hc:epoch_info(),
     {aetx_env:env(), aec_trees:trees()}, Leader :: binary()) -> {aec_trees:trees(), aetx_env:events()}.
-step_key(Height, Timeslot, #{epoch := Epoch, first := EpochFirst, last := EpochLast} = EpochInfo,
+step_key(Height, #{epoch := Epoch, first := EpochFirst, last := EpochLast} = EpochInfo,
          {TxEnv, Trees}, Leader) ->
     EpochFirstNonGenesis = erlang:min(?FIRST_TIMESTAMPED_BLOCK, EpochFirst),
 
     %% Ignore actual chain height, some blocks may be missing, check whether it is the time for a new epoch
-    if Timeslot =:= EpochFirstNonGenesis ->
+    if Height =:= EpochFirstNonGenesis ->
         %% cache the current epoch start time
         EpochStartTime = aetx_env:time_in_msecs(TxEnv),
         lager:debug("Caching epoch_start_time=~w height=~w\n",[EpochStartTime, Height]),
@@ -1006,6 +1005,7 @@ get_timeslot_and_epoch() ->
         aetx_env:tx_env_and_trees_from_hash(aetx_transaction, PrevHash)
     ).
 
+%% Note: uses wallclock, only for production
 -spec get_timeslot_and_epoch(RunEnv :: aec_chain_hc:run_env()) -> timeslot_and_epoch().
 get_timeslot_and_epoch(RunEnv) ->
     #{epoch := Epoch, height := EpochHeight, start_time := EpochStartTime} = get_child_epoch_from_runenv(RunEnv),
@@ -1263,11 +1263,13 @@ is_leader_valid_for_block(Height, Producer) ->
     end.
 
 is_leader_valid_for_hole(Height, Producer) ->
-    %% A hole block can be mined by any node on the schedule, which is NOT the current leader
+    %% A hole block can be mined by any node on the schedule, which is NOT the current leader.
+    %% But we also accept other nodes' hole blocks
     case leader_for_height(Height) of
         {ok, LeaderAtHeight} ->
             Schedule = get_cached_schedule(Height),
-            Valid = LeaderAtHeight /= Producer andalso lists:member(Producer, Schedule),
+            Valid = % LeaderAtHeight /= Producer andalso
+                lists:member(Producer, Schedule),
             lager:debug("HOLE block, valid=~w produced_by=~w leader_at_height=~w", [Valid, Producer, LeaderAtHeight]),
             Valid;
         {error, _Rsn} ->
