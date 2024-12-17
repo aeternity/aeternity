@@ -521,7 +521,7 @@ paths:
         - hyperchain
       operationId: GetPinningTx
       description: Get the pinning transaction for the current epoch. Returns both the individual parameters as well as the parent chain type (aeternity, btc etc.), network id and a packaged 80 byte readymade payload for that chain type.
-      parameters:
+      parameters: []
       responses:
         "200":
           description: Successful operation
@@ -542,7 +542,7 @@ paths:
         - hyperchain
       operationId: GetHyperchainContractPubkeys
       description: Get the pubkeys for the configured hyperchain contracts for staking, election and rewards
-      parameters:
+      parameters: []
       responses:
         "200":
           description: successful operation
