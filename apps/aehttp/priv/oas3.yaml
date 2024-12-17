@@ -524,7 +524,7 @@ paths:
       parameters:
       responses:
         "200":
-          description: Succesful operation
+          description: Successful operation
           content:
             application/json:
               schema:
@@ -545,7 +545,7 @@ paths:
       parameters:
       responses:
         "200":
-          description: succesful operation
+          description: successful operation
           content:
             application/json:
               schema:
