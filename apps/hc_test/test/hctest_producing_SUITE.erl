@@ -267,7 +267,22 @@ verify_only_one_block_accepted(Config) ->
     ).
 
 verify_chain_height(Config) ->
-    ?assert(
-        30 =< aecore_suite_utils:rpc(?NODE1, aec_chain, top_height, []),
-        "With 3 epochs passing chain height must have reached 30"
-    ).
+    Nodes = hctest_shared:get_nodes(Config, []),
+    HashesHeights = lists:map(
+        fun(Node) ->
+            Hash = aecore_suite_utils:rpc(Node, aec_chain, top_block_hash, []),
+            Height = aecore_suite_utils:rpc(Node, aec_chain, top_height, []),
+            ?assert(
+                30 =< Height,
+                "With 3 epochs passing chain height must have reached 30"
+            ),
+            {Height, Hash}
+        end,
+        Nodes
+    ),
+    {Node1, _Height1, SampleHash} = hd(HashesHeights),
+    lists:foreach(
+        fun({Node2, _Height2, Hash}) ->
+            ?assertEqual(Hash, SampleHash, io_lib:format("Nodes ~w and ~w must have the same top block hash", [Node1, Node2]))
+        end,
+        tl(HashesHeights)).

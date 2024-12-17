@@ -332,7 +332,7 @@ step_key(Height, Timeslot, #{epoch := Epoch, first := EpochFirst, last := EpochL
     if Timeslot =:= EpochFirstNonGenesis ->
         %% cache the current epoch start time
         EpochStartTime = aetx_env:time_in_msecs(TxEnv),
-        lager:debug("[xx]STATE_PRE_TRANSFORM_NODE: CACHING EPOCH START: ~w AT HEIGHT ~w\n",[EpochStartTime, Height]),
+        lager:debug("Caching epoch_start_time=~w height=~w\n",[EpochStartTime, Height]),
         cache_child_epoch_info(Epoch, Height, EpochStartTime);
     true ->
         ok
@@ -1032,13 +1032,13 @@ calculate_production_times(Timeslot, ChildBlockTime, CurrBlockTimestamp, RunEnv)
     #{epoch := CurrEpoch,
       height := EpochFirst,
       start_time := EpochStartTime} = get_child_epoch_from_runenv(RunEnv),
-    lager:debug("[xx] got cached epoch start: curr_ep=~w ep_first=~w at start_time=~w",
+    lager:debug("Got cached epoch start: curr_ep=~w ep_first=~w at start_time=~w",
                 [CurrEpoch, EpochFirst, EpochStartTime]),
     %% note: if the current top block is the first block of the epoch, then CurrHeight - EpochFirst = 0, and the next
     %% child block time slot starts one ChildBlockTime unit later, not zero
     NextBlockInEpoch = Timeslot - EpochFirst,
     BlockProdTime = child_block_production_time(),
-    lager:debug("[xx] next_block_in_epoch=~w, setting timings", [NextBlockInEpoch]),
+    lager:debug("next_block_in_epoch=~w, setting timings", [NextBlockInEpoch]),
     BlockLatency = ChildBlockTime - BlockProdTime,
     EpochT0 = EpochStartTime - BlockProdTime,
     TnMin = case CurrEpoch of
@@ -1089,7 +1089,7 @@ put_timeslot_skip_decision(Timeslot, Reason) ->
     Decisions1 = lists:foldl(fun(K, Acc) -> maps:remove(K, Acc) end, Decisions, RecentKeys),
 
     Decisions2 = maps:put(Timeslot, Reason, Decisions1),
-    lager:debug("Saving timeslot=~w skip decision=~w updated_map=~w", [Timeslot, Reason, Decisions2]),
+    lager:debug("Saving timeslot=~w skip decision=~w", [Timeslot, Reason]),
     aeu_ets_cache:put(?ETS_CACHE_TABLE, timeslot_skip_decision, Decisions2).
 
 is_block_producer() ->

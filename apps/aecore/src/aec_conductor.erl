@@ -1463,14 +1463,29 @@ handle_add_block(Header, Block, State, Origin) ->
             handle_add_block(Block, Hash, Prev, State, Origin)
     end.
 
+%% Used in PoS hyperchains to allow invalid_leader error and not crash the conductor.
+%% This error is still fatal in other chain types.
+safe_insert_block(aec_consensus_hc, Block, Origin) ->
+    try
+        aec_chain_state:insert_block_conductor(Block, Origin)
+    catch exit:{aborted, {{leader_validation_failed, invalid_leader} = Error, _Stack1}}:_Stack2 ->
+        %% This error is not fatal in PoS hyperchains, the block which failed validation should be ignored
+        %% Convert exception to an error value
+        {error, Error}
+    end;
+safe_insert_block(_OtherConsensusModes, Block, Origin) ->
+    aec_chain_state:insert_block_conductor(Block, Origin).
+
 handle_add_block(Block, Hash, Prev, #state{top_block_hash = TopBlockHash, consensus = Consensus} = State, Origin) ->
     epoch_mining:debug("trying to add block (hash=~w, prev=~w)", [Hash, Prev]),
     %% Block validation is performed in the caller's context for
     %% external (gossip/sync) blocks and we trust the ones we
     %% produce ourselves.
-    case aec_chain_state:insert_block_conductor(Block, Origin) of
+    ConsensusModule = Consensus#consensus.consensus_module,
+    InsertResult = safe_insert_block(ConsensusModule, Block, Origin),
+    case InsertResult of
         {ok, TopChanged, PrevKeyHeader, Events} = OkResult  ->
-            case Consensus#consensus.consensus_module of
+            case ConsensusModule of
                 aec_consensus_hc ->
                     Header = aec_blocks:to_header(Block),
                     lager:debug("insert_block ~s ~p -> ~p", [
