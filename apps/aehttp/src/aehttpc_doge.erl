@@ -95,15 +95,15 @@ get_pin_by_tx_hash(_TxHash, _NodeSpec) ->
 %                 _NetworkId, _SignModule) ->
 %         post_commitment(NodeSpec, StakerPubkey, HCCollectPubkey, Amount, Fee, Commitment).
 
-% post_commitment(NodeSpec, BTCAcc, HCCollectPubkey, Amount, Fee, Commitment) ->
-%     {ok, Unspent} = listunspent(NodeSpec),
-%     UnspentSatoshis = unspent_to_satoshis(Unspent),
-%     {ok, {Inputs, TotalAmount}} = select_utxo(UnspentSatoshis, Fee + Amount),
-%     Outputs = create_outputs(Commitment, BTCAcc, HCCollectPubkey, TotalAmount, Amount, Fee),
-%     {ok, Tx} = createrawtransaction(NodeSpec, Inputs, Outputs),
-%     {ok, SignedTx} = signrawtransaction(NodeSpec, Tx),
-%     {ok, TxHash} = sendrawtransaction(NodeSpec, SignedTx),
-%     {ok, #{<<"tx_hash">> => TxHash}}.
+post_pin(NodeSpec, BTCAcc, HCCollectPubkey, Amount, Fee, PinPayload) ->
+    {ok, Unspent} = listunspent(NodeSpec),
+    UnspentSatoshis = unspent_to_satoshis(Unspent),
+    {ok, {Inputs, TotalAmount}} = select_utxo(UnspentSatoshis, Fee + Amount),
+    Outputs = create_outputs(PinPayload, BTCAcc, HCCollectPubkey, TotalAmount, Amount, Fee),
+    {ok, Tx} = createrawtransaction(NodeSpec, Inputs, Outputs),
+    {ok, SignedTx} = signrawtransaction(NodeSpec, Tx),
+    {ok, TxHash} = sendrawtransaction(NodeSpec, SignedTx),
+    {ok, #{<<"tx_hash">> => TxHash}}.
 
 select_utxo([#{<<"spendable">> := true, <<"amount">> := Amount} = Unspent | _Us], Needed) when Amount >= Needed ->
     %% For now just pick first spendable UTXO with enough funds. There is no end to how fancy this can get
@@ -134,7 +134,7 @@ pad8(Str) when length(Str) < 8 ->
     Padding = lists:duplicate(8 - length(Str), $0),
     Str ++ Padding.
 
-create_outputs(Commitment, BTCAcc, HCCollectPubkey, TotalAmount, Amount, Fee) ->
+create_outputs(PinPayload, BTCAcc, HCCollectPubkey, TotalAmount, Amount, Fee) ->
     %% Three outputs needed:
     %% 1. for the OP_RETURN containing the Commitment
     %% 2. to return the total UTXO amount minus the Fee and Amount to our own account.
@@ -143,8 +143,8 @@ create_outputs(Commitment, BTCAcc, HCCollectPubkey, TotalAmount, Amount, Fee) ->
     %% in a correctly formatted OP_RETURN
     Refund = satoshi_to_btc(TotalAmount - Fee - Amount),
     HCAmount = satoshi_to_btc(Amount),
-    HexCommitment = to_hex(Commitment),
-    #{BTCAcc => Refund, HCCollectPubkey => HCAmount, <<"data">> => HexCommitment}.
+    HexPinPayload = to_hex(PinPayload),
+    #{BTCAcc => Refund, HCCollectPubkey => HCAmount, <<"data">> => HexPinPayload}.
 
 satoshi_to_btc(Sats) when Sats >= 0 ->
     SatsStr = integer_to_list(Sats),
