@@ -3745,6 +3745,14 @@ components:
         parent_network_id:
           type: string
           description: the parent node id
+      required:
+        - epoch
+        - height
+        - block_hash
+        - parent_payload
+        - last_leader
+        - parent_type
+        - parent_network_id
     PoI:
       type: object
       properties:
