@@ -549,7 +549,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#components/schemas/HCContractPubkeys"
+                $ref: "#/components/schemas/HCContractPubkeys"
         "404":
           description: Cannot find the contract pubkeys for some reason, e.g. HC consensus not started, or misconfigured
           content:
