@@ -3132,6 +3132,8 @@ components:
           $ref: "#/components/schemas/EncodedPubkey" 
         rewards:
           $ref: "#/components/schemas/EncodedPubkey" 
+      required:
+        - staking
     Header:
       anyOf:
         - $ref: "#/components/schemas/KeyBlock"
