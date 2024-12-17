@@ -12,6 +12,7 @@ contract interface MainStakingI =
   entrypoint get_restake              : () => bool
   entrypoint get_staked_amount        : (int) => int
   entrypoint get_available_balance    : () => int
+  entrypoint get_current_stake        : () => int
   entrypoint get_total_balance        : () => int
   entrypoint get_current_epoch        : () => int
   entrypoint register_reward_callback : (RewardCallbackI) => unit
@@ -59,6 +60,9 @@ payable contract StakingValidator =
 
   entrypoint get_staked_amount(epoch : int) =
     state.main_staking_ct.get_staked_amount(epoch)
+
+  entrypoint get_current_stake() =
+    state.main_staking_ct.get_current_stake()
 
   entrypoint get_available_balance() =
     state.main_staking_ct.get_available_balance()
