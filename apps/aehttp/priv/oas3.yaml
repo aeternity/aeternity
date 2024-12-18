@@ -3739,7 +3739,7 @@ components:
           type: string
           description: this is the payload to post to the parent chain (standardized). Combines Epoch, Height and Hash.
         last_leader:
-          description: The last leader in the epoch that could use this pin to collect the award
+          description: The last leader in the epoch that could use this pin to collect the reward
           $ref: "#/components/schemas/EncodedPubkey"
         parent_type:
           type: string
