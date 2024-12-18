@@ -80,6 +80,13 @@ main contract MainStaking =
   entrypoint get_staked_amount(epoch : int) =
     get_staked_amount_(Call.caller, epoch)
 
+  entrypoint get_current_stake() =
+    get_current_stake_(Call.caller)
+
+  entrypoint get_current_stake_(validator : address) =
+    let v = state.validators[validator]
+    v.current_stake
+
   entrypoint get_available_balance() =
     get_available_balance_(Call.caller)
 
@@ -188,7 +195,9 @@ main contract MainStaking =
       current_stake @ cs = cs + amount}
 
   function withdraw_v(v : validator, amount) =
-    v{total_balance @ tb = tb - amount}
+    let total_balance = v.total_balance - amount
+    v{total_balance = total_balance,
+      current_stake @ cs = min(total_balance, cs) }
 
   function adjust_stake_v(v : validator, amount) =
     require(v.total_balance >= v.current_stake + amount, "Too large stake")
@@ -201,6 +210,9 @@ main contract MainStaking =
 
   function max(ls : list(int)) : int =
     List.foldl((a, b) => if(a > b) a else b, 0, ls)
+
+  function min(a : int, b : int) =
+    if(a < b) a else b
 
   function assert_validator(v : address) =
     require(Map.member(v, state.validators), "Not a registered validator")
