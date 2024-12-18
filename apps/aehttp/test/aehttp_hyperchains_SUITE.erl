@@ -52,8 +52,8 @@
 -define(HC_CONTRACT, "HCElection").
 -define(CONSENSUS, hc).
 -define(CHILD_EPOCH_LENGTH, 10).
--define(CHILD_BLOCK_TIME, 200).
--define(CHILD_BLOCK_PRODUCTION_TIME, 80).
+-define(CHILD_BLOCK_TIME, 300).
+-define(CHILD_BLOCK_PRODUCTION_TIME, 120).
 -define(PARENT_EPOCH_LENGTH, 3).
 -define(PARENT_FINALITY, 2).
 -define(REWARD_DELAY, 2).
@@ -644,6 +644,12 @@ correct_leader_in_micro_block(Config) ->
     ?assertEqual(Producer, Res).
 
 set_up_third_node(Config) ->
+    %% Get up to speed with block production
+
+    Ns = ?config(nodes, Config),
+    Config0 = [{nodes, lists:droplast(Ns)} | Config],
+    produce_cc_blocks(Config0, 1),
+
     {Node3, NodeName, Stakers, _Pinners} = lists:keyfind(?NODE3, 1, ?config(nodes, Config)),
     Nodes = [ Node || {Node, _, _, _} <- ?config(nodes, Config)],
     aecore_suite_utils:make_multi(Config, [Node3]),
@@ -651,12 +657,15 @@ set_up_third_node(Config) ->
     child_node_config(Node3, Stakers, [], Config), % no pinners here FTM
     aecore_suite_utils:start_node(Node3, Config, Env),
     aecore_suite_utils:connect(NodeName, []),
-    timer:sleep(1000),
+    produce_cc_blocks(Config0, 1),
+    timer:sleep(500),
     Node3Peers = rpc(Node3, aec_peers, connected_peers, []),
     ct:log("Connected peers ~p", [Node3Peers]),
     Node3VerifiedPeers = rpc(Node3, aec_peers, available_peers, [verified]),
     ct:log("Verified peers ~p", [Node3VerifiedPeers]),
-    {ok, _} = wait_same_top(Nodes, 300),
+
+    produce_cc_blocks(Config0, 1),
+    stay_in_sync(Config0, Nodes, 50),
     %% What on earth are we testing here??
     Inspect =
         fun(Node) ->
@@ -680,6 +689,24 @@ set_up_third_node(Config) ->
     Inspect(?NODE3),
     ok.
 
+stay_in_sync(_, Nodes, 0) ->
+    wait_same_top(Nodes, 2);
+stay_in_sync(Config, Nodes, N) ->
+    case safe_wait(Nodes, 2) of
+        ok -> ok;
+        error ->
+            produce_cc_blocks(Config, 1),
+            stay_in_sync(Config, Nodes, N - 1)
+    end.
+
+safe_wait(Nodes, N) ->
+    try
+      wait_same_top(Nodes, N),
+      ok
+    catch _:_ ->
+      ct:log("Not yet ~p more attempts", [N-1]),
+      error
+    end.
 
 sync_third_node(Config) ->
     set_up_third_node(Config).
