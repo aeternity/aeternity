@@ -151,7 +151,7 @@ get_pinning_data() ->
 %% Pin the last block of the previous epoch to the parent chain, using the
 %% parent chain account associated with the provided staker pubkey. Returns the
 %% parent chain TX hash (if TX is finalized on the parent chain, it will be
-%% featchable using pet_pin_by_tx_hash/1).
+%% fetchable using get_pin_by_tx_hash/1).
 %%=============================================================================
 pin_to_pc(Who, Amount, Fee) ->
     gen_server:call(?SERVER, {pin_to_pc, Who, Amount, Fee}).
