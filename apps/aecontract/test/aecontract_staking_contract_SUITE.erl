@@ -22,7 +22,8 @@
           adjust_stake/1,
           withdraw/1,
           rewards/1,
-          sorted_validators/1
+          sorted_validators/1,
+          check_withdraw/1
         ]).
 
 -include_lib("aecontract/include/hard_forks.hrl").
@@ -100,7 +101,8 @@ groups() ->
          adjust_stake,
          withdraw,
          rewards,
-         sorted_validators
+         sorted_validators,
+         check_withdraw
        ]}
     ].
 
@@ -272,6 +274,35 @@ sorted_validators(_Config) ->
 
     ?assertEqual(decode_validators(Validators2),
                  [{bob, ?VALIDATOR_MIN + 2 * ?AE}, {carol, ?VALIDATOR_MIN + ?AE}]),
+    ok.
+
+check_withdraw(_Config) ->
+    Trees0 = genesis_trees(),
+    TxEnv = aetx_env:tx_env(?DEFAULT_HEIGHT),
+    {ok, Trees1, #{res := {contract, AliceCt}}} =
+        new_validator_(pubkey(?ALICE), 2 * ?VALIDATOR_MIN, TxEnv, Trees0),
+
+    {ok, _, #{res := ABalance}}   = get_total_balance_(AliceCt, ?ALICE, TxEnv, Trees1),
+    {ok, _, #{res := AAvailable}} = get_available_balance_(AliceCt, ?ALICE, TxEnv, Trees1),
+    ?assertEqual(ABalance, 2 * ?VALIDATOR_MIN),
+    ?assertEqual(AAvailable, 0),
+
+    %% This should unlock funds for withdrawal.
+    {ok, Trees2, #{res := ?UNIT}} =
+        add_rewards_(1, [], 0, TxEnv, Trees1, undefined),
+
+    %% Withdraw and check that current balance is correctly adjusted
+    {ok, _, #{res := ACurrStake1}} = get_current_stake_(AliceCt, ?ALICE, TxEnv, Trees2),
+    ?assertEqual(ABalance, ACurrStake1),
+
+    {ok, Trees3, #{res := ?UNIT}} =
+        withdraw_(AliceCt, ?ALICE, 2 * ?AE, TxEnv, Trees2, undefined),
+
+    {ok, _, #{res := ACurrStake2}} = get_current_stake_(AliceCt, ?ALICE, TxEnv, Trees3),
+    {ok, _, #{res := ABalance2}} = get_total_balance_(AliceCt, ?ALICE, TxEnv, Trees3),
+    ?assertEqual(ABalance2, 2 * ?VALIDATOR_MIN - 2 * ?AE),
+    ?assertEqual(ABalance2, ACurrStake2),
+
     ok.
 
 decode_validators(Vs) ->
@@ -499,11 +530,18 @@ adjust_stake_(ValidatorCt, Validator, Amount, TxEnv, Trees0, LockEpoch) ->
     call_contract(ValidatorCt, pubkey(Validator), CallData, 0, TxEnv, Trees0, LockEpoch).
 
 withdraw_(ValidatorCt, Validator, Amount, TxEnv, Trees0) ->
+    withdraw_(ValidatorCt, Validator, Amount, TxEnv, Trees0, undefined).
+
+withdraw_(ValidatorCt, Validator, Amount, TxEnv, Trees0, LockEpoch) ->
     CallData = create_calldata("withdraw", [{integer, Amount}]),
-    call_contract(ValidatorCt, pubkey(Validator), CallData, 0, TxEnv, Trees0).
+    call_contract(ValidatorCt, pubkey(Validator), CallData, 0, TxEnv, Trees0, LockEpoch).
 
 get_total_balance_(ValidatorCt, Validator, TxEnv, Trees0) ->
     CallData = create_calldata("get_total_balance", []),
+    call_contract(ValidatorCt, pubkey(Validator), CallData, 0, TxEnv, Trees0).
+
+get_current_stake_(ValidatorCt, Validator, TxEnv, Trees0) ->
+    CallData = create_calldata("get_current_stake", []),
     call_contract(ValidatorCt, pubkey(Validator), CallData, 0, TxEnv, Trees0).
 
 get_available_balance_(ValidatorCt, Validator, TxEnv, Trees0) ->
