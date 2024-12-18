@@ -19,7 +19,8 @@
 -export([start_two_child_nodes/1,
          produce_first_epoch/1,
          produce_some_epochs/1,
-         check_default_pin/1
+         check_default_pin/1,
+         try_a_pin/1
         ]).
 
 -include_lib("stdlib/include/assert.hrl").
@@ -31,11 +32,12 @@
 -define(MAIN_STAKING_CONTRACT, "MainStaking").
 -define(HC_CONTRACT, "HCElection").
 -define(CONSENSUS, hc).
--define(CHILD_EPOCH_LENGTH, 20).
--define(CHILD_BLOCK_TIME, 4000).
--define(CHILD_BLOCK_PRODUCTION_TIME, 1500).
--define(PARENT_EPOCH_LENGTH, 4).
+-define(CHILD_EPOCH_LENGTH, 10).
+-define(CHILD_BLOCK_TIME, 200).
+-define(CHILD_BLOCK_PRODUCTION_TIME, 50).
+-define(PARENT_EPOCH_LENGTH, 3).
 -define(PARENT_FINALITY, 2).
+-define(PARENT_START_HEIGHT, 133).
 -define(REWARD_DELAY, 2).
 -define(BLOCK_REWARD, 100000000000000000000).
 -define(FEE_REWARD, 30000 * ?DEFAULT_GAS_PRICE).
@@ -179,7 +181,8 @@ groups() ->
         {doge, [sequence],
             [ start_two_child_nodes
             , produce_first_epoch
-            , produce_some_epochs
+            , try_a_pin
+            %, produce_some_epochs
             %, check_default_pin
         ]}
     ].
@@ -267,7 +270,7 @@ init_per_group(Group, ConfigPre) ->
     % {ok, _} = mine_key_blocks(
     %         ?PARENT_CHAIN_NODE_NAME,
     %         (StartHeight - ParentTopHeight) + ?PARENT_FINALITY),
-    [ {staker_names, [?ALICE, ?BOB, ?LISA]}, {parent_start_height, 6778619} | Config].
+    [ {staker_names, [?ALICE, ?BOB, ?LISA]}, {parent_start_height, ?PARENT_START_HEIGHT} | Config].
 
 child_node_config(Node, Stakeholders, Pinners, CTConfig) ->
     ReceiveAddress = encoded_pubkey(?FORD),
@@ -787,6 +790,18 @@ check_default_pin(Config) ->
     %% that any given validator will be last leader within the run of the test???
 
     ok.
+
+try_a_pin(Config) ->
+
+    [{Node, _, _, _} | _] = ?config(nodes, Config),
+
+    {ok, #{<<"tx_hash">> := Hash}} = rpc(Node, aec_parent_connector, pin_to_pc, [pubkey(?ALICE),1,0.000001]),
+
+    Raw = rpc(Node, aec_parent_connector, get_pin_by_tx_hash, [Hash]),
+
+    ct:log("Raw: ~p", [Raw]).
+
+
 
 %%% --------- pinning helpers
 

@@ -128,8 +128,8 @@ start(Config, _) ->
     {ParentConnMod, SignModule, HCPCMap} =
         case PCType of
             <<"AE2AE">>   -> start_ae(StakersConfig, PinnersConfig);
-            <<"AE2BTC">>  -> start_btc(StakersConfig, aehttpc_btc);
-            <<"AE2DOGE">> -> start_btc(StakersConfig, aehttpc_doge)
+            <<"AE2BTC">>  -> start_btc(StakersConfig,PinnersConfig, aehttpc_btc);
+            <<"AE2DOGE">> -> start_btc(StakersConfig, PinnersConfig, aehttpc_doge)
         end,
 
     start_dependency(aec_parent_connector, [ParentConnMod, FetchInterval, ParentHosts, NetworkId,
@@ -140,7 +140,7 @@ start(Config, _) ->
     start_dependency(aec_pinning_agent, [get_contract_pubkey(?ELECTION_CONTRACT), default_pinning_behavior(), SignModule]),
     ok.
 
-start_btc(StakersEncoded, ParentConnMod) ->
+start_btc(StakersEncoded, PinnersEncoded, ParentConnMod) ->
     Stakers =
         lists:map(
             fun(#{<<"hyper_chain_account">> := #{<<"pub">> := EncodedPubkey,
@@ -150,11 +150,29 @@ start_btc(StakersEncoded, ParentConnMod) ->
                  {HCPubkey, HCPrivkey}
             end,
             StakersEncoded),
-    StakersMap = maps:from_list(Stakers),
+    Pinners = lists:flatmap(
+        fun(#{<<"parent_chain_account">> := #{<<"pub">> := EncodedPubkey,
+                                                <<"priv">> := EncodedPrivkey}
+                }) ->
+                {PCPubkey, PCPrivkey} = validate_keypair(EncodedPubkey, EncodedPrivkey),
+                [{PCPubkey, PCPrivkey}]
+        end,
+        PinnersEncoded),
+    StakersMap = maps:from_list(lists:append(Stakers, Pinners)),
+    HCPC = lists:map(
+        fun(#{<<"parent_chain_account">> := #{<<"pub">> := ParentPubEnc,
+                                             <<"owner">> := OwnerPubEnc}
+             }) ->
+            {ok, ParentPub} = aeser_api_encoder:safe_decode(account_pubkey, ParentPubEnc),
+            {ok, OwnerPub} = aeser_api_encoder:safe_decode(account_pubkey, OwnerPubEnc),
+            {OwnerPub, ParentPub}
+        end,
+        PinnersEncoded),
+    HCPCMap = maps:from_list(HCPC),
     start_dependency(aec_preset_keys, [StakersMap]),
     start_aec_eoe_vote(StakersMap),
     SignModule = undefined,
-    {ParentConnMod, SignModule, []}.
+    {ParentConnMod, SignModule, HCPCMap}.
 
 start_ae(StakersEncoded, PinnersEncoded) ->
     Stakers =

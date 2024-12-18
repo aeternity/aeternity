@@ -61,11 +61,15 @@ get_chain_type() ->
 %%% Pinning
 %%%=============================================================================
 
-pin_to_pc({_PinningData, _Who, _Amount, _Fee, _NetworkId, _SignModule}, _NodeSpec) ->
-    erlang:error(not_implemented).
+pin_to_pc({PinningData, _Who, Amount, Fee, _NetworkId, _SignModule}, NodeSpec) ->
+    PinPayload = aeser_hc:encode_parent_pin_payload(PinningData),
+    post_pin(NodeSpec, <<"msnDTk5YoFU5M3pSbFsjTqXCCPx6FcshPL">>, <<"my89WXb7qESppiVnPnSeEWqA1MMaNv8KYC">>, Amount, Fee, PinPayload).
 
-get_pin_by_tx_hash(_TxHash, _NodeSpec) ->
-    erlang:error(not_implemented).
+get_pin_by_tx_hash(TxHash, NodeSpec) ->
+    lager:debug("in doge with: ~p", [TxHash]),
+    {ok, #{<<"hex">> := RawTx}} = getrawtransaction(NodeSpec, TxHash),
+    lager:debug("raw_tx_hex: ~p", [RawTx]),
+    decoderawtransaction(NodeSpec, RawTx).
 
 
 % get_commitment_tx_in_block(NodeSpec, Seed, BlockHash, _PrevHash, ParentHCAccountPubKey) ->
@@ -97,12 +101,19 @@ get_pin_by_tx_hash(_TxHash, _NodeSpec) ->
 
 post_pin(NodeSpec, BTCAcc, HCCollectPubkey, Amount, Fee, PinPayload) ->
     {ok, Unspent} = listunspent(NodeSpec),
+    lager:debug("unspent: ~p", [Unspent]),
     UnspentSatoshis = unspent_to_satoshis(Unspent),
+    lager:debug("satoshis: ~p", [UnspentSatoshis]),
     {ok, {Inputs, TotalAmount}} = select_utxo(UnspentSatoshis, Fee + Amount),
+    lager:debug("inputs, amount: ~p, ~p", [Inputs, TotalAmount]),
     Outputs = create_outputs(PinPayload, BTCAcc, HCCollectPubkey, TotalAmount, Amount, Fee),
+    lager:debug("outputs: ~p" , [Outputs]),
     {ok, Tx} = createrawtransaction(NodeSpec, Inputs, Outputs),
+    lager:debug("tx: ~p", [Tx]),
     {ok, SignedTx} = signrawtransaction(NodeSpec, Tx),
+    lager:debug("signed: ~p", [SignedTx]),
     {ok, TxHash} = sendrawtransaction(NodeSpec, SignedTx),
+    lager:debug("txhash: ~p", [TxHash]),
     {ok, #{<<"tx_hash">> => TxHash}}.
 
 select_utxo([#{<<"spendable">> := true, <<"amount">> := Amount} = Unspent | _Us], Needed) when Amount >= Needed ->
@@ -141,7 +152,7 @@ create_outputs(PinPayload, BTCAcc, HCCollectPubkey, TotalAmount, Amount, Fee) ->
     %% 3. to register this transaction against the common HC BTC account
     %% The "data" field gets magically turned by the bitcoind API into an output
     %% in a correctly formatted OP_RETURN
-    Refund = satoshi_to_btc(TotalAmount - Fee - Amount),
+    Refund = satoshi_to_btc(TotalAmount - float_btc_to_satoshi(Fee) - Amount),
     HCAmount = satoshi_to_btc(Amount),
     HexPinPayload = to_hex(PinPayload),
     #{BTCAcc => Refund, HCCollectPubkey => HCAmount, <<"data">> => HexPinPayload}.
@@ -280,11 +291,27 @@ getrawtransaction(NodeSpec, TxHash) ->
     try
         Seed = <<>>,
         Body = jsx:encode(request_body(<<"getrawtransaction">>, [TxHash, true], seed_to_utf8(Seed))),
+        lager:debug("gettxbody: ~p", [Body]),
         {ok, Res} = request(<<"/">>, Body, NodeSpec, 5000),
+        lager:debug("httpres:", [Res]),
         {ok, result(Res)}
     catch E:R ->
         {error, {E, R}}
     end.
+
+    -spec decoderawtransaction(aehttpc:node_spec(), binary()) -> {ok, binary()} | {error, term()}.
+decoderawtransaction(NodeSpec, Tx) ->
+    try
+        Seed = <<>>,
+        Body = jsx:encode(request_body(<<"decoderawtransaction">>, [Tx], seed_to_utf8(Seed))),
+        lager:debug("decode body: ~p", [Body]),
+        {ok, Res} = request(<<"/">>, Body, NodeSpec, 5000),
+        lager:debug("decoderes:", [Res]),
+        {ok, result(Res)}
+    catch E:R ->
+        {error, {E, R}}
+    end.
+
 
 -spec result(map()) -> term().
 result(Response) ->
@@ -298,16 +325,44 @@ block(Obj) ->
     PrevHash = prev_hash(Obj),
     {Height, Hash, PrevHash, Time * 1000, maps:get(<<"tx">>, Obj)}.
 
-% -spec find_commitments(list(), binary()) -> [{Pubkey :: binary(), Payload :: binary()}].
-% find_commitments(Txs, _ParentHCAccountPubKey) ->
-%     lists:foldl(fun(#{<<"vout">> := Vout}, Acc) ->
-%                         case aehttpc_btc:parse_vout(Vout) of
-%                             {ok, ParsedCommitment} ->
-%                                 [ParsedCommitment | Acc];
-%                             {error, _Reason} ->
-%                                 Acc
-%                         end
-%                 end, [], Txs).
+-spec find_pin(list(), binary()) -> [{Pubkey :: binary(), Payload :: binary()}].
+find_pin(Txs, _ParentHCAccountPubKey) ->
+    lists:foldl(fun(#{<<"vout">> := Vout}, Acc) ->
+                        case parse_vout(Vout) of
+                            {ok, ParsedPin} ->
+                                [ParsedPin | Acc];
+                            {error, _Reason} ->
+                                Acc
+                        end
+                end, [], Txs).
+
+parse_vout(Vout) when length(Vout) == 3 ->
+    case find_op_return(Vout) of
+        {ok, PinEnc} ->
+            PinBTC = from_hex(PinEnc),
+            case PinTC of
+                <<Pin:80/binary>> ->
+                    case aeser_hc:decode_parent_pin_payload(Pin) of
+                        {btc, Signature, StakerHash, TopKeyHash} ->
+                            {ok, {Signature, StakerHash, TopKeyHash}};
+                        _ ->
+                            {error, not_btc_pin}
+                    end;
+                _ ->
+                    {error, not_pin_op}
+            end;
+        _ ->
+            {error, no_op_return}
+    end;
+parse_vout(_Vout) ->
+    {error, not_pin}.
+
+find_op_return([#{<<"scriptPubKey">> := #{<<"type">> := <<"nulldata">>, <<"asm">> := <<"OP_RETURN ", PinEnc/binary>>}} | _]) ->
+    {ok, PinEnc};
+find_op_return([_ | Vs]) ->
+    find_op_return(Vs);
+find_op_return([]) ->
+    {error, no_op_return}.
 
 -spec request(binary(), binary(), aehttpc:node_spec(), integer()) -> {ok, map()} | {error, term()}.
 request(Path, Body, NodeSpec, Timeout) ->
