@@ -1125,8 +1125,7 @@ get_cached_schedule(Height) ->
     case aeu_ets_cache:lookup(?ETS_CACHE_TABLE, validator_schedule) of
         error -> error;
         {ok, #{schedule := Schedule}} ->
-            Epoch = aec_chain_hc:epoch(Height),
-            maps:get(Epoch, Schedule, [])
+            [ P || {H, P} <- maps:to_list(Schedule), H >= Height ]
     end.
 
 %% Timeslot is the same as the height for already produced blocks. Timeslot can be ahead of the height

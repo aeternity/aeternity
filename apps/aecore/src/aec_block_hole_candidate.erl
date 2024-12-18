@@ -75,7 +75,8 @@ int_create_and_adjust(
             PrevBlockHash,
             Miner,
             Beneficiary,
-            Protocol
+            Protocol,
+            <<?HOLE_FLAG:32>>
         ),
         Block = int_create_block(
             Height, PrevBlockHash, PrevBlock, Miner, Beneficiary, Trees, Protocol
