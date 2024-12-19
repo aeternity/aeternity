@@ -137,7 +137,7 @@ start(Config, _) ->
     start_dependency(aec_parent_chain_cache, [StartHeight, RetryInterval,
                                               fun target_parent_heights/1, %% prefetch the next parent block
                                               CacheSize, Confirmations]),
-    start_dependency(aec_pinning_agent, [get_contract_pubkey(?ELECTION_CONTRACT), default_pinning_behavior()]),
+    start_dependency(aec_pinning_agent, [get_contract_pubkey(?ELECTION_CONTRACT), default_pinning_behavior(), SignModule]),
     ok.
 
 start_btc(StakersEncoded, ParentConnMod) ->

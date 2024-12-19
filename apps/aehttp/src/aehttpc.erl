@@ -36,6 +36,12 @@
 -callback get_chain_type() ->
     {ok, chain()}.
 
+-callback pin_to_pc({term(), hash(), non_neg_integer(), non_neg_integer(), term(), term()}, node_spec()) ->
+    binary() | {error, term()}.
+
+-callback get_pin_by_tx_hash(term(), node_spec()) ->
+    {ok, map()} | {error, term()}.
+
 -spec parse_node_url(string()) -> node_spec().
 parse_node_url(NodeURL) ->
     URIMap = uri_string:parse(NodeURL),
