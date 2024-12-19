@@ -521,10 +521,10 @@ paths:
         - hyperchain
       operationId: GetPinningTx
       description: Get the pinning transaction for the current epoch. Returns both the individual parameters as well as the parent chain type (aeternity, btc etc.), network id and a packaged 80 byte readymade payload for that chain type.
-      parameters:
+      parameters: []
       responses:
         "200":
-          description: Succesful operation
+          description: Successful operation
           content:
             application/json:
               schema:
@@ -542,14 +542,14 @@ paths:
         - hyperchain
       operationId: GetHyperchainContractPubkeys
       description: Get the pubkeys for the configured hyperchain contracts for staking, election and rewards
-      parameters:
+      parameters: []
       responses:
         "200":
-          description: succesful operation
+          description: successful operation
           content:
             application/json:
               schema:
-                $ref: "#components/schemas/HCContractPubkeys"
+                $ref: "#/components/schemas/HCContractPubkeys"
         "404":
           description: Cannot find the contract pubkeys for some reason, e.g. HC consensus not started, or misconfigured
           content:
@@ -3132,6 +3132,8 @@ components:
           $ref: "#/components/schemas/EncodedPubkey" 
         rewards:
           $ref: "#/components/schemas/EncodedPubkey" 
+      required:
+        - staking
     Header:
       anyOf:
         - $ref: "#/components/schemas/KeyBlock"
@@ -3737,14 +3739,22 @@ components:
           type: string
           description: this is the payload to post to the parent chain (standardized). Combines Epoch, Height and Hash.
         last_leader:
-          description: The last leader in the epoch that could use this pin to collect the award
-          $ref: '#/components/parameters/accountPubkey'
+          description: The last leader in the epoch that could use this pin to collect the reward
+          $ref: "#/components/schemas/EncodedPubkey"
         parent_type:
           type: string
           description: chain type of parent (aeternity, btc, doge eventually supported)
         parent_network_id:
           type: string
           description: the parent node id
+      required:
+        - epoch
+        - height
+        - block_hash
+        - parent_payload
+        - last_leader
+        - parent_type
+        - parent_network_id
     PoI:
       type: object
       properties:
