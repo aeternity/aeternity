@@ -69,7 +69,9 @@ get_pin_by_tx_hash(TxHash, NodeSpec) ->
     lager:debug("in doge with: ~p", [TxHash]),
     {ok, #{<<"hex">> := RawTx}} = getrawtransaction(NodeSpec, TxHash),
     lager:debug("raw_tx_hex: ~p", [RawTx]),
-    decoderawtransaction(NodeSpec, RawTx).
+    {ok, Vout} = decoderawtransaction(NodeSpec, RawTx),
+    {ok, Hex} = find_pin(Vout),
+    aeser_hc:decode_parent_pin_payload(aeu_hex:hex_to_bin(Hex)).
 
 
 % get_commitment_tx_in_block(NodeSpec, Seed, BlockHash, _PrevHash, ParentHCAccountPubKey) ->
@@ -293,7 +295,7 @@ getrawtransaction(NodeSpec, TxHash) ->
         Body = jsx:encode(request_body(<<"getrawtransaction">>, [TxHash, true], seed_to_utf8(Seed))),
         lager:debug("gettxbody: ~p", [Body]),
         {ok, Res} = request(<<"/">>, Body, NodeSpec, 5000),
-        lager:debug("httpres:", [Res]),
+        lager:debug("httpres: ~p", [Res]),
         {ok, result(Res)}
     catch E:R ->
         {error, {E, R}}
@@ -306,7 +308,7 @@ decoderawtransaction(NodeSpec, Tx) ->
         Body = jsx:encode(request_body(<<"decoderawtransaction">>, [Tx], seed_to_utf8(Seed))),
         lager:debug("decode body: ~p", [Body]),
         {ok, Res} = request(<<"/">>, Body, NodeSpec, 5000),
-        lager:debug("decoderes:", [Res]),
+        lager:debug("decoderes: ~p", [Res]),
         {ok, result(Res)}
     catch E:R ->
         {error, {E, R}}
@@ -325,43 +327,10 @@ block(Obj) ->
     PrevHash = prev_hash(Obj),
     {Height, Hash, PrevHash, Time * 1000, maps:get(<<"tx">>, Obj)}.
 
--spec find_pin(list(), binary()) -> [{Pubkey :: binary(), Payload :: binary()}].
-find_pin(Txs, _ParentHCAccountPubKey) ->
-    lists:foldl(fun(#{<<"vout">> := Vout}, Acc) ->
-                        case parse_vout(Vout) of
-                            {ok, ParsedPin} ->
-                                [ParsedPin | Acc];
-                            {error, _Reason} ->
-                                Acc
-                        end
-                end, [], Txs).
-
-parse_vout(Vout) when length(Vout) == 3 ->
-    case find_op_return(Vout) of
-        {ok, PinEnc} ->
-            PinBTC = from_hex(PinEnc),
-            case PinTC of
-                <<Pin:80/binary>> ->
-                    case aeser_hc:decode_parent_pin_payload(Pin) of
-                        {btc, Signature, StakerHash, TopKeyHash} ->
-                            {ok, {Signature, StakerHash, TopKeyHash}};
-                        _ ->
-                            {error, not_btc_pin}
-                    end;
-                _ ->
-                    {error, not_pin_op}
-            end;
-        _ ->
-            {error, no_op_return}
-    end;
-parse_vout(_Vout) ->
-    {error, not_pin}.
-
-find_op_return([#{<<"scriptPubKey">> := #{<<"type">> := <<"nulldata">>, <<"asm">> := <<"OP_RETURN ", PinEnc/binary>>}} | _]) ->
+find_pin(#{<<"vout">> := [#{<<"scriptPubKey">> := #{<<"type">> := <<"nulldata">>, <<"asm">> := <<"OP_RETURN ", PinEnc/binary>>}} | _]}) ->
     {ok, PinEnc};
-find_op_return([_ | Vs]) ->
-    find_op_return(Vs);
-find_op_return([]) ->
+find_pin(Any) ->
+    lager:debug("Failing vout/pin extraction on: ~p", [Any]),
     {error, no_op_return}.
 
 -spec request(binary(), binary(), aehttpc:node_spec(), integer()) -> {ok, map()} | {error, term()}.
