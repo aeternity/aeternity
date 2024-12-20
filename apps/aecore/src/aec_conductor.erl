@@ -1362,12 +1362,34 @@ hc_create_block_fun(ConsensusModule, TopHash) ->
 %% For as long as chain length is shorter than currentHeight-1, create holes. Send holes async to conductor for writing
 hc_create_hole(TopHash, MissingBlocksCount, Producer) when MissingBlocksCount > 0 ->
     %% Not creating a microblock, unlike regular hc_create_block
-    aec_block_hole_candidate:create(TopHash, Producer, Producer).
+    GprocKey = {n, l, {production_worker, TopHash, Producer}},
+    case gproc:where(GprocKey) of
+        undefined ->
+            gproc:reg(GprocKey),
+            Result = aec_block_hole_candidate:create(TopHash, Producer, Producer),
+            gproc:unreg(GprocKey),
+            Result;
+        _Pid ->
+            %% Production is already running in another worker, we cannot start a duplicate
+            lager:debug("Busy, try again: Production by ~w already running at ~w", [Producer, _Pid]),
+            {error, busy_try_again}
+    end.
 
 hc_create_block(ConsensusModule, TopHash0, Producer) ->
-    VoteResult = ConsensusModule:vote_result(),
-    TopHash = hc_create_microblock(ConsensusModule, TopHash0, Producer, VoteResult),
-    aec_block_key_candidate:create(TopHash, Producer, Producer).
+    GprocKey = {n, l, {production_worker, TopHash0, Producer}},
+    case gproc:where(GprocKey) of
+        undefined ->
+            gproc:reg(GprocKey),
+            VoteResult = ConsensusModule:vote_result(),
+            TopHash = hc_create_microblock(ConsensusModule, TopHash0, Producer, VoteResult),
+            Result = aec_block_key_candidate:create(TopHash, Producer, Producer),
+            gproc:unreg(GprocKey),
+            Result;
+        _Pid ->
+            %% Production is already running in another worker, we cannot start a duplicate
+            lager:debug("Busy, try again: Production by ~w already running at ~w", [Producer, _Pid]),
+            {error, busy_try_again}
+    end.
 
 hc_create_microblock(ConsensusModule, TopHash, Leader, VoteResult) ->
     CreateResult = case VoteResult of
