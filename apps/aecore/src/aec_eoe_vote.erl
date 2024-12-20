@@ -287,15 +287,16 @@ on_valid_vote(Validator, VoteFields, #data{votes=Votes} = Data) ->
     Votes1 = maps:put(Validator, VoteFields, Votes),
     check_voting_majority(Data#data{votes = Votes1}).
 
-check_voting_majority(#data{proposal=Proposal, majority = CurrentMajority, validators=Validators, block_time=BlockTime, votes=Votes} = Data) ->
+check_voting_majority(#data{majority = CurrentMajority, validators=Validators, block_time=BlockTime, votes=Votes} = Data) ->
     case CurrentMajority =< 0 of
         true ->
             lager:info("Quorum achieved for voting"),
             Majority = calculate_majority(Validators),
-            Result = create_finalize_call(Votes, Proposal, Data),
-            Data1 = Data#data{result = Result},
-            send_commits(Data1),
-            {next_state, finalize, Data1#data{majority = Majority, remaining_validators = maps:from_list(Validators)}};
+            #data{proposal=Proposal} = Data1 = update_proposal_after_vote_majority(Data),
+            Result = create_finalize_call(Votes, Proposal, Data1),
+            Data2 = Data1#data{result = Result},
+            send_commits(Data2),
+            {next_state, finalize, Data2#data{majority = Majority, remaining_validators = maps:from_list(Validators)}};
         false ->
             {next_state, vote, Data, [{state_timeout,BlockTime,no_quorum}]}
     end.
@@ -536,8 +537,8 @@ create_vote_call(Producer, #{?HASH_FLD := Hash, ?EPOCH_DELTA_FLD := EpochDelta, 
 calculate_delta(Epoch, _ParentBlocks, _CurrentLength, _BlockTime) when Epoch =< 4 ->
     0;
 calculate_delta(Epoch, ParentBlocks, CurrentLength, BlockTime) ->
-    TimeDiff = get_epoch_time_diff(Epoch, ParentBlocks, BlockTime),
     ExpectedTimeDiff = CurrentLength * BlockTime,
+    TimeDiff = get_epoch_time_diff(Epoch, ParentBlocks, ExpectedTimeDiff),
     case (TimeDiff - ExpectedTimeDiff) / BlockTime of
         NegDiff when NegDiff < 0 ->
             case ceil(NegDiff) of
@@ -550,11 +551,27 @@ calculate_delta(Epoch, ParentBlocks, CurrentLength, BlockTime) ->
             floor(Diff)
     end.
 
-get_epoch_time_diff(Epoch, ParentBlocks, BlockTime) ->
-  get_block_time_diff(maps:get(Epoch, ParentBlocks, undefined),maps:get(Epoch + 1, ParentBlocks, undefined), BlockTime).
+get_epoch_time_diff(Epoch, ParentBlocks, ExpectedTimeDiff) ->
+  get_block_time_diff(maps:get(Epoch, ParentBlocks, undefined),maps:get(Epoch + 1, ParentBlocks, undefined), ExpectedTimeDiff).
 
-get_block_time_diff(ParentBlock1, ParentBlock2, BlockTime) when ParentBlock1 == undefined ; ParentBlock2 == undefined ->
-    BlockTime;
+get_block_time_diff(ParentBlock1, ParentBlock2, ExpectedTimeDiff) when ParentBlock1 == undefined ; ParentBlock2 == undefined ->
+    ExpectedTimeDiff;
 get_block_time_diff(ParentBlock1, ParentBlock2, _) ->
     aec_parent_chain_block:time(ParentBlock2) - aec_parent_chain_block:time(ParentBlock1).
 
+update_proposal_after_vote_majority(#data{proposal=Proposal, votes=Votes, validators = Validators, leader=Leader} = Data) ->
+    SumFun = sum_epoch_delta(Validators),
+    Totals = maps:fold(SumFun, {0,0}, Votes),
+    {TotalStake, TotalEpochDelta} = SumFun(Leader, Proposal,Totals),
+    EpochDelta = round(TotalEpochDelta / TotalStake),
+    UpdatedProposal = maps:put(?EPOCH_DELTA_FLD, EpochDelta, Proposal),
+    Data#data{proposal = UpdatedProposal}.
+
+sum_epoch_delta(Validators) ->
+    fun(Producer, Vote, {TotalStake, TotalEpochDelta}) ->
+            {Stake, EpochDelta} = get_weighted_delta(Producer, Vote, Validators),
+            {TotalStake + Stake, EpochDelta * Stake + TotalEpochDelta} end.
+
+get_weighted_delta(Producer, #{?EPOCH_DELTA_FLD := EpochDelta}, Validators) ->
+    Stake = proplists:get_value(Producer, Validators, 0),
+    {Stake, EpochDelta}.
