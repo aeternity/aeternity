@@ -816,7 +816,7 @@ next_beneficiary(TxEnv, Trees) ->
             case ChildHeight1 == maps:get(last, EpochInfo) of
                 true ->
                     Hash = aetx_env:key_hash(TxEnv),
-                    aec_eoe_vote:negotiate(Epoch, ChildHeight1, Hash, Leader, Validators, Seed, 0, child_epoch_length()); %% TODO epoch delta
+                    aec_eoe_vote:negotiate(Epoch, ChildHeight1, Hash, Leader, Validators, Seed, child_epoch_length());
                 false ->
                     ok
             end,
@@ -844,6 +844,7 @@ get_entropy_hash(ChildEpoch) ->
     lager:debug("Entropy for epoch ~p from PC block at height ~p", [ChildEpoch, EntropyHeight]),
     case aec_parent_chain_cache:get_block_by_height(EntropyHeight, 1000) of
         {ok, Block} ->
+            aec_eoe_vote:add_parent_block(ChildEpoch, Block),
             {ok, aec_parent_chain_block:hash(Block)};
         {error, _Err} ->
             lager:debug("Unable to pick the next leader for epoch ~p, parent height ~p; reason is ~p",
