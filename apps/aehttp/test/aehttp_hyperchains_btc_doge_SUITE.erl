@@ -191,6 +191,7 @@ suite() -> [].
 
 init_per_suite(Config0) ->
     case aect_test_utils:require_at_least_protocol(?CERES_PROTOCOL_VSN) of
+        _ -> {skip, only_run_manually}; % comment out line if you actually want to run tests here,.
         {skip, _} = Skip -> Skip;
         ok ->
             {ok, _StartedApps} = application:ensure_all_started(gproc),
