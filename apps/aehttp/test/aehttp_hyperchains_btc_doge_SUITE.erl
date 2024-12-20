@@ -795,7 +795,7 @@ try_a_pin(Config) ->
 
     [{Node, _, _, _} | _] = ?config(nodes, Config),
 
-    {ok, #{<<"tx_hash">> := Hash}} = rpc(Node, aec_parent_connector, pin_to_pc, [pubkey(?ALICE),100000000,1000]),
+    Hash = rpc(Node, aec_parent_connector, pin_to_pc, [pubkey(?ALICE),100000000,1000]),
 
     Raw = rpc(Node, aec_parent_connector, get_pin_by_tx_hash, [Hash]),
 

@@ -27,6 +27,7 @@ createrawtransaction/3,
 signrawtransaction/2,
 sendrawtransaction/2,
 getrawtransaction/2,
+decoderawtransaction/2,
 to_hex/1]).
 
 -behavior(aehttpc).
@@ -66,7 +67,7 @@ get_chain_type() ->
 
 pin_to_pc({PinningData, _Who, Amount, Fee, _NetworkId, _SignModule}, NodeSpec) ->
     PinPayload = aeser_hc:encode_parent_pin_payload(PinningData),
-    post_pin(NodeSpec, <<"msnDTk5YoFU5M3pSbFsjTqXCCPx6FcshPL">>, Amount, Fee, PinPayload).
+    post_pin(NodeSpec, Amount, Fee, PinPayload).
 
 get_pin_by_tx_hash(TxHash, NodeSpec) ->
     lager:debug("in doge with: ~p", [TxHash]),
@@ -80,7 +81,7 @@ get_pin_by_tx_hash(TxHash, NodeSpec) ->
             0 -> maps:put(pc_height, -1, PinMap);
             _ ->
                 Hash = maps:get(<<"blockhash">>, Tx),
-                {Height, _, _, _} = getblock(NodeSpec, <<>>, Hash, 2),
+                {ok, {Height, _, _, _, _}} = getblock(NodeSpec, <<>>, Hash, 2),
                 maps:put(pc_height, Height, PinMap) % TODO fetch block using BlockHash from Tx
         end,
     {ok, UpdMap}.
@@ -90,14 +91,14 @@ get_pin_by_tx_hash(TxHash, NodeSpec) ->
 %%% Internal functions
 %%%=============================================================================
 
-post_pin(NodeSpec, Account, Amount, Fee, PinPayload) ->
+post_pin(NodeSpec, Amount, Fee, PinPayload) ->
     {ok, Unspent} = listunspent(NodeSpec),
     lager:debug("unspent: ~p", [Unspent]),
     UnspentSatoshis = unspent_to_satoshis(Unspent),
     lager:debug("satoshis: ~p", [UnspentSatoshis]),
-    {ok, {Inputs, UTXOAmount}} = select_utxo(UnspentSatoshis, Fee + Amount),
+    {ok, {Inputs, UTXOAmount, UTXOAddress}} = select_utxo(UnspentSatoshis, Fee + Amount),
     lager:debug("inputs, amount: ~p, ~p", [Inputs, UTXOAmount]),
-    Outputs = create_outputs(PinPayload, Account, Amount, Fee, UTXOAmount),
+    Outputs = create_outputs(PinPayload, UTXOAddress, Amount, Fee, UTXOAmount),
     lager:debug("outputs: ~p" , [Outputs]),
     {ok, Tx} = createrawtransaction(NodeSpec, Inputs, Outputs),
     lager:debug("tx: ~p", [Tx]),
@@ -105,13 +106,13 @@ post_pin(NodeSpec, Account, Amount, Fee, PinPayload) ->
     lager:debug("signed: ~p", [SignedTx]),
     {ok, TxHash} = sendrawtransaction(NodeSpec, SignedTx),
     lager:debug("txhash: ~p", [TxHash]),
-    {ok, #{<<"tx_hash">> => TxHash}}.
+    TxHash.
 
-select_utxo([#{<<"spendable">> := true, <<"amount">> := Amount} = Unspent | _Us], Needed) when Amount >= Needed ->
+select_utxo([#{<<"spendable">> := true, <<"amount">> := Amount, <<"address">> := Address} = Unspent | _Us], Needed) when Amount >= Needed ->
     %% For now just pick first spendable UTXO with enough funds. There is no end to how fancy this can get
     %% https://bitcoin.stackexchange.com/questions/32145/what-are-the-trade-offs-between-the-different-algorithms-for-deciding-which-utxo
     #{<<"txid">> := TxId, <<"vout">> := VOut} = Unspent,
-    {ok, {[#{<<"txid">> => TxId, <<"vout">> => VOut}], Amount}};
+    {ok, {[#{<<"txid">> => TxId, <<"vout">> => VOut}], Amount, Address}};
 select_utxo([_U|Us], Fee) ->
     select_utxo(Us, Fee);
 select_utxo([], _Fee) ->
@@ -290,7 +291,7 @@ getrawtransaction(NodeSpec, TxHash) ->
         {error, {E, R}}
     end.
 
--spec decoderawtransaction(aehttpc:node_spec(), binary()) -> {ok, binary()} | {error, term()}.
+-spec decoderawtransaction(aehttpc:node_spec(), map()) -> {ok, map()} | {error, term()}.
 decoderawtransaction(NodeSpec, Tx) ->
     try
         Seed = <<>>,
@@ -303,7 +304,7 @@ decoderawtransaction(NodeSpec, Tx) ->
         {error, {E, R}}
     end.
 
--spec gettransaction(aehttpc:node_spec(), binary()) -> {ok, binary()} | {error, term()}.
+-spec gettransaction(aehttpc:node_spec(), binary()) -> {ok, map()} | {error, term()}.
 gettransaction(NodeSpec, TxHash) ->
     try
         Seed = <<>>,
