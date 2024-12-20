@@ -520,7 +520,7 @@ respect_schedule(Node, EpochStart, Epoch, TopHeight) ->
 
     lists:foreach(fun({Height, ExpectedProducer}) when Height =< TopHeight ->
                               Producer = get_block_producer(Node, Height),
-                              ct:log("Check producer of block ~p: ~p =?= ~p", [Height, Producer, ExpectedProducer]),
+                              ct:pal("Check producer of block ~p: ~p =?= ~p", [Height, Producer, ExpectedProducer]),
                               ?assertEqual(Producer, ExpectedProducer);
                      (_) -> ok
                   end, lists:zip(lists:seq(StartHeight, StartHeight + EILength - 1), Schedule)),

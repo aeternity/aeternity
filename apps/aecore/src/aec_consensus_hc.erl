@@ -965,13 +965,12 @@ next_beneficiary_check_special_cases(State = #next_beneficiary{
 next_beneficiary_set_candidate(State = #next_beneficiary{
     leader = Leader, height = CurrentChainHeight, timeslot = Timeslot
 }, TopKeyBlock, RunEnv) ->
-    NextChainHeight = CurrentChainHeight + 1,
     {ok, #{epoch := Epoch, seed := Seed, validators := Validators} = EpochInfo} = aec_chain_hc:epoch_info(RunEnv),
-    case NextChainHeight =:= maps:get(last, EpochInfo) of
+    case Timeslot =:= maps:get(last, EpochInfo) of
         true ->
             {TxEnv, _} = RunEnv,
             Hash = aetx_env:key_hash(TxEnv),
-            aec_eoe_vote:negotiate(Epoch, NextChainHeight, Hash, Leader, Validators, Seed, 0, child_epoch_length()); %% TODO epoch delta
+            aec_eoe_vote:negotiate(Epoch, Timeslot, Hash, Leader, Validators, Seed, 0, child_epoch_length()); %% TODO epoch delta
         false ->
             ok
     end,
