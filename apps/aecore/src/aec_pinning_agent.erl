@@ -20,6 +20,7 @@
 %% External API
 -export([
     start_link/3,
+    start_link/3,
     stop/0
 ]).
 
@@ -54,6 +55,7 @@
 -spec start_link(term(), atom(), term()) -> {ok, pid()} | {error, {already_started, pid()}} | ignore | {error, Reason::any()}.
 start_link(Contract, PinningBehavior, SignModule) ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [Contract, PinningBehavior, SignModule], []).
+
 
 stop() ->
     gen_server:stop(?SERVER).
@@ -133,6 +135,7 @@ post_pin_to_pc(LastLeader, Height) ->
     lager:debug("Pinned to PC @~p: ~p", [Height, PCPinTx]),
     PCPinTx.
 
+
 post_pin_pctx_to_cc(PinTx, LastLeader, Height, SignModule) ->
     try
         pin_tx_to_cc(PinTx, LastLeader, 1, 1000000 * min_gas_price(), SignModule),
@@ -151,6 +154,7 @@ maybe_post_pin_to_cc(PCPinTx, false, LastLeader, Height, SignModule) ->
         {ok, _} -> post_pin_pctx_to_cc(PCPinTx, LastLeader, Height, SignModule), true;
         _ -> false
     end;
+
 maybe_post_pin_to_cc(_, CCPosted, _, _, _) ->
     CCPosted.
 

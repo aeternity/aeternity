@@ -73,6 +73,7 @@ get_chain_type() ->
 %%%=============================================================================
 
 pin_to_pc({_PinningData, _Who, _Amount, _Fee, _NetworkId, _SignModule}, _NodeSpec) ->
+
     erlang:error(not_implemented).
 
 get_pin_by_tx_hash(_TxHash, _NodeSpec) ->
