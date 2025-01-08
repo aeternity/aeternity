@@ -37,7 +37,71 @@ The 0.9 beta release introduces the core framework for Hyperchain deployment, pr
 4. Network participation initiation (edited)
 
 
-# Hyperchain-specific confguration reference
+## Complete `aeternity.yaml` example
+
+```yaml
+chain:
+  consensus:
+    '0':
+      config:
+        child_block_production_time: 50
+        child_block_time: 20
+        child_epoch_length: 5
+        contract_owner: ak_11111111111111111111111111111115rHyByZ
+        default_pinning_behavior: false
+        election_contract: ct_LRbi65kmLtE7YMkG6mvG5TxAXTsPJDZjAtsPuaXtRyPA7gnfJ
+        expected_key_block_rate: 2000
+        fixed_coinbase: 100000000000000000000
+        genesis_start_time: 1734687700341
+        parent_chain:
+          consensus:
+            amount: 9700
+            fee: 100000
+            network_id: mainnet
+            spend_address: ak_2CPHnpGxYw3T7XdUybxKDFGwtFQY7E5o3wJzbexkzSQ2BQ7caJ
+            type: AE2AE
+          finality: 2
+          parent_epoch_length: 3
+          polling:
+            cache_size: 10
+            fetch_interval: 100
+            nodes:
+              - http://test:Pass@127.0.0.1:44555
+          start_height: 133
+        pinners:
+          - parent_chain_account:
+              owner: ak_2MGLPW2CHTDXJhqFJezqSwYSNwbZokSKkG7wSbGtVmeyjGfHtm
+              priv: 6BFBBDB05CDD042E38E78975B5087C0ED496A7355F5E325690E65DDE3D74556008899F638BAF1B3A4D0BBF34C6C7073285C3B8DB947C04052CF7395FBCAD5F23
+              pub: ak_4m5iGyT3AiahzGKCE2fCHVsQYU7FBMDiaMJ1YPxradKsyfCc9
+          - parent_chain_account:
+              owner: ak_2XNq9oKtThxKLNFGWTaxmLBZPgP7ECEGxL3zK7dTSFh6RyRvaG
+              priv: 51B10F6C10B780E50472A6E32F7D911544C4B9732AC6A8CCDCCEC83A0C203862D4D4A94E95948ADD9C50049C098B9072F37A1467A82B2AF45D7626624722C75E
+              pub: ak_2cjUYDhaKaiyGvuswL6K96ooKZKtFZZEopgxc3hwR2Yqb8SWxd
+        pinning_reward_value: 4711
+        rewards_contract: ct_KJgjAXMtRF68AbT5A2aC9fTk8PA4WFv26cFSY27fXs6FtYQHK
+        stakers:
+          - hyper_chain_account:
+              priv: 91450EFE0516C24476390086426008147CFDEECFE6935FADA1C056C3A5BA73FBB1B577BCD327CB39E55E6C026BD6A74A1B35DE6C0650C4AE51EFAB759E415B66
+              pub: ak_2MGLPW2CHTDXJhqFJezqSwYSNwbZokSKkG7wSbGtVmeyjGfHtm
+          - hyper_chain_account:
+              priv: ED0C148073A6206ADC8E6F618D68C9823864408E8BA357A6B95E049FD9F3A0A9C8AB5D0B035DB141C51B7B7FB1A5BED314704F6C554E58B51ACFBFD328E18A9A
+              pub: ak_2XNq9oKtThxKLNFGWTaxmLBZPgP7ECEGxL3zK7dTSFh6RyRvaG
+        staking_contract: ct_KJgjAXMtRF68AbT5A2aC9fTk8PA4WFv26cFSY27fXs6FtYQHK
+      type: hyperchain
+  http:
+  endpoints:
+    hyperchain: true
+  external:
+    port: 3013
+  internal:
+    port: 3113
+  rosetta:
+    port: 3213
+  rosetta_offline:
+    port: 3413
+```
+
+# Addendum 1: Hyperchain-specific confguration reference
 ## chain\.consensus: object
 
 The consensus algorithms used for validating blocks. Ignored if 'fork_management > network_id' has value 'ae_mainnet' or 'ae_uat'.
@@ -309,98 +373,3 @@ owner: ""
 ```
 
 
-## Complete `aeternity.yaml` example
-
-```yaml
-chain:
-  consensus:
-    '0':
-      config:
-        child_block_production_time: 50
-        child_block_time: 20
-        child_epoch_length: 5
-        contract_owner: ak_11111111111111111111111111111115rHyByZ
-        default_pinning_behavior: false
-        election_contract: ct_LRbi65kmLtE7YMkG6mvG5TxAXTsPJDZjAtsPuaXtRyPA7gnfJ
-        expected_key_block_rate: 2000
-        fixed_coinbase: 100000000000000000000
-        genesis_start_time: 1734687700341
-        parent_chain:
-          consensus:
-            amount: 9700
-            fee: 100000
-            network_id: mainnet
-            spend_address: ak_2CPHnpGxYw3T7XdUybxKDFGwtFQY7E5o3wJzbexkzSQ2BQ7caJ
-            type: AE2AE
-          finality: 2
-          parent_epoch_length: 3
-          polling:
-            cache_size: 10
-            fetch_interval: 100
-            nodes:
-              - http://test:Pass@127.0.0.1:44555
-          start_height: 133
-        pinners:
-          - parent_chain_account:
-              owner: ak_2MGLPW2CHTDXJhqFJezqSwYSNwbZokSKkG7wSbGtVmeyjGfHtm
-              priv: 6BFBBDB05CDD042E38E78975B5087C0ED496A7355F5E325690E65DDE3D74556008899F638BAF1B3A4D0BBF34C6C7073285C3B8DB947C04052CF7395FBCAD5F23
-              pub: ak_4m5iGyT3AiahzGKCE2fCHVsQYU7FBMDiaMJ1YPxradKsyfCc9
-          - parent_chain_account:
-              owner: ak_2XNq9oKtThxKLNFGWTaxmLBZPgP7ECEGxL3zK7dTSFh6RyRvaG
-              priv: 51B10F6C10B780E50472A6E32F7D911544C4B9732AC6A8CCDCCEC83A0C203862D4D4A94E95948ADD9C50049C098B9072F37A1467A82B2AF45D7626624722C75E
-              pub: ak_2cjUYDhaKaiyGvuswL6K96ooKZKtFZZEopgxc3hwR2Yqb8SWxd
-        pinning_reward_value: 4711
-        rewards_contract: ct_KJgjAXMtRF68AbT5A2aC9fTk8PA4WFv26cFSY27fXs6FtYQHK
-        stakers:
-          - hyper_chain_account:
-              priv: 91450EFE0516C24476390086426008147CFDEECFE6935FADA1C056C3A5BA73FBB1B577BCD327CB39E55E6C026BD6A74A1B35DE6C0650C4AE51EFAB759E415B66
-              pub: ak_2MGLPW2CHTDXJhqFJezqSwYSNwbZokSKkG7wSbGtVmeyjGfHtm
-          - hyper_chain_account:
-              priv: ED0C148073A6206ADC8E6F618D68C9823864408E8BA357A6B95E049FD9F3A0A9C8AB5D0B035DB141C51B7B7FB1A5BED314704F6C554E58B51ACFBFD328E18A9A
-              pub: ak_2XNq9oKtThxKLNFGWTaxmLBZPgP7ECEGxL3zK7dTSFh6RyRvaG
-        staking_contract: ct_KJgjAXMtRF68AbT5A2aC9fTk8PA4WFv26cFSY27fXs6FtYQHK
-      type: hyperchain
-````
-<!--
-  db_backend: mnesia
-  hard_forks:
-    '7':
-      accounts_file: /Users/aeternity/ae/_build/test/logs/latest.hyperchains/dev1/data/aecore/.7/hc_accounts.json
-      contracts_file: /Users/aeternity/ae/_build/test/logs/latest.hyperchains/dev1/data/aecore/.7/hc_contracts.json
-      height: 0
-  persist: false
-fork_management:
-  network_id: this_will_be_overwritten_runtime
-http:
-  endpoints:
-    hyperchain: true
-  external:
-    port: 3013
-  internal:
-    port: 3113
-  rosetta:
-    port: 3213
-  rosetta_offline:
-    port: 3413
-include_default_peers: false
-keys:
-  dir: /Users/aeternity/ae/_build/test/logs/latest.hyperchains/dev1/data/keys
-  peer_password: '1734.687700.415689'
-logging:
-  hwm: 5000
-  level: debug
-mining:
-  autostart: false
-  beneficiary: ak_2evAxTKozswMyw9kXkvjJt3MbomCR1nLrf91BduXKdJLrvaaZt
-  beneficiary_reward_delay: 2
-  micro_block_cycle: 1
-peers:
-  - aenode://pp_23YdvfRPQ1b1AMWmkKZUGk2cQLqygQp55FzDWZSEUicPjhxtp5@localhost:3025
-  - aenode://pp_2M9oPohzsWgJrBBCFeYi3PVT4YF7F2botBtq6J1EGcVkiutx3R@localhost:3035
-sync:
-  ping_interval: 5000
-  port: 3015
-websocket:
-  channel:
-    port: 3014
--->
