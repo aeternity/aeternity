@@ -2,6 +2,10 @@
 
 This document describes the basics of he Aeternity Hyperchain, with links to more detailed documentation. It also covers a reference to the Hyperchain related Aeternity node configuration parameters and a quick-start guide on how to configure your Hyperchain node.
 
+Hyperchains represents a groundbreaking evolution in blockchain architecture, combining the security benefits of established Proof-of-Work (PoW) chains with the efficiency and scalability of Proof-of-Stake (PoS) systems. By implementing a child chain that periodically synchronizes with a parent PoW chain, Hyperchains enables organizations to build robust, scalable blockchain networks while leveraging the established security of existing chains. This hybrid approach significantly reduces energy consumption compared to traditional PoW systems while maintaining strong security guarantees through its innovative parent-child chain relationship.
+
+The 0.9 beta release introduces the core framework for Hyperchain deployment, providing developers with the foundation to test and validate the Hyperchains architecture. This initial release focuses on establishing and maintaining the fundamental relationship between an Aeternity parent chain and its child chain, implementing the basic mechanisms for chain synchronization and validator operations. This documentation serves as a technical guide for configuring and deploying a Hyperchain, aimed at developers who are already running Aeternity nodes and want to experiment with Hyperchain functionality. It covers the essential configuration parameters and setup requirements needed to participate in this beta testing phase.
+
 ## 1. Prerequisites Checklist for Running a Hyperchain
 ### Required Infrastructure
 - [ ] Running Aeternity node (v6.7.0 or later)
