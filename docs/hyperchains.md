@@ -2,7 +2,39 @@
 
 This document describes the basics of he Aeternity Hyperchain, with links to more detailed documentation. It also covers a reference to the Hyperchain related Aeternity node configuration parameters and a quick-start guide on how to configure your Hyperchain node.
 
-# chain\.consensus: object
+## 1. Prerequisites Checklist for Running a Hyperchain
+### Required Infrastructure
+- [ ] Running Aeternity node (v6.7.0 or later)
+- [ ] Minimum 4GB RAM dedicated to Hyperchain operations
+- [ ] 100GB available storage space
+- [ ] Stable internet connection with minimum 10Mbps upload/download
+### Required Technical Knowledge
+- [ ] Experience running and maintaining Aeternity nodes
+- [ ] Basic understanding of blockchain concepts
+- [ ] Familiarity with command-line operations
+- [ ] Understanding of YAML configuration files
+### Required Accounts and Keys
+- [ ] Access to parent chain (Aeternity) wallet with sufficient funds for pinning
+- [ ] Private key for hyperchain staking operations
+- [ ] Private key for parent chain pinning operations
+## 2. What to Expect When Setting Up a Hyperchain
+### Time Investment
+- Initial setup: 2-3 hours
+- Configuration testing: 1-2 hours
+- Initial sync time: 2-4 hours (depends on network conditions)
+### Resource Requirements
+- Parent chain wallet must maintain minimum balance of X AE for pinning operations
+- Continuous monitoring during first 24 hours of operation
+- Regular maintenance windows for updates and optimizations
+### Technical Process Overview
+1. Configuration of parent chain connection
+2. Hyperchain node setup and configuration
+3. Validation period (24-48 hours)
+4. Network participation initiation (edited)
+
+
+# Hyperchain-specific confguration reference
+## chain\.consensus: object
 
 The consensus algorithms used for validating blocks. Ignored if 'fork_management > network_id' has value 'ae_mainnet' or 'ae_uat'.
 
@@ -48,9 +80,9 @@ Configuration for the given consensus algorithm
 |**election\_contract**|`string`|The address of the smart contract that will be used for leader elections. For a new chain this contract should be loaded at genesis<br/>||
 |**rewards\_contract**|`string`|The address of the smart contract that will be used for reward distributions. For a new chain this contract should be loaded at genesis<br/>||
 |**genesis\_start\_time**|`integer`|Timestamp for genesis<br/>Default: `0`<br/>||
-|**child\_block\_time**|`integer`|The average time in milliseconds between two key blocks on the child chain<br/>Default: `3000`<br/>||
-|**child\_block\_production\_time**|`integer`|The time in milliseconds to produce a child block<br/>||
-|**child\_epoch\_length**|`integer`|The number of blocks in an epoch on the child chain<br/>||
+|**child\_block\_time**|`integer`|The average time in milliseconds between two key blocks on the hyperchain<br/>Default: `3000`<br/>||
+|**child\_block\_production\_time**|`integer`|The time in milliseconds to produce a hyperchain block<br/>||
+|**child\_epoch\_length**|`integer`|The number of blocks in an epoch on the hyperchain<br/>||
 |**pinning\_reward\_value**|`integer`|The initial value of the Pinning reward. It can later be changed through consensus<br/>Default: `0`<br/>||
 |**default\_pinning\_behavior**|`boolean`|Use the default pinning behavior, where in each epoch, if the last leader has defined pinning/parent chain credentials, they will pin<br/>Default: `false`<br/>||
 |**fixed\_coinbase**|`integer`|The coinbase reward specifies the fixed amount of newly minted tokens allocated to block producers as an incentive for validating and adding blocks to the chain.<br/>Default: `0`<br/>||
@@ -194,7 +226,7 @@ Hyperchain account pair
 
 |Name|Type|Description|Required|
 |----|----|-----------|--------|
-|[**hyper\_chain\_account**](#chainconsensus1-90-9configstakershyper_chain_account)|`object`|Child chain staking account<br/>||
+|[**hyper\_chain\_account**](#chainconsensus1-90-9configstakershyper_chain_account)|`object`|Hyperchain staking account<br/>||
 
 **Item Additional Properties:** not allowed
 **Example**
@@ -232,8 +264,7 @@ local wallet setup with accounts and funds.
 
 **Items**
 
-
-Hyperchain account pair
+Hyperchain parent accounts.
 
 **Item Properties**
 
@@ -251,7 +282,7 @@ Hyperchain account pair
 <a name="chainconsensus1-90-9configpinnersparent_chain_account"></a>
 ### chain\.consensus\.\<height\>\.config\.pinners\[\]\.parent\_chain\_account: object
 
-Parent chain pinning account
+Parent chain account for executing pinning (spend) transactions
 
 
 **Properties**
@@ -260,7 +291,7 @@ Parent chain pinning account
 |----|----|-----------|--------|
 |**pub**|`string`|Public key<br/>Default: `""`<br/>||
 |**priv**|`string`|Private key<br/>Default: `""`<br/>||
-|**owner**|`string`|Public key of Hyperchain account owner<br/>Default: `""`<br/>||
+|**owner**|`string`|Public key of Hyperchain account owner. Needs to correspond to an account defined in [**stakers**](#chainconsensus1-90-9configstakers)<br/>Default: `""`<br/>||
 
 **Additional Properties:** not allowed
 **Example**
@@ -280,8 +311,8 @@ chain:
     '0':
       config:
         child_block_production_time: 50
-        child_block_time: 200
-        child_epoch_length: 10
+        child_block_time: 20
+        child_epoch_length: 5
         contract_owner: ak_11111111111111111111111111111115rHyByZ
         default_pinning_behavior: false
         election_contract: ct_LRbi65kmLtE7YMkG6mvG5TxAXTsPJDZjAtsPuaXtRyPA7gnfJ
@@ -292,9 +323,9 @@ chain:
           consensus:
             amount: 9700
             fee: 100000
-            network_id: testnet
+            network_id: mainnet
             spend_address: ak_2CPHnpGxYw3T7XdUybxKDFGwtFQY7E5o3wJzbexkzSQ2BQ7caJ
-            type: AE2DOGE
+            type: AE2AE
           finality: 2
           parent_epoch_length: 3
           polling:
