@@ -65,9 +65,11 @@ Configuration parameters for the selected consensus algorithm (Hyperchain).
 **Example**
 
 ```yaml
-type: hyperchain
-config:
-
+chain:
+  consensus:
+    '0':
+      type: hyperchain
+      config: ...
 ```
 
 <a name="chainconsensus1-90-9config"></a>
