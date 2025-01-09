@@ -1,10 +1,23 @@
 # Introduction
 
-This document describes the basics of he Aeternity Hyperchain, with links to more detailed documentation. It also covers a reference to the Hyperchain related Aeternity node configuration parameters and a quick-start guide on how to configure your Hyperchain node.
+This document describes the basics of he Aeternity Hyperchain, with links to more detailed documentation.
+It also covers a reference to the Hyperchain related Aeternity node configuration parameters and a
+quick-start guide on how to configure your Hyperchain node.
 
-Hyperchains represents a groundbreaking evolution in blockchain architecture, combining the security benefits of established Proof-of-Work (PoW) chains with the efficiency and scalability of Proof-of-Stake (PoS) systems. By implementing a child chain that periodically synchronizes with a parent PoW chain, Hyperchains enables organizations to build robust, scalable blockchain networks while leveraging the established security of existing chains. This hybrid approach significantly reduces energy consumption compared to traditional PoW systems while maintaining strong security guarantees through its innovative parent-child chain relationship.
+Hyperchains represents a groundbreaking evolution in blockchain architecture, combining the security benefits
+of established Proof-of-Work (PoW) chains with the efficiency and scalability of Proof-of-Stake (PoS) systems.
+By implementing a child chain that periodically synchronizes with a parent PoW chain, Hyperchains enables
+organizations to build robust, scalable blockchain networks while leveraging the established security of
+existing chains. This hybrid approach significantly reduces energy consumption compared to traditional PoW
+systems while maintaining strong security guarantees through its innovative parent-child chain relationship.
 
-The 0.9 beta release introduces the core framework for Hyperchain deployment, providing developers with the foundation to test and validate the Hyperchains architecture. This initial release focuses on establishing and maintaining the fundamental relationship between an Aeternity parent chain and its child chain, implementing the basic mechanisms for chain synchronization and validator operations. This documentation serves as a technical guide for configuring and deploying a Hyperchain, aimed at developers who are already running Aeternity nodes and want to experiment with Hyperchain functionality. It covers the essential configuration parameters and setup requirements needed to participate in this beta testing phase.
+The 0.9 beta release introduces the core framework for Hyperchain deployment, providing developers with the
+foundation to test and validate the Hyperchains architecture. This initial release focuses on establishing
+and maintaining the fundamental relationship between an Aeternity parent chain and its child chain,
+implementing the basic mechanisms for chain synchronization and validator operations. This documentation
+serves as a technical guide for configuring and deploying a Hyperchain, aimed at developers who are already
+running Aeternity nodes and want to experiment with Hyperchain functionality. It covers the essential
+configuration parameters and setup requirements needed to participate in this beta testing phase.
 
 ## 1. Prerequisites Checklist for Running a Hyperchain
 ### Required Infrastructure
@@ -40,17 +53,28 @@ The 0.9 beta release introduces the core framework for Hyperchain deployment, pr
 ## Complete Hyperchain `aeternity.yaml` configuration example
 
 An Aeternity Hyperchain node is a standard Aeternity release configured to run a Hyperchain-configured consensus
-algorithm. Please follow the instructions elswhere in the relase to install and do basic configuration. Then adopt and add the additional configuration below to your `aternity.yaml` or (`.json` if that is your fancy).
+algorithm.
+<!-- The recommended setup is to run your parent node locally, in the example below we have a `testnet` node
+running on port `6013` (as defined in `parent_chain.polling.nodes`). Again, refer to the core documentation
+above how to install and configure a regular Aeternity node. -->
 
-The recommended setup is to run your parent node locally, in the example below we have a `testnet` node running on port `6013` (as defined in `parent_chain.polling.nodes`). Again, refer to the core documentation above how to install and configure a regular Aeternity node.
-
-The initial "speed" of the hyperchain is defined by the epoch and block production parameters. These will be different for each hyperchain, depending on the desired transactional characteristics of the chain. The values below are useful for testing purposes, and when running on Aeternity `testnet`. Please see the main Hyperchain documentation for more information in how to optimize block and epoxh parameters per application and parent chain
+The initial "speed" of the hyperchain is defined by the epoch and block production parameters. These will be
+different for each hyperchain, depending on the desired transactional characteristics of the chain. The values
+below are useful for testing purposes, and when running on Aeternity `testnet`. Please see the main Hyperchain
+documentation for more information in how to optimize timing, block, and epoch length parameters per application
+and parent chain.
 characteristics.
 
-Contracts need to be compiled and made available to the node.
+Contracts need to be compiled and made available to the node. There is one specilized contract aech for *staking*,
+*elections*, and *rewards*. The contract owner is **WHO IS THE CONTRACT OWNER??**
 
-We define three `stakers`, that need to have accounts and funds on the Hyperchain. Both these stakers also `mainnet` accounts used for pinning. Their credentials for `testnet` is defined and mapped to their Hyperchain accounts in `pinners`. When `default_pinning_behavior` parameter is set to `true` each of theses validators will automatically
-pin the Hyperc hain state to the parent chain when they are leaders of the last block of the epoch using their mapped parent account credentials. The `pinning_reward_value` (in whatever the native currency is for the Hyperchain) is the reward that will be handed out for doing a verifiable pinning for an epoch. This should be adjusted to reflect the economics of the Hyperchain.
+We define three `stakers`, that need to have accounts and funds on the Hyperchain. Both these stakers also
+`mainnet` accounts used for pinning. Their credentials for `testnet` is defined and mapped to their Hyperchain
+accounts in `pinners`. When `default_pinning_behavior` parameter is set to `true` each of theses validators will
+automatically pin the Hyperchain state to the parent chain when they are leaders of the last block of the epoch
+using their mapped parent account credentials. The `pinning_reward_value` (in whatever the native currency is for
+the Hyperchain) is the reward that will be handed out for doing a verifiable pinning for an epoch. This should be
+adjusted to reflect the economics of the Hyperchain.
 
 ```yaml
 chain:
@@ -116,17 +140,96 @@ mining:
 peers: []
 ```
 
+# Configuraing Your Own Hyperchain Node
+
+To setup a Hyperchain can be a fairly complex process. Aeternity provides some tooling to help out. We
+will use the `hyperchain-starter-kit` (from Aeternity GitHub org) to do a lot of the heavy lifting. Note
+the following instructions are based on Unix/linux/MacOS shell commands. Using Windows can look slightly
+different w/r paths etc.
+
+1. Requirements:
+- [ ] a runnable Node installation (see below)
+- [ ] [https://nodejs.org/en/download](Node.js) installed to run the `hyperchain-starter-kit`
+- [ ] Git, to download the code for the starter kit
+
+1. Please follow the instructions elsewhere in the release to [installation.md](install) Aeternity or
+[build.md](build) (instructions for Windows [build-windows.md](here)) it from source, and do basic
+configuration. In the instructions below we will assume that it is installed in the directory `aeternity`
+1. Clone the `hyperchain-starter-kit` repo to your environment. It's useful to do this in the same parent directory where your Aeternity installation is.
+```shell
+git clone https://github.com/aeternity/hyperchain-starter-kit
+```
+3. Initialize the Hyperchain kit
+```shell
+cd hyperchain-starter-kit
+npm install
+npm run dev
+```
+4. Initialize the configuration.
+```shell
+npm rund dev init ../aeternity
+```
+This command creates an `init.yaml` file in the root of your `aeternity` directory. It contains parameters and settings for your
+hyperchain. It looks like:
+```
+childBlockTime: 3000
+childEpochLength: 600
+contractSourcesPrefix: 'https://raw.githubusercontent.com/aeternity/aeternity/master/'
+enablePinning: true
+fixedCoinbase: 100000000000000000000
+globalUnstakeDelay: 0
+networkId: 'aeternity'
+parentChain:
+  epochLength: 10
+  networkId: 'ae_uat'
+  nodeURL: 'https://testnet.aeternity.io'
+  type: 'AE2AE'
+pinningReward: 1000000000000000000000
+treasuryInitBalance: 1000000000000000000000000000000000000000000000000
+validators:
+  balance: 3100000000000000000000000000
+  count: 3
+  onlineDelay: 0
+  stakeDelay: 0
+  stakeMinimum: 1000000000000000000
+  unstakeDelay: 0
+  validatorMinPercent: 33
+  validatorMinStake: 1000000000000000000000000
+```
+You will not need to edit this file further in this part of the guide. In other scenarios, it's possible
+to change these and have the aeternity configuration turn out differently.
+
+5. Install Contracts and Generate Economy. Run the following commands
+```shell
+npm run dev retrieve-contracts ../aeternity
+npm run dev gen-economy ../aeternity
+```
+These commands will download the standard contracts from the latest Aeternity release and compile/install
+them into your node. After that accounts and initial funds will be generated for your node, and new accounts
+for `testnet` will be generated and funded/filled from the `testnet` faucet. You can inspect the outcome of
+this in the `economy-unencrypted.yaml` file in the node. There will also be a `contracts` directory with
+the downloaded contracts.
+
+6. Generate the node configuration. Run
+```shell
+npm run dev gen-node-conf ../aeternity
+```
+This will generate a file `nodeConfig/aeternity.yaml` in your node directory.
+
+
 # Addendum 1: Hyperchain-specific confguration reference
 ## chain\.consensus: object
 
-The consensus algorithms used for validating blocks. Ignored if 'fork_management > network_id' has value 'ae_mainnet' or 'ae_uat'.
+The consensus algorithms used for validating blocks. Ignored if 'fork_management > network_id' has value
+'ae_mainnet' or 'ae_uat'.
 
 
 **Properties (Pattern)**
 
 |Name|Type|Description|Required|
 |----|----|-----------|--------|
-|[\<height\>](#chainconsensus1-90-9)|`object`|Property name indicates minimum height at which the given consensus algorithm gets activated. By default from genesis Cuckoo cycle based BitcoinNG is used.<br/>|yes|
+|[\<height\>](#chainconsensus1-90-9)|`object`|Property name indicates minimum height at which the given
+consensus algorithm gets activated. By default from genesis Cuckoo cycle based BitcoinNG is used.<br/>|yes|
 
 <a name="chainconsensus1-90-9"></a>
 ## chain\.consensus\.\<height\>: object
@@ -138,7 +241,8 @@ Configuration parameters for the selected consensus algorithm (Hyperchain).
 
 |Name|Type|Description|Required|
 |----|----|-----------|--------|
-|**type**|`string`|The type of the consensus algorithm used at the given height (ex. pow_cuckoo, smart_contract or hyperchain)<br/>Default: `"hyperchain"`<br/>|yes|
+|**type**|`string`|The type of the consensus algorithm used at the given height (ex. pow_cuckoo, smart_contract
+or hyperchain)<br/>Default: `"hyperchain"`<br/>|yes|
 |[**config**](#chainconsensus1-90-9config)|`object`|Configuration for the given consensus algorithm<br/>|no|
 
 **Example**
