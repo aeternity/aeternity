@@ -818,11 +818,11 @@ next_beneficiary(TxEnv, Trees) ->
     ChildHeight1 = ChildHeight + 1,
     case leader_for_height(ChildHeight1, {TxEnv, Trees}) of
         {ok, Leader} ->
-            {ok, #{epoch := Epoch, seed := Seed, validators := Validators} = EpochInfo} = aec_chain_hc:epoch_info({TxEnv, Trees}),
+            {ok, #{epoch := Epoch, seed := Seed, validators := Validators, length := EpochLength} = EpochInfo} = aec_chain_hc:epoch_info({TxEnv, Trees}),
             case ChildHeight1 == maps:get(last, EpochInfo) of
                 true ->
                     Hash = aetx_env:key_hash(TxEnv),
-                    aec_eoe_vote:negotiate(Epoch, ChildHeight1, Hash, Leader, Validators, Seed, child_epoch_length());
+                    aec_eoe_vote:negotiate(Epoch, ChildHeight1, Hash, Leader, Validators, Seed, EpochLength);
                 false ->
                     ok
             end,
