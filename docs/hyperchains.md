@@ -143,28 +143,31 @@ peers: []
 # Configuraing Your Own Hyperchain Node
 
 To setup a Hyperchain can be a fairly complex process. Aeternity provides some tooling to help out. We
-will use the [`hyperchain-starter-kit`](https://github.com/aeternity/hyperchain-starter-kit) (from Aeternity GitHub org) to do a lot of the heavy lifting. Note
-the following instructions are based on Unix/linux/MacOS shell commands. Using Windows can look slightly
-different w/r paths etc.
+will use the [`hyperchain-starter-kit`](https://github.com/aeternity/hyperchain-starter-kit) (from Aeternity
+GitHub org) to do a lot of the heavy lifting. Note: the following instructions are based on Unix/linux/MacOS
+shell commands. Using Windows can look slightly different w/r paths etc.
 
 0. Requirements:
 - [ ] a runnable Node installation (see below)
 - [ ] [Node.js](https://nodejs.org/en/download) installed to run the `hyperchain-starter-kit`
-- [ ] Git, to download the code for the starter kit
+- [ ] [Git](https://git-scm.com/downloads) installed, to download the code for the starter kit
 
 1. Please follow the instructions elsewhere in the release to [install](installation.md) Aeternity or
 [build](build.md) (instructions for [Windows build here](build-windows.md)) it from source, and do basic
 configuration. In the instructions below we will assume that it is installed in the directory `aeternity`
-1. Clone the `hyperchain-starter-kit` repo to your environment. It's useful to do this in the same parent directory where your Aeternity installation is.
+1. Clone the `hyperchain-starter-kit` repo to your environment. It's useful to do this in the same parent
+directory where your Aeternity installation is.
 ```shell
 git clone https://github.com/aeternity/hyperchain-starter-kit
 ```
+
 3. Initialize the Hyperchain kit
 ```shell
 cd hyperchain-starter-kit
 npm install
 npm run dev
 ```
+
 4. Initialize the configuration.
 ```shell
 npm rund dev init ../aeternity
@@ -216,7 +219,11 @@ npm run dev gen-node-conf ../aeternity
 ```
 This will generate a file `nodeConfig/aeternity.yaml` in your node directory.
 
+7. ...
 
+
+----
+----
 # Addendum 1: Hyperchain-specific confguration reference
 ## chain\.consensus: object
 
