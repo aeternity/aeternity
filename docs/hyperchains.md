@@ -50,31 +50,122 @@ configuration parameters and setup requirements needed to participate in this be
 4. Network participation initiation (edited)
 
 
-## Complete Hyperchain `aeternity.yaml` configuration example
+## Configuration
 
 An Aeternity Hyperchain node is a standard Aeternity release configured to run a Hyperchain-configured consensus
-algorithm.
-<!-- The recommended setup is to run your parent node locally, in the example below we have a `testnet` node
-running on port `6013` (as defined in `parent_chain.polling.nodes`). Again, refer to the core documentation
-above how to install and configure a regular Aeternity node. -->
+algorithm. Please follow the [installation instructions](installation.md) and do [basic configuration](configuration.md). Then adopt and add the additional configuration below to your `aternity.yaml` or (`.json` if that is your fancy).
 
-The initial "speed" of the hyperchain is defined by the epoch and block production parameters. These will be
-different for each hyperchain, depending on the desired transactional characteristics of the chain. The values
-below are useful for testing purposes, and when running on Aeternity `testnet`. Please see the main Hyperchain
-documentation for more information in how to optimize timing, block, and epoch length parameters per application
-and parent chain.
-characteristics.
+### Parent chain
 
-Contracts need to be compiled and made available to the node. There is one specilized contract aech for *staking*,
-*elections*, and *rewards*. The contract owner is **WHO IS THE CONTRACT OWNER??**
+The recommended setup is to run your parent node locally, in the example below we have a `testnet` node running on port `6013` (as defined in `parent_chain.polling.nodes`). Again, refer to the [core configuration documentation](configuration.md) above how to install and configure a regular Aeternity node on `testnet`.
 
-We define three `stakers`, that need to have accounts and funds on the Hyperchain. Both these stakers also
-`mainnet` accounts used for pinning. Their credentials for `testnet` is defined and mapped to their Hyperchain
-accounts in `pinners`. When `default_pinning_behavior` parameter is set to `true` each of theses validators will
-automatically pin the Hyperchain state to the parent chain when they are leaders of the last block of the epoch
-using their mapped parent account credentials. The `pinning_reward_value` (in whatever the native currency is for
-the Hyperchain) is the reward that will be handed out for doing a verifiable pinning for an epoch. This should be
-adjusted to reflect the economics of the Hyperchain.
+First parent chain connector: (`AE2AE`) and network ID (`ae_uat`) must be set.
+Then a parent chain node address is configured. The port used should be the parent not external HTTP API port (see the above). A fetch interval should be picked short enough to cover all state changes of the parent.
+In addition a block height of the parent chain should be picked sometime in the future. That's the parent height at witch the child chain will actually start (i.e. producing blocks, pinning, etc.):
+
+```yaml
+parent_chain:
+  consensus:
+    network_id: 'ae_uat'
+    type: 'AE2AE'
+  polling:
+    fetch_interval: 500
+    nodes:
+      - 'http://localhost:6013'
+  start_height: 1064531
+```
+
+### Block times and epochs
+
+The initial "speed" of the Hyperchain is defined by the epoch and block production parameters. These will be different for each Hyperchain, depending on the desired transactional characteristics of the chain. The values below are useful for testing purposes, and when running on Aeternity `testnet`. Please see the [main Hyperchain documentation](https://github.com/aeternity/hyperchains-whitepaper/blob/master/Periodically-Syncing-HyperChains.md) for more information in how to optimize block and epoch parameters per application and parent chain characteristics.
+
+First a parent chain epoch length should be picked. That should be long enough to statistically easy any block time fluctuations.
+In this example with Aeternity `testnet` as parent chain, 10 blocks should be enough.
+```yaml
+parent_chain:
+  parent_epoch_length: 10
+```
+
+This version of Hyperchains supports block times as low as 3 seconds for various reasons (i.e. network latency, disk latency, etc.) That can be set as (in milliseconds):
+```yaml
+child_block_time: 3000
+```
+
+And lastly, but very important is the child epoch length. It is *mandatory* to have equal parent and child epoch length in wall clock times:
+```
+parent_block_time * parent_epoch_length = child_block_time * child_epoch_length
+(parent_block_time * parent_epoch_length)/child_block_time = child_epoch_length
+```
+
+In this example the Aeternity `testnet` is having 180s block times, so:
+```
+(180 * 10)/3 = 600
+```
+```yaml
+child_epoch_length: 3000
+```
+
+### Contracts
+
+Hyperchains are run by FATE contracts, they need to be compiled and made available to the node.
+Depending on the actual contracts used by the Hyperchain, they might also need to be initialized on first (genesis) Hyperchain block, that involves contract calls. That's done in the `contracts.json` configuration, but it's highly technical so the recommended way is to use a CLI tools especially developed for that purpose.
+
+TODO: list a row of CLI tool commands to generate it all.
+
+### Accounts
+
+TODO: refer to the above output to configure the `accounts.json`
+
+### Stakers
+
+We define three `stakers`, that need to have accounts and funds to stake on the Hyperchain. Once a staker becomes leader, their private key is used to sign produced blocks by the node.
+
+```yaml
+stakers:
+  - hyper_chain_account:
+      priv: '43e96b343cb842e93ee00165a033e150ea5ef5897e0423b0072a903546c2f6b3d1651cf45999a7a89b9d0ee03d7391a4d817f46b7495b0c9e2559afd3621bc36'
+      pub: 'ak_2bDiPNyzydBRppXc1JAzfjNDeJPWPa4cF7UWQu3DuRKyG1g1jx'
+  - hyper_chain_account:
+      priv: 'bf3f9f936531e5370f10217c037457a7b49c146038bdfd67052062dd3b3670c8a1de622c2d27b6af245f3d5c124201ab28beaf52b47f542df0553c4817fa7bf2'
+      pub: 'ak_2EHifRthPxSWQUSa7r9qwCEazWGysrV4HMW7fMANW72m1ZWCoa'
+  - hyper_chain_account:
+      priv: '85b1bd0f7a3fd7642c3bace008743d5332b3737f057b6b1483f06f1cdfc60403af5e071c9043362722f82ca287cfca3591438b4dd1e45ea7a85c0dfb04ffbc12'
+      pub: 'ak_2LEXHiDdjy58kfy9ThMUKtZaRQRSAKJivKjCggoqLNpazXX6Wh'
+```
+
+### Pinning
+
+Currently only a single pinning behavior is supported. Validators will automatically pin the Hyperchain state to the parent chain when they are leaders of the last block of the epoch using their mapped parent account credentials. It can be enabled by:
+
+```yaml
+default_pinning_behavior: true
+```
+
+That feature also needs pinning accounts configuration, it's map of staker to pinning account, for example a single pinning account can be used for multiple stakers:
+
+```yaml
+pinners:
+  - parent_chain_account:
+      owner: 'ak_2bDiPNyzydBRppXc1JAzfjNDeJPWPa4cF7UWQu3DuRKyG1g1jx'
+      priv: '47f6043beb15b7f19609479e8f174a48a8a042c3b377bee24ef208d359f1b3742e00f83441c9f0720ebb183e9654a9b9c6a81ed97f13b65b8db3504200877192'
+      pub: 'ak_MG76EK35Z5MoJW7oZ7bCabGypw6Ve5CjFBuqux7cJqgEYDzeG'
+  - parent_chain_account:
+      owner: 'ak_2EHifRthPxSWQUSa7r9qwCEazWGysrV4HMW7fMANW72m1ZWCoa'
+      priv: '47f6043beb15b7f19609479e8f174a48a8a042c3b377bee24ef208d359f1b3742e00f83441c9f0720ebb183e9654a9b9c6a81ed97f13b65b8db3504200877192'
+      pub: 'ak_MG76EK35Z5MoJW7oZ7bCabGypw6Ve5CjFBuqux7cJqgEYDzeG'
+  - parent_chain_account:
+      owner: 'ak_2LEXHiDdjy58kfy9ThMUKtZaRQRSAKJivKjCggoqLNpazXX6Wh'
+      priv: '47f6043beb15b7f19609479e8f174a48a8a042c3b377bee24ef208d359f1b3742e00f83441c9f0720ebb183e9654a9b9c6a81ed97f13b65b8db3504200877192'
+      pub: 'ak_MG76EK35Z5MoJW7oZ7bCabGypw6Ve5CjFBuqux7cJqgEYDzeG'
+```
+
+To have an initiative to pin an epoch state to parent chain, pinners should be rewarded in whatever the native currency is for the Hyperchain.  The reward that will be handed out for doing a verifiable pinning for an epoch. This should be adjusted to reflect the economics of the Hyperchain.
+
+```yaml
+pinning_reward_value: 1000000000000000000000
+```
+
+### Complete configuration example
 
 ```yaml
 chain:
