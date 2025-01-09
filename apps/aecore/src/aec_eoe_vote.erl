@@ -509,8 +509,14 @@ calculate_majority(Validators) ->
     TotalStake = lists:foldl(fun({_, Stake}, Accum) -> Stake + Accum end, 0, Validators),
     trunc(math:ceil((2 * TotalStake) / 3)).
 
-reset_data(#data{stakers = Stakers, block_time=BlockTime, parent_blocks = ParentBlocks}) ->
-    #data{stakers = Stakers, block_time=BlockTime, parent_blocks=ParentBlocks}.
+reset_data(#data{stakers = Stakers, block_time=BlockTime, epoch = Epoch, parent_blocks = ParentBlocks}) ->
+    #data{stakers = Stakers, block_time=BlockTime, parent_blocks=remove_old_blocks(Epoch, ParentBlocks)}.
+
+remove_old_blocks(undefined, ParentBlocks) ->
+    ParentBlocks;
+remove_old_blocks(Epoch, ParentBlocks) ->
+    TargetEpoch = Epoch - 4,
+    maps:filter(fun(E, _B) -> E > TargetEpoch end, ParentBlocks).
 
 set_validators(Validators, Data) ->
     Majority = calculate_majority(Validators),
@@ -520,10 +526,15 @@ set_validators(Validators, Data) ->
 get_staker_private_key(Staker, Stakers) ->
     maps:get(Staker, Stakers, undefined).
 
-create_finalize_call(Votes, #{?HASH_FLD := Hash, ?EPOCH_DELTA_FLD := EpochDelta}, #data{epoch = Epoch, seed=Seed, leader=Leader, length = EpochLength}) ->
+create_finalize_call(Votes, #{?HASH_FLD := Hash, ?EPOCH_DELTA_FLD := EpochDelta}, #data{epoch = Epoch, seed=Seed, leader=Leader, length = EpochLength, parent_blocks = ParentBlocks}) ->
     Seed1 = case Seed of
                 undefined ->
-                    <<0>>;
+                    case maps:get(Epoch, ParentBlocks, undefined) of
+                        undefined ->
+                            <<0>>;
+                        ParentBlock ->
+                            aec_parent_chain_block:hash(ParentBlock)
+                    end;
                 _ ->
                     Seed
             end,
