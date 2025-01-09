@@ -319,7 +319,7 @@ state_pre_transform_node(Type, Height, PrevNode, Trees) ->
     {ok, PrevHash} = aec_headers:hash_header(PrevHeader),
     {TxEnv0, _} = aetx_env:tx_env_and_trees_from_hash(aetx_transaction, PrevHash),
     TxEnv = aetx_env:set_height(TxEnv0, Height),
-    {ok, #{epoch := Epoch, first := EpochFirst, last := EpochLast} = EpochInfo} =
+    {ok, #{epoch := Epoch, first := EpochFirst, last := EpochLast, length := EpochLength} = EpochInfo} =
         aec_chain_hc:epoch_info({TxEnv, Trees}),
     {ok, Leader} = leader_for_height(Height, {TxEnv, Trees}),
     case Type of
@@ -337,7 +337,13 @@ state_pre_transform_node(Type, Height, PrevNode, Trees) ->
                     case get_entropy_hash(Epoch + 2) of
                         {ok, Seed} ->
                             cache_validators_for_epoch({TxEnv, Trees1}, Seed, Epoch + 2),
-                            Trees2 = step_eoe(TxEnv, Trees1, Leader, Seed, 0, -1, CarryOverFlag),
+                            NewEpochLength = case aec_chain_hc:finalize_info({TxEnv, Trees1}) of
+                                                {ok, #{epoch_length := FinalizeEpochLength}} ->
+                                                    FinalizeEpochLength;
+                                                _ ->
+                                                    EpochLength
+                                              end,
+                            Trees2 = step_eoe(TxEnv, Trees1, Leader, Seed, NewEpochLength, -1, CarryOverFlag),
                             {ok, NextEpochInfo} = aec_chain_hc:epoch_info({TxEnv, Trees2}),
                             {Trees2, Events ++ [{new_epoch, NextEpochInfo}]};
                         {error, _} ->
@@ -654,8 +660,8 @@ step(TxEnv, Trees, Leader) ->
             aec_conductor:throw_error(step_failed)
     end.
 
-step_eoe(TxEnv, Trees, Leader, Seed, Adjust, BasePinReward, CarryOver) ->
-    {ok, CD} = aeb_fate_abi:create_calldata("step_eoe", [{address, Leader}, {bytes, Seed}, Adjust, BasePinReward, CarryOver]),
+step_eoe(TxEnv, Trees, Leader, Seed, Length, BasePinReward, CarryOver) ->
+    {ok, CD} = aeb_fate_abi:create_calldata("step_eoe", [{address, Leader}, {bytes, Seed}, Length, BasePinReward, CarryOver]),
     CallData = aeser_api_encoder:encode(contract_bytearray, CD),
     case call_consensus_contract_(?ELECTION_CONTRACT, TxEnv, Trees, CallData, "step_eoe", 0) of
         {ok, Trees1, _Call} ->
