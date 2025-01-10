@@ -140,7 +140,7 @@ This command will generate random keypairs for all accounts that are needed:
 
 **Please note that you have to somehow fund all pinners accounts on the parent chain prior starting your node/validator.**
 
-You can inspect the outcome of this in the `economy-unencrypted.yaml` file:
+You can inspect the outcome of this in the `hc_test/economy-unencrypted.yaml` file:
 
 ```bash
 cat hc_test/economy-unencrypted.yaml
@@ -226,12 +226,50 @@ cp ./hc_test/nodeConfig/hc_test_*.json ~/aeternity/node/data/aecore/
 
 then run your node:
 ```shell
-~/aeternity/node/bin start
+~/aeternity/node/bin/aeternity start
 ```
 
 **IMPORTANT:**
 If you used a known public chain (testnet or mainnet) as parent chain, the tool will set the `start_height` as current block + 10, that is 30 minutes in future.
 Keep that in mind when verifying your chain, either decrease the number or wait until that block is produced on the parent chain before you start transacting on the Hyperchain.
+
+### Status
+
+Verify your node is running with:
+```shell
+~/aeternity/node/bin/aeternity status
+```
+
+Expected output:
+```shell
+Genesis block Hash          kh_7dm2zSo6NsnEDMYBYdXA9QvkJvvk7TenT68HxW5BSrRSz3WV6
+Difficulty                  0
+Syncing                     false
+Sync progress               100.0
+Node version                7.3.0-rc2
+Node revision               336f76030d86f3accce7e8611f36f7e7641e2695
+Peer count                  0
+Peer connections (inbound)  0
+Peer connections (outbound) 0
+Pending transactions count  0
+Network id                  hc_test
+Peer pubkey                 pp_rx9MgTnZdB5Vhmpe9iCsms7bESn2ACfJtNoVXGUWKdPhQXqco
+Top key block hash          kh_2DbFXJ5Uub5ogEXv7wVEhoiMMe5LDQTbYoU4x5D1jQp1XuzgE2
+Top block height            404
+Top block protocol          6 (ceres)
+```
+
+If the output is `Node is not running!` check node logs for errors to debug it further.
+
+### Usage
+
+Once your Hyperchain node is running, and there is some block production, one can start transacting on the Hyperchain.
+Connecting other tools to the chain should be proper next step, like explorer (Aescan), a favorite wallet like Superhero or Base app.
+
+For example import some of the economy accounts to an wallet i.e. the treasury by using it's mnemonic in the `hc_test/economy-unencrypted.yaml` to an wallet i.e. Superhero Wallet.
+Then add a custom network with your node address (i.e. localhost) and it's HTTP API port (3013 by default) with the proper network ID witch is `hc_test` in this example.
+
+Happy Hyperchaining :)
 
 ## Configuration Explained
 
