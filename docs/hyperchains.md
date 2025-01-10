@@ -48,13 +48,13 @@ configuration parameters and setup requirements needed to participate in this be
 2. Hyperchain node setup and configuration
 3. Validation period (24-48 hours)
 4. Network participation initiation (edited)
-
+<!--
 ## Getting Started
 
 The easiest way to start playing with Hyperchains is the so called [Localnet](https://github.com/aeternity/localnet/blob/master/README.md#hyperchains-configuration).
 It's a Docker compose configuration that is pre-configured with Aeternity parent chain, Hyperchain and all the tools for both networks for playing around.
 This is setup is also supposed to be used for development purposes as we aim to keep it up-to-date with all the tools and node versions.
-
+-->
 ## Configuring Your Own Hyperchain Node
 
 To setup a Hyperchain can be a fairly complex process. Aeternity provides some tooling to help out. We
@@ -277,8 +277,8 @@ An Aeternity Hyperchain node is a standard Aeternity release configured to run a
 algorithm. Please follow the [installation instructions](installation.md) and do [basic configuration](configuration.md). Then adopt and add the additional configuration below to your `aternity.yaml` or (`.json` if that is your fancy).
 
 ### Parent chain
-
-The recommended setup is to run your parent node locally, in the example below we have a `testnet` node running on port `6013` (as defined in `parent_chain.polling.nodes`). Again, refer to the [core configuration documentation](configuration.md) above how to install and configure a regular Aeternity node on `testnet`.
+<!--
+The recommended setup is to run your parent node locally, in the example below we have a `testnet` node running on port `6013` (as defined in `parent_chain.polling.nodes`). Again, refer to the [core configuration documentation](configuration.md) above how to install and configure a regular Aeternity node on `testnet`. -->
 
 First parent chain connector: (`AE2AE`) and network ID (`ae_uat`) must be set.
 Then a parent chain node address is configured. The port used should be the parent not external HTTP API port (see the above). A fetch interval should be picked short enough to cover all state changes of the parent.
