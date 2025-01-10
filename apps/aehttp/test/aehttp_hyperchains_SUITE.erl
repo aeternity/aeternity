@@ -875,7 +875,7 @@ epochs_with_slow_parent(Config) ->
     BlocksLeftToBoundary = Last - StartHeight,
     ct:log("Starting at CC height ~p: producing ~p cc blocks", [StartHeight, BlocksLeftToBoundary]),
     %% some block production including parent blocks
-    produce_cc_blocks(Config, BlocksLeftToBoundary + 4 * ?CHILD_EPOCH_LENGTH),
+    produce_cc_blocks(Config, BlocksLeftToBoundary + 2 * ?CHILD_EPOCH_LENGTH),
 
     ParentHeight = rpc(?PARENT_CHAIN_NODE, aec_chain, top_height, []),
     ct:log("Child continues while parent stuck at: ~p", [ParentHeight]),
@@ -908,20 +908,21 @@ epochs_with_slow_parent(Config) ->
     ?assertEqual([{ok, (N-1) * ?CHILD_EPOCH_LENGTH + 1} || N <- lists:seq(1, EndEpoch)],
                  [rpc(Node, aec_chain_hc, epoch_start_height, [N]) || N <- lists:seq(1, EndEpoch)]),
 
+    timer:sleep(?CHILD_BLOCK_TIME),
     %% Quickly produce parent blocks to be in sync again
     ParentBlocksNeeded =
         EndEpoch * ?PARENT_EPOCH_LENGTH + ?config(parent_start_height, Config) + ?PARENT_FINALITY - ParentTopHeight,
 
     {ok, _} = produce_cc_blocks(Config, 1, [{ChildTopHeight + EpochLength, ParentBlocksNeeded}]),
 
-    #{epoch_length := FinalizeEpochLength} = rpc(Node, aec_chain_hc , finalize_info, []),
-    ct:log("The agreed epoch length is ~p the current length is ~p", [FinalizeEpochLength, EpochLength]),
+    #{epoch_length := FinalizeEpochLength, epoch := FinalizeEpoch} = rpc(Node, aec_chain_hc , finalize_info, []),
+    ct:log("The agreed epoch length is ~p the current length is ~p for epoch ~p", [FinalizeEpochLength, EpochLength, FinalizeEpoch]),
 
-    ?assertNotEqual(EpochLength, FinalizeEpochLength),
+    ?assert(FinalizeEpochLength > EpochLength),
 
-    produce_cc_blocks(Config, EpochLength),
-    {ok, #{length := AdjEpochLength}} = rpc(Node, aec_chain_hc, epoch_info, []),
-
+    produce_cc_blocks(Config, EpochLength * 3),
+    {ok, #{length := AdjEpochLength} = EpochInfo} = rpc(Node, aec_chain_hc, epoch_info, []),
+    ct:log("Info ~p", [EpochInfo]),
     ?assertEqual(FinalizeEpochLength, AdjEpochLength),
 
     ok.
@@ -930,21 +931,11 @@ epochs_with_slow_parent(Config) ->
 %% When parent blocks are produced too quickly, we need to shorten child epoch
 epochs_with_fast_parent(Config) ->
     [{Node, _, _, _} | _] = ?config(nodes, Config),
-    ParentTopHeight = rpc(?PARENT_CHAIN_NODE, aec_chain, top_height, []),
-    ChildTopHeight = rpc(Node, aec_chain, top_height, []),
-    {ok, #{epoch := ChildEpoch}} = rpc(Node, aec_chain_hc, epoch_info, []),
 
-    %% Quickly produce parent blocks to be in sync again
-    ParentBlocksNeeded =
-        ChildEpoch * ?PARENT_EPOCH_LENGTH + ?config(parent_start_height, Config) + ?PARENT_FINALITY - ParentTopHeight,
-
-    %% Produce ?PARENT_EPOCH_LENGTH parent blocks quickly (very artificial)
-    {ok, _} = produce_cc_blocks(Config, 1, [{ChildTopHeight + 1, ParentBlocksNeeded}]),
-    %% and finish a child epoch
     %% ensure start at a new epoch boundary
     StartHeight = rpc(Node, aec_chain, top_height, []),
-    {ok, #{last := Last, length := Len} = EpochInfo1} = rpc(Node, aec_chain_hc, epoch_info, []),
-    ct:log("Info ~p", [EpochInfo1]),
+    {ok, #{last := Last, length := Len} = EpochInfo} = rpc(Node, aec_chain_hc, epoch_info, []),
+    ct:log("Info ~p", [EpochInfo]),
     BlocksLeftToBoundary = Last - StartHeight,
     %% some block production including parent blocks
     {ok, _} = produce_cc_blocks(Config, BlocksLeftToBoundary),
