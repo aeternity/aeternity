@@ -83,16 +83,16 @@ npm run dev
 
 ### Tool configuration
 
-Our Hyperchain (configuration) will be named `hc-test` for this example.
+Our Hyperchain (configuration) will be named `hc_test` for this example.
 A directory with the same name will be created in the root directory of the tool where generated files will end up.
 
 ```shell
-npm run dev init hc-test
+npm run dev init hc_test
 ```
 
 TODO: get rid of unused options and set proper names for others
 
-This command creates an `init.yaml` file in the root of your `hc-test` directory. It contains parameters
+This command creates an `init.yaml` file in the root of your `hc_test` directory. It contains parameters
 and settings for your hyperchain. It looks like:
 ```yaml
 childBlockTime: 3000
@@ -101,7 +101,7 @@ contractSourcesPrefix: 'https://raw.githubusercontent.com/aeternity/aeternity/ma
 enablePinning: true
 fixedCoinbase: 100000000000000000000
 globalUnstakeDelay: 0
-networkId: 'hc-test'
+networkId: 'hc_test'
 parentChain:
   epochLength: 10
   networkId: 'ae_uat'
@@ -126,7 +126,7 @@ The configuration can be changed as needs following the rules in the [Configurat
 
 To prepare the Hyperchain contracts run the following:
 ```shell
-npm run dev retrieve-contracts hc-test
+npm run dev retrieve-contracts hc_test
 ```
 
 This will download the standard contracts from the latest Aeternity release and compile them in `contracts` sub-directory.
@@ -135,7 +135,7 @@ This will download the standard contracts from the latest Aeternity release and 
 
 To generate your Hyperchain "economy" according to `init.yaml` run the following:
 ```shell
-npm run dev gen-economy hc-test
+npm run dev gen-economy hc_test
 ```
 
 This command will generate random keypairs for all accounts that are needed:
@@ -150,7 +150,7 @@ This command will generate random keypairs for all accounts that are needed:
 You can inspect the outcome of this in the `economy-unencrypted.yaml` file:
 
 ```bash
-cat hc-test/economy-unencrypted.yaml
+cat hc_test/economy-unencrypted.yaml
 ```
 
 Example output:
@@ -163,18 +163,20 @@ TODO: trim the fat of the economy config and inline an example.
 
 To generate all the configuration files needed to run a Hyperchain, run:
 ```shell
-npm run dev gen-node-conf hc-test
+npm run dev gen-node-conf hc_test
 ```
 
 This will create 3 files in `nodeConfig` directory:
 
 - `aeternity.yaml`
-- `accounts.json`
-- `contracts.json`
+- `hc_test_accounts.json`
+- `hc_test_contracts.json`
 
-Copy all of the above files to your node root directory, i.e. assuming it's in `~/aeternity/node`:
+Copy all of the above files to their node corresponding directory, i.e. assuming it's in `~/aeternity/node`:
+
 ```shell
-cp ./nodeConfig/* ~/aeternity/node/
+cp ./hc_test/nodeConfig/aeternity.yaml ~/aeternity/node/
+cp ./hc_test/nodeConfig/hc_test_*.json ~/aeternity/node/data/aecore/
 ```
 
 **Don't forget to fund all pinners accounts on the parent chain prior starting your node/validator.**
@@ -355,7 +357,7 @@ chain:
     '6': 0
   persist: true
 fork_management:
-  network_id: 'hc-test'
+  network_id: 'hc_test'
 http:
   endpoints:
     dry-run: true
