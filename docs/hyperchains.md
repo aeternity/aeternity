@@ -259,12 +259,13 @@ npm install
 npm run dev
 ```
 
-4. Initialize the configuration.
+4. Initialize the configuration. `hc-test`  (created inside the kit cloned repo) will be our target directory
+where generated files will end up.
 ```shell
-npm rund dev init ../aeternity
+npm rund dev init hc-test
 ```
-This command creates an `init.yaml` file in the root of your `aeternity` directory. It contains parameters and settings for your
-hyperchain. It looks like:
+This command creates an `init.yaml` file in the root of your `hc-test` directory. It contains parameters
+and settings for your hyperchain. It looks like:
 ```
 childBlockTime: 3000
 childEpochLength: 600
@@ -295,8 +296,8 @@ to change these and have the aeternity configuration turn out differently.
 
 5. Install Contracts and Generate Economy. Run the following commands
 ```shell
-npm run dev retrieve-contracts ../aeternity
-npm run dev gen-economy ../aeternity
+npm run dev retrieve-contracts hc-test
+npm run dev gen-economy hc-test
 ```
 These commands will download the standard contracts from the latest Aeternity release and compile/install
 them into your node. After that accounts and initial funds will be generated for your node, and new accounts
@@ -306,7 +307,7 @@ the downloaded contracts.
 
 6. Generate the node configuration. Run
 ```shell
-npm run dev gen-node-conf ../aeternity
+npm run dev gen-node-conf hc-test
 ```
 This will generate a file `nodeConfig/aeternity.yaml` in your node directory.
 
