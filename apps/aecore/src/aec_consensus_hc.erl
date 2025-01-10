@@ -337,10 +337,13 @@ state_pre_transform_node(Type, Height, PrevNode, Trees) ->
                     case get_entropy_hash(Epoch + 2) of
                         {ok, Seed} ->
                             cache_validators_for_epoch({TxEnv, Trees1}, Seed, Epoch + 2),
-                            NewEpochLength = case aec_chain_hc:finalize_info({TxEnv, Trees1}) of
-                                                {ok, #{epoch_length := FinalizeEpochLength}} ->
+                            FinalizeHeight = EpochFirst - 1,
+                            FinalizeEpoch = Epoch - 1,
+                            NewEpochLength = case aec_chain_hc:finalize_info(FinalizeHeight) of
+                                                #{epoch_length := FinalizeEpochLength, epoch := FinalizeEpoch} ->
                                                     FinalizeEpochLength;
                                                 _ ->
+                                                    lager:warning("Finalize info not found for epoch ~p height ~p", [FinalizeEpoch, FinalizeHeight]),
                                                     EpochLength
                                               end,
                             Trees2 = step_eoe(TxEnv, Trees1, Leader, Seed, NewEpochLength, -1, CarryOverFlag),
