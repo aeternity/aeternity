@@ -875,7 +875,7 @@ epochs_with_slow_parent(Config) ->
     BlocksLeftToBoundary = Last - StartHeight,
     ct:log("Starting at CC height ~p: producing ~p cc blocks", [StartHeight, BlocksLeftToBoundary]),
     %% some block production including parent blocks
-    produce_cc_blocks(Config, BlocksLeftToBoundary),
+    produce_cc_blocks(Config, BlocksLeftToBoundary + 4 * ?CHILD_EPOCH_LENGTH),
 
     ParentHeight = rpc(?PARENT_CHAIN_NODE, aec_chain, top_height, []),
     ct:log("Child continues while parent stuck at: ~p", [ParentHeight]),
@@ -895,18 +895,35 @@ epochs_with_slow_parent(Config) ->
     ParentTopHeight = rpc(?PARENT_CHAIN_NODE, aec_chain, top_height, []),
     ?assertEqual(ParentHeight, ParentTopHeight),
     ChildTopHeight = rpc(Node, aec_chain, top_height, []),
-    {ok, #{epoch := EndEpoch} = EpochInfo} = rpc(Node, aec_chain_hc, epoch_info, [ChildTopHeight]),
+    {ok, #{epoch := EndEpoch, length := EpochLength}} = rpc(Node, aec_chain_hc, epoch_info, [ChildTopHeight]),
     ct:log("Parent at height ~p and child at height ~p in child epoch ~p",
            [ParentTopHeight, ChildTopHeight, EndEpoch]),
 
     %% Here we should have observed some signalling for increased child epoch length
 
     %% Parent hash grabbed in last block child epoch, so here we can start, but not finish next epoch
-    {ok, _} = produce_cc_blocks(Config, maps:get(length, EpochInfo) - 1, []),
+    {ok, _} = produce_cc_blocks(Config, EpochLength - 1, []),
     ?assertException(error, timeout_waiting_for_block, produce_cc_blocks(Config, 1, [])),
 
     ?assertEqual([{ok, (N-1) * ?CHILD_EPOCH_LENGTH + 1} || N <- lists:seq(1, EndEpoch)],
                  [rpc(Node, aec_chain_hc, epoch_start_height, [N]) || N <- lists:seq(1, EndEpoch)]),
+
+    %% Quickly produce parent blocks to be in sync again
+    ParentBlocksNeeded =
+        EndEpoch * ?PARENT_EPOCH_LENGTH + ?config(parent_start_height, Config) + ?PARENT_FINALITY - ParentTopHeight,
+
+    {ok, _} = produce_cc_blocks(Config, 1, [{ChildTopHeight + EpochLength, ParentBlocksNeeded}]),
+
+    #{epoch_length := FinalizeEpochLength} = rpc(Node, aec_chain_hc , finalize_info, []),
+    ct:log("The agreed epoch length is ~p the current length is ~p", [FinalizeEpochLength, EpochLength]),
+
+    ?assertNotEqual(EpochLength, FinalizeEpochLength),
+
+    produce_cc_blocks(Config, EpochLength),
+    {ok, #{length := AdjEpochLength}} = rpc(Node, aec_chain_hc, epoch_info, []),
+
+    ?assertEqual(FinalizeEpochLength, AdjEpochLength),
+
     ok.
 
 %% Demonstrate that child chain start signalling epoch length adjustment downward
