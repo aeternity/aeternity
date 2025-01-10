@@ -56,8 +56,7 @@ Important:
 3. Complete validation period (24-48 hours)
 4. Begin network participation
    
-## Getting Started
-<!-- text to be removed 
+<!-- 
 The quickest way to explore Hyperchains is through our preconfigured Localnet environment. Localnet provides a complete Docker compose configuration that includes a pre-configured Aeternity parent chain, Hyperchain node, and all essential development tools for both networks. This environment serves both as a testing playground and a development platform, and is maintained with the latest tools and node versions. You can find information on how to run the Localnet here:
  [Localnet](https://github.com/aeternity/localnet/blob/master/README.md#hyperchains-configuration). -->
 
