@@ -326,6 +326,38 @@ In this example the Aeternity `testnet` is having 180s block times, so:
 child_epoch_length: 3000
 ```
 
+### Stakers
+
+We define three `stakers`, that need to have accounts and funds to stake on the Hyperchain. Once a staker becomes leader, their private key is used to sign produced blocks by the node.
+
+```yaml
+stakers:
+  - hyper_chain_account:
+      priv: 'fca30982735665d39d52146c30837cc33cf1c11015accb5ce520065223872e3968c7c7dc1372514ada09eac4a433ee479bf980c6d9d8bbdc88284cb19e8b4cb6'
+      pub: 'ak_o9UXHESE3mDd9qeDKnxkRrfUS3eY17xkhshZX3VFqAbkVMUDV'
+  - hyper_chain_account:
+      priv: '43a889d992a923e195cecf0f4346e4f480cec0ef2f561e383cf6b367e4da8b3dfb245ed4f23bcc25205d1cba30c85ed3a9a3a10858e12a6944d81944d3277850'
+      pub: 'ak_2uc64DEjX1XCe2dYtTaDBfGXqPDiv1Xcu29T4P2x5NzXnRerAA'
+  - hyper_chain_account:
+      priv: '30267f551a56954f654edaa3cb21a58a21898af0519503d3737f8cd5c8b913eb17e9b9a1f3f725b0de559f30276ff065a84cca01b5720df302e2044032acd6ba'
+      pub: 'ak_BXprz9o24a8RYbvBRDsUCBdGpz2uULBnDw6BiYpG957BiEvVn'
+```
+
+### Accounts
+
+When starting a Hyperchain it needs some pre-funded accounts as most other chains and types. At least the staker's accounts must be funded so that they can be registered with some initial stake to boot the consensus. In this example there are 3 stakers pre-funded with `3100000000000000000000000000` each so they can be registered at genesis time.
+Also some additional accounts like Faucet (`ak_WNkJkmaEoyScVRaeZeDvvmCqLn1HkfNnQDy1oSJp6Jm5YPpAq`) and Treasury (`ak_CLTKb9tdvXGwpgUBW8GytW7kXv9r1eJyY4YtgKKWtKcY3poQf`) are also funded for easing the chain usage.
+
+```json
+  {
+    "ak_CLTKb9tdvXGwpgUBW8GytW7kXv9r1eJyY4YtgKKWtKcY3poQf": 1000000000000000000000000000000000000000000000000,
+    "ak_WNkJkmaEoyScVRaeZeDvvmCqLn1HkfNnQDy1oSJp6Jm5YPpAq": 1000000000000000000000000000,
+    "ak_o9UXHESE3mDd9qeDKnxkRrfUS3eY17xkhshZX3VFqAbkVMUDV": 3100000000000000000000000000,
+    "ak_2uc64DEjX1XCe2dYtTaDBfGXqPDiv1Xcu29T4P2x5NzXnRerAA": 3100000000000000000000000000,
+    "ak_BXprz9o24a8RYbvBRDsUCBdGpz2uULBnDw6BiYpG957BiEvVn": 3100000000000000000000000000
+  }
+```
+
 ### Contracts
 
 Hyperchains are run by FATE contracts, they need to be compiled and made available to the node.
@@ -395,38 +427,6 @@ Please refer to the [`hyperchain-starter-kit` documentation](#generate-configura
     }
   ]
 }
-```
-
-### Accounts
-
-When starting a Hyperchain it needs some pre-funded accounts as most other chains and types. At least the staker's accounts must be funded so that they can be registered with some initial stake to boot the consensus. In this example there are 3 stakers pre-funded with `3100000000000000000000000000` each so they can be registered at genesis time.
-Also some additional accounts like Faucet (`ak_WNkJkmaEoyScVRaeZeDvvmCqLn1HkfNnQDy1oSJp6Jm5YPpAq`) and Treasury (`ak_CLTKb9tdvXGwpgUBW8GytW7kXv9r1eJyY4YtgKKWtKcY3poQf`) are also funded for easing the chain usage.
-
-```json
-  {
-    "ak_CLTKb9tdvXGwpgUBW8GytW7kXv9r1eJyY4YtgKKWtKcY3poQf": 1000000000000000000000000000000000000000000000000,
-    "ak_WNkJkmaEoyScVRaeZeDvvmCqLn1HkfNnQDy1oSJp6Jm5YPpAq": 1000000000000000000000000000,
-    "ak_o9UXHESE3mDd9qeDKnxkRrfUS3eY17xkhshZX3VFqAbkVMUDV": 3100000000000000000000000000,
-    "ak_2uc64DEjX1XCe2dYtTaDBfGXqPDiv1Xcu29T4P2x5NzXnRerAA": 3100000000000000000000000000,
-    "ak_BXprz9o24a8RYbvBRDsUCBdGpz2uULBnDw6BiYpG957BiEvVn": 3100000000000000000000000000
-  }
-```
-
-### Stakers
-
-We define three `stakers`, that need to have accounts and funds to stake on the Hyperchain. Once a staker becomes leader, their private key is used to sign produced blocks by the node.
-
-```yaml
-stakers:
-  - hyper_chain_account:
-      priv: 'fca30982735665d39d52146c30837cc33cf1c11015accb5ce520065223872e3968c7c7dc1372514ada09eac4a433ee479bf980c6d9d8bbdc88284cb19e8b4cb6'
-      pub: 'ak_o9UXHESE3mDd9qeDKnxkRrfUS3eY17xkhshZX3VFqAbkVMUDV'
-  - hyper_chain_account:
-      priv: '43a889d992a923e195cecf0f4346e4f480cec0ef2f561e383cf6b367e4da8b3dfb245ed4f23bcc25205d1cba30c85ed3a9a3a10858e12a6944d81944d3277850'
-      pub: 'ak_2uc64DEjX1XCe2dYtTaDBfGXqPDiv1Xcu29T4P2x5NzXnRerAA'
-  - hyper_chain_account:
-      priv: '30267f551a56954f654edaa3cb21a58a21898af0519503d3737f8cd5c8b913eb17e9b9a1f3f725b0de559f30276ff065a84cca01b5720df302e2044032acd6ba'
-      pub: 'ak_BXprz9o24a8RYbvBRDsUCBdGpz2uULBnDw6BiYpG957BiEvVn'
 ```
 
 ### Pinning
