@@ -50,7 +50,7 @@ configuration parameters and setup requirements needed to participate in this be
 4. Network participation initiation (edited)
 
 
-## Configuration
+## Configuration Explained
 
 An Aeternity Hyperchain node is a standard Aeternity release configured to run a Hyperchain-configured consensus
 algorithm. Please follow the [installation instructions](installation.md) and do [basic configuration](configuration.md). Then adopt and add the additional configuration below to your `aternity.yaml` or (`.json` if that is your fancy).
@@ -159,7 +159,8 @@ pinners:
       pub: 'ak_MG76EK35Z5MoJW7oZ7bCabGypw6Ve5CjFBuqux7cJqgEYDzeG'
 ```
 
-To have an initiative to pin an epoch state to parent chain, pinners should be rewarded in whatever the native currency is for the Hyperchain.  The reward that will be handed out for doing a verifiable pinning for an epoch. This should be adjusted to reflect the economics of the Hyperchain.
+To have an initiative to pin an epoch state to parent chain, pinners should be rewarded in whatever the native currency is for the Hyperchain.
+The reward that will be handed out for doing a verifiable pinning for an epoch. This should be adjusted to reflect the economics of the Hyperchain.
 
 ```yaml
 pinning_reward_value: 1000000000000000000000
@@ -231,49 +232,53 @@ mining:
 peers: []
 ```
 
-# Configuraing Your Own Hyperchain Node
+# Configuring Your Own Hyperchain Node
 
 To setup a Hyperchain can be a fairly complex process. Aeternity provides some tooling to help out. We
 will use the [`hyperchain-starter-kit`](https://github.com/aeternity/hyperchain-starter-kit) (from Aeternity
-GitHub org) to do a lot of the heavy lifting. Note: the following instructions are based on Unix/linux/MacOS
-shell commands. Using Windows can look slightly different w/r paths etc.
+GitHub org) to do a lot of the heavy lifting.
 
-0. Requirements:
-- [ ] a runnable Node installation (see below)
-- [ ] [Node.js](https://nodejs.org/en/download) installed to run the `hyperchain-starter-kit`
-- [ ] [Git](https://git-scm.com/downloads) installed, to download the code for the starter kit
+**Please note that this tool is still in development and might have some warnings and bugs, we'd also work to improve it's user friendliness and stability.**
 
-1. Please follow the instructions elsewhere in the release to [install](installation.md) Aeternity or
-[build](build.md) (instructions for [Windows build here](build-windows.md)) it from source, and do basic
-configuration. In the instructions below we will assume that it is installed in the directory `aeternity`
-1. Clone the `hyperchain-starter-kit` repo to your environment. It's useful to do this in the same parent
-directory where your Aeternity installation is.
+## Requirements:
+
+- a runnable Node installation (see below)
+- [Node.js](https://nodejs.org/en/download) installed to run the `hyperchain-starter-kit`
+- [Git](https://git-scm.com/downloads) installed, to download the code for the starter kit
+
+Note: the following instructions are based on Unix/linux/MacOS shell commands.
+Using Windows can look slightly different w/r paths etc.
+
+## Install the tool
+
 ```shell
 git clone https://github.com/aeternity/hyperchain-starter-kit
-```
-
-3. Initialize the Hyperchain kit
-```shell
 cd hyperchain-starter-kit
 npm install
 npm run dev
 ```
 
-4. Initialize the configuration. `hc-test`  (created inside the kit cloned repo) will be our target directory
-where generated files will end up.
+## Tool configuration
+
+Our Hyperchain (configuration) will be named `hc-test` for this example.
+A directory with the same name will be created in the root directory of the tool where generated files will end up.
+
 ```shell
-npm rund dev init hc-test
+npm run dev init hc-test
 ```
+
+TODO: get rid of unused options and set proper names for others
+
 This command creates an `init.yaml` file in the root of your `hc-test` directory. It contains parameters
 and settings for your hyperchain. It looks like:
-```
+```yaml
 childBlockTime: 3000
 childEpochLength: 600
 contractSourcesPrefix: 'https://raw.githubusercontent.com/aeternity/aeternity/master/'
 enablePinning: true
 fixedCoinbase: 100000000000000000000
 globalUnstakeDelay: 0
-networkId: 'aeternity'
+networkId: 'hc-test'
 parentChain:
   epochLength: 10
   networkId: 'ae_uat'
@@ -291,28 +296,69 @@ validators:
   validatorMinPercent: 33
   validatorMinStake: 1000000000000000000000000
 ```
-You will not need to edit this file further in this part of the guide. In other scenarios, it's possible
-to change these and have the aeternity configuration turn out differently.
+This is the default setup that uses Aeternity `testnet` as parent chain and appropriate block time and epoch length for it.
+The configuration can be changed as needs following the rules in the [Configuration Details](#configuration-explained).
 
-5. Install Contracts and Generate Economy. Run the following commands
+## Contracts
+
+To prepare the Hyperchain contracts run the following:
 ```shell
 npm run dev retrieve-contracts hc-test
+```
+
+This will download the standard contracts from the latest Aeternity release and compile them in `contracts` sub-directory.
+
+## Economy
+
+To generate your Hyperchain "economy" according to `init.yaml` run the following:
+```shell
 npm run dev gen-economy hc-test
 ```
-These commands will download the standard contracts from the latest Aeternity release and compile/install
-them into your node. After that accounts and initial funds will be generated for your node, and new accounts
-for `testnet` will be generated and funded/filled from the `testnet` faucet. You can inspect the outcome of
-this in the `economy-unencrypted.yaml` file in the node. There will also be a `contracts` directory with
-the downloaded contracts.
 
-6. Generate the node configuration. Run
+This command will generate random keypairs for all accounts that are needed:
+
+- Faucet: can be used to fund other accounts in an automated way
+- Treasury: the same purpose as Faucet but manual funding
+- Validators: pre-funded (Stakers) accounts used to initialized the Hyperchain
+- Pinners: a list of accounts used for pinning
+
+**Please note that you have to somehow fund all pinners accounts on the parent chain prior starting your node/validator.**
+
+You can inspect the outcome of this in the `economy-unencrypted.yaml` file:
+
+```bash
+cat hc-test/economy-unencrypted.yaml
+```
+
+Example output:
+```yml
+```
+
+TODO: trim the fat of the economy config and inline an example.
+
+## Generate Configuration
+
+To generate all the configuration files needed to run a Hyperchain, run:
 ```shell
 npm run dev gen-node-conf hc-test
 ```
-This will generate a file `nodeConfig/aeternity.yaml` in your node directory.
 
-7. ...
+This will create 3 files in `nodeConfig` directory:
+- `aeternity.yaml`
+- `accounts.json`
+- `contracts.json`
 
+Copy all of the above files to your node root directory, i.e. assuming it's in `~/aeternity/node`:
+```shell
+cp ./nodeConfig/* ~/aeternity/node/
+```
+
+**Don't forget to fund all pinners accounts on the parent chain prior starting your node/validator.**
+
+then run your node:
+```shell
+~/aeternity/node/bin start
+```
 
 ----
 ----
