@@ -97,10 +97,10 @@ and settings for your hyperchain. It looks like:
 ```yaml
 childBlockTime: 3000
 childEpochLength: 600
-contractSourcesPrefix: 'https://raw.githubusercontent.com/aeternity/aeternity/master/'
+contractSourcesPrefix: 'https://raw.githubusercontent.com/aeternity/aeternity/refs/tags/v7.3.0-rc2/'
 enablePinning: true
+faucetInitBalance: 1000000000000000000000000000
 fixedCoinbase: 100000000000000000000
-globalUnstakeDelay: 0
 networkId: 'hc_test'
 parentChain:
   epochLength: 10
@@ -112,11 +112,6 @@ treasuryInitBalance: 1000000000000000000000000000000000000000000000000
 validators:
   balance: 3100000000000000000000000000
   count: 3
-  onlineDelay: 0
-  stakeDelay: 0
-  stakeMinimum: 1000000000000000000
-  unstakeDelay: 0
-  validatorMinPercent: 33
   validatorMinStake: 1000000000000000000000000
 ```
 This is the default setup that uses Aeternity `testnet` as parent chain and appropriate block time and epoch length for it.
@@ -155,9 +150,59 @@ cat hc_test/economy-unencrypted.yaml
 
 Example output:
 ```yml
+faucet:
+  account:
+    addr: 'ak_WNkJkmaEoyScVRaeZeDvvmCqLn1HkfNnQDy1oSJp6Jm5YPpAq'
+    index: 0
+    mnemonic: 'alpha camp aunt tattoo gravity beach report run cube rude morning ahead elephant super team vague nut property surge erode total rhythm output perfect'
+    privKey: 'd747348b11eff32d764a31e2a528fa5624fa6f18a4a6f99070d55ea77905ed2342b30be3a20307cb499230fa857611e5101b0682e57d23d21ca1f360705404d7'
+  initialBalance: 1000000000000000000000000000
+pinners:
+  - account:
+      addr: 'ak_2cYQac22msS2BGxR44BiD3CSLDvG9Xuamn61y2gdb8qJXwd7or'
+      index: 0
+      mnemonic: 'grant comic beauty impose dance rate crash scorpion cream domain level have vessel tortoise fringe north profit loop enemy traffic outer loud version return'
+      privKey: '9e2c28f2037e6d352a88137572255ed8af2e86dfb2c2949c4d805ff08bff2784d465bc1253fd1594ecc68e128bb2e241fb2fc0bd48a72e7d57af6dadad67b5dc'
+    owner: 'ak_o9UXHESE3mDd9qeDKnxkRrfUS3eY17xkhshZX3VFqAbkVMUDV'
+  - account:
+      addr: 'ak_kU8HHb7raYHf5USrEv1zQ1WfFU8Fccrzp2nPM7gtoAvi3cFZh'
+      index: 0
+      mnemonic: 'mesh cousin december tank rival please march museum dragon peanut border tourist execute cash slush also two other casual vague curve verify trophy ceiling'
+      privKey: 'c447e8e3159a57ebffb19f3bd7c63afd739e5c592d9bd20620dff61c58d842b062b2dd406ded9a12fb6e455ce2fe3eb1af96182f5a59697e04478e372c58c927'
+    owner: 'ak_2uc64DEjX1XCe2dYtTaDBfGXqPDiv1Xcu29T4P2x5NzXnRerAA'
+  - account:
+      addr: 'ak_2LS9FZLu7v5mVHW8sHa8DxvVWzfKf39SHrHNmmvQseTWCbff5J'
+      index: 0
+      mnemonic: 'sweet green lizard auto science wreck destroy indicate roast garment cloth album fringe valley remain bike black purse antique annual until umbrella wealth gadget'
+      privKey: 'a19771d213eadede7c3332244ddeaa5e2caaa8be4aae79eee8d425e47a237dffafd27c0d8b8485c6dab5ec083448f81e68de9202258ee9f5ec313874bb0e2537'
+    owner: 'ak_BXprz9o24a8RYbvBRDsUCBdGpz2uULBnDw6BiYpG957BiEvVn'
+treasury:
+  account:
+    addr: 'ak_CLTKb9tdvXGwpgUBW8GytW7kXv9r1eJyY4YtgKKWtKcY3poQf'
+    index: 0
+    mnemonic: 'horror hunt card coconut wait snack clerk prepare process oval radar praise candy sting fury target fan nothing option pattern garden off when deer'
+    privKey: '9ab3bb473a0ec30d4f75f877ee9de0145fbd883e07edab2e4555e156a729be5619bd0a236a9ebd4a47e5fc3961b59ea215515109c007e2ce844b1f543d4e9598'
+  initialBalance: 1000000000000000000000000000000000000000000000000
+validators:
+  - account:
+      addr: 'ak_o9UXHESE3mDd9qeDKnxkRrfUS3eY17xkhshZX3VFqAbkVMUDV'
+      index: 0
+      mnemonic: 'seminar else board area mercy dune bottom wide move emotion fold goat recipe horror liquid spoon visa click hen benefit link lawn castle hospital'
+      privKey: 'fca30982735665d39d52146c30837cc33cf1c11015accb5ce520065223872e3968c7c7dc1372514ada09eac4a433ee479bf980c6d9d8bbdc88284cb19e8b4cb6'
+    initialBalance: 3100000000000000000000000000
+  - account:
+      addr: 'ak_2uc64DEjX1XCe2dYtTaDBfGXqPDiv1Xcu29T4P2x5NzXnRerAA'
+      index: 0
+      mnemonic: 'arrest friend excuse expect learn material differ fat fiscal subway ghost quick science balcony thing receive wage hold visa boy still close pull mutual'
+      privKey: '43a889d992a923e195cecf0f4346e4f480cec0ef2f561e383cf6b367e4da8b3dfb245ed4f23bcc25205d1cba30c85ed3a9a3a10858e12a6944d81944d3277850'
+    initialBalance: 3100000000000000000000000000
+  - account:
+      addr: 'ak_BXprz9o24a8RYbvBRDsUCBdGpz2uULBnDw6BiYpG957BiEvVn'
+      index: 0
+      mnemonic: 'orchard issue drip level knife mechanic dirt keep gas potato close path recall rice strong seminar tattoo alien wealth note soft cash include business'
+      privKey: '30267f551a56954f654edaa3cb21a58a21898af0519503d3737f8cd5c8b913eb17e9b9a1f3f725b0de559f30276ff065a84cca01b5720df302e2044032acd6ba'
+    initialBalance: 3100000000000000000000000000
 ```
-
-TODO: trim the fat of the economy config and inline an example.
 
 ### Generate Configuration
 
@@ -185,6 +230,10 @@ then run your node:
 ```shell
 ~/aeternity/node/bin start
 ```
+
+**IMPORTANT**
+If you used a known public chain (testnet or mainnet) as parent chain, the tool will set the `start_height` as current block + 10, that is 30 minutes in future.
+Keep that in mind when verifying your chain, either decrease the number or wait until that block is produced on the parent chain before you start transacting on the Hyperchain.
 
 ## Configuration Explained
 
@@ -259,14 +308,14 @@ We define three `stakers`, that need to have accounts and funds to stake on the 
 ```yaml
 stakers:
   - hyper_chain_account:
-      priv: '43e96b343cb842e93ee00165a033e150ea5ef5897e0423b0072a903546c2f6b3d1651cf45999a7a89b9d0ee03d7391a4d817f46b7495b0c9e2559afd3621bc36'
-      pub: 'ak_2bDiPNyzydBRppXc1JAzfjNDeJPWPa4cF7UWQu3DuRKyG1g1jx'
+      priv: 'fca30982735665d39d52146c30837cc33cf1c11015accb5ce520065223872e3968c7c7dc1372514ada09eac4a433ee479bf980c6d9d8bbdc88284cb19e8b4cb6'
+      pub: 'ak_o9UXHESE3mDd9qeDKnxkRrfUS3eY17xkhshZX3VFqAbkVMUDV'
   - hyper_chain_account:
-      priv: 'bf3f9f936531e5370f10217c037457a7b49c146038bdfd67052062dd3b3670c8a1de622c2d27b6af245f3d5c124201ab28beaf52b47f542df0553c4817fa7bf2'
-      pub: 'ak_2EHifRthPxSWQUSa7r9qwCEazWGysrV4HMW7fMANW72m1ZWCoa'
+      priv: '43a889d992a923e195cecf0f4346e4f480cec0ef2f561e383cf6b367e4da8b3dfb245ed4f23bcc25205d1cba30c85ed3a9a3a10858e12a6944d81944d3277850'
+      pub: 'ak_2uc64DEjX1XCe2dYtTaDBfGXqPDiv1Xcu29T4P2x5NzXnRerAA'
   - hyper_chain_account:
-      priv: '85b1bd0f7a3fd7642c3bace008743d5332b3737f057b6b1483f06f1cdfc60403af5e071c9043362722f82ca287cfca3591438b4dd1e45ea7a85c0dfb04ffbc12'
-      pub: 'ak_2LEXHiDdjy58kfy9ThMUKtZaRQRSAKJivKjCggoqLNpazXX6Wh'
+      priv: '30267f551a56954f654edaa3cb21a58a21898af0519503d3737f8cd5c8b913eb17e9b9a1f3f725b0de559f30276ff065a84cca01b5720df302e2044032acd6ba'
+      pub: 'ak_BXprz9o24a8RYbvBRDsUCBdGpz2uULBnDw6BiYpG957BiEvVn'
 ```
 
 ### Pinning
@@ -277,22 +326,22 @@ Currently only a single pinning behavior is supported. Validators will automatic
 default_pinning_behavior: true
 ```
 
-That feature also needs pinning accounts configuration, it's map of staker to pinning account, for example a single pinning account can be used for multiple stakers:
+That feature also needs pinning accounts configuration, it's map of staker to pinning account, for example:
 
 ```yaml
 pinners:
   - parent_chain_account:
-      owner: 'ak_2bDiPNyzydBRppXc1JAzfjNDeJPWPa4cF7UWQu3DuRKyG1g1jx'
-      priv: '47f6043beb15b7f19609479e8f174a48a8a042c3b377bee24ef208d359f1b3742e00f83441c9f0720ebb183e9654a9b9c6a81ed97f13b65b8db3504200877192'
-      pub: 'ak_MG76EK35Z5MoJW7oZ7bCabGypw6Ve5CjFBuqux7cJqgEYDzeG'
+      owner: 'ak_o9UXHESE3mDd9qeDKnxkRrfUS3eY17xkhshZX3VFqAbkVMUDV'
+      priv: '9e2c28f2037e6d352a88137572255ed8af2e86dfb2c2949c4d805ff08bff2784d465bc1253fd1594ecc68e128bb2e241fb2fc0bd48a72e7d57af6dadad67b5dc'
+      pub: 'ak_2cYQac22msS2BGxR44BiD3CSLDvG9Xuamn61y2gdb8qJXwd7or'
   - parent_chain_account:
-      owner: 'ak_2EHifRthPxSWQUSa7r9qwCEazWGysrV4HMW7fMANW72m1ZWCoa'
-      priv: '47f6043beb15b7f19609479e8f174a48a8a042c3b377bee24ef208d359f1b3742e00f83441c9f0720ebb183e9654a9b9c6a81ed97f13b65b8db3504200877192'
-      pub: 'ak_MG76EK35Z5MoJW7oZ7bCabGypw6Ve5CjFBuqux7cJqgEYDzeG'
+      owner: 'ak_2uc64DEjX1XCe2dYtTaDBfGXqPDiv1Xcu29T4P2x5NzXnRerAA'
+      priv: 'c447e8e3159a57ebffb19f3bd7c63afd739e5c592d9bd20620dff61c58d842b062b2dd406ded9a12fb6e455ce2fe3eb1af96182f5a59697e04478e372c58c927'
+      pub: 'ak_kU8HHb7raYHf5USrEv1zQ1WfFU8Fccrzp2nPM7gtoAvi3cFZh'
   - parent_chain_account:
-      owner: 'ak_2LEXHiDdjy58kfy9ThMUKtZaRQRSAKJivKjCggoqLNpazXX6Wh'
-      priv: '47f6043beb15b7f19609479e8f174a48a8a042c3b377bee24ef208d359f1b3742e00f83441c9f0720ebb183e9654a9b9c6a81ed97f13b65b8db3504200877192'
-      pub: 'ak_MG76EK35Z5MoJW7oZ7bCabGypw6Ve5CjFBuqux7cJqgEYDzeG'
+      owner: 'ak_BXprz9o24a8RYbvBRDsUCBdGpz2uULBnDw6BiYpG957BiEvVn'
+      priv: 'a19771d213eadede7c3332244ddeaa5e2caaa8be4aae79eee8d425e47a237dffafd27c0d8b8485c6dab5ec083448f81e68de9202258ee9f5ec313874bb0e2537'
+      pub: 'ak_2LS9FZLu7v5mVHW8sHa8DxvVWzfKf39SHrHNmmvQseTWCbff5J'
 ```
 
 To have an initiative to pin an epoch state to parent chain, pinners should be rewarded in whatever the native currency is for the Hyperchain.
@@ -324,48 +373,43 @@ chain:
             fetch_interval: 500
             nodes:
               - 'https://testnet.aeternity.io'
-          start_height: 1064531
+          start_height: 1064939
         pinners:
           - parent_chain_account:
-              owner: 'ak_2bDiPNyzydBRppXc1JAzfjNDeJPWPa4cF7UWQu3DuRKyG1g1jx'
-              priv: '47f6043beb15b7f19609479e8f174a48a8a042c3b377bee24ef208d359f1b3742e00f83441c9f0720ebb183e9654a9b9c6a81ed97f13b65b8db3504200877192'
-              pub: 'ak_MG76EK35Z5MoJW7oZ7bCabGypw6Ve5CjFBuqux7cJqgEYDzeG'
+              owner: 'ak_o9UXHESE3mDd9qeDKnxkRrfUS3eY17xkhshZX3VFqAbkVMUDV'
+              priv: '9e2c28f2037e6d352a88137572255ed8af2e86dfb2c2949c4d805ff08bff2784d465bc1253fd1594ecc68e128bb2e241fb2fc0bd48a72e7d57af6dadad67b5dc'
+              pub: 'ak_2cYQac22msS2BGxR44BiD3CSLDvG9Xuamn61y2gdb8qJXwd7or'
           - parent_chain_account:
-              owner: 'ak_2EHifRthPxSWQUSa7r9qwCEazWGysrV4HMW7fMANW72m1ZWCoa'
-              priv: 'c4d726f88fd2b227f2aa65e76b938016cd112c93c063cca93b95838a7de741282d06e8438bb2a52eca31533cb1c9667b8cde4fd234bb96b1486c35c84a6c0764'
-              pub: 'ak_Lq9vRTzdoKDsLziq7z1moPy5hTdnktuoYNTGCK1Zv43iwwNPs'
+              owner: 'ak_2uc64DEjX1XCe2dYtTaDBfGXqPDiv1Xcu29T4P2x5NzXnRerAA'
+              priv: 'c447e8e3159a57ebffb19f3bd7c63afd739e5c592d9bd20620dff61c58d842b062b2dd406ded9a12fb6e455ce2fe3eb1af96182f5a59697e04478e372c58c927'
+              pub: 'ak_kU8HHb7raYHf5USrEv1zQ1WfFU8Fccrzp2nPM7gtoAvi3cFZh'
           - parent_chain_account:
-              owner: 'ak_2LEXHiDdjy58kfy9ThMUKtZaRQRSAKJivKjCggoqLNpazXX6Wh'
-              priv: 'b7654f425fdf1cad1c7e31eeed5b0899ea53b15e124a4f00e2fcd8c3b0b8c92b7864f668b5d115cf9cd34003e8c0d8663399c3ce1e38786759d15d55ab01a586'
-              pub: 'ak_v2K9rNfNoQriwFUAexVanbH3CfjPhQDj3Sfo73Wm6QudC7Bh5'
+              owner: 'ak_BXprz9o24a8RYbvBRDsUCBdGpz2uULBnDw6BiYpG957BiEvVn'
+              priv: 'a19771d213eadede7c3332244ddeaa5e2caaa8be4aae79eee8d425e47a237dffafd27c0d8b8485c6dab5ec083448f81e68de9202258ee9f5ec313874bb0e2537'
+              pub: 'ak_2LS9FZLu7v5mVHW8sHa8DxvVWzfKf39SHrHNmmvQseTWCbff5J'
         pinning_reward_value: 1000000000000000000000
         rewards_contract: 'ct_KJgjAXMtRF68AbT5A2aC9fTk8PA4WFv26cFSY27fXs6FtYQHK'
         stakers:
           - hyper_chain_account:
-              priv: '43e96b343cb842e93ee00165a033e150ea5ef5897e0423b0072a903546c2f6b3d1651cf45999a7a89b9d0ee03d7391a4d817f46b7495b0c9e2559afd3621bc36'
-              pub: 'ak_2bDiPNyzydBRppXc1JAzfjNDeJPWPa4cF7UWQu3DuRKyG1g1jx'
+              priv: 'fca30982735665d39d52146c30837cc33cf1c11015accb5ce520065223872e3968c7c7dc1372514ada09eac4a433ee479bf980c6d9d8bbdc88284cb19e8b4cb6'
+              pub: 'ak_o9UXHESE3mDd9qeDKnxkRrfUS3eY17xkhshZX3VFqAbkVMUDV'
           - hyper_chain_account:
-              priv: 'bf3f9f936531e5370f10217c037457a7b49c146038bdfd67052062dd3b3670c8a1de622c2d27b6af245f3d5c124201ab28beaf52b47f542df0553c4817fa7bf2'
-              pub: 'ak_2EHifRthPxSWQUSa7r9qwCEazWGysrV4HMW7fMANW72m1ZWCoa'
+              priv: '43a889d992a923e195cecf0f4346e4f480cec0ef2f561e383cf6b367e4da8b3dfb245ed4f23bcc25205d1cba30c85ed3a9a3a10858e12a6944d81944d3277850'
+              pub: 'ak_2uc64DEjX1XCe2dYtTaDBfGXqPDiv1Xcu29T4P2x5NzXnRerAA'
           - hyper_chain_account:
-              priv: '85b1bd0f7a3fd7642c3bace008743d5332b3737f057b6b1483f06f1cdfc60403af5e071c9043362722f82ca287cfca3591438b4dd1e45ea7a85c0dfb04ffbc12'
-              pub: 'ak_2LEXHiDdjy58kfy9ThMUKtZaRQRSAKJivKjCggoqLNpazXX6Wh'
+              priv: '30267f551a56954f654edaa3cb21a58a21898af0519503d3737f8cd5c8b913eb17e9b9a1f3f725b0de559f30276ff065a84cca01b5720df302e2044032acd6ba'
+              pub: 'ak_BXprz9o24a8RYbvBRDsUCBdGpz2uULBnDw6BiYpG957BiEvVn'
         staking_contract: 'ct_KJgjAXMtRF68AbT5A2aC9fTk8PA4WFv26cFSY27fXs6FtYQHK'
       type: 'hyperchain'
-  db_direct_access: true
   hard_forks:
-    '6': 0
-  persist: true
+    '6':
+      accounts_file: 'hc_test_accounts.json'
+      contracts_file: 'hc_test_contracts.json'
+      height: 0
 fork_management:
   network_id: 'hc_test'
-http:
-  endpoints:
-    dry-run: true
-include_default_peers: false
 mining:
   autostart: true
-  beneficiary: 'ak_2RGq3T2FgmE4oASZxv94b8zvR6HMEjFccph3rxAajU4EH8xcxb'
-peers: []
 ```
 
 ----
