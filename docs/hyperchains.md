@@ -90,8 +90,6 @@ A directory with the same name will be created in the root directory of the tool
 npm run dev init hc_test
 ```
 
-TODO: get rid of unused options and set proper names for others
-
 This command creates an `init.yaml` file in the root of your `hc_test` directory. It contains parameters
 and settings for your hyperchain. It looks like:
 ```yaml
@@ -231,7 +229,7 @@ then run your node:
 ~/aeternity/node/bin start
 ```
 
-**IMPORTANT**
+**IMPORTANT:**
 If you used a known public chain (testnet or mainnet) as parent chain, the tool will set the `start_height` as current block + 10, that is 30 minutes in future.
 Keep that in mind when verifying your chain, either decrease the number or wait until that block is produced on the parent chain before you start transacting on the Hyperchain.
 
