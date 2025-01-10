@@ -51,7 +51,7 @@
 -define(HC_CONTRACT, "HCElection").
 -define(CONSENSUS, hc).
 -define(CHILD_EPOCH_LENGTH, 10).
--define(CHILD_BLOCK_TIME, 300).
+-define(CHILD_BLOCK_TIME, 450).
 -define(CHILD_BLOCK_PRODUCTION_TIME, 120).
 -define(PARENT_EPOCH_LENGTH, 3).
 -define(PARENT_FINALITY, 2).
@@ -172,7 +172,10 @@ groups() ->
           , produce_some_epochs
           , respect_schedule
           , entropy_impact_schedule
-          , check_blocktime
+          %% first epoch has blocktimes longer than CHILD_BLOCK_TIME by design, so test from epoch 2 on
+          %% Also block times are regulated by the wallclock and they can possibly be longer and shorter
+          %% than the CHILD_BLOCK_TIME, so this test needs to check something else
+          %% , check_blocktime
           , get_contract_pubkeys
           , sanity_check_vote_tx
           ]}
@@ -442,7 +445,7 @@ check_blocktime(_Config) ->
     check_blocktime_(TopBlock).
 
 check_blocktime_(Block) ->
-    case aec_blocks:height(Block) >= 1 of
+    case aec_blocks:height(Block) > ?CHILD_EPOCH_LENGTH of
         true ->
             {ok, PrevBlock} = rpc(?NODE1, aec_chain, get_block, [aec_blocks:prev_key_hash(Block)]),
             Time1 = aec_blocks:time_in_msecs(Block),
@@ -518,12 +521,17 @@ respect_schedule(Node, EpochStart, Epoch, TopHeight) ->
     {ok, Schedule} = rpc(Node, aec_chain_hc, validator_schedule, [EpochStart, PHash, EIValidators, EILength]),
     ct:log("Validating schedule ~p for Epoch ~p", [Schedule, Epoch]),
 
-    lists:foreach(fun({Height, ExpectedProducer}) when Height =< TopHeight ->
-                              Producer = get_block_producer(Node, Height),
-                              ct:pal("Check producer of block ~p: ~p =?= ~p", [Height, Producer, ExpectedProducer]),
-                              ?assertEqual(Producer, ExpectedProducer);
-                     (_) -> ok
-                  end, lists:zip(lists:seq(StartHeight, StartHeight + EILength - 1), Schedule)),
+    lists:foreach(
+        fun({Height, ExpectedProducer}) when Height =< TopHeight ->
+            #{producer := Producer,
+              is_hole := IsHole} = get_block_producer(Node, Height),
+            ct:pal("Check producer of block ~p: ~p =?= ~p", [Height, Producer, ExpectedProducer]),
+            IsExpectedProducer = Producer =:= ExpectedProducer,
+            %% Allow holes to be produced by anyone or producer must match the expected
+            ?assert(IsExpectedProducer or IsHole,
+                "Block producer must match the expected producer, or it also can be a hole");
+        (_) -> ok
+        end, lists:zip(lists:seq(StartHeight, StartHeight + EILength - 1), Schedule)),
 
     respect_schedule(Node, EILast + 1, Epoch + 1, TopHeight).
 
@@ -803,12 +811,12 @@ verify_rewards(Config) ->
 
     Rewards = calc_rewards(BlocksInGen, Node),
 
-    ct:log("Alice ~p -> ~p expected reward ~p", [AliceTot0, AliceTot1, maps:get(pubkey(?ALICE), Rewards)]),
-    ct:log("Bob ~p -> ~p expected reward ~p", [BobTot0, BobTot1, maps:get(pubkey(?BOB_SIGN), Rewards)]),
-    ct:log("Lisa ~p -> ~p expected reward ~p", [LisaTot0, LisaTot1, maps:get(pubkey(?LISA), Rewards)]),
-    ?assertEqual(AliceTot0 + maps:get(pubkey(?ALICE), Rewards, 0), AliceTot1),
-    ?assertEqual(BobTot0 + maps:get(pubkey(?BOB_SIGN), Rewards, 0), BobTot1),
-    ?assertEqual(LisaTot0 + maps:get(pubkey(?LISA), Rewards, 0), LisaTot1),
+    ?assertEqual(AliceTot0 + maps:get(pubkey(?ALICE), Rewards, 0), AliceTot1,
+        hctest:format("Alice ~p -> ~p expected reward ~p", [AliceTot0, AliceTot1, maps:get(pubkey(?ALICE), Rewards, 0)])),
+    ?assertEqual(BobTot0 + maps:get(pubkey(?BOB_SIGN), Rewards, 0), BobTot1,
+        hctest:format("Bob ~p -> ~p expected reward ~p", [BobTot0, BobTot1, maps:get(pubkey(?BOB_SIGN), Rewards, 0)])),
+    ?assertEqual(LisaTot0 + maps:get(pubkey(?LISA), Rewards, 0), LisaTot1,
+        hctest:format("Lisa ~p -> ~p expected reward ~p", [LisaTot0, LisaTot1, maps:get(pubkey(?LISA), Rewards, 0)])),
 
     %% Check that MainStaking knows the right epoch.
     {ok, #{epoch := Epoch}} = rpc(Node, aec_chain_hc, epoch_info, []),
@@ -1634,7 +1642,9 @@ get_block_producer_name(Parties, Block) ->
 
 get_block_producer(Node, Height) ->
     {ok, KeyHeader} = rpc(Node, aec_chain, get_key_header_by_height, [Height]),
-    aec_headers:miner(KeyHeader).
+    #{producer => aec_headers:miner(KeyHeader),
+      is_hole => aec_headers:is_hole(KeyHeader),
+      header => KeyHeader}.
 
 leaders_at_height(Node, Height, Config) ->
     {ok, Hash} = rpc(Node, aec_chain_state, get_key_block_hash_at_height, [Height]),

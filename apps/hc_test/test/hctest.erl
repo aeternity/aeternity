@@ -3,7 +3,7 @@
 -module(hctest).
 
 %% API
--export([pp/1]).
+-export([pp/1, format/2]).
 
 pp(Term) ->
     iolist_to_binary(pp_1(Term)).
@@ -44,3 +44,6 @@ bin_to_hex(Bin) ->
     Bits = bit_size(Bin),
     <<Int:Bits>> = Bin,
     io_lib:format("~.16B", [Int]).
+
+format(Format, Args) ->
+    iolist_to_binary(io_lib:format(Format, Args)).
