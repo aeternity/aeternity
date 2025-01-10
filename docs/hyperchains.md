@@ -119,6 +119,7 @@ validators:
 This is the default setup that uses Aeternity `testnet` as parent chain and appropriate block time and epoch length for it.
 The configuration can be changed as needs following the rules in the [Configuration Details](#configuration-explained).
 
+
 ### 3. Set Up Contracts
 
 To prepare the Hyperchain contracts run the following:
