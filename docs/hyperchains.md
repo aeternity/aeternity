@@ -429,6 +429,24 @@ Please refer to the [`hyperchain-starter-kit` documentation](#generate-configura
 }
 ```
 
+Once the contracts are generated they have to be also added in the node consensus configuration. Current configuration expect 3 separate contracts:
+
+```yaml
+staking_contract: 'ct_KJgjAXMtRF68AbT5A2aC9fTk8PA4WFv26cFSY27fXs6FtYQHK'
+election_contract: 'ct_LRbi65kmLtE7YMkG6mvG5TxAXTsPJDZjAtsPuaXtRyPA7gnfJ'
+rewards_contract: 'ct_KJgjAXMtRF68AbT5A2aC9fTk8PA4WFv26cFSY27fXs6FtYQHK'
+```
+
+However, the current implementation is using the staking contract instance for rewards distribution, thus the addresses are the same.
+
+Finally the contract owner should be set the same as the owner of the contract deployment in the `contracts.json`:
+
+```yaml
+contract_owner: 'ak_11111111111111111111111111111115rHyByZ'
+```
+
+This ensures that the protocol methods can be called only by the protocol and not other accounts. In this example the so called "zero" address is used for that.
+
 ### Pinning
 
 Currently only a single pinning behavior is supported. Validators will automatically pin the Hyperchain state to the parent chain when they are leaders of the last block of the epoch using their mapped parent account credentials. It can be enabled by:
