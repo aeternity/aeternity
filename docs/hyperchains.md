@@ -57,9 +57,9 @@ Important:
 4. Begin network participation
    
 ## Getting Started
-
+<!-- text to be removed 
 The quickest way to explore Hyperchains is through our preconfigured Localnet environment. Localnet provides a complete Docker compose configuration that includes a pre-configured Aeternity parent chain, Hyperchain node, and all essential development tools for both networks. This environment serves both as a testing playground and a development platform, and is maintained with the latest tools and node versions. You can find information on how to run the Localnet here:
- [Localnet](https://github.com/aeternity/localnet/blob/master/README.md#hyperchains-configuration).
+ [Localnet](https://github.com/aeternity/localnet/blob/master/README.md#hyperchains-configuration). -->
 
 ## Configuring Your Own Hyperchain Node
 
@@ -266,7 +266,6 @@ Top block protocol          6 (ceres)
 
 If the output is `Node is not running!` check node logs for errors to debug it further.
 
-### 7. Begin Operations
 
 ### 7. Begin Operations
 
@@ -295,7 +294,7 @@ Please follow the [installation instructions](installation.md) and do [basic con
 
 ### Parent chain
 <!--
-Running your parent node locally is recommended for optimal control and performance. In this example configuration, we use a testnet node running on port 6013. For detailed instructions on setting up and configuring a regular Aeternity node on testnet, refer to the core configuration documentation.
+Running your parent node locally is recommended for optimal control and performance. In this example configuration, we use a testnet node running on port 6013. For detailed instructions on setting up and configuring a regular Aeternity node on testnet, refer to the core configuration documentation. -->
 
 To configure your parent chain connection, you'll need to specify several key parameters. Start by setting the chain connector to AE2AE and network ID to ae_uat. Next, configure your parent chain node address using the parent node's HTTP API port, not the external port. When setting the fetch interval, ensure it's frequent enough to capture all state changes on the parent chain.
 Finally, specify a future block height on the parent chain as your starting point. This height determines when your child chain will begin its operations, including block production and pinning. This configuration creates a deliberate delay, allowing for proper initialization and synchronization:
