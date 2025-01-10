@@ -8,6 +8,7 @@ There is also additional documentation on mining with CUDA and build and/or join
 
 - [Installation](installation.md)
 - [Configuration](configuration.md)
+- [Hyperchains](hyperchains.md)
 - [Operation](operation.md)
 - [Update](update.md)
 - [Docker](docker.md)
