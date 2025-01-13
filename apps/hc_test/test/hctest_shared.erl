@@ -411,7 +411,7 @@ produce_n_epochs(Config, #{count_epochs := N} = Options) ->
     {ok, Bs} = produce_cc_blocks(Config, #{count => N * ?CHILD_EPOCH_LENGTH}),
 
     %% check producers
-    Producers = [aec_blocks:miner(B) || B <- Bs],
+    Producers = [aec_blocks:miner(B) || B <- Bs, aec_blocks:type(B) =:= key_block],
     ChildTopHeight = aecore_suite_utils:rpc(Node1, aec_chain, top_height, []),
     Leaders = leaders_at_height(Node1, ChildTopHeight, Config),
     ct:log("Bs: ~p  Leaders ~p", [Bs, Leaders]),

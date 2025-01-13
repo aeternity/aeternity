@@ -276,7 +276,7 @@ verify_chain_height(Config) ->
                 30 =< Height,
                 "With 3 epochs passing chain height must have reached 30"
             ),
-            {Height, Hash}
+            {Node, Height, Hash}
         end,
         Nodes
     ),
