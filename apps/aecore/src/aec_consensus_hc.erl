@@ -18,8 +18,6 @@
 -define(STAKING_CONTRACT, staking).
 -define(REWARDS_CONTRACT, rewards).
 -define(FIRST_TIMESTAMPED_BLOCK, 2).
-%% Stores permanent "do not produce" decisions on timeslots. Keep short.
--define(DECISIONS_CACHE_SIZE, 16).
 
 %% API
 -export([ can_be_turned_off/0
@@ -891,10 +889,6 @@ beneficiary() ->
     run_env :: aec_chain_hc:run_env()
 }).
 
-%% Sometimes a decision can be made to not produce current timeslot (e.g. we're not a leader,
-%% or we have already chain long enough, and this condition is not going to change), so then
-%% we cache this decision and exit the next_beneficiary() algorithm early. This is called
-%% repeatedly from the aec_conductor, so early exit will prevent spam in logs and excess CPU usage.
 next_beneficiary() ->
     {ok, TopKeyBlock} = aec_chain:top_key_block(),
     ChildHeight = aec_blocks:height(TopKeyBlock),
@@ -902,14 +896,7 @@ next_beneficiary() ->
     lager:debug("- - - - - Next beneficiary: height=~w", [ChildHeight]),
     #{timeslot := Timeslot, epoch := Epoch} = get_timeslot_and_epoch(RunEnv),
 
-    case get_timeslot_skip_decision(Timeslot) of
-        false ->
-            next_beneficiary_check_chain_length(Timeslot, ChildHeight, Epoch, RunEnv, TopKeyBlock);
-        Reason ->
-            lager:debug("timeslot=~w skip, cached decision=~w", [Timeslot, Reason]),
-            timer:sleep(child_block_time() div 10), % TODO: Prevent a busy loop
-            {error, {skip_timeslot, Reason}}
-    end.
+    next_beneficiary_check_chain_length(Timeslot, ChildHeight, Epoch, RunEnv, TopKeyBlock).
 
 next_beneficiary_check_chain_length(Timeslot, ChildHeight, Epoch, RunEnv, TopKeyBlock) ->
     %% Early check if the production is required, or the chain has already progressed
@@ -917,8 +904,7 @@ next_beneficiary_check_chain_length(Timeslot, ChildHeight, Epoch, RunEnv, TopKey
     case MissingBlockCount of
         N when N < 0 ->
             %% next_beneficiary called on a chain that already has progressed to the current timeslot
-            put_timeslot_skip_decision(Timeslot, chain_long_enough),
-            timer:sleep(child_block_time() div 10), % TODO: Prevent a busy loop
+            timer:sleep(child_block_time() div 5), % TODO: Prevent a busy loop
             {error, {skip_timeslot, chain_long_enough}};
         M when M >= 0 ->
             State = #next_beneficiary{
@@ -978,8 +964,6 @@ next_beneficiary_set_candidate(State = #next_beneficiary{
     case SignModule:set_candidate(Leader) of
         {error, key_not_found} ->
             lager:debug("node shall not produce (not a leader)"),
-            %% prevent from trying this again till timeslot ends
-            put_timeslot_skip_decision(Timeslot, not_leader),
             timer:sleep(child_block_production_time()),
             {error, not_leader};
         ok ->
@@ -1140,26 +1124,6 @@ get_entropy_hash(ChildEpoch) ->
                         [ChildEpoch, EntropyHeight, _Err]),
             {error, not_in_cache}
     end.
-
-%% Final timeslot decisions, are cached so that we do not attempt to produce again when the decision
-%% has already been made. Example fact: We're not a leader and its not going to change in the same timeslot.
--spec get_timeslot_skip_decision(Timeslot :: pos_integer()) -> false | atom().
-get_timeslot_skip_decision(Timeslot) ->
-    Decisions = aeu_ets_cache:lookup(?ETS_CACHE_TABLE, timeslot_skip_decision, #{}),
-    maps:get(Timeslot, Decisions, false).
-
-%% Save a final decision to not produce in a timeslot (with a reason for logging purposes)
-put_timeslot_skip_decision(Timeslot, Reason) ->
-    Decisions = aeu_ets_cache:lookup(?ETS_CACHE_TABLE, timeslot_skip_decision, #{}),
-
-    %% Delete oldest keys
-    Keys = lists:sort(maps:keys(Decisions)),
-    RecentKeys = lists:nthtail(erlang:min(length(Keys), ?DECISIONS_CACHE_SIZE), Keys),
-    Decisions1 = lists:foldl(fun(K, Acc) -> maps:remove(K, Acc) end, Decisions, RecentKeys),
-
-    Decisions2 = maps:put(Timeslot, Reason, Decisions1),
-    lager:debug("Saving timeslot=~w skip decision=~w", [Timeslot, Reason]),
-    aeu_ets_cache:put(?ETS_CACHE_TABLE, timeslot_skip_decision, Decisions2).
 
 is_block_producer() ->
     aeu_ets_cache:get(?ETS_CACHE_TABLE, is_block_producer, fun is_block_producer_/0).
