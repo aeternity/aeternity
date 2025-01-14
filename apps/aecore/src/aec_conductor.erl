@@ -1361,35 +1361,12 @@ hc_create_block_fun(ConsensusModule, TopHash) ->
 
 %% For as long as chain length is shorter than currentHeight-1, create holes. Send holes async to conductor for writing
 hc_create_hole(TopHash, MissingBlocksCount, Producer) when MissingBlocksCount > 0 ->
-    %% Not creating a microblock, unlike regular hc_create_block
-    GprocKey = {n, l, {production_worker, TopHash, Producer}},
-    case gproc:where(GprocKey) of
-        undefined ->
-            gproc:reg(GprocKey),
-            Result = aec_block_hole_candidate:create(TopHash, Producer, Producer),
-            gproc:unreg(GprocKey),
-            Result;
-        _Pid ->
-            %% Production is already running in another worker, we cannot start a duplicate
-            lager:debug("Busy, try again: Production by ~w already running at ~w", [Producer, _Pid]),
-            {error, busy_try_again}
-    end.
+    aec_block_hole_candidate:create(TopHash, Producer, Producer).
 
 hc_create_block(ConsensusModule, TopHash0, Producer) ->
-    GprocKey = {n, l, {production_worker, TopHash0, Producer}},
-    case gproc:where(GprocKey) of
-        undefined ->
-            gproc:reg(GprocKey),
-            VoteResult = ConsensusModule:vote_result(),
-            TopHash = hc_create_microblock(ConsensusModule, TopHash0, Producer, VoteResult),
-            Result = aec_block_key_candidate:create(TopHash, Producer, Producer),
-            gproc:unreg(GprocKey),
-            Result;
-        _Pid ->
-            %% Production is already running in another worker, we cannot start a duplicate
-            lager:debug("Busy, try again: Production by ~w already running at ~w", [Producer, _Pid]),
-            {error, busy_try_again}
-    end.
+    VoteResult = ConsensusModule:vote_result(),
+    TopHash = hc_create_microblock(ConsensusModule, TopHash0, Producer, VoteResult),
+    aec_block_key_candidate:create(TopHash, Producer, Producer).
 
 hc_create_microblock(ConsensusModule, TopHash, Leader, VoteResult) ->
     CreateResult = case VoteResult of
@@ -1525,27 +1502,13 @@ handle_add_block(Header, Block, State, Origin) ->
             handle_add_block(Block, Hash, Prev, State, Origin)
     end.
 
-%% Used in PoS hyperchains to allow invalid_leader error and not crash the conductor.
-%% This error is still fatal in other chain types.
-safe_insert_block(aec_consensus_hc, Block, Origin) ->
-    try
-        aec_chain_state:insert_block_conductor(Block, Origin)
-    catch exit:{aborted, {{leader_validation_failed, invalid_leader} = Error, _Stack1}}:_Stack2 ->
-        %% This error is not fatal in PoS hyperchains, the block which failed validation should be ignored
-        %% Convert exception to an error value
-        {error, Error}
-    end;
-safe_insert_block(_OtherConsensusModes, Block, Origin) ->
-    aec_chain_state:insert_block_conductor(Block, Origin).
-
 handle_add_block(Block, Hash, Prev, #state{top_block_hash = TopBlockHash, consensus = Consensus} = State, Origin) ->
     epoch_mining:debug("trying to add block (hash=~w, prev=~w)", [Hash, Prev]),
     %% Block validation is performed in the caller's context for
     %% external (gossip/sync) blocks and we trust the ones we
     %% produce ourselves.
     ConsensusModule = Consensus#consensus.consensus_module,
-    InsertResult = safe_insert_block(ConsensusModule, Block, Origin),
-    case InsertResult of
+    case aec_chain_state:insert_block_conductor(Block, Origin) of
         {ok, TopChanged, PrevKeyHeader, Events} = OkResult  ->
             case ConsensusModule of
                 aec_consensus_hc ->

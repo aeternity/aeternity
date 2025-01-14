@@ -34,41 +34,7 @@ create(Block, Beneficiary, Miner) ->
     Protocol = aec_hard_forks:protocol_effective_at_height(Height),
     int_create(Height, BlockHash, Block, Beneficiary, Miner, Protocol).
 
-int_create(Height, BlockHash, Block, Beneficiary, Miner, Protocol) ->
-    Consensus = aec_consensus:get_consensus_module_at_height(Height),
-    N = Consensus:keyblocks_for_target_calc() + 1,
-    case aec_blocks:height(Block) < N of
-        true ->
-            int_create_and_adjust(
-                Height, BlockHash, Block, Beneficiary, Miner, [], Protocol
-            );
-        false ->
-            case N of
-                1 ->
-                    int_create_and_adjust(
-                        Height, BlockHash, Block, Beneficiary, Miner, [], Protocol
-                    );
-                _ ->
-                    case aec_chain:get_n_generation_headers_backwards_from_hash(BlockHash, N) of
-                        {ok, Headers} ->
-                            int_create_and_adjust(
-                                Height,
-                                BlockHash,
-                                Block,
-                                Beneficiary,
-                                Miner,
-                                Headers,
-                                Protocol
-                            );
-                        error ->
-                            {error, headers_for_target_adjustment_not_found}
-                    end
-            end
-    end.
-
-int_create_and_adjust(
-    Height, PrevBlockHash, PrevBlock, Beneficiary, Miner, AdjChain, Protocol
-) ->
+int_create(Height, PrevBlockHash, PrevBlock, Beneficiary, Miner, Protocol) ->
     try
         {ok, Trees} = aec_chain_state:calculate_state_for_new_keyblock(
             Height,
@@ -82,7 +48,7 @@ int_create_and_adjust(
             Height, PrevBlockHash, PrevBlock, Miner, Beneficiary, Trees, Protocol
         ),
         Consensus = aec_blocks:consensus_module(Block),
-        case Consensus:keyblock_create_adjust_target(Block, AdjChain) of
+        case Consensus:keyblock_create_adjust_target(Block, []) of
             {ok, AdjBlock} -> {ok, AdjBlock};
             {error, Reason} -> {error, {failed_to_adjust_target, Reason}}
         end
