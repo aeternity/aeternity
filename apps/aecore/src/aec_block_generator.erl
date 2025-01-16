@@ -105,8 +105,7 @@ handle_cast({worker_done, Pid, {candidate, Candidate, CandidateState}},
                          , candidate_state = CandidateState },
     {noreply, maybe_start_worker_txs(State2)};
 handle_cast({worker_done, Pid, {failed, Reason}}, State = #state{ worker = {Pid, _}}) ->
-    State1 = finish_worker(State),
-    lager:debug("Candidate worker ~p failed ~p", [Pid, Reason]),
+    State1 = worker_failed(Reason, State),
     {noreply, State1};
 handle_cast({worker_done, OldPid, Result}, State) ->
     lager:debug("Ignored stale worker reply ~p (from worker ~p)", [Result, OldPid]),
@@ -131,9 +130,8 @@ handle_info({gproc_ps_event, Event, #{info := Info}}, State) ->
         end,
     {noreply, State1};
 handle_info({'DOWN', Ref, process, Pid, Reason}, State = #state{ worker = {Pid, Ref} }) ->
-    lager:debug("Worker died with reason ~p", [Reason]),
-    State1 = finish_worker(State),
-    {noreply, maybe_start_worker_txs(State1)};
+    State1 = worker_failed(Reason, State),
+    {noreply, State1};
 handle_info({'DOWN', _Ref, process, _Pid, _Reason}, State) ->
     %% Stale monitor message
     {noreply, State};
@@ -183,6 +181,14 @@ stop_worker(S = #state{ worker = {WPid, WRef} }) ->
     S#state{ worker = undefined };
 stop_worker(S) ->
     S.
+
+%% If the worker has failed, we must ensure that the candidate field is not
+%% left as 'undefined'; we must try to build a fresh block, and ignore
+%% anything cached in the new_tx field.
+worker_failed(Reason, S) ->
+    lager:debug("Microblock candidate worker failed: ~p", [Reason]),
+    S1 = finish_worker(S),
+    start_worker(S1).
 
 finish_worker(S = #state{ worker = {_WPid, WRef} }) ->
     erlang:demonitor(WRef, [flush]),
