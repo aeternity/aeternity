@@ -195,16 +195,14 @@ start_worker(S) ->
     end.
 
 start_worker_block(S = #state{ worker = undefined }, BlockOrBlockHash) ->
-    Pid = spawn(fun() -> create_block_candidate(BlockOrBlockHash) end),
+    {Pid, Ref} = spawn_monitor(fun() -> create_block_candidate(BlockOrBlockHash) end),
     lager:debug("Worker ~p created", [Pid]),
-    Ref = erlang:monitor(process, Pid),
     S#state{ worker = {Pid, Ref}, new_txs = [], candidate = undefined }.
 
 start_worker_txs(S = #state{ worker = undefined, candidate = Candidate
                            , candidate_state = CState }, Txs) ->
-    Pid = spawn(fun() -> update_block_candidate(Candidate, CState, Txs) end),
+    {Pid, Ref} = spawn_monitor(fun() -> update_block_candidate(Candidate, CState, Txs) end),
     lager:debug("Worker ~p created", [Pid]),
-    Ref = erlang:monitor(process, Pid),
     S#state{ worker = {Pid, Ref}, new_txs = [] }.
 
 maybe_start_worker_txs(S) ->
