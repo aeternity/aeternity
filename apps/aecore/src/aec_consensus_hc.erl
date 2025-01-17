@@ -11,7 +11,6 @@
 -behavior(aec_consensus).
 
 
--define(TAG, 1336). %% TODO: remove this
 -define(SIGNATURE_SIZE, 16).
 -define(ETS_CACHE_TABLE, ?MODULE).
 -define(ELECTION_CONTRACT, election).
@@ -548,7 +547,7 @@ genesis_raw_header() ->
         <<0:32/unit:8>>,
         <<0:?MINER_PUB_BYTES/unit:8>>,
         <<0:?BENEFICIARY_PUB_BYTES/unit:8>>,
-        ?TAG,
+        0, %% Initial target`
         no_value,
         0,
         GenesisStartTime,
