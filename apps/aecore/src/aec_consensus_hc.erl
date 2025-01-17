@@ -246,17 +246,26 @@ recent_cache_n() -> 1.
 recent_cache_trim_key_header(_) -> ok.
 
 keyblocks_for_target_calc() -> 0.
-keyblock_create_adjust_target(Block0, []) ->
-    Stake = 0,
-    %% {ok, Stake} = aeu_ets_cache:lookup(?ETS_CACHE_TABLE, added_stake),
-    Block = aec_blocks:set_target(Block0, aeminer_pow:integer_to_scientific(Stake)),
-    {ok, Block}.
+keyblock_create_adjust_target(Block, []) -> {ok, Block}.
 
 dirty_validate_block_pre_conductor(_) -> ok.
 dirty_validate_header_pre_conductor(_) -> ok.
 dirty_validate_key_hash_at_height(_, _) -> ok.
-%% Don't waste CPU cycles when we are only interested in state transitions...
-dirty_validate_key_node_with_ctx(_Node, _Block, _Ctx) -> ok.
+dirty_validate_key_node_with_ctx(Node, Block, Ctx) ->
+    Validators = [ fun ctx_validate_key_target/3
+                 ],
+    aeu_validation:run(Validators, [Node, Block, Ctx]).
+
+ctx_validate_key_target(Node, _Block, Ctx) ->
+    NodeTarget = aec_block_insertion:node_target(Node),
+    NodeHeader = aec_block_insertion:node_header(Node),
+    PrevNode = aec_block_insertion:ctx_prev_key(Ctx),
+    PrevNodeTarget = aec_block_insertion:node_target(PrevNode),
+    case aec_headers:is_hole(NodeHeader) of
+        true when NodeTarget == PrevNodeTarget -> ok;
+        false when NodeTarget == PrevNodeTarget + 1 -> ok;
+        _ -> {error, wrong_number_of_non_holes}
+    end.
 
 dirty_validate_micro_node_with_ctx(Node, Block, Ctx) ->
     Validators = [ fun ctx_validate_micro_block_time/3
