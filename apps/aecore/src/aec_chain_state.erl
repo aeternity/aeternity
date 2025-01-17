@@ -25,7 +25,7 @@
 %%% If a micro block is added to the top of the chain, this is
 %%% considered the top block, even if it doesn't increase the
 %%% difficulty. If a micro block is added to a fork with the same
-%%% difficulty as the main chain, the top block will not chain.
+%%% difficulty as the main chain, the top block will not change.
 %%%
 %%% Forks in the structure are labeled by fork id. The fork id is
 %%% local to each Aeternity node instance and cannot be used to reason about
@@ -597,7 +597,7 @@ internal_insert_genesis(Node, Block) ->
         ok = aec_db:write_block_state(
                 NewTopHash,
                 Trees,
-                aec_block_genesis:genesis_difficulty() + node_difficulty(Node),
+                accumulate_difficulty(aec_block_genesis:genesis_difficulty(), node_difficulty(Node)),
                 NewTopHash,
                 0,
                 false),
@@ -823,7 +823,7 @@ apply_and_repair_trees(Node, PrevNode, TreesIn, ForkInfoIn, State) ->
 apply_and_store_state_trees(Node, PrevNode, TreesIn, ForkInfoIn, State) ->
     {Trees, Fees, Events} = apply_node_transactions(Node, PrevNode, TreesIn, ForkInfoIn, State),
     assert_state_hash_valid(Trees, Node),
-    DifficultyOut = ForkInfoIn#fork_info.difficulty + node_difficulty(Node),
+    DifficultyOut = accumulate_difficulty(ForkInfoIn#fork_info.difficulty, node_difficulty(Node)),
     Fraud = update_fraud_info(ForkInfoIn, Node, State),
     ForkInfoInNode = ForkInfoIn#fork_info{ fees = Fees
                                          , difficulty = DifficultyOut
@@ -860,7 +860,8 @@ handle_top_block_change(OldTopNode, NewTopDifficulty, Node, Events, State) ->
                 false ->
                     %% We have a fork. Compare the difficulties.
                     {ok, OldTopDifficulty} = db_find_difficulty(OldTopHash),
-                    case OldTopDifficulty >= NewTopDifficulty of
+                    case cmp_difficulty(OldTopDifficulty, NewTopDifficulty,
+                                        node_height(OldTopNode), node_height(Node)) of
                         true ->
                             State1 = set_top_block_node(OldTopNode, State), %% Reset
                             {State1, Events};
@@ -870,6 +871,13 @@ handle_top_block_change(OldTopNode, NewTopDifficulty, Node, Events, State) ->
                             {State1, Events}
                     end
             end
+    end.
+
+cmp_difficulty(OldDifficulty, NewDifficulty, OldHeight, NewHeight) ->
+    case aec_consensus:get_consensus_type() of
+        pow -> OldDifficulty >= NewDifficulty;
+        pos -> OldDifficulty > NewDifficulty orelse
+                  (OldDifficulty == NewDifficulty andalso OldHeight > NewHeight)
     end.
 
 update_main_chain(OldTopHash, NewTopHash, ForkHash, State) ->
@@ -1576,3 +1584,9 @@ key_headers_height_store_migration_step(Time, N, {TimeRead, {Headers, Cont}}) ->
 is_gc_disabled() ->
     [Bool] = aec_db_gc:info([enabled]),
     Bool.
+
+accumulate_difficulty(Old, New) ->
+    case aec_consensus:get_consensus_type() of
+        pow -> Old + New;
+        pos -> New
+    end.
