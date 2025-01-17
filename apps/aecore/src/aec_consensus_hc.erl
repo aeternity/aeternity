@@ -642,8 +642,7 @@ assert_key_target_range(_) ->
     ok.
 
 key_header_difficulty(H) ->
-    Target = aec_headers:target(H),
-    aeminer_pow:scientific_to_integer(Target).
+    aec_headers:target(H).
 
 %% This is initial height; if neeeded shall be reinit at fork height
 election_contract_pubkey() ->
