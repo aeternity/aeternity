@@ -6,25 +6,26 @@
 %%%=============================================================================
 -module(aec_block_hole_candidate).
 
--export([create/3]).
+-export([create/4]).
 
 -include("blocks.hrl").
 
 %% -- API functions ----------------------------------------------------------
--spec create(BlockHash, Beneficiary, Miner) ->
+-spec create(BlockHash, Beneficiary, Miner, IsHole) ->
     {ok, aec_blocks:block()} | {error, term()}
 when
     BlockHash :: aec_blocks:block() | aec_blocks:block_header_hash(),
     Beneficiary :: aec_keys:pubkey(),
-    Miner :: aec_keys:pubkey().
-create(BlockHash, Beneficiary, Miner) when is_binary(BlockHash) ->
+    Miner :: aec_keys:pubkey(),
+    IsHole :: boolean().
+create(BlockHash, Beneficiary, Miner, IsHole) when is_binary(BlockHash) ->
     case aec_chain:get_block(BlockHash) of
         {ok, Block} ->
-            create(Block, Beneficiary, Miner);
+            create(Block, Beneficiary, Miner, IsHole);
         error ->
             {error, block_not_found}
     end;
-create(Block, Beneficiary, Miner) ->
+create(Block, Beneficiary, Miner, IsHole) ->
     {ok, BlockHash} = aec_blocks:hash_internal_representation(Block),
     ConsensusModule = aec_blocks:consensus_module(Block),
     Height = ConsensusModule:key_block_height_relative_previous_block(
@@ -32,9 +33,9 @@ create(Block, Beneficiary, Miner) ->
         aec_blocks:height(Block)
     ),
     Protocol = aec_hard_forks:protocol_effective_at_height(Height),
-    int_create(Height, BlockHash, Block, Beneficiary, Miner, Protocol).
+    int_create(Height, BlockHash, Block, Beneficiary, Miner, Protocol, IsHole).
 
-int_create(Height, PrevBlockHash, PrevBlock, Beneficiary, Miner, Protocol) ->
+int_create(Height, PrevBlockHash, PrevBlock, Beneficiary, Miner, Protocol, IsHole) ->
     try
         {ok, Trees} = aec_chain_state:calculate_state_for_new_keyblock(
             Height,
@@ -42,28 +43,28 @@ int_create(Height, PrevBlockHash, PrevBlock, Beneficiary, Miner, Protocol) ->
             Miner,
             Beneficiary,
             Protocol,
-            <<?HOLE_FLAG:32>>
+            if IsHole -> <<?HOLE_FLAG:32>>; true -> <<0:32>> end
         ),
         Block = int_create_block(
-            Height, PrevBlockHash, PrevBlock, Miner, Beneficiary, Trees, Protocol
+            Height, PrevBlockHash, PrevBlock, Miner, Beneficiary, Trees, Protocol, IsHole
         ),
-        Consensus = aec_blocks:consensus_module(Block),
-        case Consensus:keyblock_create_adjust_target(Block, []) of
-            {ok, AdjBlock} -> {ok, AdjBlock};
-            {error, Reason} -> {error, {failed_to_adjust_target, Reason}}
-        end
+        {ok, Block}
     catch
         error:{aborted, {Err = {leader_validation_failed, _}, _Stack1}}:_Stack2 ->
             {error, Err}
     end.
 
-int_create_block(Height, PrevBlockHash, PrevBlock, Miner, Beneficiary, Trees, Protocol) ->
-    Consensus = aec_consensus:get_consensus_module_at_height(Height),
-    PrevKeyHash =
+int_create_block(Height, PrevBlockHash, PrevBlock, Miner, Beneficiary, Trees, Protocol, IsHole) ->
+    {PrevKeyHash, PrevKeyBlock} =
         case aec_blocks:type(PrevBlock) of
-            micro -> aec_blocks:prev_key_hash(PrevBlock);
-            key -> PrevBlockHash
+            micro ->
+                PrevKeyHash_ = aec_blocks:prev_key_hash(PrevBlock),
+                {ok, PrevKeyBlock_} = aec_chain:get_block(PrevKeyHash_),
+                {PrevKeyHash_, PrevKeyBlock_};
+            key ->
+                {PrevBlockHash, PrevBlock}
         end,
+    PrevTarget = aec_blocks:target(PrevKeyBlock),
     Fork = aeu_env:get_env(aecore, fork, undefined),
     InfoField = aec_chain_state:get_info_field(Height, Fork),
     aec_blocks:new_key(
@@ -71,12 +72,12 @@ int_create_block(Height, PrevBlockHash, PrevBlock, Miner, Beneficiary, Trees, Pr
         PrevBlockHash,
         PrevKeyHash,
         aec_trees:hash(Trees),
-        Consensus:default_target(),
+        PrevTarget + if IsHole -> 0; true -> 1 end,
         0,
         aeu_time:now_in_msecs(),
         InfoField,
         Protocol,
         Miner,
         Beneficiary,
-        <<?HOLE_FLAG:32>>
+        if IsHole -> <<?HOLE_FLAG:32>>; true -> <<0:32>> end
     ).

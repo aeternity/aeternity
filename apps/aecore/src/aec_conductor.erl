@@ -1361,12 +1361,12 @@ hc_create_block_fun(ConsensusModule, TopHash) ->
 
 %% For as long as chain length is shorter than currentHeight-1, create holes. Send holes async to conductor for writing
 hc_create_hole(TopHash, MissingBlocksCount, Producer) when MissingBlocksCount > 0 ->
-    aec_block_hole_candidate:create(TopHash, Producer, Producer).
+    aec_block_hole_candidate:create(TopHash, Producer, Producer, true).
 
 hc_create_block(ConsensusModule, TopHash0, Producer) ->
     VoteResult = ConsensusModule:vote_result(),
     TopHash = hc_create_microblock(ConsensusModule, TopHash0, Producer, VoteResult),
-    aec_block_key_candidate:create(TopHash, Producer, Producer).
+    aec_block_hole_candidate:create(TopHash, Producer, Producer, false).
 
 hc_create_microblock(ConsensusModule, TopHash, Leader, VoteResult) ->
     CreateResult = case VoteResult of
