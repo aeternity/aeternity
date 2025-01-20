@@ -38,7 +38,8 @@
                 result                     :: {ok, binary()} | {error, no_consensus} | undefined,
                 from                       :: pid() | undefined,
                 votes=#{}                  :: #{binary() => #{binary() => any()}},
-                parent_blocks=#{}          :: #{non_neg_integer() => aec_parent_chain_block:block()}
+                parent_blocks=#{}          :: #{non_neg_integer() => aec_parent_chain_block:block()},
+                other_votes=[]             :: list({non_neg_integer(), aetx_sign:signed_tx()})
             }).
 
 
@@ -135,7 +136,7 @@ vote(info, {gproc_ps_event, tx_received, #{info := Tx}}, Data) ->
     %% Handle the voting phase
     %% Check the transaction contains a vote
     %% If more than two thirds of votes agree send a commit then transition to finalization phase
-    handle_vote(?VOTE_TYPE, Tx, Data, fun on_valid_vote/3);
+    handle_vote(?VOTE_TYPE, Tx, Data, fun on_valid_vote/3, fun on_other_vote/3);
 vote(state_timeout, no_quorum, Data) ->
     %% Handle timeout if no proposal is received
     lager:warning("Voting timeout"),
@@ -147,7 +148,7 @@ vote(Type, Msg, D) ->
 
 %%% State: Finalize
 finalize(info, {gproc_ps_event, tx_received, #{info := Tx}}, Data) ->
-    handle_vote(?COMMIT_TYPE, Tx, Data, fun on_valid_commit/3);
+    handle_vote(?COMMIT_TYPE, Tx, Data, fun on_valid_commit/3, fun on_other_vote_type/3);
 finalize(state_timeout, no_quorum, Data) ->
     %% Handle timeout if no proposal is received
     lager:warning("Finalize timeout"),
@@ -233,7 +234,7 @@ handle_proposal(SignedTx, #data{leader=Leader, epoch=Epoch} = Data) ->
             keep_state_and_data
     end.
 
-handle_vote(Type, SignedTx, Data, OnValidFun) ->
+handle_vote(Type, SignedTx, Data, OnValidFun, OnOtherVoteType) ->
     case convert_transaction(SignedTx) of
         {ok, Type, _Epoch, Validator, VoteFields} ->
             %% Check if a validator
@@ -250,8 +251,8 @@ handle_vote(Type, SignedTx, Data, OnValidFun) ->
                     lager:warning("Received a vote from a validator ~p that has already voted", [Validator]),
                     keep_state_and_data
             end;
-        {ok, _Type, _, _, _} ->
-            keep_state_and_data;
+        {ok, OtherType, _, _, _} ->
+            OnOtherVoteType(OtherType, SignedTx, Data);
         {error, not_vote} ->
             keep_state_and_data;
         {error, Reason} ->
@@ -287,24 +288,40 @@ on_valid_vote(Validator, VoteFields, #data{votes=Votes} = Data) ->
     Votes1 = maps:put(Validator, VoteFields, Votes),
     check_voting_majority(Data#data{votes = Votes1}).
 
-check_voting_majority(#data{majority = CurrentMajority, validators=Validators, block_time=BlockTime, votes=Votes} = Data) ->
+check_voting_majority(#data{majority = CurrentMajority, validators=Validators, block_time=BlockTime, votes=Votes, epoch=Epoch} = Data) ->
     case CurrentMajority =< 0 of
         true ->
-            lager:info("Quorum achieved for voting"),
+            lager:info("Quorum achieved for voting for epoch ~p", [Epoch]),
             Majority = calculate_majority(Validators),
             #data{proposal=Proposal} = Data1 = update_proposal_after_vote_majority(Data),
             Result = create_finalize_call(Votes, Proposal, Data1),
             Data2 = Data1#data{result = Result},
             send_commits(Data2),
-            {next_state, finalize, Data2#data{majority = Majority, remaining_validators = maps:from_list(Validators)}};
+            Data3 = Data2#data{majority = Majority, remaining_validators = maps:from_list(Validators)},
+            check_other_votes({next_state, finalize, Data3});
         false ->
             {next_state, vote, Data, [{state_timeout,BlockTime,no_quorum}]}
     end.
 
-on_valid_commit(_Validator, _CommitFields, #data{result = Result, majority = CurrentMajority, block_time=BlockTime, from=From} = Data) ->
+check_other_votes({next_state, _, #data{other_votes = []}, _} = NextEvent) ->
+    NextEvent;
+check_other_votes({next_state, _, #data{other_votes = []}} = NextEvent) ->
+    NextEvent;
+check_other_votes({next_state, NextState, #data{other_votes = [{_Type, SignedTx}|OtherVotes]} = Data}) ->
+    Data1 = Data#data{other_votes = OtherVotes},
+    case handle_vote(?COMMIT_TYPE, SignedTx, Data1, fun on_valid_commit/3, fun on_other_vote_type/3) of
+        Result when element(1, Result) == next_state ->
+            Result;
+        keep_state_and_data ->
+            check_other_votes({next_state, NextState, Data1});
+        Result when element(1, Result) == keep_state ->
+            check_other_votes({next_state, NextState, element(2, Result)})
+    end.
+
+on_valid_commit(_Validator, _CommitFields, #data{result = Result, majority = CurrentMajority, block_time=BlockTime, from=From, epoch = Epoch} = Data) ->
     case CurrentMajority =< 0 of
         true ->
-            lager:info("Quorum achieved for commit"),
+            lager:info("Quorum achieved for commit for epoch ~p", [Epoch]),
             Actions = case From of
                         undefined ->
                             [];
@@ -316,6 +333,13 @@ on_valid_commit(_Validator, _CommitFields, #data{result = Result, majority = Cur
         false ->
             {keep_state, Data, [{state_timeout,BlockTime,no_quorum}]}
     end.
+
+on_other_vote(Type, SignedTx, #data{other_votes=OtherVotes} = Data) ->
+    {keep_state, Data#data{other_votes = [{Type, SignedTx}|OtherVotes]}}.
+
+on_other_vote_type(Type, _SignedTx, _Data) ->
+    lager:warning("Other vote type ~p", [Type]),
+    keep_state_and_data.
 
 handle_voting(#data{majority = Majority} = Data) ->
     Stake = calculate_stake(Data),
