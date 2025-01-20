@@ -22,21 +22,21 @@ Important:
 ## Prerequisites Checklist
 
 ### Required Infrastructure
-- [ ] Running Aeternity node (v6.7.0 or later)
-- [ ] Minimum 4GB RAM dedicated to Hyperchain operations
-- [ ] 100GB available storage space
-- [ ] Stable internet connection with minimum 10Mbps upload/download
+- Running Aeternity node (v6.7.0 or later)
+- Minimum 4GB RAM dedicated to Hyperchain operations
+- 100GB available storage space
+- Stable internet connection with minimum 10Mbps upload/download
 
 ### Required Technical Knowledge
-- [ ] Experience running and maintaining Aeternity nodes
-- [ ] Basic understanding of blockchain concepts
-- [ ] Familiarity with command-line operations
-- [ ] Understanding of YAML configuration files
+- Experience running and maintaining Aeternity nodes
+- Basic understanding of blockchain concepts
+- Familiarity with command-line operations
+- Understanding of YAML configuration files
 
 ### Required Accounts and Keys
-- [ ] Access to parent chain (Aeternity) wallet with sufficient funds for pinning
-- [ ] Private key for hyperchain staking operations
-- [ ] Private key for parent chain pinning operations
+- Access to parent chain (Aeternity) wallet with sufficient funds for pinning
+- Private key for hyperchain staking operations
+- Private key for parent chain pinning operations
 
 ## Setup Process Overview
 
@@ -69,9 +69,9 @@ GitHub org)
 
 ### Requirements:
 
-- a runnable Node installation (see below)
+- A running Aeternity node installation (following the installation instructions)
+- [Git](https://git-scm.com/downloads) version control system installed to download the starter kit code
 - [Node.js](https://nodejs.org/en/download) installed to run the `hyperchain-starter-kit`
-- [Git](https://git-scm.com/downloads) installed, to download the code for the starter kit
 
 Note: These instructions use Unix/Linux/MacOS shell commands. Windows users will need to adjust paths and commands accordingly.
 
