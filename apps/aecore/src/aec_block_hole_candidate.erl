@@ -43,7 +43,7 @@ int_create(Height, PrevBlockHash, PrevBlock, Beneficiary, Miner, Protocol, IsHol
             Miner,
             Beneficiary,
             Protocol,
-            if IsHole -> <<?HOLE_FLAG:32>>; true -> <<0:32>> end
+            if IsHole -> <<?HOLE_FLAG:?FLAG_BITS>>; true -> <<0:?FLAG_BITS>> end
         ),
         Block = int_create_block(
             Height, PrevBlockHash, PrevBlock, Miner, Beneficiary, Trees, Protocol, IsHole
@@ -79,5 +79,5 @@ int_create_block(Height, PrevBlockHash, PrevBlock, Miner, Beneficiary, Trees, Pr
         Protocol,
         Miner,
         Beneficiary,
-        if IsHole -> <<?HOLE_FLAG:32>>; true -> <<0:32>> end
+        if IsHole -> <<?HOLE_FLAG:?FLAG_BITS>>; true -> <<0:?FLAG_BITS>> end
     ).
