@@ -22,9 +22,10 @@ main contract HCElection =
 
   record vote =
     { producer    : address,
-      hash        : bytes(),
+      hash        : hash,
       epoch_delta : int,
-      signature   : bytes()
+      sign_data   : bytes(),
+      signature   : signature
     }
 
   record finalize_info =
@@ -133,6 +134,7 @@ main contract HCElection =
     require(Chain.block_height == last, "Only in last block")
     require(Call.caller == state.leader, "Must be called by the last leader of epoch")
     require(epoch_number == state.epoch, "Not correct epoch")
+    require(List.all(validate_vote, votes), "Invalid vote")
     put(state{finalize=Some({epoch = epoch_number, fork = fork, epoch_length = epoch_length, pc_hash = pc_hash, producer = producer, votes = votes})})
 
   entrypoint leader() =
@@ -212,3 +214,6 @@ main contract HCElection =
 
   function pay_reward_((acc, tot), (addr, amt)) =
     (acc{[addr = 0] @ r = r + amt}, tot + amt)
+
+  function validate_vote(vote) =
+    Crypto.verify_sig(vote.sign_data, vote.producer, vote.signature)
