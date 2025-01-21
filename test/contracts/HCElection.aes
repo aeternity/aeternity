@@ -216,4 +216,19 @@ main contract HCElection =
     (acc{[addr = 0] @ r = r + amt}, tot + amt)
 
   function validate_vote(vote) =
-    Crypto.verify_sig(vote.sign_data, vote.producer, vote.signature)
+    if(Crypto.verify_sig(vote.sign_data, vote.producer, vote.signature))
+      contains_bytes(vote.hash, vote.sign_data)
+    else
+      false
+
+  function contains_bytes(needle : hash, haystack : bytes()) : bool =
+    if(Bytes.size(haystack) < 32)
+      false
+    else
+      let Some((bs_, _)) = Bytes.split_any(haystack, 32)
+      let Some(bs__) = Bytes.to_fixed_size(bs_)
+      if(bs__ == needle)
+        true
+      else
+        let Some((_, haystack_)) = Bytes.split_any(haystack, 1)
+        contains_bytes(needle, haystack_)
