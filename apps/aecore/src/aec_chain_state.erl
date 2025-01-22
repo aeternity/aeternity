@@ -1063,12 +1063,9 @@ hc_grant_fees(CurrentNode, Trees, Delay) ->
 
     Fees = db_get_fees(node_hash(TheNode)),
     BlockReward = aec_governance:block_mine_reward(node_height(TheNode)),
-    aec_consensus_hc:state_grant_reward(CurrentNode, Delay, Trees,
-                                        {Fees, BlockReward},
-                                        [BeforeNode, TheNode, AfterNode]).
-
-
-
+    aec_consensus_hc:state_grant_rewards(CurrentNode, Delay, Trees,
+                                         {Fees, BlockReward},
+                                         [BeforeNode, TheNode, AfterNode]).
 
 calculate_gas_fee(Calls) ->
     F = fun(_, SerCall, GasFeeIn) ->
