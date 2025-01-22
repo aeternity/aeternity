@@ -893,7 +893,7 @@ calc_rewards([B | Bs], Node, Prev, Rs) ->
                     false ->
                         [{H, _}] = rpc(Node, aec_db, find_key_headers_and_hash_at_height, [aec_blocks:height(B)]),
                         {value, Fees} = rpc(Node, aec_db, find_block_fees, [H]),
-                        {?BLOCK_REWARD + 6 * (Fees div 10), 4 * (Fees div 10)}
+                        {?BLOCK_REWARD + 31 * (Fees div 100), 69 * (Fees div 100)}
                 end,
             Rs1 = Rs#{M => R1 + maps:get(M, Rs, 0)},
             Rs2 = Rs1#{Prev => R2 + maps:get(Prev, Rs1, 0)},
@@ -1741,6 +1741,7 @@ node_config(Node, CTConfig, PotentialStakers, PotentialPinners, ReceiveAddress) 
                                         <<"initial_validators">> => Validators,
                                         <<"pinning_reward_value">> => 4711,
                                         <<"fixed_coinbase">> => ?BLOCK_REWARD,
+                                        <<"fee_distribution">> => [69, 31, 0],
                                         <<"default_pinning_behavior">> => ?config(default_pinning_behavior, CTConfig)},
                                     SpecificConfig)
                                     }}},
