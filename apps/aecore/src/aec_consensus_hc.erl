@@ -480,13 +480,47 @@ cache_child_epoch_info(Epoch, Height, StartTime) ->
 
 %% -------------------------------------------------------------------
 %% Block rewards
-state_grant_reward(Beneficiary, Node, Delay, Trees, Amount) ->
+state_grant_reward(Node, Delay, Trees, {Fees, BlockReward}, [_Node1, _Node2, _Node3] = Nodes) ->
+    [ShareBefore, Share, ShareAfter] = fee_distribution(),
+    Rewards = [(ShareBefore * Fees) div 100,
+               BlockReward + (Share * Fees) div 100,
+               (ShareAfter * Fees) div 100],
+
     Header = aec_block_insertion:node_header(Node),
     TxEnv = aetx_env:tx_env_from_key_header(
               Header, aec_block_insertion:node_hash(Node),
               aec_block_insertion:node_time(Node), aec_block_insertion:node_prev_hash(Node)),
     Height = aec_block_insertion:node_height(Node) - Delay,
-    add_reward(TxEnv, Trees, Height, Beneficiary, Amount).
+
+    state_grant_reward_(TxEnv, Trees, Height, lists:zip(Nodes, Rewards), 0).
+
+%% TODO: placeholder
+is_hole(_Node) ->
+    false.
+
+state_grant_reward_(_TxEnv, Trees, Height, [], HoleRewards) ->
+    lager:info("Burning ~p tokens, because of holes, while distributing rewards for height ~p",
+               [HoleRewards, Height]),
+    Trees;
+state_grant_reward_(TxEnv, Trees, Height, [{Node, Amount} | Rewards], HoleRewards) ->
+    %% No rewards to genesis block or holes...
+    case is_hole(Node) orelse aec_block_insertion:node_height(Node) == 0 of
+        true ->
+            state_grant_reward_(TxEnv, Trees, Height, Rewards, HoleRewards + Amount);
+        false ->
+            Beneficiary = aec_block_insertion:node_beneficiary(Node),
+            Trees1 = add_reward(TxEnv, Trees, Height, Beneficiary, Amount),
+            state_grant_reward_(TxEnv, Trees1, Height, Rewards, HoleRewards)
+    end.
+
+
+%% state_grant_reward(Beneficiary, Node, Delay, Trees, Amount) ->
+%%     Header = aec_block_insertion:node_header(Node),
+%%     TxEnv = aetx_env:tx_env_from_key_header(
+%%               Header, aec_block_insertion:node_hash(Node),
+%%               aec_block_insertion:node_time(Node), aec_block_insertion:node_prev_hash(Node)),
+%%     Height = aec_block_insertion:node_height(Node) - Delay,
+%%     add_reward(TxEnv, Trees, Height, Beneficiary, Amount).
 
 add_reward(TxEnv, Trees, Height, Beneficiary, Amount) ->
     {ok, CD} = aeb_fate_abi:create_calldata("add_reward", [aefa_fate_code:encode_arg({integer, Height}),
@@ -707,6 +741,10 @@ validator_config(Validator) ->
      , <<"caller">>       => Caller
      , <<"stake">>        => maps:get(<<"stake">>, Validator, 0)
      , <<"restake">>      => maps:get(<<"restake">>, Validator, false)}.
+
+fee_distribution() ->
+    Fun = fun() -> get_consensus_config_key([<<"fee_distribution">>], [0, 100, 0]) end,
+    aeu_ets_cache:get(?ETS_CACHE_TABLE, fee_distribution, Fun).
 
 %acceptable_sync_offset() ->
 %    Fun = fun() -> get_consensus_config_key([<<"parent_chain">>, <<"acceptable_sync_offset">>], 60000) end,
