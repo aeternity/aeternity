@@ -252,16 +252,15 @@ handle_vote(Type, SignedTx, Data, OnValidFun) ->
             keep_state_and_data
     end.
 
+create_payload(Payload0, PrivKey) ->
+    Payload = maps:map(fun(_Key, Value) -> fld(Value) end, Payload0),
+    SignData = get_sign_data(Payload),
+    Signature = enacl:sign_detached(SignData, PrivKey),
+    maps:put(?SIGNATURE_FLD, Signature, Payload).
 
-create_payload(Payload, PrivKey) ->
-    Fields = maps:map(fun fld/2, Payload),
-    PayloadBin = iolist_to_binary(lists:foldl(fun({Key, Value}, Accum) -> [<<Key/binary,Value/binary>>|Accum] end, [], lists:sort(maps:to_list(Fields)))),
-    Signature = enacl:sign_detached(PayloadBin, PrivKey),
-    maps:put(?SIGNATURE_FLD, Signature, Fields).
-
-fld(_FieldName, Value) when is_integer(Value) ->
+fld(Value) when is_integer(Value) ->
     integer_to_binary(Value);
-fld(_FieldName, Value) ->
+fld(Value) when is_binary(Value) ->
     Value.
 
 create_vote_transaction(Pubkey, PrivKey, Epoch, Type, VotePayload) ->
@@ -378,9 +377,8 @@ convert_payload_field(_Key, Value) ->
 check_signature(PubKey, Payload) ->
     case get_signature_from_payload(Payload) of
         {ok, Signature} ->
-                Fields = lists:sort(maps:to_list(maps:remove(?SIGNATURE_FLD, Payload))),
-                Data = iolist_to_binary(lists:foldl(fun({Key, Value}, Accum) -> [<<Key/binary,Value/binary>>|Accum] end, [], Fields)),
-            case enacl:sign_verify_detached(Signature, Data, PubKey) of
+            SignData = get_sign_data(Payload),
+            case enacl:sign_verify_detached(Signature, SignData, PubKey) of
                 true  -> ok;
                 false ->
                     {error, signature_verification_failed}
@@ -389,6 +387,9 @@ check_signature(PubKey, Payload) ->
             {error, signature_verification_failed}
     end.
 
+get_sign_data(Payload) ->
+    Fields = lists:sort(maps:to_list(maps:remove(?SIGNATURE_FLD, Payload))),
+    << <<Key/binary, (fld(Value))/binary>> || {Key, Value} <- Fields >>.
 
 get_signature_from_payload(Payload) ->
     case maps:get(?SIGNATURE_FLD, Payload, undefined) of
@@ -518,6 +519,6 @@ create_finalize_call(Votes, #{?HASH_FLD := Hash, ?EPOCH_DELTA_FLD := EpochDelta}
     VotesList = maps:fold(fun create_vote_call/3, [], Votes),
     aeb_fate_abi:create_calldata("finalize_epoch", [Epoch, {bytes, Hash}, EpochLength + EpochDelta, {bytes, Seed1}, {address, Leader}, VotesList]).
 
-create_vote_call(Producer, #{?HASH_FLD := Hash, ?EPOCH_DELTA_FLD := EpochDelta, ?SIGNATURE_FLD := Signature}, Accum) ->
-    [{tuple, {{address, Producer}, {bytes, Hash}, EpochDelta, {bytes, Signature}}}|Accum].
+create_vote_call(Producer, #{?HASH_FLD := Hash, ?EPOCH_DELTA_FLD := EpochDelta, ?SIGNATURE_FLD := Signature} = Payload, Accum) ->
+    [{tuple, {{address, Producer}, {bytes, Hash}, EpochDelta, {bytes, get_sign_data(Payload)}, {bytes, Signature}}} | Accum].
 
