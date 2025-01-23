@@ -534,14 +534,15 @@ entropy_impact_schedule(Config) ->
     Node = hd(Nodes),
     %% Sync nodes
     ChildHeight = rpc(Node, aec_chain, top_height, []),
-    {ok, #{epoch := Epoch0, length := Length0}} = rpc(Node, aec_chain_hc, epoch_info, []),
+    {ok, #{epoch := Epoch0, length := Length0, first := StartHeight}} = rpc(Node, aec_chain_hc, epoch_info, []),
     %% Make sure chain is long enough
     case Epoch0 =< 5 of
       true ->
         %% Chain to short to have meaningful test, e.g. when ran in isolation
         produce_cc_blocks(Config, 5 * Length0 - ChildHeight);
       false ->
-        ok
+        %% Make sure at start of epoch
+        produce_cc_blocks(Config, StartHeight - ChildHeight)
     end,
     {ok, #{seed := Seed,
            first := First,
