@@ -306,8 +306,6 @@ check_voting_majority(#data{majority = CurrentMajority, validators=Validators, b
 
 check_other_votes({next_state, _, #data{other_votes = []}, _} = NextEvent) ->
     NextEvent;
-check_other_votes({next_state, _, #data{other_votes = []}} = NextEvent) ->
-    NextEvent;
 check_other_votes({next_state, NextState, #data{other_votes = [{_Type, SignedTx}|OtherVotes]} = Data, Actions}) ->
     Data1 = Data#data{other_votes = OtherVotes},
     case handle_vote(?COMMIT_TYPE, SignedTx, Data1, fun on_valid_commit/3, fun on_other_vote_type/3) of
