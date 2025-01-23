@@ -123,9 +123,9 @@ proposal(info, {gproc_ps_event, tx_received, #{info := SignedTx}}, Data) ->
     %% Handle the proposal phase
     %% Check the transaction contains a proposal
     handle_proposal(SignedTx, Data);
-proposal(state_timeout, no_proposal, Data) ->
+proposal(state_timeout, no_proposal, #data{epoch = Epoch} = Data) ->
     %% Handle timeout if no proposal is received
-    lager:warning("Proposal timeout"),
+    lager:warning("Proposal timeout for epoch ~p", [Epoch]),
     %% Reply with no consensus
     handle_no_consensus(Data);
 proposal(Type, Msg, D) ->
@@ -137,9 +137,9 @@ vote(info, {gproc_ps_event, tx_received, #{info := Tx}}, Data) ->
     %% Check the transaction contains a vote
     %% If more than two thirds of votes agree send a commit then transition to finalization phase
     handle_vote(?VOTE_TYPE, Tx, Data, fun on_valid_vote/3, fun on_other_vote/3);
-vote(state_timeout, no_quorum, Data) ->
+vote(state_timeout, no_quorum, #data{epoch = Epoch} = Data) ->
     %% Handle timeout if no proposal is received
-    lager:warning("Voting timeout"),
+    lager:warning("Voting timeout for epoch ~p", [Epoch]),
     %% Reply with no consensus, if new leader use preferred fork
     handle_no_consensus(Data);
 vote(Type, Msg, D) ->
@@ -149,9 +149,9 @@ vote(Type, Msg, D) ->
 %%% State: Finalize
 finalize(info, {gproc_ps_event, tx_received, #{info := Tx}}, Data) ->
     handle_vote(?COMMIT_TYPE, Tx, Data, fun on_valid_commit/3, fun on_other_vote_type/3);
-finalize(state_timeout, no_quorum, Data) ->
+finalize(state_timeout, no_quorum, #data{epoch = Epoch} = Data) ->
     %% Handle timeout if no proposal is received
-    lager:warning("Finalize timeout"),
+    lager:warning("Finalize timeout for epoch ~p", [Epoch]),
     handle_no_consensus(Data);
 finalize(Type, Msg, D) ->
     handle_common_event(Type, Msg, D).
@@ -240,7 +240,7 @@ handle_vote(Type, SignedTx, Data, OnValidFun, OnOtherVoteType) ->
             %% Check if a validator
             case can_vote(Validator, Data) of
                 true ->
-                    lager:info("Received a vote: ~p", [VoteFields]),
+                    lager:info("Received a vote: ~p of type ~p", [VoteFields, Type]),
                     Data1 = count_vote(Validator, Data),
                     %% Check if reached two thirds
                     OnValidFun(Validator, VoteFields, Data1);
@@ -297,8 +297,9 @@ check_voting_majority(#data{majority = CurrentMajority, validators=Validators, b
             Result = create_finalize_call(Votes, Proposal, Data1),
             Data2 = Data1#data{result = Result},
             send_commits(Data2),
-            Data3 = Data2#data{majority = Majority, remaining_validators = maps:from_list(Validators)},
-            check_other_votes({next_state, finalize, Data3});
+            Stake = calculate_stake(Data2),
+            Data3 = Data2#data{majority = Majority - Stake, remaining_validators = maps:from_list(Validators)},
+            check_other_votes({next_state, finalize, Data3, [{state_timeout,BlockTime,no_quorum}]});
         false ->
             {next_state, vote, Data, [{state_timeout,BlockTime,no_quorum}]}
     end.
@@ -307,15 +308,15 @@ check_other_votes({next_state, _, #data{other_votes = []}, _} = NextEvent) ->
     NextEvent;
 check_other_votes({next_state, _, #data{other_votes = []}} = NextEvent) ->
     NextEvent;
-check_other_votes({next_state, NextState, #data{other_votes = [{_Type, SignedTx}|OtherVotes]} = Data}) ->
+check_other_votes({next_state, NextState, #data{other_votes = [{_Type, SignedTx}|OtherVotes]} = Data, Actions}) ->
     Data1 = Data#data{other_votes = OtherVotes},
     case handle_vote(?COMMIT_TYPE, SignedTx, Data1, fun on_valid_commit/3, fun on_other_vote_type/3) of
         Result when element(1, Result) == next_state ->
             Result;
         keep_state_and_data ->
-            check_other_votes({next_state, NextState, Data1});
+            check_other_votes({next_state, NextState, Data1, Actions});
         Result when element(1, Result) == keep_state ->
-            check_other_votes({next_state, NextState, element(2, Result)})
+            check_other_votes({next_state, NextState, element(2, Result), Actions})
     end.
 
 on_valid_commit(_Validator, _CommitFields, #data{result = Result, majority = CurrentMajority, block_time=BlockTime, from=From, epoch = Epoch} = Data) ->
@@ -334,8 +335,11 @@ on_valid_commit(_Validator, _CommitFields, #data{result = Result, majority = Cur
             {keep_state, Data, [{state_timeout,BlockTime,no_quorum}]}
     end.
 
-on_other_vote(Type, SignedTx, #data{other_votes=OtherVotes} = Data) ->
-    {keep_state, Data#data{other_votes = [{Type, SignedTx}|OtherVotes]}}.
+on_other_vote(?COMMIT_TYPE, SignedTx, #data{other_votes=OtherVotes} = Data) ->
+    {keep_state, Data#data{other_votes = [{?COMMIT_TYPE, SignedTx}|OtherVotes]}};
+on_other_vote(_Type, _SignedTx, _Data) ->
+    lager:warning("Other vote type_ ~p", [_Type]),
+    keep_state_and_data.
 
 on_other_vote_type(Type, _SignedTx, _Data) ->
     lager:warning("Other vote type ~p", [Type]),
@@ -346,12 +350,12 @@ handle_voting(#data{majority = Majority} = Data) ->
     send_votes(Data),
     Data#data{majority = Majority - Stake}.
 
-send_votes(Data) ->
-    lager:info("Sending votes"),
+send_votes(#data{epoch = Epoch} = Data) ->
+    lager:info("Sending votes for epoch ~p", [Epoch]),
     lists:foreach(fun aec_hc_vote_pool:push/1, create_votes(?VOTE_TYPE, Data)).
 
-send_commits(Data) ->
-    lager:info("Sending commits"),
+send_commits(#data{epoch = Epoch} = Data) ->
+    lager:info("Sending commits for epoch ~p", [Epoch]),
     lists:foreach(fun aec_hc_vote_pool:push/1, create_votes(?COMMIT_TYPE, Data)).
 
 
