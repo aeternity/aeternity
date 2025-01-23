@@ -168,7 +168,7 @@ decode_votes(Votes) ->
 
 decode_votes([], Accum) ->
     lists:reverse(Accum);
-decode_votes([{tuple, {{address, Producer}, {bytes, Hash}, EpochDelta, {bytes, Signature}}}|Rest], Accum) ->
+decode_votes([{tuple, {{address, Producer}, {bytes, Hash}, EpochDelta, {bytes, _SignData}, {bytes, Signature}}}|Rest], Accum) ->
     decode_votes(Rest, [#{ producer => Producer, hash => Hash, epoch_delta => EpochDelta, signature => Signature}|Accum]).
 
 call_consensus_contract_w_env(Contract, top, Endpoint, Args) ->
