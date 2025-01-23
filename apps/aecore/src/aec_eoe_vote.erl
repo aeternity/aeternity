@@ -338,7 +338,6 @@ on_valid_commit(_Validator, _CommitFields, #data{result = Result, majority = Cur
 on_other_vote(?COMMIT_TYPE, SignedTx, #data{other_votes=OtherVotes} = Data) ->
     {keep_state, Data#data{other_votes = [{?COMMIT_TYPE, SignedTx}|OtherVotes]}};
 on_other_vote(_Type, _SignedTx, _Data) ->
-    lager:warning("Other vote type_ ~p", [_Type]),
     keep_state_and_data.
 
 on_other_vote_type(Type, _SignedTx, _Data) ->
