@@ -7,6 +7,8 @@
     call_info/1, 
     contract_call/6, 
     contract_call/7, 
+    contract_call_spec/7, 
+    contract_create_spec/6,
     create_ae_spend_tx/4,
     decode_consensus_result/3, 
     encoded_pubkey/1,
@@ -15,12 +17,14 @@
     get_block_producer/2, 
     get_entropy/2,
     get_generations/3,
+    get_nodes/1,
     inspect_election_contract/3, 
     inspect_staking_contract/3, 
     inspect_validator/4,
     key_reward_provided/0, 
     leaders_at_height/3, 
     mine_key_blocks/2,
+    mine_to_last_block_in_epoch/2,
     mine_to_next_epoch/2,
     next_nonce/2,
     privkey/1,
@@ -43,6 +47,15 @@
 
 format(Format, Args) ->
     lists:flatten(io_lib:format(Format, Args)).
+
+%% FIXME: Possible improvement: use a nice map instead of a proplist of 4-tuples
+% -type node_record() :: #{
+%     node => node(), long_name => node(), 
+%     public_key => binary(), private_key => binary()
+% }.
+%-spec get_nodes(CTConfig :: proplists:proplist()) -> list(node_record()).
+get_nodes(CTConfig) ->
+    proplists:get_value(nodes, CTConfig, []).
 
 pubkey({Pubkey, _, _}) -> Pubkey.
 
@@ -222,7 +235,7 @@ src(ContractName, Config) ->
 %% Automatically add key blocks on parent chain and
 %% if there are Txs, put them in a micro block
 produce_cc_blocks(Config, BlocksCnt) ->
-    [{Node, _, _, _} | _] = proplists:get_value(nodes, Config),
+    [{Node, _, _, _} | _] = hctest:get_nodes(Config),
     TopHeight = rpc(Node, aec_chain, top_height, []),
     {ok, #{epoch := Epoch, first := First, last := Last, length := L} = Info} =
         rpc(Node, aec_chain_hc, epoch_info, [TopHeight]),
@@ -241,14 +254,14 @@ produce_cc_blocks(Config, BlocksCnt) ->
     produce_cc_blocks(Config, BlocksCnt, ParentProduce).
 
 produce_cc_blocks(Config, BlocksCnt, ParentProduce) ->
-    [{Node1, _, _, _} | _] = proplists:get_value(nodes, Config),
+    [{Node1, _, _, _} | _] = hctest:get_nodes(Config),
     %% The previous production ended with wait_same_top, so asking first node is sufficient
     TopHeight = rpc(Node1, aec_chain, top_height, []),
     %% assert that the parent chain is not mining
     ?assertEqual(stopped, rpc:call(?PARENT_CHAIN_NODE_NAME, aec_conductor, get_mining_state, [])),
     ct:log("parent produce ~p", [ParentProduce]),
     NewTopHeight = produce_to_cc_height(Config, TopHeight, TopHeight + BlocksCnt, ParentProduce),
-    wait_same_top([ Node || {Node, _, _, _} <- proplists:get_value(nodes, Config)]),
+    wait_same_top([ Node || {Node, _, _, _} <- hctest:get_nodes(Config)]),
     get_generations(Node1, TopHeight + 1, NewTopHeight).
 
 wait_same_top(Nodes) ->
@@ -269,7 +282,7 @@ wait_same_top(Nodes, Attempts) ->
     
 %% It seems we automatically produce child chain blocks in the background
 produce_to_cc_height(Config, TopHeight, GoalHeight, ParentProduce) ->
-    NodeNames = [ Name || {_, Name, _, _} <- proplists:get_value(nodes, Config) ],
+    NodeNames = [ Name || {_, Name, _, _} <- hctest:get_nodes(Config) ],
     BlocksNeeded = GoalHeight - TopHeight,
     case BlocksNeeded > 0 of
         false ->
@@ -384,7 +397,7 @@ get_entropy(Node, Epoch) ->
     {ParentHeight, aeser_api_encoder:encode(key_block_hash, WPHash0)}.
 
 encoded_pubkey(Who) ->
-    aeser_api_encoder:encode(account_pubkey, hyperchains_test_utils:pubkey(Who)).
+    aeser_api_encoder:encode(account_pubkey, hctest:pubkey(Who)).
 
 contract_call_spec(ContractPubkey, Src, Fun, Args, Amount, From, Nonce) ->
     {contract_call_tx, CallTx} =
@@ -407,7 +420,7 @@ contract_call_spec(ContractPubkey, Src, Fun, Args, Amount, From, Nonce) ->
     Spec.
 
 contract_call(ContractPubkey, Src, Fun, Args, Amount, From) ->
-    Nonce = hyperchains_test_utils:next_nonce(?NODE1, From), %% no contract calls support for parent chain
+    Nonce = hctest:next_nonce(?NODE1, From), %% no contract calls support for parent chain
     contract_call(ContractPubkey, Src, Fun, Args, Amount, From, Nonce).
 
 contract_call(ContractPubkey, Src, Fun, Args, Amount, From, Nonce) ->
@@ -442,3 +455,32 @@ mine_to_next_epoch(Node, Config) ->
     {ok, Bs} = hctest:produce_cc_blocks(Config, Last1 - Height1 + 1),
     ct:log("Block last epoch: ~p", [Bs]).
                 
+mine_to_last_block_in_epoch(Node, Config) ->
+    {ok, #{epoch  := _Epoch,
+            first  := _First,
+            last   := Last,
+            length := _Length}} = rpc(Node, aec_chain_hc, epoch_info, []),
+    CH = rpc(Node, aec_chain, top_height, []),
+    DistToBeforeLast = Last - CH - 1,
+    {ok, _} = produce_cc_blocks(Config, DistToBeforeLast).
+    
+contract_create_spec(Name, Src, Args, Amount, Nonce, Owner) ->
+    {ok, Code}   = aect_test_utils:compile_contract(aect_test_utils:sophia_version(), Name),
+    Pubkey = aect_contracts:compute_contract_pubkey(Owner, Nonce),
+    EncodedPubkey   = aeser_api_encoder:encode(contract_pubkey, Pubkey),
+    EncodedOwner    = aeser_api_encoder:encode(account_pubkey, Owner),
+    EncodedCode     = aeser_api_encoder:encode(contract_bytearray, Code),
+    {ok, CallData} = aect_test_utils:encode_call_data(Src, "init", Args),
+    EncodedCallData = aeser_api_encoder:encode(contract_bytearray, CallData),
+    VM = aect_test_utils:vm_version(),
+    ABI = aect_test_utils:abi_version(),
+    Spec = #{ <<"amount">> => Amount
+            , <<"vm_version">> => VM
+            , <<"abi_version">> => ABI
+            , <<"nonce">> => Nonce
+            , <<"code">> => EncodedCode
+            , <<"call_data">> => EncodedCallData
+            , <<"pubkey">> => EncodedPubkey
+            , <<"owner_pubkey">> => EncodedOwner },
+    Spec.
+    
