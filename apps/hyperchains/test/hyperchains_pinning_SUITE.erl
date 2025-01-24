@@ -28,7 +28,6 @@
 
 -include_lib("stdlib/include/assert.hrl").
 -include_lib("common_test/include/ct.hrl").
--include_lib("aecontract/include/hard_forks.hrl").
 -include("./test_defaults.hrl").
 
 all() -> [{group, pinning}, {group, default_pin}].
@@ -56,6 +55,7 @@ init_per_suite(Config0) ->
         parent_chain_node => ?PARENT_CHAIN_NODE,
         parent_chain_network_id => ?PARENT_CHAIN_NETWORK_ID,
         parent_finality => ?PARENT_FINALITY,
+        parent_epoch_length => ?PARENT_EPOCH_LENGTH,
         reward_delay => ?REWARD_DELAY,
         parent_account_seeds => #{ % Parent patron pubkey is added in the shared implementation
             hctest:encoded_pubkey(?DWIGHT) => 2_100000000_000000000_000000000,
@@ -196,7 +196,7 @@ produce_n_epochs(Config, N) ->
     %% check producers
     Producers = [ aec_blocks:miner(B) || B <- Bs, aec_blocks:is_key_block(B) ],
     ChildTopHeight = rpc(Node1, aec_chain, top_height, []),
-    Leaders = leaders_at_height(Node1, ChildTopHeight, Config),
+    Leaders = hctest:leaders_at_height(Node1, ChildTopHeight, Config),
     ct:log("Bs: ~p  Leaders ~p", [Bs, Leaders]),
     %% Check that all producers are valid leaders
     ?assertEqual([], lists:usort(Producers) -- Leaders),
@@ -204,9 +204,9 @@ produce_n_epochs(Config, N) ->
     %% at least for larger EPOCHs
     ?assert(length(Leaders) > 1, length(Producers) > 1),
     ParentTopHeight = rpc(?PARENT_CHAIN_NODE, aec_chain, top_height, []),
-    {ok, ParentBlocks} = get_generations(?PARENT_CHAIN_NODE, 0, ParentTopHeight),
+    {ok, ParentBlocks} = hctest:get_generations(?PARENT_CHAIN_NODE, 0, ParentTopHeight),
     ct:log("Parent chain blocks ~p", [ParentBlocks]),
-    {ok, ChildBlocks} = get_generations(Node1, 0, ChildTopHeight),
+    {ok, ChildBlocks} = hctest:get_generations(Node1, 0, ChildTopHeight),
     ct:log("Child chain blocks ~p", [ChildBlocks]),
     ok.
 
@@ -566,7 +566,7 @@ bytes_literal(Bin) ->
 
 % PINREFAC
 pin_contract_call_tx(Config, PinProof, FromPubKey) ->
-    Tx = contract_call(?config(election_contract, Config), src(?HC_CONTRACT, Config),
+    Tx = contract_call(?config(election_contract, Config), hctest:src(?HC_CONTRACT, Config),
                        "pin", [bytes_literal(PinProof)], 0, FromPubKey),
 
     NetworkId = ?config(network_id, Config),
@@ -625,9 +625,6 @@ who_by_pubkey(Pubkey) ->
         _  -> error(unknown_beneficiary)
     end.
 
-encoded_pubkey(Who) ->
-    aeser_api_encoder:encode(account_pubkey, pubkey(Who)).
-
 next_nonce(Node, Pubkey) ->
     case rpc(Node, aec_next_nonce, pick_for_account, [Pubkey, max]) of
         {ok, NextNonce} -> NextNonce;
@@ -651,43 +648,6 @@ account_balance(Pubkey) ->
         none -> no_such_account
     end.
 
-inspect_staking_contract(OriginWho, WhatToInspect, Config, TopHash) ->
-    {Fun, Args} =
-        case WhatToInspect of
-            {staking_power, Who} ->
-                {"staking_power", [binary_to_list(encoded_pubkey(Who))]};
-            {get_validator_state, Who} ->
-                {"get_validator_state", [binary_to_list(encoded_pubkey(Who))]};
-            {get_validator_contract, Who} ->
-                {"get_validator_contract", [binary_to_list(encoded_pubkey(Who))]};
-            get_current_epoch ->
-                {"get_current_epoch", []};
-            get_state ->
-                {"get_state", []};
-            leaders ->
-                {"sorted_validators", []}
-
-        end,
-    ContractPubkey = ?config(staking_contract, Config),
-    do_contract_call(ContractPubkey, src(?MAIN_STAKING_CONTRACT, Config), Fun, Args, OriginWho, TopHash).
-
-do_contract_call(CtPubkey, CtSrc, Fun, Args, Who, TopHash) ->
-    F = fun() -> do_contract_call_(CtPubkey, CtSrc, Fun, Args, Who, TopHash) end,
-    {T, Res} = timer:tc(F),
-    ct:log("Calling contract took ~.2f ms", [T / 1000]),
-    Res.
-
-do_contract_call_(CtPubkey, CtSrc, Fun, Args, Who, TopHash) ->
-    Tx = contract_call(CtPubkey, CtSrc, Fun, Args, 0, pubkey(Who)),
-    {ok, Call} = dry_run(TopHash, Tx),
-    decode_consensus_result(Call, Fun, CtSrc).
-
-dry_run(TopHash, Tx) ->
-    case rpc(?NODE1, aec_dry_run, dry_run, [TopHash, [], [{tx, Tx}]]) of
-        {error, _} = Err -> Err;
-        {ok, {[{contract_call_tx, {ok, Call}}], _Events}} -> {ok, Call}
-    end.
-
 create_ae_spend_tx(SenderId, RecipientId, Nonce, Payload) ->
     Params = #{sender_id => aeser_id:create(account, SenderId),
                recipient_id => aeser_id:create(account, RecipientId),
@@ -702,23 +662,6 @@ external_address(Node) ->
     {ok, Port} = rpc(Node, aeu_env, user_config_or_env,
                      [[<<"http">>, <<"external">>, <<"port">>], aehttp, [external, port]]),
    "http://127.0.0.1:" ++ integer_to_list(Port).
-
-
-decode_consensus_result(Call, Fun, Src) ->
-    ReturnType = aect_call:return_type(Call),
-    ReturnValue = aect_call:return_value(Call),
-    Res = aect_test_utils:decode_call_result(Src, Fun, ReturnType, ReturnValue),
-    {ReturnType, Res}.
-
-src(ContractName, Config) ->
-    Srcs = ?config(contract_src, Config),
-    maps:get(ContractName, Srcs).
-
-staking_contract_address() ->
-    aect_contracts:compute_contract_pubkey(?OWNER_PUBKEY, 1).
-
-election_contract_address() ->
-    aect_contracts:compute_contract_pubkey(?OWNER_PUBKEY, 2).
 
 %% Increase the child chain with a number of key blocks
 %% Automatically add key blocks on parent chain and
@@ -736,7 +679,7 @@ produce_cc_blocks(Config, BlocksCnt) ->
     ct:log("P@~p C@~p for next ~p child blocks", [ParentTopHeight, TopHeight,  BlocksCnt]),
     %% Spread parent blocks over BlocksCnt
     ParentProduce =
-        lists:append([ spread(?PARENT_EPOCH_LENGTH, TopHeight,
+        lists:append([ hctest:spread(?PARENT_EPOCH_LENGTH, TopHeight,
                               [ {CH, 0} || CH <- lists:seq(First + E * L, Last + E * L)]) ||
                        E <- lists:seq(0, ScheduleUpto - Epoch) ]),
     %% Last parameter steers where in Child epoch parent block is produced
@@ -751,7 +694,7 @@ produce_cc_blocks(Config, BlocksCnt, ParentProduce) ->
     ct:log("parent produce ~p", [ParentProduce]),
     NewTopHeight = produce_to_cc_height(Config, TopHeight, TopHeight + BlocksCnt, ParentProduce),
     wait_same_top([ Node || {Node, _, _, _} <- ?config(nodes, Config)]),
-    get_generations(Node1, TopHeight + 1, NewTopHeight).
+    hctest:get_generations(Node1, TopHeight + 1, NewTopHeight).
 
 %% It seems we automatically produce child chain blocks in the background
 produce_to_cc_height(Config, TopHeight, GoalHeight, ParentProduce) ->
@@ -764,7 +707,7 @@ produce_to_cc_height(Config, TopHeight, GoalHeight, ParentProduce) ->
             NewParentProduce =
                 case ParentProduce of
                     [{CH, PBs} | PRest ] when CH == TopHeight+1 ->
-                        mine_key_blocks(?PARENT_CHAIN_NODE_NAME, PBs),
+                        hctest:mine_key_blocks(?PARENT_CHAIN_NODE_NAME, PBs),
                         PRest;
                     PP -> PP
                 end,
@@ -773,7 +716,7 @@ produce_to_cc_height(Config, TopHeight, GoalHeight, ParentProduce) ->
             {ok, _Txs} = rpc:call(hd(NodeNames), aec_tx_pool, peek, [infinity]),
 
             %% This will mine 1 key-block (and 0 or 1 micro-blocks)
-            {ok, Blocks} = mine_cc_blocks(NodeNames, 1),
+            {ok, Blocks} = hctest:mine_cc_blocks(NodeNames, 1),
 
             {Node, KeyBlock} = lists:last(Blocks),
             case Blocks of
@@ -786,77 +729,7 @@ produce_to_cc_height(Config, TopHeight, GoalHeight, ParentProduce) ->
             ?assertEqual(key, aec_blocks:type(KeyBlock)),
             ct:log("CC ~p produced key-block: ~p", [Node, KeyBlock]),
 
-            Producer = get_block_producer_name(?config(staker_names, Config), KeyBlock),
+            Producer = hctest:get_block_producer_name(?config(staker_names, Config), KeyBlock),
             ct:log("~p produced CC block at height ~p", [Producer, aec_blocks:height(KeyBlock)]),
             produce_to_cc_height(Config, TopHeight + 1, GoalHeight, NewParentProduce)
       end.
-
-mine_cc_blocks(NodeNames, N) ->
-    aecore_suite_utils:hc_mine_blocks(NodeNames, N).
-
-get_generations(Node, FromHeight, ToHeight) ->
-    ReversedBlocks =
-        lists:foldl(
-            fun(Height, Accum) ->
-                case rpc(Node, aec_chain, get_generation_by_height, [Height, backward]) of
-                    {ok, #{key_block := KB, micro_blocks := MBs}} ->
-                        ReversedGeneration = lists:reverse(MBs) ++ [KB],
-                        ReversedGeneration ++ Accum;
-                    error -> error({failed_to_fetch_generation, Height})
-                end
-            end,
-            [],
-            lists:seq(FromHeight, ToHeight)),
-    {ok, lists:reverse(ReversedBlocks)}.
-
-mine_key_blocks(ParentNodeName, NumParentBlocks) ->
-    {ok, _} = aecore_suite_utils:mine_micro_block_emptying_mempool_or_fail(ParentNodeName),
-    {ok, KBs} = aecore_suite_utils:mine_key_blocks(ParentNodeName, NumParentBlocks),
-    ct:log("Parent block mined ~p ~p number: ~p", [KBs, ParentNodeName, NumParentBlocks]),
-    {ok, KBs}.
-
-%get_block_producer_name(Parties, Node, Height) ->
-%    Producer = get_block_producer(Node, Height),
-%    case lists:keyfind(Producer, 1, Parties) of
-%        false -> Producer;
-%        {_, _, Name} -> Name
-%    end.
-
-get_block_producer_name(Parties, Block) ->
-    Producer = aec_blocks:miner(Block),
-    case lists:keyfind(Producer, 1, Parties) of
-        false -> Producer;
-        {_, _, Name} -> Name
-    end.
-
-leaders_at_height(Node, Height, Config) ->
-    {ok, Hash} = rpc(Node, aec_chain_state, get_key_block_hash_at_height, [Height]),
-    {ok, Return} = inspect_staking_contract(?ALICE, leaders, Config, Hash),
-    [ begin
-        {account_pubkey, K} = aeser_api_encoder:decode(LeaderKey), K
-      end || [ LeaderKey, _LeaderStake] <- Return ].
-
-create_stub(Contract) ->
-    create_stub(Contract, []).
-
-create_stub(Contract, Opts0) ->
-    File = aect_test_utils:contract_filename(Contract),
-    Opts = Opts0 ++ [{no_code, true}] ++ aect_test_utils:copts({file, File}),
-    {ok, SrcBin} = aect_test_utils:read_contract(Contract),
-    {ok, Enc}  = aeso_aci:contract_interface(json, binary_to_list(SrcBin), Opts),
-    {ok, Stub} = aeso_aci:render_aci_json(Enc),
-    binary_to_list(Stub).
-
-spread(_, _, []) ->
-    [];
-spread(0, TopHeight, Spread) ->
-    [ {CH, N} || {CH, N} <- Spread, N /= 0, CH > TopHeight ];
-%spread(N, TopHeight, [{CH, K} | Spread]) when length(Spread) < N ->
-%    %% Take speed first (not realistic), then fill rest
-%    spread(0, TopHeight, [{CH, K + N - length(Spread)} | [ {CH2, X+1} || {CH2, X} <- Spread]]);
-spread(N, TopHeight, Spread) when N rem 2 == 0 ->
-    {Left, Right} = lists:split(length(Spread) div 2, Spread),
-    spread(N div 2, TopHeight, Left) ++ spread(N div 2, TopHeight, Right);
-spread(N, TopHeight, Spread) when N rem 2 == 1 ->
-    {Left, [{Middle, K} | Right]} = lists:split(length(Spread) div 2, Spread),
-    spread(N div 2, TopHeight, Left) ++ [{Middle, K+1} || Middle > TopHeight] ++ spread(N div 2, TopHeight, Right).

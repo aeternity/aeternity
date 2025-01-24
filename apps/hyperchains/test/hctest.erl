@@ -15,6 +15,7 @@
     external_address/1,
     format/2,
     get_block_producer/2, 
+    get_block_producer_name/2, 
     get_entropy/2,
     get_generations/3,
     get_nodes/1,
@@ -23,6 +24,7 @@
     inspect_validator/4,
     key_reward_provided/0, 
     leaders_at_height/3, 
+    mine_cc_blocks/2, 
     mine_key_blocks/2,
     mine_to_last_block_in_epoch/2,
     mine_to_next_epoch/2,
@@ -341,13 +343,6 @@ mine_key_blocks(ParentNodeName, NumParentBlocks) ->
     {ok, KBs} = aecore_suite_utils:mine_key_blocks(ParentNodeName, NumParentBlocks),
     ct:log("Parent block mined ~p ~p number: ~p", [KBs, ParentNodeName, NumParentBlocks]),
     {ok, KBs}.
-
-%get_block_producer_name(Parties, Node, Height) ->
-%    Producer = get_block_producer(Node, Height),
-%    case lists:keyfind(Producer, 1, Parties) of
-%        false -> Producer;
-%        {_, _, Name} -> Name
-%    end.
 
 get_block_producer_name(Parties, Block) ->
     Producer = aec_blocks:miner(Block),
