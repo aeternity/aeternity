@@ -337,16 +337,7 @@ state_pre_transform_node(Type, Height, PrevNode, Trees) ->
                     case get_entropy_hash(Epoch + 2) of
                         {ok, Seed} ->
                             cache_validators_for_epoch({TxEnv, Trees1}, Seed, Epoch + 2),
-                            FinalizeHeight = EpochFirst - 1,
-                            FinalizeEpoch = Epoch - 1,
-                            NewEpochLength = case aec_chain_hc:finalize_info(FinalizeHeight) of
-                                                #{epoch_length := FinalizeEpochLength, epoch := FinalizeEpoch} ->
-                                                    FinalizeEpochLength;
-                                                _ ->
-                                                    lager:warning("Finalize info not found for epoch ~p height ~p", [FinalizeEpoch, FinalizeHeight]),
-                                                    EpochLength
-                                              end,
-                            Trees2 = step_eoe(TxEnv, Trees1, Leader, Seed, NewEpochLength, -1, CarryOverFlag),
+                            Trees2 = step_eoe(TxEnv, Trees1, Leader, Seed, -1, CarryOverFlag),
                             {ok, NextEpochInfo} = aec_chain_hc:epoch_info({TxEnv, Trees2}),
                             {Trees2, Events ++ [{new_epoch, NextEpochInfo}]};
                         {error, _} ->
@@ -663,8 +654,8 @@ step(TxEnv, Trees, Leader) ->
             aec_conductor:throw_error(step_failed)
     end.
 
-step_eoe(TxEnv, Trees, Leader, Seed, Length, BasePinReward, CarryOver) ->
-    {ok, CD} = aeb_fate_abi:create_calldata("step_eoe", [{address, Leader}, {bytes, Seed}, Length, BasePinReward, CarryOver]),
+step_eoe(TxEnv, Trees, Leader, Seed, BasePinReward, CarryOver) ->
+    {ok, CD} = aeb_fate_abi:create_calldata("step_eoe", [{address, Leader}, {bytes, Seed}, BasePinReward, CarryOver]),
     CallData = aeser_api_encoder:encode(contract_bytearray, CD),
     case call_consensus_contract_(?ELECTION_CONTRACT, TxEnv, Trees, CallData, "step_eoe", 0) of
         {ok, Trees1, _Call} ->
