@@ -35,7 +35,6 @@
 ]).
 
 -include_lib("stdlib/include/assert.hrl").
-% -include_lib("aecontract/include/hard_forks.hrl").
 -include("./test_defaults.hrl").
 
 all() -> [{group, hc}, {group, epochs}].
@@ -88,8 +87,8 @@ init_per_suite(Config0) ->
 end_per_suite(Config) ->
     hctest_ct_shared:end_per_suite(Config, [?NODE1, ?NODE2, ?NODE3, ?PARENT_CHAIN_NODE]).
 
-init_per_group(Group, ConfigPre) ->
-    hctest_ct_shared:init_per_group(Group, ConfigPre, #{
+init_per_group(Group, Config) ->
+    hctest_ct_shared:init_per_group(Group, Config, #{
         consensus => ?CONSENSUS,
         parent_chain_node => ?PARENT_CHAIN_NODE,
         parent_chain_node_name => ?PARENT_CHAIN_NODE_NAME,
@@ -215,35 +214,14 @@ start_two_child_nodes(CTConfig) ->
     ok.
 
 produce_first_epoch(Config) ->
-    produce_n_epochs(Config, 1).
+    hctest_ct_shared:produce_n_epochs(Config, 1).
 
 produce_some_epochs(Config) ->
-    produce_n_epochs(Config, 5).
-
-produce_n_epochs(Config, N) ->
-    [{Node1, _, _, _}|_] = hctest:get_nodes(Config),
-    %% produce blocks
-    {ok, Bs} = hctest:produce_cc_blocks(Config, N * ?CHILD_EPOCH_LENGTH),
-    %% check producers
-    Producers = [ aec_blocks:miner(B) || B <- Bs, aec_blocks:is_key_block(B) ],
-    ChildTopHeight = rpc(Node1, aec_chain, top_height, []),
-    Leaders = hctest:leaders_at_height(Node1, ChildTopHeight, Config),
-    ct:log("Bs: ~p  Leaders ~p", [Bs, Leaders]),
-    %% Check that all producers are valid leaders
-    ?assertEqual([], lists:usort(Producers) -- Leaders),
-    %% If we have more than 1 leader, then we should see more than one producer
-    %% at least for larger EPOCHs
-    ?assert(length(Leaders) > 1, length(Producers) > 1),
-    ParentTopHeight = rpc(?PARENT_CHAIN_NODE, aec_chain, top_height, []),
-    {ok, ParentBlocks} = hctest:get_generations(?PARENT_CHAIN_NODE, 0, ParentTopHeight),
-    ct:log("Parent chain blocks ~p", [ParentBlocks]),
-    {ok, ChildBlocks} = hctest:get_generations(Node1, 0, ChildTopHeight),
-    ct:log("Child chain blocks ~p", [ChildBlocks]),
-    ok.
+    hctest_ct_shared:produce_n_epochs(Config, 5).
 
 respect_schedule(Config) ->
     [{Node, _, _, _}|_] = hctest:get_nodes(Config),
-    ChildHeight = rpc(Node, aec_chain, top_height, []),
+    ChildHeight = hctest:get_height(Node),
     %% Validate one epoch at a time
     respect_schedule(Node, 1, 1, ChildHeight).
 
@@ -282,7 +260,7 @@ entropy_impact_schedule(Config) ->
     Nodes = [ N || {N, _, _, _} <- hctest:get_nodes(Config)],
     Node = hd(Nodes),
     %% Sync nodes
-    ChildHeight = rpc(Node, aec_chain, top_height, []),
+    ChildHeight = hctest:get_height(Node),
     {ok, #{epoch := Epoch0, length := Length0}} = rpc(Node, aec_chain_hc, epoch_info, []),
     %% Make sure chain is long enough
     case Epoch0 =< 5 of
@@ -346,7 +324,7 @@ simple_withdraw(Config) ->
     {ok, 0} = hctest:inspect_validator(AliceCt, ?ALICE, get_available_balance, Config),
 
     %% Let's advance 5 epochs...
-    produce_n_epochs(Config, 5),
+    hctest_ct_shared:produce_n_epochs(Config, 5),
 
     %% Now test the withdrawal
     {ok, WithdrawAmount} = hctest:inspect_validator(AliceCt, ?ALICE, get_available_balance, Config),
@@ -492,7 +470,7 @@ verify_rewards(Config) ->
     NetworkId = proplists:get_value(network_id, Config),
     {_, PatronPub} = aecore_suite_utils:sign_keys(Node),
 
-    Height = rpc(Node, aec_chain, top_height, []),
+    Height = hctest:get_height(Node),
     {ok, #{first := First0}} = rpc(Node, aec_chain_hc, epoch_info, []),
 
     %% grab Alice's and Bob's staking validator contract
@@ -618,7 +596,7 @@ calc_rewards([B | Bs], Node, Prev, Rs) ->
 first_leader_next_epoch(Config) ->
     [{Node, _, _, _} | _] = hctest:get_nodes(Config),
     hctest:produce_cc_blocks(Config, 1),
-    StartHeight = rpc(Node, aec_chain, top_height, []),
+    StartHeight = hctest:get_height(Node),
     {ok, #{last := Last, epoch := Epoch}} = rpc(Node, aec_chain_hc, epoch_info, [StartHeight]),
     ct:log("Checking leader for first block next epoch ~p (height ~p)", [Epoch+1, Last+1]),
     ?assertMatch({ok, _}, rpc(Node, aec_consensus_hc, leader_for_height, [Last + 1])).
@@ -629,18 +607,18 @@ epochs_with_slow_parent(Config) ->
     [{Node, _, _, _} | _] = hctest:get_nodes(Config),
     ct:log("Parent start height = ~p", [proplists:get_value(parent_start_height, Config)]),
     %% ensure start at a new epoch boundary
-    StartHeight = rpc(Node, aec_chain, top_height, []),
+    StartHeight = hctest:get_height(Node),
     {ok, #{last := Last}} = rpc(Node, aec_chain_hc, epoch_info, [StartHeight]),
     BlocksLeftToBoundary = Last - StartHeight,
     ct:log("Starting at CC height ~p: producing ~p cc blocks", [StartHeight, BlocksLeftToBoundary]),
     %% some block production including parent blocks
     hctest:produce_cc_blocks(Config, BlocksLeftToBoundary),
 
-    ParentHeight = rpc(?PARENT_CHAIN_NODE, aec_chain, top_height, []),
+    ParentHeight = hctest:get_height(?PARENT_CHAIN_NODE),
     ct:log("Child continues while parent stuck at: ~p", [ParentHeight]),
     ParentEpoch = (ParentHeight - proplists:get_value(parent_start_height, Config) +
                       (?PARENT_EPOCH_LENGTH - 1)) div ?PARENT_EPOCH_LENGTH,
-    ChildEpoch = rpc(Node, aec_chain, top_height, []) div ?CHILD_EPOCH_LENGTH,
+    ChildEpoch = hctest:get_height(Node) div ?CHILD_EPOCH_LENGTH,
     ct:log("Child epoch ~p while parent epoch ~p (parent should be in next epoch)", [ChildEpoch, ParentEpoch]),
     ?assertEqual(1, ParentEpoch - ChildEpoch),
 
@@ -651,9 +629,9 @@ epochs_with_slow_parent(Config) ->
     {ok, _} = hctest:produce_cc_blocks(Config, ?CHILD_EPOCH_LENGTH*Resilience, []),
 
     ct:log("Mined almost ~p additional child epochs without parent progress", [Resilience]),
-    ParentTopHeight = rpc(?PARENT_CHAIN_NODE, aec_chain, top_height, []),
+    ParentTopHeight = hctest:get_height(?PARENT_CHAIN_NODE),
     ?assertEqual(ParentHeight, ParentTopHeight),
-    ChildTopHeight = rpc(Node, aec_chain, top_height, []),
+    ChildTopHeight = hctest:get_height(Node),
     {ok, #{epoch := EndEpoch} = EpochInfo} = rpc(Node, aec_chain_hc, epoch_info, [ChildTopHeight]),
     ct:log("Parent at height ~p and child at height ~p in child epoch ~p",
            [ParentTopHeight, ChildTopHeight, EndEpoch]),
@@ -672,8 +650,8 @@ epochs_with_slow_parent(Config) ->
 %% When parent blocks are produced too quickly, we need to shorten child epoch
 epochs_with_fast_parent(Config) ->
     [{Node, _, _, _} | _] = hctest:get_nodes(Config),
-    ParentTopHeight = rpc(?PARENT_CHAIN_NODE, aec_chain, top_height, []),
-    ChildTopHeight = rpc(Node, aec_chain, top_height, []),
+    ParentTopHeight = hctest:get_height(?PARENT_CHAIN_NODE),
+    ChildTopHeight = hctest:get_height(Node),
     {ok, #{epoch := ChildEpoch}} = rpc(Node, aec_chain_hc, epoch_info, []),
 
     %% Quickly produce parent blocks to be in sync again
@@ -684,7 +662,7 @@ epochs_with_fast_parent(Config) ->
     {ok, _} = hctest:produce_cc_blocks(Config, 1, [{ChildTopHeight + 1, ParentBlocksNeeded}]),
     %% and finish a child epoch
     %% ensure start at a new epoch boundary
-    StartHeight = rpc(Node, aec_chain, top_height, []),
+    StartHeight = hctest:get_height(Node),
     {ok, #{last := Last, length := Len} = EpochInfo1} = rpc(Node, aec_chain_hc, epoch_info, []),
     ct:log("Info ~p", [EpochInfo1]),
     BlocksLeftToBoundary = Last - StartHeight,
@@ -692,15 +670,15 @@ epochs_with_fast_parent(Config) ->
     {ok, _} = hctest:produce_cc_blocks(Config, BlocksLeftToBoundary),
 
     %% Produce twice as many parent blocks as needed in an epoch
-    Height0 = rpc(Node, aec_chain, top_height, []),
-    ParentTopHeight0 = rpc(?PARENT_CHAIN_NODE, aec_chain, top_height, []),
+    Height0 = hctest:get_height(Node),
+    ParentTopHeight0 = hctest:get_height(?PARENT_CHAIN_NODE),
     {ok, _} = hctest:produce_cc_blocks(
         Config, ?CHILD_EPOCH_LENGTH,
         hctest:spread(2*?PARENT_EPOCH_LENGTH, Height0,
             [ {CH, 0} || CH <- lists:seq(Height0 + 1, Height0 + Len)])),
 
-    ParentTopHeight1 = rpc(?PARENT_CHAIN_NODE, aec_chain, top_height, []),
-    Height1 = rpc(Node, aec_chain, top_height, []),
+    ParentTopHeight1 = hctest:get_height(?PARENT_CHAIN_NODE),
+    Height1 = hctest:get_height(Node),
     {ok, EpochInfo2} = rpc(Node, aec_chain_hc, epoch_info, []),
     ct:log("Parent at height ~p and child at height ~p in child epoch ~p",
            [ParentTopHeight1, Height1, EpochInfo2 ]),

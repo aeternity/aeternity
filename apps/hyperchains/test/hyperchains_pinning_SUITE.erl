@@ -195,7 +195,7 @@ produce_n_epochs(Config, N) ->
     {ok, Bs} = produce_cc_blocks(Config, N * ?CHILD_EPOCH_LENGTH),
     %% check producers
     Producers = [ aec_blocks:miner(B) || B <- Bs, aec_blocks:is_key_block(B) ],
-    ChildTopHeight = rpc(Node1, aec_chain, top_height, []),
+    ChildTopHeight = hctest:get_height(Node1),
     Leaders = hctest:leaders_at_height(Node1, ChildTopHeight, Config),
     ct:log("Bs: ~p  Leaders ~p", [Bs, Leaders]),
     %% Check that all producers are valid leaders
@@ -203,7 +203,7 @@ produce_n_epochs(Config, N) ->
     %% If we have more than 1 leader, then we should see more than one producer
     %% at least for larger EPOCHs
     ?assert(length(Leaders) > 1, length(Producers) > 1),
-    ParentTopHeight = rpc(?PARENT_CHAIN_NODE, aec_chain, top_height, []),
+    ParentTopHeight = hctest:get_height(?PARENT_CHAIN_NODE),
     {ok, ParentBlocks} = hctest:get_generations(?PARENT_CHAIN_NODE, 0, ParentTopHeight),
     ct:log("Parent chain blocks ~p", [ParentBlocks]),
     {ok, ChildBlocks} = hctest:get_generations(Node1, 0, ChildTopHeight),
@@ -269,7 +269,7 @@ post_pin_to_pc(Config) ->
     [{Node, _, _, _} | _] = ?config(nodes, Config),
 
     %% Get to first block in new epoch
-    Height1 = rpc(Node, aec_chain, top_height, []),
+    Height1 = hctest:get_height(Node),
     {ok, #{last := Last1}} = rpc(Node, aec_chain_hc, epoch_info, []),
     {ok, _} = produce_cc_blocks(Config, Last1 - Height1 + 1),
     {ok, Pin} = rpc(Node, aec_parent_connector, get_pinning_data, []),
@@ -305,12 +305,12 @@ post_pin_to_pc(Config) ->
     ok = rpc(Node, aec_tx_pool, push, [SignedTx, tx_received]),
     {ok, [_]} = rpc(Node, aec_tx_pool, peek, [infinity]), % transactions in pool
     {ok, _} = produce_cc_blocks(Config, 1),
-    CH = rpc(Node, aec_chain, top_height, []),
+    CH = hctest:get_height(Node),
     {ok, []} = rpc(?PARENT_CHAIN_NODE, aec_tx_pool, peek, [infinity]), % all transactions comitted
     DistToBeforeLast = Last - CH - 1,
     {ok, _} = produce_cc_blocks(Config, DistToBeforeLast), % produce blocks until last
     BL = Last - 1,
-    BL = rpc(Node, aec_chain, top_height, []), % we're producing in last black
+    BL = hctest:get_height(Node), % we're producing in last black
     ok.
 
 %% A wallet posting a pin transaction by only using HTTP API towards Child and Parent
@@ -318,7 +318,7 @@ wallet_post_pin_to_pc(Config) ->
     [{Node, _, _, _} | _] = ?config(nodes, Config),
 
     %% Progress to first block of next epoch
-    Height1 = rpc(?NODE1, aec_chain, top_height, []),
+    Height1 = hctest:get_height(?NODE1),
     {ok, #{last := Last1, length := Len, epoch := Epoch}} = rpc(Node, aec_chain_hc, epoch_info, []),
     {ok, Bs} = produce_cc_blocks(Config, Last1 - Height1 + 1),
     HashLastInEpoch = aec_blocks:prev_hash(lists:last(Bs)),
@@ -378,7 +378,7 @@ wallet_post_pin_to_pc(Config) ->
     {ok, _} = produce_cc_blocks(Config, 1),
     {ok, []} = rpc(Node, aec_tx_pool, peek, [infinity]), % transactions in pool
 
-    Height2 = rpc(Node, aec_chain, top_height, []),
+    Height2 = hctest:get_height(Node),
     {ok, #{last := CollectHeight}} = rpc(Node, aec_chain_hc, epoch_info, []),
     %% mine to CollectHeight and TODO: see that indeed the proof has been used
     {ok, _} = produce_cc_blocks(Config, CollectHeight - Height2),
@@ -668,14 +668,14 @@ external_address(Node) ->
 %% if there are Txs, put them in a micro block
 produce_cc_blocks(Config, BlocksCnt) ->
     [{Node, _, _, _} | _] = ?config(nodes, Config),
-    TopHeight = rpc(Node, aec_chain, top_height, []),
+    TopHeight = hctest:get_height(Node),
     {ok, #{epoch := Epoch, first := First, last := Last, length := L} = Info} =
         rpc(Node, aec_chain_hc, epoch_info, [TopHeight]),
     ct:log("EpochInfo ~p", [Info]),
     %% At end of BlocksCnt child epoch approaches approx:
     CBAfterEpoch = BlocksCnt - (Last - TopHeight),
     ScheduleUpto = Epoch + 1 + (CBAfterEpoch div L),
-    ParentTopHeight = rpc(?PARENT_CHAIN_NODE, aec_chain, top_height, []),
+    ParentTopHeight = hctest:get_height(?PARENT_CHAIN_NODE),
     ct:log("P@~p C@~p for next ~p child blocks", [ParentTopHeight, TopHeight,  BlocksCnt]),
     %% Spread parent blocks over BlocksCnt
     ParentProduce =
@@ -688,7 +688,7 @@ produce_cc_blocks(Config, BlocksCnt) ->
 produce_cc_blocks(Config, BlocksCnt, ParentProduce) ->
     [{Node1, _, _, _} | _] = ?config(nodes, Config),
     %% The previous production ended with wait_same_top, so asking first node is sufficient
-    TopHeight = rpc(Node1, aec_chain, top_height, []),
+    TopHeight = hctest:get_height(Node1),
     %% assert that the parent chain is not mining
     ?assertEqual(stopped, rpc:call(?PARENT_CHAIN_NODE_NAME, aec_conductor, get_mining_state, [])),
     ct:log("parent produce ~p", [ParentProduce]),

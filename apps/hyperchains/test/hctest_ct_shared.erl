@@ -7,9 +7,11 @@
     end_per_suite/2,
     init_per_group/3,
     init_per_suite/2,
+    produce_n_epochs/2,
     staking_contract_address_from_ctconfig/1
 ]).
 
+-include_lib("stdlib/include/assert.hrl").
 -include_lib("aecontract/include/hard_forks.hrl").
 -include("./test_defaults.hrl").
 
@@ -109,7 +111,7 @@ init_per_group(Group, ConfigPre, #{
 
     aecore_suite_utils:start_node(ParentChainNode, Config),
     aecore_suite_utils:connect(ParentChainNodeName, []),
-    ParentTopHeight = aecore_suite_utils:rpc(ParentChainNode, aec_chain, top_height, []),
+    ParentTopHeight = hctest:get_height(ParentChainNode),
     StartHeight = max(ParentTopHeight, ParentEpochLength),
     ct:log("Parent chain top height ~p start at ~p", [ParentTopHeight, StartHeight]),
     %%TODO mine less than necessary parent height and test chain starts when height reached
@@ -337,3 +339,25 @@ build_json_files(ElectionContract, NodeConfig, CTConfig) ->
             hctest:encoded_pubkey(?LISA) => 4_100000000_000000000_000000000
         }),
     ok.
+
+produce_n_epochs(Config, N) ->
+    [{Node1, _, _, _}|_] = hctest:get_nodes(Config),
+    %% produce blocks
+    {ok, Bs} = hctest:produce_cc_blocks(Config, N * ?CHILD_EPOCH_LENGTH),
+    %% check producers
+    Producers = [ aec_blocks:miner(B) || B <- Bs, aec_blocks:is_key_block(B) ],
+    ChildTopHeight = hctest:get_height(Node1),
+    Leaders = hctest:leaders_at_height(Node1, ChildTopHeight, Config),
+    ct:log("Bs: ~p  Leaders ~p", [Bs, Leaders]),
+    %% Check that all producers are valid leaders
+    ?assertEqual([], lists:usort(Producers) -- Leaders),
+    %% If we have more than 1 leader, then we should see more than one producer
+    %% at least for larger EPOCHs
+    ?assert(length(Leaders) > 1, length(Producers) > 1),
+    ParentTopHeight = hctest:get_height(?PARENT_CHAIN_NODE),
+    {ok, ParentBlocks} = hctest:get_generations(?PARENT_CHAIN_NODE, 0, ParentTopHeight),
+    ct:log("Parent chain blocks ~p", [ParentBlocks]),
+    {ok, ChildBlocks} = hctest:get_generations(Node1, 0, ChildTopHeight),
+    ct:log("Child chain blocks ~p", [ChildBlocks]),
+    ok.
+    

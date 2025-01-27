@@ -17,6 +17,7 @@
     get_block_producer/2, 
     get_block_producer_name/2, 
     get_entropy/2,
+    get_height/1,
     get_generations/3,
     get_nodes/1,
     inspect_election_contract/3, 
@@ -38,6 +39,7 @@
     sign_tx/3,
     spread/3,
     src/2,
+    wait_and_sync/1,
     wait_same_top/1, 
     wait_same_top/2, 
     who_by_pubkey/1,
@@ -238,14 +240,14 @@ src(ContractName, Config) ->
 %% if there are Txs, put them in a micro block
 produce_cc_blocks(Config, BlocksCnt) ->
     [{Node, _, _, _} | _] = hctest:get_nodes(Config),
-    TopHeight = rpc(Node, aec_chain, top_height, []),
+    TopHeight = get_height(Node),
     {ok, #{epoch := Epoch, first := First, last := Last, length := L} = Info} =
         rpc(Node, aec_chain_hc, epoch_info, [TopHeight]),
     ct:log("EpochInfo ~p", [Info]),
     %% At end of BlocksCnt child epoch approaches approx:
     CBAfterEpoch = BlocksCnt - (Last - TopHeight),
     ScheduleUpto = Epoch + 1 + (CBAfterEpoch div L),
-    ParentTopHeight = rpc(?PARENT_CHAIN_NODE, aec_chain, top_height, []),
+    ParentTopHeight = hctest:get_height(?PARENT_CHAIN_NODE),
     ct:log("P@~p C@~p for next ~p child blocks", [ParentTopHeight, TopHeight,  BlocksCnt]),
     %% Spread parent blocks over BlocksCnt
     ParentProduce =
@@ -258,7 +260,7 @@ produce_cc_blocks(Config, BlocksCnt) ->
 produce_cc_blocks(Config, BlocksCnt, ParentProduce) ->
     [{Node1, _, _, _} | _] = hctest:get_nodes(Config),
     %% The previous production ended with wait_same_top, so asking first node is sufficient
-    TopHeight = rpc(Node1, aec_chain, top_height, []),
+    TopHeight = hctest:get_height(Node1),
     %% assert that the parent chain is not mining
     ?assertEqual(stopped, rpc:call(?PARENT_CHAIN_NODE_NAME, aec_conductor, get_mining_state, [])),
     ct:log("parent produce ~p", [ParentProduce]),
@@ -282,6 +284,11 @@ wait_same_top(Nodes, Attempts) ->
             wait_same_top(Nodes, Attempts - 1)
     end.
     
+wait_and_sync(Config) ->
+    Nodes = get_nodes(Config),
+    {ok, _KB} = wait_same_top(Nodes, 3),
+    ok.
+
 %% It seems we automatically produce child chain blocks in the background
 produce_to_cc_height(Config, TopHeight, GoalHeight, ParentProduce) ->
     NodeNames = [ Name || {_, Name, _, _} <- hctest:get_nodes(Config) ],
@@ -355,6 +362,9 @@ get_block_producer(Node, Height) ->
     {ok, KeyHeader} = rpc(Node, aec_chain, get_key_header_by_height, [Height]),
     aec_headers:miner(KeyHeader).
 
+get_height(Node) ->
+    aecore_suite_utils:rpc(Node, aec_chain, top_height, []).
+
 leaders_at_height(Node, Height, Config) ->
     {ok, Hash} = rpc(Node, aec_chain_state, get_key_block_hash_at_height, [Height]),
     {ok, Return} = inspect_staking_contract(?ALICE, leaders, Config, Hash),
@@ -363,7 +373,7 @@ leaders_at_height(Node, Height, Config) ->
       end || [ LeaderKey, _LeaderStake] <- Return ].
 
 key_reward_provided() ->
-    TopHeight = rpc(?NODE1, aec_chain, top_height, []),
+    TopHeight = hctest:get_height(?NODE1),
     RewardHeight = TopHeight - ?REWARD_DELAY,
     key_reward_provided(RewardHeight).
 
@@ -445,7 +455,7 @@ with_saved_keys(Keys, Config) ->
                 lists:keydelete(saved_config, 1, Config), Keys).
     
 mine_to_next_epoch(Node, Config) ->
-    Height1 = rpc(Node, aec_chain, top_height, []),
+    Height1 = hctest:get_height(Node),
     {ok, #{last := Last1, length := _Len}} = rpc(Node, aec_chain_hc, epoch_info, []),
     {ok, Bs} = hctest:produce_cc_blocks(Config, Last1 - Height1 + 1),
     ct:log("Block last epoch: ~p", [Bs]).
@@ -455,7 +465,7 @@ mine_to_last_block_in_epoch(Node, Config) ->
             first  := _First,
             last   := Last,
             length := _Length}} = rpc(Node, aec_chain_hc, epoch_info, []),
-    CH = rpc(Node, aec_chain, top_height, []),
+    CH = hctest:get_height(Node),
     DistToBeforeLast = Last - CH - 1,
     {ok, _} = produce_cc_blocks(Config, DistToBeforeLast).
     
