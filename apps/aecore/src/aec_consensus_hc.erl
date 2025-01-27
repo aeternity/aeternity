@@ -319,7 +319,7 @@ state_pre_transform_node(Type, Height, PrevNode, Trees) ->
     {ok, PrevHash} = aec_headers:hash_header(PrevHeader),
     {TxEnv0, _} = aetx_env:tx_env_and_trees_from_hash(aetx_transaction, PrevHash),
     TxEnv = aetx_env:set_height(TxEnv0, Height),
-    {ok, #{epoch := Epoch, first := EpochFirst, last := EpochLast, length := EpochLength} = EpochInfo} =
+    {ok, #{epoch := Epoch, first := EpochFirst, last := EpochLast} = EpochInfo} =
         aec_chain_hc:epoch_info({TxEnv, Trees}),
     {ok, Leader} = leader_for_height(Height, {TxEnv, Trees}),
     case Type of

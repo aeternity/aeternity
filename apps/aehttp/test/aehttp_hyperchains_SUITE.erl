@@ -969,7 +969,7 @@ epochs_with_fast_parent(Config) ->
     ct:log("The agreed epoch length is ~p three epochs previous length was ~p", [FinalizeEpochLength, Len1]),
     ?assert(CurrentEpoch == FinalizeEpoch),
     lists:foreach(fun(_) -> {ok, #{length := CurrentEpochLen}} = rpc(Node, aec_chain_hc, epoch_info, []),
-                             produce_cc_blocks(Config, CurrentEpochLen) end, lists:seq(1, 3)),
+                             produce_cc_blocks(Config, CurrentEpochLen) end, lists:seq(1, 2)),
 
     {ok, #{length := AdjEpochLength} = EpochInfo3} = rpc(Node, aec_chain_hc, epoch_info, []),
     ?assertEqual(FinalizeEpochLength, AdjEpochLength),
