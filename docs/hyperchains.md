@@ -72,6 +72,7 @@ GitHub org)
 - A running Aeternity node installation (following the installation instructions)
 - [Git](https://git-scm.com/downloads) version control system installed to download the starter kit code
 - [Node.js](https://nodejs.org/en/download) installed to run the `hyperchain-starter-kit`
+- [Jq](https://jqlang.github.io/jq/) installed for JSON formatting
 
 Note: These instructions use Unix/Linux/MacOS shell commands. Windows users will need to adjust paths and commands accordingly.
 
@@ -219,6 +220,67 @@ This will create 3 files in `nodeConfig` directory:
 - `hc_test_accounts.json`
 - `hc_test_contracts.json`
 
+**Don't forget to fund all pinners accounts on the parent chain prior starting your node/validator.**
+
+**IMPORTANT:**
+If you used a known public chain (testnet or mainnet) as parent chain, the tool will set the `start_height` as current block + 10, that is 30 minutes in future.
+Keep that in mind when verifying your chain, either decrease the number or wait until that block is produced on the parent chain before you start transacting on the Hyperchain.
+
+### 6. Run a Node
+
+## Docker
+
+Use [Docker volumes](https://docs.docker.com/engine/storage/volumes/) to install the configuration files and run the node at once:
+
+```shell
+docker run -p 3013:3013 \
+    -v ${PWD}/hc_test/nodeConfig/aeternity.yaml:/home/aeternity/.aeternity/aeternity/aeternity.yaml \
+    -v ${PWD}/hc_test/nodeConfig/hc_test_accounts.json:/home/aeternity/node/data/aecore/hc_test_accounts.json \
+    -v ${PWD}/hc_test/nodeConfig/hc_test_contracts.json:/home/aeternity/node/data/aecore/hc_test_contracts.json \
+    aeternity/aeternity:v7.3.0-rc3
+```
+
+Verify your node is running with:
+```shell
+curl -s localhost:3013/v3/status | jq
+```
+
+Expected output:
+```shell
+{
+  "difficulty": 0,
+  "genesis_key_block_hash": "kh_7dm2zSo6NsnEDMYBYdXA9QvkJvvk7TenT68HxW5BSrRSz3WV6",
+  "hashrate": 0,
+  "listening": true,
+  "network_id": "hc_test",
+  "node_revision": "57bc00b760dbb3ccd10be51f447e33cb3a2f56e3",
+  "node_version": "7.3.0-rc3",
+  "peer_connections": {
+    "inbound": 0,
+    "outbound": 0
+  },
+  "peer_count": 0,
+  "peer_pubkey": "pp_2ZX5Pae6a9L5UFm8VcCNsB39pn3EK7ZQZpp3dfF1WDNFXZ9p3b",
+  "pending_transactions_count": 0,
+  "protocols": [
+    {
+      "effective_at_height": 0,
+      "version": 6
+    }
+  ],
+  "solutions": 0,
+  "sync_progress": 100,
+  "syncing": false,
+  "top_block_height": 2,
+  "top_key_block_hash": "kh_2QCveiMjWXbuDzXkJmpposgmTrdSmPJnWBFpq33Xc6bZZnBXP4",
+  "uptime": "6s.18"
+}
+```
+
+For more details refer to dedicated [Docker section](docker.md).
+
+## Tarball Installation
+
 Copy all of the above files to their node corresponding directory, i.e. assuming it's in `~/aeternity/node`:
 
 ```shell
@@ -226,18 +288,10 @@ cp ./hc_test/nodeConfig/aeternity.yaml ~/aeternity/node/
 cp ./hc_test/nodeConfig/hc_test_*.json ~/aeternity/node/data/aecore/
 ```
 
-**Don't forget to fund all pinners accounts on the parent chain prior starting your node/validator.**
-
 then run your node:
 ```shell
 ~/aeternity/node/bin/aeternity start
 ```
-
-**IMPORTANT:**
-If you used a known public chain (testnet or mainnet) as parent chain, the tool will set the `start_height` as current block + 10, that is 30 minutes in future.
-Keep that in mind when verifying your chain, either decrease the number or wait until that block is produced on the parent chain before you start transacting on the Hyperchain.
-
-### 6. Verify Node Status
 
 Verify your node is running with:
 ```shell
