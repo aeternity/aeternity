@@ -921,7 +921,7 @@ epochs_with_slow_parent(Config) ->
 
     ?assert(FinalizeEpochLength > EpochLength),
 
-    produce_cc_blocks(Config, EpochLength * 3),
+    produce_cc_blocks(Config, EpochLength * 2),
     {ok, #{length := AdjEpochLength} = EpochInfo} = rpc(Node, aec_chain_hc, epoch_info, []),
     ct:log("Info ~p", [EpochInfo]),
     ?assertEqual(FinalizeEpochLength, AdjEpochLength),
