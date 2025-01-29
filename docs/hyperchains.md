@@ -228,7 +228,7 @@ Keep that in mind when verifying your chain, either decrease the number or wait 
 
 ### 6. Run a Node
 
-## Docker
+#### Docker
 
 Use [Docker volumes](https://docs.docker.com/engine/storage/volumes/) to install the configuration files and run the node at once:
 
@@ -279,7 +279,7 @@ Expected output:
 
 For more details refer to dedicated [Docker section](docker.md).
 
-## Tarball Installation
+#### Tarball Installation
 
 Copy all of the above files to their node corresponding directory, i.e. assuming it's in `~/aeternity/node`:
 
