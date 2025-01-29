@@ -7,13 +7,13 @@
     end_per_suite/2,
     init_per_group/3,
     init_per_suite/2,
-    produce_n_epochs/2,
-    staking_contract_address_from_ctconfig/1
+    staking_contract_address_from_ctconfig/1,
+    start_child_nodes/3
 ]).
 
 -include_lib("stdlib/include/assert.hrl").
 -include_lib("aecontract/include/hard_forks.hrl").
--include("./test_defaults.hrl").
+-include("./hctest_defaults.hrl").
 
 init_per_suite(Config0, #{
     owner_pubkey := OwnerPubkey, 
@@ -156,7 +156,40 @@ create_stub(Contract, Opts0) ->
     {ok, Stub} = aeso_aci:render_aci_json(Enc),
     binary_to_list(Stub).
 
+-type child_node_config() :: #{
+    node => node(), % optional key for start_child_nodes/3 but mandatory for other
+    stakeholders => list(), % optional key for start_child_nodes/3 but mandatory for other
+    pinners => list(), % optional key for start_child_nodes/3 but mandatory for other
+    receive_address := binary(),
+    hc_contract := string(),
+    child_epoch_length := pos_integer(),
+    child_block_time := pos_integer(),
+    child_block_production_time := pos_integer(),
+    block_reward := integer(),
+    reward_delay := integer()
+}.
+
+%% ChildConfig parameter skips values for node, stakeholders and pinners
+-spec start_child_nodes(Nodes :: list(node()), ChildConfig :: child_node_config(),
+                        CTConfig :: proplists:proplist()) -> any().
+start_child_nodes(Nodes, ChildConfig, CTConfig) ->
+    NetworkId = binary_to_list(proplists:get_value(network_id, CTConfig)),
+    AllNodeDefinitions = hctest:get_nodes(CTConfig),
+    StartNodeFn = fun(N) ->
+        {Node1, NodeName1, Stakers1, Pinners1} = lists:keyfind(N, 1, AllNodeDefinitions),
+        Env = [{"AE__FORK_MANAGEMENT__NETWORK_ID", NetworkId}],
+        child_node_config(ChildConfig#{
+            node => Node1, 
+            stakeholders => Stakers1,
+            pinners => Pinners1
+        }, CTConfig),
+        aecore_suite_utils:start_node(Node1, CTConfig, Env),
+        aecore_suite_utils:connect(NodeName1, [])
+    end,
+    lists:foreach(StartNodeFn, Nodes).
+
 %% Default values: receive_address_pub => ?FORD, hc_contract => ?HC_CONTRACT
+-spec child_node_config(child_node_config(), CTConfig :: proplists:proplist()) -> any().
 child_node_config(ChildNodeConfig = #{
     % stakeholders => [], pinners => []
     node := Node,
@@ -168,6 +201,7 @@ child_node_config(ChildNodeConfig = #{
     build_json_files(HcContract, NodeConfig, CTConfig),
     aecore_suite_utils:create_config(Node, CTConfig, NodeConfig, [{add_peers, true}]).
 
+-spec node_config(child_node_config(), CTConfig :: proplists:proplist()) -> any().
 node_config(#{
     node := Node,
     stakeholders := PotentialStakers, 
@@ -339,25 +373,3 @@ build_json_files(ElectionContract, NodeConfig, CTConfig) ->
             hctest:encoded_pubkey(?LISA) => 4_100000000_000000000_000000000
         }),
     ok.
-
-produce_n_epochs(Config, N) ->
-    [{Node1, _, _, _}|_] = hctest:get_nodes(Config),
-    %% produce blocks
-    {ok, Bs} = hctest:produce_cc_blocks(Config, N * ?CHILD_EPOCH_LENGTH),
-    %% check producers
-    Producers = [ aec_blocks:miner(B) || B <- Bs, aec_blocks:is_key_block(B) ],
-    ChildTopHeight = hctest:get_height(Node1),
-    Leaders = hctest:leaders_at_height(Node1, ChildTopHeight, Config),
-    ct:log("Bs: ~p  Leaders ~p", [Bs, Leaders]),
-    %% Check that all producers are valid leaders
-    ?assertEqual([], lists:usort(Producers) -- Leaders),
-    %% If we have more than 1 leader, then we should see more than one producer
-    %% at least for larger EPOCHs
-    ?assert(length(Leaders) > 1, length(Producers) > 1),
-    ParentTopHeight = hctest:get_height(?PARENT_CHAIN_NODE),
-    {ok, ParentBlocks} = hctest:get_generations(?PARENT_CHAIN_NODE, 0, ParentTopHeight),
-    ct:log("Parent chain blocks ~p", [ParentBlocks]),
-    {ok, ChildBlocks} = hctest:get_generations(Node1, 0, ChildTopHeight),
-    ct:log("Child chain blocks ~p", [ChildBlocks]),
-    ok.
-    

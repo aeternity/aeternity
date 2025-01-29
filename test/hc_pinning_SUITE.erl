@@ -1,4 +1,4 @@
--module(hyperchains_pinning_SUITE).
+-module(hc_pinning_SUITE).
 
 -import(aecore_suite_utils, [ http_request/4
                             , external_address/0
@@ -28,7 +28,7 @@
 
 -include_lib("stdlib/include/assert.hrl").
 -include_lib("common_test/include/ct.hrl").
--include("./test_defaults.hrl").
+-include("./hctest_defaults.hrl").
 
 all() -> [{group, pinning}, {group, default_pin}].
 
@@ -187,28 +187,7 @@ start_two_child_nodes(Config) ->
     ok.
 
 produce_first_epoch(Config) ->
-    produce_n_epochs(Config, 1).
-
-produce_n_epochs(Config, N) ->
-    [{Node1, _, _, _}|_] = ?config(nodes, Config),
-    %% produce blocks
-    {ok, Bs} = produce_cc_blocks(Config, N * ?CHILD_EPOCH_LENGTH),
-    %% check producers
-    Producers = [ aec_blocks:miner(B) || B <- Bs, aec_blocks:is_key_block(B) ],
-    ChildTopHeight = hctest:get_height(Node1),
-    Leaders = hctest:leaders_at_height(Node1, ChildTopHeight, Config),
-    ct:log("Bs: ~p  Leaders ~p", [Bs, Leaders]),
-    %% Check that all producers are valid leaders
-    ?assertEqual([], lists:usort(Producers) -- Leaders),
-    %% If we have more than 1 leader, then we should see more than one producer
-    %% at least for larger EPOCHs
-    ?assert(length(Leaders) > 1, length(Producers) > 1),
-    ParentTopHeight = hctest:get_height(?PARENT_CHAIN_NODE),
-    {ok, ParentBlocks} = hctest:get_generations(?PARENT_CHAIN_NODE, 0, ParentTopHeight),
-    ct:log("Parent chain blocks ~p", [ParentBlocks]),
-    {ok, ChildBlocks} = hctest:get_generations(Node1, 0, ChildTopHeight),
-    ct:log("Child chain blocks ~p", [ChildBlocks]),
-    ok.
+    hctest:produce_n_epochs(Config, 1).
 
 %%%=============================================================================
 %%% Pinning

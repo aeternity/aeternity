@@ -1,4 +1,4 @@
--module(hyperchains_SUITE).
+-module(hc_SUITE).
 
 -import(aecore_suite_utils, [http_request/4, external_address/0, rpc/3, rpc/4]).
 
@@ -35,7 +35,7 @@
 ]).
 
 -include_lib("stdlib/include/assert.hrl").
--include("./test_defaults.hrl").
+-include("./hctest_defaults.hrl").
 
 all() -> [{group, hc}, {group, epochs}].
 
@@ -214,10 +214,10 @@ start_two_child_nodes(CTConfig) ->
     ok.
 
 produce_first_epoch(Config) ->
-    hctest_ct_shared:produce_n_epochs(Config, 1).
+    hctest:produce_n_epochs(Config, 1).
 
 produce_some_epochs(Config) ->
-    hctest_ct_shared:produce_n_epochs(Config, 5).
+    hctest:produce_n_epochs(Config, 5).
 
 respect_schedule(Config) ->
     [{Node, _, _, _}|_] = hctest:get_nodes(Config),
@@ -324,7 +324,7 @@ simple_withdraw(Config) ->
     {ok, 0} = hctest:inspect_validator(AliceCt, ?ALICE, get_available_balance, Config),
 
     %% Let's advance 5 epochs...
-    hctest_ct_shared:produce_n_epochs(Config, 5),
+    hctest:produce_n_epochs(Config, 5),
 
     %% Now test the withdrawal
     {ok, WithdrawAmount} = hctest:inspect_validator(AliceCt, ?ALICE, get_available_balance, Config),

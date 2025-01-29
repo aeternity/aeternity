@@ -33,6 +33,7 @@
     privkey/1,
     produce_cc_blocks/2,
     produce_cc_blocks/3,
+    produce_n_epochs/2,
     pubkey/1,
     seed_account/3,
     sign_and_push/4, 
@@ -47,7 +48,7 @@
 ]).
 
 -include_lib("stdlib/include/assert.hrl").
--include("./test_defaults.hrl").
+-include("./hctest_defaults.hrl").
 
 format(Format, Args) ->
     lists:flatten(io_lib:format(Format, Args)).
@@ -235,6 +236,27 @@ src(ContractName, Config) ->
     Srcs = proplists:get_value(contract_src, Config),
     maps:get(ContractName, Srcs).
 
+produce_n_epochs(Config, N) ->
+    [{Node1, _, _, _}|_] = hctest:get_nodes(Config),
+    %% produce blocks
+    {ok, Bs} = hctest:produce_cc_blocks(Config, N * ?CHILD_EPOCH_LENGTH),
+    %% check producers
+    Producers = [ aec_blocks:miner(B) || B <- Bs, aec_blocks:is_key_block(B) ],
+    ChildTopHeight = hctest:get_height(Node1),
+    Leaders = hctest:leaders_at_height(Node1, ChildTopHeight, Config),
+    ct:log("Bs: ~p  Leaders ~p", [Bs, Leaders]),
+    %% Check that all producers are valid leaders
+    ?assertEqual([], lists:usort(Producers) -- Leaders),
+    %% If we have more than 1 leader, then we should see more than one producer
+    %% at least for larger EPOCHs
+    ?assert(length(Leaders) > 1, length(Producers) > 1),
+    ParentTopHeight = hctest:get_height(?PARENT_CHAIN_NODE),
+    {ok, ParentBlocks} = hctest:get_generations(?PARENT_CHAIN_NODE, 0, ParentTopHeight),
+    ct:log("Parent chain blocks ~p", [ParentBlocks]),
+    {ok, ChildBlocks} = hctest:get_generations(Node1, 0, ChildTopHeight),
+    ct:log("Child chain blocks ~p", [ChildBlocks]),
+    ok.
+    
 %% Increase the child chain with a number of key blocks
 %% Automatically add key blocks on parent chain and
 %% if there are Txs, put them in a micro block
@@ -488,4 +510,3 @@ contract_create_spec(Name, Src, Args, Amount, Nonce, Owner) ->
             , <<"pubkey">> => EncodedPubkey
             , <<"owner_pubkey">> => EncodedOwner },
     Spec.
-    
