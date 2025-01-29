@@ -53,15 +53,15 @@ write_chain_test_() ->
              TmpDir
      end,
      fun(TmpDir) ->
-             ok = application:unset_env(aecore, beneficiary),
              ok = aec_conductor:stop(),
              ok = aec_tx_pool:stop(),
-             ok = application:stop(gproc),
-             meck:unload(aec_mining),
-             meck:unload(aec_events),
+             ok = application:unset_env(aecore, beneficiary),
+             aec_test_utils:aec_keys_cleanup(TmpDir),
              aec_test_utils:unmock_genesis_and_forks(),
+             meck:unload(aec_events),
+             meck:unload(aec_mining),
              aec_test_utils:stop_chain_db(),
-             aec_test_utils:aec_keys_cleanup(TmpDir)
+             ok = application:stop(gproc)
      end,
      [{"Write a block to chain and read it back.",
        fun() ->
@@ -143,14 +143,14 @@ restart_test_() ->
              TmpDir
      end,
      fun(TmpDir) ->
-             ok = application:unset_env(aecore, beneficiary),
              ok = aec_tx_pool:stop(),
+             aec_test_utils:unmock_genesis_and_forks(),
              meck:unload(aec_mining),
              meck:unload(aec_events),
-             ok = application:stop(gproc),
-             aec_test_utils:unmock_genesis_and_forks(),
              aec_test_utils:stop_chain_db(),
-             aec_test_utils:aec_keys_cleanup(TmpDir)
+             ok = application:unset_env(aecore, beneficiary),
+             aec_test_utils:aec_keys_cleanup(TmpDir),
+             ok = application:stop(gproc)
      end,
      [{"Build chain, then kill server, check that chain is read back.",
        fun() ->
@@ -204,9 +204,9 @@ persisted_valid_gen_block_test_() ->
              TmpDir
      end,
      fun(TmpDir) ->
-             aec_test_utils:unmock_genesis_and_forks(),
-             aec_test_utils:aec_keys_cleanup(TmpDir),
              meck:unload(aec_db),
+             aec_test_utils:aec_keys_cleanup(TmpDir),
+             aec_test_utils:unmock_genesis_and_forks(),
              application:set_env(aecore, persist, false)
      end,
      [{"Check persisted validation of genesis block, persistence OFF",
@@ -244,9 +244,9 @@ persisted_database_write_error_test_() ->
              {TmpDir, Persist}
      end,
      fun({TmpDir, Persist}) ->
-             application:stop(mnesia),
              aec_test_utils:unmock_genesis_and_forks(),
              aec_test_utils:aec_keys_cleanup(TmpDir),
+             application:stop(mnesia),
              application:set_env(aecore, persist, Persist),
              ok = mnesia:delete_schema([node()])
      end,

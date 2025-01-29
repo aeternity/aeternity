@@ -1748,6 +1748,16 @@
                                             "default": 0,
                                             "type": "integer"
                                         },
+                                        "default_pinning_behavior": {
+                                            "description": "Use the default pinning behavior, where in each epoch, if the last leader has defined pinning/parent chain credentials, they will pin",
+                                            "default": false,
+                                            "type": "boolean"
+                                        },
+                                        "fixed_coinbase": {
+                                            "type": "integer",
+                                            "default": 0,
+                                            "description": "The coinbase reward specifies the fixed amount of newly minted tokens allocated to block producers as an incentive for validating and adding blocks to the chain."
+                                        },
                                         "parent_chain": {
                                             "description" : "Details of how this node will connect to a parent chain if this is a hyperchain.",
                                             "additionalProperties" : false,

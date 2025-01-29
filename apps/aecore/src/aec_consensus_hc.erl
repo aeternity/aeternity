@@ -49,7 +49,7 @@
         , state_pre_transform_key_node/3
         , state_pre_transform_micro_node/3
         %% Block rewards
-        , state_grant_reward/4
+        , state_grant_reward/5
         %% PoGF
         , pogf_detected/2
         %% Genesis block
@@ -79,12 +79,17 @@
         , is_leader_valid/4
         , leader_for_height/1
         , leader_for_height/2
+        , fixed_coinbase/0
         %% contract access
         , call_consensus_contract_result/5
+        , create_consensus_call_contract_transaction/5
         , entropy_height/1
         , get_entropy_hash/1
         , get_contract_pubkey/1
         , get_child_epoch_info/1
+        %% voting
+        , vote_result/1
+        , vote_result/0
         ]).
 
 -ifdef(TEST).
@@ -123,8 +128,8 @@ start(Config, _) ->
     {ParentConnMod, SignModule, HCPCMap} =
         case PCType of
             <<"AE2AE">>   -> start_ae(StakersConfig, PinnersConfig);
-            <<"AE2BTC">>  -> start_btc(StakersConfig, aehttpc_btc);
-            <<"AE2DOGE">> -> start_btc(StakersConfig, aehttpc_doge)
+            <<"AE2BTC">>  -> start_btc(StakersConfig,PinnersConfig, aehttpc_btc);
+            <<"AE2DOGE">> -> start_btc(StakersConfig, PinnersConfig, aehttpc_doge)
         end,
 
     start_dependency(aec_parent_connector, [ParentConnMod, FetchInterval, ParentHosts, NetworkId,
@@ -132,9 +137,10 @@ start(Config, _) ->
     start_dependency(aec_parent_chain_cache, [StartHeight, RetryInterval,
                                               fun target_parent_heights/1, %% prefetch the next parent block
                                               CacheSize, Confirmations]),
+    start_dependency(aec_pinning_agent, [get_contract_pubkey(?ELECTION_CONTRACT), default_pinning_behavior(), SignModule]),
     ok.
 
-start_btc(StakersEncoded, ParentConnMod) ->
+start_btc(StakersEncoded, PinnersEncoded, ParentConnMod) ->
     Stakers =
         lists:map(
             fun(#{<<"hyper_chain_account">> := #{<<"pub">> := EncodedPubkey,
@@ -144,10 +150,29 @@ start_btc(StakersEncoded, ParentConnMod) ->
                  {HCPubkey, HCPrivkey}
             end,
             StakersEncoded),
-    StakersMap = maps:from_list(Stakers),
+    Pinners = lists:flatmap(
+        fun(#{<<"parent_chain_account">> := #{<<"pub">> := EncodedPubkey,
+                                                <<"priv">> := EncodedPrivkey}
+                }) ->
+                {PCPubkey, PCPrivkey} = validate_keypair(EncodedPubkey, EncodedPrivkey),
+                [{PCPubkey, PCPrivkey}]
+        end,
+        PinnersEncoded),
+    StakersMap = maps:from_list(lists:append(Stakers, Pinners)),
+    HCPC = lists:map(
+        fun(#{<<"parent_chain_account">> := #{<<"pub">> := ParentPubEnc,
+                                             <<"owner">> := OwnerPubEnc}
+             }) ->
+            {ok, ParentPub} = aeser_api_encoder:safe_decode(account_pubkey, ParentPubEnc),
+            {ok, OwnerPub} = aeser_api_encoder:safe_decode(account_pubkey, OwnerPubEnc),
+            {OwnerPub, ParentPub}
+        end,
+        PinnersEncoded),
+    HCPCMap = maps:from_list(HCPC),
     start_dependency(aec_preset_keys, [StakersMap]),
+    start_aec_eoe_vote(StakersMap),
     SignModule = undefined,
-    {ParentConnMod, SignModule, []}.
+    {ParentConnMod, SignModule, HCPCMap}.
 
 start_ae(StakersEncoded, PinnersEncoded) ->
     Stakers =
@@ -181,9 +206,13 @@ start_ae(StakersEncoded, PinnersEncoded) ->
             PinnersEncoded),
     HCPCMap = maps:from_list(HCPC),
     lager:debug("Pinners: ~p", [HCPCMap]),
+    start_aec_eoe_vote(StakersMap),
     ParentConnMod = aehttpc_aeternity,
     SignModule = get_sign_module(),
     {ParentConnMod, SignModule, HCPCMap}.
+
+start_aec_eoe_vote(StakersMap) ->
+    start_dependency(aec_eoe_vote, [StakersMap, child_block_time()]).
 
 validate_keypair(EncodedPubkey, EncodedPrivkey) ->
     {ok, Pubkey} = aeser_api_encoder:safe_decode(account_pubkey,
@@ -205,6 +234,7 @@ stop() ->
     aec_preset_keys:stop(),
     aec_parent_connector:stop(),
     aec_parent_chain_cache:stop(),
+    aec_pinning_agent:stop(),
     ok.
 
 is_providing_extra_http_endpoints() -> false.
@@ -303,45 +333,59 @@ state_pre_transform_node(Type, Height, PrevNode, Trees) ->
             end,
             %% note that EpochFirst and EpochLast could be the same, not exclusive
             if Height =:= EpochLast ->
-                    {Trees1, CarryOverFlag} = handle_pinning(TxEnv, Trees, EpochInfo, Leader),
+                    {Trees1, CarryOverFlag, Events} = handle_pinning(TxEnv, Trees, EpochInfo, Leader),
                     case get_entropy_hash(Epoch + 2) of
                         {ok, Seed} ->
                             cache_validators_for_epoch({TxEnv, Trees1}, Seed, Epoch + 2),
                             Trees2 = step_eoe(TxEnv, Trees1, Leader, Seed, 0, -1, CarryOverFlag),
-                            start_default_pinning_process(TxEnv, Trees2, Height),
-                            Trees2;
+                            {ok, NextEpochInfo} = aec_chain_hc:epoch_info({TxEnv, Trees2}),
+                            {Trees2, Events ++ [{new_epoch, NextEpochInfo}]};
                         {error, _} ->
                             lager:debug("Entropy hash for height ~p is not in cache, attempting to resync", [Height]),
                             %% Fail the keyblock production flow, attempt to resync
                             aec_conductor:throw_error(parent_chain_not_synced)
                     end;
                true ->
-                    step(TxEnv, Trees, Leader)
+                    Trees1 = step(TxEnv, Trees, Leader),
+                    {Trees1, []}
             end;
         micro ->
             step_micro(TxEnv, Trees, Leader)
     end.
 
-start_default_pinning_process(TxEnv, Trees, _Height) ->
+create_consensus_call_contract_transaction(ContractType, OwnerPubkey, Trees, EncodedCallData, Amount) ->
+    ContractPubkey = get_contract_pubkey(ContractType),
+    Contract = aect_state_tree:get_contract(ContractPubkey,
+                                            aec_trees:contracts(Trees)),
+    OwnerAcc = aec_accounts_trees:get(OwnerPubkey,
+                                            aec_trees:accounts(Trees)),
+    Fee = 1859800000000, %% TODO: fine tune this
+    Gas = 600000, %% TODO: fine tune this
+    GasPrice = 1000000, %% TODO: fine tune this
 
-    case default_pinning_behavior() of
-        true ->
-            NextEpochInfo = aec_chain_hc:epoch_info({TxEnv, Trees}),
-            {ok, #{ epoch      := Epoch
-                  , last       := Last
-                  , validators := _Validators}} = NextEpochInfo,
-            {ok, LastLeader} = leader_for_height(Last, {TxEnv, Trees}),
-            lager:debug("AGENT: Trying to start pinning agent... for:  ~p in epoch ~p", [LastLeader, Epoch]),
-            try
-            case aec_parent_connector:has_parent_account(LastLeader) of
-                true -> aec_pinning_agent:spawn_for_epoch(NextEpochInfo, get_contract_pubkey(?ELECTION_CONTRACT), LastLeader);
-                false -> lager:debug("AGENT: No parent chain account found for ~p", [LastLeader])
-            end
-            catch
-                T:E -> lager:debug("AGENT throws: ~p:~p", [T,E])
-            end;
-        _ -> ok
+    {ok, CallData} = aeser_api_encoder:safe_decode(contract_bytearray, EncodedCallData),
+    CallSpec = #{ caller_id   => aeser_id:create(account, OwnerPubkey),
+                  nonce       => aec_accounts:nonce(OwnerAcc) + 1,
+                  contract_id => aeser_id:create(contract, ContractPubkey),
+                  abi_version => aect_contracts:abi_version(Contract), %% TODO: maybe get the ABI from the config?
+                  fee         => Fee,
+                  amount      => Amount,
+                  gas         => Gas,
+                  gas_price   => GasPrice,
+                  call_data   => CallData},
+    aect_call_tx:new(CallSpec).
+
+vote_result(Trees) ->
+    aec_eoe_vote:get_finalize_transaction(Trees).
+
+vote_result() ->
+    case aec_chain:get_top_state() of
+        {ok, Trees} ->
+            vote_result(Trees);
+        Error ->
+            {error, Error}
     end.
+
 
 cache_child_epoch_info(Epoch, Height, StartTime) ->
     %% if the leader is running on the same node, and the current process
@@ -379,18 +423,25 @@ get_child_epoch_info(Epoch) ->
 
 %% -------------------------------------------------------------------
 %% Block rewards
-state_grant_reward(Beneficiary, Node, Trees, Amount) ->
-    {ok, CD} = aeb_fate_abi:create_calldata(
-                 "reward", [aefa_fate_code:encode_arg({address, Beneficiary})]),
+state_grant_reward(Beneficiary, Node, Delay, Trees, Amount) ->
+    Header = aec_block_insertion:node_header(Node),
+    TxEnv = aetx_env:tx_env_from_key_header(
+              Header, aec_block_insertion:node_hash(Node),
+              aec_block_insertion:node_time(Node), aec_block_insertion:node_prev_hash(Node)),
+    Height = aec_block_insertion:node_height(Node) - Delay,
+    add_reward(TxEnv, Trees, Height, Beneficiary, Amount).
+
+add_reward(TxEnv, Trees, Height, Beneficiary, Amount) ->
+    {ok, CD} = aeb_fate_abi:create_calldata("add_reward", [aefa_fate_code:encode_arg({integer, Height}),
+                                                           aefa_fate_code:encode_arg({address, Beneficiary})]),
     CallData = aeser_api_encoder:encode(contract_bytearray, CD),
-    case call_consensus_contract(?REWARDS_CONTRACT,
-           Node, Trees, CallData,
-           ["reward(", aeser_api_encoder:encode(account_pubkey, Beneficiary), ")"], Amount) of
+    Tag = ["add_reward(value = ", integer_to_list(Amount), ", ", integer_to_list(Height), ", ",
+           aeser_api_encoder:encode(account_pubkey, Beneficiary), ")"],
+    case call_consensus_contract_(?ELECTION_CONTRACT, TxEnv, Trees, CallData, Tag, Amount) of
         {ok, Trees1, _} -> Trees1;
         {error, What} ->
             error({failed_to_reward_leader, What}) %% maybe a softer approach than crash and burn?
     end.
-
 
 %% -------------------------------------------------------------------
 %% PoGF
@@ -573,6 +624,10 @@ default_pinning_behavior() ->
     Fun = fun() -> get_consensus_config_key([<<"default_pinning_behavior">>], false) end,
     aeu_ets_cache:get(?ETS_CACHE_TABLE, default_pinning_behavior, Fun).
 
+fixed_coinbase() ->
+    Fun = fun() -> get_consensus_config_key([<<"fixed_coinbase">>], 0) end,
+    aeu_ets_cache:get(?ETS_CACHE_TABLE, fixed_coinbase, Fun).
+
 %acceptable_sync_offset() ->
 %    Fun = fun() -> get_consensus_config_key([<<"parent_chain">>, <<"acceptable_sync_offset">>], 60000) end,
 %    aeu_ets_cache:get(?ETS_CACHE_TABLE, acceptable_sync_offset, Fun).
@@ -664,13 +719,6 @@ log_consensus_call(TxEnv, FunName, EncodedCallData, Amount) ->
                 [Height, FunName, Amount, EncodedCallData]),
     ok.
 
-call_consensus_contract(Contract, Node, Trees, EncodedCallData, Keyword, Amount) ->
-    Header = aec_block_insertion:node_header(Node),
-    TxEnv = aetx_env:tx_env_from_key_header(
-              Header, aec_block_insertion:node_hash(Node),
-              aec_block_insertion:node_time(Node), aec_block_insertion:node_prev_hash(Node)),
-    call_consensus_contract_(Contract, TxEnv, Trees, EncodedCallData, Keyword, Amount).
-
 call_consensus_contract_result(ContractType, TxEnv, Trees, ContractFun, Args) ->
     {ok, CD} = aeb_fate_abi:create_calldata(ContractFun, Args),
     CallData = aeser_api_encoder:encode(contract_bytearray, CD),
@@ -761,8 +809,17 @@ next_beneficiary() ->
 %% Called as part of deciding who will produce block at Height `height(TxEnv) + 1`
 next_beneficiary(TxEnv, Trees) ->
     ChildHeight = aetx_env:height(TxEnv),
-    case leader_for_height(ChildHeight + 1, {TxEnv, Trees}) of
+    ChildHeight1 = ChildHeight + 1,
+    case leader_for_height(ChildHeight1, {TxEnv, Trees}) of
         {ok, Leader} ->
+            {ok, #{epoch := Epoch, seed := Seed, validators := Validators} = EpochInfo} = aec_chain_hc:epoch_info({TxEnv, Trees}),
+            case ChildHeight1 == maps:get(last, EpochInfo) of
+                true ->
+                    Hash = aetx_env:key_hash(TxEnv),
+                    aec_eoe_vote:negotiate(Epoch, ChildHeight1, Hash, Leader, Validators, Seed, 0, child_epoch_length()); %% TODO epoch delta
+                false ->
+                    ok
+            end,
             SignModule = get_sign_module(),
             case SignModule:set_candidate(Leader) of
                  {error, key_not_found} ->
@@ -935,19 +992,17 @@ is_leader_valid(Node, _Trees, TxEnv, _PrevNode) ->
             aec_conductor:throw_error(parent_chain_block_not_synced)
     end.
 
-handle_pinning(TxEnv, Trees, EpochInfo, Leader ) ->
+handle_pinning(TxEnv, Trees, EpochInfo, Leader) ->
     case validate_pin(TxEnv, Trees, EpochInfo) of
         pin_missing ->
             lager:debug("PINNING: no proof posted"),
-            aec_events:publish(pin, {no_proof_posted}),
-            {Trees, true};
+            {Trees, true, [{pin, {no_proof_posted}}]};
         pin_correct ->
-            Trees1 = add_pin_reward(Trees, TxEnv, Leader, EpochInfo),
-            {Trees1, false};
+            {Trees1, Events} = add_pin_reward(Trees, TxEnv, Leader, EpochInfo),
+            {Trees1, false, Events};
         pin_validation_fail ->
             lager:debug("PINNING: Incorrect proof posted"),
-            aec_events:publish(pin, {incorrect_proof_posted}),
-            {Trees, true}
+            {Trees, true, [{pin, {incorrect_proof_posted}}]}
     end.
 
 validate_pin(TxEnv, Trees, CurEpochInfo) ->
@@ -972,14 +1027,11 @@ validate_pin(TxEnv, Trees, CurEpochInfo) ->
             end
     end.
 
-add_pin_reward(Trees, TxEnv, Leader, #{epoch := CurEpoch, last := Last} = _EpochInfo) ->
+add_pin_reward(Trees, TxEnv, Leader, #{epoch := CurEpoch, last := Last}) ->
     #{cur_pin_reward := Reward} = aec_chain_hc:pin_reward_info({TxEnv, Trees}),
-    aec_events:publish(pin, {pin_accepted, #{reward => Reward, recipient => Leader, epoch => CurEpoch, height => Last}}),
-    ATrees = aec_trees:accounts(Trees),
-    LeaderAcc = aec_accounts_trees:get(Leader, ATrees),
-    {ok, LeaderAcc1} = aec_accounts:earn(LeaderAcc, Reward),
-    ATrees1 = aec_accounts_trees:enter(LeaderAcc1, ATrees),
-    aec_trees:set_accounts(Trees, ATrees1).
+    Event = {pin, {pin_accepted, #{reward => Reward, recipient => Leader, epoch => CurEpoch, height => Last}}},
+    Trees1 = add_reward(TxEnv, Trees, Last, Leader, Reward),
+    {Trees1, [Event]}.
 
 create_contracts([], _TxEnv, Trees) -> Trees;
 create_contracts([Contract | Tail], TxEnv, TreesAccum) ->

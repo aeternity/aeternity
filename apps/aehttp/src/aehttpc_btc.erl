@@ -7,11 +7,10 @@
 -export([get_latest_block/2,
          get_header_by_hash/3,
          get_header_by_height/3,
-        %  get_commitment_tx_in_block/5,
-        %  get_commitment_tx_at_height/4,
-        %  post_commitment/8,
          hash_to_integer/1,
-         get_chain_type/0]).
+         get_chain_type/0,
+         pin_to_pc/2,
+         get_pin_by_tx_hash/2]).
 
 %% Temporary exports for keeping useful chain utils around
 -export([select_utxo/2,
@@ -67,6 +66,19 @@ hash_to_integer(Hash) ->
 
 get_chain_type() ->
     {ok, btc}.
+
+
+%%%=============================================================================
+%%% Pinning
+%%%=============================================================================
+
+pin_to_pc({_PinningData, _Who, _Amount, _Fee, _NetworkId, _SignModule}, _NodeSpec) ->
+
+    erlang:error(not_implemented).
+
+get_pin_by_tx_hash(_TxHash, _NodeSpec) ->
+    erlang:error(not_implemented).
+
 
 select_utxo([#{<<"spendable">> := true, <<"amount">> := Amount} = Unspent | _Us], Needed) when Amount >= Needed ->
     %% For now just pick first spendable UTXO with enough funds. There is no end to how fancy this can get

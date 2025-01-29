@@ -943,14 +943,14 @@ apply_node_transactions(Node, PrevNode, Trees, ForkInfo, State) ->
             Trees2 = if Consensus =:= PrevConsensus -> Trees1;
                         true -> Consensus:state_pre_transform_key_node_consensus_switch(Node, Trees1)
                      end,
-            Trees3 = Consensus:state_pre_transform_key_node(Node, PrevNode, Trees2),
+            {Trees3, Events} = Consensus:state_pre_transform_key_node(Node, PrevNode, Trees2),
             %% leader generation happens after pre_transformations
             case validate_generation_leader(Node, Trees3, Env) of
                 ok ->
                     Delay  = aec_governance:beneficiary_reward_delay(),
                     case Height > aec_block_genesis:height() + Delay of
-                        true  -> {grant_fees(Node, Trees3, Delay, FraudStatus, State), TotalFees, no_events()};
-                        false -> {Trees3, TotalFees, no_events()}
+                        true  -> {grant_fees(Node, Trees3, Delay, FraudStatus, State), TotalFees, Events};
+                        false -> {Trees3, TotalFees, Events}
                     end;
                 {error, Reason} ->
                     error({leader_validation_failed, Reason})
@@ -1024,7 +1024,7 @@ grant_fees(Node, Trees, Delay, FraudStatus, _State) ->
                              OldestBeneficiaryVersion),
     Trees1 = lists:foldl(
                fun({K, Amt}, TreesAccum) when Amt > 0 ->
-                       Consensus:state_grant_reward(K, Node, TreesAccum, Amt);
+                       Consensus:state_grant_reward(K, Node, Delay, TreesAccum, Amt);
                   (_, TreesAccum) -> TreesAccum
                end,
                Trees,

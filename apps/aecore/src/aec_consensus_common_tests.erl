@@ -43,7 +43,7 @@
         , state_pre_transform_key_node/3
         , state_pre_transform_micro_node/3
         %% Block rewards
-        , state_grant_reward/4
+        , state_grant_reward/5
         %% PoGF
         , pogf_detected/2
         %% Genesis block
@@ -186,13 +186,13 @@ micro_block_height_relative_previous_block(_Type, Height) ->
 %% -------------------------------------------------------------------
 %% Custom state transitions
 state_pre_transform_key_node_consensus_switch(_Node, Trees) -> Trees.
-state_pre_transform_key_node(_Node, _PrevNode, Trees) -> Trees.
+state_pre_transform_key_node(_Node, _PrevNode, Trees) -> {Trees, []}.
 state_pre_transform_micro_node(_Height, _PrevNode, Trees) -> Trees.
 
 %% -------------------------------------------------------------------
 %% Block rewards
-state_grant_reward(Beneficiary, Node, Trees, Amount) ->
-    aec_consensus_bitcoin_ng:state_grant_reward(Beneficiary, Node, Trees, Amount).
+state_grant_reward(Beneficiary, Node, Delay, Trees, Amount) ->
+    aec_consensus_bitcoin_ng:state_grant_reward(Beneficiary, Node, Delay, Trees, Amount).
 
 %% -------------------------------------------------------------------
 %% PoGF
