@@ -25,6 +25,7 @@
          new_micro/9,
          new_micro_from_header/3,
          pof/1,
+         is_eoe/1,
          pow/1,
          prev_hash/1,
          prev_key_hash/1,
@@ -37,6 +38,7 @@
          set_nonce_and_key_seal/3,
          set_key_seal/2,
          set_pof/2,
+         set_eoe/2,
          set_prev_hash/2,
          set_prev_key_hash/2,
          set_root_hash/2,
@@ -317,6 +319,15 @@ set_pof(#mic_block{} = Block, PoF) ->
     PoFHash = aec_pof:hash(PoF),
     Header = aec_headers:set_pof_hash(to_micro_header(Block), PoFHash),
     set_header(Block#mic_block{pof = PoF}, Header).
+
+-spec is_eoe(micro_block()) -> boolean().
+is_eoe(#mic_block{} = Block) ->
+    aec_headers:is_eoe(to_micro_header(Block)).
+
+-spec set_eoe(micro_block(), boolean) -> micro_block().
+set_eoe(#mic_block{} = Block, IsEoE) ->
+    Header = aec_headers:set_eoe(to_micro_header(Block), IsEoE),
+    set_header(Block, Header).
 
 -spec pow(key_block()) -> aec_consensus:key_seal().
 pow(Block) ->

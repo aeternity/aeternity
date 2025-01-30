@@ -1497,7 +1497,7 @@ hc_apply_vote(VoteResult, MBlock, MBlockInfo) ->
 hc_apply_vote(VoteResult, MBlock, MBlockInfo, TriedWithTrees) ->
     case VoteResult of
         {ok, VoteTransaction} ->
-            case aec_block_micro_candidate:update(MBlock, [VoteTransaction], MBlockInfo) of
+            case aec_block_micro_candidate:update(aec_blocks:set_eoe(MBlock, true), [VoteTransaction], MBlockInfo) of
                 {ok, UpdatedMBlock, _MBlockInfo} ->
                     UpdatedMBlock;
                 Error ->
