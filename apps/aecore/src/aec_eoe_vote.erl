@@ -9,7 +9,7 @@
 -behaviour(gen_statem).
 
 %% Export API functions
--export([start_link/2, negotiate/8, get_finalize_transaction/1]).
+-export([start_link/2, negotiate/7, get_finalize_transaction/1, add_parent_block/2]).
 
 %% Export gen_statem callbacks
 -export([init/1, callback_mode/0, terminate/3, code_change/4]).
@@ -37,7 +37,9 @@
                 block_time                 :: non_neg_integer(),
                 result                     :: {ok, binary()} | {error, no_consensus} | undefined,
                 from                       :: pid() | undefined,
-                votes=#{}                  :: #{binary() => #{binary() => any()}}
+                votes=#{}                  :: #{binary() => #{binary() => any()}},
+                parent_blocks=#{}          :: #{non_neg_integer() => aec_parent_chain_block:block()},
+                other_votes=[]             :: list({non_neg_integer(), aetx_sign:signed_tx()})
             }).
 
 
@@ -58,9 +60,13 @@ start_link(Stakers, BlockTime) ->
     gen_statem:start_link({local, ?MODULE}, ?MODULE, [Stakers, BlockTime], []).
 
 %% Negotiate a fork, called with preferred fork and epoch length delta
--spec negotiate(non_neg_integer(), non_neg_integer(), binary(), aec_keys:pubkey(), [{binary(), non_neg_integer()}], binary(), non_neg_integer(), non_neg_integer()) -> ok.
-negotiate(Epoch, Height, Hash, Leader, Validators, Seed, LengthDelta, CurrentLength) ->
-    gen_statem:cast(?MODULE, {negotiate, Epoch, Height, Hash, Leader, Validators, Seed, LengthDelta, CurrentLength}).
+-spec negotiate(non_neg_integer(), non_neg_integer(), binary(), aec_keys:pubkey(), [{binary(), non_neg_integer()}], binary(), non_neg_integer()) -> ok.
+negotiate(Epoch, Height, Hash, Leader, Validators, Seed, CurrentLength) ->
+    gen_statem:cast(?MODULE, {negotiate, Epoch, Height, Hash, Leader, Validators, Seed, CurrentLength}).
+
+-spec add_parent_block(non_neg_integer(), aec_parent_chain_block:block()) -> ok.
+add_parent_block(Epoch, ParentBlock) ->
+    gen_statem:cast(?MODULE, {add_parent_block, Epoch, ParentBlock}).
 
 -spec get_finalize_transaction(aec_trees:trees()) -> {ok, aetx_sign:signed_tx()} | {error, not_ready} | {error, term()}.
 get_finalize_transaction(Trees) ->
@@ -79,7 +85,9 @@ callback_mode() ->
     state_functions.
 
 %%% State: AwaitEndOfEpoch
-await_eoe(cast, {negotiate, Epoch, Height, Hash, Leader, Validators, Seed, LengthDelta, CurrentLength}, #data{block_time=BlockTime, proposal=Proposal, majority=Majority} = Data) ->
+await_eoe(cast, {negotiate, Epoch, Height, Hash, Leader, Validators, Seed, CurrentLength}, #data{block_time=BlockTime, proposal=Proposal, majority=Majority, parent_blocks = ParentBlocks} = Data) ->
+    LengthDelta = calculate_delta(Epoch, ParentBlocks, CurrentLength, BlockTime),
+    lager:debug("Suggesting delta ~p for epoch ~p", [LengthDelta, Epoch]),
     Data1 = set_validators(Validators, Data#data{epoch=Epoch, height=Height, fork_hash=Hash, seed=Seed, length=CurrentLength, leader=Leader, validators = Validators, length_delta=LengthDelta}),
     case is_leader(Data1) of
         false ->
@@ -115,9 +123,9 @@ proposal(info, {gproc_ps_event, tx_received, #{info := SignedTx}}, Data) ->
     %% Handle the proposal phase
     %% Check the transaction contains a proposal
     handle_proposal(SignedTx, Data);
-proposal(state_timeout, no_proposal, Data) ->
+proposal(state_timeout, no_proposal, #data{epoch = Epoch} = Data) ->
     %% Handle timeout if no proposal is received
-    lager:warning("Proposal timeout"),
+    lager:warning("Proposal timeout for epoch ~p", [Epoch]),
     %% Reply with no consensus
     handle_no_consensus(Data);
 proposal(Type, Msg, D) ->
@@ -128,10 +136,10 @@ vote(info, {gproc_ps_event, tx_received, #{info := Tx}}, Data) ->
     %% Handle the voting phase
     %% Check the transaction contains a vote
     %% If more than two thirds of votes agree send a commit then transition to finalization phase
-    handle_vote(?VOTE_TYPE, Tx, Data, fun on_valid_vote/3);
-vote(state_timeout, no_quorum, Data) ->
+    handle_vote(?VOTE_TYPE, Tx, Data, fun on_valid_vote/3, fun on_other_vote/3);
+vote(state_timeout, no_quorum, #data{epoch = Epoch} = Data) ->
     %% Handle timeout if no proposal is received
-    lager:warning("Voting timeout"),
+    lager:warning("Voting timeout for epoch ~p", [Epoch]),
     %% Reply with no consensus, if new leader use preferred fork
     handle_no_consensus(Data);
 vote(Type, Msg, D) ->
@@ -140,10 +148,10 @@ vote(Type, Msg, D) ->
 
 %%% State: Finalize
 finalize(info, {gproc_ps_event, tx_received, #{info := Tx}}, Data) ->
-    handle_vote(?COMMIT_TYPE, Tx, Data, fun on_valid_commit/3);
-finalize(state_timeout, no_quorum, Data) ->
+    handle_vote(?COMMIT_TYPE, Tx, Data, fun on_valid_commit/3, fun on_other_vote_type/3);
+finalize(state_timeout, no_quorum, #data{epoch = Epoch} = Data) ->
     %% Handle timeout if no proposal is received
-    lager:warning("Finalize timeout"),
+    lager:warning("Finalize timeout for epoch ~p", [Epoch]),
     handle_no_consensus(Data);
 finalize(Type, Msg, D) ->
     handle_common_event(Type, Msg, D).
@@ -226,13 +234,13 @@ handle_proposal(SignedTx, #data{leader=Leader, epoch=Epoch} = Data) ->
             keep_state_and_data
     end.
 
-handle_vote(Type, SignedTx, Data, OnValidFun) ->
+handle_vote(Type, SignedTx, Data, OnValidFun, OnOtherVoteType) ->
     case convert_transaction(SignedTx) of
         {ok, Type, _Epoch, Validator, VoteFields} ->
             %% Check if a validator
             case can_vote(Validator, Data) of
                 true ->
-                    lager:info("Received a vote: ~p", [VoteFields]),
+                    lager:info("Received a vote: ~p of type ~p", [VoteFields, Type]),
                     Data1 = count_vote(Validator, Data),
                     %% Check if reached two thirds
                     OnValidFun(Validator, VoteFields, Data1);
@@ -243,8 +251,8 @@ handle_vote(Type, SignedTx, Data, OnValidFun) ->
                     lager:warning("Received a vote from a validator ~p that has already voted", [Validator]),
                     keep_state_and_data
             end;
-        {ok, _Type, _, _, _} ->
-            keep_state_and_data;
+        {ok, OtherType, _, _, _} ->
+            OnOtherVoteType(OtherType, SignedTx, Data);
         {error, not_vote} ->
             keep_state_and_data;
         {error, Reason} ->
@@ -280,23 +288,39 @@ on_valid_vote(Validator, VoteFields, #data{votes=Votes} = Data) ->
     Votes1 = maps:put(Validator, VoteFields, Votes),
     check_voting_majority(Data#data{votes = Votes1}).
 
-check_voting_majority(#data{proposal=Proposal, majority = CurrentMajority, validators=Validators, block_time=BlockTime, votes=Votes} = Data) ->
+check_voting_majority(#data{majority = CurrentMajority, validators=Validators, block_time=BlockTime, votes=Votes, epoch=Epoch} = Data) ->
     case CurrentMajority =< 0 of
         true ->
-            lager:info("Quorum achieved for voting"),
+            lager:info("Quorum achieved for voting for epoch ~p", [Epoch]),
             Majority = calculate_majority(Validators),
-            Result = create_finalize_call(Votes, Proposal, Data),
-            Data1 = Data#data{result = Result},
-            send_commits(Data1),
-            {next_state, finalize, Data1#data{majority = Majority, remaining_validators = maps:from_list(Validators)}};
+            #data{proposal=Proposal} = Data1 = update_proposal_after_vote_majority(Data),
+            Result = create_finalize_call(Votes, Proposal, Data1),
+            Data2 = Data1#data{result = Result},
+            send_commits(Data2),
+            Stake = calculate_stake(Data2),
+            Data3 = Data2#data{majority = Majority - Stake, remaining_validators = maps:from_list(Validators)},
+            check_other_votes({next_state, finalize, Data3, [{state_timeout,BlockTime,no_quorum}]});
         false ->
             {next_state, vote, Data, [{state_timeout,BlockTime,no_quorum}]}
     end.
 
-on_valid_commit(_Validator, _CommitFields, #data{result = Result, majority = CurrentMajority, block_time=BlockTime, from=From} = Data) ->
+check_other_votes({next_state, _, #data{other_votes = []}, _} = NextEvent) ->
+    NextEvent;
+check_other_votes({next_state, NextState, #data{other_votes = [{_Type, SignedTx}|OtherVotes]} = Data, Actions}) ->
+    Data1 = Data#data{other_votes = OtherVotes},
+    case handle_vote(?COMMIT_TYPE, SignedTx, Data1, fun on_valid_commit/3, fun on_other_vote_type/3) of
+        Result when element(1, Result) == next_state ->
+            Result;
+        keep_state_and_data ->
+            check_other_votes({next_state, NextState, Data1, Actions});
+        Result when element(1, Result) == keep_state ->
+            check_other_votes({next_state, NextState, element(2, Result), Actions})
+    end.
+
+on_valid_commit(_Validator, _CommitFields, #data{result = Result, majority = CurrentMajority, block_time=BlockTime, from=From, epoch = Epoch} = Data) ->
     case CurrentMajority =< 0 of
         true ->
-            lager:info("Quorum achieved for commit"),
+            lager:info("Quorum achieved for commit for epoch ~p", [Epoch]),
             Actions = case From of
                         undefined ->
                             [];
@@ -309,17 +333,26 @@ on_valid_commit(_Validator, _CommitFields, #data{result = Result, majority = Cur
             {keep_state, Data, [{state_timeout,BlockTime,no_quorum}]}
     end.
 
+on_other_vote(?COMMIT_TYPE, SignedTx, #data{other_votes=OtherVotes} = Data) ->
+    {keep_state, Data#data{other_votes = [{?COMMIT_TYPE, SignedTx}|OtherVotes]}};
+on_other_vote(_Type, _SignedTx, _Data) ->
+    keep_state_and_data.
+
+on_other_vote_type(Type, _SignedTx, _Data) ->
+    lager:warning("Other vote type ~p", [Type]),
+    keep_state_and_data.
+
 handle_voting(#data{majority = Majority} = Data) ->
     Stake = calculate_stake(Data),
     send_votes(Data),
     Data#data{majority = Majority - Stake}.
 
-send_votes(Data) ->
-    lager:info("Sending votes"),
+send_votes(#data{epoch = Epoch} = Data) ->
+    lager:info("Sending votes for epoch ~p", [Epoch]),
     lists:foreach(fun aec_hc_vote_pool:push/1, create_votes(?VOTE_TYPE, Data)).
 
-send_commits(Data) ->
-    lager:info("Sending commits"),
+send_commits(#data{epoch = Epoch} = Data) ->
+    lager:info("Sending commits for epoch ~p", [Epoch]),
     lists:foreach(fun aec_hc_vote_pool:push/1, create_votes(?COMMIT_TYPE, Data)).
 
 
@@ -441,6 +474,9 @@ handle_no_consensus(#data{from = From} = Data) ->
                   end,
     {next_state, complete, Data#data{result = Result}, Actions}.
 
+handle_common_event(cast, {add_parent_block, Epoch, ParentBlock}, #data{parent_blocks = ParentBlocks} = Data) ->
+    ParentBlocks1 = maps:put(Epoch, ParentBlock, ParentBlocks),
+    {keep_state, Data#data{parent_blocks = ParentBlocks1}};
 handle_common_event(info, {gproc_ps_event, new_epoch, #{info := _EpochInfo}}, Data) ->
     {next_state, await_eoe, reset_data(Data)};
 handle_common_event({call,From}, {get_finalize_transaction, Trees}, #data{result=Result, leader = Leader} = Data) ->
@@ -498,8 +534,14 @@ calculate_majority(Validators) ->
     TotalStake = lists:foldl(fun({_, Stake}, Accum) -> Stake + Accum end, 0, Validators),
     trunc(math:ceil((2 * TotalStake) / 3)).
 
-reset_data(#data{stakers = Stakers, block_time=BlockTime}) ->
-    #data{stakers = Stakers, block_time=BlockTime}.
+reset_data(#data{stakers = Stakers, block_time=BlockTime, epoch = Epoch, parent_blocks = ParentBlocks}) ->
+    #data{stakers = Stakers, block_time=BlockTime, parent_blocks=remove_old_blocks(Epoch, ParentBlocks)}.
+
+remove_old_blocks(undefined, ParentBlocks) ->
+    ParentBlocks;
+remove_old_blocks(Epoch, ParentBlocks) ->
+    TargetEpoch = Epoch - 4,
+    maps:filter(fun(E, _B) -> E > TargetEpoch end, ParentBlocks).
 
 set_validators(Validators, Data) ->
     Majority = calculate_majority(Validators),
@@ -509,10 +551,15 @@ set_validators(Validators, Data) ->
 get_staker_private_key(Staker, Stakers) ->
     maps:get(Staker, Stakers, undefined).
 
-create_finalize_call(Votes, #{?HASH_FLD := Hash, ?EPOCH_DELTA_FLD := EpochDelta}, #data{epoch = Epoch, seed=Seed, leader=Leader, length = EpochLength}) ->
+create_finalize_call(Votes, #{?HASH_FLD := Hash, ?EPOCH_DELTA_FLD := EpochDelta}, #data{epoch = Epoch, seed=Seed, leader=Leader, length = EpochLength, parent_blocks = ParentBlocks}) ->
     Seed1 = case Seed of
                 undefined ->
-                    <<0>>;
+                    case maps:get(Epoch, ParentBlocks, undefined) of
+                        undefined ->
+                            <<0>>;
+                        ParentBlock ->
+                            aec_parent_chain_block:hash(ParentBlock)
+                    end;
                 _ ->
                     Seed
             end,
@@ -522,3 +569,45 @@ create_finalize_call(Votes, #{?HASH_FLD := Hash, ?EPOCH_DELTA_FLD := EpochDelta}
 create_vote_call(Producer, #{?HASH_FLD := Hash, ?EPOCH_DELTA_FLD := EpochDelta, ?SIGNATURE_FLD := Signature} = Payload, Accum) ->
     [{tuple, {{address, Producer}, {bytes, Hash}, EpochDelta, {bytes, get_sign_data(Payload)}, {bytes, Signature}}} | Accum].
 
+%% The first three epochs have the same seed
+calculate_delta(Epoch, _ParentBlocks, _CurrentLength, _BlockTime) when Epoch =< 4 ->
+    0;
+calculate_delta(Epoch, ParentBlocks, CurrentLength, BlockTime) ->
+    ExpectedTimeDiff = CurrentLength * BlockTime,
+    TimeDiff = get_epoch_time_diff(Epoch, ParentBlocks, ExpectedTimeDiff),
+    case (TimeDiff - ExpectedTimeDiff) / BlockTime of
+        NegDiff when NegDiff < 0 ->
+            case ceil(NegDiff) of
+                NegDiff1 when NegDiff1 =< -CurrentLength ->
+                    1 - CurrentLength;
+                Rest ->
+                    Rest
+            end;
+        Diff ->
+            floor(Diff)
+    end.
+
+get_epoch_time_diff(Epoch, ParentBlocks, ExpectedTimeDiff) ->
+  get_block_time_diff(maps:get(Epoch, ParentBlocks, undefined),maps:get(Epoch + 1, ParentBlocks, undefined), ExpectedTimeDiff).
+
+get_block_time_diff(ParentBlock1, ParentBlock2, ExpectedTimeDiff) when ParentBlock1 == undefined ; ParentBlock2 == undefined ->
+    ExpectedTimeDiff;
+get_block_time_diff(ParentBlock1, ParentBlock2, _) ->
+    aec_parent_chain_block:time(ParentBlock2) - aec_parent_chain_block:time(ParentBlock1).
+
+update_proposal_after_vote_majority(#data{proposal=Proposal, votes=Votes, validators = Validators, leader=Leader} = Data) ->
+    SumFun = sum_epoch_delta(Validators),
+    Totals = maps:fold(SumFun, {0,0}, Votes),
+    {TotalStake, TotalEpochDelta} = SumFun(Leader, Proposal,Totals),
+    EpochDelta = round(TotalEpochDelta / TotalStake),
+    UpdatedProposal = maps:put(?EPOCH_DELTA_FLD, EpochDelta, Proposal),
+    Data#data{proposal = UpdatedProposal}.
+
+sum_epoch_delta(Validators) ->
+    fun(Producer, Vote, {TotalStake, TotalEpochDelta}) ->
+            {Stake, EpochDelta} = get_weighted_delta(Producer, Vote, Validators),
+            {TotalStake + Stake, EpochDelta * Stake + TotalEpochDelta} end.
+
+get_weighted_delta(Producer, #{?EPOCH_DELTA_FLD := EpochDelta}, Validators) ->
+    Stake = proplists:get_value(Producer, Validators, 0),
+    {Stake, EpochDelta}.

@@ -337,7 +337,7 @@ state_pre_transform_node(Type, Height, PrevNode, Trees) ->
                     case get_entropy_hash(Epoch + 2) of
                         {ok, Seed} ->
                             cache_validators_for_epoch({TxEnv, Trees1}, Seed, Epoch + 2),
-                            Trees2 = step_eoe(TxEnv, Trees1, Leader, Seed, 0, -1, CarryOverFlag),
+                            Trees2 = step_eoe(TxEnv, Trees1, Leader, Seed, -1, CarryOverFlag),
                             {ok, NextEpochInfo} = aec_chain_hc:epoch_info({TxEnv, Trees2}),
                             {Trees2, Events ++ [{new_epoch, NextEpochInfo}]};
                         {error, _} ->
@@ -654,8 +654,8 @@ step(TxEnv, Trees, Leader) ->
             aec_conductor:throw_error(step_failed)
     end.
 
-step_eoe(TxEnv, Trees, Leader, Seed, Adjust, BasePinReward, CarryOver) ->
-    {ok, CD} = aeb_fate_abi:create_calldata("step_eoe", [{address, Leader}, {bytes, Seed}, Adjust, BasePinReward, CarryOver]),
+step_eoe(TxEnv, Trees, Leader, Seed, BasePinReward, CarryOver) ->
+    {ok, CD} = aeb_fate_abi:create_calldata("step_eoe", [{address, Leader}, {bytes, Seed}, BasePinReward, CarryOver]),
     CallData = aeser_api_encoder:encode(contract_bytearray, CD),
     case call_consensus_contract_(?ELECTION_CONTRACT, TxEnv, Trees, CallData, "step_eoe", 0) of
         {ok, Trees1, _Call} ->
@@ -812,11 +812,11 @@ next_beneficiary(TxEnv, Trees) ->
     ChildHeight1 = ChildHeight + 1,
     case leader_for_height(ChildHeight1, {TxEnv, Trees}) of
         {ok, Leader} ->
-            {ok, #{epoch := Epoch, seed := Seed, validators := Validators} = EpochInfo} = aec_chain_hc:epoch_info({TxEnv, Trees}),
+            {ok, #{epoch := Epoch, seed := Seed, validators := Validators, length := EpochLength} = EpochInfo} = aec_chain_hc:epoch_info({TxEnv, Trees}),
             case ChildHeight1 == maps:get(last, EpochInfo) of
                 true ->
                     Hash = aetx_env:key_hash(TxEnv),
-                    aec_eoe_vote:negotiate(Epoch, ChildHeight1, Hash, Leader, Validators, Seed, 0, child_epoch_length()); %% TODO epoch delta
+                    aec_eoe_vote:negotiate(Epoch, ChildHeight1, Hash, Leader, Validators, Seed, EpochLength);
                 false ->
                     ok
             end,
@@ -844,6 +844,7 @@ get_entropy_hash(ChildEpoch) ->
     lager:debug("Entropy for epoch ~p from PC block at height ~p", [ChildEpoch, EntropyHeight]),
     case aec_parent_chain_cache:get_block_by_height(EntropyHeight, 1000) of
         {ok, Block} ->
+            aec_eoe_vote:add_parent_block(ChildEpoch, Block),
             {ok, aec_parent_chain_block:hash(Block)};
         {error, _Err} ->
             lager:debug("Unable to pick the next leader for epoch ~p, parent height ~p; reason is ~p",

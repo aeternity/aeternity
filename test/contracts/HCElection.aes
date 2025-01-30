@@ -85,7 +85,7 @@ main contract HCElection =
     assert_protocol_call()
     put(state{ leader = leader })
 
-  stateful entrypoint step_eoe(leader : address, seed : bytes(), epoch_adjust : int,
+  stateful entrypoint step_eoe(leader : address, seed : bytes(),
                                next_base_pin_reward : int, carry_over_flag : bool) =
     assert_protocol_call()
     let epoch = state.epoch
@@ -101,8 +101,15 @@ main contract HCElection =
 
     // update epochs
     require(ei.start + ei.length - 1 == Chain.block_height, "This is not the end")
-    let ei2 = state.epochs[epoch + 2]
-    let ei_adjust = state.epochs[epoch + 3]{ length = ei2.length + epoch_adjust }
+    let ei_adjust =
+      switch(state.finalize)
+        None       => state.epochs[epoch + 3]
+        Some(info) =>
+          if ( info.epoch == epoch )
+            state.epochs[epoch + 3]{ length = info.epoch_length }
+          else
+            state.epochs[epoch + 3]
+
     let new_epochs = { [epoch] = state.epochs[epoch],
                        [epoch + 1] = state.epochs[epoch + 1],
                        [epoch + 2] = state.epochs[epoch + 2]{ seed = Some(seed) },
