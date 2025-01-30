@@ -105,7 +105,7 @@ main contract HCElection =
       switch(state.finalize)
         None       => state.epochs[epoch + 3]
         Some(info) =>
-          if ( info.epoch == epoch - 1 )
+          if ( info.epoch == epoch )
             state.epochs[epoch + 3]{ length = info.epoch_length }
           else
             state.epochs[epoch + 3]

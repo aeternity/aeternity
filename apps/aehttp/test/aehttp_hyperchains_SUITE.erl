@@ -909,7 +909,6 @@ epochs_with_slow_parent(Config) ->
     ?assertEqual([{ok, (N-1) * ?CHILD_EPOCH_LENGTH + 1} || N <- lists:seq(1, EndEpoch)],
                  [rpc(Node, aec_chain_hc, epoch_start_height, [N]) || N <- lists:seq(1, EndEpoch)]),
 
-    timer:sleep(?CHILD_BLOCK_TIME),
     %% Quickly produce parent blocks to be in sync again
     ParentBlocksNeeded =
         EndEpoch * ?PARENT_EPOCH_LENGTH + ?config(parent_start_height, Config) + ?PARENT_FINALITY - ParentTopHeight,
