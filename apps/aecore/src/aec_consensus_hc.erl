@@ -384,6 +384,7 @@ step_key(Height, #{epoch := Epoch, first := EpochFirst, last := EpochLast} = Epo
             {error, _} ->
                 lager:debug("Entropy hash for height ~p is not in cache, attempting to resync", [Height]),
                 %% Fail the keyblock production flow, attempt to resync
+                timer:sleep(child_block_time() div 4),
                 aec_conductor:throw_error(parent_chain_not_synced)
         end;
     true ->
@@ -1005,7 +1006,7 @@ next_beneficiary_sleep(#next_beneficiary{timeslot = Timeslot}, _KeyBlock)
     %% No cached epoch info yet; don't wait
     ok;
 next_beneficiary_sleep(#next_beneficiary{
-    height = CurrentChainHeight, timeslot = Timeslot, run_env = RunEnv
+    height = CurrentChainHeight, timeslot = Timeslot, run_env = RunEnv, epoch = Epoch
 }, KeyBlock) ->
     lager:debug("[xx] NEXT_BENEFICIARY: check sleep for timeslot=~w", [Timeslot]),
     ChildBlockTime = child_block_time(),
@@ -1032,7 +1033,7 @@ next_beneficiary_sleep(#next_beneficiary{
                 end,
 
     case Now of
-        _ when Now >= ProdEndTime ->
+        _ when Now >= ProdEndTime andalso Epoch > 1 ->
             lager:debug("now=~w too late to produce, slept over prod_end_time=~w", [Now, ProdEndTime]),
             %% Repeated failing attempts to produce will result in a storm of log messages
             timer:sleep(100),
@@ -1066,7 +1067,7 @@ get_timeslot_and_epoch() ->
         aetx_env:tx_env_and_trees_from_hash(aetx_transaction, PrevHash)
     ).
 
-%% Note: uses wallclock, only for production
+%% Note: uses wallclock, only for block production
 -spec get_timeslot_and_epoch(RunEnv :: aec_chain_hc:run_env()) -> timeslot_and_epoch().
 get_timeslot_and_epoch(RunEnv) ->
     #{epoch := Epoch, height := EpochHeight, start_time := EpochStartTime} = get_child_epoch_from_runenv(RunEnv),
