@@ -407,8 +407,8 @@ aecli account create hc_test/wallets/pinner.json
 Expected output:
 ```shell
 ✔ Enter your password …
-Address _________________________________ ak_2CQQctWm267tfHMUcZf7YX5uVHE6T9t3bg4UNpWnpn8qog6MZ
-Path ____________________________________ /path/to/hyperchain-starter-kit/configs/hc_test/wallets/pinner.json
+Address  ak_2CQQctWm267tfHMUcZf7YX5uVHE6T9t3bg4UNpWnpn8qog6MZ
+Path     /path/to/hyperchain-starter-kit/configs/hc_test/wallets/pinner.json
 ```
 
 Once the account is created, the private key should be extracted as it's needed in the node configuration afterwards:
