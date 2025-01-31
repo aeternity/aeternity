@@ -389,8 +389,9 @@ Expected output:
 ```shell
 ✔ Are you sure you want print your secret key? … yes
 ✔ Enter your password …
-Address _________________________________ ak_2hT1UTevtPkEpocjEcbbBi14gS1Ba1unHQBrtXupHnKHxk26kU
-Secret Key ______________________________ ade11d353b3b02f9602aa7073683a1c2b2a5d95c73b99d8fc40eafa82b02e957df8a07444f1195795a2f92915e655696a3a6a330015c58673ae9f73a1abff374
+Address            ak_2hT1UTevtPkEpocjEcbbBi14gS1Ba1unHQBrtXupHnKHxk26kU
+Secret Key         sk_2KaWrN7mJ5yfj5yikQwepSaPXksgjuYda7QoXtjfVhRfFVDJvs
+Secret Key in hex  ade11d353b3b02f9602aa7073683a1c2b2a5d95c73b99d8fc40eafa82b02e957df8a07444f1195795a2f92915e655696a3a6a330015c58673ae9f73a1abff374
 ```
 
 Note the public and private keys of the account, it will be used below.
