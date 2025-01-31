@@ -374,8 +374,8 @@ aecli account create hc_test/wallets/staker.json
 Expected output:
 ```shell
 ✔ Enter your password …
-Address _________________________________ ak_2hT1UTevtPkEpocjEcbbBi14gS1Ba1unHQBrtXupHnKHxk26kU
-Path ____________________________________ /path/to/hyperchain-starter-kit/configs/hc_test/wallets/staker.json
+Address  ak_2hT1UTevtPkEpocjEcbbBi14gS1Ba1unHQBrtXupHnKHxk26kU
+Path     /path/to/hyperchain-starter-kit/configs/hc_test/wallets/staker.json
 ```
 
 Once the account is created, the private key should be extracted as it's needed in the node configuration afterwards:
