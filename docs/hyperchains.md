@@ -350,20 +350,32 @@ Happy Hyperchaining :)
 
 ## Configuring New Validator
 
-Once you have a Hyperchain running you may want to add more validators, or joining other Hyperchain as validator.
-The example below documents how to configure new validator on Hyperchain based on Aeternity blockchain as parent.
-It continues the example above after a Hyperchain has been initialized and it assumes that `hc_test` sub-directory already exists.
+> **NOTICE**: This documentation covers beta functionality intended for testing purposes only.
+
+After establishing a Hyperchain, you can add additional validators or join an existing Hyperchain as a validator. This guide demonstrates how to configure a new validator on a Hyperchain using the Aeternity blockchain as the parent chain.
+
+Important Notes:
+
+- The process requires approximately 2 hours before the new validator begins producing blocks
+- A minimum stake of 1000000AE is required
+- Both a staker account (for the child chain) and a pinner account (for the parent chain) are needed
 
 ### Install Aeternity CLI
 
-The example below uses Aeternity CLI tool to manage wallets and call contracts.
+The Aeternity Command Line Interface (CLI) is required to manage wallets and interact with smart contracts. Install it using npm:
 
 ```shell
 npm install --global @aeternity/aepp-cli@7
 aecli --version
 ```
 
-### Create a Staker Account
+### Account Setup
+
+Two accounts are required for validator operation:
+1. Staker Account: Holds funds for staking in the Hyperchain consensus (child chain)
+2. Pinner Account: Executes pinning transactions on the parent chain
+
+#### Create a Staker Account
 
 First we need to create a staker account, that's the account that will hold the funds used to stake in the Hyperchain PoS consensus.
 
@@ -396,7 +408,9 @@ Secret Key in hex  ade11d353b3b02f9602aa7073683a1c2b2a5d95c73b99d8fc40eafa82b02e
 
 Note the public and private keys of the account, it will be used below.
 
-### Create a Pinner Account
+#### Create a Pinner Account
+
+> **Important**: The pinner account must be funded on the parent chain before starting your validator node. For testnet deployment, use the [testnet faucet](https://faucet.aepps.com).
 
 If the validator pinning is enabled, a parent chain account will be needed as well to execute it:
 
@@ -429,12 +443,10 @@ Secret Key in hex  4469eb651fa54025ccecf2bfe462a2051e690f7b2bb23ea0f49e6f77a7b17
 
 Note the public and private keys of the account, it will be used below.
 
-**Don't forget to fund the pinner account on the parent chain prior starting your node/validator. In this example the [testnet faucet](https://faucet.aepps.com) can be used**
-
 ### Configure the Validator Node
 
 The new validator node needs at least one peer to connect to an existing Hyperchain network.
-As this example assuming an already running local node, the peer key can be obtained from it's status API endpoint:
+As this example assuming an already running local node, the peer key can be obtained from its status API endpoint:
 
 ```shell
 curl -s localhost:3013/v3/status | jq -r '.peer_pubkey'
@@ -445,7 +457,7 @@ Expected output:
 pp_2ZX5Pae6a9L5UFm8VcCNsB39pn3EK7ZQZpp3dfF1WDNFXZ9p3b
 ```
 
-This example assumes your initiator runs in a docker container from the example above and it's address would be `initiator` (the container name). If the initiator node runs outside docker container, the address will be `localhost`.
+This example assumes your initiator runs in a docker container from the example above and its address would be `initiator` (the container name). If the initiator node runs outside docker container, the address will be `localhost`.
 
 So, the peer URL is: `aenode://pp_2ZX5Pae6a9L5UFm8VcCNsB39pn3EK7ZQZpp3dfF1WDNFXZ9p3b@initiator:3015`
 That will be configured under the `peers` configuration key below.
@@ -461,6 +473,7 @@ The `validator2.yaml` configuration must be changed to remove the initial staker
 
 ```yaml
 peers:
+  # Connect to existing Hyperchain network
   - aenode://pp_2ZX5Pae6a9L5UFm8VcCNsB39pn3EK7ZQZpp3dfF1WDNFXZ9p3b@initiator:3015
 chain:
   consensus:
@@ -514,7 +527,7 @@ http:
 
 ### Start the Node
 
-Again, this example assumes a Hyperchain validator node (initiator) is already running on localhost in a docker container in docker network named `hyperchain`. The node API ports are also exposed to the host, so some other than the default ports have to be used to prevent conflicts, ports will be remapped (to 33013) without changing the node configuration.
+This example assumes you have a Hyperchain validator node (initiator) already running on localhost in a Docker container within a network named hyperchain. Since the node's API ports are exposed to the host, we need to use alternative ports to prevent conflicts. In this example, we will remap port 3013 to 33013 while keeping the default port in the node configuration.
 
 ```shell
 docker run --rm -it -p 33013:3013 \
