@@ -359,7 +359,7 @@ It continues the example above after a Hyperchain has been initialized and it as
 The example below uses Aeternity CLI tool to manage wallets and call contracts.
 
 ```shell
-npm install --global @aeternity/aepp-cli
+npm install --global @aeternity/aepp-cli@7
 aecli --version
 ```
 
