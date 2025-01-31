@@ -580,7 +580,6 @@ Once the new node is running it's time to register it as validator with the Hype
 First the CLI have to be configured to work with the locally running Hyperchain network created in this example:
 ```shell
 aecli select-node http://localhost:3013/
-export AECLI_NODE_URL=http://localhost:3013/
 ```
 
 Verify the configuration by running:
