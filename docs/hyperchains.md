@@ -650,8 +650,8 @@ TTL                2053 (about now)
 #### Validator Registration
 The registration happens with a contract call to the `staking_contract` address, in this example: `ct_KJgjAXMtRF68AbT5A2aC9fTk8PA4WFv26cFSY27fXs6FtYQHK`.
 
-The function signature that needs to be called is:
-```
+For a reference *(not shell command)*, the **Sophia** function signature that needs to be called is:
+```solidity
 payable stateful entrypoint new_validator(owner : address, sign_key : address, restake : bool) : StakingValidator
 ```
 
