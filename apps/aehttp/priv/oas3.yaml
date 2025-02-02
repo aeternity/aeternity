@@ -3169,6 +3169,8 @@ components:
           $ref: "#/components/schemas/EncodedPubkey"
         beneficiary:
           $ref: "#/components/schemas/EncodedPubkey"
+        flags:
+          $ref: "#/components/schemas/EncodedByteArray"
         target:
           $ref: "#/components/schemas/UInt32"
         pow:
@@ -3189,6 +3191,7 @@ components:
         - state_hash
         - miner
         - beneficiary
+        - flags
         - target
         - time
         - version
