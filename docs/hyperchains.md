@@ -99,7 +99,7 @@ and settings for your hyperchain. It looks like:
 ```yaml
 childBlockTime: 3000
 childEpochLength: 600
-contractSourcesPrefix: 'https://raw.githubusercontent.com/aeternity/aeternity/refs/tags/v7.3.0-rc2/'
+contractSourcesPrefix: 'https://raw.githubusercontent.com/aeternity/aeternity/refs/tags/v7.3.0-rc3/'
 enablePinning: true
 faucetInitBalance: 1000000000000000000000000000
 fixedCoinbase: 100000000000000000000
@@ -228,12 +228,21 @@ Keep that in mind when verifying your chain, either decrease the number or wait 
 
 ### 6. Run a Node
 
-## Docker
+#### Docker
+
+To allow inter-container connections between nodes, i.e. adding more nodes to the setup later, a Docker network should be created first:
+
+```shell
+docker network create hyperchain
+```
+
+A container name `initiator` is also used to allow docker network access to the container later.
 
 Use [Docker volumes](https://docs.docker.com/engine/storage/volumes/) to install the configuration files and run the node at once:
 
 ```shell
-docker run -p 3013:3013 \
+docker run --rm -it -p 3013:3013 \
+    --network=hyperchain --name initiator \
     -v ${PWD}/hc_test/nodeConfig/aeternity.yaml:/home/aeternity/.aeternity/aeternity/aeternity.yaml \
     -v ${PWD}/hc_test/nodeConfig/hc_test_accounts.json:/home/aeternity/node/data/aecore/hc_test_accounts.json \
     -v ${PWD}/hc_test/nodeConfig/hc_test_contracts.json:/home/aeternity/node/data/aecore/hc_test_contracts.json \
@@ -279,7 +288,7 @@ Expected output:
 
 For more details refer to dedicated [Docker section](docker.md).
 
-## Tarball Installation
+#### Tarball Installation
 
 Copy all of the above files to their node corresponding directory, i.e. assuming it's in `~/aeternity/node`:
 
@@ -319,7 +328,6 @@ Top block protocol          6 (ceres)
 
 If the output is `Node is not running!` check node logs for errors to debug it further.
 
-
 ### 7. Begin Operations
 
 After your Hyperchain node is running and producing blocks, you can begin interacting with the chain. The recommended next steps are:
@@ -339,6 +347,361 @@ After your Hyperchain node is running and producing blocks, you can begin intera
 You can now begin testing transactions and interactions with your Hyperchain deployment.
 
 Happy Hyperchaining :)
+
+## Configuring New Validator
+
+> **NOTICE**: This documentation covers beta functionality intended for testing purposes only.
+
+After establishing a Hyperchain, you can add additional validators or join an existing Hyperchain as a validator. This guide demonstrates how to configure a new validator on a Hyperchain using the Aeternity blockchain as the parent chain.
+
+Important Notes:
+
+- The process requires approximately 2 hours before the new validator begins producing blocks
+- A minimum stake of 1000000AE is required
+- Both a staker account (for the child chain) and a pinner account (for the parent chain) are needed
+
+### Install Aeternity CLI
+
+The Aeternity Command Line Interface (CLI) is required to manage wallets and interact with smart contracts. Install it using npm:
+
+```shell
+npm install --global @aeternity/aepp-cli@7
+aecli --version
+```
+
+### Account Setup
+
+Two accounts are required for validator operation:
+1. Staker Account: Holds funds for staking in the Hyperchain consensus (child chain)
+2. Pinner Account: Executes pinning transactions on the parent chain
+
+#### Create a Staker Account
+
+First we need to create a staker account, that's the account that will hold the funds used to stake in the Hyperchain PoS consensus.
+
+```shell
+aecli account create hc_test/wallets/staker.json
+```
+
+Expected output:
+```shell
+✔ Enter your password …
+Address  ak_2hT1UTevtPkEpocjEcbbBi14gS1Ba1unHQBrtXupHnKHxk26kU
+Path     /path/to/hyperchain-starter-kit/configs/hc_test/wallets/staker.json
+```
+
+Once the account is created, the private key should be extracted as it's needed in the node configuration afterwards:
+
+```shell
+aecli account address --secretKey hc_test/wallets/staker.json
+```
+
+Expected output:
+
+```shell
+✔ Are you sure you want print your secret key? … yes
+✔ Enter your password …
+Address            ak_2hT1UTevtPkEpocjEcbbBi14gS1Ba1unHQBrtXupHnKHxk26kU
+Secret Key         sk_2KaWrN7mJ5yfj5yikQwepSaPXksgjuYda7QoXtjfVhRfFVDJvs
+Secret Key in hex  ade11d353b3b02f9602aa7073683a1c2b2a5d95c73b99d8fc40eafa82b02e957df8a07444f1195795a2f92915e655696a3a6a330015c58673ae9f73a1abff374
+```
+
+Note the public and private keys of the account, it will be used below.
+
+#### Create a Pinner Account
+
+> **Important**: The pinner account must be funded on the parent chain before starting your validator node. For testnet deployment, use the [testnet faucet](https://faucet.aepps.com).
+
+If the validator pinning is enabled, a parent chain account will be needed as well to execute it:
+
+```shell
+aecli account create hc_test/wallets/pinner.json
+```
+
+Expected output:
+```shell
+✔ Enter your password …
+Address  ak_2CQQctWm267tfHMUcZf7YX5uVHE6T9t3bg4UNpWnpn8qog6MZ
+Path     /path/to/hyperchain-starter-kit/configs/hc_test/wallets/pinner.json
+```
+
+Once the account is created, the private key should be extracted as it's needed in the node configuration afterwards:
+
+```shell
+aecli account address --secretKey hc_test/wallets/pinner.json
+```
+
+Expected output:
+
+```shell
+✔ Are you sure you want print your secret key? … yes
+✔ Enter your password …
+Address            ak_2CQQctWm267tfHMUcZf7YX5uVHE6T9t3bg4UNpWnpn8qog6MZ
+Secret Key         sk_X8YAj8XRzTEsAdQJZDt6n3baCcCs2mHRwiT4rtBYEE8baBLfX
+Secret Key in hex  4469eb651fa54025ccecf2bfe462a2051e690f7b2bb23ea0f49e6f77a7b1763c02b7910b1a543221b15f14b196ed1ba3212031d817a9c09ac200387ab5631a25
+```
+
+Note the public and private keys of the account, it will be used below.
+
+### Configure the Validator Node
+
+The new validator node needs at least one peer to connect to an existing Hyperchain network.
+As this example assuming an already running local node, the peer key can be obtained from its status API endpoint:
+
+```shell
+curl -s localhost:3013/v3/status | jq -r '.peer_pubkey'
+```
+
+Expected output:
+```shell
+pp_2ZX5Pae6a9L5UFm8VcCNsB39pn3EK7ZQZpp3dfF1WDNFXZ9p3b
+```
+
+This example assumes your initiator runs in a docker container from the example above and its address would be `initiator` (the container name). If the initiator node runs outside docker container, the address will be `localhost`.
+
+So, the peer URL is: `aenode://pp_2ZX5Pae6a9L5UFm8VcCNsB39pn3EK7ZQZpp3dfF1WDNFXZ9p3b@initiator:3015`
+That will be configured under the `peers` configuration key below.
+
+The `accounts.json` and `contracts.json` will be reused from the previous example, but one can duplicate them as well in new directory as needed.
+
+Copy the node configuration from the previous example:
+```shell
+cp hc_test/nodeConfig/aeternity.yaml hc_test/nodeConfig/validator2.yaml
+```
+
+The `validator2.yaml` configuration must be changed to remove the initial stakers and pinners and replace it with the new accounts created above and add `peers`, **everything else should stay intact**:
+
+```yaml
+peers:
+  # Connect to existing Hyperchain network
+  - aenode://pp_2ZX5Pae6a9L5UFm8VcCNsB39pn3EK7ZQZpp3dfF1WDNFXZ9p3b@initiator:3015
+chain:
+  consensus:
+    '0':
+      config:
+        child_block_time: 3000
+        child_epoch_length: 600
+        contract_owner: 'ak_11111111111111111111111111111115rHyByZ'
+        default_pinning_behavior: true
+        election_contract: 'ct_LRbi65kmLtE7YMkG6mvG5TxAXTsPJDZjAtsPuaXtRyPA7gnfJ'
+        fixed_coinbase: 100000000000000000000
+        parent_chain:
+          consensus:
+            network_id: 'ae_uat'
+            type: 'AE2AE'
+          parent_epoch_length: 10
+          polling:
+            fetch_interval: 500
+            nodes:
+              - 'https://testnet.aeternity.io'
+          start_height: 1064939
+        pinners:
+          - parent_chain_account:
+              owner: 'ak_2hT1UTevtPkEpocjEcbbBi14gS1Ba1unHQBrtXupHnKHxk26kU'
+              priv: '4469eb651fa54025ccecf2bfe462a2051e690f7b2bb23ea0f49e6f77a7b1763c02b7910b1a543221b15f14b196ed1ba3212031d817a9c09ac200387ab5631a25'
+              pub: 'ak_2CQQctWm267tfHMUcZf7YX5uVHE6T9t3bg4UNpWnpn8qog6MZ'
+        pinning_reward_value: 1000000000000000000000
+        rewards_contract: 'ct_KJgjAXMtRF68AbT5A2aC9fTk8PA4WFv26cFSY27fXs6FtYQHK'
+        stakers:
+          - hyper_chain_account:
+              priv: 'ade11d353b3b02f9602aa7073683a1c2b2a5d95c73b99d8fc40eafa82b02e957df8a07444f1195795a2f92915e655696a3a6a330015c58673ae9f73a1abff374'
+              pub: 'ak_2hT1UTevtPkEpocjEcbbBi14gS1Ba1unHQBrtXupHnKHxk26kU'
+        staking_contract: 'ct_KJgjAXMtRF68AbT5A2aC9fTk8PA4WFv26cFSY27fXs6FtYQHK'
+      type: 'hyperchain'
+  hard_forks:
+    '6':
+      accounts_file: 'hc_test_accounts.json'
+      contracts_file: 'hc_test_contracts.json'
+      height: 0
+fork_management:
+  network_id: 'hc_test'
+mining:
+  autostart: true
+http:
+  endpoints:
+    dry-run: true
+    hyperchain: true
+```
+
+**Note that account addresses, account keys and peer keys will be different on different runs, make sure to copy the correct ones!**
+
+### Start the Node
+
+This example assumes you have a Hyperchain validator node (initiator) already running on localhost in a Docker container within a network named hyperchain. Since the node's API ports are exposed to the host, we need to use alternative ports to prevent conflicts. In this example, we will remap port 3013 to 33013 while keeping the default port in the node configuration.
+
+```shell
+docker run --rm -it -p 33013:3013 \
+    --network hyperchain \
+    -v ${PWD}/hc_test/nodeConfig/validator2.yaml:/home/aeternity/.aeternity/aeternity/aeternity.yaml \
+    -v ${PWD}/hc_test/nodeConfig/hc_test_accounts.json:/home/aeternity/node/data/aecore/hc_test_accounts.json \
+    -v ${PWD}/hc_test/nodeConfig/hc_test_contracts.json:/home/aeternity/node/data/aecore/hc_test_contracts.json \
+    aeternity/aeternity:v7.3.0-rc3
+```
+
+Verify the new validator node is running with:
+```shell
+curl -s localhost:33013/v3/status | jq
+```
+
+Expected output:
+```yaml
+{
+  "difficulty": 0,
+  "genesis_key_block_hash": "kh_7dm2zSo6NsnEDMYBYdXA9QvkJvvk7TenT68HxW5BSrRSz3WV6",
+  "hashrate": 0,
+  "listening": true,
+  "network_id": "hc_test",
+  "node_revision": "57bc00b760dbb3ccd10be51f447e33cb3a2f56e3",
+  "node_version": "7.3.0-rc3",
+  "peer_connections": {
+    "inbound": 0,
+    "outbound": 1
+  },
+  "peer_count": 1,
+  "peer_pubkey": "pp_ENJfMAPXWbZruYgexnGCNEwCBwdLcEiR8F541CuzCkgtFQ5jt",
+  "pending_transactions_count": 0,
+  "protocols": [
+    {
+      "effective_at_height": 0,
+      "version": 6
+    }
+  ],
+  "solutions": 0,
+  "sync_progress": 100,
+  "syncing": false,
+  "top_block_height": 35,
+  "top_key_block_hash": "kh_FK7EvnCYsq9DdbZLtBpFPdD5UdTNYGWnWfQShNgVkbY6iyP3h",
+  "uptime": "59s.448"
+}
+```
+
+Make sure that:
+
+- `genesis_key_block_hash` is the same as the status output of the initiator node
+- `network_id` is the same as the status output of the initiator node
+- `peer_count` is more than 0
+- `top_block_height` is more than 0
+- `sync_progress` is 100
+
+The above should confirm the new validator is up, running and connected to the initiator Hyperchain network!
+
+### Register New Validator
+
+Once the new node is running it's time to register it as validator with the Hyperchain consensus.
+
+#### CLI Node Config
+First the CLI have to be configured to work with the locally running Hyperchain network created in this example:
+```shell
+aecli select-node http://localhost:3013/
+```
+
+Verify the configuration by running:
+```shell
+aecli config
+```
+
+Expected output:
+```shell
+Node http://localhost:3013/ network id hc_test, version 7.3.0-rc3, protocol 6 (Ceres)
+Compiler https://v8.compiler.aepps.com/ version 8.0.0
+```
+
+#### Funding
+
+**The staker account must be funded with at least the minimum staking amount (1000000AE in this example) and some extra for transacting. In this example the treasury account can be used by loading it in a wallet**
+
+With the help of the CLI the treasury secret key is imported then used to send tokens to the new staker account:
+
+```shell
+aecli account create hc_test/wallets/treasury.js 9ab3bb473a0ec30d4f75f877ee9de0145fbd883e07edab2e4555e156a729be5619bd0a236a9ebd4a47e5fc3961b59ea215515109c007e2ce844b1f543d4e9598
+```
+
+Output:
+```shell
+✔ Enter your password …
+Address  ak_CLTKb9tdvXGwpgUBW8GytW7kXv9r1eJyY4YtgKKWtKcY3poQf
+Path     /path/to/hyperchain-starter-kit/configs/hc_test/wallets/treasury.js
+```
+
+Verify the treasury balance:
+```shell
+aecli inspect ak_CLTKb9tdvXGwpgUBW8GytW7kXv9r1eJyY4YtgKKWtKcY3poQf
+```
+
+Output:
+```shell
+Account ID       ak_CLTKb9tdvXGwpgUBW8GytW7kXv9r1eJyY4YtgKKWtKcY3poQf
+Account balance  1000000000000000000000000000000ae
+Account nonce    0
+No pending transactions
+```
+
+Fund the staker account from the treasury wallet:
+```shell
+aecli spend hc_test/wallets/treasury.js ak_2hT1UTevtPkEpocjEcbbBi14gS1Ba1unHQBrtXupHnKHxk26kU 1000100ae
+```
+
+Output:
+```shell
+Cost of SpendTx execution ≈ 1000100.0000169ae
+✔ Enter your password …
+Transaction mined
+Transaction hash   th_2JLcgQkpD4Rz42L3rmKsLoZ2fomGuoVNpoJjnAMxTcbmoznjbb
+Block hash         mh_2uWKDfDj5evXncvJd6V7c76pQdhYuKWDUjxP2jqr5cj7BW9b99
+Block height       2052 (about now)
+Signatures         ["sg_BYKqfbZej3CPUHz9sJfHRM5o8YLevTjhoU3JAHivU8d8wv9L8TuA2kx74vm5xTHSmFQxo2d4uDBJKWuz9K5QmTDCUNDLc"]
+Transaction type   SpendTx (ver. 1)
+Sender address     ak_CLTKb9tdvXGwpgUBW8GytW7kXv9r1eJyY4YtgKKWtKcY3poQf
+Recipient address  ak_2hT1UTevtPkEpocjEcbbBi14gS1Ba1unHQBrtXupHnKHxk26kU
+Amount             1000100ae
+Payload            ba_Xfbg4g==
+Fee                0.0000169ae
+Nonce              1
+TTL                2053 (about now)
+```
+
+#### Validator Registration
+The registration happens with a contract call to the `staking_contract` address, in this example: `ct_KJgjAXMtRF68AbT5A2aC9fTk8PA4WFv26cFSY27fXs6FtYQHK`.
+
+For a reference *(not shell command)*, the **Sophia** function signature that needs to be called is:
+```solidity
+payable stateful entrypoint new_validator(owner : address, sign_key : address, restake : bool) : StakingValidator
+```
+
+The same address (`ak_2hT1UTevtPkEpocjEcbbBi14gS1Ba1unHQBrtXupHnKHxk26kU`) will be used for owner and `sign_key`, `restake` will be set to `false`.
+
+```bash
+aecli contract call new_validator '["ak_2hT1UTevtPkEpocjEcbbBi14gS1Ba1unHQBrtXupHnKHxk26kU", "ak_2hT1UTevtPkEpocjEcbbBi14gS1Ba1unHQBrtXupHnKHxk26kU", false]' hc_test/wallets/staker.json --contractAddress ct_KJgjAXMtRF68AbT5A2aC9fTk8PA4WFv26cFSY27fXs6FtYQHK --contractAci hc_devnet/contracts/MainStaking.aci.json --amount 1000000ae
+```
+
+Output:
+```shell
+Cost of ContractCallTx execution ≈ 1000000.000236691ae
+✔ Enter your password …
+Transaction hash  th_4VXdLJjpAXAnGMe7RRfwKtPguXGWJaLVLoKR7EgcVe1w2MGtk
+Block hash        mh_2XhasD3FXo4RSyKdrkUMw8NQdDx2bkXKhZJfV1idwXjUeFHPEk
+Block height      2512 (about now)
+Signatures        ["sg_R5STDGXkZyCejyiyahzJJLGN8GThrZsCH3hY6e7GkLb8eebz8sHbj8ECe21tscXw2Eh2zDvaryyuy9fnCvNX8wewciXER"]
+Transaction type  ContractCallTx (ver. 1)
+Caller address    ak_2hT1UTevtPkEpocjEcbbBi14gS1Ba1unHQBrtXupHnKHxk26kU
+Contract address  ct_KJgjAXMtRF68AbT5A2aC9fTk8PA4WFv26cFSY27fXs6FtYQHK
+Gas               53031 (0.000053031ae)
+Gas price         0.000000001ae
+Call data         cb_KxFuGm1JO58AoN+KB0RPEZV5Wi+SkV5lVpajpqMwAVxYZzrp9zoav/N0nwCg34oHRE8RlXlaL5KRXmVWlqOmozABXFhnOun3Ohq/83R/GCn/XQ==
+ABI version       3 (Fate)
+Amount            1000000ae
+Fee               0.00018366ae
+Nonce             1
+TTL               2514 (in 6 minutes)
+----------------------Call info-----------------------
+Gas used                42425 (0.000042425ae)
+Return value (encoded)  cb_nwKgZYU1vdfnMJUPDrJIhcZ5xLhgivcS2Y7lZhl77npIApLx8dm1
+Return value (decoded)  ct_miCfZgeT2fEE9E7XpFikAUReP62QJtZizypJGvw38SYuXJNHN
+```
+
+Now the new validator is registered as part of the consensus! The return value `ct_miCfZgeT2fEE9E7XpFikAUReP62QJtZizypJGvw38SYuXJNHN` is the validator contact address.
+
+**Please note that the new validator will start producing blocks after 4 epochs (2400 blocks), that's after 2 hours in this example!**
 
 ## Configuration Explained
 
