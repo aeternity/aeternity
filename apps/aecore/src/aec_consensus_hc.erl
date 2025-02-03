@@ -248,7 +248,15 @@ recent_cache_n() -> 1.
 recent_cache_trim_key_header(_) -> ok.
 
 keyblocks_for_target_calc() -> 0.
-keyblock_create_adjust_target(Block, []) -> {ok, Block}.
+keyblock_create_adjust_target(Block0, []) ->
+    Block = case aec_blocks:is_eoe(Block0) of
+                true ->
+                    Target = aec_blocks:height(Block0),
+                    aec_blocks:set_target(Block0, aeminer_pow:integer_to_scientific(Target));
+                _ ->
+                    Block0
+            end,
+    {ok, Block}.
 
 dirty_validate_block_pre_conductor(_) -> ok.
 dirty_validate_header_pre_conductor(_) -> ok.
