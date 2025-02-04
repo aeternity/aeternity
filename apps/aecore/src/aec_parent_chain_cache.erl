@@ -59,9 +59,7 @@
         retry_interval                          :: non_neg_integer(),
         block_cache         = #{}               :: #{non_neg_integer() => aec_parent_chain_block:block() | {requested,  non_neg_integer()}},
         blocks_hash_index   = #{}               :: #{aec_parent_chain_block:hash() => non_neg_integer()},
-        top_height          = 0                 :: non_neg_integer(),
-        sign_module         = aec_preset_keys   :: atom(), %% TODO: make it configurable
-        is_syncing          = false             :: boolean()
+        top_height          = 0                 :: non_neg_integer()
     }).
 -type state() :: #state{}.
 
@@ -121,9 +119,6 @@ get_state() ->
 -spec init([any()]) -> {ok, #state{}}.
 init([StartHeight, RetryInterval, ParentTargetFun, Size]) ->
     aec_events:subscribe(top_changed),
-    aec_events:subscribe(start_mining),
-    aec_events:subscribe(stop_mining),
-    aec_events:subscribe(chain_sync),
     TopHeader = aec_chain:top_header(),
     ChildHeight = aec_headers:height(TopHeader),
     {ok, ChildHash} = aec_headers:hash_header(TopHeader),
@@ -201,12 +196,7 @@ handle_info({gproc_ps_event, top_changed, #{info := #{block_type := key,
     TargetHeights = target_parent_heights(State2),
     State = maybe_request_blocks(TargetHeights, State2),
     {noreply, State};
-handle_info({gproc_ps_event, chain_sync, #{info := {is_syncing, IsSyncing}}}, State0) ->
-    State1 = State0#state{is_syncing = IsSyncing},
-    {noreply, State1};
 handle_info({gproc_ps_event, top_changed, _A} , State) ->
-    {noreply, State};
-handle_info({gproc_ps_event, chain_sync, _}, State) ->
     {noreply, State};
 handle_info(_Info, State) ->
     lager:debug("Unhandled info: ~p", [_Info]),
