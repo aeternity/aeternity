@@ -462,8 +462,9 @@ genesis_transform_trees(Trees0, #{}) ->
                                             aec_headers:prev_hash(GenesisHeader)),
     Trees1 = create_contracts(Contracts, TxEnv, Trees0),
     Trees2 = call_contracts(Calls, TxEnv, Trees1),
-    Trees3 = init_epochs(TxEnv, Trees2, child_epoch_length(), pinning_reward_value()),
-    aect_call_state_tree:prune(0, Trees3).
+    Trees3 = initialize_validators(TxEnv, Trees2, initial_validators()),
+    Trees4 = init_epochs(TxEnv, Trees3, child_epoch_length(), pinning_reward_value()),
+    aect_call_state_tree:prune(0, Trees4).
 
 genesis_raw_header() ->
     GenesisProtocol = genesis_protocol_version(),
@@ -627,6 +628,10 @@ default_pinning_behavior() ->
 fixed_coinbase() ->
     Fun = fun() -> get_consensus_config_key([<<"fixed_coinbase">>], 0) end,
     aeu_ets_cache:get(?ETS_CACHE_TABLE, fixed_coinbase, Fun).
+
+initial_validators() ->
+    Fun = fun() -> get_consensus_config_key([<<"initial_validators">>], []) end,
+    aeu_ets_cache:get(?ETS_CACHE_TABLE, initial_validators, Fun).
 
 %acceptable_sync_offset() ->
 %    Fun = fun() -> get_consensus_config_key([<<"parent_chain">>, <<"acceptable_sync_offset">>], 60000) end,
@@ -1107,6 +1112,50 @@ call_contracts([Call | Tail], TxEnv, TreesAccum) ->
     {ok, Tx} = aect_call_tx:new(TxSpec#{fee => MinFee}),
     {_, TreesAccum1} = aec_block_fork:apply_contract_call_tx(Tx, TreesAccum, TxEnv),
     call_contracts(Tail, TxEnv, TreesAccum1).
+
+
+
+initialize_validators(_TxEnv, Trees, []) -> Trees;
+initialize_validators(TxEnv, Trees, [Validator | Tail]) ->
+    #{ <<"owner">>        := EncOwner
+     , <<"sign_key">>     := EncSignKey
+     , <<"stake">>        := Stake
+     , <<"restake">>      := Restake} = Validator,
+    Owner = case aeser_api_encoder:safe_decode(account_pubkey, EncOwner) of
+        {ok, Pubkey} -> Pubkey;
+        _ -> erlang:error({validator_owner_not_valid_pubkey, EncOwner})
+    end,
+    SignKey = case aeser_api_encoder:safe_decode(account_pubkey, EncSignKey) of
+        {ok, Pubkey2} -> Pubkey2;
+        _ -> erlang:error({validator_sign_key_not_valid_pubkey, EncSignKey})
+    end,
+    lager:info("Initializing validators: Owner, SignKey ~p ~p", [Owner, SignKey]),
+    Args = [aefa_fate_code:encode_arg({address, Owner}),
+        aefa_fate_code:encode_arg({address, SignKey}),
+        aefa_fate_code:encode_arg({bool, Restake})],
+    {ok, CallData} = aeb_fate_abi:create_calldata("new_validator", Args),
+    Caller = Owner,
+    CallerAcc = aec_accounts_trees:get(Caller, aec_trees:accounts(Trees)),
+    ContractPubkey = staking_contract_pubkey(),
+    Contract = aect_state_tree:get_contract(ContractPubkey, aec_trees:contracts(Trees)),
+    ABIVersion = aect_contracts:abi_version(Contract),
+    TxSpec = #{ caller_id    => aeser_id:create(account, Caller),
+                contract_id  => aeser_id:create(contract, ContractPubkey),
+                nonce        => aec_accounts:nonce(CallerAcc) + 1,
+                abi_version  => ABIVersion,
+                amount       => Stake,
+                gas          => 1000000,
+                gas_price    => 1000000000,
+                fee          => 1000000000000000,
+                call_data    => CallData},
+    lager:info("Initializing validators TXSpec ~p", [TxSpec]),
+    {ok, DummyTx} = aect_call_tx:new(TxSpec),
+    Height   = aetx_env:height(TxEnv),
+    Protocol = aetx_env:consensus_version(TxEnv),
+    MinFee   = aetx:min_fee(DummyTx, Height, Protocol),
+    {ok, Tx} = aect_call_tx:new(TxSpec#{fee => MinFee}),
+    {_, Trees1} = aec_block_fork:apply_contract_call_tx(Tx, Trees, TxEnv),
+    initialize_validators(TxEnv, Trees1, Tail).
 
 seal_padding_size() ->
     ?KEY_SEAL_SIZE - ?SIGNATURE_SIZE.
