@@ -1307,7 +1307,6 @@ target_parent_heights(ChildHeight) ->
     {ok, EpochNum} = aec_chain_hc:epoch(ChildHeight),
     lager:debug("ChildHeight ~p, target_parent_heights called with child epoch ~p",
                 [ChildHeight, EpochNum]),
-    %%TODO this computation is wrong in the long run... it assumes all child epochs to be of equal length
     ParentHeightStart = (EpochNum - 2) * parent_epoch_length() + pc_start_height(),
     ParentHeightEnd = (EpochNum + 2) * parent_epoch_length() + pc_start_height(),
     [ParentHeightStart, ParentHeightEnd].
