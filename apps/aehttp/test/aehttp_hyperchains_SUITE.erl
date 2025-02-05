@@ -264,9 +264,9 @@ end_per_suite(Config) ->
 init_per_group(Group, ConfigPre) ->
     Config0 =
         case Group of
-            default_pin -> [ {default_pinning_behavior, true} | ConfigPre ];
-            config -> [ {initial_validators, true} | [ {default_pinning_behavior, false} | ConfigPre ]];
-            _ -> [ {default_pinning_behavior, false} | ConfigPre ]
+            default_pin -> [ {initial_validators, false}, {default_pinning_behavior, true} | ConfigPre ];
+            config -> [ {initial_validators, true}, {default_pinning_behavior, false} | ConfigPre ];
+            _ -> [ {initial_validators, false}, {default_pinning_behavior, false} | ConfigPre ]
         end,
     VM = fate,
     NetworkId = <<"hc">>,
