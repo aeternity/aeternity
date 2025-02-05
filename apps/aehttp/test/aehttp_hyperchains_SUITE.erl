@@ -1477,6 +1477,7 @@ node_config(Node, CTConfig, PotentialStakers, PotentialPinners, ReceiveAddress) 
                 fun(HCWho) ->
                     #{<<"owner">> => encoded_pubkey(HCWho),
                       <<"sign_key">> => encoded_pubkey(HCWho),
+                      <<"caller">> => encoded_pubkey(HCWho),
                       <<"stake">> => ?INITIAL_STAKE,
                       <<"restake">> => true}
                 end,

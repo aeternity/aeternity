@@ -630,8 +630,27 @@ fixed_coinbase() ->
     aeu_ets_cache:get(?ETS_CACHE_TABLE, fixed_coinbase, Fun).
 
 initial_validators() ->
-    Fun = fun() -> get_consensus_config_key([<<"initial_validators">>], []) end,
+    Fun = fun() ->
+            lists:map(
+                fun validator_config/1,
+                get_consensus_config_key([<<"initial_validators">>], []))
+    end,
     aeu_ets_cache:get(?ETS_CACHE_TABLE, initial_validators, Fun).
+
+validator_config(Validator) ->
+    EncOwner = maps:get(<<"owner">>, Validator),
+    EncSignKey = maps:get(<<"sign_key">>, Validator, EncOwner),
+    EncCaller = maps:get(<<"caller">>, Validator, EncOwner),
+
+    {ok, Owner} = aeser_api_encoder:safe_decode(account_pubkey, EncOwner),
+    {ok, SignKey} = aeser_api_encoder:safe_decode(account_pubkey, EncSignKey),
+    {ok, Caller} = aeser_api_encoder:safe_decode(account_pubkey, EncCaller),
+
+    #{ <<"owner">>        => Owner
+     , <<"sign_key">>     => SignKey
+     , <<"caller">>       => Caller
+     , <<"stake">>        => maps:get(<<"stake">>, Validator, 0)
+     , <<"restake">>      => maps:get(<<"restake">>, Validator, false)}.
 
 %acceptable_sync_offset() ->
 %    Fun = fun() -> get_consensus_config_key([<<"parent_chain">>, <<"acceptable_sync_offset">>], 60000) end,
@@ -1115,24 +1134,17 @@ call_contracts([Call | Tail], TxEnv, TreesAccum) ->
 
 initialize_validators(_TxEnv, Trees, []) -> Trees;
 initialize_validators(TxEnv, Trees, [Validator | Tail]) ->
-    #{ <<"owner">>        := EncOwner
-     , <<"sign_key">>     := EncSignKey
+    #{ <<"owner">>        := Owner
+     , <<"sign_key">>     := SignKey
+     , <<"caller">>       := Caller
      , <<"stake">>        := Stake
      , <<"restake">>      := Restake} = Validator,
-    Owner = case aeser_api_encoder:safe_decode(account_pubkey, EncOwner) of
-        {ok, Pubkey} -> Pubkey;
-        _ -> erlang:error({validator_owner_not_valid_pubkey, EncOwner})
-    end,
-    SignKey = case aeser_api_encoder:safe_decode(account_pubkey, EncSignKey) of
-        {ok, Pubkey2} -> Pubkey2;
-        _ -> erlang:error({validator_sign_key_not_valid_pubkey, EncSignKey})
-    end,
-    lager:info("Initializing validators: Owner, SignKey ~p ~p", [Owner, SignKey]),
+
+    lager:info("Initializing validators: Owner, SignKey, Caller ~p ~p ~p", [Owner, SignKey, Caller]),
     Args = [aefa_fate_code:encode_arg({address, Owner}),
         aefa_fate_code:encode_arg({address, SignKey}),
         aefa_fate_code:encode_arg({bool, Restake})],
     {ok, CallData} = aeb_fate_abi:create_calldata("new_validator", Args),
-    Caller = Owner,
     CallerAcc = aec_accounts_trees:get(Caller, aec_trees:accounts(Trees)),
     ContractPubkey = staking_contract_pubkey(),
     Contract = aect_state_tree:get_contract(ContractPubkey, aec_trees:contracts(Trees)),
