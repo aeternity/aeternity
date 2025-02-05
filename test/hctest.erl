@@ -327,7 +327,10 @@ produce_cc_wait_until(_Node, _ParentProduce, GoalHeight, 0, _) ->
         [GoalHeight]));
 produce_cc_wait_until(Node, ParentProduce, GoalHeight, Attempts, SleepTime) ->
     case get_height(Node) of
-        H1 when H1 >= GoalHeight -> ok;
+        H1 when H1 >= GoalHeight ->
+            %% Sleep a little extra to allow sync to happen when this is produced on another node
+            timer:sleep(SleepTime),
+            ok;
         H2 ->
             timer:sleep(SleepTime),
             NewParentProduce = case ParentProduce of

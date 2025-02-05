@@ -956,7 +956,7 @@ next_beneficiary_set_candidate(State = #next_beneficiary{
         true ->
             {TxEnv, _} = RunEnv,
             Hash = aetx_env:key_hash(TxEnv),
-            aec_eoe_vote:negotiate(Epoch, Timeslot, Hash, Leader, Validators, Seed, 0, child_epoch_length()); %% TODO epoch delta
+            aec_eoe_vote:negotiate(Epoch, Timeslot, Hash, Leader, Validators, Seed, child_epoch_length()); %% TODO epoch delta
         false ->
             ok
     end,
