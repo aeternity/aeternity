@@ -3,29 +3,29 @@
 -import(aecore_suite_utils, [http_request/4, external_address/0, rpc/3, rpc/4]).
 
 -export([
-    account_balance/1, 
-    call_info/1, 
-    contract_call/6, 
-    contract_call/7, 
-    contract_call_spec/7, 
+    account_balance/1,
+    call_info/1,
+    contract_call/6,
+    contract_call/7,
+    contract_call_spec/7,
     contract_create_spec/6,
     create_ae_spend_tx/4,
-    decode_consensus_result/3, 
+    decode_consensus_result/3,
     encoded_pubkey/1,
     external_address/1,
     format/2,
-    get_block_producer/2, 
-    get_block_producer_name/2, 
+    get_block_producer/2,
+    get_block_producer_name/2,
     get_entropy/2,
     get_height/1,
     get_generations/3,
     get_nodes/1,
-    inspect_election_contract/3, 
-    inspect_staking_contract/3, 
+    inspect_election_contract/3,
+    inspect_staking_contract/3,
     inspect_validator/4,
-    key_reward_provided/0, 
-    leaders_at_height/3, 
-    mine_cc_blocks/2, 
+    key_reward_provided/0,
+    leaders_at_height/3,
+    mine_cc_blocks/2,
     mine_key_blocks/2,
     mine_to_last_block_in_epoch/2,
     mine_to_next_epoch/2,
@@ -37,13 +37,13 @@
     pubkey/1,
     read_last_blocks/4,
     seed_account/3,
-    sign_and_push/4, 
+    sign_and_push/4,
     sign_tx/3,
     spread/3,
     src/2,
     wait_and_sync/1,
-    wait_same_top/1, 
-    wait_same_top/2, 
+    wait_same_top/1,
+    wait_same_top/2,
     who_by_pubkey/1,
     with_saved_keys/2
 ]).
@@ -56,7 +56,7 @@ format(Format, Args) ->
 
 %% FIXME: Possible improvement: use a nice map instead of a proplist of 4-tuples
 % -type node_record() :: #{
-%     node => node(), long_name => node(), 
+%     node => node(), long_name => node(),
 %     public_key => binary(), private_key => binary()
 % }.
 %-spec get_nodes(CTConfig :: proplists:proplist()) -> list(node_record()).
@@ -257,7 +257,7 @@ produce_n_epochs(Config, N) ->
     {ok, ChildBlocks} = hctest:get_generations(Node1, 0, ChildTopHeight),
     ct:log("Child chain blocks ~p", [ChildBlocks]),
     ok.
-    
+
 %% Wait until child chain grows by a number of key blocks. Do not try to start or stop anything just observe.
 %% `parent_produce` hints the production on parent chain, is a list of tuples {Height, ParentKeyBlocksCount}
 -type produce_cc_args() :: #{
@@ -265,14 +265,16 @@ produce_n_epochs(Config, N) ->
     node => node(), % optional
     parent_produce => list({non_neg_integer(), non_neg_integer()}) % optional
 }.
--spec produce_cc_blocks(Config :: proplists:proplist(), produce_cc_args()) -> {ok, list(aec_blocks:block())}.
+-spec produce_cc_blocks(Config :: proplists:proplist(), pos_integer() | produce_cc_args()) -> {ok, list(aec_blocks:block())}.
+produce_cc_blocks(Config, BlocksCnt) when is_integer(BlocksCnt) ->
+    produce_cc_blocks(Config, #{count => BlocksCnt});
 produce_cc_blocks(Config, Args = #{ count := BlocksCnt }) ->
     %% Skip the node argument to pick the first node
     Node = case maps:get(node, Args, undefined) of
         undefined ->
             [{N1, _, _, _} | _] = hctest:get_nodes(Config),
             N1;
-        N2 -> 
+        N2 ->
             N2
     end,
     TopHeight = get_height(Node),
@@ -284,28 +286,28 @@ produce_cc_blocks(Config, Args = #{ count := BlocksCnt }) ->
     ScheduleUpto = Epoch + 1 + (CBAfterEpoch div L),
     ParentTopHeight = get_height(?PARENT_CHAIN_NODE),
     ct:log("parent_height=~p child_height=~p for next ~p child blocks", [ParentTopHeight, TopHeight,  BlocksCnt]),
-    
+
     %% Pairs of {height, BlockCount} to produce on parent
     ParentProduce = case maps:get(parent_produce, Args, undefined) of
-        undefined -> 
+        undefined ->
             %% Spread parent blocks over BlocksCnt
             lists:append([ spread(?PARENT_EPOCH_LENGTH, TopHeight,
                               [ {CH, 0} || CH <- lists:seq(First + E * L, Last + E * L)]) ||
                        E <- lists:seq(0, ScheduleUpto - Epoch) ]);
-        PP -> 
+        PP ->
             PP
     end,
     %% Last parameter steers where in Child epoch parent block is produced
     % produce_cc_blocks(Config, BlocksCnt, ParentProduce).
-    
+
     %% Wait max 3 child_block_times (plus BlockCnt block times) for the chain top to progress
     rpc(Node, aec_conductor, start_mining, []),
     ok = produce_cc_wait_until(
         Node, ParentProduce, TopHeight + BlocksCnt, 5 * (3 + BlocksCnt), ?CHILD_BLOCK_TIME div 5),
-    
+
     %% Read last BlocksCnt blocks
-    ?assert(get_height(Node) >= BlocksCnt, 
-        format("Chain must have at least ~w blocks (has ~w)", 
+    ?assert(get_height(Node) >= BlocksCnt,
+        format("Chain must have at least ~w blocks (has ~w)",
             [BlocksCnt, get_height(Node)])),
     ct:log("Reading last ~w blocks", [BlocksCnt]),
     LastBlocks = read_last_blocks(
@@ -368,7 +370,7 @@ wait_same_top(Nodes, Attempts) ->
             timer:sleep(?CHILD_BLOCK_TIME div 2),
             wait_same_top(Nodes, Attempts - 1)
     end.
-    
+
 wait_and_sync(Config) ->
     Nodes = get_nodes(Config),
     {ok, _KB} = wait_same_top(Nodes, 3),
@@ -538,7 +540,7 @@ with_saved_keys(Keys, Config) ->
                     end
                 end,
                 lists:keydelete(saved_config, 1, Config), Keys).
-    
+
 mine_to_next_epoch(Node, Config) ->
     Height1 = hctest:get_height(Node),
     {ok, #{last := Last1, length := _Len}} = rpc(Node, aec_chain_hc, epoch_info, []),

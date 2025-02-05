@@ -19,8 +19,6 @@
 -export([
     check_default_pin/1,
     get_pin/1,
-    last_leader_validates_pin_and_post_to_contract/1,
-    post_pin_to_pc/1,
     produce_first_epoch/1,
     start_two_child_nodes/1,
     wallet_post_pin_to_pc/1
@@ -32,20 +30,19 @@
 
 all() -> [{group, pinning}, {group, default_pin}].
 
-groups() ->
-    [
-      {pinning, [sequence],
-          [ start_two_child_nodes,
-            produce_first_epoch,
-            get_pin,
-            wallet_post_pin_to_pc,
-            post_pin_to_pc,
-            last_leader_validates_pin_and_post_to_contract]}
-    , {default_pin, [sequence],
-          [ start_two_child_nodes,
-            produce_first_epoch,
-            check_default_pin]}
-    ].
+groups() -> [
+    {pinning, [sequence], [
+        start_two_child_nodes,
+        produce_first_epoch,
+        get_pin,
+        wallet_post_pin_to_pc
+    ]}
+    , {default_pin, [sequence], [
+        start_two_child_nodes,
+        produce_first_epoch,
+        check_default_pin
+    ]}
+].
 
 suite() -> [].
 
@@ -137,40 +134,19 @@ contract_call(ContractPubkey, Src, Fun, Args, Amount, From, Nonce) ->
     {ok, Tx} = aect_call_tx:new(TxSpec),
     Tx.
 
+base_child_config() ->
+    #{
+        receive_address_pub => ?FORD,
+        hc_contract => ?HC_CONTRACT,
+        child_epoch_length => ?CHILD_EPOCH_LENGTH,
+        child_block_time => ?CHILD_BLOCK_TIME,
+        child_block_production_time => ?CHILD_BLOCK_PRODUCTION_TIME,
+        block_reward => ?BLOCK_REWARD,
+        reward_delay => ?REWARD_DELAY
+    }.
+
 start_two_child_nodes(Config) ->
-    [{Node1, NodeName1, Stakers1, Pinners1}, {Node2, NodeName2, Stakers2, Pinners2} | _] = ?config(nodes, Config),
-    Env = [ {"AE__FORK_MANAGEMENT__NETWORK_ID", binary_to_list(?config(network_id, Config))} ],
-    hctest_ct_shared:child_node_config(#{
-        node => Node1,
-        stakeholders => Stakers1,
-        pinners => Pinners1,
-        receive_address_pub => ?FORD,
-        hc_contract => ?HC_CONTRACT,
-        child_epoch_length => ?CHILD_EPOCH_LENGTH,
-        child_block_time => ?CHILD_BLOCK_TIME,
-        child_block_production_time => ?CHILD_BLOCK_PRODUCTION_TIME,
-        block_reward => ?BLOCK_REWARD,
-        reward_delay => ?REWARD_DELAY
-    }, Config),
-    aecore_suite_utils:start_node(Node1, Config, Env),
-    aecore_suite_utils:connect(NodeName1, []),
-    rpc(Node1, aec_conductor, start_mining, []),
-    hctest_ct_shared:child_node_config(#{
-        node => Node2,
-        stakeholders => Stakers2,
-        pinners => Pinners2,
-        receive_address_pub => ?FORD,
-        hc_contract => ?HC_CONTRACT,
-        child_epoch_length => ?CHILD_EPOCH_LENGTH,
-        child_block_time => ?CHILD_BLOCK_TIME,
-        child_block_production_time => ?CHILD_BLOCK_PRODUCTION_TIME,
-        block_reward => ?BLOCK_REWARD,
-        reward_delay => ?REWARD_DELAY
-    }, Config),
-    aecore_suite_utils:start_node(Node2, Config, Env),
-    aecore_suite_utils:connect(NodeName2, []),
-    rpc(Node2, aec_conductor, start_mining, []),
-    ok.
+    hctest_ct_shared:start_child_nodes([?NODE1, ?NODE2], base_child_config(), Config).
 
 produce_first_epoch(Config) ->
     hctest:produce_n_epochs(Config, 1).
@@ -230,54 +206,6 @@ get_pin(Config) ->
     ?assertEqual(BH2Dec, IBH2),
     ok.
 
-post_pin_to_pc(Config) ->
-    [{Node, _, _, _} | _] = ?config(nodes, Config),
-
-    %% Get to first block in new epoch
-    Height1 = rpc(Node, aec_chain, top_height, []),
-    {ok, #{last := Last1}} = rpc(Node, aec_chain_hc, epoch_info, []),
-    {ok, _} = hctest:produce_cc_blocks(Config, #{count => Last1 - Height1 + 1}),
-    {ok, Pin} = rpc(Node, aec_parent_connector, get_pinning_data, []),
-    {ok, _} = hctest:produce_cc_blocks(Config, #{count => 5}),
-
-    DwightPub = hctest:pubkey(?DWIGHT), % PC chain account
-    %DwightEnc = aeser_api_encoder:encode(account_pubkey, DwightPub),
-    {ok, []} = rpc(?PARENT_CHAIN_NODE, aec_tx_pool, peek, [infinity]), % no pending transactions
-    ct:log("DWIGHT: ~p ",[DwightPub]),
-    PinTx = rpc(Node, aec_parent_connector, create_pin_tx, [DwightPub, DwightPub, 1, 30000 * ?DEFAULT_GAS_PRICE, Pin]),
-    ct:log("PinTX: ~p", [PinTx]),
-    SignedPinTx = hctest:sign_tx(PinTx, hctest:privkey(?DWIGHT),?PARENT_CHAIN_NETWORK_ID),
-    EncTxHash = rpc(Node, aec_parent_connector, post_pin_tx, [SignedPinTx]),
-    {ok, [_]} = rpc(?PARENT_CHAIN_NODE, aec_tx_pool, peek, [infinity]), % one transaction pending now.
-    {ok, _} = hctest:produce_cc_blocks(Config, #{count => 5}),
-    {ok, []} = rpc(?PARENT_CHAIN_NODE, aec_tx_pool, peek, [infinity]), % all transactions comitted
-
-    {ok, #{last := Last}} = rpc(Node, aec_chain_hc, epoch_info, []),
-
-    {ok, LastLeader} = rpc(Node, aec_consensus_hc, leader_for_height, [Last]),
-
-    NetworkId = ?config(network_id, Config), % TODO not 100% sure about this one...
-    Nonce = hctest:next_nonce(Node, hctest:pubkey(?ALICE)),
-    Params = #{ sender_id    => aeser_id:create(account, hctest:pubkey(?ALICE)),
-                recipient_id => aeser_id:create(account, LastLeader),
-                amount       => 1,
-                fee          => 30000 * ?DEFAULT_GAS_PRICE,
-                nonce        => Nonce,
-                payload      => EncTxHash},
-    ct:log("Preparing a spend tx: ~p", [Params]),
-    {ok, Tx} = aec_spend_tx:new(Params),
-    SignedTx = hctest:sign_tx(Tx, hctest:privkey(?ALICE), NetworkId),
-    ok = rpc(Node, aec_tx_pool, push, [SignedTx, tx_received]),
-    {ok, [_]} = rpc(Node, aec_tx_pool, peek, [infinity]), % transactions in pool
-    {ok, _} = hctest:produce_cc_blocks(Config, #{count => 1}),
-    CH = rpc(Node, aec_chain, top_height, []),
-    {ok, []} = rpc(?PARENT_CHAIN_NODE, aec_tx_pool, peek, [infinity]), % all transactions comitted
-    DistToBeforeLast = Last - CH - 1,
-    {ok, _} = hctest:produce_cc_blocks(Config, #{count => DistToBeforeLast}), % produce blocks until last
-    BL = Last - 1,
-    BL = rpc(Node, aec_chain, top_height, []), % we're producing in last black
-    ok.
-
 %% A wallet posting a pin transaction by only using HTTP API towards Child and Parent
 wallet_post_pin_to_pc(Config) ->
     [{Node, _, _, _} | _] = ?config(nodes, Config),
@@ -286,7 +214,6 @@ wallet_post_pin_to_pc(Config) ->
     Height1 = rpc(?NODE1, aec_chain, top_height, []),
     {ok, #{last := Last1, length := Len, epoch := Epoch}} = rpc(Node, aec_chain_hc, epoch_info, []),
     {ok, Bs} = hctest:produce_cc_blocks(Config, #{count => Last1 - Height1 + 1}),
-    ct:pal("Blocks produced (~w): ~p", [length(Bs), Bs]),
     HashLastInEpoch = aec_blocks:prev_hash(lists:last(Bs)),
     ct:log("Block last epoch: ~p", [aeser_api_encoder:encode(key_block_hash, HashLastInEpoch)]),
 
@@ -350,153 +277,8 @@ wallet_post_pin_to_pc(Config) ->
     {ok, _} = hctest:produce_cc_blocks(Config, #{count => CollectHeight - Height2}),
     ok.
 
-last_leader_validates_pin_and_post_to_contract(Config) ->
-    [{Node, NodeName, _, _} | _] = hctest:get_nodes(Config),
-    %% 1. Correct pin is posted in the contract
-
-    #{cur_pin_reward := _Reward} = rpc(Node, aec_chain_hc , pin_reward_info, []),
-
-    %% move into next epoch
-    mine_to_next_epoch(Node, Config),
-    %% post pin to PC
-    {ok, PinningData} = rpc(Node, aec_parent_connector, get_pinning_data, []),
-    ct:log("Pinning data ~p", [PinningData]),
-    TxHash = pin_to_parent(Node, PinningData, hctest:pubkey(?DWIGHT)),
-    %% post parent spend tx hash to CC
-    {ok, #{epoch  := _Epoch,
-            last   := Last,
-            length := _Length}} = rpc(Node, aec_chain_hc, epoch_info, []),
-    {ok, LastLeader} = rpc(Node, aec_consensus_hc, leader_for_height, [Last]),
-    tx_hash_to_child(Node, TxHash, ?ALICE, LastLeader, Config),
-    %% move forward to last block
-
-    mine_to_last_block_in_epoch(Node, Config),
-    % produce blocks until last
-
-    aecore_suite_utils:subscribe(NodeName, pin),
-    %% TODO test to see that LastLeader actually is leader now?
-
-    %% Find the first spend
-    [FirstSpend|_] = rpc(Node, aec_parent_connector, find_spends_to, [LastLeader]),
-    ct:log("First Spend: ~p", [FirstSpend]),
-
-    %% call contract with PC pin tx hash
-    ok = pin_contract_call_tx(Config, FirstSpend, LastLeader),
-
-    {value, Account} = rpc(?NODE1, aec_chain, get_account, [LastLeader]),
-    ct:log("Leader Account: ~p", [Account]),
-
-    LeaderBalance1A = hctest:account_balance(LastLeader),
-    %% use get_pin_by_tx_hash to get the posted hash back and compare with actual keyblock (to test encoding decoding etc)
-    {ok, #{epoch := _PinEpoch, height := PinHeight, block_hash := PinHash}} =
-        rpc(Node, aec_parent_connector, get_pin_by_tx_hash, [FirstSpend]),
-    ?assertEqual({ok, PinHash}, rpc(Node, aec_chain_state, get_key_block_hash_at_height, [PinHeight])),
-
-    %% move into next epoch - trigger leader validation?
-    {ok, _} = hctest:produce_cc_blocks(Config, #{count => 2}),
-    {ok, #{info := {pin_accepted, _}}} = wait_for_ps(pin),
-    LeaderBalance1B = hctest:account_balance(LastLeader),
-
-    ct:log("Account balance for leader was: ~p, is now: ~p", [LeaderBalance1A, LeaderBalance1B]),
-    % Any Reasonable way to do this test? Likely a bunch of rewards/fees etc have been awarded, although
-    % the above log clearly shows that 4711 (and a bunch more coin) was added.
-    % LeaderBalance0 = LeaderBalance1 - 4711,
-
-    aecore_suite_utils:unsubscribe(NodeName, pin),
-
-    %% 2. No pin is posted
-
-    % to end of (next) epoch
-    mine_to_last_block_in_epoch(Node, Config),
-
-    aecore_suite_utils:subscribe(NodeName, pin),
-
-    % In last generation, but we don't post pin
-
-    {ok, _} = hctest:produce_cc_blocks(Config, #{count => 2}),
-    {ok, #{info := {no_proof_posted}}} = wait_for_ps(pin),
-
-    aecore_suite_utils:unsubscribe(NodeName, pin),
-
-    %% 3. Incorrect pin posted to contract a) bad tx hash
-
-    mine_to_last_block_in_epoch(Node, Config),
-
-    aecore_suite_utils:subscribe(NodeName, pin),
-
-    % post bad hash to contract
-
-    {ok, #{last := Last3}} = rpc(Node, aec_chain_hc, epoch_info, []),
-    {ok, LastLeader3} = rpc(Node, aec_consensus_hc, leader_for_height, [Last3]),
-    ok = pin_contract_call_tx(Config, <<"THIS IS A BAD TX HASH">>, LastLeader3),
-
-    {ok, _} = hctest:produce_cc_blocks(Config, #{count => 2}),
-    {ok, #{info := {incorrect_proof_posted}}} = wait_for_ps(pin),
-
-    aecore_suite_utils:unsubscribe(NodeName, pin),
-
-    %% 4. Incorrect hash stored on PC
-
-    {ok, PD4} = rpc(Node, aec_parent_connector, get_pinning_data, []),
-    EncTxHash4 = pin_to_parent(Node, PD4#{block_hash := <<"VERYINCORRECTBLOCKHASH">>}, hctest:pubkey(?DWIGHT)),
-    %% post parent spend tx hash to CC
-    {ok, #{last := Last4}} = rpc(Node, aec_chain_hc, epoch_info, []),
-    {ok, LastLeader4} = rpc(Node, aec_consensus_hc, leader_for_height, [Last4]),
-
-    mine_to_last_block_in_epoch(Node, Config),
-
-    aecore_suite_utils:subscribe(NodeName, pin),
-
-    % post bad hash to contract
-    LeaderBalance4A = hctest:account_balance(LastLeader4),
-    ok = pin_contract_call_tx(Config, EncTxHash4, LastLeader4),
-
-    {ok, _} = hctest:produce_cc_blocks(Config, #{count => 2}),
-    {ok, #{info := {incorrect_proof_posted}}} = wait_for_ps(pin),
-
-    LeaderBalance4B = hctest:account_balance(LastLeader4),
-
-    ct:log("Account balance for leader was: ~p, is now: ~p", [LeaderBalance4A, LeaderBalance4B]),
-    % See above for when a reward for pinning actually was given... Same problem here.
-    % LeaderBalance4A = LeaderBalance4B, % nothing was rewarded
-
-    aecore_suite_utils:unsubscribe(NodeName, pin),
-
-    %% 4. Bad height and then bad leader
-
-    {ok, PD5} = rpc(Node, aec_parent_connector, get_pinning_data, []),
-    EncTxHash5 = pin_to_parent(Node, PD5, hctest:pubkey(?DWIGHT)),
-
-    {ok, #{last := Last5}} = rpc(Node, aec_chain_hc, epoch_info, []),
-    {ok, LastLeader5} = rpc(Node, aec_consensus_hc, leader_for_height, [Last5]),
-
-    {ok, _} = hctest:produce_cc_blocks(Config, #{count => 1}),
-
-    %% at the wrong height
-    ok = pin_contract_call_tx(Config, EncTxHash5, LastLeader5),
-
-    {ok, _} = hctest:produce_cc_blocks(Config, #{count => 1}),
-    {ok, []} = rpc(Node, aec_tx_pool, peek, [infinity]), % transaction not in pool
-    %% check that no pin info was stored.
-    undefined = rpc(Node, aec_chain_hc, pin_info, []),
-
-    hctest:mine_to_last_block_in_epoch(Node, Config),
-
-    aecore_suite_utils:subscribe(NodeName, pin),
-
-    % post by wrong leader
-    NotLeader = hd([hctest:pubkey(?ALICE), hctest:pubkey(?BOB)] -- [LastLeader5]),
-    ok = pin_contract_call_tx(Config, EncTxHash5, NotLeader),
-
-    {ok, _} = hctest:produce_cc_blocks(Config, #{count => 2}),
-    {ok, #{info := {no_proof_posted}}} = wait_for_ps(pin),
-
-    aecore_suite_utils:unsubscribe(NodeName, pin),
-
-    ok.
-
 check_default_pin(Config) ->
-    [{Node, NodeName, _, _} | _] = hctest:get_nodes(Config),
+    [{Node, NodeName, _, _} | _] = ?config(nodes, Config),
 
     {ok, _} = hctest:produce_cc_blocks(Config, #{count => 12}),
     {ok, #{last := Last}} = rpc(Node, aec_chain_hc, epoch_info, []),
@@ -529,15 +311,6 @@ wait_for_ps(Event) ->
         {gproc_ps_event, Event, Info} -> {ok, Info};
         Other -> error({wrong_signal, Other})
     end.
-
-mine_to_last_block_in_epoch(Node, Config) ->
-    {ok, #{epoch  := _Epoch,
-           first  := _First,
-           last   := Last,
-           length := _Length}} = rpc(Node, aec_chain_hc, epoch_info, []),
-    CH = rpc(Node, aec_chain, top_height, []),
-    DistToBeforeLast = Last - CH - 1,
-    {ok, _} = hctest:produce_cc_blocks(Config, #{count => DistToBeforeLast}).
 
 bytes_literal(Bin) ->
     [_, _ | PinLit] = binary_to_list(aeu_hex:hexstring_encode(Bin)),

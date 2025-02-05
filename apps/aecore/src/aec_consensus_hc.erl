@@ -377,7 +377,7 @@ step_key(Height, #{epoch := Epoch, first := EpochFirst, last := EpochLast} = Epo
             {ok, Seed} ->
                 lager:debug("End of epoch=~w, calling step_eoe()", [Epoch]),
                 cache_validators_for_epoch({TxEnv, Trees1}, Seed, Epoch + 2),
-                Trees2 = step_eoe(TxEnv, Trees1, Leader, Seed, 0, -1, CarryOverFlag),
+                Trees2 = step_eoe(TxEnv, Trees1, Leader, Seed, -1, CarryOverFlag),
                 {ok, NextEpochInfo} = aec_chain_hc:epoch_info({TxEnv, Trees2}),
                 %% start_default_pinning_process(TxEnv, Trees2, Height, NextEpochInfo),
                 {Trees2, Events ++ [{new_epoch, NextEpochInfo}]};
@@ -820,15 +820,6 @@ get_contract_pubkey(ContractType) ->
         ?REWARDS_CONTRACT -> rewards_contract_pubkey();
         ?STAKING_CONTRACT -> staking_contract_pubkey()
     end.
-
-%% TODO: The following function should be removed?
--dialyzer({no_unused, call_consensus_contract/6}).
-call_consensus_contract(Contract, Node, Trees, EncodedCallData, Keyword, Amount) ->
-    Header = aec_block_insertion:node_header(Node),
-    TxEnv = aetx_env:tx_env_from_key_header(
-        Header, aec_block_insertion:node_hash(Node),
-        aec_block_insertion:node_time(Node), aec_block_insertion:node_prev_hash(Node)),
-    call_consensus_contract_(Contract, TxEnv, Trees, EncodedCallData, Keyword, Amount).
 
 call_consensus_contract_(ContractType, TxEnv, Trees, EncodedCallData, Keyword, Amount) ->
     log_consensus_call(TxEnv, Keyword, EncodedCallData, Amount),

@@ -13,11 +13,9 @@
 
 %% Test cases
 -export([
-    % block_difficulty/1,
     check_blocktime/1,
     check_finalize_info/1,
     correct_leader_in_micro_block/1,
-    % elected_leader_did_not_show_up/1,
     entropy_impact_schedule/1,
     epochs_with_fast_parent/1,
     epochs_with_slow_parent/1,
@@ -79,7 +77,7 @@ init_per_suite(Config0) ->
             hctest:encoded_pubkey(?EDWIN) => 3_100000000_000000000_000000000
         },
         main_staking_contract => ?MAIN_STAKING_CONTRACT,
-        staking_validator_contract => ?STAKING_VALIDATOR_CONTRACT, 
+        staking_validator_contract => ?STAKING_VALIDATOR_CONTRACT,
         hc_contract => ?HC_CONTRACT,
         nodes_list => [?NODE1, ?NODE2]
     }).
@@ -181,7 +179,7 @@ check_blocktime_(Block) ->
 start_two_child_nodes(CTConfig) ->
     [{Node1, NodeName1, Stakers1, Pinners1}, {Node2, NodeName2, Stakers2, Pinners2} | _] = hctest:get_nodes(CTConfig),
     Env = [ {"AE__FORK_MANAGEMENT__NETWORK_ID", binary_to_list(proplists:get_value(network_id, CTConfig))} ],
-    
+
     hctest_ct_shared:child_node_config(#{
         node => Node1,
         stakeholders => Stakers1,
@@ -197,7 +195,7 @@ start_two_child_nodes(CTConfig) ->
     aecore_suite_utils:start_node(Node1, CTConfig, Env),
     aecore_suite_utils:connect(NodeName1, []),
     rpc(Node1, aec_conductor, start_mining, []),
-    
+
     hctest_ct_shared:child_node_config(#{
         node => Node2,
         stakeholders => Stakers2,
@@ -217,7 +215,7 @@ start_two_child_nodes(CTConfig) ->
 
 produce_first_epoch(Config) ->
     %% Produce on parent chain before we begin on child chain
-    hctest:produce_pc_blocks(12),    
+    hctest:produce_pc_blocks(12),
     hctest:produce_n_epochs(Config, 1).
 
 produce_some_epochs(Config) ->
@@ -241,7 +239,7 @@ respect_schedule(Node, EpochStart, Epoch, TopHeight) ->
 
     {ParentHeight, PHash} = hctest:get_entropy(Node, Epoch),
     ct:log("ParentHash at height ~p: ~p", [ParentHeight, PHash]),
-    ?assert(case EISeed of Hash when Hash == undefined; Hash == PHash -> true; _ -> false end, 
+    ?assert(case EISeed of Hash when Hash == undefined; Hash == PHash -> true; _ -> false end,
         hctest:format("The (epoch_info)EISeed=~w must either be undefined or equal to the parent_hash=~w",
             [EISeed, PHash])),
 
@@ -315,7 +313,7 @@ simple_withdraw(Config) ->
     WithdrawAmount = 1000,
     Call1 = hctest:contract_call(
         AliceCt, ValidatorStub, "adjust_stake",
-         [integer_to_list(-WithdrawAmount)], 0, 
+         [integer_to_list(-WithdrawAmount)], 0,
          hctest:pubkey(?ALICE)),
     CallTx1 = hctest:sign_and_push(NodeName, Call1, ?ALICE, NetworkId),
     {ok, [_]} = rpc:call(NodeName, aec_tx_pool, peek, [infinity]),
@@ -360,7 +358,7 @@ simple_withdraw(Config) ->
              andalso BobStake + KeyReward == BobStake1)),
     ct:log("Staking power before: ~p and after ~p", [AliceStake, AliceStake1]),
     ?assert(AliceStake - 1000 == AliceStake1 orelse
-            (Producer == hctest:pubkey(?ALICE) 
+            (Producer == hctest:pubkey(?ALICE)
             andalso AliceStake + KeyReward - 1000 == AliceStake1)),
     ok.
 
@@ -371,7 +369,7 @@ correct_leader_in_micro_block(Config) ->
     CallTx = hctest:sign_and_push(
         NodeName,
         hctest:contract_call(
-            proplists:get_value(election_contract, Config), 
+            proplists:get_value(election_contract, Config),
                 hctest:src(?HC_CONTRACT, Config),
             "leader", [], 0, hctest:pubkey(?ALICE)),
         ?ALICE, proplists:get_value(network_id, Config)),
@@ -379,7 +377,7 @@ correct_leader_in_micro_block(Config) ->
     {ok, [KeyBlock, _MicroBlock]} = hctest:produce_cc_blocks(Config, #{count => 1}),
     %% Microblock contains the contract call, find out what it returned on that call
     {ok, Call} = hctest:call_info(CallTx),
-    {ok, Res} = hctest:decode_consensus_result(Call, "leader", 
+    {ok, Res} = hctest:decode_consensus_result(Call, "leader",
         hctest:src(?HC_CONTRACT, Config)),
     %% The actual leader did produce the keyblock (and micro block)
     Producer = aeser_api_encoder:encode(account_pubkey, aec_blocks:miner(KeyBlock)),
@@ -633,12 +631,12 @@ epochs_with_slow_parent(Config) ->
     %% Produce no parent block in the next Resilience child epochs
     %% the child chain should get to a halt or
     %% at least one should be able to observe signalling that the length should be adjusted upward
-    {ok, _} = hctest:produce_cc_blocks(Config, #{count => ?CHILD_EPOCH_LENGTH*Resilience}), 
+    {ok, _} = hctest:produce_cc_blocks(Config, #{count => ?CHILD_EPOCH_LENGTH*Resilience}),
 
     ct:log("Mined almost ~p additional child epochs without parent progress", [Resilience]),
     ActualParentHeight = hctest:get_height(?PARENT_CHAIN_NODE),
     ?assert(ActualParentHeight > ParentHeight,
-        hctest:format("Parent must have reached at least height of ~w (got ~w)", 
+        hctest:format("Parent must have reached at least height of ~w (got ~w)",
         [ParentHeight, ActualParentHeight])),
 
     ChildTopHeight = hctest:get_height(Node),
@@ -749,14 +747,17 @@ check_finalize_info(Config) ->
     {ok, LastLeader} = rpc(Node, aec_consensus_hc, leader_for_height, [Last]),
     hctest:mine_to_last_block_in_epoch(Node, Config),
     {ok, _} = hctest:produce_cc_blocks(Config, #{count => 2}),
-    #{producer := Producer, epoch := FEpoch, votes := Votes} = rpc(Node, aec_chain_hc , finalize_info, []),
+
+    #{ producer := Producer, epoch := FEpoch, votes := Votes
+    } = case rpc(Node, aec_chain_hc, finalize_info, []) of
+        undefined -> ?assert(false, "aec_chain_hc:finalize_info returned undefined");
+        Result -> Result
+    end,
+
     FVoters = lists:map(fun(#{producer := Voter}) -> Voter end, Votes),
     TotalStake = lists:foldl(fun({_, Stake}, Accum) -> Stake + Accum end, 0, Validators),
     VotersStake = lists:foldl(fun(Voter, Accum) -> proplists:get_value(Voter, Validators) + Accum end, 0, FVoters),
     TotalVotersStake = proplists:get_value(LastLeader, Validators) + VotersStake,
     ?assertEqual(Epoch, FEpoch),
     ?assertEqual(Producer, LastLeader),
-    ExpectedTotalStake = trunc(math:ceil((2 * TotalStake) / 3)),
-
-    ct:log("Expected minimum total stake of ~w (got ~w)", [ExpectedTotalStake, TotalVotersStake]),
-    ?assert(TotalVotersStake >= ExpectedTotalStake).
+    ?assert(TotalVotersStake >= trunc(math:ceil((2 * TotalStake) / 3))).
