@@ -2310,6 +2310,7 @@ components:
           $ref: "#/components/schemas/UInt"
       required:
         - id
+        - started_at
         - ends_at
         - highest_bidder
         - highest_bid
