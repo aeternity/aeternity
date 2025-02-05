@@ -51,15 +51,16 @@
 
 -record(state,
     {
-        child_top_height                        :: non_neg_integer(),
-        child_top_hash                          :: aec_blocks:block_header_hash(),
-        parent_target_fun                       :: fun((integer()) -> [integer()]),
-        child_start_height                      :: non_neg_integer(),
-        max_size                                :: non_neg_integer(),
-        retry_interval                          :: non_neg_integer(),
-        block_cache         = #{}               :: #{non_neg_integer() => aec_parent_chain_block:block() | {requested,  non_neg_integer()}},
-        blocks_hash_index   = #{}               :: #{aec_parent_chain_block:hash() => non_neg_integer()},
-        top_height          = 0                 :: non_neg_integer()
+        child_top_height         :: non_neg_integer(),
+        child_top_hash           :: aec_blocks:block_header_hash(),
+        parent_target_fun        :: fun((integer()) -> [integer()]),
+        child_start_height       :: non_neg_integer(),
+        max_size                 :: non_neg_integer(),
+        retry_interval           :: non_neg_integer(),
+        block_cache        = #{} :: #{non_neg_integer() => aec_parent_chain_block:block() | {requested,  non_neg_integer()}},
+        blocks_hash_index  = #{} :: #{aec_parent_chain_block:hash() => non_neg_integer()},
+        top_height         = 0   :: non_neg_integer(),
+        finality                 :: non_neg_integer()
     }).
 -type state() :: #state{}.
 
@@ -73,8 +74,8 @@
                  fun((integer()) -> [integer()]),
                  non_neg_integer(), non_neg_integer()) ->
     {ok, pid()} | {error, {already_started, pid()}} | {error, Reason::any()}.
-start_link(Height, RetryInterval, ParentTargetFun, Size, _Confirmations) ->
-    Args = [Height, RetryInterval, ParentTargetFun, Size],
+start_link(Height, RetryInterval, ParentTargetFun, Size, Finality) ->
+    Args = [Height, RetryInterval, ParentTargetFun, Size, Finality],
     gen_server:start_link({local, ?SERVER}, ?MODULE, Args, []).
 
 stop() ->
@@ -117,32 +118,33 @@ get_state() ->
 %%%=============================================================================
 
 -spec init([any()]) -> {ok, #state{}}.
-init([StartHeight, RetryInterval, ParentTargetFun, Size]) ->
+init([StartHeight, RetryInterval, ParentTargetFun, Size, Finality]) ->
     aec_events:subscribe(top_changed),
     TopHeader = aec_chain:top_header(),
     ChildHeight = aec_headers:height(TopHeader),
     {ok, ChildHash} = aec_headers:hash_header(TopHeader),
     true = is_integer(ChildHeight),
     self() ! initialize_cache,
-    {ok, #state{child_start_height      = StartHeight,
-                child_top_height        = ChildHeight,
-                retry_interval          = RetryInterval,
-                parent_target_fun       = ParentTargetFun,
-                child_top_hash          = ChildHash,
-                max_size                = Size,
-                block_cache             = #{}
+    {ok, #state{child_start_height = StartHeight,
+                child_top_height   = ChildHeight,
+                retry_interval     = RetryInterval,
+                parent_target_fun  = ParentTargetFun,
+                child_top_hash     = ChildHash,
+                max_size           = Size,
+                block_cache        = #{},
+                finality           = Finality
                 }}.
 
 -spec handle_call(any(), any(), state()) -> {reply, any(), state()}.
 handle_call({get_block_by_height, Height}, _From, State) ->
     {Reply, State1} =
-                    case get_block(Height, State) of
-                        {error, _} = Err ->
-                            NewState = request_block(Height, State),
-                            {Err, NewState};
-                        {ok, _Block} = OK ->
-                            {OK, State}
-                    end,
+        case get_block(Height, State) of
+            {error, _} = Err ->
+                NewState = request_block(Height, State),
+                {Err, NewState};
+            {ok, _Block} = OK ->
+                {OK, State}
+        end,
     {reply, Reply, State1};
 
 handle_call(get_state, _From, State) ->

@@ -110,7 +110,7 @@ start(Config, _) ->
     PinnersConfig  = maps:get(<<"pinners">>, Config, []),
     PCConfig      = maps:get(<<"parent_chain">>, Config),
 
-    Confirmations   = maps:get(<<"confirmations">>, PCConfig, 6),
+    PCFinality      = maps:get(<<"finality">>, PCConfig, 5),
     StartHeight     = maps:get(<<"start_height">>, PCConfig, 0),
     ConsensusConfig = maps:get(<<"consensus">>, PCConfig, #{}),
     PollingConfig   = maps:get(<<"polling">>, PCConfig, #{}),
@@ -136,7 +136,7 @@ start(Config, _) ->
                                             SignModule, HCPCMap]),
     start_dependency(aec_parent_chain_cache, [StartHeight, RetryInterval,
                                               fun target_parent_heights/1, %% prefetch the next parent block
-                                              CacheSize, Confirmations]),
+                                              CacheSize, PCFinality]),
     start_dependency(aec_pinning_agent, [get_contract_pubkey(?ELECTION_CONTRACT), default_pinning_behavior(), SignModule]),
     ok.
 

@@ -226,7 +226,7 @@ configurable_confirmation_height() ->
 %%%===================================================================
 
 start_cache(StartHeight, MaxSize) ->
-    Args = [StartHeight, 1000, fun(Height) -> [Height + StartHeight, Height + StartHeight + ?EPOCH] end, MaxSize],
+    Args = [StartHeight, 1000, fun(Height) -> [Height + StartHeight, Height + StartHeight + ?EPOCH] end, MaxSize, 2],
     gen_server:start_link({local, ?TEST_MODULE}, ?TEST_MODULE, Args, []).
 
 

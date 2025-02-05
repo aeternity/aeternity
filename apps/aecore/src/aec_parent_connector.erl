@@ -37,16 +37,16 @@
          %% blocking getting of blocks
          fetch_block_by_hash/1,
          fetch_block_by_height/1,
-        %% internal state getters
-        get_network_id/0,
-        get_parent_conn_mod/0,
-        get_sign_module/0,
-        get_parent_chain_type/0,
-        %% Pinning
-        pin_to_pc/3,
-        get_pinning_data/0,
-        get_pin_by_tx_hash/1,
-        has_parent_account/1
+         %% internal state getters
+         get_network_id/0,
+         get_parent_conn_mod/0,
+         get_sign_module/0,
+         get_parent_chain_type/0,
+         %% Pinning
+         pin_to_pc/3,
+         get_pinning_data/0,
+         get_pin_by_tx_hash/1,
+         has_parent_account/1
         ]).
 
 %% Callbacks
