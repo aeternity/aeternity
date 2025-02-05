@@ -268,6 +268,7 @@ produce_n_epochs(Config, N) ->
 -spec produce_cc_blocks(Config :: proplists:proplist(), pos_integer() | produce_cc_args()) -> {ok, list(aec_blocks:block())}.
 produce_cc_blocks(Config, BlocksCnt) when is_integer(BlocksCnt) ->
     produce_cc_blocks(Config, #{count => BlocksCnt});
+%% Returns 2x BlocksCnt blocks because each production is 2 blocks: key and micro
 produce_cc_blocks(Config, Args = #{ count := BlocksCnt }) ->
     %% Skip the node argument to pick the first node
     Node = case maps:get(node, Args, undefined) of
@@ -307,11 +308,11 @@ produce_cc_blocks(Config, Args = #{ count := BlocksCnt }) ->
 
     %% Read last BlocksCnt blocks
     ?assert(get_height(Node) >= BlocksCnt,
-        format("Chain must have at least ~w blocks (has ~w)",
-            [BlocksCnt, get_height(Node)])),
+        format("Chain must have at least ~w blocks (has ~w)", [BlocksCnt, get_height(Node)])),
     ct:log("Reading last ~w blocks", [BlocksCnt]),
+    ProducedCount = get_height(Node) - TopHeight,
     LastBlocks = read_last_blocks(
-        Node, rpc(Node, aec_chain, top_block_hash, []), BlocksCnt, []),
+        Node, rpc(Node, aec_chain, top_block_hash, []), ProducedCount, []),
     {ok, LastBlocks}.
 
 %% Read remotely the last BlocksCnt key blocks from the top

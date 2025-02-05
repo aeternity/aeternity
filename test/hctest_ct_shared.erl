@@ -16,7 +16,7 @@
 -include("./hctest_defaults.hrl").
 
 init_per_suite(Config0, #{
-    owner_pubkey := OwnerPubkey, 
+    owner_pubkey := OwnerPubkey,
     parent_chain_node := ParentChainNode,
     parent_chain_network_id := ParentChainNetworkId,
     parent_finality := ParentFinality,
@@ -24,7 +24,7 @@ init_per_suite(Config0, #{
     reward_delay := RewardDelay,
     parent_account_seeds := ParentAccountSeeds,
     main_staking_contract := MainStakingContract,
-    staking_validator_contract := StakingValidatorContract, 
+    staking_validator_contract := StakingValidatorContract,
     hc_contract := HcContract,
     nodes_list := NodesList
 }) ->
@@ -72,7 +72,7 @@ init_per_suite(Config0, #{
                                        || C <- [MainStakingContract, StakingValidatorContract, HcContract]]),
             [ {staking_contract, StakingContract}
             , {election_contract, ElectionContract}
-            , {contract_src, CtSrcMap} 
+            , {contract_src, CtSrcMap}
             , {owner_pubkey, OwnerPubkey}
             , {parent_chain_node, ParentChainNode}
             , {parent_finality, ParentFinality}
@@ -94,7 +94,7 @@ init_per_group(Group, ConfigPre, #{
     parent_chain_node_name := ParentChainNodeName,
     parent_epoch_length := ParentEpochLength,
     parent_finality := ParentFinality,
-    stakers := Stakers 
+    stakers := Stakers
 }) ->
     Config0 =
         case Group of
@@ -106,7 +106,7 @@ init_per_group(Group, ConfigPre, #{
     GenesisStartTime = aeu_time:now_in_msecs(),
     Config = [ {network_id, NetworkId}
              , {genesis_start_time, GenesisStartTime}
-             , {consensus, Consensus} 
+             , {consensus, Consensus}
              | aect_test_utils:init_per_group(VM, Config0) ],
 
     aecore_suite_utils:start_node(ParentChainNode, Config),
@@ -119,7 +119,7 @@ init_per_group(Group, ConfigPre, #{
         ParentChainNodeName,
             (StartHeight - ParentTopHeight) + ParentFinality),
     [ {staker_names, Stakers}
-    , {parent_start_height, StartHeight} 
+    , {parent_start_height, StartHeight}
     | Config].
 
 end_per_group(_Group, Config) ->
@@ -140,11 +140,11 @@ staking_contract_address(OwnerPubkey) ->
 
 election_contract_address_from_ctconfig(CtConfig) ->
     proplists:get_value(election_contract, CtConfig).
-    
+
 election_contract_address(OwnerPubkey) ->
     %% This value is additionally stored in the CT Config in the shared init_per_suite
     aect_contracts:compute_contract_pubkey(OwnerPubkey, 2).
-    
+
 create_stub(Contract) ->
     create_stub(Contract, []).
 
@@ -176,11 +176,11 @@ start_child_nodes(Nodes, ChildConfig, CTConfig) ->
     NetworkId = binary_to_list(proplists:get_value(network_id, CTConfig)),
     AllNodeDefinitions = hctest:get_nodes(CTConfig),
     StartNodeFn = fun(N) ->
-        {Node, NodeName, Stakers, Pinners} = lists:keyfind(N, 1, AllNodeDefinitions),
+        {Node, NodeName, Stakeholders, Pinners} = lists:keyfind(N, 1, AllNodeDefinitions),
         Env = [{"AE__FORK_MANAGEMENT__NETWORK_ID", NetworkId}],
         child_node_config(ChildConfig#{
-            node => Node, 
-            stakeholders => Stakers,
+            node => Node,
+            stakeholders => Stakeholders,
             pinners => Pinners
         }, CTConfig),
         aecore_suite_utils:start_node(Node, CTConfig, Env),
@@ -205,7 +205,7 @@ child_node_config(ChildNodeConfig = #{
 -spec node_config(child_node_config(), CTConfig :: proplists:proplist()) -> any().
 node_config(#{
     node := Node,
-    stakeholders := PotentialStakers, 
+    stakeholders := PotentialStakeholders,
     pinners := PotentialPinners,
     receive_address := ReceiveAddress,
     hc_contract := _,
@@ -221,24 +221,24 @@ node_config(#{
                     fun(HCWho) ->
                         HCPriv = list_to_binary(aeu_hex:bin_to_hex( hctest:privkey(HCWho))), %% TODO: discuss key management
                         #{ <<"hyper_chain_account">> => #{
-                            <<"pub">> => hctest:encoded_pubkey(HCWho), 
+                            <<"pub">> => hctest:encoded_pubkey(HCWho),
                             <<"priv">> => HCPriv
                         }}
                     end,
-                    PotentialStakers),
+                    PotentialStakeholders),
     Pinners = lists:map(
                     fun({Owner, Pinner}) ->
                         HCPriv = list_to_binary(aeu_hex:bin_to_hex( hctest:privkey(Pinner))), %% TODO: discuss key management
                         #{ <<"parent_chain_account">> => #{
                             <<"pub">> => hctest:encoded_pubkey(Pinner),
-                            <<"priv">> => HCPriv, 
+                            <<"priv">> => HCPriv,
                             <<"owner">> => hctest:encoded_pubkey(Owner)
                         }}
                     end,
                     PotentialPinners),
     ct:log("Stakers: ~p", [Stakers]),
     ct:log("Pinners: ~p", [Pinners]),
-    
+
     ConsensusType = <<"hyperchain">>,
     ParentChainNode = proplists:get_value(parent_chain_node, CTConfig),
     ParentFinality = proplists:get_value(parent_finality, CTConfig),
@@ -272,7 +272,7 @@ node_config(#{
     Protocol = aect_test_utils:latest_protocol_version(),
     {ok, ContractFileName} = aecore_suite_utils:hard_fork_filename(Node, CTConfig, integer_to_list(Protocol), binary_to_list(NetworkId) ++ "_contracts.json"),
     {ok, AccountFileName} = aecore_suite_utils:hard_fork_filename(Node, CTConfig, integer_to_list(Protocol), binary_to_list(NetworkId) ++ "_accounts.json"),
-    OwnerPubkey = proplists:get_value(owner_pubkey, CTConfig),                    
+    OwnerPubkey = proplists:get_value(owner_pubkey, CTConfig),
     #{<<"chain">> =>
             #{  <<"persist">> => false,
                 <<"hard_forks">> => #{
@@ -366,7 +366,7 @@ build_json_files(ElectionContract, NodeConfig, CTConfig) ->
     aecore_suite_utils:create_seed_file(ContractsFileName,
         #{<<"contracts">> => [SC, EC], <<"calls">> => AllCalls}),
     aecore_suite_utils:create_seed_file(AccountsFileName,
-        #{  
+        #{
             <<"ak_2evAxTKozswMyw9kXkvjJt3MbomCR1nLrf91BduXKdJLrvaaZt">> => 1000000000000000000000000000000000000000000000000,
             hctest:encoded_pubkey(?ALICE) => 2_100000000_000000000_000000000,
             hctest:encoded_pubkey(?BOB) => 3_100000000_000000000_000000000,
