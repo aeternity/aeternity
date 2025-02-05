@@ -1113,8 +1113,6 @@ call_contracts([Call | Tail], TxEnv, TreesAccum) ->
     {_, TreesAccum1} = aec_block_fork:apply_contract_call_tx(Tx, TreesAccum, TxEnv),
     call_contracts(Tail, TxEnv, TreesAccum1).
 
-
-
 initialize_validators(_TxEnv, Trees, []) -> Trees;
 initialize_validators(TxEnv, Trees, [Validator | Tail]) ->
     #{ <<"owner">>        := EncOwner
