@@ -1146,7 +1146,6 @@ initialize_validators(TxEnv, Trees, [Validator | Tail]) ->
                 gas_price    => 1000000000,
                 fee          => 1000000000000000,
                 call_data    => CallData},
-    lager:info("Initializing validators TXSpec ~p", [TxSpec]),
     {ok, DummyTx} = aect_call_tx:new(TxSpec),
     Height   = aetx_env:height(TxEnv),
     Protocol = aetx_env:consensus_version(TxEnv),
