@@ -1,5 +1,5 @@
 {
-    "$schema" : "http://json-schema.org/draft-04/schema#",
+    "$schema" : "https://json-schema.org/draft/2020-12/schema",
     "type" : "object",
     "additionalProperties" : false,
     "properties" : {
@@ -1561,7 +1561,7 @@
                 "db_backend" : {
                     "description" : "Choice of database backend.",
                     "type" : "string",
-                    "pattern" : "^([a-z]+|([a-z0-9\\*]+:[a-z]+)|([a-z0-9\\*]+:[a-z]+(\\h*\\|\\h*[a-z0-9\\*]+:[a-z]+))+)$",
+                    "pattern" : "^([a-z]+|([a-z0-9\\*]+:[a-z]+)|([a-z0-9\\*]+:[a-z]+(h*\\|h*[a-z0-9\\*]+:[a-z]+))+)$",
                     "example" : "'rocksdb' OR 'unix:rocksdb' OR 'unix:rocksdb|*:mnesia'",
                     "default" : "unix:rocksdb|*:mnesia"
                 },
@@ -2220,13 +2220,13 @@
                                 "type" : "string",
                                 "description" :
                                 "Specific datapoints: 'default', or names, comma-separated",
-                                "pattern" : "^[a-zA-Z0-9]+(\\,[a-zA-Z0-9]+)*$"
+                                "pattern" : "^[a-zA-Z0-9]+(,[a-zA-Z0-9]+)*$"
                             },
                             "actions" : {
                                 "description" :
                                 "What to do with matching metrics.",
                                 "type" : "string",
-                                "pattern" : "^((none)|(((log)|(send))(\\,((log)|(send))){0,1}))$"
+                                "pattern" : "^((none)|(((log)|(send))(,((log)|(send))){0,1}))$"
                             }
                         }
                     }
@@ -2692,9 +2692,9 @@
             }
         }
     },
-    "definitions" : {
+    "$defs" : {
         "key_value_pattern": {
-            "pattern" : "^[a-zA-Z0-9\\-_\\.]+\\h*:\\h*[0-9]+(\\h*,\\h*[a-zA-Z_]+\\h*:\\h*[0-9]+)*"
+            "pattern" : "^[a-zA-Z0-9\\-_\\.]+h*:h*[0-9]+(h*,h*[a-zA-Z_]+h*:h*[0-9]+)*"
         }
     }
 }
