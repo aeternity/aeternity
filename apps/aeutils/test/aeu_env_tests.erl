@@ -177,7 +177,6 @@ setup() ->
     ok.
 
 teardown() ->
-    application:stop(rfc3339),
     application:stop(jesse),
     application:stop(yamerl),
     application:stop(jsx).

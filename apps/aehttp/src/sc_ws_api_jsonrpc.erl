@@ -802,14 +802,9 @@ encode_info_(K, V) ->
 snd_rcv_type(snd) -> <<"send">>;
 snd_rcv_type(rcv) -> <<"receive">>.
 
-%% In later OTP versions, there is a function in calendar for converting
-%% timestamps to RFC3339. For now, use the rfc3339 lib (which we have already),
-%% and stick to UTZ.
 -dialyzer({nowarn_function, format_date_time/1}).
-format_date_time({_,_,Us} = OSTime) ->
-    {Date, Time} = calendar:now_to_universal_time(OSTime),
-    {ok, Str} = rfc3339:format({Date, Time, Us, 0}),
-    Str.
+format_date_time({_,_,Us}) ->
+    calendar:system_time_to_rfc3339(Us, [{unit, microsecond}, {offset, "Z"}]).
 
 bytearray_decode(Bytearray) ->
     aeser_api_encoder:safe_decode(contract_bytearray, Bytearray).
