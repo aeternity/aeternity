@@ -571,7 +571,7 @@ pp_error(Other) ->
     Other.
 
 pp_error_({error, {schema_file_not_found, Schema}}, Mode) ->
-    error_format("Schema not found : ~s", [Schema], Mode);
+    error_format("Schema not found: ~s~n", [Schema], Mode);
 pp_error_({error, [{data_invalid, Schema, Type, Value, Pos}]}, Mode) ->
     SchemaStr = schema_string(Schema, Mode),
     PosStr = pp_pos(Pos),
