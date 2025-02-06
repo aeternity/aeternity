@@ -164,7 +164,7 @@ get_pin(Config) ->
 
     %% Mine one block and derive which epoch we are in
     {ok, _} = hctest:produce_cc_blocks(Config, #{count => 1}),
-    {ok, #{epoch := Epoch} = EpochInfo1} = hctest:get_epoch_info(Node),
+    {ok, #{epoch := Epoch} = EpochInfo1} = rpc(Node, aec_chain_hc, epoch_info, []),
 
     %% note: the pins are for the last block in previous epoch
     {ok, 200, Repl1} = aecore_suite_utils:http_request(aecore_suite_utils:external_address(), get, "hyperchain/pin-tx", []),
