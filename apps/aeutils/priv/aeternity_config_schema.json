@@ -2692,7 +2692,7 @@
             }
         }
     },
-    "$defs" : {
+    "definitions" : {
         "key_value_pattern": {
             "pattern" : "^[a-zA-Z0-9\\-_\\.]+h*:h*[0-9]+(h*,h*[a-zA-Z_]+h*:h*[0-9]+)*"
         }
