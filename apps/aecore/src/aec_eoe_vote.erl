@@ -9,7 +9,7 @@
 -behaviour(gen_statem).
 
 %% Export API functions
--export([start_link/2, negotiate/7, get_finalize_transaction/1, add_parent_block/2]).
+-export([start_link/2, negotiate/7, get_finalize_transaction/1, add_parent_block/2, validate_epoch_call_transaction/2]).
 
 %% Export gen_statem callbacks
 -export([init/1, callback_mode/0, terminate/3, code_change/4]).
@@ -53,6 +53,29 @@
 -define(SIGNATURE_FLD, <<"signature">>).
 -define(LEADER_FLD, <<"leader">>).
 -define(EPOCH_FLD, <<"epoch">>).
+
+-define(FINALIZE_FUN_NAME, "finalize_epoch").
+
+
+validate_epoch_call_transaction(SignedTx, Validator) ->
+    Tx = aetx_sign:tx(SignedTx),
+    case aetx:specialize_type(Tx) of
+        {contract_call_tx, ContractTx} ->
+            case aect_call_tx:origin(ContractTx) == Validator of
+                true ->
+                    CallData = aect_call_tx:call_data(ContractTx),
+                    case aeb_fate_abi:decode_calldata(?FINALIZE_FUN_NAME, CallData) of
+                        {ok, _} ->
+                            true;
+                        _ ->
+                            false
+                    end;
+                false ->
+                    false
+            end;
+        _ ->
+            false
+    end.
 
 %% API to start the state machine
 -spec start_link(#{binary() => binary()}, non_neg_integer())  -> {ok, pid()} | {error, atom()}.
@@ -564,7 +587,7 @@ create_finalize_call(Votes, #{?HASH_FLD := Hash, ?EPOCH_DELTA_FLD := EpochDelta}
                     Seed
             end,
     VotesList = maps:fold(fun create_vote_call/3, [], Votes),
-    aeb_fate_abi:create_calldata("finalize_epoch", [Epoch, {bytes, Hash}, EpochLength + EpochDelta, {bytes, Seed1}, {address, Leader}, VotesList]).
+    aeb_fate_abi:create_calldata(?FINALIZE_FUN_NAME, [Epoch, {bytes, Hash}, EpochLength + EpochDelta, {bytes, Seed1}, {address, Leader}, VotesList]).
 
 create_vote_call(Producer, #{?HASH_FLD := Hash, ?EPOCH_DELTA_FLD := EpochDelta, ?SIGNATURE_FLD := Signature} = Payload, Accum) ->
     [{tuple, {{address, Producer}, {bytes, Hash}, EpochDelta, {bytes, get_sign_data(Payload)}, {bytes, Signature}}} | Accum].
