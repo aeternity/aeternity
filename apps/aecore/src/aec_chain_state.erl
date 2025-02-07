@@ -888,7 +888,7 @@ handle_top_block_change(OldTopNode, NewTopDifficulty, Node, Events, State) ->
                     %% We have a fork. Compare the difficulties.
                     {ok, OldTopDifficulty} = db_find_difficulty(OldTopHash),
                     case cmp_difficulty(OldTopDifficulty, NewTopDifficulty,
-                                        node_height(OldTopNode), node_height(Node)) of
+                                        OldTopNode, Node) of
                         true ->
                             State1 = set_top_block_node(OldTopNode, State), %% Reset
                             {State1, Events};
@@ -900,11 +900,27 @@ handle_top_block_change(OldTopNode, NewTopDifficulty, Node, Events, State) ->
             end
     end.
 
-cmp_difficulty(OldDifficulty, NewDifficulty, OldHeight, NewHeight) ->
+cmp_difficulty(OldDifficulty, NewDifficulty, OldNode, NewNode) ->
     case aec_consensus:get_consensus_type() of
-        pow -> OldDifficulty >= NewDifficulty;
-        pos -> OldDifficulty > NewDifficulty orelse
-                  (OldDifficulty == NewDifficulty andalso OldHeight > NewHeight)
+        pow ->
+            OldDifficulty >= NewDifficulty;
+        pos ->
+            OldHeader = node_header(OldNode),
+            case aec_headers:is_eoe(OldHeader) of
+                true ->
+                    true;
+                false ->
+                    NewHeader = node_header(NewNode),
+                    case aec_headers:is_eoe(NewHeader) of
+                        true ->
+                            false;
+                        false ->
+                            OldHeight = node_height(OldNode),
+                            NewHeight = node_height(NewNode),
+                            OldDifficulty > NewDifficulty orelse
+                                (OldDifficulty == NewDifficulty andalso OldHeight > NewHeight)
+                    end
+            end
     end.
 
 update_main_chain(OldTopHash, NewTopHash, ForkHash, State) ->
