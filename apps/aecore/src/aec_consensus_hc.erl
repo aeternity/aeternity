@@ -375,7 +375,7 @@ step_key(Height, #{epoch := Epoch, first := EpochFirst, last := EpochLast} = Epo
         {Trees1, CarryOverFlag, Events} = handle_pinning(TxEnv, Trees, EpochInfo, Leader),
         case get_entropy_hash(Epoch + 2) of
             {ok, Seed} ->
-                lager:debug("End of epoch=~w, calling step_eoe()", [Epoch]),
+                lager:debug("End of epoch=~w, calling step_eoe(seed=~w)", [Epoch, Seed]),
                 cache_validators_for_epoch({TxEnv, Trees1}, Seed, Epoch + 2),
                 Trees2 = step_eoe(TxEnv, Trees1, Leader, Seed, -1, CarryOverFlag),
                 {ok, NextEpochInfo} = aec_chain_hc:epoch_info({TxEnv, Trees2}),
@@ -951,12 +951,16 @@ next_beneficiary_check_special_cases(State = #next_beneficiary{
 next_beneficiary_set_candidate(State = #next_beneficiary{
     leader = Leader, height = CurrentChainHeight, timeslot = Timeslot
 }, TopKeyBlock, RunEnv) ->
-    {ok, #{epoch := Epoch, seed := Seed, validators := Validators} = EpochInfo} = aec_chain_hc:epoch_info(RunEnv),
+    {ok, #{
+        epoch := Epoch,
+        seed := Seed,
+        validators := Validators,
+        length := EpochLength} = EpochInfo} = aec_chain_hc:epoch_info(RunEnv),
     case Timeslot =:= maps:get(last, EpochInfo) of
         true ->
             {TxEnv, _} = RunEnv,
             Hash = aetx_env:key_hash(TxEnv),
-            aec_eoe_vote:negotiate(Epoch, Timeslot, Hash, Leader, Validators, Seed, child_epoch_length()); %% TODO epoch delta
+            aec_eoe_vote:negotiate(Epoch, Timeslot, Hash, Leader, Validators, Seed, EpochLength); %% TODO epoch delta
         false ->
             ok
     end,
