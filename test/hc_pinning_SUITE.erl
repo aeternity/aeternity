@@ -164,7 +164,7 @@ get_pin(Config) ->
 
     %% Mine one block and derive which epoch we are in
     {ok, _} = hctest:produce_cc_blocks(Config, #{count => 1}),
-    {ok, #{epoch := Epoch} = EpochInfo1} = rpc(Node, aec_chain_hc, epoch_info, []),
+    {ok, #{epoch := Epoch} = EpochInfo1} = hctest:epoch_info(Node),
 
     %% note: the pins are for the last block in previous epoch
     {ok, 200, Repl1} = aecore_suite_utils:http_request(aecore_suite_utils:external_address(), get, "hyperchain/pin-tx", []),
@@ -186,7 +186,7 @@ get_pin(Config) ->
     %% produce some more child blocks if we stay in same epoch, then pins should be the same
     {ok, _} = hctest:produce_cc_blocks(Config, #{count => 2}),
     {ok, 200, Repl2} = aecore_suite_utils:http_request(aecore_suite_utils:external_address(), get, "hyperchain/pin-tx", []),
-    {ok, EpochInfo2} = rpc(?NODE1, aec_chain_hc, epoch_info, []),
+    {ok, EpochInfo2} = hctest:epoch_info(?NODE1),
     %% Get response from being in next Epoch
     Repl3 =
         if EpochInfo1 == EpochInfo2 ->
@@ -211,8 +211,8 @@ wallet_post_pin_to_pc(Config) ->
     [{Node, _, _, _} | _] = ?config(nodes, Config),
 
     %% Progress to first block of next epoch
-    Height1 = rpc(?NODE1, aec_chain, top_height, []),
-    {ok, #{last := Last1, length := Len, epoch := Epoch}} = rpc(Node, aec_chain_hc, epoch_info, []),
+    Height1 = hctest:get_height(?NODE1),
+    {ok, #{last := Last1, length := Len, epoch := Epoch}} = hctest:epoch_info(Node),
     {ok, Bs} = hctest:produce_cc_blocks(Config, #{count => Last1 - Height1 + 1}),
     HashLastInEpoch = aec_blocks:prev_hash(lists:last(Bs)),
     ct:log("Block last epoch: ~p", [aeser_api_encoder:encode(key_block_hash, HashLastInEpoch)]),
@@ -271,8 +271,8 @@ wallet_post_pin_to_pc(Config) ->
     {ok, _} = hctest:produce_cc_blocks(Config, #{count => 1}),
     {ok, []} = rpc(Node, aec_tx_pool, peek, [infinity]), % transactions in pool
 
-    Height2 = rpc(Node, aec_chain, top_height, []),
-    {ok, #{last := CollectHeight}} = rpc(Node, aec_chain_hc, epoch_info, []),
+    Height2 = hctest:get_height(Node),
+    {ok, #{last := CollectHeight}} = hctest:epoch_info(Node),
     %% mine to CollectHeight and TODO: see that indeed the proof has been used
     {ok, _} = hctest:produce_cc_blocks(Config, #{count => CollectHeight - Height2}),
     ok.
@@ -281,7 +281,7 @@ check_default_pin(Config) ->
     [{Node, NodeName, _, _} | _] = ?config(nodes, Config),
 
     {ok, _} = hctest:produce_cc_blocks(Config, #{count => 12}),
-    {ok, #{last := Last}} = rpc(Node, aec_chain_hc, epoch_info, []),
+    {ok, #{last := Last}} = hctest:epoch_info(Node),
     {ok, LastLeader} = rpc(Node, aec_consensus_hc, leader_for_height, [Last]),
     ct:log("Last Leader: ~p", [LastLeader]),
 
@@ -353,7 +353,7 @@ tx_hash_to_child(Node, EncTxHash, SendAccount, Leader, Config) ->
     Hash.
 
 mine_to_next_epoch(Node, Config) ->
-    Height1 = rpc(Node, aec_chain, top_height, []),
-    {ok, #{last := Last1, length := _Len}} = rpc(Node, aec_chain_hc, epoch_info, []),
+    Height1 = hctest:get_height(Node),
+    {ok, #{last := Last1, length := _Len}} = hctest:epoch_info(Node),
     {ok, Bs} = hctest:produce_cc_blocks(Config, #{count => Last1 - Height1 + 1}),
     ct:log("Block last epoch: ~p", [Bs]).

@@ -5,6 +5,8 @@
 -export([
     account_balance/1,
     call_info/1,
+    config/2,
+    config/3,
     contract_call/6,
     contract_call/7,
     contract_call_spec/7,
@@ -12,6 +14,8 @@
     create_ae_spend_tx/4,
     decode_consensus_result/3,
     encoded_pubkey/1,
+    epoch_info/1,
+    epoch_info/2,
     external_address/1,
     format/2,
     get_block_producer/2,
@@ -51,6 +55,15 @@
 -include_lib("stdlib/include/assert.hrl").
 -include("./hctest_defaults.hrl").
 
+config(Key, CTConfig, Default) ->
+    proplists:get_value(Key, CTConfig, Default).
+
+%% Common Test documentation discourages use of ?config macro, so here we are
+config(Key, CTConfig) ->
+    Value = proplists:get_value(Key, CTConfig, '$undefined'),
+    ?assertNotEqual(Value, '$undefined'),
+    Value.
+
 format(Format, Args) ->
     lists:flatten(io_lib:format(Format, Args)).
 
@@ -61,7 +74,7 @@ format(Format, Args) ->
 % }.
 %-spec get_nodes(CTConfig :: proplists:proplist()) -> list(node_record()).
 get_nodes(CTConfig) ->
-    proplists:get_value(nodes, CTConfig, []).
+    config(nodes, CTConfig, []).
 
 pubkey({Pubkey, _, _}) -> Pubkey.
 
@@ -164,7 +177,7 @@ inspect_staking_contract(OriginWho, WhatToInspect, Config, TopHash) ->
                 {"sorted_validators", []}
 
         end,
-    ContractPubkey = proplists:get_value(staking_contract, Config),
+    ContractPubkey = config(staking_contract, Config),
     do_contract_call(ContractPubkey, src(?MAIN_STAKING_CONTRACT, Config), Fun, Args, OriginWho, TopHash).
 
 inspect_election_contract(OriginWho, WhatToInspect, Config) ->
@@ -177,7 +190,7 @@ inspect_election_contract(OriginWho, WhatToInspect, Config, TopHash) ->
             current_added_staking_power -> {"added_stake", []};
             _ -> {WhatToInspect, []}
         end,
-    ContractPubkey = proplists:get_value(election_contract, Config),
+    ContractPubkey = config(election_contract, Config),
     do_contract_call(ContractPubkey, src(?HC_CONTRACT, Config), Fun, Args, OriginWho, TopHash).
 
 do_contract_call(CtPubkey, CtSrc, Fun, Args, Who, TopHash) ->
@@ -234,57 +247,77 @@ decode_consensus_result(Call, Fun, Src) ->
     {ReturnType, Res}.
 
 src(ContractName, Config) ->
-    Srcs = proplists:get_value(contract_src, Config),
+    Srcs = config(contract_src, Config),
     maps:get(ContractName, Srcs).
 
 produce_n_epochs(Config, N) ->
-    [{Node1, _, _, _}|_] = hctest:get_nodes(Config),
+    [{Node1, _, _, _}|_] = get_nodes(Config),
     %% produce blocks
     {ok, Bs} = produce_cc_blocks(Config, #{count => N * ?CHILD_EPOCH_LENGTH}),
     %% check producers
     Producers = [ aec_blocks:miner(B) || B <- Bs, aec_blocks:is_key_block(B) ],
-    ChildTopHeight = hctest:get_height(Node1),
-    Leaders = hctest:leaders_at_height(Node1, ChildTopHeight, Config),
+    ChildTopHeight = get_height(Node1),
+    Leaders = leaders_at_height(Node1, ChildTopHeight, Config),
     ct:log("Bs: ~p  Leaders ~p", [Bs, Leaders]),
     %% Check that all producers are valid leaders
     ?assertEqual([], lists:usort(Producers) -- Leaders),
     %% If we have more than 1 leader, then we should see more than one producer
     %% at least for larger EPOCHs
     ?assert(length(Leaders) > 1, length(Producers) > 1),
-    ParentTopHeight = hctest:get_height(?PARENT_CHAIN_NODE),
-    {ok, ParentBlocks} = hctest:get_generations(?PARENT_CHAIN_NODE, 0, ParentTopHeight),
+    ParentTopHeight = get_height(?PARENT_CHAIN_NODE),
+    {ok, ParentBlocks} = get_generations(?PARENT_CHAIN_NODE, 0, ParentTopHeight),
     ct:log("Parent chain blocks ~p", [ParentBlocks]),
-    {ok, ChildBlocks} = hctest:get_generations(Node1, 0, ChildTopHeight),
+    {ok, ChildBlocks} = get_generations(Node1, 0, ChildTopHeight),
     ct:log("Child chain blocks ~p", [ChildBlocks]),
     ok.
+
+epoch_info(Node) ->
+    rpc(Node, aec_chain_hc, epoch_info, []).
+
+epoch_info(Node, Height) when is_integer(Height) ->
+    rpc(Node, aec_chain_hc, epoch_info, [Height]).
 
 %% Wait until child chain grows by a number of key blocks. Do not try to start or stop anything just observe.
 %% `parent_produce` hints the production on parent chain, is a list of tuples {Height, ParentKeyBlocksCount}
 -type produce_cc_args() :: #{
-    count := non_neg_integer(), % mandatory
+    count := non_neg_integer(), % optional
+    target_height := non_neg_integer(), % optional, pass either this or count
     node => node(), % optional
+    %% Skipping this value will create a default schedule for parent producing to interleave with child chain
+    %% If you want parent chain to halt while child chain is producing, pass an empty list
     parent_produce => list({non_neg_integer(), non_neg_integer()}) % optional
 }.
 -spec produce_cc_blocks(Config :: proplists:proplist(), pos_integer() | produce_cc_args()) -> {ok, list(aec_blocks:block())}.
 produce_cc_blocks(Config, BlocksCnt) when is_integer(BlocksCnt) ->
     produce_cc_blocks(Config, #{count => BlocksCnt});
 %% Returns 2x BlocksCnt blocks because each production is 2 blocks: key and micro
-produce_cc_blocks(Config, Args = #{ count := BlocksCnt }) ->
+produce_cc_blocks(Config, Args) ->
     %% Skip the node argument to pick the first node
     Node = case maps:get(node, Args, undefined) of
         undefined ->
-            [{N1, _, _, _} | _] = hctest:get_nodes(Config),
+            [{N1, _, _, _} | _] = get_nodes(Config),
             N1;
         N2 ->
             N2
     end,
     TopHeight = get_height(Node),
-    {ok, #{epoch := Epoch, first := First, last := Last, length := L} = Info} =
-        rpc(Node, aec_chain_hc, epoch_info, [TopHeight]),
+    {ok, #{
+        epoch := Epoch,
+        first := EpochFirst,
+        last := EpochLast,
+        length := EpochLength} = Info} = epoch_info(Node, TopHeight),
     ct:log("EpochInfo ~p", [Info]),
+
+    %% Either count or target_height should be passed. Calculate one from another
+    TargetHeight = case maps:get(count, Args, undefined) of
+        undefined -> maps:get(target_height, Args);
+        Count -> TopHeight + Count
+    end,
+    BlocksCnt = TargetHeight - TopHeight,
+
     %% At end of BlocksCnt child epoch approaches approx:
-    CBAfterEpoch = BlocksCnt - (Last - TopHeight),
-    ScheduleUpto = Epoch + 1 + (CBAfterEpoch div L),
+    CBAfterEpoch = BlocksCnt - (EpochLast - TopHeight),
+    ScheduleUpto = Epoch + 1 + (CBAfterEpoch div EpochLength),
     ParentTopHeight = get_height(?PARENT_CHAIN_NODE),
     ct:log("parent_height=~p child_height=~p for next ~p child blocks", [ParentTopHeight, TopHeight,  BlocksCnt]),
 
@@ -293,7 +326,7 @@ produce_cc_blocks(Config, Args = #{ count := BlocksCnt }) ->
         undefined ->
             %% Spread parent blocks over BlocksCnt
             lists:append([ spread(?PARENT_EPOCH_LENGTH, TopHeight,
-                              [ {CH, 0} || CH <- lists:seq(First + E * L, Last + E * L)]) ||
+                              [ {CH, 0} || CH <- lists:seq(EpochFirst + E * EpochLength, EpochLast + E * EpochLength)]) ||
                        E <- lists:seq(0, ScheduleUpto - Epoch) ]);
         PP ->
             PP
@@ -303,14 +336,16 @@ produce_cc_blocks(Config, Args = #{ count := BlocksCnt }) ->
 
     %% Wait max 3 child_block_times (plus BlockCnt block times) for the chain top to progress
     rpc(Node, aec_conductor, start_mining, []),
+    WaitBlockIntervals = BlocksCnt + 3, % wait for count + a little extra (given that the CC sometimes stops)
     ok = produce_cc_wait_until(
-        Node, ParentProduce, TopHeight + BlocksCnt, 5 * (3 + BlocksCnt), ?CHILD_BLOCK_TIME div 5),
+        Node, ParentProduce, TargetHeight, 5 * WaitBlockIntervals, ?CHILD_BLOCK_TIME div 5),
 
     %% Read last BlocksCnt blocks
     ?assert(get_height(Node) >= BlocksCnt,
         format("Chain must have at least ~w blocks (has ~w)", [BlocksCnt, get_height(Node)])),
-    ct:log("Reading last ~w blocks", [BlocksCnt]),
     ProducedCount = get_height(Node) - TopHeight,
+    ct:log("Produced till height=~w (requested_count=~w), reading last_produced=~w blocks",
+        [TargetHeight, BlocksCnt, ProducedCount]),
     LastBlocks = read_last_blocks(
         Node, rpc(Node, aec_chain, top_block_hash, []), ProducedCount, []),
     {ok, LastBlocks}.
@@ -322,13 +357,13 @@ read_last_blocks(Node, AtHash, N, Accum) ->
     AtHash1 = rpc(Node, aec_blocks, prev_hash, [Block]),
     read_last_blocks(Node, AtHash1, N - 1, [Block | Accum]).
 
-produce_cc_wait_until(_Node, _ParentProduce, GoalHeight, 0, _) ->
-    ?assert(false, format(
-        "produce_cc_wait_until till height=~w has run out of attempts",
-        [GoalHeight]));
-produce_cc_wait_until(Node, ParentProduce, GoalHeight, Attempts, SleepTime) ->
+produce_cc_wait_until(_Node, _ParentProduce, _TargetHeight, 0, _) ->
+    erlang:error(timeout_waiting_for_block);
+produce_cc_wait_until(Node, ParentProduce, TargetHeight, Attempts, SleepTime) ->
     case get_height(Node) of
-        H1 when H1 >= GoalHeight ->
+        H1 when H1 > TargetHeight ->
+            ok;
+        H1 when H1 =:= TargetHeight ->
             %% Sleep a little extra to allow sync to happen when this is produced on another node
             timer:sleep(SleepTime),
             ok;
@@ -337,26 +372,26 @@ produce_cc_wait_until(Node, ParentProduce, GoalHeight, Attempts, SleepTime) ->
             NewParentProduce = case ParentProduce of
                 [{CH, PBs} | PRest] when CH == H2+1 ->
                     ct:log("parent_produce: Producing on parent height=~w count=~w", [CH, PBs]),
-                    mine_key_blocks(?PARENT_CHAIN_NODE_NAME, PBs),
+                    produce_pc_blocks(PBs),
                     PRest;
                 PP -> PP
             end,
 
-            produce_cc_wait_until(Node, NewParentProduce, GoalHeight, Attempts - 1, SleepTime)
+            produce_cc_wait_until(Node, NewParentProduce, TargetHeight, Attempts - 1, SleepTime)
     end.
 
 produce_pc_blocks(Count) ->
     mine_key_blocks(?PARENT_CHAIN_NODE_NAME, Count).
 
 % produce_cc_blocks(Config, BlocksCnt, ParentProduce) ->
-%     [{Node1, _, _, _} | _] = hctest:get_nodes(Config),
+%     [{Node1, _, _, _} | _] = get_nodes(Config),
 %     %% The previous production ended with wait_same_top, so asking first node is sufficient
-%     TopHeight = hctest:get_height(Node1),
+%     TopHeight = get_height(Node1),
 %     %% assert that the parent chain is not mining
 %     ?assertEqual(stopped, rpc:call(?PARENT_CHAIN_NODE_NAME, aec_conductor, get_mining_state, [])),
 %     ct:log("parent produce ~p", [ParentProduce]),
 %     NewTopHeight = produce_to_cc_height(Config, TopHeight, TopHeight + BlocksCnt, ParentProduce),
-%     wait_same_top([ Node || {Node, _, _, _} <- hctest:get_nodes(Config)]),
+%     wait_same_top([ Node || {Node, _, _, _} <- get_nodes(Config)]),
 %     get_generations(Node1, TopHeight + 1, NewTopHeight).
 
 wait_same_top(Nodes) ->
@@ -382,7 +417,7 @@ wait_and_sync(Config) ->
 
 %% It seems we automatically produce child chain blocks in the background
 % produce_to_cc_height(Config, TopHeight, GoalHeight, ParentProduce) ->
-%     NodeNames = [ Name || {_, Name, _, _} <- hctest:get_nodes(Config) ],
+%     NodeNames = [ Name || {_, Name, _, _} <- get_nodes(Config) ],
 %     BlocksNeeded = GoalHeight - TopHeight,
 %     case BlocksNeeded > 0 of
 %         false ->
@@ -413,7 +448,7 @@ wait_and_sync(Config) ->
 %             ?assertEqual(key, aec_blocks:type(KeyBlock)),
 %             ct:log("CC ~p produced key-block: ~p", [Node, KeyBlock]),
 
-%             Producer = get_block_producer_name(proplists:get_value(staker_names, Config), KeyBlock),
+%             Producer = get_block_producer_name(config(staker_names, Config), KeyBlock),
 %             ct:log("~p produced CC block at height ~p", [Producer, aec_blocks:height(KeyBlock)]),
 %             produce_to_cc_height(Config, TopHeight + 1, GoalHeight, NewParentProduce)
 %       end.
@@ -464,7 +499,7 @@ leaders_at_height(Node, Height, Config) ->
       end || [ LeaderKey, _LeaderStake] <- Return ].
 
 key_reward_provided() ->
-    TopHeight = hctest:get_height(?NODE1),
+    TopHeight = get_height(?NODE1),
     RewardHeight = TopHeight - ?REWARD_DELAY,
     key_reward_provided(RewardHeight).
 
@@ -493,7 +528,7 @@ get_entropy(Node, Epoch) ->
     {ParentHeight, aeser_api_encoder:encode(key_block_hash, WPHash0)}.
 
 encoded_pubkey(Who) ->
-    aeser_api_encoder:encode(account_pubkey, hctest:pubkey(Who)).
+    aeser_api_encoder:encode(account_pubkey, pubkey(Who)).
 
 contract_call_spec(ContractPubkey, Src, Fun, Args, Amount, From, Nonce) ->
     {contract_call_tx, CallTx} =
@@ -516,7 +551,7 @@ contract_call_spec(ContractPubkey, Src, Fun, Args, Amount, From, Nonce) ->
     Spec.
 
 contract_call(ContractPubkey, Src, Fun, Args, Amount, From) ->
-    Nonce = hctest:next_nonce(?NODE1, From), %% no contract calls support for parent chain
+    Nonce = next_nonce(?NODE1, From), %% no contract calls support for parent chain
     contract_call(ContractPubkey, Src, Fun, Args, Amount, From, Nonce).
 
 contract_call(ContractPubkey, Src, Fun, Args, Amount, From, Nonce) ->
@@ -536,7 +571,7 @@ contract_call(ContractPubkey, Src, Fun, Args, Amount, From, Nonce) ->
     Tx.
 
 with_saved_keys(Keys, Config) ->
-    {_TC, SavedConfig} = proplists:get_value(saved_config, Config),
+    {_TC, SavedConfig} = config(saved_config, Config),
     lists:foldl(fun(Key, Conf) ->
                     case proplists:get_value(Key, SavedConfig) of
                         undefined -> Conf;
@@ -546,8 +581,8 @@ with_saved_keys(Keys, Config) ->
                 lists:keydelete(saved_config, 1, Config), Keys).
 
 mine_to_next_epoch(Node, Config) ->
-    Height1 = hctest:get_height(Node),
-    {ok, #{last := Last1, length := _Len}} = rpc(Node, aec_chain_hc, epoch_info, []),
+    Height1 = get_height(Node),
+    {ok, #{last := Last1, length := _Len}} = epoch_info(Node),
     {ok, Bs} = produce_cc_blocks(Config, #{count => Last1 - Height1 + 1}),
     ct:log("Block last epoch: ~p", [Bs]).
 
@@ -555,8 +590,8 @@ mine_to_last_block_in_epoch(Node, Config) ->
     {ok, #{epoch  := _Epoch,
             first  := _First,
             last   := Last,
-            length := _Length}} = rpc(Node, aec_chain_hc, epoch_info, []),
-    CH = hctest:get_height(Node),
+            length := _Length}} = epoch_info(Node),
+    CH = get_height(Node),
     DistToBeforeLast = Last - CH - 1,
     {ok, _} = produce_cc_blocks(Config, #{count => DistToBeforeLast}).
 
