@@ -85,37 +85,38 @@ init_per_testcase(_Case, Config) ->
 end_per_testcase(_Case, Config) ->
     {save_config, Config}.
 
+-define(EPOCHSUITE_CHILD_BLOCK_TIME, 200).
+-define(EPOCHSUITE_CHILD_BLOCK_PRODUCTION_TIME, (?EPOCHSUITE_CHILD_BLOCK_TIME * 2 div 5)). % 40% of block time
+
+default_child_config() ->
+    #{
+        receive_address_pub => ?FORD,
+        hc_contract => ?HC_CONTRACT,
+        child_epoch_length => ?CHILD_EPOCH_LENGTH,
+        child_block_time => ?EPOCHSUITE_CHILD_BLOCK_TIME,
+        child_block_production_time => ?EPOCHSUITE_CHILD_BLOCK_PRODUCTION_TIME,
+        block_reward => ?BLOCK_REWARD,
+        reward_delay => ?REWARD_DELAY
+    }.
+
 start_two_child_nodes(CTConfig) ->
     [{Node1, NodeName1, Stakers1, Pinners1}, {Node2, NodeName2, Stakers2, Pinners2} | _] = hctest:get_nodes(CTConfig),
     Env = [ {"AE__FORK_MANAGEMENT__NETWORK_ID", binary_to_list(hctest:config(network_id, CTConfig))} ],
 
-    hctest_ct_shared:child_node_config(#{
+    DefaultConfig = default_child_config(),
+    hctest_ct_shared:child_node_config(DefaultConfig#{
         node => Node1,
         stakeholders => Stakers1,
-        pinners => Pinners1,
-        receive_address_pub => ?FORD,
-        hc_contract => ?HC_CONTRACT,
-        child_epoch_length => ?CHILD_EPOCH_LENGTH,
-        child_block_time => ?CHILD_BLOCK_TIME,
-        child_block_production_time => ?CHILD_BLOCK_PRODUCTION_TIME,
-        block_reward => ?BLOCK_REWARD,
-        reward_delay => ?REWARD_DELAY
+        pinners => Pinners1
     }, CTConfig),
     aecore_suite_utils:start_node(Node1, CTConfig, Env),
     aecore_suite_utils:connect(NodeName1, []),
     rpc(Node1, aec_conductor, start_mining, []),
 
-    hctest_ct_shared:child_node_config(#{
+    hctest_ct_shared:child_node_config(DefaultConfig#{
         node => Node2,
         stakeholders => Stakers2,
-        pinners => Pinners2,
-        receive_address_pub => ?FORD,
-        hc_contract => ?HC_CONTRACT,
-        child_epoch_length => ?CHILD_EPOCH_LENGTH,
-        child_block_time => ?CHILD_BLOCK_TIME,
-        child_block_production_time => ?CHILD_BLOCK_PRODUCTION_TIME,
-        block_reward => ?BLOCK_REWARD,
-        reward_delay => ?REWARD_DELAY
+        pinners => Pinners2
     }, CTConfig),
     aecore_suite_utils:start_node(Node2, CTConfig, Env),
     aecore_suite_utils:connect(NodeName2, []),
@@ -138,7 +139,8 @@ set_child_nodes_block_time(Time) ->
 %% Demonstrate that child chain start signalling epoch length adjustment downward
 %% When parent blocks are produced too quickly, we need to shorten child epoch
 epochs_with_fast_parent(Config) ->
-    set_child_nodes_block_time(?CHILD_BLOCK_TIME),
+    % set_child_nodes_block_time(?CHILD_BLOCK_TIME),
+    set_child_nodes_block_time(?EPOCHSUITE_CHILD_BLOCK_TIME * 5 div 4),
 
     [{Node, _, _, _} | _] = hctest:get_nodes(Config),
 
@@ -226,7 +228,8 @@ epochs_with_fast_parent(Config) ->
 %% When parent blocks are produced too quickly, we need to shorten child epoch
 epochs_with_slow_parent(Config) ->
     %% Modify the child block time to be slower
-    set_child_nodes_block_time(?CHILD_BLOCK_TIME * 4 div 5), % 80% of 'normal' value (cc is faster)
+    % set_child_nodes_block_time(?CHILD_BLOCK_TIME * 6 div 5), % 120% of 'normal' value
+    set_child_nodes_block_time(?EPOCHSUITE_CHILD_BLOCK_TIME * 6 div 5),
 
     [{Node, _, _, _} | _] = hctest:get_nodes(Config),
     ct:log("Parent start height = ~p", [hctest:config(parent_start_height, Config)]),
@@ -241,17 +244,15 @@ epochs_with_slow_parent(Config) ->
         hctest:produce_cc_blocks(Config, #{target_height => Boundary})
     end,
 
-    ParentHeight = hctest:get_height(?PARENT_CHAIN_NODE),
-    ct:log("Child continues while parent stuck at: ~p", [ParentHeight]),
-
-    EpochDiff = hctest:try_until(
+    {ParentHeight, EpochDiff} = hctest:try_until(
         "Waiting for parent chain to progress the epoch while child chain stays",
         fun() ->
-            ParentEpoch = (ParentHeight - hctest:config(parent_start_height, Config) + (?PARENT_EPOCH_LENGTH - 1))
-                div ?PARENT_EPOCH_LENGTH,
+            ParentHeight1 = hctest:get_height(?PARENT_CHAIN_NODE),
+            ct:log("Child continues while parent stuck at: ~p", [ParentHeight1]),
+            ParentEpoch = (ParentHeight1 - hctest:config(parent_start_height, Config) + (?PARENT_EPOCH_LENGTH - 1)) div ?PARENT_EPOCH_LENGTH,
             ChildEpoch = hctest:get_height(Node) div ?CHILD_EPOCH_LENGTH,
             ct:log("Child epoch ~p while parent epoch ~p (parent should be in next epoch)", [ChildEpoch, ParentEpoch]),
-            ParentEpoch - ChildEpoch
+            {ParentHeight1, ParentEpoch - ChildEpoch}
         end,
         fun(Diff) -> Diff =:= 1 end,
         5,
