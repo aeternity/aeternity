@@ -277,7 +277,8 @@ produce_n_epochs(Config, N) ->
 try_until(Label, Fun, IsGoodResult, MaxAttempts, Sleep) ->
     Result = Fun(),
     case IsGoodResult(Result) of
-        true -> Result;
+        true ->
+            Result;
         false when MaxAttempts > 0 ->
             timer:sleep(Sleep),
             try_until(Label, Fun, IsGoodResult, MaxAttempts - 1, Sleep);
@@ -314,13 +315,16 @@ epoch_info(Node, Height) when is_integer(Height) ->
     node => node(), % optional
     %% Skipping this value will create a default schedule for parent producing to interleave with child chain
     %% If you want parent chain to halt while child chain is producing, pass an empty list
-    parent_produce => list({non_neg_integer(), non_neg_integer()}) % optional
+    parent_produce => list({non_neg_integer(), non_neg_integer()}), % optional
+    %% Will wait for extra so many block intervals (if parent chain is slow or other reasons). Default +3
+    extra_wait_block_intervals => pos_integer() % optional
 }.
 -spec produce_cc_blocks(Config :: proplists:proplist(), pos_integer() | produce_cc_args()) -> {ok, list(aec_blocks:block())}.
 produce_cc_blocks(Config, BlocksCnt) when is_integer(BlocksCnt) ->
     produce_cc_blocks(Config, #{count => BlocksCnt});
 %% Returns 2x BlocksCnt blocks because each production is 2 blocks: key and micro
 produce_cc_blocks(Config, Args) ->
+    ExtraWaitBlockIntervals = maps:get(extra_wait_block_intervals, Args, 3),
     %% Skip the node argument to pick the first node
     Node = case maps:get(node, Args, undefined) of
         undefined ->
@@ -365,7 +369,8 @@ produce_cc_blocks(Config, Args) ->
 
     %% Wait max 3 child_block_times (plus BlockCnt block times) for the chain top to progress
     rpc(Node, aec_conductor, start_mining, []),
-    WaitBlockIntervals = BlocksCnt + 3, % wait for count + a little extra (given that the CC sometimes stops)
+    %% wait for (count + a little extra), given that the CC sometimes stops waiting for PC
+    WaitBlockIntervals = BlocksCnt + ExtraWaitBlockIntervals,
     ok = produce_cc_wait_until(
         Node, ParentProduce, TargetHeight, 5 * WaitBlockIntervals, ?CHILD_BLOCK_TIME div 5),
 
@@ -398,30 +403,21 @@ produce_cc_wait_until(Node, ParentProduce, TargetHeight, Attempts, SleepTime) ->
             ok;
         H2 ->
             timer:sleep(SleepTime),
-            NewParentProduce = case ParentProduce of
-                [{CH, PBs} | PRest] when CH == H2+1 ->
-                    ct:log("parent_produce: Producing on parent height=~w count=~w", [CH, PBs]),
-                    produce_pc_blocks(PBs),
-                    PRest;
-                PP -> PP
+
+            %% Check if at H2+1 we should produce on parent chain
+            CH = H2 + 1,
+            Produce = proplists:get_value(CH, ParentProduce),
+            NewParentProduce = case Produce of
+                PCProduceCount ->
+                    ct:log("parent_produce: Producing on parent height=~w count=~w", [CH, PCProduceCount]),
+                    mine_key_blocks(?PARENT_CHAIN_NODE_NAME, PCProduceCount),
+                    proplists:delete(CH, ParentProduce); % consume the record in the proplist
+                undefined ->
+                    ParentProduce
             end,
 
             produce_cc_wait_until(Node, NewParentProduce, TargetHeight, Attempts - 1, SleepTime)
     end.
-
-produce_pc_blocks(Count) ->
-    mine_key_blocks(?PARENT_CHAIN_NODE_NAME, Count).
-
-% produce_cc_blocks(Config, BlocksCnt, ParentProduce) ->
-%     [{Node1, _, _, _} | _] = get_nodes(Config),
-%     %% The previous production ended with wait_same_top, so asking first node is sufficient
-%     TopHeight = get_height(Node1),
-%     %% assert that the parent chain is not mining
-%     ?assertEqual(stopped, rpc:call(?PARENT_CHAIN_NODE_NAME, aec_conductor, get_mining_state, [])),
-%     ct:log("parent produce ~p", [ParentProduce]),
-%     NewTopHeight = produce_to_cc_height(Config, TopHeight, TopHeight + BlocksCnt, ParentProduce),
-%     wait_same_top([ Node || {Node, _, _, _} <- get_nodes(Config)]),
-%     get_generations(Node1, TopHeight + 1, NewTopHeight).
 
 wait_same_top(Nodes) ->
     wait_same_top(Nodes, 3).

@@ -131,7 +131,7 @@ init_per_group(Group, ConfigPre) ->
     [ {staker_names, [?ALICE, ?BOB, ?LISA]}, {parent_start_height, ?PARENT_START_HEIGHT} | Config].
 
 child_node_config(Node, Stakeholders, Pinners, CTConfig) ->
-    ReceiveAddress = encoded_pubkey(?FORD),
+    ReceiveAddress = hctest:encoded_pubkey(?FORD),
     NodeConfig = node_config(Node, CTConfig, Stakeholders, Pinners, ReceiveAddress),
     build_json_files(?HC_CONTRACT, NodeConfig, CTConfig),
     aecore_suite_utils:create_config(Node, CTConfig, NodeConfig, [{add_peers, true}]).
@@ -220,10 +220,6 @@ contract_call_spec(ContractPubkey, Src, Fun, Args, Amount, From, Nonce) ->
                                                               aect_call_tx:call_data(CallTx))},
     Spec.
 
-contract_call(ContractPubkey, Src, Fun, Args, Amount, From) ->
-    Nonce = next_nonce(?NODE1, From), %% no contract calls support for parent chain
-    contract_call(ContractPubkey, Src, Fun, Args, Amount, From, Nonce).
-
 contract_call(ContractPubkey, Src, Fun, Args, Amount, From, Nonce) ->
     {ok, CallData} = aect_test_utils:encode_call_data(Src, Fun, Args),
     ABI = aect_test_utils:abi_version(),
@@ -239,22 +235,6 @@ contract_call(ContractPubkey, Src, Fun, Args, Amount, From, Nonce) ->
           , call_data   => CallData},
     {ok, Tx} = aect_call_tx:new(TxSpec),
     Tx.
-
-wait_same_top(Nodes) ->
-    wait_same_top(Nodes, 3).
-
-wait_same_top(_Nodes, Attempts) when Attempts < 1 ->
-    %% {error, run_out_of_attempts};
-    throw({error, run_out_of_attempts});
-wait_same_top(Nodes, Attempts) ->
-    KBs = [ rpc(Node, aec_chain, top_block, []) || Node <- Nodes ],
-    case lists:usort(KBs) of
-        [KB] -> {ok, KB};
-        Diffs ->
-            ct:log("Nodes differ: ~p", [Diffs]),
-            timer:sleep(?CHILD_BLOCK_TIME div 2),
-            wait_same_top(Nodes, Attempts - 1)
-    end.
 
 start_two_child_nodes(Config) ->
     [{Node1, NodeName1, Stakers1, Pinners1}, {Node2, NodeName2, Stakers2, Pinners2} | _] = ?config(nodes, Config),
@@ -275,12 +255,12 @@ produce_some_epochs(Config) ->
 
 produce_n_epochs(Config, N) ->
     [{Node1, _, _, _}|_] = ?config(nodes, Config),
-    %% produce blocks
-    {ok, Bs} = produce_cc_blocks(Config, N * ?CHILD_EPOCH_LENGTH),
+    %% produce blocks; TODO: produce to target height instead?
+    {ok, Bs} = hctest:produce_cc_blocks(Config, #{count => N * ?CHILD_EPOCH_LENGTH}),
     %% check producers
     Producers = [ aec_blocks:miner(B) || B <- Bs, aec_blocks:is_key_block(B) ],
     ChildTopHeight = rpc(Node1, aec_chain, top_height, []),
-    Leaders = leaders_at_height(Node1, ChildTopHeight, Config),
+    Leaders = hctest:leaders_at_height(Node1, ChildTopHeight, Config),
     ct:log("Bs: ~p  Leaders ~p", [Bs, Leaders]),
     %% Check that all producers are valid leaders
     ?assertEqual([], lists:usort(Producers) -- Leaders),
@@ -297,16 +277,16 @@ produce_n_epochs(Config, N) ->
 check_default_pin(Config) ->
     [{Node, NodeName, _, _} | _] = ?config(nodes, Config),
 
-    {ok, _} = produce_cc_blocks(Config, 12),
+    {ok, _} = hctest:produce_cc_blocks(Config, #{count => 12}),
     {ok, #{last := Last}} = rpc(Node, aec_chain_hc, epoch_info, []),
     {ok, LastLeader} = rpc(Node, aec_consensus_hc, leader_for_height, [Last]),
     ct:log("Last Leader: ~p", [LastLeader]),
 
-    mine_to_last_block_in_epoch(Node, Config),
+    hctest:mine_to_last_block_in_epoch(Node, Config),
 
     aecore_suite_utils:subscribe(NodeName, pin),
 
-    {ok, _} = produce_cc_blocks(Config, 2),
+    {ok, _} = hctest:produce_cc_blocks(Config, #{count => 2}),
     %% with current test setup, all validators have a pc account, so pins will always happen(?)
     {ok, #{info := {pin_accepted, _}}} = wait_for_ps(pin),
 
@@ -318,13 +298,9 @@ check_default_pin(Config) ->
     ok.
 
 try_a_pin(Config) ->
-
     [{Node, _, _, _} | _] = ?config(nodes, Config),
-
-    Hash = rpc(Node, aec_parent_connector, pin_to_pc, [pubkey(?ALICE),100000000,1000]),
-
+    Hash = rpc(Node, aec_parent_connector, pin_to_pc, [hctest:pubkey(?ALICE),100000000,1000]),
     Raw = rpc(Node, aec_parent_connector, get_pin_by_tx_hash, [Hash]),
-
     ct:log("Raw: ~p", [Raw]).
 
 
@@ -338,56 +314,7 @@ wait_for_ps(Event) ->
         Other -> error({wrong_signal, Other})
     end.
 
-mine_to_last_block_in_epoch(Node, Config) ->
-    {ok, #{epoch  := _Epoch,
-           first  := _First,
-           last   := Last,
-           length := _Length}} = rpc(Node, aec_chain_hc, epoch_info, []),
-    CH = rpc(Node, aec_chain, top_height, []),
-    DistToBeforeLast = Last - CH - 1,
-    {ok, _} = produce_cc_blocks(Config, DistToBeforeLast).
-
 %%% --------- helper functions
-
-pubkey({Pubkey, _, _}) -> Pubkey.
-
-privkey({_, Privkey, _}) -> Privkey.
-
-encoded_pubkey(Who) ->
-    aeser_api_encoder:encode(account_pubkey, pubkey(Who)).
-
-next_nonce(Node, Pubkey) ->
-    case rpc(Node, aec_next_nonce, pick_for_account, [Pubkey, max]) of
-        {ok, NextNonce} -> NextNonce;
-        {error, account_not_found} -> 1
-    end.
-
-do_contract_call(CtPubkey, CtSrc, Fun, Args, Who, TopHash) ->
-    F = fun() -> do_contract_call_(CtPubkey, CtSrc, Fun, Args, Who, TopHash) end,
-    {T, Res} = timer:tc(F),
-    ct:log("Calling contract took ~.2f ms", [T / 1000]),
-    Res.
-
-do_contract_call_(CtPubkey, CtSrc, Fun, Args, Who, TopHash) ->
-    Tx = contract_call(CtPubkey, CtSrc, Fun, Args, 0, pubkey(Who)),
-    {ok, Call} = dry_run(TopHash, Tx),
-    decode_consensus_result(Call, Fun, CtSrc).
-
-dry_run(TopHash, Tx) ->
-    case rpc(?NODE1, aec_dry_run, dry_run, [TopHash, [], [{tx, Tx}]]) of
-        {error, _} = Err -> Err;
-        {ok, {[{contract_call_tx, {ok, Call}}], _Events}} -> {ok, Call}
-    end.
-
-decode_consensus_result(Call, Fun, Src) ->
-    ReturnType = aect_call:return_type(Call),
-    ReturnValue = aect_call:return_value(Call),
-    Res = aect_test_utils:decode_call_result(Src, Fun, ReturnType, ReturnValue),
-    {ReturnType, Res}.
-
-src(ContractName, Config) ->
-    Srcs = ?config(contract_src, Config),
-    maps:get(ContractName, Srcs).
 
 build_json_files(ElectionContract, NodeConfig, CTConfig) ->
     Pubkey = ?OWNER_PUBKEY,
@@ -396,7 +323,7 @@ build_json_files(ElectionContract, NodeConfig, CTConfig) ->
 
     %% create staking contract
     MinStakeAmt = integer_to_list(trunc(math:pow(10,18) * 1)), %% 1 AE
-    MSSrc = src(?MAIN_STAKING_CONTRACT, CTConfig),
+    MSSrc = hctest:src(?MAIN_STAKING_CONTRACT, CTConfig),
     #{ <<"pubkey">> := StakingContractPubkey
      , <<"owner_pubkey">> := ContractOwner } = SC
         = contract_create_spec(?MAIN_STAKING_CONTRACT, MSSrc, [MinStakeAmt], 0, 1, Pubkey),
@@ -408,7 +335,7 @@ build_json_files(ElectionContract, NodeConfig, CTConfig) ->
     %% create election contract
     #{ <<"pubkey">> := ElectionContractPubkey
      , <<"owner_pubkey">> := ContractOwner } = EC
-        = contract_create_spec(ElectionContract, src(ElectionContract, CTConfig),
+        = contract_create_spec(ElectionContract, hctest:src(ElectionContract, CTConfig),
                                [binary_to_list(StakingContractPubkey)], 0, 2, Pubkey),
     {ok, ElectionAddress} = aeser_api_encoder:safe_decode(contract_pubkey,
                                                           ElectionContractPubkey),
@@ -416,21 +343,21 @@ build_json_files(ElectionContract, NodeConfig, CTConfig) ->
     ElectionAddress = election_contract_address(),
     {ok, SCId} = aeser_api_encoder:safe_decode(contract_pubkey, StakingContractPubkey),
 
-    APub = binary_to_list(aeser_api_encoder:encode(account_pubkey, pubkey(?ALICE))),
+    APub = binary_to_list(aeser_api_encoder:encode(account_pubkey, hctest:pubkey(?ALICE))),
     Call1 =
         contract_call_spec(SCId, MSSrc, "new_validator", [APub, APub, "true"],
-                           ?INITIAL_STAKE, pubkey(?ALICE), 1),
+                           ?INITIAL_STAKE, hctest:pubkey(?ALICE), 1),
 
-    BPub = binary_to_list(aeser_api_encoder:encode(account_pubkey, pubkey(?BOB))),
-    BPubSign = binary_to_list(aeser_api_encoder:encode(account_pubkey, pubkey(?BOB_SIGN))),
+    BPub = binary_to_list(aeser_api_encoder:encode(account_pubkey, hctest:pubkey(?BOB))),
+    BPubSign = binary_to_list(aeser_api_encoder:encode(account_pubkey, hctest:pubkey(?BOB_SIGN))),
     Call2 =
         contract_call_spec(SCId, MSSrc, "new_validator", [BPub, BPubSign, "true"],
-                           ?INITIAL_STAKE, pubkey(?BOB), 1),
+                           ?INITIAL_STAKE, hctest:pubkey(?BOB), 1),
 
-    LPub = binary_to_list(aeser_api_encoder:encode(account_pubkey, pubkey(?LISA))),
+    LPub = binary_to_list(aeser_api_encoder:encode(account_pubkey, hctest:pubkey(?LISA))),
     Call3 =
         contract_call_spec(SCId, MSSrc, "new_validator", [LPub, LPub, "true"],
-                           ?INITIAL_STAKE, pubkey(?LISA), 1),
+                           ?INITIAL_STAKE, hctest:pubkey(?LISA), 1),
 
     AllCalls =  [Call1, Call2, Call3],
     ProtocolBin = integer_to_binary(aect_test_utils:latest_protocol_version()),
@@ -440,10 +367,10 @@ build_json_files(ElectionContract, NodeConfig, CTConfig) ->
         #{<<"contracts">> => [SC, EC], <<"calls">> => AllCalls}),
     aecore_suite_utils:create_seed_file(AccountsFileName,
         #{  <<"ak_2evAxTKozswMyw9kXkvjJt3MbomCR1nLrf91BduXKdJLrvaaZt">> => 1000000000000000000000000000000000000000000000000,
-            encoded_pubkey(?ALICE) => 2100000000000000000000000000,
-            encoded_pubkey(?BOB) => 3100000000000000000000000000,
-            encoded_pubkey(?BOB_SIGN) => 3100000000000000000000000000,
-            encoded_pubkey(?LISA) => 4100000000000000000000000000
+            hctest:encoded_pubkey(?ALICE) => 2100000000000000000000000000,
+            hctest:encoded_pubkey(?BOB) => 3100000000000000000000000000,
+            hctest:encoded_pubkey(?BOB_SIGN) => 3100000000000000000000000000,
+            hctest:encoded_pubkey(?LISA) => 4100000000000000000000000000
          }),
     ok.
 
@@ -452,14 +379,19 @@ node_config(Node, CTConfig, PotentialStakers, PotentialPinners, ReceiveAddress) 
     GenesisStartTime = ?config(genesis_start_time, CTConfig),
     Stakers = lists:map(
                     fun(HCWho) ->
-                        HCPriv = list_to_binary(aeu_hex:bin_to_hex( privkey(HCWho))), %% TODO: discuss key management
-                        #{ <<"hyper_chain_account">> => #{<<"pub">> => encoded_pubkey(HCWho), <<"priv">> => HCPriv} }
+                        HCPriv = list_to_binary(aeu_hex:bin_to_hex( hctest:privkey(HCWho))), %% TODO: discuss key management
+                        #{ <<"hyper_chain_account">> => #{<<"pub">> => hctest:encoded_pubkey(HCWho), <<"priv">> => HCPriv} }
                     end,
                     PotentialStakers),
     Pinners = lists:map(
                     fun({Owner, Pinner}) ->
-                        HCPriv = list_to_binary(aeu_hex:bin_to_hex( privkey(Pinner))), %% TODO: discuss key management
-                        #{ <<"parent_chain_account">> => #{<<"pub">> => encoded_pubkey(Pinner), <<"priv">> => HCPriv, <<"owner">> => encoded_pubkey(Owner)} }
+                        HCPriv = list_to_binary(aeu_hex:bin_to_hex( hctest:privkey(Pinner))), %% TODO: discuss key management
+                        #{ <<"parent_chain_account">> => #{
+                           <<"pub">> => hctest:encoded_pubkey(Pinner),
+                              <<"priv">> => HCPriv,
+                              <<"owner">> => hctest:encoded_pubkey(Owner)
+                           }
+                        }
                     end,
                     PotentialPinners),
     ct:log("Stakers: ~p", [Stakers]),
@@ -531,80 +463,6 @@ staking_contract_address() ->
 election_contract_address() ->
     aect_contracts:compute_contract_pubkey(?OWNER_PUBKEY, 2).
 
-%% Increase the child chain with a number of key blocks
-%% Automatically add key blocks on parent chain and
-%% if there are Txs, put them in a micro block
-produce_cc_blocks(Config, BlocksCnt) ->
-    [{Node, _, _, _} | _] = ?config(nodes, Config),
-    TopHeight = rpc(Node, aec_chain, top_height, []),
-    {ok, #{epoch := Epoch, first := First, last := Last, length := L} = Info} =
-        rpc(Node, aec_chain_hc, epoch_info, [TopHeight]),
-    ct:log("EpochInfo ~p", [Info]),
-    %% At end of BlocksCnt child epoch approaches approx:
-    CBAfterEpoch = BlocksCnt - (Last - TopHeight),
-    ScheduleUpto = Epoch + 1 + (CBAfterEpoch div L),
-    %ParentTopHeight = rpc(?PARENT_CHAIN_NODE, aec_chain, top_height, []),
-    %ct:log("P@~p C@~p for next ~p child blocks", [ParentTopHeight, TopHeight,  BlocksCnt]),
-    %% Spread parent blocks over BlocksCnt
-    ParentProduce =
-        lists:append([ spread(?PARENT_EPOCH_LENGTH, TopHeight,
-                              [ {CH, 0} || CH <- lists:seq(First + E * L, Last + E * L)]) ||
-                       E <- lists:seq(0, ScheduleUpto - Epoch) ]),
-    %% Last parameter steers where in Child epoch parent block is produced
-    produce_cc_blocks(Config, BlocksCnt, ParentProduce).
-
-produce_cc_blocks(Config, BlocksCnt, ParentProduce) ->
-    [{Node1, _, _, _} | _] = ?config(nodes, Config),
-    %% The previous production ended with wait_same_top, so asking first node is sufficient
-    TopHeight = rpc(Node1, aec_chain, top_height, []),
-    %% assert that the parent chain is not mining
-    %?assertEqual(stopped, rpc:call(?PARENT_CHAIN_NODE_NAME, aec_conductor, get_mining_state, [])),
-    %ct:log("parent produce ~p", [ParentProduce]),
-    NewTopHeight = produce_to_cc_height(Config, TopHeight, TopHeight + BlocksCnt, ParentProduce),
-    wait_same_top([ Node || {Node, _, _, _} <- ?config(nodes, Config)]),
-    get_generations(Node1, TopHeight + 1, NewTopHeight).
-
-%% It seems we automatically produce child chain blocks in the background
-produce_to_cc_height(Config, TopHeight, GoalHeight, ParentProduce) ->
-    NodeNames = [ Name || {_, Name, _, _} <- ?config(nodes, Config) ],
-    BlocksNeeded = GoalHeight - TopHeight,
-    case BlocksNeeded > 0 of
-        false ->
-            TopHeight;
-        true ->
-            NewParentProduce =
-                case ParentProduce of
-                    [{CH, PBs} | PRest ] when CH == TopHeight+1 ->
-                        mine_key_blocks(?PARENT_CHAIN_NODE_NAME, PBs),
-                        PRest;
-                    PP -> PP
-                end,
-
-            %% TODO: add some assertions when we expect an MB (and not)!
-            {ok, _Txs} = rpc:call(hd(NodeNames), aec_tx_pool, peek, [infinity]),
-
-            %% This will mine 1 key-block (and 0 or 1 micro-blocks)
-            {ok, Blocks} = mine_cc_blocks(NodeNames, 1),
-
-            {Node, KeyBlock} = lists:last(Blocks),
-            case Blocks of
-                [{Node, MB}, _] ->
-                    ?assertEqual(micro, aec_blocks:type(MB)),
-                    ct:log("CC ~p produced micro-block: ~p", [Node, MB]);
-                [_] ->
-                    ok
-            end,
-            ?assertEqual(key, aec_blocks:type(KeyBlock)),
-            ct:log("CC ~p produced key-block: ~p", [Node, KeyBlock]),
-
-            Producer = get_block_producer_name(?config(staker_names, Config), KeyBlock),
-            ct:log("~p produced CC block at height ~p", [Producer, aec_blocks:height(KeyBlock)]),
-            produce_to_cc_height(Config, TopHeight + 1, GoalHeight, NewParentProduce)
-      end.
-
-mine_cc_blocks(NodeNames, N) ->
-    aecore_suite_utils:hc_mine_blocks(NodeNames, N).
-
 get_generations(Node, FromHeight, ToHeight) ->
     ReversedBlocks =
         lists:foldl(
@@ -619,64 +477,3 @@ get_generations(Node, FromHeight, ToHeight) ->
             [],
             lists:seq(FromHeight, ToHeight)),
     {ok, lists:reverse(ReversedBlocks)}.
-
-mine_key_blocks(ParentNodeName, NumParentBlocks) ->
-    {ok, []}.
-    % {ok, _} = aecore_suite_utils:mine_micro_block_emptying_mempool_or_fail(ParentNodeName),
-    % {ok, KBs} = aecore_suite_utils:mine_key_blocks(ParentNodeName, NumParentBlocks),
-    % ct:log("Parent block mined ~p ~p number: ~p", [KBs, ParentNodeName, NumParentBlocks]),
-    % {ok, KBs}.
-
-%get_block_producer_name(Parties, Node, Height) ->
-%    Producer = get_block_producer(Node, Height),
-%    case lists:keyfind(Producer, 1, Parties) of
-%        false -> Producer;
-%        {_, _, Name} -> Name
-%    end.
-
-inspect_staking_contract(OriginWho, WhatToInspect, Config, TopHash) ->
-    {Fun, Args} =
-        case WhatToInspect of
-            {staking_power, Who} ->
-                {"staking_power", [binary_to_list(encoded_pubkey(Who))]};
-            {get_validator_state, Who} ->
-                {"get_validator_state", [binary_to_list(encoded_pubkey(Who))]};
-            {get_validator_contract, Who} ->
-                {"get_validator_contract", [binary_to_list(encoded_pubkey(Who))]};
-            get_current_epoch ->
-                {"get_current_epoch", []};
-            get_state ->
-                {"get_state", []};
-            leaders ->
-                {"sorted_validators", []}
-
-        end,
-    ContractPubkey = ?config(staking_contract, Config),
-    do_contract_call(ContractPubkey, src(?MAIN_STAKING_CONTRACT, Config), Fun, Args, OriginWho, TopHash).
-
-get_block_producer_name(Parties, Block) ->
-    Producer = aec_blocks:miner(Block),
-    case lists:keyfind(Producer, 1, Parties) of
-        false -> Producer;
-        {_, _, Name} -> Name
-    end.
-
-leaders_at_height(Node, Height, Config) ->
-    {ok, Hash} = rpc(Node, aec_chain_state, get_key_block_hash_at_height, [Height]),
-    {ok, Return} = inspect_staking_contract(?ALICE, leaders, Config, Hash),
-    [ begin
-        {account_pubkey, K} = aeser_api_encoder:decode(LeaderKey), K
-      end || [ LeaderKey, _LeaderStake] <- Return ].
-spread(_, _, []) ->
-    [];
-spread(0, TopHeight, Spread) ->
-    [ {CH, N} || {CH, N} <- Spread, N /= 0, CH > TopHeight ];
-%spread(N, TopHeight, [{CH, K} | Spread]) when length(Spread) < N ->
-%    %% Take speed first (not realistic), then fill rest
-%    spread(0, TopHeight, [{CH, K + N - length(Spread)} | [ {CH2, X+1} || {CH2, X} <- Spread]]);
-spread(N, TopHeight, Spread) when N rem 2 == 0 ->
-    {Left, Right} = lists:split(length(Spread) div 2, Spread),
-    spread(N div 2, TopHeight, Left) ++ spread(N div 2, TopHeight, Right);
-spread(N, TopHeight, Spread) when N rem 2 == 1 ->
-    {Left, [{Middle, K} | Right]} = lists:split(length(Spread) div 2, Spread),
-    spread(N div 2, TopHeight, Left) ++ [{Middle, K+1} || Middle > TopHeight] ++ spread(N div 2, TopHeight, Right).

@@ -130,83 +130,134 @@ first_leader_next_epoch(Config) ->
     ct:log("Checking leader for first block next epoch ~p (height ~p)", [Epoch+1, Last+1]),
     ?assertMatch({ok, _}, rpc(Node, aec_consensus_hc, leader_for_height, [Last + 1])).
 
+%% Modify the child block time to be faster or slower
+set_child_nodes_block_time(Time) ->
+    rpc(?NODE1, aeu_ets_cache, put, [aec_consensus_hc, child_block_time, Time]),
+    rpc(?NODE2, aeu_ets_cache, put, [aec_consensus_hc, child_block_time, Time]).
+
 %% Demonstrate that child chain start signalling epoch length adjustment downward
 %% When parent blocks are produced too quickly, we need to shorten child epoch
 epochs_with_fast_parent(Config) ->
+    set_child_nodes_block_time(?CHILD_BLOCK_TIME),
+
     [{Node, _, _, _} | _] = hctest:get_nodes(Config),
 
     %% ensure start at a new epoch boundary
     StartHeight = hctest:get_height(Node),
     {ok, #{last := Last}} = hctest:epoch_info(Node),
-    BlocksLeftToBoundary = Last - StartHeight,
     %% some block production including parent blocks
-    {ok, _} = hctest:produce_cc_blocks(Config,# {count => BlocksLeftToBoundary}),
+    {ok, _} = hctest:produce_cc_blocks(Config, #{target_height => Last}),
 
     {ok, #{length := Len1} = EpochInfo1} = hctest:epoch_info(Node),
     ct:log("Info ~p", [EpochInfo1]),
 
     %% Produce twice as many parent blocks as needed in an epoch
-    Height0 = hctest:get_height(Node),
-    ParentTopHeight0 = hctest:get_height(?PARENT_CHAIN_NODE),
-    {ok, #{length := Len1}} = hctest:epoch_info(Node),
-    {ok, _} = hctest:produce_cc_blocks(Config, #{
-        count => Len1,
-        parent_produce => hctest:spread(2*?PARENT_EPOCH_LENGTH, Height0,
-            [ {CH, 0} || CH <- lists:seq(Height0 + 1, Height0 + Len1)])
-    }),
+    begin
+        Height0 = hctest:get_height(Node),
+        ParentTopHeight0 = hctest:get_height(?PARENT_CHAIN_NODE),
+        {ok, #{length := Len1}} = hctest:epoch_info(Node),
 
-    ParentTopHeight1 = hctest:get_height(?PARENT_CHAIN_NODE),
-    Height1 = hctest:get_height(Node),
-    {ok, #{length := Len2} = EpochInfo2} = hctest:epoch_info(Node),
-    ct:log("Parent at height ~p and child at height ~p in child epoch ~p",
-           [ParentTopHeight1, Height1, EpochInfo2]),
-    ?assertEqual(2*?PARENT_EPOCH_LENGTH, ParentTopHeight1 - ParentTopHeight0),
+        {ok, _} = hctest:produce_cc_blocks(Config, #{
+            target_height => Height0 + Len1,
+            parent_produce => hctest:spread(2*?PARENT_EPOCH_LENGTH, Height0,
+                [ {CH, 0} || CH <- lists:seq(Height0 + 1, Height0 + Len1)])
+        })
+    end,
 
-    {ok, _} = hctest:produce_cc_blocks(Config, #{
-        count => Len2,
-        parent_produce => hctest:spread(2*?PARENT_EPOCH_LENGTH, Height1,
-            [ {CH, 0} || CH <- lists:seq(Height1 + 1, Height1 + Len2)])
-    }),
+    begin
+        ParentTopHeight1 = hctest:get_height(?PARENT_CHAIN_NODE),
+        Height1 = hctest:get_height(Node),
+        {ok, #{length := Len2} = EpochInfo2} = hctest:epoch_info(Node),
+        ct:log("Parent at height ~p and child at height ~p in child epoch ~p",
+            [ParentTopHeight1, Height1, EpochInfo2]),
+        ?assertEqual(2*?PARENT_EPOCH_LENGTH, ParentTopHeight1 - ParentTopHeight0),
 
-    {ok, #{length := Len3, epoch := CurrentEpoch}} = hctest:epoch_info(Node),
-    hctest:produce_cc_blocks(Config, #{count => Len3}),
-    #{epoch_length := FinalizeEpochLength, epoch := FinalizeEpoch} = rpc(Node, aec_chain_hc , finalize_info, []),
+        {ok, _} = hctest:produce_cc_blocks(Config, #{
+            target_height => Height1 + Len2,
+            parent_produce => hctest:spread(2*?PARENT_EPOCH_LENGTH, Height1,
+                [ {CH, 0} || CH <- lists:seq(Height1 + 1, Height1 + Len2)]),
+            extra_wait_block_intervals => 10 % wait really long
+        })
+    end,
+
+    begin
+        Height2 = hctest:get_height(Node),
+        {ok, #{length := Len3, epoch := CurrentEpoch}} = hctest:epoch_info(Node),
+        hctest:produce_cc_blocks(Config, #{
+            target_height => Height2 + Len3
+        })
+    end,
+
+    GetFinalizeResult = hctest:try_until(
+        hctest:format("Getting finalize_info from the aec_chain_hc on ~p", [Node]),
+        fun() -> rpc(Node, aec_chain_hc, finalize_info, []) end,
+        fun(Result) -> is_map(Result) end,
+        3 * 3, % try for 3 child_block_time's, sleeping 1/3 child_block_time every iteration
+        ?CHILD_BLOCK_TIME div 3
+    ),
+    #{ epoch_length := FinalizeEpochLength, epoch := FinalizeEpoch } = GetFinalizeResult,
+
     %% Here we should be able to observe signalling that epoch should be shorter
     ct:log("The agreed epoch length is ~p three epochs previous length was ~p", [FinalizeEpochLength, Len1]),
     ?assert(CurrentEpoch == FinalizeEpoch),
-    lists:foreach(fun(_) ->
+
+    %% Mine till next epoch 2 times
+    ChildTopHeight2 = hctest:get_height(Node),
+    lists:foreach(
+        fun(N) ->
             {ok, #{length := CurrentEpochLen}} = hctest:epoch_info(Node),
-            hctest:produce_cc_blocks(Config, #{count => CurrentEpochLen})
+            hctest:produce_cc_blocks(Config, #{
+                target_height => ChildTopHeight2 + N * CurrentEpochLen
+            })
         end,
-        lists:seq(1, 2)),
+        lists:seq(1, 2)
+    ),
 
     {ok, #{length := AdjEpochLength} = EpochInfo3} = hctest:epoch_info(Node),
     ?assertEqual(FinalizeEpochLength, AdjEpochLength),
-    ?assert(FinalizeEpochLength < Len1),
-    ct:log("Info ~p", [EpochInfo3]),
+    ?assert(FinalizeEpochLength < Len1,
+        hctest:format("New FinalizeEpochLength=~w is expected to be voted shorter than Len1=~w",
+        [FinalizeEpochLength, Len1])),
 
+    ct:log("Info ~p", [EpochInfo3]),
     ok.
 
 %% Demonstrate that child chain start signalling epoch length adjustment downward
 %% When parent blocks are produced too quickly, we need to shorten child epoch
 epochs_with_slow_parent(Config) ->
+    %% Modify the child block time to be slower
+    set_child_nodes_block_time(?CHILD_BLOCK_TIME * 4 div 5), % 80% of 'normal' value (cc is faster)
+
     [{Node, _, _, _} | _] = hctest:get_nodes(Config),
     ct:log("Parent start height = ~p", [hctest:config(parent_start_height, Config)]),
-    %% ensure start at a new epoch boundary
-    StartHeight = hctest:get_height(Node),
-    {ok, #{last := Last}} = hctest:epoch_info(Node, StartHeight),
-    Boundary = Last + 3 * ?CHILD_EPOCH_LENGTH,
-    ct:log("Starting at CC height=~p: producing till height=~p", [StartHeight, Boundary]),
-    %% some block production including parent blocks
-    hctest:produce_cc_blocks(Config, #{target_height => Boundary}),
+
+    begin
+        %% ensure start at a new epoch boundary
+        StartHeight = hctest:get_height(Node),
+        {ok, #{last := Last}} = hctest:epoch_info(Node, StartHeight),
+        Boundary = Last + 3 * ?CHILD_EPOCH_LENGTH,
+        ct:log("Starting at CC height=~p: producing till height=~p", [StartHeight, Boundary]),
+        %% some block production including parent blocks
+        hctest:produce_cc_blocks(Config, #{target_height => Boundary})
+    end,
 
     ParentHeight = hctest:get_height(?PARENT_CHAIN_NODE),
     ct:log("Child continues while parent stuck at: ~p", [ParentHeight]),
-    ParentEpoch = (ParentHeight - hctest:config(parent_start_height, Config) + (?PARENT_EPOCH_LENGTH - 1))
-        div ?PARENT_EPOCH_LENGTH,
-    ChildEpoch = hctest:get_height(Node) div ?CHILD_EPOCH_LENGTH,
-    ct:log("Child epoch ~p while parent epoch ~p (parent should be in next epoch)", [ChildEpoch, ParentEpoch]),
-    ?assertEqual(1, ParentEpoch - ChildEpoch),
+
+    EpochDiff = hctest:try_until(
+        "Waiting for parent chain to progress the epoch while child chain stays",
+        fun() ->
+            ParentEpoch = (ParentHeight - hctest:config(parent_start_height, Config) + (?PARENT_EPOCH_LENGTH - 1))
+                div ?PARENT_EPOCH_LENGTH,
+            ChildEpoch = hctest:get_height(Node) div ?CHILD_EPOCH_LENGTH,
+            ct:log("Child epoch ~p while parent epoch ~p (parent should be in next epoch)", [ChildEpoch, ParentEpoch]),
+            ParentEpoch - ChildEpoch
+        end,
+        fun(Diff) -> Diff =:= 1 end,
+        5,
+        ?CHILD_BLOCK_TIME div 5
+    ),
+    ?assertEqual(1, EpochDiff, "Child epoch should stay while parent epoch had progressed by 1"),
 
     Resilience = 1, % Child can cope with missing Resilience epochs in parent chain
     ResilienceBoundary = Boundary + ?CHILD_EPOCH_LENGTH * Resilience,
@@ -257,8 +308,15 @@ epochs_with_slow_parent(Config) ->
         parent_produce => [{ResilienceBoundary + EpochLength, ParentBlocksNeeded}]
     }),
 
-    #{ epoch_length := FinalizeEpochLength,
-       epoch := FinalizeEpoch } = rpc(Node, aec_chain_hc, finalize_info, []),
+    %% Result might not be ready right away, try a few times
+    GetFinalizeResult = hctest:try_until(
+        hctest:format("Getting finalize_info from the aec_chain_hc on ~p", [Node]),
+        fun() -> rpc(Node, aec_chain_hc, finalize_info, []) end,
+        fun(Result) -> is_map(Result) end,
+        3 * 3, % try for 3 child_block_time's, sleeping 1/3 child_block_time every iteration
+        ?CHILD_BLOCK_TIME div 3
+    ),
+    #{ epoch_length := FinalizeEpochLength, epoch := FinalizeEpoch } = GetFinalizeResult,
     ct:log("The agreed epoch length is ~p the current length is ~p for epoch ~p", [FinalizeEpochLength, EpochLength, FinalizeEpoch]),
 
     ?assert(FinalizeEpochLength > EpochLength,
