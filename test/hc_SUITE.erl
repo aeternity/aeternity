@@ -13,6 +13,7 @@
 
 %% Test cases
 -export([
+    check_blocktime/1,
     check_finalize_info/1,
     correct_leader_in_micro_block/1,
     entropy_impact_schedule/1,
@@ -47,7 +48,7 @@ groups() -> [
           , produce_some_epochs
           , respect_schedule
           , entropy_impact_schedule
-          % , check_blocktime % Consensus module drives blocks based on wall clock
+          , check_blocktime
           , get_contract_pubkeys
           , sanity_check_vote_tx
         ]}
@@ -162,31 +163,38 @@ spend_txs_(Config) ->
             spend_txs_(Config)
     end.
 
-% check_blocktime(_Config) ->
-%     {ok, TopBlock} = rpc(?NODE1, aec_chain, top_key_block, []),
-%     check_blocktime_(TopBlock).
+check_blocktime(_Config) ->
+    {ok, TopBlock} = rpc(?NODE1, aec_chain, top_key_block, []),
+    check_blocktime_(TopBlock).
 
-% check_blocktime_(Block) ->
-%     case aec_blocks:height(Block) >= 1 of
-%         true ->
-%             {ok, PrevBlock} = rpc(?NODE1, aec_chain, get_block, [aec_blocks:prev_key_hash(Block)]),
-%             Time1 = aec_blocks:time_in_msecs(Block),
-%             Time2 = aec_blocks:time_in_msecs(PrevBlock),
-%             [ ct:pal("Blocktime not respected KB(~p) at ~p and KB(~p) at ~p",
-%                      [aec_blocks:height(Block), Time1, aec_blocks:height(PrevBlock), Time2])
-%               || Time1 - Time2 < ?CHILD_BLOCK_TIME ],
-%             case Time1 - Time2 of
-%                 Diff when Diff >= ?CHILD_BLOCK_TIME -> ok;
-%                 Other ->
-%                     %% TODO: Is this an error? Block time can fluctuate, and the consensus module uses wall clock to drive it
-%                     ?assert(false,
-%                         hctest:format("Block time difference=~p is less than child_block_time=~p",
-%                         [Other, ?CHILD_BLOCK_TIME]))
-%             end,
-%             check_blocktime_(PrevBlock);
-%         false ->
-%             ok
-%     end.
+check_blocktime_(Block) ->
+    Height = aec_blocks:height(Block),
+    case Height >= 1 of
+        true ->
+            {ok, PrevBlock} = rpc(?NODE1, aec_chain, get_block, [aec_blocks:prev_key_hash(Block)]),
+            Time1 = aec_blocks:time_in_msecs(Block),
+            Time2 = aec_blocks:time_in_msecs(PrevBlock),
+            [ ct:pal("Blocktime not respected KB(~p) at ~p and KB(~p) at ~p",
+                     [aec_blocks:height(Block), Time1, aec_blocks:height(PrevBlock), Time2])
+              || Time1 - Time2 < ?CHILD_BLOCK_TIME ],
+
+            Allowance = 50, % percentage +/- of block time to allow
+            case Time1 - Time2 of
+                %% TODO: What is the allowed range of block time
+                Diff when
+                    Diff =< ?CHILD_BLOCK_TIME * (100 + Allowance) div 100,
+                    Diff >= ?CHILD_BLOCK_TIME * (100 - Allowance) div 100 -> ok;
+                Other ->
+                    % ?assert(false,
+                    %     hctest:format("Block height=~w time difference=~p is outside of expected child_block_time=~p +/-~w%",
+                    %     [Height, Other, ?CHILD_BLOCK_TIME, Allowance]))
+                    ct:log("CHECK FAILED Block height=~w time difference=~p is outside of expected child_block_time=~p +/-~w%",
+                        [Height, Other, ?CHILD_BLOCK_TIME, Allowance])
+            end,
+            check_blocktime_(PrevBlock);
+        false ->
+            ok
+    end.
 
 start_two_child_nodes(CTConfig) ->
     [{Node1, NodeName1, Stakers1, Pinners1}, {Node2, NodeName2, Stakers2, Pinners2} | _] = hctest:get_nodes(CTConfig),
