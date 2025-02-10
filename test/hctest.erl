@@ -271,11 +271,39 @@ produce_n_epochs(Config, N) ->
     ct:log("Child chain blocks ~p", [ChildBlocks]),
     ok.
 
-epoch_info(Node) ->
-    rpc(Node, aec_chain_hc, epoch_info, []).
+%% Try calling a function Fun, until verify function IsGoodResult returns a true. If the result is not good,
+%% sleep for Sleep milliseconds and try again. If MaxAttempts is reached, return whatever the last result was.
+try_until(Label, Fun, IsGoodResult, MaxAttempts, Sleep) ->
+    Result = Fun(),
+    case IsGoodResult(Result) of
+        true -> Result;
+        false when MaxAttempts > 0 ->
+            timer:sleep(Sleep),
+            try_until(Label, Fun, IsGoodResult, MaxAttempts - 1, Sleep);
+        false ->
+            %% Return whatever was the last result
+            Result
+    end.
 
+%% Call epoch_info remotely, retry if an error is returned by up to 1/2 second. Catch exceptions.
+epoch_info(Node) ->
+    try_until(
+        format("RPC call to epoch_info on ~s", [Node]),
+        fun() -> catch rpc(Node, aec_chain_hc, epoch_info, []) end,
+        fun({ok, _}) -> true; (_) -> false end,
+        5,
+        100
+    ).
+
+%% Call epoch_info remotely, retry if an error is returned by up to 1/2 second. Catch exceptions.
 epoch_info(Node, Height) when is_integer(Height) ->
-    rpc(Node, aec_chain_hc, epoch_info, [Height]).
+    try_until(
+        format("RPC call to epoch_info(~w) on ~s", [Height, Node]),
+        fun() -> catch rpc(Node, aec_chain_hc, epoch_info, [Height]) end,
+        fun({ok, _}) -> true; (_) -> false end,
+        510,
+        100
+    ).
 
 %% Wait until child chain grows by a number of key blocks. Do not try to start or stop anything just observe.
 %% `parent_produce` hints the production on parent chain, is a list of tuples {Height, ParentKeyBlocksCount}
@@ -581,9 +609,8 @@ with_saved_keys(Keys, Config) ->
                 lists:keydelete(saved_config, 1, Config), Keys).
 
 mine_to_next_epoch(Node, Config) ->
-    Height1 = get_height(Node),
     {ok, #{last := Last1, length := _Len}} = epoch_info(Node),
-    {ok, Bs} = produce_cc_blocks(Config, #{count => Last1 - Height1 + 1}),
+    {ok, Bs} = produce_cc_blocks(Config, #{ target_height => Last1 + 1 }),
     ct:log("Block last epoch: ~p", [Bs]).
 
 mine_to_last_block_in_epoch(Node, Config) ->
@@ -591,9 +618,7 @@ mine_to_last_block_in_epoch(Node, Config) ->
             first  := _First,
             last   := Last,
             length := _Length}} = epoch_info(Node),
-    CH = get_height(Node),
-    DistToBeforeLast = Last - CH - 1,
-    {ok, _} = produce_cc_blocks(Config, #{count => DistToBeforeLast}).
+    {ok, _} = produce_cc_blocks(Config, #{ target_height => Last - 1 }).
 
 contract_create_spec(Name, Src, Args, Amount, Nonce, Owner) ->
     {ok, Code}   = aect_test_utils:compile_contract(aect_test_utils:sophia_version(), Name),

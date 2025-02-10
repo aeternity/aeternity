@@ -216,7 +216,7 @@ start_two_child_nodes(CTConfig) ->
 
 produce_first_epoch(Config) ->
     %% Produce on parent chain before we begin on child chain
-    hctest:produce_pc_blocks(12),
+    % hctest:produce_pc_blocks(12),
     hctest:produce_n_epochs(Config, 1).
 
 produce_some_epochs(Config) ->
@@ -678,7 +678,7 @@ epochs_with_slow_parent(Config) ->
     %% ensure start at a new epoch boundary
     StartHeight = hctest:get_height(Node),
     {ok, #{last := Last}} = hctest:epoch_info(Node, StartHeight),
-    Boundary = Last + 2 * ?CHILD_EPOCH_LENGTH,
+    Boundary = Last + 3 * ?CHILD_EPOCH_LENGTH,
     ct:log("Starting at CC height=~p: producing till height=~p", [StartHeight, Boundary]),
     %% some block production including parent blocks
     hctest:produce_cc_blocks(Config, #{target_height => Boundary}),
