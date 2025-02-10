@@ -45,6 +45,7 @@
     sign_tx/3,
     spread/3,
     src/2,
+    try_until/5,
     wait_and_sync/1,
     wait_same_top/1,
     wait_same_top/2,
@@ -610,15 +611,18 @@ with_saved_keys(Keys, Config) ->
 
 mine_to_next_epoch(Node, Config) ->
     {ok, #{last := Last1, length := _Len}} = epoch_info(Node),
-    {ok, Bs} = produce_cc_blocks(Config, #{ target_height => Last1 + 1 }),
-    ct:log("Block last epoch: ~p", [Bs]).
+    Target = Last1 + 1,
+    {ok, Bs} = produce_cc_blocks(Config, #{ target_height => Target }),
+    ct:log("Produced to next epoch (height=~w). Blocks made: ~200p", [Target, Bs]).
 
 mine_to_last_block_in_epoch(Node, Config) ->
     {ok, #{epoch  := _Epoch,
-            first  := _First,
-            last   := Last,
-            length := _Length}} = epoch_info(Node),
-    {ok, _} = produce_cc_blocks(Config, #{ target_height => Last - 1 }).
+           first  := _First,
+           last   := Last,
+           length := _Length}} = epoch_info(Node),
+    Target = Last - 1,
+    {ok, Bs} = produce_cc_blocks(Config, #{ target_height => Target }),
+    ct:log("Produced to last in epoch (height=~w). Blocks made: ~200p", [Target, Bs]).
 
 contract_create_spec(Name, Src, Args, Amount, Nonce, Owner) ->
     {ok, Code}   = aect_test_utils:compile_contract(aect_test_utils:sophia_version(), Name),
