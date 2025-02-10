@@ -37,7 +37,6 @@
     privkey/1,
     produce_cc_blocks/2,
     produce_n_epochs/2,
-    produce_pc_blocks/1,
     pubkey/1,
     read_last_blocks/4,
     seed_account/3,
@@ -408,12 +407,12 @@ produce_cc_wait_until(Node, ParentProduce, TargetHeight, Attempts, SleepTime) ->
             CH = H2 + 1,
             Produce = proplists:get_value(CH, ParentProduce),
             NewParentProduce = case Produce of
+                undefined ->
+                    ParentProduce;
                 PCProduceCount ->
                     ct:log("parent_produce: Producing on parent height=~w count=~w", [CH, PCProduceCount]),
                     mine_key_blocks(?PARENT_CHAIN_NODE_NAME, PCProduceCount),
-                    proplists:delete(CH, ParentProduce); % consume the record in the proplist
-                undefined ->
-                    ParentProduce
+                    proplists:delete(CH, ParentProduce) % consume the record in the proplist
             end,
 
             produce_cc_wait_until(Node, NewParentProduce, TargetHeight, Attempts - 1, SleepTime)
@@ -499,6 +498,8 @@ get_generations(Node, FromHeight, ToHeight) ->
 mine_key_blocks(ParentNodeName, NumParentBlocks) ->
     {ok, _} = aecore_suite_utils:mine_micro_block_emptying_mempool_or_fail(ParentNodeName),
     {ok, KBs} = aecore_suite_utils:mine_key_blocks(ParentNodeName, NumParentBlocks),
+    %% Manual call into common test consensus module
+    %% {ok, KBs} = aecore_suite_utils:rpc(?PARENT_CHAIN_NODE, aec_consensus_common_tests, client_request, [{mine_blocks, NumParentBlocks, key}]),
     ct:log("Parent block mined ~p ~p number: ~p", [KBs, ParentNodeName, NumParentBlocks]),
     {ok, KBs}.
 
