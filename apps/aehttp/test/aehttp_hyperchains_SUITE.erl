@@ -17,6 +17,7 @@
 
 %% Test cases
 -export([start_two_child_nodes/1,
+         initial_validators/1,
          produce_first_epoch/1,
          produce_some_epochs/1,
          respect_schedule/1,
@@ -156,7 +157,7 @@
 
 -define(GENESIS_BENFICIARY, <<0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0>>).
 
-all() -> [{group, hc}, {group, epochs}, {group, pinning}, {group, default_pin}].
+all() -> [{group, hc}, {group, epochs}, {group, pinning}, {group, default_pin}, {group, config}].
 
 groups() ->
     [
@@ -192,6 +193,10 @@ groups() ->
           [ start_two_child_nodes,
             produce_first_epoch,
             check_default_pin
+        ]}
+    , {config, [sequence],
+          [ start_two_child_nodes,
+            initial_validators
         ]}
     ].
 
@@ -259,8 +264,9 @@ end_per_suite(Config) ->
 init_per_group(Group, ConfigPre) ->
     Config0 =
         case Group of
-            default_pin -> [ {default_pinning_behavior, true} | ConfigPre ];
-            _ -> [ {default_pinning_behavior, false} | ConfigPre ]
+            default_pin -> [ {initial_validators, false}, {default_pinning_behavior, true} | ConfigPre ];
+            config -> [ {initial_validators, true}, {default_pinning_behavior, false} | ConfigPre ];
+            _ -> [ {initial_validators, false}, {default_pinning_behavior, false} | ConfigPre ]
         end,
     VM = fate,
     NetworkId = <<"hc">>,
@@ -721,6 +727,14 @@ sanity_check_vote_tx(Config) ->
     {ok, []} = rpc(Node1, aec_hc_vote_pool, peek, [Epoch]),
     {ok, []} = rpc(Node2, aec_hc_vote_pool, peek, [Epoch]),
 
+    ok.
+
+initial_validators(Config) ->
+    {ok, Leaders} = inspect_staking_contract(?ALICE, leaders, Config),
+    ?assertEqual(2, length(Leaders)),
+
+    fetch_validator_contract(?ALICE, Config),
+    fetch_validator_contract(?LISA, Config),
     ok.
 
 fetch_validator_contract(Who, Config) ->
@@ -1422,7 +1436,12 @@ build_json_files(ElectionContract, NodeConfig, CTConfig) ->
         contract_call_spec(SCId, MSSrc, "new_validator", [LPub, LPub, "true"],
                            ?INITIAL_STAKE, pubkey(?LISA), 1),
 
-    AllCalls =  [Call1, Call2, Call3],
+    AllCalls = case ?config(initial_validators, CTConfig) of
+        % Initial validators are already configured in the node config
+        true -> [];
+        false -> [Call1, Call2, Call3]
+    end,
+
     ProtocolBin = integer_to_binary(aect_test_utils:latest_protocol_version()),
     #{<<"chain">> := #{<<"hard_forks">> := #{ProtocolBin := #{<<"contracts_file">> := ContractsFileName,
                                                               <<"accounts_file">> := AccountsFileName}}}} = NodeConfig,
@@ -1452,8 +1471,22 @@ node_config(Node, CTConfig, PotentialStakers, PotentialPinners, ReceiveAddress) 
                         #{ <<"parent_chain_account">> => #{<<"pub">> => encoded_pubkey(Pinner), <<"priv">> => HCPriv, <<"owner">> => encoded_pubkey(Owner)} }
                     end,
                     PotentialPinners),
+    Validators = case ?config(initial_validators, CTConfig) of
+        true ->
+            lists:map(
+                fun(HCWho) ->
+                    #{<<"owner">> => encoded_pubkey(HCWho),
+                      <<"sign_key">> => encoded_pubkey(HCWho),
+                      <<"caller">> => encoded_pubkey(HCWho),
+                      <<"stake">> => ?INITIAL_STAKE,
+                      <<"restake">> => true}
+                end,
+                PotentialStakers);
+        _ -> []
+    end,
     ct:log("Stakers: ~p", [Stakers]),
     ct:log("Pinners: ~p", [Pinners]),
+    ct:log("Validators: ~p", [Validators]),
     ConsensusType = <<"hyperchain">>,
     Port = aecore_suite_utils:external_api_port(?PARENT_CHAIN_NODE),
     SpecificConfig =
@@ -1498,6 +1531,7 @@ node_config(Node, CTConfig, PotentialStakers, PotentialPinners, ReceiveAddress) 
                                         <<"expected_key_block_rate">> => 2000,
                                         <<"stakers">> => Stakers,
                                         <<"pinners">> => Pinners,
+                                        <<"initial_validators">> => Validators,
                                         <<"pinning_reward_value">> => 4711,
                                         <<"fixed_coinbase">> => ?BLOCK_REWARD,
                                         <<"default_pinning_behavior">> => ?config(default_pinning_behavior, CTConfig)},
