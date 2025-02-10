@@ -2,6 +2,8 @@
 
 -export([
     child_node_config/2,
+    create_stub/1,
+    create_stub/2,
     election_contract_address_from_ctconfig/1,
     end_per_group/2,
     end_per_suite/2,
