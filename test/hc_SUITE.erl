@@ -471,15 +471,29 @@ sanity_check_vote_tx(Config) ->
     SVoteTx1 = hctest:sign_tx(VoteTx1, hctest:privkey(?ALICE), NetworkId),
 
     ok = rpc(Node1, aec_hc_vote_pool, push, [SVoteTx1]),
-    timer:sleep(10),
-    {ok, [HCVoteTx1]} = rpc(Node2, aec_hc_vote_pool, peek, [Epoch]),
+
+    hctest:try_until(
+        "Waiting for the HCVoteTx1 to appear in the aec_hc_vote_pool of Node2",
+        fun() -> rpc(Node2, aec_hc_vote_pool, peek, [Epoch]) end,
+        fun(Result) -> Result =:= {ok, [HCVoteTx1]} end,
+        5,
+        ?CHILD_BLOCK_TIME div 5
+    ),
 
     %% Test GC
     hctest:mine_to_next_epoch(Node2, Config),
 
-    timer:sleep(10),
-    {ok, []} = rpc(Node1, aec_hc_vote_pool, peek, [Epoch]),
-    {ok, []} = rpc(Node2, aec_hc_vote_pool, peek, [Epoch]),
+    hctest:try_until(
+        "Waiting for the aec_hc_vote_pool to empty on both Node1 and Node2",
+        fun() ->
+            Pool1 = rpc(Node1, aec_hc_vote_pool, peek, [Epoch]),
+            Pool2 = rpc(Node2, aec_hc_vote_pool, peek, [Epoch]),
+            {Pool1, Pool2}
+        end,
+        fun({P1, P2}) -> P1 =:= {ok, []} andalso P2 =:= {ok, []} end,
+        5,
+        ?CHILD_BLOCK_TIME div 5
+    ),
 
     ok.
 
@@ -665,6 +679,8 @@ check_finalize_info(Config) ->
     hctest:mine_to_last_block_in_epoch(Node, Config),
     {ok, _} = hctest:produce_cc_blocks(Config, #{count => 2}),
 
+    ct:log("check_finalize_info Validators=~p", [Validators]),
+
     %% Give votes some time to arrive, and try a few times
     hctest:try_until(
         "Waiting for the votes to be finalized and sum nicely to at least 2/3 total stake",
@@ -684,7 +700,6 @@ check_finalize_info_(Node, LastLeader, Validators, Epoch) ->
                           end,
 
     ct:log("check_finalize_info Votes=~p", [Votes]),
-    ct:log("check_finalize_info Validators=~p", [Validators]),
 
     FVoters = lists:map(fun(#{producer := Voter}) -> Voter end, Votes),
     TotalStake = lists:foldl(fun({_, Stake}, Accum) -> Stake + Accum end, 0, Validators),
@@ -695,9 +710,10 @@ check_finalize_info_(Node, LastLeader, Validators, Epoch) ->
     LowerLimit = trunc(math:ceil((2 * TotalStake) / 3)),
     case TotalVotersStake >= LowerLimit of
         true ->
+            ct:log("Total voters stake is ~w (greater than ~w) which is 2/3 of TotalStake (~w)",
+                [TotalVotersStake, LowerLimit, TotalStake]),
             true;
-        false -> ct:log(
-            "TotalVoterStake (~w) must be above the lower limit (~w) which is 2/3 of TotalStake (~w)",
-            [TotalVotersStake, LowerLimit, TotalStake]),
+        false -> ct:log("TotalVoterStake (~w) must be above the lower limit (~w) which is 2/3 of TotalStake (~w)",
+                [TotalVotersStake, LowerLimit, TotalStake]),
             false
     end.
