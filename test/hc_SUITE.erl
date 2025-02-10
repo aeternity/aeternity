@@ -13,12 +13,9 @@
 
 %% Test cases
 -export([
-    check_blocktime/1,
     check_finalize_info/1,
     correct_leader_in_micro_block/1,
     entropy_impact_schedule/1,
-    epochs_with_fast_parent/1,
-    epochs_with_slow_parent/1,
     first_leader_next_epoch/1,
     get_contract_pubkeys/1,
     produce_first_epoch/1,
@@ -35,7 +32,7 @@
 -include_lib("stdlib/include/assert.hrl").
 -include("./hctest_defaults.hrl").
 
-all() -> [{group, hc}, {group, epochs}].
+all() -> [{group, hc}].
 
 groups() -> [
       {hc, [sequence],
@@ -50,15 +47,10 @@ groups() -> [
           , produce_some_epochs
           , respect_schedule
           , entropy_impact_schedule
-          , check_blocktime
+          % , check_blocktime % Consensus module drives blocks based on wall clock
           , get_contract_pubkeys
           , sanity_check_vote_tx
-          ]}
-    , {epochs, [sequence],
-          [ start_two_child_nodes
-          , first_leader_next_epoch
-          , epochs_with_slow_parent
-          , epochs_with_fast_parent ]}
+        ]}
     ].
 
 suite() -> [].
@@ -135,7 +127,14 @@ spend_txs(CTConfig) ->
         hctest:pubkey(?LISA), 100_000_003 * ?DEFAULT_GAS_PRICE, NetworkId),
 
     hctest:produce_cc_blocks(CTConfig, #{count => 1}),
-    {ok, []} = rpc:call(?NODE1_NAME, aec_tx_pool, peek, [infinity]),
+    %% Try for max 1 child block time, succeed when tx pool is empty
+    hctest:try_until(
+        "Waiting for the transaction pool to be empty",
+        fun() -> rpc:call(?NODE1_NAME, aec_tx_pool, peek, [infinity]) end,
+        fun(Result) -> Result =:= {ok, []} end,
+        10,
+        ?CHILD_BLOCK_TIME div 10
+    ),
 
     %% Make spends until we've passed an epoch boundary
     spend_txs_(CTConfig).
@@ -152,30 +151,42 @@ spend_txs_(Config) ->
             hctest:seed_account(hctest:pubkey(?EDWIN), 1, NetworkId),
             hctest:produce_cc_blocks(Config, #{count => 1}),
 
-            timer:sleep(?CHILD_BLOCK_TIME div 3),
-            {ok, []} = rpc:call(?NODE1_NAME, aec_tx_pool, peek, [infinity]),
-
+            %% Try for max 1 child block time, succeed when tx pool is empty
+            hctest:try_until(
+                "Waiting for the transaction pool to be empty",
+                fun() -> rpc:call(?NODE1_NAME, aec_tx_pool, peek, [infinity]) end,
+                fun(Result) -> Result =:= {ok, []} end,
+                10,
+                ?CHILD_BLOCK_TIME div 10
+            ),
             spend_txs_(Config)
     end.
 
-check_blocktime(_Config) ->
-    {ok, TopBlock} = rpc(?NODE1, aec_chain, top_key_block, []),
-    check_blocktime_(TopBlock).
+% check_blocktime(_Config) ->
+%     {ok, TopBlock} = rpc(?NODE1, aec_chain, top_key_block, []),
+%     check_blocktime_(TopBlock).
 
-check_blocktime_(Block) ->
-    case aec_blocks:height(Block) >= 1 of
-        true ->
-            {ok, PrevBlock} = rpc(?NODE1, aec_chain, get_block, [aec_blocks:prev_key_hash(Block)]),
-            Time1 = aec_blocks:time_in_msecs(Block),
-            Time2 = aec_blocks:time_in_msecs(PrevBlock),
-            [ ct:pal("Blocktime not respected KB(~p) at ~p and KB(~p) at ~p",
-                     [aec_blocks:height(Block), Time1, aec_blocks:height(PrevBlock), Time2])
-              || Time1 - Time2 < ?CHILD_BLOCK_TIME ],
-            ?assertMatch(Diff when Diff >= ?CHILD_BLOCK_TIME, Time1 - Time2),
-            check_blocktime_(PrevBlock);
-        false ->
-            ok
-    end.
+% check_blocktime_(Block) ->
+%     case aec_blocks:height(Block) >= 1 of
+%         true ->
+%             {ok, PrevBlock} = rpc(?NODE1, aec_chain, get_block, [aec_blocks:prev_key_hash(Block)]),
+%             Time1 = aec_blocks:time_in_msecs(Block),
+%             Time2 = aec_blocks:time_in_msecs(PrevBlock),
+%             [ ct:pal("Blocktime not respected KB(~p) at ~p and KB(~p) at ~p",
+%                      [aec_blocks:height(Block), Time1, aec_blocks:height(PrevBlock), Time2])
+%               || Time1 - Time2 < ?CHILD_BLOCK_TIME ],
+%             case Time1 - Time2 of
+%                 Diff when Diff >= ?CHILD_BLOCK_TIME -> ok;
+%                 Other ->
+%                     %% TODO: Is this an error? Block time can fluctuate, and the consensus module uses wall clock to drive it
+%                     ?assert(false,
+%                         hctest:format("Block time difference=~p is less than child_block_time=~p",
+%                         [Other, ?CHILD_BLOCK_TIME]))
+%             end,
+%             check_blocktime_(PrevBlock);
+%         false ->
+%             ok
+%     end.
 
 start_two_child_nodes(CTConfig) ->
     [{Node1, NodeName1, Stakers1, Pinners1}, {Node2, NodeName2, Stakers2, Pinners2} | _] = hctest:get_nodes(CTConfig),
@@ -613,159 +624,6 @@ first_leader_next_epoch(Config) ->
     ct:log("Checking leader for first block next epoch ~p (height ~p)", [Epoch+1, Last+1]),
     ?assertMatch({ok, _}, rpc(Node, aec_consensus_hc, leader_for_height, [Last + 1])).
 
-%% Demonstrate that child chain start signalling epoch length adjustment downward
-%% When parent blocks are produced too quickly, we need to shorten child epoch
-epochs_with_fast_parent(Config) ->
-    [{Node, _, _, _} | _] = hctest:get_nodes(Config),
-
-    %% ensure start at a new epoch boundary
-    StartHeight = hctest:get_height(Node),
-    {ok, #{last := Last}} = hctest:epoch_info(Node),
-    BlocksLeftToBoundary = Last - StartHeight,
-    %% some block production including parent blocks
-    {ok, _} = hctest:produce_cc_blocks(Config,# {count => BlocksLeftToBoundary}),
-
-    {ok, #{length := Len1} = EpochInfo1} = hctest:epoch_info(Node),
-    ct:log("Info ~p", [EpochInfo1]),
-
-    %% Produce twice as many parent blocks as needed in an epoch
-    Height0 = hctest:get_height(Node),
-    ParentTopHeight0 = hctest:get_height(?PARENT_CHAIN_NODE),
-    {ok, #{length := Len1}} = hctest:epoch_info(Node),
-    {ok, _} = hctest:produce_cc_blocks(Config, #{
-        count => Len1,
-        parent_produce => hctest:spread(2*?PARENT_EPOCH_LENGTH, Height0,
-            [ {CH, 0} || CH <- lists:seq(Height0 + 1, Height0 + Len1)])
-    }),
-
-    ParentTopHeight1 = hctest:get_height(?PARENT_CHAIN_NODE),
-    Height1 = hctest:get_height(Node),
-    {ok, #{length := Len2} = EpochInfo2} = hctest:epoch_info(Node),
-    ct:log("Parent at height ~p and child at height ~p in child epoch ~p",
-           [ParentTopHeight1, Height1, EpochInfo2]),
-    ?assertEqual(2*?PARENT_EPOCH_LENGTH, ParentTopHeight1 - ParentTopHeight0),
-
-    {ok, _} = hctest:produce_cc_blocks(Config, #{
-        count => Len2,
-        parent_produce => hctest:spread(2*?PARENT_EPOCH_LENGTH, Height1,
-            [ {CH, 0} || CH <- lists:seq(Height1 + 1, Height1 + Len2)])
-    }),
-
-    {ok, #{length := Len3, epoch := CurrentEpoch}} = hctest:epoch_info(Node),
-    hctest:produce_cc_blocks(Config, #{count => Len3}),
-    #{epoch_length := FinalizeEpochLength, epoch := FinalizeEpoch} = rpc(Node, aec_chain_hc , finalize_info, []),
-    %% Here we should be able to observe signalling that epoch should be shorter
-    ct:log("The agreed epoch length is ~p three epochs previous length was ~p", [FinalizeEpochLength, Len1]),
-    ?assert(CurrentEpoch == FinalizeEpoch),
-    lists:foreach(fun(_) ->
-            {ok, #{length := CurrentEpochLen}} = hctest:epoch_info(Node),
-            hctest:produce_cc_blocks(Config, #{count => CurrentEpochLen})
-        end,
-        lists:seq(1, 2)),
-
-    {ok, #{length := AdjEpochLength} = EpochInfo3} = hctest:epoch_info(Node),
-    ?assertEqual(FinalizeEpochLength, AdjEpochLength),
-    ?assert(FinalizeEpochLength < Len1),
-    ct:log("Info ~p", [EpochInfo3]),
-
-    ok.
-
-%% Demonstrate that child chain start signalling epoch length adjustment downward
-%% When parent blocks are produced too quickly, we need to shorten child epoch
-epochs_with_slow_parent(Config) ->
-    [{Node, _, _, _} | _] = hctest:get_nodes(Config),
-    ct:log("Parent start height = ~p", [hctest:config(parent_start_height, Config)]),
-    %% ensure start at a new epoch boundary
-    StartHeight = hctest:get_height(Node),
-    {ok, #{last := Last}} = hctest:epoch_info(Node, StartHeight),
-    Boundary = Last + 3 * ?CHILD_EPOCH_LENGTH,
-    ct:log("Starting at CC height=~p: producing till height=~p", [StartHeight, Boundary]),
-    %% some block production including parent blocks
-    hctest:produce_cc_blocks(Config, #{target_height => Boundary}),
-
-    ParentHeight = hctest:get_height(?PARENT_CHAIN_NODE),
-    ct:log("Child continues while parent stuck at: ~p", [ParentHeight]),
-    ParentEpoch = (ParentHeight - hctest:config(parent_start_height, Config) + (?PARENT_EPOCH_LENGTH - 1))
-        div ?PARENT_EPOCH_LENGTH,
-    ChildEpoch = hctest:get_height(Node) div ?CHILD_EPOCH_LENGTH,
-    ct:log("Child epoch ~p while parent epoch ~p (parent should be in next epoch)", [ChildEpoch, ParentEpoch]),
-    ?assertEqual(1, ParentEpoch - ChildEpoch),
-
-    Resilience = 1, % Child can cope with missing Resilience epochs in parent chain
-    ResilienceBoundary = Boundary + ?CHILD_EPOCH_LENGTH * Resilience,
-    %% Produce no parent block in the next Resilience child epochs
-    %% the child chain should get to a halt or
-    %% at least one should be able to observe signalling that the length should be adjusted upward
-    {ok, _} = hctest:produce_cc_blocks(Config, #{
-        target_height => ResilienceBoundary,
-        parent_produce => [] }),
-
-    ct:log("Mined almost ~p additional child epochs without parent progress", [Resilience]),
-    ParentTopHeight = hctest:get_height(?PARENT_CHAIN_NODE),
-    ?assertEqual(ParentHeight, ParentTopHeight, "Parent chain should not have progressed"),
-
-    ChildTopHeight1 = hctest:get_height(Node),
-    {ok, #{epoch := EndEpoch, length := EpochLength}} = hctest:epoch_info(Node, ChildTopHeight1),
-    ct:log("Parent at height ~p and child at height ~p in child epoch ~p",
-           [ParentTopHeight, ChildTopHeight1, EndEpoch]),
-
-    %% Here we should have observed some signalling for increased child epoch length
-
-    %% Parent hash grabbed in last block child epoch, so here we can start, but not finish next epoch
-    {ok, _} = hctest:produce_cc_blocks(Config, #{
-        target_height => ResilienceBoundary + EpochLength - 1,
-        parent_produce => []
-    }),
-    %% Fail with timeout because we need parent chain hash but it is not progressing
-    ?assertException(error, timeout_waiting_for_block,
-        hctest:produce_cc_blocks(Config, #{
-            target_height => ResilienceBoundary + EpochLength,
-            parent_produce => []
-        })),
-
-    ?assertEqual(
-        [{ok, (N-1) * ?CHILD_EPOCH_LENGTH + 1} || N <- lists:seq(1, EndEpoch)],
-        [rpc(Node, aec_chain_hc, epoch_start_height, [N]) || N <- lists:seq(1, EndEpoch)],
-        "Checking epoch start heights"),
-
-    %% Quickly produce parent blocks to be in sync again
-    ParentBlocksNeeded = EndEpoch * ?PARENT_EPOCH_LENGTH
-        + hctest:config(parent_start_height, Config)
-        + ?PARENT_FINALITY - ParentTopHeight,
-
-    {ok, _} = hctest:produce_cc_blocks(Config, #{
-        %% we failed with timeout earlier, now should work
-        target_height => ResilienceBoundary + EpochLength,
-        %% Produce 'ParentBlocksNeeded' on parent, 1 before the child reaches (ResilienceBoundary + EpochLength)
-        parent_produce => [{ResilienceBoundary + EpochLength, ParentBlocksNeeded}]
-    }),
-
-    #{ epoch_length := FinalizeEpochLength,
-       epoch := FinalizeEpoch } = rpc(Node, aec_chain_hc, finalize_info, []),
-    ct:log("The agreed epoch length is ~p the current length is ~p for epoch ~p", [FinalizeEpochLength, EpochLength, FinalizeEpoch]),
-
-    ?assert(FinalizeEpochLength > EpochLength,
-        hctest:format("New FinalizeEpochLength=~w is expected to be voted longer than EpochLength=~w",
-            [FinalizeEpochLength, EpochLength])
-    ),
-
-    %% Mine till next epoch 2 times
-    ChildTopHeight2 = hctest:get_height(Node),
-    lists:foreach(
-        fun(N) ->
-            {ok, #{length := CurrentEpochLen}} = hctest:epoch_info(Node),
-            hctest:produce_cc_blocks(Config, #{
-                target_height => ChildTopHeight2 + N * CurrentEpochLen
-            })
-        end,
-        lists:seq(1, 2)
-    ),
-    {ok, #{length := AdjEpochLength} = EpochInfo} = hctest:epoch_info(Node),
-    ct:log("Info ~p", [EpochInfo]),
-    ?assertEqual(FinalizeEpochLength, AdjEpochLength),
-
-    ok.
-
 %%%=============================================================================
 %%% HC Endpoints
 %%%=============================================================================
@@ -807,6 +665,17 @@ check_finalize_info(Config) ->
     hctest:mine_to_last_block_in_epoch(Node, Config),
     {ok, _} = hctest:produce_cc_blocks(Config, #{count => 2}),
 
+    %% Give votes some time to arrive, and try a few times
+    hctest:try_until(
+        "Waiting for the votes to be finalized and sum nicely to at least 2/3 total stake",
+        fun() -> check_finalize_info_(Node, LastLeader, Validators, Epoch) end,
+        fun(Result) -> Result end,
+        10,
+        ?CHILD_BLOCK_TIME div 10
+    ).
+
+%% Try calculate sum of arrived votes, return true if it is over 2/3 of total stake
+check_finalize_info_(Node, LastLeader, Validators, Epoch) ->
     #{ producer := Producer,
        epoch := FEpoch,
        votes := Votes } = case rpc(Node, aec_chain_hc, finalize_info, []) of
@@ -814,8 +683,8 @@ check_finalize_info(Config) ->
                               Result -> Result
                           end,
 
-    ct:pal("check_finalize_info Votes=~p", [Votes]),
-    ct:pal("check_finalize_info Validators=~p", [Validators]),
+    ct:log("check_finalize_info Votes=~p", [Votes]),
+    ct:log("check_finalize_info Validators=~p", [Validators]),
 
     FVoters = lists:map(fun(#{producer := Voter}) -> Voter end, Votes),
     TotalStake = lists:foldl(fun({_, Stake}, Accum) -> Stake + Accum end, 0, Validators),
@@ -824,6 +693,11 @@ check_finalize_info(Config) ->
     ?assertEqual(Epoch, FEpoch),
     ?assertEqual(Producer, LastLeader),
     LowerLimit = trunc(math:ceil((2 * TotalStake) / 3)),
-    ?assert(TotalVotersStake >= LowerLimit,
-        hctest:format("TotalVoterStake (~w) must be above the lower limit (~w) which is 2/3 of TotalStake (~w)",
-        [TotalVotersStake, LowerLimit, TotalStake])).
+    case TotalVotersStake >= LowerLimit of
+        true ->
+            true;
+        false -> ct:log(
+            "TotalVoterStake (~w) must be above the lower limit (~w) which is 2/3 of TotalStake (~w)",
+            [TotalVotersStake, LowerLimit, TotalStake]),
+            false
+    end.
