@@ -1222,9 +1222,10 @@ handle_pinning(TxEnv, Trees, EpochInfo, Leader) ->
             {Trees, true, [{pin, {no_proof_posted}}]};
         pin_correct ->
             {Trees1, Events} = add_pin_reward(Trees, TxEnv, Leader, EpochInfo),
+            lager:debug("PINNING: pin validated"),
             {Trees1, false, Events};
         pin_validation_fail ->
-            lager:debug("PINNING: Incorrect proof posted"),
+            lager:warning("PINNING: Incorrect proof posted"),
             {Trees, true, [{pin, {incorrect_proof_posted}}]}
     end.
 
@@ -1236,19 +1237,28 @@ validate_pin(TxEnv, Trees, CurEpochInfo) ->
             lager:debug("PINNING: EncHash: ~p", [EncTxHash]),
             try
                 #{epoch := CurEpoch} = CurEpochInfo,
-                {ok, #{epoch := PinEpoch, height := PinHeight, block_hash := PinHash}} =
+                {ok, #{epoch := PinEpoch, height := PinHeight, block_hash := PinHash, pc_height := PcHeight}} =
                     aec_parent_connector:get_pin_by_tx_hash(EncTxHash),
-                PinEpoch = CurEpoch - 1, % validate it was actually last epoch
-                case {ok, PinHash} =:= aec_chain_state:get_key_block_hash_at_height(PinHeight) of
-                    true -> pin_correct;
-                    false -> pin_validation_fail
-                end
+                lager:debug("PINNING pin epoch: ~p, pin epoch last: ~p, cur epoch: ~p",[PinEpoch, PinHeight, CurEpoch]),
+                lager:debug("pc pin height: ~p, pc_epoch_from_height: ~p: pc_start_height: ~p; pc_epoch_length: ~p", [PcHeight, pc_epoch_from_height(PcHeight), pc_start_height(), parent_epoch_length()]), % validate it was actually last epoch
+                HashCorrect =
+                    case {ok, PinHash} =:= aec_chain_state:get_key_block_hash_at_height(PinHeight) of
+                        true -> pin_correct;
+                        false -> pin_validation_fail
+                    end
+                %PcEpochCorrect = (PinEpoch == pc_epoch_from_height(PcHeight) - 1) % validate that pinning was in epoch directly following
             catch
                 Type:Err ->
                     lager:debug("bad pin proof posted: ~p : ~p", [Type, Err]),
                     pin_validation_fail
             end
     end.
+
+pc_epoch_from_height(PcHeight) ->
+    PcStartHeight = pc_start_height(),
+    PcEpochLength  = parent_epoch_length(),
+    ((PcHeight - PcStartHeight) div PcEpochLength) + 1. % start epoch is 1,
+
 
 add_pin_reward(Trees, TxEnv, Leader, #{epoch := CurEpoch, last := Last}) ->
     #{cur_pin_reward := Reward} = aec_chain_hc:pin_reward_info({TxEnv, Trees}),
