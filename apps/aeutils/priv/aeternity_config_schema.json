@@ -1894,7 +1894,41 @@
                                                 },
                                                 "default": []
                                             }
-                                        }
+                                        },
+                                        "initial_validators": {
+                                            "description" : "List of hyperchain validators to initialize the hyperchain",
+                                            "type" : "array",
+                                            "items" : {
+                                                "type" : "object",
+                                                "additionalProperties" : false,
+                                                "description" : "Validator configuration",
+                                                "properties": {
+                                                   "owner": {
+                                                        "description": "The validator operator account that would control it",
+                                                        "pattern": "^ak_[1-9A-HJ-NP-Za-km-z]*:[0-9]+(:[0-9]*:[0-9]*){0,1}$"
+                                                    },
+                                                    "sign_key": {
+                                                        "description": "The validator node signing key. Defaults to owner.",
+                                                        "pattern": "^ak_[1-9A-HJ-NP-Za-km-z]*:[0-9]+(:[0-9]*:[0-9]*){0,1}$",
+                                                    },
+                                                    "caller": {
+                                                        "description": "The registration contral call caller. Needs to be funded with the minimum stake + TX cost. Defaults to owner.",
+                                                        "pattern": "^ak_[1-9A-HJ-NP-Za-km-z]*:[0-9]+(:[0-9]*:[0-9]*){0,1}$",
+                                                    },
+                                                    "stake": {
+                                                        "description": "The amount to stake",
+                                                        "type": "integer",
+                                                        "default": 0
+                                                    },
+                                                    "restake": {
+                                                        "description": "Automatically stake the rewards",
+                                                        "type": "boolean",
+                                                        "default": false
+                                                    }
+                                                },
+                                                "default": []
+                                            }
+                                        },
                                     }
                                 }
                             }
