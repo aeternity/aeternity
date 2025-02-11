@@ -19,7 +19,8 @@
 -export([user_config_or_env/3, user_config_or_env/4]).
 -export([user_map_or_env/4]).
 -export([env_or_user_map/4]).
--export([config_value/4]).
+-export([config/3, config/4]).
+-export([config_value/3, config_value/4]).
 -export([find_config/2]).
 -export([nested_map_get/2]).
 -export([read_config/0]).
@@ -137,9 +138,30 @@ env_or_user_map(CfgKey, App, EnvKey, Default) ->
             end
     end.
 
-config_value(CfgKey, App, Env, Default) ->
-    {ok, Value} =find_config(CfgKey, [ user_config
-                                     , {env, App, Env}
+%% Lookup configuration value in environment variables, user configuration, schema defaults
+%% and merge them in the following priority order:
+%% 1. User map (Configuration files + OS environment variables)
+%% 3. Configuraton schema defaults
+%% 4. Inline default
+config(CfgKey, App, EnvKey) ->
+    config(CfgKey, App, EnvKey, undefined).
+
+config(CfgKey, App, EnvKey, Default) ->
+    {ok, SchemaDefaults} = schema_default_values(CfgKey),
+    Config = config_value(CfgKey, App, EnvKey, Default),
+    deep_merge(SchemaDefaults, Config).
+
+%% Lookup configuration value in predefined order and return the first match:
+%% 1. User configuration file specified by CfgKey path
+%% 2. Application env specified by App and EnvKey path
+%% 3. Configuration schema default values
+%% 4. Inline default value
+config_value(CfgKey, App, EnvKey) ->
+    config_value(CfgKey, App, EnvKey, undefined).
+
+config_value(CfgKey, App, EnvKey, Default) ->
+    {ok, Value} = find_config(CfgKey, [ user_config
+                                     , {env, App, EnvKey}
                                      , schema_default
                                      , {value, Default} ]),
     Value.
@@ -288,15 +310,15 @@ schema_default_values(Path) ->
                       #{<<"type">> := <<"object">>, <<"properties">> := Props}) ->
                         Defaults = maps:map(fun(PN, #{<<"type">> := <<"object">>} = PP) ->
                                          R(PN, PP);
-                                    (PN, #{<<"type">> := <<"array">>, <<"items">> := #{<<"default">> := []}}) ->
+                                    (_PN, #{<<"type">> := <<"array">>, <<"items">> := #{<<"default">> := []}}) ->
                                          [];
                                     (PN, #{<<"type">> := <<"array">>, <<"items">> := Items}) ->
                                          [R(PN, Items)];
                                     (_PN, #{<<"default">> := Def}) -> Def;
                                     (_PN, _) -> undefined
                                  end, Props),
-                        maps:filter(fun(K,V) -> V =/= undefined end, Defaults);
-                    R(PName,
+                        maps:filter(fun(_K,V) -> V =/= undefined end, Defaults);
+                    R(_PName,
                      #{<<"type">> := <<"array">>, <<"items">> := #{<<"default">> := []}}) ->
                         [];
                     R(PName,
@@ -310,6 +332,27 @@ schema_default_values(Path) ->
             Res = RecursiveDefault(<<"root">>, Tree),
             {ok, Res}
       end.
+
+deep_merge(Map1, Map2) ->
+    MapFold =
+        fun(MergeFun, M1, M2) ->
+            maps:fold(
+                fun(K, V1, Acc) ->
+                    Val =
+                        case maps:find(K, Acc) of
+                            {ok, V2} -> MergeFun(V1, V2);
+                            error -> V1
+                        end,
+                    maps:put(K, Val, Acc)
+                end,
+                M2, M1) %% M2 overwrites M1
+        end,
+    DeepMerge =
+        fun Merge(V1, V2) when is_map(V2) ->
+                  MapFold(Merge, V1, V2);
+            Merge(_V1, V2) -> V2
+        end,
+    MapFold(DeepMerge, Map1, Map2).
 
 parse_key_value_string(Bin) when is_binary(Bin) ->
     %% Parse: expect (binary) string of type "S1:L1 [, ...] Sn:Ln", where

@@ -345,13 +345,14 @@ consensus_from_network_id(_) ->
     consensus_config_or_default([{0, {aec_consensus_bitcoin_ng, #{}}}]).
 
 consensus_config_or_default(Default) ->
-    case aeu_env:env_or_user_map([<<"chain">>, <<"consensus">>], aecore, consensus, undefined) of
+    case aeu_env:config_value([<<"chain">>, <<"consensus">>], aecore, consensus) of
         undefined ->
             Default;
         M when is_map(M) ->
             Conf = maps:fold(
-                     fun(H, #{<<"type">> := ConsensusName} = V, Acc) ->
-                             ConsensusConfig = maps:get(<<"config">>, V, #{}),
+                     fun(H, #{<<"type">> := ConsensusName} = _V, Acc) ->
+                             CfgKey = [<<"chain">>, <<"consensus">>, H, <<"config">>],
+                             ConsensusConfig = aeu_env:config(CfgKey, aecore, consensus),
                              Acc#{binary_to_integer(H) =>
                                       {consensus_module_from_type(ConsensusName),
                                        ConsensusConfig}}

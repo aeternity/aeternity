@@ -65,32 +65,8 @@ error_to_setting_name(Event) ->
     <<"unknown_error">>.
 
 load_settings() ->
-    Settings0 =
-        case aeu_env:find_config([<<"mempool">>, <<"tx_failures">>],
-                                          [user_config]) of
-            {ok, S} -> S;
-            undefined -> #{}
-        end,
-    {ok, Defaults} = aeu_env:schema_default_values([<<"mempool">>, <<"tx_failures">>]),
-    MapFold =
-        fun(MergeFun, M1, M2) ->
-            maps:fold(
-                fun(K, V1, Acc) ->
-                    Val =
-                        case maps:find(K, Acc) of
-                            {ok, V2} -> MergeFun(V1, V2);
-                            error -> V1
-                        end,
-                    maps:put(K, Val, Acc)
-                end,
-                M2, M1) %% M2 overwrites M1
-        end,
-    DeepMerge =
-        fun Merge(V1, V2) when is_map(V2) ->
-                  MapFold(Merge, V1, V2);
-            Merge(_V1, V2) -> V2
-        end,
-    Settings = MapFold(DeepMerge, Defaults, Settings0),
+    Settings = aeu_env:config([<<"mempool">>, <<"tx_failures">>], aecore, [mempool, tx_failures], #{}),
+
     %% ensure there is a default
     case lookup_setting(maps:get(?COMMON, Settings, #{}), ?DEFAULT) of
         error ->
