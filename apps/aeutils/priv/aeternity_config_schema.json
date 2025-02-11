@@ -44,9 +44,9 @@
                                 "type": "object",
                                 "oneOf": [{"properties": {}}]
                             }
-                        }
-                    },
-                    "default": []
+                        },
+                        "default": []
+                    }
                 },
                 "custom_prefunded_accs_file" : {
                     "deprecated" : true,
@@ -62,15 +62,15 @@
                 "type" : "string",
                 "description" : "Aeternity Node address",
                 "example" : "aenode://pp_ySU7cHqsymnuBP9iSe4rMnH1Rz2FStx5rnoewYMJcuPhdaqPk@192.168.1.1:3015",
-                "pattern": "^aenode://pp_[a-zA-Z0-9]+@[^:\\.\"!#$%^&*()',/]+(\\.[^:\\.\"!#$%^&*()',/]+)*:[0-9]+/*$"
-            },
-            "default": []
+                "pattern": "^aenode://pp_[a-zA-Z0-9]+@[^:\\.\"!#$%^&*()',/]+(\\.[^:\\.\"!#$%^&*()',/]+)*:[0-9]+/*$",
+                "default": []
+            }
         },
         "include_default_peers": {
             "description" : "If the default peers shall be added as trusted peers. Note: setting this to false means that the default seed nodes would not be used and a proper set of peers had been added instead.",
             "type" : "boolean",
             "default": true
-            },
+        },
         "blocked_peers" : {
             "description" : "Pre-configured addresses of nodes NOT to contact",
             "type"  : "array",
@@ -78,9 +78,9 @@
                 "type" : "string",
                 "description" : "Aeternity Node address",
                 "example" : "aenode://pp_ySU7cHqsymnuBP9iSe4rMnH1Rz2FStx5rnoewYMJcuPhdaqPk@192.168.1.1:3015",
-                "pattern": "^aenode://pp_[a-zA-Z0-9]+@[^:\\.\"!#$%^&*()',/]+(\\.[^:\\.\"!#$%^&*()',/]+)*:[0-9]+/*$"
+                "pattern": "^aenode://pp_[a-zA-Z0-9]+@[^:\\.\"!#$%^&*()',/]+(\\.[^:\\.\"!#$%^&*()',/]+)*:[0-9]+/*$",
+                "default": []
             },
-            "default": []
         },
         "mempool" : {
             "type" : "object",
@@ -1042,11 +1042,11 @@
                     "type" : "integer",
                     "default" : 120000
                 },
-		"minimum_ping_version" : {
-		    "description" : "The lowest version of ping object that peers have to support",
-		    "type" : "integer",
-		    "default" : 1
-		},
+                "minimum_ping_version" : {
+                    "description" : "The lowest version of ping object that peers have to support",
+                    "type" : "integer",
+                    "default" : 1
+                },
                 "external_port" : {
                     "description" : "Listen port for external sync connections. This must be the WAN-facing port number (depending on NAT configuration this may be different from 'port' value above).",
                     "type" : "integer",
@@ -1123,9 +1123,9 @@
                     "items" : {
                         "type" : "integer",
                         "minimum" : 1,
+                        "default" : [5000, 15000, 30000, 60000, 120000, 300000, 600000],
                         "example" : 5000
-                    },
-                    "default" : [5000, 15000, 30000, 60000, 120000, 300000, 600000]
+                    }
                 },
                 "gossip_allowed_height_from_top" : {
                     "description": "Allowed height difference from current top for incoming blocks (via gossip)",
@@ -1189,9 +1189,9 @@
                             "items" : {
                                 "type" : "integer",
                                 "minimum" : 1,
+                                "default" : [5000, 15000, 30000, 60000, 120000, 300000, 600000],
                                 "example" : 5000
-                            },
-                            "default" : [5000, 15000, 30000, 60000, 120000, 300000, 600000]
+                            }
                         },
                         "max_rejections" : {
                             "description" : "The default maximum number of times a peer can get rejected. When reached, the peer is downgraded or removed (if not trusted).",
@@ -1228,9 +1228,9 @@
                             "minItems" : 1,
                             "items" : {
                                 "type" : "string",
-                                "example" : "https://example.com"
+                                "default" : ["*"],
+                                "example" : "https://example.com",
                             },
-                            "default" : ["*"]
                         },
                         "allow_headers": {
                             "description": "List of allowed headers to be used with requests (to be set in access-control-request-headers header in the response). Use '*' or do not set at all to allow all headers.",
@@ -1238,9 +1238,9 @@
                             "minItems" : 1,
                             "items" : {
                                 "type" : "string",
+                                "default" : ["*"],
                                 "example" : "Content-Type"
                             },
-                            "default" : ["*"]
                         },
                         "allow_methods": {
                             "description": "List of allowed methods allowed to be used when accessing resources (to be set in access-control-allow-methods header in the response).",
@@ -1248,9 +1248,9 @@
                             "minItems" : 1,
                             "items" : {
                                 "type" : "string",
+                                "default": ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"],
                                 "example" : "GET"
                             },
-                            "default": ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"]
                         },
                         "max_age": {
                             "description" : "Indicates for how many seconds the results of a preflight request can be cached (to be set in access-control-max-age header in the response).",
@@ -1529,12 +1529,14 @@
                 "dir"      : {
                     "description" :
                     "Location (directory) of the public/private key pair(s)",
-                    "type" : "string"
+                    "type" : "string",
+                    "default": "data/aecore/keys"
                 },
                 "peer_password" : {
                     "description" :
                     "Password used to encrypt the peer key-pair files",
-                    "type" : "string"
+                    "type" : "string",
+                    "default": "secret"
                 }
             }
         },
@@ -1824,9 +1826,9 @@
                                                             "type" : "array",
                                                             "items" : {
                                                                 "type" : "string",
-                                                                "description" : "URL address of the API - <protocol>://<user>:<password>@<hostname>:<port>"
-                                                            },
-                                                            "default": []
+                                                                "description" : "URL address of the API - <protocol>://<user>:<password>@<hostname>:<port>",
+                                                                "default": []
+                                                            }
                                                         }
                                                     }
                                                 }
@@ -1848,12 +1850,10 @@
                                                             "pub": {
                                                                 "description": "Public key",
                                                                 "type": "string",
-                                                                "default": ""
                                                             },
                                                             "priv": {
                                                                 "description": "Private key",
                                                                 "type": "string",
-                                                                "default": ""
                                                             }
                                                         }
                                                     }
@@ -1877,17 +1877,14 @@
                                                             "pub": {
                                                                 "description": "Public key",
                                                                 "type": "string",
-                                                                "default": ""
                                                             },
                                                             "priv": {
                                                                 "description": "Private key",
                                                                 "type": "string",
-                                                                "default": ""
                                                             },
                                                             "owner": {
                                                                 "description": "Public key of Hyperchain account owner",
                                                                 "type": "string",
-                                                                "default": ""
                                                             }
                                                         }
                                                     }
@@ -1912,7 +1909,8 @@
                     "type" : "array",
                     "items" : {
                         "description" : "Public keys belonging to protocol maintainers with reward shares (100 is 10%), optionally a protocol version can be specified from and/or to this account will be rewarded, e.g. ak_2KAcA2Pp1nrR8Wkt3FtCkReGzAi8vJ9Snxa4PcmrthVx8AhPe8:109:6: specifies from Ceres onwards, ak_2KAcA2Pp1nrR8Wkt3FtCkReGzAi8vJ9Snxa4PcmrthVx8AhPe8:109::5 specifies to Iris. If not set testnet or mainnet beneficiaries and shares will be used based on network_id configuration value. IMPORTANT: The value of this setting is under governance, thus it should not be changed without previous agreement within the configured network on doing so.",
-                        "pattern": "^ak_[1-9A-HJ-NP-Za-km-z]*:[0-9]+(:[0-9]*:[0-9]*){0,1}$"
+                        "pattern": "^ak_[1-9A-HJ-NP-Za-km-z]*:[0-9]+(:[0-9]*:[0-9]*){0,1}$",
+                        "default": []
                     }
                 },
                 "garbage_collection" : {
@@ -2088,6 +2086,7 @@
                                             "type" : "integer"
                                         },
                                         "minItems" : 1,
+                                        "default": [],
                                         "example" : [0, 1, 2, 3]
                                     }
                                 }
@@ -2228,7 +2227,8 @@
                                 "type" : "string",
                                 "pattern" : "^((none)|(((log)|(send))(,((log)|(send))){0,1}))$"
                             }
-                        }
+                        },
+                        "default": []
                     }
                 }
             }
@@ -2652,7 +2652,8 @@
                             "type" : "array",
                             "items" : {
                                 "description" : "Public key receiving pool reward to percent share map.",
-                                "pattern": "^ak_[1-9A-HJ-NP-Za-km-z]*:[0-9]+(\\.[0-9]*)?$"
+                                "pattern": "^ak_[1-9A-HJ-NP-Za-km-z]*:[0-9]+(\\.[0-9]*)?$",
+                                "default": []
                             }
                         },
                         "keys" : {
