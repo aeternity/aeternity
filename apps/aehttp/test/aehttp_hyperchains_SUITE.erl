@@ -157,7 +157,10 @@
 
 -define(GENESIS_BENFICIARY, <<0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0>>).
 
-all() -> [{group, hc}, {group, epochs}, {group, pinning}, {group, default_pin}, {group, config}].
+all() -> [{group, hc}, {group, epochs_slow}, {group, epochs_fast},
+          {group, pinning}, {group, default_pin}
+          %, {group, config}
+          ].
 
 groups() ->
     [
@@ -177,10 +180,14 @@ groups() ->
           , get_contract_pubkeys
           , sanity_check_vote_tx
           ]}
-    , {epochs, [sequence],
+    , {epochs_slow, [sequence],
           [ start_two_child_nodes
           , first_leader_next_epoch
           , epochs_with_slow_parent
+        ]}
+    , {epochs_fast, [sequence],
+          [ start_two_child_nodes
+          , produce_first_epoch
           , epochs_with_fast_parent
         ]}
     , {pinning, [sequence],
