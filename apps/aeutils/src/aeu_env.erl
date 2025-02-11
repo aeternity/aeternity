@@ -262,6 +262,9 @@ schema_find([H|T], S) ->
     case S of
         #{<<"properties">> := #{H := Tree}} ->
             schema_find(T, Tree);
+        #{<<"patternProperties">> := PP} ->
+            [{_,Tree}|_] = maps:to_list(PP),
+            schema_find(T, Tree);
         #{H := Tree} ->
             schema_find(T, Tree);
         _ ->
@@ -283,13 +286,19 @@ schema_default_values(Path) ->
             RecursiveDefault =
                 fun R(_PName,
                       #{<<"type">> := <<"object">>, <<"properties">> := Props}) ->
-                        maps:map(fun(PN, #{<<"type">> := <<"object">>} = PP) ->
+                        Defaults = maps:map(fun(PN, #{<<"type">> := <<"object">>} = PP) ->
                                          R(PN, PP);
+                                    (PN, #{<<"type">> := <<"array">>, <<"items">> := #{<<"default">> := []}}) ->
+                                         [];
                                     (PN, #{<<"type">> := <<"array">>, <<"items">> := Items}) ->
                                          [R(PN, Items)];
                                     (_PN, #{<<"default">> := Def}) -> Def;
                                     (_PN, _) -> undefined
-                                 end, Props);
+                                 end, Props),
+                        maps:filter(fun(K,V) -> V =/= undefined end, Defaults);
+                    R(PName,
+                     #{<<"type">> := <<"array">>, <<"items">> := #{<<"default">> := []}}) ->
+                        [];
                     R(PName,
                      #{<<"type">> := <<"array">>, <<"items">> := Items}) ->
                         [R(PName, Items)];
