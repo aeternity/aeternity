@@ -1340,9 +1340,8 @@ create_key_block_candidate(#state{key_block_candidates = [{_, #candidate{top_has
 create_key_block_candidate(#state{block_producing_state = stopped, mode = pos} = State) ->
     State;
 create_key_block_candidate(#state{top_block_hash = TopHash, mode = pos} = State) ->
-    ConsensusModule = consensus_module(State),
     epoch_mining:info("HC: check and maybe create micro + key block at the top of the chain"),
-    Fun = hc_create_block_fun(ConsensusModule, TopHash),
+    Fun = hc_create_block_fun(TopHash),
     {State1, _Pid} = dispatch_worker(create_key_block_candidate, Fun, State),
     State1;
 create_key_block_candidate(#state{top_block_hash      = TopHash,
@@ -1415,13 +1414,13 @@ handle_key_block_candidate_reply({{error, Reason}, _}, State) ->
 
 %% The result is sent via a message to wrap_worker_fun/1, and then is handled here by worker_reply/3
 %% (and from there handled by handle_key_block_candidate_reply/2)
-hc_create_block_fun(ConsensusModule, TopHash) ->
+hc_create_block_fun(TopHash) ->
     fun() ->
-        hc_next_beneficiary(ConsensusModule, TopHash)
+        hc_next_producer(TopHash)
     end.
 
-hc_next_beneficiary(ConsensusModule, TopHash) ->
-    case ConsensusModule:next_beneficiary() of
+hc_next_producer(TopHash) ->
+    case aec_consensus_hc:next_producer() of
         {wait, Reason, WaitT} ->
             lager:debug("Producer should wait (~p) for ~p ms", [Reason, WaitT]),
             maybe_sleep(WaitT),
@@ -1430,7 +1429,7 @@ hc_next_beneficiary(ConsensusModule, TopHash) ->
             %% We are the leader, but need 1+ hole blocks before we can produce
             lager:debug("Is producer, and chain is currently too short: missing=~p wait ~p ms", [Holes, WaitT]),
             maybe_sleep(WaitT),
-            hc_next_beneficiary(ConsensusModule, aec_chain:top_block_hash());
+            hc_next_producer(aec_chain:top_block_hash());
         {ok, {leader_hole, Leader, Holes}, _} ->
             %% Create one hole and it will need to be sealed by an asynchronous worker
             lager:debug("Is producer, and chain is currently too short: missing=~p", [Holes]),
@@ -1438,7 +1437,7 @@ hc_next_beneficiary(ConsensusModule, TopHash) ->
         {ok, {leader, Leader}, WaitT} ->
             lager:debug("Is producer, calling hc_create_block in ~p ms", [WaitT]),
             maybe_sleep(WaitT),
-            {hc_create_block(ConsensusModule, TopHash, Leader), TopHash};
+            {hc_create_block(TopHash, Leader), TopHash};
         {error, Reason, RetryT} ->
             lager:debug("Producer error (~p) retry in ~p ms", [Reason, RetryT]),
             maybe_sleep(RetryT),
@@ -1452,12 +1451,12 @@ maybe_sleep(T)             -> timer:sleep(T).
 hc_create_hole(TopHash, MissingBlocksCount, Producer) when MissingBlocksCount > 0 ->
     aec_block_hole_candidate:create(TopHash, Producer, Producer, true).
 
-hc_create_block(ConsensusModule, TopHash0, Producer) ->
-    VoteResult = ConsensusModule:vote_result(),
-    TopHash = hc_create_microblock(ConsensusModule, TopHash0, Producer, VoteResult),
+hc_create_block(TopHash0, Producer) ->
+    VoteResult = aec_consensus_hc:vote_result(),
+    TopHash = hc_create_microblock(TopHash0, Producer, VoteResult),
     aec_block_hole_candidate:create(TopHash, Producer, Producer, false).
 
-hc_create_microblock(ConsensusModule, TopHash, Leader, VoteResult) ->
+hc_create_microblock(TopHash, Leader, VoteResult) ->
     CreateResult = case VoteResult of
                         {ok, VoteTx} ->
                             Tx = aetx_sign:tx(VoteTx),
@@ -1474,13 +1473,13 @@ hc_create_microblock(ConsensusModule, TopHash, Leader, VoteResult) ->
                     end,
     case CreateResult of
         {ok, MBlock, MBlockInfo} ->
-            MBlock1 = apply_vote(ConsensusModule, VoteResult, MBlock, MBlockInfo),
+            MBlock1 = hc_apply_vote(VoteResult, MBlock, MBlockInfo),
             case aec_blocks:txs(MBlock1) of
                 [] ->
                     epoch_mining:debug("Empty micro-block, top is still: ~p", [TopHash]),
                     TopHash;
                 [_ | _ ] ->
-                    SignModule = ConsensusModule:get_sign_module(),
+                    SignModule = aec_consensus_hc:get_sign_module(),
                     {ok, SignedMBlock} = SignModule:sign_micro_block(MBlock1, Leader),
                     add_signed_block(SignedMBlock),
                     {ok, MBHash} = aec_blocks:hash_internal_representation(SignedMBlock),
@@ -1492,10 +1491,10 @@ hc_create_microblock(ConsensusModule, TopHash, Leader, VoteResult) ->
             TopHash
     end.
 
-apply_vote(ConsensusModule, VoteResult, MBlock, MBlockInfo) ->
-    apply_vote(ConsensusModule, VoteResult, MBlock, MBlockInfo, false).
+hc_apply_vote(VoteResult, MBlock, MBlockInfo) ->
+    hc_apply_vote(VoteResult, MBlock, MBlockInfo, false).
 
-apply_vote(ConsensusModule, VoteResult, MBlock, MBlockInfo, TriedWithTrees) ->
+hc_apply_vote(VoteResult, MBlock, MBlockInfo, TriedWithTrees) ->
     case VoteResult of
         {ok, VoteTransaction} ->
             case aec_block_micro_candidate:update(MBlock, [VoteTransaction], MBlockInfo) of
@@ -1506,7 +1505,7 @@ apply_vote(ConsensusModule, VoteResult, MBlock, MBlockInfo, TriedWithTrees) ->
                         false ->
                             %% Retry with trees to correct nonce
                             {ok, Trees} = aec_block_micro_candidate:trees(MBlockInfo),
-                            apply_vote(ConsensusModule, ConsensusModule:vote_result(Trees), MBlock, MBlockInfo, true);
+                            hc_apply_vote(aec_consensus_hc:vote_result(Trees), MBlock, MBlockInfo, true);
                         true ->
                             lager:warning("Error adding vote transaction ~p", [Error]),
                             MBlock

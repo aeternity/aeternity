@@ -88,6 +88,8 @@
         %% voting
         , vote_result/1
         , vote_result/0
+        %% POS
+        , next_producer/0
         ]).
 
 -ifdef(TEST).
@@ -824,6 +826,9 @@ beneficiary() ->
     leader_for_height(Slot).
 
 next_beneficiary() ->
+    {error, not_applicable}.
+
+next_producer() ->
     {ok, TopKeyBlock} = aec_chain:top_key_block(),
     TopHeight = aec_blocks:height(TopKeyBlock),
     RunEnv = aetx_env:tx_env_and_trees_from_top(aetx_transaction),
@@ -887,7 +892,7 @@ activate_next_leader(Leader, TopHeight, SlotInfo = #{slot := Slot}, RunEnv) ->
             end
     end.
 
--spec get_slot_info() -> #{}.
+-spec get_slot_info() -> map().
 get_slot_info() ->
     %% Assumes that the next epoch could be started
     TopHash = aec_chain:top_block_hash(), % TODO: check not 'undefined'
@@ -895,7 +900,7 @@ get_slot_info() ->
     RunEnv = {TxEnv, _} = aetx_env:tx_env_and_trees_from_hash(aetx_transaction, PrevHash),
     get_slot_info(aetx_env:height(TxEnv) + 1, RunEnv).
 
--spec get_slot_info(TopHeight :: pos_integer(), RunEnv :: aec_chain_hc:run_env()) -> #{}.
+-spec get_slot_info(TopHeight :: pos_integer(), RunEnv :: aec_chain_hc:run_env()) -> map().
 get_slot_info(0, _RunEnv) ->
     Now = aeu_time:now_in_msecs(),
     #{epoch => 1, slot => 1, t0 => Now, delta => 0, now => Now};
