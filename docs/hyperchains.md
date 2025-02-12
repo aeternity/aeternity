@@ -610,7 +610,7 @@ Compiler https://v8.compiler.aepps.com/ version 8.0.0
 
 **The staker account must be funded with at least the minimum staking amount (1000000AE in this example) and some extra for transacting. In this example the treasury account can be used by loading it in a wallet**
 
-With the help of the CLI the treasury secret key is imported then used to send tokens to the new staker account:
+With the help of the CLI the treasury secret key is imported then used to send tokens to the new staker account. The treasury private key can be found in `hc_test/economy-unencrypted.yaml`.
 
 ```shell
 aecli account create hc_test/wallets/treasury.js 9ab3bb473a0ec30d4f75f877ee9de0145fbd883e07edab2e4555e156a729be5619bd0a236a9ebd4a47e5fc3961b59ea215515109c007e2ce844b1f543d4e9598
@@ -671,7 +671,7 @@ payable stateful entrypoint new_validator(owner : address, sign_key : address, r
 The same address (`ak_2hT1UTevtPkEpocjEcbbBi14gS1Ba1unHQBrtXupHnKHxk26kU`) will be used for owner and `sign_key`, `restake` will be set to `false`.
 
 ```bash
-aecli contract call new_validator '["ak_2hT1UTevtPkEpocjEcbbBi14gS1Ba1unHQBrtXupHnKHxk26kU", "ak_2hT1UTevtPkEpocjEcbbBi14gS1Ba1unHQBrtXupHnKHxk26kU", false]' hc_test/wallets/staker.json --contractAddress ct_KJgjAXMtRF68AbT5A2aC9fTk8PA4WFv26cFSY27fXs6FtYQHK --contractAci hc_devnet/contracts/MainStaking.aci.json --amount 1000000ae
+aecli contract call new_validator '["ak_2hT1UTevtPkEpocjEcbbBi14gS1Ba1unHQBrtXupHnKHxk26kU", "ak_2hT1UTevtPkEpocjEcbbBi14gS1Ba1unHQBrtXupHnKHxk26kU", false]' hc_test/wallets/staker.json --contractAddress ct_KJgjAXMtRF68AbT5A2aC9fTk8PA4WFv26cFSY27fXs6FtYQHK --contractAci hc_test/contracts/MainStaking.aci.json --amount 1000000ae
 ```
 
 Output:
