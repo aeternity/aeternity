@@ -1,4 +1,4 @@
--module(aehttp_hyperchains_SUITE).
+-module(hc_SUITE).
 
 -import(aecore_suite_utils, [ http_request/4
                             , external_address/0
