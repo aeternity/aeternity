@@ -406,7 +406,7 @@ Secret Key         sk_2KaWrN7mJ5yfj5yikQwepSaPXksgjuYda7QoXtjfVhRfFVDJvs
 Secret Key in hex  ade11d353b3b02f9602aa7073683a1c2b2a5d95c73b99d8fc40eafa82b02e957df8a07444f1195795a2f92915e655696a3a6a330015c58673ae9f73a1abff374
 ```
 
-Note the public and private keys of the account, it will be used below.
+Note the public and private keys of the account, it will be used below in CLI commands and node configuration.
 
 #### Create a Pinner Account
 
@@ -441,7 +441,7 @@ Secret Key         sk_X8YAj8XRzTEsAdQJZDt6n3baCcCs2mHRwiT4rtBYEE8baBLfX
 Secret Key in hex  4469eb651fa54025ccecf2bfe462a2051e690f7b2bb23ea0f49e6f77a7b1763c02b7910b1a543221b15f14b196ed1ba3212031d817a9c09ac200387ab5631a25
 ```
 
-Note the public and private keys of the account, it will be used below.
+Note the public and private keys of the account, it will be used below in CLI commands and node configuration.
 
 ### Configure the Validator Node
 
