@@ -88,6 +88,8 @@
         %% voting
         , vote_result/1
         , vote_result/0
+        %% POS
+        , next_producer/0
         ]).
 
 -ifdef(TEST).
@@ -445,63 +447,6 @@ cache_child_epoch_info(Epoch, Height, StartTime) ->
                               {Epoch, [{Epoch, Height, StartTime} | Es]}),
             ok
     end.
-
-%% Cache stores a tuple {MaxEpoch, [Info...]} where Info :: {Epoch, Height, StartTime}
-%% If the epoch cache is empty and start time is unknown, i will
-%% * Try read epoch first block, if it can, and its time will be epoch start
-%% * Else, will try read last block of previous epoch, then `its time + block time - production time`
-%%   will be the epoch start
-%% * Else i cannot continue, and wait
--type child_epoch_info() :: #{epoch => pos_integer(), height => pos_integer(), start_time => pos_integer()}.
--type child_epoch_error() :: {error, epoch_start_time_not_known}.
-
--spec get_child_epoch_from_runenv(RunEnv :: aec_chain_hc:run_env()) -> child_epoch_info() | child_epoch_error().
-get_child_epoch_from_runenv(RunEnv) ->
-    {ok, EpochInfo = #{epoch := Epoch}} = aec_chain_hc:epoch_info(RunEnv),
-    get_child_epoch(Epoch, EpochInfo).
-
--spec get_child_epoch(Epoch :: pos_integer(), EpochInfo :: aec_chain_hc:epoch_info())
-        -> child_epoch_info() | child_epoch_error().
-get_child_epoch(Epoch, EpochInfo) ->
-    case aeu_ets_cache:lookup(?ETS_CACHE_TABLE, child_epoch_start) of
-        {ok, {E, Es}} when E >= Epoch ->
-            case lists:keyfind(Epoch, 1, Es) of
-                false ->
-                    %% Not found in cache, try read the first block of the epoch
-                    get_child_epoch_info_first_block(Epoch, EpochInfo);
-                {FoundEpoch, FoundHeight, FoundStartTime} ->
-                    #{epoch => FoundEpoch, height => FoundHeight, start_time => FoundStartTime}
-            end;
-        _Result ->
-            %% Not an OK result, try read the first block of epoch
-            get_child_epoch_info_first_block(Epoch, EpochInfo)
-    end.
-
-%% Try get epoch start time from the first block of the epoch
--spec get_child_epoch_info_first_block(Epoch :: pos_integer(), EpochInfo :: aec_chain_hc:epoch_info())
-        -> child_epoch_info() | child_epoch_error().
-get_child_epoch_info_first_block(Epoch, #{first := EpochFirst}) ->
-    case aec_chain:get_key_block_by_height(EpochFirst) of
-        {ok, FirstBlock} ->
-            #{epoch => Epoch,
-              height => EpochFirst,
-              start_time => aec_headers:time_in_msecs(aec_blocks:to_header(FirstBlock))
-            };
-        _Error1 ->
-            %% Not found, try read the last block of the previous epoch
-            case aec_chain:get_key_block_by_height(EpochFirst - 1) of
-                {ok, PrevBlock} ->
-                    T = aec_headers:time_in_msecs(aec_blocks:to_header(PrevBlock))
-                        + child_block_time() - child_block_production_time(),
-                    #{epoch => Epoch,
-                      height => EpochFirst,
-                      start_time => T
-                    };
-                _Error2 ->
-                    %% Having this error means we can't produce, so we wait
-                    {error, epoch_start_time_not_known}
-            end
-end.
 
 %% -------------------------------------------------------------------
 %% Block rewards
@@ -901,240 +846,108 @@ call_consensus_contract_(ContractType, TxEnv, Trees, EncodedCallData, Keyword, A
 
 beneficiary() ->
     % Height = aec_chain:top_height(),
-    #{timeslot := Timeslot} = get_timeslot_and_epoch(),
-    leader_for_height(Timeslot).
-
-%% Context to pass through the calls
--record(next_beneficiary, {
-    leader :: aec_keys:pubkey() | undefined,
-    height :: non_neg_integer(),
-    timeslot :: pos_integer(),
-    epoch :: pos_integer(),
-    run_env :: aec_chain_hc:run_env()
-}).
+    #{slot := Slot} = get_slot_info(),
+    leader_for_height(Slot).
 
 next_beneficiary() ->
+    {error, not_applicable}.
+
+next_producer() ->
     {ok, TopKeyBlock} = aec_chain:top_key_block(),
-    ChildHeight = aec_blocks:height(TopKeyBlock),
+    TopHeight = aec_blocks:height(TopKeyBlock),
     RunEnv = aetx_env:tx_env_and_trees_from_top(aetx_transaction),
-    lager:debug("- - - - - Next beneficiary: height=~w", [ChildHeight]),
-    #{timeslot := Timeslot, epoch := Epoch} = get_timeslot_and_epoch(RunEnv),
-
-    next_beneficiary_check_chain_length(Timeslot, ChildHeight, Epoch, RunEnv, TopKeyBlock).
-
-next_beneficiary_check_chain_length(Timeslot, ChildHeight, Epoch, RunEnv, TopKeyBlock) ->
-    %% Early check if the production is required, or the chain has already progressed
-    MissingBlockCount = Timeslot - ChildHeight - 1,
-    case MissingBlockCount of
-        N when N < 0 ->
-            %% next_beneficiary called on a chain that already has progressed to the current timeslot
-            timer:sleep(child_block_time() div 5), % TODO: Prevent a busy loop
-            {error, {skip_timeslot, chain_long_enough}};
-        M when M >= 0 ->
-            State = #next_beneficiary{
-                height = ChildHeight,
-                timeslot = Timeslot,
-                epoch = Epoch,
-                run_env = RunEnv
-            },
-
-            next_beneficiary_check_special_cases(State, TopKeyBlock)
-    end.
-
-%% Top block 0 is special, because block 1 is produced not according to the timeslot, but
-%% it waits for other conditions (parent chain height or time). We ignore the time ticks for epoch 1.
-%% After epoch 1 is produced, timeslot calculation should revert to normal as the block 1
-%% will serve as a starting point.
-next_beneficiary_check_special_cases(State = #next_beneficiary{
-    height = Height, timeslot = Timeslot, epoch = Epoch, run_env = RunEnv
-}, TopKeyBlock) ->
-    case Epoch < 2 of
-        true ->
-            case leader_for_timeslot(Height + 1, RunEnv) of
+    lager:debug("- - - - - Next beneficiary: height=~w", [TopHeight]),
+    BlockTime = child_block_time(),
+    case get_slot_info(TopHeight, RunEnv) of
+        #{slot := TopHeight, now := Now, t0 := T0} ->
+            %% We already got a block for the current Slot
+            DeltaT = BlockTime - (Now - T0) rem BlockTime,
+            {wait, slot_filled, DeltaT};
+        #{slot := Slot} = SlotInfo ->
+            case leader_for_timeslot(Slot, RunEnv) of
                 {ok, Leader} ->
-                    %% Use height as timeslot for epoch 1
-                    State1 = State#next_beneficiary{leader = Leader, timeslot = Height},
-                    next_beneficiary_set_candidate(State1, TopKeyBlock, RunEnv);
+                    activate_next_leader(Leader, TopHeight, SlotInfo, RunEnv);
                 {error, _} ->
-                    %% TODO: fix timings, prevent busy loop
-                    timer:sleep(child_block_time() div 4),
-                    {error, not_in_cache}
-            end;
-        false ->
-            case leader_for_timeslot(Timeslot, RunEnv) of
-                {ok, Leader} ->
-                    State1 = State#next_beneficiary{leader = Leader},
-                    next_beneficiary_set_candidate(State1, TopKeyBlock, RunEnv);
-                {error, _} ->
-                    %% TODO: fix timings, prevent busy loop
-                    timer:sleep(child_block_time() div 4),
-                    {error, not_in_cache}
+                    {error, not_in_cache, BlockTime div 5}
             end
     end.
 
-next_beneficiary_set_candidate(State = #next_beneficiary{
-    leader = Leader, height = CurrentChainHeight, timeslot = Timeslot
-}, TopKeyBlock, RunEnv) ->
-    {ok, #{
-        epoch := Epoch,
-        seed := Seed,
-        validators := Validators,
-        length := EpochLength} = EpochInfo} = aec_chain_hc:epoch_info(RunEnv),
-    case Timeslot =:= maps:get(last, EpochInfo) of
-        true ->
+activate_next_leader(Leader, TopHeight, SlotInfo = #{slot := Slot}, RunEnv) ->
+    EpochInfo =
+        case maps:get(epoch_info, SlotInfo, undefined) of
+            undefined ->
+                {ok, EI} = aec_chain_hc:epoch_info(RunEnv),
+                EI;
+            EI ->
+                EI
+        end,
+
+    case maps:get(last, EpochInfo) of
+        Slot ->
             {TxEnv, _} = RunEnv,
             Hash = aetx_env:key_hash(TxEnv),
-            aec_eoe_vote:negotiate(Epoch, Timeslot, Hash, Leader, Validators, Seed, EpochLength); %% TODO epoch delta
-        false ->
+            #{epoch := Epoch, seed := Seed, validators := Validators, length := Length} = EpochInfo,
+            aec_eoe_vote:negotiate(Epoch, Slot, Hash, Leader, Validators, Seed, Length);
+        _ ->
             ok
     end,
+
+    #{now := Now, t0 := T0} = SlotInfo,
+    BlockTime = child_block_time(),
     SignModule = get_sign_module(),
+    DeltaT = BlockTime - (Now - T0) rem BlockTime,
     case SignModule:set_candidate(Leader) of
         {error, key_not_found} ->
-            lager:debug("node shall not produce (not a leader)"),
-            timer:sleep(child_block_production_time()),
-            {error, not_leader};
+            lager:debug("Node is not producer for ~p", [Slot]),
+            {wait, not_producer, DeltaT};
         ok ->
-            %% It is our turn and our time to mine, but check the height of the chain!
-            MissingBlockCount = Timeslot - (CurrentChainHeight + 1),
-            case MissingBlockCount of
-                N when N > 0 ->
-                    %% We are missing some blocks, so we backfill with hole blocks
-                    lager:debug("The chain is too short, need ~w holes", [MissingBlockCount]),
-                    {ok, {missing_previous_block, MissingBlockCount, Leader}};
-                _ ->
-                    lager:debug("++ node will produce"),
-                    case next_beneficiary_sleep(State, TopKeyBlock) of
-                        ok -> {ok, Leader};
-                        {error, _} = Other  -> Other
-                    end
+            BlockProdTime = child_block_production_time(),
+            lager:debug("Node is producer for block ~p", [Slot]),
+            case TopHeight + 1 == Slot of
+                true ->
+                    DeltaT1 = DeltaT - BlockProdTime,
+                    {ok, {leader, Leader}, DeltaT1};
+                false ->
+                    %% TODO: Possibly start even earlier to have time for holes...
+                    DeltaT1 = DeltaT - BlockProdTime,
+                    Holes = Slot - (TopHeight + 1),
+                    lager:debug("~p blocks missing, need HOLES!!", [Holes]),
+                    {ok, {leader_hole, Leader, Holes}, DeltaT1}
             end
     end.
 
-%% Wait for the correct time to produce a key block. We don't count time
-%% slots using the genesis block as T0, as the whitepaper described, since
-%% block times may be adjusted between epochs. In any case there will also
-%% be some drift even if the block times are kept constant. Instead we take
-%% T0 as the timestamp of the first block of the current epoch (minus the
-%% configured block production time). Hence, the time slot for block N
-%% within the epoch starts at T0 + N*BlockTime (with N=0 being the first
-%% block of the epoch), and we get a fresh T0 at each new epoch.
-
-next_beneficiary_sleep(#next_beneficiary{timeslot = Timeslot}, _KeyBlock)
-    when Timeslot < ?FIRST_TIMESTAMPED_BLOCK ->
-    %% No cached epoch info yet; don't wait
-    ok;
-next_beneficiary_sleep(#next_beneficiary{
-    height = CurrentChainHeight, timeslot = Timeslot, run_env = RunEnv, epoch = Epoch
-}, KeyBlock) ->
-    lager:debug("[xx] NEXT_BENEFICIARY: check sleep for timeslot=~w", [Timeslot]),
-    ChildBlockTime = child_block_time(),
-    CurrBlockTimestamp = aec_blocks:time_in_msecs(KeyBlock),
-    #{prod_start := ProdStartTime,
-      cutoff := CutoffTime,
-      prod_end := ProdEndTime} = calculate_production_times(Timeslot, ChildBlockTime, CurrBlockTimestamp, RunEnv),
-    %% Special case: Genesis block will not have a block with prev_key_hash() you will receive an error
-    {ok, PrevBlock} = aec_chain:get_block(aec_blocks:prev_key_hash(KeyBlock)),
-    PrevBlockTime = aec_blocks:time_in_msecs(PrevBlock),
-    lager:debug("[xx] prev_block_delta=~w (child_block_time_diff=~w) cutoff=~w prod_end=~w",
-        [CurrBlockTimestamp - PrevBlockTime,
-        ChildBlockTime - (CurrBlockTimestamp - PrevBlockTime),
-        CutoffTime, ProdEndTime]),
-    _NaiveWaitUntil = CurrBlockTimestamp + ChildBlockTime,
-    lager:debug("[xx] prod_start_diff_from_naive=~w",
-                [ProdStartTime - _NaiveWaitUntil]),
-
-    %% Wait till closest [cutoff time, prod start time]
-    Now = aeu_time:now_in_msecs(),
-    WaitUntil = case Now < CutoffTime of
-                    true -> CutoffTime;
-                    false -> ProdStartTime
-                end,
-
-    case Now of
-        _ when Now >= ProdEndTime andalso Epoch > 1 ->
-            lager:debug("now=~w too late to produce, slept over prod_end_time=~w", [Now, ProdEndTime]),
-            %% Repeated failing attempts to produce will result in a storm of log messages
-            timer:sleep(100),
-            {error, not_leader};
-        _ when Now >= CutoffTime, CurrentChainHeight + 1 < Timeslot ->
-            MissingBlockCount = Timeslot - (CurrentChainHeight + 1),
-            lager:debug("Cutoff time reached, requesting ~w holes", [MissingBlockCount]),
-            %% At cutoff time the chain is not long enough to produce the next block, but we still try
-            ok;
-        _ when Now >= WaitUntil ->
-            lager:debug("[xx] now=~w is the time, late_by=~w", [Now, Now - WaitUntil]),
-            ok;
-        _ ->
-            Delta = max(WaitUntil - Now, 1),
-            lager:debug("Not the time for next block yet; sleeping ~p ms", [Delta]),
-            timer:sleep(Delta),
-            NowAfterSleep = aeu_time:now_in_msecs(),
-            %% TODO: The timeslot may have changed while sleeping, so handle that!
-            lager:debug("[xx] sleep end: slept_until=~w, time_diff=~w ms\n",
-                        [NowAfterSleep, NowAfterSleep - Now]),
-            ok
-    end.
-
--type timeslot_and_epoch() :: #{timeslot => pos_integer(), epoch => pos_integer()}.
--spec get_timeslot_and_epoch() -> timeslot_and_epoch().
-get_timeslot_and_epoch() ->
+-spec get_slot_info() -> map().
+get_slot_info() ->
     %% Assumes that the next epoch could be started
     TopHash = aec_chain:top_block_hash(), % TODO: check not 'undefined'
     PrevHash = aec_chain:prev_hash_from_hash(TopHash),
-    get_timeslot_and_epoch(
-        aetx_env:tx_env_and_trees_from_hash(aetx_transaction, PrevHash)
-    ).
+    RunEnv = {TxEnv, _} = aetx_env:tx_env_and_trees_from_hash(aetx_transaction, PrevHash),
+    get_slot_info(aetx_env:height(TxEnv) + 1, RunEnv).
 
-%% Note: uses wallclock, only for block production
--spec get_timeslot_and_epoch(RunEnv :: aec_chain_hc:run_env()) -> timeslot_and_epoch().
-get_timeslot_and_epoch(RunEnv) ->
-    #{epoch := Epoch, height := EpochHeight, start_time := EpochStartTime} = get_child_epoch_from_runenv(RunEnv),
-    case Epoch of
-        N when N =< 1 ->
-            %% Epochs (0 and) 1 are special, it ignores the timing and timeslots are equal to heights
-            % lager:debug("TIMESLOT (EP1) timeslot=~w, ep_height=~w, epoch=~w", [aec_chain:top_height() + 1, EpochHeight, Epoch]),
-            #{timeslot => aec_chain:top_height() + 1, epoch => 1};
-        _ ->
-            %% From epoch 2 onward, the timeslots are based on current time and epoch start time
-            BlockTime = child_block_time(),
-            Now = aeu_time:now_in_msecs(),
-            Timeslot = EpochHeight + (Now - EpochStartTime) div BlockTime,
-            % lager:debug("TIMESLOT (EP2+) timeslot=~w, ep_height=~w, epoch=~w", [Timeslot, EpochHeight, Epoch]),
-            #{timeslot => Timeslot, epoch => Epoch}
-    end.
+-spec get_slot_info(TopHeight :: pos_integer(), RunEnv :: aec_chain_hc:run_env()) -> map().
+get_slot_info(0, _RunEnv) ->
+    Now = aeu_time:now_in_msecs(),
+    #{epoch => 1, slot => 1, t0 => Now, delta => 0, now => Now};
+get_slot_info(_TopHeight, RunEnv) ->
+    {ok, EpochInfo = #{epoch := Epoch, first := First}} = aec_chain_hc:epoch_info(RunEnv),
+    BlockTime     = child_block_time(),
+    Now = aeu_time:now_in_msecs(),
+    T0  = get_t0(Epoch, First),
 
--spec calculate_production_times(Timeslot :: pos_integer(), ChildBlockTime :: pos_integer(),
-     CurrBlockTimestamp :: pos_integer(), RunEnv :: aec_chain_hc:run_env())
-     -> #{prod_start => pos_integer(), cutoff => pos_integer(), prod_end => pos_integer()}.
-calculate_production_times(Timeslot, ChildBlockTime, CurrBlockTimestamp, RunEnv) ->
-    %% recall that CurrHeight is the height of the existing top block, and the block to be produced is at height+1; we
-    %% want to get the epoch of the current top block to decide how long to wait, not the epoch of the next block
-    #{epoch := CurrEpoch,
-      height := EpochFirst,
-      start_time := EpochStartTime} = get_child_epoch_from_runenv(RunEnv),
-    lager:debug("Got cached epoch start: curr_ep=~w ep_first=~w at start_time=~w",
-                [CurrEpoch, EpochFirst, EpochStartTime]),
-    %% note: if the current top block is the first block of the epoch, then CurrHeight - EpochFirst = 0, and the next
-    %% child block time slot starts one ChildBlockTime unit later, not zero
-    NextBlockInEpoch = Timeslot - EpochFirst,
-    BlockProdTime = child_block_production_time(),
-    lager:debug("next_block_in_epoch=~w, setting timings", [NextBlockInEpoch]),
-    BlockLatency = ChildBlockTime - BlockProdTime,
-    EpochT0 = EpochStartTime - BlockProdTime,
-    TnMin = case CurrEpoch of
-                %% Block start time in epoch 1 would be strictly based on previous block and (TODO: CHECK THE WHITEPAPER!)
-                %% would be 2 * BlockProdTime after the previous block's production time
-                N when N =< 1 -> CurrBlockTimestamp + 2 * BlockProdTime;
-                %% Block start time in epoch 2+ would advance regardless of whether previous block was produced
-                _Other -> EpochT0 + ChildBlockTime * NextBlockInEpoch
+    ElapsedBlocks = (Now - T0) div BlockTime,
+    Delta = if Epoch == 1 -> ElapsedBlocks + 1;
+               true       -> ElapsedBlocks
             end,
-    TnMax = TnMin + BlockProdTime + trunc(BlockLatency/2),
-    Cutoff = TnMax - 2 * BlockProdTime,
-    ProdStart = TnMax - BlockProdTime,
-    lager:debug("now_from_epochT0=~w tnmin_from_epochT0=~w prodstart_from_epochT0=~w; prod_start=~w, cutoff=~w",
-        [aeu_time:now_in_msecs() - EpochT0, TnMin - EpochT0, ProdStart - EpochT0, ProdStart, Cutoff]),
-    #{prod_start => ProdStart, cutoff => Cutoff, prod_end => TnMax}.
+    Slot = First + Delta,
+    #{epoch => Epoch, slot => Slot, t0 => T0, delta => Delta,
+      now => Now, epoch_info => EpochInfo}.
+
+get_t0(1, _) ->
+    {ok, Block} = aec_chain:get_key_block_by_height(1),
+    aec_blocks:time_in_msecs(Block);
+get_t0(_Epoch, Height) ->
+    {ok, Block} = aec_chain:get_key_block_by_height(Height - 1),
+    aec_blocks:time_in_msecs(Block).
 
 get_seed(#{seed := undefined, epoch := Epoch}) when Epoch =< 2 ->
     get_entropy_hash(Epoch);
