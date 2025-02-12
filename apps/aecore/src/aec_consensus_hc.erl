@@ -111,17 +111,17 @@ start(Config, _) ->
     PCConfig      = maps:get(<<"parent_chain">>, Config),
 
     Confirmations   = maps:get(<<"confirmations">>, PCConfig, 6),
-    StartHeight     = maps:get(<<"start_height">>, PCConfig, 0),
-    ConsensusConfig = maps:get(<<"consensus">>, PCConfig, #{}),
-    PollingConfig   = maps:get(<<"polling">>, PCConfig, #{}),
+    StartHeight     = maps:get(<<"start_height">>, PCConfig),
+    ConsensusConfig = maps:get(<<"consensus">>, PCConfig),
+    PollingConfig   = maps:get(<<"polling">>, PCConfig),
 
-    PCType         = maps:get(<<"type">>, ConsensusConfig, <<"AE2AE">>),
-    NetworkId      = maps:get(<<"network_id">>, ConsensusConfig, <<"ae_mainnet">>),
+    PCType         = maps:get(<<"type">>, ConsensusConfig),
+    NetworkId      = maps:get(<<"network_id">>, ConsensusConfig),
 
-    FetchInterval = maps:get(<<"fetch_interval">>, PollingConfig, 500),
-    RetryInterval = maps:get(<<"retry_interval">>, PollingConfig, 1000),
-    CacheSize     = maps:get(<<"cache_size">>, PollingConfig, 200),
-    Nodes         = maps:get(<<"nodes">>, PollingConfig, []),
+    FetchInterval = maps:get(<<"fetch_interval">>, PollingConfig),
+    RetryInterval = maps:get(<<"retry_interval">>, PollingConfig),
+    CacheSize     = maps:get(<<"cache_size">>, PollingConfig),
+    Nodes         = maps:get(<<"nodes">>, PollingConfig),
     ParentHosts   = lists:map(fun aehttpc:parse_node_url/1, Nodes),
 
 
@@ -597,7 +597,7 @@ staking_contract_pubkey() ->
     aeu_ets_cache:get(?ETS_CACHE_TABLE, staking_contract_pubkey, Fun).
 
 pc_start_height() ->
-    Fun = fun() -> get_consensus_config_key([<<"parent_chain">>, <<"start_height">>], 0) end,
+    Fun = fun() -> get_consensus_config_key([<<"parent_chain">>, <<"start_height">>]) end,
     aeu_ets_cache:get(?ETS_CACHE_TABLE, pc_start_height, Fun).
 
 %pc_finality() ->
@@ -605,7 +605,7 @@ pc_start_height() ->
 %    aeu_ets_cache:get(?ETS_CACHE_TABLE, finality, Fun).
 
 genesis_start_time() ->
-    Fun = fun() -> get_consensus_config_key([<<"genesis_start_time">>], 0) end,
+    Fun = fun() -> get_consensus_config_key([<<"genesis_start_time">>]) end,
     aeu_ets_cache:get(?ETS_CACHE_TABLE, genesis_start_time, Fun).
 
 parent_epoch_length() ->
@@ -617,15 +617,15 @@ child_epoch_length() ->
     aeu_ets_cache:get(?ETS_CACHE_TABLE, child_epoch_length, Fun).
 
 pinning_reward_value() ->
-    Fun = fun() -> get_consensus_config_key([<<"pinning_reward_value">>], 0) end,
+    Fun = fun() -> get_consensus_config_key([<<"pinning_reward_value">>]) end,
     aeu_ets_cache:get(?ETS_CACHE_TABLE, pinning_reward_value, Fun).
 
 default_pinning_behavior() ->
-    Fun = fun() -> get_consensus_config_key([<<"default_pinning_behavior">>], false) end,
+    Fun = fun() -> get_consensus_config_key([<<"default_pinning_behavior">>]) end,
     aeu_ets_cache:get(?ETS_CACHE_TABLE, default_pinning_behavior, Fun).
 
 fixed_coinbase() ->
-    Fun = fun() -> get_consensus_config_key([<<"fixed_coinbase">>], 0) end,
+    Fun = fun() -> get_consensus_config_key([<<"fixed_coinbase">>]) end,
     aeu_ets_cache:get(?ETS_CACHE_TABLE, fixed_coinbase, Fun).
 
 %acceptable_sync_offset() ->
@@ -702,16 +702,14 @@ genesis_protocol_version() ->
       end).
 
 get_consensus_config_key(Keys) ->
-    case aeu_env:user_config([<<"chain">>, <<"consensus">>, <<"0">>, <<"config">>] ++ Keys) of
-      {ok, Value} -> Value;
-      undefined   -> erlang:error({missing_mandatory_chain_consensus_config_key, Keys})
+    case get_consensus_config_key(Keys, undefined) of
+      undefined -> erlang:error({missing_mandatory_chain_consensus_config_key, Keys});
+      Value -> Value
     end.
 
 get_consensus_config_key(Keys, Default) ->
-    case aeu_env:user_config([<<"chain">>, <<"consensus">>, <<"0">>, <<"config">>] ++ Keys) of
-      {ok, Value} -> Value;
-      undefined   -> Default
-    end.
+    CfgKey = [<<"chain">>, <<"consensus">>, <<"0">>, <<"config">>] ++ Keys,
+    aeu_env:config_value(CfgKey, aecore, consensus, Default).
 
 log_consensus_call(TxEnv, FunName, EncodedCallData, Amount) ->
     Height = aetx_env:height(TxEnv),
