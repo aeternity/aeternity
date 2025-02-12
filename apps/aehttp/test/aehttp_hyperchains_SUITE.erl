@@ -470,7 +470,7 @@ check_blocktime_(Block, BTs) ->
             check_blocktime_(PrevBlock, [BTime | BTs]);
         false ->
             AvgBTime = lists:sum(BTs) / length(BTs),
-            ct:pal("Average blocktime through ~p blocks: ~.2fms (BLOCKTIME = ~p)", [length(BTs), AvgBTime, ?CHILD_EPOCH_LENGTH]),
+            ct:pal("Average blocktime through ~p blocks: ~.2fms (BLOCKTIME = ~p)", [length(BTs), AvgBTime, ?CHILD_BLOCK_TIME]),
             ?assert(AvgBTime > ?CHILD_BLOCK_TIME - 5),
             ok
     end.

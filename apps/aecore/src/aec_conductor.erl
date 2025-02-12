@@ -619,25 +619,7 @@ get_next_beneficiary(Consensus, _TopHeader) ->
         {ok, _L} = OK -> OK;
         {error, not_leader} = NotLeader ->
             NotLeader;
-            %case Consensus:allow_lazy_leader() of
-            %    {true, LazyLeaderTimeDelta} ->
-            %        LastBlockTime = aec_headers:time_in_msecs(TopHeader),
-            %        Now = aeu_time:now_in_msecs(),
-            %        TimeDelta = Now - LastBlockTime,
-            %        case TimeDelta > LazyLeaderTimeDelta of
-            %            true ->
-            %                {ok, TopHash} = aec_headers:hash_header(TopHeader),
-            %                case Consensus:pick_lazy_leader(TopHash) of
-            %                    error -> NotLeader;
-            %                    {ok, _L} = OK -> OK
-            %                end;
-            %            false ->
-            %                NotLeader
-            %        end;
-            %    false -> NotLeader
-            %end
         {error, _} = Err ->
-            %% Cancel current attempt to produce a candidate. Will try again very soon.
             Err
     end.
 
@@ -1417,8 +1399,8 @@ handle_key_block_candidate_reply({{ok, _KeyBlockCandidate}, _OldTopHash},
                                  #state{top_block_hash = _TopHash} = State) ->
     epoch_mining:debug("Created key block candidate is already stale, create a new one", []),
     create_key_block_candidate(State);
-handle_key_block_candidate_reply({{error, {skip_timeslot, _Rsn}}, _}, State) ->
-    epoch_mining:debug("Creation of key block candidate canceled: ~w", [_Rsn]), % not an error, will try again
+handle_key_block_candidate_reply({{error, {no_action, _Rsn} = Reason}, _}, State) ->
+    epoch_mining:debug("Creation of key block candidate cancelled: ~w", [Reason]), % not an error, will try again
     create_key_block_candidate(State);
 handle_key_block_candidate_reply({{error, key_not_found}, _}, State) ->
     start_block_production_(State#state{keys_ready = false});
@@ -1435,22 +1417,36 @@ handle_key_block_candidate_reply({{error, Reason}, _}, State) ->
 %% (and from there handled by handle_key_block_candidate_reply/2)
 hc_create_block_fun(ConsensusModule, TopHash) ->
     fun() ->
-        case get_next_beneficiary(ConsensusModule, TopHash) of
-            {ok, {skip_timeslot, Rsn}} ->
-                %% No production, the chain has already progressed or a decision been made to skip
-                {{error, {skip_timeslot, Rsn}}, TopHash};
-            {ok, {missing_previous_block, MissingBlocksCount, Leader}} ->
-                  %% We are the leader, but need 1+ hole blocks before we can produce
-                  epoch_mining:debug("Leader, reached cutoff time and chain is too short: create_holes=~p", [MissingBlocksCount]),
-                  %% Create one hole and it will need to be sealed by an asynchronous worker
-                  {hc_create_hole(TopHash, MissingBlocksCount, Leader), TopHash};
-            {ok, Leader} ->
-                  epoch_mining:debug("Got leader, calling hc_create_block", []),
-                  {hc_create_block(ConsensusModule, TopHash, Leader), TopHash};
-            {error, _} = Err ->
-                {Err, TopHash}
-        end
+        hc_next_beneficiary(ConsensusModule, TopHash)
     end.
+
+hc_next_beneficiary(ConsensusModule, TopHash) ->
+    case ConsensusModule:next_beneficiary() of
+        {wait, Reason, WaitT} ->
+            lager:debug("Producer should wait (~p) for ~p ms", [Reason, WaitT]),
+            maybe_sleep(WaitT),
+            {{error, {no_action, Reason}}, TopHash};
+        {ok, {leader_hole, _Leader, Holes}, WaitT} when WaitT > 0 ->
+            %% We are the leader, but need 1+ hole blocks before we can produce
+            lager:debug("Is producer, and chain is currently too short: missing=~p wait ~p ms", [Holes, WaitT]),
+            maybe_sleep(WaitT),
+            hc_next_beneficiary(ConsensusModule, aec_chain:top_block_hash());
+        {ok, {leader_hole, Leader, Holes}, _} ->
+            %% Create one hole and it will need to be sealed by an asynchronous worker
+            lager:debug("Is producer, and chain is currently too short: missing=~p", [Holes]),
+            {hc_create_hole(TopHash, Holes, Leader), TopHash};
+        {ok, {leader, Leader}, WaitT} ->
+            lager:debug("Is producer, calling hc_create_block in ~p ms", [WaitT]),
+            maybe_sleep(WaitT),
+            {hc_create_block(ConsensusModule, TopHash, Leader), TopHash};
+        {error, Reason, RetryT} ->
+            lager:debug("Producer error (~p) retry in ~p ms", [Reason, RetryT]),
+            maybe_sleep(RetryT),
+            {{error, Reason}, TopHash}
+    end.
+
+maybe_sleep(T) when T =< 0 -> ok;
+maybe_sleep(T)             -> timer:sleep(T).
 
 %% For as long as chain length is shorter than currentHeight-1, create holes. Send holes async to conductor for writing
 hc_create_hole(TopHash, MissingBlocksCount, Producer) when MissingBlocksCount > 0 ->
