@@ -320,13 +320,13 @@ set_pof(#mic_block{} = Block, PoF) ->
     Header = aec_headers:set_pof_hash(to_micro_header(Block), PoFHash),
     set_header(Block#mic_block{pof = PoF}, Header).
 
--spec is_eoe(key_block() | micro_block()) -> boolean().
+-spec is_eoe(block()) -> boolean().
 is_eoe(#key_block{} = Block) ->
     aec_headers:is_eoe(to_key_header(Block));
 is_eoe(#mic_block{} = Block) ->
     aec_headers:is_eoe(to_micro_header(Block)).
 
--spec set_eoe(key_block() | micro_block(), boolean) -> key_block() | micro_block().
+-spec set_eoe(block(), boolean()) -> block().
 set_eoe(#key_block{} = Block, IsEoE) ->
     Header = aec_headers:set_eoe(to_key_header(Block), IsEoE),
     set_header(Block, Header);

@@ -56,7 +56,7 @@
 
 -define(FINALIZE_FUN_NAME, "finalize_epoch").
 
-
+-spec validate_epoch_call_transaction(aetx_sign:signed_tx(), binary()) -> boolean().
 validate_epoch_call_transaction(SignedTx, Validator) ->
     Tx = aetx_sign:tx(SignedTx),
     case aetx:specialize_type(Tx) of

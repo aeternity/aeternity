@@ -493,12 +493,12 @@ set_pof_hash(#mic_header{flags = <<Flags:?FLAG_BITS>>} = Header, Hash) when byte
 
 
 %% Hyperchains specific. Is the end of epoch
--spec is_eoe(key_header() | micro_header()) -> boolean.
+-spec is_eoe(header()) -> boolean().
 is_eoe(#mic_header{flags = <<F:?FLAG_BITS>>}) when (F band ?EOE_FLAG) =/= 0 -> true;
 is_eoe(#key_header{flags = <<F:?FLAG_BITS>>}) when (F band ?EOE_FLAG) =/= 0 -> true;
 is_eoe(_) -> false.
 
--spec set_eoe(key_header() | micro_header(), boolean) -> key_header() | micro_header().
+-spec set_eoe(header(), boolean()) -> header().
 set_eoe(#mic_header{flags = <<Flags:?FLAG_BITS>>} = Header, false) ->
     Header#mic_header{flags = <<?CLR(Flags,?EOE_FLAG):?FLAG_BITS>>};
 set_eoe(#mic_header{flags = <<Flags:?FLAG_BITS>>} = Header, true) ->
