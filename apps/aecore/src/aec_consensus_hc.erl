@@ -11,12 +11,12 @@
 -behavior(aec_consensus).
 
 
--define(TAG, 1336). %% TODO: remove this
 -define(SIGNATURE_SIZE, 16).
 -define(ETS_CACHE_TABLE, ?MODULE).
 -define(ELECTION_CONTRACT, election).
 -define(STAKING_CONTRACT, staking).
 -define(REWARDS_CONTRACT, rewards).
+-define(FIRST_TIMESTAMPED_BLOCK, 2).
 
 %% API
 -export([ can_be_turned_off/0
@@ -78,7 +78,6 @@
         , get_block_producer_configs/0
         , is_leader_valid/4
         , leader_for_height/1
-        , leader_for_height/2
         , fixed_coinbase/0
         %% contract access
         , call_consensus_contract_result/5
@@ -86,10 +85,11 @@
         , entropy_height/1
         , get_entropy_hash/1
         , get_contract_pubkey/1
-        , get_child_epoch_info/1
         %% voting
         , vote_result/1
         , vote_result/0
+        %% POS
+        , next_producer/0
         ]).
 
 -ifdef(TEST).
@@ -248,17 +248,26 @@ recent_cache_n() -> 1.
 recent_cache_trim_key_header(_) -> ok.
 
 keyblocks_for_target_calc() -> 0.
-keyblock_create_adjust_target(Block0, []) ->
-    Stake = 0,
-    %% {ok, Stake} = aeu_ets_cache:lookup(?ETS_CACHE_TABLE, added_stake),
-    Block = aec_blocks:set_target(Block0, aeminer_pow:integer_to_scientific(Stake)),
-    {ok, Block}.
+keyblock_create_adjust_target(Block, []) -> {ok, Block}.
 
 dirty_validate_block_pre_conductor(_) -> ok.
 dirty_validate_header_pre_conductor(_) -> ok.
 dirty_validate_key_hash_at_height(_, _) -> ok.
-%% Don't waste CPU cycles when we are only interested in state transitions...
-dirty_validate_key_node_with_ctx(_Node, _Block, _Ctx) -> ok.
+dirty_validate_key_node_with_ctx(Node, Block, Ctx) ->
+    Validators = [ fun ctx_validate_key_target/3
+                 ],
+    aeu_validation:run(Validators, [Node, Block, Ctx]).
+
+ctx_validate_key_target(Node, _Block, Ctx) ->
+    NodeTarget = aec_block_insertion:node_target(Node),
+    NodeHeader = aec_block_insertion:node_header(Node),
+    PrevNode = aec_block_insertion:ctx_prev_key(Ctx),
+    PrevNodeTarget = aec_block_insertion:node_target(PrevNode),
+    case aec_headers:is_hole(NodeHeader) of
+        true when NodeTarget == PrevNodeTarget -> ok;
+        false when NodeTarget == PrevNodeTarget + 1 -> ok;
+        _ -> {error, wrong_number_of_non_holes}
+    end.
 
 dirty_validate_micro_node_with_ctx(Node, Block, Ctx) ->
     Validators = [ fun ctx_validate_micro_block_time/3
@@ -275,13 +284,13 @@ ctx_validate_micro_block_time(Node, _Block, Ctx) ->
 
 ctx_validate_micro_signature(Node, _Block, _Ctx) ->
     Height = aec_block_insertion:node_height(Node),
-    case leader_for_height(Height, {hash, aec_block_insertion:node_prev_hash(Node)}) of
+    case leader_for_timeslot(Height, {hash, aec_block_insertion:node_prev_hash(Node)}) of
         {ok, Leader} ->
             case aeu_sig:verify(aec_block_insertion:node_header(Node), Leader) of
                 ok         -> ok;
                 {error, _} -> {error, signature_verification_failed}
             end;
-        error ->
+        {error, _} ->
             {error, signature_verification_failed}
     end.
 
@@ -302,55 +311,86 @@ micro_block_height_relative_previous_block(micro, MicroHeight) ->
 %% Custom state transitions
 state_pre_transform_key_node_consensus_switch(_Node, Trees) -> Trees.
 
-%% only called for key-blocks - this is the call where we set epoch and
-%% leader
+%% only called for key-blocks - this is the call where we set epoch and leader
+-spec state_pre_transform_key_node(_Node, _PrevNode, aec_trees:trees()) -> {aec_trees:trees(), aetx_env:events()} | no_return().
 state_pre_transform_key_node(Node, PrevNode, Trees) ->
     Height = aec_block_insertion:node_height(Node),
     state_pre_transform_node(key, Height, PrevNode, Trees).
 
+-spec state_pre_transform_micro_node(non_neg_integer(), _PrevNode, aec_trees:trees()) -> aec_trees:trees() | no_return().
 state_pre_transform_micro_node(Height, PrevNode, Trees) ->
-    state_pre_transform_node(micro, Height, PrevNode, Trees).
+    {T, _} = state_pre_transform_node(micro, Height, PrevNode, Trees),
+    T.
 
+-spec state_pre_transform_node(_Type :: atom(), Height :: non_neg_integer(), _PrevNode :: any(), Trees :: aec_trees:trees())
+        -> {aec_trees:trees(), aetx_env:events()}.
 state_pre_transform_node(_Type, Height, _PrevNode, Trees) when Height < 1 ->
     %% No leader for genesis
-    Trees;
+    {Trees, []};
 state_pre_transform_node(Type, Height, PrevNode, Trees) ->
     PrevHeader = aec_block_insertion:node_header(PrevNode),
     {ok, PrevHash} = aec_headers:hash_header(PrevHeader),
     {TxEnv0, _} = aetx_env:tx_env_and_trees_from_hash(aetx_transaction, PrevHash),
     TxEnv = aetx_env:set_height(TxEnv0, Height),
+
     {ok, #{epoch := Epoch, first := EpochFirst, last := EpochLast} = EpochInfo} =
         aec_chain_hc:epoch_info({TxEnv, Trees}),
-    {ok, Leader} = leader_for_height(Height, {TxEnv, Trees}),
+
+    lager:debug("------ STATE_PRE_TRANSFORM_NODE: height=~w epoch=~w ep_first=~w ep_last=~w",
+        [Height, Epoch, EpochFirst, EpochLast]),
+
     case Type of
         key ->
-            if Height =:= EpochFirst ->
-                    %% cache the current epoch start time
-                    EpochStartTime = aetx_env:time_in_msecs(TxEnv),
-                    cache_child_epoch_info(Epoch, Height, EpochStartTime);
-               true ->
-                    ok
-            end,
-            %% note that EpochFirst and EpochLast could be the same, not exclusive
-            if Height =:= EpochLast ->
-                    {Trees1, CarryOverFlag, Events} = handle_pinning(TxEnv, Trees, EpochInfo, Leader),
-                    case get_entropy_hash(Epoch + 2) of
-                        {ok, Seed} ->
-                            cache_validators_for_epoch({TxEnv, Trees1}, Seed, Epoch + 2),
-                            Trees2 = step_eoe(TxEnv, Trees1, Leader, Seed, -1, CarryOverFlag),
-                            {ok, NextEpochInfo} = aec_chain_hc:epoch_info({TxEnv, Trees2}),
-                            {Trees2, Events ++ [{new_epoch, NextEpochInfo}]};
-                        {error, _} ->
-                            lager:debug("Entropy hash for height ~p is not in cache, attempting to resync", [Height]),
-                            %% Fail the keyblock production flow, attempt to resync
-                            aec_conductor:throw_error(parent_chain_not_synced)
-                    end;
-               true ->
-                    Trees1 = step(TxEnv, Trees, Leader),
-                    {Trees1, []}
+            case Height >= EpochFirst andalso Height =< EpochLast of
+                true ->
+                    {ok, Leader} = leader_for_timeslot(Height, {TxEnv, Trees}),
+                    step_key(Height, EpochInfo, {TxEnv, Trees}, Leader);
+                false ->
+                    %% We're now out of the last started epoch and the chain has halted
+                    lager:warning("Epoch ~w has ended, but we're still ticking timeslots height=~w", [Epoch, Height]),
+                    %% TODO: fix timings, prevent busy loop
+                    timer:sleep(child_block_time() div 4),
+                    {Trees, []}
             end;
         micro ->
-            step_micro(TxEnv, Trees, Leader)
+            {ok, Leader} = leader_for_timeslot(Height, {TxEnv, Trees}),
+            {step_micro(TxEnv, Trees, Leader), []}
+    end.
+
+-spec step_key(Height :: non_neg_integer(), EpochInfo :: aec_chain_hc:epoch_info(),
+    {aetx_env:env(), aec_trees:trees()}, Leader :: binary()) -> {aec_trees:trees(), aetx_env:events()}.
+step_key(Height, #{epoch := Epoch, first := EpochFirst, last := EpochLast} = EpochInfo,
+         {TxEnv, Trees}, Leader) ->
+    EpochFirstNonGenesis = erlang:min(?FIRST_TIMESTAMPED_BLOCK, EpochFirst),
+
+    %% Ignore actual chain height, some blocks may be missing, check whether it is the time for a new epoch
+    if Height =:= EpochFirstNonGenesis ->
+        %% cache the current epoch start time
+        EpochStartTime = aetx_env:time_in_msecs(TxEnv),
+        lager:debug("Caching epoch_start_time=~w height=~w\n",[EpochStartTime, Height]),
+        cache_child_epoch_info(Epoch, Height, EpochStartTime);
+    true ->
+        ok
+    end,
+    %% note that EpochFirst and EpochLast could be the same, not exclusive
+    if Height =:= EpochLast ->
+        {Trees1, CarryOverFlag, Events} = handle_pinning(TxEnv, Trees, EpochInfo, Leader),
+        case get_entropy_hash(Epoch + 2) of
+            {ok, Seed} ->
+                lager:debug("End of epoch=~w, calling step_eoe(seed=~w)", [Epoch, Seed]),
+                cache_validators_for_epoch({TxEnv, Trees1}, Seed, Epoch + 2),
+                Trees2 = step_eoe(TxEnv, Trees1, Leader, Seed, -1, CarryOverFlag),
+                {ok, NextEpochInfo} = aec_chain_hc:epoch_info({TxEnv, Trees2}),
+                %% start_default_pinning_process(TxEnv, Trees2, Height, NextEpochInfo),
+                {Trees2, Events ++ [{new_epoch, NextEpochInfo}]};
+            {error, _} ->
+                lager:debug("Entropy hash for height ~p is not in cache, attempting to resync", [Height]),
+                %% Fail the keyblock production flow, attempt to resync
+                timer:sleep(child_block_time() div 4),
+                aec_conductor:throw_error(parent_chain_not_synced)
+        end;
+    true ->
+        step(TxEnv, Trees, Leader)
     end.
 
 create_consensus_call_contract_transaction(ContractType, OwnerPubkey, Trees, EncodedCallData, Amount) ->
@@ -408,19 +448,6 @@ cache_child_epoch_info(Epoch, Height, StartTime) ->
             ok
     end.
 
-get_child_epoch_info(Epoch) ->
-    case aeu_ets_cache:lookup(?ETS_CACHE_TABLE, child_epoch_start) of
-        {ok, {E, Es}} when E >= Epoch ->
-            case lists:keyfind(Epoch, 1, Es) of
-                false ->
-                    error({epoch_not_in_cache, Epoch, {E, Es}});
-                Info ->
-                    Info
-            end;
-        Result ->
-            error({epoch_not_yet_cached, Epoch, Result})
-    end.
-
 %% -------------------------------------------------------------------
 %% Block rewards
 state_grant_reward(Beneficiary, Node, Delay, Trees, Amount) ->
@@ -476,7 +503,7 @@ genesis_raw_header() ->
         <<0:32/unit:8>>,
         <<0:?MINER_PUB_BYTES/unit:8>>,
         <<0:?BENEFICIARY_PUB_BYTES/unit:8>>,
-        ?TAG,
+        0, %% Initial target`
         no_value,
         0,
         GenesisStartTime,
@@ -563,8 +590,7 @@ assert_key_target_range(_) ->
     ok.
 
 key_header_difficulty(H) ->
-    Target = aec_headers:target(H),
-    aeminer_pow:scientific_to_integer(Target).
+    aec_headers:target(H).
 
 %% This is initial height; if neeeded shall be reinit at fork height
 election_contract_pubkey() ->
@@ -667,12 +693,13 @@ init_epochs(TxEnv, Trees, InitialEpochLength, BasePinReward) ->
             aec_conductor:throw_error(init_epochs_failed)
     end.
 
+-spec step(aetx_env:env(), aec_trees:trees(), binary()) -> {aec_trees:trees(), aetx_env:events()}.
 step(TxEnv, Trees, Leader) ->
     {ok, CD} = aeb_fate_abi:create_calldata("step", [{address, Leader}]),
     CallData = aeser_api_encoder:encode(contract_bytearray, CD),
     case call_consensus_contract_(?ELECTION_CONTRACT, TxEnv, Trees, CallData, "step", 0) of
         {ok, Trees1, _Call} ->
-            Trees1;
+            {Trees1, []};
         {error, What} ->
             lager:info("Calling step failed with ~p", [What]),
             aec_conductor:throw_error(step_failed)
@@ -691,6 +718,7 @@ step_eoe(TxEnv, Trees, Leader, Seed, BasePinReward, CarryOver) ->
 
 %% Set the leader in case there is a micro block to be produced
 %% If not, leader is anyway set when creating key block
+-spec step_micro(aetx_env:env(), aec_trees:trees(), binary()) -> aec_trees:trees().
 step_micro(TxEnv, Trees, Leader) ->
     {ok, CD} = aeb_fate_abi:create_calldata("step_micro", [{address, Leader}]),
     CallData = aeser_api_encoder:encode(contract_bytearray, CD),
@@ -705,6 +733,10 @@ step_micro(TxEnv, Trees, Leader) ->
 child_block_time() ->
     Fun = fun() -> get_consensus_config_key([<<"child_block_time">>]) end,
     aeu_ets_cache:get(?ETS_CACHE_TABLE, child_block_time, Fun).
+
+child_block_production_time() ->
+    Fun = fun() -> get_consensus_config_key([<<"child_block_production_time">>]) end,
+    aeu_ets_cache:get(?ETS_CACHE_TABLE, child_block_production_time, Fun).
 
 %% This is the contract owner, calls shall be only available via protocol
 contract_owner() ->
@@ -739,8 +771,7 @@ get_consensus_config_key(Keys, Default) ->
 
 log_consensus_call(TxEnv, FunName, EncodedCallData, Amount) ->
     Height = aetx_env:height(TxEnv),
-    lager:debug("Height ~p, calling ~s with amount ~p aettos, encoded ~p",
-                [Height, FunName, Amount, EncodedCallData]),
+    lager:debug("calling ~s() at height=~p amount=~p aettos, encoded ~p", [FunName, Height, Amount, EncodedCallData]),
     ok.
 
 call_consensus_contract_result(ContractType, TxEnv, Trees, ContractFun, Args) ->
@@ -748,7 +779,7 @@ call_consensus_contract_result(ContractType, TxEnv, Trees, ContractFun, Args) ->
     CallData = aeser_api_encoder:encode(contract_bytearray, CD),
     {ok, _, Call} = call_consensus_contract_(ContractType, TxEnv, Trees, CallData, ContractFun, 0),
     Result = aeb_fate_encoding:deserialize(aect_call:return_value(Call)),
-    lager:debug("Call result ~p", [Result]),
+    % lager:debug("Call result ~p", [Result]),
     {ok, Result}.
 
 -spec get_contract_pubkey(election | rewards | staking) -> binary().
@@ -767,9 +798,9 @@ call_consensus_contract_(ContractType, TxEnv, Trees, EncodedCallData, Keyword, A
                                             aec_trees:contracts(Trees)),
     OwnerAcc = aec_accounts_trees:get(OwnerPubkey,
                                             aec_trees:accounts(Trees)),
-    Fee = 5000000000000000000, %% TODO: fine tune this
-    Gas = 5000000000000000000, %% TODO: fine tune this
-    GasPrice = 50000000000, %% TODO: fine tune this
+    Fee = 5_000000000_000000000, %% TODO: fine tune this
+    Gas = 5_000000000_000000000, %% TODO: fine tune this
+    GasPrice = 50_000000000, %% TODO: fine tune this
     {ok, OwnerAcc1} = aec_accounts:earn(OwnerAcc, Fee + Gas * GasPrice),
     Trees1 = aec_trees:set_accounts(Trees, aec_accounts_trees:enter(OwnerAcc1,
                                                                     aec_trees:accounts(Trees))),
@@ -814,49 +845,109 @@ call_consensus_contract_(ContractType, TxEnv, Trees, EncodedCallData, Keyword, A
     end.
 
 beneficiary() ->
-    Height = aec_chain:top_height(),
-    leader_for_height(Height).
+    % Height = aec_chain:top_height(),
+    #{slot := Slot} = get_slot_info(),
+    leader_for_height(Slot).
 
 next_beneficiary() ->
-    {ok, KeyBlock} = aec_chain:top_key_block(),
-    ChildBlockTime = child_block_time(),
-    case aeu_time:now_in_msecs() - aec_blocks:time_in_msecs(KeyBlock) of
-        T when T >= ChildBlockTime ->
-            {TxEnv, Trees} = aetx_env:tx_env_and_trees_from_top(aetx_transaction),
-            next_beneficiary(TxEnv, Trees);
-        T ->
-            lager:debug("Not time for next block yet; sleeping ~p ms", [ChildBlockTime - T + 1]),
-            timer:sleep(ChildBlockTime - T + 1),
-            next_beneficiary()
+    {error, not_applicable}.
+
+next_producer() ->
+    {ok, TopKeyBlock} = aec_chain:top_key_block(),
+    TopHeight = aec_blocks:height(TopKeyBlock),
+    RunEnv = aetx_env:tx_env_and_trees_from_top(aetx_transaction),
+    lager:debug("- - - - - Next beneficiary: height=~w", [TopHeight]),
+    BlockTime = child_block_time(),
+    case get_slot_info(TopHeight, RunEnv) of
+        #{slot := TopHeight, now := Now, t0 := T0} ->
+            %% We already got a block for the current Slot
+            DeltaT = BlockTime - (Now - T0) rem BlockTime,
+            {wait, slot_filled, DeltaT};
+        #{slot := Slot} = SlotInfo ->
+            case leader_for_timeslot(Slot, RunEnv) of
+                {ok, Leader} ->
+                    activate_next_leader(Leader, TopHeight, SlotInfo, RunEnv);
+                {error, _} ->
+                    {error, not_in_cache, BlockTime div 5}
+            end
     end.
 
-%% Called as part of deciding who will produce block at Height `height(TxEnv) + 1`
-next_beneficiary(TxEnv, Trees) ->
-    ChildHeight = aetx_env:height(TxEnv),
-    ChildHeight1 = ChildHeight + 1,
-    case leader_for_height(ChildHeight1, {TxEnv, Trees}) of
-        {ok, Leader} ->
-            {ok, #{epoch := Epoch, seed := Seed, validators := Validators, length := EpochLength} = EpochInfo} = aec_chain_hc:epoch_info({TxEnv, Trees}),
-            case ChildHeight1 == maps:get(last, EpochInfo) of
+activate_next_leader(Leader, TopHeight, SlotInfo = #{slot := Slot}, RunEnv) ->
+    EpochInfo =
+        case maps:get(epoch_info, SlotInfo, undefined) of
+            undefined ->
+                {ok, EI} = aec_chain_hc:epoch_info(RunEnv),
+                EI;
+            EI ->
+                EI
+        end,
+
+    case maps:get(last, EpochInfo) of
+        Slot ->
+            {TxEnv, _} = RunEnv,
+            Hash = aetx_env:key_hash(TxEnv),
+            #{epoch := Epoch, seed := Seed, validators := Validators, length := Length} = EpochInfo,
+            aec_eoe_vote:negotiate(Epoch, Slot, Hash, Leader, Validators, Seed, Length);
+        _ ->
+            ok
+    end,
+
+    #{now := Now, t0 := T0} = SlotInfo,
+    BlockTime = child_block_time(),
+    SignModule = get_sign_module(),
+    DeltaT = BlockTime - (Now - T0) rem BlockTime,
+    case SignModule:set_candidate(Leader) of
+        {error, key_not_found} ->
+            lager:debug("Node is not producer for ~p", [Slot]),
+            {wait, not_producer, DeltaT};
+        ok ->
+            BlockProdTime = child_block_production_time(),
+            lager:debug("Node is producer for block ~p", [Slot]),
+            case TopHeight + 1 == Slot of
                 true ->
-                    Hash = aetx_env:key_hash(TxEnv),
-                    aec_eoe_vote:negotiate(Epoch, ChildHeight1, Hash, Leader, Validators, Seed, EpochLength);
+                    DeltaT1 = DeltaT - BlockProdTime,
+                    {ok, {leader, Leader}, DeltaT1};
                 false ->
-                    ok
-            end,
-            SignModule = get_sign_module(),
-            case SignModule:set_candidate(Leader) of
-                 {error, key_not_found} ->
-                     lager:debug("node shall not produce (leader ~p)", [Leader]),
-                     timer:sleep(200),
-                     {error, not_leader};
-                 ok ->
-                     lager:debug("node is producer (leader ~p)", [Leader]),
-                     {ok, Leader}
-            end;
-        error ->
-            {error, not_in_cache}
+                    %% TODO: Possibly start even earlier to have time for holes...
+                    DeltaT1 = DeltaT - BlockProdTime,
+                    Holes = Slot - (TopHeight + 1),
+                    lager:debug("~p blocks missing, need HOLES!!", [Holes]),
+                    {ok, {leader_hole, Leader, Holes}, DeltaT1}
+            end
     end.
+
+-spec get_slot_info() -> map().
+get_slot_info() ->
+    %% Assumes that the next epoch could be started
+    TopHash = aec_chain:top_block_hash(), % TODO: check not 'undefined'
+    PrevHash = aec_chain:prev_hash_from_hash(TopHash),
+    RunEnv = {TxEnv, _} = aetx_env:tx_env_and_trees_from_hash(aetx_transaction, PrevHash),
+    get_slot_info(aetx_env:height(TxEnv) + 1, RunEnv).
+
+-spec get_slot_info(TopHeight :: pos_integer(), RunEnv :: aec_chain_hc:run_env()) -> map().
+get_slot_info(0, _RunEnv) ->
+    Now = aeu_time:now_in_msecs(),
+    #{epoch => 1, slot => 1, t0 => Now, delta => 0, now => Now};
+get_slot_info(_TopHeight, RunEnv) ->
+    {ok, EpochInfo = #{epoch := Epoch, first := First}} = aec_chain_hc:epoch_info(RunEnv),
+    BlockTime     = child_block_time(),
+    Now = aeu_time:now_in_msecs(),
+    T0  = get_t0(Epoch, First),
+
+    ElapsedBlocks = (Now - T0) div BlockTime,
+    Delta = if Epoch == 1 -> ElapsedBlocks + 1;
+               true       -> ElapsedBlocks
+            end,
+    Slot = First + Delta,
+    #{epoch => Epoch, slot => Slot, t0 => T0, delta => Delta,
+      now => Now, epoch_info => EpochInfo}.
+
+get_t0(1, _) ->
+    {ok, Block} = aec_chain:get_key_block_by_height(1),
+    aec_blocks:time_in_msecs(Block);
+get_t0(_Epoch, Height) ->
+    {ok, Block} = aec_chain:get_key_block_by_height(Height - 1),
+    aec_blocks:time_in_msecs(Block).
 
 get_seed(#{seed := undefined, epoch := Epoch}) when Epoch =< 2 ->
     get_entropy_hash(Epoch);
@@ -892,18 +983,48 @@ entropy_height(ChildEpoch) ->
 
 %% -- Validator schedule (cached) -----------------------------------------
 
-%% Second parameter contains run environment for computing a validator
-%% schedule, if needed.
-leader_for_height(Height, RunEnv) ->
-    case leader_for_height(Height) of
+%% This function takes height values or timeslots. Timeslots are based on the current clock and epoch start time.
+-spec leader_for_height(Height :: non_neg_integer()) -> {ok, binary()} | {error, atom()}.
+leader_for_height(Height) ->
+    case aeu_ets_cache:lookup(?ETS_CACHE_TABLE, validator_schedule) of
         error ->
-            lager:debug("Unknown leader for height = ~p, computing", [Height]),
-            {ok, EpochInfo = #{epoch := Epoch}} = aec_chain_hc:epoch_info(RunEnv),
+            {error, not_in_cache};
+        {ok, #{schedule := Schedule}} ->
+            case maps:get(Height, Schedule, undefined) of
+                undefined -> {error, not_in_cache};
+                Leader -> {ok, Leader}
+            end
+    end.
+
+get_cached_schedule(Height) ->
+    case aeu_ets_cache:lookup(?ETS_CACHE_TABLE, validator_schedule) of
+        error -> error;
+        {ok, #{schedule := Schedule}} ->
+            [ P || {H, P} <- maps:to_list(Schedule), H >= Height ]
+    end.
+
+%% Timeslot is the same as the height for already produced blocks. Timeslot can be ahead of the height
+%% if the block is not produced in time, and the time continues forward.
+%% Second parameter contains run environment for computing a validator schedule, if needed.
+-spec leader_for_timeslot(Timeslot :: pos_integer(), RunEnv :: aec_chain_hc:run_env()) -> {ok, binary()} | {error, atom()}.
+leader_for_timeslot(Timeslot, RunEnv) ->
+    %% TODO: Special case: When the end of epoch is not happening, the timeslots will spill into "next epoch" without starting the next epoch
+    case leader_for_height(Timeslot) of
+        {ok, Leader} ->
+            lager:debug("Leader for timeslot=~w is ~w", [Timeslot, Leader]),
+            {ok, Leader};
+        {error, _Rsn} ->
+            lager:debug("Unknown leader (reason=~w) for timeslot=~w, computing", [_Rsn, Timeslot]),
+            {ok, EpochInfo = #{epoch := Epoch, last := EpochLast}} = aec_chain_hc:epoch_info(RunEnv),
             cache_validators_for_epoch_info(RunEnv, EpochInfo),
             cache_validators_for_epoch(RunEnv, Epoch + 1),
-            leader_for_height(Height);
-        {ok, Leader} ->
-            {ok, Leader}
+            case Timeslot > EpochLast of
+                true ->
+                    {error, epoch_did_not_end};
+                false ->
+                    %% Try once more
+                    leader_for_height(Timeslot)
+            end
     end.
 
 cache_validators_for_epoch(RunEnv, Epoch) ->
@@ -942,7 +1063,7 @@ cache_validators_for_epoch_info_(RunEnv, Hash, EpochInfo) ->
      , validators := Validators} = EpochInfo,
     %% Check if it is already in cache to avoid extra work
     case leader_for_height(First) of
-        error ->
+        {error, _} ->
             {ok, RawSchedule} = aec_chain_hc:validator_schedule(RunEnv, Hash, Validators, Length),
             Schedule = maps:from_list(enumerate(First, RawSchedule)),
 
@@ -974,15 +1095,6 @@ gc_validator_cache(C0 = #{epochs := [GC | Rest], epoch_infos := EIs, schedule :=
                 schedule    := Schedule1}
     end.
 
-
-leader_for_height(Height) ->
-    case aeu_ets_cache:lookup(?ETS_CACHE_TABLE, validator_schedule) of
-        error ->
-            error;
-        {ok, #{schedule := Schedule}} ->
-            maps:find(Height, Schedule)
-    end.
-
 %% support OTP24 without lists:enumerate
 enumerate(From, List) when is_integer(From) ->
     lists:zip(lists:seq(From, From + length(List) - 1), List).
@@ -1000,21 +1112,43 @@ get_type() -> pos.
 get_block_producer_configs() -> [{instance_not_used,
                                   #{child_block_time => child_block_time()}}].
 
-%% is_leader_valid is called (soon) after `state_pre_transformation_key_node`
-%% only called for key-blocks - Height and Epoch should be up to date
-is_leader_valid(Node, _Trees, TxEnv, _PrevNode) ->
-    Height = aetx_env:height(TxEnv),
+is_leader_valid(Node, _Trees, _TxEnv, _PrevNode) ->
+    NodeHeader = aec_block_insertion:node_header(Node),
+    NodeHeight = aec_headers:height(NodeHeader),
+    NodeProducer = aec_headers:miner(NodeHeader),
+    case aec_headers:is_hole(NodeHeader) of
+        false -> is_leader_valid_for_block(NodeHeight, NodeProducer);
+        true -> is_leader_valid_for_hole(NodeHeight, NodeProducer)
+end.
+
+is_leader_valid_for_block(Height, Producer) ->
+    %% A non-hole block can only be mined by the current leader
     case leader_for_height(Height) of
-        {ok, ExpectedLeader} ->
-            Header = aec_block_insertion:node_header(Node),
-            Leader = aec_headers:miner(Header),
-            Leader == ExpectedLeader;
-            %% Fix this to have stake as target validated here also?
-        _ ->
-            %% This really should not happen, we just got through
-            %% state_pre_transformation_key_node
-            lager:debug("(Impossible) No leader known for height = ~p", [Height]),
+        {ok, ExpectedProducer} ->
+            Valid = Producer =:= ExpectedProducer,
+            lager:debug("non-hole block, valid=~w height=~w produced_by=~w expected_producer=~w",
+                [Valid, Height, Producer, case Valid of true -> true; false -> ExpectedProducer end]),
+            Valid;
+        %% Fix this to have stake as target validated here also?
+        {error, _Rsn} ->
+            %% This really should not happen, we just got through state_pre_transformation_key_node
+            lager:debug("(Impossible) No leader known (reason=~w) for height=~w, produced_by=~w", [_Rsn, Height, Producer]),
             aec_conductor:throw_error(parent_chain_block_not_synced)
+    end.
+
+is_leader_valid_for_hole(Height, Producer) ->
+    %% A hole block can be mined by any node on the schedule, which is NOT the current leader.
+    %% But we also accept other nodes' hole blocks
+    case leader_for_height(Height) of
+        {ok, LeaderAtHeight} ->
+            Schedule = get_cached_schedule(Height),
+            Valid = % LeaderAtHeight /= Producer andalso
+                lists:member(Producer, Schedule),
+            lager:debug("HOLE block, valid=~w produced_by=~w leader_at_height=~w", [Valid, Producer, LeaderAtHeight]),
+            Valid;
+        {error, _Rsn} ->
+            lager:debug("(Impossible) No leader known (reason=~w) for a hole block, produced_by=~w height=~w", [_Rsn, Producer, Height]),
+            aec_conductor:throw_error(no_leader_known_for_hole_block)
     end.
 
 handle_pinning(TxEnv, Trees, EpochInfo, Leader) ->
@@ -1061,8 +1195,8 @@ add_pin_reward(Trees, TxEnv, Leader, #{epoch := CurEpoch, last := Last}) ->
 create_contracts([], _TxEnv, Trees) -> Trees;
 create_contracts([Contract | Tail], TxEnv, TreesAccum) ->
     %% TODO: make GasLimit and GasPrice configurable
-    GasLimit = 10000000,
-    GasPrice = 10000000000,
+    GasLimit = 10_000_000,
+    GasPrice = 10_000_000_000,
     #{ <<"amount">> := Amount
       , <<"vm_version">> := VM
       , <<"abi_version">> := ABI
@@ -1085,7 +1219,7 @@ create_contracts([Contract | Tail], TxEnv, TreesAccum) ->
               gas         => GasLimit,
               gas_price   => GasPrice,
               call_data   => CallData,
-              fee         => 1000000000000000}, %% Overshoot the size of the actual fee
+              fee         => 1_000_000_000_000_000}, %% Overshoot the size of the actual fee
     {ok, DummyTx} = aect_create_tx:new(TxSpec),
     Height   = aetx_env:height(TxEnv),
     Protocol = aetx_env:consensus_version(TxEnv),
