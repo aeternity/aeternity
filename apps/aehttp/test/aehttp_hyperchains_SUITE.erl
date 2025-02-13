@@ -936,6 +936,10 @@ first_leader_next_epoch(Config) ->
 epochs_with_slow_parent(Config) ->
     [{Node, _, _, _} | _] = ?config(nodes, Config),
     ct:log("Parent start height = ~p", [?config(parent_start_height, Config)]),
+
+    %% Produce a block (to get in sync with wall clock).
+    produce_cc_blocks(Config, 1),
+
     %% ensure start at a new epoch boundary
     StartHeight = rpc(Node, aec_chain, top_height, []),
     {ok, #{last := Last}} = rpc(Node, aec_chain_hc, epoch_info, [StartHeight]),
