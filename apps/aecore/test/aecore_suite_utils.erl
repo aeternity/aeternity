@@ -837,7 +837,11 @@ hc_loop_mine_blocks_(Blocks, N) ->
         {ok, Node, Block} ->
             N1 = case aec_blocks:type(Block) of
                      micro -> N;
-                     key   -> N - 1
+                     key   ->
+                        case aec_headers:is_hole(aec_blocks:to_key_header(Block)) of
+                            true -> N;
+                            false -> N - 1
+                        end
                  end,
             hc_loop_mine_blocks_([{Node, Block} | Blocks], N1);
         Err = {error, _} ->

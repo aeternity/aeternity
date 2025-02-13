@@ -30,7 +30,7 @@
 %%
 %% Key blocks (bit 31:1)
 %% 30         ContainsInfo 1 - true, 0 - false
-%% 29         RESERVED (HC Hole block: 1 - a hole block, 0 - ordinary block)
+%% 29         HC Hole block: 1 - is a hole block, 0 - ordinary block
 %% 0 - 28     Unused, should be 0.
 %%
 %% Micro blocks (bit 31:0)
