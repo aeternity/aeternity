@@ -39,7 +39,8 @@
          first_leader_next_epoch/1,
          check_default_pin/1,
          check_finalize_info/1,
-         sanity_check_vote_tx/1
+         sanity_check_vote_tx/1,
+         hole_production/1
         ]).
 
 -include_lib("stdlib/include/assert.hrl").
@@ -157,9 +158,8 @@
 
 -define(GENESIS_BENFICIARY, <<0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0>>).
 
-all() -> [{group, hc}, {group, epochs_slow}, {group, epochs_fast},
-          {group, pinning}, {group, default_pin}
-          %, {group, config}
+all() -> [{group, hc}, {group, epochs_slow}, {group, epochs_fast}, {group, hc_hole},
+          {group, pinning}, {group, default_pin}, {group, config}
           ].
 
 groups() ->
@@ -184,27 +184,32 @@ groups() ->
           [ start_two_child_nodes
           , first_leader_next_epoch
           , epochs_with_slow_parent
-        ]}
+          ]}
     , {epochs_fast, [sequence],
           [ start_two_child_nodes
           , produce_first_epoch
           , epochs_with_fast_parent
-        ]}
+          ]}
+    , {hc_hole, [sequence],
+          [ start_two_child_nodes
+          , produce_first_epoch
+          , hole_production
+          ]}
     , {pinning, [sequence],
           [ start_two_child_nodes,
             produce_first_epoch,
             get_pin,
             wallet_post_pin_to_pc
-        ]}
+          ]}
     , {default_pin, [sequence],
           [ start_two_child_nodes,
             produce_first_epoch,
             check_default_pin
-        ]}
-    %% , {config, [sequence],
-    %%       [ start_two_child_nodes,
-    %%         initial_validators
-    %%     ]}
+          ]}
+    , {config, [sequence],
+          [ start_two_child_nodes,
+            initial_validators
+          ]}
     ].
 
 suite() -> [].
@@ -412,7 +417,8 @@ wait_same_top(_Nodes, Attempts) when Attempts < 1 ->
 wait_same_top(Nodes, Attempts) ->
     KBs = [ rpc(Node, aec_chain, top_block, []) || Node <- Nodes ],
     case lists:usort(KBs) of
-        [KB] -> {ok, KB};
+        [KB] ->
+            {ok, KB};
         Diffs ->
             ct:log("Nodes differ: ~p", [Diffs]),
             timer:sleep(?CHILD_BLOCK_TIME div 2),
@@ -941,12 +947,10 @@ epochs_with_slow_parent(Config) ->
     produce_cc_blocks(Config, 1),
 
     %% ensure start at a new epoch boundary
-    StartHeight = rpc(Node, aec_chain, top_height, []),
-    {ok, #{last := Last}} = rpc(Node, aec_chain_hc, epoch_info, [StartHeight]),
-    BlocksLeftToBoundary = Last - StartHeight,
-    ct:log("Starting at CC height ~p: producing ~p cc blocks", [StartHeight, BlocksLeftToBoundary]),
+    produce_until_next_epoch(Config),
+
     %% some block production including parent blocks
-    produce_cc_blocks(Config, BlocksLeftToBoundary + 2 * ?CHILD_EPOCH_LENGTH),
+    produce_n_epochs(Config, 2),
 
     ParentHeight = rpc(?PARENT_CHAIN_NODE, aec_chain, top_height, []),
     ct:log("Child continues while parent stuck at: ~p", [ParentHeight]),
@@ -960,7 +964,7 @@ epochs_with_slow_parent(Config) ->
     %% Produce no parent block in the next Resilience child epochs
     %% the child chain should get to a halt or
     %% at least one should be able to observe signalling that the length should be adjusted upward
-    {ok, _} = produce_cc_blocks(Config, ?CHILD_EPOCH_LENGTH*Resilience, []),
+    {ok, _} = produce_cc_blocks(Config, ?CHILD_EPOCH_LENGTH*Resilience, #{parent_produce => []}),
 
     ct:log("Mined almost ~p additional child epochs without parent progress", [Resilience]),
     ParentTopHeight = rpc(?PARENT_CHAIN_NODE, aec_chain, top_height, []),
@@ -973,8 +977,8 @@ epochs_with_slow_parent(Config) ->
     %% Here we should have observed some signalling for increased child epoch length
 
     %% Parent hash grabbed in last block child epoch, so here we can start, but not finish next epoch
-    {ok, _} = produce_cc_blocks(Config, EpochLength - 1, []),
-    ?assertException(error, timeout_waiting_for_block, produce_cc_blocks(Config, 1, [])),
+    {ok, _} = produce_cc_blocks(Config, EpochLength - 1, #{parent_produce => []}),
+    ?assertException(error, timeout_waiting_for_block, produce_cc_blocks(Config, 1, #{parent_produce => []})),
 
     ?assertEqual([{ok, (N-1) * ?CHILD_EPOCH_LENGTH + 1} || N <- lists:seq(1, EndEpoch)],
                  [rpc(Node, aec_chain_hc, epoch_start_height, [N]) || N <- lists:seq(1, EndEpoch)]),
@@ -985,7 +989,7 @@ epochs_with_slow_parent(Config) ->
     %% ParentBlocksNeeded =
     %%     EndEpoch * ?PARENT_EPOCH_LENGTH + ?config(parent_start_height, Config) + ?PARENT_FINALITY - ParentTopHeight,
 
-    %% {ok, _} = produce_cc_blocks(Config, 1, [{ChildTopHeight + EpochLength, ParentBlocksNeeded}]),
+    %% {ok, _} = produce_cc_blocks(Config, 1, #{parent_produce => [{ChildTopHeight + EpochLength, ParentBlocksNeeded}]}),
 
     %% #{epoch_length := FinalizeEpochLength, epoch := FinalizeEpoch} = rpc(Node, aec_chain_hc , finalize_info, []),
     %% ct:log("The agreed epoch length is ~p the current length is ~p for epoch ~p", [FinalizeEpochLength, EpochLength, FinalizeEpoch]),
@@ -1006,11 +1010,7 @@ epochs_with_fast_parent(Config) ->
     [{Node, _, _, _} | _] = ?config(nodes, Config),
 
     %% ensure start at a new epoch boundary
-    StartHeight = rpc(Node, aec_chain, top_height, []),
-    {ok, #{last := Last}} = rpc(Node, aec_chain_hc, epoch_info, []),
-    BlocksLeftToBoundary = Last - StartHeight,
-    %% some block production including parent blocks
-    {ok, _} = produce_cc_blocks(Config, BlocksLeftToBoundary),
+    produce_until_next_epoch(Config),
 
     {ok, #{length := Len1} = EpochInfo1} = rpc(Node, aec_chain_hc, epoch_info, []),
     ct:log("Info ~p", [EpochInfo1]),
@@ -1020,8 +1020,8 @@ epochs_with_fast_parent(Config) ->
     ParentTopHeight0 = rpc(?PARENT_CHAIN_NODE, aec_chain, top_height, []),
     {ok, #{length := Len1}} = rpc(Node, aec_chain_hc, epoch_info, []),
     {ok, _} = produce_cc_blocks(Config, Len1,
-                                spread(2*?PARENT_EPOCH_LENGTH, Height0,
-                                       [ {CH, 0} || CH <- lists:seq(Height0 + 1, Height0 + Len1)])),
+                                #{parent_produce => spread(2*?PARENT_EPOCH_LENGTH, Height0,
+                                                           [ {CH, 0} || CH <- lists:seq(Height0 + 1, Height0 + Len1)])}),
 
     ParentTopHeight1 = rpc(?PARENT_CHAIN_NODE, aec_chain, top_height, []),
     Height1 = rpc(Node, aec_chain, top_height, []),
@@ -1031,8 +1031,8 @@ epochs_with_fast_parent(Config) ->
     ?assertEqual(2*?PARENT_EPOCH_LENGTH, ParentTopHeight1 - ParentTopHeight0),
 
     {ok, _} = produce_cc_blocks(Config, Len2,
-                                spread(2*?PARENT_EPOCH_LENGTH, Height1,
-                                       [ {CH, 0} || CH <- lists:seq(Height1 + 1, Height1 + Len2)])),
+                                #{parent_produce => spread(2*?PARENT_EPOCH_LENGTH, Height1,
+                                                           [ {CH, 0} || CH <- lists:seq(Height1 + 1, Height1 + Len2)])}),
 
     {ok, #{length := Len3, epoch := CurrentEpoch}} = rpc(Node, aec_chain_hc, epoch_info, []),
     produce_cc_blocks(Config, Len3),
@@ -1049,6 +1049,68 @@ epochs_with_fast_parent(Config) ->
     ct:log("Info ~p", [EpochInfo3]),
 
     ok.
+
+producer_node(Producer, Config) ->
+    [Node] = [ Name || {_, Name, Keys, _} <- ?config(nodes, Config),
+                       lists:keymember(Producer, 1, Keys) ],
+    Node.
+
+blocks_by_node(Node, Validators, Config) ->
+    blocks_by_node(Node, Validators, Config, 0).
+
+blocks_by_node(_Node, [], _Config, N) -> N;
+blocks_by_node(Node, [V | Vs], Config, N) ->
+    case producer_node(V, Config) of
+        Node -> blocks_by_node(Node, Vs, Config, N + 1);
+        _    -> N
+    end.
+
+hole_production(Config) ->
+    %% Repeat this 3 times...
+    hole_production(Config, 3).
+
+hole_production(Config, N) ->
+    [{Node, _, _, _} | _] = ?config(nodes, Config),
+
+    %% Get the schedule
+    ChildHeight = rpc(Node, aec_chain, top_height, []),
+    {ok, #{validators := Validators, epoch := Epoch, length := Length}} =
+        rpc(Node, aec_chain_hc, epoch_info, []),
+    {_, Seed} = get_entropy(Node, Epoch),
+    {ok, Schedule} = rpc(Node, aec_chain_hc, validator_schedule, [ChildHeight, Seed, Validators, Length]),
+
+    NextProducer = hd(Schedule),
+    NextProdNode = producer_node(NextProducer, Config),
+    AllNodes = [ Name || {_, Name, _, _} <- ?config(nodes, Config) ],
+
+    ct:log("Next producer is: ~p", [NextProdNode]),
+
+    NHoles = blocks_by_node(NextProdNode, Schedule, Config),
+
+    if NHoles == Length ->
+        ct:log("Skip test, validators all from same node!");
+       true ->
+        ct:log("Produce on: ~p", [AllNodes -- [NextProdNode]]),
+        {ok, Bs} = produce_cc_blocks(Config, 1, #{prod_nodes => AllNodes -- [NextProdNode]}),
+        ct:log("Expected ~p holes, got ~p", [NHoles, length(Bs) - 1]),
+        ?assert(NHoles + 1 == length(Bs))
+    end,
+
+    if N > 1 ->
+        produce_until_next_epoch(Config),
+        hole_production(Config, N - 1);
+       true ->
+        ok
+    end.
+
+produce_until_next_epoch(Config) ->
+    [{Node, _, _, _} | _] = ?config(nodes, Config),
+
+    StartHeight = rpc(Node, aec_chain, top_height, []),
+    {ok, #{last := Last}} = rpc(Node, aec_chain_hc, epoch_info, []),
+    BlocksLeftToBoundary = Last - StartHeight,
+    %% some block production including parent blocks
+    {ok, _} = produce_cc_blocks(Config, BlocksLeftToBoundary).
 
 %%%=============================================================================
 %%% HC Endpoints
@@ -1617,6 +1679,9 @@ election_contract_address() ->
 %% Automatically add key blocks on parent chain and
 %% if there are Txs, put them in a micro block
 produce_cc_blocks(Config, BlocksCnt) ->
+    produce_cc_blocks(Config, BlocksCnt, #{}).
+
+produce_cc_blocks(Config, BlocksCnt, ProdCfg) ->
     [{Node, _, _, _} | _] = ?config(nodes, Config),
     TopHeight = rpc(Node, aec_chain, top_height, []),
     {ok, #{epoch := Epoch, first := First, last := Last, length := L} = Info} =
@@ -1627,27 +1692,36 @@ produce_cc_blocks(Config, BlocksCnt) ->
     ScheduleUpto = Epoch + 1 + (CBAfterEpoch div L),
     ParentTopHeight = rpc(?PARENT_CHAIN_NODE, aec_chain, top_height, []),
     ct:log("P@~p C@~p for next ~p child blocks", [ParentTopHeight, TopHeight,  BlocksCnt]),
-    %% Spread parent blocks over BlocksCnt
     ParentProduce =
-        lists:append([ spread(?PARENT_EPOCH_LENGTH, TopHeight,
-                              [ {CH, 0} || CH <- lists:seq(First + E * L, Last + E * L)]) ||
-                       E <- lists:seq(0, ScheduleUpto - Epoch) ]),
-    %% Last parameter steers where in Child epoch parent block is produced
-    produce_cc_blocks(Config, BlocksCnt, ParentProduce).
+        case maps:get(parent_produce, ProdCfg, undefined) of
+            undefined ->
+                %% By default: Spread parent blocks over BlocksCnt
+                lists:append([ spread(?PARENT_EPOCH_LENGTH, TopHeight,
+                                      [ {CH, 0} || CH <- lists:seq(First + E * L, Last + E * L)]) ||
+                               E <- lists:seq(0, ScheduleUpto - Epoch) ]);
+            PP ->
+                PP
+        end,
+    PNodes =
+        case maps:get(prod_nodes, ProdCfg, undefined) of
+            undefined ->
+                [ Name || {_, Name, _, _} <- ?config(nodes, Config) ];
+            PNs ->
+                PNs
+        end,
 
-produce_cc_blocks(Config, BlocksCnt, ParentProduce) ->
-    [{Node1, _, _, _} | _] = ?config(nodes, Config),
-    %% The previous production ended with wait_same_top, so asking first node is sufficient
-    TopHeight = rpc(Node1, aec_chain, top_height, []),
+    TopHeight = rpc(Node, aec_chain, top_height, []),
+
     %% assert that the parent chain is not mining
     ?assertEqual(stopped, rpc:call(?PARENT_CHAIN_NODE_NAME, aec_conductor, get_mining_state, [])),
     ct:log("parent produce ~p", [ParentProduce]),
-    NewTopHeight = produce_to_cc_height(Config, TopHeight, TopHeight + BlocksCnt, ParentProduce),
-    wait_same_top([ Node || {Node, _, _, _} <- ?config(nodes, Config)]),
-    get_generations(Node1, TopHeight + 1, NewTopHeight).
+    NewTopHeight = produce_to_cc_height(Config, TopHeight, TopHeight + BlocksCnt, ParentProduce, PNodes),
+    wait_same_top([ N || {N, _, _, _} <- ?config(nodes, Config)]),
+    get_generations(Node, TopHeight + 1, NewTopHeight).
+
 
 %% It seems we automatically produce child chain blocks in the background
-produce_to_cc_height(Config, TopHeight, GoalHeight, ParentProduce) ->
+produce_to_cc_height(Config, TopHeight, GoalHeight, ParentProduce, PNodes) ->
     NodeNames = [ Name || {_, Name, _, _} <- ?config(nodes, Config) ],
     BlocksNeeded = GoalHeight - TopHeight,
     case BlocksNeeded > 0 of
@@ -1666,7 +1740,7 @@ produce_to_cc_height(Config, TopHeight, GoalHeight, ParentProduce) ->
             {ok, _Txs} = rpc:call(hd(NodeNames), aec_tx_pool, peek, [infinity]),
 
             %% This will mine 1 key-block (and 0 or 1 micro-blocks)
-            {ok, Blocks} = mine_cc_blocks(NodeNames, 1),
+            {ok, Blocks} = mine_cc_blocks(PNodes, 1),
 
             {Node, KeyBlock} = lists:last(Blocks),
             %% TODO: Should we have a way to require a keyblock?
@@ -1680,12 +1754,15 @@ produce_to_cc_height(Config, TopHeight, GoalHeight, ParentProduce) ->
                           end, lists:droplast(Blocks)),
 
             ?assertEqual(key, aec_blocks:type(KeyBlock)),
-            IsHole = aec_headers:is_hole(aec_blocks:to_key_header(KeyBlock)),
-            ct:log("CC ~p produced ~skey-block: ~p", [Node, if IsHole -> "HOLE "; true -> "" end, KeyBlock]),
+            ct:log("CC ~p produced key-block: ~p", [Node, KeyBlock]),
+
+            NHoles = length([ x || {_, B} <- Blocks,
+                                   aec_blocks:type(B) == key
+                                     andalso aec_headers:is_hole(aec_blocks:to_key_header(B)) ]),
 
             Producer = get_block_producer_name(?config(staker_names, Config), KeyBlock),
             ct:log("~p produced CC block at height ~p", [Producer, aec_blocks:height(KeyBlock)]),
-            produce_to_cc_height(Config, TopHeight + 1, if IsHole -> GoalHeight + 1; true -> GoalHeight end, NewParentProduce)
+            produce_to_cc_height(Config, TopHeight + NHoles + 1, GoalHeight + NHoles, NewParentProduce, PNodes)
       end.
 
 mine_cc_blocks(NodeNames, N) ->
