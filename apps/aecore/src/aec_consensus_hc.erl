@@ -252,7 +252,7 @@ keyblock_create_adjust_target(Block0, []) ->
     Block = case aec_blocks:is_eoe(Block0) of
                 true ->
                     Target = aec_blocks:height(Block0),
-                    aec_blocks:set_target(Block0, aeminer_pow:integer_to_scientific(Target));
+                    aec_blocks:set_target(Block0, Target);
                 _ ->
                     Block0
             end,
