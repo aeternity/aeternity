@@ -73,7 +73,7 @@ int_create_block(Height, PrevBlockHash, PrevBlock, Miner, Beneficiary, Trees, Pr
         PrevBlockHash,
         PrevKeyHash,
         aec_trees:hash(Trees),
-        PrevTarget + if IsHole -> 0; true -> 1 end,
+        target(IsHole, IsEoE, Height, PrevTarget),
         0,
         aeu_time:now_in_msecs(),
         InfoField,
@@ -88,5 +88,8 @@ set_flags(IsHole, IsEoE) ->
     EoEFlag = if IsEoE -> ?EOE_FLAG; true -> 0 end,
     <<(HoleFlag bor EoEFlag):32>>.
 
-
+target(_IsHole, true, Height, _PrevTarget) ->
+    Height;
+target(IsHole, _IsEoE, _Height, PrevTarget) ->
+    PrevTarget + if IsHole -> 0; true -> 1 end.
 
