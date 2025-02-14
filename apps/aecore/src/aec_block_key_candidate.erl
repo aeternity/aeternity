@@ -65,14 +65,13 @@ int_create_(Height, PrevBlockHash, PrevBlock, Beneficiary, Miner, AdjChain, Prot
 
 int_create_block(Height, PrevBlockHash, PrevBlock, Miner, Beneficiary, Trees, Protocol) ->
     Consensus = aec_consensus:get_consensus_module_at_height(Height),
-    {IsEOE, PrevKeyHash} = case aec_blocks:type(PrevBlock) of
-                                micro -> {aec_blocks:is_eoe(PrevBlock), aec_blocks:prev_key_hash(PrevBlock)};
-                                key   -> {false, PrevBlockHash}
-                           end,
+    PrevKeyHash = case aec_blocks:type(PrevBlock) of
+                      micro -> aec_blocks:prev_key_hash(PrevBlock);
+                      key   -> PrevBlockHash
+                  end,
     Fork = aeu_env:get_env(aecore, fork, undefined),
     InfoField = aec_chain_state:get_info_field(Height, Fork),
-    Block = aec_blocks:new_key(Height, PrevBlockHash, PrevKeyHash,
-                                aec_trees:hash(Trees), Consensus:default_target(),
-                                0, aeu_time:now_in_msecs(), InfoField, Protocol,
-                                Miner, Beneficiary),
-    aec_blocks:set_eoe(Block, IsEOE).
+    aec_blocks:new_key(Height, PrevBlockHash, PrevKeyHash,
+                       aec_trees:hash(Trees), Consensus:default_target(),
+                       0, aeu_time:now_in_msecs(), InfoField, Protocol,
+                       Miner, Beneficiary).
