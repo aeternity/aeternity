@@ -266,7 +266,13 @@ ctx_validate_key_target(Node, _Block, Ctx) ->
     case aec_headers:is_hole(NodeHeader) of
         true when NodeTarget == PrevNodeTarget -> ok;
         false when NodeTarget == PrevNodeTarget + 1 -> ok;
-        _ -> {error, wrong_number_of_non_holes}
+        _ ->
+            Height = aec_headers:height(NodeHeader),
+            case aec_headers:is_eoe(NodeHeader) of
+                true when NodeTarget == Height-> ok;
+                _ ->
+                    {error, wrong_number_of_non_holes}
+            end
     end.
 
 dirty_validate_micro_node_with_ctx(Node, Block, Ctx) ->
