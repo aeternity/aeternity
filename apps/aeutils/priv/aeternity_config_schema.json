@@ -1559,7 +1559,6 @@
                         }
                     }
                 },
-
                 "db_backend" : {
                     "description" : "Choice of database backend.",
                     "type" : "string",

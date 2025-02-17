@@ -1,0 +1,11 @@
+---
+
+# Overwrite the defaults of few properties of each type: bool, string, int, array
+chain:
+    persist: false
+    db_path: "test"
+    db_write_max_retries: 99
+    protocol_beneficiaries: ["ak_DummyPubKeyDoNotEverUse999999999999999999999999999:120"]
+
+fork_management:
+    network_id: "custom_test_network"

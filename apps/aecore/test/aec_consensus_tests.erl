@@ -18,14 +18,15 @@ consensus_three() -> #{<<"type">> => <<"eunit_three">>}.
 consensus_three(Config) -> #{<<"type">> => <<"eunit_three">>, <<"config">> => Config}.
 consensus_unknown() -> #{<<"type">> => <<"consensus_unknown">>}.
 
+consensus_config(Config) ->
+    aeu_env:config_with_defaults(Config, [<<"chain">>, <<"consensus">>, <<"0">>, <<"config">>]).
+
 setup_module(Name, CanBeTurnedOff) ->
-    meck:expect(Name, can_be_turned_off, fun() -> CanBeTurnedOff end),
-    meck:expect(Name, assert_config, fun(X) when map_size(X) =:= 0 -> ok end),
-    meck:expect(Name, extra_from_header, fun(_) -> #{consensus => Name} end).
+    setup_module(Name, CanBeTurnedOff, #{}).
 
 setup_module(Name, CanBeTurnedOff, Config) ->
     meck:expect(Name, can_be_turned_off, fun() -> CanBeTurnedOff end),
-    meck:expect(Name, assert_config, fun(X) -> true = X =:= Config, ok end),
+    meck:expect(Name, assert_config, fun(X) -> true = X =:= consensus_config(Config), ok end),
     meck:expect(Name, extra_from_header, fun(_) -> #{consensus => Name} end).
 
 configuration_test_() ->
@@ -154,7 +155,7 @@ test_query_consensus() ->
     F = fun(Module, Config, Heights) ->
         [begin
             ?assertEqual(Module, aec_consensus:get_consensus_module_at_height(H)),
-            ?assertEqual(Config, aec_consensus:get_consensus_config_at_height(H))
+            ?assertEqual(consensus_config(Config), aec_consensus:get_consensus_config_at_height(H))
          end || H <- Heights]
     end,
 

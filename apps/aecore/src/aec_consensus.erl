@@ -350,9 +350,9 @@ consensus_config_or_default(Default) ->
             Default;
         M when is_map(M) ->
             Conf = maps:fold(
-                     fun(H, #{<<"type">> := ConsensusName} = _V, Acc) ->
-                             CfgKey = [<<"chain">>, <<"consensus">>, H, <<"config">>],
-                             ConsensusConfig = aeu_env:config(CfgKey, aecore, consensus),
+                     fun(H, #{<<"type">> := ConsensusName} = V, Acc) ->
+                             ConsensusConfig = aeu_env:config_with_defaults(maps:get(<<"config">>, V, #{}),
+                                                                            [<<"chain">>, <<"consensus">>, H, <<"config">>]),
                              Acc#{binary_to_integer(H) =>
                                       {consensus_module_from_type(ConsensusName),
                                        ConsensusConfig}}

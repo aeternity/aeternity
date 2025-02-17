@@ -147,8 +147,11 @@ config(CfgKey, App, EnvKey) ->
     config(CfgKey, App, EnvKey, undefined).
 
 config(CfgKey, App, EnvKey, Default) ->
-    {ok, SchemaDefaults} = schema_default_values(CfgKey),
     Config = config_value(CfgKey, App, EnvKey, Default),
+    config_with_defaults(Config, CfgKey).
+
+config_with_defaults(Config, CfgKey) ->
+    {ok, SchemaDefaults} = schema_default_values(CfgKey),
     deep_merge(SchemaDefaults, Config).
 
 %% Lookup configuration value in predefined order and return the first match:
@@ -176,7 +179,7 @@ find_config(_, []) ->
 
 find_config_(K, user_config       ) -> user_map(K);
 find_config_(_, {env, App, EnvKey}) -> get_env(App, EnvKey);
-find_config_(K, schema_default    ) -> schema_default(K);
+find_config_(K, schema_default    ) -> schema_default_values(K);
 find_config_(_, {value, V}        ) -> {ok, V}.
 
 
@@ -335,7 +338,7 @@ schema_default_values(Path) ->
 
 deep_merge(Map1, Map2) ->
     MapFold =
-        fun(MergeFun, M1, M2) ->
+        fun(MergeFun, M1, M2) when is_map(M2)->
             maps:fold(
                 fun(K, V1, Acc) ->
                     Val =
@@ -345,7 +348,8 @@ deep_merge(Map1, Map2) ->
                         end,
                     maps:put(K, Val, Acc)
                 end,
-                M2, M1) %% M2 overwrites M1
+                M2, M1); %% M2 overwrites M1
+            (_MergeFun, _M1, M2) -> M2
         end,
     DeepMerge =
         fun Merge(V1, V2) when is_map(V2) ->

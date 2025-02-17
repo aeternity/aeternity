@@ -44,7 +44,16 @@ extra_checks_test_() ->
       {"User configuration cannot contain 'fork_management > fork > version' lower or equal to Minerva protocol version (2)",
        fun invalid_fork_signalling_version/0},
       {"User configuration cannot contain 'fork_management > fork > version' lower or equal to the last scheduled hard fork version",
-       fun invalid_fork_signalling_version2/0}]
+       fun invalid_fork_signalling_version2/0},
+      {"Valid schema for each supported type",
+       fun valid_schema_types/0},
+      {"Default values from the configuration schema for each type",
+       fun schema_defaults/0},
+      {"User configuration overwrites schema defaults",
+       fun user_config_overwrites_schema_defaults/0},
+      {"Environment config overwrites schema defaults",
+       fun env_overwrites_schema_defaults/0}]
+
      ++ positive_extra_checks_tests()}.
 
 extra_network_id_checks_test_() ->
@@ -64,6 +73,77 @@ extra_network_id_checks_test_() ->
       {"User configuration cannot contain more config properties for ae_mainnet than 'fork_management > fork > enabled'",
        fun() -> invalid_fork_signalling_network_config(<<"ae_mainnet">>) end}]
     }.
+
+valid_schema_types() ->
+    ?assertMatch({ok, #{<<"type">> := <<"boolean">>, <<"default">> := true}},
+                 aeu_env:schema([<<"chain">>, <<"persist">>])),
+    ?assertMatch({ok, #{<<"type">> := <<"string">>, <<"default">> := <<"data">>}},
+                 aeu_env:schema([<<"chain">>, <<"db_path">>])),
+    ?assertMatch({ok, #{<<"type">> := <<"integer">>, <<"default">> := 3}},
+                 aeu_env:schema([<<"chain">>, <<"db_write_max_retries">>])),
+    ?assertMatch({ok, #{<<"type">> := <<"array">>, <<"items">> := #{<<"default">> := []}}},
+                 aeu_env:schema([<<"chain">>, <<"protocol_beneficiaries">>])),
+    ?assertMatch({ok, #{<<"type">> := <<"object">>, <<"properties">> := _}},
+                 aeu_env:schema([<<"chain">>, <<"currency">>])),
+    ?assertMatch({ok, #{<<"type">> := <<"object">>, <<"patternProperties">> := _}},
+                 aeu_env:schema([<<"chain">>, <<"consensus">>])),
+    ?assertMatch({ok, #{<<"type">> := <<"object">>, <<"properties">> := #{<<"type">> := _, <<"config">> := _}}},
+                 aeu_env:schema([<<"chain">>, <<"consensus">>, <<"0">>])),
+    ?assertMatch({ok, #{<<"type">> := <<"object">>, <<"properties">> := _}},
+                 aeu_env:schema([<<"chain">>, <<"consensus">>, <<"0">>, <<"config">>])),
+    ok.
+
+schema_defaults() ->
+    ?assertEqual({ok, true}, aeu_env:schema_default_values([<<"chain">>, <<"persist">>])),
+    ?assertEqual({ok, <<"data">>}, aeu_env:schema_default_values([<<"chain">>, <<"db_path">>])),
+    ?assertEqual({ok, 3}, aeu_env:schema_default_values([<<"chain">>, <<"db_write_max_retries">>])),
+    ?assertEqual({ok, []}, aeu_env:schema_default_values([<<"chain">>, <<"protocol_beneficiaries">>])),
+    ?assertEqual({ok, #{<<"name">> => <<"aeternity">>,
+                        <<"subunit">> => <<"aetto">>,
+                        <<"subunits_per_unit">> => 1000000000000000000,
+                        <<"symbol">> => <<"AE">>}},
+                 aeu_env:schema_default_values([<<"chain">>, <<"currency">>])),
+    ?assertMatch({ok, undefined}, aeu_env:schema_default_values([<<"chain">>, <<"consensus">>])),
+    ?assertMatch({ok, #{<<"config">> := #{<<"child_block_time">> := 3000,
+                              <<"parent_chain">> := #{<<"consensus">> := #{<<"type">> := <<"AE2AE">>}},
+                              <<"stakers">> := []},
+                        <<"type">> := <<"hyperchain">>}},
+                 aeu_env:schema_default_values([<<"chain">>, <<"consensus">>, <<"0">>])),
+    ?assertMatch({ok, #{<<"child_block_time">> := 3000,
+                        <<"parent_chain">> := #{<<"consensus">> := #{<<"type">> := <<"AE2AE">>}},
+                        <<"stakers">> := []}},
+                 aeu_env:schema_default_values([<<"chain">>, <<"consensus">>, <<"0">>, <<"config">>])),
+    ok.
+
+user_config_overwrites_schema_defaults() ->
+    {Dir, DataDir} = get_test_config_base(),
+    Config = filename:join([Dir, DataDir, "epoch_defaults.yaml"]),
+    {ok, {UserMap, UserConfig}} = aeu_env:check_config(Config),
+    ok = mock_user_config(UserMap, UserConfig),
+
+    ?assertEqual({ok, true}, aeu_env:schema_default([<<"chain">>, <<"persist">>])),
+    ?assertEqual(false, aeu_env:config_value([<<"chain">>, <<"persist">>], aecore, tests)),
+
+    ?assertEqual({ok, <<"data">>}, aeu_env:schema_default([<<"chain">>, <<"db_path">>])),
+    ?assertEqual(<<"test">>, aeu_env:config_value([<<"chain">>, <<"db_path">>], aecore, tests)),
+
+    ?assertEqual({ok, 3}, aeu_env:schema_default([<<"chain">>, <<"db_write_max_retries">>])),
+    ?assertEqual(99, aeu_env:config_value([<<"chain">>, <<"db_write_max_retries">>], aecore, tests)),
+
+    ?assertEqual({ok, []}, aeu_env:schema_default_values([<<"chain">>, <<"protocol_beneficiaries">>])),
+    ?assertEqual([<<"ak_DummyPubKeyDoNotEverUse999999999999999999999999999:120">>],
+                 aeu_env:config_value([<<"chain">>, <<"protocol_beneficiaries">>], aecore, tests)),
+
+    ok.
+
+env_overwrites_schema_defaults() ->
+    application:set_env(aecore, consensus, #{<<"0">> => #{<<"type">> => <<"test">>, <<"config">> => a}}),
+    ?assertEqual(#{<<"0">> => #{<<"type">> => <<"test">>, <<"config">> => a}},
+                 aeu_env:config_value([<<"chain">>, <<"consensus">>, <<"0">>, <<"config">>], aecore, consensus)),
+    ?assertEqual(a, aeu_env:config_with_defaults(a, [<<"chain">>, <<"consensus">>, <<"0">>, <<"config">>])),
+    ok = application:unset_env(aecore, consensus),
+
+    ok.
 
 positive_extra_checks_tests() ->
     [{"Example user configuration file passes checks further to the schema: " ++ Config, %% For enabling files to be linked from wiki as examples.
