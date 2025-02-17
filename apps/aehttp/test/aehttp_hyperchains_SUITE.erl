@@ -1074,10 +1074,15 @@ hole_production(Config, N) ->
 
     %% Get the schedule
     ChildHeight = rpc(Node, aec_chain, top_height, []),
-    {ok, #{validators := Validators, epoch := Epoch, length := Length}} =
+    {ok, #{validators := Validators, epoch := Epoch, length := Length, first := First}} =
         rpc(Node, aec_chain_hc, epoch_info, []),
+
     {_, Seed} = get_entropy(Node, Epoch),
-    {ok, Schedule} = rpc(Node, aec_chain_hc, validator_schedule, [ChildHeight, Seed, Validators, Length]),
+    {ok, Schedule0} = rpc(Node, aec_chain_hc, validator_schedule, [ChildHeight, Seed, Validators, Length]),
+
+    %% It seems sometimes we end up not at the first block of the epoch...
+    Offset = ChildHeight + 1 - First,
+    {_, Schedule} = lists:split(Offset, Schedule0),
 
     NextProducer = hd(Schedule),
     NextProdNode = producer_node(NextProducer, Config),
@@ -1087,7 +1092,7 @@ hole_production(Config, N) ->
 
     NHoles = blocks_by_node(NextProdNode, Schedule, Config),
 
-    if NHoles == Length ->
+    if NHoles == Length - Offset ->
         ct:log("Skip test, validators all from same node!");
        true ->
         ct:log("Produce on: ~p", [AllNodes -- [NextProdNode]]),
