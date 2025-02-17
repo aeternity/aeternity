@@ -1,4 +1,5 @@
 -module(aehttp_hyperchains_SUITE).
+
 -import(aecore_suite_utils, [ http_request/4
                             , external_address/0
                             , rpc/3
@@ -39,8 +40,7 @@
          check_default_pin/1,
          check_finalize_info/1,
          sanity_check_vote_tx/1,
-         hole_production/1,
-         basic_penalty/1
+         hole_production/1
         ]).
 
 -include_lib("stdlib/include/assert.hrl").
@@ -209,11 +209,6 @@ groups() ->
     , {config, [sequence],
           [ start_two_child_nodes,
             initial_validators
-          ]}
-    , {penalties, [sequence],
-          [ start_two_child_nodes
-          ,  produce_first_epoch
-          ,  basic_penalty
           ]}
     ].
 
@@ -836,41 +831,30 @@ verify_rewards(Config) ->
     mine_to_next_epoch(Node, Config),
     mine_to_last_block_in_epoch(Node, Config),
 
-    GetValidatorBalance =
-        fun(Who, Ct) ->
-            {ok, Bal} = inspect_validator(Ct, Who, get_total_balance, Config),
-            Bal
-        end,
-    Validators = [{?ALICE, AliceCt}, {?BOB, BobCt}, {?LISA, LisaCt}],
-
     %% Record the state
-    PreRewardState = [ {Who, GetValidatorBalance(Who, Ct)} || {Who, Ct} <- Validators ],
+    {ok, AliceTot0} = inspect_validator(AliceCt, ?ALICE, get_total_balance, Config),
+    {ok, BobTot0} = inspect_validator(BobCt, ?BOB, get_total_balance, Config),
+    {ok, LisaTot0} = inspect_validator(LisaCt, ?LISA, get_total_balance, Config),
 
     %% Produce final block to distribute rewards.
     {ok, _} = produce_cc_blocks(Config, 1),
 
     %% Record the new state
-    PostRewardState = [ {Who, GetValidatorBalance(Who, Ct)} || {Who, Ct} <- Validators ],
+    {ok, AliceTot1} = inspect_validator(AliceCt, ?ALICE, get_total_balance, Config),
+    {ok, BobTot1} = inspect_validator(BobCt, ?BOB, get_total_balance, Config),
+    {ok, LisaTot1} = inspect_validator(LisaCt, ?LISA, get_total_balance, Config),
 
     #{first := First, last := Last} = EpochInfo,
     {ok, BlocksInGen} = get_generations(Node, First, Last),
 
     Rewards = calc_rewards(BlocksInGen, Node),
 
-    CheckRewards =
-        fun(Who, Rs, PreS, PostS) ->
-            case maps:get(pubkey(Who), Rs, undefined) of
-                undefined ->
-                    ct:log("~p got no rewards", [user(Who)]);
-                Reward ->
-                    {_, Tot0} = lists:keyfind(Who, 1, PreS),
-                    {_, Tot1} = lists:keyfind(Who, 1, PostS),
-                    ct:log("~p ~p -> ~p expected reward ~p", [user(Who), Tot0, Tot1, Reward]),
-                    ?assertEqual(Tot0 + Reward, Tot1)
-            end
-        end,
-
-    [ CheckRewards(Who, Rewards, PreRewardState, PostRewardState) || Who <- [?ALICE, ?BOB, ?LISA] ],
+    ct:log("Alice ~p -> ~p expected reward ~p", [AliceTot0, AliceTot1, maps:get(pubkey(?ALICE), Rewards)]),
+    ct:log("Bob ~p -> ~p expected reward ~p", [BobTot0, BobTot1, maps:get(pubkey(?BOB_SIGN), Rewards)]),
+    ct:log("Lisa ~p -> ~p expected reward ~p", [LisaTot0, LisaTot1, maps:get(pubkey(?LISA), Rewards)]),
+    ?assertEqual(AliceTot0 + maps:get(pubkey(?ALICE), Rewards, 0), AliceTot1),
+    ?assertEqual(BobTot0 + maps:get(pubkey(?BOB_SIGN), Rewards, 0), BobTot1),
+    ?assertEqual(LisaTot0 + maps:get(pubkey(?LISA), Rewards, 0), LisaTot1),
 
     %% Check that MainStaking knows the right epoch.
     {ok, #{epoch := Epoch}} = rpc(Node, aec_chain_hc, epoch_info, []),
@@ -1108,20 +1092,18 @@ hole_production(Config, N) ->
 
     NHoles = blocks_by_node(NextProdNode, Schedule, Config),
 
-    Skip = NHoles > 3 orelse NHoles == Length - Offset,
-    if Skip ->
-        ct:log("Skip test, too many holes in a row potential timing issue!");
+    if NHoles == Length - Offset ->
+        ct:log("Skip test, validators all from same node!");
        true ->
         ct:log("Produce on: ~p", [AllNodes -- [NextProdNode]]),
         {ok, Bs} = produce_cc_blocks(Config, 1, #{prod_nodes => AllNodes -- [NextProdNode]}),
-        ct:pal("Expected ~p holes, got ~p", [NHoles, length(Bs) - 1]),
+        ct:log("Expected ~p holes, got ~p", [NHoles, length(Bs) - 1]),
         ?assert(NHoles + 1 == length(Bs))
     end,
 
-    N1 = if Skip -> N; true -> N - 1 end,
-    if N1 > 0 ->
+    if N > 1 ->
         produce_until_next_epoch(Config),
-        hole_production(Config, N1);
+        hole_production(Config, N - 1);
        true ->
         ok
     end.
@@ -1339,65 +1321,8 @@ check_finalize_info(Config) ->
     ?assertEqual(Producer, LastLeader),
     ?assert(TotalVotersStake >= trunc(math:ceil((2 * TotalStake) / 3))).
 
-%%%=============================================================================
-%%% Penalties
-%%%=============================================================================
-
-basic_penalty(Config) ->
-    [{Node, _, _, _} | _] = ?config(nodes, Config),
-
-    AliceCt = fetch_validator_contract(?ALICE, Config),
-    LisaCt = fetch_validator_contract(?LISA, Config),
-
-    {ok, AliceTot0} = inspect_validator(AliceCt, ?ALICE, get_total_balance, Config),
-    {ok, LisaTot0} = inspect_validator(LisaCt, ?LISA, get_total_balance, Config),
-    ct:log("Alice, Lisa bal: ~p ~p", [AliceTot0, LisaTot0]),
-    R = reported_penalty_contract_call(Config, ?ALICE, ?LISA, math:pow(10,6) * 1111, 50, 1, pubkey(?LISA)),
-    ct:log("Contract Call ~p", [R]),
-    mine_to_next_epoch(Node, Config),
-    {ok, AliceTot1} = inspect_validator(AliceCt, ?ALICE, get_total_balance, Config),
-    {ok, LisaTot1} = inspect_validator(LisaCt, ?LISA, get_total_balance, Config),
-    ct:log("Alice, Lisa bal: ~p ~p", [AliceTot1, LisaTot1]),
-
-    mine_to_next_epoch(Node, Config),
-    {ok, AliceTot2} = inspect_validator(AliceCt, ?ALICE, get_total_balance, Config),
-    {ok, LisaTot2} = inspect_validator(LisaCt, ?LISA, get_total_balance, Config),
-    ct:log("Alice, Lisa bal: ~p ~p", [AliceTot2, LisaTot2]),
-
-    mine_to_next_epoch(Node, Config),
-    {ok, AliceTot3} = inspect_validator(AliceCt, ?ALICE, get_total_balance, Config),
-    {ok, LisaTot3} = inspect_validator(LisaCt, ?LISA, get_total_balance, Config),
-    ct:log("Alice, Lisa bal: ~p ~p", [AliceTot3, LisaTot3]),
-
-    ok.
-
-reported_penalty_contract_call(Config, Offender, Reporter, Amount, Percentage, Height, FromPubKey) ->
-    Penalty = integer_to_list(trunc(Amount)), %% Amount AE
-    HeightInt = integer_to_list(trunc(Height)), %% Height
-    PercArg = integer_to_list(trunc(Percentage)),
-    APubO = binary_to_list(aeser_api_encoder:encode(account_pubkey, pubkey(Offender))),
-    APubR = binary_to_list(aeser_api_encoder:encode(account_pubkey, pubkey(Reporter))),
-
-    Tx = contract_call(?config(election_contract, Config), src(?HC_CONTRACT, Config),
-                        "add_reported_penalty", [HeightInt, Penalty, APubO, APubR, PercArg], 0, FromPubKey),
-
-    NetworkId = ?config(network_id, Config),
-    SignedTx = sign_tx(Tx, privkey(who_by_pubkey(FromPubKey)), NetworkId),
-    rpc:call(?NODE1_NAME, aec_tx_pool, push, [SignedTx, tx_received]).
-
-penalty_contract_call(Config, Offender, Amount, Height, FromPubKey) ->
-    Penalty = integer_to_list(trunc(Amount)), %% Amount AE
-    HeightInt = integer_to_list(trunc(Height)), %% Height
-    APubO = binary_to_list(aeser_api_encoder:encode(account_pubkey, pubkey(Offender))),
-
-    Tx = contract_call(?config(election_contract, Config), src(?HC_CONTRACT, Config),
-                        "add_penalty", [HeightInt, Penalty, APubO], 0, FromPubKey),
-
-    NetworkId = ?config(network_id, Config),
-    SignedTx = sign_tx(Tx, privkey(who_by_pubkey(FromPubKey)), NetworkId),
-    rpc:call(?NODE1_NAME, aec_tx_pool, push, [SignedTx, tx_received]).
-
 %%% --------- pinning helpers
+
 
 wait_for_ps(Event) ->
     receive
@@ -1425,8 +1350,6 @@ mine_to_next_epoch(Node, Config) ->
 pubkey({Pubkey, _, _}) -> Pubkey.
 
 privkey({_, Privkey, _}) -> Privkey.
-
-user({_, _, User}) -> User.
 
 who_by_pubkey(Pubkey) ->
     Alice = pubkey(?ALICE),
@@ -1818,7 +1741,7 @@ produce_to_cc_height(Config, TopHeight, GoalHeight, ParentProduce, PNodes) ->
         true ->
             NewParentProduce =
                 case ParentProduce of
-                    [{CH, PBs} | PRest ] when CH =< TopHeight+1 ->
+                    [{CH, PBs} | PRest ] when CH == TopHeight+1 ->
                         mine_key_blocks(?PARENT_CHAIN_NODE_NAME, PBs),
                         PRest;
                     PP -> PP
