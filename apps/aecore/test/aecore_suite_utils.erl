@@ -562,7 +562,18 @@ make_shortcut(Config) ->
     ok = filelib:ensure_dir(filename:join(PrivDir, "foo")),
     Shortcut = shortcut_dir(Config),
     delete_file(Shortcut),
-    ok = symlink(PrivDir, Shortcut).
+    RelPrivDir = rel_path(PrivDir, filename:dirname(Shortcut)),
+    ok = symlink(RelPrivDir, Shortcut).
+
+rel_path(Path, Root) ->
+    rel_path(filename:split(Path), filename:split(Root), Path).
+
+rel_path([Dir | Ps], [Dir | Rs], Orig) ->
+    rel_path(Ps, Rs, Orig);
+rel_path(Ps, [], _) ->
+    filename:join(Ps);
+rel_path(_, _, Orig) ->
+    Orig.
 
 start_node(N, Config) ->
     start_node(N, Config, []).
