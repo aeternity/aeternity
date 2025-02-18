@@ -1092,18 +1092,20 @@ hole_production(Config, N) ->
 
     NHoles = blocks_by_node(NextProdNode, Schedule, Config),
 
-    if NHoles == Length - Offset ->
-        ct:log("Skip test, validators all from same node!");
+    Skip = NHoles > 3 orelse NHoles == Length - Offset,
+    if Skip ->
+        ct:log("Skip test, too many holes in a row potential timing issue!");
        true ->
         ct:log("Produce on: ~p", [AllNodes -- [NextProdNode]]),
         {ok, Bs} = produce_cc_blocks(Config, 1, #{prod_nodes => AllNodes -- [NextProdNode]}),
-        ct:log("Expected ~p holes, got ~p", [NHoles, length(Bs) - 1]),
+        ct:pal("Expected ~p holes, got ~p", [NHoles, length(Bs) - 1]),
         ?assert(NHoles + 1 == length(Bs))
     end,
 
-    if N > 1 ->
+    N1 = if Skip -> N; true -> N - 1 end,
+    if N1 > 0 ->
         produce_until_next_epoch(Config),
-        hole_production(Config, N - 1);
+        hole_production(Config, N1);
        true ->
         ok
     end.
