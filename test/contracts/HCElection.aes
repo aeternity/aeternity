@@ -4,7 +4,7 @@ include "Pair.aes"
 contract interface MainStaking =
   entrypoint sorted_validators : () => list((address * int))
   entrypoint lock_stake  : (int) => list((address * int))
-  entrypoint add_rewards : (int, list(address * int)) => unit
+  entrypoint add_rewards : (int, list(address * int), int) => unit
 
 main contract HCElection =
   record epoch_info =
@@ -41,6 +41,7 @@ main contract HCElection =
     { main_staking_ct       : MainStaking,
       leader                : address,
       rewards               : map(int, list(address * int)),
+      penalty_reward_diff   : int,
       epoch                 : int,
       epochs                : map(int, epoch_info),
       pin                   : option(bytes()),
@@ -56,6 +57,7 @@ main contract HCElection =
       epochs                = {},
       pin                   = None,
       finalize              = None,
+      penalty_reward_diff   = 0,
       pin_reward            = {base = 0, current = 0, carry_over = 0} }
 
   stateful entrypoint init_epochs(epoch_length : int, base_pin_reward : int) =
@@ -135,6 +137,21 @@ main contract HCElection =
     assert_protocol_call()
     put(state{rewards[height = []] @ rs = (to, Call.value) :: rs})
 
+
+
+  stateful entrypoint add_penalty(height : int, penalty : int, to : address) =
+      //assert_protocol_call()
+      put(state{rewards[height = []] @ rs = (to, (-penalty)) :: rs})
+      put(state{penalty_reward_diff @ prd = prd + (penalty)})
+
+  stateful entrypoint add_reported_penalty(height : int, penalty : int, to : address, reporter : address) =
+      //assert_protocol_call()
+      put(state{rewards[height = []] @ rs = (to, (-penalty)) :: rs})
+      let reporter_reward = (penalty / 2)
+      put(state{rewards[height = []] @ rs = (reporter, reporter_reward) :: rs})
+      put(state{penalty_reward_diff @ prd= prd + (penalty - reporter_reward)})
+
+
   stateful entrypoint finalize_epoch(epoch_number : int, fork : bytes(), epoch_length : int, pc_hash : bytes(), producer : address, votes : list(vote)) =
     let epoch = state.epoch
     let last = state.epochs[epoch].start + state.epochs[epoch].length - 1
@@ -207,7 +224,10 @@ main contract HCElection =
   stateful function pay_rewards(e : int) =
     let ei = state.epochs[e]
     let (rewards, tot) = pay_rewards_(ei.start, ei.length, {}, 0)
-    state.main_staking_ct.add_rewards(value = tot, e, rewards)
+    let pen_diff = state.penalty_reward_diff
+    let pool_adjusted_total = tot + pen_diff
+    state.main_staking_ct.add_rewards(value = pool_adjusted_total, e, rewards, pen_diff)
+    put(state{penalty_reward_diff = 0})
 
   stateful function
     pay_rewards_(_, 0, acc, tot) = (Map.to_list(acc), tot)

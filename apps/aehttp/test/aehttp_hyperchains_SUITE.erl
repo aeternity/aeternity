@@ -1,5 +1,4 @@
 -module(aehttp_hyperchains_SUITE).
-
 -import(aecore_suite_utils, [ http_request/4
                             , external_address/0
                             , rpc/3
@@ -40,7 +39,8 @@
          check_default_pin/1,
          check_finalize_info/1,
          sanity_check_vote_tx/1,
-         hole_production/1
+         hole_production/1,
+         basic_penalty/1
         ]).
 
 -include_lib("stdlib/include/assert.hrl").
@@ -209,6 +209,11 @@ groups() ->
     , {config, [sequence],
           [ start_two_child_nodes,
             initial_validators
+          ]}
+    , {penalties, [sequence],
+          [ start_two_child_nodes
+          ,  produce_first_epoch
+          ,  basic_penalty
           ]}
     ].
 
@@ -1317,8 +1322,64 @@ check_finalize_info(Config) ->
     ?assertEqual(Producer, LastLeader),
     ?assert(TotalVotersStake >= trunc(math:ceil((2 * TotalStake) / 3))).
 
-%%% --------- pinning helpers
+%%%=============================================================================
+%%% Penalties
+%%%=============================================================================
 
+basic_penalty(Config) ->
+    [{Node, _, _, _} | _] = ?config(nodes, Config),
+
+    AliceCt = fetch_validator_contract(?ALICE, Config),
+    LisaCt = fetch_validator_contract(?LISA, Config),
+
+    {ok, AliceTot0} = inspect_validator(AliceCt, ?ALICE, get_total_balance, Config),
+    {ok, LisaTot0} = inspect_validator(LisaCt, ?LISA, get_total_balance, Config),
+    ct:log("Alice, Lisa bal: ~p ~p", [AliceTot0, LisaTot0]),
+    R = reported_penalty_contract_call(Config, ?ALICE, ?LISA, math:pow(10,6) * 1111, 1, pubkey(?LISA)),
+    ct:log("Contract Call ~p", [R]),
+    mine_to_next_epoch(Node, Config),
+    {ok, AliceTot1} = inspect_validator(AliceCt, ?ALICE, get_total_balance, Config),
+    {ok, LisaTot1} = inspect_validator(LisaCt, ?LISA, get_total_balance, Config),
+    ct:log("Alice, Lisa bal: ~p ~p", [AliceTot1, LisaTot1]),
+
+    mine_to_next_epoch(Node, Config),
+    {ok, AliceTot2} = inspect_validator(AliceCt, ?ALICE, get_total_balance, Config),
+    {ok, LisaTot2} = inspect_validator(LisaCt, ?LISA, get_total_balance, Config),
+    ct:log("Alice, Lisa bal: ~p ~p", [AliceTot2, LisaTot2]),
+
+    mine_to_next_epoch(Node, Config),
+    {ok, AliceTot3} = inspect_validator(AliceCt, ?ALICE, get_total_balance, Config),
+    {ok, LisaTot3} = inspect_validator(LisaCt, ?LISA, get_total_balance, Config),
+    ct:log("Alice, Lisa bal: ~p ~p", [AliceTot3, LisaTot3]),
+
+    ok.
+
+reported_penalty_contract_call(Config, Offender, Reporter, Amount, Height, FromPubKey) ->
+    Penalty = integer_to_list(trunc(Amount)), %% Amount AE
+    HeightInt = integer_to_list(trunc(Height)), %% Height
+    APubO = binary_to_list(aeser_api_encoder:encode(account_pubkey, pubkey(Offender))),
+    APubR = binary_to_list(aeser_api_encoder:encode(account_pubkey, pubkey(Reporter))),
+
+    Tx = contract_call(?config(election_contract, Config), src(?HC_CONTRACT, Config),
+                        "add_reported_penalty", [HeightInt, Penalty, APubO, APubR], 0, FromPubKey),
+
+    NetworkId = ?config(network_id, Config),
+    SignedTx = sign_tx(Tx, privkey(who_by_pubkey(FromPubKey)), NetworkId),
+    rpc:call(?NODE1_NAME, aec_tx_pool, push, [SignedTx, tx_received]).
+
+penalty_contract_call(Config, Offender, Amount, Height, FromPubKey) ->
+    Penalty = integer_to_list(trunc(Amount)), %% Amount AE
+    HeightInt = integer_to_list(trunc(Height)), %% Height
+    APubO = binary_to_list(aeser_api_encoder:encode(account_pubkey, pubkey(Offender))),
+
+    Tx = contract_call(?config(election_contract, Config), src(?HC_CONTRACT, Config),
+                        "add_penalty", [HeightInt, Penalty, APubO], 0, FromPubKey),
+
+    NetworkId = ?config(network_id, Config),
+    SignedTx = sign_tx(Tx, privkey(who_by_pubkey(FromPubKey)), NetworkId),
+    rpc:call(?NODE1_NAME, aec_tx_pool, push, [SignedTx, tx_received]).
+
+%%% --------- pinning helpers
 
 wait_for_ps(Event) ->
     receive
