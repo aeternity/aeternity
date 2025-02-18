@@ -155,9 +155,12 @@ the temporary directory that was created, do:
       variable expansion on the configuration values. E.g., if an application
       `x` has a configuration entry `{log_dir, "$HOME/log"}`, then calling
       `setup:get_env(x, log_dir)` will return something like
-      "/home/username/log". (This only works on variables defined via `setup`
-      itself, not general shell environment variables - `$HOME` is a
-      predefined special case.)
+      "/home/username/log". *This only works on variables defined by `setup`
+      itself, not operating system environment variables. Note in particular
+      that `$HOME` does not mean the current user's home directory - it
+      refers to the `setup` configuration key `{home, Dir}` meaning the
+      root directory of the Aeternity system; if not set, the current
+      directory is used.*
     - Setup has a configuration option `data_dir` which the Aeternity system
       uses to know where its database is located. The directory needs to
       already exist and be populated at system start, else the startup fails.

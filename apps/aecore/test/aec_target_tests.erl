@@ -46,6 +46,7 @@ target_adj_test_() ->
 
 setup() ->
     InitialApps = {running_apps(), loaded_apps()},
+    {ok, _} = application:ensure_all_started(setup),
     {ok, _} = application:ensure_all_started(aeutils),
     meck:new(aec_txs_trees, [passthrough]),
     meck:new(aec_conductor, [passthrough]),
