@@ -707,7 +707,11 @@ assert_not_illegal_fork_or_orphan(Node, Origin, State) ->
     TopHeight = node_height(Top),
     Height    = node_height(Node),
     case assert_height_delta(Origin, Height, TopHeight) of
-        true -> ok;
+        true ->
+            case assert_eoe(Node, Top) of
+                true -> ok;
+                false -> aec_block_insertion:abort_state_transition(invalid_eoe)
+            end;
         false ->
             aec_block_insertion:abort_state_transition({too_far_below_top, Height, TopHeight})
     end.
@@ -732,6 +736,29 @@ assert_height_delta(sync, Height, TopHeight) ->
     end;
 assert_height_delta(undefined, Height, TopHeight) ->
     Height >= ( TopHeight - gossip_allowed_height_from_top() ).
+
+assert_eoe(Node, Top) ->
+    Header = node_header(Node),
+    case aec_headers:is_eoe(Header) of
+        true ->
+            case aec_headers:type(Header) of
+                micro ->
+                    true;
+                key ->
+                    %% Previous micro header
+                    TopHeader = node_header(Top),
+                    case aec_headers:is_eoe(TopHeader) of
+                        true ->
+                            Validator = aec_headers:miner(Header),
+                            Txs = aec_blocks:txs(aec_db:get_block(node_prev_hash(Node))),
+                            lists:any(fun(SignedTx) -> aec_eoe_vote:validate_epoch_call_transaction(SignedTx, Validator) end, Txs);
+                        false ->
+                            false
+                    end
+            end;
+        false ->
+            true
+    end.
 
 update_state_tree(Node, State, Ctx) ->
     {ok, Trees, ForkInfoIn} = get_state_trees_in(Node, aec_block_insertion:ctx_prev(Ctx), true),
@@ -861,7 +888,7 @@ handle_top_block_change(OldTopNode, NewTopDifficulty, Node, Events, State) ->
                     %% We have a fork. Compare the difficulties.
                     {ok, OldTopDifficulty} = db_find_difficulty(OldTopHash),
                     case cmp_difficulty(OldTopDifficulty, NewTopDifficulty,
-                                        node_height(OldTopNode), node_height(Node)) of
+                                        OldTopNode, Node) of
                         true ->
                             State1 = set_top_block_node(OldTopNode, State), %% Reset
                             {State1, Events};
@@ -873,11 +900,27 @@ handle_top_block_change(OldTopNode, NewTopDifficulty, Node, Events, State) ->
             end
     end.
 
-cmp_difficulty(OldDifficulty, NewDifficulty, OldHeight, NewHeight) ->
+cmp_difficulty(OldDifficulty, NewDifficulty, OldNode, NewNode) ->
     case aec_consensus:get_consensus_type() of
-        pow -> OldDifficulty >= NewDifficulty;
-        pos -> OldDifficulty > NewDifficulty orelse
-                  (OldDifficulty == NewDifficulty andalso OldHeight > NewHeight)
+        pow ->
+            OldDifficulty >= NewDifficulty;
+        pos ->
+            OldHeader = node_header(OldNode),
+            case aec_headers:is_eoe(OldHeader) of
+                true ->
+                    true;
+                false ->
+                    NewHeader = node_header(NewNode),
+                    case aec_headers:is_eoe(NewHeader) of
+                        true ->
+                            false;
+                        false ->
+                            OldHeight = node_height(OldNode),
+                            NewHeight = node_height(NewNode),
+                            OldDifficulty > NewDifficulty orelse
+                                (OldDifficulty == NewDifficulty andalso OldHeight > NewHeight)
+                    end
+            end
     end.
 
 update_main_chain(OldTopHash, NewTopHash, ForkHash, State) ->
