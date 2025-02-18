@@ -3,38 +3,51 @@
 -export([adjust_log_levels/0]).
 
 adjust_log_levels() ->
-    expand_lager_log_root(),
+    set_lager_log_root(),
     aeu_env:check_env(
       aeutils,
       [{[<<"logging">>, <<"hwm">>]     , fun set_hwm/1},
        {[<<"logging">>, <<"level">>]   , fun set_level/1}]).
 
 %% See https://github.com/erlang-lager/lager/issues/557
+%% We want to prevent the log directory from moving during runtime. One
+%% possible scenario might be that someone pecks around in an aeternity
+%% node shell, changes the current working directory and forgets to restore
+%% it. If the log_root setting in lager is a relative path (which it is by
+%% default), this would effectively move the log root.
 %% There are different ways to ensure that the log root is a stable
 %% absolute path (once initialized). This could also be done using
 %% sys.config.src (e.g. `{log_root, "${ROOTDIR}/log"}`, but at the time
 %% of writing, `rebar3 ct` doesn't support `sys_config_src`, and it gets messy
 %% to support both types.
 %%
-%% This setup hook code will likely run after lager has started, but it still
-%% fixes the log root for later. One possible scenario might be that someone
-%% pecks around in an aeternity node shell, changes the current working directory
-%% and forgets to restore it. This would effectively move the logical log_root
-%% in lager, if the setting is a relative path (which is the default).
-%%
-expand_lager_log_root() ->
-    case application:get_env(lager, log_root) of
-        {ok, Root} when is_list(Root) ->
-            case filename:pathtype(Root) of
-                relative ->
-                    application:set_env(lager, log_root,
-                                        filename:absname(Root));
-                absolute ->
-                    ok
-            end;
-        _ ->
-            application:set_env(lager, log_root, setup:log_dir())
-    end.
+%% The setup app must be started before lager, so that this setup hook runs
+%% before lager tries to create the log root directory, and thus only
+%% setup's log_dir setting will determine the log directory location.
+
+set_lager_log_root() ->
+    %% We ignore lager's current `log_root` setting - if it was loaded from
+    %% the boot script, it will simply be the default value (typically just
+    %% "log") from the `lager.app.src` file. Instead, `setup` will decide
+    %% the log directory, and we make sure that the path is an absolute
+    %% path after this point. (If setup's `log_dir` env was not set before,
+    %% the call to setup:log_dir() will set it to $HOME/log.<nodename>.)
+    case is_app_running(lager) of
+        true -> exit(lager_started_before_setup);
+        _ -> ok
+    end,
+    Root = setup:log_dir(),
+    case is_tuple(Root) of
+        true -> exit(invalid_setup_log_dir);
+        _ -> ok
+    end,
+    AbsRoot = case filename:pathtype(Root) of
+                  relative -> filename:absname(Root);
+                  absolute -> Root
+              end,
+    %% also ensure that the setting is not reset by load/reload of the apps
+    ok = application:set_env(lager, log_root, AbsRoot, [{persistent, true}]),
+    ok = application:set_env(setup, log_dir, AbsRoot, [{persistent, true}]).
 
 set_hwm(HWM) when is_integer(HWM) ->
     application:set_env(lager, error_logger_hwm, HWM),
