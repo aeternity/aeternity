@@ -316,7 +316,7 @@ schema_default_values(Path) ->
                                     (_PN, #{<<"type">> := <<"array">>, <<"items">> := #{<<"default">> := []}}) ->
                                          [];
                                     (PN, #{<<"type">> := <<"array">>, <<"items">> := Items}) ->
-                                         [R(PN, Items)];
+                                         R(PN, Items);
                                     (_PN, #{<<"default">> := Def}) -> Def;
                                     (_PN, _) -> undefined
                                  end, Props),
@@ -326,14 +326,16 @@ schema_default_values(Path) ->
                         [];
                     R(PName,
                      #{<<"type">> := <<"array">>, <<"items">> := Items}) ->
-                        [R(PName, Items)];
+                        R(PName, Items);
                     R(_PName, #{<<"default">> := Def}) ->
                         Def;
                     R(_PName, _) ->
                         undefined
                 end,
-            Res = RecursiveDefault(<<"root">>, Tree),
-            {ok, Res}
+            case RecursiveDefault(<<"root">>, Tree) of
+                undefined -> undefined;
+                Res -> {ok, Res}
+            end
       end.
 
 deep_merge(Map1, Map2) ->

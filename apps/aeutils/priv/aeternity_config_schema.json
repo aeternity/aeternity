@@ -1474,22 +1474,22 @@
                     "description" : "Pre-configured responder listen ports",
                     "type" : "array",
                     "items" : {
-                    "type" : "object",
-                    "additionalProperties" : false,
-                    "required" : [
-                        "port"
-                    ],
-                    "properties" : {
-                        "port" : {
-                        "type" : "integer",
-                        "description" : "Listen port number"
-                        },
-                        "acceptors" : {
-                        "type" : "integer",
-                        "description" : "Number of concurrent acceptors on port (default: 1)",
-                        "default" : 1
+                        "type" : "object",
+                        "additionalProperties" : false,
+                        "required" : [
+                            "port"
+                        ],
+                        "properties" : {
+                            "port" : {
+                                "type" : "integer",
+                                "description" : "Listen port number"
+                            },
+                            "acceptors" : {
+                                "type" : "integer",
+                                "description" : "Number of concurrent acceptors on port (default: 1)",
+                                "default" : 1
+                            }
                         }
-                    }
                     }
                 }
             }
@@ -1952,15 +1952,11 @@
                                 "description" : "Tree name",
                                 "type" : "string",
                                 "enum" : ["accounts", "calls", "channels",
-                                          "contracts", "ns", "oracles"]
+                                          "contracts", "ns", "oracles"],
+                                "default" : ["accounts", "calls", "channels",
+                                             "contracts", "ns", "oracles"]
                             },
-                            "minItems" : 1,
-                            "default" : ["accounts",
-                                         "calls",
-                                         "channels",
-                                         "contracts",
-                                         "ns",
-                                         "oracles"]
+                            "minItems" : 1
                         }
                     }
                 }
