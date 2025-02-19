@@ -144,10 +144,10 @@ main contract HCElection =
       put(state{rewards[height = []] @ rs = (to, (-penalty)) :: rs})
       put(state{penalty_reward_diff @ prd = prd + penalty})
 
-  stateful entrypoint add_reported_penalty(height : int, penalty : int, to : address, reporter : address) =
+  stateful entrypoint add_reported_penalty(height : int, penalty : int, to : address, reporter : address, reporter_percentage : int) =
       //assert_protocol_call()
       put(state{rewards[height = []] @ rs = (to, (-penalty)) :: rs})
-      let reporter_reward = (penalty / 2)
+      let reporter_reward = penalty * (100/reporter_percentage)
       put(state{rewards[height = []] @ rs = (reporter, reporter_reward) :: rs})
       put(state{penalty_reward_diff @ prd= prd + (penalty - reporter_reward)})
 
