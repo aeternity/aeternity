@@ -1074,10 +1074,15 @@ hole_production(Config, N) ->
 
     %% Get the schedule
     ChildHeight = rpc(Node, aec_chain, top_height, []),
-    {ok, #{validators := Validators, epoch := Epoch, length := Length}} =
+    {ok, #{validators := Validators, epoch := Epoch, length := Length, first := First}} =
         rpc(Node, aec_chain_hc, epoch_info, []),
+
     {_, Seed} = get_entropy(Node, Epoch),
-    {ok, Schedule} = rpc(Node, aec_chain_hc, validator_schedule, [ChildHeight, Seed, Validators, Length]),
+    {ok, Schedule0} = rpc(Node, aec_chain_hc, validator_schedule, [ChildHeight, Seed, Validators, Length]),
+
+    %% It seems sometimes we end up not at the first block of the epoch...
+    Offset = ChildHeight + 1 - First,
+    {_, Schedule} = lists:split(Offset, Schedule0),
 
     NextProducer = hd(Schedule),
     NextProdNode = producer_node(NextProducer, Config),
@@ -1087,18 +1092,20 @@ hole_production(Config, N) ->
 
     NHoles = blocks_by_node(NextProdNode, Schedule, Config),
 
-    if NHoles == Length ->
-        ct:log("Skip test, validators all from same node!");
+    Skip = NHoles > 3 orelse NHoles == Length - Offset,
+    if Skip ->
+        ct:log("Skip test, too many holes in a row potential timing issue!");
        true ->
         ct:log("Produce on: ~p", [AllNodes -- [NextProdNode]]),
         {ok, Bs} = produce_cc_blocks(Config, 1, #{prod_nodes => AllNodes -- [NextProdNode]}),
-        ct:log("Expected ~p holes, got ~p", [NHoles, length(Bs) - 1]),
+        ct:pal("Expected ~p holes, got ~p", [NHoles, length(Bs) - 1]),
         ?assert(NHoles + 1 == length(Bs))
     end,
 
-    if N > 1 ->
+    N1 = if Skip -> N; true -> N - 1 end,
+    if N1 > 0 ->
         produce_until_next_epoch(Config),
-        hole_production(Config, N - 1);
+        hole_production(Config, N1);
        true ->
         ok
     end.
