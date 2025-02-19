@@ -406,7 +406,7 @@ Secret Key         sk_2KaWrN7mJ5yfj5yikQwepSaPXksgjuYda7QoXtjfVhRfFVDJvs
 Secret Key in hex  ade11d353b3b02f9602aa7073683a1c2b2a5d95c73b99d8fc40eafa82b02e957df8a07444f1195795a2f92915e655696a3a6a330015c58673ae9f73a1abff374
 ```
 
-Note the public and private keys of the account, it will be used below.
+Note the public and private keys of the account, it will be used below in CLI commands and node configuration.
 
 #### Create a Pinner Account
 
@@ -441,7 +441,7 @@ Secret Key         sk_X8YAj8XRzTEsAdQJZDt6n3baCcCs2mHRwiT4rtBYEE8baBLfX
 Secret Key in hex  4469eb651fa54025ccecf2bfe462a2051e690f7b2bb23ea0f49e6f77a7b1763c02b7910b1a543221b15f14b196ed1ba3212031d817a9c09ac200387ab5631a25
 ```
 
-Note the public and private keys of the account, it will be used below.
+Note the public and private keys of the account, it will be used below in CLI commands and node configuration.
 
 ### Configure the Validator Node
 
@@ -610,7 +610,7 @@ Compiler https://v8.compiler.aepps.com/ version 8.0.0
 
 **The staker account must be funded with at least the minimum staking amount (1000000AE in this example) and some extra for transacting. In this example the treasury account can be used by loading it in a wallet**
 
-With the help of the CLI the treasury secret key is imported then used to send tokens to the new staker account:
+With the help of the CLI the treasury secret key is imported then used to send tokens to the new staker account. The treasury private key can be found in `hc_test/economy-unencrypted.yaml`.
 
 ```shell
 aecli account create hc_test/wallets/treasury.js 9ab3bb473a0ec30d4f75f877ee9de0145fbd883e07edab2e4555e156a729be5619bd0a236a9ebd4a47e5fc3961b59ea215515109c007e2ce844b1f543d4e9598
@@ -671,7 +671,7 @@ payable stateful entrypoint new_validator(owner : address, sign_key : address, r
 The same address (`ak_2hT1UTevtPkEpocjEcbbBi14gS1Ba1unHQBrtXupHnKHxk26kU`) will be used for owner and `sign_key`, `restake` will be set to `false`.
 
 ```bash
-aecli contract call new_validator '["ak_2hT1UTevtPkEpocjEcbbBi14gS1Ba1unHQBrtXupHnKHxk26kU", "ak_2hT1UTevtPkEpocjEcbbBi14gS1Ba1unHQBrtXupHnKHxk26kU", false]' hc_test/wallets/staker.json --contractAddress ct_KJgjAXMtRF68AbT5A2aC9fTk8PA4WFv26cFSY27fXs6FtYQHK --contractAci hc_devnet/contracts/MainStaking.aci.json --amount 1000000ae
+aecli contract call new_validator '["ak_2hT1UTevtPkEpocjEcbbBi14gS1Ba1unHQBrtXupHnKHxk26kU", "ak_2hT1UTevtPkEpocjEcbbBi14gS1Ba1unHQBrtXupHnKHxk26kU", false]' hc_test/wallets/staker.json --contractAddress ct_KJgjAXMtRF68AbT5A2aC9fTk8PA4WFv26cFSY27fXs6FtYQHK --contractAci hc_test/contracts/MainStaking.aci.json --amount 1000000ae
 ```
 
 Output:
