@@ -140,13 +140,13 @@ main contract HCElection =
 
 
   stateful entrypoint add_penalty(height : int, penalty : int, to : address) =
-      //assert_protocol_call()
+      assert_protocol_call()
       require(penalty > 0, "Penalty is expressed as a positive integer")
       put(state{rewards[height = []] @ rs = (to, (-penalty)) :: rs})
       put(state{penalty_reward_diff @ prd = prd + penalty})
 
   stateful entrypoint add_reported_penalty(height : int, penalty : int, to : address, reporter : address, reporter_percentage : int) =
-      //assert_protocol_call()
+      assert_protocol_call()
       require(penalty > 0, "Penalty is expressed as a positive integer")
       require(reporter_percentage >= 0 && reporter_percentage =< 100, "reporter reward percentage must be between 0 and 100")
       put(state{rewards[height = []] @ rs = (to, (-penalty)) :: rs})
