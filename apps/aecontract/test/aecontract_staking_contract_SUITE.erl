@@ -22,6 +22,7 @@
           adjust_stake/1,
           withdraw/1,
           rewards/1,
+          penalties/1,
           sorted_validators/1,
           check_withdraw/1
         ]).
@@ -101,6 +102,7 @@ groups() ->
          adjust_stake,
          withdraw,
          rewards,
+         penalties,
          sorted_validators,
          check_withdraw
        ]}
@@ -247,6 +249,37 @@ rewards(_Config) ->
     ?assertEqual(BAvailable, 3 * ?AE),
 
     ok.
+
+    penalties(_Config) ->
+        Trees0 = genesis_trees(),
+        TxEnv = aetx_env:tx_env(?DEFAULT_HEIGHT),
+        {ok, Trees1, #{res := {contract, AliceCt}}} =
+            new_validator_(pubkey(?ALICE), ?VALIDATOR_MIN, TxEnv, Trees0),
+        {ok, Trees2, #{res := {contract, BobCt}}} =
+            new_validator_(pubkey(?BOB), ?VALIDATOR_MIN, false, TxEnv, Trees1, undefined),
+
+        {ok, _, #{res := BaseEmptyPool}} = get_penalty_pool_(TxEnv, Trees2),
+        ?assertEqual(BaseEmptyPool, 0),
+
+        Rewards = [{{address, pubkey(?ALICE)}, -4 * ?AE}, {{address, pubkey(?BOB)}, 2 * ?AE}],
+        {ok, Trees3, #{res := ?UNIT}} =
+            add_penalties_(1, Rewards, 0, 2 * ?AE, TxEnv, Trees2, 2),
+
+        {ok, _, #{res := ABalance}}   = get_total_balance_(AliceCt, ?ALICE, TxEnv, Trees3),
+        {ok, _, #{res := AAvailable}} = get_available_balance_(AliceCt, ?ALICE, TxEnv, Trees3),
+        {ok, _, #{res := BBalance}}   = get_total_balance_(BobCt, ?BOB, TxEnv, Trees3),
+        {ok, _, #{res := BAvailable}} = get_available_balance_(BobCt, ?BOB, TxEnv, Trees3),
+
+        {ok, _, #{res := AfterRewardsPool}} = get_penalty_pool_(TxEnv, Trees3),
+        ?assertEqual(AfterRewardsPool, 2 *? AE),
+
+        ?assertEqual(ABalance, ?VALIDATOR_MIN - 4 * ?AE),
+        ?assertEqual(BBalance, ?VALIDATOR_MIN + 2 * ?AE),
+
+        ?assertEqual(AAvailable, 6 * ?AE),
+        ?assertEqual(BAvailable, 2 * ?AE),
+
+        ok.
 
 sorted_validators(_Config) ->
     Trees0 = genesis_trees(),
@@ -552,7 +585,12 @@ get_available_balance_(ValidatorCt, Validator, TxEnv, Trees0) ->
 
 add_rewards_(Epoch, Rewards, TotRewards, TxEnv, Trees0, LockEpoch) ->
     Contract = staking_contract_address(),
-    CallData = create_calldata("add_rewards", [{integer, Epoch}, Rewards]),
+    CallData = create_calldata("add_rewards", [{integer, Epoch}, Rewards, {integer, 0}]),
+    call_contract(Contract, ?OWNER_PUBKEY, CallData, TotRewards, TxEnv, Trees0, LockEpoch).
+
+add_penalties_(Epoch, Rewards, TotRewards, Pool, TxEnv, Trees0, LockEpoch) ->
+    Contract = staking_contract_address(),
+    CallData = create_calldata("add_rewards", [{integer, Epoch}, Rewards, {integer, Pool}]),
     call_contract(Contract, ?OWNER_PUBKEY, CallData, TotRewards, TxEnv, Trees0, LockEpoch).
 
 sorted_validators_(TxEnv, Trees0) ->
@@ -578,6 +616,11 @@ get_staking_contract_state_(Caller, TxEnv, Trees0) ->
     ContractPubkey = staking_contract_address(),
     {ok, CallData} = aeb_fate_abi:create_calldata("get_state", []),
     call_contract(ContractPubkey, Caller, CallData, 0, TxEnv, Trees0).
+
+get_penalty_pool_(TxEnv, Trees0) ->
+    ContractPubkey = staking_contract_address(),
+    {ok, CallData} = aeb_fate_abi:create_calldata("get_penalty_pool", []),
+    call_contract(ContractPubkey, ?OWNER_PUBKEY, CallData, 0, TxEnv, Trees0).
 
 %% We don't want "get_state" as an entry point
 %% instead we return here the test relevant parts of the state

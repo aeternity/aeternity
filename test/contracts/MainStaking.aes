@@ -20,6 +20,7 @@ main contract MainStaking =
       owners              : map(address, address),
       sign_keys           : map(address, address),
       validator_min_stake : int,
+      penalty_pool        : int,
       current_epoch       : int
     }
 
@@ -28,6 +29,7 @@ main contract MainStaking =
       owners = {},
       sign_keys = {},
       validator_min_stake = validator_min_stake,
+      penalty_pool = 0,
       // The first block is part of epoch 1
       current_epoch = 1 }
 
@@ -106,10 +108,11 @@ main contract MainStaking =
   // ------------------------------------------------------------------------
   // -- Called from HCElection and/or consensus logic
   // ------------------------------------------------------------------------
-  payable stateful entrypoint add_rewards(epoch : int, rewards : list(address * int)) =
+  payable stateful entrypoint add_rewards(epoch : int, rewards : list(address * int), pool_adj : int) =
     assert_protocol_call()
-    let total_rewards = List.foldl((+), 0, List.map(Pair.snd, rewards))
+    let total_rewards = List.foldl((+), 0, List.map(Pair.snd, rewards)) + pool_adj
     require(total_rewards == Call.value, "Incorrect total reward given")
+    put(state{penalty_pool @ pp = pp + pool_adj})
     List.foreach(rewards, (r) => add_reward(epoch, r))
     [ unlock_stake_(v_addr, validator, epoch) | (v_addr, validator) <- Map.to_list(state.validators) ]
     // At the end of epoch X we distribute rewards for X - 1; thus current_epoch
@@ -143,6 +146,9 @@ main contract MainStaking =
 
   entrypoint get_current_epoch() =
     state.current_epoch
+
+  entrypoint get_penalty_pool() =
+    state.penalty_pool
 
   // ------------------------------------------------------------------------
   // --   Internal functions
