@@ -142,7 +142,7 @@ main contract HCElection =
   stateful entrypoint add_penalty(height : int, penalty : int, to : address) =
       //assert_protocol_call()
       put(state{rewards[height = []] @ rs = (to, (-penalty)) :: rs})
-      put(state{penalty_reward_diff @ prd = prd + (penalty)})
+      put(state{penalty_reward_diff @ prd = prd + penalty})
 
   stateful entrypoint add_reported_penalty(height : int, penalty : int, to : address, reporter : address) =
       //assert_protocol_call()
