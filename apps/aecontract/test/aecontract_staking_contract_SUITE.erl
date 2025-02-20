@@ -22,7 +22,8 @@
           adjust_stake/1,
           withdraw/1,
           rewards/1,
-          penalties/1,
+          sct_penalties/1,
+          elct_penalties/1,
           sorted_validators/1,
           check_withdraw/1
         ]).
@@ -102,7 +103,8 @@ groups() ->
          adjust_stake,
          withdraw,
          rewards,
-         penalties,
+         sct_penalties,
+         elct_penalties,
          sorted_validators,
          check_withdraw
        ]}
@@ -250,7 +252,7 @@ rewards(_Config) ->
 
     ok.
 
-    penalties(_Config) ->
+    sct_penalties(_Config) ->
         Trees0 = genesis_trees(),
         TxEnv = aetx_env:tx_env(?DEFAULT_HEIGHT),
         {ok, Trees1, #{res := {contract, AliceCt}}} =
@@ -277,6 +279,39 @@ rewards(_Config) ->
         ?assertEqual(BBalance, ?VALIDATOR_MIN + 2 * ?AE),
 
         ?assertEqual(AAvailable, 6 * ?AE),
+        ?assertEqual(BAvailable, 2 * ?AE),
+
+        ok.
+
+    elct_penalties(_Config) ->
+        Trees0 = genesis_trees(),
+        TxEnv = aetx_env:tx_env(?DEFAULT_HEIGHT),
+        {ok, Trees1, #{res := {contract, AliceCt}}} =
+            new_validator_(pubkey(?ALICE), ?VALIDATOR_MIN, TxEnv, Trees0),
+        {ok, Trees2, #{res := {contract, BobCt}}} =
+            new_validator_(pubkey(?BOB), ?VALIDATOR_MIN, false, TxEnv, Trees1, undefined),
+
+        {ok, _, #{res := BaseEmptyPool}} = get_penalty_pool_(TxEnv, Trees2),
+        ?assertEqual(BaseEmptyPool, 0),
+
+        Rewards = [{{address, pubkey(?ALICE)}, -4 * ?AE}, {{address, pubkey(?BOB)}, 2 * ?AE}],
+        {ok, Trees25, #{res := ?UNIT}} =
+            add_reported_penalty_to_elct_(1, 4 * ?AE, pubkey(?ALICE), pubkey(?BOB), 50, TxEnv, Trees2, 2),
+
+        {ok, Trees3, _} = pay_elct_rewards(1, 10 * ?AE, TxEnv, Trees25, 1),
+
+        {ok, _, #{res := ABalance}}   = get_total_balance_(AliceCt, ?ALICE, TxEnv, Trees3),
+        {ok, _, #{res := AAvailable}} = get_available_balance_(AliceCt, ?ALICE, TxEnv, Trees3),
+        {ok, _, #{res := BBalance}}   = get_total_balance_(BobCt, ?BOB, TxEnv, Trees3),
+        {ok, _, #{res := BAvailable}} = get_available_balance_(BobCt, ?BOB, TxEnv, Trees3),
+
+        {ok, _, #{res := AfterRewardsPool}} = get_penalty_pool_(TxEnv, Trees3),
+        ?assertEqual(AfterRewardsPool, 2 *? AE),
+
+        ?assertEqual(ABalance, ?VALIDATOR_MIN - 4 * ?AE),
+        ?assertEqual(BBalance, ?VALIDATOR_MIN + 2 * ?AE),
+
+        ?assertEqual(AAvailable, -4 * ?AE),
         ?assertEqual(BAvailable, 2 * ?AE),
 
         ok.
@@ -588,10 +623,26 @@ add_rewards_(Epoch, Rewards, TotRewards, TxEnv, Trees0, LockEpoch) ->
     CallData = create_calldata("add_rewards", [{integer, Epoch}, Rewards, {integer, 0}]),
     call_contract(Contract, ?OWNER_PUBKEY, CallData, TotRewards, TxEnv, Trees0, LockEpoch).
 
-add_penalties_(Epoch, Rewards, TotRewards, Pool, TxEnv, Trees0, LockEpoch) ->
+add_penalties_(Epoch, Penalties, TotPens, Pool, TxEnv, Trees0, LockEpoch) ->
     Contract = staking_contract_address(),
-    CallData = create_calldata("add_rewards", [{integer, Epoch}, Rewards, {integer, Pool}]),
-    call_contract(Contract, ?OWNER_PUBKEY, CallData, TotRewards, TxEnv, Trees0, LockEpoch).
+    CallData = create_calldata("add_rewards", [{integer, Epoch}, Penalties, {integer, Pool}]),
+    call_contract(Contract, ?OWNER_PUBKEY, CallData, TotPens, TxEnv, Trees0, LockEpoch).
+
+add_penalty_to_elct_(Epoch, Penalty, Offender, TxEnv, Trees0, LockEpoch) ->
+    Contract = election_contract_address(),
+    CallData = create_calldata("add_penalty", [{integer, Epoch}, {integer, Penalty, {address, Offender}}]),
+    call_contract(Contract, ?OWNER_PUBKEY, CallData, 0, TxEnv, Trees0, LockEpoch).
+
+add_reported_penalty_to_elct_(Epoch, Penalty, Offender, Reporter, Percentage, TxEnv, Trees0, LockEpoch) ->
+    Contract = election_contract_address(),
+    CallData = create_calldata("add_reported_penalty", [{integer, Epoch}, {integer, Penalty}, {address, Offender}, {address, Reporter}, {integer, Percentage}]),
+    call_contract(Contract, ?OWNER_PUBKEY, CallData, 0, TxEnv, Trees0, LockEpoch).
+
+pay_elct_rewards(Epoch, Amount, TxEnv, Trees0, LockEpoch) ->
+    Contract = election_contract_address(),
+    CallData = create_calldata("test_pay_rewards", [{integer, Epoch}]),
+    call_contract(Contract, ?OWNER_PUBKEY, CallData, Amount, TxEnv, Trees0, LockEpoch).
+
 
 sorted_validators_(TxEnv, Trees0) ->
     Contract = staking_contract_address(),
