@@ -500,9 +500,8 @@ state_grant_rewards(Node, Delay, Trees, {Fees, BlockReward}, [_Node1, _Node2, _N
 
     state_grant_reward_(TxEnv, Trees, Height, lists:zip(Nodes, Rewards), 0).
 
-%% TODO: placeholder
-is_hole(_Node) ->
-    false.
+is_hole(Node) ->
+    aec_headers:is_hole(aec_block_insertion:node_header(Node)).
 
 state_grant_reward_(_TxEnv, Trees, Height, [], HoleRewards) ->
     lager:info("Burning ~p tokens, because of holes, while distributing rewards for height ~p",
