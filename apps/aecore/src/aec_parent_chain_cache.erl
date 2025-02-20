@@ -86,17 +86,14 @@ post_block(Block) ->
     gen_server:cast(?SERVER, {post_block, Block}).
 
 -spec get_block_by_height(non_neg_integer()) -> {ok, aec_parent_chain_block:block()}
-                                              | {error, not_in_cache}.
+                                              | {error, not_in_cache}
+                                              | {error, not_final}.
 get_block_by_height(Height) ->
-    case gen_server:call(?SERVER, {get_block_by_height, Height}) of
-        {ok, _B} = OK -> OK;
-        {error, not_in_cache} = Err ->
-            Err
-    end.
+    gen_server:call(?SERVER, {get_block_by_height, Height}).
 
 %% TODO: This is really ugly, properly fix at some point
 -spec get_block_by_height(non_neg_integer(), integer()) ->
-           {ok, aec_parent_chain_block:block()} | {error, not_in_cache}.
+           {ok, aec_parent_chain_block:block()} | {error, not_in_cache} | {error, not_final}.
 get_block_by_height(Height, Timeout) ->
     case get_block_by_height(Height) of
         {ok, _B} = OK -> OK;
@@ -224,12 +221,18 @@ insert_block(Block, #state{block_cache = Blocks,
     State#state{block_cache = maps:put(Height, Block, Blocks),
                 blocks_hash_index = maps:put(Hash, Height, Index)}.
 
--spec get_block(non_neg_integer(), state()) -> {ok, aec_parent_chain_block:block()} | {error, not_in_cache}.
-get_block(Height, #state{block_cache = Blocks}) ->
+-spec get_block(non_neg_integer(), state()) -> {ok, aec_parent_chain_block:block()} | {error, not_in_cache | not_final}.
+get_block(Height, #state{block_cache = Blocks, top_height = TopHeight, finality = Finality}) ->
     case maps:find(Height, Blocks) of
-        {ok, {requested, _RequestTime}} -> {error, not_in_cache};
-        {ok, _Block} = OK               -> OK;
-        error                           -> {error, not_in_cache}
+        {ok, {requested, _RequestTime}} ->
+            {error, not_in_cache};
+        {ok, Block} when Height =< TopHeight - Finality ->
+            {ok, Block};
+        {ok, _} ->
+            lager:debug("Block ~p in cache, but not final (top = ~p, finality = ~p)", [Height, TopHeight, Finality]),
+            {error, not_final};
+        error ->
+            {error, not_in_cache}
     end.
 
 % -spec get_block_height_by_hash(aec_parent_chain_block:hash(), state()) ->
@@ -315,6 +318,8 @@ maybe_request_blocks(BlockHeights, State) ->
 maybe_request_block(BlockHeight, State) ->
     case get_block(BlockHeight, State) of
         {ok, _} ->
+            State;
+        {error, not_final} ->
             State;
         {error, not_in_cache} ->
             request_block(BlockHeight, State)
