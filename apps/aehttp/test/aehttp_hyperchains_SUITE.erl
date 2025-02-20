@@ -836,30 +836,41 @@ verify_rewards(Config) ->
     mine_to_next_epoch(Node, Config),
     mine_to_last_block_in_epoch(Node, Config),
 
+    GetValidatorBalance =
+        fun(Who, Ct) ->
+            {ok, Bal} = inspect_validator(Ct, Who, get_total_balance, Config),
+            Bal
+        end,
+    Validators = [{?ALICE, AliceCt}, {?BOB, BobCt}, {?LISA, LisaCt}],
+
     %% Record the state
-    {ok, AliceTot0} = inspect_validator(AliceCt, ?ALICE, get_total_balance, Config),
-    {ok, BobTot0} = inspect_validator(BobCt, ?BOB, get_total_balance, Config),
-    {ok, LisaTot0} = inspect_validator(LisaCt, ?LISA, get_total_balance, Config),
+    PreRewardState = [ {Who, GetValidatorBalance(Who, Ct)} || {Who, Ct} <- Validators ],
 
     %% Produce final block to distribute rewards.
     {ok, _} = produce_cc_blocks(Config, 1),
 
     %% Record the new state
-    {ok, AliceTot1} = inspect_validator(AliceCt, ?ALICE, get_total_balance, Config),
-    {ok, BobTot1} = inspect_validator(BobCt, ?BOB, get_total_balance, Config),
-    {ok, LisaTot1} = inspect_validator(LisaCt, ?LISA, get_total_balance, Config),
+    PostRewardState = [ {Who, GetValidatorBalance(Who, Ct)} || {Who, Ct} <- Validators ],
 
     #{first := First, last := Last} = EpochInfo,
     {ok, BlocksInGen} = get_generations(Node, First, Last),
 
     Rewards = calc_rewards(BlocksInGen, Node),
 
-    ct:log("Alice ~p -> ~p expected reward ~p", [AliceTot0, AliceTot1, maps:get(pubkey(?ALICE), Rewards)]),
-    ct:log("Bob ~p -> ~p expected reward ~p", [BobTot0, BobTot1, maps:get(pubkey(?BOB_SIGN), Rewards)]),
-    ct:log("Lisa ~p -> ~p expected reward ~p", [LisaTot0, LisaTot1, maps:get(pubkey(?LISA), Rewards)]),
-    ?assertEqual(AliceTot0 + maps:get(pubkey(?ALICE), Rewards, 0), AliceTot1),
-    ?assertEqual(BobTot0 + maps:get(pubkey(?BOB_SIGN), Rewards, 0), BobTot1),
-    ?assertEqual(LisaTot0 + maps:get(pubkey(?LISA), Rewards, 0), LisaTot1),
+    CheckRewards =
+        fun(Who, Rs, PreS, PostS) ->
+            case maps:get(pubkey(Who), Rs, undefined) of
+                undefined ->
+                    ct:log("~p got no rewards", [user(Who)]);
+                Reward ->
+                    {_, Tot0} = lists:keyfind(Who, 1, PreS),
+                    {_, Tot1} = lists:keyfind(Who, 1, PostS),
+                    ct:log("~p ~p -> ~p expected reward ~p", [user(Who), Tot0, Tot1, Reward]),
+                    ?assertEqual(Tot0 + Reward, Tot1)
+            end
+        end,
+
+    [ CheckRewards(Who, Rewards, PreRewardState, PostRewardState) || Who <- [?ALICE, ?BOB, ?LISA] ],
 
     %% Check that MainStaking knows the right epoch.
     {ok, #{epoch := Epoch}} = rpc(Node, aec_chain_hc, epoch_info, []),
@@ -1408,6 +1419,8 @@ mine_to_next_epoch(Node, Config) ->
 pubkey({Pubkey, _, _}) -> Pubkey.
 
 privkey({_, Privkey, _}) -> Privkey.
+
+user({_, _, User}) -> User.
 
 who_by_pubkey(Pubkey) ->
     Alice = pubkey(?ALICE),
