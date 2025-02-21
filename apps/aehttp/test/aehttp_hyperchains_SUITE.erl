@@ -1812,7 +1812,7 @@ produce_to_cc_height(Config, TopHeight, GoalHeight, ParentProduce, PNodes) ->
         true ->
             NewParentProduce =
                 case ParentProduce of
-                    [{CH, PBs} | PRest ] when CH == TopHeight+1 ->
+                    [{CH, PBs} | PRest ] when CH =< TopHeight+1 ->
                         mine_key_blocks(?PARENT_CHAIN_NODE_NAME, PBs),
                         PRest;
                     PP -> PP
