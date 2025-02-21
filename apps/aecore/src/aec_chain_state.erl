@@ -749,9 +749,19 @@ assert_eoe(Node, Top) ->
                     TopHeader = node_header(Top),
                     case aec_headers:is_eoe(TopHeader) of
                         true ->
-                            Validator = aec_headers:miner(Header),
-                            Txs = aec_blocks:txs(aec_db:get_block(node_prev_hash(Node))),
-                            lists:any(fun(SignedTx) -> aec_eoe_vote:validate_epoch_call_transaction(SignedTx, Validator) end, Txs);
+                            Env = aetx_env:tx_env_from_key_header(Header, node_hash(Node),
+                                                                  node_time(Node), node_prev_hash(Node)),
+                            case aec_chain:get_block_state(node_prev_hash(Node)) of
+                                {ok, Trees} ->
+                                    PrevHash = aec_headers:prev_key_hash(Header),
+                                    Validator = aec_headers:miner(Header),
+                                    case aec_chain_hc:finalize_info({Env, Trees}) of
+                                        #{fork := PrevHash, producer := Validator} ->
+                                            true;
+                                        _ ->
+                                            false
+                                    end
+                            end;
                         false ->
                             false
                     end
