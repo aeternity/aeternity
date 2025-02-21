@@ -32,7 +32,7 @@
 %% Key blocks (bit 31:1)
 %% 30         ContainsInfo 1 - true, 0 - false
 %% 29         HC Hole block: 1 - is a hole block, 0 - ordinary block
-%% 28         EOE : 1 - end of epoch, 0 - not end of epoch)
+%% 28         EOE : 1 - end of epoch which achieved quorum, 0 - not end of epoch)
 %% 0 - 27     Unused, should be 0.
 %%
 %% Micro blocks (bit 31:0)
