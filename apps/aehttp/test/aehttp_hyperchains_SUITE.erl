@@ -1309,8 +1309,6 @@ check_finalize_info(Config) ->
     {ok, EOEBlock} = rpc(Node, aec_chain, get_key_block_by_height, [Last]),
     ?assertEqual(aec_blocks:target(EOEBlock), Last),
     ?assert(aec_blocks:is_eoe(EOEBlock)),
-    {ok, EOEMBlock} = rpc(Node, aec_chain, get_block, [aec_blocks:prev_hash(EOEBlock)]),
-    ?assert(aec_blocks:is_eoe(EOEMBlock)),
     #{producer := Producer, epoch := FEpoch, votes := Votes, fork := PrevHash} = rpc(Node, aec_chain_hc , finalize_info, []),
     ?assertEqual(aec_blocks:miner(EOEBlock), Producer),
     ?assertEqual(aec_blocks:prev_key_hash(EOEBlock), PrevHash),

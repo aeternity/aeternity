@@ -708,7 +708,7 @@ assert_not_illegal_fork_or_orphan(Node, Origin, State) ->
     Height    = node_height(Node),
     case assert_height_delta(Origin, Height, TopHeight) of
         true ->
-            case assert_eoe(Node, Top) of
+            case assert_eoe(Node) of
                 true -> ok;
                 false -> aec_block_insertion:abort_state_transition(invalid_eoe)
             end;
@@ -737,37 +737,30 @@ assert_height_delta(sync, Height, TopHeight) ->
 assert_height_delta(undefined, Height, TopHeight) ->
     Height >= ( TopHeight - gossip_allowed_height_from_top() ).
 
-assert_eoe(Node, Top) ->
+assert_eoe(Node) ->
     Header = node_header(Node),
-    case aec_headers:is_eoe(Header) of
-        true ->
-            case aec_headers:type(Header) of
-                micro ->
-                    true;
-                key ->
-                    %% Previous micro header
-                    TopHeader = node_header(Top),
-                    case aec_headers:is_eoe(TopHeader) of
-                        true ->
-                            Env = aetx_env:tx_env_from_key_header(Header, node_hash(Node),
-                                                                  node_time(Node), node_prev_hash(Node)),
-                            case aec_chain:get_block_state(node_prev_hash(Node)) of
-                                {ok, Trees} ->
-                                    PrevHash = aec_headers:prev_key_hash(Header),
-                                    Validator = aec_headers:miner(Header),
-                                    case aec_chain_hc:finalize_info({Env, Trees}) of
-                                        #{fork := PrevHash, producer := Validator} ->
-                                            true;
-                                        _ ->
-                                            false
-                                    end
-                            end;
-                        false ->
-                            false
-                    end
-            end;
-        false ->
-            true
+    case aec_headers:type(Header) of
+        micro ->
+            true;
+        key ->
+            case aec_headers:is_eoe(Header) of
+                true ->
+                    Env = aetx_env:tx_env_from_key_header(Header, node_hash(Node),
+                                                          node_time(Node), node_prev_hash(Node)),
+                    case aec_chain:get_block_state(node_prev_hash(Node)) of
+                        {ok, Trees} ->
+                            PrevHash = aec_headers:prev_key_hash(Header),
+                            Validator = aec_headers:miner(Header),
+                            case aec_chain_hc:finalize_info({Env, Trees}) of
+                                #{fork := PrevHash, producer := Validator} ->
+                                    true;
+                                _ ->
+                                    false
+                            end
+                    end;
+                false ->
+                    true
+            end
     end.
 
 update_state_tree(Node, State, Ctx) ->
