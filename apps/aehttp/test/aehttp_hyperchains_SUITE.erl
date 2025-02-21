@@ -1705,7 +1705,7 @@ node_config(Node, CTConfig, PotentialStakers, PotentialPinners, ReceiveAddress) 
                             },
                         <<"polling">> =>
                             #{  <<"fetch_interval">> => 100,
-                                <<"cache_size">> => 10,
+                                <<"cache_size">> => 50,
                                 <<"nodes">> => [ iolist_to_binary(io_lib:format("http://test:Pass@127.0.0.1:~p", [Port])) ]
                             }
                         },

@@ -51,17 +51,16 @@
 
 -record(state,
     {
-        child_top_height                        :: non_neg_integer(),
-        child_top_hash                          :: aec_blocks:block_header_hash(),
-        parent_target_fun                       :: fun((integer()) -> [integer()]),
-        child_start_height                      :: non_neg_integer(),
-        max_size                                :: non_neg_integer(),
-        retry_interval                          :: non_neg_integer(),
-        block_cache         = #{}               :: #{non_neg_integer() => aec_parent_chain_block:block() | {requested,  non_neg_integer()}},
-        blocks_hash_index   = #{}               :: #{aec_parent_chain_block:hash() => non_neg_integer()},
-        top_height          = 0                 :: non_neg_integer(),
-        sign_module         = aec_preset_keys   :: atom(), %% TODO: make it configurable
-        is_syncing          = false             :: boolean()
+        child_top_height         :: non_neg_integer(),
+        child_top_hash           :: aec_blocks:block_header_hash(),
+        parent_target_fun        :: fun((integer()) -> [integer()]),
+        child_start_height       :: non_neg_integer(),
+        max_size                 :: non_neg_integer(),
+        retry_interval           :: non_neg_integer(),
+        block_cache        = #{} :: #{non_neg_integer() => aec_parent_chain_block:block() | {requested,  non_neg_integer()}},
+        blocks_hash_index  = #{} :: #{aec_parent_chain_block:hash() => non_neg_integer()},
+        top_height         = 0   :: non_neg_integer(),
+        finality                 :: non_neg_integer()
     }).
 -type state() :: #state{}.
 
@@ -75,8 +74,8 @@
                  fun((integer()) -> [integer()]),
                  non_neg_integer(), non_neg_integer()) ->
     {ok, pid()} | {error, {already_started, pid()}} | {error, Reason::any()}.
-start_link(Height, RetryInterval, ParentTargetFun, Size, _Confirmations) ->
-    Args = [Height, RetryInterval, ParentTargetFun, Size],
+start_link(Height, RetryInterval, ParentTargetFun, Size, Finality) ->
+    Args = [Height, RetryInterval, ParentTargetFun, Size, Finality],
     gen_server:start_link({local, ?SERVER}, ?MODULE, Args, []).
 
 stop() ->
@@ -87,17 +86,14 @@ post_block(Block) ->
     gen_server:cast(?SERVER, {post_block, Block}).
 
 -spec get_block_by_height(non_neg_integer()) -> {ok, aec_parent_chain_block:block()}
-                                              | {error, not_in_cache}.
+                                              | {error, not_in_cache}
+                                              | {error, not_final}.
 get_block_by_height(Height) ->
-    case gen_server:call(?SERVER, {get_block_by_height, Height}) of
-        {ok, _B} = OK -> OK;
-        {error, not_in_cache} = Err ->
-            Err
-    end.
+    gen_server:call(?SERVER, {get_block_by_height, Height}).
 
 %% TODO: This is really ugly, properly fix at some point
 -spec get_block_by_height(non_neg_integer(), integer()) ->
-           {ok, aec_parent_chain_block:block()} | {error, not_in_cache}.
+           {ok, aec_parent_chain_block:block()} | {error, not_in_cache} | {error, not_final}.
 get_block_by_height(Height, Timeout) ->
     case get_block_by_height(Height) of
         {ok, _B} = OK -> OK;
@@ -119,35 +115,33 @@ get_state() ->
 %%%=============================================================================
 
 -spec init([any()]) -> {ok, #state{}}.
-init([StartHeight, RetryInterval, ParentTargetFun, Size]) ->
+init([StartHeight, RetryInterval, ParentTargetFun, Size, Finality]) ->
     aec_events:subscribe(top_changed),
-    aec_events:subscribe(start_mining),
-    aec_events:subscribe(stop_mining),
-    aec_events:subscribe(chain_sync),
     TopHeader = aec_chain:top_header(),
     ChildHeight = aec_headers:height(TopHeader),
     {ok, ChildHash} = aec_headers:hash_header(TopHeader),
     true = is_integer(ChildHeight),
     self() ! initialize_cache,
-    {ok, #state{child_start_height      = StartHeight,
-                child_top_height        = ChildHeight,
-                retry_interval          = RetryInterval,
-                parent_target_fun       = ParentTargetFun,
-                child_top_hash          = ChildHash,
-                max_size                = Size,
-                block_cache             = #{}
+    {ok, #state{child_start_height = StartHeight,
+                child_top_height   = ChildHeight,
+                retry_interval     = RetryInterval,
+                parent_target_fun  = ParentTargetFun,
+                child_top_hash     = ChildHash,
+                max_size           = Size,
+                block_cache        = #{},
+                finality           = Finality
                 }}.
 
 -spec handle_call(any(), any(), state()) -> {reply, any(), state()}.
 handle_call({get_block_by_height, Height}, _From, State) ->
     {Reply, State1} =
-                    case get_block(Height, State) of
-                        {error, _} = Err ->
-                            NewState = request_block(Height, State),
-                            {Err, NewState};
-                        {ok, _Block} = OK ->
-                            {OK, State}
-                    end,
+        case get_block(Height, State) of
+            {error, _} = Err ->
+                NewState = request_block(Height, State),
+                {Err, NewState};
+            {ok, _Block} = OK ->
+                {OK, State}
+        end,
     {reply, Reply, State1};
 
 handle_call(get_state, _From, State) ->
@@ -201,12 +195,7 @@ handle_info({gproc_ps_event, top_changed, #{info := #{block_type := key,
     TargetHeights = target_parent_heights(State2),
     State = maybe_request_blocks(TargetHeights, State2),
     {noreply, State};
-handle_info({gproc_ps_event, chain_sync, #{info := {is_syncing, IsSyncing}}}, State0) ->
-    State1 = State0#state{is_syncing = IsSyncing},
-    {noreply, State1};
 handle_info({gproc_ps_event, top_changed, _A} , State) ->
-    {noreply, State};
-handle_info({gproc_ps_event, chain_sync, _}, State) ->
     {noreply, State};
 handle_info(_Info, State) ->
     lager:debug("Unhandled info: ~p", [_Info]),
@@ -232,12 +221,18 @@ insert_block(Block, #state{block_cache = Blocks,
     State#state{block_cache = maps:put(Height, Block, Blocks),
                 blocks_hash_index = maps:put(Hash, Height, Index)}.
 
--spec get_block(non_neg_integer(), state()) -> {ok, aec_parent_chain_block:block()} | {error, not_in_cache}.
-get_block(Height, #state{block_cache = Blocks}) ->
+-spec get_block(non_neg_integer(), state()) -> {ok, aec_parent_chain_block:block()} | {error, not_in_cache | not_final}.
+get_block(Height, #state{block_cache = Blocks, top_height = TopHeight, finality = Finality}) ->
     case maps:find(Height, Blocks) of
-        {ok, {requested, _RequestTime}} -> {error, not_in_cache};
-        {ok, _Block} = OK               -> OK;
-        error                           -> {error, not_in_cache}
+        {ok, {requested, _RequestTime}} ->
+            {error, not_in_cache};
+        {ok, Block} when Height =< TopHeight - Finality ->
+            {ok, Block};
+        {ok, _} ->
+            lager:debug("Block ~p in cache, but not final (top = ~p, finality = ~p)", [Height, TopHeight, Finality]),
+            {error, not_final};
+        error ->
+            {error, not_in_cache}
     end.
 
 % -spec get_block_height_by_hash(aec_parent_chain_block:hash(), state()) ->
@@ -323,6 +318,8 @@ maybe_request_blocks(BlockHeights, State) ->
 maybe_request_block(BlockHeight, State) ->
     case get_block(BlockHeight, State) of
         {ok, _} ->
+            State;
+        {error, not_final} ->
             State;
         {error, not_in_cache} ->
             request_block(BlockHeight, State)

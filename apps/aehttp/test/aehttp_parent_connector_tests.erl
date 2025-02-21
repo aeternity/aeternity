@@ -84,7 +84,7 @@ ae_sim_test_rem() ->
                     Self = self(),
                     meck:expect(aec_parent_chain_cache, post_block,
                                 fun(Block) -> Self ! {post_block, Block} end),
-                    aec_parent_connector:trigger_fetch(),
+                    aec_parent_connector:request_top(),
                     {ok, Block} =
                         receive
                             {post_block, B} -> {ok, B}
@@ -124,7 +124,7 @@ ae_sim_test_rem() ->
                     Self = self(),
                     meck:expect(aec_parent_chain_cache, post_block,
                                 fun(Block) -> Self ! {post_block, Block} end),
-                    aec_parent_connector:trigger_fetch(),
+                    aec_parent_connector:request_top(),
                     %% no consensus
                     ok =
                         receive
@@ -153,7 +153,7 @@ ae_sim_test_rem() ->
                     {ok, Block4} =
                         aec_parent_connector:fetch_block_by_height(4),
                     %% trigger fetch again - 2 out 3 nodes should agree on block3
-                    aec_parent_connector:trigger_fetch(),
+                    aec_parent_connector:request_top(),
                     %% no consensus
                     {ok, Block4} =
                         receive
@@ -163,7 +163,7 @@ ae_sim_test_rem() ->
             end},
           {"Post a suitable spend TX to each parent chain and check it is in the commitment list",
             fun() ->
-                    %% aec_parent_connector:trigger_fetch(),
+                    %% aec_parent_connector:request_top(),
                     lists:foreach(
                         fun(NodeSpec = #{port := Port}) ->
                             SimName = ae_sim_name(Port),
@@ -295,7 +295,7 @@ btc_sim_test_rem() ->
                     Self = self(),
                     meck:expect(aec_parent_chain_cache, post_block,
                                 fun(Block) -> Self ! {post_block, Block} end),
-                    aec_parent_connector:trigger_fetch(),
+                    aec_parent_connector:request_top(),
                     {ok, Block} =
                         receive
                             {post_block, B} -> {ok, B}
@@ -336,7 +336,7 @@ btc_sim_test_rem() ->
                 Self = self(),
                 meck:expect(aec_parent_chain_cache, post_block,
                             fun(Block) -> Self ! {post_block, Block} end),
-                aec_parent_connector:trigger_fetch(),
+                aec_parent_connector:request_top(),
                 %% no consensus
                 ok =
                     receive
@@ -363,7 +363,7 @@ btc_sim_test_rem() ->
                 {ok, Block4} =
                     aec_parent_connector:fetch_block_by_height(4),
                 %% trigger fetch again - 2 out 3 nodes should agree on block3
-                aec_parent_connector:trigger_fetch(),
+                aec_parent_connector:request_top(),
                 %% no consensus
                 {ok, Block4} =
                     receive
@@ -373,7 +373,7 @@ btc_sim_test_rem() ->
         end},
         {"Post a suitable spend TX to each parent chain and check it is in the commitment list",
             fun() ->
-                %% aec_parent_connector:trigger_fetch(),
+                %% aec_parent_connector:request_top(),
                 lists:foreach(
                     fun(NodeSpec = #{port := Port}) ->
                         SimName = btc_sim_name(Port),

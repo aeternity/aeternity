@@ -110,7 +110,7 @@ start(Config, _) ->
     PinnersConfig  = maps:get(<<"pinners">>, Config, []),
     PCConfig      = maps:get(<<"parent_chain">>, Config),
 
-    Confirmations   = maps:get(<<"confirmations">>, PCConfig, 6),
+    PCFinality      = maps:get(<<"finality">>, PCConfig, 5),
     StartHeight     = maps:get(<<"start_height">>, PCConfig, 0),
     ConsensusConfig = maps:get(<<"consensus">>, PCConfig, #{}),
     PollingConfig   = maps:get(<<"polling">>, PCConfig, #{}),
@@ -136,7 +136,7 @@ start(Config, _) ->
                                             SignModule, HCPCMap]),
     start_dependency(aec_parent_chain_cache, [StartHeight, RetryInterval,
                                               fun target_parent_heights/1, %% prefetch the next parent block
-                                              CacheSize, Confirmations]),
+                                              CacheSize, PCFinality]),
     start_dependency(aec_pinning_agent, [get_contract_pubkey(?ELECTION_CONTRACT), default_pinning_behavior(), SignModule]),
     ok.
 
@@ -1307,7 +1307,6 @@ target_parent_heights(ChildHeight) ->
     {ok, EpochNum} = aec_chain_hc:epoch(ChildHeight),
     lager:debug("ChildHeight ~p, target_parent_heights called with child epoch ~p",
                 [ChildHeight, EpochNum]),
-    %%TODO this computation is wrong in the long run... it assumes all child epochs to be of equal length
     ParentHeightStart = (EpochNum - 2) * parent_epoch_length() + pc_start_height(),
     ParentHeightEnd = (EpochNum + 2) * parent_epoch_length() + pc_start_height(),
     [ParentHeightStart, ParentHeightEnd].
