@@ -26,7 +26,6 @@
 %% Use in test only
 -ifdef(TEST).
 -export([start_link/0]).
--export([trigger_fetch/0]).
 -endif.
 
 
@@ -37,16 +36,16 @@
          %% blocking getting of blocks
          fetch_block_by_hash/1,
          fetch_block_by_height/1,
-        %% internal state getters
-        get_network_id/0,
-        get_parent_conn_mod/0,
-        get_sign_module/0,
-        get_parent_chain_type/0,
-        %% Pinning
-        pin_to_pc/3,
-        get_pinning_data/0,
-        get_pin_by_tx_hash/1,
-        has_parent_account/1
+         %% internal state getters
+         get_network_id/0,
+         get_parent_conn_mod/0,
+         get_sign_module/0,
+         get_parent_chain_type/0,
+         %% Pinning
+         pin_to_pc/3,
+         get_pinning_data/0,
+         get_pin_by_tx_hash/1,
+         has_parent_account/1
         ]).
 
 %% Callbacks
@@ -103,11 +102,6 @@ start_link(ParentConnMod, FetchInterval, ParentHosts, NetworkId, SignModule, HCP
 
 stop() ->
     gen_server:stop(?MODULE).
-
--ifdef(TEST).
-trigger_fetch() ->
-    gen_server:call(?SERVER, trigger_fetch).
--endif.
 
 request_block_by_hash(Hash) ->
     gen_server:cast(?SERVER, {request_block_by_hash, Hash}).
@@ -168,6 +162,7 @@ has_parent_account(Account) ->
 
 -spec init([any()]) -> {ok, #state{}}.
 init([ParentConnMod, FetchInterval, ParentHosts, NetworkId, SignModule, HCPCMap]) ->
+    reset_fetch_interval(FetchInterval),
     {ok, #state{parent_conn_mod = ParentConnMod,
                 fetch_interval = FetchInterval,
                 parent_hosts = ParentHosts,
@@ -176,10 +171,6 @@ init([ParentConnMod, FetchInterval, ParentHosts, NetworkId, SignModule, HCPCMap]
                 hcpc = HCPCMap}}.
 
 -spec handle_call(any(), any(), state()) -> {reply, any(), state()}.
-handle_call(trigger_fetch, _From, State) ->
-    self() ! check_parent,
-    Reply = ok,
-    {reply, Reply, State};
 handle_call({fetch_block_by_hash, Hash}, _From, State) ->
     Reply = handle_fetch_block(fun fetch_block_by_hash/5, Hash, State),
     {reply, Reply, State};
@@ -233,11 +224,31 @@ handle_cast({request_block_by_height, Height}, State) ->
     {noreply, State}.
 
 -spec handle_info(any(), state()) -> {noreply, state()}.
-handle_info(check_parent, #state{parent_hosts = ParentNodes,
-                                 parent_conn_mod = Mod,
-                                 parent_top = ParentTop,
-                                 fetch_interval = FetchInterval,
-                                 rpc_seed = Seed} = State) ->
+handle_info(check_top, State = #state{fetch_interval = FetchInterval}) ->
+    State1 = fetch_parent_top(State),
+    reset_fetch_interval(FetchInterval),
+    {noreply, State1};
+handle_info(check_parent, State) ->
+    State1 = fetch_parent_top(State),
+    {noreply, State1};
+handle_info(_Info, State) ->
+    {noreply, State}.
+
+-spec terminate(any(), state()) -> ok.
+terminate(_Reason, _State) ->
+    ok.
+
+-spec code_change(any(), state(), any()) -> {ok, state()}.
+code_change(_OldVsn, State, _Extra) ->
+    {ok, State}.
+
+%%%===================================================================
+%%% Internal functions
+%%%===================================================================
+fetch_parent_top(#state{parent_hosts = ParentNodes,
+                        parent_conn_mod = Mod,
+                        parent_top = ParentTop,
+                        rpc_seed = Seed} = State) ->
     %% Parallel fetch top block from all configured parent chain nodes
     ParentTop1 =
         case fetch_parent_tops(Mod, ParentNodes, Seed, State) of
@@ -254,26 +265,14 @@ handle_info(check_parent, #state{parent_hosts = ParentNodes,
                 lager:warning("Parent nodes are unable to reach consensus", []),
                 ParentTop
         end,
+    State#state{rpc_seed = increment_seed(Seed), parent_top = ParentTop1}.
+
+reset_fetch_interval(FetchInterval) ->
     if is_integer(FetchInterval) ->
-        erlang:send_after(FetchInterval, self(), check_parent);
+        erlang:send_after(FetchInterval, self(), check_top);
         true -> ok
-    end,
-    {noreply, State#state{rpc_seed = increment_seed(Seed),
-                          parent_top = ParentTop1}};
-handle_info(_Info, State) ->
-    {noreply, State}.
+    end.
 
--spec terminate(any(), state()) -> ok.
-terminate(_Reason, _State) ->
-    ok.
-
--spec code_change(any(), state(), any()) -> {ok, state()}.
-code_change(_OldVsn, State, _Extra) ->
-    {ok, State}.
-
-%%%===================================================================
-%%% Internal functions
-%%%===================================================================
 fetch_parent_tops(Mod, ParentNodes, Seed, State) ->
     FetchFun =
         fun(NodeSpec) ->
