@@ -755,8 +755,11 @@ assert_eoe(Node) ->
                                 #{fork := PrevHash, producer := Validator} ->
                                     true;
                                 _ ->
+                                    lager:warning("Election contract didn't match hash ~p and producer ~p", [PrevHash, Validator]),
                                     false
-                            end
+                            end;
+                        _ ->
+                            false
                     end;
                 false ->
                     true
