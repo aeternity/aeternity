@@ -707,8 +707,7 @@ assert_not_illegal_fork_or_orphan(Node, Origin, State) ->
     TopHeight = node_height(Top),
     Height    = node_height(Node),
     case assert_height_delta(Origin, Height, TopHeight) of
-        true ->
-            ok;
+        true -> ok;
         false ->
             aec_block_insertion:abort_state_transition({too_far_below_top, Height, TopHeight})
     end.
