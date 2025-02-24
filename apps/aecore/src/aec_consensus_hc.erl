@@ -267,12 +267,37 @@ ctx_validate_key_target(Node, _Block, Ctx) ->
         true when NodeTarget == PrevNodeTarget -> ok;
         false when NodeTarget == PrevNodeTarget + 1 -> ok;
         _ ->
-            Height = aec_headers:height(NodeHeader),
             case aec_headers:is_eoe(NodeHeader) of
-                true when NodeTarget == Height-> ok;
+                true ->
+                    check_eoe(Node, NodeTarget);
                 _ ->
                     {error, wrong_number_of_non_holes}
             end
+    end.
+
+check_eoe(Node, NodeTarget) ->
+    Header = aec_block_insertion:node_header(Node),
+    Height = aec_headers:height(Header),
+    case NodeTarget == Height of
+        true ->
+            Env = aetx_env:tx_env_from_key_header(Header, aec_block_insertion:node_hash(Node),
+                                                  aec_block_insertion:node_time(Node), aec_block_insertion:node_prev_hash(Node)),
+            case aec_chain:get_block_state(aec_block_insertion:node_prev_hash(Node)) of
+                {ok, Trees} ->
+                    PrevHash = aec_headers:prev_key_hash(Header),
+                    Validator = aec_headers:miner(Header),
+                    case aec_chain_hc:finalize_info({Env, Trees}) of
+                        #{fork := PrevHash, producer := Validator} ->
+                            ok;
+                        _ ->
+                            lager:warning("Election contract didn't match hash ~p and producer ~p", [PrevHash, Validator]),
+                            {error, eoe_invalid}
+                    end;
+                _ ->
+                    {error, eoe_invalid}
+            end;
+        false ->
+            {error, eoe_invalid}
     end.
 
 dirty_validate_micro_node_with_ctx(Node, Block, Ctx) ->
