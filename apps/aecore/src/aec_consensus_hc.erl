@@ -263,15 +263,14 @@ ctx_validate_key_target(Node, _Block, Ctx) ->
     NodeHeader = aec_block_insertion:node_header(Node),
     PrevNode = aec_block_insertion:ctx_prev_key(Ctx),
     PrevNodeTarget = aec_block_insertion:node_target(PrevNode),
-    case aec_headers:is_hole(NodeHeader) of
-        true when NodeTarget == PrevNodeTarget -> ok;
-        false when NodeTarget == PrevNodeTarget + 1 -> ok;
-        _ ->
-            case aec_headers:is_eoe(NodeHeader) of
-                true ->
-                    check_eoe(Node, NodeTarget);
-                _ ->
-                    {error, wrong_number_of_non_holes}
+    case aec_headers:is_eoe(NodeHeader) of
+        true ->
+            check_eoe(Node, NodeTarget);
+        false ->
+            case aec_headers:is_hole(NodeHeader) of
+                true when NodeTarget == PrevNodeTarget -> ok;
+                false when NodeTarget == PrevNodeTarget + 1 -> ok;
+                 _ -> {error, wrong_number_of_non_holes}
             end
     end.
 
