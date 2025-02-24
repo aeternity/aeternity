@@ -1449,12 +1449,12 @@ maybe_sleep(T)             -> timer:sleep(T).
 
 %% For as long as chain length is shorter than currentHeight-1, create holes. Send holes async to conductor for writing
 hc_create_hole(TopHash, MissingBlocksCount, Producer) when MissingBlocksCount > 0 ->
-    aec_block_hole_candidate:create(TopHash, Producer, Producer, true).
+    aec_block_hole_candidate:create(TopHash, Producer, Producer, true, false).
 
 hc_create_block(TopHash0, Producer) ->
     VoteResult = aec_consensus_hc:vote_result(),
-    TopHash = hc_create_microblock(TopHash0, Producer, VoteResult),
-    aec_block_hole_candidate:create(TopHash, Producer, Producer, false).
+    {TopHash, IsEoE} = hc_create_microblock(TopHash0, Producer, VoteResult),
+    aec_block_hole_candidate:create(TopHash, Producer, Producer, false, IsEoE).
 
 hc_create_microblock(TopHash, Leader, VoteResult) ->
     CreateResult = case VoteResult of
@@ -1473,22 +1473,22 @@ hc_create_microblock(TopHash, Leader, VoteResult) ->
                     end,
     case CreateResult of
         {ok, MBlock, MBlockInfo} ->
-            MBlock1 = hc_apply_vote(VoteResult, MBlock, MBlockInfo),
+            {MBlock1, IsEoE} = hc_apply_vote(VoteResult, MBlock, MBlockInfo),
             case aec_blocks:txs(MBlock1) of
                 [] ->
                     epoch_mining:debug("Empty micro-block, top is still: ~p", [TopHash]),
-                    TopHash;
+                    {TopHash, false};
                 [_ | _ ] ->
                     SignModule = aec_consensus_hc:get_sign_module(),
                     {ok, SignedMBlock} = SignModule:sign_micro_block(MBlock1, Leader),
                     add_signed_block(SignedMBlock),
                     {ok, MBHash} = aec_blocks:hash_internal_representation(SignedMBlock),
                     epoch_mining:debug("New micro-block added, top is: ~p", [MBHash]),
-                    MBHash
+                    {MBHash, IsEoE}
             end;
         _ ->
             epoch_mining:info("Failed micro-block, top is still: ~p", [TopHash]),
-            TopHash
+            {TopHash, false}
     end.
 
 hc_apply_vote(VoteResult, MBlock, MBlockInfo) ->
@@ -1499,7 +1499,7 @@ hc_apply_vote(VoteResult, MBlock, MBlockInfo, TriedWithTrees) ->
         {ok, VoteTransaction} ->
             case aec_block_micro_candidate:update(MBlock, [VoteTransaction], MBlockInfo) of
                 {ok, UpdatedMBlock, _MBlockInfo} ->
-                    UpdatedMBlock;
+                    {UpdatedMBlock, true};
                 Error ->
                     case TriedWithTrees of
                         false ->
@@ -1508,11 +1508,11 @@ hc_apply_vote(VoteResult, MBlock, MBlockInfo, TriedWithTrees) ->
                             hc_apply_vote(aec_consensus_hc:vote_result(Trees), MBlock, MBlockInfo, true);
                         true ->
                             lager:warning("Error adding vote transaction ~p", [Error]),
-                            MBlock
+                            {MBlock, false}
                     end
             end;
         _ ->
-            MBlock
+            {MBlock, false}
     end.
 
 %%%===================================================================
