@@ -6,26 +6,27 @@
 %%%=============================================================================
 -module(aec_block_hole_candidate).
 
--export([create/4]).
+-export([create/5]).
 
 -include("blocks.hrl").
 
 %% -- API functions ----------------------------------------------------------
--spec create(BlockHash, Beneficiary, Miner, IsHole) ->
+-spec create(BlockHash, Beneficiary, Miner, IsHole, IsEoE) ->
     {ok, aec_blocks:block()} | {error, term()}
 when
     BlockHash :: aec_blocks:block() | aec_blocks:block_header_hash(),
     Beneficiary :: aec_keys:pubkey(),
     Miner :: aec_keys:pubkey(),
-    IsHole :: boolean().
-create(BlockHash, Beneficiary, Miner, IsHole) when is_binary(BlockHash) ->
+    IsHole :: boolean(),
+    IsEoE :: boolean().
+create(BlockHash, Beneficiary, Miner, IsHole, IsEoE) when is_binary(BlockHash) ->
     case aec_chain:get_block(BlockHash) of
         {ok, Block} ->
-            create(Block, Beneficiary, Miner, IsHole);
+            create(Block, Beneficiary, Miner, IsHole, IsEoE);
         error ->
             {error, block_not_found}
     end;
-create(Block, Beneficiary, Miner, IsHole) ->
+create(Block, Beneficiary, Miner, IsHole, IsEoE) ->
     {ok, BlockHash} = aec_blocks:hash_internal_representation(Block),
     ConsensusModule = aec_blocks:consensus_module(Block),
     Height = ConsensusModule:key_block_height_relative_previous_block(
@@ -33,9 +34,9 @@ create(Block, Beneficiary, Miner, IsHole) ->
         aec_blocks:height(Block)
     ),
     Protocol = aec_hard_forks:protocol_effective_at_height(Height),
-    int_create(Height, BlockHash, Block, Beneficiary, Miner, Protocol, IsHole).
+    int_create(Height, BlockHash, Block, Beneficiary, Miner, Protocol, IsHole, IsEoE).
 
-int_create(Height, PrevBlockHash, PrevBlock, Beneficiary, Miner, Protocol, IsHole) ->
+int_create(Height, PrevBlockHash, PrevBlock, Beneficiary, Miner, Protocol, IsHole, IsEoE) ->
     try
         {ok, Trees} = aec_chain_state:calculate_state_for_new_keyblock(
             Height,
@@ -43,10 +44,10 @@ int_create(Height, PrevBlockHash, PrevBlock, Beneficiary, Miner, Protocol, IsHol
             Miner,
             Beneficiary,
             Protocol,
-            if IsHole -> <<?HOLE_FLAG:?FLAG_BITS>>; true -> <<0:?FLAG_BITS>> end
+            set_flags(IsHole, IsEoE)
         ),
         Block = int_create_block(
-            Height, PrevBlockHash, PrevBlock, Miner, Beneficiary, Trees, Protocol, IsHole
+            Height, PrevBlockHash, PrevBlock, Miner, Beneficiary, Trees, Protocol, IsHole, IsEoE
         ),
         {ok, Block}
     catch
@@ -54,7 +55,7 @@ int_create(Height, PrevBlockHash, PrevBlock, Beneficiary, Miner, Protocol, IsHol
             {error, Err}
     end.
 
-int_create_block(Height, PrevBlockHash, PrevBlock, Miner, Beneficiary, Trees, Protocol, IsHole) ->
+int_create_block(Height, PrevBlockHash, PrevBlock, Miner, Beneficiary, Trees, Protocol, IsHole, IsEoE) ->
     {PrevKeyHash, PrevKeyBlock} =
         case aec_blocks:type(PrevBlock) of
             micro ->
@@ -72,12 +73,23 @@ int_create_block(Height, PrevBlockHash, PrevBlock, Miner, Beneficiary, Trees, Pr
         PrevBlockHash,
         PrevKeyHash,
         aec_trees:hash(Trees),
-        PrevTarget + if IsHole -> 0; true -> 1 end,
+        target(IsHole, IsEoE, Height, PrevTarget),
         0,
         aeu_time:now_in_msecs(),
         InfoField,
         Protocol,
         Miner,
         Beneficiary,
-        if IsHole -> <<?HOLE_FLAG:?FLAG_BITS>>; true -> <<0:?FLAG_BITS>> end
+        set_flags(IsHole, IsEoE)
     ).
+
+set_flags(IsHole, IsEoE) ->
+    HoleFlag = if IsHole -> ?HOLE_FLAG; true -> 0 end,
+    EoEFlag = if IsEoE -> ?EOE_FLAG; true -> 0 end,
+    <<(HoleFlag bor EoEFlag):32>>.
+
+target(_IsHole, true, Height, _PrevTarget) ->
+    Height;
+target(IsHole, _IsEoE, _Height, PrevTarget) ->
+    PrevTarget + if IsHole -> 0; true -> 1 end.
+

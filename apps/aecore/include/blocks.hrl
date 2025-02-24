@@ -15,6 +15,7 @@
 -define(KEY_HEADER_FLAG,    (1 bsl 31)).
 -define(CONTAINS_INFO_FLAG, (1 bsl 30)).
 -define(HOLE_FLAG,          (1 bsl 29)).
+-define(EOE_FLAG,           (1 bsl 28)).
 
 
 -define(MICRO_HEADER_TAG,            0).
@@ -31,7 +32,8 @@
 %% Key blocks (bit 31:1)
 %% 30         ContainsInfo 1 - true, 0 - false
 %% 29         HC Hole block: 1 - is a hole block, 0 - ordinary block
-%% 0 - 28     Unused, should be 0.
+%% 28         EOE : 1 - end of epoch which achieved quorum, 0 - not end of epoch)
+%% 0 - 27     Unused, should be 0.
 %%
 %% Micro blocks (bit 31:0)
 %% 30         PoFFlag: 1 - pof_hash, 0 - no pof_hash

@@ -54,6 +54,8 @@
 -define(LEADER_FLD, <<"leader">>).
 -define(EPOCH_FLD, <<"epoch">>).
 
+-define(FINALIZE_FUN_NAME, "finalize_epoch").
+
 %% API to start the state machine
 -spec start_link(#{binary() => binary()}, non_neg_integer())  -> {ok, pid()} | {error, atom()}.
 start_link(Stakers, BlockTime) ->
@@ -564,7 +566,7 @@ create_finalize_call(Votes, #{?HASH_FLD := Hash, ?EPOCH_DELTA_FLD := EpochDelta}
                     Seed
             end,
     VotesList = maps:fold(fun create_vote_call/3, [], Votes),
-    aeb_fate_abi:create_calldata("finalize_epoch", [Epoch, {bytes, Hash}, EpochLength + EpochDelta, {bytes, Seed1}, {address, Leader}, VotesList]).
+    aeb_fate_abi:create_calldata(?FINALIZE_FUN_NAME, [Epoch, {bytes, Hash}, EpochLength + EpochDelta, {bytes, Seed1}, {address, Leader}, VotesList]).
 
 create_vote_call(Producer, #{?HASH_FLD := Hash, ?EPOCH_DELTA_FLD := EpochDelta, ?SIGNATURE_FLD := Signature} = Payload, Accum) ->
     [{tuple, {{address, Producer}, {bytes, Hash}, EpochDelta, {bytes, get_sign_data(Payload)}, {bytes, Signature}}} | Accum].

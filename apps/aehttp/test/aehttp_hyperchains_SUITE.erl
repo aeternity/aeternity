@@ -53,7 +53,7 @@
 -define(HC_CONTRACT, "HCElection").
 -define(CONSENSUS, hc).
 -define(CHILD_EPOCH_LENGTH, 10).
--define(CHILD_BLOCK_TIME, 300).
+-define(CHILD_BLOCK_TIME, 400).
 -define(CHILD_BLOCK_PRODUCTION_TIME, 120).
 -define(PARENT_EPOCH_LENGTH, 3).
 -define(PARENT_FINALITY, 2).
@@ -1324,7 +1324,12 @@ check_finalize_info(Config) ->
     {ok, LastLeader} = rpc(Node, aec_consensus_hc, leader_for_height, [Last]),
     mine_to_last_block_in_epoch(Node, Config),
     {ok, _} = produce_cc_blocks(Config, 2),
-    #{producer := Producer, epoch := FEpoch, votes := Votes} = rpc(Node, aec_chain_hc , finalize_info, []),
+    {ok, EOEBlock} = rpc(Node, aec_chain, get_key_block_by_height, [Last]),
+    ?assertEqual(aec_blocks:target(EOEBlock), Last),
+    ?assert(aec_blocks:is_eoe(EOEBlock)),
+    #{producer := Producer, epoch := FEpoch, votes := Votes, fork := PrevHash} = rpc(Node, aec_chain_hc , finalize_info, []),
+    ?assertEqual(aec_blocks:miner(EOEBlock), Producer),
+    ?assertEqual(aec_blocks:prev_key_hash(EOEBlock), PrevHash),
     FVoters = lists:map(fun(#{producer := Voter}) -> Voter end, Votes),
     TotalStake = lists:foldl(fun({_, Stake}, Accum) -> Stake + Accum end, 0, Validators),
     VotersStake = lists:foldl(fun(Voter, Accum) -> proplists:get_value(Voter, Validators) + Accum end, 0, FVoters),

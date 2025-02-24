@@ -65,6 +65,8 @@
          set_extra/2,
          extra/1,
          consensus_module/1,
+         is_eoe/1,
+         set_eoe/2,
          is_hole/1
         ]).
 
@@ -488,6 +490,18 @@ set_pof_hash(#mic_header{flags = <<Flags:?FLAG_BITS>>} = Header, Hash) when byte
 set_pof_hash(#mic_header{flags = <<Flags:?FLAG_BITS>>} = Header, Hash) when byte_size(Hash) =:= 32 ->
     Header#mic_header{pof_hash = Hash,
                       flags = <<?SET(Flags,?POF_FLAG):?FLAG_BITS>>}.
+
+
+%% Hyperchains specific. Is the end of epoch
+-spec is_eoe(key_header()) -> boolean().
+is_eoe(#key_header{flags = <<F:?FLAG_BITS>>}) when (F band ?EOE_FLAG) =/= 0 -> true;
+is_eoe(_) -> false.
+
+-spec set_eoe(key_header(), boolean()) -> key_header().
+set_eoe(#key_header{flags = <<Flags:?FLAG_BITS>>} = Header, false) ->
+    Header#key_header{flags = <<?CLR(Flags,?EOE_FLAG):?FLAG_BITS>>};
+set_eoe(#key_header{flags = <<Flags:?FLAG_BITS>>} = Header, true) ->
+    Header#key_header{flags = <<?SET(Flags,?EOE_FLAG):?FLAG_BITS>>}.
 
 
 -spec pow(key_header()) -> aec_consensus:key_seal().
