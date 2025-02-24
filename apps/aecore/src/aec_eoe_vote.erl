@@ -534,7 +534,8 @@ calculate_stake(#data{validators = Validators, stakers = Stakers}) ->
 
 calculate_majority(Validators) ->
     TotalStake = lists:foldl(fun({_, Stake}, Accum) -> Stake + Accum end, 0, Validators),
-    trunc(math:ceil((2 * TotalStake) / 3)).
+    %% 2/3 majority
+    (2 * TotalStake + 2) div 3.
 
 reset_data(#data{stakers = Stakers, block_time=BlockTime, epoch = Epoch, parent_blocks = ParentBlocks}) ->
     #data{stakers = Stakers, block_time=BlockTime, parent_blocks=remove_old_blocks(Epoch, ParentBlocks)}.

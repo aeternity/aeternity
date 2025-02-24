@@ -1340,12 +1340,15 @@ check_finalize_info(Config) ->
     ?assertEqual(aec_blocks:miner(EOEBlock), Producer),
     ?assertEqual(aec_blocks:prev_key_hash(EOEBlock), PrevHash),
     FVoters = lists:map(fun(#{producer := Voter}) -> Voter end, Votes),
+    ct:log("Votes: ~p", [Votes]),
     TotalStake = lists:foldl(fun({_, Stake}, Accum) -> Stake + Accum end, 0, Validators),
     VotersStake = lists:foldl(fun(Voter, Accum) -> proplists:get_value(Voter, Validators) + Accum end, 0, FVoters),
     TotalVotersStake = proplists:get_value(LastLeader, Validators) + VotersStake,
     ?assertEqual(Epoch, FEpoch),
     ?assertEqual(Producer, LastLeader),
-    ?assert(TotalVotersStake >= trunc(math:ceil((2 * TotalStake) / 3))).
+    MajorityVotes = (2 * TotalStake + 2) div 3,
+    ct:pal("~p >= ~p", [TotalVotersStake, MajorityVotes]),
+    ?assert(TotalVotersStake >= MajorityVotes).
 
 %%%=============================================================================
 %%% Penalties
