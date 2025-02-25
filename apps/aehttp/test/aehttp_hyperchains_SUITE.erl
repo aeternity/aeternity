@@ -168,12 +168,12 @@ groups() ->
           [ start_two_child_nodes
           , produce_first_epoch
           , verify_rewards
-          , check_finalize_info
           , spend_txs
           , simple_withdraw
           , correct_leader_in_micro_block
           , sync_third_node
           , produce_some_epochs
+          , check_finalize_info
           , respect_schedule
           , entropy_impact_schedule
           , check_blocktime
@@ -968,7 +968,7 @@ epochs_with_slow_parent(Config) ->
     [{Node, _, _, _} | _] = ?config(nodes, Config),
     ct:log("Parent start height = ~p", [?config(parent_start_height, Config)]),
 
-    %% Produce a block (to get in sync with wall clock).
+    %% Align with wallclock
     produce_cc_blocks(Config, 1),
 
     %% ensure start at a new epoch boundary
@@ -1336,16 +1336,19 @@ check_finalize_info(Config) ->
     {ok, EOEBlock} = rpc(Node, aec_chain, get_key_block_by_height, [Last]),
     ?assertEqual(aec_blocks:target(EOEBlock), Last),
     ?assert(aec_blocks:is_eoe(EOEBlock)),
-    #{producer := Producer, epoch := FEpoch, votes := Votes, fork := PrevHash} = rpc(Node, aec_chain_hc , finalize_info, []),
+    #{producer := Producer, epoch := FEpoch, votes := Votes, fork := PrevHash} = rpc(Node, aec_chain_hc, finalize_info, []),
     ?assertEqual(aec_blocks:miner(EOEBlock), Producer),
     ?assertEqual(aec_blocks:prev_key_hash(EOEBlock), PrevHash),
     FVoters = lists:map(fun(#{producer := Voter}) -> Voter end, Votes),
+    ct:log("Votes: ~p", [Votes]),
     TotalStake = lists:foldl(fun({_, Stake}, Accum) -> Stake + Accum end, 0, Validators),
     VotersStake = lists:foldl(fun(Voter, Accum) -> proplists:get_value(Voter, Validators) + Accum end, 0, FVoters),
     TotalVotersStake = proplists:get_value(LastLeader, Validators) + VotersStake,
     ?assertEqual(Epoch, FEpoch),
     ?assertEqual(Producer, LastLeader),
-    ?assert(TotalVotersStake >= trunc(math:ceil((2 * TotalStake) / 3))).
+    MajorityVotes = (2 * TotalStake + 2) div 3,
+    ct:pal("~p >= ~p", [TotalVotersStake, MajorityVotes]),
+    ?assert(TotalVotersStake >= MajorityVotes).
 
 %%%=============================================================================
 %%% Penalties
@@ -1816,6 +1819,12 @@ produce_cc_blocks(Config, BlocksCnt, ProdCfg) ->
     wait_same_top([ N || {N, _, _, _} <- ?config(nodes, Config)]),
     get_generations(Node, TopHeight + 1, NewTopHeight).
 
+%% If it is time according to schedule, produce on parent chain
+produce_pc_block([{CH, PBs} | PPs], TopHeight) when CH =< TopHeight ->
+    mine_key_blocks(?PARENT_CHAIN_NODE_NAME, PBs),
+    produce_pc_block(PPs, TopHeight);
+produce_pc_block(PPs, _TopHeight) ->
+    PPs.
 
 %% It seems we automatically produce child chain blocks in the background
 produce_to_cc_height(Config, TopHeight, GoalHeight, ParentProduce, PNodes) ->
@@ -1823,15 +1832,11 @@ produce_to_cc_height(Config, TopHeight, GoalHeight, ParentProduce, PNodes) ->
     BlocksNeeded = GoalHeight - TopHeight,
     case BlocksNeeded > 0 of
         false ->
+            %% Unfortunate Hole-placement may lead to missed Parent-blocks otherwise
+            produce_pc_block(ParentProduce, TopHeight),
             TopHeight;
         true ->
-            NewParentProduce =
-                case ParentProduce of
-                    [{CH, PBs} | PRest ] when CH =< TopHeight+1 ->
-                        mine_key_blocks(?PARENT_CHAIN_NODE_NAME, PBs),
-                        PRest;
-                    PP -> PP
-                end,
+            NewParentProduce = produce_pc_block(ParentProduce, TopHeight + 1),
 
             %% TODO: add some assertions when we expect an MB (and not)!
             {ok, _Txs} = rpc:call(hd(NodeNames), aec_tx_pool, peek, [infinity]),

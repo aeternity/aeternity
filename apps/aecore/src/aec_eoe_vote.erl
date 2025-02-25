@@ -87,7 +87,7 @@ callback_mode() ->
     state_functions.
 
 %%% State: AwaitEndOfEpoch
-await_eoe(cast, {negotiate, Epoch, Height, Hash, Leader, Validators, Seed, CurrentLength}, #data{block_time=BlockTime, proposal=Proposal, majority=Majority, parent_blocks = ParentBlocks} = Data) ->
+await_eoe(cast, {negotiate, Epoch, Height, Hash, Leader, Validators, Seed, CurrentLength}, #data{block_time=BlockTime, proposal=Proposal, parent_blocks = ParentBlocks} = Data) ->
     LengthDelta = calculate_delta(Epoch, ParentBlocks, CurrentLength, BlockTime),
     lager:debug("Suggesting delta ~p for epoch ~p", [LengthDelta, Epoch]),
     Data1 = set_validators(Validators, Data#data{epoch=Epoch, height=Height, fork_hash=Hash, seed=Seed, length=CurrentLength, leader=Leader, validators = Validators, length_delta=LengthDelta}),
@@ -109,11 +109,11 @@ await_eoe(cast, {negotiate, Epoch, Height, Hash, Leader, Validators, Seed, Curre
 
             end;
         true ->
-            Stake = calculate_stake(Data1),
             lager:info("Sending proposal for end of epoch ~p hash: ~p", [Epoch, Hash]),
-            LeaderProposal = #{?HASH_FLD => Hash, ?EPOCH_DELTA_FLD => LengthDelta},
+            Data2 = Data1#data{proposal = #{?HASH_FLD => Hash, ?EPOCH_DELTA_FLD => LengthDelta}},
             %% block time * 2 because need to wait for votes to arrive
-            send(fun create_proposal/1, Data1, {next_state, vote, Data1#data{majority = Majority - Stake, proposal=LeaderProposal}, [{state_timeout,BlockTime * 2,no_quorum}]})
+            Next = {next_state, proposal, Data2, [{state_timeout, BlockTime * 2, no_quorum}]},
+            send(fun create_proposal/1, Data1, Next)
     end;
 await_eoe(info, {gproc_ps_event, tx_received, #{info := SignedTx}}, Data) ->
     handle_proposal(SignedTx, Data);
@@ -185,7 +185,8 @@ create_votes(Type, #data{proposal=ProposalFields, leader=Leader, stakers=Stakers
     end.
 
 
-create_votes(_VoteFlds, _Leader, [], _Stakers, _Epoch, _Type, Votes) ->
+create_votes(_VoteFlds, _Leader, [], _Stakers, _Epoch, Type, Votes) ->
+    lager:debug("Created ~p votes of type ~p", [length(Votes), Type]),
     Votes;
 create_votes(VoteFlds, Leader, [{Leader,_}|Validators], Stakers, Epoch, Type, Votes) ->
     create_votes(VoteFlds, Leader, Validators, Stakers, Epoch, Type, Votes);
@@ -242,7 +243,7 @@ handle_vote(Type, SignedTx, Data, OnValidFun, OnOtherVoteType) ->
             %% Check if a validator
             case can_vote(Validator, Data) of
                 true ->
-                    lager:info("Received a vote: ~p of type ~p", [VoteFields, Type]),
+                    lager:info("Received a vote from ~p of type ~p (vote: ~p)", [Validator, Type, VoteFields]),
                     Data1 = count_vote(Validator, Data),
                     %% Check if reached two thirds
                     OnValidFun(Validator, VoteFields, Data1);
@@ -293,13 +294,14 @@ on_valid_vote(Validator, VoteFields, #data{votes=Votes} = Data) ->
 check_voting_majority(#data{majority = CurrentMajority, validators=Validators, block_time=BlockTime, votes=Votes, epoch=Epoch} = Data) ->
     case CurrentMajority =< 0 of
         true ->
-            lager:info("Quorum achieved for voting for epoch ~p", [Epoch]),
+            lager:info("Quorum achieved for voting for epoch ~p has ~p votes", [Epoch, maps:size(Votes)]),
             Majority = calculate_majority(Validators),
             #data{proposal=Proposal} = Data1 = update_proposal_after_vote_majority(Data),
             Result = create_finalize_call(Votes, Proposal, Data1),
             Data2 = Data1#data{result = Result},
             send_commits(Data2),
-            Stake = calculate_stake(Data2),
+            Stake = calculate_leader_stake(Data2),
+            lager:debug("Leader implicitly voting with stake ~p, remaining = ~p", [Stake, Majority - Stake]),
             Data3 = Data2#data{majority = Majority - Stake, remaining_validators = maps:from_list(Validators)},
             check_other_votes({next_state, finalize, Data3, [{state_timeout,BlockTime,no_quorum}]});
         false ->
@@ -345,8 +347,9 @@ on_other_vote_type(Type, _SignedTx, _Data) ->
     keep_state_and_data.
 
 handle_voting(#data{majority = Majority} = Data) ->
-    Stake = calculate_stake(Data),
+    Stake = calculate_leader_stake(Data),
     send_votes(Data),
+    lager:debug("Handle voting - leader implicilty votes with stake: ~p remaining: ~p", [Stake, Majority - Stake]),
     Data#data{majority = Majority - Stake}.
 
 send_votes(#data{epoch = Epoch} = Data) ->
@@ -463,6 +466,7 @@ count_vote(Validator, #data{remaining_validators = RemainingValidators, majority
         undefined ->
             Data;
         Stake ->
+            lager:debug("Voter had ~p stake, remaining: ~p", [Stake, Majority - Stake]),
             Data#data{majority = Majority - Stake, remaining_validators = maps:remove(Validator, RemainingValidators)}
     end.
 
@@ -523,18 +527,16 @@ convert_to_finalize_transaction({ok, CallData}, Trees, #data{leader=Leader, stak
 convert_to_finalize_transaction(Result, _Trees, _Data) ->
     Result.
 
-calculate_stake(#data{validators = Validators, stakers = Stakers}) ->
-    lists:foldl(fun({Validator, Stake}, Accum) ->
-        case maps:is_key(Validator, Stakers) of
-            true ->
-                Accum;
-            false ->
-                Stake + Accum
-        end end, 0, Validators).
+calculate_leader_stake(#data{validators = Validators, leader = Leader}) ->
+    case lists:keyfind(Leader, 1, Validators) of
+        false -> 0;
+        {_, Stake} -> Stake
+    end.
 
 calculate_majority(Validators) ->
     TotalStake = lists:foldl(fun({_, Stake}, Accum) -> Stake + Accum end, 0, Validators),
-    trunc(math:ceil((2 * TotalStake) / 3)).
+    %% 2/3 majority
+    (2 * TotalStake + 2) div 3.
 
 reset_data(#data{stakers = Stakers, block_time=BlockTime, epoch = Epoch, parent_blocks = ParentBlocks}) ->
     #data{stakers = Stakers, block_time=BlockTime, parent_blocks=remove_old_blocks(Epoch, ParentBlocks)}.
@@ -548,7 +550,7 @@ remove_old_blocks(Epoch, ParentBlocks) ->
 set_validators(Validators, Data) ->
     Majority = calculate_majority(Validators),
     lager:info("Majority required ~p", [Majority]),
-    Data#data{validators = Validators, majority=Majority, remaining_validators=maps:from_list(Validators)}.
+    Data#data{validators = Validators, majority = Majority, remaining_validators = maps:from_list(Validators)}.
 
 get_staker_private_key(Staker, Stakers) ->
     maps:get(Staker, Stakers, undefined).
