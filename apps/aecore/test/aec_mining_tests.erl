@@ -97,8 +97,8 @@ mine_block_test_() ->
       ]}.
 
 setup() ->
+    aec_test_utils:ensure_system_init(),
     InitialApps = {running_apps(), loaded_apps()},
-    {ok, _} = application:ensure_all_started(setup),
     {ok, _} = application:ensure_all_started(aeutils),
     aec_test_utils:mock_fast_and_deterministic_cuckoo_pow(),
     aec_test_utils:start_chain_db(),

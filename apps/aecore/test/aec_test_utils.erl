@@ -10,6 +10,7 @@
 -export([ running_apps/0
         , loaded_apps/0
         , restore_stopped_and_unloaded_apps/2
+        , ensure_system_init/0
         , mock_time/0
         , unmock_time/0
         , mock_difficulty_as_target/0
@@ -108,6 +109,17 @@ restore_stopped_and_unloaded_apps(OldRunningApps, OldLoadedApps) ->
     lists:foreach(fun(A) -> ok = application:unload(A) end, BadLoadedApps),
     {_, OldRunningApps} = {OldRunningApps, running_apps()},
     {_, OldLoadedApps} = {OldLoadedApps, loaded_apps()},
+    ok.
+
+%% For tests that require the basic system apps to be loaded first.
+%% These apps (setup, lager, etc.) should not be stopped and restarted
+%% each time when tearing down a test and setting up a new one.
+ensure_system_init() ->
+    %% the setup app needs to modify the lager config before lager starts,
+    %% but this is specified through a hook in the aeutils config
+    application:load(aeutils), % ensure aeutils config loaded before setup starts
+    {ok, _} = application:ensure_all_started(setup), % ensure started before lager
+    {ok, _} = application:ensure_all_started(lager),
     ok.
 
 genesis_accounts() ->

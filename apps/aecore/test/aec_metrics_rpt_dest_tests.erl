@@ -132,6 +132,7 @@ set_config(Rules) ->
                 end).
 
 setup() ->
+    aec_test_utils:ensure_system_init(),
     InitialApps = {running_apps(), loaded_apps()},
     {ok, _} = application:ensure_all_started(exometer_core),
     create_metrics(),

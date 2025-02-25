@@ -136,6 +136,7 @@ compute_chain(Now, Height, Target, MiningOffset) ->
                 end, [], lists:seq(Height - (N + 1), Height - 1)).
 
 setup() ->
+    aec_test_utils:ensure_system_init(),
     InitialApps = {running_apps(), loaded_apps()},
     {ok, _} = application:ensure_all_started(setup), %% For data_dir.
     InitialApps.
