@@ -482,8 +482,9 @@ handle_call({start_block_production, _Opts},_From, #state{has_beneficiary = fals
     {reply, {error, beneficiary_not_configured}, State};
 handle_call({start_block_production, Opts},_From, #state{consensus = Cons} = State) ->
     epoch_mining:info("Mining started" ++ print_opts(State)),
-    State1 = start_block_production_(State#state{block_producing_state = 'running', consensus = Cons#consensus{leader = false},
-                                      mining_opts = Opts}),
+    State1 = start_block_production_(State#state{block_producing_state = 'running',
+                                                 consensus = Cons#consensus{leader = false},
+                                                 mining_opts = Opts}),
     {reply, ok, State1};
 handle_call(get_block_producing_state,_From, State) ->
     {reply, State#state.block_producing_state, State};
