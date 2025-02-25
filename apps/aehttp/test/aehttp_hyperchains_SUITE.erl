@@ -968,9 +968,6 @@ epochs_with_slow_parent(Config) ->
     [{Node, _, _, _} | _] = ?config(nodes, Config),
     ct:log("Parent start height = ~p", [?config(parent_start_height, Config)]),
 
-    %% Produce a block (to get in sync with wall clock).
-    produce_cc_blocks(Config, 1),
-
     %% ensure start at a new epoch boundary
     produce_until_next_epoch(Config),
 
