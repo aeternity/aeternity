@@ -1001,33 +1001,34 @@ epochs_with_slow_parent(Config) ->
     ct:log("Parent at height ~p and child at height ~p in child epoch ~p",
            [ParentTopHeight, ChildTopHeight, EndEpoch]),
 
-    %% Here we should have observed some signalling for increased child epoch length
-
     %% Parent hash grabbed in last block child epoch, so here we can start, but not finish next epoch
     {ok, _} = produce_cc_blocks(Config, EpochLength - 1, #{parent_produce => []}),
-    ?assertException(error, timeout_waiting_for_block, produce_cc_blocks(Config, 1, #{parent_produce => []})),
+
+    %% Here we should get stuck... Short timeout to not get too far behind.
+    ProduceOpts = #{timeout => 1000, parent_produce => []},
+    ?assertException(error, timeout_waiting_for_block, produce_cc_blocks(Config, 1, ProduceOpts)),
 
     ?assertEqual([{ok, (N-1) * ?CHILD_EPOCH_LENGTH + 1} || N <- lists:seq(1, EndEpoch)],
                  [rpc(Node, aec_chain_hc, epoch_start_height, [N]) || N <- lists:seq(1, EndEpoch)]),
 
-    %% TODO: The chain should preferrably somehow recover from this. But at the moment it will not.
+    %% Quickly produce parent blocks to be in sync again
+    ParentBlocksNeeded =
+        (EndEpoch - 1) * ?PARENT_EPOCH_LENGTH + ?config(parent_start_height, Config) + ?PARENT_FINALITY - ParentTopHeight,
 
-    %% %% Quickly produce parent blocks to be in sync again
-    %% ParentBlocksNeeded =
-    %%     EndEpoch * ?PARENT_EPOCH_LENGTH + ?config(parent_start_height, Config) + ?PARENT_FINALITY - ParentTopHeight,
+    {ok, _} = produce_cc_blocks(Config, 1, #{parent_produce => [{ChildTopHeight + EpochLength, ParentBlocksNeeded}]}),
 
-    %% {ok, _} = produce_cc_blocks(Config, 1, #{parent_produce => [{ChildTopHeight + EpochLength, ParentBlocksNeeded}]}),
+    #{epoch_length := FinalizeEpochLength, epoch := FinalizeEpoch} = rpc(Node, aec_chain_hc, finalize_info, []),
+    %% We missed EoE, so no adjustment here...
+    ct:log("The agreed epoch length is ~p the current length is ~p for epoch ~p", [FinalizeEpochLength, EpochLength, FinalizeEpoch]),
+    ?assert(FinalizeEpoch < EndEpoch),
 
-    %% #{epoch_length := FinalizeEpochLength, epoch := FinalizeEpoch} = rpc(Node, aec_chain_hc , finalize_info, []),
-    %% ct:log("The agreed epoch length is ~p the current length is ~p for epoch ~p", [FinalizeEpochLength, EpochLength, FinalizeEpoch]),
+    %% advance
+    produce_cc_blocks(Config, ?CHILD_EPOCH_LENGTH),
 
-    %% ?assert(FinalizeEpochLength > EpochLength),
+    #{epoch_length := FinalizeEpochLength1, epoch := FinalizeEpoch1} = rpc(Node, aec_chain_hc, finalize_info, []),
+    ct:log("The agreed epoch length is ~p the current length is ~p for epoch ~p", [FinalizeEpochLength1, EpochLength, FinalizeEpoch1]),
+    ?assert(FinalizeEpochLength1 > FinalizeEpochLength),
 
-    %% lists:foreach(fun(_) -> {ok, #{length := CurrentEpochLen}} = rpc(Node, aec_chain_hc, epoch_info, []),
-    %%                          produce_cc_blocks(Config, CurrentEpochLen) end, lists:seq(1, 2)),
-    %% {ok, #{length := AdjEpochLength} = EpochInfo} = rpc(Node, aec_chain_hc, epoch_info, []),
-    %% ct:log("Info ~p", [EpochInfo]),
-    %% ?assertEqual(FinalizeEpochLength, AdjEpochLength),
 
     ok.
 
@@ -1846,12 +1847,13 @@ produce_cc_blocks(Config, BlocksCnt, ProdCfg) ->
                 PNs
         end,
 
+    Timeout = maps:get(timeout, ProdCfg, 3000),
     TopHeight = rpc(Node, aec_chain, top_height, []),
 
     %% assert that the parent chain is not mining
     ?assertEqual(stopped, rpc:call(?PARENT_CHAIN_NODE_NAME, aec_conductor, get_mining_state, [])),
     ct:log("parent produce ~p", [ParentProduce]),
-    NewTopHeight = produce_to_cc_height(Config, TopHeight, TopHeight + BlocksCnt, ParentProduce, PNodes),
+    NewTopHeight = produce_to_cc_height(Config, TopHeight, TopHeight + BlocksCnt, ParentProduce, PNodes, Timeout),
     wait_same_top([ N || {N, _, _, _} <- ?config(nodes, Config)]),
     get_generations(Node, TopHeight + 1, NewTopHeight).
 
@@ -1863,7 +1865,7 @@ produce_pc_block(PPs, _TopHeight) ->
     PPs.
 
 %% It seems we automatically produce child chain blocks in the background
-produce_to_cc_height(Config, TopHeight, GoalHeight, ParentProduce, PNodes) ->
+produce_to_cc_height(Config, TopHeight, GoalHeight, ParentProduce, PNodes, Timeout) ->
     NodeNames = [ Name || {_, Name, _, _} <- ?config(nodes, Config) ],
     BlocksNeeded = GoalHeight - TopHeight,
     case BlocksNeeded > 0 of
@@ -1878,7 +1880,7 @@ produce_to_cc_height(Config, TopHeight, GoalHeight, ParentProduce, PNodes) ->
             {ok, _Txs} = rpc:call(hd(NodeNames), aec_tx_pool, peek, [infinity]),
 
             %% This will mine 1 key-block (and 0 or 1 micro-blocks)
-            {ok, Blocks} = mine_cc_blocks(PNodes, 1),
+            {ok, Blocks} = mine_cc_blocks(PNodes, 1, Timeout),
 
             {Node, KeyBlock} = lists:last(Blocks),
             %% TODO: Should we have a way to require a keyblock?
@@ -1900,11 +1902,11 @@ produce_to_cc_height(Config, TopHeight, GoalHeight, ParentProduce, PNodes) ->
 
             Producer = get_block_producer_name(?config(staker_names, Config), KeyBlock),
             ct:log("~p produced CC block at height ~p", [Producer, aec_blocks:height(KeyBlock)]),
-            produce_to_cc_height(Config, TopHeight + NHoles + 1, GoalHeight + NHoles, NewParentProduce, PNodes)
+            produce_to_cc_height(Config, TopHeight + NHoles + 1, GoalHeight + NHoles, NewParentProduce, PNodes, Timeout)
       end.
 
-mine_cc_blocks(NodeNames, N) ->
-    aecore_suite_utils:hc_mine_blocks(NodeNames, N).
+mine_cc_blocks(NodeNames, N, Timeout) ->
+    aecore_suite_utils:hc_mine_blocks(NodeNames, N, Timeout, #{}).
 
 get_generations(Node, FromHeight, ToHeight) ->
     ReversedBlocks =
