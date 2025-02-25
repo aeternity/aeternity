@@ -40,6 +40,7 @@
          check_finalize_info/1,
          sanity_check_vote_tx/1,
          hole_production/1,
+         hole_production_eoe/1,
          basic_penalty/1
         ]).
 
@@ -194,6 +195,7 @@ groups() ->
           [ start_two_child_nodes
           , produce_first_epoch
           , hole_production
+          , hole_production_eoe
           ]}
     , {pinning, [sequence],
           [ start_two_child_nodes,
@@ -1135,14 +1137,39 @@ hole_production(Config, N) ->
         ok
     end.
 
-produce_until_next_epoch(Config) ->
+hole_production_eoe(Config) ->
     [{Node, _, _, _} | _] = ?config(nodes, Config),
 
-    StartHeight = rpc(Node, aec_chain, top_height, []),
-    {ok, #{last := Last}} = rpc(Node, aec_chain_hc, epoch_info, []),
-    BlocksLeftToBoundary = Last - StartHeight,
-    %% some block production including parent blocks
-    {ok, _} = produce_cc_blocks(Config, BlocksLeftToBoundary).
+    %% Avoid desync
+    produce_cc_blocks(Config, 1),
+
+    mine_to_last_block_in_epoch(Node, Config),
+
+    %% Get the schedule
+    ChildHeight = rpc(Node, aec_chain, top_height, []),
+    {ok, #{validators := Validators, epoch := Epoch, length := Length, last := Last}} =
+        rpc(Node, aec_chain_hc, epoch_info, []),
+
+    ?assertEqual(ChildHeight, Last - 1),
+
+    {_, Seed} = get_entropy(Node, Epoch),
+    {ok, Schedule} = rpc(Node, aec_chain_hc, validator_schedule, [ChildHeight, Seed, Validators, Length]),
+
+    EOEProducer = lists:last(Schedule),
+    EOEProdNode = producer_node(EOEProducer, Config),
+    AllNodes = [ Name || {_, Name, _, _} <- ?config(nodes, Config) ],
+    ct:log("Produce on: ~p", [AllNodes -- [EOEProdNode]]),
+    {ok, Bs} = produce_cc_blocks(Config, 1, #{prod_nodes => AllNodes -- [EOEProdNode]}),
+    Holes = length([ x || B <- Bs, key == aec_blocks:type(B) ]),
+    ct:pal("Expected at least 1 hole, got ~p", [Holes]),
+    ?assert(Holes > 1),
+
+    %% Make sure chain works moving forward
+    produce_n_epochs(Config, 2),
+
+    ok.
+
+
 
 %%%=============================================================================
 %%% HC Endpoints
@@ -1430,6 +1457,15 @@ mine_to_next_epoch(Node, Config) ->
     {ok, #{last := Last1, length := _Len}} = rpc(Node, aec_chain_hc, epoch_info, []),
     {ok, Bs} = produce_cc_blocks(Config, Last1 - Height1 + 1),
     ct:log("Block last epoch: ~p", [Bs]).
+
+produce_until_next_epoch(Config) ->
+    [{Node, _, _, _} | _] = ?config(nodes, Config),
+
+    StartHeight = rpc(Node, aec_chain, top_height, []),
+    {ok, #{last := Last}} = rpc(Node, aec_chain_hc, epoch_info, []),
+    BlocksLeftToBoundary = Last - StartHeight,
+    %% some block production including parent blocks
+    {ok, _} = produce_cc_blocks(Config, BlocksLeftToBoundary).
 
 %%% --------- helper functions
 
