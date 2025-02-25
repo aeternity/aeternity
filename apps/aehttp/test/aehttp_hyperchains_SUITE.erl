@@ -168,12 +168,12 @@ groups() ->
           [ start_two_child_nodes
           , produce_first_epoch
           , verify_rewards
-          , check_finalize_info
           , spend_txs
           , simple_withdraw
           , correct_leader_in_micro_block
           , sync_third_node
           , produce_some_epochs
+          , check_finalize_info
           , respect_schedule
           , entropy_impact_schedule
           , check_blocktime
@@ -1333,7 +1333,7 @@ check_finalize_info(Config) ->
     {ok, EOEBlock} = rpc(Node, aec_chain, get_key_block_by_height, [Last]),
     ?assertEqual(aec_blocks:target(EOEBlock), Last),
     ?assert(aec_blocks:is_eoe(EOEBlock)),
-    #{producer := Producer, epoch := FEpoch, votes := Votes, fork := PrevHash} = rpc(Node, aec_chain_hc , finalize_info, []),
+    #{producer := Producer, epoch := FEpoch, votes := Votes, fork := PrevHash} = rpc(Node, aec_chain_hc, finalize_info, []),
     ?assertEqual(aec_blocks:miner(EOEBlock), Producer),
     ?assertEqual(aec_blocks:prev_key_hash(EOEBlock), PrevHash),
     FVoters = lists:map(fun(#{producer := Voter}) -> Voter end, Votes),
