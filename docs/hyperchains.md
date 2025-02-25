@@ -14,7 +14,7 @@ This guide assumes you have:
 - Access to sufficient funds for pinning operations
 - Understanding of node validator operations
 
-Important: 
+Important:
 - Back up your existing node configuration before making any changes
 - Store all private keys securely
 - Verify all prerequisites before proceeding
@@ -55,8 +55,8 @@ Important:
 2. Set up and configure Hyperchain node
 3. Complete validation period (24-48 hours)
 4. Begin network participation
-   
-<!-- 
+
+<!--
 The quickest way to explore Hyperchains is through our preconfigured Localnet environment. Localnet provides a complete Docker compose configuration that includes a pre-configured Aeternity parent chain, Hyperchain node, and all essential development tools for both networks. This environment serves both as a testing playground and a development platform, and is maintained with the latest tools and node versions. You can find information on how to run the Localnet here:
  [Localnet](https://github.com/aeternity/localnet/blob/master/README.md#hyperchains-configuration). -->
 
@@ -922,6 +922,7 @@ chain:
         default_pinning_behavior: true
         election_contract: 'ct_LRbi65kmLtE7YMkG6mvG5TxAXTsPJDZjAtsPuaXtRyPA7gnfJ'
         fixed_coinbase: 100000000000000000000
+        fee_distribution: [30, 50, 20]
         parent_chain:
           consensus:
             network_id: 'ae_uat'
@@ -1043,6 +1044,7 @@ config:
   pinning_reward_value: 0
   default_pinning_behavior: false
   fixed_coinbase: 0
+  fee_distribution: [30, 50, 20]
   parent_chain:
     start_height: 0
     acceptable_sync_offset: 60000

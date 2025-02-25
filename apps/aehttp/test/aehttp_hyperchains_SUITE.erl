@@ -852,10 +852,15 @@ verify_rewards(Config) ->
     %% Record the new state
     PostRewardState = [ {Who, GetValidatorBalance(Who, Ct)} || {Who, Ct} <- Validators ],
 
+    %% To calculate the rewards we need the producer of First-1 and Last+1...
     #{first := First, last := Last} = EpochInfo,
+    {ok, Blocks} = get_generations(Node, First - 1, Last + 1),
     {ok, BlocksInGen} = get_generations(Node, First, Last),
+    LeaderMap = maps:from_list([{aec_blocks:height(B),
+                                 {aec_blocks:miner(B), aec_headers:is_hole(aec_blocks:to_key_header(B))}}
+                                || B <- Blocks, key == aec_blocks:type(B)]),
 
-    Rewards = calc_rewards(BlocksInGen, Node),
+    Rewards = calc_rewards(BlocksInGen, LeaderMap, Node),
 
     CheckRewards =
         fun(Who, Rs, PreS, PostS) ->
@@ -878,26 +883,30 @@ verify_rewards(Config) ->
 
     ok.
 
-calc_rewards(Blocks, Node) ->
-    calc_rewards(Blocks, Node, undefined, #{}).
+calc_rewards(Blocks, LeaderMap, Node) ->
+    calc_rewards(Blocks, LeaderMap, Node, #{}).
 
-calc_rewards([], _Node, _Prev, Rs) -> Rs;
-calc_rewards([B | Bs], Node, Prev, Rs) ->
+calc_rewards([], _LeaderMap, _Node, Rs) -> Rs;
+calc_rewards([B | Bs], LeaderMap, Node, Rs) ->
     case aec_blocks:type(B) of
-        micro -> calc_rewards(Bs, Node, Prev, Rs);
+        micro -> calc_rewards(Bs, LeaderMap, Node, Rs);
         key ->
-            M = aec_blocks:miner(B),
-            {R1, R2} =
+            Height = aec_blocks:height(B),
+            {R0, R1, R2} =
                 case aec_blocks:prev_key_hash(B) == aec_blocks:prev_hash(B) of
-                    true  -> {?BLOCK_REWARD, 0};
+                    true  -> {0, ?BLOCK_REWARD, 0};
                     false ->
                         [{H, _}] = rpc(Node, aec_db, find_key_headers_and_hash_at_height, [aec_blocks:height(B)]),
                         {value, Fees} = rpc(Node, aec_db, find_block_fees, [H]),
-                        {?BLOCK_REWARD + 6 * (Fees div 10), 4 * (Fees div 10)}
+                        {30 * (Fees div 100), ?BLOCK_REWARD + 50 * (Fees div 100), 20 * (Fees div 100)}
                 end,
-            Rs1 = Rs#{M => R1 + maps:get(M, Rs, 0)},
-            Rs2 = Rs1#{Prev => R2 + maps:get(Prev, Rs1, 0)},
-            calc_rewards(Bs, Node, M, Rs2)
+            Rs1 = lists:foldl(fun({Rx, Hx}, RsX) ->
+                                  case maps:get(Hx, LeaderMap) of
+                                      {_, true}  -> RsX;
+                                      {M, false} -> RsX#{M => Rx + maps:get(M, RsX, 0)}
+                                  end
+                              end, Rs, [{R0, Height - 1}, {R1, Height}, {R2, Height + 1}]),
+            calc_rewards(Bs, LeaderMap, Node, Rs1)
     end.
 
 
@@ -1741,6 +1750,7 @@ node_config(Node, CTConfig, PotentialStakers, PotentialPinners, ReceiveAddress) 
                                         <<"initial_validators">> => Validators,
                                         <<"pinning_reward_value">> => 4711,
                                         <<"fixed_coinbase">> => ?BLOCK_REWARD,
+                                        <<"fee_distribution">> => [30, 50, 20],
                                         <<"default_pinning_behavior">> => ?config(default_pinning_behavior, CTConfig)},
                                     SpecificConfig)
                                     }}},
