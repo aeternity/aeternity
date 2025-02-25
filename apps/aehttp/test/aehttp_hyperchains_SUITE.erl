@@ -1816,6 +1816,12 @@ produce_cc_blocks(Config, BlocksCnt, ProdCfg) ->
     wait_same_top([ N || {N, _, _, _} <- ?config(nodes, Config)]),
     get_generations(Node, TopHeight + 1, NewTopHeight).
 
+%% If it is time according to schedule, produce on parent chain
+produce_pc_block([{CH, PBs} | PPs], TopHeight) when CH =< TopHeight ->
+    mine_key_blocks(?PARENT_CHAIN_NODE_NAME, PBs),
+    produce_pc_block(PPs, TopHeight);
+produce_pc_block(PPs, _TopHeight) ->
+    PPs.
 
 %% It seems we automatically produce child chain blocks in the background
 produce_to_cc_height(Config, TopHeight, GoalHeight, ParentProduce, PNodes) ->
@@ -1823,15 +1829,11 @@ produce_to_cc_height(Config, TopHeight, GoalHeight, ParentProduce, PNodes) ->
     BlocksNeeded = GoalHeight - TopHeight,
     case BlocksNeeded > 0 of
         false ->
+            %% Unfortunate Hole-placement may lead to missed Parent-blocks otherwise
+            produce_pc_block(ParentProduce, TopHeight),
             TopHeight;
         true ->
-            NewParentProduce =
-                case ParentProduce of
-                    [{CH, PBs} | PRest ] when CH =< TopHeight+1 ->
-                        mine_key_blocks(?PARENT_CHAIN_NODE_NAME, PBs),
-                        PRest;
-                    PP -> PP
-                end,
+            NewParentProduce = produce_pc_block(ParentProduce, TopHeight + 1),
 
             %% TODO: add some assertions when we expect an MB (and not)!
             {ok, _Txs} = rpc:call(hd(NodeNames), aec_tx_pool, peek, [infinity]),
