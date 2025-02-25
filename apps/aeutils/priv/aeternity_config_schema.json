@@ -1758,6 +1758,15 @@
                                             "default": 0,
                                             "description": "The coinbase reward specifies the fixed amount of newly minted tokens allocated to block producers as an incentive for validating and adding blocks to the chain."
                                         },
+                                        "fee_distribution": {
+                                            "description": "The fees in a block are divided between the producer of the block, and the producer of the previous and next blocks. I.e. [30, 50, 20] would mean that the block producer gets 50% of the fees, the producer of the previous block gets 30% and the producer of the following block gets 20%.",
+                                            "type"  : "array",
+                                            "items" : {
+                                                "type" : "integer",
+                                                "description" : "Percentage of fees."
+                                            },
+                                            "default": [0, 100, 0]
+                                        },
                                         "parent_chain": {
                                             "description" : "Details of how this node will connect to a parent chain if this is a hyperchain.",
                                             "additionalProperties" : false,

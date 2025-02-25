@@ -1007,8 +1007,16 @@ find_one_predecessor([N|Left], Node) ->
 %% NOTE: If the restriction of reporting a miner in the next
 %% generation is lifted, we need to do something more elaborate.
 
-grant_fees(Node, Trees, Delay, FraudStatus, _State) ->
+grant_fees(Node, Trees, Delay, FraudStatus, State) ->
     Consensus = aec_block_insertion:node_consensus(Node),
+    case Consensus of
+        aec_consensus_hc ->
+            hc_grant_fees(Node, Trees, Delay);
+        _ ->
+            grant_fees(Node, Trees, Delay, FraudStatus, State, Consensus)
+    end.
+
+grant_fees(Node, Trees, Delay, FraudStatus, _State, Consensus) ->
     NewestBlockHeight = node_height(Node) - Delay + ?POF_REPORT_DELAY,
     KeyNode4 = find_predecessor_at_height(Node, NewestBlockHeight),
     KeyNode3 = db_get_node(node_prev_key_hash(KeyNode4)),
@@ -1047,6 +1055,17 @@ grant_fees(Node, Trees, Delay, FraudStatus, _State) ->
     Accounts = aec_accounts_trees:lock_coins(LockAmount, Accounts0),
     aec_trees:set_accounts(Trees1, Accounts).
 
+hc_grant_fees(CurrentNode, Trees, Delay) ->
+    Height = node_height(CurrentNode) - Delay + 1,
+    AfterNode = find_predecessor_at_height(CurrentNode, Height),
+    TheNode = db_get_node(node_prev_key_hash(AfterNode)),
+    BeforeNode = db_get_node(node_prev_key_hash(TheNode)),
+
+    Fees = db_get_fees(node_hash(TheNode)),
+    BlockReward = aec_governance:block_mine_reward(node_height(TheNode)),
+    aec_consensus_hc:state_grant_rewards(CurrentNode, Delay, Trees,
+                                         {Fees, BlockReward},
+                                         [BeforeNode, TheNode, AfterNode]).
 
 calculate_gas_fee(Calls) ->
     F = fun(_, SerCall, GasFeeIn) ->
@@ -1229,7 +1248,6 @@ db_get_txs(Hash) when is_binary(Hash) ->
 db_get_fees(Hash) when is_binary(Hash) ->
     {value, Fees} = aec_db:find_block_fees(Hash),
     Fees.
-
 
 db_get_fraud_status(Hash) when is_binary(Hash) ->
     {value, FraudStatus} = aec_db:find_block_fraud_status(Hash),
