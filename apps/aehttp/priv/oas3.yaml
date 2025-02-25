@@ -3262,7 +3262,7 @@ components:
         pointers:
           type: array
           items:
-            $ref: "#/components/schemas/NamePointer"
+            $ref: "#/components/schemas/NamePointerComplete"
       required:
         - id
         - ttl
@@ -3285,6 +3285,19 @@ components:
           $ref: "#/components/schemas/EncodedPubkey"
       required:
         - key
+        - id
+    NamePointerComplete:
+      type: object
+      properties:
+        key:
+          type: string
+        encoded_key:
+          $ref: "#/components/schemas/EncodedValue"
+        id:
+          $ref: "#/components/schemas/EncodedPubkey"
+      required:
+        - key
+        - encoded_key
         - id
     NamePreclaimTx:
       type: object
