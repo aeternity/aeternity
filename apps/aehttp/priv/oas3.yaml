@@ -2175,7 +2175,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/SpendTx"
+              $ref: "#/components/schemas/SpendTxInput"
         description: A spend transaction
         required: true
       responses:
@@ -3861,7 +3861,7 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/SignedTx"
-    SpendTx:
+    SpendTxInput:
       type: object
       properties:
         recipient_id:
@@ -3884,6 +3884,11 @@ components:
         - fee
         - sender_id
         - payload
+    SpendTx:
+      allOf:
+        - $ref: "#/components/schemas/SpendTxInput"
+        - required:
+            - nonce
     Status:
       type: object
       properties:
