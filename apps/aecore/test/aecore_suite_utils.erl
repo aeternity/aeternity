@@ -34,7 +34,7 @@
          delete_node_db_if_persisted/1,
          expected_mine_rate/0,
          hc_mine_blocks/2,
-         hc_mine_blocks/3,
+         hc_mine_blocks/4,
          mine_blocks/2,
          mine_blocks/3,
          mine_blocks/4,
@@ -703,7 +703,7 @@ mine_blocks(Node, NumBlocksToMine, MiningRate, Opts) ->
     mine_blocks(Node, NumBlocksToMine, MiningRate, any, Opts).
 
 hc_mine_blocks(Nodes, NumBlocksToMine) ->
-    hc_mine_blocks(Nodes, NumBlocksToMine, #{}).
+    hc_mine_blocks(Nodes, NumBlocksToMine, 5000, #{}).
 
 mine_blocks(Node, NumBlocksToMine, MiningRate, Type, Opts) ->
     case rpc_test_consensus_enabled(Node)
@@ -838,13 +838,13 @@ tx_in_microblock(MB, TxHash) ->
                       aeser_api_encoder:encode(tx_hash, aetx_sign:hash(STx)) == TxHash
               end, aec_blocks:txs(MB)).
 
-hc_loop_mine_blocks(NBlocks) ->
-    hc_loop_mine_blocks_([], NBlocks).
+hc_loop_mine_blocks(NBlocks, Timeout) ->
+    hc_loop_mine_blocks_([], NBlocks, Timeout).
 
-hc_loop_mine_blocks_(Blocks, 0) ->
+hc_loop_mine_blocks_(Blocks, 0, _Timeout) ->
     {ok, Blocks};
-hc_loop_mine_blocks_(Blocks, N) ->
-    case wait_for_new_block_mined(5000) of
+hc_loop_mine_blocks_(Blocks, N, Timeout) ->
+    case wait_for_new_block_mined(Timeout) of
         {ok, Node, Block} ->
             N1 = case aec_blocks:type(Block) of
                      micro -> N;
@@ -854,7 +854,7 @@ hc_loop_mine_blocks_(Blocks, N) ->
                             false -> N - 1
                         end
                  end,
-            hc_loop_mine_blocks_([{Node, Block} | Blocks], N1);
+            hc_loop_mine_blocks_([{Node, Block} | Blocks], N1, Timeout);
         Err = {error, _} ->
             Err
     end.
@@ -2039,7 +2039,7 @@ unsubscribe_created(Node) ->
     ok = unsubscribe(Node, block_created),
     ok = unsubscribe(Node, micro_block_created).
 
-hc_mine_blocks(Nodes, NBlocks, Opts) ->
+hc_mine_blocks(Nodes, NBlocks, Timeout, Opts) ->
     [ assert_stopped(Node) || Node <- Nodes ],
 
     _ = flush_new_blocks(), %% Flush old messages
@@ -2047,7 +2047,7 @@ hc_mine_blocks(Nodes, NBlocks, Opts) ->
     [ subscribe_created(Node) || Node <- Nodes ],
     [ start_mining(Node, Opts) || Node <- Nodes ],
 
-    Res = hc_loop_mine_blocks(NBlocks),
+    Res = hc_loop_mine_blocks(NBlocks, Timeout),
 
     [ stop_mining(Node) || Node <- Nodes ],
     [ unsubscribe_created(Node) || Node <- Nodes ],
