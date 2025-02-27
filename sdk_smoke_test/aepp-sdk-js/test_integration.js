@@ -8,7 +8,7 @@ const node = new Node("http://localhost:3013", { ignoreVersion });
 const sdk = new AeSdk({
     nodes: [{ name: "ae_sdk_smoke_test", instance: node }],
     accounts: [
-        new MemoryAccount("e6a91d633c77cf5771329d3354b3bcef1bc5e032c43d70b6d35af923ce1eb74dcea7ade470c9f99d9d4e400880a86f1d49bb444b62f11a9ebb64bbcfeb73fef3"),
+        new MemoryAccount("sk_2kav6y7UyuhycCYgo8UepzjwgBQDa6e72jkJoRnSu6zR8UUzJx"),
     ],
 });
 
