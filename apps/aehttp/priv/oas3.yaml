@@ -2410,6 +2410,7 @@ components:
         - from_id
         - payload
         - fee
+        - nonce
         - poi
     ChannelCreateTx:
       type: object
@@ -2444,6 +2445,7 @@ components:
         - channel_reserve
         - lock_period
         - fee
+        - nonce
         - state_hash
     ChannelDepositTx:
       type: object
@@ -2503,6 +2505,7 @@ components:
         - update
         - state_hash
         - fee
+        - nonce
     ChannelSetDelegatesTx:
       type: object
       properties:
@@ -2539,6 +2542,7 @@ components:
         - round
         - payload
         - fee
+        - nonce
     ChannelSettleTx:
       type: object
       properties:
@@ -2585,6 +2589,7 @@ components:
         - from_id
         - payload
         - fee
+        - nonce
         - poi
     ChannelSnapshotSoloTx:
       type: object
@@ -2606,6 +2611,7 @@ components:
         - from_id
         - payload
         - fee
+        - nonce
     ChannelWithdrawTx:
       type: object
       properties:
@@ -2710,6 +2716,7 @@ components:
           $ref: "#/components/schemas/EncodedByteArray"
       required:
         - caller_id
+        - nonce
         - contract_id
         - abi_version
         - fee
@@ -2746,6 +2753,7 @@ components:
           $ref: "#/components/schemas/EncodedByteArray"
       required:
         - owner_id
+        - nonce
         - code
         - vm_version
         - abi_version
@@ -3020,6 +3028,7 @@ components:
           pattern: "^(0x|0X)?[a-fA-F0-9]+$"
       required:
         - owner_id
+        - nonce
         - code
         - vm_version
         - abi_version
@@ -3253,6 +3262,7 @@ components:
         - name_salt
         - fee
         - account_id
+        - nonce
     NameEntry:
       type: object
       properties:
@@ -3319,6 +3329,7 @@ components:
         - commitment_id
         - fee
         - account_id
+        - nonce
     NameRevokeTx:
       type: object
       properties:
@@ -3336,6 +3347,7 @@ components:
         - name_id
         - fee
         - account_id
+        - nonce
     NameTransferTx:
       type: object
       properties:
@@ -3356,6 +3368,7 @@ components:
         - recipient_id
         - fee
         - account_id
+        - nonce
     NameUpdateTx:
       type: object
       properties:
@@ -3384,6 +3397,7 @@ components:
         - pointers
         - fee
         - account_id
+        - nonce
     NetworkStatus:
       type: object
       additionalProperties:
@@ -3511,6 +3525,7 @@ components:
         - fee
         - oracle_ttl
         - oracle_id
+        - nonce
     OracleQueries:
       type: object
       properties:
@@ -3580,6 +3595,7 @@ components:
         - response_ttl
         - fee
         - sender_id
+        - nonce
     OracleRegisterTx:
       type: object
       properties:
@@ -3605,6 +3621,7 @@ components:
         - query_format
         - response_format
         - query_fee
+        - nonce
         - fee
         - oracle_ttl
         - account_id
@@ -3631,6 +3648,7 @@ components:
         - response_ttl
         - fee
         - oracle_id
+        - nonce
     PayingForTx:
       type: object
       properties:
@@ -3645,6 +3663,7 @@ components:
       required:
         - payer_id
         - fee
+        - nonce
         - tx
     Peer:
       type: string
@@ -3893,6 +3912,7 @@ components:
         - amount
         - fee
         - sender_id
+        - nonce
         - payload
     Status:
       type: object
