@@ -1969,7 +1969,7 @@ paths:
           description: A spend transaction
           required: true
           schema:
-            $ref: '#/definitions/SpendTx'
+            $ref: '#/definitions/SpendTxInput'
       responses:
         '200':
           description: Successful operation
@@ -3652,7 +3652,7 @@ definitions:
     required:
       - tx
       - signatures
-  SpendTx:
+  SpendTxInput:
     type: object
     properties:
       recipient_id:
@@ -3675,6 +3675,8 @@ definitions:
       - fee
       - sender_id
       - payload
+  SpendTx:
+    $ref: '#/definitions/SpendTxInput'
   SpendTxJSON:
     allOf:
       - $ref: '#/definitions/GenericTx'
