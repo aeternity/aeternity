@@ -9,7 +9,7 @@
 -behaviour(gen_statem).
 
 %% Export API functions
--export([start_link/3, negotiate/8, get_finalize_transaction/2, add_parent_block/3]).
+-export([start_link/4, negotiate/8, get_finalize_transaction/2, add_parent_block/3]).
 
 %% Export gen_statem callbacks
 -export([init/1, callback_mode/0, terminate/3, code_change/4]).
@@ -43,11 +43,6 @@
                 vote_types                 :: vote_types()
             }).
 
-
--define(PROPOSAL_TYPE, 1).
--define(VOTE_TYPE, 2).
--define(COMMIT_TYPE, 3).
-
 -define(HASH_FLD, <<"block_hash">>).
 -define(HEIGHT_FLD, <<"block_height">>).
 -define(EPOCH_DELTA_FLD, <<"epoch_length_delta">>).
@@ -63,10 +58,12 @@
     commit => non_neg_integer()
 }.
 
+-export_type([vote_types/0]).
+
 %% API to start the state machine
--spec start_link(atom(), #{binary() => binary()}, non_neg_integer())  -> {ok, pid()} | {error, atom()}.
-start_link(EOEVoteType, Stakers, BlockTime) ->
-    gen_statem:start_link({local, EOEVoteType}, ?MODULE, [Stakers, BlockTime], []).
+-spec start_link(atom(), vote_types(), #{binary() => binary()}, non_neg_integer())  -> {ok, pid()} | {error, atom()}.
+start_link(EOEVoteType, VoteTypes, Stakers, BlockTime) ->
+    gen_statem:start_link({local, EOEVoteType}, ?MODULE, [VoteTypes, Stakers, BlockTime], []).
 
 %% Negotiate a fork, called with preferred fork and epoch length delta
 -spec negotiate(atom(), non_neg_integer(), non_neg_integer(), binary(), aec_keys:pubkey(), [{binary(), non_neg_integer()}], binary(), non_neg_integer()) -> ok.
@@ -84,10 +81,9 @@ get_finalize_transaction(EOEVoteType, Trees) ->
 %%% gen_statem callbacks
 
 %% Initialization: Start in the await_eoe state
-init([Stakers, BlockTime]) ->
+init([VoteTypes, Stakers, BlockTime]) ->
     aec_events:subscribe(tx_received),
     aec_events:subscribe(new_epoch),
-    VoteTypes = #{proposal => ?PROPOSAL_TYPE, vote => ?VOTE_TYPE, commit => ?COMMIT_TYPE},
     {ok, await_eoe, #data{stakers=Stakers,block_time=BlockTime,vote_types=VoteTypes}}.
 
 %% Set the callback mode to state functions
