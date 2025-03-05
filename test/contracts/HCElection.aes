@@ -150,7 +150,7 @@ main contract HCElection =
       require(penalty > 0, "Penalty is expressed as a positive integer")
       require(reporter_percentage >= 0 && reporter_percentage =< 100, "reporter reward percentage must be between 0 and 100")
       put(state{rewards[height = []] @ rs = (to, (-penalty)) :: rs})
-      let reporter_reward = penalty * (100/reporter_percentage)
+      let reporter_reward = (penalty * reporter_percentage) / 100
       put(state{rewards[height = []] @ rs = (reporter, reporter_reward) :: rs})
       put(state{penalty_reward_diff @ prd= prd + (penalty - reporter_reward)})
 
@@ -262,3 +262,10 @@ main contract HCElection =
       else
         let Some((_, haystack_)) = Bytes.split_any(haystack, 1)
         contains_bytes(needle, haystack_)
+
+  // Testing endpoints
+
+  payable stateful entrypoint test_pay_rewards(e : int) =
+    assert_protocol_call()
+    pay_rewards(e)
+
