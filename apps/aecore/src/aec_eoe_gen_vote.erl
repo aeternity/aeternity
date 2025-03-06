@@ -9,7 +9,7 @@
 -behaviour(gen_statem).
 
 %% Export API functions
--export([start_link/4, negotiate/8, get_finalize_transaction/2, add_parent_block/3]).
+-export([start_link/5, negotiate/8, get_finalize_transaction/2, add_parent_block/3]).
 
 %% Export gen_statem callbacks
 -export([init/1, callback_mode/0, terminate/3, code_change/4]).
@@ -17,6 +17,8 @@
 %% FSM states (as per gen_statem callback callback_mode/0)
 -export([await_eoe/3, proposal/3, vote/3, finalize/3, complete/3]).
 
+%% behaviour
+-callback init(list(term())) -> term().
 
 %% ==================================================================
 %% Records and Types
@@ -40,7 +42,9 @@
                 votes=#{}                  :: #{binary() => #{binary() => any()}},
                 parent_blocks=#{}          :: #{non_neg_integer() => aec_parent_chain_block:block()},
                 other_votes=[]             :: list({non_neg_integer(), aetx_sign:signed_tx()}),
-                vote_types                 :: vote_types()
+                vote_types                 :: vote_types(),
+                module                     :: atom(),
+                state                      :: term()
             }).
 
 -define(HASH_FLD, <<"block_hash">>).
@@ -61,9 +65,9 @@
 -export_type([vote_types/0]).
 
 %% API to start the state machine
--spec start_link(atom(), vote_types(), #{binary() => binary()}, non_neg_integer())  -> {ok, pid()} | {error, atom()}.
-start_link(EOEVoteType, VoteTypes, Stakers, BlockTime) ->
-    gen_statem:start_link({local, EOEVoteType}, ?MODULE, [VoteTypes, Stakers, BlockTime], []).
+-spec start_link(atom(), atom(), vote_types(), #{binary() => binary()}, non_neg_integer())  -> {ok, pid()} | {error, atom()}.
+start_link(EOEVoteType, Module, VoteTypes, Stakers, BlockTime) ->
+    gen_statem:start_link({local, EOEVoteType}, ?MODULE, [Module, VoteTypes, Stakers, BlockTime], []).
 
 %% Negotiate a fork, called with preferred fork and epoch length delta
 -spec negotiate(atom(), non_neg_integer(), non_neg_integer(), binary(), aec_keys:pubkey(), [{binary(), non_neg_integer()}], binary(), non_neg_integer()) -> ok.
@@ -81,10 +85,11 @@ get_finalize_transaction(EOEVoteType, Trees) ->
 %%% gen_statem callbacks
 
 %% Initialization: Start in the await_eoe state
-init([VoteTypes, Stakers, BlockTime]) ->
+init([Module, VoteTypes, Stakers, BlockTime]) ->
     aec_events:subscribe(tx_received),
     aec_events:subscribe(new_epoch),
-    {ok, await_eoe, #data{stakers=Stakers,block_time=BlockTime,vote_types=VoteTypes}}.
+    State = Module:init([Stakers, BlockTime]),
+    {ok, await_eoe, #data{stakers=Stakers,block_time=BlockTime,vote_types=VoteTypes,module=Module, state=State}}.
 
 %% Set the callback mode to state functions
 callback_mode() ->
