@@ -54,6 +54,8 @@
 -define(LEADER_FLD, <<"leader">>).
 -define(EPOCH_FLD, <<"epoch">>).
 
+-define(NewTx(TxEvent), TxEvent == tx_created; TxEvent == tx_received).
+
 -define(FINALIZE_FUN_NAME, "finalize_epoch").
 
 -type vote_types() :: #{
@@ -87,6 +89,7 @@ get_finalize_transaction(EOEVoteType, Trees) ->
 %% Initialization: Start in the await_eoe state
 init([Module, VoteTypes, Stakers, BlockTime]) ->
     aec_events:subscribe(tx_received),
+    aec_events:subscribe(tx_created),
     aec_events:subscribe(new_epoch),
     State = Module:init([Stakers, BlockTime]),
     {ok, await_eoe, #data{stakers=Stakers,block_time=BlockTime,vote_types=VoteTypes,module=Module, state=State}}.
@@ -120,8 +123,7 @@ await_eoe(cast, {negotiate, Epoch, Height, Hash, Leader, Validators, Seed, Curre
         true ->
             lager:info("Sending proposal for end of epoch ~p hash: ~p", [Epoch, Hash]),
             Data2 = Data1#data{proposal = #{?HASH_FLD => Hash, ?EPOCH_DELTA_FLD => LengthDelta}},
-            %% block time * 2 because need to wait for votes to arrive
-            Next = {next_state, proposal, Data2, [{state_timeout, BlockTime * 2, no_quorum}]},
+            Next = {next_state, proposal, Data2, [{state_timeout, BlockTime, no_proposal}]},
             send(fun create_proposal/1, Data1, Next)
     end;
 await_eoe(info, {gproc_ps_event, tx_received, #{info := SignedTx}}, Data) ->
@@ -130,7 +132,7 @@ await_eoe(Type, Msg, D) ->
     handle_common_event(Type, Msg, D).
 
 %%% State: Proposal
-proposal(info, {gproc_ps_event, tx_received, #{info := SignedTx}}, Data) ->
+proposal(info, {gproc_ps_event, TxEvent, #{info := SignedTx}}, Data) when ?NewTx(TxEvent) ->
     %% Handle the proposal phase
     %% Check the transaction contains a proposal
     handle_proposal(SignedTx, Data);
@@ -143,7 +145,7 @@ proposal(Type, Msg, D) ->
     handle_common_event(Type, Msg, D).
 
 %%% State: Vote
-vote(info, {gproc_ps_event, tx_received, #{info := Tx}}, #data{vote_types=#{vote := VoteType}} = Data) ->
+vote(info, {gproc_ps_event, TxEvent, #{info := Tx}}, #data{vote_types=#{vote := VoteType}} = Data) when ?NewTx(TxEvent) ->
     %% Handle the voting phase
     %% Check the transaction contains a vote
     %% If more than two thirds of votes agree send a commit then transition to finalization phase
@@ -158,7 +160,7 @@ vote(Type, Msg, D) ->
 
 
 %%% State: Finalize
-finalize(info, {gproc_ps_event, tx_received, #{info := Tx}}, #data{vote_types=#{commit := CommitType}} = Data) ->
+finalize(info, {gproc_ps_event, TxEvent, #{info := Tx}}, #data{vote_types=#{commit := CommitType}} = Data) when ?NewTx(TxEvent) ->
     handle_vote(CommitType, Tx, Data, fun on_valid_commit/3, fun on_other_vote_type/3);
 finalize(state_timeout, no_quorum, #data{epoch = Epoch} = Data) ->
     %% Handle timeout if no proposal is received
