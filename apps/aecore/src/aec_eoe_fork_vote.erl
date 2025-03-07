@@ -51,7 +51,6 @@ add_parent_block(Epoch, ParentBlock) ->
 get_finalize_transaction(Trees) ->
     aec_eoe_gen_vote:get_finalize_transaction(fork, Trees).
 
-
 %%% aec_eoe_gen_vote callbacks
 
 init(_Args) ->
