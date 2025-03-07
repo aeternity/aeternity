@@ -12,7 +12,7 @@
 -export([start_link/2, negotiate/7, get_finalize_transaction/1, add_parent_block/2]).
 
 %% Export aec_eoe_gen_vote callbacks
--export([init/1, init_state/6, reset_state/1, create_proposal/2, create_vote/3, finalize_call/2, vote_params/1]).
+-export([init/1, init_state/6, reset_state/1, create_proposal/2, create_vote/3, finalize_call/2, vote_params/1, convert_payload_field/2, update_proposal_after_vote_majority/4]).
 
 %%% aec_eoe_gen_vote callbacks
 
@@ -89,6 +89,28 @@ finalize_call(#{?HASH_FLD := Hash, ?EPOCH_DELTA_FLD := EpochDelta}, #data{length
 
 vote_params(#{?HASH_FLD := Hash, ?EPOCH_DELTA_FLD := EpochDelta}) ->
     [{bytes, Hash}, EpochDelta].
+
+convert_payload_field(?EPOCH_DELTA_FLD, Value) ->
+    binary_to_integer(Value);
+convert_payload_field(Key, Value) ->
+    aec_eoe_gen_vote:convert_payload_field(Key, Value).
+
+update_proposal_after_vote_majority(Proposal, Votes, Validators, Leader) ->
+    SumFun = sum_epoch_delta(Validators),
+    Totals = maps:fold(SumFun, {0,0}, Votes),
+    {TotalStake, TotalEpochDelta} = SumFun(Leader, Proposal,Totals),
+    EpochDelta = round(TotalEpochDelta / TotalStake),
+    maps:put(?EPOCH_DELTA_FLD, EpochDelta, Proposal).
+
+sum_epoch_delta(Validators) ->
+    fun(Producer, Vote, {TotalStake, TotalEpochDelta}) ->
+            {Stake, EpochDelta} = get_weighted_delta(Producer, Vote, Validators),
+            {TotalStake + Stake, EpochDelta * Stake + TotalEpochDelta} end.
+
+get_weighted_delta(Producer, #{?EPOCH_DELTA_FLD := EpochDelta}, Validators) ->
+    Stake = proplists:get_value(Producer, Validators, 0),
+    {Stake, EpochDelta}.
+
 
 %% The first three epochs have the same seed
 calculate_delta(Epoch, _ParentBlocks, _CurrentLength, _BlockTime) when Epoch =< 4 ->

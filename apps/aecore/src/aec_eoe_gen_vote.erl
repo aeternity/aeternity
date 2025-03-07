@@ -9,7 +9,7 @@
 -behaviour(gen_statem).
 
 %% Export API functions
--export([start_link/5, negotiate/8, get_finalize_transaction/2, add_parent_block/3]).
+-export([start_link/5, negotiate/8, get_finalize_transaction/2, add_parent_block/3, convert_payload_field/2]).
 
 %% Export gen_statem callbacks
 -export([init/1, callback_mode/0, terminate/3, code_change/4]).
@@ -25,6 +25,8 @@
 -callback create_vote(#{binary() => any()}, #{binary() => any()}, term()) -> {ok, #{binary() => any()}} | {error, term()}.
 -callback vote_params(#{binary() => any()}) -> [term()].
 -callback finalize_call(#{binary() => any()}, term()) -> {list(), [term()]}.
+-callback convert_payload_field(binary(), binary()) -> term().
+-callback update_proposal_after_vote_majority(#{binary() => any()}, #{binary() => #{binary() => any()}}, [{binary(), non_neg_integer()}], binary()) -> #{binary() => any()}.
 
 %% ==================================================================
 %% Records and Types
@@ -51,7 +53,6 @@
             }).
 
 -define(HEIGHT_FLD, <<"block_height">>).
--define(EPOCH_DELTA_FLD, <<"epoch_length_delta">>).
 -define(SIGNATURE_FLD, <<"signature">>).
 -define(LEADER_FLD, <<"leader">>).
 -define(EPOCH_FLD, <<"epoch">>).
@@ -200,8 +201,8 @@ create_votes(VoteFlds, Leader, [{Validator,_}|Validators], Stakers, Epoch, Type,
             create_votes(VoteFlds, Leader, Validators, Stakers, Epoch, Type, [Vote|Votes])
     end.
 
-handle_proposal(SignedTx, #data{leader=undefined, epoch=undefined, vote_types=#{proposal := ProposalType} = VoteTypes} = Data) ->
-    case convert_transaction(SignedTx, VoteTypes) of
+handle_proposal(SignedTx, #data{leader=undefined, epoch=undefined, vote_types=#{proposal := ProposalType} = VoteTypes, module=Module} = Data) ->
+    case convert_transaction(SignedTx, VoteTypes, Module) of
         {ok, ProposalType, Epoch, Leader, ProposalFields} ->
             %% Store the leader so it can be used for validation laster
             ProposalFields1 = maps:put(?LEADER_FLD, Leader, ProposalFields),
@@ -211,10 +212,10 @@ handle_proposal(SignedTx, #data{leader=undefined, epoch=undefined, vote_types=#{
         _ ->
             keep_state_and_data
     end;
-handle_proposal(SignedTx, #data{leader=Leader, epoch=Epoch, vote_types=#{proposal := ProposalType} = VoteTypes} = Data) ->
+handle_proposal(SignedTx, #data{leader=Leader, epoch=Epoch, vote_types=#{proposal := ProposalType} = VoteTypes, module=Module} = Data) ->
     %% Handle the proposal phase
     %% Check the transaction contains a proposal
-    case convert_transaction(SignedTx, VoteTypes) of
+    case convert_transaction(SignedTx, VoteTypes, Module) of
         {ok, ProposalType, Epoch, Leader, ProposalFields} ->
             Data1 = Data#data{proposal=ProposalFields},
             Data2 = handle_voting(Data1),
@@ -237,8 +238,8 @@ handle_proposal(SignedTx, #data{leader=Leader, epoch=Epoch, vote_types=#{proposa
             keep_state_and_data
     end.
 
-handle_vote(Type, SignedTx, #data{vote_types=VoteTypes} = Data, OnValidFun, OnOtherVoteType) ->
-    case convert_transaction(SignedTx, VoteTypes) of
+handle_vote(Type, SignedTx, #data{vote_types=VoteTypes, module=Module} = Data, OnValidFun, OnOtherVoteType) ->
+    case convert_transaction(SignedTx, VoteTypes, Module) of
         {ok, Type, _Epoch, Validator, VoteFields} ->
             %% Check if a validator
             case can_vote(Validator, Data) of
@@ -291,12 +292,13 @@ on_valid_vote(Validator, VoteFields, #data{votes=Votes} = Data) ->
     Votes1 = maps:put(Validator, VoteFields, Votes),
     check_voting_majority(Data#data{votes = Votes1}).
 
-check_voting_majority(#data{majority = CurrentMajority, validators=Validators, block_time=BlockTime, votes=Votes, epoch=Epoch} = Data) ->
+check_voting_majority(#data{majority=CurrentMajority, validators=Validators, block_time=BlockTime, votes=Votes, epoch=Epoch, proposal=Proposal0, leader=Leader, module=Module} = Data) ->
     case CurrentMajority =< 0 of
         true ->
             lager:info("Quorum achieved for voting for epoch ~p has ~p votes", [Epoch, maps:size(Votes)]),
             Majority = calculate_majority(Validators),
-            #data{proposal=Proposal} = Data1 = update_proposal_after_vote_majority(Data),
+            Proposal = Module:update_proposal_after_vote_majority(Proposal0, Votes, Validators, Leader),
+            Data1 = Data#data{proposal=Proposal},
             Result = create_finalize_call(Votes, Proposal, Data1),
             Data2 = Data1#data{result = Result},
             send_commits(Data2),
@@ -371,7 +373,7 @@ send(CreateTxFun, Data, Success) ->
             handle_no_consensus(Data)
     end.
 
-convert_transaction(SignedTx, #{proposal := ProposalType, vote := VoteType, commit := CommitType}) ->
+convert_transaction(SignedTx, #{proposal := ProposalType, vote := VoteType, commit := CommitType}, Module) ->
     Tx = aetx_sign:tx(SignedTx),
     case aetx:specialize_type(Tx) of
         {hc_vote_tx, VoteTx} ->
@@ -381,7 +383,7 @@ convert_transaction(SignedTx, #{proposal := ProposalType, vote := VoteType, comm
                     PubKey = aec_hc_vote_tx:voter_pubkey(VoteTx),
                     case check_signature(PubKey, Payload) of
                         ok ->
-                            case convert_payload_fields(Payload) of
+                            case convert_payload_fields(Module, Payload) of
                                 {ok, FieldMap} ->
                                     {ok, Type, aec_hc_vote_tx:epoch(VoteTx), PubKey, FieldMap};
                                 Error ->
@@ -397,17 +399,15 @@ convert_transaction(SignedTx, #{proposal := ProposalType, vote := VoteType, comm
             {error, not_vote}
     end.
 
-convert_payload_fields(Fields) ->
+convert_payload_fields(Module, Fields) ->
     try
-        {ok, maps:map(fun convert_payload_field/2, Fields)}
+        {ok, maps:map(fun Module:convert_payload_field/2, Fields)}
     catch error:Reason:StackTrace ->
         lager:warning("Error decoding payload: ~p ~p", [Reason, StackTrace]),
         {error, Reason}
     end.
 
 convert_payload_field(?HEIGHT_FLD, Value) ->
-    binary_to_integer(Value);
-convert_payload_field(?EPOCH_DELTA_FLD, Value) ->
     binary_to_integer(Value);
 convert_payload_field(_Key, Value) ->
     Value.
@@ -576,20 +576,3 @@ create_vote_call(Module, Producer, #{?SIGNATURE_FLD := Signature} = Payload, Acc
     Params = Module:vote_params(Payload),
     Params1 = [{address, Producer}|Params] ++ [{bytes, get_sign_data(Payload)}, {bytes, Signature}],
     [{tuple, list_to_tuple(Params1)} | Accum].
-
-update_proposal_after_vote_majority(#data{proposal=Proposal, votes=Votes, validators = Validators, leader=Leader} = Data) ->
-    SumFun = sum_epoch_delta(Validators),
-    Totals = maps:fold(SumFun, {0,0}, Votes),
-    {TotalStake, TotalEpochDelta} = SumFun(Leader, Proposal,Totals),
-    EpochDelta = round(TotalEpochDelta / TotalStake),
-    UpdatedProposal = maps:put(?EPOCH_DELTA_FLD, EpochDelta, Proposal),
-    Data#data{proposal = UpdatedProposal}.
-
-sum_epoch_delta(Validators) ->
-    fun(Producer, Vote, {TotalStake, TotalEpochDelta}) ->
-            {Stake, EpochDelta} = get_weighted_delta(Producer, Vote, Validators),
-            {TotalStake + Stake, EpochDelta * Stake + TotalEpochDelta} end.
-
-get_weighted_delta(Producer, #{?EPOCH_DELTA_FLD := EpochDelta}, Validators) ->
-    Stake = proplists:get_value(Producer, Validators, 0),
-    {Stake, EpochDelta}.
