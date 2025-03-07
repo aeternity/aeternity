@@ -19,6 +19,10 @@
 
 %% behaviour
 -callback init(list(term())) -> term().
+-callback init_state(non_neg_integer(), binary(), #{non_neg_integer() => aec_parent_chain_block:block()}, non_neg_integer(), non_neg_integer(), term()) -> term().
+-callback reset_state(term()) -> term().
+-callback create_proposal(#{binary() => any()}, term()) -> #{binary() => any()}.
+-callback create_vote(#{binary() => any()}, #{binary() => any()}, term()) -> {ok, #{binary() => any()}} | {error, term()}.
 
 %% ==================================================================
 %% Records and Types
@@ -26,10 +30,8 @@
 -record(data, {
                 epoch                      :: non_neg_integer() | undefined,
                 height                     :: non_neg_integer() | undefined,
-                fork_hash                  :: binary() | undefined,
                 seed                       :: binary() | undefined,
                 length                     :: non_neg_integer() | undefined,
-                length_delta               :: non_neg_integer() | undefined,
                 leader                     :: binary() | undefined,
                 validators=[]              :: [{binary(), non_neg_integer()}],
                 remaining_validators=#{}   :: #{binary() => non_neg_integer()},
@@ -99,10 +101,9 @@ callback_mode() ->
     state_functions.
 
 %%% State: AwaitEndOfEpoch
-await_eoe(cast, {negotiate, Epoch, Height, Hash, Leader, Validators, Seed, CurrentLength}, #data{block_time=BlockTime, proposal=Proposal, parent_blocks = ParentBlocks} = Data) ->
-    LengthDelta = calculate_delta(Epoch, ParentBlocks, CurrentLength, BlockTime),
-    lager:debug("Suggesting delta ~p for epoch ~p", [LengthDelta, Epoch]),
-    Data1 = set_validators(Validators, Data#data{epoch=Epoch, height=Height, fork_hash=Hash, seed=Seed, length=CurrentLength, leader=Leader, validators = Validators, length_delta=LengthDelta}),
+await_eoe(cast, {negotiate, Epoch, Height, Hash, Leader, Validators, Seed, CurrentLength}, #data{block_time=BlockTime, proposal=Proposal, parent_blocks=ParentBlocks, state=ClientState, module=Module} = Data) ->
+    NewClientState = Module:init_state(Epoch, Hash, ParentBlocks, CurrentLength, BlockTime, ClientState),
+    Data1 = set_validators(Validators, Data#data{epoch=Epoch, height=Height, seed=Seed, length=CurrentLength, leader=Leader, validators = Validators, state=NewClientState}),
     case is_leader(Data1) of
         false ->
             case Proposal of
@@ -122,9 +123,10 @@ await_eoe(cast, {negotiate, Epoch, Height, Hash, Leader, Validators, Seed, Curre
             end;
         true ->
             lager:info("Sending proposal for end of epoch ~p hash: ~p", [Epoch, Hash]),
-            Data2 = Data1#data{proposal = #{?HASH_FLD => Hash, ?EPOCH_DELTA_FLD => LengthDelta}},
+            NewProposal = Module:create_proposal(#{?HEIGHT_FLD => Height}, NewClientState),
+            Data2 = Data1#data{proposal = NewProposal},
             Next = {next_state, proposal, Data2, [{state_timeout, BlockTime, no_proposal}]},
-            send(fun create_proposal/1, Data1, Next)
+            send(fun create_proposal/1, Data2, Next)
     end;
 await_eoe(info, {gproc_ps_event, tx_received, #{info := SignedTx}}, Data) ->
     handle_proposal(SignedTx, Data);
@@ -172,29 +174,18 @@ finalize(Type, Msg, D) ->
 complete(Type, Msg, D) ->
     handle_common_event(Type, Msg, D).
 
-create_proposal(#data{leader=Leader, stakers=Stakers, epoch=Epoch, height=Height, fork_hash=Hash, length_delta=LengthDelta, vote_types=#{proposal := ProposalType}}) ->
+create_proposal(#data{leader=Leader, stakers=Stakers, epoch=Epoch, proposal = Proposal, vote_types=#{proposal := ProposalType}}) ->
     PrivKey = get_staker_private_key(Leader, Stakers),
-    Proposal =#{?HASH_FLD => Hash,
-                ?EPOCH_DELTA_FLD => LengthDelta,
-                ?HEIGHT_FLD => Height},
     ProposalPayload = create_payload(Proposal, PrivKey),
     create_vote_transaction(Leader, PrivKey, Epoch, ProposalType, ProposalPayload).
 
-create_votes(Type, #data{proposal=ProposalFields, leader=Leader, stakers=Stakers, validators=Validators, epoch=Epoch, height=Height, fork_hash=Hash, length_delta=LengthDelta}) ->
-    case maps:get(?HASH_FLD, ProposalFields, undefined) of
-        undefined ->
-            lager:warning("Hash field not found in proposal ~p", [ProposalFields]),
-            [];
-        Hash ->
-            VoteFlds =#{?HASH_FLD => Hash,
-                        ?EPOCH_DELTA_FLD => LengthDelta,
-                        ?HEIGHT_FLD => Height},
+create_votes(Type, #data{proposal=ProposalFields, leader=Leader, stakers=Stakers, validators=Validators, epoch=Epoch, height=Height, module=Module, state=ClientState}) ->
+    case Module:create_vote(ProposalFields, #{?HEIGHT_FLD => Height}, ClientState) of
+        {ok, VoteFlds} ->
             create_votes(VoteFlds, Leader, Validators, Stakers, Epoch, Type, []);
-        ProposalHash ->
-            lager:warning("Proposal hash ~p does not match hash ~p", [ProposalHash, Hash]),
+        {error, _Reason} ->
             []
     end.
-
 
 create_votes(_VoteFlds, _Leader, [], _Stakers, _Epoch, Type, Votes) ->
     lager:debug("Created ~p votes of type ~p", [length(Votes), Type]),
@@ -549,8 +540,9 @@ calculate_majority(Validators) ->
     %% 2/3 majority
     (2 * TotalStake + 2) div 3.
 
-reset_data(#data{stakers = Stakers, block_time=BlockTime, epoch = Epoch, parent_blocks = ParentBlocks, vote_types = VoteTypes}) ->
-    #data{stakers = Stakers, block_time=BlockTime, parent_blocks=remove_old_blocks(Epoch, ParentBlocks), vote_types = VoteTypes}.
+reset_data(#data{stakers = Stakers, block_time=BlockTime, epoch = Epoch, parent_blocks = ParentBlocks, vote_types = VoteTypes, module = Module, state = ClientState}) ->
+    NewClientState = Module:reset_state(ClientState),
+    #data{stakers = Stakers, block_time=BlockTime, parent_blocks=remove_old_blocks(Epoch, ParentBlocks), vote_types=VoteTypes, module=Module, state=NewClientState}.
 
 remove_old_blocks(undefined, ParentBlocks) ->
     ParentBlocks;
@@ -583,32 +575,6 @@ create_finalize_call(Votes, #{?HASH_FLD := Hash, ?EPOCH_DELTA_FLD := EpochDelta}
 
 create_vote_call(Producer, #{?HASH_FLD := Hash, ?EPOCH_DELTA_FLD := EpochDelta, ?SIGNATURE_FLD := Signature} = Payload, Accum) ->
     [{tuple, {{address, Producer}, {bytes, Hash}, EpochDelta, {bytes, get_sign_data(Payload)}, {bytes, Signature}}} | Accum].
-
-%% The first three epochs have the same seed
-calculate_delta(Epoch, _ParentBlocks, _CurrentLength, _BlockTime) when Epoch =< 4 ->
-    0;
-calculate_delta(Epoch, ParentBlocks, CurrentLength, BlockTime) ->
-    ExpectedTimeDiff = CurrentLength * BlockTime,
-    TimeDiff = get_epoch_time_diff(Epoch, ParentBlocks, ExpectedTimeDiff),
-    case (TimeDiff - ExpectedTimeDiff) / BlockTime of
-        NegDiff when NegDiff < 0 ->
-            case ceil(NegDiff) of
-                NegDiff1 when NegDiff1 =< -CurrentLength ->
-                    1 - CurrentLength;
-                Rest ->
-                    Rest
-            end;
-        Diff ->
-            floor(Diff)
-    end.
-
-get_epoch_time_diff(Epoch, ParentBlocks, ExpectedTimeDiff) ->
-  get_block_time_diff(maps:get(Epoch, ParentBlocks, undefined),maps:get(Epoch + 1, ParentBlocks, undefined), ExpectedTimeDiff).
-
-get_block_time_diff(ParentBlock1, ParentBlock2, ExpectedTimeDiff) when ParentBlock1 == undefined ; ParentBlock2 == undefined ->
-    ExpectedTimeDiff;
-get_block_time_diff(ParentBlock1, ParentBlock2, _) ->
-    aec_parent_chain_block:time(ParentBlock2) - aec_parent_chain_block:time(ParentBlock1).
 
 update_proposal_after_vote_majority(#data{proposal=Proposal, votes=Votes, validators = Validators, leader=Leader} = Data) ->
     SumFun = sum_epoch_delta(Validators),
