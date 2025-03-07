@@ -23,6 +23,8 @@
 -callback reset_state(term()) -> term().
 -callback create_proposal(#{binary() => any()}, term()) -> #{binary() => any()}.
 -callback create_vote(#{binary() => any()}, #{binary() => any()}, term()) -> {ok, #{binary() => any()}} | {error, term()}.
+-callback vote_params(#{binary() => any()}) -> [term()].
+-callback finalize_call(#{binary() => any()}, term()) -> {list(), [term()]}.
 
 %% ==================================================================
 %% Records and Types
@@ -31,7 +33,6 @@
                 epoch                      :: non_neg_integer() | undefined,
                 height                     :: non_neg_integer() | undefined,
                 seed                       :: binary() | undefined,
-                length                     :: non_neg_integer() | undefined,
                 leader                     :: binary() | undefined,
                 validators=[]              :: [{binary(), non_neg_integer()}],
                 remaining_validators=#{}   :: #{binary() => non_neg_integer()},
@@ -49,7 +50,6 @@
                 state                      :: term()
             }).
 
--define(HASH_FLD, <<"block_hash">>).
 -define(HEIGHT_FLD, <<"block_height">>).
 -define(EPOCH_DELTA_FLD, <<"epoch_length_delta">>).
 -define(SIGNATURE_FLD, <<"signature">>).
@@ -57,8 +57,6 @@
 -define(EPOCH_FLD, <<"epoch">>).
 
 -define(NewTx(TxEvent), TxEvent == tx_created; TxEvent == tx_received).
-
--define(FINALIZE_FUN_NAME, "finalize_epoch").
 
 -type vote_types() :: #{
     proposal => non_neg_integer(),
@@ -103,7 +101,7 @@ callback_mode() ->
 %%% State: AwaitEndOfEpoch
 await_eoe(cast, {negotiate, Epoch, Height, Hash, Leader, Validators, Seed, CurrentLength}, #data{block_time=BlockTime, proposal=Proposal, parent_blocks=ParentBlocks, state=ClientState, module=Module} = Data) ->
     NewClientState = Module:init_state(Epoch, Hash, ParentBlocks, CurrentLength, BlockTime, ClientState),
-    Data1 = set_validators(Validators, Data#data{epoch=Epoch, height=Height, seed=Seed, length=CurrentLength, leader=Leader, validators = Validators, state=NewClientState}),
+    Data1 = set_validators(Validators, Data#data{epoch=Epoch, height=Height, seed=Seed, leader=Leader, validators = Validators, state=NewClientState}),
     case is_leader(Data1) of
         false ->
             case Proposal of
@@ -558,7 +556,7 @@ set_validators(Validators, Data) ->
 get_staker_private_key(Staker, Stakers) ->
     maps:get(Staker, Stakers, undefined).
 
-create_finalize_call(Votes, #{?HASH_FLD := Hash, ?EPOCH_DELTA_FLD := EpochDelta}, #data{epoch = Epoch, seed=Seed, leader=Leader, length = EpochLength, parent_blocks = ParentBlocks}) ->
+create_finalize_call(Votes, Proposal, #data{epoch = Epoch, seed=Seed, leader=Leader, parent_blocks = ParentBlocks, module = Module, state = ClientState}) ->
     Seed1 = case Seed of
                 undefined ->
                     case maps:get(Epoch, ParentBlocks, undefined) of
@@ -570,11 +568,14 @@ create_finalize_call(Votes, #{?HASH_FLD := Hash, ?EPOCH_DELTA_FLD := EpochDelta}
                 _ ->
                     Seed
             end,
-    VotesList = maps:fold(fun create_vote_call/3, [], Votes),
-    aeb_fate_abi:create_calldata(?FINALIZE_FUN_NAME, [Epoch, {bytes, Hash}, EpochLength + EpochDelta, {bytes, Seed1}, {address, Leader}, VotesList]).
+    VotesList = maps:fold(fun(Producer, Payload, Accum) -> create_vote_call(Module, Producer, Payload, Accum) end, [], Votes),
+    {FunName, FunArgs} = Module:finalize_call(Proposal, ClientState),
+    aeb_fate_abi:create_calldata(FunName, [Epoch|FunArgs] ++ [{bytes, Seed1}, {address, Leader}, VotesList]).
 
-create_vote_call(Producer, #{?HASH_FLD := Hash, ?EPOCH_DELTA_FLD := EpochDelta, ?SIGNATURE_FLD := Signature} = Payload, Accum) ->
-    [{tuple, {{address, Producer}, {bytes, Hash}, EpochDelta, {bytes, get_sign_data(Payload)}, {bytes, Signature}}} | Accum].
+create_vote_call(Module, Producer, #{?SIGNATURE_FLD := Signature} = Payload, Accum) ->
+    Params = Module:vote_params(Payload),
+    Params1 = [{address, Producer}|Params] ++ [{bytes, get_sign_data(Payload)}, {bytes, Signature}],
+    [{tuple, list_to_tuple(Params1)} | Accum].
 
 update_proposal_after_vote_majority(#data{proposal=Proposal, votes=Votes, validators = Validators, leader=Leader} = Data) ->
     SumFun = sum_epoch_delta(Validators),
