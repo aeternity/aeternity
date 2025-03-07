@@ -21,12 +21,12 @@
 -callback init(list(term())) -> term().
 -callback init_state(non_neg_integer(), binary(), #{non_neg_integer() => aec_parent_chain_block:block()}, non_neg_integer(), non_neg_integer(), term()) -> term().
 -callback reset_state(term()) -> term().
--callback create_proposal(#{binary() => any()}, term()) -> #{binary() => any()}.
--callback create_vote(#{binary() => any()}, #{binary() => any()}, term()) -> {ok, #{binary() => any()}} | {error, term()}.
--callback vote_params(#{binary() => any()}) -> [term()].
--callback finalize_call(#{binary() => any()}, term()) -> {list(), [term()]}.
+-callback create_proposal(proposal(), term()) -> proposal().
+-callback create_vote(proposal(), #{binary() => any()}, term()) -> {ok, #{binary() => any()}} | {error, term()}.
+-callback vote_params(vote()) -> [term()].
+-callback finalize_call(proposal(), term()) -> {list(), [term()]}.
 -callback convert_payload_field(binary(), binary()) -> term().
--callback update_proposal_after_vote_majority(#{binary() => any()}, #{binary() => #{binary() => any()}}, [{binary(), non_neg_integer()}], binary()) -> #{binary() => any()}.
+-callback update_proposal_after_vote_majority(proposal(), vote(), [{binary(), non_neg_integer()}], binary()) -> proposal().
 
 %% ==================================================================
 %% Records and Types
@@ -40,11 +40,11 @@
                 remaining_validators=#{}   :: #{binary() => non_neg_integer()},
                 stakers=#{}                :: #{binary() => binary()},
                 majority=0                 :: non_neg_integer(),
-                proposal                   :: #{binary() => any()} | undefined,
+                proposal                   :: proposal() | undefined,
                 block_time                 :: non_neg_integer(),
                 result                     :: {ok, binary()} | {error, no_consensus} | undefined,
                 from                       :: pid() | undefined,
-                votes=#{}                  :: #{binary() => #{binary() => any()}},
+                votes=#{}                  :: #{binary() => vote()},
                 parent_blocks=#{}          :: #{non_neg_integer() => aec_parent_chain_block:block()},
                 other_votes=[]             :: list({non_neg_integer(), aetx_sign:signed_tx()}),
                 vote_types                 :: vote_types(),
@@ -65,7 +65,11 @@
     commit => non_neg_integer()
 }.
 
--export_type([vote_types/0]).
+-type proposal() :: #{binary() => any()}.
+-type vote() :: #{binary() => any()}.
+
+-export_type([vote_types/0, proposal/0, vote/0]).
+
 
 %% API to start the state machine
 -spec start_link(atom(), atom(), vote_types(), #{binary() => binary()}, non_neg_integer())  -> {ok, pid()} | {error, atom()}.
