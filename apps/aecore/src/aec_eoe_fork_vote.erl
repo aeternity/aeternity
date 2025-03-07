@@ -12,14 +12,22 @@
 -export([start_link/2, negotiate/7, get_finalize_transaction/1, add_parent_block/2]).
 
 %% Export aec_eoe_gen_vote callbacks
--export([init/1]).
+-export([init/1, init_state/6, reset_state/1, create_proposal/2, create_vote/3]).
+
+%%% aec_eoe_gen_vote callbacks
 
 -define(PROPOSAL_TYPE, 1).
 -define(VOTE_TYPE, 2).
 -define(COMMIT_TYPE, 3).
 
+-define(HASH_FLD, <<"block_hash">>).
+-define(EPOCH_DELTA_FLD, <<"epoch_length_delta">>).
 
--record(data, {}).
+
+-record(data, {
+                fork_hash                  :: binary() | undefined,
+                length_delta               :: non_neg_integer() | undefined
+        }).
 
 %% API to start the state machine
 -spec start_link(#{binary() => binary()}, non_neg_integer())  -> {ok, pid()} | {error, atom()}.
@@ -42,3 +50,60 @@ get_finalize_transaction(Trees) ->
 
 init(_Args) ->
     #data{}.
+
+init_state(Epoch, Hash, ParentBlocks, CurrentLength, BlockTime, Data) ->
+    LengthDelta = calculate_delta(Epoch, ParentBlocks, CurrentLength, BlockTime),
+    lager:debug("Suggesting delta ~p for epoch ~p", [LengthDelta, Epoch]),
+    Data#data{fork_hash=Hash, length_delta=LengthDelta}.
+
+reset_state(_Data) ->
+    #data{}.
+
+create_proposal(Proposal0, #data{fork_hash=Hash, length_delta=LengthDelta}) ->
+    Proposal =#{?HASH_FLD => Hash,
+                ?EPOCH_DELTA_FLD => LengthDelta},
+    maps:merge(Proposal0, Proposal).
+
+create_vote(ProposalFields, VoteFlds0, #data{fork_hash=Hash, length_delta=LengthDelta}) ->
+    case maps:get(?HASH_FLD, ProposalFields, undefined) of
+        undefined ->
+            lager:warning("Hash field not found in proposal ~p", [ProposalFields]),
+            {error, no_proposal};
+        Hash ->
+            VoteFlds =#{?HASH_FLD => Hash,
+                        ?EPOCH_DELTA_FLD => LengthDelta},
+            {ok, maps:merge(VoteFlds0, VoteFlds)};
+        ProposalHash ->
+            lager:warning("Proposal hash ~p does not match hash ~p", [ProposalHash, Hash]),
+            {error, hash_mismatch}
+    end.
+
+
+
+%% The first three epochs have the same seed
+calculate_delta(Epoch, _ParentBlocks, _CurrentLength, _BlockTime) when Epoch =< 4 ->
+    0;
+calculate_delta(Epoch, ParentBlocks, CurrentLength, BlockTime) ->
+    ExpectedTimeDiff = CurrentLength * BlockTime,
+    TimeDiff = get_epoch_time_diff(Epoch, ParentBlocks, ExpectedTimeDiff),
+    case (TimeDiff - ExpectedTimeDiff) / BlockTime of
+        NegDiff when NegDiff < 0 ->
+            case ceil(NegDiff) of
+                NegDiff1 when NegDiff1 =< -CurrentLength ->
+                    1 - CurrentLength;
+                Rest ->
+                    Rest
+            end;
+        Diff ->
+            floor(Diff)
+    end.
+
+get_epoch_time_diff(Epoch, ParentBlocks, ExpectedTimeDiff) ->
+  get_block_time_diff(maps:get(Epoch, ParentBlocks, undefined),maps:get(Epoch + 1, ParentBlocks, undefined), ExpectedTimeDiff).
+
+get_block_time_diff(ParentBlock1, ParentBlock2, ExpectedTimeDiff) when ParentBlock1 == undefined ; ParentBlock2 == undefined ->
+    ExpectedTimeDiff;
+get_block_time_diff(ParentBlock1, ParentBlock2, _) ->
+    aec_parent_chain_block:time(ParentBlock2) - aec_parent_chain_block:time(ParentBlock1).
+
+%%% aec_eoe_gen_vote callbacks
