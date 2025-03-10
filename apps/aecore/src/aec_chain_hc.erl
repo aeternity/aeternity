@@ -172,16 +172,29 @@ decode_stakers(RawStakers) ->
 encode_stakers(Stakers) ->
     lists:map(fun({Staker, Stake}) -> {tuple, {{address, Staker}, Stake}} end, Stakers).
 
-decode_finalize({tuple, {Epoch, {bytes, Fork}, EpochLength, {bytes, PCHash}, {address, Producer}, Votes}}) ->
-    #{ epoch => Epoch, fork => Fork, epoch_length => EpochLength, pc_hash => PCHash, producer => Producer, votes => decode_votes(Votes)}.
+decode_finalize({tuple, {Epoch, ForkOption, EpochLengthOption, {bytes, PCHash}, {address, Producer}, VotesOption, LengthVotesOption}}) ->
+    EpochLength = decode_option(EpochLengthOption, {fun(Int) -> Int end, undefined}),
+    Fork = decode_option(ForkOption, {fun({bytes, Bin}) -> Bin end, undefined}),
+    Votes = decode_option(VotesOption, {fun decode_votes/1, undefined}),
+    LengthVotes = decode_option(LengthVotesOption, {fun decode_length_votes/1, undefined}),
+    #{ epoch => Epoch, fork => Fork, epoch_length => EpochLength, pc_hash => PCHash, producer => Producer, votes => Votes, length_votes => LengthVotes}.
 
 decode_votes(Votes) ->
     decode_votes(Votes, []).
 
 decode_votes([], Accum) ->
     lists:reverse(Accum);
-decode_votes([{tuple, {{address, Producer}, {bytes, Hash}, EpochDelta, {bytes, _SignData}, {bytes, Signature}}}|Rest], Accum) ->
-    decode_votes(Rest, [#{ producer => Producer, hash => Hash, epoch_delta => EpochDelta, signature => Signature}|Accum]).
+decode_votes([{tuple, {{address, Producer}, {bytes, Hash}, {bytes, _SignData}, {bytes, Signature}}}|Rest], Accum) ->
+    decode_votes(Rest, [#{ producer => Producer, hash => Hash, signature => Signature}|Accum]).
+
+decode_length_votes(Votes) ->
+    decode_length_votes(Votes, []).
+
+decode_length_votes([], Accum) ->
+    lists:reverse(Accum);
+decode_length_votes([{tuple, {{address, Producer}, {bytes, Hash}, {bytes, _SignData}, {bytes, Signature}}}|Rest], Accum) ->
+    decode_length_votes(Rest, [#{ producer => Producer, hash => Hash, signature => Signature}|Accum]).
+
 
 call_consensus_contract_w_env(Contract, top, Endpoint, Args) ->
     case aec_chain:top_height() of

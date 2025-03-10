@@ -25,6 +25,12 @@ main contract HCElection =
   record vote =
     { producer    : address,
       hash        : hash,
+      sign_data   : bytes(),
+      signature   : signature
+    }
+
+  record epoch_length_vote =
+    { producer    : address,
       epoch_delta : int,
       sign_data   : bytes(),
       signature   : signature
@@ -32,11 +38,12 @@ main contract HCElection =
 
   record finalize_info =
     { epoch        : int,
-      fork         : bytes(),
-      epoch_length : int,
+      fork         : option(bytes()),
+      epoch_length : option(int),
       pc_hash      : bytes(),
       producer     : address,
-      votes        : list(vote)
+      votes        : option(list(vote)),
+      length_votes : option(list(epoch_length_vote))
     }
 
   record state =
@@ -111,7 +118,10 @@ main contract HCElection =
         None       => state.epochs[epoch + 3]
         Some(info) =>
           if ( info.epoch == epoch )
-            state.epochs[epoch + 3]{ length = info.epoch_length }
+            switch(info.epoch_length)
+              None => state.epochs[epoch + 3]
+              Some(epoch_length) =>
+                state.epochs[epoch + 3]{ length = epoch_length }
           else
             state.epochs[epoch + 3]
 
@@ -153,14 +163,23 @@ main contract HCElection =
       let reporter_reward = (penalty * reporter_percentage) / 100
       put(state{penalties[height = []] @ rs = (reporter, -reporter_reward) :: rs})
 
-  stateful entrypoint finalize_epoch(epoch_number : int, fork : bytes(), epoch_length : int, pc_hash : bytes(), producer : address, votes : list(vote)) =
+  stateful entrypoint finalize_epoch(epoch_number : int, fork : bytes(), pc_hash : bytes(), producer : address, votes : list(vote)) =
     let epoch = state.epoch
     let last = state.epochs[epoch].start + state.epochs[epoch].length - 1
     require(Chain.block_height == last, "Only in last block")
     require(Call.caller == state.leader, "Must be called by the last leader of epoch")
     require(epoch_number == state.epoch, "Not correct epoch")
     require(List.all(validate_vote, votes), "Invalid vote")
-    put(state{finalize=Some({epoch = epoch_number, fork = fork, epoch_length = epoch_length, pc_hash = pc_hash, producer = producer, votes = votes})})
+    let ei_final =
+      switch(state.finalize)
+        None       => {epoch = epoch_number, fork = Some(fork), epoch_length = None, pc_hash = pc_hash, producer = producer, votes = Some(votes), length_votes = None}
+        Some(finalize) =>
+          if ( finalize.epoch == epoch_number )
+            finalize{ fork = Some(fork), votes = Some(votes) }
+          else
+            {epoch = epoch_number, fork = Some(fork), epoch_length = None, pc_hash = pc_hash, producer = producer, votes = Some(votes), length_votes = None}
+
+    put(state{finalize=Some(ei_final)})
 
   entrypoint leader() =
     state.leader
