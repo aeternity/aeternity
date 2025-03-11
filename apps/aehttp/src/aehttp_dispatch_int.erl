@@ -619,7 +619,7 @@ produce_tx(paying_for_tx, _Req) ->
       %% transactions
       err.
 
-tx_swagger_name_from_operation_id('PostSpend') -> 'SpendTx';
+tx_swagger_name_from_operation_id('PostSpend') -> 'SpendTxInput';
 tx_swagger_name_from_operation_id('PostContractCreate') -> 'ContractCreateTx';
 tx_swagger_name_from_operation_id('PostContractCall') -> 'ContractCallTx';
 tx_swagger_name_from_operation_id('PostNamePreclaim') -> 'NamePreclaimTx';

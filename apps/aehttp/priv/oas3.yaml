@@ -2175,7 +2175,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/SpendTx"
+              $ref: "#/components/schemas/SpendTxInput"
         description: A spend transaction
         required: true
       responses:
@@ -3265,7 +3265,10 @@ components:
         pointers:
           type: array
           items:
-            $ref: "#/components/schemas/NamePointerComplete"
+            allOf:
+              - $ref: "#/components/schemas/NamePointer"
+              - required:
+                  - encoded_key
       required:
         - id
         - ttl
@@ -3288,19 +3291,6 @@ components:
           $ref: "#/components/schemas/EncodedPubkey"
       required:
         - key
-        - id
-    NamePointerComplete:
-      type: object
-      properties:
-        key:
-          type: string
-        encoded_key:
-          $ref: "#/components/schemas/EncodedValue"
-        id:
-          $ref: "#/components/schemas/EncodedPubkey"
-      required:
-        - key
-        - encoded_key
         - id
     NamePreclaimTx:
       type: object
@@ -3871,7 +3861,7 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/SignedTx"
-    SpendTx:
+    SpendTxInput:
       type: object
       properties:
         recipient_id:
@@ -3894,6 +3884,11 @@ components:
         - fee
         - sender_id
         - payload
+    SpendTx:
+      allOf:
+        - $ref: "#/components/schemas/SpendTxInput"
+        - required:
+            - nonce
     Status:
       type: object
       properties:

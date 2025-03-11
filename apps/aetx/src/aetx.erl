@@ -669,6 +669,7 @@ type_to_swagger_name(hc_vote_tx)                -> <<"HCVoteTx">>.
 
 -spec swagger_name_to_type(binary())               -> tx_type().
 swagger_name_to_type(<<"SpendTx">>)                -> spend_tx;
+swagger_name_to_type(<<"SpendTxInput">>)           -> spend_tx;
 swagger_name_to_type(<<"OracleRegisterTx">>)       -> oracle_register_tx;
 swagger_name_to_type(<<"OracleExtendTx">>)         -> oracle_extend_tx;
 swagger_name_to_type(<<"OracleQueryTx">>)          -> oracle_query_tx;
