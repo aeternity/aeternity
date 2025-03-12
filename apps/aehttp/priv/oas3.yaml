@@ -3021,6 +3021,7 @@ components:
           pattern: "^(0x|0X)?[a-fA-F0-9]+$"
       required:
         - owner_id
+        - nonce
         - code
         - vm_version
         - abi_version
