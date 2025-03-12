@@ -2503,6 +2503,7 @@ components:
         - update
         - state_hash
         - fee
+        - nonce
     ChannelSetDelegatesTx:
       type: object
       properties:
