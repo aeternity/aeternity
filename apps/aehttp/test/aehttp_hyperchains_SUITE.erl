@@ -37,6 +37,7 @@
          correct_leader_in_micro_block/1,
          first_leader_next_epoch/1,
          check_default_pin/1,
+         fast_parent_fail_pin/1,
          check_finalize_info/1,
          sanity_check_vote_tx/1,
          hole_production/1,
@@ -206,7 +207,8 @@ groups() ->
     , {default_pin, [sequence],
           [ start_two_child_nodes,
             produce_first_epoch,
-            check_default_pin
+            check_default_pin,
+            fast_parent_fail_pin
           ]}
     , {config, [sequence],
           [ start_two_child_nodes,
@@ -283,7 +285,7 @@ end_per_suite(Config) ->
 init_per_group(Group, ConfigPre) ->
     Config0 =
         case Group of
-            default_pin -> [ {initial_validators, false}, {default_pinning_behavior, true} | ConfigPre ];
+            default_pin -> [ {initial_validators, false}, {default_pinning_behavior, true}, {parent_pin_sync_margin, 3} | ConfigPre ];
             config -> [ {initial_validators, true}, {default_pinning_behavior, false} | ConfigPre ];
             _ -> [ {initial_validators, false}, {default_pinning_behavior, false} | ConfigPre ]
         end,
@@ -1347,6 +1349,45 @@ check_default_pin(Config) ->
 
     ok.
 
+fast_parent_fail_pin(Config) ->
+    [{Node, NodeName, _, _} | _] = ?config(nodes, Config),
+
+    %% ensure start at a new epoch boundary
+    produce_until_next_epoch(Config),
+
+    aecore_suite_utils:subscribe(NodeName, pin),
+
+    %% Produce twice as many parent blocks as needed in an epoch
+    Height0 = rpc(Node, aec_chain, top_height, []),
+    ParentTopHeight0 = rpc(?PARENT_CHAIN_NODE, aec_chain, top_height, []),
+    {ok, #{length := Len1}} = rpc(Node, aec_chain_hc, epoch_info, []),
+    {ok, _} = produce_cc_blocks(Config, Len1,
+                                #{parent_produce => spread(2*?PARENT_EPOCH_LENGTH, Height0,
+                                                            [ {CH, 0} || CH <- lists:seq(Height0 + 1, Height0 + Len1)])}),
+
+    {ok, #{info := {pin_accepted, _}}} = wait_for_ps(pin),
+
+    Height1 = rpc(Node, aec_chain, top_height, []),
+    ParentTopHeight1 = rpc(?PARENT_CHAIN_NODE, aec_chain, top_height, []),
+    {ok, #{length := Len2}} = rpc(Node, aec_chain_hc, epoch_info, []),
+    {ok, _} = produce_cc_blocks(Config, Len1,
+                                #{parent_produce => spread(2*?PARENT_EPOCH_LENGTH, Height1,
+                                                            [ {CH, 0} || CH <- lists:seq(Height1 + 1, Height1 + Len2)])}),
+
+    % we are still within sync margin, even though we are three blocks too fast
+    {ok, #{info := {pin_accepted, _}}} = wait_for_ps(pin),
+
+    produce_until_next_epoch(Config),
+
+    % pin validation  fails due to incorrectly synced parent chain (it's too fast, even including margin of one epoch length...)
+    {ok, #{info := {incorrect_proof_posted}}} = wait_for_ps(pin),
+
+    aecore_suite_utils:unsubscribe(NodeName, pin),
+
+
+    ok.
+
+
 %%%=============================================================================
 %%% Elections
 %%%=============================================================================
@@ -1791,7 +1832,8 @@ node_config(Node, CTConfig, PotentialStakers, PotentialPinners, ReceiveAddress) 
                                         <<"pinning_reward_value">> => 4711,
                                         <<"fixed_coinbase">> => ?BLOCK_REWARD,
                                         <<"fee_distribution">> => [30, 50, 20],
-                                        <<"default_pinning_behavior">> => ?config(default_pinning_behavior, CTConfig)},
+                                        <<"default_pinning_behavior">> => ?config(default_pinning_behavior, CTConfig),
+                                        <<"parent_pin_sync_margin">> => ?config(parent_pin_sync_margin, CTConfig)},
                                     SpecificConfig)
                                     }}},
         <<"fork_management">> =>
