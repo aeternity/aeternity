@@ -2122,7 +2122,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/PayingForTx"
+              $ref: "#/components/schemas/PayingForTxInput"
         description: A paying-for transaction
         required: true
       responses:
@@ -3622,7 +3622,7 @@ components:
         - response_ttl
         - fee
         - oracle_id
-    PayingForTx:
+    PayingForTxInput:
       type: object
       properties:
         payer_id:
@@ -3637,6 +3637,11 @@ components:
         - payer_id
         - fee
         - tx
+    PayingForTx:
+      allOf:
+        - $ref: "#/components/schemas/PayingForTxInput"
+        - required:
+            - nonce
     Peer:
       type: string
       description: Aeternity node

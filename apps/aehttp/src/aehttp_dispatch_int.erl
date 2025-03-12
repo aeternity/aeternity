@@ -125,7 +125,7 @@ handle_request_(OperationId, Req, _Context)
 handle_request_('DryRunTxs', #{ 'DryRunInput' := Req }, _Context) ->
     lager:debug("DryRunInput := ~p", [Req]),
     produce_tx(dry_run_txs, Req);
-handle_request_('PostPayingFor', #{'PayingForTx' := Req}, _Context) ->
+handle_request_('PostPayingFor', #{'PayingForTxInput' := Req}, _Context) ->
     ParseFuns = [ parse_map_to_atom_keys(),
                   read_required_params([payer_id, fee, tx]),
                   api_decode([{payer_id, payer_id, {id_hash, [account_pubkey]}}]),
