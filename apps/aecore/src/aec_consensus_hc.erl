@@ -687,9 +687,9 @@ pc_start_height() ->
     Fun = fun() -> get_consensus_config_key([<<"parent_chain">>, <<"start_height">>], 0) end,
     aeu_ets_cache:get(?ETS_CACHE_TABLE, pc_start_height, Fun).
 
-%pc_finality() ->
-%    Fun = fun() -> get_consensus_config_key([<<"parent_chain">>, <<"finality">>], 0) end,
-%    aeu_ets_cache:get(?ETS_CACHE_TABLE, finality, Fun).
+parent_finality() ->
+    Fun = fun() -> get_consensus_config_key([<<"parent_chain">>, <<"finality">>], 0) end,
+    aeu_ets_cache:get(?ETS_CACHE_TABLE, finality, Fun).
 
 genesis_start_time() ->
     Fun = fun() -> get_consensus_config_key([<<"genesis_start_time">>], 0) end,
@@ -698,6 +698,10 @@ genesis_start_time() ->
 parent_epoch_length() ->
     Fun = fun() -> get_consensus_config_key([<<"parent_chain">>, <<"parent_epoch_length">>]) end,
     aeu_ets_cache:get(?ETS_CACHE_TABLE, parent_epoch_length, Fun).
+
+parent_pin_sync_margin() ->
+    Fun = fun() -> get_consensus_config_key([<<"parent_pin_sync_margin">>], 0) end,
+    aeu_ets_cache:get(?ETS_CACHE_TABLE, parent_pin_sync_margin, Fun).
 
 child_epoch_length() ->
     Fun = fun() -> get_consensus_config_key([<<"child_epoch_length">>]) end,
@@ -1224,8 +1228,8 @@ handle_pinning(TxEnv, Trees, EpochInfo, Leader) ->
             {Trees1, Events} = add_pin_reward(Trees, TxEnv, Leader, EpochInfo),
             lager:debug("PINNING: pin validated"),
             {Trees1, false, Events};
-        pin_validation_fail ->
-            lager:warning("PINNING: Incorrect proof posted"),
+        {pin_validation_fail, Msg} ->
+            lager:warning("PINNING: Incorrect proof posted: ~p", [Msg]),
             {Trees, true, [{pin, {incorrect_proof_posted}}]}
     end.
 
@@ -1233,31 +1237,41 @@ validate_pin(TxEnv, Trees, CurEpochInfo) ->
     case aec_chain_hc:pin_info({TxEnv, Trees}) of
         undefined -> pin_missing;
         {bytes, EncTxHash} ->
-            % TODO make this code much more robust - incorrect EncTxHash, bad value from PC, incorrect hash etc.etc
             lager:debug("PINNING: EncHash: ~p", [EncTxHash]),
             try
                 #{epoch := CurEpoch} = CurEpochInfo,
                 {ok, #{epoch := PinEpoch, height := PinHeight, block_hash := PinHash, pc_height := PcHeight}} =
                     aec_parent_connector:get_pin_by_tx_hash(EncTxHash),
                 lager:debug("PINNING pin epoch: ~p, pin epoch last: ~p, cur epoch: ~p",[PinEpoch, PinHeight, CurEpoch]),
-                lager:debug("pc pin height: ~p, pc_epoch_from_height: ~p: pc_start_height: ~p; pc_epoch_length: ~p", [PcHeight, pc_epoch_from_height(PcHeight), pc_start_height(), parent_epoch_length()]), % validate it was actually last epoch
-                HashCorrect =
-                    case {ok, PinHash} =:= aec_chain_state:get_key_block_hash_at_height(PinHeight) of
-                        true -> pin_correct;
-                        false -> pin_validation_fail
-                    end
-                %PcEpochCorrect = (PinEpoch == pc_epoch_from_height(PcHeight) - 1) % validate that pinning was in epoch directly following
+                {Min, Max} = get_pcpinheights_from_pinepoch(PinEpoch),
+                lager:debug("pc pin height: ~p, pc_epoch_from_height: ~p: pc_epoch_to_height: ~p; pc_epoch_length: ~p", [PcHeight, Min, Max, parent_epoch_length()]), % validate it was actually last epoch
+                case {ok, PinHash} =:= aec_chain_state:get_key_block_hash_at_height(PinHeight) of
+                    true ->
+                        {PcMin, PcMax} = get_pcpinheights_from_pinepoch(PinEpoch),
+                        if
+                            PcHeight >= PcMin andalso PcHeight =< PcMax ->
+                                pin_correct;
+                            true ->
+                                {pin_validation_fail, "PC Pin not in sync"}
+                        end;
+                    false -> {pin_validation_fail, "Incorrect Hash pinned to parent chain"}
+                end
             catch
                 Type:Err ->
                     lager:debug("bad pin proof posted: ~p : ~p", [Type, Err]),
-                    pin_validation_fail
+                    {pin_validation_fail, Err}
             end
     end.
 
-pc_epoch_from_height(PcHeight) ->
-    PcStartHeight = pc_start_height(),
-    PcEpochLength  = parent_epoch_length(),
-    ((PcHeight - PcStartHeight) div PcEpochLength) + 1. % start epoch is 1,
+% returns the "ideal"/in-sync PC start and end heights of the epoch where the pin from PinEpoch needs to be (i.e. the next PC epoc),
+% with respect to finality and "margin of sync"
+get_pcpinheights_from_pinepoch(PinEpoch) ->
+    PcEpochLength = parent_epoch_length(),
+    BaseStart = pc_start_height() + (PinEpoch * PcEpochLength),
+    SyncMargin = parent_pin_sync_margin(),
+    PCFinality = parent_finality(),
+    lager:debug("PCStartHeight: ~p, PCBaseStart: ~p, PCSyncMargin: ~p, PCFinality ~p", [pc_start_height(), BaseStart, SyncMargin, PCFinality]),
+    {BaseStart - SyncMargin + PCFinality, BaseStart + (PcEpochLength - 1) + SyncMargin + PCFinality}.
 
 
 add_pin_reward(Trees, TxEnv, Leader, #{epoch := CurEpoch, last := Last}) ->

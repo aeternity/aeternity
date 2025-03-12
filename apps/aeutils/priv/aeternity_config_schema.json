@@ -1748,6 +1748,11 @@
                                             "default": 0,
                                             "type": "integer"
                                         },
+                                        "parent_pin_sync_margin": {
+                                            "description": "The number of blocks that the parent chain can be out of sync (vs the \"ideal\" height) to still be considered valid for pinning",
+                                            "default": 0,
+                                            "type": "integer"
+                                        },
                                         "default_pinning_behavior": {
                                             "description": "Use the default pinning behavior, where in each epoch, if the last leader has defined pinning/parent chain credentials, they will pin",
                                             "default": false,
