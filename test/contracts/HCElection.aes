@@ -181,6 +181,25 @@ main contract HCElection =
 
     put(state{finalize=Some(ei_final)})
 
+
+  stateful entrypoint finalize_epoch_length(epoch_number : int, epoch_length : int, pc_hash : bytes(), producer : address, votes : list(epoch_length_vote)) =
+    let epoch = state.epoch
+    let last = state.epochs[epoch].start + state.epochs[epoch].length - 1
+    require(Chain.block_height == last, "Only in last block")
+    require(Call.caller == state.leader, "Must be called by the last leader of epoch")
+    require(epoch_number == state.epoch, "Not correct epoch")
+    //require(List.all(validate_vote, votes), "Invalid vote")
+    let ei_final =
+      switch(state.finalize)
+        None       => {epoch = epoch_number, fork = None, epoch_length = Some(epoch_length), pc_hash = pc_hash, producer = producer, votes = None, length_votes = Some(votes)}
+        Some(finalize) =>
+          if ( finalize.epoch == epoch_number )
+            finalize{ epoch_length = Some(epoch_length), length_votes = Some(votes) }
+          else
+            {epoch = epoch_number, fork = None, epoch_length = Some(epoch_length), pc_hash = pc_hash, producer = producer, votes = None, length_votes = Some(votes)}
+
+    put(state{finalize=Some(ei_final)})
+
   entrypoint leader() =
     state.leader
 

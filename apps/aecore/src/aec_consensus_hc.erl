@@ -87,8 +87,8 @@
         , get_entropy_hash/1
         , get_contract_pubkey/1
         %% voting
-        , vote_result/1
-        , vote_result/0
+        , vote_results/1
+        , vote_results/0
         %% POS
         , next_producer/0
         ]).
@@ -446,15 +446,15 @@ create_consensus_call_contract_transaction(ContractType, OwnerPubkey, Trees, Enc
                   call_data   => CallData},
     aect_call_tx:new(CallSpec).
 
-vote_result(Trees) ->
-    aec_eoe_vote:get_finalize_transaction(Trees).
+vote_results(Trees) ->
+    aec_eoe_vote:get_finalize_transactions(Trees).
 
-vote_result() ->
+vote_results() ->
     case aec_chain:get_top_state() of
         {ok, Trees} ->
-            vote_result(Trees);
+            vote_results(Trees);
         Error ->
-            {error, Error}
+            [{error, Error}]
     end.
 
 

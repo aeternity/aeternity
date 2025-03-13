@@ -9,7 +9,7 @@
 -behaviour(supervisor).
 
 %% Export API functions
--export([start_link/2, negotiate/7, get_finalize_transaction/1, add_parent_block/2]).
+-export([start_link/2, negotiate/7, get_finalize_transactions/1, add_parent_block/2]).
 
 %% Supervisor callbacks
 -export([init/1]).
@@ -29,9 +29,9 @@ negotiate(Epoch, Height, Hash, Leader, Validators, Seed, CurrentLength) ->
 add_parent_block(Epoch, ParentBlock) ->
     call_children(fun(Module) -> Module:add_parent_block(Epoch, ParentBlock) end).
 
--spec get_finalize_transaction(aec_trees:trees()) -> {ok, aetx_sign:signed_tx()} | {error, not_ready} | {error, term()}.
-get_finalize_transaction(Trees) ->
-    aec_eoe_fork_vote:get_finalize_transaction(Trees).
+-spec get_finalize_transactions(aec_trees:trees()) -> {ok, aetx_sign:signed_tx()} | {error, not_ready} | {error, term()}.
+get_finalize_transactions(Trees) ->
+    [aec_eoe_fork_vote:get_finalize_transaction(Trees), aec_eoe_length_vote:get_finalize_transaction(Trees)].
 
 init(Args) ->
     ChildSpecs = [child_spec(aec_eoe_fork_vote, Args), child_spec(aec_eoe_length_vote, Args)],
