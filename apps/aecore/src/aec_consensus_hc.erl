@@ -1237,27 +1237,23 @@ validate_pin(TxEnv, Trees, CurEpochInfo) ->
     case aec_chain_hc:pin_info({TxEnv, Trees}) of
         undefined -> pin_missing;
         {bytes, EncTxHash} ->
-            lager:debug("PINNING: EncHash: ~p", [EncTxHash]),
             try
                 #{epoch := CurEpoch} = CurEpochInfo,
                 {ok, #{epoch := PinEpoch, height := PinHeight, block_hash := PinHash, pc_height := PcHeight}} =
                     aec_parent_connector:get_pin_by_tx_hash(EncTxHash),
-                lager:debug("PINNING pin epoch: ~p, pin epoch last: ~p, cur epoch: ~p",[PinEpoch, cPinHeight, CurEpoch]),
-                {PcMin, PcMax} = get_pcpinheights_from_pinepoch(PinEpoch),
-                lager:debug("pc pin height: ~p, pc_epoch_from_height: ~p: pc_epoch_to_height: ~p; pc_epoch_length: ~p", [PcHeight, PcMin, PcMax, parent_epoch_length()]), % validate it was actually last epoch
-                case {ok, PinHash} =:= aec_chain_state:get_key_block_hash_at_height(PinHeight) of
-                    true ->
-                        if
-                            PcHeight >= PcMin andalso PcHeight =< PcMax ->
-                                pin_correct;
-                            true ->
-                                {pin_validation_fail, "PC Pin not in sync"}
-                        end;
+                    case {ok, PinHash} =:= aec_chain_state:get_key_block_hash_at_height(PinHeight) of
+                        true ->
+                            {PcMin, PcMax} = get_pcpinheights_from_pinepoch(PinEpoch),
+                            if
+                                PcHeight >= PcMin andalso PcHeight =< PcMax ->
+                                    pin_correct;
+                                true ->
+                                    {pin_validation_fail, "PC Pin not in sync"}
+                            end;
                     false -> {pin_validation_fail, "Incorrect Hash pinned to parent chain"}
                 end
             catch
                 Type:Err ->
-                    lager:debug("bad pin proof posted: ~p : ~p", [Type, Err]),
                     {pin_validation_fail, Err}
             end
     end.
@@ -1269,7 +1265,6 @@ get_pcpinheights_from_pinepoch(PinEpoch) ->
     BaseStart = pc_start_height() + (PinEpoch * PcEpochLength),
     SyncMargin = parent_pin_sync_margin(),
     PCFinality = parent_finality(),
-    lager:debug("PCStartHeight: ~p, PCBaseStart: ~p, PCSyncMargin: ~p, PCFinality ~p", [pc_start_height(), BaseStart, SyncMargin, PCFinality]),
     {BaseStart - SyncMargin + PCFinality, BaseStart + (PcEpochLength - 1) + SyncMargin + PCFinality}.
 
 
