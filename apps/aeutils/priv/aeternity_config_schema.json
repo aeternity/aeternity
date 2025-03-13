@@ -1784,6 +1784,7 @@
                                                 },
                                                 "finality": {
                                                     "description": "The number of blocks on the parent chain to reach finality.",
+                                                    "default": 5,
                                                     "type": "integer"
                                                 },
                                                 "parent_epoch_length": {

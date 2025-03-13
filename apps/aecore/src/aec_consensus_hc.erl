@@ -688,7 +688,7 @@ pc_start_height() ->
     aeu_ets_cache:get(?ETS_CACHE_TABLE, pc_start_height, Fun).
 
 parent_finality() ->
-    Fun = fun() -> get_consensus_config_key([<<"parent_chain">>, <<"finality">>], 0) end,
+    Fun = fun() -> get_consensus_config_key([<<"parent_chain">>, <<"finality">>], 5) end,
     aeu_ets_cache:get(?ETS_CACHE_TABLE, finality, Fun).
 
 genesis_start_time() ->
@@ -1242,12 +1242,11 @@ validate_pin(TxEnv, Trees, CurEpochInfo) ->
                 #{epoch := CurEpoch} = CurEpochInfo,
                 {ok, #{epoch := PinEpoch, height := PinHeight, block_hash := PinHash, pc_height := PcHeight}} =
                     aec_parent_connector:get_pin_by_tx_hash(EncTxHash),
-                lager:debug("PINNING pin epoch: ~p, pin epoch last: ~p, cur epoch: ~p",[PinEpoch, PinHeight, CurEpoch]),
-                {Min, Max} = get_pcpinheights_from_pinepoch(PinEpoch),
-                lager:debug("pc pin height: ~p, pc_epoch_from_height: ~p: pc_epoch_to_height: ~p; pc_epoch_length: ~p", [PcHeight, Min, Max, parent_epoch_length()]), % validate it was actually last epoch
+                lager:debug("PINNING pin epoch: ~p, pin epoch last: ~p, cur epoch: ~p",[PinEpoch, cPinHeight, CurEpoch]),
+                {PcMin, PcMax} = get_pcpinheights_from_pinepoch(PinEpoch),
+                lager:debug("pc pin height: ~p, pc_epoch_from_height: ~p: pc_epoch_to_height: ~p; pc_epoch_length: ~p", [PcHeight, PcMin, PcMax, parent_epoch_length()]), % validate it was actually last epoch
                 case {ok, PinHash} =:= aec_chain_state:get_key_block_hash_at_height(PinHeight) of
                     true ->
-                        {PcMin, PcMax} = get_pcpinheights_from_pinepoch(PinEpoch),
                         if
                             PcHeight >= PcMin andalso PcHeight =< PcMax ->
                                 pin_correct;
