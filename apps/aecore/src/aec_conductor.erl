@@ -1522,7 +1522,7 @@ hc_apply_vote(VoteTransactions, MBlock, MBlockInfo, TriedWithTrees, IsEOE) ->
                 false ->
                     %% Retry with trees to correct nonce
                     {ok, Trees} = aec_block_micro_candidate:trees(MBlockInfo),
-                    hc_apply_vote(aec_consensus_hc:vote_results(Trees), MBlock, MBlockInfo, true, IsEOE);
+                    hc_apply_vote([VoteTransaction || {ok, VoteTransaction} <- aec_consensus_hc:vote_results(Trees)], MBlock, MBlockInfo, true, IsEOE);
                 true ->
                     lager:warning("Error adding vote transaction ~p", [Error]),
                     {MBlock, false}
