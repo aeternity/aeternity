@@ -9,7 +9,7 @@
 -behaviour(gen_statem).
 
 %% Export API functions
--export([start_link/5, negotiate/8, get_finalize_transaction/2, add_parent_block/3, convert_payload_field/2]).
+-export([start_link/5, negotiate/8, get_finalize_transaction/3, add_parent_block/3, convert_payload_field/2]).
 
 %% Export gen_statem callbacks
 -export([init/1, callback_mode/0, terminate/3, code_change/4]).
@@ -44,6 +44,7 @@
                 block_time                 :: non_neg_integer(),
                 result                     :: {ok, binary()} | {error, no_consensus} | undefined,
                 from                       :: pid() | undefined,
+                nonce_offset=1             :: non_neg_integer(),
                 votes=#{}                  :: #{binary() => vote()},
                 parent_blocks=#{}          :: #{non_neg_integer() => aec_parent_chain_block:block()},
                 other_votes=[]             :: list({non_neg_integer(), aetx_sign:signed_tx()}),
@@ -85,9 +86,9 @@ negotiate(EOEVoteType, Epoch, Height, Hash, Leader, Validators, Seed, CurrentLen
 add_parent_block(EOEVoteType, Epoch, ParentBlock) ->
     gen_statem:cast(EOEVoteType, {add_parent_block, Epoch, ParentBlock}).
 
--spec get_finalize_transaction(atom(), aec_trees:trees()) -> {ok, aetx_sign:signed_tx()} | {error, not_ready} | {error, term()}.
-get_finalize_transaction(EOEVoteType, Trees) ->
-    gen_statem:call(EOEVoteType, {get_finalize_transaction, Trees}).
+-spec get_finalize_transaction(atom(), aec_trees:trees(), non_neg_integer()) -> {ok, aetx_sign:signed_tx()} | {error, not_ready} | {error, term()}.
+get_finalize_transaction(EOEVoteType, Trees, NonceOffset) ->
+    gen_statem:call(EOEVoteType, {get_finalize_transaction, Trees, NonceOffset}).
 
 %%% gen_statem callbacks
 
@@ -349,7 +350,7 @@ on_other_vote(_Type, _SignedTx, _Data) ->
     keep_state_and_data.
 
 on_other_vote_type(Type, _SignedTx, _Data) ->
-    lager:warning("Other vote type ~p", [Type]),
+    lager:debug("Other vote type ~p", [Type]),
     keep_state_and_data.
 
 handle_voting(#data{majority = Majority} = Data) ->
@@ -489,35 +490,35 @@ handle_common_event(cast, {add_parent_block, Epoch, ParentBlock}, #data{parent_b
     {keep_state, Data#data{parent_blocks = ParentBlocks1}};
 handle_common_event(info, {gproc_ps_event, new_epoch, #{info := _EpochInfo}}, Data) ->
     {next_state, await_eoe, reset_data(Data)};
-handle_common_event({call,From}, {get_finalize_transaction, Trees}, #data{result=Result, leader = Leader} = Data) ->
+handle_common_event({call,From}, {get_finalize_transaction, Trees, NonceOffset}, #data{result=Result, leader = Leader} = Data) ->
     case Leader of
         undefined ->
             {keep_state_and_data, [{reply, From, {error, not_ready}}]};
         _ ->
             case Result of
                 undefined ->
-                    {keep_state, Data#data{from=From}};
+                    {keep_state, Data#data{from=From, nonce_offset=NonceOffset}};
                 _ ->
                     lager:debug("Replying quorum achieved for commits, result ~p", [Result]),
-                    {keep_state, Data, [{reply, From, convert_to_finalize_transaction(Result, Trees, Data)}]}
+                    {keep_state, Data, [{reply, From, convert_to_finalize_transaction(Result, Trees, NonceOffset, Data)}]}
             end
     end;
 handle_common_event(_E, _Msg, #data{}) ->
     keep_state_and_data.
 
-convert_to_finalize_transaction(Result, Data) ->
+convert_to_finalize_transaction(Result, #data{nonce_offset = NonceOffset} = Data) ->
     case aec_chain:get_top_state() of
         {ok, Trees} ->
-            convert_to_finalize_transaction(Result, Trees, Data);
+            convert_to_finalize_transaction(Result, Trees, NonceOffset, Data);
         Error ->
             {error, Error}
     end.
 
-convert_to_finalize_transaction({ok, CallData}, Trees, #data{leader=Leader, stakers=Stakers, epoch=Epoch}) ->
+convert_to_finalize_transaction({ok, CallData}, Trees, NonceOffset, #data{leader=Leader, stakers=Stakers, epoch=Epoch}) ->
     case aec_consensus_hc:get_entropy_hash(Epoch + 2) of
         %% Don't create the transaction until the seed is available.
         {ok, _Seed} ->
-            {ok, Tx} = aec_chain_hc:create_consensus_call_contract_transaction(Leader, Trees, aeser_api_encoder:encode(contract_bytearray, CallData), 0),
+            {ok, Tx} = aec_chain_hc:create_consensus_call_contract_transaction(Leader, Trees, aeser_api_encoder:encode(contract_bytearray, CallData), 0, NonceOffset),
             Bin0 = aetx:serialize_to_binary(Tx),
             Bin = aec_hash:hash(signed_tx, Bin0),
             BinForNetwork = aec_governance:add_network_id(Bin),
@@ -528,7 +529,7 @@ convert_to_finalize_transaction({ok, CallData}, Trees, #data{leader=Leader, stak
         Error ->
             Error
     end;
-convert_to_finalize_transaction(Result, _Trees, _Data) ->
+convert_to_finalize_transaction(Result, _Trees, _NonceOffset, _Data) ->
     Result.
 
 calculate_leader_stake(#data{validators = Validators, leader = Leader}) ->

@@ -29,9 +29,16 @@ negotiate(Epoch, Height, Hash, Leader, Validators, Seed, CurrentLength) ->
 add_parent_block(Epoch, ParentBlock) ->
     call_children(fun(Module) -> Module:add_parent_block(Epoch, ParentBlock) end).
 
--spec get_finalize_transactions(aec_trees:trees()) -> {ok, aetx_sign:signed_tx()} | {error, not_ready} | {error, term()}.
+-spec get_finalize_transactions(aec_trees:trees()) -> [{ok, aetx_sign:signed_tx()} | {error, not_ready} | {error, term()}].
 get_finalize_transactions(Trees) ->
-    [aec_eoe_fork_vote:get_finalize_transaction(Trees), aec_eoe_length_vote:get_finalize_transaction(Trees)].
+    ForkTx = aec_eoe_fork_vote:get_finalize_transaction(Trees, 1),
+    NonceOffset = case ForkTx of
+                        {ok, _} ->
+                            2;
+                        _ ->
+                            1
+                    end,
+    [ForkTx, aec_eoe_length_vote:get_finalize_transaction(Trees, NonceOffset)].
 
 init(Args) ->
     ChildSpecs = [child_spec(aec_eoe_fork_vote, Args), child_spec(aec_eoe_length_vote, Args)],
