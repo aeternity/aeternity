@@ -9,7 +9,7 @@
 -behaviour(aec_eoe_gen_vote).
 
 %% Export API functions
--export([start_link/2, negotiate/7, get_finalize_transaction/1, add_parent_block/2]).
+-export([start_link/2, negotiate/7, get_finalize_transaction/2, add_parent_block/2]).
 
 %% Export aec_eoe_gen_vote callbacks
 -export([init/1, init_state/6, reset_state/1, create_proposal/2, create_vote/3, finalize_call/2, vote_params/1, convert_payload_field/2, update_proposal_after_vote_majority/4]).
@@ -45,9 +45,9 @@ negotiate(Epoch, Height, Hash, Leader, Validators, Seed, CurrentLength) ->
 add_parent_block(Epoch, ParentBlock) ->
     aec_eoe_gen_vote:add_parent_block(?MODULE, Epoch, ParentBlock).
 
--spec get_finalize_transaction(aec_trees:trees()) -> {ok, aetx_sign:signed_tx()} | {error, not_ready} | {error, term()}.
-get_finalize_transaction(Trees) ->
-    aec_eoe_gen_vote:get_finalize_transaction(?MODULE, Trees).
+-spec get_finalize_transaction(aec_trees:trees(), non_neg_integer()) -> {ok, aetx_sign:signed_tx()} | {error, not_ready} | {error, term()}.
+get_finalize_transaction(Trees, NonceOffset) ->
+    aec_eoe_gen_vote:get_finalize_transaction(?MODULE, Trees, NonceOffset).
 
 %%% aec_eoe_gen_vote callbacks
 

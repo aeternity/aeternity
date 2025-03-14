@@ -82,7 +82,7 @@
         , fixed_coinbase/0
         %% contract access
         , call_consensus_contract_result/5
-        , create_consensus_call_contract_transaction/5
+        , create_consensus_call_contract_transaction/6
         , entropy_height/1
         , get_entropy_hash/1
         , get_contract_pubkey/1
@@ -424,7 +424,7 @@ step_key(Height, #{epoch := Epoch, first := EpochFirst, last := EpochLast} = Epo
         step(TxEnv, Trees, Leader)
     end.
 
-create_consensus_call_contract_transaction(ContractType, OwnerPubkey, Trees, EncodedCallData, Amount) ->
+create_consensus_call_contract_transaction(ContractType, OwnerPubkey, Trees, EncodedCallData, Amount, NonceOffset) ->
     ContractPubkey = get_contract_pubkey(ContractType),
     Contract = aect_state_tree:get_contract(ContractPubkey,
                                             aec_trees:contracts(Trees)),
@@ -436,7 +436,7 @@ create_consensus_call_contract_transaction(ContractType, OwnerPubkey, Trees, Enc
 
     {ok, CallData} = aeser_api_encoder:safe_decode(contract_bytearray, EncodedCallData),
     CallSpec = #{ caller_id   => aeser_id:create(account, OwnerPubkey),
-                  nonce       => aec_accounts:nonce(OwnerAcc) + 1,
+                  nonce       => aec_accounts:nonce(OwnerAcc) + NonceOffset,
                   contract_id => aeser_id:create(contract, ContractPubkey),
                   abi_version => aect_contracts:abi_version(Contract), %% TODO: maybe get the ABI from the config?
                   fee         => Fee,

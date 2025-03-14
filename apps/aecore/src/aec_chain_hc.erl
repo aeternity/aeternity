@@ -27,7 +27,7 @@
         , validator_schedule/4
         , entropy_hash/1
         , get_micro_blocks_between/2
-        , create_consensus_call_contract_transaction/4
+        , create_consensus_call_contract_transaction/5
         ]).
 
 -export_type([run_env/0, epoch_info/0]).
@@ -138,10 +138,10 @@ finalize_info(RunEnv) ->
 entropy_hash(Epoch) ->
   aec_consensus_hc:get_entropy_hash(Epoch).
 
--spec create_consensus_call_contract_transaction(aec_keys:pubkey(), aec_trees:trees(), aeser_api_encoder:encoded(), aect_contracts:amount())
+-spec create_consensus_call_contract_transaction(aec_keys:pubkey(), aec_trees:trees(), aeser_api_encoder:encoded(), aect_contracts:amount(), non_neg_integer())
     -> {ok, aetx:tx()}.
-create_consensus_call_contract_transaction(OwnerPubkey, Trees, EncodedCallData, Amount) ->
-    aec_consensus_hc:create_consensus_call_contract_transaction(?ELECTION_CONTRACT, OwnerPubkey, Trees, EncodedCallData, Amount).
+create_consensus_call_contract_transaction(OwnerPubkey, Trees, EncodedCallData, Amount, NonceOffset) ->
+    aec_consensus_hc:create_consensus_call_contract_transaction(?ELECTION_CONTRACT, OwnerPubkey, Trees, EncodedCallData, Amount, NonceOffset).
 
 %%% --- internal
 
@@ -192,8 +192,8 @@ decode_length_votes(Votes) ->
 
 decode_length_votes([], Accum) ->
     lists:reverse(Accum);
-decode_length_votes([{tuple, {{address, Producer}, {bytes, Hash}, {bytes, _SignData}, {bytes, Signature}}}|Rest], Accum) ->
-    decode_length_votes(Rest, [#{ producer => Producer, hash => Hash, signature => Signature}|Accum]).
+decode_length_votes([{tuple, {{address, Producer}, EpochDelta, {bytes, _SignData}, {bytes, Signature}}}|Rest], Accum) ->
+    decode_length_votes(Rest, [#{ producer => Producer, epoch_delta => EpochDelta, signature => Signature}|Accum]).
 
 
 call_consensus_contract_w_env(Contract, top, Endpoint, Args) ->
