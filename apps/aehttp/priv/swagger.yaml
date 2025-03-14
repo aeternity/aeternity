@@ -1160,7 +1160,7 @@ paths:
           name: body
           required: true
           schema:
-            $ref: '#/definitions/ChannelCloseSoloTx'
+            $ref: '#/definitions/ChannelCloseSoloTxInput'
       responses:
         '200':
           description: Successful operation
@@ -1187,7 +1187,7 @@ paths:
           name: body
           required: true
           schema:
-            $ref: '#/definitions/ChannelCreateTx'
+            $ref: '#/definitions/ChannelCreateTxInput'
       responses:
         '200':
           description: Successful operation
@@ -1262,7 +1262,7 @@ paths:
           name: body
           required: true
           schema:
-            $ref: '#/definitions/ChannelSetDelegatesTx'
+            $ref: '#/definitions/ChannelSetDelegatesTxInput'
       responses:
         '200':
           description: Successful operation
@@ -1316,7 +1316,7 @@ paths:
           name: body
           required: true
           schema:
-            $ref: '#/definitions/ChannelSlashTx'
+            $ref: '#/definitions/ChannelSlashTxInput'
       responses:
         '200':
           description: Successful operation
@@ -1343,7 +1343,7 @@ paths:
           name: body
           required: true
           schema:
-            $ref: '#/definitions/ChannelSnapshotSoloTx'
+            $ref: '#/definitions/ChannelSnapshotSoloTxInput'
       responses:
         '200':
           description: Successful operation
@@ -1427,7 +1427,7 @@ paths:
           name: body
           required: true
           schema:
-            $ref: '#/definitions/ContractCallTx'
+            $ref: '#/definitions/ContractCallTxInput'
       responses:
         '200':
           description: Successful operation
@@ -1458,7 +1458,7 @@ paths:
           name: body
           required: true
           schema:
-            $ref: '#/definitions/ContractCreateTx'
+            $ref: '#/definitions/ContractCreateTxInput'
       responses:
         '200':
           description: Successful operation
@@ -1511,7 +1511,7 @@ paths:
           name: body
           required: true
           schema:
-            $ref: '#/definitions/NameClaimTx'
+            $ref: '#/definitions/NameClaimTxInput'
       responses:
         '200':
           description: Successful operation
@@ -1574,7 +1574,7 @@ paths:
           name: body
           required: true
           schema:
-            $ref: '#/definitions/NamePreclaimTx'
+            $ref: '#/definitions/NamePreclaimTxInput'
       responses:
         '200':
           description: Successful operation
@@ -1605,7 +1605,7 @@ paths:
           name: body
           required: true
           schema:
-            $ref: '#/definitions/NameRevokeTx'
+            $ref: '#/definitions/NameRevokeTxInput'
       responses:
         '200':
           description: Successful operation
@@ -1636,7 +1636,7 @@ paths:
           name: body
           required: true
           schema:
-            $ref: '#/definitions/NameTransferTx'
+            $ref: '#/definitions/NameTransferTxInput'
       responses:
         '200':
           description: Successful operation
@@ -1667,7 +1667,7 @@ paths:
           name: body
           required: true
           schema:
-            $ref: '#/definitions/NameUpdateTx'
+            $ref: '#/definitions/NameUpdateTxInput'
       responses:
         '200':
           description: Successful operation
@@ -1718,7 +1718,7 @@ paths:
           name: body
           required: true
           schema:
-            $ref: '#/definitions/OracleExtendTx'
+            $ref: '#/definitions/OracleExtendTxInput'
       responses:
         '200':
           description: Successful operation
@@ -1749,7 +1749,7 @@ paths:
           name: body
           required: true
           schema:
-            $ref: '#/definitions/OracleQueryTx'
+            $ref: '#/definitions/OracleQueryTxInput'
       responses:
         '200':
           description: Successful operation
@@ -1780,7 +1780,7 @@ paths:
           name: body
           required: true
           schema:
-            $ref: '#/definitions/OracleRegisterTx'
+            $ref: '#/definitions/OracleRegisterTxInput'
       responses:
         '200':
           description: Successful operation
@@ -1811,7 +1811,7 @@ paths:
           name: body
           required: true
           schema:
-            $ref: '#/definitions/OracleRespondTx'
+            $ref: '#/definitions/OracleRespondTxInput'
       responses:
         '200':
           description: Successful operation
@@ -2141,7 +2141,7 @@ definitions:
     allOf:
       - $ref: '#/definitions/GenericTx'
       - $ref: '#/definitions/ChannelCloseMutualTx'
-  ChannelCloseSoloTx:
+  ChannelCloseSoloTxInput:
     type: object
     properties:
       channel_id:
@@ -2165,11 +2165,13 @@ definitions:
       - payload
       - fee
       - poi
+  ChannelCloseSoloTx:
+    $ref: '#/definitions/ChannelCloseSoloTxInput'
   ChannelCloseSoloTxJSON:
     allOf:
       - $ref: '#/definitions/GenericTx'
       - $ref: '#/definitions/ChannelCloseSoloTx'
-  ChannelCreateTx:
+  ChannelCreateTxInput:
     type: object
     properties:
       initiator_id:
@@ -2205,6 +2207,8 @@ definitions:
       - lock_period
       - fee
       - state_hash
+  ChannelCreateTx:
+    $ref: '#/definitions/ChannelCreateTxInput'
   ChannelCreateTxJSON:
     allOf:
       - $ref: '#/definitions/GenericTx'
@@ -2281,7 +2285,7 @@ definitions:
     allOf:
       - $ref: '#/definitions/GenericTx'
       - $ref: '#/definitions/ChannelForceProgressTx'
-  ChannelSetDelegatesTx:
+  ChannelSetDelegatesTxInput:
     type: object
     properties:
       channel_id:
@@ -2313,6 +2317,8 @@ definitions:
       - round
       - payload
       - fee
+  ChannelSetDelegatesTx:
+    $ref: '#/definitions/ChannelSetDelegatesTxInput'
   ChannelSettleTx:
     type: object
     properties:
@@ -2341,7 +2347,7 @@ definitions:
     allOf:
       - $ref: '#/definitions/GenericTx'
       - $ref: '#/definitions/ChannelSettleTx'
-  ChannelSlashTx:
+  ChannelSlashTxInput:
     type: object
     properties:
       channel_id:
@@ -2365,11 +2371,13 @@ definitions:
       - payload
       - fee
       - poi
+  ChannelSlashTx:
+    $ref: '#/definitions/ChannelSlashTxInput'
   ChannelSlashTxJSON:
     allOf:
       - $ref: '#/definitions/GenericTx'
       - $ref: '#/definitions/ChannelSlashTx'
-  ChannelSnapshotSoloTx:
+  ChannelSnapshotSoloTxInput:
     type: object
     properties:
       channel_id:
@@ -2389,6 +2397,8 @@ definitions:
       - from_id
       - payload
       - fee
+  ChannelSnapshotSoloTx:
+    $ref: '#/definitions/ChannelSnapshotSoloTxInput'
   ChannelSnapshotSoloTxJSON:
     allOf:
       - $ref: '#/definitions/GenericTx'
@@ -2471,7 +2481,7 @@ definitions:
       - log
       - return_value
       - return_type
-  ContractCallTx:
+  ContractCallTxInput:
     type: object
     properties:
       caller_id:
@@ -2508,11 +2518,13 @@ definitions:
       - gas
       - gas_price
       - call_data
+  ContractCallTx:
+    $ref: '#/definitions/ContractCallTxInput'
   ContractCallTxJSON:
     allOf:
       - $ref: '#/definitions/GenericTx'
       - $ref: '#/definitions/ContractCallTx'
-  ContractCreateTx:
+  ContractCreateTxInput:
     type: object
     properties:
       owner_id:
@@ -2556,6 +2568,8 @@ definitions:
       - gas_price
       - fee
       - call_data
+  ContractCreateTx:
+    $ref: '#/definitions/ContractCreateTxInput'
   ContractCreateTxJSON:
     allOf:
       - $ref: '#/definitions/GenericTx'
@@ -3034,7 +3048,7 @@ definitions:
       - signature
       - time
       - version
-  NameClaimTx:
+  NameClaimTxInput:
     type: object
     properties:
       name:
@@ -3056,6 +3070,8 @@ definitions:
       - name_salt
       - fee
       - account_id
+  NameClaimTx:
+    $ref: '#/definitions/NameClaimTxInput'
   NameClaimTxJSON:
     allOf:
       - $ref: '#/definitions/GenericTx'
@@ -3094,7 +3110,7 @@ definitions:
     required:
       - key
       - id
-  NamePreclaimTx:
+  NamePreclaimTxInput:
     type: object
     properties:
       commitment_id:
@@ -3111,11 +3127,13 @@ definitions:
       - commitment_id
       - fee
       - account_id
+  NamePreclaimTx:
+    $ref: '#/definitions/NamePreclaimTxInput'
   NamePreclaimTxJSON:
     allOf:
       - $ref: '#/definitions/GenericTx'
       - $ref: '#/definitions/NamePreclaimTx'
-  NameRevokeTx:
+  NameRevokeTxInput:
     type: object
     properties:
       name_id:
@@ -3132,11 +3150,13 @@ definitions:
       - name_id
       - fee
       - account_id
+  NameRevokeTx:
+    $ref: '#/definitions/NameRevokeTxInput'
   NameRevokeTxJSON:
     allOf:
       - $ref: '#/definitions/GenericTx'
       - $ref: '#/definitions/NameRevokeTx'
-  NameTransferTx:
+  NameTransferTxInput:
     type: object
     properties:
       name_id:
@@ -3156,11 +3176,13 @@ definitions:
       - recipient_id
       - fee
       - account_id
+  NameTransferTx:
+    $ref: '#/definitions/NameTransferTxInput'
   NameTransferTxJSON:
     allOf:
       - $ref: '#/definitions/GenericTx'
       - $ref: '#/definitions/NameTransferTx'
-  NameUpdateTx:
+  NameUpdateTxInput:
     type: object
     properties:
       name_id:
@@ -3188,6 +3210,8 @@ definitions:
       - pointers
       - fee
       - account_id
+  NameUpdateTx:
+    $ref: '#/definitions/NameUpdateTxInput'
   NameUpdateTxJSON:
     allOf:
       - $ref: '#/definitions/GenericTx'
@@ -3303,7 +3327,7 @@ definitions:
         required:
           - to
           - amount
-  OracleExtendTx:
+  OracleExtendTxInput:
     type: object
     properties:
       fee:
@@ -3320,6 +3344,8 @@ definitions:
       - fee
       - oracle_ttl
       - oracle_id
+  OracleExtendTx:
+    $ref: '#/definitions/OracleExtendTxInput'
   OracleExtendTxJSON:
     allOf:
       - $ref: '#/definitions/GenericTx'
@@ -3366,7 +3392,7 @@ definitions:
       - ttl
       - response_ttl
       - fee
-  OracleQueryTx:
+  OracleQueryTxInput:
     type: object
     properties:
       oracle_id:
@@ -3397,11 +3423,13 @@ definitions:
       - response_ttl
       - fee
       - sender_id
+  OracleQueryTx:
+    $ref: '#/definitions/OracleQueryTxInput'
   OracleQueryTxJSON:
     allOf:
       - $ref: '#/definitions/GenericTx'
       - $ref: '#/definitions/OracleQueryTx'
-  OracleRegisterTx:
+  OracleRegisterTxInput:
     type: object
     properties:
       query_format:
@@ -3431,11 +3459,13 @@ definitions:
       - fee
       - oracle_ttl
       - account_id
+  OracleRegisterTx:
+    $ref: '#/definitions/OracleRegisterTxInput'
   OracleRegisterTxJSON:
     allOf:
       - $ref: '#/definitions/GenericTx'
       - $ref: '#/definitions/OracleRegisterTx'
-  OracleRespondTx:
+  OracleRespondTxInput:
     type: object
     properties:
       query_id:
@@ -3459,6 +3489,8 @@ definitions:
       - response_ttl
       - fee
       - oracle_id
+  OracleRespondTx:
+    $ref: '#/definitions/OracleRespondTxInput'
   OracleResponseTxJSON:
     allOf:
       - $ref: '#/definitions/GenericTx'
