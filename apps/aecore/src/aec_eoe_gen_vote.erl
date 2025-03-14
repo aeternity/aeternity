@@ -26,7 +26,6 @@
 -callback vote_params(vote()) -> [term()].
 -callback finalize_call(proposal(), term()) -> {list(), [term()]}.
 -callback convert_payload_field(binary(), binary()) -> term().
--callback update_proposal_after_vote_majority(proposal(), vote(), [{binary(), non_neg_integer()}], binary()) -> proposal().
 
 %% ==================================================================
 %% Records and Types
@@ -297,12 +296,11 @@ on_valid_vote(Validator, VoteFields, #data{votes=Votes} = Data) ->
     Votes1 = maps:put(Validator, VoteFields, Votes),
     check_voting_majority(Data#data{votes = Votes1}).
 
-check_voting_majority(#data{majority=CurrentMajority, validators=Validators, block_time=BlockTime, votes=Votes, epoch=Epoch, proposal=Proposal0, leader=Leader, module=Module} = Data) ->
+check_voting_majority(#data{majority=CurrentMajority, validators=Validators, block_time=BlockTime, votes=Votes, epoch=Epoch, proposal=Proposal} = Data) ->
     case CurrentMajority =< 0 of
         true ->
             lager:info("Quorum achieved for voting for epoch ~p has ~p votes", [Epoch, maps:size(Votes)]),
             Majority = calculate_majority(Validators),
-            Proposal = Module:update_proposal_after_vote_majority(Proposal0, Votes, Validators, Leader),
             Data1 = Data#data{proposal=Proposal},
             Result = create_finalize_call(Votes, Proposal, Data1),
             Data2 = Data1#data{result = Result},
