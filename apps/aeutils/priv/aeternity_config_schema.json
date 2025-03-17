@@ -1920,11 +1920,11 @@
                                                     },
                                                     "sign_key": {
                                                         "description": "The validator node signing key. Defaults to owner.",
-                                                        "pattern": "^ak_[1-9A-HJ-NP-Za-km-z]*:[0-9]+(:[0-9]*:[0-9]*){0,1}$",
+                                                        "pattern": "^ak_[1-9A-HJ-NP-Za-km-z]*:[0-9]+(:[0-9]*:[0-9]*){0,1}$"
                                                     },
                                                     "caller": {
-                                                        "description": "The registration contral call caller. Needs to be funded with the minimum stake + TX cost. Defaults to owner.",
-                                                        "pattern": "^ak_[1-9A-HJ-NP-Za-km-z]*:[0-9]+(:[0-9]*:[0-9]*){0,1}$",
+                                                        "description": "The registration contract caller. Needs to be funded with the minimum stake + TX cost. Defaults to owner.",
+                                                        "pattern": "^ak_[1-9A-HJ-NP-Za-km-z]*:[0-9]+(:[0-9]*:[0-9]*){0,1}$"
                                                     },
                                                     "stake": {
                                                         "description": "The amount to stake",
@@ -1939,7 +1939,7 @@
                                                 },
                                                 "default": []
                                             }
-                                        },
+                                        }
                                     }
                                 }
                             }
