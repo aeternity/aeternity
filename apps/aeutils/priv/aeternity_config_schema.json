@@ -1735,10 +1735,6 @@
                                             "default": 500,
                                             "type": "integer"
                                         },
-                                        "child_block_production_time": {
-                                            "description": "The time in milliseconds to produce a child block",
-                                            "type": "integer"
-                                        },
                                         "child_epoch_length": {
                                             "description": "The number of blocks in an epoch on the child chain",
                                             "type": "integer"
