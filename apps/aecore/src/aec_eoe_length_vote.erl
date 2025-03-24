@@ -12,7 +12,7 @@
 -export([start_link/2, negotiate/7, get_finalize_transaction/2, add_parent_block/2]).
 
 %% Export aec_eoe_gen_vote callbacks
--export([init/1, init_state/6, reset_state/1, create_proposal/2, create_vote/3, finalize_call/2, vote_params/1, convert_payload_field/2]).
+-export([init/1, init_state/6, reset_state/1, create_proposal/2, create_vote/3, finalize_call/2, vote_params/1, convert_payload_field/2, vote_description/0]).
 
 %%% aec_eoe_gen_vote callbacks
 
@@ -24,6 +24,8 @@
 
 
 -define(FINALIZE_FUN_NAME, "finalize_epoch_length").
+
+-define(DESC, epoch_length).
 
 -record(data, {
                 length                     :: non_neg_integer() | undefined,
@@ -89,6 +91,9 @@ convert_payload_field(?EPOCH_DELTA_FLD, Value) ->
     binary_to_integer(Value);
 convert_payload_field(Key, Value) ->
     aec_eoe_gen_vote:convert_payload_field(Key, Value).
+
+vote_description() ->
+    ?DESC.
 
 %% The first three epochs have the same seed
 calculate_delta(Epoch, _ParentBlocks, _CurrentLength, _BlockTime) when Epoch =< 4 ->
