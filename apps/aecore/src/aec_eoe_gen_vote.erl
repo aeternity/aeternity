@@ -49,6 +49,7 @@
                 parent_blocks=#{}          :: #{non_neg_integer() => aec_parent_chain_block:block()},
                 other_votes=[]             :: list({non_neg_integer(), aetx_sign:signed_tx()}),
                 vote_types                 :: vote_types(),
+                rev_vote_types             :: #{non_neg_integer() => atom()},
                 module                     :: atom(),
                 state                      :: term()
             }).
@@ -98,7 +99,8 @@ init([Module, VoteTypes, Stakers, BlockTime]) ->
     aec_events:subscribe(tx_created),
     aec_events:subscribe(new_epoch),
     State = Module:init([Stakers, BlockTime]),
-    {ok, await_eoe, #data{stakers=Stakers,block_time=BlockTime,vote_types=VoteTypes,module=Module, state=State}}.
+    RevVoteTypes = maps:fold(fun(K, V, Acc) -> maps:put(V, K, Acc) end, #{}, VoteTypes),
+    {ok, await_eoe, #data{stakers=Stakers,block_time=BlockTime,vote_types=VoteTypes,rev_vote_types=RevVoteTypes,module=Module,state=State}}.
 
 %% Set the callback mode to state functions
 callback_mode() ->
@@ -187,24 +189,24 @@ create_proposal(#data{leader=Leader, stakers=Stakers, epoch=Epoch, proposal = Pr
 create_votes(Type, #data{proposal=ProposalFields, leader=Leader, stakers=Stakers, validators=Validators, epoch=Epoch, height=Height, module=Module, state=ClientState} = Data) ->
     case Module:create_vote(ProposalFields, #{?HEIGHT_FLD => Height}, ClientState) of
         {ok, VoteFlds} ->
-            create_votes(VoteFlds, Leader, Validators, Stakers, Epoch, Type, [], vote_description(Data));
+            create_votes(VoteFlds, Leader, Validators, Stakers, Epoch, Type, [], vote_type_description(Type, Data), vote_description(Data));
         {error, _Reason} ->
             []
     end.
 
-create_votes(_VoteFlds, _Leader, [], _Stakers, _Epoch, Type, Votes, Desc) ->
-    lager:debug("Created ~p ~p votes of type ~p", [length(Votes), Desc, Type]),
+create_votes(_VoteFlds, _Leader, [], _Stakers, _Epoch, Type, Votes, TypeDesc, Desc) ->
+    lager:debug("Created ~p ~p votes of type ~p(~p)", [length(Votes), Desc, TypeDesc, Type]),
     Votes;
-create_votes(VoteFlds, Leader, [{Leader,_}|Validators], Stakers, Epoch, Type, Votes, Desc) ->
-    create_votes(VoteFlds, Leader, Validators, Stakers, Epoch, Type, Votes, Desc);
-create_votes(VoteFlds, Leader, [{Validator,_}|Validators], Stakers, Epoch, Type, Votes, Desc) ->
+create_votes(VoteFlds, Leader, [{Leader,_}|Validators], Stakers, Epoch, Type, Votes, TypeDesc, Desc) ->
+    create_votes(VoteFlds, Leader, Validators, Stakers, Epoch, Type, Votes, TypeDesc, Desc);
+create_votes(VoteFlds, Leader, [{Validator,_}|Validators], Stakers, Epoch, Type, Votes, TypeDesc, Desc) ->
     case get_staker_private_key(Validator, Stakers) of
         undefined ->
-            create_votes(VoteFlds, Leader, Validators, Stakers, Epoch, Type, Votes, Desc);
+            create_votes(VoteFlds, Leader, Validators, Stakers, Epoch, Type, Votes, TypeDesc, Desc);
         PrivKey ->
             VotePayload = create_payload(VoteFlds, PrivKey),
             Vote = create_vote_transaction(Validator, PrivKey, Epoch, Type, VotePayload),
-            create_votes(VoteFlds, Leader, Validators, Stakers, Epoch, Type, [Vote|Votes], Desc)
+            create_votes(VoteFlds, Leader, Validators, Stakers, Epoch, Type, [Vote|Votes], TypeDesc, Desc)
     end.
 
 handle_proposal(SignedTx, #data{leader=undefined, epoch=undefined, vote_types=#{proposal := ProposalType} = VoteTypes, module=Module} = Data) ->
@@ -252,7 +254,7 @@ handle_vote(Type, SignedTx, #data{vote_types=VoteTypes, module=Module} = Data, O
             %% Check if a validator
             case can_vote(Validator, Data) of
                 true ->
-                    lager:info("Received a ~p vote from ~p of type ~p (vote: ~p)", [VoteDesc, Validator, Type, VoteFields]),
+                    lager:info("Received a ~p vote from ~p of type ~p(~p) (vote: ~p)", [VoteDesc, Validator, vote_type_description(Type, Data), Type, VoteFields]),
                     Data1 = count_vote(Validator, Data),
                     %% Check if reached two thirds
                     OnValidFun(Validator, VoteFields, Data1);
@@ -353,7 +355,7 @@ on_other_vote(_Type, _SignedTx, _Data) ->
     keep_state_and_data.
 
 on_other_vote_type(Type, _SignedTx, Data) ->
-    lager:debug("Other ~p vote type ~p", [vote_description(Data), Type]),
+    lager:debug("Other ~p vote type ~p(~p)", [vote_description(Data), vote_type_description(Type, Data), Type]),
     keep_state_and_data.
 
 handle_voting(#data{majority = Majority} = Data) ->
@@ -546,9 +548,9 @@ calculate_majority(Validators) ->
     %% 2/3 majority
     (2 * TotalStake + 2) div 3.
 
-reset_data(#data{stakers = Stakers, block_time=BlockTime, epoch = Epoch, parent_blocks = ParentBlocks, vote_types = VoteTypes, module = Module, state = ClientState}) ->
+reset_data(#data{stakers = Stakers, block_time=BlockTime, epoch = Epoch, parent_blocks = ParentBlocks, vote_types = VoteTypes, rev_vote_types = RevVoteTypes, module = Module, state = ClientState}) ->
     NewClientState = Module:reset_state(ClientState),
-    #data{stakers = Stakers, block_time=BlockTime, parent_blocks=remove_old_blocks(Epoch, ParentBlocks), vote_types=VoteTypes, module=Module, state=NewClientState}.
+    #data{stakers = Stakers, block_time=BlockTime, parent_blocks=remove_old_blocks(Epoch, ParentBlocks), vote_types=VoteTypes, rev_vote_types = RevVoteTypes, module=Module, state=NewClientState}.
 
 remove_old_blocks(undefined, ParentBlocks) ->
     ParentBlocks;
@@ -587,3 +589,6 @@ create_vote_call(Module, Producer, #{?SIGNATURE_FLD := Signature} = Payload, Acc
 
 vote_description(#data{module=Module}) ->
     Module:vote_description().
+
+vote_type_description(TypeNum, #data{rev_vote_types = RevVoteTypes}) ->
+    maps:get(TypeNum, RevVoteTypes, undefined).
