@@ -26,6 +26,7 @@
 -callback vote_params(vote()) -> [term()].
 -callback finalize_call(proposal(), term()) -> {list(), [term()]}.
 -callback convert_payload_field(binary(), binary()) -> term().
+-callback vote_description() -> term().
 
 %% ==================================================================
 %% Records and Types
@@ -106,12 +107,13 @@ callback_mode() ->
 %%% State: AwaitEndOfEpoch
 await_eoe(cast, {negotiate, Epoch, Height, Hash, Leader, Validators, Seed, CurrentLength}, #data{block_time=BlockTime, proposal=Proposal, parent_blocks=ParentBlocks, state=ClientState, module=Module} = Data) ->
     NewClientState = Module:init_state(Epoch, Hash, ParentBlocks, CurrentLength, BlockTime, ClientState),
+    VoteDesc = vote_description(Data),
     Data1 = set_validators(Validators, Data#data{epoch=Epoch, height=Height, seed=Seed, leader=Leader, validators = Validators, state=NewClientState}),
     case is_leader(Data1) of
         false ->
             case Proposal of
                 undefined ->
-                    lager:info("End of epoch ~p waiting for proposal", [Epoch]),
+                    lager:info("End of epoch ~p waiting for ~p proposal", [Epoch, VoteDesc]),
                     {next_state, proposal, Data1,
                         [{state_timeout,BlockTime,no_proposal}]};
                 #{?LEADER_FLD := Leader, ?EPOCH_FLD := Epoch} ->
@@ -119,13 +121,13 @@ await_eoe(cast, {negotiate, Epoch, Height, Hash, Leader, Validators, Seed, Curre
                     {next_state, vote, Data2,
                         [{state_timeout,BlockTime,no_quorum}]};
                 _ ->
-                    lager:info("Discarding invalid proposal ~p, end of epoch ~p waiting for proposal", [Proposal, Epoch]),
+                    lager:info("Discarding invalid ~p proposal ~p, end of epoch ~p waiting for proposal", [VoteDesc, Proposal, Epoch]),
                     {next_state, proposal, Data1#data{proposal = undefined},
                         [{state_timeout,BlockTime,no_proposal}]}
 
             end;
         true ->
-            lager:info("Sending proposal for end of epoch ~p hash: ~p", [Epoch, Hash]),
+            lager:info("Sending ~p proposal for end of epoch ~p hash: ~p", [VoteDesc, Epoch, Hash]),
             NewProposal = Module:create_proposal(#{?HEIGHT_FLD => Height}, NewClientState),
             Data2 = Data1#data{proposal = NewProposal},
             Next = {next_state, proposal, Data2, [{state_timeout, BlockTime, no_proposal}]},
@@ -143,7 +145,7 @@ proposal(info, {gproc_ps_event, TxEvent, #{info := SignedTx}}, Data) when ?NewTx
     handle_proposal(SignedTx, Data);
 proposal(state_timeout, no_proposal, #data{epoch = Epoch} = Data) ->
     %% Handle timeout if no proposal is received
-    lager:warning("Proposal timeout for epoch ~p", [Epoch]),
+    lager:warning("~p proposal timeout for epoch ~p", [vote_description(Data), Epoch]),
     %% Reply with no consensus
     handle_no_consensus(Data);
 proposal(Type, Msg, D) ->
@@ -157,7 +159,7 @@ vote(info, {gproc_ps_event, TxEvent, #{info := Tx}}, #data{vote_types=#{vote := 
     handle_vote(VoteType, Tx, Data, fun on_valid_vote/3, fun on_other_vote/3);
 vote(state_timeout, no_quorum, #data{epoch = Epoch} = Data) ->
     %% Handle timeout if no proposal is received
-    lager:warning("Voting timeout for epoch ~p", [Epoch]),
+    lager:warning("~p voting timeout for epoch ~p", [vote_description(Data), Epoch]),
     %% Reply with no consensus, if new leader use preferred fork
     handle_no_consensus(Data);
 vote(Type, Msg, D) ->
@@ -169,7 +171,7 @@ finalize(info, {gproc_ps_event, TxEvent, #{info := Tx}}, #data{vote_types=#{comm
     handle_vote(CommitType, Tx, Data, fun on_valid_commit/3, fun on_other_vote_type/3);
 finalize(state_timeout, no_quorum, #data{epoch = Epoch} = Data) ->
     %% Handle timeout if no proposal is received
-    lager:warning("Finalize timeout for epoch ~p", [Epoch]),
+    lager:warning("~p finalize timeout for epoch ~p", [vote_description(Data), Epoch]),
     handle_no_consensus(Data);
 finalize(Type, Msg, D) ->
     handle_common_event(Type, Msg, D).
@@ -182,27 +184,27 @@ create_proposal(#data{leader=Leader, stakers=Stakers, epoch=Epoch, proposal = Pr
     ProposalPayload = create_payload(Proposal, PrivKey),
     create_vote_transaction(Leader, PrivKey, Epoch, ProposalType, ProposalPayload).
 
-create_votes(Type, #data{proposal=ProposalFields, leader=Leader, stakers=Stakers, validators=Validators, epoch=Epoch, height=Height, module=Module, state=ClientState}) ->
+create_votes(Type, #data{proposal=ProposalFields, leader=Leader, stakers=Stakers, validators=Validators, epoch=Epoch, height=Height, module=Module, state=ClientState} = Data) ->
     case Module:create_vote(ProposalFields, #{?HEIGHT_FLD => Height}, ClientState) of
         {ok, VoteFlds} ->
-            create_votes(VoteFlds, Leader, Validators, Stakers, Epoch, Type, []);
+            create_votes(VoteFlds, Leader, Validators, Stakers, Epoch, Type, [], vote_description(Data));
         {error, _Reason} ->
             []
     end.
 
-create_votes(_VoteFlds, _Leader, [], _Stakers, _Epoch, Type, Votes) ->
-    lager:debug("Created ~p votes of type ~p", [length(Votes), Type]),
+create_votes(_VoteFlds, _Leader, [], _Stakers, _Epoch, Type, Votes, Desc) ->
+    lager:debug("Created ~p ~p votes of type ~p", [length(Votes), Desc, Type]),
     Votes;
-create_votes(VoteFlds, Leader, [{Leader,_}|Validators], Stakers, Epoch, Type, Votes) ->
-    create_votes(VoteFlds, Leader, Validators, Stakers, Epoch, Type, Votes);
-create_votes(VoteFlds, Leader, [{Validator,_}|Validators], Stakers, Epoch, Type, Votes) ->
+create_votes(VoteFlds, Leader, [{Leader,_}|Validators], Stakers, Epoch, Type, Votes, Desc) ->
+    create_votes(VoteFlds, Leader, Validators, Stakers, Epoch, Type, Votes, Desc);
+create_votes(VoteFlds, Leader, [{Validator,_}|Validators], Stakers, Epoch, Type, Votes, Desc) ->
     case get_staker_private_key(Validator, Stakers) of
         undefined ->
-            create_votes(VoteFlds, Leader, Validators, Stakers, Epoch, Type, Votes);
+            create_votes(VoteFlds, Leader, Validators, Stakers, Epoch, Type, Votes, Desc);
         PrivKey ->
             VotePayload = create_payload(VoteFlds, PrivKey),
             Vote = create_vote_transaction(Validator, PrivKey, Epoch, Type, VotePayload),
-            create_votes(VoteFlds, Leader, Validators, Stakers, Epoch, Type, [Vote|Votes])
+            create_votes(VoteFlds, Leader, Validators, Stakers, Epoch, Type, [Vote|Votes], Desc)
     end.
 
 handle_proposal(SignedTx, #data{leader=undefined, epoch=undefined, vote_types=#{proposal := ProposalType} = VoteTypes, module=Module} = Data) ->
@@ -217,6 +219,7 @@ handle_proposal(SignedTx, #data{leader=undefined, epoch=undefined, vote_types=#{
             keep_state_and_data
     end;
 handle_proposal(SignedTx, #data{leader=Leader, epoch=Epoch, vote_types=#{proposal := ProposalType} = VoteTypes, module=Module} = Data) ->
+    VoteDesc = vote_description(Data),
     %% Handle the proposal phase
     %% Check the transaction contains a proposal
     case convert_transaction(SignedTx, VoteTypes, Module) of
@@ -225,38 +228,39 @@ handle_proposal(SignedTx, #data{leader=Leader, epoch=Epoch, vote_types=#{proposa
             Data2 = handle_voting(Data1),
             check_voting_majority(Data2);
         {ok, ProposalType, Epoch, InvalidProducer, _ProposalFields} ->
-            lager:warning("Received proposal from invalid leader ~p", [InvalidProducer]),
+            lager:warning("Received ~p proposal from invalid leader ~p", [VoteDesc, InvalidProducer]),
             keep_state_and_data;
         {ok, ProposalType, InvalidEpoch, Leader, _ProposalFields} ->
-            lager:warning("Received proposal from invalid epoch ~p", [InvalidEpoch]),
+            lager:warning("Received ~p proposal from invalid epoch ~p", [VoteDesc, InvalidEpoch]),
             keep_state_and_data;
         {ok, ProposalType, InvalidEpoch, InvalidProducer, _ProposalFields} ->
-            lager:warning("Received proposal from invalid epoch ~p and invalid leader ~p", [InvalidEpoch, InvalidProducer]),
+            lager:warning("Received ~p proposal from invalid epoch ~p and invalid leader ~p", [VoteDesc, InvalidEpoch, InvalidProducer]),
             keep_state_and_data;
         {ok, _Type, _, _, _} ->
             keep_state_and_data;
         {error, not_vote} ->
             keep_state_and_data;
         {error, Reason} ->
-            lager:warning("Could not process proposal ~p for reason ~p", [SignedTx, Reason]),
+            lager:warning("Could not process ~p proposal ~p for reason ~p", [VoteDesc, SignedTx, Reason]),
             keep_state_and_data
     end.
 
 handle_vote(Type, SignedTx, #data{vote_types=VoteTypes, module=Module} = Data, OnValidFun, OnOtherVoteType) ->
+    VoteDesc = vote_description(Data),
     case convert_transaction(SignedTx, VoteTypes, Module) of
         {ok, Type, _Epoch, Validator, VoteFields} ->
             %% Check if a validator
             case can_vote(Validator, Data) of
                 true ->
-                    lager:info("Received a vote from ~p of type ~p (vote: ~p)", [Validator, Type, VoteFields]),
+                    lager:info("Received a ~p vote from ~p of type ~p (vote: ~p)", [VoteDesc, Validator, Type, VoteFields]),
                     Data1 = count_vote(Validator, Data),
                     %% Check if reached two thirds
                     OnValidFun(Validator, VoteFields, Data1);
                 {error, not_a_validator} ->
-                    lager:warning("Received a vote from a non validator ~p", [Validator]),
+                    lager:warning("Received a ~p vote from a non validator ~p", [VoteDesc, Validator]),
                     keep_state_and_data;
                 {error, already_voted} ->
-                    lager:warning("Received a vote from a validator ~p that has already voted", [Validator]),
+                    lager:warning("Received a ~p vote from a validator ~p that has already voted", [VoteDesc, Validator]),
                     keep_state_and_data
             end;
         {ok, OtherType, _, _, _} ->
@@ -264,7 +268,7 @@ handle_vote(Type, SignedTx, #data{vote_types=VoteTypes, module=Module} = Data, O
         {error, not_vote} ->
             keep_state_and_data;
         {error, Reason} ->
-            lager:warning("Could not process vote ~p for reason ~p", [SignedTx, Reason]),
+            lager:warning("Could not process ~p vote ~p for reason ~p", [VoteDesc, SignedTx, Reason]),
             keep_state_and_data
     end.
 
@@ -299,14 +303,15 @@ on_valid_vote(Validator, VoteFields, #data{votes=Votes} = Data) ->
 check_voting_majority(#data{majority=CurrentMajority, validators=Validators, block_time=BlockTime, votes=Votes, epoch=Epoch, proposal=Proposal} = Data) ->
     case CurrentMajority =< 0 of
         true ->
-            lager:info("Quorum achieved for voting for epoch ~p has ~p votes", [Epoch, maps:size(Votes)]),
+            VoteDesc = vote_description(Data),
+            lager:info("Quorum achieved for ~p voting for epoch ~p has ~p votes", [VoteDesc, Epoch, maps:size(Votes)]),
             Majority = calculate_majority(Validators),
             Data1 = Data#data{proposal=Proposal},
             Result = create_finalize_call(Votes, Proposal, Data1),
             Data2 = Data1#data{result = Result},
             send_commits(Data2),
             Stake = calculate_leader_stake(Data2),
-            lager:debug("Leader implicitly voting with stake ~p, remaining = ~p", [Stake, Majority - Stake]),
+            lager:debug("Leader implicitly ~p voting with stake ~p, remaining = ~p", [VoteDesc, Stake, Majority - Stake]),
             Data3 = Data2#data{majority = Majority - Stake, remaining_validators = maps:from_list(Validators)},
             check_other_votes({next_state, finalize, Data3, [{state_timeout,BlockTime,no_quorum}]});
         false ->
@@ -329,12 +334,12 @@ check_other_votes({next_state, NextState, #data{other_votes = [{_Type, SignedTx}
 on_valid_commit(_Validator, _CommitFields, #data{result = Result, majority = CurrentMajority, block_time=BlockTime, from=From, epoch = Epoch} = Data) ->
     case CurrentMajority =< 0 of
         true ->
-            lager:info("Quorum achieved for commit for epoch ~p", [Epoch]),
+            lager:info("Quorum achieved for ~p commit for epoch ~p", [vote_description(Data), Epoch]),
             Actions = case From of
                         undefined ->
                             [];
                         _ ->
-                            lager:debug("Replying quorum achieved for commits, result ~p", [Result]),
+                            lager:debug("Replying quorum achieved for ~p commits, result ~p", [vote_description(Data), Result]),
                             [{reply, From, convert_to_finalize_transaction(Result, Data)}]
                       end,
             {next_state, complete, Data, Actions};
@@ -347,22 +352,22 @@ on_other_vote(CommitType, SignedTx, #data{other_votes=OtherVotes, vote_types=#{c
 on_other_vote(_Type, _SignedTx, _Data) ->
     keep_state_and_data.
 
-on_other_vote_type(Type, _SignedTx, _Data) ->
-    lager:debug("Other vote type ~p", [Type]),
+on_other_vote_type(Type, _SignedTx, Data) ->
+    lager:debug("Other ~p vote type ~p", [vote_description(Data), Type]),
     keep_state_and_data.
 
 handle_voting(#data{majority = Majority} = Data) ->
     Stake = calculate_leader_stake(Data),
     send_votes(Data),
-    lager:debug("Handle voting - leader implicilty votes with stake: ~p remaining: ~p", [Stake, Majority - Stake]),
+    lager:debug("Handle ~p voting - leader implicilty votes with stake: ~p remaining: ~p", [vote_description(Data), Stake, Majority - Stake]),
     Data#data{majority = Majority - Stake}.
 
 send_votes(#data{epoch = Epoch, vote_types = #{vote := VoteType}} = Data) ->
-    lager:info("Sending votes for epoch ~p", [Epoch]),
+    lager:info("Sending ~p votes for epoch ~p", [vote_description(Data), Epoch]),
     lists:foreach(fun aec_hc_vote_pool:push/1, create_votes(VoteType, Data)).
 
 send_commits(#data{epoch = Epoch, vote_types = #{commit := CommitType}} = Data) ->
-    lager:info("Sending commits for epoch ~p", [Epoch]),
+    lager:info("Sending ~p commits for epoch ~p", [vote_description(Data), Epoch]),
     lists:foreach(fun aec_hc_vote_pool:push/1, create_votes(CommitType, Data)).
 
 
@@ -372,7 +377,7 @@ send(CreateTxFun, Data, Success) ->
         ok ->
             Success;
         {error, Reason} ->
-            lager:debug("~p tx failed: ~p", [SignedTx, Reason]),
+            lager:debug("~p ~p tx failed: ~p", [vote_description(Data), SignedTx, Reason]),
             handle_no_consensus(Data)
     end.
 
@@ -469,7 +474,7 @@ count_vote(Validator, #data{remaining_validators = RemainingValidators, majority
         undefined ->
             Data;
         Stake ->
-            lager:debug("Voter had ~p stake, remaining: ~p", [Stake, Majority - Stake]),
+            lager:debug("~p voter had ~p stake, remaining: ~p", [vote_description(Data), Stake, Majority - Stake]),
             Data#data{majority = Majority - Stake, remaining_validators = maps:remove(Validator, RemainingValidators)}
     end.
 
@@ -497,7 +502,7 @@ handle_common_event({call,From}, {get_finalize_transaction, Trees, NonceOffset},
                 undefined ->
                     {keep_state, Data#data{from=From, nonce_offset=NonceOffset}};
                 _ ->
-                    lager:debug("Replying quorum achieved for commits, result ~p", [Result]),
+                    lager:debug("Replying quorum achieved for ~p commits, result ~p", [vote_description(Data), Result]),
                     {keep_state, Data, [{reply, From, convert_to_finalize_transaction(Result, Trees, NonceOffset, Data)}]}
             end
     end;
@@ -553,7 +558,7 @@ remove_old_blocks(Epoch, ParentBlocks) ->
 
 set_validators(Validators, Data) ->
     Majority = calculate_majority(Validators),
-    lager:info("Majority required ~p", [Majority]),
+    lager:info("~p majority required ~p", [vote_description(Data), Majority]),
     Data#data{validators = Validators, majority = Majority, remaining_validators = maps:from_list(Validators)}.
 
 get_staker_private_key(Staker, Stakers) ->
@@ -579,3 +584,6 @@ create_vote_call(Module, Producer, #{?SIGNATURE_FLD := Signature} = Payload, Acc
     Params = Module:vote_params(Payload),
     Params1 = [{address, Producer}|Params] ++ [{bytes, get_sign_data(Payload)}, {bytes, Signature}],
     [{tuple, list_to_tuple(Params1)} | Accum].
+
+vote_description(#data{module=Module}) ->
+    Module:vote_description().
