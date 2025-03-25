@@ -108,16 +108,19 @@ main contract MainStaking =
   // ------------------------------------------------------------------------
   // -- Called from HCElection and/or consensus logic
   // ------------------------------------------------------------------------
-  payable stateful entrypoint add_rewards(epoch : int, rewards : list(address * int), pool_adj : int) =
+  payable stateful entrypoint add_rewards(epoch : int, rewards : list(address * int)) =
     assert_protocol_call()
-    let total_rewards = List.foldl((+), 0, List.map(Pair.snd, rewards)) + pool_adj
+    let total_rewards = List.foldl((+), 0, List.map(Pair.snd, rewards))
     require(total_rewards == Call.value, "Incorrect total reward given")
-    put(state{penalty_pool @ pp = pp + pool_adj})
     List.foreach(rewards, (r) => add_reward(epoch, r))
     [ unlock_stake_(v_addr, validator, epoch) | (v_addr, validator) <- Map.to_list(state.validators) ]
     // At the end of epoch X we distribute rewards for X - 1; thus current_epoch
     // is (soon) X + 1. I.e. X - 1 + 2.
     put(state{current_epoch = epoch + 2})
+
+  stateful entrypoint add_penalties(epoch : int, penalties : list(address * int)) =
+    assert_protocol_call()
+    List.foreach(penalties, (p) => add_penalty(epoch, p))
 
   stateful entrypoint lock_stake(epoch : int) : list(address * int) =
     assert_protocol_call()
@@ -170,6 +173,22 @@ main contract MainStaking =
       deposit_(validator, amount)
     let validator_ct = Address.to_contract(validator) : StakingValidator
     validator_ct.rewards(epoch, amount, restake)
+
+  // an penalty will be a positive amount, a redistribution of penalty (reporting reward or other)
+  // will be a negative amount
+  stateful function add_penalty(epoch : int, (sign_key, amount) : address * int) =
+    assert_signer(sign_key)
+    if (amount < 0)
+      require(state.penalty_pool >= -amount, "Not enough penalty pool")
+    let validator_key = state.sign_keys[sign_key]
+    let validator = state.validators[validator_key]
+    let total_balance = validator.total_balance
+    let current_stake = validator.current_stake
+    let new_total = max([0, total_balance - amount])
+    let new_cur_stake = min(current_stake, new_total)
+    put(state{validators[validator_key] @ v = v{total_balance = new_total,
+                                            current_stake = new_cur_stake},
+              penalty_pool = state.penalty_pool + amount})
 
   stateful function lock_stake_(v_addr : address, validator : validator, epoch : int) : unit =
     if(validator.current_stake >= state.validator_min_stake)
