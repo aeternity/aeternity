@@ -252,25 +252,27 @@ rewards(_Config) ->
 
     ok.
 
-    sct_penalties(_Config) ->
-        Trees0 = genesis_trees(),
+    sct_penalties(_Config) -> % test MainStaking contract penalty functions
+        TreesGen = genesis_trees(),
         TxEnv = aetx_env:tx_env(?DEFAULT_HEIGHT),
         {ok, Trees1, #{res := {contract, AliceCt}}} =
-            new_validator_(pubkey(?ALICE), ?VALIDATOR_MIN, TxEnv, Trees0),
+            new_validator_(pubkey(?ALICE), ?VALIDATOR_MIN, TxEnv, TreesGen),
+        {ok, Trees11, #{res := {contract, CarolCt}}} =
+            new_validator_(pubkey(?CAROL), ?VALIDATOR_MIN, TxEnv, Trees1),
         {ok, Trees2, #{res := {contract, BobCt}}} =
-            new_validator_(pubkey(?BOB), ?VALIDATOR_MIN, false, TxEnv, Trees1, undefined),
+            new_validator_(pubkey(?BOB), ?VALIDATOR_MIN, false, TxEnv, Trees11, undefined),
 
         {ok, _, #{res := BaseEmptyPool}} = get_penalty_pool_(TxEnv, Trees2),
         ?assertEqual(BaseEmptyPool, 0),
 
-        Rewards = [{{address, pubkey(?ALICE)}, -4 * ?AE}, {{address, pubkey(?BOB)}, 2 * ?AE}],
+        Penalties1 = [{{address, pubkey(?ALICE)}, 4 * ?AE}, {{address, pubkey(?BOB)}, -2 * ?AE}], % essentially penalize Alice and reward Bob 50% of the penalty
         {ok, Trees3, #{res := ?UNIT}} =
-            add_penalties_(1, Rewards, 0, 2 * ?AE, TxEnv, Trees2, 2),
+            add_penalties_(1, Penalties1, TxEnv, Trees2, 2),
 
         {ok, _, #{res := ABalance}}   = get_total_balance_(AliceCt, ?ALICE, TxEnv, Trees3),
-        {ok, _, #{res := AAvailable}} = get_available_balance_(AliceCt, ?ALICE, TxEnv, Trees3),
+        {ok, _, #{res := AStake}} = get_current_stake_(AliceCt, ?ALICE, TxEnv, Trees3),
         {ok, _, #{res := BBalance}}   = get_total_balance_(BobCt, ?BOB, TxEnv, Trees3),
-        {ok, _, #{res := BAvailable}} = get_available_balance_(BobCt, ?BOB, TxEnv, Trees3),
+        {ok, _, #{res := BStake}} = get_current_stake_(BobCt, ?BOB, TxEnv, Trees3),
 
         {ok, _, #{res := AfterRewardsPool}} = get_penalty_pool_(TxEnv, Trees3),
         ?assertEqual(AfterRewardsPool, 2 *? AE),
@@ -278,14 +280,54 @@ rewards(_Config) ->
         ?assertEqual(ABalance, ?VALIDATOR_MIN - 4 * ?AE),
         ?assertEqual(BBalance, ?VALIDATOR_MIN + 2 * ?AE),
 
-        ?assertEqual(AAvailable, 6 * ?AE),
-        ?assertEqual(BAvailable, 2 * ?AE),
+        ?assertEqual(AStake, ?VALIDATOR_MIN - 4 * ?AE),
+        ?assertEqual(BStake, ?VALIDATOR_MIN),
+
+        % resditirbuting the penalty pool, i.e rewards which are taken from the penalty pool
+
+        Redist = [{{address, pubkey(?CAROL)}, -1 * ?AE}, {{address, pubkey(?BOB)}, -1 * ?AE}],
+        {ok, Trees4, #{res := ?UNIT}} =
+            add_penalties_(1, Redist, TxEnv, Trees3, 2),
+
+
+        {ok, _, #{res := ABalance2}}   = get_total_balance_(AliceCt, ?ALICE, TxEnv, Trees4),
+        {ok, _, #{res := AStake2}} = get_current_stake_(AliceCt, ?ALICE, TxEnv, Trees4),
+        {ok, _, #{res := BBalance2}}   = get_total_balance_(BobCt, ?BOB, TxEnv, Trees4),
+        {ok, _, #{res := BStake2}} = get_current_stake_(BobCt, ?BOB, TxEnv, Trees4),
+        {ok, _, #{res := CBalance2}}   = get_total_balance_(CarolCt, ?CAROL, TxEnv, Trees4),
+        {ok, _, #{res := CStake2}} = get_current_stake_(CarolCt, ?CAROL, TxEnv, Trees4),
+
+        {ok, _, #{res := AfterRewardsPool2}} = get_penalty_pool_(TxEnv, Trees4),
+        ?assertEqual(AfterRewardsPool2, 0),
+
+        ?assertEqual(ABalance2, ?VALIDATOR_MIN - 4 * ?AE),
+        ?assertEqual(BBalance2, ?VALIDATOR_MIN + 3 * ?AE),
+        ?assertEqual(CBalance2, ?VALIDATOR_MIN + 1 * ?AE),
+
+        ?assertEqual(BStake2, ?VALIDATOR_MIN),
+        ?assertEqual(CStake2, ?VALIDATOR_MIN),
+
+        %% Test more balance than stake (stake is unaffected by penaltiy)
+
+        {ok, Trees5, #{res := ?UNIT}} =
+            deposit_(AliceCt, ?ALICE, ?VALIDATOR_MIN, TxEnv, Trees4),
+
+        Penalties2 = [{{address, pubkey(?ALICE)}, 4 * ?AE}],
+        {ok, Trees6, #{res := ?UNIT}} =
+            add_penalties_(2, Penalties2, TxEnv, Trees5, 2),
+
+        {ok, _, #{res := ABalance3}}   = get_total_balance_(AliceCt, ?ALICE, TxEnv, Trees6),
+        {ok, _, #{res := AStake3}} = get_current_stake_(AliceCt, ?ALICE, TxEnv, Trees6),
+
+        ?assertEqual(AStake2, AStake3),
+        ?assertEqual(ABalance3, ?VALIDATOR_MIN - 8 * ?AE + ?VALIDATOR_MIN),
 
         ok.
 
-    elct_penalties(_Config) ->
+    elct_penalties(_Config) -> % Test HCElection contract penalty functions
         Trees0 = genesis_trees(),
         TxEnv = aetx_env:tx_env(?DEFAULT_HEIGHT),
+
         {ok, Trees1, #{res := {contract, AliceCt}}} =
             new_validator_(pubkey(?ALICE), ?VALIDATOR_MIN, TxEnv, Trees0),
         {ok, Trees2, #{res := {contract, BobCt}}} =
@@ -294,25 +336,30 @@ rewards(_Config) ->
         {ok, _, #{res := BaseEmptyPool}} = get_penalty_pool_(TxEnv, Trees2),
         ?assertEqual(BaseEmptyPool, 0),
 
-        Rewards = [{{address, pubkey(?ALICE)}, -4 * ?AE}, {{address, pubkey(?BOB)}, 2 * ?AE}],
+        % This penalty will be collected at end of epoch 2
+        {ok, Trees23, #{res := ?UNIT}} =
+            add_reported_penalty_to_elct_(9, 10 * ?AE, pubkey(?ALICE), pubkey(?BOB), 30, TxEnv, Trees2, 2),
+
+        TxEnv1 = aetx_env:set_height(TxEnv, 10), % We need to be at EOE
+        {ok, Trees24, _} = step_eoe(0 * ?AE, pubkey(?ALICE), <<"">>, TxEnv1, Trees23, 1),
+
+
+        % This penalty will not be collected at end of epoch 2
         {ok, Trees25, #{res := ?UNIT}} =
-            add_reported_penalty_to_elct_(1, 4 * ?AE, pubkey(?ALICE), pubkey(?BOB), 50, TxEnv, Trees2, 2),
+            add_penalty_to_elct_(12, 2 * ?AE, pubkey(?ALICE), TxEnv1, Trees24, 2),
 
-        {ok, Trees3, _} = pay_elct_rewards(1, 10 * ?AE, TxEnv, Trees25, 1),
+        TxEnv2 = aetx_env:set_height(TxEnv1, 20), % We need to be at EOE
 
-        {ok, _, #{res := ABalance}}   = get_total_balance_(AliceCt, ?ALICE, TxEnv, Trees3),
-        {ok, _, #{res := AAvailable}} = get_available_balance_(AliceCt, ?ALICE, TxEnv, Trees3),
-        {ok, _, #{res := BBalance}}   = get_total_balance_(BobCt, ?BOB, TxEnv, Trees3),
-        {ok, _, #{res := BAvailable}} = get_available_balance_(BobCt, ?BOB, TxEnv, Trees3),
+        {ok, Trees3, _} = step_eoe(0 * ?AE, pubkey(?ALICE), <<"">>, TxEnv2, Trees25, 2),
 
-        {ok, _, #{res := AfterRewardsPool}} = get_penalty_pool_(TxEnv, Trees3),
-        ?assertEqual(AfterRewardsPool, 2 *? AE),
+        {ok, _, #{res := ABalance}}   = get_total_balance_(AliceCt, ?ALICE, TxEnv2, Trees3),
+        {ok, _, #{res := BBalance}}   = get_total_balance_(BobCt, ?BOB, TxEnv2, Trees3),
 
-        ?assertEqual(ABalance, ?VALIDATOR_MIN - 4 * ?AE),
-        ?assertEqual(BBalance, ?VALIDATOR_MIN + 2 * ?AE),
+        {ok, _, #{res := AfterRewardsPool}} = get_penalty_pool_(TxEnv2, Trees3),
+        ?assertEqual(AfterRewardsPool, 7 *? AE),
 
-        ?assertEqual(AAvailable, -4 * ?AE),
-        ?assertEqual(BAvailable, 2 * ?AE),
+        ?assertEqual(ABalance, ?VALIDATOR_MIN - 10 * ?AE),
+        ?assertEqual(BBalance, ?VALIDATOR_MIN + 3 * ?AE),
 
         ok.
 
@@ -620,27 +667,27 @@ get_available_balance_(ValidatorCt, Validator, TxEnv, Trees0) ->
 
 add_rewards_(Epoch, Rewards, TotRewards, TxEnv, Trees0, LockEpoch) ->
     Contract = staking_contract_address(),
-    CallData = create_calldata("add_rewards", [{integer, Epoch}, Rewards, {integer, 0}]),
+    CallData = create_calldata("add_rewards", [{integer, Epoch}, Rewards]),
     call_contract(Contract, ?OWNER_PUBKEY, CallData, TotRewards, TxEnv, Trees0, LockEpoch).
 
-add_penalties_(Epoch, Penalties, TotPens, Pool, TxEnv, Trees0, LockEpoch) ->
+add_penalties_(Epoch, Penalties, TxEnv, Trees0, LockEpoch) ->
     Contract = staking_contract_address(),
-    CallData = create_calldata("add_rewards", [{integer, Epoch}, Penalties, {integer, Pool}]),
-    call_contract(Contract, ?OWNER_PUBKEY, CallData, TotPens, TxEnv, Trees0, LockEpoch).
-
-add_penalty_to_elct_(Epoch, Penalty, Offender, TxEnv, Trees0, LockEpoch) ->
-    Contract = election_contract_address(),
-    CallData = create_calldata("add_penalty", [{integer, Epoch}, {integer, Penalty, {address, Offender}}]),
+    CallData = create_calldata("add_penalties", [{integer, Epoch}, Penalties]),
     call_contract(Contract, ?OWNER_PUBKEY, CallData, 0, TxEnv, Trees0, LockEpoch).
 
-add_reported_penalty_to_elct_(Epoch, Penalty, Offender, Reporter, Percentage, TxEnv, Trees0, LockEpoch) ->
+add_penalty_to_elct_(Block, Penalty, Offender, TxEnv, Trees0, LockEpoch) ->
     Contract = election_contract_address(),
-    CallData = create_calldata("add_reported_penalty", [{integer, Epoch}, {integer, Penalty}, {address, Offender}, {address, Reporter}, {integer, Percentage}]),
+    CallData = create_calldata("add_penalty", [{integer, Block}, {integer, Penalty}, {address, Offender}]),
     call_contract(Contract, ?OWNER_PUBKEY, CallData, 0, TxEnv, Trees0, LockEpoch).
 
-pay_elct_rewards(Epoch, Amount, TxEnv, Trees0, LockEpoch) ->
+add_reported_penalty_to_elct_(Block, Penalty, Offender, Reporter, Percentage, TxEnv, Trees0, LockEpoch) ->
     Contract = election_contract_address(),
-    CallData = create_calldata("test_pay_rewards", [{integer, Epoch}]),
+    CallData = create_calldata("add_reported_penalty", [{integer, Block}, {integer, Penalty}, {address, Offender}, {address, Reporter}, {integer, Percentage}]),
+    call_contract(Contract, ?OWNER_PUBKEY, CallData, 0, TxEnv, Trees0, LockEpoch).
+
+step_eoe(Amount, Leader, Seed, TxEnv, Trees0, LockEpoch) ->
+    Contract = election_contract_address(),
+    CallData = create_calldata("step_eoe", [{address, Leader},{bytes, Seed},{integer, 0}, {bool, false}]),
     call_contract(Contract, ?OWNER_PUBKEY, CallData, Amount, TxEnv, Trees0, LockEpoch).
 
 

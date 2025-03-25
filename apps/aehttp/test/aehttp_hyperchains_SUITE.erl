@@ -41,8 +41,7 @@
          check_finalize_info/1,
          sanity_check_vote_tx/1,
          hole_production/1,
-         hole_production_eoe/1,
-         basic_penalty/1
+         hole_production_eoe/1
         ]).
 
 -include_lib("stdlib/include/assert.hrl").
