@@ -188,7 +188,7 @@ main contract HCElection =
     require(Chain.block_height == last, "Only in last block")
     require(Call.caller == state.leader, "Must be called by the last leader of epoch")
     require(epoch_number == state.epoch, "Not correct epoch")
-    //require(List.all(validate_vote, votes), "Invalid vote")
+    require(List.all(validate_length_vote, votes), "Invalid vote")
     let ei_final =
       switch(state.finalize)
         None       => {epoch = epoch_number, fork = None, epoch_length = Some(epoch_length), pc_hash = pc_hash, producer = producer, votes = None, length_votes = Some(votes)}
@@ -302,18 +302,27 @@ main contract HCElection =
 
   function validate_vote(vote) =
     if(Crypto.verify_sig(vote.sign_data, vote.producer, vote.signature))
-      contains_bytes(vote.hash, vote.sign_data)
+      contains_bytes(Bytes.to_any_size(vote.hash), vote.sign_data)
     else
       false
 
-  function contains_bytes(needle : hash, haystack : bytes()) : bool =
-    if(Bytes.size(haystack) < 32)
+  function validate_length_vote(vote) =
+    if(Crypto.verify_sig(vote.sign_data, vote.producer, vote.signature))
+      let needle = String.to_bytes(String.concats(["epoch_length_delta", Int.to_str(vote.epoch_delta)]))
+      contains_bytes(needle, vote.sign_data)
+    else
+      false
+
+  function contains_bytes(needle : bytes(), haystack : bytes()) : bool =
+    contains_bytes_(Bytes.size(needle), needle, haystack)
+
+  function contains_bytes_(len: int, needle : bytes(), haystack : bytes()) : bool =
+    if(Bytes.size(haystack) < len)
       false
     else
-      let Some((bs_, _)) = Bytes.split_any(haystack, 32)
-      let Some(bs__) = Bytes.to_fixed_size(bs_)
-      if(bs__ == needle)
+      let Some((bs_, _)) = Bytes.split_any(haystack, len)
+      if(bs_ == needle)
         true
       else
         let Some((_, haystack_)) = Bytes.split_any(haystack, 1)
-        contains_bytes(needle, haystack_)
+        contains_bytes_(len, needle, haystack_)
