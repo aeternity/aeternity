@@ -1735,10 +1735,6 @@
                                             "default": 500,
                                             "type": "integer"
                                         },
-                                        "child_block_production_time": {
-                                            "description": "The time in milliseconds to produce a child block",
-                                            "type": "integer"
-                                        },
                                         "child_epoch_length": {
                                             "description": "The number of blocks in an epoch on the child chain",
                                             "type": "integer"
@@ -1924,11 +1920,11 @@
                                                     },
                                                     "sign_key": {
                                                         "description": "The validator node signing key. Defaults to owner.",
-                                                        "pattern": "^ak_[1-9A-HJ-NP-Za-km-z]*:[0-9]+(:[0-9]*:[0-9]*){0,1}$",
+                                                        "pattern": "^ak_[1-9A-HJ-NP-Za-km-z]*:[0-9]+(:[0-9]*:[0-9]*){0,1}$"
                                                     },
                                                     "caller": {
-                                                        "description": "The registration contral call caller. Needs to be funded with the minimum stake + TX cost. Defaults to owner.",
-                                                        "pattern": "^ak_[1-9A-HJ-NP-Za-km-z]*:[0-9]+(:[0-9]*:[0-9]*){0,1}$",
+                                                        "description": "The registration contract caller. Needs to be funded with the minimum stake + TX cost. Defaults to owner.",
+                                                        "pattern": "^ak_[1-9A-HJ-NP-Za-km-z]*:[0-9]+(:[0-9]*:[0-9]*){0,1}$"
                                                     },
                                                     "stake": {
                                                         "description": "The amount to stake",
@@ -1943,7 +1939,7 @@
                                                 },
                                                 "default": []
                                             }
-                                        },
+                                        }
                                     }
                                 }
                             }
