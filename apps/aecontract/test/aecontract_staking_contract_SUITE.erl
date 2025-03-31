@@ -283,7 +283,7 @@ rewards(_Config) ->
         ?assertEqual(AStake, ?VALIDATOR_MIN - 4 * ?AE),
         ?assertEqual(BStake, ?VALIDATOR_MIN),
 
-        % resditirbuting the penalty pool, i.e rewards which are taken from the penalty pool
+        % resdistributing the penalty pool, i.e rewards which are taken from the penalty pool
 
         Redist = [{{address, pubkey(?CAROL)}, -1 * ?AE}, {{address, pubkey(?BOB)}, -1 * ?AE}],
         {ok, Trees4, #{res := ?UNIT}} =
