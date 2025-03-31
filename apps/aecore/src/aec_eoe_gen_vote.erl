@@ -259,10 +259,10 @@ handle_vote(Type, SignedTx, #data{vote_types=VoteTypes, module=Module} = Data, O
                     %% Check if reached two thirds
                     OnValidFun(Validator, VoteFields, Data1);
                 {error, not_a_validator} ->
-                    lager:warning("Received a ~p vote from a non validator ~p", [VoteDesc, Validator]),
+                    lager:warning("Received a ~p vote of type ~p(~p) from a non validator ~p", [VoteDesc, vote_type_description(Type, Data), Type, Validator]),
                     keep_state_and_data;
                 {error, already_voted} ->
-                    lager:warning("Received a ~p vote from a validator ~p that has already voted", [VoteDesc, Validator]),
+                    lager:debug("Received a ~p vote of type ~p(~p) from a validator ~p that has already voted", [VoteDesc, vote_type_description(Type, Data), Type, Validator]),
                     keep_state_and_data
             end;
         {ok, OtherType, _, _, _} ->
