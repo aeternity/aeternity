@@ -108,7 +108,7 @@ run_and_check_keys_gen(N, Cmd, UserPassword, ActualPassword, Config) ->
     Res = aecore_suite_utils:cmd(Cmd, aecore_suite_utils:node_shortcut(N, Config), "bin", ["keys_gen", UserPassword]),
     {Code, Out} = aecore_suite_utils:cmd_res(Res),
     %% Check script exit code ok.
-    ?assertEqual(7, Code),
+    ?assertEqual(0, Code),
     %% Check key files created.
     ?assert(filelib:is_dir(KeysDir)),
     {ok, KeyFiles} = file:list_dir(KeysDir),
