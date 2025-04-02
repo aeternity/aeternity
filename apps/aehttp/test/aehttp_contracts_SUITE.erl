@@ -261,7 +261,7 @@ identity_contract(Config) ->
 
     force_fun_calls(Node),
 
-    ok.
+    fail.
 
 %% abort_test_contract(Config)
 %%  Test the built-in abort function.
