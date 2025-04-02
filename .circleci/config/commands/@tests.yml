@@ -33,7 +33,6 @@ common_tests:
     - run:
         name: Test
         command: |
-          false
           epmd -daemon
           make << parameters.target >> CT_TEST_FLAGS="--suite=$(.circleci/scripts/split_suites.sh)"
     # Isolates the junit.xml report because additional files in _build/test/logs
