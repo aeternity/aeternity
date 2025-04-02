@@ -40,7 +40,6 @@ common_tests:
     - run:
         name: Prepare test report
         command: |
-          false
           mkdir _build/test/reports
           mv _build/test/logs/junit.xml _build/test/reports/
         when: always
