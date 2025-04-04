@@ -289,8 +289,8 @@ check_eoe(Node, NodeTarget) ->
                     case aec_chain_hc:finalize_info({Env, Trees}) of
                         #{fork := PrevHash, producer := Validator} ->
                             ok;
-                        _ ->
-                            lager:warning("Election contract didn't match hash ~p and producer ~p", [PrevHash, Validator]),
+                        Result ->
+                            lager:warning("Election contract finalize info ~p didn't match hash ~p and producer ~p", [Result, PrevHash, Validator]),
                             {error, eoe_invalid}
                     end;
                 _ ->

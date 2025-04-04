@@ -1513,10 +1513,13 @@ hc_apply_vote([ForkResult|_] = VoteResults, MBlock, MBlockInfo) ->
 
 hc_apply_vote([], MBlock, _MBlockInfo, _TriedWithTrees, _IsEOE) ->
     {MBlock, false};
-hc_apply_vote(VoteTransactions, MBlock, MBlockInfo, TriedWithTrees, IsEOE) ->
-    case aec_block_micro_candidate:update(MBlock, VoteTransactions, MBlockInfo) of
-        {ok, UpdatedMBlock, _MBlockInfo} ->
-            {UpdatedMBlock, IsEOE};
+hc_apply_vote([FirstTransaction|VoteTransactions], MBlock, MBlockInfo, TriedWithTrees, IsEOE) ->
+    %% Apply the vote transactions individually so that aec_block_micro_candidate:update returns an error if the transaction fails to be added.
+    %% aec_block_micro_candidate:update only returns an error if all transactions fail to be added.
+    case aec_block_micro_candidate:update(MBlock, [FirstTransaction], MBlockInfo) of
+        {ok, UpdatedMBlock, UpdatedMBlockInfo} ->
+            UpdatedMBlock1 = hc_apply_rest_votes(VoteTransactions, UpdatedMBlock, UpdatedMBlockInfo),
+            {UpdatedMBlock1, IsEOE};
         Error ->
             case TriedWithTrees of
                 false ->
@@ -1528,6 +1531,18 @@ hc_apply_vote(VoteTransactions, MBlock, MBlockInfo, TriedWithTrees, IsEOE) ->
                     {MBlock, false}
             end
     end.
+
+hc_apply_rest_votes([], MBlock, _MBlockInfo) ->
+    MBlock;
+hc_apply_rest_votes([VoteTransaction|VoteTransactions], MBlock, MBlockInfo) ->
+    case aec_block_micro_candidate:update(MBlock, [VoteTransaction], MBlockInfo) of
+        {ok, UpdatedMBlock, UpdatedMBlockInfo} ->
+            hc_apply_rest_votes(VoteTransactions, UpdatedMBlock, UpdatedMBlockInfo);
+        Error ->
+            lager:warning("Error adding vote transaction ~p", [Error]),
+            MBlock
+    end.
+
 
 %%%===================================================================
 %%% In server context: A block was given to us from the outside world
