@@ -82,13 +82,13 @@
         , fixed_coinbase/0
         %% contract access
         , call_consensus_contract_result/5
-        , create_consensus_call_contract_transaction/5
+        , create_consensus_call_contract_transaction/6
         , entropy_height/1
         , get_entropy_hash/1
         , get_contract_pubkey/1
         %% voting
-        , vote_result/1
-        , vote_result/0
+        , vote_results/1
+        , vote_results/0
         %% POS
         , next_producer/0
         ]).
@@ -289,8 +289,8 @@ check_eoe(Node, NodeTarget) ->
                     case aec_chain_hc:finalize_info({Env, Trees}) of
                         #{fork := PrevHash, producer := Validator} ->
                             ok;
-                        _ ->
-                            lager:warning("Election contract didn't match hash ~p and producer ~p", [PrevHash, Validator]),
+                        Result ->
+                            lager:warning("Election contract finalize info ~p didn't match hash ~p and producer ~p", [Result, PrevHash, Validator]),
                             {error, eoe_invalid}
                     end;
                 _ ->
@@ -424,7 +424,7 @@ step_key(Height, #{epoch := Epoch, first := EpochFirst, last := EpochLast} = Epo
         step(TxEnv, Trees, Leader)
     end.
 
-create_consensus_call_contract_transaction(ContractType, OwnerPubkey, Trees, EncodedCallData, Amount) ->
+create_consensus_call_contract_transaction(ContractType, OwnerPubkey, Trees, EncodedCallData, Amount, NonceOffset) ->
     ContractPubkey = get_contract_pubkey(ContractType),
     Contract = aect_state_tree:get_contract(ContractPubkey,
                                             aec_trees:contracts(Trees)),
@@ -436,7 +436,7 @@ create_consensus_call_contract_transaction(ContractType, OwnerPubkey, Trees, Enc
 
     {ok, CallData} = aeser_api_encoder:safe_decode(contract_bytearray, EncodedCallData),
     CallSpec = #{ caller_id   => aeser_id:create(account, OwnerPubkey),
-                  nonce       => aec_accounts:nonce(OwnerAcc) + 1,
+                  nonce       => aec_accounts:nonce(OwnerAcc) + NonceOffset,
                   contract_id => aeser_id:create(contract, ContractPubkey),
                   abi_version => aect_contracts:abi_version(Contract), %% TODO: maybe get the ABI from the config?
                   fee         => Fee,
@@ -446,15 +446,15 @@ create_consensus_call_contract_transaction(ContractType, OwnerPubkey, Trees, Enc
                   call_data   => CallData},
     aect_call_tx:new(CallSpec).
 
-vote_result(Trees) ->
-    aec_eoe_vote:get_finalize_transaction(Trees).
+vote_results(Trees) ->
+    aec_eoe_vote:get_finalize_transactions(Trees).
 
-vote_result() ->
+vote_results() ->
     case aec_chain:get_top_state() of
         {ok, Trees} ->
-            vote_result(Trees);
+            vote_results(Trees);
         Error ->
-            {error, Error}
+            [{error, Error}]
     end.
 
 
