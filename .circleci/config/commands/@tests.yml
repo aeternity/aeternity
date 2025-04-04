@@ -38,22 +38,25 @@ common_tests:
     # Isolates the junit.xml report because additional files in _build/test/logs
     # are somehow causing issue with xunit report upload, parsing and merging
     - run:
-        name: move test report
+        name: Prepare test report
         command: |
           mkdir _build/test/reports
           mv _build/test/logs/junit.xml _build/test/reports/
+        when: always
     - store_test_results:
         path: _build/test/reports
     - run:
-        name: trim down artifacts
+        name: Prepare artifacts
         command: |
           find _build/test/logs -iname bin | xargs rm -rf
           find _build/test/logs -iname data | xargs rm -rf
           find _build/test/logs -iname releases | xargs rm -rf
           find _build/test/logs -iname extensions | xargs rm -rf
           find _build/test/logs -iname hooks | xargs rm -rf
+          mv _build/test/logs test_logs
+        when: on_fail
     - store_artifacts:
-        path: _build/test/logs
+        path: test_logs
     - store_rebar3_crashdump
     - fail_notification
 
