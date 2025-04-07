@@ -64,7 +64,7 @@ push(Tx) ->
     push(Tx, tx_created).
 
 -spec push(aetx_sign:signed_tx(), event()) -> ok | {error, atom()}.
-push(Tx, Event = tx_received) ->
+push(Tx, Event) ->
     TxHash = safe_tx_hash(Tx),
     case aec_tx_gossip_cache:in_cache(TxHash) of
         true ->
@@ -72,9 +72,7 @@ push(Tx, Event = tx_received) ->
         false ->
             %% Transported through gossip, use 'tx_pool_push' job queue
             aec_jobs_queues:run(tx_pool_push, fun() -> push_(Tx, Event) end)
-    end;
-push(Tx, Event = tx_created) ->
-    push_(Tx, Event).
+    end.
 
 safe_tx_hash(Tx) ->
     try
