@@ -25,6 +25,12 @@ main contract HCElection =
   record vote =
     { producer    : address,
       hash        : hash,
+      sign_data   : bytes(),
+      signature   : signature
+    }
+
+  record epoch_length_vote =
+    { producer    : address,
       epoch_delta : int,
       sign_data   : bytes(),
       signature   : signature
@@ -32,11 +38,12 @@ main contract HCElection =
 
   record finalize_info =
     { epoch        : int,
-      fork         : bytes(),
-      epoch_length : int,
+      fork         : option(bytes()),
+      epoch_length : option(int),
       pc_hash      : bytes(),
       producer     : address,
-      votes        : list(vote)
+      votes        : option(list(vote)),
+      length_votes : option(list(epoch_length_vote))
     }
 
   record state =
@@ -111,7 +118,10 @@ main contract HCElection =
         None       => state.epochs[epoch + 3]
         Some(info) =>
           if ( info.epoch == epoch )
-            state.epochs[epoch + 3]{ length = info.epoch_length }
+            switch(info.epoch_length)
+              None => state.epochs[epoch + 3]
+              Some(epoch_length) =>
+                state.epochs[epoch + 3]{ length = epoch_length }
           else
             state.epochs[epoch + 3]
 
@@ -153,14 +163,42 @@ main contract HCElection =
       let reporter_reward = (penalty * reporter_percentage) / 100
       put(state{penalties[height = []] @ rs = (reporter, -reporter_reward) :: rs})
 
-  stateful entrypoint finalize_epoch(epoch_number : int, fork : bytes(), epoch_length : int, pc_hash : bytes(), producer : address, votes : list(vote)) =
+  stateful entrypoint finalize_epoch(epoch_number : int, fork : bytes(), pc_hash : bytes(), producer : address, votes : list(vote)) =
     let epoch = state.epoch
     let last = state.epochs[epoch].start + state.epochs[epoch].length - 1
     require(Chain.block_height == last, "Only in last block")
     require(Call.caller == state.leader, "Must be called by the last leader of epoch")
     require(epoch_number == state.epoch, "Not correct epoch")
     require(List.all(validate_vote, votes), "Invalid vote")
-    put(state{finalize=Some({epoch = epoch_number, fork = fork, epoch_length = epoch_length, pc_hash = pc_hash, producer = producer, votes = votes})})
+    let ei_final =
+      switch(state.finalize)
+        None       => {epoch = epoch_number, fork = Some(fork), epoch_length = None, pc_hash = pc_hash, producer = producer, votes = Some(votes), length_votes = None}
+        Some(finalize) =>
+          if ( finalize.epoch == epoch_number )
+            finalize{ fork = Some(fork), votes = Some(votes) }
+          else
+            {epoch = epoch_number, fork = Some(fork), epoch_length = None, pc_hash = pc_hash, producer = producer, votes = Some(votes), length_votes = None}
+
+    put(state{finalize=Some(ei_final)})
+
+
+  stateful entrypoint finalize_epoch_length(epoch_number : int, epoch_length : int, pc_hash : bytes(), producer : address, votes : list(epoch_length_vote)) =
+    let epoch = state.epoch
+    let last = state.epochs[epoch].start + state.epochs[epoch].length - 1
+    require(Chain.block_height == last, "Only in last block")
+    require(Call.caller == state.leader, "Must be called by the last leader of epoch")
+    require(epoch_number == state.epoch, "Not correct epoch")
+    require(List.all(validate_length_vote, votes), "Invalid vote")
+    let ei_final =
+      switch(state.finalize)
+        None       => {epoch = epoch_number, fork = None, epoch_length = Some(epoch_length), pc_hash = pc_hash, producer = producer, votes = None, length_votes = Some(votes)}
+        Some(finalize) =>
+          if ( finalize.epoch == epoch_number )
+            finalize{ epoch_length = Some(epoch_length), length_votes = Some(votes) }
+          else
+            {epoch = epoch_number, fork = None, epoch_length = Some(epoch_length), pc_hash = pc_hash, producer = producer, votes = None, length_votes = Some(votes)}
+
+    put(state{finalize=Some(ei_final)})
 
   entrypoint leader() =
     state.leader
@@ -264,18 +302,27 @@ main contract HCElection =
 
   function validate_vote(vote) =
     if(Crypto.verify_sig(vote.sign_data, vote.producer, vote.signature))
-      contains_bytes(vote.hash, vote.sign_data)
+      contains_bytes(Bytes.to_any_size(vote.hash), vote.sign_data)
     else
       false
 
-  function contains_bytes(needle : hash, haystack : bytes()) : bool =
-    if(Bytes.size(haystack) < 32)
+  function validate_length_vote(vote) =
+    if(Crypto.verify_sig(vote.sign_data, vote.producer, vote.signature))
+      let needle = String.to_bytes(String.concats(["epoch_length_delta", Int.to_str(vote.epoch_delta)]))
+      contains_bytes(needle, vote.sign_data)
+    else
+      false
+
+  function contains_bytes(needle : bytes(), haystack : bytes()) : bool =
+    contains_bytes_(Bytes.size(needle), needle, haystack)
+
+  function contains_bytes_(len: int, needle : bytes(), haystack : bytes()) : bool =
+    if(Bytes.size(haystack) < len)
       false
     else
-      let Some((bs_, _)) = Bytes.split_any(haystack, 32)
-      let Some(bs__) = Bytes.to_fixed_size(bs_)
-      if(bs__ == needle)
+      let Some((bs_, _)) = Bytes.split_any(haystack, len)
+      if(bs_ == needle)
         true
       else
         let Some((_, haystack_)) = Bytes.split_any(haystack, 1)
-        contains_bytes(needle, haystack_)
+        contains_bytes_(len, needle, haystack_)

@@ -1453,28 +1453,15 @@ hc_create_hole(TopHash, MissingBlocksCount, Producer) when MissingBlocksCount > 
     aec_block_hole_candidate:create(TopHash, Producer, Producer, true, false).
 
 hc_create_block(TopHash0, Producer) ->
-    VoteResult = aec_consensus_hc:vote_result(),
-    {TopHash, IsEoE} = hc_create_microblock(TopHash0, Producer, VoteResult),
+    VoteResults = aec_consensus_hc:vote_results(),
+    {TopHash, IsEoE} = hc_create_microblock(TopHash0, Producer, VoteResults),
     aec_block_hole_candidate:create(TopHash, Producer, Producer, false, IsEoE).
 
-hc_create_microblock(TopHash, Leader, VoteResult) ->
-    CreateResult = case VoteResult of
-                        {ok, VoteTx} ->
-                            Tx = aetx_sign:tx(VoteTx),
-                                case aec_chain:get_block(TopHash) of
-                                    {ok, Block} ->
-                                        Gas = aetx:gas_limit(Tx, aec_blocks:height(Block), aec_blocks:version(Block)),
-                                        aec_block_micro_candidate:create(TopHash, Gas);
-                                    Error ->
-                                        lager:warning("Couldn't calculate gas for vote transaction ~p", [Error]),
-                                        aec_block_micro_candidate:create(TopHash)
-                                end;
-                        _ ->
-                            aec_block_micro_candidate:create(TopHash)
-                    end,
+hc_create_microblock(TopHash, Leader, VoteResults) ->
+    CreateResult = hc_create_microblock_candidate(TopHash, VoteResults),
     case CreateResult of
         {ok, MBlock, MBlockInfo} ->
-            {MBlock1, IsEoE} = hc_apply_vote(VoteResult, MBlock, MBlockInfo),
+            {MBlock1, IsEoE} = hc_apply_vote(VoteResults, MBlock, MBlockInfo),
             case aec_blocks:txs(MBlock1) of
                 [] ->
                     epoch_mining:debug("Empty micro-block, top is still: ~p", [TopHash]),
@@ -1492,29 +1479,70 @@ hc_create_microblock(TopHash, Leader, VoteResult) ->
             {TopHash, false}
     end.
 
-hc_apply_vote(VoteResult, MBlock, MBlockInfo) ->
-    hc_apply_vote(VoteResult, MBlock, MBlockInfo, false).
 
-hc_apply_vote(VoteResult, MBlock, MBlockInfo, TriedWithTrees) ->
-    case VoteResult of
-        {ok, VoteTransaction} ->
-            case aec_block_micro_candidate:update(MBlock, [VoteTransaction], MBlockInfo) of
-                {ok, UpdatedMBlock, _MBlockInfo} ->
-                    {UpdatedMBlock, true};
-                Error ->
-                    case TriedWithTrees of
-                        false ->
-                            %% Retry with trees to correct nonce
-                            {ok, Trees} = aec_block_micro_candidate:trees(MBlockInfo),
-                            hc_apply_vote(aec_consensus_hc:vote_result(Trees), MBlock, MBlockInfo, true);
-                        true ->
-                            lager:warning("Error adding vote transaction ~p", [Error]),
-                            {MBlock, false}
-                    end
-            end;
-        _ ->
-            {MBlock, false}
+hc_create_microblock_candidate(TopHash, VoteResults) ->
+    hc_create_microblock_candidate(TopHash, VoteResults, 0).
+
+hc_create_microblock_candidate(TopHash, [], 0) ->
+    aec_block_micro_candidate:create(TopHash);
+hc_create_microblock_candidate(TopHash, [], Gas) ->
+    aec_block_micro_candidate:create(TopHash, Gas);
+hc_create_microblock_candidate(TopHash, [{ok, VoteTx}|VoteResults], CurrentGas) ->
+    Tx = aetx_sign:tx(VoteTx),
+    Gas = case aec_chain:get_block(TopHash) of
+            {ok, Block} ->
+                aetx:gas_limit(Tx, aec_blocks:height(Block), aec_blocks:version(Block));
+            Error ->
+                lager:warning("Couldn't calculate gas for vote transaction ~p", [Error]),
+                0
+          end,
+    hc_create_microblock_candidate(TopHash, VoteResults, CurrentGas + Gas);
+hc_create_microblock_candidate(TopHash, [_|VoteResults], CurrentGas) ->
+    hc_create_microblock_candidate(TopHash, VoteResults, CurrentGas).
+
+
+hc_apply_vote([ForkResult|_] = VoteResults, MBlock, MBlockInfo) ->
+    IsEOE = case ForkResult of
+                {ok, _} ->
+                    true;
+                _ ->
+                    false
+            end,
+    VoteTransactions = [VoteTransaction || {ok, VoteTransaction} <- VoteResults],
+    hc_apply_vote(VoteTransactions, MBlock, MBlockInfo, false, IsEOE).
+
+hc_apply_vote([], MBlock, _MBlockInfo, _TriedWithTrees, _IsEOE) ->
+    {MBlock, false};
+hc_apply_vote([FirstTransaction|VoteTransactions], MBlock, MBlockInfo, TriedWithTrees, IsEOE) ->
+    %% Apply the vote transactions individually so that aec_block_micro_candidate:update returns an error if the transaction fails to be added.
+    %% aec_block_micro_candidate:update only returns an error if all transactions fail to be added.
+    case aec_block_micro_candidate:update(MBlock, [FirstTransaction], MBlockInfo) of
+        {ok, UpdatedMBlock, UpdatedMBlockInfo} ->
+            UpdatedMBlock1 = hc_apply_rest_votes(VoteTransactions, UpdatedMBlock, UpdatedMBlockInfo),
+            {UpdatedMBlock1, IsEOE};
+        Error ->
+            case TriedWithTrees of
+                false ->
+                    %% Retry with trees to correct nonce
+                    {ok, Trees} = aec_block_micro_candidate:trees(MBlockInfo),
+                    hc_apply_vote([VoteTransaction || {ok, VoteTransaction} <- aec_consensus_hc:vote_results(Trees)], MBlock, MBlockInfo, true, IsEOE);
+                true ->
+                    lager:warning("Error adding vote transaction ~p", [Error]),
+                    {MBlock, false}
+            end
     end.
+
+hc_apply_rest_votes([], MBlock, _MBlockInfo) ->
+    MBlock;
+hc_apply_rest_votes([VoteTransaction|VoteTransactions], MBlock, MBlockInfo) ->
+    case aec_block_micro_candidate:update(MBlock, [VoteTransaction], MBlockInfo) of
+        {ok, UpdatedMBlock, UpdatedMBlockInfo} ->
+            hc_apply_rest_votes(VoteTransactions, UpdatedMBlock, UpdatedMBlockInfo);
+        Error ->
+            lager:warning("Error adding vote transaction ~p", [Error]),
+            MBlock
+    end.
+
 
 %%%===================================================================
 %%% In server context: A block was given to us from the outside world
