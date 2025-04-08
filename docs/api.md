@@ -1,4 +1,5 @@
-# Introduction
+# 13. Node API
+
 
 Aeternity node API is documented in the [protocol repository](https://github.com/aeternity/protocol/blob/master/node/api/README.md).
 
