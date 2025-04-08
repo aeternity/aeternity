@@ -1,3 +1,5 @@
+# 8. CUDA Miner
+
 # Introduction
 
 The Ubuntu release packages ships with a CUDA miner.
