@@ -1,4 +1,4 @@
-# Quick Guide to Rebar3
+# 16. Quick Guide to Rebar3
 
 Rebar3 is the standard Erlang build tool
 
