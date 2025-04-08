@@ -1,3 +1,5 @@
+# 9. Stratum
+
 Introduction
 ==========
 
