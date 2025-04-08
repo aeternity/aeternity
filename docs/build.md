@@ -1,3 +1,5 @@
+#7. Build from source
+
 # Introduction
 
 This document describes how to build an Aeternity node from source on:
