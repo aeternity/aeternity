@@ -1,3 +1,5 @@
+1. Installation
+
 # Introduction
 
 This document describes how to install an Aeternity node using a release binary either by:
