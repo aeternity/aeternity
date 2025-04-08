@@ -1,4 +1,4 @@
-# Hacking the Aeternity Codebase
+# 15. Hacking the Aeternity Codebase
 
 ## Building
 See [Build](build.md) for details.
