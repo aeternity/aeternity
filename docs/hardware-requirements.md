@@ -1,3 +1,5 @@
+# 0. Hardware Requirements
+
 # Introduction
 
 Hardware requirements may vary based in what mode the node is running, the network and it is supposed to run full sync or restore from database snapshot. Running a full node to do a full sync being the most resource intensive.
