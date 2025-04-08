@@ -1,3 +1,5 @@
+# 4. Operation
+
 # Introduction
 
 This document describes how to start your Aeternity node installed using a release binary, verify that it mines and verify that it joined the configured public network of nodes (e.g. testnet).
