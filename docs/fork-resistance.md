@@ -1,3 +1,5 @@
+# 11. Fork Resistence
+
 # Fork resistance in Aeternity nodes
 
 The Aeternity consensus and sync protocols resolve forks according to the specification
