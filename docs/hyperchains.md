@@ -1,3 +1,5 @@
+# 3. Hyperchains
+
 # Introduction
 
 This document describes the Aeternity Hyperchain architecture and provides configuration guidance for deploying a Hyperchain node. It includes configuration parameters, setup requirements, and step-by-step deployment instructions.
