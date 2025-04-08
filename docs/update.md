@@ -1,3 +1,5 @@
+#5. Update
+
 # Introduction
 
 This document describes how to update an Aeternity node using a release binary:
