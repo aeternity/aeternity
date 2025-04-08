@@ -1,3 +1,5 @@
+# 2. Configuration
+
 # Introduction
 
 This document describes how to configure your Aeternity node installed using a release binary for joining a public network of nodes (e.g. testnet) knowing an initial network peer to join.
