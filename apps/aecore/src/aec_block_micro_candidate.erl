@@ -67,6 +67,7 @@ get_blocks(Block) ->
             end
     end.
 
+-ifdef(TEST).
 -spec create_with_state(aec_blocks:block(), aec_blocks:block(),
     list(aetx_sign:signed_tx()), aec_trees:trees()) ->
     {aec_blocks:block(), aec_trees:trees()}.
@@ -79,6 +80,7 @@ create_with_state(Block, KeyBlock, Txs, Trees) ->
     {ok, NewBlock, #{ trees := NewTrees}} =
         int_create_block(Height, MBEnv, TxEnv, Txs, Trees),
     {NewBlock, NewTrees}.
+-endif.
 
 -spec apply_block_txs(list(aetx_sign:signed_tx()), aec_trees:trees(),
                       aetx_env:env()) ->
@@ -120,7 +122,6 @@ trees(#{trees := Trees}) ->
     {ok, Trees}.
 
 %% -- Internal functions -----------------------------------------------------
-
 
 int_create(PrevBlock, KeyBlock) ->
     MaxGas = aec_governance:block_gas_limit(),
@@ -172,10 +173,12 @@ int_pack_block(Height, GasAvailable, TxHashes, Txs, MBEnv, TxEnv, Trees, Events)
                            Txs ++ Txs1, MBEnv, TxEnv, Trees1, Events ++ Events1)
     end.
 
+-ifdef(TEST).
 int_create_block(Height, MBEnv, TxEnv, Txs, Trees) ->
     {ok, Txs1, InvalidTxs, Trees1, Events1} = int_apply_block_txs(Txs, Trees, TxEnv, false),
     report_failed_txs(InvalidTxs),
     int_create_block(Height, MBEnv, TxEnv, Txs1, Trees1, Events1).
+-endif.
 
 int_create_block(Height, MBEnv, TxEnv, Txs, Trees, Events) ->
     #{key_block := KeyBlock, key_hash := KeyBlockHash,
