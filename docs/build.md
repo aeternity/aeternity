@@ -1,4 +1,4 @@
-#7. Build from source
+# 7. Build from source
 
 # Introduction
 
