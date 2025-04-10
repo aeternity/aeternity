@@ -1400,6 +1400,8 @@ blockhash(Arg0, Arg1, ES) ->
             case (N < GenesisHeight orelse
                   %% BlockHash at current height available from FATE VM version 2
                   (N == CurrentHeight andalso VMVsn < ?VM_FATE_SOPHIA_2) orelse
+                  %% BlockHash at current height doesn't exist for POS
+                  (N == CurrentHeight andalso pos == aec_consensus:get_consensus_type()) orelse
                   N > CurrentHeight orelse
                   N =< CurrentHeight - 256) of
                 true ->
@@ -1413,8 +1415,13 @@ blockhash(Arg0, Arg1, ES) ->
     end.
 
 beneficiary(Arg0, EngineState) ->
-    API = aefa_engine_state:chain_api(EngineState),
-    write(Arg0, aefa_chain_api:beneficiary(API), EngineState).
+    case aec_consensus:get_consensus_type() of
+        pos ->
+            aefa_fate:abort({disabled_operation, 'Chain.coinbase'}, EngineState);
+        _ ->
+            API = aefa_engine_state:chain_api(EngineState),
+            write(Arg0, aefa_chain_api:beneficiary(API), EngineState)
+    end.
 
 timestamp(Arg0, EngineState) ->
     API = aefa_engine_state:chain_api(EngineState),
@@ -1438,8 +1445,13 @@ network_id(Arg0, EngineState) ->
     write(Arg0, aefa_chain_api:network_id(API), EngineState).
 
 difficulty(Arg0, EngineState) ->
-    API = aefa_engine_state:chain_api(EngineState),
-    write(Arg0, aefa_chain_api:difficulty(API), EngineState).
+    case aec_consensus:get_consensus_type() of
+        pos ->
+            write(Arg0, 0, EngineState);
+        _ ->
+            API = aefa_engine_state:chain_api(EngineState),
+            write(Arg0, aefa_chain_api:difficulty(API), EngineState)
+    end.
 
 gaslimit(Arg0, EngineState) ->
     API = aefa_engine_state:chain_api(EngineState),
