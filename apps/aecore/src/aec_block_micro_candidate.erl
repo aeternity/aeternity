@@ -9,8 +9,7 @@
 -export([ apply_block_txs/3
         , apply_block_txs_strict/3
         , create/1
-        , create/2
-        , create_with_state/4
+        , create_pos/2
         , update/3
         , trees/1
         ]).
@@ -18,6 +17,10 @@
 -export([ min_t_after_keyblock/0]).
 
 -export_type([block_info/0]).
+
+-ifdef(TEST).
+-export([create_with_state/4]).
+-endif.
 
 -include("blocks.hrl").
 -include_lib("aecontract/include/hard_forks.hrl").
@@ -31,41 +34,38 @@
 
 -spec create(aec_blocks:block() | aec_blocks:block_header_hash()) ->
         {ok, aec_blocks:block(), block_info()} | {error, term()}.
-create(BlockHash) when is_binary(BlockHash) ->
-    case aec_chain:get_block(BlockHash) of
-        {ok, Block} -> create(Block);
-        _ -> {error, block_not_found}
-    end;
-create(Block) ->
-    case aec_blocks:is_key_block(Block) of
-        true -> int_create(Block, Block);
-        false ->
-            case aec_chain:get_block(aec_blocks:prev_key_hash(Block)) of
-                {ok, KeyBlock} -> int_create(Block, KeyBlock);
-                _ -> {error, block_not_found}
-            end
+create(BlockInfo) ->
+    case get_blocks(BlockInfo) of
+        {ok, PrevBlock, PrevKeyBlock} -> int_create(PrevBlock, PrevKeyBlock);
+        Error = {error, _}            -> Error
     end.
 
-
--spec create(aec_blocks:block() | aec_blocks:block_header_hash(), non_neg_integer()) ->
+-spec create_pos(aec_blocks:block() | aec_blocks:block_header_hash(), non_neg_integer()) ->
         {ok, aec_blocks:block(), block_info()} | {error, term()}.
-create(BlockHash, GasOffset) when is_binary(BlockHash) ->
-    case aec_chain:get_block(BlockHash) of
-        {ok, Block} -> create(Block, GasOffset);
-        _ -> {error, block_not_found}
-    end;
-create(Block, GasOffset) ->
+create_pos(BlockInfo, GasOffset) ->
     MaxGas = aec_governance:block_gas_limit() - GasOffset,
-    case aec_blocks:is_key_block(Block) of
-        true ->
-            int_create(Block, Block, MaxGas);
-        false ->
-            case aec_chain:get_block(aec_blocks:prev_key_hash(Block)) of
-                {ok, KeyBlock} -> int_create(Block, KeyBlock, MaxGas);
-                _ -> {error, block_not_found}
-            end
+    case get_blocks(BlockInfo) of
+        {ok, PrevKeyBlock, PrevKeyBlock} -> int_create(PrevKeyBlock, PrevKeyBlock, MaxGas);
+        {ok, _, _}                       -> {error, pos_mb_only_on_keyblock};
+        Error = {error, _}               -> Error
     end.
 
+-spec get_blocks(aec_blocks:block() | aec_blocks:block_header_hash()) ->
+        {ok, aec_blocks:block(), aec_blocks:block()} | {error, term()}.
+get_blocks(BlockHash) when is_binary(BlockHash) ->
+    case aec_chain:get_block(BlockHash) of
+        {ok, Block} -> get_blocks(Block);
+        _ -> {error, block_not_found}
+    end;
+get_blocks(Block) ->
+    case aec_blocks:is_key_block(Block) of
+        true  -> {ok, Block, Block};
+        false ->
+            case aec_chain:get_block(aec_blocks:prev_key_hash(Block)) of
+                {ok, KeyBlock} -> {ok, Block, KeyBlock};
+                _              -> {error, block_not_found}
+            end
+    end.
 
 -spec create_with_state(aec_blocks:block(), aec_blocks:block(),
     list(aetx_sign:signed_tx()), aec_trees:trees()) ->
