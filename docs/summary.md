@@ -8,7 +8,6 @@
 * [Update](update.md)
 * [Docker](docker.md)
 * [Build from source](build.md)
-  * [Build from source: Windows](build-windows.md)
 * [CUDA Miner](cuda-miner.md)
 * [Stratum](stratum.md)
 * [Network Monitoring](monitoring.md)
