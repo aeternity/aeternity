@@ -41,7 +41,9 @@
          check_finalize_info/1,
          sanity_check_vote_tx/1,
          hole_production/1,
-         hole_production_eoe/1
+         hole_production_eoe/1,
+         start_two_child_nodes_w_same_validator/1,
+         double_block_production/1
         ]).
 
 -include_lib("stdlib/include/assert.hrl").
@@ -160,7 +162,7 @@
 -define(GENESIS_BENFICIARY, <<0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0>>).
 
 all() -> [{group, hc}, {group, epochs_slow}, {group, epochs_fast}, {group, hc_hole},
-          {group, pinning}, {group, default_pin}, {group, config}
+          {group, pinning}, {group, default_pin}, {group, penalties}, {group, config}
           ].
 
 groups() ->
@@ -208,6 +210,12 @@ groups() ->
             produce_first_epoch,
             check_default_pin,
             fast_parent_fail_pin
+          ]}
+    , {penalties, [sequence],
+          [ start_two_child_nodes_w_same_validator,
+            produce_first_epoch,
+            produce_some_epochs,
+            double_block_production
           ]}
     , {config, [sequence],
           [ start_two_child_nodes,
@@ -322,6 +330,15 @@ init_per_testcase(start_two_child_nodes, Config) ->
         [{nodes, [{?NODE1, ?NODE1_NAME, [?ALICE, ?LISA], [{?ALICE, ?DWIGHT}, {?LISA, ?EDWIN}]},
                   {?NODE2, ?NODE2_NAME, [?BOB_SIGN], [{?BOB_SIGN, ?EDWIN}]}
                  ]}
+         | Config],
+    aect_test_utils:setup_testcase(Config1),
+    Config1;
+init_per_testcase(start_two_child_nodes_w_same_validator, Config) ->
+    Config1 =
+        [{nodes, [{?NODE1, ?NODE1_NAME, [?ALICE, ?LISA], [{?ALICE, ?DWIGHT}, {?LISA, ?EDWIN}]},
+                  {?NODE2, ?NODE2_NAME, [?LISA, ?BOB_SIGN], [{?LISA, ?EDWIN}, {?BOB_SIGN, ?EDWIN}]}
+                 ]},
+                 {initial_validators, false}, {default_pinning_behavior, true}  % turn off pinning FTM
          | Config],
     aect_test_utils:setup_testcase(Config1),
     Config1;
@@ -1381,6 +1398,22 @@ fast_parent_fail_pin(Config) ->
 
     ok.
 
+%%%=============================================================================
+%%% Penalties
+%%% =============================================================================
+
+
+%% The same function as original, but setup with same validator on both to create forks
+start_two_child_nodes_w_same_validator(Config) ->
+    start_two_child_nodes(Config).
+
+double_block_production(Config) ->
+    [{Node, NodeName, _, _} | _] = ?config(nodes, Config),
+
+    %% some block production including parent blocks
+    %produce_n_epochs(Config, 5),
+
+    ok.
 
 %%%=============================================================================
 %%% Elections
