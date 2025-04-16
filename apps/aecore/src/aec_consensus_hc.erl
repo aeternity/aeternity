@@ -139,6 +139,7 @@ start(Config, _) ->
                                               fun target_parent_heights/1, %% prefetch the next parent block
                                               CacheSize, PCFinality]),
     start_dependency(aec_pinning_agent, [get_contract_pubkey(?ELECTION_CONTRACT), default_pinning_behavior(), SignModule]),
+    start_dependency(aec_hc_penalty_service, []),
     ok.
 
 start_btc(StakersEncoded, PinnersEncoded, ParentConnMod) ->
@@ -236,6 +237,7 @@ stop() ->
     aec_parent_connector:stop(),
     aec_parent_chain_cache:stop(),
     aec_pinning_agent:stop(),
+    aec_hc_penalty_service:stop(),
     ok.
 
 is_providing_extra_http_endpoints() -> false.
@@ -303,7 +305,7 @@ check_eoe(Node, NodeTarget) ->
 dirty_validate_micro_node_with_ctx(Node, Block, Ctx) ->
     Validators = [ fun ctx_validate_micro_block_time/3
                  , fun ctx_validate_micro_signature/3
-                 , fun ctx_validate_double_spend/3
+                 %, fun ctx_validate_double_spend/3
                  ],
     aeu_validation:run(Validators, [Node, Block, Ctx]).
 
