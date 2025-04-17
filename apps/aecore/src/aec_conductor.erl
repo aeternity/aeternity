@@ -1483,10 +1483,8 @@ hc_create_microblock(TopHash, Leader, VoteResults) ->
 hc_create_microblock_candidate(TopHash, VoteResults) ->
     hc_create_microblock_candidate(TopHash, VoteResults, 0).
 
-hc_create_microblock_candidate(TopHash, [], 0) ->
-    aec_block_micro_candidate:create(TopHash);
 hc_create_microblock_candidate(TopHash, [], Gas) ->
-    aec_block_micro_candidate:create(TopHash, Gas);
+    aec_block_micro_candidate:create_pos(TopHash, Gas);
 hc_create_microblock_candidate(TopHash, [{ok, VoteTx}|VoteResults], CurrentGas) ->
     Tx = aetx_sign:tx(VoteTx),
     Gas = case aec_chain:get_block(TopHash) of
