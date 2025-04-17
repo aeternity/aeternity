@@ -61,6 +61,7 @@
         , create_version_too_high/1
         , sophia_call_out_of_gas/1
         , fate_environment/1
+        , fate_environment_pos/1
         , fate_list_of_maps/1
         , state_tree/1
         , sophia_identity/1
@@ -357,6 +358,7 @@ all() ->
                        , {group, sophia_aevm_specific}]).
 
 -define(FATE_SPECIFIC, [ fate_environment
+                       , fate_environment_pos
                        , fate_list_of_maps
                        , sophia_polymorphic_entrypoint
                        , lima_migration
@@ -708,7 +710,7 @@ init_per_testcase(TC, Config) when TC == aevm_version_interaction;
                                    TC == create_contract_init_error_no_create_account ->
     Config1 = [{sophia_version, ?SOPHIA_MINERVA}, {vm_version, ?VM_AEVM_SOPHIA_2} | Config],
     init_per_testcase_common(TC, Config1);
-init_per_testcase(fate_environment, Config) ->
+init_per_testcase(Env, Config) when Env == fate_environment; Env == fate_environment_pos ->
     meck:new(aefa_chain_api, [passthrough]),
     meck:expect(aefa_chain_api, blockhash,
                 fun(N, _, S) when is_integer(N) ->
@@ -716,7 +718,8 @@ init_per_testcase(fate_environment, Config) ->
                         _ = aefa_chain_api:generation(S),
                         aeb_fate_data:make_hash(<<N:256>>)
                 end),
-    init_per_testcase_common(fate_environment, Config);
+    [ persistent_term:put({aec_consensus, consensus_type}, pos) || Env == fate_environment_pos ],
+    init_per_testcase_common(Env, Config);
 init_per_testcase(TC, Config) when TC == sophia_aens_resolve;
                                    TC == sophia_signatures_aens;
                                    TC == sophia_all_signatures_aens;
@@ -795,8 +798,9 @@ init_per_testcase_common(_TC, Config) ->
     put('$aci_disabled', AciDisabled),
     Config.
 
-end_per_testcase(fate_environment, _Config) ->
+end_per_testcase(Env, _Config) when Env == fate_environment; Env == fate_environment_pos ->
     meck:unload(aefa_chain_api),
+    [ persistent_term:put({aec_consensus, consensus_type}, pow) || Env == fate_environment_pos ],
     ok;
 end_per_testcase(TC, _Config) when TC == sophia_aens_resolve;
                                    TC == sophia_aens_lookup;
@@ -7868,7 +7872,16 @@ call_wrong_type(_Cfg) ->
 %%% FATE specific tests
 %%%===================================================================
 
-fate_environment(_Cfg) ->
+fate_environment(Cfg) ->
+    pow = aec_consensus:get_consensus_type(),
+    fate_environment_([{pos, false} | Cfg]).
+
+fate_environment_pos(Cfg) ->
+    pos = aec_consensus:get_consensus_type(),
+    fate_environment_([{pos, true} | Cfg]).
+
+fate_environment_(Cfg) ->
+    Pos = ?config(pos, Cfg),
     init_new_state(),
     Acc = <<AccInt:256>> = ?call(new_account, 100000000 * aec_test_utils:min_gas_price()),
     Acc1Balance = 123456789,
@@ -7892,11 +7905,21 @@ fate_environment(_Cfg) ->
     Height  = 3,
     Env     = default_tx_env(#{height => Height}),
     <<BeneficiaryInt:?BENEFICIARY_PUB_BYTES/unit:8>> = aetx_env:beneficiary(Env),
-    ?assertEqual({address, BeneficiaryInt},
-                 ?call(call_contract, Acc, Contract, beneficiary, word, {})),
+
+    if Pos ->
+            ?assertEqual({error, <<"Error: operation 'Chain.coinbase' is disabled">>},
+                         ?call(call_contract, Acc, Contract, beneficiary, word, {}));
+       true ->
+            ?assertEqual({address, BeneficiaryInt},
+                         ?call(call_contract, Acc, Contract, beneficiary, word, {}))
+    end,
+
     ?assertEqual(Height, ?call(call_contract, Acc, Contract, generation, word, {},
                                #{height => Height})),
-    Difficulty = aetx_env:difficulty(Env),
+    Difficulty =
+        if Pos  -> 0;
+           true -> aetx_env:difficulty(Env)
+        end,
     ?assertEqual(Difficulty, ?call(call_contract, Acc, Contract, difficulty, word, {})),
     GasLimit = aec_governance:block_gas_limit(),
     ?assertEqual(GasLimit, ?call(call_contract, Acc, Contract, gas_limit, word, {})),
@@ -7916,9 +7939,14 @@ fate_environment(_Cfg) ->
     %% Block hash is mocked to return the height if it gets a valid height
     %% since we don't have a chain.
     BHHeight = 1000,
-    %% Behavior at current height changed in FATE_VM2.
-    ?assertMatchFATE(none, {some, {bytes, <<BHHeight:256>>}},
-        ?call(call_contract, Acc, Contract, block_hash, {option, word}, {BHHeight}, #{height => BHHeight})),
+    %% Behavior at current height changed in FATE_VM2. And is different for PoS
+    if Pos ->
+          ?assertMatch(none,
+              ?call(call_contract, Acc, Contract, block_hash, {option, word}, {BHHeight}, #{height => BHHeight}));
+       true ->
+          ?assertMatchFATE(none, {some, {bytes, <<BHHeight:256>>}},
+              ?call(call_contract, Acc, Contract, block_hash, {option, word}, {BHHeight}, #{height => BHHeight}))
+    end,
     ?assertEqual(none, ?call(call_contract, Acc, Contract, block_hash, {option, word}, {BHHeight + 1},
                           #{height => BHHeight})),
     ?assertEqual(none, ?call(call_contract, Acc, Contract, block_hash, {option, word}, {BHHeight - 256},

@@ -9,8 +9,7 @@
 -export([ apply_block_txs/3
         , apply_block_txs_strict/3
         , create/1
-        , create/2
-        , create_with_state/4
+        , create_pos/2
         , update/3
         , trees/1
         ]).
@@ -18,6 +17,10 @@
 -export([ min_t_after_keyblock/0]).
 
 -export_type([block_info/0]).
+
+-ifdef(TEST).
+-export([create_with_state/4]).
+-endif.
 
 -include("blocks.hrl").
 -include_lib("aecontract/include/hard_forks.hrl").
@@ -31,42 +34,40 @@
 
 -spec create(aec_blocks:block() | aec_blocks:block_header_hash()) ->
         {ok, aec_blocks:block(), block_info()} | {error, term()}.
-create(BlockHash) when is_binary(BlockHash) ->
-    case aec_chain:get_block(BlockHash) of
-        {ok, Block} -> create(Block);
-        _ -> {error, block_not_found}
-    end;
-create(Block) ->
-    case aec_blocks:is_key_block(Block) of
-        true -> int_create(Block, Block);
-        false ->
-            case aec_chain:get_block(aec_blocks:prev_key_hash(Block)) of
-                {ok, KeyBlock} -> int_create(Block, KeyBlock);
-                _ -> {error, block_not_found}
-            end
+create(BlockInfo) ->
+    case get_blocks(BlockInfo) of
+        {ok, PrevBlock, PrevKeyBlock} -> int_create(PrevBlock, PrevKeyBlock);
+        Error = {error, _}            -> Error
     end.
 
-
--spec create(aec_blocks:block() | aec_blocks:block_header_hash(), non_neg_integer()) ->
+-spec create_pos(aec_blocks:block() | aec_blocks:block_header_hash(), non_neg_integer()) ->
         {ok, aec_blocks:block(), block_info()} | {error, term()}.
-create(BlockHash, GasOffset) when is_binary(BlockHash) ->
+create_pos(BlockInfo, GasOffset) ->
+    MaxGas = aec_governance:block_gas_limit() - GasOffset,
+    case get_blocks(BlockInfo) of
+        {ok, PrevKeyBlock, PrevKeyBlock} -> int_create(PrevKeyBlock, PrevKeyBlock, MaxGas);
+        {ok, _, _}                       -> {error, pos_mb_only_on_keyblock};
+        Error = {error, _}               -> Error
+    end.
+
+-spec get_blocks(aec_blocks:block() | aec_blocks:block_header_hash()) ->
+        {ok, aec_blocks:block(), aec_blocks:block()} | {error, term()}.
+get_blocks(BlockHash) when is_binary(BlockHash) ->
     case aec_chain:get_block(BlockHash) of
-        {ok, Block} -> create(Block, GasOffset);
+        {ok, Block} -> get_blocks(Block);
         _ -> {error, block_not_found}
     end;
-create(Block, GasOffset) ->
-    MaxGas = aec_governance:block_gas_limit() - GasOffset,
+get_blocks(Block) ->
     case aec_blocks:is_key_block(Block) of
-        true ->
-            int_create(Block, Block, MaxGas);
+        true  -> {ok, Block, Block};
         false ->
             case aec_chain:get_block(aec_blocks:prev_key_hash(Block)) of
-                {ok, KeyBlock} -> int_create(Block, KeyBlock, MaxGas);
-                _ -> {error, block_not_found}
+                {ok, KeyBlock} -> {ok, Block, KeyBlock};
+                _              -> {error, block_not_found}
             end
     end.
 
-
+-ifdef(TEST).
 -spec create_with_state(aec_blocks:block(), aec_blocks:block(),
     list(aetx_sign:signed_tx()), aec_trees:trees()) ->
     {aec_blocks:block(), aec_trees:trees()}.
@@ -79,6 +80,7 @@ create_with_state(Block, KeyBlock, Txs, Trees) ->
     {ok, NewBlock, #{ trees := NewTrees}} =
         int_create_block(Height, MBEnv, TxEnv, Txs, Trees),
     {NewBlock, NewTrees}.
+-endif.
 
 -spec apply_block_txs(list(aetx_sign:signed_tx()), aec_trees:trees(),
                       aetx_env:env()) ->
@@ -120,7 +122,6 @@ trees(#{trees := Trees}) ->
     {ok, Trees}.
 
 %% -- Internal functions -----------------------------------------------------
-
 
 int_create(PrevBlock, KeyBlock) ->
     MaxGas = aec_governance:block_gas_limit(),
@@ -172,10 +173,12 @@ int_pack_block(Height, GasAvailable, TxHashes, Txs, MBEnv, TxEnv, Trees, Events)
                            Txs ++ Txs1, MBEnv, TxEnv, Trees1, Events ++ Events1)
     end.
 
+-ifdef(TEST).
 int_create_block(Height, MBEnv, TxEnv, Txs, Trees) ->
     {ok, Txs1, InvalidTxs, Trees1, Events1} = int_apply_block_txs(Txs, Trees, TxEnv, false),
     report_failed_txs(InvalidTxs),
     int_create_block(Height, MBEnv, TxEnv, Txs1, Trees1, Events1).
+-endif.
 
 int_create_block(Height, MBEnv, TxEnv, Txs, Trees, Events) ->
     #{key_block := KeyBlock, key_hash := KeyBlockHash,
