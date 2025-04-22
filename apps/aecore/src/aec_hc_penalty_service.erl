@@ -33,7 +33,7 @@
 
 %% Loop state
 -record(loop_state, {
-
+    block_height_map = #{} :: map()
 }).
 -type loop_state() :: loop_state.
 
@@ -57,19 +57,20 @@ test_and_register_block_offence(Block) ->
 
 init([]) ->
     lager:debug("init: ~p", []),
-    LoopState = #loop_state{},
+    LoopState = #loop_state{block_height_map = #{}},
     {ok, LoopState}.
 
 handle_call({test_and_register_block_offence, Block}, _From, State) ->
-    {Res, NewState} = case test_block_offence(Block) of
-        {ok, []} ->
-            {ok, State};
-        {ok, Pens} ->
-            NS = register_offences(Pens, State),
-            {ok, NS};
+    {Res, NewState} = case test_block_offence(Block, State) of
+        {ok, [], NS0} ->
+            {ok, NS0};
+        {ok, Pens, NS1} ->
+            NS2 = register_offences(Pens, NS1),
+            {ok, NS2};
         {error, Reason} ->
             {{error, Reason}, State}
     end,
+    lager:debug("pen_state: ~p", [NewState]),
     {reply, Res, NewState};
 
 handle_call(_Request, _From, LoopState) ->
@@ -91,24 +92,81 @@ code_change(_OldVsn, LoopState, _Extra) ->
 %%%=============================================================================
 %%% Internal functions
 %%%=============================================================================
+test_block_offence(Block, State) ->
+    lager:debug("test_block_offence: ~p", [Block]),
+    Header = aec_blocks:to_header(Block),
+    Height = aec_headers:height(Header),
+    RegBlocks = get_blocks_for_height(Height, State),
+    lager:debug("RegBlocks: ~p", [RegBlocks]),
+    {Pens, BlockToAdd} = case aec_headers:type(Header) of
+        key ->
+            KeyHeader = aec_blocks:to_key_header(Block),
+            {P,B} = case find_blocks_produced(RegBlocks, aec_headers:miner(KeyHeader)) of
+                [] ->  % no blocks mined by this producer
+                    {[], Header};
+                [FoundHeader | _] -> % found a double block from this producer
+                    case aec_headers:root_hash(Header) =/= aec_headers:root_hash(FoundHeader) of
+                        true ->
+                            {[{dbl_keyblock, Header, FoundHeader}], none};
+                        false ->
+                            {[], Header}
+                    end
+            end,
+            {ok, Leader} = aec_consensus_hc:leader_for_height(Height),
+            case Leader =:= aec_headers:miner(KeyHeader) of
+                true ->
+                    {P,B};
+                false ->
+                    {[{invalid_producer, Header} | P], Header}
+            end;
+        micro ->
+            case validate_micro_signature(Header) of
+                {error, _} ->
+                    {[{invalid_producer, Header}], none}; %
+                ok ->
+                    case get_micro_block(RegBlocks) of
+                        [] ->
+                            {[], Header};
+                        [FoundHeader | _] ->
+                            case aec_headers:root_hash(Header) =/= aec_headers:root_hash(FoundHeader) of
+                                true ->
+                                    {[{dbl_microblock, Header, FoundHeader}], none};
+                                false ->
+                                    {[], Header}
+                            end
+                    end
+            end
+    end,
+    {ok, Pens, add_block_at_height(Height, BlockToAdd, State)}.
+
+get_blocks_for_height(Height, #loop_state{block_height_map = BM}) ->
+    maps:get(Height, BM, []).
 
 register_offences(_Pens, State) ->
     lager:debug("register_offences: ~p", [_Pens]),
     State.
 
-test_block_offence(_Block) ->
-    lager:debug("test_block_offence: ~p", [_Block]),
-    {ok, []}.
+add_block_at_height(_Height, none, State) -> State;
+add_block_at_height(Height, Block, State) ->
+    NewBlocks = [ Block | maps:get(Height, State#loop_state.block_height_map, []) ],
+    State#loop_state{block_height_map = maps:put(Height, NewBlocks, State#loop_state.block_height_map)}.
 
-%%%=============================================================================
-%%% Eunit Tests
-%%%=============================================================================
+find_blocks_produced(Blocks, Producer) ->
+    lager:debug("find_blocks_produced_by: ~p", [Producer]),
+    lists:filter(fun(Block) ->
+        aec_headers:type(Block) =:= key andalso aec_headers:miner(Block) =:= Producer end, Blocks).
 
--ifdef(TEST).
+validate_micro_signature(Header) ->
+    Height = aec_headers:height(Header),
+    case aec_consensus_hc:leader_for_height(Height) of
+        {ok, Leader} ->
+            case aeu_sig:verify(Header, Leader) of
+                ok         -> ok;
+                {error, _} -> {error, signature_verification_failed}
+            end;
+        {error, _} ->
+            {error, signature_verification_failed}
+    end.
 
--include_lib("eunit/include/eunit.hrl").
-
-example_test() ->
-    ?assertEqual(true, true).
-
--endif.
+get_micro_block(Blocks) ->
+    lists:filter(fun(Block) -> aec_headers:type(Block) =:= micro end, Blocks).

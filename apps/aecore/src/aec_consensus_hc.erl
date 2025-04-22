@@ -305,7 +305,6 @@ check_eoe(Node, NodeTarget) ->
 dirty_validate_micro_node_with_ctx(Node, Block, Ctx) ->
     Validators = [ fun ctx_validate_micro_block_time/3
                  , fun ctx_validate_micro_signature/3
-                 %, fun ctx_validate_double_spend/3
                  ],
     aeu_validation:run(Validators, [Node, Block, Ctx]).
 
@@ -327,12 +326,6 @@ ctx_validate_micro_signature(Node, _Block, _Ctx) ->
         {error, _} ->
             {error, signature_verification_failed}
     end.
-
-ctx_validate_double_spend(Node, Block, Ctx) ->
-    lager:debug("Ctx: ~p", [Ctx]),
-    lager:debug("Node: ~p", [Node]),
-    lager:debug("Block: ~p", [Block]),
-    ok.
 
 %% ------------------------------------------------------------------------
 %% -- Block structure

@@ -1628,6 +1628,12 @@ handle_add_block(Block, Hash, Prev, #state{top_block_hash = TopBlockHash, consen
     %% external (gossip/sync) blocks and we trust the ones we
     %% produce ourselves.
     ConsensusModule = Consensus#consensus.consensus_module,
+    case ConsensusModule of
+        aec_consensus_hc ->
+            aec_hc_penalty_service:test_and_register_block_offence(Block);
+        _ ->
+            ok
+    end,
     case aec_chain_state:insert_block_conductor(Block, Origin) of
         {ok, TopChanged, PrevKeyHeader, Events} = OkResult  ->
             case ConsensusModule of
@@ -1635,8 +1641,7 @@ handle_add_block(Block, Hash, Prev, #state{top_block_hash = TopBlockHash, consen
                     Header = aec_blocks:to_header(Block),
                     lager:debug("insert_block ~s ~p -> ~p", [
                         case aec_headers:is_hole(Header) of true -> "HOLE"; false -> "non-hole" end,
-                        Header, OkResult]),
-                    aec_hc_penalty_service:test_and_register_block_offence(Block);
+                        Header, OkResult]);
                 _ ->
                     lager:debug("insert_block ~p -> ~p", [aec_blocks:to_header(Block), OkResult])
             end,
@@ -1644,9 +1649,6 @@ handle_add_block(Block, Hash, Prev, #state{top_block_hash = TopBlockHash, consen
         {pof, TopChanged, PrevKeyHeader, _PoF, Events} ->
             %% TODO: should we really publish tx_events in this case?
             lager:info("PoF found in ~p", [Hash]),
-            case ConsensusModule of
-                aec_consensus_hc -> aec_hc_penalty_service:test_and_register_block_offence(Block)
-            end,
             handle_successfully_added_block(Block, Hash, TopChanged, PrevKeyHeader, Events, State, Origin);
         {error, already_in_db} ->
             epoch_mining:debug("Block (~p) already in chain when top is (~p) [conductor]",
