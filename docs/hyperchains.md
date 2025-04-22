@@ -1249,3 +1249,40 @@ owner: ""
 ```
 
 
+----
+<a name="hc_specific_fate_behavior"></a>
+# Addendum 2: Hyperchain-specific FATE/Contract behavior
+
+A HyperChain is a Proof-of-stake chain, and it is organized differently from
+Aeternity Mainnet. See the
+[whitepaper](https://github.com/aeternity/hyperchains-whitepaper/blob/master/Periodically-Syncing-HyperChains.md)
+for details. This means that some of the chain-inspection operations
+(`Chain.block\_hash`, `Chain.coinbase`, and `Chain.difficulty`) can't work
+exactly the same. Here we summarize the differences and current state.
+
+### Chain.block\_hash
+
+Change: `Chain.block\_hash(current_height)` returns `None`
+
+The block hash (at height) in Sophia/FATE always refer to the hash of the
+key-block. (Most of the time in Bitcoin-NG there will be many micro-blocks at
+the same height, so it is not unique.) And, in a HyperChain the micro-block
+(where the contract calls happen) comes _before_ the key-block, and thus there
+simply isn't a block hash to return.
+
+### Chain.coinbase
+
+Calls to `Chain.coinbase` will fail and abort the execution.
+
+The same reason as for block hash, the key-block isn't yet produced so there is
+no (simple) place to find the information. It is always possible to call the
+consensus contract and check who is the producer of the current
+block/generation.
+
+### Chain.difficulty
+
+Calls to `Chain.difficulty` will return `0`.
+
+There is no mining, so no difficulty to keep track of. Internally, the
+`difficulty` field is used for other purposes, but that number makes little
+sense in Sophia/FATE so no point returning it.
