@@ -1550,7 +1550,7 @@ handle_synced_block(Block, State) ->
     epoch_mining:debug("synced_block: ~p", [Block]),
     handle_add_block(Block, State, block_synced).
 
-%% A block was posted via the HTTP API or similar
+%% A block was posted via gossip from a peer, or via the HTTP API
 handle_post_block(Block, State) ->
     case aec_blocks:is_key_block(Block) of
         true ->
