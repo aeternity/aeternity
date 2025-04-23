@@ -834,14 +834,16 @@ apply_and_store_state_trees(Node, PrevNode, TreesIn, ForkInfoIn, State) ->
     {DifficultyOut, Events}.
 
 update_fraud_info(ForkInfoIn, Node, State) ->
+    Consensus = aec_block_insertion:node_consensus(Node),
+    Type = Consensus:get_type(),
     case maps:get(pof, State) =:= no_fraud of
-        true  ->
-            ForkInfoIn#fork_info.fraud;
-        false ->
+        false when Type =:= pow ->
             case ForkInfoIn#fork_info.fraud of
                 true  -> aec_block_insertion:abort_state_transition({double_reported_fraud, node_hash(Node)});
                 false -> true
-            end
+            end;
+        _  ->
+            ForkInfoIn#fork_info.fraud
     end.
 
 handle_top_block_change(OldTopNode, NewTopDifficulty, Node, Events, State) ->
@@ -1273,13 +1275,25 @@ db_sibling_blocks(Node) ->
     Height   = node_height(Node),
     Hash     = node_hash(Node),
     PrevHash = node_prev_hash(Node),
-    case node_type(Node) of
-        key ->
-            #{ key_siblings   => match_prev_at_height(Height    , PrevHash, Hash)
-             , micro_siblings => match_prev_at_height(Height - 1, PrevHash, Hash)};
-        micro ->
-            #{ key_siblings   => match_prev_at_height(Height + 1, PrevHash, Hash)
-             , micro_siblings => match_prev_at_height(Height    , PrevHash, Hash)}
+    Consensus = aec_block_insertion:node_consensus(Node),
+    case Consensus:get_type() of
+        pos -> case node_type(Node) of % switched micro/key block order in pos
+            key ->
+                #{ key_siblings   => match_prev_at_height(Height - 1, PrevHash, Hash)
+                , micro_siblings => match_prev_at_height(Height, PrevHash, Hash)};
+            micro ->
+                #{ key_siblings   => match_prev_at_height(Height, PrevHash, Hash)
+                , micro_siblings => match_prev_at_height(Height + 1, PrevHash, Hash)}
+            end;
+        _ ->
+            case node_type(Node) of
+                key ->
+                    #{ key_siblings   => match_prev_at_height(Height    , PrevHash, Hash)
+                    , micro_siblings => match_prev_at_height(Height - 1, PrevHash, Hash)};
+                micro ->
+                    #{ key_siblings   => match_prev_at_height(Height + 1, PrevHash, Hash)
+                    , micro_siblings => match_prev_at_height(Height    , PrevHash, Hash)}
+            end
     end.
 
 db_find_signal_count(Hash) ->
