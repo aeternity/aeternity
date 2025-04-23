@@ -445,9 +445,14 @@ prev_version(Node) ->
     end.
 
 maybe_add_pof(State, Block) ->
-    case aec_blocks:type(Block) of
-        key   -> State#{pof => no_fraud};
-        micro -> State#{pof => aec_blocks:pof(Block)}
+    case aec_consensus:get_consensus_type() of
+        pow ->
+            case aec_blocks:type(Block) of
+                key   -> State#{pof => no_fraud};
+                micro -> State#{pof => aec_blocks:pof(Block)}
+            end;
+        pos ->
+            State#{pof => no_fraud}
     end.
 
 node_is_genesis(Node) ->
@@ -1319,25 +1324,35 @@ update_found_pogf(Node, KeySibHeaders, State) ->
 maybe_pof(_Node, [], _Ctx) ->
     no_fraud;
 maybe_pof(Node, MicroSibHeaders, Ctx) ->
-    case node_type(Node) of
-        key -> no_fraud;
-        micro ->
-            Miner = node_miner(aec_block_insertion:ctx_prev_key(Ctx)),
-            [Header| _] = MicroSibHeaders,
-            aec_pof:new(node_header(Node), Header, Miner)
+    case aec_consensus:get_consensus_type() of
+        pow ->
+            case node_type(Node) of
+                key -> no_fraud;
+                micro ->
+                    Miner = node_miner(aec_block_insertion:ctx_prev_key(Ctx)),
+                    [Header| _] = MicroSibHeaders,
+                    aec_pof:new(node_header(Node), Header, Miner)
+            end;
+        pos ->
+          no_fraud
     end.
 
 maybe_pogf(_Node, []) -> no_fraud;
 maybe_pogf(Node, [Sibling|T]) ->
-    case node_type(Node) of
-        micro -> no_fraud;
-        key ->
-            case node_miner(Node) =:= aec_headers:miner(Sibling) of
-                true ->
-                    {node_header(Node), Sibling};
-                false ->
-                    maybe_pogf(Node, T)
-            end
+    case aec_consensus:get_consensus_type() of
+        pow ->
+            case node_type(Node) of
+                micro -> no_fraud;
+                key ->
+                    case node_miner(Node) =:= aec_headers:miner(Sibling) of
+                        true ->
+                            {node_header(Node), Sibling};
+                        false ->
+                            maybe_pogf(Node, T)
+                    end
+            end;
+        pos ->
+          no_fraud
     end.
 
 % if a miner is fraudulent - one does not receive a reward and it is locked
