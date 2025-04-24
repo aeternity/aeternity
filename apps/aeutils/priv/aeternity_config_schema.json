@@ -1720,6 +1720,10 @@
                                             "description": "The address of the smart contract that will be used for reward distributions. For a new chain this contract should be loaded at genesis",
                                             "type": "string"
                                         },
+                                        "staking_contract": {
+                                            "description": "The address of the smart contract that will be used for staking. For a new chain this contract should be loaded at genesis",
+                                            "type": "string"
+                                        },
                                         "genesis_start_time": {
                                             "description": "Timestamp for genesis",
                                             "default": 0,
