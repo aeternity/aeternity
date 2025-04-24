@@ -164,7 +164,12 @@ load_plugin_apps(Path) ->
             ensure_empty_lib_subdir(Path),
             LibDirs = setup:lib_dirs_under_path(Path),
             SelectedDirs = select_dirs(LibDirs, NameStrs),
-            FinalLibDirs = final_lib_dirs(Path, SelectedDirs),
+            %% Ensure uniqueness by application name, if multiple plugins require the same dependencies it
+            %% fails to start with {badmatch,{error,same_version}}
+            %% If multiple versions/paths exist for the same app, this keeps the last one encountered.
+            %% Assuming it is built using the ae rebar plugin it should be the same version.
+            UniqueSelectedDirs = maps:values(maps:from_list([{N, S} || {N, _, _} = S <- SelectedDirs])),
+            FinalLibDirs = final_lib_dirs(Path, UniqueSelectedDirs),
             case try_patch_apps(FinalLibDirs) of
                 {[], []} ->
                     ok;
