@@ -14,7 +14,7 @@
 
 %% External API
 -export([
-    start_link/0,
+    start_link/1,
     stop/0
 ]).
 
@@ -33,7 +33,9 @@
 
 %% Loop state
 -record(loop_state, {
-    block_height_map = #{} :: map()
+    block_height_map = #{} :: map(),
+    penalties = [] :: list(),
+    cache_level = 0 :: integer()
 }).
 -type loop_state() :: loop_state.
 
@@ -41,9 +43,9 @@
 %%% API
 %%%=============================================================================
 
--spec start_link() -> {ok, pid()} | {error, {already_started, pid()}} | {error, Reason::any()}.
-start_link() ->
-    gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
+-spec start_link(integer()) -> {ok, pid()} | {error, {already_started, pid()}} | {error, Reason::any()}.
+start_link(CacheLevel) ->
+    gen_server:start_link({local, ?SERVER}, ?MODULE, [CacheLevel], []).
 
 stop() ->
     gen_server:stop(?SERVER).
@@ -55,9 +57,11 @@ test_and_register_block_offence(Block) ->
 %%% Gen Server Callbacks
 %%%=============================================================================
 
-init([]) ->
-    lager:debug("init: ~p", []),
-    LoopState = #loop_state{block_height_map = #{}},
+init([CacheLevel]) ->
+    lager:debug("init: Cachelevel: ~p", [CacheLevel]),
+    LoopState = #loop_state{block_height_map = #{},
+                            penalties = [],
+                            cache_level = CacheLevel},
     {ok, LoopState}.
 
 handle_call({test_and_register_block_offence, Block}, _From, State) ->
@@ -65,12 +69,12 @@ handle_call({test_and_register_block_offence, Block}, _From, State) ->
         {ok, [], NS0} ->
             {ok, NS0};
         {ok, Pens, NS1} ->
-            NS2 = register_offences(Pens, NS1),
+            NS2 = register_penalties(Pens, NS1),
             {ok, NS2};
         {error, Reason} ->
             {{error, Reason}, State}
     end,
-    lager:debug("pen_state: ~p", [NewState]),
+    %lager:debug("pen_state: ~p", [NewState]),
     {reply, Res, NewState};
 
 handle_call(_Request, _From, LoopState) ->
@@ -137,22 +141,36 @@ test_block_offence(Block, State) ->
                     end
             end
     end,
+    lager:debug("Pens: ~p", [State#loop_state.penalties]),
     {ok, Pens, add_block_at_height(Height, BlockToAdd, State)}.
 
 get_blocks_for_height(Height, #loop_state{block_height_map = BM}) ->
     maps:get(Height, BM, []).
 
-register_offences(_Pens, State) ->
-    lager:debug("register_offences: ~p", [_Pens]),
-    State.
+register_penalties(Pens, State) ->
+    lager:debug("register_penalties: ~p", [Pens]),
+    State#loop_state{penalties = [Pens | State#loop_state.penalties]}.
 
-add_block_at_height(_Height, none, State) -> State;
 add_block_at_height(Height, Block, State) ->
-    NewBlocks = [ Block | maps:get(Height, State#loop_state.block_height_map, []) ],
-    State#loop_state{block_height_map = maps:put(Height, NewBlocks, State#loop_state.block_height_map)}.
+    CacheLevel = State#loop_state.cache_level,
+    CleanedMap = case CacheLevel > 0 of
+        true ->
+            maps:remove(Height-CacheLevel, State#loop_state.block_height_map);
+        false ->
+            State#loop_state.block_height_map
+        end,
+    RetMap = case Block of
+        none ->
+            CleanedMap;
+        _ ->
+            NewBlocks = [ Block | maps:get(Height, State#loop_state.block_height_map, []) ],
+            maps:put(Height, NewBlocks, CleanedMap)
+    end,
+    %lager:debug("pen_block_cache_size: ~p", [maps:size(RetMap)]),
+    State#loop_state{block_height_map = RetMap}.
 
 find_blocks_produced(Blocks, Producer) ->
-    lager:debug("find_blocks_produced_by: ~p", [Producer]),
+    %lager:debug("find_blocks_produced_by: ~p", [Producer]),
     lists:filter(fun(Block) ->
         aec_headers:type(Block) =:= key andalso aec_headers:miner(Block) =:= Producer end, Blocks).
 
