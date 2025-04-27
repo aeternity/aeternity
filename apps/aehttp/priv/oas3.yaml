@@ -631,7 +631,7 @@ paths:
       description: Get a key block by hash
       parameters:
         - $ref: '#/components/parameters/intAsString'
-        - $ref: '#/components/parameters/blockHash'
+        - $ref: '#/components/parameters/keyBlockHash'
       responses:
         "200":
           description: Successful operation
@@ -711,7 +711,7 @@ paths:
       description: Get a micro block header by hash
       parameters:
         - $ref: '#/components/parameters/intAsString'
-        - $ref: '#/components/parameters/blockHash'
+        - $ref: '#/components/parameters/microBlockHash'
       responses:
         "200":
           description: Successful operation
