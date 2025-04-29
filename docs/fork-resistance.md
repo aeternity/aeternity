@@ -42,7 +42,7 @@ It is possible to enable fork resistance immediately, using the following settin
 
 ```yaml
 sync:
-    resist_forks_from_start: true`
+    resist_forks_from_start: true
 ```
 
 Note that configuration variables can be set both via the config file and via OS
