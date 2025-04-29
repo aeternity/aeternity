@@ -35,12 +35,15 @@
         %% Dirty validation before starting the state transition
         , dirty_validate_key_node_with_ctx/3
         , dirty_validate_micro_node_with_ctx/3
+        %% Block structure
+        , key_block_height_relative_previous_block/2
+        , micro_block_height_relative_previous_block/2
         %% State transition
         , state_pre_transform_key_node_consensus_switch/2
         , state_pre_transform_key_node/3
-        , state_pre_transform_micro_node/2
+        , state_pre_transform_micro_node/3
         %% Block rewards
-        , state_grant_reward/4
+        , state_grant_reward/5
         %% PoGF
         , pogf_detected/2
         %% Genesis block
@@ -114,13 +117,21 @@ client_request({mine_blocks, NumBlocksToMine, Type}) ->
             {ok, [client_request(emit_mb) || _ <- lists:seq(1, NumBlocksToMine)]}
     end;
 client_request(mine_micro_block_emptying_mempool_or_fail) ->
-    MaybeKB = ensure_leader(),
-    MB = client_request(emit_mb),
-    %% If instant mining is enabled then we can't have microforks :)
-    {ok, []} = aec_tx_pool:peek(infinity),
-    {ok, MaybeKB ++ [MB]};
+    mine_micro_block_emptying_mempool_or_fail(1, []);
 client_request({mine_blocks_until_txs_on_chain, TxHashes, Max}) ->
     mine_blocks_until_txs_on_chain(TxHashes, Max, []).
+
+mine_micro_block_emptying_mempool_or_fail(N, PrevBlocks) ->
+    case aec_tx_pool:peek(infinity) of
+        {ok, []} ->
+            {ok, PrevBlocks};
+        _ when N == 0 ->
+            {error, mempool_not_empty};
+        _ ->
+            MaybeKB = ensure_leader(),
+            MB = client_request(emit_mb),
+            mine_micro_block_emptying_mempool_or_fail(N - 1, PrevBlocks ++ MaybeKB ++ [MB])
+    end.
 
 mine_blocks_until_txs_on_chain(_TxHashes, 0, _Blocks) ->
     {error, max_reached};
@@ -163,16 +174,25 @@ dirty_validate_key_hash_at_height(_, _) -> ok.
 dirty_validate_key_node_with_ctx(_Node, _Block, _Ctx) -> ok.
 dirty_validate_micro_node_with_ctx(_Node, _Block, _Ctx) -> ok.
 
+%% ------------------------------------------------------------------------
+%% -- Block structure
+%% ------------------------------------------------------------------------
+key_block_height_relative_previous_block(_Type, Height) ->
+    Height + 1.
+
+micro_block_height_relative_previous_block(_Type, Height) ->
+    Height.
+
 %% -------------------------------------------------------------------
 %% Custom state transitions
 state_pre_transform_key_node_consensus_switch(_Node, Trees) -> Trees.
-state_pre_transform_key_node(_Node, _PrevNode, Trees) -> Trees.
-state_pre_transform_micro_node(_Node, Trees) -> Trees.
+state_pre_transform_key_node(_Node, _PrevNode, Trees) -> {Trees, []}.
+state_pre_transform_micro_node(_Height, _PrevNode, Trees) -> Trees.
 
 %% -------------------------------------------------------------------
 %% Block rewards
-state_grant_reward(Beneficiary, Node, Trees, Amount) ->
-    aec_consensus_bitcoin_ng:state_grant_reward(Beneficiary, Node, Trees, Amount).
+state_grant_reward(Beneficiary, Node, Delay, Trees, Amount) ->
+    aec_consensus_bitcoin_ng:state_grant_reward(Beneficiary, Node, Delay, Trees, Amount).
 
 %% -------------------------------------------------------------------
 %% PoGF

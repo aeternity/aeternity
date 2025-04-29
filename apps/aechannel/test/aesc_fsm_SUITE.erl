@@ -1635,8 +1635,8 @@ check_incorrect_deposit(Cfg) ->
     Test =
         fun(Depositor, Malicious) ->
             #{ i := I
-            , r := R
-            , spec := Spec} = create_channel_([?SLOGAN | Cfg]),
+             , r := R
+             , spec := Spec} = create_channel_([?SLOGAN | Cfg]),
             Port = proplists:get_value(port, Cfg, ?PORT),
             Data = {I, R, Spec, Port, Debug},
             Fun(Data, Depositor, Malicious,
@@ -1991,7 +1991,7 @@ fsm_state(Pid, Debug) ->
 
 fsm_stop(#{fsm := FsmPid} = _Fsm) ->
     _Res = rpc(dev1, aesc_fsm, stop, [FsmPid], _RpcDebug = false),
-    flush(),
+    flush(5),
     ok.
 
 wrong_sig_action(ChannelStuff, Poster, Malicious,
@@ -3205,11 +3205,14 @@ receive_from_fsm_(Tag, #{role := Role, fsm := Fsm} = R, Msg, TRef, Debug, Cont) 
     end.
 
 flush() ->
+    flush(0).
+
+flush(Timeout) ->
     receive
         M ->
             ?LOG("<== ~p", [M]),
-            flush()
-    after 0 ->
+            flush(Timeout)
+    after Timeout ->
             ok
     end.
 

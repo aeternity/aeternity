@@ -8,15 +8,12 @@
 
 -module(aec_parent_connector).
 
-%% Functionality:
-%% - at intervals check parent chain to understand when new top block is
-%%   available.
-%% - New top block from parent chain should include commitment transactions
-%%   on the parent chain.
-%% - Call consensus smart contract
-%% Parent chain commitment txs:
-%% - To AE parent - signed by a parent chain AE account hosted in the HC node via aec_keys
-%% - To BTC/Doge parent - signed by the external bitcoind/dogecoind hosted wallet
+%% Functionality
+%% Holds parent chain connection state and contains various utilities for
+%% interacting withvthe PC. Wraps parent implementation specific stuff
+%% and delegates the actual calling to aehttpc modules for each specific
+%% parent implementation (ae, btc, doge).
+
 -behaviour(gen_server).
 
 %%%=============================================================================
@@ -24,12 +21,11 @@
 %%%=============================================================================
 
 %% External API
--export([start_link/9, stop/0]).
+-export([start_link/6, stop/0]).
 
 %% Use in test only
 -ifdef(TEST).
 -export([start_link/0]).
--export([trigger_fetch/0]).
 -endif.
 
 
@@ -40,8 +36,16 @@
          %% blocking getting of blocks
          fetch_block_by_hash/1,
          fetch_block_by_height/1,
-
-         post_commitment/2
+         %% internal state getters
+         get_network_id/0,
+         get_parent_conn_mod/0,
+         get_sign_module/0,
+         get_parent_chain_type/0,
+         %% Pinning
+         pin_to_pc/3,
+         get_pinning_data/0,
+         get_pin_by_tx_hash/1,
+         has_parent_account/1
         ]).
 
 %% Callbacks
@@ -51,24 +55,17 @@
 -define(SERVER, ?MODULE).
 -define(SEED_BYTES, 16).
 
--record(commitment_details,
-    {   parent_network_id  :: binary(),
-        sign_module :: module(),
-        recipient :: aec_keys:pubkey(),
-        amount :: non_neg_integer(),
-        fee :: non_neg_integer()
-    }).
-
 %% Loop state
 -record(state,
     {
         parent_conn_mod = aehttpc_btc,
+        network_id,
+        sign_module,
         fetch_interval = 10000, % Interval for parent top change checks
         parent_hosts = [],
         hcpc = #{}, % Mapping from hyperchain staker pubkey to parent chain pubkey
         parent_top = not_yet_fetched :: not_yet_fetched | aec_parent_chain_block:block(),
-        rpc_seed = crypto:strong_rand_bytes(?SEED_BYTES), % BTC Api only
-        c_details = #commitment_details{}
+        rpc_seed = crypto:strong_rand_bytes(?SEED_BYTES) % BTC Api only
     }).
 -type state() :: #state{}.
 
@@ -88,7 +85,7 @@ start_link() ->
                     }],
     ParentConnMod = aehttpc_aeternity,
     start_link(ParentConnMod, FetchInterval, ParentHosts, <<"local_testnet">>,
-              aec_preset_keys, [], <<0:32/unit:8>>, 7800, 7900).
+              aec_preset_keys, []).
 -endif.
 
 %% Start the parent connector process
@@ -99,17 +96,12 @@ start_link() ->
 %% SignModule :: atom() - module name of the module that keeps the keys for the parent chain transactions to be signed
 %% HCPCPairs :: [{binary(), binary()}] - mapping from hyperchain address to child chain address
 %% Recipient :: binary() - the parent chain address to which the commitments must be sent to
--spec start_link(atom(), integer() | on_demand, [map()], binary(), atom(), [{binary(), binary()}], binary(), integer(), integer()) -> {ok, pid()} | {error, {already_started, pid()}} | {error, Reason::any()}.
-start_link(ParentConnMod, FetchInterval, ParentHosts, NetworkId, SignModule, HCPCPairs, Recipient, Fee, Amount) ->
-    gen_server:start_link({local, ?SERVER}, ?MODULE, [ParentConnMod, FetchInterval, ParentHosts, NetworkId, SignModule, HCPCPairs, Recipient, Fee, Amount], []).
+-spec start_link(atom(), integer() | on_demand, [map()], binary(), atom(), [{binary(), binary()}]) -> {ok, pid()} | {error, {already_started, pid()}} | {error, Reason::any()}.
+start_link(ParentConnMod, FetchInterval, ParentHosts, NetworkId, SignModule, HCPCPairs) ->
+    gen_server:start_link({local, ?SERVER}, ?MODULE, [ParentConnMod, FetchInterval, ParentHosts, NetworkId, SignModule, HCPCPairs], []).
 
 stop() ->
     gen_server:stop(?MODULE).
-
--ifdef(TEST).
-trigger_fetch() ->
-    gen_server:call(?SERVER, trigger_fetch).
--endif.
 
 request_block_by_hash(Hash) ->
     gen_server:cast(?SERVER, {request_block_by_hash, Hash}).
@@ -132,46 +124,84 @@ fetch_block_by_hash(Hash) ->
 fetch_block_by_height(Height) ->
     gen_server:call(?SERVER, {fetch_block_by_height, Height}).
 
-post_commitment(Who, Hash) ->
-    gen_server:call(?SERVER, {post_commitment, Who, Hash}).
+get_network_id() ->
+    gen_server:call(?SERVER, get_network_id).
+
+get_parent_conn_mod() ->
+    gen_server:call(?SERVER, get_parent_conn_mod).
+
+get_sign_module() ->
+    gen_server:call(?SERVER, get_sign_module).
+
+-spec get_parent_chain_type() -> {ok, atom()}.
+get_parent_chain_type() ->
+    gen_server:call(?SERVER, get_parent_chain_type).
+
+-spec get_pinning_data() -> {ok, map()} | {error, atom()}.
+get_pinning_data() ->
+    gen_server:call(?SERVER, get_pinning_data).
+
+%%=============================================================================
+%% Pin the last block of the previous epoch to the parent chain, using the
+%% parent chain account associated with the provided staker pubkey. Returns the
+%% parent chain TX hash (if TX is finalized on the parent chain, it will be
+%% fetchable using get_pin_by_tx_hash/1).
+%%=============================================================================
+pin_to_pc(Who, Amount, Fee) ->
+    gen_server:call(?SERVER, {pin_to_pc, Who, Amount, Fee}).
+
+get_pin_by_tx_hash(TxHash) ->
+    gen_server:call(?SERVER, {get_pin_by_tx_hash, TxHash}).
+
+has_parent_account(Account) ->
+    gen_server:call(?SERVER, {has_parent_account, Account}).
 
 %%%=============================================================================
 %%% Gen Server Callbacks
 %%%=============================================================================
 
 -spec init([any()]) -> {ok, #state{}}.
-init([ParentConnMod, FetchInterval, ParentHosts, NetworkId, SignModule, HCPCPairs, Recipient, Fee, Amount]) ->
-    if is_integer(FetchInterval) ->
-        erlang:send_after(FetchInterval, self(), check_parent);
-        true -> ok
-    end,
-    CDetails =
-        #commitment_details{ parent_network_id  = NetworkId, %% TODO: assert all nodes are having the same network id
-                             sign_module = SignModule,
-                             recipient = Recipient,
-                             amount = Amount,
-                             fee = Fee
-                            },
+init([ParentConnMod, FetchInterval, ParentHosts, NetworkId, SignModule, HCPCMap]) ->
+    reset_fetch_interval(FetchInterval),
     {ok, #state{parent_conn_mod = ParentConnMod,
                 fetch_interval = FetchInterval,
                 parent_hosts = ParentHosts,
-                hcpc = maps:from_list(HCPCPairs),
-                c_details = CDetails}}.
+                network_id = NetworkId,
+                sign_module = SignModule,
+                hcpc = HCPCMap}}.
 
 -spec handle_call(any(), any(), state()) -> {reply, any(), state()}.
-handle_call(trigger_fetch, _From, State) ->
-    self() ! check_parent,
-    Reply = ok,
-    {reply, Reply, State};
 handle_call({fetch_block_by_hash, Hash}, _From, State) ->
     Reply = handle_fetch_block(fun fetch_block_by_hash/5, Hash, State),
     {reply, Reply, State};
 handle_call({fetch_block_by_height, Height}, _From, State) ->
     Reply = handle_fetch_block(fun fetch_block_by_height/5, Height, State),
     {reply, Reply, State};
-handle_call({post_commitment, Who, Hash}, _From, #state{hcpc = Hcpc} = State) ->
-    PCWho = maps:get(Who, Hcpc),
-    Reply = post_commitment(PCWho, Hash, State),
+handle_call(get_network_id, _From, #state{network_id = NetworkId} = State) ->
+    {reply, NetworkId, State};
+handle_call(get_sign_module, _From, #state{sign_module = SM} = State) ->
+    {reply, SM, State};
+handle_call(get_parent_conn_mod, _From, #state{parent_conn_mod = Mod} = State) ->
+    {reply, Mod, State};
+handle_call(get_parent_chain_type, _From, #state{parent_conn_mod = Mod} = State) ->
+    Reply = Mod:get_chain_type(),
+    {reply, Reply, State};
+handle_call(get_pinning_data, _From, #state{parent_conn_mod = Mod, network_id = NetworkID} = State) ->
+    Reply = get_pinning_data_(Mod, NetworkID),
+    {reply, Reply, State};
+handle_call({pin_to_pc, Who, Amount, Fee}, _From, #state{parent_conn_mod = Mod, parent_hosts = ParentHosts, hcpc = HCPCMap, sign_module = SignModule, network_id = NetworkID} = State) ->
+    Reply = case maps:is_key(Who, HCPCMap) of
+        true ->
+            {ok, PinningData} = get_pinning_data_(Mod, NetworkID),
+            handle_parent_pin_calls(Mod, pin_to_pc, {PinningData, maps:get(Who, HCPCMap), Amount, Fee, NetworkID, SignModule}, ParentHosts);
+        false -> {error, {no_pc_account_for_staker, Who}}
+    end,
+    {reply, Reply, State};
+handle_call({get_pin_by_tx_hash, Tx}, _From, #state{parent_conn_mod = Mod, parent_hosts = ParentHosts} = State) ->
+    Reply = handle_parent_pin_calls(Mod, get_pin_by_tx_hash, Tx, ParentHosts),
+    {reply, Reply, State};
+handle_call({has_parent_account, Account}, _From, #state{hcpc = HCPCMap} = State) ->
+    Reply = maps:is_key(Account, HCPCMap),
     {reply, Reply, State};
 handle_call(_Request, _From, State) ->
     Reply = ok,
@@ -194,44 +224,13 @@ handle_cast({request_block_by_height, Height}, State) ->
     {noreply, State}.
 
 -spec handle_info(any(), state()) -> {noreply, state()}.
-handle_info(check_parent, #state{parent_hosts = ParentNodes,
-                                 parent_conn_mod = Mod,
-                                 parent_top = ParentTop,
-                                 fetch_interval = FetchInterval,
-                                 rpc_seed = Seed} = State) ->
-    %% Parallel fetch top block from all configured parent chain nodes
-    ParentTop1 =
-        case fetch_parent_tops(Mod, ParentNodes, Seed, State) of
-            {ok, ParentTop, _} ->
-                %% No change, just check again later
-                ParentTop;
-            {ok, NewParentTop, _Node} ->
-                %% Fetch the commitment Txs in the parent block from a node
-                %% that had the majority answer
-                aec_parent_chain_cache:post_block(NewParentTop),
-                %_Commitments = fetch_commitments(Mod, Node, Seed,
-                %                                 aec_parent_chain_block:hash(NewParentTop))
-                %% Commitments may include varying view on what is the latest
-                %%   block.
-                %% Commitments include:
-                %%   [{Committer, Committers view of child chain top hash}]
-                %% - Run the algorithm to derive the consensus top block
-                %% - Call the smart contract to elect new leader.
-                %% - Notify conductor of new status
-                NewParentTop;
-            {error, not_found} ->
-                lager:warning("Parent nodes did not respond?", []),
-                ParentTop;
-            {error, no_parent_chain_agreement} ->
-                lager:warning("Parent nodes are unable to reach consensus", []),
-                ParentTop
-        end,
-    if is_integer(FetchInterval) ->
-        erlang:send_after(FetchInterval, self(), check_parent);
-        true -> ok
-    end,
-    {noreply, State#state{rpc_seed = increment_seed(Seed),
-                          parent_top = ParentTop1}};
+handle_info(check_top, State = #state{fetch_interval = FetchInterval}) ->
+    State1 = fetch_parent_top(State),
+    reset_fetch_interval(FetchInterval),
+    {noreply, State1};
+handle_info(check_parent, State) ->
+    State1 = fetch_parent_top(State),
+    {noreply, State1};
 handle_info(_Info, State) ->
     {noreply, State}.
 
@@ -246,6 +245,34 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+fetch_parent_top(#state{parent_hosts = ParentNodes,
+                        parent_conn_mod = Mod,
+                        parent_top = ParentTop,
+                        rpc_seed = Seed} = State) ->
+    %% Parallel fetch top block from all configured parent chain nodes
+    ParentTop1 =
+        case fetch_parent_tops(Mod, ParentNodes, Seed, State) of
+            {ok, ParentTop, _} ->
+                %% No change, just check again later
+                ParentTop;
+            {ok, NewParentTop, _Node} ->
+                aec_parent_chain_cache:post_block(NewParentTop),
+                NewParentTop;
+            {error, not_found} ->
+                lager:warning("Parent nodes did not respond?", []),
+                ParentTop;
+            {error, no_parent_chain_agreement} ->
+                lager:warning("Parent nodes are unable to reach consensus", []),
+                ParentTop
+        end,
+    State#state{rpc_seed = increment_seed(Seed), parent_top = ParentTop1}.
+
+reset_fetch_interval(FetchInterval) ->
+    if is_integer(FetchInterval) ->
+        erlang:send_after(FetchInterval, self(), check_top);
+        true -> ok
+    end.
+
 fetch_parent_tops(Mod, ParentNodes, Seed, State) ->
     FetchFun =
         fun(NodeSpec) ->
@@ -274,20 +301,12 @@ fetch_block_by_height(Height, Mod, ParentNodes, Seed, State) ->
     responses_consensus(Good, Errors, length(ParentNodes)).
 
 fetch_block(FetchFun, NodeSpec,
-            #state{parent_conn_mod = Mod,
-                   rpc_seed = Seed,
-                   c_details = CDetails}) ->
-    #commitment_details{recipient = Receiver} = CDetails,
+            #state{parent_conn_mod = _Mod,
+                   rpc_seed = _Seed}) ->
     case FetchFun(NodeSpec) of
-        {ok, BlockHash, PrevHash, Height} ->
-            Block = aec_parent_chain_block:new(BlockHash, Height, PrevHash),
-            case Mod:get_commitment_tx_in_block(NodeSpec, Seed, BlockHash,
-                           PrevHash, Receiver) of
-                {ok, Commitments} ->
-                    {ok, {aec_parent_chain_block:set_commitments(Block, Commitments), NodeSpec}};
-                {error, _} = Err ->
-                    Err
-            end;
+        {ok, BlockHash, PrevHash, Height, Time} ->
+            Block = aec_parent_chain_block:new(BlockHash, Height, PrevHash, Time),
+            {ok, {Block, NodeSpec}};
         Err ->
             Err
     end.
@@ -348,38 +367,42 @@ handle_fetch_block(Fun, Arg,
             Err
     end.
 
-post_commitment(Who, Commitment,
-            #state{ parent_hosts = ParentNodes,
-                    parent_conn_mod = Mod,
-                    rpc_seed = _Seed,
-                    c_details = CDetails}) ->
-    #commitment_details{
-        parent_network_id = PCNetworkId,
-        recipient = Receiver,
-        sign_module = SignModule,
-        amount = Amount,
-        fee = Fee} = CDetails,
-    Fun =
-        fun(NodeSpec) ->
-            case Mod:post_commitment(NodeSpec, Who, Receiver, Amount, Fee,
-                                     Commitment, PCNetworkId, SignModule) of
-                {ok, #{<<"tx_hash">> := TxHash}} -> {ok, {TxHash, NodeSpec}};
-                {error, 400, _E} ->
-                    {error, invalid_transaction}
-            end
-        end,
-    %% Parallel post to all blocks
-    %% TODO: decide if we expect consensus or not
-    %% TODO: maybe track a transaction's progress?
-    {Good, Errors} = aeu_lib:pmap(Fun, ParentNodes, 10000),
-    case responses_consensus(Good, Errors, length(ParentNodes)) of
-        {ok, TxHash, _} when is_binary (TxHash) -> ok;
-        {ok, {error, invalid_transaction}, _} ->
-            lager:warning("Unable to post commitment: invalid_transaction", []),
-            {error, invalid_transaction};
-        {error, no_parent_chain_agreement} = Err ->
-            %% TODO: decide what to do: this is likely happening because of
-            %% rapid parent chain reorganizations
-            lager:warning("Parent nodes are unable to reach consensus regarding posted commitment", []),
-            Err
+
+% PINREFAC is this (aec_p_c) the correct place for this and the following CC pin related ones?
+get_pinning_data_(Mod, NetworkID) ->
+    {ok, #{epoch := Epoch,
+           first := First,
+           last  := Last}} = aec_chain_hc:epoch_info(),
+    lager:debug("Get pin data for epoch ~p for leader of block ~p", [Epoch - 1, Last]),
+    {ok, BlockHash} = aec_chain_state:get_key_block_hash_at_height(First - 1),
+    {ok, ChainType} = Mod:get_chain_type(),
+    PrevEpoch = Epoch - 1,
+    Height = First - 1,
+    case aec_consensus_hc:leader_for_height(Last) of
+      {ok, Leader} ->
+        {ok, #{epoch             => PrevEpoch,
+               height            => Height,
+               block_hash        => BlockHash,
+               parent_payload    => aeser_hc:encode_parent_pin_payload(#{epoch => PrevEpoch, height => Height, block_hash => BlockHash}),
+               last_leader       => Leader,
+               parent_type       => ChainType,
+               parent_network_id => NetworkID}};
+      {error, _} ->
+          %% schedule not yet cached
+          {error, last_leader_unknown}
     end.
+
+%% handle (pin) calls to the parent connector module and ensure we don't throw anything
+%% FUTURE Should be reasonably easy to loop over NodeSpecs until one call suceeds.
+%%        For now, we just pick the first one.
+
+handle_parent_pin_calls(Mod, Fun, Args, NodeSpecs) ->
+    [NodeSpec|_] = NodeSpecs,
+    try
+        Mod:Fun(Args, NodeSpec)
+    catch
+        Type:Err ->
+            lager:debug("PINNING: caught bad pin parent call: ~p : ~p", [Type, Err]),
+            {error, Err}
+    end.
+

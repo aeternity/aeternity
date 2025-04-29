@@ -111,6 +111,13 @@ operational_show_menu() ->
       },
      #{role => cmd,
        node_type => container,
+       name => "forks",
+       desc => "Analyze forks",
+       action => fun(J, Item, Value) -> show_forks(J, Item, Value) end,
+       children => fun() -> forks_schema() end
+      },
+     #{role => cmd,
+       node_type => container,
        name => "tx_pool",
        desc => "Transaction pool commands",
        action => fun(J, _Item, _) -> show_tx_pool_summary(J) end,
@@ -186,6 +193,21 @@ operational_connected_peers_menu() ->
        desc => "Show inbound connected peers",
        action => fun(J, _Item, _) -> show_connected_peers(J, inbound) end
       }
+    ].
+
+forks_schema() ->
+    [#{role => schema,
+       node_type => leaf,
+       name => "top",
+       desc => "Start height (default 'top')",
+       type => uint32
+     },
+     #{role => schema,
+       node_type => leaf,
+       name => "depth",
+       desc => "Search depth",
+       type => uint32
+     }
     ].
 
 operational_admin_menu() ->
@@ -424,6 +446,16 @@ show_peers(Peers, J) ->
                 end, Peers),
     {ok, ecli:format_table(Peers1), J}.
 
+
+show_forks(J, Items, _Value) ->
+    show_forks(J, parse_fork_cmd(Items)).
+
+show_forks(J, {top, Depth}) ->
+    H = aec_chain:top_height(),
+    fork_check(J, H, Depth);
+show_forks(J, {Top, Depth}) ->
+    fork_check(J, Top, Depth).
+
 %%--------------------------------------------------------------------
 %% Internal functions
 %%--------------------------------------------------------------------
@@ -522,3 +554,87 @@ unblock_peer([#{name := "pubkey", value := PeerPubKey}]) ->
     {ok, "Peer unblocked"};
 unblock_peer(_) ->
     {ok, "Command not understood"}.
+
+%% -- Forks ---------------------------------------------------------------
+parse_fork_cmd(Items) ->
+    lists:foldl(fun parse_fork_cmd/2, {top, 100}, Items).
+
+parse_fork_cmd(#{name := "top", value := Top}, {_, Depth}) ->
+    {Top, Depth};
+parse_fork_cmd(#{name := "depth", value := Depth}, {Top, _}) ->
+    {Top, Depth}.
+
+fork_check(J, StartH, Len) ->
+    io:format("fork_check(~p, ~p)\n", [StartH, Len]),
+    EndH = max(0, StartH - Len),
+    case fork_check(StartH, EndH, key_spine(EndH, StartH), []) of
+        [] ->
+            {ok, "No forks found\r\n", J};
+        Forks ->
+            Msg = io_lib:format("~p fork(s) found: \r\n", [length(Forks)]),
+            {ok, [Msg | [ present_fork(Fork) || Fork <- Forks ]], J}
+    end.
+
+key_spine(FromH, ToH) ->
+    {ok, Hdr} = aec_chain:get_key_header_by_height(ToH),
+    {ok, Hsh} = aec_headers:hash_header(Hdr),
+    key_spine(FromH, Hdr, [{ToH, Hsh}]).
+
+key_spine(FromH, Hdr, Keys) ->
+    case FromH >= aec_headers:height(Hdr) of
+        true ->
+            maps:from_list(Keys);
+        false ->
+            Hsh = aec_headers:prev_key_hash(Hdr),
+            {ok, Hdr1} = aec_chain:get_header(Hsh),
+            key_spine(FromH, Hdr1, [{aec_headers:height(Hdr1), Hsh} | Keys])
+    end.
+
+fork_check(ToH, ToH, _KeySpine, Forks) ->
+    Forks;
+fork_check(AtH, StopH, KeySpine, Forks) ->
+    #{AtH := KeyH} = KeySpine,
+    case aec_chain_state:key_block_hashes_at_height(AtH) -- [KeyH] of
+        [] ->
+            fork_check(AtH - 1, StopH, KeySpine, Forks);
+        Fs ->
+            Forks1 = [ fork_analyse(AtH, H, aec_chain_state:find_common_ancestor(H, KeyH))
+                       || H <- Fs, not in_fork(H, Forks) ],
+            fork_check(AtH - 1, StopH, KeySpine, Forks ++ Forks1)
+    end.
+
+in_fork(_H, []) -> false;
+in_fork(H, [{_, KBs, _} | Fs]) ->
+    case lists:member(H, [ KH || {KH, _} <- KBs ]) of
+        true  -> true;
+        false -> in_fork(H, Fs)
+    end.
+
+fork_analyse(Height, Hash, {ok, CommonAncestor}) ->
+    {KBs, MBs} = fork_assemble(Height, Hash, CommonAncestor),
+    {Height, KBs, MBs}.
+
+fork_assemble(_, Hash, Hash) ->
+    {[], []};
+fork_assemble(Height, Hash, CommonAncestor) ->
+    %% Check for microblocks
+    MBs0 = fork_mbs(Height, Hash),
+    MBs1 = lists:sort(fun({_, MB1}, {_, MB2}) -> aec_headers:time_in_msecs(MB1) =< aec_headers:time_in_msecs(MB2) end, MBs0),
+    {ok, KeyHdr} = aec_chain:get_header(Hash),
+
+    {KBs, MBs} = fork_assemble(Height - 1, aec_headers:prev_key_hash(KeyHdr), CommonAncestor),
+    {[{Hash, KeyHdr} | KBs], [MBs1 | MBs]}.
+
+fork_mbs(Height, Hash) ->
+    [ {MBHsh, MBHdr} || {MBHsh, MBHdr} <- aec_db:find_headers_and_hash_at_height(Height),
+                         micro == aec_headers:type(MBHdr), Hash == aec_headers:prev_key_hash(MBHdr) ].
+
+present_fork({Height, KBs, MBs}) ->
+    Msg1 = io_lib:format("  Found fork with ~p key-blocks and ~p micro-blocks ending at: ~p\r\n",
+                         [length(KBs), length(lists:flatten(MBs)), Height]),
+    {KBH1, _} = hd(KBs),
+    Msg2 = io_lib:format("  Last  key-block in fork: ~s\r\n", [aeser_api_encoder:encode(key_block_hash, KBH1)]),
+    {KBH2, _} = lists:last(KBs),
+    Msg3 = io_lib:format("  First key-block in fork: ~s\r\n", [aeser_api_encoder:encode(key_block_hash, KBH2)]),
+    [Msg1, Msg2, Msg3].
+

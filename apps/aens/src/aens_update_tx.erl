@@ -34,6 +34,12 @@
          pointers/1,
          client_ttl/1]).
 
+-ifdef(TEST).
+
+-export([serialize/2]).
+
+-endif.
+
 -include_lib("aecontract/include/hard_forks.hrl").
 
 %%%===================================================================
@@ -131,6 +137,9 @@ signers(#ns_update_tx{} = Tx, _) ->
     {ok, [account_pubkey(Tx)]}.
 
 -spec serialize(tx()) -> {integer(), [{atom(), term()}]}.
+serialize(Tx) ->
+    serialize(Tx, version(Tx)).
+
 serialize(#ns_update_tx{account_id = AccountId,
                         nonce      = Nonce,
                         name_id    = NameId,
@@ -138,8 +147,7 @@ serialize(#ns_update_tx{account_id = AccountId,
                         pointers   = Pointers,
                         client_ttl = ClientTTL,
                         fee        = Fee,
-                        ttl        = TTL} = Tx) ->
-    Vsn = version(Tx),
+                        ttl        = TTL}, Vsn) ->
     SerializePtrFun =
         case Vsn of
             ?NAME_UPDATE_TX_VSN_1 -> fun aens_pointer:serialize_pointer_vsn1/1;
@@ -155,6 +163,7 @@ serialize(#ns_update_tx{account_id = AccountId,
      , {fee, Fee}
      , {ttl, TTL}
      ]}.
+
 
 -spec deserialize(Vsn :: integer(), list({atom(), term()})) -> tx().
 deserialize(Vsn,
@@ -173,14 +182,22 @@ deserialize(Vsn,
             ?NAME_UPDATE_TX_VSN_1 -> fun aens_pointer:deserialize_pointer_vsn1/1;
             ?NAME_UPDATE_TX_VSN_2 -> fun aens_pointer:deserialize_pointer_vsn2/1
         end,
-    #ns_update_tx{account_id = AccountId,
-                  nonce      = Nonce,
-                  name_id    = NameId,
-                  name_ttl   = NameTTL,
-                  pointers   = [DeserializePtrFun(P) || P <- Pointers],
-                  client_ttl = ClientTTL,
-                  fee        = Fee,
-                  ttl        = TTL}.
+
+    Tx = #ns_update_tx{account_id = AccountId,
+                       nonce      = Nonce,
+                       name_id    = NameId,
+                       name_ttl   = NameTTL,
+                       pointers   = [DeserializePtrFun(P) || P <- Pointers],
+                       client_ttl = ClientTTL,
+                       fee        = Fee,
+                       ttl        = TTL},
+
+    %% Assert that the right version was used
+    case version(Tx) of
+        Vsn -> Tx;
+        _   -> error(invalid_serialization_version)
+    end.
+
 
 serialization_template(?NAME_UPDATE_TX_VSN_1) ->
     [ {account_id, id}

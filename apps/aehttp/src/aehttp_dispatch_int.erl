@@ -277,14 +277,15 @@ handle_request_('GetCheckTxInPool', Req, _Context) ->
                           {BlockHash, _Tx} when is_binary(BlockHash) ->
                               {ok, {200, [], #{<<"status">> => <<"included">>}}};
                           {mempool, SignedTx} ->
-                              {Env, Trees} = aetx_env:tx_env_and_trees_from_top(aetx_transaction),
-                              Env1 = aetx_env:set_signed_tx(Env, {value, SignedTx}),
                               Tx = aetx_sign:tx(SignedTx),
-                              try aetx:process(Tx, Trees, Env1) of
-                                  {ok, _Trees1, _Env20} ->
+                              try aec_dry_run:dry_run(top, [], [{tx, Tx}], [{tx_events, false}]) of
+                                  {ok, {[{_Type,ok}], _Events}} ->
                                       {ok, {200, [], #{<<"status">> => <<"includable">>}}};
+                                  {ok, {[{_Type,{error, Reason}}], _Events}} ->
+                                      {ok, {200, [], #{<<"status">> => atom_to_binary(Reason, utf8)}}};
                                   {error, Reason} ->
-                                      {ok, {200, [], #{<<"status">> => atom_to_binary(Reason, utf8)}}}
+                                      lager:error("HTTP API: tx ~p cannot be applied due to an error ~p", [Tx, Reason]),
+                                      {ok, {200, [], #{<<"status">> => <<"unhandled">>}}}
                               catch
                                   Type:What ->
                                       Reason = {Type, What},
@@ -618,7 +619,7 @@ produce_tx(paying_for_tx, _Req) ->
       %% transactions
       err.
 
-tx_swagger_name_from_operation_id('PostSpend') -> 'SpendTx';
+tx_swagger_name_from_operation_id('PostSpend') -> 'SpendTxInput';
 tx_swagger_name_from_operation_id('PostContractCreate') -> 'ContractCreateTx';
 tx_swagger_name_from_operation_id('PostContractCall') -> 'ContractCallTx';
 tx_swagger_name_from_operation_id('PostNamePreclaim') -> 'NamePreclaimTx';

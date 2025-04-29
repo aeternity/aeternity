@@ -7,14 +7,30 @@
 -export([get_latest_block/2,
          get_header_by_hash/3,
          get_header_by_height/3,
-         get_commitment_tx_in_block/5,
-         get_commitment_tx_at_height/4,
-         post_commitment/8]).
+         hash_to_integer/1,
+         get_chain_type/0,
+         pin_to_pc/2,
+         get_pin_by_tx_hash/2]).
+
+%% Temporary exports for keeping useful chain utils around
+-export([select_utxo/2,
+unspent_to_satoshis/1,
+float_btc_to_satoshi/1,
+pad8/1,
+create_outputs/6,
+satoshi_to_btc/1,
+drop_trailing_zeroes/1,
+drop_until_point/1,
+listunspent/1,
+createrawtransaction/3,
+signrawtransactionwithwallet/2,
+sendrawtransaction/2,
+from_hex/1,
+find_op_return/1,
+to_hex/1]).
+
 
 -behavior(aehttpc).
-
-%% Handy for use in test suites and other BTC based chains
--export([parse_vout/1]).
 
 -type hex() :: binary().%[byte()].
 
@@ -22,8 +38,8 @@ get_latest_block(NodeSpec, Seed) ->
     case getbestblockhash(NodeSpec, Seed) of
         {ok, Hash} ->
             case getblock(NodeSpec, Seed, Hash, _Verbosity = 1) of
-                {ok, {Height, Hash, PrevHash, _Txs}} ->
-                    {ok, Hash, PrevHash, Height};
+                {ok, {Height, Hash, PrevHash, Time, _Txs}} ->
+                    {ok, Hash, PrevHash, Height, Time};
                 Err = {error, _} ->
                     Err
             end;
@@ -32,55 +48,37 @@ get_latest_block(NodeSpec, Seed) ->
     end.
 
 get_header_by_hash(Hash, NodeSpec, Seed) ->
-    {ok, {Height, Hash, PrevHash, _Txs}}
+    {ok, {Height, Hash, PrevHash, Time, _Txs}}
       = getblock(NodeSpec, Seed, Hash, _Verbosity = 1),
-    {ok, Hash, PrevHash, Height}.
+    {ok, Hash, PrevHash, Height, Time}.
 
 get_header_by_height(Height, NodeSpec, Seed) ->
     case getblockhash(NodeSpec, Seed, Height) of
         {ok, Hash} ->
-            {ok, {_Height, Hash, PrevHash, _Txs}}
+            {ok, {_Height, Hash, PrevHash, Time, _Txs}}
                 = getblock(NodeSpec, Seed, Hash, _Verbosity = 1),
-            {ok, Hash, PrevHash, Height};
+            {ok, Hash, PrevHash, Height, Time};
         {error, not_found} -> {error, not_found}
     end.
 
-get_commitment_tx_in_block(NodeSpec, Seed, BlockHash, _PrevHash, ParentHCAccountPubKey) ->
-    {ok, {_Height, _Hash, __PrevHash, Txs}}
-      = getblock(NodeSpec, Seed, BlockHash, _Verbosity = 2),
-    Commitments = find_commitments(Txs, ParentHCAccountPubKey),
-    {ok, Commitments}.
+hash_to_integer(Hash) ->
+    binary_to_integer(Hash, 16).
 
-get_commitment_tx_at_height(NodeSpec, Seed, Height, ParentHCAccountPubKey) ->
-    {ok, Hash} = getblockhash(NodeSpec, Seed, Height),
-    {ok, {_Height, _Hash, _PrevHash, Txs}}
-      = getblock(NodeSpec, Seed, Hash, _Verbosity = 2),
-    Commitments = find_commitments(Txs, ParentHCAccountPubKey),
-    {ok, Commitments}.
+get_chain_type() ->
+    {ok, btc}.
 
-%% @doc Post commitment to BTC parent chain.
-%% Commitment is a simple spend transaction to a known BTC account
-%% Spend TX must be signed by the BTC account owned by the staking node
-%% SpendTx must include the AE validator account pubkey in its MetaData
-%% Bitcoin doc suggests 4 ops for this (https://gist.github.com/gavinandresen/2839617):
-%% 1. Get a list of not-yet-spent outputs with listunspent
-%% 2. Create a transaction using createrawtransaction
-%% 3. Apply signatures using signrawtransaction
-%% 4. Submit it using sendrawtransaction
 
-post_commitment(NodeSpec, StakerPubkey, HCCollectPubkey, Amount, Fee, Commitment, _NetworkId, _SignModule) ->
-    post_commitment(NodeSpec, StakerPubkey, HCCollectPubkey, Amount, Fee, Commitment).
+%%%=============================================================================
+%%% Pinning
+%%%=============================================================================
 
-post_commitment(NodeSpec, BTCAcc, HCCollectPubkey, Amount, Fee, Commitment) ->
-    {ok, Unspent} = listunspent(NodeSpec),
-    UnspentSatoshis = unspent_to_satoshis(Unspent),
-    {ok, {Inputs, TotalAmount}} = select_utxo(UnspentSatoshis, Fee + Amount),
-    Outputs = create_outputs(Commitment, BTCAcc, HCCollectPubkey, TotalAmount, Amount, Fee),
-    {ok, Tx} = createrawtransaction(NodeSpec, Inputs, Outputs),
-    {ok, SignedTx} = signrawtransactionwithwallet(NodeSpec, Tx),
-    {ok, TxHash} = sendrawtransaction(NodeSpec, SignedTx),
-    %% lager:debug("Posted BTC Commitment in Tx: ~p", [TxHash]),
-    {ok, #{<<"tx_hash">> => TxHash}}.
+pin_to_pc({_PinningData, _Who, _Amount, _Fee, _NetworkId, _SignModule}, _NodeSpec) ->
+
+    erlang:error(not_implemented).
+
+get_pin_by_tx_hash(_TxHash, _NodeSpec) ->
+    erlang:error(not_implemented).
+
 
 select_utxo([#{<<"spendable">> := true, <<"amount">> := Amount} = Unspent | _Us], Needed) when Amount >= Needed ->
     %% For now just pick first spendable UTXO with enough funds. There is no end to how fancy this can get
@@ -240,24 +238,25 @@ result(Response) ->
 block(Obj) ->
     Hash = maps:get(<<"hash">>, Obj), true = is_binary(Hash),
     Height = maps:get(<<"height">>, Obj), true = is_integer(Height),
+    Time = maps:get(<<"time">>, Obj), true = is_integer(Time),
 
     %% TODO: To analyze the size field;
     %% Txs that might be Commitments will have at least one type:nulldata entry - just do some pre-filtering
     %% FilteredTxs = lists:filter(fun (Tx) -> is_nulldata(Tx) end, maps:get(<<"tx">>, Obj)),
 
     PrevHash = prev_hash(Obj),
-    {Height, Hash, PrevHash, maps:get(<<"tx">>, Obj)}.
+    {Height, Hash, PrevHash, Time * 1000, maps:get(<<"tx">>, Obj)}.
 
--spec find_commitments(list(), binary()) -> [{Pubkey :: binary(), Payload :: binary()}].
-find_commitments(Txs, _ParentHCAccountPubKey) ->
-    lists:foldl(fun(#{<<"vout">> := Vout}, Acc) ->
-                        case parse_vout(Vout) of
-                            {ok, ParsedCommitment} ->
-                                [ParsedCommitment | Acc];
-                            {error, _Reason} ->
-                                Acc
-                        end
-                end, [], Txs).
+% -spec find_commitments(list(), binary()) -> [{Pubkey :: binary(), Payload :: binary()}].
+% find_commitments(Txs, _ParentHCAccountPubKey) ->
+%     lists:foldl(fun(#{<<"vout">> := Vout}, Acc) ->
+%                         case parse_vout(Vout) of
+%                             {ok, ParsedCommitment} ->
+%                                 [ParsedCommitment | Acc];
+%                             {error, _Reason} ->
+%                                 Acc
+%                         end
+%                 end, [], Txs).
 
 -spec request(binary(), binary(), aehttpc:node_spec(), integer()) -> {ok, map()} | {error, term()}.
 request(Path, Body, NodeSpec, Timeout) ->
@@ -315,27 +314,6 @@ prev_hash(Obj) ->
 
 seed_to_utf8(Seed) when is_binary(Seed) ->
     base64:encode(Seed).
-
-parse_vout(Vout) when length(Vout) == 3 ->
-    case find_op_return(Vout) of
-        {ok, CommitmentEnc} ->
-            CommitmentBTC = from_hex(CommitmentEnc),
-            case CommitmentBTC of
-                <<Commitment:80/binary>> ->
-                    case aec_parent_chain_block:decode_commitment(Commitment) of
-                        {btc, Signature, StakerHash, TopKeyHash} ->
-                            {ok, {Signature, StakerHash, TopKeyHash}};
-                        _ ->
-                            {error, not_btc_commitment}
-                    end;
-                _ ->
-                    {error, not_commitment_op}
-            end;
-        _ ->
-            {error, no_op_return}
-    end;
-parse_vout(_Vout) ->
-    {error, not_commitment}.
 
 find_op_return([#{<<"scriptPubKey">> := #{<<"type">> := <<"nulldata">>, <<"asm">> := <<"OP_RETURN ", CommitmentEnc/binary>>}} | _]) ->
     {ok, CommitmentEnc};

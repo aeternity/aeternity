@@ -49,13 +49,10 @@
 -define(FEE, 20000 * aec_test_utils:min_gas_price()).
 
 all() ->
-    [{group, swagger2},
-     {group, oas3}
-    ].
+    [ {group, oas3} ].
 
 groups() ->
-    [{swagger2, [sequence], [{group, transactions}]},
-     {oas3, [sequence], [{group, transactions}]},
+    [{oas3, [sequence], [{group, transactions}]},
      {transactions, [sequence],
       [ spend_tx,
 
@@ -106,17 +103,12 @@ init_per_suite(Config0) ->
 end_per_suite(_Config) ->
     ok.
 
-init_per_group(SwaggerVsn, Config) when SwaggerVsn =:= swagger2;
-                                        SwaggerVsn =:= oas3 ->
-    Json = aehttp_spec:json(SwaggerVsn),
+init_per_group(oas3, Config) ->
+    Json = aehttp_spec:json(oas3),
     R = jsx:decode(Json),
     Validator = jesse_state:new(R, [{default_schema_ver, <<"http://json-schema.org/draft-04/schema#">>}]),
-    EndpointsMod =
-        case SwaggerVsn of
-            swagger2 -> endpoints;
-            oas3     -> oas_endpoints
-        end,
-    [{swagger_version, SwaggerVsn}, {validator, Validator}, {endpoints_mod, EndpointsMod}
+    EndpointsMod = oas_endpoints,
+    [{validator, Validator}, {endpoints_mod, EndpointsMod}
      | Config];
 init_per_group(_Group, Config) ->
     Config.

@@ -68,7 +68,7 @@ balance() ->
     end.
 
 post_tx() ->
-    Timestamp = os:system_time(seconds),
+    Timestamp = os:system_time(second),
     {Height, Protocol, HashKey, HashTop} = top_info(),
     Payload = to_payload(Height, HashKey, HashTop, Timestamp),
 

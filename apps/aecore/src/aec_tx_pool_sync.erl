@@ -526,7 +526,7 @@ analyze_unfolds([N = {node, Path, Node} | Us], Tree, NewUs, NewGets) ->
     case aeu_mp_trees:has_node(Path, Node, Tree) of
         no ->
             analyze_unfolds(Us, Tree, [{subtree, Path} | NewUs], NewGets);
-        maybe ->
+        'maybe' ->
             analyze_unfolds(Us, Tree, [N | NewUs], NewGets);
         yes ->
             analyze_unfolds(Us, Tree, NewUs, NewGets)

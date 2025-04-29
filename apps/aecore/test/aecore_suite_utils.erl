@@ -33,6 +33,8 @@
          get_node_db_config/1,
          delete_node_db_if_persisted/1,
          expected_mine_rate/0,
+         hc_mine_blocks/2,
+         hc_mine_blocks/4,
          mine_blocks/2,
          mine_blocks/3,
          mine_blocks/4,
@@ -52,7 +54,7 @@
          wait_for_height/2,
          wait_for_height/3,
          flush_new_blocks/0,
-         flush_mempool/1,
+         flush_mempool/2,
          spend/5,         %% (Node, FromPub, ToPub, Amount, Fee) -> ok
          sign_on_node/2,
          sign_on_node/3,
@@ -79,7 +81,10 @@
          all_events_since/2,
          check_for_logs/2,
          times_in_epoch_log/3,
-         errors_in_logs/2]).
+         errors_in_logs/2,
+         assert_no_errors_in_logs/1,
+         assert_no_errors_in_logs/2
+        ]).
 
 -export([proxy/0,
          start_proxy/0,
@@ -89,11 +94,9 @@
          await_is_syncing/2,
          rpc/3,
          rpc/4,
-         use_swagger/1,
-         use_rosetta/0,
+         use_api/1,
          http_request/4,
          httpc_request/4,
-         http_api_version/0,
          http_api_prefix/0,
          process_http_return/1,
          internal_address/0,
@@ -120,6 +123,7 @@
 
 -include_lib("kernel/include/file.hrl").
 -include_lib("common_test/include/ct.hrl").
+-include_lib("stdlib/include/assert.hrl").
 
 -define(OPS_BIN, "aeternity").
 -define(DEFAULT_CUSTOM_EXPECTED_MINE_RATE, 100).
@@ -558,7 +562,18 @@ make_shortcut(Config) ->
     ok = filelib:ensure_dir(filename:join(PrivDir, "foo")),
     Shortcut = shortcut_dir(Config),
     delete_file(Shortcut),
-    ok = symlink(PrivDir, Shortcut).
+    RelPrivDir = rel_path(PrivDir, filename:dirname(Shortcut)),
+    ok = symlink(RelPrivDir, Shortcut).
+
+rel_path(Path, Root) ->
+    rel_path(filename:split(Path), filename:split(Root), Path).
+
+rel_path([Dir | Ps], [Dir | Rs], Orig) ->
+    rel_path(Ps, Rs, Orig);
+rel_path(Ps, [], _) ->
+    filename:join(Ps);
+rel_path(_, _, Orig) ->
+    Orig.
 
 start_node(N, Config) ->
     start_node(N, Config, []).
@@ -687,6 +702,9 @@ mine_blocks(Node, NumBlocksToMine, Opts) when is_map(Opts) ->
 mine_blocks(Node, NumBlocksToMine, MiningRate, Opts) ->
     mine_blocks(Node, NumBlocksToMine, MiningRate, any, Opts).
 
+hc_mine_blocks(Nodes, NumBlocksToMine) ->
+    hc_mine_blocks(Nodes, NumBlocksToMine, 5000, #{}).
+
 mine_blocks(Node, NumBlocksToMine, MiningRate, Type, Opts) ->
     case rpc_test_consensus_enabled(Node)
         orelse rpc_on_demand_consensus_enabled(Node) of
@@ -730,21 +748,6 @@ wait_for_tx_in_pool(Node, SignedTx, Timeout) ->
             end,
 	    ok = unsubscribe(Node, tx_created),
 	    ok = unsubscribe(Node, tx_received)
-    end.
-
-wait_for_tx_included_in_chain(Node, SignedTx) ->
-    wait_for_tx_included_in_chain(Node, SignedTx, 100).
-
-wait_for_tx_included_in_chain(_Node, SignedTx, Attempts) when Attempts < 1 ->
-    error({run_out_of_attempts, SignedTx});
-wait_for_tx_included_in_chain(Node, SignedTx, Attempts) ->
-    Hash = aetx_sign:hash(SignedTx),
-    case rpc:call(Node, aec_chain, find_tx_location, [Hash]) of
-        B when is_binary(B) -> ok;
-        none -> error({already_gc, SignedTx});
-        _ ->
-            timer:sleep(10),
-            wait_for_tx_included_in_chain(Node, SignedTx, Attempts - 1)
     end.
 
 mine_blocks_until_txs_on_chain(Node, TxHashes, MaxBlocks) ->
@@ -835,13 +838,34 @@ tx_in_microblock(MB, TxHash) ->
                       aeser_api_encoder:encode(tx_hash, aetx_sign:hash(STx)) == TxHash
               end, aec_blocks:txs(MB)).
 
+hc_loop_mine_blocks(NBlocks, Timeout) ->
+    hc_loop_mine_blocks_([], NBlocks, Timeout).
+
+hc_loop_mine_blocks_(Blocks, 0, _Timeout) ->
+    {ok, Blocks};
+hc_loop_mine_blocks_(Blocks, N, Timeout) ->
+    case wait_for_new_block_mined(Timeout) of
+        {ok, Node, Block} ->
+            N1 = case aec_blocks:type(Block) of
+                     micro -> N;
+                     key   ->
+                        case aec_headers:is_hole(aec_blocks:to_key_header(Block)) of
+                            true -> N;
+                            false -> N - 1
+                        end
+                 end,
+            hc_loop_mine_blocks_([{Node, Block} | Blocks], N1, Timeout);
+        Err = {error, _} ->
+            Err
+    end.
+
 mine_blocks_loop(Cnt, Type) ->
     mine_blocks_loop([], Cnt, Type).
 
 mine_blocks_loop(Blocks, 0, _Type) ->
     {ok, Blocks};
 mine_blocks_loop(Blocks, BlocksToMine, Type) when is_integer(BlocksToMine), BlocksToMine > 0 ->
-    {ok, Block} = wait_for_new_block_mined(),
+    {ok, _Node, Block} = wait_for_new_block_mined(),
     case aec_blocks:type(Block) of
         Type1 when Type =/= any andalso Type =/= Type1 ->
             %% Don't decrement
@@ -853,15 +877,19 @@ mine_blocks_loop(Blocks, BlocksToMine, Type) when is_integer(BlocksToMine), Bloc
 wait_for_new_block_mined() ->
     wait_for_new_block_mined(30000).
 
+td(B) ->
+    aeu_time:now_in_msecs() - aec_blocks:time_in_msecs(B).
+
 wait_for_new_block_mined(T) when is_integer(T), T >= 0 ->
     receive
         {gproc_ps_event, block_created, Info} ->
-            #{info := Block} = Info,
-            {ok, Block};
+            #{info := Block, test_node := Node} = Info,
+            ct:log("~p produced a key-block at ~p (time-diff: ~p)", [Node, aec_blocks:height(Block), td(Block)]),
+            {ok, Node, Block};
         {gproc_ps_event, micro_block_created, Info} ->
-            ct:log("micro block created, Info=~p", [Info]),
-            #{info := Block} = Info,
-            {ok, Block}
+            #{info := Block, test_node := Node} = Info,
+            ct:log("~p produced a micro-block at ~p (time-diff ~p)", [Node, aec_blocks:height(Block), td(Block)]),
+            {ok, Node, Block}
     after
         T ->
             case T of
@@ -897,7 +925,7 @@ flush_new_blocks_(Acc) ->
     case wait_for_new_block_mined(0) of
         {error, timeout_waiting_for_block} ->
             lists:reverse(Acc);
-        {ok, Block} ->
+        {ok, _Node, Block} ->
             flush_new_blocks_([Block | Acc])
     end.
 
@@ -908,11 +936,20 @@ flush_new_blocks_produced() ->
             flush_new_blocks_produced()
     end.
 
-flush_mempool(Node) ->
-    {ok, SignedTxs} = rpc:call(Node, aec_tx_pool, peek, [infinity]),
-    [ rpc:call(Node, aec_tx_pool, delete, [aetx_sign:hash(STx)]) || STx <- SignedTxs ],
-    ct:log("Flushed ~p txs from ~p's mempool", [length(SignedTxs), Node]),
-    ok.
+%% Try to flush at least N messages from mempool
+%% (the N is to avoid races - so it just waits "a little bit").
+flush_mempool(N, Node) ->
+    flush_mempool(2, N, Node).
+
+flush_mempool(Retries, N, Node) ->
+    case rpc:call(Node, aec_tx_pool, peek, [infinity]) of
+        {ok, SignedTxs} when length(SignedTxs) >= N orelse Retries == 0 ->
+            [ rpc:call(Node, aec_tx_pool, delete, [aetx_sign:hash(STx)]) || STx <- SignedTxs ],
+            ct:log("Flushed ~p txs from ~p's mempool", [length(SignedTxs), Node]);
+        _ ->
+            timer:sleep(500),
+            flush_mempool(Retries - 1, N, Node)
+    end.
 
 %% block the process until a certain height is reached
 %% this has the expectation that the Node is mining
@@ -1074,6 +1111,36 @@ file_missing(F) ->
         _ ->
             true
     end.
+
+assert_no_errors_in_logs(Config) ->
+    assert_no_errors_in_logs(Config, []).
+
+%% Scans the logs for '[error]' patterns and fails if any are found.
+%% If AllowedSubstrings is provided, then any log lines containing these substrings are not reported.
+-spec assert_no_errors_in_logs(Config :: proplists:proplist(), AllowedPatterns :: [string()]) -> ok.
+assert_no_errors_in_logs(Config, AllowedSubstrings) ->
+    Nodes = [Node || {Node, _, _} <- ?config(nodes, Config)],
+    Group = proplists:get_value(name, proplists:get_value(tc_group_properties, Config, []), "?"),
+    {IgnoredErrors, ErrorsToReport} = lists:partition(
+        fun({_Node, {_File, Line}}) ->
+            lists:any(
+                fun(Pattern) -> string:find(Line, Pattern) =/= nomatch end,
+                AllowedSubstrings
+            )
+        end,
+        errors_in_logs(Nodes, Config)),
+
+    case IgnoredErrors of
+        [] -> ok;
+        _ -> ct:pal("Ignoring errors found in logs, while running group=~s~n~150p", [Group, IgnoredErrors])
+    end,
+    case ErrorsToReport of
+        [] -> ok;
+        _ ->
+            ct:pal("Errors found in logs, while running group=~s~n~150p", [Group, ErrorsToReport]),
+            ?assert(false, "Found errors in logs. To ignore, add substrings to 2nd arg of aecore_suite_utils:assert_no_errors_in_logs/2")
+    end,
+    ok.
 
 errors_in_logs(Nodes, Config) ->
     [{N, Errs} || N <- Nodes,
@@ -1786,16 +1853,13 @@ await_new_jobs_pid_recurse(N, OldP, TRef) ->
             await_new_jobs_pid(N, OldP, TRef)
     end.
 
-use_swagger(SpecVsn) ->
+use_api(SpecVsn) ->
     Prefix =
         case SpecVsn of
             oas3 -> "/v3/";
-            swagger2 -> "/v2/"
+            rosetta -> "/"
         end,
     put(api_prefix, Prefix).
-
-use_rosetta() ->
-    put(api_prefix, "/").
 
 get(Key, Default) ->
     case get(Key) of
@@ -1803,24 +1867,18 @@ get(Key, Default) ->
         V -> V
     end.
 
-http_api_version() ->
-    case get(api_prefix, "/v2/") of
-       "/v2/" -> swagger2;
-       "/v3/" -> oas3
-    end.
-
 http_api_prefix() ->
-    get(api_prefix, "/v2/").
+    get(api_prefix, "/v3/").
 
 http_request(Host, get, Path, Params) ->
-    Prefix = get(api_prefix, "/v2/"),
+    Prefix = get(api_prefix, "/v3/"),
     URL = binary_to_list(
             iolist_to_binary([Host, Prefix, Path, encode_get_params(Params)])),
     ct:log("GET ~p", [URL]),
     R = httpc_request(get, {URL, []}, [], []),
     process_http_return(R);
 http_request(Host, post, Path, Params) ->
-    Prefix = get(api_prefix, "/v2/"),
+    Prefix = get(api_prefix, "/v3/"),
     URL = binary_to_list(iolist_to_binary([Host, Prefix, Path])),
     {Type, Body} = case Params of
                        Map when is_map(Map) ->
@@ -1961,6 +2019,49 @@ get_key_hash_by_delta(Node, Delta) ->
     {ok, Header} = rpc(Node, aec_chain, get_key_header_by_height, [TopHeight - Delta]),
     {ok, Hash} = aec_headers:hash_header(Header),
     Hash.
+
+assert_stopped(Node) ->
+    stopped = rpc:call(Node, aec_conductor, get_mining_state, [], 5000).
+
+subscribe_created(Node) ->
+    ok = subscribe(Node, block_created),
+    ok = subscribe(Node, micro_block_created).
+
+start_mining(Node, Opts) ->
+    StartRes = rpc:call(Node, aec_conductor, start_mining, [Opts], 5000),
+    ct:log("aec_conductor:start_mining(~p) (~p) -> ~p", [Opts, Node, StartRes]).
+
+stop_mining(Node) ->
+    StopRes = rpc:call(Node, aec_conductor, stop_mining, [], 5000),
+    ct:log("aec_conductor:stop_mining() (~p) -> ~p", [Node, StopRes]).
+
+unsubscribe_created(Node) ->
+    ok = unsubscribe(Node, block_created),
+    ok = unsubscribe(Node, micro_block_created).
+
+hc_mine_blocks(Nodes, NBlocks, Timeout, Opts) ->
+    [ assert_stopped(Node) || Node <- Nodes ],
+
+    _ = flush_new_blocks(), %% Flush old messages
+
+    [ subscribe_created(Node) || Node <- Nodes ],
+    [ start_mining(Node, Opts) || Node <- Nodes ],
+
+    Res = hc_loop_mine_blocks(NBlocks, Timeout),
+
+    [ stop_mining(Node) || Node <- Nodes ],
+    [ unsubscribe_created(Node) || Node <- Nodes ],
+
+    [ assert_stopped(Node) || Node <- Nodes ],
+
+    _ = flush_new_blocks(), %% Flush late messages
+
+    case Res of
+        {ok, BlocksReverse} ->
+            {ok, lists:reverse(BlocksReverse)};
+        {error, Reason} ->
+            erlang:error(Reason)
+    end.
 
 mine_safe_setup(Node, MiningRate, Opts, LoopFun) ->
     ok = rpc:call(Node, application, set_env,

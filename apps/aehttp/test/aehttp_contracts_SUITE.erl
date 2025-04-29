@@ -1279,13 +1279,13 @@ payable_contract(Config) ->
     {ok, 200, #{<<"tx">> := SpendTx2}} = create_spend_tx(EBPub, EAccNP, 10000, 20000 * ?DEFAULT_GAS_PRICE, <<"bad">>),
 
     #{tx_hash := TxHash1} = sign_and_post_tx(APriv, SpendTx1),
-    #{tx_hash := TxHash2} = sign_and_post_tx(BPriv, SpendTx2),
+    %% We can't even post the second one nowadays...
+    SigSpendTx2 = sign_tx(BPriv, SpendTx2),
+    {ok, 400, #{<<"error_code">> := <<"account_is_not_payable">>}} = post_tx(SigSpendTx2),
 
-    %% If both are mineable they _will_ end up in the same block.
     wait_for_tx_hash_on_chain(Node, TxHash1),
 
     ?assert(tx_in_chain(TxHash1)),
-    ?assert(not tx_in_chain(TxHash2)),
 
     ok.
 
@@ -1873,12 +1873,6 @@ post_tx(TxSerialized) ->
     Host = external_address(),
     http_request(Host, post, "transactions", #{tx => TxSerialized}).
 
-sign_tx(Tx) ->
-    {ok, TxSer} = aeser_api_encoder:safe_decode(transaction, Tx),
-    UTx = aetx:deserialize_from_binary(TxSer),
-    STx = aec_test_utils:sign_tx(UTx, [maps:get(privkey, aecore_suite_utils:patron())]),
-    aeser_api_encoder:encode(transaction, aetx_sign:serialize_to_binary(STx)).
-
 %% ============================================================
 %% private functions
 %% ============================================================
@@ -1905,15 +1899,19 @@ sign_and_post_call_tx(Privkey, CallEncoded) ->
         get_contract_call(CallEncoded),
     sign_and_post_tx(Privkey, EncodedUnsignedTx).
 
-sign_and_post_tx(PrivKey, EncodedUnsignedTx) ->
-    {ok,SerializedUnsignedTx} = aeser_api_encoder:safe_decode(transaction,
-                                                        EncodedUnsignedTx),
-    UnsignedTx = aetx:deserialize_from_binary(SerializedUnsignedTx),
-    SignedTx = aec_test_utils:sign_tx(UnsignedTx, PrivKey),
-    SerializedTx = aetx_sign:serialize_to_binary(SignedTx),
-    SendTx = aeser_api_encoder:encode(transaction, SerializedTx),
+sign_and_post_tx(PrivKey, EncUnsignedTx) ->
+    SendTx = sign_tx(PrivKey, EncUnsignedTx),
     {ok,200,#{<<"tx_hash">> := TxHash}} = post_tx(SendTx),
-    #{tx_hash => TxHash, tx_encoded => EncodedUnsignedTx}.
+    #{tx_hash => TxHash, tx_encoded => EncUnsignedTx}.
+
+sign_tx(Tx) ->
+    sign_tx(maps:get(privkey, aecore_suite_utils:patron()), Tx).
+
+sign_tx(PrivKey, Tx) ->
+    {ok, TxSer} = aeser_api_encoder:safe_decode(transaction, Tx),
+    UTx = aetx:deserialize_from_binary(TxSer),
+    STx = aec_test_utils:sign_tx(UTx, PrivKey),
+    aeser_api_encoder:encode(transaction, aetx_sign:serialize_to_binary(STx)).
 
 tx_in_chain(TxHash) ->
     case get_tx(TxHash) of

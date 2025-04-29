@@ -28,7 +28,7 @@ bin/aeternity start
 
 Verify the node is up, by inspecting the current top of the blockchain as seen by the node:
 ```bash
-curl http://127.0.0.1:3013/v2/blocks/top
+curl http://127.0.0.1:3013/v3/headers/top
 ```
 
 If the node is unresponsive, inspect the `log` directory for errors.
@@ -44,12 +44,12 @@ To verify that node is connected to the mainnet, your node should see the same l
 
 Inspect the current top of the blockchain as seen by the mainnet:
 ```bash
-curl https://mainnet.aeternity.io/v2/blocks/top
+curl https://mainnet.aeternity.io/v3/headers/top
 ```
 
 Inspect the current top of the blockchain as seen by your node:
 ```bash
-curl http://127.0.0.1:3013/v2/blocks/top
+curl http://127.0.0.1:3013/v3/headers/top
 ```
 
 Verify that the height is the same; it may take a few minutes for your node to catch up with the mainnet blockchain.
@@ -77,19 +77,25 @@ If the node successfully mines a block, you shall read log entries like the foll
 ## Mainnet mining
 
 After the node is successfully connected to the mainnet, you could verify that it is mining on the same chain as the rest of the network.
-You can validate it observing the `hash` of the `/blocks/top` of the remote nodes:
+You can validate it observing the `hash` of the `/headers/top` of the remote nodes:
 ```bash
-$ curl https://mainnet.aeternity.io/v2/blocks/top
-{"key_block":{"hash":"kh_2UWBL9BciGC1w2FUukJZinchGRrCuwEuFTkcVvpZcfcpjiAbUy","height":...}}
+$ curl https://mainnet.aeternity.io/v3/headers/top
+{"hash":"mh_2bZx1kGy5uqJRDzDQ8zyJwrQgeDah5k36u2AtHcUE3tSTJ9QyY","height":935925,...,
+"prev_key_hash":"kh_26W973ssbCk6kaNdhMpwqA5xtyHF5DD7VxKqUZiTRcQz2BSbv4",...}
 ```
 
-This is the hash of the block being at the top of the chain of the node and it should be same as the hash in `prev_hash` of the block you're currently mining:
+This is the hash of the block being at the top of the chain of the node and the
+previous key hash should be same as the hash in `prev_key_hash` of the block
+you're currently mining:
+
 ```bash
-$ curl http://127.0.0.1:3013/v2/key-blocks/pending
-{"key_block":{...,"height":... ,"prev_hash":"kh_2UWBL9BciGC1w2FUukJZinchGRrCuwEuFTkcVvpZcfcpjiAbUy", ...}}
+$ curl http://127.0.0.1:3013/v3/key-blocks/pending
+{...,"height":..., "prev_key_hash":"kh_26W973ssbCk6kaNdhMpwqA5xtyHF5DD7VxKqUZiTRcQz2BSbv4", ...}
 ```
-Height would be +1 of what is in the `/blocks/top` of the remote node but this is not
-as strong guarantee as the `prev_hash`.
+
+Height would be +1 of what is in the `/headers/top` of the remote node but this is not as strong guarantee as the `prev_key_hash`.
+
+
 
 ## Maintenance mode
 

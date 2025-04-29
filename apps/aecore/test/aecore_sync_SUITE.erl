@@ -37,6 +37,10 @@
     check_metrics_logged/1,
     crash_syncing_worker/1,
     large_msgs/1,
+    set_capabilities/1,
+    check_capabilities/1,
+    set_unknown_capabilities/1,
+    check_unknown_capabilities/1,
     inject_long_chain/1,
     measure_second_node_sync_time/1,
     validate_default_peers/1,
@@ -75,6 +79,7 @@ groups() ->
                               {group, semantically_invalid_tx},
                               {group, mempool_sync},
                               {group, one_blocked},
+                              {group, capabilities},                              
                               {group, large_msgs},
                               {group, performance},
                               {group, config_overwrites_defaults},
@@ -137,6 +142,15 @@ groups() ->
        ensure_tx_pools_one_tx, %% for dev1 & dev2
        ensure_tx_pools_one_tx_third_node %% check mempool on dev3
       ]},
+     {capabilities, [sequence],
+      [start_first_node,
+       set_capabilities,
+       mine_on_first,
+       start_second_node,
+       check_capabilities,
+       set_unknown_capabilities,
+       restart_second,
+       check_unknown_capabilities]},
      {one_blocked, [sequence],
       [start_first_node,
        mine_on_first,
@@ -260,7 +274,7 @@ end_per_suite(Config) ->
 
 init_per_group(TwoNodes, Config) when
         TwoNodes =:= two_nodes; TwoNodes =:= semantically_invalid_tx;
-        TwoNodes =:= mempool_sync; TwoNodes =:= run_benchmark ->
+        TwoNodes =:= mempool_sync; TwoNodes =:= run_benchmark; TwoNodes =:= capabilities ->
     Config1 = config({devs, [dev1, dev2]}, Config),
     InitialApps = {running_apps(), loaded_apps()},
     {ok, _} = application:ensure_all_started(exometer_core),
@@ -291,7 +305,8 @@ init_per_group(persistence, Config) ->
     Config1;
 init_per_group(ThreeNodes, Config) when ThreeNodes =:= three_nodes;
                                         ThreeNodes =:= node_info;
-                                        ThreeNodes =:= peer_analytics ->
+                                        ThreeNodes =:= peer_analytics;
+                                        ThreeNodes =:= capabilities ->
     Config1 = config({devs, [dev1, dev2, dev3]}, Config),
     InitialApps = {running_apps(), loaded_apps()},
     {ok, _} = application:ensure_all_started(exometer_core),
@@ -349,6 +364,7 @@ end_per_group(Group, Config) when Group =:= two_nodes;
                                   Group =:= node_info;
                                   Group =:= peer_analytics;
                                   Group =:= semantically_invalid_tx;
+                                  Group =:= capabilities;
                                   Group =:= run_benchmark ->
     ct:log("Metrics: ~p", [aec_metrics_test_utils:fetch_data()]),
     ok = aec_metrics_test_utils:stop_statsd_loggers(),
@@ -631,6 +647,43 @@ crash_syncing_worker(Config) ->
 
     {ok, B2} = rpc:call(N1, aec_chain, get_key_block_by_height, [H1], 5000),
     ok.
+
+set_capabilities(Config) ->
+    [ Dev1 | _ ] = proplists:get_value(devs, Config),
+    N1 = aecore_suite_utils:node_name(Dev1),
+    Caps = default_capabilities(),
+    ok = rpc:call(N1, aec_capabilities, set_capability, [chain_poi, Caps], 5000),
+    {ok, Caps} = rpc:call(N1, aec_capabilities, get_capability, [chain_poi], 5000),
+    ok.
+
+check_capabilities(Config) ->
+    [ Dev1, Dev2 | _ ] = proplists:get_value(devs, Config),
+    N2 = aecore_suite_utils:node_name(Dev2),
+    {ok, PeerInfo} = aec_peers:parse_peer_address(aecore_suite_utils:peer_info(Dev1)),
+    PeerId = aec_peer:id(PeerInfo),
+    Caps = default_capabilities(),
+    %% Wait for the ping capabailities to be propagated
+    timer:sleep(2000),
+    PeersWithCap = rpc:call(N2, aec_capabilities, peers_with_capability, [chain_poi], 5000),
+    ct:log("Peers with chain_poi on Dev2 = ~p", [ PeersWithCap ]),
+    PeersWithCap = [{PeerId, Caps}],
+    ok.
+
+set_unknown_capabilities(Config) ->
+    [ Dev1 | _ ] = proplists:get_value(devs, Config),
+    N1 = aecore_suite_utils:node_name(Dev1),
+    TestCaps = [#{test_hash => <<>>, root_hash => <<>>, genesis => <<>>, top => 0}],
+    ok = rpc:call(N1, aec_capabilities, set_capability, [test, TestCaps], 5000),
+    {ok, TestCaps} = rpc:call(N1, aec_capabilities, get_capability, [test], 5000),
+    ok.
+
+check_unknown_capabilities(Config) ->
+    %% Check the known capabliities can still bre retrieved 
+    check_capabilities(Config).
+
+
+default_capabilities() ->
+    [#{height => 0, root_hash => <<>>, genesis => <<>>, top => <<>>, poi => <<>>}].
 
 kill_sync_worker(N, PeerId) ->
     case rpc:call(N, aec_sync, worker_for_peer, [PeerId], 5000) of

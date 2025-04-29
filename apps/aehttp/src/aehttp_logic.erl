@@ -194,6 +194,9 @@ get_min_gas_price_since([{Ms, CutOff} | CutOffs] = COs, Hash, AccStats, Data) ->
             {error, block_not_found}
     end.
 
+stats_to_data(Minutes, {MinGasPrice, 0, 0}) ->
+    stats_to_data(Minutes, {MinGasPrice, 0, 1});
+
 stats_to_data(Minutes, {MinGasPrice, UsedGas, TotGas}) ->
     {Minutes, min_gas_price(MinGasPrice), round((100 * UsedGas) / TotGas)}.
 

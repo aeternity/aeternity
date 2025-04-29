@@ -53,6 +53,8 @@
 -export([ abi_version/0
         , abi_version/2
         , backend/0
+        , contract_filename/1
+        , copts/1
         , init_per_group/2
         , init_per_group/3
         , setup_testcase/1
@@ -123,7 +125,8 @@ latest_sophia_vm_version() ->
         ?FORTUNA_PROTOCOL_VSN -> ?VM_AEVM_SOPHIA_3;
         ?LIMA_PROTOCOL_VSN    -> ?VM_AEVM_SOPHIA_4;
         ?IRIS_PROTOCOL_VSN    -> ?VM_FATE_SOPHIA_2;
-        ?CERES_PROTOCOL_VSN   -> ?VM_FATE_SOPHIA_3
+        ?CERES_PROTOCOL_VSN   -> ?VM_FATE_SOPHIA_3;
+        ?ARCUS_PROTOCOL_VSN   -> ?VM_FATE_SOPHIA_3
     end.
 
 latest_sophia_abi_version() ->
@@ -133,7 +136,8 @@ latest_sophia_abi_version() ->
         ?FORTUNA_PROTOCOL_VSN -> ?ABI_AEVM_SOPHIA_1;
         ?LIMA_PROTOCOL_VSN    -> ?ABI_AEVM_SOPHIA_1;
         ?IRIS_PROTOCOL_VSN    -> ?ABI_FATE_SOPHIA_1;
-        ?CERES_PROTOCOL_VSN   -> ?ABI_FATE_SOPHIA_1
+        ?CERES_PROTOCOL_VSN   -> ?ABI_FATE_SOPHIA_1;
+        ?ARCUS_PROTOCOL_VSN   -> ?ABI_FATE_SOPHIA_1
     end.
 
 latest_sophia_version() ->
@@ -143,7 +147,8 @@ latest_sophia_version() ->
         ?FORTUNA_PROTOCOL_VSN -> ?SOPHIA_FORTUNA;
         ?LIMA_PROTOCOL_VSN    -> ?SOPHIA_LIMA_AEVM;
         ?IRIS_PROTOCOL_VSN    -> ?SOPHIA_IRIS_FATE;
-        ?CERES_PROTOCOL_VSN   -> ?SOPHIA_CERES_FATE
+        ?CERES_PROTOCOL_VSN   -> ?SOPHIA_CERES_FATE;
+        ?ARCUS_PROTOCOL_VSN   -> ?SOPHIA_ARCUS_FATE
     end.
 
 latest_sophia_contract_version() ->
@@ -153,7 +158,8 @@ latest_sophia_contract_version() ->
         ?FORTUNA_PROTOCOL_VSN -> ?SOPHIA_CONTRACT_VSN_2;
         ?LIMA_PROTOCOL_VSN    -> ?SOPHIA_CONTRACT_VSN_3;
         ?IRIS_PROTOCOL_VSN    -> ?SOPHIA_CONTRACT_VSN_3;
-        ?CERES_PROTOCOL_VSN    -> ?SOPHIA_CONTRACT_VSN_3
+        ?CERES_PROTOCOL_VSN   -> ?SOPHIA_CONTRACT_VSN_3;
+        ?ARCUS_PROTOCOL_VSN   -> ?SOPHIA_CONTRACT_VSN_3
     end.
 
 latest_protocol_version() ->
@@ -170,7 +176,8 @@ require_at_least_protocol(Protocol) ->
 		      ?FORTUNA_PROTOCOL_VSN -> not_in_fortuna;
 		      ?LIMA_PROTOCOL_VSN    -> not_in_lima;
 		      ?IRIS_PROTOCOL_VSN    -> not_in_iris;
-		      ?CERES_PROTOCOL_VSN   -> not_in_ceres
+		      ?CERES_PROTOCOL_VSN   -> not_in_ceres;
+		      ?ARCUS_PROTOCOL_VSN   -> not_in_arcus
 		  end,
 	    {skip, Msg}
     end.
@@ -309,7 +316,8 @@ contract_dirs(?SOPHIA_FORTUNA)    -> ["sophia_3"      | contract_dirs(?SOPHIA_LI
 contract_dirs(?SOPHIA_LIMA_AEVM)  -> ["sophia_4_aevm" | contract_dirs(?SOPHIA_LIMA_FATE)];
 contract_dirs(?SOPHIA_LIMA_FATE)  -> ["sophia_4"      | contract_dirs(?SOPHIA_IRIS_FATE)];
 contract_dirs(?SOPHIA_IRIS_FATE)  -> ["sophia_5"];
-contract_dirs(?SOPHIA_CERES_FATE) -> [].
+contract_dirs(?SOPHIA_CERES_FATE) -> [];
+contract_dirs(?SOPHIA_ARCUS_FATE) -> [].
 
 contract_filenames(Compiler, Name) when is_atom(Name) ->
     contract_filenames(Compiler, atom_to_list(Name));
@@ -321,6 +329,9 @@ contract_filenames(Compiler, Name) ->
                 SubDir    <- contract_dirs(Compiler) ++ ["."]],
     %% io:format("Files for ~p (compiler ~p): ~p\n", [Name, Compiler, Files]),
     lists:filter(fun filelib:is_regular/1, Files).
+
+contract_filename(Name) ->
+    contract_filename(sophia_version(), Name).
 
 contract_filename(Compiler, Name) ->
     case contract_filenames(Compiler, Name) of
@@ -352,7 +363,7 @@ compile(Vsn, File) ->
             Self = self(),
             spawn(fun() ->
                 {ok, AsmBin} = file:read_file(File),
-                case generate_json_aci(Vsn, AsmBin) of
+                case generate_json_aci(Vsn, AsmBin, copts({file, File})) of
                     {error, _} = Err ->
                         Self ! {aci_done, Err};
                     _ ->
@@ -389,14 +400,19 @@ compile(Vsn, File) ->
         no -> Result1
     end.
 
-compile_(SophiaVsn, File) when SophiaVsn == ?SOPHIA_CERES_FATE ->
+copts({file, File}) ->
+    SrcDir = aeso_utils:canonical_dir(filename:dirname(File)),
+    [{src_dir, SrcDir}, {include, {file_system, [SrcDir]}}].
+
+compile_(SophiaVsn, File) when SophiaVsn >= ?SOPHIA_CERES_FATE ->
     {ok, AsmBin} = file:read_file(File),
     Source = binary_to_list(AsmBin),
     ACIFlag = case aci_json_enabled(SophiaVsn) of
                   yes_automatic -> [{aci, json}];
                   _ -> []
               end,
-    case aeso_compiler:from_string(Source, [{backend, fate}, {src_file, File}] ++ ACIFlag) of
+    case aeso_compiler:from_string(Source, [{backend, fate}, {src_file, File}] ++
+                                           copts({file, File}) ++ ACIFlag) of
         {ok, Map} ->
             case Map of
                 #{aci := JAci} ->
@@ -441,7 +457,8 @@ compiler_cmd(Vsn) ->
         ?SOPHIA_LIMA_AEVM  -> filename:join([BaseDir, "v4.3.1", "aesophia_cli"]) ++ " --backend=aevm";
         ?SOPHIA_LIMA_FATE  -> filename:join([BaseDir, "v4.3.1", "aesophia_cli"]);
         ?SOPHIA_IRIS_FATE  -> filename:join([BaseDir, "v6.1.0", "aesophia_cli"]);
-        ?SOPHIA_CERES_FATE -> filename:join([BaseDir, "v6.1.0", "aesophia_cli"]) %% used for ACI generation in tests :rolling_eyes:
+        ?SOPHIA_CERES_FATE -> filename:join([BaseDir, "v6.1.0", "aesophia_cli"]); %% used for ACI generation in tests :rolling_eyes:
+        ?SOPHIA_ARCUS_FATE -> filename:join([BaseDir, "v6.1.0", "aesophia_cli"])
     end.
 
 aci_json_enabled(Vsn) ->
@@ -527,15 +544,19 @@ to_str(Str)                     -> Str.
 encode_call_data(Code, Fun, Args) ->
     encode_call_data(sophia_version(), Code, Fun, Args).
 
+encode_call_data(Vsn, {contract, ContractName}, Fun, Args) ->
+    File = contract_filename(Vsn, ContractName),
+    {ok, SrcBin} = file:read_file(File),
+    maybe_fast_encode_call_data(Vsn, to_str(SrcBin), Fun, Args, copts({file, File}));
 encode_call_data(Vsn, Code, Fun, Args) ->
-    maybe_fast_encode_call_data(Vsn, Code, Fun, Args).
+    maybe_fast_encode_call_data(Vsn, Code, Fun, Args, []).
 
-maybe_fast_encode_call_data(Vsn, Code, Fun, Args) ->
+maybe_fast_encode_call_data(Vsn, Code, Fun, Args, COpts) ->
     case aci_json_enabled(Vsn) of
         no ->
-            slow_encode_call_data(Vsn, Code, Fun, Args);
+            slow_encode_call_data(Vsn, Code, Fun, Args, COpts);
         _ -> % yes_manual | yes_automatic
-            Aci = generate_json_aci(Vsn, Code),
+            Aci = generate_json_aci(Vsn, Code, COpts),
             Args1 = string:join([ to_str(Arg) || Arg <- Args ], ", "),
             Args2 = to_str(Fun) ++ "(" ++ Args1 ++ ")",
             case aeaci_aci:encode_call_data(Aci, Args2) of
@@ -547,7 +568,7 @@ maybe_fast_encode_call_data(Vsn, Code, Fun, Args) ->
             end
     end.
 
-slow_encode_call_data(Vsn, Code, Fun, Args) ->
+slow_encode_call_data(Vsn, Code, Fun, Args, COpts) ->
     %% Lookup the res in the cache - if not present just calculate the result
     Backend = backend(Vsn),
     CallId = #encode_call_id{vsn = Vsn, code_hash = crypto:hash(md5, Code), fun_name = Fun, args = Args, backend = Backend},
@@ -558,19 +579,19 @@ slow_encode_call_data(Vsn, Code, Fun, Args) ->
             Result;
         [] ->
             ct:log("Encode call cache MISS :("),
-            Result = slow_encode_call_data_(Vsn, Code, Fun, Args, Backend),
+            Result = slow_encode_call_data_(Vsn, Code, Fun, Args, [{backend, Backend} | COpts]),
             ets:insert_new(?ENCODE_CALL_TAB, #encode_call_cache_entry{call_id = CallId, result = Result}),
             Result
     end.
 
-slow_encode_call_data_(Vsn, Code, Fun, Args, Backend) when Vsn == ?SOPHIA_CERES_FATE ->
+slow_encode_call_data_(Vsn, Code, Fun, Args, COpts) when Vsn >= ?SOPHIA_CERES_FATE ->
     try aeso_compiler:create_calldata(to_str(Code), to_str(Fun),
                                       lists:map(fun to_str/1, Args),
-                                      [{backend, Backend}])
+                                      COpts)
     catch _T:_E ->
         {error, <<"bad argument">>}
     end;
-slow_encode_call_data_(Vsn, Code, Fun, Args0, _Backend) ->
+slow_encode_call_data_(Vsn, Code, Fun, Args0, _COpts) ->
     SrcFile = tempfile_name("sophia_code", ".aes"),
     Args    = legacy_args(Vsn, Args0),
     ok = file:write_file(SrcFile, Code),
@@ -691,32 +712,32 @@ split_at([C | Rest], At, In, Out, N, Acc)   ->
         _            -> split_at(Rest, At, In, Out, N, [C | Acc])
     end.
 
-generate_json_aci(Vsn, Code) ->
+generate_json_aci(Vsn, Code, COpts) ->
     Backend = backend(),
     AciId = make_aci_id(Code),
     NoCache = os:getenv("SOPHIA_ACI_NO_CACHE"),
     case ets:lookup(?ACI_TAB, AciId) of
         _ when NoCache /= false ->
-            generate_json_aci_(Vsn, Backend, Code);
+            generate_json_aci_(Vsn, Backend, Code, COpts);
         [#aci_cache_entry{result = Result}] ->
             ct:log("ACI cache HIT :)"),
             Result;
         [] ->
             ct:log("ACI cache MISS :)"),
-            Result = generate_json_aci_(Vsn, Backend, Code),
+            Result = generate_json_aci_(Vsn, Backend, Code, COpts),
             cache_aci(AciId, Result),
             Result
     end.
 
-generate_json_aci_(Vsn, Backend, Code) when Vsn == ?SOPHIA_CERES_FATE ->
+generate_json_aci_(Vsn, Backend, Code, COpts) when Vsn >= ?SOPHIA_CERES_FATE ->
     try
-        {ok, JAci} = aeso_aci:contract_interface(json, to_str(Code), [{backend, Backend}]),
+        {ok, JAci} = aeso_aci:contract_interface(json, to_str(Code), [{backend, Backend}, {no_code, true}] ++ COpts),
         aeaci_aci:from_string(jsx:encode(JAci), #{backend => Backend})
     catch Err:Reason:Stack ->
         ct:log("Aci generation failed ~p ~p ~p\n", [Err, Reason, Stack]),
         {error, <<"bad argument">>}
     end;
-generate_json_aci_(Vsn, Backend, Code) ->
+generate_json_aci_(Vsn, Backend, Code, _COpts) ->
     SrcFile = tempfile_name("sophia_code", ".aes"),
     ok = file:write_file(SrcFile, Code),
     Compiler = compiler_cmd(max(Vsn, ?SOPHIA_MINERVA)),
@@ -821,6 +842,7 @@ sophia_version(aevm, _) -> {error, aevm_deprecated};
 sophia_version(fate, ?LIMA_PROTOCOL_VSN) -> ?SOPHIA_LIMA_FATE;
 sophia_version(fate, ?IRIS_PROTOCOL_VSN) -> ?SOPHIA_IRIS_FATE;
 sophia_version(fate, ?CERES_PROTOCOL_VSN) -> ?SOPHIA_CERES_FATE;
+sophia_version(fate, ?ARCUS_PROTOCOL_VSN) -> ?SOPHIA_ARCUS_FATE;
 sophia_version(fate, Protocol) when Protocol < ?LIMA_PROTOCOL_VSN -> {error, fate_not_available}.
 
 vm_version(aevm, ?ROMA_PROTOCOL_VSN) -> ?VM_AEVM_SOPHIA_1;
@@ -831,6 +853,7 @@ vm_version(aevm, _) -> {error, aevm_deprecated};
 vm_version(fate, ?LIMA_PROTOCOL_VSN) -> ?VM_FATE_SOPHIA_1;
 vm_version(fate, ?IRIS_PROTOCOL_VSN) -> ?VM_FATE_SOPHIA_2;
 vm_version(fate, ?CERES_PROTOCOL_VSN) -> ?VM_FATE_SOPHIA_3;
+vm_version(fate, ?ARCUS_PROTOCOL_VSN) -> ?VM_FATE_SOPHIA_3;
 vm_version(fate, Protocol) when Protocol < ?LIMA_PROTOCOL_VSN -> {error, fate_not_available}.
 
 abi_version(aevm, ?ROMA_PROTOCOL_VSN) -> ?ABI_AEVM_SOPHIA_1;
@@ -841,6 +864,7 @@ abi_version(aevm, _) -> {error, aeavm_deprecated};
 abi_version(fate, ?LIMA_PROTOCOL_VSN) -> ?ABI_FATE_SOPHIA_1;
 abi_version(fate, ?IRIS_PROTOCOL_VSN) -> ?ABI_FATE_SOPHIA_1;
 abi_version(fate, ?CERES_PROTOCOL_VSN) -> ?ABI_FATE_SOPHIA_1;
+abi_version(fate, ?ARCUS_PROTOCOL_VSN) -> ?ABI_FATE_SOPHIA_1;
 abi_version(fate, Protocol) when Protocol < ?LIMA_PROTOCOL_VSN -> {error, fate_not_available}.
 
 init_per_group(VM, Cfg, Cont) ->
@@ -848,15 +872,7 @@ init_per_group(VM, Cfg, Cont) ->
     case sophia_version(VM, Protocol) of
         {error, Err} -> {skip, Err};
         _ ->
-            ProtocolAtom =
-                case Protocol of
-                    ?ROMA_PROTOCOL_VSN -> roma;
-                    ?MINERVA_PROTOCOL_VSN -> minerva;
-                    ?FORTUNA_PROTOCOL_VSN -> fortuna;
-                    ?LIMA_PROTOCOL_VSN -> lima;
-                    ?IRIS_PROTOCOL_VSN -> iris;
-                    ?CERES_PROTOCOL_VSN -> ceres
-                end,
+            ProtocolAtom = aec_hard_forks:protocol_vsn_name(Protocol),
             ct:pal("Running tests under ~p protocol using ~p", [ProtocolAtom, VM]),
             Cont([{sophia_version, sophia_version(VM, Protocol)},
                   {vm_version, vm_version(VM, Protocol)},
@@ -868,14 +884,7 @@ setup_testcase(Config) ->
     VmVersion = ?config(vm_version, Config),
     ABIVersion = ?config(abi_version, Config),
     SophiaVersion = ?config(sophia_version, Config),
-    ProtocolVersion = case ?config(protocol, Config) of
-                          roma    -> ?ROMA_PROTOCOL_VSN;
-                          minerva -> ?MINERVA_PROTOCOL_VSN;
-                          fortuna -> ?FORTUNA_PROTOCOL_VSN;
-                          lima    -> ?LIMA_PROTOCOL_VSN;
-                          iris    -> ?IRIS_PROTOCOL_VSN;
-                          ceres   -> ?CERES_PROTOCOL_VSN
-                      end,
+    ProtocolVersion = aec_hard_forks:protocol_vsn(?config(protocol, Config)),
     AciDisabled = case os:getenv("SOPHIA_NO_ACI") of
                       false ->
                           ?config(aci_disabled, Config);
@@ -915,6 +924,7 @@ backend() ->
 backend(?SOPHIA_LIMA_FATE ) -> fate;
 backend(?SOPHIA_IRIS_FATE ) -> fate;
 backend(?SOPHIA_CERES_FATE) -> fate;
+backend(?SOPHIA_ARCUS_FATE) -> fate;
 backend(_                 ) -> aevm.
 
 aci_disabled() ->

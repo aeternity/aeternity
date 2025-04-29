@@ -44,14 +44,13 @@ mine_block_test_() ->
                              ?FORTUNA_PROTOCOL_VSN -> 14605323916794258785;
                              ?LIMA_PROTOCOL_VSN    -> 2331533446344578375;
                              ?IRIS_PROTOCOL_VSN    -> 9446698485151902999;
-                             ?CERES_PROTOCOL_VSN   -> 9099357440328778145 
+                             ?CERES_PROTOCOL_VSN   -> 9099357440328778145;
+                             ?ARCUS_PROTOCOL_VSN   -> 13161853780668837458
                          end,
                  Info =
                     case aec_hard_forks:protocol_effective_at_height(Height + 1) of
                         ?ROMA_PROTOCOL_VSN -> default;
-                        ?CERES_PROTOCOL_VSN -> 600;
                         _ -> 591
-
                     end,
                  {BlockCandidate,_} = aec_test_utils:create_keyblock_with_state(
                                         [{TopBlock, aec_trees:new()}],
@@ -98,6 +97,7 @@ mine_block_test_() ->
       ]}.
 
 setup() ->
+    aec_test_utils:ensure_system_init(),
     InitialApps = {running_apps(), loaded_apps()},
     {ok, _} = application:ensure_all_started(aeutils),
     aec_test_utils:mock_fast_and_deterministic_cuckoo_pow(),

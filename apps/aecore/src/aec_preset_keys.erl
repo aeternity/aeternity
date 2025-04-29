@@ -7,6 +7,7 @@
          candidate_pubkey/0,
          promote_candidate/1,
          sign_micro_block/1,
+         sign_micro_block/2,
          produce_key_header_signature/2,
          is_ready/0,
          sign_binary/2,
@@ -82,9 +83,16 @@ set_random_candidate() ->
 
 -spec sign_micro_block(aec_blocks:block()) -> {ok, aec_blocks:block()} | {error, term()}.
 sign_micro_block(MicroBlock) ->
+    case get_pubkey() of
+        {ok, Active} -> sign_micro_block(MicroBlock, Active);
+        Err          -> Err
+    end.
+
+-spec sign_micro_block(aec_blocks:block(), aec_keys:pubkey()) -> {ok, aec_blocks:block()} | {error, term()}.
+sign_micro_block(MicroBlock, Signer) ->
     Header = aec_blocks:to_micro_header(MicroBlock),
     Bin = aec_headers:serialize_to_signature_binary(Header),
-    {ok, Signature} = gen_server:call(?MODULE, {sign, Bin}),
+    {ok, Signature} = gen_server:call(?MODULE, {sign, Bin, Signer}),
     {ok, aec_blocks:set_signature(MicroBlock, Signature)}.
 
 -spec sign_binary(Bin, Signer) -> {ok, Signature} | {error, Reason}
@@ -102,7 +110,7 @@ is_key_present(Pubkey) ->
 
 
 
-%% used in PoS context§
+%% used in hyperchain context
 -spec produce_key_header_signature(aec_headers:key_header(), aec_keys:pubkey()) -> {ok, block_signature()} | {error, term()}.
 produce_key_header_signature(Header, ByWho) ->
     Bin = aec_headers:serialize_to_signature_binary(Header),
@@ -229,6 +237,6 @@ get_random_pubkey(#state{keys = Keys}) ->
     Pubkeys = maps:keys(Keys),
     case length(Pubkeys) of
         0 -> error;
-        Len -> 
+        Len ->
             {ok, lists:nth(rand:uniform(Len), Pubkeys)}
     end.

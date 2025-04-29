@@ -1,127 +1,328 @@
 include "List.aes"
+include "Pair.aes"
+include "String.aes"
 
 contract interface MainStaking =
   entrypoint sorted_validators : () => list((address * int))
-  entrypoint is_validator : (address) => bool
-  entrypoint total_stake : () => int
-  stateful entrypoint post_elect : () => unit
-
+  entrypoint lock_stake  : (int) => list((address * int))
+  entrypoint add_rewards : (int, list(address * int)) => unit
+  entrypoint add_penalties : (int, list(address * int)) => unit
 
 main contract HCElection =
+  record epoch_info =
+    { start                 : int,
+      length                : int,
+      seed                  : option(bytes()),
+      staking_distribution  : option(list(address * int))
+    }
+
+  record pin_reward_info =
+    { base       : int,
+      current    : int,
+      carry_over : int
+    }
+
+  record vote =
+    { producer    : address,
+      hash        : hash,
+      sign_data   : bytes(),
+      signature   : signature
+    }
+
+  record epoch_length_vote =
+    { producer    : address,
+      epoch_delta : int,
+      sign_data   : bytes(),
+      signature   : signature
+    }
+
+  record finalize_info =
+    { epoch        : int,
+      fork         : option(bytes()),
+      epoch_length : option(int),
+      pc_hash      : bytes(),
+      producer     : address,
+      votes        : option(list(vote)),
+      length_votes : option(list(epoch_length_vote))
+    }
+
   record state =
     { main_staking_ct       : MainStaking,
-      entropy               : string,
       leader                : address,
-      added_stake           : int
+      rewards               : map(int, list(address * int)),
+      penalties             : map(int, list(address * int)),
+      epoch                 : int,
+      epochs                : map(int, epoch_info),
+      pin                   : option(bytes()),
+      pin_reward            : pin_reward_info,
+      finalize              : option(finalize_info())
     }
 
-  record get_state_response =
-    { main_staking_ct       : MainStaking,
-      entropy               : string,
-      leader                : address,
-      added_stake           : int
-    }
-
-  record commitment =
-    { sig                   : signature,
-      address_hash_prefix   : bytes(8),
-      top_hash_prefix       : bytes(7)
-    }
-
-  entrypoint init(main_staking_ct : MainStaking, entropy_str : string) =
+  entrypoint init(main_staking_ct : MainStaking) =
     { main_staking_ct       = main_staking_ct,
       leader                = Contract.address,
-      entropy               = entropy_str,
-      added_stake           = 0
-      }
+      rewards               = {},
+      epoch                 = 0,
+      epochs                = {},
+      pin                   = None,
+      finalize              = None,
+      penalties             = {},
+      pin_reward            = {base = 0, current = 0, carry_over = 0} }
 
-  stateful entrypoint elect(entropy_str : string, commitments : list((signature * bytes(8) * bytes(7))), network_id : bytes(15)) =
+  stateful entrypoint init_epochs(epoch_length : int, base_pin_reward : int) =
     assert_protocol_call()
-    let comms = List.map(mk_commitment, commitments)
-    let (new_leader, added_staking_power) = elect_(entropy_str, comms, network_id)
-    state.main_staking_ct.post_elect()
-    put(state{ leader = new_leader, entropy = entropy_str, added_stake = added_staking_power})
-    (new_leader, added_staking_power)
+    require(Chain.block_height == 0, "Only in genesis")
+    put(state{ epochs = { [0] = mk_epoch_info(0, 1, None, None),
+                          [1] = mk_epoch_info(1, epoch_length, None, Some(state.main_staking_ct.lock_stake(1))),
+                          [2] = mk_epoch_info(epoch_length + 1, epoch_length, None, Some(state.main_staking_ct.lock_stake(2))),
+                          [3] = mk_epoch_info(2 * epoch_length + 1, epoch_length, None, Some(state.main_staking_ct.lock_stake(3))),
+                          [4] = mk_epoch_info(3 * epoch_length + 1, epoch_length, None, Some(state.main_staking_ct.lock_stake(4)))
+                        },
+               epoch  = 1,
+               pin_reward.base = base_pin_reward
+             })
 
-  stateful entrypoint elect_after_lazy_leader(new_leader : address) =
+  function mk_epoch_info(start : int,
+                         length : int,
+                         seed : option(bytes),
+                         staking_distribution : option(list(address * int))) =
+    {start = start, length = length, seed = seed, staking_distribution = staking_distribution}
+
+  stateful entrypoint step(leader : address) =
     assert_protocol_call()
-    let known_validator = state.main_staking_ct.is_validator(new_leader)
-    require(known_validator == true, "Must be a validator")
-    put(state{ leader = new_leader, entropy = "lazy_leader", added_stake = 0})
-    (new_leader, 0)
-        
+    put(state{ leader = leader })
 
-  entrypoint elect_next(entropy_str : string, commitments : list((signature * bytes(8) * bytes(7))), network_id : bytes(15)) =
-    let comms =  List.map(mk_commitment, commitments)
-    let (leader, staking_power) = elect_(entropy_str, comms, network_id)
-    (leader, staking_power)
+  stateful entrypoint step_micro(leader : address) =
+    assert_protocol_call()
+    put(state{ leader = leader })
 
-  // Possible commitment formats:
-  // basic commitment format - we get map(hash, list(address))
-  // full commitment - we get list(signature, hash, address)
-  // btc commitment - we get list(signature, hash_prefix, address_hash_prefix)
-  //    Only btc supported for now
-  function elect_(entropy_str : string, commitments : list(commitment), network_id) =
-    let Some(current_hash : hash) = Chain.block_hash(Chain.block_height) // current hash!
-    let entropy : hash = Crypto.sha256(entropy_str)
-    let sorted0 = state.main_staking_ct.sorted_validators() 
-    require(commitments != [], "Commitments list cannot be empty")
-    // accepted here includes those that are plausible matches based on the first 7 bytes of the hash of the parent top hash
-    let (current_hash_prefix : bytes(7), _) = Bytes.split(Crypto.sha256(current_hash))
-    let filter_accepted_commitments = (c) => c.top_hash_prefix == current_hash_prefix
-    let accepted_commitments = List.filter(filter_accepted_commitments, commitments)
-    require(accepted_commitments != [], "No commitments found with the correct top hash")
-    // Further filter based on prefix of the hash of the staker pubkey being somewhere in sorted0 and the signature being correct
-    let (sorted, total_stake, _, _, _)  = List.foldl(filter_posted_commitments, ([], 0, accepted_commitments, current_hash, network_id), sorted0)
+  stateful entrypoint step_eoe(leader : address, seed : bytes(),
+                               next_base_pin_reward : int, carry_over_flag : bool) =
+    assert_protocol_call()
+    let epoch = state.epoch
+    let ei = state.epochs[epoch]
+    // pin rewards
+    let next_carry_over = calc_carry_over(carry_over_flag)
+    let next_base = calc_next_base_reward(next_base_pin_reward)
+    let next_reward = next_base + next_carry_over
+    let pr = {current = next_reward, carry_over = next_carry_over, base = next_base}
 
-    require(sorted != [], "No commitments found with valid signatures")
-    let shot = Bytes.to_int(entropy) mod total_stake
-    switch(find_validator(sorted, shot))
-      None => abort("NO CANDIDATE") // should not be possible
-      Some(new_leader) => (new_leader, total_stake)
+    collect_penalties(state.epoch - 1)
+    // pay rewards to sunset epoch
+    pay_rewards(state.epoch - 1)
+
+    // update epochs
+    require(ei.start + ei.length - 1 == Chain.block_height, String.concats(["This is not the end: ", Int.to_str(ei.start + ei.length - 1), " : ", Int.to_str(Chain.block_height)]))
+    let ei_adjust =
+      switch(state.finalize)
+        None       => state.epochs[epoch + 3]
+        Some(info) =>
+          if ( info.epoch == epoch )
+            switch(info.epoch_length)
+              None => state.epochs[epoch + 3]
+              Some(epoch_length) =>
+                state.epochs[epoch + 3]{ length = epoch_length }
+          else
+            state.epochs[epoch + 3]
+
+    let new_epochs = { [epoch] = state.epochs[epoch],
+                       [epoch + 1] = state.epochs[epoch + 1],
+                       [epoch + 2] = state.epochs[epoch + 2]{ seed = Some(seed) },
+                       [epoch + 3] = ei_adjust,
+                       [epoch + 4] = mk_epoch_info(ei_adjust.start + ei_adjust.length, ei_adjust.length, None,
+                                                   Some(state.main_staking_ct.lock_stake(epoch + 4)))
+                     }
+
+    put(state{ leader = leader,
+               epoch  = epoch + 1,
+               epochs = new_epochs,
+               pin = None,
+               pin_reward = pr})
+
+  stateful entrypoint pin(proof : bytes()) =
+    let epoch = state.epoch
+    let last = state.epochs[epoch].start + state.epochs[epoch].length - 1
+    require(Chain.block_height == last, "Only in last block")
+    require(Call.caller == state.leader, "Must be called by the last leader of epoch")
+    put(state{pin = Some(proof)})
+
+  payable stateful entrypoint add_reward(height : int, to : address) =
+    assert_protocol_call()
+    put(state{rewards[height = []] @ rs = (to, Call.value) :: rs})
+
+  stateful entrypoint add_penalty(height : int, penalty : int, to : address) =
+      assert_protocol_call()
+      require(penalty > 0, "Penalty is expressed as a positive integer")
+      put(state{penalties[height = []] @ rs = (to, penalty) :: rs})
+
+  stateful entrypoint add_reported_penalty(height : int, penalty : int, to : address, reporter : address, reporter_percentage : int) =
+      assert_protocol_call()
+      require(penalty > 0, "Penalty is expressed as a positive integer")
+      require(reporter_percentage >= 0 && reporter_percentage =< 100, "reporter reward percentage must be between 0 and 100")
+      put(state{penalties[height = []] @ rs = (to, (penalty)) :: rs})
+      let reporter_reward = (penalty * reporter_percentage) / 100
+      put(state{penalties[height = []] @ rs = (reporter, -reporter_reward) :: rs})
+
+  stateful entrypoint finalize_epoch(epoch_number : int, fork : bytes(), pc_hash : bytes(), producer : address, votes : list(vote)) =
+    let epoch = state.epoch
+    let last = state.epochs[epoch].start + state.epochs[epoch].length - 1
+    require(Chain.block_height == last, "Only in last block")
+    require(Call.caller == state.leader, "Must be called by the last leader of epoch")
+    require(epoch_number == state.epoch, "Not correct epoch")
+    require(List.all(validate_vote, votes), "Invalid vote")
+    let ei_final =
+      switch(state.finalize)
+        None       => {epoch = epoch_number, fork = Some(fork), epoch_length = None, pc_hash = pc_hash, producer = producer, votes = Some(votes), length_votes = None}
+        Some(finalize) =>
+          if ( finalize.epoch == epoch_number )
+            finalize{ fork = Some(fork), votes = Some(votes) }
+          else
+            {epoch = epoch_number, fork = Some(fork), epoch_length = None, pc_hash = pc_hash, producer = producer, votes = Some(votes), length_votes = None}
+
+    put(state{finalize=Some(ei_final)})
+
+
+  stateful entrypoint finalize_epoch_length(epoch_number : int, epoch_length : int, pc_hash : bytes(), producer : address, votes : list(epoch_length_vote)) =
+    let epoch = state.epoch
+    let last = state.epochs[epoch].start + state.epochs[epoch].length - 1
+    require(Chain.block_height == last, "Only in last block")
+    require(Call.caller == state.leader, "Must be called by the last leader of epoch")
+    require(epoch_number == state.epoch, "Not correct epoch")
+    require(List.all(validate_length_vote, votes), "Invalid vote")
+    let ei_final =
+      switch(state.finalize)
+        None       => {epoch = epoch_number, fork = None, epoch_length = Some(epoch_length), pc_hash = pc_hash, producer = producer, votes = None, length_votes = Some(votes)}
+        Some(finalize) =>
+          if ( finalize.epoch == epoch_number )
+            finalize{ epoch_length = Some(epoch_length), length_votes = Some(votes) }
+          else
+            {epoch = epoch_number, fork = None, epoch_length = Some(epoch_length), pc_hash = pc_hash, producer = producer, votes = None, length_votes = Some(votes)}
+
+    put(state{finalize=Some(ei_final)})
 
   entrypoint leader() =
     state.leader
 
-  entrypoint added_stake() =
-    state.added_stake
+  entrypoint epoch() =
+    state.epoch
 
-  entrypoint get_state() : get_state_response =
-    { main_staking_ct   = state.main_staking_ct,
-      entropy           = state.entropy,
-      leader            = state.leader,
-      added_stake       = state.added_stake
-      }
+  entrypoint epoch_length() =
+    state.epochs[state.epoch].length
 
-  function find_validator(validators, shot) =
-    switch(validators)
-      []   => None
-      (validator_addr, validator_stake : int)::t =>
-        if(validator_stake > shot) Some(validator_addr)
-        else find_validator(t, shot - validator_stake)
+  entrypoint epoch_info() =
+    (state.epoch, state.epochs[state.epoch])
+
+  entrypoint epoch_info_epoch(epoch : int) =
+    require(epoch >= state.epoch - 1 && epoch =< state.epoch + 2, "Epoch not in scope")
+    state.epochs[epoch]
+
+  entrypoint staking_contract() =
+    state.main_staking_ct
+
+  entrypoint validator_schedule(seed : bytes(), validators : list(address * int), length : int) =
+    let total_stake = List.foldl((+), 0, List.map(Pair.snd, validators))
+    // One extra hash operation to convert from bytes() to bytes(32)/hash
+    validator_schedule_(Crypto.blake2b(seed), (s) => Bytes.to_int(s) mod total_stake, validators, length, [])
+
+  entrypoint pin_info() =
+    state.pin
+
+  entrypoint pin_reward_info() =
+    state.pin_reward
+
+  entrypoint finalize_info() =
+    state.finalize
+
+  function
+    validator_schedule_(_, _, _, 0, schedule) = List.reverse(schedule)
+    validator_schedule_(seed0, rnd, validators, n, schedule) =
+      let seed = Crypto.blake2b(seed0)
+      let validator = pick_validator(rnd(seed), validators)
+      validator_schedule_(seed, rnd, validators, n - 1, validator :: schedule)
+
+  function
+    pick_validator(n, (validator, stake) :: _) | n < stake = validator
+    pick_validator(n, (_, stake) :: validators)            = pick_validator(n - stake, validators)
 
   function assert_protocol_call() =
-      require(Call.caller == Contract.creator, "Must be called by the protocol")
+    require(Call.caller == Contract.creator, "Must be called by the protocol")
 
-  function filter_posted_commitments((accum, total_s, commitments, current_hash, network_id), (addr, stake)) =
-    let (addr_prefix : bytes(8), _) = Bytes.split(Crypto.sha256(addr))
-    // There could be a collision here - multiple addresses might have the same prefix, so consider
-    // all that match this address
-    let matches = List.find_indices((c) => c.address_hash_prefix == addr_prefix, commitments)
-    let comms = List.map((idx) =>
-                            let Some(commitment) = List.nth(idx, commitments)
-                            (addr, stake, current_hash, network_id, commitment.sig),
-                        matches)
-    let with_correct_sig = List.filter(filter_by_sig, comms)
-    List.foldl(accum_stake, (accum, total_s, commitments, current_hash, network_id), with_correct_sig)
+  function calc_carry_over(carry_over_flag : bool) =
+    let ei = state.pin_reward
+    if (carry_over_flag)
+      ei.base + ei.carry_over
+    else
+      0
 
-  function filter_by_sig((addr : address, stake, current_hash : hash, network_id, sig)) =
-    let msg : bytes(47) = Bytes.concat(current_hash, network_id)
-    Crypto.verify_sig(Crypto.sha256(msg), addr, sig)
+  function calc_next_base_reward(next_base_pin_reward : int) =
+    if ( next_base_pin_reward >= 0 )
+      next_base_pin_reward
+    else
+      state.pin_reward.base
 
-  function accum_stake((accum, total_s, commitments, current_hash, network_id), (addr, stake, _current_hash, _network_id, sig)) =
-    ((addr, stake) :: accum, stake + total_s, commitments, current_hash, network_id)
+  stateful function pay_rewards(e : int) =
+    let ei = state.epochs[e]
+    let (rewards, tot) = pay_rewards_(ei.start, ei.length, {}, 0)
+    state.main_staking_ct.add_rewards(value = tot, e, rewards)
 
-  function mk_commitment((sig : signature, address_hash_prefix : bytes(8), top_hash_prefix : bytes(7))) =
-    { sig = sig, top_hash_prefix = top_hash_prefix, address_hash_prefix = address_hash_prefix}
+  stateful function
+    pay_rewards_(_, 0, acc, tot) = (Map.to_list(acc), tot)
+    pay_rewards_(h, n, acc, tot) =
+      switch(Map.lookup(h, state.rewards))
+        None      => pay_rewards_(h + 1, n - 1, acc, tot)
+        Some(aas) =>
+          let (acc1, tot1) = List.foldl(pay_reward_, (acc, tot), aas)
+          put(state{rewards @ r = Map.delete(h, r)})
+          pay_rewards_(h + 1, n - 1, acc1, tot1)
 
+  function pay_reward_((acc, tot), (addr, amt)) =
+    (acc{[addr = 0] @ r = r + amt}, tot + amt)
+
+  stateful function collect_penalties(epoch : int) =
+    let ei = state.epochs[epoch]
+    let pens = collect_penalties_(ei.start, ei.length, {})
+    state.main_staking_ct.add_penalties(epoch, List.sort(compare_pens_, pens)) // penalties first to fill pool, rewards second
+
+  stateful function
+    collect_penalties_(_, 0, acc) = Map.to_list(acc)
+    collect_penalties_(h, n, acc) =
+      switch(Map.lookup(h, state.penalties))
+        None      => collect_penalties_(h + 1, n - 1, acc)
+        Some(aas) =>
+          let acc1 = List.foldl(collect_penalty_, acc, aas)
+          put(state{penalties @ r = Map.delete(h, r)})
+          collect_penalties_(h + 1, n - 1, acc1)
+
+  function collect_penalty_(acc, (addr, amt)) =
+    acc{[addr = 0] @ r = r + amt}
+
+  // sort largest penalties first
+  function compare_pens_((_, x), (_, y)) =
+    x > y
+
+  function validate_vote(vote) =
+    if(Crypto.verify_sig(vote.sign_data, vote.producer, vote.signature))
+      contains_bytes(Bytes.to_any_size(vote.hash), vote.sign_data)
+    else
+      false
+
+  function validate_length_vote(vote) =
+    if(Crypto.verify_sig(vote.sign_data, vote.producer, vote.signature))
+      let needle = String.to_bytes(String.concats(["epoch_length_delta", Int.to_str(vote.epoch_delta)]))
+      contains_bytes(needle, vote.sign_data)
+    else
+      false
+
+  function contains_bytes(needle : bytes(), haystack : bytes()) : bool =
+    contains_bytes_(Bytes.size(needle), needle, haystack)
+
+  function contains_bytes_(len: int, needle : bytes(), haystack : bytes()) : bool =
+    if(Bytes.size(haystack) < len)
+      false
+    else
+      let Some((bs_, _)) = Bytes.split_any(haystack, len)
+      if(bs_ == needle)
+        true
+      else
+        let Some((_, haystack_)) = Bytes.split_any(haystack, 1)
+        contains_bytes_(len, needle, haystack_)

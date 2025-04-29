@@ -10,6 +10,7 @@
 -export([ running_apps/0
         , loaded_apps/0
         , restore_stopped_and_unloaded_apps/2
+        , ensure_system_init/0
         , mock_time/0
         , unmock_time/0
         , mock_difficulty_as_target/0
@@ -108,6 +109,17 @@ restore_stopped_and_unloaded_apps(OldRunningApps, OldLoadedApps) ->
     lists:foreach(fun(A) -> ok = application:unload(A) end, BadLoadedApps),
     {_, OldRunningApps} = {OldRunningApps, running_apps()},
     {_, OldLoadedApps} = {OldLoadedApps, loaded_apps()},
+    ok.
+
+%% For tests that require the basic system apps to be loaded first.
+%% These apps (setup, lager, etc.) should not be stopped and restarted
+%% each time when tearing down a test and setting up a new one.
+ensure_system_init() ->
+    %% the setup app needs to modify the lager config before lager starts,
+    %% but this is specified through a hook in the aeutils config
+    application:load(aeutils), % ensure aeutils config loaded before setup starts
+    {ok, _} = application:ensure_all_started(setup), % ensure started before lager
+    {ok, _} = application:ensure_all_started(lager),
     ok.
 
 genesis_accounts() ->
@@ -327,6 +339,7 @@ start_chain_db() ->
     start_chain_db(ram).
 
 start_chain_db(ram) ->
+    save_apps_before_start_chain_db(),
     persistent_term:put({?MODULE, db_mode}, ram),
     ok = mnesia:start(),
     ok = aec_db:initialize_db(ram),
@@ -334,16 +347,24 @@ start_chain_db(ram) ->
     ok = mnesia:wait_for_tables(Tabs, 5000),
     aec_db_gc:install_test_env(),
     ok;
-
 start_chain_db(disc) ->
+    save_apps_before_start_chain_db(),
     Persist = application:get_env(aecore, persist),
     persistent_term:put({?MODULE, db_mode}, {disc, Persist}),
     application:set_env(aecore, persist, true),
     aec_db:check_db(),
     aec_db:clear_db().
 
+%% Note: it is not expected that two tests will be running this concurrently
+save_apps_before_start_chain_db() ->
+    Apps = {running_apps(), loaded_apps()},
+    persistent_term:put({?MODULE, apps_before_start_chain_db}, Apps).
+
 stop_chain_db() ->
-    stop_chain_db(persistent_term:get({?MODULE, db_mode})).
+    stop_chain_db(persistent_term:get({?MODULE, db_mode})),
+    {OldRunningApps, OldLoadedApps} = persistent_term:get({?MODULE, apps_before_start_chain_db}),
+    restore_stopped_and_unloaded_apps(OldRunningApps, OldLoadedApps).
+
 stop_chain_db(ram) ->
     aec_db_gc:cleanup(),
     application:stop(mnesia);
@@ -583,6 +604,8 @@ extend_block_chain_with_state(Chain,
                               [{PubKey, PrivKey}|Miners],
                               [BeneficiaryPubKey | Beneficiaries],
                               TxsFun, Nonce) ->
+    %% Avoid creating blocks with the same timestamp by sleeping here...
+    timer:sleep(1),
     NewChain = next_block_with_state(Chain, Tgt, Ts, TxsFun, Nonce, PubKey, PrivKey, BeneficiaryPubKey),
     extend_block_chain_with_state(NewChain, Tgts, Tss, Miners, Beneficiaries, TxsFun, Nonce).
 
@@ -791,12 +814,15 @@ get_config(_Key, undefined, DefaultFun) ->
 %%%=============================================================================
 
 aec_keys_setup() ->
+    Apps = {running_apps(), loaded_apps()},
+    persistent_term:put({?MODULE, apps_before_keys_setup}, Apps),
     ok = application:ensure_started(crypto),
     aec_keys_bare_setup().
 
 aec_keys_cleanup(TmpKeysDir) ->
     aec_keys_bare_cleanup(TmpKeysDir),
-    ok = application:stop(crypto).
+    {OldRunningApps, OldLoadedApps} = persistent_term:get({?MODULE, apps_before_keys_setup}),
+    restore_stopped_and_unloaded_apps(OldRunningApps, OldLoadedApps).
 
 aec_keys_bare_setup() ->
     TmpKeysDir = create_temp_key_dir(),

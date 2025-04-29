@@ -105,6 +105,7 @@ queue('GetOracleByPubkey')                      -> ?READ_Q;
 queue('GetOracleQueriesByPubkey')               -> ?READ_Q;
 queue('GetOracleQueryByPubkeyAndQueryId')       -> ?READ_Q;
 queue('GetNameEntryByName')                     -> ?READ_Q;
+queue('GetNameEntryByNameHash')                 -> ?READ_Q;
 queue('GetAuctionEntryByName')                  -> ?READ_Q;
 queue('GetChannelByPubkey')                     -> ?READ_Q;
 queue('GetPeerPubkey')                          -> ?READ_Q;
@@ -113,6 +114,8 @@ queue('GetSyncStatus')                          -> ?READ_Q;
 queue('GetPeerKey')                             -> ?READ_Q;
 queue('GetChainEnds')                           -> ?READ_Q;
 queue('GetRecentGasPrices')                     -> ?READ_Q;
+queue('GetPinningTx')                           -> ?READ_Q;
+queue('GetHyperchainContractPubkeys')           -> ?READ_Q;
 %% update transactions (default to update in catch-all)
 queue('PostTransaction')                        -> ?WRITE_Q;
 queue(_)                                        -> ?WRITE_Q.
@@ -248,7 +251,7 @@ handle_request_('GetKeyBlockByHash', Params, _Context) ->
                                         error_code => <<"no_key_block">>}}
                     end;
                 error ->
-                    {404, [], #{reason => <<"Block not fond">>}}
+                    {404, [], #{reason => <<"Block not found">>}}
             end
     end;
 
@@ -670,25 +673,15 @@ handle_request_('GetAuctionEntryByName', Params, _Context) ->
 
 handle_request_('GetNameEntryByName', Params, _Context) ->
     Name = maps:get(name, Params),
-    case aec_chain:name_entry(Name) of
-        {ok, #{id       := Id,
-               ttl      := TTL,
-               owner    := Owner,
-               pointers := Pointers}} ->
-            {200, [], #{<<"id">>       => aeser_api_encoder:encode(id_hash, Id),
-                        <<"owner">>    => aeser_api_encoder:encode(account_pubkey, Owner),
-                        <<"ttl">>      => TTL,
-                        <<"pointers">> => [aens_pointer:serialize_for_client(P) || P <- Pointers]}};
-        {error, name_not_found = Code} ->
-            {404, [], #{reason => <<"Name not found">>,
-                        error_code => atom_to_binary(Code, utf8)}};
-        {error, name_revoked = Code} ->
-            {404, [], #{reason => <<"Name revoked">>,
-                        error_code => atom_to_binary(Code, utf8)}};
-        {error, Reason} ->
-            ReasonBin = atom_to_binary(Reason, utf8),
-            {400, [], #{reason => <<"Name validation failed with a reason: ", ReasonBin/binary>>,
-                        error_code => ReasonBin}}
+    handle_get_name_entry(aec_chain:name_entry(Name));
+
+handle_request_('GetNameEntryByNameHash', Params, _Context) ->
+    case aeser_api_encoder:safe_decode(name, maps:get(name_hash, Params)) of
+        {ok, NameHash} ->
+            handle_get_name_entry(aec_chain:name_entry_by_hash(NameHash));
+        {error, Code} ->
+            {400, [], #{reason => <<"Invalid name hash">>,
+                        error_code => atom_to_binary(Code, utf8)}}
     end;
 
 handle_request_('GetChannelByPubkey', Params, _Context) ->
@@ -799,11 +792,20 @@ handle_request_('GetCurrency', _Params, _Context) ->
                   <<"subunit">>                => Subunit,
                   <<"subunits_per_unit">>      => SubunitsPerUnit
                 },
-    CcyMeta = case aeu_env:find_config([<<"chain">>, <<"currency">>, <<"fiat_converstion_url">>],[user_config]) of
-                undefined ->
-                    CcyMeta0;
-                {ok, FiatUrl} ->
-                    maps:put(<<"fiat_converstion_url">>, FiatUrl, CcyMeta0)
+    FiatUrl = lists:foldl(
+        fun(Key, Acc) ->
+            case aeu_env:find_config([<<"chain">>, <<"currency">>, Key],[user_config]) of
+                undefined -> Acc;
+                {ok, FiatUrl} -> FiatUrl
+            end
+        end,
+        undefined,
+        [<<"fiat_converstion_url">>, <<"fiat_conversion_url">>]),
+    CcyMeta = case FiatUrl of
+                undefined -> CcyMeta0;
+                FiatUrl -> maps:merge(CcyMeta0,
+                                #{ <<"fiat_converstion_url">> => FiatUrl,
+                                   <<"fiat_conversion_url">>  => FiatUrl})
                 end,
     {ok, PrimaryColour} = aeu_env:find_config([<<"chain">>, <<"display">>, <<"primary_colour">>],[user_config, schema_default]),
     {ok, SecondaryColour} = aeu_env:find_config([<<"chain">>, <<"display">>, <<"secondary_colour">>],[user_config, schema_default]),
@@ -853,6 +855,14 @@ handle_request_('ProtectedDryRunTxs', #{ 'DryRunInput' := Req }, _Context) ->
                                   catch _:_ ->
                                       0 %% this is handled later on
                                   end;
+                                 (#{<<"tx_hash">> := TxHash}) ->
+                                  try {ok, TxHashInternal} = aeser_api_encoder:safe_decode(tx_hash, TxHash),
+                                      {mempool, SignedTx} = aec_chain:find_tx_with_location(TxHashInternal),
+                                      Tx = aetx_sign:tx(SignedTx),
+                                      aetx:gas_limit(Tx, Height, Protocol)
+                                  catch _:_ ->
+                                      0 %% this is handled later on
+                                  end;
                                  (#{<<"call_req">> := CallReq}) ->
                                     maps:get(<<"gas">>, CallReq, ?DEFAULT_CALL_REQ_GAS_LIMIT)
                               end,
@@ -879,6 +889,34 @@ handle_request_('GetRecentGasPrices', _Params, _Context) ->
         {error, _} ->
             {404, [], #{reason => <<"Block unexpectedly not found">>}}
     end;
+
+handle_request_('GetPinningTx', _Params, _Context) ->
+    case aec_parent_connector:get_pinning_data() of
+        {ok, #{epoch := Epoch,
+               height := CCHeight,
+               block_hash := EpochBlockHash,
+               parent_payload := Payload,
+               last_leader := Leader,
+               parent_type := Type,
+               parent_network_id := Id}} ->
+            {200, [], #{<<"epoch">> => Epoch,
+                        <<"height">> => CCHeight,
+                        <<"block_hash">> => aeser_api_encoder:encode(key_block_hash, EpochBlockHash),
+                        <<"parent_payload">> => Payload,
+                        <<"last_leader">> => aeser_api_encoder:encode(account_pubkey, Leader),
+                        <<"parent_type">> => atom_to_binary(Type),
+                        <<"parent_network_id">> => Id}};
+        {error, _} ->
+           {404, [], #{reason => <<"No pin data available">>}}
+    end;
+
+handle_request_('GetHyperchainContractPubkeys', _Params, _Context) ->
+    % TODO handle not in HC at all or consensus not initialized?
+    lager:debug("HyperchainsGetContract"),
+    {200, [], #{<<"staking">> => aeser_api_encoder:encode(contract_pubkey, aec_consensus_hc:get_contract_pubkey(staking)),
+                <<"election">> => aeser_api_encoder:encode(contract_pubkey, aec_consensus_hc:get_contract_pubkey(election)),
+                <<"rewards">> => aeser_api_encoder:encode(contract_pubkey, aec_consensus_hc:get_contract_pubkey(rewards))
+            }};
 
 handle_request_(OperationID, Req, Context) ->
     error_logger:error_msg(
@@ -911,6 +949,28 @@ deserialize_transaction(Tx) ->
         _:_ -> {error, broken_tx}
     end.
 
+handle_get_name_entry(GetResult) ->
+    case GetResult of
+        {ok, #{id       := Id,
+               ttl      := TTL,
+               owner    := Owner,
+               pointers := Pointers}} ->
+            {200, [], #{<<"id">>       => aeser_api_encoder:encode(id_hash, Id),
+                        <<"owner">>    => aeser_api_encoder:encode(account_pubkey, Owner),
+                        <<"ttl">>      => TTL,
+                        <<"pointers">> => [aens_pointer:serialize_for_client(P) || P <- Pointers]}};
+        {error, name_not_found = Code} ->
+            {404, [], #{reason => <<"Name not found">>,
+                        error_code => atom_to_binary(Code, utf8)}};
+        {error, name_revoked = Code} ->
+            {404, [], #{reason => <<"Name revoked">>,
+                        error_code => atom_to_binary(Code, utf8)}};
+        {error, Reason} ->
+            ReasonBin = atom_to_binary(Reason, utf8),
+            {400, [], #{reason => <<"Name validation failed with a reason: ", ReasonBin/binary>>,
+                        error_code => ReasonBin}}
+    end.
+
 %% Compute hash-rate
 %%
 %% Target is scientific notation, aeminer_pow:target_to_difficulty computes
@@ -928,10 +988,9 @@ target_to_hashrate(Target, aec_consensus_bitcoin_ng) ->
 target_to_hashrate(_Target, _Consensus) ->
     0.
 
-%%% Difficulty for PoS is the number of tokens staked, that is a large number, present
+%%% Difficulty for hyperchains is the number of tokens staked, that is a large number, present
 %%% it in microAE instead.
-difficulty(Difficulty, Consensus)
-        when Consensus =:= aec_consensus_smart_contract; Consensus =:= aec_consensus_hc ->
+difficulty(Difficulty, Consensus) when Consensus =:= aec_consensus_hc ->
     Difficulty div 1_000_000_000_000;
 difficulty(Difficulty, _Consensus) ->
     Difficulty.

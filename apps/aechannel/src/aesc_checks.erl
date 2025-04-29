@@ -9,6 +9,7 @@
         , account/2
         , accounts/3
         , lock_period/1
+        , port/2
         ]).
 
 -include("aesc_codec.hrl").
@@ -87,6 +88,27 @@ amounts(#{ initiator_amount   := InitiatorAmount0
         {true,  false} -> {error, insufficient_responder_amount};
         {false, false} -> {error, insufficient_amounts}
     end.
+
+port(Port, responder) ->
+    case aeu_env:find_config([<<"channels">>, <<"ad_hoc_listen_ports">>], [user_config, schema_default]) of
+        {ok,true} ->
+            ok;
+        _ ->
+            case aeu_env:find_config([<<"channels">>, <<"listeners">>], [user_config, {value, []}]) of
+                {ok, Listeners} ->
+                    case lists:any(fun(#{<<"port">> := P}) -> P == Port end, Listeners) of
+                        true ->
+                            ok;
+                        _ ->
+                            {error, responder_port_not_allowed}
+                    end;
+                _ ->
+                    ok
+            end
+    end;
+port(_, _) ->
+    ok.
+
 
 %% ==================================================================
 %% Internal functions

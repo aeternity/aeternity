@@ -7,74 +7,112 @@
 -export([get_latest_block/2,
          get_header_by_hash/3,
          get_header_by_height/3,
-         get_commitment_tx_in_block/5,
-         get_commitment_tx_at_height/4,
-         post_commitment/8]).
+         hash_to_integer/1,
+         get_chain_type/0,
+         pin_to_pc/2,
+         get_pin_by_tx_hash/2]).
+
+%% Temporary exports for keeping useful chain utils around
+-export([select_utxo/2,
+unspent_to_satoshis/1,
+float_btc_to_satoshi/1,
+pad8/1,
+create_outputs/5,
+satoshi_to_btc/1,
+drop_trailing_zeroes/1,
+drop_until_point/1,
+listunspent/1,
+getblock/4,
+createrawtransaction/3,
+signrawtransaction/2,
+sendrawtransaction/2,
+getrawtransaction/2,
+decoderawtransaction/2,
+to_hex/1]).
 
 -behavior(aehttpc).
 
+
+%%%=============================================================================
+%%% API/Callbacks
+%%%=============================================================================
+
 get_latest_block(NodeSpec, Seed) ->
     {ok, Hash} = getbestblockhash(NodeSpec, Seed),
-    {ok, {Height, Hash, PrevHash, _Txs}}
+    {ok, {Height, Hash, PrevHash, Time, _Txs}}
         = getblock(NodeSpec, Seed, Hash, _Verbosity = 1),
-    {ok, Hash, PrevHash, Height}.
+    {ok, Hash, PrevHash, Height, Time}.
 
 get_header_by_hash(Hash, NodeSpec, Seed) ->
-    {ok, {Height, Hash, PrevHash, _Txs}}
+    {ok, {Height, Hash, PrevHash, Time, _Txs}}
       = getblock(NodeSpec, Seed, Hash, _Verbosity = 1),
-    {ok, Hash, PrevHash, Height}.
+    {ok, Hash, PrevHash, Height, Time}.
 
 get_header_by_height(Height, NodeSpec, Seed) ->
     case getblockhash(NodeSpec, Seed, Height) of
         {ok, Hash} ->
-            {ok, {_Height, Hash, PrevHash, _Txs}}
+            {ok, {_Height, Hash, PrevHash, Time, _Txs}}
                 = getblock(NodeSpec, Seed, Hash, _Verbosity = 1),
-            {ok, Hash, PrevHash, Height};
+            {ok, Hash, PrevHash, Height, Time};
         {error, not_found} -> {error, not_found}
     end.
 
-get_commitment_tx_in_block(NodeSpec, Seed, BlockHash, _PrevHash, ParentHCAccountPubKey) ->
-    {ok, {_Height, _Hash, __PrevHash, Txs}}
-      = getblock(NodeSpec, Seed, BlockHash, _Verbosity = 2),
-    Commitments = find_commitments(Txs, ParentHCAccountPubKey),
-    {ok, Commitments}.
+hash_to_integer(Hash) ->
+    binary_to_integer(Hash, 16).
 
-get_commitment_tx_at_height(NodeSpec, Seed, Height, ParentHCAccountPubKey) ->
-    {ok, Hash} = getblockhash(NodeSpec, Seed, Height),
-    {ok, {_Height, _Hash, _PrevHash, Txs}}
-      = getblock(NodeSpec, Seed, Hash, _Verbosity = 2),
-    Commitments = find_commitments(Txs, ParentHCAccountPubKey),
-    {ok, Commitments}.
+get_chain_type() ->
+    {ok, doge}.
 
-%% @doc Post commitment to BTC parent chain.
-%% Commitment is a simple spend transaction to a known BTC account
-%% Spend TX must be signed by the BTC account owned by the staking node
-%% SpendTx must include the AE validator account pubkey in its MetaData
-%% Bitcoin doc suggests 4 ops for this (https://gist.github.com/gavinandresen/2839617):
-%% 1. Get a list of not-yet-spent outputs with listunspent
-%% 2. Create a transaction using createrawtransaction
-%% 3. Apply signatures using signrawtransaction
-%% 4. Submit it using sendrawtransaction
+%%% Pinning
 
-post_commitment(NodeSpec, StakerPubkey, HCCollectPubkey, Amount, Fee, Commitment,
-                _NetworkId, _SignModule) ->
-        post_commitment(NodeSpec, StakerPubkey, HCCollectPubkey, Amount, Fee, Commitment).
+pin_to_pc({PinningData, _Who, Amount, Fee, _NetworkId, _SignModule}, NodeSpec) ->
+    PinPayload = aeser_hc:encode_parent_pin_payload(PinningData),
+    post_pin(NodeSpec, Amount, Fee, PinPayload).
 
-post_commitment(NodeSpec, BTCAcc, HCCollectPubkey, Amount, Fee, Commitment) ->
+get_pin_by_tx_hash(TxHash, NodeSpec) ->
+    lager:debug("in doge with: ~p", [TxHash]),
+    {ok, #{<<"hex">> := RawTx, <<"confirmations">> := Conf} = Tx} = gettransaction(NodeSpec, TxHash),
+    lager:debug("raw_tx_hex: ~p", [RawTx]),
+    {ok, Vout} = decoderawtransaction(NodeSpec, RawTx),
+    {ok, Hex} = find_pin(Vout),
+    {ok, PinMap} = aeser_hc:decode_parent_pin_payload(aeu_hex:hex_to_bin(Hex)),
+    UpdMap =
+        case Conf of
+            0 -> maps:put(pc_height, -1, PinMap);
+            _ ->
+                Hash = maps:get(<<"blockhash">>, Tx),
+                {ok, {Height, _, _, _, _}} = getblock(NodeSpec, <<>>, Hash, 2),
+                maps:put(pc_height, Height, PinMap) % TODO fetch block using BlockHash from Tx
+        end,
+    {ok, UpdMap}.
+
+
+%%%=============================================================================
+%%% Internal functions
+%%%=============================================================================
+
+post_pin(NodeSpec, Amount, Fee, PinPayload) ->
     {ok, Unspent} = listunspent(NodeSpec),
+    lager:debug("unspent: ~p", [Unspent]),
     UnspentSatoshis = unspent_to_satoshis(Unspent),
-    {ok, {Inputs, TotalAmount}} = select_utxo(UnspentSatoshis, Fee + Amount),
-    Outputs = create_outputs(Commitment, BTCAcc, HCCollectPubkey, TotalAmount, Amount, Fee),
+    lager:debug("satoshis: ~p", [UnspentSatoshis]),
+    {ok, {Inputs, UTXOAmount, UTXOAddress}} = select_utxo(UnspentSatoshis, Fee + Amount),
+    lager:debug("inputs, amount: ~p, ~p", [Inputs, UTXOAmount]),
+    Outputs = create_outputs(PinPayload, UTXOAddress, Amount, Fee, UTXOAmount),
+    lager:debug("outputs: ~p" , [Outputs]),
     {ok, Tx} = createrawtransaction(NodeSpec, Inputs, Outputs),
+    lager:debug("tx: ~p", [Tx]),
     {ok, SignedTx} = signrawtransaction(NodeSpec, Tx),
+    lager:debug("signed: ~p", [SignedTx]),
     {ok, TxHash} = sendrawtransaction(NodeSpec, SignedTx),
-    {ok, #{<<"tx_hash">> => TxHash}}.
+    lager:debug("txhash: ~p", [TxHash]),
+    TxHash.
 
-select_utxo([#{<<"spendable">> := true, <<"amount">> := Amount} = Unspent | _Us], Needed) when Amount >= Needed ->
+select_utxo([#{<<"spendable">> := true, <<"amount">> := Amount, <<"address">> := Address} = Unspent | _Us], Needed) when Amount >= Needed ->
     %% For now just pick first spendable UTXO with enough funds. There is no end to how fancy this can get
     %% https://bitcoin.stackexchange.com/questions/32145/what-are-the-trade-offs-between-the-different-algorithms-for-deciding-which-utxo
     #{<<"txid">> := TxId, <<"vout">> := VOut} = Unspent,
-    {ok, {[#{<<"txid">> => TxId, <<"vout">> => VOut}], Amount}};
+    {ok, {[#{<<"txid">> => TxId, <<"vout">> => VOut}], Amount, Address}};
 select_utxo([_U|Us], Fee) ->
     select_utxo(Us, Fee);
 select_utxo([], _Fee) ->
@@ -99,17 +137,17 @@ pad8(Str) when length(Str) < 8 ->
     Padding = lists:duplicate(8 - length(Str), $0),
     Str ++ Padding.
 
-create_outputs(Commitment, BTCAcc, HCCollectPubkey, TotalAmount, Amount, Fee) ->
+create_outputs(PinPayload, Account, SendAmount, Fee, UTXOAmount) ->
     %% Three outputs needed:
     %% 1. for the OP_RETURN containing the Commitment
     %% 2. to return the total UTXO amount minus the Fee and Amount to our own account.
     %% 3. to register this transaction against the common HC BTC account
     %% The "data" field gets magically turned by the bitcoind API into an output
     %% in a correctly formatted OP_RETURN
-    Refund = satoshi_to_btc(TotalAmount - Fee - Amount),
-    HCAmount = satoshi_to_btc(Amount),
-    HexCommitment = to_hex(Commitment),
-    #{BTCAcc => Refund, HCCollectPubkey => HCAmount, <<"data">> => HexCommitment}.
+    SelfSpend = satoshi_to_btc(SendAmount),
+    Change = satoshi_to_btc(UTXOAmount - Fee - SendAmount),
+    HexPinPayload = to_hex(PinPayload),
+    #{Account => SelfSpend, Account => Change, <<"data">> => HexPinPayload}.
 
 satoshi_to_btc(Sats) when Sats >= 0 ->
     SatsStr = integer_to_list(Sats),
@@ -245,7 +283,35 @@ getrawtransaction(NodeSpec, TxHash) ->
     try
         Seed = <<>>,
         Body = jsx:encode(request_body(<<"getrawtransaction">>, [TxHash, true], seed_to_utf8(Seed))),
+        lager:debug("gettxbody: ~p", [Body]),
         {ok, Res} = request(<<"/">>, Body, NodeSpec, 5000),
+        lager:debug("httpres: ~p", [Res]),
+        {ok, result(Res)}
+    catch E:R ->
+        {error, {E, R}}
+    end.
+
+-spec decoderawtransaction(aehttpc:node_spec(), map()) -> {ok, map()} | {error, term()}.
+decoderawtransaction(NodeSpec, Tx) ->
+    try
+        Seed = <<>>,
+        Body = jsx:encode(request_body(<<"decoderawtransaction">>, [Tx], seed_to_utf8(Seed))),
+        lager:debug("decode body: ~p", [Body]),
+        {ok, Res} = request(<<"/">>, Body, NodeSpec, 5000),
+        lager:debug("decoderes: ~p", [Res]),
+        {ok, result(Res)}
+    catch E:R ->
+        {error, {E, R}}
+    end.
+
+-spec gettransaction(aehttpc:node_spec(), binary()) -> {ok, map()} | {error, term()}.
+gettransaction(NodeSpec, TxHash) ->
+    try
+        Seed = <<>>,
+        Body = jsx:encode(request_body(<<"gettransaction">>, [TxHash, true], seed_to_utf8(Seed))),
+        lager:debug("gettxbody: ~p", [Body]),
+        {ok, Res} = request(<<"/">>, Body, NodeSpec, 5000),
+        lager:debug("httpres: ~p", [Res]),
         {ok, result(Res)}
     catch E:R ->
         {error, {E, R}}
@@ -259,19 +325,15 @@ result(Response) ->
 block(Obj) ->
     Hash = maps:get(<<"hash">>, Obj), true = is_binary(Hash),
     Height = maps:get(<<"height">>, Obj), true = is_integer(Height),
+    Time = maps:get(<<"time">>, Obj), true = is_integer(Time),
     PrevHash = prev_hash(Obj),
-    {Height, Hash, PrevHash, maps:get(<<"tx">>, Obj)}.
+    {Height, Hash, PrevHash, Time * 1000, maps:get(<<"tx">>, Obj)}.
 
--spec find_commitments(list(), binary()) -> [{Pubkey :: binary(), Payload :: binary()}].
-find_commitments(Txs, _ParentHCAccountPubKey) ->
-    lists:foldl(fun(#{<<"vout">> := Vout}, Acc) ->
-                        case aehttpc_btc:parse_vout(Vout) of
-                            {ok, ParsedCommitment} ->
-                                [ParsedCommitment | Acc];
-                            {error, _Reason} ->
-                                Acc
-                        end
-                end, [], Txs).
+find_pin(#{<<"vout">> := [#{<<"scriptPubKey">> := #{<<"type">> := <<"nulldata">>, <<"asm">> := <<"OP_RETURN ", PinEnc/binary>>}} | _]}) ->
+    {ok, PinEnc};
+find_pin(Any) ->
+    lager:debug("Failing vout/pin extraction on: ~p", [Any]),
+    {error, no_op_return}.
 
 -spec request(binary(), binary(), aehttpc:node_spec(), integer()) -> {ok, map()} | {error, term()}.
 request(Path, Body, NodeSpec, Timeout) ->
@@ -327,3 +389,6 @@ prev_hash(Obj) ->
 
 seed_to_utf8(Seed) when is_binary(Seed) ->
     base64:encode(Seed).
+
+
+

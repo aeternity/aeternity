@@ -19,4 +19,8 @@ check_and_report(Parent, KnownApps) ->
     check_and_report(Parent, NewApps ++ KnownApps).
 
 check_new_apps(KnownApps) ->
-    [A || {A,_,_} <- application:which_applications(), not lists:member(A, KnownApps)].
+    try
+        [A || {A,_,_} <- application:which_applications(), not lists:member(A, KnownApps)]
+    catch _:_ ->
+        []
+    end.

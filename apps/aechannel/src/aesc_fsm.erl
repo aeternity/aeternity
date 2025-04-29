@@ -4205,8 +4205,7 @@ start_noise_session(_,
     lager:debug("COpts = ~p", [COpts]),
     aesc_session_noise:connect(Host, Port, NoiseOpts).
 
-noise_accept(_SessionOpts, _NoiseOpts, Attempts, #{ responder := Responder
-                                                  , initiator := Initiator})
+noise_accept(#{ responder := Responder, initiator := Initiator}, _NoiseOpts, Attempts, _COpts)
     when Attempts < 1 ->
     Error = failed_spawning_noise,
     lager:error("Failed with ~p, Initiator: ~p, Responder: ~p",

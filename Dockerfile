@@ -20,10 +20,11 @@ RUN apt-get -qq update \
     && rm -rf /var/lib/apt/lists/*
 
 # Install shared rocksdb code from builder container
-COPY --from=builder /usr/local/lib/librocksdb.so.6.13.3 /usr/local/lib/
-RUN ln -fs librocksdb.so.6.13.3 /usr/local/lib/librocksdb.so.6.13 \
-    && ln -fs librocksdb.so.6.13.3 /usr/local/lib/librocksdb.so.6 \
-    && ln -fs librocksdb.so.6.13.3 /usr/local/lib/librocksdb.so \
+
+COPY --from=builder /usr/local/lib/librocksdb.so.7.10.2 /usr/local/lib/
+RUN ln -fs librocksdb.so.7.10.2 /usr/local/lib/librocksdb.so.7.10 \
+    && ln -fs librocksdb.so.7.10.2 /usr/local/lib/librocksdb.so.7 \
+    && ln -fs librocksdb.so.7.10.2 /usr/local/lib/librocksdb.so \
     && ldconfig
 
 # Deploy application code from builder container
@@ -49,4 +50,8 @@ EXPOSE 3013 3014 3015 3113 3213 3413
 COPY ./docker/healthcheck.sh /healthcheck.sh
 HEALTHCHECK --start-period=10s --start-interval=2s --timeout=3s --retries=6 CMD /healthcheck.sh
 
+# Run in `console` mode with `-noinput` to enable Ctrl-C for entering the
+# Erlang Break menu. In `foreground` mode (which is equivalent to `-noinput
+# +Bd`), no Ctrl-C handler is installed, and Docker will not forward Ctrl-C
+# to a process running as PID 1 unless it has a custom handler.
 CMD ["bin/aeternity", "console", "-noinput"]

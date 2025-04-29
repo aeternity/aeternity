@@ -146,7 +146,7 @@ many_spend_txs(Cfg) ->
     %% Start 2nd node and let it sync with node1 and node3
     start_node(node2, Cfg),
 
-    FoundNode3 = find_txs(node3, TxHashes, #{}, erlang:system_time(seconds) + 120),
+    FoundNode3 = find_txs(node3, TxHashes, #{}, erlang:system_time(second) + 120),
     ct:log("MicroBlock distribution ~p", [FoundNode3]),
 
     %% It's to be expected that at least one micro block contains almost max nr of transactions
@@ -155,7 +155,7 @@ many_spend_txs(Cfg) ->
     %% If we have synced one more key block, all transactions are present!
     wait_for_startup([node2], Height, Cfg),
 
-    FoundNode2 = find_txs(node2, TxHashes, #{}, erlang:system_time(seconds) + 200),  %% around 10 micro blocks
+    FoundNode2 = find_txs(node2, TxHashes, #{}, erlang:system_time(second) + 200),  %% around 10 micro blocks
     case FoundNode2 == FoundNode3 of
         true -> ok;
         false ->
@@ -169,7 +169,7 @@ many_spend_txs(Cfg) ->
 find_txs(_Node, [], Found, _Deadline) ->
     Found;
 find_txs(Node, [TxHash | TxHashes], Found, Deadline) ->
-    case Deadline - erlang:system_time(seconds) > 0 of
+    case Deadline - erlang:system_time(second) > 0 of
         true ->
              case aest_nodes:request(Node, 'GetTransactionByHash', #{hash => TxHash}) of
                  {ok, 200, #{ block_hash := MBHash}} ->

@@ -363,10 +363,10 @@ migrate_tables_(Tabs0, Rpt) ->
                all -> [T || T <- all_standalone_tables()];
                _ when is_list(Tabs0) -> Tabs0
            end,
-    T0 = erlang:localtime(),
+    T0 = erlang:monotonic_time(second),
     Res = mnesia_rocksdb_admin:migrate_standalone(rocksdb_copies, Tabs, Rpt),
-    T1 = erlang:localtime(),
-    {ok, {calendar:time_difference(T0, T1), Res}}.
+    T1 = erlang:monotonic_time(second),
+    {ok, {calendar:seconds_to_daystime(T1 - T0), Res}}.
 
 all_standalone_tables() ->
     maps:fold(
@@ -623,7 +623,7 @@ bypass_on_commit(R) ->
             R
     end.
 
-walk_tstore(TStore, Ref) ->                                          
+walk_tstore(TStore, Ref) ->
     ets:foldl(fun walk_tstore_/2, Ref, TStore).
 
 walk_tstore_({{locks, _, _}, _}, Acc) -> Acc;
@@ -1103,14 +1103,27 @@ get_top_block_hash() ->
     end.
 
 get_top_block_node() ->
-    get_chain_state_value(top_block_node).
+    case get_chain_state_value(top_block_node) of
+        #{ header := Header, hash := Hash} ->
+            NewHeader = aec_headers:from_db_header(Header),
+            #{ header => NewHeader, hash => Hash};
+        undefined -> undefined
+    end.
 
 dirty_get_top_block_node() ->
-    dirty_get_chain_state_value(top_block_node).
+    case dirty_get_chain_state_value(top_block_node) of
+        #{ header := Header, hash := Hash} ->
+            NewHeader = aec_headers:from_db_header(Header),
+            #{ header => NewHeader, hash => Hash};
+        undefined -> undefined
+    end.
 
 %% Some migration code: Ideally, top_block_node is there, and we're done.
 %% If not, we should find top_block_hash. Fetch the corresponding
 %% header, delete the obsolete top_block_hash and put in the new top_block_node.
+%% We do not update the top block in the DB if it is there, the next top block
+%% will be of the latest version and the get_top_block_node function converts
+%% on the fly.
 convert_top_block_entry() ->
     ?t(convert_top_block_entry_()).
 
@@ -1311,7 +1324,17 @@ lookup_tree_node(Hash, #tree_gc{ primary   = Prim
 
 lookup_tree_node_(Hash, T, Rec) ->
     case read(T, Hash) of
-        [Obj] -> {value, get_tree_value(Rec, Obj)};
+        [Obj] ->
+            Value = get_tree_value(Rec, Obj),
+            case db_safe_access() of
+                true  -> case aec_hash:hash(header, aeser_rlp:encode(Value)) of
+                             Hash -> ok;
+                             Hash1 ->
+                                 error({corrupted_db_node, {expected, Hash, got, Hash1}})
+                         end;
+                false -> ok
+            end,
+            {value, Value};
         []    -> none
     end.
 
@@ -1462,7 +1485,7 @@ find_tx_with_location(STxHash) ->
 remove_tx(TxHash) ->
     ?t(begin
            remove_tx_location(TxHash),
-           mnesia:delete({aec_signed_tx, TxHash})
+           delete(aec_signed_tx, TxHash)
        end).
 
 add_tx(STx) ->
@@ -1543,23 +1566,58 @@ prepare_mnesia_bypass() ->
             %% Check whether we can bypass mnesia in some cases
             persistent_term:erase(?PT_BYPASS); %% TODO: add leveled backend here
         [_|_] ->
-            case aeu_env:find_config([<<"chain">>, <<"db_direct_access">>], [ user_config
-                                                                            , schema_default
-                                                                            , {value, false} ]) of
-                {ok, true} ->
-                    lager:debug("Enabling direct access for rocksdb", []),
+            case can_enable_direct_access() of
+                true ->
                     persistent_term:put(?PT_DIRECT_API, true);
-                _ ->
+                false ->
                     case aeu_env:find_config([<<"chain">>, <<"db_commit_bypass">>], [ user_config
                                                                                     , schema_default
                                                                                     , {value, true} ]) of
                         {ok, true} ->
-                            lager:debug("Enabling bypass for rocksdb", []),
+                            lager:info("Enabling bypass for rocksdb", []),
                             persistent_term:put(?PT_BYPASS, rocksdb);
                         _ ->
                             lager:debug("NOT enabling bypass logic for rocksdb", [])
                     end
             end
+    end.
+
+db_safe_access() ->
+    case persistent_term:get({?MODULE, db_safe_access}, undefined) of
+        Value when is_boolean(Value) ->
+            Value;
+        undefined ->
+            {ok, SafeAccess} = aeu_env:find_config([<<"chain">>, <<"db_safe_access">>],
+                                                   [user_config, schema_default, {value, false}]),
+            lager:info("Safe DB-access mode is ~s", [if SafeAccess -> "ON"; true -> "OFF" end]),
+            persistent_term:put({?MODULE, db_safe_access}, SafeAccess),
+            SafeAccess
+    end.
+
+can_enable_direct_access() ->
+    AllStandalone = all_standalone_tables(),
+    case aeu_env:find_config([<<"chain">>, <<"db_direct_access">>], [ user_config
+                                                                    , schema_default
+                                                                    , {value, false} ]) of
+        {ok, true} ->
+            case AllStandalone of
+                [] ->
+                    lager:info("Enabling direct access for rocksdb", []),
+                    true;
+                [_|_] ->
+                    lager:warning(
+                      "NOT enabling direct access - Detected standalone tables. Migrate first", []),
+                    false
+            end;
+        _ ->
+            case AllStandalone of
+                [] ->
+                    lager:warning("Recommend enabling db_direct_access for best consistency protection", []);
+                [_|_] ->
+                    lager:warning("Recommend migrating db and enabling db_direct_access"
+                                  " for best consistency protection", [])
+            end,
+            false
     end.
 
 %% Initialization routines

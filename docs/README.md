@@ -8,6 +8,7 @@ There is also additional documentation on mining with CUDA and build and/or join
 
 - [Installation](installation.md)
 - [Configuration](configuration.md)
+- [Hyperchains](hyperchains.md)
 - [Operation](operation.md)
 - [Update](update.md)
 - [Docker](docker.md)
@@ -18,3 +19,6 @@ There is also additional documentation on mining with CUDA and build and/or join
 - [Fork Resistance](fork-resistance.md)
 - [Garbage Collection](garbage-collection.md)
 - [Node API](api.md)
+- [Testing](testing.md)
+- [Hacking](hacking.md)
+- [Rebar Quick Guide](rebar.md)

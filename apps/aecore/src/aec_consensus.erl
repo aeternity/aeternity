@@ -60,6 +60,7 @@
         , set_genesis_hash/0
         , get_consensus_module_at_height/1
         , get_consensus_config_at_height/1
+        , get_consensus_type/0
         , get_genesis_consensus_module/0
         , get_genesis_consensus_config/0
         , get_genesis_hash/0 %% Cached access to the genesis hash using persistent term :)
@@ -72,6 +73,7 @@
 -type consensus_module() :: atom().
 -type sign_module() :: atom().
 -type consensus_config() :: #{binary() => term()}.
+-type consensus_type() :: pow | pos.
 -type global_consensus_config() :: [{non_neg_integer(), {consensus_module(), consensus_config()}}].
 
 %% Block sealing
@@ -162,17 +164,21 @@
 -callback dirty_validate_key_node_with_ctx(#node{}, aec_blocks:micro_block(), #insertion_ctx{}) -> ok | {error, term()}.
 -callback dirty_validate_micro_node_with_ctx(#node{}, aec_blocks:micro_block(), #insertion_ctx{}) -> ok | {error, term()}.
 
+%% Callbacks handling block structure differences between PoW and PoS/HC.
+-callback key_block_height_relative_previous_block(key | micro, non_neg_integer()) -> non_neg_integer().
+-callback micro_block_height_relative_previous_block(key | micro, non_neg_integer()) -> non_neg_integer().
+
 %% Customized state transitions - in case of keyblocks the callbacks are called with pruned state trees
 %% Those callbacks run in a DB context - to abort the execution please call aec_block_insertion:abort_state_transition(Reason)
 %% Performs initial state transformation when the previous block used a different consensus algorithm
 -callback state_pre_transform_key_node_consensus_switch(#node{}, aec_trees:trees()) -> aec_trees:trees() | no_return().
 %% State pre transformations on every keyblock
--callback state_pre_transform_key_node(#node{}, #node{}, aec_trees:trees()) -> aec_trees:trees() | no_return().
+-callback state_pre_transform_key_node(#node{}, #node{}, aec_trees:trees()) -> {aec_trees:trees(), aetx_env:events()} | no_return().
 %% State pre transformations on every microblock
--callback state_pre_transform_micro_node(#node{}, aec_trees:trees()) -> aec_trees:trees() | no_return().
+-callback state_pre_transform_micro_node(non_neg_integer(), #node{}, aec_trees:trees()) -> aec_trees:trees() | no_return().
 
 %% Block rewards :)
--callback state_grant_reward(aec_keys:pubkey(), #node{}, aec_trees:trees(), non_neg_integer()) -> aec_trees:trees() | no_return().
+-callback state_grant_reward(aec_keys:pubkey(), #node{}, non_neg_integer(), aec_trees:trees(), non_neg_integer()) -> aec_trees:trees() | no_return().
 
 %% PoGF - called just before exiting the DB transaction and fully validating the node in question
 -callback pogf_detected(aec_headers:key_header(), aec_headers:key_header()) -> ok.
@@ -184,12 +190,12 @@
 -callback genesis_difficulty() -> key_difficulty().
 
 %% rewards and signing
--callback beneficiary() -> {ok, binary() | fun(() -> binary())} | {error, atom()}.
+-callback beneficiary() -> {ok, binary() | fun(() -> binary())} | {error, atom() | tuple()}.
 -callback next_beneficiary() -> {ok, binary() | fun(() -> binary())} | {error, atom()}.
 -callback allow_lazy_leader() -> false | {true, integer()}.
 -callback pick_lazy_leader(binary()) -> error | {ok, aec_keys:pubkey()}.
 -callback get_sign_module() -> sign_module().
--callback get_type() -> pow | pos.
+-callback get_type() -> consensus_type().
 -callback get_block_producer_configs() -> list().
 -callback is_leader_valid(#node{}, aec_trees:trees(), aetx_env:env(), #node{}) -> boolean().
 
@@ -283,6 +289,23 @@ get_consensus_spec_at_height(Height) ->
     [{0,H}|R] = get_consensus(),
     consensus_at_height(H, R, Height).
 
+%% For now let's assume we don't change between 'pos' and 'pow' - if need be
+%% extend with get_consensus_type/1
+-spec get_consensus_type() -> consensus_type().
+get_consensus_type() ->
+    case persistent_term:get({?MODULE, consensus_type}, error) of
+        error ->
+            ConsensusType =
+                case get_consensus() of
+                    [{0, {aec_consensus_hc, _}} | _] -> pos;
+                    _ -> pow
+                end,
+            persistent_term:put({?MODULE, consensus_type}, ConsensusType),
+            ConsensusType;
+        ConsensusType ->
+            ConsensusType
+    end.
+
 %% This is a placeholder for later - the idea is that if at some point
 %% the network decides to change the configuration variables which are
 %% under consensus - for instance the micro block time then it should be easy to do so
@@ -343,9 +366,7 @@ consensus_config_or_default(Default) ->
 consensus_module_from_type(<<"pow_cuckoo">>) -> aec_consensus_bitcoin_ng;
 consensus_module_from_type(<<"on_demand">>) -> aec_consensus_on_demand;
 consensus_module_from_type(<<"ct_tests">>) -> aec_consensus_common_tests;
-consensus_module_from_type(<<"smart_contract">>) ->
-  aec_consensus_smart_contract;
-consensus_module_from_type(<<"hyper_chain">>) -> aec_consensus_hc;
+consensus_module_from_type(<<"hyperchain">>) -> aec_consensus_hc;
 consensus_module_from_type(<<"eunit_one">>) -> module_eunit_one;
 consensus_module_from_type(<<"eunit_two">>) -> module_eunit_two;
 consensus_module_from_type(<<"eunit_three">>) -> module_eunit_three;
@@ -353,8 +374,7 @@ consensus_module_from_type(_) -> undefined.
 -else.
 consensus_module_from_type(<<"pow_cuckoo">>) -> aec_consensus_bitcoin_ng;
 consensus_module_from_type(<<"on_demand">>) -> aec_consensus_on_demand;
-consensus_module_from_type(<<"smart_contract">>) -> aec_consensus_smart_contract;
-consensus_module_from_type(<<"hyper_chain">>) -> aec_consensus_hc;
+consensus_module_from_type(<<"hyperchain">>) -> aec_consensus_hc;
 consensus_module_from_type(_) -> undefined.
 -endif.
 

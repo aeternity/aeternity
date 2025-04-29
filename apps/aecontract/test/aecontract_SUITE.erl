@@ -5,6 +5,8 @@
 %%%-------------------------------------------------------------------
 -module(aecontract_SUITE).
 
+-compile([nowarn_update_literal]).
+
 %% common_test exports
 -export([ all/0
         , groups/0
@@ -59,6 +61,7 @@
         , create_version_too_high/1
         , sophia_call_out_of_gas/1
         , fate_environment/1
+        , fate_environment_pos/1
         , fate_list_of_maps/1
         , state_tree/1
         , sophia_identity/1
@@ -255,17 +258,19 @@
         ?FORTUNA_PROTOCOL_VSN -> ?assertMatch(ExpMinerva, Res);
         ?LIMA_PROTOCOL_VSN    -> ?assertMatch(ExpMinerva, Res);
         ?IRIS_PROTOCOL_VSN    -> ?assertMatch(ExpMinerva, Res);
-        ?CERES_PROTOCOL_VSN   -> ?assertMatch(ExpMinerva, Res)
+        ?CERES_PROTOCOL_VSN   -> ?assertMatch(ExpMinerva, Res);
+        ?ARCUS_PROTOCOL_VSN   -> ?assertMatch(ExpMinerva, Res)
     end).
 
--define(assertMatchProtocol(Res, ExpR, ExpM, ExpF, ExpL, ExpI, ExpC),
+-define(assertMatchProtocol(Res, ExpR, ExpM, ExpF, ExpL, ExpI, ExpC, ExpA),
     case protocol_version() of
         ?ROMA_PROTOCOL_VSN    -> ?assertMatch(ExpR, Res);
         ?MINERVA_PROTOCOL_VSN -> ?assertMatch(ExpM, Res);
         ?FORTUNA_PROTOCOL_VSN -> ?assertMatch(ExpF, Res);
         ?LIMA_PROTOCOL_VSN    -> ?assertMatch(ExpL, Res);
         ?IRIS_PROTOCOL_VSN    -> ?assertMatch(ExpI, Res);
-        ?CERES_PROTOCOL_VSN   -> ?assertMatch(ExpC, Res)
+        ?CERES_PROTOCOL_VSN   -> ?assertMatch(ExpC, Res);
+        ?ARCUS_PROTOCOL_VSN   -> ?assertMatch(ExpA, Res)
     end).
 
 -define(assertMatchAEVM(__Exp, __Res),
@@ -353,6 +358,7 @@ all() ->
                        , {group, sophia_aevm_specific}]).
 
 -define(FATE_SPECIFIC, [ fate_environment
+                       , fate_environment_pos
                        , fate_list_of_maps
                        , sophia_polymorphic_entrypoint
                        , lima_migration
@@ -586,6 +592,10 @@ init_tests(Release, VMName) ->
                 {ceres,   {?CERES_PROTOCOL_VSN,
                            IfAEVM(?SOPHIA_LIMA_AEVM, ?SOPHIA_CERES_FATE),
                            IfAEVM(?ABI_AEVM_SOPHIA_1, ?ABI_FATE_SOPHIA_1),
+                           IfAEVM(?VM_AEVM_SOPHIA_4, ?VM_FATE_SOPHIA_3)}},
+                {arcus,   {?CERES_PROTOCOL_VSN,
+                           IfAEVM(?SOPHIA_LIMA_AEVM, ?SOPHIA_ARCUS_FATE),
+                           IfAEVM(?ABI_AEVM_SOPHIA_1, ?ABI_FATE_SOPHIA_1),
                            IfAEVM(?VM_AEVM_SOPHIA_4, ?VM_FATE_SOPHIA_3)}}],
     {Proto, Sophia, ABI, VM} = proplists:get_value(Release, Versions),
     meck:expect(aec_hard_forks, protocol_effective_at_height, fun(_) -> Proto end),
@@ -639,6 +649,18 @@ init_per_group(protocol_interaction, Cfg) ->
     end;
 init_per_group(protocol_interaction_fate, Cfg) ->
     case aect_test_utils:latest_protocol_version() of
+        ?ARCUS_PROTOCOL_VSN ->
+            CHeight = 20,
+            AHeight = 25,
+            Fun = fun(H) when H =< CHeight -> ?CERES_PROTOCOL_VSN;
+                     (H) when H >  CHeight -> ?ARCUS_PROTOCOL_VSN
+                  end,
+            meck:expect(aec_hard_forks, protocol_effective_at_height, Fun),
+            [{sophia_version, ?SOPHIA_ARCUS_FATE},
+             {vm_version, ?VM_FATE_SOPHIA_3},
+             {abi_version, ?ABI_FATE_SOPHIA_1},
+             {fork_heights, [{ceres, CHeight, ?VM_FATE_SOPHIA_3}, {arcus, AHeight, ?VM_FATE_SOPHIA_3}]},
+             {protocol, arcus} | Cfg];
         ?CERES_PROTOCOL_VSN ->
             IHeight = 20,
             CHeight = 25,
@@ -688,7 +710,7 @@ init_per_testcase(TC, Config) when TC == aevm_version_interaction;
                                    TC == create_contract_init_error_no_create_account ->
     Config1 = [{sophia_version, ?SOPHIA_MINERVA}, {vm_version, ?VM_AEVM_SOPHIA_2} | Config],
     init_per_testcase_common(TC, Config1);
-init_per_testcase(fate_environment, Config) ->
+init_per_testcase(Env, Config) when Env == fate_environment; Env == fate_environment_pos ->
     meck:new(aefa_chain_api, [passthrough]),
     meck:expect(aefa_chain_api, blockhash,
                 fun(N, _, S) when is_integer(N) ->
@@ -696,7 +718,8 @@ init_per_testcase(fate_environment, Config) ->
                         _ = aefa_chain_api:generation(S),
                         aeb_fate_data:make_hash(<<N:256>>)
                 end),
-    init_per_testcase_common(fate_environment, Config);
+    [ persistent_term:put({aec_consensus, consensus_type}, pos) || Env == fate_environment_pos ],
+    init_per_testcase_common(Env, Config);
 init_per_testcase(TC, Config) when TC == sophia_aens_resolve;
                                    TC == sophia_signatures_aens;
                                    TC == sophia_all_signatures_aens;
@@ -761,14 +784,7 @@ init_per_testcase_common(_TC, Config) ->
     VmVersion = ?config(vm_version, Config),
     ABIVersion = ?config(abi_version, Config),
     SophiaVersion = ?config(sophia_version, Config),
-    ProtocolVersion = case ?config(protocol, Config) of
-                          roma    -> ?ROMA_PROTOCOL_VSN;
-                          minerva -> ?MINERVA_PROTOCOL_VSN;
-                          fortuna -> ?FORTUNA_PROTOCOL_VSN;
-                          lima    -> ?LIMA_PROTOCOL_VSN;
-                          iris    -> ?IRIS_PROTOCOL_VSN;
-                          ceres   -> ?CERES_PROTOCOL_VSN
-                      end,
+    ProtocolVersion = aec_hard_forks:protocol_vsn(?config(protocol, Config)),
     AciDisabled = case os:getenv("SOPHIA_NO_ACI") of
                   false ->
                       ?config(aci_disabled, Config);
@@ -782,8 +798,9 @@ init_per_testcase_common(_TC, Config) ->
     put('$aci_disabled', AciDisabled),
     Config.
 
-end_per_testcase(fate_environment, _Config) ->
+end_per_testcase(Env, _Config) when Env == fate_environment; Env == fate_environment_pos ->
     meck:unload(aefa_chain_api),
+    [ persistent_term:put({aec_consensus, consensus_type}, pow) || Env == fate_environment_pos ],
     ok;
 end_per_testcase(TC, _Config) when TC == sophia_aens_resolve;
                                    TC == sophia_aens_lookup;
@@ -1015,7 +1032,7 @@ create_version_too_high(Cfg) ->
     Res = sign_and_apply_transaction(Tx, PrivKey, S1),
     %% Test that the create transaction is accepted/rejected accordingly
     case proplists:get_value(protocol, Cfg) of
-        P when P =:= roma; P =:= lima; P =:= iris; P =:= ceres ->
+        P when P =:= roma; P =:= lima; P =:= iris; P =:= ceres; P =:= arcus ->
             {error, illegal_contract_compiler_version, _} = Res;
         P when P =:= minerva; P =:= fortuna ->
             {ok, _} = Res
@@ -5164,7 +5181,8 @@ sophia_network_id(_Cfg) ->
     Acc  = ?call(new_account, 10000000 * aec_test_utils:min_gas_price()),
     Ct1  = ?call(create_contract, Acc, chain, {}, #{amount => 10000}),
     NwId = ?call(call_contract, Acc, Ct1, nw_id, string, {}),
-    ?assertMatch(<<"local_ceres_testnet">>, NwId),
+    ExNwId = aec_governance:get_network_id(),
+    ?assertMatch(ExNwId, NwId),
     ok.
 
 sophia_savecoinbase(_Cfg) ->
@@ -5933,7 +5951,7 @@ sophia_compiler_version(_Cfg) ->
     {code, Code} = aect_contracts:code(C),
     CMap = aeser_contract_code:deserialize(Code),
     ?assertMatchProtocol(maps:get(compiler_version, CMap, undefined),
-                         undefined, <<"2.1.0">>, <<"3.2.0">>, <<"unknown">>, <<"6.1.0">>, <<"8.0.0-rc1">>),
+                         undefined, <<"2.1.0">>, <<"3.2.0">>, <<"unknown">>, <<"6.1.0">>, <<"8.0.0">>, <<"8.0.0">>),
     ok.
 
 sophia_protected_call(_Cfg) ->
@@ -7197,6 +7215,7 @@ lima_migration(_Config) ->
 
 
 fate_vm_interaction(Cfg) ->
+    ?skipRest(sophia_version() == ?SOPHIA_ARCUS_FATE, same_vm_ceres_arcus),
     init_new_state(),
     ForkHeights = ?config(fork_heights, Cfg),
     [{_ProtoA, HeightA, VMA}, {_ProtoB, HeightB, VMB}] = ForkHeights,
@@ -7853,7 +7872,16 @@ call_wrong_type(_Cfg) ->
 %%% FATE specific tests
 %%%===================================================================
 
-fate_environment(_Cfg) ->
+fate_environment(Cfg) ->
+    pow = aec_consensus:get_consensus_type(),
+    fate_environment_([{pos, false} | Cfg]).
+
+fate_environment_pos(Cfg) ->
+    pos = aec_consensus:get_consensus_type(),
+    fate_environment_([{pos, true} | Cfg]).
+
+fate_environment_(Cfg) ->
+    Pos = ?config(pos, Cfg),
     init_new_state(),
     Acc = <<AccInt:256>> = ?call(new_account, 100000000 * aec_test_utils:min_gas_price()),
     Acc1Balance = 123456789,
@@ -7877,11 +7905,21 @@ fate_environment(_Cfg) ->
     Height  = 3,
     Env     = default_tx_env(#{height => Height}),
     <<BeneficiaryInt:?BENEFICIARY_PUB_BYTES/unit:8>> = aetx_env:beneficiary(Env),
-    ?assertEqual({address, BeneficiaryInt},
-                 ?call(call_contract, Acc, Contract, beneficiary, word, {})),
+
+    if Pos ->
+            ?assertEqual({error, <<"Error: operation 'Chain.coinbase' is disabled">>},
+                         ?call(call_contract, Acc, Contract, beneficiary, word, {}));
+       true ->
+            ?assertEqual({address, BeneficiaryInt},
+                         ?call(call_contract, Acc, Contract, beneficiary, word, {}))
+    end,
+
     ?assertEqual(Height, ?call(call_contract, Acc, Contract, generation, word, {},
                                #{height => Height})),
-    Difficulty = aetx_env:difficulty(Env),
+    Difficulty =
+        if Pos  -> 0;
+           true -> aetx_env:difficulty(Env)
+        end,
     ?assertEqual(Difficulty, ?call(call_contract, Acc, Contract, difficulty, word, {})),
     GasLimit = aec_governance:block_gas_limit(),
     ?assertEqual(GasLimit, ?call(call_contract, Acc, Contract, gas_limit, word, {})),
@@ -7901,9 +7939,14 @@ fate_environment(_Cfg) ->
     %% Block hash is mocked to return the height if it gets a valid height
     %% since we don't have a chain.
     BHHeight = 1000,
-    %% Behavior at current height changed in FATE_VM2.
-    ?assertMatchFATE(none, {some, {bytes, <<BHHeight:256>>}},
-        ?call(call_contract, Acc, Contract, block_hash, {option, word}, {BHHeight}, #{height => BHHeight})),
+    %% Behavior at current height changed in FATE_VM2. And is different for PoS
+    if Pos ->
+          ?assertMatch(none,
+              ?call(call_contract, Acc, Contract, block_hash, {option, word}, {BHHeight}, #{height => BHHeight}));
+       true ->
+          ?assertMatchFATE(none, {some, {bytes, <<BHHeight:256>>}},
+              ?call(call_contract, Acc, Contract, block_hash, {option, word}, {BHHeight}, #{height => BHHeight}))
+    end,
     ?assertEqual(none, ?call(call_contract, Acc, Contract, block_hash, {option, word}, {BHHeight + 1},
                           #{height => BHHeight})),
     ?assertEqual(none, ?call(call_contract, Acc, Contract, block_hash, {option, word}, {BHHeight - 256},

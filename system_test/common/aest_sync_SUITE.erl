@@ -210,23 +210,23 @@ new_node_joins_network(Cfg) ->
     %% Starts a chain with two nodes
     start_node(old_node1, Cfg),
     start_node(old_node2, Cfg),
-    T0 = erlang:system_time(seconds),
+    T0 = erlang:system_time(second),
     wait_for_startup([old_node1, old_node2], 4, Cfg),
     #{network_id := <<"ae_system_test">>} = aest_nodes:get_status(old_node1), %% Check node picked user config
     #{network_id := <<"ae_system_test">>} = aest_nodes:get_status(old_node2), %% Check node picked user config
-    StartupTime = erlang:system_time(seconds) - T0,
+    StartupTime = erlang:system_time(second) - T0,
 
     Length = max(30, 5 + proplists:get_value(blocks_per_second, Cfg) * StartupTime),
 
     %% Mines for 20 blocks and calculate the average mining time
-    StartTime = erlang:system_time(seconds),
+    StartTime = erlang:system_time(second),
 
 
     inject_spend_txs(old_node1, patron(), 5, 1, 100),
     inject_spend_txs(old_node2, patron(), 5, 6, 100),
 
     wait_for_value({height, Length + 1}, [old_node1, old_node2], Length * ?MINING_TIMEOUT, Cfg),
-    EndTime = erlang:system_time(seconds),
+    EndTime = erlang:system_time(second),
     %% Average mining time per block
     MiningTime = ((EndTime - StartTime) * 1000) div Length,
     ct:log("Mining time per block ~p ms for ~p blocks", [MiningTime, Length]),
@@ -259,7 +259,10 @@ new_node_joins_network(Cfg) ->
     ct:log("Node 3 at height ~p: ~p", [Length, Height3]),
 
     %% Checks node 3 is synchronized with nodes 1 and 2
-    ?assertEqual(Height1#{info => aeser_api_encoder:encode(contract_bytearray, <<>>)}, Height3),
+    %% ?assertEqual(Height1#{info => aeser_api_encoder:encode(contract_bytearray, <<>>)}, Height3),
+    %% Comparing the hash of the block should be sufficient allowing for
+    %% new fields such as flags to be added to the block map.
+    ?assertEqual(maps:get(hash, Height1), maps:get(hash, Height3)),
     ok.
 
 %% When we stop and restart a node we will be able to read the blocks
@@ -274,9 +277,9 @@ docker_keeps_data(Cfg) ->
     wait_for_startup([standalone_node], 0, Cfg),
 
     %% Mines for 20 blocks and calculate the average mining time
-    StartTime = erlang:system_time(seconds),
+    StartTime = erlang:system_time(second),
     wait_for_value({height, Length}, [standalone_node], Length * ?MINING_TIMEOUT, Cfg),
-    EndTime = erlang:system_time(seconds),
+    EndTime = erlang:system_time(second),
     %% Average mining time per block
     MiningTime = ((EndTime - StartTime) * 1000) div Length,
 
@@ -675,6 +678,8 @@ net_split_mining_power(Cfg) ->
     % Check that the larger cluster has more mining power.
     Net1MinedBlocks1 = node_mined_retries(Net1Nodes),
     Net2MinedBlocks1 = node_mined_retries(Net2Nodes),
+
+    ct:log("Net1 mined ~p while Net2 mined ~p", [Net1MinedBlocks1, Net2MinedBlocks1]),
     ?assert(Net1MinedBlocks1 < Net2MinedBlocks1),
 
     %% Join all the nodes
@@ -762,14 +767,26 @@ abrupt_stop_mining_node(_Cfg) ->
 
 %% helper functions
 
+%% Metrics are not populated immediately, so let's make sure we poll until there
+%% is actually data.
 node_mined_retries(Nodes) ->
     Metric = "ae.epoch.aecore.mining.retries.value",
     lists:foldl(fun(N, Acc) ->
-        case aest_nodes:read_last_metric(N, Metric) of
-            undefined -> Acc;
-            Num -> Acc + Num
-        end
+        poll_node_metric(N, Metric, 15) + Acc
     end, 0, Nodes).
+
+poll_node_metric(Node, Metric, 0) ->
+    ct:log("Giving up getting ~p at ~p", [Metric, Node]),
+    0;
+poll_node_metric(Node, Metric, N) ->
+    case aest_nodes:read_last_metric(Node, Metric) of
+        undefined ->
+            timer:sleep(1000),
+            poll_node_metric(Node, Metric, N - 1);
+        Value ->
+            ct:log("~p attempts remaining: Got value ~p for ~p from ~p", [N - 1, Value, Metric, Node]),
+            Value
+    end.
 
 ping_interval(Node) ->
     get_node_config(Node, ["sync", "ping_interval"]).

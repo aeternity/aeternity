@@ -11,3 +11,5 @@
 -define(LIMA_PROTOCOL_VSN, 4).
 -define(IRIS_PROTOCOL_VSN, 5).
 -define(CERES_PROTOCOL_VSN, 6).
+-define(ARCUS_PROTOCOL_VSN, 7).
+

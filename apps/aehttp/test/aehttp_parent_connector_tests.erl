@@ -10,7 +10,9 @@
 -define(CHILD_CHAIN_NETWORK_ID, <<"hc_network_id">>).
 -define(SIGN_MODULE, aec_preset_keys).
 
-ae_sim_test_() ->
+%% removed as test, should/could be removed altogether, same goes for btc version below.
+%% Keeping around for future pinning testing.
+ae_sim_test_rem() ->
     {foreach,
      fun() ->
             Apps = [gproc, lager, crypto, enacl, cowboy, inets],
@@ -38,10 +40,7 @@ ae_sim_test_() ->
                                                 ParentHosts,
                                                 ?PARENT_CHAIN_NETWORK_ID,
                                                 ?SIGN_MODULE,
-                                                [],
-                                                CommitmentPubKey,
-                                                8100,
-                                                110000000000000),
+                                                []),
              mock_parent_cache(),
              mock_network_id(?PARENT_CHAIN_NETWORK_ID),
              mock_sign_module(StakerKeyPair),
@@ -80,12 +79,12 @@ ae_sim_test_() ->
                     Responses = get_results(fun aehttpc_aeternity:get_latest_block/2,
                                             ae_parent_http_specs()),
                     PoolSize = length(ae_parent_http_specs()),
-                    [{{ok, Top, PrevHash, Height}, PoolSize}] =
+                    [{{ok, Top, PrevHash, Height, _Time}, PoolSize}] =
                         maps:to_list(Responses),
                     Self = self(),
                     meck:expect(aec_parent_chain_cache, post_block,
                                 fun(Block) -> Self ! {post_block, Block} end),
-                    aec_parent_connector:trigger_fetch(),
+                    aec_parent_connector:request_top(),
                     {ok, Block} =
                         receive
                             {post_block, B} -> {ok, B}
@@ -125,7 +124,7 @@ ae_sim_test_() ->
                     Self = self(),
                     meck:expect(aec_parent_chain_cache, post_block,
                                 fun(Block) -> Self ! {post_block, Block} end),
-                    aec_parent_connector:trigger_fetch(),
+                    aec_parent_connector:request_top(),
                     %% no consensus
                     ok =
                         receive
@@ -154,7 +153,7 @@ ae_sim_test_() ->
                     {ok, Block4} =
                         aec_parent_connector:fetch_block_by_height(4),
                     %% trigger fetch again - 2 out 3 nodes should agree on block3
-                    aec_parent_connector:trigger_fetch(),
+                    aec_parent_connector:request_top(),
                     %% no consensus
                     {ok, Block4} =
                         receive
@@ -164,7 +163,7 @@ ae_sim_test_() ->
             end},
           {"Post a suitable spend TX to each parent chain and check it is in the commitment list",
             fun() ->
-                    %% aec_parent_connector:trigger_fetch(),
+                    %% aec_parent_connector:request_top(),
                     lists:foreach(
                         fun(NodeSpec = #{port := Port}) ->
                             SimName = ae_sim_name(Port),
@@ -184,7 +183,7 @@ ae_sim_test_() ->
                             ?assertMatch({ok, #{micro_blocks := []}}, aec_chain_sim:get_current_generation(SimName)),
                             %% And create a keyblock
                             aec_chain_sim:add_keyblock(SimName),
-                            {ok, TopHash, PrevHash, Height} = aehttpc_aeternity:get_latest_block(NodeSpec, <<"Seed">>),
+                            {ok, TopHash, PrevHash, Height, _Time} = aehttpc_aeternity:get_latest_block(NodeSpec, <<"Seed">>),
                             ?assertMatch({ok, #{micro_blocks := []}}, aec_chain_sim:get_current_generation(SimName)),
                             {ok, [{Signature, AcctHashPrefix, PayloadHashPrefix}]} =
                                 aehttpc_aeternity:get_commitment_tx_in_block(NodeSpec, <<"Seed">>, TopHash, PrevHash, CommitmentPubKey),
@@ -227,7 +226,7 @@ stop_ae_parent_sims(ParentSims) ->
 ae_sim_name(Port) ->
      list_to_atom("ae_sim_" ++ integer_to_list(Port)).
 
-btc_sim_test_() ->
+btc_sim_test_rem() ->
     {foreach,
         fun() ->
             Apps = [gproc, lager, crypto, enacl, cowboy, inets],
@@ -255,10 +254,7 @@ btc_sim_test_() ->
                                             ParentHosts,
                                             ?PARENT_CHAIN_NETWORK_ID,
                                             ?SIGN_MODULE,
-                                            [],
-                                            CommitmentPubKey,
-                                            7500,
-                                            8500),
+                                            []),
             mock_parent_cache(),
             mock_sign_module(StakerKeyPair),
             {ok, CommitmentPubKey, BTCStakerPubKey, StakerKeyPair, ParentSims}
@@ -294,12 +290,12 @@ btc_sim_test_() ->
                     Responses = get_results(fun aehttpc_btc:get_latest_block/2,
                                             btc_parent_http_specs()),
                     PoolSize = length(btc_parent_http_specs()),
-                    [{{ok, Top, PrevHash, Height}, PoolSize}] =
+                    [{{ok, Top, PrevHash, Height, _Time}, PoolSize}] =
                         maps:to_list(Responses),
                     Self = self(),
                     meck:expect(aec_parent_chain_cache, post_block,
                                 fun(Block) -> Self ! {post_block, Block} end),
-                    aec_parent_connector:trigger_fetch(),
+                    aec_parent_connector:request_top(),
                     {ok, Block} =
                         receive
                             {post_block, B} -> {ok, B}
@@ -340,7 +336,7 @@ btc_sim_test_() ->
                 Self = self(),
                 meck:expect(aec_parent_chain_cache, post_block,
                             fun(Block) -> Self ! {post_block, Block} end),
-                aec_parent_connector:trigger_fetch(),
+                aec_parent_connector:request_top(),
                 %% no consensus
                 ok =
                     receive
@@ -367,7 +363,7 @@ btc_sim_test_() ->
                 {ok, Block4} =
                     aec_parent_connector:fetch_block_by_height(4),
                 %% trigger fetch again - 2 out 3 nodes should agree on block3
-                aec_parent_connector:trigger_fetch(),
+                aec_parent_connector:request_top(),
                 %% no consensus
                 {ok, Block4} =
                     receive
@@ -377,7 +373,7 @@ btc_sim_test_() ->
         end},
         {"Post a suitable spend TX to each parent chain and check it is in the commitment list",
             fun() ->
-                %% aec_parent_connector:trigger_fetch(),
+                %% aec_parent_connector:request_top(),
                 lists:foreach(
                     fun(NodeSpec = #{port := Port}) ->
                         SimName = btc_sim_name(Port),
@@ -393,7 +389,7 @@ btc_sim_test_() ->
                                                         ?PARENT_CHAIN_NETWORK_ID, ?SIGN_MODULE),
                         %% Call the simulator directly to force our Tx in a block
                         aehttp_btc_sim:mine_on_fork(SimName, main),
-                        {ok, TopHash, PrevHash, Height} = aehttpc_btc:get_latest_block(NodeSpec, <<"Seed">>),
+                        {ok, TopHash, PrevHash, Height, _Time} = aehttpc_btc:get_latest_block(NodeSpec, <<"Seed">>),
 
                         {ok, [{Signature, AcctHashPrefix, PayloadHashPrefix}]} =
                                 aehttpc_btc:get_commitment_tx_in_block(NodeSpec, <<"Seed">>, TopHash, PrevHash, CommitmentPubKey),
@@ -445,7 +441,7 @@ get_results(Fun, HTTPSpecs) ->
     Responses =
         lists:map(
             fun(NodeSpec) ->
-                {ok, _TopHash, _PrevHash, _Height} = Fun(NodeSpec, <<"Seed">>)
+                {ok, _TopHash, _PrevHash, _Height, _Time} = Fun(NodeSpec, <<"Seed">>)
             end,
             HTTPSpecs),
     count_duplicates(Responses).
@@ -483,12 +479,12 @@ unmock_network_id() ->
     meck:unload(aec_governance).
 
 keyblock_to_pc_block({Hash, Height, PrevHash}) -> % BTC parent
-    aec_parent_chain_block:new(Hash, Height, PrevHash);
+    aec_parent_chain_block:new(Hash, Height, PrevHash, 123 * 1000); %% hard coded time form btc sim: <<"time">> => 123,                 % (numeric) The block time expressed in UNIX epoch time
 keyblock_to_pc_block(KB) ->
     {ok, Hash0} = aec_blocks:hash_internal_representation(KB),
     Hash = aeser_api_encoder:encode(key_block_hash, Hash0),
     PrevHash0 = aec_blocks:prev_hash(KB),
     PrevHash = aeser_api_encoder:encode(key_block_hash, PrevHash0),
     Height = aec_blocks:height(KB),
-    aec_parent_chain_block:new(Hash, Height, PrevHash).
+    aec_parent_chain_block:new(Hash, Height, PrevHash, 123000). %% in aec_chain_sim hard code the block time to the same as btc sim
 

@@ -35,9 +35,14 @@
         , info/1
         , enable/0
         , disable/0
+        , gc_enabled/0
         ]).
 
 -export([maybe_garbage_collect/3]).
+
+-export([ db_safe_access_scan/0
+        , db_safe_access_scan/1
+        ]).
 
 %% gen_server callbacks
 -export([ init/1
@@ -124,6 +129,10 @@ start_link() ->
 
 cleanup() ->
     erase_cached_enabled_status().
+
+-spec gc_enabled() -> boolean().
+gc_enabled() ->
+    gen_server:call(?MODULE, is_enabled).
 
 -spec maybe_garbage_collect(Header, Hash, TopChange) -> ok | nop
               when Header :: aec_headers: header()
@@ -374,6 +383,8 @@ handle_call(#maybe_garbage_collect{}, _From, St) ->
     {reply, nop, St};
 handle_call({set_enabled, Bool}, _From, #st{enabled = Enabled} = St) ->
     {reply, Enabled, set_gc_enabled(Bool, St)};
+handle_call(is_enabled, _From, #st{enabled = Enabled} = St) ->
+    {reply, Enabled, St};
 handle_call({info, Keys}, _, St) ->
     {reply, info_(Keys, St), St}.
 
@@ -487,9 +498,9 @@ scan_tree(Name, Height, Hash, Parent) when is_atom(Name)
                                          , is_integer(Height)
                                          , is_binary(Hash)
                                          , is_pid(Parent) ->
-    T0 = erlang:system_time(millisecond),
+    T0 = erlang:monotonic_time(millisecond),
     {ok, Count} = collect_reachable_hashes_fullscan(Name, Height, Hash),
-    T1 = erlang:system_time(millisecond),
+    T1 = erlang:monotonic_time(millisecond),
     ?INFO("GC scan done at ~p (~-13w), Count: ~-9w, Time (ms): ~-8w, hash: ~s",
           [Height, Name, Count, T1 - T0, pp_hash(Hash)]),
     gen_server:cast(Parent, #scanner_done{ tree = Name
@@ -603,6 +614,42 @@ update_current_scan(Hash, Scanners, #st{current_scan = #{hashes := Hashes} = Sca
 %%     lager:debug("Height = ~p, N = ~p, Res = ~p",
 %%                 [aec_blocks:height(MicroBlock), N, Res]),
 %%     Res.
+
+db_safe_access_scan() ->
+  case lists:usort([ element(1, db_safe_access_scan(Tree))
+                     || Tree <- [accounts, calls, contracts, oracles, channels, ns] ]) of
+      [ok] -> ok;
+      _    -> error
+  end.
+
+db_safe_access_scan(Tree) ->
+    {ok, Block} = aec_chain:top_key_block(),
+    Height = aec_blocks:height(Block),
+    {ok, Hash} = aec_blocks:hash_internal_representation(Block),
+    case get_mpt(Tree, Hash) of
+        empty ->
+            lager:info("Tree ~p empty at height ~p - no scan needed", [Tree, Height]),
+            {ok, 0};
+        MPT ->
+            lager:info("DB safe access FULL_SCAN for ~p at height ~p from root hash ~w",
+                 [Tree, Height, aeu_mp_trees:root_hash(MPT)]),
+            OldDBSafeAccess = persistent_term:get({aec_db, db_safe_access}, undefined),
+            [ persistent_term:put({aec_db, db_safe_access}, true) || OldDBSafeAccess /= true ],
+            try
+                N = visit_reachable(MPT),
+                lager:info("DB safe access FULL_SCAN for ~p completed, checked ~p nodes", [Tree, N]),
+                {ok, N}
+            catch E:{Reason, _S} ->
+                lager:info("DB safe access FULL_SCAN on ~p failed ~p:~p", [Tree, E, Reason]),
+                {error, Reason}
+            after
+                case OldDBSafeAccess of
+                    undefined -> persistent_term:erase({aec_db, db_safe_access});
+                    false     -> persistent_term:put({aec_db, db_safe_access}, false);
+                    true      -> ok
+                end
+            end
+    end.
 
 -spec get_mpt(tree_name(), block_hash()) -> aeu_mp_trees:tree() | empty.
 get_mpt(Tree, Hash) ->

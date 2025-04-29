@@ -71,27 +71,28 @@ all_test_() ->
                 end}]
       end]}.
 
-start_test_() ->
-    TF =
-        fun() ->
-                ?_test(
-                   aec_test_utils:aec_keys_bare_cleanup(
-                     aec_test_utils:aec_keys_bare_setup()))
-        end,
-    {setup,
-     fun() -> ok = application:ensure_started(crypto) end,
-     fun(_) -> ok = application:stop(crypto) end,
-     lazy_gen(100, TF)}.
-
-lazy_gen(N, TF) ->
-    {generator,
-     fun () ->
-             if N > 0 ->
-                     [TF()
-                      | lazy_gen(N-1, TF)];
-                true ->
-                     []
-             end
-     end}.
+ensure_dir_test_() ->
+    {foreach,
+     fun() -> meck:new(filelib, [passthrough, unstick]) end,
+     fun(_) -> meck:unload(filelib) end,
+     [{"OK case 1",
+       fun() ->
+           meck:expect(filelib, is_dir, fun(_Dir) -> true end),
+           meck:expect(filelib, ensure_dir, fun(_Dir) -> ok end),
+           ?assertEqual(ok, aec_keys:ensure_dir("/testdir"))
+       end},
+      {"OK case 2",
+       fun() ->
+           meck:expect(filelib, is_dir, fun(_Dir) -> false end),
+           meck:expect(filelib, ensure_dir, fun(_Dir) -> ok end),
+           ?assertEqual(ok, aec_keys:ensure_dir("/testdir"))
+       end},
+      {"Bad dir",
+       fun() ->
+           meck:expect(filelib, is_dir, fun(_Dir) -> false end),
+           meck:expect(filelib, ensure_dir, fun(_Dir) -> {error, erofs} end),
+           ?assertError({could_not_ensure_key_dir, "/testdir", _}, aec_keys:ensure_dir("/testdir"))
+       end}
+     ]}.
 
 -endif.

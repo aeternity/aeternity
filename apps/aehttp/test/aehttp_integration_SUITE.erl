@@ -27,6 +27,7 @@
    , get_name_claim/1
    , get_auctions_entry_by_name_sut/1
    , get_names_entry_by_name_sut/1
+   , get_names_entry_by_hash_sut/1
    , get_commitment_id/2
    , get_accounts_by_pubkey_sut/1
    , get_accounts_by_pubkey_and_height_sut/2
@@ -35,8 +36,6 @@
    , get_micro_blocks_header_by_hash_sut/1
    , check_transaction_in_pool_sut/1
    , get_contract_call_object/1
-   , get_top_block/1
-   , get_top_header/1
    , get_chain_ends/1
    , wait_for_tx_hash_on_chain/1
    , sign_and_post_tx/2
@@ -52,6 +51,7 @@
 
 -export(
    [
+    get_top_header/1,
     get_current_key_block/1,
     get_current_key_block_hash/1,
     get_current_key_block_height/1,
@@ -190,14 +190,8 @@
 %% test case exports
 %% for swagger validation errors
 -export([
-    swagger_validation_body/1,
-    %% swagger_validation_enum/1,
-    %%swagger_validation_required/1,
-    swagger_validation_schema/1
-    %% TODO: validate that API expects some type but gets
-    %% a different type
-    %%swagger_validation_types/1
-
+    api_validation_body/1,
+    api_validation_schema/1
     ]).
 
 %% test case exports for HTTP cache headers
@@ -235,6 +229,13 @@
     wrong_http_method_peers/1
     ]).
 
+%%
+%% test case exports
+%% legacy from swagger
+-export([
+    swagger_endpoints_from_documentation/1
+    ]).
+
 -export([post_paying_for_tx/1]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -256,37 +257,12 @@ all() ->
 groups() ->
     [
      {all, [sequence],
-      [{group, swagger2},
+      [{group, swagger_legacy},
        {group, oas3}]},
-     {swagger2, [sequence],
-      [
-       %% /key-blocks/* /micro-blocks/* /generations/* status/chain-ends
-       {group, block_endpoints},
-       %% /accounts/*
-       {group, account_endpoints},
-       %% /transactions/*
-       {group, transaction_endpoints},
-       %% /contracts/*
-       {group, contract_endpoints},
-       %% /oracles/*
-       {group, oracle_endpoints},
-       %% /names/*
-       {group, name_endpoints},
-       %% /channels/*
-       {group, channel_endpoints},
-       %% /peers/*
-       {group, peer_endpoints},
-       %% /status/*
-       {group, status_endpoints},
-
-       {group, external_endpoints},
-       {group, internal_endpoints},
-       {group, debug_endpoints},
-       {group, swagger_validation},
-       {group, wrong_http_method_endpoints},
-       {group, naming},
-       {group, paying_for_tx}
-      ]},
+     {swagger_legacy, [sequence],
+       %% Mentioned in old documentation and should be tested for to exist
+       %% until v2 endpoints are removed
+       [ swagger_endpoints_from_documentation ]},
 
      %% /key-blocks/* /micro-blocks/* /generations/*
      {block_endpoints, [sequence],
@@ -489,12 +465,9 @@ groups() ->
         disabled_debug_endpoints,
         enabled_debug_endpoints
      ]},
-     {swagger_validation, [], [
-        swagger_validation_body,
-        %% swagger_validation_enum,
-        %%swagger_validation_required,
-        swagger_validation_schema
-        %%swagger_validation_types
+     {api_validation, [], [
+        api_validation_body,
+        api_validation_schema
       ]},
      {http_cache, [],
       [expires_cache_header,
@@ -551,7 +524,7 @@ groups() ->
        {group, external_endpoints},
        {group, internal_endpoints},
        {group, debug_endpoints},
-       {group, swagger_validation},
+       {group, api_validation},
        {group, wrong_http_method_endpoints},
        {group, naming},
        {group, paying_for_tx}
@@ -614,9 +587,6 @@ end_per_suite(Config) ->
 
 init_per_group(all, Config) ->
     Config;
-init_per_group(SwaggerVsn, Config) when SwaggerVsn =:= swagger2;
-                                        SwaggerVsn =:= oas3 ->
-    [{swagger_version, SwaggerVsn} | Config];
 init_per_group(Group, Config) when
       Group =:= debug_endpoints;
       Group =:= account_endpoints;
@@ -629,8 +599,7 @@ init_per_group(Group, Config) when
       Group =:= status_endpoints ->
     Config;
 %% block_endpoints
-init_per_group(BlockEndpoints, Config) when BlockEndpoints =:= block_endpoints;
-                                            BlockEndpoints =:= oas_block_endpoints ->
+init_per_group(BlockEndpoints, Config) when BlockEndpoints =:= oas_block_endpoints ->
     aecore_suite_utils:reinit_with_bitcoin_ng(?NODE),
     Config;
 init_per_group(OnGenesis, Config) when OnGenesis =:= on_genesis_block;
@@ -799,24 +768,6 @@ init_per_group(paying_for_tx, Config) ->
 init_per_group(_Group, Config) ->
     Config.
 
-end_per_group(Group, _Config) when
-      Group =:= all;
-      Group =:= block_info;
-      Group =:= account_info;
-      Group =:= tx_info ->
-    ok;
-end_per_group(account_with_pending_tx, _Config) ->
-    ok;
-end_per_group(oracle_txs, _Config) ->
-    ok;
-end_per_group(on_micro_block, _Config) ->
-    ok;
-end_per_group(on_genesis_block, _Config) ->
-    ok;
-end_per_group(on_key_block, _Config) ->
-    ok;
-end_per_group(block_endpoints, _Config) ->
-    ok;
 end_per_group(_Group, _Config) ->
     ok.
 
@@ -889,8 +840,7 @@ init_per_testcase(_Case, Config) ->
 init_per_testcase_all(Config) ->
     [{_, Node} | _] = ?config(nodes, Config),
     aecore_suite_utils:mock_mempool_nonce_offset(Node, 100),
-    SwaggerVsn = proplists:get_value(swagger_version, Config, oas3),
-    aecore_suite_utils:use_swagger(SwaggerVsn),
+    aecore_suite_utils:use_api(oas3),
     [{tc_start, os:timestamp()} | Config].
 
 end_per_testcase(Case, Config) when
@@ -933,11 +883,10 @@ get_chain_ends(CurrentBlockType, CurrentBlockHash, _Config) when
     ?assertMatch({ok, 200, [CurrentBlockHash]}, get_chain_ends_sut()),
     ok;
 get_chain_ends(micro_block, CurrentBlockHash, Config) ->
-    {ok, 200, #{<<"micro_block">> := Block}} = get_top_sut(),
-    Hash = maps:get(<<"hash">>, Block),
+    {ok, 200, #{<<"hash">> := Hash} = Headers} = get_top_header_sut(),
+    ?assertMatch(<<"mh_", _/binary>>, Hash),
     ?assertEqual(CurrentBlockHash, Hash),
-    <<"mh_", _K/binary>> = Hash,
-    KH = maps:get(<<"prev_key_hash">>, Block),
+    KH = maps:get(<<"prev_key_hash">>, Headers),
     get_chain_ends(key_block, KH, Config),
     ok.
 
@@ -945,35 +894,7 @@ get_chain_ends_sut() ->
     Host = external_address(),
     http_request(Host, get, "status/chain-ends", []).
 
-%% /blocks/top
-
-get_top_block(Config) ->
-    TopHdr = rpc(aec_chain, top_header, []),
-    Height = aec_headers:height(TopHdr),
-    IntType = aec_headers:type(TopHdr),
-    Type = case {Height, IntType} of
-               {0, _    } -> genesis_block;
-               {_, key  } -> key_block;
-               {_, micro} -> micro_block
-           end,
-    Hash = hash_header(IntType, TopHdr),
-    get_top_block(Type, Hash, Config).
-
-get_top_block(CurrentBlockType, CurrentBlockHash, _Config) when
-      CurrentBlockType =:= genesis_block; CurrentBlockType =:= key_block ->
-    {ok, 200, #{<<"key_block">> := #{<<"hash">> := Hash}}} = get_top_sut(),
-    <<"kh_", _K/binary>> = Hash,
-    ?assertEqual(CurrentBlockHash, Hash),
-    ok;
-get_top_block(micro_block, CurrentBlockHash, _Config) ->
-    {ok, 200, #{<<"micro_block">> := #{<<"hash">> := Hash}}} = get_top_sut(),
-    <<"mh_", _K/binary>> = Hash,
-    ?assertEqual(CurrentBlockHash, Hash),
-    ok.
-
-get_top_sut() ->
-    Host = external_address(),
-    http_request(Host, get, "blocks/top", []).
+%% /headers/top
 
 get_top_header_sut() ->
     get_top_header_sut([]).
@@ -1501,11 +1422,7 @@ get_transaction_by_hash([{TxHash, ExpectedTx}], Config) ->
     BlockWithTxsHeight = ?config(block_with_txs_height, Config),
     EncodedTx = aeser_api_encoder:encode(transaction, aetx_sign:serialize_to_binary(ExpectedTx)),
     {ok, 200, Tx} = get_transactions_by_hash_sut(TxHash),
-    case ?config(swagger_version, Config) of
-        swagger2 -> pass;
-        oas3 ->
-            {ok, 200, _Tx} = get_transactions_by_hash_int_as_string_sut(TxHash)
-    end,
+    {ok, 200, _Tx} = get_transactions_by_hash_int_as_string_sut(TxHash),
     ?assertEqual(TxHash, maps:get(<<"hash">>, Tx)),
     ?assertEqual(BlockWithTxsHash, maps:get(<<"block_hash">>, Tx)),
     ?assertEqual(BlockWithTxsHeight, maps:get(<<"block_height">>, Tx)),
@@ -1529,18 +1446,13 @@ post_spend_tx_(Config, SignHash) ->
           fee          => ?config(fee, Config),
           payload      => ?config(payload, Config)},
     {TxHash, Tx} = prepare_tx(spend_tx, TxArgs, SignHash),
-    case aecore_suite_utils:http_api_version() of
-        oas3 ->
-            TxArgsStrings =
-                #{sender_id    => ?config(sender_id, Config),
-                  recipient_id => ?config(recipient_id, Config),
-                  amount       => integer_to_binary(?config(amount, Config)),
-                  fee          => integer_to_binary(?config(fee, Config)),
-                  payload      => ?config(payload, Config)},
-            %% assert same result
-            {TxHash, Tx} = prepare_tx(spend_tx, TxArgsStrings, SignHash);
-        swagger2 -> pass
-    end,
+    TxArgsStrings =
+        #{sender_id    => ?config(sender_id, Config),
+          recipient_id => ?config(recipient_id, Config),
+          amount       => integer_to_binary(?config(amount, Config)),
+          fee          => integer_to_binary(?config(fee, Config)),
+          payload      => ?config(payload, Config)},
+    ?assertEqual({TxHash, Tx},  prepare_tx(spend_tx, TxArgsStrings, SignHash)),
     case lists:last(aec_hard_forks:sorted_protocol_versions()) of
         Vsn when Vsn < ?LIMA_PROTOCOL_VSN andalso SignHash ->
             ?assertMatch({ok, 400, #{<<"reason">> := <<"Invalid tx">>}},
@@ -1870,7 +1782,6 @@ get_oracles_query_by_pubkey_and_query_id(Pubkey, Id) ->
 get_name_entry_by_name(_Config) ->
     NonexistentName = <<"Nonexistent_name">>,
     {ok, 400, _Error} = get_names_entry_by_name_sut(NonexistentName),
-    %%?assertEqual(<<"Name not found">>, maps:get(<<"reason">>, Error)),
 
     Host = external_address(),
     Prefix = aecore_suite_utils:http_api_prefix(),
@@ -1887,6 +1798,10 @@ get_auctions_entry_by_name_sut(Name) ->
 get_names_entry_by_name_sut(Name) ->
     Host = external_address(),
     http_request(Host, get, "names/" ++ Name, []).
+
+get_names_entry_by_hash_sut(NameHash) ->
+    Host = external_address(),
+    http_request(Host, get, "names/hash/" ++ NameHash, []).
 
 %% /channels/*
 
@@ -1990,16 +1905,11 @@ get_status(_Config) ->
     end,
     ?assertEqual(40, byte_size(NodeRevision)),
 
-    case proplists:get_value(swagger_version, _Config) of
-        oas3 ->
-            {ok, 200, #{ <<"protocols">> := ProtocolsStr }} = get_status_sut(true),
-            lists:foreach(fun(P) ->
-                                  ?assertMatch(X when is_binary(X), maps:get(<<"version">>, P)),
-                                  ?assertMatch(X when is_binary(X), maps:get(<<"effective_at_height">>, P))
-                          end, ProtocolsStr);
-        swagger2 -> none
-    end,
-
+    {ok, 200, #{ <<"protocols">> := ProtocolsStr }} = get_status_sut(true),
+    lists:foreach(fun(P) ->
+                      ?assertMatch(X when is_binary(X), maps:get(<<"version">>, P)),
+                      ?assertMatch(X when is_binary(X), maps:get(<<"effective_at_height">>, P))
+                  end, ProtocolsStr),
     ok.
 
 get_status_sut() ->
@@ -2196,6 +2106,14 @@ contract_transactions(_Config) ->    % miner has an account
     {ok, ContractAccInPoI} = aec_trees:lookup_poi(accounts, ContractPubKey, PoI),
     ContractAccInPoI = rpc(aec_accounts_trees, get, [ContractPubKey,
                                                      aec_trees:accounts(Trees)]),
+
+    %% Test spending to the non-payable account (introduced in Lima)
+    Protocol = aec_hard_forks:protocol_effective_at_height(1),
+    [ begin
+        {ok, 200, #{<<"tx">> := BadSpendTx}} =
+            post_spend_tx(aeser_api_encoder:encode(account_pubkey, ContractPubKey), 100000, ?SPEND_FEE),
+        {ok, 400, #{<<"error_code">> := <<"account_is_not_payable">>}} = sign_and_post_tx_(BadSpendTx, on_node)
+      end || Protocol >= ?LIMA_PROTOCOL_VSN ],
 
     %% Assert the balance is the one which we created the contract with
     {ok, 200, #{<<"balance">> := ContractInitBalance}} =
@@ -3090,12 +3008,8 @@ spend_transaction(_Config) ->
     {ok, 200, #{<<"next_nonce">> := NextNonce}} = get_accounts_next_nonce_sut(MinerID),
     {ok, 200, #{<<"next_nonce">> := NextNonce}} = get_accounts_next_nonce_sut(MinerID, max),
     {ok, 200, #{<<"next_nonce">> := NextNonce}} = get_accounts_next_nonce_sut(MinerID, continuity),
-    case aecore_suite_utils:http_api_version() of
-        oas3 ->
-            {ok, 200, #{<<"next_nonce">> := NextNonceBin}} = get_accounts_next_nonce_sut_(MinerID),
-            NextNonce = binary_to_integer(NextNonceBin);
-        _ -> pass
-    end,
+    {ok, 200, #{<<"next_nonce">> := NextNonceBin}} =
+        get_accounts_next_nonce_sut_(MinerID), NextNonce = binary_to_integer(NextNonceBin),
     RandAddress = random_hash(),
     Payload = <<"hejsan svejsan">>,
     Encoded = #{sender_id => MinerAddress,
@@ -3621,7 +3535,9 @@ naming_system_manage_name(_Config) ->
     Name        = aens_test_utils:fullname(<<"without-unicode">>, Height),
     NameSalt    = 12345,
     NameTTL     = 20000,
-    Pointers    = [#{<<"key">> => <<"account_pubkey">>, <<"id">> => PubKeyEnc}],
+    Pointers    = [#{<<"key">>         => <<"account_pubkey">>,
+                     <<"encoded_key">> => aeser_api_encoder:encode(bytearray, <<"account_pubkey">>),
+                     <<"id">>          => PubKeyEnc}],
     TTL         = 10,
     {ok, NHash} = aens:get_name_hash(Name),
     Fee         = 100000 * aec_test_utils:min_gas_price(),
@@ -3687,6 +3603,11 @@ naming_system_manage_name(_Config) ->
                 <<"ttl">>      := ExpectedTTL1,
                 <<"owner">>    := PubKeyEnc,
                 <<"pointers">> := []}} = get_names_entry_by_name_sut(Name),
+
+    {ok, 200, #{<<"id">>       := EncodedNHash,
+                <<"ttl">>      := ExpectedTTL1,
+                <<"owner">>    := PubKeyEnc,
+                <<"pointers">> := []}} = get_names_entry_by_hash_sut(EncodedNHash),
 
     %% Submit name updated tx and check it is in mempool
     NameUpdateData = #{account_id => PubKeyEnc,
@@ -4105,12 +4026,12 @@ get_contract_poi(ContractAddress) ->
     http_request(Host, get, "contracts/" ++ binary_to_list(ContractAddress) ++ "/poi", []).
 
 %% ============================================================
-%% Test swagger validation errors
+%% Test API validation errors, i.e. validation should fail
 %% ============================================================
 
-swagger_validation_body(_Config) ->
+api_validation_body(_Config) ->
     Host = internal_address(),
-    URL = binary_to_list(iolist_to_binary([Host, "/v2/debug/transactions/spend"])),
+    URL = binary_to_list(iolist_to_binary([Host, "/v3/debug/transactions/spend"])),
     Type = "application/json",
     Body = <<"{broken_json">>,
 
@@ -4123,30 +4044,7 @@ swagger_validation_body(_Config) ->
                 <<"error">> := <<"invalid_body">>
         }}} = process_http_return(R).
 
-%% TODO: different enu
-%%swagger_validation_enum(_Config) ->
-%%    Host = external_address(),
-%%    {ok, 400, #{
-%%            <<"reason">> := <<"validation_error">>,
-%%            <<"parameter">> := <<"tx_encoding">>,
-%%            <<"info">> := #{
-%%                <<"data">> := <<"default">>,
-%%                <<"error">> := <<"not_in_enum">>
-%%        }}} = http_request(Host, get, "block/genesis", #{tx_encoding => <<"default">>}).
-
-%% TODO: use different endpoint to check the validation
-%%swagger_validation_required(_Config) ->
-%%    Host = external_address(),
-%%    {ok, 400, #{
-%%            <<"reason">> := <<"validation_error">>,
-%%            <<"parameter">> := <<"name">>,
-%%            <<"info">> := #{
-%%                <<"error">> := <<"missing_required_property">>
-%%            }
-%%        }} = http_request(Host, get, "names/", []),
-%%    ok.
-
-swagger_validation_schema(_Config) ->
+api_validation_schema(_Config) ->
     Host = internal_address(),
     {ok, 400, #{
             <<"reason">> := <<"validation_error">>,
@@ -4177,20 +4075,6 @@ swagger_validation_schema(_Config) ->
                    payload => <<"">>}),
     true = lists:member(Error, [<<"not_in_range">>, <<"not_one_schema_valid">>]) .
 
-%%swagger_validation_types(_Config) ->
-%%    Host = internal_address(),
-%%    {ok, 400, #{
-%%            <<"reason">> := <<"validation_error">>,
-%%            <<"parameter">> := <<"height">>,
-%%            <<"info">> :=  #{
-%%                        <<"data">> := <<"not_integer">>,
-%%                        <<"error">> := <<"wrong_type">>
-%%        }}} = http_request(Host, get,
-%%                           "micro-blocks/hash/" ++
-%%                           "bh$11111111111111111111111111111111" ++
-%%                           "/transactions/index/" ++
-%%                           "not_integer", []).
-
 
 %% ============================================================
 %% Test HTTP cache headers
@@ -4202,7 +4086,7 @@ expires_cache_header(_Config) ->
         httpc_request(get, {Host ++ "/v2/blocks/top", []}, [], []),
 
     true = proplists:is_defined("expires", Headers),
-    #{<<"time">> := Blocktime} = get_top_sut(),
+    {ok, 200, #{<<"time">> := Blocktime}} = get_top_header_sut(),
     ExpiresStr = proplists:get_value("expires", Headers),
     Expires = http_datetime_to_unixtime(ExpiresStr) * 1000, % to msecs
     true = Expires - Blocktime =< aec_governance:micro_block_cycle(),
@@ -4240,11 +4124,7 @@ charset_param_in_content_type(_Config) ->
 
 wrong_http_method_top(_Config) ->
     Host = external_address(),
-    Path =
-        case aecore_suite_utils:http_api_version() of
-            swagger2 -> "blocks/top";
-            oas3 -> "headers/top"
-        end,
+    Path = "headers/top",
     {ok, 405, _} = http_request(Host, post, Path, []).
 
 wrong_http_method_contract_create(_Config) ->
@@ -4318,6 +4198,18 @@ wrong_http_method_node_pubkey(_Config) ->
 wrong_http_method_peers(_Config) ->
     Host = internal_address(),
     {ok, 405, _} = http_request(Host, post, "debug/peers", []).
+
+%% ============================================================
+%% swagger2 legacy
+%% ============================================================
+%% Remove when v2 API is removed
+swagger_endpoints_from_documentation(_Config) ->
+    {ok, {{_, 200, _}, _, _}} =
+        httpc_request(get, {external_address() ++ "/v2/blocks/top", []}, [], []),
+    {ok, {{_, 200, _}, _, _}} =
+        httpc_request(get, {internal_address() ++ "/v2/debug/peers", []}, [], []),
+    {ok, {{_, 200, _}, _, _}} =
+        httpc_request(get, {external_address() ++ "/v2/key-blocks/height/0", []}, [], []).
 
 %% ============================================================
 %% private functions
@@ -4560,8 +4452,6 @@ get_top_header(_Config) ->
       <<"state_hash">> := <<"bs_",StateHash/binary>>,
       <<"target">> := Target,
       <<"time">> := Time,<<"version">> := Version} = HeaderOrig,
-    %% this is not present in oas3.yaml but swagger.yaml
-    {ok, 404, #{}} = get_top_sut(),
     {ok, 200, HeaderOrig}= get_top_header_sut([{'int-as-string', false}]),
     {ok, 200, HeaderStrings}= get_top_header_sut([{'int-as-string', true}]),
     #{<<"beneficiary">> := <<"ak_",Acc/binary>>,

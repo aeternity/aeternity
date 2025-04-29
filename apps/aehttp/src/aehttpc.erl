@@ -18,28 +18,29 @@
 -type seed() :: binary().
 -type hash() :: binary().
 -type height() :: non_neg_integer().
--type pubkey() :: binary().
+-type time() :: non_neg_integer().
+%-type pubkey() :: binary().
+-type chain() :: aeternity | btc | doge.
 
 -export_type([ node_spec/0 ]).
 
 -callback get_latest_block(node_spec(), seed()) ->
-    {ok, hash(), hash(), height()} | {error, term()}.
+    {ok, hash(), hash(), height(), time()} | {error, term()}.
 
 -callback get_header_by_hash(hash(), node_spec(), seed()) ->
-    {ok, hash(), hash(), height()} | {error, term()}.
+    {ok, hash(), hash(), height(), time()} | {error, term()}.
 
 -callback get_header_by_height(height(), node_spec(), seed()) ->
-    {ok, hash(), hash(), height()} | {error, term()}.
+    {ok, hash(), hash(), height(), time()} | {error, term()}.
 
--callback get_commitment_tx_in_block(node_spec(), seed(), hash(), hash(), pubkey()) ->
-    {ok, [term()]} | {error, term()}.
+-callback get_chain_type() ->
+    {ok, chain()}.
 
--callback get_commitment_tx_at_height(node_spec(), seed(), height(), pubkey()) ->
-    {ok, [term()]} | {error, term()}.
+-callback pin_to_pc({term(), hash(), non_neg_integer(), non_neg_integer(), term(), term()}, node_spec()) ->
+    binary() | {error, term()}.
 
--callback post_commitment(node_spec(), pubkey(), pubkey(), non_neg_integer(), non_neg_integer(), binary(), binary(), term()) ->
-    {ok, term()} | {error, term()} | {error, non_neg_integer(), term()}.
-
+-callback get_pin_by_tx_hash(term(), node_spec()) ->
+    {ok, map()} | {error, term()}.
 
 -spec parse_node_url(string()) -> node_spec().
 parse_node_url(NodeURL) ->

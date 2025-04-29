@@ -68,16 +68,12 @@ handle_info(_Msg, St) ->
 %% ==================================================================
 %% internal functions
 
-handle_complete_generation(Height, key, _, PubKey) ->
+handle_complete_generation(Height, key, Hash, PubKey) ->
     try
-        {ok, #{micro_blocks := Blocks}} = aec_chain:get_generation_by_height(Height, forward),
-        %% Calculate metrics which require the transaction as input
-        [ handle_tx(Height, Tx, aetx_sign:hash(SignTx)) ||
-          Block <- Blocks,
-          SignTx <- aec_blocks:txs(Block),
-          Tx <- [ aetx_sign:tx(SignTx) ],
-          aetx:origin(Tx) == PubKey
-        ],
+        case aec_consensus:get_consensus_type() of
+            pos -> handle_complete_generation_pos(Height, Hash, PubKey);
+            pow -> handle_complete_generation_pow(Height, PubKey)
+        end,
         %% Forward chain height info to ttl metric worker
         forward_ttl_gen(Height)
     catch
@@ -86,6 +82,23 @@ handle_complete_generation(Height, key, _, PubKey) ->
         _:Reason ->
             lager:error("~p handle_complete_generation error: ~p", [?MODULE, Reason])
     end.
+
+handle_complete_generation_pos(Height, Hash, PubKey) ->
+    Blocks = aemon_mon_gen_stats:get_pos_generation(Hash),
+    handle_gen_blocks(Height, Blocks, PubKey).
+
+handle_complete_generation_pow(Height, PubKey) ->
+    {ok, #{micro_blocks := Blocks}} = aec_chain:get_generation_by_height(Height, forward),
+    handle_gen_blocks(Height, Blocks, PubKey).
+
+handle_gen_blocks(Height, Blocks, PubKey) ->
+    %% Calculate metrics which require the transaction as input
+    [ handle_tx(Height, Tx, aetx_sign:hash(SignTx)) ||
+      Block <- Blocks,
+      SignTx <- aec_blocks:txs(Block),
+      Tx <- [ aetx_sign:tx(SignTx) ],
+      aetx:origin(Tx) == PubKey
+    ].
 
 handle_micro_fork(_Height, micro, Hash, #st{micro_blocks = Blocks} = St) ->
     St#st{micro_blocks = [Hash | Blocks]};

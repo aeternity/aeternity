@@ -1,130 +1,97 @@
-include "List.aes"
-main contract StakingValidator =
-  record pending_transfer =
-    { staker : address, stake : int }
+include "Option.aes"
 
+contract interface RewardCallbackI =
+  entrypoint reward_cb : (int, int, bool) => unit
+
+contract interface MainStakingI =
+  payable entrypoint deposit          : () => unit
+  payable entrypoint stake            : () => unit
+  entrypoint adjust_stake             : (int) => unit
+  entrypoint withdraw                 : (int) => unit
+  entrypoint set_restake              : (bool) => unit
+  entrypoint get_restake              : () => bool
+  entrypoint get_staked_amount        : (int) => int
+  entrypoint get_available_balance    : () => int
+  entrypoint get_current_stake        : () => int
+  entrypoint get_total_balance        : () => int
+  entrypoint get_current_epoch        : () => int
+  entrypoint register_reward_callback : (RewardCallbackI) => unit
+  entrypoint get_validator_min_stake  : () => int
+
+payable contract StakingValidator =
   record state =
-    { main_staking_ct : address,
-      unstake_delay : int,
-      pending_unstake_amount : int,
-      pending_unstake : map(int, list(pending_transfer)),
-      name : string,
-      description : string,
-      avatar_url : string,
-      delegates : map(address, int),
-      shares : int }
+    { main_staking_ct : MainStakingI,
+      owner           : address,
+      signing_key     : address,
+      reward_callback : option(RewardCallbackI)
+    }
 
-  entrypoint init(main_staking_ct : address, unstake_delay : int) =
+  entrypoint init(main_staking_ct : MainStakingI, owner : address, signing_key : address) =
     { main_staking_ct = main_staking_ct,
-      unstake_delay = unstake_delay,
-      pending_unstake_amount = 0,
-      pending_unstake = {},
-      name = "",
-      description = "",
-      avatar_url = "",
-      delegates = {},
-      shares = 0 }
+      owner           = owner,
+      signing_key     = signing_key,
+      reward_callback = None }
 
-  payable stateful entrypoint stake(staker : address) =
-    assert_caller()
-    require(Call.value > 0, "Stake must be > 0")
-    let new_shares = calculate_shares(Call.value)
-    add_shares(staker, new_shares)
-    put(state{shares @ s = s + new_shares})
-    new_shares
+  payable stateful entrypoint deposit() =
+    require(Call.value > 0, "Deposit must be positive")
+    assert_owner_caller()
+    state.main_staking_ct.deposit(value = Call.value)
 
-  entrypoint estimate_stake_shares(value : int) =
-    estimate_shares(value)
+  payable stateful entrypoint stake() =
+    require(Call.value > 0, "Stake must be positive")
+    assert_owner_caller()
+    state.main_staking_ct.stake(value = Call.value)
 
-  payable entrypoint profit() =
-    assert_caller()
+  stateful entrypoint adjust_stake(adjust_amount : int) =
+    assert_owner_caller()
+    state.main_staking_ct.adjust_stake(adjust_amount)
+
+  stateful entrypoint withdraw(amount : int) =
+    assert_owner_caller()
+    state.main_staking_ct.withdraw(amount)
+    Chain.spend(Call.caller, amount)
+
+  entrypoint set_restake(restake : bool) =
+    assert_owner_caller()
+    state.main_staking_ct.set_restake(restake)
+
+  entrypoint get_restake() : bool =
+    state.main_staking_ct.get_restake()
+
+  entrypoint get_staked_amount(epoch : int) =
+    state.main_staking_ct.get_staked_amount(epoch)
+
+  entrypoint get_current_stake() =
+    state.main_staking_ct.get_current_stake()
+
+  entrypoint get_available_balance() =
+    state.main_staking_ct.get_available_balance()
+
+  entrypoint get_total_balance() =
+    state.main_staking_ct.get_total_balance()
+
+  stateful entrypoint register_reward_callback(cb_ct : RewardCallbackI) =
+    assert_owner_caller()
+    put(state{reward_callback = Some(cb_ct)})
+
+  entrypoint rewards(epoch : int, amount : int, restaked : bool) =
+    assert_main_staking_caller()
+    switch(state.reward_callback)
+      None => None
+      Some(cb_ct) => cb_ct.reward_cb(protected = true, gas = 20000, epoch, amount, restaked)
     ()
 
-  stateful entrypoint distribute_unstake() =
-    assert_caller()
-    let height = Chain.block_height
-    switch(Map.member(height, state.pending_unstake))
-      false => ()
-      true =>
-        let payouts = state.pending_unstake[height]
-        List.foreach(payouts, distribute_payout)
-        let new_pus = Map.delete(height, state.pending_unstake)
-        put(state{pending_unstake = new_pus})
+  entrypoint has_reward_callback() =
+    Option.is_some(state.reward_callback)
 
-  stateful function distribute_payout(payout) =
-    Chain.spend(payout.staker, payout.stake)
-    put(state{pending_unstake_amount @ pua = pua - payout.stake})
+  entrypoint get_current_epoch() =
+    state.main_staking_ct.get_current_epoch()
 
-  stateful entrypoint unstake(staker : address, withdraw_shares : int) : int =
-    assert_caller()
-    let staker_shares = state.delegates[staker = 0]
-    require(staker_shares >= withdraw_shares, "Not enough shares")
-    let payout_amt = shares_to_ae(withdraw_shares)
-    switch(state.unstake_delay)
-      0 => Chain.spend(staker, payout_amt)
-      _ =>
-        let height  = Chain.block_height + state.unstake_delay
-        let pending_transfer = { staker = staker, stake = payout_amt}
-        let pu = switch(Map.member(height, state.pending_unstake))
-            false => []
-            true => state.pending_unstake[height]
-        put(state{pending_unstake[height] = pending_transfer::pu,
-                  pending_unstake_amount @ pua = pua + payout_amt })
-    let remaining_shares = staker_shares - withdraw_shares
-    switch(remaining_shares == 0)
-      true =>
-        put(state{ shares @ s = s - withdraw_shares,
-                  delegates @ ds = Map.delete(staker, ds) })
-      false =>
-        put(state{ shares @ s = s - withdraw_shares,
-                  delegates[staker] @ balance = remaining_shares })
-    payout_amt
+  function assert_owner_caller() =
+    require(Call.caller == state.owner, "Only contract owner allowed")
 
-  entrypoint get_state() =
-    assert_caller()
-    state
+  function assert_main_staking_caller() =
+    require(Call.caller == state.main_staking_ct.address, "Only main staking contract allowed")
 
-  entrypoint shares(who : address) =
-    assert_caller()
-    state.delegates[who = 0]
-
-  entrypoint all_shares() =
-    assert_caller()
-    state.shares
-
-  entrypoint balance(who : address) =
-    assert_caller()
-    shares_to_ae(state.delegates[who = 0])
-
-  stateful entrypoint set_name(name : string) =
-    assert_caller()
-    put(state{name = name})
-
-  stateful entrypoint set_description(description : string) =
-    assert_caller()
-    put(state{description = description})
-
-  stateful entrypoint set_avatar_url(avatar_url : string) =
-    assert_caller()
-    put(state{avatar_url = avatar_url})
-
-  stateful function add_shares(staker : address, shares : int) =
-    put(state{ delegates[staker = 0] @ dshares = dshares + shares })
-
-  function calculate_shares(stake_size : int) =
-    if (state.shares == 0)
-      stake_size
-    else
-      (stake_size * state.shares) / (contract_balance() - stake_size)
-
-  function estimate_shares(stake_size : int) =
-      (stake_size * state.shares) / contract_balance()
-
-  function assert_caller() =
-    require(Call.caller == state.main_staking_ct, "Only allowed through MainStaking")
-
-  function shares_to_ae(shares : int) =
-    (shares * contract_balance()) / state.shares
-
-  function contract_balance() : int =
-    Contract.balance - state.pending_unstake_amount
+  entrypoint get_validator_min_stake() =
+    state.main_staking_ct.get_validator_min_stake()

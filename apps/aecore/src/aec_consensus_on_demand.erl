@@ -34,12 +34,15 @@
         %% Dirty validation before starting the state transition
         , dirty_validate_key_node_with_ctx/3
         , dirty_validate_micro_node_with_ctx/3
+        %% Block structure
+        , key_block_height_relative_previous_block/2
+        , micro_block_height_relative_previous_block/2
         %% State transition
         , state_pre_transform_key_node_consensus_switch/2
         , state_pre_transform_key_node/3
-        , state_pre_transform_micro_node/2
+        , state_pre_transform_micro_node/3
         %% Block rewards
-        , state_grant_reward/4
+        , state_grant_reward/5
         %% PoGF
         , pogf_detected/2
         %% Genesis block
@@ -188,16 +191,25 @@ dirty_validate_key_hash_at_height(_, _) -> ok.
 dirty_validate_key_node_with_ctx(_Node, _Block, _Ctx) -> ok.
 dirty_validate_micro_node_with_ctx(_Node, _Block, _Ctx) -> ok.
 
+%% ------------------------------------------------------------------------
+%% -- Block structure
+%% ------------------------------------------------------------------------
+key_block_height_relative_previous_block(_Type, Height) ->
+    Height + 1.
+
+micro_block_height_relative_previous_block(_Type, Height) ->
+    Height.
+
 %% -------------------------------------------------------------------
 %% Custom state transitions
 state_pre_transform_key_node_consensus_switch(_Node, Trees) -> Trees.
-state_pre_transform_key_node(_Node, _PrevNode, Trees) -> Trees.
-state_pre_transform_micro_node(_Node, Trees) -> Trees.
+state_pre_transform_key_node(_Node, _PrevNode, Trees) -> {Trees, []}.
+state_pre_transform_micro_node(_Height, _PrevNode, Trees) -> Trees.
 
 %% -------------------------------------------------------------------
 %% Block rewards
-state_grant_reward(Beneficiary, Node, Trees, Amount) ->
-    aec_consensus_bitcoin_ng:state_grant_reward(Beneficiary, Node, Trees, Amount).
+state_grant_reward(Beneficiary, Node, Delay, Trees, Amount) ->
+    aec_consensus_bitcoin_ng:state_grant_reward(Beneficiary, Node, Delay, Trees, Amount).
 
 %% -------------------------------------------------------------------
 %% PoGF

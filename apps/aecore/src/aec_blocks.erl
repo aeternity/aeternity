@@ -20,10 +20,12 @@
          is_key_block/1,
          miner/1,
          new_key/11,
+         new_key/12,
          new_key_from_header/1,
          new_micro/9,
          new_micro_from_header/3,
          pof/1,
+         is_eoe/1,
          pow/1,
          prev_hash/1,
          prev_key_hash/1,
@@ -36,6 +38,7 @@
          set_nonce_and_key_seal/3,
          set_key_seal/2,
          set_pof/2,
+         set_eoe/2,
          set_prev_hash/2,
          set_prev_key_hash/2,
          set_root_hash/2,
@@ -162,6 +165,20 @@ type(#mic_block{}) -> 'micro'.
 %%%===================================================================
 %%% Constructors
 %%%===================================================================
+
+%% @doc Creates a key block with specific flags
+-spec new_key(height(), block_header_hash(), block_header_hash(), state_hash(),
+    aec_consensus:key_target(),
+    non_neg_integer(), non_neg_integer(), info(),
+    aec_hard_forks:protocol_vsn(), miner_pubkey(), beneficiary_pubkey(),
+    block_header_flags()
+) -> key_block().
+new_key(Height, PrevHash, PrevKeyHash, RootHash, Target,
+    Nonce, Time, Info, Version, Miner, Beneficiary, Flags) ->
+    H = aec_headers:new_key_header(Height, PrevHash, PrevKeyHash, RootHash,
+        Miner, Beneficiary, Target,
+        no_value, Nonce, Time, Info, Version, Flags),
+    #key_block{header = H}.
 
 -spec new_key(height(), block_header_hash(), block_header_hash(), state_hash(),
               aec_consensus:key_target(),
@@ -302,6 +319,15 @@ set_pof(#mic_block{} = Block, PoF) ->
     PoFHash = aec_pof:hash(PoF),
     Header = aec_headers:set_pof_hash(to_micro_header(Block), PoFHash),
     set_header(Block#mic_block{pof = PoF}, Header).
+
+-spec is_eoe(key_block()) -> boolean().
+is_eoe(#key_block{} = Block) ->
+    aec_headers:is_eoe(to_key_header(Block)).
+
+-spec set_eoe(key_block(), boolean()) -> block().
+set_eoe(#key_block{} = Block, IsEoE) ->
+    Header = aec_headers:set_eoe(to_key_header(Block), IsEoE),
+    set_header(Block, Header).
 
 -spec pow(key_block()) -> aec_consensus:key_seal().
 pow(Block) ->

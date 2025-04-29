@@ -9,6 +9,7 @@
 -export([get/3,
          put/3,
          lookup/2,
+         lookup/3,
          reinit/3]).
 
 -spec lookup(atom(), term()) -> {ok, term()} | error.
@@ -19,6 +20,16 @@ lookup(TableName, EtsKey) ->
     catch
         _:_ ->
             error
+    end.
+
+-spec lookup(atom(), term(), term()) -> term().
+lookup(TableName, EtsKey, Default) ->
+    try
+        [{EtsKey, Result}] = ets:lookup(TableName, EtsKey),
+        Result
+    catch
+        _:_ ->
+            Default
     end.
 
 -spec get(atom(), term(), fun(() -> term())) -> term().

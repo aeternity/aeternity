@@ -3,7 +3,7 @@
 [This release][this-release] is the sixth release candidate.
 It:
 * New error handling for smart contracts. This affects consensus.
-* Incease gossiping of created blocks.
+* Increase gossiping of created blocks.
 
 [this-release]: https://github.com/aeternity/epoch/releases/tag/v1.0.0-rc6
 

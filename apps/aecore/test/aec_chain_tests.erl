@@ -408,9 +408,8 @@ n_headers_test_() ->
              setup_meck_and_keys()
      end,
      fun(TmpDir) ->
-             aec_test_utils:stop_chain_db(),
-             teardown_meck_and_keys(TmpDir)
-
+             teardown_meck_and_keys(TmpDir),
+             aec_test_utils:stop_chain_db()
      end,
      [ {"Get n headers backwards.", fun n_headers_backwards/0}
      , {"Get n headers forwards.", fun n_headers_forwards/0}
@@ -521,10 +520,10 @@ target_validation_test_() ->
              aec_test_utils:aec_keys_setup()
      end,
      fun(TmpDir) ->
-             aec_test_utils:unmock_difficulty_as_target(),
-             meck:unload(aec_governance),
              aec_test_utils:aec_keys_cleanup(TmpDir),
+             meck:unload(aec_governance),
              aec_test_utils:unmock_genesis_and_forks(),
+             aec_test_utils:unmock_difficulty_as_target(),
              aec_test_utils:stop_chain_db()
      end,
      [{"Ensure target is same as genesis block target"
@@ -608,8 +607,8 @@ total_difficulty_test_() ->
              setup_meck_and_keys()
      end,
      fun(TmpDir) ->
-             aec_test_utils:stop_chain_db(),
-             teardown_meck_and_keys(TmpDir)
+             teardown_meck_and_keys(TmpDir),
+             aec_test_utils:stop_chain_db()
      end,
      [{"Get work in chain of only genesis",
        fun total_difficulty_only_genesis/0},
@@ -969,9 +968,10 @@ fork_gen_key_candidate() ->
     %% The new key block candidate will have the same protocol version as the
     %% last block of hard chain.
     Protocol = aec_blocks:version(TopBlock),
+    Height   = aec_blocks:height(TopBlock) + 1,
     ?assertMatch({ok, _},
                  aec_chain_state:calculate_state_for_new_keyblock(
-                   TopBlockHash, Pubkey, Pubkey, Protocol)),
+                   Height, TopBlockHash, Pubkey, Pubkey, Protocol)),
     ok.
 
 %%%===================================================================
@@ -984,8 +984,8 @@ block_time_summary_test_() ->
              setup_meck_and_keys()
      end,
      fun(TmpDir) ->
-             aec_test_utils:stop_chain_db(),
-             teardown_meck_and_keys(TmpDir)
+             teardown_meck_and_keys(TmpDir),
+             aec_test_utils:stop_chain_db()
      end,
      [ {"Empty list on no genesis", fun time_summary_no_genesis/0}
      , {"Time summary on only genesis block", fun time_summary_only_genesis/0}
@@ -1046,8 +1046,8 @@ fees_test_setup(Enabled, Activated, BeneficiaryShare) ->
     setup_meck_and_keys().
 
 fees_test_teardown(TmpDir) ->
-    aec_test_utils:stop_chain_db(),
-    teardown_meck_and_keys(TmpDir).
+    teardown_meck_and_keys(TmpDir),
+    aec_test_utils:stop_chain_db().
 
 
 %%% Check fee division between three beneficiaries with reward split
@@ -1260,8 +1260,8 @@ pof_test_() ->
              setup_meck_and_keys()
      end,
      fun(TmpDir) ->
-             aec_test_utils:stop_chain_db(),
-             teardown_meck_and_keys(TmpDir)
+             teardown_meck_and_keys(TmpDir),
+             aec_test_utils:stop_chain_db()
      end,
      [{"Check pof is recognized on key-block as parent",
        fun pof_fork_on_key_block/0},
@@ -1412,8 +1412,8 @@ token_supply_test_() ->
              setup_meck_and_keys()
      end,
      fun(TmpDir) ->
-             aec_test_utils:stop_chain_db(),
-             teardown_meck_and_keys(TmpDir)
+             teardown_meck_and_keys(TmpDir),
+             aec_test_utils:stop_chain_db()
      end,
      [ {"Test sum of coinbase", fun token_supply_coinbase/0}
      , {"Test sum of spend", fun token_supply_spend/0}

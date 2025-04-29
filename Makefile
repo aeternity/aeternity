@@ -2,7 +2,7 @@ CORE = rel/aeternity/bin/aeternity
 
 REBAR ?= ./rebar3
 
-PROTOCOLS = roma minerva fortuna lima iris ceres
+PROTOCOLS = roma minerva fortuna lima iris ceres arcus
 CT_TARGETS = $(patsubst %,ct-%,$(PROTOCOLS))
 LATEST_PROTOCOL = $(lastword $(PROTOCOLS))
 
@@ -49,7 +49,7 @@ all:	local-build
 
 endpoints: VERSION
 	$(REBAR) swagger_endpoints
-	$(REBAR) swagger_endpoints --file=$(OAS_YAML) --out=$(OAS_ENDPOINTS_SPEC) 
+	$(REBAR) swagger_endpoints --file=$(OAS_YAML) --out=$(OAS_ENDPOINTS_SPEC)
 
 null  :=
 space := $(null) # space
@@ -73,6 +73,11 @@ endif
 ifdef GROUP
 CT_TEST_FLAGS += --group=$(GROUP)
 unexport GROUP
+endif
+
+ifdef DIR
+CT_TEST_FLAGS += --dir=$(DIR)
+unexport DIR
 endif
 
 ifdef TEST
@@ -100,7 +105,7 @@ endif
 export AEVM_EXTERNAL_TEST_DIR=aevm_external
 export AEVM_EXTERNAL_TEST_VERSION=348b0633f4a6ee3c100368bf0f4fca71394b4d01
 
-console: VERSION REVISION endpoints 
+console: VERSION REVISION endpoints
 	@$(REBAR) as local shell --config config/dev.config --sname aeternity@localhost
 
 test-build: KIND=test
@@ -222,7 +227,7 @@ dialyzer-install: endpoints
 	@$(REBAR) tree
 	@$(REBAR) dialyzer -u true -s false
 
-dialyzer: endpoints 
+dialyzer: endpoints
 	@$(REBAR) dialyzer
 
 edoc: VERSION
@@ -263,7 +268,7 @@ eunit-latest: eunit-$(LATEST_PROTOCOL)
 all-tests: eunit-$(LATEST_PROTOCOL) ct-$(LATEST_PROTOCOL)
 
 docker: dockerignore-check
-	@docker pull aeternity/builder:otp21
+	@docker pull aeternity/builder:focal-otp24
 	@docker build -t aeternity/aeternity:local .
 
 dockerignore-check: | .gitignore .dockerignore
@@ -291,6 +296,7 @@ smoke-test-run: internal-build
 system-smoke-test-deps:
 	$(MAKE) docker
 	docker pull "aeternity/aeternity:v1.4.0"
+	docker pull "aeternity/aeternity:v6.9.0"
 
 local-system-test: KIND=system_test
 local-system-test: internal-build
@@ -441,8 +447,12 @@ internal-ct: test-build
 	if [ $$(printf "%b" "$${NODE_PROCESSES}" | wc -l) -gt 0 ] ; then \
 		(printf "%b\n%b\n" "Failed testing: another node is already running" "$${NODE_PROCESSES}" >&2; exit 1);\
 	else \
+		if [ ! -f $(SYSCONFIG) ]; then \
+			(echo "config $(SYSCONFIG) not found"; exit 1); \
+	else \
 		AETERNITY_TESTCONFIG_DB_BACKEND=$(AETERNITY_TESTCONFIG_DB_BACKEND) \
 			$(REBAR) ct $(CT_TEST_FLAGS) --sys_config $(SYSCONFIG); \
+		fi \
 	fi
 
 $(DEB_PKG_CHANGELOG_FILE): VERSION REVISION

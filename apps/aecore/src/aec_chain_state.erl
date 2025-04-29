@@ -25,7 +25,7 @@
 %%% If a micro block is added to the top of the chain, this is
 %%% considered the top block, even if it doesn't increase the
 %%% difficulty. If a micro block is added to a fork with the same
-%%% difficulty as the main chain, the top block will not chain.
+%%% difficulty as the main chain, the top block will not change.
 %%%
 %%% Forks in the structure are labeled by fork id. The fork id is
 %%% local to each Aeternity node instance and cannot be used to reason about
@@ -75,7 +75,8 @@
 
 -module(aec_chain_state).
 
--export([ calculate_state_for_new_keyblock/4
+-export([ calculate_state_for_new_keyblock/5
+        , calculate_state_for_new_keyblock/6
         , find_common_ancestor/2
         , get_key_block_hash_at_height/1
         , key_block_hashes_at_height/1
@@ -271,17 +272,20 @@ hash_is_in_main_chain(Hash) ->
     end.
 
 -spec calculate_state_for_new_keyblock(
+        non_neg_integer(),
         binary(),
         aec_keys:pubkey(),
         aec_keys:pubkey(),
         aec_hard_forks:protocol_vsn()) -> {'ok', aec_trees:trees()} | 'error'.
-calculate_state_for_new_keyblock(PrevHash, Miner, Beneficiary, Protocol) ->
+calculate_state_for_new_keyblock(Height, PrevHash, Miner, Beneficiary, Protocol) ->
+    calculate_state_for_new_keyblock(Height, PrevHash, Miner, Beneficiary, Protocol, <<0:32>>).
+
+calculate_state_for_new_keyblock(Height, PrevHash, Miner, Beneficiary, Protocol, Flags) ->
     aec_db:ensure_transaction(fun() ->
         case db_find_node(PrevHash) of
             error -> error;
             {ok, PrevNode} ->
-                Height = node_height(PrevNode) + 1,
-                Node  = fake_key_node(PrevNode, Height, Miner, Beneficiary, Protocol),
+                Node  = fake_key_node(PrevNode, Height, Miner, Beneficiary, Protocol, Flags),
                 State = new_state_from_persistence(),
                 case get_state_trees_in(Node, true) of
                     error -> error;
@@ -464,7 +468,7 @@ block_txs(micro, Block) ->
 block_txs(key, _) ->
     [].
 
-fake_key_node(PrevNode, Height, Miner, Beneficiary, Protocol) ->
+fake_key_node(PrevNode, Height, Miner, Beneficiary, Protocol, Flags) ->
     PrevKeyHash = case node_type(PrevNode) of
                       key   -> node_hash(PrevNode);
                       micro -> node_prev_key_hash(PrevNode)
@@ -479,7 +483,8 @@ fake_key_node(PrevNode, Height, Miner, Beneficiary, Protocol) ->
                                default,
                                Protocol,
                                Miner,
-                               Beneficiary),
+                               Beneficiary,
+                               Flags),
     wrap_header(aec_blocks:to_header(Block)).
 
 wrap_header(Header) ->
@@ -505,9 +510,14 @@ get_key_block_hash_at_height(Height, State) when is_integer(Height), Height >= 0
             case Height > TopHeight of
                 true -> error;
                 false ->
+                    ConsensusModule = aec_block_insertion:node_consensus(TopNode),
                     case db_find_key_nodes_at_height(Height) of
-                        error        -> error({broken_chain, Height});
-                        {ok, [Node]} -> {ok, node_hash(Node)};
+                        error when ConsensusModule == aec_consensus_hc ->
+                            error;
+                        error ->
+                            error({broken_chain, Height});
+                        {ok, [Node]} ->
+                            {ok, node_hash(Node)};
                         {ok, [_|_] = Nodes} ->
                             {ok, {MaybeChokeNode, ChokePt}} = choke_point(Height, TopHeight, TopNode, TopHash),
                             keyblock_hash_in_main_chain(Nodes, MaybeChokeNode, ChokePt)
@@ -587,7 +597,7 @@ internal_insert_genesis(Node, Block) ->
         ok = aec_db:write_block_state(
                 NewTopHash,
                 Trees,
-                aec_block_genesis:genesis_difficulty() + node_difficulty(Node),
+                accumulate_difficulty(aec_block_genesis:genesis_difficulty(), node_difficulty(Node)),
                 NewTopHash,
                 0,
                 false),
@@ -813,7 +823,7 @@ apply_and_repair_trees(Node, PrevNode, TreesIn, ForkInfoIn, State) ->
 apply_and_store_state_trees(Node, PrevNode, TreesIn, ForkInfoIn, State) ->
     {Trees, Fees, Events} = apply_node_transactions(Node, PrevNode, TreesIn, ForkInfoIn, State),
     assert_state_hash_valid(Trees, Node),
-    DifficultyOut = ForkInfoIn#fork_info.difficulty + node_difficulty(Node),
+    DifficultyOut = accumulate_difficulty(ForkInfoIn#fork_info.difficulty, node_difficulty(Node)),
     Fraud = update_fraud_info(ForkInfoIn, Node, State),
     ForkInfoInNode = ForkInfoIn#fork_info{ fees = Fees
                                          , difficulty = DifficultyOut
@@ -850,7 +860,8 @@ handle_top_block_change(OldTopNode, NewTopDifficulty, Node, Events, State) ->
                 false ->
                     %% We have a fork. Compare the difficulties.
                     {ok, OldTopDifficulty} = db_find_difficulty(OldTopHash),
-                    case OldTopDifficulty >= NewTopDifficulty of
+                    case cmp_difficulty(OldTopDifficulty, NewTopDifficulty,
+                                        node_height(OldTopNode), node_height(Node)) of
                         true ->
                             State1 = set_top_block_node(OldTopNode, State), %% Reset
                             {State1, Events};
@@ -860,6 +871,13 @@ handle_top_block_change(OldTopNode, NewTopDifficulty, Node, Events, State) ->
                             {State1, Events}
                     end
             end
+    end.
+
+cmp_difficulty(OldDifficulty, NewDifficulty, OldHeight, NewHeight) ->
+    case aec_consensus:get_consensus_type() of
+        pow -> OldDifficulty >= NewDifficulty;
+        pos -> OldDifficulty > NewDifficulty orelse
+                  (OldDifficulty == NewDifficulty andalso OldHeight > NewHeight)
     end.
 
 update_main_chain(OldTopHash, NewTopHash, ForkHash, State) ->
@@ -920,7 +938,8 @@ apply_node_transactions(Node, PrevNode, Trees, ForkInfo, State) ->
     case node_is_micro_block(Node) of
         true ->
             #fork_info{fees = FeesIn} = ForkInfo,
-            Trees1 = Consensus:state_pre_transform_micro_node(Node, Trees),
+            Height = aec_block_insertion:node_height(Node),
+            Trees1 = Consensus:state_pre_transform_micro_node(Height, PrevNode, Trees),
             apply_micro_block_transactions(Node, FeesIn, Trees1);
         false ->
             #fork_info{fees = FeesIn, fraud = FraudStatus} = ForkInfo,
@@ -937,14 +956,14 @@ apply_node_transactions(Node, PrevNode, Trees, ForkInfo, State) ->
             Trees2 = if Consensus =:= PrevConsensus -> Trees1;
                         true -> Consensus:state_pre_transform_key_node_consensus_switch(Node, Trees1)
                      end,
-            Trees3 = Consensus:state_pre_transform_key_node(Node, PrevNode, Trees2),
+            {Trees3, Events} = Consensus:state_pre_transform_key_node(Node, PrevNode, Trees2),
             %% leader generation happens after pre_transformations
             case validate_generation_leader(Node, Trees3, Env) of
                 ok ->
                     Delay  = aec_governance:beneficiary_reward_delay(),
                     case Height > aec_block_genesis:height() + Delay of
-                        true  -> {grant_fees(Node, Trees3, Delay, FraudStatus, State), TotalFees, no_events()};
-                        false -> {Trees3, TotalFees, no_events()}
+                        true  -> {grant_fees(Node, Trees3, Delay, FraudStatus, State), TotalFees, Events};
+                        false -> {Trees3, TotalFees, Events}
                     end;
                 {error, Reason} ->
                     error({leader_validation_failed, Reason})
@@ -988,8 +1007,16 @@ find_one_predecessor([N|Left], Node) ->
 %% NOTE: If the restriction of reporting a miner in the next
 %% generation is lifted, we need to do something more elaborate.
 
-grant_fees(Node, Trees, Delay, FraudStatus, _State) ->
+grant_fees(Node, Trees, Delay, FraudStatus, State) ->
     Consensus = aec_block_insertion:node_consensus(Node),
+    case Consensus of
+        aec_consensus_hc ->
+            hc_grant_fees(Node, Trees, Delay);
+        _ ->
+            grant_fees(Node, Trees, Delay, FraudStatus, State, Consensus)
+    end.
+
+grant_fees(Node, Trees, Delay, FraudStatus, _State, Consensus) ->
     NewestBlockHeight = node_height(Node) - Delay + ?POF_REPORT_DELAY,
     KeyNode4 = find_predecessor_at_height(Node, NewestBlockHeight),
     KeyNode3 = db_get_node(node_prev_key_hash(KeyNode4)),
@@ -1018,7 +1045,7 @@ grant_fees(Node, Trees, Delay, FraudStatus, _State) ->
                              OldestBeneficiaryVersion),
     Trees1 = lists:foldl(
                fun({K, Amt}, TreesAccum) when Amt > 0 ->
-                       Consensus:state_grant_reward(K, Node, TreesAccum, Amt);
+                       Consensus:state_grant_reward(K, Node, Delay, TreesAccum, Amt);
                   (_, TreesAccum) -> TreesAccum
                end,
                Trees,
@@ -1028,6 +1055,17 @@ grant_fees(Node, Trees, Delay, FraudStatus, _State) ->
     Accounts = aec_accounts_trees:lock_coins(LockAmount, Accounts0),
     aec_trees:set_accounts(Trees1, Accounts).
 
+hc_grant_fees(CurrentNode, Trees, Delay) ->
+    Height = node_height(CurrentNode) - Delay + 1,
+    AfterNode = find_predecessor_at_height(CurrentNode, Height),
+    TheNode = db_get_node(node_prev_key_hash(AfterNode)),
+    BeforeNode = db_get_node(node_prev_key_hash(TheNode)),
+
+    Fees = db_get_fees(node_hash(TheNode)),
+    BlockReward = aec_governance:block_mine_reward(node_height(TheNode)),
+    aec_consensus_hc:state_grant_rewards(CurrentNode, Delay, Trees,
+                                         {Fees, BlockReward},
+                                         [BeforeNode, TheNode, AfterNode]).
 
 calculate_gas_fee(Calls) ->
     F = fun(_, SerCall, GasFeeIn) ->
@@ -1044,8 +1082,9 @@ apply_micro_block_transactions(Node, FeesIn, Trees) ->
               Txs1      -> Txs1
           end,
     KeyHeader = db_get_header(node_prev_key_hash(Node)),
-    Env = aetx_env:tx_env_from_key_header(KeyHeader, node_prev_key_hash(Node),
-                                          node_time(Node), node_prev_hash(Node)),
+    Env0 = aetx_env:tx_env_from_key_header(KeyHeader, node_prev_key_hash(Node),
+                                           node_time(Node), node_prev_hash(Node)),
+    Env = aetx_env:set_height(Env0, node_height(Node)),
     case timer:tc(aec_block_micro_candidate, apply_block_txs_strict, [Txs, Trees, Env]) of
         {Time, {ok, _, NewTrees, Events}} ->
             aec_metrics:try_update([ae, epoch, aecore, blocks, micro, txs_execution_time, success], Time),
@@ -1209,7 +1248,6 @@ db_get_txs(Hash) when is_binary(Hash) ->
 db_get_fees(Hash) when is_binary(Hash) ->
     {value, Fees} = aec_db:find_block_fees(Hash),
     Fees.
-
 
 db_get_fraud_status(Hash) when is_binary(Hash) ->
     {value, FraudStatus} = aec_db:find_block_fraud_status(Hash),
@@ -1564,3 +1602,9 @@ key_headers_height_store_migration_step(Time, N, {TimeRead, {Headers, Cont}}) ->
 is_gc_disabled() ->
     [Bool] = aec_db_gc:info([enabled]),
     Bool.
+
+accumulate_difficulty(Old, New) ->
+    case aec_consensus:get_consensus_type() of
+        pow -> Old + New;
+        pos -> New
+    end.
