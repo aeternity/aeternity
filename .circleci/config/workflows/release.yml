@@ -32,35 +32,12 @@ jobs:
         tags:
           only: << pipeline.parameters.tag_regex >>
 
-  - macos-tarball:
-      name: macos-release-tarball
-      package_name: aeternity-$CIRCLE_TAG-macos-arm64.tar.gz
-      context: ae-slack
-      filters:
-        branches:
-          ignore: /.*/
-        tags:
-          only: << pipeline.parameters.tag_regex >>
-
-  - macos-tarball:
-      name: macos-release-tarball-bundle
-      package_name: aeternity-bundle-$CIRCLE_TAG-macos-arm64.tar.gz
-      aeplugin_devmode: true
-      context: ae-slack
-      filters:
-        branches:
-          ignore: /.*/
-        tags:
-          only: << pipeline.parameters.tag_regex >>
-
   - slack/on-hold:
       name: hodl-artifact-upload-notification
       context: ae-slack
       requires:
         - linux-release-tarball
-        - macos-release-tarball
         - linux-release-tarball-bundle
-        - macos-release-tarball-bundle
         - linux-release-standalone
       filters:
         branches:
@@ -86,9 +63,7 @@ jobs:
         - ae-vault-node
       requires:
         - linux-release-tarball
-        - macos-release-tarball
         - linux-release-tarball-bundle
-        - macos-release-tarball-bundle
         - linux-release-standalone
         - hodl_artifact_upload
       filters:
@@ -103,9 +78,7 @@ jobs:
         - ae-github
       requires:
         - linux-release-tarball
-        - macos-release-tarball
         - linux-release-tarball-bundle
-        - macos-release-tarball-bundle
         - linux-release-standalone
         - hodl_artifact_upload
       filters:
@@ -199,7 +172,6 @@ jobs:
       context: ae-slack
       requires:
         - linux-release-tarball
-        - macos-release-tarball
         - upload-release-tarballs-s3
         - docker-image-tag
       filters:
@@ -221,21 +193,6 @@ jobs:
   - promote-tarball-s3:
       name: promote-release-linux-tarball-s3
       uri: s3://<< pipeline.parameters.s3_releases_bucket >>/aeternity-$CIRCLE_TAG-ubuntu-x86_64.tar.gz
-      context:
-        - ae-slack
-        - ae-vault-node
-      requires:
-        - upload-release-tarballs-s3
-        - hodl_latest
-      filters:
-        branches:
-          ignore: /.*/
-        tags:
-          only: << pipeline.parameters.tag_regex >>
-
-  - promote-tarball-s3:
-      name: promote-release-macos-tarball-s3
-      uri: s3://<< pipeline.parameters.s3_releases_bucket >>/aeternity-$CIRCLE_TAG-macos-arm64.tar.gz
       context:
         - ae-slack
         - ae-vault-node
@@ -389,7 +346,6 @@ jobs:
       requires:
         - upload-release-tarballs-s3
         - promote-release-linux-tarball-s3
-        - promote-release-macos-tarball-s3
         - upload-artifacts-github-release
         - docker-image-tag
         - docker-image-latest
