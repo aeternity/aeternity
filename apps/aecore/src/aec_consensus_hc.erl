@@ -140,6 +140,7 @@ start(Config, _) ->
                                               CacheSize, PCFinality]),
     start_dependency(aec_pinning_agent, [get_contract_pubkey(?ELECTION_CONTRACT), default_pinning_behavior(), SignModule]),
     start_dependency(aec_hc_penalty_service, [child_epoch_length()*2]), % we only cache the last two epochs of Blocks...
+    start_dependency(aec_penalty_agent, [get_contract_pubkey(?ELECTION_CONTRACT)]),
     ok.
 
 start_btc(StakersEncoded, PinnersEncoded, ParentConnMod) ->
@@ -387,6 +388,7 @@ state_pre_transform_node(Type, Height, PrevNode, Trees) ->
             end;
         micro ->
             {ok, Leader} = leader_for_timeslot(Height, {TxEnv, Trees}),
+            lager:debug("micro_calls: ~p", [aec_trees:calls(Trees)]),
             {step_micro(TxEnv, Trees, Leader), []}
     end.
 

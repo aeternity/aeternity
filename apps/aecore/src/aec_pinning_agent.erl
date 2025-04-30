@@ -20,7 +20,6 @@
 %% External API
 -export([
     start_link/3,
-    start_link/3,
     stop/0
 ]).
 

@@ -15,7 +15,10 @@
 %% External API
 -export([
     start_link/1,
-    stop/0
+    stop/0,
+    get_penalties/0,
+    pop_penalties/1,
+    validate_microblock/2
 ]).
 
 %% Callbacks
@@ -50,9 +53,33 @@ start_link(CacheLevel) ->
 stop() ->
     gen_server:stop(?SERVER).
 
+-spec get_penalties() -> list().
+get_penalties() ->
+    gen_server:call(?SERVER, {get_penalties}).
+
 test_and_register_block_offence(Block) ->
     gen_server:call(?SERVER, { test_and_register_block_offence, Block }).
 
+-spec pop_penalties(list()) -> list().
+pop_penalties(Pens) ->
+    gen_server:call(?SERVER, {pop_penalties, Pens}).
+
+validate_microblock(Block, Contract) ->
+    Txs = aec_blocks:txs(Block),
+
+    % Filter for contract call transactions
+    ContractCalls = lists:filter(fun(Tx) ->
+        aetx:tx_type(aetx_sign:tx(Tx)) =:= contract_call_tx andalso aect_call_tx:contract_id(Tx) =:= Contract
+    end, Txs),
+
+    % Extract details of each contract call
+    CDL = lists:map(fun(Tx) ->
+        SignedTx = aetx_sign:tx(Tx),
+        CallDataBin = aect_call_tx:call_data(SignedTx),
+        aeb_fate_encoding:deserialize(CallDataBin)
+        end,
+        ContractCalls),
+    lager:debug("validate_microblock: ~p", [CDL]).
 %%%=============================================================================
 %%% Gen Server Callbacks
 %%%=============================================================================
@@ -77,6 +104,20 @@ handle_call({test_and_register_block_offence, Block}, _From, State) ->
     %lager:debug("pen_state: ~p", [NewState]),
     {reply, Res, NewState};
 
+handle_call({pop_penalties, Pens}, _From, State) ->
+    % Extract the current penalties
+    Penalties = State#loop_state.penalties,
+    Rems = remove_penalties(Pens, State#loop_state.penalties),
+    % Clear the penalties in the state
+    NewState = State#loop_state{penalties = Rems},
+    % Reply with the cleared penalties
+    {reply, Rems, NewState};
+
+handle_call({get_penalties}, _From, State) ->
+    % Extract the penalties from the state and return them
+    Penalties = State#loop_state.penalties,
+    {reply, Penalties, State};
+
 handle_call(_Request, _From, LoopState) ->
     Reply = ok,
     {reply, Reply, LoopState}.
@@ -96,6 +137,10 @@ code_change(_OldVsn, LoopState, _Extra) ->
 %%%=============================================================================
 %%% Internal functions
 %%%=============================================================================
+
+remove_penalties(PensToRemove, ExistingPens) ->
+    lists:filter(fun(Pen) -> not lists:member(Pen, PensToRemove) end, ExistingPens).
+
 test_block_offence(Block, State) ->
     lager:debug("test_block_offence: ~p", [Block]),
     Header = aec_blocks:to_header(Block),
@@ -149,7 +194,7 @@ get_blocks_for_height(Height, #loop_state{block_height_map = BM}) ->
 
 register_penalties(Pens, State) ->
     lager:debug("register_penalties: ~p", [Pens]),
-    State#loop_state{penalties = [Pens | State#loop_state.penalties]}.
+    State#loop_state{penalties = lists:merge(Pens, State#loop_state.penalties)}.
 
 add_block_at_height(Height, Block, State) ->
     CacheLevel = State#loop_state.cache_level,
