@@ -224,8 +224,7 @@ paths:
           description: The name key of the name entry
           required: true
           schema:
-            type: string
-            example: "dimitar.chain"
+            $ref: "#/components/schemas/Name"
       responses:
         "200":
           description: Successful operation
@@ -840,8 +839,7 @@ paths:
           description: The name key of the name entry
           required: true
           schema:
-            type: string
-            example: "dimitar.chain"
+            $ref: "#/components/schemas/Name"
       responses:
         "200":
           description: Successful operation
@@ -2299,7 +2297,7 @@ components:
       type: object
       properties:
         id:
-          $ref: "#/components/schemas/EncodedValue"
+          $ref: "#/components/schemas/EncodedNameId"
         started_at:
           $ref: "#/components/schemas/UInt64"
         ends_at:
@@ -2318,7 +2316,7 @@ components:
       type: object
       properties:
         bytecode:
-          $ref: "#/components/schemas/EncodedByteArray"
+          $ref: "#/components/schemas/EncodedContractByteArray"
       required:
         - bytecode
     Channel:
@@ -2396,7 +2394,7 @@ components:
         from_id:
           $ref: "#/components/schemas/EncodedPubkey"
         payload:
-          $ref: "#/components/schemas/EncodedByteArray"
+          $ref: "#/components/schemas/EncodedTxByteArray"
         ttl:
           $ref: "#/components/schemas/UInt64"
         fee:
@@ -2404,7 +2402,7 @@ components:
         nonce:
           $ref: "#/components/schemas/UInt64"
         poi:
-          $ref: "#/components/schemas/EncodedByteArray"
+          $ref: "#/components/schemas/EncodedProofOfInclusion"
       required:
         - channel_id
         - from_id
@@ -2480,7 +2478,7 @@ components:
         from_id:
           $ref: "#/components/schemas/EncodedPubkey"
         payload:
-          $ref: "#/components/schemas/EncodedByteArray"
+          $ref: "#/components/schemas/EncodedTxByteArray"
         round:
           $ref: "#/components/schemas/UInt64"
         update:
@@ -2494,7 +2492,7 @@ components:
         nonce:
           $ref: "#/components/schemas/UInt64"
         offchain_trees:
-          $ref: "#/components/schemas/EncodedByteArray"
+          $ref: "#/components/schemas/EncodedStateTrees"
       required:
         - channel_id
         - from_id
@@ -2523,7 +2521,7 @@ components:
         round:
           $ref: '#/components/schemas/UInt64'
         payload:
-          $ref: '#/components/schemas/EncodedByteArray'
+          $ref: '#/components/schemas/EncodedTxByteArray'
         ttl:
           $ref: '#/components/schemas/UInt64'
         fee:
@@ -2571,7 +2569,7 @@ components:
         from_id:
           $ref: "#/components/schemas/EncodedPubkey"
         payload:
-          $ref: "#/components/schemas/EncodedByteArray"
+          $ref: "#/components/schemas/EncodedTxByteArray"
         ttl:
           $ref: "#/components/schemas/UInt64"
         fee:
@@ -2579,7 +2577,7 @@ components:
         nonce:
           $ref: "#/components/schemas/UInt64"
         poi:
-          $ref: "#/components/schemas/EncodedByteArray"
+          $ref: "#/components/schemas/EncodedProofOfInclusion"
       required:
         - channel_id
         - from_id
@@ -2594,7 +2592,7 @@ components:
         from_id:
           $ref: "#/components/schemas/EncodedPubkey"
         payload:
-          $ref: "#/components/schemas/EncodedByteArray"
+          $ref: "#/components/schemas/EncodedTxByteArray"
         ttl:
           $ref: "#/components/schemas/UInt64"
         fee:
@@ -2644,7 +2642,7 @@ components:
       type: object
       properties:
         commitment_id:
-          $ref: "#/components/schemas/EncodedValue"
+          $ref: "#/components/schemas/EncodedCommitmentId"
       required:
         - commitment_id
     ContractCallObject:
@@ -2667,7 +2665,7 @@ components:
           items:
             $ref: "#/components/schemas/Event"
         return_value:
-          $ref: "#/components/schemas/EncodedByteArray"
+          $ref: "#/components/schemas/EncodedContractByteArray"
         return_type:
           description: The status of the call 'ok | error | revert'.
           type: string
@@ -2707,7 +2705,7 @@ components:
         gas_price:
           $ref: "#/components/schemas/UInt"
         call_data:
-          $ref: "#/components/schemas/EncodedByteArray"
+          $ref: "#/components/schemas/EncodedContractByteArray"
       required:
         - caller_id
         - contract_id
@@ -2725,7 +2723,7 @@ components:
         nonce:
           $ref: "#/components/schemas/UInt64"
         code:
-          $ref: "#/components/schemas/EncodedByteArray"
+          $ref: "#/components/schemas/EncodedContractByteArray"
         vm_version:
           $ref: "#/components/schemas/UInt16"
         abi_version:
@@ -2743,7 +2741,7 @@ components:
         ttl:
           $ref: "#/components/schemas/UInt64"
         call_data:
-          $ref: "#/components/schemas/EncodedByteArray"
+          $ref: "#/components/schemas/EncodedContractByteArray"
       required:
         - owner_id
         - code
@@ -2860,9 +2858,9 @@ components:
       type: object
       properties:
         tx:
-          $ref: "#/components/schemas/EncodedByteArray"
+          $ref: "#/components/schemas/EncodedTxByteArray"
         tx_hash:
-          $ref: "#/components/schemas/EncodedHash"
+          $ref: "#/components/schemas/EncodedTxHash"
         stateful:
           description: This call will have effects on the next call in this dry-run (or not)
           type: boolean
@@ -2870,7 +2868,7 @@ components:
       type: object
       properties:
         calldata:
-          $ref: "#/components/schemas/EncodedByteArray"
+          $ref: "#/components/schemas/EncodedContractByteArray"
         contract:
           $ref: "#/components/schemas/EncodedPubkey"
         amount:
@@ -2913,9 +2911,9 @@ components:
       type: object
       properties:
         tx:
-          $ref: "#/components/schemas/EncodedByteArray"
+          $ref: "#/components/schemas/EncodedTxByteArray"
         tx_hash:
-          $ref: "#/components/schemas/EncodedHash"
+          $ref: "#/components/schemas/EncodedTxHash"
         call_req:
           $ref: "#/components/schemas/DryRunCallReq"
     DryRunResult:
@@ -2948,8 +2946,23 @@ components:
       required:
         - results
     EncodedByteArray:
-      description: Base64Check encoded tagged byte array
+      description: Base64Check encoded byte array
       type: string
+      example: ba_AAAAAfy4hFE=
+      pattern: ^ba_\w+$
+    EncodedContractByteArray:
+      description: Base64Check encoded contract byte array
+      type: string
+      example: cb_AAAAAfy4hFE=
+      pattern: ^cb_\w+$
+    EncodedProofOfInclusion:
+      description: Base64Check encoded proof of inclusion
+      type: string
+      pattern: ^pi_\w+$
+    EncodedStateTrees:
+      description: Base64Check encoded state trees
+      type: string
+      pattern: ^ss_\w+$
     EncodedHash:
       description: Base58Check encoded tagged hash
       type: string
@@ -2960,12 +2973,44 @@ components:
       type: object
       properties:
         tx:
-          $ref: "#/components/schemas/EncodedByteArray"
+          $ref: "#/components/schemas/EncodedTxByteArray"
       required:
         - tx
-    EncodedValue:
-      description: Base58Check encoded tagged value
+    EncodedTxByteArray:
+      description: Base64Check encoded transaction
       type: string
+      example: tx_+E8hAaEB4TK48d23oE5jt/qWR5pUu8UlpTGn8bwM5JISGQMGf7ABoQOvDVCf43V7alNbsUvTarXaCf7rjtWX36YLS4+JTa4jn4YPHaUyOAAAxRZ6Sg==
+      pattern: ^tx_\w+$
+    EncodedTxHash:
+      description: Base58Check encoded transaction hash
+      type: string
+      example: th_2Zfo2ALfRkKQxEaUj3HhcUGyMrTqYpDMgr2u15fPanYD1d55kz
+      pattern: ^th_\w{38,50}$
+    EncodedSignature:
+      description: Base58Check encoded signature
+      type: string
+      example: sg_8hhU15cVMbukFj4FbdrFwwYnbzXYPnstu9PDnWZGbfQNpeHcB6tK1F3wvG1MPYySARgDRJYUh3YPJD3HctFwg6Y4rUGSR
+      pattern: ^sg_\w+$
+    Name:
+      description: AENS name
+      type: string
+      example: dimitar.chain
+      pattern: ^\w+\.chain$
+    EncodedNameId:
+      description: Base58Check encoded AENS name hash
+      type: string
+      example: nm_psy8tRXPzGxh6975H7K6XQcMFVsdrxJMt7YkzMY8oUTevutzw
+      pattern: ^nm_\w{38,50}$
+    EncodedCommitmentId:
+      description: Base58Check encoded AENS commitment
+      type: string
+      example: cm_psy8tRXPzGxh6975H7K6XQcMFVsdrxJMt7YkzMY8oUTevutzw
+      pattern: ^cm_\w{38,50}$
+    EncodedOracleQueryId:
+      description: Base58Check encoded oracle query id
+      type: string
+      example: oq_psy8tRXPzGxh6975H7K6XQcMFVsdrxJMt7YkzMY8oUTevutzw
+      pattern: ^oq_\w{38,50}$
     Error:
       type: object
       properties:
@@ -2986,7 +3031,7 @@ components:
           items:
             $ref: "#/components/schemas/UInt"
         data:
-          $ref: "#/components/schemas/EncodedByteArray"
+          $ref: "#/components/schemas/EncodedContractByteArray"
       required:
         - address
         - topics
@@ -2999,7 +3044,7 @@ components:
         nonce:
           $ref: "#/components/schemas/UInt64"
         code:
-          $ref: "#/components/schemas/EncodedByteArray"
+          $ref: "#/components/schemas/EncodedContractByteArray"
         vm_version:
           $ref: "#/components/schemas/UInt16"
         abi_version:
@@ -3013,7 +3058,7 @@ components:
         ttl:
           $ref: "#/components/schemas/UInt64"
         call_data:
-          $ref: "#/components/schemas/EncodedByteArray"
+          $ref: "#/components/schemas/EncodedContractByteArray"
         auth_fun:
           description: Contract authorization function hash (hex encoded)
           type: string
@@ -3044,7 +3089,7 @@ components:
         ttl:
           $ref: "#/components/schemas/UInt64"
         auth_data:
-          $ref: "#/components/schemas/EncodedByteArray"
+          $ref: "#/components/schemas/EncodedContractByteArray"
         tx:
           $ref: "#/components/schemas/SignedTx"
       required:
@@ -3067,7 +3112,7 @@ components:
         gas_used:
           $ref: "#/components/schemas/UInt64"
         return_value:
-          $ref: "#/components/schemas/EncodedByteArray"
+          $ref: "#/components/schemas/EncodedContractByteArray"
         return_type:
           description: The status of the call 'ok | error'.
           type: string
@@ -3183,7 +3228,7 @@ components:
         version:
           $ref: "#/components/schemas/UInt32"
         info:
-          $ref: "#/components/schemas/EncodedByteArray"
+          $ref: "#/components/schemas/EncodedContractByteArray"
       required:
         - hash
         - height
@@ -3205,7 +3250,10 @@ components:
         height:
           $ref: "#/components/schemas/UInt64"
         pof_hash:
-          $ref: "#/components/schemas/EncodedHash"
+          description: \"no_fraud\" or Base58Check encoded Proof of Fraud hash
+          type: string
+          pattern: ^no_fraud|bf_\w{38,50}$
+          example: no_fraud
         prev_hash:
           $ref: "#/components/schemas/EncodedHash"
         prev_key_hash:
@@ -3215,7 +3263,7 @@ components:
         txs_hash:
           $ref: "#/components/schemas/EncodedHash"
         signature:
-          $ref: "#/components/schemas/EncodedValue"
+          $ref: "#/components/schemas/EncodedSignature"
         time:
           $ref: "#/components/schemas/UInt64"
         version:
@@ -3257,7 +3305,7 @@ components:
       type: object
       properties:
         id:
-          $ref: "#/components/schemas/EncodedValue"
+          $ref: "#/components/schemas/EncodedNameId"
         owner:
           $ref: "#/components/schemas/EncodedPubkey"
         ttl:
@@ -3277,7 +3325,7 @@ components:
       type: object
       properties:
         name_id:
-          $ref: "#/components/schemas/EncodedValue"
+          $ref: "#/components/schemas/EncodedNameId"
       required:
         - name_id
     NamePointer:
@@ -3286,7 +3334,7 @@ components:
         key:
           type: string
         encoded_key:
-          $ref: "#/components/schemas/EncodedValue"
+          $ref: "#/components/schemas/EncodedByteArray"
         id:
           $ref: "#/components/schemas/EncodedPubkey"
       required:
@@ -3296,7 +3344,7 @@ components:
       type: object
       properties:
         commitment_id:
-          $ref: "#/components/schemas/EncodedValue"
+          $ref: "#/components/schemas/EncodedCommitmentId"
         fee:
           $ref: "#/components/schemas/UInt"
         ttl:
@@ -3313,7 +3361,7 @@ components:
       type: object
       properties:
         name_id:
-          $ref: "#/components/schemas/EncodedValue"
+          $ref: "#/components/schemas/EncodedNameId"
         fee:
           $ref: "#/components/schemas/UInt"
         ttl:
@@ -3330,7 +3378,7 @@ components:
       type: object
       properties:
         name_id:
-          $ref: "#/components/schemas/EncodedValue"
+          $ref: "#/components/schemas/EncodedNameId"
         recipient_id:
           $ref: "#/components/schemas/EncodedPubkey"
         fee:
@@ -3350,7 +3398,7 @@ components:
       type: object
       properties:
         name_id:
-          $ref: "#/components/schemas/EncodedValue"
+          $ref: "#/components/schemas/EncodedNameId"
         name_ttl:
           $ref: "#/components/schemas/UInt64"
         pointers:
@@ -3403,7 +3451,7 @@ components:
             gas_price:
               $ref: "#/components/schemas/UInt"
             call_data:
-              $ref: "#/components/schemas/EncodedByteArray"
+              $ref: "#/components/schemas/EncodedContractByteArray"
           required:
             - caller
             - contract
@@ -3440,7 +3488,7 @@ components:
             deposit:
               $ref: "#/components/schemas/UInt"
             call_data:
-              $ref: "#/components/schemas/EncodedByteArray"
+              $ref: "#/components/schemas/EncodedContractByteArray"
           required:
             - owner
             - vm_version
@@ -3514,7 +3562,7 @@ components:
       type: object
       properties:
         id:
-          $ref: "#/components/schemas/EncodedValue"
+          $ref: "#/components/schemas/EncodedOracleQueryId"
         sender_id:
           $ref: "#/components/schemas/EncodedPubkey"
         sender_nonce:
@@ -3602,7 +3650,7 @@ components:
       type: object
       properties:
         query_id:
-          $ref: "#/components/schemas/EncodedValue"
+          $ref: "#/components/schemas/EncodedOracleQueryId"
         response:
           type: string
         response_ttl:
@@ -3766,14 +3814,14 @@ components:
       type: object
       properties:
         poi:
-          $ref: "#/components/schemas/EncodedByteArray"
+          $ref: "#/components/schemas/EncodedProofOfInclusion"
       required:
         - poi
     PostTxResponse:
       type: object
       properties:
         tx_hash:
-          $ref: "#/components/schemas/EncodedHash"
+          $ref: "#/components/schemas/EncodedTxHash"
       required:
         - tx_hash
     Pow:
@@ -3843,15 +3891,15 @@ components:
         block_hash:
           $ref: "#/components/schemas/EncodedHash"
         hash:
-          $ref: "#/components/schemas/EncodedHash"
+          $ref: "#/components/schemas/EncodedTxHash"
         encoded_tx:
-          $ref: "#/components/schemas/EncodedByteArray"
+          $ref: "#/components/schemas/EncodedTxByteArray"
         signatures:
           description: At least one signature is required unless for Generalized Account Meta transactions
           type: array
           minItems: 0
           items:
-            $ref: "#/components/schemas/EncodedValue"
+            $ref: "#/components/schemas/EncodedSignature"
       required:
         - tx
     SignedTxs:
@@ -4105,12 +4153,7 @@ components:
           maximum: 18446744073709552000
         - type: string
     UnsignedTx:
-      type: object
-      properties:
-        tx:
-          $ref: "#/components/schemas/EncodedByteArray"
-      required:
-        - tx
+      $ref: "#/components/schemas/EncodedTx"
   parameters:
     accountPubkey:
       in: path
