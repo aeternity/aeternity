@@ -3,11 +3,57 @@
 -export([adjust_log_levels/0]).
 
 adjust_log_levels() ->
+    case init:get_argument(noinput) of
+        {ok, _} -> set_lager_console_only();  % if running in foreground mode
+        _ -> ok
+    end,
     set_lager_log_root(),
     aeu_env:check_env(
       aeutils,
       [{[<<"logging">>, <<"hwm">>]     , fun set_hwm/1},
        {[<<"logging">>, <<"level">>]   , fun set_level/1}]).
+
+%% Rewrite the lager configuration for running in a diskless environment.
+%% Use persistent flag to ensure that the settings are not reset by reload
+%% of the app config at any later point.
+set_lager_console_only() ->
+    application:load(lager),  % make sure lager app env has been loaded
+    application:set_env(lager, crash_log, false, [{persistent, true}]),
+    Handlers = application:get_env(lager, handlers, []),
+    application:set_env(lager, handlers, handlers_to_console(Handlers),
+                        [{persistent, true}]),
+    Sinks = application:get_env(lager, extra_sinks, []),
+    NewSinks = lists:map(
+                 fun({K, Opts}) ->
+                         {_, Hs} = lists:keyfind(handlers, 1, Opts),
+                         NewHs = handlers_to_console(Hs),
+                         {K, lists:keystore(handlers, 1, Opts, {handlers, NewHs})}
+                 end, Sinks),
+    application:set_env(lager, extra_sinks, NewSinks, [{persistent, true}]),
+    Traces = application:get_env(lager, traces, []),
+    NewTraces = lists:map(
+                  fun({{lager_file_backend, _}, F, L}) ->
+                          {lager_console_backend, F, L};
+                     ({{lager_file_backend, _}, F}) ->
+                          {lager_console_backend, F};
+                     (T) ->
+                          T
+                  end, Traces),
+    application:set_env(lager, traces, NewTraces, [{persistent, true}]).
+
+%% Replace file backends with console backend at the same log level. Drop
+%% any previous console backend.
+handlers_to_console(Handlers) ->
+    lists:filtermap(fun ({lager_file_backend, Opts}) ->
+                            {true, {lager_console_backend,
+                                    lists:filter(fun ({level,_}) -> true;
+                                                     (_) -> false
+                                                 end,
+                                                 Opts)}};
+                        ({lager_console_backend, _}) -> false;
+                        (_) -> true
+                    end,
+                    Handlers).
 
 %% See https://github.com/erlang-lager/lager/issues/557
 %% We want to prevent the log directory from moving during runtime. One
