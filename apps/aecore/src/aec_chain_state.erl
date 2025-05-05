@@ -445,9 +445,14 @@ prev_version(Node) ->
     end.
 
 maybe_add_pof(State, Block) ->
-    case aec_blocks:type(Block) of
-        key   -> State#{pof => no_fraud};
-        micro -> State#{pof => aec_blocks:pof(Block)}
+    case aec_consensus:get_consensus_type() of
+        pow ->
+            case aec_blocks:type(Block) of
+                key   -> State#{pof => no_fraud};
+                micro -> State#{pof => aec_blocks:pof(Block)}
+            end;
+        pos ->
+            State#{pof => no_fraud}
     end.
 
 node_is_genesis(Node) ->
@@ -834,14 +839,16 @@ apply_and_store_state_trees(Node, PrevNode, TreesIn, ForkInfoIn, State) ->
     {DifficultyOut, Events}.
 
 update_fraud_info(ForkInfoIn, Node, State) ->
+    Consensus = aec_block_insertion:node_consensus(Node),
+    Type = Consensus:get_type(),
     case maps:get(pof, State) =:= no_fraud of
-        true  ->
-            ForkInfoIn#fork_info.fraud;
-        false ->
+        false when Type =:= pow ->
             case ForkInfoIn#fork_info.fraud of
                 true  -> aec_block_insertion:abort_state_transition({double_reported_fraud, node_hash(Node)});
                 false -> true
-            end
+            end;
+        _  ->
+            ForkInfoIn#fork_info.fraud
     end.
 
 handle_top_block_change(OldTopNode, NewTopDifficulty, Node, Events, State) ->
@@ -1273,13 +1280,25 @@ db_sibling_blocks(Node) ->
     Height   = node_height(Node),
     Hash     = node_hash(Node),
     PrevHash = node_prev_hash(Node),
-    case node_type(Node) of
-        key ->
-            #{ key_siblings   => match_prev_at_height(Height    , PrevHash, Hash)
-             , micro_siblings => match_prev_at_height(Height - 1, PrevHash, Hash)};
-        micro ->
-            #{ key_siblings   => match_prev_at_height(Height + 1, PrevHash, Hash)
-             , micro_siblings => match_prev_at_height(Height    , PrevHash, Hash)}
+    Consensus = aec_block_insertion:node_consensus(Node),
+    case Consensus:get_type() of
+        pos -> case node_type(Node) of % switched micro/key block order in pos
+            key ->
+                #{ key_siblings   => match_prev_at_height(Height - 1, PrevHash, Hash)
+                , micro_siblings => match_prev_at_height(Height, PrevHash, Hash)};
+            micro ->
+                #{ key_siblings   => match_prev_at_height(Height, PrevHash, Hash)
+                , micro_siblings => match_prev_at_height(Height + 1, PrevHash, Hash)}
+            end;
+        _ ->
+            case node_type(Node) of
+                key ->
+                    #{ key_siblings   => match_prev_at_height(Height    , PrevHash, Hash)
+                    , micro_siblings => match_prev_at_height(Height - 1, PrevHash, Hash)};
+                micro ->
+                    #{ key_siblings   => match_prev_at_height(Height + 1, PrevHash, Hash)
+                    , micro_siblings => match_prev_at_height(Height    , PrevHash, Hash)}
+            end
     end.
 
 db_find_signal_count(Hash) ->
@@ -1305,25 +1324,35 @@ update_found_pogf(Node, KeySibHeaders, State) ->
 maybe_pof(_Node, [], _Ctx) ->
     no_fraud;
 maybe_pof(Node, MicroSibHeaders, Ctx) ->
-    case node_type(Node) of
-        key -> no_fraud;
-        micro ->
-            Miner = node_miner(aec_block_insertion:ctx_prev_key(Ctx)),
-            [Header| _] = MicroSibHeaders,
-            aec_pof:new(node_header(Node), Header, Miner)
+    case aec_consensus:get_consensus_type() of
+        pow ->
+            case node_type(Node) of
+                key -> no_fraud;
+                micro ->
+                    Miner = node_miner(aec_block_insertion:ctx_prev_key(Ctx)),
+                    [Header| _] = MicroSibHeaders,
+                    aec_pof:new(node_header(Node), Header, Miner)
+            end;
+        pos ->
+          no_fraud
     end.
 
 maybe_pogf(_Node, []) -> no_fraud;
 maybe_pogf(Node, [Sibling|T]) ->
-    case node_type(Node) of
-        micro -> no_fraud;
-        key ->
-            case node_miner(Node) =:= aec_headers:miner(Sibling) of
-                true ->
-                    {node_header(Node), Sibling};
-                false ->
-                    maybe_pogf(Node, T)
-            end
+    case aec_consensus:get_consensus_type() of
+        pow ->
+            case node_type(Node) of
+                micro -> no_fraud;
+                key ->
+                    case node_miner(Node) =:= aec_headers:miner(Sibling) of
+                        true ->
+                            {node_header(Node), Sibling};
+                        false ->
+                            maybe_pogf(Node, T)
+                    end
+            end;
+        pos ->
+          no_fraud
     end.
 
 % if a miner is fraudulent - one does not receive a reward and it is locked
