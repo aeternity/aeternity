@@ -103,7 +103,8 @@ For example - if you set `extra_nonce_bytes` to 1, `max_connections` shouldn't e
 (default 4)
 
 `skip_num_blocks` - (optional) - a new keyblock candidate is generated roughly every 3 seconds. `skip_num_blocks` determines how many of these candidates are skipped before a new job is sent to miner.
-(default 10)
+Keeping this at `0` minimizes stale work and is the recommended setting for production pools unless there is a measured need to reduce job churn.
+(default 0)
 
 `initial_share_target` - when a miner connects, we cannot immediately determine his mining power. For this reason, we give this new miner a job with the lowest difficulty (highest target).
 

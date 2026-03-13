@@ -176,6 +176,7 @@ server_session() ->
       %% set_target - success
       fun(Pid) -> t(Pid, when_set_target(conn_authorize)) end,
       fun(Pid) -> t(Pid, when_set_target(chain_recv_block, no_target_change)) end,
+      fun(Pid) -> t(Pid, when_set_target(chain_recv_block, no_target_change, skip_0_blocks)) end,
       fun(Pid) -> t(Pid, when_set_target(chain_recv_block, target_change)) end,
       fun(Pid) -> t(Pid, when_set_target(chain_recv_block, no_target_change, skip_1_block)) end,
 
@@ -819,6 +820,33 @@ when_set_target(chain_recv_block, target_change) ->
     mock_recv_block(#{new_share_target => {increase, 10.0},
                       share_target_diff_threshold => 5.0}),
     prep_set_target(T) ++ [{T, test, E, R} || {E, R} <- L].
+
+when_set_target(chain_recv_block, no_target_change, skip_0_blocks) ->
+    T = <<"when set target - chain_recv_block, no_target_change, skip_0_blocks">>,
+    L = [{{chain, #{event => recv_block,
+                    block => #{block_hash => ?BLOCK_HASH1,
+                               block_version => ?BLOCK_VERSION,
+                               block_target => ?BLOCK_TARGET1}}},
+          {send,
+           #{type => ntf, method => notify, job_id => ?JOB_ID1,
+             block_hash => ?BLOCK_HASH1, block_version => ?BLOCK_VERSION,
+             empty_queue => true},
+           #{phase => authorized, accept_blocks => true,
+             initial_share_target => ?SHARE_TARGET}}
+         },
+         {{chain, #{event => recv_block,
+                    block => #{block_hash => ?BLOCK_HASH2,
+                               block_version => ?BLOCK_VERSION,
+                               block_target => ?BLOCK_TARGET2}}},
+          {send,
+           #{type => ntf, method => notify, job_id => ?JOB_ID2,
+             block_hash => ?BLOCK_HASH2, block_version => ?BLOCK_VERSION,
+             empty_queue => true},
+           #{phase => authorized, accept_blocks => true,
+             initial_share_target => ?SHARE_TARGET}}
+         }],
+    mock_recv_block(#{new_share_target => no_change, skip_num_blocks => 0}),
+    prep_set_target(T) ++ [{T, test, E, R} || {E, R} <- L];
 
 when_set_target(chain_recv_block, no_target_change, skip_1_block) ->
     T = <<"when set target - chain_recv_block, no_target_change, skip_1_block">>,

@@ -41,6 +41,8 @@
 -type mode() :: local_pow | stratum | pos.
 -record(state, {key_block_candidates                :: list({candidate_hash(), #candidate{}}) | 'undefined',
                 micro_block_candidate               :: #candidate{} | 'undefined',
+                restart_mining_after_micro = false  :: boolean(),
+                first_micro_pending = false         :: boolean(),
                 blocked_tags            = []        :: ordsets:ordset(atom()),
                 keys_ready              = false     :: boolean(),
                 block_producing_state   = stopped   :: block_producing_state(),

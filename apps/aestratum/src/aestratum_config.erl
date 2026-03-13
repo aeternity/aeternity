@@ -16,7 +16,7 @@
 -define(DEFAULT_NUM_ACCEPTORS, 100).
 
 -define(DEFAULT_EXTRA_NONCE_BYTES, 4).
--define(DEFAULT_SKIP_NUM_BLOCKS, 10).
+-define(DEFAULT_SKIP_NUM_BLOCKS, 0).
 -define(DEFAULT_INITIAL_SHARE_TARGET, aestratum_target:max()).
 -define(DEFAULT_MAX_SHARE_TARGET, aestratum_target:max()).
 -define(DEFAULT_DESIRED_SOLVE_TIME, 30000).
