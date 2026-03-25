@@ -184,15 +184,25 @@ aefa_stores(#es{ chain_api = APIState }) ->
 -spec finalize(state()) -> {ok, state()} | {error, out_of_gas}.
 finalize(#es{chain_api = API, stores = Stores} = ES) ->
     Aefa_stores = aefa_stores(ES),
+    IsDryRun = aetx_env:dry_run(aefa_chain_api:tx_env(API)),
     try
         ES1 = lists:foldl(fun(Val, ES0) -> spend_gas_for_traversal(Val, serial, ES0) end,
                           ES, aefa_stores:terms_to_finalize(Stores)),
         Gas = gas(ES1),
-        case Aefa_stores:finalize(API, Gas, Stores) of
-            {ok, Stores1, GasLeft} ->
-                {ok, ES1#es{chain_api = Stores1, gas = GasLeft}};
-            {error, out_of_gas} ->
-                {error, out_of_gas}
+        case IsDryRun of
+            true ->
+                %% In dry-run mode, skip the expensive aefa_stores:finalize
+                %% which serializes all store entries and writes them to MPTs.
+                %% The traversal gas above is sufficient for gas estimation.
+                %% The actual store state is discarded anyway in dry-run.
+                {ok, ES1#es{gas = Gas}};
+            false ->
+                case Aefa_stores:finalize(API, Gas, Stores) of
+                    {ok, Stores1, GasLeft} ->
+                        {ok, ES1#es{chain_api = Stores1, gas = GasLeft}};
+                    {error, out_of_gas} ->
+                        {error, out_of_gas}
+                end
         end
     catch
         throw:out_of_gas ->
