@@ -258,7 +258,7 @@ add_block(Block, Origin) ->
 %% Fetching the current key block candidate for the top of the chain
 -spec get_key_block_candidate() -> {'ok', aec_blocks:block()} | {'error', atom()}.
 get_key_block_candidate() ->
-    gen_server:call(?SERVER, get_key_block_candidate).
+    gen_server:call(?SERVER, get_key_block_candidate, 30000).
 
 -ifdef(TEST).
 -spec reinit_chain() -> aec_headers:header().
