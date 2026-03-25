@@ -195,7 +195,7 @@ add_synced_block(Block) ->
 
 -spec get_key_block_candidate() -> {'ok', aec_blocks:block()} | {'error', atom()}.
 get_key_block_candidate() ->
-    gen_server:call(?SERVER, get_key_block_candidate).
+    gen_server:call(?SERVER, get_key_block_candidate, 60000).
 
 -ifdef(TEST).
 -spec reinit_chain() -> aec_headers:header().
