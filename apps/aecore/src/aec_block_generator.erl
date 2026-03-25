@@ -45,6 +45,7 @@
         , candidate_state = undefined :: undefined
                                        | aec_block_micro_candidate:block_info()
         , new_txs = []          :: list(aetx_sign:signed_tx())
+        , pending_top = undefined :: undefined | {pending, binary()}
         }).
 
 %% -- API --------------------------------------------------------------------
@@ -107,19 +108,28 @@ handle_cast(start_generation, State) ->
     {noreply, do_start_generation(State)};
 handle_cast({worker_done, Pid, {candidate, Candidate, CandidateState}},
             State = #state{ worker = {Pid, _} }) ->
-    %% Only publish non-empty microblocks
-    case aec_blocks:txs(Candidate) of
-        [] ->
-            lager:debug("Empty microblock candidate prepared", []),
-            ok;
-        _  ->
-            epoch_mining:info("New microblock candidate ready", []),
-            publish_candidate(Candidate)
-    end,
     State1 = finish_worker(State),
-    State2 = State1#state{ candidate = Candidate
-                         , candidate_state = CandidateState },
-    {noreply, maybe_start_worker_txs(State2)};
+    case State1#state.pending_top of
+        {pending, NewTop} ->
+            %% A micro block moved the top while we were building this candidate.
+            %% The candidate is stale — discard it and rebuild on the current top.
+            lager:debug("Discarding stale candidate, rebuilding on new micro top", []),
+            State2 = State1#state{ pending_top = undefined },
+            {noreply, start_worker_block(State2, NewTop)};
+        undefined ->
+            %% Candidate is current — publish if non-empty
+            case aec_blocks:txs(Candidate) of
+                [] ->
+                    lager:debug("Empty microblock candidate prepared", []),
+                    ok;
+                _  ->
+                    epoch_mining:info("New microblock candidate ready", []),
+                    publish_candidate(Candidate)
+            end,
+            State2 = State1#state{ candidate = Candidate
+                                 , candidate_state = CandidateState },
+            {noreply, maybe_start_worker_txs(State2)}
+    end;
 handle_cast({worker_done, Pid, {failed, Reason}}, State = #state{ worker = {Pid, _}}) ->
     State1 = worker_failed(Reason, State),
     {noreply, State1};
@@ -137,7 +147,7 @@ handle_info({gproc_ps_event, Event, #{info := Info}}, State) ->
     lager:debug("got event ~p", [Event]),
     State1 =
         case Event of
-            top_changed   -> preempt_generation(State, Info);
+            top_changed   -> handle_top_changed(State, Info);
             tx_created    -> add_new_tx(State, Info);
             tx_received   -> add_new_tx(State, Info);
             _             ->
@@ -190,11 +200,23 @@ add_new_tx(S = #state{ worker = Worker }, Tx) ->
         {_WPid, _WRef} -> S#state{ new_txs = [Tx | S#state.new_txs] }
     end.
 
+%% Handle top_changed events, distinguishing key blocks from micro blocks.
+%% Key blocks always preempt (new generation). Micro blocks only preempt if
+%% no worker is currently running; otherwise the new top is deferred so the
+%% worker can finish without being killed.
+handle_top_changed(S, #{ block_type := key } = Info) ->
+    preempt_generation(S, Info);
+handle_top_changed(S = #state{ worker = {_, _} }, #{ block_hash := NewTop, block_type := micro }) ->
+    lager:debug("Deferring micro block top change while worker is active"),
+    S#state{ pending_top = {pending, NewTop} };
+handle_top_changed(S, Info) ->
+    preempt_generation(S, Info).
+
 %% Terminate current worker and start a new one
 %% (used when the top has changed)
 preempt_generation(S, #{ block_hash := NewTop }) ->
     S1 = stop_worker(S),
-    start_worker_block(S1, NewTop).
+    start_worker_block(S1#state{ pending_top = undefined }, NewTop).
 
 stop_worker(S = #state{ worker = {WPid, WRef} }) ->
     erlang:demonitor(WRef, [flush]),
@@ -210,7 +232,12 @@ stop_worker(S) ->
 worker_failed(Reason, S) ->
     lager:debug("Microblock candidate worker failed: ~p", [Reason]),
     S1 = finish_worker(S),
-    start_worker(S1).
+    case S1#state.pending_top of
+        {pending, NewTop} ->
+            start_worker_block(S1#state{ pending_top = undefined }, NewTop);
+        undefined ->
+            start_worker(S1)
+    end.
 
 %% Update server side bookkeeping when worker is already terminated
 finish_worker(S = #state{ worker = {_WPid, WRef} }) ->
