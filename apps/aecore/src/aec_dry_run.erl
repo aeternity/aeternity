@@ -12,6 +12,7 @@
 
 -define(MR_MAGIC, <<1:32/unit:8>>).
 -define(BIG_AMOUNT, 1000000000000000000000). %% 1000 AE
+-define(DEFAULT_CALL_REQ_GAS, 10000000).
 
 %% Let Top be one of:
 %% * {height, X :: int()} - this means "right after keyblock of generation X"
@@ -69,10 +70,33 @@ tx_env_and_trees({in, Hash}) ->
             {error, <<"Block not found">>}
     end;
 tx_env_and_trees(TopHash) ->
-    aetx_env:tx_env_and_trees_from_hash(aetx_transaction, TopHash).
+    case aec_chain:get_header(TopHash) of
+        {ok, Header} ->
+            try get_block_state_dirty(TopHash) of
+                {ok, Trees} ->
+                    {KeyHeader, KeyHash, Time} =
+                        case aec_headers:type(Header) of
+                            micro ->
+                                KHash = aec_headers:prev_key_hash(Header),
+                                {ok, KH} = aec_chain:get_header(KHash),
+                                {KH, KHash, aec_headers:time_in_msecs(Header)};
+                            key ->
+                                {Header, TopHash,
+                                 aec_headers:time_in_msecs(Header) +
+                                     aec_block_micro_candidate:min_t_after_keyblock()}
+                        end,
+                    Env = aetx_env:tx_env_from_key_header(KeyHeader, KeyHash, Time, TopHash),
+                    {aetx_env:set_context(Env, aetx_transaction), Trees}
+            catch
+                error:{hash_not_present_in_db, _} ->
+                    error(state_garbage_collected)
+            end;
+        error ->
+            error(invalid_hash)
+    end.
 
 tx_env_and_trees(KeyHeader, PrevHash, Time) ->
-    try aec_chain:get_block_state(PrevHash) of
+    try get_block_state_dirty(PrevHash) of
         {ok, Trees} ->
             {ok, KeyHash} = aec_headers:hash_header(KeyHeader),
             Env = aetx_env:tx_env_from_key_header(KeyHeader, KeyHash, Time, PrevHash),
@@ -80,6 +104,12 @@ tx_env_and_trees(KeyHeader, PrevHash, Time) ->
     catch
         error:{hash_not_present_in_db, _} ->
           {error, <<"state garbage collected">>}
+    end.
+
+get_block_state_dirty(Hash) ->
+    case aec_db:find_block_state(Hash, true) of
+        {value, Trees} -> {ok, Trees};
+        none -> error
     end.
 
 
@@ -182,7 +212,7 @@ prepare_call_req(ReqMap) ->
                          {ok, CallerX} = aeser_api_encoder:safe_decode(account_pubkey, EncCaller),
                          CallerX
                  end,
-        Gas    = maps:get(<<"gas">>, ReqMap, 1000000),
+        Gas    = maps:get(<<"gas">>, ReqMap, ?DEFAULT_CALL_REQ_GAS),
         ABI    = maps:get(<<"abi_version">>, ReqMap, ?ABI_AEVM_SOPHIA_1),
         Nonce  = maps:get(<<"nonce">>, ReqMap, 1),
 

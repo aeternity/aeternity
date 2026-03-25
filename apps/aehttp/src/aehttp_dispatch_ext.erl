@@ -40,8 +40,8 @@
 -define(NO_Q, no_queue).
 
 %% dry run limits
--define(DEFAULT_GAS_LIMIT, 6000000).
--define(DEFAULT_CALL_REQ_GAS_LIMIT, 1000000).
+-define(DEFAULT_GAS_LIMIT, 60000000).
+-define(DEFAULT_CALL_REQ_GAS_LIMIT, 10000000).
 
 -define(TC(Expr, Msg), begin {Time, Res} = timer:tc(fun() -> Expr end), lager:debug("[~p] Msg = ~p", [Time, Msg]), Res end).
 
@@ -116,6 +116,7 @@ queue('GetChainEnds')                           -> ?READ_Q;
 queue('GetRecentGasPrices')                     -> ?READ_Q;
 queue('GetPinningTx')                           -> ?READ_Q;
 queue('GetHyperchainContractPubkeys')           -> ?READ_Q;
+queue('ProtectedDryRunTxs')                     -> ?READ_Q;
 %% update transactions (default to update in catch-all)
 queue('PostTransaction')                        -> ?WRITE_Q;
 queue(_)                                        -> ?WRITE_Q.
