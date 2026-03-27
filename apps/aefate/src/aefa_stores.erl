@@ -396,24 +396,63 @@ compute_store_updates(Metadata, #cache_entry{terms = TermCache, store = Store}) 
     {Metadata2, lists:sort(Compare, Updates)}.
 
 compute_reuse_fixpoint(Maps, Metadata, Store) ->
-    compute_reuse_fixpoint(unused_maps(Metadata), Maps, Metadata, Store, 100).
-
-compute_reuse_fixpoint(Unused, Maps, Metadata, Store, Fuel) ->
-    Reuse      = compute_inplace_updates(Unused, Maps),
-    RefCounts1 = compute_copy_refcounts(Metadata, Reuse, Maps, Store),
-    Metadata1  = update_refcounts(RefCounts1, Metadata),
-    Unused1    = unused_maps(Metadata1),
-    case Unused1 == Unused of
-        _ when Fuel =< 0 ->
-            ?ASSERT(false, {reuse_fixpoint_out_of_fuel, Metadata, Unused, Maps}),
-            {Unused, Reuse, Metadata1};
-        true  -> {Unused, Reuse, Metadata1};
+    Unused0 = unused_maps(Metadata),
+    %% Optimistic fast path: run fixpoint using only reuse-branch refcount
+    %% adjustments (no expensive MPT subtree reads). If all store maps end up
+    %% reused in-place, the copy branch would have contributed zero adjustments
+    %% so the optimistic result is exact.
+    {UnusedOpt, ReuseOpt, _MetaOpt} =
+        optimistic_reuse_fixpoint(Unused0, Maps, Metadata, Store, 100),
+    NumStoreMaps = length([1 || {_, ?FATE_STORE_MAP(_, _)} <- maps:to_list(Maps)]),
+    case maps:size(ReuseOpt) =:= NumStoreMaps of
+        true ->
+            {RefCounts1, _} = compute_copy_refcounts(Metadata, ReuseOpt, Maps, Store, #{}),
+            Metadata1 = update_refcounts(RefCounts1, Metadata),
+            {UnusedOpt, ReuseOpt, Metadata1};
         false ->
-            %% NOTE: Metadata and not Metadata1. Reason: compute_copy_refcounts
-            %% will update refcounts assuming no inplace updates have been
-            %% taken into account. So, each iteration of the loop updates the
-            %% original metadata.
-            compute_reuse_fixpoint(Unused1, Maps, Metadata, Store, Fuel - 1)
+            full_reuse_fixpoint(Unused0, Maps, Metadata, Store, 100, #{})
+    end.
+
+%% Generic reuse fixpoint loop, parameterised on how refcounts are computed.
+%% RefCountFun(Metadata, Reuse, Maps, Store, Acc) -> {RefCounts, Acc1}
+%% NOTE: Metadata (not the updated Metadata1) is threaded unchanged into
+%% recursive calls — each iteration adjusts the original metadata.
+reuse_fixpoint_loop(_RefCountFun, Unused, _Maps, _Metadata, _Store, Fuel, Acc) when Fuel =< 0 ->
+    {out_of_fuel, Unused, Acc};
+reuse_fixpoint_loop(RefCountFun, Unused, Maps, Metadata, Store, Fuel, Acc) ->
+    Reuse = compute_inplace_updates(Unused, Maps),
+    {RefCounts1, Acc1} = RefCountFun(Metadata, Reuse, Maps, Store, Acc),
+    Metadata1 = update_refcounts(RefCounts1, Metadata),
+    Unused1 = unused_maps(Metadata1),
+    case Unused1 == Unused of
+        true  -> {converged, Unused, Reuse, Metadata1, Acc1};
+        false -> reuse_fixpoint_loop(RefCountFun, Unused1, Maps, Metadata, Store, Fuel - 1, Acc1)
+    end.
+
+%% Optimistic fixpoint: only computes reuse-branch refcount adjustments.
+%% Skips the copy branch (no subtree reads from MPT).
+optimistic_reuse_fixpoint(Unused, Maps, Metadata, Store, Fuel) ->
+    Fun = fun(Meta, Reuse, Ms, St, _Acc) ->
+        {compute_reuse_only_refcounts(Meta, Reuse, Ms, St), ok}
+    end,
+    case reuse_fixpoint_loop(Fun, Unused, Maps, Metadata, Store, Fuel, ok) of
+        {converged, U, R, M, _}  -> {U, R, M};
+        {out_of_fuel, U, _}      -> {U, compute_inplace_updates(U, Maps), Metadata}
+    end.
+
+%% Full fixpoint (original algorithm with subtree cache) — used as fallback.
+full_reuse_fixpoint(Unused, Maps, Metadata, Store, Fuel, SubtreeCache) ->
+    Fun = fun(Meta, Reuse, Ms, St, SC) ->
+        compute_copy_refcounts(Meta, Reuse, Ms, St, SC)
+    end,
+    case reuse_fixpoint_loop(Fun, Unused, Maps, Metadata, Store, Fuel, SubtreeCache) of
+        {converged, U, R, M, _} ->
+            {U, R, M};
+        {out_of_fuel, U, SC} ->
+            ?ASSERT(false, {reuse_fixpoint_out_of_fuel, Metadata, U, Maps}),
+            Reuse = compute_inplace_updates(U, Maps),
+            {RefCounts1, _} = compute_copy_refcounts(Metadata, Reuse, Maps, Store, SC),
+            {U, Reuse, update_refcounts(RefCounts1, Metadata)}
     end.
 
 perform_store_updates(OldMeta, [Update|Left], Meta, GasLeft, Store) ->
@@ -601,10 +640,27 @@ map_refcounts(_Meta, ?FATE_STORE_MAP(Cache, _Id), _Store) ->
                 aeb_fate_maps:refcount_union(aeb_fate_maps:refcount(Val), Count)
               end, #{}, Cache).
 
+%% Only compute refcount adjustments for reused maps (lightweight individual lookups).
+%% Copied maps contribute zero adjustments — their subtrees are NOT read.
+compute_reuse_only_refcounts(Meta, Reuse, Maps, Store) ->
+    maps:fold(fun(MapId, ?FATE_STORE_MAP(Cache, Id), Count) ->
+                      case maps:get(Id, Reuse, no_reuse) of
+                          MapId ->
+                              ?METADATA(RawId, _RefCount, _Size) = get_map_meta(Id, Meta),
+                              RemovedValues = [ Val || Key <- maps:keys(Cache),
+                                                       {ok, Val, _} <- [find_in_store(map_data_key(RawId, Key), Store)] ],
+                              Removed = aeb_fate_maps:refcount(RemovedValues),
+                              aeb_fate_maps:refcount_diff(Count, Removed);
+                          _ ->
+                              Count
+                      end;
+                 (_, _, Count) -> Count
+              end, #{}, Maps).
+
 %% We need to increase the refcounts of maps contained in maps that are being
 %% copied.
-compute_copy_refcounts(Meta, Reuse, Maps, Store) ->
-    maps:fold(fun(MapId, ?FATE_STORE_MAP(Cache, Id), Count) ->
+compute_copy_refcounts(Meta, Reuse, Maps, Store, SubtreeCache) ->
+    maps:fold(fun(MapId, ?FATE_STORE_MAP(Cache, Id), {Count, SC}) ->
                       case maps:get(Id, Reuse, no_reuse) of
                           MapId ->
                               %% Subtract refcounts for entries overwritten by the Cache.
@@ -612,17 +668,24 @@ compute_copy_refcounts(Meta, Reuse, Maps, Store) ->
                               RemovedValues = [ Val || Key <- maps:keys(Cache),
                                                        {ok, Val, _} <- [find_in_store(map_data_key(RawId, Key), Store)] ],
                               Removed = aeb_fate_maps:refcount(RemovedValues),
-                              aeb_fate_maps:refcount_diff(Count, Removed);
+                              {aeb_fate_maps:refcount_diff(Count, Removed), SC};
                           _ ->
                               %% Note that we already added refcounts for the Cache.
                               ?METADATA(RawId, _RefCount, _Size) = get_map_meta(Id, Meta),
                               NewKeys = [ aeb_fate_encoding:serialize(Key) || Key <- maps:keys(Cache) ],
-                              OldBin = maps:without(NewKeys, aect_contracts_store:subtree(map_data_key(RawId), Store)),
+                              {OldBin, SC1} =
+                                  case maps:find(RawId, SC) of
+                                      {ok, CachedSubtree} ->
+                                          {maps:without(NewKeys, CachedSubtree), SC};
+                                      error ->
+                                          FullSubtree = aect_contracts_store:subtree(map_data_key(RawId), Store),
+                                          {maps:without(NewKeys, FullSubtree), SC#{RawId => FullSubtree}}
+                                  end,
                               Count1 = aeb_fate_maps:refcount([ aeb_fate_encoding:deserialize(Val) || Val <- maps:values(OldBin) ]),
-                              aeb_fate_maps:refcount_union(Count1, Count)
+                              {aeb_fate_maps:refcount_union(Count1, Count), SC1}
                       end;
-                 (_, _, Count) -> Count
-                end, #{}, Maps).
+                 (_, _, Acc) -> Acc
+                end, {#{}, SubtreeCache}, Maps).
 
 %% Compute the difference in reference counts caused by performing a store
 %% update: refcount(Val) - refcount(OldVal).
