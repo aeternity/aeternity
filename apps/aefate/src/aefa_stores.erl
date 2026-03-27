@@ -413,54 +413,46 @@ compute_reuse_fixpoint(Maps, Metadata, Store) ->
             full_reuse_fixpoint(Unused0, Maps, Metadata, Store, 100, #{})
     end.
 
-%% Optimistic fixpoint: only computes reuse-branch refcount adjustments.
-%% Skips the copy branch (no subtree reads from MPT).
-optimistic_reuse_fixpoint(Unused, Maps, Metadata, _Store, Fuel) when Fuel =< 0 ->
-    {Unused, compute_inplace_updates(Unused, Maps), Metadata};
-optimistic_reuse_fixpoint(Unused, Maps, Metadata, Store, Fuel) ->
+%% Generic reuse fixpoint loop, parameterised on how refcounts are computed.
+%% RefCountFun(Metadata, Reuse, Maps, Store, Acc) -> {RefCounts, Acc1}
+%% NOTE: Metadata (not the updated Metadata1) is threaded unchanged into
+%% recursive calls — each iteration adjusts the original metadata.
+reuse_fixpoint_loop(_RefCountFun, Unused, _Maps, _Metadata, _Store, Fuel, Acc) when Fuel =< 0 ->
+    {out_of_fuel, Unused, Acc};
+reuse_fixpoint_loop(RefCountFun, Unused, Maps, Metadata, Store, Fuel, Acc) ->
     Reuse = compute_inplace_updates(Unused, Maps),
-    RefCounts1 = compute_reuse_only_refcounts(Metadata, Reuse, Maps, Store),
+    {RefCounts1, Acc1} = RefCountFun(Metadata, Reuse, Maps, Store, Acc),
     Metadata1 = update_refcounts(RefCounts1, Metadata),
     Unused1 = unused_maps(Metadata1),
     case Unused1 == Unused of
-        true  -> {Unused, Reuse, Metadata1};
-        false -> optimistic_reuse_fixpoint(Unused1, Maps, Metadata, Store, Fuel - 1)
+        true  -> {converged, Unused, Reuse, Metadata1, Acc1};
+        false -> reuse_fixpoint_loop(RefCountFun, Unused1, Maps, Metadata, Store, Fuel - 1, Acc1)
     end.
 
-%% Only compute refcount adjustments for reused maps (lightweight individual lookups).
-%% Copied maps contribute zero adjustments — their subtrees are NOT read.
-compute_reuse_only_refcounts(Meta, Reuse, Maps, Store) ->
-    maps:fold(fun(MapId, ?FATE_STORE_MAP(Cache, Id), Count) ->
-                      case maps:get(Id, Reuse, no_reuse) of
-                          MapId ->
-                              ?METADATA(RawId, _RefCount, _Size) = get_map_meta(Id, Meta),
-                              RemovedValues = [ Val || Key <- maps:keys(Cache),
-                                                       {ok, Val, _} <- [find_in_store(map_data_key(RawId, Key), Store)] ],
-                              Removed = aeb_fate_maps:refcount(RemovedValues),
-                              aeb_fate_maps:refcount_diff(Count, Removed);
-                          _ ->
-                              Count
-                      end;
-                 (_, _, Count) -> Count
-              end, #{}, Maps).
+%% Optimistic fixpoint: only computes reuse-branch refcount adjustments.
+%% Skips the copy branch (no subtree reads from MPT).
+optimistic_reuse_fixpoint(Unused, Maps, Metadata, Store, Fuel) ->
+    Fun = fun(Meta, Reuse, Ms, St, _Acc) ->
+        {compute_reuse_only_refcounts(Meta, Reuse, Ms, St), ok}
+    end,
+    case reuse_fixpoint_loop(Fun, Unused, Maps, Metadata, Store, Fuel, ok) of
+        {converged, U, R, M, _}  -> {U, R, M};
+        {out_of_fuel, U, _}      -> {U, compute_inplace_updates(U, Maps), Metadata}
+    end.
 
 %% Full fixpoint (original algorithm with subtree cache) — used as fallback.
-%% NOTE: We pass Metadata (not Metadata1) to recursive calls. Reason:
-%% compute_copy_refcounts updates refcounts assuming no inplace updates have
-%% been taken into account. So, each iteration updates the original metadata.
-full_reuse_fixpoint(Unused, Maps, Metadata, Store, Fuel, SubtreeCache) when Fuel =< 0 ->
-    ?ASSERT(false, {reuse_fixpoint_out_of_fuel, Metadata, Unused, Maps}),
-    {Unused, compute_inplace_updates(Unused, Maps),
-     update_refcounts(element(1, compute_copy_refcounts(Metadata, compute_inplace_updates(Unused, Maps), Maps, Store, SubtreeCache)), Metadata)};
 full_reuse_fixpoint(Unused, Maps, Metadata, Store, Fuel, SubtreeCache) ->
-    Reuse = compute_inplace_updates(Unused, Maps),
-    {RefCounts1, SubtreeCache1} = compute_copy_refcounts(Metadata, Reuse, Maps, Store, SubtreeCache),
-    Metadata1 = update_refcounts(RefCounts1, Metadata),
-    Unused1 = unused_maps(Metadata1),
-    case Unused1 == Unused of
-        true  -> {Unused, Reuse, Metadata1};
-        false ->
-            full_reuse_fixpoint(Unused1, Maps, Metadata, Store, Fuel - 1, SubtreeCache1)
+    Fun = fun(Meta, Reuse, Ms, St, SC) ->
+        compute_copy_refcounts(Meta, Reuse, Ms, St, SC)
+    end,
+    case reuse_fixpoint_loop(Fun, Unused, Maps, Metadata, Store, Fuel, SubtreeCache) of
+        {converged, U, R, M, _} ->
+            {U, R, M};
+        {out_of_fuel, U, SC} ->
+            ?ASSERT(false, {reuse_fixpoint_out_of_fuel, Metadata, U, Maps}),
+            Reuse = compute_inplace_updates(U, Maps),
+            {RefCounts1, _} = compute_copy_refcounts(Metadata, Reuse, Maps, Store, SC),
+            {U, Reuse, update_refcounts(RefCounts1, Metadata)}
     end.
 
 perform_store_updates(OldMeta, [Update|Left], Meta, GasLeft, Store) ->
@@ -647,6 +639,23 @@ map_refcounts(_Meta, ?FATE_STORE_MAP(Cache, _Id), _Store) ->
                 %% the delta into account.
                 aeb_fate_maps:refcount_union(aeb_fate_maps:refcount(Val), Count)
               end, #{}, Cache).
+
+%% Only compute refcount adjustments for reused maps (lightweight individual lookups).
+%% Copied maps contribute zero adjustments — their subtrees are NOT read.
+compute_reuse_only_refcounts(Meta, Reuse, Maps, Store) ->
+    maps:fold(fun(MapId, ?FATE_STORE_MAP(Cache, Id), Count) ->
+                      case maps:get(Id, Reuse, no_reuse) of
+                          MapId ->
+                              ?METADATA(RawId, _RefCount, _Size) = get_map_meta(Id, Meta),
+                              RemovedValues = [ Val || Key <- maps:keys(Cache),
+                                                       {ok, Val, _} <- [find_in_store(map_data_key(RawId, Key), Store)] ],
+                              Removed = aeb_fate_maps:refcount(RemovedValues),
+                              aeb_fate_maps:refcount_diff(Count, Removed);
+                          _ ->
+                              Count
+                      end;
+                 (_, _, Count) -> Count
+              end, #{}, Maps).
 
 %% We need to increase the refcounts of maps contained in maps that are being
 %% copied.
