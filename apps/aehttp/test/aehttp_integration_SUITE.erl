@@ -101,7 +101,8 @@
 
 -export(
    [
-    get_contract/1
+    get_contract/1,
+    get_contract_poi_query_params/1
    ]).
 
 -export(
@@ -370,7 +371,8 @@ groups() ->
      %% /contracts/*
      {contract_endpoints, [sequence],
       [
-       get_contract
+       get_contract,
+       get_contract_poi_query_params
       ]},
 
      %% /oracles/*
@@ -1627,6 +1629,101 @@ get_contract(_Config) ->
 get_contract_sut(PubKey) ->
     Host = external_address(),
     http_request(Host, get, "contracts/" ++ binary_to_list(PubKey), []).
+
+%% Bounded `keys`/`prefix`/`cursor`/`limit` query params on /v3/contracts/{id}/poi.
+get_contract_poi_query_params(_Config) ->
+    aecore_suite_utils:mine_key_blocks(aecore_suite_utils:node_name(?NODE), 3),
+
+    MinerAddress = get_miner_address(),
+    {ok, _MinerPubkey} = aeser_api_encoder:safe_decode(account_pubkey, MinerAddress),
+    {ok, EncodedCode} = get_contract_bytecode(identity),
+    {ok, EncodedInitCallData} = encode_call_data(identity, "init", []),
+    Valid = #{ owner_id    => MinerAddress,
+               code        => EncodedCode,
+               vm_version  => latest_sophia_vm(),
+               abi_version => latest_sophia_abi(),
+               deposit     => 2,
+               amount      => 1,
+               gas         => 600,
+               gas_price   => min_gas_price(),
+               fee         => 200000 * aec_test_utils:min_gas_price(),
+               call_data   => EncodedInitCallData},
+    {ok, 200, #{<<"tx">>          := UnsignedTx,
+                <<"contract_id">> := EncodedContractPubKey}} =
+        get_contract_create(Valid),
+    {ok, ContractPubKey} = aeser_api_encoder:safe_decode(contract_pubkey,
+                                                         EncodedContractPubKey),
+    Hash = sign_and_post_tx(UnsignedTx),
+    ok = wait_for_tx_hash_on_chain(Hash),
+
+    %% Default (no params): empty store -> 0 keys, not truncated.
+    {ok, 200, RespDefault} = get_contract_poi(EncodedContractPubKey, #{}),
+    ?assertMatch(#{<<"poi">>       := _,
+                   <<"keys">>      := [],
+                   <<"truncated">> := false}, RespDefault),
+    ?assertNot(maps:is_key(<<"next_key">>, RespDefault)),
+
+    %% The poi blob deserialises and lets us look up the contract metadata.
+    EncPoi = maps:get(<<"poi">>, RespDefault),
+    {ok, PoiBin} = aeser_api_encoder:safe_decode(poi, EncPoi),
+    PoI = aec_trees:deserialize_poi(PoiBin),
+    ?assertMatch({ok, _Account}, aec_trees:lookup_poi(accounts, ContractPubKey, PoI)),
+    ?assertMatch({poi, _CPoi}, element(5, PoI)),
+    {poi, CPoi} = element(5, PoI),
+    ?assertMatch({ok, _MetadataBin}, aec_poi:lookup(ContractPubKey, CPoi)),
+
+    %% Explicit prefix + limit on an empty store still yields 0 keys.
+    EmptyPrefix = aeser_api_encoder:encode(bytearray, <<>>),
+    {ok, 200, RespPrefix} = get_contract_poi(EncodedContractPubKey,
+                                             #{prefix => EmptyPrefix, limit => 10}),
+    ?assertMatch(#{<<"keys">> := [], <<"truncated">> := false}, RespPrefix),
+
+    %% Cursor accepted on an empty store.
+    {ok, 200, RespCursor} = get_contract_poi(EncodedContractPubKey,
+                                             #{cursor => EmptyPrefix, limit => 10}),
+    ?assertMatch(#{<<"keys">> := [], <<"truncated">> := false}, RespCursor),
+
+    %% keys= for a key not present -> 404.
+    RandKey = aeser_api_encoder:encode(bytearray, <<1, 2, 3, 4>>),
+    {ok, 404, RespKeyNotFound} = get_contract_poi(EncodedContractPubKey, #{keys => RandKey}),
+    ?assertEqual(<<"Proof for store key not found">>, maps:get(<<"reason">>, RespKeyNotFound)),
+
+    %% Mutual exclusion: keys with prefix or cursor.
+    {ok, 400, RespMutExclPrefix} =
+        get_contract_poi(EncodedContractPubKey, #{keys => RandKey, prefix => EmptyPrefix}),
+    ?assertEqual(<<"keys is mutually exclusive with prefix and cursor">>,
+                 maps:get(<<"reason">>, RespMutExclPrefix)),
+    {ok, 400, RespMutExclCursor} =
+        get_contract_poi(EncodedContractPubKey, #{keys => RandKey, cursor => EmptyPrefix}),
+    ?assertEqual(<<"keys is mutually exclusive with prefix and cursor">>,
+                 maps:get(<<"reason">>, RespMutExclCursor)),
+
+    %% Bad encodings on each bytearray param.
+    {ok, 400, RespBadCursor} =
+        get_contract_poi(EncodedContractPubKey, #{cursor => <<"this_is_not_base64check">>}),
+    ?assertEqual(<<"Invalid cursor encoding">>, maps:get(<<"reason">>, RespBadCursor)),
+    {ok, 400, RespBadKeys} =
+        get_contract_poi(EncodedContractPubKey, #{keys => <<"this_is_not_base64check">>}),
+    ?assertEqual(<<"Invalid key encoding">>, maps:get(<<"reason">>, RespBadKeys)),
+    {ok, 400, RespBadPrefix} =
+        get_contract_poi(EncodedContractPubKey, #{prefix => <<"this_is_not_base64check">>}),
+    ?assertEqual(<<"Invalid prefix encoding">>, maps:get(<<"reason">>, RespBadPrefix)),
+
+    %% limit out of range.
+    {ok, 400, RespLimitZero} = get_contract_poi(EncodedContractPubKey, #{limit => 0}),
+    ?assertEqual(<<"limit must be >= 1">>, maps:get(<<"reason">>, RespLimitZero)),
+    {ok, 400, RespLimitTooBig} = get_contract_poi(EncodedContractPubKey, #{limit => 1025}),
+    ?assertEqual(<<"limit exceeds maximum (1024)">>, maps:get(<<"reason">>, RespLimitTooBig)),
+
+    %% More than 1024 keys.
+    ManyKeys = iolist_to_binary(
+                 lists:join($,, lists:duplicate(1025, <<"ba_AAAAAAAAAA">>))),
+    {ok, 400, RespTooManyKeys} =
+        get_contract_poi(EncodedContractPubKey, #{keys => ManyKeys}),
+    ?assertEqual(<<"key limit exceeded (max 1024)">>,
+                 maps:get(<<"reason">>, RespTooManyKeys)),
+
+    ok.
 
 % /oracles/*
 
@@ -4022,8 +4119,12 @@ get_peers() ->
     http_request(Host, get, "debug/peers", []).
 
 get_contract_poi(ContractAddress) ->
+    get_contract_poi(ContractAddress, #{}).
+
+get_contract_poi(ContractAddress, Params) when is_map(Params) ->
     Host = external_address(),
-    http_request(Host, get, "contracts/" ++ binary_to_list(ContractAddress) ++ "/poi", []).
+    Path = "contracts/" ++ binary_to_list(ContractAddress) ++ "/poi",
+    http_request(Host, get, Path, Params).
 
 %% ============================================================
 %% Test API validation errors, i.e. validation should fail

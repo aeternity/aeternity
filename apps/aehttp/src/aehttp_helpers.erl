@@ -48,6 +48,8 @@
 -import(aeu_debug, [pp/1]).
 
 -define(MODE_WAIT_TIMEOUT, 30000).
+-define(POI_MAX_KEYS, 1024).
+-define(POI_DEFAULT_KEYS, 10).
 
 process_request(FunsList, Req) ->
     process_request(FunsList, Req, #{}).
@@ -915,45 +917,150 @@ get_block_from_chain(Fun) when is_function(Fun, 0) ->
             {404, [], #{reason => <<"Not mining, no pending block">>}}
     end.
 
-get_poi(Type, KeyName, PutKey) when Type =:= account
-                             orelse Type =:= contract ->
+get_poi(account, KeyName, PutKey) ->
     fun(_Req, State) ->
         PubKey = maps:get(KeyName, State),
         {ok, Trees} = aec_chain:get_top_state(),
-        AddToPoI =
-            fun(Subtree, PoI0) ->
-                case aec_trees:add_poi(Subtree, PubKey, Trees, PoI0) of
-                    {ok, PoI} ->
-                        {ok, PoI};
-                    {error, _} ->
-                        SingularName =
-                            case Subtree of
-                                accounts -> "account";
-                                contracts -> "contract"
-                            end,
-                        Msg = "Proof for " ++ SingularName ++ " not found",
-                        {error, list_to_binary(Msg)}
-                end
-            end,
-        SubTrees =
-            case Type of
-                account -> [accounts];
-                contract -> [contracts, accounts]
-            end,
-        Res =
-            lists:foldl(
-                fun(_, {error, _} = Err) -> Err;
-                   (T, {ok, PoI}) -> AddToPoI(T, PoI)
-                end,
-                {ok, aec_trees:new_poi(Trees)},
-                SubTrees),
-        case Res of
+        case aec_trees:add_poi(accounts, PubKey, Trees,
+                               aec_trees:new_poi(Trees)) of
             {ok, PoI} ->
                 {ok, maps:put(PutKey, PoI, State)};
-            {error, Msg} ->
-                {error, {404, [], #{<<"reason">> => Msg}}}
+            {error, _} ->
+                {error, {404, [], #{<<"reason">> => <<"Proof for account not found">>}}}
+        end
+    end;
+get_poi(contract, KeyName, PutKey) ->
+    fun(Req, State) ->
+        PubKey = maps:get(KeyName, State),
+        case parse_poi_params(Req) of
+            {error, Reason} ->
+                {error, {400, [], #{<<"reason">> => Reason}}};
+            {ok, Spec} ->
+                case build_contract_poi(PubKey, Spec) of
+                    {ok, PoI, Keys, Truncated, NextKey} ->
+                        State1 = State#{ PutKey         => PoI
+                                       , poi_keys       => Keys
+                                       , poi_truncated  => Truncated
+                                       , poi_next_key   => NextKey },
+                        {ok, State1};
+                    {error, {Code, Msg}} ->
+                        {error, {Code, [], #{<<"reason">> => Msg}}}
+                end
         end
     end.
+
+%% Parse `keys`/`prefix`/`cursor`/`limit` query params; `keys` is mutually
+%% exclusive with `prefix`/`cursor`. See OpenAPI spec for full contract.
+parse_poi_params(Req) ->
+    KeysIn   = read_optional_param(keys, Req, undefined),
+    PrefixIn = read_optional_param(prefix, Req, undefined),
+    CursorIn = read_optional_param(cursor, Req, undefined),
+    LimitIn  = read_optional_param(limit, Req, undefined),
+    case {KeysIn, PrefixIn, CursorIn, LimitIn} of
+        {undefined, undefined, undefined, undefined} ->
+            {ok, {prefix, <<>>, <<>>, ?POI_DEFAULT_KEYS}};
+        {KS, undefined, undefined, _} when KS =/= undefined ->
+            decode_keys_param(KS);
+        {KS, _, _, _} when KS =/= undefined ->
+            {error, <<"keys is mutually exclusive with prefix and cursor">>};
+        {undefined, P, C, L0} ->
+            with_pos_limit(
+              L0, ?POI_MAX_KEYS,
+              fun(N) ->
+                  case decode_opt_bytearray(P, <<"Invalid prefix encoding">>) of
+                      {ok, RawP} ->
+                          case decode_opt_bytearray(C, <<"Invalid cursor encoding">>) of
+                              {ok, RawC}      -> {ok, {prefix, RawP, RawC, N}};
+                              {error, _} = E2 -> E2
+                          end;
+                      {error, _} = E1 -> E1
+                  end
+              end)
+    end.
+
+decode_keys_param(KS) when is_binary(KS) ->
+    Parts = [P || P <- binary:split(KS, <<",">>, [global]), P =/= <<>>],
+    decode_keys_param(Parts);
+decode_keys_param(KS) when is_list(KS) ->
+    case length(KS) of
+        0 ->
+            {error, <<"keys must be non-empty when set">>};
+        L when L > ?POI_MAX_KEYS ->
+            {error, <<"key limit exceeded (max 1024)">>};
+        _ ->
+            try
+                Decoded =
+                    lists:map(
+                      fun(K) ->
+                          case aeser_api_encoder:safe_decode(bytearray, K) of
+                              {ok, Raw}   -> Raw;
+                              {error, _}  -> throw({bad_key, K})
+                          end
+                      end, KS),
+                {ok, {keys, Decoded}}
+            catch
+                throw:{bad_key, _} ->
+                    {error, <<"Invalid key encoding">>}
+            end
+    end.
+
+decode_opt_bytearray(undefined, _ErrMsg) ->
+    {ok, <<>>};
+decode_opt_bytearray(B, ErrMsg) when is_binary(B) ->
+    case aeser_api_encoder:safe_decode(bytearray, B) of
+        {ok, Raw}  -> {ok, Raw};
+        {error, _} -> {error, ErrMsg}
+    end.
+
+with_pos_limit(undefined, _Max, K) -> K(?POI_DEFAULT_KEYS);
+with_pos_limit(L0, Max, K) ->
+    case to_pos_int(L0) of
+        {ok, N} when N >= 1, N =< Max -> K(N);
+        {ok, N} when N > Max -> {error, <<"limit exceeds maximum (1024)">>};
+        {ok, _} -> {error, <<"limit must be >= 1">>};
+        error -> {error, <<"limit must be an integer">>}
+    end.
+
+to_pos_int(N) when is_integer(N) -> {ok, N};
+to_pos_int(B) when is_binary(B) ->
+    try
+        {ok, binary_to_integer(B)}
+    catch _:_ -> error
+    end;
+to_pos_int(_) -> error.
+
+%% Build a contract PoI by first proving the contract account, then extending
+%% with the requested store-key set via the bounded `aec_trees:add_contract_poi_*`.
+build_contract_poi(PubKey, Spec) ->
+    {ok, Trees} = aec_chain:get_top_state(),
+    Poi0 = aec_trees:new_poi(Trees),
+    case aec_trees:add_poi(accounts, PubKey, Trees, Poi0) of
+        {error, _} ->
+            {error, {404, <<"Proof for contract not found">>}};
+        {ok, PoiAcc} ->
+            extend_contract_poi(PubKey, Spec, Trees, PoiAcc)
+    end.
+
+extend_contract_poi(PubKey, {keys, Keys}, Trees, PoiAcc) ->
+    case aec_trees:add_contract_poi_keys(PubKey, Keys, Trees, PoiAcc) of
+        {ok, PoI} -> {ok, PoI, Keys, false, undefined};
+        {error, Err} -> map_poi_error(Err)
+    end;
+extend_contract_poi(PubKey, {prefix, Prefix, Cursor, Limit}, Trees, PoiAcc) ->
+    case aec_trees:add_contract_poi_prefix(PubKey, Prefix, Cursor, Limit,
+                                           Trees, PoiAcc) of
+        {ok, PoI, IncKeys, NextKey} ->
+            {ok, PoI, IncKeys, NextKey =/= undefined, NextKey};
+        {error, Err} ->
+            map_poi_error(Err)
+    end.
+
+map_poi_error(not_present) -> {error, {404, <<"Proof for contract not found">>}};
+map_poi_error({key_not_found, _Key}) -> {error, {404, <<"Proof for store key not found">>}};
+map_poi_error(key_limit_exceeded) -> {error, {400, <<"key limit exceeded (max 1024)">>}};
+map_poi_error(invalid_args) -> {error, {400, <<"Invalid PoI arguments">>}};
+map_poi_error(invalid_key) -> {error, {400, <<"Invalid key">>}};
+map_poi_error(_Other) -> {error, {500, <<"PoI build failed">>}}.
 
 -spec safe_binary_to_atom(atom() | binary()) -> {ok, atom()} | {error, non_existing}.
 safe_binary_to_atom(A) when is_atom(A) -> {ok, A};

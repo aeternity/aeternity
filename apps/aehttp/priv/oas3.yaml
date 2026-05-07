@@ -342,10 +342,37 @@ paths:
         - external
         - contract
       operationId: GetContractPoI
-      description: Get a proof of inclusion for a contract
+      description: Get a bounded proof of inclusion for a contract (up to 1024 store keys per request, selected via `keys`, `prefix`/`cursor` and `limit`)
       parameters:
         - $ref: '#/components/parameters/intAsString'
         - $ref: '#/components/parameters/contractPubkey'
+        - in: query
+          name: keys
+          description: Comma-separated `ba_<base64check>`-encoded raw store keys to include; mutually exclusive with `prefix`/`cursor` (max 1024)
+          required: false
+          schema:
+            type: string
+        - in: query
+          name: prefix
+          description: '`ba_<base64check>`-encoded raw store-key prefix filter; mutually exclusive with `keys`'
+          required: false
+          schema:
+            type: string
+        - in: query
+          name: cursor
+          description: '`ba_<base64check>`-encoded raw store key to resume iteration after (exclusive); pass back `next_key` from a previous response to paginate'
+          required: false
+          schema:
+            type: string
+        - in: query
+          name: limit
+          description: Max store-key proofs to include (default 10, max 1024); ignored when `keys` is set
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1024
+            default: 10
       responses:
         "200":
           description: Successful operation
@@ -354,13 +381,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/PoI"
         "400":
-          description: Invalid contract key
+          description: Invalid request
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
         "404":
-          description: Contract not found
+          description: Contract or store key not found
           content:
             application/json:
               schema:
@@ -3673,6 +3700,18 @@ components:
       type: object
       properties:
         poi:
+          description: Proof of inclusion (serialized PoI blob)
+          $ref: "#/components/schemas/EncodedByteArray"
+        keys:
+          description: Raw store keys (each `ba_<base64check>`-encoded) whose proofs are included in `poi`
+          type: array
+          items:
+            $ref: "#/components/schemas/EncodedByteArray"
+        truncated:
+          description: True iff a `prefix` query matched more keys than `limit`; when true, `next_key` is set
+          type: boolean
+        next_key:
+          description: Last included raw store key; pass back as `cursor` to fetch the next page
           $ref: "#/components/schemas/EncodedByteArray"
       required:
         - poi
