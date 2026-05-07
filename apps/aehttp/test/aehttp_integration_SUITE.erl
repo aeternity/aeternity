@@ -1710,11 +1710,11 @@ get_contract_poi_query_params(_Config) ->
         get_contract_poi(EncodedContractPubKey, #{prefix => <<"this_is_not_base64check">>}),
     ?assertEqual(<<"Invalid prefix encoding">>, maps:get(<<"reason">>, RespBadPrefix)),
 
-    %% limit out of range.
+    %% limit out of range (caught by the OpenAPI minimum/maximum validators).
     {ok, 400, RespLimitZero} = get_contract_poi(EncodedContractPubKey, #{limit => 0}),
-    ?assertEqual(<<"limit must be >= 1">>, maps:get(<<"reason">>, RespLimitZero)),
+    ?assertEqual(<<"validation_error">>, maps:get(<<"reason">>, RespLimitZero)),
     {ok, 400, RespLimitTooBig} = get_contract_poi(EncodedContractPubKey, #{limit => 1025}),
-    ?assertEqual(<<"limit exceeds maximum (1024)">>, maps:get(<<"reason">>, RespLimitTooBig)),
+    ?assertEqual(<<"validation_error">>, maps:get(<<"reason">>, RespLimitTooBig)),
 
     %% More than 1024 keys.
     ManyKeys = iolist_to_binary(
