@@ -79,7 +79,12 @@ check_env() ->
                       <<"oracle">>        => Default0,
                       <<"name_service">>  => Default0,
                       <<"channel">>       => Default0,
-                      <<"node_info">>     => Default0,
+                      %% node_info is always enabled by default so that /status and
+                      %% other health/monitoring endpoints remain reachable even when
+                      %% other groups are disabled.  Users may still override this
+                      %% explicitly via http.endpoints.node_info: false.
+                      <<"node_info">>     => true,
+                      <<"hyperchain">>    => false,
                       <<"debug">>         => true,
                       <<"dry-run">>       => false,
                       <<"node-operator">> => false,
