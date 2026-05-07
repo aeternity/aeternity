@@ -1395,9 +1395,34 @@
                             "description" : "Chain state inspection endpoints",
                             "type" : "boolean"
                         },
-                        "transactions" : {
-                            "description" : "Transactions inspection endpoints",
+                        "transaction": {
+                            "description": "Transaction endpoints (POST /transactions, GET /transactions/*)",
+                            "type": "boolean"
+                        },
+                        "account": {
+                            "description": "Account endpoints (/accounts/*)",
+                            "type": "boolean"
+                        },
+                        "contract": {
+                            "description": "Contract endpoints (/contracts/*)",
+                            "type": "boolean"
+                        },
+                        "oracle": {
+                            "description": "Oracle endpoints (/oracles/*)",
+                            "type": "boolean"
+                        },
+                        "channel": {
+                            "description": "State channel endpoints (/channels/*)",
+                            "type": "boolean"
+                        },
+                        "node_info": {
+                            "description": "Node information endpoints (/status, /sync-status, /peers/pubkey, /currency). Disabling removes health and monitoring endpoints - use with care.",
                             "type" : "boolean"
+                        },
+                        "hyperchain": {
+                            "description": "Hyperchain specific endpoints",
+                            "type": "boolean",
+                            "default": false
                         },
                         "node-operator" : {
                             "description" : "Node operator endpoints",
