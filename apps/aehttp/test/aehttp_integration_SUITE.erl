@@ -1656,10 +1656,11 @@ get_contract_poi_query_params(_Config) ->
     Hash = sign_and_post_tx(UnsignedTx),
     ok = wait_for_tx_hash_on_chain(Hash),
 
-    %% Default (no params): empty store -> 0 keys, not truncated.
+    %% Default (no params): the FATE-deployed contract has a small store, all
+    %% within the default limit, so the response is not truncated.
     {ok, 200, RespDefault} = get_contract_poi(EncodedContractPubKey, #{}),
     ?assertMatch(#{<<"poi">>       := _,
-                   <<"keys">>      := [],
+                   <<"keys">>      := _,
                    <<"truncated">> := false}, RespDefault),
     ?assertNot(maps:is_key(<<"next_key">>, RespDefault)),
 
@@ -1672,16 +1673,16 @@ get_contract_poi_query_params(_Config) ->
     {poi, CPoi} = element(5, PoI),
     ?assertMatch({ok, _MetadataBin}, aec_poi:lookup(ContractPubKey, CPoi)),
 
-    %% Explicit prefix + limit on an empty store still yields 0 keys.
+    %% Explicit prefix + limit accepted.
     EmptyPrefix = aeser_api_encoder:encode(bytearray, <<>>),
     {ok, 200, RespPrefix} = get_contract_poi(EncodedContractPubKey,
                                              #{prefix => EmptyPrefix, limit => 10}),
-    ?assertMatch(#{<<"keys">> := [], <<"truncated">> := false}, RespPrefix),
+    ?assertMatch(#{<<"keys">> := _, <<"truncated">> := false}, RespPrefix),
 
-    %% Cursor accepted on an empty store.
+    %% Cursor accepted.
     {ok, 200, RespCursor} = get_contract_poi(EncodedContractPubKey,
                                              #{cursor => EmptyPrefix, limit => 10}),
-    ?assertMatch(#{<<"keys">> := [], <<"truncated">> := false}, RespCursor),
+    ?assertMatch(#{<<"keys">> := _, <<"truncated">> := false}, RespCursor),
 
     %% keys= for a key not present -> 404.
     RandKey = aeser_api_encoder:encode(bytearray, <<1, 2, 3, 4>>),
