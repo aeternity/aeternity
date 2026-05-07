@@ -366,13 +366,13 @@ paths:
             type: string
         - in: query
           name: limit
-          description: Max store-key proofs to include (default 10, max 1024); ignored when `keys` is set
+          description: Max store-key proofs to include (default 500, max 1024); ignored when `keys` is set
           required: false
           schema:
             type: integer
             minimum: 1
             maximum: 1024
-            default: 10
+            default: 500
       responses:
         "200":
           description: Successful operation

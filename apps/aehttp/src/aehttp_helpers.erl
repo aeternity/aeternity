@@ -49,7 +49,7 @@
 
 -define(MODE_WAIT_TIMEOUT, 30000).
 -define(POI_MAX_KEYS, 1024).
--define(POI_DEFAULT_KEYS, 10).
+-define(POI_DEFAULT_KEYS, 500).
 
 process_request(FunsList, Req) ->
     process_request(FunsList, Req, #{}).
