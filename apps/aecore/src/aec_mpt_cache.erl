@@ -13,6 +13,11 @@
 %%%    `enabled/0' and `max_size/0' are memoised in `persistent_term'
 %%%    (same pattern as `aec_db:db_safe_access/0'), so the per-block
 %%%    lookups in `aec_db_backends:db_spec/1' stay free.
+%%%
+%%%    Bypassing the cache when `aec_db:db_safe_access/0' is `true' is
+%%%    handled at the callback boundary in `aec_db_backends', not here,
+%%%    so this module stays a pure cache and remains testable without
+%%%    pulling in `aec_db'.
 %%% @end
 %%%=============================================================================
 -module(aec_mpt_cache).
