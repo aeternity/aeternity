@@ -611,6 +611,40 @@ bounded_contract_poi_test_() ->
                ?assertEqual(5, length(Keys)),
                [?assertMatch(<<$b, _>>, K) || K <- Keys]
        end},
+      {"add_contract_poi_prefix: includes key exactly matching raw-key prefix",
+       fun() ->
+               ExactPrefix = <<$p>>,
+               ChildKey    = <<$p, 1>>,
+               StoreMap    = #{ExactPrefix => <<"exact">>,
+                               ChildKey    => <<"child">>,
+                               <<$q>>      => <<"other">>},
+               {Trees, Pubkey, _} = make_trees_with_store(StoreMap),
+               {ok, Poi, Keys, NextKey} =
+                   aec_trees:add_contract_poi_prefix(
+                     Pubkey, ExactPrefix, <<>>, 10, Trees,
+                     aec_trees:new_poi(Trees)),
+
+               ?assertEqual(undefined, NextKey),
+               ?assertEqual(lists:sort([ExactPrefix, ChildKey]),
+                            lists:sort(Keys)),
+
+               CPoi = inner_contracts_poi(Poi),
+               StorePrefix = aect_contracts:compute_contract_store_id(Pubkey),
+               [?assertMatch({ok, _},
+                             aec_poi:lookup(<<StorePrefix/binary, K/binary>>,
+                                            CPoi))
+                || K <- Keys]
+       end},
+      {"add_contract_poi_prefix: cursor outside prefix returns an error",
+       fun() ->
+               {Trees, Pubkey, _} = make_trees_with_store(),
+               Result =
+                   catch aec_trees:add_contract_poi_prefix(
+                           Pubkey, <<$b>>, <<$a, 1>>, 10, Trees,
+                           aec_trees:new_poi(Trees)),
+
+               ?assertMatch({error, _}, Result)
+       end},
       {"add_contract_poi_prefix: limit > store size returns all keys",
        fun() ->
                {Trees, Pubkey, StoreMap} = make_trees_with_store(),
@@ -844,7 +878,9 @@ make_test_store_map() ->
     maps:merge(A, B).
 
 make_trees_with_store() ->
-    StoreMap    = make_test_store_map(),
+    make_trees_with_store(make_test_store_map()).
+
+make_trees_with_store(StoreMap) ->
     OwnerPubkey = <<123:?MINER_PUB_BYTES/unit:8>>,
     Contract    = aect_contracts:set_state(make_store(StoreMap),
                                            make_contract(OwnerPubkey)),
