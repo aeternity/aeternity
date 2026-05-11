@@ -97,6 +97,7 @@
         , lookup_tree_node/3
         , enter_tree_node/3
         , node_is_in_primary/2
+        , db_safe_access/0
         ]).
 
 -export([ find_block_state/1

@@ -148,8 +148,18 @@ mpt_db_put(Key, Val, Handle) ->
 mpt_db_drop_cache({gb_trees, _}) ->
     gb_trees:empty().
 
+%% Bypass the read cache while `aec_db:db_safe_access/0' is on so every
+%% read goes through `aec_db:lookup_tree_node_/3' and gets re-checksummed
+%% there. This covers both the global `chain.db_safe_access' switch and
+%% the transient window opened by `aec_db_gc:db_safe_access_scan/1'.
 mpt_db_read_cache_get(Key, Table) ->
-    aec_mpt_cache:get(Table, Key).
+    case aec_db:db_safe_access() of
+        true  -> none;
+        false -> aec_mpt_cache:get(Table, Key)
+    end.
 
 mpt_db_read_cache_put(Key, Val, Table) ->
-    aec_mpt_cache:put(Table, Key, Val).
+    case aec_db:db_safe_access() of
+        true  -> ok;
+        false -> aec_mpt_cache:put(Table, Key, Val)
+    end.
