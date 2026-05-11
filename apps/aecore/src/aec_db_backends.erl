@@ -32,6 +32,8 @@
         , mpt_db_get/2
         , mpt_db_get/3
         , mpt_db_put/3
+        , mpt_db_read_cache_get/2
+        , mpt_db_read_cache_put/3
         ]).
 
 %%%===================================================================
@@ -108,10 +110,16 @@ dirty_oracles_cache_backend() ->
 
 db_spec(Type) ->
     Handle = aec_db:new_tree_context(context(Type), tab_name(Type)),
-    #{ handle => Handle
-     , cache  => {gb_trees, gb_trees:empty()}
-     , module => ?MODULE
-     }.
+    Spec = #{ handle => Handle
+            , cache  => {gb_trees, gb_trees:empty()}
+            , module => ?MODULE
+            },
+    case aec_mpt_cache:enabled() of
+        true ->
+            Spec#{ read_cache => aec_db:tree_table_name(tab_name(Type)) };
+        false ->
+            Spec
+    end.
 
 context({Ctxt, _}) when Ctxt == dirty; Ctxt == transaction ->
     Ctxt;
@@ -139,3 +147,9 @@ mpt_db_put(Key, Val, Handle) ->
 
 mpt_db_drop_cache({gb_trees, _}) ->
     gb_trees:empty().
+
+mpt_db_read_cache_get(Key, Table) ->
+    aec_mpt_cache:get(Table, Key).
+
+mpt_db_read_cache_put(Key, Val, Table) ->
+    aec_mpt_cache:put(Table, Key, Val).
