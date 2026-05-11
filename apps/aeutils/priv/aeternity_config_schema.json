@@ -1606,6 +1606,24 @@
 		    "type" : "boolean",
 		    "default" : false
 		},
+                "mpt_read_cache" : {
+                    "type" : "object",
+                    "additionalProperties" : false,
+                    "properties" : {
+                        "enabled" : {
+                            "description" : "Cache Merkle Patricia Tree node reads in ETS to reduce database I/O during block execution.",
+                            "type" : "boolean",
+                            "default" : true
+                        },
+                        "max_size" : {
+                            "description" : "Maximum number of cached MPT nodes per generation segment. Resident memory is bounded by 2 x max_size entries.",
+                            "type" : "integer",
+                            "minimum" : 1000,
+                            "maximum" : 10000000,
+                            "default" : 100000
+                        }
+                    }
+                },
                 "db_write_max_retries" : {
                     "deprecated" : true,
                     "description" : "OBSOLETE/ignored: Maximum number of retries for failing database write operations.",
