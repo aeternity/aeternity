@@ -175,6 +175,11 @@ dispatch_method(<<"ae_call">>, _Params) ->
     %% callers. Spec stub kept here so the dispatcher table is complete.
     {error, -32004, <<"Operation not supported (FATE contract)">>};
 
+dispatch_method(<<"ae_estimateGas">>, _Params) ->
+    %% Same v1 gating as ae_call: returns -32004. A real estimate is the
+    %% gas_used field of the dry-run call object.
+    {error, -32004, <<"Operation not supported (FATE contract)">>};
+
 dispatch_method(<<"ae_sha3">>, [HexIn]) when is_binary(HexIn) ->
     %% Keccak-256 of the supplied bytes. Uses the same `sha3' dep that
     %% backs aec_hash:hash(evm, _) -- which is configured to produce the

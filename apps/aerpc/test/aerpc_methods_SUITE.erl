@@ -57,6 +57,7 @@
         , method_ae_getTransactionReceipt/1
         , bloom_empty/1
         , method_ae_call/1
+        , method_ae_estimateGas/1
         ]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -106,6 +107,7 @@ all() ->
     , method_ae_getTransactionReceipt
     , bloom_empty
     , method_ae_call
+    , method_ae_estimateGas
     ].
 
 %% ===================================================================
@@ -378,6 +380,16 @@ method_ae_call(_Config) ->
             <<"id">>      => 1,
             <<"method">>  => <<"ae_call">>,
             <<"params">>  => [#{<<"to">> => <<"ct_xxx">>}, <<"latest">>]},
+    ?assertMatch(#{<<"id">> := 1,
+                   <<"error">> := #{<<"code">> := -32004}},
+                 aerpc:dispatch(Req)),
+    ok.
+
+method_ae_estimateGas(_Config) ->
+    Req = #{<<"jsonrpc">> => <<"2.0">>,
+            <<"id">>      => 1,
+            <<"method">>  => <<"ae_estimateGas">>,
+            <<"params">>  => [#{<<"to">> => <<"ct_xxx">>}]},
     ?assertMatch(#{<<"id">> := 1,
                    <<"error">> := #{<<"code">> := -32004}},
                  aerpc:dispatch(Req)),
