@@ -471,17 +471,12 @@ cache_write_through_fun({channel, _Pubkey}, Channel, Trees) ->
     CTree1 = aesc_state_tree:enter(Channel, CTree),
     aec_trees:set_channels(Trees, CTree1);
 cache_write_through_fun({contract, Pubkey}, Contract, Trees) ->
-    %% NOTE: There is a semantical difference between inserting a new contract
-    %%       and updating one.
     CTree = aec_trees:contracts(Trees),
-    case aect_state_tree:lookup_contract(Pubkey, CTree, [no_store]) of
-        {value, _} ->
-            CTree1 = aect_state_tree:enter_contract(Contract, CTree),
-            aec_trees:set_contracts(Trees, CTree1);
-        none ->
-            CTree1 = aect_state_tree:insert_contract(Contract, CTree),
-            aec_trees:set_contracts(Trees, CTree1)
-    end;
+    CTree1 = case aect_state_tree:lookup_contract(Pubkey, CTree, [no_store]) of
+        {value, _} -> aect_state_tree:enter_contract(Contract, CTree);
+        none       -> aect_state_tree:insert_contract(Contract, CTree)
+    end,
+    aec_trees:set_contracts(Trees, CTree1);
 cache_write_through_fun({commitment, _Hash}, Commitment, Trees) ->
     NTree = aec_trees:ns(Trees),
     NTree1 = aens_state_tree:enter_commitment(Commitment, NTree),

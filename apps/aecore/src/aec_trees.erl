@@ -57,7 +57,8 @@
          apply_txs_on_state_trees/4,
          apply_txs_on_state_trees_strict/3,
          grant_fee/3,
-         perform_pre_transformations/3
+         perform_pre_transformations/3,
+         flush_contract_store_batch/1
         ]).
 
 %% Proof of inclusion
@@ -239,13 +240,14 @@ verify_poi(Type,_PubKey,_Account, #poi{} =_Poi) ->
 -spec commit_to_db(trees()) -> trees().
 commit_to_db(Trees) ->
     %% Make this in a transaction to get atomicity.
-    aec_db:ensure_transaction(fun() -> internal_commit_to_db(Trees) end).
+    %% Flush any pending contract store batch before committing to DB.
+    aec_db:ensure_transaction(fun() -> internal_commit_to_db(flush_contract_store_batch(Trees)) end).
 
 hash(Trees) ->
-    internal_hash(Trees).
+    internal_hash(flush_contract_store_batch(Trees)).
 
 hash(Trees, {calls, CallsHash}) ->
-    internal_hash(Trees, {calls_hash, CallsHash}).
+    internal_hash(flush_contract_store_batch(Trees), {calls_hash, CallsHash}).
 
 -spec accounts(trees()) -> aec_accounts_trees:tree().
 accounts(Trees) ->
@@ -312,8 +314,9 @@ perform_pre_transformations(Trees, _TxEnv, Protocol, Protocol) ->
     Trees;
 perform_pre_transformations(Trees, TxEnv, Protocol, PrevProtocol)
   when Protocol > PrevProtocol ->
-    %% Fork.
-    aec_block_fork:apply(Protocol, Trees, TxEnv).
+    %% Fork. Flush any contract store batch produced by hard fork contract deployment.
+    Trees1 = aec_block_fork:apply(Protocol, Trees, TxEnv),
+    flush_contract_store_batch(Trees1).
 
 -spec calls(trees()) -> aect_call_state_tree:tree().
 calls(Trees) ->
@@ -754,6 +757,21 @@ grant_fee(BeneficiaryPubKey, Trees0, Fee) ->
 
     AccountsTrees = aec_accounts_trees:enter(Account, AccountsTrees1),
     set_accounts(Trees1, AccountsTrees).
+
+%% Flush all pending microblock-level batch writes to their respective MPTs:
+%%   1. contract store batch    — deferred store-key MPT writes (Phase 1)
+%%   2. contract metadata batch — deferred contract-metadata MPT writes (Phase 2)
+%%   3. account batch           — deferred account MPT writes (Phase 4)
+%% Must be called before aec_trees:hash/1 and commit_to_db/1.
+-spec flush_contract_store_batch(trees()) -> trees().
+flush_contract_store_batch(Trees) ->
+    CTree  = contracts(Trees),
+    CTree1 = aect_state_tree:flush_store_batch(CTree),
+    CTree2 = aect_state_tree:flush_contract_meta_batch(CTree1),
+    Trees1 = set_contracts(Trees, CTree2),
+    ATree  = accounts(Trees1),
+    ATree1 = aec_accounts_trees:flush_account_batch(ATree),
+    set_accounts(Trees1, ATree1).
 
 -spec ensure_account(aec_keys:pubkey(), trees()) -> trees().
 ensure_account(AccountPubkey, Trees0) ->

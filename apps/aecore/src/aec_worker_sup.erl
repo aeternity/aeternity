@@ -23,7 +23,7 @@ init([]) ->
             ?CHILD(aec_tx_pool_gc, 5000, worker),
             ?CHILD(aec_resilience, 5000, worker),
             ?CHILD(aec_capabilities, 5000, worker),
-            ?CHILD(aec_db_gc, 5000, worker) ],
+            ?CHILD(aec_db_gc, 5000, worker)],
 
     {ok, {{one_for_one, 5, 10}, ChildSpecs}}.
 

@@ -807,7 +807,7 @@ update_trees(Txs, Trees, Height) ->
     Env0 = aetx_env:tx_env(Height),
     Env1 = aetx_env:set_dry_run(Env0, true),  % To expose error messages
     {ok, _, [], NewTrees, Evs} = aec_trees:apply_txs_on_state_trees_strict(Txs, Trees, Env1),
-    {NewTrees, Evs}.
+    {aec_trees:flush_contract_store_batch(NewTrees), Evs}.
 
 get_call_(ForkId, ContractId, CallId, #{forks := Forks}) ->
     #{ ForkId := #{blocks := Blocks}} = Forks,

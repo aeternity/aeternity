@@ -65,6 +65,8 @@ start_link() ->
 
 init([]) ->
     ok = aec_mpt_cache:start(),
+    ok = aec_fate_bytecode_cache:start(),
+    ok = aec_block_contract_cache:start(),
     ChildSpecs =
         [?CHILD(aec_worker_sup, 5000, worker),
          ?CHILD(aec_consensus_sup, 5000, supervisor),

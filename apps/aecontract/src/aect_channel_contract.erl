@@ -59,14 +59,15 @@ run_new(ContractPubKey, Call, CallData, Trees0, OnChainTrees,
                             Contract1 = aect_contracts:set_state(Store1, Contract),
                             ContractsTree0 = aec_trees:contracts(Trees2),
                             ContractsTree1 = aect_state_tree:enter_contract(Contract1, ContractsTree0),
-                            aec_trees:set_contracts(Trees2, ContractsTree1);
+                            aec_trees:flush_contract_store_batch(
+                                aec_trees:set_contracts(Trees2, ContractsTree1));
                         E = {error, _} ->
                             lager:debug("Init error ~w ~w",[E, CallRes]),
                             erlang:error(contract_init_failed)
                     end;
                 #{vm := V} when ?IS_FATE_SOPHIA(V) ->
                     %% The store is written by the INIT function
-                    Trees2
+                    aec_trees:flush_contract_store_batch(Trees2)
             end;
         E ->
             lager:debug("Init call error ~w ~w",[E, CallRes]),
@@ -161,7 +162,8 @@ run(ContractPubKey, ABIVersion, Call, CallData, CallStack, Trees0,
               CallData, _AllowInit = false, CallStack, Code, Store, Call, OnChainTrees, OnChainEnv, Trees0),
     {CallRes, Trees, _} = aect_dispatch:run(#{vm => VmVersion, abi => ABIVersion}, CallDef),
     UpdatedTrees = aect_utils:insert_call_in_trees(CallRes, Trees),
-    {aec_trees:gc_cache(UpdatedTrees, [accounts, contracts]), CallRes}.
+    {aec_trees:gc_cache(aec_trees:flush_contract_store_batch(UpdatedTrees),
+                        [accounts, contracts]), CallRes}.
 
 
 
