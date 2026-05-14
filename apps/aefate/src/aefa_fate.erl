@@ -401,12 +401,12 @@ setup_engine(Arg1, Env) ->
 setup_engine_(#{ contract := <<_:256>> = ContractPubkey
                , code := ByteCode
                , vm_version := VMVersion} = Spec, Env) ->
-    try aeb_fate_code:deserialize(ByteCode) of
-        Code ->
+    case (try {ok, aeb_fate_code:deserialize(ByteCode)} catch _:_ -> error end) of
+        error ->
+            abort(bad_bytecode, no_state);
+        {ok, Code} ->
             Cache = #{ ContractPubkey => { Code, VMVersion } },
             setup_engine_(Spec, Env, Cache)
-    catch _:_ ->
-            abort(bad_bytecode, no_state)
     end.
 
 setup_engine_(#{ contract := <<_:256>> = ContractPubkey
