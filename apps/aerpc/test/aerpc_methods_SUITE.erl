@@ -58,6 +58,9 @@
         , bloom_empty/1
         , method_ae_call/1
         , method_ae_estimateGas/1
+        , method_ae_getLogs/1
+        , method_ae_getLogs_invalid_params/1
+        , method_ae_getLogs_range_too_wide/1
         ]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -108,6 +111,9 @@ all() ->
     , bloom_empty
     , method_ae_call
     , method_ae_estimateGas
+    , method_ae_getLogs
+    , method_ae_getLogs_invalid_params
+    , method_ae_getLogs_range_too_wide
     ].
 
 %% ===================================================================
@@ -392,6 +398,36 @@ method_ae_estimateGas(_Config) ->
             <<"params">>  => [#{<<"to">> => <<"ct_xxx">>}]},
     ?assertMatch(#{<<"id">> := 1,
                    <<"error">> := #{<<"code">> := -32004}},
+                 aerpc:dispatch(Req)),
+    ok.
+
+method_ae_getLogs(_Config) ->
+    routed(<<"ae_getLogs">>).
+
+method_ae_getLogs_invalid_params(_Config) ->
+    %% Garbage `topics' shape (a bare binary instead of a list) fails
+    %% before any chain access.
+    Req = #{<<"jsonrpc">> => <<"2.0">>,
+            <<"id">>      => 1,
+            <<"method">>  => <<"ae_getLogs">>,
+            <<"params">>  => [#{<<"topics">> => <<"not-a-list">>}]},
+    ?assertMatch(#{<<"id">> := 1,
+                   <<"error">> := #{<<"code">> := -32602}},
+                 aerpc:dispatch(Req)),
+    ok.
+
+method_ae_getLogs_range_too_wide(_Config) ->
+    %% A 0..2000 generation request exceeds the v1 max range cap; this is
+    %% hermetically testable because the range check happens before any
+    %% chain access.
+    Req = #{<<"jsonrpc">> => <<"2.0">>,
+            <<"id">>      => 1,
+            <<"method">>  => <<"ae_getLogs">>,
+            <<"params">>  =>
+                [#{<<"fromBlock">> => <<"0x0">>,
+                   <<"toBlock">>   => <<"0x7d0">>}]},  %% 2000
+    ?assertMatch(#{<<"id">> := 1,
+                   <<"error">> := #{<<"code">> := -32005}},
                  aerpc:dispatch(Req)),
     ok.
 

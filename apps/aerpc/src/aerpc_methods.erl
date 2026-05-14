@@ -180,6 +180,11 @@ dispatch_method(<<"ae_estimateGas">>, _Params) ->
     %% gas_used field of the dry-run call object.
     {error, -32004, <<"Operation not supported (FATE contract)">>};
 
+dispatch_method(<<"ae_getLogs">>, [Filter]) when is_map(Filter) ->
+    aerpc_logs:get_logs(Filter);
+dispatch_method(<<"ae_getLogs">>, _Params) ->
+    {error, -32602, <<"Invalid params">>};
+
 dispatch_method(<<"ae_sha3">>, [HexIn]) when is_binary(HexIn) ->
     %% Keccak-256 of the supplied bytes. Uses the same `sha3' dep that
     %% backs aec_hash:hash(evm, _) -- which is configured to produce the
