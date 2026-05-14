@@ -77,5 +77,26 @@ dispatch_method(<<"ae_gasPrice">>, _Params) ->
     Price = aec_tx_pool:minimum_miner_gas_price(),
     {ok, aerpc_encoding:to_quantity(Price)};
 
+dispatch_method(<<"ae_syncing">>, _Params) ->
+    %% Returns `false' when fully synced or an object with starting/current/
+    %% highest block heights. AE's sync_progress emits {Syncing, Progress,
+    %% Top}; we derive `highestBlock' from progress and emit "0x0" for
+    %% `startingBlock' until we capture the boot-time height somewhere
+    %% durable.
+    case aeapi:sync_progress() of
+        {false, _, _} ->
+            {ok, false};
+        {true, Progress, Top} ->
+            Highest = case Progress of
+                          P when is_float(P), P > 0.001 ->
+                              max(Top, round(Top / P));
+                          _ ->
+                              Top
+                      end,
+            {ok, #{<<"startingBlock">> => <<"0x0">>,
+                   <<"currentBlock">>  => aerpc_encoding:to_quantity(Top),
+                   <<"highestBlock">>  => aerpc_encoding:to_quantity(Highest)}}
+    end;
+
 dispatch_method(_Method, _Params) ->
     {error, -32601, <<"Method not found">>}.
