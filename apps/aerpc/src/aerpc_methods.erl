@@ -150,6 +150,16 @@ dispatch_method(<<"ae_getTransactionByBlockHashAndIndex">>,
 dispatch_method(<<"ae_getTransactionByBlockHashAndIndex">>, _Params) ->
     {error, -32602, <<"Invalid params">>};
 
+dispatch_method(<<"ae_getTransactionByBlockNumberAndIndex">>,
+                [TagOrHex, IndexHex])
+  when is_binary(TagOrHex), is_binary(IndexHex) ->
+    try aerpc_encoding:from_quantity(IndexHex) of
+        Index -> aerpc_tx:by_block_height_index(TagOrHex, Index)
+    catch _:_ -> {error, -32602, <<"Invalid params">>}
+    end;
+dispatch_method(<<"ae_getTransactionByBlockNumberAndIndex">>, _Params) ->
+    {error, -32602, <<"Invalid params">>};
+
 dispatch_method(<<"ae_sha3">>, [HexIn]) when is_binary(HexIn) ->
     %% Keccak-256 of the supplied bytes. Uses the same `sha3' dep that
     %% backs aec_hash:hash(evm, _) -- which is configured to produce the
