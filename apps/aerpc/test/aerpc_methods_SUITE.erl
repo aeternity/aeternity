@@ -92,6 +92,10 @@
         , log_store_select_by_address/1
         , log_store_select_any_address/1
         , log_store_indexed_predicate/1
+        , method_ae_feeHistory_routed/1
+        , method_ae_feeHistory_invalid_params/1
+        , method_ae_maxPriorityFeePerGas_routed/1
+        , fee_percentile_helper/1
         ]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -176,6 +180,10 @@ all() ->
     , log_store_select_by_address
     , log_store_select_any_address
     , log_store_indexed_predicate
+    , method_ae_feeHistory_routed
+    , method_ae_feeHistory_invalid_params
+    , method_ae_maxPriorityFeePerGas_routed
+    , fee_percentile_helper
     ].
 
 %% ===================================================================
@@ -555,6 +563,32 @@ log_store_indexed_predicate(_Config) ->
     ?assertNot(aerpc_log_store:indexed({0,  20})),
     %% Above watermark -> not indexed.
     ?assertNot(aerpc_log_store:indexed({10, 25})),
+    ok.
+
+method_ae_feeHistory_routed(_Config) ->
+    routed(<<"ae_feeHistory">>, [<<"0x4">>, <<"latest">>]).
+
+method_ae_feeHistory_invalid_params(_Config) ->
+    Req = #{<<"jsonrpc">> => <<"2.0">>,
+            <<"id">>      => 1,
+            <<"method">>  => <<"ae_feeHistory">>,
+            <<"params">>  => [<<"not-a-number">>, <<"latest">>]},
+    ?assertMatch(#{<<"id">> := 1,
+                   <<"error">> := #{<<"code">> := -32602}},
+                 aerpc:dispatch(Req)),
+    ok.
+
+method_ae_maxPriorityFeePerGas_routed(_Config) ->
+    routed(<<"ae_maxPriorityFeePerGas">>).
+
+%% Hermetic: percentile/2 is the internal estimator. Reach into it via
+%% the public API by faking a chain-less environment where `tips_at/2'
+%% returns [] -- max_priority_fee/0 then returns 0x0.
+fee_percentile_helper(_Config) ->
+    {ok, Reply} = aerpc_fee:max_priority_fee(),
+    %% In a hermetic env aec_chain is unavailable, so tips_at/2 yields
+    %% [], percentile([], _) = 0, and we emit "0x0".
+    ?assertEqual(<<"0x0">>, Reply),
     ok.
 
 reset_log_store() ->

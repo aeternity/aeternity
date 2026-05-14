@@ -77,6 +77,26 @@ dispatch_method(<<"ae_gasPrice">>, _Params) ->
     Price = aec_tx_pool:minimum_miner_gas_price(),
     {ok, aerpc_encoding:to_quantity(Price)};
 
+dispatch_method(<<"ae_feeHistory">>, [BlockCountHex, NewestBlock])
+  when is_binary(BlockCountHex), is_binary(NewestBlock) ->
+    try aerpc_encoding:from_quantity(BlockCountHex) of
+        N -> aerpc_fee:fee_history(N, NewestBlock, undefined)
+    catch _:_ -> {error, -32602, <<"Invalid params">>}
+    end;
+dispatch_method(<<"ae_feeHistory">>,
+                [BlockCountHex, NewestBlock, RewardPercentiles])
+  when is_binary(BlockCountHex), is_binary(NewestBlock),
+       is_list(RewardPercentiles) ->
+    try aerpc_encoding:from_quantity(BlockCountHex) of
+        N -> aerpc_fee:fee_history(N, NewestBlock, RewardPercentiles)
+    catch _:_ -> {error, -32602, <<"Invalid params">>}
+    end;
+dispatch_method(<<"ae_feeHistory">>, _Params) ->
+    {error, -32602, <<"Invalid params">>};
+
+dispatch_method(<<"ae_maxPriorityFeePerGas">>, _Params) ->
+    aerpc_fee:max_priority_fee();
+
 dispatch_method(<<"ae_chainId">>, _Params) ->
     NetworkId = aec_governance:get_network_id(),
     Numeric = aerpc_chain_id:to_numeric(NetworkId),
