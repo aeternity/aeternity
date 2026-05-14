@@ -233,6 +233,17 @@ dispatch_method(<<"ae_newPendingTransactionFilter">>, _Params) ->
     %% the filter family.
     {error, -32004, <<"Filter registry not yet implemented (v1.5)">>};
 
+dispatch_method(<<"ae_subscribe">>, _Params) ->
+    %% Subscriptions require an open WS connection so the registry can
+    %% monitor + route notifications. Over plain HTTP we return -32004
+    %% with a hint pointing at /v3/rpc/ws.
+    {error, -32004,
+     <<"Subscriptions require the WebSocket transport (/v3/rpc/ws)">>};
+
+dispatch_method(<<"ae_unsubscribe">>, _Params) ->
+    {error, -32004,
+     <<"Subscriptions require the WebSocket transport (/v3/rpc/ws)">>};
+
 dispatch_method(<<"ae_uninstallFilter">>, _Params) ->
     %% Releases a previously-registered filter (id passed as a hex
     %% QUANTITY). Trivial counterpart to the new*Filter callers; needs

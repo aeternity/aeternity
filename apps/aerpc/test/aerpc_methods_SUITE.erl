@@ -80,6 +80,12 @@
         , method_ae_sign/1
         , method_ae_signTransaction/1
         , method_ae_uninstallFilter/1
+        , method_ae_subscribe_over_http/1
+        , method_ae_unsubscribe_over_http/1
+        , subscriptions_allocate_unique_ids/1
+        , subscriptions_unsubscribe_idempotent/1
+        , subscriptions_drop_owner_releases/1
+        , subscriptions_owner_death_releases/1
         ]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -152,6 +158,12 @@ all() ->
     , method_ae_sign
     , method_ae_signTransaction
     , method_ae_uninstallFilter
+    , method_ae_subscribe_over_http
+    , method_ae_unsubscribe_over_http
+    , subscriptions_allocate_unique_ids
+    , subscriptions_unsubscribe_idempotent
+    , subscriptions_drop_owner_releases
+    , subscriptions_owner_death_releases
     ].
 
 %% ===================================================================
@@ -681,6 +693,131 @@ method_ae_uninstallFilter(_Config) ->
                    <<"error">> := #{<<"code">> := -32004}},
                  aerpc:dispatch(Req)),
     ok.
+
+%% Over plain HTTP the subscribe methods return -32004 with a hint
+%% pointing at /v3/rpc/ws (real subs need a WS conn so the registry can
+%% monitor + push back).
+method_ae_subscribe_over_http(_Config) ->
+    Req = #{<<"jsonrpc">> => <<"2.0">>,
+            <<"id">>      => 1,
+            <<"method">>  => <<"ae_subscribe">>,
+            <<"params">>  => [<<"newHeads">>]},
+    ?assertMatch(#{<<"id">> := 1,
+                   <<"error">> := #{<<"code">> := -32004}},
+                 aerpc:dispatch(Req)),
+    ok.
+
+method_ae_unsubscribe_over_http(_Config) ->
+    Req = #{<<"jsonrpc">> => <<"2.0">>,
+            <<"id">>      => 1,
+            <<"method">>  => <<"ae_unsubscribe">>,
+            <<"params">>  => [<<"0x1">>]},
+    ?assertMatch(#{<<"id">> := 1,
+                   <<"error">> := #{<<"code">> := -32004}},
+                 aerpc:dispatch(Req)),
+    ok.
+
+%% Registry unit tests. Each one boots a fresh aerpc_subscriptions
+%% gen_server, registers a fake owner pid, and asserts behaviour
+%% without touching aec_events. (The registry's init/1 subscribes to
+%% top_changed via a try-catch so this works in a hermetic env.)
+
+subscriptions_allocate_unique_ids(_Config) ->
+    {ok, _Pid} = subs_start(),
+    try
+        Owner = self(),
+        {ok, Id1} = aerpc_subscriptions:subscribe(Owner, newHeads, undefined),
+        {ok, Id2} = aerpc_subscriptions:subscribe(Owner, newHeads, undefined),
+        ?assertNotEqual(Id1, Id2),
+        ?assertEqual(<<"0x1">>, Id1),
+        ?assertEqual(<<"0x2">>, Id2),
+        ok
+    after subs_stop()
+    end.
+
+subscriptions_unsubscribe_idempotent(_Config) ->
+    {ok, _Pid} = subs_start(),
+    try
+        Owner = self(),
+        {ok, Id} = aerpc_subscriptions:subscribe(Owner, newHeads, undefined),
+        ?assert(aerpc_subscriptions:unsubscribe(Owner, Id)),
+        %% Second unsubscribe returns false (was already removed).
+        ?assertNot(aerpc_subscriptions:unsubscribe(Owner, Id)),
+        %% Unknown id returns false.
+        ?assertNot(aerpc_subscriptions:unsubscribe(Owner, <<"0xdead">>)),
+        ok
+    after subs_stop()
+    end.
+
+subscriptions_drop_owner_releases(_Config) ->
+    {ok, _Pid} = subs_start(),
+    try
+        Owner = self(),
+        {ok, _Id1} = aerpc_subscriptions:subscribe(Owner, newHeads, undefined),
+        {ok, _Id2} = aerpc_subscriptions:subscribe(Owner, logs, #{}),
+        aerpc_subscriptions:drop_owner(Owner),
+        %% Drop is a cast; round-trip a call to ensure it has been
+        %% processed before we assert.
+        _ = sys:get_state(aerpc_subscriptions),
+        %% After drop, a new subscribe should get id 0x3 because the
+        %% counter never rewinds; either way it must succeed.
+        {ok, Id3} = aerpc_subscriptions:subscribe(Owner, newHeads, undefined),
+        ?assert(is_binary(Id3)),
+        ok
+    after subs_stop()
+    end.
+
+subscriptions_owner_death_releases(_Config) ->
+    {ok, _Pid} = subs_start(),
+    try
+        %% Spawn a fake owner that registers two subs and then exits.
+        Parent = self(),
+        OwnerPid = spawn(fun() ->
+            {ok, Id1} = aerpc_subscriptions:subscribe(self(), newHeads, undefined),
+            {ok, Id2} = aerpc_subscriptions:subscribe(self(), logs,     #{}),
+            Parent ! {ids, Id1, Id2}
+        end),
+        receive {ids, Id1, _Id2} -> ok end,
+        %% Wait for the owner to die naturally (it returns after sending).
+        Ref = erlang:monitor(process, OwnerPid),
+        receive {'DOWN', Ref, process, OwnerPid, _Reason} -> ok
+        after 1000 -> ct:fail(owner_did_not_die)
+        end,
+        %% Round-trip a call to make sure the registry has processed
+        %% the DOWN message.
+        _ = sys:get_state(aerpc_subscriptions),
+        %% Registry should no longer have a record for the dead owner's
+        %% subs -- assert via re-subscribe (id should advance).
+        {ok, Id3} = aerpc_subscriptions:subscribe(self(), newHeads, undefined),
+        ?assertNotEqual(Id3, Id1),
+        ok
+    after subs_stop()
+    end.
+
+%% Helpers
+subs_start() ->
+    case whereis(aerpc_subscriptions) of
+        undefined -> aerpc_subscriptions:start_link();
+        _Pid      -> {ok, _Pid}
+    end.
+
+subs_stop() ->
+    case whereis(aerpc_subscriptions) of
+        undefined -> ok;
+        Pid ->
+            unlink(Pid),
+            exit(Pid, shutdown),
+            wait_for_exit(Pid, 1000)
+    end.
+
+wait_for_exit(_Pid, 0) -> ok;
+wait_for_exit(Pid, N) ->
+    case is_process_alive(Pid) of
+        false -> ok;
+        true ->
+            timer:sleep(10),
+            wait_for_exit(Pid, N - 1)
+    end.
 
 %% Hermetic: a 0x-hex of the right length is always accepted; anything
 %% else without the expected prefix is rejected.

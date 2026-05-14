@@ -10,4 +10,6 @@
 
 -spec routes() -> [{string(), module(), term()}].
 routes() ->
-    [ {"/v3/rpc", aehttp_rpc_handler, []} ].
+    [ {"/v3/rpc",    aehttp_rpc_handler,    []}
+    , {"/v3/rpc/ws", aehttp_rpc_ws_handler, []}
+    ].
