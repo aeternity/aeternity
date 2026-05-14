@@ -37,5 +37,9 @@ dispatch_method(<<"ae_getStorageAt">>, _Params) ->
     %% mapping is deferred until a slot-derivation convention is agreed.
     {ok, <<"0x", (binary:copy(<<"0">>, 64))/binary>>};
 
+dispatch_method(<<"ae_getUncleCountByBlockHash">>, _Params) ->
+    %% AE has no uncles (Bitcoin-NG generations replace the uncle scheme).
+    {ok, <<"0x0">>};
+
 dispatch_method(_Method, _Params) ->
     {error, -32601, <<"Method not found">>}.
