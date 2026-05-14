@@ -14,6 +14,8 @@
 -export([
           to_quantity/1
         , from_quantity/1
+        , to_hex_data/1
+        , from_hex_data/1
         , format_account/1
         , format_contract/1
         , format_key_block_hash/1
@@ -34,6 +36,22 @@ from_quantity(<<"0x", Hex/binary>>) when Hex =/= <<>> ->
     binary_to_integer(Hex, 16);
 from_quantity(Bin) when is_binary(Bin), Bin =/= <<>> ->
     binary_to_integer(Bin, 16).
+
+%% @doc Encode an arbitrary byte sequence as `0x'-prefixed lower-case hex.
+%% Distinct from `to_quantity/1', which strips leading zeros.
+-spec to_hex_data(binary()) -> binary().
+to_hex_data(Bin) when is_binary(Bin) ->
+    Hex = binary:encode_hex(Bin),
+    Lower = string:lowercase(Hex),
+    <<"0x", Lower/binary>>.
+
+%% @doc Decode `0x'-prefixed (or bare) hex into raw bytes. Inverse of
+%% `to_hex_data/1'. Tolerates upper- or lower-case hex digits.
+-spec from_hex_data(binary()) -> binary().
+from_hex_data(<<"0x", Hex/binary>>) ->
+    binary:decode_hex(Hex);
+from_hex_data(Bin) when is_binary(Bin) ->
+    binary:decode_hex(Bin).
 
 -spec format_account(binary()) -> binary().
 format_account(Pubkey) ->

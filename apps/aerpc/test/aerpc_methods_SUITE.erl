@@ -33,6 +33,10 @@
         , method_ae_protocolVersion/1
         , method_ae_gasPrice/1
         , method_ae_syncing/1
+        , method_ae_sha3_hello_world/1
+        , method_ae_sha3_empty/1
+        , method_ae_sha3_invalid_params/1
+        , encoding_hex_data_roundtrip/1
         ]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -58,6 +62,10 @@ all() ->
     , method_ae_protocolVersion
     , method_ae_gasPrice
     , method_ae_syncing
+    , method_ae_sha3_hello_world
+    , method_ae_sha3_empty
+    , method_ae_sha3_invalid_params
+    , encoding_hex_data_roundtrip
     ].
 
 %% ===================================================================
@@ -219,6 +227,51 @@ method_ae_gasPrice(_Config) ->
 
 method_ae_syncing(_Config) ->
     routed(<<"ae_syncing">>).
+
+%% Canonical Keccak-256 vector. If this fails, the underlying `sha3'
+%% dep is producing NIST SHA3-256 instead -- a release-blocking issue.
+method_ae_sha3_hello_world(_Config) ->
+    Req = #{<<"jsonrpc">> => <<"2.0">>,
+            <<"id">>      => 1,
+            <<"method">>  => <<"ae_sha3">>,
+            <<"params">>  => [<<"0x68656c6c6f20776f726c64">>]},
+    Expected = <<"0x47173285a8d7341e5e972fc677286384f802f8ef42a5ec5f03bbfa254cb01fad">>,
+    ?assertEqual(#{<<"jsonrpc">> => <<"2.0">>,
+                   <<"id">>      => 1,
+                   <<"result">>  => Expected},
+                 aerpc:dispatch(Req)),
+    ok.
+
+method_ae_sha3_empty(_Config) ->
+    Req = #{<<"jsonrpc">> => <<"2.0">>,
+            <<"id">>      => 1,
+            <<"method">>  => <<"ae_sha3">>,
+            <<"params">>  => [<<"0x">>]},
+    Expected = <<"0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470">>,
+    ?assertEqual(#{<<"jsonrpc">> => <<"2.0">>,
+                   <<"id">>      => 1,
+                   <<"result">>  => Expected},
+                 aerpc:dispatch(Req)),
+    ok.
+
+method_ae_sha3_invalid_params(_Config) ->
+    Req = #{<<"jsonrpc">> => <<"2.0">>,
+            <<"id">>      => 1,
+            <<"method">>  => <<"ae_sha3">>,
+            <<"params">>  => [<<"not-hex">>]},
+    ?assertMatch(#{<<"id">> := 1,
+                   <<"error">> := #{<<"code">> := -32602}},
+                 aerpc:dispatch(Req)),
+    ok.
+
+encoding_hex_data_roundtrip(_Config) ->
+    Cases = [<<>>, <<0>>, <<"abc">>, <<16#de, 16#ad, 16#be, 16#ef>>],
+    [ ?assertEqual(B, aerpc_encoding:from_hex_data(aerpc_encoding:to_hex_data(B)))
+      || B <- Cases ],
+    ?assertEqual(<<"0x">>, aerpc_encoding:to_hex_data(<<>>)),
+    ?assertEqual(<<"0xdeadbeef">>,
+                 aerpc_encoding:to_hex_data(<<16#de, 16#ad, 16#be, 16#ef>>)),
+    ok.
 
 %% ===================================================================
 %% Helpers

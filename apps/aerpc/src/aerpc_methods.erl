@@ -77,6 +77,20 @@ dispatch_method(<<"ae_gasPrice">>, _Params) ->
     Price = aec_tx_pool:minimum_miner_gas_price(),
     {ok, aerpc_encoding:to_quantity(Price)};
 
+dispatch_method(<<"ae_sha3">>, [HexIn]) when is_binary(HexIn) ->
+    %% Keccak-256 of the supplied bytes. Uses the same `sha3' dep that
+    %% backs aec_hash:hash(evm, _) -- which is configured to produce the
+    %% Ethereum-flavoured Keccak variant, not NIST SHA3-256.
+    try aerpc_encoding:from_hex_data(HexIn) of
+        Bin ->
+            Digest = sha3:hash(256, Bin),
+            {ok, aerpc_encoding:to_hex_data(Digest)}
+    catch
+        _:_ -> {error, -32602, <<"Invalid params">>}
+    end;
+dispatch_method(<<"ae_sha3">>, _Params) ->
+    {error, -32602, <<"Invalid params">>};
+
 dispatch_method(<<"ae_syncing">>, _Params) ->
     %% Returns `false' when fully synced or an object with starting/current/
     %% highest block heights. AE's sync_progress emits {Syncing, Progress,
