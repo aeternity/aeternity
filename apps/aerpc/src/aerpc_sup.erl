@@ -18,4 +18,10 @@ init([]) ->
              shutdown => 5000,
              type    => worker,
              modules => [aerpc_subscriptions]},
-    {ok, {{one_for_one, 5, 10}, [Subs]}}.
+    Indexer = #{id      => aerpc_log_indexer,
+                start   => {aerpc_log_indexer, start_link, []},
+                restart => permanent,
+                shutdown => 5000,
+                type    => worker,
+                modules => [aerpc_log_indexer]},
+    {ok, {{one_for_one, 5, 10}, [Indexer, Subs]}}.

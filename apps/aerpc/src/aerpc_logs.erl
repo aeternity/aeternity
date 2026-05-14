@@ -13,6 +13,8 @@
 %%%-------------------------------------------------------------------
 -module(aerpc_logs).
 
+-include("aerpc_log_store.hrl").
+
 -export([get_logs/1, raw_logs_for_block/1]).
 
 %% Maximum span of generations a single one-shot scan may cover. Without
@@ -29,11 +31,24 @@
     {ok, [map()]} | {error, integer(), binary()}.
 get_logs(Filter) when is_map(Filter) ->
     case parse_filter(Filter) of
-        {ok, Criteria}      -> collect(Criteria);
+        {ok, Criteria}      -> dispatch_collect(Criteria);
         {error, _, _} = Err -> Err
     end;
 get_logs(_) ->
     {error, -32602, <<"Invalid params">>}.
+
+%% @doc Pick the cheapest collection path for the requested criteria.
+%% Falls back to the inline `aec_chain' walker when the requested range
+%% is not (yet) covered by the in-memory index. Single-block lookups
+%% take the inline walker too -- the cost is identical and avoids a
+%% special case while still serving correctly under any index state.
+dispatch_collect(#{block_scope := {single, _}} = Criteria) ->
+    collect(Criteria);
+dispatch_collect(#{block_scope := {range, From, To}} = Criteria) ->
+    case aerpc_log_store:indexed({From, To}) of
+        true  -> {ok, lookup_from_index(Criteria, From, To)};
+        false -> collect(Criteria)
+    end.
 
 %% @doc Pull every raw log entry emitted in a single key-block.
 %% Returns `[{Address, Topics, Data}]' (the AE-native `aect_call:log/1'
@@ -184,6 +199,37 @@ decode_topic(<<"0x", _/binary>> = Hex) ->
     end;
 decode_topic(_) ->
     {error, -32602, <<"Invalid topic">>}.
+
+%% ===================================================================
+%% Index path
+%% ===================================================================
+
+%% Adapter from `aerpc_log_store' index entries back to the eth-shape
+%% log map. Reuses the existing match/2 and shape_log/6 logic; the only
+%% twist is that the entry already knows its block hash + tx idx, so we
+%% don't re-derive them.
+lookup_from_index(Criteria, From, To) ->
+    Addresses = maps:get(addresses, Criteria),
+    Raw       = aerpc_log_store:select_range(Addresses, From, To),
+    Topics    = maps:get(topics, Criteria),
+    [shape_index_entry(E) || E <- Raw, topics_match(E#log_entry.topics, Topics)].
+
+shape_index_entry(#log_entry{} = E) ->
+    #{
+        <<"removed">>          => false,
+        <<"logIndex">>         => aerpc_encoding:to_quantity(E#log_entry.log_idx),
+        <<"transactionIndex">> => aerpc_encoding:to_quantity(E#log_entry.tx_idx),
+        <<"transactionHash">>  =>
+            aerpc_encoding:format_tx_hash(E#log_entry.tx_hash),
+        <<"blockHash">>        =>
+            aerpc_encoding:format_key_block_hash(E#log_entry.block_hash),
+        <<"blockNumber">>      => aerpc_encoding:to_quantity(E#log_entry.height),
+        <<"address">>          =>
+            aerpc_encoding:format_contract(E#log_entry.address),
+        <<"data">>             => aerpc_encoding:to_hex_data(E#log_entry.data),
+        <<"topics">>           =>
+            [aerpc_encoding:to_hex_data(T) || T <- E#log_entry.topics]
+    }.
 
 %% ===================================================================
 %% Walking the chain

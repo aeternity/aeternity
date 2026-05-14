@@ -88,6 +88,10 @@
         , subscriptions_owner_death_releases/1
         , bloom_of_one_log/1
         , bloom_set_bits_known_vector/1
+        , log_store_init_and_watermark/1
+        , log_store_select_by_address/1
+        , log_store_select_any_address/1
+        , log_store_indexed_predicate/1
         ]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -168,6 +172,10 @@ all() ->
     , subscriptions_owner_death_releases
     , bloom_of_one_log
     , bloom_set_bits_known_vector
+    , log_store_init_and_watermark
+    , log_store_select_by_address
+    , log_store_select_any_address
+    , log_store_indexed_predicate
     ].
 
 %% ===================================================================
@@ -487,6 +495,84 @@ popcount8(B) ->
 
 %% Deterministic: two calls with the same input produce byte-identical
 %% blooms (no per-process state leaks).
+%% Log store: hermetic tests. Bypass the indexer gen_server and drive
+%% the ETS tables directly. Each test re-initialises the tables so the
+%% fixtures are independent.
+
+log_store_init_and_watermark(_Config) ->
+    reset_log_store(),
+    ?assertEqual(undefined, aerpc_log_store:floor_height()),
+    ?assertEqual(undefined, aerpc_log_store:watermark()),
+    aerpc_log_store:set_floor(100),
+    aerpc_log_store:set_watermark(150),
+    ?assertEqual(100, aerpc_log_store:floor_height()),
+    ?assertEqual(150, aerpc_log_store:watermark()),
+    ok.
+
+log_store_select_by_address(_Config) ->
+    reset_log_store(),
+    A1 = binary:copy(<<16#11>>, 32),
+    A2 = binary:copy(<<16#22>>, 32),
+    insert_synthetic_log(A1, 10, 0, 0),
+    insert_synthetic_log(A1, 11, 0, 0),
+    insert_synthetic_log(A1, 15, 0, 0),
+    insert_synthetic_log(A2, 12, 0, 0),
+    %% Address-filter scan: 11..14 -> only the A1 entry at height 11
+    ByA1 = aerpc_log_store:select_range([A1], 11, 14),
+    ?assertEqual(1, length(ByA1)),
+    %% Address-filter wider range -> two A1 entries
+    ByA1Wider = aerpc_log_store:select_range([A1], 0, 100),
+    ?assertEqual(3, length(ByA1Wider)),
+    %% A2 only
+    ByA2 = aerpc_log_store:select_range([A2], 0, 100),
+    ?assertEqual(1, length(ByA2)),
+    ok.
+
+log_store_select_any_address(_Config) ->
+    reset_log_store(),
+    A1 = binary:copy(<<16#aa>>, 32),
+    A2 = binary:copy(<<16#bb>>, 32),
+    insert_synthetic_log(A1, 5, 0, 0),
+    insert_synthetic_log(A2, 7, 0, 0),
+    insert_synthetic_log(A1, 9, 0, 0),
+    %% any-address with the right height window -> 2 entries
+    Two = aerpc_log_store:select_range(any, 6, 9),
+    ?assertEqual(2, length(Two)),
+    %% Full window -> 3 entries
+    All = aerpc_log_store:select_range(any, 0, 100),
+    ?assertEqual(3, length(All)),
+    ok.
+
+log_store_indexed_predicate(_Config) ->
+    reset_log_store(),
+    %% Without floor/watermark set, no range is indexed.
+    ?assertNot(aerpc_log_store:indexed({0, 100})),
+    aerpc_log_store:set_floor(10),
+    aerpc_log_store:set_watermark(20),
+    ?assert(aerpc_log_store:indexed({10, 20})),
+    ?assert(aerpc_log_store:indexed({15, 18})),
+    %% Below floor -> not indexed.
+    ?assertNot(aerpc_log_store:indexed({0,  20})),
+    %% Above watermark -> not indexed.
+    ?assertNot(aerpc_log_store:indexed({10, 25})),
+    ok.
+
+reset_log_store() ->
+    %% Drop both tables if they exist, then re-init from scratch.
+    [catch ets:delete(T) || T <- [aerpc_log_idx, aerpc_log_meta]],
+    aerpc_log_store:init(),
+    ok.
+
+insert_synthetic_log(Address, Height, TxIdx, LogIdx) ->
+    Topic = binary:copy(<<16#cc>>, 32),
+    Entry = aerpc_log_store:make_entry(
+              Address, Height, TxIdx, LogIdx,
+              [Topic], <<>>,
+              binary:copy(<<16#dd>>, 32),  %% block hash
+              binary:copy(<<16#ee>>, 32),  %% micro-block hash
+              binary:copy(<<16#ff>>, 32)), %% tx hash
+    aerpc_log_store:insert(Entry).
+
 bloom_set_bits_known_vector(_Config) ->
     A = binary:copy(<<16#11>>, 32),
     T = binary:copy(<<16#22>>, 32),
