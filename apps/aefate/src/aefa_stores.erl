@@ -99,7 +99,8 @@ initial_contract_store() ->
 
 -spec put_contract_store(pubkey(), aect_contracts_store:store(), store()) -> store().
 put_contract_store(Pubkey, Store, #store{cache = Cache} = S) ->
-    S#store{cache = Cache#{Pubkey => new_contract_cache_entry(Store)}}.
+    Entry = new_contract_cache_entry(Store),
+    S#store{cache = Cache#{Pubkey => Entry}}.
 
 -spec has_contract(pubkey(), store()) -> boolean().
 has_contract(Pubkey, #store{cache = Cache}) ->

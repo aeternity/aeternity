@@ -24,6 +24,8 @@
           new/1,
           put/3,
           put_map/2,
+          put_map_to_read_cache/2,
+          read_cache/1,
           remove/2,
           subtree/2,
           subtree_w_cache/2,
@@ -31,6 +33,9 @@
           serialize_for_client/1 ]).
 
 -export_type([store/0, key/0, val/0]).
+
+-spec read_cache(store()) -> #{key() => val()}.
+read_cache(#store{read_cache = RCache}) -> RCache.
 
 -spec write_cache(store()) -> #{key() => val()}.
 write_cache(#store{ cache = Cache }) -> Cache.
@@ -44,7 +49,7 @@ new() ->
 
 -spec new(aeu_mtrees:mtree()) -> store().
 new(Tree) ->
-    #store{ cache = #{}, read_cache = #{}, mtree = aeu_mp_trees:tree_no_cache(Tree) }.
+    #store{ cache = #{}, read_cache = #{}, mtree = Tree }.
 
 %% Returns empty binary if key is not in the store.
 -spec get(key(), store()) -> val().
@@ -60,9 +65,9 @@ get_w_cache(Key, #store{ cache = Cache, read_cache = RCache, mtree = Tree } = S)
             case RCache of
                 #{ Key := Val } -> {Val, S};
                 _               ->
-                    Val = aeu_mp_trees:get(Key, Tree),
+                    {Val, Tree1} = aeu_mp_trees:get_w_node_cache(Key, Tree),
                     RCache1 = RCache#{Key => Val},
-                    {Val, S#store{ read_cache = RCache1 }}
+                    {Val, S#store{ read_cache = RCache1, mtree = Tree1 }}
             end
     end.
 
@@ -77,6 +82,12 @@ put(Key, Val, Store = #store{ cache = Cache }) ->
 -spec put_map(#{key() => val()}, store()) -> store().
 put_map(Map, Store = #store{ cache = Cache }) ->
     Store#store{ cache = maps:merge(Cache, Map) }.
+
+%% Pre-populate read_cache with entries from the microblock store batch.
+%% Batch entries (newer, from prior txs in this microblock) override stale MPT reads.
+-spec put_map_to_read_cache(#{key() => val()}, store()) -> store().
+put_map_to_read_cache(Map, Store = #store{read_cache = RCache}) ->
+    Store#store{read_cache = maps:merge(RCache, Map)}.
 
 -spec contents(store()) -> #{key() := val()}.
 contents(Store) ->
