@@ -255,6 +255,13 @@ dispatch_method(<<"ae_sign">>, _Params) ->
     %% clause kept here so the dispatcher table is complete.
     {error, -32601, <<"Method not found">>};
 
+dispatch_method(<<"ae_signTransaction">>, _Params) ->
+    %% Signs a tx object with a node-held key and returns the RLP-encoded
+    %% bytes. Out of scope for v1, same reasons as ae_sign +
+    %% ae_sendTransaction: no node-held keys, no secp256k1 path, no
+    %% Eth-RLP envelope. Real signing belongs in client-side wallets.
+    {error, -32601, <<"Method not found">>};
+
 dispatch_method(<<"ae_syncing">>, _Params) ->
     %% Returns `false' when fully synced or an object with starting/current/
     %% highest block heights. AE's sync_progress emits {Syncing, Progress,

@@ -69,6 +69,7 @@
         , method_ae_sendRawTransaction/1
         , method_ae_sendTransaction/1
         , method_ae_sign/1
+        , method_ae_signTransaction/1
         ]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -130,6 +131,7 @@ all() ->
     , method_ae_sendRawTransaction
     , method_ae_sendTransaction
     , method_ae_sign
+    , method_ae_signTransaction
     ].
 
 %% ===================================================================
@@ -534,6 +536,20 @@ method_ae_sign(_Config) ->
             <<"id">>      => 1,
             <<"method">>  => <<"ae_sign">>,
             <<"params">>  => [<<"ak_xxx">>, <<"0xdeadbeef">>]},
+    ?assertMatch(#{<<"id">> := 1,
+                   <<"error">> := #{<<"code">>    := -32601,
+                                    <<"message">> := <<"Method not found">>}},
+                 aerpc:dispatch(Req)),
+    ok.
+
+method_ae_signTransaction(_Config) ->
+    %% v1: write-path stub. Same reasoning as ae_sign + ae_sendTransaction.
+    Req = #{<<"jsonrpc">> => <<"2.0">>,
+            <<"id">>      => 1,
+            <<"method">>  => <<"ae_signTransaction">>,
+            <<"params">>  => [#{<<"from">> => <<"ak_xxx">>,
+                                <<"to">>   => <<"ak_yyy">>,
+                                <<"value">> => <<"0x1">>}]},
     ?assertMatch(#{<<"id">> := 1,
                    <<"error">> := #{<<"code">>    := -32601,
                                     <<"message">> := <<"Method not found">>}},
