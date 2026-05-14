@@ -229,6 +229,17 @@ dispatch_method(<<"ae_sha3">>, [HexIn]) when is_binary(HexIn) ->
 dispatch_method(<<"ae_sha3">>, _Params) ->
     {error, -32602, <<"Invalid params">>};
 
+dispatch_method(<<"ae_sendRawTransaction">>, _Params) ->
+    %% Submits a pre-signed RLP-encoded payload to the mempool. Out of
+    %% scope for v1: AE uses ed25519 + a tagged-RLP envelope, so an
+    %% externally-signed payload has no AE pubkey to settle against and
+    %% would fail aetx_sign:deserialize_from_binary/1. A future phase
+    %% bridges this via a GA-auth contract (per-EOA secp256k1 verifier)
+    %% or a node-controlled relay key. Explicit clause kept here so the
+    %% dispatcher table is complete and the deliberate exclusion is
+    %% visible in the source.
+    {error, -32601, <<"Method not found">>};
+
 dispatch_method(<<"ae_syncing">>, _Params) ->
     %% Returns `false' when fully synced or an object with starting/current/
     %% highest block heights. AE's sync_progress emits {Syncing, Progress,

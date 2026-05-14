@@ -66,6 +66,7 @@
         , method_ae_newBlockFilter/1
         , method_ae_newFilter/1
         , method_ae_newPendingTransactionFilter/1
+        , method_ae_sendRawTransaction/1
         ]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -124,6 +125,7 @@ all() ->
     , method_ae_newBlockFilter
     , method_ae_newFilter
     , method_ae_newPendingTransactionFilter
+    , method_ae_sendRawTransaction
     ].
 
 %% ===================================================================
@@ -489,6 +491,21 @@ method_ae_newPendingTransactionFilter(_Config) ->
             <<"method">>  => <<"ae_newPendingTransactionFilter">>},
     ?assertMatch(#{<<"id">> := 1,
                    <<"error">> := #{<<"code">> := -32004}},
+                 aerpc:dispatch(Req)),
+    ok.
+
+method_ae_sendRawTransaction(_Config) ->
+    %% v1: write-path methods are explicitly out-of-scope and return
+    %% -32601. Same observable shape as the catch-all, but kept as an
+    %% explicit clause so the dispatcher table documents the
+    %% deliberate exclusion.
+    Req = #{<<"jsonrpc">> => <<"2.0">>,
+            <<"id">>      => 1,
+            <<"method">>  => <<"ae_sendRawTransaction">>,
+            <<"params">>  => [<<"0xdeadbeef">>]},
+    ?assertMatch(#{<<"id">> := 1,
+                   <<"error">> := #{<<"code">>    := -32601,
+                                    <<"message">> := <<"Method not found">>}},
                  aerpc:dispatch(Req)),
     ok.
 
