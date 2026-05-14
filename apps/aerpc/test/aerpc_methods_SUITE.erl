@@ -31,6 +31,7 @@
         , method_ae_getUncleByBlockNumberAndIndex/1
         , method_ae_netPeerCount/1
         , method_ae_protocolVersion/1
+        , method_ae_gasPrice/1
         ]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -54,6 +55,7 @@ all() ->
     , method_ae_getUncleByBlockNumberAndIndex
     , method_ae_netPeerCount
     , method_ae_protocolVersion
+    , method_ae_gasPrice
     ].
 
 %% ===================================================================
@@ -209,6 +211,9 @@ method_ae_netPeerCount(_Config) ->
 
 method_ae_protocolVersion(_Config) ->
     routed(<<"ae_protocolVersion">>).
+
+method_ae_gasPrice(_Config) ->
+    routed(<<"ae_gasPrice">>).
 
 %% ===================================================================
 %% Helpers

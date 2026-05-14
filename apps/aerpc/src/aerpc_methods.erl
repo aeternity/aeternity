@@ -69,5 +69,13 @@ dispatch_method(<<"ae_protocolVersion">>, _Params) ->
             {ok, integer_to_binary(aec_headers:version(Header))}
     end;
 
+dispatch_method(<<"ae_gasPrice">>, _Params) ->
+    %% v1: report the mempool's minimum-miner-gas-price filter (operator-
+    %% controlled plus protocol minimum). A walk over recent blocks for
+    %% a network-derived estimate would belong in aecore (not aehttp) to
+    %% keep aerpc dependency-clean; deferred.
+    Price = aec_tx_pool:minimum_miner_gas_price(),
+    {ok, aerpc_encoding:to_quantity(Price)};
+
 dispatch_method(_Method, _Params) ->
     {error, -32601, <<"Method not found">>}.
