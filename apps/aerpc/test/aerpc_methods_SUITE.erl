@@ -65,6 +65,7 @@
         , method_ae_getFilterLogs/1
         , method_ae_newBlockFilter/1
         , method_ae_newFilter/1
+        , method_ae_newPendingTransactionFilter/1
         ]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -122,6 +123,7 @@ all() ->
     , method_ae_getFilterLogs
     , method_ae_newBlockFilter
     , method_ae_newFilter
+    , method_ae_newPendingTransactionFilter
     ].
 
 %% ===================================================================
@@ -475,6 +477,16 @@ method_ae_newFilter(_Config) ->
             <<"id">>      => 1,
             <<"method">>  => <<"ae_newFilter">>,
             <<"params">>  => [#{<<"address">> => <<"ct_xxx">>}]},
+    ?assertMatch(#{<<"id">> := 1,
+                   <<"error">> := #{<<"code">> := -32004}},
+                 aerpc:dispatch(Req)),
+    ok.
+
+method_ae_newPendingTransactionFilter(_Config) ->
+    %% v1.5-deferred: filter registry not yet implemented.
+    Req = #{<<"jsonrpc">> => <<"2.0">>,
+            <<"id">>      => 1,
+            <<"method">>  => <<"ae_newPendingTransactionFilter">>},
     ?assertMatch(#{<<"id">> := 1,
                    <<"error">> := #{<<"code">> := -32004}},
                  aerpc:dispatch(Req)),
