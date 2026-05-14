@@ -82,6 +82,13 @@ dispatch_method(<<"ae_chainId">>, _Params) ->
     Numeric = aerpc_chain_id:to_numeric(NetworkId),
     {ok, aerpc_encoding:to_quantity(Numeric)};
 
+dispatch_method(<<"ae_netVersion">>, _Params) ->
+    %% Same numeric id as ae_chainId, but emitted as a decimal string
+    %% per the net_version convention.
+    NetworkId = aec_governance:get_network_id(),
+    Numeric = aerpc_chain_id:to_numeric(NetworkId),
+    {ok, integer_to_binary(Numeric)};
+
 dispatch_method(<<"ae_sha3">>, [HexIn]) when is_binary(HexIn) ->
     %% Keccak-256 of the supplied bytes. Uses the same `sha3' dep that
     %% backs aec_hash:hash(evm, _) -- which is configured to produce the

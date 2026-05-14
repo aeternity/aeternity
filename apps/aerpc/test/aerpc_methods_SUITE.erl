@@ -39,6 +39,7 @@
         , encoding_hex_data_roundtrip/1
         , method_ae_chainId/1
         , chain_id_lookup_table/1
+        , method_ae_netVersion/1
         ]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -70,6 +71,7 @@ all() ->
     , encoding_hex_data_roundtrip
     , method_ae_chainId
     , chain_id_lookup_table
+    , method_ae_netVersion
     ].
 
 %% ===================================================================
@@ -270,6 +272,9 @@ method_ae_sha3_invalid_params(_Config) ->
 
 method_ae_chainId(_Config) ->
     routed(<<"ae_chainId">>).
+
+method_ae_netVersion(_Config) ->
+    routed(<<"ae_netVersion">>).
 
 chain_id_lookup_table(_Config) ->
     %% Pure lookup: hermetically testable.
