@@ -195,6 +195,12 @@ dispatch_method(<<"ae_getFilterLogs">>, _Params) ->
     %% Same gating as ae_getFilterChanges: needs the filter registry.
     {error, -32004, <<"Filter registry not yet implemented (v1.5)">>};
 
+dispatch_method(<<"ae_newBlockFilter">>, _Params) ->
+    %% Allocates a server-side filter that fires on every new key-block.
+    %% Needs the filter registry (aerpc_filter_registry); deferred to v1.5
+    %% alongside the rest of the filter family.
+    {error, -32004, <<"Filter registry not yet implemented (v1.5)">>};
+
 dispatch_method(<<"ae_sha3">>, [HexIn]) when is_binary(HexIn) ->
     %% Keccak-256 of the supplied bytes. Uses the same `sha3' dep that
     %% backs aec_hash:hash(evm, _) -- which is configured to produce the

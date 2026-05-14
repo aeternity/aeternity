@@ -63,6 +63,7 @@
         , method_ae_getLogs_range_too_wide/1
         , method_ae_getFilterChanges/1
         , method_ae_getFilterLogs/1
+        , method_ae_newBlockFilter/1
         ]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -118,6 +119,7 @@ all() ->
     , method_ae_getLogs_range_too_wide
     , method_ae_getFilterChanges
     , method_ae_getFilterLogs
+    , method_ae_newBlockFilter
     ].
 
 %% ===================================================================
@@ -450,6 +452,16 @@ method_ae_getFilterLogs(_Config) ->
             <<"id">>      => 1,
             <<"method">>  => <<"ae_getFilterLogs">>,
             <<"params">>  => [<<"0x1">>]},
+    ?assertMatch(#{<<"id">> := 1,
+                   <<"error">> := #{<<"code">> := -32004}},
+                 aerpc:dispatch(Req)),
+    ok.
+
+method_ae_newBlockFilter(_Config) ->
+    %% v1.5-deferred: filter registry not yet implemented.
+    Req = #{<<"jsonrpc">> => <<"2.0">>,
+            <<"id">>      => 1,
+            <<"method">>  => <<"ae_newBlockFilter">>},
     ?assertMatch(#{<<"id">> := 1,
                    <<"error">> := #{<<"code">> := -32004}},
                  aerpc:dispatch(Req)),
