@@ -247,6 +247,14 @@ dispatch_method(<<"ae_sendTransaction">>, _Params) ->
     %% kept here so the dispatcher table is complete.
     {error, -32601, <<"Method not found">>};
 
+dispatch_method(<<"ae_sign">>, _Params) ->
+    %% Signs an arbitrary message with a node-held key under the eth
+    %% "\x19Ethereum Signed Message:\n" prefix. Out of scope for v1:
+    %% the node does not host user wallet keys, AE accounts use ed25519
+    %% (not secp256k1), and the prefix has no AE analogue. Explicit
+    %% clause kept here so the dispatcher table is complete.
+    {error, -32601, <<"Method not found">>};
+
 dispatch_method(<<"ae_syncing">>, _Params) ->
     %% Returns `false' when fully synced or an object with starting/current/
     %% highest block heights. AE's sync_progress emits {Syncing, Progress,
