@@ -56,6 +56,7 @@
         , method_ae_getTransactionByBlockNumberAndIndex/1
         , method_ae_getTransactionReceipt/1
         , bloom_empty/1
+        , method_ae_call/1
         ]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -104,6 +105,7 @@ all() ->
     , method_ae_getTransactionByBlockNumberAndIndex
     , method_ae_getTransactionReceipt
     , bloom_empty
+    , method_ae_call
     ].
 
 %% ===================================================================
@@ -369,6 +371,16 @@ bloom_empty(_Config) ->
     Empty = aerpc_bloom:empty(),
     ?assertEqual(<<"0x", (binary:copy(<<"0">>, 512))/binary>>, Empty),
     ?assertEqual(Empty, aerpc_bloom:of_logs([])),
+    ok.
+
+method_ae_call(_Config) ->
+    Req = #{<<"jsonrpc">> => <<"2.0">>,
+            <<"id">>      => 1,
+            <<"method">>  => <<"ae_call">>,
+            <<"params">>  => [#{<<"to">> => <<"ct_xxx">>}, <<"latest">>]},
+    ?assertMatch(#{<<"id">> := 1,
+                   <<"error">> := #{<<"code">> := -32004}},
+                 aerpc:dispatch(Req)),
     ok.
 
 %% Hermetic: a 0x-hex of the right length is always accepted; anything

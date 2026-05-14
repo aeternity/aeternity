@@ -166,6 +166,15 @@ dispatch_method(<<"ae_getTransactionReceipt">>, [HashIn])
 dispatch_method(<<"ae_getTransactionReceipt">>, _Params) ->
     {error, -32602, <<"Invalid params">>};
 
+dispatch_method(<<"ae_call">>, _Params) ->
+    %% v1: gated off. A real implementation builds a synthetic
+    %% contract_call_tx and runs it through aec_dry_run:dry_run/4. FATE
+    %% contracts cannot produce Eth-ABI-compatible return data without a
+    %% bridge, and AEVM-Solidity contracts are effectively unused on
+    %% mainnet, so v1 returns -32004 ("operation not supported") for all
+    %% callers. Spec stub kept here so the dispatcher table is complete.
+    {error, -32004, <<"Operation not supported (FATE contract)">>};
+
 dispatch_method(<<"ae_sha3">>, [HexIn]) when is_binary(HexIn) ->
     %% Keccak-256 of the supplied bytes. Uses the same `sha3' dep that
     %% backs aec_hash:hash(evm, _) -- which is configured to produce the
