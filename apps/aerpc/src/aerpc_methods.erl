@@ -95,6 +95,12 @@ dispatch_method(<<"ae_getBlockByHash">>, [HashIn, FullTxs])
 dispatch_method(<<"ae_getBlockByHash">>, _Params) ->
     {error, -32602, <<"Invalid params">>};
 
+dispatch_method(<<"ae_getBlockByNumber">>, [TagOrHex, FullTxs])
+  when is_binary(TagOrHex), is_boolean(FullTxs) ->
+    aerpc_block:by_height(TagOrHex, FullTxs);
+dispatch_method(<<"ae_getBlockByNumber">>, _Params) ->
+    {error, -32602, <<"Invalid params">>};
+
 dispatch_method(<<"ae_sha3">>, [HexIn]) when is_binary(HexIn) ->
     %% Keccak-256 of the supplied bytes. Uses the same `sha3' dep that
     %% backs aec_hash:hash(evm, _) -- which is configured to produce the
