@@ -30,6 +30,7 @@
         , method_ae_getUncleByBlockHashAndIndex/1
         , method_ae_getUncleByBlockNumberAndIndex/1
         , method_ae_netPeerCount/1
+        , method_ae_protocolVersion/1
         ]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -52,6 +53,7 @@ all() ->
     , method_ae_getUncleByBlockHashAndIndex
     , method_ae_getUncleByBlockNumberAndIndex
     , method_ae_netPeerCount
+    , method_ae_protocolVersion
     ].
 
 %% ===================================================================
@@ -204,6 +206,9 @@ method_ae_netPeerCount(_Config) ->
     %% Hermetic: only verify dispatcher routes the method. Actual count
     %% requires aecore running and is covered by the integration suite.
     routed(<<"ae_netPeerCount">>).
+
+method_ae_protocolVersion(_Config) ->
+    routed(<<"ae_protocolVersion">>).
 
 %% ===================================================================
 %% Helpers

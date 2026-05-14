@@ -59,5 +59,15 @@ dispatch_method(<<"ae_netPeerCount">>, _Params) ->
     Count = aec_peers:count(connections),
     {ok, aerpc_encoding:to_quantity(Count)};
 
+dispatch_method(<<"ae_protocolVersion">>, _Params) ->
+    %% AE consensus protocol number for the current top key-block, emitted
+    %% as a decimal string. Spec is largely advisory (Geth itself dropped it).
+    case aec_chain:top_header() of
+        undefined ->
+            {error, -32603, <<"Chain not initialized">>};
+        Header ->
+            {ok, integer_to_binary(aec_headers:version(Header))}
+    end;
+
 dispatch_method(_Method, _Params) ->
     {error, -32601, <<"Method not found">>}.
