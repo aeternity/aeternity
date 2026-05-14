@@ -24,6 +24,7 @@
         , encoding_quantity_zero/1
         , method_ae_accounts/1
         , method_ae_netListening/1
+        , method_ae_getStorageAt/1
         ]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -40,6 +41,7 @@ all() ->
     , encoding_quantity_zero
     , method_ae_accounts
     , method_ae_netListening
+    , method_ae_getStorageAt
     ].
 
 %% ===================================================================
@@ -137,5 +139,15 @@ method_ae_netListening(_Config) ->
             <<"id">>      => 1,
             <<"method">>  => <<"ae_netListening">>},
     ?assertMatch(#{<<"id">> := 1, <<"result">> := true},
+                 aerpc:dispatch(Req)),
+    ok.
+
+method_ae_getStorageAt(_Config) ->
+    Req = #{<<"jsonrpc">> => <<"2.0">>,
+            <<"id">>      => 1,
+            <<"method">>  => <<"ae_getStorageAt">>,
+            <<"params">>  => [<<"ct_anything">>, <<"0x0">>, <<"latest">>]},
+    Expected = <<"0x", (binary:copy(<<"0">>, 64))/binary>>,
+    ?assertMatch(#{<<"id">> := 1, <<"result">> := R} when R =:= Expected,
                  aerpc:dispatch(Req)),
     ok.

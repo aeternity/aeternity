@@ -31,5 +31,11 @@ dispatch_method(<<"ae_netListening">>, _Params) ->
     %% If the node is able to answer this RPC it is, by definition, listening.
     {ok, true};
 
+dispatch_method(<<"ae_getStorageAt">>, _Params) ->
+    %% FATE contracts use a typed key-value store that does not map onto
+    %% EVM-style 32-byte slot indices. v1 returns a zero word; a real
+    %% mapping is deferred until a slot-derivation convention is agreed.
+    {ok, <<"0x", (binary:copy(<<"0">>, 64))/binary>>};
+
 dispatch_method(_Method, _Params) ->
     {error, -32601, <<"Method not found">>}.
