@@ -17,6 +17,8 @@
         , by_block_hash_index/2
         , by_block_height_index/2
         , receipt/1
+        , block_receipts_by_hash/1
+        , block_receipts_by_height/1
         ]).
 
 %% ===================================================================
@@ -97,6 +99,41 @@ receipt(HashIn) when is_binary(HashIn) ->
 receipt(_) ->
     {error, -32602, <<"Invalid params">>}.
 
+%% @doc Bulk-fetch every receipt for a block, addressed by its key-block
+%% hash. Threads cumulative-gas across the fold so consecutive receipts
+%% inside the same block have a monotonically non-decreasing
+%% cumulativeGasUsed -- which is what eth-shaped indexers expect.
+%% Returns `{ok, null}' if the block isn't found.
+-spec block_receipts_by_hash(binary()) ->
+    {ok, [map()] | null} | {error, integer(), binary()}.
+block_receipts_by_hash(HashIn) when is_binary(HashIn) ->
+    case aerpc_block:decode_block_hash(HashIn) of
+        {ok, BlockHash} -> {ok, fold_block_receipts(BlockHash)};
+        {error, _, _} = Err -> Err
+    end;
+block_receipts_by_hash(_) ->
+    {error, -32602, <<"Invalid params">>}.
+
+%% @doc Bulk-fetch every receipt for a block, addressed by tag/height.
+-spec block_receipts_by_height(binary()) ->
+    {ok, [map()] | null} | {error, integer(), binary()}.
+block_receipts_by_height(TagOrHex) when is_binary(TagOrHex) ->
+    case aerpc_block:resolve_tag(TagOrHex) of
+        {ok, Height} ->
+            case aec_chain:get_key_block_by_height(Height) of
+                {ok, KeyBlock} ->
+                    {ok, BlockHash} =
+                        aec_blocks:hash_internal_representation(KeyBlock),
+                    {ok, fold_block_receipts(BlockHash)};
+                {error, _Reason} ->
+                    {ok, null}
+            end;
+        {error, _, _} = Err ->
+            Err
+    end;
+block_receipts_by_height(_) ->
+    {error, -32602, <<"Invalid params">>}.
+
 %% ===================================================================
 %% Internal
 %% ===================================================================
@@ -115,6 +152,27 @@ single_receipt(BlockHash, TxHash) ->
         error ->
             {ok, null}
     end.
+
+%% @doc Build receipts for every tx in the generation, in block order.
+%% Returns `null' if the block doesn't exist, `[]' if it has no txs.
+fold_block_receipts(BlockHash) ->
+    case aec_chain:get_generation_by_hash(BlockHash, forward) of
+        {ok, #{micro_blocks := MBs}} ->
+            Flat = lists:flatten([aec_blocks:txs(MB) || MB <- MBs]),
+            BlockNumber = block_number(BlockHash),
+            fold_receipts_inner(Flat, BlockHash, BlockNumber, 0, 0, []);
+        error ->
+            null
+    end.
+
+fold_receipts_inner([], _BH, _BN, _Idx, _Cum, Acc) ->
+    lists:reverse(Acc);
+fold_receipts_inner([SignedTx | Rest], BlockHash, BlockNumber, Idx, Cum, Acc) ->
+    TxHash = aetx_sign:hash(SignedTx),
+    {Receipt, NewCum} =
+        build_receipt(SignedTx, BlockHash, TxHash, BlockNumber, Idx, Cum),
+    fold_receipts_inner(Rest, BlockHash, BlockNumber, Idx + 1, NewCum,
+                        [Receipt | Acc]).
 
 walk_to_tx([], _TxHash, _BH, _BN, _Idx, _Cum) ->
     {ok, null};

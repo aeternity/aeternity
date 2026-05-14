@@ -166,6 +166,22 @@ dispatch_method(<<"ae_getTransactionReceipt">>, [HashIn])
 dispatch_method(<<"ae_getTransactionReceipt">>, _Params) ->
     {error, -32602, <<"Invalid params">>};
 
+%% Bulk receipt fetch. Accepts either a tag/height (latest, 0x..., kh_..)
+%% or a block hash (kh_..., 0x...-32 bytes). The hash form gives the
+%% indexer reorg safety: ask for the hash of the block whose logs you
+%% just processed, not "latest" -- which might have advanced.
+dispatch_method(<<"ae_getBlockReceipts">>, [HashOrTag])
+  when is_binary(HashOrTag) ->
+    case HashOrTag of
+        <<"kh_", _/binary>> -> aerpc_tx:block_receipts_by_hash(HashOrTag);
+        <<"0x", Hex/binary>> when byte_size(Hex) =:= 64 ->
+            aerpc_tx:block_receipts_by_hash(HashOrTag);
+        _Other ->
+            aerpc_tx:block_receipts_by_height(HashOrTag)
+    end;
+dispatch_method(<<"ae_getBlockReceipts">>, _Params) ->
+    {error, -32602, <<"Invalid params">>};
+
 dispatch_method(<<"ae_call">>, [TxObj, BlockId])
   when is_map(TxObj), is_binary(BlockId) ->
     aerpc_call:call(TxObj, BlockId);

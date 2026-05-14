@@ -55,6 +55,9 @@
         , method_ae_getTransactionByBlockHashAndIndex/1
         , method_ae_getTransactionByBlockNumberAndIndex/1
         , method_ae_getTransactionReceipt/1
+        , method_ae_getBlockReceipts_routed_by_tag/1
+        , method_ae_getBlockReceipts_routed_by_hash/1
+        , method_ae_getBlockReceipts_invalid_params/1
         , bloom_empty/1
         , method_ae_call/1
         , method_ae_call_missing_to/1
@@ -124,6 +127,9 @@ all() ->
     , method_ae_getTransactionByBlockHashAndIndex
     , method_ae_getTransactionByBlockNumberAndIndex
     , method_ae_getTransactionReceipt
+    , method_ae_getBlockReceipts_routed_by_tag
+    , method_ae_getBlockReceipts_routed_by_hash
+    , method_ae_getBlockReceipts_invalid_params
     , bloom_empty
     , method_ae_call
     , method_ae_call_missing_to
@@ -404,6 +410,26 @@ method_ae_getTransactionByBlockNumberAndIndex(_Config) ->
 
 method_ae_getTransactionReceipt(_Config) ->
     routed(<<"ae_getTransactionReceipt">>).
+
+method_ae_getBlockReceipts_routed_by_tag(_Config) ->
+    %% "latest" goes through the height-resolution path; chain-dep so
+    %% only routing is asserted hermetically.
+    routed(<<"ae_getBlockReceipts">>, [<<"latest">>]).
+
+method_ae_getBlockReceipts_routed_by_hash(_Config) ->
+    %% A `kh_...' prefixed binary triggers the hash-resolution branch.
+    routed(<<"ae_getBlockReceipts">>, [<<"kh_anything">>]).
+
+method_ae_getBlockReceipts_invalid_params(_Config) ->
+    %% Non-binary param fails the dispatcher guard.
+    Req = #{<<"jsonrpc">> => <<"2.0">>,
+            <<"id">>      => 1,
+            <<"method">>  => <<"ae_getBlockReceipts">>,
+            <<"params">>  => [42]},
+    ?assertMatch(#{<<"id">> := 1,
+                   <<"error">> := #{<<"code">> := -32602}},
+                 aerpc:dispatch(Req)),
+    ok.
 
 bloom_empty(_Config) ->
     %% Hermetic: the v1 bloom is always 256 zero bytes (= 512 hex chars
@@ -708,9 +734,13 @@ encoding_hex_data_roundtrip(_Config) ->
 %% or crashes (typical in a hermetic environment with no apps started).
 %% Fails only if the catch-all method-not-found clause fires.
 routed(Method) ->
+    routed(Method, []).
+
+routed(Method, Params) ->
     Req = #{<<"jsonrpc">> => <<"2.0">>,
             <<"id">>      => 1,
-            <<"method">>  => Method},
+            <<"method">>  => Method,
+            <<"params">>  => Params},
     try aerpc:dispatch(Req) of
         #{<<"error">> := #{<<"code">> := -32601}} ->
             ct:fail({not_routed, Method});
