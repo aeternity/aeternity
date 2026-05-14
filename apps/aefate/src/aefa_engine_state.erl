@@ -244,14 +244,21 @@ contract_fate_bytecode(Pubkey, #es{chain_api = AS0} = ES0) ->
     case maps:get(Pubkey, CodeCache, void) of
         void ->
             ES1 = spend_gas([{?IRIS_PROTOCOL_VSN, 4900}, {?LIMA_PROTOCOL_VSN, 0}], ES0),
-            case aefa_chain_api:contract_fate_bytecode(Pubkey, AS0) of
-                {ok, ContractCode, VMV, AS1} ->
+            case aec_fate_bytecode_cache:lookup(Pubkey) of
+                {ok, ContractCode, VMV} ->
                     CodeCache1 = maps:put(Pubkey, {ContractCode, VMV}, CodeCache),
-                    ES2 = set_code_cache(CodeCache1, ES1),
-                    ES3 = set_chain_api(AS1, ES2),
-                    {ok, ContractCode, VMV, ES3};
-                error ->
-                    error
+                    {ok, ContractCode, VMV, set_code_cache(CodeCache1, ES1)};
+                miss ->
+                    case aefa_chain_api:contract_fate_bytecode(Pubkey, AS0) of
+                        {ok, ContractCode, VMV, AS1} ->
+                            ok = aec_fate_bytecode_cache:insert(Pubkey, ContractCode, VMV),
+                            CodeCache1 = maps:put(Pubkey, {ContractCode, VMV}, CodeCache),
+                            ES2 = set_code_cache(CodeCache1, ES1),
+                            ES3 = set_chain_api(AS1, ES2),
+                            {ok, ContractCode, VMV, ES3};
+                        error ->
+                            error
+                    end
             end;
         {ContractCode, VMV} ->
             {ok, ContractCode, VMV, ES0}
