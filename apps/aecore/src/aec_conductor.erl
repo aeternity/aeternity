@@ -929,6 +929,11 @@ preempt_on_new_top(#state{ top_block_hash = OldHash,
                                    key_block_candidates = undefined },
 
             [ SignModule:promote_candidate(aec_blocks:miner(NewBlock)) || BlockType == key ],
+            %% Clear the block-level contract cache on every fork switch.
+            %% Clearing only on key-epoch change misses intra-epoch microblock forks:
+            %% two competing micro chains share the same keyblock (OldKeyHash =:= KeyHash),
+            %% so the old condition skipped the clear and served stale contract state.
+            aec_block_contract_cache:clear(),
 
             {changed, BlockType, NewBlock, create_key_block_candidate(State5)}
     end.
