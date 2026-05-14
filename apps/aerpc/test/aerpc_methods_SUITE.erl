@@ -40,6 +40,9 @@
         , method_ae_chainId/1
         , chain_id_lookup_table/1
         , method_ae_netVersion/1
+        , method_ae_getBlockByHash/1
+        , method_ae_getBlockByHash_invalid_params/1
+        , block_resolve_tag/1
         ]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -72,6 +75,9 @@ all() ->
     , method_ae_chainId
     , chain_id_lookup_table
     , method_ae_netVersion
+    , method_ae_getBlockByHash
+    , method_ae_getBlockByHash_invalid_params
+    , block_resolve_tag
     ].
 
 %% ===================================================================
@@ -275,6 +281,31 @@ method_ae_chainId(_Config) ->
 
 method_ae_netVersion(_Config) ->
     routed(<<"ae_netVersion">>).
+
+method_ae_getBlockByHash(_Config) ->
+    routed(<<"ae_getBlockByHash">>).
+
+method_ae_getBlockByHash_invalid_params(_Config) ->
+    %% Non-boolean second arg triggers -32602 without touching the chain.
+    Req = #{<<"jsonrpc">> => <<"2.0">>,
+            <<"id">>      => 1,
+            <<"method">>  => <<"ae_getBlockByHash">>,
+            <<"params">>  => [<<"kh_xxx">>, <<"not-a-bool">>]},
+    ?assertMatch(#{<<"id">> := 1,
+                   <<"error">> := #{<<"code">> := -32602}},
+                 aerpc:dispatch(Req)),
+    ok.
+
+%% Hermetic: tag resolution for any tag that does NOT consult the
+%% chain. "earliest" returns 0 deterministically; bad input returns
+%% an invalid-params error tuple.
+block_resolve_tag(_Config) ->
+    ?assertEqual({ok, 0}, aerpc_block:resolve_tag(<<"earliest">>)),
+    ?assertEqual({ok, 16#deadbeef},
+                 aerpc_block:resolve_tag(<<"0xdeadbeef">>)),
+    ?assertMatch({error, -32602, _},
+                 aerpc_block:resolve_tag(<<"banana">>)),
+    ok.
 
 chain_id_lookup_table(_Config) ->
     %% Pure lookup: hermetically testable.

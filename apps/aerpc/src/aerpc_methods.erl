@@ -89,6 +89,12 @@ dispatch_method(<<"ae_netVersion">>, _Params) ->
     Numeric = aerpc_chain_id:to_numeric(NetworkId),
     {ok, integer_to_binary(Numeric)};
 
+dispatch_method(<<"ae_getBlockByHash">>, [HashIn, FullTxs])
+  when is_binary(HashIn), is_boolean(FullTxs) ->
+    aerpc_block:by_hash(HashIn, FullTxs);
+dispatch_method(<<"ae_getBlockByHash">>, _Params) ->
+    {error, -32602, <<"Invalid params">>};
+
 dispatch_method(<<"ae_sha3">>, [HexIn]) when is_binary(HexIn) ->
     %% Keccak-256 of the supplied bytes. Uses the same `sha3' dep that
     %% backs aec_hash:hash(evm, _) -- which is configured to produce the
