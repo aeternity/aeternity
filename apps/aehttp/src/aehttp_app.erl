@@ -146,7 +146,11 @@ start_http_api(Target, LogicHandler) ->
             _ = aehttp_api_validate:validator(?OAS3)
     end,
 
-    Paths = aehttp_api_router:get_paths(Target, LogicHandler),
+    Paths0 = aehttp_api_router:get_paths(Target, LogicHandler),
+    Paths = case Target of
+                external -> aehttp_rpc_router:routes() ++ Paths0;
+                _        -> Paths0
+            end,
     Dispatch = cowboy_router:compile([{'_', Paths}]),
     Opts = #{ num_acceptors => PoolSize
             , socket_opts => [ {port, Port}
