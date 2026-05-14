@@ -45,6 +45,7 @@
         , block_resolve_tag/1
         , method_ae_getBlockByNumber/1
         , method_ae_getBlockTransactionCountByHash/1
+        , method_ae_getBlockTransactionCountByNumber/1
         ]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -82,6 +83,7 @@ all() ->
     , block_resolve_tag
     , method_ae_getBlockByNumber
     , method_ae_getBlockTransactionCountByHash
+    , method_ae_getBlockTransactionCountByNumber
     ].
 
 %% ===================================================================
@@ -305,6 +307,9 @@ method_ae_getBlockByNumber(_Config) ->
 
 method_ae_getBlockTransactionCountByHash(_Config) ->
     routed(<<"ae_getBlockTransactionCountByHash">>).
+
+method_ae_getBlockTransactionCountByNumber(_Config) ->
+    routed(<<"ae_getBlockTransactionCountByNumber">>).
 
 %% Hermetic: tag resolution for any tag that does NOT consult the
 %% chain. "earliest" returns 0 deterministically; bad input returns

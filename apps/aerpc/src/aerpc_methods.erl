@@ -107,6 +107,12 @@ dispatch_method(<<"ae_getBlockTransactionCountByHash">>, [HashIn])
 dispatch_method(<<"ae_getBlockTransactionCountByHash">>, _Params) ->
     {error, -32602, <<"Invalid params">>};
 
+dispatch_method(<<"ae_getBlockTransactionCountByNumber">>, [TagOrHex])
+  when is_binary(TagOrHex) ->
+    aerpc_block:tx_count_by_height(TagOrHex);
+dispatch_method(<<"ae_getBlockTransactionCountByNumber">>, _Params) ->
+    {error, -32602, <<"Invalid params">>};
+
 dispatch_method(<<"ae_sha3">>, [HexIn]) when is_binary(HexIn) ->
     %% Keccak-256 of the supplied bytes. Uses the same `sha3' dep that
     %% backs aec_hash:hash(evm, _) -- which is configured to produce the
