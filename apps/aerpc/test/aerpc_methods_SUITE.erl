@@ -86,6 +86,8 @@
         , subscriptions_unsubscribe_idempotent/1
         , subscriptions_drop_owner_releases/1
         , subscriptions_owner_death_releases/1
+        , bloom_of_one_log/1
+        , bloom_set_bits_known_vector/1
         ]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -164,6 +166,8 @@ all() ->
     , subscriptions_unsubscribe_idempotent
     , subscriptions_drop_owner_releases
     , subscriptions_owner_death_releases
+    , bloom_of_one_log
+    , bloom_set_bits_known_vector
     ].
 
 %% ===================================================================
@@ -444,11 +448,54 @@ method_ae_getBlockReceipts_invalid_params(_Config) ->
     ok.
 
 bloom_empty(_Config) ->
-    %% Hermetic: the v1 bloom is always 256 zero bytes (= 512 hex chars
-    %% plus the 0x prefix).
+    %% Hermetic: the empty bloom is 256 zero bytes (= 512 hex chars
+    %% plus the 0x prefix). of_logs([]) shortcuts to the same constant.
     Empty = aerpc_bloom:empty(),
     ?assertEqual(<<"0x", (binary:copy(<<"0">>, 512))/binary>>, Empty),
     ?assertEqual(Empty, aerpc_bloom:of_logs([])),
+    ok.
+
+%% A single log with one address + one topic must set exactly 6 bits in
+%% the bloom (3 per item). We don't check the *positions* here (those
+%% depend on the keccak digest of the item bytes), only the bit count
+%% and that the output is non-empty.
+bloom_of_one_log(_Config) ->
+    Addr  = binary:copy(<<16#aa>>, 32),
+    Topic = binary:copy(<<16#bb>>, 32),
+    Hex   = aerpc_bloom:of_logs([{Addr, [Topic], <<>>}]),
+    %% Strip "0x" and decode back to raw bytes.
+    <<"0x", HexBody/binary>> = Hex,
+    Bin = binary:decode_hex(HexBody),
+    %% A single log contributes 1 address + N topics; here N=1 -> 2 items
+    %% * 3 bits = 6 bits set. (Two items could collide on a bit so this
+    %% is an upper bound -- assert "at least 1, at most 6" to keep the
+    %% test stable under hash-collision in pathological vectors.)
+    Count = count_bits(Bin),
+    ?assert(Count >= 1),
+    ?assert(Count =< 6),
+    %% Empty list still yields the empty bloom.
+    ?assertEqual(aerpc_bloom:empty(), aerpc_bloom:of_logs([])),
+    ok.
+
+count_bits(Bin) ->
+    count_bits(Bin, 0).
+count_bits(<<>>, Acc) -> Acc;
+count_bits(<<B:8, Rest/binary>>, Acc) ->
+    count_bits(Rest, Acc + popcount8(B)).
+popcount8(B) ->
+    lists:sum([(B bsr I) band 1 || I <- lists:seq(0, 7)]).
+
+%% Deterministic: two calls with the same input produce byte-identical
+%% blooms (no per-process state leaks).
+bloom_set_bits_known_vector(_Config) ->
+    A = binary:copy(<<16#11>>, 32),
+    T = binary:copy(<<16#22>>, 32),
+    B1 = aerpc_bloom:of_logs([{A, [T], <<>>}]),
+    B2 = aerpc_bloom:of_logs([{A, [T], <<>>}]),
+    ?assertEqual(B1, B2),
+    %% Different input -> (almost certainly) different bloom.
+    B3 = aerpc_bloom:of_logs([{<<"different">>, [T], <<>>}]),
+    ?assertNotEqual(B1, B3),
     ok.
 
 method_ae_call(_Config) ->

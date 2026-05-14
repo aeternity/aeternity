@@ -13,7 +13,7 @@
 %%%-------------------------------------------------------------------
 -module(aerpc_logs).
 
--export([get_logs/1]).
+-export([get_logs/1, raw_logs_for_block/1]).
 
 %% Maximum span of generations a single one-shot scan may cover. Without
 %% a bound a "fromBlock: 0, toBlock: latest" query would walk the entire
@@ -34,6 +34,23 @@ get_logs(Filter) when is_map(Filter) ->
     end;
 get_logs(_) ->
     {error, -32602, <<"Invalid params">>}.
+
+%% @doc Pull every raw log entry emitted in a single key-block.
+%% Returns `[{Address, Topics, Data}]' (the AE-native `aect_call:log/1'
+%% triples) without filtering or shaping. Used by the bloom builder
+%% and the subscription log fan-out path; both want the unshaped
+%% bytes for either hashing or downstream serialization.
+-spec raw_logs_for_block(binary()) ->
+    [{binary(), [binary()], binary()}].
+raw_logs_for_block(KeyBlockHash) when is_binary(KeyBlockHash) ->
+    case aec_chain:get_generation_by_hash(KeyBlockHash, forward) of
+        {ok, #{micro_blocks := MBs}} ->
+            lists:flatten(
+                [logs_for_tx(STx, KeyBlockHash)
+                 || MB <- MBs, STx <- aec_blocks:txs(MB)]);
+        error ->
+            []
+    end.
 
 %% ===================================================================
 %% Filter parsing

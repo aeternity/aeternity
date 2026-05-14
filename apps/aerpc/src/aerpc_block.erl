@@ -25,10 +25,8 @@
 
 -define(EMPTY_LIST_KECCAK,
         <<"0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347">>).
--define(ZERO_WORD,
-        <<"0x0000000000000000000000000000000000000000000000000000000000000000">>).
--define(EMPTY_BLOOM,
-        <<"0x", (binary:copy(<<"0">>, 512))/binary>>).
+-define(EMPTY_TRIE_ROOT,
+        <<"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421">>).
 -define(ZERO_NONCE, <<"0x0000000000000000">>).
 
 %% ===================================================================
@@ -201,27 +199,66 @@ to_eth_shape(KeyBlock, MBs, Hash, FullTxs) ->
     Nonce = aec_headers:nonce(Header),
     GasUsed = sum_gas_used(MBs),
     Txs = transactions_field(MBs, Height, Hash, FullTxs),
+    %% Pull the raw `{Address, Topics, Data}' triples once, both the
+    %% bloom and the (future) receipts root derive from these.
+    RawLogs    = aerpc_logs:raw_logs_for_block(Hash),
+    Bloom      = aerpc_bloom:of_logs(RawLogs),
+    Size       = block_serialized_size(KeyBlock, MBs),
+    GasLimit   = aec_governance:block_gas_limit(),
+    ReceiptsR  = receipts_root_marker(MBs),
     #{
         <<"number">>           => aerpc_encoding:to_quantity(Height),
         <<"hash">>             => aerpc_encoding:format_key_block_hash(Hash),
         <<"parentHash">>       => aerpc_encoding:format_key_block_hash(PrevKey),
         <<"nonce">>            => format_nonce(Nonce),
         <<"sha3Uncles">>       => ?EMPTY_LIST_KECCAK,
-        <<"logsBloom">>        => ?EMPTY_BLOOM,
+        <<"logsBloom">>        => Bloom,
         <<"transactionsRoot">> => aerpc_encoding:to_hex_data(StateRoot),
         <<"stateRoot">>        => aerpc_encoding:to_hex_data(StateRoot),
-        <<"receiptsRoot">>     => ?ZERO_WORD,
+        <<"receiptsRoot">>     => ReceiptsR,
         <<"miner">>            => aerpc_encoding:format_account(Beneficiary),
         <<"difficulty">>       => aerpc_encoding:to_quantity(Difficulty),
         <<"totalDifficulty">>  => aerpc_encoding:to_quantity(Difficulty),
         <<"extraData">>        => <<"0x">>,
-        <<"size">>             => <<"0x0">>,
-        <<"gasLimit">>         => <<"0x0">>,
+        <<"size">>             => aerpc_encoding:to_quantity(Size),
+        <<"gasLimit">>         => aerpc_encoding:to_quantity(GasLimit),
         <<"gasUsed">>          => aerpc_encoding:to_quantity(GasUsed),
         <<"timestamp">>        => aerpc_encoding:to_quantity(TimestampMs div 1000),
         <<"transactions">>     => Txs,
         <<"uncles">>           => []
     }.
+
+%% @doc Approximate block size: sum of `serialize_to_binary/1' over the
+%% key-block and every micro-block. Cheap; the blocks are already in
+%% memory at this point.
+block_serialized_size(KeyBlock, MBs) ->
+    KBSize = try byte_size(aec_blocks:serialize_to_binary(KeyBlock))
+             catch _:_ -> 0
+             end,
+    KBSize + lists:sum([micro_block_size(MB) || MB <- MBs]).
+
+micro_block_size(MB) ->
+    try byte_size(aec_blocks:serialize_to_binary(MB))
+    catch _:_ -> 0
+    end.
+
+%% @doc v1 marker for the receipts-root field. AE does not yet specify
+%% a canonical receipts trie; we emit a deterministic non-zero hash
+%% derived from the ordered tx hashes so the field is stable per-block
+%% and obviously not zero-padded. Switch to a real receipts trie root
+%% once that spec exists.
+%%
+%% Empty block (no txs) -> the empty-trie keccak constant, matching the
+%% eth convention.
+receipts_root_marker([]) -> ?EMPTY_TRIE_ROOT;
+receipts_root_marker(MBs) ->
+    Hashes = [aetx_sign:hash(STx) || MB <- MBs, STx <- aec_blocks:txs(MB)],
+    case Hashes of
+        []      -> ?EMPTY_TRIE_ROOT;
+        _Other  ->
+            Concat = iolist_to_binary(Hashes),
+            aerpc_encoding:to_hex_data(sha3:hash(256, Concat))
+    end.
 
 format_nonce(N) when is_integer(N), N >= 0 ->
     Hex = integer_to_binary(N, 16),
