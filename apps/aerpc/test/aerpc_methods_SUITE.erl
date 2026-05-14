@@ -46,6 +46,9 @@
         , method_ae_getBlockByNumber/1
         , method_ae_getBlockTransactionCountByHash/1
         , method_ae_getBlockTransactionCountByNumber/1
+        , method_ae_getBalance/1
+        , method_ae_getBalance_invalid_address/1
+        , account_decode_address/1
         ]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -84,6 +87,9 @@ all() ->
     , method_ae_getBlockByNumber
     , method_ae_getBlockTransactionCountByHash
     , method_ae_getBlockTransactionCountByNumber
+    , method_ae_getBalance
+    , method_ae_getBalance_invalid_address
+    , account_decode_address
     ].
 
 %% ===================================================================
@@ -310,6 +316,35 @@ method_ae_getBlockTransactionCountByHash(_Config) ->
 
 method_ae_getBlockTransactionCountByNumber(_Config) ->
     routed(<<"ae_getBlockTransactionCountByNumber">>).
+
+method_ae_getBalance(_Config) ->
+    routed(<<"ae_getBalance">>).
+
+method_ae_getBalance_invalid_address(_Config) ->
+    %% Garbage address fails decoding before any chain call.
+    Req = #{<<"jsonrpc">> => <<"2.0">>,
+            <<"id">>      => 1,
+            <<"method">>  => <<"ae_getBalance">>,
+            <<"params">>  => [<<"not-an-address">>, <<"latest">>]},
+    ?assertMatch(#{<<"id">> := 1,
+                   <<"error">> := #{<<"code">> := -32602}},
+                 aerpc:dispatch(Req)),
+    ok.
+
+%% Hermetic: a 0x-hex of the right length is always accepted; anything
+%% else without the expected prefix is rejected.
+account_decode_address(_Config) ->
+    %% 32-byte 0x form.
+    Bin = binary:copy(<<16#aa>>, 32),
+    Hex = aerpc_encoding:to_hex_data(Bin),
+    ?assertEqual({ok, Bin}, aerpc_account:decode_address(Hex)),
+    %% Wrong byte length.
+    ?assertMatch({error, -32602, _},
+                 aerpc_account:decode_address(<<"0xdeadbeef">>)),
+    %% Garbage.
+    ?assertMatch({error, -32602, _},
+                 aerpc_account:decode_address(<<"banana">>)),
+    ok.
 
 %% Hermetic: tag resolution for any tag that does NOT consult the
 %% chain. "earliest" returns 0 deterministically; bad input returns
