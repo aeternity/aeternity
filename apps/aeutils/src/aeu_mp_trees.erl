@@ -17,6 +17,7 @@
         , delete/2
         , gc_cache/1
         , get/2
+        , get_w_node_cache/2
         , has_node/3
         , iterator/1
         , iterator/2
@@ -188,6 +189,16 @@ read_only_subtree(Key, #mpt{hash = Hash, db = DB} = MPT) ->
 -spec get(bitstring(), tree()) -> value() | <<>>.
 get(Key, #mpt{hash = Hash, db = DB}) ->
     int_get(Key, decode_node(Hash, DB), DB).
+
+%% Like get/2 but threads the per-tree node_cache through the traversal so
+%% interior nodes decoded during this call are reused by subsequent calls on
+%% the same tree within the same transaction.
+-spec get_w_node_cache(bitstring(), tree()) -> {value() | <<>>, tree()}.
+get_w_node_cache(Key, #mpt{hash = Hash, db = DB, node_cache = NC0} = MPT) ->
+    Cache = case NC0 of none -> #{}; _ -> NC0 end,
+    {Node, Cache1} = decode_node(Hash, Cache, DB),
+    {Val, Cache2}  = int_get_w_cache(Key, Node, Cache1, DB),
+    {Val, MPT#mpt{node_cache = Cache2}}.
 
 -spec put(key(), value() | <<>>, tree()) -> tree().
 %% @doc Note that putting `<<>>' as value is equivalent to deleting the value.
@@ -389,6 +400,29 @@ int_get(Path, {Type, NodePath, NodeVal}, DB) when Type =:= ext; Type =:= leaf ->
             int_get(Rest, decode_node(NodeVal, DB), DB);
         _ ->
             <<>>
+    end.
+
+%% Like int_get/3 but threads the node_cache (used by get_w_node_cache/2).
+int_get_w_cache(_Path, <<>>, Cache, _DB) ->
+    {<<>>, Cache};
+int_get_w_cache(<<>>, {branch, Branch}, Cache, _DB) when tuple_size(Branch) =:= 17 ->
+    {branch_value(Branch), Cache};
+int_get_w_cache(Path, {branch, Branch}, Cache, DB) when tuple_size(Branch) =:= 17 ->
+    <<Next:4, Rest/bits>> = Path,
+    {NextNode, Cache1} = decode_node(branch_next(Next, Branch), Cache, DB),
+    int_get_w_cache(Rest, NextNode, Cache1, DB);
+int_get_w_cache(Path, {Type, NodePath, NodeVal}, Cache, DB) when Type =:= ext; Type =:= leaf ->
+    S = bit_size(NodePath),
+    case Path of
+        NodePath when Type =:= leaf ->
+            {NodeVal, Cache};
+        <<NodePath:S/bits, _/bits>> when Type =:= leaf ->
+            {<<>>, Cache};
+        <<NodePath:S/bits, Rest/bits>> when Type =:= ext ->
+            {NextNode, Cache1} = decode_node(NodeVal, Cache, DB),
+            int_get_w_cache(Rest, NextNode, Cache1, DB);
+        _ ->
+            {<<>>, Cache}
     end.
 
 int_get_subtree(<<>>, <<>>, Cache, DB) ->

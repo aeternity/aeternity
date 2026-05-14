@@ -637,3 +637,16 @@ mpt_db_put(Key, Val, Map) ->
 
 mpt_db_drop_cache(_Dict) ->
     #{}.
+
+%%%=============================================================================
+%%% aeu_mtrees wrapper tests
+
+%% aeu_mtrees:delete/2 on a key that was never inserted must be a no-op:
+%% the tree root hash must remain unchanged.
+delete_nonexistent_is_noop_test() ->
+    Tree0 = aeu_mtrees:empty(),
+    Tree1 = aeu_mtrees:enter(<<"key1">>, <<"val1">>, Tree0),
+    {ok, Root1} = aeu_mtrees:root_hash(Tree1),
+    Tree2 = aeu_mtrees:delete(<<"nonexistent_key">>, Tree1),
+    {ok, Root2} = aeu_mtrees:root_hash(Tree2),
+    ?assertEqual(Root1, Root2).
