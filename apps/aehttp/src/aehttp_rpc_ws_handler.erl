@@ -9,7 +9,7 @@
 %%% `aerpc:dispatch/1', exactly like the HTTP path.
 %%%
 %%% Notification frames have eth's standard `ae_subscription' shape
-%%% (no `id', a `params: {subscription, result}` object).
+%%% (no `id', a `params: {subscription, result}' object).
 %%% @end
 %%%-------------------------------------------------------------------
 -module(aehttp_rpc_ws_handler).

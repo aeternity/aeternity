@@ -197,7 +197,7 @@ build_call_tx(CallerPK, ContractPK, ABI, CallData, Amount, Gas) ->
     }).
 
 run_and_extract(Top, Tx) ->
-    %% dry_run/4 accepts `[{tx, Tx}]` and prepares a dummy signature
+    %% dry_run/4 accepts `[{tx, Tx}]' and prepares a dummy signature
     %% internally. We pass no extra accounts; the magic caller is added
     %% by dry_run's `setup_dry_run/2'.
     case aec_dry_run:dry_run(Top, [], [{tx, Tx}], [{tx_events, false}]) of
