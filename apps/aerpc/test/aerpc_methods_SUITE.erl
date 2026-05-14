@@ -61,6 +61,8 @@
         , method_ae_getLogs/1
         , method_ae_getLogs_invalid_params/1
         , method_ae_getLogs_range_too_wide/1
+        , method_ae_getFilterChanges/1
+        , method_ae_getFilterLogs/1
         ]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -114,6 +116,8 @@ all() ->
     , method_ae_getLogs
     , method_ae_getLogs_invalid_params
     , method_ae_getLogs_range_too_wide
+    , method_ae_getFilterChanges
+    , method_ae_getFilterLogs
     ].
 
 %% ===================================================================
@@ -428,6 +432,26 @@ method_ae_getLogs_range_too_wide(_Config) ->
                    <<"toBlock">>   => <<"0x7d0">>}]},  %% 2000
     ?assertMatch(#{<<"id">> := 1,
                    <<"error">> := #{<<"code">> := -32005}},
+                 aerpc:dispatch(Req)),
+    ok.
+
+method_ae_getFilterChanges(_Config) ->
+    Req = #{<<"jsonrpc">> => <<"2.0">>,
+            <<"id">>      => 1,
+            <<"method">>  => <<"ae_getFilterChanges">>,
+            <<"params">>  => [<<"0x1">>]},
+    ?assertMatch(#{<<"id">> := 1,
+                   <<"error">> := #{<<"code">> := -32004}},
+                 aerpc:dispatch(Req)),
+    ok.
+
+method_ae_getFilterLogs(_Config) ->
+    Req = #{<<"jsonrpc">> => <<"2.0">>,
+            <<"id">>      => 1,
+            <<"method">>  => <<"ae_getFilterLogs">>,
+            <<"params">>  => [<<"0x1">>]},
+    ?assertMatch(#{<<"id">> := 1,
+                   <<"error">> := #{<<"code">> := -32004}},
                  aerpc:dispatch(Req)),
     ok.
 
