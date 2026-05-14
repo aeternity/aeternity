@@ -70,6 +70,7 @@
         , method_ae_sendTransaction/1
         , method_ae_sign/1
         , method_ae_signTransaction/1
+        , method_ae_uninstallFilter/1
         ]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -132,6 +133,7 @@ all() ->
     , method_ae_sendTransaction
     , method_ae_sign
     , method_ae_signTransaction
+    , method_ae_uninstallFilter
     ].
 
 %% ===================================================================
@@ -553,6 +555,17 @@ method_ae_signTransaction(_Config) ->
     ?assertMatch(#{<<"id">> := 1,
                    <<"error">> := #{<<"code">>    := -32601,
                                     <<"message">> := <<"Method not found">>}},
+                 aerpc:dispatch(Req)),
+    ok.
+
+method_ae_uninstallFilter(_Config) ->
+    %% v1.5-deferred: filter registry not yet implemented.
+    Req = #{<<"jsonrpc">> => <<"2.0">>,
+            <<"id">>      => 1,
+            <<"method">>  => <<"ae_uninstallFilter">>,
+            <<"params">>  => [<<"0x1">>]},
+    ?assertMatch(#{<<"id">> := 1,
+                   <<"error">> := #{<<"code">> := -32004}},
                  aerpc:dispatch(Req)),
     ok.
 
