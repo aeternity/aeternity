@@ -64,6 +64,7 @@
         , method_ae_getFilterChanges/1
         , method_ae_getFilterLogs/1
         , method_ae_newBlockFilter/1
+        , method_ae_newFilter/1
         ]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -120,6 +121,7 @@ all() ->
     , method_ae_getFilterChanges
     , method_ae_getFilterLogs
     , method_ae_newBlockFilter
+    , method_ae_newFilter
     ].
 
 %% ===================================================================
@@ -462,6 +464,17 @@ method_ae_newBlockFilter(_Config) ->
     Req = #{<<"jsonrpc">> => <<"2.0">>,
             <<"id">>      => 1,
             <<"method">>  => <<"ae_newBlockFilter">>},
+    ?assertMatch(#{<<"id">> := 1,
+                   <<"error">> := #{<<"code">> := -32004}},
+                 aerpc:dispatch(Req)),
+    ok.
+
+method_ae_newFilter(_Config) ->
+    %% v1.5-deferred: filter registry not yet implemented.
+    Req = #{<<"jsonrpc">> => <<"2.0">>,
+            <<"id">>      => 1,
+            <<"method">>  => <<"ae_newFilter">>,
+            <<"params">>  => [#{<<"address">> => <<"ct_xxx">>}]},
     ?assertMatch(#{<<"id">> := 1,
                    <<"error">> := #{<<"code">> := -32004}},
                  aerpc:dispatch(Req)),

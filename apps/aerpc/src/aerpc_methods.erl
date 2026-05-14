@@ -201,6 +201,13 @@ dispatch_method(<<"ae_newBlockFilter">>, _Params) ->
     %% alongside the rest of the filter family.
     {error, -32004, <<"Filter registry not yet implemented (v1.5)">>};
 
+dispatch_method(<<"ae_newFilter">>, _Params) ->
+    %% Allocates a server-side log filter from the supplied criteria
+    %% (address / topics / fromBlock / toBlock). Needs the filter registry
+    %% (aerpc_filter_registry) for state + idle-TTL eviction; deferred to
+    %% v1.5 alongside the rest of the filter family.
+    {error, -32004, <<"Filter registry not yet implemented (v1.5)">>};
+
 dispatch_method(<<"ae_sha3">>, [HexIn]) when is_binary(HexIn) ->
     %% Keccak-256 of the supplied bytes. Uses the same `sha3' dep that
     %% backs aec_hash:hash(evm, _) -- which is configured to produce the
