@@ -133,9 +133,9 @@ dispatch_method(<<"ae_getBlockTransactionCountByNumber">>, [TagOrHex])
 dispatch_method(<<"ae_getBlockTransactionCountByNumber">>, _Params) ->
     {error, -32602, <<"Invalid params">>};
 
-dispatch_method(<<"ae_getBalance">>, [AddrIn, TagOrHex])
-  when is_binary(AddrIn), is_binary(TagOrHex) ->
-    aerpc_account:balance(AddrIn, TagOrHex);
+dispatch_method(<<"ae_getBalance">>, [AddrIn, BlockId])
+  when is_binary(AddrIn), (is_binary(BlockId) orelse is_map(BlockId)) ->
+    aerpc_account:balance(AddrIn, BlockId);
 dispatch_method(<<"ae_getBalance">>, _Params) ->
     {error, -32602, <<"Invalid params">>};
 
@@ -148,9 +148,9 @@ dispatch_method(<<"ae_getCode">>, [AddrIn, _TagOrHex])
 dispatch_method(<<"ae_getCode">>, _Params) ->
     {error, -32602, <<"Invalid params">>};
 
-dispatch_method(<<"ae_getTransactionCount">>, [AddrIn, TagOrHex])
-  when is_binary(AddrIn), is_binary(TagOrHex) ->
-    aerpc_account:tx_count(AddrIn, TagOrHex);
+dispatch_method(<<"ae_getTransactionCount">>, [AddrIn, BlockId])
+  when is_binary(AddrIn), (is_binary(BlockId) orelse is_map(BlockId)) ->
+    aerpc_account:tx_count(AddrIn, BlockId);
 dispatch_method(<<"ae_getTransactionCount">>, _Params) ->
     {error, -32602, <<"Invalid params">>};
 
@@ -203,7 +203,7 @@ dispatch_method(<<"ae_getBlockReceipts">>, _Params) ->
     {error, -32602, <<"Invalid params">>};
 
 dispatch_method(<<"ae_call">>, [TxObj, BlockId])
-  when is_map(TxObj), is_binary(BlockId) ->
+  when is_map(TxObj), (is_binary(BlockId) orelse is_map(BlockId)) ->
     aerpc_call:call(TxObj, BlockId);
 dispatch_method(<<"ae_call">>, [TxObj]) when is_map(TxObj) ->
     aerpc_call:call(TxObj, <<"latest">>);
@@ -211,7 +211,7 @@ dispatch_method(<<"ae_call">>, _Params) ->
     {error, -32602, <<"Invalid params">>};
 
 dispatch_method(<<"ae_estimateGas">>, [TxObj, BlockId])
-  when is_map(TxObj), is_binary(BlockId) ->
+  when is_map(TxObj), (is_binary(BlockId) orelse is_map(BlockId)) ->
     aerpc_call:estimate_gas(TxObj, BlockId);
 dispatch_method(<<"ae_estimateGas">>, [TxObj]) when is_map(TxObj) ->
     aerpc_call:estimate_gas(TxObj, <<"latest">>);

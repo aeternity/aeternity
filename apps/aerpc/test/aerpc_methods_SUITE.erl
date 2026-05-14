@@ -96,6 +96,10 @@
         , method_ae_feeHistory_invalid_params/1
         , method_ae_maxPriorityFeePerGas_routed/1
         , fee_percentile_helper/1
+        , block_resolve_id_legacy/1
+        , block_resolve_id_number_object/1
+        , block_resolve_id_invalid_object/1
+        , method_ae_getBalance_with_block_object/1
         ]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -184,6 +188,10 @@ all() ->
     , method_ae_feeHistory_invalid_params
     , method_ae_maxPriorityFeePerGas_routed
     , fee_percentile_helper
+    , block_resolve_id_legacy
+    , block_resolve_id_number_object
+    , block_resolve_id_invalid_object
+    , method_ae_getBalance_with_block_object
     ].
 
 %% ===================================================================
@@ -584,6 +592,37 @@ method_ae_maxPriorityFeePerGas_routed(_Config) ->
 %% Hermetic: percentile/2 is the internal estimator. Reach into it via
 %% the public API by faking a chain-less environment where `tips_at/2'
 %% returns [] -- max_priority_fee/0 then returns 0x0.
+%% EIP-1898: legacy binary forms still resolve through resolve_id/1.
+block_resolve_id_legacy(_Config) ->
+    ?assertEqual({ok, 0},  aerpc_block:resolve_id(<<"earliest">>)),
+    ?assertEqual({ok, 16}, aerpc_block:resolve_id(<<"0x10">>)),
+    ok.
+
+%% EIP-1898: object form with blockNumber.
+block_resolve_id_number_object(_Config) ->
+    ?assertEqual({ok, 16},
+                 aerpc_block:resolve_id(#{<<"blockNumber">> => <<"0x10">>})),
+    ?assertEqual({ok, 0},
+                 aerpc_block:resolve_id(#{<<"blockNumber">> => <<"earliest">>})),
+    ok.
+
+%% EIP-1898: object with neither key, or wrong types.
+block_resolve_id_invalid_object(_Config) ->
+    ?assertMatch({error, -32602, _},
+                 aerpc_block:resolve_id(#{<<"foo">> => <<"bar">>})),
+    ?assertMatch({error, -32602, _},
+                 aerpc_block:resolve_id(#{<<"blockNumber">> => 42})),
+    ?assertMatch({error, -32602, _},
+                 aerpc_block:resolve_id(42)),
+    ok.
+
+%% Dispatcher accepts the object form on ae_getBalance. Chain access
+%% would fail in this hermetic env; only routing is asserted here.
+method_ae_getBalance_with_block_object(_Config) ->
+    routed(<<"ae_getBalance">>,
+           [<<"ak_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx">>,
+            #{<<"blockNumber">> => <<"0x10">>}]).
+
 fee_percentile_helper(_Config) ->
     {ok, Reply} = aerpc_fee:max_priority_fee(),
     %% In a hermetic env aec_chain is unavailable, so tips_at/2 yields

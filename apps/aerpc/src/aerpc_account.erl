@@ -24,10 +24,11 @@
 %% Public API
 %% ===================================================================
 
--spec balance(binary(), binary()) ->
+-spec balance(binary(), binary() | map()) ->
     {ok, binary()} | {error, integer(), binary()}.
-balance(AddrIn, TagOrHex) when is_binary(AddrIn), is_binary(TagOrHex) ->
-    with_account(AddrIn, TagOrHex,
+balance(AddrIn, BlockId)
+  when is_binary(AddrIn), (is_binary(BlockId) orelse is_map(BlockId)) ->
+    with_account(AddrIn, BlockId,
         fun(Account) ->
             {ok, aerpc_encoding:to_quantity(aec_accounts:balance(Account))}
         end,
@@ -54,17 +55,18 @@ code(AddrIn) when is_binary(AddrIn) ->
 code(_AddrIn) ->
     {error, -32602, <<"Invalid params">>}.
 
--spec tx_count(binary(), binary()) ->
+-spec tx_count(binary(), binary() | map()) ->
     {ok, binary()} | {error, integer(), binary()}.
 tx_count(AddrIn, <<"latest">>) ->
     next_nonce(AddrIn);
 tx_count(AddrIn, <<"pending">>) ->
     next_nonce(AddrIn);
-tx_count(AddrIn, TagOrHex) when is_binary(AddrIn), is_binary(TagOrHex) ->
+tx_count(AddrIn, BlockId)
+  when is_binary(AddrIn), (is_binary(BlockId) orelse is_map(BlockId)) ->
     %% At historical heights AE's account.nonce is the on-chain nonce of
     %% the last included tx, which already matches eth's "count of mined
     %% txs" semantics -- no -1 needed.
-    with_account(AddrIn, TagOrHex,
+    with_account(AddrIn, BlockId,
         fun(Account) ->
             {ok, aerpc_encoding:to_quantity(aec_accounts:nonce(Account))}
         end,
@@ -120,13 +122,14 @@ next_nonce(AddrIn) ->
             Err
     end.
 
-with_account(AddrIn, TagOrHex, OnAccount, DefaultIfMissing) ->
+with_account(AddrIn, BlockId, OnAccount, DefaultIfMissing) ->
     case decode_address(AddrIn) of
         {ok, Pubkey} ->
-            case lookup_account(Pubkey, TagOrHex) of
+            case lookup_account(Pubkey, BlockId) of
                 {value, Account}      -> OnAccount(Account);
                 none                  -> {ok, DefaultIfMissing};
-                {error, _Reason}      -> {ok, DefaultIfMissing}
+                {error, _Reason}      -> {ok, DefaultIfMissing};
+                {error, _, _} = Err   -> Err   %% EIP-1898 -39001 etc.
             end;
         {error, _, _} = Err ->
             Err
@@ -136,8 +139,8 @@ lookup_account(Pubkey, <<"latest">>) ->
     aec_chain:get_account(Pubkey);
 lookup_account(Pubkey, <<"pending">>) ->
     aec_chain:get_account(Pubkey);
-lookup_account(Pubkey, TagOrHex) ->
-    case aerpc_block:resolve_tag(TagOrHex) of
-        {ok, Height} -> aec_chain:get_account_at_height(Pubkey, Height);
-        _Other       -> {error, bad_tag}
+lookup_account(Pubkey, BlockId) ->
+    case aerpc_block:resolve_id(BlockId) of
+        {ok, Height}             -> aec_chain:get_account_at_height(Pubkey, Height);
+        {error, _, _} = Err      -> Err
     end.

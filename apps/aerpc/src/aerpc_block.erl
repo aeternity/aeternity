@@ -20,6 +20,7 @@
         , tx_count_by_height/1
         , resolve_tag/1
         , resolve_dry_run_top/1
+        , resolve_id/1
         , decode_block_hash/1
         ]).
 
@@ -137,6 +138,64 @@ resolve_dry_run_top(<<"0x", _/binary>> = Hex) ->
     end;
 resolve_dry_run_top(_Other) ->
     {error, -32602, <<"Invalid params">>}.
+
+%% @doc Resolve a block identifier to a numeric height. Accepts either
+%% the legacy binary form (`"latest"', `"0x123"', `kh_...', a 0x-32-byte
+%% hex) or the EIP-1898 object form:
+%%   * `#{<<"blockNumber">> => <<"0x...">>}'
+%%   * `#{<<"blockHash">>   => <<"kh_..."|"0x..."(32-byte)>>}'
+%%   * `#{<<"blockHash">>   => ..., <<"requireCanonical">> => true}'
+%%
+%% On the hash form: if `requireCanonical' is `true' and the hash is
+%% off-canon, returns the AE-specific code `-39001'. If
+%% `requireCanonical' is absent or `false', the height is returned as
+%% recorded on the off-canon branch (caller may still read stale
+%% state -- documented eth behaviour).
+-spec resolve_id(binary() | map()) ->
+    {ok, non_neg_integer()} | {error, integer(), binary()}.
+resolve_id(Bin) when is_binary(Bin) ->
+    case Bin of
+        <<"kh_", _/binary>> -> height_of_hash(Bin, false);
+        <<"0x", Hex/binary>> when byte_size(Hex) =:= 64 ->
+            height_of_hash(Bin, false);
+        _Other -> resolve_tag(Bin)
+    end;
+resolve_id(#{<<"blockNumber">> := Tag}) when is_binary(Tag) ->
+    resolve_tag(Tag);
+resolve_id(#{<<"blockHash">> := HashIn} = Obj) when is_binary(HashIn) ->
+    Strict = maps:get(<<"requireCanonical">>, Obj, false),
+    height_of_hash(HashIn, Strict);
+resolve_id(_Other) ->
+    {error, -32602, <<"Invalid block identifier">>}.
+
+height_of_hash(HashIn, Strict) ->
+    case decode_block_hash(HashIn) of
+        {ok, Hash} -> check_height(Hash, Strict);
+        {error, _, _} = Err -> Err
+    end.
+
+check_height(Hash, Strict) ->
+    case aec_chain:get_header(Hash) of
+        {ok, Header} ->
+            H = aec_headers:height(Header),
+            case canonical_at_height(Hash, H) of
+                true               -> {ok, H};
+                false when Strict ->
+                    {error, -39001,
+                     <<"Block hash is not on the canonical chain">>};
+                false              -> {ok, H}
+            end;
+        error ->
+            {error, -32602, <<"Block hash not found">>}
+    end.
+
+canonical_at_height(Hash, Height) ->
+    case aec_chain:get_key_block_by_height(Height) of
+        {ok, KB} ->
+            {ok, CanonicalHash} = aec_blocks:hash_internal_representation(KB),
+            CanonicalHash =:= Hash;
+        _Other -> false
+    end.
 
 %% @doc Decode a block hash from either canonical `kh_...' AE form or
 %% `0x'-prefixed 32-byte hex. Returns the raw 32-byte binary.

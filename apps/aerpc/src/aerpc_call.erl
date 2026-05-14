@@ -45,11 +45,12 @@
 %% Public API
 %% ===================================================================
 
--spec call(map(), binary()) ->
+-spec call(map(), binary() | map()) ->
     {ok, binary()}
   | {error, integer(), binary()}
   | {error, integer(), binary(), term()}.
-call(TxObj, BlockId) when is_map(TxObj), is_binary(BlockId) ->
+call(TxObj, BlockId)
+  when is_map(TxObj), (is_binary(BlockId) orelse is_map(BlockId)) ->
     case do_dry_run(TxObj, BlockId) of
         {ok, CallObj}                  -> ok_return_value(CallObj);
         {revert, CallObj}              -> revert_error(CallObj);
@@ -59,11 +60,12 @@ call(TxObj, BlockId) when is_map(TxObj), is_binary(BlockId) ->
 call(_TxObj, _BlockId) ->
     {error, -32602, <<"Invalid params">>}.
 
--spec estimate_gas(map(), binary()) ->
+-spec estimate_gas(map(), binary() | map()) ->
     {ok, binary()}
   | {error, integer(), binary()}
   | {error, integer(), binary(), term()}.
-estimate_gas(TxObj, BlockId) when is_map(TxObj), is_binary(BlockId) ->
+estimate_gas(TxObj, BlockId)
+  when is_map(TxObj), (is_binary(BlockId) orelse is_map(BlockId)) ->
     case do_dry_run(TxObj, BlockId) of
         {ok, CallObj} ->
             {ok, aerpc_encoding:to_quantity(aect_call:gas_used(CallObj))};
@@ -149,9 +151,19 @@ with_input(TxObj, K) ->
         _ -> {error, -32602, <<"Invalid 'input' field">>}
     end.
 
-with_top(BlockId, K) ->
+with_top(BlockId, K) when is_binary(BlockId) ->
     case aerpc_block:resolve_dry_run_top(BlockId) of
         {ok, Top}            -> K(Top);
+        {error, _, _} = Err  -> Err
+    end;
+with_top(BlockId, K) when is_map(BlockId) ->
+    %% EIP-1898 object form: resolve to a height, then ask dry_run for
+    %% the post-keyblock state. The canonical check happens inside
+    %% aerpc_block:resolve_id/1, so a non-canonical hash with
+    %% requireCanonical=true surfaces -39001 to the caller before we
+    %% touch dry_run.
+    case aerpc_block:resolve_id(BlockId) of
+        {ok, Height}         -> K({height, Height});
         {error, _, _} = Err  -> Err
     end.
 
