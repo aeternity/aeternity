@@ -54,6 +54,8 @@
         , method_ae_getTransactionByHash/1
         , method_ae_getTransactionByBlockHashAndIndex/1
         , method_ae_getTransactionByBlockNumberAndIndex/1
+        , method_ae_getTransactionReceipt/1
+        , bloom_empty/1
         ]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -100,6 +102,8 @@ all() ->
     , method_ae_getTransactionByHash
     , method_ae_getTransactionByBlockHashAndIndex
     , method_ae_getTransactionByBlockNumberAndIndex
+    , method_ae_getTransactionReceipt
+    , bloom_empty
     ].
 
 %% ===================================================================
@@ -355,6 +359,17 @@ method_ae_getTransactionByBlockHashAndIndex(_Config) ->
 
 method_ae_getTransactionByBlockNumberAndIndex(_Config) ->
     routed(<<"ae_getTransactionByBlockNumberAndIndex">>).
+
+method_ae_getTransactionReceipt(_Config) ->
+    routed(<<"ae_getTransactionReceipt">>).
+
+bloom_empty(_Config) ->
+    %% Hermetic: the v1 bloom is always 256 zero bytes (= 512 hex chars
+    %% plus the 0x prefix).
+    Empty = aerpc_bloom:empty(),
+    ?assertEqual(<<"0x", (binary:copy(<<"0">>, 512))/binary>>, Empty),
+    ?assertEqual(Empty, aerpc_bloom:of_logs([])),
+    ok.
 
 %% Hermetic: a 0x-hex of the right length is always accepted; anything
 %% else without the expected prefix is rejected.
