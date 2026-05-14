@@ -160,6 +160,12 @@ dispatch_method(<<"ae_getTransactionByHash">>, [HashIn])
 dispatch_method(<<"ae_getTransactionByHash">>, _Params) ->
     {error, -32602, <<"Invalid params">>};
 
+dispatch_method(<<"ae_getRawTransactionByHash">>, [HashIn])
+  when is_binary(HashIn) ->
+    aerpc_tx:raw_by_hash(HashIn);
+dispatch_method(<<"ae_getRawTransactionByHash">>, _Params) ->
+    {error, -32602, <<"Invalid params">>};
+
 dispatch_method(<<"ae_getTransactionByBlockHashAndIndex">>,
                 [BlockHashIn, IndexHex])
   when is_binary(BlockHashIn), is_binary(IndexHex) ->

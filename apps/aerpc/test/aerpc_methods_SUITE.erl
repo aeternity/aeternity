@@ -100,6 +100,8 @@
         , block_resolve_id_number_object/1
         , block_resolve_id_invalid_object/1
         , method_ae_getBalance_with_block_object/1
+        , method_ae_getRawTransactionByHash_routed/1
+        , method_ae_getRawTransactionByHash_invalid_params/1
         ]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -192,6 +194,8 @@ all() ->
     , block_resolve_id_number_object
     , block_resolve_id_invalid_object
     , method_ae_getBalance_with_block_object
+    , method_ae_getRawTransactionByHash_routed
+    , method_ae_getRawTransactionByHash_invalid_params
     ].
 
 %% ===================================================================
@@ -622,6 +626,19 @@ method_ae_getBalance_with_block_object(_Config) ->
     routed(<<"ae_getBalance">>,
            [<<"ak_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx">>,
             #{<<"blockNumber">> => <<"0x10">>}]).
+
+method_ae_getRawTransactionByHash_routed(_Config) ->
+    routed(<<"ae_getRawTransactionByHash">>, [<<"th_anything">>]).
+
+method_ae_getRawTransactionByHash_invalid_params(_Config) ->
+    Req = #{<<"jsonrpc">> => <<"2.0">>,
+            <<"id">>      => 1,
+            <<"method">>  => <<"ae_getRawTransactionByHash">>,
+            <<"params">>  => [42]},
+    ?assertMatch(#{<<"id">> := 1,
+                   <<"error">> := #{<<"code">> := -32602}},
+                 aerpc:dispatch(Req)),
+    ok.
 
 fee_percentile_helper(_Config) ->
     {ok, Reply} = aerpc_fee:max_priority_fee(),

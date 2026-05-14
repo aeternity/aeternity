@@ -19,6 +19,7 @@
         , receipt/1
         , block_receipts_by_hash/1
         , block_receipts_by_height/1
+        , raw_by_hash/1
         ]).
 
 %% ===================================================================
@@ -133,6 +134,28 @@ block_receipts_by_height(TagOrHex) when is_binary(TagOrHex) ->
     end;
 block_receipts_by_height(_) ->
     {error, -32602, <<"Invalid params">>}.
+
+%% @doc Wire-encoded bytes for a signed tx, as 0x-hex. AE's
+%% serialization, not eth's RLP -- callers that need to re-broadcast
+%% must pipe back through an AE-aware path. Returns null for an
+%% unknown hash.
+-spec raw_by_hash(binary()) ->
+    {ok, binary() | null} | {error, integer(), binary()}.
+raw_by_hash(HashIn) when is_binary(HashIn) ->
+    case decode_tx_hash(HashIn) of
+        {ok, TxHash} ->
+            case aec_chain:find_tx_with_location(TxHash) of
+                none           -> {ok, null};
+                {mempool, STx} -> {ok, encode_signed_tx(STx)};
+                {_BH, STx}     -> {ok, encode_signed_tx(STx)}
+            end;
+        {error, _, _} = Err -> Err
+    end;
+raw_by_hash(_) ->
+    {error, -32602, <<"Invalid params">>}.
+
+encode_signed_tx(SignedTx) ->
+    aerpc_encoding:to_hex_data(aetx_sign:serialize_to_binary(SignedTx)).
 
 %% ===================================================================
 %% Internal
