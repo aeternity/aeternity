@@ -37,6 +37,8 @@
         , method_ae_sha3_empty/1
         , method_ae_sha3_invalid_params/1
         , encoding_hex_data_roundtrip/1
+        , method_ae_chainId/1
+        , chain_id_lookup_table/1
         ]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -66,6 +68,8 @@ all() ->
     , method_ae_sha3_empty
     , method_ae_sha3_invalid_params
     , encoding_hex_data_roundtrip
+    , method_ae_chainId
+    , chain_id_lookup_table
     ].
 
 %% ===================================================================
@@ -262,6 +266,17 @@ method_ae_sha3_invalid_params(_Config) ->
     ?assertMatch(#{<<"id">> := 1,
                    <<"error">> := #{<<"code">> := -32602}},
                  aerpc:dispatch(Req)),
+    ok.
+
+method_ae_chainId(_Config) ->
+    routed(<<"ae_chainId">>).
+
+chain_id_lookup_table(_Config) ->
+    %% Pure lookup: hermetically testable.
+    ?assertEqual(1247, aerpc_chain_id:to_numeric(<<"ae_mainnet">>)),
+    ?assertEqual(1248, aerpc_chain_id:to_numeric(<<"ae_uat">>)),
+    ?assertEqual(9991, aerpc_chain_id:to_numeric(<<"ae_dev1">>)),
+    ?assertEqual(0,    aerpc_chain_id:to_numeric(<<"ae_unknown_net">>)),
     ok.
 
 encoding_hex_data_roundtrip(_Config) ->

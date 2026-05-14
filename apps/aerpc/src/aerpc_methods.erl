@@ -77,6 +77,11 @@ dispatch_method(<<"ae_gasPrice">>, _Params) ->
     Price = aec_tx_pool:minimum_miner_gas_price(),
     {ok, aerpc_encoding:to_quantity(Price)};
 
+dispatch_method(<<"ae_chainId">>, _Params) ->
+    NetworkId = aec_governance:get_network_id(),
+    Numeric = aerpc_chain_id:to_numeric(NetworkId),
+    {ok, aerpc_encoding:to_quantity(Numeric)};
+
 dispatch_method(<<"ae_sha3">>, [HexIn]) when is_binary(HexIn) ->
     %% Keccak-256 of the supplied bytes. Uses the same `sha3' dep that
     %% backs aec_hash:hash(evm, _) -- which is configured to produce the
