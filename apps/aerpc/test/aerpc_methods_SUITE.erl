@@ -29,6 +29,7 @@
         , method_ae_getUncleCountByBlockNumber/1
         , method_ae_getUncleByBlockHashAndIndex/1
         , method_ae_getUncleByBlockNumberAndIndex/1
+        , method_ae_netPeerCount/1
         ]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -50,6 +51,7 @@ all() ->
     , method_ae_getUncleCountByBlockNumber
     , method_ae_getUncleByBlockHashAndIndex
     , method_ae_getUncleByBlockNumberAndIndex
+    , method_ae_netPeerCount
     ].
 
 %% ===================================================================
@@ -197,3 +199,29 @@ method_ae_getUncleByBlockNumberAndIndex(_Config) ->
     ?assertMatch(#{<<"id">> := 1, <<"result">> := null},
                  aerpc:dispatch(Req)),
     ok.
+
+method_ae_netPeerCount(_Config) ->
+    %% Hermetic: only verify dispatcher routes the method. Actual count
+    %% requires aecore running and is covered by the integration suite.
+    routed(<<"ae_netPeerCount">>).
+
+%% ===================================================================
+%% Helpers
+%% ===================================================================
+
+%% Verify the dispatcher has a clause for the given method. Returns ok
+%% whether the underlying call succeeds, fails with an internal error,
+%% or crashes (typical in a hermetic environment with no apps started).
+%% Fails only if the catch-all method-not-found clause fires.
+routed(Method) ->
+    Req = #{<<"jsonrpc">> => <<"2.0">>,
+            <<"id">>      => 1,
+            <<"method">>  => Method},
+    try aerpc:dispatch(Req) of
+        #{<<"error">> := #{<<"code">> := -32601}} ->
+            ct:fail({not_routed, Method});
+        _ ->
+            ok
+    catch
+        _:_ -> ok
+    end.

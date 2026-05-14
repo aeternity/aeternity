@@ -53,5 +53,11 @@ dispatch_method(<<"ae_getUncleByBlockNumberAndIndex">>, _Params) ->
     %% AE has no uncles.
     {ok, null};
 
+dispatch_method(<<"ae_netPeerCount">>, _Params) ->
+    %% Active connections, not "known peers" -- closer to eth's net_peerCount
+    %% semantics.
+    Count = aec_peers:count(connections),
+    {ok, aerpc_encoding:to_quantity(Count)};
+
 dispatch_method(_Method, _Params) ->
     {error, -32601, <<"Method not found">>}.
