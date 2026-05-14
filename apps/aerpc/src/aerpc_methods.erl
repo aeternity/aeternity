@@ -49,5 +49,9 @@ dispatch_method(<<"ae_getUncleByBlockHashAndIndex">>, _Params) ->
     %% AE has no uncles.
     {ok, null};
 
+dispatch_method(<<"ae_getUncleByBlockNumberAndIndex">>, _Params) ->
+    %% AE has no uncles.
+    {ok, null};
+
 dispatch_method(_Method, _Params) ->
     {error, -32601, <<"Method not found">>}.

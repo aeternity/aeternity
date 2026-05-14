@@ -28,6 +28,7 @@
         , method_ae_getUncleCountByBlockHash/1
         , method_ae_getUncleCountByBlockNumber/1
         , method_ae_getUncleByBlockHashAndIndex/1
+        , method_ae_getUncleByBlockNumberAndIndex/1
         ]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -48,6 +49,7 @@ all() ->
     , method_ae_getUncleCountByBlockHash
     , method_ae_getUncleCountByBlockNumber
     , method_ae_getUncleByBlockHashAndIndex
+    , method_ae_getUncleByBlockNumberAndIndex
     ].
 
 %% ===================================================================
@@ -183,6 +185,15 @@ method_ae_getUncleByBlockHashAndIndex(_Config) ->
             <<"id">>      => 1,
             <<"method">>  => <<"ae_getUncleByBlockHashAndIndex">>,
             <<"params">>  => [<<"0xdeadbeef">>, <<"0x0">>]},
+    ?assertMatch(#{<<"id">> := 1, <<"result">> := null},
+                 aerpc:dispatch(Req)),
+    ok.
+
+method_ae_getUncleByBlockNumberAndIndex(_Config) ->
+    Req = #{<<"jsonrpc">> => <<"2.0">>,
+            <<"id">>      => 1,
+            <<"method">>  => <<"ae_getUncleByBlockNumberAndIndex">>,
+            <<"params">>  => [<<"latest">>, <<"0x0">>]},
     ?assertMatch(#{<<"id">> := 1, <<"result">> := null},
                  aerpc:dispatch(Req)),
     ok.
