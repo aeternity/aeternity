@@ -240,6 +240,13 @@ dispatch_method(<<"ae_sendRawTransaction">>, _Params) ->
     %% visible in the source.
     {error, -32601, <<"Method not found">>};
 
+dispatch_method(<<"ae_sendTransaction">>, _Params) ->
+    %% Build, sign (with a node-held key), and submit a tx. Out of scope
+    %% for v1: the node does not host user wallet keys, and the signature
+    %% scheme + envelope shape differ from AE-native txs. Explicit clause
+    %% kept here so the dispatcher table is complete.
+    {error, -32601, <<"Method not found">>};
+
 dispatch_method(<<"ae_syncing">>, _Params) ->
     %% Returns `false' when fully synced or an object with starting/current/
     %% highest block heights. AE's sync_progress emits {Syncing, Progress,

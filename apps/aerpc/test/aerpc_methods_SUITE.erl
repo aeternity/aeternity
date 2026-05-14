@@ -67,6 +67,7 @@
         , method_ae_newFilter/1
         , method_ae_newPendingTransactionFilter/1
         , method_ae_sendRawTransaction/1
+        , method_ae_sendTransaction/1
         ]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -126,6 +127,7 @@ all() ->
     , method_ae_newFilter
     , method_ae_newPendingTransactionFilter
     , method_ae_sendRawTransaction
+    , method_ae_sendTransaction
     ].
 
 %% ===================================================================
@@ -503,6 +505,20 @@ method_ae_sendRawTransaction(_Config) ->
             <<"id">>      => 1,
             <<"method">>  => <<"ae_sendRawTransaction">>,
             <<"params">>  => [<<"0xdeadbeef">>]},
+    ?assertMatch(#{<<"id">> := 1,
+                   <<"error">> := #{<<"code">>    := -32601,
+                                    <<"message">> := <<"Method not found">>}},
+                 aerpc:dispatch(Req)),
+    ok.
+
+method_ae_sendTransaction(_Config) ->
+    %% v1: write-path stub. Node does not host wallet keys.
+    Req = #{<<"jsonrpc">> => <<"2.0">>,
+            <<"id">>      => 1,
+            <<"method">>  => <<"ae_sendTransaction">>,
+            <<"params">>  => [#{<<"from">> => <<"ak_xxx">>,
+                                <<"to">>   => <<"ak_yyy">>,
+                                <<"value">> => <<"0x1">>}]},
     ?assertMatch(#{<<"id">> := 1,
                    <<"error">> := #{<<"code">>    := -32601,
                                     <<"message">> := <<"Method not found">>}},
