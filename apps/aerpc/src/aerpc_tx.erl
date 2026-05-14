@@ -85,8 +85,11 @@ receipt(HashIn) when is_binary(HashIn) ->
                 {mempool, _Stx} ->
                     %% Eth: receipts are unavailable for pending txs.
                     {ok, null};
-                {BlockHash, SignedTx} when is_binary(BlockHash) ->
-                    build_receipt(SignedTx, BlockHash, TxHash)
+                {BlockHash, _SignedTx} when is_binary(BlockHash) ->
+                    %% Walk the block to find this tx's position, accumulate
+                    %% prior cumulative-gas, and build the receipt with the
+                    %% correct transactionIndex / cumulativeGasUsed.
+                    single_receipt(BlockHash, TxHash)
             end;
         {error, _, _} = Err ->
             Err
@@ -98,51 +101,98 @@ receipt(_) ->
 %% Internal
 %% ===================================================================
 
-build_receipt(SignedTx, BlockHash, TxHash) ->
-    BlockNumber =
-        case aec_chain:get_header(BlockHash) of
-            {ok, Header} -> aec_headers:height(Header);
-            error        -> 0
-        end,
+%% @doc Walk the block's tx list to find the requested tx, accumulating
+%% cumulative-gas as we go. Returns the receipt with correct
+%% transactionIndex + cumulativeGasUsed, or `{ok, null}' if the tx is
+%% somehow not in the block (defensive — shouldn't happen since
+%% find_tx_with_location/1 just returned this block hash).
+single_receipt(BlockHash, TxHash) ->
+    case aec_chain:get_generation_by_hash(BlockHash, forward) of
+        {ok, #{micro_blocks := MBs}} ->
+            Flat = lists:flatten([aec_blocks:txs(MB) || MB <- MBs]),
+            BlockNumber = block_number(BlockHash),
+            walk_to_tx(Flat, TxHash, BlockHash, BlockNumber, 0, 0);
+        error ->
+            {ok, null}
+    end.
+
+walk_to_tx([], _TxHash, _BH, _BN, _Idx, _Cum) ->
+    {ok, null};
+walk_to_tx([SignedTx | Rest], TxHash, BlockHash, BlockNumber, Idx, Cum) ->
+    case aetx_sign:hash(SignedTx) of
+        TxHash ->
+            {Receipt, _NewCum} =
+                build_receipt(SignedTx, BlockHash, TxHash, BlockNumber, Idx, Cum),
+            {ok, Receipt};
+        _Other ->
+            %% Advance cumulative-gas with this tx's gas-used so that the
+            %% match further down sees the right running total.
+            NewCum = Cum + gas_used_for_signed_tx(SignedTx, BlockHash),
+            walk_to_tx(Rest, TxHash, BlockHash, BlockNumber, Idx + 1, NewCum)
+    end.
+
+%% @doc Build one receipt with explicit TxIndex / CumulativeBefore inputs.
+%% Returns `{Receipt, CumulativeAfter}' so a caller iterating across a
+%% block can thread the running total.
+-spec build_receipt(aetx_sign:signed_tx(), binary(), binary(),
+                    non_neg_integer(), non_neg_integer(),
+                    non_neg_integer()) ->
+    {map(), non_neg_integer()}.
+build_receipt(SignedTx, BlockHash, TxHash, BlockNumber, TxIndex, CumulativeBefore) ->
     Tx = aetx_sign:tx(SignedTx),
     {Type, _Body} = aetx:specialize_type(Tx),
     Origin = aetx:origin(Tx),
-    Base = #{
+    {GasUsed, Status} = gas_and_status(Type, Tx, BlockHash),
+    Cumulative = CumulativeBefore + GasUsed,
+    Receipt = #{
         <<"transactionHash">>   => aerpc_encoding:format_tx_hash(TxHash),
-        <<"transactionIndex">>  => <<"0x0">>,
+        <<"transactionIndex">>  => aerpc_encoding:to_quantity(TxIndex),
         <<"blockHash">>         => aerpc_encoding:format_key_block_hash(BlockHash),
         <<"blockNumber">>       => aerpc_encoding:to_quantity(BlockNumber),
         <<"from">>              => format_account_or_null(Origin),
         <<"to">>                => to_field(Type, Tx),
-        <<"cumulativeGasUsed">> => <<"0x0">>,
+        <<"cumulativeGasUsed">> => aerpc_encoding:to_quantity(Cumulative),
         <<"effectiveGasPrice">> => effective_gas_price(Tx),
-        <<"gasUsed">>           => <<"0x0">>,
+        <<"gasUsed">>           => aerpc_encoding:to_quantity(GasUsed),
         <<"contractAddress">>   => contract_address(Type, Tx),
         <<"logs">>              => [],
         <<"logsBloom">>         => aerpc_bloom:empty(),
         <<"type">>              => <<"0x0">>,
-        <<"status">>            => <<"0x1">>
+        <<"status">>            => Status
     },
-    {ok, enrich_with_call_result(Base, Type, Tx, BlockHash)}.
+    {Receipt, Cumulative}.
 
-enrich_with_call_result(Base, contract_call_tx, Tx, BlockHash) ->
+block_number(BlockHash) ->
+    case aec_chain:get_header(BlockHash) of
+        {ok, Header} -> aec_headers:height(Header);
+        error        -> 0
+    end.
+
+%% Return {GasUsed, Status} for one signed tx. Contract calls/creates
+%% pull the real gas-used + status from the call object; non-contract
+%% txs always succeed (status 0x1) and report 0 gas (AE spend-tx has no
+%% EVM-style metering -- documented in plan 03).
+gas_and_status(contract_call_tx, Tx, BlockHash) ->
     case call_result(Tx, BlockHash) of
-        {ok, GasUsed, Status} ->
-            Base#{<<"gasUsed">> => aerpc_encoding:to_quantity(GasUsed),
-                  <<"status">>  => Status};
-        none ->
-            Base
+        {ok, GasUsed, Status} -> {GasUsed, Status};
+        none                  -> {0, <<"0x1">>}
     end;
-enrich_with_call_result(Base, contract_create_tx, Tx, BlockHash) ->
+gas_and_status(contract_create_tx, Tx, BlockHash) ->
     case call_result(Tx, BlockHash) of
-        {ok, GasUsed, Status} ->
-            Base#{<<"gasUsed">> => aerpc_encoding:to_quantity(GasUsed),
-                  <<"status">>  => Status};
-        none ->
-            Base
+        {ok, GasUsed, Status} -> {GasUsed, Status};
+        none                  -> {0, <<"0x1">>}
     end;
-enrich_with_call_result(Base, _Other, _Tx, _BlockHash) ->
-    Base.
+gas_and_status(_Other, _Tx, _BlockHash) ->
+    {0, <<"0x1">>}.
+
+%% Best-effort gas-used lookup for a single tx; mirrors the path
+%% gas_and_status/3 uses but returns just the integer. Non-contract
+%% txs contribute 0 to the running cumulative.
+gas_used_for_signed_tx(SignedTx, BlockHash) ->
+    Tx = aetx_sign:tx(SignedTx),
+    {Type, _Body} = aetx:specialize_type(Tx),
+    {Gas, _Status} = gas_and_status(Type, Tx, BlockHash),
+    Gas.
 
 call_result(Tx, BlockHash) ->
     try
