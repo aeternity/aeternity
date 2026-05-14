@@ -23,6 +23,7 @@
         , encoding_quantity_roundtrip/1
         , encoding_quantity_zero/1
         , method_ae_accounts/1
+        , method_ae_netListening/1
         ]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -38,6 +39,7 @@ all() ->
     , encoding_quantity_roundtrip
     , encoding_quantity_zero
     , method_ae_accounts
+    , method_ae_netListening
     ].
 
 %% ===================================================================
@@ -127,5 +129,13 @@ method_ae_accounts(_Config) ->
             <<"id">>      => 1,
             <<"method">>  => <<"ae_accounts">>},
     ?assertMatch(#{<<"id">> := 1, <<"result">> := []},
+                 aerpc:dispatch(Req)),
+    ok.
+
+method_ae_netListening(_Config) ->
+    Req = #{<<"jsonrpc">> => <<"2.0">>,
+            <<"id">>      => 1,
+            <<"method">>  => <<"ae_netListening">>},
+    ?assertMatch(#{<<"id">> := 1, <<"result">> := true},
                  aerpc:dispatch(Req)),
     ok.

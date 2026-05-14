@@ -27,5 +27,9 @@ dispatch_method(<<"ae_accounts">>, _Params) ->
     %% Node never holds user wallet keys.
     {ok, []};
 
+dispatch_method(<<"ae_netListening">>, _Params) ->
+    %% If the node is able to answer this RPC it is, by definition, listening.
+    {ok, true};
+
 dispatch_method(_Method, _Params) ->
     {error, -32601, <<"Method not found">>}.
