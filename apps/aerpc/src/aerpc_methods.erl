@@ -23,5 +23,9 @@ dispatch_method(<<"ae_blockNumber">>, _Params) ->
             {ok, aerpc_encoding:to_quantity(Height)}
     end;
 
+dispatch_method(<<"ae_accounts">>, _Params) ->
+    %% Node never holds user wallet keys.
+    {ok, []};
+
 dispatch_method(_Method, _Params) ->
     {error, -32601, <<"Method not found">>}.

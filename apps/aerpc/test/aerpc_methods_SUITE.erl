@@ -22,6 +22,7 @@
         , jsonrpc_error_shape/1
         , encoding_quantity_roundtrip/1
         , encoding_quantity_zero/1
+        , method_ae_accounts/1
         ]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -36,6 +37,7 @@ all() ->
     , jsonrpc_error_shape
     , encoding_quantity_roundtrip
     , encoding_quantity_zero
+    , method_ae_accounts
     ].
 
 %% ===================================================================
@@ -114,4 +116,16 @@ encoding_quantity_roundtrip(_Config) ->
 encoding_quantity_zero(_Config) ->
     ?assertEqual(<<"0x0">>, aerpc_encoding:to_quantity(0)),
     ?assertEqual(0, aerpc_encoding:from_quantity(<<"0x0">>)),
+    ok.
+
+%% ===================================================================
+%% Method dispatchers
+%% ===================================================================
+
+method_ae_accounts(_Config) ->
+    Req = #{<<"jsonrpc">> => <<"2.0">>,
+            <<"id">>      => 1,
+            <<"method">>  => <<"ae_accounts">>},
+    ?assertMatch(#{<<"id">> := 1, <<"result">> := []},
+                 aerpc:dispatch(Req)),
     ok.
