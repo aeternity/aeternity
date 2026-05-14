@@ -52,6 +52,7 @@
         , method_ae_getCode/1
         , method_ae_getTransactionCount/1
         , method_ae_getTransactionByHash/1
+        , method_ae_getTransactionByBlockHashAndIndex/1
         ]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -96,6 +97,7 @@ all() ->
     , method_ae_getCode
     , method_ae_getTransactionCount
     , method_ae_getTransactionByHash
+    , method_ae_getTransactionByBlockHashAndIndex
     ].
 
 %% ===================================================================
@@ -345,6 +347,9 @@ method_ae_getTransactionCount(_Config) ->
 
 method_ae_getTransactionByHash(_Config) ->
     routed(<<"ae_getTransactionByHash">>).
+
+method_ae_getTransactionByBlockHashAndIndex(_Config) ->
+    routed(<<"ae_getTransactionByBlockHashAndIndex">>).
 
 %% Hermetic: a 0x-hex of the right length is always accepted; anything
 %% else without the expected prefix is rejected.
