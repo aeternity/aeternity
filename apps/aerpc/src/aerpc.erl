@@ -24,7 +24,9 @@ dispatch(#{<<"jsonrpc">> := ?JSONRPC_VSN, <<"method">> := Method} = Req)
         {ok, Result} ->
             aerpc_jsonrpc:result(Id, Result);
         {error, Code, Msg} ->
-            aerpc_jsonrpc:error(Id, Code, Msg)
+            aerpc_jsonrpc:error(Id, Code, Msg);
+        {error, Code, Msg, Data} ->
+            aerpc_jsonrpc:error(Id, Code, Msg, Data)
     end;
 dispatch(_BadEnvelope) ->
     aerpc_jsonrpc:error(null, -32600, <<"Invalid Request">>).

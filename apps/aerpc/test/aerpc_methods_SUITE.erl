@@ -57,7 +57,13 @@
         , method_ae_getTransactionReceipt/1
         , bloom_empty/1
         , method_ae_call/1
+        , method_ae_call_missing_to/1
+        , method_ae_call_invalid_params_shape/1
+        , method_ae_call_invalid_input_hex/1
         , method_ae_estimateGas/1
+        , block_resolve_dry_run_top/1
+        , encoding_optional_quantity/1
+        , jsonrpc_error_with_data/1
         , method_ae_getLogs/1
         , method_ae_getLogs_invalid_params/1
         , method_ae_getLogs_range_too_wide/1
@@ -120,7 +126,13 @@ all() ->
     , method_ae_getTransactionReceipt
     , bloom_empty
     , method_ae_call
+    , method_ae_call_missing_to
+    , method_ae_call_invalid_params_shape
+    , method_ae_call_invalid_input_hex
     , method_ae_estimateGas
+    , block_resolve_dry_run_top
+    , encoding_optional_quantity
+    , jsonrpc_error_with_data
     , method_ae_getLogs
     , method_ae_getLogs_invalid_params
     , method_ae_getLogs_range_too_wide
@@ -402,23 +414,98 @@ bloom_empty(_Config) ->
     ok.
 
 method_ae_call(_Config) ->
+    %% Well-formed envelope, malformed `to' value -> -32602 (address
+    %% decoding fails before dry-run is invoked).
     Req = #{<<"jsonrpc">> => <<"2.0">>,
             <<"id">>      => 1,
             <<"method">>  => <<"ae_call">>,
-            <<"params">>  => [#{<<"to">> => <<"ct_xxx">>}, <<"latest">>]},
+            <<"params">>  => [#{<<"to">> => <<"not-a-contract-id">>},
+                              <<"latest">>]},
     ?assertMatch(#{<<"id">> := 1,
-                   <<"error">> := #{<<"code">> := -32004}},
+                   <<"error">> := #{<<"code">> := -32602}},
                  aerpc:dispatch(Req)),
+    ok.
+
+method_ae_call_missing_to(_Config) ->
+    Req = #{<<"jsonrpc">> => <<"2.0">>,
+            <<"id">>      => 1,
+            <<"method">>  => <<"ae_call">>,
+            <<"params">>  => [#{}, <<"latest">>]},
+    ?assertMatch(#{<<"id">> := 1,
+                   <<"error">> := #{<<"code">> := -32602}},
+                 aerpc:dispatch(Req)),
+    ok.
+
+method_ae_call_invalid_params_shape(_Config) ->
+    %% A non-map TxObj should be rejected by the dispatcher guard.
+    Req = #{<<"jsonrpc">> => <<"2.0">>,
+            <<"id">>      => 1,
+            <<"method">>  => <<"ae_call">>,
+            <<"params">>  => [<<"not-a-map">>, <<"latest">>]},
+    ?assertMatch(#{<<"id">> := 1,
+                   <<"error">> := #{<<"code">> := -32602}},
+                 aerpc:dispatch(Req)),
+    ok.
+
+method_ae_call_invalid_input_hex(_Config) ->
+    %% `input' present but not hex-decodable -> -32602.
+    Req = #{<<"jsonrpc">> => <<"2.0">>,
+            <<"id">>      => 1,
+            <<"method">>  => <<"ae_call">>,
+            <<"params">>  => [#{<<"to">> =>
+                                    <<"0x", (binary:copy(<<"00">>, 32))/binary>>,
+                                <<"input">> => <<"not-hex">>},
+                              <<"latest">>]},
+    %% Either -32602 (input rejected) or -32603 (dry-run error
+    %% propagated from the no-aecore hermetic env). Both indicate the
+    %% method was routed and reached the call adapter; either is
+    %% acceptable for the hermetic case.
+    Reply = aerpc:dispatch(Req),
+    ?assertMatch(#{<<"id">> := 1, <<"error">> := #{<<"code">> := Code}}
+                   when Code =:= -32602 orelse Code =:= -32603, Reply),
     ok.
 
 method_ae_estimateGas(_Config) ->
     Req = #{<<"jsonrpc">> => <<"2.0">>,
             <<"id">>      => 1,
             <<"method">>  => <<"ae_estimateGas">>,
-            <<"params">>  => [#{<<"to">> => <<"ct_xxx">>}]},
+            <<"params">>  => [#{<<"to">> => <<"not-a-contract-id">>}]},
     ?assertMatch(#{<<"id">> := 1,
-                   <<"error">> := #{<<"code">> := -32004}},
+                   <<"error">> := #{<<"code">> := -32602}},
                  aerpc:dispatch(Req)),
+    ok.
+
+%% Hermetic check on the dry-run-top resolver: `latest' (and friends)
+%% map to the symbolic `top'; explicit hex maps to {height, N}.
+block_resolve_dry_run_top(_Config) ->
+    ?assertEqual({ok, top},          aerpc_block:resolve_dry_run_top(<<"latest">>)),
+    ?assertEqual({ok, top},          aerpc_block:resolve_dry_run_top(<<"pending">>)),
+    ?assertEqual({ok, top},          aerpc_block:resolve_dry_run_top(<<"safe">>)),
+    ?assertEqual({ok, top},          aerpc_block:resolve_dry_run_top(<<"finalized">>)),
+    ?assertEqual({ok, {height, 0}},  aerpc_block:resolve_dry_run_top(<<"earliest">>)),
+    ?assertEqual({ok, {height, 16}}, aerpc_block:resolve_dry_run_top(<<"0x10">>)),
+    ?assertMatch({error, -32602, _}, aerpc_block:resolve_dry_run_top(<<"banana">>)),
+    ok.
+
+%% Hermetic check on the new optional-quantity helper.
+encoding_optional_quantity(_Config) ->
+    ?assertEqual(0,       aerpc_encoding:from_optional_quantity(undefined, 0)),
+    ?assertEqual(7,       aerpc_encoding:from_optional_quantity(undefined, 7)),
+    ?assertEqual(0,       aerpc_encoding:from_optional_quantity(<<>>, 0)),
+    ?assertEqual(255,     aerpc_encoding:from_optional_quantity(<<"0xff">>, 0)),
+    ?assertEqual(15,      aerpc_encoding:from_optional_quantity(<<"f">>, 0)),
+    ok.
+
+%% Hermetic check on the new 4-arg envelope helper. Verifies that the
+%% optional `data' field is rendered into the error object.
+jsonrpc_error_with_data(_Config) ->
+    R = aerpc_jsonrpc:error(1, -32003, <<"execution reverted">>,
+                            <<"0xdeadbeef">>),
+    ?assertEqual(#{<<"jsonrpc">> => <<"2.0">>,
+                   <<"id">>      => 1,
+                   <<"error">>   => #{<<"code">>    => -32003,
+                                      <<"message">> => <<"execution reverted">>,
+                                      <<"data">>    => <<"0xdeadbeef">>}}, R),
     ok.
 
 method_ae_getLogs(_Config) ->

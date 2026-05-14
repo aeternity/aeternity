@@ -14,6 +14,7 @@
 -export([
           to_quantity/1
         , from_quantity/1
+        , from_optional_quantity/2
         , to_hex_data/1
         , from_hex_data/1
         , format_account/1
@@ -36,6 +37,17 @@ from_quantity(<<"0x", Hex/binary>>) when Hex =/= <<>> ->
     binary_to_integer(Hex, 16);
 from_quantity(Bin) when is_binary(Bin), Bin =/= <<>> ->
     binary_to_integer(Bin, 16).
+
+%% @doc Decode a hex `QUANTITY' that may be absent. `undefined' or an
+%% empty binary yields `Default'; otherwise behaves like `from_quantity/1'.
+%% Used for the optional `value', `gas', `nonce', ... fields on ae_call /
+%% ae_estimateGas tx objects, where the caller may omit them.
+-spec from_optional_quantity(binary() | undefined, non_neg_integer()) ->
+    non_neg_integer().
+from_optional_quantity(undefined, Default) -> Default;
+from_optional_quantity(<<>>, Default)      -> Default;
+from_optional_quantity(Bin, _Default) when is_binary(Bin) ->
+    from_quantity(Bin).
 
 %% @doc Encode an arbitrary byte sequence as `0x'-prefixed lower-case hex.
 %% Distinct from `to_quantity/1', which strips leading zeros.

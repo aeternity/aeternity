@@ -8,6 +8,7 @@
 -export([
           result/2
         , error/3
+        , error/4
         , error_codes/0
         ]).
 
@@ -25,6 +26,18 @@ error(Id, Code, Message) when is_integer(Code), is_binary(Message) ->
       <<"id">>      => Id,
       <<"error">>   => #{<<"code">>    => Code,
                          <<"message">> => Message}}.
+
+%% Variant that includes the optional JSON-RPC 2.0 `data' field on the
+%% error object. Used by ae_call / ae_estimateGas to surface the FATE
+%% revert payload (eth convention: callers parse `error.data' as the
+%% raw return bytes of the failing call).
+-spec error(term(), integer(), binary(), term()) -> map().
+error(Id, Code, Message, Data) when is_integer(Code), is_binary(Message) ->
+    #{<<"jsonrpc">> => ?JSONRPC_VSN,
+      <<"id">>      => Id,
+      <<"error">>   => #{<<"code">>    => Code,
+                         <<"message">> => Message,
+                         <<"data">>    => Data}}.
 
 %% Standard JSON-RPC 2.0 error codes; -32000..-32099 is the reserved
 %% range for implementation-defined server errors.

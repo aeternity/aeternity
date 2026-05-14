@@ -166,19 +166,21 @@ dispatch_method(<<"ae_getTransactionReceipt">>, [HashIn])
 dispatch_method(<<"ae_getTransactionReceipt">>, _Params) ->
     {error, -32602, <<"Invalid params">>};
 
+dispatch_method(<<"ae_call">>, [TxObj, BlockId])
+  when is_map(TxObj), is_binary(BlockId) ->
+    aerpc_call:call(TxObj, BlockId);
+dispatch_method(<<"ae_call">>, [TxObj]) when is_map(TxObj) ->
+    aerpc_call:call(TxObj, <<"latest">>);
 dispatch_method(<<"ae_call">>, _Params) ->
-    %% v1: gated off. A real implementation builds a synthetic
-    %% contract_call_tx and runs it through aec_dry_run:dry_run/4. FATE
-    %% contracts cannot produce Eth-ABI-compatible return data without a
-    %% bridge, and AEVM-Solidity contracts are effectively unused on
-    %% mainnet, so v1 returns -32004 ("operation not supported") for all
-    %% callers. Spec stub kept here so the dispatcher table is complete.
-    {error, -32004, <<"Operation not supported (FATE contract)">>};
+    {error, -32602, <<"Invalid params">>};
 
+dispatch_method(<<"ae_estimateGas">>, [TxObj, BlockId])
+  when is_map(TxObj), is_binary(BlockId) ->
+    aerpc_call:estimate_gas(TxObj, BlockId);
+dispatch_method(<<"ae_estimateGas">>, [TxObj]) when is_map(TxObj) ->
+    aerpc_call:estimate_gas(TxObj, <<"latest">>);
 dispatch_method(<<"ae_estimateGas">>, _Params) ->
-    %% Same v1 gating as ae_call: returns -32004. A real estimate is the
-    %% gas_used field of the dry-run call object.
-    {error, -32004, <<"Operation not supported (FATE contract)">>};
+    {error, -32602, <<"Invalid params">>};
 
 dispatch_method(<<"ae_getLogs">>, [Filter]) when is_map(Filter) ->
     aerpc_logs:get_logs(Filter);

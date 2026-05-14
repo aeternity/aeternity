@@ -19,6 +19,7 @@
         , tx_count_by_hash/1
         , tx_count_by_height/1
         , resolve_tag/1
+        , resolve_dry_run_top/1
         , decode_block_hash/1
         ]).
 
@@ -114,6 +115,29 @@ resolve_tag(<<"0x", _/binary>> = Hex) ->
     catch _:_ -> {error, -32602, <<"Invalid params">>}
     end;
 resolve_tag(_Other) ->
+    {error, -32602, <<"Invalid params">>}.
+
+%% @doc Resolve a block tag/hex to the shape `aec_dry_run:dry_run/4'
+%% expects for its `Top' argument:
+%%   * `top'         -- for `<<"latest">>' / `<<"pending">>' / etc.
+%%   * `{height, N}' -- for explicit hex heights and `<<"earliest">>'.
+%% Tags that resolve to the current top get the symbolic `top' rather
+%% than a numeric height, because dry-run's `top' path uses the actual
+%% top-of-chain microblock state (most-recent state, including pending
+%% microblock txs), where `{height, N}' anchors right after the keyblock
+%% of generation N.
+-spec resolve_dry_run_top(binary()) ->
+    {ok, top | {height, non_neg_integer()}} | {error, integer(), binary()}.
+resolve_dry_run_top(<<"latest">>)    -> {ok, top};
+resolve_dry_run_top(<<"pending">>)   -> {ok, top};
+resolve_dry_run_top(<<"safe">>)      -> {ok, top};
+resolve_dry_run_top(<<"finalized">>) -> {ok, top};
+resolve_dry_run_top(<<"earliest">>)  -> {ok, {height, 0}};
+resolve_dry_run_top(<<"0x", _/binary>> = Hex) ->
+    try {ok, {height, aerpc_encoding:from_quantity(Hex)}}
+    catch _:_ -> {error, -32602, <<"Invalid params">>}
+    end;
+resolve_dry_run_top(_Other) ->
     {error, -32602, <<"Invalid params">>}.
 
 %% @doc Decode a block hash from either canonical `kh_...' AE form or
