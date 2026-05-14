@@ -102,6 +102,9 @@
         , method_ae_getBalance_with_block_object/1
         , method_ae_getRawTransactionByHash_routed/1
         , method_ae_getRawTransactionByHash_invalid_params/1
+        , errors_range_too_wide_format/1
+        , errors_batch_too_large_format/1
+        , method_ae_getLogs_range_too_wide_message/1
         ]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -196,6 +199,9 @@ all() ->
     , method_ae_getBalance_with_block_object
     , method_ae_getRawTransactionByHash_routed
     , method_ae_getRawTransactionByHash_invalid_params
+    , errors_range_too_wide_format
+    , errors_batch_too_large_format
+    , method_ae_getLogs_range_too_wide_message
     ].
 
 %% ===================================================================
@@ -638,6 +644,43 @@ method_ae_getRawTransactionByHash_invalid_params(_Config) ->
     ?assertMatch(#{<<"id">> := 1,
                    <<"error">> := #{<<"code">> := -32602}},
                  aerpc:dispatch(Req)),
+    ok.
+
+%% Structured error helpers: the fork pattern-matches on these codes
+%% (and embedded numbers) to decide whether to chunk + retry. Asserting
+%% both the code and that the formatted message mentions the cap keeps
+%% the contract explicit.
+errors_range_too_wide_format(_Config) ->
+    {error, Code, Msg} = aerpc_errors:range_too_wide(2000, 1000),
+    ?assertEqual(-32005, Code),
+    ?assert(is_binary(Msg)),
+    ?assertNotEqual(nomatch, binary:match(Msg, <<"Range too wide">>)),
+    ?assertNotEqual(nomatch, binary:match(Msg, <<"2000">>)),
+    ?assertNotEqual(nomatch, binary:match(Msg, <<"1000">>)),
+    ok.
+
+errors_batch_too_large_format(_Config) ->
+    {error, Code, Msg} = aerpc_errors:batch_too_large(1024),
+    ?assertEqual(-32006, Code),
+    ?assert(is_binary(Msg)),
+    ?assertNotEqual(nomatch, binary:match(Msg, <<"Batch too large">>)),
+    ?assertNotEqual(nomatch, binary:match(Msg, <<"1024">>)),
+    ok.
+
+%% ae_getLogs over a too-wide range should now use the formatted
+%% message (not just "Range too wide" with no size info).
+method_ae_getLogs_range_too_wide_message(_Config) ->
+    Req = #{<<"jsonrpc">> => <<"2.0">>,
+            <<"id">>      => 1,
+            <<"method">>  => <<"ae_getLogs">>,
+            <<"params">>  =>
+                [#{<<"fromBlock">> => <<"0x0">>,
+                   <<"toBlock">>   => <<"0x7d0">>}]},   %% 2000 generations
+    Reply = aerpc:dispatch(Req),
+    ?assertMatch(#{<<"id">> := 1,
+                   <<"error">> := #{<<"code">> := -32005}}, Reply),
+    #{<<"error">> := #{<<"message">> := Msg}} = Reply,
+    ?assertNotEqual(nomatch, binary:match(Msg, <<"Range too wide">>)),
     ok.
 
 fee_percentile_helper(_Config) ->

@@ -93,7 +93,8 @@ parse_range_filter(F) ->
         {{ok, FromH}, {ok, ToH}} when ToH >= FromH ->
             case ToH - FromH < ?MAX_RANGE of
                 true  -> parse_rest(F, {range, FromH, ToH});
-                false -> {error, -32005, <<"Range too wide">>}
+                false ->
+                    aerpc_errors:range_too_wide(ToH - FromH + 1, ?MAX_RANGE)
             end;
         _ ->
             {error, -32602, <<"Invalid params">>}
