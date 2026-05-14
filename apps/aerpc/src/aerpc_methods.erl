@@ -119,6 +119,15 @@ dispatch_method(<<"ae_getBalance">>, [AddrIn, TagOrHex])
 dispatch_method(<<"ae_getBalance">>, _Params) ->
     {error, -32602, <<"Invalid params">>};
 
+dispatch_method(<<"ae_getCode">>, [AddrIn, _TagOrHex])
+  when is_binary(AddrIn) ->
+    %% v1: code is read from the latest state only. Historical contract
+    %% bytecode lookups need a state-tree walk that does not yet exist
+    %% in this module; documented as a v1 limitation.
+    aerpc_account:code(AddrIn);
+dispatch_method(<<"ae_getCode">>, _Params) ->
+    {error, -32602, <<"Invalid params">>};
+
 dispatch_method(<<"ae_sha3">>, [HexIn]) when is_binary(HexIn) ->
     %% Keccak-256 of the supplied bytes. Uses the same `sha3' dep that
     %% backs aec_hash:hash(evm, _) -- which is configured to produce the

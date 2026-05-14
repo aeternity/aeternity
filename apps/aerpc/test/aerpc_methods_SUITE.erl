@@ -49,6 +49,7 @@
         , method_ae_getBalance/1
         , method_ae_getBalance_invalid_address/1
         , account_decode_address/1
+        , method_ae_getCode/1
         ]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -90,6 +91,7 @@ all() ->
     , method_ae_getBalance
     , method_ae_getBalance_invalid_address
     , account_decode_address
+    , method_ae_getCode
     ].
 
 %% ===================================================================
@@ -330,6 +332,9 @@ method_ae_getBalance_invalid_address(_Config) ->
                    <<"error">> := #{<<"code">> := -32602}},
                  aerpc:dispatch(Req)),
     ok.
+
+method_ae_getCode(_Config) ->
+    routed(<<"ae_getCode">>).
 
 %% Hermetic: a 0x-hex of the right length is always accepted; anything
 %% else without the expected prefix is rejected.
