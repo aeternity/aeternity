@@ -134,6 +134,12 @@ dispatch_method(<<"ae_getTransactionCount">>, [AddrIn, TagOrHex])
 dispatch_method(<<"ae_getTransactionCount">>, _Params) ->
     {error, -32602, <<"Invalid params">>};
 
+dispatch_method(<<"ae_getTransactionByHash">>, [HashIn])
+  when is_binary(HashIn) ->
+    aerpc_tx:by_hash(HashIn);
+dispatch_method(<<"ae_getTransactionByHash">>, _Params) ->
+    {error, -32602, <<"Invalid params">>};
+
 dispatch_method(<<"ae_sha3">>, [HexIn]) when is_binary(HexIn) ->
     %% Keccak-256 of the supplied bytes. Uses the same `sha3' dep that
     %% backs aec_hash:hash(evm, _) -- which is configured to produce the

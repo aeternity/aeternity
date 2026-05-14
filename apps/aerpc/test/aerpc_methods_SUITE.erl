@@ -51,6 +51,7 @@
         , account_decode_address/1
         , method_ae_getCode/1
         , method_ae_getTransactionCount/1
+        , method_ae_getTransactionByHash/1
         ]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -94,6 +95,7 @@ all() ->
     , account_decode_address
     , method_ae_getCode
     , method_ae_getTransactionCount
+    , method_ae_getTransactionByHash
     ].
 
 %% ===================================================================
@@ -340,6 +342,9 @@ method_ae_getCode(_Config) ->
 
 method_ae_getTransactionCount(_Config) ->
     routed(<<"ae_getTransactionCount">>).
+
+method_ae_getTransactionByHash(_Config) ->
+    routed(<<"ae_getTransactionByHash">>).
 
 %% Hermetic: a 0x-hex of the right length is always accepted; anything
 %% else without the expected prefix is rejected.
