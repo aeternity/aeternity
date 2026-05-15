@@ -91,7 +91,8 @@ put_map_to_read_cache(Map, Store = #store{read_cache = RCache}) ->
 
 -spec contents(store()) -> #{key() := val()}.
 contents(Store) ->
-    subtree(<<>>, Store).
+    Map = subtree(<<>>, Store),
+    maps:filter(fun(_K, V) -> V /= <<>> end, Map).
 
 -spec size(store()) -> non_neg_integer().
 size(Store) ->
@@ -115,14 +116,19 @@ subtree_w_cache(Prefix, #store{ cache = Cache, read_cache = RCache, mtree = Tree
             false ->
                 case aeu_mtrees:read_only_subtree(Prefix, Tree) of
                     {error, no_such_subtree} ->
-                        {#{}, RCache#{{subtree, Prefix} => true}};    %% subtree is only in cache
+                        %% Sentinel not yet flushed — batch writes live only in read_cache.
+                        FromRCache = subtree_from_cache(Prefix, RCache),
+                        {FromRCache, RCache#{{subtree, Prefix} => true}};
                     {ok, Subtree} ->
                         Iterator = aeu_mtrees:iterator(Subtree),
                         Next = aeu_mtrees:iterator_next(Iterator),
                         Map  = find_keys(Next, #{}),
+                        %% Overlay read_cache (batch writes) on top of MPT data.
+                        FromRCache = subtree_from_cache(Prefix, RCache),
+                        MergedTree = maps:merge(Map, FromRCache),
                         CMap = maps:from_list([{<<Prefix/binary, Key/binary>>, Val} ||
-                                               {Key, Val} <- maps:to_list(Map)]),
-                        {Map, maps:merge(RCache#{{subtree, Prefix} => true}, CMap)}
+                                               {Key, Val} <- maps:to_list(MergedTree)]),
+                        {MergedTree, maps:merge(RCache#{{subtree, Prefix} => true}, CMap)}
                 end
         end,
     {maps:merge(FromTree, FromCache), S#store{ read_cache = RCache1 }}.

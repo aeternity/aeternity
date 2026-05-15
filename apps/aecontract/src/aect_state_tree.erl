@@ -168,15 +168,13 @@ read_contract_store(StoreKey, Tree) ->
             Err
     end.
 
-insert_store(Contract, #contract_tree{contracts = CtTree, store_batch = Batch} = Tree) ->
+insert_store(Contract, #contract_tree{store_batch = Batch} = Tree) ->
     Id     = aect_contracts:store_id(Contract),
     Store  = aect_contracts:state(Contract),
-    %% Insert sentinel <<0>> so read_only_subtree finds the prefix.
-    CtTree1 = aeu_mtrees:insert(Id, <<0>>, CtTree),
-    Writes  = aect_contracts_store:write_cache(Store),
-    Reads   = aect_contracts_store:read_cache(Store),
-    Batch1  = batch_accumulate(aect_contracts:pubkey(Contract), Id, Writes, Reads, Batch),
-    Tree#contract_tree{contracts = CtTree1, store_batch = Batch1}.
+    Writes = aect_contracts_store:write_cache(Store),
+    Reads  = aect_contracts_store:read_cache(Store),
+    Batch1 = batch_accumulate(aect_contracts:pubkey(Contract), Id, Writes, Reads, Batch),
+    Tree#contract_tree{store_batch = Batch1}.
 
 insert_store_nodes(Prefix, Writes, CtTree) ->
     Insert = fun(<<>>, _, Tree) -> Tree;    %% Ignore the empty key
@@ -248,13 +246,8 @@ add_store(Contract, #contract_tree{contracts = CtTree, store_batch = Batch}, Opt
         {ok, Subtree} ->
             aect_contracts_store:new(Subtree);
         {error, no_such_subtree} ->
-            %% Expected for contracts created in the current batch whose sentinel
-            %% write has not yet been flushed to the MPT.  If this fires for a
-            %% contract from a prior microblock it indicates a missing sentinel
-            %% write — a bug in insert_store.
-            lager:debug("aect_state_tree:add_store: no_such_subtree for ~p "
-                        "(expected only for new contracts in the current batch)",
-                        [StoreId]),
+            %% Sentinel is written only at flush time (when writes are non-empty),
+            %% so any contract with an empty store — new or existing — returns this.
             aect_contracts_store:new()
     end,
     %% Pre-populate read_cache: stable MPT reads from prior txs first, then writes on top
@@ -477,9 +470,13 @@ batch_accumulate(Pubkey, StoreId, Writes, Reads, Batch) ->
 -spec flush_contract_batch(aect_contracts:pubkey(), tree()) -> tree().
 flush_contract_batch(Pubkey, #contract_tree{contracts = CtTree, store_batch = Batch} = Tree) ->
     case maps:take(Pubkey, Batch) of
-        {{StoreId, Writes, _Reads}, Batch1} ->
-            CtTree1 = enter_store_nodes(StoreId, Writes, CtTree),
-            Tree#contract_tree{contracts = CtTree1, store_batch = Batch1};
+        {{StoreId, Writes, _Reads}, Batch1} when map_size(Writes) > 0 ->
+            %% Sentinel <<0>> at StoreId is required by read_only_subtree to locate the prefix.
+            CtTree1 = aeu_mtrees:enter(StoreId, <<0>>, CtTree),
+            CtTree2 = enter_store_nodes(StoreId, Writes, CtTree1),
+            Tree#contract_tree{contracts = CtTree2, store_batch = Batch1};
+        {{_StoreId, _Writes, _Reads}, Batch1} ->
+            Tree#contract_tree{store_batch = Batch1};
         error ->
             Tree
     end.
@@ -492,7 +489,10 @@ flush_store_batch(#contract_tree{store_batch = Batch} = Tree) when map_size(Batc
 flush_store_batch(#contract_tree{contracts = CtTree, store_batch = Batch} = Tree) ->
     CtTree1 = maps:fold(
         fun(_Pubkey, {_StoreId, Writes, _Reads}, Acc) when map_size(Writes) =:= 0 -> Acc;
-           (_Pubkey, {StoreId,  Writes, _Reads}, Acc) -> enter_store_nodes(StoreId, Writes, Acc)
+           (_Pubkey, {StoreId,  Writes, _Reads}, Acc) ->
+               %% Sentinel <<0>> at StoreId is required by read_only_subtree to locate the prefix.
+               Acc1 = aeu_mtrees:enter(StoreId, <<0>>, Acc),
+               enter_store_nodes(StoreId, Writes, Acc1)
         end, CtTree, Batch),
     Tree#contract_tree{contracts = CtTree1, store_batch = #{}}.
 
