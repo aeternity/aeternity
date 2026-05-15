@@ -366,7 +366,21 @@ flatten_txs(MBs, Height, BlockHash) ->
 
 serialize_tx(SignedTx, Height, BlockHash) ->
     TxHash = aetx_sign:hash(SignedTx),
-    try aetx_sign:serialize_for_client(SignedTx, Height, BlockHash, TxHash)
+    try
+        BlockHashEnc =
+            case BlockHash of
+                <<>> -> <<"none">>;
+                _    -> aeser_api_encoder:encode(micro_block_hash, BlockHash)
+            end,
+        MetaData = #{
+            <<"block_height">> => Height,
+            <<"block_hash">>   => BlockHashEnc,
+            <<"hash">>         => aeser_api_encoder:encode(tx_hash, TxHash),
+            <<"encoded_tx">>   => aeser_api_encoder:encode(
+                                     transaction,
+                                     aetx_sign:serialize_to_binary(SignedTx))
+        },
+        aetx_sign:serialize_for_client_inner(SignedTx, MetaData)
     catch _:_ ->
         #{<<"hash">> => aerpc_encoding:format_tx_hash(TxHash)}
     end.

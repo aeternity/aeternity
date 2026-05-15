@@ -8,7 +8,9 @@
 -export([dispatch_method/2]).
 
 -spec dispatch_method(binary(), term()) ->
-    {ok, term()} | {error, integer(), binary()}.
+    {ok, term()}
+  | {error, integer(), binary()}
+  | {error, integer(), binary(), term()}.
 dispatch_method(<<"ae_clientVersion">>, _Params) ->
     Vsn = aeapi:node_version(),
     Rev = aeapi:node_revision(),

@@ -52,10 +52,9 @@
 call(TxObj, BlockId)
   when is_map(TxObj), (is_binary(BlockId) orelse is_map(BlockId)) ->
     case do_dry_run(TxObj, BlockId) of
-        {ok, CallObj}                  -> ok_return_value(CallObj);
-        {revert, CallObj}              -> revert_error(CallObj);
-        {error, _, _, _} = Err4        -> Err4;
-        {error, _, _} = Err3           -> Err3
+        {ok, CallObj}        -> ok_return_value(CallObj);
+        {revert, CallObj}    -> revert_error(CallObj);
+        {error, _, _} = Err3 -> Err3
     end;
 call(_TxObj, _BlockId) ->
     {error, -32602, <<"Invalid params">>}.
@@ -71,8 +70,7 @@ estimate_gas(TxObj, BlockId)
             {ok, aerpc_encoding:to_quantity(aect_call:gas_used(CallObj))};
         {revert, CallObj} ->
             revert_error(CallObj);
-        {error, _, _, _} = Err4 -> Err4;
-        {error, _, _} = Err3    -> Err3
+        {error, _, _} = Err3 -> Err3
     end;
 estimate_gas(_TxObj, _BlockId) ->
     {error, -32602, <<"Invalid params">>}.
@@ -179,14 +177,8 @@ build_and_run(_Top, _Caller, no_contract, _ABI, _CallData, _Amt, _Gas) ->
     %% emits "0x0".
     {ok, no_contract};
 build_and_run(Top, CallerPK, ContractPK, ABI, CallData, Amount, Gas) ->
-    case build_call_tx(CallerPK, ContractPK, ABI, CallData, Amount, Gas) of
-        {ok, Tx} ->
-            run_and_extract(Top, Tx);
-        {error, Reason} ->
-            {error, -32602,
-             iolist_to_binary(io_lib:format("Failed to build call tx: ~p",
-                                            [Reason]))}
-    end.
+    {ok, Tx} = build_call_tx(CallerPK, ContractPK, ABI, CallData, Amount, Gas),
+    run_and_extract(Top, Tx).
 
 build_call_tx(CallerPK, ContractPK, ABI, CallData, Amount, Gas) ->
     aect_call_tx:new(#{
