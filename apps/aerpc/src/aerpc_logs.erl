@@ -71,49 +71,49 @@ raw_logs_for_block(KeyBlockHash) when is_binary(KeyBlockHash) ->
 %% Filter parsing
 %% ===================================================================
 
+%% Pure field validation (address, topics) runs before block-scope
+%% resolution so a malformed filter is rejected without touching the
+%% chain (resolve_tag/1 reads aec_db for the "latest" family of tags).
 parse_filter(F) ->
+    case parse_addresses(maps:get(<<"address">>, F, undefined)) of
+        {ok, Addresses} ->
+            case parse_topics(maps:get(<<"topics">>, F, [])) of
+                {ok, Topics}        -> parse_block_scope(F, Addresses, Topics);
+                {error, _, _} = Err -> Err
+            end;
+        {error, _, _} = Err -> Err
+    end.
+
+parse_block_scope(F, Addresses, Topics) ->
     case maps:get(<<"blockHash">>, F, undefined) of
         undefined ->
-            parse_range_filter(F);
+            parse_range_scope(F, Addresses, Topics);
         Hash when is_binary(Hash) ->
             case aerpc_block:decode_block_hash(Hash) of
-                {ok, BlockHash} ->
-                    parse_rest(F, {single, BlockHash});
-                {error, _, _} = Err ->
-                    Err
+                {ok, BlockHash}     -> {ok, criteria({single, BlockHash}, Addresses, Topics)};
+                {error, _, _} = Err -> Err
             end;
         _ ->
             {error, -32602, <<"Invalid params">>}
     end.
 
-parse_range_filter(F) ->
+parse_range_scope(F, Addresses, Topics) ->
     From = maps:get(<<"fromBlock">>, F, <<"latest">>),
     To   = maps:get(<<"toBlock">>,   F, <<"latest">>),
     case {aerpc_block:resolve_tag(From), aerpc_block:resolve_tag(To)} of
         {{ok, FromH}, {ok, ToH}} when ToH >= FromH ->
             case ToH - FromH < ?MAX_RANGE of
-                true  -> parse_rest(F, {range, FromH, ToH});
-                false ->
-                    aerpc_errors:range_too_wide(ToH - FromH + 1, ?MAX_RANGE)
+                true  -> {ok, criteria({range, FromH, ToH}, Addresses, Topics)};
+                false -> aerpc_errors:range_too_wide(ToH - FromH + 1, ?MAX_RANGE)
             end;
         _ ->
             {error, -32602, <<"Invalid params">>}
     end.
 
-parse_rest(F, BlockScope) ->
-    case parse_addresses(maps:get(<<"address">>, F, undefined)) of
-        {ok, Addresses} ->
-            case parse_topics(maps:get(<<"topics">>, F, [])) of
-                {ok, Topics} ->
-                    {ok, #{block_scope => BlockScope,
-                           addresses   => Addresses,
-                           topics      => Topics}};
-                {error, _, _} = Err ->
-                    Err
-            end;
-        {error, _, _} = Err ->
-            Err
-    end.
+criteria(BlockScope, Addresses, Topics) ->
+    #{block_scope => BlockScope,
+      addresses   => Addresses,
+      topics      => Topics}.
 
 parse_addresses(undefined) -> {ok, any};
 parse_addresses(Addr) when is_binary(Addr) ->

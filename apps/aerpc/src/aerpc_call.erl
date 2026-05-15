@@ -82,7 +82,10 @@ estimate_gas(_TxObj, _BlockId) ->
 %% ===================================================================
 
 do_dry_run(TxObj, BlockId) ->
-    with_required_contract(TxObj, fun(ContractPK, ABI) ->
+    %% Pure validation (decode_to, caller, input, top) runs before any
+    %% chain access. The contract lookup is the innermost step so an
+    %% invalid input is rejected with -32602 without touching aec_db.
+    with_decoded_to(TxObj, fun(ContractPK) ->
         with_caller(TxObj, fun(CallerPK) ->
             with_input(TxObj, fun(CallData) ->
                 with_top(BlockId, fun(Top) ->
@@ -91,33 +94,35 @@ do_dry_run(TxObj, BlockId) ->
                     Gas    = aerpc_encoding:from_optional_quantity(
                                  maps:get(<<"gas">>,   TxObj, undefined),
                                  ?DEFAULT_CALL_GAS),
-                    build_and_run(Top, CallerPK, ContractPK, ABI,
-                                  CallData, Amount, Gas)
+                    with_contract(ContractPK, fun(ABI) ->
+                        build_and_run(Top, CallerPK, ContractPK, ABI,
+                                      CallData, Amount, Gas)
+                    end)
                 end)
             end)
         end)
     end).
 
-with_required_contract(TxObj, K) ->
+with_decoded_to(TxObj, K) ->
     case maps:get(<<"to">>, TxObj, undefined) of
         undefined ->
             {error, -32602, <<"Missing required 'to' field">>};
         ToBin when is_binary(ToBin) ->
             case aerpc_account:decode_address(ToBin) of
-                {ok, ContractPK} ->
-                    case aec_chain:get_contract(ContractPK) of
-                        {ok, Contract} ->
-                            ABI = aect_contracts:abi_version(Contract),
-                            K(ContractPK, ABI);
-                        {error, _Reason} ->
-                            %% No contract at that address. Eth returns
-                            %% empty data ("0x") for calls to non-contract
-                            %% addresses; mirror that.
-                            {ok, no_contract}
-                    end;
+                {ok, ContractPK}    -> K(ContractPK);
                 {error, _, _} = Err -> Err
             end;
         _ -> {error, -32602, <<"Invalid 'to' field">>}
+    end.
+
+with_contract(ContractPK, K) ->
+    case aec_chain:get_contract(ContractPK) of
+        {ok, Contract} ->
+            K(aect_contracts:abi_version(Contract));
+        {error, _Reason} ->
+            %% No contract at that address. Eth returns empty data
+            %% ("0x") for calls to non-contract addresses; mirror that.
+            {ok, no_contract}
     end.
 
 with_caller(TxObj, K) ->
