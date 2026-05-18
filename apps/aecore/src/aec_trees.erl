@@ -57,7 +57,8 @@
          apply_txs_on_state_trees/4,
          apply_txs_on_state_trees_strict/3,
          grant_fee/3,
-         perform_pre_transformations/3
+         perform_pre_transformations/3,
+         flush_state_batches/1
         ]).
 
 %% Proof of inclusion
@@ -239,13 +240,14 @@ verify_poi(Type,_PubKey,_Account, #poi{} =_Poi) ->
 -spec commit_to_db(trees()) -> trees().
 commit_to_db(Trees) ->
     %% Make this in a transaction to get atomicity.
-    aec_db:ensure_transaction(fun() -> internal_commit_to_db(Trees) end).
+    %% Flush any pending contract store batch before committing to DB.
+    aec_db:ensure_transaction(fun() -> internal_commit_to_db(flush_state_batches(Trees)) end).
 
 hash(Trees) ->
-    internal_hash(Trees).
+    internal_hash(flush_state_batches(Trees)).
 
 hash(Trees, {calls, CallsHash}) ->
-    internal_hash(Trees, {calls_hash, CallsHash}).
+    internal_hash(flush_state_batches(Trees), {calls_hash, CallsHash}).
 
 -spec accounts(trees()) -> aec_accounts_trees:tree().
 accounts(Trees) ->
@@ -312,8 +314,9 @@ perform_pre_transformations(Trees, _TxEnv, Protocol, Protocol) ->
     Trees;
 perform_pre_transformations(Trees, TxEnv, Protocol, PrevProtocol)
   when Protocol > PrevProtocol ->
-    %% Fork.
-    aec_block_fork:apply(Protocol, Trees, TxEnv).
+    %% Fork. Flush any contract store batch produced by hard fork contract deployment.
+    Trees1 = aec_block_fork:apply(Protocol, Trees, TxEnv),
+    flush_state_batches(Trees1).
 
 -spec calls(trees()) -> aect_call_state_tree:tree().
 calls(Trees) ->
@@ -754,6 +757,40 @@ grant_fee(BeneficiaryPubKey, Trees0, Fee) ->
 
     AccountsTrees = aec_accounts_trees:enter(Account, AccountsTrees1),
     set_accounts(Trees1, AccountsTrees).
+
+%% Materialise all pending per-microblock batch writes held in the
+%% sub-trees of `trees()' into their MPTs, in a fixed order, so the
+%% resulting `trees()' is canonical for hashing or persisting:
+%%
+%%   1. contract store batch    — deferred store-key MPT writes
+%%   2. contract metadata batch — deferred contract-metadata MPT writes
+%%   3. account batch           — deferred account MPT writes
+%%   4. call batch              — deferred call MPT writes
+%%   5. oracle batch            — deferred oracle/query writes (replayed
+%%                                through the high-level writer so the
+%%                                secondary TTL cache stays maintained)
+%%   6. name batch              — deferred NS writes + tombstones
+%%
+%% Called once per microblock from `aec_block_micro_candidate' and
+%% defensively from `hash/{1,2}', `commit_to_db/1', and
+%% `perform_pre_transformations/4'. Idempotent: O(1) when batches are
+%% empty. The secondary oracle/NS TTL caches are not part of the
+%% consensus root, so replaying collapsed same-key writes is safe.
+-spec flush_state_batches(trees()) -> trees().
+flush_state_batches(Trees) ->
+    CTree  = contracts(Trees),
+    CTree1 = aect_state_tree:flush_store_batch(CTree),
+    CTree2 = aect_state_tree:flush_contract_meta_batch(CTree1),
+    Trees1 = set_contracts(Trees, CTree2),
+    ATree  = accounts(Trees1),
+    ATree1 = aec_accounts_trees:flush_account_batch(ATree),
+    Trees2 = set_accounts(Trees1, ATree1),
+    Trees3 = set_calls(Trees2,
+                       aect_call_state_tree:flush_call_batch(calls(Trees2))),
+    Trees4 = set_oracles(Trees3,
+                         aeo_state_tree:flush_oracle_batch(oracles(Trees3))),
+    set_ns(Trees4,
+           aens_state_tree:flush_name_batch(ns(Trees4))).
 
 -spec ensure_account(aec_keys:pubkey(), trees()) -> trees().
 ensure_account(AccountPubkey, Trees0) ->

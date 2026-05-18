@@ -26,6 +26,7 @@
          new_with_backend/2,
          new_with_dirty_backend/2,
          root_hash/1,
+         flush_name_batch/1,
          ns_db/1,
          cache_db/1,
          auction_iterator/1,
@@ -60,8 +61,19 @@
 -type cache_value() :: binary(). %% ?DUMMY_VAL
 -type block_height() :: non_neg_integer().
 
--record(ns_tree, { mtree = aeu_mtrees:empty() :: nstree()
-                 , cache = aeu_mtrees:empty() :: cache()
+%% Per-microblock deferred NS writes/deletes, keyed by mtree key. A
+%% value entry replays through the unchanged writer (do_enter_*) at
+%% flush, keeping the secondary TTL cache maintained; a `tombstone'
+%% marks a delete (lookup_* report it absent; flush issues the real
+%% delete). The cache is not part of the consensus root, so collapsing
+%% repeated same-key writes does not change it.
+-type nbatch_entry() :: {aens_commitments | aens_auctions | aens_names,
+                         insert | enter, term()} | tombstone.
+-type nbatch() :: #{binary() => nbatch_entry()}.
+
+-record(ns_tree, { mtree  = aeu_mtrees:empty() :: nstree()
+                 , cache  = aeu_mtrees:empty() :: cache()
+                 , nbatch = #{}               :: nbatch()
                  }).
 
 -opaque tree() :: #ns_tree{}.
@@ -80,20 +92,21 @@ record_fields(_      ) -> no.
 %%% API
 %%%===================================================================
 
+%% Defer the delete as a tombstone (overwriting any pending write for
+%% the same key — last writer wins).  Honoured by lookup_* until flush,
+%% when it becomes the real aeu_mtrees:delete.  Final key set, and thus
+%% the consensus root, is identical to the immediate delete.
 -spec delete_commitment(binary(), tree()) -> tree().
-delete_commitment(Id, Tree) ->
-    MTree1 = aeu_mtrees:delete(Id, Tree#ns_tree.mtree),
-    Tree#ns_tree{mtree = MTree1}.
+delete_commitment(Id, #ns_tree{nbatch = B} = Tree) ->
+    Tree#ns_tree{nbatch = B#{Id => tombstone}}.
 
 -spec delete_name_auction(binary(), tree()) -> tree().
-delete_name_auction(Id, Tree) ->
-    MTree1 = aeu_mtrees:delete(Id, Tree#ns_tree.mtree),
-    Tree#ns_tree{mtree = MTree1}.
+delete_name_auction(Id, #ns_tree{nbatch = B} = Tree) ->
+    Tree#ns_tree{nbatch = B#{Id => tombstone}}.
 
 -spec delete_name(binary(), tree()) -> tree().
-delete_name(Id, Tree) ->
-    MTree1 = aeu_mtrees:delete(Id, Tree#ns_tree.mtree),
-    Tree#ns_tree{mtree = MTree1}.
+delete_name(Id, #ns_tree{nbatch = B} = Tree) ->
+    Tree#ns_tree{nbatch = B#{Id => tombstone}}.
 
 -spec empty() -> tree().
 empty() ->
@@ -126,12 +139,16 @@ new_with_dirty_backend(RootHash, CacheRootHash) ->
 
 -spec prune(block_height(), aec_hard_forks:protocol_vsn(), aec_trees:trees(), aetx_env:env()) -> {aec_trees:trees(), aetx_env:env()}.
 prune(NextBlockHeight, Protocol, Trees, TxEnv) ->
-    {NTree, ExpiredActions} = int_prune(NextBlockHeight - 1, aec_trees:ns(Trees)),
+    %% Flush first: int_prune walks the mtree+cache directly (defensive
+    %% — at generation boundaries the batch is already empty).
+    NTree0 = flush_name_batch(aec_trees:ns(Trees)),
+    {NTree, ExpiredActions} = int_prune(NextBlockHeight - 1, NTree0),
     Trees1 = aec_trees:set_ns(Trees, NTree),
     run_elapsed(ExpiredActions, Trees1, Protocol, NextBlockHeight, TxEnv).
 
 -spec auction_iterator(tree()) -> aeu_mtrees:iterator().
-auction_iterator(#ns_tree{mtree = MTree}) ->
+auction_iterator(Tree) ->
+    #ns_tree{mtree = MTree} = flush_name_batch(Tree),
     aeu_mtrees:iterator(MTree).
 
 -spec auction_iterator_next(aeu_mtrees:iterator()) ->
@@ -165,8 +182,26 @@ run_elapsed([{aens_commitments, Id, Serialized}|Expired], Trees, Protocol, Heigh
     {ok, Trees1} = run_elapsed_commitment(Commitment, Trees),
     run_elapsed(Expired, Trees1, Protocol, Height, TxEnv).
 
+%% Public enter_*: defer into the per-microblock batch (no mtree/cache
+%% write here).  Last-writer-wins per key; the flush replays the final
+%% object through do_enter_*/2 — the unchanged mtree+cache writer.
 -spec enter_commitment(commitment(), tree()) -> tree().
-enter_commitment(Commitment, Tree) ->
+enter_commitment(Commitment, #ns_tree{nbatch = B} = Tree) ->
+    Hash = aens_commitments:hash(Commitment),
+    Tree#ns_tree{nbatch = B#{Hash => {aens_commitments, insert, Commitment}}}.
+
+-spec enter_name_auction(auction(), tree()) -> tree().
+enter_name_auction(Auction, #ns_tree{nbatch = B} = Tree) ->
+    Hash = aens_auctions:hash(Auction),
+    Tree#ns_tree{nbatch = B#{Hash => {aens_auctions, enter, Auction}}}.
+
+-spec enter_name(name(), tree()) -> tree().
+enter_name(Name, #ns_tree{nbatch = B} = Tree) ->
+    Hash = aens_names:hash(Name),
+    Tree#ns_tree{nbatch = B#{Hash => {aens_names, enter, Name}}}.
+
+%% The original (now flush-time) writers: mtree + secondary TTL cache.
+do_enter_commitment(Commitment, Tree) ->
     CommitmentHash = aens_commitments:hash(Commitment),
     Serialized = aens_commitments:serialize(Commitment),
     TTL = aens_commitments:ttl(Commitment),
@@ -175,8 +210,7 @@ enter_commitment(Commitment, Tree) ->
     MTree1 = aeu_mtrees:insert(CommitmentHash, Serialized, Tree#ns_tree.mtree),
     Tree#ns_tree{cache = Cache1, mtree = MTree1}.
 
--spec enter_name_auction(auction(), tree()) -> tree().
-enter_name_auction(Auction, Tree) ->
+do_enter_name_auction(Auction, Tree) ->
     AuctionHash = aens_auctions:hash(Auction),
     Serialized = aens_auctions:serialize(Auction),
     TTL = aens_auctions:ttl(Auction),
@@ -184,8 +218,7 @@ enter_name_auction(Auction, Tree) ->
     MTree1 = aeu_mtrees:enter(AuctionHash, Serialized, Tree#ns_tree.mtree),
     Tree#ns_tree{cache = Cache1, mtree = MTree1}.
 
--spec enter_name(name(), tree()) -> tree().
-enter_name(Name, Tree) ->
+do_enter_name(Name, Tree) ->
     NameHash = aens_names:hash(Name),
     Serialized = aens_names:serialize(Name),
     TTL = aens_names:ttl(Name),
@@ -193,35 +226,59 @@ enter_name(Name, Tree) ->
     MTree1 = aeu_mtrees:enter(NameHash, Serialized, Tree#ns_tree.mtree),
     Tree#ns_tree{cache = Cache1, mtree = MTree1}.
 
+%% Flush all pending NS writes/deletes.  Called at microblock end via
+%% aec_trees:flush_state_batches/1 and defensively at every whole-tree
+%% reader/iterator/prune entry point.  O(1) fast-path when empty.
+-spec flush_name_batch(tree()) -> tree().
+flush_name_batch(#ns_tree{nbatch = B} = Tree) when map_size(B) =:= 0 ->
+    Tree;
+flush_name_batch(#ns_tree{nbatch = B} = Tree) ->
+    Tree1 = Tree#ns_tree{nbatch = #{}},
+    maps:fold(
+      fun(Id, tombstone, Acc) ->
+              Acc#ns_tree{mtree = aeu_mtrees:delete(Id, Acc#ns_tree.mtree)};
+         (_Id, {aens_commitments, _How, C}, Acc) -> do_enter_commitment(C, Acc);
+         (_Id, {aens_auctions,    _How, A}, Acc) -> do_enter_name_auction(A, Acc);
+         (_Id, {aens_names,       _How, N}, Acc) -> do_enter_name(N, Acc)
+      end, Tree1, B).
+
+batch_lookup(Id, Deserialize, MTree, B) ->
+    case maps:find(Id, B) of
+        {ok, tombstone}        -> none;
+        {ok, {_Mod, _How, Obj}} -> {value, Obj};
+        error ->
+            case aeu_mtrees:lookup(Id, MTree) of
+                {value, Val} -> {value, Deserialize(Id, Val)};
+                none         -> none
+            end
+    end.
+
 -spec get_name(binary(), tree()) -> name().
-get_name(Id, Tree) ->
-    aens_names:deserialize(Id, aeu_mtrees:get(Id, Tree#ns_tree.mtree)).
+get_name(Id, #ns_tree{mtree = MTree, nbatch = B}) ->
+    case maps:find(Id, B) of
+        {ok, {aens_names, _How, N}} -> N;
+        _ -> aens_names:deserialize(Id, aeu_mtrees:get(Id, MTree))
+    end.
 
 -spec lookup_commitment(binary(), tree()) -> {value, commitment()} | none.
-lookup_commitment(Id, Tree) ->
-    case aeu_mtrees:lookup(Id, Tree#ns_tree.mtree) of
-        {value, Val} -> {value, aens_commitments:deserialize(Id, Val)};
-        none -> none
-    end.
+lookup_commitment(Id, #ns_tree{mtree = MTree, nbatch = B}) ->
+    batch_lookup(Id, fun aens_commitments:deserialize/2, MTree, B).
 
 -spec lookup_name_auction(binary(), tree()) -> {value, auction()} | none.
-lookup_name_auction(Id, Tree) ->
-    case aeu_mtrees:lookup(Id, Tree#ns_tree.mtree) of
-        {value, Val} -> {value, aens_auctions:deserialize(Id, Val)};
-        none -> none
-    end.
+lookup_name_auction(Id, #ns_tree{mtree = MTree, nbatch = B}) ->
+    batch_lookup(Id, fun aens_auctions:deserialize/2, MTree, B).
 
 -spec lookup_name(binary(), tree()) -> {value, name()} | none.
-lookup_name(Id, Tree) ->
-    case aeu_mtrees:lookup(Id, Tree#ns_tree.mtree) of
-        {value, Val} -> {value, aens_names:deserialize(Id, Val)};
-        none -> none
-    end.
+lookup_name(Id, #ns_tree{mtree = MTree, nbatch = B}) ->
+    batch_lookup(Id, fun aens_names:deserialize/2, MTree, B).
 
 -spec root_hash(tree()) -> {ok, aeu_mtrees:root_hash()} | {error, empty}.
-root_hash(#ns_tree{mtree = MTree}) ->
+root_hash(Tree) ->
+    #ns_tree{mtree = MTree} = flush_name_batch(Tree),
     aeu_mtrees:root_hash(MTree).
 
+%% WARNING: backing MPT db of the *materialised* mtree only — does not
+%% reflect entries pending in `nbatch'.  Backend identity only.
 -spec ns_db(tree()) -> {'ok', aeu_mp_trees:db()}.
 ns_db(#ns_tree{mtree = MTree}) ->
     aeu_mtrees:db(MTree).
@@ -231,18 +288,21 @@ cache_db(#ns_tree{cache = CTree}) ->
     aeu_mtrees:db(CTree).
 
 -spec cache_root_hash(tree()) -> {ok, aeu_mtrees:root_hash()} | {error, empty}.
-cache_root_hash(#ns_tree{cache = MTree}) ->
-    aeu_mtrees:root_hash(MTree).
+cache_root_hash(Tree) ->
+    #ns_tree{cache = CTree} = flush_name_batch(Tree),
+    aeu_mtrees:root_hash(CTree).
 
 -spec commit_to_db(tree()) -> tree().
-commit_to_db(#ns_tree{mtree = MTree, cache = Cache} = Tree) ->
-    Tree#ns_tree{mtree = aeu_mtrees:commit_to_db(MTree),
-                 cache = aeu_mtrees:commit_to_db(Cache)
-                }.
+commit_to_db(Tree) ->
+    #ns_tree{mtree = MTree, cache = Cache} = FT = flush_name_batch(Tree),
+    FT#ns_tree{mtree = aeu_mtrees:commit_to_db(MTree),
+               cache = aeu_mtrees:commit_to_db(Cache)
+              }.
 
 -ifdef(TEST).
 -spec commitment_list(tree()) -> list(commitment()).
-commitment_list(#ns_tree{mtree = Tree}) ->
+commitment_list(Tree0) ->
+    #ns_tree{mtree = Tree} = flush_name_batch(Tree0),
     IsCommitment = fun(Id, MaybeC) ->
                        try [aens_commitments:deserialize(Id, MaybeC)]
                        catch _:_ -> [] end
@@ -251,7 +311,8 @@ commitment_list(#ns_tree{mtree = Tree}) ->
            C <- IsCommitment(Id, Val) ].
 
 -spec name_list(tree()) -> list(name()).
-name_list(#ns_tree{mtree = Tree}) ->
+name_list(Tree0) ->
+    #ns_tree{mtree = Tree} = flush_name_batch(Tree0),
     IsName = fun(Id, MaybeC) ->
                  try [aens_names:deserialize(Id, MaybeC)]
                  catch _:_ -> [] end
@@ -262,7 +323,8 @@ name_list(#ns_tree{mtree = Tree}) ->
 
 
 -spec to_binary_without_backend(tree()) -> binary().
-to_binary_without_backend(#ns_tree{mtree = MTree}) ->
+to_binary_without_backend(Tree) ->
+    #ns_tree{mtree = MTree} = flush_name_batch(Tree),
     MTBin = aeu_mtrees:serialize(MTree),
     aeser_chain_objects:serialize(
         nameservice_mtree,
