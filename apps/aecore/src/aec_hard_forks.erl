@@ -24,6 +24,7 @@
 %% version is effective.  The height must be strictly increasing with
 %% the version.
 -type protocol_vsn() :: pos_integer()
+                      | ?SALUS_PROTOCOL_VSN
                       | ?ARCUS_PROTOCOL_VSN
                       | ?CERES_PROTOCOL_VSN
                       | ?IRIS_PROTOCOL_VSN
@@ -82,7 +83,8 @@ protocol_vsn_name(?FORTUNA_PROTOCOL_VSN) -> fortuna;
 protocol_vsn_name(?LIMA_PROTOCOL_VSN)    -> lima;
 protocol_vsn_name(?IRIS_PROTOCOL_VSN)    -> iris;
 protocol_vsn_name(?CERES_PROTOCOL_VSN)   -> ceres;
-protocol_vsn_name(?ARCUS_PROTOCOL_VSN)   -> arcus.
+protocol_vsn_name(?ARCUS_PROTOCOL_VSN)   -> arcus;
+protocol_vsn_name(?SALUS_PROTOCOL_VSN)   -> salus.
 
 -spec protocol_vsn(atom()) -> protocol_vsn().
 protocol_vsn(roma)    -> ?ROMA_PROTOCOL_VSN;
@@ -91,7 +93,8 @@ protocol_vsn(fortuna) -> ?FORTUNA_PROTOCOL_VSN;
 protocol_vsn(lima)    -> ?LIMA_PROTOCOL_VSN;
 protocol_vsn(iris)    -> ?IRIS_PROTOCOL_VSN;
 protocol_vsn(ceres)   -> ?CERES_PROTOCOL_VSN;
-protocol_vsn(arcus)   -> ?ARCUS_PROTOCOL_VSN.
+protocol_vsn(arcus)   -> ?ARCUS_PROTOCOL_VSN;
+protocol_vsn(salus)   -> ?SALUS_PROTOCOL_VSN.
 
 
 %%%===================================================================
@@ -175,6 +178,16 @@ protocols_from_network_id(<<"local_arcus_testnet">>) ->
      %%, ?IRIS_PROTOCOL_VSN     => Excluded for testing new protocol
      %%, ?CERES_PROTOCOL_VSN    => Excluded for testing old protocol
      , ?ARCUS_PROTOCOL_VSN    => 1
+     };
+protocols_from_network_id(<<"local_salus_testnet">>) ->
+    #{ ?ROMA_PROTOCOL_VSN     => 0
+     %%, ?MINERVA_PROTOCOL_VSN  => Excluded for testing new protocol
+     %%, ?FORTUNA_PROTOCOL_VSN  => Excluded for testing new protocol
+     %%, ?LIMA_PROTOCOL_VSN     => Excluded for testing new protocol
+     %%, ?IRIS_PROTOCOL_VSN     => Excluded for testing new protocol
+     %%, ?CERES_PROTOCOL_VSN    => Excluded for testing old protocol
+     %%, ?ARCUS_PROTOCOL_VSN    => Excluded for testing old protocol
+     , ?SALUS_PROTOCOL_VSN    => 1
      };
 protocols_from_network_id(<<"ae_dev">>) ->
     default_protocols_from_network_id();

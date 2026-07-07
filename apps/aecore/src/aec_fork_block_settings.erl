@@ -30,6 +30,7 @@
 -define(IRIS_DIR,    ".iris").
 -define(CERES_DIR,   ".ceres").
 -define(ARCUS_DIR,   ".arcus").
+-define(SALUS_DIR,   ".salus").
 
 
 -spec genesis_accounts() -> list().
@@ -385,7 +386,8 @@ hardcoded_basename(ProtocolVsn) ->
         ?LIMA_PROTOCOL_VSN    -> ?LIMA_DIR;
         ?IRIS_PROTOCOL_VSN    -> ?IRIS_DIR;
         ?CERES_PROTOCOL_VSN   -> ?CERES_DIR;
-        ?ARCUS_PROTOCOL_VSN   -> ?ARCUS_DIR
+        ?ARCUS_PROTOCOL_VSN   -> ?ARCUS_DIR;
+        ?SALUS_PROTOCOL_VSN   -> ?SALUS_DIR
     end.
 
 configured_genesis_accounts() ->

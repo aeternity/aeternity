@@ -259,7 +259,8 @@
         ?LIMA_PROTOCOL_VSN    -> ?assertMatch(ExpMinerva, Res);
         ?IRIS_PROTOCOL_VSN    -> ?assertMatch(ExpMinerva, Res);
         ?CERES_PROTOCOL_VSN   -> ?assertMatch(ExpMinerva, Res);
-        ?ARCUS_PROTOCOL_VSN   -> ?assertMatch(ExpMinerva, Res)
+        ?ARCUS_PROTOCOL_VSN   -> ?assertMatch(ExpMinerva, Res);
+        ?SALUS_PROTOCOL_VSN   -> ?assertMatch(ExpMinerva, Res)
     end).
 
 -define(assertMatchProtocol(Res, ExpR, ExpM, ExpF, ExpL, ExpI, ExpC, ExpA),
@@ -270,7 +271,8 @@
         ?LIMA_PROTOCOL_VSN    -> ?assertMatch(ExpL, Res);
         ?IRIS_PROTOCOL_VSN    -> ?assertMatch(ExpI, Res);
         ?CERES_PROTOCOL_VSN   -> ?assertMatch(ExpC, Res);
-        ?ARCUS_PROTOCOL_VSN   -> ?assertMatch(ExpA, Res)
+        ?ARCUS_PROTOCOL_VSN   -> ?assertMatch(ExpA, Res);
+        ?SALUS_PROTOCOL_VSN   -> ?assertMatch(ExpA, Res)
     end).
 
 -define(assertMatchAEVM(__Exp, __Res),
@@ -1032,7 +1034,7 @@ create_version_too_high(Cfg) ->
     Res = sign_and_apply_transaction(Tx, PrivKey, S1),
     %% Test that the create transaction is accepted/rejected accordingly
     case proplists:get_value(protocol, Cfg) of
-        P when P =:= roma; P =:= lima; P =:= iris; P =:= ceres; P =:= arcus ->
+        P when P =:= roma; P =:= lima; P =:= iris; P =:= ceres; P =:= arcus; P =:= salus ->
             {error, illegal_contract_compiler_version, _} = Res;
         P when P =:= minerva; P =:= fortuna ->
             {ok, _} = Res
