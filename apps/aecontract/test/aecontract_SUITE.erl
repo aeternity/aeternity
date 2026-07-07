@@ -257,7 +257,8 @@
         ?FORTUNA_PROTOCOL_VSN -> ?assertMatch(ExpMinerva, Res);
         ?LIMA_PROTOCOL_VSN    -> ?assertMatch(ExpMinerva, Res);
         ?IRIS_PROTOCOL_VSN    -> ?assertMatch(ExpMinerva, Res);
-        ?CERES_PROTOCOL_VSN   -> ?assertMatch(ExpMinerva, Res)
+        ?CERES_PROTOCOL_VSN   -> ?assertMatch(ExpMinerva, Res);
+        ?SALUS_PROTOCOL_VSN   -> ?assertMatch(ExpMinerva, Res)
     end).
 
 -define(assertMatchProtocol(Res, ExpR, ExpM, ExpF, ExpL, ExpI, ExpC),
@@ -267,7 +268,8 @@
         ?FORTUNA_PROTOCOL_VSN -> ?assertMatch(ExpF, Res);
         ?LIMA_PROTOCOL_VSN    -> ?assertMatch(ExpL, Res);
         ?IRIS_PROTOCOL_VSN    -> ?assertMatch(ExpI, Res);
-        ?CERES_PROTOCOL_VSN   -> ?assertMatch(ExpC, Res)
+        ?CERES_PROTOCOL_VSN   -> ?assertMatch(ExpC, Res);
+        ?SALUS_PROTOCOL_VSN   -> ?assertMatch(ExpC, Res)
     end).
 
 -define(assertMatchAEVM(__Exp, __Res),
@@ -769,7 +771,8 @@ init_per_testcase_common(_TC, Config) ->
                           fortuna -> ?FORTUNA_PROTOCOL_VSN;
                           lima    -> ?LIMA_PROTOCOL_VSN;
                           iris    -> ?IRIS_PROTOCOL_VSN;
-                          ceres   -> ?CERES_PROTOCOL_VSN
+                          ceres   -> ?CERES_PROTOCOL_VSN;
+                          salus   -> ?SALUS_PROTOCOL_VSN
                       end,
     AciDisabled = case os:getenv("SOPHIA_NO_ACI") of
                   false ->
@@ -1017,7 +1020,7 @@ create_version_too_high(Cfg) ->
     Res = sign_and_apply_transaction(Tx, PrivKey, S1),
     %% Test that the create transaction is accepted/rejected accordingly
     case proplists:get_value(protocol, Cfg) of
-        P when P =:= roma; P =:= lima; P =:= iris; P =:= ceres ->
+        P when P =:= roma; P =:= lima; P =:= iris; P =:= ceres; P =:= salus ->
             {error, illegal_contract_compiler_version, _} = Res;
         P when P =:= minerva; P =:= fortuna ->
             {ok, _} = Res
