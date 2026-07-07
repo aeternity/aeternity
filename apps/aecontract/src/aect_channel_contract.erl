@@ -94,7 +94,10 @@ prepare_init_call(VmVersion, Protocol, Contract, SerializedCode, Trees0) when ?I
     SerCode   = aeser_contract_code:serialize(Code2),
 
     %% Initialize the store before calling INIT
-    Store = aefa_stores:initial_contract_store(),
+    %% Routed through the protocol-keyed dispatcher, not the live module
+    %% directly, since Iris..Ceres must keep resolving to aefa_stores_ceres.
+    Aefa_stores = aefa_engine_state:aefa_stores_for_protocol(Protocol),
+    Store = Aefa_stores:initial_contract_store(),
     Contract1 = aect_contracts:set_state(Store, Contract),
     Contract2 = aect_contracts:set_code(SerCode, Contract1),
     ContractsTree0 = aec_trees:contracts(Trees0),

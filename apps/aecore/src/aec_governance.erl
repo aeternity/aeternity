@@ -10,6 +10,8 @@
          tx_base_gas/3, %% VM depending operations
          byte_gas/0,
          store_byte_gas/0,
+         store_read_byte_gas/0,
+         store_read_base_gas/0,
          beneficiary_reward_delay/0,
          locked_coins_holder_account/0,
          minimum_gas_price/1,
@@ -69,6 +71,11 @@
 -define(BYTE_GAS, 20).
 %% Gas for 1 byte written to the store.
 -define(STORE_BYTE_GAS, 5).
+%% Gas for 1 byte read from the store (Salus/v7+; inert pre-Salus).
+-define(STORE_READ_BYTE_GAS, 10).
+%% Fixed floor gas for any store read reaching the underlying store, on top
+%% of the per-byte charge above (Salus/v7+; inert pre-Salus).
+-define(STORE_READ_BASE_GAS, 100).
 -define(POF_REWARD_DIVIDER, 20). %% 5% of the coinbase reward
 -define(BENEFICIARY_REWARD_DELAY, 180). %% in key blocks / generations
 -define(MICRO_BLOCK_CYCLE, 3000). %% in msecs
@@ -169,6 +176,17 @@ tx_base_gas(paying_for_tx, _)             -> ?TX_BASE_GAS div 5.
 
 store_byte_gas() ->
     ?STORE_BYTE_GAS.
+
+%% Per-byte price for a store read (register deserialize, or a map subtree
+%% traversal during finalize refcounting/GC). Salus/v7+ only; aefa_stores_
+%% ceres/lima never call this, so it cannot affect replay of forked blocks.
+store_read_byte_gas() ->
+    ?STORE_READ_BYTE_GAS.
+
+%% Fixed floor gas for any store read, in addition to the per-byte term
+%% above (cost = store_read_base_gas() + Bytes * store_read_byte_gas()).
+store_read_base_gas() ->
+    ?STORE_READ_BASE_GAS.
 
 byte_gas() ->
     ?BYTE_GAS.
