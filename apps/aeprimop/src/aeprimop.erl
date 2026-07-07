@@ -1720,7 +1720,11 @@ prepare_init_call(Code, Contract, S = #state{protocol = Protocol}) ->
             %% is because the FATE init function writes to the store explicitly
             %% instead of returning the initial state like the AEVM. This allows
             %% the compiler to decide the store layout.
-            Store     = aefa_stores:initial_contract_store(),
+            %% Routed through the protocol-keyed dispatcher, not the live
+            %% module directly, since Iris..Ceres must keep resolving to
+            %% aefa_stores_ceres.
+            Aefa_stores = aefa_engine_state:aefa_stores_for_protocol(Protocol),
+            Store     = Aefa_stores:initial_contract_store(),
             Contract1 = aect_contracts:set_state(Store, Contract),
             Contract2 = aect_contracts:set_code(SerCode, Contract1),
             S1 = put_contract(Contract2, S),

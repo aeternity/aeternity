@@ -197,7 +197,12 @@ read_store(Pubkey, ES) ->
         Keys         = [ binary:decode_unsigned(Reg)
                          || <<0, Reg/binary>> <- maps:keys(aect_contracts_store:contents(CtStore)) ],
         Value = fun(Key) ->
-                    {ok, Val, _} = aefa_stores:find_value(Pubkey, Key, Store),
+                    %% Matches both the pre-Salus 3-tuple and the live
+                    %% module's gas-aware 4-tuple.
+                    Val = case aefa_stores:find_value(Pubkey, Key, Store) of
+                              {ok, V, _}       -> V;
+                              {ok, V, _, _}    -> V
+                          end,
                     {Val1, _}    = aefa_fate:unfold_store_maps(Val, ES1, unfold),
                     Val1
                 end,
