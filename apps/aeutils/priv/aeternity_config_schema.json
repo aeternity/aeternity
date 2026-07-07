@@ -2009,6 +2009,12 @@
                     "default": 3000,
                     "minimum" : 1
                 },
+                "candidate_quarantine_ttl_ms" : {
+                    "description" : "SEC-BB-3: how long (milliseconds) a tx that caused a microblock-candidate worker to be preempted/hard-killed (on a top_changed preempt only, never on an administrative stop) while it was in flight is excluded from the next candidate build. Non-consensus, leader-local, proposal-only exclusion - never affects tx or block validity. The TTL alone bounds the exclusion: a tx is excluded for at most this long, then retried; if still slow it is re-quarantined for another span, but the leader makes forward progress with other txs in between, so a genuinely-slow-but-valid tx is never starved permanently. Defaults to 0, which disables the mechanism entirely (inert: byte-for-byte the pre-SEC-BB-3 candidate-selection behavior, no tx is ever excluded). Only enable after ae_uat + Phase-0 validation.",
+                    "type" : "integer",
+                    "default" : 0,
+                    "minimum" : 0
+                },
                 "min_miner_gas_price" : {
                     "description" : "Minimum gas price accepted by the miner",
                     "type" : "integer",

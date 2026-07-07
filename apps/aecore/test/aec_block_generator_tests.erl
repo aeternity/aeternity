@@ -20,6 +20,33 @@ block_generator_top_change_test_() ->
       {"does not publish stale candidate after micro top change",
        fun test_does_not_publish_stale_candidate_after_top_change/0}]}.
 
+%% Offending-tx quarantine (livelock breadcrumb + TTL-bounded exclusion).
+sec_bb_3_quarantine_test_() ->
+    {foreach,
+     fun setup/0,
+     fun teardown_quarantine_env/1,
+     [{"a tx in flight when its worker is hard-killed on preempt is quarantined"
+       " and excluded from the very next build (forward progress, not re-applied)",
+       fun test_quarantines_offending_tx_after_preempt/0},
+      {"a quarantined tx becomes eligible again once its TTL expires",
+       fun test_quarantine_ttl_expiry_reallows_tx/0},
+      {"a tx retried after its TTL expires is re-quarantined if it is still"
+       " slow, with no cap - the TTL alone bounds each exclusion, forever",
+       fun test_quarantine_ttl_retry_then_requarantine_if_still_slow/0},
+      {"a worker that completes normally (even with an in-flight report) does"
+       " not quarantine anything",
+       fun test_normal_completion_does_not_quarantine/0},
+      {"a tx already applied successfully is never quarantined merely because"
+       " its worker is later hard-killed over a DIFFERENT, still in-flight batch"
+       " (false-positive-quarantine race)",
+       fun test_no_false_positive_quarantine_after_earlier_batch_applied/0},
+      {"an administrative stop (not a top_changed preempt) hard-kills the"
+       " worker but never quarantines its in-flight batch",
+       fun test_admin_stop_does_not_quarantine/0},
+      {"candidate_quarantine_ttl_ms defaults to 0 (disabled): quarantine is"
+       " inert out of the box, so selection is unaffected",
+       fun test_default_ttl_disables_quarantine/0}]}.
+
 setup() ->
     meck:new(aec_events, [non_strict]),
     meck:expect(aec_events, subscribe, fun(_) -> ok end),
@@ -56,12 +83,12 @@ test_rebuilds_after_failed_worker() ->
     meck:expect(
       aec_block_micro_candidate,
       create,
-      fun(Top) when Top =:= InitialTop ->
+      fun(Top, _Opts) when Top =:= InitialTop ->
               TestPid ! {create_called, InitialTop, self()},
               receive
                   {continue, ContinueRef} -> {error, simulated_failure}
               end;
-         (Top) when Top =:= DeferredTop ->
+         (Top, _Opts) when Top =:= DeferredTop ->
               TestPid ! {create_called, DeferredTop, self()},
               receive after infinity -> ok end
       end),
@@ -81,12 +108,12 @@ test_rebuilds_after_worker_down() ->
     meck:expect(
       aec_block_micro_candidate,
       create,
-      fun(Top) when Top =:= InitialTop ->
+      fun(Top, _Opts) when Top =:= InitialTop ->
               TestPid ! {create_called, InitialTop, self()},
               receive
                   {crash, CrashRef} -> exit(simulated_crash)
               end;
-         (Top) when Top =:= DeferredTop ->
+         (Top, _Opts) when Top =:= DeferredTop ->
               TestPid ! {create_called, DeferredTop, self()},
               receive after infinity -> ok end
       end),
@@ -112,10 +139,10 @@ test_does_not_reuse_stale_candidate_after_update_failure() ->
     meck:expect(
       aec_block_micro_candidate,
       create,
-      fun(Top) when Top =:= InitialTop ->
+      fun(Top, _Opts) when Top =:= InitialTop ->
               TestPid ! {create_called, InitialTop, self()},
               {ok, Candidate0, State0};
-         (Top) when Top =:= DeferredTop ->
+         (Top, _Opts) when Top =:= DeferredTop ->
               TestPid ! {create_called, DeferredTop, self()},
               {ok, Candidate1, State1}
       end),
@@ -173,12 +200,12 @@ test_does_not_publish_stale_candidate_after_top_change() ->
     meck:expect(
       aec_block_micro_candidate,
       create,
-      fun(Top) when Top =:= InitialTop ->
+      fun(Top, _Opts) when Top =:= InitialTop ->
               TestPid ! {create_called, InitialTop, self()},
               receive
                   {continue, ContinueRef} -> {ok, Candidate0, State0}
               end;
-         (Top) when Top =:= DeferredTop ->
+         (Top, _Opts) when Top =:= DeferredTop ->
               TestPid ! {create_called, DeferredTop, self()},
               {ok, Candidate1, State1}
       end),
@@ -197,6 +224,16 @@ wait_for_create(ExpectedTop) ->
     receive
         {create_called, ExpectedTop, WorkerPid} ->
             WorkerPid
+    after ?WAIT_MS ->
+        ?assert(false)
+    end.
+
+%% Like wait_for_create/1, but also captures the ignore_tx_hashes the
+%% worker was spawned with.
+wait_for_create_with_ignore(ExpectedTop) ->
+    receive
+        {create_called, ExpectedTop, WorkerPid, IgnoreTxHashes} ->
+            {WorkerPid, IgnoreTxHashes}
     after ?WAIT_MS ->
         ?assert(false)
     end.
@@ -286,5 +323,263 @@ flush_test_mailbox() ->
     after 0 ->
         ok
     end.
+
+%% -- Quarantine tests ----------------------------------------------------
+
+teardown_quarantine_env(Ctx) ->
+    application:unset_env(aecore, candidate_quarantine_ttl_ms),
+    teardown(Ctx).
+
+%% Tests set an explicit, long TTL (disabled by default) to isolate the
+%% quarantine mechanism from the TTL expiring mid-test.
+test_quarantines_offending_tx_after_preempt() ->
+    application:set_env(aecore, candidate_quarantine_ttl_ms, 60000),
+    TestPid = self(),
+    InitialTop = <<"top-0">>,
+    DeferredTop = <<"top-10">>,
+    SlowTxHash = <<"slow-tx-hash-a">>,
+
+    meck:expect(
+      aec_block_micro_candidate,
+      create,
+      fun(Top, Opts) when Top =:= InitialTop ->
+              %% Simulate the worker's pre-apply breadcrumb, then hang - the
+              %% generator's only way to stop this worker is the hard-kill.
+              (maps:get(report_in_flight_fun, Opts))([SlowTxHash]),
+              TestPid ! {create_called, InitialTop, self(), maps:get(ignore_tx_hashes, Opts, [])},
+              receive after infinity -> ok end;
+         (Top, Opts) when Top =:= DeferredTop ->
+              TestPid ! {create_called, DeferredTop, self(), maps:get(ignore_tx_hashes, Opts, [])},
+              {ok, candidate_final, state_final}
+      end),
+
+    ?GENERATOR:start_generation(),
+    {_WorkerPid, IgnoreTxHashes0} = wait_for_create_with_ignore(InitialTop),
+    ?assertEqual([], IgnoreTxHashes0),
+
+    %% Preempt (e.g. the leader's own microblock top_changed): the generator
+    %% hard-kills the worker above while SlowTxHash was in flight.
+    defer_micro_top(DeferredTop),
+
+    {_WorkerPid2, IgnoreTxHashes1} = wait_for_create_with_ignore(DeferredTop),
+    ?assert(lists:member(SlowTxHash, IgnoreTxHashes1)),
+
+    %% Forward progress: the rebuild actually completes and publishes,
+    %% instead of looping on the same offending tx forever.
+    wait_for_candidate(candidate_final).
+
+test_quarantine_ttl_expiry_reallows_tx() ->
+    application:set_env(aecore, candidate_quarantine_ttl_ms, 60),
+    TestPid = self(),
+    InitialTop = <<"top-0">>,
+    DeferredTopA = <<"top-20">>,
+    DeferredTopB = <<"top-21">>,
+    SlowTxHash = <<"slow-tx-hash-b">>,
+
+    meck:expect(
+      aec_block_micro_candidate,
+      create,
+      fun(Top, Opts) when Top =:= InitialTop ->
+              (maps:get(report_in_flight_fun, Opts))([SlowTxHash]),
+              TestPid ! {create_called, InitialTop, self(), maps:get(ignore_tx_hashes, Opts, [])},
+              receive after infinity -> ok end;
+         (Top, Opts) when Top =:= DeferredTopA ->
+              TestPid ! {create_called, DeferredTopA, self(), maps:get(ignore_tx_hashes, Opts, [])},
+              {ok, candidate_a, state_a};
+         (Top, Opts) when Top =:= DeferredTopB ->
+              TestPid ! {create_called, DeferredTopB, self(), maps:get(ignore_tx_hashes, Opts, [])},
+              {ok, candidate_b, state_b}
+      end),
+
+    ?GENERATOR:start_generation(),
+    wait_for_create_with_ignore(InitialTop),
+
+    defer_micro_top(DeferredTopA),
+    {_W1, IgnoreA} = wait_for_create_with_ignore(DeferredTopA),
+    ?assert(lists:member(SlowTxHash, IgnoreA)),
+    wait_for_candidate(candidate_a),
+
+    %% Let the (short, test-configured) TTL lapse before the next build.
+    timer:sleep(150),
+
+    defer_micro_top(DeferredTopB),
+    {_W2, IgnoreB} = wait_for_create_with_ignore(DeferredTopB),
+    ?assertNot(lists:member(SlowTxHash, IgnoreB)).
+
+test_quarantine_ttl_retry_then_requarantine_if_still_slow() ->
+    application:set_env(aecore, candidate_quarantine_ttl_ms, 60),
+    TestPid = self(),
+    InitialTop = <<"top-0">>,
+    DeferredTopA = <<"top-50">>,
+    DeferredTopB = <<"top-51">>,
+    DeferredTopC = <<"top-52">>,
+    SlowTxHash = <<"slow-tx-hash-e">>,
+
+    meck:expect(
+      aec_block_micro_candidate,
+      create,
+      fun(Top, Opts) when Top =:= InitialTop ->
+              (maps:get(report_in_flight_fun, Opts))([SlowTxHash]),
+              TestPid ! {create_called, InitialTop, self(), maps:get(ignore_tx_hashes, Opts, [])},
+              receive after infinity -> ok end;
+         (Top, Opts) when Top =:= DeferredTopA ->
+              %% First quarantine cycle: builds without the offending tx.
+              TestPid ! {create_called, DeferredTopA, self(), maps:get(ignore_tx_hashes, Opts, [])},
+              {ok, candidate_a, state_a};
+         (Top, Opts) when Top =:= DeferredTopB ->
+              %% TTL lapsed - tx reselected and still slow, so this worker hangs again.
+              (maps:get(report_in_flight_fun, Opts))([SlowTxHash]),
+              TestPid ! {create_called, DeferredTopB, self(), maps:get(ignore_tx_hashes, Opts, [])},
+              receive after infinity -> ok end;
+         (Top, Opts) when Top =:= DeferredTopC ->
+              TestPid ! {create_called, DeferredTopC, self(), maps:get(ignore_tx_hashes, Opts, [])},
+              {ok, candidate_final, state_final}
+      end),
+
+    ?GENERATOR:start_generation(),
+    wait_for_create_with_ignore(InitialTop),
+
+    %% First preempt: quarantined.
+    defer_micro_top(DeferredTopA),
+    {_W1, IgnoreA} = wait_for_create_with_ignore(DeferredTopA),
+    ?assert(lists:member(SlowTxHash, IgnoreA)),
+    wait_for_candidate(candidate_a),
+
+    %% Let the TTL lapse before retrying.
+    timer:sleep(150),
+
+    defer_micro_top(DeferredTopB),
+    {_W2, IgnoreB} = wait_for_create_with_ignore(DeferredTopB),
+    ?assertNot(lists:member(SlowTxHash, IgnoreB)),
+
+    %% Still slow -> preempted again -> re-quarantined (no cap released it).
+    defer_micro_top(DeferredTopC),
+    {_W3, IgnoreC} = wait_for_create_with_ignore(DeferredTopC),
+    ?assert(lists:member(SlowTxHash, IgnoreC)),
+
+    %% Forward progress continues regardless.
+    wait_for_candidate(candidate_final).
+
+test_normal_completion_does_not_quarantine() ->
+    application:set_env(aecore, candidate_quarantine_ttl_ms, 60000),
+    TestPid = self(),
+    InitialTop = <<"top-0">>,
+    DeferredTop = <<"top-40">>,
+    SlowTxHash = <<"slow-tx-hash-d">>,
+
+    meck:expect(
+      aec_block_micro_candidate,
+      create,
+      fun(Top, Opts) when Top =:= InitialTop ->
+              (maps:get(report_in_flight_fun, Opts))([SlowTxHash]),
+              TestPid ! {create_called, InitialTop, self(), maps:get(ignore_tx_hashes, Opts, [])},
+              %% Completes normally, even though it reported in-flight just before returning.
+              {ok, candidate_normal, state_normal};
+         (Top, Opts) when Top =:= DeferredTop ->
+              TestPid ! {create_called, DeferredTop, self(), maps:get(ignore_tx_hashes, Opts, [])},
+              {ok, candidate_final, state_final}
+      end),
+
+    ?GENERATOR:start_generation(),
+    wait_for_create_with_ignore(InitialTop),
+    wait_for_candidate(candidate_normal),
+
+    %% A later, unrelated top change must not find SlowTxHash quarantined.
+    defer_micro_top(DeferredTop),
+    {_W, IgnoreTxHashes} = wait_for_create_with_ignore(DeferredTop),
+    ?assertNot(lists:member(SlowTxHash, IgnoreTxHashes)).
+
+%% FastTxHash is reported then cleared (already applied); only the still
+%% in-flight SlowTxHash may be blamed by a later preempt.
+test_no_false_positive_quarantine_after_earlier_batch_applied() ->
+    application:set_env(aecore, candidate_quarantine_ttl_ms, 60000),
+    TestPid = self(),
+    InitialTop = <<"top-0">>,
+    DeferredTop = <<"top-60">>,
+    FastTxHash = <<"fast-tx-hash">>,
+    SlowTxHash = <<"slow-tx-hash-g">>,
+
+    meck:expect(
+      aec_block_micro_candidate,
+      create,
+      fun(Top, Opts) when Top =:= InitialTop ->
+              ReportInFlightFun = maps:get(report_in_flight_fun, Opts),
+              %% First batch: in flight, then applied successfully and cleared.
+              ReportInFlightFun([FastTxHash]),
+              ReportInFlightFun([]),
+              %% Second batch: in flight, then this worker hangs.
+              ReportInFlightFun([SlowTxHash]),
+              TestPid ! {create_called, InitialTop, self(), maps:get(ignore_tx_hashes, Opts, [])},
+              receive after infinity -> ok end;
+         (Top, Opts) when Top =:= DeferredTop ->
+              TestPid ! {create_called, DeferredTop, self(), maps:get(ignore_tx_hashes, Opts, [])},
+              {ok, candidate_final, state_final}
+      end),
+
+    ?GENERATOR:start_generation(),
+    wait_for_create_with_ignore(InitialTop),
+
+    %% Preempt while the SECOND batch is in flight.
+    defer_micro_top(DeferredTop),
+
+    {_WorkerPid2, IgnoreTxHashes} = wait_for_create_with_ignore(DeferredTop),
+    ?assert(lists:member(SlowTxHash, IgnoreTxHashes)),
+    ?assertNot(lists:member(FastTxHash, IgnoreTxHashes)),
+
+    wait_for_candidate(candidate_final).
+
+test_admin_stop_does_not_quarantine() ->
+    application:set_env(aecore, candidate_quarantine_ttl_ms, 60000),
+    TestPid = self(),
+    InitialTop = <<"top-0">>,
+    SlowTxHash = <<"slow-tx-hash-f">>,
+
+    meck:expect(
+      aec_block_micro_candidate,
+      create,
+      fun(Top, Opts) when Top =:= InitialTop ->
+              (maps:get(report_in_flight_fun, Opts))([SlowTxHash]),
+              TestPid ! {create_called, InitialTop, self(), maps:get(ignore_tx_hashes, Opts, [])},
+              receive after infinity -> ok end
+      end),
+
+    ?GENERATOR:start_generation(),
+    wait_for_create_with_ignore(InitialTop),
+
+    %% Administrative stop/restart, not a preempt - must not quarantine SlowTxHash.
+    ?GENERATOR:stop_generation(),
+    ?GENERATOR:start_generation(),
+
+    {_WorkerPid2, IgnoreTxHashes} = wait_for_create_with_ignore(InitialTop),
+    ?assertNot(lists:member(SlowTxHash, IgnoreTxHashes)).
+
+test_default_ttl_disables_quarantine() ->
+    TestPid = self(),
+    InitialTop = <<"top-0">>,
+    DeferredTop = <<"top-70">>,
+    SlowTxHash = <<"slow-tx-hash-h">>,
+
+    meck:expect(
+      aec_block_micro_candidate,
+      create,
+      fun(Top, Opts) when Top =:= InitialTop ->
+              (maps:get(report_in_flight_fun, Opts))([SlowTxHash]),
+              TestPid ! {create_called, InitialTop, self(), maps:get(ignore_tx_hashes, Opts, [])},
+              receive after infinity -> ok end;
+         (Top, Opts) when Top =:= DeferredTop ->
+              TestPid ! {create_called, DeferredTop, self(), maps:get(ignore_tx_hashes, Opts, [])},
+              {ok, candidate_final, state_final}
+      end),
+
+    ?GENERATOR:start_generation(),
+    {_WorkerPid, IgnoreTxHashes0} = wait_for_create_with_ignore(InitialTop),
+    ?assertEqual([], IgnoreTxHashes0),
+
+    defer_micro_top(DeferredTop),
+
+    {_WorkerPid2, IgnoreTxHashes1} = wait_for_create_with_ignore(DeferredTop),
+    ?assertEqual([], IgnoreTxHashes1),
+
+    wait_for_candidate(candidate_final).
 
 -endif.
