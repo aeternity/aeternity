@@ -5988,6 +5988,14 @@ sophia_protected_call(_Cfg) ->
                 {Fun, MinGas, MaxGas, Res, NewState - OldState, [ClientBal1 - ClientBal0, ProxyBal1 - ProxyBal0, ServerBal1 - ServerBal0]}
            end,
     {test_ok, _, _, {116, _}, _, _} = Test(test_ok, word, 0, 0),
+    %% From Salus the store-read repricing makes rollback of a failed remote
+    %% call cheaper for tiny stores (no flat store cost), so the gas windows
+    %% for the failing-callee cases shift down.
+    {HkMin, HkMax, HkRMin, HkRMax} =
+        case protocol_version() >= ?SALUS_PROTOCOL_VSN of
+            true  -> {10500, 10800, 15500, 15800};
+            false -> {12400, 12700, 17400, 17800}
+        end,
     Results = [ Test(test_wrong_ret,     {option, bool}, 150, 200)
               , Test(test_wrong_arg,     {option, word}, 130, 200)
               , Test(test_wrong_arity,   {option, word}, 130, 200)
@@ -5995,9 +6003,9 @@ sophia_protected_call(_Cfg) ->
               , Test(test_missing_con,   {option, word}, 130, 200)
               , Test(test_nonpayable,    {option, word}, 130, 200)
               , Test(test_out_of_funds,  {option, word}, 130, 200)
-              , Test(test_hacked,        {option, word}, 12400, 12700)
-              , Test(test_revert,        {option, word}, 12400, 12700)
-              , Test(test_crash,         {option, word}, 12400, 12700)
+              , Test(test_hacked,        {option, word}, HkMin, HkMax)
+              , Test(test_revert,        {option, word}, HkMin, HkMax)
+              , Test(test_crash,         {option, word}, HkMin, HkMax)
               , Test(test_out_of_gas,    {option, word}, 5500, 5800)
               , Test(test_wrong_ret_r,   {option, bool}, 5050, 5200)
               , Test(test_wrong_arg_r,   {option, word}, 5050, 5200)
@@ -6005,9 +6013,9 @@ sophia_protected_call(_Cfg) ->
               , Test(test_missing_r,     {option, word}, 5050, 5200)
               , Test(test_missing_con_r, {option, word}, 5050, 5200)
               , Test(test_nonpayable_r,  {option, word}, 5050, 5200)
-              , Test(test_hacked_r,      {option, word}, 17400, 17800)
-              , Test(test_revert_r,      {option, word}, 17400, 17800)
-              , Test(test_crash_r,       {option, word}, 17400, 17800)
+              , Test(test_hacked_r,      {option, word}, HkRMin, HkRMax)
+              , Test(test_revert_r,      {option, word}, HkRMin, HkRMax)
+              , Test(test_crash_r,       {option, word}, HkRMin, HkRMax)
               , Test(test_out_of_gas_r,  {option, word}, 5000, 5500) ],
     ?assertMatch(
        [], [Res || Res = {_, MinGas, MaxGas, {R, Gas}, State, Bal} <- Results,
@@ -6985,7 +6993,10 @@ sophia_state_gas_arguments(_Cfg) ->
     {{}, Gas4} = ?call(call_contract, Acc, Ct1, pass_it, UnitT, {?cid(Ct0)}, #{ return_gas_used => true }),
     ?call(call_contract, Acc, Ct1, update_s, UnitT, {<<"at_least_32_bytes_long_in_order_to_use_an_extra_word">>}),
     {{}, Gas5} = ?call(call_contract, Acc, Ct1, pass_it, UnitT, {?cid(Ct0)}, #{ return_gas_used => true }),
-    ?assertMatchVM(true, false, Gas5 > Gas4),
+    %% From Salus on, FATE store reads are priced per byte, so the longer
+    %% stored string costs more gas on FATE too.
+    FateStoreRepriced = protocol_version() >= ?SALUS_PROTOCOL_VSN,
+    ?assertMatchVM(true, FateStoreRepriced, Gas5 > Gas4),
 
     %% Test that a bigger return value in remote (inner) call means more gas - strings for AEVM
     {_, Gas6} = ?call(call_contract, Acc, Ct1, return_it_s, word, {?cid(Ct0), 0}, #{ return_gas_used => true }),
@@ -7032,17 +7043,30 @@ sophia_state_gas_store_size(_Cfg) ->
     {{}, Gas5} = ?call(call_contract, Acc, Ct1, update_mk, UnitT, {2, 1}, #{ return_gas_used => true }),
     ?assertEqual(Gas4, Gas5),
 
-    %% Updating a non-existing key - same cost
+    %% Updating another existing key - same cost (keys 1..1000 are all in BigMap)
     {{}, Gas6} = ?call(call_contract, Acc, Ct1, update_mk, UnitT, {3, 1}, #{ return_gas_used => true }),
     ?assertEqual(Gas5, Gas6),
 
-    %% Updating one key in the store map should cost more if the value takes up more space
-    {{}, Gas7} = ?call(call_contract, Acc, Ct1, update_mk, UnitT, {0, 257}, #{ return_gas_used => true }),
+    %% Updating one key in the store map should cost more if the value takes up more space.
+    %% Key 4 exists in BigMap, so the comparison is like-for-like on every
+    %% protocol: from Salus on, replacing an existing key also includes a
+    %% priced read of the old value, so a fresh key would not be comparable.
+    {{}, Gas7} = ?call(call_contract, Acc, Ct1, update_mk, UnitT, {4, 257}, #{ return_gas_used => true }),
     ?assertEqual({true, Gas6, Gas7}, {Gas6 < Gas7, Gas6, Gas7}),
 
     %% Updating one key in the store map should cost more if the key takes up more space
     {{}, Gas8} = ?call(call_contract, Acc, Ct1, update_mk, UnitT, {257, 0}, #{ return_gas_used => true }),
     ?assertEqual({true, Gas6, Gas8}, {Gas6 < Gas8, Gas6, Gas8}),
+
+    %% From Salus on, writing to a fresh key skips the priced old-value read,
+    %% so it is cheaper than replacing an existing key.
+    case protocol_version() >= ?SALUS_PROTOCOL_VSN of
+        true ->
+            {{}, GasFresh} = ?call(call_contract, Acc, Ct1, update_mk, UnitT, {0, 1}, #{ return_gas_used => true }),
+            ?assertEqual({true, GasFresh, Gas6}, {GasFresh < Gas6, GasFresh, Gas6});
+        false ->
+            ok
+    end,
 
     %% Test that gas usage varies when the state changes size for the integer component
     %% Baseline
