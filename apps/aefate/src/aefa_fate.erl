@@ -421,7 +421,10 @@ setup_engine_(#{ contract := <<_:256>> = ContractPubkey
         aeb_fate_encoding:deserialize(Call),
     Arguments = tuple_to_list(ArgTuple),
     Contract = aeb_fate_data:make_contract(ContractPubkey),
-    Stores = aefa_stores:put_contract_store(ContractPubkey, Store, aefa_stores:new()),
+    %% No #es{} yet to dispatch on, so derive Protocol from Env directly.
+    Protocol = aetx_env:consensus_version(maps:get(tx_env, Env)),
+    Aefa_stores = aefa_engine_state:aefa_stores_for_protocol(Protocol),
+    Stores = Aefa_stores:put_contract_store(ContractPubkey, Store, Aefa_stores:new()),
     APIState = aefa_chain_api:new(Env),
     ES1 = aefa_engine_state:new(Gas, Value, Env, Stores, APIState, Cache, VMVersion),
     Caller = aeb_fate_data:make_address(maps:get(caller, Env)),
@@ -792,16 +795,17 @@ unfold_store_maps(Val, ES, CostModel) ->
         true ->
             Pubkey = aefa_engine_state:current_contract(ES1),
             {Store, ES2} = ensure_contract_store(Pubkey, ES1),
-            Store1 = aefa_stores:cache_map_metadata(Pubkey, Store),
+            Aefa_stores = aefa_engine_state:aefa_stores(ES2),
+            Store1 = Aefa_stores:cache_map_metadata(Pubkey, Store),
             put('$contract_store', Store1),
             Unfold = fun(Id) ->
                         Store2 = get('$contract_store'),
-                        {List, Store3} = aefa_stores:store_map_to_list(Pubkey, Id, Store2),
+                        {List, Store3} = Aefa_stores:store_map_to_list(Pubkey, Id, Store2),
                         put('$contract_store', Store3),
                         maps:from_list(List)
                      end,
             MapSize = fun(Id) ->
-                          {Size, _Store2} = aefa_stores:store_map_size(Pubkey, Id, Store1),
+                          {Size, _Store2} = Aefa_stores:store_map_size(Pubkey, Id, Store1),
                           Size
                       end,
             ES3 = aefa_engine_state:spend_gas_for_traversal(Val, CostModel, {MapSize, Unfold}, ES2),
@@ -837,31 +841,54 @@ store_var(Var, Val, ES) ->
 lookup_in_store(N, ES) ->
     Current = aefa_engine_state:current_contract(ES),
     {Stores, ES1} = ensure_contract_store(Current, ES),
-    case aefa_stores:find_value(Current, N, Stores) of
-        {ok, Val} ->
-            {Val, ES1};
-        {ok, Val, Stores1} ->
-            %% Lookup in store costs extra from IRIS
-            ES2 = aefa_engine_state:spend_gas([{?IRIS_PROTOCOL_VSN, 2000}, {?LIMA_PROTOCOL_VSN, 0}], ES1),
-            ES3 = aefa_engine_state:set_stores(Stores1, ES2),
-            {Val, ES3};
-        error ->
-            abort({undefined_in_store, N}, ES1)
+    Aefa_stores = aefa_engine_state:aefa_stores(ES1),
+    case aefa_engine_state:consensus_version(ES1) >= ?SALUS_PROTOCOL_VSN of
+        true ->
+            %% Gas-aware find_value/4 charges before deserializing, so an
+            %% under-provisioned call aborts without paying that cost.
+            GasLeft = aefa_engine_state:gas(ES1),
+            case Aefa_stores:find_value(Current, N, Stores, GasLeft) of
+                {ok, Val} ->
+                    {Val, ES1};
+                {ok, Val, Stores1, _Bytes, GasLeft1} ->
+                    ES2 = aefa_engine_state:set_gas(GasLeft1, ES1),
+                    ES3 = aefa_engine_state:set_stores(Stores1, ES2),
+                    {Val, ES3};
+                {error, out_of_gas} ->
+                    abort(out_of_gas, ES1);
+                error ->
+                    abort({undefined_in_store, N}, ES1)
+            end;
+        false ->
+            %% Pre-Salus path, unchanged.
+            case Aefa_stores:find_value(Current, N, Stores) of
+                {ok, Val} ->
+                    {Val, ES1};
+                {ok, Val, Stores1} ->
+                    %% Lookup in store costs extra from IRIS.
+                    ES2 = aefa_engine_state:spend_gas([{?IRIS_PROTOCOL_VSN, 2000}, {?LIMA_PROTOCOL_VSN, 0}], ES1),
+                    ES3 = aefa_engine_state:set_stores(Stores1, ES2),
+                    {Val, ES3};
+                error ->
+                    abort({undefined_in_store, N}, ES1)
+            end
     end.
 
 write_to_store(N, Val, ES) ->
     Current = aefa_engine_state:current_contract(ES),
     {Stores, ES1} = ensure_contract_store(Current, ES),
-    Stores1 = aefa_stores:put_value(Current, N, Val, Stores),
+    Aefa_stores = aefa_engine_state:aefa_stores(ES1),
+    Stores1 = Aefa_stores:put_value(Current, N, Val, Stores),
     aefa_engine_state:set_stores(Stores1, ES1).
 
 ensure_contract_store(Pubkey, ES) ->
     Stores = aefa_engine_state:stores(ES),
-    case aefa_stores:has_contract(Pubkey, Stores) of
+    Aefa_stores = aefa_engine_state:aefa_stores(ES),
+    case Aefa_stores:has_contract(Pubkey, Stores) of
         false ->
             APIState  = aefa_engine_state:chain_api(ES),
             {Store, APIState1} = aefa_chain_api:contract_store(Pubkey, APIState),
-            Stores1 = aefa_stores:put_contract_store(Pubkey, Store, Stores),
+            Stores1 = Aefa_stores:put_contract_store(Pubkey, Store, Stores),
             ES1 = aefa_engine_state:set_chain_api(APIState1, ES),
             {Stores1, aefa_engine_state:set_stores(Stores1, ES1)};
         true ->
