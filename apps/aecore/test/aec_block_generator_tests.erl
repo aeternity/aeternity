@@ -47,6 +47,24 @@ sec_bb_3_quarantine_test_() ->
        " inert out of the box, so selection is unaffected",
        fun test_default_ttl_disables_quarantine/0}]}.
 
+%% Before/after proof: does quarantine actually resolve the 0-block issue
+%% (a slow tx re-selected on every rebuild stalls the leader forever)?
+zero_block_proof_test_() ->
+    {foreach,
+     fun setup/0,
+     fun teardown_quarantine_env/1,
+     [{"BEFORE: quarantine off - the offending tx is re-selected on every"
+       " rebuild, every build stalls, and no non-empty microblock candidate"
+       " is ever published (0-block issue reproduced)",
+       fun test_zero_block_before_quarantine_off/0},
+      {"AFTER: quarantine on - the offending tx is excluded once quarantined,"
+       " every later build succeeds, and progress (publishes) is restored",
+       fun test_zero_block_after_quarantine_on/0},
+      {"HONESTY: quarantine only fires on a preempt - an uncontested stall"
+       " (no top_changed ever arrives) is never captured and makes no"
+       " progress either (known efficacy gap, not a regression)",
+       fun test_efficacy_gap_uncontested_stall_not_quarantined/0}]}.
+
 setup() ->
     meck:new(aec_events, [non_strict]),
     meck:expect(aec_events, subscribe, fun(_) -> ok end),
@@ -581,5 +599,113 @@ test_default_ttl_disables_quarantine() ->
     ?assertEqual([], IgnoreTxHashes1),
 
     wait_for_candidate(candidate_final).
+
+%% -- Zero-block proof (before/after) -------------------------------------
+
+%% Models the incident's slow tx generically, by ignore_tx_hashes content
+%% rather than by Top: hangs (having reported itself in flight) whenever
+%% SlowTxHash is still selectable, succeeds once it is excluded. The
+%% candidate/state are tagged by Top so callers can wait_for_candidate/1 on
+%% a specific rebuild instead of racing on a single shared value.
+slow_tx_create_fun(TestPid, SlowTxHash) ->
+    fun(Top, Opts) ->
+        IgnoreTxHashes = maps:get(ignore_tx_hashes, Opts, []),
+        case lists:member(SlowTxHash, IgnoreTxHashes) of
+            true ->
+                TestPid ! {create_called, Top, self(), IgnoreTxHashes},
+                {ok, {candidate_for, Top}, {state_for, Top}};
+            false ->
+                (maps:get(report_in_flight_fun, Opts))([SlowTxHash]),
+                TestPid ! {create_called, Top, self(), IgnoreTxHashes},
+                receive after infinity -> ok end
+        end
+    end.
+
+publish_to_test_pid(TestPid) ->
+    fun(candidate_block, new_candidate) ->
+            TestPid ! candidate_published,
+            ok;
+       (_, _) ->
+            ok
+    end.
+
+%% BEFORE: TTL 0 (quarantine off) - the failure loop from the incident.
+%% Every preempt re-selects the same slow tx, every build hangs again, and
+%% the leader publishes nothing across all K top-changes.
+test_zero_block_before_quarantine_off() ->
+    application:set_env(aecore, candidate_quarantine_ttl_ms, 0),
+    TestPid = self(),
+    InitialTop = <<"top-0">>,
+    SlowTxHash = <<"slow-tx-hash-zb">>,
+    DeferredTops = [<<"top-zb-1">>, <<"top-zb-2">>, <<"top-zb-3">>,
+                    <<"top-zb-4">>, <<"top-zb-5">>],
+
+    meck:expect(aec_events, publish, publish_to_test_pid(TestPid)),
+    meck:expect(aec_block_micro_candidate, create, slow_tx_create_fun(TestPid, SlowTxHash)),
+
+    ?GENERATOR:start_generation(),
+    {_W0, Ignore0} = wait_for_create_with_ignore(InitialTop),
+    ?assertEqual([], Ignore0),
+
+    lists:foreach(
+      fun(Top) ->
+              defer_micro_top(Top),
+              {_W, Ignore} = wait_for_create_with_ignore(Top),
+              %% Quarantine disabled: the offending tx is selectable again.
+              ?assertEqual([], Ignore)
+      end, DeferredTops),
+
+    %% 0-block issue reproduced: not a single non-empty candidate published.
+    ?assertEqual(0, count_candidate_publishes()).
+
+%% AFTER: a long TTL (quarantine on) - the same scenario, but the tx gets
+%% quarantined on the first preempt and every later build succeeds.
+test_zero_block_after_quarantine_on() ->
+    application:set_env(aecore, candidate_quarantine_ttl_ms, 60000),
+    TestPid = self(),
+    InitialTop = <<"top-0">>,
+    SlowTxHash = <<"slow-tx-hash-za">>,
+    DeferredTops = [<<"top-za-1">>, <<"top-za-2">>, <<"top-za-3">>,
+                    <<"top-za-4">>, <<"top-za-5">>],
+
+    meck:expect(aec_events, publish, publish_to_test_pid(TestPid)),
+    meck:expect(aec_block_micro_candidate, create, slow_tx_create_fun(TestPid, SlowTxHash)),
+
+    ?GENERATOR:start_generation(),
+    {_W0, Ignore0} = wait_for_create_with_ignore(InitialTop),
+    ?assertEqual([], Ignore0),
+
+    lists:foreach(
+      fun(Top) ->
+              defer_micro_top(Top),
+              {_W, Ignore} = wait_for_create_with_ignore(Top),
+              %% Quarantined from the first preempt onward: excluded every time.
+              ?assert(lists:member(SlowTxHash, Ignore)),
+              wait_for_candidate({candidate_for, Top})
+      end, DeferredTops),
+
+    %% Progress restored: one non-empty publish per top-change.
+    ?assertEqual(length(DeferredTops), count_candidate_publishes()).
+
+%% HONESTY: quarantine is preempt-triggered only. With the worker stalled
+%% and no top_changed ever arriving, nothing gets quarantined and nothing
+%% is published either - this is a known efficacy gap, not a bug, and this
+%% test is expected to (and does) pass, documenting it rather than hiding it.
+test_efficacy_gap_uncontested_stall_not_quarantined() ->
+    application:set_env(aecore, candidate_quarantine_ttl_ms, 60000),
+    TestPid = self(),
+    InitialTop = <<"top-0">>,
+    SlowTxHash = <<"slow-tx-hash-gap">>,
+
+    meck:expect(aec_events, publish, publish_to_test_pid(TestPid)),
+    meck:expect(aec_block_micro_candidate, create, slow_tx_create_fun(TestPid, SlowTxHash)),
+
+    ?GENERATOR:start_generation(),
+    {_WorkerPid, IgnoreTxHashes0} = wait_for_create_with_ignore(InitialTop),
+    ?assertEqual([], IgnoreTxHashes0),
+
+    %% No top_changed is ever sent - the worker just stays hung, uncontested.
+    ?assertEqual(no_candidate, current_candidate()),
+    ?assertEqual(0, count_candidate_publishes()).
 
 -endif.
