@@ -22,9 +22,13 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
-%% Opt-in offending-tx quarantine (candidate_quarantine_ttl_ms, default 0/off): a tx whose apply
+-ifdef(TEST).
+-export([quarantine_ttl_ms/0, quarantine_batch/2, purge_expired_quarantine/1]).
+-endif.
+
+%% On-by-default offending-tx quarantine (candidate_quarantine_ttl_ms): a tx whose apply
 %% stalled a preempted candidate build is skipped on later builds so they make progress. Leader-local, proposal-only.
--define(DEFAULT_QUARANTINE_TTL_MS, 0).   %% off by default
+-define(MAX_QUARANTINE_ENTRIES, 1000).
 
 -type tx_hash() :: binary().
 
@@ -284,7 +288,7 @@ quarantine_batch([], Quarantine) ->
 quarantine_batch(TxHashes, Quarantine) ->
     case quarantine_ttl_ms() of
         0 ->
-            %% Disabled (default) - no-op.
+            %% Explicit opt-out - no-op.
             Quarantine;
         TTLMs ->
             Now = erlang:monotonic_time(millisecond),
@@ -292,11 +296,18 @@ quarantine_batch(TxHashes, Quarantine) ->
                         Quarantine, TxHashes)
     end.
 
-%% (Re-)quarantines for TTLMs, refreshing the expiry each time - TTL alone
-%% bounds it, no separate hit cap.
+%% (Re-)quarantines for TTLMs, refreshing the expiry each time. Refreshing an
+%% existing key is always allowed; a new key is dropped once the size cap is hit.
 quarantine_tx(TxHash, Now, TTLMs, Quarantine) ->
-    lager:debug("Quarantining tx ~p for ~pms", [TxHash, TTLMs]),
-    maps:put(TxHash, Now + TTLMs, Quarantine).
+    IsNew = not maps:is_key(TxHash, Quarantine),
+    case IsNew andalso map_size(Quarantine) >= ?MAX_QUARANTINE_ENTRIES of
+        true ->
+            lager:debug("Quarantine full (~p), dropping ~p", [?MAX_QUARANTINE_ENTRIES, TxHash]),
+            Quarantine;
+        false ->
+            lager:debug("Quarantining tx ~p for ~pms", [TxHash, TTLMs]),
+            maps:put(TxHash, Now + TTLMs, Quarantine)
+    end.
 
 %% Purges expired entries; returns the still-live keys to exclude from the
 %% next get_candidate.
@@ -305,8 +316,13 @@ purge_expired_quarantine(Quarantine) ->
     Quarantine1 = maps:filter(fun(_TxHash, Expiry) -> Expiry > Now end, Quarantine),
     {maps:keys(Quarantine1), Quarantine1}.
 
-%% Defaults to 0 (disabled). ~2 microblock cycles (micro_block_cycle
-%% default 3000ms) is a reasonable starting TTL when enabled.
+%% On by default at 3x the micro block cycle; explicit 0 opts out, anything
+%% else is clamped to [1x, 10x] the cycle so misconfiguration can't be unsafe.
 quarantine_ttl_ms() ->
-    aeu_env:user_config_or_env([<<"mining">>, <<"candidate_quarantine_ttl_ms">>],
-                                aecore, candidate_quarantine_ttl_ms, ?DEFAULT_QUARANTINE_TTL_MS).
+    Cycle = aec_governance:micro_block_cycle(),
+    Raw = aeu_env:user_config_or_env([<<"mining">>, <<"candidate_quarantine_ttl_ms">>],
+                                      aecore, candidate_quarantine_ttl_ms, Cycle * 3),
+    case Raw of
+        0 -> 0;
+        _ -> max(Cycle, min(Cycle * 10, Raw))
+    end.

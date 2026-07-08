@@ -6,6 +6,7 @@
 
 -define(GENERATOR, aec_block_generator).
 -define(WAIT_MS, 1000).
+-define(QUARANTINE_CAP, 1000). %% mirrors aec_block_generator's MAX_QUARANTINE_ENTRIES
 
 block_generator_top_change_test_() ->
     {foreach,
@@ -43,9 +44,36 @@ sec_bb_3_quarantine_test_() ->
       {"an administrative stop (not a top_changed preempt) hard-kills the"
        " worker but never quarantines its in-flight batch",
        fun test_admin_stop_does_not_quarantine/0},
-      {"candidate_quarantine_ttl_ms defaults to 0 (disabled): quarantine is"
-       " inert out of the box, so selection is unaffected",
-       fun test_default_ttl_disables_quarantine/0}]}.
+      {"candidate_quarantine_ttl_ms defaults to on (cycle-derived TTL): an"
+       " offending tx is quarantined after a preempt out of the box",
+       fun test_default_ttl_enables_quarantine/0},
+      {"an explicit candidate_quarantine_ttl_ms of 0 opts out: quarantine"
+       " stays inert even after a preempt",
+       fun test_explicit_zero_disables_quarantine/0}]}.
+
+%% Direct unit tests of the cycle-derived clamp (no gen_server needed).
+quarantine_ttl_clamp_test_() ->
+    {foreach,
+     fun() -> application:unset_env(aecore, candidate_quarantine_ttl_ms) end,
+     fun(_) -> application:unset_env(aecore, candidate_quarantine_ttl_ms) end,
+     [{"unset config defaults to 3x the micro block cycle",
+       fun test_quarantine_ttl_default_is_3x_cycle/0},
+      {"a value below the floor is clamped up to 1x the cycle",
+       fun test_quarantine_ttl_clamps_to_floor/0},
+      {"a value above the ceiling is clamped down to 10x the cycle",
+       fun test_quarantine_ttl_clamps_to_ceiling/0},
+      {"an explicit 0 disables the mechanism, unclamped",
+       fun test_quarantine_ttl_zero_stays_zero/0}]}.
+
+%% Direct unit tests of the size cap (no gen_server needed).
+quarantine_size_cap_test_() ->
+    {foreach,
+     fun() -> application:set_env(aecore, candidate_quarantine_ttl_ms, 60000) end,
+     fun(_) -> application:unset_env(aecore, candidate_quarantine_ttl_ms) end,
+     [{"quarantine_batch bounds the map at the size cap",
+       fun test_quarantine_batch_is_size_capped/0},
+      {"re-quarantining an existing key refreshes it without growing the map",
+       fun test_quarantine_batch_refresh_does_not_grow/0}]}.
 
 %% Before/after proof: does quarantine actually resolve the 0-block issue
 %% (a slow tx re-selected on every rebuild stalls the leader forever)?
@@ -348,8 +376,8 @@ teardown_quarantine_env(Ctx) ->
     application:unset_env(aecore, candidate_quarantine_ttl_ms),
     teardown(Ctx).
 
-%% Tests set an explicit, long TTL (disabled by default) to isolate the
-%% quarantine mechanism from the TTL expiring mid-test.
+%% Tests set a long, explicit TTL so the mechanism doesn't race the TTL
+%% expiring mid-test.
 test_quarantines_offending_tx_after_preempt() ->
     application:set_env(aecore, candidate_quarantine_ttl_ms, 60000),
     TestPid = self(),
@@ -386,97 +414,31 @@ test_quarantines_offending_tx_after_preempt() ->
     %% instead of looping on the same offending tx forever.
     wait_for_candidate(candidate_final).
 
+%% Unit-tests purge_expired_quarantine/1 directly rather than sleeping past a
+%% TTL - the floor clamp (>= 1x micro_block_cycle) makes wall-clock waits slow.
 test_quarantine_ttl_expiry_reallows_tx() ->
-    application:set_env(aecore, candidate_quarantine_ttl_ms, 60),
-    TestPid = self(),
-    InitialTop = <<"top-0">>,
-    DeferredTopA = <<"top-20">>,
-    DeferredTopB = <<"top-21">>,
     SlowTxHash = <<"slow-tx-hash-b">>,
+    Now = erlang:monotonic_time(millisecond),
+    Expired = #{ SlowTxHash => Now - 1 },
 
-    meck:expect(
-      aec_block_micro_candidate,
-      create,
-      fun(Top, Opts) when Top =:= InitialTop ->
-              (maps:get(report_in_flight_fun, Opts))([SlowTxHash]),
-              TestPid ! {create_called, InitialTop, self(), maps:get(ignore_tx_hashes, Opts, [])},
-              receive after infinity -> ok end;
-         (Top, Opts) when Top =:= DeferredTopA ->
-              TestPid ! {create_called, DeferredTopA, self(), maps:get(ignore_tx_hashes, Opts, [])},
-              {ok, candidate_a, state_a};
-         (Top, Opts) when Top =:= DeferredTopB ->
-              TestPid ! {create_called, DeferredTopB, self(), maps:get(ignore_tx_hashes, Opts, [])},
-              {ok, candidate_b, state_b}
-      end),
-
-    ?GENERATOR:start_generation(),
-    wait_for_create_with_ignore(InitialTop),
-
-    defer_micro_top(DeferredTopA),
-    {_W1, IgnoreA} = wait_for_create_with_ignore(DeferredTopA),
-    ?assert(lists:member(SlowTxHash, IgnoreA)),
-    wait_for_candidate(candidate_a),
-
-    %% Let the (short, test-configured) TTL lapse before the next build.
-    timer:sleep(150),
-
-    defer_micro_top(DeferredTopB),
-    {_W2, IgnoreB} = wait_for_create_with_ignore(DeferredTopB),
-    ?assertNot(lists:member(SlowTxHash, IgnoreB)).
+    {Ignore, Quarantine1} = ?GENERATOR:purge_expired_quarantine(Expired),
+    ?assertNot(lists:member(SlowTxHash, Ignore)),
+    ?assertEqual(#{}, Quarantine1).
 
 test_quarantine_ttl_retry_then_requarantine_if_still_slow() ->
-    application:set_env(aecore, candidate_quarantine_ttl_ms, 60),
-    TestPid = self(),
-    InitialTop = <<"top-0">>,
-    DeferredTopA = <<"top-50">>,
-    DeferredTopB = <<"top-51">>,
-    DeferredTopC = <<"top-52">>,
+    application:set_env(aecore, candidate_quarantine_ttl_ms, 60000),
     SlowTxHash = <<"slow-tx-hash-e">>,
+    Now = erlang:monotonic_time(millisecond),
 
-    meck:expect(
-      aec_block_micro_candidate,
-      create,
-      fun(Top, Opts) when Top =:= InitialTop ->
-              (maps:get(report_in_flight_fun, Opts))([SlowTxHash]),
-              TestPid ! {create_called, InitialTop, self(), maps:get(ignore_tx_hashes, Opts, [])},
-              receive after infinity -> ok end;
-         (Top, Opts) when Top =:= DeferredTopA ->
-              %% First quarantine cycle: builds without the offending tx.
-              TestPid ! {create_called, DeferredTopA, self(), maps:get(ignore_tx_hashes, Opts, [])},
-              {ok, candidate_a, state_a};
-         (Top, Opts) when Top =:= DeferredTopB ->
-              %% TTL lapsed - tx reselected and still slow, so this worker hangs again.
-              (maps:get(report_in_flight_fun, Opts))([SlowTxHash]),
-              TestPid ! {create_called, DeferredTopB, self(), maps:get(ignore_tx_hashes, Opts, [])},
-              receive after infinity -> ok end;
-         (Top, Opts) when Top =:= DeferredTopC ->
-              TestPid ! {create_called, DeferredTopC, self(), maps:get(ignore_tx_hashes, Opts, [])},
-              {ok, candidate_final, state_final}
-      end),
+    %% TTL lapsed: purge drops it, so a rebuild would reselect it.
+    Expired = #{ SlowTxHash => Now - 1 },
+    {IgnoreAfterExpiry, Quarantine1} = ?GENERATOR:purge_expired_quarantine(Expired),
+    ?assertNot(lists:member(SlowTxHash, IgnoreAfterExpiry)),
 
-    ?GENERATOR:start_generation(),
-    wait_for_create_with_ignore(InitialTop),
-
-    %% First preempt: quarantined.
-    defer_micro_top(DeferredTopA),
-    {_W1, IgnoreA} = wait_for_create_with_ignore(DeferredTopA),
-    ?assert(lists:member(SlowTxHash, IgnoreA)),
-    wait_for_candidate(candidate_a),
-
-    %% Let the TTL lapse before retrying.
-    timer:sleep(150),
-
-    defer_micro_top(DeferredTopB),
-    {_W2, IgnoreB} = wait_for_create_with_ignore(DeferredTopB),
-    ?assertNot(lists:member(SlowTxHash, IgnoreB)),
-
-    %% Still slow -> preempted again -> re-quarantined (no cap released it).
-    defer_micro_top(DeferredTopC),
-    {_W3, IgnoreC} = wait_for_create_with_ignore(DeferredTopC),
-    ?assert(lists:member(SlowTxHash, IgnoreC)),
-
-    %% Forward progress continues regardless.
-    wait_for_candidate(candidate_final).
+    %% Still slow on retry -> re-quarantined for a fresh span, no cap.
+    Quarantine2 = ?GENERATOR:quarantine_batch([SlowTxHash], Quarantine1),
+    {IgnoreAfterRequarantine, _Quarantine3} = ?GENERATOR:purge_expired_quarantine(Quarantine2),
+    ?assert(lists:member(SlowTxHash, IgnoreAfterRequarantine)).
 
 test_normal_completion_does_not_quarantine() ->
     application:set_env(aecore, candidate_quarantine_ttl_ms, 60000),
@@ -571,7 +533,8 @@ test_admin_stop_does_not_quarantine() ->
     {_WorkerPid2, IgnoreTxHashes} = wait_for_create_with_ignore(InitialTop),
     ?assertNot(lists:member(SlowTxHash, IgnoreTxHashes)).
 
-test_default_ttl_disables_quarantine() ->
+%% No env set - relies on the runtime, cycle-derived default (on).
+test_default_ttl_enables_quarantine() ->
     TestPid = self(),
     InitialTop = <<"top-0">>,
     DeferredTop = <<"top-70">>,
@@ -596,9 +559,74 @@ test_default_ttl_disables_quarantine() ->
     defer_micro_top(DeferredTop),
 
     {_WorkerPid2, IgnoreTxHashes1} = wait_for_create_with_ignore(DeferredTop),
+    ?assert(lists:member(SlowTxHash, IgnoreTxHashes1)),
+
+    %% Forward progress: the rebuild completes and publishes.
+    wait_for_candidate(candidate_final).
+
+test_explicit_zero_disables_quarantine() ->
+    application:set_env(aecore, candidate_quarantine_ttl_ms, 0),
+    TestPid = self(),
+    InitialTop = <<"top-0">>,
+    DeferredTop = <<"top-71">>,
+    SlowTxHash = <<"slow-tx-hash-i">>,
+
+    meck:expect(
+      aec_block_micro_candidate,
+      create,
+      fun(Top, Opts) when Top =:= InitialTop ->
+              (maps:get(report_in_flight_fun, Opts))([SlowTxHash]),
+              TestPid ! {create_called, InitialTop, self(), maps:get(ignore_tx_hashes, Opts, [])},
+              receive after infinity -> ok end;
+         (Top, Opts) when Top =:= DeferredTop ->
+              TestPid ! {create_called, DeferredTop, self(), maps:get(ignore_tx_hashes, Opts, [])},
+              {ok, candidate_final, state_final}
+      end),
+
+    ?GENERATOR:start_generation(),
+    wait_for_create_with_ignore(InitialTop),
+
+    defer_micro_top(DeferredTop),
+
+    {_WorkerPid2, IgnoreTxHashes1} = wait_for_create_with_ignore(DeferredTop),
     ?assertEqual([], IgnoreTxHashes1),
 
     wait_for_candidate(candidate_final).
+
+%% -- Quarantine TTL clamp (direct unit tests) ----------------------------
+
+test_quarantine_ttl_default_is_3x_cycle() ->
+    Cycle = aec_governance:micro_block_cycle(),
+    ?assertEqual(Cycle * 3, ?GENERATOR:quarantine_ttl_ms()).
+
+test_quarantine_ttl_clamps_to_floor() ->
+    Cycle = aec_governance:micro_block_cycle(),
+    application:set_env(aecore, candidate_quarantine_ttl_ms, 10),
+    ?assertEqual(Cycle, ?GENERATOR:quarantine_ttl_ms()).
+
+test_quarantine_ttl_clamps_to_ceiling() ->
+    Cycle = aec_governance:micro_block_cycle(),
+    application:set_env(aecore, candidate_quarantine_ttl_ms, 100000000),
+    ?assertEqual(Cycle * 10, ?GENERATOR:quarantine_ttl_ms()).
+
+test_quarantine_ttl_zero_stays_zero() ->
+    application:set_env(aecore, candidate_quarantine_ttl_ms, 0),
+    ?assertEqual(0, ?GENERATOR:quarantine_ttl_ms()).
+
+%% -- Quarantine size cap (direct unit tests) -----------------------------
+
+test_quarantine_batch_is_size_capped() ->
+    TxHashes = [integer_to_binary(N) || N <- lists:seq(1, ?QUARANTINE_CAP + 50)],
+    Quarantine = ?GENERATOR:quarantine_batch(TxHashes, #{}),
+    ?assertEqual(?QUARANTINE_CAP, map_size(Quarantine)).
+
+test_quarantine_batch_refresh_does_not_grow() ->
+    TxHashes = [integer_to_binary(N) || N <- lists:seq(1, ?QUARANTINE_CAP)],
+    Quarantine0 = ?GENERATOR:quarantine_batch(TxHashes, #{}),
+    ?assertEqual(?QUARANTINE_CAP, map_size(Quarantine0)),
+
+    Quarantine1 = ?GENERATOR:quarantine_batch([hd(TxHashes)], Quarantine0),
+    ?assertEqual(?QUARANTINE_CAP, map_size(Quarantine1)).
 
 %% -- Zero-block proof (before/after) -------------------------------------
 
