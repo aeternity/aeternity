@@ -10,6 +10,12 @@
         , finalize/1
         ]).
 
+%% Protocol-keyed FATE store module dispatch, exported so call sites route
+%% through one single source of truth instead of hardcoding a module name.
+-export([ aefa_stores/1
+        , aefa_stores_for_protocol/1
+        ]).
+
 %% Getters
 -export([ accumulator/1
         , accumulator_stack/1
@@ -174,17 +180,27 @@ new(Gas, Value, Spec, Stores, APIState, CodeCache, VMVersion) ->
        , debug_info        = disabled
        }.
 
+-spec aefa_stores(state()) -> module().
 aefa_stores(#es{ chain_api = APIState }) ->
     Protocol = aetx_env:consensus_version(aefa_chain_api:tx_env(APIState)),
-    case Protocol >= ?IRIS_PROTOCOL_VSN of
-        true  -> aefa_stores;
-        false -> aefa_stores_lima
-    end.
+    aefa_stores_for_protocol(Protocol).
+
+%% Salus+ dispatches to the live aefa_stores module. Iris..Ceres are pinned
+%% to the frozen aefa_stores_ceres snapshot so future aefa_stores edits
+%% cannot change replay of already-forked blocks. Pre-Iris keeps lima.
+-spec aefa_stores_for_protocol(non_neg_integer()) -> module().
+aefa_stores_for_protocol(Protocol) when Protocol >= ?SALUS_PROTOCOL_VSN ->
+    aefa_stores;
+aefa_stores_for_protocol(Protocol) when Protocol >= ?IRIS_PROTOCOL_VSN ->
+    aefa_stores_ceres;
+aefa_stores_for_protocol(_Protocol) ->
+    aefa_stores_lima.
 
 -spec finalize(state()) -> {ok, state()} | {error, out_of_gas}.
 finalize(#es{chain_api = API, stores = Stores} = ES) ->
     Aefa_stores = aefa_stores(ES),
     try
+        %% aefa_stores_lima has no terms_to_finalize; it is protocol-invariant.
         ES1 = lists:foldl(fun(Val, ES0) -> spend_gas_for_traversal(Val, serial, ES0) end,
                           ES, aefa_stores:terms_to_finalize(Stores)),
         Gas = gas(ES1),
