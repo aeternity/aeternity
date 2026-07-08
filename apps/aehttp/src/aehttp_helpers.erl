@@ -639,7 +639,7 @@ do_dry_run() ->
         case prepare_dry_run_params([top, txs, accounts, tx_events], State) of
             {ok, #{top := Top, accounts := As, txs := Txs, tx_events := Events}} ->
                 lager:debug("tx_events = ~p", [Events]),
-                case aec_dry_run:dry_run(Top, As, Txs, [{tx_events, Events}]) of
+                case aec_dry_run:dry_run(Top, As, Txs, [{tx_events, Events}, {dry_run_profile, public}]) of
                     {ok, Res} ->
                         {Results, EventRes} = R = dry_run_results(Res),
                         lager:debug("dry_run_results: ~p", [R]),

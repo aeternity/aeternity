@@ -513,7 +513,7 @@ format_txs(Txs, MBHash) ->
             _ ->
                 {in, MBHash}
             end,
-    case aec_dry_run:dry_run(Top, [], DryTxs, [tx_events]) of
+    case aec_dry_run:dry_run(Top, [], DryTxs, [tx_events, {dry_run_profile, replay}]) of
         {ok, {Results, _Events}} ->
             TxHashes = [aetx_sign:hash(Tx) || Tx <- Txs],
             lists:zip(TxHashes, Results);
