@@ -508,7 +508,9 @@ create_config(Node, CTConfig, CustomConfig, Options) ->
                     <<"http">> => #{ <<"external">> => #{<<"port">> => external_api_port(Node)},
                                         <<"internal">> => #{<<"port">> => internal_api_port(Node)},
                                         <<"rosetta">> => #{<<"port">> => rosetta_api_port(Node)},
-                                        <<"rosetta_offline">> => #{<<"port">> => rosetta_offline_api_port(Node)}},
+                                        <<"rosetta_offline">> => #{<<"port">> => rosetta_offline_api_port(Node)},
+                                        %% cover-compiled CT nodes are far slower than prod
+                                        <<"dry_run">> => #{<<"timeout_ms">> => 30000}},
                     <<"websocket">> => #{<<"channel">> => #{<<"port">> => ws_port(Node)}}},
                 MergedCfg5 = maps_merge(MergedCfg4, Ports),
                 FConfig = config_apply_options(Node, MergedCfg5, Options),

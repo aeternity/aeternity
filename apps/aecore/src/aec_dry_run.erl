@@ -7,11 +7,17 @@
 -export([ dry_run/3
 	, dry_run/4 ]).
 
+%% exported for eunit only
+-export([ run_bounded/2
+        , resolve_timeout/1 ]).
+
 -include("blocks.hrl").
 -include_lib("aecontract/include/aecontract.hrl").
 
 -define(MR_MAGIC, <<1:32/unit:8>>).
 -define(BIG_AMOUNT, 1000000000000000000000). %% 1000 AE
+
+-define(TIMEOUT_ERROR, <<"dry-run exceeded time limit">>).
 
 %% Let Top be one of:
 %% * {height, X :: int()} - this means "right after keyblock of generation X"
@@ -24,7 +30,13 @@
 dry_run(Top, Accounts, Txs) ->
     dry_run(Top, Accounts, Txs, []).
 
+%% Entry point for HTTP/Rosetta/aeapi dry-run; off-chain only, never called
+%% from block production/validation.
 dry_run(Top, Accounts, Txs, Opts) ->
+    {TimeoutMs, Opts1} = resolve_timeout(Opts),
+    run_bounded(fun() -> dry_run_unbounded(Top, Accounts, Txs, Opts1) end, TimeoutMs).
+
+dry_run_unbounded(Top, Accounts, Txs, Opts) ->
     try setup_dry_run(Top, Accounts) of
         {Env, Trees} -> dry_run_(Txs, Trees, Env, Opts)
     catch
@@ -33,6 +45,104 @@ dry_run(Top, Accounts, Txs, Opts) ->
         error:state_garbage_collected ->
             {error, <<"Block state of given hash was garbage collected">>}
     end.
+
+%% Only the untrusted public endpoint is time-bounded (the DoS surface); Rosetta
+%% replay gets a looser bound; internal/trusted calls run unbounded but stay
+%% memory-guarded. Explicit {timeout_ms, N} wins; dry-run-only opts are stripped
+%% so they never reach tx application. 0 in config means unbounded.
+resolve_timeout(Opts) ->
+    Opts1 = proplists:delete(timeout_ms, proplists:delete(dry_run_profile, Opts)),
+    case proplists:get_value(timeout_ms, Opts) of
+        N when is_integer(N) -> {N, Opts1};
+        undefined ->
+            Profile = proplists:get_value(dry_run_profile, Opts, internal),
+            {profile_timeout(Profile), Opts1}
+    end.
+
+profile_timeout(public) ->
+    cfg_timeout(<<"timeout_ms">>, timeout_ms, aec_governance:micro_block_cycle());
+profile_timeout(replay) ->
+    cfg_timeout(<<"replay_timeout_ms">>, replay_timeout_ms, 10000);
+profile_timeout(_) ->
+    infinity.
+
+cfg_timeout(Key, EnvKey, Default) ->
+    case aeu_env:user_config_or_env([<<"http">>, <<"dry_run">>, Key],
+                                    aehttp, [dry_run, EnvKey], Default) of
+        0 -> infinity;
+        N -> N
+    end.
+
+%% ~2 GB backstop for a single non-yielding allocation the timer can't catch;
+%% normal iterative work is bounded by the wall-clock timeout, not this. 0 off.
+dry_run_max_heap_words() ->
+    aeu_env:user_config_or_env([<<"http">>, <<"dry_run">>, <<"max_heap_words">>],
+                                aehttp, [dry_run, max_heap_words], 256000000).
+
+%% Wall-clock bound via a killable worker (infinity = no timer, memory guard
+%% only); a non-yielding NIF can still overshoot since exit/2 can't preempt it.
+run_bounded(Fun, TimeoutMs) ->
+    Caller = self(),
+    Tag = make_ref(),
+    {WorkerPid, WorkerMRef} = spawn_monitor(fun() -> run_worker(Fun, Caller, Tag) end),
+    TimerRef = start_timer(TimeoutMs, Tag),
+    Result =
+        receive
+            {Tag, {worker_result, Res}} ->
+                erlang:demonitor(WorkerMRef, [flush]),
+                Res;
+            {timeout, Tag} ->
+                erlang:demonitor(WorkerMRef, [flush]),
+                exit(WorkerPid, kill),
+                {error, ?TIMEOUT_ERROR};
+            {'DOWN', WorkerMRef, process, WorkerPid, Reason} ->
+                {error, crash_reason(Reason)}
+        end,
+    cancel_timer(TimerRef),
+    drain_stray(Tag),
+    Result.
+
+start_timer(infinity, _Tag) -> undefined;
+start_timer(TimeoutMs, Tag) -> erlang:send_after(TimeoutMs, self(), {timeout, Tag}).
+
+cancel_timer(undefined) -> ok;
+cancel_timer(TimerRef)  -> _ = erlang:cancel_timer(TimerRef), ok.
+
+%% Drain any stray message that raced with the branch taken above.
+drain_stray(Tag) ->
+    receive
+        {Tag, _}       -> drain_stray(Tag);
+        {timeout, Tag} -> drain_stray(Tag)
+    after 0 ->
+        ok
+    end.
+
+%% Inner is linked so a kill of this worker cascades to it; trap_exit keeps an
+%% inner crash an error, not a death; Caller is monitored for client disconnect.
+run_worker(Fun, Caller, Tag) ->
+    process_flag(trap_exit, true),
+    CallerMRef = erlang:monitor(process, Caller),
+    Self = self(),
+    SpawnOpts = case dry_run_max_heap_words() of
+                    N when is_integer(N), N > 0 ->
+                        [{max_heap_size, #{size => N, kill => true, error_logger => true}}];
+                    _ ->
+                        []
+                end,
+    InnerPid = spawn_opt(fun() -> Self ! {inner_done, Fun()} end, SpawnOpts ++ [link]),
+    receive
+        {inner_done, Res} ->
+            erlang:demonitor(CallerMRef, [flush]),
+            Caller ! {Tag, {worker_result, Res}};
+        {'EXIT', InnerPid, Reason} ->
+            erlang:demonitor(CallerMRef, [flush]),
+            Caller ! {Tag, {worker_result, {error, crash_reason(Reason)}}};
+        {'DOWN', CallerMRef, process, Caller, _Reason} ->
+            exit(InnerPid, kill)
+    end.
+
+crash_reason(Reason) ->
+    iolist_to_binary(io_lib:format("dry-run failed: ~120P", [Reason, 10])).
 
 setup_dry_run(Top, Accounts) ->
     {Env, Trees} = tx_env_and_trees(Top),

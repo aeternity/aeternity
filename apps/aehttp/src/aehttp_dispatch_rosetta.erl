@@ -319,7 +319,9 @@ handle_request_(blockTransaction,
         block_not_found ->
             {500, [], rosetta_error_response(?ROSETTA_ERR_BLOCK_NOT_FOUND)};
         tx_not_found ->
-            {500, [], rosetta_error_response(?ROSETTA_ERR_TX_NOT_FOUND)}
+            {500, [], rosetta_error_response(?ROSETTA_ERR_TX_NOT_FOUND)};
+        {dry_run_err, Err} ->
+            dry_run_err(Err)
     end;
 handle_request_(call, _, _Context) ->
     {501, [], #{}};
@@ -675,10 +677,13 @@ handle_request_(mempoolTransaction,
         {value, SignedTx} ->
                 %% Since it is impossible to know what will be mined returns an estimate, which is acceptable
                 %% according to the Rosetta docs:
-                %% "On this endpoint, it is ok that returned transactions are only estimates of what 
+                %% "On this endpoint, it is ok that returned transactions are only estimates of what
                 %%  may actually be included in a block."
-                Resp = #{<<"transaction">> => format_tx(SignedTx, undefined)},
-                {200, [], Resp};
+                try format_tx(SignedTx, undefined) of
+                    TxFmt -> {200, [], #{<<"transaction">> => TxFmt}}
+                catch
+                    {dry_run_err, Err} -> dry_run_err(Err)
+                end;
         _ ->
             throw(tx_not_found)
     end;

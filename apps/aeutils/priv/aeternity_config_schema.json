@@ -1474,6 +1474,27 @@
                             "default" : 86400
                         }
                     }
+                },
+                "dry_run" : {
+                    "type" : "object",
+                    "additionalProperties" : false,
+                    "properties" : {
+                        "timeout_ms" : {
+                            "description" : "Wall-clock bound (in milliseconds) for a call to the public dry-run endpoint (the untrusted DoS surface). Defaults to one micro block cycle. 0 disables the bound. Internal/trusted dry-run calls are not time-bounded.",
+                            "type" : "integer",
+                            "default" : 3000
+                        },
+                        "replay_timeout_ms" : {
+                            "description" : "Wall-clock bound (in milliseconds) for a replay dry-run call (Rosetta/indexer block replay), which is legitimately heavier. 0 disables the bound.",
+                            "type" : "integer",
+                            "default" : 10000
+                        },
+                        "max_heap_words" : {
+                            "description" : "Backstop max heap size (in words) for a dry-run worker process; it is killed if it grows past this. Sized to catch a single pathological allocation, not normal work (which the timeout bounds). 0 disables.",
+                            "type" : "integer",
+                            "default" : 256000000
+                        }
+                    }
                 }
             }
         },
