@@ -48,6 +48,9 @@ setup() ->
     aec_test_utils:aec_keys_setup().
 
 teardown(TmpDir) ->
+    %% Defensive: clean the chain-db even if the body crashed, so it can't
+    %% leak into the next test as {already_exists, aec_blocks}.
+    catch aec_test_utils:stop_chain_db(),
     aec_test_utils:aec_keys_cleanup(TmpDir),
     aec_test_utils:unmock_genesis_and_forks(),
     aec_test_utils:unmock_governance(),
@@ -60,6 +63,18 @@ teardown(TmpDir) ->
 %%%===================================================================
 
 replay_full_sequence() ->
+    %% The scripted chain uses a name_fee claim + FATE contracts (Lima+);
+    %% skip cleanly on pre-Lima lanes (roma/minerva/fortuna).
+    case lists:max(maps:keys(aec_hard_forks:protocols())) >= ?LIMA_PROTOCOL_VSN of
+        false ->
+            ?debugFmt("skip replay_full_sequence: needs Lima+, lane max = ~p",
+                      [lists:max(maps:keys(aec_hard_forks:protocols()))]),
+            ok;
+        true ->
+            do_replay_full_sequence()
+    end.
+
+do_replay_full_sequence() ->
     %% actors
     #{public := Alice, secret := AliceSk} = enacl:sign_keypair(),
     #{public := Bob,   secret := BobSk}   = enacl:sign_keypair(),
