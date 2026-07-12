@@ -20,13 +20,13 @@
         , commit/2
         ]).
 
--export_type([t/0]).
+-export_type([state_db/0]).
 
 %% A plain map keyed by {tag, key}; last-writer-wins, and the commit
 %% fold is order-independent so the resulting MPT root is identical.
 -record(state_db, { cache :: #{ {tag(), term()} => entry() } }).
 
--opaque t() :: #state_db{}.
+-opaque state_db() :: #state_db{}.
 
 %% Module-private marker for an object deleted by the current tx, kept
 %% in the cache instead of erasing the entry so a same-tx read returns
@@ -63,7 +63,7 @@
 %%% API
 %%%===================================================================
 
--spec new() -> t().
+-spec new() -> state_db().
 new() ->
     #state_db{cache = #{}}.
 
@@ -71,7 +71,7 @@ new() ->
 %% `deleted' means the object was tombstoned in this tx: the caller
 %% must treat it as absent and must NOT fall through to the trees
 %% (which may still hold the pre-delete value).
--spec find(tag(), term(), t()) -> {value, object()} | deleted | none.
+-spec find(tag(), term(), state_db()) -> {value, object()} | deleted | none.
 find(Tag, Key, #state_db{cache = C}) when ?IS_TAG(Tag) ->
     case maps:find({Tag, Key}, C) of
         {ok, ?TOMBSTONE} -> deleted;
@@ -83,11 +83,11 @@ find(Tag, Key, #state_db{cache = C}) when ?IS_TAG(Tag) ->
 %% which just forgets a cached value, this records an explicit delete
 %% that `find/3' reports as `deleted' and `commit/2' applies as a
 %% sub-tree delete.
--spec delete(tag(), term(), t()) -> t().
+-spec delete(tag(), term(), state_db()) -> state_db().
 delete(Tag, Key, #state_db{cache = C} = S) when ?IS_TAG(Tag) ->
     S#state_db{cache = C#{{Tag, Key} => ?TOMBSTONE}}.
 
--spec drop(tag(), term(), t()) -> t().
+-spec drop(tag(), term(), state_db()) -> state_db().
 drop(channel, Hash, #state_db{cache = C} = S) ->
     S#state_db{cache = maps:remove({channel, Hash}, C)};
 drop(name_auction, Hash, #state_db{cache = C} = S) ->
@@ -99,7 +99,7 @@ drop(account, PK, #state_db{cache = C} = S) ->
 drop(commitment, Hash, #state_db{cache = C} = S) ->
     S#state_db{cache = maps:remove({commitment, Hash}, C)}.
 
--spec put(tag(), object(), t()) -> t().
+-spec put(tag(), object(), state_db()) -> state_db().
 put(account, Val, #state_db{cache = C} = S) ->
     Pubkey = aec_accounts:pubkey(Val),
     S#state_db{cache = C#{{account, Pubkey} => Val}};
@@ -138,7 +138,7 @@ put(oracle_query, Val, #state_db{cache = C} = S) ->
 %% is already resolved in the map; fold order is irrelevant to the root
 %% as long as the per-kind sub-tree lookups stay batch-aware (see the
 %% invariant on the contract clause below).
--spec commit(t(), aec_trees:trees()) -> aec_trees:trees().
+-spec commit(state_db(), aec_trees:trees()) -> aec_trees:trees().
 commit(#state_db{cache = C}, Trees) ->
     maps:fold(fun write_through_fun/3, Trees, C).
 

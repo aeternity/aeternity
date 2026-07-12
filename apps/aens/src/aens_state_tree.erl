@@ -63,13 +63,14 @@
 
 %% Per-microblock deferred NS writes/deletes, keyed by mtree key.
 %% `tombstone' marks a delete; a value replays through do_enter_* at flush.
--type nbatch_entry() :: {aens_commitments | aens_auctions | aens_names,
-                         insert | enter, term()} | tombstone.
--type nbatch() :: #{binary() => nbatch_entry()}.
+-type name_batch_entry() :: {aens_commitments | aens_auctions | aens_names,
+                             insert | enter,
+                             commitment() | auction() | name()} | tombstone.
+-type name_batch() :: #{binary() => name_batch_entry()}.
 
 -record(ns_tree, { mtree  = aeu_mtrees:empty() :: nstree()
                  , cache  = aeu_mtrees:empty() :: cache()
-                 , nbatch = #{}               :: nbatch()
+                 , name_batch = #{}            :: name_batch()
                  }).
 
 -opaque tree() :: #ns_tree{}.
@@ -90,16 +91,16 @@ record_fields(_      ) -> no.
 
 %% Defer as a tombstone (last writer wins); flush issues the real delete.
 -spec delete_commitment(binary(), tree()) -> tree().
-delete_commitment(Id, #ns_tree{nbatch = B} = Tree) ->
-    Tree#ns_tree{nbatch = B#{Id => tombstone}}.
+delete_commitment(Id, #ns_tree{name_batch = B} = Tree) ->
+    Tree#ns_tree{name_batch = B#{Id => tombstone}}.
 
 -spec delete_name_auction(binary(), tree()) -> tree().
-delete_name_auction(Id, #ns_tree{nbatch = B} = Tree) ->
-    Tree#ns_tree{nbatch = B#{Id => tombstone}}.
+delete_name_auction(Id, #ns_tree{name_batch = B} = Tree) ->
+    Tree#ns_tree{name_batch = B#{Id => tombstone}}.
 
 -spec delete_name(binary(), tree()) -> tree().
-delete_name(Id, #ns_tree{nbatch = B} = Tree) ->
-    Tree#ns_tree{nbatch = B#{Id => tombstone}}.
+delete_name(Id, #ns_tree{name_batch = B} = Tree) ->
+    Tree#ns_tree{name_batch = B#{Id => tombstone}}.
 
 -spec empty() -> tree().
 empty() ->
@@ -178,7 +179,7 @@ run_elapsed([{aens_commitments, Id, Serialized}|Expired], Trees, Protocol, Heigh
 %% Commitment stays `insert' at flush (fail fast on a real duplicate) but
 %% relaxes to `enter' for a delete-then-recreate in the same batch.
 -spec enter_commitment(commitment(), tree()) -> tree().
-enter_commitment(Commitment, #ns_tree{nbatch = B} = Tree) ->
+enter_commitment(Commitment, #ns_tree{name_batch = B} = Tree) ->
     Hash = aens_commitments:hash(Commitment),
     %% Tombstoned then recreated in this batch: the deferred delete never
     %% hit the mtree, so flush must `enter' (overwrite), not `insert'.
@@ -186,17 +187,17 @@ enter_commitment(Commitment, #ns_tree{nbatch = B} = Tree) ->
               {ok, tombstone} -> enter;
               _                -> insert
           end,
-    Tree#ns_tree{nbatch = B#{Hash => {aens_commitments, How, Commitment}}}.
+    Tree#ns_tree{name_batch = B#{Hash => {aens_commitments, How, Commitment}}}.
 
 -spec enter_name_auction(auction(), tree()) -> tree().
-enter_name_auction(Auction, #ns_tree{nbatch = B} = Tree) ->
+enter_name_auction(Auction, #ns_tree{name_batch = B} = Tree) ->
     Hash = aens_auctions:hash(Auction),
-    Tree#ns_tree{nbatch = B#{Hash => {aens_auctions, enter, Auction}}}.
+    Tree#ns_tree{name_batch = B#{Hash => {aens_auctions, enter, Auction}}}.
 
 -spec enter_name(name(), tree()) -> tree().
-enter_name(Name, #ns_tree{nbatch = B} = Tree) ->
+enter_name(Name, #ns_tree{name_batch = B} = Tree) ->
     Hash = aens_names:hash(Name),
-    Tree#ns_tree{nbatch = B#{Hash => {aens_names, enter, Name}}}.
+    Tree#ns_tree{name_batch = B#{Hash => {aens_names, enter, Name}}}.
 
 %% Flush-time writers: mtree + TTL cache. `How' per enter_commitment/2.
 do_enter_commitment(How, Commitment, Tree) ->
@@ -229,10 +230,10 @@ do_enter_name(Name, Tree) ->
 
 %% Flush pending NS writes/deletes at microblock end. O(1) when empty.
 -spec flush_name_batch(tree()) -> tree().
-flush_name_batch(#ns_tree{nbatch = B} = Tree) when map_size(B) =:= 0 ->
+flush_name_batch(#ns_tree{name_batch = B} = Tree) when map_size(B) =:= 0 ->
     Tree;
-flush_name_batch(#ns_tree{nbatch = B} = Tree) ->
-    Tree1 = Tree#ns_tree{nbatch = #{}},
+flush_name_batch(#ns_tree{name_batch = B} = Tree) ->
+    Tree1 = Tree#ns_tree{name_batch = #{}},
     maps:fold(
       fun(Id, tombstone, Acc) ->
               Acc#ns_tree{mtree = aeu_mtrees:delete(Id, Acc#ns_tree.mtree)};
@@ -255,7 +256,7 @@ batch_lookup(Id, Deserialize, MTree, B) ->
 %% Batch-aware: a same-batch tombstone reads as absent, matching
 %% aeu_mtrees:get/2's error for a missing key.
 -spec get_name(binary(), tree()) -> name().
-get_name(Id, #ns_tree{mtree = MTree, nbatch = B}) ->
+get_name(Id, #ns_tree{mtree = MTree, name_batch = B}) ->
     case maps:find(Id, B) of
         {ok, {aens_names, _How, N}} -> N;
         {ok, tombstone}             -> error({not_present, Id});
@@ -263,15 +264,15 @@ get_name(Id, #ns_tree{mtree = MTree, nbatch = B}) ->
     end.
 
 -spec lookup_commitment(binary(), tree()) -> {value, commitment()} | none.
-lookup_commitment(Id, #ns_tree{mtree = MTree, nbatch = B}) ->
+lookup_commitment(Id, #ns_tree{mtree = MTree, name_batch = B}) ->
     batch_lookup(Id, fun aens_commitments:deserialize/2, MTree, B).
 
 -spec lookup_name_auction(binary(), tree()) -> {value, auction()} | none.
-lookup_name_auction(Id, #ns_tree{mtree = MTree, nbatch = B}) ->
+lookup_name_auction(Id, #ns_tree{mtree = MTree, name_batch = B}) ->
     batch_lookup(Id, fun aens_auctions:deserialize/2, MTree, B).
 
 -spec lookup_name(binary(), tree()) -> {value, name()} | none.
-lookup_name(Id, #ns_tree{mtree = MTree, nbatch = B}) ->
+lookup_name(Id, #ns_tree{mtree = MTree, name_batch = B}) ->
     batch_lookup(Id, fun aens_names:deserialize/2, MTree, B).
 
 -spec root_hash(tree()) -> {ok, aeu_mtrees:root_hash()} | {error, empty}.
@@ -279,7 +280,7 @@ root_hash(Tree) ->
     #ns_tree{mtree = MTree} = flush_name_batch(Tree),
     aeu_mtrees:root_hash(MTree).
 
-%% Backend identity of the materialised mtree only; ignores pending nbatch.
+%% Backend identity of the materialised mtree only; ignores pending name_batch.
 -spec ns_db(tree()) -> {'ok', aeu_mp_trees:db()}.
 ns_db(#ns_tree{mtree = MTree}) ->
     aeu_mtrees:db(MTree).

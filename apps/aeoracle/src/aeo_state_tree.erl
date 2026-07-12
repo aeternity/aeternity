@@ -77,13 +77,13 @@
 %% not part of the consensus root and prune re-validates expiry from the
 %% real object, so collapsing repeated same-key writes does not change
 %% consensus.
--type obatch_entry() :: {oracle | query, insert | enter,
+-type oracle_batch_entry() :: {oracle | query, insert | enter,
                          aeo_oracles:oracle() | aeo_query:query()}.
--type obatch() :: #{binary() => obatch_entry()}.
+-type oracle_batch() :: #{binary() => oracle_batch_entry()}.
 
 -record(oracle_tree, { otree  = aeu_mtrees:empty() :: otree()
                      , cache  = aeu_mtrees:empty() :: cache()
-                     , obatch = #{}               :: obatch()
+                     , oracle_batch = #{}               :: oracle_batch()
                      }).
 
 -opaque tree() :: #oracle_tree{}.
@@ -171,7 +171,7 @@ insert_query(I, Tree) ->
     add_query(insert, I, Tree).
 
 -spec get_query(aeo_oracles:pubkey(), aeo_query:id(), tree()) -> query().
-get_query(OracleId, QId, #oracle_tree{otree = OTree, obatch = B}) ->
+get_query(OracleId, QId, #oracle_tree{otree = OTree, oracle_batch = B}) ->
     TreeId = <<OracleId/binary, QId/binary>>,
     case maps:find(TreeId, B) of
         {ok, {query, _How, Q}} -> Q;
@@ -182,7 +182,7 @@ get_query(OracleId, QId, #oracle_tree{otree = OTree, obatch = B}) ->
 
 -spec lookup_query(aeo_oracles:pubkey(), aeo_query:id(), tree()) ->
     {'value', query()} | none.
-lookup_query(OracleId, QId, #oracle_tree{otree = OTree, obatch = B}) ->
+lookup_query(OracleId, QId, #oracle_tree{otree = OTree, oracle_batch = B}) ->
     TreeId = <<OracleId/binary, QId/binary>>,
     case maps:find(TreeId, B) of
         {ok, {query, _How, Q}} -> {value, Q};
@@ -202,7 +202,7 @@ insert_oracle(O, Tree) ->
     add_oracle(insert, O, Tree).
 
 -spec get_oracle(binary(), tree()) -> oracle().
-get_oracle(Id, #oracle_tree{otree = OTree, obatch = B}) ->
+get_oracle(Id, #oracle_tree{otree = OTree, oracle_batch = B}) ->
     case maps:find(Id, B) of
         {ok, {oracle, _How, O}} -> O;
         _ -> aeo_oracles:deserialize(Id, aeu_mtrees:get(Id, OTree))
@@ -225,7 +225,7 @@ get_oracles(From, Max, Tree) ->
     find_oracles(From, Max, flush_oracle_batch(Tree)).
 
 -spec lookup_oracle(binary(), tree()) -> {'value', oracle()} | 'none'.
-lookup_oracle(Id, #oracle_tree{otree = OTree, obatch = B}) ->
+lookup_oracle(Id, #oracle_tree{otree = OTree, oracle_batch = B}) ->
     case maps:find(Id, B) of
         {ok, {oracle, _How, O}} -> {value, O};
         _ ->
@@ -236,7 +236,7 @@ lookup_oracle(Id, #oracle_tree{otree = OTree, obatch = B}) ->
     end.
 
 -spec is_oracle(aeo_oracles:pubkey(), tree()) -> boolean().
-is_oracle(Pubkey, #oracle_tree{ otree = OTree, obatch = B }) ->
+is_oracle(Pubkey, #oracle_tree{ otree = OTree, oracle_batch = B }) ->
     case maps:find(Pubkey, B) of
         {ok, {oracle, _How, _}} -> true;
         _ ->
@@ -252,7 +252,7 @@ root_hash(Tree) ->
     aeu_mtrees:root_hash(OTree).
 
 %% WARNING: backing MPT db of the *materialised* otree only — does not
-%% reflect entries pending in `obatch'.  Backend identity only.
+%% reflect entries pending in `oracle_batch'.  Backend identity only.
 -spec oracles_db(tree()) -> {'ok', aeu_mp_trees:db()}.
 oracles_db(#oracle_tree{otree = OTree}) ->
     aeu_mtrees:db(OTree).
@@ -298,15 +298,15 @@ commit_to_db(Tree) ->
 %% write here). Last-writer-wins per key; flush replays the final object
 %% through the unchanged writer, so the otree is byte-identical to
 %% writing per-tx and the TTL cache is built the same way as before.
-add_oracle(How, O, #oracle_tree{obatch = B} = Tree) ->
+add_oracle(How, O, #oracle_tree{oracle_batch = B} = Tree) ->
     Pubkey = aeo_oracles:pubkey(O),
-    Tree#oracle_tree{obatch = B#{Pubkey => {oracle, How, O}}}.
+    Tree#oracle_tree{oracle_batch = B#{Pubkey => {oracle, How, O}}}.
 
-add_query(How, I, #oracle_tree{obatch = B} = Tree) ->
+add_query(How, I, #oracle_tree{oracle_batch = B} = Tree) ->
     OraclePubkey = aeo_query:oracle_pubkey(I),
     QueryId      = aeo_query:id(I),
     TreeId       = <<OraclePubkey/binary, QueryId/binary>>,
-    Tree#oracle_tree{obatch = B#{TreeId => {query, How, I}}}.
+    Tree#oracle_tree{oracle_batch = B#{TreeId => {query, How, I}}}.
 
 %% The original (now flush-time) writers: otree + secondary TTL cache.
 do_add_oracle(How, O, #oracle_tree{ otree = OTree } = Tree) ->
@@ -342,10 +342,10 @@ do_add_query(How, I, #oracle_tree{otree = OTree} = Tree) ->
 %% reader/iterator/prune entry point (so no non-funnel path can observe
 %% a stale otree).  O(1) fast-path when empty.
 -spec flush_oracle_batch(tree()) -> tree().
-flush_oracle_batch(#oracle_tree{obatch = B} = Tree) when map_size(B) =:= 0 ->
+flush_oracle_batch(#oracle_tree{oracle_batch = B} = Tree) when map_size(B) =:= 0 ->
     Tree;
-flush_oracle_batch(#oracle_tree{obatch = B} = Tree) ->
-    Tree1 = Tree#oracle_tree{obatch = #{}},
+flush_oracle_batch(#oracle_tree{oracle_batch = B} = Tree) ->
+    Tree1 = Tree#oracle_tree{oracle_batch = #{}},
     maps:fold(fun(_K, {oracle, How, O}, Acc) -> do_add_oracle(How, O, Acc);
                  (_K, {query,  How, I}, Acc) -> do_add_query(How, I, Acc)
               end, Tree1, B).

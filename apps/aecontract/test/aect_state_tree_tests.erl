@@ -237,18 +237,18 @@ store_read_cache_cross_tx_propagation_test() ->
     PK = aect_contracts:pubkey(C),
 
     %% Establish initial store value in the MPT.
-    C_init = aect_contracts:set_state(MakeStore(#{<<"k">> => <<"v0">>}), C),
-    T1F    = flush(?TESTED_MODULE:insert_contract(C_init, T0)),
+    CInit = aect_contracts:set_state(MakeStore(#{<<"k">> => <<"v0">>}), C),
+    T1F    = flush(?TESTED_MODULE:insert_contract(CInit, T0)),
 
     %% Tx A: look up contract, read key k (triggers MPT read into store's read_cache).
-    {value, C_a}       = ?TESTED_MODULE:lookup_contract(PK, T1F),
-    {<<"v0">>, St_a}   = aect_contracts_store:get_w_cache(<<"k">>, aect_contracts:state(C_a)),
+    {value, CA}       = ?TESTED_MODULE:lookup_contract(PK, T1F),
+    {<<"v0">>, StA}   = aect_contracts_store:get_w_cache(<<"k">>, aect_contracts:state(CA)),
     %% Enter the contract so enter_store captures the read_cache into the batch.
-    T2 = ?TESTED_MODULE:enter_contract(aect_contracts:set_state(St_a, C_a), T1F),
+    T2 = ?TESTED_MODULE:enter_contract(aect_contracts:set_state(StA, CA), T1F),
 
     %% Tx B: look up contract — batch Reads must pre-populate the store's read_cache.
-    {value, C_b} = ?TESTED_MODULE:lookup_contract(PK, T2),
-    <<"v0">> = aect_contracts_store:get(<<"k">>, aect_contracts:state(C_b)).
+    {value, CB} = ?TESTED_MODULE:lookup_contract(PK, T2),
+    <<"v0">> = aect_contracts_store:get(<<"k">>, aect_contracts:state(CB)).
 
 %% If Tx A reads k=old then writes k=new, Tx B must see the written value, not the stale read.
 store_read_cache_write_overrides_stale_read_test() ->
@@ -258,18 +258,18 @@ store_read_cache_write_overrides_stale_read_test() ->
     C  = new_contract(),
     PK = aect_contracts:pubkey(C),
 
-    C_init = aect_contracts:set_state(MakeStore(#{<<"k">> => <<"old">>}), C),
-    T1F    = flush(?TESTED_MODULE:insert_contract(C_init, T0)),
+    CInit = aect_contracts:set_state(MakeStore(#{<<"k">> => <<"old">>}), C),
+    T1F    = flush(?TESTED_MODULE:insert_contract(CInit, T0)),
 
     %% Tx A reads k (populates read_cache with old), then overwrites with new.
-    {value, C_a}      = ?TESTED_MODULE:lookup_contract(PK, T1F),
-    {<<"old">>, St_a} = aect_contracts_store:get_w_cache(<<"k">>, aect_contracts:state(C_a)),
-    St_a2  = aect_contracts_store:put(<<"k">>, <<"new">>, St_a),
-    T2 = ?TESTED_MODULE:enter_contract(aect_contracts:set_state(St_a2, C_a), T1F),
+    {value, CA}      = ?TESTED_MODULE:lookup_contract(PK, T1F),
+    {<<"old">>, StA} = aect_contracts_store:get_w_cache(<<"k">>, aect_contracts:state(CA)),
+    StA2  = aect_contracts_store:put(<<"k">>, <<"new">>, StA),
+    T2 = ?TESTED_MODULE:enter_contract(aect_contracts:set_state(StA2, CA), T1F),
 
     %% Tx B must see the written value — write must shadow the stale MPT read in the batch.
-    {value, C_b} = ?TESTED_MODULE:lookup_contract(PK, T2),
-    <<"new">> = aect_contracts_store:get(<<"k">>, aect_contracts:state(C_b)).
+    {value, CB} = ?TESTED_MODULE:lookup_contract(PK, T2),
+    <<"new">> = aect_contracts_store:get(<<"k">>, aect_contracts:state(CB)).
 
 %% A read-only access (no write_cache change) must not alter the MPT root hash on flush.
 store_read_cache_reads_not_flushed_to_mpt_test() ->
@@ -279,14 +279,14 @@ store_read_cache_reads_not_flushed_to_mpt_test() ->
     C  = new_contract(),
     PK = aect_contracts:pubkey(C),
 
-    C_init = aect_contracts:set_state(MakeStore(#{<<"k">> => <<"v">>}), C),
-    T1F    = flush(?TESTED_MODULE:insert_contract(C_init, T0)),
+    CInit = aect_contracts:set_state(MakeStore(#{<<"k">> => <<"v">>}), C),
+    T1F    = flush(?TESTED_MODULE:insert_contract(CInit, T0)),
     {ok, H1} = ?TESTED_MODULE:root_hash(T1F),
 
     %% Tx A: read-only — no store write.
-    {value, C_a}    = ?TESTED_MODULE:lookup_contract(PK, T1F),
-    {<<"v">>, St_a} = aect_contracts_store:get_w_cache(<<"k">>, aect_contracts:state(C_a)),
-    T2  = ?TESTED_MODULE:enter_contract(aect_contracts:set_state(St_a, C_a), T1F),
+    {value, CA}    = ?TESTED_MODULE:lookup_contract(PK, T1F),
+    {<<"v">>, StA} = aect_contracts_store:get_w_cache(<<"k">>, aect_contracts:state(CA)),
+    T2  = ?TESTED_MODULE:enter_contract(aect_contracts:set_state(StA, CA), T1F),
 
     %% After flush the MPT must be identical — reads are ephemeral.
     T2F  = flush(T2),
@@ -303,19 +303,19 @@ store_read_cache_isolated_per_contract_test() ->
     PK1 = aect_contracts:pubkey(C1),
     PK2 = aect_contracts:pubkey(C2),
 
-    C1_init = aect_contracts:set_state(MakeStore(#{<<"key1">> => <<"val1">>}), C1),
-    C2_init = aect_contracts:set_state(MakeStore(#{<<"key2">> => <<"val2">>}), C2),
-    T2F = flush(?TESTED_MODULE:insert_contract(C2_init,
-                    ?TESTED_MODULE:insert_contract(C1_init, T0))),
+    C1Init = aect_contracts:set_state(MakeStore(#{<<"key1">> => <<"val1">>}), C1),
+    C2Init = aect_contracts:set_state(MakeStore(#{<<"key2">> => <<"val2">>}), C2),
+    T2F = flush(?TESTED_MODULE:insert_contract(C2Init,
+                    ?TESTED_MODULE:insert_contract(C1Init, T0))),
 
     %% Tx A reads from C1's store.
-    {value, C1_a}         = ?TESTED_MODULE:lookup_contract(PK1, T2F),
-    {<<"val1">>, St1_a}   = aect_contracts_store:get_w_cache(<<"key1">>, aect_contracts:state(C1_a)),
-    T3 = ?TESTED_MODULE:enter_contract(aect_contracts:set_state(St1_a, C1_a), T2F),
+    {value, C1A}         = ?TESTED_MODULE:lookup_contract(PK1, T2F),
+    {<<"val1">>, St1A}   = aect_contracts_store:get_w_cache(<<"key1">>, aect_contracts:state(C1A)),
+    T3 = ?TESTED_MODULE:enter_contract(aect_contracts:set_state(St1A, C1A), T2F),
 
     %% C2's store must NOT contain key1 — batch reads are per-contract.
-    {value, C2_b} = ?TESTED_MODULE:lookup_contract(PK2, T3),
-    <<>> = aect_contracts_store:get(<<"key1">>, aect_contracts:state(C2_b)).
+    {value, C2B} = ?TESTED_MODULE:lookup_contract(PK2, T3),
+    <<>> = aect_contracts_store:get(<<"key1">>, aect_contracts:state(C2B)).
 
 %%%===================================================================
 %%% Regression — cross-tx store deletion must not resurface
@@ -331,23 +331,23 @@ store_delete_cross_tx_not_resurfacing_test() ->
     PK = aect_contracts:pubkey(C),
 
     %% Prior microblock: materialise k=>v, k2=>v2 in the MPT.
-    C_init = aect_contracts:set_state(MakeStore(#{<<"k">>  => <<"v">>,
+    CInit = aect_contracts:set_state(MakeStore(#{<<"k">>  => <<"v">>,
                                                   <<"k2">> => <<"v2">>}), C),
-    T1F    = flush(?TESTED_MODULE:insert_contract(C_init, T0)),
+    T1F    = flush(?TESTED_MODULE:insert_contract(CInit, T0)),
 
     %% Tx A: remove k (batched, NOT flushed).
-    {value, C_a} = ?TESTED_MODULE:lookup_contract(PK, T1F),
-    St_a  = aect_contracts_store:remove(<<"k">>, aect_contracts:state(C_a)),
-    T2    = ?TESTED_MODULE:enter_contract(aect_contracts:set_state(St_a, C_a), T1F),
+    {value, CA} = ?TESTED_MODULE:lookup_contract(PK, T1F),
+    StA  = aect_contracts_store:remove(<<"k">>, aect_contracts:state(CA)),
+    T2    = ?TESTED_MODULE:enter_contract(aect_contracts:set_state(StA, CA), T1F),
 
     %% Tx B: enumerate the store — k must be gone, k2 must remain.
-    {value, C_b} = ?TESTED_MODULE:lookup_contract(PK, T2),
-    St_b     = aect_contracts:state(C_b),
-    Contents = aect_contracts_store:contents(St_b),
+    {value, CB} = ?TESTED_MODULE:lookup_contract(PK, T2),
+    StB     = aect_contracts:state(CB),
+    Contents = aect_contracts_store:contents(StB),
     ?assertEqual(#{<<"k2">> => <<"v2">>}, Contents),
-    ?assertEqual(<<>>, aect_contracts_store:get(<<"k">>, St_b)),
-    ?assertEqual(<<"v2">>, aect_contracts_store:get(<<"k2">>, St_b)),
-    {Sub, _} = aect_contracts_store:subtree_w_cache(<<>>, St_b),
+    ?assertEqual(<<>>, aect_contracts_store:get(<<"k">>, StB)),
+    ?assertEqual(<<"v2">>, aect_contracts_store:get(<<"k2">>, StB)),
+    {Sub, _} = aect_contracts_store:subtree_w_cache(<<>>, StB),
     ?assertEqual(#{<<"k2">> => <<"v2">>}, Sub).
 
 %% Delete in Tx A, re-create with a new value in Tx B: Tx C must see the
@@ -358,21 +358,21 @@ store_delete_then_recreate_cross_tx_test() ->
     C  = new_contract(),
     PK = aect_contracts:pubkey(C),
 
-    C_init = aect_contracts:set_state(MakeStore(#{<<"k">> => <<"v">>}), C),
-    T1F    = flush(?TESTED_MODULE:insert_contract(C_init, T0)),
+    CInit = aect_contracts:set_state(MakeStore(#{<<"k">> => <<"v">>}), C),
+    T1F    = flush(?TESTED_MODULE:insert_contract(CInit, T0)),
 
-    {value, C_a} = ?TESTED_MODULE:lookup_contract(PK, T1F),
-    St_a = aect_contracts_store:remove(<<"k">>, aect_contracts:state(C_a)),
-    T2   = ?TESTED_MODULE:enter_contract(aect_contracts:set_state(St_a, C_a), T1F),
+    {value, CA} = ?TESTED_MODULE:lookup_contract(PK, T1F),
+    StA = aect_contracts_store:remove(<<"k">>, aect_contracts:state(CA)),
+    T2   = ?TESTED_MODULE:enter_contract(aect_contracts:set_state(StA, CA), T1F),
 
-    {value, C_b} = ?TESTED_MODULE:lookup_contract(PK, T2),
-    St_b = aect_contracts_store:put(<<"k">>, <<"v3">>, aect_contracts:state(C_b)),
-    T3   = ?TESTED_MODULE:enter_contract(aect_contracts:set_state(St_b, C_b), T2),
+    {value, CB} = ?TESTED_MODULE:lookup_contract(PK, T2),
+    StB = aect_contracts_store:put(<<"k">>, <<"v3">>, aect_contracts:state(CB)),
+    T3   = ?TESTED_MODULE:enter_contract(aect_contracts:set_state(StB, CB), T2),
 
-    {value, C_c} = ?TESTED_MODULE:lookup_contract(PK, T3),
-    St_c = aect_contracts:state(C_c),
-    ?assertEqual(<<"v3">>, aect_contracts_store:get(<<"k">>, St_c)),
-    ?assertEqual(#{<<"k">> => <<"v3">>}, aect_contracts_store:contents(St_c)).
+    {value, CC} = ?TESTED_MODULE:lookup_contract(PK, T3),
+    StC = aect_contracts:state(CC),
+    ?assertEqual(<<"v3">>, aect_contracts_store:get(<<"k">>, StC)),
+    ?assertEqual(#{<<"k">> => <<"v3">>}, aect_contracts_store:contents(StC)).
 
 %% copy_contract_store/3 consumer audit: a key removed (batched) in the
 %% source must not be copied into the destination contract's store.
@@ -383,16 +383,16 @@ store_delete_cross_tx_copy_contract_test() ->
     PK = aect_contracts:pubkey(C),
     NewId = <<"_____________newctr_____________">>,
 
-    C_init = aect_contracts:set_state(MakeStore(#{<<"k">>  => <<"v">>,
+    CInit = aect_contracts:set_state(MakeStore(#{<<"k">>  => <<"v">>,
                                                   <<"k2">> => <<"v2">>}), C),
-    T1F    = flush(?TESTED_MODULE:insert_contract(C_init, T0)),
+    T1F    = flush(?TESTED_MODULE:insert_contract(CInit, T0)),
 
-    {value, C_a} = ?TESTED_MODULE:lookup_contract(PK, T1F),
-    St_a  = aect_contracts_store:remove(<<"k">>, aect_contracts:state(C_a)),
-    C_a2  = aect_contracts:set_state(St_a, C_a),
-    T2    = ?TESTED_MODULE:enter_contract(C_a2, T1F),
+    {value, CA} = ?TESTED_MODULE:lookup_contract(PK, T1F),
+    StA  = aect_contracts_store:remove(<<"k">>, aect_contracts:state(CA)),
+    CA2  = aect_contracts:set_state(StA, CA),
+    T2    = ?TESTED_MODULE:enter_contract(CA2, T1F),
 
-    T3 = ?TESTED_MODULE:copy_contract_store(C_a2, NewId, T2),
+    T3 = ?TESTED_MODULE:copy_contract_store(CA2, NewId, T2),
     {ok, CopiedStore} = ?TESTED_MODULE:read_contract_store(NewId, T3),
     ?assertEqual(#{<<"k2">> => <<"v2">>},
                  aect_contracts_store:contents(CopiedStore)).

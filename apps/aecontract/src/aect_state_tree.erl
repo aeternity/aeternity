@@ -217,9 +217,9 @@ enter_contract(Contract, Tree = #contract_tree{contract_meta_batch = MB}) ->
     %% the flush still uses aeu_mtrees:insert (which errors on duplicate, detecting bugs).
     %% Otherwise tag as 'update' to use aeu_mtrees:enter at flush time.
     Tag = case maps:find(Pubkey, MB) of
-        {ok, {new, _}} -> new;
-        _              -> update
-    end,
+              {ok, {new, _}} -> new;
+              _              -> update
+          end,
     MB1   = MB#{Pubkey => {Tag, Contract}},
     Tree1 = Tree#contract_tree{contract_meta_batch = MB1},
     enter_store(Contract, Tree1).
@@ -267,28 +267,28 @@ add_store(Contract, #contract_tree{contracts = CtTree, store_batch = Batch}, Opt
     Pubkey  = aect_contracts:pubkey(Contract),
     StoreId = aect_contracts:store_id(Contract),
     Store0 = case aeu_mtrees:read_only_subtree(StoreId, CtTree) of
-        {ok, Subtree} ->
-            aect_contracts_store:new(Subtree);
-        {error, no_such_subtree} ->
-            %% Sentinel is written only at flush time (when writes are non-empty),
-            %% so any contract with an empty store — new or existing — returns this.
-            aect_contracts_store:new()
-    end,
+                 {ok, Subtree} ->
+                     aect_contracts_store:new(Subtree);
+                 {error, no_such_subtree} ->
+                     %% Sentinel is written only at flush time (when writes are non-empty),
+                     %% so any contract with an empty store — new or existing — returns this.
+                     aect_contracts_store:new()
+             end,
     %% Pre-populate read_cache: stable MPT reads from prior txs first, then writes on top
     %% (writes override reads for the same key — a written key must read as the written value).
     Store1 = case maps:find(Pubkey, Batch) of
-        {ok, {_StoreId, Writes, Reads}} ->
-            Store_r = aect_contracts_store:put_map_to_read_cache(Reads, Store0),
-            aect_contracts_store:put_map_to_read_cache(Writes, Store_r);
-        error ->
-            Store0
-    end,
+                 {ok, {_StoreId, Writes, Reads}} ->
+                     Store_r = aect_contracts_store:put_map_to_read_cache(Reads, Store0),
+                     aect_contracts_store:put_map_to_read_cache(Writes, Store_r);
+                 error ->
+                     Store0
+             end,
     Store2 = case proplists:get_value(full_store_cache, Options, false) of
-        false -> Store1;
-        true  ->
-            Map = aect_contracts_store:contents(Store1),
-            aect_contracts_store:put_map(Map, Store1)
-    end,
+                 false -> Store1;
+                 true  ->
+                     Map = aect_contracts_store:contents(Store1),
+                     aect_contracts_store:put_map(Map, Store1)
+             end,
     aect_contracts:set_state(Store2, Contract).
 
 -spec is_contract(aect_contracts:pubkey(), tree()) -> boolean().
@@ -484,9 +484,9 @@ batch_accumulate(_Pubkey, _StoreId, Writes, Reads, Batch)
     Batch;
 batch_accumulate(Pubkey, StoreId, Writes, Reads, Batch) ->
     {ExW, ExR} = case maps:find(Pubkey, Batch) of
-        {ok, {_Id, W, R}} -> {W, R};
-        error             -> {#{}, #{}}
-    end,
+                     {ok, {_Id, W, R}} -> {W, R};
+                     error             -> {#{}, #{}}
+                 end,
     %% Current tx's writes override prior writes (last writer wins within a microblock).
     NewWrites = maps:merge(ExW, Writes),
     %% Accumulate stable MPT reads; overwrite any stale read entry with current writes
@@ -494,18 +494,25 @@ batch_accumulate(Pubkey, StoreId, Writes, Reads, Batch) ->
     NewReads  = maps:merge(maps:merge(ExR, Reads), Writes),
     Batch#{Pubkey => {StoreId, NewWrites, NewReads}}.
 
+%% Apply one store batch entry to the MPT: empty Writes leave the tree as
+%% is, else write the store-id sentinel <<0>> then the store nodes.
+-spec apply_store_entry(aect_contracts:pubkey(),
+                        {binary(), #{binary() => binary()}, #{binary() => binary()}},
+                        contract_tree()) -> contract_tree().
+apply_store_entry(_Pubkey, {_StoreId, Writes, _Reads}, CtTree) when map_size(Writes) =:= 0 ->
+    CtTree;
+apply_store_entry(_Pubkey, {StoreId, Writes, _Reads}, CtTree) ->
+    CtTree1 = aeu_mtrees:enter(StoreId, <<0>>, CtTree),
+    enter_store_nodes(StoreId, Writes, CtTree1).
+
 %% Flush one contract's batch entry to the MPT, removing it from the batch.
 %% Reads are ephemeral — only Writes are written to the MPT.
 -spec flush_contract_batch(aect_contracts:pubkey(), tree()) -> tree().
 flush_contract_batch(Pubkey, #contract_tree{contracts = CtTree, store_batch = Batch} = Tree) ->
     case maps:take(Pubkey, Batch) of
-        {{StoreId, Writes, _Reads}, Batch1} when map_size(Writes) > 0 ->
-            %% Sentinel <<0>> at StoreId is required by read_only_subtree to locate the prefix.
-            CtTree1 = aeu_mtrees:enter(StoreId, <<0>>, CtTree),
-            CtTree2 = enter_store_nodes(StoreId, Writes, CtTree1),
-            Tree#contract_tree{contracts = CtTree2, store_batch = Batch1};
-        {{_StoreId, _Writes, _Reads}, Batch1} ->
-            Tree#contract_tree{store_batch = Batch1};
+        {Entry, Batch1} ->
+            CtTree1 = apply_store_entry(Pubkey, Entry, CtTree),
+            Tree#contract_tree{contracts = CtTree1, store_batch = Batch1};
         error ->
             Tree
     end.
@@ -516,39 +523,31 @@ flush_contract_batch(Pubkey, #contract_tree{contracts = CtTree, store_batch = Ba
 flush_store_batch(#contract_tree{store_batch = Batch} = Tree) when map_size(Batch) =:= 0 ->
     Tree;
 flush_store_batch(#contract_tree{contracts = CtTree, store_batch = Batch} = Tree) ->
-    CtTree1 = maps:fold(
-        fun(_Pubkey, {_StoreId, Writes, _Reads}, Acc) when map_size(Writes) =:= 0 -> Acc;
-           (_Pubkey, {StoreId,  Writes, _Reads}, Acc) ->
-               %% Sentinel <<0>> at StoreId is required by read_only_subtree to locate the prefix.
-               Acc1 = aeu_mtrees:enter(StoreId, <<0>>, Acc),
-               enter_store_nodes(StoreId, Writes, Acc1)
-        end, CtTree, Batch),
+    CtTree1 = maps:fold(fun apply_store_entry/3, CtTree, Batch),
     Tree#contract_tree{contracts = CtTree1, store_batch = #{}}.
 
-%% Flush all pending contract metadata writes to the MPT. Called once at microblock end
-%% (via aec_trees:flush_state_batches). O(1) fast-path when batch is empty.
-%%
-%% For `new' entries (contracts inserted this microblock) we additionally write
-%% the store-id sentinel `<<0>>' eagerly here, matching the pre-batching
-%% behaviour of `insert_store/2'. The sentinel is required by
-%% `aeu_mtrees:read_only_subtree/2' to locate the contract's store prefix even
-%% when the contract has no store entries.
+%% Apply one metadata batch entry to the MPT. `new' also writes the
+%% store-id sentinel <<0>> eagerly (matching insert_store/2).
+-spec apply_meta_entry(aect_contracts:pubkey(), meta_entry(), contract_tree()) ->
+        contract_tree().
+apply_meta_entry(Pubkey, tombstone, CtTree) ->
+    %% Metadata key only — orphaned store subtree left as the immediate delete did.
+    aeu_mtrees:delete(Pubkey, CtTree);
+apply_meta_entry(Pubkey, {new, Contract}, CtTree) ->
+    CtTree1 = aeu_mtrees:insert(Pubkey, aect_contracts:serialize(Contract), CtTree),
+    aeu_mtrees:enter(aect_contracts:store_id(Contract), <<0>>, CtTree1);
+apply_meta_entry(Pubkey, {update, Contract}, CtTree) ->
+    aeu_mtrees:enter(Pubkey, aect_contracts:serialize(Contract), CtTree).
+
+%% Flush all pending contract metadata writes to the MPT. Called once at
+%% microblock end (via aec_trees:flush_state_batches); O(1) when empty.
 -spec flush_contract_meta_batch(tree()) -> tree().
 flush_contract_meta_batch(#contract_tree{contract_meta_batch = MB} = Tree)
   when map_size(MB) =:= 0 ->
     Tree;
 flush_contract_meta_batch(#contract_tree{contracts           = CtTree,
                                          contract_meta_batch = MB} = Tree) ->
-    CtTree1 = maps:fold(fun(Pubkey, tombstone, Acc) ->
-                                %% Metadata key only — orphaned store
-                                %% subtree left as the immediate delete did.
-                                aeu_mtrees:delete(Pubkey, Acc);
-                           (Pubkey, {new, Contract}, Acc) ->
-                                Acc1 = aeu_mtrees:insert(Pubkey, aect_contracts:serialize(Contract), Acc),
-                                aeu_mtrees:enter(aect_contracts:store_id(Contract), <<0>>, Acc1);
-                           (Pubkey, {update, Contract}, Acc) ->
-                                aeu_mtrees:enter(Pubkey, aect_contracts:serialize(Contract), Acc)
-                        end, CtTree, MB),
+    CtTree1 = maps:fold(fun apply_meta_entry/3, CtTree, MB),
     Tree#contract_tree{contracts = CtTree1, contract_meta_batch = #{}}.
 
 %% Flush one contract's metadata batch entry to the MPT. Used before PoI
@@ -558,17 +557,8 @@ flush_contract_meta_batch(#contract_tree{contracts           = CtTree,
 flush_contract_meta_for(Pubkey, #contract_tree{contracts           = CtTree,
                                                contract_meta_batch = MB} = Tree) ->
     case maps:take(Pubkey, MB) of
-        {tombstone, MB1} ->
-            CtTree1 = aeu_mtrees:delete(Pubkey, CtTree),
-            Tree#contract_tree{contracts = CtTree1, contract_meta_batch = MB1};
-        {{new, Contract}, MB1} ->
-            Serialized = aect_contracts:serialize(Contract),
-            CtTree1    = aeu_mtrees:insert(Pubkey, Serialized, CtTree),
-            CtTree2    = aeu_mtrees:enter(aect_contracts:store_id(Contract), <<0>>, CtTree1),
-            Tree#contract_tree{contracts = CtTree2, contract_meta_batch = MB1};
-        {{update, Contract}, MB1} ->
-            Serialized = aect_contracts:serialize(Contract),
-            CtTree1    = aeu_mtrees:enter(Pubkey, Serialized, CtTree),
+        {Entry, MB1} ->
+            CtTree1 = apply_meta_entry(Pubkey, Entry, CtTree),
             Tree#contract_tree{contracts = CtTree1, contract_meta_batch = MB1};
         error ->
             Tree
