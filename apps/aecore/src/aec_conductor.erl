@@ -1546,12 +1546,13 @@ setup_loop(State = #state{ consensus = Cons }, RestartMining, IsLeader, Origin) 
     {State2, RestartMining1} =
         case Origin of
             block_created when IsLeader ->
-                DelayRestart = should_delay_mining_restart(block_created, RestartMining),
+                DelayEnabled = delay_restart_after_micro_enabled(),
+                DelayRestart = DelayEnabled andalso should_delay_mining_restart(block_created, RestartMining),
                 aec_block_generator:start_generation(),
                 StateA = start_micro_signing(State1#state{restart_mining_after_micro = DelayRestart,
-                                                          first_micro_pending = true}),
-                case {RestartMining, DelayRestart} of
-                    {true, false} ->
+                                                          first_micro_pending = DelayEnabled}),
+                case {RestartMining, DelayRestart, DelayEnabled} of
+                    {true, false, true} ->
                         {schedule_restart_after_first_micro(StateA), false};
                     _ ->
                         {StateA, RestartMining andalso not DelayRestart}
@@ -1584,6 +1585,14 @@ schedule_restart_after_first_micro(State = #state{top_block_hash = TopHash}) ->
     erlang:send_after(?FIRST_MICRO_RESTART_GRACE_MS, self(),
                       {maybe_restart_after_first_micro, TopHash}),
     State.
+
+%% Feature flag (mining.delay_restart_after_micro, default true): allows a
+%% miner to opt out of delaying its own key-block restart entirely, restoring
+%% byte-identical pre-patch behaviour, if it prefers to keep hunting for the
+%% next key block continuously over reducing self-preemption of its own
+%% in-flight microblock.
+delay_restart_after_micro_enabled() ->
+    application:get_env(aecore, delay_restart_after_micro, true) =:= true.
 
 should_delay_mining_restart(block_created, true) ->
     aec_tx_pool:size() > 0;

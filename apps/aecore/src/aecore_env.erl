@@ -21,6 +21,7 @@ check_env() ->
       aecore,
       [{[<<"mining">>, <<"autostart">>], fun set_autostart/2},
        {[<<"mining">>, <<"strictly_follow_top">>], {set_env, strictly_follow_top}},
+       {[<<"mining">>, <<"delay_restart_after_micro">>], {set_env, delay_restart_after_micro}},
        {[<<"mining">>, <<"attempt_timeout">>], {set_env, mining_attempt_timeout}},
        {[<<"chain">>, <<"persist">>]   , {set_env, persist}},
        {[<<"chain">>, <<"db_path">>]   , fun set_mnesia_dir/1}]).

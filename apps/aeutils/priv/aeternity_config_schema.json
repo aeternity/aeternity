@@ -2038,6 +2038,11 @@
                     "type" : "boolean",
                     "default": false
                 },
+                "delay_restart_after_micro" : {
+                    "description" : "If true, delay restarting this node's own key-block mining after winning a generation until the first microblock attempt for it has completed (bounded to a single microblock-candidate cycle), when there are pending transactions. Reduces the chance of self-preempting an in-flight microblock, at the cost of a brief pause in this node's own PoW search. Set to false to keep mining continuously without this delay.",
+                    "type" : "boolean",
+                    "default": true
+                },
                 "cuckoo" : {
                     "type" : "object",
                     "additionalProperties" : false,
