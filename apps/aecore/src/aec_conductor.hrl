@@ -41,6 +41,13 @@
 -type mode() :: local_pow | stratum | pos.
 -record(state, {key_block_candidates                :: list({candidate_hash(), #candidate{}}) | 'undefined',
                 micro_block_candidate               :: #candidate{} | 'undefined',
+                %% True while the first microblock attempt of a freshly won
+                %% generation has not yet produced a candidate (empty or not).
+                awaiting_first_micro_candidate = false :: boolean(),
+                %% True when restarting key-block mining is deferred until the
+                %% first microblock attempt of the new generation completes,
+                %% so pending transactions get included before the next key-block.
+                restart_mining_after_first_micro = false :: boolean(),
                 blocked_tags            = []        :: ordsets:ordset(atom()),
                 keys_ready              = false     :: boolean(),
                 block_producing_state   = stopped   :: block_producing_state(),
