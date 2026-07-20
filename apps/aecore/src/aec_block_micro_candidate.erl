@@ -98,10 +98,36 @@ int_create(PrevBlock, KeyBlock) ->
         {ok, Trees} ->
             TxEnv = create_tx_env(MBEnv),
             MaxGas = aec_governance:block_gas_limit(),
-            int_pack_block(MaxGas, [], [], MBEnv, TxEnv, Trees, []);
+            Deadline = candidate_deadline(),
+            int_pack_block(MaxGas, [], [], MBEnv, TxEnv, Trees, [], Deadline);
         error ->
             {error, block_state_not_found}
     end.
+
+%% Bound the wall-clock time spent pulling in more pending transactions while
+%% building a microblock candidate, so a slow/expensive transaction (or a long
+%% tail of them) cannot indefinitely delay signing a microblock and risk total
+%% preemption with nothing signed at all. Once the deadline passes, whatever
+%% has already been applied is signed as-is; any remaining pending
+%% transactions simply wait for the next microblock cycle.
+-define(CANDIDATE_TIME_BUDGET_FRACTION, 0.65).
+
+%% aec_tx_pool:get_candidate/3 can return, in a single call, every eligible
+%% pending transaction that fits the requested gas budget - on the very first
+%% round that budget is the full block_gas_limit(), so without a per-round
+%% cap the deadline check below would never get a chance to fire before a
+%% single, possibly very slow, batch is applied in full. Requesting a smaller
+%% budget per round forces aec_tx_pool's own (already nonce-order-respecting)
+%% selection to hand back smaller batches, so the deadline gets re-checked
+%% between them. A fixed cap alone would risk starving any transaction whose
+%% own declared gas exceeds it forever, so if a capped round comes back empty
+%% we fall back to a single uncapped attempt for that round (bounded by the
+%% same deadline check) before concluding there is genuinely nothing left.
+-define(CANDIDATE_ROUND_GAS_CAP, 600000).
+
+candidate_deadline() ->
+    BudgetMs = round(aec_governance:micro_block_cycle() * ?CANDIDATE_TIME_BUDGET_FRACTION),
+    erlang:monotonic_time(millisecond) + BudgetMs.
 
 create_micro_block_env(PrevBlock, PrevBlock) ->
     {ok, PrevBlockHash} = aec_blocks:hash_internal_representation(PrevBlock),
@@ -120,18 +146,43 @@ create_tx_env(#{prev_block := PrevBlock, prev_hash := PrevBlockHash,
     Time = determine_new_time(PrevBlock),
     aetx_env:tx_env_from_key_header(KeyHeader, KeyBlockHash, Time, PrevBlockHash).
 
-int_pack_block(GasAvailable, TxHashes, Txs, MBEnv, TxEnv, Trees, Events) ->
-    #{prev_hash := PrevBlockHash, key_block := KeyBlock} = MBEnv,
-    case aec_tx_pool:get_candidate(GasAvailable, TxHashes, PrevBlockHash) of
-        {ok, []} ->
+int_pack_block(GasAvailable, TxHashes, Txs, MBEnv, TxEnv, Trees, Events, Deadline) ->
+    case erlang:monotonic_time(millisecond) >= Deadline of
+        true ->
+            %% Time budget exhausted: stop pulling in more pending
+            %% transactions and sign what has already been assembled.
             int_create_block(MBEnv, TxEnv, Txs, Trees, Events);
-        {ok, Txs0} ->
-            {ok, Txs1, FailedTxs1, Trees1, Events1} = int_apply_block_txs(Txs0, Trees, TxEnv, false),
-            report_failed_txs(FailedTxs1),
-            TxHashes1 = [ aetx_sign:hash(Tx) || Tx <- Txs0 ],
-            int_pack_block(GasAvailable - used_gas(KeyBlock, Txs1, Trees1), TxHashes ++ TxHashes1,
-                           Txs ++ Txs1, MBEnv, TxEnv, Trees1, Events ++ Events1)
+        false ->
+            #{prev_hash := PrevBlockHash} = MBEnv,
+            RoundGas = min(GasAvailable, ?CANDIDATE_ROUND_GAS_CAP),
+            case aec_tx_pool:get_candidate(RoundGas, TxHashes, PrevBlockHash) of
+                {ok, []} when RoundGas < GasAvailable ->
+                    %% Nothing fits the smaller round budget - most likely the
+                    %% next eligible transaction is larger than the cap. Fall
+                    %% back to a single uncapped attempt so it isn't starved
+                    %% forever; the deadline check above still bounds this.
+                    case aec_tx_pool:get_candidate(GasAvailable, TxHashes, PrevBlockHash) of
+                        {ok, []} ->
+                            int_create_block(MBEnv, TxEnv, Txs, Trees, Events);
+                        {ok, Txs0} ->
+                            int_pack_block_apply(Txs0, GasAvailable, TxHashes, Txs,
+                                                  MBEnv, TxEnv, Trees, Events, Deadline)
+                    end;
+                {ok, []} ->
+                    int_create_block(MBEnv, TxEnv, Txs, Trees, Events);
+                {ok, Txs0} ->
+                    int_pack_block_apply(Txs0, GasAvailable, TxHashes, Txs,
+                                          MBEnv, TxEnv, Trees, Events, Deadline)
+            end
     end.
+
+int_pack_block_apply(Txs0, GasAvailable, TxHashes, Txs, MBEnv, TxEnv, Trees, Events, Deadline) ->
+    #{key_block := KeyBlock} = MBEnv,
+    {ok, Txs1, FailedTxs1, Trees1, Events1} = int_apply_block_txs(Txs0, Trees, TxEnv, false),
+    report_failed_txs(FailedTxs1),
+    TxHashes1 = [ aetx_sign:hash(Tx) || Tx <- Txs0 ],
+    int_pack_block(GasAvailable - used_gas(KeyBlock, Txs1, Trees1), TxHashes ++ TxHashes1,
+                   Txs ++ Txs1, MBEnv, TxEnv, Trees1, Events ++ Events1, Deadline).
 
 int_create_block(MBEnv, TxEnv, Txs, Trees) ->
     {ok, Txs1, InvalidTxs, Trees1, Events1} = int_apply_block_txs(Txs, Trees, TxEnv, false),
