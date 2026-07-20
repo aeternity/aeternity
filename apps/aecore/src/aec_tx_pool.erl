@@ -64,6 +64,7 @@
         , pool_db/0
         , pool_db_nonce/0
         , pool_db_key/1
+        , pool_db_key/2
         , pool_db_gc/0
         , pool_db_peek/4
         , raw_delete/2
@@ -404,7 +405,7 @@ handle_call(Req, From, St) ->
 handle_call_({get_max_nonce, Sender}, _From, #state{dbs = #dbs{db = Db}} = State) ->
     {reply, int_get_max_nonce(Db, Sender), State};
 handle_call_({push, Tx, Hash, Event}, _From, State) ->
-    {Res, State1} = do_pool_db_put(pool_db_key(Tx), Tx, Hash, Event, State),
+    {Res, State1} = do_pool_db_put(pool_db_key(Tx, Hash), Tx, Hash, Event, State),
     {reply, Res, State1};
 handle_call_({top_change, Info}, _From, State) ->
     {_, State1} = do_top_change(Info, State),
@@ -424,7 +425,7 @@ handle_call_({delete, TxHash}, _From, #state{dbs = Dbs} = State) ->
             {BlockHash, _} when is_binary(BlockHash) ->
                 {error, already_accepted};
             {mempool, Tx} ->
-                Key = pool_db_key(Tx),
+                Key = pool_db_key(Tx, TxHash),
                 pool_db_raw_delete(Dbs, Key),
                 aec_tx_pool_gc:delete_hash(GCDb, TxHash),
                 aec_db:remove_tx_from_mempool(TxHash),
@@ -438,7 +439,7 @@ handle_call_({failures_cnt, TxHash}, _From, #state{dbs = Dbs} = State) ->
             {BlockHash, _} when is_binary(BlockHash) ->
                 {error, already_accepted};
             {mempool, Tx} ->
-                Key = pool_db_key(Tx),
+                Key = pool_db_key(Tx, TxHash),
                 #dbs{db = Db, visited_db = VisitedDb} = Dbs,
                 case ets:lookup(Db, Key) of
                     [{Key, #tx{failures = Failures}}] ->
@@ -743,6 +744,12 @@ do_update_sync_top(NewSyncTop, GCHeight, Parent, Dbs) ->
 
 -spec pool_db_key(aetx_sign:signed_tx()) -> pool_db_key().
 pool_db_key(SignedTx) ->
+    pool_db_key(SignedTx, aetx_sign:hash(SignedTx)).
+
+%% Same as pool_db_key/1, but takes the already-computed tx hash to avoid a
+%% redundant serialization + Blake2b at call sites where the hash is in scope.
+-spec pool_db_key(aetx_sign:signed_tx(), tx_hash()) -> pool_db_key().
+pool_db_key(SignedTx, TxHash) ->
     Tx = aetx_sign:tx(SignedTx),
     %% INFO: Sort by fee, then by gas price, then by origin, then by nonce
 
@@ -752,7 +759,7 @@ pool_db_key(SignedTx) ->
     %%         transactions at the beginning
     %%       * ordered_set type enables implicit overwrite of the same txs
     ?KEY(-aetx:deep_fee(Tx), -int_gas_price(Tx),
-         aetx:origin(Tx), aetx:nonce(Tx), aetx_sign:hash(SignedTx)).
+         aetx:origin(Tx), aetx:nonce(Tx), TxHash).
 
 -spec pool_db_open(DbName :: atom()) -> {ok, pool_db()}.
 pool_db_open(DbName) ->
@@ -881,12 +888,12 @@ update_pool_on_tx_hash(TxHash, {#dbs{gc_db = GCDb} = Dbs, OriginsCache, GCHeight
             case aec_db:is_in_tx_pool(TxHash) of
                 false ->
                     %% Added to chain
-                    Key = pool_db_key(Tx),
+                    Key = pool_db_key(Tx, TxHash),
                     pool_db_raw_delete(Dbs, Key),
                     aec_tx_pool_gc:delete_hash(GCDb, TxHash),
                     add_to_origins_cache(OriginsCache, Tx);
                 true ->
-                    Key = pool_db_key(Tx),
+                    Key = pool_db_key(Tx, TxHash),
                     pool_db_raw_put(Dbs, GCHeight, Key, Tx, TxHash)
             end
     end.
