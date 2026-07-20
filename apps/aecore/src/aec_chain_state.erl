@@ -86,6 +86,7 @@
         , insert_block/1
         , insert_block/2
         , insert_block_conductor/2
+        , insert_block_conductor/3
         , repair_block_state/1
         , gossip_allowed_height_from_top/0
         , proof_of_fraud_report_delay/0
@@ -163,16 +164,25 @@ get_n_key_headers_backward_from(Header, N) ->
                                         | {'pof', aec_pof:pof(), events()}
                                         | {'error', any()}.
 insert_block(Block) ->
-    insert_block_strip_res(do_insert_block(Block, undefined)).
+    insert_block_strip_res(do_insert_block(Block, undefined, undefined)).
 
 -spec insert_block_conductor(aec_blocks:block(), atom()) ->
     {'ok', boolean(), aec_headers:key_header() | undefined, events()}
     | {'pof', boolean(), aec_headers:key_header() | undefined, aec_pof:pof(), events()}
     | {'error', any()}.
-insert_block_conductor(Block, block_synced) ->
-    do_insert_block(Block, sync);
-insert_block_conductor(Block, _Origin) ->
-    do_insert_block(Block, undefined).
+insert_block_conductor(Block, Origin) ->
+    insert_block_conductor(Block, undefined, Origin).
+
+%% The conductor has already computed the block's header hash; thread it in to
+%% avoid recomputing it in wrap_block/1.
+-spec insert_block_conductor(aec_blocks:block(), aec_blocks:block_header_hash() | undefined, atom()) ->
+    {'ok', boolean(), aec_headers:key_header() | undefined, events()}
+    | {'pof', boolean(), aec_headers:key_header() | undefined, aec_pof:pof(), events()}
+    | {'error', any()}.
+insert_block_conductor(Block, Hash, block_synced) ->
+    do_insert_block(Block, sync, Hash);
+insert_block_conductor(Block, Hash, _Origin) ->
+    do_insert_block(Block, undefined, Hash).
 
 %% We should not check the height distance to top for synced block, so
 %% we have to keep track of the origin here.
@@ -181,9 +191,9 @@ insert_block_conductor(Block, _Origin) ->
       | {'pof', aec_pof:pof(), events()}
       | {'error', any()}.
 insert_block(Block, block_synced) ->
-    insert_block_strip_res(do_insert_block(Block, sync));
+    insert_block_strip_res(do_insert_block(Block, sync, undefined));
 insert_block(Block, _Origin) ->
-    insert_block_strip_res(do_insert_block(Block, undefined)).
+    insert_block_strip_res(do_insert_block(Block, undefined, undefined)).
 
 insert_block_strip_res({ok, _, _, Events}) -> {ok, Events};
 insert_block_strip_res({pof, _, _, PoF, Events}) -> {pof, PoF, Events};
@@ -194,9 +204,12 @@ repair_block_state(Block) ->
     lager:info("Repair block state (~p us): ~p", [Time, Res]),
     Res.
 
-do_insert_block(Block, Origin) ->
+do_insert_block(Block, Origin, Hash) ->
     aec_blocks:assert_block(Block),
-    Node = wrap_block(Block),
+    Node = case Hash of
+               undefined -> wrap_block(Block);
+               _         -> wrap_block(Block, Hash)
+           end,
     {Time, Res} = timer:tc(fun() -> internal_insert(Node, Block, Origin) end),
     Type = node_type(Node),
     case Res of
@@ -450,8 +463,11 @@ node_is_genesis(Node) ->
     node_hash(Node) =:= aec_consensus:get_genesis_hash().
 
 wrap_block(Block) ->
+    {ok, Hash} = aec_headers:hash_header(aec_blocks:to_header(Block)),
+    wrap_block(Block, Hash).
+
+wrap_block(Block, Hash) ->
     Header = aec_blocks:to_header(Block),
-    {ok, Hash} = aec_headers:hash_header(Header),
     Type = aec_headers:type(Header),
     Txs = block_txs(Type, Block),
     #node{ header = Header
