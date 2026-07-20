@@ -909,7 +909,9 @@ preempt_on_new_top(#state{ top_block_hash = OldHash,
                      PoW =:= stratum ->
                 case BlockType of
                     micro when OldKeyHash =:= KeyHash ->
-                        false;
+                        %% Stock: false (keep grinding the pre-micro candidate).
+                        %% micro_reanchor: re-anchor the key candidate onto the micro.
+                        micro_reanchor_enabled();
                     _ -> true
                 end
         end,
@@ -932,6 +934,12 @@ preempt_on_new_top(#state{ top_block_hash = OldHash,
 
             {changed, BlockType, NewBlock, create_key_block_candidate(State5)}
     end.
+
+%% Node-local mining policy (default false = byte-identical stock behaviour).
+%% When true, a same-generation micro re-anchors the key candidate onto that micro.
+micro_reanchor_enabled() ->
+    aeu_env:user_config_or_env([<<"mining">>, <<"micro_reanchor">>],
+                               aecore, micro_reanchor, false) =:= true.
 
 %% GH3283: If we start storing more kinds of tx_events - we have to expand this
 %% function. I don't think we necessarily wants to publish the internal
