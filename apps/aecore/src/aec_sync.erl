@@ -332,24 +332,23 @@ handle_info({gproc_ps_event, Event, #{info := Info}},
     %% FUTURE: Forward blocks only to outbound connections.
     %% Take a random subset (possibly empty) of peers that agree with us
     %% on chain height to forward blocks and transactions to.
-    MaxGossip = max_gossip(),
-    PeerIds = [ aec_peer:id(P) || P <- aec_peers:get_random_connected(MaxGossip) ],
-    NonSyncingPeerIds = [ P || P <- PeerIds, not peer_in_sync(State, P) ],
     case Event of
         block_to_publish ->
             case Info of
                 {created, Block} ->
-                    PeerIds1 = [ aec_peer:id(P) || P <- aec_peers:connected_peers(all) ],
-                    enqueue(block, Block, PeerIds1);
+                    PeerIds = [ aec_peer:id(P) || P <- aec_peers:connected_peers(all) ],
+                    enqueue(block, Block, PeerIds);
                 {received, Block} ->
+                    NonSyncingPeerIds = [ P || P <- gossip_peer_ids(),
+                                               not peer_in_sync(State, P) ],
                     enqueue(block, Block, NonSyncingPeerIds)
             end;
         tx_created when GossipTxs ->
             %% If we allow http requests creating transactions when we are catching up
             %% with other chains, we just keep them in mempool
-            enqueue(tx, Info, PeerIds);
+            enqueue(tx, Info, gossip_peer_ids());
         tx_received when GossipTxs ->
-            enqueue(tx, Info, PeerIds);
+            enqueue(tx, Info, gossip_peer_ids());
         _             -> ignore
     end,
     {noreply, State};
@@ -1263,6 +1262,9 @@ max_gossip() ->
     aeu_env:user_config_or_env([<<"sync">>, <<"max_gossip">>],
                                aecore, sync_max_gossip,
                                ?DEFAULT_MAX_GOSSIP).
+
+gossip_peer_ids() ->
+    [ aec_peer:id(P) || P <- aec_peers:get_random_connected(max_gossip()) ].
 
 is_syncing(#state{sync_tasks = SyncTasks}) ->
     [1 || #sync_task{suspect = false} <- SyncTasks] =/= [].
