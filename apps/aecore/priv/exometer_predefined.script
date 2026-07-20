@@ -42,4 +42,5 @@
 , {[ae,epoch,aecore,mpt,read_cache,hit]                         , counter   , []}
 , {[ae,epoch,aecore,mpt,read_cache,miss]                        , counter   , []}
 , {[ae,epoch,aecore,mpt,read_cache,evict]                       , counter   , []}
+, {[ae,epoch,aecore,mpt,read_cache,rotate]                      , counter   , []}
 ].

@@ -24,7 +24,8 @@
 
 -include_lib("exometer_core/include/exometer.hrl").
 
--define(DATAPOINTS, [size, memory]).
+-define(DATAPOINTS, [ size, memory, payload, hits, misses, hit_rate
+                    , evictions, rotations, rotate_us ]).
 
 -record(st, { datapoints = ?DATAPOINTS
             , data = []
@@ -83,11 +84,22 @@ probe_code_change(_, S, _) ->
     {ok, S}.
 
 sample(DPs) ->
-    lists:foldr(fun sample_/2, [], DPs).
+    Stats = aec_mpt_cache:stats(),
+    lists:foldr(fun(DP, Acc) -> sample_(DP, Stats, Acc) end, [], DPs).
 
-sample_(size = K, Acc) ->
-    [{K, aec_mpt_cache:size()} | Acc];
-sample_(memory = K, Acc) ->
-    [{K, aec_mpt_cache:memory()} | Acc];
-sample_(_, Acc) ->
+sample_(size = K, #{entries := V}, Acc)     -> [{K, V} | Acc];
+sample_(memory = K, #{memory := V}, Acc)    -> [{K, V} | Acc];
+sample_(payload = K, #{payload := V}, Acc)  -> [{K, V} | Acc];
+sample_(hits = K, #{hits := V}, Acc)        -> [{K, V} | Acc];
+sample_(misses = K, #{misses := V}, Acc)    -> [{K, V} | Acc];
+sample_(evictions = K, #{evictions := V}, Acc) -> [{K, V} | Acc];
+sample_(rotations = K, #{rotations := V}, Acc) -> [{K, V} | Acc];
+sample_(rotate_us = K, #{rotate_us := V}, Acc) -> [{K, V} | Acc];
+sample_(hit_rate = K, #{hits := H, misses := M}, Acc) ->
+    [{K, hit_rate(H, M)} | Acc];
+sample_(_, _, Acc) ->
     Acc.
+
+%% Permille, so the datapoint stays an integer.
+hit_rate(0, 0) -> 0;
+hit_rate(H, M) -> (H * 1000) div (H + M).

@@ -98,6 +98,7 @@
         , enter_tree_node/3
         , node_is_in_primary/2
         , db_safe_access/0
+        , tree_context_cache_key/1
         ]).
 
 -export([ find_block_state/1
@@ -1247,6 +1248,15 @@ new_tree_context(Mode, Tree) when Mode == dirty;
                        , mode  = ActivityType }
           end,
     Res.
+
+%% Namespace under which reads on this context may be cached, or `none'
+%% if they may not be. A GC-enabled tree is never cacheable: reads that
+%% miss the primary table must reach lookup_tree_node/2 so the node gets
+%% promoted out of the secondary before the next switch drops it.
+-spec tree_context_cache_key(tree_context() | term()) -> {ok, table_name()} | none.
+tree_context_cache_key(#tree{table = T}) -> {ok, T};
+tree_context_cache_key(#tree_gc{})       -> none;
+tree_context_cache_key(_)                -> none.
 
 %% Behaves like gb_trees:lookup(Key, Tree).
 -spec lookup_tree_node(hash(), tree_context()) -> none | {value, value()}.

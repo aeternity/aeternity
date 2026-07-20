@@ -32,9 +32,9 @@
         , mpt_db_get/2
         , mpt_db_get/3
         , mpt_db_put/3
-        , mpt_db_read_cache_get/2
-        , mpt_db_read_cache_put/3
         ]).
+
+-export([read_cache_tab/1]).
 
 %%%===================================================================
 %%% API
@@ -110,16 +110,10 @@ dirty_oracles_cache_backend() ->
 
 db_spec(Type) ->
     Handle = aec_db:new_tree_context(context(Type), tab_name(Type)),
-    Spec = #{ handle => Handle
-            , cache  => {gb_trees, gb_trees:empty()}
-            , module => ?MODULE
-            },
-    case aec_mpt_cache:enabled() of
-        true ->
-            Spec#{ read_cache => aec_db:tree_table_name(tab_name(Type)) };
-        false ->
-            Spec
-    end.
+    #{ handle => Handle
+     , cache  => {gb_trees, gb_trees:empty()}
+     , module => ?MODULE
+     }.
 
 context({Ctxt, _}) when Ctxt == dirty; Ctxt == transaction ->
     Ctxt;
@@ -132,8 +126,27 @@ tab_name(T) when is_atom(T) -> T.
 mpt_db_get(Key, {gb_trees, Tree}) ->
     gb_trees:lookup(Key, Tree);
 mpt_db_get(Key, Handle) ->
-    aec_db:lookup_tree_node(Key, Handle).
+    case read_cache_tab(Handle) of
+        none ->
+            aec_db:lookup_tree_node(Key, Handle);
+        {ok, Tab} ->
+            case aec_mpt_cache:get(Tab, Key) of
+                {value, _} = Res ->
+                    Res;
+                none ->
+                    case aec_db:lookup_tree_node(Key, Handle) of
+                        {value, Val} = Res ->
+                            ok = aec_mpt_cache:put(Tab, Key, Val),
+                            Res;
+                        none ->
+                            none
+                    end
+            end
+    end.
 
+%% Deliberately never cached: this is the reachability-walk path used by
+%% the GC scanner, which must observe real table residency. Adding a cache
+%% here would reintroduce the promote-on-read defect (see read_cache_tab/1).
 mpt_db_get(Key, {gb_trees, Tree}, Map) when is_map(Map) ->
     Map#{result => gb_trees:lookup(Key, Tree)};
 mpt_db_get(Key, Handle, Map) when is_map(Map) ->
@@ -148,18 +161,26 @@ mpt_db_put(Key, Val, Handle) ->
 mpt_db_drop_cache({gb_trees, _}) ->
     gb_trees:empty().
 
-%% Bypass the read cache while `aec_db:db_safe_access/0' is on so every
-%% read goes through `aec_db:lookup_tree_node_/3' and gets re-checksummed
-%% there. This covers both the global `chain.db_safe_access' switch and
-%% the transient window opened by `aec_db_gc:db_safe_access_scan/1'.
-mpt_db_read_cache_get(Key, Table) ->
-    case aec_db:db_safe_access() of
-        true  -> none;
-        false -> aec_mpt_cache:get(Table, Key)
-    end.
-
-mpt_db_read_cache_put(Key, Val, Table) ->
-    case aec_db:db_safe_access() of
-        true  -> ok;
-        false -> aec_mpt_cache:put(Table, Key, Val)
+%% Decide whether this read may be served from / stored in the shared read
+%% cache, and under which table namespace.
+%%
+%% `aec_db:tree_context_cache_key/1' returns `none' for a tree that has
+%% garbage collection enabled. That is load bearing: under GC a read that
+%% misses the primary table must reach `aec_db:lookup_tree_node/2' so the
+%% node is promoted back into the primary. Serving such a read from cache
+%% skips the promotion and the node is lost at the next GC switch.
+%%
+%% The cache is also bypassed while `aec_db:db_safe_access/0' is on, so
+%% every read is re-checksummed in `aec_db:lookup_tree_node_/3'. This
+%% covers both the global `chain.db_safe_access' switch and the transient
+%% window opened by `aec_db_gc:db_safe_access_scan/1'.
+read_cache_tab(Handle) ->
+    case aec_mpt_cache:enabled() of
+        false ->
+            none;
+        true ->
+            case aec_mpt_cache:gate_safe_access(aec_db:db_safe_access()) of
+                false -> none;
+                true  -> aec_db:tree_context_cache_key(Handle)
+            end
     end.

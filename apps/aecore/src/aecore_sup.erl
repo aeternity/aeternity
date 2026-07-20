@@ -51,6 +51,7 @@
 -define(SERVER, ?MODULE).
 -define(CHILD(Mod,N,Type), {Mod,{Mod,start_link,[]},permanent,N,Type,[Mod]}).
 -define(CHILD(Mod,N,Type,Params), {Mod,{Mod,start_link,Params},permanent,N,Type,[Mod]}).
+-define(CHILD_TEMP(Mod,N,Type), {Mod,{Mod,start_link,[]},temporary,N,Type,[Mod]}).
 
 %%====================================================================
 %% API functions
@@ -64,9 +65,12 @@ start_link() ->
 %%====================================================================
 
 init([]) ->
-    ok = aec_mpt_cache:start(),
+    %% Temporary, not permanent: this supervisor runs with MaxRestarts = 0,
+    %% so a permanent cache would make any cache fault a node-down event.
+    %% Losing the cache degrades reads to the DB, which is always correct.
     ChildSpecs =
-        [?CHILD(aec_worker_sup, 5000, worker),
+        [?CHILD_TEMP(aec_mpt_cache, 5000, worker),
+         ?CHILD(aec_worker_sup, 5000, worker),
          ?CHILD(aec_consensus_sup, 5000, supervisor),
          ?CHILD(aec_conductor_sup, 5000, supervisor) ],
 

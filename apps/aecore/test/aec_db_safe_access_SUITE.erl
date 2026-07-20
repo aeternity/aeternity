@@ -156,13 +156,6 @@ safe_access_test(Config, PK, PKKey, NodeHash) ->
 
     Ctxt = rpc:call(N1, aec_db, new_tree_context, [dirty, accounts]),
     ok = rpc:call(N1, aec_db, enter_tree_node, [NodeHash, [PKKey, SerAcc], Ctxt]),
-    %% This test simulates on-disk corruption by writing a value whose
-    %% encoding does not match the hash it lives under. The MPT read
-    %% cache holds the legitimate pre-corruption value (it was warmed
-    %% by `find_tree_node/2' and the `get_account/1' call above) and
-    %% by design serves it from memory rather than re-reading disk, so
-    %% we have to flush it to surface the synthetic corruption.
-    ok = rpc:call(N1, aec_mpt_cache, clear, []),
     {value, Acc1} = rpc:call(N1, aec_chain, get_account, [PK]),
 
     {error, Reason} = rpc:call(N1, aec_db_gc, db_safe_access_scan, [accounts]),

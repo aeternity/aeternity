@@ -6,6 +6,8 @@
 %%%    The db backend is made to be side effect free for writes, with
 %%%    a write cache that collects all new key-value pairs until
 %%%    unsafe_write_to_backend/3 is called.
+%%%
+%%%    TODO: Currently, reads are not cached, only writes.
 %%% @end
 %%%=============================================================================
 
@@ -35,7 +37,6 @@
 -record(db, { module :: atom()
             , handle :: handle()
             , cache  :: cache()
-            , read_cache = undefined :: read_cache()
             }).
 
 -type mf() :: {module(), atom()}.
@@ -52,24 +53,16 @@
 -type db_spec() :: #{ 'module' := atom()
                     , 'cache'  := cache()
                     , 'handle' := handle()
-                    , 'read_cache' => read_cache()
                     }.
 
 -type handle() :: term().
 -type cache()  :: term().
--type read_cache() :: undefined | term().
 -type key()    :: aeu_mp_trees:key().
 -type value()  :: aeu_mp_trees:value().
 
 -callback mpt_db_get(key(), cache() | handle()) -> {'value', term()} | 'none'.
 -callback mpt_db_put(key(), value(), cache() | handle()) -> cache() | handle().
 -callback mpt_db_drop_cache(cache()) -> cache().
--callback mpt_db_read_cache_get(key(), read_cache()) -> {'value', term()} | 'none'.
--callback mpt_db_read_cache_put(key(), value(), read_cache()) -> ok.
-
--optional_callbacks([ mpt_db_read_cache_get/2
-                    , mpt_db_read_cache_put/3
-                    ]).
 
 %% ==================================================================
 %% Trace support
@@ -85,25 +78,24 @@ record_fields(_ ) -> no.
 new(#{ 'module' := Module
      , 'cache'  := Cache
      , 'handle' := Handle
-     } = Spec) ->
+     }) ->
     #db{ module = Module
        , cache  = Cache
        , handle = Handle
-       , read_cache = maps:get(read_cache, Spec, undefined)
        }.
 
 -spec get(key(), db()) -> {'value', value()} | 'none'.
 get(Key, DB0) ->
     DB = to_new_db(DB0),
     case int_cache_get(Key, DB) of
-        'none' -> read_through(Key, DB);
+        'none' -> int_db_get(Key, DB);
         {value, _} = Res -> Res
     end.
 
 get(Key, DB0, Map) when is_map(Map) ->
     DB = to_new_db(DB0),
     case int_cache_get(Key, DB) of
-        'none' -> read_through(Key, DB, Map);
+        'none' -> int_db_get(Key, DB, Map);
         {value, _} = Res ->
             Map#{result => Res,
                  source => cache}
@@ -126,19 +118,11 @@ put(Key, Val, DB0) ->
 
 -spec unsafe_write_to_backend(key(), value(), db()) -> db().
 unsafe_write_to_backend(Key, Val, DB0) ->
-    %% NOTE: Disregards the in-memory write cache and does not
-    %%       invalidate it. Make sure you know what you are doing!
+    %% NOTE: Disregards the actual cache value, and does not invalidate
+    %%       the cache. Make sure you know what you are doing!
     %%       This should only be called with the actual cache value.
-    %%
-    %%       The optional read cache (if attached via `db_spec') is
-    %%       populated with the `{Key, Val}' pair we just wrote so the
-    %%       very next read of the same MPT node is a cache hit. MPT
-    %%       keys are content-addressed (`Key = H(Val)') so this
-    %%       write-through can never produce a stale entry.
     DB = to_new_db(DB0),
-    DB1 = int_db_put(Key, Val, DB),
-    ok = int_read_cache_put(Key, {value, Val}, DB1),
-    DB1.
+    int_db_put(Key, Val, DB).
 
 -spec is_db(term()) -> boolean().
 is_db(DB) ->
@@ -182,39 +166,6 @@ int_cache_put(Key, Val, #db{cache = Cache, module = M} = DB) ->
 int_drop_cache(#db{cache = Cache, module = M} = DB) ->
     DB#db{cache = M:mpt_db_drop_cache(Cache)}.
 
-read_through(Key, DB) ->
-    case int_read_cache_get(Key, DB) of
-        'none' ->
-            Res = int_db_get(Key, DB),
-            ok = int_read_cache_put(Key, Res, DB),
-            Res;
-        {value, _} = Res ->
-            Res
-    end.
-
-read_through(Key, DB, Map) ->
-    case int_read_cache_get(Key, DB) of
-        'none' ->
-            Map1 = int_db_get(Key, DB, Map),
-            ok = int_read_cache_put(Key, maps:get(result, Map1), DB),
-            Map1;
-        {value, _} = Res ->
-            Map#{result => Res,
-                 source => read_cache}
-    end.
-
-int_read_cache_get(_Key, #db{read_cache = undefined}) ->
-    'none';
-int_read_cache_get(Key, #db{read_cache = ReadCache, module = M}) ->
-    M:mpt_db_read_cache_get(Key, ReadCache).
-
-int_read_cache_put(_Key, 'none', _DB) ->
-    ok;
-int_read_cache_put(_Key, _Res, #db{read_cache = undefined}) ->
-    ok;
-int_read_cache_put(Key, {value, Val}, #db{read_cache = ReadCache, module = M}) ->
-    M:mpt_db_read_cache_put(Key, Val, ReadCache).
-
 %%%===================================================================
 %%% DB
 %%%===================================================================
@@ -230,10 +181,6 @@ int_db_put(Key, Val, #db{handle = Handle, module = M} = DB) ->
 
 -spec to_new_db(term()) -> db() | not_db.
 to_new_db(#db{} = DB) -> DB;
-to_new_db({db, Module, Handle, Cache}) when is_atom(Module) ->
-    new(#{ module => Module
-         , cache   => Cache
-         , handle  => Handle});
 to_new_db({db, _, _, _, _, _} = OldDB) ->
     case setelement(1, OldDB, old_db) of
         #old_db{ handle = Handle
