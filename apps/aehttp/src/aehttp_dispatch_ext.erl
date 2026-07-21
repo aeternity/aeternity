@@ -129,9 +129,8 @@ handle_request_('GetTopBlock', _, _Context) ->
                     {200, [], #{key_block => aec_headers:serialize_for_client(Header, key)}};
                 _ ->
                     PrevBlockHash = aec_blocks:prev_hash(Block),
-                    case aec_chain:get_block(PrevBlockHash) of
-                        {ok, PrevBlock} ->
-                            PrevBlockType = aec_blocks:type(PrevBlock),
+                    case prev_block_type(PrevBlockHash) of
+                        {ok, PrevBlockType} ->
                             Header = aec_blocks:to_header(Block),
                             Type =
                                 case aec_headers:type(Header) of
@@ -157,9 +156,8 @@ handle_request_('GetTopHeader', _, _Context) ->
                     {200, [], aec_headers:serialize_for_client(Header, key)};
                 _ ->
                     PrevBlockHash = aec_blocks:prev_hash(Block),
-                    case aec_chain:get_block(PrevBlockHash) of
-                        {ok, PrevBlock} ->
-                            PrevBlockType = aec_blocks:type(PrevBlock),
+                    case prev_block_type(PrevBlockHash) of
+                        {ok, PrevBlockType} ->
                             Header = aec_blocks:to_header(Block),
                             SerHeader = aec_headers:serialize_for_client(Header, PrevBlockType),
                             {200, [], SerHeader};
@@ -181,9 +179,8 @@ handle_request_('GetCurrentKeyBlock', _Req, _Context) ->
                     {200, [], aec_headers:serialize_for_client(Header, key)};
                 _Height ->
                     PrevBlockHash = aec_blocks:prev_hash(Block),
-                    case aec_chain:get_block(PrevBlockHash) of
-                        {ok, PrevBlock} ->
-                            PrevBlockType = aec_blocks:type(PrevBlock),
+                    case prev_block_type(PrevBlockHash) of
+                        {ok, PrevBlockType} ->
                             Header = aec_blocks:to_header(Block),
                             {200, [], aec_headers:serialize_for_client(Header, PrevBlockType)};
                         error ->
@@ -208,9 +205,8 @@ handle_request_('GetPendingKeyBlock', _Req, _Context) ->
     case aec_conductor:get_key_block_candidate() of
         {ok, Block} ->
             PrevBlockHash = aec_blocks:prev_hash(Block),
-            case aec_chain:get_block(PrevBlockHash) of
-                {ok, PrevBlock} ->
-                    PrevBlockType = aec_blocks:type(PrevBlock),
+            case prev_block_type(PrevBlockHash) of
+                {ok, PrevBlockType} ->
                     Header = aec_blocks:to_header(Block),
                     {200, [], aec_headers:serialize_for_client(Header, PrevBlockType)};
                 error ->
@@ -238,9 +234,8 @@ handle_request_('GetKeyBlockByHash', Params, _Context) ->
                                     {200, [], aec_headers:serialize_for_client(Header, key)};
                                 _ ->
                                     PrevBlockHash = aec_blocks:prev_hash(Block),
-                                    case aec_chain:get_block(PrevBlockHash) of
-                                        {ok, PrevBlock} ->
-                                            PrevBlockType = aec_blocks:type(PrevBlock),
+                                    case prev_block_type(PrevBlockHash) of
+                                        {ok, PrevBlockType} ->
                                             {200, [], aec_headers:serialize_for_client(Header, PrevBlockType)};
                                         error ->
                                             {404, [], #{reason => <<"Block not found">>}}
@@ -265,9 +260,8 @@ handle_request_('GetKeyBlockByHeight', Params, _Context) ->
                     {200, [], aec_headers:serialize_for_client(Header, key)};
                 _ ->
                     PrevBlockHash = aec_blocks:prev_hash(Block),
-                    case aec_chain:get_block(PrevBlockHash) of
-                        {ok, PrevBlock} ->
-                            PrevBlockType = aec_blocks:type(PrevBlock),
+                    case prev_block_type(PrevBlockHash) of
+                        {ok, PrevBlockType} ->
                             {200, [], aec_headers:serialize_for_client(Header, PrevBlockType)};
                         error ->
                             {404, [], #{reason => <<"Block not found">>}}
@@ -284,9 +278,8 @@ handle_request_('GetMicroBlockHeaderByHash', Params, _Context) ->
             case aehttp_logic:get_micro_block_by_hash(Hash) of
                 {ok, Block} ->
                     PrevBlockHash = aec_blocks:prev_hash(Block),
-                    case aec_chain:get_block(PrevBlockHash) of
-                        {ok, PrevBlock} ->
-                            PrevBlockType = aec_blocks:type(PrevBlock),
+                    case prev_block_type(PrevBlockHash) of
+                        {ok, PrevBlockType} ->
                             Header = aec_blocks:to_header(Block),
                             {200, [], aec_headers:serialize_for_client(Header, PrevBlockType)};
                         error ->
@@ -933,13 +926,21 @@ generation_rsp({ok, #{ key_block := KeyBlock, micro_blocks := MicroBlocks }}) ->
             {200, [], encode_generation(KeyBlock, MicroBlocks, key)};
         _ ->
             PrevBlockHash = aec_blocks:prev_hash(KeyBlock),
-            case aec_chain:get_block(PrevBlockHash) of
-                {ok, PrevBlock} ->
-                    PrevBlockType = aec_blocks:type(PrevBlock),
+            case prev_block_type(PrevBlockHash) of
+                {ok, PrevBlockType} ->
                     {200, [], encode_generation(KeyBlock, MicroBlocks, PrevBlockType)};
                 error ->
                     {404, [], #{reason => <<"Block not found">>}}
             end
+    end.
+
+%% Only the block type of the previous block is needed to serialize a header
+%% for a client, so read just the header - reading the full block would also
+%% fetch and deserialize every transaction of a micro block.
+prev_block_type(PrevBlockHash) ->
+    case aec_chain:get_header(PrevBlockHash) of
+        {ok, PrevHeader} -> {ok, aec_headers:type(PrevHeader)};
+        error -> error
     end.
 
 deserialize_transaction(Tx) ->
