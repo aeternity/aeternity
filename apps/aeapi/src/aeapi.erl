@@ -423,9 +423,9 @@ generation_at_height(Height) when is_integer(Height) ->
                             {ok, encode_generation(KeyBlock, MicroBlocks, key)};
                         _ ->
                             PrevBlockHash = aec_blocks:prev_hash(KeyBlock),
-                            case aec_chain:get_block(PrevBlockHash) of
-                                {ok, PrevBlock} ->
-                                    PrevBlockType = aec_blocks:type(PrevBlock),
+                            case aec_chain:get_header(PrevBlockHash) of
+                                {ok, PrevHeader} ->
+                                    PrevBlockType = aec_headers:type(PrevHeader),
                                     {ok, encode_generation(KeyBlock, MicroBlocks, PrevBlockType)};
                                 error ->
                                     {error, "Block not found"}
