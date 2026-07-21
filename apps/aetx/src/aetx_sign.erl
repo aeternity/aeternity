@@ -71,7 +71,11 @@ new(Tx, Signatures) ->
 
 -spec hash(signed_tx()) -> binary().
 hash(#signed_tx{} = Tx) ->
-    aec_hash:hash(signed_tx, serialize_to_binary(Tx)).
+    hash_from_binary(serialize_to_binary(Tx)).
+
+-spec hash_from_binary(binary_signed_tx()) -> binary().
+hash_from_binary(TxBin) ->
+    aec_hash:hash(signed_tx, TxBin).
 
 -spec add_signatures(signed_tx(), list(binary())) -> signed_tx().
 add_signatures(#signed_tx{signatures = OldSigs} = Tx, NewSigs)
@@ -250,15 +254,26 @@ serialization_template(?SIG_TX_VSN) ->
 -spec serialize_for_client(aec_headers:header(), aetx_sign:signed_tx()) -> binary() | map().
 serialize_for_client(Header, #signed_tx{}=S) ->
     {ok, BlockHash} = aec_headers:hash_header(Header),
-    serialize_for_client(S, aec_headers:height(Header), BlockHash, hash(S)).
+    TxBin = serialize_to_binary(S),
+    serialize_for_client(S, aec_headers:height(Header), BlockHash,
+                         hash_from_binary(TxBin), TxBin).
 
 -spec serialize_for_client_pending(aetx_sign:signed_tx()) -> binary() | map().
 serialize_for_client_pending(#signed_tx{}=S) ->
-    serialize_for_client(S, -1, <<>>, hash(S)).
+    TxBin = serialize_to_binary(S),
+    serialize_for_client(S, -1, <<>>, hash_from_binary(TxBin), TxBin).
 
+-ifdef(TEST).
 -spec serialize_for_client(aetx_sign:signed_tx(), integer(), binary(), binary()) ->
     binary() | map().
 serialize_for_client(#signed_tx{} = SigTx, BlockHeight, BlockHash0, TxHash) ->
+    serialize_for_client(SigTx, BlockHeight, BlockHash0, TxHash,
+                         serialize_to_binary(SigTx)).
+-endif.
+
+-spec serialize_for_client(aetx_sign:signed_tx(), integer(), binary(), binary(),
+                           binary_signed_tx()) -> binary() | map().
+serialize_for_client(#signed_tx{} = SigTx, BlockHeight, BlockHash0, TxHash, TxBin) ->
     BlockHash =
         case BlockHash0 of
             <<>> -> <<"none">>;
@@ -269,7 +284,7 @@ serialize_for_client(#signed_tx{} = SigTx, BlockHeight, BlockHash0, TxHash) ->
           <<"block_height">> => BlockHeight,
           <<"block_hash">>   => BlockHash,
           <<"hash">>         => aeser_api_encoder:encode(tx_hash, TxHash),
-          <<"encoded_tx">>   => aeser_api_encoder:encode(transaction, serialize_to_binary(SigTx))
+          <<"encoded_tx">>   => aeser_api_encoder:encode(transaction, TxBin)
          },
     serialize_for_client_inner(SigTx, MetaData).
 
