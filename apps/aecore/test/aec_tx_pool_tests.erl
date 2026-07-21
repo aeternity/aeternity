@@ -510,6 +510,45 @@ tx_pool_test_() ->
                ?assertEqual([STx1], aec_tx_pool:peek_db()),
                ?assertEqual(Size, aec_tx_pool:size())
        end},
+      {"Peek by account",
+       fun() ->
+               ok = application:set_env(aecore, mempool_nonce_baseline, 100),
+               PK1 = new_pubkey(),
+               PK2 = new_pubkey(),
+               MaxGas = aec_governance:block_gas_limit(),
+               TopBlockHash = aec_chain:top_block_hash(),
+               %% Fee grows with the nonce, so the fee order of the mempool is
+               %% the reverse of the nonce order asserted on below.
+               STxs1 = [a_signed_tx(PK1, me, N, 20000 + N * 1000)
+                        || N <- lists:seq(1, 5)],
+               STxs2 = [a_signed_tx(PK2, me, N, 20000) || N <- lists:seq(1, 3)],
+               [?assertEqual(ok, aec_tx_pool:push(STx)) || STx <- STxs1 ++ STxs2],
+
+               %% Only the requested account's txs, in nonce order
+               ?assertEqual({ok, STxs1}, aec_tx_pool:peek(infinity, PK1)),
+               ?assertEqual({ok, STxs2}, aec_tx_pool:peek(infinity, PK2)),
+               ?assertEqual({ok, []}, aec_tx_pool:peek(infinity, new_pubkey())),
+
+               %% The max nonce is respected ...
+               ?assertEqual({ok, lists:sublist(STxs1, 3)},
+                            aec_tx_pool:peek(infinity, PK1, 3)),
+               ?assertEqual({ok, []}, aec_tx_pool:peek(infinity, PK1, 0)),
+               %% ... and truncating to Max keeps the lowest nonces
+               ?assertEqual({ok, lists:sublist(STxs1, 2)},
+                            aec_tx_pool:peek(2, PK1)),
+               ?assertEqual({ok, []}, aec_tx_pool:peek(0, PK1)),
+
+               %% Txs moved to the visited mempool are still found
+               {ok, _} = aec_tx_pool:get_candidate(MaxGas, TopBlockHash),
+               ?assertEqual([], aec_tx_pool:peek_db()),
+               ?assertEqual({ok, STxs1}, aec_tx_pool:peek(infinity, PK1)),
+               ?assertEqual({ok, STxs2}, aec_tx_pool:peek(infinity, PK2)),
+
+               %% ... and deleted ones are not
+               [STxDel | STxsLeft] = STxs1,
+               ?assertEqual(ok, aec_tx_pool:delete(aetx_sign:hash(STxDel))),
+               ?assertEqual({ok, STxsLeft}, aec_tx_pool:peek(infinity, PK1))
+       end},
       {"Ensure candidate ordering",
        fun() ->
                aec_test_utils:stop_chain_db(),
