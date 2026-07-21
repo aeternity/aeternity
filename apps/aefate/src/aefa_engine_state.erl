@@ -138,6 +138,7 @@
             , stores            :: aefa_stores:store()
             , trace             :: list()
             , vm_version        :: non_neg_integer()
+            , consensus_version :: non_neg_integer()
             , debug_info        :: debug_info()
             }).
 
@@ -149,6 +150,7 @@
 new(Gas, Value, Spec, Stores, APIState, CodeCache, VMVersion) ->
     [error({bad_init_arg, X, Y}) || {X, Y} <- [{gas, Gas}, {value, Value}],
                                     not (is_integer(Y) andalso Y >= 0)],
+    TxEnv = aefa_chain_api:tx_env(APIState),
     #es{ accumulator       = ?FATE_VOID
        , accumulator_stack = []
        , bbs               = #{}
@@ -171,11 +173,11 @@ new(Gas, Value, Spec, Stores, APIState, CodeCache, VMVersion) ->
        , stores            = Stores
        , trace             = []
        , vm_version        = VMVersion
+       , consensus_version = aetx_env:consensus_version(TxEnv)
        , debug_info        = disabled
        }.
 
-aefa_stores(#es{ chain_api = APIState }) ->
-    Protocol = aetx_env:consensus_version(aefa_chain_api:tx_env(APIState)),
+aefa_stores(#es{ consensus_version = Protocol }) ->
     case Protocol >= ?IRIS_PROTOCOL_VSN of
         true  -> aefa_stores;
         false -> aefa_stores_lima
@@ -580,8 +582,7 @@ spend_gas_for_traversal(Term, CostModel, ES) ->
                               cost_model(),
                               {fun((integer()) -> non_neg_integer()), fun((integer()) -> aeb_fate_data:fate_type())},
                               state()) -> state().
-spend_gas_for_traversal(Term, CostModel, Unfold, ES = #es{gas = Gas, chain_api = APIState}) ->
-    Protocol = aetx_env:consensus_version(aefa_chain_api:tx_env(APIState)),
+spend_gas_for_traversal(Term, CostModel, Unfold, ES = #es{gas = Gas, consensus_version = Protocol}) ->
     case Protocol < ?IRIS_PROTOCOL_VSN of
         true  -> ES;
         false ->
@@ -887,9 +888,8 @@ vm_version(#es{vm_version = X}) ->
 
 %%%------------------
 -spec consensus_version(state()) -> non_neg_integer().
-consensus_version(#es{chain_api = Api}) ->
-    TxEnv = aefa_chain_api:tx_env(Api),
-    aetx_env:consensus_version(TxEnv).
+consensus_version(#es{consensus_version = X}) ->
+    X.
 
 %%%------------------
 
