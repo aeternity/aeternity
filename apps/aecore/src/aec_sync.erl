@@ -780,8 +780,9 @@ enqueue(Kind, Data, PeerIds) ->
     case Kind of
         block ->
             %% Getting blocks to spread is a priority, bypass the gossip queue
-            SerBlock = aec_peer_connection:gossip_serialize_block(Data),
-            [ do_forward_block(SerBlock, PId) || PId <- PeerIds ];
+            %% The wire message is encoded once here and reused for every peer.
+            WireBlock = aec_peer_connection:gossip_serialize_block(Data),
+            [ do_forward_block(WireBlock, PId) || PId <- PeerIds ];
         tx ->
             SerTx = aec_peer_connection:gossip_serialize_tx(Data),
             aec_jobs_queues:run(sync_gossip, fun() -> [ do_forward_tx(SerTx, PId) || PId <- PeerIds ] end)
@@ -797,8 +798,8 @@ ping_peer(PeerId) ->
             aec_peers:log_ping(PeerId, error)
     end.
 
-do_forward_block(SerBlock, PeerId) ->
-    Res = aec_peer_connection:send_block(PeerId, SerBlock),
+do_forward_block(WireBlock, PeerId) ->
+    Res = aec_peer_connection:send_block(PeerId, WireBlock),
     epoch_sync:debug("send_block to (~p): ~p", [ppp(PeerId), Res]).
 
 do_forward_tx(SerTx, PeerId) ->
