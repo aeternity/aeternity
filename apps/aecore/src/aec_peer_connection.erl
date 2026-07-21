@@ -150,8 +150,8 @@ tx_pool_sync_finish(PeerId, Done) ->
 send_tx(PeerId, SerTx) ->
     cast(PeerId, {send_tx, SerTx}).
 
-send_block(PeerId, SerBlock) ->
-    cast(PeerId, {send_block, SerBlock}).
+send_block(PeerId, WireMsg) ->
+    cast(PeerId, {send_gossip, WireMsg}).
 
 %% Indicate that we are syncing, and that gossips should be dropped.
 set_sync_height(PeerId, Height) ->
@@ -281,8 +281,8 @@ handle_call(Request, From, State) ->
 handle_cast({send_tx, SerTx}, State) ->
     send_send_tx(State, SerTx),
     {noreply, State};
-handle_cast({send_block, SerBlock}, State) ->
-    send_send_block(State, SerBlock),
+handle_cast({send_gossip, WireMsg}, State) ->
+    send_gossip(State, WireMsg),
     {noreply, State};
 handle_cast({set_sync_height, none}, State) ->
     {noreply, maps:remove(sync_height, State)};
@@ -1225,17 +1225,13 @@ handle_tx_pool_sync_rsp(S, Action, {tx_pool, From, _TRef}, MsgObj) ->
 
 %% -- Send Block --------------------------------------------------------------
 
-send_send_block(#{ status := error }, _SerBlock) ->
-    ok;
-send_send_block(#{ status := {disconnecting, _ESock} }, _SerBlock) ->
-    ok;
-send_send_block(S = #{ status := {connected, _ESock} }, {Type, SerBlock}) ->
-    {MsgType, Msg} =
-        case Type of
-            key_block         -> {key_block, #{ key_block => SerBlock }};
-            light_micro_block -> {micro_block, #{ micro_block => SerBlock, light => true }}
-        end,
-    send_msg(S, MsgType, aec_peer_messages:serialize(MsgType, Msg)).
+%% The wire message is pre-encoded once per gossip (see gossip_serialize_block/1)
+%% since it is byte-identical for every peer, so here we only need to push the
+%% finished bytes onto the socket, reusing do_send's fragmentation logic.
+send_gossip(#{ status := {connected, ESock} }, WireMsg) ->
+    do_send(ESock, WireMsg);
+send_gossip(_S, _WireMsg) ->
+    ok.
 
 handle_new_key_block(S, Msg) ->
     try
@@ -1528,11 +1524,18 @@ ping_connected_peer_percentage() ->
 
 %% -- Helper functions -------------------------------------------------------
 
+%% Produce the finished wire message (<<Tag:16, Msg/binary>>) once per gossip.
+%% It is byte-identical for every peer (fixed protocol version, pure function),
+%% so encoding it here avoids re-encoding the full block once per gossip target.
 gossip_serialize_block(Block) ->
-    case aec_blocks:type(Block) of
-        key   -> {key_block, serialize_key_block(Block)};
-        micro -> {light_micro_block, serialize_light_micro_block(Block)}
-    end.
+    {MsgType, Msg} =
+        case aec_blocks:type(Block) of
+            key   -> {key_block, #{ key_block => serialize_key_block(Block) }};
+            micro -> {micro_block, #{ micro_block => serialize_light_micro_block(Block),
+                                      light => true }}
+        end,
+    SerMsg = aec_peer_messages:serialize(MsgType, Msg),
+    <<(aec_peer_messages:tag(MsgType)):16, SerMsg/binary>>.
 
 gossip_serialize_tx(Tx) ->
     aetx_sign:serialize_to_binary(Tx).
