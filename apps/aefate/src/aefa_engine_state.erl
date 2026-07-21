@@ -138,7 +138,11 @@
             , stores            :: aefa_stores:store()
             , trace             :: list()
             , vm_version        :: non_neg_integer()
+              %% Read from the tx_env once, in new/7. Only values that are fixed
+              %% for the lifetime of the engine state belong here - the tx_env is
+              %% not immutable as a whole, primops keep appending events to it.
             , consensus_version :: non_neg_integer()
+            , in_auth_context   :: boolean()
             , debug_info        :: debug_info()
             }).
 
@@ -174,6 +178,7 @@ new(Gas, Value, Spec, Stores, APIState, CodeCache, VMVersion) ->
        , trace             = []
        , vm_version        = VMVersion
        , consensus_version = aetx_env:consensus_version(TxEnv)
+       , in_auth_context   = undefined =/= aetx_env:ga_tx_hash(TxEnv)
        , debug_info        = disabled
        }.
 
@@ -235,8 +240,8 @@ is_onchain(#es{chain_api = APIState}) ->
     aefa_chain_api:is_onchain(APIState).
 
 -spec in_auth_context(state()) -> boolean().
-in_auth_context(#es{chain_api = APIState}) ->
-    undefined =/= aetx_env:ga_tx_hash(aefa_chain_api:tx_env(APIState)).
+in_auth_context(#es{in_auth_context = X}) ->
+    X.
 
 
 -spec contract_fate_bytecode(pubkey(), state()) -> 'error' |
