@@ -26,6 +26,7 @@
         , simple_failed_auth/1
         , simple_contract_create/1
         , simple_contract_call/1
+        , simple_contract_call_spend/1
         , simple_re_attach_fail/1
         , simple_spend_from_fail/1
         , simple_attach_after_spend/1
@@ -143,6 +144,7 @@ groups() ->
                    , simple_failed_auth
                    , simple_contract_create
                    , simple_contract_call
+                   , simple_contract_call_spend
                    , simple_re_attach_fail
                    , simple_spend_from_fail
                    , simple_attach_after_spend
@@ -361,6 +363,33 @@ simple_contract_call(_Cfg) ->
     {ok, #{tx_res := ok, call_res := ok, call_val := Val}} =
         ?call(ga_call, Acc1, AuthOpts2, Ct, "identity", "main_", ["42"]),
     ?assertMatch(42, decode_call_result("identity", "main_", ok, Val)),
+
+    ok.
+
+%% The inner transaction of a meta tx runs outside the auth context, so it may
+%% use the operations that are forbidden while authenticating. Chain.spend is
+%% one of them - cripple_auth checks that it is rejected in the auth call, this
+%% checks that the very same operation goes through in the inner call.
+simple_contract_call_spend(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    MinGP = aec_test_utils:min_gas_price(),
+    Acc1 = ?call(new_account, 1000000000 * MinGP),
+    Acc2 = ?call(new_account, 1000000000 * MinGP),
+    {ok, _} = ?call(attach, Acc1, "simple_auth", "authorize", ["123"]),
+
+    AuthOpts = #{ prep_fun => fun(_) -> simple_auth(["123", "1"]) end },
+    {ok, #{tx_res := ok, init_res := ok, ct_pubkey := Ct}} =
+        ?call(ga_create, Acc1, AuthOpts, "spend_test", [], #{amount => 100000}),
+
+    Acc2Lit    = binary_to_list(aeser_api_encoder:encode(account_pubkey, Acc2)),
+    AuthOpts2  = #{ prep_fun => fun(_) -> simple_auth(["123", "2"]) end },
+    PreBalance = ?call(account_balance, Acc2),
+    %% Chain.spend needs more than the 10000 gas the call tx defaults to on AEVM.
+    {ok, #{tx_res := ok, call_res := ok}} =
+        ?call(ga_call, Acc1, AuthOpts2, Ct, "spend_test", "spend", [Acc2Lit, "500"],
+              #{gas => 100000}),
+    PostBalance = ?call(account_balance, Acc2),
+    ?assertMatch({X, Y} when X + 500 == Y, {PreBalance, PostBalance}),
 
     ok.
 
