@@ -102,7 +102,7 @@
 -spec new(aec_trees(), aetx_env()) -> state().
 new(Trees, TxEnv) ->
     #state{ trees = Trees
-          , cache = dict:new()
+          , cache = aec_state_db:new()
           , env = dict:new()
           , height = aetx_env:height(TxEnv)
           , tx_env = TxEnv
@@ -204,6 +204,9 @@ get_contract_no_cache(Key, S) ->
 find_contract_without_store(Pubkey, S) ->
     case cache_find(contract, Pubkey, S) of
         {value, _} = Res -> Res;
+        %% Deleted in this tx: absent. Do NOT consult the trees (they
+        %% may still hold the pre-delete value).
+        deleted -> none;
         none ->
             CTree = aec_trees:contracts(S#state.trees),
             aect_state_tree:lookup_contract(Pubkey, CTree, [no_store])
@@ -215,6 +218,8 @@ find_contract_without_store(Pubkey, S) ->
 get_contract_without_store(Pubkey, S) ->
     case cache_find(contract, Pubkey, S) of
         {value, C} -> C;
+        %% Deleted in this tx: absent. Do NOT consult the trees.
+        deleted -> runtime_error(contract_does_not_exist);
         none ->
             CTree = aec_trees:contracts(S#state.trees),
             case aect_state_tree:lookup_contract(Pubkey, CTree, [no_store]) of
@@ -304,6 +309,11 @@ find_x(Tag, Key, S) ->
                 {value, Val} ->
                     {Val, cache_put(Tag, Val, S)}
             end;
+        deleted ->
+            %% Tombstoned in this tx: treat as absent and, crucially, do
+            %% NOT consult the trees (they may still hold the pre-delete
+            %% value — the resurrection bug).
+            none;
         {value, Val} ->
             {Val, S}
     end.
@@ -326,16 +336,14 @@ delete_x(name_auction, Hash, #state{trees = Trees} = S) ->
     NTree = aec_trees:ns(Trees),
     NTree1 = aens_state_tree:delete_name_auction(Hash, NTree),
     S1#state{trees = aec_trees:set_ns(Trees, NTree1)};
-delete_x(contract, PK, #state{trees = Trees} = S) ->
-    S1 = cache_drop(contract, PK, S),
-    NTree = aec_trees:contracts(Trees),
-    NTree1 = aect_state_tree:delete_contract(PK, NTree),
-    S1#state{trees = aec_trees:set_contracts(Trees, NTree1)};
-delete_x(account, PK, #state{trees = Trees} = S) ->
-    S1 = cache_drop(account, PK, S),
-    NTree = aec_trees:accounts(Trees),
-    NTree1 = aec_accounts_trees:delete(PK, NTree),
-    S1#state{trees = aec_trees:set_accounts(Trees, NTree1)};
+%% Accounts and contracts are batched: defer the delete as a tombstone
+%% in the per-tx cache instead of mutating the MPT here. It is honoured
+%% by `find_x' this tx and, after commit, by the sub-tree funnel; the
+%% final key set (and state root) is identical to an immediate delete.
+delete_x(contract, PK, S) ->
+    cache_delete(contract, PK, S);
+delete_x(account, PK, S) ->
+    cache_delete(account, PK, S);
 delete_x(commitment, Hash, #state{trees = Trees} = S) ->
     S1 = cache_drop(commitment, Hash, S),
     NTree = aec_trees:ns(Trees),
@@ -380,128 +388,34 @@ trees_find(oracle_query, Key, #state{trees = Trees} = S) ->
     aeo_state_tree:lookup_query(OraclePubkey, QueryId, OTree).
 
 %%%===================================================================
-%%% Cache
+%%% Cache — delegated to aec_state_db. aeprimop_state keeps the
+%%% #state{} record and the variable environment; the object cache and
+%%% commit dispatch live in aec_state_db.
 
--define(IS_TAG(X), ((X =:= account)
-    orelse (X =:= auth_call)
-    orelse (X =:= call)
-    orelse (X =:= channel)
-    orelse (X =:= contract)
-    orelse (X =:= oracle)
-    orelse (X =:= oracle_query)
-    orelse (X =:= commitment)
-    orelse (X =:= name_auction)
-    orelse (X =:= name))
-).
-
--spec cache_find(tag(), channel_key(), state()) -> {value, object()} | none.
-cache_find(Tag, Key, #state{cache = C} = S) when ?IS_TAG(Tag) ->
-    case dict:find({Tag, get_var(Key, Tag, S)}, C) of
-        {ok, Val} -> {value, Val};
-        error -> none
-    end.
+-spec cache_find(tag(), channel_key(), state()) ->
+                        {value, object()} | deleted | none.
+cache_find(Tag, Key, #state{cache = C} = S) ->
+    aec_state_db:find(Tag, get_var(Key, Tag, S), C).
 
 -spec cache_drop(tag(), hash(), state()) -> state().
-cache_drop(channel, Hash, #state{cache = C} = S) ->
-    S#state{cache = dict:erase({channel, Hash}, C)};
-cache_drop(name_auction, Hash, #state{cache = C} = S) ->
-    S#state{cache = dict:erase({name_auction, Hash}, C)};
-cache_drop(contract, PK, #state{cache = C} = S) ->
-    S#state{cache = dict:erase({contract, PK}, C)};
-cache_drop(account, PK, #state{cache = C} = S) ->
-    S#state{cache = dict:erase({account, PK}, C)};
-cache_drop(commitment, Hash, #state{cache = C} = S) ->
-    S#state{cache = dict:erase({commitment, Hash}, C)}.
+cache_drop(Tag, Key, #state{cache = C} = S) ->
+    S#state{cache = aec_state_db:drop(Tag, Key, C)}.
+
+%% Tombstone (vs. cache_drop which only forgets a cached value): the
+%% variable-resolved key is recorded as deleted so this tx — and, after
+%% commit, the sub-tree funnel — sees it as absent.
+-spec cache_delete(tag(), channel_key(), state()) -> state().
+cache_delete(Tag, Key, #state{cache = C} = S) ->
+    S#state{cache = aec_state_db:delete(Tag, get_var(Key, Tag, S), C)}.
 
 -spec cache_put(tag(), object(), state()) -> state().
-cache_put(account, Val, #state{cache = C} = S) ->
-    Pubkey = aec_accounts:pubkey(Val),
-    S#state{cache = dict:store({account, Pubkey}, Val, C)};
-cache_put(auth_call, Val, #state{cache = C} = S) ->
-    Id = aect_call:id(Val),
-    Pubkey = aect_call:caller_pubkey(Val),
-    S#state{cache = dict:store({auth_call, {Pubkey, Id}}, Val, C)};
-cache_put(call, Val, #state{cache = C} = S) ->
-    Id = aect_call:id(Val),
-    S#state{cache = dict:store({call, Id}, Val, C)};
-cache_put(channel, Val, #state{cache = C} = S) ->
-    Pubkey = aesc_channels:pubkey(Val),
-    S#state{cache = dict:store({channel, Pubkey}, Val, C)};
-cache_put(contract, Val, #state{cache = C} = S) ->
-    Pubkey = aect_contracts:pubkey(Val),
-    S#state{cache = dict:store({contract, Pubkey}, Val, C)};
-cache_put(commitment, Val, #state{cache = C} = S) ->
-    Hash = aens_commitments:hash(Val),
-    S#state{cache = dict:store({commitment, Hash}, Val, C)};
-cache_put(name_auction, Val, #state{cache = C} = S) ->
-    Hash = aens_auctions:hash(Val),
-    S#state{cache = dict:store({name_auction, Hash}, Val, C)};
-cache_put(name, Val, #state{cache = C} = S) ->
-    Hash = aens_names:hash(Val),
-    S#state{cache = dict:store({name, Hash}, Val, C)};
-cache_put(oracle, Val, #state{cache = C} = S) ->
-    Pubkey = aeo_oracles:pubkey(Val),
-    S#state{cache = dict:store({oracle, Pubkey}, Val, C)};
-cache_put(oracle_query, Val, #state{cache = C} = S) ->
-    Pubkey = aeo_query:oracle_pubkey(Val),
-    QueryId = aeo_query:id(Val),
-    S#state{cache = dict:store({oracle_query, {Pubkey, QueryId}}, Val, C)}.
+cache_put(Tag, Val, #state{cache = C} = S) ->
+    S#state{cache = aec_state_db:put(Tag, Val, C)}.
 
 -spec cache_write_through(state()) -> state().
 cache_write_through(#state{cache = C, trees = T} = S) ->
-    Trees = dict:fold(fun cache_write_through_fun/3, T, C),
-    S#state{trees = Trees, cache = dict:new()}.
-
-%% TODO: Should have a dirty flag.
--spec cache_write_through_fun({tag(), _}, object(), aec_trees()) -> aec_trees().
-cache_write_through_fun({account, _Pubkey}, Account, Trees) ->
-    ATrees = aec_trees:accounts(Trees),
-    ATrees1 = aec_accounts_trees:enter(Account, ATrees),
-    aec_trees:set_accounts(Trees, ATrees1);
-cache_write_through_fun({auth_call, {_Pubkey, _Id}}, Call, Trees) ->
-    CTree = aec_trees:calls(Trees),
-    CTree1 = aect_call_state_tree:enter_auth_call(Call, CTree),
-    aec_trees:set_calls(Trees, CTree1);
-cache_write_through_fun({call, _Id}, Call, Trees) ->
-    CTree = aec_trees:calls(Trees),
-    CTree1 = aect_call_state_tree:insert_call(Call, CTree),
-    aec_trees:set_calls(Trees, CTree1);
-cache_write_through_fun({channel, _Pubkey}, Channel, Trees) ->
-    CTree = aec_trees:channels(Trees),
-    CTree1 = aesc_state_tree:enter(Channel, CTree),
-    aec_trees:set_channels(Trees, CTree1);
-cache_write_through_fun({contract, Pubkey}, Contract, Trees) ->
-    %% NOTE: There is a semantical difference between inserting a new contract
-    %%       and updating one.
-    CTree = aec_trees:contracts(Trees),
-    case aect_state_tree:lookup_contract(Pubkey, CTree, [no_store]) of
-        {value, _} ->
-            CTree1 = aect_state_tree:enter_contract(Contract, CTree),
-            aec_trees:set_contracts(Trees, CTree1);
-        none ->
-            CTree1 = aect_state_tree:insert_contract(Contract, CTree),
-            aec_trees:set_contracts(Trees, CTree1)
-    end;
-cache_write_through_fun({commitment, _Hash}, Commitment, Trees) ->
-    NTree = aec_trees:ns(Trees),
-    NTree1 = aens_state_tree:enter_commitment(Commitment, NTree),
-    aec_trees:set_ns(Trees, NTree1);
-cache_write_through_fun({name_auction, _Hash}, Name, Trees) ->
-    NTree = aec_trees:ns(Trees),
-    NTree1 = aens_state_tree:enter_name_auction(Name, NTree),
-    aec_trees:set_ns(Trees, NTree1);
-cache_write_through_fun({name, _Hash}, Name, Trees) ->
-    NTree = aec_trees:ns(Trees),
-    NTree1 = aens_state_tree:enter_name(Name, NTree),
-    aec_trees:set_ns(Trees, NTree1);
-cache_write_through_fun({oracle, _Pubkey}, Oracle, Trees) ->
-    OTrees = aec_trees:oracles(Trees),
-    OTrees1 = aeo_state_tree:enter_oracle(Oracle, OTrees),
-    aec_trees:set_oracles(Trees, OTrees1);
-cache_write_through_fun({oracle_query, {_Pubkey, _Id}}, Query, Trees) ->
-    OTrees = aec_trees:oracles(Trees),
-    OTrees1 = aeo_state_tree:enter_query(Query, OTrees),
-    aec_trees:set_oracles(Trees, OTrees1).
+    Trees = aec_state_db:commit(C, T),
+    S#state{trees = Trees, cache = aec_state_db:new()}.
 
 %%%===================================================================
 %%% Variable environment
