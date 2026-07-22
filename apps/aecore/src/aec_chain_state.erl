@@ -436,14 +436,6 @@ get_top_block_node(#{top_block_node := N}) -> N.
 
 set_top_block_node(#node{} = N, State) -> State#{top_block_node => N}.
 
-prev_version(Node) ->
-    H = node_height(Node),
-    case H =:= aec_block_genesis:height() of
-        true  -> undefined;
-        %% Might return different protocols for the same height due to block signaling
-        false -> node_version(db_get_node(node_prev_hash(Node)))
-    end.
-
 maybe_add_pof(State, Block) ->
     case aec_blocks:type(Block) of
         key   -> State#{pof => no_fraud};
@@ -734,11 +726,12 @@ assert_height_delta(undefined, Height, TopHeight) ->
     Height >= ( TopHeight - gossip_allowed_height_from_top() ).
 
 update_state_tree(Node, State, Ctx) ->
-    {ok, Trees, ForkInfoIn} = get_state_trees_in(Node, aec_block_insertion:ctx_prev(Ctx), true),
+    PrevNode = aec_block_insertion:ctx_prev(Ctx),
+    {ok, Trees, ForkInfoIn} = get_state_trees_in(Node, PrevNode, true),
     {ForkInfo, MicSibHeaders, KeySibHeaders} = maybe_set_new_fork_id(Node, ForkInfoIn, State),
     State1 = update_found_pof(Node, MicSibHeaders, State, Ctx),
     State2 = update_found_pogf(Node, KeySibHeaders, State1),
-    {State3, NewTopDifficulty, Events} = update_state_tree(Node, Trees, ForkInfo, State2),
+    {State3, NewTopDifficulty, Events} = update_state_tree(Node, PrevNode, Trees, ForkInfo, State2),
     OldTopNode = get_top_block_node(State),
     handle_top_block_change(OldTopNode, NewTopDifficulty, Node, Events, State3).
 
@@ -746,8 +739,7 @@ repair_state_tree(Node, PrevNode, State) ->
     {ok, TreesIn, ForkInfoIn} = get_state_trees_in(Node, true),
     apply_and_repair_trees(Node, PrevNode, TreesIn, ForkInfoIn, State).
 
-update_state_tree(Node, TreesIn, ForkInfo, State) ->
-    PrevNode = db_get_node(node_prev_hash(Node)),
+update_state_tree(Node, PrevNode, TreesIn, ForkInfo, State) ->
     case db_find_state(node_hash(Node), true) of
         {ok, FoundTrees, FoundForkInfo} ->
             {Trees, _Fees, Events} = apply_node_transactions(Node, PrevNode, TreesIn,
@@ -945,7 +937,9 @@ apply_node_transactions(Node, PrevNode, Trees, ForkInfo, State) ->
             #fork_info{fees = FeesIn, fraud = FraudStatus} = ForkInfo,
             Height = node_height(Node),
             PrevConsensus = aec_consensus:get_consensus_module_at_height(Height-1),
-            PrevVersion = prev_version(Node),
+            %% Might be a different protocol than derived from height due to
+            %% block signaling, so use the actual previous node's version.
+            PrevVersion = node_version(PrevNode),
             GasFees = calculate_gas_fee(aec_trees:calls(Trees)),
             TotalFees = GasFees + FeesIn,
             Header = node_header(Node),

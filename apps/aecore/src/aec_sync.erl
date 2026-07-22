@@ -332,24 +332,23 @@ handle_info({gproc_ps_event, Event, #{info := Info}},
     %% FUTURE: Forward blocks only to outbound connections.
     %% Take a random subset (possibly empty) of peers that agree with us
     %% on chain height to forward blocks and transactions to.
-    MaxGossip = max_gossip(),
-    PeerIds = [ aec_peer:id(P) || P <- aec_peers:get_random_connected(MaxGossip) ],
-    NonSyncingPeerIds = [ P || P <- PeerIds, not peer_in_sync(State, P) ],
     case Event of
         block_to_publish ->
             case Info of
                 {created, Block} ->
-                    PeerIds1 = [ aec_peer:id(P) || P <- aec_peers:connected_peers(all) ],
-                    enqueue(block, Block, PeerIds1);
+                    PeerIds = [ aec_peer:id(P) || P <- aec_peers:connected_peers(all) ],
+                    enqueue(block, Block, PeerIds);
                 {received, Block} ->
+                    NonSyncingPeerIds = [ P || P <- gossip_peer_ids(),
+                                               not peer_in_sync(State, P) ],
                     enqueue(block, Block, NonSyncingPeerIds)
             end;
         tx_created when GossipTxs ->
             %% If we allow http requests creating transactions when we are catching up
             %% with other chains, we just keep them in mempool
-            enqueue(tx, Info, PeerIds);
+            enqueue(tx, Info, gossip_peer_ids());
         tx_received when GossipTxs ->
-            enqueue(tx, Info, PeerIds);
+            enqueue(tx, Info, gossip_peer_ids());
         _             -> ignore
     end,
     {noreply, State};
@@ -781,8 +780,9 @@ enqueue(Kind, Data, PeerIds) ->
     case Kind of
         block ->
             %% Getting blocks to spread is a priority, bypass the gossip queue
-            SerBlock = aec_peer_connection:gossip_serialize_block(Data),
-            [ do_forward_block(SerBlock, PId) || PId <- PeerIds ];
+            %% The wire message is encoded once here and reused for every peer.
+            WireBlock = aec_peer_connection:gossip_serialize_block(Data),
+            [ do_forward_block(WireBlock, PId) || PId <- PeerIds ];
         tx ->
             SerTx = aec_peer_connection:gossip_serialize_tx(Data),
             aec_jobs_queues:run(sync_gossip, fun() -> [ do_forward_tx(SerTx, PId) || PId <- PeerIds ] end)
@@ -798,8 +798,8 @@ ping_peer(PeerId) ->
             aec_peers:log_ping(PeerId, error)
     end.
 
-do_forward_block(SerBlock, PeerId) ->
-    Res = aec_peer_connection:send_block(PeerId, SerBlock),
+do_forward_block(WireBlock, PeerId) ->
+    Res = aec_peer_connection:send_block(PeerId, WireBlock),
     epoch_sync:debug("send_block to (~p): ~p", [ppp(PeerId), Res]).
 
 do_forward_tx(SerTx, PeerId) ->
@@ -1263,6 +1263,9 @@ max_gossip() ->
     aeu_env:user_config_or_env([<<"sync">>, <<"max_gossip">>],
                                aecore, sync_max_gossip,
                                ?DEFAULT_MAX_GOSSIP).
+
+gossip_peer_ids() ->
+    [ aec_peer:id(P) || P <- aec_peers:get_random_connected(max_gossip()) ].
 
 is_syncing(#state{sync_tasks = SyncTasks}) ->
     [1 || #sync_task{suspect = false} <- SyncTasks] =/= [].
