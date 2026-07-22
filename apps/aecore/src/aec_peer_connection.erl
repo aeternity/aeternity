@@ -46,6 +46,7 @@
 
 -ifdef(TEST).
 -export([is_node_info_sharing_enabled/0]).
+-export([deserialize_tx/1]).
 -endif.
 
 -include("aec_peer_messages.hrl").
