@@ -38,4 +38,9 @@
 , {[ae,epoch,aecore,blocks,key,insert_execution_time,success]   , histogram , [{time_span, 4 * 60 * 60 * 1000}]}
 , {[ae,epoch,aecore,blocks,key,insert_execution_time,error]     , histogram , [{time_span, 4 * 60 * 60 * 1000}]}
 , {[ae,epoch,aecore,blocks,key,info]                            , gauge     , []}
+
+, {[ae,epoch,aecore,mpt,read_cache,hit]                         , counter   , []}
+, {[ae,epoch,aecore,mpt,read_cache,miss]                        , counter   , []}
+, {[ae,epoch,aecore,mpt,read_cache,evict]                       , counter   , []}
+, {[ae,epoch,aecore,mpt,read_cache,rotate]                      , counter   , []}
 ].

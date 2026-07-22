@@ -9,6 +9,7 @@
 %% test case exports
 -export([main_test/1,
          calls_test/1,
+         mpt_cache_gc_promotion_test/1,
          last_switch_test/1 ]).
 
 -include_lib("common_test/include/ct.hrl").
@@ -30,6 +31,7 @@ groups() ->
       [main_test]},
      {one_node, [sequence],
       [ calls_test
+      , mpt_cache_gc_promotion_test
       , last_switch_test ]}].
 
 suite() ->
@@ -119,6 +121,12 @@ init_per_testcase(_Case, Config) ->
     ct:log("testcase pid: ~p", [self()]),
     [{tc_start, os:timestamp()}|Config].
 
+end_per_testcase(mpt_cache_gc_promotion_test, Config) ->
+    %% Node-global config: must be restored even when the case fails, or it
+    %% leaks into the cases that follow it in this sequence group.
+    _ = disable_mpt_cache(aecore_suite_utils:node_name(dev1)),
+    _ = catch aecore_suite_utils:unsubscribe(aecore_suite_utils:node_name(dev1), gc),
+    end_per_testcase(other, Config);
 end_per_testcase(_Case, Config) ->
     Ts0 = ?config(tc_start, Config),
     ct:log("Events during TC: ~p", [[{N, aecore_suite_utils:all_events_since(N, Ts0)}
@@ -361,6 +369,71 @@ calls_test(_Config) ->
     {ok, 410, _} =
         aehttp_integration_SUITE:get_accounts_by_pubkey_and_height_sut(OwnerAddress, ContractCreateHeight),
     aecore_suite_utils:unsubscribe(N1, gc),
+    ok.
+
+%% Regression for the MPT read cache defeating GC promote-on-read.
+%%
+%% With the cache enabled, a read that hits the cache used to return without
+%% reaching aec_db:lookup_tree_node/2, so promote_tree_node/4 never ran and
+%% the node stayed only in the GC secondary table. The next switch cleared
+%% that table and the node was permanently lost while still reachable from a
+%% live root.
+%%
+%% The scan below is the assertion: it walks every hash reachable from the
+%% current root with db_safe_access on (which bypasses the cache), after a
+%% switch has cleared the secondary. Any node that was served from cache
+%% instead of being promoted is gone by then and the scan reports an error.
+mpt_cache_gc_promotion_test(_Config) ->
+    N1 = aecore_suite_utils:node_name(dev1),
+    ok = aecore_suite_utils:subscribe(N1, gc),
+
+    ok = rpc:call(N1, application, set_env,
+                  [aecore, mpt_read_cache,
+                   [{enabled, true}, {max_size, 1000000}, {max_bytes, 1073741824}]]),
+    ok = rpc:call(N1, aec_mpt_cache, reload_config, []),
+    true = rpc:call(N1, aec_mpt_cache, enabled, []),
+    ok = rpc:call(N1, aec_mpt_cache, clear, []),
+
+    %% All eight state tables are GC:ed in this suite, so every state read
+    %% runs on a #tree_gc{} context. Drive real read traffic across a GC
+    %% window and require that none of it was cached.
+    read_traffic(N1),
+    {ok, Mined} = aecore_suite_utils:mine_key_blocks(N1, ?GC_HISTORY + ?FORK_RESISTANCE + 1),
+    ct:log("Blocks mined: ~p", [length(Mined)]),
+    GcSwitch = await_gc_switch(),
+    0 = GcSwitch rem ?GC_HISTORY,
+    await_scans_complete(),
+    read_traffic(N1),
+
+    %% This is the discriminating assertion. Pre-fix, the cache was attached
+    %% regardless of GC context, so this traffic populated it and later reads
+    %% short-circuited aec_db:lookup_tree_node/2 -- skipping the promotion
+    %% that keeps a node alive across the next switch. Post-fix the cache is
+    %% enabled but structurally unreachable under GC, so it stays empty.
+    Stats = rpc:call(N1, aec_mpt_cache, stats, []),
+    ct:log("Cache stats after GC read traffic: ~p", [Stats]),
+    #{entries := 0, hits := 0, misses := 0} = Stats,
+
+    %% Outcome check: nothing reachable from the live root went missing.
+    [begin
+         Res = rpc:call(N1, aec_db_gc, db_safe_access_scan, [Tree], 120000),
+         ct:log("Reachability scan of ~p after GC switch: ~p", [Tree, Res]),
+         {ok, _} = Res
+     end || Tree <- [accounts, calls, contracts, oracles, channels, ns]],
+    ok.
+
+%% Walks whole state trees, so every visited node is a backend read.
+read_traffic(N1) ->
+    TopHash = rpc:call(N1, aec_chain, top_block_hash, []),
+    {ok, Balances} = rpc:call(N1, aec_chain, all_accounts_balances_at_hash,
+                              [TopHash], 60000),
+    ct:log("Read traffic over ~p accounts at ~p", [length(Balances), TopHash]),
+    ok.
+
+disable_mpt_cache(N1) ->
+    _ = rpc:call(N1, application, set_env, [aecore, mpt_read_cache, [{enabled, false}]]),
+    _ = rpc:call(N1, aec_mpt_cache, reload_config, []),
+    _ = rpc:call(N1, aec_mpt_cache, clear, []),
     ok.
 
 %% Simulate the case where we've been GC:ing with an older version, where the height of
