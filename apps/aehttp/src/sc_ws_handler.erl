@@ -332,10 +332,18 @@ jobs_done(#handler{job_id = JobId} = H) when JobId =/= undefined ->
 jobs_done(H) ->
     H.
 
--spec fsm_pid(handler() | undefined) -> pid() | undefined.
+-spec fsm_pid(handler() | undefined | term()) -> pid() | undefined.
 fsm_pid(undefined) -> undefined;
 fsm_pid(#handler{fsm_pid = Pid}) ->
-    Pid.
+    Pid;
+fsm_pid(_NotYetInitialized) ->
+    %% terminate/3 can be invoked before websocket_init/1 ever produced a full
+    %% #handler{} (e.g. the connection is closed/rejected during the initial
+    %% handshake). In that case State may still be whatever init/2 handed to
+    %% cowboy_websocket (a plain map) or another placeholder value. Treat any
+    %% such not-yet-initialized state as having no linked fsm, instead of
+    %% crashing the request process with a function_clause error.
+    undefined.
 
 -spec start_link_fsm(handler(), map()) -> {ok, pid()} | {error, atom()}.
 start_link_fsm(#handler{role = initiator, host=Host, port=Port}, Opts) ->
