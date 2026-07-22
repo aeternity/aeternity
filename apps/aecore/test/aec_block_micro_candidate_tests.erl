@@ -195,6 +195,122 @@ block_extension_test_() ->
         end}
       ]}.
 
+%% Exercises create/2's ignore_tx_hashes/report_in_flight_fun plumbing;
+%% create/1 (used by aec_consensus_on_demand.erl and the rest of this file) is unaffected.
+sec_bb_3_create_opts_test_() ->
+    {foreach,
+      fun() ->
+        meck:new(aeu_time, [passthrough]),
+        meck:new(aec_chain, [passthrough]),
+        meck:new(aec_db, [passthrough]),
+        meck:new(aec_keys, [passthrough]),
+        meck:new(aec_tx_pool, [passthrough]),
+        meck:new(aec_trees, [passthrough])
+      end,
+      fun(_) ->
+        meck:unload(aec_trees),
+        meck:unload(aec_tx_pool),
+        meck:unload(aec_keys),
+        meck:unload(aec_chain),
+        meck:unload(aec_db),
+        meck:unload(aeu_time)
+      end,
+      [{"create/1 delegates to create/2 with an empty ignore list (legacy callers unaffected)",
+        fun() ->
+          AccMap = #{ preset_accounts => [{?TEST_PUB, 100000 * aec_test_utils:min_gas_price()}] },
+          {Block0, Trees0} = aec_block_genesis:genesis_block_with_state(AccMap),
+          STx = aec_test_utils:sign_tx(spend_tx(#{}, Trees0), ?TEST_PRIV),
+
+          meck:expect(aeu_time, now_in_msecs, 0, 1234567890),
+          meck:expect(aec_chain, get_block_state, 1, {ok, Trees0}),
+          meck:expect(aec_keys, get_pubkey, 0, {ok, ?TEST_PUB}),
+          meck:expect(aec_db, find_discovered_pof, 1, none),
+
+          TestPid = self(),
+          meck:expect(aec_tx_pool, get_candidate,
+                      fun(_Gas, IgnoreTxHashes, _Hash) ->
+                          TestPid ! {get_candidate_called, IgnoreTxHashes},
+                          case IgnoreTxHashes of
+                              [] -> {ok, [STx]};
+                              _  -> {ok, []}
+                          end
+                      end),
+
+          {ok, Block1, _Info} = aec_block_micro_candidate:create(Block0),
+          ?assertEqual([STx], aec_blocks:txs(Block1)),
+          receive
+              {get_candidate_called, []} -> ok
+          after 0 ->
+              ?assert(false)
+          end
+        end},
+       {"create/2 threads ignore_tx_hashes into get_candidate's exclusion list"
+        " and reports the in-flight batch before it is applied, clearing it"
+        " the moment it applies successfully",
+        fun() ->
+          AccMap = #{ preset_accounts => [{?TEST_PUB, 100000 * aec_test_utils:min_gas_price()}] },
+          {Block0, Trees0} = aec_block_genesis:genesis_block_with_state(AccMap),
+          STx = aec_test_utils:sign_tx(spend_tx(#{}, Trees0), ?TEST_PRIV),
+          STxHash = aetx_sign:hash(STx),
+          PreQuarantinedHash = <<0:256>>, %% stand-in for an already-quarantined tx hash
+
+          meck:expect(aeu_time, now_in_msecs, 0, 1234567890),
+          meck:expect(aec_chain, get_block_state, 1, {ok, Trees0}),
+          meck:expect(aec_keys, get_pubkey, 0, {ok, ?TEST_PUB}),
+          meck:expect(aec_db, find_discovered_pof, 1, none),
+
+          TestPid = self(),
+          meck:expect(aec_tx_pool, get_candidate,
+                      fun(_Gas, IgnoreTxHashes, _Hash) ->
+                          TestPid ! {get_candidate_called, IgnoreTxHashes},
+                          case lists:member(STxHash, IgnoreTxHashes) of
+                              true  -> {ok, []};
+                              false -> {ok, [STx]}
+                          end
+                      end),
+          ReportFun = fun(TxHashes) -> TestPid ! {reported, TxHashes}, ok end,
+
+          {ok, Block1, _Info} =
+              aec_block_micro_candidate:create(
+                Block0, #{ ignore_tx_hashes => [PreQuarantinedHash],
+                           report_in_flight_fun => ReportFun }),
+          ?assertEqual([STx], aec_blocks:txs(Block1)),
+
+          %% The externally-supplied ignore list is present from the very
+          %% first get_candidate call.
+          receive
+              {get_candidate_called, IgnoreTxHashes0} ->
+                  ?assert(lists:member(PreQuarantinedHash, IgnoreTxHashes0)),
+                  ?assertNot(lists:member(STxHash, IgnoreTxHashes0))
+          after 1000 -> ?assert(false)
+          end,
+
+          %% Reported in flight before apply, so a later hard-kill can be
+          %% attributed to the right tx hash(es).
+          receive
+              {reported, ReportedHashes} ->
+                  ?assertEqual([STxHash], ReportedHashes)
+          after 1000 -> ?assert(false)
+          end,
+
+          %% Cleared to `[]` the moment it applies successfully, before the
+          %% next fetch, so a later hard-kill can't blame an already-applied batch.
+          receive
+              {reported, []} -> ok
+          after 1000 -> ?assert(false)
+          end,
+
+          %% The next get_candidate call still excludes both the just-fetched
+          %% batch and the original externally-supplied ignore list.
+          receive
+              {get_candidate_called, IgnoreTxHashes1} ->
+                  ?assert(lists:member(STxHash, IgnoreTxHashes1)),
+                  ?assert(lists:member(PreQuarantinedHash, IgnoreTxHashes1))
+          after 1000 -> ?assert(false)
+          end
+        end}
+      ]}.
+
 used_gas_test_() ->
     {foreach,
       fun() ->
