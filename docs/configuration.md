@@ -146,7 +146,7 @@ fork_management:
 ### Hardforks
 
 Hardforks allow the specification of consensus protocol versions with their respective heights for custom chains.
-Optionally, prefunded account and contract files can be speficied which will be effective at these heights.
+Optionally, prefunded account and contract files can be specified which will be effective at these heights.
 The files can be specified using the absolute path or a path relative to the home of the node in the directory data/aecore.
 
 ```yaml
