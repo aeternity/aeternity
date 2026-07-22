@@ -62,6 +62,8 @@
 
 %% Proof of inclusion
 -export([add_poi/4,
+         add_contract_poi_keys/4,
+         add_contract_poi_prefix/6,
          lookup_poi/3,
          deserialize_poi/1,
          new_poi/1,
@@ -199,6 +201,20 @@ add_poi(contracts, Pubkey, Trees, #poi{} = Poi) ->
     internal_add_contracts_poi(Pubkey, contracts(Trees), Poi);
 add_poi(Type,_PubKey,_Trees, #poi{} =_Poi) ->
     error({nyi, Type}).
+
+%% Bounded contract-PoI builders backing `/v3/contracts/{id}/poi`.
+-spec add_contract_poi_keys(aec_keys:pubkey(), [binary()], trees(), poi()) ->
+          {'ok', poi()} | {'error', term()}.
+add_contract_poi_keys(Pubkey, Keys, Trees, #poi{} = Poi) ->
+    internal_add_contract_poi_keys(Pubkey, Keys, contracts(Trees), Poi).
+
+-spec add_contract_poi_prefix(aec_keys:pubkey(), binary(), binary(),
+                              pos_integer(), trees(), poi()) ->
+          {'ok', poi(), [binary()], 'undefined' | binary()}
+        | {'error', term()}.
+add_contract_poi_prefix(Pubkey, Prefix, Cursor, Limit, Trees, #poi{} = Poi) ->
+    internal_add_contract_poi_prefix(Pubkey, Prefix, Cursor, Limit,
+                                     contracts(Trees), Poi).
 
 -spec lookup_poi(tree_type(), aec_keys:pubkey(), poi()) ->
                         {'ok', Object} | {'error', 'not_found'} when
@@ -811,6 +827,28 @@ internal_add_contracts_poi(ContractPubKey, Trees, #poi{contracts = {poi, CPoi}} 
     case aect_state_tree:add_poi(ContractPubKey, Trees, CPoi) of
         {ok, NewAPoi} ->
             {ok, Poi#poi{contracts = {poi, NewAPoi}}};
+        {error, _} = E -> E
+    end.
+
+internal_add_contract_poi_keys(_Pubkey, _Keys, _Trees, #poi{contracts = empty}) ->
+    {error, not_present};
+internal_add_contract_poi_keys(Pubkey, Keys, Trees,
+                               #poi{contracts = {poi, CPoi}} = Poi) ->
+    case aect_state_tree:add_poi_for_keys(Pubkey, Keys, Trees, CPoi) of
+        {ok, NewCPoi} ->
+            {ok, Poi#poi{contracts = {poi, NewCPoi}}};
+        {error, _} = E -> E
+    end.
+
+internal_add_contract_poi_prefix(_Pubkey, _Prefix, _Cursor, _Limit, _Trees,
+                                 #poi{contracts = empty}) ->
+    {error, not_present};
+internal_add_contract_poi_prefix(Pubkey, Prefix, Cursor, Limit, Trees,
+                                 #poi{contracts = {poi, CPoi}} = Poi) ->
+    case aect_state_tree:add_poi_for_prefix(Pubkey, Prefix, Cursor, Limit,
+                                            Trees, CPoi) of
+        {ok, NewCPoi, IncKeys, NextKey} ->
+            {ok, Poi#poi{contracts = {poi, NewCPoi}}, IncKeys, NextKey};
         {error, _} = E -> E
     end.
 

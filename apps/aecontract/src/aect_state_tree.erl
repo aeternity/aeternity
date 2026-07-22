@@ -33,6 +33,8 @@
 
 %% API - Proof of inclusion
 -export([ add_poi/3
+        , add_poi_for_keys/4
+        , add_poi_for_prefix/6
         , verify_poi/3
         , lookup_poi/2
         ]).
@@ -62,6 +64,7 @@
 -opaque tree() :: #contract_tree{}.
 
 -define(VSN, 1).
+-define(POI_KEY_LIMIT, 1024).
 
 %% ==================================================================
 %% Tracing support
@@ -304,7 +307,93 @@ add_store_keys_poi(Id, {PrefixedKey, _Val, Iter}, PrefixSize, Poi, CtTree) ->
         {error, _} = E -> E
     end.
 
+%% Bounded variants used by `/v3/contracts/{id}/poi` to cap the per-request work.
+-spec add_poi_for_keys(aect_contracts:pubkey(), [binary()], tree(), aec_poi:poi()) ->
+                              {'ok', aec_poi:poi()} | {'error', term()}.
+add_poi_for_keys(Pubkey, Keys, #contract_tree{contracts = CtTree}, Poi)
+  when is_list(Keys), length(Keys) =< ?POI_KEY_LIMIT ->
+    case aec_poi:add_poi(Pubkey, CtTree, Poi) of
+        {ok, ContractPoi} ->
+            StorePrefix = aect_contracts:compute_contract_store_id(Pubkey),
+            add_listed_store_keys_poi(StorePrefix, Keys, ContractPoi, CtTree);
+        {error, _} = Error -> Error
+    end;
+add_poi_for_keys(_Pubkey, _Keys, _Tree, _Poi) ->
+    {error, key_limit_exceeded}.
 
+add_listed_store_keys_poi(_StorePrefix, [], Poi, _CtTree) ->
+    {ok, Poi};
+add_listed_store_keys_poi(StorePrefix, [K | Rest], Poi, CtTree)
+  when is_binary(K) ->
+    KeyId = <<StorePrefix/binary, K/binary>>,
+    case aec_poi:add_poi(KeyId, CtTree, Poi) of
+        {ok, Poi1} ->
+            add_listed_store_keys_poi(StorePrefix, Rest, Poi1, CtTree);
+        {error, not_present} ->
+            {error, {key_not_found, K}};
+        {error, _} = Error -> Error
+    end;
+add_listed_store_keys_poi(_StorePrefix, [_BadKey | _], _Poi, _CtTree) ->
+    {error, invalid_key}.
+
+%% Build a proof for up to `Limit` store keys with raw key starting at `Prefix`,
+%% iterating from `Cursor` (`<<>>` = start of range). Returns `{ok, Poi, Keys, NextKey}`.
+-spec add_poi_for_prefix(aect_contracts:pubkey(), binary(), binary(),
+                         pos_integer(), tree(), aec_poi:poi()) ->
+                                {'ok', aec_poi:poi(), [binary()],
+                                 'undefined' | binary()}
+                              | {'error', term()}.
+add_poi_for_prefix(Pubkey, Prefix, Cursor, Limit, #contract_tree{contracts = CtTree}, Poi)
+  when is_binary(Prefix), is_binary(Cursor),
+       is_integer(Limit), Limit > 0, Limit =< ?POI_KEY_LIMIT ->
+    case aec_poi:add_poi(Pubkey, CtTree, Poi) of
+        {ok, ContractPoi} ->
+            StorePrefix  = aect_contracts:compute_contract_store_id(Pubkey),
+            FilterPrefix = <<StorePrefix/binary, Prefix/binary>>,
+            StartKey =
+                case Cursor of
+                    <<>> -> FilterPrefix;
+                    _    -> <<StorePrefix/binary, Cursor/binary>>
+                end,
+            Iter = aeu_mtrees:iterator_from(
+                     StartKey, CtTree, [{with_prefix, FilterPrefix}]),
+            add_prefix_store_keys_poi(StorePrefix, Iter, Limit, ContractPoi, [], CtTree);
+        {error, _} = Error -> Error
+    end;
+add_poi_for_prefix(_Pubkey, _Prefix, _Cursor, _Limit, _Tree, _Poi) ->
+    {error, invalid_args}.
+
+add_prefix_store_keys_poi(_StorePrefix, Iter, 0, Poi, Acc, _CtTree) ->
+    %% Limit hit. Peek to detect end-of-range; return the last included key as
+    %% `NextKey` so callers can resume via the exclusive `iterator_from/3` semantics.
+    NextKey =
+        case aeu_mtrees:iterator_next(Iter) of
+            '$end_of_table' -> undefined;
+            _Other ->
+                case Acc of
+                    [LastK | _] -> LastK;
+                    []          -> undefined
+                end
+        end,
+    {ok, Poi, lists:reverse(Acc), NextKey};
+add_prefix_store_keys_poi(StorePrefix, Iter, N, Poi, Acc, CtTree) ->
+    case aeu_mtrees:iterator_next(Iter) of
+        '$end_of_table' ->
+            {ok, Poi, lists:reverse(Acc), undefined};
+        {KeyId, _Val, Iter1} ->
+            case aec_poi:add_poi(KeyId, CtTree, Poi) of
+                {ok, Poi1} ->
+                    K = strip_prefix(StorePrefix, KeyId),
+                    add_prefix_store_keys_poi(StorePrefix, Iter1, N - 1, Poi1,
+                                              [K | Acc], CtTree);
+                {error, _} = Error -> Error
+            end
+    end.
+
+strip_prefix(StorePrefix, KeyId) ->
+    PSz = byte_size(StorePrefix),
+    <<_:PSz/binary, K/binary>> = KeyId,
+    K.
 
 -spec verify_poi(aect_contracts:pubkey(), aect_contracts:contract(), aec_poi:poi()) ->
                         'ok' | {'error', term()}.
