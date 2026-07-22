@@ -351,7 +351,7 @@ remove_txs_from_dbs([SignedTx | Rest], Dbs) ->
     TxHash = aetx_sign:hash(SignedTx),
     case aec_db:gc_tx(TxHash) of
         ok ->
-            aec_tx_pool:raw_delete(Dbs, aec_tx_pool:pool_db_key(SignedTx)),
+            aec_tx_pool:raw_delete(Dbs, aec_tx_pool:pool_db_key(SignedTx, TxHash)),
             delete_hash(aec_tx_pool:gc_db(Dbs), TxHash),
             aec_metrics:try_update([ae,epoch,aecore,tx_pool,origin_gced], 1);
         {error, Reason} ->
