@@ -1413,7 +1413,9 @@ send_send_tx(S = #{ status := {connected, _ESock} }, SerTx) ->
 handle_new_txs(S, Msg) ->
     try
         #{ txs := EncSignedTxs } = Msg,
-        SignedTxs = [ aetx_sign:deserialize_from_binary(Tx) || Tx <- EncSignedTxs ],
+        %% Deserialize each tx independently - a single malformed/malicious
+        %% entry must not cause the whole batch to be discarded.
+        SignedTxs = lists:filtermap(fun deserialize_tx/1, EncSignedTxs),
         %% Offload the handling to a temporary worker process - it might block
         %% on the tx_pool_push queue.
         spawn(fun() -> [ tx_push(SignedTx) || SignedTx <- SignedTxs ] end)
@@ -1421,6 +1423,13 @@ handle_new_txs(S, Msg) ->
         ok
     end,
     S.
+
+deserialize_tx(Tx) ->
+    try {true, aetx_sign:deserialize_from_binary(Tx)}
+    catch _:_ ->
+        lager:debug("Failed to deserialize gossiped tx, dropping just this entry", []),
+        false
+    end.
 
 tx_push(STx) ->
     try aec_tx_pool:push(STx, tx_received)
