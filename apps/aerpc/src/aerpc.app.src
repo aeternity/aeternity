@@ -1,27 +1,18 @@
-{application, aehttp,
- [{description, "API"},
+%% -*- mode: erlang; erlang-indent-level: 4; indent-tabs-mode: nil -*-
+{application, aerpc,
+ [{description, "AE JSON-RPC method dispatcher"},
   {vsn, {cmd, "cat ../../VERSION"}},
   {registered, []},
-  {mod, { aehttp_app, []}},
   {applications,
    [kernel,
     stdlib,
-    ssl,
-    inets,
-    cowboy,
-    jsx,
     lager,
-    jesse,
     aecore,
-    aeapi,
-    aechannel,
-    aerpc,
-    gproc,
-    kache
+    aeapi
    ]},
-  {env,[]},
+  {mod, {aerpc_app, []}},
+  {env, []},
   {modules, []},
-
   {maintainers, []},
   {licenses, []},
   {links, []}
