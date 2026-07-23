@@ -514,27 +514,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-  /hyperchain/pin-tx:
-    get:
-      tags:
-        - external
-        - hyperchain
-      operationId: GetPinningTx
-      description: Get the pinning transaction for the current epoch. Returns both the individual parameters as well as the parent chain type (aeternity, btc etc.), network id and a packaged 80 byte readymade payload for that chain type.
-      parameters: []
-      responses:
-        "200":
-          description: Successful operation
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/PinningTx"
-        "404":
-          description: Cannot find pinning data for some reason, e.g. epoch not started
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
   /hyperchain/contracts:
     get:
       tags:
@@ -552,6 +531,27 @@ paths:
                 $ref: "#/components/schemas/HCContractPubkeys"
         "404":
           description: Cannot find the contract pubkeys for some reason, e.g. HC consensus not started, or misconfigured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /hyperchain/pin-tx:
+    get:
+      tags:
+        - external
+        - hyperchain
+      operationId: GetPinningTx
+      description: Get the pinning transaction for the current epoch. Returns both the individual parameters as well as the parent chain type (aeternity, btc etc.), network id and a packaged 80 byte readymade payload for that chain type.
+      parameters: []
+      responses:
+        "200":
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PinningTx"
+        "404":
+          description: Cannot find pinning data for some reason, e.g. epoch not started
           content:
             application/json:
               schema:
@@ -826,22 +826,22 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-  "/names/{name}":
+  "/names/hash/{name_hash}":
     get:
       tags:
         - external
         - name_service
-      operationId: GetNameEntryByName
+      operationId: GetNameEntryByNameHash
       description: Get name entry from naming system
       parameters:
         - $ref: '#/components/parameters/intAsString'
         - in: path
-          name: name
-          description: The name key of the name entry
+          name: name_hash
+          description: The name hash of the name entry
           required: true
           schema:
             type: string
-            example: "dimitar.chain"
+            example: "nm_1G1GgdPsPCzSvEDSVAeuiW7tKdmTXStb3N2wXviyPfMgLME5"
       responses:
         "200":
           description: Successful operation
@@ -861,22 +861,22 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-  "/names/hash/{name_hash}":
+  "/names/{name}":
     get:
       tags:
         - external
         - name_service
-      operationId: GetNameEntryByNameHash
+      operationId: GetNameEntryByName
       description: Get name entry from naming system
       parameters:
         - $ref: '#/components/parameters/intAsString'
         - in: path
-          name: name_hash
-          description: The name hash of the name entry
+          name: name
+          description: The name key of the name entry
           required: true
           schema:
             type: string
-            example: "nm_1G1GgdPsPCzSvEDSVAeuiW7tKdmTXStb3N2wXviyPfMgLME5"
+            example: "dimitar.chain"
       responses:
         "200":
           description: Successful operation
@@ -3128,11 +3128,11 @@ components:
       type: object
       properties:
         staking:
-          $ref: "#/components/schemas/EncodedPubkey" 
+          $ref: "#/components/schemas/EncodedPubkey"
         election:
-          $ref: "#/components/schemas/EncodedPubkey" 
+          $ref: "#/components/schemas/EncodedPubkey"
         rewards:
-          $ref: "#/components/schemas/EncodedPubkey" 
+          $ref: "#/components/schemas/EncodedPubkey"
       required:
         - staking
     Header:
@@ -3861,6 +3861,11 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/SignedTx"
+    SpendTx:
+      allOf:
+        - $ref: "#/components/schemas/SpendTxInput"
+        - required:
+            - nonce
     SpendTxInput:
       type: object
       properties:
@@ -3884,11 +3889,6 @@ components:
         - fee
         - sender_id
         - payload
-    SpendTx:
-      allOf:
-        - $ref: "#/components/schemas/SpendTxInput"
-        - required:
-            - nonce
     Status:
       type: object
       properties:

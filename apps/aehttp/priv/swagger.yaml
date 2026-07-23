@@ -3652,6 +3652,8 @@ definitions:
     required:
       - tx
       - signatures
+  SpendTx:
+    $ref: '#/definitions/SpendTxInput'
   SpendTxInput:
     type: object
     properties:
@@ -3675,8 +3677,6 @@ definitions:
       - fee
       - sender_id
       - payload
-  SpendTx:
-    $ref: '#/definitions/SpendTxInput'
   SpendTxJSON:
     allOf:
       - $ref: '#/definitions/GenericTx'
