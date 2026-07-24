@@ -127,13 +127,26 @@
 
 -ifdef(TEST).
 -export([calc_rewards/6,
-         internal_insert_transaction/4
+         internal_insert_transaction/4,
+         wrap_block/2
         ]).
 -endif.
 
 -include("aec_block_insertion.hrl").
 -include("blocks.hrl").
 -include("aec_db.hrl").
+
+%% In TEST builds, assert that a hash threaded into wrap_block/2 (e.g. one
+%% precomputed by the conductor) really is the header's hash. This catches a
+%% future upstream change that derives the hash from different bytes: without
+%% it such a bug would silently index the block under the wrong key. Compiles
+%% to a no-op in production, where recomputing the hash would defeat the point
+%% of threading it in.
+-ifdef(TEST).
+-define(assert_block_hash(Header, Hash), {ok, Hash} = aec_headers:hash_header(Header)).
+-else.
+-define(assert_block_hash(Header, Hash), ok).
+-endif.
 
 -type events() :: aetx_env:events().
 
@@ -468,6 +481,7 @@ wrap_block(Block) ->
 
 wrap_block(Block, Hash) ->
     Header = aec_blocks:to_header(Block),
+    ?assert_block_hash(Header, Hash),
     Type = aec_headers:type(Header),
     Txs = block_txs(Type, Block),
     #node{ header = Header
