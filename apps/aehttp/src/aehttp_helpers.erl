@@ -45,9 +45,20 @@
 -export([ ok_response/1
         , unsigned_tx_response/1]).
 
+-export([ service_unavailable/1 ]).
+
 -import(aeu_debug, [pp/1]).
 
 -define(MODE_WAIT_TIMEOUT, 30000).
+
+%% Retry-After hints (seconds) sent along with a 503, so that clients back off
+%% on the node's schedule instead of amplifying the overload with their own.
+%% Queue rejection is transient - the request queues (http_read, http_update)
+%% are counter-limited, so a full backlog drains within a few request service
+%% times. Not being in a stable mode (starting up, migration, maintenance) is
+%% open-ended, so it gets the more conservative hint.
+-define(RETRY_AFTER_OVERLOAD, 3).
+-define(RETRY_AFTER_NOT_STABLE, 30).
 
 process_request(FunsList, Req) ->
     process_request(FunsList, Req, #{}).
@@ -74,6 +85,19 @@ when_stable(F) ->
         {timeout,_} ->
             error(timeout)
     end.
+
+%% @doc Build the 503 response for the two ways a request can be shed before it
+%% is ever run: the request queue rejected it, or the node is not in a stable
+%% mode yet. Both carry a Retry-After header (RFC 9110, delay-seconds form).
+-spec service_unavailable(overload | not_stable) ->
+          {503, [{binary(), binary()}], map()}.
+service_unavailable(overload) ->
+    {503, retry_after(?RETRY_AFTER_OVERLOAD), #{reason => <<"Temporary overload">>}};
+service_unavailable(not_stable) ->
+    {503, retry_after(?RETRY_AFTER_NOT_STABLE), #{reason => <<"Not yet started">>}}.
+
+retry_after(Seconds) ->
+    [{<<"retry-after">>, integer_to_binary(Seconds)}].
 
 read_required_params(ParamNames) ->
     params_read_fun(ParamNames,
