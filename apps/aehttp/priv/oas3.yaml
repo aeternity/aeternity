@@ -73,6 +73,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
   "/accounts/{pubkey}/hash/{hash}":
     get:
       tags:
@@ -103,6 +105,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
   "/accounts/{pubkey}/height/{height}":
     get:
       tags:
@@ -139,6 +143,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
   "/accounts/{pubkey}/next-nonce":
     get:
       tags:
@@ -179,6 +185,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
   "/accounts/{pubkey}/transactions/pending":
     get:
       tags:
@@ -208,6 +216,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
   "/auctions/{name}":
     get:
       tags:
@@ -243,6 +253,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
   "/channels/{pubkey}":
     get:
       tags:
@@ -278,6 +290,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
   "/contracts/{pubkey}":
     get:
       tags:
@@ -307,6 +321,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
   "/contracts/{pubkey}/code":
     get:
       tags:
@@ -336,6 +352,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
   "/contracts/{pubkey}/poi":
     get:
       tags:
@@ -365,6 +383,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
   /currency:
     get:
       tags:
@@ -381,6 +401,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Currency"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
   /dry-run:
     post:
       tags:
@@ -416,6 +438,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
   /generations/current:
     get:
       tags:
@@ -438,6 +462,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
   "/generations/hash/{hash}":
     get:
       tags:
@@ -467,6 +493,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
   "/generations/height/{height}":
     get:
       tags:
@@ -490,6 +518,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
   /headers/top:
     get:
       tags:
@@ -512,6 +542,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
   /key-blocks/current:
     get:
       tags:
@@ -534,6 +566,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
   /key-blocks/current/hash:
     get:
       tags:
@@ -556,6 +590,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
   /key-blocks/current/height:
     get:
       tags:
@@ -578,6 +614,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
   "/key-blocks/hash/{hash}":
     get:
       tags:
@@ -607,6 +645,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
   "/key-blocks/height/{height}":
     get:
       tags:
@@ -630,6 +670,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
   /key-blocks/pending:
     get:
       tags:
@@ -658,6 +700,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
   "/micro-blocks/hash/{hash}/header":
     get:
       tags:
@@ -687,6 +731,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
   "/micro-blocks/hash/{hash}/transactions":
     get:
       tags:
@@ -716,6 +762,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
   "/micro-blocks/hash/{hash}/transactions/count":
     get:
       tags:
@@ -745,6 +793,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
   "/micro-blocks/hash/{hash}/transactions/index/{index}":
     get:
       tags:
@@ -782,6 +832,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
   "/names/{name}":
     get:
       tags:
@@ -817,6 +869,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
   "/names/hash/{name_hash}":
     get:
       tags:
@@ -852,6 +906,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
   "/oracles/{pubkey}":
     get:
       tags:
@@ -881,6 +937,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
   "/oracles/{pubkey}/queries":
     get:
       tags:
@@ -939,6 +997,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
   "/oracles/{pubkey}/queries/{query-id}":
     get:
       tags:
@@ -975,6 +1035,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
   /peers/pubkey:
     get:
       tags:
@@ -991,6 +1053,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PeerPubKey"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
   /recent-gas-prices:
     get:
       tags:
@@ -1013,6 +1077,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
   /status:
     get:
       tags:
@@ -1029,6 +1095,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Status"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
   /status/chain-ends:
     get:
       tags:
@@ -1047,6 +1115,8 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/EncodedHash"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
   /sync-status:
     get:
       tags:
@@ -1067,6 +1137,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
   /transactions:
     post:
       tags:
@@ -1096,6 +1168,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
   "/transactions/{hash}":
     get:
       tags:
@@ -1125,6 +1199,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
   "/transactions/{hash}/info":
     get:
       tags:
@@ -1159,6 +1235,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
   ###
   ## Internal endpoints
   ###
@@ -1183,6 +1261,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
   /debug/accounts/node:
     get:
       tags:
@@ -1206,6 +1286,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
   /debug/channels/close/mutual:
     post:
       tags:
@@ -1235,6 +1317,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
   /debug/channels/close/solo:
     post:
       tags:
@@ -1264,6 +1348,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
   /debug/channels/create:
     post:
       tags:
@@ -1299,6 +1385,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
   /debug/channels/deposit:
     post:
       tags:
@@ -1328,6 +1416,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
   /debug/channels/fsm-count:
     get:
       tags:
@@ -1343,6 +1433,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/CountResponse"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
   /debug/channels/set-delegates:
     post:
       tags:
@@ -1372,6 +1464,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
   /debug/channels/settle:
     post:
       tags:
@@ -1401,6 +1495,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
   /debug/channels/slash:
     post:
       tags:
@@ -1430,6 +1526,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
   /debug/channels/snapshot/solo:
     post:
       tags:
@@ -1459,6 +1557,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
   /debug/channels/withdraw:
     post:
       tags:
@@ -1488,6 +1588,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
   /debug/check-tx/pool/{hash}:
     get:
       tags:
@@ -1511,6 +1613,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
   /debug/contracts/call:
     post:
       tags:
@@ -1546,6 +1650,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
   /debug/contracts/create:
     post:
       tags:
@@ -1581,6 +1687,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
   "/debug/crash":
     get:
       tags:
@@ -1603,6 +1711,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
   /debug/names/claim:
     post:
       tags:
@@ -1638,6 +1748,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
   /debug/names/commitment-id:
     get:
       tags:
@@ -1674,6 +1786,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
   /debug/names/preclaim:
     post:
       tags:
@@ -1709,6 +1823,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
   /debug/names/revoke:
     post:
       tags:
@@ -1744,6 +1860,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
   /debug/names/transfer:
     post:
       tags:
@@ -1779,6 +1897,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
   /debug/names/update:
     post:
       tags:
@@ -1814,6 +1934,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
   /debug/network:
     get:
       tags:
@@ -1837,6 +1959,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
   /debug/oracles/extend:
     post:
       tags:
@@ -1872,6 +1996,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
   /debug/oracles/query:
     post:
       tags:
@@ -1907,6 +2033,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
   /debug/oracles/register:
     post:
       tags:
@@ -1942,6 +2070,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
   /debug/oracles/respond:
     post:
       tags:
@@ -1977,6 +2107,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
   /debug/peers:
     get:
       tags:
@@ -2000,6 +2132,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
   "/debug/token-supply/height/{height}":
     get:
       tags:
@@ -2029,6 +2163,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
   /debug/transactions/dry-run:
     post:
       tags:
@@ -2064,6 +2200,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
   /debug/transactions/paying-for:
     post:
       tags:
@@ -2100,6 +2238,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
   /debug/transactions/pending:
     get:
       tags:
@@ -2117,6 +2257,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SignedTxs"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
   /debug/transactions/spend:
     post:
       tags:
@@ -2153,6 +2295,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
   /key-blocks:
     post:
       tags:
@@ -2176,6 +2320,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
   "/node/operator/mempool/hash/{hash}":
     delete:
       tags:
@@ -2207,6 +2353,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
   "/node/operator/peers/count":
     get:
       tags:
@@ -2223,6 +2371,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PeerCount"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
 components:
   schemas:
     Account:
@@ -4088,3 +4238,22 @@ components:
       schema:
         type: string
         example: "th_2w75xjDjHEmphsHDSXrThRnPx6hSUiS7hhSRcuytJABZZ2KkdG"
+  responses:
+    ServiceUnavailable:
+      description: >-
+        The node is temporarily unable to handle the request: either its request
+        queues are saturated (overload protection) or it has not yet reached a
+        stable mode. Overload protection is applied to every endpoint, so this
+        response can be returned by any operation. The Retry-After header tells
+        the client how long to back off before retrying.
+      headers:
+        Retry-After:
+          description: Number of seconds to wait before retrying the request
+          schema:
+            type: integer
+            minimum: 0
+            example: 3
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"

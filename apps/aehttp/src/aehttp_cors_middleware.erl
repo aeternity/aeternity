@@ -15,6 +15,9 @@
 -define(ACCESS_CONTROL_ALLOW_METHODS     , <<"DELETE, GET, HEAD, OPTIONS, PATCH, POST, PUT">>).
 -define(ACCESS_CONTROL_MAX_AGE           , 30 * 60). %% 30 minutes
 -define(ACCESS_CONTROL_ALLOW_CREDENTIALS , <<"true">>).
+%% Retry-After is not a CORS-safelisted response header, so browser clients
+%% cannot read the back-off hint sent with a 503 unless it is exposed here.
+-define(ACCESS_CONTROL_EXPOSE_HEADERS    , <<"retry-after">>).
 
 %%%===================================================================
 %%% Behaviour API
@@ -72,6 +75,7 @@ cors_headers(Req, Origin) ->
          {<<"access-control-allow-origin">>      , Origin},
          {<<"access-control-allow-methods">>     , AllowMethods},
          {<<"access-control-allow-credentials">> , ?ACCESS_CONTROL_ALLOW_CREDENTIALS},
+         {<<"access-control-expose-headers">>    , ?ACCESS_CONTROL_EXPOSE_HEADERS},
          {<<"access-control-max-age">>           , integer_to_list(MaxAge)}],
     case cowboy_req:header(<<"access-control-request-headers">>, Req) of
         undefined ->
