@@ -21,8 +21,12 @@
 %%%===================================================================
 
 -spec execute(cowboy_req:req(), cowboy_middleware:env()) -> {ok, cowboy_req:req(), cowboy_middleware:env()}.
-execute(Req, Env) ->
-    Req2 = set_cors_headers(Req),
+execute(Req0, Env) ->
+    %% Stamped here, ahead of routing, so it is on every response this
+    %% listener sends - including the OPTIONS preflight reply below, which
+    %% never reaches the route handler. See GH-4186.
+    Req1 = aehttp_state_version:set_resp_header(Req0),
+    Req2 = set_cors_headers(Req1),
     case cowboy_req:method(Req2) of
         <<"OPTIONS">> -> {stop, cowboy_req:reply(200, Req2)};
         _             -> {ok, Req2, Env}
@@ -65,13 +69,14 @@ set_cors_headers(Req, Origin) ->
 
 cors_headers(Req, Origin) ->
     CorsConfig   = aeu_env:user_config([<<"http">>, <<"cors">>], #{}),
-    AllowMethods = concat_methods(maps:get(<<"allow_methods">> , CorsConfig, ?ACCESS_CONTROL_ALLOW_METHODS)),
+    AllowMethods = concat_values(maps:get(<<"allow_methods">> , CorsConfig, ?ACCESS_CONTROL_ALLOW_METHODS)),
     MaxAge       = maps:get(<<"max_age">>       , CorsConfig, ?ACCESS_CONTROL_MAX_AGE),
     CorsHeaders =
         [{<<"vary">>                             , <<"origin">>},
          {<<"access-control-allow-origin">>      , Origin},
          {<<"access-control-allow-methods">>     , AllowMethods},
          {<<"access-control-allow-credentials">> , ?ACCESS_CONTROL_ALLOW_CREDENTIALS},
+         {<<"access-control-expose-headers">>    , concat_values(exposed_headers())},
          {<<"access-control-max-age">>           , integer_to_list(MaxAge)}],
     case cowboy_req:header(<<"access-control-request-headers">>, Req) of
         undefined ->
@@ -81,11 +86,16 @@ cors_headers(Req, Origin) ->
             [{<<"access-control-allow-headers">>, AllowHeaders} | CorsHeaders]
     end.
 
-concat_methods(Methods) when is_binary(Methods) -> Methods;
-concat_methods(Methods) when is_list(Methods) ->
-    [Method | T] = Methods,
-    concat_methods(Method, T).
+%% Non-safelisted response headers the node emits and browser clients are
+%% expected to read.
+exposed_headers() ->
+    [aehttp_state_version:header_name()].
 
-concat_methods(Accum, []) -> Accum;
-concat_methods(Accum, [Method | T]) ->
-    concat_methods(<<Accum/binary, ", ", Method/binary>>, T).
+concat_values(Values) when is_binary(Values) -> Values;
+concat_values(Values) when is_list(Values) ->
+    [Value | T] = Values,
+    concat_values(Value, T).
+
+concat_values(Accum, []) -> Accum;
+concat_values(Accum, [Value | T]) ->
+    concat_values(<<Accum/binary, ", ", Value/binary>>, T).
