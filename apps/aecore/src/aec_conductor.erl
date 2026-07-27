@@ -1391,7 +1391,7 @@ handle_add_block(Block, Hash, Prev, #state{top_block_hash = TopBlockHash} = Stat
     %% Block validation is performed in the caller's context for
     %% external (gossip/sync) blocks and we trust the ones we
     %% produce ourselves.
-    case aec_chain_state:insert_block_conductor(Block, Origin) of
+    case aec_chain_state:insert_block_conductor(Block, Hash, Origin) of
         {ok, TopChanged, PrevKeyHeader, Events} = OkResult  ->
             lager:debug("insert_block ~p -> ~p", [aec_blocks:to_header(Block), OkResult]),
             handle_successfully_added_block(Block, Hash, TopChanged, PrevKeyHeader, Events, State, Origin);

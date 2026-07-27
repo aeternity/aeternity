@@ -514,7 +514,8 @@ accept_existing_db_node_test_() ->
              ok = mnesia:delete_schema([node()])
      end,
      [
-      {"Accept existing DB node even if is is already present", fun accept_existing_db_node/0}
+      {"Accept existing DB node even if is is already present", fun accept_existing_db_node/0},
+      {"wrap_block/2 trusts a matching hash and rejects a mismatched one", fun wrap_block_hash_consistency/0}
      ]}.
 
 accept_existing_db_node() ->
@@ -526,4 +527,17 @@ accept_existing_db_node() ->
     {ok, _} = ?TEST_MODULE:insert_block(B3),
     ?TEST_MODULE:internal_insert_transaction(Node, B3, undefined, Ctx),
 
+    ok.
+
+%% wrap_block/2 lets a caller (the conductor) thread in an already-computed
+%% header hash instead of recomputing it. Verify the fast path agrees with
+%% wrap_block/1 for a correct hash, and that a mismatched hash is caught rather
+%% than silently indexing the block under the wrong key.
+wrap_block_hash_consistency() ->
+    [B | _] = prep_micro_blocks(1),
+    {ok, Hash} = aec_headers:hash_header(aec_blocks:to_header(B)),
+    ?assertEqual(?TEST_MODULE:wrap_block(B), ?TEST_MODULE:wrap_block(B, Hash)),
+    <<First, Rest/binary>> = Hash,
+    WrongHash = <<(First bxor 1), Rest/binary>>,
+    ?assertError({badmatch, {ok, Hash}}, ?TEST_MODULE:wrap_block(B, WrongHash)),
     ok.

@@ -73,9 +73,9 @@ handle_request(OperationID, Req, Context) ->
           end)
     catch
         error:{rejected, _} ->
-            {503, [], #{reason => <<"Temporary overload">>}};
+            aehttp_helpers:service_unavailable(overload);
         error:timeout ->
-            {503, [], #{reason => <<"Not yet started">>}};
+            aehttp_helpers:service_unavailable(not_stable);
         Class:Reason:Stacktrace ->
             lager:error("CRASH ~p ~p, ~p", [Class, Reason, Stacktrace]),
             {500, [], #{reason => <<"Internal server error">>}}

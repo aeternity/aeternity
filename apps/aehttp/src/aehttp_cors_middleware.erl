@@ -87,9 +87,10 @@ cors_headers(Req, Origin) ->
     end.
 
 %% Non-safelisted response headers the node emits and browser clients are
-%% expected to read.
+%% expected to read: the chain-state height marker (GH-4186) and the 503
+%% Retry-After back-off hint.
 exposed_headers() ->
-    [aehttp_state_version:header_name()].
+    [<<"retry-after">>, aehttp_state_version:header_name()].
 
 concat_values(Values) when is_binary(Values) -> Values;
 concat_values(Values) when is_list(Values) ->
