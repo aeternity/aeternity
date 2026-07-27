@@ -22,18 +22,37 @@
 %%%=============================================================================
 -module(aehttp_state_version).
 
--export([ header_name/0
+-behaviour(gen_server).
+
+%% API
+-export([ start_link/0
+        , header_name/0
         , set_resp_header/1
         , top_height/0
+        ]).
+
+%% gen_server callbacks
+-export([ init/1
+        , handle_call/3
+        , handle_cast/2
+        , handle_info/2
+        , terminate/2
+        , code_change/3
         ]).
 
 %% Not RFC 6648 clean, but the name agreed on in GH-4186 and the one SDKs look
 %% for. Cowboy expects response header names lowercased.
 -define(HEIGHT_HEADER, <<"x-ae-height">>).
+-define(SERVER, ?MODULE).
+-define(TAB, ?MODULE).
+-define(HEIGHT_KEY, height).
 
 %%%===================================================================
 %%% API
 %%%===================================================================
+
+start_link() ->
+    gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
 -spec header_name() -> binary().
 header_name() ->
@@ -54,22 +73,74 @@ set_resp_header(Req) ->
                                        integer_to_binary(Height), Req)
     end.
 
-%% @doc Height of the node's chain top, or undefined if it is not readable.
+%% @doc Height of the node's chain top, or undefined if it is not known yet.
 %%
-%% Deliberately a dirty read - it runs once per request and must not start a
-%% transaction. Micro block headers carry the height of their generation, so
-%% this is the current generation height regardless of the top block type.
+%% Hot path: a single ETS read of the value this server caches from
+%% `top_changed' events, so the per-request cost is O(1) with no dirty chain
+%% read or header decode. Falls back to a one-off dirty read while the cache is
+%% not populated (startup, or the maintainer process restarting). Micro block
+%% headers carry the height of their generation, so this is the current
+%% generation height regardless of the top block type.
 -spec top_height() -> undefined | aec_blocks:height().
 top_height() ->
+    try ets:lookup(?TAB, ?HEIGHT_KEY) of
+        [{?HEIGHT_KEY, Height}] -> Height;
+        []                      -> dirty_top_height()
+    catch
+        %% Table not created yet (this server not started). Fall back so the
+        %% marker still works even if the cache is unavailable.
+        error:badarg -> dirty_top_height()
+    end.
+
+%%%===================================================================
+%%% gen_server callbacks
+%%%===================================================================
+
+init([]) ->
+    _ = ets:new(?TAB, [named_table, public, {read_concurrency, true}]),
+    %% aec_events:subscribe/1 returns `true', not `ok'.
+    true = aec_events:subscribe(top_changed),
+    %% Seed from the current top so the header is populated before the first
+    %% `top_changed' after start, rather than falling back on every early request.
+    case dirty_top_height() of
+        undefined -> ok;
+        Height    -> ets:insert(?TAB, {?HEIGHT_KEY, Height})
+    end,
+    {ok, #{}}.
+
+handle_call(_Req, _From, State) ->
+    {reply, ignored, State}.
+
+handle_cast(_Msg, State) ->
+    {noreply, State}.
+
+%% One generation resolution: every top change (key or micro) carries the
+%% generation height, so caching it here keeps the marker a cheap ETS read.
+handle_info({gproc_ps_event, top_changed, #{info := #{height := Height}}}, State) ->
+    true = ets:insert(?TAB, {?HEIGHT_KEY, Height}),
+    {noreply, State};
+handle_info(_Msg, State) ->
+    {noreply, State}.
+
+terminate(_Reason, _State) ->
+    ok.
+
+code_change(_OldVsn, State, _Extra) ->
+    {ok, State}.
+
+%%%===================================================================
+%%% Internal
+%%%===================================================================
+
+%% Dirty read of the chain top height; returns undefined if the chain tables
+%% are not readable (e.g. during startup) or aec_chain errors.
+-spec dirty_top_height() -> undefined | aec_blocks:height().
+dirty_top_height() ->
     try aec_chain:dirty_top_header() of
         undefined -> undefined;
         Header    -> aec_headers:height(Header)
     catch
         Class:Reason ->
-            %% Expected during the startup window before chain tables are
-            %% readable; logged at debug so an unrelated regression in
-            %% aec_chain is still discoverable instead of silently reading
-            %% as "unknown" on every request.
             lager:debug("Chain top not readable for X-Ae-Height: ~p:~p", [Class, Reason]),
             undefined
     end.
