@@ -63,7 +63,7 @@ defaults(Config) ->
     Headers = headers(Origin),
     "origin" = proplists:get_value("vary", Headers),
     "true" = proplists:get_value("access-control-allow-credentials", Headers),
-    "retry-after" = proplists:get_value("access-control-expose-headers", Headers),
+    "retry-after, x-ae-height" = proplists:get_value("access-control-expose-headers", Headers),
     "DELETE, GET, HEAD, OPTIONS, PATCH, POST, PUT" = proplists:get_value("access-control-allow-methods", Headers),
     "1800" = proplists:get_value("access-control-max-age", Headers),
     Origin = proplists:get_value("access-control-allow-origin", Headers),
@@ -81,7 +81,7 @@ set_allow_domains(Config) ->
     Headers = headers(Origin1),
     "origin" = proplists:get_value("vary", Headers),
     "true" = proplists:get_value("access-control-allow-credentials", Headers),
-    "retry-after" = proplists:get_value("access-control-expose-headers", Headers),
+    "retry-after, x-ae-height" = proplists:get_value("access-control-expose-headers", Headers),
     "DELETE, GET, HEAD, OPTIONS, PATCH, POST, PUT" = proplists:get_value("access-control-allow-methods", Headers),
     "1800" = proplists:get_value("access-control-max-age", Headers),
     Origin1 = proplists:get_value("access-control-allow-origin", Headers),
@@ -99,7 +99,7 @@ set_allow_any_domain(Config) ->
     Headers = headers(Origin),
     "origin" = proplists:get_value("vary", Headers),
     "true" = proplists:get_value("access-control-allow-credentials", Headers),
-    "retry-after" = proplists:get_value("access-control-expose-headers", Headers),
+    "retry-after, x-ae-height" = proplists:get_value("access-control-expose-headers", Headers),
     "DELETE, GET, HEAD, OPTIONS, PATCH, POST, PUT" = proplists:get_value("access-control-allow-methods", Headers),
     "1800" = proplists:get_value("access-control-max-age", Headers),
     Origin = proplists:get_value("access-control-allow-origin", Headers),
@@ -117,7 +117,7 @@ set_allow_methods(Config) ->
     Headers = headers(Origin),
     "origin" = proplists:get_value("vary", Headers),
     "true" = proplists:get_value("access-control-allow-credentials", Headers),
-    "retry-after" = proplists:get_value("access-control-expose-headers", Headers),
+    "retry-after, x-ae-height" = proplists:get_value("access-control-expose-headers", Headers),
     "GET, POST" = proplists:get_value("access-control-allow-methods", Headers),
     "1800" = proplists:get_value("access-control-max-age", Headers),
     Origin = proplists:get_value("access-control-allow-origin", Headers),
@@ -137,7 +137,7 @@ set_max_age(Config) ->
     Headers = headers(Origin),
     "origin" = proplists:get_value("vary", Headers),
     "true" = proplists:get_value("access-control-allow-credentials", Headers),
-    "retry-after" = proplists:get_value("access-control-expose-headers", Headers),
+    "retry-after, x-ae-height" = proplists:get_value("access-control-expose-headers", Headers),
     "DELETE, GET, HEAD, OPTIONS, PATCH, POST, PUT" = proplists:get_value("access-control-allow-methods", Headers),
     "1234" = proplists:get_value("access-control-max-age", Headers),
     Origin = proplists:get_value("access-control-allow-origin", Headers),
@@ -179,6 +179,13 @@ headers_(ReqH) ->
     %% crash
     {ok, {{_, 500, _}, Headers3, _}} =
         aecore_suite_utils:httpc_request(get, {InternalHost ++ "/v3/debug/crash", ReqH}, [], []),
+    %% Not a CORS header, but it must be on every response - see GH-4186
+    lists:foreach(fun(Hs) ->
+                          case proplists:get_value("x-ae-height", Hs) of
+                              undefined -> ct:fail("missing x-ae-height header");
+                              _         -> ok
+                          end
+                  end, [Headers, Headers1, Headers2, Headers3]),
     H  = trim_not_common_headers(Headers),
     H1 = trim_not_common_headers(Headers1),
     H2 = trim_not_common_headers(Headers2),
@@ -195,6 +202,7 @@ assert_no_headers_if_no_origin() ->
     undefined = proplists:get_value("access-control-expose-headers", Headers0),
     undefined = proplists:get_value("access-control-allow-methods", Headers0),
     undefined = proplists:get_value("access-control-max-age", Headers0),
+    undefined = proplists:get_value("access-control-expose-headers", Headers0),
     undefined = proplists:get_value("access-control-allow-origin", Headers0),
     ok.
 
@@ -206,10 +214,13 @@ assert_no_headers_if_unauthorised_origin() ->
     undefined = proplists:get_value("access-control-expose-headers", Headers1),
     undefined = proplists:get_value("access-control-allow-methods", Headers1),
     undefined = proplists:get_value("access-control-max-age", Headers1),
+    undefined = proplists:get_value("access-control-expose-headers", Headers1),
     undefined = proplists:get_value("access-control-allow-origin", Headers1),
     ok.
 
 trim_not_common_headers(Headers) ->
     lists:foldl(fun proplists:delete/2,
                 Headers,
-                ["date", "content-length", "content-type"]).
+                %% x-ae-height is common to all responses, but its value moves
+                %% with the chain, so it cannot be compared across requests
+                ["date", "content-length", "content-type", "x-ae-height"]).

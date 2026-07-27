@@ -42,6 +42,9 @@ init(Req, {SpecVsn, OperationId, AllowedMethod, LogicHandler, Context}) ->
         endpoints = Mod,
         context = Context
     },
+    %% The X-Ae-Height marker (GH-4186) is stamped earlier, in
+    %% aehttp_cors_middleware:execute/2, so it is also present on CORS
+    %% preflight replies that never reach this handler.
     {cowboy_rest, Req, State}.
 
 

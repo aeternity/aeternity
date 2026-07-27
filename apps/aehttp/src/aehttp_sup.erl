@@ -28,7 +28,16 @@ start_link() ->
 
 %% Child :: {Id,StartFunc,Restart,Shutdown,Type,Modules}
 init([]) ->
-    {ok, { {one_for_one, 5, 10}, []} }.
+    %% Maintains the cached chain-state height for the X-Ae-Height response
+    %% header (GH-4186), updated from `top_changed' events so the header is a
+    %% cheap ETS read on the request hot path.
+    StateVersion = #{ id       => aehttp_state_version
+                    , start    => {aehttp_state_version, start_link, []}
+                    , restart  => permanent
+                    , shutdown => 5000
+                    , type     => worker
+                    , modules  => [aehttp_state_version] },
+    {ok, { {one_for_one, 5, 10}, [StateVersion]} }.
 
 %%====================================================================
 %% Internal functions
