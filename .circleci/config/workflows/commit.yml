@@ -6,7 +6,7 @@ jobs:
       context: ae-slack
       matrix:
         parameters:
-          otp: ["otp24", "otp25", "otp26"]
+          otp: ["otp26"]
       filters:
         branches:
           ignore:
@@ -25,7 +25,7 @@ jobs:
       context: ae-slack
       matrix:
         parameters:
-          otp: ["otp24", "otp25", "otp26"]
+          otp: ["otp26"]
           target:
             - "ct-roma"
             - "ct-minerva"
@@ -37,26 +37,6 @@ jobs:
             - "ct-latest-no-aci"
             - "ct-mnesia-rocksdb"
             - "ct-mnesia-mrdb"
-        exclude:
-          - {otp: "otp24", target: "ct-roma"}
-          - {otp: "otp24", target: "ct-minerva"}
-          - {otp: "otp24", target: "ct-fortuna"}
-          - {otp: "otp24", target: "ct-lima"}
-          - {otp: "otp24", target: "ct-iris"}
-          - {otp: "otp24", target: "ct-ceres"}
-          - {otp: "otp24", target: "ct-latest-no-aci"}
-          - {otp: "otp24", target: "ct-mnesia-rocksdb"}
-          - {otp: "otp24", target: "ct-mnesia-mrdb"}
-
-          - {otp: "otp25", target: "ct-roma"}
-          - {otp: "otp25", target: "ct-minerva"}
-          - {otp: "otp25", target: "ct-fortuna"}
-          - {otp: "otp25", target: "ct-lima"}
-          - {otp: "otp25", target: "ct-iris"}
-          - {otp: "otp25", target: "ct-ceres"}
-          - {otp: "otp25", target: "ct-latest-no-aci"}
-          - {otp: "otp25", target: "ct-mnesia-rocksdb"}
-          - {otp: "otp25", target: "ct-mnesia-mrdb"}
       requires:
         - build-<< matrix.otp >>
       filters:
@@ -103,7 +83,7 @@ jobs:
       context: ae-slack
       matrix:
         parameters:
-          otp: ["otp24", "otp25", "otp26"]
+          otp: ["otp26"]
       requires:
         - build-<< matrix.otp >>
       filters:
