@@ -1,6 +1,22 @@
 openapi: 3.0.0
 info:
-  description: This is the [Aeternity](https://www.aeternity.com/) node API.
+  description: |
+    This is the [Aeternity](https://www.aeternity.com/) node API.
+
+    ### State version
+
+    Every response carries an `X-Ae-Height` header with the height of the node's
+    chain top at the moment the request was accepted. The response body reflects
+    a chain state at or after that height, so the value is a lower bound and may
+    be compared across nodes: a client querying a pool of nodes behind a load
+    balancer can discard an answer from a node that is behind a state it has
+    already observed, instead of retrying blindly. The header is also present on
+    error responses, so a `404` for a not-yet-mined transaction tells the client
+    how far the answering node actually is.
+
+    Resolution is one generation - micro blocks applied within the current
+    generation do not change the value, which keeps it cache friendly. The
+    header is omitted while the node's chain is not readable yet.
   version: x.y.z
   title: Aeternity node
   termsOfService: https://www.aeternity.com/terms/
