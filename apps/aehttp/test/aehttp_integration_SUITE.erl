@@ -130,7 +130,8 @@
 
 -export(
    [
-    get_status/1
+    get_status/1,
+    state_version_header/1
    ]).
 
 %% test case exports
@@ -420,7 +421,8 @@ groups() ->
      %% /status/*
      {status_endpoints, [],
       [
-       get_status
+       get_status,
+       state_version_header
       ]},
 
      {external_endpoints, [sequence],
@@ -1910,6 +1912,29 @@ get_status(_Config) ->
                       ?assertMatch(X when is_binary(X), maps:get(<<"version">>, P)),
                       ?assertMatch(X when is_binary(X), maps:get(<<"effective_at_height">>, P))
                   end, ProtocolsStr),
+    ok.
+
+%% GH-4186: every response advertises the chain state it was computed from, so
+%% that a client querying a pool of nodes can recognise a lagging one.
+state_version_header(_Config) ->
+    Host = external_address(),
+    Before = rpc(aec_chain, top_height, []),
+    {ok, {{_, 200, _}, OkHeaders, _}} =
+        httpc_request(get, {Host ++ "/v3/status", []}, [], []),
+    %% also on errors - a 404 for a not yet mined entry has to say how far the
+    %% answering node actually is, otherwise the client can only retry blindly
+    {ok, {{_, 404, _}, ErrHeaders, _}} =
+        httpc_request(get, {Host ++ "/v3/names/nonExistentName.chain", []}, [], []),
+    After = rpc(aec_chain, top_height, []),
+    lists:foreach(
+      fun(Headers) ->
+              Value = proplists:get_value("x-ae-height", Headers),
+              ?assertMatch(V when is_list(V), Value),
+              Height = list_to_integer(Value),
+              %% the marker is taken before the body is computed, so it never
+              %% runs ahead of the state the body reflects
+              ?assert(Height >= Before andalso Height =< After)
+      end, [OkHeaders, ErrHeaders]),
     ok.
 
 get_status_sut() ->
