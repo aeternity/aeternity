@@ -105,8 +105,19 @@ js-sdk-smoke-test:
     - run:
         name: Install OS Deps
         command: |
-          curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-          sudo apt-get update && sudo apt-get install -y nodejs libsodium23 libtinfo5 libssl1.0
+          sudo apt-get update && sudo apt-get install -y libsodium23 libtinfo5 libssl1.0 xz-utils
+          # NodeSource's setup_20.x script depends on a live curl+GPG-key fetch
+          # from NodeSource's own server, which failed with a 403 and (worse)
+          # let the script exit 0 anyway - apt then silently fell back to
+          # focal's bundled nodejs 10.19, which doesn't ship npm at all.
+          # Fetch the official upstream Node 20 (matching the node:20-buster-slim
+          # tag already used by docker-js-sdk-smoke-test) tarball directly instead,
+          # removing that external repo/GPG dependency entirely.
+          curl -fsSL -o node.tar.xz https://nodejs.org/dist/v20.11.1/node-v20.11.1-linux-x64.tar.xz
+          sudo tar -xJf node.tar.xz -C /usr/local --strip-components=1
+          rm node.tar.xz
+          node --version
+          npm --version
     - attach_workspace:
         at: << pipeline.parameters.packages_workspace >>
     - run:
