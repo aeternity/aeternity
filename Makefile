@@ -268,7 +268,7 @@ eunit-latest: eunit-$(LATEST_PROTOCOL)
 all-tests: eunit-$(LATEST_PROTOCOL) ct-$(LATEST_PROTOCOL)
 
 docker: dockerignore-check
-	@docker pull aeternity/builder:focal-otp24
+	@docker pull aeternity/builder:focal-otp26
 	@docker build -t aeternity/aeternity:local .
 
 dockerignore-check: | .gitignore .dockerignore
@@ -302,7 +302,6 @@ local-system-test: internal-build
 
 system-test-deps:
 	$(MAKE) system-smoke-test-deps
-	docker pull "aeternity/aeternity:v2.3.0"
 	docker pull "aeternity/aeternity:latest"
 
 system-test: KIND=system_test
