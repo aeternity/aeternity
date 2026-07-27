@@ -1073,14 +1073,23 @@ int_check_account(Tx, Source, Event) ->
     end.
 
 int_check_meta_gas(SignedTx) ->
+    int_check_meta_gas(SignedTx, undefined).
+
+int_check_meta_gas(SignedTx, MaxAuthFunGas0) ->
     Aetx = aetx_sign:tx(SignedTx),
     {Mod, Tx} = aetx:specialize_callback(Aetx),
     case Mod of
         aega_meta_tx ->
+            %% Read the config lazily, only when a meta tx is seen, and
+            %% reuse the value for the nested meta txs.
+            MaxAuthFunGas = case MaxAuthFunGas0 of
+                                undefined -> aec_tx_pool:maximum_auth_fun_gas();
+                                _ -> MaxAuthFunGas0
+                            end,
             Gas = aega_meta_tx:gas(Tx),
-            case Gas =< aec_tx_pool:maximum_auth_fun_gas() of
+            case Gas =< MaxAuthFunGas of
                 true ->
-                    int_check_meta_gas(aega_meta_tx:tx(Tx));
+                    int_check_meta_gas(aega_meta_tx:tx(Tx), MaxAuthFunGas);
                 false -> {error, too_much_gas_for_auth_function}
             end;
         _ -> ok
