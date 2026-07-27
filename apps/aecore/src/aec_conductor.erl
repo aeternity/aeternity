@@ -1626,7 +1626,7 @@ handle_add_block(Block, Hash, Prev, #state{top_block_hash = TopBlockHash, consen
     %% external (gossip/sync) blocks and we trust the ones we
     %% produce ourselves.
     ConsensusModule = Consensus#consensus.consensus_module,
-    case aec_chain_state:insert_block_conductor(Block, Origin) of
+    case aec_chain_state:insert_block_conductor(Block, Hash, Origin) of
         {ok, TopChanged, PrevKeyHeader, Events} = OkResult  ->
             case ConsensusModule of
                 aec_consensus_hc ->
