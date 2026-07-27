@@ -26,8 +26,9 @@
         { %% Tuple of arity 1 where the single element is the mempool key tuple.
          ?KEY(NegFee, NegGasPrice, Origin, Nonce, TxHash)
         }).
--define(KEY_NONCE_PATTERN(Sender), {?KEY('_', '_', Sender, '$1', '_'), '_'}).
 -define(DEFAULT_PUSH_TIMEOUT, 5000).
+%% Number of nonce index entries fetched per ets:select/3 chunk.
+-define(NONCE_IDX_CHUNK, 100).
 
 %% API
 -export([ start_link/0
@@ -257,7 +258,7 @@ peek_visited() ->
 
 peek_nonces() ->
     #dbs{nonce_db = NDb} = dbs(),
-    [N || {N} <- ets:tab2list(NDb)].
+    [N || {N, _} <- ets:tab2list(NDb)].
 -endif.
 
 await_tx_pool() ->
@@ -402,8 +403,8 @@ init([]) ->
 handle_call(Req, From, St) ->
     ?TC(handle_call_(Req, From, St), Req).
 
-handle_call_({get_max_nonce, Sender}, _From, #state{dbs = #dbs{db = Db}} = State) ->
-    {reply, int_get_max_nonce(Db, Sender), State};
+handle_call_({get_max_nonce, Sender}, _From, #state{dbs = #dbs{nonce_db = NDb}} = State) ->
+    {reply, int_get_max_nonce(NDb, Sender), State};
 handle_call_({push, Tx, Hash, Event}, _From, State) ->
     {Res, State1} = do_pool_db_put(pool_db_key(Tx, Hash), Tx, Hash, Event, State),
     {reply, Res, State1};
@@ -780,12 +781,18 @@ pool_db_peek(_, 0, _, _) -> [];
 pool_db_peek(#dbs{db = Db, visited_db = VDb}, Max, all, _MaxNonce) ->
     Pat = [{ '_', [], ['$_'] }],
     pool_db_peek_(VDb, Db, Pat, Max);
-pool_db_peek(#dbs{db = Db, visited_db = VDb}, Max, Account, all) ->
-    Pat = [{ {?KEY('_', '_', Account, '_', '_'), '_'}, [], ['$_'] }],
-    pool_db_peek_(VDb, Db, Pat, Max);
-pool_db_peek(#dbs{db = Db, visited_db = VDb}, Max, Account, MaxNonce) ->
-    Pat = [{ {?KEY('_', '_', Account, '$1', '_'), '_'}, [ {'=<', '$1' , MaxNonce} ], ['$_'] }],
-    pool_db_peek_(VDb, Db, Pat, Max).
+pool_db_peek(#dbs{db = Db, visited_db = VDb, nonce_db = NDb}, Max, Account, MaxNonce) ->
+    %% The mempool tables are ordered by fee, so matching them on the origin
+    %% leaves the leading key positions unbound and scans the whole pool.
+    %% The nonce index is ordered by account, so binding the account as key
+    %% prefix limits the traversal to that account's range.
+    Guard = case MaxNonce of
+                all -> [];
+                _   -> [{'=<', '$1', MaxNonce}]
+            end,
+    Pat = [{ {{Account, '$1', '$2'}, {'$3', '$4'}}, Guard,
+             [?KEY_AS_MATCH_SPEC_RESULT('$3', '$4', Account, '$1', '$2')] }],
+    pool_db_peek_by_nonce(NDb, Db, VDb, Pat, Max).
 
 pool_db_peek_(VDb, Db, Pat, Max) ->
     case sel_return(ets_select(VDb, Pat, Max)) of
@@ -809,6 +816,60 @@ pool_db_merge([], L2, N) ->
     [Tx || {_, Tx} <- lists:sublist(L2, N)];
 pool_db_merge(L1, [], N) ->
     [Tx || {_, Tx} <- lists:sublist(L1, N)].
+
+%% Walk the nonce index for one account, resolving each entry to the tx it
+%% refers to. An index entry without a mempool entry has been garbage collected
+%% concurrently, so chunks are consumed until Max txs are found or the
+%% account's range is exhausted - not merely until Max entries are read.
+%% Results come out in nonce order rather than the fee order of peek/1.
+%% ets:select/3 is called directly rather than through ets_select/3, as the
+%% chunked walk needs a continuation even when Max is infinity.
+pool_db_peek_by_nonce(NDb, Db, VDb, Pat, Max) ->
+    pool_db_peek_by_nonce_(ets:select(NDb, Pat, nonce_idx_chunk(Max)),
+                           Db, VDb, Max, []).
+
+pool_db_peek_by_nonce_('$end_of_table', _Db, _VDb, _Remaining, Acc) ->
+    lists:reverse(Acc);
+pool_db_peek_by_nonce_({Keys, Cont}, Db, VDb, Remaining, Acc) ->
+    case pool_db_resolve_keys(Keys, Db, VDb, Remaining, Acc) of
+        {0, Acc1} ->
+            lists:reverse(Acc1);
+        {Remaining1, Acc1} ->
+            pool_db_peek_by_nonce_(ets:select(Cont), Db, VDb, Remaining1, Acc1)
+    end.
+
+nonce_idx_chunk(infinity)                  -> ?NONCE_IDX_CHUNK;
+nonce_idx_chunk(Max) when is_integer(Max)  -> min(Max, ?NONCE_IDX_CHUNK).
+
+pool_db_resolve_keys([], _Db, _VDb, Remaining, Acc) ->
+    {Remaining, Acc};
+pool_db_resolve_keys(_Keys, _Db, _VDb, 0, Acc) ->
+    {0, Acc};
+pool_db_resolve_keys([Key | Keys], Db, VDb, Remaining, Acc) ->
+    case pool_db_resolve_key(Db, VDb, Key) of
+        {ok, SignedTx} ->
+            pool_db_resolve_keys(Keys, Db, VDb, decr_remaining(Remaining),
+                                 [SignedTx | Acc]);
+        none ->
+            pool_db_resolve_keys(Keys, Db, VDb, Remaining, Acc)
+    end.
+
+%% A tx moving between the mempool and the visited mempool is inserted into the
+%% destination table before it is deleted from the source one, so a tx that is
+%% in neither has been deleted rather than moved.
+pool_db_resolve_key(Db, VDb, Key) ->
+    case ets:lookup(Db, Key) of
+        [{_, #tx{signed_tx = SignedTx}}] ->
+            {ok, SignedTx};
+        [] ->
+            case ets:lookup(VDb, Key) of
+                [{_, #tx{signed_tx = SignedTx}}] -> {ok, SignedTx};
+                []                               -> none
+            end
+    end.
+
+decr_remaining(infinity)                -> infinity;
+decr_remaining(N) when is_integer(N)    -> N - 1.
 
 
 %% If TxHash is not already in GC table insert it.
@@ -991,8 +1052,11 @@ pool_db_raw_put(#dbs{db = Db, nonce_db = NDb, gc_db = GCDb},
         end,
     enter_tx_gc(GCDb, TxHash, Key, GCHeight).
 
-insert_nonce(NDb, ?KEY(_, _, Account, Nonce, TxHash)) ->
-    ets:insert(NDb, {{Account, Nonce, TxHash}}).
+%% The value carries the part of the mempool key that cannot be derived from
+%% the index key, so that an index entry can be resolved to a mempool entry
+%% without going back to the tx itself.
+insert_nonce(NDb, ?KEY(NegFee, NegGasPrice, Account, Nonce, TxHash)) ->
+    ets:insert(NDb, {{Account, Nonce, TxHash}, {NegFee, NegGasPrice}}).
 
 delete_nonce(NDb, ?KEY(_, _, Account, Nonce, TxHash)) ->
     ets:delete(NDb, {Account, Nonce, TxHash}).
