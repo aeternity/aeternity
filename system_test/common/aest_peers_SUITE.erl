@@ -84,6 +84,18 @@ init_per_suite(Config) ->
       {node_shutdown_time, 20000} %% Time it may take to stop node cleanly
     | Config].
 
+init_per_testcase(test_old_peer_discovery, Config) ->
+    %% Pulls and boots an old (v6.9.0) release image alongside the branch
+    %% build - real network/Docker cost for coverage of the ping-version
+    %% negotiation downgrade path only (see aec_peer_connection_tests for
+    %% the equivalent unit-level coverage). Opt-in only, so it doesn't run
+    %% automatically in CI; set AE_SYSTEM_TEST_OLD_VERSION_COMPAT=1 to run it.
+    case os:getenv("AE_SYSTEM_TEST_OLD_VERSION_COMPAT") of
+        false ->
+            {skip, "old-version compat test - opt-in via AE_SYSTEM_TEST_OLD_VERSION_COMPAT=1 (pulls aeternity/aeternity:v6.9.0)"};
+        _ ->
+            aest_nodes:ct_setup(Config)
+    end;
 init_per_testcase(_TC, Config) ->
     aest_nodes:ct_setup(Config).
 

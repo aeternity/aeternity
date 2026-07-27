@@ -32,6 +32,25 @@ deserialize_tx_test_() ->
       end}
     ].
 
+%% Coverage for the ping-version negotiation that only ever takes a real
+%% "downgrade" branch when talking to an older peer (aest_peers_SUITE's
+%% test_old_peer_discovery is the only place that exercises this against a
+%% real historical binary; this covers the same policy without needing one).
+use_latest_common_ping_version_test_() ->
+    [{"Negotiates down to the only version an older peer advertises",
+      fun() ->
+              PingObj = #{versions => [#{protocol => <<"ping">>, vsns => [1]}]},
+              #{use_ping_vsn := Vsn} = ?TEST_MODULE:use_latest_common_ping_version(#{}, PingObj),
+              ?assertEqual(1, Vsn)
+      end},
+     {"Picks the latest version both sides support",
+      fun() ->
+              PingObj = #{versions => [#{protocol => <<"ping">>, vsns => [1, 2]}]},
+              #{use_ping_vsn := Vsn} = ?TEST_MODULE:use_latest_common_ping_version(#{}, PingObj),
+              ?assertEqual(2, Vsn)
+      end}
+    ].
+
 make_spend_tx(Sender) ->
     #{ public := OtherPubkey } = enacl:sign_keypair(),
     SenderId = aeser_id:create(account, Sender),

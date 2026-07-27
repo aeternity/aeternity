@@ -295,8 +295,6 @@ smoke-test-run: internal-build
 
 system-smoke-test-deps:
 	$(MAKE) docker
-	docker pull "aeternity/aeternity:v1.4.0"
-	docker pull "aeternity/aeternity:v6.9.0"
 
 local-system-test: KIND=system_test
 local-system-test: internal-build
@@ -305,13 +303,26 @@ local-system-test: internal-build
 system-test-deps:
 	$(MAKE) system-smoke-test-deps
 	docker pull "aeternity/aeternity:v2.3.0"
-	docker pull "aeternity/aeternity:v4.0.0"
-	docker pull "aeternity/aeternity:v4.2.0"
 	docker pull "aeternity/aeternity:latest"
 
 system-test: KIND=system_test
 system-test: internal-build
 	@$(REBAR) as $(KIND) do ct $(ST_CT_DIR) $(ST_CT_FLAGS) $(CT_TEST_FLAGS)
+
+# Old-version peer/sync compatibility tests (new_node_joins_network in
+# aest_sync_SUITE, test_old_peer_discovery in aest_peers_SUITE) pull historical
+# release images and are opt-in only (see AE_SYSTEM_TEST_OLD_VERSION_COMPAT in
+# the suites' init_per_testcase/2) - they do NOT run as part of smoke-test or
+# system-test. Run them manually with: make system-test-old-version-compat
+system-test-old-version-compat-deps:
+	$(MAKE) docker
+	docker pull "aeternity/aeternity:v1.4.0"
+	docker pull "aeternity/aeternity:v6.9.0"
+
+system-test-old-version-compat: KIND=system_test
+system-test-old-version-compat: system-test-old-version-compat-deps internal-build
+	@AE_SYSTEM_TEST_OLD_VERSION_COMPAT=1 $(REBAR) as $(KIND) do ct $(ST_CT_DIR) $(ST_CT_FLAGS) --suite=aest_sync_SUITE --case=new_node_joins_network
+	@AE_SYSTEM_TEST_OLD_VERSION_COMPAT=1 $(REBAR) as $(KIND) do ct $(ST_CT_DIR) $(ST_CT_FLAGS) --suite=aest_peers_SUITE --case=test_old_peer_discovery
 
 aevm-test: VERSION aevm-test-deps
 	@$(REBAR) eunit --application=aevm
@@ -496,6 +507,7 @@ test-arch-os-dependencies:
 	dialyzer \
 	docker docker-clean dockerignore-check \
 	test smoke-test smoke-test-run system-test aevm-test-deps \
+	system-test-old-version-compat system-test-old-version-compat-deps \
 	ct-% ct-latest ct-mnesia-% \
 	eunit-% eunit-latest \
 	system-smoke-test-deps system-test-deps \
