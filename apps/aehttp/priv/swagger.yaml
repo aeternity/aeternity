@@ -68,6 +68,8 @@ paths:
           description: 'Account not found'
           schema:
             $ref: '#/definitions/Error'
+        '503':
+          $ref: '#/responses/ServiceUnavailable'
   /accounts/{pubkey}/hash/{hash}:
     get:
       tags:
@@ -105,6 +107,8 @@ paths:
           description: 'Account not found or hash not available'
           schema:
             $ref: '#/definitions/Error'
+        '503':
+          $ref: '#/responses/ServiceUnavailable'
   /accounts/{pubkey}/height/{height}:
     get:
       tags:
@@ -143,6 +147,8 @@ paths:
           description: 'Account not found or height not available'
           schema:
             $ref: '#/definitions/Error'
+        '503':
+          $ref: '#/responses/ServiceUnavailable'
   /accounts/{pubkey}/next-nonce:
     get:
       tags:
@@ -181,6 +187,8 @@ paths:
           description: 'Account not found'
           schema:
             $ref: '#/definitions/Error'
+        '503':
+          $ref: '#/responses/ServiceUnavailable'
   /accounts/{pubkey}/transactions/pending:
     get:
       tags:
@@ -211,6 +219,8 @@ paths:
           description: 'Account not found'
           schema:
             $ref: '#/definitions/Error'
+        '503':
+          $ref: '#/responses/ServiceUnavailable'
   /auctions/{name}:
     get:
       tags:
@@ -239,6 +249,8 @@ paths:
           description: 'Name not found'
           schema:
             $ref: '#/definitions/Error'
+        '503':
+          $ref: '#/responses/ServiceUnavailable'
   /blocks/top:
     get:
       tags:
@@ -258,6 +270,8 @@ paths:
           description: 'Block not found'
           schema:
             $ref: '#/definitions/Error'
+        '503':
+          $ref: '#/responses/ServiceUnavailable'
   /channels/{pubkey}:
     get:
       tags:
@@ -288,6 +302,8 @@ paths:
           description: 'Channel not found'
           schema:
             $ref: '#/definitions/Error'
+        '503':
+          $ref: '#/responses/ServiceUnavailable'
   /contracts/{pubkey}:
     get:
       tags:
@@ -318,6 +334,8 @@ paths:
           description: 'Contract not found'
           schema:
             $ref: '#/definitions/Error'
+        '503':
+          $ref: '#/responses/ServiceUnavailable'
   /contracts/{pubkey}/code:
     get:
       tags:
@@ -348,6 +366,8 @@ paths:
           description: 'Contract not found'
           schema:
             $ref: '#/definitions/Error'
+        '503':
+          $ref: '#/responses/ServiceUnavailable'
   /contracts/{pubkey}/poi:
     get:
       tags:
@@ -378,6 +398,8 @@ paths:
           description: Contract not found
           schema:
             $ref: '#/definitions/Error'
+        '503':
+          $ref: '#/responses/ServiceUnavailable'
   /dry-run:
     post:
       tags:
@@ -409,6 +431,8 @@ paths:
           description: Over the gas limit
           schema:
             $ref: '#/definitions/Error'
+        '503':
+          $ref: '#/responses/ServiceUnavailable'
   /generations/current:
     get:
       tags:
@@ -428,6 +452,8 @@ paths:
           description: 'Generation not found'
           schema:
             $ref: '#/definitions/Error'
+        '503':
+          $ref: '#/responses/ServiceUnavailable'
   /generations/hash/{hash}:
     get:
       tags:
@@ -458,6 +484,8 @@ paths:
           description: 'Generation not found'
           schema:
             $ref: '#/definitions/Error'
+        '503':
+          $ref: '#/responses/ServiceUnavailable'
   /generations/height/{height}:
     get:
       tags:
@@ -485,6 +513,8 @@ paths:
           description: 'Generation not found'
           schema:
             $ref: '#/definitions/Error'
+        '503':
+          $ref: '#/responses/ServiceUnavailable'
   /key-blocks/current:
     get:
       tags:
@@ -504,6 +534,8 @@ paths:
           description: 'Block not found'
           schema:
             $ref: '#/definitions/Error'
+        '503':
+          $ref: '#/responses/ServiceUnavailable'
   /key-blocks/current/hash:
     get:
       tags:
@@ -526,6 +558,8 @@ paths:
           description: 'Block not found'
           schema:
             $ref: '#/definitions/Error'
+        '503':
+          $ref: '#/responses/ServiceUnavailable'
   /key-blocks/current/height:
     get:
       tags:
@@ -548,6 +582,8 @@ paths:
           description: 'Block not found'
           schema:
             $ref: '#/definitions/Error'
+        '503':
+          $ref: '#/responses/ServiceUnavailable'
   /key-blocks/hash/{hash}:
     get:
       tags:
@@ -578,6 +614,8 @@ paths:
           description: 'Block not found'
           schema:
             $ref: '#/definitions/Error'
+        '503':
+          $ref: '#/responses/ServiceUnavailable'
   /key-blocks/height/{height}:
     get:
       tags:
@@ -605,6 +643,8 @@ paths:
           description: 'Block not found'
           schema:
             $ref: '#/definitions/Error'
+        '503':
+          $ref: '#/responses/ServiceUnavailable'
   /key-blocks/pending:
     get:
       tags:
@@ -628,6 +668,8 @@ paths:
           description: 'Block not found'
           schema:
             $ref: '#/definitions/Error'
+        '503':
+          $ref: '#/responses/ServiceUnavailable'
   /micro-blocks/hash/{hash}/header:
     get:
       tags:
@@ -658,6 +700,8 @@ paths:
           description: 'Block not found'
           schema:
             $ref: '#/definitions/Error'
+        '503':
+          $ref: '#/responses/ServiceUnavailable'
   /micro-blocks/hash/{hash}/transactions:
     get:
       tags:
@@ -688,6 +732,8 @@ paths:
           description: 'Block not found'
           schema:
             $ref: '#/definitions/Error'
+        '503':
+          $ref: '#/responses/ServiceUnavailable'
   /micro-blocks/hash/{hash}/transactions/count:
     get:
       tags:
@@ -722,6 +768,8 @@ paths:
           description: 'Block not found'
           schema:
             $ref: '#/definitions/Error'
+        '503':
+          $ref: '#/responses/ServiceUnavailable'
   /micro-blocks/hash/{hash}/transactions/index/{index}:
     get:
       tags:
@@ -758,6 +806,8 @@ paths:
           description: 'Block not found'
           schema:
             $ref: '#/definitions/Error'
+        '503':
+          $ref: '#/responses/ServiceUnavailable'
   /names/{name}:
     get:
       tags:
@@ -786,6 +836,8 @@ paths:
           description: 'Name not found'
           schema:
             $ref: '#/definitions/Error'
+        '503':
+          $ref: '#/responses/ServiceUnavailable'
   /oracles/{pubkey}:
     get:
       tags:
@@ -816,6 +868,8 @@ paths:
           description: 'Oracle not found'
           schema:
             $ref: '#/definitions/Error'
+        '503':
+          $ref: '#/responses/ServiceUnavailable'
   /oracles/{pubkey}/queries:
     get:
       tags:
@@ -868,6 +922,8 @@ paths:
           description: 'Oracle not found'
           schema:
             $ref: '#/definitions/Error'
+        '503':
+          $ref: '#/responses/ServiceUnavailable'
   /oracles/{pubkey}/queries/{query-id}:
     get:
       tags:
@@ -905,6 +961,8 @@ paths:
           description: 'Oracle query not found'
           schema:
             $ref: '#/definitions/Error'
+        '503':
+          $ref: '#/responses/ServiceUnavailable'
   /peers/pubkey:
     get:
       tags:
@@ -920,6 +978,8 @@ paths:
           description: 'Successful operation'
           schema:
             $ref: '#/definitions/PeerPubKey'
+        '503':
+          $ref: '#/responses/ServiceUnavailable'
   /recent-gas-prices:
     get:
       tags:
@@ -939,6 +999,8 @@ paths:
           description: Not enough/Invalid data for statistics
           schema:
             $ref: '#/definitions/Error'
+        '503':
+          $ref: '#/responses/ServiceUnavailable'
   /status:
     get:
       tags:
@@ -954,6 +1016,8 @@ paths:
           description: 'Successful operation'
           schema:
             $ref: '#/definitions/Status'
+        '503':
+          $ref: '#/responses/ServiceUnavailable'
   /status/chain-ends:
     get:
       tags:
@@ -971,6 +1035,8 @@ paths:
             type: array
             items:
               $ref: '#/definitions/EncodedHash'
+        '503':
+          $ref: '#/responses/ServiceUnavailable'
   /sync-status:
     get:
       tags:
@@ -990,6 +1056,8 @@ paths:
           description: Node not syncing
           schema:
             $ref: '#/definitions/Error'
+        '503':
+          $ref: '#/responses/ServiceUnavailable'
   /transactions:
     post:
       tags:
@@ -1017,6 +1085,8 @@ paths:
           description: 'Invalid transaction'
           schema:
             $ref: '#/definitions/Error'
+        '503':
+          $ref: '#/responses/ServiceUnavailable'
   /transactions/{hash}:
     get:
       tags:
@@ -1047,6 +1117,8 @@ paths:
           description: 'Transaction not found'
           schema:
             $ref: '#/definitions/Error'
+        '503':
+          $ref: '#/responses/ServiceUnavailable'
   /transactions/{hash}/info:
     get:
       tags:
@@ -1076,6 +1148,8 @@ paths:
           description: 'Transaction not found'
           schema:
             $ref: '#/definitions/Error'
+        '503':
+          $ref: '#/responses/ServiceUnavailable'
   /debug/accounts/beneficiary:
     get:
       tags:
@@ -1096,6 +1170,8 @@ paths:
           description: 'Beneficiary error'
           schema:
             $ref: '#/definitions/Error'
+        '503':
+          $ref: '#/responses/ServiceUnavailable'
   /debug/accounts/node:
     get:
       tags:
@@ -1116,6 +1192,8 @@ paths:
           description: 'Public key not found'
           schema:
             $ref: '#/definitions/Error'
+        '503':
+          $ref: '#/responses/ServiceUnavailable'
   /debug/channels/close/mutual:
     post:
       tags:
@@ -1143,6 +1221,8 @@ paths:
           description: Invalid transaction
           schema:
             $ref: '#/definitions/Error'
+        '503':
+          $ref: '#/responses/ServiceUnavailable'
   /debug/channels/close/solo:
     post:
       tags:
@@ -1170,6 +1250,8 @@ paths:
           description: Invalid transaction
           schema:
             $ref: '#/definitions/Error'
+        '503':
+          $ref: '#/responses/ServiceUnavailable'
   /debug/channels/create:
     post:
       tags:
@@ -1201,6 +1283,8 @@ paths:
           description: Initiator not found
           schema:
             $ref: '#/definitions/Error'
+        '503':
+          $ref: '#/responses/ServiceUnavailable'
   /debug/channels/deposit:
     post:
       tags:
@@ -1228,6 +1312,8 @@ paths:
           description: Invalid transaction
           schema:
             $ref: '#/definitions/Error'
+        '503':
+          $ref: '#/responses/ServiceUnavailable'
   /debug/channels/fsm-count:
     get:
       tags:
@@ -1245,6 +1331,8 @@ paths:
               count:
                 description: 'Count'
                 $ref: '#/definitions/UInt32'
+        '503':
+          $ref: '#/responses/ServiceUnavailable'
   /debug/channels/set-delegates:
     post:
       tags:
@@ -1272,6 +1360,8 @@ paths:
           description: Invalid transaction
           schema:
             $ref: '#/definitions/Error'
+        '503':
+          $ref: '#/responses/ServiceUnavailable'
   /debug/channels/settle:
     post:
       tags:
@@ -1299,6 +1389,8 @@ paths:
           description: Invalid transaction
           schema:
             $ref: '#/definitions/Error'
+        '503':
+          $ref: '#/responses/ServiceUnavailable'
   /debug/channels/slash:
     post:
       tags:
@@ -1326,6 +1418,8 @@ paths:
           description: Invalid transaction
           schema:
             $ref: '#/definitions/Error'
+        '503':
+          $ref: '#/responses/ServiceUnavailable'
   /debug/channels/snapshot/solo:
     post:
       tags:
@@ -1353,6 +1447,8 @@ paths:
           description: Invalid transaction
           schema:
             $ref: '#/definitions/Error'
+        '503':
+          $ref: '#/responses/ServiceUnavailable'
   /debug/channels/withdraw:
     post:
       tags:
@@ -1380,6 +1476,8 @@ paths:
           description: Invalid transaction
           schema:
             $ref: '#/definitions/Error'
+        '503':
+          $ref: '#/responses/ServiceUnavailable'
   /debug/check-tx/pool/{hash}:
     get:
       tags:
@@ -1410,6 +1508,8 @@ paths:
           description: Transaction is not in transaction pool
           schema:
             $ref: '#/definitions/Error'
+        '503':
+          $ref: '#/responses/ServiceUnavailable'
   /debug/contracts/call:
     post:
       tags:
@@ -1441,6 +1541,8 @@ paths:
           description: Caller account or contract not found
           schema:
             $ref: '#/definitions/Error'
+        '503':
+          $ref: '#/responses/ServiceUnavailable'
   /debug/contracts/create:
     post:
       tags:
@@ -1472,6 +1574,8 @@ paths:
           description: Owner account not found
           schema:
             $ref: '#/definitions/Error'
+        '503':
+          $ref: '#/responses/ServiceUnavailable'
   /debug/crash:
     get:
       tags:
@@ -1494,6 +1598,8 @@ paths:
           description: We always end up here
           schema:
             $ref: "#/components/schemas/Error"
+        '503':
+          $ref: '#/responses/ServiceUnavailable'
   /debug/names/claim:
     post:
       tags:
@@ -1525,6 +1631,8 @@ paths:
           description: Account or name not found
           schema:
             $ref: '#/definitions/Error'
+        '503':
+          $ref: '#/responses/ServiceUnavailable'
   /debug/names/commitment-id:
     get:
       tags:
@@ -1557,6 +1665,8 @@ paths:
           description: 'Invalid name'
           schema:
             $ref: '#/definitions/Error'
+        '503':
+          $ref: '#/responses/ServiceUnavailable'
   /debug/names/preclaim:
     post:
       tags:
@@ -1588,6 +1698,8 @@ paths:
           description: Account not found
           schema:
             $ref: '#/definitions/Error'
+        '503':
+          $ref: '#/responses/ServiceUnavailable'
   /debug/names/revoke:
     post:
       tags:
@@ -1619,6 +1731,8 @@ paths:
           description: Account or name not found
           schema:
             $ref: '#/definitions/Error'
+        '503':
+          $ref: '#/responses/ServiceUnavailable'
   /debug/names/transfer:
     post:
       tags:
@@ -1650,6 +1764,8 @@ paths:
           description: Account or name not found
           schema:
             $ref: '#/definitions/Error'
+        '503':
+          $ref: '#/responses/ServiceUnavailable'
   /debug/names/update:
     post:
       tags:
@@ -1681,6 +1797,8 @@ paths:
           description: Account or oracle not found
           schema:
             $ref: '#/definitions/Error'
+        '503':
+          $ref: '#/responses/ServiceUnavailable'
   /debug/network:
     get:
       tags:
@@ -1701,6 +1819,8 @@ paths:
           description: 'Successful operation'
           schema:
             $ref: '#/definitions/NetworkStatus'
+        '503':
+          $ref: '#/responses/ServiceUnavailable'
   /debug/oracles/extend:
     post:
       tags:
@@ -1732,6 +1852,8 @@ paths:
           description: Account not found
           schema:
             $ref: '#/definitions/Error'
+        '503':
+          $ref: '#/responses/ServiceUnavailable'
   /debug/oracles/query:
     post:
       tags:
@@ -1763,6 +1885,8 @@ paths:
           description: Account or oracle not found
           schema:
             $ref: '#/definitions/Error'
+        '503':
+          $ref: '#/responses/ServiceUnavailable'
   /debug/oracles/register:
     post:
       tags:
@@ -1794,6 +1918,8 @@ paths:
           description: Account not found
           schema:
             $ref: '#/definitions/Error'
+        '503':
+          $ref: '#/responses/ServiceUnavailable'
   /debug/oracles/respond:
     post:
       tags:
@@ -1825,6 +1951,8 @@ paths:
           description: Oracle or query not found
           schema:
             $ref: '#/definitions/Error'
+        '503':
+          $ref: '#/responses/ServiceUnavailable'
   /debug/peers:
     get:
       tags:
@@ -1845,6 +1973,8 @@ paths:
           description: Info not enabled
           schema:
             $ref: '#/definitions/Error'
+        '503':
+          $ref: '#/responses/ServiceUnavailable'
   /debug/token-supply/height/{height}:
     get:
       tags:
@@ -1872,6 +2002,8 @@ paths:
           description: Height not available
           schema:
             $ref: '#/definitions/Error'
+        '503':
+          $ref: '#/responses/ServiceUnavailable'
   /debug/transactions/dry-run:
     post:
       tags:
@@ -1903,6 +2035,8 @@ paths:
           description: Over the gas limit
           schema:
             $ref: '#/definitions/Error'
+        '503':
+          $ref: '#/responses/ServiceUnavailable'
   /debug/transactions/paying-for:
     post:
       tags:
@@ -1935,6 +2069,8 @@ paths:
           description: Payer account not found
           schema:
             $ref: '#/definitions/Error'
+        '503':
+          $ref: '#/responses/ServiceUnavailable'
   /debug/transactions/pending:
     get:
       tags:
@@ -1951,6 +2087,8 @@ paths:
           description: 'Successful operation'
           schema:
             $ref: '#/definitions/GenericTxs'
+        '503':
+          $ref: '#/responses/ServiceUnavailable'
   /debug/transactions/spend:
     post:
       tags:
@@ -1983,6 +2121,8 @@ paths:
           description: Sender account not found
           schema:
             $ref: '#/definitions/Error'
+        '503':
+          $ref: '#/responses/ServiceUnavailable'
   /key-blocks:
     post:
       tags:
@@ -2008,6 +2148,24 @@ paths:
           description: 'Invalid block'
           schema:
             $ref: '#/definitions/Error'
+        '503':
+          $ref: '#/responses/ServiceUnavailable'
+responses:
+  ServiceUnavailable:
+    description: >-
+      The node is temporarily unable to handle the request: either its request
+      queues are saturated (overload protection) or it has not yet reached a
+      stable mode. Overload protection is applied to every endpoint, so this
+      response can be returned by any operation. The Retry-After header tells
+      the client how long to back off before retrying.
+    headers:
+      Retry-After:
+        description: Number of seconds to wait before retrying the request
+        type: integer
+        minimum: 0
+    schema:
+      $ref: '#/definitions/Error'
+
 ##
 ## Definitions
 ##
