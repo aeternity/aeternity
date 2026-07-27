@@ -1156,7 +1156,13 @@ hole_production_eoe(Config) ->
     EOEProdNode = producer_node(EOEProducer, Config),
     AllNodes = [ Name || {_, Name, _, _} <- ?config(nodes, Config) ],
     ct:log("Produce on: ~p", [AllNodes -- [EOEProdNode]]),
-    {ok, Bs} = produce_cc_blocks(Config, 1, #{prod_nodes => AllNodes -- [EOEProdNode]}),
+    %% Excluding the scheduled EOE producer forces the network to detect a
+    %% missed slot and fall back to a hole block - a slower, multi-step
+    %% consensus path than plain production, so the bare 3000ms default
+    %% (produce_cc_blocks/3, produce_to_cc_height/6) is too tight here and was
+    %% observed to intermittently time out (timeout_waiting_for_block).
+    {ok, Bs} = produce_cc_blocks(Config, 1, #{prod_nodes => AllNodes -- [EOEProdNode],
+                                              timeout => 10000}),
     Holes = length([ x || B <- Bs, key == aec_blocks:type(B) ]),
     ct:pal("Expected at least 1 hole, got ~p", [Holes]),
     ?assert(Holes > 1),
