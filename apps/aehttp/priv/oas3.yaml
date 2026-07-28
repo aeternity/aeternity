@@ -250,7 +250,8 @@ paths:
           description: The name key of the name entry
           required: true
           schema:
-            $ref: "#/components/schemas/Name"
+            type: string
+            example: "dimitar.chain"
       responses:
         "200":
           description: Successful operation
@@ -911,7 +912,8 @@ paths:
           description: The name key of the name entry
           required: true
           schema:
-            $ref: "#/components/schemas/Name"
+            type: string
+            example: "dimitar.chain"
       responses:
         "200":
           description: Successful operation
@@ -2564,7 +2566,12 @@ components:
         from_id:
           $ref: "#/components/schemas/EncodedPubkey"
         payload:
-          $ref: "#/components/schemas/EncodedTxByteArray"
+          description: Base64Check encoded byte array. Accepted on input as a
+            plain 'ba_'-prefixed byte array (see aehttp_dispatch_int.erl's
+            produce_tx(channel_close_solo_tx, ...)), but returned by the
+            node as a 'tx_'-prefixed transaction (see
+            aesc_close_solo_tx.erl) -- no single prefix pattern covers both.
+          type: string
         ttl:
           $ref: "#/components/schemas/UInt64"
         fee:
@@ -2691,7 +2698,13 @@ components:
         round:
           $ref: '#/components/schemas/UInt64'
         payload:
-          $ref: '#/components/schemas/EncodedTxByteArray'
+          description: Base64Check encoded byte array. Accepted on input as a
+            plain 'ba_'-prefixed byte array (see aehttp_dispatch_int.erl's
+            produce_tx(channel_set_delegates_tx, ...)), but returned by the
+            node as a 'tx_'-prefixed transaction (see
+            aesc_set_delegates_tx.erl) -- no single prefix pattern covers
+            both.
+          type: string
         ttl:
           $ref: '#/components/schemas/UInt64'
         fee:
@@ -2739,7 +2752,12 @@ components:
         from_id:
           $ref: "#/components/schemas/EncodedPubkey"
         payload:
-          $ref: "#/components/schemas/EncodedTxByteArray"
+          description: Base64Check encoded byte array. Accepted on input as a
+            plain 'ba_'-prefixed byte array (see aehttp_dispatch_int.erl's
+            produce_tx(channel_slash_tx, ...)), but returned by the node as
+            a 'tx_'-prefixed transaction (see aesc_slash_tx.erl) -- no
+            single prefix pattern covers both.
+          type: string
         ttl:
           $ref: "#/components/schemas/UInt64"
         fee:
@@ -2762,7 +2780,13 @@ components:
         from_id:
           $ref: "#/components/schemas/EncodedPubkey"
         payload:
-          $ref: "#/components/schemas/EncodedTxByteArray"
+          description: Base64Check encoded byte array. Accepted on input as a
+            plain 'ba_'-prefixed byte array (see aehttp_dispatch_int.erl's
+            produce_tx(channel_snapshot_solo_tx, ...)), but returned by the
+            node as a 'tx_'-prefixed transaction (see
+            aesc_snapshot_solo_tx.erl) -- no single prefix pattern covers
+            both.
+          type: string
         ttl:
           $ref: "#/components/schemas/UInt64"
         fee:
@@ -3119,20 +3143,20 @@ components:
       description: Base64Check encoded byte array
       type: string
       example: ba_AAAAAfy4hFE=
-      pattern: ^ba_\w+$
+      pattern: ^ba_[0-9A-Za-z+/=]+$
     EncodedContractByteArray:
       description: Base64Check encoded contract byte array
       type: string
       example: cb_AAAAAfy4hFE=
-      pattern: ^cb_\w+$
+      pattern: ^cb_[0-9A-Za-z+/=]+$
     EncodedProofOfInclusion:
       description: Base64Check encoded proof of inclusion
       type: string
-      pattern: ^pi_\w+$
+      pattern: ^pi_[0-9A-Za-z+/=]+$
     EncodedStateTrees:
       description: Base64Check encoded state trees
       type: string
-      pattern: ^ss_\w+$
+      pattern: ^ss_[0-9A-Za-z+/=]+$
     EncodedHash:
       description: Base58Check encoded tagged hash
       type: string
@@ -3150,37 +3174,32 @@ components:
       description: Base64Check encoded transaction
       type: string
       example: tx_+E8hAaEB4TK48d23oE5jt/qWR5pUu8UlpTGn8bwM5JISGQMGf7ABoQOvDVCf43V7alNbsUvTarXaCf7rjtWX36YLS4+JTa4jn4YPHaUyOAAAxRZ6Sg==
-      pattern: ^tx_\w+$
+      pattern: ^tx_[0-9A-Za-z+/=]+$
     EncodedTxHash:
       description: Base58Check encoded transaction hash
       type: string
       example: th_2Zfo2ALfRkKQxEaUj3HhcUGyMrTqYpDMgr2u15fPanYD1d55kz
-      pattern: ^th_\w{38,50}$
+      pattern: ^th_\w+$
     EncodedSignature:
       description: Base58Check encoded signature
       type: string
       example: sg_8hhU15cVMbukFj4FbdrFwwYnbzXYPnstu9PDnWZGbfQNpeHcB6tK1F3wvG1MPYySARgDRJYUh3YPJD3HctFwg6Y4rUGSR
       pattern: ^sg_\w+$
-    Name:
-      description: AENS name
-      type: string
-      example: dimitar.chain
-      pattern: ^\w+\.chain$
     EncodedNameId:
       description: Base58Check encoded AENS name hash
       type: string
       example: nm_psy8tRXPzGxh6975H7K6XQcMFVsdrxJMt7YkzMY8oUTevutzw
-      pattern: ^nm_\w{38,50}$
+      pattern: ^nm_\w+$
     EncodedCommitmentId:
       description: Base58Check encoded AENS commitment
       type: string
       example: cm_psy8tRXPzGxh6975H7K6XQcMFVsdrxJMt7YkzMY8oUTevutzw
-      pattern: ^cm_\w{38,50}$
+      pattern: ^cm_\w+$
     EncodedOracleQueryId:
       description: Base58Check encoded oracle query id
       type: string
       example: oq_psy8tRXPzGxh6975H7K6XQcMFVsdrxJMt7YkzMY8oUTevutzw
-      pattern: ^oq_\w{38,50}$
+      pattern: ^oq_\w+$
     Error:
       type: object
       properties:
@@ -3422,7 +3441,7 @@ components:
         pof_hash:
           description: \"no_fraud\" or Base58Check encoded Proof of Fraud hash
           type: string
-          pattern: ^no_fraud|bf_\w{38,50}$
+          pattern: ^(no_fraud|bf_\w+)$
           example: no_fraud
         prev_hash:
           $ref: "#/components/schemas/EncodedHash"
@@ -4095,7 +4114,7 @@ components:
         nonce:
           $ref: "#/components/schemas/UInt64"
         payload:
-          $ref: "#/components/schemas/EncodedByteArray"
+          description: Base64Check encoded byte array, or a raw string
       required:
         - recipient_id
         - amount
