@@ -9,6 +9,7 @@
 
 -include_lib("eunit/include/eunit.hrl").
 -include_lib("aeminer/include/aeminer.hrl").
+-include("aec_block_insertion.hrl").
 
 %% Rewards calculation defines.
 -define(TEST_MODULE, aec_chain_state).
@@ -541,3 +542,198 @@ wrap_block_hash_consistency() ->
     WrongHash = <<(First bxor 1), Rest/binary>>,
     ?assertError({badmatch, {ok, Hash}}, ?TEST_MODULE:wrap_block(B, WrongHash)),
     ok.
+
+%%%===================================================================
+%%% PoS vs PoW dispatch tests for the consensus-aware fraud/sibling-block
+%%% helpers introduced by block_order_and_pof_fixes: under PoS consensus
+%%% key/micro block ordering is swapped (micro blocks come after the key
+%%% block they belong to) and PoF/PoGF fraud detection is disabled outright,
+%%% since PoS has no equivalent notion of a miner double-signing blocks.
+%%%===================================================================
+
+consensus_dispatch_test_() ->
+    {foreach,
+     fun() ->
+             Persist = application:get_env(aecore, persist),
+             application:set_env(aecore, persist, true),
+             aec_db:check_db(),
+             aec_db:clear_db(),
+             TmpDir = aec_test_utils:aec_keys_setup(),
+             ok = meck:new(mnesia_rocksdb_lib, [passthrough]),
+             aec_test_utils:mock_genesis_and_forks(genesis_accounts()),
+             aec_consensus_bitcoin_ng:load_whitelist(),
+             aec_test_utils:dev_reward_setup(true, true, 100),
+             {TmpDir, Persist}
+     end,
+     fun({TmpDir, Persist}) ->
+             aec_test_utils:unmock_genesis_and_forks(),
+             ok = meck:unload(mnesia_rocksdb_lib),
+             aec_test_utils:aec_keys_cleanup(TmpDir),
+             application:stop(mnesia),
+             application:set_env(aecore, persist, Persist),
+             ok = mnesia:delete_schema([node()])
+     end,
+     [
+      {"maybe_add_pof/2 disables PoF for both key and micro blocks under PoS", fun maybe_add_pof_pos/0},
+      {"maybe_add_pof/2 preserves PoW key/micro PoF behaviour", fun maybe_add_pof_pow/0},
+      {"update_fraud_info/3 passes the fraud flag through unchanged under PoS", fun update_fraud_info_pos/0},
+      {"update_fraud_info/3 preserves PoW double-reported-fraud abort behaviour", fun update_fraud_info_pow/0},
+      {"db_sibling_blocks/1 swaps the key/micro height offsets under PoS", fun db_sibling_blocks_pos/0},
+      {"db_sibling_blocks/1 preserves the original PoW height offsets", fun db_sibling_blocks_pow/0},
+      {"maybe_pof/3 always returns no_fraud under PoS", fun maybe_pof_pos/0},
+      {"maybe_pogf/2 always returns no_fraud under PoS", fun maybe_pogf_pos/0}
+     ]}.
+
+mock_consensus_type(Type) ->
+    meck:new(aec_consensus, [passthrough]),
+    meck:expect(aec_consensus, get_consensus_type, 0, Type).
+
+%% Point aec_block_insertion:node_consensus/1 at a real, already-loaded
+%% consensus module implementing get_type/0, sidestepping the need to build
+%% a fully valid header carrying the actual consensus module tag.
+mock_node_consensus(Type) ->
+    Module = case Type of
+                 pow -> aec_consensus_bitcoin_ng;
+                 pos -> aec_consensus_hc
+             end,
+    meck:new(aec_block_insertion, [passthrough]),
+    meck:expect(aec_block_insertion, node_consensus, 1, Module).
+
+%% prep_micro_blocks/1 only ever produces micro blocks chained after an
+%% already-inserted key block, so grab a genuine key block from a fresh,
+%% independent (uninserted) chain instead. Only pure, header-derived
+%% accessors are exercised on these fixtures (wrap_block/1, node_height/1,
+%% node_prev_hash/1, aec_blocks:type/1), so the two blocks don't need to
+%% belong to the same chain.
+key_and_micro_block() ->
+    [{_B0, _}, {B1, _}] = aec_test_utils:gen_block_chain_with_state(2, genesis_accounts()),
+    [MicroBlock | _] = prep_micro_blocks(1),
+    {B1, MicroBlock}.
+
+maybe_add_pof_pos() ->
+    {KeyBlock, MicroBlock} = key_and_micro_block(),
+    mock_consensus_type(pos),
+    ?assertEqual(key, aec_blocks:type(KeyBlock)),
+    ?assertEqual(micro, aec_blocks:type(MicroBlock)),
+    ?assertEqual(#{pof => no_fraud}, ?TEST_MODULE:maybe_add_pof(#{}, KeyBlock)),
+    ?assertEqual(#{pof => no_fraud}, ?TEST_MODULE:maybe_add_pof(#{}, MicroBlock)),
+    meck:unload(aec_consensus),
+    ok.
+
+maybe_add_pof_pow() ->
+    {KeyBlock, MicroBlock} = key_and_micro_block(),
+    mock_consensus_type(pow),
+    ?assertEqual(#{pof => no_fraud}, ?TEST_MODULE:maybe_add_pof(#{}, KeyBlock)),
+    ?assertEqual(#{pof => aec_blocks:pof(MicroBlock)}, ?TEST_MODULE:maybe_add_pof(#{}, MicroBlock)),
+    meck:unload(aec_consensus),
+    ok.
+
+update_fraud_info_pos() ->
+    mock_node_consensus(pos),
+    %% Under PoS the fraud flag must pass through unchanged, regardless of
+    %% the previously observed pof state.
+    Node = #node{header = dummy_header, hash = <<1:256>>, type = key, txs = undefined},
+    ForkInfo = #fork_info{fork_id = <<>>, difficulty = 0, fees = 0, fraud = true},
+    ?assertEqual(true, ?TEST_MODULE:update_fraud_info(ForkInfo, Node, #{pof => some_pof})),
+    ?assertEqual(false, ?TEST_MODULE:update_fraud_info(ForkInfo#fork_info{fraud = false}, Node, #{pof => some_pof})),
+    meck:unload(aec_block_insertion),
+    ok.
+
+update_fraud_info_pow() ->
+    mock_node_consensus(pow),
+    Node = #node{header = dummy_header, hash = <<1:256>>, type = key, txs = undefined},
+    %% no prior pof observed -> the incoming fraud flag is returned unchanged
+    ForkInfoNoPof = #fork_info{fork_id = <<>>, difficulty = 0, fees = 0, fraud = false},
+    ?assertEqual(false, ?TEST_MODULE:update_fraud_info(ForkInfoNoPof, Node, #{pof => no_fraud})),
+    %% a pof was observed and the fork info doesn't yet know about fraud -> true
+    ForkInfoUnknown = #fork_info{fork_id = <<>>, difficulty = 0, fees = 0, fraud = false},
+    ?assertEqual(true, ?TEST_MODULE:update_fraud_info(ForkInfoUnknown, Node, #{pof => some_pof})),
+    %% a pof was observed and the fork info already reports fraud -> abort
+    ForkInfoDouble = #fork_info{fork_id = <<>>, difficulty = 0, fees = 0, fraud = true},
+    ?assertThrow({aec_chain_state_error, {double_reported_fraud, _}},
+                 ?TEST_MODULE:update_fraud_info(ForkInfoDouble, Node, #{pof => some_pof})),
+    meck:unload(aec_block_insertion),
+    ok.
+
+%% Wrap a real, freshly generated block into a #node{} record via wrap_block/1
+%% so that node_height/1 and node_prev_hash/1 (which dereference the real
+%% embedded header) work correctly.
+wrap_node(Block) ->
+    ?TEST_MODULE:wrap_block(Block).
+
+%% Stub the DB lookup so it only reports a (self-consistent) sibling
+%% candidate when queried at TargetHeight, and an empty result at every
+%% other height. Using the node's own real header as the candidate
+%% guarantees it passes db_sibling_blocks/1's internal prev-hash filter,
+%% without needing to mock aec_headers at all.
+stub_sibling_at_height(Header, TargetHeight) ->
+    meck:expect(aec_db, find_headers_and_hash_at_height,
+                fun(H) when H =:= TargetHeight -> [{<<0>>, Header}];
+                   (_) -> []
+                end).
+
+db_sibling_blocks_pos() ->
+    {KeyBlock, MicroBlock} = key_and_micro_block(),
+    KeyNode = wrap_node(KeyBlock),
+    MicroNode = wrap_node(MicroBlock),
+    KeyHeight = aec_block_insertion:node_height(KeyNode),
+    MicroHeight = aec_block_insertion:node_height(MicroNode),
+    KeyHeader = aec_block_insertion:node_header(KeyNode),
+    MicroHeader = aec_block_insertion:node_header(MicroNode),
+    mock_node_consensus(pos),
+    meck:new(aec_db, [passthrough]),
+    %% key block under PoS: key siblings expected at Height-1, micro siblings at Height
+    stub_sibling_at_height(KeyHeader, KeyHeight - 1),
+    ?assertMatch(#{key_siblings := [_], micro_siblings := []}, ?TEST_MODULE:db_sibling_blocks(KeyNode)),
+    stub_sibling_at_height(KeyHeader, KeyHeight),
+    ?assertMatch(#{key_siblings := [], micro_siblings := [_]}, ?TEST_MODULE:db_sibling_blocks(KeyNode)),
+    %% micro block under PoS: key siblings expected at Height, micro siblings at Height+1
+    stub_sibling_at_height(MicroHeader, MicroHeight),
+    ?assertMatch(#{key_siblings := [_], micro_siblings := []}, ?TEST_MODULE:db_sibling_blocks(MicroNode)),
+    stub_sibling_at_height(MicroHeader, MicroHeight + 1),
+    ?assertMatch(#{key_siblings := [], micro_siblings := [_]}, ?TEST_MODULE:db_sibling_blocks(MicroNode)),
+    meck:unload(aec_db),
+    meck:unload(aec_block_insertion),
+    ok.
+
+db_sibling_blocks_pow() ->
+    {KeyBlock, MicroBlock} = key_and_micro_block(),
+    KeyNode = wrap_node(KeyBlock),
+    MicroNode = wrap_node(MicroBlock),
+    KeyHeight = aec_block_insertion:node_height(KeyNode),
+    MicroHeight = aec_block_insertion:node_height(MicroNode),
+    KeyHeader = aec_block_insertion:node_header(KeyNode),
+    MicroHeader = aec_block_insertion:node_header(MicroNode),
+    mock_node_consensus(pow),
+    meck:new(aec_db, [passthrough]),
+    %% key block under PoW (original behaviour): key siblings at Height, micro siblings at Height-1
+    stub_sibling_at_height(KeyHeader, KeyHeight),
+    ?assertMatch(#{key_siblings := [_], micro_siblings := []}, ?TEST_MODULE:db_sibling_blocks(KeyNode)),
+    stub_sibling_at_height(KeyHeader, KeyHeight - 1),
+    ?assertMatch(#{key_siblings := [], micro_siblings := [_]}, ?TEST_MODULE:db_sibling_blocks(KeyNode)),
+    %% micro block under PoW (original behaviour): key siblings at Height+1, micro siblings at Height
+    stub_sibling_at_height(MicroHeader, MicroHeight + 1),
+    ?assertMatch(#{key_siblings := [_], micro_siblings := []}, ?TEST_MODULE:db_sibling_blocks(MicroNode)),
+    stub_sibling_at_height(MicroHeader, MicroHeight),
+    ?assertMatch(#{key_siblings := [], micro_siblings := [_]}, ?TEST_MODULE:db_sibling_blocks(MicroNode)),
+    meck:unload(aec_db),
+    meck:unload(aec_block_insertion),
+    ok.
+
+maybe_pof_pos() ->
+    mock_consensus_type(pos),
+    %% Non-empty sibling list so the pos/pow dispatch is actually reached
+    %% (an empty list short-circuits to no_fraud before consensus is even
+    %% consulted). Node/Ctx are never touched under pos, so dummies suffice.
+    ?assertEqual(no_fraud, ?TEST_MODULE:maybe_pof(dummy_node, [dummy_header], dummy_ctx)),
+    meck:unload(aec_consensus),
+    ok.
+
+maybe_pogf_pos() ->
+    mock_consensus_type(pos),
+    %% Same reasoning as maybe_pof_pos/0: a non-empty sibling list is needed
+    %% to reach the consensus dispatch at all.
+    ?assertEqual(no_fraud, ?TEST_MODULE:maybe_pogf(dummy_node, [dummy_header])),
+    meck:unload(aec_consensus),
+    ok.
+

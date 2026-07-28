@@ -129,7 +129,12 @@
 -ifdef(TEST).
 -export([calc_rewards/6,
          internal_insert_transaction/4,
-         wrap_block/2
+         wrap_block/2,
+         maybe_add_pof/2,
+         update_fraud_info/3,
+         db_sibling_blocks/1,
+         maybe_pof/3,
+         maybe_pogf/2
         ]).
 -endif.
 
