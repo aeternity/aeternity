@@ -2219,21 +2219,35 @@ contract_transactions(_Config) ->    % miner has an account
     InvalidHex1 = <<"1234">>,
     InvalidHex2 = <<"0xXYZ">>,
 
+    %% Since oas3.yaml now declares a `pattern` for the contract byte-array
+    %% schemas, requests with a malformed value are now rejected by the OAS
+    %% schema-validation layer before ever reaching the handler code (and
+    %% its "Not byte array: <field>" error) -- still a 400, just a more
+    %% generic, earlier validation_error.
+    AssertInvalidByteArray =
+        fun(Field, Result) ->
+            ?assertMatch(
+               {ok, 400, #{<<"info">> := #{<<"error">> := <<"no_match">>,
+                                            <<"path">> := [Field]},
+                           <<"reason">> := <<"validation_error">>}},
+               Result)
+        end,
+
     % invalid code
-    {ok, 400, #{<<"reason">> := <<"Not byte array: code">>}} =
-        get_contract_create(maps:put(code, InvalidHex1, ValidEncoded)),
-    {ok, 400, #{<<"reason">> := <<"Not byte array: code">>}} =
-        get_contract_create(maps:put(code, InvalidHex2, ValidEncoded)),
+    AssertInvalidByteArray(<<"code">>,
+        get_contract_create(maps:put(code, InvalidHex1, ValidEncoded))),
+    AssertInvalidByteArray(<<"code">>,
+        get_contract_create(maps:put(code, InvalidHex2, ValidEncoded))),
     % invalid call data
-    {ok, 400, #{<<"reason">> := <<"Not byte array: call_data">>}} =
-        get_contract_create(maps:put(call_data, InvalidHex1, ValidEncoded)),
-    {ok, 400, #{<<"reason">> := <<"Not byte array: call_data">>}} =
-        get_contract_create(maps:put(call_data, InvalidHex2, ValidEncoded)),
+    AssertInvalidByteArray(<<"call_data">>,
+        get_contract_create(maps:put(call_data, InvalidHex1, ValidEncoded))),
+    AssertInvalidByteArray(<<"call_data">>,
+        get_contract_create(maps:put(call_data, InvalidHex2, ValidEncoded))),
     % invalid call data
-    {ok, 400, #{<<"reason">> := <<"Not byte array: call_data">>}} =
-        get_contract_call(maps:put(call_data, InvalidHex1, ContractCallEncoded)),
-    {ok, 400, #{<<"reason">> := <<"Not byte array: call_data">>}} =
-        get_contract_call(maps:put(call_data, InvalidHex2, ContractCallEncoded)),
+    AssertInvalidByteArray(<<"call_data">>,
+        get_contract_call(maps:put(call_data, InvalidHex1, ContractCallEncoded))),
+    AssertInvalidByteArray(<<"call_data">>,
+        get_contract_call(maps:put(call_data, InvalidHex2, ContractCallEncoded))),
 
     %% Call objects
     {ok, 200, #{<<"tx">> := SpendTx}} = post_spend_tx(MinerAddress, 1,
@@ -2571,25 +2585,47 @@ test_invalid_hash({PubKeyType, PubKey}, MapKey0, Encoded, APIFun) when is_atom(P
         end,
     CorrectAddress = aeser_api_encoder:encode(PubKeyType, PubKey),
     Msg = list_to_binary("Invalid hash: " ++ atom_to_list(Name)),
+    MapKeyBin = atom_to_binary(MapKey, utf8),
+    %% Fields whose schema now declares a `pattern` (e.g. commitment_id,
+    %% name/name_id) get malformed values rejected earlier, at the OAS
+    %% schema-validation layer, before ever reaching the handler's own
+    %% "Invalid hash: <field>" check -- still a 400, just a more generic,
+    %% earlier validation_error. Accept either shape: whichever layer
+    %% happens to catch a given malformed variant, it must still be
+    %% rejected with a 400.
+    AssertRejected =
+        fun(Result) ->
+            case Result of
+                {ok, 400, #{<<"reason">> := Msg}} ->
+                    ok;
+                {ok, 400, #{<<"info">> := #{<<"error">> := <<"no_match">>,
+                                             <<"path">> := [MapKeyBin]},
+                            <<"reason">> := <<"validation_error">>}} ->
+                    ok;
+                Other ->
+                    ?assertMatch({ok, 400, #{<<"reason">> := Msg}}, Other)
+            end
+        end,
     <<_, HashWithBrokenPrefix/binary>> = CorrectAddress,
-    {ok, 400, #{<<"reason">> := Msg}} = APIFun(maps:put(MapKey, HashWithBrokenPrefix, Encoded)),
+    AssertRejected(APIFun(maps:put(MapKey, HashWithBrokenPrefix, Encoded))),
 
     <<_Prefix:3/binary, HashWithNoPrefix/binary>> = CorrectAddress,
-    {ok, 400, #{<<"reason">> := Msg}} = APIFun(maps:put(MapKey, HashWithNoPrefix, Encoded)),
+    AssertRejected(APIFun(maps:put(MapKey, HashWithNoPrefix, Encoded))),
 
     case aeser_api_encoder:byte_size_for_type(PubKeyType) of
         not_applicable -> pass;
         _ ->
             <<ShortHash:10/binary, _Rest/binary>> = CorrectAddress,
-            {ok, 400, #{<<"reason">> := Msg}} = APIFun(maps:put(MapKey, ShortHash, Encoded)),
+            AssertRejected(APIFun(maps:put(MapKey, ShortHash, Encoded))),
 
             BS = byte_size(PubKey),
             HalfSize = BS div 2,
             <<FirstHalfKey:HalfSize/binary, _SecondHalfKey/binary>> = PubKey,
             HalfHash = aeser_api_encoder:encode(PubKeyType, FirstHalfKey),
-            {ok, 400, #{<<"reason">> := Msg}} = APIFun(maps:put(MapKey, HalfHash, Encoded))
+            AssertRejected(APIFun(maps:put(MapKey, HalfHash, Encoded)))
     end,
     ok.
+
 
 test_missing_address(Key, Encoded, APIFun) ->
     Msg = list_to_binary("Account of " ++ atom_to_list(Key) ++ " not found"),
@@ -3498,7 +3534,16 @@ post_broken_api_encoded_tx(_Config) ->
                     payload => <<"foo">>}),
             <<_, BrokenHash/binary>> =
                 aeser_api_encoder:encode(transaction, SignedBinTx),
-            {ok, 400, #{<<"reason">> := <<"Invalid api encoding">>}} = post_transactions_sut(BrokenHash)
+            %% oas3.yaml now declares a `pattern` for EncodedTxByteArray, so
+            %% a malformed 'tx' value is now rejected by the OAS schema-
+            %% validation layer before ever reaching the handler's own
+            %% "Invalid api encoding" check -- still a 400, just a more
+            %% generic, earlier validation_error.
+            ?assertMatch(
+               {ok, 400, #{<<"info">> := #{<<"error">> := <<"no_match">>,
+                                            <<"path">> := [<<"tx">>]},
+                           <<"reason">> := <<"validation_error">>}},
+               post_transactions_sut(BrokenHash))
         end,
         lists:seq(1, NumberOfChecks)), % number
     ok.
