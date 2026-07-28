@@ -1121,7 +1121,14 @@ hole_production(Config, N) ->
         ct:log("Skip test, too many holes in a row potential timing issue!");
        true ->
         ct:log("Produce on: ~p", [AllNodes -- [NextProdNode]]),
-        {ok, Bs} = produce_cc_blocks(Config, 1, #{prod_nodes => AllNodes -- [NextProdNode]}),
+        %% Excluding NextProdNode forces the network onto the slower,
+        %% multi-step hole-detection consensus path (see hole_production_eoe
+        %% for the same reasoning): the bare 3000ms default was observed to
+        %% intermittently let some of the *remaining* producers also miss
+        %% their slot under CI load, inflating the observed hole count above
+        %% NHoles and failing the assertion below.
+        {ok, Bs} = produce_cc_blocks(Config, 1, #{prod_nodes => AllNodes -- [NextProdNode],
+                                                   timeout => 10000}),
         ct:pal("Expected ~p holes, got ~p", [NHoles, length(Bs) - 1]),
         ?assert(NHoles + 1 == length(Bs))
     end,
