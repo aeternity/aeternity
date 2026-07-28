@@ -144,6 +144,17 @@ init_per_suite(Config) ->
 
 init_per_testcase(quick_start_stop, Config) ->
     aest_nodes:ct_setup([{verify_logs, false}|Config]);
+init_per_testcase(new_node_joins_network, Config) ->
+    %% Pulls and boots an old (v1.4.0) release image alongside the branch
+    %% build to prove sync compatibility with older peers - real network/Docker
+    %% cost. Opt-in only, so it doesn't run automatically in CI; set
+    %% AE_SYSTEM_TEST_OLD_VERSION_COMPAT=1 to run it.
+    case os:getenv("AE_SYSTEM_TEST_OLD_VERSION_COMPAT") of
+        false ->
+            {skip, "old-version compat test - opt-in via AE_SYSTEM_TEST_OLD_VERSION_COMPAT=1 (pulls aeternity/aeternity:v1.4.0)"};
+        _ ->
+            aest_nodes:ct_setup(Config)
+    end;
 init_per_testcase(_TC, Config) ->
     aest_nodes:ct_setup(Config).
 

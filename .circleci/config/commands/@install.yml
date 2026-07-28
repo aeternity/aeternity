@@ -21,8 +21,16 @@ install_otp:
     - run:
         name: Install OTP
         command: |
-          # Install OTP package deps
-          sudo apt-get update && sudo apt-get install libncurses5 libwxbase3.0-dev libwxgtk3.0-gtk3-dev libsctp1
+          # Install OTP package deps.
+          # esl-erlang's actual dependencies (per its own control file) are just
+          # procps, libc6, libncurses5, libsctp1, libssl1.1 - libwx* is only a
+          # Recommends (for the optional :observer/:debugger/:wx GUI tools,
+          # never used in headless CI), and even then just the plain runtime
+          # libs, not -dev headers. Installing libwxbase3.0-dev/libwxgtk3.0-gtk3-dev
+          # here pulled in an entire GTK/X11/GNOME desktop dependency chain
+          # (100+MB, 40+ minutes, and prone to transient mirror 503s) for
+          # packages nothing in this pipeline uses - dropped.
+          sudo apt-get update && sudo apt-get install -y libncurses5 libsctp1
           # Install OTP binary package
           PACKAGE_NAME=esl-erlang_${OTP_VERSION}-1~ubuntu~focal_amd64.deb
           OTP_DOWNLOAD_URL=https://binaries2.erlang-solutions.com/ubuntu/pool/contrib/e/esl-erlang/${PACKAGE_NAME}

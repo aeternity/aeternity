@@ -16,7 +16,7 @@ The commands below assume you are logged in with `sudo` user.
 
 The node have couple of main dependencies that have to be installed to build it from source:
 
-- [Erlang/OTP 24.3.4.15](http://erlang.org/doc/installation_guide/INSTALL.html)
+- [Erlang/OTP 26.2.1](http://erlang.org/doc/installation_guide/INSTALL.html)
 - [Libsodium](https://download.libsodium.org/doc/installation/)
 - [Libgmp](https://gmplib.org)
 

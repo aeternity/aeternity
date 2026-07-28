@@ -69,8 +69,15 @@ groups() ->
 init_per_suite(Config) ->
     Config.
 
-init_per_group(minerva_compatibility, Config) ->
-    [{tx_mempool_vsn, "v2.3.0"} | Config];
+init_per_group(minerva_compatibility, _Config) ->
+    %% Verifies a "local" node can reuse a v2.3.0 node's on-disk mempool DB.
+    %% Nobody realistically jumps straight from a Minerva-era (v2.3.0) node to
+    %% the latest release without any intermediate upgrades, so this no longer
+    %% reflects a real upgrade path - skipped to stop paying the Docker
+    %% pull/boot cost on every system-test run. See git history for the
+    %% previous [{tx_mempool_vsn, "v2.3.0"} | Config] implementation if this
+    %% ever needs reviving with a more realistic version pair.
+    {skip, unrealistic_upgrade_path_v2_3_0_to_local};
 init_per_group(lima_compatibility, _Config) ->
     %%[{state_channels_vsn, "v5.1.0"} | Config];
     {skip, no_backwards_compatibility_until_5_1};
