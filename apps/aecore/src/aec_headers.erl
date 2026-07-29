@@ -683,7 +683,11 @@ deserialize_key_flags(KeyBlock) ->
             Decoded = decode(bytearray, Flags),
             %% Client-supplied flags must not set any unused/reserved bit.
             <<F:?FLAG_BITS>> = Decoded,
-            AllowedMask = ?KEY_HEADER_FLAG bor ?CONTAINS_INFO_FLAG bor ?HOLE_FLAG bor ?EOE_FLAG,
+            AllowedMask =
+                case hc_flags_permitted(maps:get(<<"version">>, KeyBlock)) of
+                    true  -> ?KEY_HEADER_FLAG bor ?CONTAINS_INFO_FLAG bor ?HOLE_FLAG bor ?EOE_FLAG;
+                    false -> ?KEY_HEADER_FLAG bor ?CONTAINS_INFO_FLAG
+                end,
             case F band (bnot AllowedMask) of
                 0 -> Decoded;
                 _ -> error(illegal_flags)
@@ -826,25 +830,42 @@ deserialize_key_from_binary(<<Version:32,
                               Time:64,
                               Info/binary
                             >>) ->
-    PowEvidence = deserialize_pow_evidence_from_binary(PowEvidenceBin),
-    H = #key_header{height = Height,
-                    prev_hash = PrevHash,
-                    prev_key = PrevKeyHash,
-                    root_hash = RootHash,
-                    miner = Miner,
-                    beneficiary = Beneficiary,
-                    target = Target,
-                    key_seal = PowEvidence,
-                    nonce = Nonce,
-                    time = Time,
-                    version = Version,
-                    info = Info,
-                    flags = <<?KEY_HEADER_TAG:1, ContainsInfoFlag:1, HoleFlag:1, EoeFlag:1, 0:28>>
-                   },
-    {ok, populate_extra(H)};
+    case hc_flags_permitted(Version, HoleFlag, EoeFlag) of
+        false ->
+            {error, malformed_header};
+        true ->
+            PowEvidence = deserialize_pow_evidence_from_binary(PowEvidenceBin),
+            H = #key_header{height = Height,
+                            prev_hash = PrevHash,
+                            prev_key = PrevKeyHash,
+                            root_hash = RootHash,
+                            miner = Miner,
+                            beneficiary = Beneficiary,
+                            target = Target,
+                            key_seal = PowEvidence,
+                            nonce = Nonce,
+                            time = Time,
+                            version = Version,
+                            info = Info,
+                            flags = <<?KEY_HEADER_TAG:1, ContainsInfoFlag:1,
+                                      HoleFlag:1, EoeFlag:1, 0:28>>
+                           },
+            {ok, populate_extra(H)}
+    end;
 deserialize_key_from_binary(_Other) ->
     {error, malformed_header}.
 
+%% Hole/EOE (bits 29/28) are Hyperchains flags: meaningless under PoW, and rejected outright by
+%% v7.2.x nodes, so accepting one forks this node onto a chain they can never follow.
+hc_flags_permitted(_Version, 0, 0) ->
+    true;
+hc_flags_permitted(Version, _HoleFlag, _EoeFlag) ->
+    hc_flags_permitted(Version).
+
+%% Gated on consensus type, not protocol version: Arcus is activated on no network, so Hyperchains
+%% legitimately emits these flags at Ceres. The version check is the forward path for Arcus.
+hc_flags_permitted(Version) ->
+    Version >= ?ARCUS_PROTOCOL_VSN orelse aec_consensus:get_consensus_type() =/= pow.
 
 %% The function does not check the validity of the protocol version based on
 %% height. It gets the protocol version from the block header. The protocol

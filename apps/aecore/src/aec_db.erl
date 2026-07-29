@@ -408,6 +408,8 @@ encoding(aec_chain_state, _, _) -> {sext, {object, term}};
 encoding(_Tab, set, 2) -> {raw, {value, term}};
 encoding(_Tab, set, _) -> {raw, {object, term}}.
 
+%% Do not bump until check_table_vsn/4 is fixed: its mismatch branch badmatches, so a bump blocks
+%% the upgrade direction rather than the downgrade one.
 tab_vsn(_) -> 1.
 
 tab_type(_) -> set.

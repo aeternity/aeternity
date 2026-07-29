@@ -53,15 +53,54 @@ reserved_micro_flag_bits_rejected_test() ->
     ?assertException(error, malformed_header,
                       ?TEST_MODULE:deserialize_from_binary(Tampered)).
 
+raw_key_header_arcus() ->
+    ?TEST_MODULE:set_version_and_height(raw_key_header(), ?ARCUS_PROTOCOL_VSN, 1).
+
 hole_and_eoe_flags_roundtrip_test() ->
-    %% Hyperchains-defined flag bits must still round-trip through
-    %% (de)serialization once the reserved bits are strictly enforced.
-    Header = ?TEST_MODULE:set_eoe(raw_key_header(), true),
+    %% Hyperchains-defined flag bits must still round-trip through (de)serialization once the
+    %% reserved bits are strictly enforced — but only from Arcus, the protocol that defines them.
+    Header = ?TEST_MODULE:set_eoe(raw_key_header_arcus(), true),
     SerializedHeader = ?TEST_MODULE:serialize_to_binary(Header),
     DeserializedHeader = ?TEST_MODULE:deserialize_from_binary(SerializedHeader),
     ?assertEqual(Header, DeserializedHeader),
     ?assert(?TEST_MODULE:is_eoe(DeserializedHeader)),
     ?assertNot(?TEST_MODULE:is_hole(DeserializedHeader)).
+
+hc_flags_rejected_on_pow_test_() ->
+    %% On a PoW chain, a header with Hole/EOE set must be refused: a v7.2.x node rejects it, so
+    %% accepting one would follow a chain such a node can never follow — a split for the price of
+    %% one block. eunit runs with pow consensus, so every pre-Arcus protocol must refuse them here.
+    %% (Hyperchains runs pos consensus and legitimately sets these at Ceres — covered by
+    %% aehttp_hyperchains_SUITE, not by a unit test.)
+    [{lists:flatten(io_lib:format("~s at protocol ~p", [Name, Vsn])),
+      fun() ->
+          Base = ?TEST_MODULE:set_version_and_height(raw_key_header(), Vsn, 1),
+          Header = Setter(Base),
+          %% serialize_to_binary/1 writes the bit; deserialization is what must refuse it.
+          Bin = ?TEST_MODULE:serialize_to_binary(Header),
+          ?assertException(error, malformed_header,
+                           ?TEST_MODULE:deserialize_from_binary(Bin))
+      end}
+     || Vsn <- [?ROMA_PROTOCOL_VSN, ?MINERVA_PROTOCOL_VSN, ?FORTUNA_PROTOCOL_VSN,
+                ?LIMA_PROTOCOL_VSN, ?IRIS_PROTOCOL_VSN, ?CERES_PROTOCOL_VSN],
+        {Name, Setter} <- [{"eoe", fun(H) -> ?TEST_MODULE:set_eoe(H, true) end}]].
+
+hc_flags_accepted_from_arcus_test() ->
+    Header = ?TEST_MODULE:set_eoe(raw_key_header_arcus(), true),
+    ?assertEqual(Header,
+                 ?TEST_MODULE:deserialize_from_binary(
+                    ?TEST_MODULE:serialize_to_binary(Header))).
+
+client_hc_flags_rejected_on_pow_test() ->
+    %% Same rule on the client-JSON path: Hole/EOE below Arcus must not be accepted.
+    RawKey = ?TEST_MODULE:set_version_and_height(raw_key_header(), ?CERES_PROTOCOL_VSN, 1),
+    Serialized = ?TEST_MODULE:serialize_for_client(RawKey, key),
+    HcFlags = <<1:1, 0:1, 0:1, 1:1, 0:28>>,          % key tag + EOE, no reserved bits
+    WithHcFlags = Serialized#{<<"nonce">> => ?TEST_MODULE:nonce(RawKey),
+                              <<"pow">>   => ?TEST_MODULE:pow(RawKey),
+                              <<"flags">> => aeser_api_encoder:encode(bytearray, HcFlags)},
+    ?assertEqual({error, invalid_header},
+                 ?TEST_MODULE:deserialize_from_client(key, WithHcFlags)).
 
 client_reserved_flag_bits_rejected_test() ->
     RawKey = raw_key_header(),
