@@ -252,6 +252,25 @@ tx_pool_test_() ->
                %% No txs further to the microblock limit were included
                ?assertMatch(X when X =< MaxGas, TotalGas)
        end}},
+      {"Candidate selection accepts the ignore set as a list or a map",
+       fun() ->
+               ok = application:set_env(aecore, mempool_nonce_baseline, 10),
+               PubKey = new_pubkey(),
+               [STx1, STx2, STx3] = STxs =
+                   [ a_signed_tx(PubKey, me, Nonce, 20000, 10) || Nonce <- lists:seq(1, 3) ],
+               [ ok = aec_tx_pool:push(STx, tx_created) || STx <- STxs ],
+
+               {ok, Hash} = aec_headers:hash_header(aec_block_genesis:genesis_header()),
+               MaxGas = aec_governance:block_gas_limit(),
+               Ignored = aetx_sign:hash(STx2),
+
+               %% The list form is normalised at the API boundary, so both
+               %% spellings must skip the ignored tx and select the same rest.
+               {ok, FromList} = aec_tx_pool:get_candidate(MaxGas, [Ignored], Hash),
+               {ok, FromMap}  = aec_tx_pool:get_candidate(MaxGas, #{Ignored => []}, Hash),
+               ?assertEqual(lists:sort([STx1, STx3]), lists:sort(FromList)),
+               ?assertEqual(lists:sort(FromList), lists:sort(FromMap))
+       end},
       {"fill micro block with and without previously rejected tx",
        {timeout, 10, fun() ->
                ok = application:set_env(aecore, mempool_nonce_offset, 600),

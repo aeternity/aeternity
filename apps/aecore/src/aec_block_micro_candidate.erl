@@ -138,7 +138,7 @@ int_create(PrevBlock, KeyBlock, MaxGas) ->
             TxEnv = aetx_env:set_height(TxEnv0, Height),
             PrevNode = aec_chain_state:wrap_block(PrevBlock),
             Trees1 = ConsensusModule:state_pre_transform_micro_node(Height, PrevNode, Trees),
-            int_pack_block(Height, MaxGas, [], [], MBEnv, TxEnv, Trees1, []);
+            int_pack_block(Height, MaxGas, #{}, [], MBEnv, TxEnv, Trees1, []);
         error ->
             {error, block_state_not_found}
     end.
@@ -160,18 +160,28 @@ create_tx_env(#{prev_block := PrevBlock, prev_hash := PrevBlockHash,
     Time = determine_new_time(PrevBlock),
     aetx_env:tx_env_from_key_header(KeyHeader, KeyBlockHash, Time, PrevBlockHash).
 
-int_pack_block(Height, GasAvailable, TxHashes, Txs, MBEnv, TxEnv, Trees, Events) ->
+%% Txs/events accumulate as reversed per-pass batches, joined once at the end,
+%% and the packed hashes as a set: appending to all three on every pass was
+%% quadratic in the transactions already packed.
+int_pack_block(Height, GasAvailable, PackedHashes, RevTxs, MBEnv, TxEnv, Trees, RevEvents) ->
     #{prev_hash := PrevBlockHash, key_block := KeyBlock} = MBEnv,
-    case aec_tx_pool:get_candidate(GasAvailable, TxHashes, PrevBlockHash) of
+    case aec_tx_pool:get_candidate(GasAvailable, PackedHashes, PrevBlockHash) of
         {ok, []} ->
-            int_create_block(Height, MBEnv, TxEnv, Txs, Trees, Events);
+            int_create_block(Height, MBEnv, TxEnv, join_batches(RevTxs), Trees,
+                             join_batches(RevEvents));
         {ok, Txs0} ->
             {ok, Txs1, FailedTxs1, Trees1, Events1} = int_apply_block_txs(Txs0, Trees, TxEnv, false),
             report_failed_txs(FailedTxs1),
-            TxHashes1 = [ aetx_sign:hash(Tx) || Tx <- Txs0 ],
-            int_pack_block(Height, GasAvailable - used_gas(KeyBlock, Txs1, Trees1), TxHashes ++ TxHashes1,
-                           Txs ++ Txs1, MBEnv, TxEnv, Trees1, Events ++ Events1)
+            PackedHashes1 = add_packed_hashes(Txs0, PackedHashes),
+            int_pack_block(Height, GasAvailable - used_gas(KeyBlock, Txs1, Trees1), PackedHashes1,
+                           [Txs1 | RevTxs], MBEnv, TxEnv, Trees1, [Events1 | RevEvents])
     end.
+
+add_packed_hashes(Txs, PackedHashes) ->
+    lists:foldl(fun(Tx, Acc) -> Acc#{aetx_sign:hash(Tx) => []} end, PackedHashes, Txs).
+
+join_batches(RevBatches) ->
+    lists:append(lists:reverse(RevBatches)).
 
 -ifdef(TEST).
 int_create_block(Height, MBEnv, TxEnv, Txs, Trees) ->

@@ -586,9 +586,10 @@ meck_expect_candidate_prerequisites(Time, Trees, Txs) ->
     meck:expect(aec_db, find_discovered_pof, 1, none).
 
 %% New block packing will call get_candidate (at least) twice - meck this!
+%% The set of already packed hashes is empty on the first pass only.
 meck_tx_pool_get_candidate(Txs) ->
     meck:expect(aec_tx_pool, get_candidate,
-                fun(_, [], _) -> {ok, Txs};
+                fun(_, Packed, _) when map_size(Packed) =:= 0 -> {ok, Txs};
                    (_, _, _)  -> {ok, []}
                 end).
 

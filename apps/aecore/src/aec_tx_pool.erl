@@ -133,6 +133,9 @@
 -type tx_hash() :: binary().
 -type height() :: aec_blocks:height().
 
+%% Set of transaction hashes selection must skip, as a map for O(1) lookup.
+-type ignore_set() :: #{tx_hash() => []}.
+
 -record(tx, { hash          :: binary(),
               signed_tx     :: aetx_sign:signed_tx(),
               failures  = 0 :: non_neg_integer() }).
@@ -316,18 +319,30 @@ failed_txs(FailedTxs) ->
 
 -spec get_candidate(pos_integer(), binary()) -> {ok, [aetx_sign:signed_tx()]}.
 get_candidate(MaxGas, BlockHash) ->
-    get_candidate(MaxGas, [], BlockHash).
+    get_candidate(MaxGas, #{}, BlockHash).
 
--spec get_candidate(pos_integer(), [binary()], binary()) -> {ok, [aetx_sign:signed_tx()]}.
+-spec get_candidate(pos_integer(), ignore_set() | [tx_hash()], binary()) ->
+          {ok, [aetx_sign:signed_tx()]}.
 get_candidate(MaxGas, IgnoreTxHashes, BlockHash) when is_integer(MaxGas),
                                                       is_binary(BlockHash) ->
     case MaxGas >= aec_governance:min_tx_gas() of
         true ->
-            ?TC(int_get_candidate(MaxGas, IgnoreTxHashes, BlockHash, dbs()),
-                {get_candidate, MaxGas, IgnoreTxHashes, BlockHash});
+            IgnoreTxs = ignore_set(IgnoreTxHashes),
+            ?TC(int_get_candidate(MaxGas, IgnoreTxs, BlockHash, dbs()),
+                {get_candidate, MaxGas, map_size(IgnoreTxs), BlockHash});
         false ->
             {ok, []}
     end.
+
+%% The ignore set is consulted once per mempool entry visited by the
+%% selection fold, so it must not be a list: the refill loop in
+%% aec_block_micro_candidate grows it by every packed transaction, which
+%% makes a list O(pool * packed) comparisons per candidate build.
+-spec ignore_set(ignore_set() | [tx_hash()]) -> ignore_set().
+ignore_set(IgnoreTxs) when is_map(IgnoreTxs) ->
+    IgnoreTxs;
+ignore_set(IgnoreTxHashes) when is_list(IgnoreTxHashes) ->
+    maps:from_keys(IgnoreTxHashes, []).
 
 %% It assumes that the persisted mempool has been updated.
 -spec top_change(top_change_info()) -> ok.
@@ -631,7 +646,7 @@ fold_txs([], Gas, _, _, _, _, _, _, _, Acc) ->
 int_get_candidate_({?KEY(_, _, Account, Nonce, TxHash) = Key, TxRec},
                    Gas, MinMinerGasPrice, Db, Dbs, AccountsTree, Height, Protocol,
                    Acc = #{ tree := AccTree, ignore_txs := IgnoreTxs }) ->
-    case lists:member(TxHash, IgnoreTxs) of
+    case maps:is_key(TxHash, IgnoreTxs) of
         true ->
             {Gas, Acc};
         false ->
