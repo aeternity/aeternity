@@ -85,6 +85,7 @@
 -export([nonce_offset/0]).
 -export([tx_ttl/0]).
 -export([allow_reentry/0]).
+-export([int_check_nonce/4]).
 -endif.
 
 %% gen_server callbacks
@@ -583,6 +584,7 @@ int_get_candidate(MaxGas, IgnoreTxs, BlockHash, #dbs{db = Db} = DBs) ->
     %% Read once for the whole candidate selection rather than once per
     %% transaction of the mempool - each read walks the whole user config map.
     Acc0     = #{ ignore_txs => IgnoreTxs, tree => gb_trees:empty(), txs => [], bad_txs => []
+                , accounts => #{}
                 , nonce_offset => nonce_offset(), invalid_tx_ttl => invalid_tx_ttl() },
     {ok, RemGas, Acc} = int_get_candidate(Db, MaxGas, MinTxGas, MinMinerGasPrice, Trees,
                                           Header, DBs, Acc0),
@@ -664,14 +666,26 @@ int_get_candidate_({?KEY(_, _, Account, Nonce, TxHash) = Key, TxRec},
 check_candidate(Db, #dbs{gc_db = GCDb} = _Dbs,
                 ?KEY(_, _, Account, Nonce, TxHash) = Key, Tx,
                 AccountsTree, Height, Gas, MinMinerGasPrice, Protocol,
-                Acc = #{ tree := AccTree, txs := AccTxs }) ->
+                Acc0 = #{ tree := AccTree, txs := AccTxs, accounts := Cache0,
+                          nonce_offset := Offset, invalid_tx_ttl := InvalidTxTTL }) ->
     Tx1 = aetx_sign:tx(Tx),
     TxTTL = aetx:ttl(Tx1),
     TxGas = aetx:gas_limit(Tx1, Height, Protocol),
-    case Height < TxTTL andalso TxGas > 0
-         andalso ok =:= int_check_account(Tx, AccountsTree, check_candidate,
-                                          maps:get(nonce_offset, Acc))
-         andalso MinMinerGasPrice =< aetx:min_gas_price(Tx1, Height, Protocol) of
+    %% Short-circuiting; threads the account cache through every check.
+    {Valid, Cache} =
+        case Height < TxTTL andalso TxGas > 0 of
+            false ->
+                {false, Cache0};
+            true ->
+                case int_check_account(Tx, AccountsTree, check_candidate, Cache0, Offset) of
+                    {ok, Cache1} ->
+                        {MinMinerGasPrice =< aetx:min_gas_price(Tx1, Height, Protocol), Cache1};
+                    {{error, _}, Cache1} ->
+                        {false, Cache1}
+                end
+        end,
+    Acc = Acc0#{ accounts := Cache },
+    case Valid of
         true ->
             case Gas - TxGas of
                 RemGas when RemGas >= 0 ->
@@ -688,7 +702,7 @@ check_candidate(Db, #dbs{gc_db = GCDb} = _Dbs,
             end;
         false ->
             %% This is not valid anymore.
-            enter_tx_gc(GCDb, TxHash, Key, Height + maps:get(invalid_tx_ttl, Acc)),
+            enter_tx_gc(GCDb, TxHash, Key, Height + InvalidTxTTL),
             {Gas, Acc#{ bad_txs := [{Db, Key, Tx} | maps:get(bad_txs, Acc)] }}
     end.
 
@@ -1170,15 +1184,19 @@ check_account(Tx, _TxHash, _Header, BlockHash, _Trees, Event) ->
     int_check_account(Tx, {block_hash, BlockHash}, Event).
 
 int_check_account(Tx, Source, Event) ->
-    int_check_account(Tx, Source, Event, undefined).
+    {Res, _Cache} = int_check_account(Tx, Source, Event, #{}, undefined),
+    Res.
 
+%% Cache memoises Source lookups by pubkey; it is only valid for as long as
+%% Source is, i.e. within a single selection pass over a fixed accounts tree.
 %% NonceOffset0 is the configured mempool nonce_offset, or 'undefined' to read
-%% it here. Callers that run this once per transaction pass it in instead.
-int_check_account(Tx, Source, Event, NonceOffset0) ->
-    case int_check_account_nonce(Tx, Source, Event, NonceOffset0) of
-        ok ->
-            int_check_meta_gas(Tx);
-        {error, _} = Err -> Err
+%% it here. Callers that run this once per transaction pass both in instead.
+int_check_account(Tx, Source, Event, Cache, NonceOffset0) ->
+    case int_check_account_nonce(Tx, Source, Event, Cache, NonceOffset0) of
+        {ok, Cache1} ->
+            {int_check_meta_gas(Tx), Cache1};
+        {{error, _} = Err, Cache1} ->
+            {Err, Cache1}
     end.
 
 int_check_meta_gas(SignedTx) ->
@@ -1204,36 +1222,40 @@ int_check_meta_gas(SignedTx, MaxAuthFunGas0) ->
         _ -> ok
     end.
 
-int_check_account_nonce(Tx, Source, Event, NonceOffset0) ->
+int_check_account_nonce(Tx, Source, Event, Cache, NonceOffset0) ->
     CheckNonce = nonce_check_by_event(Event),
     %% Check is conservative and only rejects certain cases
     Unsigned = aetx_sign:innermost_tx(Tx),
     TxNonce = aetx:nonce(Unsigned),
     case aetx:origin(Unsigned) of
         undefined ->
-            {error, no_origin};
+            {{error, no_origin}, Cache};
         Pubkey when is_binary(Pubkey) ->
-            case get_account(Pubkey, Source) of
-                {error, no_state_trees} -> nonce_baseline_check(TxNonce, CheckNonce);
-                none -> nonce_baseline_check(TxNonce, CheckNonce);
-                {value, Account} ->
-                    Offset   = case NonceOffset0 of
-                                   undefined -> nonce_offset();
-                                   _         -> NonceOffset0
-                               end,
-                    AccNonce = aec_accounts:nonce(Account),
-                    AccType  = aec_accounts:type(Account),
-                    if
-                        AccType == generalized andalso TxNonce =:= 0 ->
-                            ok;
-                        AccType == generalized ->
-                            {error, generalized_account_cant_sign_non_meta_tx};
-                        TxNonce =< AccNonce -> {error, nonce_too_low};
-                        TxNonce =< (AccNonce + Offset) -> ok;
-                        TxNonce >  (AccNonce + Offset) andalso not CheckNonce -> ok;
-                        TxNonce >  (AccNonce + Offset) -> {error, nonce_too_high}
-                    end
-            end
+            {Lookup, Cache1} = get_account(Pubkey, Source, Cache),
+            Offset = resolve_nonce_offset(Lookup, NonceOffset0),
+            {int_check_nonce(Lookup, TxNonce, CheckNonce, Offset), Cache1}
+    end.
+
+%% Only an existing account consults the offset, so 'undefined' defers the read.
+resolve_nonce_offset({value, _}, undefined) -> nonce_offset();
+resolve_nonce_offset(_, NonceOffset0)       -> NonceOffset0.
+
+int_check_nonce({error, no_state_trees}, TxNonce, CheckNonce, _Offset) ->
+    nonce_baseline_check(TxNonce, CheckNonce);
+int_check_nonce(none, TxNonce, CheckNonce, _Offset) ->
+    nonce_baseline_check(TxNonce, CheckNonce);
+int_check_nonce({value, Account}, TxNonce, CheckNonce, Offset) ->
+    AccNonce = aec_accounts:nonce(Account),
+    AccType  = aec_accounts:type(Account),
+    if
+        AccType == generalized andalso TxNonce =:= 0 ->
+            ok;
+        AccType == generalized ->
+            {error, generalized_account_cant_sign_non_meta_tx};
+        TxNonce =< AccNonce -> {error, nonce_too_low};
+        TxNonce =< (AccNonce + Offset) -> ok;
+        TxNonce >  (AccNonce + Offset) andalso not CheckNonce -> ok;
+        TxNonce >  (AccNonce + Offset) -> {error, nonce_too_high}
     end.
 
 nonce_check_by_event(tx_created) -> true;
@@ -1250,6 +1272,17 @@ nonce_baseline_check(TxNonce, _) ->
 
 get_account(AccountKey, How) ->
     aec_db:ensure_dirty(fun() -> get_account_(AccountKey, How) end).
+
+%% A pool is typically many transactions over far fewer accounts, and every
+%% entry selection visits would otherwise cost an accounts-tree traversal.
+get_account(AccountKey, How, Cache) ->
+    case Cache of
+        #{AccountKey := Res} ->
+            {Res, Cache};
+        #{} ->
+            Res = get_account(AccountKey, How),
+            {Res, Cache#{AccountKey => Res}}
+    end.
 
 get_account_(AccountKey, {account_trees, AccountsTrees}) ->
     aec_accounts_trees:lookup(AccountKey, AccountsTrees);
