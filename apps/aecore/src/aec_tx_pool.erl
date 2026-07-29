@@ -37,6 +37,7 @@
 
 -export([ get_candidate/2
         , get_candidate/3
+        , get_candidate/4
         , get_max_nonce/1
         , minimum_miner_gas_price/0
         , maximum_auth_fun_gas/0
@@ -98,6 +99,8 @@
              , origins_cache/0
              , pool_db/0
              , pool_db_key/0
+             , select_opts/0
+             , select_result/0
              , tx_hash/0
              , top_change_info/0 ]).
 
@@ -138,6 +141,16 @@
 
 %% Set of transaction hashes selection must skip, as a map for O(1) lookup.
 -type ignore_set() :: #{tx_hash() => []}.
+
+%% deadline is an erlang:monotonic_time(millisecond) value past which
+%% selection stops walking the pool and returns what it has selected so far.
+-type select_opts() :: #{ deadline => integer() | infinity }.
+
+%% expired tells the caller whether selection stopped on its deadline rather
+%% than because it ran out of pool to walk. An empty selection alone does not
+%% distinguish the two, and only one of them means the candidate came out
+%% smaller than the pool could have made it.
+-type select_result() :: #{ expired := boolean() }.
 
 -record(tx, { hash          :: binary(),
               signed_tx     :: aetx_sign:signed_tx(),
@@ -325,15 +338,24 @@ get_candidate(MaxGas, BlockHash) ->
 
 -spec get_candidate(pos_integer(), ignore_set() | [tx_hash()], binary()) ->
           {ok, [aetx_sign:signed_tx()]}.
-get_candidate(MaxGas, IgnoreTxHashes, BlockHash) when is_integer(MaxGas),
-                                                      is_binary(BlockHash) ->
+get_candidate(MaxGas, IgnoreTxHashes, BlockHash) ->
+    %% Unbounded selection can only stop because the pool ran out, so there is
+    %% nothing for these callers to learn from the select result.
+    {ok, Txs, _SelectResult} = get_candidate(MaxGas, IgnoreTxHashes, BlockHash, #{}),
+    {ok, Txs}.
+
+-spec get_candidate(pos_integer(), ignore_set() | [tx_hash()], binary(), select_opts()) ->
+          {ok, [aetx_sign:signed_tx()], select_result()}.
+get_candidate(MaxGas, IgnoreTxHashes, BlockHash, Opts) when is_integer(MaxGas),
+                                                            is_binary(BlockHash),
+                                                            is_map(Opts) ->
     case MaxGas >= aec_governance:min_tx_gas() of
         true ->
             IgnoreTxs = ignore_set(IgnoreTxHashes),
-            ?TC(int_get_candidate(MaxGas, IgnoreTxs, BlockHash, dbs()),
+            ?TC(int_get_candidate(MaxGas, IgnoreTxs, BlockHash, dbs(), Opts),
                 {get_candidate, MaxGas, map_size(IgnoreTxs), BlockHash});
         false ->
-            {ok, []}
+            {ok, [], #{expired => false}}
     end.
 
 %% The ignore set is consulted once per mempool entry visited by the
@@ -575,7 +597,7 @@ int_get_max_nonce(NonceDb, Sender) ->
 %% considered for another microblock until the next leader cycle.
 %% ... Unless no matching txs can be found in the regular mempool.
 %%
-int_get_candidate(MaxGas, IgnoreTxs, BlockHash, #dbs{db = Db} = DBs) ->
+int_get_candidate(MaxGas, IgnoreTxs, BlockHash, #dbs{db = Db} = DBs, Opts) ->
     {Trees, Header} = get_trees_and_header(BlockHash),
     lager:debug("size(Db) = ~p", [ets:info(Db, size)]),
     MinMinerGasPrice = aec_tx_pool:minimum_miner_gas_price(),
@@ -589,13 +611,14 @@ int_get_candidate(MaxGas, IgnoreTxs, BlockHash, #dbs{db = Db} = DBs) ->
                   %% configured node they cost as much as the accounts-tree
                   %% lookup just memoised away.
                 , nonce_offset => nonce_offset()
-                , invalid_tx_ttl => invalid_tx_ttl() },
+                , invalid_tx_ttl => invalid_tx_ttl()
+                , deadline => maps:get(deadline, Opts, infinity), expired => false },
     {ok, RemGas, Acc} = int_get_candidate(Db, MaxGas, MinTxGas, MinMinerGasPrice, Trees,
                                           Header, DBs, Acc0),
     {ok, _, Acc1} = int_get_candidate(
                       DBs#dbs.visited_db, RemGas, MinTxGas, MinMinerGasPrice, Trees, Header,
                       DBs, Acc),
-    #{ tree := AccTree, txs := AccTxs, bad_txs := AccBadTxs } = Acc1,
+    #{ tree := AccTree, txs := AccTxs, bad_txs := AccBadTxs, expired := Expired } = Acc1,
 
     %% Move Txs to visited *after* revisiting visited!
     AllVisited = gb_trees:values(AccTree) ++ lists:reverse(AccTxs) ++ lists:reverse(AccBadTxs),
@@ -604,7 +627,7 @@ int_get_candidate(MaxGas, IgnoreTxs, BlockHash, #dbs{db = Db} = DBs) ->
                 TxX
             end || {DbX, KeyX, TxX} <- AllVisited ],
 
-    {ok, Txs}.
+    {ok, Txs, #{ expired => Expired }}.
 
 get_trees_and_header(BlockHash) ->
     aec_db:ensure_dirty(
@@ -614,6 +637,10 @@ get_trees_and_header(BlockHash) ->
               {Trees, Header}
       end).
 
+int_get_candidate(_Db, Gas, _MinTxGas, _MinMinerGasPrice, _Trees, _Header, _DBs,
+                  #{expired := true} = Acc) ->
+    %% An earlier pass ran out of time - do not start walking another table.
+    {ok, Gas, Acc};
 int_get_candidate(Db, Gas, MinTxGas, MinMinerGasPrice, Trees, Header, DBs, Acc)
   when Gas > MinTxGas ->
     Pat = [{ '_', [], ['$_'] }],
@@ -631,11 +658,27 @@ int_get_candidate_fold(Gas, MinTxGas, MinMinerGasPrice, Db, Dbs = #dbs{}, {Txs, 
                        AccountsTree, Height, Protocol, Acc) when Gas > MinTxGas ->
     {RemGas, NewAcc} = fold_txs(Txs, Gas, MinTxGas, MinMinerGasPrice, Db, Dbs,
                                 AccountsTree, Height, Protocol, Acc),
-    int_get_candidate_fold(RemGas, MinTxGas, MinMinerGasPrice, Db, Dbs, ets:select(Cont),
-                           AccountsTree, Height, Protocol, NewAcc);
+    %% Checked once per select chunk rather than per transaction: a chunk is a
+    %% bounded amount of work, and this keeps the clock out of the inner loop.
+    case deadline_expired(NewAcc) of
+        true ->
+            lager:debug("candidate selection stopped at its deadline", []),
+            {ok, RemGas, NewAcc#{ expired := true }};
+        false ->
+            int_get_candidate_fold(RemGas, MinTxGas, MinMinerGasPrice, Db, Dbs, ets:select(Cont),
+                                   AccountsTree, Height, Protocol, NewAcc)
+    end;
 int_get_candidate_fold(RemGas, _GL, _MMGP, _Db, _Dbs, '$end_of_table', _AccountsTree,
                        _Height, _Protocol, Acc) ->
     {ok, RemGas, Acc}.
+
+%% Matched explicitly rather than compared loosely: under Erlang term order
+%% every atom is greater than every number, so a stray atom deadline would
+%% never compare as expired and would disable the bound without a word.
+deadline_expired(#{deadline := infinity}) ->
+    false;
+deadline_expired(#{deadline := Deadline}) when is_integer(Deadline) ->
+    erlang:monotonic_time(millisecond) >= Deadline.
 
 fold_txs([Tx|Txs], Gas, MinTxGas, MinMinerGasPrice, Db, Dbs, AccountsTree, Height, Protocol, Acc) ->
     if Gas > MinTxGas ->

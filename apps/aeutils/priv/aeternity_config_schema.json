@@ -2097,6 +2097,12 @@
                     "default": 3000,
                     "minimum" : 1
                 },
+                "micro_block_candidate_timeout" : {
+                    "description" : "Maximum time (milliseconds) spent selecting transactions for one micro-block candidate. On expiry the candidate is published with the transactions packed so far, rather than the whole attempt being lost. Selection already in progress is never interrupted, so a build may overrun this by one batch of transactions plus the time it takes to apply that batch - keep it comfortably below mining.micro_block_cycle. Set to 0 for no limit.",
+                    "type" : "integer",
+                    "default": 1000,
+                    "minimum" : 0
+                },
                 "min_miner_gas_price" : {
                     "description" : "Minimum gas price accepted by the miner",
                     "type" : "integer",

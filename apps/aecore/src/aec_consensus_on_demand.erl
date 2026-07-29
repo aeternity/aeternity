@@ -92,7 +92,10 @@ client_request(emit_kb) ->
     Block;
 client_request(emit_mb) ->
     TopHash = aec_chain:top_block_hash(),
-    {ok, MicroBlock, _} = aec_block_micro_candidate:create(TopHash),
+    %% Not racing the micro block cycle here, and the caller posts whatever
+    %% comes back - so never bound packing, or a slow build silently drops the
+    %% very transactions this was asked to mine.
+    {ok, MicroBlock, _} = aec_block_micro_candidate:create(TopHash, #{timeout => infinity}),
     SignModule = get_sign_module(),
     {ok, MicroBlockS} = SignModule:sign_micro_block(MicroBlock),
     ok = aec_conductor:post_block(MicroBlockS),

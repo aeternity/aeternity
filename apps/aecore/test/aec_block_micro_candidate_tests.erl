@@ -20,6 +20,14 @@
                      49,94,251,20,75,9,85,29,82,35,178,98,75,188,72,242,141>>).
 -define(TEST_ID, aeser_id:create(account, ?TEST_PUB)).
 
+%% What the pool reports when it stopped because it ran out of transactions to
+%% offer, rather than because it hit the deadline it was given.
+-define(DRAINED, #{expired => false}).
+
+%% Mirrors the schema default of mining.micro_block_candidate_timeout, so that
+%% changing a documented default has to be a deliberate edit here too.
+-define(DEFAULT_CANDIDATE_TIMEOUT, 1000).
+
 -define(PAYER_PUB, <<177,181,119,188,211,39,203,57,229,94,108,2,107,214, 167,74,27,
                     53,222,108,6,80,196,174,81,239,171,117,158,65,91,102>>).
 -define(PAYER_PRIV, <<145,69,14,254,5,22,194,68,118,57,0,134,66,96,8,20,124,253,238,
@@ -38,6 +46,12 @@ block_extension_test_() ->
         meck:new(aec_trees, [passthrough])
       end,
       fun(_) ->
+        %% Unset here rather than in the test bodies: eunit kills the test
+        %% process on a {timeout, _} expiry, which is exactly the failure mode
+        %% the deadline tests below guard against, and an `after` clause in a
+        %% test body would not run - leaking the setting into every later test.
+        application:unset_env(aecore, micro_block_candidate_timeout),
+        application:unset_env(aeutils, '$user_map'),
         meck:unload(aec_trees),
         meck:unload(aec_tx_pool),
         meck:unload(aec_keys),
@@ -192,8 +206,215 @@ block_extension_test_() ->
                 {error, no_update_to_block_candidate},
                 aec_block_micro_candidate:update(FullBlock, [ExceedingTx], FullBlockInfo)),
             ok
-        end}
+        end},
+       {"Packing gives up at its deadline when no selected tx can be applied",
+        {timeout, 30,
+         fun() ->
+            Block0 = setup_deadline_mecks(),
+
+            %% A transaction the pool keeps offering but that can never be
+            %% applied. It consumes no gas, so the refill loop never reduces
+            %% the budget and would only stop once the pool stopped offering.
+            BadTx = aec_test_utils:sign_tx(spend_tx(#{nonce => 100}), ?TEST_PRIV),
+
+            meck:expect(aec_tx_pool, get_candidate,
+                        fun(_, _, _, _) -> {ok, [BadTx], ?DRAINED} end),
+            meck:expect(aec_tx_pool, failed_txs, 1, ok),
+
+            %% Long enough that a stalled CI box cannot spend it inside the
+            %% first pass, which has to complete for the assertions below.
+            Timeout = 200,
+            application:set_env(aecore, micro_block_candidate_timeout, Timeout),
+            Before = erlang:monotonic_time(millisecond),
+            {ok, Block, _BlockInfo} = aec_block_micro_candidate:create(Block0),
+            Elapsed = erlang:monotonic_time(millisecond) - Before,
+
+            %% Nothing applied, so there is nothing to publish.
+            ?assertEqual([], aec_blocks:txs(Block)),
+            %% The loop really did run until the deadline, and really did make
+            %% more than one attempt - a build that gave up before the first
+            %% pass would satisfy the assertion above just as well.
+            ?assert(Elapsed >= Timeout),
+            ?assert(meck:num_calls(aec_tx_pool, get_candidate,
+                                   ['_', '_', '_', '_']) > 1),
+
+            %% Every pass is handed the same deadline, computed once per build.
+            Deadlines = candidate_deadlines(),
+            ?assertMatch([_|_], Deadlines),
+            [ ?assert(is_integer(D)) || D <- Deadlines ],
+            ?assertEqual(1, length(lists:usort(Deadlines)))
+         end}},
+       {"A candidate timeout of 0 restores unbounded packing",
+        {timeout, 30,
+         fun() ->
+            Block0 = setup_deadline_mecks(),
+            BadTx = aec_test_utils:sign_tx(spend_tx(#{nonce => 100}), ?TEST_PRIV),
+
+            meck:expect(aec_tx_pool, failed_txs, 1, ok),
+
+            %% With no deadline the pool alone decides when to stop, so make it
+            %% offer the unapplicable tx a fixed number of times. Each of those
+            %% passes applies nothing and consumes no gas, so a deadline - or a
+            %% cap on passes - is the only thing that could cut the loop short.
+            Passes = 25,
+            Counter = ets:new(candidate_passes, [public]),
+            ets:insert(Counter, {passes, 0}),
+            meck:expect(aec_tx_pool, get_candidate,
+                        fun(_, _, _, _) ->
+                            case ets:update_counter(Counter, passes, 1) of
+                                N when N =< Passes -> {ok, [BadTx], ?DRAINED};
+                                _                  -> {ok, [], ?DRAINED}
+                            end
+                        end),
+
+            application:set_env(aecore, micro_block_candidate_timeout, 0),
+            {ok, Block, _BlockInfo} = aec_block_micro_candidate:create(Block0),
+
+            ?assertEqual([], aec_blocks:txs(Block)),
+            ?assertEqual(Passes + 1, ets:lookup_element(Counter, passes, 2)),
+            ets:delete(Counter)
+         end}},
+       {"A build stopped by its deadline publishes what it packed",
+        {timeout, 30,
+         fun() ->
+            Block0 = setup_deadline_mecks(),
+            GoodTx = aec_test_utils:sign_tx(spend_tx(#{nonce => 1}), ?TEST_PRIV),
+            BadTx  = aec_test_utils:sign_tx(spend_tx(#{nonce => 100}), ?TEST_PRIV),
+
+            meck:expect(aec_tx_pool, failed_txs, 1, ok),
+            %% The first pass offers something applicable, every later pass
+            %% does not - so the build is truncated with one tx already packed.
+            meck:expect(aec_tx_pool, get_candidate,
+                        fun(_, Packed, _, _) when map_size(Packed) =:= 0 ->
+                                {ok, [GoodTx], ?DRAINED};
+                           (_, _, _, _) ->
+                                {ok, [BadTx], ?DRAINED}
+                        end),
+
+            application:set_env(aecore, micro_block_candidate_timeout, 200),
+            {ok, Block, BlockInfo} = aec_block_micro_candidate:create(Block0),
+
+            %% What was packed before the deadline survives...
+            ?assertEqual([GoodTx], aec_blocks:txs(Block)),
+            %% ...and the truncated candidate is consistent: its state hash is
+            %% the hash of the trees that packing actually produced, and the
+            %% block info it returns can still be extended.
+            ?assertEqual(aec_trees:hash(maps:get(trees, BlockInfo)),
+                         aec_blocks:root_hash(Block)),
+            NextTx = aec_test_utils:sign_tx(spend_tx(#{nonce => 2}), ?TEST_PRIV),
+            ?assertMatch({ok, _, _},
+                         aec_block_micro_candidate:update(Block, [NextTx], BlockInfo))
+         end}},
+       {"Transactions and events from several packing passes keep their order",
+        fun() ->
+            Block0 = setup_deadline_mecks(),
+            [STx1, STx2, STx3] =
+                [ aec_test_utils:sign_tx(spend_tx(#{nonce => N}), ?TEST_PRIV)
+                  || N <- [1, 2, 3] ],
+
+            %% One transaction per pass, so the block is assembled out of three
+            %% separate batches rather than in a single pass.
+            meck:expect(aec_tx_pool, get_candidate,
+                        fun(_, Packed, _, _) ->
+                            case map_size(Packed) of
+                                0 -> {ok, [STx1], ?DRAINED};
+                                1 -> {ok, [STx2], ?DRAINED};
+                                2 -> {ok, [STx3], ?DRAINED};
+                                _ -> {ok, [], ?DRAINED}
+                            end
+                        end),
+            %% Tag each applied tx with an event, so the event accumulator is
+            %% held to the same ordering as the transaction accumulator. Both
+            %% are collected per pass in reverse and joined once at the end.
+            meck:expect(aec_trees, apply_txs_on_state_trees,
+                        fun(Txs, Trees, _Env) ->
+                            {ok, Txs, [], Trees, [ {applied, T} || T <- Txs ]}
+                        end),
+
+            {ok, Block, #{tx_env := TxEnv}} = aec_block_micro_candidate:create(Block0),
+
+            ?assertEqual([STx1, STx2, STx3], aec_blocks:txs(Block)),
+            ?assertEqual([{applied, STx1}, {applied, STx2}, {applied, STx3}],
+                         aetx_env:events(TxEnv))
+        end},
+       {"The candidate timeout is read from configuration, and defaults",
+        fun() ->
+            Block0 = setup_deadline_mecks(),
+            %% Nothing to pack, so a build is one pass long and the deadline it
+            %% handed the pool is all that is under test.
+            meck_tx_pool_get_candidate([]),
+
+            %% Unset. This is what the mining loop runs with, because
+            %% aec_block_generator builds its candidates through create/1.
+            Before = erlang:monotonic_time(millisecond),
+            {ok, _, _} = aec_block_micro_candidate:create(Block0),
+            [Default] = candidate_deadlines(),
+            ?assert(Default - Before >= ?DEFAULT_CANDIDATE_TIMEOUT),
+            ?assert(Default - Before < ?DEFAULT_CANDIDATE_TIMEOUT * 2),
+
+            %% Set, through the user configuration rather than the application
+            %% environment: this is the key the schema defines, and reading a
+            %% mistyped path would fall back to the default unnoticed.
+            Configured = ?DEFAULT_CANDIDATE_TIMEOUT div 4,
+            application:set_env(
+              aeutils, '$user_map',
+              #{<<"mining">> => #{<<"micro_block_candidate_timeout">> => Configured}}),
+            meck:reset(aec_tx_pool),
+            Before1 = erlang:monotonic_time(millisecond),
+            {ok, _, _} = aec_block_micro_candidate:create(Block0),
+            [FromConfig] = candidate_deadlines(),
+            ?assert(FromConfig - Before1 >= Configured),
+            ?assert(FromConfig - Before1 < ?DEFAULT_CANDIDATE_TIMEOUT)
+        end},
+       {"Only a build the deadline actually truncated is reported",
+        %% The metrics mock belongs to this test alone: every mock costs a
+        %% load-and-purge of a cover-compiled module, and the fixture above is
+        %% instantiated once per test.
+        {setup,
+         fun() -> meck:new(aec_metrics, [passthrough]) end,
+         fun(_) -> meck:unload(aec_metrics) end,
+         fun() ->
+            Block0 = setup_deadline_mecks(),
+            Expired = [ae,epoch,aecore,tx_pool,candidate,expired],
+            %% Far enough ahead that packing cannot reach it: whether the build
+            %% counts as truncated is then entirely the pool's answer.
+            application:set_env(aecore, micro_block_candidate_timeout, 60000),
+
+            %% Selection can stop between select chunks with nothing selected,
+            %% which is indistinguishable from an empty pool by the block alone.
+            meck:expect(aec_tx_pool, get_candidate,
+                        fun(_, _, _, _) -> {ok, [], #{expired => true}} end),
+            {ok, Truncated, _} = aec_block_micro_candidate:create(Block0),
+            ?assertEqual([], aec_blocks:txs(Truncated)),
+            ?assert(meck:called(aec_metrics, try_update, [Expired, 1])),
+
+            %% A pool that simply has nothing left is how every healthy build
+            %% ends, and must not be reported as a truncated one.
+            meck:reset(aec_metrics),
+            meck:expect(aec_tx_pool, get_candidate,
+                        fun(_, _, _, _) -> {ok, [], ?DRAINED} end),
+            {ok, Drained, _} = aec_block_micro_candidate:create(Block0),
+            ?assertEqual([], aec_blocks:txs(Drained)),
+            ?assertNot(meck:called(aec_metrics, try_update, [Expired, 1]))
+         end}}
       ]}.
+
+%% A genesis chain plus everything a candidate build needs, except the pool:
+%% each test below installs its own get_candidate expectation.
+setup_deadline_mecks() ->
+    AccMap = #{ preset_accounts => [{?TEST_PUB, 100000 * aec_test_utils:min_gas_price()}] },
+    {Block0, Trees0} = aec_block_genesis:genesis_block_with_state(AccMap),
+    meck:expect(aeu_time, now_in_msecs, 0, 1234567890),
+    meck:expect(aec_chain, get_block_state, 1, {ok, Trees0}),
+    meck:expect(aec_keys, get_pubkey, 0, {ok, ?TEST_PUB}),
+    meck:expect(aec_db, find_discovered_pof, 1, none),
+    Block0.
+
+%% The deadline each packing pass was given, in call order.
+candidate_deadlines() ->
+    [ maps:get(deadline, Opts)
+      || {_Pid, {aec_tx_pool, get_candidate, [_, _, _, Opts]}, _}
+             <- meck:history(aec_tx_pool) ].
 
 used_gas_test_() ->
     {foreach,
@@ -589,8 +810,8 @@ meck_expect_candidate_prerequisites(Time, Trees, Txs) ->
 %% The set of already packed hashes is empty on the first pass only.
 meck_tx_pool_get_candidate(Txs) ->
     meck:expect(aec_tx_pool, get_candidate,
-                fun(_, Packed, _) when map_size(Packed) =:= 0 -> {ok, Txs};
-                   (_, _, _)  -> {ok, []}
+                fun(_, Packed, _, _) when map_size(Packed) =:= 0 -> {ok, Txs, ?DRAINED};
+                   (_, _, _, _)  -> {ok, [], ?DRAINED}
                 end).
 
 paying_for_tx(Payer, Fee, InnerTx, Nonce) ->
