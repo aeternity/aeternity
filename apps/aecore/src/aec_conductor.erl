@@ -1484,7 +1484,10 @@ hc_create_microblock_candidate(TopHash, VoteResults) ->
     hc_create_microblock_candidate(TopHash, VoteResults, 0).
 
 hc_create_microblock_candidate(TopHash, [], Gas) ->
-    aec_block_micro_candidate:create_pos(TopHash, Gas);
+    %% The leader is woken this long before its slot, so it is the window the
+    %% whole build has to fit inside - see aec_consensus_hc:activate_next_leader/4.
+    Window = aec_consensus_hc:child_block_production_time(),
+    aec_block_micro_candidate:create_pos(TopHash, Gas, Window);
 hc_create_microblock_candidate(TopHash, [{ok, VoteTx}|VoteResults], CurrentGas) ->
     Tx = aetx_sign:tx(VoteTx),
     Gas = case aec_chain:get_block(TopHash) of

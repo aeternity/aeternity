@@ -93,7 +93,8 @@ client_request(emit_kb) ->
     Block;
 client_request(emit_mb) ->
     TopHash = aec_chain:top_block_hash(),
-    {ok, MicroBlock, _} = aec_block_micro_candidate:create(TopHash),
+    %% Unbounded on purpose - see aec_consensus_on_demand.
+    {ok, MicroBlock, _} = aec_block_micro_candidate:create(TopHash, infinity),
     {ok, MicroBlockS} = aec_keys:sign_micro_block(MicroBlock),
     ok = aec_conductor:post_block(MicroBlockS),
     MicroBlockS;

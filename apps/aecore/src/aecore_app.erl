@@ -16,6 +16,7 @@ start(_StartType, _StartArgs) ->
     ok = lager:info("Starting aecore node"),
     %% Setup hooks do not re-run on an aecore restart.
     ok = aec_governance:ensure_env(),
+    ok = aec_block_micro_candidate:check_config(),
     ok = aec_jobs_queues:start(),
     ok = application:ensure_started(mnesia),
     aecore_sup:start_link().

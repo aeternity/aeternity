@@ -254,7 +254,61 @@ tx_pool_test_() ->
                %% No txs further to the microblock limit were included
                ?assertMatch(X when X =< MaxGas, TotalGas)
        end}},
-      {"Candidate selection accepts the ignore set as a list or a map",
+      {"Candidate selection stops walking the pool at its deadline",
+       {timeout, 10, fun() ->
+               NumTxs = 200,
+               ok = application:set_env(aecore, mempool_nonce_baseline, NumTxs),
+               PubKey = new_pubkey(),
+               STxs = [ a_signed_tx(PubKey, me, Nonce, 20000, 10)
+                        || Nonce <- lists:seq(1, NumTxs) ],
+               [ ok = aec_tx_pool:push(STx, tx_created) || STx <- STxs ],
+
+               {ok, Hash} = aec_headers:hash_header(aec_block_genesis:genesis_header()),
+               MaxGas = aec_governance:block_gas_limit(),
+
+               %% A deadline that has already passed. Selection tests it
+               %% between ets:select chunks, so the first chunk still runs -
+               %% what must not happen is a walk of the whole pool.
+               Past = erlang:monotonic_time(millisecond) - 1,
+               {ok, Truncated, TruncatedInfo} =
+                   aec_tx_pool:get_candidate(MaxGas, #{}, Hash, #{deadline => Past}),
+               ?assertMatch([_|_], Truncated),
+               ?assert(length(Truncated) < NumTxs),
+               %% And it says so, which is the only way the caller can tell a
+               %% cut-short walk from a pool that had nothing more to offer.
+               ?assertEqual(#{expired => true}, TruncatedInfo),
+
+               %% The same pool, unbounded, offers everything - so the pool was
+               %% not short of transactions, the deadline cut the walk short.
+               {ok, All, AllInfo} =
+                   aec_tx_pool:get_candidate(MaxGas, #{}, Hash, #{deadline => infinity}),
+               ?assertEqual(NumTxs, length(All)),
+               ?assertEqual(#{expired => false}, AllInfo)
+       end}},
+      {"An absent deadline selects exactly as infinity does",
+       {timeout, 10, fun() ->
+               NumTxs = 30,
+               ok = application:set_env(aecore, mempool_nonce_baseline, NumTxs),
+               PubKey = new_pubkey(),
+               STxs = [ a_signed_tx(PubKey, me, Nonce, 20000, 10)
+                        || Nonce <- lists:seq(1, NumTxs) ],
+               [ ok = aec_tx_pool:push(STx, tx_created) || STx <- STxs ],
+
+               {ok, Hash} = aec_headers:hash_header(aec_block_genesis:genesis_header()),
+               MaxGas = aec_governance:block_gas_limit(),
+
+               %% All three spellings must behave identically: the legacy
+               %% arities are the unbounded case.
+               {ok, Infinity, #{expired := false}} =
+                   aec_tx_pool:get_candidate(MaxGas, #{}, Hash, #{deadline => infinity}),
+               {ok, NoOpts, #{expired := false}} =
+                   aec_tx_pool:get_candidate(MaxGas, #{}, Hash, #{}),
+               {ok, Legacy}   = aec_tx_pool:get_candidate(MaxGas, Hash),
+               ?assertEqual(NumTxs, length(Infinity)),
+               ?assertEqual(lists:sort(Infinity), lists:sort(NoOpts)),
+               ?assertEqual(lists:sort(Infinity), lists:sort(Legacy))
+       end}},
+      {"Candidate selection skips the ignored transactions",
        fun() ->
                ok = application:set_env(aecore, mempool_nonce_baseline, 10),
                PubKey = new_pubkey(),
@@ -266,10 +320,11 @@ tx_pool_test_() ->
                MaxGas = aec_governance:block_gas_limit(),
                Ignored = aetx_sign:hash(STx2),
 
-               %% The list form is normalised at the API boundary, so both
-               %% spellings must skip the ignored tx and select the same rest.
+               %% get_candidate/3 takes the list its callers have always
+               %% passed; the selection fold consults the set as a map.
                {ok, FromList} = aec_tx_pool:get_candidate(MaxGas, [Ignored], Hash),
-               {ok, FromMap}  = aec_tx_pool:get_candidate(MaxGas, #{Ignored => []}, Hash),
+               {ok, FromMap, _} =
+                   aec_tx_pool:get_candidate(MaxGas, #{Ignored => []}, Hash, #{}),
                ?assertEqual(lists:sort([STx1, STx3]), lists:sort(FromList)),
                ?assertEqual(lists:sort(FromList), lists:sort(FromMap))
        end},
@@ -340,6 +395,40 @@ tx_pool_test_() ->
                             lists:sort(lists:sublist(Selected, 4))),
                %% Still one lookup per distinct origin: cache hits for the rest.
                ?assertEqual(2, meck:num_calls(aec_accounts_trees, lookup, ['_', '_']))
+       end}},
+      {"Selection that ran out of time does not start on the visited table",
+       {timeout, 10, fun() ->
+               Waiting = 60,
+               ok = application:set_env(aecore, mempool_nonce_baseline, Waiting),
+               VisitedKey = new_pubkey(),
+               WaitingKey = new_pubkey(),
+               VisitedTxs = [ a_signed_tx(VisitedKey, me, Nonce, 20000, 10)
+                              || Nonce <- lists:seq(1, 20) ],
+               [ ok = aec_tx_pool:push(STx, tx_created) || STx <- VisitedTxs ],
+
+               {ok, Hash} = aec_headers:hash_header(aec_block_genesis:genesis_header()),
+               MaxGas = aec_governance:block_gas_limit(),
+
+               %% Selecting them once is what moves them to the visited table.
+               {ok, Selected0} = aec_tx_pool:get_candidate(MaxGas, Hash),
+               ?assertEqual(length(VisitedTxs), length(Selected0)),
+               ?assertEqual(length(VisitedTxs), aec_tx_pool:size(visited)),
+
+               %% Enough in the mempool proper that walking it cannot finish
+               %% inside the first select chunk.
+               WaitingTxs = [ a_signed_tx(WaitingKey, me, Nonce, 20000, 10)
+                              || Nonce <- lists:seq(1, Waiting) ],
+               [ ok = aec_tx_pool:push(STx, tx_created) || STx <- WaitingTxs ],
+
+               Past = erlang:monotonic_time(millisecond) - 1,
+               {ok, Truncated, #{expired := true}} =
+                   aec_tx_pool:get_candidate(MaxGas, #{}, Hash, #{deadline => Past}),
+
+               %% The visited table is a second walk, taken only once the
+               %% mempool proper is exhausted - which an expired walk never is.
+               ?assert(length(Truncated) < Waiting),
+               ?assertEqual([], [ STx || STx <- Truncated,
+                                         lists:member(STx, VisitedTxs) ])
        end}},
       {"fill micro block with and without previously rejected tx",
        {timeout, 10, fun() ->
