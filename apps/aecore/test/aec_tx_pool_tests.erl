@@ -32,6 +32,7 @@ tx_pool_test_() ->
              ets:new(?TAB, [public, ordered_set, named_table]),
              meck:new(aeu_time, [passthrough]),
              meck:new(aec_accounts, [passthrough]),
+             meck:new(aec_accounts_trees, [passthrough]),
              meck:new(aec_jobs_queues),
              meck:expect(aec_jobs_queues, run, fun(_, F) -> F() end),
              meck:expect(aec_governance, minimum_gas_price, 1, 1),
@@ -44,6 +45,7 @@ tx_pool_test_() ->
              ok = application:unset_env(aecore, mempool_nonce_baseline),
              meck:unload(aec_tx_pool),
              meck:unload(aec_jobs_queues),
+             meck:unload(aec_accounts_trees),
              meck:unload(aec_accounts),
              meck:unload(aeu_time),
              ets:delete(?TAB),
@@ -249,6 +251,74 @@ tx_pool_test_() ->
                ?assertEqual(lists:sort([STx1, STx3]), lists:sort(FromList)),
                ?assertEqual(lists:sort(FromList), lists:sort(FromMap))
        end},
+      {"Candidate selection resolves each origin account once",
+       {timeout, 10, fun() ->
+               %% Several senders with many transactions each: without the
+               %% per-pass memoisation the fold resolves an account for every
+               %% entry it visits, not for every distinct origin.
+               PerAccount = 50,
+               ok = application:set_env(aecore, mempool_nonce_baseline, PerAccount),
+               PubKeys = [new_pubkey(), new_pubkey(), new_pubkey()],
+               STxs = [ a_signed_tx(PK, me, Nonce, 20000, 10)
+                        || PK <- PubKeys, Nonce <- lists:seq(1, PerAccount) ],
+               [ ok = aec_tx_pool:push(STx, tx_created) || STx <- STxs ],
+
+               {ok, Hash} = aec_headers:hash_header(aec_block_genesis:genesis_header()),
+               MaxGas = aec_governance:block_gas_limit(),
+
+               meck:reset(aec_accounts_trees),
+               {ok, Selected} = aec_tx_pool:get_candidate(MaxGas, Hash),
+               ?assertEqual(length(STxs), length(Selected)),
+               ?assertEqual(length(PubKeys),
+                            meck:num_calls(aec_accounts_trees, lookup, ['_', '_']))
+       end}},
+      {"Candidate selection judges nonces by the account state it memoises",
+       {timeout, 10, fun() ->
+               %% Funded senders, so the memoised lookup answers with an
+               %% account rather than falling through to the baseline check
+               %% every sender without one gets.
+               aec_test_utils:stop_chain_db(),
+               Stale = new_pubkey(),
+               Fresh = new_pubkey(),
+               meck:expect(aec_fork_block_settings, genesis_accounts, 0,
+                           [{Stale, 20000000}, {Fresh, 20000000}]),
+               aec_consensus:set_genesis_hash(),
+               {GenesisBlock, _} = aec_block_genesis:genesis_block_with_state(),
+               aec_test_utils:start_chain_db(),
+               {ok,_} = aec_chain_state:insert_block(GenesisBlock),
+
+               [StaleTx1, StaleTx2, StaleTx3] = StaleTxs =
+                   [ a_signed_tx(Stale, me, Nonce, 20000, 10) || Nonce <- lists:seq(1, 3) ],
+               FreshTxs =
+                   [ a_signed_tx(Fresh, me, Nonce, 20000, 10) || Nonce <- lists:seq(1, 3) ],
+               [ ok = aec_tx_pool:push(STx, tx_created) || STx <- StaleTxs ++ FreshTxs ],
+
+               %% The chain moves on underneath the pool: one sender's account
+               %% nonce is now 2, so its first two entries can never be applied
+               %% again. Selection has to see that through the memoised lookup,
+               %% and per sender - the other one is still at nonce 0.
+               {value, Account} = aec_chain:get_account(Stale),
+               Advanced = aec_accounts:set_nonce(Account, 2),
+               meck:expect(aec_accounts_trees, lookup,
+                           fun(PubKey, _) when PubKey =:= Stale -> {value, Advanced};
+                              (PubKey, Tree) -> meck:passthrough([PubKey, Tree])
+                           end),
+
+               Hash = aec_chain:top_block_hash(),
+               MaxGas = aec_governance:block_gas_limit(),
+               meck:reset(aec_accounts_trees),
+               {ok, Selected} = aec_tx_pool:get_candidate(MaxGas, Hash),
+
+               %% All six come back - the pool hands over what it rejected too -
+               %% but the two stale ones come last, as rejects rather than as
+               %% nonce-ordered candidates. A cache that answered `none`, or one
+               %% sender's account for another, would order them differently.
+               ?assertEqual([StaleTx1, StaleTx2], lists:nthtail(4, Selected)),
+               ?assertEqual(lists:sort([StaleTx3 | FreshTxs]),
+                            lists:sort(lists:sublist(Selected, 4))),
+               %% Still one lookup per distinct origin: cache hits for the rest.
+               ?assertEqual(2, meck:num_calls(aec_accounts_trees, lookup, ['_', '_']))
+       end}},
       {"fill micro block with and without previously rejected tx",
        {timeout, 10, fun() ->
                ok = application:set_env(aecore, mempool_nonce_offset, 600),
@@ -938,6 +1008,75 @@ tx_pool_test_() ->
                ?assertMatch({ok, [STx42, STx41]}, aec_tx_pool:peek(infinity))
        end}
      ]}.
+
+%% The nonce decision is a pure function of the account lookup result, the tx
+%% nonce and whether the caller wants the offset enforced. Exercise every
+%% branch of it directly - the pool paths above only reach some of them.
+int_check_nonce_test_() ->
+    %% The offset is an argument, so only the baseline still comes from config.
+    Offset = 5,
+    Baseline = 3,
+    {foreach,
+     fun() ->
+             ok = application:set_env(aecore, mempool_nonce_baseline, Baseline),
+             ok
+     end,
+     fun(_) ->
+             ok = application:unset_env(aecore, mempool_nonce_baseline)
+     end,
+     [{"An unknown account falls back to the nonce baseline",
+       fun() ->
+               Check = fun(Lookup, Nonce, CheckNonce) ->
+                               aec_tx_pool:int_check_nonce(Lookup, Nonce, CheckNonce, Offset)
+                       end,
+               %% A missing state tree is treated exactly like a missing account.
+               [ begin
+                     ?assertEqual(ok, Check(Lookup, Baseline, true)),
+                     ?assertEqual({error, nonce_too_high}, Check(Lookup, Baseline + 1, true)),
+                     %% Gossiped and candidate checks do not apply the baseline.
+                     ?assertEqual(ok, Check(Lookup, Baseline + 1, false))
+                 end || Lookup <- [none, {error, no_state_trees}] ]
+       end},
+      {"A basic account accepts nonces within the offset above its own",
+       fun() ->
+               Acc = {value, basic_account(7)},
+               ?assertEqual({error, nonce_too_low},
+                            aec_tx_pool:int_check_nonce(Acc, 6, true, Offset)),
+               ?assertEqual({error, nonce_too_low},
+                            aec_tx_pool:int_check_nonce(Acc, 7, true, Offset)),
+               ?assertEqual(ok, aec_tx_pool:int_check_nonce(Acc, 8, true, Offset)),
+               ?assertEqual(ok, aec_tx_pool:int_check_nonce(Acc, 7 + Offset, true, Offset)),
+               ?assertEqual({error, nonce_too_high},
+                            aec_tx_pool:int_check_nonce(Acc, 8 + Offset, true, Offset)),
+               %% Without the offset check an arbitrarily high nonce is allowed,
+               %% but nonce_too_low still is not.
+               ?assertEqual(ok, aec_tx_pool:int_check_nonce(Acc, 8 + Offset, false, Offset)),
+               ?assertEqual({error, nonce_too_low},
+                            aec_tx_pool:int_check_nonce(Acc, 7, false, Offset))
+       end},
+      {"A generalized account may only sign with nonce 0",
+       fun() ->
+               GA = {value, generalized_account(7)},
+               ?assertEqual(ok, aec_tx_pool:int_check_nonce(GA, 0, true, Offset)),
+               ?assertEqual(ok, aec_tx_pool:int_check_nonce(GA, 0, false, Offset)),
+               %% Any other nonce is rejected regardless of the offset check,
+               %% and regardless of how it compares to the account's own nonce.
+               ?assertEqual({error, generalized_account_cant_sign_non_meta_tx},
+                            aec_tx_pool:int_check_nonce(GA, 1, true, Offset)),
+               ?assertEqual({error, generalized_account_cant_sign_non_meta_tx},
+                            aec_tx_pool:int_check_nonce(GA, 8, false, Offset))
+       end}
+     ]}.
+
+basic_account(Nonce) ->
+    aec_accounts:set_nonce(aec_accounts:new(<<1:32/unit:8>>, 1000000), Nonce).
+
+generalized_account(Nonce) ->
+    {ok, GA} = aec_accounts:attach_ga_contract(
+                 basic_account(Nonce),
+                 aeser_id:create(contract, <<2:32/unit:8>>),
+                 <<0:32/unit:8>>),
+    GA.
 
 tx_pool_gc(Height) ->
     aec_tx_pool_gc:sync_gc(Height).
