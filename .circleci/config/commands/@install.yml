@@ -34,7 +34,14 @@ install_otp:
           # Install OTP binary package
           PACKAGE_NAME=esl-erlang_${OTP_VERSION}-1~ubuntu~focal_amd64.deb
           OTP_DOWNLOAD_URL=https://binaries2.erlang-solutions.com/ubuntu/pool/contrib/e/esl-erlang/${PACKAGE_NAME}
-          curl -fsSL -o ${PACKAGE_NAME} "$OTP_DOWNLOAD_URL"
+          # TODO: drop the insecure fallback once binaries2.erlang-solutions.com
+          # renews its edge cert (expired 2026-07-29, tracked as a third-party
+          # outage - no alternate mirror serves this exact package/path).
+          if ! curl -fsSL -o ${PACKAGE_NAME} "$OTP_DOWNLOAD_URL"; then
+            echo "WARNING: verified HTTPS download failed, retrying with TLS verification disabled" \
+                 "due to known upstream cert expiry on binaries2.erlang-solutions.com" >&2
+            curl -fsSLk -o ${PACKAGE_NAME} "$OTP_DOWNLOAD_URL"
+          fi
           sudo dpkg -i ${PACKAGE_NAME}
 
 install_libsodium:
