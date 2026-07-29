@@ -36,6 +36,43 @@ hash_test() ->
     {ok, _HeaderHash1} = ?TEST_MODULE:hash_header(raw_key_header()),
     {ok, _HeaderHash2} = ?TEST_MODULE:hash_header(raw_micro_header()).
 
+reserved_key_flag_bits_rejected_test() ->
+    Header = raw_key_header(),
+    <<Version:32, Tag:1, Secondary:1, _Reserved:30, Rest/bits>> =
+        ?TEST_MODULE:serialize_to_binary(Header),
+    %% Set an unused/reserved flag bit - must be rejected.
+    Tampered = <<Version:32, Tag:1, Secondary:1, 1:30, Rest/bits>>,
+    ?assertException(error, malformed_header,
+                      ?TEST_MODULE:deserialize_from_binary(Tampered)).
+
+reserved_micro_flag_bits_rejected_test() ->
+    Header = raw_micro_header(),
+    <<Version:32, Tag:1, Secondary:1, _Reserved:30, Rest/bits>> =
+        ?TEST_MODULE:serialize_to_binary(Header),
+    Tampered = <<Version:32, Tag:1, Secondary:1, 1:30, Rest/bits>>,
+    ?assertException(error, malformed_header,
+                      ?TEST_MODULE:deserialize_from_binary(Tampered)).
+
+hole_and_eoe_flags_roundtrip_test() ->
+    %% Hyperchains-defined flag bits must still round-trip through
+    %% (de)serialization once the reserved bits are strictly enforced.
+    Header = ?TEST_MODULE:set_eoe(raw_key_header(), true),
+    SerializedHeader = ?TEST_MODULE:serialize_to_binary(Header),
+    DeserializedHeader = ?TEST_MODULE:deserialize_from_binary(SerializedHeader),
+    ?assertEqual(Header, DeserializedHeader),
+    ?assert(?TEST_MODULE:is_eoe(DeserializedHeader)),
+    ?assertNot(?TEST_MODULE:is_hole(DeserializedHeader)).
+
+client_reserved_flag_bits_rejected_test() ->
+    RawKey = raw_key_header(),
+    Serialized = ?TEST_MODULE:serialize_for_client(RawKey, key),
+    WithBadFlags = Serialized#{<<"nonce">> => ?TEST_MODULE:nonce(RawKey),
+                               <<"pow">>   => ?TEST_MODULE:pow(RawKey),
+                               <<"flags">> => aeser_api_encoder:encode(bytearray, <<1:32>>)
+                              },
+    ?assertEqual({error, invalid_header},
+                 ?TEST_MODULE:deserialize_from_client(key, WithBadFlags)).
+
 raw_key_header_minerva(MinervaHeight) ->
     ?TEST_MODULE:set_version_and_height(raw_key_header(), ?MINERVA_PROTOCOL_VSN, MinervaHeight).
 
