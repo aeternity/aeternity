@@ -123,7 +123,8 @@ latest_sophia_vm_version() ->
         ?FORTUNA_PROTOCOL_VSN -> ?VM_AEVM_SOPHIA_3;
         ?LIMA_PROTOCOL_VSN    -> ?VM_AEVM_SOPHIA_4;
         ?IRIS_PROTOCOL_VSN    -> ?VM_FATE_SOPHIA_2;
-        ?CERES_PROTOCOL_VSN   -> ?VM_FATE_SOPHIA_3
+        ?CERES_PROTOCOL_VSN   -> ?VM_FATE_SOPHIA_3;
+        ?SALUS_PROTOCOL_VSN   -> ?VM_FATE_SOPHIA_3
     end.
 
 latest_sophia_abi_version() ->
@@ -133,7 +134,8 @@ latest_sophia_abi_version() ->
         ?FORTUNA_PROTOCOL_VSN -> ?ABI_AEVM_SOPHIA_1;
         ?LIMA_PROTOCOL_VSN    -> ?ABI_AEVM_SOPHIA_1;
         ?IRIS_PROTOCOL_VSN    -> ?ABI_FATE_SOPHIA_1;
-        ?CERES_PROTOCOL_VSN   -> ?ABI_FATE_SOPHIA_1
+        ?CERES_PROTOCOL_VSN   -> ?ABI_FATE_SOPHIA_1;
+        ?SALUS_PROTOCOL_VSN   -> ?ABI_FATE_SOPHIA_1
     end.
 
 latest_sophia_version() ->
@@ -143,7 +145,8 @@ latest_sophia_version() ->
         ?FORTUNA_PROTOCOL_VSN -> ?SOPHIA_FORTUNA;
         ?LIMA_PROTOCOL_VSN    -> ?SOPHIA_LIMA_AEVM;
         ?IRIS_PROTOCOL_VSN    -> ?SOPHIA_IRIS_FATE;
-        ?CERES_PROTOCOL_VSN   -> ?SOPHIA_CERES_FATE
+        ?CERES_PROTOCOL_VSN   -> ?SOPHIA_CERES_FATE;
+        ?SALUS_PROTOCOL_VSN   -> ?SOPHIA_CERES_FATE
     end.
 
 latest_sophia_contract_version() ->
@@ -153,7 +156,8 @@ latest_sophia_contract_version() ->
         ?FORTUNA_PROTOCOL_VSN -> ?SOPHIA_CONTRACT_VSN_2;
         ?LIMA_PROTOCOL_VSN    -> ?SOPHIA_CONTRACT_VSN_3;
         ?IRIS_PROTOCOL_VSN    -> ?SOPHIA_CONTRACT_VSN_3;
-        ?CERES_PROTOCOL_VSN    -> ?SOPHIA_CONTRACT_VSN_3
+        ?CERES_PROTOCOL_VSN    -> ?SOPHIA_CONTRACT_VSN_3;
+        ?SALUS_PROTOCOL_VSN    -> ?SOPHIA_CONTRACT_VSN_3
     end.
 
 latest_protocol_version() ->
@@ -170,7 +174,8 @@ require_at_least_protocol(Protocol) ->
 		      ?FORTUNA_PROTOCOL_VSN -> not_in_fortuna;
 		      ?LIMA_PROTOCOL_VSN    -> not_in_lima;
 		      ?IRIS_PROTOCOL_VSN    -> not_in_iris;
-		      ?CERES_PROTOCOL_VSN   -> not_in_ceres
+		      ?CERES_PROTOCOL_VSN   -> not_in_ceres;
+		      ?SALUS_PROTOCOL_VSN   -> not_in_salus
 		  end,
 	    {skip, Msg}
     end.
@@ -821,6 +826,7 @@ sophia_version(aevm, _) -> {error, aevm_deprecated};
 sophia_version(fate, ?LIMA_PROTOCOL_VSN) -> ?SOPHIA_LIMA_FATE;
 sophia_version(fate, ?IRIS_PROTOCOL_VSN) -> ?SOPHIA_IRIS_FATE;
 sophia_version(fate, ?CERES_PROTOCOL_VSN) -> ?SOPHIA_CERES_FATE;
+sophia_version(fate, ?SALUS_PROTOCOL_VSN) -> ?SOPHIA_CERES_FATE;
 sophia_version(fate, Protocol) when Protocol < ?LIMA_PROTOCOL_VSN -> {error, fate_not_available}.
 
 vm_version(aevm, ?ROMA_PROTOCOL_VSN) -> ?VM_AEVM_SOPHIA_1;
@@ -831,6 +837,7 @@ vm_version(aevm, _) -> {error, aevm_deprecated};
 vm_version(fate, ?LIMA_PROTOCOL_VSN) -> ?VM_FATE_SOPHIA_1;
 vm_version(fate, ?IRIS_PROTOCOL_VSN) -> ?VM_FATE_SOPHIA_2;
 vm_version(fate, ?CERES_PROTOCOL_VSN) -> ?VM_FATE_SOPHIA_3;
+vm_version(fate, ?SALUS_PROTOCOL_VSN) -> ?VM_FATE_SOPHIA_3;
 vm_version(fate, Protocol) when Protocol < ?LIMA_PROTOCOL_VSN -> {error, fate_not_available}.
 
 abi_version(aevm, ?ROMA_PROTOCOL_VSN) -> ?ABI_AEVM_SOPHIA_1;
@@ -841,6 +848,7 @@ abi_version(aevm, _) -> {error, aeavm_deprecated};
 abi_version(fate, ?LIMA_PROTOCOL_VSN) -> ?ABI_FATE_SOPHIA_1;
 abi_version(fate, ?IRIS_PROTOCOL_VSN) -> ?ABI_FATE_SOPHIA_1;
 abi_version(fate, ?CERES_PROTOCOL_VSN) -> ?ABI_FATE_SOPHIA_1;
+abi_version(fate, ?SALUS_PROTOCOL_VSN) -> ?ABI_FATE_SOPHIA_1;
 abi_version(fate, Protocol) when Protocol < ?LIMA_PROTOCOL_VSN -> {error, fate_not_available}.
 
 init_per_group(VM, Cfg, Cont) ->
@@ -855,7 +863,8 @@ init_per_group(VM, Cfg, Cont) ->
                     ?FORTUNA_PROTOCOL_VSN -> fortuna;
                     ?LIMA_PROTOCOL_VSN -> lima;
                     ?IRIS_PROTOCOL_VSN -> iris;
-                    ?CERES_PROTOCOL_VSN -> ceres
+                    ?CERES_PROTOCOL_VSN -> ceres;
+                    ?SALUS_PROTOCOL_VSN -> salus
                 end,
             ct:pal("Running tests under ~p protocol using ~p", [ProtocolAtom, VM]),
             Cont([{sophia_version, sophia_version(VM, Protocol)},
@@ -874,7 +883,8 @@ setup_testcase(Config) ->
                           fortuna -> ?FORTUNA_PROTOCOL_VSN;
                           lima    -> ?LIMA_PROTOCOL_VSN;
                           iris    -> ?IRIS_PROTOCOL_VSN;
-                          ceres   -> ?CERES_PROTOCOL_VSN
+                          ceres   -> ?CERES_PROTOCOL_VSN;
+                          salus   -> ?SALUS_PROTOCOL_VSN
                       end,
     AciDisabled = case os:getenv("SOPHIA_NO_ACI") of
                       false ->

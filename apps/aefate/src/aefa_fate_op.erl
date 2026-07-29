@@ -1647,7 +1647,8 @@ put_contract(CodeOrPK, Amount, ES0) ->
                   , abi => ?ABI_FATE_SOPHIA_1
                   }, FinalPK, 0)
         end,
-    Store      = aefa_stores:initial_contract_store(),
+    Aefa_stores = aefa_engine_state:aefa_stores(ES0),
+    Store      = Aefa_stores:initial_contract_store(),
     Contract1  = aect_contracts:set_state(Store, Contract0),
     ContractPK = aect_contracts:pubkey(Contract1),
 
@@ -3007,10 +3008,30 @@ store_map_lookup(Cache, MapId, Key, ES) ->
         void ->
             Pubkey        = aefa_engine_state:current_contract(ES),
             {Store, ES1}  = aefa_fate:ensure_contract_store(Pubkey, ES),
+            Aefa_stores   = aefa_engine_state:aefa_stores(ES1),
             ES2           = aefa_engine_state:spend_gas_for_store_values(1, ES1),
-            {Res, Store1} = aefa_stores:store_map_lookup(Pubkey, MapId, Key, Store),
-            ES3           = aefa_engine_state:set_stores(Store1, ES2),
-            {Res, ES3};
+            case aefa_engine_state:consensus_version(ES2) >= ?SALUS_PROTOCOL_VSN of
+                true ->
+                    %% Priced like the register-read path: charge-before-work
+                    %% via the gas-aware store_map_lookup/5.
+                    GasLeft = aefa_engine_state:gas(ES2),
+                    case Aefa_stores:store_map_lookup(Pubkey, MapId, Key, Store, GasLeft) of
+                        {error, out_of_gas} ->
+                            aefa_fate:abort(out_of_gas, ES2);
+                        {ok, Val, Store1, GasLeft1} ->
+                            ES3 = aefa_engine_state:set_gas(GasLeft1, ES2),
+                            ES4 = aefa_engine_state:set_stores(Store1, ES3),
+                            {{ok, Val}, ES4};
+                        {miss, Store1, GasLeft1} ->
+                            ES3 = aefa_engine_state:set_gas(GasLeft1, ES2),
+                            ES4 = aefa_engine_state:set_stores(Store1, ES3),
+                            {error, ES4}
+                    end;
+                false ->
+                    {Res, Store1} = Aefa_stores:store_map_lookup(Pubkey, MapId, Key, Store),
+                    ES3           = aefa_engine_state:set_stores(Store1, ES2),
+                    {Res, ES3}
+            end;
         Val -> {{ok, Val}, ES}
     end.
 
@@ -3020,24 +3041,40 @@ store_map_member(Cache, MapId, Key, ES) ->
         void ->
             Pubkey        = aefa_engine_state:current_contract(ES),
             {Store, ES1}  = aefa_fate:ensure_contract_store(Pubkey, ES),
+            Aefa_stores   = aefa_engine_state:aefa_stores(ES1),
             ES2           = aefa_engine_state:spend_gas_for_store_values(1, ES1),
-            {Res, Store1} = aefa_stores:store_map_member(Pubkey, MapId, Key, Store),
-            ES3           = aefa_engine_state:set_stores(Store1, ES2),
-            {aeb_fate_data:make_boolean(Res), ES3};
+            case aefa_engine_state:consensus_version(ES2) >= ?SALUS_PROTOCOL_VSN of
+                true ->
+                    %% Same repricing as store_map_lookup/4 above.
+                    GasLeft = aefa_engine_state:gas(ES2),
+                    case Aefa_stores:store_map_member(Pubkey, MapId, Key, Store, GasLeft) of
+                        {error, out_of_gas} ->
+                            aefa_fate:abort(out_of_gas, ES2);
+                        {Bool, Store1, GasLeft1} ->
+                            ES3 = aefa_engine_state:set_gas(GasLeft1, ES2),
+                            ES4 = aefa_engine_state:set_stores(Store1, ES3),
+                            {aeb_fate_data:make_boolean(Bool), ES4}
+                    end;
+                false ->
+                    {Res, Store1} = Aefa_stores:store_map_member(Pubkey, MapId, Key, Store),
+                    ES3           = aefa_engine_state:set_stores(Store1, ES2),
+                    {aeb_fate_data:make_boolean(Res), ES3}
+            end;
         _Val -> {?FATE_TRUE, ES}
     end.
 
 store_map_size(Cache, MapId, ES) ->
     Pubkey         = aefa_engine_state:current_contract(ES),
     {Store, ES1}   = aefa_fate:ensure_contract_store(Pubkey, ES),
-    {Size, Store1} = aefa_stores:store_map_size(Pubkey, MapId, Store),
+    Aefa_stores    = aefa_engine_state:aefa_stores(ES1),
+    {Size, Store1} = Aefa_stores:store_map_size(Pubkey, MapId, Store),
     Delta  = fun(Key, ?FATE_MAP_TOMBSTONE, N) ->
-                     case aefa_stores:store_map_member(Pubkey, MapId, Key, Store1) of
+                     case Aefa_stores:store_map_member(Pubkey, MapId, Key, Store1) of
                          {false, _Store} -> N;
                          {true,  _Store} -> N - 1
                      end;
                 (Key, _, N) ->
-                     case aefa_stores:store_map_member(Pubkey, MapId, Key, Store) of
+                     case Aefa_stores:store_map_member(Pubkey, MapId, Key, Store) of
                          {false, _Store} -> N + 1;
                          {true,  _Store} -> N
                      end
@@ -3049,15 +3086,10 @@ store_map_size(Cache, MapId, ES) ->
 store_map_get_clean(Cache, MapId, ES) ->
     Pubkey           = aefa_engine_state:current_contract(ES),
     {Store, ES1}     = aefa_fate:ensure_contract_store(Pubkey, ES),
-    {Size, Store1}   = aefa_stores:store_map_size(Pubkey, MapId, Store),
-    ConsensusVersion = aefa_engine_state:consensus_version(ES),
-    STORE_MAP_TO_LIST =
-        if
-        ConsensusVersion < ?IRIS_PROTOCOL_VSN ->
-            fun aefa_stores_lima:store_map_to_list/3;
-        true ->
-            fun aefa_stores:store_map_to_list/3
-        end,
+    Aefa_stores      = aefa_engine_state:aefa_stores(ES1),
+    {Size, Store1}   = Aefa_stores:store_map_size(Pubkey, MapId, Store),
+    %% Routed through the shared dispatcher, matching every other call site.
+    STORE_MAP_TO_LIST = fun Aefa_stores:store_map_to_list/3,
     ES2                 = aefa_engine_state:spend_gas_for_store_values(Size, ES1),
     {StoreList, Store2} = STORE_MAP_TO_LIST(Pubkey, MapId, Store1),
     StoreMap            = maps:from_list(StoreList),

@@ -29,6 +29,7 @@
 -define(LIMA_DIR,    ".lima").
 -define(IRIS_DIR,    ".iris").
 -define(CERES_DIR,   ".ceres").
+-define(SALUS_DIR,   ".salus").
 
 
 -spec genesis_accounts() -> list().
@@ -383,7 +384,8 @@ hardcoded_basename(ProtocolVsn) ->
         ?FORTUNA_PROTOCOL_VSN -> ?FORTUNA_DIR;
         ?LIMA_PROTOCOL_VSN    -> ?LIMA_DIR;
         ?IRIS_PROTOCOL_VSN    -> ?IRIS_DIR;
-        ?CERES_PROTOCOL_VSN   -> ?CERES_DIR
+        ?CERES_PROTOCOL_VSN   -> ?CERES_DIR;
+        ?SALUS_PROTOCOL_VSN   -> ?SALUS_DIR
     end.
 
 configured_genesis_accounts() ->
