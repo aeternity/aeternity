@@ -679,7 +679,15 @@ deserialize_from_client(key, KeyBlock) ->
 deserialize_key_flags(KeyBlock) ->
     case maps:get(<<"flags">>, KeyBlock, undefined) of
         undefined -> <<?KEY_HEADER_FLAG:?FLAG_BYTES/unit:8>>;
-        Flags -> decode(bytearray, Flags)
+        Flags ->
+            Decoded = decode(bytearray, Flags),
+            %% Client-supplied flags must not set any unused/reserved bit.
+            <<F:?FLAG_BITS>> = Decoded,
+            AllowedMask = ?KEY_HEADER_FLAG bor ?CONTAINS_INFO_FLAG bor ?HOLE_FLAG bor ?EOE_FLAG,
+            case F band (bnot AllowedMask) of
+                0 -> Decoded;
+                _ -> error(illegal_flags)
+            end
     end.
 
 
@@ -803,7 +811,9 @@ deserialize_from_binary_partial(<<_Version:32,
 deserialize_key_from_binary(<<Version:32,
                               ?KEY_HEADER_TAG:1,
                               ContainsInfoFlag:1,
-                              RestFlags:30, %% Remaining flags.
+                              HoleFlag:1,
+                              EoeFlag:1,
+                              0:28, %% Unused flag bits - must be zero.
                               Height:64,
                               PrevHash:?BLOCK_HEADER_HASH_BYTES/binary,
                               PrevKeyHash:?BLOCK_HEADER_HASH_BYTES/binary,
@@ -829,7 +839,7 @@ deserialize_key_from_binary(<<Version:32,
                     time = Time,
                     version = Version,
                     info = Info,
-                    flags = <<?KEY_HEADER_TAG:1, ContainsInfoFlag:1, RestFlags:30 >>
+                    flags = <<?KEY_HEADER_TAG:1, ContainsInfoFlag:1, HoleFlag:1, EoeFlag:1, 0:28>>
                    },
     {ok, populate_extra(H)};
 deserialize_key_from_binary(_Other) ->
@@ -846,7 +856,7 @@ deserialize_key_from_binary(_Other) ->
 deserialize_micro_from_binary(<<Version:32,
                                 ?MICRO_HEADER_TAG:1,
                                 PoFTag:1,
-                                RestFlags:30, %% Remaining flags.
+                                0:30, %% Unused flag bits - must be zero.
                                 Height:64,
                                 PrevHash:?BLOCK_HEADER_HASH_BYTES/binary,
                                 PrevKeyHash:?BLOCK_HEADER_HASH_BYTES/binary,
@@ -870,7 +880,7 @@ deserialize_micro_from_binary(<<Version:32,
                             version = Version,
                             flags = << ?MICRO_HEADER_TAG:1,
                                        PoFTag:1,
-                                       RestFlags:30 >>},
+                                       0:30 >>},
             {ok, fix_flags(populate_extra(H))};
         _ ->
             {error, malformed_header}
