@@ -21,6 +21,7 @@
         , prune/2
         , prune_without_backend/1
         , root_hash/1
+        , flush_call_batch/1
         , db/1 ]).
 
 -export([ from_binary_without_backend/1
@@ -43,8 +44,17 @@
 
 -type call_tree() :: aeu_mtrees:mtree().
 
+%% Per-microblock deferred call writes. 'new' = insert_call
+%% (aeu_mtrees:insert, errors on duplicate); 'update' = enter_auth_call
+%% (aeu_mtrees:enter). Calls are append-only within a block (call ids
+%% are unique) and the whole tree is pruned every block, so there is no
+%% tombstone arm.
+-type call_entry() :: {new | update, aect_call:call()}.
+-type call_batch() :: #{binary() => call_entry()}.
+
 -record(call_tree, {
-          calls = aeu_mtrees:empty() :: call_tree()
+          calls      = aeu_mtrees:empty() :: call_tree(),
+          call_batch = #{}                :: call_batch()
     }).
 
 -opaque tree() :: #call_tree{}.
@@ -115,20 +125,30 @@ enter_auth_call(Call, Tree) ->
 
 -spec lookup_call(aect_contracts:pubkey(), aect_call:id(), tree()) ->
     {value, aect_call:call()} | none.
-lookup_call(CtId, CallId, #call_tree{ calls = Calls }) ->
-    case aeu_mtrees:lookup(call_tree_id(CtId, CallId), Calls) of
-        {value, Val} -> {value, aect_call:deserialize(CallId, Val)};
-        none         -> none
+lookup_call(CtId, CallId, #call_tree{ calls = Calls, call_batch = Batch }) ->
+    Key = call_tree_id(CtId, CallId),
+    case maps:find(Key, Batch) of
+        {ok, {_Tag, Call}} -> {value, Call};
+        error ->
+            case aeu_mtrees:lookup(Key, Calls) of
+                {value, Val} -> {value, aect_call:deserialize(CallId, Val)};
+                none         -> none
+            end
     end.
 
 -spec iterator(tree()) -> aeu_mtrees:iterator().
 iterator(Tree) ->
-    aeu_mtrees:iterator(Tree#call_tree.calls).
+    #call_tree{calls = CtTree} = flush_call_batch(Tree),
+    aeu_mtrees:iterator(CtTree).
 
 -spec get_call(aect_contracts:pubkey(), aect_call:id(), tree()) ->
     aect_call:call().
-get_call(CtPubkey, CallId, #call_tree{ calls = CtTree }) ->
-    aect_call:deserialize(CallId, aeu_mtrees:get(call_tree_id(CtPubkey, CallId), CtTree)).
+get_call(CtPubkey, CallId, #call_tree{ calls = CtTree, call_batch = Batch }) ->
+    Key = call_tree_id(CtPubkey, CallId),
+    case maps:find(Key, Batch) of
+        {ok, {_Tag, Call}} -> Call;
+        error -> aect_call:deserialize(CallId, aeu_mtrees:get(Key, CtTree))
+    end.
 
 -ifdef(TEST).
 to_list(Tree) ->
@@ -144,9 +164,31 @@ call_id(<<_:?PUB_SIZE/unit:8, CallId/binary>> = _CallTreeId) ->
 %% -- Hashing --
 
 -spec root_hash(tree()) -> {ok, aeu_mtrees:root_hash()} | {error, empty}.
-root_hash(#call_tree{calls = CtTree}) ->
+root_hash(Tree) ->
+    #call_tree{calls = CtTree} = flush_call_batch(Tree),
     aeu_mtrees:root_hash(CtTree).
 
+%% Flush all pending call writes to the MPT.  Called once at microblock
+%% end via aec_trees:flush_state_batches/1.  O(1) fast-path when empty.
+%% Order-independent (call ids are unique) ⇒ root identical to the
+%% per-tx-write reference.
+-spec flush_call_batch(tree()) -> tree().
+flush_call_batch(#call_tree{call_batch = Batch} = Tree)
+  when map_size(Batch) =:= 0 ->
+    Tree;
+flush_call_batch(#call_tree{calls = CtTree, call_batch = Batch} = Tree) ->
+    CtTree1 = maps:fold(
+        fun(Key, {new, Call}, Acc) ->
+                aeu_mtrees:insert(Key, aect_call:serialize(Call), Acc);
+           (Key, {update, Call}, Acc) ->
+                aeu_mtrees:enter(Key, aect_call:serialize(Call), Acc)
+        end, CtTree, Batch),
+    Tree#call_tree{calls = CtTree1, call_batch = #{}}.
+
+%% WARNING: returns the backing MPT db of the *materialised* calls tree
+%% only — it does NOT reflect entries still pending in `call_batch'.
+%% Backend identity only; never read call state without a flush
+%% (root_hash/1, commit_to_db/1 flush internally).
 -spec db(tree()) -> {ok, aeu_mp_trees:db()}.
 db(#call_tree{calls = CtTree}) ->
     aeu_mtrees:db(CtTree).
@@ -154,12 +196,14 @@ db(#call_tree{calls = CtTree}) ->
 %% -- Commit to db --
 
 -spec commit_to_db(tree()) -> tree().
-commit_to_db(#call_tree{calls = CtTree} = Tree) ->
-    Tree#call_tree{calls = aeu_mtrees:commit_to_db(CtTree)}.
+commit_to_db(Tree) ->
+    #call_tree{calls = CtTree} = FT = flush_call_batch(Tree),
+    FT#call_tree{calls = aeu_mtrees:commit_to_db(CtTree)}.
 
 -spec to_binary_without_backend(tree()) -> binary().
-to_binary_without_backend(#call_tree{calls = Tree}) ->
-    Bin = aeu_mtrees:serialize(Tree),
+to_binary_without_backend(Tree) ->
+    #call_tree{calls = CtTree} = flush_call_batch(Tree),
+    Bin = aeu_mtrees:serialize(CtTree),
     aeser_chain_objects:serialize(
         calls_mtree,
         ?VSN,
@@ -188,17 +232,16 @@ serialization_template(?VSN) ->
 call_tree_id(ContractId, CallId) ->
     <<ContractId/binary, CallId/binary>>.
 
-add_call(How, CtId, Call, Tree = #call_tree{ calls = CtTree }) ->
+add_call(How, CtId, Call, Tree = #call_tree{ call_batch = Batch }) ->
     CallId     = aect_call:id(Call),
     CallTreeId = call_tree_id(CtId, CallId),
-    Serialized = aect_call:serialize(Call),
-    %% Insert the new call into the history
-    %% io:format("~p: ~p\n", [How, CallTreeId]),
-    CtTree1 =
-        case How of
-            insert -> aeu_mtrees:insert(CallTreeId, Serialized, CtTree);
-            enter  -> aeu_mtrees:enter(CallTreeId, Serialized, CtTree)
-        end,
-
-    %% Update the calls tree
-    Tree#call_tree{ calls = CtTree1}.
+    %% Defer the MPT write; accumulate in the microblock-level batch.
+    %% Keep the insert/enter distinction so flush preserves the
+    %% error-on-duplicate invariant for `insert_call' (`new'); an
+    %% `enter' over an already-`new' key stays `new'.
+    Tag = case {How, maps:find(CallTreeId, Batch)} of
+              {insert, _}              -> new;
+              {enter,  {ok, {new, _}}} -> new;
+              {enter,  _}              -> update
+          end,
+    Tree#call_tree{ call_batch = Batch#{CallTreeId => {Tag, Call}} }.

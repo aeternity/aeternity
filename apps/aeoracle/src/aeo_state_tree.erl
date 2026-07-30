@@ -29,6 +29,7 @@
         , prune/2
         , prune/3
         , root_hash/1
+        , flush_oracle_batch/1
         , oracles_db/1
         , cache_db/1
         ]).
@@ -69,8 +70,20 @@
 -type cache_value() :: binary(). %% ?DUMMY_VAL
 -type block_height() :: non_neg_integer().
 
+%% Per-microblock deferred oracle/query writes, keyed by otree key
+%% (oracle pubkey, or <<OraclePubkey, QueryId>> for a query). The flush
+%% replays through the unchanged writer (do_add_oracle/do_add_query),
+%% maintaining both the otree and the secondary TTL cache. The cache is
+%% not part of the consensus root and prune re-validates expiry from the
+%% real object, so collapsing repeated same-key writes does not change
+%% consensus.
+-type obatch_entry() :: {oracle | query, insert | enter,
+                         aeo_oracles:oracle() | aeo_query:query()}.
+-type obatch() :: #{binary() => obatch_entry()}.
+
 -record(oracle_tree, { otree  = aeu_mtrees:empty() :: otree()
                      , cache  = aeu_mtrees:empty() :: cache()
+                     , obatch = #{}               :: obatch()
                      }).
 
 -opaque tree() :: #oracle_tree{}.
@@ -130,16 +143,23 @@ new_with_dirty_backend(RootHash, CacheRootHash) ->
                 }.
 
 -spec prune(block_height(), aec_trees:trees()) -> aec_trees:trees().
-prune(Height, Trees) ->
+prune(Height, Trees0) ->
     %% Oracle information should be around for the expiry block
     %% since we prune before the block, use Height - 1 for pruning.
+    %% Flush first: prune walks the otree+cache directly (defensive —
+    %% at generation boundaries the batch is already empty).
+    Trees = flush_oracles_in(Trees0),
     {Trees1, _} = int_prune(Height - 1, Trees, undefined),
     Trees1.
 
+flush_oracles_in(Trees) ->
+    aec_trees:set_oracles(Trees, flush_oracle_batch(aec_trees:oracles(Trees))).
+
 -spec prune(block_height(), aec_trees:trees(), aetx_env:env()) -> {aec_trees:trees(), aetx_env:env()}.
-prune(Height, Trees, TxEnv) ->
+prune(Height, Trees0, TxEnv) ->
     %% Oracle information should be around for the expiry block
     %% since we prune before the block, use Height - 1 for pruning.
+    Trees = flush_oracles_in(Trees0),
     int_prune(Height - 1, Trees, TxEnv).
 
 -spec enter_query(query(), tree()) -> tree().
@@ -151,18 +171,26 @@ insert_query(I, Tree) ->
     add_query(insert, I, Tree).
 
 -spec get_query(aeo_oracles:pubkey(), aeo_query:id(), tree()) -> query().
-get_query(OracleId, QId, Tree) ->
+get_query(OracleId, QId, #oracle_tree{otree = OTree, obatch = B}) ->
     TreeId = <<OracleId/binary, QId/binary>>,
-    Serialized = aeu_mtrees:get(TreeId, Tree#oracle_tree.otree),
-    aeo_query:deserialize(QId, Serialized).
+    case maps:find(TreeId, B) of
+        {ok, {query, _How, Q}} -> Q;
+        _ ->
+            Serialized = aeu_mtrees:get(TreeId, OTree),
+            aeo_query:deserialize(QId, Serialized)
+    end.
 
 -spec lookup_query(aeo_oracles:pubkey(), aeo_query:id(), tree()) ->
     {'value', query()} | none.
-lookup_query(OracleId, QId, Tree) ->
+lookup_query(OracleId, QId, #oracle_tree{otree = OTree, obatch = B}) ->
     TreeId = <<OracleId/binary, QId/binary>>,
-    case aeu_mtrees:lookup(TreeId, Tree#oracle_tree.otree) of
-        {value, Val} -> {value, aeo_query:deserialize(QId, Val)};
-        none -> none
+    case maps:find(TreeId, B) of
+        {ok, {query, _How, Q}} -> {value, Q};
+        _ ->
+            case aeu_mtrees:lookup(TreeId, OTree) of
+                {value, Val} -> {value, aeo_query:deserialize(QId, Val)};
+                none -> none
+            end
     end.
 
 -spec enter_oracle(oracle(), tree()) -> tree().
@@ -174,40 +202,57 @@ insert_oracle(O, Tree) ->
     add_oracle(insert, O, Tree).
 
 -spec get_oracle(binary(), tree()) -> oracle().
-get_oracle(Id, Tree) ->
-    aeo_oracles:deserialize(Id, aeu_mtrees:get(Id, Tree#oracle_tree.otree)).
+get_oracle(Id, #oracle_tree{otree = OTree, obatch = B}) ->
+    case maps:find(Id, B) of
+        {ok, {oracle, _How, O}} -> O;
+        _ -> aeo_oracles:deserialize(Id, aeu_mtrees:get(Id, OTree))
+    end.
 
+%% Enumeration entry points read the whole otree via an iterator —
+%% flush the batch first so they see all pending writes (no non-funnel
+%% path may observe a stale otree).
 -spec get_oracle_query_ids(binary(), tree()) -> [aeo_query:id()].
 get_oracle_query_ids(Id, Tree) ->
-    find_oracle_query_ids(Id, Tree).
+    find_oracle_query_ids(Id, flush_oracle_batch(Tree)).
 
 -spec get_oracle_queries(aeo_oracles:pubkey(), binary() | '$first', open | closed | all,
                          non_neg_integer(), tree()) -> list(query()).
 get_oracle_queries(OracleId, From, QueryType, Max, Tree) ->
-    find_oracle_queries(OracleId, From, QueryType, Max, Tree).
+    find_oracle_queries(OracleId, From, QueryType, Max, flush_oracle_batch(Tree)).
 
 -spec get_oracles(binary() | '$first', non_neg_integer(), tree()) -> list(oracle()).
 get_oracles(From, Max, Tree) ->
-    find_oracles(From, Max, Tree).
+    find_oracles(From, Max, flush_oracle_batch(Tree)).
 
 -spec lookup_oracle(binary(), tree()) -> {'value', oracle()} | 'none'.
-lookup_oracle(Id, Tree) ->
-    case aeu_mtrees:lookup(Id, Tree#oracle_tree.otree) of
-        {value, Val}  -> {value, aeo_oracles:deserialize(Id, Val)};
-        none -> none
+lookup_oracle(Id, #oracle_tree{otree = OTree, obatch = B}) ->
+    case maps:find(Id, B) of
+        {ok, {oracle, _How, O}} -> {value, O};
+        _ ->
+            case aeu_mtrees:lookup(Id, OTree) of
+                {value, Val}  -> {value, aeo_oracles:deserialize(Id, Val)};
+                none -> none
+            end
     end.
 
 -spec is_oracle(aeo_oracles:pubkey(), tree()) -> boolean().
-is_oracle(Pubkey, #oracle_tree{ otree = OTree }) ->
-    case aeu_mtrees:lookup(Pubkey, OTree) of
-        none -> false;
-        {value, _} -> true
+is_oracle(Pubkey, #oracle_tree{ otree = OTree, obatch = B }) ->
+    case maps:find(Pubkey, B) of
+        {ok, {oracle, _How, _}} -> true;
+        _ ->
+            case aeu_mtrees:lookup(Pubkey, OTree) of
+                none -> false;
+                {value, _} -> true
+            end
     end.
 
 -spec root_hash(tree()) -> {ok, aeu_mtrees:root_hash()} | {error, empty}.
-root_hash(#oracle_tree{otree = OTree}) ->
+root_hash(Tree) ->
+    #oracle_tree{otree = OTree} = flush_oracle_batch(Tree),
     aeu_mtrees:root_hash(OTree).
 
+%% WARNING: backing MPT db of the *materialised* otree only — does not
+%% reflect entries pending in `obatch'.  Backend identity only.
 -spec oracles_db(tree()) -> {'ok', aeu_mp_trees:db()}.
 oracles_db(#oracle_tree{otree = OTree}) ->
     aeu_mtrees:db(OTree).
@@ -217,19 +262,22 @@ cache_db(#oracle_tree{cache = CTree}) ->
     aeu_mtrees:db(CTree).
 
 -spec cache_root_hash(tree()) -> {ok, aeu_mtrees:root_hash()} | {error, empty}.
-cache_root_hash(#oracle_tree{cache = CTree}) ->
+cache_root_hash(Tree) ->
+    #oracle_tree{cache = CTree} = flush_oracle_batch(Tree),
     aeu_mtrees:root_hash(CTree).
 
 -ifdef(TEST).
 -spec oracle_list(tree()) -> list(oracle()).
-oracle_list(#oracle_tree{otree = OTree}) ->
+oracle_list(Tree) ->
+    #oracle_tree{otree = OTree} = flush_oracle_batch(Tree),
     [ aeo_oracles:deserialize(Key, Val)
       || {Key, Val} <- aeu_mtrees:to_list(OTree),
          byte_size(Key) =:= ?PUB_SIZE
     ].
 
 -spec query_list(tree()) -> list(query()).
-query_list(#oracle_tree{otree = OTree}) ->
+query_list(Tree) ->
+    #oracle_tree{otree = OTree} = flush_oracle_batch(Tree),
     [ aeo_query:deserialize(QId, Val)
       || {Key = <<_:?PUB_SIZE/unit:8, QId/binary>>, Val} <- aeu_mtrees:to_list(OTree),
          byte_size(Key) > ?PUB_SIZE
@@ -237,19 +285,34 @@ query_list(#oracle_tree{otree = OTree}) ->
 -endif.
 
 -spec commit_to_db(tree()) -> tree().
-commit_to_db(#oracle_tree{otree = OTree, cache = Cache} = Tree) ->
-    Tree#oracle_tree{otree = aeu_mtrees:commit_to_db(OTree),
-                     cache = aeu_mtrees:commit_to_db(Cache)
-                    }.
+commit_to_db(Tree) ->
+    #oracle_tree{otree = OTree, cache = Cache} = FT = flush_oracle_batch(Tree),
+    FT#oracle_tree{otree = aeu_mtrees:commit_to_db(OTree),
+                   cache = aeu_mtrees:commit_to_db(Cache)
+                  }.
 
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-add_oracle(How, O, #oracle_tree{ otree = OTree } = Tree) ->
+%% Public add_*: defer into the per-microblock batch (no otree/cache
+%% write here). Last-writer-wins per key; flush replays the final object
+%% through the unchanged writer, so the otree is byte-identical to
+%% writing per-tx and the TTL cache is built the same way as before.
+add_oracle(How, O, #oracle_tree{obatch = B} = Tree) ->
+    Pubkey = aeo_oracles:pubkey(O),
+    Tree#oracle_tree{obatch = B#{Pubkey => {oracle, How, O}}}.
+
+add_query(How, I, #oracle_tree{obatch = B} = Tree) ->
+    OraclePubkey = aeo_query:oracle_pubkey(I),
+    QueryId      = aeo_query:id(I),
+    TreeId       = <<OraclePubkey/binary, QueryId/binary>>,
+    Tree#oracle_tree{obatch = B#{TreeId => {query, How, I}}}.
+
+%% The original (now flush-time) writers: otree + secondary TTL cache.
+do_add_oracle(How, O, #oracle_tree{ otree = OTree } = Tree) ->
     Pubkey = aeo_oracles:pubkey(O),
     Serialized = aeo_oracles:serialize(O),
     TTL = aeo_oracles:ttl(O),
-
     OTree1 = case How of
                 enter  -> aeu_mtrees:enter(Pubkey, Serialized, OTree);
                 insert -> aeu_mtrees:insert(Pubkey, Serialized, OTree)
@@ -259,7 +322,7 @@ add_oracle(How, O, #oracle_tree{ otree = OTree } = Tree) ->
                     , cache  = Cache
                     }.
 
-add_query(How, I, #oracle_tree{otree = OTree} = Tree) ->
+do_add_query(How, I, #oracle_tree{otree = OTree} = Tree) ->
     OraclePubkey = aeo_query:oracle_pubkey(I),
     QueryId      = aeo_query:id(I),
     TreeId       = <<OraclePubkey/binary, QueryId/binary>>,
@@ -273,6 +336,19 @@ add_query(How, I, #oracle_tree{otree = OTree} = Tree) ->
     Tree#oracle_tree{ otree  = OTree1
                     , cache  = Cache
                     }.
+
+%% Flush all pending oracle/query writes.  Called at microblock end via
+%% aec_trees:flush_state_batches/1 and defensively by every whole-tree
+%% reader/iterator/prune entry point (so no non-funnel path can observe
+%% a stale otree).  O(1) fast-path when empty.
+-spec flush_oracle_batch(tree()) -> tree().
+flush_oracle_batch(#oracle_tree{obatch = B} = Tree) when map_size(B) =:= 0 ->
+    Tree;
+flush_oracle_batch(#oracle_tree{obatch = B} = Tree) ->
+    Tree1 = Tree#oracle_tree{obatch = #{}},
+    maps:fold(fun(_K, {oracle, How, O}, Acc) -> do_add_oracle(How, O, Acc);
+                 (_K, {query,  How, I}, Acc) -> do_add_query(How, I, Acc)
+              end, Tree1, B).
 
 int_prune(Height, Trees, TxEnv) ->
     OTree = #oracle_tree{ cache = Cache } = aec_trees:oracles(Trees),
@@ -475,7 +551,8 @@ cache_pop(C) ->
     end.
 
 -spec to_binary_without_backend(tree()) -> binary().
-to_binary_without_backend(#oracle_tree{otree = OTree}) ->
+to_binary_without_backend(Tree) ->
+    #oracle_tree{otree = OTree} = flush_oracle_batch(Tree),
     OTBin = aeu_mtrees:serialize(OTree),
     aeser_chain_objects:serialize(
         oracles_mtree,

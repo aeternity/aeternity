@@ -2,6 +2,11 @@
 %%% @copyright (C) 2018, Aeternity Anstalt
 %%% @doc
 %%%    ADT for keeping the state of State Channels
+%%%
+%%%    Channels are intentionally not per-microblock batched: `tree()'
+%%%    is an opaque alias for `aeu_mtrees:mtree()' (not a record), so a
+%%%    batch would change the consensus channel serialization for a cold
+%%%    path. Channel reads/writes remain immediate.
 %%% @end
 %%%=============================================================================
 -module(aesc_state_tree).

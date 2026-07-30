@@ -54,6 +54,13 @@ reachability_test_() ->
     , {"GC of cache",            {timeout, 30, fun test_gc_cache/0}}
     ].
 
+node_cache_test_() ->
+    [ {"get_w_node_cache equals get",
+       {timeout, 30, fun test_get_w_node_cache_equiv/0}}
+    , {"node cache does not poison other trees",
+       {timeout, 30, fun test_get_w_node_cache_no_poison/0}}
+    ].
+
 %%%=============================================================================
 %%% Basic tests
 
@@ -637,3 +644,55 @@ mpt_db_put(Key, Val, Map) ->
 
 mpt_db_drop_cache(_Dict) ->
     #{}.
+
+%%%=============================================================================
+%%% get_w_node_cache/2
+
+%% get_w_node_cache/2 must return exactly the same value as get/2 for every
+%% key (present and absent), and threading the returned, cache-populated
+%% tree through further reads must never change a result.
+test_get_w_node_cache_equiv() ->
+    {Tree, Vals} = gen_mp_tree({777, 42, 9001}, 1000),
+    lists:foldl(
+      fun({K, V}, T) ->
+              ?assertEqual(V, aeu_mp_trees:get(K, Tree)),
+              {VC, T1} = aeu_mp_trees:get_w_node_cache(K, T),
+              ?assertEqual(V, VC),
+              T1
+      end, Tree, Vals),
+    Absent = [random_hexstring(64) || _ <- lists:seq(1, 50)],
+    [ begin
+          {VC, _} = aeu_mp_trees:get_w_node_cache(K, Tree),
+          ?assertEqual(aeu_mp_trees:get(K, Tree), VC)
+      end || K <- Absent, not lists:keymember(K, 1, Vals) ],
+    ok.
+
+%% A node cache populated by reading tree A must not change reads on a
+%% structurally different tree B (the cache is content-addressed by node
+%% hash, so it cannot poison; assert it explicitly).
+test_get_w_node_cache_no_poison() ->
+    {TreeA, ValsA} = gen_mp_tree({111, 222, 333}, 1000),
+    {TreeB, ValsB} = gen_mp_tree({444, 555, 666}, 1000),
+    _ = lists:foldl(fun({K, _}, T) ->
+                            {_, T1} = aeu_mp_trees:get_w_node_cache(K, T),
+                            T1
+                    end, TreeA, ValsA),
+    [ begin
+          {VC, _} = aeu_mp_trees:get_w_node_cache(K, TreeB),
+          ?assertEqual(V, VC),
+          ?assertEqual(aeu_mp_trees:get(K, TreeB), VC)
+      end || {K, V} <- ValsB ],
+    ok.
+
+%%%=============================================================================
+%%% aeu_mtrees wrapper tests
+
+%% aeu_mtrees:delete/2 on a key that was never inserted must be a no-op:
+%% the tree root hash must remain unchanged.
+delete_nonexistent_is_noop_test() ->
+    Tree0 = aeu_mtrees:empty(),
+    Tree1 = aeu_mtrees:enter(<<"key1">>, <<"val1">>, Tree0),
+    {ok, Root1} = aeu_mtrees:root_hash(Tree1),
+    Tree2 = aeu_mtrees:delete(<<"nonexistent_key">>, Tree1),
+    {ok, Root2} = aeu_mtrees:root_hash(Tree2),
+    ?assertEqual(Root1, Root2).
