@@ -373,6 +373,85 @@ tx_pool_test_() ->
                %% Still one lookup per distinct origin: cache hits for the rest.
                ?assertEqual(2, meck:num_calls(aec_accounts_trees, lookup, ['_', '_']))
        end}},
+      {"Selection holds back a contract call its origin cannot pay for",
+       {timeout, 10, fun() ->
+               aec_test_utils:stop_chain_db(),
+               Poor = new_pubkey(),
+               Rich = new_pubkey(),
+               %% Poor covers the fee but nowhere near the gas the call below
+               %% reserves, which is charged on top of it.
+               meck:expect(aec_fork_block_settings, genesis_accounts, 0,
+                           [{Poor, 20000000}, {Rich, 10000000000000000000000}]),
+               aec_consensus:set_genesis_hash(),
+               {GenesisBlock, _} = aec_block_genesis:genesis_block_with_state(),
+               aec_test_utils:start_chain_db(),
+               {ok,_} = aec_chain_state:insert_block(GenesisBlock),
+
+               PoorCall = signed_ct_call_tx(Poor, 1, 1000000, 9000000000),
+               RichCall = signed_ct_call_tx(Rich, 1, 1000000, 9000000000),
+               [ ok = aec_tx_pool:push(STx, tx_created) || STx <- [PoorCall, RichCall] ],
+
+               {ok, Selected} = aec_tx_pool:get_candidate(aec_governance:block_gas_limit(),
+                                                          aec_chain:top_block_hash()),
+               %% The unaffordable one never reserves any of the block's gas.
+               ?assertEqual([RichCall], Selected),
+               %% Deferred rather than rejected: it stays where the next build
+               %% reconsiders it, instead of being handed back as a bad tx and
+               %% moved to the visited table.
+               ?assertEqual([PoorCall], aec_tx_pool:peek_db()),
+               ?assertEqual([RichCall], aec_tx_pool:peek_visited())
+       end}},
+      {"A spend its origin cannot pay for is still selected",
+       {timeout, 10, fun() ->
+               %% Only transactions reserving contract gas are held back. A
+               %% spend that cannot apply costs the block its own base gas and
+               %% no more, and the failure counter retires it - behaviour the
+               %% "previously rejected tx" case above depends on.
+               aec_test_utils:stop_chain_db(),
+               Broke = new_pubkey(),
+               meck:expect(aec_fork_block_settings, genesis_accounts, 0, [{Broke, 1}]),
+               aec_consensus:set_genesis_hash(),
+               {GenesisBlock, _} = aec_block_genesis:genesis_block_with_state(),
+               aec_test_utils:start_chain_db(),
+               {ok,_} = aec_chain_state:insert_block(GenesisBlock),
+
+               Spend = a_signed_tx(Broke, me, 1, 20000, 10),
+               ok = aec_tx_pool:push(Spend, tx_created),
+
+               {ok, Selected} = aec_tx_pool:get_candidate(aec_governance:block_gas_limit(),
+                                                          aec_chain:top_block_hash()),
+               ?assertEqual([Spend], Selected)
+       end}},
+      {"A deferred contract call is selected once its origin can pay",
+       {timeout, 10, fun() ->
+               %% Deferring is not dropping - the transaction stays put and the
+               %% next build reconsiders it against the state as it is then.
+               aec_test_utils:stop_chain_db(),
+               Poor = new_pubkey(),
+               meck:expect(aec_fork_block_settings, genesis_accounts, 0,
+                           [{Poor, 20000000}]),
+               aec_consensus:set_genesis_hash(),
+               {GenesisBlock, _} = aec_block_genesis:genesis_block_with_state(),
+               aec_test_utils:start_chain_db(),
+               {ok,_} = aec_chain_state:insert_block(GenesisBlock),
+
+               Call = signed_ct_call_tx(Poor, 1, 1000000, 9000000000),
+               ok = aec_tx_pool:push(Call, tx_created),
+
+               MaxGas = aec_governance:block_gas_limit(),
+               Hash = aec_chain:top_block_hash(),
+               ?assertEqual({ok, []}, aec_tx_pool:get_candidate(MaxGas, Hash)),
+
+               %% Fund the account: the memoised lookup now answers with a
+               %% balance that covers the gas, and the same transaction goes.
+               {value, Account} = aec_chain:get_account(Poor),
+               {ok, Funded} = aec_accounts:earn(Account, 10000000000000000000000),
+               meck:expect(aec_accounts_trees, lookup,
+                           fun(PubKey, _) when PubKey =:= Poor -> {value, Funded};
+                              (PubKey, Tree) -> meck:passthrough([PubKey, Tree])
+                           end),
+               ?assertEqual({ok, [Call]}, aec_tx_pool:get_candidate(MaxGas, Hash))
+       end}},
       {"Selection that ran out of time does not start on the visited table",
        {timeout, 10, fun() ->
                Waiting = 60,
@@ -609,8 +688,13 @@ tx_pool_test_() ->
                  PK4 = new_pubkey(),
                  PK5 = new_pubkey(),
 
+                 %% PK4 sends the contract txs below, whose gas is charged to it
+                 %% on top of the fee, so it needs a balance that covers
+                 %% gas * gas_price - otherwise they could never apply and
+                 %% selection rightly holds them back.
                  meck:expect(aec_fork_block_settings, genesis_accounts, 0,
-                             [{PK1, 100000}, {PK2, 100000}, {PK3, 100000}, {PK4, 100000},
+                             [{PK1, 100000}, {PK2, 100000}, {PK3, 100000},
+                              {PK4, 10000000000000000000000},
                               {PK5, 10000000000000000000000}]),
                  aec_consensus:set_genesis_hash(),
                  GeneralizedAccounts = [PK5],
@@ -731,8 +815,12 @@ tx_pool_test_() ->
                aec_test_utils:stop_chain_db(),
                PK = new_pubkey(),
                PK2 = new_pubkey(),
+               %% PK sends the contract txs below, whose gas is charged to it on
+               %% top of the fee, so it needs a balance that covers
+               %% gas * gas_price - otherwise they could never apply and
+               %% selection rightly holds them back.
                meck:expect(aec_fork_block_settings, genesis_accounts, 0,
-                           [{PK, 100000000}, {PK2, 10000000000}]),
+                           [{PK, 10000000000000000000000}, {PK2, 10000000000}]),
                aec_consensus:set_genesis_hash(),
                {GenesisBlock, _} = aec_block_genesis:genesis_block_with_state(),
                aec_test_utils:start_chain_db(),

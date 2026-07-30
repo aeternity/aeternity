@@ -720,21 +720,24 @@ check_candidate(Db, #dbs{gc_db = GCDb} = _Dbs,
     TxGas = aetx:gas_limit(Tx1, Height, Protocol),
     %% Same checks in the same short-circuiting order as before, but carrying
     %% the account lookup cache through them.
-    {Valid, Cache} =
+    {Outcome, Cache} =
         case Height < TxTTL andalso TxGas > 0 of
             false ->
-                {false, Cache0};
+                {invalid, Cache0};
             true ->
                 case int_check_account(Tx, AccountsTree, check_candidate, Cache0, Offset) of
                     {ok, Cache1} ->
-                        {MinMinerGasPrice =< aetx:min_gas_price(Tx1, Height, Protocol), Cache1};
+                        case MinMinerGasPrice =< aetx:min_gas_price(Tx1, Height, Protocol) of
+                            false -> {invalid, Cache1};
+                            true  -> check_affordable(Tx1, AccountsTree, Cache1)
+                        end;
                     {{error, _}, Cache1} ->
-                        {false, Cache1}
+                        {invalid, Cache1}
                 end
         end,
     Acc = Acc0#{ accounts := Cache },
-    case Valid of
-        true ->
+    case Outcome of
+        ok ->
             case Gas - TxGas of
                 RemGas when RemGas >= 0 ->
                     case Nonce of
@@ -748,10 +751,76 @@ check_candidate(Db, #dbs{gc_db = GCDb} = _Dbs,
                     %% into the gas limit.
                     {Gas, Acc}
             end;
-        false ->
+        {defer, _Reason} ->
+            %% Cannot apply against this block state, but very likely can later.
+            %% Leave the gas budget alone and leave the transaction where it is,
+            %% so the next build reconsiders it from the top - but mark it for
+            %% GC, so one that never becomes applicable cannot sit in the pool
+            %% until the two week tx_ttl. Marking only ever lowers an existing
+            %% deadline, so this can never extend anything's life.
+            enter_tx_gc(GCDb, TxHash, Key, Height + InvalidTxTTL),
+            {Gas, Acc};
+        invalid ->
             %% This is not valid anymore.
             enter_tx_gc(GCDb, TxHash, Key, Height + InvalidTxTTL),
             {Gas, Acc#{ bad_txs := [{Db, Key, Tx} | maps:get(bad_txs, Acc)] }}
+    end.
+
+%% A check selection can make that push-time validation cannot, because it
+%% depends on the block state this candidate is being built on: whether the
+%% origin can cover what the transaction reserves. Nothing checked this
+%% anywhere, which is what let a transaction that cannot apply reserve most of
+%% a micro block, fail, and send the refill loop around again.
+%%
+%% This does not mean the transaction is bad - the account can still be funded
+%% - so it defers rather than rejects.
+%%
+%% Deliberately conservative: it defers only when the transaction definitely
+%% cannot apply, because a wrong answer here withholds a valid transaction from
+%% the block. Anything it cannot judge is left to apply, which is what happened
+%% to every transaction before this existed.
+check_affordable(Tx, Source, Cache0) ->
+    case gas_reserving_cost(Tx) of
+        unknown ->
+            {ok, Cache0};
+        Required ->
+            %% Only unwrapped contract transactions get here, so the outer
+            %% origin is the account that pays.
+            {Lookup, Cache} = get_account(aetx:origin(Tx), Source, Cache0),
+            case Lookup of
+                {value, Account} ->
+                    case aec_accounts:balance(Account) >= Required of
+                        true  -> {ok, Cache};
+                        false -> {{defer, insufficient_funds}, Cache}
+                    end;
+                _ ->
+                    %% No account state to judge against.
+                    {ok, Cache}
+            end
+    end.
+
+%% What the origin has to be able to cover, for transactions that reserve
+%% contract gas. That gas is charged to the caller on top of the fee and is no
+%% part of it, which is what let an account holding nothing reserve an entire
+%% micro block - and it is the only case where selecting a transaction that
+%% cannot apply costs the block more than the transaction's own base gas.
+%%
+%% Wrapped transactions spread the cost over more than one account - the payer
+%% of a paying-for covers the inner fee, each layer of a GA meta chain pays for
+%% its own - so they report unknown rather than charge all of it to the
+%% innermost origin.
+gas_reserving_cost(Tx) ->
+    case aetx:specialize_type(Tx) of
+        {contract_call_tx, CTx} ->
+            aetx:fee(Tx) + aect_call_tx:amount(CTx)
+                + aect_call_tx:gas(CTx) * aect_call_tx:gas_price(CTx);
+        {contract_create_tx, CTx} ->
+            aetx:fee(Tx) + aect_create_tx:amount(CTx) + aect_create_tx:deposit(CTx)
+                + aect_create_tx:gas(CTx) * aect_create_tx:gas_price(CTx);
+        {ga_attach_tx, GTx} ->
+            aetx:fee(Tx) + aega_attach_tx:gas(GTx) * aega_attach_tx:gas_price(GTx);
+        _ ->
+            unknown
     end.
 
 move_to_visited(VDb, #dbs{visited_db = VDb}, _) ->
