@@ -9,13 +9,14 @@
 -export([ apply_block_txs/3
         , apply_block_txs_strict/3
         , create/1
+        , create/2
         , create_with_state/4
         , update/3
         ]).
 
 -export([ min_t_after_keyblock/0]).
 
--export_type([block_info/0]).
+-export_type([block_info/0, create_opts/0, report_in_flight_fun/0]).
 
 -include("blocks.hrl").
 -include_lib("aecontract/include/hard_forks.hrl").
@@ -25,21 +26,36 @@
                           tx_env := aetx_env:env()
                          }.
 
+%% Reports the batch before apply, then `[]` once it applies successfully -
+%% so a hard-kill can't blame an already-applied batch. Must not block.
+-type report_in_flight_fun() :: fun((list(binary())) -> term()).
+
+%% ignore_tx_hashes: excluded from get_candidate (e.g. quarantine set); defaults [].
+%% report_in_flight_fun: the breadcrumb above; defaults to a no-op.
+-type create_opts() :: #{ ignore_tx_hashes => list(binary())
+                         , report_in_flight_fun => report_in_flight_fun()
+                         }.
+
 %% -- API functions ----------------------------------------------------------
 
 -spec create(aec_blocks:block() | aec_blocks:block_header_hash()) ->
         {ok, aec_blocks:block(), block_info()} | {error, term()}.
-create(BlockHash) when is_binary(BlockHash) ->
+create(BlockHash) ->
+    create(BlockHash, #{}).
+
+-spec create(aec_blocks:block() | aec_blocks:block_header_hash(), create_opts()) ->
+        {ok, aec_blocks:block(), block_info()} | {error, term()}.
+create(BlockHash, Opts) when is_binary(BlockHash) ->
     case aec_chain:get_block(BlockHash) of
-        {ok, Block} -> create(Block);
+        {ok, Block} -> create(Block, Opts);
         _ -> {error, block_not_found}
     end;
-create(Block) ->
+create(Block, Opts) ->
     case aec_blocks:is_key_block(Block) of
-        true -> int_create(Block, Block);
+        true -> int_create(Block, Block, Opts);
         false ->
             case aec_chain:get_block(aec_blocks:prev_key_hash(Block)) of
-                {ok, KeyBlock} -> int_create(Block, KeyBlock);
+                {ok, KeyBlock} -> int_create(Block, KeyBlock, Opts);
                 _ -> {error, block_not_found}
             end
     end.
@@ -92,13 +108,17 @@ update(Block, Txs, BlockInfo = #{trees := Trees}) ->
 
 %% -- Internal functions -----------------------------------------------------
 
-int_create(PrevBlock, KeyBlock) ->
+int_create(PrevBlock, KeyBlock, Opts) ->
     MBEnv = #{prev_hash := PrevBlockHash} = create_micro_block_env(PrevBlock, KeyBlock),
     case aec_chain:get_block_state(PrevBlockHash) of
         {ok, Trees} ->
             TxEnv = create_tx_env(MBEnv),
             MaxGas = aec_governance:block_gas_limit(),
-            int_pack_block(MaxGas, [], [], MBEnv, TxEnv, Trees, []);
+            %% Seeds the accumulator int_pack_block grows per batch, so the caller's
+            %% exclusion set stays excluded for the whole build, not just the first fetch.
+            IgnoreTxHashes = maps:get(ignore_tx_hashes, Opts, []),
+            ReportInFlightFun = maps:get(report_in_flight_fun, Opts, fun(_TxHashes) -> ok end),
+            int_pack_block(MaxGas, IgnoreTxHashes, [], MBEnv, TxEnv, Trees, [], ReportInFlightFun);
         error ->
             {error, block_state_not_found}
     end.
@@ -120,17 +140,22 @@ create_tx_env(#{prev_block := PrevBlock, prev_hash := PrevBlockHash,
     Time = determine_new_time(PrevBlock),
     aetx_env:tx_env_from_key_header(KeyHeader, KeyBlockHash, Time, PrevBlockHash).
 
-int_pack_block(GasAvailable, TxHashes, Txs, MBEnv, TxEnv, Trees, Events) ->
+int_pack_block(GasAvailable, TxHashes, Txs, MBEnv, TxEnv, Trees, Events, ReportInFlightFun) ->
     #{prev_hash := PrevBlockHash, key_block := KeyBlock} = MBEnv,
     case aec_tx_pool:get_candidate(GasAvailable, TxHashes, PrevBlockHash) of
         {ok, []} ->
             int_create_block(MBEnv, TxEnv, Txs, Trees, Events);
         {ok, Txs0} ->
-            {ok, Txs1, FailedTxs1, Trees1, Events1} = int_apply_block_txs(Txs0, Trees, TxEnv, false),
-            report_failed_txs(FailedTxs1),
             TxHashes1 = [ aetx_sign:hash(Tx) || Tx <- Txs0 ],
+            %% Reported before applying, so a hard-kill mid-apply knows what was in flight.
+            ReportInFlightFun(TxHashes1),
+            {ok, Txs1, FailedTxs1, Trees1, Events1} = int_apply_block_txs(Txs0, Trees, TxEnv, false),
+            %% Cleared to `[]` before the next fetch, so a completed batch
+            %% isn't blamed for a later preempt.
+            ReportInFlightFun([]),
+            report_failed_txs(FailedTxs1),
             int_pack_block(GasAvailable - used_gas(KeyBlock, Txs1, Trees1), TxHashes ++ TxHashes1,
-                           Txs ++ Txs1, MBEnv, TxEnv, Trees1, Events ++ Events1)
+                           Txs ++ Txs1, MBEnv, TxEnv, Trees1, Events ++ Events1, ReportInFlightFun)
     end.
 
 int_create_block(MBEnv, TxEnv, Txs, Trees) ->

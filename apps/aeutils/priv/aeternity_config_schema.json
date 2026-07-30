@@ -2009,6 +2009,12 @@
                     "default": 3000,
                     "minimum" : 1
                 },
+                "candidate_quarantine_ttl_ms" : {
+                    "description" : "Wall-clock window (ms) a stalling tx is excluded from this leader's candidate building. Default is about 3x micro_block_cycle; when set it is clamped to [1x, 10x] the cycle. 0 disables the mechanism (opt-out; byte-identical to pre-quarantine behaviour).",
+                    "type" : "integer",
+                    "default" : 9000,
+                    "minimum" : 0
+                },
                 "min_miner_gas_price" : {
                     "description" : "Minimum gas price accepted by the miner",
                     "type" : "integer",
