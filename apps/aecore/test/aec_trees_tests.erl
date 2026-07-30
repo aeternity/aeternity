@@ -508,6 +508,122 @@ poi_test_() ->
        end}
     ].
 
+%% Bounded contract PoI builders against a non-empty store: limit/cursor/next_key
+%% semantics and per-key proof presence.
+bounded_contract_poi_test_() ->
+    [ {"add_contract_poi_keys: only requested keys are in the proof",
+       fun() ->
+               {Trees, Pubkey, StoreMap} = make_trees_with_store(),
+               Requested = [<<$a, 1>>, <<$a, 2>>, <<$a, 5>>],
+               {ok, Poi} = aec_trees:add_contract_poi_keys(
+                             Pubkey, Requested, Trees,
+                             aec_trees:new_poi(Trees)),
+               CPoi = inner_contracts_poi(Poi),
+               StorePrefix = aect_contracts:compute_contract_store_id(Pubkey),
+
+               ?assertMatch({ok, _}, aec_poi:lookup(Pubkey, CPoi)),
+               [?assertMatch({ok, _},
+                             aec_poi:lookup(<<StorePrefix/binary, K/binary>>, CPoi))
+                || K <- Requested],
+
+               %% A key present in the store but not requested is absent from the proof.
+               NotInProof = <<$b, 1>>,
+               true = maps:is_key(NotInProof, StoreMap),
+               ?assertEqual({error, not_found},
+                            aec_poi:lookup(<<StorePrefix/binary, NotInProof/binary>>,
+                                           CPoi))
+       end},
+      {"add_contract_poi_keys: missing key returns {key_not_found, K}",
+       fun() ->
+               {Trees, Pubkey, _} = make_trees_with_store(),
+               ?assertEqual({error, {key_not_found, <<"absent">>}},
+                            aec_trees:add_contract_poi_keys(
+                              Pubkey, [<<$a, 1>>, <<"absent">>], Trees,
+                              aec_trees:new_poi(Trees)))
+       end},
+      {"add_contract_poi_keys: > 1024 keys is rejected by the guard",
+       fun() ->
+               {Trees, Pubkey, _} = make_trees_with_store(),
+               ManyKeys = [<<I:16>> || I <- lists:seq(1, 1025)],
+               ?assertEqual({error, key_limit_exceeded},
+                            aec_trees:add_contract_poi_keys(
+                              Pubkey, ManyKeys, Trees,
+                              aec_trees:new_poi(Trees)))
+       end},
+      {"add_contract_poi_keys: empty contracts tree returns not_present",
+       fun() ->
+               Trees = aec_test_utils:create_state_tree(),
+               Pubkey = aect_contracts:pubkey(
+                          make_contract(<<99:?MINER_PUB_BYTES/unit:8>>)),
+               ?assertEqual({error, not_present},
+                            aec_trees:add_contract_poi_keys(
+                              Pubkey, [<<$a, 1>>], Trees,
+                              aec_trees:new_poi(Trees)))
+       end},
+      {"add_contract_poi_prefix: limit truncates and next_key is the last included key",
+       fun() ->
+               {Trees, Pubkey, _} = make_trees_with_store(),
+               {ok, Poi, Keys, NextKey} =
+                   aec_trees:add_contract_poi_prefix(
+                     Pubkey, <<>>, <<>>, 10, Trees,
+                     aec_trees:new_poi(Trees)),
+
+               ?assertEqual(10, length(Keys)),
+               ?assertNotEqual(undefined, NextKey),
+               ?assertEqual(NextKey, lists:last(Keys)),
+               %% First 10 keys in MPT order are all <<$a, _>>.
+               [?assertMatch(<<$a, _>>, K) || K <- Keys],
+
+               CPoi = inner_contracts_poi(Poi),
+               StorePrefix = aect_contracts:compute_contract_store_id(Pubkey),
+               [?assertMatch({ok, _},
+                             aec_poi:lookup(<<StorePrefix/binary, K/binary>>, CPoi))
+                || K <- Keys]
+       end},
+      {"add_contract_poi_prefix: cursor=next_key paginates with no overlap and no loss",
+       fun() ->
+               {Trees, Pubkey, StoreMap} = make_trees_with_store(),
+               {ok, _Poi1, Page1, NextKey} =
+                   aec_trees:add_contract_poi_prefix(
+                     Pubkey, <<>>, <<>>, 10, Trees,
+                     aec_trees:new_poi(Trees)),
+               {ok, _Poi2, Page2, NextKey2} =
+                   aec_trees:add_contract_poi_prefix(
+                     Pubkey, <<>>, NextKey, 10, Trees,
+                     aec_trees:new_poi(Trees)),
+
+               ?assertEqual(undefined, NextKey2),
+               ?assertEqual(5, length(Page2)),
+               ?assertEqual(lists:sort(maps:keys(StoreMap)),
+                            lists:sort(Page1 ++ Page2)),
+               ?assertEqual([],
+                            [K || K <- Page2, lists:member(K, Page1)])
+       end},
+      {"add_contract_poi_prefix: filter by raw-key prefix",
+       fun() ->
+               {Trees, Pubkey, _} = make_trees_with_store(),
+               {ok, _Poi, Keys, NextKey} =
+                   aec_trees:add_contract_poi_prefix(
+                     Pubkey, <<$b>>, <<>>, 10, Trees,
+                     aec_trees:new_poi(Trees)),
+
+               ?assertEqual(undefined, NextKey),
+               ?assertEqual(5, length(Keys)),
+               [?assertMatch(<<$b, _>>, K) || K <- Keys]
+       end},
+      {"add_contract_poi_prefix: limit > store size returns all keys",
+       fun() ->
+               {Trees, Pubkey, StoreMap} = make_trees_with_store(),
+               {ok, _Poi, Keys, NextKey} =
+                   aec_trees:add_contract_poi_prefix(
+                     Pubkey, <<>>, <<>>, 100, Trees,
+                     aec_trees:new_poi(Trees)),
+
+               ?assertEqual(undefined, NextKey),
+               ?assertEqual(lists:sort(maps:keys(StoreMap)), lists:sort(Keys))
+       end}
+    ].
+
 assert_equal_poi(PoIExpect, PoIExpr) ->
     %% The deserialized poi contains a gb_tree, so it is operation
     %% order dependent.  The serialized version is canonical, though.
@@ -719,6 +835,30 @@ make_contract(Owner, VmVersion, ABIVersion) ->
 
 make_store(Map) ->
     aect_contracts_store:put_map(Map, aect_contracts_store:new()).
+
+%% 10 keys under prefix `$a` and 5 under prefix `$b`. MPT byte-order
+%% places all `$a` keys first, then `$b` keys.
+make_test_store_map() ->
+    A = maps:from_list([{<<$a, I>>, <<"v", I>>} || I <- lists:seq(1, 10)]),
+    B = maps:from_list([{<<$b, I>>, <<"v", I>>} || I <- lists:seq(1, 5)]),
+    maps:merge(A, B).
+
+make_trees_with_store() ->
+    StoreMap    = make_test_store_map(),
+    OwnerPubkey = <<123:?MINER_PUB_BYTES/unit:8>>,
+    Contract    = aect_contracts:set_state(make_store(StoreMap),
+                                           make_contract(OwnerPubkey)),
+    Pubkey      = aect_contracts:pubkey(Contract),
+    Trees0      = aec_test_utils:create_state_tree(),
+    Trees       = aec_trees:set_contracts(
+                    Trees0,
+                    aect_state_tree:insert_contract(Contract,
+                                                    aec_trees:contracts(Trees0))),
+    {Trees, Pubkey, StoreMap}.
+
+inner_contracts_poi(Poi) ->
+    {poi, CPoi} = element(5, Poi),
+    CPoi.
 
 from_store(Store) ->
     aect_contracts_store:contents(Store).

@@ -569,10 +569,7 @@ handle_request_('GetContractPoI', Req, _Context) ->
     ParseFuns = [read_required_params([pubkey]),
                  api_decode([{pubkey, pubkey, contract_pubkey}]),
                  get_poi(contract, pubkey, poi),
-                 ok_response(
-                    fun(#{poi := PoI}) ->
-                        #{poi => aeser_api_encoder:encode(poi, aec_trees:serialize_poi(PoI))}
-                    end)
+                 ok_response(fun format_contract_poi/1)
                 ],
     process_request(ParseFuns, Req);
 
@@ -967,6 +964,18 @@ difficulty(Difficulty, Consensus)
 difficulty(Difficulty, _Consensus) ->
     Difficulty.
 
+
+format_contract_poi(#{poi := PoI} = St) ->
+    Keys    = maps:get(poi_keys, St, []),
+    Trunc   = maps:get(poi_truncated, St, false),
+    NextKey = maps:get(poi_next_key, St, undefined),
+    Body = #{<<"poi">>       => aeser_api_encoder:encode(poi, aec_trees:serialize_poi(PoI)),
+             <<"keys">>      => [aeser_api_encoder:encode(bytearray, K) || K <- Keys],
+             <<"truncated">> => Trunc},
+    case NextKey of
+        undefined -> Body;
+        NK        -> Body#{<<"next_key">> => aeser_api_encoder:encode(bytearray, NK)}
+    end.
 
 get_default_network_name() ->
     get_default_network_name(aec_governance:get_network_id()).
