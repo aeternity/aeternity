@@ -2038,6 +2038,11 @@
                     "type" : "boolean",
                     "default": false
                 },
+                "micro_reanchor" : {
+                    "description" : "Node-local mining policy (non-consensus). If true, a same-generation micro-block re-anchors the key-block candidate onto that micro (rebuilds candidate + restarts PoW workers) instead of the stock no-reset. Default false = byte-identical stock behaviour.",
+                    "type" : "boolean",
+                    "default": false
+                },
                 "cuckoo" : {
                     "type" : "object",
                     "additionalProperties" : false,
