@@ -108,6 +108,17 @@
 
 -define(DEFAULT_MINING_ATTEMPT_TIMEOUT, 60 * 60 * 1000). %% milliseconds
 
+%% Grace period after winning a key-block with an empty tx pool before
+%% key-block mining resumes; a transaction arriving within it pauses mining
+%% until the first microblock attempt of the new generation completes.
+-define(DEFAULT_FIRST_MICRO_RESTART_GRACE_MS, 100).
+%% Upper bound on how long a deferred key-block mining restart may wait for
+%% the first microblock attempt. Normally the attempt completes within
+%% milliseconds and this timer is never acted upon; it only fires if the
+%% attempt never completes (e.g. the candidate worker failed), so block
+%% production cannot stall indefinitely.
+-define(DEFAULT_FIRST_MICRO_RESTART_FAILSAFE_MS, 1000).
+
 %%%===================================================================
 %%% API
 %%%===================================================================
@@ -257,6 +268,13 @@ init(Options) ->
                            aec_blocks:height(aec_chain:top_block())),
     epoch_mining:info("Miner process initialized ~p", [State5]),
     aec_events:subscribe(candidate_block),
+    %% Tx events let the conductor pause freshly resumed key-block mining when
+    %% a transaction shows up before the first microblock attempt of a newly
+    %% won generation has completed (see the tx_created/tx_received clauses in
+    %% handle_info/2). Otherwise a quick key-block could leave the previous
+    %% generation without any microblocks.
+    aec_events:subscribe(tx_created),
+    aec_events:subscribe(tx_received),
     %% NOTE: The init continues at handle_info(init_continue, State).
     self() ! init_continue,
     {ok, State5}.
@@ -443,14 +461,64 @@ handle_cast(Other, State) ->
 handle_info({gproc_ps_event, candidate_block, _}, State = #state{consensus = #consensus{leader = false}}) ->
     %% ignore new candidates if we are not a leader any more.
     {noreply, State};
+handle_info({gproc_ps_event, candidate_block, #{info := empty_candidate}},
+            State = #state{awaiting_first_micro_candidate = AwaitingFirstMicro,
+                           restart_mining_after_first_micro = RestartAfterMicro})
+  when AwaitingFirstMicro; RestartAfterMicro ->
+    %% The first microblock attempt for a freshly won generation completed
+    %% without any transactions to sign, so key-block mining can resume.
+    State1 = State#state{micro_block_candidate = undefined,
+                         restart_mining_after_first_micro = false,
+                         awaiting_first_micro_candidate = false},
+    {noreply, start_block_production_(State1)};
+handle_info({gproc_ps_event, candidate_block, #{info := empty_candidate}}, State) ->
+    {noreply, State#state{micro_block_candidate = undefined}};
 handle_info({gproc_ps_event, candidate_block, #{info := new_candidate}}, State) ->
     case try_fetch_and_make_candidate() of
         {ok, Candidate} ->
-            State1 = State#state{ micro_block_candidate = Candidate },
+            State1 = State#state{ micro_block_candidate = Candidate,
+                                  awaiting_first_micro_candidate = false },
             {noreply, start_micro_signing(State1)};
         {error, no_candidate} ->
-            {noreply, State#state{ micro_block_candidate = undefined }}
+            {noreply, State#state{ micro_block_candidate = undefined,
+                                   awaiting_first_micro_candidate = false }}
     end;
+handle_info({gproc_ps_event, Event, _},
+            State = #state{consensus = #consensus{leader = true},
+                           awaiting_first_micro_candidate = true,
+                           restart_mining_after_first_micro = false})
+  when Event =:= tx_created; Event =:= tx_received ->
+    %% A transaction arrived just after we won a keyblock while keyblock mining
+    %% had already been allowed to resume. Pause that mining and finish the
+    %% first microblock attempt first. The failsafe timer bounds the pause in
+    %% case that attempt never completes.
+    State1 = kill_all_workers_with_tag(mining, State),
+    State2 = schedule_restart_after_first_micro(failsafe, State1),
+    {noreply, State2#state{restart_mining_after_first_micro = true}};
+handle_info({gproc_ps_event, Event, _}, State)
+  when Event =:= tx_created; Event =:= tx_received ->
+    {noreply, State};
+handle_info({maybe_restart_after_first_micro, grace, TopHash},
+            State = #state{top_block_hash = TopHash,
+                           awaiting_first_micro_candidate = true,
+                           restart_mining_after_first_micro = false}) ->
+    %% The grace period after winning a key-block with an empty tx pool
+    %% expired without any transaction showing up; resume key-block mining.
+    {noreply, start_block_production_(State)};
+handle_info({maybe_restart_after_first_micro, failsafe, TopHash},
+            State = #state{top_block_hash = TopHash,
+                           awaiting_first_micro_candidate = AwaitingFirstMicro,
+                           restart_mining_after_first_micro = RestartAfterMicro})
+  when AwaitingFirstMicro; RestartAfterMicro ->
+    %% The first microblock attempt of the freshly won generation did not
+    %% complete in time (e.g. the candidate worker failed without publishing
+    %% a candidate_block event). Resume key-block mining rather than letting
+    %% block production stall.
+    epoch_mining:info("First microblock attempt did not complete in time; "
+                      "resuming key-block mining", []),
+    {noreply, start_block_production_(State#state{restart_mining_after_first_micro = false})};
+handle_info({maybe_restart_after_first_micro, _Mode, _TopHash}, State) ->
+    {noreply, State};
 handle_info(init_continue, State) ->
     {noreply, start_block_production_(State)};
 handle_info({worker_reply, Pid, Res}, State) ->
@@ -930,7 +998,16 @@ preempt_on_new_top(#state{ top_block_hash = OldHash,
 
             [ SignModule:promote_candidate(aec_blocks:miner(NewBlock)) || BlockType == key ],
 
-            {changed, BlockType, NewBlock, create_key_block_candidate(State5)}
+            NextState =
+                case {BlockType, Origin} of
+                    {key, block_created} ->
+                        %% Delay creating the next key-block candidate until the first
+                        %% microblock attempt has completed for the freshly won generation.
+                        State5;
+                    _ ->
+                        create_key_block_candidate(State5)
+                end,
+            {changed, BlockType, NewBlock, NextState}
     end.
 
 %% GH3283: If we start storing more kinds of tx_events - we have to expand this
@@ -1489,26 +1566,63 @@ is_leader(NewTopBlock, PrevKeyHeader, ConsensusModule) ->
 
 setup_loop(State = #state{ consensus = Cons }, RestartMining, IsLeader, Origin) ->
     State1 = State#state{ consensus = Cons#consensus{ leader = IsLeader } },
-    State2 =
+    {State2, RestartMining1} =
         case Origin of
-            Origin when IsLeader, Origin =:= block_created
-                        orelse Origin =:= block_received ->
+            block_created when IsLeader ->
+                DelayRestart = should_delay_mining_restart(RestartMining),
                 aec_block_generator:start_generation(),
-                start_micro_signing(State1);
+                StateA = start_micro_signing(State1#state{restart_mining_after_first_micro = DelayRestart,
+                                                          awaiting_first_micro_candidate = true}),
+                StateB =
+                    case {RestartMining, DelayRestart} of
+                        {true, false} ->
+                            schedule_restart_after_first_micro(grace, StateA);
+                        {true, true} ->
+                            schedule_restart_after_first_micro(failsafe, StateA);
+                        {false, _} ->
+                            StateA
+                    end,
+                {StateB, false};
+            block_received when IsLeader ->
+                aec_block_generator:start_generation(),
+                {start_micro_signing(State1#state{restart_mining_after_first_micro = false,
+                                                  awaiting_first_micro_candidate = false}),
+                 RestartMining};
             block_received when not IsLeader ->
                 aec_block_generator:stop_generation(),
-                State1;
+                {State1#state{restart_mining_after_first_micro = false,
+                              awaiting_first_micro_candidate = false}, false};
             micro_block_created when IsLeader ->
-                start_micro_sleep(State1);
+                {start_micro_sleep(State1#state{restart_mining_after_first_micro = false,
+                                                awaiting_first_micro_candidate = false}),
+                 RestartMining orelse State1#state.restart_mining_after_first_micro};
             Origin when Origin =:= block_created; Origin =:= micro_block_created;
                         Origin =:= block_received; Origin =:= micro_block_received;
                         Origin =:= block_synced ->
-                State1
+                {State1#state{restart_mining_after_first_micro = false,
+                              awaiting_first_micro_candidate = false}, RestartMining}
         end,
-    case RestartMining of
+    case RestartMining1 of
         true  -> start_block_production_(State2);
         false -> State2
     end.
+
+schedule_restart_after_first_micro(Mode, State = #state{top_block_hash = TopHash}) ->
+    erlang:send_after(restart_after_first_micro_delay(Mode), self(),
+                      {maybe_restart_after_first_micro, Mode, TopHash}),
+    State.
+
+restart_after_first_micro_delay(grace) ->
+    aeu_env:get_env(aecore, first_micro_restart_grace,
+                    ?DEFAULT_FIRST_MICRO_RESTART_GRACE_MS);
+restart_after_first_micro_delay(failsafe) ->
+    aeu_env:get_env(aecore, first_micro_restart_failsafe,
+                    ?DEFAULT_FIRST_MICRO_RESTART_FAILSAFE_MS).
+
+%% Defer restarting key-block mining after winning a keyblock while there are
+%% pending transactions, so the first microblock gets a chance to include them.
+should_delay_mining_restart(RestartMining) ->
+    RestartMining andalso aec_tx_pool:size() > 0.
 
 get_pending_key_block(undefined, State) ->
     {{error, not_found}, State};
