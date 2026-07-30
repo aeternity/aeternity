@@ -60,14 +60,21 @@ create_with_state(Block, KeyBlock, Txs, Trees) ->
         {ok, list(aetx_sign:signed_tx()), aec_trees:trees(), aetx_env:events()}.
 apply_block_txs(Txs, Trees, Env) ->
     {ok, Txs1, _InvalidTxs, Trees1, Events} = int_apply_block_txs(Txs, Trees, Env, false),
-    {ok, Txs1, Trees1, Events}.
+    Trees2 = aec_trees:flush_state_batches(Trees1),
+    {ok, Txs1, Trees2, Events}.
 
 
 -spec apply_block_txs_strict(list(aetx_sign:signed_tx()), aec_trees:trees(),
                              aetx_env:env()) ->
         {ok, list(aetx_sign:signed_tx()), aec_trees:trees(), aetx_env:events()} | {error, term()}.
 apply_block_txs_strict(Txs, Trees, Env) ->
-    int_apply_block_txs(Txs, Trees, Env, true).
+    case int_apply_block_txs(Txs, Trees, Env, true) of
+        {ok, Txs1, Trees1, Events} ->
+            Trees2 = aec_trees:flush_state_batches(Trees1),
+            {ok, Txs1, Trees2, Events};
+        {error, _} = Err ->
+            Err
+    end.
 
 %% TODO NG: handle update after new keyblock in higher layer to get depth of microfork
 -spec update(aec_blocks:block(), nonempty_list(aetx_sign:signed_tx()),
@@ -150,11 +157,12 @@ int_create_block(MBEnv, TxEnv, Txs, Trees, Events) ->
 
     PoF = get_pof(KeyBlock, PrevBlockHash, PrevBlock),
 
+    Trees1 = aec_trees:flush_state_batches(Trees),
     NewBlock = aec_blocks:new_micro(Height, PrevBlockHash, KeyBlockHash,
-                                    aec_trees:hash(Trees), TxsRootHash, Txs,
+                                    aec_trees:hash(Trees1), TxsRootHash, Txs,
                                     Time, PoF, Protocol),
     TxEnv1 = aetx_env:set_events(TxEnv, Events),
-    BlockInfo = #{ trees => Trees, txs_tree => TxsTree, tx_env => TxEnv1},
+    BlockInfo = #{ trees => Trees1, txs_tree => TxsTree, tx_env => TxEnv1},
     {ok, NewBlock, BlockInfo}.
 
 
@@ -214,13 +222,14 @@ int_update(MaxGas, Block, Txs, BlockInfo) ->
         {[], _, _} ->
             {error, no_change};
         {Txs1, Trees1, Env1} ->
+            Trees2 = aec_trees:flush_state_batches(Trees1),
             Txs0 = aec_blocks:txs(Block),
             TxsTree1 = aec_txs_trees:add_txs(Txs1, length(Txs0), maps:get(txs_tree, BlockInfo)),
             {ok, TxsRootHash} = aec_txs_trees:root_hash(TxsTree1),
             NewBlock = aec_blocks:update_micro_candidate(
-                         Block, TxsRootHash, aec_trees:hash(Trees1),
+                         Block, TxsRootHash, aec_trees:hash(Trees2),
                          Txs0 ++ Txs1),
-            NewBlockInfo = BlockInfo#{ trees => Trees1
+            NewBlockInfo = BlockInfo#{ trees => Trees2
                                      , txs_tree => TxsTree1
                                      , tx_env => Env1 },
             {ok, NewBlock, NewBlockInfo}

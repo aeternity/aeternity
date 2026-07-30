@@ -224,7 +224,7 @@ test_inject_account_at_genesis() ->
     %% The genesis transform always operates on an initially populated state
     meck_genesis_accounts([]),
     G2 = aec_consensus:get_genesis_hash(),
-    [{PK2, _}] = aeu_mtrees:to_list(aec_trees:accounts(aec_block_genesis:populated_trees())),
+    [{PK2, _}] = aec_accounts_trees:to_list(aec_trees:accounts(aec_block_genesis:populated_trees())),
     aec_consensus:set_genesis_hash(),
     G3 = aec_consensus:get_genesis_hash(),
     ?assertNotEqual(G1, G3),

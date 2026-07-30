@@ -1,6 +1,13 @@
 %%%-------------------------------------------------------------------
 %%% @copyright (C) 2017, Aeternity Anstalt
 %%% @doc Merkle trees of accounts.
+%%%
+%%% Per-microblock dirty cache for accounts: `enter/2' accumulates in
+%%% `account_batch' instead of writing the MPT, and `lookup/2' checks
+%%% the batch first so nonce/balance/authentication observers see the
+%%% latest in-microblock state (replay and double-spend protection). The
+%%% batch is flushed once at microblock end via
+%%% `aec_trees:flush_state_batches/1'.
 %%% @end
 %%%-------------------------------------------------------------------
 -module(aec_accounts_trees).
@@ -42,72 +49,113 @@
 -export([ get_all_accounts_balances/1
         , lock_coins/2]).
 
+%% Batch management
+-export([ flush_account_batch/1 ]).
+
 -export_type([tree/0]).
 
 -type key() :: aec_keys:pubkey().
 -type value() :: aec_accounts:deterministic_account_binary_with_pubkey().
--opaque tree() :: aeu_mtrees:mtree(key(), value()).
+
+%% Per-microblock deferred account writes/deletes, applied to the MPT
+%% in one pass at flush time. A `tombstone' entry marks a deleted
+%% account: `lookup/2' reports it absent without consulting the MPT and
+%% `flush_account_batch/1' turns it into a real `aeu_mtrees:delete'.
+%% Accounts are records, never the atom `tombstone', so the marker
+%% cannot collide with a value.
+-record(accounts_tree, {
+    accounts      :: aeu_mtrees:mtree(key(), value()),
+    account_batch :: #{aec_keys:pubkey() => aec_accounts:account() | tombstone}
+}).
+
+-opaque tree() :: #accounts_tree{}.
 
 -define(VSN, 1).
+
 %%%===================================================================
 %%% API - similar to OTP `gb_trees` module
 %%%===================================================================
+
 -spec empty() -> tree().
 empty() ->
-    aeu_mtrees:empty().
+    #accounts_tree{accounts = aeu_mtrees:empty(), account_batch = #{}}.
 
 -spec from_db_format(tree()) -> tree().
-from_db_format(Tree) ->
-    aeu_mtrees:from_db_format(Tree).
+from_db_format(Tree = #accounts_tree{accounts = AT}) ->
+    Tree#accounts_tree{accounts = aeu_mtrees:from_db_format(AT)}.
 
 -spec empty_with_backend() -> tree().
 empty_with_backend() ->
-    aeu_mtrees:empty_with_backend(aec_db_backends:accounts_backend()).
+    #accounts_tree{accounts      = aeu_mtrees:empty_with_backend(aec_db_backends:accounts_backend()),
+                   account_batch = #{}}.
 
 -spec new_with_backend(aeu_mtrees:root_hash() | 'empty') -> tree().
 new_with_backend(Hash) ->
-    aeu_mtrees:new_with_backend(Hash, aec_db_backends:accounts_backend()).
+    #accounts_tree{accounts      = aeu_mtrees:new_with_backend(Hash, aec_db_backends:accounts_backend()),
+                   account_batch = #{}}.
 
 -spec new_with_dirty_backend(aeu_mtrees:root_hash() | 'empty') -> tree().
 new_with_dirty_backend(Hash) ->
-    aeu_mtrees:new_with_backend(Hash, aec_db_backends:dirty_accounts_backend()).
+    #accounts_tree{accounts      = aeu_mtrees:new_with_backend(Hash, aec_db_backends:dirty_accounts_backend()),
+                   account_batch = #{}}.
 
 -spec gc_cache(tree()) -> tree().
 gc_cache(Tree) ->
-    aeu_mtrees:gc_cache(Tree).
+    #accounts_tree{accounts = AT} = flush_account_batch(Tree),
+    Tree#accounts_tree{accounts = aeu_mtrees:gc_cache(AT), account_batch = #{}}.
 
 -spec to_list(tree()) -> [{binary(), binary()}].
 to_list(Tree) ->
-    aeu_mtrees:to_list(Tree).
+    #accounts_tree{accounts = AT} = flush_account_batch(Tree),
+    aeu_mtrees:to_list(AT).
 
 -spec get(aec_keys:pubkey(), tree()) -> aec_accounts:account().
 get(Pubkey, Tree) ->
-    Account = aec_accounts:deserialize(Pubkey, aeu_mtrees:get(Pubkey, Tree)),
-    Pubkey  = aec_accounts:pubkey(Account), %% Hardcoded expectation.
-    Account.
-
--spec lookup(aec_keys:pubkey(), tree()) -> none | {value, aec_accounts:account()}.
-lookup(Pubkey, Tree) ->
-    case aeu_mtrees:lookup(Pubkey, Tree) of
+    case lookup(Pubkey, Tree) of
+        {value, Account} ->
+            Pubkey = aec_accounts:pubkey(Account), %% Hardcoded expectation.
+            Account;
         none ->
-            none;
-        {value, SerializedAccount} ->
-            Account = aec_accounts:deserialize(Pubkey, SerializedAccount),
-            Pubkey  = aec_accounts:pubkey(Account), %% Hardcoded expectation.
-            {value, Account}
+            error({not_present, Pubkey})
     end.
 
--spec enter(aec_accounts:account(), tree()) -> tree().
-enter(Account, Tree) ->
-    aeu_mtrees:enter(key(Account), value(Account), Tree).
+-spec lookup(aec_keys:pubkey(), tree()) -> none | {value, aec_accounts:account()}.
+lookup(Pubkey, #accounts_tree{accounts = AT, account_batch = Batch}) ->
+    case maps:find(Pubkey, Batch) of
+        {ok, tombstone} ->
+            %% Deleted this microblock: absent, do NOT consult the MPT.
+            none;
+        {ok, Account} ->
+            {value, Account};
+        error ->
+            case aeu_mtrees:lookup(Pubkey, AT) of
+                none ->
+                    none;
+                {value, SerializedAccount} ->
+                    Account = aec_accounts:deserialize(Pubkey, SerializedAccount),
+                    Pubkey  = aec_accounts:pubkey(Account), %% Hardcoded expectation.
+                    {value, Account}
+            end
+    end.
 
+%% Defer the MPT write; accumulate in the microblock-level batch.
+-spec enter(aec_accounts:account(), tree()) -> tree().
+enter(Account, #accounts_tree{account_batch = Batch} = Tree) ->
+    Pubkey = aec_accounts:pubkey(Account),
+    Tree#accounts_tree{account_batch = Batch#{Pubkey => Account}}.
+
+%% Defer the MPT delete; record a tombstone in the microblock-level
+%% batch (overwriting any pending value for the same pubkey — last
+%% writer wins).  The final key set, and therefore the root, is
+%% identical to an immediate delete.
 -spec delete(aec_keys:pubkey(), tree()) -> tree().
-delete(Pubkey, Tree) ->
-    aeu_mtrees:delete(Pubkey, Tree).
+delete(Pubkey, #accounts_tree{account_batch = Batch} = Tree) ->
+    Tree#accounts_tree{account_batch = Batch#{Pubkey => tombstone}}.
 
 -spec to_binary_without_backend(tree()) -> binary().
 to_binary_without_backend(Tree) ->
-    Bin = aeu_mtrees:serialize(Tree),
+    #accounts_tree{accounts = AT} = flush_account_batch(Tree),
+    Bin = aeu_mtrees:serialize(AT),
     aeser_chain_objects:serialize(
         accounts_mtree,
         ?VSN,
@@ -119,14 +167,15 @@ from_binary_without_backend(Bin) ->
     [{accounts, AccountsBin}] =
         aeser_chain_objects:deserialize(accounts_mtree, ?VSN,
                                              serialization_template(?VSN), Bin),
-    aeu_mtrees:deserialize(AccountsBin).
+    #accounts_tree{accounts = aeu_mtrees:deserialize(AccountsBin), account_batch = #{}}.
 
 serialization_template(?VSN) ->
     [{accounts, binary}].
 
 -spec mtree_iterator(tree()) -> aeu_mtrees:iterator().
 mtree_iterator(Tree) ->
-    aeu_mtrees:iterator(Tree).
+    #accounts_tree{accounts = AT} = flush_account_batch(Tree),
+    aeu_mtrees:iterator(AT).
 
 %%%===================================================================
 %%% API - Merkle tree
@@ -134,17 +183,28 @@ mtree_iterator(Tree) ->
 
 -spec root_hash(tree()) -> {ok, aeu_mtrees:root_hash()} | {error, empty}.
 root_hash(Tree) ->
-    aeu_mtrees:root_hash(Tree).
+    #accounts_tree{accounts = AT} = flush_account_batch(Tree),
+    aeu_mtrees:root_hash(AT).
 
+%% WARNING: returns the backing MPT db of the *materialised* accounts
+%% tree only — it does NOT reflect entries still pending in
+%% `account_batch'. Use solely for backend identity; never to read
+%% account state without `flush_account_batch/1' first (which
+%% `root_hash/1', `to_list/1', `commit_to_db/1' do internally).
 -spec db(tree()) -> {ok, aeu_mtrees:db()}.
-db(Tree) ->
-    aeu_mtrees:db(Tree).
+db(#accounts_tree{accounts = AT}) ->
+    aeu_mtrees:db(AT).
 
 -spec add_poi(aec_keys:pubkey(), tree(), aec_poi:poi()) ->
                      {'ok', aec_poi:poi()}
                          | {'error', 'not_present' | 'wrong_root_hash'}.
 add_poi(Pubkey, Tree, Poi) ->
-    aec_poi:add_poi(Pubkey, Tree, Poi).
+    %% Flush the entire account batch before building the proof, so the
+    %% resulting PoI root hash matches `root_hash(Tree)' (which itself flushes
+    %% the batch).  A single-pubkey flush is insufficient: the PoI inherits the
+    %% MPT root, and that root depends on every batched account entry.
+    #accounts_tree{accounts = AT} = flush_account_batch(Tree),
+    aec_poi:add_poi(Pubkey, AT, Poi).
 
 -spec verify_poi(aec_keys:pubkey(), aec_accounts:account(), aec_poi:poi()) ->
                         'ok' | {'error', term()}.
@@ -166,7 +226,26 @@ lookup_poi(AccountKey, Poi) ->
 
 -spec commit_to_db(tree()) -> tree().
 commit_to_db(Tree) ->
-    aeu_mtrees:commit_to_db(Tree).
+    #accounts_tree{accounts = AT} = FT = flush_account_batch(Tree),
+    FT#accounts_tree{accounts = aeu_mtrees:commit_to_db(AT)}.
+
+%%%===================================================================
+%%% API - Batch management
+%%%===================================================================
+
+%% Flush all pending account writes to the MPT.  Called at microblock end via
+%% aec_trees:flush_state_batches/1.  O(1) fast-path when batch is empty.
+-spec flush_account_batch(tree()) -> tree().
+flush_account_batch(#accounts_tree{account_batch = Batch} = Tree)
+  when map_size(Batch) =:= 0 ->
+    Tree;
+flush_account_batch(#accounts_tree{accounts = AT, account_batch = Batch} = Tree) ->
+    AT1 = maps:fold(fun(Pubkey, tombstone, Acc) ->
+                        aeu_mtrees:delete(Pubkey, Acc);
+                       (_Pubkey, Account, Acc) ->
+                        aeu_mtrees:enter(key(Account), value(Account), Acc)
+                    end, AT, Batch),
+    Tree#accounts_tree{accounts = AT1, account_batch = #{}}.
 
 %%%===================================================================
 %%% API - misc
@@ -174,7 +253,7 @@ commit_to_db(Tree) ->
 
 -spec get_all_accounts_balances(tree()) -> [{aec_keys:pubkey(), non_neg_integer()}].
 get_all_accounts_balances(AccountsTree) ->
-    AccountsDump = aeu_mtrees:to_list(AccountsTree),
+    AccountsDump = to_list(AccountsTree),  %% to_list/1 flushes the batch first.
     lists:foldl(
       fun({Pubkey, SerializedAccount}, Acc) ->
               Account = aec_accounts:deserialize(Pubkey, SerializedAccount),

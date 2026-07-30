@@ -228,6 +228,13 @@ dialyzer: endpoints
 edoc: VERSION
 	@$(REBAR) edoc
 
+# Static guard: fail if a module reaches a consensus sub-tree's raw
+# aeu_mtrees/aeu_mp_trees API instead of its batch/tombstone-aware
+# *_state_tree funnel. See scripts/check_funnel_completeness.sh.
+.PHONY: check-funnel
+check-funnel:
+	@bash scripts/check_funnel_completeness.sh
+
 $(CT_TARGETS):
 	@KIND=test \
 	SYSCONFIG=config/test-$(patsubst ct-%,%,$@).config \
@@ -485,6 +492,7 @@ test-arch-os-dependencies:
 	dev3-start dev3-stop dev3-attach dev3-clean dev3-distclean \
 	internal-start internal-stop internal-attach internal-clean internal-compile-deps internal-ct \
 	dialyzer \
+	check-funnel \
 	docker docker-clean dockerignore-check \
 	test smoke-test smoke-test-run system-test aevm-test-deps \
 	ct-% ct-latest ct-mnesia-% \

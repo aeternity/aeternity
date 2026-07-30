@@ -63,7 +63,11 @@ genesis_populated_trees(Options) ->
     Config = aec_consensus:get_genesis_consensus_config(),
     InitialTrees = initial_populated_trees(get_presets(Options)),
     %% Consensus modules might apply additional transformations
-    Module:genesis_transform_trees(InitialTrees, Config).
+    Trees = Module:genesis_transform_trees(InitialTrees, Config),
+    %% Preset accounts are entered via the per-microblock account batch;
+    %% flush here so genesis trees are in canonical, batch-free form
+    %% (one structural representation per logical genesis state).
+    aec_trees:flush_state_batches(Trees).
 
 -spec initial_populated_trees(populated_trees_options()) -> aec_trees:trees().
 initial_populated_trees(Options) ->
