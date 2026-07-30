@@ -1627,6 +1627,31 @@
 		    "type" : "boolean",
 		    "default" : false
 		},
+                "mpt_read_cache" : {
+                    "type" : "object",
+                    "additionalProperties" : false,
+                    "properties" : {
+                        "enabled" : {
+                            "description" : "Cache Merkle Patricia Tree node reads in ETS to reduce database I/O during block execution. Experimental, disabled by default. The cache is automatically bypassed for any state tree that has garbage collection enabled (chain.garbage_collection), because a cached read would skip the promotion of a node out of the GC secondary table.",
+                            "type" : "boolean",
+                            "default" : false
+                        },
+                        "max_size" : {
+                            "description" : "Target number of cached MPT nodes per generation segment. This is a soft bound: eviction runs asynchronously, so a burst of concurrent writers can exceed 2 x max_size until the periodic sweep catches up (typically within two 10s ticks). Whichever of max_size and max_bytes is reached first triggers eviction.",
+                            "type" : "integer",
+                            "minimum" : 1000,
+                            "maximum" : 2000000,
+                            "default" : 100000
+                        },
+                        "max_bytes" : {
+                            "description" : "Target resident size of the MPT read cache in bytes. Soft bound, enforced by the same asynchronous sweep as max_size. The figure is an estimate: it counts the ETS table plus tracked refcounted binary payload, includes a fixed per-entry overhead that is partly double counted, and is rescaled by surviving entry count after an eviction pass. Size it as a budget, not a hard ceiling.",
+                            "type" : "integer",
+                            "minimum" : 1048576,
+                            "maximum" : 4294967296,
+                            "default" : 268435456
+                        }
+                    }
+                },
                 "db_write_max_retries" : {
                     "deprecated" : true,
                     "description" : "OBSOLETE/ignored: Maximum number of retries for failing database write operations.",
