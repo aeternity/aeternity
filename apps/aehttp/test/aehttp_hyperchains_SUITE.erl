@@ -197,9 +197,9 @@ groups() ->
     , {hc_hole, [sequence],
           [ start_two_child_nodes
           , produce_first_epoch
-          , production_recovers_after_long_stall
           , hole_production
           , hole_production_eoe
+          , production_recovers_after_long_stall
           ]}
     , {pinning, [sequence],
           [ start_two_child_nodes,
