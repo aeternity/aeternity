@@ -1850,15 +1850,52 @@ produce_cc_blocks(Config, BlocksCnt) ->
 %% Hole detection is a slower, multi-step consensus path than plain production,
 %% and its wall-clock cost is not bounded by a single fixed budget: it depends
 %% on however many consecutive slots the excluded producer(s) end up missing.
-%% Retrying a bounded-timeout attempt handles that open-ended tail without
-%% requiring a single very large timeout for the common case.
+%% Rather than restarting the whole mining flow on every timeout, probe the
+%% chain for actual progress and only retry when the height stays flat.
 produce_cc_blocks_with_retry(Config, BlocksCnt, ProdCfg, Retries) ->
+    DeadlineMs = erlang:monotonic_time(millisecond) + max(maps:get(timeout, ProdCfg, 3000) * 2, 15000),
+    produce_cc_blocks_with_probe(Config, BlocksCnt, ProdCfg, DeadlineMs, Retries).
+
+produce_cc_blocks_with_probe(Config, BlocksCnt, ProdCfg, DeadlineMs, Retries) ->
+    Node = first_node(Config),
+    TopHeightBefore = rpc(Node, aec_chain, top_height, []),
     try
         produce_cc_blocks(Config, BlocksCnt, ProdCfg)
+    of
+        {ok, Blocks} ->
+            TopHeightAfter = rpc(Node, aec_chain, top_height, []),
+            case TopHeightAfter > TopHeightBefore of
+                true ->
+                    {ok, Blocks};
+                false ->
+                    maybe_retry_cc_blocks(Config, BlocksCnt, ProdCfg, DeadlineMs, Retries)
+            end;
+        {error, timeout_waiting_for_block} ->
+            maybe_retry_cc_blocks(Config, BlocksCnt, ProdCfg, DeadlineMs, Retries);
+        Other ->
+            Other
     catch
-        error:timeout_waiting_for_block when Retries > 0 ->
-            produce_cc_blocks_with_retry(Config, BlocksCnt, ProdCfg, Retries - 1)
+        error:timeout_waiting_for_block ->
+            maybe_retry_cc_blocks(Config, BlocksCnt, ProdCfg, DeadlineMs, Retries)
     end.
+
+maybe_retry_cc_blocks(_Config, _BlocksCnt, _ProdCfg, _DeadlineMs, 0) ->
+    {error, timeout_waiting_for_block};
+maybe_retry_cc_blocks(Config, BlocksCnt, ProdCfg, DeadlineMs, Retries) ->
+    case erlang:monotonic_time(millisecond) < DeadlineMs of
+        true ->
+            timer:sleep(backoff(Retries)),
+            produce_cc_blocks_with_probe(Config, BlocksCnt, ProdCfg, DeadlineMs, Retries - 1);
+        false ->
+            {error, timeout_waiting_for_block}
+    end.
+
+backoff(Retries) ->
+    erlang:min(5000, 250 * (Retries + 1)).
+
+first_node(Config) ->
+    [{Node, _, _, _} | _] = ?config(nodes, Config),
+    Node.
 
 produce_cc_blocks(Config, BlocksCnt, ProdCfg) ->
     [{Node, _, _, _} | _] = ?config(nodes, Config),
