@@ -197,9 +197,9 @@ groups() ->
     , {hc_hole, [sequence],
           [ start_two_child_nodes
           , produce_first_epoch
+          , production_recovers_after_long_stall
           , hole_production
           , hole_production_eoe
-          , production_recovers_after_long_stall
           ]}
     , {pinning, [sequence],
           [ start_two_child_nodes,
@@ -1127,7 +1127,7 @@ hole_production(Config, N) ->
        true ->
         ct:log("Produce on: ~p", [AllNodes -- [NextProdNode]]),
         {ok, Bs} = produce_cc_blocks_with_retry(Config, 1, #{prod_nodes => AllNodes -- [NextProdNode],
-                                                              timeout => 15000}, 2),
+                                                              timeout => 8000}, 4),
         ct:pal("Expected ~p holes, got ~p", [NHoles, length(Bs) - 1]),
         %% >= not ==: remaining producers can also miss their own slot under CI
         %% load, producing more holes than the schedule-based NHoles prediction
@@ -1169,7 +1169,7 @@ hole_production_eoe(Config) ->
     %% The EOE case additionally runs pinning/negotiate contract calls on top of
     %% the hole-detection path (see produce_cc_blocks_with_retry).
     {ok, Bs} = produce_cc_blocks_with_retry(Config, 1, #{prod_nodes => AllNodes -- [EOEProdNode],
-                                                          timeout => 15000}, 2),
+                                                          timeout => 8000}, 4),
     Holes = length([ x || B <- Bs, key == aec_blocks:type(B) ]),
     ct:pal("Expected at least 1 hole, got ~p", [Holes]),
     ?assert(Holes > 1),
