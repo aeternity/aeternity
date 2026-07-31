@@ -1126,11 +1126,8 @@ hole_production(Config, N) ->
         ct:log("Skip test, too many holes in a row potential timing issue!");
        true ->
         ct:log("Produce on: ~p", [AllNodes -- [NextProdNode]]),
-        %% Excluding NextProdNode forces the network onto the slower, multi-step
-        %% hole-detection consensus path (see hole_production_eoe), which needs
-        %% more than the default timeout.
-        {ok, Bs} = produce_cc_blocks(Config, 1, #{prod_nodes => AllNodes -- [NextProdNode],
-                                                   timeout => 30000}),
+        {ok, Bs} = produce_cc_blocks_with_retry(Config, 1, #{prod_nodes => AllNodes -- [NextProdNode],
+                                                              timeout => 15000}, 2),
         ct:pal("Expected ~p holes, got ~p", [NHoles, length(Bs) - 1]),
         %% >= not ==: remaining producers can also miss their own slot under CI
         %% load, producing more holes than the schedule-based NHoles prediction
@@ -1169,12 +1166,10 @@ hole_production_eoe(Config) ->
     EOEProdNode = producer_node(EOEProducer, Config),
     AllNodes = [ Name || {_, Name, _, _} <- ?config(nodes, Config) ],
     ct:log("Produce on: ~p", [AllNodes -- [EOEProdNode]]),
-    %% Excluding the scheduled EOE producer forces the network to detect a missed
-    %% slot and fall back to a hole block - a slower, multi-step consensus path
-    %% that also runs pinning/negotiate contract calls, needing more than the
-    %% default timeout.
-    {ok, Bs} = produce_cc_blocks(Config, 1, #{prod_nodes => AllNodes -- [EOEProdNode],
-                                              timeout => 30000}),
+    %% The EOE case additionally runs pinning/negotiate contract calls on top of
+    %% the hole-detection path (see produce_cc_blocks_with_retry).
+    {ok, Bs} = produce_cc_blocks_with_retry(Config, 1, #{prod_nodes => AllNodes -- [EOEProdNode],
+                                                          timeout => 15000}, 2),
     Holes = length([ x || B <- Bs, key == aec_blocks:type(B) ]),
     ct:pal("Expected at least 1 hole, got ~p", [Holes]),
     ?assert(Holes > 1),
@@ -1847,6 +1842,19 @@ election_contract_address() ->
 %% if there are Txs, put them in a micro block
 produce_cc_blocks(Config, BlocksCnt) ->
     produce_cc_blocks(Config, BlocksCnt, #{}).
+
+%% Hole detection is a slower, multi-step consensus path than plain production,
+%% and its wall-clock cost is not bounded by a single fixed budget: it depends
+%% on however many consecutive slots the excluded producer(s) end up missing.
+%% Retrying a bounded-timeout attempt handles that open-ended tail without
+%% requiring a single very large timeout for the common case.
+produce_cc_blocks_with_retry(Config, BlocksCnt, ProdCfg, Retries) ->
+    try
+        produce_cc_blocks(Config, BlocksCnt, ProdCfg)
+    catch
+        error:{error, timeout_waiting_for_block} when Retries > 0 ->
+            produce_cc_blocks_with_retry(Config, BlocksCnt, ProdCfg, Retries - 1)
+    end.
 
 produce_cc_blocks(Config, BlocksCnt, ProdCfg) ->
     [{Node, _, _, _} | _] = ?config(nodes, Config),
