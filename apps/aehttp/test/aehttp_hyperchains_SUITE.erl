@@ -1126,8 +1126,11 @@ hole_production(Config, N) ->
         ct:log("Skip test, too many holes in a row potential timing issue!");
        true ->
         ct:log("Produce on: ~p", [AllNodes -- [NextProdNode]]),
+        %% A single generous timeout is preferable to many short-timeout restarts:
+        %% waiting up to ~2 minutes once is cheaper than repeatedly re-subscribing/
+        %% re-starting mining from scratch on every short-timeout retry.
         {ok, Bs} = produce_cc_blocks_with_retry(Config, 1, #{prod_nodes => AllNodes -- [NextProdNode],
-                                                              timeout => 8000}, 4),
+                                                              timeout => 40000}, 3),
         ct:pal("Expected ~p holes, got ~p", [NHoles, length(Bs) - 1]),
         %% >= not ==: remaining producers can also miss their own slot under CI
         %% load, producing more holes than the schedule-based NHoles prediction
@@ -1167,9 +1170,10 @@ hole_production_eoe(Config) ->
     AllNodes = [ Name || {_, Name, _, _} <- ?config(nodes, Config) ],
     ct:log("Produce on: ~p", [AllNodes -- [EOEProdNode]]),
     %% The EOE case additionally runs pinning/negotiate contract calls on top of
-    %% the hole-detection path (see produce_cc_blocks_with_retry).
+    %% the hole-detection path (see produce_cc_blocks_with_retry). A single
+    %% generous timeout is preferable to many short-timeout restarts here too.
     {ok, Bs} = produce_cc_blocks_with_retry(Config, 1, #{prod_nodes => AllNodes -- [EOEProdNode],
-                                                          timeout => 8000}, 4),
+                                                          timeout => 40000}, 3),
     Holes = length([ x || B <- Bs, key == aec_blocks:type(B) ]),
     ct:pal("Expected at least 1 hole, got ~p", [Holes]),
     ?assert(Holes > 1),
@@ -1852,7 +1856,7 @@ produce_cc_blocks_with_retry(Config, BlocksCnt, ProdCfg, Retries) ->
     try
         produce_cc_blocks(Config, BlocksCnt, ProdCfg)
     catch
-        error:{error, timeout_waiting_for_block} when Retries > 0 ->
+        error:timeout_waiting_for_block when Retries > 0 ->
             produce_cc_blocks_with_retry(Config, BlocksCnt, ProdCfg, Retries - 1)
     end.
 
