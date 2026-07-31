@@ -1133,7 +1133,7 @@ hole_production(Config, N) ->
         %% their slot under CI load, inflating the observed hole count above
         %% NHoles and failing the assertion below.
         {ok, Bs} = produce_cc_blocks(Config, 1, #{prod_nodes => AllNodes -- [NextProdNode],
-                                                   timeout => 10000}),
+                                                   timeout => 30000}),
         ct:pal("Expected ~p holes, got ~p", [NHoles, length(Bs) - 1]),
         %% >= not ==: remaining producers can also miss their own slot under CI
         %% load (see comment above), producing more holes than the schedule-based
@@ -1174,11 +1174,12 @@ hole_production_eoe(Config) ->
     ct:log("Produce on: ~p", [AllNodes -- [EOEProdNode]]),
     %% Excluding the scheduled EOE producer forces the network to detect a
     %% missed slot and fall back to a hole block - a slower, multi-step
-    %% consensus path than plain production, so the bare 3000ms default
-    %% (produce_cc_blocks/3, produce_to_cc_height/6) is too tight here and was
-    %% observed to intermittently time out (timeout_waiting_for_block).
+    %% consensus path than plain production. The EOE case additionally runs
+    %% pinning/negotiate contract calls on top of that, so even 10000ms was
+    %% still observed to intermittently time out (timeout_waiting_for_block)
+    %% under CI load.
     {ok, Bs} = produce_cc_blocks(Config, 1, #{prod_nodes => AllNodes -- [EOEProdNode],
-                                              timeout => 10000}),
+                                              timeout => 30000}),
     Holes = length([ x || B <- Bs, key == aec_blocks:type(B) ]),
     ct:pal("Expected at least 1 hole, got ~p", [Holes]),
     ?assert(Holes > 1),
