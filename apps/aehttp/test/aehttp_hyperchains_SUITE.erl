@@ -1018,8 +1018,8 @@ epochs_with_slow_parent(Config) ->
     {ok, _} = produce_cc_blocks(Config, 1, #{parent_produce => [{ChildTopHeight + EpochLength, ParentBlocksNeeded}]}),
 
     #{epoch_length := FinalizeEpochLength, epoch := FinalizeEpoch} = rpc(Node, aec_chain_hc, finalize_info, []),
-    %% Recovering the missed epoch can now catch all the way up to EndEpoch in this one
-    %% recovery call (it can never exceed it, since only one block is produced here).
+    %% A single recovery call can catch all the way up to EndEpoch, but never beyond it
+    %% (only one block is produced here).
     ct:log("The agreed epoch length is ~p the current length is ~p for epoch ~p", [FinalizeEpochLength, EpochLength, FinalizeEpoch]),
     ?assert(FinalizeEpoch =< EndEpoch),
 
@@ -1126,19 +1126,16 @@ hole_production(Config, N) ->
         ct:log("Skip test, too many holes in a row potential timing issue!");
        true ->
         ct:log("Produce on: ~p", [AllNodes -- [NextProdNode]]),
-        %% Excluding NextProdNode forces the network onto the slower,
-        %% multi-step hole-detection consensus path (see hole_production_eoe
-        %% for the same reasoning): the bare 3000ms default was observed to
-        %% intermittently let some of the *remaining* producers also miss
-        %% their slot under CI load, inflating the observed hole count above
-        %% NHoles and failing the assertion below.
+        %% Excluding NextProdNode forces the network onto the slower, multi-step
+        %% hole-detection consensus path (see hole_production_eoe), which needs
+        %% more than the default timeout.
         {ok, Bs} = produce_cc_blocks(Config, 1, #{prod_nodes => AllNodes -- [NextProdNode],
                                                    timeout => 30000}),
         ct:pal("Expected ~p holes, got ~p", [NHoles, length(Bs) - 1]),
         %% >= not ==: remaining producers can also miss their own slot under CI
-        %% load (see comment above), producing more holes than the schedule-based
-        %% NHoles prediction accounts for. What matters is that the excluded
-        %% node's run gets skipped via holes, not the exact count.
+        %% load, producing more holes than the schedule-based NHoles prediction
+        %% accounts for. What matters is that the excluded node's run gets
+        %% skipped via holes, not the exact count.
         ?assert(length(Bs) >= NHoles + 1)
     end,
 
@@ -1172,12 +1169,10 @@ hole_production_eoe(Config) ->
     EOEProdNode = producer_node(EOEProducer, Config),
     AllNodes = [ Name || {_, Name, _, _} <- ?config(nodes, Config) ],
     ct:log("Produce on: ~p", [AllNodes -- [EOEProdNode]]),
-    %% Excluding the scheduled EOE producer forces the network to detect a
-    %% missed slot and fall back to a hole block - a slower, multi-step
-    %% consensus path than plain production. The EOE case additionally runs
-    %% pinning/negotiate contract calls on top of that, so even 10000ms was
-    %% still observed to intermittently time out (timeout_waiting_for_block)
-    %% under CI load.
+    %% Excluding the scheduled EOE producer forces the network to detect a missed
+    %% slot and fall back to a hole block - a slower, multi-step consensus path
+    %% that also runs pinning/negotiate contract calls, needing more than the
+    %% default timeout.
     {ok, Bs} = produce_cc_blocks(Config, 1, #{prod_nodes => AllNodes -- [EOEProdNode],
                                               timeout => 30000}),
     Holes = length([ x || B <- Bs, key == aec_blocks:type(B) ]),
@@ -1191,9 +1186,9 @@ hole_production_eoe(Config) ->
 
 %% Regression test for a real incident (aehc_demo, stuck ~5 months): if every
 %% producer is down for longer than one child epoch's real-time span,
-%% next_producer/0 used to project a wall-clock Slot beyond the frozen
-%% epoch's `last`, which can never resolve a leader (`epoch_did_not_end`) -
-%% production deadlocked forever, even once producers came back up healthy.
+%% next_producer/0 must not project a wall-clock Slot beyond the frozen
+%% epoch's `last`, since that can never resolve a leader (`epoch_did_not_end`)
+%% and would deadlock production even once producers come back up healthy.
 %% This does NOT cover a slow/stuck *parent* chain (see epochs_with_slow_parent,
 %% which is a separate, still-open limitation).
 production_recovers_after_long_stall(Config) ->
@@ -1215,8 +1210,7 @@ production_recovers_after_long_stall(Config) ->
 
     [ ok = rpc(N, aec_conductor, start_mining, []) || N <- Nodes ],
 
-    %% Before the fix this hung forever; with the fix the node catches up
-    %% hole-by-hole/epoch-by-epoch instead of retrying `not_in_cache` forever.
+    %% Catches up hole-by-hole/epoch-by-epoch rather than retrying `not_in_cache` forever.
     {ok, _Bs} = produce_cc_blocks(Config, 1, #{timeout => 20000}),
     ?assert(rpc(Node, aec_chain, top_height, []) > StallHeight),
 
