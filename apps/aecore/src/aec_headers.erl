@@ -683,12 +683,28 @@ deserialize_key_flags(KeyBlock) ->
             Decoded = decode(bytearray, Flags),
             %% Client-supplied flags must not set any unused/reserved bit.
             <<F:?FLAG_BITS>> = Decoded,
-            AllowedMask = ?KEY_HEADER_FLAG bor ?CONTAINS_INFO_FLAG bor ?HOLE_FLAG bor ?EOE_FLAG,
+            Base = ?KEY_HEADER_FLAG bor ?CONTAINS_INFO_FLAG,
+            AllowedMask = case hc_flags_allowed() of
+                              true  -> Base bor ?HOLE_FLAG bor ?EOE_FLAG;
+                              false -> Base
+                          end,
             case F band (bnot AllowedMask) of
                 0 -> Decoded;
                 _ -> error(illegal_flags)
             end
     end.
+
+%% The HOLE and EOE key-header flag bits are Hyperchains constructs, only
+%% meaningful under PoS consensus. On a PoW chain they are reserved bits that
+%% must be zero, exactly as 7.2.2 requires: a PoW-sealed key block with either
+%% bit set would otherwise be accepted here and rejected as malformed_header by
+%% 7.2.2 nodes, splitting the chain. Gating on consensus type rather than
+%% protocol version is deliberate - Hyperchains deployments run on Ceres as well
+%% as Arcus, so a version-based gate would break them. `ae_mainnet` and `ae_uat`
+%% hardcode aec_consensus_bitcoin_ng and cannot be configured into `pos`, so
+%% mainnet can never opt in to accepting these bits.
+hc_flags_allowed() ->
+    aec_consensus:get_consensus_type() =:= pos.
 
 
 -spec serialize_to_signature_binary(header()) -> deterministic_header_binary().
@@ -841,7 +857,11 @@ deserialize_key_from_binary(<<Version:32,
                     info = Info,
                     flags = <<?KEY_HEADER_TAG:1, ContainsInfoFlag:1, HoleFlag:1, EoeFlag:1, 0:28>>
                    },
-    {ok, populate_extra(H)};
+    %% Common case (both bits clear) short-circuits before the consensus lookup.
+    case HoleFlag + EoeFlag =:= 0 orelse hc_flags_allowed() of
+        true  -> {ok, populate_extra(H)};
+        false -> {error, malformed_header}
+    end;
 deserialize_key_from_binary(_Other) ->
     {error, malformed_header}.
 
