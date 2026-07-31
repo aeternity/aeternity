@@ -997,16 +997,24 @@ get_slot_info(0, _RunEnv) ->
     Now = aeu_time:now_in_msecs(),
     #{epoch => 1, slot => 1, t0 => Now, delta => 0, now => Now};
 get_slot_info(_TopHeight, RunEnv) ->
-    {ok, EpochInfo = #{epoch := Epoch, first := First}} = aec_chain_hc:epoch_info(RunEnv),
+    {ok, EpochInfo = #{epoch := Epoch, first := First, last := Last}} = aec_chain_hc:epoch_info(RunEnv),
     BlockTime     = child_block_time(),
     Now = aeu_time:now_in_msecs(),
     T0  = get_t0(Epoch, First),
 
     ElapsedBlocks = (Now - T0) div BlockTime,
-    Delta = if Epoch == 1 -> ElapsedBlocks + 1;
-               true       -> ElapsedBlocks
-            end,
-    Slot = First + Delta,
+    Delta0 = if Epoch == 1 -> ElapsedBlocks + 1;
+                true       -> ElapsedBlocks
+             end,
+    %% Never project a slot beyond the current on-chain epoch's last slot. The
+    %% validator schedule for a future epoch can't be resolved until this one
+    %% is actually closed on-chain (leader_for_timeslot/2 returns
+    %% `epoch_did_not_end` past `Last`), so an uncapped wall-clock Delta after
+    %% any production gap longer than one epoch's real-time span would make
+    %% next_producer/0 retry `not_in_cache` forever instead of catching up via
+    %% the existing hole-block mechanism one epoch at a time.
+    Slot = min(First + Delta0, Last),
+    Delta = Slot - First,
     #{epoch => Epoch, slot => Slot, t0 => T0, delta => Delta,
       now => Now, epoch_info => EpochInfo}.
 

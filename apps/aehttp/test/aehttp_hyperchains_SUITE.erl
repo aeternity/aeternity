@@ -41,7 +41,8 @@
          check_finalize_info/1,
          sanity_check_vote_tx/1,
          hole_production/1,
-         hole_production_eoe/1
+         hole_production_eoe/1,
+         production_recovers_after_long_stall/1
         ]).
 
 -include_lib("stdlib/include/assert.hrl").
@@ -196,6 +197,7 @@ groups() ->
           , produce_first_epoch
           , hole_production
           , hole_production_eoe
+          , production_recovers_after_long_stall
           ]}
     , {pinning, [sequence],
           [ start_two_child_nodes,
@@ -1179,7 +1181,41 @@ hole_production_eoe(Config) ->
 
     ok.
 
+%% Regression test for a real incident (aehc_demo, stuck ~5 months): if every
+%% producer is down for longer than one child epoch's real-time span,
+%% next_producer/0 used to project a wall-clock Slot beyond the frozen
+%% epoch's `last`, which can never resolve a leader (`epoch_did_not_end`) -
+%% production deadlocked forever, even once producers came back up healthy.
+%% This does NOT cover a slow/stuck *parent* chain (see epochs_with_slow_parent,
+%% which is a separate, still-open limitation).
+production_recovers_after_long_stall(Config) ->
+    Nodes = [ Name || {_, Name, _, _} <- ?config(nodes, Config) ],
+    [{Node, _, _, _} | _] = ?config(nodes, Config),
 
+    %% Align at a fresh epoch boundary so we know exactly how much real
+    %% time one epoch spans.
+    produce_until_next_epoch(Config),
+    StallHeight = rpc(Node, aec_chain, top_height, []),
+
+    %% Simulate every validator being down/stuck, as happened in production.
+    [ ok = rpc(N, aec_conductor, stop_mining, []) || N <- Nodes ],
+
+    %% Let real wall-clock time run past more than one full epoch while the
+    %% chain makes no progress - this is what pushes the wall-clock projected
+    %% Slot past the frozen epoch's `last`.
+    timer:sleep(2 * ?CHILD_EPOCH_LENGTH * ?CHILD_BLOCK_TIME),
+
+    [ ok = rpc(N, aec_conductor, start_mining, []) || N <- Nodes ],
+
+    %% Before the fix this hung forever; with the fix the node catches up
+    %% hole-by-hole/epoch-by-epoch instead of retrying `not_in_cache` forever.
+    {ok, _Bs} = produce_cc_blocks(Config, 1, #{timeout => 20000}),
+    ?assert(rpc(Node, aec_chain, top_height, []) > StallHeight),
+
+    %% Make sure the chain is fully healthy going forward, not just one lucky block.
+    {ok, _} = produce_n_epochs(Config, 1),
+
+    ok.
 
 %%%=============================================================================
 %%% HC Endpoints
