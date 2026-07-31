@@ -55,7 +55,9 @@
 -define(HC_CONTRACT, "HCElection").
 -define(CONSENSUS, hc).
 -define(CHILD_EPOCH_LENGTH, 10).
--define(CHILD_BLOCK_TIME, 400).
+%% Doubled from 400: gives the slow-producer/hole-catchup tests (epochs_slow,
+%% epochs_fast, hc_hole) more real-time slack per epoch under CI load.
+-define(CHILD_BLOCK_TIME, 800).
 -define(CHILD_BLOCK_PRODUCTION_TIME, 120).
 -define(PARENT_EPOCH_LENGTH, 3).
 -define(PARENT_FINALITY, 2).
