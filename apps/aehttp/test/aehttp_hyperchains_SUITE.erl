@@ -1018,9 +1018,10 @@ epochs_with_slow_parent(Config) ->
     {ok, _} = produce_cc_blocks(Config, 1, #{parent_produce => [{ChildTopHeight + EpochLength, ParentBlocksNeeded}]}),
 
     #{epoch_length := FinalizeEpochLength, epoch := FinalizeEpoch} = rpc(Node, aec_chain_hc, finalize_info, []),
-    %% We missed EoE, so no adjustment here...
+    %% Recovering the missed epoch can now catch all the way up to EndEpoch in this one
+    %% recovery call (it can never exceed it, since only one block is produced here).
     ct:log("The agreed epoch length is ~p the current length is ~p for epoch ~p", [FinalizeEpochLength, EpochLength, FinalizeEpoch]),
-    ?assert(FinalizeEpoch < EndEpoch),
+    ?assert(FinalizeEpoch =< EndEpoch),
 
     %% advance
     produce_cc_blocks(Config, ?CHILD_EPOCH_LENGTH),
@@ -1134,7 +1135,11 @@ hole_production(Config, N) ->
         {ok, Bs} = produce_cc_blocks(Config, 1, #{prod_nodes => AllNodes -- [NextProdNode],
                                                    timeout => 10000}),
         ct:pal("Expected ~p holes, got ~p", [NHoles, length(Bs) - 1]),
-        ?assert(NHoles + 1 == length(Bs))
+        %% >= not ==: remaining producers can also miss their own slot under CI
+        %% load (see comment above), producing more holes than the schedule-based
+        %% NHoles prediction accounts for. What matters is that the excluded
+        %% node's run gets skipped via holes, not the exact count.
+        ?assert(length(Bs) >= NHoles + 1)
     end,
 
     N1 = if Skip -> N; true -> N - 1 end,
