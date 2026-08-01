@@ -33,7 +33,7 @@
 -define(HC_CONTRACT, "HCElection").
 -define(CONSENSUS, hc).
 -define(CHILD_EPOCH_LENGTH, 10).
-%% Doubled from 200: same CI-timing-slack reasoning as aehttp_hyperchains_SUITE.
+%% Generous for CI timing slack (see aehttp_hyperchains_SUITE).
 -define(CHILD_BLOCK_TIME, 400).
 -define(CHILD_BLOCK_PRODUCTION_TIME, 50).
 -define(PARENT_EPOCH_LENGTH, 3).

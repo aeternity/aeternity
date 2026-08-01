@@ -55,8 +55,8 @@
 -define(HC_CONTRACT, "HCElection").
 -define(CONSENSUS, hc).
 -define(CHILD_EPOCH_LENGTH, 10).
-%% Doubled from 400: gives the slow-producer/hole-catchup tests (epochs_slow,
-%% epochs_fast, hc_hole) more real-time slack per epoch under CI load.
+%% Generous so the slow-producer/hole-catchup tests (epochs_slow, epochs_fast,
+%% hc_hole) have enough real-time slack per epoch under CI load.
 -define(CHILD_BLOCK_TIME, 800).
 -define(CHILD_BLOCK_PRODUCTION_TIME, 120).
 -define(PARENT_EPOCH_LENGTH, 3).
@@ -1126,9 +1126,6 @@ hole_production(Config, N) ->
         ct:log("Skip test, too many holes in a row potential timing issue!");
        true ->
         ct:log("Produce on: ~p", [AllNodes -- [NextProdNode]]),
-        %% A single generous timeout is preferable to many short-timeout restarts:
-        %% waiting up to ~2 minutes once is cheaper than repeatedly re-subscribing/
-        %% re-starting mining from scratch on every short-timeout retry.
         {ok, Bs} = produce_cc_blocks_with_retry(Config, 1, #{prod_nodes => AllNodes -- [NextProdNode],
                                                               timeout => 40000}, 3),
         ct:pal("Expected ~p holes, got ~p", [NHoles, length(Bs) - 1]),
@@ -1169,9 +1166,8 @@ hole_production_eoe(Config) ->
     EOEProdNode = producer_node(EOEProducer, Config),
     AllNodes = [ Name || {_, Name, _, _} <- ?config(nodes, Config) ],
     ct:log("Produce on: ~p", [AllNodes -- [EOEProdNode]]),
-    %% The EOE case additionally runs pinning/negotiate contract calls on top of
-    %% the hole-detection path (see produce_cc_blocks_with_retry). A single
-    %% generous timeout is preferable to many short-timeout restarts here too.
+    %% EOE additionally runs pinning/negotiate contract calls on top of the
+    %% hole-detection path, so it needs the same generous per-attempt timeout.
     {ok, Bs} = produce_cc_blocks_with_retry(Config, 1, #{prod_nodes => AllNodes -- [EOEProdNode],
                                                           timeout => 40000}, 3),
     Holes = length([ x || B <- Bs, key == aec_blocks:type(B) ]),
@@ -1191,7 +1187,8 @@ hole_production_eoe(Config) ->
 %% This does NOT cover a slow/stuck *parent* chain (see epochs_with_slow_parent,
 %% which is a separate, still-open limitation).
 production_recovers_after_long_stall(Config) ->
-    Nodes = [ Name || {_, Name, _, _} <- ?config(nodes, Config) ],
+    %% Short node ids: rpc/4 expands them via node_name/1 itself.
+    Nodes = [ N || {N, _, _, _} <- ?config(nodes, Config) ],
     [{Node, _, _, _} | _] = ?config(nodes, Config),
 
     %% Align at a fresh epoch boundary so we know exactly how much real
@@ -1207,14 +1204,15 @@ production_recovers_after_long_stall(Config) ->
     %% Slot past the frozen epoch's `last`.
     timer:sleep(2 * ?CHILD_EPOCH_LENGTH * ?CHILD_BLOCK_TIME),
 
-    [ ok = rpc(N, aec_conductor, start_mining, []) || N <- Nodes ],
-
-    %% Catches up hole-by-hole/epoch-by-epoch rather than retrying `not_in_cache` forever.
-    {ok, _Bs} = produce_cc_blocks(Config, 1, #{timeout => 20000}),
+    %% Producers come back up: hc_mine_blocks (via produce_cc_blocks) restarts
+    %% mining itself and requires it to be stopped on entry.
+    %% Catches up hole-by-hole/epoch-by-epoch rather than retrying `not_in_cache`
+    %% forever; the catch-up spans several epochs' worth of holes, hence retries.
+    {ok, _Bs} = produce_cc_blocks_with_retry(Config, 1, #{timeout => 20000}, 3),
     ?assert(rpc(Node, aec_chain, top_height, []) > StallHeight),
 
     %% Make sure the chain is fully healthy going forward, not just one lucky block.
-    {ok, _} = produce_n_epochs(Config, 1),
+    ok = produce_n_epochs(Config, 1),
 
     ok.
 
@@ -1850,53 +1848,37 @@ produce_cc_blocks(Config, BlocksCnt) ->
 %% Hole detection is a slower, multi-step consensus path than plain production,
 %% and its wall-clock cost is not bounded by a single fixed budget: it depends
 %% on however many consecutive slots the excluded producer(s) end up missing.
-%% Rather than restarting the whole mining flow on every timeout, probe the
-%% chain for actual progress and only retry when the height stays flat.
+%% Retrying a bounded-timeout attempt handles that open-ended tail. Returns all
+%% blocks accumulated since the first attempt: a timed-out attempt may already
+%% have added part of the hole run to the chain, and callers' hole-count
+%% assertions must see those blocks too, not just the final attempt's.
 produce_cc_blocks_with_retry(Config, BlocksCnt, ProdCfg, Retries) ->
-    DeadlineMs = erlang:monotonic_time(millisecond) + max(maps:get(timeout, ProdCfg, 3000) * 2, 15000),
-    produce_cc_blocks_with_probe(Config, BlocksCnt, ProdCfg, DeadlineMs, Retries).
-
-produce_cc_blocks_with_probe(Config, BlocksCnt, ProdCfg, DeadlineMs, Retries) ->
-    Node = first_node(Config),
-    TopHeightBefore = rpc(Node, aec_chain, top_height, []),
-    try
-        produce_cc_blocks(Config, BlocksCnt, ProdCfg)
-    of
-        {ok, Blocks} ->
-            TopHeightAfter = rpc(Node, aec_chain, top_height, []),
-            case TopHeightAfter > TopHeightBefore of
-                true ->
-                    {ok, Blocks};
-                false ->
-                    maybe_retry_cc_blocks(Config, BlocksCnt, ProdCfg, DeadlineMs, Retries)
-            end;
-        {error, timeout_waiting_for_block} ->
-            maybe_retry_cc_blocks(Config, BlocksCnt, ProdCfg, DeadlineMs, Retries);
-        Other ->
-            Other
-    catch
-        error:timeout_waiting_for_block ->
-            maybe_retry_cc_blocks(Config, BlocksCnt, ProdCfg, DeadlineMs, Retries)
-    end.
-
-maybe_retry_cc_blocks(_Config, _BlocksCnt, _ProdCfg, _DeadlineMs, 0) ->
-    {error, timeout_waiting_for_block};
-maybe_retry_cc_blocks(Config, BlocksCnt, ProdCfg, DeadlineMs, Retries) ->
-    case erlang:monotonic_time(millisecond) < DeadlineMs of
-        true ->
-            timer:sleep(backoff(Retries)),
-            produce_cc_blocks_with_probe(Config, BlocksCnt, ProdCfg, DeadlineMs, Retries - 1);
-        false ->
-            {error, timeout_waiting_for_block}
-    end.
-
-backoff(Retries) ->
-    erlang:min(5000, 250 * (Retries + 1)).
-
-first_node(Config) ->
     [{Node, _, _, _} | _] = ?config(nodes, Config),
-    Node.
+    StartHeight = rpc(Node, aec_chain, top_height, []),
+    produce_cc_blocks_with_retry(Config, BlocksCnt, ProdCfg, Retries, Node, StartHeight).
 
+produce_cc_blocks_with_retry(Config, BlocksCnt, ProdCfg, Retries, Node, StartHeight) ->
+    CurHeight = rpc(Node, aec_chain, top_height, []),
+    try produce_cc_blocks(Config, BlocksCnt, ProdCfg) of
+        {ok, Blocks} when CurHeight =:= StartHeight ->
+            {ok, Blocks};
+        {ok, _Blocks} ->
+            %% Earlier attempts made progress. Their heights may since have
+            %% been reorged away (recovery forks), so don't stitch prefixes -
+            %% re-fetch the whole range from the settled top (mining is
+            %% stopped and tops are in sync when produce_cc_blocks returns).
+            TopHeight = rpc(Node, aec_chain, top_height, []),
+            get_generations(Node, StartHeight + 1, TopHeight)
+    catch
+        error:timeout_waiting_for_block when Retries > 0 ->
+            ct:log("Timed out waiting for block, retrying (~p attempts left)", [Retries]),
+            %% Recovering from a missed slot can spill production into the next
+            %% epoch, whose schedule needs entropy from parent blocks that the
+            %% default parent schedule only mines once the child advances -
+            %% feed the parent chain to break that circular wait.
+            {ok, _} = mine_key_blocks(?PARENT_CHAIN_NODE_NAME, ?PARENT_EPOCH_LENGTH),
+            produce_cc_blocks_with_retry(Config, BlocksCnt, ProdCfg, Retries - 1, Node, StartHeight)
+    end.
 produce_cc_blocks(Config, BlocksCnt, ProdCfg) ->
     [{Node, _, _, _} | _] = ?config(nodes, Config),
     TopHeight = rpc(Node, aec_chain, top_height, []),
@@ -1932,8 +1914,12 @@ produce_cc_blocks(Config, BlocksCnt, ProdCfg) ->
     %% assert that the parent chain is not mining
     ?assertEqual(stopped, rpc:call(?PARENT_CHAIN_NODE_NAME, aec_conductor, get_mining_state, [])),
     ct:log("parent produce ~p", [ParentProduce]),
-    NewTopHeight = produce_to_cc_height(Config, TopHeight, TopHeight + BlocksCnt, ParentProduce, PNodes, Timeout),
+    NewTopHeight0 = produce_to_cc_height(Config, TopHeight, TopHeight + BlocksCnt, ParentProduce, PNodes, Timeout),
     wait_same_top([ N || {N, _, _, _} <- ?config(nodes, Config)]),
+    %% produce_to_cc_height counts holes from all subscribed nodes; a hole that
+    %% loses a same-height fork race to a real block inflates the count past
+    %% the actual top, so cap by the settled chain.
+    NewTopHeight = min(NewTopHeight0, rpc(Node, aec_chain, top_height, [])),
     get_generations(Node, TopHeight + 1, NewTopHeight).
 
 %% If it is time according to schedule, produce on parent chain
