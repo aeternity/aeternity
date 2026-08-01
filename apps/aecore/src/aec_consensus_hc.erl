@@ -935,6 +935,22 @@ next_producer() ->
             case leader_for_timeslot(Slot, RunEnv) of
                 {ok, Leader} ->
                     activate_next_leader(Leader, TopHeight, SlotInfo, RunEnv);
+                {error, epoch_did_not_end} ->
+                    %% The wall-clock slot drifted past the resolvable schedule
+                    %% (leader_for_timeslot/2 has already cached the current and,
+                    %% when resolvable, the next epoch). Waiting for the drifted
+                    %% slot would stall forever, and any single fallback slot
+                    %% deadlocks if its leader is offline. Instead produce at the
+                    %% earliest passed slot this node leads (holes fill the gap),
+                    %% so any live producer can unstick a stalled chain.
+                    {ok, #{last := Last, length := Length}} = aec_chain_hc:epoch_info(RunEnv),
+                    MaxSlot = min(Slot, Last + Length),
+                    case own_slot_after_stall(TopHeight + 1, MaxSlot) of
+                        {ok, OwnSlot, Leader} ->
+                            activate_next_leader(Leader, TopHeight, SlotInfo#{slot := OwnSlot}, RunEnv);
+                        none ->
+                            {wait, not_producer, BlockTime}
+                    end;
                 {error, _} ->
                     {error, not_in_cache, BlockTime div 5}
             end
@@ -1100,6 +1116,23 @@ cache_validators_for_epoch(RunEnv, Epoch) ->
         {ok, EpochInfo} -> cache_validators_for_epoch_info(RunEnv, EpochInfo);
         _Err            -> error
     end.
+
+%% After a stall, scan the passed-but-unproduced slots (already cached by
+%% leader_for_timeslot/2, incl. next-epoch spill-over) for the earliest one
+%% this node holds the leader key for. Stops at the first uncached slot.
+own_slot_after_stall(FromSlot, MaxSlot) when FromSlot =< MaxSlot ->
+    case leader_for_height(FromSlot) of
+        {ok, Leader} ->
+            SignModule = get_sign_module(),
+            case SignModule:is_key_present(Leader) of
+                true  -> {ok, FromSlot, Leader};
+                false -> own_slot_after_stall(FromSlot + 1, MaxSlot)
+            end;
+        {error, _} ->
+            none
+    end;
+own_slot_after_stall(_FromSlot, _MaxSlot) ->
+    none.
 
 cache_validators_for_epoch(RunEnv, Hash, Epoch) ->
     case epoch_info_for_epoch(RunEnv, Epoch) of
