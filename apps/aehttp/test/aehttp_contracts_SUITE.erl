@@ -1227,11 +1227,7 @@ remote_gas_test_contract(Config) ->
     IsSalus = aect_test_utils:latest_protocol_version() >= ?SALUS_PROTOCOL_VSN,
     case IsSalus of
         true ->
-            %% Store-read repricing makes this remote-call cost sensitive to the
-            %% exact compiled bytecode size, which isn't pinned to a fixed
-            %% commit upstream; assert a tolerance band around the expected cost
-            %% instead of an exact literal.
-            ?assert(abs(GasCost - 1600000) < 10000);
+            ?assertMatch(1600258, GasCost);
         false ->
             ?assertMatchVM(1600596, 1600596, 1600596, 1600916, 1600022, 1604028, GasCost)
     end,
@@ -1244,7 +1240,7 @@ remote_gas_test_contract(Config) ->
     Balance2 = get_balance(APub),
     GasCost2 = (Balance1 - Balance2) div ?DEFAULT_GAS_PRICE,
     case IsSalus of
-        true  -> ?assert(abs(GasCost2 - 1605000) < 10000);
+        true  -> ?assertMatch(1605374, GasCost2);
         false -> ?assertMatchVM(1610855, 1610855, 1610855, 1611335, 1600231, 1609144, GasCost2)
     end,
 
@@ -1254,7 +1250,7 @@ remote_gas_test_contract(Config) ->
     Balance3 = get_balance(APub),
     GasCost3 = (Balance2 - Balance3) div ?DEFAULT_GAS_PRICE,
     case IsSalus of
-        true  -> ?assert(abs(GasCost3 - 800000) < 10000);
+        true  -> ?assertMatch(800150, GasCost3);
         false -> ?assertMatchVM(809981, 809981, 809981, 809981, 800147, 800150, GasCost3)
     end,
 
@@ -1270,7 +1266,7 @@ remote_gas_test_contract(Config) ->
     Balance5 = get_balance(APub),
     GasCost4 = (Balance4 - Balance5) div ?DEFAULT_GAS_PRICE,
     case IsSalus of
-        true  -> ?assert(abs(GasCost4 - 800000) < 10000);
+        true  -> ?assertMatch(800148, GasCost4);
         false -> ?assertMatchVM(900000, 900000, 900000, 900000, 800145, 800148, GasCost4)
     end,
 
