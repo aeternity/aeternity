@@ -1,0 +1,13 @@
+// Store-map read probe for the Salus dry-run gas tripwire. The values are large
+// (passed at init) so the map is a real store map, not inlined, and a single read
+// costs materially more at the repriced Salus rate: `lookup` exercises the
+// store_map_lookup gate, `member` the store_map_member gate.
+contract SalusMapProbe =
+    record state = { m : map(int, string) }
+
+    entrypoint init(v : string) : state =
+        { m = {[1] = v, [2] = v, [3] = v, [4] = v, [5] = v} }
+
+    entrypoint lookup(k : int) : string = state.m[k]
+
+    entrypoint member(k : int) : bool = Map.member(k, state.m)
