@@ -9,10 +9,13 @@
 
 %% exported for eunit only
 -export([ run_bounded/2
-        , resolve_timeout/1 ]).
+        , resolve_timeout/1
+        , maybe_force_salus_metering/1
+        , salus_gas_metering_enabled/0 ]).
 
 -include("blocks.hrl").
 -include_lib("aecontract/include/aecontract.hrl").
+-include_lib("aecontract/include/hard_forks.hrl").
 
 -define(MR_MAGIC, <<1:32/unit:8>>).
 -define(BIG_AMOUNT, 1000000000000000000000). %% 1000 AE
@@ -148,7 +151,27 @@ setup_dry_run(Top, Accounts) ->
     {Env, Trees} = tx_env_and_trees(Top),
     Trees1 = add_accounts(Trees, [#{pub_key => ?MR_MAGIC, amount => ?BIG_AMOUNT} | Accounts]),
     Env1   = aetx_env:set_dry_run(Env, true),
-    {Env1, Trees1}.
+    Env2   = maybe_force_salus_metering(Env1),
+    {Env2, Trees1}.
+
+%% Always-on: meter FATE store reads at the repriced Salus (v8) cost in dry-run.
+%% Salus adds only the store repricing, so this changes gas amounts only (never tx
+%% validity/ABI/VM version) and never commits. Step up only from Ceres+ so no other
+%% protocol gate (incl. the >= Ceres tx-validity gate) flips; pre-Ceres replay is exact.
+maybe_force_salus_metering(Env) ->
+    Base = aetx_env:consensus_version(Env),
+    case salus_gas_metering_enabled()
+         andalso Base >= ?CERES_PROTOCOL_VSN
+         andalso Base < ?SALUS_PROTOCOL_VSN of
+        true  -> aetx_env:set_consensus_version(Env, ?SALUS_PROTOCOL_VSN);
+        false -> Env
+    end.
+
+%% Operator escape hatch; default on (the DoS-hardening needs it always-on since an
+%% attacker never opts in).
+salus_gas_metering_enabled() ->
+    aeu_env:user_config_or_env([<<"http">>, <<"dry_run">>, <<"salus_gas_metering">>],
+                               aehttp, [dry_run, salus_gas_metering], true).
 
 tx_env_and_trees(top) ->
     case aec_chain:top_block_hash() of
