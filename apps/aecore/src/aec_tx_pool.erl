@@ -565,7 +565,10 @@ int_get_candidate(MaxGas, IgnoreTxs, BlockHash, #dbs{db = Db} = DBs) ->
     lager:debug("size(Db) = ~p", [ets:info(Db, size)]),
     MinMinerGasPrice = aec_tx_pool:minimum_miner_gas_price(),
     MinTxGas = aec_governance:min_tx_gas(),
-    Acc0     = #{ ignore_txs => IgnoreTxs, tree => gb_trees:empty(), txs => [], bad_txs => [] },
+    %% Read once for the whole candidate selection rather than once per
+    %% transaction of the mempool - each read walks the whole user config map.
+    Acc0     = #{ ignore_txs => IgnoreTxs, tree => gb_trees:empty(), txs => [], bad_txs => []
+                , nonce_offset => nonce_offset(), invalid_tx_ttl => invalid_tx_ttl() },
     {ok, RemGas, Acc} = int_get_candidate(Db, MaxGas, MinTxGas, MinMinerGasPrice, Trees,
                                           Header, DBs, Acc0),
     {ok, _, Acc1} = int_get_candidate(
@@ -651,7 +654,8 @@ check_candidate(Db, #dbs{gc_db = GCDb} = _Dbs,
     TxTTL = aetx:ttl(Tx1),
     TxGas = aetx:gas_limit(Tx1, Height, Protocol),
     case Height < TxTTL andalso TxGas > 0
-         andalso ok =:= int_check_account(Tx, AccountsTree, check_candidate)
+         andalso ok =:= int_check_account(Tx, AccountsTree, check_candidate,
+                                          maps:get(nonce_offset, Acc))
          andalso MinMinerGasPrice =< aetx:min_gas_price(Tx1, Height, Protocol) of
         true ->
             case Gas - TxGas of
@@ -669,7 +673,7 @@ check_candidate(Db, #dbs{gc_db = GCDb} = _Dbs,
             end;
         false ->
             %% This is not valid anymore.
-            enter_tx_gc(GCDb, TxHash, Key, Height + invalid_tx_ttl()),
+            enter_tx_gc(GCDb, TxHash, Key, Height + maps:get(invalid_tx_ttl, Acc)),
             {Gas, Acc#{ bad_txs := [{Db, Key, Tx} | maps:get(bad_txs, Acc)] }}
     end.
 
@@ -1149,7 +1153,12 @@ check_account(Tx, _TxHash, _Block, BlockHash, _Trees, Event) ->
     int_check_account(Tx, {block_hash, BlockHash}, Event).
 
 int_check_account(Tx, Source, Event) ->
-    case int_check_account_nonce(Tx, Source, Event) of
+    int_check_account(Tx, Source, Event, undefined).
+
+%% NonceOffset0 is the configured mempool nonce_offset, or 'undefined' to read
+%% it here. Callers that run this once per transaction pass it in instead.
+int_check_account(Tx, Source, Event, NonceOffset0) ->
+    case int_check_account_nonce(Tx, Source, Event, NonceOffset0) of
         ok ->
             int_check_meta_gas(Tx);
         {error, _} = Err -> Err
@@ -1178,7 +1187,7 @@ int_check_meta_gas(SignedTx, MaxAuthFunGas0) ->
         _ -> ok
     end.
 
-int_check_account_nonce(Tx, Source, Event) ->
+int_check_account_nonce(Tx, Source, Event, NonceOffset0) ->
     CheckNonce = nonce_check_by_event(Event),
     %% Check is conservative and only rejects certain cases
     Unsigned = aetx_sign:innermost_tx(Tx),
@@ -1191,7 +1200,10 @@ int_check_account_nonce(Tx, Source, Event) ->
                 {error, no_state_trees} -> nonce_baseline_check(TxNonce, CheckNonce);
                 none -> nonce_baseline_check(TxNonce, CheckNonce);
                 {value, Account} ->
-                    Offset   = nonce_offset(),
+                    Offset   = case NonceOffset0 of
+                                   undefined -> nonce_offset();
+                                   _         -> NonceOffset0
+                               end,
                     AccNonce = aec_accounts:nonce(Account),
                     AccType  = aec_accounts:type(Account),
                     if
