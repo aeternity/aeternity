@@ -198,3 +198,73 @@ print_table(Title, Rows) ->
                 [Size, GasCeres, GasSalus, GasSalus / max(1, GasCeres), Bytes])
       || {Size, GasCeres, GasSalus, Bytes} <- Rows ],
     ok.
+
+%%%===================================================================
+%%% Dry-run DoS ceiling + preview correctness (always-on Salus metering)
+%%%
+%%% The public dry-run endpoint caps a call at ?DEFAULT_GAS_LIMIT = 6,000,000
+%%% gas (aehttp_dispatch_ext.erl:43). With store reads metered at the Salus
+%%% cost (floor + per-byte, charge-before-work), a large-store read burns that
+%%% budget and aborts out_of_gas BEFORE deserializing -- whereas the pre-Salus
+%%% flat charge (2000) waved the same read through for a token cost. Dry-run
+%%% forces this Salus metering by default (see aec_dry_run:maybe_force_salus_
+%%% metering/1 and its tests in aec_dry_run_tests).
+%%%
+%%% Gas is charged before work, so raw garbage bytes exercise the *charge*
+%%% deterministically without needing a valid serialization/finalize cycle.
+%%%===================================================================
+
+%% ?DEFAULT_GAS_LIMIT, aehttp_dispatch_ext.erl:43.
+-define(DRY_RUN_GAS_CEILING, 6000000).
+
+%% DoS-hardening: a ~700 KB store read costs > the whole 6M dry-run budget at
+%% Salus, so it aborts out_of_gas instead of doing unbounded deserialize work.
+sec_gas_3_dry_run_big_store_read_hits_6m_ceiling_test() ->
+    Base = aec_governance:store_read_base_gas(),
+    Rate = aec_governance:store_read_byte_gas(),
+    Size = 700000,
+    Stores = seed_garbage_register(<<16#D3:256>>, Size),
+    SalusChargeLB = Base + Size * Rate,   %% lower bound on the metered charge
+    ?debugFmt("~nDoS ceiling: ~B-byte store read -- Ceres flat=2000 gas, "
+              "Salus >= ~B gas, dry-run ceiling=~B gas~n",
+              [Size, SalusChargeLB, ?DRY_RUN_GAS_CEILING]),
+    %% One read alone exceeds the entire dry-run budget...
+    ?assert(SalusChargeLB > ?DRY_RUN_GAS_CEILING),
+    %% ...so under the ceiling it is refused, charge-before-work, no deserialize.
+    ?assertEqual({error, out_of_gas},
+                 aefa_stores:find_value(<<16#D3:256>>, 1, Stores, ?DRY_RUN_GAS_CEILING)),
+    %% Pre-Salus the same read was a flat 2000 -- far under the ceiling, i.e. it
+    %% proceeded to read the whole ~700 KB for a token charge (the DoS this closes).
+    ?assert(2000 < ?DRY_RUN_GAS_CEILING),
+    ?assert(SalusChargeLB > 2000 * 1000).
+
+%% Preview correctness: a store-heavy read meters materially higher at Salus
+%% than the flat Ceres 2000. Brackets the charge in (2000, 1_000_000] without
+%% asserting an exact value (robust to any small encoding overhead).
+sec_gas_4_dry_run_preview_reprices_store_read_higher_test() ->
+    Base = aec_governance:store_read_base_gas(),
+    Rate = aec_governance:store_read_byte_gas(),
+    Size = 10000,
+    Stores = seed_garbage_register(<<16#D4:256>>, Size),
+    SalusChargeEst = Base + Size * Rate,
+    ?debugFmt("~npreview: ~B-byte store read -- Ceres=2000 gas -> Salus ~~ ~B gas (~.1fx)~n",
+              [Size, SalusChargeEst, SalusChargeEst / 2000]),
+    %% Salus charges materially more than the old flat 2000...
+    ?assertEqual({error, out_of_gas},
+                 aefa_stores:find_value(<<16#D4:256>>, 1, Stores, 2000)),
+    %% ...and the charge is bounded (~floor+per-byte), so with ample gas the read
+    %% passes the gas gate and reaches deserialize (garbage then crashes).
+    Reached = try {ok, aefa_stores:find_value(<<16#D4:256>>, 1, Stores, 1000000)}
+              catch C:E -> {crash, C, E} end,
+    ?assertMatch({crash, _, _}, Reached),
+    ?assert(SalusChargeEst > 2000).
+
+%% Plants Size raw bytes at register 1 via the low-level store API (charge-
+%% before-work means find_value/4 charges by byte length before deserializing,
+%% so the bytes need not be valid FATE).
+seed_garbage_register(Pubkey, Size) ->
+    Garbage = binary:copy(<<255>>, Size),
+    RawStore0 = aefa_stores:initial_contract_store(),
+    Key = <<0, (binary:encode_unsigned(1))/binary>>,
+    RawStore1 = aect_contracts_store:put(Key, Garbage, RawStore0),
+    aefa_stores:put_contract_store(Pubkey, RawStore1, aefa_stores:new()).

@@ -1,6 +1,8 @@
 -module(aec_dry_run_tests).
 
 -include_lib("eunit/include/eunit.hrl").
+-include_lib("aecontract/include/aecontract.hrl").
+-include_lib("aecontract/include/hard_forks.hrl").
 
 -define(TEST_MODULE, aec_dry_run).
 
@@ -110,3 +112,72 @@ dry_run_wiring_test_() ->
         , ?_assert(ElapsedB < 5000)
         ]
      end}.
+
+%%%===================================================================
+%%% Always-on Salus dry-run gas metering (the env-forcing mechanism).
+%%%
+%%% Dry-run meters FATE store reads at the repriced Salus (v8) cost by
+%%% default, WITHOUT activating the fork and WITHOUT any response/SDK
+%%% change: only the dry-run env's metering protocol is stepped up, and
+%%% only from a Ceres-or-later base so nothing but the store repricing
+%%% (the sole >= Salus production gate set) is applied.
+%%%===================================================================
+
+ceres_dry_run_env() ->
+    aetx_env:set_dry_run(aetx_env:tx_env(1, ?CERES_PROTOCOL_VSN), true).
+
+%% Default (no config): a Ceres-tip dry-run is metered at Salus.
+salus_metering_default_on_forces_ceres_to_salus_test() ->
+    application:unset_env(aehttp, dry_run),
+    ?assert(?TEST_MODULE:salus_gas_metering_enabled()),
+    Env  = ceres_dry_run_env(),
+    Env1 = ?TEST_MODULE:maybe_force_salus_metering(Env),
+    ?assertEqual(?SALUS_PROTOCOL_VSN, aetx_env:consensus_version(Env1)),
+    %% only the metering protocol moved; it is still a dry-run env
+    ?assert(aetx_env:dry_run(Env1)).
+
+%% Operator escape hatch: disabled -> the tip's own (Ceres) metering is kept.
+salus_metering_disabled_leaves_env_untouched_test() ->
+    application:set_env(aehttp, dry_run, [{salus_gas_metering, false}]),
+    try
+        ?assertNot(?TEST_MODULE:salus_gas_metering_enabled()),
+        Env  = ceres_dry_run_env(),
+        Env1 = ?TEST_MODULE:maybe_force_salus_metering(Env),
+        ?assertEqual(?CERES_PROTOCOL_VSN, aetx_env:consensus_version(Env1))
+    after
+        application:unset_env(aehttp, dry_run)
+    end.
+
+%% Historical (pre-Ceres) replay is NOT bumped -- forcing Salus there would
+%% cross the >= Ceres gates (incl. the contract-vs-name tx-validity gate),
+%% changing more than gas. Keep replay on its exact protocol.
+salus_metering_not_applied_below_ceres_test() ->
+    application:unset_env(aehttp, dry_run),
+    Env  = aetx_env:set_dry_run(aetx_env:tx_env(1, ?IRIS_PROTOCOL_VSN), true),
+    Env1 = ?TEST_MODULE:maybe_force_salus_metering(Env),
+    ?assertEqual(?IRIS_PROTOCOL_VSN, aetx_env:consensus_version(Env1)).
+
+%% Never downgrades: at/above Salus the env is left as-is.
+salus_metering_idempotent_at_salus_test() ->
+    application:unset_env(aehttp, dry_run),
+    Env  = aetx_env:set_dry_run(aetx_env:tx_env(1, ?SALUS_PROTOCOL_VSN), true),
+    Env1 = ?TEST_MODULE:maybe_force_salus_metering(Env),
+    ?assertEqual(?SALUS_PROTOCOL_VSN, aetx_env:consensus_version(Env1)).
+
+%% Tx-validity is invariant across the bump: a v6-built contract-call tx is
+%% equally valid at Ceres and at the forced Salus (both use the >= Ceres
+%% clause), so a <= v6 SDK's tx still dry-runs cleanly -- only gas changes.
+v6_call_tx_valid_at_ceres_and_forced_salus_test() ->
+    {ok, Aetx} = aect_call_tx:new(#{ caller_id   => aeser_id:create(account, <<1:256>>)
+                                   , nonce       => 1
+                                   , contract_id => aeser_id:create(contract, <<2:256>>)
+                                   , abi_version => ?ABI_FATE_SOPHIA_1
+                                   , fee         => 1000000
+                                   , amount      => 0
+                                   , gas         => 1000
+                                   , gas_price   => 1000000
+                                   , call_data   => <<>> }),
+    {aect_call_tx, CTx} = aetx:specialize_callback(Aetx),
+    ?assertEqual(aect_call_tx:valid_at_protocol(?CERES_PROTOCOL_VSN, CTx),
+                 aect_call_tx:valid_at_protocol(?SALUS_PROTOCOL_VSN, CTx)),
+    ?assert(aect_call_tx:valid_at_protocol(?SALUS_PROTOCOL_VSN, CTx)).

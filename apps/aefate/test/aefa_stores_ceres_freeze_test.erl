@@ -62,3 +62,50 @@ match(nomatch)    -> false.
 hex_sha256(Bin) ->
     <<N:256/big-unsigned-integer>> = crypto:hash(sha256, Bin),
     list_to_binary(io_lib:format("~64.16.0b", [N])).
+
+%%%===================================================================
+%%% Behavioural freeze-guard: live terms_to_finalize == frozen one.
+%%%
+%%% aefa_engine_state:finalize/1 hardcodes aefa_stores:terms_to_finalize/1
+%%% (the LIVE module) for every protocol (aefa_engine_state.erl:212), on the
+%%% invariant that it is equivalent to the frozen aefa_stores_ceres snapshot
+%%% used to replay already-forked Iris..Arcus blocks. The sha256 guard above
+%%% catches edits to the frozen file; this catches the other direction -- an
+%%% edit to the LIVE aefa_stores:terms_to_finalize/1 (or the shared
+%%% #store{}/#cache_entry{} layout) that diverges from the frozen behaviour.
+%%%===================================================================
+
+-define(CONTRACT_PUBKEY, <<16#F1:256>>).
+
+empty_store_terms_to_finalize_equiv_test() ->
+    S = aefa_stores:new(),
+    ?assertEqual([], aefa_stores:terms_to_finalize(S)),
+    assert_live_equals_frozen(S).
+
+single_register_terms_to_finalize_equiv_test() ->
+    Val = aeb_fate_data:make_string(<<"a-single-register-value">>),
+    S = put_reg(1, Val, fresh_contract_store()),
+    ?assertEqual([Val], aefa_stores:terms_to_finalize(S)),
+    assert_live_equals_frozen(S).
+
+multi_entry_map_terms_to_finalize_equiv_test() ->
+    Map = aeb_fate_data:make_map(#{ 1 => aeb_fate_data:make_string(<<"one">>)
+                                  , 2 => aeb_fate_data:make_string(<<"two">>)
+                                  , 3 => aeb_fate_data:make_string(<<"three">>)
+                                  }),
+    S = put_reg(1, Map, fresh_contract_store()),
+    ?assertEqual([Map], aefa_stores:terms_to_finalize(S)),
+    assert_live_equals_frozen(S).
+
+%% The same store term must yield identical terms from both modules.
+assert_live_equals_frozen(S) ->
+    ?assertEqual(aefa_stores:terms_to_finalize(S),
+                 aefa_stores_ceres:terms_to_finalize(S)).
+
+fresh_contract_store() ->
+    aefa_stores:put_contract_store(?CONTRACT_PUBKEY,
+                                   aefa_stores:initial_contract_store(),
+                                   aefa_stores:new()).
+
+put_reg(Pos, Val, S) ->
+    aefa_stores:put_value(?CONTRACT_PUBKEY, Pos, Val, S).
