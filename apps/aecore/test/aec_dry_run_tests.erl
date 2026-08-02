@@ -127,12 +127,14 @@ dry_run_wiring_test_() ->
 ceres_dry_run_env() ->
     aetx_env:set_dry_run(aetx_env:tx_env(1, ?CERES_PROTOCOL_VSN), true).
 
-%% Estimate profiles force; replay (and unknown profiles) do not.
+%% Estimate profiles force; real-protocol profiles (replay, includability) and
+%% unknown profiles do not.
 force_salus_for_profile_test() ->
     ?assert(?TEST_MODULE:force_salus_for_profile([{dry_run_profile, public}])),
     ?assert(?TEST_MODULE:force_salus_for_profile([{dry_run_profile, internal}])),
     ?assert(?TEST_MODULE:force_salus_for_profile([])),  %% default profile = internal
     ?assertNot(?TEST_MODULE:force_salus_for_profile([{dry_run_profile, replay}])),
+    ?assertNot(?TEST_MODULE:force_salus_for_profile([{dry_run_profile, includability}])),
     ?assertNot(?TEST_MODULE:force_salus_for_profile([{dry_run_profile, whatever}])).
 
 %% Default (no config), estimate profile: a Ceres-tip dry-run is metered at Salus.
