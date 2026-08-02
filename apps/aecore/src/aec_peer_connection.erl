@@ -149,8 +149,8 @@ tx_pool_sync_get(PeerId, TxHashes) ->
 tx_pool_sync_finish(PeerId, Done) ->
     call(PeerId, {tx_pool, [sync_finish, Done]}).
 
-send_tx(PeerId, SerTx) ->
-    cast(PeerId, {send_tx, SerTx}).
+send_tx(PeerId, WireMsg) ->
+    cast(PeerId, {send_gossip, WireMsg}).
 
 send_block(PeerId, WireMsg) ->
     cast(PeerId, {send_gossip, WireMsg}).
@@ -280,9 +280,6 @@ init([#{conn_type := tcp} = Opts]) ->
 handle_call(Request, From, State) ->
     handle_request(State, Request, From).
 
-handle_cast({send_tx, SerTx}, State) ->
-    send_send_tx(State, SerTx),
-    {noreply, State};
 handle_cast({send_gossip, WireMsg}, State) ->
     send_gossip(State, WireMsg),
     {noreply, State};
@@ -1225,11 +1222,12 @@ handle_tx_pool_sync_rsp(S, Action, {tx_pool, From, _TRef}, MsgObj) ->
     end,
     remove_request_fld(S, tx_pool, undefined).
 
-%% -- Send Block --------------------------------------------------------------
+%% -- Send Gossip -------------------------------------------------------------
 
-%% The wire message is pre-encoded once per gossip (see gossip_serialize_block/1)
-%% since it is byte-identical for every peer, so here we only need to push the
-%% finished bytes onto the socket, reusing do_send's fragmentation logic.
+%% The wire message is pre-encoded once per gossip (see gossip_serialize_block/1
+%% and gossip_serialize_tx/1) since it is byte-identical for every peer, so here
+%% we only need to push the finished bytes onto the socket, reusing do_send's
+%% fragmentation logic.
 send_gossip(#{ status := {connected, ESock} }, WireMsg) ->
     do_send(ESock, WireMsg);
 send_gossip(_S, _WireMsg) ->
@@ -1402,15 +1400,8 @@ fill_txs([_TH | _TATHs], [], _Acc) ->
     error.
 
 
-%% -- Send TX --------------------------------------------------------------
-
-send_send_tx(#{ status := error }, _SerTx) ->
-    ok;
-send_send_tx(#{ status := {disconnecting, _ESock} }, _SerTx) ->
-    ok;
-send_send_tx(S = #{ status := {connected, _ESock} }, SerTx) ->
-    Msg = aec_peer_messages:serialize(txs, #{ txs => [SerTx] }),
-    send_msg(S, txs, Msg).
+%% -- Receive TX ------------------------------------------------------------
+%% Sending is handled by gossip_serialize_tx/1 + send_gossip/2.
 
 handle_new_txs(S, Msg) ->
     try
@@ -1554,8 +1545,13 @@ gossip_serialize_block(Block) ->
     SerMsg = aec_peer_messages:serialize(MsgType, Msg),
     <<(aec_peer_messages:tag(MsgType)):16, SerMsg/binary>>.
 
+%% Same as gossip_serialize_block/1 - the txs envelope is byte-identical for
+%% every peer, so it is encoded once per gossip rather than once per gossip
+%% target. Tx gossip is much more frequent than block gossip.
 gossip_serialize_tx(Tx) ->
-    aetx_sign:serialize_to_binary(Tx).
+    SerTx = aetx_sign:serialize_to_binary(Tx),
+    SerMsg = aec_peer_messages:serialize(txs, #{ txs => [SerTx] }),
+    <<(aec_peer_messages:tag(txs)):16, SerMsg/binary>>.
 
 serialize_key_block(KeyBlock) ->
     key = aec_blocks:type(KeyBlock),
