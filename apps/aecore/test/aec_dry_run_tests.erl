@@ -223,7 +223,13 @@ v6_call_tx_valid_at_ceres_and_forced_salus_test() ->
 -define(DUMMY_HASH, <<0:32/unit:8>>).
 
 salus_dry_run_equivalence_test_() ->
-    {timeout, 120, {setup, fun equiv_setup/0, fun equiv_teardown/1, fun equiv_checks/1}}.
+    %% Deploys a Ceres FATE contract, so it only runs on Ceres+ eunit lanes;
+    %% skip on pre-Ceres protocols (minerva/fortuna/lima/iris) where the
+    %% contract compiler version is illegal.
+    case aect_test_utils:latest_protocol_version() >= ?CERES_PROTOCOL_VSN of
+        false -> [];
+        true  -> {timeout, 120, {setup, fun equiv_setup/0, fun equiv_teardown/1, fun equiv_checks/1}}
+    end.
 
 equiv_setup() ->
     Vsn = aect_test_utils:sophia_version(fate, ?CERES_PROTOCOL_VSN),
