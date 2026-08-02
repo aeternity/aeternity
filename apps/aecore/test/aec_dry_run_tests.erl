@@ -181,3 +181,114 @@ v6_call_tx_valid_at_ceres_and_forced_salus_test() ->
     ?assertEqual(aect_call_tx:valid_at_protocol(?CERES_PROTOCOL_VSN, CTx),
                  aect_call_tx:valid_at_protocol(?SALUS_PROTOCOL_VSN, CTx)),
     ?assert(aect_call_tx:valid_at_protocol(?SALUS_PROTOCOL_VSN, CTx)).
+
+%%%===================================================================
+%%% Equivalence tripwire: forcing Salus in dry-run changes gas ONLY.
+%%%
+%%% "Gas amounts only" holds today because Salus/Arcus add no non-repricing
+%%% behavior; nothing enforces that. This runs the SAME tx through the real
+%%% dry_run/3 apply path at natural Ceres (metering off) and forced Salus
+%%% (metering on) and asserts the RESULT is identical:
+%%%  - spend + store-free call: byte-identical result AND identical gas_used
+%%%    (no store reads -> zero repricing delta);
+%%%  - store-heavy call: identical return value/validity, gas_used strictly
+%%%    higher (the store-read repricing, and only that).
+%%% Red-fails if any future >= Salus/Arcus gate leaks non-gas behavior into
+%%% the always-on forcing.
+%%%===================================================================
+
+-define(DUMMY_HASH, <<0:32/unit:8>>).
+
+salus_dry_run_equivalence_test_() ->
+    {timeout, 120, {setup, fun equiv_setup/0, fun equiv_teardown/1, fun equiv_checks/1}}.
+
+equiv_setup() ->
+    Vsn = aect_test_utils:sophia_version(fate, ?CERES_PROTOCOL_VSN),
+    S0  = aect_test_utils:new_state(),
+    {Owner, S1} = aect_test_utils:setup_new_account(
+                    1000000000000000 * aec_test_utils:min_gas_price(), S0),
+    Env = ceres_deploy_env(),
+    {IdPK, S2} = deploy(Vsn, identity,       Owner, Env, S1),
+    {StPK, S3} = deploy(Vsn, storage_tester, Owner, Env, S2),
+    Trees = aect_test_utils:trees(S3),
+    Nonce = aect_test_utils:next_nonce(Owner, S3),
+    {ok, IdData}   = aect_test_utils:encode_call_data(Vsn, src(Vsn, identity), "main_", ["42"]),
+    {ok, HashData} = aect_test_utils:encode_call_data(Vsn, src(Vsn, storage_tester), "getHash", []),
+    IdCall = aect_test_utils:call_tx(Owner, IdPK,
+                #{call_data => IdData, gas => 100000, nonce => Nonce, amount => 0}, S3),
+    HashCall = aect_test_utils:call_tx(Owner, StPK,
+                #{call_data => HashData, gas => 5000000, nonce => Nonce, amount => 0}, S3),
+    {ok, Spend} = aec_spend_tx:new(#{ sender_id    => aeser_id:create(account, Owner)
+                                    , recipient_id => aeser_id:create(account, <<9:256>>)
+                                    , amount       => 1
+                                    , fee          => 20000 * aec_test_utils:min_gas_price()
+                                    , nonce        => Nonce
+                                    , ttl          => 0
+                                    , payload      => <<>> }),
+    meck:new(aetx_env, [passthrough]),
+    meck:expect(aetx_env, tx_env_and_trees_from_hash, fun(_, _) -> {Env, Trees} end),
+    #{id_call => IdCall, hash_call => HashCall, spend => Spend}.
+
+equiv_teardown(_) ->
+    meck:unload(aetx_env),
+    application:unset_env(aehttp, dry_run),
+    ok.
+
+equiv_checks(#{id_call := IdCall, hash_call := HashCall, spend := Spend}) ->
+    {CIdR, CIdG} = dry_call(IdCall, false),
+    {SIdR, SIdG} = dry_call(IdCall, true),
+    {CHR, CHG}   = dry_call(HashCall, false),
+    {SHR, SHG}   = dry_call(HashCall, true),
+    CSpend = dry_raw(Spend, false),
+    SSpend = dry_raw(Spend, true),
+    ?debugFmt("~nequivalence tripwire (natural Ceres vs forced Salus):~n"
+              "  store-free  main_(42): result_eq=~p, gas ceres=~p salus=~p~n"
+              "  store-heavy getHash(): result_eq=~p, gas ceres=~p salus=~p (delta=~p)~n"
+              "  spend:                 result_eq=~p~n",
+              [CIdR =:= SIdR, CIdG, SIdG,
+               CHR =:= SHR, CHG, SHG, SHG - CHG,
+               CSpend =:= SSpend]),
+    [ ?_assertEqual(CIdR, SIdR)      %% store-free: identical result
+    , ?_assertEqual(CIdG, SIdG)      %% store-free: identical gas (zero repricing delta)
+    , ?_assertEqual(CHR, SHR)        %% store-heavy: identical return value / validity
+    , ?_assert(SHG > CHG)            %% store-heavy: gas strictly higher under Salus
+    , ?_assertEqual(CSpend, SSpend)  %% spend: byte-identical result
+    ].
+
+ceres_deploy_env() ->
+    H0 = aec_headers:raw_key_header(),
+    H  = aec_headers:set_version_and_height(H0, ?CERES_PROTOCOL_VSN, 100),
+    Env0 = aetx_env:tx_env_from_key_header(H, ?DUMMY_HASH, 0, ?DUMMY_HASH),
+    aetx_env:set_context(Env0, aetx_transaction).
+
+src(Vsn, Name) ->
+    {ok, S} = aect_test_utils:read_contract(Vsn, Name),
+    S.
+
+deploy(Vsn, Name, Owner, Env, S) ->
+    {ok, Code}     = aect_test_utils:compile_contract(Vsn, Name),
+    {ok, InitData} = aect_test_utils:encode_call_data(Vsn, src(Vsn, Name), "init", []),
+    Nonce = aect_test_utils:next_nonce(Owner, S),
+    CreateTx = aect_test_utils:create_tx(Owner,
+                 #{ code => Code, call_data => InitData
+                  , vm_version => ?VM_FATE_SOPHIA_3, abi_version => ?ABI_FATE_SOPHIA_1
+                  , gas => 1000000, amount => 0, deposit => 0, nonce => Nonce }, S),
+    PK = aect_contracts:compute_contract_pubkey(Owner, Nonce),
+    {ok, [_], [], Trees1, _} =
+        aec_trees:apply_txs_on_state_trees([dummy_sign(CreateTx)], aect_test_utils:trees(S),
+                                           Env, [strict, dont_verify_signature]),
+    {PK, aect_test_utils:set_trees(Trees1, S)}.
+
+dry_call(Tx, Metering) ->
+    application:set_env(aehttp, dry_run, [{salus_gas_metering, Metering}]),
+    {ok, {[{contract_call_tx, {ok, CallObj}}], _}} =
+        aec_dry_run:dry_run(?DUMMY_HASH, [], [{tx, Tx}]),
+    {{aect_call:return_type(CallObj), aect_call:return_value(CallObj)},
+     aect_call:gas_used(CallObj)}.
+
+dry_raw(Tx, Metering) ->
+    application:set_env(aehttp, dry_run, [{salus_gas_metering, Metering}]),
+    aec_dry_run:dry_run(?DUMMY_HASH, [], [{tx, Tx}]).
+
+dummy_sign(Tx) ->
+    aetx_sign:new(Tx, [<<0:64/unit:8>>]).
