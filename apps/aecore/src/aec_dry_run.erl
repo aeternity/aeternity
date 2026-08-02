@@ -10,7 +10,8 @@
 %% exported for eunit only
 -export([ run_bounded/2
         , resolve_timeout/1
-        , maybe_force_salus_metering/1
+        , force_salus_for_profile/1
+        , maybe_force_salus_metering/2
         , salus_gas_metering_enabled/0 ]).
 
 -include("blocks.hrl").
@@ -36,11 +37,14 @@ dry_run(Top, Accounts, Txs) ->
 %% Entry point for HTTP/Rosetta/aeapi dry-run; off-chain only, never called
 %% from block production/validation.
 dry_run(Top, Accounts, Txs, Opts) ->
+    %% Read the profile before resolve_timeout/1 strips it: only estimate
+    %% profiles get the forward Salus metering; replay must stay historical.
+    ForceSalus = force_salus_for_profile(Opts),
     {TimeoutMs, Opts1} = resolve_timeout(Opts),
-    run_bounded(fun() -> dry_run_unbounded(Top, Accounts, Txs, Opts1) end, TimeoutMs).
+    run_bounded(fun() -> dry_run_unbounded(Top, Accounts, Txs, Opts1, ForceSalus) end, TimeoutMs).
 
-dry_run_unbounded(Top, Accounts, Txs, Opts) ->
-    try setup_dry_run(Top, Accounts) of
+dry_run_unbounded(Top, Accounts, Txs, Opts, ForceSalus) ->
+    try setup_dry_run(Top, Accounts, ForceSalus) of
         {Env, Trees} -> dry_run_(Txs, Trees, Env, Opts)
     catch
         error:invalid_hash ->
@@ -147,28 +151,47 @@ run_worker(Fun, Caller, Tag) ->
 crash_reason(Reason) ->
     iolist_to_binary(io_lib:format("dry-run failed: ~120P", [Reason, 10])).
 
-setup_dry_run(Top, Accounts) ->
+setup_dry_run(Top, Accounts, ForceSalus) ->
     {Env, Trees} = tx_env_and_trees(Top),
     Trees1 = add_accounts(Trees, [#{pub_key => ?MR_MAGIC, amount => ?BIG_AMOUNT} | Accounts]),
     Env1   = aetx_env:set_dry_run(Env, true),
-    Env2   = maybe_force_salus_metering(Env1),
+    Env2   = maybe_force_salus_metering(Env1, ForceSalus),
     {Env2, Trees1}.
 
-%% Always-on: meter FATE store reads at the repriced Salus (v8) cost in dry-run.
-%% Salus adds only the store repricing, so this changes gas amounts only (never tx
-%% validity/ABI/VM version) and never commits. Step up only from Ceres+ so no other
-%% protocol gate (incl. the >= Ceres tx-validity gate) flips; pre-Ceres replay is exact.
-maybe_force_salus_metering(Env) ->
+%% Only the estimate profiles (public/internal) meter forward at Salus. The replay
+%% profile (Rosetta/indexer historical re-execution) must re-meter a forked block at
+%% its REAL protocol -- forcing Salus there can flip a gas-tight historical call
+%% ok->out_of_gas and corrupt event/balance reconstruction. Unknown profiles are
+%% pinned too (safe default).
+force_salus_for_profile(Opts) ->
+    case proplists:get_value(dry_run_profile, Opts, internal) of
+        public   -> true;
+        internal -> true;
+        _        -> false
+    end.
+
+%% Meter FATE store reads at the repriced Salus (v8) cost. Salus's only production
+%% behaviour is the store-read repricing (four >= Salus gate sites -- register read,
+%% map lookup, map member, store-module select -- one feature), so this changes gas
+%% amounts only (never tx validity/ABI/VM version) and never commits. Step up only
+%% from Ceres+ so no other protocol gate (incl. the >= Ceres tx-validity gate) flips;
+%% pre-Ceres replay is exact. Caveat: `Top` is caller-controlled, so a caller could
+%% target a pre-Ceres height to dodge the repricing; that is left un-repriced by
+%% design (replay must be exact) -- an estimate-only metering floor is a follow-up.
+maybe_force_salus_metering(Env, true) ->
     Base = aetx_env:consensus_version(Env),
     case salus_gas_metering_enabled()
          andalso Base >= ?CERES_PROTOCOL_VSN
          andalso Base < ?SALUS_PROTOCOL_VSN of
         true  -> aetx_env:set_consensus_version(Env, ?SALUS_PROTOCOL_VSN);
         false -> Env
-    end.
+    end;
+maybe_force_salus_metering(Env, false) ->
+    Env.
 
 %% Operator escape hatch; default on (the DoS-hardening needs it always-on since an
-%% attacker never opts in).
+%% attacker never opts in). This bounds a single call's store-read work; the
+%% aggregate concurrent-dry-run cap is still open -- dry-run DoS is hardened, not closed.
 salus_gas_metering_enabled() ->
     aeu_env:user_config_or_env([<<"http">>, <<"dry_run">>, <<"salus_gas_metering">>],
                                aehttp, [dry_run, salus_gas_metering], true).
