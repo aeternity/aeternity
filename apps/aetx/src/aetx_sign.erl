@@ -151,12 +151,16 @@ verify(#signed_tx{tx = Tx, signatures = Sigs}, Trees, Protocol, Prefix) ->
 %% this function allows having more signatures that the one being checked
 -spec verify_one_pubkey(aec_keys:pubkey(), signed_tx(), aec_hard_forks:protocol_vsn()) ->
     ok | {error, signature_check_failed}.
-verify_one_pubkey(Signer, #signed_tx{tx = Tx, signatures = Sigs}, Protocol) ->
+verify_one_pubkey(Signer, #signed_tx{tx = Tx, signatures = Sigs}, Protocol)
+  when ?VALID_PUBK(Signer) ->
     Bin = aetx:serialize_to_binary(Tx),
-    case verify_one_pubkey(Sigs, Signer, Bin, Protocol) of
-        {ok, _} -> ok;
-        error -> {error, signature_check_failed}
-    end.
+    {BinForNetwork, HashPayload} = signed_payloads(Bin, Protocol, undefined),
+    case verify_one_pubkey_(Sigs, Signer, BinForNetwork, HashPayload, []) of
+        {ok, _SigsLeft, _HashPayload} -> ok;
+        {error, _HashPayload}         -> {error, signature_check_failed}
+    end;
+verify_one_pubkey(_Signer, #signed_tx{}, _Protocol) ->
+    {error, signature_check_failed}. %% invalid pubkey
 
 -spec verify_half_signed(aec_keys:pubkey() | [aec_keys:pubkey()],
                          signed_tx(), aec_hard_forks:protocol_vsn()) ->
@@ -166,55 +170,84 @@ verify_half_signed(Signer, SignedTx, Protocol) when is_binary(Signer) ->
 verify_half_signed(Signers, #signed_tx{tx = Tx, signatures = Sigs}, Protocol) ->
     verify_signatures(Signers, aetx:serialize_to_binary(Tx), Sigs, Protocol).
 
-verify_signatures(PubKeys,_Bin, Sigs, _Protocol) ->
-    verify_signatures(PubKeys,_Bin, Sigs, _Protocol, undefined).
+verify_signatures(PubKeys, Bin, Sigs, Protocol) ->
+    verify_signatures(PubKeys, Bin, Sigs, Protocol, undefined).
 
 verify_signatures([], _Bin, [], _Protocol, _SignPrefix) ->
+    %% Nothing to check - e.g. a fully GA-authenticated transaction. Kept ahead
+    %% of the payload construction below, which would be pure waste here.
     ok;
-verify_signatures([PubKey|Left], Bin, Sigs, Protocol, SignPrefix) ->
-    case verify_one_pubkey(Sigs, PubKey, Bin, Protocol, SignPrefix) of
-        {ok, SigsLeft} -> verify_signatures(Left, Bin, SigsLeft, Protocol,
-                                            SignPrefix);
-        error          -> {error, signature_check_failed}
+verify_signatures(PubKeys, Bin, Sigs, Protocol, SignPrefix) ->
+    {BinForNetwork, HashPayload} = signed_payloads(Bin, Protocol, SignPrefix),
+    verify_signatures_(PubKeys, Sigs, BinForNetwork, HashPayload).
+
+verify_signatures_([], [], _BinForNetwork, _HashPayload) ->
+    ok;
+verify_signatures_([PubKey|Left], Sigs, BinForNetwork, HashPayload)
+  when ?VALID_PUBK(PubKey) ->
+    case verify_one_pubkey_(Sigs, PubKey, BinForNetwork, HashPayload, []) of
+        {ok, SigsLeft, HashPayload1} ->
+            verify_signatures_(Left, SigsLeft, BinForNetwork, HashPayload1);
+        {error, _HashPayload1} ->
+            {error, signature_check_failed}
     end;
-verify_signatures(PubKeys,_Bin, Sigs, _Protocol, _SignPrefix) ->
+verify_signatures_(PubKeys, Sigs, _BinForNetwork, _HashPayload) ->
+    %% An invalid pubkey, or signatures left over once every signer has been
+    %% accounted for.
     lager:debug("Signature check failed: ~p ~p", [PubKeys, Sigs]),
     {error, signature_check_failed}.
 
-verify_one_pubkey(Sigs, PubKey, Bin, Protocol) ->
-    verify_one_pubkey(Sigs, PubKey, Bin, Protocol, undefined).
-
-verify_one_pubkey(Sigs, PubKey, Bin, Protocol, SignPrefix) when ?VALID_PUBK(PubKey) ->
-    HashSign = Protocol >= ?LIMA_PROTOCOL_VSN,
-    verify_one_pubkey(Sigs, PubKey, Bin, HashSign, [], SignPrefix);
-verify_one_pubkey(_Sigs, _PubKey, _Bin, _Protocol, _SignPrefix) ->
-    error. %% invalid pubkey
+%% The payloads a signature is checked against depend on the transaction alone,
+%% so resolve the network id and build them once per transaction rather than
+%% once per signer, let alone once per signature. The hash-signing payload keeps
+%% being built on demand - it is only needed once a signature fails to match the
+%% plain payload - but is then reused for every remaining signature and signer.
+signed_payloads(Bin, Protocol, SignPrefix) ->
+    NetworkId = aec_governance:get_network_id(),
+    BinForNetwork =
+        aec_governance:add_custom_network_id(
+          NetworkId, maybe_add_predix(SignPrefix, Bin)),
+    HashPayload =
+        case Protocol >= ?LIMA_PROTOCOL_VSN of
+            true  -> {pending, NetworkId, SignPrefix, Bin};
+            false -> none %% no hash-signing before Lima
+        end,
+    {BinForNetwork, HashPayload}.
 
 maybe_add_predix(undefined, Bin) ->
     Bin;
 maybe_add_predix(SignPrefix, Bin) ->
     <<SignPrefix/binary,Bin/binary>>.
 
-verify_one_pubkey([Sig|Left], PubKey, Bin, HashSign, Acc, SignPrefix)  ->
-    BinForNetwork = aec_governance:add_network_id(maybe_add_predix(SignPrefix, Bin)),
+hash_payload(none) ->
+    none;
+hash_payload({ready, Payload} = HashPayload) ->
+    {Payload, HashPayload};
+hash_payload({pending, NetworkId, SignPrefix, Bin}) ->
+    TxHash = aec_hash:hash(signed_tx, Bin),
+    Payload = aec_governance:add_custom_network_id(
+                NetworkId, maybe_add_predix(SignPrefix, TxHash)),
+    {Payload, {ready, Payload}}.
+
+verify_one_pubkey_([Sig|Left], PubKey, BinForNetwork, HashPayload, Acc)  ->
     case enacl:sign_verify_detached(Sig, BinForNetwork, PubKey) of
         true ->
-            {ok, Acc ++ Left};
-        false when HashSign ->
-            TxHash = aec_hash:hash(signed_tx, Bin),
-            BinForNetwork2 =
-            aec_governance:add_network_id(maybe_add_predix(SignPrefix, TxHash)),
-            case enacl:sign_verify_detached(Sig, BinForNetwork2, PubKey) of
-                true  -> {ok, Acc ++ Left};
-                false -> verify_one_pubkey(Left, PubKey, Bin, HashSign,
-                                           [Sig | Acc], SignPrefix)
-            end;
+            {ok, Acc ++ Left, HashPayload};
         false ->
-            verify_one_pubkey(Left, PubKey, Bin, HashSign, [Sig|Acc],
-                              SignPrefix)
+            case hash_payload(HashPayload) of
+                none ->
+                    verify_one_pubkey_(Left, PubKey, BinForNetwork,
+                                       HashPayload, [Sig|Acc]);
+                {HashForNetwork, HashPayload1} ->
+                    case enacl:sign_verify_detached(Sig, HashForNetwork, PubKey) of
+                        true  -> {ok, Acc ++ Left, HashPayload1};
+                        false -> verify_one_pubkey_(Left, PubKey, BinForNetwork,
+                                                    HashPayload1, [Sig | Acc])
+                    end
+            end
     end;
-verify_one_pubkey([], _PubKey, _Bin, _HashSign, _Acc, _SignPrefix) -> % no more signatures
-    error.
+verify_one_pubkey_([], _PubKey, _BinForNetwork, HashPayload, _Acc) -> % no more signatures
+    {error, HashPayload}.
 
 -define(SIG_TX_TYPE, signed_tx).
 -define(SIG_TX_VSN, 1).

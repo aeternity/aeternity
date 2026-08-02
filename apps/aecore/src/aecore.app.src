@@ -97,6 +97,9 @@
            %% The different hooks *could* be placed in the app env of each
            %% corresponding application. This would be less transparent, though.
            {normal, [
+                     %% After the aeutils config hooks (100-103), before the
+                     %% hooks at 110 that read the network id.
+                     {105, {aec_governance, ensure_env, []}},
                      {110, {aecore_env, check_env, []}},
                      {110, {aehttp_app, check_env, []}},
                      {110, {aec_consensus, check_env, []}},

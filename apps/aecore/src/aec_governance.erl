@@ -41,6 +41,10 @@
          vm_gas_table/0,
          min_tx_gas/0]).
 
+%% aecore_app only - between them they repoint every signature check in the node
+-export([ensure_env/0,
+         clear_network_id_cache/0]).
+
 -include("blocks.hrl").
 -include_lib("aebytecode/include/aeb_opcodes.hrl").
 -include_lib("aecontract/include/hard_forks.hrl").
@@ -49,9 +53,17 @@
 
 -ifdef(TEST).
 -define(NETWORK_ID, <<"local_testnet">>).
+%% Exported and called fully qualified only here, so that the tests can mock the
+%% resolution: the eunit VM is started with '-network_id local_<protocol>_testnet'
+%% (see the Makefile), which wins over anything a test could set from the inside.
+-export([resolve_network_id/0]).
+-define(RESOLVE_NETWORK_ID(), ?MODULE:resolve_network_id()).
 -else.
 -define(NETWORK_ID, <<"ae_mainnet">>).
+-define(RESOLVE_NETWORK_ID(), resolve_network_id()).
 -endif.
+
+-define(NETWORK_ID_CACHE_KEY, {?MODULE, network_id}).
 
 -define(BLOCKS_TO_CHECK_DIFFICULTY_COUNT, 17).
 -define(TIMESTAMP_MEDIAN_BLOCKS, 11).
@@ -415,7 +427,32 @@ add_network_id_last(Payload) ->
     NetworkId = ?MODULE:get_network_id(),
     <<Payload/binary, NetworkId/binary>>.
 
+%% Resolving walks 'init' args and the user config tree - too expensive per
+%% signature verified and per FATE NETWORK_ID instruction. Pinned in a persistent
+%% term by the aecore setup hook, and cleared by aecore_app:stop/1, since setup
+%% hooks run only once per VM.
+-spec ensure_env() -> ok.
+ensure_env() ->
+    persistent_term:put(?NETWORK_ID_CACHE_KEY, ?RESOLVE_NETWORK_ID()).
+
+-spec clear_network_id_cache() -> ok.
+clear_network_id_cache() ->
+    _ = persistent_term:erase(?NETWORK_ID_CACHE_KEY),
+    ok.
+
+-spec get_network_id() -> binary().
 get_network_id() ->
+    %% A miss must not populate: CT nodes sign without running the setup hook and
+    %% swap the id under themselves (aehttp_devmode_SUITE).
+    case persistent_term:get(?NETWORK_ID_CACHE_KEY, undefined) of
+        undefined -> ?RESOLVE_NETWORK_ID();
+        NetworkId -> NetworkId
+    end.
+
+%% Not exported outside test builds: a caller that resolves instead of asking
+%% get_network_id/0 would silently disagree with every signature check.
+-spec resolve_network_id() -> binary().
+resolve_network_id() ->
     %% Easy switch networks with console argument, it overwrites config
     case init:get_argument(network_id) of
         {ok, [[NetworkId]]} -> list_to_binary(NetworkId);
