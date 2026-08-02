@@ -278,7 +278,11 @@ handle_request_('GetCheckTxInPool', Req, _Context) ->
                               {ok, {200, [], #{<<"status">> => <<"included">>}}};
                           {mempool, SignedTx} ->
                               Tx = aetx_sign:tx(SignedTx),
-                              try aec_dry_run:dry_run(top, [], [{tx, Tx}], [{tx_events, false}]) of
+                              %% Includability must reflect the CURRENT chain, so use the
+                              %% non-forcing 'includability' profile: forcing Salus here
+                              %% would answer with the post-fork (higher-gas) outcome and
+                              %% could report a false out_of_gas on a still-Ceres chain.
+                              try aec_dry_run:dry_run(top, [], [{tx, Tx}], [{tx_events, false}, {dry_run_profile, includability}]) of
                                   {ok, {[{_Type,ok}], _Events}} ->
                                       {ok, {200, [], #{<<"status">> => <<"includable">>}}};
                                   {ok, {[{_Type,{error, Reason}}], _Events}} ->

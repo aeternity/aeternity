@@ -158,16 +158,18 @@ setup_dry_run(Top, Accounts, ForceSalus) ->
     Env2   = maybe_force_salus_metering(Env1, ForceSalus),
     {Env2, Trees1}.
 
-%% Only the estimate profiles (public/internal) meter forward at Salus. The replay
-%% profile (Rosetta/indexer historical re-execution) must re-meter a forked block at
-%% its REAL protocol -- forcing Salus there can flip a gas-tight historical call
-%% ok->out_of_gas and corrupt event/balance reconstruction. Unknown profiles are
-%% pinned too (safe default).
+%% Only the estimate profiles (public/internal) meter forward at Salus. Profiles that
+%% must answer for a REAL protocol are pinned: 'replay' (Rosetta/indexer historical
+%% re-execution -- forcing Salus can flip a gas-tight call ok->out_of_gas and corrupt
+%% event/balance reconstruction) and 'includability' (pool check -- must reflect the
+%% current chain, not the post-fork cost). Unknown profiles are pinned too (safe default).
 force_salus_for_profile(Opts) ->
     case proplists:get_value(dry_run_profile, Opts, internal) of
-        public   -> true;
-        internal -> true;
-        _        -> false
+        public        -> true;
+        internal      -> true;
+        replay        -> false;
+        includability -> false;
+        _             -> false
     end.
 
 %% Meter FATE store reads at the repriced Salus (v8) cost. Salus's only production
