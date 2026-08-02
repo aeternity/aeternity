@@ -514,8 +514,11 @@ top_block_hash() ->
                                       aec_blocks:block_header_hash(),
                                       aec_trees:trees()}.
 top_header_hash_and_state() ->
+    activity(fun top_header_hash_and_state_/0).
+
+top_header_hash_and_state_() ->
     case top_block_node() of
-        undefined -> error;
+        undefined -> undefined;
         #{hash := Hash, header := Header} ->
             {Header, Hash, aec_db:get_block_state(Hash)}
     end.

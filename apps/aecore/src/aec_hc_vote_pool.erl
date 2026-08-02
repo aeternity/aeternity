@@ -177,14 +177,14 @@ gc_epochs(_E1, _E2, State) ->
     State#state{hash_pool = #{}, e_cache = #{}, t_cache = #{}}.
 
 validate_vote_tx(STx) ->
-    {Block, Trees} = get_onchain_env(),
+    {Header, Trees} = get_onchain_env(),
     Checks = [ fun check_tx_type/3
              , fun check_valid_at_protocol/3
              , fun check_signature/3
              ],
-    aeu_validation:run(Checks, [STx, Block, Trees]).
+    aeu_validation:run(Checks, [STx, Header, Trees]).
 
-check_tx_type(STx, _Block, _Trees) ->
+check_tx_type(STx, _Header, _Trees) ->
     case aetx:specialize_type(aetx_sign:tx(STx)) of
         {hc_vote_tx, _} ->
             ok;
@@ -193,12 +193,12 @@ check_tx_type(STx, _Block, _Trees) ->
             {error, only_hc_vote_tx_allowed}
     end.
 
-check_valid_at_protocol(STx, Block, _Trees) ->
-    Protocol = aec_blocks:version(Block),
+check_valid_at_protocol(STx, Header, _Trees) ->
+    Protocol = aec_headers:version(Header),
     aetx:check_protocol(aetx_sign:tx(STx), Protocol).
 
-check_signature(STx, Block, Trees) ->
-    Protocol = aec_blocks:version(Block),
+check_signature(STx, Header, Trees) ->
+    Protocol = aec_headers:version(Header),
     case aetx_sign:verify(STx, Trees, Protocol) of
         {error, _} = E ->
             lager:info("Failed signature check on tx: ~p\n", [E]),
@@ -217,11 +217,13 @@ check_signature(STx, Block, Trees) ->
 %%             ok
 %%     end.
 
+-spec get_onchain_env() -> {aec_headers:header(), aec_trees:trees()}.
 get_onchain_env() ->
-    case aec_chain:top_block_with_state() of
-        {Block, Trees} ->
-            {Block, Trees};
+    case aec_chain:top_header_hash_and_state() of
+        {Header, _Hash, Trees} ->
+            {Header, Trees};
         undefined ->
-            aec_block_genesis:genesis_block_with_state()
+            {Block, Trees} = aec_block_genesis:genesis_block_with_state(),
+            {aec_blocks:to_header(Block), Trees}
     end.
 

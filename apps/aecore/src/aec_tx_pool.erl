@@ -989,7 +989,7 @@ check_pool_db_put_(Tx, TxHash, Event) ->
         none ->
             check_reentry(TxHash);
         Unknown when Unknown =:= not_found ->
-            {Block, BlockHash, Trees} = get_onchain_env(),
+            {Header, BlockHash, Trees} = get_onchain_env(),
             Checks = [ fun check_valid_at_protocol/6
                      , fun check_signature/6
                      , fun check_account/6
@@ -999,7 +999,7 @@ check_pool_db_put_(Tx, TxHash, Event) ->
                      , fun check_payable/6
                      , fun check_tx_ttl/6
                      ],
-            case aeu_validation:run(Checks, [Tx, TxHash, Block, BlockHash, Trees, Event]) of
+            case aeu_validation:run(Checks, [Tx, TxHash, Header, BlockHash, Trees, Event]) of
                 {error, _} = E ->
                     lager:debug("Validation error for tx ~p: ~p", [TxHash, E]),
                     E;
@@ -1022,15 +1022,17 @@ check_reentry(TxHash) ->
             ignore
     end.
 
+-spec get_onchain_env() -> {aec_headers:header(),
+                            aec_blocks:block_header_hash(),
+                            aec_trees:trees()}.
 get_onchain_env() ->
-    case aec_chain:top_block_with_state() of
-        {B, T} ->
-            {ok, H} = aec_blocks:hash_internal_representation(B),
-            {B, H, T};
+    case aec_chain:top_header_hash_and_state() of
+        {_Header, _Hash, _Trees} = Env ->
+            Env;
         undefined ->
             {B, T} = aec_block_genesis:genesis_block_with_state(),
             {ok, H} = aec_blocks:hash_internal_representation(B),
-            {B, H, T}
+            {aec_blocks:to_header(B), H, T}
     end.
 
 do_pool_db_put(Key, Tx, Hash, Event, ConfigTTL,
@@ -1084,15 +1086,15 @@ insert_nonce(NDb, ?KEY(NegFee, NegGasPrice, Account, Nonce, TxHash)) ->
 delete_nonce(NDb, ?KEY(_, _, Account, Nonce, TxHash)) ->
     ets:delete(NDb, {Account, Nonce, TxHash}).
 
-check_tx_ttl(Tx, _TxHash, Block, _BlockHash, _Trees, _Event) ->
-    Height = aec_blocks:height(Block),
+check_tx_ttl(Tx, _TxHash, Header, _BlockHash, _Trees, _Event) ->
+    Height = aec_headers:height(Header),
     Tx1 = aetx_sign:tx(Tx),
     case Height > aetx:ttl(Tx1) of
         true  -> {error, ttl_expired};
         false -> ok
     end.
 
-check_payable(Tx, _TxHash, _Block, _BlockHash, Trees, _Event) ->
+check_payable(Tx, _TxHash, _Header, _BlockHash, Trees, _Event) ->
     Unsigned = aetx_sign:innermost_tx(Tx),
     case aetx:specialize_type(Unsigned) of
         {spend_tx, SpendTx} ->
@@ -1135,12 +1137,12 @@ resolve_recipient(Id, Trees) ->
             {error, could_not_resolve_recipient}
     end.
 
-check_valid_at_protocol(Tx, _TxHash, Block, _BlockHash, _Trees, _Event) ->
-    Protocol = aec_blocks:version(Block),
+check_valid_at_protocol(Tx, _TxHash, Header, _BlockHash, _Trees, _Event) ->
+    Protocol = aec_headers:version(Header),
     aetx:check_protocol(aetx_sign:tx(Tx), Protocol).
 
-check_signature(Tx, TxHash, Block, _BlockHash, Trees, _Event) ->
-    Protocol = aec_blocks:version(Block),
+check_signature(Tx, TxHash, Header, _BlockHash, Trees, _Event) ->
+    Protocol = aec_headers:version(Header),
     case aetx_sign:verify(Tx, Trees, Protocol) of
         {error, _} = E ->
             lager:info("Failed signature check on tx: ~p, ~p\n", [E, TxHash]),
@@ -1149,7 +1151,7 @@ check_signature(Tx, TxHash, Block, _BlockHash, Trees, _Event) ->
             ok
     end.
 
-check_account(Tx, _TxHash, _Block, BlockHash, _Trees, Event) ->
+check_account(Tx, _TxHash, _Header, BlockHash, _Trees, Event) ->
     int_check_account(Tx, {block_hash, BlockHash}, Event).
 
 int_check_account(Tx, Source, Event) ->
@@ -1239,18 +1241,18 @@ get_account_(AccountKey, {account_trees, AccountsTrees}) ->
 get_account_(AccountKey, {block_hash, BlockHash}) ->
     aec_chain:get_account_at_hash(AccountKey, BlockHash).
 
-check_minimum_fee(Tx, _TxHash, Block, _BlockHash, _Trees, _Event) ->
-    Protocol = aec_blocks:version(Block),
-    Height = aec_blocks:height(Block),
+check_minimum_fee(Tx, _TxHash, Header, _BlockHash, _Trees, _Event) ->
+    Protocol = aec_headers:version(Header),
+    Height = aec_headers:height(Header),
     Tx1 = aetx_sign:tx(Tx),
     case aetx:fee(Tx1) >= aetx:min_fee(Tx1, Height, Protocol) of
         true  -> ok;
         false -> {error, too_low_fee}
     end.
 
-check_minimum_miner_gas_price(Tx, _TxHash, Block, _BlockHash, _Trees, _Event) ->
-    Protocol = aec_blocks:version(Block),
-    Height = aec_blocks:height(Block),
+check_minimum_miner_gas_price(Tx, _TxHash, Header, _BlockHash, _Trees, _Event) ->
+    Protocol = aec_headers:version(Header),
+    Height = aec_headers:height(Header),
     MinMinerGasPrice = aec_tx_pool:minimum_miner_gas_price(),
     STx = aetx_sign:tx(Tx),
     case aetx:min_gas_price(STx, Height, Protocol) >= MinMinerGasPrice of
@@ -1258,8 +1260,8 @@ check_minimum_miner_gas_price(Tx, _TxHash, Block, _BlockHash, _Trees, _Event) ->
         false -> {error, too_low_gas_price_for_miner}
     end.
 
-check_minimum_gas_price(Tx, _TxHash, Block, _BlockHash, _Trees, _Event) ->
-    Protocol = aec_blocks:version(Block),
+check_minimum_gas_price(Tx, _TxHash, Header, _BlockHash, _Trees, _Event) ->
+    Protocol = aec_headers:version(Header),
     case aetx:gas_price(aetx_sign:tx(Tx)) of
         undefined ->
             ok;
