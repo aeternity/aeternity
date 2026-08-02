@@ -383,7 +383,10 @@ tx_pool_test_() ->
                {ok, CHashFork1} = aec_blocks:hash_internal_representation(KeyBlock2),
 
                meck:expect(aeu_time, now_in_msecs, fun() -> meck:passthrough([]) + 6000 end),
-               STx4 = a_signed_tx(PubKey2, new_pubkey(), 2, 40000),
+               %% A TTL of its own, so that the replay below has to combine it
+               %% with the TTL read once for the whole replay.
+               STx4TTL = 3,
+               STx4 = a_signed_tx(PubKey2, new_pubkey(), 2, 40000, STx4TTL),
                ?assertEqual(ok, aec_tx_pool:push(STx4)),
                {ok, USCandidate4, _} = aec_block_micro_candidate:create(aec_chain:top_block()),
                {ok, Candidate4} = aec_keys:sign_micro_block(USCandidate4),
@@ -418,6 +421,12 @@ tx_pool_test_() ->
 
                %% The not included transaction should now be back in the pool
                ?assertEqual({ok, [STx4]}, aec_tx_pool:peek(infinity)),
+
+               %% ... and the TTL read once for the whole replay must have been
+               %% combined with the tx's own TTL when it was re-added.
+               {GCHeight, Dbs} = aec_tx_pool:gc_height_and_dbs(),
+               ?assertEqual({ok, min(GCHeight + aec_tx_pool:tx_ttl(), STx4TTL)},
+                            gc_ttl_of(STx4, Dbs)),
 
                meck:unload(aec_headers),
                ok
@@ -690,6 +699,59 @@ tx_pool_test_() ->
 
                ok
        end},
+      {"GC height combines the configured tx_ttl with the tx's own TTL",
+       fun() ->
+               aec_test_utils:stop_chain_db(),
+               PK = new_pubkey(),
+               meck:expect(aec_fork_block_settings, genesis_accounts, 0,
+                           [{PK, 100000000}]),
+               aec_consensus:set_genesis_hash(),
+               {GenesisBlock, _} = aec_block_genesis:genesis_block_with_state(),
+               aec_test_utils:start_chain_db(),
+               {ok,_} = aec_chain_state:insert_block(GenesisBlock),
+
+               %% Bring the chain to height 1 and restart the pool, so that its
+               %% GC height is a known, non-zero value. At GC height 0 the two
+               %% operands of the min/2 in pool_db_raw_put/6 commute, which
+               %% would hide a swap of the configured TTL and the tx's own TTL.
+               {ok, KeyBlock1} =
+                   aec_block_key_candidate:create(aec_chain:top_block(), PK, PK),
+               {ok,_} = aec_chain_state:insert_block(KeyBlock1),
+               ok = aec_tx_pool:stop(),
+               {ok, Pid} = aec_tx_pool:start_link(),
+               unlink(Pid), %% Leave it for the cleanup
+               {GCHeight, Dbs} = aec_tx_pool:gc_height_and_dbs(),
+               ?assertEqual(1, GCHeight),
+
+               Horizon = GCHeight + aec_tx_pool:tx_ttl(),
+
+               %% No TTL of its own: collected at the configured horizon.
+               STx1 = a_signed_tx(PK, me, 1, 20000, 0),
+               ?assertEqual(ok, aec_tx_pool:push(STx1)),
+               ?assertEqual({ok, Horizon}, gc_ttl_of(STx1, Dbs)),
+
+               %% A TTL below the horizon shortens the tx's stay ...
+               TTL2 = GCHeight + 1,
+               STx2 = a_signed_tx(PK, me, 2, 20000, TTL2),
+               ?assertEqual(ok, aec_tx_pool:push(STx2)),
+               ?assertEqual({ok, TTL2}, gc_ttl_of(STx2, Dbs)),
+
+               %% ... while a TTL beyond it must not extend it.
+               TTL3 = Horizon + 100,
+               STx3 = a_signed_tx(PK, me, 3, 20000, TTL3),
+               ?assertEqual(ok, aec_tx_pool:push(STx3)),
+               ?assertEqual({ok, Horizon}, gc_ttl_of(STx3, Dbs)),
+
+               %% Restoring the persisted mempool at startup reads the
+               %% configured TTL once for the whole restore - the heights it
+               %% computes must be the same ones.
+               ok = aec_tx_pool:stop(),
+               {ok, Pid2} = aec_tx_pool:start_link(),
+               unlink(Pid2), %% Leave it for the cleanup
+               ?assertEqual({ok, Horizon}, gc_ttl_of(STx1, Dbs)),
+               ?assertEqual({ok, TTL2},    gc_ttl_of(STx2, Dbs)),
+               ?assertEqual({ok, Horizon}, gc_ttl_of(STx3, Dbs))
+       end},
       {"Ensure persistence",
        fun() ->
                aec_test_utils:stop_chain_db(),
@@ -922,6 +984,10 @@ tx_pool_test_() ->
 
 tx_pool_gc(Height) ->
     aec_tx_pool_gc:sync_gc(Height).
+
+%% The height at which the GC will collect the tx, as recorded in the GC db.
+gc_ttl_of(STx, Dbs) ->
+    aec_tx_pool_gc:ttl(aetx_sign:hash(STx), Dbs).
 
 a_signed_tx(Sender, Recipient, Nonce, Fee) ->
     a_signed_tx(Sender, Recipient, Nonce, Fee,0).

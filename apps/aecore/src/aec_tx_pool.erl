@@ -212,7 +212,11 @@ push_(Tx, TxHash, Event, Timeout, Forced) ->
     Push =
         fun() ->
             incr([push]),
-            Res = gen_server:call(?SERVER, {push, Tx, TxHash, Event}, Timeout),
+            %% Read the configured TTL here rather than in the pool process,
+            %% which serialises every push - each read walks the whole user
+            %% config map.
+            Res = gen_server:call(?SERVER, {push, Tx, TxHash, Event, tx_ttl()},
+                                  Timeout),
             instant_tx_confirm_hook(TxHash),
             Res
         end,
@@ -227,10 +231,7 @@ push_(Tx, TxHash, Event, Timeout, Forced) ->
                     incr([push, error]),
                     E;
                 ok ->
-                    incr([push]),
-                    Res = gen_server:call(?SERVER, {push, Tx, TxHash, Event}, Timeout),
-                    instant_tx_confirm_hook(TxHash),
-                    Res
+                    Push()
             end
     end.
 
@@ -389,8 +390,10 @@ init([]) ->
     origins_cache_open(origins_cache()),
     GCHeight = top_height(),
     Handled  = ets:new(init_tx_pool, [private]),
+    %% Read once for the whole restore rather than once per transaction.
+    Info     = {#dbs{}, origins_cache(), GCHeight, tx_ttl()},
     InitF  = fun(TxHash, _) ->
-                     update_pool_on_tx_hash(TxHash, {#dbs{}, origins_cache(), GCHeight}, Handled),
+                     update_pool_on_tx_hash(TxHash, Info, Handled),
                      ok
              end,
     ok = aec_db:ensure_transaction(fun() -> aec_db:fold_mempool(InitF, ok) end),
@@ -405,8 +408,8 @@ handle_call(Req, From, St) ->
 
 handle_call_({get_max_nonce, Sender}, _From, #state{dbs = #dbs{nonce_db = NDb}} = State) ->
     {reply, int_get_max_nonce(NDb, Sender), State};
-handle_call_({push, Tx, Hash, Event}, _From, State) ->
-    {Res, State1} = do_pool_db_put(pool_db_key(Tx, Hash), Tx, Hash, Event, State),
+handle_call_({push, Tx, Hash, Event, ConfigTTL}, _From, State) ->
+    {Res, State1} = do_pool_db_put(pool_db_key(Tx, Hash), Tx, Hash, Event, ConfigTTL, State),
     {reply, Res, State1};
 handle_call_({top_change, Info}, _From, State) ->
     {_, State1} = do_top_change(Info, State),
@@ -911,7 +914,9 @@ do_top_change(Ancestor, Type, OldHash, NewHash, State0) ->
     %% Add back transactions to the pool from discarded part of the chain
     %% Mind that we don't need to add those which are incoming in the fork
     {GCHeight, State} = get_gc_height(State0),
-    Info = {State#state.dbs, State#state.origins_cache, GCHeight},
+    %% Read once for the whole replay rather than once per transaction of
+    %% every block on either side of the fork.
+    Info = {State#state.dbs, State#state.origins_cache, GCHeight, tx_ttl()},
 
     Handled = ets:new(foo, [private, set]),
     aec_db:ensure_activity(async_dirty, fun() ->
@@ -940,7 +945,8 @@ safe_get_tx_hashes(Hash) ->
         {value, Hashes} -> Hashes
     end.
 
-update_pool_on_tx_hash(TxHash, {#dbs{gc_db = GCDb} = Dbs, OriginsCache, GCHeight}, Handled) ->
+update_pool_on_tx_hash(TxHash, {#dbs{gc_db = GCDb} = Dbs, OriginsCache, GCHeight, ConfigTTL},
+                       Handled) ->
     case ets:member(Handled, TxHash) of
         true -> ok;
         false ->
@@ -955,7 +961,7 @@ update_pool_on_tx_hash(TxHash, {#dbs{gc_db = GCDb} = Dbs, OriginsCache, GCHeight
                     add_to_origins_cache(OriginsCache, Tx);
                 true ->
                     Key = pool_db_key(Tx, TxHash),
-                    pool_db_raw_put(Dbs, GCHeight, Key, Tx, TxHash)
+                    pool_db_raw_put(Dbs, GCHeight, ConfigTTL, Key, Tx, TxHash)
             end
     end.
 
@@ -971,20 +977,13 @@ check_pool_db_put(Tx, TxHash, Event) ->
     aec_db:ensure_dirty(fun() -> check_pool_db_put_(Tx, TxHash, Event) end).
 
 check_pool_db_put_(Tx, TxHash, Event) ->
-    AllowReentryOfDeletedTx = allow_reentry(),
     case aec_chain:find_tx_location(TxHash) of
         BlockHash when is_binary(BlockHash) ->
             lager:debug("Already have tx: ~p in ~p", [TxHash, BlockHash]),
             {error, already_accepted};
         mempool ->  ignore;
-        none when AllowReentryOfDeletedTx ->
-            lager:debug("Tx ~p has been deleted already, reintroduce it",
-                        [TxHash]),
-            ok;
-        none when not AllowReentryOfDeletedTx ->
-            lager:debug("Tx ~p has been deleted already, it is not allowed to reenter",
-                        [TxHash]),
-            ignore;
+        none ->
+            check_reentry(TxHash);
         Unknown when Unknown =:= not_found ->
             {Block, BlockHash, Trees} = get_onchain_env(),
             Checks = [ fun check_valid_at_protocol/6
@@ -1005,6 +1004,20 @@ check_pool_db_put_(Tx, TxHash, Event) ->
             end
     end.
 
+%% Read lazily: only a transaction that was already deleted can reenter, so
+%% the ordinary push path should not pay for this config read at all.
+check_reentry(TxHash) ->
+    case allow_reentry() of
+        true ->
+            lager:debug("Tx ~p has been deleted already, reintroduce it",
+                        [TxHash]),
+            ok;
+        false ->
+            lager:debug("Tx ~p has been deleted already, it is not allowed to reenter",
+                        [TxHash]),
+            ignore
+    end.
+
 get_onchain_env() ->
     case aec_chain:top_block_with_state() of
         {B, T} ->
@@ -1016,7 +1029,7 @@ get_onchain_env() ->
             {B, H, T}
     end.
 
-do_pool_db_put(Key, Tx, Hash, Event,
+do_pool_db_put(Key, Tx, Hash, Event, ConfigTTL,
                #state{ dbs = #dbs{db = Db} = Dbs } = St0) ->
     {GCHeight, St} = get_gc_height(St0),
     %% TODO: This check is never going to hit? Hash is part of the Key!?
@@ -1030,7 +1043,7 @@ do_pool_db_put(Key, Tx, Hash, Event,
         false ->
             aec_db:add_tx(Tx),
             aec_events:publish(Event, Tx),
-            pool_db_raw_put(Dbs, GCHeight, Key, Tx, Hash),
+            pool_db_raw_put(Dbs, GCHeight, ConfigTTL, Key, Tx, Hash),
             {ok, St}
     end.
 
@@ -1039,16 +1052,22 @@ pool_db_raw_delete(#dbs{db = Db, visited_db = VDb, nonce_db = NDb}, Key) ->
     ets:delete(VDb, Key),
     ets:delete(Db, Key).
 
+%% ConfigTTL is the configured mempool tx_ttl, i.e. how many blocks a tx may
+%% linger in the pool. Every caller reads it outside the pool process: a push
+%% reads it in the pushing process, and replaying a fork or restoring the
+%% persisted mempool at startup reads it once for the whole batch, since each
+%% read walks the whole user config map.
 pool_db_raw_put(#dbs{db = Db, nonce_db = NDb, gc_db = GCDb},
-                GCHeight0, Key, Tx, TxHash) ->
+                GCHeight0, ConfigTTL, Key, Tx, TxHash) ->
     ets:insert(Db, {Key, #tx{hash = TxHash, signed_tx = Tx}}), %% this resets any failed attempts
     insert_nonce(NDb, Key),
     GCHeight =
         case aetx:ttl(aetx_sign:tx(Tx)) of
-            0 -> %% default no ttl
-                GCHeight0 + tx_ttl();
+            max_ttl -> %% the tx declares no ttl of its own
+                GCHeight0 + ConfigTTL;
             TxTTL ->
-                min(GCHeight0 + tx_ttl(), TxTTL)
+                %% A tx may shorten its stay, but never extend it.
+                min(GCHeight0 + ConfigTTL, TxTTL)
         end,
     enter_tx_gc(GCDb, TxHash, Key, GCHeight).
 
