@@ -250,7 +250,11 @@ protocol_effective_at_height(Height, Protocols) ->
     ProtocolsEffectiveSinceBeforeOrAtHeight = [_|_] =
         lists:takewhile(fun({_, H}) -> Height >= H end, SortedProtocols),
     {Protocol, _ForkHeight} = lists:last(ProtocolsEffectiveSinceBeforeOrAtHeight),
-    maybe_protocol_from_fork(aeu_env:get_env(aecore, fork), Height, Protocol).
+    %% Read the app env directly rather than through aeu_env:get_env/2:
+    %% `aecore > fork` is written only by ensure_env/0 above, as a map of atoms
+    %% to integers, so setup's value expansion has nothing to expand - and it
+    %% rebuilds the whole term on every call. This runs for every block.
+    maybe_protocol_from_fork(application:get_env(aecore, fork), Height, Protocol).
 
 maybe_protocol_from_fork(undefined, _Heigth, Protocol) ->
     %% No community fork configured.

@@ -735,7 +735,7 @@ handle_request_('GetStatus', _Params, _Context) ->
                   end, [], aec_hard_forks:protocols()),
     Version = aec_blocks:version(TopKeyBlock),
     Protocols2 =
-        case aeu_env:get_env(aecore, fork, undefined) of
+        case application:get_env(aecore, fork, undefined) of
             #{version := Version, signalling_end_height := SigEndHeight} ->
                 %% The version is the same as in miner signalling config so the
                 %% new protocol was activated.

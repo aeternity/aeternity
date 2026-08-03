@@ -707,7 +707,7 @@ internal_insert_transaction(Node, Block, Origin, Ctx) ->
     assert_not_illegal_fork_or_orphan(Node, Origin, State2), %% TODO: move this check to aec_conductor... it doesn't really belong here
     case node_type(Node) of
         key ->
-            maybe_put_signal_count(Block, node_hash(Node), aeu_env:get_env(aecore, fork, undefined));
+            maybe_put_signal_count(Block, node_hash(Node), application:get_env(aecore, fork, undefined));
         micro ->
             ok
     end,
