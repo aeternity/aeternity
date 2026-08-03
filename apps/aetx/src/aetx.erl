@@ -40,6 +40,7 @@
         , type_to_swagger_name/1
         , tx_min_gas/2
         , tx_type/1
+        , tx_types/0
         ]).
 
 -ifdef(TEST).
@@ -740,3 +741,38 @@ tx(Tx) ->
 -spec tx_type(tx()) -> tx_type().
 tx_type(Tx) ->
     Tx#aetx.type.
+
+%% Runtime enumeration of the tx_type() union above, kept adjacent to it so the
+%% two are edited together. Callers that must notice a new transaction type
+%% derive from here rather than keeping a private copy that goes stale unnoticed.
+-spec tx_types() -> [tx_type()].
+tx_types() ->
+    [ spend_tx
+    , oracle_register_tx
+    , oracle_extend_tx
+    , oracle_query_tx
+    , oracle_response_tx
+    , name_preclaim_tx
+    , name_claim_tx
+    , name_transfer_tx
+    , name_update_tx
+    , name_revoke_tx
+    , contract_create_tx
+    , contract_call_tx
+    , ga_attach_tx
+    , ga_meta_tx
+    , channel_create_tx
+    , channel_deposit_tx
+    , channel_withdraw_tx
+    , channel_force_progress_tx
+    , channel_close_mutual_tx
+    , channel_close_solo_tx
+    , channel_slash_tx
+    , channel_settle_tx
+    , channel_snapshot_solo_tx
+    , channel_set_delegates_tx
+    , channel_offchain_tx
+    , channel_client_reconnect_tx
+    , paying_for_tx
+    , hc_vote_tx
+    ].

@@ -1416,7 +1416,7 @@
                             "type": "boolean"
                         },
                         "node_info": {
-                            "description": "Node information endpoints (/status, /sync-status, /peers/pubkey, /currency). Disabling removes health and monitoring endpoints - use with care.",
+                            "description": "Node information endpoints (/status, /sync-status, /peers/pubkey, /currency, /protocol-parameters). Disabling removes health and monitoring endpoints, and the consensus parameters clients need to build valid transactions - use with care.",
                             "type" : "boolean"
                         },
                         "node-operator" : {
