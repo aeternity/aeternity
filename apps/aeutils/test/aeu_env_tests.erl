@@ -13,7 +13,7 @@
 schema_test_() ->
     {setup,
      fun() -> setup() end,
-     fun(_) -> teardown() end,
+     fun(SavedFork) -> teardown(SavedFork) end,
      [{"Example user configuration files pass schema validation",
        [fun() ->
                 ?assertMatch({ok, _}, aeu_env:check_config(Config))
@@ -27,8 +27,8 @@ extra_checks_test_() ->
              ok = meck:new(setup, [passthrough]),
              setup()
      end,
-     fun(_) ->
-             teardown(),
+     fun(SavedFork) ->
+             teardown(SavedFork),
              ok = meck:unload(setup)
      end,
      [{"User configuration cannot contain both 'mining > cuckoo > edge_bits' and deprecated 'mining > cuckoo > miner'",
@@ -54,8 +54,8 @@ extra_network_id_checks_test_() ->
              ok = meck:new(aec_governance, [passthrough]),
              setup()
      end,
-     fun(_) ->
-             teardown(),
+     fun(SavedFork) ->
+             teardown(SavedFork),
              ok = meck:unload(aec_governance),
              ok = meck:unload(setup)
      end,
@@ -73,11 +73,11 @@ config_cache_test_() ->
              ok = aeu_env:invalidate_config_cache(),
              setup()
      end,
-     fun(_) ->
+     fun(SavedFork) ->
              %% Drop the cache before anything that can fail: a leaked config
              %% would be served to every later test module sharing this VM.
              ok = aeu_env:invalidate_config_cache(),
-             teardown()
+             teardown(SavedFork)
      end,
      [{"setup's expansion is the identity for every example config file",
        fun expansion_is_identity/0},
@@ -305,11 +305,20 @@ setup() ->
     application:ensure_all_started(jesse),
     application:ensure_all_started(yamerl),
     application:ensure_all_started(jsx),
-    ok.
+    %% Several of the checks below run aec_hard_forks:ensure_env/0, which
+    %% rewrites `aecore > fork` from whatever config they installed - and
+    %% unsets it for a config that does not configure fork signalling, which
+    %% every config here is. That key decides which protocol a block falls
+    %% under, for every block, so hand it to teardown/1 to put back.
+    application:get_env(aecore, fork).
 
-teardown() ->
-    %% The checks above store configs; they must not leak into other tests
-    %% sharing this VM.
+teardown(SavedFork) ->
+    %% The checks above store a config and a community fork; they must not leak
+    %% into other tests sharing this VM.
+    case SavedFork of
+        {ok, Fork} -> application:set_env(aecore, fork, Fork);
+        undefined  -> application:unset_env(aecore, fork)
+    end,
     ok = forget_user_config(),
     application:stop(rfc3339),
     application:stop(jesse),

@@ -63,7 +63,11 @@ ensure_env() ->
         Fork when Fork =/= undefined ->
             application:set_env(aecore, fork, Fork);
         undefined ->
-            ok
+            %% Drop a fork left by an earlier run rather than leaving it in
+            %% place: protocol_effective_at_height/1 reads this key live, for
+            %% every block, and a config that no longer configures fork
+            %% signalling must not keep signalling under the previous one.
+            application:unset_env(aecore, fork)
     end.
 
 %% This function is supposed to be used only when:
