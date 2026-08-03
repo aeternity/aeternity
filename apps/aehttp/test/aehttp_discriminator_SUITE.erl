@@ -52,7 +52,9 @@ aetx_types_in_schema(_Config) ->
             ?assertEqual({Type, true},
                          {Type,
                               Type == channel_offchain_tx orelse   %% not exposed in HTTP interface
+                              Type == hc_vote_tx orelse            %% no HCVoteTx schema definition
                               string_member([?API:definitions_prefix(), SwaggerType], Defs)})
+        %% channel_client_reconnect_tx has no type_to_swagger_name/1 clause.
         end, aetx_types() -- [channel_client_reconnect_tx]).
 
 aesc_types_in_schema(_Config) ->
@@ -66,38 +68,9 @@ aesc_types_in_schema(_Config) ->
         end, aesc_offchain_update_types() -- [meta]).
 
 
-%% We could use a parse transform to extract the type from aetx... but
-%% we choose to not complicate it with that.
 -spec aetx_types() -> [aetx:type()].
 aetx_types() ->
-    [ spend_tx
-    , oracle_register_tx
-    , oracle_extend_tx
-    , oracle_query_tx
-    , oracle_response_tx
-    , name_preclaim_tx
-    , name_claim_tx
-    , name_transfer_tx
-    , name_update_tx
-    , name_revoke_tx
-    , contract_create_tx
-    , contract_call_tx
-    , ga_attach_tx
-    , ga_meta_tx
-    , channel_create_tx
-    , channel_deposit_tx
-    , channel_withdraw_tx
-    , channel_force_progress_tx
-    , channel_close_mutual_tx
-    , channel_close_solo_tx
-    , channel_slash_tx
-    , channel_settle_tx
-    , channel_snapshot_solo_tx
-    , channel_set_delegates_tx
-    , channel_offchain_tx
-    , channel_client_reconnect_tx
-    , paying_for_tx
-    ].
+    aetx:tx_types().
 
 
 -spec aesc_offchain_update_types() -> [ aesc_offchain_update:update_type() ].

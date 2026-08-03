@@ -18,8 +18,11 @@
          name_preclaim_expiration/0,
          name_claim_locked_fee/0,
          name_claim_fee/2,
+         name_claim_fee_for_size/2,
          name_claim_bid_timeout/2,
+         name_claim_bid_timeout_for_size/3,
          name_claim_bid_extension/2,
+         name_claim_bid_extension_for_size/3,
          name_claim_bid_increment/0,
          name_claim_max_expiration/1,
          name_protection_period/0,
@@ -296,13 +299,13 @@ name_claim_max_expiration(Protocol) when Protocol < ?IRIS_PROTOCOL_VSN ->
 name_claim_max_expiration(_Protocol) ->
     180000. %% At 480 generations per day this is 375 days, i.e. ~1 year.
 
--spec name_pointers_max_count(aec_hard_forks:protocol_vsn()) -> non_neg_integer() | inifinity.
+-spec name_pointers_max_count(aec_hard_forks:protocol_vsn()) -> non_neg_integer() | infinity.
 name_pointers_max_count(Protocol) when Protocol < ?IRIS_PROTOCOL_VSN ->
     infinity;
 name_pointers_max_count(_Protocol) ->
     32.
 
--spec name_pointer_max_key_size(aec_hard_forks:protocol_vsn()) -> non_neg_integer() | inifinity.
+-spec name_pointer_max_key_size(aec_hard_forks:protocol_vsn()) -> non_neg_integer() | infinity.
 name_pointer_max_key_size(Protocol) when Protocol < ?IRIS_PROTOCOL_VSN ->
     infinity;
 name_pointer_max_key_size(_Protocol) ->
@@ -318,8 +321,17 @@ name_claim_preclaim_delta() ->
 %% not only length of the bytes
 -spec name_claim_fee(binary(), non_neg_integer()) -> non_neg_integer().
 name_claim_fee(Name, Protocol) when Protocol >= ?LIMA_PROTOCOL_VSN ->
-    name_claim_size_fee(name_claim_size(Name));
+    name_claim_fee_for_size(name_claim_size(Name), Protocol);
 name_claim_fee(_Name, _Protocol) ->
+    0.
+
+%% As name_claim_fee/2, for a caller that already knows the claim size and so
+%% has no name to convert. Used to tabulate the fee by size without running an
+%% IDNA conversion per row.
+-spec name_claim_fee_for_size(pos_integer(), non_neg_integer()) -> non_neg_integer().
+name_claim_fee_for_size(Size, Protocol) when Protocol >= ?LIMA_PROTOCOL_VSN ->
+    name_claim_size_fee(Size);
+name_claim_fee_for_size(_Size, _Protocol) ->
     0.
 
 %% local helper function
@@ -366,11 +378,30 @@ name_claim_bid_timeout(_Name, _Protocol) ->
 -spec name_claim_bid_extension(binary(), non_neg_integer()) -> non_neg_integer().
 name_claim_bid_extension(Name, Protocol) when Protocol < ?CERES_PROTOCOL_VSN ->
     name_claim_bid_timeout(Name, Protocol);
-name_claim_bid_extension(Name, _Protocol) ->
-    NameSize = name_claim_size(Name),
+name_claim_bid_extension(Name, Protocol) ->
+    name_claim_bid_extension_for_size(name_claim_size(Name), Protocol, undefined).
+
+%% As name_claim_bid_timeout/2 and name_claim_bid_extension/2, for a caller that
+%% already knows the claim size. The mining > name_claim_bid_timeout override is
+%% passed in already resolved ('undefined' for no override) rather than read
+%% here, so tabulating a whole table costs one config read instead of one per row.
+-spec name_claim_bid_timeout_for_size(non_neg_integer(), non_neg_integer(),
+                                      undefined | non_neg_integer()) -> non_neg_integer().
+name_claim_bid_timeout_for_size(_Size, Protocol, _Override) when Protocol < ?LIMA_PROTOCOL_VSN ->
+    0;
+name_claim_bid_timeout_for_size(Size, Protocol, undefined) ->
+    name_claim_bid_initial_timeout(Size, Protocol);
+name_claim_bid_timeout_for_size(_Size, _Protocol, Override) ->
+    Override.
+
+-spec name_claim_bid_extension_for_size(non_neg_integer(), non_neg_integer(),
+                                        undefined | non_neg_integer()) -> non_neg_integer().
+name_claim_bid_extension_for_size(Size, Protocol, Override) when Protocol < ?CERES_PROTOCOL_VSN ->
+    name_claim_bid_timeout_for_size(Size, Protocol, Override);
+name_claim_bid_extension_for_size(Size, _Protocol, _Override) ->
     MaxAuctionName = name_max_length_starting_auction(),
-    if NameSize =< MaxAuctionName ->  12 * ?MULTIPLIER_HOUR;  %% 240 blocks
-       true                       ->  0
+    if Size =< MaxAuctionName ->  12 * ?MULTIPLIER_HOUR;  %% 240 blocks
+       true                   ->  0
     end.
 
 %% New/Higher bid has to be at least `name_claim_bid_increment()`% larger

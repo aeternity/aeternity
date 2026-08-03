@@ -43,6 +43,8 @@ tags:
     description: State channel related endpoints
   - name: node_info
     description: Node information related endpoints
+  - name: node_settings
+    description: This node's local policy settings
   - name: debug
     description: Debug endpoints
   - name: obsolete
@@ -1141,6 +1143,54 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+  /node-settings:
+    get:
+      tags:
+        - external
+        - node_settings
+      operationId: GetNodeSettings
+      description: >-
+        Get this node's local policy settings. These are not consensus rules: they are operator
+        configuration, they may differ between nodes, and an operator can change them at runtime.
+        min_miner_gas_price is a decimal string; the other values are JSON numbers, or strings when
+        int-as-string=true.
+      parameters:
+        - $ref: '#/components/parameters/intAsString'
+      responses:
+        "200":
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NodeSettings"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+  /protocol-parameters:
+    get:
+      tags:
+        - external
+        - node_info
+      operationId: GetProtocolParameters
+      description: >-
+        Get the consensus protocol parameters needed to build valid transactions. Covers the protocol
+        effective at the current top block and any later protocol whose fork height has not been
+        reached yet; a community fork under signalling is reported only once it has activated, since
+        until then it may still fail to. See /node-settings for this node's local policy. Aettos amounts
+        (minimum_gas_price, name_claim_fees, name_claim_locked_fee) are always decimal strings, never
+        JSON numbers: the largest name fee is about 2^69 and would lose precision in an IEEE-754
+        client. Gas, key block heights, counts and version numbers are JSON numbers; pass
+        int-as-string=true to receive those as strings too.
+      parameters:
+        - $ref: '#/components/parameters/intAsString'
+      responses:
+        "200":
+          description: Successful operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProtocolParameters"
         "503":
           $ref: "#/components/responses/ServiceUnavailable"
   /status:
@@ -4029,6 +4079,365 @@ components:
       required:
         - version
         - effective_at_height
+    ProtocolParameters:
+      type: object
+      properties:
+        network_id:
+          description: Network id prepended to the serialized transaction before signing
+          type: string
+        current_protocol_version:
+          description: Consensus protocol version effective at the current top height
+          oneOf:
+            - type: integer
+              minimum: 0
+              maximum: 4294967295
+            - type: string
+        locked_coins_holder_account:
+          description: Account holding locked/burnt coins (e.g. AENS name fees)
+          allOf:
+            - $ref: "#/components/schemas/EncodedPubkey"
+        expected_block_mine_rate:
+          description: >-
+            Expected key block interval in milliseconds, the proof-of-work difficulty retarget target.
+            A node reports whichever of this and child_block_time governs its consensus, never both.
+          oneOf:
+            - type: integer
+              minimum: 0
+              maximum: 18446744073709552000
+            - type: string
+        child_block_time:
+          description: Key block interval in milliseconds of a Hyperchains child chain
+          oneOf:
+            - type: integer
+              minimum: 0
+              maximum: 18446744073709552000
+            - type: string
+        micro_block_cycle:
+          description: Minimum micro block interval in milliseconds, enforced in block validation
+          oneOf:
+            - type: integer
+              minimum: 0
+              maximum: 18446744073709552000
+            - type: string
+        protocols:
+          description: >-
+            Consensus parameters of the protocol effective at the current top block, followed by any
+            protocol whose fork height has not been reached yet.
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/ProtocolConsensusParameters"
+      required:
+        - network_id
+        - current_protocol_version
+        - locked_coins_holder_account
+        - micro_block_cycle
+        - protocols
+    NodeSettings:
+      description: >-
+        This node's local policy settings. Not consensus rules: they may differ between nodes and an
+        operator can change them at runtime.
+      type: object
+      properties:
+        min_miner_gas_price:
+          description: Minimum gas price this node's miner accepts (aettos per gas), as a decimal string. Transactions with a lower gas price are valid but not mined by this node.
+          type: string
+        max_auth_fun_gas:
+          description: Maximum gas this node accepts for a generalized account authentication function (GAMetaTx)
+          oneOf:
+            - type: integer
+              minimum: 0
+              maximum: 18446744073709552000
+            - type: string
+        mempool_tx_ttl:
+          description: Number of key blocks a transaction stays in this node's mempool
+          oneOf:
+            - type: integer
+              minimum: 0
+              maximum: 18446744073709552000
+            - type: string
+        mempool_nonce_offset:
+          description: Maximum nonce distance from the current account nonce accepted into this node's mempool
+          oneOf:
+            - type: integer
+              minimum: 0
+              maximum: 18446744073709552000
+            - type: string
+        dry_run_gas_limit:
+          description: Maximum total gas accepted by this node's dry-run endpoint
+          oneOf:
+            - type: integer
+              minimum: 0
+              maximum: 18446744073709552000
+            - type: string
+        block_gas_limit:
+          description: Maximum total gas this node accepts in a single micro block (upper bound for a single transaction's gas)
+          oneOf:
+            - type: integer
+              minimum: 0
+              maximum: 18446744073709552000
+            - type: string
+      required:
+        - min_miner_gas_price
+        - max_auth_fun_gas
+        - mempool_tx_ttl
+        - mempool_nonce_offset
+        - dry_run_gas_limit
+        - block_gas_limit
+    ProtocolConsensusParameters:
+      description: Consensus parameters of one protocol version
+      allOf:
+        - $ref: "#/components/schemas/Protocol"
+        - type: object
+          properties:
+            minimum_gas_price:
+              description: Consensus minimum gas price (aettos per gas) as a decimal string; the minimum transaction fee is the transaction's fee gas multiplied by this
+              type: string
+            gas_per_byte:
+              description: Gas per serialized transaction byte counted into the minimum fee
+              oneOf:
+                - type: integer
+                  minimum: 0
+                  maximum: 18446744073709552000
+                - type: string
+            store_byte_gas:
+              description: Gas per byte written to a contract store
+              oneOf:
+                - type: integer
+                  minimum: 0
+                  maximum: 18446744073709552000
+                - type: string
+            tx_base_gas:
+              description: >-
+                Base fee gas by transaction type (transactions not executing contract code). Listed for
+                every protocol regardless of when the type was introduced: an entry gives what the fee
+                gas would be, not whether that transaction was accepted at that protocol.
+              type: object
+              additionalProperties:
+                oneOf:
+                  - type: integer
+                    minimum: 0
+                    maximum: 18446744073709552000
+                  - type: string
+            contract_tx_base_gas:
+              description: >-
+                Base fee gas of contract-executing transaction types, per ABI version. Listed on the
+                same basis as tx_base_gas; allowed_contract_versions is what decides acceptance.
+              type: array
+              items:
+                $ref: "#/components/schemas/ContractTxBaseGas"
+            state_gas_per_block:
+              description: State rent gas fraction per key block by transaction type; state gas = ceil(ttl_key_blocks * part / whole)
+              type: object
+              additionalProperties:
+                $ref: "#/components/schemas/StateGasPerBlock"
+            name_claim_fees:
+              description: >-
+                Minimum AENS name fee by name length, as decimal strings; element N (1-based) applies
+                to names of length N and the last element also to longer names. All zeroes when name
+                fees are not enforced at this protocol. Length is the label after IDNA/UTS46
+                conversion to ASCII, excluding the registrar - not the character count.
+              type: array
+              minItems: 31
+              maxItems: 31
+              items:
+                type: string
+            name_auction_timeouts:
+              description: AENS auction bid timeout and extension in key blocks by name length; a zero timeout means no auction
+              type: array
+              items:
+                $ref: "#/components/schemas/NameAuctionTimeout"
+            name_claim_bid_increment:
+              description: Minimum percentage a new AENS auction bid must exceed the previous bid by
+              oneOf:
+                - type: integer
+                  minimum: 0
+                  maximum: 18446744073709552000
+                - type: string
+            name_max_length_starting_auction:
+              description: The longest name that triggers an AENS auction, measured as for the name_claim_fees index
+              oneOf:
+                - type: integer
+                  minimum: 0
+                  maximum: 18446744073709552000
+                - type: string
+            name_claim_max_expiration:
+              description: Maximum name TTL in key blocks for NameUpdateTx
+              oneOf:
+                - type: integer
+                  minimum: 0
+                  maximum: 18446744073709552000
+                - type: string
+            name_registrars:
+              description: Valid AENS name registrars
+              type: array
+              items:
+                type: string
+            name_pointers_max_count:
+              description: Maximum number of pointers in NameUpdateTx; the field is absent when the protocol imposes no limit
+              oneOf:
+                - type: integer
+                  minimum: 0
+                  maximum: 18446744073709552000
+                - type: string
+            name_pointer_max_key_size:
+              description: Maximum byte size of a pointer key in NameUpdateTx; the field is absent when the protocol imposes no limit
+              oneOf:
+                - type: integer
+                  minimum: 0
+                  maximum: 18446744073709552000
+                - type: string
+            name_preclaim_expiration:
+              description: Number of key blocks after which an AENS preclaim expires
+              oneOf:
+                - type: integer
+                  minimum: 0
+                  maximum: 18446744073709552000
+                - type: string
+            name_claim_preclaim_delta:
+              description: Minimum number of key blocks between preclaim and claim
+              oneOf:
+                - type: integer
+                  minimum: 0
+                  maximum: 18446744073709552000
+                - type: string
+            name_protection_period:
+              description: Number of key blocks an expired name stays protected before it can be claimed again
+              oneOf:
+                - type: integer
+                  minimum: 0
+                  maximum: 18446744073709552000
+                - type: string
+            name_claim_locked_fee:
+              description: Locked fee in aettos, as a decimal string, for a name claim when the name fee is not enforced
+              type: string
+            allowed_contract_versions:
+              description: VM/ABI version combinations valid for ContractCreateTx at this protocol
+              type: array
+              items:
+                $ref: "#/components/schemas/ContractVersion"
+            allowed_oracle_abi_versions:
+              description: ABI versions valid for OracleRegisterTx at this protocol
+              type: array
+              items:
+                oneOf:
+                  - type: integer
+                    minimum: 0
+                    maximum: 65535
+                  - type: string
+          required:
+            - minimum_gas_price
+            - gas_per_byte
+            - store_byte_gas
+            - tx_base_gas
+            - contract_tx_base_gas
+            - state_gas_per_block
+            - name_claim_fees
+            - name_auction_timeouts
+            - name_claim_bid_increment
+            - name_max_length_starting_auction
+            - name_claim_max_expiration
+            - name_registrars
+            - name_preclaim_expiration
+            - name_claim_preclaim_delta
+            - name_protection_period
+            - name_claim_locked_fee
+            - allowed_contract_versions
+            - allowed_oracle_abi_versions
+    ContractTxBaseGas:
+      type: object
+      properties:
+        tx_type:
+          description: Transaction type
+          type: string
+        abi_version:
+          description: ABI version this base gas applies to
+          oneOf:
+            - type: integer
+              minimum: 0
+              maximum: 65535
+            - type: string
+        tx_base_gas:
+          description: Base fee gas of this transaction type with this ABI version
+          oneOf:
+            - type: integer
+              minimum: 0
+              maximum: 18446744073709552000
+            - type: string
+      required:
+        - tx_type
+        - abi_version
+        - tx_base_gas
+    StateGasPerBlock:
+      type: object
+      properties:
+        part:
+          description: Numerator of the per-key-block state gas fraction
+          oneOf:
+            - type: integer
+              minimum: 0
+              maximum: 18446744073709552000
+            - type: string
+        whole:
+          description: Denominator of the per-key-block state gas fraction
+          oneOf:
+            - type: integer
+              minimum: 0
+              maximum: 18446744073709552000
+            - type: string
+      required:
+        - part
+        - whole
+    NameAuctionTimeout:
+      type: object
+      properties:
+        length:
+          description: Name length, measured as for the name_claim_fees index
+          oneOf:
+            - type: integer
+              minimum: 0
+              maximum: 18446744073709552000
+            - type: string
+        bid_timeout:
+          description: >-
+            Initial auction timeout in key blocks as enforced by this node; zero means no auction.
+            May be overridden node-locally, in which case it can disagree with bid_extension.
+          oneOf:
+            - type: integer
+              minimum: 0
+              maximum: 18446744073709552000
+            - type: string
+        bid_extension:
+          description: Auction extension in key blocks after a new bid
+          oneOf:
+            - type: integer
+              minimum: 0
+              maximum: 18446744073709552000
+            - type: string
+      required:
+        - length
+        - bid_timeout
+        - bid_extension
+    ContractVersion:
+      type: object
+      properties:
+        vm_version:
+          description: VM version
+          oneOf:
+            - type: integer
+              minimum: 0
+              maximum: 65535
+            - type: string
+        abi_version:
+          description: ABI version
+          oneOf:
+            - type: integer
+              minimum: 0
+              maximum: 65535
+            - type: string
+      required:
+        - vm_version
+        - abi_version
     PubKey:
       type: object
       properties:

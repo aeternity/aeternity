@@ -53,6 +53,8 @@
         , get_max_nonce/1
         , minimum_miner_gas_price/0
         , maximum_auth_fun_gas/0
+        , nonce_offset/0
+        , tx_ttl/0
         , peek/1
         , peek/2
         , peek/3
@@ -95,8 +97,6 @@
 -export([peek_db/0]).
 -export([peek_visited/0]).
 -export([peek_nonces/0]).
--export([nonce_offset/0]).
--export([tx_ttl/0]).
 -export([allow_reentry/0]).
 -export([int_check_nonce/4]).
 -endif.
