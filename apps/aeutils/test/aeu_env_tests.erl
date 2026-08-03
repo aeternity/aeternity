@@ -65,6 +65,134 @@ extra_network_id_checks_test_() ->
        fun() -> invalid_fork_signalling_network_config(<<"ae_mainnet">>) end}]
     }.
 
+config_cache_test_() ->
+    {foreach,
+     fun() ->
+             %% A config cached by an earlier test in this VM must not feed
+             %% into the checks below.
+             ok = aeu_env:invalidate_config_cache(),
+             setup()
+     end,
+     fun(_) ->
+             %% Drop the cache before anything that can fail: a leaked config
+             %% would be served to every later test module sharing this VM.
+             ok = aeu_env:invalidate_config_cache(),
+             teardown()
+     end,
+     [{"setup's expansion is the identity for every example config file",
+       fun expansion_is_identity/0},
+      {"is_expandable/1 finds a '$' at any depth, in keys as well as values",
+       fun is_expandable_covers_nested_terms/0},
+      {"a config with nothing to expand is cached; reads skip setup",
+       fun plain_config_is_cached/0},
+      {"a config with an expandable value is not cached; reads stay live",
+       fun expandable_config_is_not_cached/0},
+      {"caching an expandable config drops the cache left by a plain one",
+       fun expandable_config_drops_stale_cache/0},
+      {"a value setup expands later is not frozen by the cache",
+       fun expandable_value_follows_setup/0}]}.
+
+%% The cache serves the stored config only when setup's value expansion cannot
+%% change it. Assert both halves of that: the example configs have nothing to
+%% expand, and for them expansion really is a no-op.
+expansion_is_identity() ->
+    lists:foreach(
+      fun(File) ->
+              {ok, {UserMap, _UserConfig}} = aeu_env:check_config(File),
+              ?assertEqual(false, aeu_env:is_expandable(UserMap)),
+              ok = aeu_env:cache_config(UserMap),
+              ?assertEqual(setup:get_env(aeutils, '$user_map', #{}),
+                           application:get_env(aeutils, '$user_map', #{})),
+              ?assertEqual(setup:get_env(aeutils, '$user_config', []),
+                           application:get_env(aeutils, '$user_config', [])),
+              %% And the readers really do serve it. Without this the checks
+              %% above would hold with the cache never consulted at all: they
+              %% compare setup against the app env, not against user_map/0.
+              ?assertEqual(setup:get_env(aeutils, '$user_map', #{}),
+                           aeu_env:user_map()),
+              ?assertEqual(setup:get_env(aeutils, '$user_config', []),
+                           aeu_env:user_config())
+      end, test_data_config_files()).
+
+is_expandable_covers_nested_terms() ->
+    ?assertEqual(false, aeu_env:is_expandable(#{<<"a">> => [1, 2, 3],
+                                                <<"b">> => <<"plain">>})),
+    ?assertEqual(false, aeu_env:is_expandable([104, 105])),
+    ?assertEqual(true, aeu_env:is_expandable(#{<<"a">> => <<"$HOME">>})),
+    %% Keys are expanded too, not just values.
+    ?assertEqual(true, aeu_env:is_expandable(#{<<"$HOME">> => <<"v">>})),
+    ?assertEqual(true, aeu_env:is_expandable([#{<<"a">> => [<<"x">>, <<"$Y">>]}])),
+    %% setup's special forms carry the '$' in a string, not a binary.
+    ?assertEqual(true, aeu_env:is_expandable({'$value', "$HOME"})),
+    ?assertEqual(true, aeu_env:is_expandable("a$b")).
+
+plain_config_is_cached() ->
+    Map = #{<<"mempool">> => #{<<"tx_ttl">> => 123}},
+    ok = aeu_env:cache_config(Map),
+    %% Served from the cache now: reaching for setup must not happen.
+    ok = meck:new(setup, [passthrough]),
+    try
+        ok = meck:expect(setup, get_env,
+                         fun(_, _) -> error(unexpected_expansion) end),
+        ok = meck:expect(setup, get_env,
+                         fun(_, _, _) -> error(unexpected_expansion) end),
+        ?assertEqual(Map, aeu_env:user_map()),
+        ?assertEqual({ok, 123}, aeu_env:user_map([<<"mempool">>, <<"tx_ttl">>])),
+        ?assertEqual({ok, 123}, aeu_env:user_config([<<"mempool">>, <<"tx_ttl">>])),
+        %% The binary key clause reads the tree form rather than the map.
+        ?assertEqual({ok, [{<<"tx_ttl">>, 123}]}, aeu_env:user_config(<<"mempool">>))
+    after
+        ok = meck:unload(setup)
+    end.
+
+expandable_config_is_not_cached() ->
+    Map = #{<<"system">> => #{<<"plugin_path">> => <<"$DATA_DIR/plugins">>}},
+    ?assertEqual(true, aeu_env:is_expandable(Map)),
+    ok = aeu_env:cache_config(Map),
+    ?assertEqual(undefined, cached_user_map()),
+    %% Falling back is load bearing here, not merely conservative: for this
+    %% config setup really does rewrite the value, so serving the stored term
+    %% would return something other than what the old code path returned.
+    ?assertNotEqual(application:get_env(aeutils, '$user_map', #{}),
+                    setup:get_env(aeutils, '$user_map', #{})),
+    %% Uncached, so the read must be exactly what the old code path returned.
+    ?assertEqual(setup:get_env(aeutils, '$user_map', #{}), aeu_env:user_map()).
+
+expandable_config_drops_stale_cache() ->
+    Plain = #{<<"mempool">> => #{<<"tx_ttl">> => 1}},
+    ok = aeu_env:cache_config(Plain),
+    ?assertEqual(Plain, cached_user_map()),
+    Expandable = Plain#{<<"system">> => #{<<"plugin_path">> => <<"$DATA_DIR/p">>}},
+    ok = aeu_env:cache_config(Expandable),
+    ?assertEqual(undefined, cached_user_map()),
+    ?assertEqual(setup:get_env(aeutils, '$user_map', #{}), aeu_env:user_map()).
+
+%% Why cache_expanded_config/2 refuses to cache an expandable config rather
+%% than expanding it once and caching the result. aeu_logging_env rewrites
+%% `setup > log_dir' at setup hook 102, after read_config/0 has already stored
+%% the config at hook 100, so $LOG_DIR resolves to one directory before that
+%% hook and another after it. A read has to follow setup, not a value frozen at
+%% cache time - which is exactly what a config with a '$' in it gives up.
+expandable_value_follows_setup() ->
+    Saved = application:get_env(setup, log_dir),
+    try
+        ok = application:set_env(setup, log_dir, "/tmp/log-before"),
+        ok = aeu_env:cache_config(#{<<"a">> => <<"$LOG_DIR/x">>}),
+        ?assertEqual(undefined, cached_user_map()),
+        ?assertEqual({ok, <<"/tmp/log-before/x">>}, aeu_env:user_map([<<"a">>])),
+        %% The later hook moves it. The next read must see the new directory.
+        ok = application:set_env(setup, log_dir, "/tmp/log-after"),
+        ?assertEqual({ok, <<"/tmp/log-after/x">>}, aeu_env:user_map([<<"a">>]))
+    after
+        case Saved of
+            {ok, Dir} -> application:set_env(setup, log_dir, Dir);
+            undefined -> application:unset_env(setup, log_dir)
+        end
+    end.
+
+cached_user_map() ->
+    persistent_term:get({aeu_env, user_map}, undefined).
+
 positive_extra_checks_tests() ->
     [{"Example user configuration file passes checks further to the schema: " ++ Config, %% For enabling files to be linked from wiki as examples.
       fun() ->
@@ -171,18 +299,27 @@ get_test_config_base() ->
     {Dir, DataDir}.
 
 setup() ->
+    %% A config cached by an earlier test in this VM must not feed into the
+    %% checks below.
+    ok = aeu_env:invalidate_config_cache(),
     application:ensure_all_started(jesse),
     application:ensure_all_started(yamerl),
     application:ensure_all_started(jsx),
     ok.
 
 teardown() ->
+    %% The checks above store configs; they must not leak into other tests
+    %% sharing this VM.
+    ok = aeu_env:invalidate_config_cache(),
     application:stop(rfc3339),
     application:stop(jesse),
     application:stop(yamerl),
     application:stop(jsx).
 
 mock_user_config(UserMap, UserConfig) ->
+    %% This installs a config without going through aeu_env:cache_config/1, so
+    %% a cache left by an earlier read_config/0 in this VM would shadow it.
+    ok = aeu_env:invalidate_config_cache(),
     F = fun
             (aeutils, '$user_config') -> {ok, UserConfig};
             (aeutils, '$user_map') -> UserMap;
