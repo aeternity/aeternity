@@ -154,6 +154,9 @@
 
     get_recent_gas_prices/1,
 
+    get_protocol_parameters/1,
+    get_node_settings/1,
+
     % sync gossip
     pending_transactions/1,
     post_correct_tx/1,
@@ -442,6 +445,9 @@ groups() ->
         check_transaction_in_pool,
 
         get_recent_gas_prices,
+
+        get_protocol_parameters,
+        get_node_settings,
 
         % sync gossip
         pending_transactions,
@@ -836,6 +842,20 @@ init_per_testcase(Case, Config) when
         Case =:= disabled_debug_endpoints; Case =:= enabled_debug_endpoints ->
     {ok, HttpInternal} = rpc(?NODE, application, get_env, [aehttp, internal]),
     [{http_internal_config, HttpInternal} | init_per_testcase_all(Config)];
+%% These two cases reconfigure the running node - they have to, since the point is
+%% to prove a runtime config change reaches the response - and the suite shares one
+%% node across every group. Stash the originals here and restore from
+%% end_per_testcase, not only from a try/after inside the case: a CT timetrap skips
+%% the case's own `after`, which would leave mining > name_claim_bid_timeout at the
+%% probe value and break every claim in the later `naming` group.
+init_per_testcase(get_protocol_parameters, Config) ->
+    BidTimeout = rpc(?NODE, aeu_env, user_config_or_env,
+                     [[<<"mining">>, <<"name_claim_bid_timeout">>],
+                      aecore, name_claim_bid_timeout, undefined]),
+    [{orig_name_claim_bid_timeout, BidTimeout} | init_per_testcase_all(Config)];
+init_per_testcase(get_node_settings, Config) ->
+    BlockGasLimit = rpc(?NODE, aec_governance, block_gas_limit, []),
+    [{orig_block_gas_limit, BlockGasLimit} | init_per_testcase_all(Config)];
 init_per_testcase(_Case, Config) ->
     init_per_testcase_all(Config).
 
@@ -850,8 +870,30 @@ end_per_testcase(Case, Config) when
     HttpInternal = ?config(http_internal_config, Config),
     ok = rpc(?NODE, application, set_env, [aehttp, internal, HttpInternal]),
     end_per_testcase_all(Config);
+end_per_testcase(get_protocol_parameters, Config) ->
+    restore_setting(?config(orig_name_claim_bid_timeout, Config),
+                    fun set_name_claim_bid_timeout/1),
+    end_per_testcase_all(Config);
+end_per_testcase(get_node_settings, Config) ->
+    restore_setting(?config(orig_block_gas_limit, Config),
+                    fun(V) -> rpc(?NODE, application, set_env, [aecore, block_gas_limit, V]) end),
+    end_per_testcase_all(Config);
 end_per_testcase(_Case, Config) ->
     end_per_testcase_all(Config).
+
+%% Restore a node setting stashed by init_per_testcase. A missing stash means
+%% init_per_testcase did not run, so there is nothing to put back and reporting a
+%% failure here would only bury the original one. A failing restore must still not
+%% skip end_per_testcase_all/1, but it has to be visible: a silently leaked setting
+%% surfaces much later as an unrelated case failing for no apparent reason.
+restore_setting(undefined, _SetFun) ->
+    ok;
+restore_setting(Value, SetFun) ->
+    try SetFun(Value)
+    catch Class:Reason ->
+        ct:pal("Failed to restore node setting to ~p: ~p:~p", [Value, Class, Reason])
+    end,
+    ok.
 
 end_per_testcase_all(Config) ->
     [{_, Node} | _] = ?config(nodes, Config),
@@ -1965,6 +2007,373 @@ get_recent_gas_prices(_Config) ->
     ?assertMatch(X when is_integer(X) andalso X == MinGasPrice, MinGasPrice15),
     ?assertMatch(X when is_integer(X) andalso X == MinGasPrice, MinGasPrice60),
     ok.
+
+%% /protocol-parameters and /node-settings
+
+%% The JSON keys of tx_base_gas, paired with the aetx type they report on. Spelled
+%% out rather than derived from aetx:type_to_swagger_name/1 so that renaming a key
+%% breaks this test instead of silently breaking every client.
+-define(PROTOCOL_PARAMS_TX_BASE_GAS,
+        [ {spend_tx,                  <<"SpendTx">>}
+        , {oracle_register_tx,        <<"OracleRegisterTx">>}
+        , {oracle_extend_tx,          <<"OracleExtendTx">>}
+        , {oracle_query_tx,           <<"OracleQueryTx">>}
+        , {oracle_response_tx,        <<"OracleRespondTx">>}
+        , {name_preclaim_tx,          <<"NamePreclaimTx">>}
+        , {name_claim_tx,             <<"NameClaimTx">>}
+        , {name_transfer_tx,          <<"NameTransferTx">>}
+        , {name_update_tx,            <<"NameUpdateTx">>}
+        , {name_revoke_tx,            <<"NameRevokeTx">>}
+        , {channel_create_tx,         <<"ChannelCreateTx">>}
+        , {channel_deposit_tx,        <<"ChannelDepositTx">>}
+        , {channel_withdraw_tx,       <<"ChannelWithdrawTx">>}
+        , {channel_force_progress_tx, <<"ChannelForceProgressTx">>}
+        , {channel_close_mutual_tx,   <<"ChannelCloseMutualTx">>}
+        , {channel_close_solo_tx,     <<"ChannelCloseSoloTx">>}
+        , {channel_slash_tx,          <<"ChannelSlashTx">>}
+        , {channel_settle_tx,         <<"ChannelSettleTx">>}
+        , {channel_snapshot_solo_tx,  <<"ChannelSnapshotSoloTx">>}
+        , {channel_set_delegates_tx,  <<"ChannelSetDelegatesTx">>}
+        , {paying_for_tx,             <<"PayingForTx">>}
+        ]).
+
+-define(PROTOCOL_PARAMS_CONTRACT_TX_BASE_GAS,
+        [ {contract_create_tx, <<"ContractCreateTx">>}
+        , {contract_call_tx,   <<"ContractCallTx">>}
+        , {ga_attach_tx,       <<"GAAttachTx">>}
+        , {ga_meta_tx,         <<"GAMetaTx">>}
+        ]).
+
+%% Mirrors aehttp_dispatch_ext:?NO_BASE_GAS_TX_TYPES - the types that carry no
+%% base gas, and so are deliberately absent from the response.
+-define(PROTOCOL_PARAMS_NO_BASE_GAS_TX_TYPES,
+        [channel_offchain_tx, channel_client_reconnect_tx, hc_vote_tx]).
+
+%% VM/ABI ranges swept when checking that the endpoint reports *every* legal
+%% version, not merely that what it reports is legal. Deliberately wider than the
+%% versions that exist today, so adding a VM without listing it in
+%% aehttp_dispatch_ext:?KNOWN_VM_VERSIONS fails here.
+-define(PROTOCOL_PARAMS_VM_SWEEP, lists:seq(0, 12)).
+-define(PROTOCOL_PARAMS_ABI_SWEEP, lists:seq(0, 4)).
+
+%% The config schema default for http > external > gas_limit, which is the limit
+%% dry-run actually enforces. Asserted outright rather than re-read through
+%% aeu_env, which would agree with the endpoint however wrong both were.
+-define(NODE_SETTINGS_DRY_RUN_GAS_LIMIT, 6000000).
+
+%% A bid timeout distinguishable from every value governance computes on its own
+%% (day and hour multiples: 29760, 14880, 2400, 960, 480, 0 depending on
+%% protocol and name length).
+-define(PROTOCOL_PARAMS_BID_TIMEOUT_PROBE, 4243).
+
+get_protocol_parameters(Config) ->
+    Host = external_address(),
+    {ok, 200, Res} = http_request(Host, get, "protocol-parameters", []),
+    #{ <<"network_id">> := NetworkId
+     , <<"current_protocol_version">> := CurrentProtocol
+     , <<"locked_coins_holder_account">> := LockedCoinsAccount
+     , <<"micro_block_cycle">> := MicroBlockCycle
+     , <<"protocols">> := Protocols } = Res,
+    ?assertEqual(rpc(aec_governance, get_network_id, []), NetworkId),
+    %% The reported protocol is the version of the top block, the same value
+    %% GetStatus reports. On a node with no community fork configured that must
+    %% also agree with the fork table, so assert both: the pair is what would
+    %% catch the endpoint silently switching to the other definition.
+    TopHeight = rpc(aec_chain, top_height, []),
+    ?assertEqual(rpc(aec_headers, version, [rpc(aec_chain, top_header, [])]),
+                 CurrentProtocol),
+    ?assertEqual(rpc(aec_hard_forks, protocol_effective_at_height, [TopHeight]),
+                 CurrentProtocol),
+    ?assertEqual(aeser_api_encoder:encode(
+                   account_pubkey, rpc(aec_governance, locked_coins_holder_account, [])),
+                 LockedCoinsAccount),
+    ?assertEqual(rpc(aec_governance, micro_block_cycle, []), MicroBlockCycle),
+    assert_protocol_parameters_block_interval(Res),
+    %% Superseded protocols are omitted: a client cannot build a transaction
+    %% against one. Everything from the top block's version up is reported.
+    KnownProtocols = rpc(aec_hard_forks, protocols, []),
+    ?assertEqual(lists:sort([ VH || {V, _} = VH <- maps:to_list(KnownProtocols),
+                                    V >= CurrentProtocol ]),
+                 [ {maps:get(<<"version">>, P), maps:get(<<"effective_at_height">>, P)}
+                   || P <- Protocols ]),
+    ?assertMatch([_ | _], Protocols),
+    lists:foreach(fun assert_protocol_consensus_parameters/1, Protocols),
+    assert_protocol_parameters_tx_type_coverage(),
+    %% The response is a pure function of node state, so a repeat must match.
+    ?assertEqual({ok, 200, Res}, http_request(Host, get, "protocol-parameters", [])),
+    assert_protocol_parameters_int_as_string(Host, Res),
+    assert_protocol_parameters_bid_timeout_override(Config, Host, Res, Protocols),
+    ok.
+
+get_node_settings(Config) ->
+    Host = external_address(),
+    %% The route exists only if node_settings reached enabled_endpoint_groups;
+    %% omitting it from aehttp_app:check_env/0 would 404 every request here.
+    {ok, EnabledGroups} = rpc(application, get_env, [aehttp, enabled_endpoint_groups]),
+    ?assert(lists:member(<<"node_settings">>, EnabledGroups)),
+    {ok, 200, Res} = http_request(Host, get, "node-settings", []),
+    #{ <<"min_miner_gas_price">> := MinMinerGasPrice
+     , <<"max_auth_fun_gas">> := MaxAuthFunGas
+     , <<"mempool_tx_ttl">> := MempoolTxTtl
+     , <<"mempool_nonce_offset">> := MempoolNonceOffset
+     , <<"dry_run_gas_limit">> := DryRunGasLimit
+     , <<"block_gas_limit">> := BlockGasLimit } = Res,
+    %% The one aettos amount is a decimal string; the rest stay JSON numbers.
+    ?assertEqual(integer_to_binary(rpc(aec_tx_pool, minimum_miner_gas_price, [])),
+                 MinMinerGasPrice),
+    ?assertEqual(rpc(aec_tx_pool, maximum_auth_fun_gas, []), MaxAuthFunGas),
+    ?assertEqual(rpc(aec_tx_pool, tx_ttl, []), MempoolTxTtl),
+    ?assertEqual(rpc(aec_tx_pool, nonce_offset, []), MempoolNonceOffset),
+    ?assertEqual(?NODE_SETTINGS_DRY_RUN_GAS_LIMIT, DryRunGasLimit),
+    ?assertEqual(rpc(aec_governance, block_gas_limit, []), BlockGasLimit),
+    {ok, 200, StrRes} = http_request(Host, get, "node-settings?int-as-string", []),
+    ?assertMatch(X when is_binary(X), maps:get(<<"mempool_tx_ttl">>, StrRes)),
+    ?assertEqual(MinMinerGasPrice, maps:get(<<"min_miner_gas_price">>, StrRes)),
+    assert_node_settings_block_gas_limit_live(Config, Host, Res),
+    ok.
+
+%% block_gas_limit is a live application:get_env read, so it must be taken per
+%% request. Raising it is the safe direction to probe: it cannot invalidate a
+%% block the node has already accepted.
+assert_node_settings_block_gas_limit_live(Config, Host, Res) ->
+    Original = ?config(orig_block_gas_limit, Config),
+    %% Nothing to restore to if init_per_testcase did not run; assert before the
+    %% first mutation so the case cannot leave the node reconfigured.
+    ?assertMatch(X when is_integer(X), Original),
+    Raised = Original + 1000,
+    try
+        ok = rpc(application, set_env, [aecore, block_gas_limit, Raised]),
+        {ok, 200, Bumped} = http_request(Host, get, "node-settings", []),
+        ?assertEqual(Raised, maps:get(<<"block_gas_limit">>, Bumped))
+    after
+        ok = rpc(application, set_env, [aecore, block_gas_limit, Original])
+    end,
+    ?assertEqual({ok, 200, Res}, http_request(Host, get, "node-settings", [])),
+    ok.
+
+%% Compare the tables above to aetx:tx_types/0, not to the handler's own lists:
+%% a type added to aetx and forgotten in aehttp_dispatch_ext would otherwise be
+%% missing from every response with nothing failing.
+assert_protocol_parameters_tx_type_coverage() ->
+    Reported = [ Type || {Type, _Name} <- ?PROTOCOL_PARAMS_TX_BASE_GAS ]
+               ++ [ Type || {Type, _Name} <- ?PROTOCOL_PARAMS_CONTRACT_TX_BASE_GAS ],
+    Accounted = Reported ++ ?PROTOCOL_PARAMS_NO_BASE_GAS_TX_TYPES,
+    ?assertEqual(lists:sort(rpc(aetx, tx_types, [])), lists:sort(Accounted)),
+    %% The swagger names are what clients key on, so a renamed or duplicated one
+    %% has to fail here too.
+    [ ?assertEqual(rpc(aetx, type_to_swagger_name, [Type]), Name)
+      || {Type, Name} <- ?PROTOCOL_PARAMS_TX_BASE_GAS
+                         ++ ?PROTOCOL_PARAMS_CONTRACT_TX_BASE_GAS ],
+    ok.
+
+%% Exactly one block interval is reported, and it is the one that governs the
+%% consensus this node runs. This node is always proof-of-work; pos is covered by
+%% aehttp_hyperchains_SUITE:get_protocol_parameters/1.
+assert_protocol_parameters_block_interval(Res) ->
+    ?assertEqual(pow, rpc(aec_consensus, get_consensus_type, [])),
+    ?assertNot(maps:is_key(<<"child_block_time">>, Res)),
+    ?assertEqual(rpc(aec_governance, expected_block_mine_rate, []),
+                 maps:get(<<"expected_block_mine_rate">>, Res)),
+    ok.
+
+%% int-as-string turns every JSON number into a string but must leave the aettos
+%% amounts, which are already strings, exactly as they were.
+assert_protocol_parameters_int_as_string(Host, Res) ->
+    {ok, 200, StrRes} = http_request(Host, get, "protocol-parameters?int-as-string", []),
+    ?assertMatch(X when is_binary(X), maps:get(<<"current_protocol_version">>, StrRes)),
+    ?assertEqual(integer_to_binary(maps:get(<<"current_protocol_version">>, Res)),
+                 maps:get(<<"current_protocol_version">>, StrRes)),
+    ?assertMatch(X when is_binary(X), maps:get(<<"micro_block_cycle">>, StrRes)),
+    [P | _] = maps:get(<<"protocols">>, Res),
+    [StrP | _] = maps:get(<<"protocols">>, StrRes),
+    ?assertMatch(X when is_integer(X), maps:get(<<"gas_per_byte">>, P)),
+    ?assertEqual(integer_to_binary(maps:get(<<"gas_per_byte">>, P)),
+                 maps:get(<<"gas_per_byte">>, StrP)),
+    ?assertEqual(maps:get(<<"name_claim_fees">>, P), maps:get(<<"name_claim_fees">>, StrP)),
+    ?assertEqual(maps:get(<<"minimum_gas_price">>, P), maps:get(<<"minimum_gas_price">>, StrP)),
+    %% Numbers nested inside an object inside an array are where the conversion is
+    %% most likely to miss a leaf, and the schema's oneOf accepts either form, so
+    %% an unconverted one still returns 200. Check one leaf per nesting shape.
+    ?assertMatch(X when is_binary(X), maps:get(<<"effective_at_height">>, StrP)),
+    [StrContractGas | _] = maps:get(<<"contract_tx_base_gas">>, StrP),
+    ?assertMatch(X when is_binary(X), maps:get(<<"tx_base_gas">>, StrContractGas)),
+    ?assertMatch(X when is_binary(X), maps:get(<<"abi_version">>, StrContractGas)),
+    [StrTimeout | _] = maps:get(<<"name_auction_timeouts">>, StrP),
+    ?assertMatch(X when is_binary(X), maps:get(<<"bid_timeout">>, StrTimeout)),
+    ?assertMatch(X when is_binary(X), maps:get(<<"bid_extension">>, StrTimeout)),
+    [StrStateGas | _] = maps:values(maps:get(<<"state_gas_per_block">>, StrP)),
+    ?assertMatch(X when is_binary(X), maps:get(<<"part">>, StrStateGas)),
+    [StrBaseGas | _] = maps:values(maps:get(<<"tx_base_gas">>, StrP)),
+    ?assertMatch(X when is_binary(X), StrBaseGas),
+    ok.
+
+%% mining > name_claim_bid_timeout is the one reported consensus value an operator
+%% can change at runtime. Change it, require the response to follow, then change
+%% it back and require the original body again.
+assert_protocol_parameters_bid_timeout_override(Config, Host, Res, Protocols) ->
+    Original = ?config(orig_name_claim_bid_timeout, Config),
+    %% init_per_suite pins the override to 0; without it there is nothing to
+    %% restore to and the rest of this would leave the node reconfigured.
+    ?assertMatch(X when is_integer(X), Original),
+    Probe = ?PROTOCOL_PARAMS_BID_TIMEOUT_PROBE,
+    %% Only protocols from LIMA on read the override, so on a ct-roma or
+    %% ct-minerva node nothing in the body can change.
+    Auctioning = [ V || #{<<"version">> := V} <- Protocols,
+                        V >= ?LIMA_PROTOCOL_VSN ],
+    try
+        ok = set_name_claim_bid_timeout(Probe),
+        {ok, 200, Probed} = http_request(Host, get, "protocol-parameters", []),
+        lists:foreach(
+          fun(#{<<"version">> := V, <<"name_auction_timeouts">> := Timeouts})
+                when V >= ?LIMA_PROTOCOL_VSN ->
+                  ?assertEqual(lists:duplicate(length(Timeouts), Probe),
+                               [maps:get(<<"bid_timeout">>, T) || T <- Timeouts]);
+             (_) ->
+                  ok
+          end, maps:get(<<"protocols">>, Probed)),
+        case Auctioning of
+            []    -> ?assertEqual(Res, Probed);
+            [_|_] -> ?assertNotEqual(Res, Probed)
+        end
+    after
+        ok = set_name_claim_bid_timeout(Original)
+    end,
+    ?assertEqual({ok, 200, Res}, http_request(Host, get, "protocol-parameters", [])),
+    ok.
+
+set_name_claim_bid_timeout(Value) when is_integer(Value) ->
+    rpc(aeu_env, update_config,
+        [#{<<"mining">> => #{<<"name_claim_bid_timeout">> => Value}},
+         _Notify = true, _InfoReport = silent]).
+
+assert_protocol_consensus_parameters(#{ <<"version">> := Vsn } = P) ->
+    #{ <<"minimum_gas_price">> := MinGasPrice
+     , <<"gas_per_byte">> := GasPerByte
+     , <<"store_byte_gas">> := StoreByteGas
+     , <<"tx_base_gas">> := TxBaseGas
+     , <<"contract_tx_base_gas">> := ContractTxBaseGas
+     , <<"state_gas_per_block">> := StateGasPerBlock
+     , <<"name_claim_fees">> := NameClaimFees
+     , <<"name_auction_timeouts">> := NameAuctionTimeouts
+     , <<"name_claim_bid_increment">> := NameClaimBidIncrement
+     , <<"name_max_length_starting_auction">> := MaxAuctionLength
+     , <<"name_claim_max_expiration">> := NameClaimMaxExpiration
+     , <<"name_registrars">> := NameRegistrars
+     , <<"name_preclaim_expiration">> := NamePreclaimExpiration
+     , <<"name_claim_preclaim_delta">> := NameClaimPreclaimDelta
+     , <<"name_protection_period">> := NameProtectionPeriod
+     , <<"name_claim_locked_fee">> := NameClaimLockedFee
+     , <<"allowed_contract_versions">> := AllowedContractVersions
+     , <<"allowed_oracle_abi_versions">> := AllowedOracleAbis } = P,
+    ?assertEqual(integer_to_binary(rpc(aec_governance, minimum_gas_price, [Vsn])), MinGasPrice),
+
+    %% Pinned consensus constants. These cannot be overridden by node config, so a
+    %% mismatch means the endpoint is wired to the wrong governance function - the
+    %% one failure an rpc-versus-endpoint comparison can never catch.
+    ?assertEqual(20, GasPerByte),
+    ?assertEqual(5, StoreByteGas),
+    ?assertEqual(12, MaxAuctionLength),
+    ?assertEqual(5, NameClaimBidIncrement),
+    ?assertEqual(300, NamePreclaimExpiration),
+    ?assertEqual(1, NameClaimPreclaimDelta),
+    ?assertEqual(2016, NameProtectionPeriod),
+    ?assertEqual(<<"3">>, NameClaimLockedFee),
+
+    %% Every tx type is present, under the documented key, with the right value.
+    ?assertEqual(lists:sort([Name || {_Type, Name} <- ?PROTOCOL_PARAMS_TX_BASE_GAS]),
+                 lists:sort(maps:keys(TxBaseGas))),
+    [ ?assertEqual(rpc(aec_governance, tx_base_gas, [Type, Vsn]), maps:get(Name, TxBaseGas))
+      || {Type, Name} <- ?PROTOCOL_PARAMS_TX_BASE_GAS ],
+
+    %% Same for the contract-executing types, across both Sophia ABIs.
+    AevmAbi = 1,
+    FateAbi = 3,
+    ExpectedContractTxBaseGas =
+        [ #{ <<"tx_type">>     => Name
+           , <<"abi_version">> => Abi
+           , <<"tx_base_gas">> => rpc(aec_governance, tx_base_gas, [Type, Vsn, Abi]) }
+          || {Type, Name} <- ?PROTOCOL_PARAMS_CONTRACT_TX_BASE_GAS,
+             Abi <- [AevmAbi, FateAbi] ],
+    ?assertEqual(ExpectedContractTxBaseGas, ContractTxBaseGas),
+
+    %% All four oracle types happen to share one fraction today, so comparing each
+    %% against its own rpc cannot detect a type mixup. Pin the fraction and require
+    %% the exact key set instead.
+    StateGasTypes = [ {oracle_register_tx, <<"OracleRegisterTx">>}
+                    , {oracle_extend_tx,   <<"OracleExtendTx">>}
+                    , {oracle_query_tx,    <<"OracleQueryTx">>}
+                    , {oracle_response_tx, <<"OracleRespondTx">>} ],
+    ?assertEqual(lists:sort([Name || {_Type, Name} <- StateGasTypes]),
+                 lists:sort(maps:keys(StateGasPerBlock))),
+    [ begin
+          #{ <<"part">> := Part, <<"whole">> := Whole } = maps:get(Name, StateGasPerBlock),
+          %% ?ORACLE_STATE_GAS_PER_YEAR over ?EXPECTED_BLOCKS_IN_A_YEAR_FLOOR
+          ?assertEqual({32000, 175200}, {Part, Whole})
+      end
+      || {_Type, Name} <- StateGasTypes ],
+
+    %% Pin both ends of the fee table: the head is ~2^69, the value that must never
+    %% come back as a JSON number, and the tail catches an off-by-one in the index.
+    ?assertEqual(31, length(NameClaimFees)),
+    case Vsn >= ?LIMA_PROTOCOL_VSN of
+        true  ->
+            ?assertEqual(<<"570288700000000000000">>, hd(NameClaimFees)),
+            ?assertEqual(<<"300000000000000">>, lists:last(NameClaimFees));
+        false ->
+            ?assertEqual(lists:duplicate(31, <<"0">>), NameClaimFees)
+    end,
+    [ ?assertEqual(integer_to_binary(
+                     rpc(aec_governance, name_claim_fee, [name_of_length(Length), Vsn])),
+                   lists:nth(Length, NameClaimFees))
+      || Length <- lists:seq(1, 31) ],
+
+    ?assertEqual(MaxAuctionLength, length(NameAuctionTimeouts)),
+    ?assertEqual(lists:seq(1, MaxAuctionLength),
+                 [maps:get(<<"length">>, T) || T <- NameAuctionTimeouts]),
+    lists:foreach(
+      fun(#{ <<"length">> := Length
+           , <<"bid_timeout">> := BidTimeout
+           , <<"bid_extension">> := BidExtension }) ->
+              Name = name_of_length(Length),
+              ?assertEqual(rpc(aec_governance, name_claim_bid_timeout, [Name, Vsn]),
+                           BidTimeout),
+              ?assertEqual(rpc(aec_governance, name_claim_bid_extension, [Name, Vsn]),
+                           BidExtension)
+      end, NameAuctionTimeouts),
+    ?assertEqual(rpc(aec_governance, name_claim_max_expiration, [Vsn]),
+                 NameClaimMaxExpiration),
+    ?assertEqual(rpc(aec_governance, name_registrars, [Vsn]), NameRegistrars),
+    %% The infinity branch (field omitted) is pre-IRIS only, and only the current
+    %% protocol is reported, so it runs on the ct-roma..ct-lima jobs and the limit
+    %% branch on ct-iris and later - both covered across the matrix, neither within
+    %% a single run.
+    case rpc(aec_governance, name_pointers_max_count, [Vsn]) of
+        infinity -> ?assertNot(maps:is_key(<<"name_pointers_max_count">>, P));
+        MaxCount -> ?assertEqual(MaxCount, maps:get(<<"name_pointers_max_count">>, P))
+    end,
+    case rpc(aec_governance, name_pointer_max_key_size, [Vsn]) of
+        infinity -> ?assertNot(maps:is_key(<<"name_pointer_max_key_size">>, P));
+        MaxKeySize -> ?assertEqual(MaxKeySize, maps:get(<<"name_pointer_max_key_size">>, P))
+    end,
+
+    %% Completeness, not just soundness: the sweep is wider than the VM/ABI
+    %% versions that exist, so the legal set must match exactly.
+    ExpectedContractVersions =
+        [ #{<<"vm_version">> => Vm, <<"abi_version">> => Abi}
+          || Vm  <- ?PROTOCOL_PARAMS_VM_SWEEP,
+             Abi <- ?PROTOCOL_PARAMS_ABI_SWEEP,
+             rpc(aect_contracts, is_legal_version_at_protocol,
+                 [create, #{vm => Vm, abi => Abi}, Vsn]) ],
+    ?assertEqual(ExpectedContractVersions, AllowedContractVersions),
+    ExpectedOracleAbis =
+        [ Abi || Abi <- ?PROTOCOL_PARAMS_ABI_SWEEP,
+                 rpc(aect_contracts, is_legal_version_at_protocol,
+                     [oracle_register, #{vm => 0, abi => Abi}, Vsn]) ],
+    ?assertEqual(ExpectedOracleAbis, AllowedOracleAbis),
+    ok.
+
+name_of_length(Length) ->
+    <<(binary:copy(<<"a">>, Length))/binary, ".chain">>.
 
 prepare_tx(TxType, Args, SignHash) ->
     %assert_required_tx_fields(TxType, Args),

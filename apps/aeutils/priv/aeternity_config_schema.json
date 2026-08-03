@@ -1416,7 +1416,11 @@
                             "type": "boolean"
                         },
                         "node_info": {
-                            "description": "Node information endpoints (/status, /sync-status, /peers/pubkey, /currency). Disabling removes health and monitoring endpoints - use with care.",
+                            "description": "Node information endpoints (/status, /sync-status, /peers/pubkey, /currency, /protocol-parameters). Disabling removes health and monitoring endpoints - use with care.",
+                            "type" : "boolean"
+                        },
+                        "node_settings": {
+                            "description": "This node's local policy settings (/node-settings): miner gas price, mempool limits and gas ceilings. Not consensus rules. Disabling withholds them without affecting /protocol-parameters.",
                             "type" : "boolean"
                         },
                         "node-operator" : {
