@@ -299,9 +299,9 @@ get_test_config_base() ->
     {Dir, DataDir}.
 
 setup() ->
-    %% A config cached by an earlier test in this VM must not feed into the
+    %% A config installed by an earlier test in this VM must not feed into the
     %% checks below.
-    ok = aeu_env:invalidate_config_cache(),
+    ok = forget_user_config(),
     application:ensure_all_started(jesse),
     application:ensure_all_started(yamerl),
     application:ensure_all_started(jsx),
@@ -310,7 +310,7 @@ setup() ->
 teardown() ->
     %% The checks above store configs; they must not leak into other tests
     %% sharing this VM.
-    ok = aeu_env:invalidate_config_cache(),
+    ok = forget_user_config(),
     application:stop(rfc3339),
     application:stop(jesse),
     application:stop(yamerl),
@@ -318,15 +318,34 @@ teardown() ->
 
 mock_user_config(UserMap, UserConfig) ->
     %% This installs a config without going through aeu_env:cache_config/1, so
-    %% a cache left by an earlier read_config/0 in this VM would shadow it.
-    ok = aeu_env:invalidate_config_cache(),
+    %% a config left by an earlier read_config/0 in this VM would shadow it.
+    ok = forget_user_config(),
+    %% setup:get_env/2 answers {ok, V} | undefined, setup:get_env/3 answers the
+    %% bare value or the default. Both are mocked from one clause set, so that
+    %% user_config/0 and user_map/0 - which read the arity 3 form - see the
+    %% value itself rather than an {ok, _} wrapper around it.
     F = fun
             (aeutils, '$user_config') -> {ok, UserConfig};
-            (aeutils, '$user_map') -> UserMap;
-            (A, K) -> meck:passthrough([A, K])
+            (aeutils, '$user_map')    -> {ok, UserMap};
+            (A, K)                    -> meck:passthrough([A, K])
         end,
     ok = meck:expect(setup, get_env, F),
-    ok = meck:expect(setup, get_env, fun(A, K, _Default) -> F(A, K) end),
+    ok = meck:expect(setup, get_env,
+                     fun(A, K, Default) ->
+                             case F(A, K) of
+                                 {ok, V}   -> V;
+                                 undefined -> Default
+                             end
+                     end),
     ok.
+
+%% aeu_env:cache_config/1 writes the config to the aeutils app env as well as
+%% to the cache, and invalidate_config_cache/0 drops only the cache. Both have
+%% to go: a config left in the app env is served to every later test module
+%% sharing this VM, and aec_tx_pool reads `mempool > tx_ttl` from it.
+forget_user_config() ->
+    ok = aeu_env:invalidate_config_cache(),
+    ok = application:unset_env(aeutils, '$user_map'),
+    ok = application:unset_env(aeutils, '$user_config').
 
 -endif.
