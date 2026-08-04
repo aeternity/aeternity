@@ -161,6 +161,9 @@ mining:
     # Expected mine rate (milliseconds) between blocks. Used in governance.
     expected_mine_rate: 180000
     micro_block_cycle: 3000
+    # Maximum time (milliseconds) spent selecting txs for one micro-block
+    # candidate; 0 for no limit. Keep below micro_block_cycle.
+    micro_block_candidate_timeout: 1000
     min_miner_gas_price: 1000000000
     # Maximum gas allowed for GAMetaTx authentication function
     max_auth_fun_gas: 50000

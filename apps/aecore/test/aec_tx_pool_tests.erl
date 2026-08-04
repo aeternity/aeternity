@@ -32,6 +32,7 @@ tx_pool_test_() ->
              ets:new(?TAB, [public, ordered_set, named_table]),
              meck:new(aeu_time, [passthrough]),
              meck:new(aec_accounts, [passthrough]),
+             meck:new(aec_accounts_trees, [passthrough]),
              meck:new(aec_jobs_queues),
              meck:expect(aec_jobs_queues, run, fun(_, F) -> F() end),
              meck:expect(aec_governance, minimum_gas_price, 1, 1),
@@ -44,6 +45,7 @@ tx_pool_test_() ->
              ok = application:unset_env(aecore, mempool_nonce_baseline),
              meck:unload(aec_tx_pool),
              meck:unload(aec_jobs_queues),
+             meck:unload(aec_accounts_trees),
              meck:unload(aec_accounts),
              meck:unload(aeu_time),
              ets:delete(?TAB),
@@ -229,6 +231,260 @@ tx_pool_test_() ->
                ?assert(MinGas > MaxGas - TotalGas),
                %% No txs further to the microblock limit were included
                ?assertMatch(X when X =< MaxGas, TotalGas)
+       end}},
+      {"Candidate selection stops walking the pool at its deadline",
+       {timeout, 10, fun() ->
+               NumTxs = 200,
+               ok = application:set_env(aecore, mempool_nonce_baseline, NumTxs),
+               PubKey = new_pubkey(),
+               STxs = [ a_signed_tx(PubKey, me, Nonce, 20000, 10)
+                        || Nonce <- lists:seq(1, NumTxs) ],
+               [ ok = aec_tx_pool:push(STx, tx_created) || STx <- STxs ],
+
+               {ok, Hash} = aec_headers:hash_header(aec_block_genesis:genesis_header()),
+               MaxGas = aec_governance:block_gas_limit(),
+
+               %% A deadline that has already passed. Selection tests it
+               %% between ets:select chunks, so the first chunk still runs -
+               %% what must not happen is a walk of the whole pool.
+               Past = erlang:monotonic_time(millisecond) - 1,
+               {ok, Truncated, TruncatedInfo} =
+                   aec_tx_pool:get_candidate(MaxGas, #{}, Hash, #{deadline => Past}),
+               ?assertMatch([_|_], Truncated),
+               ?assert(length(Truncated) < NumTxs),
+               %% And it says so, which is the only way the caller can tell a
+               %% cut-short walk from a pool that had nothing more to offer.
+               ?assertEqual(#{expired => true}, TruncatedInfo),
+
+               %% The same pool, unbounded, offers everything - so the pool was
+               %% not short of transactions, the deadline cut the walk short.
+               {ok, All, AllInfo} =
+                   aec_tx_pool:get_candidate(MaxGas, #{}, Hash, #{deadline => infinity}),
+               ?assertEqual(NumTxs, length(All)),
+               ?assertEqual(#{expired => false}, AllInfo)
+       end}},
+      {"An absent deadline selects exactly as infinity does",
+       {timeout, 10, fun() ->
+               NumTxs = 30,
+               ok = application:set_env(aecore, mempool_nonce_baseline, NumTxs),
+               PubKey = new_pubkey(),
+               STxs = [ a_signed_tx(PubKey, me, Nonce, 20000, 10)
+                        || Nonce <- lists:seq(1, NumTxs) ],
+               [ ok = aec_tx_pool:push(STx, tx_created) || STx <- STxs ],
+
+               {ok, Hash} = aec_headers:hash_header(aec_block_genesis:genesis_header()),
+               MaxGas = aec_governance:block_gas_limit(),
+
+               %% All three spellings must behave identically: the legacy
+               %% arities are the unbounded case.
+               {ok, Infinity, #{expired := false}} =
+                   aec_tx_pool:get_candidate(MaxGas, #{}, Hash, #{deadline => infinity}),
+               {ok, NoOpts, #{expired := false}} =
+                   aec_tx_pool:get_candidate(MaxGas, #{}, Hash, #{}),
+               {ok, Legacy}   = aec_tx_pool:get_candidate(MaxGas, Hash),
+               ?assertEqual(NumTxs, length(Infinity)),
+               ?assertEqual(lists:sort(Infinity), lists:sort(NoOpts)),
+               ?assertEqual(lists:sort(Infinity), lists:sort(Legacy))
+       end}},
+      {"Candidate selection accepts the ignore set as a list or a map",
+       fun() ->
+               ok = application:set_env(aecore, mempool_nonce_baseline, 10),
+               PubKey = new_pubkey(),
+               [STx1, STx2, STx3] = STxs =
+                   [ a_signed_tx(PubKey, me, Nonce, 20000, 10) || Nonce <- lists:seq(1, 3) ],
+               [ ok = aec_tx_pool:push(STx, tx_created) || STx <- STxs ],
+
+               {ok, Hash} = aec_headers:hash_header(aec_block_genesis:genesis_header()),
+               MaxGas = aec_governance:block_gas_limit(),
+               Ignored = aetx_sign:hash(STx2),
+
+               %% The list form is normalised at the API boundary, so both
+               %% spellings must skip the ignored tx and select the same rest.
+               {ok, FromList} = aec_tx_pool:get_candidate(MaxGas, [Ignored], Hash),
+               {ok, FromMap}  = aec_tx_pool:get_candidate(MaxGas, #{Ignored => []}, Hash),
+               ?assertEqual(lists:sort([STx1, STx3]), lists:sort(FromList)),
+               ?assertEqual(lists:sort(FromList), lists:sort(FromMap))
+       end},
+      {"Candidate selection resolves each origin account once",
+       {timeout, 10, fun() ->
+               %% Several senders with many transactions each: without the
+               %% per-pass memoisation the fold resolves an account for every
+               %% entry it visits, not for every distinct origin.
+               PerAccount = 50,
+               ok = application:set_env(aecore, mempool_nonce_baseline, PerAccount),
+               PubKeys = [new_pubkey(), new_pubkey(), new_pubkey()],
+               STxs = [ a_signed_tx(PK, me, Nonce, 20000, 10)
+                        || PK <- PubKeys, Nonce <- lists:seq(1, PerAccount) ],
+               [ ok = aec_tx_pool:push(STx, tx_created) || STx <- STxs ],
+
+               {ok, Hash} = aec_headers:hash_header(aec_block_genesis:genesis_header()),
+               MaxGas = aec_governance:block_gas_limit(),
+
+               meck:reset(aec_accounts_trees),
+               {ok, Selected} = aec_tx_pool:get_candidate(MaxGas, Hash),
+               ?assertEqual(length(STxs), length(Selected)),
+               ?assertEqual(length(PubKeys),
+                            meck:num_calls(aec_accounts_trees, lookup, ['_', '_']))
+       end}},
+      {"Candidate selection judges nonces by the account state it memoises",
+       {timeout, 10, fun() ->
+               %% Funded senders, so the memoised lookup answers with an
+               %% account rather than falling through to the baseline check
+               %% every sender without one gets.
+               aec_test_utils:stop_chain_db(),
+               Stale = new_pubkey(),
+               Fresh = new_pubkey(),
+               meck:expect(aec_fork_block_settings, genesis_accounts, 0,
+                           [{Stale, 20000000}, {Fresh, 20000000}]),
+               aec_consensus:set_genesis_hash(),
+               {GenesisBlock, _} = aec_block_genesis:genesis_block_with_state(),
+               aec_test_utils:start_chain_db(),
+               {ok,_} = aec_chain_state:insert_block(GenesisBlock),
+
+               [StaleTx1, StaleTx2, StaleTx3] = StaleTxs =
+                   [ a_signed_tx(Stale, me, Nonce, 20000, 10) || Nonce <- lists:seq(1, 3) ],
+               FreshTxs =
+                   [ a_signed_tx(Fresh, me, Nonce, 20000, 10) || Nonce <- lists:seq(1, 3) ],
+               [ ok = aec_tx_pool:push(STx, tx_created) || STx <- StaleTxs ++ FreshTxs ],
+
+               %% The chain moves on underneath the pool: one sender's account
+               %% nonce is now 2, so its first two entries can never be applied
+               %% again. Selection has to see that through the memoised lookup,
+               %% and per sender - the other one is still at nonce 0.
+               {value, Account} = aec_chain:get_account(Stale),
+               Advanced = aec_accounts:set_nonce(Account, 2),
+               meck:expect(aec_accounts_trees, lookup,
+                           fun(PubKey, _) when PubKey =:= Stale -> {value, Advanced};
+                              (PubKey, Tree) -> meck:passthrough([PubKey, Tree])
+                           end),
+
+               Hash = aec_chain:top_block_hash(),
+               MaxGas = aec_governance:block_gas_limit(),
+               meck:reset(aec_accounts_trees),
+               {ok, Selected} = aec_tx_pool:get_candidate(MaxGas, Hash),
+
+               %% All six come back - the pool hands over what it rejected too -
+               %% but the two stale ones come last, as rejects rather than as
+               %% nonce-ordered candidates. A cache that answered `none`, or one
+               %% sender's account for another, would order them differently.
+               ?assertEqual([StaleTx1, StaleTx2], lists:nthtail(4, Selected)),
+               ?assertEqual(lists:sort([StaleTx3 | FreshTxs]),
+                            lists:sort(lists:sublist(Selected, 4))),
+               %% Still one lookup per distinct origin: cache hits for the rest.
+               ?assertEqual(2, meck:num_calls(aec_accounts_trees, lookup, ['_', '_']))
+       end}},
+      {"Selection holds back a contract call its origin cannot pay for",
+       {timeout, 10, fun() ->
+               aec_test_utils:stop_chain_db(),
+               Poor = new_pubkey(),
+               Rich = new_pubkey(),
+               %% Poor covers the fee but nowhere near the gas the call below
+               %% reserves, which is charged on top of it.
+               meck:expect(aec_fork_block_settings, genesis_accounts, 0,
+                           [{Poor, 20000000}, {Rich, 10000000000000000000000}]),
+               aec_consensus:set_genesis_hash(),
+               {GenesisBlock, _} = aec_block_genesis:genesis_block_with_state(),
+               aec_test_utils:start_chain_db(),
+               {ok,_} = aec_chain_state:insert_block(GenesisBlock),
+
+               PoorCall = signed_ct_call_tx(Poor, 1, 1000000, 9000000000),
+               RichCall = signed_ct_call_tx(Rich, 1, 1000000, 9000000000),
+               [ ok = aec_tx_pool:push(STx, tx_created) || STx <- [PoorCall, RichCall] ],
+
+               {ok, Selected} = aec_tx_pool:get_candidate(aec_governance:block_gas_limit(),
+                                                          aec_chain:top_block_hash()),
+               %% The unaffordable one never reserves any of the block's gas.
+               ?assertEqual([RichCall], Selected),
+               %% Deferred rather than rejected: it stays where the next build
+               %% reconsiders it, instead of being handed back as a bad tx and
+               %% moved to the visited table.
+               ?assertEqual([PoorCall], aec_tx_pool:peek_db()),
+               ?assertEqual([RichCall], aec_tx_pool:peek_visited())
+       end}},
+      {"A spend its origin cannot pay for is still selected",
+       {timeout, 10, fun() ->
+               %% Only transactions reserving contract gas are held back. A
+               %% spend that cannot apply costs the block its own base gas and
+               %% no more, and the failure counter retires it - behaviour the
+               %% "previously rejected tx" case above depends on.
+               aec_test_utils:stop_chain_db(),
+               Broke = new_pubkey(),
+               meck:expect(aec_fork_block_settings, genesis_accounts, 0, [{Broke, 1}]),
+               aec_consensus:set_genesis_hash(),
+               {GenesisBlock, _} = aec_block_genesis:genesis_block_with_state(),
+               aec_test_utils:start_chain_db(),
+               {ok,_} = aec_chain_state:insert_block(GenesisBlock),
+
+               Spend = a_signed_tx(Broke, me, 1, 20000, 10),
+               ok = aec_tx_pool:push(Spend, tx_created),
+
+               {ok, Selected} = aec_tx_pool:get_candidate(aec_governance:block_gas_limit(),
+                                                          aec_chain:top_block_hash()),
+               ?assertEqual([Spend], Selected)
+       end}},
+      {"A deferred contract call is selected once its origin can pay",
+       {timeout, 10, fun() ->
+               %% Deferring is not dropping - the transaction stays put and the
+               %% next build reconsiders it against the state as it is then.
+               aec_test_utils:stop_chain_db(),
+               Poor = new_pubkey(),
+               meck:expect(aec_fork_block_settings, genesis_accounts, 0,
+                           [{Poor, 20000000}]),
+               aec_consensus:set_genesis_hash(),
+               {GenesisBlock, _} = aec_block_genesis:genesis_block_with_state(),
+               aec_test_utils:start_chain_db(),
+               {ok,_} = aec_chain_state:insert_block(GenesisBlock),
+
+               Call = signed_ct_call_tx(Poor, 1, 1000000, 9000000000),
+               ok = aec_tx_pool:push(Call, tx_created),
+
+               MaxGas = aec_governance:block_gas_limit(),
+               Hash = aec_chain:top_block_hash(),
+               ?assertEqual({ok, []}, aec_tx_pool:get_candidate(MaxGas, Hash)),
+
+               %% Fund the account: the memoised lookup now answers with a
+               %% balance that covers the gas, and the same transaction goes.
+               {value, Account} = aec_chain:get_account(Poor),
+               {ok, Funded} = aec_accounts:earn(Account, 10000000000000000000000),
+               meck:expect(aec_accounts_trees, lookup,
+                           fun(PubKey, _) when PubKey =:= Poor -> {value, Funded};
+                              (PubKey, Tree) -> meck:passthrough([PubKey, Tree])
+                           end),
+               ?assertEqual({ok, [Call]}, aec_tx_pool:get_candidate(MaxGas, Hash))
+       end}},
+      {"Selection that ran out of time does not start on the visited table",
+       {timeout, 10, fun() ->
+               Waiting = 60,
+               ok = application:set_env(aecore, mempool_nonce_baseline, Waiting),
+               VisitedKey = new_pubkey(),
+               WaitingKey = new_pubkey(),
+               VisitedTxs = [ a_signed_tx(VisitedKey, me, Nonce, 20000, 10)
+                              || Nonce <- lists:seq(1, 20) ],
+               [ ok = aec_tx_pool:push(STx, tx_created) || STx <- VisitedTxs ],
+
+               {ok, Hash} = aec_headers:hash_header(aec_block_genesis:genesis_header()),
+               MaxGas = aec_governance:block_gas_limit(),
+
+               %% Selecting them once is what moves them to the visited table.
+               {ok, Selected0} = aec_tx_pool:get_candidate(MaxGas, Hash),
+               ?assertEqual(length(VisitedTxs), length(Selected0)),
+               ?assertEqual(length(VisitedTxs), aec_tx_pool:size(visited)),
+
+               %% Enough in the mempool proper that walking it cannot finish
+               %% inside the first select chunk.
+               WaitingTxs = [ a_signed_tx(WaitingKey, me, Nonce, 20000, 10)
+                              || Nonce <- lists:seq(1, Waiting) ],
+               [ ok = aec_tx_pool:push(STx, tx_created) || STx <- WaitingTxs ],
+
+               Past = erlang:monotonic_time(millisecond) - 1,
+               {ok, Truncated, #{expired := true}} =
+                   aec_tx_pool:get_candidate(MaxGas, #{}, Hash, #{deadline => Past}),
+
+               %% The visited table is a second walk, taken only once the
+               %% mempool proper is exhausted - which an expired walk never is.
+               ?assert(length(Truncated) < Waiting),
+               ?assertEqual([], [ STx || STx <- Truncated,
+                                         lists:member(STx, VisitedTxs) ])
        end}},
       {"fill micro block with and without previously rejected tx",
        {timeout, 10, fun() ->
@@ -432,8 +688,13 @@ tx_pool_test_() ->
                  PK4 = new_pubkey(),
                  PK5 = new_pubkey(),
 
+                 %% PK4 sends the contract txs below, whose gas is charged to it
+                 %% on top of the fee, so it needs a balance that covers
+                 %% gas * gas_price - otherwise they could never apply and
+                 %% selection rightly holds them back.
                  meck:expect(aec_fork_block_settings, genesis_accounts, 0,
-                             [{PK1, 100000}, {PK2, 100000}, {PK3, 100000}, {PK4, 100000},
+                             [{PK1, 100000}, {PK2, 100000}, {PK3, 100000},
+                              {PK4, 10000000000000000000000},
                               {PK5, 10000000000000000000000}]),
                  aec_consensus:set_genesis_hash(),
                  GeneralizedAccounts = [PK5],
@@ -554,8 +815,12 @@ tx_pool_test_() ->
                aec_test_utils:stop_chain_db(),
                PK = new_pubkey(),
                PK2 = new_pubkey(),
+               %% PK sends the contract txs below, whose gas is charged to it on
+               %% top of the fee, so it needs a balance that covers
+               %% gas * gas_price - otherwise they could never apply and
+               %% selection rightly holds them back.
                meck:expect(aec_fork_block_settings, genesis_accounts, 0,
-                           [{PK, 100000000}, {PK2, 10000000000}]),
+                           [{PK, 10000000000000000000000}, {PK2, 10000000000}]),
                aec_consensus:set_genesis_hash(),
                {GenesisBlock, _} = aec_block_genesis:genesis_block_with_state(),
                aec_test_utils:start_chain_db(),
@@ -919,6 +1184,75 @@ tx_pool_test_() ->
                ?assertMatch({ok, [STx42, STx41]}, aec_tx_pool:peek(infinity))
        end}
      ]}.
+
+%% The nonce decision is a pure function of the account lookup result, the tx
+%% nonce and whether the caller wants the offset enforced. Exercise every
+%% branch of it directly - the pool paths above only reach some of them.
+int_check_nonce_test_() ->
+    %% The offset is an argument, so only the baseline still comes from config.
+    Offset = 5,
+    Baseline = 3,
+    {foreach,
+     fun() ->
+             ok = application:set_env(aecore, mempool_nonce_baseline, Baseline),
+             ok
+     end,
+     fun(_) ->
+             ok = application:unset_env(aecore, mempool_nonce_baseline)
+     end,
+     [{"An unknown account falls back to the nonce baseline",
+       fun() ->
+               Check = fun(Lookup, Nonce, CheckNonce) ->
+                               aec_tx_pool:int_check_nonce(Lookup, Nonce, CheckNonce, Offset)
+                       end,
+               %% A missing state tree is treated exactly like a missing account.
+               [ begin
+                     ?assertEqual(ok, Check(Lookup, Baseline, true)),
+                     ?assertEqual({error, nonce_too_high}, Check(Lookup, Baseline + 1, true)),
+                     %% Gossiped and candidate checks do not apply the baseline.
+                     ?assertEqual(ok, Check(Lookup, Baseline + 1, false))
+                 end || Lookup <- [none, {error, no_state_trees}] ]
+       end},
+      {"A basic account accepts nonces within the offset above its own",
+       fun() ->
+               Acc = {value, basic_account(7)},
+               ?assertEqual({error, nonce_too_low},
+                            aec_tx_pool:int_check_nonce(Acc, 6, true, Offset)),
+               ?assertEqual({error, nonce_too_low},
+                            aec_tx_pool:int_check_nonce(Acc, 7, true, Offset)),
+               ?assertEqual(ok, aec_tx_pool:int_check_nonce(Acc, 8, true, Offset)),
+               ?assertEqual(ok, aec_tx_pool:int_check_nonce(Acc, 7 + Offset, true, Offset)),
+               ?assertEqual({error, nonce_too_high},
+                            aec_tx_pool:int_check_nonce(Acc, 8 + Offset, true, Offset)),
+               %% Without the offset check an arbitrarily high nonce is allowed,
+               %% but nonce_too_low still is not.
+               ?assertEqual(ok, aec_tx_pool:int_check_nonce(Acc, 8 + Offset, false, Offset)),
+               ?assertEqual({error, nonce_too_low},
+                            aec_tx_pool:int_check_nonce(Acc, 7, false, Offset))
+       end},
+      {"A generalized account may only sign with nonce 0",
+       fun() ->
+               GA = {value, generalized_account(7)},
+               ?assertEqual(ok, aec_tx_pool:int_check_nonce(GA, 0, true, Offset)),
+               ?assertEqual(ok, aec_tx_pool:int_check_nonce(GA, 0, false, Offset)),
+               %% Any other nonce is rejected regardless of the offset check,
+               %% and regardless of how it compares to the account's own nonce.
+               ?assertEqual({error, generalized_account_cant_sign_non_meta_tx},
+                            aec_tx_pool:int_check_nonce(GA, 1, true, Offset)),
+               ?assertEqual({error, generalized_account_cant_sign_non_meta_tx},
+                            aec_tx_pool:int_check_nonce(GA, 8, false, Offset))
+       end}
+     ]}.
+
+basic_account(Nonce) ->
+    aec_accounts:set_nonce(aec_accounts:new(<<1:32/unit:8>>, 1000000), Nonce).
+
+generalized_account(Nonce) ->
+    {ok, GA} = aec_accounts:attach_ga_contract(
+                 basic_account(Nonce),
+                 aeser_id:create(contract, <<2:32/unit:8>>),
+                 <<0:32/unit:8>>),
+    GA.
 
 tx_pool_gc(Height) ->
     aec_tx_pool_gc:sync_gc(Height).

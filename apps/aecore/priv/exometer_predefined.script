@@ -25,6 +25,10 @@
 , {[ae,epoch,aecore,tx_pool,push,ignore]               , counter     , []}
 , {[ae,epoch,aecore,tx_pool,push,illegal]              , counter     , []}
 , {[ae,epoch,aecore,tx_pool,push]                      , counter     , []}
+%% Candidate builds that hit mining.micro_block_candidate_timeout, and how many
+%% transactions those builds managed to pack before giving up.
+, {[ae,epoch,aecore,tx_pool,candidate,expired]         , counter     , []}
+, {[ae,epoch,aecore,tx_pool,candidate,expired_txs]     , histogram   , []}
 
 %% The execution time metrics are captured in micro-seconds.
 

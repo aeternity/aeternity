@@ -17,6 +17,7 @@
 check_env() ->
     dev_mode_expand(),
     check_open_files_limit(),
+    check_micro_block_candidate_timeout(),
     aeu_env:check_env(
       aecore,
       [{[<<"mining">>, <<"autostart">>], fun set_autostart/2},
@@ -24,6 +25,38 @@ check_env() ->
        {[<<"mining">>, <<"attempt_timeout">>], {set_env, mining_attempt_timeout}},
        {[<<"chain">>, <<"persist">>]   , {set_env, persist}},
        {[<<"chain">>, <<"db_path">>]   , fun set_mnesia_dir/1}]).
+
+%% Checked on the effective value rather than through the check_env/2 list
+%% above, which only visits keys the user has actually set: the timeout has a
+%% default, so the cycle it is measured against can be misconfigured without
+%% the key being mentioned at all.
+check_micro_block_candidate_timeout() ->
+    check_micro_block_candidate_timeout(aec_block_micro_candidate:candidate_timeout()).
+
+%% The timeout only buys anything if it expires before the cycle it is racing;
+%% set at or above the cycle it silently protects nothing.
+check_micro_block_candidate_timeout(Unbounded) when Unbounded =:= 0;
+                                                    Unbounded =:= infinity ->
+    ok;
+check_micro_block_candidate_timeout(Timeout) when is_integer(Timeout), Timeout > 0 ->
+    Cycle = aec_governance:micro_block_cycle(),
+    case Timeout < Cycle of
+        true  -> ok;
+        false ->
+            lager:warning("mining.micro_block_candidate_timeout (~p ms) is not "
+                          "below mining.micro_block_cycle (~p ms); a candidate "
+                          "build can overrun the cycle before the limit applies",
+                          [Timeout, Cycle])
+    end,
+    ok;
+check_micro_block_candidate_timeout(Invalid) ->
+    %% Reachable only through the application environment - the config schema
+    %% admits a non-negative integer only - and candidate builds fall back to
+    %% the default, so this is a warning rather than a refusal to start.
+    lager:warning("mining.micro_block_candidate_timeout (~p) is not a "
+                  "non-negative number of milliseconds; candidate builds will "
+                  "fall back to the default", [Invalid]),
+    ok.
 
 is_dev_mode() ->
     case aeu_env:user_config([<<"system">>, <<"dev_mode">>]) of

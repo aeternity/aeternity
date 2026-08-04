@@ -37,6 +37,7 @@
 
 -export([ get_candidate/2
         , get_candidate/3
+        , get_candidate/4
         , get_max_nonce/1
         , minimum_miner_gas_price/0
         , maximum_auth_fun_gas/0
@@ -85,6 +86,8 @@
 -export([nonce_offset/0]).
 -export([tx_ttl/0]).
 -export([allow_reentry/0]).
+%% Pure decision function; exported so every branch can be exercised directly.
+-export([int_check_nonce/4]).
 -endif.
 
 %% gen_server callbacks
@@ -92,9 +95,12 @@
          terminate/2, code_change/3]).
 
 -export_type([ dbs/0
+             , ignore_set/0
              , origins_cache/0
              , pool_db/0
              , pool_db_key/0
+             , select_opts/0
+             , select_result/0
              , tx_hash/0
              , top_change_info/0 ]).
 
@@ -132,6 +138,19 @@
 -type non_pos_integer() :: neg_integer() | 0.
 -type tx_hash() :: binary().
 -type height() :: aec_blocks:height().
+
+%% Set of transaction hashes selection must skip, as a map for O(1) lookup.
+-type ignore_set() :: #{tx_hash() => []}.
+
+%% deadline is an erlang:monotonic_time(millisecond) value past which
+%% selection stops walking the pool and returns what it has selected so far.
+-type select_opts() :: #{ deadline => integer() | infinity }.
+
+%% expired tells the caller whether selection stopped on its deadline rather
+%% than because it ran out of pool to walk. An empty selection alone does not
+%% distinguish the two, and only one of them means the candidate came out
+%% smaller than the pool could have made it.
+-type select_result() :: #{ expired := boolean() }.
 
 -record(tx, { hash          :: binary(),
               signed_tx     :: aetx_sign:signed_tx(),
@@ -315,18 +334,39 @@ failed_txs(FailedTxs) ->
 
 -spec get_candidate(pos_integer(), binary()) -> {ok, [aetx_sign:signed_tx()]}.
 get_candidate(MaxGas, BlockHash) ->
-    get_candidate(MaxGas, [], BlockHash).
+    get_candidate(MaxGas, #{}, BlockHash).
 
--spec get_candidate(pos_integer(), [binary()], binary()) -> {ok, [aetx_sign:signed_tx()]}.
-get_candidate(MaxGas, IgnoreTxHashes, BlockHash) when is_integer(MaxGas),
-                                                      is_binary(BlockHash) ->
+-spec get_candidate(pos_integer(), ignore_set() | [tx_hash()], binary()) ->
+          {ok, [aetx_sign:signed_tx()]}.
+get_candidate(MaxGas, IgnoreTxHashes, BlockHash) ->
+    %% Unbounded selection can only stop because the pool ran out, so there is
+    %% nothing for these callers to learn from the select result.
+    {ok, Txs, _SelectResult} = get_candidate(MaxGas, IgnoreTxHashes, BlockHash, #{}),
+    {ok, Txs}.
+
+-spec get_candidate(pos_integer(), ignore_set() | [tx_hash()], binary(), select_opts()) ->
+          {ok, [aetx_sign:signed_tx()], select_result()}.
+get_candidate(MaxGas, IgnoreTxHashes, BlockHash, Opts) when is_integer(MaxGas),
+                                                            is_binary(BlockHash),
+                                                            is_map(Opts) ->
     case MaxGas >= aec_governance:min_tx_gas() of
         true ->
-            ?TC(int_get_candidate(MaxGas, IgnoreTxHashes, BlockHash, dbs()),
-                {get_candidate, MaxGas, IgnoreTxHashes, BlockHash});
+            IgnoreTxs = ignore_set(IgnoreTxHashes),
+            ?TC(int_get_candidate(MaxGas, IgnoreTxs, BlockHash, dbs(), Opts),
+                {get_candidate, MaxGas, map_size(IgnoreTxs), BlockHash});
         false ->
-            {ok, []}
+            {ok, [], #{expired => false}}
     end.
+
+%% The ignore set is consulted once per mempool entry visited by the
+%% selection fold, so it must not be a list: the refill loop in
+%% aec_block_micro_candidate grows it by every packed transaction, which
+%% makes a list O(pool * packed) comparisons per candidate build.
+-spec ignore_set(ignore_set() | [tx_hash()]) -> ignore_set().
+ignore_set(IgnoreTxs) when is_map(IgnoreTxs) ->
+    IgnoreTxs;
+ignore_set(IgnoreTxHashes) when is_list(IgnoreTxHashes) ->
+    maps:from_keys(IgnoreTxHashes, []).
 
 %% It assumes that the persisted mempool has been updated.
 -spec top_change(top_change_info()) -> ok.
@@ -557,18 +597,28 @@ int_get_max_nonce(NonceDb, Sender) ->
 %% considered for another microblock until the next leader cycle.
 %% ... Unless no matching txs can be found in the regular mempool.
 %%
-int_get_candidate(MaxGas, IgnoreTxs, BlockHash, #dbs{db = Db} = DBs) ->
+int_get_candidate(MaxGas, IgnoreTxs, BlockHash, #dbs{db = Db} = DBs, Opts) ->
     {Trees, Header} = get_trees_and_header(BlockHash),
     lager:debug("size(Db) = ~p", [ets:info(Db, size)]),
     MinMinerGasPrice = aec_tx_pool:minimum_miner_gas_price(),
     MinTxGas = aec_governance:min_tx_gas(),
-    Acc0     = #{ ignore_txs => IgnoreTxs, tree => gb_trees:empty(), txs => [], bad_txs => [] },
+    Acc0     = #{ ignore_txs => IgnoreTxs, tree => gb_trees:empty(), txs => [], bad_txs => []
+                  %% Memoises the accounts-tree lookups of this selection.
+                , accounts => #{}
+                  %% Read once per pass rather than once per transaction
+                  %% examined: both resolve through setup:get_env, which walks
+                  %% the whole user config map on every call, so on a
+                  %% configured node they cost as much as the accounts-tree
+                  %% lookup just memoised away.
+                , nonce_offset => nonce_offset()
+                , invalid_tx_ttl => invalid_tx_ttl()
+                , deadline => maps:get(deadline, Opts, infinity), expired => false },
     {ok, RemGas, Acc} = int_get_candidate(Db, MaxGas, MinTxGas, MinMinerGasPrice, Trees,
                                           Header, DBs, Acc0),
     {ok, _, Acc1} = int_get_candidate(
                       DBs#dbs.visited_db, RemGas, MinTxGas, MinMinerGasPrice, Trees, Header,
                       DBs, Acc),
-    #{ tree := AccTree, txs := AccTxs, bad_txs := AccBadTxs } = Acc1,
+    #{ tree := AccTree, txs := AccTxs, bad_txs := AccBadTxs, expired := Expired } = Acc1,
 
     %% Move Txs to visited *after* revisiting visited!
     AllVisited = gb_trees:values(AccTree) ++ lists:reverse(AccTxs) ++ lists:reverse(AccBadTxs),
@@ -577,7 +627,7 @@ int_get_candidate(MaxGas, IgnoreTxs, BlockHash, #dbs{db = Db} = DBs) ->
                 TxX
             end || {DbX, KeyX, TxX} <- AllVisited ],
 
-    {ok, Txs}.
+    {ok, Txs, #{ expired => Expired }}.
 
 get_trees_and_header(BlockHash) ->
     aec_db:ensure_dirty(
@@ -587,6 +637,10 @@ get_trees_and_header(BlockHash) ->
               {Trees, Header}
       end).
 
+int_get_candidate(_Db, Gas, _MinTxGas, _MinMinerGasPrice, _Trees, _Header, _DBs,
+                  #{expired := true} = Acc) ->
+    %% An earlier pass ran out of time - do not start walking another table.
+    {ok, Gas, Acc};
 int_get_candidate(Db, Gas, MinTxGas, MinMinerGasPrice, Trees, Header, DBs, Acc)
   when Gas > MinTxGas ->
     Pat = [{ '_', [], ['$_'] }],
@@ -604,11 +658,27 @@ int_get_candidate_fold(Gas, MinTxGas, MinMinerGasPrice, Db, Dbs = #dbs{}, {Txs, 
                        AccountsTree, Height, Protocol, Acc) when Gas > MinTxGas ->
     {RemGas, NewAcc} = fold_txs(Txs, Gas, MinTxGas, MinMinerGasPrice, Db, Dbs,
                                 AccountsTree, Height, Protocol, Acc),
-    int_get_candidate_fold(RemGas, MinTxGas, MinMinerGasPrice, Db, Dbs, ets:select(Cont),
-                           AccountsTree, Height, Protocol, NewAcc);
+    %% Checked once per select chunk rather than per transaction: a chunk is a
+    %% bounded amount of work, and this keeps the clock out of the inner loop.
+    case deadline_expired(NewAcc) of
+        true ->
+            lager:debug("candidate selection stopped at its deadline", []),
+            {ok, RemGas, NewAcc#{ expired := true }};
+        false ->
+            int_get_candidate_fold(RemGas, MinTxGas, MinMinerGasPrice, Db, Dbs, ets:select(Cont),
+                                   AccountsTree, Height, Protocol, NewAcc)
+    end;
 int_get_candidate_fold(RemGas, _GL, _MMGP, _Db, _Dbs, '$end_of_table', _AccountsTree,
                        _Height, _Protocol, Acc) ->
     {ok, RemGas, Acc}.
+
+%% Matched explicitly rather than compared loosely: under Erlang term order
+%% every atom is greater than every number, so a stray atom deadline would
+%% never compare as expired and would disable the bound without a word.
+deadline_expired(#{deadline := infinity}) ->
+    false;
+deadline_expired(#{deadline := Deadline}) when is_integer(Deadline) ->
+    erlang:monotonic_time(millisecond) >= Deadline.
 
 fold_txs([Tx|Txs], Gas, MinTxGas, MinMinerGasPrice, Db, Dbs, AccountsTree, Height, Protocol, Acc) ->
     if Gas > MinTxGas ->
@@ -625,7 +695,7 @@ fold_txs([], Gas, _, _, _, _, _, _, _, Acc) ->
 int_get_candidate_({?KEY(_, _, Account, Nonce, TxHash) = Key, TxRec},
                    Gas, MinMinerGasPrice, Db, Dbs, AccountsTree, Height, Protocol,
                    Acc = #{ tree := AccTree, ignore_txs := IgnoreTxs }) ->
-    case lists:member(TxHash, IgnoreTxs) of
+    case maps:is_key(TxHash, IgnoreTxs) of
         true ->
             {Gas, Acc};
         false ->
@@ -643,14 +713,31 @@ int_get_candidate_({?KEY(_, _, Account, Nonce, TxHash) = Key, TxRec},
 check_candidate(Db, #dbs{gc_db = GCDb} = _Dbs,
                 ?KEY(_, _, Account, Nonce, TxHash) = Key, Tx,
                 AccountsTree, Height, Gas, MinMinerGasPrice, Protocol,
-                Acc = #{ tree := AccTree, txs := AccTxs }) ->
+                Acc0 = #{ tree := AccTree, txs := AccTxs, accounts := Cache0,
+                          nonce_offset := Offset, invalid_tx_ttl := InvalidTxTTL }) ->
     Tx1 = aetx_sign:tx(Tx),
     TxTTL = aetx:ttl(Tx1),
     TxGas = aetx:gas_limit(Tx1, Height, Protocol),
-    case Height < TxTTL andalso TxGas > 0
-         andalso ok =:= int_check_account(Tx, AccountsTree, check_candidate)
-         andalso MinMinerGasPrice =< aetx:min_gas_price(Tx1, Height, Protocol) of
-        true ->
+    %% Same checks in the same short-circuiting order as before, but carrying
+    %% the account lookup cache through them.
+    {Outcome, Cache} =
+        case Height < TxTTL andalso TxGas > 0 of
+            false ->
+                {invalid, Cache0};
+            true ->
+                case int_check_account(Tx, AccountsTree, check_candidate, Cache0, Offset) of
+                    {ok, Cache1} ->
+                        case MinMinerGasPrice =< aetx:min_gas_price(Tx1, Height, Protocol) of
+                            false -> {invalid, Cache1};
+                            true  -> check_affordable(Tx1, AccountsTree, Cache1)
+                        end;
+                    {{error, _}, Cache1} ->
+                        {invalid, Cache1}
+                end
+        end,
+    Acc = Acc0#{ accounts := Cache },
+    case Outcome of
+        ok ->
             case Gas - TxGas of
                 RemGas when RemGas >= 0 ->
                     case Nonce of
@@ -664,10 +751,76 @@ check_candidate(Db, #dbs{gc_db = GCDb} = _Dbs,
                     %% into the gas limit.
                     {Gas, Acc}
             end;
-        false ->
+        {defer, _Reason} ->
+            %% Cannot apply against this block state, but very likely can later.
+            %% Leave the gas budget alone and leave the transaction where it is,
+            %% so the next build reconsiders it from the top - but mark it for
+            %% GC, so one that never becomes applicable cannot sit in the pool
+            %% until the two week tx_ttl. Marking only ever lowers an existing
+            %% deadline, so this can never extend anything's life.
+            enter_tx_gc(GCDb, TxHash, Key, Height + InvalidTxTTL),
+            {Gas, Acc};
+        invalid ->
             %% This is not valid anymore.
-            enter_tx_gc(GCDb, TxHash, Key, Height + invalid_tx_ttl()),
+            enter_tx_gc(GCDb, TxHash, Key, Height + InvalidTxTTL),
             {Gas, Acc#{ bad_txs := [{Db, Key, Tx} | maps:get(bad_txs, Acc)] }}
+    end.
+
+%% A check selection can make that push-time validation cannot, because it
+%% depends on the block state this candidate is being built on: whether the
+%% origin can cover what the transaction reserves. Nothing checked this
+%% anywhere, which is what let a transaction that cannot apply reserve most of
+%% a micro block, fail, and send the refill loop around again.
+%%
+%% This does not mean the transaction is bad - the account can still be funded
+%% - so it defers rather than rejects.
+%%
+%% Deliberately conservative: it defers only when the transaction definitely
+%% cannot apply, because a wrong answer here withholds a valid transaction from
+%% the block. Anything it cannot judge is left to apply, which is what happened
+%% to every transaction before this existed.
+check_affordable(Tx, Source, Cache0) ->
+    case gas_reserving_cost(Tx) of
+        unknown ->
+            {ok, Cache0};
+        Required ->
+            %% Only unwrapped contract transactions get here, so the outer
+            %% origin is the account that pays.
+            {Lookup, Cache} = get_account(aetx:origin(Tx), Source, Cache0),
+            case Lookup of
+                {value, Account} ->
+                    case aec_accounts:balance(Account) >= Required of
+                        true  -> {ok, Cache};
+                        false -> {{defer, insufficient_funds}, Cache}
+                    end;
+                _ ->
+                    %% No account state to judge against.
+                    {ok, Cache}
+            end
+    end.
+
+%% What the origin has to be able to cover, for transactions that reserve
+%% contract gas. That gas is charged to the caller on top of the fee and is no
+%% part of it, which is what let an account holding nothing reserve an entire
+%% micro block - and it is the only case where selecting a transaction that
+%% cannot apply costs the block more than the transaction's own base gas.
+%%
+%% Wrapped transactions spread the cost over more than one account - the payer
+%% of a paying-for covers the inner fee, each layer of a GA meta chain pays for
+%% its own - so they report unknown rather than charge all of it to the
+%% innermost origin.
+gas_reserving_cost(Tx) ->
+    case aetx:specialize_type(Tx) of
+        {contract_call_tx, CTx} ->
+            aetx:fee(Tx) + aect_call_tx:amount(CTx)
+                + aect_call_tx:gas(CTx) * aect_call_tx:gas_price(CTx);
+        {contract_create_tx, CTx} ->
+            aetx:fee(Tx) + aect_create_tx:amount(CTx) + aect_create_tx:deposit(CTx)
+                + aect_create_tx:gas(CTx) * aect_create_tx:gas_price(CTx);
+        {ga_attach_tx, GTx} ->
+            aetx:fee(Tx) + aega_attach_tx:gas(GTx) * aega_attach_tx:gas_price(GTx);
+        _ ->
+            unknown
     end.
 
 move_to_visited(VDb, #dbs{visited_db = VDb}, _) ->
@@ -1130,10 +1283,18 @@ check_account(Tx, _TxHash, _Block, BlockHash, _Trees, Event) ->
     int_check_account(Tx, {block_hash, BlockHash}, Event).
 
 int_check_account(Tx, Source, Event) ->
-    case int_check_account_nonce(Tx, Source, Event) of
-        ok ->
-            int_check_meta_gas(Tx);
-        {error, _} = Err -> Err
+    {Res, _Cache} = int_check_account(Tx, Source, Event, #{}, nonce_offset()),
+    Res.
+
+%% Cache memoises Source lookups by pubkey and Offset is the nonce offset the
+%% caller has already read. Both are only valid for as long as Source is, i.e.
+%% within a single selection pass over a fixed accounts tree.
+int_check_account(Tx, Source, Event, Cache, Offset) ->
+    case int_check_account_nonce(Tx, Source, Event, Cache, Offset) of
+        {ok, Cache1} ->
+            {int_check_meta_gas(Tx), Cache1};
+        {{error, _} = Err, Cache1} ->
+            {Err, Cache1}
     end.
 
 int_check_meta_gas(SignedTx) ->
@@ -1159,33 +1320,35 @@ int_check_meta_gas(SignedTx, MaxAuthFunGas0) ->
         _ -> ok
     end.
 
-int_check_account_nonce(Tx, Source, Event) ->
+int_check_account_nonce(Tx, Source, Event, Cache, Offset) ->
     CheckNonce = nonce_check_by_event(Event),
     %% Check is conservative and only rejects certain cases
     Unsigned = aetx_sign:innermost_tx(Tx),
     TxNonce = aetx:nonce(Unsigned),
     case aetx:origin(Unsigned) of
         undefined ->
-            {error, no_origin};
+            {{error, no_origin}, Cache};
         Pubkey when is_binary(Pubkey) ->
-            case get_account(Pubkey, Source) of
-                {error, no_state_trees} -> nonce_baseline_check(TxNonce, CheckNonce);
-                none -> nonce_baseline_check(TxNonce, CheckNonce);
-                {value, Account} ->
-                    Offset   = nonce_offset(),
-                    AccNonce = aec_accounts:nonce(Account),
-                    AccType  = aec_accounts:type(Account),
-                    if
-                        AccType == generalized andalso TxNonce =:= 0 ->
-                            ok;
-                        AccType == generalized ->
-                            {error, generalized_account_cant_sign_non_meta_tx};
-                        TxNonce =< AccNonce -> {error, nonce_too_low};
-                        TxNonce =< (AccNonce + Offset) -> ok;
-                        TxNonce >  (AccNonce + Offset) andalso not CheckNonce -> ok;
-                        TxNonce >  (AccNonce + Offset) -> {error, nonce_too_high}
-                    end
-            end
+            {Lookup, Cache1} = get_account(Pubkey, Source, Cache),
+            {int_check_nonce(Lookup, TxNonce, CheckNonce, Offset), Cache1}
+    end.
+
+int_check_nonce({error, no_state_trees}, TxNonce, CheckNonce, _Offset) ->
+    nonce_baseline_check(TxNonce, CheckNonce);
+int_check_nonce(none, TxNonce, CheckNonce, _Offset) ->
+    nonce_baseline_check(TxNonce, CheckNonce);
+int_check_nonce({value, Account}, TxNonce, CheckNonce, Offset) ->
+    AccNonce = aec_accounts:nonce(Account),
+    AccType  = aec_accounts:type(Account),
+    if
+        AccType == generalized andalso TxNonce =:= 0 ->
+            ok;
+        AccType == generalized ->
+            {error, generalized_account_cant_sign_non_meta_tx};
+        TxNonce =< AccNonce -> {error, nonce_too_low};
+        TxNonce =< (AccNonce + Offset) -> ok;
+        TxNonce >  (AccNonce + Offset) andalso not CheckNonce -> ok;
+        TxNonce >  (AccNonce + Offset) -> {error, nonce_too_high}
     end.
 
 nonce_check_by_event(tx_created) -> true;
@@ -1202,6 +1365,18 @@ nonce_baseline_check(TxNonce, _) ->
 
 get_account(AccountKey, How) ->
     aec_db:ensure_dirty(fun() -> get_account_(AccountKey, How) end).
+
+%% Every mempool entry visited by candidate selection would otherwise cost one
+%% accounts-tree traversal, even though a pool is typically many transactions
+%% over far fewer accounts.
+get_account(AccountKey, How, Cache) ->
+    case Cache of
+        #{AccountKey := Res} ->
+            {Res, Cache};
+        #{} ->
+            Res = get_account(AccountKey, How),
+            {Res, Cache#{AccountKey => Res}}
+    end.
 
 get_account_(AccountKey, {account_trees, AccountsTrees}) ->
     aec_accounts_trees:lookup(AccountKey, AccountsTrees);

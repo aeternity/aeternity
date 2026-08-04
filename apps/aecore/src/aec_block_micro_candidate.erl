@@ -9,6 +9,7 @@
 -export([ apply_block_txs/3
         , apply_block_txs_strict/3
         , create/1
+        , create/2
         , create_pos/2
         , update/3
         , trees/1
@@ -16,7 +17,9 @@
 
 -export([ min_t_after_keyblock/0]).
 
--export_type([block_info/0]).
+-export([ candidate_timeout/0 ]).
+
+-export_type([block_info/0, create_opts/0]).
 
 -ifdef(TEST).
 -export([create_with_state/4]).
@@ -25,27 +28,47 @@
 -include("blocks.hrl").
 -include_lib("aecontract/include/hard_forks.hrl").
 
+%% Time one micro-block candidate may spend packing before it is published
+%% with whatever it has. Well above a healthy build, well below the default
+%% micro block cycle.
+-define(DEFAULT_CANDIDATE_TIMEOUT, 1000).
+
 -opaque block_info() :: #{trees := aec_trees:trees(),
                           txs_tree := aec_txs_trees:txs_tree(),
                           tx_env := aetx_env:env()
                          }.
 
+%% timeout bounds how long selection may run for this build. 0 and infinity
+%% both mean unbounded; absent means whatever
+%% mining.micro_block_candidate_timeout says. Callers that are not the mining
+%% loop - on-demand consensus, dev mode, tests - are not racing the micro
+%% block cycle and pass infinity, because for them a short block is pure loss.
+-type create_opts() :: #{ timeout => non_neg_integer() | infinity }.
+
 %% -- API functions ----------------------------------------------------------
 
 -spec create(aec_blocks:block() | aec_blocks:block_header_hash()) ->
         {ok, aec_blocks:block(), block_info()} | {error, term()}.
-create(BlockInfo) ->
-    case get_blocks(BlockInfo) of
-        {ok, PrevBlock, PrevKeyBlock} -> int_create(PrevBlock, PrevKeyBlock);
+create(BlockOrHash) ->
+    create(BlockOrHash, #{}).
+
+-spec create(aec_blocks:block() | aec_blocks:block_header_hash(), create_opts()) ->
+        {ok, aec_blocks:block(), block_info()} | {error, term()}.
+create(BlockOrHash, Opts) ->
+    MaxGas = aec_governance:block_gas_limit(),
+    case get_blocks(BlockOrHash) of
+        {ok, PrevBlock, PrevKeyBlock} -> int_create(PrevBlock, PrevKeyBlock, MaxGas, Opts);
         Error = {error, _}            -> Error
     end.
 
 -spec create_pos(aec_blocks:block() | aec_blocks:block_header_hash(), non_neg_integer()) ->
         {ok, aec_blocks:block(), block_info()} | {error, term()}.
+%% The Hyperchains leader path, which races its own block time just as the
+%% mining loop races the micro block cycle, so it takes the configured bound.
 create_pos(BlockInfo, GasOffset) ->
     MaxGas = aec_governance:block_gas_limit() - GasOffset,
     case get_blocks(BlockInfo) of
-        {ok, PrevKeyBlock, PrevKeyBlock} -> int_create(PrevKeyBlock, PrevKeyBlock, MaxGas);
+        {ok, PrevKeyBlock, PrevKeyBlock} -> int_create(PrevKeyBlock, PrevKeyBlock, MaxGas, #{});
         {ok, _, _}                       -> {error, pos_mb_only_on_keyblock};
         Error = {error, _}               -> Error
     end.
@@ -123,11 +146,7 @@ trees(#{trees := Trees}) ->
 
 %% -- Internal functions -----------------------------------------------------
 
-int_create(PrevBlock, KeyBlock) ->
-    MaxGas = aec_governance:block_gas_limit(),
-    int_create(PrevBlock, KeyBlock, MaxGas).
-
-int_create(PrevBlock, KeyBlock, MaxGas) ->
+int_create(PrevBlock, KeyBlock, MaxGas, Opts) ->
     MBEnv = #{prev_hash := PrevBlockHash} = create_micro_block_env(PrevBlock, KeyBlock),
     case aec_chain:get_block_state(PrevBlockHash) of
         {ok, Trees} ->
@@ -138,7 +157,8 @@ int_create(PrevBlock, KeyBlock, MaxGas) ->
             TxEnv = aetx_env:set_height(TxEnv0, Height),
             PrevNode = aec_chain_state:wrap_block(PrevBlock),
             Trees1 = ConsensusModule:state_pre_transform_micro_node(Height, PrevNode, Trees),
-            int_pack_block(Height, MaxGas, [], [], MBEnv, TxEnv, Trees1, []);
+            int_pack_block(Height, MaxGas, #{}, [], MBEnv, TxEnv, Trees1, [],
+                           build_deadline(Opts));
         error ->
             {error, block_state_not_found}
     end.
@@ -160,18 +180,106 @@ create_tx_env(#{prev_block := PrevBlock, prev_hash := PrevBlockHash,
     Time = determine_new_time(PrevBlock),
     aetx_env:tx_env_from_key_header(KeyHeader, KeyBlockHash, Time, PrevBlockHash).
 
-int_pack_block(Height, GasAvailable, TxHashes, Txs, MBEnv, TxEnv, Trees, Events) ->
+%% The transactions and events are accumulated as a reversed list of
+%% per-pass batches and concatenated once at the end, and the packed hashes
+%% as a set. Appending to all three accumulators on every pass made a long
+%% refill loop quadratic in the number of transactions already packed.
+%% A pass whose transactions all fail to apply consumes no gas, so the loop's
+%% only other way to end is the pool running out of candidates - which, with a
+%% large pool of transactions that each reserve most of a block, means one full
+%% pool walk per such transaction. The deadline bounds the time one candidate
+%% may spend regardless of how the pool is shaped. It only ever stops further
+%% selection, never an apply in progress, so the candidate stays consistent.
+int_pack_block(Height, GasAvailable, PackedHashes, RevTxs, MBEnv, TxEnv, Trees, RevEvents,
+               Deadline) ->
     #{prev_hash := PrevBlockHash, key_block := KeyBlock} = MBEnv,
-    case aec_tx_pool:get_candidate(GasAvailable, TxHashes, PrevBlockHash) of
-        {ok, []} ->
-            int_create_block(Height, MBEnv, TxEnv, Txs, Trees, Events);
-        {ok, Txs0} ->
+    Selected =
+        case deadline_expired(Deadline) of
+            true ->
+                %% Out of time to even ask for more. Reported in the same place
+                %% as the pool's own mid-walk stop, below.
+                {ok, [], #{expired => true}};
+            false ->
+                aec_tx_pool:get_candidate(GasAvailable, PackedHashes, PrevBlockHash,
+                                          #{deadline => Deadline})
+        end,
+    case Selected of
+        {ok, [], #{expired := Expired}} ->
+            %% Nothing more to pack: either the pool ran out, which is how a
+            %% healthy build ends, or time did - here or mid-walk inside the
+            %% pool, which hands back an empty selection just the same. Only
+            %% the latter means the block is smaller than it could have been.
+            case Expired of
+                true  -> report_deadline_expired(RevTxs);
+                false -> ok
+            end,
+            int_create_block(Height, MBEnv, TxEnv, join_batches(RevTxs), Trees,
+                             join_batches(RevEvents));
+        {ok, Txs0, _SelectResult} ->
             {ok, Txs1, FailedTxs1, Trees1, Events1} = int_apply_block_txs(Txs0, Trees, TxEnv, false),
             report_failed_txs(FailedTxs1),
-            TxHashes1 = [ aetx_sign:hash(Tx) || Tx <- Txs0 ],
-            int_pack_block(Height, GasAvailable - used_gas(KeyBlock, Txs1, Trees1), TxHashes ++ TxHashes1,
-                           Txs ++ Txs1, MBEnv, TxEnv, Trees1, Events ++ Events1)
+            PackedHashes1 = add_packed_hashes(Txs0, PackedHashes),
+            int_pack_block(Height, GasAvailable - used_gas(KeyBlock, Txs1, Trees1), PackedHashes1,
+                           [Txs1 | RevTxs], MBEnv, TxEnv, Trees1, [Events1 | RevEvents],
+                           Deadline)
     end.
+
+build_deadline(Opts) ->
+    case maps:get(timeout, Opts, candidate_timeout()) of
+        infinity -> infinity;
+        0        -> infinity;
+        Timeout when is_integer(Timeout), Timeout > 0 ->
+            erlang:monotonic_time(millisecond) + Timeout;
+        Invalid ->
+            %% Only reachable by setting the application environment directly:
+            %% the config schema admits a non-negative integer only. Fall back
+            %% rather than let it raise, because every candidate build runs in
+            %% a worker whose crash the generator absorbs - a node that had
+            %% silently stopped producing micro blocks would be the symptom.
+            %% At most one line per micro block cycle.
+            lager:error("Invalid mining.micro_block_candidate_timeout ~p, "
+                        "using the default of ~p ms", [Invalid, ?DEFAULT_CANDIDATE_TIMEOUT]),
+            erlang:monotonic_time(millisecond) + ?DEFAULT_CANDIDATE_TIMEOUT
+    end.
+
+%% Anything other than infinity must be a monotonic millisecond reading. Match
+%% it explicitly: under Erlang term order every atom compares greater than
+%% every number, so a stray atom here would disable the bound silently.
+deadline_expired(infinity) -> false;
+deadline_expired(Deadline) when is_integer(Deadline) ->
+    erlang:monotonic_time(millisecond) >= Deadline.
+
+%% Selection stopped short of what the pool could have offered. This is the
+%% only symptom an operator sees - the block is simply smaller - so say so out
+%% loud. Called once per build, for a stop on either side of the pool boundary:
+%% no further pass was started, or a pass stopped between select chunks.
+report_deadline_expired(RevTxs) ->
+    Passes = length(RevTxs),
+    Packed = lists:sum([length(Batch) || Batch <- RevTxs]),
+    %% At most one line per candidate build, which the micro block cycle bounds.
+    lager:warning("Micro block candidate packing stopped at its deadline after "
+                  "~p pass(es) with ~p transaction(s) packed. Raise or disable "
+                  "mining.micro_block_candidate_timeout if this persists.",
+                  [Passes, Packed]),
+    aec_metrics:try_update([ae,epoch,aecore,tx_pool,candidate,expired], 1),
+    aec_metrics:try_update([ae,epoch,aecore,tx_pool,candidate,expired_txs], Packed),
+    ok.
+
+%% The configured value, before it is turned into a deadline. Exported so that
+%% startup validation checks what a build will actually use rather than only
+%% what the user wrote, the two differing whenever the key is left unset.
+%% Unvalidated: whatever the configuration holds, which build_deadline/1 is
+%% responsible for making sense of.
+candidate_timeout() ->
+    aeu_env:user_config_or_env([<<"mining">>, <<"micro_block_candidate_timeout">>],
+                               aecore, micro_block_candidate_timeout,
+                               ?DEFAULT_CANDIDATE_TIMEOUT).
+
+add_packed_hashes(Txs, PackedHashes) ->
+    lists:foldl(fun(Tx, Acc) -> Acc#{aetx_sign:hash(Tx) => []} end, PackedHashes, Txs).
+
+join_batches(RevBatches) ->
+    lists:append(lists:reverse(RevBatches)).
 
 -ifdef(TEST).
 int_create_block(Height, MBEnv, TxEnv, Txs, Trees) ->
