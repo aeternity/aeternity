@@ -63,7 +63,11 @@ ensure_env() ->
         Fork when Fork =/= undefined ->
             application:set_env(aecore, fork, Fork);
         undefined ->
-            ok
+            %% Drop a fork left by an earlier run rather than leaving it in
+            %% place: protocol_effective_at_height/1 reads this key live, for
+            %% every block, and a config that no longer configures fork
+            %% signalling must not keep signalling under the previous one.
+            application:unset_env(aecore, fork)
     end.
 
 %% This function is supposed to be used only when:
@@ -250,7 +254,11 @@ protocol_effective_at_height(Height, Protocols) ->
     ProtocolsEffectiveSinceBeforeOrAtHeight = [_|_] =
         lists:takewhile(fun({_, H}) -> Height >= H end, SortedProtocols),
     {Protocol, _ForkHeight} = lists:last(ProtocolsEffectiveSinceBeforeOrAtHeight),
-    maybe_protocol_from_fork(aeu_env:get_env(aecore, fork), Height, Protocol).
+    %% Read the app env directly rather than through aeu_env:get_env/2:
+    %% `aecore > fork` is written only by ensure_env/0 above, as a map of atoms
+    %% to integers, so setup's value expansion has nothing to expand - and it
+    %% rebuilds the whole term on every call. This runs for every block.
+    maybe_protocol_from_fork(application:get_env(aecore, fork), Height, Protocol).
 
 maybe_protocol_from_fork(undefined, _Heigth, Protocol) ->
     %% No community fork configured.

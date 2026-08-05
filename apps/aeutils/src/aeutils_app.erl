@@ -18,4 +18,8 @@ prep_stop(_State) ->
     ok.
 
 stop(_State) ->
+    %% The cache holds what `$user_map'/`$user_config' hold, so it has to go
+    %% when they do: unloading aeutils clears the app env but would leave the
+    %% cache serving the config of an application that is no longer there.
+    ok = aeu_env:invalidate_config_cache(),
     ok.

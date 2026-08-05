@@ -60,8 +60,15 @@ allocated_shares_and_beneficiaries(BenefShares0) ->
 cfg(Key, Default) ->
     aeu_env:user_config([<<"chain">>, Key], Default).
 
+%% Read the app env directly rather than through aeu_env:get_env/2,3. These
+%% keys are written from inside the node, never read in from the config file:
+%% dev_reward_enabled, dev_reward_allocated_shares and dev_reward_beneficiaries
+%% by ensure_env/0 above, dev_reward_activated only by test setup (see
+%% activated/1 below). They hold booleans, integers and maps of decoded public
+%% keys, so setup's value expansion has nothing to expand - and it rebuilds the
+%% whole term on every call. split/3 reads four of them for every key block.
 env(Key, Default) ->
-    aeu_env:get_env(aecore, Key, Default).
+    application:get_env(aecore, Key, Default).
 
 default_beneficiaries() ->
     case aec_governance:get_network_id() of
@@ -84,7 +91,7 @@ total_shares() ->
     ?TOTAL_SHARES.
 
 allocated_shares(ProtocolVsn) ->
-    {ok, V} = aeu_env:get_env(aecore, dev_reward_allocated_shares),
+    {ok, V} = application:get_env(aecore, dev_reward_allocated_shares),
     maps:get(ProtocolVsn, V).
 
 activated(Protocol) ->

@@ -66,7 +66,7 @@ int_create_block(Height, PrevBlockHash, PrevBlock, Miner, Beneficiary, Trees, Pr
                 {PrevBlockHash, PrevBlock}
         end,
     PrevTarget = aec_blocks:target(PrevKeyBlock),
-    Fork = aeu_env:get_env(aecore, fork, undefined),
+    Fork = application:get_env(aecore, fork, undefined),
     InfoField = aec_chain_state:get_info_field(Height, Fork),
     aec_blocks:new_key(
         Height,

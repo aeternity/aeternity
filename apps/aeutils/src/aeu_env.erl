@@ -23,6 +23,7 @@
 -export([find_config/2]).
 -export([nested_map_get/2]).
 -export([read_config/0]).
+-export([invalidate_config_cache/0]).
 -export([apply_os_env/0,
          apply_os_env/3]).
 -export([check_env/2]).
@@ -41,6 +42,12 @@
 
 -type env_key() :: atom() | list().
 -type config_key() :: binary() | [binary()].
+
+%% The user config, as stored, and its {K,V} tree form. What is held here is the
+%% stored term itself, not an expanded one: it is only populated when setup's
+%% value expansion cannot change the config - see cache_expanded_config/2.
+-define(PT_USER_MAP,    {?MODULE, user_map}).
+-define(PT_USER_CONFIG, {?MODULE, user_config}).
 
 %% This function is similar to application:get_env/2, except
 %% 1. It uses the setup:get_env/2 function, which supports a number
@@ -82,13 +89,16 @@ get_env_l(_, _) ->
 
 -spec user_config() -> config_tree().
 user_config() ->
-    setup:get_env(aeutils, '$user_config', []).
+    case persistent_term:get(?PT_USER_CONFIG, undefined) of
+        undefined -> setup:get_env(aeutils, '$user_config', []);
+        ConfigTree -> ConfigTree
+    end.
 
 -spec user_config(list() | binary()) -> undefined | {ok, any()}.
 user_config(Key) when is_list(Key) ->
     find_config(Key, [user_config]);
 user_config(Key) when is_binary(Key) ->
-    get_env(aeutils, ['$user_config',Key]).
+    get_env_l([Key], user_config()).
 
 -spec user_config(list() | binary(), any()) -> any().
 user_config(Key, Default) ->
@@ -164,7 +174,19 @@ find_config_(_, {value, V}        ) -> {ok, V}.
 %% which is then transformed to the Key-Value tree used in user_config().
 -spec user_map() -> map().
 user_map() ->
-    setup:get_env(aeutils, '$user_map', #{}).
+    case persistent_term:get(?PT_USER_MAP, undefined) of
+        undefined -> setup:get_env(aeutils, '$user_map', #{});
+        ConfigMap -> ConfigMap
+    end.
+
+%% Drop the cached user config. Called whenever the config is rewritten, and
+%% exported for tests that install a config without going through
+%% cache_config/1 - a stale cache would shadow what they set up.
+-spec invalidate_config_cache() -> ok.
+invalidate_config_cache() ->
+    _ = persistent_term:erase(?PT_USER_MAP),
+    _ = persistent_term:erase(?PT_USER_CONFIG),
+    ok.
 
 -spec user_map([any()] | any()) -> {ok, any()} | undefined.
 user_map(Key) when is_list(Key) ->
@@ -555,7 +577,49 @@ cache_config(ConfigMap) when is_map(ConfigMap) ->
     set_env(aeutils, '$user_map', ConfigMap),
     ConfigTree = to_tree(ConfigMap),
     set_env(aeutils, '$user_config', ConfigTree),
+    cache_expanded_config(ConfigMap, ConfigTree),
     ok.
+
+%% setup's value expansion walks and rebuilds the whole config on every read,
+%% which is why the readers above go through a cache. With no '$' anywhere in
+%% the config there is nothing for it to expand, the expansion is the identity,
+%% and the stored term can be served directly. Anything expandable keeps going
+%% through setup on every read, exactly as before - including the $LOG_DIR that
+%% aeu_logging_env rewrites at a later setup hook than the one that reads the
+%% config, which is what makes expanding here, once, unsafe in the general case.
+cache_expanded_config(ConfigMap, ConfigTree) ->
+    %% The tree is to_tree/1 of the map, so it holds the same keys and values
+    %% in a different shape; checking the map settles both.
+    case is_expandable(ConfigMap) of
+        false ->
+            persistent_term:put(?PT_USER_MAP, ConfigMap),
+            persistent_term:put(?PT_USER_CONFIG, ConfigTree);
+        true ->
+            invalidate_config_cache()
+    end,
+    ok.
+
+is_expandable(Term) ->
+    %% Anything that cannot be classified falls back to setup, so a term this
+    %% does not understand must read as expandable.
+    try is_expandable_(Term)
+    catch _:_ -> true
+    end.
+
+is_expandable_(B) when is_binary(B) ->
+    binary:match(B, <<"$">>) =/= nomatch;
+is_expandable_(M) when is_map(M) ->
+    lists:any(fun({K, V}) -> is_expandable_(K) orelse is_expandable_(V) end,
+              maps:to_list(M));
+is_expandable_(T) when is_tuple(T) ->
+    lists:any(fun is_expandable_/1, tuple_to_list(T));
+is_expandable_(L) when is_list(L) ->
+    case setup_lib:is_string(L) of
+        true  -> lists:member($$, L);
+        false -> lists:any(fun is_expandable_/1, L)
+    end;
+is_expandable_(_) ->
+    false.
 
 check_config_({yamerl_exception, _StackTrace} = Error) ->
     {error, Error};
