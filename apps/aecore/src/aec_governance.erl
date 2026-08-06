@@ -429,11 +429,21 @@ add_network_id_last(Payload) ->
 
 %% Resolving walks 'init' args and the user config tree - too expensive per
 %% signature verified and per FATE NETWORK_ID instruction. Pinned in a persistent
-%% term by the aecore setup hook, and cleared by aecore_app:stop/1, since setup
+%% term by the aecore setup hook, and again by aecore_app:start/2, since setup
 %% hooks run only once per VM.
 -spec ensure_env() -> ok.
 ensure_env() ->
-    persistent_term:put(?NETWORK_ID_CACHE_KEY, ?RESOLVE_NETWORK_ID()).
+    %% Resolve before the put: clearing first opens a window for readers, and
+    %% re-putting an unchanged value is free where a clear is a global sweep.
+    try ?RESOLVE_NETWORK_ID() of
+        NetworkId -> persistent_term:put(?NETWORK_ID_CACHE_KEY, NetworkId)
+    catch
+        Class:Reason:Stacktrace ->
+            %% Fail closed: an id resolved under a configuration that is already
+            %% gone must not outlive it. Resolving raises the same error again.
+            ok = clear_network_id_cache(),
+            erlang:raise(Class, Reason, Stacktrace)
+    end.
 
 -spec clear_network_id_cache() -> ok.
 clear_network_id_cache() ->

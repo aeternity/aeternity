@@ -14,6 +14,9 @@
 
 start(_StartType, _StartArgs) ->
     ok = lager:info("Starting aecore node"),
+    %% Re-pinned per aecore start; setup hooks run once per VM.
+    %% See aec_governance:ensure_env/0.
+    ok = aec_governance:ensure_env(),
     ok = aec_jobs_queues:start(),
     ok = application:ensure_started(mnesia),
     aecore_sup:start_link().
