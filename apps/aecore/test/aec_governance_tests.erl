@@ -135,18 +135,24 @@ set_resolved_network_id(NetworkId) ->
 %% Both failures are silent: a missing hook only costs the lookup again, a hook
 %% renumbered ahead of aeutils pins the schema default for the node's lifetime.
 setup_hook_test_() ->
-    {setup,
-     fun ensure_apps_loaded/0,
-     [{"The network id is pinned by a setup hook",
-       fun() ->
-               ?assertMatch([_], network_id_hook_phases())
-       end},
-      {"The hook runs after the config is read and before what derives from it",
-       fun() ->
-               [Phase] = network_id_hook_phases(),
-               ?assert(Phase > lists:max(normal_hook_phases(aeutils))),
-               ?assert(Phase < lists:min(normal_hook_phases(aecore) -- [Phase]))
-       end}]}.
+    [{"The network id is pinned by a setup hook",
+      fun() ->
+              ?assertMatch([_], network_id_hook_phases())
+      end},
+     {"The hook runs after the config is read and before what derives from it",
+      fun() ->
+              [Phase] = network_id_hook_phases(),
+              ?assert(Phase > lists:max(normal_hook_phases(aeutils))),
+              ?assert(Phase < lists:min(normal_hook_phases(aecore) -- [Phase]))
+      end},
+     {"Reading the hooks does not disturb the applications of the eunit VM",
+      fun() ->
+              Loaded = fun() -> lists:sort(application:loaded_applications()) end,
+              Before = Loaded(),
+              _ = normal_setup_hooks(aecore),
+              _ = normal_setup_hooks(aeutils),
+              ?assertEqual(Before, Loaded())
+      end}].
 
 network_id_hook_phases() ->
     [Phase || {Phase, {?TEST_MODULE, ensure_env, []}}
@@ -155,19 +161,16 @@ network_id_hook_phases() ->
 normal_hook_phases(App) ->
     [Phase || {Phase, _MFA} <- normal_setup_hooks(App)].
 
+%% Read from the .app file: loading aecore would leave it loaded for the rest of
+%% the eunit VM. Nothing overrides '$setup_hooks' from a sys.config, so the .app
+%% file is the only source there is.
 normal_setup_hooks(App) ->
-    {ok, Hooks} = application:get_env(App, '$setup_hooks'),
+    {env, Env} = lists:keyfind(env, 1, app_file(App)),
+    {'$setup_hooks', Hooks} = lists:keyfind('$setup_hooks', 1, Env),
     {normal, Normal} = lists:keyfind(normal, 1, Hooks),
     Normal.
 
-%% Reading an application's env needs it loaded, which a eunit run does not
-%% guarantee. Left loaded afterwards: unloading would drop the env that the
-%% sys.config of the run has set up for everybody else as well.
-ensure_apps_loaded() ->
-    lists:foreach(
-      fun(App) ->
-              case application:load(App) of
-                  ok                             -> ok;
-                  {error, {already_loaded, App}} -> ok
-              end
-      end, [aecore, aeutils]).
+app_file(App) ->
+    {ok, [{application, App, Props}]} =
+        file:consult(code:where_is_file(atom_to_list(App) ++ ".app")),
+    Props.
