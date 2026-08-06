@@ -10,9 +10,9 @@
 %% exported for eunit only
 -export([ run_bounded/2
         , resolve_timeout/1
-        , force_salus_for_profile/1
-        , maybe_force_salus_metering/2
-        , salus_gas_metering_enabled/0 ]).
+        , force_arcus_for_profile/1
+        , maybe_force_arcus_metering/2
+        , store_read_gas_metering_enabled/0 ]).
 
 -include("blocks.hrl").
 -include_lib("aecontract/include/aecontract.hrl").
@@ -38,13 +38,13 @@ dry_run(Top, Accounts, Txs) ->
 %% from block production/validation.
 dry_run(Top, Accounts, Txs, Opts) ->
     %% Read the profile before resolve_timeout/1 strips it: only estimate
-    %% profiles get the forward Salus metering; replay must stay historical.
-    ForceSalus = force_salus_for_profile(Opts),
+    %% profiles get the forward Arcus metering; replay must stay historical.
+    ForceArcus = force_arcus_for_profile(Opts),
     {TimeoutMs, Opts1} = resolve_timeout(Opts),
-    run_bounded(fun() -> dry_run_unbounded(Top, Accounts, Txs, Opts1, ForceSalus) end, TimeoutMs).
+    run_bounded(fun() -> dry_run_unbounded(Top, Accounts, Txs, Opts1, ForceArcus) end, TimeoutMs).
 
-dry_run_unbounded(Top, Accounts, Txs, Opts, ForceSalus) ->
-    try setup_dry_run(Top, Accounts, ForceSalus) of
+dry_run_unbounded(Top, Accounts, Txs, Opts, ForceArcus) ->
+    try setup_dry_run(Top, Accounts, ForceArcus) of
         {Env, Trees} -> dry_run_(Txs, Trees, Env, Opts)
     catch
         error:invalid_hash ->
@@ -151,19 +151,19 @@ run_worker(Fun, Caller, Tag) ->
 crash_reason(Reason) ->
     iolist_to_binary(io_lib:format("dry-run failed: ~120P", [Reason, 10])).
 
-setup_dry_run(Top, Accounts, ForceSalus) ->
+setup_dry_run(Top, Accounts, ForceArcus) ->
     {Env, Trees} = tx_env_and_trees(Top),
     Trees1 = add_accounts(Trees, [#{pub_key => ?MR_MAGIC, amount => ?BIG_AMOUNT} | Accounts]),
     Env1   = aetx_env:set_dry_run(Env, true),
-    Env2   = maybe_force_salus_metering(Env1, ForceSalus),
+    Env2   = maybe_force_arcus_metering(Env1, ForceArcus),
     {Env2, Trees1}.
 
-%% Only the estimate profiles (public/internal) meter forward at Salus. Profiles that
+%% Only the estimate profiles (public/internal) meter forward at Arcus. Profiles that
 %% must answer for a REAL protocol are pinned: 'replay' (Rosetta/indexer historical
-%% re-execution -- forcing Salus can flip a gas-tight call ok->out_of_gas and corrupt
+%% re-execution -- forcing Arcus can flip a gas-tight call ok->out_of_gas and corrupt
 %% event/balance reconstruction) and 'includability' (pool check -- must reflect the
 %% current chain, not the post-fork cost). Unknown profiles are pinned too (safe default).
-force_salus_for_profile(Opts) ->
+force_arcus_for_profile(Opts) ->
     case proplists:get_value(dry_run_profile, Opts, internal) of
         public        -> true;
         internal      -> true;
@@ -172,31 +172,31 @@ force_salus_for_profile(Opts) ->
         _             -> false
     end.
 
-%% Meter FATE store reads at the repriced Salus (v8) cost. Salus's only production
-%% behaviour is the store-read repricing (four >= Salus gate sites -- register read,
+%% Meter FATE store reads at the repriced Arcus (v7) cost. Arcus's only production
+%% behaviour is the store-read repricing (four >= Arcus gate sites -- register read,
 %% map lookup, map member, store-module select -- one feature), so this changes gas
 %% amounts only (never tx validity/ABI/VM version) and never commits. Step up only
 %% from Ceres+ so no other protocol gate (incl. the >= Ceres tx-validity gate) flips;
 %% pre-Ceres replay is exact. Caveat: `Top` is caller-controlled, so a caller could
 %% target a pre-Ceres height to dodge the repricing; that is left un-repriced by
 %% design (replay must be exact) -- an estimate-only metering floor is a follow-up.
-maybe_force_salus_metering(Env, true) ->
+maybe_force_arcus_metering(Env, true) ->
     Base = aetx_env:consensus_version(Env),
-    case salus_gas_metering_enabled()
+    case store_read_gas_metering_enabled()
          andalso Base >= ?CERES_PROTOCOL_VSN
-         andalso Base < ?SALUS_PROTOCOL_VSN of
-        true  -> aetx_env:set_consensus_version(Env, ?SALUS_PROTOCOL_VSN);
+         andalso Base < ?ARCUS_PROTOCOL_VSN of
+        true  -> aetx_env:set_consensus_version(Env, ?ARCUS_PROTOCOL_VSN);
         false -> Env
     end;
-maybe_force_salus_metering(Env, false) ->
+maybe_force_arcus_metering(Env, false) ->
     Env.
 
 %% Operator escape hatch; default on (the DoS-hardening needs it always-on since an
 %% attacker never opts in). This bounds a single call's store-read work; the
 %% aggregate concurrent-dry-run cap is still open -- dry-run DoS is hardened, not closed.
-salus_gas_metering_enabled() ->
-    aeu_env:user_config_or_env([<<"http">>, <<"dry_run">>, <<"salus_gas_metering">>],
-                               aehttp, [dry_run, salus_gas_metering], true).
+store_read_gas_metering_enabled() ->
+    aeu_env:user_config_or_env([<<"http">>, <<"dry_run">>, <<"store_read_gas_metering">>],
+                               aehttp, [dry_run, store_read_gas_metering], true).
 
 tx_env_and_trees(top) ->
     case aec_chain:top_block_hash() of

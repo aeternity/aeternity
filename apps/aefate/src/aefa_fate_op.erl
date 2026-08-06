@@ -3022,7 +3022,7 @@ store_map_lookup(Cache, MapId, Key, ES) ->
             {Store, ES1}  = aefa_fate:ensure_contract_store(Pubkey, ES),
             Aefa_stores   = aefa_engine_state:aefa_stores(ES1),
             ES2           = aefa_engine_state:spend_gas_for_store_values(1, ES1),
-            case aefa_engine_state:consensus_version(ES2) >= ?SALUS_PROTOCOL_VSN of
+            case aefa_engine_state:consensus_version(ES2) >= ?ARCUS_PROTOCOL_VSN of
                 true ->
                     %% Priced like the register-read path: charge-before-work
                     %% via the gas-aware store_map_lookup/5.
@@ -3055,7 +3055,7 @@ store_map_member(Cache, MapId, Key, ES) ->
             {Store, ES1}  = aefa_fate:ensure_contract_store(Pubkey, ES),
             Aefa_stores   = aefa_engine_state:aefa_stores(ES1),
             ES2           = aefa_engine_state:spend_gas_for_store_values(1, ES1),
-            case aefa_engine_state:consensus_version(ES2) >= ?SALUS_PROTOCOL_VSN of
+            case aefa_engine_state:consensus_version(ES2) >= ?ARCUS_PROTOCOL_VSN of
                 true ->
                     %% Same repricing as store_map_lookup/4 above.
                     GasLeft = aefa_engine_state:gas(ES2),

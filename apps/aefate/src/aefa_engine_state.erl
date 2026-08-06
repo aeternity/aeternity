@@ -192,11 +192,11 @@ new(Gas, Value, Spec, Stores, APIState, CodeCache, VMVersion) ->
 aefa_stores(#es{ consensus_version = Protocol }) ->
     aefa_stores_for_protocol(Protocol).
 
-%% Salus+ dispatches to the live aefa_stores module. Iris..Arcus are pinned
+%% Arcus+ dispatches to the live aefa_stores module. Iris..Ceres are pinned
 %% to the frozen aefa_stores_ceres snapshot so future aefa_stores edits
 %% cannot change replay of already-forked blocks. Pre-Iris keeps lima.
 -spec aefa_stores_for_protocol(non_neg_integer()) -> module().
-aefa_stores_for_protocol(Protocol) when Protocol >= ?SALUS_PROTOCOL_VSN ->
+aefa_stores_for_protocol(Protocol) when Protocol >= ?ARCUS_PROTOCOL_VSN ->
     aefa_stores;
 aefa_stores_for_protocol(Protocol) when Protocol >= ?IRIS_PROTOCOL_VSN ->
     aefa_stores_ceres;

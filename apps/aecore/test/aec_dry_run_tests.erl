@@ -114,13 +114,13 @@ dry_run_wiring_test_() ->
      end}.
 
 %%%===================================================================
-%%% Always-on Salus dry-run gas metering (the env-forcing mechanism).
+%%% Always-on Arcus dry-run gas metering (the env-forcing mechanism).
 %%%
-%%% Dry-run meters FATE store reads at the repriced Salus (v8) cost by
+%%% Dry-run meters FATE store reads at the repriced Arcus (v8) cost by
 %%% default, WITHOUT activating the fork and WITHOUT any response/SDK
 %%% change: only the dry-run env's metering protocol is stepped up, and
 %%% only from a Ceres-or-later base so nothing but the store-read repricing
-%%% (Salus's only production behaviour -- four >= Salus gate sites, one
+%%% (Arcus's only production behaviour -- four >= Arcus gate sites, one
 %%% feature) is applied. Estimate profiles only; replay stays historical.
 %%%===================================================================
 
@@ -129,64 +129,81 @@ ceres_dry_run_env() ->
 
 %% Estimate profiles force; real-protocol profiles (replay, includability) and
 %% unknown profiles do not.
-force_salus_for_profile_test() ->
-    ?assert(?TEST_MODULE:force_salus_for_profile([{dry_run_profile, public}])),
-    ?assert(?TEST_MODULE:force_salus_for_profile([{dry_run_profile, internal}])),
-    ?assert(?TEST_MODULE:force_salus_for_profile([])),  %% default profile = internal
-    ?assertNot(?TEST_MODULE:force_salus_for_profile([{dry_run_profile, replay}])),
-    ?assertNot(?TEST_MODULE:force_salus_for_profile([{dry_run_profile, includability}])),
-    ?assertNot(?TEST_MODULE:force_salus_for_profile([{dry_run_profile, whatever}])).
+force_arcus_for_profile_test() ->
+    ?assert(?TEST_MODULE:force_arcus_for_profile([{dry_run_profile, public}])),
+    ?assert(?TEST_MODULE:force_arcus_for_profile([{dry_run_profile, internal}])),
+    ?assert(?TEST_MODULE:force_arcus_for_profile([])),  %% default profile = internal
+    ?assertNot(?TEST_MODULE:force_arcus_for_profile([{dry_run_profile, replay}])),
+    ?assertNot(?TEST_MODULE:force_arcus_for_profile([{dry_run_profile, includability}])),
+    ?assertNot(?TEST_MODULE:force_arcus_for_profile([{dry_run_profile, whatever}])).
 
-%% Default (no config), estimate profile: a Ceres-tip dry-run is metered at Salus.
-salus_metering_default_on_forces_ceres_to_salus_test() ->
+%% Default (no config), estimate profile: a Ceres-tip dry-run is metered at Arcus.
+arcus_metering_default_on_forces_ceres_to_arcus_test() ->
     application:unset_env(aehttp, dry_run),
-    ?assert(?TEST_MODULE:salus_gas_metering_enabled()),
+    ?assert(?TEST_MODULE:store_read_gas_metering_enabled()),
     Env  = ceres_dry_run_env(),
-    Env1 = ?TEST_MODULE:maybe_force_salus_metering(Env, true),
-    ?assertEqual(?SALUS_PROTOCOL_VSN, aetx_env:consensus_version(Env1)),
+    Env1 = ?TEST_MODULE:maybe_force_arcus_metering(Env, true),
+    ?assertEqual(?ARCUS_PROTOCOL_VSN, aetx_env:consensus_version(Env1)),
     %% only the metering protocol moved; it is still a dry-run env
     ?assert(aetx_env:dry_run(Env1)).
 
-%% Replay profile (ForceSalus=false): a Ceres block stays pinned to Ceres, even
+%% Replay profile (ForceArcus=false): a Ceres block stays pinned to Ceres, even
 %% with metering enabled -- historical re-execution must re-meter at real cost.
-salus_metering_replay_stays_at_ceres_test() ->
+arcus_metering_replay_stays_at_ceres_test() ->
     application:unset_env(aehttp, dry_run),
     Env  = ceres_dry_run_env(),
-    Env1 = ?TEST_MODULE:maybe_force_salus_metering(Env, false),
+    Env1 = ?TEST_MODULE:maybe_force_arcus_metering(Env, false),
     ?assertEqual(?CERES_PROTOCOL_VSN, aetx_env:consensus_version(Env1)).
 
 %% Operator escape hatch: disabled -> the tip's own (Ceres) metering is kept.
-salus_metering_disabled_leaves_env_untouched_test() ->
-    application:set_env(aehttp, dry_run, [{salus_gas_metering, false}]),
+arcus_metering_disabled_leaves_env_untouched_test() ->
+    application:set_env(aehttp, dry_run, [{store_read_gas_metering, false}]),
     try
-        ?assertNot(?TEST_MODULE:salus_gas_metering_enabled()),
+        ?assertNot(?TEST_MODULE:store_read_gas_metering_enabled()),
         Env  = ceres_dry_run_env(),
-        Env1 = ?TEST_MODULE:maybe_force_salus_metering(Env, true),
+        Env1 = ?TEST_MODULE:maybe_force_arcus_metering(Env, true),
         ?assertEqual(?CERES_PROTOCOL_VSN, aetx_env:consensus_version(Env1))
     after
         application:unset_env(aehttp, dry_run)
     end.
 
-%% Historical (pre-Ceres) replay is NOT bumped -- forcing Salus there would
+%% The escape hatch only governs the forward step-up for pre-Arcus heights. Once
+%% Arcus is the height's real protocol the repricing is the activated cost, so
+%% disabling the switch must not buy an opt-out back to the flat charge.
+arcus_metering_cannot_be_disabled_once_active_test() ->
+    application:set_env(aehttp, dry_run, [{store_read_gas_metering, false}]),
+    try
+        ?assertNot(?TEST_MODULE:store_read_gas_metering_enabled()),
+        Env  = aetx_env:set_dry_run(aetx_env:tx_env(1, ?ARCUS_PROTOCOL_VSN), true),
+        Env1 = ?TEST_MODULE:maybe_force_arcus_metering(Env, true),
+        ?assertEqual(?ARCUS_PROTOCOL_VSN, aetx_env:consensus_version(Env1)),
+        %% ... and the replay profile, which never forces, lands there too.
+        Env2 = ?TEST_MODULE:maybe_force_arcus_metering(Env, false),
+        ?assertEqual(?ARCUS_PROTOCOL_VSN, aetx_env:consensus_version(Env2))
+    after
+        application:unset_env(aehttp, dry_run)
+    end.
+
+%% Historical (pre-Ceres) replay is NOT bumped -- forcing Arcus there would
 %% cross the >= Ceres gates (incl. the contract-vs-name tx-validity gate),
 %% changing more than gas. Keep replay on its exact protocol.
-salus_metering_not_applied_below_ceres_test() ->
+arcus_metering_not_applied_below_ceres_test() ->
     application:unset_env(aehttp, dry_run),
     Env  = aetx_env:set_dry_run(aetx_env:tx_env(1, ?IRIS_PROTOCOL_VSN), true),
-    Env1 = ?TEST_MODULE:maybe_force_salus_metering(Env, true),
+    Env1 = ?TEST_MODULE:maybe_force_arcus_metering(Env, true),
     ?assertEqual(?IRIS_PROTOCOL_VSN, aetx_env:consensus_version(Env1)).
 
-%% Never downgrades: at/above Salus the env is left as-is.
-salus_metering_idempotent_at_salus_test() ->
+%% Never downgrades: at/above Arcus the env is left as-is.
+arcus_metering_idempotent_at_arcus_test() ->
     application:unset_env(aehttp, dry_run),
-    Env  = aetx_env:set_dry_run(aetx_env:tx_env(1, ?SALUS_PROTOCOL_VSN), true),
-    Env1 = ?TEST_MODULE:maybe_force_salus_metering(Env, true),
-    ?assertEqual(?SALUS_PROTOCOL_VSN, aetx_env:consensus_version(Env1)).
+    Env  = aetx_env:set_dry_run(aetx_env:tx_env(1, ?ARCUS_PROTOCOL_VSN), true),
+    Env1 = ?TEST_MODULE:maybe_force_arcus_metering(Env, true),
+    ?assertEqual(?ARCUS_PROTOCOL_VSN, aetx_env:consensus_version(Env1)).
 
 %% Tx-validity is invariant across the bump: a v6-built contract-call tx is
-%% equally valid at Ceres and at the forced Salus (both use the >= Ceres
+%% equally valid at Ceres and at the forced Arcus (both use the >= Ceres
 %% clause), so a <= v6 SDK's tx still dry-runs cleanly -- only gas changes.
-v6_call_tx_valid_at_ceres_and_forced_salus_test() ->
+v6_call_tx_valid_at_ceres_and_forced_arcus_test() ->
     {ok, Aetx} = aect_call_tx:new(#{ caller_id   => aeser_id:create(account, <<1:256>>)
                                    , nonce       => 1
                                    , contract_id => aeser_id:create(contract, <<2:256>>)
@@ -198,16 +215,16 @@ v6_call_tx_valid_at_ceres_and_forced_salus_test() ->
                                    , call_data   => <<>> }),
     {aect_call_tx, CTx} = aetx:specialize_callback(Aetx),
     ?assertEqual(aect_call_tx:valid_at_protocol(?CERES_PROTOCOL_VSN, CTx),
-                 aect_call_tx:valid_at_protocol(?SALUS_PROTOCOL_VSN, CTx)),
-    ?assert(aect_call_tx:valid_at_protocol(?SALUS_PROTOCOL_VSN, CTx)).
+                 aect_call_tx:valid_at_protocol(?ARCUS_PROTOCOL_VSN, CTx)),
+    ?assert(aect_call_tx:valid_at_protocol(?ARCUS_PROTOCOL_VSN, CTx)).
 
 %%%===================================================================
-%%% Equivalence tripwire: forcing Salus in dry-run changes gas ONLY.
+%%% Equivalence tripwire: forcing Arcus in dry-run changes gas ONLY.
 %%%
-%%% "Gas amounts only" holds today only because Salus/Arcus add no non-
+%%% "Gas amounts only" holds today only because Arcus/Arcus add no non-
 %%% repricing behaviour; nothing enforces that. This runs the SAME tx through
 %%% the real dry_run/3 apply path at natural Ceres (metering off) and forced
-%%% Salus (metering on) and asserts the result is identical *when adequately
+%%% Arcus (metering on) and asserts the result is identical *when adequately
 %%% gassed*:
 %%%  - spend + store-free call: byte-identical result AND identical gas_used
 %%%    (no store reads -> zero repricing delta);
@@ -217,12 +234,12 @@ v6_call_tx_valid_at_ceres_and_forced_salus_test() ->
 %%% a Ceres-adequate call into out_of_gas under a tight budget (the public
 %%% endpoint caps at ?DEFAULT_GAS_LIMIT = 6M), and (b) the replay profile is
 %%% NOT re-metered -- it keeps the block's real Ceres cost. Red-fails if any
-%%% future >= Salus/Arcus gate leaks non-gas behaviour into the forcing.
+%%% future >= Arcus/Arcus gate leaks non-gas behaviour into the forcing.
 %%%===================================================================
 
 -define(DUMMY_HASH, <<0:32/unit:8>>).
 
-salus_dry_run_equivalence_test_() ->
+arcus_dry_run_equivalence_test_() ->
     %% Deploys a Ceres FATE contract, so it only runs on Ceres+ eunit lanes;
     %% skip on pre-Ceres protocols (minerva/fortuna/lima/iris) where the
     %% contract compiler version is illegal.
@@ -240,12 +257,12 @@ equiv_setup() ->
     BigStr = "\"" ++ lists:duplicate(300, $a) ++ "\"",  %% ~300B store value
     {IdPK, S2} = deploy(Vsn, identity,        [],        Owner, Env, S1),
     {StPK, S3} = deploy(Vsn, storage_tester,  [],        Owner, Env, S2),
-    {MpPK, S4} = deploy(Vsn, salus_map_probe, [BigStr],  Owner, Env, S3),
+    {MpPK, S4} = deploy(Vsn, arcus_map_probe, [BigStr],  Owner, Env, S3),
     Trees = aect_test_utils:trees(S4),
     {ok, IdData}   = aect_test_utils:encode_call_data(Vsn, src(Vsn, identity), "main_", ["42"]),
     {ok, HashData} = aect_test_utils:encode_call_data(Vsn, src(Vsn, storage_tester), "getHash", []),
-    {ok, LookData} = aect_test_utils:encode_call_data(Vsn, src(Vsn, salus_map_probe), "lookup", ["3"]),
-    {ok, MemData}  = aect_test_utils:encode_call_data(Vsn, src(Vsn, salus_map_probe), "member", ["3"]),
+    {ok, LookData} = aect_test_utils:encode_call_data(Vsn, src(Vsn, arcus_map_probe), "lookup", ["3"]),
+    {ok, MemData}  = aect_test_utils:encode_call_data(Vsn, src(Vsn, arcus_map_probe), "member", ["3"]),
     {ok, Spend} = aec_spend_tx:new(#{ sender_id    => aeser_id:create(account, Owner)
                                     , recipient_id => aeser_id:create(account, <<9:256>>)
                                     , amount       => 1
@@ -282,20 +299,20 @@ equiv_checks(F) ->
     {CMR, CMG} = dry_call(MemCall,  false),  {SMR, SMG} = dry_call(MemCall,  true),
     %% (3) replay profile is NOT re-metered: metering on, replay -> Ceres cost.
     {_, RHG} = dry_call(HashCall, true, [{dry_run_profile, replay}]),
-    %% (4) end-to-end DoS: a budget between the Ceres and Salus cost makes the
-    %%     SAME call succeed at Ceres but abort out_of_gas under forced Salus.
+    %% (4) end-to-end DoS: a budget between the Ceres and Arcus cost makes the
+    %%     SAME call succeed at Ceres but abort out_of_gas under forced Arcus.
     Budget = CHG + max(1, (SHG - CHG) div 2),
     Tight  = mk_call(Owner, StPK, HashData, Budget, St),
     {{CTightT, _}, _}       = dry_call(Tight, false),
     {{STightT, STightV}, _} = dry_call(Tight, true),
-    ?debugFmt("~nequivalence tripwire (natural Ceres vs forced Salus):~n"
-              "  store-free  main_(42): eq=~p gas ceres=~p salus=~p~n"
-              "  register    getHash(): eq=~p gas ceres=~p salus=~p (delta=~p)~n"
-              "  map-lookup  lookup(3): eq=~p gas ceres=~p salus=~p~n"
-              "  map-member  member(3): eq=~p gas ceres=~p salus=~p~n"
+    ?debugFmt("~nequivalence tripwire (natural Ceres vs forced Arcus):~n"
+              "  store-free  main_(42): eq=~p gas ceres=~p arcus=~p~n"
+              "  register    getHash(): eq=~p gas ceres=~p arcus=~p (delta=~p)~n"
+              "  map-lookup  lookup(3): eq=~p gas ceres=~p arcus=~p~n"
+              "  map-member  member(3): eq=~p gas ceres=~p arcus=~p~n"
               "  spend:                 eq=~p~n"
-              "  replay getHash gas=~p (ceres=~p salus=~p)~n"
-              "  DoS budget=~p: ceres=~p salus=~p/~p~n",
+              "  replay getHash gas=~p (ceres=~p arcus=~p)~n"
+              "  DoS budget=~p: ceres=~p arcus=~p/~p~n",
               [CIdR =:= SIdR, CIdG, SIdG,
                CHR =:= SHR, CHG, SHG, SHG - CHG,
                CLR =:= SLR, CLG, SLG,
@@ -312,7 +329,7 @@ equiv_checks(F) ->
     , ?_assertEqual(CMR, SMR), ?_assert(SMG > CMG)
       %% (3) replay stays at the block's real Ceres cost (not re-metered)
     , ?_assertEqual(CHG, RHG), ?_assert(RHG < SHG)
-      %% (4) end-to-end: ok at Ceres, out_of_gas under forced Salus
+      %% (4) end-to-end: ok at Ceres, out_of_gas under forced Arcus
     , ?_assertEqual(ok, CTightT)
     , ?_assertEqual(error, STightT)
     , ?_assert(binary:match(STightV, <<"gas">>) =/= nomatch)
@@ -351,14 +368,14 @@ dry_call(Tx, Metering) ->
     dry_call(Tx, Metering, []).
 
 dry_call(Tx, Metering, Extra) ->
-    application:set_env(aehttp, dry_run, [{salus_gas_metering, Metering}]),
+    application:set_env(aehttp, dry_run, [{store_read_gas_metering, Metering}]),
     {ok, {[{contract_call_tx, {ok, CallObj}}], _}} =
         aec_dry_run:dry_run(?DUMMY_HASH, [], [{tx, Tx}], Extra),
     {{aect_call:return_type(CallObj), aect_call:return_value(CallObj)},
      aect_call:gas_used(CallObj)}.
 
 dry_raw(Tx, Metering) ->
-    application:set_env(aehttp, dry_run, [{salus_gas_metering, Metering}]),
+    application:set_env(aehttp, dry_run, [{store_read_gas_metering, Metering}]),
     aec_dry_run:dry_run(?DUMMY_HASH, [], [{tx, Tx}]).
 
 dummy_sign(Tx) ->

@@ -1224,8 +1224,8 @@ remote_gas_test_contract(Config) ->
     force_fun_calls(Node),
     Balance1 = get_balance(APub),
     GasCost = (Balance0 - Balance1) div ?DEFAULT_GAS_PRICE,
-    IsSalus = aect_test_utils:latest_protocol_version() >= ?SALUS_PROTOCOL_VSN,
-    case IsSalus of
+    IsArcus = aect_test_utils:latest_protocol_version() >= ?ARCUS_PROTOCOL_VSN,
+    case IsArcus of
         true ->
             ?assertMatch(1600258, GasCost);
         false ->
@@ -1239,7 +1239,7 @@ remote_gas_test_contract(Config) ->
     force_fun_calls(Node),
     Balance2 = get_balance(APub),
     GasCost2 = (Balance1 - Balance2) div ?DEFAULT_GAS_PRICE,
-    case IsSalus of
+    case IsArcus of
         true  -> ?assertMatch(1605374, GasCost2);
         false -> ?assertMatchVM(1610855, 1610855, 1610855, 1611335, 1600231, 1609144, GasCost2)
     end,
@@ -1249,7 +1249,7 @@ remote_gas_test_contract(Config) ->
     force_fun_calls(Node),
     Balance3 = get_balance(APub),
     GasCost3 = (Balance2 - Balance3) div ?DEFAULT_GAS_PRICE,
-    case IsSalus of
+    case IsArcus of
         true  -> ?assertMatch(800150, GasCost3);
         false -> ?assertMatchVM(809981, 809981, 809981, 809981, 800147, 800150, GasCost3)
     end,
@@ -1265,7 +1265,7 @@ remote_gas_test_contract(Config) ->
     force_fun_calls(Node),
     Balance5 = get_balance(APub),
     GasCost4 = (Balance4 - Balance5) div ?DEFAULT_GAS_PRICE,
-    case IsSalus of
+    case IsArcus of
         true  -> ?assertMatch(800148, GasCost4);
         false -> ?assertMatchVM(900000, 900000, 900000, 900000, 800145, 800148, GasCost4)
     end,

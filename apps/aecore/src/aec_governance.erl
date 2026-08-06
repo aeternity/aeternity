@@ -71,10 +71,10 @@
 -define(BYTE_GAS, 20).
 %% Gas for 1 byte written to the store.
 -define(STORE_BYTE_GAS, 5).
-%% Gas for 1 byte read from the store (Salus/v8+; inert pre-Salus).
+%% Gas for 1 byte read from the store (Arcus/v7+; inert pre-Arcus).
 -define(STORE_READ_BYTE_GAS, 10).
 %% Fixed floor gas for any store read reaching the underlying store, on top
-%% of the per-byte charge above (Salus/v8+; inert pre-Salus).
+%% of the per-byte charge above (Arcus/v7+; inert pre-Arcus).
 -define(STORE_READ_BASE_GAS, 100).
 -define(POF_REWARD_DIVIDER, 20). %% 5% of the coinbase reward
 -define(BENEFICIARY_REWARD_DELAY, 180). %% in key blocks / generations
@@ -178,7 +178,7 @@ store_byte_gas() ->
     ?STORE_BYTE_GAS.
 
 %% Per-byte price for a store read (register deserialize, or a map subtree
-%% traversal during finalize refcounting/GC). Salus/v8+ only; aefa_stores_
+%% traversal during finalize refcounting/GC). Arcus/v7+ only; aefa_stores_
 %% ceres/lima never call this, so it cannot affect replay of forked blocks.
 store_read_byte_gas() ->
     ?STORE_READ_BYTE_GAS.

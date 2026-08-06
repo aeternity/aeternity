@@ -18,7 +18,7 @@
 %%%  @end
 %%%    -------------------------------------------------------------------
 
-%% FROZEN snapshot of the Iris..Arcus store logic — do not edit; guarded by the freeze test.
+%% FROZEN snapshot of the Iris..Ceres store logic — do not edit; guarded by the freeze test.
 -module(aefa_stores_ceres).
 
 -include_lib("aebytecode/include/aeb_fate_data.hrl").

@@ -1,10 +1,10 @@
 %%%-------------------------------------------------------------------
 %%% @copyright (C) 2026, Aeternity Anstalt
 %%% @doc
-%%%    Before/after gas measurement for the v8 "Salus" store repricing:
+%%%    Before/after gas measurement for the v7 "Arcus" store repricing:
 %%%    compares actual gas charged for a store-register read and a
 %%%    store-map read at increasing value sizes, under Ceres (frozen, flat)
-%%%    vs Salus (live, floor + per-byte, charge-before-work).
+%%%    vs Arcus (live, floor + per-byte, charge-before-work).
 %%% @end
 %%%-------------------------------------------------------------------
 -module(aefa_store_repricing_proof_test).
@@ -31,49 +31,44 @@
 -define(MAP_SIZES, [200, 1000, 10000]).
 
 %%%===================================================================
-%%% Store-register lookup gas, Ceres (flat 2000) vs Salus (floor + per-byte)
+%%% Store-register lookup gas, Ceres (flat 2000) vs Arcus (floor + per-byte)
 %%%===================================================================
 
-%% Store-register read: Ceres flat charge vs Salus floor+per-byte.
-sec_gas_1_store_read_repricing_proof_test() ->
+%% Store-register read: Ceres flat charge vs Arcus floor+per-byte.
+store_read_repricing_test() ->
     Rows = [ measure_row(Size) || Size <- ?SIZES ],
-    print_table("Store-register read gas by value size: "
-                "protocol 6 Ceres (flat) vs protocol 8 Salus (repriced)", Rows),
     %% Ceres charge is the pre-existing flat 2000, size-independent.
-    [ ?assertEqual(2000, GasCeres) || {_Size, GasCeres, _GasSalus, _Bytes} <- Rows ],
-    %% Salus: floor + byte-proportional.
-    [ ?assertEqual(aec_governance:store_read_base_gas() + Bytes * aec_governance:store_read_byte_gas(), GasSalus)
-      || {_Size, _GasCeres, GasSalus, Bytes} <- Rows ],
-    GasSalusSeq = [ GasSalus || {_, _, GasSalus, _} <- Rows ],
-    ?assert(is_strictly_increasing(GasSalusSeq)),
+    [ ?assertEqual(2000, GasCeres) || {_Size, GasCeres, _GasArcus, _Bytes} <- Rows ],
+    %% Arcus: floor + byte-proportional.
+    [ ?assertEqual(aec_governance:store_read_base_gas() + Bytes * aec_governance:store_read_byte_gas(), GasArcus)
+      || {_Size, _GasCeres, GasArcus, Bytes} <- Rows ],
+    GasArcusSeq = [ GasArcus || {_, _, GasArcus, _} <- Rows ],
+    ?assert(is_strictly_increasing(GasArcusSeq)),
     %% Floor applies even at size 0 (no free reads).
-    {0, _, GasSalusAtZero, BytesAtZero} = hd(Rows),
+    {0, _, GasArcusAtZero, BytesAtZero} = hd(Rows),
     ?assertEqual(aec_governance:store_read_base_gas() + BytesAtZero * aec_governance:store_read_byte_gas(),
-                 GasSalusAtZero),
-    ?assert(GasSalusAtZero > BytesAtZero * aec_governance:store_read_byte_gas()),
-    {_, CeresAtMax, SalusAtMax, _} = lists:last(Rows),
-    ?assert(SalusAtMax > CeresAtMax * 10).
+                 GasArcusAtZero),
+    {_, CeresAtMax, ArcusAtMax, _} = lists:last(Rows),
+    ?assert(ArcusAtMax > CeresAtMax * 10).
 
 %%%===================================================================
-%%% Store-map lookup gas, Ceres (flat 5000) vs Salus (floor + per-byte)
+%%% Store-map lookup gas, Ceres (flat 5000) vs Arcus (floor + per-byte)
 %%%===================================================================
 
-%% Store-map read: Ceres flat charge vs Salus floor+per-byte.
-c2_store_map_read_repricing_proof_test() ->
+%% Store-map read: Ceres flat charge vs Arcus floor+per-byte.
+store_map_read_repricing_test() ->
     Rows = [ measure_map_row(Size) || Size <- ?MAP_SIZES ],
-    print_table("Store-map read gas by value size: "
-                "protocol 6 Ceres (flat) vs protocol 8 Salus (repriced)", Rows),
     %% Ceres charge is the pre-existing flat 5000, size-independent.
-    [ ?assertEqual(5000, GasCeres) || {_Size, GasCeres, _GasSalus, _Bytes} <- Rows ],
-    %% Salus adds floor + byte-proportional on top of the flat 5000.
+    [ ?assertEqual(5000, GasCeres) || {_Size, GasCeres, _GasArcus, _Bytes} <- Rows ],
+    %% Arcus adds floor + byte-proportional on top of the flat 5000.
     [ ?assertEqual(5000 + aec_governance:store_read_base_gas()
                         + Bytes * aec_governance:store_read_byte_gas(),
-                    GasSalus)
-      || {_Size, _GasCeres, GasSalus, Bytes} <- Rows ],
-    GasSalusSeq = [ GasSalus || {_, _, GasSalus, _} <- Rows ],
-    ?assert(is_strictly_increasing(GasSalusSeq)),
-    {_, CeresAtMax, SalusAtMax, _} = lists:last(Rows),
-    ?assert(SalusAtMax > CeresAtMax * 2).
+                    GasArcus)
+      || {_Size, _GasCeres, GasArcus, Bytes} <- Rows ],
+    GasArcusSeq = [ GasArcus || {_, _, GasArcus, _} <- Rows ],
+    ?assert(is_strictly_increasing(GasArcusSeq)),
+    {_, CeresAtMax, ArcusAtMax, _} = lists:last(Rows),
+    ?assert(ArcusAtMax > CeresAtMax * 2).
 
 is_strictly_increasing([_]) -> true;
 is_strictly_increasing([A, B | Rest]) -> A < B andalso is_strictly_increasing([B | Rest]).
@@ -82,13 +77,13 @@ is_strictly_increasing([A, B | Rest]) -> A < B andalso is_strictly_increasing([B
 %%% Scenario (1): store-register lookup
 %%%===================================================================
 
-%% {Size, GasCeres, GasSalus, RawSerializedBytes}
+%% {Size, GasCeres, GasArcus, RawSerializedBytes}
 measure_row(Size) ->
     Value = aeb_fate_data:make_string(binary:copy(<<$a>>, Size)),
     Bytes = byte_size(aeb_fate_encoding:serialize(Value)),
     GasCeres = measure_lookup_gas(?CERES_PROTOCOL_VSN, Value),
-    GasSalus = measure_lookup_gas(?SALUS_PROTOCOL_VSN, Value),
-    {Size, GasCeres, GasSalus, Bytes}.
+    GasArcus = measure_lookup_gas(?ARCUS_PROTOCOL_VSN, Value),
+    {Size, GasCeres, GasArcus, Bytes}.
 
 %% Round-trips Value through a real finalize/3 so the read is a genuine
 %% cache-miss, then returns the gas charged for one register read.
@@ -115,13 +110,13 @@ seed_on_chain_store(Protocol, Value) ->
 %%% Scenario (2): store-map lookup (the incident shape, C2)
 %%%===================================================================
 
-%% {Size, GasCeres, GasSalus, RawSerializedValueBytes}
+%% {Size, GasCeres, GasArcus, RawSerializedValueBytes}
 measure_map_row(Size) ->
     Value = aeb_fate_data:make_string(binary:copy(<<$a>>, Size)),
     Bytes = byte_size(aeb_fate_encoding:serialize(Value)),
     GasCeres = measure_map_lookup_gas(?CERES_PROTOCOL_VSN, Value),
-    GasSalus = measure_map_lookup_gas(?SALUS_PROTOCOL_VSN, Value),
-    {Size, GasCeres, GasSalus, Bytes}.
+    GasArcus = measure_map_lookup_gas(?ARCUS_PROTOCOL_VSN, Value),
+    {Size, GasCeres, GasArcus, Bytes}.
 
 %% Seeds a one-entry store map, then performs one real MAP_LOOKUP op and
 %% returns the gas charged.
@@ -187,77 +182,41 @@ trees_with_one_contract() ->
                 aec_accounts_trees:enter(Account, aec_trees:accounts(Trees1))).
 
 %%%===================================================================
-%%% Table printing
-%%%===================================================================
-
-print_table(Title, Rows) ->
-    ?debugFmt("~n~s~n", [Title]),
-    ?debugFmt("~-12s ~-14s ~-14s ~-10s ~-10s~n",
-              ["value_bytes", "gas_ceres", "gas_salus", "ratio", "raw_bytes"]),
-    [ ?debugFmt("~-12B ~-14B ~-14B ~-10.2f ~-10B~n",
-                [Size, GasCeres, GasSalus, GasSalus / max(1, GasCeres), Bytes])
-      || {Size, GasCeres, GasSalus, Bytes} <- Rows ],
-    ok.
-
-%%%===================================================================
-%%% Dry-run DoS ceiling + preview correctness (always-on Salus metering)
+%%% Dry-run DoS ceiling + preview correctness (always-on Arcus metering)
 %%%
-%%% The public dry-run endpoint caps a call at ?DEFAULT_GAS_LIMIT = 6,000,000
-%%% gas (aehttp_dispatch_ext.erl:43). With store reads metered at the Salus
-%%% cost (floor + per-byte, charge-before-work), a large-store read burns that
-%%% budget and aborts out_of_gas BEFORE deserializing -- whereas the pre-Salus
+%%% The public dry-run endpoint caps a call at ?DEFAULT_GAS_LIMIT gas
+%%% (?DRY_RUN_GAS_CEILING below). With store reads metered at the Arcus cost
+%%% (floor + per-byte, charge-before-work), a large-store read burns that
+%%% budget and aborts out_of_gas BEFORE deserializing -- whereas the pre-Arcus
 %%% flat charge (2000) waved the same read through for a token cost. Dry-run
-%%% forces this Salus metering by default (see aec_dry_run:maybe_force_salus_
-%%% metering/1 and its tests in aec_dry_run_tests).
+%%% forces this Arcus metering by default (see aec_dry_run and its tests).
 %%%
 %%% Gas is charged before work, so raw garbage bytes exercise the *charge*
 %%% deterministically without needing a valid serialization/finalize cycle.
 %%%===================================================================
 
-%% ?DEFAULT_GAS_LIMIT, aehttp_dispatch_ext.erl:43.
+%% aehttp_dispatch_ext's ?DEFAULT_GAS_LIMIT.
 -define(DRY_RUN_GAS_CEILING, 6000000).
 
-%% DoS-hardening: a ~700 KB store read costs > the whole 6M dry-run budget at
-%% Salus, so it aborts out_of_gas instead of doing unbounded deserialize work.
-sec_gas_3_dry_run_big_store_read_hits_6m_ceiling_test() ->
-    Base = aec_governance:store_read_base_gas(),
-    Rate = aec_governance:store_read_byte_gas(),
+%% DoS-hardening: a ~700 KB store read costs more than the whole dry-run
+%% budget at Arcus, so it aborts out_of_gas instead of deserializing.
+dry_run_big_store_read_hits_gas_ceiling_test() ->
     Size = 700000,
     Stores = seed_garbage_register(<<16#D3:256>>, Size),
-    SalusChargeLB = Base + Size * Rate,   %% lower bound on the metered charge
-    ?debugFmt("~nDoS ceiling: ~B-byte store read -- Ceres flat=2000 gas, "
-              "Salus >= ~B gas, dry-run ceiling=~B gas~n",
-              [Size, SalusChargeLB, ?DRY_RUN_GAS_CEILING]),
-    %% One read alone exceeds the entire dry-run budget...
-    ?assert(SalusChargeLB > ?DRY_RUN_GAS_CEILING),
-    %% ...so under the ceiling it is refused, charge-before-work, no deserialize.
     ?assertEqual({error, out_of_gas},
-                 aefa_stores:find_value(<<16#D3:256>>, 1, Stores, ?DRY_RUN_GAS_CEILING)),
-    %% Pre-Salus the same read was a flat 2000 -- far under the ceiling, i.e. it
-    %% proceeded to read the whole ~700 KB for a token charge (the DoS this closes).
-    ?assert(2000 < ?DRY_RUN_GAS_CEILING),
-    ?assert(SalusChargeLB > 2000 * 1000).
+                 aefa_stores:find_value(<<16#D3:256>>, 1, Stores, ?DRY_RUN_GAS_CEILING)).
 
-%% Preview correctness: a store-heavy read meters materially higher at Salus
-%% than the flat Ceres 2000. Brackets the charge in (2000, 1_000_000] without
-%% asserting an exact value (robust to any small encoding overhead).
-sec_gas_4_dry_run_preview_reprices_store_read_higher_test() ->
-    Base = aec_governance:store_read_base_gas(),
-    Rate = aec_governance:store_read_byte_gas(),
+%% Preview correctness: the same read that the flat Ceres 2000 waved through is
+%% refused at 2000 under Arcus, and passes the gas gate once given ample gas
+%% (garbage bytes then crash in deserialize, which is how we know it got there).
+dry_run_preview_reprices_store_read_higher_test() ->
     Size = 10000,
     Stores = seed_garbage_register(<<16#D4:256>>, Size),
-    SalusChargeEst = Base + Size * Rate,
-    ?debugFmt("~npreview: ~B-byte store read -- Ceres=2000 gas -> Salus ~~ ~B gas (~.1fx)~n",
-              [Size, SalusChargeEst, SalusChargeEst / 2000]),
-    %% Salus charges materially more than the old flat 2000...
     ?assertEqual({error, out_of_gas},
                  aefa_stores:find_value(<<16#D4:256>>, 1, Stores, 2000)),
-    %% ...and the charge is bounded (~floor+per-byte), so with ample gas the read
-    %% passes the gas gate and reaches deserialize (garbage then crashes).
     Reached = try {ok, aefa_stores:find_value(<<16#D4:256>>, 1, Stores, 1000000)}
               catch C:E -> {crash, C, E} end,
-    ?assertMatch({crash, _, _}, Reached),
-    ?assert(SalusChargeEst > 2000).
+    ?assertMatch({crash, _, _}, Reached).
 
 %% Plants Size raw bytes at register 1 via the low-level store API (charge-
 %% before-work means find_value/4 charges by byte length before deserializing,

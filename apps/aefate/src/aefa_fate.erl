@@ -842,7 +842,7 @@ lookup_in_store(N, ES) ->
     Current = aefa_engine_state:current_contract(ES),
     {Stores, ES1} = ensure_contract_store(Current, ES),
     Aefa_stores = aefa_engine_state:aefa_stores(ES1),
-    case aefa_engine_state:consensus_version(ES1) >= ?SALUS_PROTOCOL_VSN of
+    case aefa_engine_state:consensus_version(ES1) >= ?ARCUS_PROTOCOL_VSN of
         true ->
             %% Gas-aware find_value/4 charges before deserializing, so an
             %% under-provisioned call aborts without paying that cost.
@@ -860,7 +860,7 @@ lookup_in_store(N, ES) ->
                     abort({undefined_in_store, N}, ES1)
             end;
         false ->
-            %% Pre-Salus path, unchanged.
+            %% Pre-Arcus path, unchanged.
             case Aefa_stores:find_value(Current, N, Stores) of
                 {ok, Val} ->
                     {Val, ES1};

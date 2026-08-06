@@ -1,7 +1,7 @@
 %%%-------------------------------------------------------------------
 %%% @copyright (C) 2026, Aeternity Anstalt
 %%% @doc
-%%%    Regression tests for the v8 "Salus" FATE store read gas accounting
+%%%    Regression tests for the v7 "Arcus" FATE store read gas accounting
 %%%    (aefa_stores.erl): charge-before-work on register reads,
 %%%    proportional gc-subtree-read charging, and deterministic
 %%%    fuel-exhaustion signaling on both reuse-fixpoint paths.
@@ -56,7 +56,7 @@ seed_garbage_register(Pubkey, Size) ->
 %%%===================================================================
 
 %% gc_refcounts/4's subtree-read charge is proportional to marginal bytes.
-sec_gas_2_gc_subtree_read_charged_proportional_to_bytes_test() ->
+gc_subtree_read_charged_proportional_to_bytes_test() ->
     %% All sizes clear the production ?STORE_MAP_THRESHOLD (100 bytes) so
     %% the value is genuinely allocated as a store map, not inlined.
     Sizes = [200, 1000, 10000],
@@ -80,7 +80,7 @@ value_bytes(Size) ->
 %% via gc_refcounts/4. Returns the total gas consumed by round 2's finalize/3.
 gc_round_trip_gas(Size) ->
     Value = aeb_fate_data:make_string(binary:copy(<<$a>>, Size)),
-    Protocol = ?SALUS_PROTOCOL_VSN,
+    Protocol = ?ARCUS_PROTOCOL_VSN,
     ChainApi0 = fresh_chain_api(Protocol),
     Stores0 = aefa_stores:new(),
     Stores1 = aefa_stores:put_contract_store(?CONTRACT_PUBKEY,

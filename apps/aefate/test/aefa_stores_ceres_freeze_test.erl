@@ -2,15 +2,15 @@
 %%% @copyright (C) 2026, Aeternity Anstalt
 %%% @doc
 %%%    CI gate on apps/aefate/src/aefa_stores_ceres.erl: it is the frozen
-%%%    Iris..Arcus FATE-store replay reference, so any edit to it changes
+%%%    Iris..Ceres FATE-store replay reference, so any edit to it changes
 %%%    replay of already-forked blocks. Compares a normalized copy of the
 %%%    file against a committed golden sha256, rather than diffing against
-%%%    the live aefa_stores.erl (which is expected to diverge from Salus
+%%%    the live aefa_stores.erl (which is expected to diverge from Arcus
 %%%    onward). Normalization strips the `-module(...).` line and any
 %%%    `%% FROZEN ...` banner; everything else must match byte-for-byte.
 %%%    Re-baselining (only for a legitimately new frozen protocol version)
 %%%    needs a new golden regenerated via normalize/1 + hex_sha256/1 below.
-%%%    See check_stores_ceres_freeze.sh for the shell-equivalent CI check.
+%%%    Run by the normal eunit lanes; no separate CI wiring needed.
 %%% @end
 %%%-------------------------------------------------------------------
 -module(aefa_stores_ceres_freeze_test).
@@ -67,9 +67,9 @@ hex_sha256(Bin) ->
 %%% Behavioural freeze-guard: live terms_to_finalize == frozen one.
 %%%
 %%% aefa_engine_state:finalize/1 hardcodes aefa_stores:terms_to_finalize/1
-%%% (the LIVE module) for every protocol (aefa_engine_state.erl:212), on the
+%%% (the LIVE module) for every protocol, on the
 %%% invariant that it is equivalent to the frozen aefa_stores_ceres snapshot
-%%% used to replay already-forked Iris..Arcus blocks. The sha256 guard above
+%%% used to replay already-forked Iris..Ceres blocks. The sha256 guard above
 %%% catches edits to the frozen file; this catches the other direction -- an
 %%% edit to the LIVE aefa_stores:terms_to_finalize/1 (or the shared
 %%% #store{}/#cache_entry{} layout) that diverges from the frozen behaviour.

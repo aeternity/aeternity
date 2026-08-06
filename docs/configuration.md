@@ -182,6 +182,25 @@ peers: []
 
 Please note that this do not prevent incoming connections, thus the node still might be connected to a network if its address is already known in that network.
 
+### Dry-run
+
+Dry-run executes transactions against a chain state without committing anything, and is what the `dry-run` HTTP endpoints and the Rosetta/indexer replay paths use.
+
+```yaml
+http:
+    dry_run:
+        store_read_gas_metering: true
+```
+
+`store_read_gas_metering` (default `true`) meters FATE contract-storage reads at the size-proportional Arcus (v7) gas cost, regardless of which protocol is currently activated on the chain. It affects only the gas amounts reported back - never transaction validity, ABI/VM version, or the response schema - and nothing is committed either way. Two consequences worth knowing:
+
+* Estimates are forward-safe: a call estimated today will not become under-funded once Arcus activates. Until then the estimate can legitimately read higher than the same call currently costs on chain.
+* Reads of large stores are bounded by the dry-run gas ceiling instead of running unpriced, which is what keeps a read-only call from doing unbounded deserialization work.
+
+Historical replay (Rosetta/indexer balance reconstruction) and mempool includability checks always answer for the real activated protocol and are unaffected by this setting. Set it to `false` to report the currently activated protocol's flat charge instead.
+
+The setting only governs this forward step-up, so it stops having any effect once Arcus activates: from that height the size-proportional charge *is* the activated protocol's cost, and dry-run reports it whether the setting is on or off.
+
 ## Miner configuration
 
 The instructions below assume that you already know your `beneficiary` account public key (if you don't, see [Beneficiary account section](#beneficiary-account)).

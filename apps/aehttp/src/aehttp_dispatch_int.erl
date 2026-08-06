@@ -279,7 +279,7 @@ handle_request_('GetCheckTxInPool', Req, _Context) ->
                           {mempool, SignedTx} ->
                               Tx = aetx_sign:tx(SignedTx),
                               %% Includability must reflect the CURRENT chain, so use the
-                              %% non-forcing 'includability' profile: forcing Salus here
+                              %% non-forcing 'includability' profile: forcing Arcus here
                               %% would answer with the post-fork (higher-gas) outcome and
                               %% could report a false out_of_gas on a still-Ceres chain.
                               try aec_dry_run:dry_run(top, [], [{tx, Tx}], [{tx_events, false}, {dry_run_profile, includability}]) of

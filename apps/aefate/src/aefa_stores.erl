@@ -15,8 +15,8 @@
 %%%    Use finalize/3 to push the stores back to the chain when the
 %%%    fate execution is done.
 %%%
-%%%    Salus/v8+ only; Iris..Arcus and pre-Iris are frozen in
-%%%    aefa_stores_ceres/aefa_stores_lima (see check_stores_ceres_freeze.sh).
+%%%    Arcus/v7+ only; Iris..Ceres and pre-Iris are frozen in
+%%%    aefa_stores_ceres/aefa_stores_lima.
 %%%    Store reads charge gas for the raw byte count before deserializing.
 %%%
 %%%  @end
@@ -141,7 +141,7 @@ find_value(Pubkey, StorePos, S) when ?VALID_STORE_POS(StorePos) ->
                   | 'error'.
 find_value(Pubkey, StorePos, S, GasLeft) when ?VALID_STORE_POS(StorePos), is_integer(GasLeft) ->
     %% Gas-aware variant: charges for a cache-miss read before deserializing.
-    %% The only arity aefa_fate:lookup_in_store/2 calls from Salus onward.
+    %% The only arity aefa_fate:lookup_in_store/2 calls from Arcus onward.
     find_value_(Pubkey, StorePos, S, GasLeft).
 
 -spec put_value(pubkey(), non_neg_integer(), fate_val(), store()) -> store().

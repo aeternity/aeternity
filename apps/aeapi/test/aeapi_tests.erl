@@ -4,7 +4,7 @@
 %%%
 %%%   aeapi:format_txs/2 re-executes historical block txs via dry-run to
 %%%   recover their balance-change events. It MUST pass the 'replay'
-%%%   dry-run profile so the always-on dry-run Salus gas metering does NOT
+%%%   dry-run profile so the always-on dry-run Arcus gas metering does NOT
 %%%   re-meter those historical calls at the forward (higher) cost -- which
 %%%   could flip a gas-tight call ok->out_of_gas and drop its balance events,
 %%%   silently corrupting reconstructed balances. This makes that invariant

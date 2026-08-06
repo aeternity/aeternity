@@ -1494,8 +1494,8 @@
                             "type" : "integer",
                             "default" : 256000000
                         },
-                        "salus_gas_metering" : {
-                            "description" : "Meter FATE contract-storage reads in dry-run at the size-proportional Salus (v8) gas cost, always-on and independent of the activated protocol. Changes only the returned gas amounts (never tx validity, ABI or VM version) and never commits; the response schema is unchanged. Also bounds large-store reads by the dry-run gas ceiling. Disable to fall back to the activated protocol's flat charge.",
+                        "store_read_gas_metering": {
+                            "description": "Meter FATE contract-storage reads in dry-run at the size-proportional Arcus (v7) gas cost",
                             "type" : "boolean",
                             "default" : true
                         }

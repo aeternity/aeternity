@@ -197,7 +197,7 @@ read_store(Pubkey, ES) ->
         Keys         = [ binary:decode_unsigned(Reg)
                          || <<0, Reg/binary>> <- maps:keys(aect_contracts_store:contents(CtStore)) ],
         Value = fun(Key) ->
-                    %% Matches both the pre-Salus 3-tuple and the live
+                    %% Matches both the pre-Arcus 3-tuple and the live
                     %% module's gas-aware 4-tuple.
                     Val = case aefa_stores:find_value(Pubkey, Key, Store) of
                               {ok, V, _}       -> V;

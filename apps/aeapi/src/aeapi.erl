@@ -518,7 +518,7 @@ format_txs(Txs, MBHash) ->
                 {in, MBHash}
             end,
     %% SECURITY-CRITICAL: keep {dry_run_profile, replay}. It pins re-execution to
-    %% the block's REAL protocol; dropping it lets always-on dry-run Salus metering
+    %% the block's REAL protocol; dropping it lets always-on dry-run Arcus metering
     %% re-meter a gas-tight historical call ok->out_of_gas, dropping its balance
     %% events and corrupting Rosetta balance reconstruction. Guarded by aeapi_tests.
     case aec_dry_run:dry_run(Top, [], DryTxs, [tx_events, {dry_run_profile, replay}]) of
