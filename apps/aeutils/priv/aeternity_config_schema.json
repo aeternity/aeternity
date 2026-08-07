@@ -1482,16 +1482,19 @@
                         "timeout_ms" : {
                             "description": "Wall-clock bound (in milliseconds) for a call to the public dry-run endpoint. Defaults to one micro block cycle. 0 disables the bound. Internal/trusted dry-run calls are not time-bounded.",
                             "type" : "integer",
+                            "minimum" : 0,
                             "default" : 3000
                         },
                         "replay_timeout_ms" : {
                             "description": "Wall-clock bound (in milliseconds) for a replay dry-run call. 0 disables the bound.",
                             "type" : "integer",
+                            "minimum" : 0,
                             "default" : 10000
                         },
                         "max_heap_words" : {
                             "description": "Maximum heap size (in words) for a dry-run worker process; it is killed if it grows past this. 0 disables.",
                             "type" : "integer",
+                            "minimum" : 0,
                             "default" : 256000000
                         },
                         "store_read_gas_metering": {

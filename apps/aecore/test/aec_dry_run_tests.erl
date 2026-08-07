@@ -31,6 +31,29 @@ inner_killed_on_timeout_test() ->
     InnerPid = receive {inner_started, P} -> P after 1000 -> error(inner_never_started) end,
     ?assert(wait_until(fun() -> not is_process_alive(InnerPid) end, 1500)).
 
+%% If the calling process dies mid-run (client disconnect), the worker must
+%% not leave the inner computation running orphaned.
+caller_death_kills_inner_worker_test() ->
+    Parent = self(),
+    CallerPid = spawn(fun() ->
+        ?TEST_MODULE:run_bounded(
+          fun() -> Parent ! {inner_started, self()}, timer:sleep(5000), done end, 10000)
+    end),
+    InnerPid = receive {inner_started, P} -> P after 1000 -> error(inner_never_started) end,
+    exit(CallerPid, kill),
+    ?assert(wait_until(fun() -> not is_process_alive(InnerPid) end, 1500)).
+
+%% A single non-yielding allocation past max_heap_words is killed rather than
+%% left to grow unbounded; the caller sees an error, not a hang or OOM.
+max_heap_size_kill_returns_error_not_hang_test() ->
+    application:set_env(aehttp, dry_run, [{max_heap_words, 1000}]),
+    try
+        Fun = fun() -> _ = lists:seq(1, 10000000), ok end,
+        ?assertMatch({error, _}, ?TEST_MODULE:run_bounded(Fun, 5000))
+    after
+        application:unset_env(aehttp, dry_run)
+    end.
+
 wait_until(_Pred, Left) when Left =< 0 -> false;
 wait_until(Pred, Left) ->
     case Pred() of

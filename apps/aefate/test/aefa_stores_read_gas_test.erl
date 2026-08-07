@@ -156,3 +156,59 @@ compute_reuse_fixpoint_falls_through_to_full_path_when_optimistic_would_not_reus
     Store = aect_contracts_store:new(),
     Result = aefa_stores:compute_reuse_fixpoint(#{}, #{}, Store, 1000000),
     ?assertMatch({_Unused, _Reuse, _Metadata, _GasLeft}, Result).
+
+%%%===================================================================
+%%% (d) store_map_lookup/store_map_member miss paths: charged too, not free
+%%%===================================================================
+
+%% A miss still costs the read floor -- only the hit path adds byte-proportional
+%% cost on top, but "found nothing" is not "did no work".
+store_map_lookup_miss_charges_floor_test() ->
+    {MapId, Store} = seed_store_map_with_one_entry(),
+    GasBefore = 1000000,
+    {miss, _Store1, GasAfter} =
+        aefa_stores:store_map_lookup(?CONTRACT_PUBKEY, MapId, absent_key(), Store, GasBefore),
+    ?assertEqual(aec_governance:store_read_base_gas(), GasBefore - GasAfter).
+
+%% Charge-before-work applies to misses too: too little gas for the floor
+%% alone is out_of_gas, not a "cheap" miss result.
+store_map_lookup_miss_out_of_gas_test() ->
+    {MapId, Store} = seed_store_map_with_one_entry(),
+    TooLittle = aec_governance:store_read_base_gas() - 1,
+    ?assertEqual({error, out_of_gas},
+                 aefa_stores:store_map_lookup(?CONTRACT_PUBKEY, MapId, absent_key(), Store, TooLittle)).
+
+store_map_member_miss_charges_floor_test() ->
+    {MapId, Store} = seed_store_map_with_one_entry(),
+    GasBefore = 1000000,
+    {false, _Store1, GasAfter} =
+        aefa_stores:store_map_member(?CONTRACT_PUBKEY, MapId, absent_key(), Store, GasBefore),
+    ?assertEqual(aec_governance:store_read_base_gas(), GasBefore - GasAfter).
+
+store_map_member_miss_out_of_gas_test() ->
+    {MapId, Store} = seed_store_map_with_one_entry(),
+    TooLittle = aec_governance:store_read_base_gas() - 1,
+    ?assertEqual({error, out_of_gas},
+                 aefa_stores:store_map_member(?CONTRACT_PUBKEY, MapId, absent_key(), Store, TooLittle)).
+
+absent_key() -> aeb_fate_data:make_string(<<"missing">>).
+
+%% Seeds a real on-chain store map (via a real finalize/3 round-trip, so the
+%% value is genuinely allocated as a store map rather than left inline) and
+%% returns {MapId, Store} ready for a fresh store_map_lookup/member call.
+seed_store_map_with_one_entry() ->
+    Protocol = ?ARCUS_PROTOCOL_VSN,
+    ChainApi0 = fresh_chain_api(Protocol),
+    Stores0 = aefa_stores:new(),
+    Stores1 = aefa_stores:put_contract_store(?CONTRACT_PUBKEY,
+                                              aefa_stores:initial_contract_store(),
+                                              Stores0),
+    Value = aeb_fate_data:make_string(binary:copy(<<$a>>, 200)),
+    MapVal = aeb_fate_data:make_map(#{ aeb_fate_data:make_string(<<"k">>) => Value }),
+    Stores2 = aefa_stores:put_value(?CONTRACT_PUBKEY, ?MAP_STORE_POS, MapVal, Stores1),
+    {ok, ChainApi1, _} = aefa_stores:finalize(ChainApi0, ?SEED_GAS, Stores2),
+    {OnChainStore, _} = aefa_chain_api:contract_store(?CONTRACT_PUBKEY, ChainApi1),
+    Store = aefa_stores:put_contract_store(?CONTRACT_PUBKEY, OnChainStore, aefa_stores:new()),
+    {ok, RegVal, _, _, _} = aefa_stores:find_value(?CONTRACT_PUBKEY, ?MAP_STORE_POS, Store, 1000000000),
+    ?FATE_STORE_MAP(_Cache, MapId) = RegVal,
+    {MapId, Store}.
