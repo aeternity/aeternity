@@ -34,6 +34,7 @@
          get_pin/1,
          wallet_post_pin_to_pc/1,
          get_contract_pubkeys/1,
+         get_protocol_parameters/1,
          correct_leader_in_micro_block/1,
          first_leader_next_epoch/1,
          check_default_pin/1,
@@ -182,6 +183,7 @@ groups() ->
           , entropy_impact_schedule
           , check_blocktime
           , get_contract_pubkeys
+          , get_protocol_parameters
           , sanity_check_vote_tx
           ]}
     , {epochs_slow, [sequence],
@@ -1239,6 +1241,26 @@ get_contract_pubkeys(Config) ->
     ?assertEqual({ok, ElectionContractPK}, aeser_api_encoder:safe_decode(contract_pubkey, Election)),
     ?assertEqual({ok, RewardsContractPK}, aeser_api_encoder:safe_decode(contract_pubkey, Rewards)),
 
+    ok.
+
+%% aehttp_integration_SUITE covers this endpoint exhaustively, but only ever
+%% against a proof-of-work node, so this is the only place the pos branch of
+%% aehttp_dispatch_ext:block_interval_setting/0 runs at all: under Hyperchains
+%% the interval is the child chain's child_block_time, and the PoW mine rate
+%% must be absent.
+get_protocol_parameters(Config) ->
+    [{Node, _, _, _} | _] = ?config(nodes, Config),
+    ?assertEqual(pos, rpc(Node, aec_consensus, get_consensus_type, [])),
+    {ok, 200, Res} = aecore_suite_utils:http_request(
+                       aecore_suite_utils:external_address(), get, "protocol-parameters", []),
+    #{<<"node_settings">> := NodeSettings, <<"protocols">> := Protocols} = Res,
+    ?assertEqual(?CHILD_BLOCK_TIME, maps:get(<<"child_block_time">>, NodeSettings)),
+    ?assertNot(maps:is_key(<<"expected_block_mine_rate">>, NodeSettings)),
+    %% The rest of the body is consensus data and must be there on a child chain
+    %% too - a client builds transactions against it exactly as on a PoW node.
+    ?assertMatch([_ | _], Protocols),
+    ?assertEqual(rpc(Node, aec_governance, get_network_id, []),
+                 maps:get(<<"network_id">>, Res)),
     ok.
 
 

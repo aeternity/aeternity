@@ -35,6 +35,8 @@
 
 -compile({parse_transform, lager_transform}).
 
+-include_lib("aecontract/include/aecontract.hrl").
+
 -define(READ_Q, http_read).
 -define(WRITE_Q, http_update).
 -define(NO_Q, no_queue).
@@ -114,6 +116,7 @@ queue('GetSyncStatus')                          -> ?READ_Q;
 queue('GetPeerKey')                             -> ?READ_Q;
 queue('GetChainEnds')                           -> ?READ_Q;
 queue('GetRecentGasPrices')                     -> ?READ_Q;
+queue('GetProtocolParameters')                  -> ?READ_Q;
 queue('GetPinningTx')                           -> ?READ_Q;
 queue('GetHyperchainContractPubkeys')           -> ?READ_Q;
 %% update transactions (default to update in catch-all)
@@ -883,6 +886,21 @@ handle_request_('GetRecentGasPrices', _Params, _Context) ->
             {404, [], #{reason => <<"Block unexpectedly not found">>}}
     end;
 
+handle_request_('GetProtocolParameters', _Params, _Context) ->
+    CurrentVersion = current_protocol_version(),
+    Protocols = protocols_including_signalled_fork(CurrentVersion),
+    BidTimeoutOverride = name_claim_bid_timeout_override(),
+    BlockGasLimit = aec_governance:block_gas_limit(),
+    {200, [],
+     #{<<"network_id">> => aec_governance:get_network_id(),
+       <<"current_protocol_version">> => CurrentVersion,
+       <<"locked_coins_holder_account">> =>
+           aeser_api_encoder:encode(account_pubkey, aec_governance:locked_coins_holder_account()),
+       <<"node_settings">> => protocol_node_settings(),
+       <<"protocols">> =>
+           [ protocol_entry(Vsn, EffectiveAtHeight, BidTimeoutOverride, BlockGasLimit)
+             || {Vsn, EffectiveAtHeight} <- Protocols ]}};
+
 handle_request_('GetPinningTx', _Params, _Context) ->
     case aec_parent_connector:get_pinning_data() of
         {ok, #{epoch := Epoch,
@@ -917,6 +935,185 @@ handle_request_(OperationID, Req, Context) ->
       [{OperationID, Req, Context}]
      ),
     {501, [], #{}}.
+
+%% The name fee table is indexed by name length; the last entry also applies
+%% to all longer names (see aec_governance:name_claim_size_fee/1).
+-define(NAME_FEE_TABLE_MAX_LENGTH, 31).
+
+%% Every VM version aect_contracts:is_legal_version_at_protocol/3 knows about; it
+%% decides which are legal at each protocol. A new VM version has to be added
+%% here as well, or the completeness check in aehttp_integration_SUITE fails.
+-define(KNOWN_VM_VERSIONS, [ ?VM_AEVM_SOPHIA_1, ?VM_AEVM_SOLIDITY_1, ?VM_AEVM_SOPHIA_2
+                           , ?VM_AEVM_SOPHIA_3, ?VM_FATE_SOPHIA_1, ?VM_AEVM_SOPHIA_4
+                           , ?VM_FATE_SOPHIA_2, ?VM_FATE_SOPHIA_3 ]).
+
+%% aec_hard_forks:protocols/0 is the static per-network fork table, which by
+%% construction cannot contain a community-fork version: assert_fork_version/2
+%% requires it to be greater than every entry. Once such a fork activates the top
+%% block carries that version, so without this the response would name a
+%% current_protocol_version with no matching entry in the list - leaving a client
+%% with exactly the hardcoded constants this endpoint exists to replace. Same
+%% source and same activation test as GetStatus above.
+protocols_including_signalled_fork(CurrentVersion) ->
+    Protocols = aec_hard_forks:protocols(),
+    Protocols1 =
+        case aeu_env:get_env(aecore, fork, undefined) of
+            #{version := CurrentVersion, signalling_end_height := SigEndHeight} ->
+                Protocols#{CurrentVersion => SigEndHeight};
+            _ ->
+                Protocols
+        end,
+    lists:keysort(1, maps:to_list(Protocols1)).
+
+%% The version of the top block, which is what GetStatus reports. Not derived
+%% from aec_hard_forks:protocol_effective_at_height/1: that function documents it
+%% is not for use outside block insertion, because inside a community-fork
+%% signalling window it can name a different protocol than the block just
+%% accepted. The read is dirty - the value changes once per hard fork.
+current_protocol_version() ->
+    case aec_chain:dirty_top_header() of
+        undefined -> aec_block_genesis:version();
+        Header    -> aec_headers:version(Header)
+    end.
+
+protocol_node_settings() ->
+    DryRunGasLimit = aeu_env:config_value([<<"http">>, <<"external">>, <<"gas_limit">>],
+                                          aehttp, [external, gas_limit], ?DEFAULT_GAS_LIMIT),
+    Settings =
+        #{<<"min_miner_gas_price">>  => aettos_string(aec_tx_pool:minimum_miner_gas_price()),
+          <<"max_auth_fun_gas">>     => aec_tx_pool:maximum_auth_fun_gas(),
+          <<"mempool_tx_ttl">>       => aec_tx_pool:tx_ttl(),
+          <<"mempool_nonce_offset">> => aec_tx_pool:nonce_offset(),
+          <<"dry_run_gas_limit">>    => DryRunGasLimit,
+          <<"micro_block_cycle">>    => aec_governance:micro_block_cycle()},
+    maps:merge(Settings, block_interval_setting()).
+
+%% Each consensus reports the interval that actually governs it. The mine rate is
+%% the PoW difficulty retarget target, so reporting it on a Hyperchains node
+%% would advertise an interval the chain does not have; micro_block_cycle stays
+%% unconditional, since aec_conductor paces micro blocks with it under both.
+%%
+%% child_block_time is read from the consensus config rather than through
+%% aec_consensus_hc, whose accessors memoise into an ETS table owned by the
+%% calling process - here a short-lived cowboy request process. This is the same
+%% key aec_consensus_hc:child_block_time/0 reads, and it is mandatory there.
+block_interval_setting() ->
+    case aec_consensus:get_consensus_type() of
+        pow ->
+            #{<<"expected_block_mine_rate">> => aec_governance:expected_block_mine_rate()};
+        pos ->
+            case aeu_env:user_config([<<"chain">>, <<"consensus">>, <<"0">>, <<"config">>,
+                                      <<"child_block_time">>]) of
+                {ok, BlockTime} when is_integer(BlockTime) ->
+                    #{<<"child_block_time">> => BlockTime};
+                _ ->
+                    #{}
+            end
+    end.
+
+%% block_gas_limit is a live application:get_env read an operator can change on a
+%% running node, so it is passed in per request rather than derived per protocol.
+protocol_entry(Protocol, EffectiveAtHeight, BidTimeoutOverride, BlockGasLimit) ->
+    Params = protocol_consensus_parameters(Protocol, BidTimeoutOverride),
+    Params#{<<"effective_at_height">> => EffectiveAtHeight,
+            <<"block_gas_limit">>     => BlockGasLimit}.
+
+%% Mirrors the override aec_governance:name_claim_bid_timeout/2 reads. Resolved
+%% once per request and passed down, since every read re-expands the whole
+%% user config.
+name_claim_bid_timeout_override() ->
+    aeu_env:user_config_or_env([<<"mining">>, <<"name_claim_bid_timeout">>],
+                               aecore, name_claim_bid_timeout, undefined).
+
+%% These lists partition aetx:tx_types/0 explicitly rather than by derivation, so
+%% a new tx type cannot reach aec_governance:tx_base_gas/2 - which has no
+%% catch-all - and 500 every request. It is then silently missing instead, which
+%% the coverage check in aehttp_integration_SUITE catches. None of the three
+%% excluded types has a tx_base_gas/2 clause: the channel ones never reach the
+%% chain.
+-define(NO_BASE_GAS_TX_TYPES, [channel_offchain_tx, channel_client_reconnect_tx, hc_vote_tx]).
+-define(CONTRACT_TX_TYPES, [contract_create_tx, contract_call_tx, ga_attach_tx, ga_meta_tx]).
+
+protocol_consensus_parameters(Protocol, BidTimeoutOverride) ->
+    PlainTxTypes = aetx:tx_types() -- (?CONTRACT_TX_TYPES ++ ?NO_BASE_GAS_TX_TYPES),
+    ContractTxTypes = ?CONTRACT_TX_TYPES,
+    %% Only the Sophia ABIs are listed. aec_governance:tx_base_gas/3 does accept
+    %% any ABI - it charges max gas for one it does not know - but reporting a
+    %% row per unknown ABI would document a fee for a transaction no protocol
+    %% ever accepted. A new Sophia ABI has to be added here by hand; unlike the
+    %% VM list there is nothing enumerable to check it against.
+    SophiaAbis = [?ABI_AEVM_SOPHIA_1, ?ABI_FATE_SOPHIA_1],
+    OracleTxTypes = [oracle_register_tx, oracle_extend_tx, oracle_query_tx, oracle_response_tx],
+    TxBaseGas = maps:from_list(
+                  [ {aetx:type_to_swagger_name(Type), aec_governance:tx_base_gas(Type, Protocol)}
+                    || Type <- PlainTxTypes ]),
+    ContractTxBaseGas =
+        [ #{<<"tx_type">>     => aetx:type_to_swagger_name(Type),
+            <<"abi_version">> => Abi,
+            <<"tx_base_gas">> => aec_governance:tx_base_gas(Type, Protocol, Abi)}
+          || Type <- ContractTxTypes, Abi <- SophiaAbis ],
+    StateGasPerBlock =
+        maps:from_list(
+          [ begin
+                {Part, Whole} = aec_governance:state_gas_per_block(Type),
+                {aetx:type_to_swagger_name(Type), #{<<"part">> => Part, <<"whole">> => Whole}}
+            end
+            || Type <- OracleTxTypes ]),
+    MaxAuctionLength = aec_governance:name_max_length_starting_auction(),
+    NameClaimFees = [ aettos_string(aec_governance:name_claim_fee_for_size(Length, Protocol))
+                      || Length <- lists:seq(1, ?NAME_FEE_TABLE_MAX_LENGTH) ],
+    NameAuctionTimeouts =
+        [ #{<<"length">>        => Length,
+            <<"bid_timeout">>   =>
+                aec_governance:name_claim_bid_timeout_for_size(Length, Protocol, BidTimeoutOverride),
+            <<"bid_extension">> =>
+                aec_governance:name_claim_bid_extension_for_size(Length, Protocol, BidTimeoutOverride)}
+          || Length <- lists:seq(1, MaxAuctionLength) ],
+    Params =
+        #{<<"version">>                          => Protocol,
+          <<"minimum_gas_price">>                => aettos_string(aec_governance:minimum_gas_price(Protocol)),
+          <<"gas_per_byte">>                     => aec_governance:byte_gas(),
+          <<"store_byte_gas">>                   => aec_governance:store_byte_gas(),
+          <<"tx_base_gas">>                      => TxBaseGas,
+          <<"contract_tx_base_gas">>             => ContractTxBaseGas,
+          <<"state_gas_per_block">>              => StateGasPerBlock,
+          <<"name_claim_fees">>                  => NameClaimFees,
+          <<"name_auction_timeouts">>            => NameAuctionTimeouts,
+          <<"name_claim_bid_increment">>         => aec_governance:name_claim_bid_increment(),
+          <<"name_max_length_starting_auction">> => MaxAuctionLength,
+          <<"name_claim_max_expiration">>        => aec_governance:name_claim_max_expiration(Protocol),
+          <<"name_registrars">>                  => aec_governance:name_registrars(Protocol),
+          <<"name_preclaim_expiration">>         => aec_governance:name_preclaim_expiration(),
+          <<"name_claim_preclaim_delta">>        => aec_governance:name_claim_preclaim_delta(),
+          <<"name_protection_period">>           => aec_governance:name_protection_period(),
+          <<"name_claim_locked_fee">>            => aettos_string(aec_governance:name_claim_locked_fee()),
+          <<"allowed_contract_versions">>        => allowed_contract_versions(Protocol),
+          <<"allowed_oracle_abi_versions">>      => allowed_oracle_abi_versions(Protocol)},
+    Params1 = add_unless_unlimited(<<"name_pointers_max_count">>,
+                                   aec_governance:name_pointers_max_count(Protocol), Params),
+    add_unless_unlimited(<<"name_pointer_max_key_size">>,
+                         aec_governance:name_pointer_max_key_size(Protocol), Params1).
+
+%% Aettos amounts are decimal strings, never JSON numbers: the name fee table
+%% reaches ~2^69, past the 2^53 an IEEE-754 client holds exactly, and a rounded
+%% fee builds a rejected claim. Gas, heights, counts and versions stay numbers.
+aettos_string(Amount) when is_integer(Amount) ->
+    integer_to_binary(Amount).
+
+add_unless_unlimited(_Key, infinity, Params) -> Params;
+add_unless_unlimited(Key, Value, Params) when is_integer(Value) ->
+    maps:put(Key, Value, Params).
+
+allowed_contract_versions(Protocol) ->
+    [ #{<<"vm_version">> => Vm, <<"abi_version">> => Abi}
+      || Vm  <- ?KNOWN_VM_VERSIONS,
+         Abi <- [?ABI_AEVM_SOPHIA_1, ?ABI_SOLIDITY_1, ?ABI_FATE_SOPHIA_1],
+         aect_contracts:is_legal_version_at_protocol(create, #{vm => Vm, abi => Abi}, Protocol) ].
+
+allowed_oracle_abi_versions(Protocol) ->
+    [ Abi || Abi <- [?ABI_NO_VM, ?ABI_AEVM_SOPHIA_1, ?ABI_SOLIDITY_1, ?ABI_FATE_SOPHIA_1],
+             aect_contracts:is_legal_version_at_protocol(oracle_register, #{vm => ?VM_NO_VM, abi => Abi},
+                                                         Protocol) ].
 
 generation_rsp(error) ->
     {404, [], #{reason => <<"Block not found">>}};
