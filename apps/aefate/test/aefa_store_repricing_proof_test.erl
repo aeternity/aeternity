@@ -73,6 +73,16 @@ store_map_read_repricing_test() ->
 is_strictly_increasing([_]) -> true;
 is_strictly_increasing([A, B | Rest]) -> A < B andalso is_strictly_increasing([B | Rest]).
 
+%% Pins the literal Arcus repricing constants themselves: every other
+%% assertion in this module re-derives its expectation from
+%% aec_governance:store_read_base_gas/0,store_read_byte_gas/0, so none of
+%% them would catch those constants drifting. This one would.
+store_read_repricing_constants_are_100_and_10_test() ->
+    ?assertEqual(100, aec_governance:store_read_base_gas()),
+    ?assertEqual(10, aec_governance:store_read_byte_gas()),
+    %% And one fully-literal worked example: 42 bytes at 100 + 42*10.
+    ?assertEqual(520, aec_governance:store_read_base_gas() + 42 * aec_governance:store_read_byte_gas()).
+
 %%%===================================================================
 %%% Scenario (1): store-register lookup
 %%%===================================================================

@@ -38,17 +38,23 @@ wait_until(Pred, Left) ->
         false -> timer:sleep(20), wait_until(Pred, Left - 20)
     end.
 
+%% Tracks the actual worker/inner pids from each run_bounded/2 call rather
+%% than the VM-wide process_count, which any unrelated process elsewhere in
+%% the (possibly shared) VM can bump during this ~2.3s window and make flaky.
 no_leftover_messages_or_workers_test() ->
-    ProcsBefore = erlang:system_info(process_count),
-    _ = ?TEST_MODULE:run_bounded(fun() -> timer:sleep(2000), ok end, 50),
-    _ = ?TEST_MODULE:run_bounded(fun() -> ok end, 1000),
-    _ = ?TEST_MODULE:run_bounded(fun() -> error(boom) end, 1000),
-    %% give the killed/exited worker tree a moment to be fully reaped
-    timer:sleep(200),
+    Parent = self(),
+    Report = fun() -> Parent ! {inner_pid, self()} end,
+    _ = ?TEST_MODULE:run_bounded(fun() -> Report(), timer:sleep(2000), ok end, 50),
+    Pid1 = receive {inner_pid, P1} -> P1 after 1000 -> error(inner_never_started) end,
+    _ = ?TEST_MODULE:run_bounded(fun() -> Report(), ok end, 1000),
+    Pid2 = receive {inner_pid, P2} -> P2 after 1000 -> error(inner_never_started) end,
+    _ = ?TEST_MODULE:run_bounded(fun() -> Report(), error(boom) end, 1000),
+    Pid3 = receive {inner_pid, P3} -> P3 after 1000 -> error(inner_never_started) end,
     ?assertEqual({messages, []}, erlang:process_info(self(), messages)),
-    ProcsAfter = erlang:system_info(process_count),
     %% no lingering worker/inner processes from any of the three calls above
-    ?assert(ProcsAfter =< ProcsBefore + 1).
+    ?assert(wait_until(fun() -> lists:all(fun(P) -> not is_process_alive(P) end,
+                                          [Pid1, Pid2, Pid3])
+                        end, 1500)).
 
 %% Only public/replay are time-bounded; internal is unbounded; explicit timeout
 %% wins; the dry-run-only opts never leak into the tx-application opts.
@@ -86,7 +92,7 @@ fake_env_and_trees() ->
 
 dry_run_wiring_test_() ->
     {setup, fun wiring_setup/0, fun wiring_teardown/1,
-     fun() ->
+     fun(_) ->
         {EnvT, TreesT} = fake_env_and_trees(),
 
         %% bound (200ms) < slow inner (2000ms): must time out, not wait.
@@ -116,23 +122,23 @@ dry_run_wiring_test_() ->
 %%%===================================================================
 %%% Always-on Arcus dry-run gas metering (the env-forcing mechanism).
 %%%
-%%% Dry-run meters FATE store reads at the repriced Arcus (v8) cost by
+%%% Dry-run meters FATE store reads at the repriced Arcus (v7) cost by
 %%% default, WITHOUT activating the fork and WITHOUT any response/SDK
 %%% change: only the dry-run env's metering protocol is stepped up, and
 %%% only from a Ceres-or-later base so nothing but the store-read repricing
-%%% (Arcus's only production behaviour -- four >= Arcus gate sites, one
-%%% feature) is applied. Estimate profiles only; replay stays historical.
+%%% (Arcus's only production behaviour) is applied. Estimate profiles only;
+%%% replay stays historical.
 %%%===================================================================
 
 ceres_dry_run_env() ->
     aetx_env:set_dry_run(aetx_env:tx_env(1, ?CERES_PROTOCOL_VSN), true).
 
-%% Estimate profiles force; real-protocol profiles (replay, includability) and
-%% unknown profiles do not.
+%% Estimate profiles force; real-protocol profiles (replay, includability), a
+%% missing profile, and unknown profiles do not (fail safe, not open).
 force_arcus_for_profile_test() ->
     ?assert(?TEST_MODULE:force_arcus_for_profile([{dry_run_profile, public}])),
     ?assert(?TEST_MODULE:force_arcus_for_profile([{dry_run_profile, internal}])),
-    ?assert(?TEST_MODULE:force_arcus_for_profile([])),  %% default profile = internal
+    ?assertNot(?TEST_MODULE:force_arcus_for_profile([])),  %% missing profile: pinned
     ?assertNot(?TEST_MODULE:force_arcus_for_profile([{dry_run_profile, replay}])),
     ?assertNot(?TEST_MODULE:force_arcus_for_profile([{dry_run_profile, includability}])),
     ?assertNot(?TEST_MODULE:force_arcus_for_profile([{dry_run_profile, whatever}])).
@@ -221,7 +227,7 @@ v6_call_tx_valid_at_ceres_and_forced_arcus_test() ->
 %%%===================================================================
 %%% Equivalence tripwire: forcing Arcus in dry-run changes gas ONLY.
 %%%
-%%% "Gas amounts only" holds today only because Arcus/Arcus add no non-
+%%% "Gas amounts only" holds today only because Arcus/Salus add no non-
 %%% repricing behaviour; nothing enforces that. This runs the SAME tx through
 %%% the real dry_run/3 apply path at natural Ceres (metering off) and forced
 %%% Arcus (metering on) and asserts the result is identical *when adequately
@@ -234,7 +240,7 @@ v6_call_tx_valid_at_ceres_and_forced_arcus_test() ->
 %%% a Ceres-adequate call into out_of_gas under a tight budget (the public
 %%% endpoint caps at ?DEFAULT_GAS_LIMIT = 6M), and (b) the replay profile is
 %%% NOT re-metered -- it keeps the block's real Ceres cost. Red-fails if any
-%%% future >= Arcus/Arcus gate leaks non-gas behaviour into the forcing.
+%%% future >= Arcus/Salus gate leaks non-gas behaviour into the forcing.
 %%%===================================================================
 
 -define(DUMMY_HASH, <<0:32/unit:8>>).
@@ -365,7 +371,10 @@ mk_call(Owner, PK, Data, Gas, State) ->
          , nonce => aect_test_utils:next_nonce(Owner, State) }, State).
 
 dry_call(Tx, Metering) ->
-    dry_call(Tx, Metering, []).
+    %% Simulates an internal/estimate caller; a caller that specifies no
+    %% profile at all now gets the safe (not forward-metered) default, so
+    %% this helper opts in explicitly to keep exercising the forced path.
+    dry_call(Tx, Metering, [{dry_run_profile, internal}]).
 
 dry_call(Tx, Metering, Extra) ->
     application:set_env(aehttp, dry_run, [{store_read_gas_metering, Metering}]),
@@ -376,7 +385,8 @@ dry_call(Tx, Metering, Extra) ->
 
 dry_raw(Tx, Metering) ->
     application:set_env(aehttp, dry_run, [{store_read_gas_metering, Metering}]),
-    aec_dry_run:dry_run(?DUMMY_HASH, [], [{tx, Tx}]).
+    %% Same reason as dry_call/2: opt in explicitly to the forced-metering path.
+    aec_dry_run:dry_run(?DUMMY_HASH, [], [{tx, Tx}], [{dry_run_profile, internal}]).
 
 dummy_sign(Tx) ->
     aetx_sign:new(Tx, [<<0:64/unit:8>>]).

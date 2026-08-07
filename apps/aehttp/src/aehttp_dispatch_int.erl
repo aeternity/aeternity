@@ -27,6 +27,7 @@
                         , when_stable/1
                         , process_request/2
                         , do_dry_run/0
+                        , do_dry_run/1
                         , dry_run_results/1
                         , decode_transaction/1
                         ]).
@@ -367,7 +368,9 @@ produce_tx(dry_run_txs, Req) ->
                  read_required_params([txs]),
                  read_optional_params([{top, top, top}, {accounts, accounts, []},
                                        {tx_events, tx_events, false}]),
-                 do_dry_run()],
+                 %% Internal listener is trusted (not the public DoS surface), so it
+                 %% is not wall-clock bounded - see mining > dry_run schema docs.
+                 do_dry_run(internal)],
     process_request(ParseFuns, Req);
 produce_tx(name_preclaim_tx, Req) ->
     ParseFuns = [parse_map_to_atom_keys(),

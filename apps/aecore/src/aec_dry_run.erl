@@ -162,9 +162,14 @@ setup_dry_run(Top, Accounts, ForceArcus) ->
 %% must answer for a REAL protocol are pinned: 'replay' (Rosetta/indexer historical
 %% re-execution -- forcing Arcus can flip a gas-tight call ok->out_of_gas and corrupt
 %% event/balance reconstruction) and 'includability' (pool check -- must reflect the
-%% current chain, not the post-fork cost). Unknown profiles are pinned too (safe default).
+%% current chain, not the post-fork cost). A MISSING profile is pinned too, same as
+%% an unknown one: an unprofiled caller (e.g. a library caller that never learned
+%% about this option) must get the historical, not-forward-estimated cost by
+%% default -- only an explicit 'internal' opts into forward metering. This is
+%% independent of resolve_timeout/1's own (separately-defaulted) profile lookup,
+%% so this default does not change any caller's timeout behaviour.
 force_arcus_for_profile(Opts) ->
-    case proplists:get_value(dry_run_profile, Opts, internal) of
+    case proplists:get_value(dry_run_profile, Opts, undefined) of
         public        -> true;
         internal      -> true;
         replay        -> false;

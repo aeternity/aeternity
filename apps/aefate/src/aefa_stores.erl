@@ -42,6 +42,7 @@
         , store_map_member/4
         , store_map_member/5
         , store_map_to_list/3
+        , store_map_to_list/4
         , store_map_size/3
         ]).
 
@@ -96,8 +97,6 @@
         , optimistic_reuse_fixpoint/6
         , full_reuse_fixpoint/6
         , compute_reuse_fixpoint/4
-        , subtree_bytes/1
-        , read_gas_cost/1
         ]).
 -endif.
 
@@ -268,13 +267,30 @@ store_map_member_(Pubkey, MapId, Key, #store{cache = Cache} = S, Gas) ->
     end.
 
 -spec store_map_to_list(pubkey(), non_neg_integer(), store()) -> {[{fate_val(), fate_val()}], store()}.
-store_map_to_list(Pubkey, MapId, #store{cache = Cache} = S) ->
+store_map_to_list(Pubkey, MapId, S) ->
+    %% Legacy/unmetered variant -- same rationale as find_value/3 above.
+    {List, Store1, unmetered} = store_map_to_list_(Pubkey, MapId, S, unmetered),
+    {List, Store1}.
+
+-spec store_map_to_list(pubkey(), non_neg_integer(), store(), non_neg_integer()) ->
+        {[{fate_val(), fate_val()}], store(), non_neg_integer()} | {error, out_of_gas}.
+store_map_to_list(Pubkey, MapId, S, GasLeft) when is_integer(GasLeft) ->
+    store_map_to_list_(Pubkey, MapId, S, GasLeft).
+
+store_map_to_list_(Pubkey, MapId, #store{cache = Cache} = S, Gas) ->
     #cache_entry{ store = Store } = maps:get(Pubkey, Cache),
     {ok, Meta, S1} = find_meta_data(Pubkey, S),
     ?METADATA(RawId, _, _) = get_map_meta(MapId, Meta),
     {Subtree, Store1} = aect_contracts_store:subtree_w_cache(map_data_key(RawId), Store),
-    {[ {aeb_fate_encoding:deserialize(K), aeb_fate_encoding:deserialize(V)}
-      || {K, V} <- lists:keysort(1,maps:to_list(Subtree)) ], update_ct_store(Pubkey, Store1, S1)}.
+    %% Whole-subtree read charged like any other subtree materialization
+    %% (compute_copy_refcounts's copy branch): proportional to total bytes.
+    case charge_read_gas(Gas, subtree_bytes(Subtree)) of
+        out_of_gas -> {error, out_of_gas};
+        Gas1 ->
+            List = [ {aeb_fate_encoding:deserialize(K), aeb_fate_encoding:deserialize(V)}
+                     || {K, V} <- lists:keysort(1,maps:to_list(Subtree)) ],
+            {List, update_ct_store(Pubkey, Store1, S1), Gas1}
+    end.
 
 -spec store_map_size(pubkey(), non_neg_integer(), store()) -> {non_neg_integer(), store()}.
 store_map_size(Pubkey, MapId, S) ->
@@ -508,10 +524,12 @@ compute_reuse_fixpoint(Maps, Metadata, Store, GasLeft) ->
     %% reused in-place, the copy branch would have contributed zero adjustments
     %% so the optimistic result is exact.
     case optimistic_reuse_fixpoint(Unused0, Maps, Metadata, Store, 100, GasLeft) of
-        out_of_fuel ->
-            %% Never trust a non-converged optimistic result: fall through
-            %% to the full (deterministic, gas-charged) fixpoint below.
-            full_reuse_fixpoint(Unused0, Maps, Metadata, Store, 100, {#{}, GasLeft});
+        {out_of_fuel, GasLeftAtFuelOut} ->
+            %% Never trust a non-converged optimistic result: fall through to
+            %% the full (deterministic, gas-charged) fixpoint below, carrying
+            %% forward the gas the optimistic pass already spent on reads so
+            %% those reads are not re-run for free.
+            full_reuse_fixpoint(Unused0, Maps, Metadata, Store, 100, {#{}, GasLeftAtFuelOut});
         {ok, UnusedOpt, ReuseOpt, _MetaOpt, GasLeftOpt} ->
             case maps:size(ReuseOpt) =:= NumStoreMaps of
                 true ->
@@ -521,7 +539,9 @@ compute_reuse_fixpoint(Maps, Metadata, Store, GasLeft) ->
                     Metadata1 = update_refcounts(RefCounts1, Metadata),
                     {UnusedOpt, ReuseOpt, Metadata1, GasLeft1};
                 false ->
-                    full_reuse_fixpoint(Unused0, Maps, Metadata, Store, 100, {#{}, GasLeft})
+                    %% Same reason as the out_of_fuel branch: carry GasLeftOpt,
+                    %% not the pre-optimistic-pass GasLeft, into the full path.
+                    full_reuse_fixpoint(Unused0, Maps, Metadata, Store, 100, {#{}, GasLeftOpt})
             end
     end.
 
@@ -547,7 +567,7 @@ reuse_fixpoint_loop(RefCountFun, Unused, Maps, Metadata, Store, Fuel, Acc) ->
 optimistic_reuse_fixpoint(Unused, Maps, Metadata, Store, Fuel, GasLeft) ->
     case reuse_fixpoint_loop(fun compute_reuse_only_refcounts/5, Unused, Maps, Metadata, Store, Fuel, GasLeft) of
         {converged, U, R, M, GasLeft1} -> {ok, U, R, M, GasLeft1};
-        {out_of_fuel, _U, _Gas}        -> out_of_fuel
+        {out_of_fuel, _U, Gas}         -> {out_of_fuel, Gas}
     end.
 
 %% Full fixpoint (original algorithm with subtree cache) — used as fallback.

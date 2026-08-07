@@ -131,8 +131,13 @@ generate_valid_test_data(_TopBlock, Tries) when Tries < 1 ->
     could_not_find_nonce;
 generate_valid_test_data(TopBlock, Tries) ->
     Nonce = aeminer_pow:pick_nonce(),
+    Height = aec_blocks:height(TopBlock),
+    Info = case aec_hard_forks:protocol_effective_at_height(Height + 1) of
+               ?ROMA_PROTOCOL_VSN -> default;
+               _ -> 591
+           end,
     {BlockCandidate, _} = aec_test_utils:create_keyblock_with_state(
-                            [{TopBlock, aec_trees:new()}], ?TEST_PUB, ?TEST_PUB, #{info => 591}),
+                            [{TopBlock, aec_trees:new()}], ?TEST_PUB, ?TEST_PUB, #{info => Info}),
     HeaderBin = aec_headers:serialize_to_binary(aec_blocks:to_header(BlockCandidate)),
     Target = aec_blocks:target(BlockCandidate),
     [Config] = aec_mining:get_miner_configs(),

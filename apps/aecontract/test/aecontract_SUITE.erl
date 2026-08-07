@@ -655,6 +655,18 @@ init_per_group(protocol_interaction, Cfg) ->
     end;
 init_per_group(protocol_interaction_fate, Cfg) ->
     case aect_test_utils:latest_protocol_version() of
+        ?SALUS_PROTOCOL_VSN ->
+            AHeight = 20,
+            SHeight = 25,
+            Fun = fun(H) when H =< AHeight -> ?ARCUS_PROTOCOL_VSN;
+                     (H) when H >  AHeight -> ?SALUS_PROTOCOL_VSN
+                  end,
+            meck:expect(aec_hard_forks, protocol_effective_at_height, Fun),
+            [{sophia_version, ?SOPHIA_SALUS_FATE},
+             {vm_version, ?VM_FATE_SOPHIA_3},
+             {abi_version, ?ABI_FATE_SOPHIA_1},
+             {fork_heights, [{arcus, AHeight, ?VM_FATE_SOPHIA_3}, {salus, SHeight, ?VM_FATE_SOPHIA_3}]},
+             {protocol, salus} | Cfg];
         ?ARCUS_PROTOCOL_VSN ->
             CHeight = 20,
             AHeight = 25,

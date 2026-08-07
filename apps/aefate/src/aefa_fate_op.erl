@@ -3080,36 +3080,73 @@ store_map_size(Cache, MapId, ES) ->
     {Store, ES1}   = aefa_fate:ensure_contract_store(Pubkey, ES),
     Aefa_stores    = aefa_engine_state:aefa_stores(ES1),
     {Size, Store1} = Aefa_stores:store_map_size(Pubkey, MapId, Store),
-    Delta  = fun(Key, ?FATE_MAP_TOMBSTONE, N) ->
-                     case Aefa_stores:store_map_member(Pubkey, MapId, Key, Store1) of
-                         {false, _Store} -> N;
-                         {true,  _Store} -> N - 1
-                     end;
-                (Key, _, N) ->
-                     case Aefa_stores:store_map_member(Pubkey, MapId, Key, Store) of
-                         {false, _Store} -> N + 1;
-                         {true,  _Store} -> N
-                     end
-             end,
     ES2 = aefa_engine_state:spend_gas_for_store_values(maps:size(Cache), ES1),
-    ES3 = aefa_engine_state:set_stores(Store1, ES2),
-    {maps:fold(Delta, Size, Cache), ES3}.
+    case aefa_engine_state:consensus_version(ES2) >= ?ARCUS_PROTOCOL_VSN of
+        true ->
+            %% Each cache key touched here is a real store read (same as the
+            %% single-key store_map_member/4 opcode above) and must be charged.
+            Member = fun(S, Key, Gas) ->
+                             case Aefa_stores:store_map_member(Pubkey, MapId, Key, S, Gas) of
+                                 {error, out_of_gas} -> aefa_fate:abort(out_of_gas, ES2);
+                                 {Bool, _S1, Gas1}   -> {Bool, Gas1}
+                             end
+                     end,
+            Delta = fun(Key, ?FATE_MAP_TOMBSTONE, {N, Gas}) ->
+                            case Member(Store1, Key, Gas) of
+                                {false, Gas1} -> {N, Gas1};
+                                {true,  Gas1} -> {N - 1, Gas1}
+                            end;
+                       (Key, _, {N, Gas}) ->
+                            case Member(Store, Key, Gas) of
+                                {false, Gas1} -> {N + 1, Gas1};
+                                {true,  Gas1} -> {N, Gas1}
+                            end
+                    end,
+            {Size1, GasEnd} = maps:fold(Delta, {Size, aefa_engine_state:gas(ES2)}, Cache),
+            ES3 = aefa_engine_state:set_gas(GasEnd, ES2),
+            ES4 = aefa_engine_state:set_stores(Store1, ES3),
+            {Size1, ES4};
+        false ->
+            Delta  = fun(Key, ?FATE_MAP_TOMBSTONE, N) ->
+                             case Aefa_stores:store_map_member(Pubkey, MapId, Key, Store1) of
+                                 {false, _Store} -> N;
+                                 {true,  _Store} -> N - 1
+                             end;
+                        (Key, _, N) ->
+                             case Aefa_stores:store_map_member(Pubkey, MapId, Key, Store) of
+                                 {false, _Store} -> N + 1;
+                                 {true,  _Store} -> N
+                             end
+                     end,
+            ES3 = aefa_engine_state:set_stores(Store1, ES2),
+            {maps:fold(Delta, Size, Cache), ES3}
+    end.
 
 store_map_get_clean(Cache, MapId, ES) ->
     Pubkey           = aefa_engine_state:current_contract(ES),
     {Store, ES1}     = aefa_fate:ensure_contract_store(Pubkey, ES),
     Aefa_stores      = aefa_engine_state:aefa_stores(ES1),
     {Size, Store1}   = Aefa_stores:store_map_size(Pubkey, MapId, Store),
-    %% Routed through the shared dispatcher, matching every other call site.
-    STORE_MAP_TO_LIST = fun Aefa_stores:store_map_to_list/3,
-    ES2                 = aefa_engine_state:spend_gas_for_store_values(Size, ES1),
-    {StoreList, Store2} = STORE_MAP_TO_LIST(Pubkey, MapId, Store1),
+    ES2              = aefa_engine_state:spend_gas_for_store_values(Size, ES1),
+    {StoreList, Store2, ES3} =
+        case aefa_engine_state:consensus_version(ES2) >= ?ARCUS_PROTOCOL_VSN of
+            true ->
+                %% Whole-subtree materialization, charged proportional to bytes
+                %% (same as any other subtree read) instead of left unmetered.
+                case Aefa_stores:store_map_to_list(Pubkey, MapId, Store1, aefa_engine_state:gas(ES2)) of
+                    {error, out_of_gas}  -> aefa_fate:abort(out_of_gas, ES2);
+                    {List, S2, GasLeft1} -> {List, S2, aefa_engine_state:set_gas(GasLeft1, ES2)}
+                end;
+            false ->
+                {List, S2} = Aefa_stores:store_map_to_list(Pubkey, MapId, Store1),
+                {List, S2, ES2}
+        end,
     StoreMap            = maps:from_list(StoreList),
     Upd = fun(Key, ?FATE_MAP_TOMBSTONE, M) -> maps:remove(Key, M);
              (Key, Val, M)                 -> maps:put(Key, Val, M) end,
     Map = maps:fold(Upd, StoreMap, Cache),
-    ES3 = aefa_engine_state:set_stores(Store2, ES2),
-    {Map, ES3}.
+    ES4 = aefa_engine_state:set_stores(Store2, ES3),
+    {Map, ES4}.
 
 
 %% ------------------------------------------------------
