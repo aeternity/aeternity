@@ -32,6 +32,34 @@ deserialize_tx_test_() ->
       end}
     ].
 
+%% The tx gossip wire message is pre-encoded once and pushed to every peer
+%% verbatim, so it must be a complete, self-describing message - the same shape
+%% the receive path in handle_info({noise, _, <<Type:16, Payload/binary>>}, _)
+%% expects. If this regresses to the inner tx only, gossiped txs stop parsing.
+gossip_serialize_tx_test_() ->
+    [{"Produces a tagged txs message that round-trips back to the signed tx",
+      fun() ->
+              #{ public := Pubkey, secret := Privkey } = enacl:sign_keypair(),
+              {ok, SpendTx} = make_spend_tx(Pubkey),
+              Signed = aec_test_utils:sign_tx(SpendTx, Privkey),
+
+              <<Tag:16, Payload/binary>> = ?TEST_MODULE:gossip_serialize_tx(Signed),
+              ?assertEqual(aec_peer_messages:tag(txs), Tag),
+
+              {txs, _Vsn, #{ txs := [SerTx] }} =
+                  aec_peer_messages:deserialize(Tag, Payload),
+              ?assertEqual({true, Signed}, ?TEST_MODULE:deserialize_tx(SerTx))
+      end},
+     {"Is byte-identical across calls, so one encoding can serve every peer",
+      fun() ->
+              #{ public := Pubkey, secret := Privkey } = enacl:sign_keypair(),
+              {ok, SpendTx} = make_spend_tx(Pubkey),
+              Signed = aec_test_utils:sign_tx(SpendTx, Privkey),
+              ?assertEqual(?TEST_MODULE:gossip_serialize_tx(Signed),
+                           ?TEST_MODULE:gossip_serialize_tx(Signed))
+      end}
+    ].
+
 %% Coverage for the ping-version negotiation that only ever takes a real
 %% "downgrade" branch when talking to an older peer (aest_peers_SUITE's
 %% test_old_peer_discovery is the only place that exercises this against a
