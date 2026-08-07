@@ -143,6 +143,10 @@ fork_management:
     network_id: ae_uat
 ```
 
+The network id has to be chosen before the node builds a chain, and left alone afterwards. It is prepended to every transaction before it is signed and verified, and it is part of the peer handshake. A node given a different id therefore can no longer complete a handshake with any peer of the old network, rejects the transactions that network signs, and no longer recognises the signatures stored in its own database when it revalidates them. It also selects the fork schedule and the genesis accounts. Point a node at a different network id only together with a fresh database.
+
+The id is read once, while the node boots, and kept for as long as the node runs.
+
 ### Hardforks
 
 Hardforks allow the specification of consensus protocol versions with their respective heights for custom chains.

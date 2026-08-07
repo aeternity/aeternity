@@ -14,6 +14,9 @@
 
 start(_StartType, _StartArgs) ->
     ok = lager:info("Starting aecore node"),
+    %% Re-pinned per aecore start; setup hooks run once per VM.
+    %% See aec_governance:ensure_env/0.
+    ok = aec_governance:ensure_env(),
     ok = aec_jobs_queues:start(),
     ok = application:ensure_started(mnesia),
     aecore_sup:start_link().
@@ -35,6 +38,7 @@ stop(_State) ->
     lager:info("Stopping aecore app", []),
     aec_db_gc:cleanup(),
     aec_db:cleanup(),
+    ok = aec_governance:clear_network_id_cache(),
     ok.
 
 set_app_ctrl_mode() ->
