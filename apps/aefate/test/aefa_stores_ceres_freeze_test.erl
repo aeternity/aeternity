@@ -66,12 +66,12 @@ hex_sha256(Bin) ->
 %%%===================================================================
 %%% Behavioural freeze-guard: live terms_to_finalize == frozen one.
 %%%
-%%% aefa_engine_state:finalize/1 hardcodes aefa_stores:terms_to_finalize/1
-%%% (the LIVE module) for every protocol, on the
-%%% invariant that it is equivalent to the frozen aefa_stores_ceres snapshot
-%%% used to replay already-forked Iris..Ceres blocks. The sha256 guard above
-%%% catches edits to the frozen file; this catches the other direction -- an
-%%% edit to the LIVE aefa_stores:terms_to_finalize/1 (or the shared
+%%% aefa_engine_state:finalize/1 falls back to aefa_stores:terms_to_finalize/1
+%%% (the LIVE module) for pre-Iris, since aefa_stores_lima does not export it,
+%%% on the invariant that it is equivalent to the frozen aefa_stores_ceres
+%%% snapshot used to replay already-forked Iris..Ceres blocks. The sha256 guard
+%%% above catches edits to the frozen file; this catches the other direction --
+%%% an edit to the LIVE aefa_stores:terms_to_finalize/1 (or the shared
 %%% #store{}/#cache_entry{} layout) that diverges from the frozen behaviour.
 %%%===================================================================
 

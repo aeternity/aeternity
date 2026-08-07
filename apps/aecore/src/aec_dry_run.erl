@@ -158,16 +158,14 @@ setup_dry_run(Top, Accounts, ForceArcus) ->
     Env2   = maybe_force_arcus_metering(Env1, ForceArcus),
     {Env2, Trees1}.
 
-%% Only the estimate profiles (public/internal) meter forward at Arcus. Profiles that
-%% must answer for a REAL protocol are pinned: 'replay' (Rosetta/indexer historical
-%% re-execution -- forcing Arcus can flip a gas-tight call ok->out_of_gas and corrupt
-%% event/balance reconstruction) and 'includability' (pool check -- must reflect the
-%% current chain, not the post-fork cost). A MISSING profile is pinned too, same as
-%% an unknown one: an unprofiled caller (e.g. a library caller that never learned
-%% about this option) must get the historical, not-forward-estimated cost by
-%% default -- only an explicit 'internal' opts into forward metering. This is
-%% independent of resolve_timeout/1's own (separately-defaulted) profile lookup,
-%% so this default does not change any caller's timeout behaviour.
+%% Only the estimate profiles (public/internal) meter forward at Arcus. Profiles
+%% answering for a REAL protocol are pinned: 'replay' (historical re-execution --
+%% forcing Arcus can flip a gas-tight call ok->out_of_gas and corrupt event/balance
+%% reconstruction) and 'includability' (pool check -- must reflect the current
+%% chain, not the post-fork cost). A missing profile is pinned like an unknown one,
+%% so an unprofiled caller gets the historical cost; only an explicit estimate
+%% profile opts into forward metering. Independent of resolve_timeout/1's own
+%% profile lookup, so this default does not affect any caller's timeout.
 force_arcus_for_profile(Opts) ->
     case proplists:get_value(dry_run_profile, Opts, undefined) of
         public        -> true;
@@ -178,13 +176,12 @@ force_arcus_for_profile(Opts) ->
     end.
 
 %% Meter FATE store reads at the repriced Arcus (v7) cost. Arcus's only production
-%% behaviour is the store-read repricing (four >= Arcus gate sites -- register read,
-%% map lookup, map member, store-module select -- one feature), so this changes gas
-%% amounts only (never tx validity/ABI/VM version) and never commits. Step up only
-%% from Ceres+ so no other protocol gate (incl. the >= Ceres tx-validity gate) flips;
-%% pre-Ceres replay is exact. Caveat: `Top` is caller-controlled, so a caller could
-%% target a pre-Ceres height to dodge the repricing; that is left un-repriced by
-%% design (replay must be exact) -- an estimate-only metering floor is a follow-up.
+%% behaviour is the store-read repricing (register read, map lookup, map member,
+%% store-module select), so this changes gas amounts only -- never tx validity, ABI
+%% or VM version -- and never commits. Stepping up only from Ceres+ keeps every
+%% other protocol gate (incl. the >= Ceres tx-validity gate) unflipped, so pre-Ceres
+%% replay stays exact. `Top` is caller-controlled, so targeting a pre-Ceres height
+%% deliberately yields the un-repriced cost, since replay must be exact.
 maybe_force_arcus_metering(Env, true) ->
     Base = aetx_env:consensus_version(Env),
     case store_read_gas_metering_enabled()
@@ -196,9 +193,9 @@ maybe_force_arcus_metering(Env, true) ->
 maybe_force_arcus_metering(Env, false) ->
     Env.
 
-%% Operator escape hatch; default on (the DoS-hardening needs it always-on since an
-%% attacker never opts in). This bounds a single call's store-read work; the
-%% aggregate concurrent-dry-run cap is still open -- dry-run DoS is hardened, not closed.
+%% Operator escape hatch; defaults on, since the DoS-hardening only helps when an
+%% attacker cannot opt out. Bounds the store-read work of a single call; it does
+%% not cap aggregate concurrent dry-runs.
 store_read_gas_metering_enabled() ->
     aeu_env:user_config_or_env([<<"http">>, <<"dry_run">>, <<"store_read_gas_metering">>],
                                aehttp, [dry_run, store_read_gas_metering], true).
