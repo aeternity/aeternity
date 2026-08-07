@@ -130,11 +130,12 @@ trees_with_one_contract() ->
 %%% (c) both fuel sites signal deterministically
 %%%===================================================================
 
-%% optimistic_reuse_fixpoint/6 returns bare `out_of_fuel`, never a coerced
-%% converged-looking result.
+%% optimistic_reuse_fixpoint/6 returns `{out_of_fuel, GasLeft}`, carrying the
+%% gas already spent by completed iterations forward to the full-path
+%% fallback -- never a bare atom that would let that gas be re-spent for free.
 fuel_optimistic_path_signals_out_of_fuel_not_silent_coercion_test() ->
     Store = aect_contracts_store:new(),
-    ?assertEqual(out_of_fuel,
+    ?assertEqual({out_of_fuel, 1000000},
                  aefa_stores:optimistic_reuse_fixpoint(#{}, #{}, #{}, Store, 0, 1000000)).
 
 %% full_reuse_fixpoint/6 throws out_of_gas deterministically on exhaustion.
