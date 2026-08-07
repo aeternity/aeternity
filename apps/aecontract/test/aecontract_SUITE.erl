@@ -7257,7 +7257,11 @@ lima_migration(_Config) ->
 
 
 fate_vm_interaction(Cfg) ->
-    ?skipRest(sophia_version() == ?SOPHIA_ARCUS_FATE, same_vm_ceres_arcus),
+    %% Arcus and Salus both keep the Ceres VM (?VM_FATE_SOPHIA_3); the
+    %% "old VM illegal after fork" check below only makes sense across an
+    %% actual VM version change.
+    ?skipRest(lists:member(sophia_version(), [?SOPHIA_ARCUS_FATE, ?SOPHIA_SALUS_FATE]),
+              same_vm_ceres_arcus_salus),
     init_new_state(),
     ForkHeights = ?config(fork_heights, Cfg),
     [{_ProtoA, HeightA, VMA}, {_ProtoB, HeightB, VMB}] = ForkHeights,
