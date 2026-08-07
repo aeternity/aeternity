@@ -32,6 +32,7 @@
         , encode_keyblock/2
         , encode_generation/3
         , do_dry_run/0
+        , do_dry_run/1
         , dry_run_results/1
         , to_int/1
         ]).
@@ -659,11 +660,14 @@ prepare_dry_run_params([Param | Params], State) ->
     end.
 
 do_dry_run() ->
+    do_dry_run(public).
+
+do_dry_run(Profile) ->
     fun(_Req, State) ->
         case prepare_dry_run_params([top, txs, accounts, tx_events], State) of
             {ok, #{top := Top, accounts := As, txs := Txs, tx_events := Events}} ->
                 lager:debug("tx_events = ~p", [Events]),
-                case aec_dry_run:dry_run(Top, As, Txs, [{tx_events, Events}, {dry_run_profile, public}]) of
+                case aec_dry_run:dry_run(Top, As, Txs, [{tx_events, Events}, {dry_run_profile, Profile}]) of
                     {ok, Res} ->
                         {Results, EventRes} = R = dry_run_results(Res),
                         lager:debug("dry_run_results: ~p", [R]),

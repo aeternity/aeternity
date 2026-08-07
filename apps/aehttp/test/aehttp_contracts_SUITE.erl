@@ -1223,7 +1223,14 @@ remote_gas_test_contract(Config) ->
     call_get(APub, APriv, EncC2Pub, Contract, 100),
     force_fun_calls(Node),
     Balance1 = get_balance(APub),
-    ?assertMatchVM(1600596, 1600596, 1600596, 1600916, 1600022, 1604028, (Balance0 - Balance1) div ?DEFAULT_GAS_PRICE),
+    GasCost = (Balance0 - Balance1) div ?DEFAULT_GAS_PRICE,
+    IsArcus = aect_test_utils:latest_protocol_version() >= ?ARCUS_PROTOCOL_VSN,
+    case IsArcus of
+        true ->
+            ?assertMatch(1600258, GasCost);
+        false ->
+            ?assertMatchVM(1600596, 1600596, 1600596, 1600916, 1600022, 1604028, GasCost)
+    end,
 
     %% Test remote call with limited gas
     %% Call contract remote set function with limited gas
@@ -1231,13 +1238,21 @@ remote_gas_test_contract(Config) ->
     call_get(APub, APriv, EncC2Pub, Contract, 1),
     force_fun_calls(Node),
     Balance2 = get_balance(APub),
-    ?assertMatchVM(1610855, 1610855, 1610855, 1611335, 1600231, 1609144, (Balance1 - Balance2) div ?DEFAULT_GAS_PRICE),
+    GasCost2 = (Balance1 - Balance2) div ?DEFAULT_GAS_PRICE,
+    case IsArcus of
+        true  -> ?assertMatch(1605374, GasCost2);
+        false -> ?assertMatchVM(1610855, 1610855, 1610855, 1611335, 1600231, 1609144, GasCost2)
+    end,
 
     %% Test remote call with limited gas (3) that fails (out of gas).
     [] = call_func(APub, APriv, EncC1Pub, Contract, "call", [EncC2Pub, "2", "3"], error),
     force_fun_calls(Node),
     Balance3 = get_balance(APub),
-    ?assertMatchVM(809981, 809981, 809981, 809981, 800147, 800150, (Balance2 - Balance3) div ?DEFAULT_GAS_PRICE),
+    GasCost3 = (Balance2 - Balance3) div ?DEFAULT_GAS_PRICE,
+    case IsArcus of
+        true  -> ?assertMatch(800150, GasCost3);
+        false -> ?assertMatchVM(809981, 809981, 809981, 809981, 800147, 800150, GasCost3)
+    end,
 
     %% Check that store/state not changed (we tried to write 2).
     call_get(APub, APriv, EncC2Pub, Contract, 1),
@@ -1249,7 +1264,11 @@ remote_gas_test_contract(Config) ->
     [] = call_func(APub, APriv, EncC1Pub, Contract, "call", [ZeroContract, "2", "1"], error),
     force_fun_calls(Node),
     Balance5 = get_balance(APub),
-    ?assertMatchVM(900000, 900000, 900000, 900000, 800145, 800148, (Balance4 - Balance5) div ?DEFAULT_GAS_PRICE),
+    GasCost4 = (Balance4 - Balance5) div ?DEFAULT_GAS_PRICE,
+    case IsArcus of
+        true  -> ?assertMatch(800148, GasCost4);
+        false -> ?assertMatchVM(900000, 900000, 900000, 900000, 800145, 800148, GasCost4)
+    end,
 
     ok.
 

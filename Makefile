@@ -2,7 +2,7 @@ CORE = rel/aeternity/bin/aeternity
 
 REBAR ?= ./rebar3
 
-PROTOCOLS = roma minerva fortuna lima iris ceres arcus
+PROTOCOLS = roma minerva fortuna lima iris ceres arcus salus
 CT_TARGETS = $(patsubst %,ct-%,$(PROTOCOLS))
 LATEST_PROTOCOL = $(lastword $(PROTOCOLS))
 

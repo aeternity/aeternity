@@ -58,8 +58,9 @@ init_per_suite(Cfg) ->
             init_per_suite_(Cfg);
         FromIrisOn when FromIrisOn =:= ?IRIS_PROTOCOL_VSN;
                         FromIrisOn =:= ?CERES_PROTOCOL_VSN;
-                        FromIrisOn =:= ?ARCUS_PROTOCOL_VSN ->
-            {skip, stratum_not_working_in_iris_to_arcus}
+                        FromIrisOn =:= ?ARCUS_PROTOCOL_VSN;
+                        FromIrisOn =:= ?SALUS_PROTOCOL_VSN ->
+            {skip, stratum_not_working_in_iris_to_salus}
     end.
 
 init_per_suite_(Cfg) ->

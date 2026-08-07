@@ -9,10 +9,14 @@
 
 %% exported for eunit only
 -export([ run_bounded/2
-        , resolve_timeout/1 ]).
+        , resolve_timeout/1
+        , force_arcus_for_profile/1
+        , maybe_force_arcus_metering/2
+        , store_read_gas_metering_enabled/0 ]).
 
 -include("blocks.hrl").
 -include_lib("aecontract/include/aecontract.hrl").
+-include_lib("aecontract/include/hard_forks.hrl").
 
 -define(MR_MAGIC, <<1:32/unit:8>>).
 -define(BIG_AMOUNT, 1000000000000000000000). %% 1000 AE
@@ -33,11 +37,14 @@ dry_run(Top, Accounts, Txs) ->
 %% Entry point for HTTP/Rosetta/aeapi dry-run; off-chain only, never called
 %% from block production/validation.
 dry_run(Top, Accounts, Txs, Opts) ->
+    %% Read the profile before resolve_timeout/1 strips it: only estimate
+    %% profiles get the forward Arcus metering; replay must stay historical.
+    ForceArcus = force_arcus_for_profile(Opts),
     {TimeoutMs, Opts1} = resolve_timeout(Opts),
-    run_bounded(fun() -> dry_run_unbounded(Top, Accounts, Txs, Opts1) end, TimeoutMs).
+    run_bounded(fun() -> dry_run_unbounded(Top, Accounts, Txs, Opts1, ForceArcus) end, TimeoutMs).
 
-dry_run_unbounded(Top, Accounts, Txs, Opts) ->
-    try setup_dry_run(Top, Accounts) of
+dry_run_unbounded(Top, Accounts, Txs, Opts, ForceArcus) ->
+    try setup_dry_run(Top, Accounts, ForceArcus) of
         {Env, Trees} -> dry_run_(Txs, Trees, Env, Opts)
     catch
         error:invalid_hash ->
@@ -144,11 +151,54 @@ run_worker(Fun, Caller, Tag) ->
 crash_reason(Reason) ->
     iolist_to_binary(io_lib:format("dry-run failed: ~120P", [Reason, 10])).
 
-setup_dry_run(Top, Accounts) ->
+setup_dry_run(Top, Accounts, ForceArcus) ->
     {Env, Trees} = tx_env_and_trees(Top),
     Trees1 = add_accounts(Trees, [#{pub_key => ?MR_MAGIC, amount => ?BIG_AMOUNT} | Accounts]),
     Env1   = aetx_env:set_dry_run(Env, true),
-    {Env1, Trees1}.
+    Env2   = maybe_force_arcus_metering(Env1, ForceArcus),
+    {Env2, Trees1}.
+
+%% Only the estimate profiles (public/internal) meter forward at Arcus. Profiles
+%% answering for a REAL protocol are pinned: 'replay' (historical re-execution --
+%% forcing Arcus can flip a gas-tight call ok->out_of_gas and corrupt event/balance
+%% reconstruction) and 'includability' (pool check -- must reflect the current
+%% chain, not the post-fork cost). A missing profile is pinned like an unknown one,
+%% so an unprofiled caller gets the historical cost; only an explicit estimate
+%% profile opts into forward metering. Independent of resolve_timeout/1's own
+%% profile lookup, so this default does not affect any caller's timeout.
+force_arcus_for_profile(Opts) ->
+    case proplists:get_value(dry_run_profile, Opts, undefined) of
+        public        -> true;
+        internal      -> true;
+        replay        -> false;
+        includability -> false;
+        _             -> false
+    end.
+
+%% Meter FATE store reads at the repriced Arcus (v7) cost. Arcus's only production
+%% behaviour is the store-read repricing (register read, map lookup, map member,
+%% store-module select), so this changes gas amounts only -- never tx validity, ABI
+%% or VM version -- and never commits. Stepping up only from Ceres+ keeps every
+%% other protocol gate (incl. the >= Ceres tx-validity gate) unflipped, so pre-Ceres
+%% replay stays exact. `Top` is caller-controlled, so targeting a pre-Ceres height
+%% deliberately yields the un-repriced cost, since replay must be exact.
+maybe_force_arcus_metering(Env, true) ->
+    Base = aetx_env:consensus_version(Env),
+    case store_read_gas_metering_enabled()
+         andalso Base >= ?CERES_PROTOCOL_VSN
+         andalso Base < ?ARCUS_PROTOCOL_VSN of
+        true  -> aetx_env:set_consensus_version(Env, ?ARCUS_PROTOCOL_VSN);
+        false -> Env
+    end;
+maybe_force_arcus_metering(Env, false) ->
+    Env.
+
+%% Operator escape hatch; defaults on, since the DoS-hardening only helps when an
+%% attacker cannot opt out. Bounds the store-read work of a single call; it does
+%% not cap aggregate concurrent dry-runs.
+store_read_gas_metering_enabled() ->
+    aeu_env:user_config_or_env([<<"http">>, <<"dry_run">>, <<"store_read_gas_metering">>],
+                               aehttp, [dry_run, store_read_gas_metering], true).
 
 tx_env_and_trees(top) ->
     case aec_chain:top_block_hash() of
