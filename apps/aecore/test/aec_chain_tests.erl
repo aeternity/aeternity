@@ -71,6 +71,8 @@ basic_access_test_() ->
              aec_test_utils:stop_chain_db()
      end,
      [ {"Access for block chain", fun basic_access_test_block_chain/0}
+     , {"Access for top header, hash and state",
+        fun basic_access_test_top_header_hash_and_state/0}
      ]}.
 
 basic_access_test_block_chain() ->
@@ -112,6 +114,17 @@ basic_access_test_block_chain() ->
     ?compareBlockResults({ok, B1}, get_key_block_by_height(1)),
     ?compareBlockResults({ok, B2}, get_key_block_by_height(2)),
     ?assertEqual({error, chain_too_short}, get_key_block_by_height(3)).
+
+basic_access_test_top_header_hash_and_state() ->
+    %% Empty chain db: no top block node yet.
+    ?assertEqual(undefined, aec_chain:top_header_hash_and_state()),
+
+    ok = insert_block(genesis_block()),
+    {Header, Hash, Trees} = aec_chain:top_header_hash_and_state(),
+    ?assertEqual(top_header(), Header),
+    ?assertEqual(top_block_hash(), Hash),
+    {ok, TopTrees} = get_block_state(Hash),
+    ?assertEqual(aec_trees:hash(TopTrees), aec_trees:hash(Trees)).
 
 %%%===================================================================
 %%% Out of order tests

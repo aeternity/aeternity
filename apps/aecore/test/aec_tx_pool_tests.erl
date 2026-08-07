@@ -63,6 +63,28 @@ tx_pool_test_() ->
                ?assertEqual({ok, []}, aec_tx_pool:peek(3)),
                ?assertEqual(0, aec_tx_pool:size())
        end},
+      {"Push on empty chain db falls back to the genesis env",
+       fun() ->
+               %% Restart the chain db without inserting the genesis block:
+               %% aec_chain has no top block node and get_onchain_env/0 must
+               %% fall back to the genesis header and state.
+               aec_test_utils:stop_chain_db(),
+               aec_test_utils:start_chain_db(),
+               ?assertEqual(undefined, aec_chain:top_header_hash_and_state()),
+
+               STx = a_signed_tx(me, new_pubkey(), 1, 20000),
+               ?assertEqual(ok, aec_tx_pool:push(STx, tx_received)),
+               ?assertEqual({ok, [STx]}, aec_tx_pool:peek(infinity))
+       end},
+      {"Push rejects a tx with an invalid signature",
+       fun() ->
+               {ok, Tx} = a_spend_tx(new_pubkey(), new_pubkey(), 1, 20000, 0),
+               {_WrongPub, WrongPriv} = keypair(),
+               STx = aec_test_utils:sign_tx(Tx, WrongPriv),
+               ?assertEqual({error, signature_check_failed},
+                            aec_tx_pool:push(STx, tx_received)),
+               ?assertEqual({ok, []}, aec_tx_pool:peek(infinity))
+       end},
       {"As a healthy network peer, the node stores in mempool txs received from"
        " peers and serves txs in mempool to peers",
        fun() ->
