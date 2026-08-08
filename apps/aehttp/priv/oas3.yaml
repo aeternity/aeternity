@@ -1397,7 +1397,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/ChannelCloseSoloTx"
+              $ref: "#/components/schemas/ChannelCloseSoloTxInput"
         required: true
       responses:
         "200":
@@ -1428,7 +1428,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/ChannelCreateTx"
+              $ref: "#/components/schemas/ChannelCreateTxInput"
         required: true
       responses:
         "200":
@@ -1513,7 +1513,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/ChannelSetDelegatesTx"
+              $ref: "#/components/schemas/ChannelSetDelegatesTxInput"
         required: true
       responses:
         "200":
@@ -1575,7 +1575,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/ChannelSlashTx"
+              $ref: "#/components/schemas/ChannelSlashTxInput"
         required: true
       responses:
         "200":
@@ -1606,7 +1606,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/ChannelSnapshotSoloTx"
+              $ref: "#/components/schemas/ChannelSnapshotSoloTxInput"
         required: true
       responses:
         "200":
@@ -1693,7 +1693,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/ContractCallTx"
+              $ref: "#/components/schemas/ContractCallTxInput"
         required: true
       responses:
         "200":
@@ -1730,7 +1730,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/ContractCreateTx"
+              $ref: "#/components/schemas/ContractCreateTxInput"
         required: true
       responses:
         "200":
@@ -1791,7 +1791,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/NameClaimTx"
+              $ref: "#/components/schemas/NameClaimTxInput"
         required: true
       responses:
         "200":
@@ -1866,7 +1866,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/NamePreclaimTx"
+              $ref: "#/components/schemas/NamePreclaimTxInput"
         required: true
       responses:
         "200":
@@ -1903,7 +1903,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/NameRevokeTx"
+              $ref: "#/components/schemas/NameRevokeTxInput"
         required: true
       responses:
         "200":
@@ -1940,7 +1940,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/NameTransferTx"
+              $ref: "#/components/schemas/NameTransferTxInput"
         required: true
       responses:
         "200":
@@ -1977,7 +1977,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/NameUpdateTx"
+              $ref: "#/components/schemas/NameUpdateTxInput"
         required: true
       responses:
         "200":
@@ -2039,7 +2039,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/OracleExtendTx"
+              $ref: "#/components/schemas/OracleExtendTxInput"
         required: true
       responses:
         "200":
@@ -2076,7 +2076,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/OracleQueryTx"
+              $ref: "#/components/schemas/OracleQueryTxInput"
         required: true
       responses:
         "200":
@@ -2113,7 +2113,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/OracleRegisterTx"
+              $ref: "#/components/schemas/OracleRegisterTxInput"
         required: true
       responses:
         "200":
@@ -2150,7 +2150,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/OracleRespondTx"
+              $ref: "#/components/schemas/OracleRespondTxInput"
         required: true
       responses:
         "200":
@@ -2280,7 +2280,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/PayingForTx"
+              $ref: "#/components/schemas/PayingForTxInput"
         description: A paying-for transaction
         required: true
       responses:
@@ -2558,7 +2558,7 @@ components:
         - responder_amount_final
         - fee
         - nonce
-    ChannelCloseSoloTx:
+    ChannelCloseSoloTxInput:
       type: object
       properties:
         channel_id:
@@ -2586,7 +2586,12 @@ components:
         - payload
         - fee
         - poi
-    ChannelCreateTx:
+    ChannelCloseSoloTx:
+      allOf:
+        - $ref: "#/components/schemas/ChannelCloseSoloTxInput"
+        - required:
+            - nonce
+    ChannelCreateTxInput:
       type: object
       properties:
         initiator_id:
@@ -2620,6 +2625,11 @@ components:
         - lock_period
         - fee
         - state_hash
+    ChannelCreateTx:
+      allOf:
+        - $ref: "#/components/schemas/ChannelCreateTxInput"
+        - required:
+            - nonce
     ChannelDepositTx:
       type: object
       properties:
@@ -2678,7 +2688,8 @@ components:
         - update
         - state_hash
         - fee
-    ChannelSetDelegatesTx:
+        - nonce
+    ChannelSetDelegatesTxInput:
       type: object
       properties:
         channel_id:
@@ -2720,6 +2731,11 @@ components:
         - round
         - payload
         - fee
+    ChannelSetDelegatesTx:
+      allOf:
+        - $ref: "#/components/schemas/ChannelSetDelegatesTxInput"
+        - required:
+            - nonce
     ChannelSettleTx:
       type: object
       properties:
@@ -2744,7 +2760,7 @@ components:
         - responder_amount_final
         - fee
         - nonce
-    ChannelSlashTx:
+    ChannelSlashTxInput:
       type: object
       properties:
         channel_id:
@@ -2772,7 +2788,12 @@ components:
         - payload
         - fee
         - poi
-    ChannelSnapshotSoloTx:
+    ChannelSlashTx:
+      allOf:
+        - $ref: "#/components/schemas/ChannelSlashTxInput"
+        - required:
+            - nonce
+    ChannelSnapshotSoloTxInput:
       type: object
       properties:
         channel_id:
@@ -2798,6 +2819,11 @@ components:
         - from_id
         - payload
         - fee
+    ChannelSnapshotSoloTx:
+      allOf:
+        - $ref: "#/components/schemas/ChannelSnapshotSoloTxInput"
+        - required:
+            - nonce
     ChannelWithdrawTx:
       type: object
       properties:
@@ -2877,7 +2903,7 @@ components:
         - log
         - return_value
         - return_type
-    ContractCallTx:
+    ContractCallTxInput:
       type: object
       properties:
         caller_id:
@@ -2909,7 +2935,12 @@ components:
         - gas
         - gas_price
         - call_data
-    ContractCreateTx:
+    ContractCallTx:
+      allOf:
+        - $ref: "#/components/schemas/ContractCallTxInput"
+        - required:
+            - nonce
+    ContractCreateTxInput:
       type: object
       properties:
         owner_id:
@@ -2947,6 +2978,11 @@ components:
         - gas_price
         - fee
         - call_data
+    ContractCreateTx:
+      allOf:
+        - $ref: "#/components/schemas/ContractCreateTxInput"
+        - required:
+            - nonce
     ContractObject:
       type: object
       properties:
@@ -3254,6 +3290,7 @@ components:
           pattern: "^(0x|0X)?[a-fA-F0-9]+$"
       required:
         - owner_id
+        - nonce
         - code
         - vm_version
         - abi_version
@@ -3468,7 +3505,7 @@ components:
         - signature
         - time
         - version
-    NameClaimTx:
+    NameClaimTxInput:
       type: object
       properties:
         name:
@@ -3490,6 +3527,11 @@ components:
         - name_salt
         - fee
         - account_id
+    NameClaimTx:
+      allOf:
+        - $ref: "#/components/schemas/NameClaimTxInput"
+        - required:
+            - nonce
     NameEntry:
       type: object
       properties:
@@ -3529,7 +3571,7 @@ components:
       required:
         - key
         - id
-    NamePreclaimTx:
+    NamePreclaimTxInput:
       type: object
       properties:
         commitment_id:
@@ -3546,7 +3588,12 @@ components:
         - commitment_id
         - fee
         - account_id
-    NameRevokeTx:
+    NamePreclaimTx:
+      allOf:
+        - $ref: "#/components/schemas/NamePreclaimTxInput"
+        - required:
+            - nonce
+    NameRevokeTxInput:
       type: object
       properties:
         name_id:
@@ -3563,7 +3610,12 @@ components:
         - name_id
         - fee
         - account_id
-    NameTransferTx:
+    NameRevokeTx:
+      allOf:
+        - $ref: "#/components/schemas/NameRevokeTxInput"
+        - required:
+            - nonce
+    NameTransferTxInput:
       type: object
       properties:
         name_id:
@@ -3583,7 +3635,12 @@ components:
         - recipient_id
         - fee
         - account_id
-    NameUpdateTx:
+    NameTransferTx:
+      allOf:
+        - $ref: "#/components/schemas/NameTransferTxInput"
+        - required:
+            - nonce
+    NameUpdateTxInput:
       type: object
       properties:
         name_id:
@@ -3611,6 +3668,11 @@ components:
         - pointers
         - fee
         - account_id
+    NameUpdateTx:
+      allOf:
+        - $ref: "#/components/schemas/NameUpdateTxInput"
+        - required:
+            - nonce
     NetworkStatus:
       type: object
       additionalProperties:
@@ -3721,7 +3783,7 @@ components:
           required:
             - to
             - amount
-    OracleExtendTx:
+    OracleExtendTxInput:
       type: object
       properties:
         fee:
@@ -3738,6 +3800,11 @@ components:
         - fee
         - oracle_ttl
         - oracle_id
+    OracleExtendTx:
+      allOf:
+        - $ref: "#/components/schemas/OracleExtendTxInput"
+        - required:
+            - nonce
     OracleQueries:
       type: object
       properties:
@@ -3778,7 +3845,7 @@ components:
         - ttl
         - response_ttl
         - fee
-    OracleQueryTx:
+    OracleQueryTxInput:
       type: object
       properties:
         oracle_id:
@@ -3807,7 +3874,12 @@ components:
         - response_ttl
         - fee
         - sender_id
-    OracleRegisterTx:
+    OracleQueryTx:
+      allOf:
+        - $ref: "#/components/schemas/OracleQueryTxInput"
+        - required:
+            - nonce
+    OracleRegisterTxInput:
       type: object
       properties:
         query_format:
@@ -3835,7 +3907,12 @@ components:
         - fee
         - oracle_ttl
         - account_id
-    OracleRespondTx:
+    OracleRegisterTx:
+      allOf:
+        - $ref: "#/components/schemas/OracleRegisterTxInput"
+        - required:
+            - nonce
+    OracleRespondTxInput:
       type: object
       properties:
         query_id:
@@ -3858,7 +3935,12 @@ components:
         - response_ttl
         - fee
         - oracle_id
-    PayingForTx:
+    OracleRespondTx:
+      allOf:
+        - $ref: "#/components/schemas/OracleRespondTxInput"
+        - required:
+            - nonce
+    PayingForTxInput:
       type: object
       properties:
         payer_id:
@@ -3873,6 +3955,11 @@ components:
         - payer_id
         - fee
         - tx
+    PayingForTx:
+      allOf:
+        - $ref: "#/components/schemas/PayingForTxInput"
+        - required:
+            - nonce
     Peer:
       type: string
       description: Aeternity node
