@@ -784,8 +784,9 @@ enqueue(Kind, Data, PeerIds) ->
             WireBlock = aec_peer_connection:gossip_serialize_block(Data),
             [ do_forward_block(WireBlock, PId) || PId <- PeerIds ];
         tx ->
-            SerTx = aec_peer_connection:gossip_serialize_tx(Data),
-            aec_jobs_queues:run(sync_gossip, fun() -> [ do_forward_tx(SerTx, PId) || PId <- PeerIds ] end)
+            %% The wire message is encoded once here and reused for every peer.
+            WireTx = aec_peer_connection:gossip_serialize_tx(Data),
+            aec_jobs_queues:run(sync_gossip, fun() -> [ do_forward_tx(WireTx, PId) || PId <- PeerIds ] end)
     end end).
 
 ping_peer(PeerId) ->
@@ -802,8 +803,8 @@ do_forward_block(WireBlock, PeerId) ->
     Res = aec_peer_connection:send_block(PeerId, WireBlock),
     epoch_sync:debug("send_block to (~p): ~p", [ppp(PeerId), Res]).
 
-do_forward_tx(SerTx, PeerId) ->
-    Res = aec_peer_connection:send_tx(PeerId, SerTx),
+do_forward_tx(WireTx, PeerId) ->
+    Res = aec_peer_connection:send_tx(PeerId, WireTx),
     epoch_sync:debug("send_tx to (~p): ~p", [ppp(PeerId), Res]).
 
 do_start_sync(PeerId, RemoteHash) ->
