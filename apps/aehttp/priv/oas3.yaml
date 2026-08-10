@@ -427,7 +427,7 @@ paths:
         - external
         - dry-run
       operationId: ProtectedDryRunTxs
-      description: Dry-run unsigned transactions on top of a given block. Supports all TXs except GAMetaTx, PayingForTx and OffchainTx. The maximum gas limit of all calls is capped. The maximum gas limit per request is a global node setting. Since DryRunCallReq object do not have a mandatory gas field, if not set a default value of 1000000 is being used instead.
+      description: Dry-run unsigned transactions on top of a given block. Supports all TXs except GAMetaTx, PayingForTx and OffchainTx. Gas defaults to 1000000 when not set on a call request; total gas per request is capped by a node-configured limit. FATE contract-storage reads are metered at a size-proportional gas cost, so reported gas is an estimate of the on-chain cost, not an exact figure.
       parameters:
         - $ref: '#/components/parameters/intAsString'
       requestBody:
@@ -2235,7 +2235,7 @@ paths:
         - internal
         - debug
       operationId: DryRunTxs
-      description: Dry-run transactions on top of a given block. Supports all TXs except GAMetaTx, PayingForTx and OffchainTx
+      description: Dry-run transactions on top of a given block. Supports all TXs except GAMetaTx, PayingForTx and OffchainTx. FATE contract-storage reads are metered at the size-proportional (Arcus) gas cost by default; only the returned gas amounts differ, the response schema is unchanged.
       parameters:
         - $ref: '#/components/parameters/intAsString'
       requestBody:

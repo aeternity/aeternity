@@ -33,6 +33,7 @@ jobs:
             - "ct-lima"
             - "ct-iris"
             - "ct-ceres"
+            - "ct-arcus"
             - "ct-latest"
             - "ct-latest-no-aci"
             - "ct-mnesia-rocksdb"
@@ -58,6 +59,7 @@ jobs:
             - "lima"
             - "iris"
             - "ceres"
+            - "arcus"
             - "latest"
       requires:
         - build-<< matrix.otp >>

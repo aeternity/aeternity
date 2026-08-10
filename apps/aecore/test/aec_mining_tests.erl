@@ -45,7 +45,8 @@ mine_block_test_() ->
                              ?LIMA_PROTOCOL_VSN    -> 2331533446344578375;
                              ?IRIS_PROTOCOL_VSN    -> 9446698485151902999;
                              ?CERES_PROTOCOL_VSN   -> 9099357440328778145;
-                             ?ARCUS_PROTOCOL_VSN   -> 13161853780668837458
+                             ?ARCUS_PROTOCOL_VSN   -> 13161853780668837458;
+                             ?SALUS_PROTOCOL_VSN   -> 11745513944830314699
                          end,
                  Info =
                     case aec_hard_forks:protocol_effective_at_height(Height + 1) of
@@ -130,8 +131,13 @@ generate_valid_test_data(_TopBlock, Tries) when Tries < 1 ->
     could_not_find_nonce;
 generate_valid_test_data(TopBlock, Tries) ->
     Nonce = aeminer_pow:pick_nonce(),
+    Height = aec_blocks:height(TopBlock),
+    Info = case aec_hard_forks:protocol_effective_at_height(Height + 1) of
+               ?ROMA_PROTOCOL_VSN -> default;
+               _ -> 591
+           end,
     {BlockCandidate, _} = aec_test_utils:create_keyblock_with_state(
-                            [{TopBlock, aec_trees:new()}], ?TEST_PUB),
+                            [{TopBlock, aec_trees:new()}], ?TEST_PUB, ?TEST_PUB, #{info => Info}),
     HeaderBin = aec_headers:serialize_to_binary(aec_blocks:to_header(BlockCandidate)),
     Target = aec_blocks:target(BlockCandidate),
     [Config] = aec_mining:get_miner_configs(),

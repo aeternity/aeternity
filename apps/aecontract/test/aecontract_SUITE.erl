@@ -259,7 +259,8 @@
         ?LIMA_PROTOCOL_VSN    -> ?assertMatch(ExpMinerva, Res);
         ?IRIS_PROTOCOL_VSN    -> ?assertMatch(ExpMinerva, Res);
         ?CERES_PROTOCOL_VSN   -> ?assertMatch(ExpMinerva, Res);
-        ?ARCUS_PROTOCOL_VSN   -> ?assertMatch(ExpMinerva, Res)
+        ?ARCUS_PROTOCOL_VSN   -> ?assertMatch(ExpMinerva, Res);
+        ?SALUS_PROTOCOL_VSN   -> ?assertMatch(ExpMinerva, Res)
     end).
 
 -define(assertMatchProtocol(Res, ExpR, ExpM, ExpF, ExpL, ExpI, ExpC, ExpA),
@@ -270,7 +271,8 @@
         ?LIMA_PROTOCOL_VSN    -> ?assertMatch(ExpL, Res);
         ?IRIS_PROTOCOL_VSN    -> ?assertMatch(ExpI, Res);
         ?CERES_PROTOCOL_VSN   -> ?assertMatch(ExpC, Res);
-        ?ARCUS_PROTOCOL_VSN   -> ?assertMatch(ExpA, Res)
+        ?ARCUS_PROTOCOL_VSN   -> ?assertMatch(ExpA, Res);
+        ?SALUS_PROTOCOL_VSN   -> ?assertMatch(ExpA, Res)
     end).
 
 -define(assertMatchAEVM(__Exp, __Res),
@@ -593,8 +595,12 @@ init_tests(Release, VMName) ->
                            IfAEVM(?SOPHIA_LIMA_AEVM, ?SOPHIA_CERES_FATE),
                            IfAEVM(?ABI_AEVM_SOPHIA_1, ?ABI_FATE_SOPHIA_1),
                            IfAEVM(?VM_AEVM_SOPHIA_4, ?VM_FATE_SOPHIA_3)}},
-                {arcus,   {?CERES_PROTOCOL_VSN,
+                {arcus,   {?ARCUS_PROTOCOL_VSN,
                            IfAEVM(?SOPHIA_LIMA_AEVM, ?SOPHIA_ARCUS_FATE),
+                           IfAEVM(?ABI_AEVM_SOPHIA_1, ?ABI_FATE_SOPHIA_1),
+                           IfAEVM(?VM_AEVM_SOPHIA_4, ?VM_FATE_SOPHIA_3)}},
+                {salus,   {?SALUS_PROTOCOL_VSN,
+                           IfAEVM(?SOPHIA_LIMA_AEVM, ?SOPHIA_SALUS_FATE),
                            IfAEVM(?ABI_AEVM_SOPHIA_1, ?ABI_FATE_SOPHIA_1),
                            IfAEVM(?VM_AEVM_SOPHIA_4, ?VM_FATE_SOPHIA_3)}}],
     {Proto, Sophia, ABI, VM} = proplists:get_value(Release, Versions),
@@ -649,6 +655,18 @@ init_per_group(protocol_interaction, Cfg) ->
     end;
 init_per_group(protocol_interaction_fate, Cfg) ->
     case aect_test_utils:latest_protocol_version() of
+        ?SALUS_PROTOCOL_VSN ->
+            AHeight = 20,
+            SHeight = 25,
+            Fun = fun(H) when H =< AHeight -> ?ARCUS_PROTOCOL_VSN;
+                     (H) when H >  AHeight -> ?SALUS_PROTOCOL_VSN
+                  end,
+            meck:expect(aec_hard_forks, protocol_effective_at_height, Fun),
+            [{sophia_version, ?SOPHIA_SALUS_FATE},
+             {vm_version, ?VM_FATE_SOPHIA_3},
+             {abi_version, ?ABI_FATE_SOPHIA_1},
+             {fork_heights, [{arcus, AHeight, ?VM_FATE_SOPHIA_3}, {salus, SHeight, ?VM_FATE_SOPHIA_3}]},
+             {protocol, salus} | Cfg];
         ?ARCUS_PROTOCOL_VSN ->
             CHeight = 20,
             AHeight = 25,
@@ -1032,7 +1050,7 @@ create_version_too_high(Cfg) ->
     Res = sign_and_apply_transaction(Tx, PrivKey, S1),
     %% Test that the create transaction is accepted/rejected accordingly
     case proplists:get_value(protocol, Cfg) of
-        P when P =:= roma; P =:= lima; P =:= iris; P =:= ceres; P =:= arcus ->
+        P when P =:= roma; P =:= lima; P =:= iris; P =:= ceres; P =:= arcus; P =:= salus ->
             {error, illegal_contract_compiler_version, _} = Res;
         P when P =:= minerva; P =:= fortuna ->
             {ok, _} = Res
@@ -5986,6 +6004,14 @@ sophia_protected_call(_Cfg) ->
                 {Fun, MinGas, MaxGas, Res, NewState - OldState, [ClientBal1 - ClientBal0, ProxyBal1 - ProxyBal0, ServerBal1 - ServerBal0]}
            end,
     {test_ok, _, _, {116, _}, _, _} = Test(test_ok, word, 0, 0),
+    %% From Arcus the store-read repricing makes rollback of a failed remote
+    %% call cheaper for tiny stores (no flat store cost), so the gas windows
+    %% for the failing-callee cases shift down.
+    {HkMin, HkMax, HkRMin, HkRMax} =
+        case protocol_version() >= ?ARCUS_PROTOCOL_VSN of
+            true  -> {10500, 10800, 15500, 15800};
+            false -> {12400, 12700, 17400, 17800}
+        end,
     Results = [ Test(test_wrong_ret,     {option, bool}, 150, 200)
               , Test(test_wrong_arg,     {option, word}, 130, 200)
               , Test(test_wrong_arity,   {option, word}, 130, 200)
@@ -5993,9 +6019,9 @@ sophia_protected_call(_Cfg) ->
               , Test(test_missing_con,   {option, word}, 130, 200)
               , Test(test_nonpayable,    {option, word}, 130, 200)
               , Test(test_out_of_funds,  {option, word}, 130, 200)
-              , Test(test_hacked,        {option, word}, 12400, 12700)
-              , Test(test_revert,        {option, word}, 12400, 12700)
-              , Test(test_crash,         {option, word}, 12400, 12700)
+              , Test(test_hacked,        {option, word}, HkMin, HkMax)
+              , Test(test_revert,        {option, word}, HkMin, HkMax)
+              , Test(test_crash,         {option, word}, HkMin, HkMax)
               , Test(test_out_of_gas,    {option, word}, 5500, 5800)
               , Test(test_wrong_ret_r,   {option, bool}, 5050, 5200)
               , Test(test_wrong_arg_r,   {option, word}, 5050, 5200)
@@ -6003,9 +6029,9 @@ sophia_protected_call(_Cfg) ->
               , Test(test_missing_r,     {option, word}, 5050, 5200)
               , Test(test_missing_con_r, {option, word}, 5050, 5200)
               , Test(test_nonpayable_r,  {option, word}, 5050, 5200)
-              , Test(test_hacked_r,      {option, word}, 17400, 17800)
-              , Test(test_revert_r,      {option, word}, 17400, 17800)
-              , Test(test_crash_r,       {option, word}, 17400, 17800)
+              , Test(test_hacked_r,      {option, word}, HkRMin, HkRMax)
+              , Test(test_revert_r,      {option, word}, HkRMin, HkRMax)
+              , Test(test_crash_r,       {option, word}, HkRMin, HkRMax)
               , Test(test_out_of_gas_r,  {option, word}, 5000, 5500) ],
     ?assertMatch(
        [], [Res || Res = {_, MinGas, MaxGas, {R, Gas}, State, Bal} <- Results,
@@ -6983,7 +7009,10 @@ sophia_state_gas_arguments(_Cfg) ->
     {{}, Gas4} = ?call(call_contract, Acc, Ct1, pass_it, UnitT, {?cid(Ct0)}, #{ return_gas_used => true }),
     ?call(call_contract, Acc, Ct1, update_s, UnitT, {<<"at_least_32_bytes_long_in_order_to_use_an_extra_word">>}),
     {{}, Gas5} = ?call(call_contract, Acc, Ct1, pass_it, UnitT, {?cid(Ct0)}, #{ return_gas_used => true }),
-    ?assertMatchVM(true, false, Gas5 > Gas4),
+    %% From Arcus on, FATE store reads are priced per byte, so the longer
+    %% stored string costs more gas on FATE too.
+    FateStoreRepriced = protocol_version() >= ?ARCUS_PROTOCOL_VSN,
+    ?assertMatchVM(true, FateStoreRepriced, Gas5 > Gas4),
 
     %% Test that a bigger return value in remote (inner) call means more gas - strings for AEVM
     {_, Gas6} = ?call(call_contract, Acc, Ct1, return_it_s, word, {?cid(Ct0), 0}, #{ return_gas_used => true }),
@@ -7030,17 +7059,30 @@ sophia_state_gas_store_size(_Cfg) ->
     {{}, Gas5} = ?call(call_contract, Acc, Ct1, update_mk, UnitT, {2, 1}, #{ return_gas_used => true }),
     ?assertEqual(Gas4, Gas5),
 
-    %% Updating a non-existing key - same cost
+    %% Updating another existing key - same cost (keys 1..1000 are all in BigMap)
     {{}, Gas6} = ?call(call_contract, Acc, Ct1, update_mk, UnitT, {3, 1}, #{ return_gas_used => true }),
     ?assertEqual(Gas5, Gas6),
 
-    %% Updating one key in the store map should cost more if the value takes up more space
-    {{}, Gas7} = ?call(call_contract, Acc, Ct1, update_mk, UnitT, {0, 257}, #{ return_gas_used => true }),
+    %% Updating one key in the store map should cost more if the value takes up more space.
+    %% Key 4 exists in BigMap, so the comparison is like-for-like on every
+    %% protocol: from Arcus on, replacing an existing key also includes a
+    %% priced read of the old value, so a fresh key would not be comparable.
+    {{}, Gas7} = ?call(call_contract, Acc, Ct1, update_mk, UnitT, {4, 257}, #{ return_gas_used => true }),
     ?assertEqual({true, Gas6, Gas7}, {Gas6 < Gas7, Gas6, Gas7}),
 
     %% Updating one key in the store map should cost more if the key takes up more space
     {{}, Gas8} = ?call(call_contract, Acc, Ct1, update_mk, UnitT, {257, 0}, #{ return_gas_used => true }),
     ?assertEqual({true, Gas6, Gas8}, {Gas6 < Gas8, Gas6, Gas8}),
+
+    %% From Arcus on, writing to a fresh key skips the priced old-value read,
+    %% so it is cheaper than replacing an existing key.
+    case protocol_version() >= ?ARCUS_PROTOCOL_VSN of
+        true ->
+            {{}, GasFresh} = ?call(call_contract, Acc, Ct1, update_mk, UnitT, {0, 1}, #{ return_gas_used => true }),
+            ?assertEqual({true, GasFresh, Gas6}, {GasFresh < Gas6, GasFresh, Gas6});
+        false ->
+            ok
+    end,
 
     %% Test that gas usage varies when the state changes size for the integer component
     %% Baseline
@@ -7215,7 +7257,11 @@ lima_migration(_Config) ->
 
 
 fate_vm_interaction(Cfg) ->
-    ?skipRest(sophia_version() == ?SOPHIA_ARCUS_FATE, same_vm_ceres_arcus),
+    %% Arcus and Salus both keep the Ceres VM (?VM_FATE_SOPHIA_3); the
+    %% "old VM illegal after fork" check below only makes sense across an
+    %% actual VM version change.
+    ?skipRest(lists:member(sophia_version(), [?SOPHIA_ARCUS_FATE, ?SOPHIA_SALUS_FATE]),
+              same_vm_ceres_arcus_salus),
     init_new_state(),
     ForkHeights = ?config(fork_heights, Cfg),
     [{_ProtoA, HeightA, VMA}, {_ProtoB, HeightB, VMB}] = ForkHeights,

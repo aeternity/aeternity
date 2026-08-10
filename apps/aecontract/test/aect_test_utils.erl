@@ -126,7 +126,8 @@ latest_sophia_vm_version() ->
         ?LIMA_PROTOCOL_VSN    -> ?VM_AEVM_SOPHIA_4;
         ?IRIS_PROTOCOL_VSN    -> ?VM_FATE_SOPHIA_2;
         ?CERES_PROTOCOL_VSN   -> ?VM_FATE_SOPHIA_3;
-        ?ARCUS_PROTOCOL_VSN   -> ?VM_FATE_SOPHIA_3
+        ?ARCUS_PROTOCOL_VSN   -> ?VM_FATE_SOPHIA_3;
+        ?SALUS_PROTOCOL_VSN   -> ?VM_FATE_SOPHIA_3
     end.
 
 latest_sophia_abi_version() ->
@@ -137,7 +138,8 @@ latest_sophia_abi_version() ->
         ?LIMA_PROTOCOL_VSN    -> ?ABI_AEVM_SOPHIA_1;
         ?IRIS_PROTOCOL_VSN    -> ?ABI_FATE_SOPHIA_1;
         ?CERES_PROTOCOL_VSN   -> ?ABI_FATE_SOPHIA_1;
-        ?ARCUS_PROTOCOL_VSN   -> ?ABI_FATE_SOPHIA_1
+        ?ARCUS_PROTOCOL_VSN   -> ?ABI_FATE_SOPHIA_1;
+        ?SALUS_PROTOCOL_VSN   -> ?ABI_FATE_SOPHIA_1
     end.
 
 latest_sophia_version() ->
@@ -148,7 +150,8 @@ latest_sophia_version() ->
         ?LIMA_PROTOCOL_VSN    -> ?SOPHIA_LIMA_AEVM;
         ?IRIS_PROTOCOL_VSN    -> ?SOPHIA_IRIS_FATE;
         ?CERES_PROTOCOL_VSN   -> ?SOPHIA_CERES_FATE;
-        ?ARCUS_PROTOCOL_VSN   -> ?SOPHIA_ARCUS_FATE
+        ?ARCUS_PROTOCOL_VSN   -> ?SOPHIA_ARCUS_FATE;
+        ?SALUS_PROTOCOL_VSN   -> ?SOPHIA_SALUS_FATE
     end.
 
 latest_sophia_contract_version() ->
@@ -159,7 +162,8 @@ latest_sophia_contract_version() ->
         ?LIMA_PROTOCOL_VSN    -> ?SOPHIA_CONTRACT_VSN_3;
         ?IRIS_PROTOCOL_VSN    -> ?SOPHIA_CONTRACT_VSN_3;
         ?CERES_PROTOCOL_VSN   -> ?SOPHIA_CONTRACT_VSN_3;
-        ?ARCUS_PROTOCOL_VSN   -> ?SOPHIA_CONTRACT_VSN_3
+        ?ARCUS_PROTOCOL_VSN   -> ?SOPHIA_CONTRACT_VSN_3;
+        ?SALUS_PROTOCOL_VSN   -> ?SOPHIA_CONTRACT_VSN_3
     end.
 
 latest_protocol_version() ->
@@ -177,7 +181,8 @@ require_at_least_protocol(Protocol) ->
 		      ?LIMA_PROTOCOL_VSN    -> not_in_lima;
 		      ?IRIS_PROTOCOL_VSN    -> not_in_iris;
 		      ?CERES_PROTOCOL_VSN   -> not_in_ceres;
-		      ?ARCUS_PROTOCOL_VSN   -> not_in_arcus
+		      ?ARCUS_PROTOCOL_VSN   -> not_in_arcus;
+		      ?SALUS_PROTOCOL_VSN   -> not_in_salus
 		  end,
 	    {skip, Msg}
     end.
@@ -317,7 +322,8 @@ contract_dirs(?SOPHIA_LIMA_AEVM)  -> ["sophia_4_aevm" | contract_dirs(?SOPHIA_LI
 contract_dirs(?SOPHIA_LIMA_FATE)  -> ["sophia_4"      | contract_dirs(?SOPHIA_IRIS_FATE)];
 contract_dirs(?SOPHIA_IRIS_FATE)  -> ["sophia_5"];
 contract_dirs(?SOPHIA_CERES_FATE) -> [];
-contract_dirs(?SOPHIA_ARCUS_FATE) -> [].
+contract_dirs(?SOPHIA_ARCUS_FATE) -> [];
+contract_dirs(?SOPHIA_SALUS_FATE) -> [].
 
 contract_filenames(Compiler, Name) when is_atom(Name) ->
     contract_filenames(Compiler, atom_to_list(Name));
@@ -458,7 +464,8 @@ compiler_cmd(Vsn) ->
         ?SOPHIA_LIMA_FATE  -> filename:join([BaseDir, "v4.3.1", "aesophia_cli"]);
         ?SOPHIA_IRIS_FATE  -> filename:join([BaseDir, "v6.1.0", "aesophia_cli"]);
         ?SOPHIA_CERES_FATE -> filename:join([BaseDir, "v6.1.0", "aesophia_cli"]); %% used for ACI generation in tests :rolling_eyes:
-        ?SOPHIA_ARCUS_FATE -> filename:join([BaseDir, "v6.1.0", "aesophia_cli"])
+        ?SOPHIA_ARCUS_FATE -> filename:join([BaseDir, "v6.1.0", "aesophia_cli"]);
+        ?SOPHIA_SALUS_FATE -> filename:join([BaseDir, "v6.1.0", "aesophia_cli"])
     end.
 
 aci_json_enabled(Vsn) ->
@@ -843,6 +850,7 @@ sophia_version(fate, ?LIMA_PROTOCOL_VSN) -> ?SOPHIA_LIMA_FATE;
 sophia_version(fate, ?IRIS_PROTOCOL_VSN) -> ?SOPHIA_IRIS_FATE;
 sophia_version(fate, ?CERES_PROTOCOL_VSN) -> ?SOPHIA_CERES_FATE;
 sophia_version(fate, ?ARCUS_PROTOCOL_VSN) -> ?SOPHIA_ARCUS_FATE;
+sophia_version(fate, ?SALUS_PROTOCOL_VSN) -> ?SOPHIA_SALUS_FATE;
 sophia_version(fate, Protocol) when Protocol < ?LIMA_PROTOCOL_VSN -> {error, fate_not_available}.
 
 vm_version(aevm, ?ROMA_PROTOCOL_VSN) -> ?VM_AEVM_SOPHIA_1;
@@ -854,6 +862,7 @@ vm_version(fate, ?LIMA_PROTOCOL_VSN) -> ?VM_FATE_SOPHIA_1;
 vm_version(fate, ?IRIS_PROTOCOL_VSN) -> ?VM_FATE_SOPHIA_2;
 vm_version(fate, ?CERES_PROTOCOL_VSN) -> ?VM_FATE_SOPHIA_3;
 vm_version(fate, ?ARCUS_PROTOCOL_VSN) -> ?VM_FATE_SOPHIA_3;
+vm_version(fate, ?SALUS_PROTOCOL_VSN) -> ?VM_FATE_SOPHIA_3;
 vm_version(fate, Protocol) when Protocol < ?LIMA_PROTOCOL_VSN -> {error, fate_not_available}.
 
 abi_version(aevm, ?ROMA_PROTOCOL_VSN) -> ?ABI_AEVM_SOPHIA_1;
@@ -865,6 +874,7 @@ abi_version(fate, ?LIMA_PROTOCOL_VSN) -> ?ABI_FATE_SOPHIA_1;
 abi_version(fate, ?IRIS_PROTOCOL_VSN) -> ?ABI_FATE_SOPHIA_1;
 abi_version(fate, ?CERES_PROTOCOL_VSN) -> ?ABI_FATE_SOPHIA_1;
 abi_version(fate, ?ARCUS_PROTOCOL_VSN) -> ?ABI_FATE_SOPHIA_1;
+abi_version(fate, ?SALUS_PROTOCOL_VSN) -> ?ABI_FATE_SOPHIA_1;
 abi_version(fate, Protocol) when Protocol < ?LIMA_PROTOCOL_VSN -> {error, fate_not_available}.
 
 init_per_group(VM, Cfg, Cont) ->
@@ -925,6 +935,7 @@ backend(?SOPHIA_LIMA_FATE ) -> fate;
 backend(?SOPHIA_IRIS_FATE ) -> fate;
 backend(?SOPHIA_CERES_FATE) -> fate;
 backend(?SOPHIA_ARCUS_FATE) -> fate;
+backend(?SOPHIA_SALUS_FATE) -> fate;
 backend(_                 ) -> aevm.
 
 aci_disabled() ->

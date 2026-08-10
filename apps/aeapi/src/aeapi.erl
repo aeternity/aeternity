@@ -109,6 +109,10 @@
         , decode_bytearray/1
         ]).
 
+-ifdef(TEST).
+-export([format_txs/2]).  %% for the replay-profile regression guard
+-endif.
+
 
 blockchain_name() ->
     <<"aeternity">>. %% TODO: check hardcoding
@@ -513,6 +517,10 @@ format_txs(Txs, MBHash) ->
             _ ->
                 {in, MBHash}
             end,
+    %% SECURITY-CRITICAL: keep {dry_run_profile, replay}. It pins re-execution to
+    %% the block's REAL protocol; dropping it lets always-on dry-run Arcus metering
+    %% re-meter a gas-tight historical call ok->out_of_gas, dropping its balance
+    %% events and corrupting Rosetta balance reconstruction. Guarded by aeapi_tests.
     case aec_dry_run:dry_run(Top, [], DryTxs, [tx_events, {dry_run_profile, replay}]) of
         {ok, {Results, _Events}} ->
             TxHashes = [aetx_sign:hash(Tx) || Tx <- Txs],

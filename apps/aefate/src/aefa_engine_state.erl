@@ -10,6 +10,12 @@
         , finalize/1
         ]).
 
+%% Protocol-keyed FATE store module dispatch, exported so call sites route
+%% through one single source of truth instead of hardcoding a module name.
+-export([ aefa_stores/1
+        , aefa_stores_for_protocol/1
+        ]).
+
 %% Getters
 -export([ accumulator/1
         , accumulator_stack/1
@@ -182,18 +188,35 @@ new(Gas, Value, Spec, Stores, APIState, CodeCache, VMVersion) ->
        , debug_info        = disabled
        }.
 
+-spec aefa_stores(state()) -> module().
 aefa_stores(#es{ consensus_version = Protocol }) ->
-    case Protocol >= ?IRIS_PROTOCOL_VSN of
-        true  -> aefa_stores;
-        false -> aefa_stores_lima
-    end.
+    aefa_stores_for_protocol(Protocol).
+
+%% Arcus+ dispatches to the live aefa_stores module. Iris..Ceres are pinned
+%% to the frozen aefa_stores_ceres snapshot so future aefa_stores edits
+%% cannot change replay of already-forked blocks. Pre-Iris keeps lima.
+-spec aefa_stores_for_protocol(non_neg_integer()) -> module().
+aefa_stores_for_protocol(Protocol) when Protocol >= ?ARCUS_PROTOCOL_VSN ->
+    aefa_stores;
+aefa_stores_for_protocol(Protocol) when Protocol >= ?IRIS_PROTOCOL_VSN ->
+    aefa_stores_ceres;
+aefa_stores_for_protocol(_Protocol) ->
+    aefa_stores_lima.
 
 -spec finalize(state()) -> {ok, state()} | {error, out_of_gas}.
 finalize(#es{chain_api = API, stores = Stores} = ES) ->
     Aefa_stores = aefa_stores(ES),
     try
+        %% aefa_stores_lima (pre-Iris, frozen, DO NOT CHANGE) has no
+        %% terms_to_finalize/1, so that one case falls back to the live
+        %% module; every other protocol dispatches properly so a future
+        %% aefa_stores edit cannot change already-frozen Iris+ replay.
+        TermsToFinalize = case Aefa_stores of
+                              aefa_stores_lima -> aefa_stores:terms_to_finalize(Stores);
+                              _                -> Aefa_stores:terms_to_finalize(Stores)
+                          end,
         ES1 = lists:foldl(fun(Val, ES0) -> spend_gas_for_traversal(Val, serial, ES0) end,
-                          ES, aefa_stores:terms_to_finalize(Stores)),
+                          ES, TermsToFinalize),
         Gas = gas(ES1),
         case Aefa_stores:finalize(API, Gas, Stores) of
             {ok, Stores1, GasLeft} ->
