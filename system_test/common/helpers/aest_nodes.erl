@@ -186,6 +186,8 @@ gas_price() ->
 -spec ct_setup(proplists:proplist()) -> proplists:proplist().
 ct_setup(Config) ->
     ok = application:set_env(aecore, network_id, <<"ae_system_test">>),
+    %% A pin left behind by a suite that started aecore would win over the env.
+    ok = aec_governance:clear_network_id_cache(),
     {data_dir, DataDir} = proplists:lookup(data_dir, Config),
     {priv_dir, PrivDir} = proplists:lookup(priv_dir, Config),
     ct:log("Node logs can be found here: ~n<a href=\"file://~s\">~s</a>",

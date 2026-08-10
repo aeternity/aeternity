@@ -35,6 +35,7 @@ stop(_State) ->
     lager:info("Stopping aecore app", []),
     aec_db_gc:cleanup(),
     aec_db:cleanup(),
+    ok = aec_governance:clear_network_id_cache(),
     ok.
 
 set_app_ctrl_mode() ->
