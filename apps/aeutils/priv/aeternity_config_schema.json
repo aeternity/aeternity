@@ -2599,7 +2599,7 @@
             "additionalProperties" : false,
             "properties" : {
                 "network_id" : {
-                    "description" : "Identification of the network in case of hard forks.",
+                    "description" : "Identifier of the chain this node follows. Must match the id the chain was created with: it goes into every transaction signature and into the peer handshake, and it selects the fork schedule and the genesis accounts. Read while the node boots.",
                     "type" : "string",
                     "default" : "ae_mainnet"
                 },

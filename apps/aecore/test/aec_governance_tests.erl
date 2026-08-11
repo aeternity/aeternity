@@ -12,6 +12,8 @@
 -define(NW_ID_A, <<"nw_id_for_testing_a">>).
 -define(NW_ID_B, <<"nw_id_for_testing_b">>).
 
+-define(LIFECYCLE_MOCKS, [?TEST_MODULE, aec_db, aec_db_gc, aec_jobs_queues]).
+
 %% Resolution is mocked rather than configured - see resolve_network_id/0 in
 %% aec_governance.
 network_id_cache_test_() ->
@@ -34,7 +36,9 @@ network_id_cache_test_() ->
       {"A cache hit does not resolve",
        fun cached_network_id_skips_resolution/0},
       {"Payload prefixing uses the cached network id",
-       fun add_network_id_uses_cache/0}]}.
+       fun add_network_id_uses_cache/0},
+      {"A failed ensure_env/0 leaves the cache empty, not stale",
+       fun failed_ensure_env_leaves_cache_empty/0}]}.
 
 uncached_network_id_follows_resolution() ->
     ?assertEqual(?NW_ID_A, ?TEST_MODULE:get_network_id()),
@@ -69,43 +73,66 @@ add_network_id_uses_cache() ->
     ?assertEqual(<<?NW_ID_B/binary, "payload">>,
                  ?TEST_MODULE:add_custom_network_id(?NW_ID_B, <<"payload">>)).
 
-set_resolved_network_id(NetworkId) ->
-    meck:expect(?TEST_MODULE, resolve_network_id, 0, NetworkId).
+failed_ensure_env_leaves_cache_empty() ->
+    ok = ?TEST_MODULE:ensure_env(),
+    %% The failure resolve_network_id/0 can really produce: a non-binary in the
+    %% config falls off its is_binary/1 clause.
+    meck:expect(?TEST_MODULE, resolve_network_id, 0,
+                meck:raise(error, {case_clause, "ae_uat"})),
+    %% The failure has to propagate: a setup hook that swallowed a bad
+    %% configuration would boot the node under an id nobody asked for.
+    ?assertError({case_clause, "ae_uat"}, ?TEST_MODULE:ensure_env()),
+    %% Two resolutions in a row: a cache pinned to either value fails one of them.
+    set_resolved_network_id(?NW_ID_B),
+    ?assertEqual(?NW_ID_B, ?TEST_MODULE:get_network_id()),
+    set_resolved_network_id(?NW_ID_A),
+    ?assertEqual(?NW_ID_A, ?TEST_MODULE:get_network_id()).
 
-%% The cache must not outlive the application that owns it - see
+%% The aecore restart that the setup hook does not cover - see
 %% aec_governance:ensure_env/0.
-cache_cleared_on_app_stop_test_() ->
-    {setup,
+app_lifecycle_test_() ->
+    {foreach,
      fun() ->
-             %% aecore_app:stop/1 logs, so lager has to be up.
+             %% aecore_app:start/2 and stop/1 both log, so lager has to be up.
              aec_test_utils:ensure_system_init(),
              ok = ?TEST_MODULE:clear_network_id_cache(),
-             meck:new(?TEST_MODULE, [passthrough]),
+             meck:new(?LIFECYCLE_MOCKS, [passthrough]),
              %% Mocked: both cleanups erase persistent terms shared by the whole
              %% eunit VM.
-             meck:new([aec_db, aec_db_gc], [passthrough]),
              meck:expect(aec_db_gc, cleanup, 0, ok),
-             meck:expect(aec_db, cleanup, 0, ok)
+             meck:expect(aec_db, cleanup, 0, ok),
+             %% Failing the call right after ensure_env/0 aborts start/2 before
+             %% mnesia and aecore_sup.
+             meck:expect(aec_jobs_queues, start, 0,
+                         meck:raise(throw, stop_start)),
+             set_resolved_network_id(?NW_ID_A)
      end,
      fun(_) ->
              ok = ?TEST_MODULE:clear_network_id_cache(),
-             meck:unload([aec_db_gc, aec_db]),
-             meck:unload(?TEST_MODULE)
+             meck:unload(?LIFECYCLE_MOCKS)
      end,
-     fun(_) ->
-             [{"Stopping aecore makes the network id follow the configuration again",
-               fun() ->
-                       %% Not that the id changes when aecore stops - that the
-                       %% cache does not outlive the application, so reads go
-                       %% back to the configuration.
-                       set_resolved_network_id(?NW_ID_A),
-                       ok = ?TEST_MODULE:ensure_env(),
-                       set_resolved_network_id(?NW_ID_B),
-                       ?assertEqual(?NW_ID_A, ?TEST_MODULE:get_network_id()),
-                       ok = aecore_app:stop(undefined),
-                       ?assertEqual(?NW_ID_B, ?TEST_MODULE:get_network_id())
-               end}]
-     end}.
+     [{"Stopping aecore makes the network id follow the configuration again",
+       fun stopping_aecore_unpins_the_network_id/0},
+      {"Starting aecore pins the network id again",
+       fun starting_aecore_pins_the_network_id/0}]}.
+
+stopping_aecore_unpins_the_network_id() ->
+    %% Not that the id changes when aecore stops - that the cache does not
+    %% outlive the application, so reads go back to the configuration.
+    ok = ?TEST_MODULE:ensure_env(),
+    set_resolved_network_id(?NW_ID_B),
+    ?assertEqual(?NW_ID_A, ?TEST_MODULE:get_network_id()),
+    ok = aecore_app:stop(undefined),
+    ?assertEqual(?NW_ID_B, ?TEST_MODULE:get_network_id()).
+
+starting_aecore_pins_the_network_id() ->
+    %% The mocked aec_jobs_queues:start/0 aborts start/2 right after the pin.
+    ?assertThrow(stop_start, aecore_app:start(normal, [])),
+    set_resolved_network_id(?NW_ID_B),
+    ?assertEqual(?NW_ID_A, ?TEST_MODULE:get_network_id()).
+
+set_resolved_network_id(NetworkId) ->
+    meck:expect(?TEST_MODULE, resolve_network_id, 0, NetworkId).
 
 %% Both failures are silent: a missing hook only costs the lookup again, a hook
 %% renumbered ahead of aeutils pins the schema default for the node's lifetime.
