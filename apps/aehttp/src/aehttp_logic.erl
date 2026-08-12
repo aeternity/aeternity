@@ -17,6 +17,10 @@
         , get_top_blocks_gas_price_summary/1
         ]).
 
+-export([ min_gas_price_override/0
+        , apply_min_gas_price_override/1
+        ]).
+
 -export([ get_account/1
         , get_account_balance/1
         ]).
@@ -169,6 +173,45 @@ get_top_blocks_gas_price_summary(Minutes) ->
     Offsets = [ {N, Now - N * 60 * 1_000} || N <- Minutes ],
     TopHash = aec_chain:top_block_hash(),
     get_min_gas_price_since(Offsets, TopHash, {undefined, 0, 0}, []).
+
+%% Reporting-only gas price floor for the public HTTP API, off by default.
+%%
+%% This is the single definition of the knob. It is read by the recent-gas-prices
+%% handler and by the public dry-run profile in aehttp_dispatch_ext; neither reads
+%% the config path directly, so the two cannot drift onto different keys or
+%% different notions of "disabled".
+%%
+%% It is deliberately NOT under `mining'. mining:min_miner_gas_price is a floor the
+%% node actually enforces - aec_tx_pool:check_candidate/10 and
+%% aec_tx_pool:check_minimum_miner_gas_price/6 both read it via
+%% aec_tx_pool:minimum_miner_gas_price/0 - and nothing in this module can reach
+%% those. This one is enforced nowhere: it changes what the node reports and
+%% nothing else. Parking the two side by side would invite exactly that confusion.
+%%
+%% `undefined' means off. Anything that is not a positive integer - an absent key,
+%% an explicit null, a 0 - reads as off, so a malformed value degrades to today's
+%% behaviour rather than to some other number.
+-spec min_gas_price_override() -> non_neg_integer() | undefined.
+min_gas_price_override() ->
+    case aeu_env:user_config_or_env([<<"http">>, <<"dry_run">>, <<"min_gas_price_override">>],
+                                    aehttp, [dry_run, min_gas_price_override], undefined) of
+        N when is_integer(N), N > 0 -> N;
+        _ -> undefined
+    end.
+
+%% A floor, not a replacement: max/2, never a bare substitution.
+%%
+%% The reported min_gas_price is the lowest price that actually made it into a
+%% block in the window, so on a chain already trading above the override,
+%% substituting it would report a price BELOW the observed one and push clients
+%% into building transactions the network rejects. max/2 can only ever move the
+%% reported figure up, which is the direction the ask is about.
+-spec apply_min_gas_price_override(non_neg_integer()) -> non_neg_integer().
+apply_min_gas_price_override(GasPrice) ->
+    case min_gas_price_override() of
+        undefined -> GasPrice;
+        Override  -> max(GasPrice, Override)
+    end.
 
 min_gas_price(undefined) -> 0;
 min_gas_price(N) -> N.

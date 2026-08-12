@@ -1498,6 +1498,11 @@
                             "description" : "Meter FATE contract-storage reads in dry-run at the size-proportional Salus (v8) gas cost, always-on and independent of the activated protocol. Changes only the returned gas amounts (never tx validity, ABI or VM version) and never commits; the response schema is unchanged. Also bounds large-store reads by the dry-run gas ceiling. Disable to fall back to the activated protocol's flat charge.",
                             "type" : "boolean",
                             "default" : true
+                        },
+                        "min_gas_price_override" : {
+                            "description" : "Reporting-only gas price floor (in aettos) for the public HTTP API. When set, GET /v[23]/recent-gas-prices reports max(observed, override) as min_gas_price, and the public dry-run profile reports cost against this floor. Absent or null disables it, which is the default. This changes only what the node REPORTS: it is not enforced anywhere, no transaction is admitted, rejected, gossiped or included differently because of it, and it does not affect the mining:min_miner_gas_price floor the mempool actually enforces. Clients that trust the reported figure will build transactions paying it, so an operator setting this raises what users of this node pay without any miner requiring it.",
+                            "type" : ["integer", "null"],
+                            "minimum" : 1
                         }
                     }
                 }

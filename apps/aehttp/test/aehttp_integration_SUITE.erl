@@ -153,6 +153,7 @@
     check_transaction_in_pool/1,
 
     get_recent_gas_prices/1,
+    get_recent_gas_prices_override/1,
 
     % sync gossip
     pending_transactions/1,
@@ -442,6 +443,7 @@ groups() ->
         check_transaction_in_pool,
 
         get_recent_gas_prices,
+        get_recent_gas_prices_override,
 
         % sync gossip
         pending_transactions,
@@ -836,6 +838,12 @@ init_per_testcase(Case, Config) when
         Case =:= disabled_debug_endpoints; Case =:= enabled_debug_endpoints ->
     {ok, HttpInternal} = rpc(?NODE, application, get_env, [aehttp, internal]),
     [{http_internal_config, HttpInternal} | init_per_testcase_all(Config)];
+init_per_testcase(get_recent_gas_prices_override, Config) ->
+    %% the group is a `sequence', so a leaked override would silently change what
+    %% every later case sees on this endpoint - save and restore it here rather
+    %% than only on the test's happy path
+    DryRun = rpc(?NODE, application, get_env, [aehttp, dry_run]),
+    [{http_dry_run_config, DryRun} | init_per_testcase_all(Config)];
 init_per_testcase(_Case, Config) ->
     init_per_testcase_all(Config).
 
@@ -849,6 +857,12 @@ end_per_testcase(Case, Config) when
         Case =:= disabled_debug_endpoints; Case =:= enabled_debug_endpoints ->
     HttpInternal = ?config(http_internal_config, Config),
     ok = rpc(?NODE, application, set_env, [aehttp, internal, HttpInternal]),
+    end_per_testcase_all(Config);
+end_per_testcase(get_recent_gas_prices_override, Config) ->
+    ok = case ?config(http_dry_run_config, Config) of
+             undefined  -> rpc(?NODE, application, unset_env, [aehttp, dry_run]);
+             {ok, Prev} -> rpc(?NODE, application, set_env, [aehttp, dry_run, Prev])
+         end,
     end_per_testcase_all(Config);
 end_per_testcase(_Case, Config) ->
     end_per_testcase_all(Config).
@@ -1965,6 +1979,57 @@ get_recent_gas_prices(_Config) ->
     ?assertMatch(X when is_integer(X) andalso X == MinGasPrice, MinGasPrice15),
     ?assertMatch(X when is_integer(X) andalso X == MinGasPrice, MinGasPrice60),
     ok.
+
+%% http:dry_run:min_gas_price_override is reporting-only. It may raise the
+%% min_gas_price this endpoint advertises; it must not lower it below what the
+%% chain shows, must not touch the utilization figure (which is computed honestly
+%% and is what the published SDK gates on), and must not move the floor the
+%% mempool actually enforces.
+get_recent_gas_prices_override(_Config) ->
+    Host = external_address(),
+    Observed = min_gas_price(),
+    EnforcedBefore = rpc(?NODE, aec_tx_pool, minimum_miner_gas_price, []),
+
+    %% (a) override off - today's behaviour, unchanged.
+    %%     The bucket count is asserted because every assertion below is a list
+    %%     comprehension over it: against an empty response they would all hold
+    %%     vacuously and the case would pass while proving nothing.
+    Base = recent_gas_prices(Host),
+    ?assertEqual(4, length(Base)),
+    ?assertEqual([Observed || _ <- Base], [ GP || {GP, _U} <- Base ]),
+
+    %% (b) a floor above the observed price is what gets advertised, in every
+    %%     bucket, while utilization stays exactly where it was
+    Above = Observed * 1000,
+    ok = set_dry_run_override(Above),
+    Raised = recent_gas_prices(Host),
+    ?assertEqual([Above || _ <- Raised], [ GP || {GP, _U} <- Raised ]),
+    ?assertEqual([ U || {_GP, U} <- Base ], [ U || {_GP, U} <- Raised ]),
+
+    %% (c) a floor below the observed price must NOT lower what is advertised -
+    %%     substituting rather than flooring would push clients into building
+    %%     transactions the network then rejects
+    ok = set_dry_run_override(1),
+    NotLowered = recent_gas_prices(Host),
+    ?assertEqual([Observed || _ <- NotLowered], [ GP || {GP, _U} <- NotLowered ]),
+
+    %% (d) turning it off restores the observed figure
+    ok = rpc(?NODE, application, unset_env, [aehttp, dry_run]),
+    Restored = recent_gas_prices(Host),
+    ?assertEqual([Observed || _ <- Restored], [ GP || {GP, _U} <- Restored ]),
+
+    %% (e) at no point did the floor aec_tx_pool enforces at admission and at
+    %%     candidate selection move - this knob reaches no inclusion decision
+    ?assertEqual(EnforcedBefore, rpc(?NODE, aec_tx_pool, minimum_miner_gas_price, [])),
+    ok.
+
+recent_gas_prices(Host) ->
+    {ok, 200, Buckets} = http_request(Host, get, "recent-gas-prices", []),
+    [ {maps:get(<<"min_gas_price">>, B), maps:get(<<"utilization">>, B)} || B <- Buckets ].
+
+set_dry_run_override(Value) ->
+    rpc(?NODE, application, set_env,
+        [aehttp, dry_run, [{min_gas_price_override, Value}]]).
 
 prepare_tx(TxType, Args, SignHash) ->
     %assert_required_tx_fields(TxType, Args),

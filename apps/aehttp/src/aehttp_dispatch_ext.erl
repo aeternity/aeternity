@@ -874,9 +874,23 @@ handle_request_('GetRecentGasPrices', _Params, _Context) ->
     Minutes = [1, 5, 15, 60],
     case aehttp_logic:get_top_blocks_gas_price_summary(Minutes) of
         {ok, GasPrices} ->
+            %% http:dry_run:min_gas_price_override, off by default, is applied here
+            %% at the dispatch layer rather than inside
+            %% aehttp_logic:get_top_blocks_gas_price_summary/1, so the summary keeps
+            %% returning what was observed on chain and only the wire representation
+            %% carries the floor.
+            %%
+            %% Utilization is deliberately left alone. It is computed honestly from
+            %% aec_governance:block_gas_limit/0 over the window, and the published SDK
+            %% ignores min_gas_price entirely below 70% (aepp-sdk v14.1.1,
+            %% es/tx/builder/field-types/gas-price.js:16) - so an override observed to
+            %% do nothing on a quiet chain has not been shown to be harmless, only
+            %% untested.
             MkGasPrice =
                 fun({Ms, GasPrice, Utilization}) ->
-                    #{ <<"minutes">> => Ms, <<"min_gas_price">> => GasPrice, <<"utilization">> => Utilization }
+                    #{ <<"minutes">> => Ms,
+                       <<"min_gas_price">> => aehttp_logic:apply_min_gas_price_override(GasPrice),
+                       <<"utilization">> => Utilization }
                 end,
             {200, [], lists:map(MkGasPrice, GasPrices)};
         {error, _} ->
