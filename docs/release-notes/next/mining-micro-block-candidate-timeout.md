@@ -5,7 +5,8 @@
   new `ae.epoch.aecore.mining.micro_candidate_expired` metric. Keep it below the window your node
   builds in: `mining.micro_block_cycle` when mining, or `child_block_production_time` (default
   `500`) as a Hyperchains leader — a larger value is capped to that window. Only a value at or
-  above `mining.micro_block_cycle` is warned about at startup.
+  above `mining.micro_block_cycle` is warned about at startup. `docs/configuration.md` covers
+  what the limit deliberately does not do.
 * Candidate selection is faster on a node whose mempool has grown large: a sender's account state
   is resolved once per selection pass rather than once per transaction examined, and the set of
   already-packed transactions is no longer a list that every pass rescans.

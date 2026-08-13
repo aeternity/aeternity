@@ -162,7 +162,7 @@ int_create(PrevBlock, KeyBlock, MaxGas, Timeout, Window) ->
             TxEnv = aetx_env:set_height(TxEnv0, Height),
             PrevNode = aec_chain_state:wrap_block(PrevBlock),
             Trees1 = ConsensusModule:state_pre_transform_micro_node(Height, PrevNode, Trees),
-            int_pack_block(Height, MaxGas, #{}, [], MBEnv, TxEnv, Trees1, [],
+            int_pack_block(Height, MaxGas, #{}, [], 0, MBEnv, TxEnv, Trees1, [],
                            build_deadline(Timeout, Window));
         error ->
             {error, block_state_not_found}
@@ -187,28 +187,41 @@ create_tx_env(#{prev_block := PrevBlock, prev_hash := PrevBlockHash,
 
 %% Txs/events accumulate as reversed per-pass batches, joined once at the end:
 %% appending per pass was quadratic in the transactions already packed.
-int_pack_block(Height, GasAvailable, PackedHashes, RevTxs, MBEnv, TxEnv, Trees, RevEvents,
-               Deadline) ->
+int_pack_block(Height, GasAvailable, PackedHashes, RevTxs, NumPacked, MBEnv, TxEnv, Trees,
+               RevEvents, Deadlines) ->
     #{prev_hash := PrevBlockHash, key_block := KeyBlock} = MBEnv,
+    {Bound, Ceiling} = Deadlines,
+    %% Whether the candidate would be worth publishing if packing stopped here.
+    %% A pass that selected transactions but applied none leaves it empty, so
+    %% "a pass has run" is not the same as "there is something to publish".
+    %% Carried rather than recomputed: on a pool nothing applies from, the pass
+    %% count grows until the ceiling and every pass would rescan every batch.
+    Packed = NumPacked > 0,
+    %% Trimming a candidate is what the bound is for; emptying one is not. An
+    %% empty micro block is never published, so a build that gave up before
+    %% packing anything would cost the leader the whole cycle rather than shorten
+    %% a block. Such a build therefore runs past the bound and gives up at the
+    %% ceiling, which still stops a pool nothing can be applied from spinning a
+    %% build worker indefinitely.
+    GiveUp = deadline_expired(Bound) andalso (Packed orelse deadline_expired(Ceiling)),
     Selected =
-        %% RevTxs == [] means no pass has run yet. Always grant the first one,
-        %% so a deadline too small to measure yields a small block rather than
-        %% no block at all; the pool bounds that pass between select chunks.
-        case RevTxs =/= [] andalso deadline_expired(Deadline) of
+        case GiveUp of
             true ->
                 %% Out of time to even ask for more. Reported in the same place
                 %% as the pool's own mid-walk stop, below.
                 {ok, [], #{expired => true}};
             false ->
+                %% packed: whether there is a block to be cut short of - see above.
                 aec_tx_pool:get_candidate(GasAvailable, PackedHashes, PrevBlockHash,
-                                          #{deadline => Deadline})
+                                          #{deadline => Bound, ceiling => Ceiling,
+                                            packed => Packed})
         end,
     case Selected of
         {ok, [], #{expired := Expired}} ->
             %% Empty selection: the pool drained, or time ran out. Only the
             %% latter means the block is smaller than it could have been.
             case Expired of
-                true  -> report_deadline_expired(RevTxs);
+                true  -> report_deadline_expired(NumPacked);
                 false -> ok
             end,
             int_create_block(Height, MBEnv, TxEnv, join_batches(RevTxs), Trees,
@@ -218,37 +231,59 @@ int_pack_block(Height, GasAvailable, PackedHashes, RevTxs, MBEnv, TxEnv, Trees, 
             report_failed_txs(FailedTxs1),
             PackedHashes1 = add_packed_hashes(Txs0, PackedHashes),
             int_pack_block(Height, GasAvailable - used_gas(KeyBlock, Txs1, Trees1), PackedHashes1,
-                           [Txs1 | RevTxs], MBEnv, TxEnv, Trees1, [Events1 | RevEvents],
-                           Deadline)
+                           [Txs1 | RevTxs], NumPacked + length(Txs1), MBEnv, TxEnv, Trees1,
+                           [Events1 | RevEvents], Deadlines)
     end.
 
-%% A bound above the window the build has to fit inside cannot trim anything
-%% before the slot is gone, so it is capped to it. The floor keeps a window of
-%% zero - which the schema rejects but the application environment does not -
-%% from landing the bound in the past and truncating every build.
-build_deadline(infinity, _Window) -> infinity;
-build_deadline(0, _Window)        -> infinity;
+%% {Bound, Ceiling}: the bound trims a candidate that has something to publish,
+%% and the ceiling is the point past which even a candidate holding nothing gives
+%% up - see int_pack_block/10.
+build_deadline(infinity, _Window) -> {infinity, infinity};
+build_deadline(0, _Window)        -> {infinity, infinity};
 build_deadline(Timeout, Window) when is_integer(Timeout), Timeout > 0 ->
-    erlang:monotonic_time(millisecond) + min(Timeout, max(1, Window));
+    deadlines_from(Timeout, Window);
 build_deadline(_Invalid, Window) ->
     %% Reachable only through the application environment, which the schema does
     %% not police; check_config/0 warns about it once at startup rather than once
     %% per build. Falling back rather than crashing keeps the build worker alive -
     %% the generator absorbs its death, so the symptom of a crash would be a node
     %% silently not making micro blocks.
-    erlang:monotonic_time(millisecond) + min(?DEFAULT_CANDIDATE_TIMEOUT, max(1, Window)).
+    deadlines_from(?DEFAULT_CANDIDATE_TIMEOUT, Window).
+
+%% Both deadlines come from the window the build has to fit inside: the ceiling
+%% is that window, and a bound above it is capped, since it could not trim
+%% anything before the slot was gone anyway. A build may still overrun by the
+%% batch it is applying when the ceiling falls.
+%%
+%% The floor keeps a window of zero - which the schema rejects but the
+%% application environment does not - from arming both deadlines before packing
+%% has begun, which would publish an empty micro block every slot.
+deadlines_from(Timeout, Window) ->
+    Now = erlang:monotonic_time(millisecond),
+    Fits = max(1, Window),
+    {Now + min(Timeout, Fits), Now + Fits}.
 
 deadline_expired(infinity) -> false;
 deadline_expired(Deadline) when is_integer(Deadline) ->
     erlang:monotonic_time(millisecond) >= Deadline.
 
 %% Once per build; a truncated build has no other symptom than a small block.
-report_deadline_expired(RevTxs) ->
-    Packed = lists:sum([length(Batch) || Batch <- RevTxs]),
-    lager:warning("Micro block candidate packing stopped at its deadline with "
-                  "~p transaction(s) packed. Raise or disable "
-                  "mining.micro_block_candidate_timeout if this persists.",
-                  [Packed]),
+report_deadline_expired(NumPacked) ->
+    case NumPacked of
+        0 ->
+            %% Nothing was trimmed: the passes that ran applied nothing, so this
+            %% build stopped at the ceiling, not at its bound - raising the bound
+            %% will not move what stopped it.
+            lager:warning("Micro block candidate packing gave up with nothing "
+                          "packed: transactions were offered but none could be "
+                          "applied on top of this block. Raising "
+                          "mining.micro_block_candidate_timeout will not help.");
+        Packed ->
+            lager:warning("Micro block candidate packing stopped at its deadline "
+                          "with ~p transaction(s) packed. Raise or disable "
+                          "mining.micro_block_candidate_timeout if this persists.",
+                          [Packed])
+    end,
     aec_metrics:try_update([ae,epoch,aecore,mining,micro_candidate_expired], 1),
     ok.
 

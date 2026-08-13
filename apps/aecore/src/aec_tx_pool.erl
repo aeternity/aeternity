@@ -140,7 +140,16 @@
 
 %% deadline is an erlang:monotonic_time(millisecond) value past which
 %% selection stops walking the pool and returns what it has selected so far.
--type select_opts() :: #{ deadline => integer() | infinity }.
+%%
+%% packed says the caller already holds transactions for this candidate, so
+%% stopping on the deadline still leaves it a block to publish. Without it
+%% selection ignores the deadline rather than hand back an empty candidate.
+%%
+%% ceiling is the point past which that exemption lapses: a walk that has found
+%% nothing to select cannot go on forever, whatever the caller is still holding.
+-type select_opts() :: #{ deadline => integer() | infinity
+                        , ceiling  => integer() | infinity
+                        , packed   => boolean() }.
 
 %% expired distinguishes "stopped on the deadline" from "ran out of pool"; an
 %% empty selection alone does not, and only the former means the candidate came
@@ -595,7 +604,9 @@ int_get_candidate(MaxGas, IgnoreTxs, BlockHash, #dbs{db = Db} = DBs, Opts) ->
     Acc0     = #{ ignore_txs => IgnoreTxs, tree => gb_trees:empty(), txs => [], bad_txs => []
                 , accounts => #{}
                 , nonce_offset => nonce_offset(), invalid_tx_ttl => invalid_tx_ttl()
-                , deadline => maps:get(deadline, Opts, infinity), expired => false },
+                , deadline => maps:get(deadline, Opts, infinity), expired => false
+                , ceiling => maps:get(ceiling, Opts, infinity)
+                , packed => maps:get(packed, Opts, false) },
     {ok, RemGas, Acc} = int_get_candidate(Db, MaxGas, MinTxGas, MinMinerGasPrice, Trees,
                                           Header, DBs, Acc0),
     {ok, _, Acc1} = int_get_candidate(
@@ -654,10 +665,21 @@ int_get_candidate_fold(RemGas, _GL, _MMGP, _Db, _Dbs, '$end_of_table', _Accounts
                        _Height, _Protocol, Acc) ->
     {ok, RemGas, Acc}.
 
-deadline_expired(#{deadline := infinity}) ->
+%% Only the ceiling applies to a walk holding nothing - see select_opts().
+deadline_expired(#{deadline := infinity, ceiling := infinity}) ->
     false;
-deadline_expired(#{deadline := Deadline}) when is_integer(Deadline) ->
-    erlang:monotonic_time(millisecond) >= Deadline.
+deadline_expired(#{deadline := Deadline, ceiling := Ceiling} = Acc) ->
+    Now = erlang:monotonic_time(millisecond),
+    past(Now, Ceiling) orelse (has_selection(Acc) andalso past(Now, Deadline)).
+
+past(_Now, infinity)                    -> false;
+past(Now, Point) when is_integer(Point) -> Now >= Point.
+
+%% Whether this candidate would be non-empty if selection stopped right now.
+has_selection(#{packed := true}) ->
+    true;
+has_selection(#{tree := Tree, txs := Txs}) ->
+    Txs =/= [] orelse not gb_trees:is_empty(Tree).
 
 fold_txs([Tx|Txs], Gas, MinTxGas, MinMinerGasPrice, Db, Dbs, AccountsTree, Height, Protocol, Acc) ->
     if Gas > MinTxGas ->

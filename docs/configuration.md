@@ -267,6 +267,36 @@ mining:
 
 For more details on CUDA mining go to [dedicated CUDA miner documentation](cuda-miner.md).
 
+#### Bounding micro-block candidate selection
+
+`mining` > `micro_block_candidate_timeout` (milliseconds, default `1000`) caps the time a leader
+spends choosing which transactions go into one micro block. On expiry the candidate is published
+with what it has packed so far, instead of the whole attempt being lost. Set it to `0` for no
+limit.
+
+```yaml
+mining:
+    micro_block_candidate_timeout: 1000
+```
+
+Keep it comfortably below the window the build has to fit inside: `mining` > `micro_block_cycle`
+when mining, or, when running as a Hyperchains leader, `chain` > `consensus` > `0` > `config` >
+`child_block_production_time` (default `500`) — the leader is woken that long before its slot, and
+that window covers both the micro block and the key block. A larger value is capped to that
+window, since it could not trim a candidate before the slot was gone anyway; a value that is not
+below `micro_block_cycle` is also warned about at startup.
+
+Two things the limit deliberately does not do:
+
+* It does not empty a candidate. An empty micro block is never published, so a build that has
+  packed nothing keeps going rather than lose the block entirely, and gives up only once the
+  window it builds in has passed — by which point the slot is lost in any case.
+* It does not interrupt selection already in progress, so a build may overrun the limit by one
+  batch of transactions plus the time taken to apply that batch.
+
+Builds that hit the limit log a warning and are counted by the
+`ae.epoch.aecore.mining.micro_candidate_expired` metric.
+
 ## Beneficiary account
 
 In order to configure who receives fees from mining on a node, you must configure a beneficiary public key.

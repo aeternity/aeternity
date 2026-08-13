@@ -213,8 +213,8 @@ block_extension_test_() ->
          fun() ->
             Block0 = setup_deadline_mecks(),
 
-            %% Never applies, so consumes no gas: only the deadline can end
-            %% the loop.
+            %% Never applies, so consumes no gas and nothing is ever packed:
+            %% the build runs past its bound and gives up at the cycle ceiling.
             BadTx = aec_test_utils:sign_tx(spend_tx(#{nonce => 100}), ?TEST_PRIV),
 
             meck:expect(aec_tx_pool, get_candidate,
@@ -229,9 +229,10 @@ block_extension_test_() ->
 
             %% Nothing applied, so there is nothing to publish.
             ?assertEqual([], aec_blocks:txs(Block)),
-            %% ...and it looped rather than giving up before the first pass,
-            %% which would satisfy the assertion above just as well.
-            ?assert(Elapsed >= Timeout),
+            %% ...and it ran to the ceiling, not merely to its bound: stopping
+            %% at the bound would satisfy an Elapsed >= Timeout check just as
+            %% well, and that is the behaviour this case exists to rule out.
+            ?assert(Elapsed >= aec_governance:micro_block_cycle()),
             ?assert(meck:num_calls(aec_tx_pool, get_candidate,
                                    ['_', '_', '_', '_']) > 1),
 
@@ -302,6 +303,39 @@ block_extension_test_() ->
             ?assertMatch({ok, _, _},
                          aec_block_micro_candidate:update(Block, [NextTx], BlockInfo))
          end}},
+       {"A deadline does not stop a build that has packed nothing",
+        {timeout, 30,
+         fun() ->
+            Block0 = setup_deadline_mecks(),
+            BadTx  = aec_test_utils:sign_tx(spend_tx(#{nonce => 100}), ?TEST_PRIV),
+            GoodTx = aec_test_utils:sign_tx(spend_tx(#{nonce => 1}), ?TEST_PRIV),
+
+            meck:expect(aec_tx_pool, failed_txs, 1, ok),
+            %% The reverse of the test above: the first pass applies nothing, a
+            %% later one does. Stopping between them yields a candidate with no
+            %% transactions - which is never published, so the bound would have
+            %% cost the whole micro block rather than shortened one.
+            meck:expect(aec_tx_pool, get_candidate,
+                        fun(_, Packed, _, _) when map_size(Packed) =:= 0 ->
+                                timer:sleep(3),
+                                {ok, [BadTx], ?DRAINED};
+                           (_, _, _, _) ->
+                                timer:sleep(3),
+                                {ok, [GoodTx], ?DRAINED}
+                        end),
+
+            %% Every pass outlives the bound, so it is expired from the end of
+            %% the first one on - only the exemption lets the second one run.
+            application:set_env(aecore, micro_block_candidate_timeout, 1),
+            {ok, Block, _BlockInfo} = aec_block_micro_candidate:create(Block0),
+
+            ?assertEqual([GoodTx], aec_blocks:txs(Block)),
+
+            %% Once there is something to publish the bound is honoured again:
+            %% every pass after the one that packed GoodTx is refused.
+            ?assertEqual(2, meck:num_calls(aec_tx_pool, get_candidate,
+                                           ['_', '_', '_', '_']))
+         end}},
        {"Transactions and events from several packing passes keep their order",
         fun() ->
             Block0 = setup_deadline_mecks(),
@@ -331,7 +365,10 @@ block_extension_test_() ->
 
             ?assertEqual([STx1, STx2, STx3], aec_blocks:txs(Block)),
             ?assertEqual([{applied, STx1}, {applied, STx2}, {applied, STx3}],
-                         aetx_env:events(TxEnv))
+                         aetx_env:events(TxEnv)),
+            %% Only the first pass has nothing to cut a block short of, so only
+            %% it may let selection overrun the bound.
+            ?assertEqual([false, true, true, true], candidate_packed_flags())
         end},
        {"The candidate timeout is read from configuration, and defaults",
         fun() ->
@@ -474,6 +511,12 @@ setup_deadline_mecks() ->
 %% The deadline each packing pass was given, in call order.
 candidate_deadlines() ->
     [ maps:get(deadline, Opts)
+      || {_Pid, {aec_tx_pool, get_candidate, [_, _, _, Opts]}, _}
+             <- meck:history(aec_tx_pool) ].
+
+%% Same, for the flag telling selection there is a block to cut short of.
+candidate_packed_flags() ->
+    [ maps:get(packed, Opts)
       || {_Pid, {aec_tx_pool, get_candidate, [_, _, _, Opts]}, _}
              <- meck:history(aec_tx_pool) ].
 
