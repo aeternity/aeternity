@@ -997,12 +997,19 @@ epochs_with_slow_parent(Config) ->
     ParentTopHeight = rpc(?PARENT_CHAIN_NODE, aec_chain, top_height, []),
     ?assertEqual(ParentHeight, ParentTopHeight),
     ChildTopHeight = rpc(Node, aec_chain, top_height, []),
-    {ok, #{epoch := EndEpoch, length := EpochLength}} = rpc(Node, aec_chain_hc, epoch_info, [ChildTopHeight]),
-    ct:log("Parent at height ~p and child at height ~p in child epoch ~p",
-           [ParentTopHeight, ChildTopHeight, EndEpoch]),
+    {ok, #{epoch := EndEpoch, length := EpochLength, last := EpochLast}} =
+        rpc(Node, aec_chain_hc, epoch_info, [ChildTopHeight]),
+    ct:log("Parent at height ~p and child at height ~p in child epoch ~p (last ~p)",
+           [ParentTopHeight, ChildTopHeight, EndEpoch, EpochLast]),
+    ?assert(ChildTopHeight < EpochLast),
 
-    %% Parent hash grabbed in last block child epoch, so here we can start, but not finish next epoch
-    {ok, _} = produce_cc_blocks(Config, EpochLength - 1, #{parent_produce => []}),
+    %% Parent hash grabbed in last block child epoch, so here we can start, but not finish
+    %% next epoch. Address the epoch's own `last` instead of counting `EpochLength - 1`
+    %% blocks from here: produce_cc_blocks/2,3 counts non-hole key blocks, so a hole
+    %% anywhere earlier in this case leaves the top above the epoch boundary and a
+    %% relative count then asks for blocks past `last` - which the chain cannot produce
+    %% without parent progress, and the deliberate stall below arrives one call early.
+    {ok, _} = produce_cc_blocks(Config, EpochLast - 1 - ChildTopHeight, #{parent_produce => []}),
 
     %% Here we should get stuck... Short timeout to not get too far behind.
     ProduceOpts = #{timeout => 1000, parent_produce => []},
@@ -1015,7 +1022,9 @@ epochs_with_slow_parent(Config) ->
     ParentBlocksNeeded =
         (EndEpoch - 1) * ?PARENT_EPOCH_LENGTH + ?config(parent_start_height, Config) + ?PARENT_FINALITY - ParentTopHeight,
 
-    {ok, _} = produce_cc_blocks(Config, 1, #{parent_produce => [{ChildTopHeight + EpochLength, ParentBlocksNeeded}]}),
+    %% The parent must catch up exactly when the child needs `last` - same reason as above,
+    %% ChildTopHeight + EpochLength only names that height when the top sat on the boundary.
+    {ok, _} = produce_cc_blocks(Config, 1, #{parent_produce => [{EpochLast, ParentBlocksNeeded}]}),
 
     #{epoch_length := FinalizeEpochLength, epoch := FinalizeEpoch} = rpc(Node, aec_chain_hc, finalize_info, []),
     %% A single recovery call can catch all the way up to EndEpoch, but never beyond it
