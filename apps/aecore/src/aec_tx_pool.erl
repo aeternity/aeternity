@@ -26,9 +26,18 @@
         { %% Tuple of arity 1 where the single element is the mempool key tuple.
          ?KEY(NegFee, NegGasPrice, Origin, Nonce, TxHash)
         }).
+%% Key of the nonce index. Ordered by account, then nonce, then by the same
+%% fee/gas-price pair the mempool itself is ordered by - so the entries of one
+%% {Account, Nonce} come out best paying first, and the best of them can be read
+%% without materialising the rest. See account_nonce_select/4.
+-define(NONCE_KEY(Account, Nonce, NegFee, NegGasPrice, TxHash),
+           {Account, Nonce, NegFee, NegGasPrice, TxHash}).
 -define(DEFAULT_PUSH_TIMEOUT, 5000).
 %% Number of nonce index entries fetched per ets:select/3 chunk.
 -define(NONCE_IDX_CHUNK, 100).
+%% Pool entries fetched per ets:select/3 chunk of the fee-ordered walk; the
+%% deadline is consulted between chunks.
+-define(POOL_WALK_CHUNK, 20).
 
 %% API
 -export([ start_link/0
@@ -578,8 +587,10 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 -spec int_get_max_nonce(pool_db(), aec_keys:pubkey()) -> {ok, non_neg_integer()} | undefined.
 int_get_max_nonce(NonceDb, Sender) ->
-    case ets:prev(NonceDb, {Sender, '$larger_than_any_nonce', <<>>}) of
-        {Sender, MaxNonce, _} ->
+    %% An atom sorts after every integer nonce, so this lands just past the
+    %% Sender's last entry; the trailing positions never get compared.
+    case ets:prev(NonceDb, ?NONCE_KEY(Sender, '$larger_than_any_nonce', <<>>, <<>>, <<>>)) of
+        ?NONCE_KEY(Sender, MaxNonce, _, _, _) ->
             {ok, MaxNonce};
         _ ->
             undefined
@@ -587,12 +598,11 @@ int_get_max_nonce(NonceDb, Sender) ->
 
 %% Ensure ordering of tx nonces in one account, and for duplicate account nonces
 %% we only get the one with higher fee or - if equal fee - higher gas price.
-%% int_get_candidate(#state{ db = Db, gc_db = GCDb }, MaxGas, BlockHash) ->
 %%
 %% Once selected into a candidate set, transactions are moved to the 'visited'
-%% table until the next key block top_change. This means they won't be
-%% considered for another microblock until the next leader cycle.
-%% ... Unless no matching txs can be found in the regular mempool.
+%% table until the next key block top_change. That no longer decides when the
+%% walk may take them: a run of consecutive nonces reads the shared nonce index,
+%% so it may take a visited entry at any point.
 %%
 int_get_candidate(MaxGas, IgnoreTxs, BlockHash, #dbs{db = Db} = DBs, Opts) ->
     {Trees, Header} = get_trees_and_header(BlockHash),
@@ -602,11 +612,12 @@ int_get_candidate(MaxGas, IgnoreTxs, BlockHash, #dbs{db = Db} = DBs, Opts) ->
     %% Read once for the whole candidate selection rather than once per
     %% transaction of the mempool - each read walks the whole user config map.
     Acc0     = #{ ignore_txs => IgnoreTxs, tree => gb_trees:empty(), txs => [], bad_txs => []
-                , accounts => #{}
+                , accounts => #{}, expected => #{}, done => #{}
                 , nonce_offset => nonce_offset(), invalid_tx_ttl => invalid_tx_ttl()
                 , deadline => maps:get(deadline, Opts, infinity), expired => false
                 , ceiling => maps:get(ceiling, Opts, infinity)
-                , packed => maps:get(packed, Opts, false) },
+                , packed => maps:get(packed, Opts, false), examined => #{}
+                , resume => #{} },
     {ok, RemGas, Acc} = int_get_candidate(Db, MaxGas, MinTxGas, MinMinerGasPrice, Trees,
                                           Header, DBs, Acc0),
     {ok, _, Acc1} = int_get_candidate(
@@ -639,7 +650,7 @@ int_get_candidate(Db, Gas, MinTxGas, MinMinerGasPrice, Trees, Header, DBs, Acc)
   when Gas > MinTxGas ->
     Pat = [{ '_', [], ['$_'] }],
     int_get_candidate_fold(Gas, MinTxGas, MinMinerGasPrice, Db, DBs,
-                           ets:select(Db, Pat, 20),
+                           ets:select(Db, Pat, ?POOL_WALK_CHUNK),
                            {account_trees, aec_trees:accounts(Trees)},
                            aec_headers:height(Header), aec_headers:version(Header), Acc);
 int_get_candidate(_, Gas, _, _, _, _, _, Acc) ->
@@ -652,11 +663,11 @@ int_get_candidate_fold(Gas, MinTxGas, MinMinerGasPrice, Db, Dbs = #dbs{}, {Txs, 
                        AccountsTree, Height, Protocol, Acc) when Gas > MinTxGas ->
     {RemGas, NewAcc} = fold_txs(Txs, Gas, MinTxGas, MinMinerGasPrice, Db, Dbs,
                                 AccountsTree, Height, Protocol, Acc),
-    %% Checked once per select chunk rather than per transaction: a chunk is a
-    %% bounded amount of work, and this keeps the clock out of the inner loop.
-    case deadline_expired(NewAcc) of
+    %% Once per select chunk, which is a bounded amount of work; the unbounded
+    %% loops below check the deadline themselves and may already have expired.
+    case stop_selecting(NewAcc) of
         true ->
-            {ok, RemGas, NewAcc#{ expired := true }};
+            {ok, RemGas, expire(NewAcc)};
         false ->
             int_get_candidate_fold(RemGas, MinTxGas, MinMinerGasPrice, Db, Dbs, ets:select(Cont),
                                    AccountsTree, Height, Protocol, NewAcc)
@@ -664,6 +675,16 @@ int_get_candidate_fold(Gas, MinTxGas, MinMinerGasPrice, Db, Dbs = #dbs{}, {Txs, 
 int_get_candidate_fold(RemGas, _GL, _MMGP, _Db, _Dbs, '$end_of_table', _AccountsTree,
                        _Height, _Protocol, Acc) ->
     {ok, RemGas, Acc}.
+
+%% Whether selection should stop now: either it already stopped somewhere deeper
+%% in this pass, or the deadline has just fallen.
+stop_selecting(#{expired := true}) ->
+    true;
+stop_selecting(Acc) ->
+    deadline_expired(Acc).
+
+expire(Acc) ->
+    Acc#{ expired := true }.
 
 %% Only the ceiling applies to a walk holding nothing - see select_opts().
 deadline_expired(#{deadline := infinity, ceiling := infinity}) ->
@@ -681,6 +702,11 @@ has_selection(#{packed := true}) ->
 has_selection(#{tree := Tree, txs := Txs}) ->
     Txs =/= [] orelse not gb_trees:is_empty(Tree).
 
+%% Selection stopped inside the chunk - see next_competitor/12 and skip_packed/5.
+%% Abandon the rest of it rather than carry on to the chunk boundary.
+fold_txs(_Txs, Gas, _MinTxGas, _MinMinerGasPrice, _Db, _Dbs, _AccountsTree, _Height,
+         _Protocol, #{expired := true} = Acc) ->
+    {Gas, Acc};
 fold_txs([Tx|Txs], Gas, MinTxGas, MinMinerGasPrice, Db, Dbs, AccountsTree, Height, Protocol, Acc) ->
     if Gas > MinTxGas ->
             {Gas1, Acc1} =
@@ -693,21 +719,308 @@ fold_txs([Tx|Txs], Gas, MinTxGas, MinMinerGasPrice, Db, Dbs, AccountsTree, Heigh
 fold_txs([], Gas, _, _, _, _, _, _, _, Acc) ->
     {Gas, Acc}.
 
-int_get_candidate_({?KEY(_, _, Account, Nonce, TxHash) = Key, TxRec},
+int_get_candidate_({?KEY(NegFee, NegGasPrice, Account, Nonce, TxHash) = Key, TxRec},
                    Gas, MinMinerGasPrice, Db, Dbs, AccountsTree, Height, Protocol,
-                   Acc = #{ tree := AccTree, ignore_txs := IgnoreTxs }) ->
+                   Acc = #{ ignore_txs := IgnoreTxs, done := Done }) ->
     case maps:is_key(TxHash, IgnoreTxs) of
         true ->
             {Gas, Acc};
+        false when Nonce =:= 0 ->
+            %% A meta tx carries no nonce of its own to sequence on - the pool key
+            %% of a generalized account's txs always holds 0 - so it is judged by
+            %% itself, as every entry used to be.
+            entry_candidate(Key, TxRec#tx.signed_tx, Db, Dbs, AccountsTree, Height, Gas,
+                            MinMinerGasPrice, Protocol, Acc);
+        false when is_map_key(Account, Done) ->
+            %% This account gave the candidate everything it could; see
+            %% serve_nonces/10.
+            {Gas, Acc};
         false ->
-            Tx = TxRec#tx.signed_tx,
-            case gb_trees:is_defined({Account, Nonce}, AccTree) of
-                true when Nonce > 0 ->
-                    %% The earlier non-meta Tx must have had higher fee. Skip this tx.
-                    {Gas, Acc};
-                false ->
-                    check_candidate(
-                      Db, Dbs, Key, Tx, AccountsTree, Height, Gas, MinMinerGasPrice, Protocol, Acc)
+            {Expected, Acc1} = expected_nonce(Account, Dbs, AccountsTree, Acc),
+            if
+                Expected =:= aborted ->
+                    %% Out of time working out where this account's run starts.
+                    {Gas, Acc1};
+                Expected =:= unsequenced orelse Nonce < Expected ->
+                    %% Either an account whose queue cannot be sequenced, or a
+                    %% nonce already behind the run - judged on its own, so a stale
+                    %% tx is retired as before, unless the account is already done.
+                    entry_candidate(Key, TxRec#tx.signed_tx, Db, Dbs, AccountsTree, Height,
+                                    Gas, MinMinerGasPrice, Protocol, Acc1);
+                Nonce > Expected ->
+                    %% Not this tx's turn: it cannot apply on top of the block being
+                    %% built, whatever it pays. Left where it is - selecting it only
+                    %% spends the candidate's gas on a tx that fails to apply, and
+                    %% charges it a failure it did not earn.
+                    {Gas, Acc1};
+                true ->
+                    serve_nonces(Account, Expected, {NegFee, NegGasPrice}, Dbs,
+                                 AccountsTree, Height, Gas, MinMinerGasPrice, Protocol,
+                                 Acc1)
+            end
+    end.
+
+%% One entry judged on its own, without following a nonce sequence: meta txs, the
+%% accounts expected_nonce/4 cannot sequence, and nonces already behind the run.
+entry_candidate(?KEY(_, _, Account, Nonce, _) = Key, Tx, Db, Dbs, AccountsTree, Height,
+                Gas, MinMinerGasPrice, Protocol, Acc = #{ tree := AccTree }) ->
+    case Nonce > 0 andalso gb_trees:is_defined({Account, Nonce}, AccTree) of
+        true ->
+            %% The earlier non-meta Tx must have had higher fee. Skip this tx.
+            {Gas, Acc};
+        false ->
+            {_Outcome, Gas1, Acc1} =
+                check_candidate(Db, Dbs, Key, Tx, AccountsTree, Height, Gas,
+                                MinMinerGasPrice, Protocol, Acc),
+            {Gas1, Acc1}
+    end.
+
+%% The nonce this candidate wants next from an account: the one the chain expects,
+%% advanced past whatever an earlier pass of the same build already packed.
+%%
+%% Accounts whose queue cannot be sequenced - generalized ones, and those the block
+%% state does not know - are remembered as 'unsequenced', so that costs one lookup
+%% for the account rather than one per transaction of its queue.
+expected_nonce(Account, #dbs{nonce_db = NDb}, AccountsTree,
+               Acc = #{ expected := Expected, accounts := Cache0,
+                        ignore_txs := IgnoreTxs }) ->
+    case Expected of
+        #{ Account := N } ->
+            {N, Acc};
+        _ ->
+            {Lookup, Cache} = get_account(Account, AccountsTree, Cache0),
+            Acc1 = Acc#{ accounts := Cache },
+            case Lookup of
+                {value, AccountObj} ->
+                    case aec_accounts:type(AccountObj) of
+                        basic ->
+                            remember_expected(
+                              Account,
+                              skip_packed(NDb, Account, aec_accounts:nonce(AccountObj) + 1,
+                                          IgnoreTxs, Acc1));
+                        _ ->
+                            remember_expected(Account, {unsequenced, Acc1})
+                    end;
+                _ ->
+                    remember_expected(Account, {unsequenced, Acc1})
+            end
+    end.
+
+%% An abandoned skip is not an answer, so it is not remembered; selection is
+%% stopping, and int_get_candidate_/9 leaves the account alone.
+remember_expected(_Account, {aborted, Acc}) ->
+    {aborted, Acc};
+remember_expected(Account, {N, Acc = #{ expected := Expected }}) ->
+    {N, Acc#{ expected := Expected#{ Account => N } }}.
+
+%% An earlier pass of this build packed the front of the account's queue, so this
+%% pass starts after it. Without this, a second pass would find the account's first
+%% unpacked tx sitting above the nonce the chain expects, and pass it over.
+%%
+%% One nonce is read whole or not at all - reporting a packed nonce unpacked would
+%% have the run fill it a second time - so the deadline stops the whole selection
+%% here rather than cut a nonce short.
+skip_packed(NDb, Account, Nonce, IgnoreTxs, Acc) when map_size(IgnoreTxs) > 0 ->
+    case any_packed(account_nonce_select(NDb, Account, Nonce, ?NONCE_IDX_CHUNK),
+                    IgnoreTxs, Acc) of
+        false ->
+            {Nonce, Acc};
+        aborted ->
+            abort(Acc);
+        true ->
+            case stop_selecting(Acc) of
+                true  -> abort(Acc);
+                false -> skip_packed(NDb, Account, Nonce + 1, IgnoreTxs, Acc)
+            end
+    end;
+skip_packed(_NDb, _Account, Nonce, _IgnoreTxs, Acc) ->
+    {Nonce, Acc}.
+
+abort(Acc) ->
+    {aborted, expire(Acc)}.
+
+%% Whether an earlier pass of this build was offered any of the txs competing for
+%% one nonce. The set is what selection handed the builder, not what applied, so a
+%% nonce whose tx failed to apply counts as filled for the rest of this build.
+%% A hit answers at once; proving there is none costs the whole nonce.
+any_packed('$end_of_table', _IgnoreTxs, _Acc) ->
+    false;
+any_packed({Entries, Cont}, IgnoreTxs, Acc) ->
+    case lists:any(fun({_, _, H}) -> maps:is_key(H, IgnoreTxs) end, Entries) of
+        true  -> true;
+        false -> any_packed_more(ets:select(Cont), IgnoreTxs, Acc)
+    end.
+
+%% A nonce that fits in one chunk ends at the clause above without consulting the
+%% deadline; only a flooded one reaches the check, which is what bounds it.
+any_packed_more('$end_of_table', _IgnoreTxs, _Acc) ->
+    false;
+any_packed_more(Chunk, IgnoreTxs, Acc) ->
+    case stop_selecting(Acc) of
+        true  -> aborted;
+        false -> any_packed(Chunk, IgnoreTxs, Acc)
+    end.
+
+%% Fee order decides which account is served. The order *within* an account is its
+%% nonce sequence, which fee order does not follow: a tx whose nonce the chain is
+%% not ready for cannot apply however much it pays. So once the walk reaches the
+%% nonce an account is due, its queue is taken in order, stopping at a nonce the
+%% pool cannot fill and at the price the walk is currently offering.
+%%
+%% The run needs no deadline check of its own: each nonce it takes either spends
+%% gas or fills one an earlier pass offered, so its length is bounded by the
+%% candidate's gas together with the size of the ignore set.
+serve_nonces(Account, Nonce, Price, Dbs = #dbs{nonce_db = NDb}, AccountsTree, Height, Gas,
+             MinMinerGasPrice, Protocol, Acc) ->
+    case next_competitors(nonce_competitors(NDb, Account, Nonce, Acc)) of
+        '$end_of_table' ->
+            {Gas, mark_done(Account, Acc)};
+        {Entries, Cont} ->
+            case serve_nonce(Entries, Cont, Account, Nonce, Price, Dbs, AccountsTree,
+                             Height, Gas, MinMinerGasPrice, Protocol, Acc) of
+                {taken, Gas1, Acc1} ->
+                    serve_nonces(Account, Nonce + 1, Price, Dbs, AccountsTree,
+                                 Height, Gas1, MinMinerGasPrice, Protocol,
+                                 advance(Account, Nonce + 1, Acc1));
+                {pending, Gas1, Acc1} ->
+                    %% Nothing here is worth what the walk is offering; it will
+                    %% reach this account again at the price the queue does pay.
+                    {Gas1, Acc1};
+                {stop, Gas1, Acc1} ->
+                    {Gas1, mark_done(Account, Acc1)}
+            end
+    end.
+
+%% One nonce of the run. Several txs may compete for it, dearest first; the best
+%% paying one that can be taken has it, and if none can, the run ends here.
+serve_nonce([], Cont, Account, Nonce, Price, Dbs, AccountsTree, Height, Gas,
+            MinMinerGasPrice, Protocol, Acc) ->
+    case next_competitors(ets:select(Cont)) of
+        '$end_of_table' ->
+            {stop, Gas, Acc};
+        {Entries, Cont1} ->
+            serve_nonce(Entries, Cont1, Account, Nonce, Price, Dbs, AccountsTree, Height,
+                        Gas, MinMinerGasPrice, Protocol, Acc)
+    end;
+serve_nonce(Chunk = [{NegFee, NegGasPrice, TxHash} | Entries], Cont, Account, Nonce, Price,
+            Dbs, AccountsTree, Height, Gas, MinMinerGasPrice, Protocol,
+            Acc = #{ ignore_txs := IgnoreTxs, examined := Examined }) ->
+    Key = ?KEY(NegFee, NegGasPrice, Account, Nonce, TxHash),
+    case maps:is_key(TxHash, IgnoreTxs) of
+        true ->
+            %% Offered by an earlier pass of this build: the nonce is spoken for
+            %% whatever it paid, so the run carries on from the next one.
+            {taken, Gas, Acc};
+        false when is_map_key(TxHash, Examined) ->
+            %% Already judged in this selection and not taken. The gas left only
+            %% falls and the trees do not move, so the answer cannot have changed
+            %% - judging it again would only retire it a second time.
+            next_competitor(Entries, Cont, Account, Nonce, Price, Dbs, AccountsTree,
+                            Height, Gas, MinMinerGasPrice, Protocol, Acc);
+        false when {NegFee, NegGasPrice} > Price ->
+            %% Pays less than the walk is offering here, and every competitor left
+            %% is cheaper still. Taking one would let it in ahead of the senders
+            %% the walk still owes that price, so the nonce is left to the walk.
+            {pending, Gas, park(Account, Nonce, Chunk, Cont, Acc)};
+        false ->
+            case resolve_pool_entry(Dbs, Key) of
+                none ->
+                    %% Garbage collected between reading the index and here.
+                    next_competitor(Entries, Cont, Account, Nonce, Price, Dbs, AccountsTree,
+                                    Height, Gas, MinMinerGasPrice, Protocol,
+                                    judged(TxHash, Acc));
+                {ok, Db, Tx} ->
+                    case check_candidate(Db, Dbs, Key, Tx, AccountsTree, Height, Gas,
+                                         MinMinerGasPrice, Protocol, Acc) of
+                        {selected, Gas1, Acc1} ->
+                            {taken, Gas1, Acc1};
+                        {no_gas, Gas1, Acc1} ->
+                            %% No room for this one, but a smaller competitor may
+                            %% still fill the nonce, and it is price-gated like any
+                            %% other - so it cannot get in ahead of what the walk
+                            %% still owes. If none of them fits, the run ends: the
+                            %% gas left only falls, so the rest of the queue cannot
+                            %% be applied either.
+                            next_competitor(Entries, Cont, Account, Nonce, Price, Dbs,
+                                            AccountsTree, Height, Gas1, MinMinerGasPrice,
+                                            Protocol, judged(TxHash, Acc1));
+                        {invalid, Gas1, Acc1} ->
+                            %% Retired; a competing tx may still fill the nonce.
+                            next_competitor(Entries, Cont, Account, Nonce, Price, Dbs,
+                                            AccountsTree, Height, Gas1, MinMinerGasPrice,
+                                            Protocol, judged(TxHash, Acc1))
+                    end
+            end
+    end.
+
+%% On to the next tx competing for the same nonce, unless the deadline fell in
+%% between. One nonce may hold arbitrarily many variants, and retiring a run of
+%% invalid ones is work this loop does - not the chunked walk, whose own check
+%% would not be reached until the whole pile had been examined.
+next_competitor(Entries, Cont, Account, Nonce, Price, Dbs, AccountsTree, Height, Gas,
+                MinMinerGasPrice, Protocol, Acc) ->
+    case stop_selecting(Acc) of
+        true ->
+            {stop, Gas, expire(Acc)};
+        false ->
+            serve_nonce(Entries, Cont, Account, Nonce, Price, Dbs, AccountsTree, Height, Gas,
+                        MinMinerGasPrice, Protocol, Acc)
+    end.
+
+%% A nonce the walk gave back is walked into again by every competitor it holds;
+%% reading it from the start each time is quadratic in how many are parked there.
+nonce_competitors(NDb, Account, Nonce, #{ resume := Resume }) ->
+    case Resume of
+        #{ Account := {Nonce, Chunk} } -> Chunk;
+        _ -> account_nonce_select(NDb, Account, Nonce, ?NONCE_IDX_CHUNK)
+    end.
+
+%% The chunk is kept rather than a key to seek to: a competitor in the visited
+%% table can be dearer than the entry the walk comes back with, and seeking past
+%% it would hand the nonce to something cheaper.
+park(Account, Nonce, Chunk, Cont, Acc = #{ resume := Resume }) ->
+    Acc#{ resume := Resume#{ Account => {Nonce, {Chunk, Cont}} } }.
+
+%% One judgment per competitor per selection: the gas left only falls and the
+%% trees do not move, so a second look could only retire the tx twice.
+judged(TxHash, Acc = #{ examined := Examined }) ->
+    Acc#{ examined := Examined#{ TxHash => [] } }.
+
+advance(Account, Nonce, Acc = #{ expected := Expected }) ->
+    Acc#{ expected := Expected#{ Account => Nonce } }.
+
+%% Nothing more can be taken from this account for this candidate, so the rest of
+%% its entries in the walk are skipped rather than re-examined one by one.
+mark_done(Account, Acc = #{ done := Done }) ->
+    Acc#{ done := Done#{ Account => [] } }.
+
+%% The pool entries competing for one {Account, Nonce}, read a chunk at a time.
+%% Both are bound leading key positions, so the traversal is confined to that
+%% nonce; ?NONCE_KEY covers the order they come out in.
+account_nonce_select(NDb, Account, Nonce, Limit) ->
+    Pat = [{ {?NONCE_KEY(Account, Nonce, '$1', '$2', '$3'), '_'}, [],
+             [{{'$1', '$2', '$3'}}] }],
+    ets:select(NDb, Pat, Limit).
+
+%% ets:select/3 may hand back an empty chunk with a continuation; every caller
+%% here wants either a competitor or the end of the nonce.
+next_competitors('$end_of_table') ->
+    '$end_of_table';
+next_competitors({[], Cont}) ->
+    next_competitors(ets:select(Cont));
+next_competitors({[_|_], _} = Chunk) ->
+    Chunk.
+
+%% Which table holds the entry the nonce index points at; the caller needs it to
+%% move the tx to visited or to retire it.
+resolve_pool_entry(#dbs{db = Db, visited_db = VDb}, Key) ->
+    case ets:lookup(Db, Key) of
+        [{_, #tx{signed_tx = Tx}}] ->
+            {ok, Db, Tx};
+        [] ->
+            case ets:lookup(VDb, Key) of
+                [{_, #tx{signed_tx = Tx}}] -> {ok, VDb, Tx};
+                []                         -> none
             end
     end.
 
@@ -739,19 +1052,20 @@ check_candidate(Db, #dbs{gc_db = GCDb} = _Dbs,
                 RemGas when RemGas >= 0 ->
                     case Nonce of
                         0 -> %% Meta tx
-                            {RemGas, Acc#{ txs := [{Db, Key, Tx} | AccTxs] }};
+                            {selected, RemGas, Acc#{ txs := [{Db, Key, Tx} | AccTxs] }};
                         _N ->
-                            {RemGas, Acc#{ tree := gb_trees:insert({Account, Nonce}, {Db, Key, Tx}, AccTree) }}
+                            {selected, RemGas,
+                             Acc#{ tree := gb_trees:insert({Account, Nonce}, {Db, Key, Tx}, AccTree) }}
                     end;
                 _ ->
                     %% Check the rest of txs, maybe some of them fits
                     %% into the gas limit.
-                    {Gas, Acc}
+                    {no_gas, Gas, Acc}
             end;
         false ->
             %% This is not valid anymore.
             enter_tx_gc(GCDb, TxHash, Key, Height + InvalidTxTTL),
-            {Gas, Acc#{ bad_txs := [{Db, Key, Tx} | maps:get(bad_txs, Acc)] }}
+            {invalid, Gas, Acc#{ bad_txs := [{Db, Key, Tx} | maps:get(bad_txs, Acc)] }}
     end.
 
 move_to_visited(VDb, #dbs{visited_db = VDb}, _) ->
@@ -874,7 +1188,7 @@ pool_db_peek(#dbs{db = Db, visited_db = VDb, nonce_db = NDb}, Max, Account, MaxN
                 all -> [];
                 _   -> [{'=<', '$1', MaxNonce}]
             end,
-    Pat = [{ {{Account, '$1', '$2'}, {'$3', '$4'}}, Guard,
+    Pat = [{ {?NONCE_KEY(Account, '$1', '$3', '$4', '$2'), '_'}, Guard,
              [?KEY_AS_MATCH_SPEC_RESULT('$3', '$4', Account, '$1', '$2')] }],
     pool_db_peek_by_nonce(NDb, Db, VDb, Pat, Max).
 
@@ -905,7 +1219,8 @@ pool_db_merge(L1, [], N) ->
 %% refers to. An index entry without a mempool entry has been garbage collected
 %% concurrently, so chunks are consumed until Max txs are found or the
 %% account's range is exhausted - not merely until Max entries are read.
-%% Results come out in nonce order rather than the fee order of peek/1.
+%% Results come out in nonce order rather than the fee order of peek/1, and
+%% within one nonce dearest first.
 %% ets:select/3 is called directly rather than through ets_select/3, as the
 %% chunked walk needs a continuation even when Max is infinity.
 pool_db_peek_by_nonce(NDb, Db, VDb, Pat, Max) ->
@@ -1154,14 +1469,15 @@ pool_db_raw_put(#dbs{db = Db, nonce_db = NDb, gc_db = GCDb},
         end,
     enter_tx_gc(GCDb, TxHash, Key, GCHeight).
 
-%% The value carries the part of the mempool key that cannot be derived from
-%% the index key, so that an index entry can be resolved to a mempool entry
-%% without going back to the tx itself.
+%% The index key carries every part of the mempool key, so that an index entry
+%% can be resolved to a mempool entry without going back to the tx itself. The
+%% value is unused.
 insert_nonce(NDb, ?KEY(NegFee, NegGasPrice, Account, Nonce, TxHash)) ->
-    ets:insert(NDb, {{Account, Nonce, TxHash}, {NegFee, NegGasPrice}}).
+    ets:insert(NDb, {?NONCE_KEY(Account, Nonce, NegFee, NegGasPrice, TxHash), []}).
 
-delete_nonce(NDb, ?KEY(_, _, Account, Nonce, TxHash)) ->
-    ets:delete(NDb, {Account, Nonce, TxHash}).
+%% The fee positions must match the ones insert_nonce/2 wrote, or the entry lingers.
+delete_nonce(NDb, ?KEY(NegFee, NegGasPrice, Account, Nonce, TxHash)) ->
+    ets:delete(NDb, ?NONCE_KEY(Account, Nonce, NegFee, NegGasPrice, TxHash)).
 
 check_tx_ttl(Tx, _TxHash, Header, _BlockHash, _Trees, _Event) ->
     Height = aec_headers:height(Header),

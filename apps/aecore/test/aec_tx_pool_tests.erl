@@ -396,6 +396,108 @@ tx_pool_test_() ->
                %% Still one lookup per distinct origin: cache hits for the rest.
                ?assertEqual(2, meck:num_calls(aec_accounts_trees, lookup, ['_', '_']))
        end}},
+      {"Selection takes an account's nonces in order, not in fee order",
+       {timeout, 10, fun() ->
+               %% One sender, whose queue has a hole in it, and whose txs past
+               %% the hole pay better than the ones before it. Fee order alone
+               %% reaches for those first - and none of them can be applied on
+               %% top of this block, however much they pay, because the nonces
+               %% ahead of them have not been applied yet.
+               [Sender] = funded_accounts(1),
+               %% Far enough ahead that pushing past the hole is allowed: what
+               %% is under test is selection, not what the pool accepts.
+               ok = application:set_env(aecore, mempool_nonce_offset, 100),
+
+               Ready  = [ a_signed_tx(Sender, me, Nonce, 20000) || Nonce <- lists:seq(1, 3) ],
+               Behind = [ a_signed_tx(Sender, me, Nonce, 40000) || Nonce <- lists:seq(5, 7) ],
+               [ ok = aec_tx_pool:push(STx, tx_created) || STx <- Ready ++ Behind ],
+
+               MaxGas = aec_governance:block_gas_limit(),
+               {ok, Selected} = aec_tx_pool:get_candidate(MaxGas, aec_chain:top_block_hash()),
+
+               %% Everything up to the hole, and nothing past it.
+               ?assertEqual(Ready, Selected),
+
+               %% The ones past the hole are left exactly as they were: not
+               %% selected, and not retired either - a nonce the chain is not
+               %% ready for is not a transaction that is wrong, and charging it
+               %% for an apply it never had is what empties a mempool of txs
+               %% that would have been perfectly good a block later.
+               ?assertEqual(length(Ready) + length(Behind), aec_tx_pool:size()),
+               ?assertEqual({ok, 7}, aec_tx_pool:get_max_nonce(Sender))
+       end}},
+      {"A cheaper tail does not take the room another account pays more for",
+       {timeout, 10, fun() ->
+               %% Following one account's nonce sequence must not mean emptying
+               %% its whole queue before anyone else is looked at: the run stops
+               %% where the account stops paying what the walk is being offered
+               %% elsewhere, and picks up again when the walk reaches its price.
+               [Deep, Rich] = funded_accounts(2),
+               ok = application:set_env(aecore, mempool_nonce_offset, 100),
+
+               %% Deep leads with the best fee in the pool and follows it with a
+               %% long, cheap tail. Rich pays more than that tail, for all of it.
+               DeepHead = a_signed_tx(Deep, me, 1, 80000),
+               DeepTail = [ a_signed_tx(Deep, me, Nonce, 20000) || Nonce <- lists:seq(2, 9) ],
+               RichTxs  = [ a_signed_tx(Rich, me, Nonce, 40000) || Nonce <- lists:seq(1, 4) ],
+               [ ok = aec_tx_pool:push(STx, tx_created)
+                 || STx <- [DeepHead | DeepTail] ++ RichTxs ],
+
+               %% Room for the head, all of Rich, and one of the cheap tail.
+               Header   = aec_chain:top_header(),
+               Height   = aec_headers:height(Header),
+               Protocol = aec_headers:version(Header),
+               GasOf    = fun(STx) -> aetx:gas_limit(aetx_sign:tx(STx), Height, Protocol) end,
+               MaxGas   = lists:sum([ GasOf(STx) || STx <- [DeepHead | RichTxs] ])
+                              + GasOf(hd(DeepTail)),
+
+               {ok, Selected} = aec_tx_pool:get_candidate(MaxGas, aec_chain:top_block_hash()),
+
+               %% Everything Rich offered is in, ahead of the cheap tail.
+               [ ?assert(lists:member(STx, Selected)) || STx <- RichTxs ],
+               ?assert(lists:member(DeepHead, Selected)),
+               %% And the tail took only the room that was left over.
+               ?assertEqual([hd(DeepTail)],
+                            [ STx || STx <- DeepTail, lists:member(STx, Selected) ])
+       end}},
+      {"An expired deadline stops a walk holding something, not one holding nothing",
+       {timeout, 10, fun() ->
+               %% The pool is walked in fee order, so the account that can offer
+               %% nothing is walked first, and fills the first select chunk on
+               %% its own. Stopping there hands back an empty candidate - and an
+               %% empty micro block is never published, so the bound would have
+               %% cost the whole block rather than shortened it.
+               Chunk = 20, %% ?POOL_WALK_CHUNK in aec_tx_pool
+               [Behind, Ready] = funded_accounts(2),
+               ok = application:set_env(aecore, mempool_nonce_offset, 200),
+
+               %% Nothing here can be applied: the account is at nonce 0.
+               BehindTxs = [ a_signed_tx(Behind, me, Nonce, 40000)
+                             || Nonce <- lists:seq(101, 100 + Chunk) ],
+               ReadyTxs  = [ a_signed_tx(Ready, me, Nonce, 20000)
+                             || Nonce <- lists:seq(1, 5) ],
+               [ ok = aec_tx_pool:push(STx, tx_created) || STx <- BehindTxs ++ ReadyTxs ],
+
+               Hash   = aec_chain:top_block_hash(),
+               MaxGas = aec_governance:block_gas_limit(),
+               Past   = erlang:monotonic_time(millisecond) - 1,
+
+               %% Nothing packed yet, so the walk carries on past the deadline
+               %% rather than come back empty-handed. It still reports itself cut
+               %% short - it was - but it has a block to be cut short of.
+               {ok, Selected, _} =
+                   aec_tx_pool:get_candidate(MaxGas, #{}, Hash, #{deadline => Past}),
+               ?assertEqual(ReadyTxs, Selected),
+
+               aec_tx_pool:restore_mempool(),
+
+               %% Told the caller already holds a block's worth, the same walk
+               %% stops on the same deadline - there is a block to publish, so
+               %% the bound does what it is for.
+               {ok, [], #{expired := true}} =
+                   aec_tx_pool:get_candidate(MaxGas, #{}, Hash,
+                                             #{deadline => Past, packed => true})
+       end}},
       {"Selection that ran out of time does not start on the visited table",
        {timeout, 10, fun() ->
                Waiting = 60,
@@ -430,12 +532,346 @@ tx_pool_test_() ->
                ?assertEqual([], [ STx || STx <- Truncated,
                                          lists:member(STx, VisitedTxs) ])
        end}},
+      {"The best paying of many transactions competing for one nonce is selected",
+       {timeout, 10, fun() ->
+               %% The walk reads one bounded chunk of the nonce and takes the
+               %% first entry of it, so the dearest of many competitors is
+               %% selected only because the index is ordered by fee.
+               [PubKey] = funded_accounts(1),
+               Fees  = [ 20000 + 1000 * N || N <- lists:seq(0, 39) ],
+               STxs  = [ a_signed_tx(PubKey, me, 1, Fee) || Fee <- Fees ],
+               [ ok = aec_tx_pool:push(STx, tx_created) || STx <- STxs ],
+               ?assertEqual(length(STxs), aec_tx_pool:size()),
+
+               Hash   = aec_chain:top_block_hash(),
+               MaxGas = aec_governance:block_gas_limit(),
+               {ok, Selected, #{expired := false}} =
+                   aec_tx_pool:get_candidate(MaxGas, #{}, Hash, #{}),
+               %% One nonce can be filled once, and the highest fee fills it.
+               ?assertEqual([lists:last(STxs)], Selected)
+       end}},
+      {"A cheaper competitor does not inherit the price of the one it replaces",
+       {timeout, 10, fun() ->
+               %% A transaction the pool accepts but selection can never take -
+               %% here one whose ttl has just passed - is free to sit at the front
+               %% of the fee order. Whatever is behind it at the same nonce still
+               %% has to pay its own way, or a sender could park a minimum-fee
+               %% transaction where a top-fee one appeared to be and have it taken
+               %% ahead of everyone the walk still owes.
+               [Attacker, Honest] = funded_accounts(2),
+
+               %% Height 1, so that a ttl of 1 is expired for selection while
+               %% still being accepted by the pool.
+               {ok, KeyBlock1} =
+                   aec_block_key_candidate:create(aec_chain:top_block(), Attacker, Attacker),
+               {ok, _} = aec_chain_state:insert_block(KeyBlock1),
+
+               Decoy = a_signed_tx(Attacker, me, 1, 80000, _TTL = 1),
+               Cheap = a_signed_tx(Attacker, me, 1, 20000),
+               Mid   = a_signed_tx(Honest,   me, 1, 40000),
+               [ ok = aec_tx_pool:push(STx, tx_created) || STx <- [Decoy, Cheap, Mid] ],
+
+               Header   = aec_chain:top_header(),
+               Height   = aec_headers:height(Header),
+               Protocol = aec_headers:version(Header),
+               MaxGas   = aetx:gas_limit(aetx_sign:tx(Mid), Height, Protocol),
+
+               %% Room for one of them. It goes to the transaction that paid the
+               %% most for it, not to the one sheltering behind the decoy. The
+               %% decoy itself comes back too, retired rather than selected.
+               {ok, Selected} =
+                   aec_tx_pool:get_candidate(MaxGas, aec_chain:top_block_hash()),
+               ?assert(lists:member(Mid, Selected)),
+               ?assertNot(lists:member(Cheap, Selected))
+       end}},
+      {"A run steps over a nonce an earlier pass already took",
+       {timeout, 10, fun() ->
+               %% The nonce is spoken for, so the run carries on from the next one
+               %% rather than filling it twice - and rather than stopping there,
+               %% which would strand the rest of the queue for this build.
+               [PubKey] = funded_accounts(1),
+               [T1, T2, T3] = [ a_signed_tx(PubKey, me, N, 20000) || N <- lists:seq(1, 3) ],
+               [ ok = aec_tx_pool:push(STx, tx_created) || STx <- [T1, T2, T3] ],
+
+               Hash   = aec_chain:top_block_hash(),
+               MaxGas = aec_governance:block_gas_limit(),
+               Ignore = #{aetx_sign:hash(T2) => []},
+               {ok, Selected, _} = aec_tx_pool:get_candidate(MaxGas, Ignore, Hash, #{}),
+               ?assertEqual([T1, T3], Selected)
+       end}},
+      {"A nonce whose dearest transaction does not fit yields to a smaller one",
+       {timeout, 10, fun() ->
+               %% Only one transaction can ever fill a nonce, but when the dearest
+               %% of them does not fit the room left, a smaller competitor still
+               %% can - once the walk reaches what that one pays.
+               [Sender] = funded_accounts(1),
+               Dear  = signed_ct_call_tx(Sender, _Nonce = 1, _Fee = 800000, _GasPrice = 1),
+               Cheap = a_signed_tx(Sender, me, 1, 20000),
+               [ ok = aec_tx_pool:push(STx, tx_created) || STx <- [Dear, Cheap] ],
+
+               Header   = aec_chain:top_header(),
+               Height   = aec_headers:height(Header),
+               Protocol = aec_headers:version(Header),
+               GasOf    = fun(STx) -> aetx:gas_limit(aetx_sign:tx(STx), Height, Protocol) end,
+               MaxGas   = GasOf(Cheap),
+               ?assert(GasOf(Dear) > MaxGas),
+
+               ?assertEqual({ok, [Cheap]},
+                            aec_tx_pool:get_candidate(MaxGas, aec_chain:top_block_hash()))
+       end}},
+      {"A nonce the walk keeps coming back to still yields the same transaction",
+       {timeout, 10, fun() ->
+               %% None of these fits the room left, so the nonce is handed back
+               %% to the walk once per competitor it holds. What the walk finally
+               %% selects may not change for that.
+               [Sender] = funded_accounts(1),
+               Dear  = [ signed_ct_call_tx(Sender, _Nonce = 1, Fee, _GasPrice = 1)
+                         || Fee <- [ 800000 + 1000 * N || N <- lists:seq(0, 29) ] ],
+               Cheap = a_signed_tx(Sender, me, 1, 20000),
+               [ ok = aec_tx_pool:push(STx, tx_created) || STx <- [Cheap | Dear] ],
+
+               Header   = aec_chain:top_header(),
+               Height   = aec_headers:height(Header),
+               Protocol = aec_headers:version(Header),
+               GasOf    = fun(STx) -> aetx:gas_limit(aetx_sign:tx(STx), Height, Protocol) end,
+               MaxGas   = GasOf(Cheap),
+               [ ?assert(GasOf(STx) > MaxGas) || STx <- Dear ],
+
+               {ok, Selected, #{expired := false}} =
+                   aec_tx_pool:get_candidate(MaxGas, #{}, aec_chain:top_block_hash(), #{}),
+
+               ?assertEqual([Cheap], Selected),
+               %% The rest are left where they were, neither retired nor offered.
+               ?assertEqual([Cheap], aec_tx_pool:peek_visited()),
+               ?assertEqual(length(Dear), length(aec_tx_pool:peek_db()))
+       end}},
+      {"A nonce is resumed where the walk left it, visited entries included",
+       {timeout, 10, fun() ->
+               %% The nonce index spans both tables, so a competitor the fee walk
+               %% has not reached can be sitting in the visited one. Resuming a
+               %% nonce has to keep it in view, not seek past it to something
+               %% cheaper.
+               [Sender] = funded_accounts(1),
+
+               %% Selecting it once is what puts it in the visited table.
+               Visited = a_signed_tx(Sender, me, 1, 40000),
+               ok = aec_tx_pool:push(Visited, tx_created),
+               {ok, [Visited]} =
+                   aec_tx_pool:get_candidate(aec_governance:block_gas_limit(),
+                                             aec_chain:top_block_hash()),
+               ?assertEqual([Visited], aec_tx_pool:peek_visited()),
+
+               %% Dearer than Visited and too big to fit; cheaper and small enough.
+               Dear  = signed_ct_call_tx(Sender, _Nonce = 1, _Fee = 800000, _GasPrice = 1),
+               Cheap = a_signed_tx(Sender, me, 1, 20000),
+               [ ok = aec_tx_pool:push(STx, tx_created) || STx <- [Dear, Cheap] ],
+
+               Header   = aec_chain:top_header(),
+               Height   = aec_headers:height(Header),
+               Protocol = aec_headers:version(Header),
+               GasOf    = fun(STx) -> aetx:gas_limit(aetx_sign:tx(STx), Height, Protocol) end,
+               MaxGas   = GasOf(Visited),
+               ?assert(GasOf(Dear) > MaxGas),
+
+               %% Dear gives the nonce back at Visited; Cheap brings the walk down
+               %% to a price Visited is worth, so Visited fills the nonce.
+               {ok, Selected, _} =
+                   aec_tx_pool:get_candidate(MaxGas, #{}, aec_chain:top_block_hash(), #{}),
+               ?assertEqual([Visited], Selected)
+       end}},
+      {"A stale transaction below a finished account's run is left where it is",
+       {timeout, 10, fun() ->
+               %% The run ends above nonce 3, which takes the sender out of the
+               %% walk for the rest of this candidate. Its stale entry pays less,
+               %% so the walk only reaches it afterwards - and finds a sender it
+               %% has already finished with. Nothing judges it here; the origins
+               %% cache retires it on the garbage collector's own sweep.
+               [Sender] = funded_accounts(1),
+               ok = application:set_env(aecore, mempool_nonce_offset, 100),
+               Stale = a_signed_tx(Sender, me, 1, 20000),
+               Due   = a_signed_tx(Sender, me, 3, 40000),
+               [ ok = aec_tx_pool:push(STx, tx_created) || STx <- [Stale, Due] ],
+
+               %% The chain moves on underneath the pool: nonce 1 can never be
+               %% applied again, and nonce 3 is the one the sender is now due.
+               {value, Account} = aec_chain:get_account(Sender),
+               Advanced = aec_accounts:set_nonce(Account, 2),
+               meck:expect(aec_accounts_trees, lookup,
+                           fun(PubKey, _) when PubKey =:= Sender -> {value, Advanced};
+                              (PubKey, Tree) -> meck:passthrough([PubKey, Tree])
+                           end),
+
+               MaxGas = aec_governance:block_gas_limit(),
+               {ok, Selected} =
+                   aec_tx_pool:get_candidate(MaxGas, aec_chain:top_block_hash()),
+
+               %% Only the due one is offered, and the stale one is not handed to
+               %% the builder alongside it just to fail there.
+               ?assertEqual([Due], Selected),
+               ?assertEqual([Due], aec_tx_pool:peek_visited()),
+               ?assertEqual([Stale], aec_tx_pool:peek_db())
+       end}},
+      {"A deadline does not cut a run of nonces short - the gas limit does",
+       {timeout, 10, fun() ->
+               %% Each nonce a run takes either spends gas or fills one an earlier
+               %% pass offered, so gas and the ignore set bound it - not the clock.
+               Run = 100,
+               [PubKey] = funded_accounts(1),
+               ok = application:set_env(aecore, mempool_nonce_offset, Run),
+               STxs = [ a_signed_tx(PubKey, me, Nonce, 20000)
+                        || Nonce <- lists:seq(1, Run) ],
+               [ ok = aec_tx_pool:push(STx, tx_created) || STx <- STxs ],
+
+               Header   = aec_chain:top_header(),
+               Height   = aec_headers:height(Header),
+               Protocol = aec_headers:version(Header),
+               GasOf    = fun(STx) -> aetx:gas_limit(aetx_sign:tx(STx), Height, Protocol) end,
+               Hash     = aec_chain:top_block_hash(),
+               MaxGas   = aec_governance:block_gas_limit(),
+               Past     = erlang:monotonic_time(millisecond) - 1,
+
+               %% Already past the deadline and told a block is held, so the walk
+               %% stops - at the end of the chunk, with the run whole.
+               {ok, Selected, #{expired := true}} =
+                   aec_tx_pool:get_candidate(MaxGas, #{}, Hash,
+                                             #{deadline => Past, packed => true}),
+               ?assertEqual(STxs, Selected),
+
+               aec_tx_pool:restore_mempool(),
+
+               %% Room for ten of them is what stops the same run instead.
+               Ten = lists:sublist(STxs, 10),
+               {ok, Selected1, #{expired := false}} =
+                   aec_tx_pool:get_candidate(lists:sum([ GasOf(STx) || STx <- Ten ]),
+                                             #{}, Hash, #{deadline => infinity}),
+               ?assertEqual(Ten, Selected1)
+       end}},
+      {"A second pass resumes after the nonces the first one packed",
+       {timeout, 20, fun() ->
+               %% Where an account's run resumes is read from the nonce index, one
+               %% packed nonce at a time. The nonce it stops at is read whole -
+               %% here that is more competitors than one index read returns.
+               Flood = 150,
+               [PubKey] = funded_accounts(1),
+               ok = application:set_env(aecore, mempool_nonce_offset, 200),
+               Front = [ a_signed_tx(PubKey, me, Nonce, 20000)
+                         || Nonce <- lists:seq(1, 5) ],
+               Rest  = [ a_signed_tx(PubKey, me, 6, 20000 + 100 * N)
+                         || N <- lists:seq(1, Flood) ],
+               [ ok = aec_tx_pool:push(STx, tx_created) || STx <- Front ++ Rest ],
+
+               Header   = aec_chain:top_header(),
+               Height   = aec_headers:height(Header),
+               Protocol = aec_headers:version(Header),
+               GasOf    = fun(STx) -> aetx:gas_limit(aetx_sign:tx(STx), Height, Protocol) end,
+               Hash     = aec_chain:top_block_hash(),
+               MaxGas   = aec_governance:block_gas_limit(),
+
+               %% Room for the front of the queue only.
+               {ok, First, _} =
+                   aec_tx_pool:get_candidate(lists:sum([ GasOf(STx) || STx <- Front ]),
+                                             #{}, Hash, #{}),
+               ?assertEqual(Front, First),
+
+               %% The packed transactions are themselves ignored, so nothing in
+               %% the pool can lead the walk into this account's run: resuming at
+               %% nonce 6 is the only way the dearest of its competitors is
+               %% reached at all.
+               Ignore = maps:from_list([ {aetx_sign:hash(STx), []} || STx <- First ]),
+               {ok, Second, #{expired := false}} =
+                   aec_tx_pool:get_candidate(MaxGas, Ignore, Hash, #{}),
+               ?assertEqual([lists:last(Rest)], Second),
+
+               aec_tx_pool:restore_mempool(),
+
+               %% Past the deadline with a block already held, the resume is
+               %% abandoned rather than reported half-read: the account is left
+               %% alone, so no nonce of its run can be filled twice.
+               Past = erlang:monotonic_time(millisecond) - 1,
+               ?assertEqual({ok, [], #{expired => true}},
+                            aec_tx_pool:get_candidate(MaxGas, Ignore, Hash,
+                                                      #{deadline => Past,
+                                                        packed => true}))
+       end}},
+      {"An expired deadline stops between the competitors for one nonce",
+       {timeout, 10, fun() ->
+               %% Retiring the invalid transactions competing for a single nonce
+               %% is a loop of its own, below both the chunked walk and the run
+               %% of nonces - so it has to honour the deadline itself.
+               Competitors = 40,
+               [PubKey] = funded_accounts(1),
+
+               %% Height 1, so that a ttl of 1 is expired for selection while
+               %% still being accepted by the pool.
+               {ok, KeyBlock1} =
+                   aec_block_key_candidate:create(aec_chain:top_block(), PubKey, PubKey),
+               {ok, _} = aec_chain_state:insert_block(KeyBlock1),
+
+               STxs = [ a_signed_tx(PubKey, me, 1, 20000 + 1000 * N, _TTL = 1)
+                        || N <- lists:seq(0, Competitors - 1) ],
+               [ ok = aec_tx_pool:push(STx, tx_created) || STx <- STxs ],
+               ?assertEqual(Competitors, aec_tx_pool:size()),
+               ?assertEqual(0, aec_tx_pool:size(visited)),
+
+               Hash   = aec_chain:top_block_hash(),
+               MaxGas = aec_governance:block_gas_limit(),
+               Past   = erlang:monotonic_time(millisecond) - 1,
+
+               %% Every competitor is invalid, so none can fill the nonce. With
+               %% a block already packed the walk may stop, and examining one
+               %% competitor is enough for it to notice that it should.
+               {ok, _, #{expired := true}} =
+                   aec_tx_pool:get_candidate(MaxGas, #{}, Hash,
+                                             #{deadline => Past, packed => true}),
+               %% Retiring a tx is what moves it to the visited table, so this
+               %% counts how many of the pile the walk actually looked at.
+               ?assertEqual(1, aec_tx_pool:size(visited)),
+
+               aec_tx_pool:restore_mempool(),
+
+               %% Unbounded, the walk works through the whole pile - so it was
+               %% the deadline that stopped it, not a shortage of competitors.
+               {ok, _, #{expired := false}} =
+                   aec_tx_pool:get_candidate(MaxGas, #{}, Hash, #{deadline => infinity}),
+               ?assertEqual(Competitors, aec_tx_pool:size(visited))
+       end}},
+      {"An expired deadline stops reading a flooded nonce for the resume point",
+       {timeout, 20, fun() ->
+               %% Proving that no competitor of a nonce was packed means reading
+               %% them all, a chunk at a time - another loop below the run of
+               %% nonces, so it too has to honour the deadline.
+               Flood = 150,
+               [PubKey, Other] = funded_accounts(2),
+               STxs    = [ a_signed_tx(PubKey, me, 1, 20000 + 100 * N)
+                           || N <- lists:seq(1, Flood) ],
+               OtherTx = a_signed_tx(Other, me, 1, 20000),
+               [ ok = aec_tx_pool:push(STx, tx_created) || STx <- STxs ++ [OtherTx] ],
+
+               Hash   = aec_chain:top_block_hash(),
+               MaxGas = aec_governance:block_gas_limit(),
+               Past   = erlang:monotonic_time(millisecond) - 1,
+               %% Another account's transaction, so the resume is consulted at all
+               %% while leaving every competitor of the flooded nonce unpacked.
+               Ignore = #{aetx_sign:hash(OtherTx) => []},
+
+               ?assertEqual({ok, [], #{expired => true}},
+                            aec_tx_pool:get_candidate(MaxGas, Ignore, Hash,
+                                                      #{deadline => Past,
+                                                        packed => true})),
+
+               %% Unbounded, the same read reaches the end of the nonce and the run
+               %% takes the dearest of it - so it was the deadline that stopped it.
+               ?assertEqual({ok, [lists:last(STxs)], #{expired => false}},
+                            aec_tx_pool:get_candidate(MaxGas, Ignore, Hash,
+                                                      #{deadline => infinity}))
+       end}},
       {"fill micro block with and without previously rejected tx",
        {timeout, 10, fun() ->
                ok = application:set_env(aecore, mempool_nonce_offset, 600),
                aec_test_utils:stop_chain_db(),
-               PubKey1 = new_pubkey(),
-               PubKey2 = new_pubkey(),
+               %% At equal fee and gas price the walk visits accounts in pubkey
+               %% order; fix it, or which txs fill the last candidate is random.
+               [PubKey1, PubKey2] = lists:sort([new_pubkey(), new_pubkey()]),
                meck:expect(aec_fork_block_settings, genesis_accounts, 0,
                            [{PubKey1, 20001}, {PubKey2, 20000000}]),
                aec_consensus:set_genesis_hash(),
@@ -505,14 +941,18 @@ tx_pool_test_() ->
                {ok, CTxs3} = aec_tx_pool:get_candidate(aec_governance:block_gas_limit(), MicroHash),
                ?assertEqual(lists:sort([ Tx1_2 | Txs3]), lists:sort(CTxs3)),
 
-               %% New transacions only (new tx gas > gas limit): do not use invalid tx
+               %% More new transacions than one block holds: the rejected tx is
+               %% retried at PubKey1's due nonce, and PubKey2's queue is followed
+               %% from the visited table into the new txs until the gas runs out.
                ?assertEqual([], aec_tx_pool:peek_db()),
                Txs4 = [ a_signed_tx(PubKey2, me, Nonce, 20000, 10) || Nonce <- lists:seq(104, 504) ],
                [ ok = aec_tx_pool:push(Tx) || Tx <- Txs4 ],
                TotalGas4 = lists:sum([ aetx:gas_limit(aetx_sign:tx(T), GenesisHeight, GenesisProtocol) || T <- Txs4 ]),
                ?assert(TotalGas4 > aec_governance:block_gas_limit()),
                {ok, CTxs4} = aec_tx_pool:get_candidate(aec_governance:block_gas_limit(), MicroHash),
-               ?assert(not lists:member(Tx1_2, CTxs4)),
+               ?assert(lists:member(Tx1_2, CTxs4)),
+               ?assert(lists:member(hd(Txs4), CTxs4)),
+               ?assert(not lists:member(lists:last(Txs4), CTxs4)),
 
                ok
        end}},
@@ -705,7 +1145,11 @@ tx_pool_test_() ->
                STx1 = a_signed_tx(PK, me, Nonce1=1, _Fee1=20000),
                ?assertEqual(ok, aec_tx_pool:push(STx1)),
                ?assertEqual([], aec_tx_pool:peek_visited()),
-               [{PK, Nonce1, _}] = aec_tx_pool:peek_nonces(),
+               %% The index key carries the whole mempool key. Its fee positions
+               %% are what delete_nonce/2 has to reconstruct, so pin them.
+               ?assertEqual([{PK, Nonce1, -aetx:deep_fee(aetx_sign:tx(STx1)), 0,
+                              aetx_sign:hash(STx1)}],
+                            aec_tx_pool:peek_nonces()),
                Size = aec_tx_pool:size(),
                ?assertEqual({ok, [STx1]},
                             aec_tx_pool:get_candidate(MaxGas, TopBlockHash)),
@@ -756,7 +1200,24 @@ tx_pool_test_() ->
                %% ... and deleted ones are not
                [STxDel | STxsLeft] = STxs1,
                ?assertEqual(ok, aec_tx_pool:delete(aetx_sign:hash(STxDel))),
-               ?assertEqual({ok, STxsLeft}, aec_tx_pool:peek(infinity, PK1))
+               ?assertEqual({ok, STxsLeft}, aec_tx_pool:peek(infinity, PK1)),
+
+               %% Deleting the rest empties the nonce index too - an index entry
+               %% deleted under a key other than the one it was written with
+               %% would linger here.
+               [ ?assertEqual(ok, aec_tx_pool:delete(aetx_sign:hash(STx)))
+                 || STx <- STxsLeft ++ STxs2 ],
+               ?assertEqual([], aec_tx_pool:peek_nonces())
+       end},
+      {"Peek by account orders the transactions competing for one nonce by fee",
+       fun() ->
+               ok = application:set_env(aecore, mempool_nonce_baseline, 100),
+               PK = new_pubkey(),
+               STxs = [a_signed_tx(PK, me, 1, 20000 + N * 1000) || N <- lists:seq(1, 3)],
+               [?assertEqual(ok, aec_tx_pool:push(STx)) || STx <- STxs],
+               ?assertEqual({ok, lists:reverse(STxs)}, aec_tx_pool:peek(infinity, PK)),
+               %% Truncating to Max therefore keeps the dearest.
+               ?assertEqual({ok, [lists:last(STxs)]}, aec_tx_pool:peek(1, PK))
        end},
       {"Ensure candidate ordering",
        fun() ->
@@ -1353,6 +1814,21 @@ new_pubkey() ->
     {Pub, Priv} = keypair(),
     ets:insert(?TAB, {Pub, Priv}),
     Pub.
+
+%% N new accounts, funded in a genesis block of their own. Selection sequences an
+%% account's transactions by the nonce its state carries, so a test about that
+%% ordering needs origins the block state actually knows - an unfunded one falls
+%% through to the baseline check instead, and is judged a transaction at a time.
+funded_accounts(N) ->
+    aec_test_utils:stop_chain_db(),
+    PubKeys = [ new_pubkey() || _ <- lists:seq(1, N) ],
+    meck:expect(aec_fork_block_settings, genesis_accounts, 0,
+                [ {PubKey, 20000000} || PubKey <- PubKeys ]),
+    aec_consensus:set_genesis_hash(),
+    {GenesisBlock, _} = aec_block_genesis:genesis_block_with_state(),
+    aec_test_utils:start_chain_db(),
+    {ok, _} = aec_chain_state:insert_block(GenesisBlock),
+    PubKeys.
 
 keypair() ->
     #{ public := Pub, secret := Priv } = enacl:sign_keypair(),
