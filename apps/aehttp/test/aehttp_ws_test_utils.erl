@@ -436,12 +436,19 @@ init({WaitingPid, DefaultChannelActions}) ->
             DefaultChannelActions),
     {once, #state{regs = Register1}}.
 
+%% NOTE: nothing is queued for sending here, deliberately. Any send issued at
+%% connect time races the peer closing a connection it has just rejected, and
+%% websocket_client treats a failing send as fatal (handle_response/3 maps a
+%% non-`ok' encode_and_send/2 to {close, Reason}). Losing that race stops the
+%% client with frames the server already delivered still undecoded in its
+%% mailbox, so the waiting test sees {connection_died, {error, closed}} instead
+%% of the rejection it asserts on. A WS-level ping is available on demand by
+%% sending `ping' to the connection process; nothing needs one at connect.
 onconnect(_WSReq, #state{regs=Register}=State) ->
     ct:log("Ws connected"),
     [WaitingPid] = get_registered_pids(waiting_connected, Register),
     inform_registered(WaitingPid, websocket, connected),
     Reg = delete_registered(WaitingPid, waiting_connected, Register),
-    self() ! ping,
     {ok, State#state{regs=Reg}}.
 
 
