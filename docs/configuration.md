@@ -257,6 +257,34 @@ mining:
 
 For more details on CUDA mining go to [dedicated CUDA miner documentation](cuda-miner.md).
 
+#### Delaying the key-block mining restart
+
+When a node wins a key block it becomes the leader for that generation and starts
+building the generation's first microblock. By default it also resumes searching
+for the *next* key block straight away, which means it can find one — and preempt
+its own in-flight microblock — before that microblock has been signed. The
+generation then ends up on chain with no transactions in it.
+
+```yaml
+mining:
+    delay_restart_after_micro: true
+```
+
+With `delay_restart_after_micro: true` (the default), a node that has just won a
+generation and has transactions waiting in its mempool holds off resuming its own
+key-block search until the first microblock attempt for that generation has
+completed. The pause is capped at one `mining` > `micro_block_cycle`, so mining
+resumes even if the attempt never reports back, and it happens at most once per
+generation. If the mempool is empty there is nothing to lose to preemption, so
+mining resumes immediately; should a transaction arrive in that window, the pause
+is applied then instead.
+
+This only affects the node's own PoW search after its own win — it changes nothing
+about how blocks from other miners are handled. The cost is a short pause in this
+node's key-block hunting, so a miner that would rather search continuously and
+accept the risk of preempting its own microblocks can set it to `false`, which
+restores the previous behaviour exactly.
+
 ## Beneficiary account
 
 In order to configure who receives fees from mining on a node, you must configure a beneficiary public key.

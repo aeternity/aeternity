@@ -435,6 +435,7 @@ generation_test_() ->
         {timeout, 30, {"Start signing after mined block", fun test_mined_block_signing/0}},
         {timeout, 30, {"Delay restart until first microblock", fun test_delay_restart_until_first_micro_block/0}},
         {timeout, 30, {"Delay restart when tx arrives after keyblock", fun test_delay_restart_for_late_tx/0}},
+        {timeout, 30, {"Restart when first microblock never reports back", fun test_delay_restart_bounded_when_candidate_fails/0}},
         {timeout, 30, {"Start signing after two mined block", fun test_two_mined_block_signing/0}},
         {timeout, 30, {"Start signing after received block", fun test_received_block_signing/0}}
      ]}.
@@ -534,6 +535,37 @@ test_delay_restart_for_late_tx() ->
         ok
     after
         ets:delete(MiningCalls),
+        meck:unload(aec_block_micro_candidate)
+    end.
+
+%% A candidate worker that fails publishes no candidate_block event, so the
+%% pause has to be lifted by its own deadline instead.
+test_delay_restart_bounded_when_candidate_fails() ->
+    Keys = beneficiary_keys(),
+    ok = meck:new(aec_block_micro_candidate, [passthrough]),
+    ok = meck:expect(aec_block_micro_candidate, create,
+                     fun(_BlockInfo) ->
+                             %% Also paces the generator's failure/restart loop.
+                             timer:sleep(100),
+                             {error, candidate_failed_on_purpose}
+                     end),
+    try
+        true = aec_events:subscribe(block_created),
+        true = aec_events:subscribe(start_mining),
+        ok = aec_tx_pool:push(tx(Keys)),
+
+        ?TEST_MODULE:start_mining(),
+        wait_for_start_mining_timeout(5000),
+
+        KeyBlock = wait_for_block_created(),
+        KeyBlockHash = block_hash(KeyBlock),
+        wait_for_top_block_hash(KeyBlockHash),
+
+        %% No microblock can ever be signed here, so only the deadline can
+        %% bring mining back on top of the key block just won.
+        wait_for_start_mining(KeyBlockHash, 5000),
+        ok
+    after
         meck:unload(aec_block_micro_candidate)
     end.
 
