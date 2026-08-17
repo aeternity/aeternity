@@ -285,6 +285,13 @@ node's key-block hunting, so a miner that would rather search continuously and
 accept the risk of preempting its own microblocks can set it to `false`, which
 restores the previous behaviour exactly.
 
+On a node running in stratum mode the pause defers the dispatch of the next job to
+connected workers, so after that node wins a key block its workers keep hashing the
+previous job for the length of the pause. Note also that a job already dispatched
+cannot be recalled: if mining had already resumed — because the mempool was empty at
+the time of the win — a transaction arriving afterwards will not pause a stratum
+node, only a node mining locally.
+
 ## Beneficiary account
 
 In order to configure who receives fees from mining on a node, you must configure a beneficiary public key.
