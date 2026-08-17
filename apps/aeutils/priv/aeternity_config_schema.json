@@ -96,6 +96,12 @@
                     "type" : "integer",
                     "default" : 5
                 },
+                "future_nonce_tx_ttl" : {
+                    "description" : "Number of blocks a TX may stay in the mempool when it enters with a nonce further than mempool.nonce_offset ahead of its sender's. Judged whenever the TX enters the pool, a restart or a fork replay included, and capped by mempool.tx_ttl",
+                    "type" : "integer",
+                    "default" : 480,
+                    "minimum" : 0
+                },
                 "sync_interval" : {
                    "description" : "Interval between mempool (re-)synchronization (in ms) Default: `30 * 60 * 1000`",
                    "type" : "integer",

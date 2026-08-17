@@ -33,6 +33,9 @@
 -define(NONCE_KEY(Account, Nonce, NegFee, NegGasPrice, TxHash),
            {Account, Nonce, NegFee, NegGasPrice, TxHash}).
 -define(DEFAULT_PUSH_TIMEOUT, 5000).
+%% Reserved key in the per-batch ceiling cache, which is otherwise keyed by
+%% pubkey - an atom can never collide with one.
+-define(BATCH_CEILING, '$batch_ceiling').
 %% Number of nonce index entries fetched per ets:select/3 chunk.
 -define(NONCE_IDX_CHUNK, 100).
 %% Pool entries fetched per ets:select/3 chunk of the fee-ordered walk; the
@@ -184,9 +187,11 @@
 -ifndef(TEST).
 -define(DEFAULT_TX_TTL, 20 * 24 * 2 * 7). %% 2 weeks
 -define(DEFAULT_INVALID_TX_TTL, 5).
+-define(DEFAULT_FUTURE_NONCE_TX_TTL, 480). %% a day
 -else.
 -define(DEFAULT_TX_TTL, 8).
 -define(DEFAULT_INVALID_TX_TTL, 5).
+-define(DEFAULT_FUTURE_NONCE_TX_TTL, 8).
 -endif.
 
 -define(DEFAULT_NONCE_BASELINE, 1).
@@ -242,18 +247,16 @@ safe_tx_hash(Tx) ->
 
 push_(Tx, TxHash, Event, Timeout, Forced) ->
     Push =
-        fun() ->
+        fun(ConfigTTL) ->
             incr([push]),
-            %% Read the configured TTL here rather than in the pool process,
-            %% which serialises every push - each read walks the whole user
-            %% config map.
-            Res = gen_server:call(?SERVER, {push, Tx, TxHash, Event, tx_ttl()},
+            %% TTL settled outside the pool process - see pool_db_raw_put/6.
+            Res = gen_server:call(?SERVER, {push, Tx, TxHash, Event, ConfigTTL},
                                   Timeout),
             instant_tx_confirm_hook(TxHash),
             Res
         end,
     case Forced of
-        true -> Push();
+        true -> Push(tx_ttl());
         false ->
             case check_pool_db_put(Tx, TxHash, Event) of
                 ignore ->
@@ -262,8 +265,8 @@ push_(Tx, TxHash, Event, Timeout, Forced) ->
                 {error,_} = E ->
                     incr([push, error]),
                     E;
-                ok ->
-                    Push()
+                {ok, ConfigTTL} ->
+                    Push(ConfigTTL)
             end
     end.
 
@@ -433,13 +436,18 @@ init([]) ->
     origins_cache_open(origins_cache()),
     GCHeight = top_height(),
     Handled  = ets:new(init_tx_pool, [private]),
-    %% Read once for the whole restore rather than once per transaction.
-    Info     = {#dbs{}, origins_cache(), GCHeight, tx_ttl()},
+    Ceilings = ets:new(init_tx_pool_nonces, [private]),
+    %% The GC table is rebuilt from scratch here, so a tx far ahead of its
+    %% sender's nonce has to be judged again - a restart would otherwise hand it
+    %% the full stay however long it had already been held.
+    Info     = {#dbs{}, origins_cache(), GCHeight,
+                batch_ttl_fun(aec_chain:top_block_hash(), Ceilings)},
     InitF  = fun(TxHash, _) ->
                      update_pool_on_tx_hash(TxHash, Info, Handled),
                      ok
              end,
     ok = aec_db:ensure_transaction(fun() -> aec_db:fold_mempool(InitF, ok) end),
+    ets:delete(Ceilings),
     ets:delete(Handled),
     lager:debug("init: GCHeight = ~p", [GCHeight]),
     gproc_reg(),
@@ -1310,15 +1318,20 @@ do_top_change(Ancestor, Type, OldHash, NewHash, State0) ->
     %% Add back transactions to the pool from discarded part of the chain
     %% Mind that we don't need to add those which are incoming in the fork
     {GCHeight, State} = get_gc_height(State0),
+    Handled  = ets:new(foo, [private, set]),
+    Ceilings = ets:new(top_change_nonces, [private, set]),
     %% Read once for the whole replay rather than once per transaction of
-    %% every block on either side of the fork.
-    Info = {State#state.dbs, State#state.origins_cache, GCHeight, tx_ttl()},
+    %% every block on either side of the fork. A tx coming back from a discarded
+    %% block is judged against the new top: a deep enough fork can leave it well
+    %% ahead of the nonce the chain is now due.
+    Info = {State#state.dbs, State#state.origins_cache, GCHeight,
+            batch_ttl_fun(NewHash, Ceilings)},
 
-    Handled = ets:new(foo, [private, set]),
     aec_db:ensure_activity(async_dirty, fun() ->
             update_pool_from_blocks(Ancestor, OldHash, Info, Handled),
             update_pool_from_blocks(Ancestor, NewHash, Info, Handled)
         end),
+    ets:delete(Ceilings),
     ets:delete(Handled),
     Ret = case Type of
               key -> revisit(State#state.dbs);
@@ -1341,7 +1354,7 @@ safe_get_tx_hashes(Hash) ->
         {value, Hashes} -> Hashes
     end.
 
-update_pool_on_tx_hash(TxHash, {#dbs{gc_db = GCDb} = Dbs, OriginsCache, GCHeight, ConfigTTL},
+update_pool_on_tx_hash(TxHash, {#dbs{gc_db = GCDb} = Dbs, OriginsCache, GCHeight, TTLFun},
                        Handled) ->
     case ets:member(Handled, TxHash) of
         true -> ok;
@@ -1357,7 +1370,7 @@ update_pool_on_tx_hash(TxHash, {#dbs{gc_db = GCDb} = Dbs, OriginsCache, GCHeight
                     add_to_origins_cache(OriginsCache, Tx);
                 true ->
                     Key = pool_db_key(Tx, TxHash),
-                    pool_db_raw_put(Dbs, GCHeight, ConfigTTL, Key, Tx, TxHash)
+                    pool_db_raw_put(Dbs, GCHeight, TTLFun(Tx), Key, Tx, TxHash)
             end
     end.
 
@@ -1367,8 +1380,12 @@ add_to_origins_cache(OriginsCache, SignedTx) ->
     Nonce  = aetx:nonce(Tx),
     ok = aec_tx_pool_gc:add_to_origins_cache(OriginsCache, Origin, Nonce).
 
+%% On success this also answers how long the tx may linger in the pool, which is
+%% decided from the same accounts tree the checks are run against - the pool
+%% process would otherwise have to read the config and the account again, and it
+%% serialises every push.
 -spec check_pool_db_put(aetx_sign:signed_tx(), tx_hash(), event()) ->
-          ignore | ok | {error, atom()}.
+          ignore | {ok, non_neg_integer()} | {error, atom()}.
 check_pool_db_put(Tx, TxHash, Event) ->
     aec_db:ensure_dirty(fun() -> check_pool_db_put_(Tx, TxHash, Event) end).
 
@@ -1379,7 +1396,14 @@ check_pool_db_put_(Tx, TxHash, Event) ->
             {error, already_accepted};
         mempool ->  ignore;
         none ->
-            check_reentry(TxHash);
+            %% A tx the pool collected may return still further ahead than
+            %% mempool.nonce_offset, so its stay is judged as a fresh one's is.
+            case check_reentry(TxHash) of
+                ok ->
+                    {ok, accepted_ttl(Tx, reentry_source())};
+                ignore ->
+                    ignore
+            end;
         Unknown when Unknown =:= not_found ->
             {Header, BlockHash, Trees} = get_onchain_env(),
             Checks = [ fun check_valid_at_protocol/6
@@ -1396,7 +1420,7 @@ check_pool_db_put_(Tx, TxHash, Event) ->
                     lager:debug("Validation error for tx ~p: ~p", [TxHash, E]),
                     E;
                 ok ->
-                    ok
+                    {ok, accepted_ttl(Tx, {account_trees, aec_trees:accounts(Trees)})}
             end
     end.
 
@@ -1413,6 +1437,121 @@ check_reentry(TxHash) ->
                         [TxHash]),
             ignore
     end.
+
+%% Only the accounts tree is read, but an empty chain db still has to reach the
+%% genesis fallback - see get_onchain_env/0.
+reentry_source() ->
+    case accounts_tree(aec_chain:top_block_hash()) of
+        {ok, Tree} ->
+            {account_trees, Tree};
+        error ->
+            {_Header, _BlockHash, Trees} = get_onchain_env(),
+            {account_trees, aec_trees:accounts(Trees)}
+    end.
+
+%% How long a tx just accepted into the pool may stay there, judged against the
+%% accounts tree the acceptance was decided on.
+accepted_ttl(Tx, Source) ->
+    config_ttl(Tx, nonce_ceiling(Source, nonce_offset()), config_ttls()).
+
+%% Both mempool residencies. future_nonce_tx_ttl is a shortening, so it is capped
+%% by tx_ttl; setting the two equal disables the distinction. The floor keeps a
+%% negative application-environment value from meaning a stay already in the past.
+config_ttls() ->
+    TxTTL = tx_ttl(),
+    {TxTTL, min(TxTTL, max(0, future_nonce_tx_ttl()))}.
+
+%% Which of the two a tx gets. Selection never offers a tx behind a gap in its
+%% sender's nonces, so it is never charged an apply failure and nothing else would
+%% retire it before mempool.tx_ttl. The threshold here is mempool.nonce_offset,
+%% which is where this node stops accepting such a tx from its own API.
+config_ttl(Tx, Ceiling, {TxTTL, FutureTTL}) ->
+    Unsigned = aetx_sign:innermost_tx(Tx),
+    case aetx:origin(Unsigned) of
+        undefined ->
+            TxTTL;
+        Pubkey ->
+            case aetx:nonce(Unsigned) > Ceiling(Pubkey) of
+                true  -> FutureTTL;
+                false -> TxTTL
+            end
+    end.
+
+%% The highest nonce a sender may hold at the full stay. An integer nonce never
+%% exceeds an atom, so 'infinity' judges nothing early: a generalized account
+%% carries no nonce of its own, and an account the chain does not know has its
+%% txs offered and retired the way they always were.
+nonce_ceiling(Source, Offset) ->
+    fun(Pubkey) ->
+            case get_account(Pubkey, Source) of
+                {value, Account} ->
+                    case aec_accounts:type(Account) of
+                        basic -> aec_accounts:nonce(Account) + Offset;
+                        _     -> infinity
+                    end;
+                _ ->
+                    infinity
+            end
+    end.
+
+%% Same, memoised: a restore or a fork replay walks many txs over far fewer
+%% senders, and each miss is an accounts-tree lookup.
+cached_nonce_ceiling(Source, Offset, Cache) ->
+    Ceiling = nonce_ceiling(Source, Offset),
+    fun(Pubkey) ->
+            case ets:lookup(Cache, Pubkey) of
+                [{_, Cached}] ->
+                    Cached;
+                [] ->
+                    Ent = Ceiling(Pubkey),
+                    ets:insert(Cache, {Pubkey, Ent}),
+                    Ent
+            end
+    end.
+
+%% How a batch of txs being put back decides its residency. Without a readable
+%% accounts tree nothing can be judged too far ahead, so every tx keeps the full
+%% stay rather than risk being expired early.
+batch_ttl_fun(BlockHash, Cache) ->
+    {TxTTL, _} = TTLs = config_ttls(),
+    Offset = nonce_offset(),
+    fun(Tx) ->
+            case batch_ceiling(BlockHash, Offset, Cache) of
+                none    -> TxTTL;
+                Ceiling -> config_ttl(Tx, Ceiling, TTLs)
+            end
+    end.
+
+%% Resolved on the first tx that needs judging, not when the batch is set up: a
+%% top change that puts nothing back - which every straight-line extension is -
+%% must not pay for an accounts tree it never consults.
+batch_ceiling(BlockHash, Offset, Cache) ->
+    case ets:lookup(Cache, ?BATCH_CEILING) of
+        [{_, Ceiling}] ->
+            Ceiling;
+        [] ->
+            Ceiling = case accounts_tree(BlockHash) of
+                          {ok, Tree} -> cached_nonce_ceiling({account_trees, Tree},
+                                                             Offset, Cache);
+                          error      -> none
+                      end,
+            ets:insert(Cache, {?BATCH_CEILING, Ceiling}),
+            Ceiling
+    end.
+
+%% Only the accounts tree: the whole block state is six of them, and the other
+%% five are never consulted here. The dirty backend also keeps a read from
+%% opening a transaction of its own when this runs inside another activity.
+accounts_tree(undefined) ->
+    error;
+accounts_tree(BlockHash) ->
+    aec_db:ensure_dirty(
+      fun() ->
+              case aec_chain:get_block_state_partial(BlockHash, [accounts]) of
+                  {ok, Trees} -> {ok, aec_trees:accounts(Trees)};
+                  error       -> error
+              end
+      end).
 
 -spec get_onchain_env() -> {aec_headers:header(),
                             aec_blocks:block_header_hash(),
@@ -1450,11 +1589,7 @@ pool_db_raw_delete(#dbs{db = Db, visited_db = VDb, nonce_db = NDb}, Key) ->
     ets:delete(VDb, Key),
     ets:delete(Db, Key).
 
-%% ConfigTTL is the configured mempool tx_ttl, i.e. how many blocks a tx may
-%% linger in the pool. Every caller reads it outside the pool process: a push
-%% reads it in the pushing process, and replaying a fork or restoring the
-%% persisted mempool at startup reads it once for the whole batch, since each
-%% read walks the whole user config map.
+%% ConfigTTL is how many blocks this tx may linger in the pool - see config_ttl/3.
 pool_db_raw_put(#dbs{db = Db, nonce_db = NDb, gc_db = GCDb},
                 GCHeight0, ConfigTTL, Key, Tx, TxHash) ->
     ets:insert(Db, {Key, #tx{hash = TxHash, signed_tx = Tx}}), %% this resets any failed attempts
@@ -1704,6 +1839,11 @@ tx_ttl() ->
 invalid_tx_ttl() ->
     aeu_env:user_config_or_env([<<"mempool">>, <<"invalid_tx_ttl">>],
                                aecore, mempool_invalid_tx_ttl, ?DEFAULT_INVALID_TX_TTL).
+
+future_nonce_tx_ttl() ->
+    aeu_env:user_config_or_env([<<"mempool">>, <<"future_nonce_tx_ttl">>],
+                               aecore, mempool_future_nonce_tx_ttl,
+                               ?DEFAULT_FUTURE_NONCE_TX_TTL).
 
 nonce_baseline() ->
     aeu_env:user_config_or_env([<<"mempool">>, <<"nonce_baseline">>],

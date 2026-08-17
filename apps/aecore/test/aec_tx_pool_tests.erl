@@ -43,9 +43,12 @@ tx_pool_test_() ->
      fun(TmpKeysDir) ->
              ok = application:unset_env(aecore, mempool_nonce_offset),
              ok = application:unset_env(aecore, mempool_nonce_baseline),
+             ok = application:unset_env(aecore, mempool_future_nonce_tx_ttl),
+             ok = application:unset_env(aecore, mempool_allow_reentry),
              meck:unload(aec_tx_pool),
              meck:unload(aec_jobs_queues),
              meck:unload(aec_accounts_trees),
+             catch meck:unload(aec_chain), %% only mocked by some tests
              meck:unload(aec_accounts),
              meck:unload(aeu_time),
              ets:delete(?TAB),
@@ -74,9 +77,17 @@ tx_pool_test_() ->
                aec_test_utils:start_chain_db(),
                ?assertEqual(undefined, aec_chain:top_header_hash_and_state()),
 
-               STx = a_signed_tx(me, new_pubkey(), 1, 20000),
+               Short = 2,
+               ok = application:set_env(aecore, mempool_future_nonce_tx_ttl, Short),
+               ?assert(Short < aec_tx_pool:tx_ttl()),
+               {GCHeight, Dbs} = aec_tx_pool:gc_height_and_dbs(),
+
+               STx = a_signed_tx(me, new_pubkey(), aec_tx_pool:nonce_offset() + 1, 20000),
                ?assertEqual(ok, aec_tx_pool:push(STx, tx_received)),
-               ?assertEqual({ok, [STx]}, aec_tx_pool:peek(infinity))
+               ?assertEqual({ok, [STx]}, aec_tx_pool:peek(infinity)),
+               %% The sender cannot be looked up either, so nothing about it can
+               %% be judged too far ahead and the stay is the full one.
+               ?assertEqual({ok, GCHeight + aec_tx_pool:tx_ttl()}, gc_ttl_of(STx, Dbs))
        end},
       {"Push rejects a tx with an invalid signature",
        fun() ->
@@ -1071,6 +1082,65 @@ tx_pool_test_() ->
                meck:unload(aec_headers),
                ok
        end},
+      {"A fork replay judges a returning transaction against the new top",
+       fun() ->
+               Short = 2,
+               ok = application:set_env(aecore, mempool_future_nonce_tx_ttl, Short),
+               aec_test_utils:stop_chain_db(),
+               PubKey1 = new_pubkey(),
+               PubKey2 = new_pubkey(),
+               meck:expect(aec_fork_block_settings, genesis_accounts, 0,
+                           [{PubKey1, 100000}, {PubKey2, 100000}]),
+               aec_consensus:set_genesis_hash(),
+               {GenesisBlock, _} = aec_block_genesis:genesis_block_with_state(),
+               aec_test_utils:start_chain_db(),
+               {ok,_} = aec_chain_state:insert_block(GenesisBlock),
+
+               %% The first block needs to be a key-block
+               {ok, Miner} = aec_keys:candidate_pubkey(),
+               {ok, KeyBlock1} = aec_block_key_candidate:create(aec_chain:top_block(), PubKey1, Miner),
+               {ok, KeyHash1} = aec_blocks:hash_internal_representation(KeyBlock1),
+               {ok,_} = aec_chain_state:insert_block(KeyBlock1),
+               ok = aec_keys:promote_candidate(aec_blocks:miner(KeyBlock1)),
+
+               %% Three transactions of one sender, mined into a micro block.
+               [STx1, STx2, STx3] =
+                   [ a_signed_tx(PubKey2, new_pubkey(), N, 20000) || N <- [1, 2, 3] ],
+               [ ?assertEqual(ok, aec_tx_pool:push(T)) || T <- [STx1, STx2, STx3] ],
+               {ok, USCandidate, _} = aec_block_micro_candidate:create(aec_chain:top_block()),
+               {ok, Candidate} = aec_keys:sign_micro_block(USCandidate),
+               {ok, CHash} = aec_blocks:hash_internal_representation(Candidate),
+               {ok,_} = aec_chain_state:insert_block(Candidate),
+               ?assertEqual(lists:sort([STx1, STx2, STx3]),
+                            lists:sort(aec_blocks:txs(Candidate))),
+               aec_tx_pool:top_change(#{type => micro, old_hash => KeyHash1,
+                                        new_hash => CHash}),
+               ?assertEqual({ok, []}, aec_tx_pool:peek(infinity)),
+
+               %% A key block on the block before them takes the top over - two
+               %% key blocks outweigh one with a micro block - which replays all
+               %% three back into the pool.
+               {ok, KeyBlock2} = aec_block_key_candidate:create(KeyBlock1, PubKey1, PubKey1),
+               {ok, KeyHash2} = aec_blocks:hash_internal_representation(KeyBlock2),
+               {ok,_} = aec_chain_state:insert_block(KeyBlock2),
+               ?assertEqual(KeyHash2, aec_chain:top_block_hash()),
+
+               %% On the new top their sender is back at nonce 0, so this offset
+               %% leaves only the last of them too far ahead. Judged against the
+               %% top they are leaving, where it stands at nonce 3, none is.
+               ok = application:set_env(aecore, mempool_nonce_offset, 2),
+               aec_tx_pool:top_change(#{type => key, old_hash => CHash,
+                                        new_hash => KeyHash2}),
+               {ok, Back} = aec_tx_pool:peek(infinity),
+               ?assertEqual(lists:sort([STx1, STx2, STx3]), lists:sort(Back)),
+
+               {GCHeight, Dbs} = aec_tx_pool:gc_height_and_dbs(),
+               Horizon = GCHeight + aec_tx_pool:tx_ttl(),
+               ?assert(GCHeight + Short < Horizon),
+               ?assertEqual({ok, Horizon},          gc_ttl_of(STx1, Dbs)),
+               ?assertEqual({ok, Horizon},          gc_ttl_of(STx2, Dbs)),
+               ?assertEqual({ok, GCHeight + Short}, gc_ttl_of(STx3, Dbs))
+       end},
       {"Ensure ordering",
        fun() ->
                  aec_test_utils:stop_chain_db(),
@@ -1359,6 +1429,229 @@ tx_pool_test_() ->
                ?assert(lists:member(MinSTx, STxs3)),
 
                ok
+       end},
+      {"A transaction far ahead of its sender's nonce gets the shorter stay",
+       {timeout, 10, fun() ->
+               %% Gossip does not apply the nonce offset, and selection does not
+               %% offer a transaction the chain is not ready for - so it is never
+               %% charged an apply failure either. future_nonce_tx_ttl is the only
+               %% thing left to bound its stay.
+               Short = 2,
+               ok = application:set_env(aecore, mempool_future_nonce_tx_ttl, Short),
+               [PubKey] = funded_accounts(1),
+               ok = aec_tx_pool:stop(),
+               {ok, Pid} = aec_tx_pool:start_link(),
+               unlink(Pid), %% Leave it for the cleanup
+               {GCHeight, Dbs} = aec_tx_pool:gc_height_and_dbs(),
+               Offset  = aec_tx_pool:nonce_offset(),
+               Horizon = GCHeight + aec_tx_pool:tx_ttl(),
+               ?assert(GCHeight + Short < Horizon),
+
+               %% The last nonce the offset allows keeps the full stay.
+               Near = a_signed_tx(PubKey, me, Offset, 20000),
+               ?assertEqual(ok, aec_tx_pool:push(Near, tx_received)),
+               ?assertEqual({ok, Horizon}, gc_ttl_of(Near, Dbs)),
+
+               %% The first one beyond it does not.
+               Far = a_signed_tx(PubKey, me, Offset + 1, 20000),
+               ?assertEqual(ok, aec_tx_pool:push(Far, tx_received)),
+               ?assertEqual({ok, GCHeight + Short}, gc_ttl_of(Far, Dbs)),
+
+               %% Locally created transactions are still turned away at ingress, so
+               %% the shorter stay is not a way in for them.
+               ?assertEqual({error, nonce_too_high},
+                            aec_tx_pool:push(a_signed_tx(PubKey, me, Offset + 2, 20000))),
+
+               %% A restart reads the persisted mempool into a fresh GC table, so
+               %% the shorter stay has to be worked out again there - otherwise it
+               %% would be renewed to the full one on every restart.
+               ok = aec_tx_pool:stop(),
+               {ok, Pid2} = aec_tx_pool:start_link(),
+               unlink(Pid2), %% Leave it for the cleanup
+               ?assertEqual({ok, Horizon},          gc_ttl_of(Near, Dbs)),
+               ?assertEqual({ok, GCHeight + Short}, gc_ttl_of(Far, Dbs)),
+
+               %% And the shorter stay is what collects it, index included.
+               tx_pool_gc(GCHeight + Short),
+               ?assertEqual({ok, [Near]}, aec_tx_pool:peek(infinity)),
+               ?assertEqual([{PubKey, Offset, -aetx:deep_fee(aetx_sign:tx(Near)), 0,
+                              aetx_sign:hash(Near)}],
+                            aec_tx_pool:peek_nonces())
+       end}},
+      {"Without a readable accounts tree every transaction keeps the full stay",
+       {timeout, 10, fun() ->
+               %% A node that cannot read the state of its top block cannot tell
+               %% a transaction far ahead of its sender from any other, so it
+               %% must not shorten any stay on that basis.
+               Short = 2,
+               ok = application:set_env(aecore, mempool_future_nonce_tx_ttl, Short),
+               [PubKey] = funded_accounts(1),
+               ok = aec_tx_pool:stop(),
+               {ok, Pid} = aec_tx_pool:start_link(),
+               unlink(Pid), %% Leave it for the cleanup
+               {GCHeight, Dbs} = aec_tx_pool:gc_height_and_dbs(),
+               Horizon = GCHeight + aec_tx_pool:tx_ttl(),
+               ?assert(GCHeight + Short < Horizon),
+               Far = a_signed_tx(PubKey, me, aec_tx_pool:nonce_offset() + 1, 20000),
+               ?assertEqual(ok, aec_tx_pool:push(Far, tx_received)),
+               %% Restored against a readable tree it is judged short...
+               ?assertEqual({ok, GCHeight + Short}, gc_ttl_of(Far, Dbs)),
+
+               meck:new(aec_chain, [passthrough]),
+               try
+                   %% ...but with no top block at all there is nothing to judge
+                   %% against, and the full stay is what it keeps.
+                   meck:expect(aec_chain, top_block_hash, 0, undefined),
+                   ok = aec_tx_pool:stop(),
+                   {ok, Pid2} = aec_tx_pool:start_link(),
+                   unlink(Pid2), %% Leave it for the cleanup
+                   ?assertEqual({ok, Horizon}, gc_ttl_of(Far, Dbs)),
+
+                   %% Same when the top is there but its state is not.
+                   meck:delete(aec_chain, top_block_hash, 0),
+                   meck:expect(aec_chain, get_block_state_partial, 2, error),
+                   ok = aec_tx_pool:stop(),
+                   {ok, Pid3} = aec_tx_pool:start_link(),
+                   unlink(Pid3), %% Leave it for the cleanup
+                   ?assertEqual({ok, Horizon}, gc_ttl_of(Far, Dbs))
+               after
+                   %% The fixture sweeps this too: eunit kills the process on a
+                   %% {timeout, _} expiry and this clause would not run.
+                   meck:unload(aec_chain)
+               end
+       end}},
+      {"A batch judges each sender against its own nonce",
+       {timeout, 10, fun() ->
+               %% The batch memoises the ceiling per sender, so one sender's
+               %% answer must never be handed to another.
+               Short = 2,
+               ok = application:set_env(aecore, mempool_future_nonce_tx_ttl, Short),
+               [Known] = funded_accounts(1),
+               Unknown = new_pubkey(),
+               ok = aec_tx_pool:stop(),
+               {ok, Pid} = aec_tx_pool:start_link(),
+               unlink(Pid), %% Leave it for the cleanup
+               {GCHeight, Dbs} = aec_tx_pool:gc_height_and_dbs(),
+               Horizon = GCHeight + aec_tx_pool:tx_ttl(),
+               ?assert(GCHeight + Short < Horizon),
+
+               %% The same nonce: too far ahead for the sender the chain knows,
+               %% and not judged at all for the one it does not.
+               Nonce     = aec_tx_pool:nonce_offset() + 1,
+               KnownTx   = a_signed_tx(Known, me, Nonce, 20000),
+               UnknownTx = a_signed_tx(Unknown, me, Nonce, 20000),
+               [ ?assertEqual(ok, aec_tx_pool:push(T, tx_received))
+                 || T <- [KnownTx, UnknownTx] ],
+               ?assertEqual({ok, GCHeight + Short}, gc_ttl_of(KnownTx, Dbs)),
+               ?assertEqual({ok, Horizon},          gc_ttl_of(UnknownTx, Dbs)),
+
+               %% Restored in one batch, each still keeps its own sender's stay.
+               ok = aec_tx_pool:stop(),
+               {ok, Pid2} = aec_tx_pool:start_link(),
+               unlink(Pid2), %% Leave it for the cleanup
+               ?assertEqual({ok, GCHeight + Short}, gc_ttl_of(KnownTx, Dbs)),
+               ?assertEqual({ok, Horizon},          gc_ttl_of(UnknownTx, Dbs))
+       end}},
+      {"Equal mempool stays hold a future nonce as long as any other transaction",
+       fun() ->
+               %% The way back to the behaviour of holding every transaction for
+               %% mempool.tx_ttl, whatever its nonce.
+               TxTTL = aec_tx_pool:tx_ttl(),
+               ok = application:set_env(aecore, mempool_future_nonce_tx_ttl, TxTTL),
+               [PubKey] = funded_accounts(1),
+               {GCHeight, Dbs} = aec_tx_pool:gc_height_and_dbs(),
+               Far = a_signed_tx(PubKey, me, aec_tx_pool:nonce_offset() + 1, 20000),
+               ?assertEqual(ok, aec_tx_pool:push(Far, tx_received)),
+               ?assertEqual({ok, GCHeight + TxTTL}, gc_ttl_of(Far, Dbs))
+       end},
+      {"A returning transaction's stay is judged like a fresh one's",
+       {timeout, 10, fun() ->
+               %% A collected transaction may come back still further ahead than
+               %% the offset allows, so reentry judges it rather than waving it
+               %% through on the full stay.
+               Short = 2,
+               ok = application:set_env(aecore, mempool_future_nonce_tx_ttl, Short),
+               ok = application:set_env(aecore, mempool_allow_reentry, true),
+               [PubKey] = funded_accounts(1),
+               {GCHeight, Dbs} = aec_tx_pool:gc_height_and_dbs(),
+               Far = a_signed_tx(PubKey, me, aec_tx_pool:nonce_offset() + 1, 20000),
+               ?assertEqual(ok, aec_tx_pool:push(Far, tx_received)),
+               ?assertEqual({ok, GCHeight + Short}, gc_ttl_of(Far, Dbs)),
+
+               tx_pool_gc(GCHeight + Short),
+               ?assertEqual({ok, []}, aec_tx_pool:peek(infinity)),
+               %% Its garbage-collection entry went with it, so what follows is a
+               %% fresh judgment and not the old one read back - the collector
+               %% only ever lowers an existing entry, never raises it.
+               ?assertEqual({error, not_found}, gc_ttl_of(Far, Dbs)),
+               ?assertEqual(ok, aec_tx_pool:push(Far, tx_received)),
+               ?assertEqual({ok, GCHeight + Short}, gc_ttl_of(Far, Dbs))
+       end}},
+      {"A mempool stay longer than tx_ttl is capped to it",
+       fun() ->
+               %% A transaction may shorten its stay, never extend it.
+               TxTTL = aec_tx_pool:tx_ttl(),
+               ok = application:set_env(aecore, mempool_future_nonce_tx_ttl, TxTTL + 100),
+               [PubKey] = funded_accounts(1),
+               {GCHeight, Dbs} = aec_tx_pool:gc_height_and_dbs(),
+               Far = a_signed_tx(PubKey, me, aec_tx_pool:nonce_offset() + 1, 20000),
+               ?assertEqual(ok, aec_tx_pool:push(Far, tx_received)),
+               ?assertEqual({ok, GCHeight + TxTTL}, gc_ttl_of(Far, Dbs))
+       end},
+      {"A sender the chain does not know keeps the full stay",
+       fun() ->
+               %% Its transactions are offered and retired the way they always
+               %% were, so the shorter stay would only take that away.
+               ok = application:set_env(aecore, mempool_future_nonce_tx_ttl, 2),
+               ok = application:set_env(aecore, mempool_nonce_baseline, 100),
+               {GCHeight, Dbs} = aec_tx_pool:gc_height_and_dbs(),
+               STx = a_signed_tx(new_pubkey(), me, 50, 20000),
+               ?assertEqual(ok, aec_tx_pool:push(STx, tx_received)),
+               ?assertEqual({ok, GCHeight + aec_tx_pool:tx_ttl()}, gc_ttl_of(STx, Dbs))
+       end},
+      {"A generalized-account sender keeps the full stay",
+       fun() ->
+               %% It carries no nonce of its own, so nothing of its can be too
+               %% far ahead of it. Ingress turns its spends away, leaving the
+               %% restore of an already accepted one to reach the judgment.
+               Short = 2,
+               ok = application:set_env(aecore, mempool_future_nonce_tx_ttl, Short),
+               [PubKey] = funded_accounts(1),
+               {GCHeight, Dbs} = aec_tx_pool:gc_height_and_dbs(),
+               Far = a_signed_tx(PubKey, me, aec_tx_pool:nonce_offset() + 1, 20000),
+               ?assertEqual(ok, aec_tx_pool:push(Far, tx_received)),
+               ?assertEqual({ok, GCHeight + Short}, gc_ttl_of(Far, Dbs)),
+
+               %% Control: while the sender is still basic a restore judges it
+               %% short, so the full stay below is the account type talking and
+               %% not the batch failing to judge at all.
+               ok = aec_tx_pool:stop(),
+               {ok, Basic} = aec_tx_pool:start_link(),
+               unlink(Basic), %% Leave it for the cleanup
+               ?assertEqual({ok, GCHeight + Short}, gc_ttl_of(Far, Dbs)),
+
+               meck:expect(aec_accounts, type,
+                           fun(Account) ->
+                                   case aec_accounts:pubkey(Account) =:= PubKey of
+                                       true  -> generalized;
+                                       false -> meck:passthrough([Account])
+                                   end
+                           end),
+               ok = aec_tx_pool:stop(),
+               {ok, Pid} = aec_tx_pool:start_link(),
+               unlink(Pid), %% Leave it for the cleanup
+               ?assertEqual({ok, GCHeight + aec_tx_pool:tx_ttl()}, gc_ttl_of(Far, Dbs))
+       end},
+      {"A forced push keeps the full stay however far ahead its nonce is",
+       fun() ->
+               ok = application:set_env(aecore, mempool_future_nonce_tx_ttl, 2),
+               [PubKey] = funded_accounts(1),
+               {GCHeight, Dbs} = aec_tx_pool:gc_height_and_dbs(),
+               %% An ordinary push of this nonce is turned away, so reaching the
+               %% pool at all is the forced path, and the stay is what it keeps.
+               Far = a_signed_tx(PubKey, me, aec_tx_pool:nonce_offset() + 1, 20000),
+               ?assertEqual(ok, aec_tx_pool:force_push(Far, 5000)),
+               ?assertEqual({ok, GCHeight + aec_tx_pool:tx_ttl()}, gc_ttl_of(Far, Dbs))
        end},
       {"GC height combines the configured tx_ttl with the tx's own TTL",
        fun() ->

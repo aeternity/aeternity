@@ -218,6 +218,45 @@ The setting only governs this forward step-up, so it stops having any effect onc
 
 `max_heap_words` (default `256000000`) is a backstop that kills a dry-run worker process if its heap grows past this many words, catching a single pathological allocation the wall-clock timeout cannot preempt. `0` disables it.
 
+### Mempool
+
+How long a transaction may wait in the mempool is governed by three settings, all counted in key
+blocks. Whichever applies, a transaction's own `ttl` field can shorten its stay further but never
+extend it.
+
+```yaml
+mempool:
+    tx_ttl: 6720
+    invalid_tx_ttl: 5
+    future_nonce_tx_ttl: 480
+```
+
+`tx_ttl` (default `6720`, about two weeks) is the ordinary case.
+
+`invalid_tx_ttl` (default `5`) applies once a transaction has been found invalid while a block was
+being built — it has had its chance and failed it.
+
+`future_nonce_tx_ttl` (default `480`, about a day) applies to a transaction that enters the mempool
+with a nonce further than `nonce_offset` ahead of its sender's on-chain nonce. The stay is judged
+whenever the transaction enters the pool — a restart or a fork replay putting it back counts, and
+is judged against the chain as it then stands — never while it simply sits there.
+
+A transaction the chain is not yet ready for is not offered to a block, so it never ages out as
+invalid, and `nonce_offset` is not applied to gossiped transactions — so without a bound here one
+sender could park unlimited unmineable transactions in every mempool for a fortnight.
+`nonce_offset` is the threshold because it is where this node already stops accepting such a
+transaction from its own API; one beyond it whose earlier nonces are all present is still mined
+normally, and is only held for less time if they are not.
+
+Raise it if your senders legitimately queue far ahead and you would rather hold their transactions
+than have them sent again — a collected transaction is not accepted back under the same hash unless
+`allow_reentry_of_txs` is set, so sending it again means signing a replacement. Set it equal to
+`tx_ttl` to switch the distinction off, or to `0` to collect such transactions on the next pass.
+
+The stay is counted from the height the node was at when it accepted the transaction, so a node
+catching up after a long time offline effectively holds these for the configured value minus its
+lag. Raise it if your node is regularly offline for long periods.
+
 ## Miner configuration
 
 The instructions below assume that you already know your `beneficiary` account public key (if you don't, see [Beneficiary account section](#beneficiary-account)).

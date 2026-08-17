@@ -19,6 +19,17 @@
   no longer counts as an apply failure it never had, and is no longer retired by
   `mempool.tx_failures.common.tx_nonce_too_high_for_account` (default `30` failures); it stays
   until the gap before it fills or its mempool stay runs out.
+* Added `mempool.future_nonce_tx_ttl` (key blocks, default `480`, about a day), bounding how long
+  the mempool holds a transaction whose nonce is further than `mempool.nonce_offset` ahead of its
+  sender's. Such a transaction is not offered to a candidate while the chain is not ready for its
+  nonce, so since the change above nothing else would retire it before
+  `mempool.tx_ttl` — two weeks by default. Note that `mempool.nonce_offset` is not applied to
+  gossiped transactions, so without this bound one sender could park an unlimited number of
+  unmineable transactions in every node's mempool for a fortnight, at no cost. Transactions are
+  still accepted and relayed exactly as before; only how long they are kept has changed. Set this
+  equal to `mempool.tx_ttl` to hold them as long as any other transaction. Where
+  `mempool.allow_reentry_of_txs` is enabled, a transaction returning after collection is judged
+  afresh rather than granted the full stay.
 * Candidate selection is faster on a node whose mempool has grown large: a sender's account state
   is resolved once per selection pass rather than once per transaction examined, the set of
   already-packed transactions is no longer a list that every pass rescans, and a sender that can
