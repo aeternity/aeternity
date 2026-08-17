@@ -434,7 +434,6 @@ generation_test_() ->
      [
         {timeout, 30, {"Start signing after mined block", fun test_mined_block_signing/0}},
         {timeout, 30, {"Delay restart until first microblock", fun test_delay_restart_until_first_micro_block/0}},
-        {timeout, 30, {"Delay restart when tx arrives after keyblock", fun test_delay_restart_for_late_tx/0}},
         {timeout, 30, {"Restart when first microblock never reports back", fun test_delay_restart_bounded_when_candidate_fails/0}},
         {timeout, 30, {"Start signing after two mined block", fun test_two_mined_block_signing/0}},
         {timeout, 30, {"Start signing after received block", fun test_received_block_signing/0}}
@@ -462,6 +461,7 @@ test_mined_block_signing() ->
 
 test_delay_restart_until_first_micro_block() ->
     Keys = beneficiary_keys(),
+    ok = application:set_env(aecore, delay_restart_after_micro, true),
     ok = meck:new(aec_block_micro_candidate, [passthrough]),
     ok = meck:expect(aec_block_micro_candidate, create,
                      fun(BlockInfo) ->
@@ -489,52 +489,7 @@ test_delay_restart_until_first_micro_block() ->
         ok = prev_on_chain(MicroBlock, KeyBlock),
         ok
     after
-        meck:unload(aec_block_micro_candidate)
-    end.
-
-test_delay_restart_for_late_tx() ->
-    Keys = beneficiary_keys(),
-    MiningCalls = ets:new(mining_calls, [set, public]),
-    true = ets:insert(MiningCalls, {count, 0}),
-    ok = meck:expect(aec_mining, generate,
-                     fun(_, _, Nonce, _, _) ->
-                             case ets:update_counter(MiningCalls, count, 1) of
-                                 1 ->
-                                     {ok, {Nonce, []}};
-                                 _ ->
-                                     timer:sleep(1000),
-                                     {error, no_solution}
-                             end
-                     end),
-    ok = meck:new(aec_block_micro_candidate, [passthrough]),
-    ok = meck:expect(aec_block_micro_candidate, create,
-                     fun(BlockInfo) ->
-                             timer:sleep(250),
-                             meck:passthrough([BlockInfo])
-                     end),
-    try
-        true = aec_events:subscribe(block_created),
-        true = aec_events:subscribe(micro_block_created),
-        true = aec_events:subscribe(start_mining),
-
-        ?TEST_MODULE:start_mining(),
-        wait_for_start_mining_timeout(5000),
-
-        KeyBlock = wait_for_block_created(),
-        KeyBlockHash = block_hash(KeyBlock),
-        wait_for_top_block_hash(KeyBlockHash),
-
-        ok = aec_tx_pool:push(tx(Keys)),
-        assert_no_start_mining(KeyBlockHash, 200),
-
-        MicroBlock = wait_for_micro_block_created(),
-        wait_for_top_block_hash(block_hash(MicroBlock)),
-        wait_for_start_mining(block_hash(MicroBlock), 5000),
-
-        ok = prev_on_chain(MicroBlock, KeyBlock),
-        ok
-    after
-        ets:delete(MiningCalls),
+        ok = application:unset_env(aecore, delay_restart_after_micro),
         meck:unload(aec_block_micro_candidate)
     end.
 
@@ -542,6 +497,7 @@ test_delay_restart_for_late_tx() ->
 %% pause has to be lifted by its own deadline instead.
 test_delay_restart_bounded_when_candidate_fails() ->
     Keys = beneficiary_keys(),
+    ok = application:set_env(aecore, delay_restart_after_micro, true),
     ok = meck:new(aec_block_micro_candidate, [passthrough]),
     ok = meck:expect(aec_block_micro_candidate, create,
                      fun(_BlockInfo) ->
@@ -566,6 +522,7 @@ test_delay_restart_bounded_when_candidate_fails() ->
         wait_for_start_mining(KeyBlockHash, 5000),
         ok
     after
+        ok = application:unset_env(aecore, delay_restart_after_micro),
         meck:unload(aec_block_micro_candidate)
     end.
 
