@@ -1072,8 +1072,25 @@ epochs_with_fast_parent(Config) ->
                                 #{parent_produce => spread(2*?PARENT_EPOCH_LENGTH, Height1,
                                                            [ {CH, 0} || CH <- lists:seq(Height1 + 1, Height1 + Len2)])}),
 
-    {ok, #{length := Len3, epoch := CurrentEpoch}} = rpc(Node, aec_chain_hc, epoch_info, []),
+    %% The delta voted at the end of epoch N is the wall-clock distance between the
+    %% parent blocks that seed epochs N and N+1 - parent heights
+    %% (N-3) * ?PARENT_EPOCH_LENGTH + start, see aec_consensus_hc:entropy_height/1 -
+    %% so it reads the parent stretch three epochs back, not the one just produced.
+    %% With the parent sitting ?PARENT_FINALITY ahead when the doubled phase starts,
+    %% the first epoch whose whole window lies inside that phase is Len1's epoch + 3,
+    %% one later than the epoch ending here. This epoch's window still measures the
+    %% default 1x schedule that preceded the doubled phase: three parent blocks over
+    %% nine child blocks, which is 9/10 of ?CHILD_EPOCH_LENGTH * ?CHILD_BLOCK_TIME and
+    %% lands exactly on the -1/0 bucket edge of the delta (aec_eoe_length_vote
+    %% buckets by ceil/1, pinned in aec_eoe_length_vote_tests). Reading the finalize
+    %% here asserts on that edge and flips to 0 - no adjustment - on one block of
+    %% scheduling drift or a few ms of block time. Produce one more epoch first so the
+    %% finalize being read is one whose window is genuinely the doubled parent rate.
+    {ok, #{length := Len3}} = rpc(Node, aec_chain_hc, epoch_info, []),
     produce_cc_blocks(Config, Len3),
+
+    {ok, #{length := Len4, epoch := CurrentEpoch}} = rpc(Node, aec_chain_hc, epoch_info, []),
+    produce_cc_blocks(Config, Len4),
     #{epoch_length := FinalizeEpochLength, epoch := FinalizeEpoch} = rpc(Node, aec_chain_hc , finalize_info, []),
     %% Here we should be able to observe signalling that epoch should be shorter
     ct:log("The agreed epoch length is ~p three epochs previous length was ~p", [FinalizeEpochLength, Len1]),
