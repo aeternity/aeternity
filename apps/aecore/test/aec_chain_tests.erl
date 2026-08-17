@@ -676,6 +676,8 @@ forking_test_() ->
      , {"Test if hash is in main chain", fun fork_is_in_main_chain/0}
      , {"Get a transaction from the right fork", fun fork_get_transaction/0}
      , {"Fork on micro-block", fun fork_on_micro_block/0}
+     , {"Generation of a fork sibling at the top height",
+        fun fork_generation_at_top_height/0}
      , {"Fork on old fork point", fun fork_on_old_fork_point/0}]}.
 
 fork_on_genesis() ->
@@ -895,6 +897,58 @@ fork_on_micro_block() ->
     {ok, KB3Hash} = aec_blocks:hash_internal_representation(KB3),
     ?assertEqual(KB3Hash, aec_chain:top_block_hash()),
     fork_test_chain_ends_and_migration([KB2ForkHash, KB3Hash], [KB0, KB1, KB2, KB3]),
+    ok.
+
+fork_generation_at_top_height() ->
+    #{ public := PubKey, secret := PrivKey } = enacl:sign_keypair(),
+    PresetAccounts = [{PubKey, 1000000 * min_gas_price()}],
+    meck:expect(aec_fork_block_settings, genesis_accounts, 0, PresetAccounts),
+    aec_consensus:set_genesis_hash(),
+
+    %% Main chain: ... - KB5 - MB5, i.e. the top is a micro block.
+    TxsFun = fun(5) ->
+                     [aec_test_utils:sign_tx(make_spend_tx(PubKey, 1, PubKey), PrivKey)];
+                (_) ->
+                     []
+             end,
+    CommonChain = gen_block_chain_with_state_by_target(
+                    PresetAccounts, [?GENESIS_TARGET, ?GENESIS_TARGET, 1, 1], 111),
+    MainChain = blocks_only_chain(extend_chain_with_state(CommonChain, [1], 111, TxsFun)),
+    [KB5, MB5] = lists:nthtail(5, MainChain),
+
+    %% A sibling key block at the same height, but with less difficulty so
+    %% that it doesn't take over as top.
+    [KB5Fork] = lists:nthtail(5, blocks_only_chain(extend_chain_with_state(CommonChain, [2], 222))),
+
+    ok = write_blocks_to_chain(MainChain),
+    ok = insert_block(KB5Fork),
+
+    KB5Hash = block_hash(KB5),
+    KB5ForkHash = block_hash(KB5Fork),
+    MB5Hash = block_hash(MB5),
+    ?assertEqual(MB5Hash, aec_chain:top_block_hash()),
+    ?assertEqual(true, aec_chain:hash_is_in_main_chain(KB5Hash)),
+    ?assertEqual(false, aec_chain:hash_is_in_main_chain(KB5ForkHash)),
+
+    %% The generation of the key block on the main chain is complete...
+    CheckGeneration =
+        fun(Res) ->
+                {ok, #{key_block := KB, micro_blocks := MBs}} = Res,
+                ?assertEqual(KB5Hash, block_hash(KB)),
+                ?assertEqual([MB5Hash], [block_hash(B) || B <- MBs])
+        end,
+    CheckGeneration(aec_chain:get_generation_by_hash(KB5Hash, forward)),
+    CheckGeneration(aec_chain:get_generation_by_height(5, forward)),
+    CheckGeneration(aec_chain:get_current_generation()),
+
+    %% ...while the fork sibling has no generation on the main chain - it must
+    %% not be paired with the micro blocks of the main chain.
+    ?assertEqual(error, aec_chain:get_generation_by_hash(KB5ForkHash, forward)),
+
+    %% Looking backwards from the fork sibling is still fine.
+    {ok, #{key_block := KB5Fork1, micro_blocks := []}} =
+        aec_chain:get_generation_by_hash(KB5ForkHash, backward),
+    ?assertEqual(KB5ForkHash, block_hash(KB5Fork1)),
     ok.
 
 fork_on_old_fork_point() ->

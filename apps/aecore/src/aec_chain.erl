@@ -752,7 +752,25 @@ get_generation_by_height(Height, KeyBlock, forward) ->
     #{header := TopHeader, hash := TopHash} = top_block_node(),
     TopHeight = aec_headers:height(TopHeader),
     if  TopHeight < Height  -> error;
-        TopHeight == Height -> get_generation_by_height(Height, KeyBlock, TopHash, forward);
+        TopHeight == Height ->
+            %% A forward generation is only defined for a key block on the main
+            %% chain - a fork sibling at the top height would otherwise be
+            %% paired with the micro blocks of the main chain. With no key block
+            %% at Height + 1 to cross-check against (see below), the main chain
+            %% key block comes from the top header. For a micro top that is
+            %% prev_key_hash, which is at TopHeight only under bitcoin_ng and
+            %% on_demand; under hc micros sit one height above their key block
+            %% so nothing matches - correct, as no key block at TopHeight is on
+            %% the main chain there.
+            {ok, KeyBlockHash} = aec_blocks:hash_internal_representation(KeyBlock),
+            MainKeyHash = case aec_headers:type(TopHeader) of
+                              key   -> TopHash;
+                              micro -> aec_headers:prev_key_hash(TopHeader)
+                          end,
+            case KeyBlockHash =:= MainKeyHash of
+                true  -> get_generation_by_height(Height, KeyBlock, TopHash, forward);
+                false -> error
+            end;
         true                ->
             case get_key_block_by_height(Height + 1) of
                 {error, _Reason} -> error;
