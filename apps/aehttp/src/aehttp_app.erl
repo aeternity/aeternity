@@ -84,6 +84,11 @@ check_env() ->
                       %% other groups are disabled.  Users may still override this
                       %% explicitly via http.endpoints.node_info: false.
                       <<"node_info">>     => true,
+                      %% Node-local operator policy (mempool limits, miner gas
+                      %% price, gas ceilings). Separate from node_info so it can
+                      %% be withheld on its own; unlike node_info it is not a
+                      %% health endpoint, so it follows maintenance mode.
+                      <<"node_settings">> => Default0,
                       <<"hyperchain">>    => false,
                       <<"debug">>         => true,
                       <<"dry-run">>       => false,

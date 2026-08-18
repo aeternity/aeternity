@@ -34,6 +34,7 @@
          get_pin/1,
          wallet_post_pin_to_pc/1,
          get_contract_pubkeys/1,
+         get_protocol_parameters/1,
          correct_leader_in_micro_block/1,
          first_leader_next_epoch/1,
          check_default_pin/1,
@@ -170,6 +171,9 @@ groups() ->
     [
       {hc, [sequence],
           [ start_two_child_nodes
+            %% Needs only a started child node - keep it ahead of the
+            %% timing-sensitive cases, which would skip it on any flake.
+          , get_protocol_parameters
           , produce_first_epoch
           , verify_rewards
           , spend_txs
@@ -1239,6 +1243,20 @@ get_contract_pubkeys(Config) ->
     ?assertEqual({ok, ElectionContractPK}, aeser_api_encoder:safe_decode(contract_pubkey, Election)),
     ?assertEqual({ok, RewardsContractPK}, aeser_api_encoder:safe_decode(contract_pubkey, Rewards)),
 
+    ok.
+
+%% The only pos coverage of aehttp_dispatch_ext:block_interval_setting/0 -
+%% aehttp_integration_SUITE is always a proof-of-work node.
+get_protocol_parameters(Config) ->
+    [{Node, _, _, _} | _] = ?config(nodes, Config),
+    ?assertEqual(pos, rpc(Node, aec_consensus, get_consensus_type, [])),
+    {ok, 200, Res} = aecore_suite_utils:http_request(
+                       aecore_suite_utils:external_address(), get, "protocol-parameters", []),
+    ?assertEqual(?CHILD_BLOCK_TIME, maps:get(<<"child_block_time">>, Res)),
+    ?assertNot(maps:is_key(<<"expected_block_mine_rate">>, Res)),
+    ?assertMatch([_ | _], maps:get(<<"protocols">>, Res)),
+    ?assertEqual(rpc(Node, aec_governance, get_network_id, []),
+                 maps:get(<<"network_id">>, Res)),
     ok.
 
 
