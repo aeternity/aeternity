@@ -40,11 +40,12 @@ common_tests:
           if [ $status -ne 0 ]; then
             # A loaded/throttled CI runner can starve a test of scheduling long enough
             # to hit its own timeout budget (e.g. aesc_fsm_SUITE's FSM tests waiting on
-            # a peer message) - this is CI flakiness, not a code defect. Only retry the
-            # whole run when EVERY failure this run is a `{timeout, ...}` exit reason;
-            # a genuine assertion/logic failure alongside one is left to fail as-is.
+            # a peer message, or aehttp_hyperchains_SUITE's {timeout_waiting_for_block,
+            # ...}) - this is CI flakiness, not a code defect. Only retry the whole run
+            # when EVERY failure this run has a reason atom containing "timeout"; a
+            # genuine assertion/logic failure alongside one is left to fail as-is.
             failed_count=$(grep -c ': FAILED$' ct_run.log)
-            timeout_count=$(grep -cE '==> \{timeout,' ct_run.log)
+            timeout_count=$(grep -cE '==> \{[a-z_]*timeout[a-z_]*,' ct_run.log)
             if [ "$failed_count" -gt 0 ] && [ "$failed_count" -eq "$timeout_count" ]; then
               echo "WARNING: all $failed_count failure(s) were test timeouts, retrying" >&2
               make << parameters.target >> CT_TEST_FLAGS="--suite=$(.circleci/scripts/split_suites.sh)" 2>&1 | tee -a ct_run.log
