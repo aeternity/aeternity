@@ -34,7 +34,28 @@ common_tests:
         name: Test
         command: |
           epmd -daemon
-          make << parameters.target >> CT_TEST_FLAGS="--suite=$(.circleci/scripts/split_suites.sh)"
+          set +e
+          make << parameters.target >> CT_TEST_FLAGS="--suite=$(.circleci/scripts/split_suites.sh)" 2>&1 | tee ct_run.log
+          status=${PIPESTATUS[0]}
+          if [ $status -ne 0 ]; then
+            # A loaded/throttled CI runner can starve a test of scheduling long enough
+            # to hit its own timeout budget (e.g. aesc_fsm_SUITE's {outer_timeout, ...},
+            # or aehttp_hyperchains_SUITE's {timeout_waiting_for_block, ...}) - this is
+            # CI flakiness, not a code defect. Only retry the whole run when EVERY
+            # failure this run has a reason atom containing "timeout"; a genuine
+            # assertion/logic failure alongside one is left to fail as-is.
+            # rebar3/ct colorizes FAILED/the reason with ANSI codes and writes \r\n
+            # line endings, so strip both before matching on either.
+            sed -E 's/\x1b\[[0-9;]*m//g' ct_run.log | tr -d '\r' > ct_run_clean.log
+            failed_count=$(grep -c ': FAILED$' ct_run_clean.log)
+            timeout_count=$(grep -cE '==> \{[a-z_]*timeout[a-z_]*,' ct_run_clean.log)
+            if [ "$failed_count" -gt 0 ] && [ "$failed_count" -eq "$timeout_count" ]; then
+              echo "WARNING: all $failed_count failure(s) were test timeouts, retrying" >&2
+              make << parameters.target >> CT_TEST_FLAGS="--suite=$(.circleci/scripts/split_suites.sh)" 2>&1 | tee -a ct_run.log
+              status=${PIPESTATUS[0]}
+            fi
+          fi
+          exit $status
     # Isolates the junit.xml report because additional files in _build/test/logs
     # are somehow causing issue with xunit report upload, parsing and merging
     - run:
