@@ -153,6 +153,7 @@
     check_transaction_in_pool/1,
 
     get_recent_gas_prices/1,
+    get_recent_gas_prices_min_relay/1,
 
     % sync gossip
     pending_transactions/1,
@@ -442,6 +443,7 @@ groups() ->
         check_transaction_in_pool,
 
         get_recent_gas_prices,
+        get_recent_gas_prices_min_relay,
 
         % sync gossip
         pending_transactions,
@@ -836,6 +838,12 @@ init_per_testcase(Case, Config) when
         Case =:= disabled_debug_endpoints; Case =:= enabled_debug_endpoints ->
     {ok, HttpInternal} = rpc(?NODE, application, get_env, [aehttp, internal]),
     [{http_internal_config, HttpInternal} | init_per_testcase_all(Config)];
+init_per_testcase(get_recent_gas_prices_min_relay, Config) ->
+    %% the group is a `sequence', so a leaked setting would silently change what
+    %% every later case sees on this endpoint - save and restore it here rather
+    %% than only on the test's happy path
+    DryRun = rpc(?NODE, application, get_env, [aehttp, dry_run]),
+    [{http_dry_run_config, DryRun} | init_per_testcase_all(Config)];
 init_per_testcase(_Case, Config) ->
     init_per_testcase_all(Config).
 
@@ -849,6 +857,12 @@ end_per_testcase(Case, Config) when
         Case =:= disabled_debug_endpoints; Case =:= enabled_debug_endpoints ->
     HttpInternal = ?config(http_internal_config, Config),
     ok = rpc(?NODE, application, set_env, [aehttp, internal, HttpInternal]),
+    end_per_testcase_all(Config);
+end_per_testcase(get_recent_gas_prices_min_relay, Config) ->
+    ok = case ?config(http_dry_run_config, Config) of
+             undefined  -> rpc(?NODE, application, unset_env, [aehttp, dry_run]);
+             {ok, Prev} -> rpc(?NODE, application, set_env, [aehttp, dry_run, Prev])
+         end,
     end_per_testcase_all(Config);
 end_per_testcase(_Case, Config) ->
     end_per_testcase_all(Config).
@@ -1965,6 +1979,117 @@ get_recent_gas_prices(_Config) ->
     ?assertMatch(X when is_integer(X) andalso X == MinGasPrice, MinGasPrice15),
     ?assertMatch(X when is_integer(X) andalso X == MinGasPrice, MinGasPrice60),
     ok.
+
+%% The figure this suite configures the override to. Nothing in the node depends
+%% on the value; it only has to sit above the utilization a quiet chain shows, so
+%% that (b) proves the override reached the response rather than coinciding
+%% with it.
+-define(OVERRIDE_UTILIZATION, 71).
+
+%% Reporting-only: it may raise the advertised min_gas_price and, only where it
+%% actually did raise it, the utilization alongside. It must lower neither, and
+%% must not move the floor the mempool enforces.
+get_recent_gas_prices_min_relay(_Config) ->
+    Host = external_address(),
+    Observed = min_gas_price(),
+    EnforcedBefore = rpc(?NODE, aec_tx_pool, minimum_miner_gas_price, []),
+
+    %% (a) off - today's behaviour, unchanged. The bucket count is asserted
+    %%     because every assertion below is a list comprehension over it: against
+    %%     an empty response they would all hold vacuously.
+    Base = recent_gas_prices(Host),
+    ?assertEqual(4, length(Base)),
+    ?assertEqual([Observed || _ <- Base], [ GP || {GP, _U} <- Base ]),
+    %% the chain this suite runs is quiet, which is precisely the case the
+    %% feature is for - assert it, because (b) proves nothing otherwise
+    ?assert(lists:all(fun(U) -> U < ?OVERRIDE_UTILIZATION end,
+                      [ U || {_GP, U} <- Base ])),
+
+    %% (a2) the price floor ALONE changes no utilization - the override is a
+    %%      second, deliberate decision and does not follow the floor on
+    Above = Observed * 1000,
+    ok = set_min_relay(Above),
+    FloorOnly = recent_gas_prices(Host),
+    ?assertEqual([Above || _ <- FloorOnly], [ GP || {GP, _U} <- FloorOnly ]),
+    ?assertEqual([ U || {_GP, U} <- Base ], [ U || {_GP, U} <- FloorOnly ]),
+
+    %% (b) THE REGRESSION. With the override configured, a floor above the
+    %%     observed price is advertised in every bucket alongside that figure.
+    ok = set_min_relay(Above, ?OVERRIDE_UTILIZATION),
+    Raised = recent_gas_prices(Host),
+    ?assertEqual([Above || _ <- Raised], [ GP || {GP, _U} <- Raised ]),
+    ?assertEqual([?OVERRIDE_UTILIZATION || _ <- Raised], [ U || {_GP, U} <- Raised ]),
+
+    %% (b2) the reported figure is a setting, not a constant: an operator can
+    %%      follow a client-side change without a node upgrade
+    ok = set_min_relay(Above, 85),
+    Raised85 = recent_gas_prices(Host),
+    ?assertEqual([Above || _ <- Raised85], [ GP || {GP, _U} <- Raised85 ]),
+    ?assertEqual([85 || _ <- Raised85], [ U || {_GP, U} <- Raised85 ]),
+
+    %% (b3) ...and it has an off value of its own, which advertises the floor
+    %%      while reporting utilization as observed
+    ok = set_min_relay(Above, 0),
+    RaisedHonest = recent_gas_prices(Host),
+    ?assertEqual([Above || _ <- RaisedHonest], [ GP || {GP, _U} <- RaisedHonest ]),
+    ?assertEqual([ U || {_GP, U} <- Base ], [ U || {_GP, U} <- RaisedHonest ]),
+
+    %% (c) THE NO-OP CASE. A floor below the observed price must not lower what
+    %%     is advertised, and buys no raised utilization either.
+    ok = set_min_relay(1, ?OVERRIDE_UTILIZATION),
+    NotLowered = recent_gas_prices(Host),
+    ?assertEqual([Observed || _ <- NotLowered], [ GP || {GP, _U} <- NotLowered ]),
+    ?assertEqual([ U || {_GP, U} <- Base ], [ U || {_GP, U} <- NotLowered ]),
+
+    %% (c2) the boundary: a floor set exactly AT the observed price is still not
+    %%      moving it, so it buys no raised utilization either
+    ok = set_min_relay(Observed, ?OVERRIDE_UTILIZATION),
+    AtBoundary = recent_gas_prices(Host),
+    ?assertEqual([Observed || _ <- AtBoundary], [ GP || {GP, _U} <- AtBoundary ]),
+    ?assertEqual([ U || {_GP, U} <- Base ], [ U || {_GP, U} <- AtBoundary ]),
+
+    %% (c3) ...and one aetto above it is the other side of that boundary
+    ok = set_min_relay(Observed + 1, ?OVERRIDE_UTILIZATION),
+    PastBoundary = recent_gas_prices(Host),
+    ?assertEqual([Observed + 1 || _ <- PastBoundary], [ GP || {GP, _U} <- PastBoundary ]),
+    ?assertEqual([?OVERRIDE_UTILIZATION || _ <- PastBoundary],
+                 [ U || {_GP, U} <- PastBoundary ]),
+
+    %% (d) 0 is the schema's off value and has to be inert end to end, not merely
+    %%     accepted by the schema. The utilization is set alongside to prove it
+    %%     is inert on its own.
+    ok = set_min_relay(0, ?OVERRIDE_UTILIZATION),
+    Zeroed = recent_gas_prices(Host),
+    ?assertEqual([Observed || _ <- Zeroed], [ GP || {GP, _U} <- Zeroed ]),
+    ?assertEqual([ U || {_GP, U} <- Base ], [ U || {_GP, U} <- Zeroed ]),
+
+    %% (e) turning it off restores the observed figures
+    ok = rpc(?NODE, application, unset_env, [aehttp, gas_price]),
+    Restored = recent_gas_prices(Host),
+    ?assertEqual([Observed || _ <- Restored], [ GP || {GP, _U} <- Restored ]),
+    ?assertEqual([ U || {_GP, U} <- Base ], [ U || {_GP, U} <- Restored ]),
+    %% ...and 0 and absent are the same state, not merely both "not raised"
+    ?assertEqual(Zeroed, Restored),
+
+    %% (f) at no point did the floor aec_tx_pool enforces at admission and at
+    %%     candidate selection move - this setting reaches no inclusion decision,
+    %%     whatever the endpoint was reporting meanwhile
+    ?assertEqual(EnforcedBefore, rpc(?NODE, aec_tx_pool, minimum_miner_gas_price, [])),
+    ok.
+
+recent_gas_prices(Host) ->
+    {ok, 200, Buckets} = http_request(Host, get, "recent-gas-prices", []),
+    [ {maps:get(<<"min_gas_price">>, B), maps:get(<<"utilization">>, B)} || B <- Buckets ].
+
+set_min_relay(Value) ->
+    rpc(?NODE, application, set_env,
+        [aehttp, gas_price, [{min_relay_gas_price, Value}]]).
+
+set_min_relay(Value, UtilValue) ->
+    rpc(?NODE, application, set_env,
+        [aehttp, gas_price,
+         [{min_relay_gas_price, Value},
+          {reporting_utilization_override, UtilValue}]]).
 
 prepare_tx(TxType, Args, SignHash) ->
     %assert_required_tx_fields(TxType, Args),

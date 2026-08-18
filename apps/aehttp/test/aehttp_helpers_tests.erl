@@ -87,3 +87,133 @@ assert_shed(Mod, OpId, RetryAfter, Reason) ->
     %% the conversion has to be lossless or the back-off never reaches a client.
     {503, Headers, _} = Actual,
     ?assertEqual(#{<<"retry-after">> => RetryAfter}, maps:from_list(Headers)).
+
+%%%===================================================================
+%%% Dry-run reported gas-price floor (http.gas_price.min_relay_gas_price)
+%%%===================================================================
+
+-define(OBSERVED_GAS_PRICE, 1000000).       %% what aec_dry_run meters a call_req at
+-define(OBSERVED_GAS_USED,  73421).
+-define(MIN_RELAY,          500000000000).  %% 500 x the 1e9 baseline clients use
+
+%% Only the reported price, only on the public profile. Everything else -- above
+%% all gas_used, which clients derive a gas limit from -- comes through untouched.
+min_relay_gas_price_test_() ->
+    {foreach,
+     fun() -> application:unset_env(aehttp, gas_price) end,
+     fun(_) -> application:unset_env(aehttp, gas_price) end,
+     [ {"off by default: no config, no change",
+        fun() ->
+            %% the one config read the dry-run path now shares with the endpoint
+            ?assertEqual(undefined, aehttp_logic:min_relay_gas_price()),
+            ?assertEqual(results(?OBSERVED_GAS_PRICE),
+                         aehttp_helpers:floor_dry_run_gas_prices(public, results(?OBSERVED_GAS_PRICE)))
+        end}
+     , {"set: the public profile reports the floor instead of the metered price",
+        fun() ->
+            set_min_relay(?MIN_RELAY),
+            [#{call_obj := CallObj}] =
+                aehttp_helpers:floor_dry_run_gas_prices(public, results(?OBSERVED_GAS_PRICE)),
+            ?assertEqual(?MIN_RELAY, maps:get(<<"gas_price">>, CallObj)),
+            %% the whole point of the constraint: gas_used is never scaled
+            ?assertEqual(?OBSERVED_GAS_USED, maps:get(<<"gas_used">>, CallObj))
+        end}
+     , {"it is a floor, not a replacement: a pricier call keeps its own price",
+        fun() ->
+            set_min_relay(?MIN_RELAY),
+            Higher = ?MIN_RELAY * 2,
+            [#{call_obj := CallObj}] =
+                aehttp_helpers:floor_dry_run_gas_prices(public, results(Higher)),
+            ?assertEqual(Higher, maps:get(<<"gas_price">>, CallObj))
+        end}
+     , {"every other profile keeps the metered price, set or not",
+        fun() ->
+            set_min_relay(?MIN_RELAY),
+            %% internal is ae_mdw's default via aec_dry_run:dry_run/4, replay is
+            %% Rosetta, includability is the pool's real inclusion check.
+            lists:foreach(
+              fun(Profile) ->
+                  ?assertEqual({Profile, results(?OBSERVED_GAS_PRICE)},
+                               {Profile, aehttp_helpers:floor_dry_run_gas_prices(
+                                           Profile, results(?OBSERVED_GAS_PRICE))})
+              end, [internal, replay, includability, undefined])
+        end}
+     , {"a zero or non-integer value is off, not a floor of zero",
+        fun() ->
+            lists:foreach(
+              fun(Value) ->
+                  set_min_relay(Value),
+                  ?assertEqual({Value, results(?OBSERVED_GAS_PRICE)},
+                               {Value, aehttp_helpers:floor_dry_run_gas_prices(
+                                         public, results(?OBSERVED_GAS_PRICE))})
+              end, [0, -1, undefined, <<"500">>])
+        end}
+     , {"results carrying no call object pass through untouched",
+        fun() ->
+            set_min_relay(?MIN_RELAY),
+            %% a spend, and a failed contract call: neither has a gas price
+            NoCallObj = [ #{type => <<"spend">>, result => <<"ok">>}
+                        , #{type => <<"contract_call">>, result => <<"error">>,
+                            reason => <<"Error: out_of_gas">>} ],
+            ?assertEqual(NoCallObj,
+                         aehttp_helpers:floor_dry_run_gas_prices(public, NoCallObj))
+        end}
+     ]}.
+
+%% The unit tests above cannot see whether do_dry_run/1 actually applies the
+%% floor -- which is the only thing that reaches a client. So drive the real
+%% dispatch fun with aec_dry_run stubbed and read the response body.
+min_relay_gas_price_dispatch_test_() ->
+    {foreach,
+     fun() ->
+         application:unset_env(aehttp, gas_price),
+         meck:new(aec_dry_run, [passthrough]),
+         meck:expect(aec_dry_run, dry_run,
+                     fun(_Top, _Accounts, _Txs, _Opts) ->
+                         {ok, {[{contract_call_tx, {ok, call_obj(?OBSERVED_GAS_PRICE)}}], []}}
+                     end)
+     end,
+     fun(_) ->
+         meck:unload(aec_dry_run),
+         application:unset_env(aehttp, gas_price)
+     end,
+     [ {"the external endpoint (public) serves the floor",
+        fun() ->
+            set_min_relay(?MIN_RELAY),
+            ?assertEqual({?MIN_RELAY, ?OBSERVED_GAS_USED}, dispatch_gas(public))
+        end}
+     , {"the internal endpoint serves the metered price",
+        fun() ->
+            set_min_relay(?MIN_RELAY),
+            ?assertEqual({?OBSERVED_GAS_PRICE, ?OBSERVED_GAS_USED}, dispatch_gas(internal))
+        end}
+     , {"with the key unset the external endpoint is unchanged",
+        fun() ->
+            ?assertEqual({?OBSERVED_GAS_PRICE, ?OBSERVED_GAS_USED}, dispatch_gas(public))
+        end}
+     ]}.
+
+%% Run aehttp_helpers:do_dry_run(Profile) the way process_request/3 does and
+%% return the {gas_price, gas_used} the client would see.
+dispatch_gas(Profile) ->
+    State = #{ top => aeser_api_encoder:encode(key_block_hash, <<0:256>>)
+             , txs => [#{<<"call_req">> => #{}}]
+             , accounts => []
+             , tx_events => false },
+    Fun = aehttp_helpers:do_dry_run(Profile),
+    {ok, {200, [], #{results := [#{call_obj := CallObj}]}}} = Fun(#{}, State),
+    {maps:get(<<"gas_price">>, CallObj), maps:get(<<"gas_used">>, CallObj)}.
+
+set_min_relay(Value) ->
+    application:set_env(aehttp, gas_price, [{min_relay_gas_price, Value}]).
+
+%% One serialized dry-run result, the shape dry_run_results/1 produces.
+results(GasPrice) ->
+    [#{ type => <<"contract_call">>
+      , result => <<"ok">>
+      , call_obj => aect_call:serialize_for_client(call_obj(GasPrice)) }].
+
+call_obj(GasPrice) ->
+    Call = aect_call:new(aeser_id:create(account, <<1:256>>), 1,
+                         aeser_id:create(contract, <<2:256>>), 10, GasPrice),
+    aect_call:set_gas_used(?OBSERVED_GAS_USED, Call).

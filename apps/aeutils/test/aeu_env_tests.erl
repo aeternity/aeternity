@@ -356,5 +356,184 @@ forget_user_config() ->
     ok = aeu_env:invalidate_config_cache(),
     ok = application:unset_env(aeutils, '$user_map'),
     ok = application:unset_env(aeutils, '$user_config').
+%%%=============================================================================
+%%% AE__ environment variables must not be able to kill the node at boot
+%%%=============================================================================
+
+%% aeu_env:coerce_type/3 has no catch-all: a schema type it does not know is a
+%% case_clause that kills application_controller at boot. Pinned rather than
+%% asserted empty because three keys predating this test are already bad.
+-define(NOT_COERCIBLE_BY_OS_ENV,
+        [ {<<"sync:peer_pool:select_verified_peer_probability">>, <<"number">>}
+        , {<<"stratum:session:share_target_diff_threshold">>,     <<"number">>}
+        , {<<"stratum:session:edge_bits">>,                       <<"number">>}
+        ]).
+
+coercible_schema_types_test_() ->
+    {setup, fun setup/0, fun(SavedFork) -> teardown(SavedFork) end,
+     [{"no schema type is added that aeu_env:coerce_type/3 cannot handle",
+       fun() ->
+           %% keep in step with coerce_type/3 in aeu_env.erl
+           Known = [<<"integer">>, <<"string">>, <<"boolean">>,
+                    <<"array">>, <<"object">>],
+           Bad = [ PT || {_P, T} = PT <- schema_leaf_types(),
+                         not lists:member(T, Known) ],
+           ?assertEqual(lists:sort(?NOT_COERCIBLE_BY_OS_ENV), lists:sort(Bad))
+       end},
+      {"the relay gas price keys in particular are coercible, so AE__ cannot kill boot",
+       fun() ->
+           Types = schema_leaf_types(),
+           [ ?assertEqual({Key, {ok, <<"integer">>}},
+                          {Key,
+                           case lists:keyfind(Key, 1, Types) of
+                               {_, T} -> {ok, T};
+                               false  -> not_in_schema
+                           end})
+             || Key <- [<<"http:gas_price:min_relay_gas_price">>,
+                        <<"http:gas_price:reporting_utilization_override">>] ]
+       end}]}.
+
+%% Walk the schema and yield {ColonPath, Type} for every property carrying a
+%% "type", so a bad one is reported by name rather than as a bare count.
+schema_leaf_types() ->
+    #{<<"properties">> := Props} = aeu_env:schema(),
+    schema_leaf_types(Props, []).
+
+schema_leaf_types(Props, Path) when is_map(Props) ->
+    maps:fold(
+      fun(Name, #{} = Sub, Acc) ->
+              Path1 = Path ++ [Name],
+              Acc1 = case maps:find(<<"type">>, Sub) of
+                         {ok, T} ->
+                             [{iolist_to_binary(lists:join(<<":">>, Path1)), T} | Acc];
+                         error ->
+                             Acc
+                     end,
+              case maps:find(<<"properties">>, Sub) of
+                  {ok, SubProps} -> schema_leaf_types(SubProps, Path1) ++ Acc1;
+                  error          -> Acc1
+              end;
+         (_Name, _NotAMap, Acc) -> Acc
+      end, [], Props).
+
+%% Asserted against the real schema because the bound moved: `minimum: 1' with
+%% type ["integer","null"] rejected 0; `minimum: 0' with a plain integer accepts
+%% it as the off value. Opposite verdicts on the same input.
+min_relay_gas_price_schema_bound_test_() ->
+    {setup, fun setup/0, fun(SavedFork) -> teardown(SavedFork) end,
+     [{"the schema accepts the off value, the working multiples, and nothing else",
+       fun() ->
+           Accept = [ {"absent - the default off state", absent}
+                    , {"0 - the explicit off value",     0}
+                    , {"1 - the smallest live floor",    1}
+                    , {"500000000000 (x500)",            500000000000}
+                    , {"1000000000000 (x1000)",          1000000000000}
+                    ],
+           Reject = [ {"-1 - negative",                  -1}
+                    , {"1.5 - not an integer",           1.5}
+                    , {"\"500\" - a string",             <<"500">>}
+                    , {"true - a boolean",               true}
+                      %% null was valid under the old union type, which is what
+                      %% made an AE__ variable naming this key kill the node at
+                      %% boot, so its rejection here is load-bearing
+                    , {"null - the removed union member", null}
+                    ],
+           Cases = [ {N, V, accept} || {N, V} <- Accept ]
+                ++ [ {N, V, reject} || {N, V} <- Reject ],
+           Bad = lists:filtermap(
+                   fun({Name, V, Want}) ->
+                       case validate_min_relay(V) of
+                           Want -> false;
+                           Got  -> {true, {Name, {expected, Want}, {got, Got}}}
+                       end
+                   end, Cases),
+           ?assertEqual([], Bad)
+       end}]}.
+
+%% 0..100 is what GasPrices.utilization declares in apps/aehttp/priv/oas3.yaml;
+%% a wider schema would let an operator configure the node into violating it.
+reporting_utilization_override_schema_bound_test_() ->
+    {setup, fun setup/0, fun(SavedFork) -> teardown(SavedFork) end,
+     [{"the schema accepts 0..100 and refuses everything outside it",
+       fun() ->
+           Accept = [ {"absent - takes the documented default of 0",  absent}
+                    , {"0 - the default, report utilization as observed", 0}
+                    , {"70 - inside the range",                       70}
+                    , {"100 - the top of the published range",        100}
+                    ],
+           Reject = [ {"-1 - below the range",                         -1}
+                    , {"101 - one past the OpenAPI maximum",           101}
+                    , {"1000 - well past it",                          1000}
+                    , {"70.5 - not an integer",                        70.5}
+                    , {"\"71\" - a string",                            <<"71">>}
+                    , {"true - a boolean",                             true}
+                    , {"null - not a union member here either",        null}
+                    ],
+           Cases = [ {N, V, accept} || {N, V} <- Accept ]
+                ++ [ {N, V, reject} || {N, V} <- Reject ],
+           Bad = lists:filtermap(
+                   fun({Name, V, Want}) ->
+                       case validate_reporting_utilization_override(V) of
+                           Want -> false;
+                           Got  -> {true, {Name, {expected, Want}, {got, Got}}}
+                       end
+                   end, Cases),
+           ?assertEqual([], Bad)
+       end}]}.
+
+validate_min_relay(V) ->
+    validate_gas_price_key(<<"min_relay_gas_price">>, V).
+
+validate_reporting_utilization_override(V) ->
+    validate_gas_price_key(<<"reporting_utilization_override">>, V).
+
+validate_gas_price_key(Key, V) ->
+    GasPrice = case V of
+                   absent -> #{};
+                   _      -> #{Key => V}
+               end,
+    Cfg = #{<<"http">> => #{<<"gas_price">> => GasPrice}},
+    case catch jesse:validate_with_schema(aeu_env:schema(), Cfg, []) of
+        {ok, _}    -> accept;
+        {error, _} -> reject;
+        Other      -> {crash, Other}
+    end.
+
+%% The concrete regression: drive the real boot-time call with the variable set,
+%% and assert it both survives and lands the coerced integer in the config map.
+min_relay_gas_price_settable_by_os_env_test_() ->
+    Var = "AE__HTTP__GAS_PRICE__MIN_RELAY_GAS_PRICE",
+    {setup,
+     % setup/0's return value is the saved `aecore > fork' env and teardown/1
+     % switches on it - returning a bare ok here aborts cleanup.
+     fun() -> SavedFork = setup(), os:putenv(Var, "500000000000"), SavedFork end,
+     fun(SavedFork) -> os:unsetenv(Var), teardown(SavedFork) end,
+     {"setting http:gas_price:min_relay_gas_price via AE__ does not crash config load",
+      fun() ->
+          Res = aeu_env:apply_os_env("AE", aeu_env:schema(), #{}),
+          ?assertMatch(#{<<"http">> := #{<<"gas_price">> := #{}}}, Res),
+          #{<<"http">> := #{<<"gas_price">> := GasPrice}} = Res,
+          %% coerced to an integer, not left as the "500000000000" string
+          ?assertEqual(500000000000,
+                       maps:get(<<"min_relay_gas_price">>, GasPrice))
+      end}}.
+
+%% Same regression for the utilization half: a container deployment sets both
+%% keys the same way.
+reporting_utilization_override_settable_by_os_env_test_() ->
+    Var = "AE__HTTP__GAS_PRICE__REPORTING_UTILIZATION_OVERRIDE",
+    {setup,
+     % setup/0's return value is the saved `aecore > fork' env and teardown/1
+     % switches on it - returning a bare ok here aborts cleanup.
+     fun() -> SavedFork = setup(), os:putenv(Var, "71"), SavedFork end,
+     fun(SavedFork) -> os:unsetenv(Var), teardown(SavedFork) end,
+     {"setting http:gas_price:reporting_utilization_override via AE__ does "
+      "not crash config load",
+      fun() ->
+          Res = aeu_env:apply_os_env("AE", aeu_env:schema(), #{}),
+          ?assertMatch(#{<<"http">> := #{<<"gas_price">> := #{}}}, Res),
+          #{<<"http">> := #{<<"gas_price">> := GasPrice}} = Res,
+          ?assertEqual(71, maps:get(<<"reporting_utilization_override">>, GasPrice))
+      end}}.
 
 -endif.

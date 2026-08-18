@@ -874,9 +874,15 @@ handle_request_('GetRecentGasPrices', _Params, _Context) ->
     Minutes = [1, 5, 15, 60],
     case aehttp_logic:get_top_blocks_gas_price_summary(Minutes) of
         {ok, GasPrices} ->
+            %% Applied here rather than in get_top_blocks_gas_price_summary/1 so
+            %% the summary keeps returning what was observed on chain.
             MkGasPrice =
-                fun({Ms, GasPrice, Utilization}) ->
-                    #{ <<"minutes">> => Ms, <<"min_gas_price">> => GasPrice, <<"utilization">> => Utilization }
+                fun({Ms, GasPrice0, Utilization0}) ->
+                    {GasPrice, Utilization} =
+                        aehttp_logic:apply_min_relay_gas_price(GasPrice0, Utilization0),
+                    #{ <<"minutes">> => Ms,
+                       <<"min_gas_price">> => GasPrice,
+                       <<"utilization">> => Utilization }
                 end,
             {200, [], lists:map(MkGasPrice, GasPrices)};
         {error, _} ->
