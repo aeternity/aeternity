@@ -17,6 +17,7 @@
         , get_block/1
         , get_key_block_by_height/1
         , get_block_state/1
+        , get_block_state_partial/2
         , get_current_generation/0
         , get_generation_by_hash/2
         , get_generation_by_height/2

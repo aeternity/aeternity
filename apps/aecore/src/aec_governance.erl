@@ -56,8 +56,9 @@
 -ifdef(TEST).
 -define(NETWORK_ID, <<"local_testnet">>).
 %% Exported and called fully qualified only here, so that the tests can mock the
-%% resolution: the eunit VM is started with '-network_id local_<protocol>_testnet'
-%% (see the Makefile), which wins over anything a test could set from the inside.
+%% resolution: the eunit VM is started with a network id of "local_" ++ Protocol ++
+%% "_testnet" (see the Makefile), which wins over anything a test could set from
+%% the inside.
 -export([resolve_network_id/0]).
 -define(RESOLVE_NETWORK_ID(), ?MODULE:resolve_network_id()).
 -else.

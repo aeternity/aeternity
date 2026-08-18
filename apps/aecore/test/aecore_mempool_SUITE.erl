@@ -21,7 +21,7 @@
     maybe_push_tx_out_cache/1,
     mine_key_blocks_to_gc_txs/1,
     invalid_GCed_tx_does_not_reenter_pool/1,
-    skipped_nonce_specific_cleanup/1,
+    skipped_nonce_not_cleaned_up_by_attempts/1,
     insufficient_funds_specific_cleanup/1,
     name_claim_to_unknown_commitment_cleanup/1,
     name_claim_with_too_long_name_should_not_crash_error_handling/1,
@@ -100,7 +100,7 @@ groups() ->
       [garbage_collected_tx_can_not_enter_the_pool_if_stopped_by_cache
        ]},
      {failed_attempts, [sequence],
-      [skipped_nonce_specific_cleanup,
+      [skipped_nonce_not_cleaned_up_by_attempts,
        insufficient_funds_specific_cleanup,
        name_claim_to_unknown_commitment_cleanup,
        name_claim_with_too_long_name_should_not_crash_error_handling,
@@ -434,26 +434,21 @@ mine_tx(Node, SignedTx) ->
                                                       [TxHash],
                                                       10). %% max keyblocks
 
-skipped_nonce_specific_cleanup(Config) ->
+skipped_nonce_not_cleaned_up_by_attempts(Config) ->
     Node = dev1,
     NodeName = aecore_suite_utils:node_name(Node),
     {ok, [SkippedNonceTx]} = push_tx_skipped_nonce(Config),
     CleanupTTL = ?NONCE_TOO_HIGH,
     %% assert the assumption
     {ok, CleanupTTL} = rpc:call(NodeName, aec_tx_pool_failures, limit, [SkippedNonceTx, tx_nonce_too_high_for_account]),
-    make_microblock_attempts(1, Config),
-    %% Mining the block here will occasionally _also_ make an attempt to
-    %% produce a microblock - be conservative below...
+    %% A tx waiting behind a gap in its sender's nonces is not offered to a
+    %% candidate at all, so it is never charged an apply failure and this limit
+    %% never reaches it, however many blocks are attempted.
+    make_microblock_attempts(CleanupTTL + 1, Config),
     {ok, _} = aecore_suite_utils:mine_blocks(NodeName, 1, ?MINE_RATE, key, #{}),
-    %% the tx is still here
     {ok, [SkippedNonceTx]} = rpc:call(NodeName, aec_tx_pool, peek, [infinity]),
-    %% Attempt to mine some more microblocks to check the tx is not cleaned up too early
-    %% Use -3 here in case _mine_blocks_ made an extra attempt
-    make_microblock_attempts(CleanupTTL - 3, Config),
-    {ok, [SkippedNonceTx]} = rpc:call(NodeName, aec_tx_pool, peek, [infinity]),
-    %% it should be cleaned up after two additional attempts
-    make_microblock_attempts(2, Config),
-    timer:sleep(100), %% provide some time for the tx pool to process the message
+    %% Its mempool stay is what ends it instead.
+    ok = mine_key_blocks_to_gc_txs(Config),
     {ok, []} = rpc:call(NodeName, aec_tx_pool, peek, [infinity]),
     %% the tx can not reenter the pool:
     {error, already_known} = push(NodeName, SkippedNonceTx, Config),

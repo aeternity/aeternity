@@ -9,6 +9,8 @@
 , {[ae,epoch,aecore,mining,blocks_mined]               , counter     , []}
 , {[ae,epoch,aecore,mining,interval]                   , histogram   , []}
 , {[ae,epoch,aecore,mining,retries]                    , counter     , []}
+%% Candidate builds that hit mining.micro_block_candidate_timeout.
+, {[ae,epoch,aecore,mining,micro_candidate_expired]    , counter     , []}
 , {[ae,epoch,aecore,peers,blocked]                     , gauge       , []}
 , {[ae,epoch,aecore,peers,count]                       , gauge       , []}
 , {[ae,epoch,aecore,peers,errored]                     , gauge       , []}

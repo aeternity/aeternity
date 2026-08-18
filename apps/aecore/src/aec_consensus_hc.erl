@@ -75,6 +75,7 @@
         , allow_lazy_leader/0
         , pick_lazy_leader/1
         , get_sign_module/0
+        , child_block_production_time/0
         , get_type/0
         , get_block_producer_configs/0
         , is_leader_valid/4

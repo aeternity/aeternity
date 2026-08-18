@@ -26,9 +26,21 @@
         { %% Tuple of arity 1 where the single element is the mempool key tuple.
          ?KEY(NegFee, NegGasPrice, Origin, Nonce, TxHash)
         }).
+%% Key of the nonce index. Ordered by account, then nonce, then by the same
+%% fee/gas-price pair the mempool itself is ordered by - so the entries of one
+%% {Account, Nonce} come out best paying first, and the best of them can be read
+%% without materialising the rest. See account_nonce_select/4.
+-define(NONCE_KEY(Account, Nonce, NegFee, NegGasPrice, TxHash),
+           {Account, Nonce, NegFee, NegGasPrice, TxHash}).
 -define(DEFAULT_PUSH_TIMEOUT, 5000).
+%% Reserved key in the per-batch ceiling cache, which is otherwise keyed by
+%% pubkey - an atom can never collide with one.
+-define(BATCH_CEILING, '$batch_ceiling').
 %% Number of nonce index entries fetched per ets:select/3 chunk.
 -define(NONCE_IDX_CHUNK, 100).
+%% Pool entries fetched per ets:select/3 chunk of the fee-ordered walk; the
+%% deadline is consulted between chunks.
+-define(POOL_WALK_CHUNK, 20).
 
 %% API
 -export([ start_link/0
@@ -37,6 +49,7 @@
 
 -export([ get_candidate/2
         , get_candidate/3
+        , get_candidate/4
         , get_max_nonce/1
         , minimum_miner_gas_price/0
         , maximum_auth_fun_gas/0
@@ -85,6 +98,7 @@
 -export([nonce_offset/0]).
 -export([tx_ttl/0]).
 -export([allow_reentry/0]).
+-export([int_check_nonce/4]).
 -endif.
 
 %% gen_server callbacks
@@ -133,6 +147,27 @@
 -type tx_hash() :: binary().
 -type height() :: aec_blocks:height().
 
+%% Set of transaction hashes selection must skip, as a map for O(1) lookup.
+-type ignore_set() :: #{tx_hash() => []}.
+
+%% deadline is an erlang:monotonic_time(millisecond) value past which
+%% selection stops walking the pool and returns what it has selected so far.
+%%
+%% packed says the caller already holds transactions for this candidate, so
+%% stopping on the deadline still leaves it a block to publish. Without it
+%% selection ignores the deadline rather than hand back an empty candidate.
+%%
+%% ceiling is the point past which that exemption lapses: a walk that has found
+%% nothing to select cannot go on forever, whatever the caller is still holding.
+-type select_opts() :: #{ deadline => integer() | infinity
+                        , ceiling  => integer() | infinity
+                        , packed   => boolean() }.
+
+%% expired distinguishes "stopped on the deadline" from "ran out of pool"; an
+%% empty selection alone does not, and only the former means the candidate came
+%% out smaller than the pool could have made it.
+-type select_result() :: #{ expired := boolean() }.
+
 -record(tx, { hash          :: binary(),
               signed_tx     :: aetx_sign:signed_tx(),
               failures  = 0 :: non_neg_integer() }).
@@ -152,9 +187,11 @@
 -ifndef(TEST).
 -define(DEFAULT_TX_TTL, 20 * 24 * 2 * 7). %% 2 weeks
 -define(DEFAULT_INVALID_TX_TTL, 5).
+-define(DEFAULT_FUTURE_NONCE_TX_TTL, 480). %% a day
 -else.
 -define(DEFAULT_TX_TTL, 8).
 -define(DEFAULT_INVALID_TX_TTL, 5).
+-define(DEFAULT_FUTURE_NONCE_TX_TTL, 8).
 -endif.
 
 -define(DEFAULT_NONCE_BASELINE, 1).
@@ -210,18 +247,16 @@ safe_tx_hash(Tx) ->
 
 push_(Tx, TxHash, Event, Timeout, Forced) ->
     Push =
-        fun() ->
+        fun(ConfigTTL) ->
             incr([push]),
-            %% Read the configured TTL here rather than in the pool process,
-            %% which serialises every push - each read walks the whole user
-            %% config map.
-            Res = gen_server:call(?SERVER, {push, Tx, TxHash, Event, tx_ttl()},
+            %% TTL settled outside the pool process - see pool_db_raw_put/6.
+            Res = gen_server:call(?SERVER, {push, Tx, TxHash, Event, ConfigTTL},
                                   Timeout),
             instant_tx_confirm_hook(TxHash),
             Res
         end,
     case Forced of
-        true -> Push();
+        true -> Push(tx_ttl());
         false ->
             case check_pool_db_put(Tx, TxHash, Event) of
                 ignore ->
@@ -230,8 +265,8 @@ push_(Tx, TxHash, Event, Timeout, Forced) ->
                 {error,_} = E ->
                     incr([push, error]),
                     E;
-                ok ->
-                    Push()
+                {ok, ConfigTTL} ->
+                    Push(ConfigTTL)
             end
     end.
 
@@ -318,15 +353,26 @@ failed_txs(FailedTxs) ->
 get_candidate(MaxGas, BlockHash) ->
     get_candidate(MaxGas, [], BlockHash).
 
--spec get_candidate(pos_integer(), [binary()], binary()) -> {ok, [aetx_sign:signed_tx()]}.
-get_candidate(MaxGas, IgnoreTxHashes, BlockHash) when is_integer(MaxGas),
-                                                      is_binary(BlockHash) ->
+-spec get_candidate(pos_integer(), [tx_hash()], binary()) ->
+          {ok, [aetx_sign:signed_tx()]}.
+get_candidate(MaxGas, IgnoreTxHashes, BlockHash) when is_list(IgnoreTxHashes) ->
+    %% Unbounded: selection can only stop because the pool ran out.
+    {ok, Txs, _SelectResult} =
+        get_candidate(MaxGas, maps:from_keys(IgnoreTxHashes, []), BlockHash, #{}),
+    {ok, Txs}.
+
+-spec get_candidate(pos_integer(), ignore_set(), binary(), select_opts()) ->
+          {ok, [aetx_sign:signed_tx()], select_result()}.
+get_candidate(MaxGas, IgnoreTxs, BlockHash, Opts) when is_integer(MaxGas),
+                                                       is_map(IgnoreTxs),
+                                                       is_binary(BlockHash),
+                                                       is_map(Opts) ->
     case MaxGas >= aec_governance:min_tx_gas() of
         true ->
-            ?TC(int_get_candidate(MaxGas, IgnoreTxHashes, BlockHash, dbs()),
-                {get_candidate, MaxGas, IgnoreTxHashes, BlockHash});
+            ?TC(int_get_candidate(MaxGas, IgnoreTxs, BlockHash, dbs(), Opts),
+                {get_candidate, MaxGas, map_size(IgnoreTxs), BlockHash});
         false ->
-            {ok, []}
+            {ok, [], #{expired => false}}
     end.
 
 %% It assumes that the persisted mempool has been updated.
@@ -390,13 +436,18 @@ init([]) ->
     origins_cache_open(origins_cache()),
     GCHeight = top_height(),
     Handled  = ets:new(init_tx_pool, [private]),
-    %% Read once for the whole restore rather than once per transaction.
-    Info     = {#dbs{}, origins_cache(), GCHeight, tx_ttl()},
+    Ceilings = ets:new(init_tx_pool_nonces, [private]),
+    %% The GC table is rebuilt from scratch here, so a tx far ahead of its
+    %% sender's nonce has to be judged again - a restart would otherwise hand it
+    %% the full stay however long it had already been held.
+    Info     = {#dbs{}, origins_cache(), GCHeight,
+                batch_ttl_fun(aec_chain:top_block_hash(), Ceilings)},
     InitF  = fun(TxHash, _) ->
                      update_pool_on_tx_hash(TxHash, Info, Handled),
                      ok
              end,
     ok = aec_db:ensure_transaction(fun() -> aec_db:fold_mempool(InitF, ok) end),
+    ets:delete(Ceilings),
     ets:delete(Handled),
     lager:debug("init: GCHeight = ~p", [GCHeight]),
     gproc_reg(),
@@ -544,8 +595,10 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 -spec int_get_max_nonce(pool_db(), aec_keys:pubkey()) -> {ok, non_neg_integer()} | undefined.
 int_get_max_nonce(NonceDb, Sender) ->
-    case ets:prev(NonceDb, {Sender, '$larger_than_any_nonce', <<>>}) of
-        {Sender, MaxNonce, _} ->
+    %% An atom sorts after every integer nonce, so this lands just past the
+    %% Sender's last entry; the trailing positions never get compared.
+    case ets:prev(NonceDb, ?NONCE_KEY(Sender, '$larger_than_any_nonce', <<>>, <<>>, <<>>)) of
+        ?NONCE_KEY(Sender, MaxNonce, _, _, _) ->
             {ok, MaxNonce};
         _ ->
             undefined
@@ -553,14 +606,13 @@ int_get_max_nonce(NonceDb, Sender) ->
 
 %% Ensure ordering of tx nonces in one account, and for duplicate account nonces
 %% we only get the one with higher fee or - if equal fee - higher gas price.
-%% int_get_candidate(#state{ db = Db, gc_db = GCDb }, MaxGas, BlockHash) ->
 %%
 %% Once selected into a candidate set, transactions are moved to the 'visited'
-%% table until the next key block top_change. This means they won't be
-%% considered for another microblock until the next leader cycle.
-%% ... Unless no matching txs can be found in the regular mempool.
+%% table until the next key block top_change. That no longer decides when the
+%% walk may take them: a run of consecutive nonces reads the shared nonce index,
+%% so it may take a visited entry at any point.
 %%
-int_get_candidate(MaxGas, IgnoreTxs, BlockHash, #dbs{db = Db} = DBs) ->
+int_get_candidate(MaxGas, IgnoreTxs, BlockHash, #dbs{db = Db} = DBs, Opts) ->
     {Trees, Header} = get_trees_and_header(BlockHash),
     lager:debug("size(Db) = ~p", [ets:info(Db, size)]),
     MinMinerGasPrice = aec_tx_pool:minimum_miner_gas_price(),
@@ -568,13 +620,18 @@ int_get_candidate(MaxGas, IgnoreTxs, BlockHash, #dbs{db = Db} = DBs) ->
     %% Read once for the whole candidate selection rather than once per
     %% transaction of the mempool - each read walks the whole user config map.
     Acc0     = #{ ignore_txs => IgnoreTxs, tree => gb_trees:empty(), txs => [], bad_txs => []
-                , nonce_offset => nonce_offset(), invalid_tx_ttl => invalid_tx_ttl() },
+                , accounts => #{}, expected => #{}, done => #{}
+                , nonce_offset => nonce_offset(), invalid_tx_ttl => invalid_tx_ttl()
+                , deadline => maps:get(deadline, Opts, infinity), expired => false
+                , ceiling => maps:get(ceiling, Opts, infinity)
+                , packed => maps:get(packed, Opts, false), examined => #{}
+                , resume => #{} },
     {ok, RemGas, Acc} = int_get_candidate(Db, MaxGas, MinTxGas, MinMinerGasPrice, Trees,
                                           Header, DBs, Acc0),
     {ok, _, Acc1} = int_get_candidate(
                       DBs#dbs.visited_db, RemGas, MinTxGas, MinMinerGasPrice, Trees, Header,
                       DBs, Acc),
-    #{ tree := AccTree, txs := AccTxs, bad_txs := AccBadTxs } = Acc1,
+    #{ tree := AccTree, txs := AccTxs, bad_txs := AccBadTxs, expired := Expired } = Acc1,
 
     %% Move Txs to visited *after* revisiting visited!
     AllVisited = gb_trees:values(AccTree) ++ lists:reverse(AccTxs) ++ lists:reverse(AccBadTxs),
@@ -583,7 +640,7 @@ int_get_candidate(MaxGas, IgnoreTxs, BlockHash, #dbs{db = Db} = DBs) ->
                 TxX
             end || {DbX, KeyX, TxX} <- AllVisited ],
 
-    {ok, Txs}.
+    {ok, Txs, #{ expired => Expired }}.
 
 get_trees_and_header(BlockHash) ->
     aec_db:ensure_dirty(
@@ -593,11 +650,15 @@ get_trees_and_header(BlockHash) ->
               {Trees, Header}
       end).
 
+int_get_candidate(_Db, Gas, _MinTxGas, _MinMinerGasPrice, _Trees, _Header, _DBs,
+                  #{expired := true} = Acc) ->
+    %% Expired: do not start another table.
+    {ok, Gas, Acc};
 int_get_candidate(Db, Gas, MinTxGas, MinMinerGasPrice, Trees, Header, DBs, Acc)
   when Gas > MinTxGas ->
     Pat = [{ '_', [], ['$_'] }],
     int_get_candidate_fold(Gas, MinTxGas, MinMinerGasPrice, Db, DBs,
-                           ets:select(Db, Pat, 20),
+                           ets:select(Db, Pat, ?POOL_WALK_CHUNK),
                            {account_trees, aec_trees:accounts(Trees)},
                            aec_headers:height(Header), aec_headers:version(Header), Acc);
 int_get_candidate(_, Gas, _, _, _, _, _, Acc) ->
@@ -610,12 +671,50 @@ int_get_candidate_fold(Gas, MinTxGas, MinMinerGasPrice, Db, Dbs = #dbs{}, {Txs, 
                        AccountsTree, Height, Protocol, Acc) when Gas > MinTxGas ->
     {RemGas, NewAcc} = fold_txs(Txs, Gas, MinTxGas, MinMinerGasPrice, Db, Dbs,
                                 AccountsTree, Height, Protocol, Acc),
-    int_get_candidate_fold(RemGas, MinTxGas, MinMinerGasPrice, Db, Dbs, ets:select(Cont),
-                           AccountsTree, Height, Protocol, NewAcc);
+    %% Once per select chunk, which is a bounded amount of work; the unbounded
+    %% loops below check the deadline themselves and may already have expired.
+    case stop_selecting(NewAcc) of
+        true ->
+            {ok, RemGas, expire(NewAcc)};
+        false ->
+            int_get_candidate_fold(RemGas, MinTxGas, MinMinerGasPrice, Db, Dbs, ets:select(Cont),
+                                   AccountsTree, Height, Protocol, NewAcc)
+    end;
 int_get_candidate_fold(RemGas, _GL, _MMGP, _Db, _Dbs, '$end_of_table', _AccountsTree,
                        _Height, _Protocol, Acc) ->
     {ok, RemGas, Acc}.
 
+%% Whether selection should stop now: either it already stopped somewhere deeper
+%% in this pass, or the deadline has just fallen.
+stop_selecting(#{expired := true}) ->
+    true;
+stop_selecting(Acc) ->
+    deadline_expired(Acc).
+
+expire(Acc) ->
+    Acc#{ expired := true }.
+
+%% Only the ceiling applies to a walk holding nothing - see select_opts().
+deadline_expired(#{deadline := infinity, ceiling := infinity}) ->
+    false;
+deadline_expired(#{deadline := Deadline, ceiling := Ceiling} = Acc) ->
+    Now = erlang:monotonic_time(millisecond),
+    past(Now, Ceiling) orelse (has_selection(Acc) andalso past(Now, Deadline)).
+
+past(_Now, infinity)                    -> false;
+past(Now, Point) when is_integer(Point) -> Now >= Point.
+
+%% Whether this candidate would be non-empty if selection stopped right now.
+has_selection(#{packed := true}) ->
+    true;
+has_selection(#{tree := Tree, txs := Txs}) ->
+    Txs =/= [] orelse not gb_trees:is_empty(Tree).
+
+%% Selection stopped inside the chunk - see next_competitor/12 and skip_packed/5.
+%% Abandon the rest of it rather than carry on to the chunk boundary.
+fold_txs(_Txs, Gas, _MinTxGas, _MinMinerGasPrice, _Db, _Dbs, _AccountsTree, _Height,
+         _Protocol, #{expired := true} = Acc) ->
+    {Gas, Acc};
 fold_txs([Tx|Txs], Gas, MinTxGas, MinMinerGasPrice, Db, Dbs, AccountsTree, Height, Protocol, Acc) ->
     if Gas > MinTxGas ->
             {Gas1, Acc1} =
@@ -628,53 +727,353 @@ fold_txs([Tx|Txs], Gas, MinTxGas, MinMinerGasPrice, Db, Dbs, AccountsTree, Heigh
 fold_txs([], Gas, _, _, _, _, _, _, _, Acc) ->
     {Gas, Acc}.
 
-int_get_candidate_({?KEY(_, _, Account, Nonce, TxHash) = Key, TxRec},
+int_get_candidate_({?KEY(NegFee, NegGasPrice, Account, Nonce, TxHash) = Key, TxRec},
                    Gas, MinMinerGasPrice, Db, Dbs, AccountsTree, Height, Protocol,
-                   Acc = #{ tree := AccTree, ignore_txs := IgnoreTxs }) ->
-    case lists:member(TxHash, IgnoreTxs) of
+                   Acc = #{ ignore_txs := IgnoreTxs, done := Done }) ->
+    case maps:is_key(TxHash, IgnoreTxs) of
         true ->
             {Gas, Acc};
+        false when Nonce =:= 0 ->
+            %% A meta tx carries no nonce of its own to sequence on - the pool key
+            %% of a generalized account's txs always holds 0 - so it is judged by
+            %% itself, as every entry used to be.
+            entry_candidate(Key, TxRec#tx.signed_tx, Db, Dbs, AccountsTree, Height, Gas,
+                            MinMinerGasPrice, Protocol, Acc);
+        false when is_map_key(Account, Done) ->
+            %% This account gave the candidate everything it could; see
+            %% serve_nonces/10.
+            {Gas, Acc};
         false ->
-            Tx = TxRec#tx.signed_tx,
-            case gb_trees:is_defined({Account, Nonce}, AccTree) of
-                true when Nonce > 0 ->
-                    %% The earlier non-meta Tx must have had higher fee. Skip this tx.
-                    {Gas, Acc};
-                false ->
-                    check_candidate(
-                      Db, Dbs, Key, Tx, AccountsTree, Height, Gas, MinMinerGasPrice, Protocol, Acc)
+            {Expected, Acc1} = expected_nonce(Account, Dbs, AccountsTree, Acc),
+            if
+                Expected =:= aborted ->
+                    %% Out of time working out where this account's run starts.
+                    {Gas, Acc1};
+                Expected =:= unsequenced orelse Nonce < Expected ->
+                    %% Either an account whose queue cannot be sequenced, or a
+                    %% nonce already behind the run - judged on its own, so a stale
+                    %% tx is retired as before, unless the account is already done.
+                    entry_candidate(Key, TxRec#tx.signed_tx, Db, Dbs, AccountsTree, Height,
+                                    Gas, MinMinerGasPrice, Protocol, Acc1);
+                Nonce > Expected ->
+                    %% Not this tx's turn: it cannot apply on top of the block being
+                    %% built, whatever it pays. Left where it is - selecting it only
+                    %% spends the candidate's gas on a tx that fails to apply, and
+                    %% charges it a failure it did not earn.
+                    {Gas, Acc1};
+                true ->
+                    serve_nonces(Account, Expected, {NegFee, NegGasPrice}, Dbs,
+                                 AccountsTree, Height, Gas, MinMinerGasPrice, Protocol,
+                                 Acc1)
+            end
+    end.
+
+%% One entry judged on its own, without following a nonce sequence: meta txs, the
+%% accounts expected_nonce/4 cannot sequence, and nonces already behind the run.
+entry_candidate(?KEY(_, _, Account, Nonce, _) = Key, Tx, Db, Dbs, AccountsTree, Height,
+                Gas, MinMinerGasPrice, Protocol, Acc = #{ tree := AccTree }) ->
+    case Nonce > 0 andalso gb_trees:is_defined({Account, Nonce}, AccTree) of
+        true ->
+            %% The earlier non-meta Tx must have had higher fee. Skip this tx.
+            {Gas, Acc};
+        false ->
+            {_Outcome, Gas1, Acc1} =
+                check_candidate(Db, Dbs, Key, Tx, AccountsTree, Height, Gas,
+                                MinMinerGasPrice, Protocol, Acc),
+            {Gas1, Acc1}
+    end.
+
+%% The nonce this candidate wants next from an account: the one the chain expects,
+%% advanced past whatever an earlier pass of the same build already packed.
+%%
+%% Accounts whose queue cannot be sequenced - generalized ones, and those the block
+%% state does not know - are remembered as 'unsequenced', so that costs one lookup
+%% for the account rather than one per transaction of its queue.
+expected_nonce(Account, #dbs{nonce_db = NDb}, AccountsTree,
+               Acc = #{ expected := Expected, accounts := Cache0,
+                        ignore_txs := IgnoreTxs }) ->
+    case Expected of
+        #{ Account := N } ->
+            {N, Acc};
+        _ ->
+            {Lookup, Cache} = get_account(Account, AccountsTree, Cache0),
+            Acc1 = Acc#{ accounts := Cache },
+            case Lookup of
+                {value, AccountObj} ->
+                    case aec_accounts:type(AccountObj) of
+                        basic ->
+                            remember_expected(
+                              Account,
+                              skip_packed(NDb, Account, aec_accounts:nonce(AccountObj) + 1,
+                                          IgnoreTxs, Acc1));
+                        _ ->
+                            remember_expected(Account, {unsequenced, Acc1})
+                    end;
+                _ ->
+                    remember_expected(Account, {unsequenced, Acc1})
+            end
+    end.
+
+%% An abandoned skip is not an answer, so it is not remembered; selection is
+%% stopping, and int_get_candidate_/9 leaves the account alone.
+remember_expected(_Account, {aborted, Acc}) ->
+    {aborted, Acc};
+remember_expected(Account, {N, Acc = #{ expected := Expected }}) ->
+    {N, Acc#{ expected := Expected#{ Account => N } }}.
+
+%% An earlier pass of this build packed the front of the account's queue, so this
+%% pass starts after it. Without this, a second pass would find the account's first
+%% unpacked tx sitting above the nonce the chain expects, and pass it over.
+%%
+%% One nonce is read whole or not at all - reporting a packed nonce unpacked would
+%% have the run fill it a second time - so the deadline stops the whole selection
+%% here rather than cut a nonce short.
+skip_packed(NDb, Account, Nonce, IgnoreTxs, Acc) when map_size(IgnoreTxs) > 0 ->
+    case any_packed(account_nonce_select(NDb, Account, Nonce, ?NONCE_IDX_CHUNK),
+                    IgnoreTxs, Acc) of
+        false ->
+            {Nonce, Acc};
+        aborted ->
+            abort(Acc);
+        true ->
+            case stop_selecting(Acc) of
+                true  -> abort(Acc);
+                false -> skip_packed(NDb, Account, Nonce + 1, IgnoreTxs, Acc)
+            end
+    end;
+skip_packed(_NDb, _Account, Nonce, _IgnoreTxs, Acc) ->
+    {Nonce, Acc}.
+
+abort(Acc) ->
+    {aborted, expire(Acc)}.
+
+%% Whether an earlier pass of this build was offered any of the txs competing for
+%% one nonce. The set is what selection handed the builder, not what applied, so a
+%% nonce whose tx failed to apply counts as filled for the rest of this build.
+%% A hit answers at once; proving there is none costs the whole nonce.
+any_packed('$end_of_table', _IgnoreTxs, _Acc) ->
+    false;
+any_packed({Entries, Cont}, IgnoreTxs, Acc) ->
+    case lists:any(fun({_, _, H}) -> maps:is_key(H, IgnoreTxs) end, Entries) of
+        true  -> true;
+        false -> any_packed_more(ets:select(Cont), IgnoreTxs, Acc)
+    end.
+
+%% A nonce that fits in one chunk ends at the clause above without consulting the
+%% deadline; only a flooded one reaches the check, which is what bounds it.
+any_packed_more('$end_of_table', _IgnoreTxs, _Acc) ->
+    false;
+any_packed_more(Chunk, IgnoreTxs, Acc) ->
+    case stop_selecting(Acc) of
+        true  -> aborted;
+        false -> any_packed(Chunk, IgnoreTxs, Acc)
+    end.
+
+%% Fee order decides which account is served. The order *within* an account is its
+%% nonce sequence, which fee order does not follow: a tx whose nonce the chain is
+%% not ready for cannot apply however much it pays. So once the walk reaches the
+%% nonce an account is due, its queue is taken in order, stopping at a nonce the
+%% pool cannot fill and at the price the walk is currently offering.
+%%
+%% The run needs no deadline check of its own: each nonce it takes either spends
+%% gas or fills one an earlier pass offered, so its length is bounded by the
+%% candidate's gas together with the size of the ignore set.
+serve_nonces(Account, Nonce, Price, Dbs = #dbs{nonce_db = NDb}, AccountsTree, Height, Gas,
+             MinMinerGasPrice, Protocol, Acc) ->
+    case next_competitors(nonce_competitors(NDb, Account, Nonce, Acc)) of
+        '$end_of_table' ->
+            {Gas, mark_done(Account, Acc)};
+        {Entries, Cont} ->
+            case serve_nonce(Entries, Cont, Account, Nonce, Price, Dbs, AccountsTree,
+                             Height, Gas, MinMinerGasPrice, Protocol, Acc) of
+                {taken, Gas1, Acc1} ->
+                    serve_nonces(Account, Nonce + 1, Price, Dbs, AccountsTree,
+                                 Height, Gas1, MinMinerGasPrice, Protocol,
+                                 advance(Account, Nonce + 1, Acc1));
+                {pending, Gas1, Acc1} ->
+                    %% Nothing here is worth what the walk is offering; it will
+                    %% reach this account again at the price the queue does pay.
+                    {Gas1, Acc1};
+                {stop, Gas1, Acc1} ->
+                    {Gas1, mark_done(Account, Acc1)}
+            end
+    end.
+
+%% One nonce of the run. Several txs may compete for it, dearest first; the best
+%% paying one that can be taken has it, and if none can, the run ends here.
+serve_nonce([], Cont, Account, Nonce, Price, Dbs, AccountsTree, Height, Gas,
+            MinMinerGasPrice, Protocol, Acc) ->
+    case next_competitors(ets:select(Cont)) of
+        '$end_of_table' ->
+            {stop, Gas, Acc};
+        {Entries, Cont1} ->
+            serve_nonce(Entries, Cont1, Account, Nonce, Price, Dbs, AccountsTree, Height,
+                        Gas, MinMinerGasPrice, Protocol, Acc)
+    end;
+serve_nonce(Chunk = [{NegFee, NegGasPrice, TxHash} | Entries], Cont, Account, Nonce, Price,
+            Dbs, AccountsTree, Height, Gas, MinMinerGasPrice, Protocol,
+            Acc = #{ ignore_txs := IgnoreTxs, examined := Examined }) ->
+    Key = ?KEY(NegFee, NegGasPrice, Account, Nonce, TxHash),
+    case maps:is_key(TxHash, IgnoreTxs) of
+        true ->
+            %% Offered by an earlier pass of this build: the nonce is spoken for
+            %% whatever it paid, so the run carries on from the next one.
+            {taken, Gas, Acc};
+        false when is_map_key(TxHash, Examined) ->
+            %% Already judged in this selection and not taken. The gas left only
+            %% falls and the trees do not move, so the answer cannot have changed
+            %% - judging it again would only retire it a second time.
+            next_competitor(Entries, Cont, Account, Nonce, Price, Dbs, AccountsTree,
+                            Height, Gas, MinMinerGasPrice, Protocol, Acc);
+        false when {NegFee, NegGasPrice} > Price ->
+            %% Pays less than the walk is offering here, and every competitor left
+            %% is cheaper still. Taking one would let it in ahead of the senders
+            %% the walk still owes that price, so the nonce is left to the walk.
+            {pending, Gas, park(Account, Nonce, Chunk, Cont, Acc)};
+        false ->
+            case resolve_pool_entry(Dbs, Key) of
+                none ->
+                    %% Garbage collected between reading the index and here.
+                    next_competitor(Entries, Cont, Account, Nonce, Price, Dbs, AccountsTree,
+                                    Height, Gas, MinMinerGasPrice, Protocol,
+                                    judged(TxHash, Acc));
+                {ok, Db, Tx} ->
+                    case check_candidate(Db, Dbs, Key, Tx, AccountsTree, Height, Gas,
+                                         MinMinerGasPrice, Protocol, Acc) of
+                        {selected, Gas1, Acc1} ->
+                            {taken, Gas1, Acc1};
+                        {no_gas, Gas1, Acc1} ->
+                            %% No room for this one, but a smaller competitor may
+                            %% still fill the nonce, and it is price-gated like any
+                            %% other - so it cannot get in ahead of what the walk
+                            %% still owes. If none of them fits, the run ends: the
+                            %% gas left only falls, so the rest of the queue cannot
+                            %% be applied either.
+                            next_competitor(Entries, Cont, Account, Nonce, Price, Dbs,
+                                            AccountsTree, Height, Gas1, MinMinerGasPrice,
+                                            Protocol, judged(TxHash, Acc1));
+                        {invalid, Gas1, Acc1} ->
+                            %% Retired; a competing tx may still fill the nonce.
+                            next_competitor(Entries, Cont, Account, Nonce, Price, Dbs,
+                                            AccountsTree, Height, Gas1, MinMinerGasPrice,
+                                            Protocol, judged(TxHash, Acc1))
+                    end
+            end
+    end.
+
+%% On to the next tx competing for the same nonce, unless the deadline fell in
+%% between. One nonce may hold arbitrarily many variants, and retiring a run of
+%% invalid ones is work this loop does - not the chunked walk, whose own check
+%% would not be reached until the whole pile had been examined.
+next_competitor(Entries, Cont, Account, Nonce, Price, Dbs, AccountsTree, Height, Gas,
+                MinMinerGasPrice, Protocol, Acc) ->
+    case stop_selecting(Acc) of
+        true ->
+            {stop, Gas, expire(Acc)};
+        false ->
+            serve_nonce(Entries, Cont, Account, Nonce, Price, Dbs, AccountsTree, Height, Gas,
+                        MinMinerGasPrice, Protocol, Acc)
+    end.
+
+%% A nonce the walk gave back is walked into again by every competitor it holds;
+%% reading it from the start each time is quadratic in how many are parked there.
+nonce_competitors(NDb, Account, Nonce, #{ resume := Resume }) ->
+    case Resume of
+        #{ Account := {Nonce, Chunk} } -> Chunk;
+        _ -> account_nonce_select(NDb, Account, Nonce, ?NONCE_IDX_CHUNK)
+    end.
+
+%% The chunk is kept rather than a key to seek to: a competitor in the visited
+%% table can be dearer than the entry the walk comes back with, and seeking past
+%% it would hand the nonce to something cheaper.
+park(Account, Nonce, Chunk, Cont, Acc = #{ resume := Resume }) ->
+    Acc#{ resume := Resume#{ Account => {Nonce, {Chunk, Cont}} } }.
+
+%% One judgment per competitor per selection: the gas left only falls and the
+%% trees do not move, so a second look could only retire the tx twice.
+judged(TxHash, Acc = #{ examined := Examined }) ->
+    Acc#{ examined := Examined#{ TxHash => [] } }.
+
+advance(Account, Nonce, Acc = #{ expected := Expected }) ->
+    Acc#{ expected := Expected#{ Account => Nonce } }.
+
+%% Nothing more can be taken from this account for this candidate, so the rest of
+%% its entries in the walk are skipped rather than re-examined one by one.
+mark_done(Account, Acc = #{ done := Done }) ->
+    Acc#{ done := Done#{ Account => [] } }.
+
+%% The pool entries competing for one {Account, Nonce}, read a chunk at a time.
+%% Both are bound leading key positions, so the traversal is confined to that
+%% nonce; ?NONCE_KEY covers the order they come out in.
+account_nonce_select(NDb, Account, Nonce, Limit) ->
+    Pat = [{ {?NONCE_KEY(Account, Nonce, '$1', '$2', '$3'), '_'}, [],
+             [{{'$1', '$2', '$3'}}] }],
+    ets:select(NDb, Pat, Limit).
+
+%% ets:select/3 may hand back an empty chunk with a continuation; every caller
+%% here wants either a competitor or the end of the nonce.
+next_competitors('$end_of_table') ->
+    '$end_of_table';
+next_competitors({[], Cont}) ->
+    next_competitors(ets:select(Cont));
+next_competitors({[_|_], _} = Chunk) ->
+    Chunk.
+
+%% Which table holds the entry the nonce index points at; the caller needs it to
+%% move the tx to visited or to retire it.
+resolve_pool_entry(#dbs{db = Db, visited_db = VDb}, Key) ->
+    case ets:lookup(Db, Key) of
+        [{_, #tx{signed_tx = Tx}}] ->
+            {ok, Db, Tx};
+        [] ->
+            case ets:lookup(VDb, Key) of
+                [{_, #tx{signed_tx = Tx}}] -> {ok, VDb, Tx};
+                []                         -> none
             end
     end.
 
 check_candidate(Db, #dbs{gc_db = GCDb} = _Dbs,
                 ?KEY(_, _, Account, Nonce, TxHash) = Key, Tx,
                 AccountsTree, Height, Gas, MinMinerGasPrice, Protocol,
-                Acc = #{ tree := AccTree, txs := AccTxs }) ->
+                Acc0 = #{ tree := AccTree, txs := AccTxs, accounts := Cache0,
+                          nonce_offset := Offset, invalid_tx_ttl := InvalidTxTTL }) ->
     Tx1 = aetx_sign:tx(Tx),
     TxTTL = aetx:ttl(Tx1),
     TxGas = aetx:gas_limit(Tx1, Height, Protocol),
-    case Height < TxTTL andalso TxGas > 0
-         andalso ok =:= int_check_account(Tx, AccountsTree, check_candidate,
-                                          maps:get(nonce_offset, Acc))
-         andalso MinMinerGasPrice =< aetx:min_gas_price(Tx1, Height, Protocol) of
+    %% Short-circuiting; threads the account cache through every check.
+    {Valid, Cache} =
+        case Height < TxTTL andalso TxGas > 0 of
+            false ->
+                {false, Cache0};
+            true ->
+                case int_check_account(Tx, AccountsTree, check_candidate, Cache0, Offset) of
+                    {ok, Cache1} ->
+                        {MinMinerGasPrice =< aetx:min_gas_price(Tx1, Height, Protocol), Cache1};
+                    {{error, _}, Cache1} ->
+                        {false, Cache1}
+                end
+        end,
+    Acc = Acc0#{ accounts := Cache },
+    case Valid of
         true ->
             case Gas - TxGas of
                 RemGas when RemGas >= 0 ->
                     case Nonce of
                         0 -> %% Meta tx
-                            {RemGas, Acc#{ txs := [{Db, Key, Tx} | AccTxs] }};
+                            {selected, RemGas, Acc#{ txs := [{Db, Key, Tx} | AccTxs] }};
                         _N ->
-                            {RemGas, Acc#{ tree := gb_trees:insert({Account, Nonce}, {Db, Key, Tx}, AccTree) }}
+                            {selected, RemGas,
+                             Acc#{ tree := gb_trees:insert({Account, Nonce}, {Db, Key, Tx}, AccTree) }}
                     end;
                 _ ->
                     %% Check the rest of txs, maybe some of them fits
                     %% into the gas limit.
-                    {Gas, Acc}
+                    {no_gas, Gas, Acc}
             end;
         false ->
             %% This is not valid anymore.
-            enter_tx_gc(GCDb, TxHash, Key, Height + maps:get(invalid_tx_ttl, Acc)),
-            {Gas, Acc#{ bad_txs := [{Db, Key, Tx} | maps:get(bad_txs, Acc)] }}
+            enter_tx_gc(GCDb, TxHash, Key, Height + InvalidTxTTL),
+            {invalid, Gas, Acc#{ bad_txs := [{Db, Key, Tx} | maps:get(bad_txs, Acc)] }}
     end.
 
 move_to_visited(VDb, #dbs{visited_db = VDb}, _) ->
@@ -797,7 +1196,7 @@ pool_db_peek(#dbs{db = Db, visited_db = VDb, nonce_db = NDb}, Max, Account, MaxN
                 all -> [];
                 _   -> [{'=<', '$1', MaxNonce}]
             end,
-    Pat = [{ {{Account, '$1', '$2'}, {'$3', '$4'}}, Guard,
+    Pat = [{ {?NONCE_KEY(Account, '$1', '$3', '$4', '$2'), '_'}, Guard,
              [?KEY_AS_MATCH_SPEC_RESULT('$3', '$4', Account, '$1', '$2')] }],
     pool_db_peek_by_nonce(NDb, Db, VDb, Pat, Max).
 
@@ -828,7 +1227,8 @@ pool_db_merge(L1, [], N) ->
 %% refers to. An index entry without a mempool entry has been garbage collected
 %% concurrently, so chunks are consumed until Max txs are found or the
 %% account's range is exhausted - not merely until Max entries are read.
-%% Results come out in nonce order rather than the fee order of peek/1.
+%% Results come out in nonce order rather than the fee order of peek/1, and
+%% within one nonce dearest first.
 %% ets:select/3 is called directly rather than through ets_select/3, as the
 %% chunked walk needs a continuation even when Max is infinity.
 pool_db_peek_by_nonce(NDb, Db, VDb, Pat, Max) ->
@@ -918,15 +1318,20 @@ do_top_change(Ancestor, Type, OldHash, NewHash, State0) ->
     %% Add back transactions to the pool from discarded part of the chain
     %% Mind that we don't need to add those which are incoming in the fork
     {GCHeight, State} = get_gc_height(State0),
+    Handled  = ets:new(foo, [private, set]),
+    Ceilings = ets:new(top_change_nonces, [private, set]),
     %% Read once for the whole replay rather than once per transaction of
-    %% every block on either side of the fork.
-    Info = {State#state.dbs, State#state.origins_cache, GCHeight, tx_ttl()},
+    %% every block on either side of the fork. A tx coming back from a discarded
+    %% block is judged against the new top: a deep enough fork can leave it well
+    %% ahead of the nonce the chain is now due.
+    Info = {State#state.dbs, State#state.origins_cache, GCHeight,
+            batch_ttl_fun(NewHash, Ceilings)},
 
-    Handled = ets:new(foo, [private, set]),
     aec_db:ensure_activity(async_dirty, fun() ->
             update_pool_from_blocks(Ancestor, OldHash, Info, Handled),
             update_pool_from_blocks(Ancestor, NewHash, Info, Handled)
         end),
+    ets:delete(Ceilings),
     ets:delete(Handled),
     Ret = case Type of
               key -> revisit(State#state.dbs);
@@ -949,7 +1354,7 @@ safe_get_tx_hashes(Hash) ->
         {value, Hashes} -> Hashes
     end.
 
-update_pool_on_tx_hash(TxHash, {#dbs{gc_db = GCDb} = Dbs, OriginsCache, GCHeight, ConfigTTL},
+update_pool_on_tx_hash(TxHash, {#dbs{gc_db = GCDb} = Dbs, OriginsCache, GCHeight, TTLFun},
                        Handled) ->
     case ets:member(Handled, TxHash) of
         true -> ok;
@@ -965,7 +1370,7 @@ update_pool_on_tx_hash(TxHash, {#dbs{gc_db = GCDb} = Dbs, OriginsCache, GCHeight
                     add_to_origins_cache(OriginsCache, Tx);
                 true ->
                     Key = pool_db_key(Tx, TxHash),
-                    pool_db_raw_put(Dbs, GCHeight, ConfigTTL, Key, Tx, TxHash)
+                    pool_db_raw_put(Dbs, GCHeight, TTLFun(Tx), Key, Tx, TxHash)
             end
     end.
 
@@ -975,8 +1380,12 @@ add_to_origins_cache(OriginsCache, SignedTx) ->
     Nonce  = aetx:nonce(Tx),
     ok = aec_tx_pool_gc:add_to_origins_cache(OriginsCache, Origin, Nonce).
 
+%% On success this also answers how long the tx may linger in the pool, which is
+%% decided from the same accounts tree the checks are run against - the pool
+%% process would otherwise have to read the config and the account again, and it
+%% serialises every push.
 -spec check_pool_db_put(aetx_sign:signed_tx(), tx_hash(), event()) ->
-          ignore | ok | {error, atom()}.
+          ignore | {ok, non_neg_integer()} | {error, atom()}.
 check_pool_db_put(Tx, TxHash, Event) ->
     aec_db:ensure_dirty(fun() -> check_pool_db_put_(Tx, TxHash, Event) end).
 
@@ -987,7 +1396,14 @@ check_pool_db_put_(Tx, TxHash, Event) ->
             {error, already_accepted};
         mempool ->  ignore;
         none ->
-            check_reentry(TxHash);
+            %% A tx the pool collected may return still further ahead than
+            %% mempool.nonce_offset, so its stay is judged as a fresh one's is.
+            case check_reentry(TxHash) of
+                ok ->
+                    {ok, accepted_ttl(Tx, reentry_source())};
+                ignore ->
+                    ignore
+            end;
         Unknown when Unknown =:= not_found ->
             {Header, BlockHash, Trees} = get_onchain_env(),
             Checks = [ fun check_valid_at_protocol/6
@@ -1004,7 +1420,7 @@ check_pool_db_put_(Tx, TxHash, Event) ->
                     lager:debug("Validation error for tx ~p: ~p", [TxHash, E]),
                     E;
                 ok ->
-                    ok
+                    {ok, accepted_ttl(Tx, {account_trees, aec_trees:accounts(Trees)})}
             end
     end.
 
@@ -1021,6 +1437,121 @@ check_reentry(TxHash) ->
                         [TxHash]),
             ignore
     end.
+
+%% Only the accounts tree is read, but an empty chain db still has to reach the
+%% genesis fallback - see get_onchain_env/0.
+reentry_source() ->
+    case accounts_tree(aec_chain:top_block_hash()) of
+        {ok, Tree} ->
+            {account_trees, Tree};
+        error ->
+            {_Header, _BlockHash, Trees} = get_onchain_env(),
+            {account_trees, aec_trees:accounts(Trees)}
+    end.
+
+%% How long a tx just accepted into the pool may stay there, judged against the
+%% accounts tree the acceptance was decided on.
+accepted_ttl(Tx, Source) ->
+    config_ttl(Tx, nonce_ceiling(Source, nonce_offset()), config_ttls()).
+
+%% Both mempool residencies. future_nonce_tx_ttl is a shortening, so it is capped
+%% by tx_ttl; setting the two equal disables the distinction. The floor keeps a
+%% negative application-environment value from meaning a stay already in the past.
+config_ttls() ->
+    TxTTL = tx_ttl(),
+    {TxTTL, min(TxTTL, max(0, future_nonce_tx_ttl()))}.
+
+%% Which of the two a tx gets. Selection never offers a tx behind a gap in its
+%% sender's nonces, so it is never charged an apply failure and nothing else would
+%% retire it before mempool.tx_ttl. The threshold here is mempool.nonce_offset,
+%% which is where this node stops accepting such a tx from its own API.
+config_ttl(Tx, Ceiling, {TxTTL, FutureTTL}) ->
+    Unsigned = aetx_sign:innermost_tx(Tx),
+    case aetx:origin(Unsigned) of
+        undefined ->
+            TxTTL;
+        Pubkey ->
+            case aetx:nonce(Unsigned) > Ceiling(Pubkey) of
+                true  -> FutureTTL;
+                false -> TxTTL
+            end
+    end.
+
+%% The highest nonce a sender may hold at the full stay. An integer nonce never
+%% exceeds an atom, so 'infinity' judges nothing early: a generalized account
+%% carries no nonce of its own, and an account the chain does not know has its
+%% txs offered and retired the way they always were.
+nonce_ceiling(Source, Offset) ->
+    fun(Pubkey) ->
+            case get_account(Pubkey, Source) of
+                {value, Account} ->
+                    case aec_accounts:type(Account) of
+                        basic -> aec_accounts:nonce(Account) + Offset;
+                        _     -> infinity
+                    end;
+                _ ->
+                    infinity
+            end
+    end.
+
+%% Same, memoised: a restore or a fork replay walks many txs over far fewer
+%% senders, and each miss is an accounts-tree lookup.
+cached_nonce_ceiling(Source, Offset, Cache) ->
+    Ceiling = nonce_ceiling(Source, Offset),
+    fun(Pubkey) ->
+            case ets:lookup(Cache, Pubkey) of
+                [{_, Cached}] ->
+                    Cached;
+                [] ->
+                    Ent = Ceiling(Pubkey),
+                    ets:insert(Cache, {Pubkey, Ent}),
+                    Ent
+            end
+    end.
+
+%% How a batch of txs being put back decides its residency. Without a readable
+%% accounts tree nothing can be judged too far ahead, so every tx keeps the full
+%% stay rather than risk being expired early.
+batch_ttl_fun(BlockHash, Cache) ->
+    {TxTTL, _} = TTLs = config_ttls(),
+    Offset = nonce_offset(),
+    fun(Tx) ->
+            case batch_ceiling(BlockHash, Offset, Cache) of
+                none    -> TxTTL;
+                Ceiling -> config_ttl(Tx, Ceiling, TTLs)
+            end
+    end.
+
+%% Resolved on the first tx that needs judging, not when the batch is set up: a
+%% top change that puts nothing back - which every straight-line extension is -
+%% must not pay for an accounts tree it never consults.
+batch_ceiling(BlockHash, Offset, Cache) ->
+    case ets:lookup(Cache, ?BATCH_CEILING) of
+        [{_, Ceiling}] ->
+            Ceiling;
+        [] ->
+            Ceiling = case accounts_tree(BlockHash) of
+                          {ok, Tree} -> cached_nonce_ceiling({account_trees, Tree},
+                                                             Offset, Cache);
+                          error      -> none
+                      end,
+            ets:insert(Cache, {?BATCH_CEILING, Ceiling}),
+            Ceiling
+    end.
+
+%% Only the accounts tree: the whole block state is six of them, and the other
+%% five are never consulted here. The dirty backend also keeps a read from
+%% opening a transaction of its own when this runs inside another activity.
+accounts_tree(undefined) ->
+    error;
+accounts_tree(BlockHash) ->
+    aec_db:ensure_dirty(
+      fun() ->
+              case aec_chain:get_block_state_partial(BlockHash, [accounts]) of
+                  {ok, Trees} -> {ok, aec_trees:accounts(Trees)};
+                  error       -> error
+              end
+      end).
 
 -spec get_onchain_env() -> {aec_headers:header(),
                             aec_blocks:block_header_hash(),
@@ -1058,11 +1589,7 @@ pool_db_raw_delete(#dbs{db = Db, visited_db = VDb, nonce_db = NDb}, Key) ->
     ets:delete(VDb, Key),
     ets:delete(Db, Key).
 
-%% ConfigTTL is the configured mempool tx_ttl, i.e. how many blocks a tx may
-%% linger in the pool. Every caller reads it outside the pool process: a push
-%% reads it in the pushing process, and replaying a fork or restoring the
-%% persisted mempool at startup reads it once for the whole batch, since each
-%% read walks the whole user config map.
+%% ConfigTTL is how many blocks this tx may linger in the pool - see config_ttl/3.
 pool_db_raw_put(#dbs{db = Db, nonce_db = NDb, gc_db = GCDb},
                 GCHeight0, ConfigTTL, Key, Tx, TxHash) ->
     ets:insert(Db, {Key, #tx{hash = TxHash, signed_tx = Tx}}), %% this resets any failed attempts
@@ -1077,14 +1604,15 @@ pool_db_raw_put(#dbs{db = Db, nonce_db = NDb, gc_db = GCDb},
         end,
     enter_tx_gc(GCDb, TxHash, Key, GCHeight).
 
-%% The value carries the part of the mempool key that cannot be derived from
-%% the index key, so that an index entry can be resolved to a mempool entry
-%% without going back to the tx itself.
+%% The index key carries every part of the mempool key, so that an index entry
+%% can be resolved to a mempool entry without going back to the tx itself. The
+%% value is unused.
 insert_nonce(NDb, ?KEY(NegFee, NegGasPrice, Account, Nonce, TxHash)) ->
-    ets:insert(NDb, {{Account, Nonce, TxHash}, {NegFee, NegGasPrice}}).
+    ets:insert(NDb, {?NONCE_KEY(Account, Nonce, NegFee, NegGasPrice, TxHash), []}).
 
-delete_nonce(NDb, ?KEY(_, _, Account, Nonce, TxHash)) ->
-    ets:delete(NDb, {Account, Nonce, TxHash}).
+%% The fee positions must match the ones insert_nonce/2 wrote, or the entry lingers.
+delete_nonce(NDb, ?KEY(NegFee, NegGasPrice, Account, Nonce, TxHash)) ->
+    ets:delete(NDb, ?NONCE_KEY(Account, Nonce, NegFee, NegGasPrice, TxHash)).
 
 check_tx_ttl(Tx, _TxHash, Header, _BlockHash, _Trees, _Event) ->
     Height = aec_headers:height(Header),
@@ -1155,15 +1683,19 @@ check_account(Tx, _TxHash, _Header, BlockHash, _Trees, Event) ->
     int_check_account(Tx, {block_hash, BlockHash}, Event).
 
 int_check_account(Tx, Source, Event) ->
-    int_check_account(Tx, Source, Event, undefined).
+    {Res, _Cache} = int_check_account(Tx, Source, Event, #{}, undefined),
+    Res.
 
+%% Cache memoises Source lookups by pubkey; it is only valid for as long as
+%% Source is, i.e. within a single selection pass over a fixed accounts tree.
 %% NonceOffset0 is the configured mempool nonce_offset, or 'undefined' to read
-%% it here. Callers that run this once per transaction pass it in instead.
-int_check_account(Tx, Source, Event, NonceOffset0) ->
-    case int_check_account_nonce(Tx, Source, Event, NonceOffset0) of
-        ok ->
-            int_check_meta_gas(Tx);
-        {error, _} = Err -> Err
+%% it here. Callers that run this once per transaction pass both in instead.
+int_check_account(Tx, Source, Event, Cache, NonceOffset0) ->
+    case int_check_account_nonce(Tx, Source, Event, Cache, NonceOffset0) of
+        {ok, Cache1} ->
+            {int_check_meta_gas(Tx), Cache1};
+        {{error, _} = Err, Cache1} ->
+            {Err, Cache1}
     end.
 
 int_check_meta_gas(SignedTx) ->
@@ -1189,36 +1721,40 @@ int_check_meta_gas(SignedTx, MaxAuthFunGas0) ->
         _ -> ok
     end.
 
-int_check_account_nonce(Tx, Source, Event, NonceOffset0) ->
+int_check_account_nonce(Tx, Source, Event, Cache, NonceOffset0) ->
     CheckNonce = nonce_check_by_event(Event),
     %% Check is conservative and only rejects certain cases
     Unsigned = aetx_sign:innermost_tx(Tx),
     TxNonce = aetx:nonce(Unsigned),
     case aetx:origin(Unsigned) of
         undefined ->
-            {error, no_origin};
+            {{error, no_origin}, Cache};
         Pubkey when is_binary(Pubkey) ->
-            case get_account(Pubkey, Source) of
-                {error, no_state_trees} -> nonce_baseline_check(TxNonce, CheckNonce);
-                none -> nonce_baseline_check(TxNonce, CheckNonce);
-                {value, Account} ->
-                    Offset   = case NonceOffset0 of
-                                   undefined -> nonce_offset();
-                                   _         -> NonceOffset0
-                               end,
-                    AccNonce = aec_accounts:nonce(Account),
-                    AccType  = aec_accounts:type(Account),
-                    if
-                        AccType == generalized andalso TxNonce =:= 0 ->
-                            ok;
-                        AccType == generalized ->
-                            {error, generalized_account_cant_sign_non_meta_tx};
-                        TxNonce =< AccNonce -> {error, nonce_too_low};
-                        TxNonce =< (AccNonce + Offset) -> ok;
-                        TxNonce >  (AccNonce + Offset) andalso not CheckNonce -> ok;
-                        TxNonce >  (AccNonce + Offset) -> {error, nonce_too_high}
-                    end
-            end
+            {Lookup, Cache1} = get_account(Pubkey, Source, Cache),
+            Offset = resolve_nonce_offset(Lookup, NonceOffset0),
+            {int_check_nonce(Lookup, TxNonce, CheckNonce, Offset), Cache1}
+    end.
+
+%% Only an existing account consults the offset, so 'undefined' defers the read.
+resolve_nonce_offset({value, _}, undefined) -> nonce_offset();
+resolve_nonce_offset(_, NonceOffset0)       -> NonceOffset0.
+
+int_check_nonce({error, no_state_trees}, TxNonce, CheckNonce, _Offset) ->
+    nonce_baseline_check(TxNonce, CheckNonce);
+int_check_nonce(none, TxNonce, CheckNonce, _Offset) ->
+    nonce_baseline_check(TxNonce, CheckNonce);
+int_check_nonce({value, Account}, TxNonce, CheckNonce, Offset) ->
+    AccNonce = aec_accounts:nonce(Account),
+    AccType  = aec_accounts:type(Account),
+    if
+        AccType == generalized andalso TxNonce =:= 0 ->
+            ok;
+        AccType == generalized ->
+            {error, generalized_account_cant_sign_non_meta_tx};
+        TxNonce =< AccNonce -> {error, nonce_too_low};
+        TxNonce =< (AccNonce + Offset) -> ok;
+        TxNonce >  (AccNonce + Offset) andalso not CheckNonce -> ok;
+        TxNonce >  (AccNonce + Offset) -> {error, nonce_too_high}
     end.
 
 nonce_check_by_event(tx_created) -> true;
@@ -1235,6 +1771,17 @@ nonce_baseline_check(TxNonce, _) ->
 
 get_account(AccountKey, How) ->
     aec_db:ensure_dirty(fun() -> get_account_(AccountKey, How) end).
+
+%% A pool is typically many transactions over far fewer accounts, and every
+%% entry selection visits would otherwise cost an accounts-tree traversal.
+get_account(AccountKey, How, Cache) ->
+    case Cache of
+        #{AccountKey := Res} ->
+            {Res, Cache};
+        #{} ->
+            Res = get_account(AccountKey, How),
+            {Res, Cache#{AccountKey => Res}}
+    end.
 
 get_account_(AccountKey, {account_trees, AccountsTrees}) ->
     aec_accounts_trees:lookup(AccountKey, AccountsTrees);
@@ -1292,6 +1839,11 @@ tx_ttl() ->
 invalid_tx_ttl() ->
     aeu_env:user_config_or_env([<<"mempool">>, <<"invalid_tx_ttl">>],
                                aecore, mempool_invalid_tx_ttl, ?DEFAULT_INVALID_TX_TTL).
+
+future_nonce_tx_ttl() ->
+    aeu_env:user_config_or_env([<<"mempool">>, <<"future_nonce_tx_ttl">>],
+                               aecore, mempool_future_nonce_tx_ttl,
+                               ?DEFAULT_FUTURE_NONCE_TX_TTL).
 
 nonce_baseline() ->
     aeu_env:user_config_or_env([<<"mempool">>, <<"nonce_baseline">>],

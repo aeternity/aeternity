@@ -96,6 +96,12 @@
                     "type" : "integer",
                     "default" : 5
                 },
+                "future_nonce_tx_ttl" : {
+                    "description" : "Number of blocks a TX may stay in the mempool when it enters with a nonce further than mempool.nonce_offset ahead of its sender's. Judged whenever the TX enters the pool, a restart or a fork replay included, and capped by mempool.tx_ttl",
+                    "type" : "integer",
+                    "default" : 480,
+                    "minimum" : 0
+                },
                 "sync_interval" : {
                    "description" : "Interval between mempool (re-)synchronization (in ms) Default: `30 * 60 * 1000`",
                    "type" : "integer",
@@ -1805,7 +1811,8 @@
                                         "child_block_production_time": {
                                             "description": "The maximum time (in ms) given produce both a micro block and a keyblock from a given transaction mempool.",
                                             "default": 500,
-                                            "type": "integer"
+                                            "type": "integer",
+                                            "minimum": 1
                                         },
                                         "child_epoch_length": {
                                             "description": "The number of blocks in an epoch on the child chain",
@@ -2117,6 +2124,12 @@
                     "type" : "integer",
                     "default": 3000,
                     "minimum" : 1
+                },
+                "micro_block_candidate_timeout" : {
+                    "description" : "Maximum time (milliseconds) spent selecting transactions for one micro-block candidate; on expiry the candidate is published with whatever it has packed so far. Set to 0 for no limit.",
+                    "type" : "integer",
+                    "default": 1000,
+                    "minimum" : 0
                 },
                 "min_miner_gas_price" : {
                     "description" : "Minimum gas price accepted by the miner",

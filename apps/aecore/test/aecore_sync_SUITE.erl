@@ -879,7 +879,9 @@ inject_generation(Node, NMicro, NTx) ->
 inject_microblock(Node, NTx) ->
     TopHash = rpc:call(Node, aec_chain, top_block_hash, []),
     inject_txs(Node, NTx),
-    {ok, MicroBlock, _} = rpc:call(Node, aec_block_micro_candidate, create, [TopHash]),
+    %% Unbounded: the assertion below is on the exact transaction count, which a
+    %% candidate deadline would be free to trim.
+    {ok, MicroBlock, _} = rpc:call(Node, aec_block_micro_candidate, create, [TopHash, infinity]),
     NTx = length(aec_blocks:txs(MicroBlock)),
     {ok, MicroBlockS} = rpc:call(Node, aec_keys, sign_micro_block, [MicroBlock]),
     ok = rpc:call(Node, aec_conductor, post_block, [MicroBlockS]),
