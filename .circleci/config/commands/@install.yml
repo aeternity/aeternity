@@ -30,17 +30,27 @@ install_otp:
           # here pulled in an entire GTK/X11/GNOME desktop dependency chain
           # (100+MB, 40+ minutes, and prone to transient mirror 503s) for
           # packages nothing in this pipeline uses - dropped.
-          sudo apt-get update && sudo apt-get install -y libncurses5 libsctp1
+          # apt-get retries its own transient mirror failures (503s, resets);
+          # the loop below covers apt-get itself timing out or being killed.
+          for i in 1 2 3; do
+            sudo apt-get update && sudo apt-get install -y libncurses5 libsctp1 && break
+            echo "WARNING: apt-get failed (attempt $i/3), retrying" >&2
+            sleep 5
+          done
           # Install OTP binary package
           PACKAGE_NAME=esl-erlang_${OTP_VERSION}-1~ubuntu~focal_amd64.deb
           OTP_DOWNLOAD_URL=https://binaries2.erlang-solutions.com/ubuntu/pool/contrib/e/esl-erlang/${PACKAGE_NAME}
+          # --retry covers transient failures (timeouts, connection resets, 5xx);
+          # it does not retry a hard failure like a bad cert, which is what the
+          # fallback below is for.
+          CURL_RETRY="--retry 5 --retry-delay 3 --retry-connrefused --retry-max-time 60"
           # TODO: drop the insecure fallback once binaries2.erlang-solutions.com
           # renews its edge cert (expired 2026-07-29, tracked as a third-party
           # outage - no alternate mirror serves this exact package/path).
-          if ! curl -fsSL -o ${PACKAGE_NAME} "$OTP_DOWNLOAD_URL"; then
+          if ! curl -fsSL $CURL_RETRY -o ${PACKAGE_NAME} "$OTP_DOWNLOAD_URL"; then
             echo "WARNING: verified HTTPS download failed, retrying with TLS verification disabled" \
                  "due to known upstream cert expiry on binaries2.erlang-solutions.com" >&2
-            curl -fsSLk -o ${PACKAGE_NAME} "$OTP_DOWNLOAD_URL"
+            curl -fsSLk $CURL_RETRY -o ${PACKAGE_NAME} "$OTP_DOWNLOAD_URL"
           fi
           sudo dpkg -i ${PACKAGE_NAME}
 
