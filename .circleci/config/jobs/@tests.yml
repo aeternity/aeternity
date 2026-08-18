@@ -17,6 +17,12 @@ test:
     target:
       type: string
   executor: builder_container_<< parameters.otp >>
+  # Functional (common_test) suites spin up multiple real Erlang nodes/FSMs and
+  # pin some cross-process message waits to tight (e.g. 500ms) fixed timeouts -
+  # give them the same resource_class as the other multi-node/system jobs
+  # (infrastructure_container_*, machine_2004) instead of the account default,
+  # which unit tests and static analysis don't need.
+  resource_class: large
   parallelism: 3
   steps:
     - common_tests:
