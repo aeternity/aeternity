@@ -570,6 +570,8 @@ init_per_suite(Config) ->
     %% then restore, if needed, in end_per_suite/1.
     OldNwId = application:get_env(aecore, network_id),
     application:set_env(aecore, network_id, NwId),
+    %% A pin left behind by a suite that started aecore would win over the env.
+    ok = aec_governance:clear_network_id_cache(),
     {ok, StartedApps} = application:ensure_all_started(gproc),
     Config1 = aecore_suite_utils:init_per_suite([?NODE], DefCfg, [{symlink_name, "latest.http_devmode"}, {test_module, ?MODULE}] ++ Config),
     Config2 = [ {nodes, [aecore_suite_utils:node_tuple(?NODE)]}
@@ -597,6 +599,7 @@ end_per_suite(Config) ->
         _ ->
             ok
     end,
+    ok = aec_governance:clear_network_id_cache(),
     aecore_suite_utils:stop_node(?NODE, Config),
     [application:stop(A) ||
         A <- lists:reverse(
