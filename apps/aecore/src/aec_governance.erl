@@ -367,11 +367,10 @@ name_claim_bid_initial_timeout(NameSize, _Protocol) ->
 
 -spec name_claim_bid_timeout(binary(), non_neg_integer()) -> non_neg_integer().
 name_claim_bid_timeout(Name, Protocol) when Protocol >= ?LIMA_PROTOCOL_VSN ->
-    NameSize = name_claim_size(Name),
-    BidTimeout = name_claim_bid_initial_timeout(NameSize, Protocol),
     %% allow overwrite by configuration for test
-    aeu_env:user_config_or_env([<<"mining">>, <<"name_claim_bid_timeout">>],
-                                   aecore, name_claim_bid_timeout, BidTimeout);
+    Override = aeu_env:user_config_or_env([<<"mining">>, <<"name_claim_bid_timeout">>],
+                                          aecore, name_claim_bid_timeout, undefined),
+    name_claim_bid_timeout_for_size(name_claim_size(Name), Protocol, Override);
 name_claim_bid_timeout(_Name, _Protocol) ->
     0.
 
