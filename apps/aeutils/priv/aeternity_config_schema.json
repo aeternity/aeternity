@@ -1503,6 +1503,24 @@
                             "default" : true
                         }
                     }
+                },
+                "gas_price" : {
+                    "type" : "object",
+                    "additionalProperties" : false,
+                    "properties" : {
+                        "min_relay_gas_price" : {
+                            "description" : "Reporting-only gas price floor in aettos, applied to the prices this node reports on GET /v[23]/recent-gas-prices and in public dry-run results; 0 or absent disables it. Advanced setting; leave unset unless you have a specific reason.",
+                            "type" : "integer",
+                            "minimum" : 0
+                        },
+                        "reporting_utilization_override" : {
+                            "description" : "Utilization percentage reported alongside a raised price floor; 0 reports observed utilization. Advanced setting; leave unset unless you have a specific reason.",
+                            "type" : "integer",
+                            "minimum" : 0,
+                            "maximum" : 100,
+                            "default" : 0
+                        }
+                    }
                 }
             }
         },

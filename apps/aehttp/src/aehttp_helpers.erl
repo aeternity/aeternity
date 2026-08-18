@@ -37,6 +37,9 @@
         , to_int/1
         ]).
 
+%% exported for eunit only
+-export([ floor_dry_run_gas_prices/2 ]).
+
 -export([ get_transaction/2
         , encode_transaction/2
         , decode_pointers/1
@@ -669,8 +672,9 @@ do_dry_run(Profile) ->
                 lager:debug("tx_events = ~p", [Events]),
                 case aec_dry_run:dry_run(Top, As, Txs, [{tx_events, Events}, {dry_run_profile, Profile}]) of
                     {ok, Res} ->
-                        {Results, EventRes} = R = dry_run_results(Res),
+                        {Results0, EventRes} = R = dry_run_results(Res),
                         lager:debug("dry_run_results: ~p", [R]),
+                        Results = floor_dry_run_gas_prices(Profile, Results0),
                         ResultsObj0 = #{ results => Results },
                         ResultsObj = case Events of
                                          true ->
@@ -685,6 +689,26 @@ do_dry_run(Profile) ->
                 dry_run_err(Reason)
         end
     end.
+
+%% @doc Reported floor, public dry-run profile only - the other three answer for
+%% something real, and flooring `includability' would make this
+%% consensus-relevant. `gas_used' is never scaled; clients derive a gas limit from it.
+floor_dry_run_gas_prices(public, Results) ->
+    case aehttp_logic:min_relay_gas_price() of
+        Floor when is_integer(Floor), Floor > 0 ->
+            [raise_gas_price(R, Floor) || R <- Results];
+        _Off ->
+            Results
+    end;
+floor_dry_run_gas_prices(_OtherProfile, Results) ->
+    Results.
+
+%% Results without a call object (spend, oracle, name, ... and every error
+%% result) carry no gas price to raise, and pass through untouched.
+raise_gas_price(#{call_obj := #{<<"gas_price">> := GasPrice} = CallObj} = Res, Floor) ->
+    Res#{call_obj := CallObj#{<<"gas_price">> := max(GasPrice, Floor)}};
+raise_gas_price(Res, _Floor) ->
+    Res.
 
 dry_run_err(Err) when is_list(Err) ->
     dry_run_err(list_to_binary(Err));

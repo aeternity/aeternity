@@ -17,6 +17,12 @@
         , get_top_blocks_gas_price_summary/1
         ]).
 
+-export([ min_relay_gas_price/0
+        , reporting_utilization_override/0
+        , apply_min_relay_gas_price/1
+        , apply_min_relay_gas_price/2
+        ]).
+
 -export([ get_account/1
         , get_account_balance/1
         ]).
@@ -169,6 +175,56 @@ get_top_blocks_gas_price_summary(Minutes) ->
     Offsets = [ {N, Now - N * 60 * 1_000} || N <- Minutes ],
     TopHash = aec_chain:top_block_hash(),
     get_min_gas_price_since(Offsets, TopHash, {undefined, 0, 0}, []).
+
+%% Reporting-only floor for the public HTTP API, off by default. Not
+%% mining:min_miner_gas_price - nothing here reaches an inclusion decision.
+-spec min_relay_gas_price() -> non_neg_integer() | undefined.
+min_relay_gas_price() ->
+    case aeu_env:user_config_or_env([<<"http">>, <<"gas_price">>, <<"min_relay_gas_price">>],
+                                    aehttp, [gas_price, min_relay_gas_price], undefined) of
+        N when is_integer(N), N > 0 -> N;
+        _ -> undefined
+    end.
+
+%% Off unless an operator asks for it: 0 reports the utilization the chain
+%% actually showed. Reporting a different figure is its own decision and does not
+%% follow from setting the price floor.
+-spec reporting_utilization_override() -> 0..100.
+reporting_utilization_override() ->
+    case aeu_env:user_config_or_env([<<"http">>, <<"gas_price">>,
+                                     <<"reporting_utilization_override">>],
+                                    aehttp, [gas_price,
+                                             reporting_utilization_override],
+                                    0) of
+        N when is_integer(N), N >= 0, N =< 100 -> N;
+        _ -> 0
+    end.
+
+%% Price-only form, for the public dry-run profile's call objects.
+-spec apply_min_relay_gas_price(non_neg_integer()) -> non_neg_integer().
+apply_min_relay_gas_price(GasPrice) ->
+    case min_relay_gas_price() of
+        undefined -> GasPrice;
+        Floor     -> max(GasPrice, Floor)
+    end.
+
+%% The pair for one window of GET /v[23]/recent-gas-prices. The configured
+%% utilization is reported only where the floor actually raised the price, and a
+%% 0 price is min_gas_price/1's no-observation marker rather than a cheap
+%% window, so it passes through in both fields.
+-spec apply_min_relay_gas_price(non_neg_integer(), 0..100) ->
+          {non_neg_integer(), 0..100}.
+apply_min_relay_gas_price(0, Utilization) ->
+    {0, Utilization};
+apply_min_relay_gas_price(GasPrice, Utilization) ->
+    case min_relay_gas_price() of
+        undefined ->
+            {GasPrice, Utilization};
+        Floor when GasPrice >= Floor ->
+            {GasPrice, Utilization};
+        Floor ->
+            {Floor, max(Utilization, reporting_utilization_override())}
+    end.
 
 min_gas_price(undefined) -> 0;
 min_gas_price(N) -> N.
