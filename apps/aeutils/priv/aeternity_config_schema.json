@@ -2147,6 +2147,11 @@
                     "type" : "boolean",
                     "default": false
                 },
+                "delay_restart_after_micro" : {
+                    "description" : "Delay restarting this node's own key-block mining after it wins a generation until the first microblock attempt has completed.",
+                    "type" : "boolean",
+                    "default": false
+                },
                 "cuckoo" : {
                     "type" : "object",
                     "additionalProperties" : false,

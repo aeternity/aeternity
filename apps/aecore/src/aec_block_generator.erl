@@ -111,10 +111,10 @@ handle_cast({worker_done, Pid, {candidate, Candidate, CandidateState}},
     case aec_blocks:txs(Candidate) of
         [] ->
             lager:debug("Empty microblock candidate prepared", []),
-            ok;
+            publish_candidate(empty_candidate);
         _  ->
             epoch_mining:info("New microblock candidate ready", []),
-            publish_candidate(Candidate)
+            publish_candidate(new_candidate)
     end,
     State1 = finish_worker(State),
     State2 = State1#state{ candidate = Candidate
@@ -171,7 +171,7 @@ do_start_generation(S = #state{ generating = false }) ->
     S1#state{ generating = true };
 do_start_generation(S = #state{ candidate = Candidate }) ->
     %% If we are asked to start generation and already have a block, signal this.
-    [ publish_candidate(Candidate)
+    [ publish_candidate(new_candidate)
       || Candidate /= undefined andalso aec_blocks:txs(Candidate) /= [] ],
     S.
 
@@ -282,5 +282,5 @@ failed_attempt(Reason) ->
 new_candidate(NewBlock, NewBlockInfo) ->
     gen_server:cast(?MODULE, {worker_done, self(), {candidate, NewBlock, NewBlockInfo}}).
 
-publish_candidate(_Block) ->
-    aec_events:publish(candidate_block, new_candidate).
+publish_candidate(Info) ->
+    aec_events:publish(candidate_block, Info).

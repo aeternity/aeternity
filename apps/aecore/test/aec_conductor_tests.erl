@@ -432,9 +432,11 @@ generation_test_() ->
              ok
      end,
      [
-        {timeout, 10, {"Start signing after mined block", fun test_mined_block_signing/0}},
-        {timeout, 10, {"Start signing after two mined block", fun test_two_mined_block_signing/0}},
-        {timeout, 10, {"Start signing after received block", fun test_received_block_signing/0}}
+        {timeout, 30, {"Start signing after mined block", fun test_mined_block_signing/0}},
+        {timeout, 30, {"Delay restart until first microblock", fun test_delay_restart_until_first_micro_block/0}},
+        {timeout, 30, {"Restart when first microblock never reports back", fun test_delay_restart_bounded_when_candidate_fails/0}},
+        {timeout, 30, {"Start signing after two mined block", fun test_two_mined_block_signing/0}},
+        {timeout, 30, {"Start signing after received block", fun test_received_block_signing/0}}
      ]}.
 
 test_mined_block_signing() ->
@@ -456,6 +458,73 @@ test_mined_block_signing() ->
 
     ok = prev_on_chain(MicroBlock, KeyBlock),
     ok.
+
+test_delay_restart_until_first_micro_block() ->
+    Keys = beneficiary_keys(),
+    ok = application:set_env(aecore, delay_restart_after_micro, true),
+    ok = meck:new(aec_block_micro_candidate, [passthrough]),
+    ok = meck:expect(aec_block_micro_candidate, create,
+                     fun(BlockInfo) ->
+                             timer:sleep(250),
+                             meck:passthrough([BlockInfo])
+                     end),
+    try
+        true = aec_events:subscribe(block_created),
+        true = aec_events:subscribe(micro_block_created),
+        true = aec_events:subscribe(start_mining),
+        ok = aec_tx_pool:push(tx(Keys)),
+
+        ?TEST_MODULE:start_mining(),
+        wait_for_start_mining_timeout(5000),
+
+        KeyBlock = wait_for_block_created(),
+        KeyBlockHash = block_hash(KeyBlock),
+        wait_for_top_block_hash(KeyBlockHash),
+        assert_no_start_mining(KeyBlockHash, 100),
+
+        MicroBlock = wait_for_micro_block_created(),
+        wait_for_top_block_hash(block_hash(MicroBlock)),
+        wait_for_start_mining(block_hash(MicroBlock), 5000),
+
+        ok = prev_on_chain(MicroBlock, KeyBlock),
+        ok
+    after
+        ok = application:unset_env(aecore, delay_restart_after_micro),
+        meck:unload(aec_block_micro_candidate)
+    end.
+
+%% A candidate worker that fails publishes no candidate_block event, so the
+%% pause has to be lifted by its own deadline instead.
+test_delay_restart_bounded_when_candidate_fails() ->
+    Keys = beneficiary_keys(),
+    ok = application:set_env(aecore, delay_restart_after_micro, true),
+    ok = meck:new(aec_block_micro_candidate, [passthrough]),
+    ok = meck:expect(aec_block_micro_candidate, create,
+                     fun(_BlockInfo) ->
+                             %% Also paces the generator's failure/restart loop.
+                             timer:sleep(100),
+                             {error, candidate_failed_on_purpose}
+                     end),
+    try
+        true = aec_events:subscribe(block_created),
+        true = aec_events:subscribe(start_mining),
+        ok = aec_tx_pool:push(tx(Keys)),
+
+        ?TEST_MODULE:start_mining(),
+        wait_for_start_mining_timeout(5000),
+
+        KeyBlock = wait_for_block_created(),
+        KeyBlockHash = block_hash(KeyBlock),
+        wait_for_top_block_hash(KeyBlockHash),
+
+        %% No microblock can ever be signed here, so only the deadline can
+        %% bring mining back on top of the key block just won.
+        wait_for_start_mining(KeyBlockHash, 5000),
+        ok
+    after
+        ok = application:unset_env(aecore, delay_restart_after_micro),
+        meck:unload(aec_block_micro_candidate)
+    end.
 
 test_two_mined_block_signing() ->
     Keys = beneficiary_keys(),
@@ -948,14 +1017,30 @@ wait_for_block_created() ->
 wait_for_micro_block_created() ->
     wait_for_gproc(micro_block_created, 30000).
 
-wait_for_start_mining() ->
-    wait_for_gproc(start_mining, 1000).
+wait_for_start_mining_timeout(Timeout) ->
+    wait_for_gproc(start_mining, Timeout).
 
 wait_for_start_mining(Hash) ->
-    Info = wait_for_start_mining(),
+    wait_for_start_mining(Hash, 1000).
+
+wait_for_start_mining(Hash, Timeout) ->
+    Info = wait_for_start_mining_timeout(Timeout),
     case proplists:get_value(top_block_hash, Info) of
         Hash -> ok;
-        _Other -> wait_for_start_mining(Hash)
+        _Other -> wait_for_start_mining(Hash, Timeout)
+    end.
+
+assert_no_start_mining(Hash, Timeout) ->
+    receive
+        {gproc_ps_event, start_mining, #{info := Info}} = Event ->
+            case proplists:get_value(top_block_hash, Info) of
+                Hash ->
+                    error({unexpected_event, Event});
+                _OtherHash ->
+                    assert_no_start_mining(Hash, Timeout)
+            end
+    after Timeout ->
+        ok
     end.
 
 wait_for_gproc(Event, Timeout) ->
