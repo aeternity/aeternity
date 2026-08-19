@@ -57,6 +57,7 @@
     get_current_key_block_height/1,
     get_pending_key_block/1,
     post_key_block/1,
+    post_key_block_without_flags/1,
     get_key_block_by_hash/1,
     get_key_block_by_height/1
    ]).
@@ -545,7 +546,8 @@ groups() ->
       ]},
      {oas_on_genesis_block, [sequence],
       [
-       {group, oas_block_info}
+       {group, oas_block_info},
+       post_key_block_without_flags
       ]},
      {oas_block_info, [sequence],
       [
@@ -1090,6 +1092,38 @@ post_key_block(_CurrentBlockType, Config) ->
     ?assertEqual(Nonce1, maps:get(<<"nonce">>, CurrentBlock)),
     ok.
 
+%% The KeyBlock schema doubles as this endpoint's request body, so a miner that
+%% builds the body itself rather than posting back the pending block sends no
+%% `flags`. "Block rejected", rather than validation_error, is what shows the
+%% body cleared request validation; the node defaults the field. The mined
+%% round trip below then proves a block sealed with the defaulted flags is
+%% actually accepted (200), not merely admitted past request validation.
+post_key_block_without_flags(Config) ->
+    {ok, 200, #{<<"height">> := Height} = PendingKeyBlock} = get_key_blocks_pending_sut(),
+    %% Every response still carries `flags`, optional though the schema now is.
+    ?assert(maps:is_key(<<"flags">>, PendingKeyBlock)),
+    PendingKeyBlockNoFlags = maps:remove(<<"flags">>, PendingKeyBlock),
+
+    KeyBlock = PendingKeyBlockNoFlags#{<<"pow">> => lists:duplicate(42, 1),
+                                       <<"nonce">> => 1},
+    {ok, 400, Error} = post_key_blocks_sut(KeyBlock),
+    %% Block is always rejected - pow and nonce are not correct.
+    ?assertEqual(<<"Block rejected">>, maps:get(<<"reason">>, Error)),
+
+    KeyBlock1 = PendingKeyBlockNoFlags#{<<"pow">> => lists:duplicate(42, 0), <<"nonce">> => 0},
+    {ok, KeyBlockHeader} = aec_headers:deserialize_from_client(key, KeyBlock1),
+    KeyBlockHeaderBin = aec_headers:serialize_to_binary(KeyBlockHeader),
+    Target = aec_headers:target(KeyBlockHeader),
+    Nonce = aeminer_pow:pick_nonce(),
+    {ok, {Nonce1, PowEvidence}} = mine_key_block(KeyBlockHeaderBin, Target, Nonce, 1000),
+    {ok, 200, #{}} = post_key_blocks_sut(PendingKeyBlockNoFlags#{<<"pow">> => PowEvidence, <<"nonce">> => Nonce1}),
+    ok = aecore_suite_utils:wait_for_height(?config(node, Config), Height),
+    {ok, 200, CurrentBlock} = get_key_blocks_current_sut(),
+    ?assertEqual(Height, maps:get(<<"height">>, CurrentBlock)),
+    ?assertEqual(PowEvidence, maps:get(<<"pow">>, CurrentBlock)),
+    ?assertEqual(Nonce1, maps:get(<<"nonce">>, CurrentBlock)),
+    ok.
+
 mine_key_block(HeaderBir, Target, Nonce, Attempts) when Attempts > 0 ->
     [Config] = rpc(aec_mining, get_miner_configs, []),
     mine_key_block(HeaderBir, Target, Nonce, Config, Attempts).
@@ -1152,6 +1186,7 @@ get_micro_block_header_by_hash(micro_block, Config) ->
     {ok, 200, Header} = get_micro_blocks_header_by_hash_sut(CurrentBlockHash),
     ?assertEqual(PrevKeyBlockHash, maps:get(<<"prev_key_hash">>, Header)),
     ?assertEqual(CurrentBlockHash, maps:get(<<"hash">>, Header)),
+    ?assert(maps:is_key(<<"flags">>, Header)),
     ok.
 
 get_micro_block_transactions_by_hash(Config) ->

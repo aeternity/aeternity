@@ -3476,7 +3476,6 @@ components:
         - state_hash
         - miner
         - beneficiary
-        - flags
         - target
         - time
         - version
@@ -3507,6 +3506,8 @@ components:
           $ref: "#/components/schemas/UInt64"
         version:
           $ref: "#/components/schemas/UInt32"
+        flags:
+          $ref: "#/components/schemas/EncodedByteArray"
       required:
         - hash
         - height

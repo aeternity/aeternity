@@ -71,6 +71,7 @@ hc_flag_gating_test_() ->
      , {"EOE rejected under PoW",          fun eoe_flag_rejected_pow/0}
      , {"client HOLE/EOE accepted on PoS", fun client_hc_flags_accepted_pos/0}
      , {"client HOLE rejected on PoW",     fun client_hole_flag_rejected_pow/0}
+     , {"absent flags default to no HC bits even on PoS", fun client_absent_flags_default_ignores_pos/0}
      ]}.
 
 set_consensus_type(Type) ->
@@ -137,6 +138,34 @@ client_hole_flag_rejected_pow() ->
     ?assertEqual({error, invalid_header},
                  ?TEST_MODULE:deserialize_from_client(key, WithHoleFlag)).
 
+%% The absent-`flags` shortcut in deserialize_key_flags/1 substitutes the
+%% constant default directly, bypassing the AllowedMask check entirely - so a
+%% miner can never obtain HOLE/EOE by omission, even under PoS where an
+%% explicit request for those bits would be granted.
+client_absent_flags_default_ignores_pos() ->
+    set_consensus_type(pos),
+    RawKey = raw_key_header(),
+    Serialized = ?TEST_MODULE:serialize_for_client(RawKey, key),
+    WithoutFlags = maps:remove(<<"flags">>,
+                    Serialized#{<<"nonce">> => ?TEST_MODULE:nonce(RawKey),
+                               <<"pow">>   => ?TEST_MODULE:pow(RawKey)}),
+    {ok, Header} = ?TEST_MODULE:deserialize_from_client(key, WithoutFlags),
+    ?assertNot(?TEST_MODULE:is_hole(Header)),
+    ?assertNot(?TEST_MODULE:is_eoe(Header)).
+
+%% A miner that builds the POST /key-blocks body itself, as 7.2.2 clients do,
+%% sends no `flags`. The defaulted field must rebuild the header the miner
+%% sealed, or the PoW it solved would no longer validate.
+client_absent_flags_defaults_test() ->
+    RawKey = raw_key_header(),
+    Serialized = ?TEST_MODULE:serialize_for_client(RawKey, key),
+    WithFlags = Serialized#{<<"nonce">> => ?TEST_MODULE:nonce(RawKey),
+                            <<"pow">>   => ?TEST_MODULE:pow(RawKey)},
+    {ok, Expected} = ?TEST_MODULE:deserialize_from_client(key, WithFlags),
+    {ok, Defaulted} = ?TEST_MODULE:deserialize_from_client(
+                        key, maps:remove(<<"flags">>, WithFlags)),
+    ?assertEqual(Expected, Defaulted).
+
 client_reserved_flag_bits_rejected_test() ->
     RawKey = raw_key_header(),
     Serialized = ?TEST_MODULE:serialize_for_client(RawKey, key),
@@ -146,6 +175,19 @@ client_reserved_flag_bits_rejected_test() ->
                               },
     ?assertEqual({error, invalid_header},
                  ?TEST_MODULE:deserialize_from_client(key, WithBadFlags)).
+
+%% An explicit but wrong-length `flags` (e.g. the empty bytearray) must be
+%% rejected outright, not treated the same as the field being absent -
+%% only omitting the key entirely reaches the safe-default shortcut.
+client_empty_flags_rejected_test() ->
+    RawKey = raw_key_header(),
+    Serialized = ?TEST_MODULE:serialize_for_client(RawKey, key),
+    WithEmptyFlags = Serialized#{<<"nonce">> => ?TEST_MODULE:nonce(RawKey),
+                                 <<"pow">>   => ?TEST_MODULE:pow(RawKey),
+                                 <<"flags">> => aeser_api_encoder:encode(bytearray, <<>>)
+                                },
+    ?assertEqual({error, invalid_header},
+                 ?TEST_MODULE:deserialize_from_client(key, WithEmptyFlags)).
 
 raw_key_header_minerva(MinervaHeight) ->
     ?TEST_MODULE:set_version_and_height(raw_key_header(), ?MINERVA_PROTOCOL_VSN, MinervaHeight).
