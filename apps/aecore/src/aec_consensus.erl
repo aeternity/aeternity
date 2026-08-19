@@ -273,7 +273,10 @@ check_env() ->
 
 -spec set_consensus() -> ok.
 set_consensus() ->
-    persistent_term:put({?MODULE, consensus}, calc_consensus()).
+    Consensus = calc_consensus(),
+    persistent_term:put({?MODULE, consensus}, Consensus),
+    %% Has no invalidation of its own, so a stale type would outlive its config.
+    persistent_term:put({?MODULE, consensus_type}, consensus_type_from(Consensus)).
 
 -spec get_consensus() -> global_consensus_config().
 get_consensus() ->
@@ -295,16 +298,16 @@ get_consensus_spec_at_height(Height) ->
 get_consensus_type() ->
     case persistent_term:get({?MODULE, consensus_type}, error) of
         error ->
-            ConsensusType =
-                case get_consensus() of
-                    [{0, {aec_consensus_hc, _}} | _] -> pos;
-                    _ -> pow
-                end,
+            ConsensusType = consensus_type_from(get_consensus()),
             persistent_term:put({?MODULE, consensus_type}, ConsensusType),
             ConsensusType;
         ConsensusType ->
             ConsensusType
     end.
+
+-spec consensus_type_from(global_consensus_config()) -> consensus_type().
+consensus_type_from([{0, {aec_consensus_hc, _}} | _]) -> pos;
+consensus_type_from(_)                                -> pow.
 
 %% This is a placeholder for later - the idea is that if at some point
 %% the network decides to change the configuration variables which are

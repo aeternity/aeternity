@@ -17,6 +17,8 @@ consensus_two(Config) -> #{<<"type">> => <<"eunit_two">>, <<"config">> => Config
 consensus_three() -> #{<<"type">> => <<"eunit_three">>}.
 consensus_three(Config) -> #{<<"type">> => <<"eunit_three">>, <<"config">> => Config}.
 consensus_unknown() -> #{<<"type">> => <<"consensus_unknown">>}.
+%% The only type resolving to a 'pos' module; the eunit_* ones are 'pow'.
+consensus_hyperchain() -> #{<<"type">> => <<"hyperchain">>}.
 
 setup_module(Name, CanBeTurnedOff) ->
     meck:expect(Name, can_be_turned_off, fun() -> CanBeTurnedOff end),
@@ -41,6 +43,9 @@ configuration_test_() ->
             meck:unload(module_eunit_two),
             meck:unload(module_eunit_three),
             application:unset_env(aecore, consensus),
+            %% Erased before the re-pin, so the cleanup also holds on a tree
+            %% where set_consensus/0 does not refresh the type.
+            _ = persistent_term:erase({aec_consensus, consensus_type}),
             aec_consensus:set_consensus()
         end,
         [ {"Unknown consensus", fun test_unknown_consensus/0}
@@ -49,6 +54,7 @@ configuration_test_() ->
         , {"Can use the same consensus multiple times at different heights", fun test_same_consensus_different_height/0}
         , {"Consensus modules which can't be disabled", fun test_permanent_consensus/0}
         , {"Consensus config is persisted", fun test_persisted_config/0}
+        , {"Consensus type follows the persisted config", fun test_persisted_consensus_type/0}
         , {"Query consensus at height", fun test_query_consensus/0}
         ]
     }.
@@ -150,6 +156,26 @@ test_persisted_config() ->
     ?assertEqual(module_eunit_two, aec_consensus:get_genesis_consensus_module()),
     ok.
 
+test_persisted_consensus_type() ->
+    %% Erased first, so the case cannot depend on what an earlier one left pinned.
+    _ = persistent_term:erase({aec_consensus, consensus}),
+    _ = persistent_term:erase({aec_consensus, consensus_type}),
+
+    setup_module(module_eunit_one, true),
+    application:set_env(aecore, consensus, #{<<"0">> => consensus_one()}),
+    aec_consensus:set_consensus(),
+    ?assertEqual(pow, aec_consensus:get_consensus_type()),
+
+    application:set_env(aecore, consensus, #{<<"0">> => consensus_hyperchain()}),
+    aec_consensus:set_consensus(),
+    ?assertEqual(pos, aec_consensus:get_consensus_type()),
+
+    %% ... and back, so this cannot pass by the cache merely being cold once.
+    application:set_env(aecore, consensus, #{<<"0">> => consensus_one()}),
+    aec_consensus:set_consensus(),
+    ?assertEqual(pow, aec_consensus:get_consensus_type()),
+    ok.
+
 test_query_consensus() ->
     F = fun(Module, Config, Heights) ->
         [begin
@@ -192,6 +218,9 @@ genesis_test_() ->
             meck:unload(aec_fork_block_settings),
             meck:unload(module_eunit_one),
             application:unset_env(aecore, consensus),
+            %% Erased before the re-pin, so the cleanup also holds on a tree
+            %% where set_consensus/0 does not refresh the type.
+            _ = persistent_term:erase({aec_consensus, consensus_type}),
             aec_consensus:set_consensus()
         end,
         [ {"Can inject account to the genesis state", fun test_inject_account_at_genesis/0}]

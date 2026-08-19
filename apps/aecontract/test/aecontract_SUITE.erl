@@ -736,7 +736,12 @@ init_per_testcase(Env, Config) when Env == fate_environment; Env == fate_environ
                         _ = aefa_chain_api:generation(S),
                         aeb_fate_data:make_hash(<<N:256>>)
                 end),
-    [ persistent_term:put({aec_consensus, consensus_type}, pos) || Env == fate_environment_pos ],
+    %% Mecked rather than pinned in a persistent_term: set_consensus/0 re-derives
+    %% the cached type from the config, and a cold get_consensus/0 reaches it.
+    [ begin
+          meck:new(aec_consensus, [passthrough]),
+          meck:expect(aec_consensus, get_consensus_type, 0, pos)
+      end || Env == fate_environment_pos ],
     init_per_testcase_common(Env, Config);
 init_per_testcase(TC, Config) when TC == sophia_aens_resolve;
                                    TC == sophia_signatures_aens;
@@ -818,7 +823,7 @@ init_per_testcase_common(_TC, Config) ->
 
 end_per_testcase(Env, _Config) when Env == fate_environment; Env == fate_environment_pos ->
     meck:unload(aefa_chain_api),
-    [ persistent_term:put({aec_consensus, consensus_type}, pow) || Env == fate_environment_pos ],
+    [ meck:unload(aec_consensus) || Env == fate_environment_pos ],
     ok;
 end_per_testcase(TC, _Config) when TC == sophia_aens_resolve;
                                    TC == sophia_aens_lookup;
